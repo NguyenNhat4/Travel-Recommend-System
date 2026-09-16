@@ -1,0 +1,8 @@
+{
+  "error": {
+    "code": "CART_EMPTY",
+    "message": "Giỏ hàng đang trống.",
+    "retryable": false,
+    "requestId": "book-01JXYZ"
+  }
+}

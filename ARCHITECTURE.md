@@ -4,7 +4,7 @@
 
 Repository này là monorepo cho sản phẩm gợi ý du lịch gồm:
 
-- Web app React: tìm kiếm, cá nhân hóa, chi tiết sản phẩm, booking và chat lịch trình.
+- Web app Next.js + Tailwind CSS: tìm kiếm, cá nhân hóa, chi tiết sản phẩm, booking và chat lịch trình.
 - Backend Python/FastAPI: API, xác thực, search, recommendation, booking và itinerary agent.
 - PostgreSQL + pgvector: catalog, hồ sơ, event, booking và vector sản phẩm.
 - CDP clone và Insider clone: mô phỏng ranh giới tích hợp production.
@@ -17,7 +17,7 @@ Kiến trúc ưu tiên hợp đồng API ổn định, ownership rõ theo featur
 | Vấn đề | Quyết định |
 | --- | --- |
 | Repository | Monorepo; toàn bộ source code nằm dưới `src/` |
-| Frontend | React + TypeScript, tổ chức theo feature |
+| Frontend | Next.js (App Router) + TypeScript + Tailwind CSS, tổ chức theo feature |
 | Backend | Python + FastAPI, kiến trúc phân lớp theo domain/application/infrastructure |
 | Agent | LangGraph nằm trong backend và chỉ điều phối use case itinerary |
 | Database | PostgreSQL + pgvector |
@@ -25,12 +25,12 @@ Kiến trúc ưu tiên hợp đồng API ổn định, ownership rõ theo featur
 | Tích hợp ngoài | Đi qua client interface; không truy cập trực tiếp database của service khác |
 | API | REST/JSON, prefix `/api/v1`, JWT tùy chọn ở các API cho khách ẩn danh |
 
-Spec và repository thống nhất sử dụng React + TypeScript cho frontend và Python + FastAPI cho backend. Các boundary nghiệp vụ vẫn giữ nguyên khi thay đổi stack triển khai.
+Spec và repository thống nhất sử dụng Next.js + TypeScript + Tailwind CSS cho frontend và Python + FastAPI cho backend. Các boundary nghiệp vụ vẫn giữ nguyên khi thay đổi stack triển khai.
 
 ## 3. Sơ đồ hệ thống
 
 ```text
-React Web
+Next.js Web
    |
    | REST/JSON + JWT + X-Request-ID
    v
@@ -56,10 +56,14 @@ Booking hoàn tất -> ghi event theo cdp_user_id -> cập nhật user vector
 
 ```text
 src/
-├── frontend/                       # React + TypeScript
+├── frontend/                       # Next.js (App Router) + TypeScript + Tailwind CSS
 │   ├── public/
+│   ├── next.config.ts
+│   ├── tailwind.config.ts
+│   ├── postcss.config.js
 │   └── src/
-│       ├── app/                    # router, providers, global configuration
+│       ├── app/                    # route segment, layout, route handler (Next.js App Router)
+│       │   └── globals.css         # Tailwind directive và global style
 │       ├── assets/
 │       ├── components/             # UI dùng chung, không chứa business rule
 │       ├── features/
@@ -70,7 +74,6 @@ src/
 │       │   ├── recommendations/
 │       │   └── search/
 │       ├── hooks/
-│       ├── pages/                  # page composition theo route
 │       ├── services/               # HTTP client và generated API client
 │       ├── test/                   # test setup, fixtures, render helpers
 │       └── types/                  # kiểu dùng chung phía frontend
@@ -114,12 +117,13 @@ Mỗi domain (`auth`, `booking`, `catalog`, `itinerary`, `recommendation`, `sear
 
 ## 6. Quy tắc frontend
 
-- `pages` chỉ ghép layout và feature theo route.
+- `app` chỉ chứa route segment (`layout.tsx`, `page.tsx`, `route.ts`) ghép layout và feature theo route; không chứa business rule.
 - Mỗi folder trong `features` sở hữu component, hook, state và test của nghiệp vụ đó.
-- `components` chỉ chứa thành phần dùng lại ở ít nhất hai feature.
+- `components` chỉ chứa thành phần dùng lại ở ít nhất hai feature; ưu tiên Server Component, chỉ đánh dấu `"use client"` khi cần tương tác/state phía client.
 - Mọi HTTP call đi qua `services`; component không gọi `fetch` trực tiếp.
 - Kiểu request/response được sinh từ OpenAPI. Không tự định nghĩa lại `SearchRequest`, `ProductSummary` hoặc `ItineraryResponse` trong từng feature.
 - Server state và UI state được tách riêng; token không được log hoặc đưa vào URL.
+- Styling dùng Tailwind CSS utility class; token màu/spacing khai báo tại `tailwind.config.ts`, không viết CSS tùy ý ngoài `globals.css`.
 
 ## 7. Hợp đồng và endpoint
 

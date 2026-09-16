@@ -1,0 +1,13 @@
+{
+  "error": {
+    "code": "PRICE_CHANGED",
+    "message": "Giá VinWonders Nha Trang đã thay đổi.",
+    "retryable": false,
+    "requestId": "book-01JXYZ",
+    "details": {
+      "productId": "nt-a-01",
+      "oldPrice": 880000,
+      "newPrice": 950000
+    }
+  }
+}

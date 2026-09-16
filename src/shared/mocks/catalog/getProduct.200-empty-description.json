@@ -1,0 +1,17 @@
+{
+  "productId": "nt-a-02",
+  "name": "Vinpearl Safari mini Nha Trang",
+  "taxonomy": "attraction",
+  "destination": "Nha Trang",
+  "unitPrice": 450000,
+  "currency": "VND",
+  "available": false,
+  "availableFrom": "2026-09-01",
+  "availableTo": "2027-08-31",
+  "imageUrl": null,
+  "rating": 4.1,
+  "reviewCount": 212,
+  "attributes": {},
+  "description": "",
+  "sourceRef": null
+}

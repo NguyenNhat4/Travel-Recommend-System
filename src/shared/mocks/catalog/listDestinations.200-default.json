@@ -1,0 +1,16 @@
+{
+  "destinations": [
+    {
+      "destination": "Nha Trang",
+      "productCount": 9
+    },
+    {
+      "destination": "Phú Quốc",
+      "productCount": 8
+    },
+    {
+      "destination": "Đà Nẵng",
+      "productCount": 7
+    }
+  ]
+}

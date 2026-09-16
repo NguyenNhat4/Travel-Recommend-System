@@ -1,0 +1,13 @@
+{
+  "error": {
+    "code": "DATE_OUT_OF_RANGE",
+    "message": "Ngày sử dụng nằm ngoài thời gian mở bán.",
+    "retryable": false,
+    "requestId": "cart-01JXYZ",
+    "details": {
+      "productId": "nt-f-01",
+      "availableFrom": "2026-10-01",
+      "availableTo": "2026-12-31"
+    }
+  }
+}

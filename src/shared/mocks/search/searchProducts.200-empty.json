@@ -1,0 +1,18 @@
+{
+  "results": [],
+  "total": 0,
+  "limit": 20,
+  "offset": 0,
+  "topScore": null,
+  "facets": {
+    "taxonomy": {
+      "hotel": 0,
+      "flight": 0,
+      "attraction": 0,
+      "combo": 0,
+      "golf": 0
+    },
+    "destination": {}
+  },
+  "requestId": "search-01JXYZ"
+}

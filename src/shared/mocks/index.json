@@ -1,0 +1,398 @@
+{
+  "version": "1.0.0",
+  "contract": "../contracts/openapi.yaml",
+  "fixtures": [
+    {
+      "operationId": "register",
+      "method": "post",
+      "path": "/auth/register",
+      "status": 201,
+      "case": "default",
+      "file": "auth/register.201-default.json"
+    },
+    {
+      "operationId": "register",
+      "method": "post",
+      "path": "/auth/register",
+      "status": 409,
+      "case": "email-already-exists",
+      "file": "auth/register.409-email-already-exists.json"
+    },
+    {
+      "operationId": "login",
+      "method": "post",
+      "path": "/auth/login",
+      "status": 200,
+      "case": "default",
+      "file": "auth/login.200-default.json"
+    },
+    {
+      "operationId": "login",
+      "method": "post",
+      "path": "/auth/login",
+      "status": 401,
+      "case": "invalid-credentials",
+      "file": "auth/login.401-invalid-credentials.json"
+    },
+    {
+      "operationId": "getMe",
+      "method": "get",
+      "path": "/auth/me",
+      "status": 200,
+      "case": "default",
+      "file": "auth/getMe.200-default.json"
+    },
+    {
+      "operationId": "getMe",
+      "method": "get",
+      "path": "/auth/me",
+      "status": 401,
+      "case": "token-expired",
+      "file": "auth/getMe.401-token-expired.json"
+    },
+    {
+      "operationId": "listDemoAccounts",
+      "method": "get",
+      "path": "/auth/demo-accounts",
+      "status": 200,
+      "case": "default",
+      "file": "auth/listDemoAccounts.200-default.json"
+    },
+    {
+      "operationId": "listProducts",
+      "method": "get",
+      "path": "/products",
+      "status": 200,
+      "case": "popular",
+      "file": "catalog/listProducts.200-popular.json"
+    },
+    {
+      "operationId": "getProduct",
+      "method": "get",
+      "path": "/products/{productId}",
+      "status": 200,
+      "case": "default",
+      "file": "catalog/getProduct.200-default.json"
+    },
+    {
+      "operationId": "getProduct",
+      "method": "get",
+      "path": "/products/{productId}",
+      "status": 200,
+      "case": "empty-description",
+      "file": "catalog/getProduct.200-empty-description.json"
+    },
+    {
+      "operationId": "getProduct",
+      "method": "get",
+      "path": "/products/{productId}",
+      "status": 404,
+      "case": "not-found",
+      "file": "catalog/getProduct.404-not-found.json"
+    },
+    {
+      "operationId": "getSimilarProducts",
+      "method": "get",
+      "path": "/products/{productId}/similar",
+      "status": 200,
+      "case": "default",
+      "file": "catalog/getSimilarProducts.200-default.json"
+    },
+    {
+      "operationId": "getSimilarProducts",
+      "method": "get",
+      "path": "/products/{productId}/similar",
+      "status": 200,
+      "case": "empty",
+      "file": "catalog/getSimilarProducts.200-empty.json"
+    },
+    {
+      "operationId": "listDestinations",
+      "method": "get",
+      "path": "/destinations",
+      "status": 200,
+      "case": "default",
+      "file": "catalog/listDestinations.200-default.json"
+    },
+    {
+      "operationId": "searchProducts",
+      "method": "post",
+      "path": "/search",
+      "status": 200,
+      "case": "default",
+      "file": "search/searchProducts.200-default.json"
+    },
+    {
+      "operationId": "searchProducts",
+      "method": "post",
+      "path": "/search",
+      "status": 200,
+      "case": "weak",
+      "file": "search/searchProducts.200-weak.json"
+    },
+    {
+      "operationId": "searchProducts",
+      "method": "post",
+      "path": "/search",
+      "status": 200,
+      "case": "empty",
+      "file": "search/searchProducts.200-empty.json"
+    },
+    {
+      "operationId": "searchProducts",
+      "method": "post",
+      "path": "/search",
+      "status": 503,
+      "case": "unavailable",
+      "file": "search/searchProducts.503-unavailable.json"
+    },
+    {
+      "operationId": "getRecommendations",
+      "method": "get",
+      "path": "/recommendations",
+      "status": 200,
+      "case": "p1-cross-vertical",
+      "file": "recommendations/getRecommendations.200-p1-cross-vertical.json"
+    },
+    {
+      "operationId": "getRecommendations",
+      "method": "get",
+      "path": "/recommendations",
+      "status": 200,
+      "case": "p2-recent-activity",
+      "file": "recommendations/getRecommendations.200-p2-recent-activity.json"
+    },
+    {
+      "operationId": "getRecommendations",
+      "method": "get",
+      "path": "/recommendations",
+      "status": 200,
+      "case": "p3-dormant",
+      "file": "recommendations/getRecommendations.200-p3-dormant.json"
+    },
+    {
+      "operationId": "getRecommendations",
+      "method": "get",
+      "path": "/recommendations",
+      "status": 200,
+      "case": "p4-cold-start",
+      "file": "recommendations/getRecommendations.200-p4-cold-start.json"
+    },
+    {
+      "operationId": "getRecommendations",
+      "method": "get",
+      "path": "/recommendations",
+      "status": 200,
+      "case": "anonymous",
+      "file": "recommendations/getRecommendations.200-anonymous.json"
+    },
+    {
+      "operationId": "getRecommendations",
+      "method": "get",
+      "path": "/recommendations",
+      "status": 401,
+      "case": "invalid-token",
+      "file": "recommendations/getRecommendations.401-invalid-token.json"
+    },
+    {
+      "operationId": "getCart",
+      "method": "get",
+      "path": "/cart",
+      "status": 200,
+      "case": "default",
+      "file": "booking/getCart.200-default.json"
+    },
+    {
+      "operationId": "getCart",
+      "method": "get",
+      "path": "/cart",
+      "status": 200,
+      "case": "empty",
+      "file": "booking/getCart.200-empty.json"
+    },
+    {
+      "operationId": "getCart",
+      "method": "get",
+      "path": "/cart",
+      "status": 200,
+      "case": "two-destinations",
+      "file": "booking/getCart.200-two-destinations.json"
+    },
+    {
+      "operationId": "getCart",
+      "method": "get",
+      "path": "/cart",
+      "status": 200,
+      "case": "item-unavailable",
+      "file": "booking/getCart.200-item-unavailable.json"
+    },
+    {
+      "operationId": "addCartItem",
+      "method": "post",
+      "path": "/cart/items",
+      "status": 200,
+      "case": "default",
+      "file": "booking/addCartItem.200-default.json"
+    },
+    {
+      "operationId": "addCartItem",
+      "method": "post",
+      "path": "/cart/items",
+      "status": 409,
+      "case": "product-unavailable",
+      "file": "booking/addCartItem.409-product-unavailable.json"
+    },
+    {
+      "operationId": "addCartItem",
+      "method": "post",
+      "path": "/cart/items",
+      "status": 422,
+      "case": "date-out-of-range",
+      "file": "booking/addCartItem.422-date-out-of-range.json"
+    },
+    {
+      "operationId": "updateCartItem",
+      "method": "patch",
+      "path": "/cart/items/{cartItemId}",
+      "status": 200,
+      "case": "default",
+      "file": "booking/updateCartItem.200-default.json"
+    },
+    {
+      "operationId": "updateCartItem",
+      "method": "patch",
+      "path": "/cart/items/{cartItemId}",
+      "status": 404,
+      "case": "not-found",
+      "file": "booking/updateCartItem.404-not-found.json"
+    },
+    {
+      "operationId": "removeCartItem",
+      "method": "delete",
+      "path": "/cart/items/{cartItemId}",
+      "status": 200,
+      "case": "default",
+      "file": "booking/removeCartItem.200-default.json"
+    },
+    {
+      "operationId": "createBooking",
+      "method": "post",
+      "path": "/bookings",
+      "status": 201,
+      "case": "default",
+      "file": "booking/createBooking.201-default.json"
+    },
+    {
+      "operationId": "createBooking",
+      "method": "post",
+      "path": "/bookings",
+      "status": 201,
+      "case": "two-groups",
+      "file": "booking/createBooking.201-two-groups.json"
+    },
+    {
+      "operationId": "createBooking",
+      "method": "post",
+      "path": "/bookings",
+      "status": 400,
+      "case": "cart-empty",
+      "file": "booking/createBooking.400-cart-empty.json"
+    },
+    {
+      "operationId": "createBooking",
+      "method": "post",
+      "path": "/bookings",
+      "status": 409,
+      "case": "product-unavailable",
+      "file": "booking/createBooking.409-product-unavailable.json"
+    },
+    {
+      "operationId": "createBooking",
+      "method": "post",
+      "path": "/bookings",
+      "status": 409,
+      "case": "price-changed",
+      "file": "booking/createBooking.409-price-changed.json"
+    },
+    {
+      "operationId": "createBooking",
+      "method": "post",
+      "path": "/bookings",
+      "status": 400,
+      "case": "validation-error",
+      "file": "booking/createBooking.400-validation-error.json"
+    },
+    {
+      "operationId": "getBooking",
+      "method": "get",
+      "path": "/bookings/{referenceCode}",
+      "status": 200,
+      "case": "default",
+      "file": "booking/getBooking.200-default.json"
+    },
+    {
+      "operationId": "getBooking",
+      "method": "get",
+      "path": "/bookings/{referenceCode}",
+      "status": 404,
+      "case": "not-found",
+      "file": "booking/getBooking.404-not-found.json"
+    },
+    {
+      "operationId": "createItinerary",
+      "method": "post",
+      "path": "/assistant/itineraries",
+      "status": 200,
+      "case": "completed",
+      "file": "assistant/createItinerary.200-completed.json"
+    },
+    {
+      "operationId": "createItinerary",
+      "method": "post",
+      "path": "/assistant/itineraries",
+      "status": 200,
+      "case": "completed-invalid-slots",
+      "file": "assistant/createItinerary.200-completed-invalid-slots.json"
+    },
+    {
+      "operationId": "createItinerary",
+      "method": "post",
+      "path": "/assistant/itineraries",
+      "status": 200,
+      "case": "needs-clarification",
+      "file": "assistant/createItinerary.200-needs-clarification.json"
+    },
+    {
+      "operationId": "createItinerary",
+      "method": "post",
+      "path": "/assistant/itineraries",
+      "status": 200,
+      "case": "no-results",
+      "file": "assistant/createItinerary.200-no-results.json"
+    },
+    {
+      "operationId": "createItinerary",
+      "method": "post",
+      "path": "/assistant/itineraries",
+      "status": 200,
+      "case": "fallback",
+      "file": "assistant/createItinerary.200-fallback.json"
+    },
+    {
+      "operationId": "createItinerary",
+      "method": "post",
+      "path": "/assistant/itineraries",
+      "status": 422,
+      "case": "unsupported-destination",
+      "file": "assistant/createItinerary.422-unsupported-destination.json"
+    },
+    {
+      "operationId": "createItinerary",
+      "method": "post",
+      "path": "/assistant/itineraries",
+      "status": 404,
+      "case": "conversation-not-found",
+      "file": "assistant/createItinerary.404-conversation-not-found.json"
+    }
+  ]
+}

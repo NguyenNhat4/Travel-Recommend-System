@@ -1,0 +1,11 @@
+{
+  "error": {
+    "code": "PRODUCT_UNAVAILABLE",
+    "message": "Vinpearl Safari mini Nha Trang vừa hết chỗ.",
+    "retryable": false,
+    "requestId": "book-01JXYZ",
+    "details": {
+      "productId": "nt-a-02"
+    }
+  }
+}
