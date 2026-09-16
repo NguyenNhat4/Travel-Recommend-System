@@ -1,0 +1,515 @@
+SlotTime:
+  type: string
+  enum:
+  - MORNING
+  - NOON
+  - AFTERNOON
+  - EVENING
+ItemSource:
+  type: string
+  enum:
+  - SEARCH
+  - RECOMMENDATION
+ActivityType:
+  type: string
+  enum:
+  - MEAL
+  - REST
+  - FREE_TIME
+  - TRANSFER
+  - SIGHTSEEING
+PartyType:
+  type: string
+  enum:
+  - SOLO
+  - COUPLE
+  - FAMILY_WITH_KIDS
+  - FRIENDS
+Pace:
+  type: string
+  enum:
+  - RELAXED
+  - BALANCED
+  - PACKED
+BudgetStatus:
+  type: string
+  enum:
+  - WITHIN_BUDGET
+  - OVER_BUDGET
+  - NO_BUDGET
+  - UNKNOWN
+Party:
+  type: object
+  required:
+  - type
+  - adults
+  - children
+  properties:
+    type:
+      oneOf:
+      - $ref: ../openapi.yaml#/components/schemas/PartyType
+      - type: 'null'
+    adults:
+      type: integer
+      minimum: 1
+    children:
+      type: integer
+      minimum: 0
+TripIntent:
+  type: object
+  description: Baseline tích hợp 1.1.0.
+  required:
+  - destination
+  - startDate
+  - days
+  - party
+  - budget
+  - interests
+  - pace
+  properties:
+    destination:
+      type:
+      - string
+      - 'null'
+    startDate:
+      type:
+      - string
+      - 'null'
+      format: date
+    days:
+      type:
+      - integer
+      - 'null'
+      minimum: 1
+      maximum: 7
+    party:
+      oneOf:
+      - $ref: ../openapi.yaml#/components/schemas/Party
+      - type: 'null'
+    budget:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
+      description: Tổng ngân sách VND.
+    interests:
+      type: array
+      items:
+        type: string
+    pace:
+      oneOf:
+      - $ref: ../openapi.yaml#/components/schemas/Pace
+      - type: 'null'
+TripIntentPatch:
+  type: object
+  description: Chỉ các trường người dùng sửa bằng chip; trường vắng mặt nghĩa là không đổi.
+  minProperties: 1
+  properties:
+    destination:
+      type: string
+    startDate:
+      type:
+      - string
+      - 'null'
+      format: date
+    days:
+      type: integer
+      minimum: 1
+      maximum: 7
+    party:
+      $ref: ../openapi.yaml#/components/schemas/Party
+    budget:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
+    interests:
+      type: array
+      items:
+        type: string
+    pace:
+      oneOf:
+      - $ref: ../openapi.yaml#/components/schemas/Pace
+      - type: 'null'
+ItineraryRequest:
+  type: object
+  description: Baseline tích hợp 1.1.0. Cần message hoặc intentOverride; intentOverride yêu cầu conversationId
+    khác null.
+  properties:
+    conversationId:
+      type:
+      - string
+      - 'null'
+    message:
+      type:
+      - string
+      - 'null'
+      minLength: 1
+      maxLength: 1000
+    intentOverride:
+      oneOf:
+      - $ref: ../openapi.yaml#/components/schemas/TripIntentPatch
+      - type: 'null'
+    context:
+      type: object
+      properties:
+        language:
+          type:
+          - string
+          - 'null'
+          enum:
+          - vi
+          - en
+          - null
+  anyOf:
+  - required:
+    - message
+    properties:
+      message:
+        type: string
+  - required:
+    - conversationId
+    - intentOverride
+    properties:
+      conversationId:
+        type: string
+      intentOverride:
+        $ref: ../openapi.yaml#/components/schemas/TripIntentPatch
+ItinerarySlot:
+  type: object
+  required:
+  - time
+  - product
+  - note
+  properties:
+    slotId:
+      type: string
+    time:
+      $ref: ../openapi.yaml#/components/schemas/SlotTime
+    startTime:
+      type:
+      - string
+      - 'null'
+      pattern: ^([01][0-9]|2[0-3]):[0-5][0-9]$
+    endTime:
+      type:
+      - string
+      - 'null'
+      pattern: ^([01][0-9]|2[0-3]):[0-5][0-9]$
+    activityType:
+      description: Chỉ khác null khi product là null.
+      oneOf:
+      - $ref: ../openapi.yaml#/components/schemas/ActivityType
+      - type: 'null'
+    product:
+      description: null nghĩa là ActivityNote (không giá, không nút).
+      oneOf:
+      - $ref: ../openapi.yaml#/components/schemas/ProductSummary
+      - type: 'null'
+    note:
+      type:
+      - string
+      - 'null'
+      maxLength: 160
+    source:
+      oneOf:
+      - $ref: ../openapi.yaml#/components/schemas/ItemSource
+      - type: 'null'
+    because:
+      type: array
+      items:
+        $ref: ../openapi.yaml#/components/schemas/BecauseItem
+      description: Tùy chọn; giữ lại khi hiển thị lý do cá nhân hóa, thiếu tương đương [].
+  allOf:
+  - if:
+      properties:
+        product:
+          type: 'null'
+      required:
+      - product
+    then:
+      properties:
+        activityType:
+          $ref: ../openapi.yaml#/components/schemas/ActivityType
+        source:
+          type: 'null'
+        because:
+          maxItems: 0
+      required:
+      - activityType
+    else:
+      properties:
+        activityType:
+          type: 'null'
+        source:
+          $ref: ../openapi.yaml#/components/schemas/ItemSource
+ItineraryStay:
+  type: object
+  required:
+  - product
+  - nights
+  properties:
+    product:
+      $ref: ../openapi.yaml#/components/schemas/ProductSummary
+    nights:
+      type: integer
+      minimum: 1
+    note:
+      type:
+      - string
+      - 'null'
+      maxLength: 160
+    source:
+      $ref: ../openapi.yaml#/components/schemas/ItemSource
+    because:
+      type: array
+      items:
+        $ref: ../openapi.yaml#/components/schemas/BecauseItem
+ItineraryDay:
+  type: object
+  required:
+  - day
+  - slots
+  properties:
+    day:
+      type: integer
+      minimum: 1
+    date:
+      type:
+      - string
+      - 'null'
+      format: date
+    title:
+      type: string
+    slots:
+      type: array
+      items:
+        $ref: ../openapi.yaml#/components/schemas/ItinerarySlot
+ItineraryPlan:
+  type: object
+  required:
+  - days
+  - estimatedTotal
+  - currency
+  - budgetStatus
+  properties:
+    title:
+      type: string
+    stay:
+      oneOf:
+      - $ref: ../openapi.yaml#/components/schemas/ItineraryStay
+      - type: 'null'
+    days:
+      type: array
+      minItems: 1
+      items:
+        $ref: ../openapi.yaml#/components/schemas/ItineraryDay
+    bookableCount:
+      type: integer
+      minimum: 0
+      description: Số mục ứng viên checkout demo có available=true và giá khác null, loại ticketed=false
+        và bản ghi cha khi đã chọn con; không xác nhận tồn kho.
+    estimatedTotal:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
+      description: Backend tính tổng khi đủ đơn vị/số lượng; thiếu thì null, budgetStatus UNKNOWN và warning.
+        Không bỏ qua khoản chưa biết.
+    currency:
+      $ref: ../openapi.yaml#/components/schemas/Currency
+    budgetStatus:
+      $ref: ../openapi.yaml#/components/schemas/BudgetStatus
+    priceAsOf:
+      type:
+      - string
+      - 'null'
+      format: date-time
+      description: Thời điểm quan sát giá nguồn chung; null nếu thiếu hoặc khác nhau. Không dùng generatedAt
+        thay thời điểm giá.
+  allOf:
+  - if:
+      properties:
+        estimatedTotal:
+          type: 'null'
+      required:
+      - estimatedTotal
+    then:
+      properties:
+        budgetStatus:
+          const: UNKNOWN
+SearchResultsByTaxonomy:
+  type: object
+  propertyNames:
+    $ref: ../openapi.yaml#/components/schemas/Taxonomy
+  additionalProperties:
+    type: array
+    maxItems: 6
+    items:
+      $ref: ../openapi.yaml#/components/schemas/ProductSummary
+ItineraryWarning:
+  type: object
+  required:
+  - code
+  - message
+  properties:
+    code:
+      type: string
+      description: Ví dụ PRODUCT_DROPPED_UNAVAILABLE, DAY_WITHOUT_PRODUCTS, OVER_BUDGET.
+    message:
+      type: string
+    productId:
+      type:
+      - string
+      - 'null'
+ItineraryMetadata:
+  type: object
+  required:
+  - personalised
+  - searchRequestIds
+  - generatedAt
+  - requestId
+  properties:
+    personalised:
+      type: boolean
+    searchRequestIds:
+      type: array
+      items:
+        type: string
+    generatedAt:
+      type: string
+      format: date-time
+    requestId:
+      type: string
+ItineraryCompleted:
+  type: object
+  required:
+  - status
+  - conversationId
+  - itinerary
+  - warnings
+  properties:
+    status:
+      type: string
+      const: COMPLETED
+    conversationId:
+      type: string
+    intent:
+      allOf:
+      - $ref: ../openapi.yaml#/components/schemas/TripIntent
+      - properties:
+          destination:
+            type: string
+            minLength: 1
+          days:
+            type: integer
+            minimum: 1
+            maximum: 7
+    itinerary:
+      $ref: ../openapi.yaml#/components/schemas/ItineraryPlan
+    searchResults:
+      $ref: ../openapi.yaml#/components/schemas/SearchResultsByTaxonomy
+    warnings:
+      type: array
+      items:
+        $ref: ../openapi.yaml#/components/schemas/ItineraryWarning
+    metadata:
+      $ref: ../openapi.yaml#/components/schemas/ItineraryMetadata
+ItineraryNeedsClarification:
+  type: object
+  required:
+  - status
+  - conversationId
+  - question
+  properties:
+    status:
+      type: string
+      const: NEEDS_CLARIFICATION
+    conversationId:
+      type: string
+    question:
+      type: string
+    missingFields:
+      type: array
+      minItems: 1
+      items:
+        type: string
+        enum:
+        - destination
+        - days
+    knownIntent:
+      $ref: ../openapi.yaml#/components/schemas/TripIntent
+    suggestedValues:
+      type: object
+      properties:
+        destination:
+          type: array
+          items:
+            type: string
+        days:
+          type: array
+          items:
+            type: integer
+            minimum: 1
+            maximum: 7
+    metadata:
+      $ref: ../openapi.yaml#/components/schemas/ItineraryMetadata
+ItineraryNoResults:
+  type: object
+  required:
+  - status
+  - conversationId
+  - message
+  properties:
+    status:
+      type: string
+      const: NO_RESULTS
+    conversationId:
+      type: string
+    intent:
+      $ref: ../openapi.yaml#/components/schemas/TripIntent
+    message:
+      type: string
+    suggestions:
+      type: array
+      items:
+        type: string
+    metadata:
+      $ref: ../openapi.yaml#/components/schemas/ItineraryMetadata
+ItineraryFallback:
+  type: object
+  required:
+  - status
+  - conversationId
+  - message
+  - searchResults
+  properties:
+    status:
+      type: string
+      const: FALLBACK
+    conversationId:
+      type: string
+    intent:
+      oneOf:
+      - $ref: ../openapi.yaml#/components/schemas/TripIntent
+      - type: 'null'
+    message:
+      type: string
+    searchResults:
+      $ref: ../openapi.yaml#/components/schemas/SearchResultsByTaxonomy
+    metadata:
+      $ref: ../openapi.yaml#/components/schemas/ItineraryMetadata
+ItineraryResponse:
+  description: Baseline tích hợp 1.1.0. Phân biệt theo status.
+  oneOf:
+  - $ref: ../openapi.yaml#/components/schemas/ItineraryCompleted
+  - $ref: ../openapi.yaml#/components/schemas/ItineraryNeedsClarification
+  - $ref: ../openapi.yaml#/components/schemas/ItineraryNoResults
+  - $ref: ../openapi.yaml#/components/schemas/ItineraryFallback
+  discriminator:
+    propertyName: status
+    mapping:
+      COMPLETED: ../openapi.yaml#/components/schemas/ItineraryCompleted
+      NEEDS_CLARIFICATION: ../openapi.yaml#/components/schemas/ItineraryNeedsClarification
+      NO_RESULTS: ../openapi.yaml#/components/schemas/ItineraryNoResults
+      FALLBACK: ../openapi.yaml#/components/schemas/ItineraryFallback

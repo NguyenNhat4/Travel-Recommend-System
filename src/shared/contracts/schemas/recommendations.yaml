@@ -1,0 +1,144 @@
+BecauseItem:
+  type: object
+  required:
+  - productName
+  - event
+  - daysAgo
+  properties:
+    productId:
+      type:
+      - string
+      - 'null'
+      description: null khi sản phẩm nguồn đã bị xóa hoặc event là search.
+    productName:
+      type: string
+      description: Với event search thì là truy vấn người dùng đã gõ.
+    imageUrl:
+      type:
+      - string
+      - 'null'
+    event:
+      $ref: ../openapi.yaml#/components/schemas/BecauseEvent
+    daysAgo:
+      type: integer
+      minimum: 0
+    contribution:
+      type: number
+      minimum: 0
+      maximum: 1
+RecommendationItem:
+  type: object
+  description: Projection cho card kèm rank, score, because. Agent lấy ProductDetail theo ID để bổ sung
+    description/ngày trước khi lập lịch; không mặc định projection là ProductSummary đầy đủ.
+  required:
+  - productId
+  - name
+  - taxonomy
+  - destination
+  - unitPrice
+  - currency
+  - available
+  - because
+  properties:
+    rank:
+      type: integer
+      minimum: 1
+    productId:
+      type: string
+    name:
+      type: string
+    taxonomy:
+      $ref: ../openapi.yaml#/components/schemas/Taxonomy
+    destination:
+      type: string
+    unitPrice:
+      type:
+      - number
+      - 'null'
+      minimum: 0
+      description: Giá snapshot VND; null không nghĩa là miễn phí. Không suy đơn vị từ taxonomy.
+    currency:
+      $ref: ../openapi.yaml#/components/schemas/Currency
+    available:
+      type: boolean
+    imageUrl:
+      type:
+      - string
+      - 'null'
+    attributes:
+      $ref: ../openapi.yaml#/components/schemas/ProductAttributes
+    score:
+      type: number
+      minimum: 0
+      maximum: 1
+    because:
+      type: array
+      description: Lý do có căn cứ từ lịch sử; [] nếu chưa đủ dữ liệu hoặc popular. Không bịa lý do. Mảng
+        đã sắp theo mức liên quan; contribution không bắt buộc.
+      items:
+        $ref: ../openapi.yaml#/components/schemas/BecauseItem
+    priceUnit:
+      type: string
+      enum:
+      - PER_NIGHT
+      - PER_PERSON
+      - PER_PACKAGE
+      - UNKNOWN
+      default: UNKNOWN
+      description: Thiếu trường tương đương UNKNOWN. Chỉ gán đơn vị khi có chứng cứ nguồn; không suy từ
+        taxonomy.
+RecommendationDiagnostics:
+  type: object
+  required:
+  - eventsUsed
+  - coldStart
+  - excludedVerticals
+  - latencyMs
+  properties:
+    eventsUsed:
+      type: integer
+      minimum: 0
+    coldStart:
+      type: boolean
+    excludedVerticals:
+      type: array
+      items:
+        $ref: ../openapi.yaml#/components/schemas/Taxonomy
+    latencyMs:
+      type: integer
+      minimum: 0
+RecommendationResponse:
+  type: object
+  required:
+  - strategy
+  - recommendations
+  properties:
+    cdpUserId:
+      type:
+      - string
+      - 'null'
+      description: null khi không có JWT.
+    generatedAt:
+      type: string
+      format: date-time
+    modelVersion:
+      type: string
+    strategy:
+      $ref: ../openapi.yaml#/components/schemas/Strategy
+    nextVertical:
+      description: Tùy chọn, dùng khi hiển thị nhóm sản phẩm tiếp theo trong cross_vertical.
+      oneOf:
+      - $ref: ../openapi.yaml#/components/schemas/Taxonomy
+      - type: 'null'
+    destination:
+      type:
+      - string
+      - 'null'
+    recommendations:
+      type: array
+      items:
+        $ref: ../openapi.yaml#/components/schemas/RecommendationItem
+    diagnostics:
+      $ref: ../openapi.yaml#/components/schemas/RecommendationDiagnostics
+  description: 'MVP ưu tiên hiển thị: strategy và recommendations. Thứ tự mảng là thứ tự hiển thị; metadata/diagnostics
+    không bắt buộc gửi cho Web.'

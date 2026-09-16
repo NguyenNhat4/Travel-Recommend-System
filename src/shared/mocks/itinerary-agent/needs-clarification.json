@@ -1,0 +1,26 @@
+{
+  "status": "NEEDS_CLARIFICATION",
+  "conversationId": "sample-conv",
+  "question": "Bạn muốn đi đâu?",
+  "missingFields": [
+    "destination"
+  ],
+  "knownIntent": {
+    "destination": null,
+    "startDate": null,
+    "days": 1,
+    "party": null,
+    "budget": null,
+    "interests": [],
+    "pace": null
+  },
+  "suggestedValues": {},
+  "metadata": {
+    "personalised": false,
+    "searchRequestIds": [
+      "sample-search"
+    ],
+    "generatedAt": "2026-09-16T08:00:00Z",
+    "requestId": "sample-agent"
+  }
+}

@@ -1,0 +1,87 @@
+RegisterRequest:
+  type: object
+  required:
+  - email
+  - password
+  - fullName
+  properties:
+    email:
+      type: string
+      format: email
+    password:
+      type: string
+      minLength: 8
+    fullName:
+      type: string
+      minLength: 1
+      maxLength: 100
+LoginRequest:
+  type: object
+  required:
+  - email
+  - password
+  properties:
+    email:
+      type: string
+      format: email
+    password:
+      type: string
+AuthUser:
+  type: object
+  required:
+  - userId
+  - cdpUserId
+  - email
+  - fullName
+  properties:
+    userId:
+      type: string
+    cdpUserId:
+      type: string
+    email:
+      type: string
+      format: email
+    fullName:
+      type: string
+AuthResponse:
+  type: object
+  required:
+  - accessToken
+  - tokenType
+  - expiresIn
+  - user
+  properties:
+    accessToken:
+      type: string
+    tokenType:
+      type: string
+      const: Bearer
+    expiresIn:
+      type: integer
+      description: Giây
+    user:
+      $ref: ../openapi.yaml#/components/schemas/AuthUser
+DemoAccountListResponse:
+  type: object
+  required:
+  - accounts
+  properties:
+    accounts:
+      type: array
+      items:
+        type: object
+        required:
+        - email
+        - fullName
+        - personaLabel
+        - blurb
+        properties:
+          email:
+            type: string
+            format: email
+          fullName:
+            type: string
+          personaLabel:
+            type: string
+          blurb:
+            type: string

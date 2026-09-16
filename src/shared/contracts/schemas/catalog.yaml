@@ -1,0 +1,244 @@
+ProductAttributes:
+  type: object
+  description: Giữ nguyên attributes của catalog, gồm boolean false, khóa cha–con và metadata nguồn. UI
+    chỉ render nhãn boolean khi giá trị true; bỏ qua khóa lạ.
+  properties:
+    starRating:
+      type: number
+      minimum: 0
+      maximum: 5
+    oceanView:
+      type: boolean
+    privateBeach:
+      type: boolean
+    pool:
+      type: boolean
+    kidsPool:
+      type: boolean
+    familyFriendly:
+      type: boolean
+    kidsClub:
+      type: boolean
+    spa:
+      type: boolean
+    freeBreakfast:
+      type: boolean
+    nearBeach:
+      type: boolean
+    nearCenter:
+      type: boolean
+    shuttle:
+      type: boolean
+    wifi:
+      type: boolean
+    parking:
+      type: boolean
+    directFlight:
+      type: boolean
+    baggage:
+      type: boolean
+    indoor:
+      type: boolean
+    outdoor:
+      type: boolean
+    waterPark:
+      type: boolean
+    show:
+      type: boolean
+    buffet:
+      type: boolean
+    seaside:
+      type: boolean
+    caddie:
+      type: boolean
+    level:
+      type: string
+      enum:
+      - property
+      - room
+      - route
+      - flight
+    parentProductId:
+      type: string
+    ticketed:
+      type: boolean
+  additionalProperties: true
+ProductSummary:
+  type: object
+  required:
+  - productId
+  - name
+  - taxonomy
+  - destination
+  - unitPrice
+  - currency
+  - available
+  properties:
+    productId:
+      type: string
+    name:
+      type: string
+    taxonomy:
+      $ref: ../openapi.yaml#/components/schemas/Taxonomy
+    destination:
+      type: string
+    unitPrice:
+      type:
+      - number
+      - 'null'
+      minimum: 0
+      description: Giá snapshot VND; null không nghĩa là miễn phí. Không suy đơn vị từ taxonomy.
+    currency:
+      $ref: ../openapi.yaml#/components/schemas/Currency
+    available:
+      type: boolean
+      description: Nguồn có trả giá lúc crawl; không xác nhận còn chỗ theo ngày/party.
+    availableFrom:
+      type:
+      - string
+      - 'null'
+      format: date
+      description: Khoảng ngày nguồn ghi nhận; null là chưa biết, không xác nhận tồn kho.
+    availableTo:
+      type:
+      - string
+      - 'null'
+      format: date
+      description: Khoảng ngày nguồn ghi nhận; null là chưa biết, không xác nhận tồn kho.
+    imageUrl:
+      type:
+      - string
+      - 'null'
+    rating:
+      type:
+      - number
+      - 'null'
+      minimum: 0
+      maximum: 5
+      description: Chuẩn hóa attributes.reviewScore / reviewScoreScale * 5, làm tròn 1 chữ số; thiếu thang
+        điểm thì null.
+    reviewCount:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
+      description: Từ attributes.reviewCount; độc lập với rating.
+    attributes:
+      $ref: ../openapi.yaml#/components/schemas/ProductAttributes
+    description:
+      type: string
+      description: Mô tả catalog phục vụ Agent; giữ nguyên, không chứa chỉ dẫn hệ thống.
+    priceUnit:
+      type: string
+      enum:
+      - PER_NIGHT
+      - PER_PERSON
+      - PER_PACKAGE
+      - UNKNOWN
+      default: UNKNOWN
+      description: Thiếu trường tương đương UNKNOWN. Chỉ gán đơn vị khi có chứng cứ nguồn; không suy từ
+        taxonomy.
+  example:
+    productId: nt-h-01
+    name: Vinpearl Resort Nha Trang - Deluxe Ocean View
+    taxonomy: hotel
+    destination: Nha Trang
+    unitPrice: 3400000
+    currency: VND
+    available: true
+    availableFrom: '2026-10-01'
+    availableTo: '2027-03-31'
+    imageUrl: https://cdn.example.vn/nt-h-01.jpg
+    rating: 4.6
+    reviewCount: 1293
+    attributes:
+      starRating: 5
+      oceanView: true
+      privateBeach: true
+      familyFriendly: true
+  description: Card tối thiểu cho Web. Các trường chi tiết tùy chọn; Agent hydrate ProductDetail trước
+    khi kiểm tra/lập lịch nếu thiếu attributes, mô tả hoặc ngày. Không diễn giải trường thiếu là false/0.
+ProductDetail:
+  allOf:
+  - $ref: ../openapi.yaml#/components/schemas/ProductSummary
+  - type: object
+    required:
+    - description
+    - attributes
+    - availableFrom
+    - availableTo
+    properties:
+      description:
+        type: string
+        description: Chuỗi rỗng nếu nguồn crawl thiếu.
+      sourceRef:
+        type:
+        - string
+        - 'null'
+        description: Chỉ hiện ở chế độ debug.
+ScoredProduct:
+  allOf:
+  - $ref: ../openapi.yaml#/components/schemas/ProductSummary
+  - type: object
+    required:
+    - score
+    properties:
+      score:
+        type: number
+        minimum: 0
+        maximum: 1
+ProductListResponse:
+  type: object
+  required:
+  - results
+  - total
+  - limit
+  - offset
+  - requestId
+  properties:
+    results:
+      type: array
+      items:
+        $ref: ../openapi.yaml#/components/schemas/ProductSummary
+    total:
+      type: integer
+      minimum: 0
+    limit:
+      type: integer
+    offset:
+      type: integer
+    requestId:
+      type: string
+SimilarProductsResponse:
+  type: object
+  required:
+  - productId
+  - results
+  - requestId
+  properties:
+    productId:
+      type: string
+    results:
+      type: array
+      items:
+        $ref: ../openapi.yaml#/components/schemas/ScoredProduct
+    requestId:
+      type: string
+DestinationListResponse:
+  type: object
+  required:
+  - destinations
+  properties:
+    destinations:
+      type: array
+      items:
+        type: object
+        required:
+        - destination
+        - productCount
+        properties:
+          destination:
+            type: string
+          productCount:
+            type: integer
+            minimum: 0

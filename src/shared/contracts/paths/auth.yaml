@@ -1,0 +1,97 @@
+/auth/register:
+  post:
+    tags:
+    - auth
+    operationId: register
+    security: []
+    summary: Đăng ký và tự đăng nhập
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/RegisterRequest
+    responses:
+      '201':
+        description: Đăng ký thành công
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/AuthResponse
+      '400':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '409':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error
+/auth/login:
+  post:
+    tags:
+    - auth
+    operationId: login
+    security: []
+    summary: Đăng nhập
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/LoginRequest
+    responses:
+      '200':
+        description: Đăng nhập thành công
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/AuthResponse
+      '400':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error
+/auth/me:
+  get:
+    tags:
+    - auth
+    operationId: getMe
+    summary: Thông tin phiên hiện tại
+    security:
+    - bearerAuth: []
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    responses:
+      '200':
+        description: Người dùng hiện tại
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/AuthUser
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error
+/auth/demo-accounts:
+  get:
+    tags:
+    - auth
+    operationId: listDemoAccounts
+    security: []
+    summary: Danh sách tài khoản demo (tắt khi APP_ENV=production)
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    responses:
+      '200':
+        description: Tài khoản demo theo thứ tự trình bày
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/DemoAccountListResponse
+      '404':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error
