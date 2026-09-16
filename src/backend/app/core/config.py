@@ -26,6 +26,13 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./data/app.db"
     chroma_persist_dir: str = "./data/chroma"
 
+    # CDP clone (src/cdp_clone). The token must match CDP_SERVICE_TOKEN there.
+    cdp_base_url: str = "http://localhost:8100"
+    cdp_service_token: str = ""
+    cdp_timeout_seconds: float = Field(default=2.0, gt=0)
+    # Browse events waiting to be sent; beyond this they are dropped and logged.
+    cdp_event_queue_size: int = Field(default=1000, ge=1)
+
 
 @lru_cache
 def get_settings() -> Settings:

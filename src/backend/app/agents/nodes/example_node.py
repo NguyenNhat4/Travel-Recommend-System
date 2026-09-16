@@ -1,15 +1,26 @@
-from src.backend.app.agents.state import AgentState
-from src.backend.app.infrastructure.llm.client import get_llm
+from src.agents.state import AgentState
 
 
-async def analyze_node(state: AgentState) -> AgentState:
+async def analyze_node(state: AgentState) -> dict:
+    """Phân tích query từ user."""
     query = state.get("query", "")
-    if not query:
-        return {**state, "error": "Query is required"}
-    return {**state, "analysis": f"Analyzing: {query}"}
+
+    # TODO: Thêm logic phân tích thực tế
+    # Ví dụ: gọi LLM, search vector DB, etc.
+    analysis = f"Phân tích: {query}"
+
+    return {"analysis": analysis}
 
 
-async def respond_node(state: AgentState) -> AgentState:
-    llm = get_llm()
-    result = await llm.ainvoke(state.get("query", ""))
-    return {**state, "response": str(result.content)}
+async def respond_node(state: AgentState) -> dict:
+    """Tạo response từ analysis."""
+    analysis = state.get("analysis", "")
+    error = state.get("error")
+
+    if error:
+        return {"response": f"Lỗi: {error}"}
+
+    # TODO: Thêm logic tạo response thực tế
+    response = f"Kết quả dựa trên phân tích: {analysis}"
+
+    return {"response": response}

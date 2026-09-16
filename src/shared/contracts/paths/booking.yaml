@@ -21,6 +21,8 @@
     - booking
     operationId: addCartItem
     summary: Thêm mục vào giỏ (cộng dồn nếu trùng productId và usingDate)
+    description: Thêm thành công thì Backend ghi event add_to_cart sang CDP clone ở nền, với taxonomy và unitPrice
+      lấy từ catalog. Thêm thất bại không ghi event. CDP lỗi không ảnh hưởng response.
     security:
     - bearerAuth: []
     parameters:
@@ -103,6 +105,9 @@
     - booking
     operationId: createBooking
     summary: Checkout toàn bộ giỏ hiện tại
+    description: 'Backend ghi purchase sang CDP clone đồng bộ trước khi commit booking. CDP không xác nhận thì
+      không tạo booking, giữ nguyên giỏ và trả 500 INTERNAL_ERROR retryable true. CDP đã ghi nhưng commit lỗi thì
+      Backend huỷ các event đó trên CDP rồi trả 500.'
     security:
     - bearerAuth: []
     parameters:

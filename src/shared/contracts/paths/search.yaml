@@ -4,6 +4,9 @@
     - search
     operationId: searchProducts
     summary: Semantic search trên catalog
+    description: 'Có JWT và offset = 0 thì Backend ghi event search (searchQuery = query) sang CDP clone ở nền;
+      đổi trang không ghi thêm, CDP lỗi không ảnh hưởng response. Agent gọi endpoint này không kèm JWT để lượt
+      tìm của Agent không bị tính là hành vi người dùng.'
     security:
     - {}
     - bearerAuth: []

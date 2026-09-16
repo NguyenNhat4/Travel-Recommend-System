@@ -1,0 +1,19 @@
+# Postgres riêng cho CDP clone, chỉ dùng khi dev. Chạy: docker compose -f src/cdp_clone/docker-compose.yml up -d
+# Cổng 5433 chỉ bind vào 127.0.0.1; môi trường chung không mở cổng DB hay cổng 8100 của service ra ngoài.
+services:
+  cdp-db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: cdp
+      POSTGRES_PASSWORD: cdp
+      POSTGRES_DB: cdp
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - cdp-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cdp"]
+      interval: 5s
+      retries: 10
+volumes:
+  cdp-db-data:

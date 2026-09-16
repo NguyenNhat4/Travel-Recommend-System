@@ -393,6 +393,14 @@
       "status": 404,
       "case": "conversation-not-found",
       "file": "assistant/createItinerary.404-conversation-not-found.json"
+    },
+    {
+      "operationId": "trackEvent",
+      "method": "post",
+      "path": "/events",
+      "status": 404,
+      "case": "product-not-found",
+      "file": "events/trackEvent.404-product-not-found.json"
     }
   ]
 }

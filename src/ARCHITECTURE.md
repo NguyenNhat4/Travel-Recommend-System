@@ -35,20 +35,20 @@ Next.js Web
    | REST/JSON + JWT + X-Request-ID
    v
 FastAPI
-   |-- Auth / Catalog / Search / Recommendation / Booking
+   |-- Auth / Catalog / Search / Recommendation / Booking / Events
    |-- Itinerary application service
    |      `-- LangGraph -> SearchClient / RecommendationClient / LLM
-   |-- CdpClient
-   `-- InsiderClient
-          |
-          +--> PostgreSQL + pgvector (CDP clone)
-          `--> Insider clone API
+   |-- PostgreSQL + pgvector: products, users, bookings, product vectors
+   |-- CdpClient  -- X-Service-Token, mạng nội bộ --> CDP clone API --> PostgreSQL riêng: events, profiles
+   `-- InsiderClient --> Insider clone API
 ```
+
+Web không gọi CDP clone. Backend ghi `product_view`, `search`, `add_to_cart` ở nền và `purchase` đồng bộ (`docs/spec/hop-dong-tich-hop-cdp.md`).
 
 Luồng phản hồi cốt lõi:
 
 ```text
-Booking hoàn tất -> ghi event theo cdp_user_id -> cập nhật user vector
+Booking hoàn tất -> CdpClient ghi purchase theo cdp_user_id -> cập nhật user vector
 -> recommendation thay đổi -> frontend tải recommendation mới
 ```
 
@@ -95,7 +95,8 @@ src/
 │   └── mocks/                      # fixture sinh từ contract
 ├── data_collection/                # collector, chuẩn hóa, dedupe, seed data
 ├── evaluation/                     # split, metrics, benchmark và report offline
-└── insider_clone/                  # service giả lập đúng bề mặt Insider
+├── insider_clone/                  # service giả lập đúng bề mặt Insider
+└── cdp_clone/                      # service giả lập đúng bề mặt CDP
 ```
 
 ## 5. Quy tắc phụ thuộc backend
@@ -139,9 +140,11 @@ Nhóm endpoint v1:
 - Catalog: danh sách và chi tiết `/products/{productId}`.
 - Search: semantic search, similar products.
 - Recommendations: cá nhân hóa hoặc popular fallback cho khách ẩn danh.
-- Booking: checkout giả lập, sau đó ghi event về CDP clone.
+- Booking: checkout giả lập, ghi event `purchase` về CDP clone trước khi commit.
+- Events: `POST /api/v1/events` cho `product_view`; Backend chuyển sang CDP clone.
 - Assistant: `POST /api/v1/assistant/itineraries`.
 - Insider clone: bốn endpoint mô phỏng được mô tả trong spec.
+- CDP clone: API nội bộ cho Backend, seed và job; contract riêng tại `src/shared/contracts/cdp-clone.openapi.yaml`.
 
 Thay đổi tương thích ngược có thể bổ sung vào v1. Xóa/đổi tên field hoặc thay đổi semantics phải tạo v2.
 
@@ -163,8 +166,9 @@ message -> extract intent -> clarify if required -> retrieve real products
 
 ## 9. Dữ liệu và tích hợp
 
-- PostgreSQL là system of record của CDP clone cho products, profiles, events, users, bookings và product vectors.
-- Business logic chỉ đọc CDP thông qua `CdpClient`.
+- CDP clone (`src/cdp_clone`) là service tách biệt với PostgreSQL riêng, là system of record cho `events` và `profiles`, chỉ mở trong mạng nội bộ. Backend không truy cập database này; chỉ đọc/ghi qua `CdpClient` bằng service token.
+- Luồng hành vi là Web → Backend → CDP. Event duyệt web ghi nền, bỏ khi CDP lỗi; `purchase` ghi đồng bộ, bù trừ bằng huỷ event khi commit booking lỗi; Recommendation rơi về `popular` khi không đọc được CDP. Chi tiết: `docs/spec/hop-dong-tich-hop-cdp.md`.
+- `products`, `users`, `bookings` và `product_vectors` hiện ở PostgreSQL của Backend; việc chuyển chúng vào CDP clone đang chờ xác nhận.
 - Insider clone là service tách biệt, cố ý chỉ giữ tập con dữ liệu và TTL theo spec.
 - Collector phải cache raw response trước khi parse, hỗ trợ resume và ghi nguồn của từng field.
 - Secret, API key và JWT không được commit hoặc ghi log.
