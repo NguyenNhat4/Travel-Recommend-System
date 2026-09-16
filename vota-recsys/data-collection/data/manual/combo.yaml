@@ -1,0 +1,302 @@
+# Combo / gói dịch vụ — dữ liệu curate tay (spec §9 fallback)
+#
+# TẠI SAO FILE NÀY TỒN TẠI
+# Giống golf.yaml: taxonomy `combo` chỉ có DUY NHẤT nguồn vinpearl.com, và nguồn
+# đó hiện trả 403 ở robots.txt. Không có file này thì DoD §0.1 (đủ 5 taxonomy)
+# không đạt và cột `combo` trong bảng đếm demo thứ Sáu trống.
+#
+# ĐỌC KỸ — GIỚI HẠN CỦA DỮ LIỆU NÀY
+# Mỗi mục dưới đây là một **combo template**: mô tả CẤU TRÚC của một loại gói
+# dịch vụ (thành phần gồm những gì, mấy đêm) tại một destination cụ thể. Nó
+# KHÔNG phải một SKU đang bán với mã và điều kiện cụ thể. Câu đầu tiên trong
+# `description` nói rõ điều đó, để cả khi ai chỉ nhìn thấy một dòng trong bảng
+# `products` thì vẫn không nhầm nó là gói đã crawl từ trang bán.
+#
+# `price_raw: null` ở mọi mục là CỐ Ý — giá combo phụ thuộc ngày, số khách và
+# chương trình ưu đãi đang chạy. Bịa một con số vào đây sẽ chảy thẳng vào
+# `products.unit_price` và trông y như giá thật.
+#
+# KHI CRAWL ĐƯỢC NGUỒN THẬT
+# `source_priority` của `manual` thấp nhất trong config.yaml, nên ngay khi
+# vinpearl.com (hoặc một OTA) cho ra combo thật, nguồn đó thắng mọi field khi
+# merge và các dòng này chỉ còn đóng góp độ phủ. Khi đó nên xoá bớt file này.
+
+taxonomy: combo
+curated_by: "data workstream (Week 1)"
+curated_at: "2026-09-15"
+provenance_note: >-
+  Combo template curate tay để taxonomy `combo` có dữ liệu dùng được trong
+  Week 1 khi vinpearl.com không crawl được. Thành phần gói và số đêm là cấu
+  trúc điển hình của loại sản phẩm này tại từng destination; giá và điều kiện
+  cụ thể chưa xác minh và để null. Không dùng các dòng này cho bất kỳ nội dung
+  nào hiển thị giá cho người dùng thật.
+
+items:
+  # --- Nha Trang -----------------------------------------------------------
+  - name: "Combo nghỉ dưỡng Nha Trang 3 ngày 2 đêm - phòng và vé công viên"
+    destination: "Nha Trang"
+    nights: 2
+    min_pax: 2
+    transfer_included: true
+    price_raw: null
+    components:
+      - { taxonomy: "hotel", name: "Phòng khách sạn/resort tại Nha Trang", quantity: 2 }
+      - { taxonomy: "attraction", name: "Vé công viên giải trí", quantity: 2 }
+    description: >-
+      Đây là combo template do nhóm dữ liệu curate, mô tả cấu trúc gói chứ
+      không phải một gói đang bán với mã cụ thể. Cấu trúc gói: hai đêm phòng
+      tại một khu nghỉ dưỡng ở Nha Trang kèm vé vào công viên giải trí cho
+      cùng số khách, cộng dịch vụ đưa đón giữa sân bay Cam Ranh và khu nghỉ.
+      Loại gói này phù hợp với khách đi nhóm hai người hoặc gia đình muốn gộp
+      phần lưu trú và phần vui chơi vào một lần đặt thay vì mua rời. Điểm cần
+      lưu ý khi đặt loại gói này là ngày sử dụng vé thường phải nằm trong thời
+      gian lưu trú, và số đêm tối thiểu quyết định gói có hiệu lực hay không.
+    spec_pairs:
+      - { label: "Số đêm", value: "2" }
+      - { label: "Số khách tối thiểu", value: "2" }
+      - { label: "Đưa đón", value: "Sân bay Cam Ranh - khu nghỉ" }
+
+  - name: "Combo Nha Trang 4 ngày 3 đêm - phòng, vé công viên và ăn sáng"
+    destination: "Nha Trang"
+    nights: 3
+    min_pax: 2
+    transfer_included: true
+    price_raw: null
+    components:
+      - { taxonomy: "hotel", name: "Phòng khách sạn/resort tại Nha Trang", quantity: 3 }
+      - { taxonomy: "attraction", name: "Vé công viên giải trí nhiều ngày", quantity: 2 }
+    description: >-
+      Đây là combo template do nhóm dữ liệu curate, mô tả cấu trúc gói chứ
+      không phải một gói đang bán với mã cụ thể. Cấu trúc gói: ba đêm lưu trú
+      tại Nha Trang, ăn sáng hàng ngày, vé công viên giải trí dùng được nhiều
+      ngày và dịch vụ đưa đón sân bay. So với gói hai đêm, phiên bản ba đêm
+      thường dành cho khách muốn chia lịch trình thành một ngày vui chơi, một
+      ngày nghỉ biển và một ngày tham quan thành phố. Loại gói dài ngày cũng là
+      dạng sản phẩm hay xuất hiện trong lịch sử đặt của khách quay lại nhiều
+      lần, nên hữu ích cho phần gợi ý xuyên danh mục.
+    spec_pairs:
+      - { label: "Số đêm", value: "3" }
+      - { label: "Bao gồm", value: "Ăn sáng hàng ngày" }
+
+  # --- Phú Quốc ------------------------------------------------------------
+  - name: "Combo Phú Quốc 3 ngày 2 đêm - vé máy bay và phòng nghỉ"
+    destination: "Phú Quốc"
+    nights: 2
+    min_pax: 2
+    transfer_included: true
+    price_raw: null
+    components:
+      - { taxonomy: "flight", name: "Vé máy bay khứ hồi tới Phú Quốc", quantity: 2 }
+      - { taxonomy: "hotel", name: "Phòng khách sạn/resort tại Phú Quốc", quantity: 2 }
+    description: >-
+      Đây là combo template do nhóm dữ liệu curate, mô tả cấu trúc gói chứ
+      không phải một gói đang bán với mã cụ thể. Cấu trúc gói: vé máy bay khứ
+      hồi từ Hà Nội hoặc TP. Hồ Chí Minh tới Phú Quốc kèm hai đêm phòng tại một
+      khu nghỉ dưỡng trên đảo, cộng đưa đón sân bay. Đây là dạng gói phổ biến
+      nhất với điểm đến đảo, vì phần vé máy bay chiếm tỷ trọng lớn trong chi
+      phí chuyến đi và khách thường muốn chốt cả hai phần cùng lúc. Với dữ liệu
+      gợi ý, loại gói này là ví dụ rõ nhất của sản phẩm xuyên danh mục: một
+      event đặt gói kéo theo cả vertical hàng không và vertical lưu trú.
+    spec_pairs:
+      - { label: "Số đêm", value: "2" }
+      - { label: "Chặng bay", value: "HAN hoặc SGN - PQC, khứ hồi" }
+
+  - name: "Combo Phú Quốc 4 ngày 3 đêm - phòng, vé công viên và tour đảo"
+    destination: "Phú Quốc"
+    nights: 3
+    min_pax: 2
+    transfer_included: false
+    price_raw: null
+    components:
+      - { taxonomy: "hotel", name: "Phòng khách sạn/resort tại Phú Quốc", quantity: 3 }
+      - { taxonomy: "attraction", name: "Vé công viên giải trí", quantity: 2 }
+      - { taxonomy: "attraction", name: "Tour tham quan đảo", quantity: 2 }
+    description: >-
+      Đây là combo template do nhóm dữ liệu curate, mô tả cấu trúc gói chứ
+      không phải một gói đang bán với mã cụ thể. Cấu trúc gói: ba đêm lưu trú
+      tại Phú Quốc, vé vào công viên giải trí và một tour tham quan đảo trong
+      thời gian lưu trú. Không bao gồm vé máy bay, nên phù hợp với khách tự đặt
+      vé hoặc khách đã ở trong khu vực. Cấu trúc ba thành phần khiến loại gói
+      này là ví dụ tốt cho bài toán gợi ý theo chuyến đi: các event của cùng
+      một gói chia sẻ một mã nhóm và trải trên nhiều danh mục khác nhau.
+    spec_pairs:
+      - { label: "Số đêm", value: "3" }
+      - { label: "Không bao gồm", value: "Vé máy bay" }
+
+  # --- Đà Nẵng / Hội An ----------------------------------------------------
+  - name: "Combo Đà Nẵng 3 ngày 2 đêm - phòng và vé khu du lịch núi"
+    destination: "Đà Nẵng"
+    nights: 2
+    min_pax: 2
+    transfer_included: true
+    price_raw: null
+    components:
+      - { taxonomy: "hotel", name: "Phòng khách sạn tại Đà Nẵng", quantity: 2 }
+      - { taxonomy: "attraction", name: "Vé khu du lịch trên núi kèm cáp treo", quantity: 2 }
+    description: >-
+      Đây là combo template do nhóm dữ liệu curate, mô tả cấu trúc gói chứ
+      không phải một gói đang bán với mã cụ thể. Cấu trúc gói: hai đêm phòng
+      tại Đà Nẵng, vé vào khu du lịch trên núi kèm vé cáp treo, và đưa đón sân
+      bay Đà Nẵng. Cấu trúc này phản ánh đặc điểm của điểm đến: khách lưu trú
+      ven biển nhưng điểm tham quan chính lại nằm trên núi cách trung tâm vài
+      chục kilômét, nên phần vận chuyển và vé vào cửa thường được bán kèm. Với
+      phần trợ lý lịch trình, gói này là trường hợp cần biết giờ mở cửa và thời
+      lượng tham quan để xếp đúng một ngày.
+    spec_pairs:
+      - { label: "Số đêm", value: "2" }
+      - { label: "Bao gồm", value: "Vé cáp treo" }
+
+  - name: "Combo Đà Nẵng - Hội An 4 ngày 3 đêm - phòng và tour phố cổ"
+    destination: "Đà Nẵng"
+    nights: 3
+    min_pax: 2
+    transfer_included: true
+    price_raw: null
+    components:
+      - { taxonomy: "hotel", name: "Phòng khách sạn tại Đà Nẵng", quantity: 3 }
+      - { taxonomy: "attraction", name: "Tour tham quan phố cổ Hội An", quantity: 2 }
+    description: >-
+      Đây là combo template do nhóm dữ liệu curate, mô tả cấu trúc gói chứ
+      không phải một gói đang bán với mã cụ thể. Cấu trúc gói: ba đêm lưu trú
+      tại Đà Nẵng kèm một tour tham quan phố cổ Hội An trong thời gian lưu trú,
+      cộng đưa đón. Lưu ý về mặt dữ liệu: gói này lưu trú ở Đà Nẵng nhưng có
+      thành phần diễn ra ở Hội An, nên nếu gán nhiều destination cho một chuyến
+      thì việc lọc theo destination sẽ mất ý nghĩa. Quy ước trong dataset này
+      là destination của gói bằng nơi lưu trú, còn điểm tham quan nằm trong
+      phần thành phần gói.
+    spec_pairs:
+      - { label: "Số đêm", value: "3" }
+      - { label: "Lưu trú tại", value: "Đà Nẵng" }
+
+  # --- Nam Hội An ----------------------------------------------------------
+  - name: "Combo Nam Hội An 3 ngày 2 đêm - phòng và vé công viên văn hoá"
+    destination: "Nam Hội An"
+    nights: 2
+    min_pax: 2
+    transfer_included: true
+    price_raw: null
+    components:
+      - { taxonomy: "hotel", name: "Phòng resort tại Nam Hội An", quantity: 2 }
+      - { taxonomy: "attraction", name: "Vé công viên văn hoá - giải trí", quantity: 2 }
+    description: >-
+      Đây là combo template do nhóm dữ liệu curate, mô tả cấu trúc gói chứ
+      không phải một gói đang bán với mã cụ thể. Cấu trúc gói: hai đêm tại một
+      khu nghỉ dưỡng ở Nam Hội An kèm vé vào công viên văn hoá - giải trí trong
+      cùng quần thể, và đưa đón từ sân bay Đà Nẵng. Đặc điểm của khu vực này là
+      khu lưu trú và khu vui chơi nằm sát nhau trong một quần thể, khác với Đà
+      Nẵng nơi hai phần cách nhau khá xa, nên gói ở đây thường không cần thành
+      phần vận chuyển nội vùng.
+    spec_pairs:
+      - { label: "Số đêm", value: "2" }
+      - { label: "Đưa đón", value: "Sân bay Đà Nẵng - Nam Hội An" }
+
+  # --- Hạ Long -------------------------------------------------------------
+  - name: "Combo Hạ Long 2 ngày 1 đêm - phòng và tour vịnh"
+    destination: "Hạ Long"
+    nights: 1
+    min_pax: 2
+    transfer_included: false
+    price_raw: null
+    components:
+      - { taxonomy: "hotel", name: "Phòng khách sạn tại Hạ Long", quantity: 1 }
+      - { taxonomy: "attraction", name: "Tour tham quan vịnh Hạ Long bằng tàu", quantity: 2 }
+    description: >-
+      Đây là combo template do nhóm dữ liệu curate, mô tả cấu trúc gói chứ
+      không phải một gói đang bán với mã cụ thể. Cấu trúc gói: một đêm lưu trú
+      tại khu vực Bãi Cháy kèm một tour tham quan vịnh bằng tàu trong ngày.
+      Đây là dạng gói ngắn ngày đặc trưng của Hạ Long, phục vụ khách đi từ Hà
+      Nội trong hai ngày cuối tuần. Với dữ liệu gợi ý, gói một đêm là trường
+      hợp đối lập hữu ích so với các gói ba đêm ở điểm đến biển miền Nam: cùng
+      taxonomy nhưng hành vi đặt và thời gian chuẩn bị rất khác nhau.
+    spec_pairs:
+      - { label: "Số đêm", value: "1" }
+      - { label: "Tour", value: "Tham quan vịnh bằng tàu, trong ngày" }
+
+  # --- Sa Pa ---------------------------------------------------------------
+  - name: "Combo Sa Pa 3 ngày 2 đêm - phòng và vé cáp treo"
+    destination: "Sa Pa"
+    nights: 2
+    min_pax: 2
+    transfer_included: false
+    price_raw: null
+    components:
+      - { taxonomy: "hotel", name: "Phòng khách sạn tại Sa Pa", quantity: 2 }
+      - { taxonomy: "attraction", name: "Vé cáp treo lên đỉnh núi", quantity: 2 }
+    description: >-
+      Đây là combo template do nhóm dữ liệu curate, mô tả cấu trúc gói chứ
+      không phải một gói đang bán với mã cụ thể. Cấu trúc gói: hai đêm lưu trú
+      tại trung tâm Sa Pa kèm vé cáp treo lên đỉnh núi. Khác với các điểm đến
+      biển, phần tham quan ở đây phụ thuộc thời tiết và mùa: tầm nhìn trên đỉnh
+      thay đổi nhiều theo tháng, và đó là lý do gói kiểu này thường không bán
+      kèm ngày sử dụng cố định. Về dữ liệu, Sa Pa là điểm đến miền núi duy nhất
+      trong danh sách 15 điểm đến, nên hữu ích để kiểm tra phần gợi ý có thực
+      sự phân biệt được loại hình điểm đến hay không.
+    spec_pairs:
+      - { label: "Số đêm", value: "2" }
+      - { label: "Lưu ý", value: "Phần tham quan phụ thuộc thời tiết" }
+
+  # --- Đà Lạt --------------------------------------------------------------
+  - name: "Combo Đà Lạt 3 ngày 2 đêm - phòng và vé điểm tham quan"
+    destination: "Đà Lạt"
+    nights: 2
+    min_pax: 2
+    transfer_included: false
+    price_raw: null
+    components:
+      - { taxonomy: "hotel", name: "Phòng khách sạn tại Đà Lạt", quantity: 2 }
+      - { taxonomy: "attraction", name: "Vé điểm tham quan trong thành phố", quantity: 2 }
+    description: >-
+      Đây là combo template do nhóm dữ liệu curate, mô tả cấu trúc gói chứ
+      không phải một gói đang bán với mã cụ thể. Cấu trúc gói: hai đêm lưu trú
+      tại Đà Lạt kèm vé vào một hoặc vài điểm tham quan trong thành phố. Đặc
+      điểm của điểm đến là các điểm tham quan phân tán quanh thành phố và quanh
+      hồ, phần lớn đi được trong ngày bằng xe, nên gói ở đây ít có thành phần
+      vận chuyển bắt buộc hơn so với Đà Nẵng. Đà Lạt cũng là điểm đến có tính
+      mùa rõ, phù hợp để kiểm tra phần gợi ý theo thời điểm.
+    spec_pairs:
+      - { label: "Số đêm", value: "2" }
+
+  # --- Huế -----------------------------------------------------------------
+  - name: "Combo Huế 3 ngày 2 đêm - phòng và vé di tích"
+    destination: "Huế"
+    nights: 2
+    min_pax: 2
+    transfer_included: false
+    price_raw: null
+    components:
+      - { taxonomy: "hotel", name: "Phòng khách sạn tại Huế", quantity: 2 }
+      - { taxonomy: "attraction", name: "Vé tham quan khu di tích", quantity: 2 }
+    description: >-
+      Đây là combo template do nhóm dữ liệu curate, mô tả cấu trúc gói chứ
+      không phải một gói đang bán với mã cụ thể. Cấu trúc gói: hai đêm lưu trú
+      tại thành phố Huế kèm vé tham quan khu di tích. Phần tham quan ở đây khác
+      hẳn các điểm đến biển: điểm đến chính là di tích lịch sử với giờ mở cửa
+      cố định và thời lượng tham quan dài, nên đây là trường hợp mà trợ lý lịch
+      trình ở Week 4 cần đúng hai field `openingHours` và `duration` mới xếp
+      được lịch hợp lý. Huế cũng là điểm đến duy nhất trong danh sách có sản
+      phẩm chủ đạo thuộc nhóm văn hoá - lịch sử.
+    spec_pairs:
+      - { label: "Số đêm", value: "2" }
+      - { label: "Loại hình", value: "Văn hoá - lịch sử" }
+
+  # --- Quy Nhơn ------------------------------------------------------------
+  - name: "Combo Quy Nhơn 3 ngày 2 đêm - phòng và tour biển đảo"
+    destination: "Quy Nhơn"
+    nights: 2
+    min_pax: 2
+    transfer_included: true
+    price_raw: null
+    components:
+      - { taxonomy: "hotel", name: "Phòng khách sạn/resort tại Quy Nhơn", quantity: 2 }
+      - { taxonomy: "attraction", name: "Tour tham quan biển đảo", quantity: 2 }
+    description: >-
+      Đây là combo template do nhóm dữ liệu curate, mô tả cấu trúc gói chứ
+      không phải một gói đang bán với mã cụ thể. Cấu trúc gói: hai đêm lưu trú
+      tại Quy Nhơn kèm một tour tham quan biển đảo và đưa đón sân bay Phù Cát.
+      Quy Nhơn là điểm đến biển có lượng khách nhỏ hơn nhiều so với Nha Trang
+      hay Phú Quốc, nên trong dữ liệu gợi ý nó thuộc phần đuôi dài của phân bố
+      độ phổ biến. Chính vì thế nó là trường hợp cần thiết để kiểm tra một
+      recommender có gợi ý được gì ngoài các điểm đến đông nhất hay không.
+    spec_pairs:
+      - { label: "Số đêm", value: "2" }
+      - { label: "Đưa đón", value: "Sân bay Phù Cát - khu nghỉ" }

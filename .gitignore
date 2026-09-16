@@ -1,0 +1,38 @@
+# --- secrets -----------------------------------------------------------------
+.env
+.env.*
+!.env.example
+
+# --- python ------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# --- crawl artefacts ---------------------------------------------------------
+# Ignored BY PATH, never by extension. `*.gz` would also delete
+# data-collection/tests/fixtures/**/*.html.gz, which is committed on purpose —
+# it is the offline corpus the parser tests run against, and a repo without it
+# makes pytest green-because-empty.
+vota-recsys/data-collection/data/raw/
+vota-recsys/data-collection/data/reports/
+vota-recsys/data-collection/data/seed/
+vota-recsys/data-collection/logs/
+*.log
+
+# Fixtures are tracked even though they live under data-collection/tests.
+!vota-recsys/data-collection/tests/fixtures/**
+
+# uv.lock is NOT ignored: it is the reproducibility guarantee that
+# data-collection/README.md section 5 ("lệnh chạy lại toàn bộ từ đầu") depends on.
+
+# --- editors / os ------------------------------------------------------------
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
