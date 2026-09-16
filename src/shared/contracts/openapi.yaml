@@ -1,0 +1,22 @@
+openapi: 3.1.0
+info:
+  title: Travel Recommendation Product API
+  version: 0.1.0
+  description: >-
+    Contract chung cho frontend React và backend Python. Các operation và schema
+    chi tiết sẽ được bổ sung theo spec trước khi từng feature được triển khai.
+servers:
+  - url: /api/v1
+paths: {}
+components:
+  schemas:
+    SearchRequest:
+      type: object
+      description: Schema cần được khóa cùng team Search trước khi triển khai.
+    ProductSummary:
+      type: object
+      description: Schema sản phẩm chung giữa Search, Agent và Web.
+    ItineraryResponse:
+      type: object
+      description: Schema response của Itinerary Assistant.
+
