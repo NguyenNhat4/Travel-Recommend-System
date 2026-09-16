@@ -1,0 +1,39 @@
+{
+  "status": "NEEDS_CLARIFICATION",
+  "conversationId": "conv-01JXYZ",
+  "question": "Bạn muốn đi đâu và mấy ngày?",
+  "missingFields": [
+    "destination",
+    "days"
+  ],
+  "knownIntent": {
+    "destination": null,
+    "startDate": null,
+    "days": null,
+    "party": null,
+    "budget": null,
+    "interests": [
+      "biển"
+    ],
+    "pace": null
+  },
+  "suggestedValues": {
+    "destination": [
+      "Nha Trang",
+      "Phú Quốc",
+      "Đà Nẵng"
+    ],
+    "days": [
+      2,
+      3,
+      4,
+      5
+    ]
+  },
+  "metadata": {
+    "personalised": false,
+    "searchRequestIds": [],
+    "generatedAt": "2026-09-16T08:00:00Z",
+    "requestId": "agent-01JXYZ"
+  }
+}

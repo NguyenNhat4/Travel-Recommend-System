@@ -1,0 +1,11 @@
+{
+  "error": {
+    "code": "PRODUCT_NOT_FOUND",
+    "message": "Sản phẩm này không còn trên V-OTA.",
+    "retryable": false,
+    "requestId": "cat-01JXYZ",
+    "details": {
+      "productId": "nt-h-99"
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "error": {
+    "code": "TOKEN_EXPIRED",
+    "message": "Phiên đăng nhập đã hết hạn.",
+    "retryable": false,
+    "requestId": "auth-01JXYZ"
+  }
+}

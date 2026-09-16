@@ -1,0 +1,11 @@
+{
+  "error": {
+    "code": "CART_ITEM_NOT_FOUND",
+    "message": "Mục này không còn trong giỏ.",
+    "retryable": false,
+    "requestId": "cart-01JXYZ",
+    "details": {
+      "cartItemId": "ci-000000"
+    }
+  }
+}

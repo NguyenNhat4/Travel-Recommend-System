@@ -1,0 +1,8 @@
+{
+  "error": {
+    "code": "INVALID_TOKEN",
+    "message": "Phiên đăng nhập không hợp lệ.",
+    "retryable": false,
+    "requestId": "reco-01JXYZ"
+  }
+}

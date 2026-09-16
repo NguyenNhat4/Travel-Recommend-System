@@ -1,0 +1,83 @@
+{
+  "results": [
+    {
+      "productId": "nt-h-01",
+      "name": "Vinpearl Resort Nha Trang - Deluxe Ocean View",
+      "taxonomy": "hotel",
+      "destination": "Nha Trang",
+      "unitPrice": 3400000,
+      "currency": "VND",
+      "available": true,
+      "availableFrom": "2026-10-01",
+      "availableTo": "2027-03-31",
+      "imageUrl": "https://cdn.example.vn/nt-h-01.jpg",
+      "rating": 4.6,
+      "reviewCount": 1293,
+      "attributes": {
+        "starRating": 5,
+        "oceanView": true,
+        "privateBeach": true,
+        "kidsPool": true,
+        "familyFriendly": true
+      },
+      "score": 0.87
+    },
+    {
+      "productId": "nt-h-02",
+      "name": "Vinpearl Beachfront Nha Trang",
+      "taxonomy": "hotel",
+      "destination": "Nha Trang",
+      "unitPrice": 2150000,
+      "currency": "VND",
+      "available": true,
+      "availableFrom": "2026-10-01",
+      "availableTo": "2027-03-31",
+      "imageUrl": "https://cdn.example.vn/nt-h-02.jpg",
+      "rating": null,
+      "reviewCount": null,
+      "attributes": {
+        "starRating": 5,
+        "nearCenter": true,
+        "pool": true
+      },
+      "score": 0.74
+    },
+    {
+      "productId": "nt-a-01",
+      "name": "VinWonders Nha Trang",
+      "taxonomy": "attraction",
+      "destination": "Nha Trang",
+      "unitPrice": 880000,
+      "currency": "VND",
+      "available": true,
+      "availableFrom": "2026-09-01",
+      "availableTo": "2027-08-31",
+      "imageUrl": "https://cdn.example.vn/nt-a-01.jpg",
+      "rating": 4.5,
+      "reviewCount": 8421,
+      "attributes": {
+        "outdoor": true,
+        "waterPark": true,
+        "familyFriendly": true
+      },
+      "score": 0.61
+    }
+  ],
+  "total": 3,
+  "limit": 20,
+  "offset": 0,
+  "topScore": 0.87,
+  "facets": {
+    "taxonomy": {
+      "hotel": 2,
+      "attraction": 1,
+      "flight": 0,
+      "combo": 0,
+      "golf": 0
+    },
+    "destination": {
+      "Nha Trang": 3
+    }
+  },
+  "requestId": "search-01JXYZ"
+}

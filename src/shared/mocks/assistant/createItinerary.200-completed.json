@@ -1,0 +1,332 @@
+{
+  "status": "COMPLETED",
+  "conversationId": "conv-01JXYZ",
+  "intent": {
+    "destination": "Nha Trang",
+    "startDate": "2026-10-15",
+    "days": 3,
+    "party": {
+      "type": "FAMILY_WITH_KIDS",
+      "adults": 2,
+      "children": 1
+    },
+    "budget": 15000000,
+    "interests": [
+      "biển",
+      "vui chơi cho trẻ nhỏ"
+    ],
+    "pace": "RELAXED"
+  },
+  "itinerary": {
+    "title": "Lịch trình gia đình 3 ngày tại Nha Trang",
+    "stay": {
+      "product": {
+        "productId": "nt-h-01",
+        "name": "Vinpearl Resort Nha Trang - Deluxe Ocean View",
+        "taxonomy": "hotel",
+        "destination": "Nha Trang",
+        "unitPrice": 3400000,
+        "currency": "VND",
+        "available": true,
+        "availableFrom": "2026-10-01",
+        "availableTo": "2027-03-31",
+        "imageUrl": "https://cdn.example.vn/nt-h-01.jpg",
+        "rating": 4.6,
+        "reviewCount": 1293,
+        "attributes": {
+          "starRating": 5,
+          "oceanView": true,
+          "privateBeach": true,
+          "kidsPool": true,
+          "familyFriendly": true
+        }
+      },
+      "nights": 2,
+      "note": "Có hồ bơi trẻ em và bãi biển riêng, gần VinWonders.",
+      "source": "RECOMMENDATION",
+      "because": [
+        {
+          "productId": "nt-h-02",
+          "productName": "Vinpearl Beachfront Nha Trang",
+          "imageUrl": "https://cdn.example.vn/nt-h-02.jpg",
+          "event": "product_view",
+          "daysAgo": 1,
+          "contribution": 0.4
+        }
+      ]
+    },
+    "days": [
+      {
+        "day": 1,
+        "date": "2026-10-15",
+        "title": "Nhận phòng và tắm biển",
+        "slots": [
+          {
+            "slotId": "d1-s1",
+            "time": "AFTERNOON",
+            "startTime": "14:00",
+            "endTime": null,
+            "activityType": "REST",
+            "product": null,
+            "note": "Nhận phòng, nghỉ ngơi và tắm biển riêng của resort.",
+            "source": null,
+            "because": []
+          },
+          {
+            "slotId": "d1-s2",
+            "time": "EVENING",
+            "startTime": "19:00",
+            "endTime": "21:30",
+            "activityType": null,
+            "product": {
+              "productId": "nt-c-01",
+              "name": "Combo Tata Show + buffet tối Nha Trang",
+              "taxonomy": "combo",
+              "destination": "Nha Trang",
+              "unitPrice": 1250000,
+              "currency": "VND",
+              "available": true,
+              "availableFrom": "2026-10-01",
+              "availableTo": "2027-03-31",
+              "imageUrl": "https://cdn.example.vn/nt-c-01.jpg",
+              "rating": 4.3,
+              "reviewCount": 530,
+              "attributes": {
+                "show": true,
+                "buffet": true,
+                "indoor": true
+              }
+            },
+            "note": "Buffet và show nhẹ nhàng, phù hợp trẻ nhỏ.",
+            "source": "SEARCH",
+            "because": []
+          }
+        ]
+      },
+      {
+        "day": 2,
+        "date": "2026-10-16",
+        "title": "Vui chơi trọn ngày",
+        "slots": [
+          {
+            "slotId": "d2-s1",
+            "time": "MORNING",
+            "startTime": "08:30",
+            "endTime": "12:00",
+            "activityType": null,
+            "product": {
+              "productId": "nt-a-01",
+              "name": "VinWonders Nha Trang",
+              "taxonomy": "attraction",
+              "destination": "Nha Trang",
+              "unitPrice": 880000,
+              "currency": "VND",
+              "available": true,
+              "availableFrom": "2026-09-01",
+              "availableTo": "2027-08-31",
+              "imageUrl": "https://cdn.example.vn/nt-a-01.jpg",
+              "rating": 4.5,
+              "reviewCount": 8421,
+              "attributes": {
+                "outdoor": true,
+                "waterPark": true,
+                "familyFriendly": true
+              }
+            },
+            "note": "Đi sớm tránh nắng cho trẻ.",
+            "source": "SEARCH",
+            "because": []
+          },
+          {
+            "slotId": "d2-s2",
+            "time": "NOON",
+            "startTime": null,
+            "endTime": null,
+            "activityType": "MEAL",
+            "product": null,
+            "note": "Ăn trưa trong khu vui chơi.",
+            "source": null,
+            "because": []
+          }
+        ]
+      },
+      {
+        "day": 3,
+        "date": "2026-10-17",
+        "title": "Trả phòng và bay về",
+        "slots": [
+          {
+            "slotId": "d3-s1",
+            "time": "MORNING",
+            "startTime": null,
+            "endTime": null,
+            "activityType": "FREE_TIME",
+            "product": null,
+            "note": "Tự do dạo biển trước khi trả phòng.",
+            "source": null,
+            "because": []
+          },
+          {
+            "slotId": "d3-s2",
+            "time": "AFTERNOON",
+            "startTime": null,
+            "endTime": null,
+            "activityType": null,
+            "product": {
+              "productId": "nt-f-01",
+              "name": "Vé máy bay Hà Nội – Cam Ranh (khứ hồi)",
+              "taxonomy": "flight",
+              "destination": "Nha Trang",
+              "unitPrice": 1890000,
+              "currency": "VND",
+              "available": true,
+              "availableFrom": "2026-10-01",
+              "availableTo": "2026-12-31",
+              "imageUrl": "https://cdn.example.vn/nt-f-01.jpg",
+              "rating": null,
+              "reviewCount": null,
+              "attributes": {
+                "directFlight": true,
+                "baggage": true
+              }
+            },
+            "note": "Chuyến bay chiều về Hà Nội.",
+            "source": "RECOMMENDATION",
+            "because": [
+              {
+                "productId": "nt-h-01",
+                "productName": "Vinpearl Resort Nha Trang - Deluxe Ocean View",
+                "imageUrl": "https://cdn.example.vn/nt-h-01.jpg",
+                "event": "purchase",
+                "daysAgo": 3,
+                "contribution": 0.62
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "bookableCount": 4,
+    "estimatedTotal": 18860000,
+    "currency": "VND",
+    "budgetStatus": "WITHIN_BUDGET",
+    "priceAsOf": "2026-09-16T08:00:00Z"
+  },
+  "searchResults": {
+    "hotel": [
+      {
+        "productId": "nt-h-01",
+        "name": "Vinpearl Resort Nha Trang - Deluxe Ocean View",
+        "taxonomy": "hotel",
+        "destination": "Nha Trang",
+        "unitPrice": 3400000,
+        "currency": "VND",
+        "available": true,
+        "availableFrom": "2026-10-01",
+        "availableTo": "2027-03-31",
+        "imageUrl": "https://cdn.example.vn/nt-h-01.jpg",
+        "rating": 4.6,
+        "reviewCount": 1293,
+        "attributes": {
+          "starRating": 5,
+          "oceanView": true,
+          "privateBeach": true,
+          "kidsPool": true,
+          "familyFriendly": true
+        }
+      },
+      {
+        "productId": "nt-h-02",
+        "name": "Vinpearl Beachfront Nha Trang",
+        "taxonomy": "hotel",
+        "destination": "Nha Trang",
+        "unitPrice": 2150000,
+        "currency": "VND",
+        "available": true,
+        "availableFrom": "2026-10-01",
+        "availableTo": "2027-03-31",
+        "imageUrl": "https://cdn.example.vn/nt-h-02.jpg",
+        "rating": null,
+        "reviewCount": null,
+        "attributes": {
+          "starRating": 5,
+          "nearCenter": true,
+          "pool": true
+        }
+      }
+    ],
+    "attraction": [
+      {
+        "productId": "nt-a-01",
+        "name": "VinWonders Nha Trang",
+        "taxonomy": "attraction",
+        "destination": "Nha Trang",
+        "unitPrice": 880000,
+        "currency": "VND",
+        "available": true,
+        "availableFrom": "2026-09-01",
+        "availableTo": "2027-08-31",
+        "imageUrl": "https://cdn.example.vn/nt-a-01.jpg",
+        "rating": 4.5,
+        "reviewCount": 8421,
+        "attributes": {
+          "outdoor": true,
+          "waterPark": true,
+          "familyFriendly": true
+        }
+      }
+    ],
+    "combo": [
+      {
+        "productId": "nt-c-01",
+        "name": "Combo Tata Show + buffet tối Nha Trang",
+        "taxonomy": "combo",
+        "destination": "Nha Trang",
+        "unitPrice": 1250000,
+        "currency": "VND",
+        "available": true,
+        "availableFrom": "2026-10-01",
+        "availableTo": "2027-03-31",
+        "imageUrl": "https://cdn.example.vn/nt-c-01.jpg",
+        "rating": 4.3,
+        "reviewCount": 530,
+        "attributes": {
+          "show": true,
+          "buffet": true,
+          "indoor": true
+        }
+      }
+    ],
+    "flight": [
+      {
+        "productId": "nt-f-01",
+        "name": "Vé máy bay Hà Nội – Cam Ranh (khứ hồi)",
+        "taxonomy": "flight",
+        "destination": "Nha Trang",
+        "unitPrice": 1890000,
+        "currency": "VND",
+        "available": true,
+        "availableFrom": "2026-10-01",
+        "availableTo": "2026-12-31",
+        "imageUrl": "https://cdn.example.vn/nt-f-01.jpg",
+        "rating": null,
+        "reviewCount": null,
+        "attributes": {
+          "directFlight": true,
+          "baggage": true
+        }
+      }
+    ]
+  },
+  "warnings": [],
+  "metadata": {
+    "personalised": true,
+    "searchRequestIds": [
+      "search-01JABC",
+      "search-01JDEF",
+      "reco-01JGHI"
+    ],
+    "generatedAt": "2026-09-16T08:00:00Z",
+    "requestId": "agent-01JXYZ"
+  }
+}

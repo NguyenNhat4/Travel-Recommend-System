@@ -1,0 +1,16 @@
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Vui lòng kiểm tra lại thông tin liên hệ.",
+    "retryable": false,
+    "requestId": "book-01JXYZ",
+    "details": {
+      "fields": [
+        {
+          "field": "contact.phone",
+          "message": "Vui lòng nhập số điện thoại hợp lệ"
+        }
+      ]
+    }
+  }
+}
