@@ -25,7 +25,7 @@ Kiến trúc ưu tiên hợp đồng API ổn định, ownership rõ theo featur
 | Tích hợp ngoài | Đi qua client interface; không truy cập trực tiếp database của service khác |
 | API | REST/JSON, prefix `/api/v1`, JWT tùy chọn ở các API cho khách ẩn danh |
 
-Tài liệu thực tập ban đầu đề xuất Spring Boot, nhưng stack của repository này được chốt lại là React + Python. Các boundary nghiệp vụ trong spec vẫn được giữ nguyên.
+Spec và repository thống nhất sử dụng React + TypeScript cho frontend và Python + FastAPI cho backend. Các boundary nghiệp vụ vẫn giữ nguyên khi thay đổi stack triển khai.
 
 ## 3. Sơ đồ hệ thống
 
@@ -197,4 +197,3 @@ Một thay đổi contract cần reviewer của Web và Backend. Một thay đ�
 4. Đặt SDK/DB/HTTP implementation trong `infrastructure`.
 5. Thêm unit test và contract/integration test tương ứng.
 6. Không tạo folder `utils` chung; helper phải nằm gần domain sử dụng hoặc có tên theo trách nhiệm cụ thể.
-
