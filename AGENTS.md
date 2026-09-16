@@ -8,10 +8,11 @@ Trước khi viết hoặc sửa code cho **feature mới, endpoint mới, modul
 
 ### 1.1. Luôn đọc (mọi feature)
 
-1. `ARCHITECTURE.md` — cấu trúc repo, quy tắc phụ thuộc, quy ước thêm module.
+1. `src/ARCHITECTURE.md` — cấu trúc repo, quy tắc phụ thuộc, quy ước thêm module.
 2. `src/shared/contracts/MVP.md` — bộ trường tối thiểu hiện hành (1.2.0).
 3. `docs/spec/contract-baseline-v1.1.md` — quyết định đã chốt và phần còn chờ xác nhận.
 4. `README.md` của workstream sẽ sửa (`src/<workstream>/README.md`).
+5. Lịch sử thay đổi trong `history/` (xem mục 5): `history/README.md`, 10 entry mới nhất, mọi entry từng chạm vào đường dẫn/workstream sắp sửa và mọi entry có `Trạng thái: dang dở` thuộc phạm vi đó.
 
 ### 1.2. Đọc thêm theo phạm vi
 
@@ -35,8 +36,9 @@ Với file dài (> 500 dòng), được phép đọc mục lục (`grep -n "^#"`
 
 Trước lần sửa code đầu tiên, agent phải ghi ngắn cho người dùng:
 
-- Danh sách file đã đọc.
+- Danh sách file đã đọc, gồm các entry `history/` đã đọc.
 - Các quy tắc/ràng buộc từ tài liệu áp dụng cho feature này.
+- Quyết định hoặc việc dang dở từ lịch sử liên quan tới feature này.
 - Điểm mâu thuẫn hoặc chưa rõ (nếu có).
 
 Nếu chưa đọc đủ file theo mục 1.1 và 1.2, **không được bắt đầu code**.
@@ -48,7 +50,7 @@ Thứ tự ưu tiên (cao xuống thấp):
 1. `src/shared/contracts/openapi.yaml` và các file `paths/`, `schemas/` — nguồn sự thật cho API.
 2. `src/shared/contracts/MVP.md` — thay thế danh sách required/optional của baseline 1.1.
 3. `docs/spec/contract-baseline-v1.1.md`.
-4. `ARCHITECTURE.md`.
+4. `src/ARCHITECTURE.md`.
 5. `docs/spec/hop-dong-tich-hop-*.md`, `docs/product.md`, handbook.
 
 Không tự chọn phương án cho các mục đang "chờ xác nhận" trong baseline; áp dụng quy tắc tạm thời đã ghi và báo người dùng. Nếu tài liệu không đề cập, hỏi người dùng thay vì tự đặt quy ước mới.
@@ -57,13 +59,27 @@ Không tự chọn phương án cho các mục đang "chờ xác nhận" trong b
 
 - Thay đổi giao diện giữa các team: cập nhật OpenAPI (`paths/`, `schemas/`) **trước**, rồi mới code backend/frontend. Không sửa bản bundle sinh tự động.
 - Không xóa/đổi tên field hoặc đổi semantics trong v1; thay đổi phá vỡ tương thích phải lên v2.
-- Tuân thủ quy tắc phụ thuộc backend và quy tắc frontend trong `ARCHITECTURE.md` (mục 5, 6, 12).
-- Code mới đặt theo cấu trúc trong `ARCHITECTURE.md` (`src/backend`, `src/frontend`...). Các thư mục cũ ở gốc `src/` (`src/agents`, `src/api`, `src/models`, `src/services`, `src/main.py`, `src/config.py`) không được mở rộng nếu chưa hỏi người dùng.
+- Tuân thủ quy tắc phụ thuộc backend và quy tắc frontend trong `src/ARCHITECTURE.md` (mục 5, 6, 12).
+- Code mới đặt theo cấu trúc trong `src/ARCHITECTURE.md` (`src/backend`, `src/frontend`...). Các thư mục cũ ở gốc `src/` (`src/agents`, `src/api`, `src/models`, `src/services`, `src/main.py`, `src/config.py`) không được mở rộng nếu chưa hỏi người dùng.
 - Grounding: mọi sản phẩm, giá, `productId` phải đến từ Search/Recommendation/Catalog; không để LLM tạo dữ liệu sản phẩm.
 - Không commit hoặc log secret, API key, JWT.
 
 ## 4. Trước khi báo hoàn thành
 
 - Có thay đổi contract hoặc mock: chạy `PYTHONDONTWRITEBYTECODE=1 python3 src/shared/contracts/tests/validate_contract.py` từ repo root và báo kết quả.
-- Thêm test theo mục 10 của `ARCHITECTURE.md` (unit, contract, integration tương ứng).
+- Thêm test theo mục 10 của `src/ARCHITECTURE.md` (unit, contract, integration tương ứng).
 - Nếu feature làm thay đổi quy ước, cập nhật tài liệu liên quan trong cùng thay đổi.
+- Có thay đổi trong `src/` hoặc `docs/`: đã tạo entry trong `history/` theo mục 5.
+
+## 5. Bắt buộc ghi lịch sử thay đổi
+
+Mọi thay đổi (thêm, sửa, xóa, đổi tên file) trong `src/` hoặc `docs/` PHẢI có một entry trong `history/`, kể cả sửa nhỏ, refactor, fix bug hay chỉ sửa tài liệu.
+
+- Đọc `history/README.md` và làm đúng định dạng, tên file, mẫu tại đó.
+- Mỗi task một file mới `history/YYYY-MM-DD-<slug>.md`; không gộp vào entry của người khác.
+- Liệt kê **đầy đủ** file đã đổi (đối chiếu `git status` trước khi viết), lý do, quyết định, lệnh kiểm tra đã chạy và kết quả thật, việc còn lại.
+- Tạo entry trước khi báo hoàn thành và trước khi commit; entry nằm trong cùng commit với thay đổi.
+- Dừng giữa chừng hoặc bị chặn: vẫn tạo entry với `Trạng thái: dang dở` và ghi rõ đang dừng ở đâu.
+- Không sửa nội dung entry cũ; quyết định mới thay thế quyết định cũ thì tạo entry mới theo `history/README.md`.
+
+Thiếu entry lịch sử thì thay đổi được coi là **chưa hoàn thành**.
