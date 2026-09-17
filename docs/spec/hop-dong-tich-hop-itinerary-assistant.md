@@ -148,10 +148,8 @@ HOTEL
 FLIGHT
 ATTRACTION
 COMBO
-RESTAURANT
+GOLF
 ```
-
-Chỉ sử dụng `RESTAURANT` khi catalog có dữ liệu nhà hàng thật. Nếu không có, Team Agent chỉ tạo khoảng nghỉ ăn uống chung và không nêu tên nhà hàng.
 
 ### 2.4. API recommendation cá nhân hóa
 

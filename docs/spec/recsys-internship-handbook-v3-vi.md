@@ -6,7 +6,7 @@ Chào mừng các bạn. Trong sáu tuần tới, các bạn sẽ xây dựng m�
 
 Năm tuần dành để xây dựng. Tuần thứ sáu dành để viết báo cáo và trình bày. Code freeze vào thứ Năm của Tuần 5.
 
-Stack: Java 21 với Spring Boot, PostgreSQL kèm extension pgvector, và một frontend web. Python chỉ dùng cho các script thu thập dữ liệu và đánh giá.
+Stack: React + TypeScript cho frontend, Python + FastAPI cho backend, PostgreSQL kèm extension pgvector, và LangGraph cho trợ lý lịch trình. Python cũng được dùng cho pipeline thu thập dữ liệu và đánh giá offline.
 
 ---
 
@@ -127,7 +127,7 @@ Các phương án dự phòng tốt, cũng đáng dùng làm nguồn bổ sung k
 
 | Nguồn | Bạn nhận được gì |
 | --- | --- |
-| **Amadeus Self-Service APIs** | Hơn 150.000 khách sạn kèm mô tả, xếp hạng và ảnh, cộng thêm chuyến bay và hoạt động. Có gói test miễn phí, SDK Java chính thức. |
+| **Amadeus Self-Service APIs** | Hơn 150.000 khách sạn kèm mô tả, xếp hạng và ảnh, cộng thêm chuyến bay và hoạt động. Có gói test miễn phí và REST API dùng được trực tiếp từ Python. |
 | **Bộ dữ liệu công khai** | Các bộ dữ liệu du lịch trên Kaggle; dữ liệu RecSys 2019 của trivago |
 | **OpenStreetMap / Wikivoyage** | Điểm đến, điểm tham quan, points of interest cho trợ lý lịch trình |
 
@@ -189,19 +189,19 @@ Hãy seed nó với dữ liệu tương tác kênh — email mở, click, bounce
 └───────────────────┬─────────────────────────┘
                     │ REST + JWT
                     ▼
-┌──────────────── SPRING BOOT SERVICE ────────────────┐
+┌────────────────── FASTAPI SERVICE ──────────────────┐
 │                                                     │
-│  AuthController            BookingController        │
-│  SearchController          RecommendationController │
-│  ChatController ──────┐                             │
+│  AuthRouter                BookingRouter             │
+│  SearchRouter              RecommendationRouter      │
+│  ItineraryRouter ─────┐                              │
 │                       │ calls its own search        │
 │  ┌────────────────────▼──────────────────────────┐  │
 │  │  EmbeddingService ──> pgvector ──> Top-K      │  │
 │  │  UserProfileBuilder ──> user vector           │  │
 │  └───────────────────────────────────────────────┘  │
 │                       │                             │
-│  CdpClient ───────────┴─────────── InsiderClient    │
-│  ← cả hai đều là interface, đều có thể thay cho production │
+│  CdpClient port ──────┴──────── InsiderClient port  │
+│  ← cả hai có adapter thay được khi nối production   │
 └────────┬──────────────────────────────┬─────────────┘
          ▼                              ▼
 ┌──── CDP CLONE (Postgres) ────┐  ┌─── INSIDER CLONE ────┐
@@ -223,14 +223,16 @@ Hãy seed nó với dữ liệu tương tác kênh — email mở, click, bounce
 
 | Tầng | Lựa chọn | Vì sao |
 | --- | --- | --- |
-| Backend | Java 21 + Spring Boot 3.x | Chuẩn của đội |
-| Thư viện AI | Spring AI | Xử lý cả embeddings lẫn chat model. Một thư viện cho cả hai — đừng mang thêm thư viện thứ hai vào. |
-| Embedding | Multilingual ONNX sentence transformer, chạy trong JVM | Chạy cục bộ, không gọi mạng mỗi request, không tốn phí theo lượt gọi |
-| Chat model | Một LLM qua chat interface của Spring AI | Cần API key và ngân sách chi phí — nêu vấn đề ngay Tuần 1 |
+| Backend | Python 3.12+ + FastAPI + Pydantic | API bất đồng bộ, validation rõ ràng và thống nhất với các workstream AI/data |
+| Agent/LLM | LangGraph + LangChain | Điều phối state/tool của itinerary agent và cung cấp interface thống nhất cho chat model |
+| Embedding | `sentence-transformers` với model đa ngôn ngữ chạy cục bộ | Không gọi mạng mỗi request, không tốn phí theo lượt gọi và dễ benchmark trong Python |
+| Chat model | Một LLM qua LangChain chat model interface | Cần API key và ngân sách chi phí — nêu vấn đề ngay Tuần 1 |
 | Lưu trữ vector | PostgreSQL + pgvector | Một cơ sở dữ liệu cho mọi thứ |
-| Xác thực | Spring Security + JWT | Chuẩn mực, tài liệu tốt, không cần dịch vụ bên thứ ba |
-| Frontend | Chọn một và đừng đổi. React, hoặc Thymeleaf nếu đội mạnh về phía server. | Cái nào đưa được một trang lên màn hình trong Tuần 2 |
-| Thu thập dữ liệu | Python | Chỉ Tuần 1 |
+| Truy cập dữ liệu | SQLAlchemy + Alembic + driver PostgreSQL | Tách repository adapter khỏi domain và quản lý migration có phiên bản |
+| Xác thực | JWT + password hashing trong FastAPI | Đủ cho đăng nhập demo, không cần dịch vụ bên thứ ba |
+| Frontend | React + TypeScript | UI theo feature, kiểm tra kiểu và sinh API client từ OpenAPI |
+| Thu thập dữ liệu | Python | Dùng cho pipeline Tuần 1 và chạy lại khi cần làm mới catalog |
+| Đánh giá | Python | Dùng chung model/data tooling với backend nhưng chỉ chạy offline |
 | Hạ tầng | Docker Compose + GitHub Actions | Một lệnh khởi động mọi thứ |
 
 ### ⚠️ Embedding model là lựa chọn duy nhất bạn không được sai
@@ -436,7 +438,7 @@ Tuần 1 thì khác. Việc thu thập dữ liệu chặn mọi thứ khác, nê
 | Workstream | Công việc |
 | --- | --- |
 | **Data** | Dẫn dắt việc thu thập (§3). Xây pipeline, cache phản hồi thô, xử lý giới hạn tốc độ và lỗi, khử trùng lặp và chuẩn hóa. CDP clone: schema khớp CDP thật từng trường một, nạp catalog cộng với lịch sử khách hàng đã seed. |
-| **Search** | Hỗ trợ thu thập từ thứ Hai đến thứ Tư. Từ thứ Năm: làm cho `POST /embed` chạy được — export một model đa ngôn ngữ sang ONNX, nối với Spring AI, xác nhận độ tương đồng hợp lý trên các câu tiếng Việt. |
+| **Search** | Hỗ trợ thu thập từ thứ Hai đến thứ Tư. Từ thứ Năm: làm cho `POST /embed` chạy được — tải model đa ngôn ngữ bằng `sentence-transformers`, chạy cục bộ và xác nhận độ tương đồng hợp lý trên các câu tiếng Việt. |
 | **Backend** | Hỗ trợ thu thập từ thứ Hai đến thứ Tư. Từ thứ Năm: định nghĩa interface `CdpClient` và `InsiderClient` cùng hợp đồng OpenAPI cho toàn bộ endpoint. |
 | **Web** | Dựng project frontend, chạy được, deploy được. Wireframe cho mọi trang. Đừng chờ API — xây dựa trên stub. |
 | **Evaluation** | Bộ sinh lịch sử khách hàng (§6). Cài đặt các chỉ số kèm unit test. Thứ Năm–thứ Sáu: Insider clone (§3) — bốn endpoint và các quy tắc kiểm tra hợp lệ khiến nó hành xử như hàng thật. |
@@ -455,7 +457,7 @@ Tuần 1 thì khác. Việc thu thập dữ liệu chặn mọi thứ khác, nê
 | **Web** | Home, trang kết quả tìm kiếm, chi tiết sản phẩm, đăng nhập. Nối với endpoint thật khi chúng xuất hiện. |
 | **Evaluation** | So sánh model — gán nhãn thủ công khoảng 80 cặp truy vấn tiếng Việt → sản phẩm và đo các ứng viên. Lập bảng và đưa ra khuyến nghị. |
 
-**Đọc:** HNSW paper phần 1–3 · MTEB leaderboard, tab multilingual · Spring AI ONNX docs.
+**Đọc:** HNSW paper phần 1–3 · MTEB leaderboard, tab multilingual · tài liệu Sentence-Transformers và pgvector-python.
 
 **Thứ Sáu:** tìm "nghỉ dưỡng biển cho gia đình" trên chính website và nhận được kết quả hợp lý. Đăng nhập bằng hai tài khoản khác nhau. Chốt một embedding model và số chiều.
 
@@ -489,7 +491,7 @@ Ba điều đặc thù của du lịch làm hỏng một cách triển khai ngâ
 | **Web** | Chat UI. Render lịch trình với sản phẩm thật và link đặt dịch vụ hoạt động được. Hiển thị phần giải thích. |
 | **Evaluation** | Chạy lại mọi thứ ở quy mô đầy đủ. Kiểm tra tỉnh táo đầu ra của trợ lý: sản phẩm có thật không, có còn chỗ không, có đúng thành phố không? |
 
-**Đọc:** Tài liệu Spring AI chat model · hướng dẫn prompting của nhà cung cấp LLM bạn chọn.
+**Đọc:** Tài liệu LangGraph, LangChain chat models · hướng dẫn prompting của nhà cung cấp LLM bạn chọn.
 
 **Thứ Sáu:** hỏi trợ lý một lịch trình ba ngày cho gia đình ở Nha Trang, nhận về một kế hoạch với sản phẩm thật, bấm vào và đặt một cái.
 
@@ -579,7 +581,7 @@ Cái thứ ba quan trọng nhất. Một hệ thống không đánh bại đư�
 
 ### Nguồn dữ liệu
 
-- Amadeus Self-Service APIs — https://developers.amadeus.com/self-service — gói test miễn phí, SDK Java, khách sạn + chuyến bay + hoạt động
+- Amadeus Self-Service APIs — https://developers.amadeus.com/self-service — gói test miễn phí, REST API, khách sạn + chuyến bay + hoạt động
 - Amadeus hotel tutorial — https://developers.amadeus.com/self-service/apis-docs/guides/developer-guides/resources/hotels/
 - Bộ dữ liệu trivago RecSys Challenge 2019 — https://recsys2019data.trivago.com
 
@@ -594,14 +596,16 @@ Cái thứ ba quan trọng nhất. Một hệ thống không đánh bại đư�
 - HNSW paper — https://arxiv.org/abs/1603.09320 — chỉ phần 1–3
 - pgvector — https://github.com/pgvector/pgvector — đọc kỹ phần indexing
 
-### Triển khai Java
+### Triển khai Python
 
-- Spring AI — ONNX Embeddings — https://docs.spring.io/spring-ai/reference/api/embeddings/onnx.html — liên kết quan trọng nhất của dự án này
-- Spring AI — API overview — https://docs.spring.io/spring-ai/reference/api
-- Spring AI — PGVector — https://docs.spring.io/spring-ai/reference/api/vectordbs/pgvector.html
-- "Bringing Sentence Transformers to Java: Run all-MiniLM-L6-v2 with ONNX Runtime" — https://medium.com/@nil.joshi860/bringing-sentence-transformers-to-java-run-all-minilm-l6-v2-with-onnx-runtime-73938447342b
-- Tham chiếu chạy được: Spring Boot + PGVector + local ONNX — https://github.com/loiane/angular-spring-rag
-- Spring Security JWT — https://docs.spring.io/spring-security/reference/servlet/oauth2/resource-server/jwt.html
+- FastAPI — https://fastapi.tiangolo.com — routing, dependency injection, security và OpenAPI
+- Pydantic — https://docs.pydantic.dev — validation cho request, response và configuration
+- SQLAlchemy — https://docs.sqlalchemy.org — persistence adapter và transaction
+- Alembic — https://alembic.sqlalchemy.org — migration cơ sở dữ liệu có phiên bản
+- Sentence-Transformers — https://sbert.net — embedding đa ngôn ngữ chạy cục bộ
+- pgvector-python — https://github.com/pgvector/pgvector-python — tích hợp pgvector với SQLAlchemy
+- LangGraph — https://docs.langchain.com/oss/python/langgraph/overview — orchestration có state cho itinerary agent
+- LangChain Python — https://docs.langchain.com/oss/python/langchain/overview — interface chat model và integration với nhà cung cấp LLM
 
 ### Hệ gợi ý
 
@@ -619,9 +623,9 @@ Cái thứ ba quan trọng nhất. Một hệ thống không đánh bại đư�
 | Tuần | Được giao |
 | --- | --- |
 | 1 | Google RecSys course 1–2 · CS224N Lecture 1 · Sentence-Transformers intro |
-| 2 | HNSW 1–3 · MTEB multilingual · Spring AI ONNX docs |
+| 2 | HNSW 1–3 · MTEB multilingual · Sentence-Transformers · pgvector-python |
 | 3 | ⭐ Airbnb KDD 2018 · two-tower deep dive |
-| 4 | Spring AI chat docs · hướng dẫn prompting của LLM |
+| 4 | LangGraph · LangChain chat models · hướng dẫn prompting của LLM |
 | 5 | pgvector indexing · Booking.com 150 models |
 | 6 | — (viết, không đọc) |
 
@@ -655,34 +659,37 @@ Cái thứ ba quan trọng nhất. Một hệ thống không đánh bại đư�
 
 ```
 vota-recsys/
+├── ARCHITECTURE.md
 ├── docker-compose.yml
-├── insider-clone/              # Tuần 1 — nền tảng giả lập, quy tắc kiểm tra thật
-├── data-collection/            # Workstream Data, Tuần 1
-│   ├── collectors/             # mỗi nguồn một collector
-│   ├── normalise.py
-│   ├── seed_histories.py       # lịch sử khách hàng được sinh ra
-│   └── README.md               # từng trường dữ liệu đến từ đâu
-├── backend/
-│   └── src/main/java/.../
-│       ├── cdp/
-│       │   ├── CdpClient       # ⭐ interface — sau này thay bằng bản production
-│       │   └── LocalCdpClient
-│       ├── catalog/            # ItemTextBuilder
-│       ├── index/              # EmbeddingService, VectorIndexer
-│       ├── profile/            # UserProfileBuilder ⭐ phần cốt lõi
-│       ├── chat/               # trích xuất ý định, soạn kế hoạch
-│       ├── auth/               # JWT, users
-│       ├── booking/            # giỏ hàng, checkout, ghi event ngược lại
-│       └── api/                # controllers
-├── frontend/                   # Workstream Web
-├── eval/                       # Evaluation (Python — chỉ chạy offline)
-│   ├── splits.py
-│   ├── metrics.py
-│   └── report.md               # tạo lại hằng tuần
-└── docs/
-    ├── decisions/
-    ├── demo-script.md          # viết ở Tuần 6, tổng duyệt thứ Năm
-    └── runbook.md
+├── docs/
+│   ├── spec/
+│   ├── decisions/
+│   ├── demo-script.md
+│   └── runbook.md
+└── src/
+    ├── frontend/               # React + TypeScript, tổ chức theo feature
+    │   ├── public/
+    │   └── src/
+    │       ├── app/
+    │       ├── components/
+    │       ├── features/
+    │       ├── pages/
+    │       └── services/
+    ├── backend/                # Python + FastAPI
+    │   ├── app/
+    │   │   ├── api/            # routers và HTTP schemas
+    │   │   ├── application/    # use cases và ports
+    │   │   ├── domain/         # business rules thuần
+    │   │   ├── infrastructure/ # DB, HTTP và LLM adapters
+    │   │   ├── agents/         # LangGraph state, nodes và tools
+    │   │   └── main.py
+    │   └── tests/              # unit, integration, contract
+    ├── shared/
+    │   ├── contracts/          # OpenAPI là nguồn sự thật chung
+    │   └── mocks/
+    ├── data_collection/        # collectors, cache, normalize, seed
+    ├── evaluation/             # metrics, splits và report offline
+    └── insider_clone/          # nền tảng giả lập, quy tắc kiểm tra thật
 ```
 
 ---
@@ -692,7 +699,7 @@ vota-recsys/
 Hãy nêu những câu này vào thứ Hai để chúng được trả lời thay vì bị mặc định ngầm:
 
 1. **Nhà cung cấp LLM, API key và giới hạn chi tiêu** cho trợ lý lịch trình. Cần tới Tuần 4, nhưng việc mở tài khoản mất thời gian — hãy hỏi ngay Tuần 1.
-2. **Framework frontend** — React hay server-rendered? Chọn dựa trên thứ đội đã biết sẵn.
+2. **Khung UI và quản lý state trong React** — chốt router, server-state library và component library trước khi các feature phát triển độc lập.
 3. **Có ai am hiểu CDP rà soát schema trong Tuần 1 được không?** Sai tên trường bây giờ thì sửa rẻ, về sau thì đắt.
 4. **Hệ thống này sẽ được deploy ở đâu** cho buổi demo staging Tuần 5?
 5. **Ai là khán giả của buổi demo Tuần 6, và họ muốn thấy gì nhất?** Câu trả lời đó nên định hình những gì được đánh bóng trong Tuần 5.
