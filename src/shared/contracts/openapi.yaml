@@ -131,6 +131,12 @@ components:
       $ref: ./schemas/common.yaml#/ErrorCode
     ErrorResponse:
       $ref: ./schemas/common.yaml#/ErrorResponse
+    PriceUnit:
+      $ref: ./schemas/common.yaml#/PriceUnit
+    SearchMode:
+      $ref: ./schemas/common.yaml#/SearchMode
+    AvailabilityStatus:
+      $ref: ./schemas/common.yaml#/AvailabilityStatus
     ProductAttributes:
       $ref: ./schemas/catalog.yaml#/ProductAttributes
     ProductSummary:
@@ -161,6 +167,14 @@ components:
       $ref: ./schemas/search.yaml#/SearchFacets
     SearchResponse:
       $ref: ./schemas/search.yaml#/SearchResponse
+    TravelContext:
+      $ref: ./schemas/search.yaml#/TravelContext
+    AvailabilityMode:
+      $ref: ./schemas/search.yaml#/AvailabilityMode
+    AppliedFilters:
+      $ref: ./schemas/search.yaml#/AppliedFilters
+    EngineDiagnostics:
+      $ref: ./schemas/search.yaml#/EngineDiagnostics
     BecauseItem:
       $ref: ./schemas/recommendations.yaml#/BecauseItem
     RecommendationItem:

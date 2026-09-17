@@ -1,3 +1,8 @@
+# common.yaml — enum và kiểu dùng chung
+#
+# Đã áp dụng: C1 (PriceUnit), C4 (SearchMode), Q1 (error code availability)
+# Đánh dấu [CHỜ DUYỆT: Cx] là phần chưa được duyệt trong schema-freeze-decisions.md
+
 Taxonomy:
   type: string
   enum:
@@ -6,6 +11,29 @@ Taxonomy:
   - attraction
   - combo
   - golf
+
+# [C1] PER_NIGHT là đơn vị gốc. Luôn dẫn xuất từ taxonomy lúc ingest.
+# KHÔNG có default: priceUnit không bao giờ ở trạng thái thiếu, và một
+# default PER_NIGHT sẽ khiến bản ghi flight rơi mất trường bị nhân với nights.
+# Ánh xạ chốt:
+#   hotel      -> PER_NIGHT    (chứng cứ: tham số crawl "1 đêm, 2 người lớn")
+#   combo      -> PER_PACKAGE  (số đêm đã nằm trong gói)
+#   flight     -> PER_PERSON
+#   attraction -> PER_PERSON
+#   golf       -> PER_PERSON
+# Bất biến: nights CHỈ được nhân khi priceUnit == PER_NIGHT.
+PriceUnit:
+  type: string
+  enum:
+  - PER_NIGHT
+  - PER_PERSON
+  - PER_PACKAGE
+  - UNKNOWN
+  description: >-
+    Đơn vị của unitPrice. UNKNOWN là van an toàn của schema; không taxonomy nào
+    trong catalog hiện tại mang giá trị đó. nights chỉ được đưa vào phép nhân
+    khi giá trị là PER_NIGHT — mọi đơn vị khác bỏ qua nights kể cả khi client gửi.
+
 ProductSort:
   type: string
   enum:
@@ -13,6 +41,10 @@ ProductSort:
   - price_asc
   - price_desc
   default: popular
+  description: >-
+    popular xếp theo products.popularity_score (cột materialized).
+    [CHỜ DUYỆT: C7] công thức và cách cập nhật.
+
 SearchSort:
   type: string
   enum:
@@ -20,14 +52,42 @@ SearchSort:
   - price_asc
   - price_desc
   default: relevance
+
+# [C4] Chế độ truy xuất phải được khai báo trong diagnostics.
+# Không bao giờ chuyển từ exact sang approximate mà không đổi giá trị này.
+SearchMode:
+  type: string
+  enum:
+  - EXACT_FILTER_SCORE
+  - ANN_CANDIDATE_SCORE
+  description: >-
+    EXACT_FILTER_SCORE là mặc định cho cả /search, /similar và /recommendations.
+    Lật sang ANN_CANDIDATE_SCORE khi số vector vượt 50.000 hoặc p95 của bước scan
+    vượt 50 ms; khi lật thì totalExact và facetsExact bắt buộc là false.
+
+# [Q1] Kết quả kiểm tra availability theo một khoảng ngày cụ thể.
+AvailabilityStatus:
+  type: string
+  enum:
+  - NOT_CHECKED
+  - AVAILABLE
+  - PARTIALLY_AVAILABLE
+  - UNAVAILABLE
+  - EXPIRED
+  description: >-
+    NOT_CHECKED là giá trị mặc định khi chưa có checkIn/checkOut/party.
+    EXPIRED khi snapshot availability đã quá hạn (expires_at).
+
 Strategy:
   type: string
-  description: Thêm giá trị mới phải thông báo trước; client map giá trị lạ về tiêu đề chung.
+  description: >-
+    Thêm giá trị mới phải thông báo trước; client map giá trị lạ về tiêu đề chung.
   enum:
   - cross_vertical
   - recent_activity
   - dormant
   - popular
+
 BecauseEvent:
   type: string
   enum:
@@ -35,15 +95,19 @@ BecauseEvent:
   - add_to_cart
   - product_view
   - search
+
 Currency:
   type: string
   const: VND
+
 ReferenceCode:
   type: string
   pattern: ^VOTA-[0-9]{8}-[A-Z0-9]{4}$
+
 ErrorCode:
   type: string
   enum:
+  # --- chung ---
   - VALIDATION_ERROR
   - CART_EMPTY
   - INVALID_CREDENTIALS
@@ -65,6 +129,17 @@ ErrorCode:
   - UNSUPPORTED_DESTINATION
   - LLM_UNAVAILABLE
   - ITINERARY_VALIDATION_FAILED
+  # --- [Q1] availability ---
+  - AVAILABILITY_NOT_FOUND
+  - AVAILABILITY_EXPIRED
+  - NO_RATE_PLAN
+  - MIN_STAY_NOT_MET
+  - CLOSED_ON_ARRIVAL
+  - CLOSED_ON_DEPARTURE
+  - PARTIALLY_AVAILABLE
+  # --- [CHỜ DUYỆT: C5] hai tầng property/room ---
+  - PRODUCT_NOT_INDEXED
+
 ErrorResponse:
   type: object
   required:
@@ -85,12 +160,18 @@ ErrorResponse:
           description: Tiếng Việt, hiển thị được trực tiếp cho người dùng.
         retryable:
           type: boolean
+          description: >-
+            true chỉ với SEARCH_UNAVAILABLE, INTERNAL_ERROR và LLM_UNAVAILABLE.
+            Mọi mã còn lại là false — thử lại nguyên request cho cùng kết quả.
         requestId:
           type: string
         details:
           type: object
           additionalProperties: true
-          description: Tùy mã lỗi. VALIDATION_ERROR {fields}; PRODUCT_NOT_FOUND và PRODUCT_UNAVAILABLE
-            {productId}; CART_ITEM_NOT_FOUND {cartItemId}; PRICE_CHANGED {productId, oldPrice, newPrice};
-            DATE_OUT_OF_RANGE {productId, availableFrom, availableTo}; UNSUPPORTED_DESTINATION {destination,
-            supportedDestinations}.
+          description: >-
+            Tùy mã lỗi. VALIDATION_ERROR {fields}; PRODUCT_NOT_FOUND và
+            PRODUCT_UNAVAILABLE {productId}; CART_ITEM_NOT_FOUND {cartItemId};
+            PRICE_CHANGED {productId, oldPrice, newPrice}; DATE_OUT_OF_RANGE
+            {productId, availableFrom, availableTo}; UNSUPPORTED_DESTINATION
+            {destination, supportedDestinations}; MIN_STAY_NOT_MET {productId,
+            minStay}; PRODUCT_NOT_INDEXED {productId, taxonomy}.

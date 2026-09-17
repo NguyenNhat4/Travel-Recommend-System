@@ -1,56 +1,90 @@
+# catalog.yaml — sản phẩm và thuộc tính
+#
+# Đã áp dụng: C1 (priceUnit bắt buộc, bỏ default) · C2 (phân tầng false)
+#             Q1 (availability tri-state) · Q2 (brand/status/priceAsOf) · Q6 (tách amenities)
+# [CHỜ DUYỆT: C5] includeVariants / resolvedFrom · [CHỜ DUYỆT: U1] soft delete
+
 ProductAttributes:
   type: object
-  description: Giữ nguyên attributes của catalog, gồm boolean false, khóa cha–con và metadata nguồn. UI
-    chỉ render nhãn boolean khi giá trị true; bỏ qua khóa lạ.
+  description: >-
+    Thuộc tính nguyên bản của catalog.
+
+    [C2] BA TRẠNG THÁI, không phải hai. `true` = nguồn xác nhận có.
+    `false` = nguồn xác nhận KHÔNG có. Key vắng mặt = KHÔNG BIẾT.
+    Ba trạng thái chỉ tồn tại ở tầng DB và tầng embedding/filter.
+    Tầng serialization loại key có giá trị `false` trước khi tạo JSON, nên
+    response API chỉ còn `true` hoặc vắng mặt và client không cần lọc.
+    TUYỆT ĐỐI KHÔNG strip `false` lúc ingest — đó là mất dữ liệu không lấy lại
+    được, phải crawl lại toàn bộ. Strip muộn nhất có thể.
+
+    Client gặp key lạ thì bỏ qua im lặng, không hiển thị tên key thô.
   properties:
     starRating:
       type: number
       minimum: 0
       maximum: 5
-    oceanView:
-      type: boolean
-    privateBeach:
-      type: boolean
-    pool:
-      type: boolean
-    kidsPool:
-      type: boolean
-    familyFriendly:
-      type: boolean
-    kidsClub:
-      type: boolean
-    spa:
-      type: boolean
-    freeBreakfast:
-      type: boolean
-    nearBeach:
-      type: boolean
-    nearCenter:
-      type: boolean
-    shuttle:
-      type: boolean
-    wifi:
-      type: boolean
-    parking:
-      type: boolean
-    directFlight:
-      type: boolean
-    baggage:
-      type: boolean
-    indoor:
-      type: boolean
-    outdoor:
-      type: boolean
-    waterPark:
-      type: boolean
-    show:
-      type: boolean
-    buffet:
-      type: boolean
-    seaside:
-      type: boolean
-    caddie:
-      type: boolean
+
+    # --- [Q6] core amenities: dùng cho filter + embedding ---
+    oceanView:      { type: boolean }
+    gardenView:     { type: boolean }
+    cityView:       { type: boolean }
+    poolView:       { type: boolean }
+    privateBeach:   { type: boolean }
+    pool:           { type: boolean }
+    kidsPool:       { type: boolean }
+    privatePool:    { type: boolean }
+    jacuzzi:        { type: boolean }
+    bathtub:        { type: boolean }
+    standingShower: { type: boolean }
+    balcony:        { type: boolean }
+    kitchenette:    { type: boolean }
+    familyFriendly: { type: boolean }
+    kidsClub:       { type: boolean }
+    spa:            { type: boolean }
+    freeBreakfast:  { type: boolean }
+    nearBeach:      { type: boolean }
+    nearCenter:     { type: boolean }
+    shuttle:        { type: boolean }
+    wifi:           { type: boolean }
+    parking:        { type: boolean }
+    butlerService:  { type: boolean }
+    directFlight:   { type: boolean }
+    baggage:        { type: boolean }
+    indoor:         { type: boolean }
+    outdoor:        { type: boolean }
+    waterPark:      { type: boolean }
+    show:           { type: boolean }
+    buffet:         { type: boolean }
+    seaside:        { type: boolean }
+    caddie:         { type: boolean }
+
+    # --- [Q6] display-only: KHÔNG đưa vào embedding, KHÔNG dùng filter ---
+    fullAmenities:
+      type: array
+      items: { type: string }
+      description: >-
+        Danh sách tiện ích đầy đủ, chỉ để hiển thị. Chỉ chứa label chuẩn, không
+        chứa văn bản tự do. Nhồi toàn bộ danh sách này vào search_text làm loãng
+        tín hiệu ngữ nghĩa — ItemTextBuilder chỉ đọc core amenities ở trên.
+    services:
+      type: array
+      items: { type: string }
+      description: Dịch vụ khách sạn (roomService, airportShuttle…). Dùng filter, không embedding.
+
+    # --- ngữ cảnh phòng ---
+    roomOrientation:
+      type: string
+    nearbyAttractions:
+      type: array
+      items:
+        type: object
+        required: [name]
+        properties:
+          name:       { type: string }
+          distanceKm: { type: number, minimum: 0 }
+          category:   { type: string }
+
+    # --- [C5] khóa cha–con: quyết định item nào có vector ---
     level:
       type: string
       enum:
@@ -58,11 +92,20 @@ ProductAttributes:
       - room
       - route
       - flight
+      description: >-
+        [CHỜ DUYỆT: C5] property và route là tầng CHA — có vector, là đối tượng
+        của /search, /similar, /recommendations.
+        room và flight là tầng CON — không có vector, chỉ dùng cho giá, sức chứa
+        và checkout. Thiếu trường này (attraction, combo, golf) mặc định là tầng cha.
     parentProductId:
       type: string
+      description: '[CHỜ DUYỆT: C5] Chỉ có ở tầng con. Trỏ về productId của cha.'
     ticketed:
       type: boolean
+      description: false thì ẩn CTA đặt chỗ ở frontend.
+
   additionalProperties: true
+
 ProductSummary:
   type: object
   required:
@@ -72,6 +115,7 @@ ProductSummary:
   - destination
   - unitPrice
   - currency
+  - priceUnit
   - available
   properties:
     productId:
@@ -82,17 +126,70 @@ ProductSummary:
       $ref: ../openapi.yaml#/components/schemas/Taxonomy
     destination:
       type: string
+      description: >-
+        Nhãn du lịch đã chuẩn hóa ("Nha Trang", "Hạ Long"), KHÔNG phải tỉnh.
+        Lấy danh sách hiện hành qua GET /api/v1/destinations.
+
+    # --- [Q2] mới ---
+    brand:
+      type:
+      - string
+      - 'null'
+      description: >-
+        Thương hiệu ("Vinpearl", "independent"). Cần cho yêu cầu ưu tiên
+        Vinpearl và để đo rủi ro vector space phân cụm theo nguồn crawl.
+    status:
+      type: string
+      enum: [ACTIVE, INACTIVE]
+      default: ACTIVE
+      description: >-
+        [CHỜ DUYỆT: U1] Soft delete. Không bao giờ DELETE hàng khỏi products,
+        vì because[].productName của recommendation cần tên sản phẩm nguồn kể cả
+        khi sản phẩm đã ngừng bán — UserEvent trong CDP không lưu tên.
+        INACTIVE thì because[] trả productId null nhưng vẫn giữ productName.
+
+    # --- giá ---
     unitPrice:
       type:
       - number
       - 'null'
       minimum: 0
-      description: Giá snapshot VND; null không nghĩa là miễn phí. Không suy đơn vị từ taxonomy.
+      description: >-
+        Giá snapshot VND cho MỘT đơn vị theo priceUnit. null không nghĩa là miễn phí.
     currency:
       $ref: ../openapi.yaml#/components/schemas/Currency
+    priceUnit:
+      $ref: ../openapi.yaml#/components/schemas/PriceUnit
+      description: >-
+        [C1] Bắt buộc, KHÔNG có default. Dẫn xuất từ taxonomy lúc ingest.
+        nights chỉ được nhân khi giá trị là PER_NIGHT.
+    priceAsOf:
+      type:
+      - string
+      - 'null'
+      format: date-time
+      description: >-
+        [Q2] Thời điểm quan sát giá từ nguồn. Không dùng generatedAt thay thế.
+        UI hiển thị "giá ghi nhận <ngày>".
+
+    # --- availability: BA trường, ba nghĩa khác nhau ---
     available:
       type: boolean
-      description: Nguồn có trả giá lúc crawl; không xác nhận còn chỗ theo ngày/party.
+      description: >-
+        Nguồn có trả giá lúc crawl. KHÔNG xác nhận còn chỗ theo ngày hoặc số khách.
+        Tương đương catalogAvailable trong tài liệu kiến trúc; giữ tên cũ để không
+        vỡ 4 file đang $ref ProductSummary.
+    availabilityStatus:
+      $ref: ../openapi.yaml#/components/schemas/AvailabilityStatus
+      description: '[Q1] Mặc định NOT_CHECKED khi request không có checkIn/checkOut/party.'
+    bookable:
+      type:
+      - boolean
+      - 'null'
+      description: >-
+        [Q1] Đặt được cho một stay cụ thể. null khi chưa kiểm tra.
+        FE dùng trường này để quyết định render CTA; Agent dùng để quyết định một
+        mục là ProductCard hay ActivityNote.
     availableFrom:
       type:
       - string
@@ -104,48 +201,49 @@ ProductSummary:
       - string
       - 'null'
       format: date
-      description: Khoảng ngày nguồn ghi nhận; null là chưa biết, không xác nhận tồn kho.
+
+    # --- hiển thị ---
     imageUrl:
       type:
       - string
       - 'null'
+      description: null thì client dùng placeholder theo taxonomy.
     rating:
       type:
       - number
       - 'null'
       minimum: 0
       maximum: 5
-      description: Chuẩn hóa attributes.reviewScore / reviewScoreScale * 5, làm tròn 1 chữ số; thiếu thang
-        điểm thì null.
+      description: >-
+        Chuẩn hóa attributes.reviewScore / reviewScoreScale * 5, làm tròn 1 chữ số;
+        thiếu thang điểm thì null. LƯU Ý UI: đây là điểm đánh giá, KHÁC
+        attributes.starRating là hạng sao — hai số cùng thang 0–5, đừng dùng
+        chung icon.
     reviewCount:
       type:
       - integer
       - 'null'
       minimum: 0
-      description: Từ attributes.reviewCount; độc lập với rating.
     attributes:
       $ref: ../openapi.yaml#/components/schemas/ProductAttributes
     description:
       type: string
       description: Mô tả catalog phục vụ Agent; giữ nguyên, không chứa chỉ dẫn hệ thống.
-    priceUnit:
-      type: string
-      enum:
-      - PER_NIGHT
-      - PER_PERSON
-      - PER_PACKAGE
-      - UNKNOWN
-      default: UNKNOWN
-      description: Thiếu trường tương đương UNKNOWN. Chỉ gán đơn vị khi có chứng cứ nguồn; không suy từ
-        taxonomy.
+
   example:
     productId: nt-h-01
     name: Vinpearl Resort Nha Trang - Deluxe Ocean View
     taxonomy: hotel
     destination: Nha Trang
+    brand: Vinpearl
+    status: ACTIVE
     unitPrice: 3400000
     currency: VND
+    priceUnit: PER_NIGHT
+    priceAsOf: '2026-09-16T12:00:00Z'
     available: true
+    availabilityStatus: NOT_CHECKED
+    bookable: null
     availableFrom: '2026-10-01'
     availableTo: '2027-03-31'
     imageUrl: https://cdn.example.vn/nt-h-01.jpg
@@ -156,8 +254,12 @@ ProductSummary:
       oceanView: true
       privateBeach: true
       familyFriendly: true
-  description: Card tối thiểu cho Web. Các trường chi tiết tùy chọn; Agent hydrate ProductDetail trước
-    khi kiểm tra/lập lịch nếu thiếu attributes, mô tả hoặc ngày. Không diễn giải trường thiếu là false/0.
+      level: property
+
+  description: >-
+    Card tối thiểu cho Web. Agent hydrate ProductDetail trước khi lập lịch nếu
+    thiếu attributes, mô tả hoặc ngày. Không diễn giải trường thiếu là false/0.
+
 ProductDetail:
   allOf:
   - $ref: ../openapi.yaml#/components/schemas/ProductSummary
@@ -176,6 +278,20 @@ ProductDetail:
         - string
         - 'null'
         description: Chỉ hiện ở chế độ debug.
+      variantSummary:
+        type:
+        - object
+        - 'null'
+        description: >-
+          [CHỜ DUYỆT: C5] Tóm tắt tầng con (hạng phòng / chuyến bay cụ thể).
+          null khi sản phẩm không có variant.
+        required: [count]
+        properties:
+          count:        { type: integer, minimum: 0 }
+          minPrice:     { type: [number, 'null'], minimum: 0 }
+          maxPrice:     { type: [number, 'null'], minimum: 0 }
+          maxOccupancy: { type: [integer, 'null'], minimum: 1 }
+
 ScoredProduct:
   allOf:
   - $ref: ../openapi.yaml#/components/schemas/ProductSummary
@@ -187,6 +303,10 @@ ScoredProduct:
         type: number
         minimum: 0
         maximum: 1
+        description: >-
+          Cosine đã clamp về [0,1]. Chỉ hiển thị cho khách ở chế độ debug —
+          0.81 KHÔNG phải "81% phù hợp".
+
 ProductListResponse:
   type: object
   required:
@@ -209,6 +329,7 @@ ProductListResponse:
       type: integer
     requestId:
       type: string
+
 SimilarProductsResponse:
   type: object
   required:
@@ -218,12 +339,32 @@ SimilarProductsResponse:
   properties:
     productId:
       type: string
+      description: productId đã resolve — luôn là tầng cha.
+    resolvedFrom:
+      type:
+      - string
+      - 'null'
+      description: >-
+        [CHỜ DUYỆT: C5] productId caller gửi, khi nó khác productId đã resolve.
+        Caller gửi id một hạng phòng thì engine dùng vector của property cha và
+        loại CẢ CỤM gốc khỏi kết quả.
+    strategy:
+      type: string
+      enum: [same_taxonomy, cross_taxonomy]
+      default: same_taxonomy
+      description: >-
+        same_taxonomy là mặc định — xem khách sạn thì gợi ý khách sạn.
+        cross_taxonomy là biến thể cross-sell mà Agent dùng khi lịch trình đã có
+        chỗ ở và cần bổ sung hoạt động.
     results:
       type: array
       items:
         $ref: ../openapi.yaml#/components/schemas/ScoredProduct
+    diagnostics:
+      $ref: ../openapi.yaml#/components/schemas/EngineDiagnostics
     requestId:
       type: string
+
 DestinationListResponse:
   type: object
   required:
