@@ -1,0 +1,104 @@
+{
+  "auditedAt": "2026-09-17",
+  "source": "src/data_collection/data/recsys/products.jsonl",
+  "sha256": "c1992efd9e438768e3c763ba44cb465b514d88a0c87dd956a6cb8aac9f1b8a04",
+  "total": 10000,
+  "uniqueProductIds": 10000,
+  "uniqueSourceRefs": 10000,
+  "byKind": {
+    "hotel/property": 1494,
+    "combo/-": 93,
+    "attraction/-": 3517,
+    "golf/-": 6,
+    "flight/route": 60,
+    "hotel/room": 4646,
+    "flight/flight": 184
+  },
+  "destinations": 20,
+  "syntheticSourceRef": 7784,
+  "nonSyntheticSourceRef": 2216,
+  "topLevelFieldCounts": {
+    "13": 10000
+  },
+  "nullCounts": {
+    "unitPrice": 0,
+    "availableFrom": 0,
+    "availableTo": 0,
+    "imageUrl": 0
+  },
+  "available": {
+    "true": 9859,
+    "false": 141
+  },
+  "parentEdges": 4830,
+  "missingParents": 0,
+  "roomCalendarRowsFor30Nights": 139380,
+  "propertiesWithoutRooms": 243,
+  "recordsWithFalseAttribute": 2224,
+  "fractionalStarRatings": 26,
+  "examples": {
+    "hotel/property": {
+      "productId": "bebec426-afc3-548d-a2ca-193e21fd3b37",
+      "name": "Hòn Tằm Resort",
+      "taxonomy": "hotel",
+      "destination": "Nha Trang",
+      "unitPrice": 2219215,
+      "sourceRef": "vinpearl:hotel:668bb33b-09b0-4d7a-a5ba-38ae1f9abf17",
+      "parentProductId": null
+    },
+    "combo/-": {
+      "productId": "1a49c701-4d5f-5711-a290-3b8c386a8bdd",
+      "name": "Combo Vé vào cửa VinWonders + Vinpearl Safari Phú Quốc",
+      "taxonomy": "combo",
+      "destination": "Phú Quốc",
+      "unitPrice": 1500000,
+      "sourceRef": "vinpearl:tour:VW00623",
+      "parentProductId": null
+    },
+    "attraction/-": {
+      "productId": "61992f56-5c81-5ab6-a401-e1cc21cd2884",
+      "name": "Hòn Tằm - Nha Trang",
+      "taxonomy": "attraction",
+      "destination": "Nha Trang",
+      "unitPrice": 300000,
+      "sourceRef": "vinpearl:tour:VW01850",
+      "parentProductId": null
+    },
+    "golf/-": {
+      "productId": "a86717ae-2a66-5aa0-9def-7e42f56fc40f",
+      "name": "[Vinpearl Golf Nam Hội An] - Voucher 01 vòng golf chỉ từ 2.100.000",
+      "taxonomy": "golf",
+      "destination": "Hội An",
+      "unitPrice": 1700000,
+      "sourceRef": "vinpearl:tour:GN02681",
+      "parentProductId": null
+    },
+    "flight/route": {
+      "productId": "0ccbb0e7-4c4b-5c2f-a9f9-7b939cc61bdd",
+      "name": "Vé máy bay Nha Trang - TP. Hồ Chí Minh",
+      "taxonomy": "flight",
+      "destination": "TP. Hồ Chí Minh",
+      "unitPrice": 519000,
+      "sourceRef": "trip:route:nha-sgn",
+      "parentProductId": null
+    },
+    "hotel/room": {
+      "productId": "b6a1a7c0-5cf8-57c9-a008-67ec054d11d9",
+      "name": "Hòn Tằm Resort - Deluxe Bungalow hướng vườn 2 giường đơn",
+      "taxonomy": "hotel",
+      "destination": "Nha Trang",
+      "unitPrice": 2219215,
+      "sourceRef": "vinpearl:hotel:668bb33b-09b0-4d7a-a5ba-38ae1f9abf17:room:63de074c-b3f4-4636-a51c-7dfe6bd566e4",
+      "parentProductId": "bebec426-afc3-548d-a2ca-193e21fd3b37"
+    },
+    "flight/flight": {
+      "productId": "21ff77cb-a25b-54c1-8646-f646f70c6859",
+      "name": "VietJet Air VJ609: Nha Trang - TP. Hồ Chí Minh (00:00)",
+      "taxonomy": "flight",
+      "destination": "TP. Hồ Chí Minh",
+      "unitPrice": 519000,
+      "sourceRef": "trip:flight:CXR-SGN:VJ609",
+      "parentProductId": "0ccbb0e7-4c4b-5c2f-a9f9-7b939cc61bdd"
+    }
+  }
+}

@@ -1,0 +1,23 @@
+flowchart TB
+    FILE["products.jsonl<br/>catalog nguồn + sản phẩm mock"]
+    LOAD["Pipeline nhập dữ liệu của Backend<br/>phân loại sản phẩm, kiểm parent, seed giá và 30 đêm"]
+    WEB["Web / người dùng"]
+    subgraph S1["Service 1 — Backend"]
+        B["Backend API<br/>Catalog · Search · Recommendation · Booking · Agent"]
+        D1[("DB 1: ota_app<br/>GỐC của sản phẩm, giá, lịch phòng, đơn đặt<br/>hotel_properties · hotel_rooms<br/>flight_routes · flight_services<br/>attraction_products · combo_packages · golf_products<br/>users · carts · bookings · vectors")]
+        B -->|"đọc/ghi của chính service"| D1
+    end
+    subgraph S2["Service 2 — CDP clone"]
+        C["CDP API<br/>tiếp nhận hành vi và hồ sơ"]
+        D2[("DB 2: cdp<br/>GỐC của lịch sử hành vi và hồ sơ khách<br/>events · profiles")]
+        C --> D2
+    end
+    subgraph S3["Service 3 — Insider clone"]
+        I["Insider API<br/>tiếp nhận bản sao phục vụ kênh"]
+        D3[("DB 3: insider<br/>BẢN SAO chọn lọc để kích hoạt kênh<br/>insider_profiles · identifiers<br/>insider_events · channel_events")]
+        I --> D3
+    end
+    FILE --> LOAD -->|"nạp catalog một lần; cập nhật có kiểm soát"| D1
+    WEB -->|"HTTP + JWT khi cần"| B
+    B -->|"CdpClient: ghi view/cart/purchase; đọc lịch sử"| C
+    B -->|"Job: top gợi ý + hồ sơ/consent đã đọc từ CDP"| I
