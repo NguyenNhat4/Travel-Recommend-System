@@ -18,10 +18,7 @@ venv/
 # data-collection/tests/fixtures/**/*.html.gz, which is committed on purpose —
 # it is the offline corpus the parser tests run against, and a repo without it
 # makes pytest green-because-empty.
-vota-recsys/data-collection/data/raw/
-vota-recsys/data-collection/data/reports/
-vota-recsys/data-collection/data/seed/
-vota-recsys/data-collection/logs/
+vota-recsys/
 *.log
 
 # Fixtures are tracked even though they live under data-collection/tests.
