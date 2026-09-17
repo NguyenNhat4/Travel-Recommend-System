@@ -2,15 +2,24 @@
 
 > **Nguồn sự thật:** [OpenAPI 1.2.0](../../src/shared/contracts/openapi.yaml) quyết định endpoint, HTTP status, enum và required/optional. Tài liệu này giải thích cách tích hợp; khi có khác biệt, OpenAPI thắng. Xem thêm [payload MVP tối thiểu](../../src/shared/contracts/MVP.md).
 
-**Phiên bản tài liệu:** 1.2.0  
-**Người tạo:** NhatNM  
-**Bên sử dụng:** Team Web  
-**Bên phụ thuộc:** Team Recommendation/Search và Backend Booking  
-**Giao thức:** REST/JSON qua HTTP  
-**Xác thực:** JWT Bearer Token, không bắt buộc với người dùng ẩn danh  
-**Mã hóa:** UTF-8  
-**Tiền tệ mặc định:** VND  
-**Cập nhật:** `2026-09-17`  
+**Phiên bản tài liệu:** 1.2.0
+
+**Người tạo:** NhatNM
+
+**Bên sử dụng:** Team Web
+
+**Bên phụ thuộc:** Team Recommendation/Search và Backend Booking
+
+**Giao thức:** REST/JSON qua HTTP
+
+**Xác thực:** JWT Bearer Token, không bắt buộc với người dùng ẩn danh
+
+**Mã hóa:** UTF-8
+
+**Tiền tệ mặc định:** VND
+
+**Cập nhật:** `2026-09-17`
+
 **Múi giờ:** `Asia/Ho_Chi_Minh`
 
 ---
@@ -35,7 +44,7 @@
 
 - Sinh embedding và lập chỉ mục vector cho sản phẩm.
 - Semantic search trên danh mục sản phẩm.
-- Lọc theo điểm đến, loại sản phẩm, giá và trạng thái còn chỗ.
+- Lọc theo điểm đến, taxonomy, giá và snapshot `available`.
 - Trả đề xuất cá nhân hóa cho người dùng đã đăng nhập.
 - Cung cấp `productId` ổn định và điểm liên quan.
 - Đảm bảo chất lượng và độ trễ của kết quả tìm kiếm.
