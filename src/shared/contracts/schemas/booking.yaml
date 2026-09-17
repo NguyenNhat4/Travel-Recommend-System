@@ -1,0 +1,233 @@
+AddCartItemRequest:
+  type: object
+  required:
+  - productId
+  - usingDate
+  - quantity
+  properties:
+    productId:
+      type: string
+    usingDate:
+      type: string
+      format: date
+    quantity:
+      type: integer
+      minimum: 1
+    nights:
+      type:
+      - integer
+      - 'null'
+      minimum: 1
+      description: Chỉ dùng với taxonomy hotel; loại khác bị bỏ qua.
+UpdateCartItemRequest:
+  type: object
+  minProperties: 1
+  properties:
+    usingDate:
+      type: string
+      format: date
+    quantity:
+      type: integer
+      minimum: 1
+    nights:
+      type:
+      - integer
+      - 'null'
+      minimum: 1
+CartItem:
+  type: object
+  required:
+  - cartItemId
+  - product
+  - usingDate
+  - quantity
+  - nights
+  - lineTotal
+  properties:
+    cartItemId:
+      type: string
+    product:
+      $ref: ../openapi.yaml#/components/schemas/ProductSummary
+    usingDate:
+      type: string
+      format: date
+    quantity:
+      type: integer
+      minimum: 1
+    nights:
+      type:
+      - integer
+      - 'null'
+      minimum: 1
+    lineTotal:
+      type: integer
+      minimum: 0
+CartResponse:
+  type: object
+  required:
+  - cartId
+  - cdpUserId
+  - items
+  - itemCount
+  - subtotal
+  - total
+  - currency
+  - updatedAt
+  properties:
+    cartId:
+      type: string
+    cdpUserId:
+      type: string
+    items:
+      type: array
+      items:
+        $ref: ../openapi.yaml#/components/schemas/CartItem
+    itemCount:
+      type: integer
+      minimum: 0
+    subtotal:
+      type: integer
+      minimum: 0
+    total:
+      type: integer
+      minimum: 0
+    currency:
+      $ref: ../openapi.yaml#/components/schemas/Currency
+    updatedAt:
+      type: string
+      format: date-time
+Contact:
+  type: object
+  required:
+  - fullName
+  - email
+  - phone
+  properties:
+    fullName:
+      type: string
+      minLength: 1
+      maxLength: 100
+    email:
+      type: string
+      format: email
+    phone:
+      type: string
+      pattern: ^0[0-9]{9}$
+CheckoutItemDetail:
+  type: object
+  required:
+  - cartItemId
+  properties:
+    cartItemId:
+      type: string
+    guestNames:
+      type: array
+      items:
+        type: string
+        minLength: 1
+    specialRequest:
+      type:
+      - string
+      - 'null'
+      maxLength: 500
+CheckoutRequest:
+  type: object
+  required:
+  - contact
+  - itemDetails
+  properties:
+    contact:
+      $ref: ../openapi.yaml#/components/schemas/Contact
+    itemDetails:
+      type: array
+      items:
+        $ref: ../openapi.yaml#/components/schemas/CheckoutItemDetail
+BookingItem:
+  type: object
+  required:
+  - bookingItemId
+  - product
+  - usingDate
+  - quantity
+  - nights
+  - lineTotal
+  - guestNames
+  - specialRequest
+  properties:
+    bookingItemId:
+      type: string
+    product:
+      $ref: ../openapi.yaml#/components/schemas/ProductSummary
+    usingDate:
+      type: string
+      format: date
+    quantity:
+      type: integer
+      minimum: 1
+    nights:
+      type:
+      - integer
+      - 'null'
+      minimum: 1
+    lineTotal:
+      type: integer
+      minimum: 0
+    guestNames:
+      type: array
+      items:
+        type: string
+    specialRequest:
+      type:
+      - string
+      - 'null'
+BookingGroup:
+  type: object
+  required:
+  - destination
+  - eventGroupId
+  - items
+  - groupTotal
+  properties:
+    destination:
+      type: string
+    eventGroupId:
+      type: string
+    items:
+      type: array
+      minItems: 1
+      items:
+        $ref: ../openapi.yaml#/components/schemas/BookingItem
+    groupTotal:
+      type: integer
+      minimum: 0
+BookingResponse:
+  type: object
+  required:
+  - referenceCode
+  - createdAt
+  - status
+  - contact
+  - groups
+  - total
+  - currency
+  properties:
+    referenceCode:
+      $ref: ../openapi.yaml#/components/schemas/ReferenceCode
+    createdAt:
+      type: string
+      format: date-time
+    status:
+      type: string
+      const: CONFIRMED
+    contact:
+      $ref: ../openapi.yaml#/components/schemas/Contact
+    groups:
+      type: array
+      minItems: 1
+      items:
+        $ref: ../openapi.yaml#/components/schemas/BookingGroup
+    total:
+      type: integer
+      minimum: 0
+    currency:
+      $ref: ../openapi.yaml#/components/schemas/Currency

@@ -1,518 +1,64 @@
 openapi: 3.1.0
 info:
   title: Travel Recommendation Product API
-  version: 1.0.0
-  description: >-
-    Contract chung cho frontend Next.js và backend Python/FastAPI. Nguồn mô tả
-    nghiệp vụ: docs/spec/hop-dong-tich-hop-backend.md (Auth, Catalog, Search,
-    Recommendation, Booking) và docs/spec/hop-dong-tich-hop-frontend.md (góc
-    nhìn Web, đề xuất ItineraryResponse hợp nhất). Khi tài liệu và file này
-    mâu thuẫn, file này thắng.
+  version: 1.2.0
+  description: 'Contract chung cho frontend Next.js và backend Python/FastAPI. Nguồn mô tả nghiệp vụ:
+    docs/spec/hop-dong-tich-hop-backend.md (Auth, Catalog, Search, Recommendation, Booking) và docs/spec/hop-dong-tich-hop-frontend.md
+    (góc nhìn Web, đề xuất ItineraryResponse hợp nhất). Khi tài liệu và file này mâu thuẫn, file này thắng.'
 servers:
-  - url: /api/v1
+- url: /api/v1
 tags:
-  - name: auth
-    description: Đăng ký, đăng nhập, JWT và tài khoản demo
-  - name: catalog
-    description: Danh sách, chi tiết, sản phẩm tương tự và điểm đến
-  - name: search
-    description: Semantic search trên catalog
-  - name: recommendations
-    description: Gợi ý cá nhân hóa kèm because[]
-  - name: booking
-    description: Giỏ hàng server-side và checkout giả lập
-  - name: assistant
-    description: Itinerary Assistant (đề xuất, chờ Team Agent duyệt)
-
+- name: auth
+  description: Đăng ký, đăng nhập, JWT và tài khoản demo
+- name: catalog
+  description: Danh sách, chi tiết, sản phẩm tương tự và điểm đến
+- name: search
+  description: Semantic search trên catalog
+- name: recommendations
+  description: Gợi ý cá nhân hóa kèm because[]
+- name: booking
+  description: Giỏ hàng server-side và checkout giả lập
+- name: assistant
+  description: Itinerary Assistant (đề xuất, chờ Team Agent duyệt)
 paths:
-  # ---------------------------------------------------------------- auth
   /auth/register:
-    post:
-      tags: [auth]
-      operationId: register
-      security: []
-      summary: Đăng ký và tự đăng nhập
-      parameters:
-        - $ref: '#/components/parameters/XRequestId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RegisterRequest'
-      responses:
-        '201':
-          description: Đăng ký thành công
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthResponse'
-        '400':
-          $ref: '#/components/responses/Error'
-        '409':
-          $ref: '#/components/responses/Error'
-        '500':
-          $ref: '#/components/responses/Error'
-
+    $ref: ./paths/auth.yaml#/~1auth~1register
   /auth/login:
-    post:
-      tags: [auth]
-      operationId: login
-      security: []
-      summary: Đăng nhập
-      parameters:
-        - $ref: '#/components/parameters/XRequestId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/LoginRequest'
-      responses:
-        '200':
-          description: Đăng nhập thành công
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthResponse'
-        '400':
-          $ref: '#/components/responses/Error'
-        '401':
-          $ref: '#/components/responses/Error'
-        '500':
-          $ref: '#/components/responses/Error'
-
+    $ref: ./paths/auth.yaml#/~1auth~1login
   /auth/me:
-    get:
-      tags: [auth]
-      operationId: getMe
-      summary: Thông tin phiên hiện tại
-      security:
-        - bearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/XRequestId'
-      responses:
-        '200':
-          description: Người dùng hiện tại
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthUser'
-        '401':
-          $ref: '#/components/responses/Error'
-        '500':
-          $ref: '#/components/responses/Error'
-
+    $ref: ./paths/auth.yaml#/~1auth~1me
   /auth/demo-accounts:
-    get:
-      tags: [auth]
-      operationId: listDemoAccounts
-      security: []
-      summary: Danh sách tài khoản demo (tắt khi APP_ENV=production)
-      parameters:
-        - $ref: '#/components/parameters/XRequestId'
-      responses:
-        '200':
-          description: Tài khoản demo theo thứ tự trình bày
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DemoAccountListResponse'
-        '404':
-          $ref: '#/components/responses/Error'
-        '500':
-          $ref: '#/components/responses/Error'
-
-  # ------------------------------------------------------------- catalog
+    $ref: ./paths/auth.yaml#/~1auth~1demo-accounts
   /products:
-    get:
-      tags: [catalog]
-      operationId: listProducts
-      summary: Danh sách sản phẩm
-      security:
-        - {}
-        - bearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/XRequestId'
-        - name: destination
-          in: query
-          schema:
-            type: string
-        - name: taxonomy
-          in: query
-          schema:
-            $ref: '#/components/schemas/Taxonomy'
-        - name: availableOnly
-          in: query
-          schema:
-            type: boolean
-            default: false
-        - name: sort
-          in: query
-          schema:
-            $ref: '#/components/schemas/ProductSort'
-        - $ref: '#/components/parameters/Limit'
-        - $ref: '#/components/parameters/Offset'
-      responses:
-        '200':
-          description: Trang sản phẩm
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ProductListResponse'
-        '400':
-          $ref: '#/components/responses/Error'
-        '500':
-          $ref: '#/components/responses/Error'
-
+    $ref: ./paths/catalog.yaml#/~1products
   /products/{productId}:
-    get:
-      tags: [catalog]
-      operationId: getProduct
-      summary: Chi tiết sản phẩm
-      security:
-        - {}
-        - bearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/XRequestId'
-        - $ref: '#/components/parameters/ProductId'
-      responses:
-        '200':
-          description: Chi tiết sản phẩm
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ProductDetail'
-        '404':
-          $ref: '#/components/responses/Error'
-        '500':
-          $ref: '#/components/responses/Error'
-
+    $ref: ./paths/catalog.yaml#/~1products~1{productId}
   /products/{productId}/similar:
-    get:
-      tags: [catalog]
-      operationId: getSimilarProducts
-      summary: Sản phẩm tương tự theo độ gần vector sản phẩm
-      security:
-        - {}
-        - bearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/XRequestId'
-        - $ref: '#/components/parameters/ProductId'
-        - name: limit
-          in: query
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 20
-            default: 8
-      responses:
-        '200':
-          description: Sản phẩm tương tự, có thể rỗng
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SimilarProductsResponse'
-        '404':
-          $ref: '#/components/responses/Error'
-        '500':
-          $ref: '#/components/responses/Error'
-
+    $ref: ./paths/catalog.yaml#/~1products~1{productId}~1similar
   /destinations:
-    get:
-      tags: [catalog]
-      operationId: listDestinations
-      security: []
-      summary: Danh sách điểm đến chuẩn hóa
-      parameters:
-        - $ref: '#/components/parameters/XRequestId'
-      responses:
-        '200':
-          description: Điểm đến
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DestinationListResponse'
-        '500':
-          $ref: '#/components/responses/Error'
-
-  # -------------------------------------------------------------- search
+    $ref: ./paths/catalog.yaml#/~1destinations
   /search:
-    post:
-      tags: [search]
-      operationId: searchProducts
-      summary: Semantic search trên catalog
-      security:
-        - {}
-        - bearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/XRequestId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/SearchRequest'
-      responses:
-        '200':
-          description: Kết quả tìm kiếm
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SearchResponse'
-        '400':
-          $ref: '#/components/responses/Error'
-        '401':
-          $ref: '#/components/responses/Error'
-        '503':
-          $ref: '#/components/responses/Error'
-        '500':
-          $ref: '#/components/responses/Error'
-
-  # ----------------------------------------------------- recommendations
+    $ref: ./paths/search.yaml#/~1search
   /recommendations:
-    get:
-      tags: [recommendations]
-      operationId: getRecommendations
-      summary: Gợi ý cá nhân hóa, hoặc phổ biến khi không có JWT
-      security:
-        - {}
-        - bearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/XRequestId'
-        - name: k
-          in: query
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 20
-            default: 5
-        - name: destination
-          in: query
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Gợi ý
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RecommendationResponse'
-        '400':
-          $ref: '#/components/responses/Error'
-        '401':
-          $ref: '#/components/responses/Error'
-        '500':
-          $ref: '#/components/responses/Error'
-
-  # ------------------------------------------------------------- booking
+    $ref: ./paths/recommendations.yaml#/~1recommendations
   /cart:
-    get:
-      tags: [booking]
-      operationId: getCart
-      summary: Giỏ hàng của người dùng hiện tại
-      security:
-        - bearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/XRequestId'
-      responses:
-        '200':
-          $ref: '#/components/responses/Cart'
-        '401':
-          $ref: '#/components/responses/Error'
-        '500':
-          $ref: '#/components/responses/Error'
-
+    $ref: ./paths/booking.yaml#/~1cart
   /cart/items:
-    post:
-      tags: [booking]
-      operationId: addCartItem
-      summary: Thêm mục vào giỏ (cộng dồn nếu trùng productId và usingDate)
-      security:
-        - bearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/XRequestId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/AddCartItemRequest'
-      responses:
-        '200':
-          $ref: '#/components/responses/Cart'
-        '400':
-          $ref: '#/components/responses/Error'
-        '401':
-          $ref: '#/components/responses/Error'
-        '404':
-          $ref: '#/components/responses/Error'
-        '409':
-          $ref: '#/components/responses/Error'
-        '422':
-          $ref: '#/components/responses/Error'
-        '500':
-          $ref: '#/components/responses/Error'
-
+    $ref: ./paths/booking.yaml#/~1cart~1items
   /cart/items/{cartItemId}:
-    parameters:
-      - $ref: '#/components/parameters/CartItemId'
-    patch:
-      tags: [booking]
-      operationId: updateCartItem
-      summary: Sửa ngày, số lượng hoặc số đêm của một mục giỏ
-      security:
-        - bearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/XRequestId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UpdateCartItemRequest'
-      responses:
-        '200':
-          $ref: '#/components/responses/Cart'
-        '400':
-          $ref: '#/components/responses/Error'
-        '401':
-          $ref: '#/components/responses/Error'
-        '404':
-          $ref: '#/components/responses/Error'
-        '409':
-          $ref: '#/components/responses/Error'
-        '422':
-          $ref: '#/components/responses/Error'
-        '500':
-          $ref: '#/components/responses/Error'
-    delete:
-      tags: [booking]
-      operationId: removeCartItem
-      summary: Xóa một mục giỏ
-      security:
-        - bearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/XRequestId'
-      responses:
-        '200':
-          $ref: '#/components/responses/Cart'
-        '401':
-          $ref: '#/components/responses/Error'
-        '404':
-          $ref: '#/components/responses/Error'
-        '500':
-          $ref: '#/components/responses/Error'
-
+    $ref: ./paths/booking.yaml#/~1cart~1items~1{cartItemId}
   /bookings:
-    post:
-      tags: [booking]
-      operationId: createBooking
-      summary: Checkout toàn bộ giỏ hiện tại
-      security:
-        - bearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/XRequestId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CheckoutRequest'
-      responses:
-        '201':
-          description: Đặt chỗ thành công, event purchase đã được ghi
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BookingResponse'
-        '400':
-          $ref: '#/components/responses/Error'
-        '401':
-          $ref: '#/components/responses/Error'
-        '409':
-          $ref: '#/components/responses/Error'
-        '422':
-          $ref: '#/components/responses/Error'
-        '500':
-          $ref: '#/components/responses/Error'
-
+    $ref: ./paths/booking.yaml#/~1bookings
   /bookings/{referenceCode}:
-    get:
-      tags: [booking]
-      operationId: getBooking
-      summary: Đọc lại đơn đặt chỗ của chính người dùng
-      security:
-        - bearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/XRequestId'
-        - name: referenceCode
-          in: path
-          required: true
-          schema:
-            $ref: '#/components/schemas/ReferenceCode'
-      responses:
-        '200':
-          description: Đơn đặt chỗ
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BookingResponse'
-        '401':
-          $ref: '#/components/responses/Error'
-        '404':
-          $ref: '#/components/responses/Error'
-        '500':
-          $ref: '#/components/responses/Error'
-
-  # ----------------------------------------------------------- assistant
+    $ref: ./paths/booking.yaml#/~1bookings~1{referenceCode}
   /assistant/itineraries:
-    post:
-      tags: [assistant]
-      operationId: createItinerary
-      summary: Tạo hoặc tiếp tục lịch trình (ĐỀ XUẤT — chờ Team Agent duyệt)
-      description: >-
-        Shape hợp nhất đề xuất ở docs/spec/hop-dong-tich-hop-frontend.md §9.
-        Lỗi luôn trả ErrorResponse với HTTP status tương ứng, không có
-        status "ERROR" trong body 200.
-      security:
-        - {}
-        - bearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/XRequestId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ItineraryRequest'
-      responses:
-        '200':
-          description: Kết quả theo status
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ItineraryResponse'
-        '400':
-          $ref: '#/components/responses/Error'
-        '401':
-          $ref: '#/components/responses/Error'
-        '404':
-          $ref: '#/components/responses/Error'
-        '422':
-          $ref: '#/components/responses/Error'
-        '500':
-          $ref: '#/components/responses/Error'
-        '503':
-          $ref: '#/components/responses/Error'
-
+    $ref: ./paths/itinerary-agent.yaml#/~1assistant~1itineraries
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
-
   parameters:
     XRequestId:
       name: X-Request-ID
@@ -549,7 +95,6 @@ components:
       required: true
       schema:
         type: string
-
   responses:
     Error:
       description: Lỗi theo envelope chung
@@ -563,1103 +108,124 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/CartResponse'
-
   schemas:
-    # ------------------------------------------------------------ enums
     Taxonomy:
-      type: string
-      enum: [hotel, flight, attraction, combo, golf]
+      $ref: ./schemas/common.yaml#/Taxonomy
     ProductSort:
-      type: string
-      enum: [popular, price_asc, price_desc]
-      default: popular
+      $ref: ./schemas/common.yaml#/ProductSort
     SearchSort:
-      type: string
-      enum: [relevance, price_asc, price_desc]
-      default: relevance
+      $ref: ./schemas/common.yaml#/SearchSort
     Strategy:
-      type: string
-      description: Thêm giá trị mới phải thông báo trước; client map giá trị lạ về tiêu đề chung.
-      enum: [cross_vertical, recent_activity, dormant, popular]
+      $ref: ./schemas/common.yaml#/Strategy
     BecauseEvent:
-      type: string
-      enum: [purchase, add_to_cart, product_view, search]
+      $ref: ./schemas/common.yaml#/BecauseEvent
     Currency:
-      type: string
-      const: VND
+      $ref: ./schemas/common.yaml#/Currency
     ReferenceCode:
-      type: string
-      pattern: '^VOTA-[0-9]{8}-[A-Z0-9]{4}$'
+      $ref: ./schemas/common.yaml#/ReferenceCode
     ErrorCode:
-      type: string
-      enum:
-        - VALIDATION_ERROR
-        - CART_EMPTY
-        - INVALID_CREDENTIALS
-        - INVALID_TOKEN
-        - TOKEN_EXPIRED
-        - DEMO_ONLY
-        - PRODUCT_NOT_FOUND
-        - CART_ITEM_NOT_FOUND
-        - BOOKING_NOT_FOUND
-        - NOT_FOUND
-        - EMAIL_ALREADY_EXISTS
-        - PRODUCT_UNAVAILABLE
-        - PRICE_CHANGED
-        - DATE_OUT_OF_RANGE
-        - SEARCH_UNAVAILABLE
-        - INTERNAL_ERROR
-        - INVALID_TRIP_DURATION
-        - CONVERSATION_NOT_FOUND
-        - UNSUPPORTED_DESTINATION
-        - LLM_UNAVAILABLE
-        - ITINERARY_VALIDATION_FAILED
-
-    # ------------------------------------------------------------ error
+      $ref: ./schemas/common.yaml#/ErrorCode
     ErrorResponse:
-      type: object
-      required: [error]
-      properties:
-        error:
-          type: object
-          required: [code, message, retryable, requestId]
-          properties:
-            code:
-              $ref: '#/components/schemas/ErrorCode'
-            message:
-              type: string
-              description: Tiếng Việt, hiển thị được trực tiếp cho người dùng.
-            retryable:
-              type: boolean
-            requestId:
-              type: string
-            details:
-              type: object
-              additionalProperties: true
-              description: >-
-                Tùy mã lỗi. VALIDATION_ERROR {fields}; PRODUCT_NOT_FOUND và
-                PRODUCT_UNAVAILABLE {productId}; CART_ITEM_NOT_FOUND
-                {cartItemId}; PRICE_CHANGED {productId, oldPrice, newPrice};
-                DATE_OUT_OF_RANGE {productId, availableFrom, availableTo};
-                UNSUPPORTED_DESTINATION {destination, supportedDestinations}.
-
-    # ---------------------------------------------------------- catalog
+      $ref: ./schemas/common.yaml#/ErrorResponse
     ProductAttributes:
-      type: object
-      description: >-
-        Giá trị là true hoặc vắng mặt, trừ starRating. Không bao giờ gửi false.
-        Key mới là thay đổi tương thích; client bỏ qua key lạ.
-      properties:
-        starRating: { type: integer, minimum: 1, maximum: 5 }
-        oceanView: { type: boolean, const: true }
-        privateBeach: { type: boolean, const: true }
-        pool: { type: boolean, const: true }
-        kidsPool: { type: boolean, const: true }
-        familyFriendly: { type: boolean, const: true }
-        kidsClub: { type: boolean, const: true }
-        spa: { type: boolean, const: true }
-        freeBreakfast: { type: boolean, const: true }
-        nearBeach: { type: boolean, const: true }
-        nearCenter: { type: boolean, const: true }
-        shuttle: { type: boolean, const: true }
-        wifi: { type: boolean, const: true }
-        parking: { type: boolean, const: true }
-        directFlight: { type: boolean, const: true }
-        baggage: { type: boolean, const: true }
-        indoor: { type: boolean, const: true }
-        outdoor: { type: boolean, const: true }
-        waterPark: { type: boolean, const: true }
-        show: { type: boolean, const: true }
-        buffet: { type: boolean, const: true }
-        seaside: { type: boolean, const: true }
-        caddie: { type: boolean, const: true }
-      additionalProperties: true
-
+      $ref: ./schemas/catalog.yaml#/ProductAttributes
     ProductSummary:
-      type: object
-      required:
-        - productId
-        - name
-        - taxonomy
-        - destination
-        - unitPrice
-        - currency
-        - available
-        - availableFrom
-        - availableTo
-        - attributes
-      properties:
-        productId:
-          type: string
-        name:
-          type: string
-        taxonomy:
-          $ref: '#/components/schemas/Taxonomy'
-        destination:
-          type: string
-        unitPrice:
-          type: integer
-          minimum: 0
-          description: Giá một đơn vị, số nguyên VND. Đơn vị dẫn xuất từ taxonomy.
-        currency:
-          $ref: '#/components/schemas/Currency'
-        available:
-          type: boolean
-        availableFrom:
-          type: string
-          format: date
-        availableTo:
-          type: string
-          format: date
-        imageUrl:
-          type: [string, 'null']
-        rating:
-          type: [number, 'null']
-          minimum: 0
-          maximum: 5
-        reviewCount:
-          type: [integer, 'null']
-          minimum: 0
-        attributes:
-          $ref: '#/components/schemas/ProductAttributes'
-      example:
-        productId: nt-h-01
-        name: Vinpearl Resort Nha Trang - Deluxe Ocean View
-        taxonomy: hotel
-        destination: Nha Trang
-        unitPrice: 3400000
-        currency: VND
-        available: true
-        availableFrom: '2026-10-01'
-        availableTo: '2027-03-31'
-        imageUrl: https://cdn.example.vn/nt-h-01.jpg
-        rating: 4.6
-        reviewCount: 1293
-        attributes:
-          starRating: 5
-          oceanView: true
-          privateBeach: true
-          familyFriendly: true
-
+      $ref: ./schemas/catalog.yaml#/ProductSummary
     ProductDetail:
-      allOf:
-        - $ref: '#/components/schemas/ProductSummary'
-        - type: object
-          required: [description]
-          properties:
-            description:
-              type: string
-              description: Chuỗi rỗng nếu nguồn crawl thiếu.
-            sourceRef:
-              type: [string, 'null']
-              description: Chỉ hiện ở chế độ debug.
-
+      $ref: ./schemas/catalog.yaml#/ProductDetail
     ScoredProduct:
-      allOf:
-        - $ref: '#/components/schemas/ProductSummary'
-        - type: object
-          required: [score]
-          properties:
-            score:
-              type: number
-              minimum: 0
-              maximum: 1
-
+      $ref: ./schemas/catalog.yaml#/ScoredProduct
     ProductListResponse:
-      type: object
-      required: [results, total, limit, offset, requestId]
-      properties:
-        results:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProductSummary'
-        total:
-          type: integer
-          minimum: 0
-        limit:
-          type: integer
-        offset:
-          type: integer
-        requestId:
-          type: string
-
+      $ref: ./schemas/catalog.yaml#/ProductListResponse
     SimilarProductsResponse:
-      type: object
-      required: [productId, results, requestId]
-      properties:
-        productId:
-          type: string
-        results:
-          type: array
-          items:
-            $ref: '#/components/schemas/ScoredProduct'
-        requestId:
-          type: string
-
+      $ref: ./schemas/catalog.yaml#/SimilarProductsResponse
     DestinationListResponse:
-      type: object
-      required: [destinations]
-      properties:
-        destinations:
-          type: array
-          items:
-            type: object
-            required: [destination, productCount]
-            properties:
-              destination:
-                type: string
-              productCount:
-                type: integer
-                minimum: 0
-
-    # ------------------------------------------------------------- auth
+      $ref: ./schemas/catalog.yaml#/DestinationListResponse
     RegisterRequest:
-      type: object
-      required: [email, password, fullName]
-      properties:
-        email:
-          type: string
-          format: email
-        password:
-          type: string
-          minLength: 8
-        fullName:
-          type: string
-          minLength: 1
-          maxLength: 100
-
+      $ref: ./schemas/auth.yaml#/RegisterRequest
     LoginRequest:
-      type: object
-      required: [email, password]
-      properties:
-        email:
-          type: string
-          format: email
-        password:
-          type: string
-
+      $ref: ./schemas/auth.yaml#/LoginRequest
     AuthUser:
-      type: object
-      required: [userId, cdpUserId, email, fullName]
-      properties:
-        userId:
-          type: string
-        cdpUserId:
-          type: string
-        email:
-          type: string
-          format: email
-        fullName:
-          type: string
-
+      $ref: ./schemas/auth.yaml#/AuthUser
     AuthResponse:
-      type: object
-      required: [accessToken, tokenType, expiresIn, user]
-      properties:
-        accessToken:
-          type: string
-        tokenType:
-          type: string
-          const: Bearer
-        expiresIn:
-          type: integer
-          description: Giây
-        user:
-          $ref: '#/components/schemas/AuthUser'
-
+      $ref: ./schemas/auth.yaml#/AuthResponse
     DemoAccountListResponse:
-      type: object
-      required: [accounts]
-      properties:
-        accounts:
-          type: array
-          items:
-            type: object
-            required: [email, fullName, personaLabel, blurb]
-            properties:
-              email:
-                type: string
-                format: email
-              fullName:
-                type: string
-              personaLabel:
-                type: string
-              blurb:
-                type: string
-
-    # ----------------------------------------------------------- search
+      $ref: ./schemas/auth.yaml#/DemoAccountListResponse
     SearchRequest:
-      type: object
-      required: [query]
-      properties:
-        query:
-          type: string
-          minLength: 1
-          maxLength: 500
-        destination:
-          type: [string, 'null']
-        taxonomy:
-          oneOf:
-            - $ref: '#/components/schemas/Taxonomy'
-            - type: 'null'
-        priceMin:
-          type: [integer, 'null']
-          minimum: 0
-        priceMax:
-          type: [integer, 'null']
-          minimum: 0
-        starRatingMin:
-          type: [integer, 'null']
-          minimum: 1
-          maximum: 5
-        availableOnly:
-          type: [boolean, 'null']
-          default: true
-        sort:
-          oneOf:
-            - $ref: '#/components/schemas/SearchSort'
-            - type: 'null'
-        limit:
-          type: [integer, 'null']
-          minimum: 1
-          maximum: 50
-          default: 20
-        offset:
-          type: [integer, 'null']
-          minimum: 0
-          default: 0
-
+      $ref: ./schemas/search.yaml#/SearchRequest
     SearchFacets:
-      type: object
-      required: [taxonomy, destination]
-      properties:
-        taxonomy:
-          type: object
-          propertyNames:
-            $ref: '#/components/schemas/Taxonomy'
-          additionalProperties:
-            type: integer
-            minimum: 0
-        destination:
-          type: object
-          additionalProperties:
-            type: integer
-            minimum: 0
-
+      $ref: ./schemas/search.yaml#/SearchFacets
     SearchResponse:
-      type: object
-      required: [results, total, limit, offset, topScore, facets, requestId]
-      properties:
-        results:
-          type: array
-          items:
-            $ref: '#/components/schemas/ScoredProduct'
-        total:
-          type: integer
-          minimum: 0
-        limit:
-          type: integer
-        offset:
-          type: integer
-        topScore:
-          type: [number, 'null']
-          minimum: 0
-          maximum: 1
-        facets:
-          $ref: '#/components/schemas/SearchFacets'
-        requestId:
-          type: string
-
-    # -------------------------------------------------- recommendations
+      $ref: ./schemas/search.yaml#/SearchResponse
     BecauseItem:
-      type: object
-      required: [productId, productName, imageUrl, event, daysAgo, contribution]
-      properties:
-        productId:
-          type: [string, 'null']
-          description: null khi sản phẩm nguồn đã bị xóa hoặc event là search.
-        productName:
-          type: string
-          description: Với event search thì là truy vấn người dùng đã gõ.
-        imageUrl:
-          type: [string, 'null']
-        event:
-          $ref: '#/components/schemas/BecauseEvent'
-        daysAgo:
-          type: integer
-          minimum: 0
-        contribution:
-          type: number
-          minimum: 0
-          maximum: 1
-
+      $ref: ./schemas/recommendations.yaml#/BecauseItem
     RecommendationItem:
-      type: object
-      description: ProductSummary rút gọn (không có availableFrom/To, rating, reviewCount) cộng rank, score, because.
-      required:
-        - rank
-        - productId
-        - name
-        - taxonomy
-        - destination
-        - unitPrice
-        - currency
-        - available
-        - attributes
-        - score
-        - because
-      properties:
-        rank:
-          type: integer
-          minimum: 1
-        productId:
-          type: string
-        name:
-          type: string
-        taxonomy:
-          $ref: '#/components/schemas/Taxonomy'
-        destination:
-          type: string
-        unitPrice:
-          type: integer
-          minimum: 0
-        currency:
-          $ref: '#/components/schemas/Currency'
-        available:
-          type: boolean
-        imageUrl:
-          type: [string, 'null']
-        attributes:
-          $ref: '#/components/schemas/ProductAttributes'
-        score:
-          type: number
-          minimum: 0
-          maximum: 1
-        because:
-          type: array
-          description: Sắp giảm dần theo contribution. Rỗng khi coldStart hoặc strategy popular.
-          items:
-            $ref: '#/components/schemas/BecauseItem'
-
+      $ref: ./schemas/recommendations.yaml#/RecommendationItem
     RecommendationDiagnostics:
-      type: object
-      required: [eventsUsed, coldStart, excludedVerticals, latencyMs]
-      properties:
-        eventsUsed:
-          type: integer
-          minimum: 0
-        coldStart:
-          type: boolean
-        excludedVerticals:
-          type: array
-          items:
-            $ref: '#/components/schemas/Taxonomy'
-        latencyMs:
-          type: integer
-          minimum: 0
-
+      $ref: ./schemas/recommendations.yaml#/RecommendationDiagnostics
     RecommendationResponse:
-      type: object
-      required:
-        - cdpUserId
-        - generatedAt
-        - modelVersion
-        - strategy
-        - nextVertical
-        - destination
-        - recommendations
-        - diagnostics
-      properties:
-        cdpUserId:
-          type: [string, 'null']
-          description: null khi không có JWT.
-        generatedAt:
-          type: string
-          format: date-time
-        modelVersion:
-          type: string
-        strategy:
-          $ref: '#/components/schemas/Strategy'
-        nextVertical:
-          description: Bắt buộc khác null khi strategy là cross_vertical.
-          oneOf:
-            - $ref: '#/components/schemas/Taxonomy'
-            - type: 'null'
-        destination:
-          type: [string, 'null']
-        recommendations:
-          type: array
-          items:
-            $ref: '#/components/schemas/RecommendationItem'
-        diagnostics:
-          $ref: '#/components/schemas/RecommendationDiagnostics'
-
-    # ---------------------------------------------------------- booking
+      $ref: ./schemas/recommendations.yaml#/RecommendationResponse
     AddCartItemRequest:
-      type: object
-      required: [productId, usingDate, quantity]
-      properties:
-        productId:
-          type: string
-        usingDate:
-          type: string
-          format: date
-        quantity:
-          type: integer
-          minimum: 1
-        nights:
-          type: [integer, 'null']
-          minimum: 1
-          description: Chỉ dùng với taxonomy hotel; loại khác bị bỏ qua.
-
+      $ref: ./schemas/booking.yaml#/AddCartItemRequest
     UpdateCartItemRequest:
-      type: object
-      minProperties: 1
-      properties:
-        usingDate:
-          type: string
-          format: date
-        quantity:
-          type: integer
-          minimum: 1
-        nights:
-          type: [integer, 'null']
-          minimum: 1
-
+      $ref: ./schemas/booking.yaml#/UpdateCartItemRequest
     CartItem:
-      type: object
-      required: [cartItemId, product, usingDate, quantity, nights, lineTotal]
-      properties:
-        cartItemId:
-          type: string
-        product:
-          $ref: '#/components/schemas/ProductSummary'
-        usingDate:
-          type: string
-          format: date
-        quantity:
-          type: integer
-          minimum: 1
-        nights:
-          type: [integer, 'null']
-          minimum: 1
-        lineTotal:
-          type: integer
-          minimum: 0
-
+      $ref: ./schemas/booking.yaml#/CartItem
     CartResponse:
-      type: object
-      required: [cartId, cdpUserId, items, itemCount, subtotal, total, currency, updatedAt]
-      properties:
-        cartId:
-          type: string
-        cdpUserId:
-          type: string
-        items:
-          type: array
-          items:
-            $ref: '#/components/schemas/CartItem'
-        itemCount:
-          type: integer
-          minimum: 0
-        subtotal:
-          type: integer
-          minimum: 0
-        total:
-          type: integer
-          minimum: 0
-        currency:
-          $ref: '#/components/schemas/Currency'
-        updatedAt:
-          type: string
-          format: date-time
-
+      $ref: ./schemas/booking.yaml#/CartResponse
     Contact:
-      type: object
-      required: [fullName, email, phone]
-      properties:
-        fullName:
-          type: string
-          minLength: 1
-          maxLength: 100
-        email:
-          type: string
-          format: email
-        phone:
-          type: string
-          pattern: '^0[0-9]{9}$'
-
+      $ref: ./schemas/booking.yaml#/Contact
     CheckoutItemDetail:
-      type: object
-      required: [cartItemId]
-      properties:
-        cartItemId:
-          type: string
-        guestNames:
-          type: array
-          items:
-            type: string
-            minLength: 1
-        specialRequest:
-          type: [string, 'null']
-          maxLength: 500
-
+      $ref: ./schemas/booking.yaml#/CheckoutItemDetail
     CheckoutRequest:
-      type: object
-      required: [contact, itemDetails]
-      properties:
-        contact:
-          $ref: '#/components/schemas/Contact'
-        itemDetails:
-          type: array
-          items:
-            $ref: '#/components/schemas/CheckoutItemDetail'
-
+      $ref: ./schemas/booking.yaml#/CheckoutRequest
     BookingItem:
-      type: object
-      required: [bookingItemId, product, usingDate, quantity, nights, lineTotal, guestNames, specialRequest]
-      properties:
-        bookingItemId:
-          type: string
-        product:
-          $ref: '#/components/schemas/ProductSummary'
-        usingDate:
-          type: string
-          format: date
-        quantity:
-          type: integer
-          minimum: 1
-        nights:
-          type: [integer, 'null']
-          minimum: 1
-        lineTotal:
-          type: integer
-          minimum: 0
-        guestNames:
-          type: array
-          items:
-            type: string
-        specialRequest:
-          type: [string, 'null']
-
+      $ref: ./schemas/booking.yaml#/BookingItem
     BookingGroup:
-      type: object
-      required: [destination, eventGroupId, items, groupTotal]
-      properties:
-        destination:
-          type: string
-        eventGroupId:
-          type: string
-        items:
-          type: array
-          minItems: 1
-          items:
-            $ref: '#/components/schemas/BookingItem'
-        groupTotal:
-          type: integer
-          minimum: 0
-
+      $ref: ./schemas/booking.yaml#/BookingGroup
     BookingResponse:
-      type: object
-      required: [referenceCode, createdAt, status, contact, groups, total, currency]
-      properties:
-        referenceCode:
-          $ref: '#/components/schemas/ReferenceCode'
-        createdAt:
-          type: string
-          format: date-time
-        status:
-          type: string
-          const: CONFIRMED
-        contact:
-          $ref: '#/components/schemas/Contact'
-        groups:
-          type: array
-          minItems: 1
-          items:
-            $ref: '#/components/schemas/BookingGroup'
-        total:
-          type: integer
-          minimum: 0
-        currency:
-          $ref: '#/components/schemas/Currency'
-
-    # -------------------------------------------- assistant (ĐỀ XUẤT)
+      $ref: ./schemas/booking.yaml#/BookingResponse
     SlotTime:
-      type: string
-      enum: [MORNING, NOON, AFTERNOON, EVENING]
+      $ref: ./schemas/itinerary-agent.yaml#/SlotTime
     ItemSource:
-      type: string
-      enum: [SEARCH, RECOMMENDATION]
+      $ref: ./schemas/itinerary-agent.yaml#/ItemSource
     ActivityType:
-      type: string
-      enum: [MEAL, REST, FREE_TIME, TRANSFER, SIGHTSEEING]
+      $ref: ./schemas/itinerary-agent.yaml#/ActivityType
     PartyType:
-      type: string
-      enum: [SOLO, COUPLE, FAMILY_WITH_KIDS, FRIENDS]
+      $ref: ./schemas/itinerary-agent.yaml#/PartyType
     Pace:
-      type: string
-      enum: [RELAXED, BALANCED, PACKED]
+      $ref: ./schemas/itinerary-agent.yaml#/Pace
     BudgetStatus:
-      type: string
-      enum: [WITHIN_BUDGET, OVER_BUDGET, NO_BUDGET]
-
+      $ref: ./schemas/itinerary-agent.yaml#/BudgetStatus
     Party:
-      type: object
-      required: [type, adults, children]
-      properties:
-        type:
-          oneOf:
-            - $ref: '#/components/schemas/PartyType'
-            - type: 'null'
-        adults:
-          type: integer
-          minimum: 1
-        children:
-          type: integer
-          minimum: 0
-
+      $ref: ./schemas/itinerary-agent.yaml#/Party
     TripIntent:
-      type: object
-      description: ĐỀ XUẤT — chờ Team Agent duyệt.
-      required: [destination, startDate, days, party, budget, interests, pace]
-      properties:
-        destination:
-          type: [string, 'null']
-        startDate:
-          type: [string, 'null']
-          format: date
-        days:
-          type: [integer, 'null']
-          minimum: 1
-          maximum: 7
-        party:
-          oneOf:
-            - $ref: '#/components/schemas/Party'
-            - type: 'null'
-        budget:
-          type: [integer, 'null']
-          minimum: 0
-          description: Tổng ngân sách VND.
-        interests:
-          type: array
-          items:
-            type: string
-        pace:
-          oneOf:
-            - $ref: '#/components/schemas/Pace'
-            - type: 'null'
-
+      $ref: ./schemas/itinerary-agent.yaml#/TripIntent
     TripIntentPatch:
-      type: object
-      description: Chỉ các trường người dùng sửa bằng chip; trường vắng mặt nghĩa là không đổi.
-      minProperties: 1
-      properties:
-        destination:
-          type: string
-        startDate:
-          type: [string, 'null']
-          format: date
-        days:
-          type: integer
-          minimum: 1
-          maximum: 7
-        party:
-          $ref: '#/components/schemas/Party'
-        budget:
-          type: [integer, 'null']
-          minimum: 0
-        interests:
-          type: array
-          items:
-            type: string
-        pace:
-          oneOf:
-            - $ref: '#/components/schemas/Pace'
-            - type: 'null'
-
+      $ref: ./schemas/itinerary-agent.yaml#/TripIntentPatch
     ItineraryRequest:
-      type: object
-      description: >-
-        ĐỀ XUẤT — chờ Team Agent duyệt. Cần message hoặc intentOverride;
-        intentOverride yêu cầu conversationId khác null.
-      properties:
-        conversationId:
-          type: [string, 'null']
-        message:
-          type: [string, 'null']
-          minLength: 1
-          maxLength: 1000
-        intentOverride:
-          oneOf:
-            - $ref: '#/components/schemas/TripIntentPatch'
-            - type: 'null'
-        context:
-          type: object
-          properties:
-            language:
-              type: [string, 'null']
-              enum: [vi, en, null]
-      anyOf:
-        - required: [message]
-          properties:
-            message:
-              type: string
-        - required: [conversationId, intentOverride]
-          properties:
-            conversationId:
-              type: string
-            intentOverride:
-              $ref: '#/components/schemas/TripIntentPatch'
-
+      $ref: ./schemas/itinerary-agent.yaml#/ItineraryRequest
     ItinerarySlot:
-      type: object
-      required: [slotId, time, startTime, endTime, activityType, product, note, source, because]
-      properties:
-        slotId:
-          type: string
-        time:
-          $ref: '#/components/schemas/SlotTime'
-        startTime:
-          type: [string, 'null']
-          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
-        endTime:
-          type: [string, 'null']
-          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
-        activityType:
-          description: Chỉ khác null khi product là null.
-          oneOf:
-            - $ref: '#/components/schemas/ActivityType'
-            - type: 'null'
-        product:
-          description: null nghĩa là ActivityNote (không giá, không nút).
-          oneOf:
-            - $ref: '#/components/schemas/ProductSummary'
-            - type: 'null'
-        note:
-          type: [string, 'null']
-          maxLength: 160
-        source:
-          oneOf:
-            - $ref: '#/components/schemas/ItemSource'
-            - type: 'null'
-        because:
-          type: array
-          items:
-            $ref: '#/components/schemas/BecauseItem'
-
+      $ref: ./schemas/itinerary-agent.yaml#/ItinerarySlot
     ItineraryStay:
-      type: object
-      required: [product, nights, note, source, because]
-      properties:
-        product:
-          $ref: '#/components/schemas/ProductSummary'
-        nights:
-          type: integer
-          minimum: 1
-        note:
-          type: [string, 'null']
-          maxLength: 160
-        source:
-          $ref: '#/components/schemas/ItemSource'
-        because:
-          type: array
-          items:
-            $ref: '#/components/schemas/BecauseItem'
-
+      $ref: ./schemas/itinerary-agent.yaml#/ItineraryStay
     ItineraryDay:
-      type: object
-      required: [day, date, title, slots]
-      properties:
-        day:
-          type: integer
-          minimum: 1
-        date:
-          type: [string, 'null']
-          format: date
-        title:
-          type: string
-        slots:
-          type: array
-          items:
-            $ref: '#/components/schemas/ItinerarySlot'
-
+      $ref: ./schemas/itinerary-agent.yaml#/ItineraryDay
     ItineraryPlan:
-      type: object
-      required: [title, stay, days, bookableCount, estimatedTotal, currency, budgetStatus, priceAsOf]
-      properties:
-        title:
-          type: string
-        stay:
-          oneOf:
-            - $ref: '#/components/schemas/ItineraryStay'
-            - type: 'null'
-        days:
-          type: array
-          minItems: 1
-          items:
-            $ref: '#/components/schemas/ItineraryDay'
-        bookableCount:
-          type: integer
-          minimum: 0
-        estimatedTotal:
-          type: integer
-          minimum: 0
-          description: Backend tính, không phải LLM.
-        currency:
-          $ref: '#/components/schemas/Currency'
-        budgetStatus:
-          $ref: '#/components/schemas/BudgetStatus'
-        priceAsOf:
-          type: string
-          format: date-time
-
+      $ref: ./schemas/itinerary-agent.yaml#/ItineraryPlan
     SearchResultsByTaxonomy:
-      type: object
-      propertyNames:
-        $ref: '#/components/schemas/Taxonomy'
-      additionalProperties:
-        type: array
-        maxItems: 6
-        items:
-          $ref: '#/components/schemas/ProductSummary'
-
+      $ref: ./schemas/itinerary-agent.yaml#/SearchResultsByTaxonomy
     ItineraryWarning:
-      type: object
-      required: [code, message, productId]
-      properties:
-        code:
-          type: string
-          description: Ví dụ PRODUCT_DROPPED_UNAVAILABLE, DAY_WITHOUT_PRODUCTS, OVER_BUDGET.
-        message:
-          type: string
-        productId:
-          type: [string, 'null']
-
+      $ref: ./schemas/itinerary-agent.yaml#/ItineraryWarning
     ItineraryMetadata:
-      type: object
-      required: [personalised, searchRequestIds, generatedAt, requestId]
-      properties:
-        personalised:
-          type: boolean
-        searchRequestIds:
-          type: array
-          items:
-            type: string
-        generatedAt:
-          type: string
-          format: date-time
-        requestId:
-          type: string
-
+      $ref: ./schemas/itinerary-agent.yaml#/ItineraryMetadata
     ItineraryCompleted:
-      type: object
-      required: [status, conversationId, intent, itinerary, searchResults, warnings, metadata]
-      properties:
-        status:
-          type: string
-          const: COMPLETED
-        conversationId:
-          type: string
-        intent:
-          $ref: '#/components/schemas/TripIntent'
-        itinerary:
-          $ref: '#/components/schemas/ItineraryPlan'
-        searchResults:
-          $ref: '#/components/schemas/SearchResultsByTaxonomy'
-        warnings:
-          type: array
-          items:
-            $ref: '#/components/schemas/ItineraryWarning'
-        metadata:
-          $ref: '#/components/schemas/ItineraryMetadata'
-
+      $ref: ./schemas/itinerary-agent.yaml#/ItineraryCompleted
     ItineraryNeedsClarification:
-      type: object
-      required: [status, conversationId, question, missingFields, knownIntent, suggestedValues, metadata]
-      properties:
-        status:
-          type: string
-          const: NEEDS_CLARIFICATION
-        conversationId:
-          type: string
-        question:
-          type: string
-        missingFields:
-          type: array
-          minItems: 1
-          items:
-            type: string
-            enum: [destination, days]
-        knownIntent:
-          $ref: '#/components/schemas/TripIntent'
-        suggestedValues:
-          type: object
-          properties:
-            destination:
-              type: array
-              items:
-                type: string
-            days:
-              type: array
-              items:
-                type: integer
-                minimum: 1
-                maximum: 7
-        metadata:
-          $ref: '#/components/schemas/ItineraryMetadata'
-
+      $ref: ./schemas/itinerary-agent.yaml#/ItineraryNeedsClarification
     ItineraryNoResults:
-      type: object
-      required: [status, conversationId, intent, message, suggestions, metadata]
-      properties:
-        status:
-          type: string
-          const: NO_RESULTS
-        conversationId:
-          type: string
-        intent:
-          $ref: '#/components/schemas/TripIntent'
-        message:
-          type: string
-        suggestions:
-          type: array
-          items:
-            type: string
-        metadata:
-          $ref: '#/components/schemas/ItineraryMetadata'
-
+      $ref: ./schemas/itinerary-agent.yaml#/ItineraryNoResults
     ItineraryFallback:
-      type: object
-      required: [status, conversationId, intent, message, searchResults, metadata]
-      properties:
-        status:
-          type: string
-          const: FALLBACK
-        conversationId:
-          type: string
-        intent:
-          oneOf:
-            - $ref: '#/components/schemas/TripIntent'
-            - type: 'null'
-        message:
-          type: string
-        searchResults:
-          $ref: '#/components/schemas/SearchResultsByTaxonomy'
-        metadata:
-          $ref: '#/components/schemas/ItineraryMetadata'
-
+      $ref: ./schemas/itinerary-agent.yaml#/ItineraryFallback
     ItineraryResponse:
-      description: ĐỀ XUẤT — chờ Team Agent duyệt. Phân biệt theo status.
-      oneOf:
-        - $ref: '#/components/schemas/ItineraryCompleted'
-        - $ref: '#/components/schemas/ItineraryNeedsClarification'
-        - $ref: '#/components/schemas/ItineraryNoResults'
-        - $ref: '#/components/schemas/ItineraryFallback'
-      discriminator:
-        propertyName: status
-        mapping:
-          COMPLETED: '#/components/schemas/ItineraryCompleted'
-          NEEDS_CLARIFICATION: '#/components/schemas/ItineraryNeedsClarification'
-          NO_RESULTS: '#/components/schemas/ItineraryNoResults'
-          FALLBACK: '#/components/schemas/ItineraryFallback'
+      $ref: ./schemas/itinerary-agent.yaml#/ItineraryResponse

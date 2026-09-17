@@ -1,0 +1,160 @@
+/cart:
+  get:
+    tags:
+    - booking
+    operationId: getCart
+    summary: Giỏ hàng của người dùng hiện tại
+    security:
+    - bearerAuth: []
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    responses:
+      '200':
+        $ref: ../openapi.yaml#/components/responses/Cart
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error
+/cart/items:
+  post:
+    tags:
+    - booking
+    operationId: addCartItem
+    summary: Thêm mục vào giỏ (cộng dồn nếu trùng productId và usingDate)
+    security:
+    - bearerAuth: []
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/AddCartItemRequest
+    responses:
+      '200':
+        $ref: ../openapi.yaml#/components/responses/Cart
+      '400':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '404':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '409':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '422':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error
+/cart/items/{cartItemId}:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/CartItemId
+  patch:
+    tags:
+    - booking
+    operationId: updateCartItem
+    summary: Sửa ngày, số lượng hoặc số đêm của một mục giỏ
+    security:
+    - bearerAuth: []
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/UpdateCartItemRequest
+    responses:
+      '200':
+        $ref: ../openapi.yaml#/components/responses/Cart
+      '400':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '404':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '409':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '422':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error
+  delete:
+    tags:
+    - booking
+    operationId: removeCartItem
+    summary: Xóa một mục giỏ
+    security:
+    - bearerAuth: []
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    responses:
+      '200':
+        $ref: ../openapi.yaml#/components/responses/Cart
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '404':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error
+/bookings:
+  post:
+    tags:
+    - booking
+    operationId: createBooking
+    summary: Checkout toàn bộ giỏ hiện tại
+    security:
+    - bearerAuth: []
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/CheckoutRequest
+    responses:
+      '201':
+        description: Đặt chỗ thành công, event purchase đã được ghi
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/BookingResponse
+      '400':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '409':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '422':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error
+/bookings/{referenceCode}:
+  get:
+    tags:
+    - booking
+    operationId: getBooking
+    summary: Đọc lại đơn đặt chỗ của chính người dùng
+    security:
+    - bearerAuth: []
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    - name: referenceCode
+      in: path
+      required: true
+      schema:
+        $ref: ../openapi.yaml#/components/schemas/ReferenceCode
+    responses:
+      '200':
+        description: Đơn đặt chỗ
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/BookingResponse
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '404':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error

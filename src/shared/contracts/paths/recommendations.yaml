@@ -1,0 +1,35 @@
+/recommendations:
+  get:
+    tags:
+    - recommendations
+    operationId: getRecommendations
+    summary: Gợi ý cá nhân hóa, hoặc phổ biến khi không có JWT
+    security:
+    - {}
+    - bearerAuth: []
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    - name: k
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 20
+        default: 5
+    - name: destination
+      in: query
+      schema:
+        type: string
+    responses:
+      '200':
+        description: Gợi ý
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/RecommendationResponse
+      '400':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error

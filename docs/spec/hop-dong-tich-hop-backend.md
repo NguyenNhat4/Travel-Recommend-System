@@ -1,5 +1,7 @@
 # Hợp đồng tích hợp Backend
 
+> **MVP 1.2.0:** ưu tiên hiển thị recommendation; [bộ trường tối thiểu](../../src/shared/contracts/MVP.md) và OpenAPI hiện hành thay thế danh sách required/optional cũ bên dưới. Các trường mở rộng vẫn được hỗ trợ nhưng không bắt buộc gửi.
+
 **Phiên bản:** 1.0  
 **Người tạo:** mihhquan  
 **Bên sử dụng:** Team Web, Team Agent  
