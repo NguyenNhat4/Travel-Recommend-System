@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # --- Workstream code (tracked in its own repo / not shared here) -------------
 vota-recsys/
 
@@ -8,22 +7,5 @@ vota-recsys/
 .env.*
 !.env.example
 
-# --- Python ------------------------------------------------------------------
-__pycache__/
-*.py[cod]
-*.egg-info/
-.venv/
-venv/
-.pytest_cache/
-.ruff_cache/
-.mypy_cache/
-
-# --- OS / editor -------------------------------------------------------------
-.DS_Store
-Thumbs.db
-.idea/
-*.swp
-=======
 # macOS metadata
 .DS_Store
->>>>>>> 0f630a296388cfab4aad0e8dc1c512af6c8cf434
