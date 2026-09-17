@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Build output
+.next/
+out/
+build/
+dist/
+dist-api/
+
+# Test and tooling output
+coverage/
+test-results/
+playwright-report/
+.nyc_output/
+.vite/
+.turbo/
+.vercel/
+storybook-static/
+.eslintcache
+*.tsbuildinfo
+
+# Environment and logs
+*.log
+.env*
+!.env.example
