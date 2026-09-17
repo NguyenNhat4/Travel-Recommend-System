@@ -1,0 +1,58 @@
+digraph ThreeDB {
+ graph [rankdir=TB,bgcolor="white",fontname="DejaVu Sans",pad=0.3,nodesep=0.6,ranksep=0.8,compound=true];
+ node [fontname="DejaVu Sans",fontsize=13,shape=box,style="rounded,filled",fillcolor="#f1f5f9",color="#94a3b8",margin="0.2,0.15"];
+ edge [fontname="DejaVu Sans",fontsize=11,color="#52647a",arrowsize=0.8];
+ input [label="products.jsonl
+10.000 sản phẩm
+Pipeline nhập dữ liệu",fillcolor="#f8fafc"];
+ web [label="WEB / NGƯỜI DÙNG",fillcolor="#f8fafc"];
+ subgraph cluster_backend {label="SERVICE 1 · BACKEND";fontcolor="#153553";fontsize=18;color="#93c5fd";style=rounded;
+ be [label="Backend API + job
+Catalog / Search / Recommendation / Booking / Agent",fillcolor="#dbeafe"];
+ d1 [shape=cylinder,label="DB 1: ota_app
+
+GỐC: sản phẩm + giá + lịch phòng + đơn
+
+hotel_properties · hotel_rooms
+flight_routes · flight_services
+attraction_products · combo_packages · golf_products
+hotel_room_prices · hotel_room_nights
+users · carts · bookings · product_vectors",fillcolor="#eff6ff",color="#2563eb"];
+ be -> d1 [label="đọc / ghi trong service"];
+ }
+ subgraph cluster_cdp {label="SERVICE 2 · CDP CLONE";fontsize=18;color="#fdba74";style=rounded;
+ cdp [label="CDP API
+Ghi hành vi / đọc lịch sử và hồ sơ",fillcolor="#ffedd5"];
+ d2 [shape=cylinder,label="DB 2: cdp
+
+GỐC: hành vi + hồ sơ khách
+
+events
+profiles
+
+Giữ ID sản phẩm trên event
+Không giữ lịch tồn phòng",fillcolor="#fff7ed",color="#ea580c"];
+ cdp -> d2;
+ }
+ subgraph cluster_insider {label="SERVICE 3 · INSIDER CLONE";fontsize=18;color="#c4b5fd";style=rounded;
+ ins [label="Insider API
+Upsert / profile / identity / export",fillcolor="#ede9fe"];
+ d3 [shape=cylinder,label="DB 3: insider
+
+BẢN SAO chọn lọc phục vụ kênh
+
+insider_profiles · identifiers
+insider_events · channel_events
+
+Profile / consent / top gợi ý
+Không copy toàn bộ catalog",fillcolor="#f5f3ff",color="#7c3aed"];
+ ins -> d3;
+ }
+ input -> d1 [label="1. Nạp catalog / seed giá và lịch"];
+ web -> be [label="HTTP / JWT",lhead=cluster_backend];
+ be -> cdp [dir=both,lhead=cluster_cdp,label="2. CdpClient qua HTTP
+Ghi event → / ← đọc lịch sử",color="#ea580c"];
+ be -> ins [lhead=cluster_insider,label="3. Job qua InsiderClient
+Profile/consent + top gợi ý",color="#7c3aed"];
+
+}
