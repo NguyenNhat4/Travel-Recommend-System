@@ -1,0 +1,52 @@
+erDiagram
+    combo_packages ||--o{ combo_components : "quyền lợi đã mapping"
+    catalog_keys |o--o{ combo_components : "component_product_id nếu biết ID"
+    attraction_products {
+        uuid product_id PK,FK
+        text name "Hòn Tằm - Nha Trang"
+        varchar attraction_kind "TICKET TOUR POI UNKNOWN"
+        boolean ticketed "nullable; thiếu không phải true"
+        text venue
+        text tour_code
+        text supplier
+        int duration_minutes "nullable"
+        text opening_hours "text nguồn"
+        text departure "nullable"
+        bigint child_price "nullable"
+        jsonb member_prices
+        jsonb policies
+        jsonb attributes "và C + snapshot"
+    }
+    combo_packages {
+        uuid product_id PK,FK
+        text name "VinWonders + Safari Phú Quốc"
+        text tour_code
+        text venue
+        text supplier
+        varchar composition_status "UNMAPPED PARTIAL VERIFIED"
+        bigint child_price "nullable"
+        jsonb member_prices
+        jsonb policies
+        jsonb attributes "và C + snapshot"
+    }
+    combo_components {
+        uuid combo_product_id PK,FK
+        int component_no PK
+        uuid component_product_id FK "nullable nếu không có SKU nguồn"
+        text benefit_label
+        numeric included_quantity "nullable nếu chưa rõ"
+        text unit "nullable"
+        text source_evidence
+    }
+    golf_products {
+        uuid product_id PK,FK
+        text name "Voucher Vinpearl Golf Nam Hội An"
+        varchar golf_kind "VOUCHER VENUE UNKNOWN"
+        boolean ticketed "nullable"
+        text venue
+        text tour_code
+        text length_of_tour_raw "không ép thành số vòng"
+        text opening_hours
+        jsonb policies "tee time và điều kiện nguồn"
+        jsonb attributes "và C + snapshot"
+    }
