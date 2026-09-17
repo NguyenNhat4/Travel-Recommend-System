@@ -1,0 +1,8 @@
+# Dữ liệu sinh ra khi chạy, không đưa vào git: catalog 12 MB, HTML/JSON thô 42 MB,
+# và browser-profile chứa cookie phiên đăng nhập.
+data/
+cache/*
+!cache/.gitkeep
+.venv/
+__pycache__/
+*.pyc

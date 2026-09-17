@@ -1,0 +1,8 @@
+{
+  "error": {
+    "code": "CONVERSATION_NOT_FOUND",
+    "message": "Cuộc trò chuyện đã hết hạn.",
+    "retryable": false,
+    "requestId": "agent-01JXYZ"
+  }
+}

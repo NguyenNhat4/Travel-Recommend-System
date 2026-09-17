@@ -1,0 +1,32 @@
+/search:
+  post:
+    tags:
+    - search
+    operationId: searchProducts
+    summary: Semantic search trên catalog
+    security:
+    - {}
+    - bearerAuth: []
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/SearchRequest
+    responses:
+      '200':
+        description: Kết quả tìm kiếm
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/SearchResponse
+      '400':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '503':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error

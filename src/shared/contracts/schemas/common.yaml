@@ -1,0 +1,96 @@
+Taxonomy:
+  type: string
+  enum:
+  - hotel
+  - flight
+  - attraction
+  - combo
+  - golf
+ProductSort:
+  type: string
+  enum:
+  - popular
+  - price_asc
+  - price_desc
+  default: popular
+SearchSort:
+  type: string
+  enum:
+  - relevance
+  - price_asc
+  - price_desc
+  default: relevance
+Strategy:
+  type: string
+  description: Thêm giá trị mới phải thông báo trước; client map giá trị lạ về tiêu đề chung.
+  enum:
+  - cross_vertical
+  - recent_activity
+  - dormant
+  - popular
+BecauseEvent:
+  type: string
+  enum:
+  - purchase
+  - add_to_cart
+  - product_view
+  - search
+Currency:
+  type: string
+  const: VND
+ReferenceCode:
+  type: string
+  pattern: ^VOTA-[0-9]{8}-[A-Z0-9]{4}$
+ErrorCode:
+  type: string
+  enum:
+  - VALIDATION_ERROR
+  - CART_EMPTY
+  - INVALID_CREDENTIALS
+  - INVALID_TOKEN
+  - TOKEN_EXPIRED
+  - DEMO_ONLY
+  - PRODUCT_NOT_FOUND
+  - CART_ITEM_NOT_FOUND
+  - BOOKING_NOT_FOUND
+  - NOT_FOUND
+  - EMAIL_ALREADY_EXISTS
+  - PRODUCT_UNAVAILABLE
+  - PRICE_CHANGED
+  - DATE_OUT_OF_RANGE
+  - SEARCH_UNAVAILABLE
+  - INTERNAL_ERROR
+  - INVALID_TRIP_DURATION
+  - CONVERSATION_NOT_FOUND
+  - UNSUPPORTED_DESTINATION
+  - LLM_UNAVAILABLE
+  - ITINERARY_VALIDATION_FAILED
+ErrorResponse:
+  type: object
+  required:
+  - error
+  properties:
+    error:
+      type: object
+      required:
+      - code
+      - message
+      - retryable
+      - requestId
+      properties:
+        code:
+          $ref: ../openapi.yaml#/components/schemas/ErrorCode
+        message:
+          type: string
+          description: Tiếng Việt, hiển thị được trực tiếp cho người dùng.
+        retryable:
+          type: boolean
+        requestId:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+          description: Tùy mã lỗi. VALIDATION_ERROR {fields}; PRODUCT_NOT_FOUND và PRODUCT_UNAVAILABLE
+            {productId}; CART_ITEM_NOT_FOUND {cartItemId}; PRICE_CHANGED {productId, oldPrice, newPrice};
+            DATE_OUT_OF_RANGE {productId, availableFrom, availableTo}; UNSUPPORTED_DESTINATION {destination,
+            supportedDestinations}.

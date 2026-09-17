@@ -1,0 +1,28 @@
+{
+  "accounts": [
+    {
+      "email": "minhanh@example.vn",
+      "fullName": "Nguyễn Minh Anh",
+      "personaLabel": "Khách thân thiết",
+      "blurb": "Nhiều chuyến Nha Trang · đã đặt khách sạn cho chuyến sắp tới"
+    },
+    {
+      "email": "quocbao@example.vn",
+      "fullName": "Trần Quốc Bảo",
+      "personaLabel": "Mới tham gia",
+      "blurb": "Mới thêm 2 sản phẩm vào giỏ"
+    },
+    {
+      "email": "thuha@example.vn",
+      "fullName": "Lê Thu Hà",
+      "personaLabel": "Ngủ đông",
+      "blurb": "Chuyến cuối ở Phú Quốc cách đây 6 tháng"
+    },
+    {
+      "email": "khachmoi@example.vn",
+      "fullName": "Khách mới",
+      "personaLabel": "Không lịch sử",
+      "blurb": "Chưa có hoạt động nào"
+    }
+  ]
+}

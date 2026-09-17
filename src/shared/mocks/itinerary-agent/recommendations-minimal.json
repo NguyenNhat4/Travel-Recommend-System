@@ -1,0 +1,17 @@
+{
+  "strategy": "popular",
+  "recommendations": [
+    {
+      "productId": "c1cc2937-0cfa-5def-b18f-1d5a46c14115",
+      "name": "VinWonders Nam Hội An",
+      "taxonomy": "attraction",
+      "destination": "Hội An",
+      "unitPrice": 650000,
+      "currency": "VND",
+      "available": true,
+      "imageUrl": "https://booking-static.vinpearl.com/tours/ece6e58a02fd48de9eba9d3f4689f77a_Hinh-anh-VinWonders-Nam-Hoi-An-River-Safari-3x2-so-1%20(1)_vinwonders-nam-hoi-an-ve-vao-cua.jpg",
+      "priceUnit": "UNKNOWN",
+      "because": []
+    }
+  ]
+}

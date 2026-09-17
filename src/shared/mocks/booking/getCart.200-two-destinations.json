@@ -1,0 +1,90 @@
+{
+  "cartId": "cart-01JXYZ",
+  "cdpUserId": "VP0092381",
+  "items": [
+    {
+      "cartItemId": "ci-8k3f2a",
+      "product": {
+        "productId": "nt-h-01",
+        "name": "Vinpearl Resort Nha Trang - Deluxe Ocean View",
+        "taxonomy": "hotel",
+        "destination": "Nha Trang",
+        "unitPrice": 3400000,
+        "currency": "VND",
+        "available": true,
+        "availableFrom": "2026-10-01",
+        "availableTo": "2027-03-31",
+        "imageUrl": "https://cdn.example.vn/nt-h-01.jpg",
+        "rating": 4.6,
+        "reviewCount": 1293,
+        "attributes": {
+          "starRating": 5,
+          "oceanView": true,
+          "privateBeach": true,
+          "kidsPool": true,
+          "familyFriendly": true
+        }
+      },
+      "usingDate": "2026-10-15",
+      "quantity": 1,
+      "nights": 3,
+      "lineTotal": 10200000
+    },
+    {
+      "cartItemId": "ci-2m9d7c",
+      "product": {
+        "productId": "nt-a-01",
+        "name": "VinWonders Nha Trang",
+        "taxonomy": "attraction",
+        "destination": "Nha Trang",
+        "unitPrice": 880000,
+        "currency": "VND",
+        "available": true,
+        "availableFrom": "2026-09-01",
+        "availableTo": "2027-08-31",
+        "imageUrl": "https://cdn.example.vn/nt-a-01.jpg",
+        "rating": 4.5,
+        "reviewCount": 8421,
+        "attributes": {
+          "outdoor": true,
+          "waterPark": true,
+          "familyFriendly": true
+        }
+      },
+      "usingDate": "2026-10-16",
+      "quantity": 3,
+      "nights": null,
+      "lineTotal": 2640000
+    },
+    {
+      "cartItemId": "ci-5p1q8r",
+      "product": {
+        "productId": "pq-g-01",
+        "name": "Vinpearl Golf Phú Quốc - 18 hố",
+        "taxonomy": "golf",
+        "destination": "Phú Quốc",
+        "unitPrice": 2600000,
+        "currency": "VND",
+        "available": true,
+        "availableFrom": "2026-10-01",
+        "availableTo": "2027-06-30",
+        "imageUrl": "https://cdn.example.vn/pq-g-01.jpg",
+        "rating": 4.4,
+        "reviewCount": 187,
+        "attributes": {
+          "caddie": true,
+          "outdoor": true
+        }
+      },
+      "usingDate": "2026-11-02",
+      "quantity": 2,
+      "nights": null,
+      "lineTotal": 5200000
+    }
+  ],
+  "itemCount": 3,
+  "subtotal": 18040000,
+  "total": 18040000,
+  "currency": "VND",
+  "updatedAt": "2026-09-16T10:20:00Z"
+}

@@ -1,0 +1,25 @@
+{
+  "status": "NO_RESULTS",
+  "conversationId": "sample-conv",
+  "intent": {
+    "destination": "Phú Quốc",
+    "startDate": null,
+    "days": 1,
+    "party": null,
+    "budget": null,
+    "interests": [],
+    "pace": null
+  },
+  "message": "Không có sản phẩm phù hợp bộ lọc.",
+  "suggestions": [
+    "Bỏ bớt bộ lọc"
+  ],
+  "metadata": {
+    "personalised": false,
+    "searchRequestIds": [
+      "sample-search"
+    ],
+    "generatedAt": "2026-09-16T08:00:00Z",
+    "requestId": "sample-agent"
+  }
+}

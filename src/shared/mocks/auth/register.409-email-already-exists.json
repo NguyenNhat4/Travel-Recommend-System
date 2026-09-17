@@ -1,0 +1,8 @@
+{
+  "error": {
+    "code": "EMAIL_ALREADY_EXISTS",
+    "message": "Email này đã được đăng ký.",
+    "retryable": false,
+    "requestId": "auth-01JXYZ"
+  }
+}
