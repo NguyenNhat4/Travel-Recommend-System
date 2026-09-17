@@ -1,0 +1,17 @@
+{
+  "cdpUserId": "VP0092381",
+  "attributes": {
+    "lifecycleStage": "active",
+    "daysSinceLastBooking": 0,
+    "lifetimeOrderCount": 4,
+    "vinclubTier": null,
+    "purchasedVerticals": ["hotel", "attraction"],
+    "homeCity": "Hà Nội",
+    "lastDestination": "Nha Trang",
+    "emailOptin": true,
+    "smsOptin": false,
+    "pushOptin": null,
+    "gdprOptin": true
+  },
+  "updatedAt": "2026-09-16T10:22:00Z"
+}

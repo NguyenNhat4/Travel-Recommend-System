@@ -1,0 +1,81 @@
+openapi: 3.1.0
+info:
+  title: CDP Clone API
+  version: 0.2.0
+  description: 'Service giả lập CDP (src/cdp_clone): system of record cho hành vi và hồ sơ khách hàng. Bề
+    mặt này là tạm vì chưa có tài liệu API CDP thật của V-OTA; tên trường giữ theo handbook §6. Chỉ gọi từ
+    mạng nội bộ: Backend (qua CdpClient), seed và job, bằng service token. Web không gọi trực tiếp.'
+servers:
+- url: http://localhost:8100
+tags:
+- name: events
+  description: Event Store — lượt xem, tìm kiếm, thêm giỏ, đặt dịch vụ
+- name: profiles
+  description: Profile Store — thuộc tính khách hàng
+paths:
+  /cdp/v1/events:
+    $ref: ./paths/cdp-clone.yaml#/~1cdp~1v1~1events
+  /cdp/v1/users/{cdpUserId}/events:
+    $ref: ./paths/cdp-clone.yaml#/~1cdp~1v1~1users~1{cdpUserId}~1events
+  /cdp/v1/users/{cdpUserId}/events/{eventId}/cancellation:
+    $ref: ./paths/cdp-clone.yaml#/~1cdp~1v1~1users~1{cdpUserId}~1events~1{eventId}~1cancellation
+  /cdp/v1/profiles/{cdpUserId}:
+    $ref: ./paths/cdp-clone.yaml#/~1cdp~1v1~1profiles~1{cdpUserId}
+security:
+- serviceToken: []
+components:
+  securitySchemes:
+    serviceToken:
+      type: apiKey
+      in: header
+      name: X-Service-Token
+      description: Token nội bộ cho Backend, seed và job. Không bao giờ đưa xuống trình duyệt.
+  parameters:
+    XRequestId:
+      name: X-Request-ID
+      in: header
+      required: false
+      description: ID truy vết. Backend chuyển tiếp ID của request gốc; caller chưa gửi thì service tự sinh.
+      schema:
+        type: string
+        maxLength: 64
+    CdpUserId:
+      name: cdpUserId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 64
+  responses:
+    Error:
+      description: Lỗi theo envelope chung
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    Taxonomy:
+      $ref: ./schemas/common.yaml#/Taxonomy
+    EventName:
+      $ref: ./schemas/common.yaml#/BecauseEvent
+    ErrorResponse:
+      $ref: ./schemas/common.yaml#/ErrorResponse
+    UserEventInput:
+      $ref: ./schemas/cdp-clone.yaml#/UserEventInput
+    RecordEventsRequest:
+      $ref: ./schemas/cdp-clone.yaml#/RecordEventsRequest
+    RecordedEvent:
+      $ref: ./schemas/cdp-clone.yaml#/RecordedEvent
+    RecordEventsResponse:
+      $ref: ./schemas/cdp-clone.yaml#/RecordEventsResponse
+    UserEvent:
+      $ref: ./schemas/cdp-clone.yaml#/UserEvent
+    EventListResponse:
+      $ref: ./schemas/cdp-clone.yaml#/EventListResponse
+    LifecycleStage:
+      $ref: ./schemas/cdp-clone.yaml#/LifecycleStage
+    ProfileAttributes:
+      $ref: ./schemas/cdp-clone.yaml#/ProfileAttributes
+    Profile:
+      $ref: ./schemas/cdp-clone.yaml#/Profile

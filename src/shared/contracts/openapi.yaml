@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Travel Recommendation Product API
-  version: 1.2.0
+  version: 1.3.0
   description: 'Contract chung cho frontend Next.js và backend Python/FastAPI. Nguồn mô tả nghiệp vụ:
     docs/spec/hop-dong-tich-hop-backend.md (Auth, Catalog, Search, Recommendation, Booking) và docs/spec/hop-dong-tich-hop-frontend.md
     (góc nhìn Web, đề xuất ItineraryResponse hợp nhất). Khi tài liệu và file này mâu thuẫn, file này thắng.'
@@ -20,6 +20,8 @@ tags:
   description: Giỏ hàng server-side và checkout giả lập
 - name: assistant
   description: Itinerary Assistant (đề xuất, chờ Team Agent duyệt)
+- name: events
+  description: Ghi hành vi người dùng; Backend chuyển sang CDP clone qua CdpClient
 paths:
   /auth/register:
     $ref: ./paths/auth.yaml#/~1auth~1register
@@ -53,6 +55,8 @@ paths:
     $ref: ./paths/booking.yaml#/~1bookings~1{referenceCode}
   /assistant/itineraries:
     $ref: ./paths/itinerary-agent.yaml#/~1assistant~1itineraries
+  /events:
+    $ref: ./paths/events.yaml#/~1events
 components:
   securitySchemes:
     bearerAuth:
@@ -229,3 +233,5 @@ components:
       $ref: ./schemas/itinerary-agent.yaml#/ItineraryFallback
     ItineraryResponse:
       $ref: ./schemas/itinerary-agent.yaml#/ItineraryResponse
+    TrackEventRequest:
+      $ref: ./schemas/events.yaml#/TrackEventRequest

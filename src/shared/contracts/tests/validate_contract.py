@@ -86,4 +86,53 @@ for f in index['fixtures']:
     if errors:
         legacy_failures.append((f['file'], [e.message[:150] for e in errors]))
 assert not legacy_failures, legacy_failures
-print(f'PASS: {len(SCHEMAS)} schemas, all local refs, 50 grounded products, 4 itinerary statuses, minimal recommendation/itinerary payloads, negative checks, {len(index["fixtures"])} existing fixtures.')
+validator('TrackEventRequest').validate({'eventName': 'product_view', 'productId': products[0]['productId']})
+for payload in [{'eventName': 'purchase', 'productId': 'x'}, {'eventName': 'product_view'},
+                {'eventName': 'product_view', 'productId': 'x', 'taxonomy': 'hotel'}]:
+    assert not validator('TrackEventRequest').is_valid(payload), payload
+
+# CDP clone is a separate service with its own entry document.
+CDP_DOC = bundle(SHARED / 'contracts/cdp-clone.openapi.yaml')
+CDP_FIXTURES = SHARED / 'mocks/cdp-clone'
+
+def cdp_validator(name):
+    return Draft202012Validator({'$ref': '#/components/schemas/' + name, 'components': CDP_DOC['components']}, format_checker=FormatChecker())
+
+DOC = CDP_DOC
+check_refs(CDP_DOC)
+for schema in CDP_DOC['components']['schemas'].values():
+    Draft202012Validator.check_schema(schema)
+cdp_fixtures = [
+    ('RecordEventsRequest', 'backend-browse-events.request.json'),
+    ('RecordEventsRequest', 'backend-purchase.request.json'),
+    ('RecordEventsResponse', 'record-events.201.json'),
+    ('ErrorResponse', 'record-events.401-invalid-token.json'),
+    ('UserEvent', 'cancel-event.200.json'),
+    ('EventListResponse', 'user-events.200.json'),
+    ('Profile', 'profile.200.json'),
+]
+for schema, name in cdp_fixtures:
+    cdp_validator(schema).validate(json.loads((CDP_FIXTURES / name).read_text()))
+sample_ids = {p['productId'] for p in source}
+for name in ['backend-browse-events.request.json', 'backend-purchase.request.json']:
+    for event in json.loads((CDP_FIXTURES / name).read_text())['events']:
+        assert event.get('productId') in (None, *sample_ids), event
+purchase = json.loads((CDP_FIXTURES / 'backend-purchase.request.json').read_text())['events'][0]
+cdp_negative = [
+    {'events': []},
+    {'events': [{k: v for k, v in purchase.items() if k != 'cdpUserId'}]},
+    {'events': [{'eventName': 'search'}]},
+    {'events': [{'eventName': 'product_view', 'productId': 'x'}]},
+    {'events': [{'eventName': 'add_to_cart', 'productId': 'x', 'taxonomy': 'hotel'}]},
+    {'events': [{k: v for k, v in purchase.items() if k != 'eventId'}]},
+    {'events': [dict(purchase, eventGroupId=None)]},
+    {'events': [dict(purchase, eventName='click')]},
+    {'events': [dict(purchase, destination='Nha Trang')]},
+    {'events': [{'eventName': 'search', 'searchQuery': 'x'}] * 101},
+]
+for payload in cdp_negative:
+    assert not cdp_validator('RecordEventsRequest').is_valid(payload), payload
+assert not cdp_validator('ProfileAttributes').is_valid({'lifecycleStage': 'sleeping'})
+assert 'bearerAuth' not in CDP_DOC['components']['securitySchemes']
+assert CDP_DOC['security'] == [{'serviceToken': []}]
+print(f'PASS: {len(SCHEMAS)} schemas, all local refs, 50 grounded products, 4 itinerary statuses, minimal recommendation/itinerary payloads, negative checks, {len(index["fixtures"])} existing fixtures; CDP clone: {len(CDP_DOC["components"]["schemas"])} schemas, {len(cdp_fixtures)} fixtures, {len(cdp_negative) + 1} negative checks.')

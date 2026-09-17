@@ -1,0 +1,158 @@
+/cdp/v1/events:
+  post:
+    tags:
+    - events
+    operationId: recordEvents
+    summary: Ghi event (tối đa 100 event mỗi request)
+    description: Chỉ Backend, seed và job gọi. Cả lô hợp lệ mới ghi; một event sai thì không ghi event nào.
+    parameters:
+    - $ref: ../cdp-clone.openapi.yaml#/components/parameters/XRequestId
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../cdp-clone.openapi.yaml#/components/schemas/RecordEventsRequest
+    responses:
+      '201':
+        description: Đã ghi (hoặc đã có sẵn với cùng eventId)
+        content:
+          application/json:
+            schema:
+              $ref: ../cdp-clone.openapi.yaml#/components/schemas/RecordEventsResponse
+      '400':
+        $ref: ../cdp-clone.openapi.yaml#/components/responses/Error
+      '401':
+        $ref: ../cdp-clone.openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../cdp-clone.openapi.yaml#/components/responses/Error
+/cdp/v1/users/{cdpUserId}/events:
+  get:
+    tags:
+    - events
+    operationId: listUserEvents
+    summary: Lịch sử event của một khách hàng, mới nhất trước
+    parameters:
+    - $ref: ../cdp-clone.openapi.yaml#/components/parameters/XRequestId
+    - $ref: ../cdp-clone.openapi.yaml#/components/parameters/CdpUserId
+    - name: eventName
+      in: query
+      schema:
+        $ref: ../cdp-clone.openapi.yaml#/components/schemas/EventName
+    - name: since
+      in: query
+      description: Bao gồm mốc này
+      schema:
+        type: string
+        format: date-time
+    - name: until
+      in: query
+      description: Không bao gồm mốc này
+      schema:
+        type: string
+        format: date-time
+    - name: includeCancelled
+      in: query
+      description: Mặc định bỏ event đã huỷ, để bên đọc không vô tình dùng purchase của booking thất bại.
+      schema:
+        type: boolean
+        default: false
+    - name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 500
+        default: 100
+    - name: offset
+      in: query
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+    responses:
+      '200':
+        description: Danh sách event; khách chưa có event trả mảng rỗng
+        content:
+          application/json:
+            schema:
+              $ref: ../cdp-clone.openapi.yaml#/components/schemas/EventListResponse
+      '400':
+        $ref: ../cdp-clone.openapi.yaml#/components/responses/Error
+      '401':
+        $ref: ../cdp-clone.openapi.yaml#/components/responses/Error
+/cdp/v1/users/{cdpUserId}/events/{eventId}/cancellation:
+  put:
+    tags:
+    - events
+    operationId: cancelEvent
+    summary: Đánh dấu một event đã huỷ (bù trừ khi booking commit lỗi)
+    description: 'Không xoá event. Gọi lại trên event đã huỷ trả 200 và giữ nguyên cancelledAt lần đầu. Ghi lại
+      cùng eventId sau khi huỷ vẫn trả duplicate và event vẫn ở trạng thái huỷ.'
+    parameters:
+    - $ref: ../cdp-clone.openapi.yaml#/components/parameters/XRequestId
+    - $ref: ../cdp-clone.openapi.yaml#/components/parameters/CdpUserId
+    - name: eventId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+    responses:
+      '200':
+        description: Event sau khi huỷ
+        content:
+          application/json:
+            schema:
+              $ref: ../cdp-clone.openapi.yaml#/components/schemas/UserEvent
+      '401':
+        $ref: ../cdp-clone.openapi.yaml#/components/responses/Error
+      '404':
+        $ref: ../cdp-clone.openapi.yaml#/components/responses/Error
+/cdp/v1/profiles/{cdpUserId}:
+  get:
+    tags:
+    - profiles
+    operationId: getProfile
+    summary: Hồ sơ khách hàng
+    parameters:
+    - $ref: ../cdp-clone.openapi.yaml#/components/parameters/XRequestId
+    - $ref: ../cdp-clone.openapi.yaml#/components/parameters/CdpUserId
+    responses:
+      '200':
+        description: Hồ sơ
+        content:
+          application/json:
+            schema:
+              $ref: ../cdp-clone.openapi.yaml#/components/schemas/Profile
+      '401':
+        $ref: ../cdp-clone.openapi.yaml#/components/responses/Error
+      '404':
+        $ref: ../cdp-clone.openapi.yaml#/components/responses/Error
+  put:
+    tags:
+    - profiles
+    operationId: upsertProfile
+    summary: Tạo hoặc thay toàn bộ hồ sơ
+    description: Thay toàn bộ attributes; trường không gửi trở thành null (purchasedVerticals thành []).
+    parameters:
+    - $ref: ../cdp-clone.openapi.yaml#/components/parameters/XRequestId
+    - $ref: ../cdp-clone.openapi.yaml#/components/parameters/CdpUserId
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../cdp-clone.openapi.yaml#/components/schemas/ProfileAttributes
+    responses:
+      '200':
+        description: Hồ sơ sau khi ghi
+        content:
+          application/json:
+            schema:
+              $ref: ../cdp-clone.openapi.yaml#/components/schemas/Profile
+      '400':
+        $ref: ../cdp-clone.openapi.yaml#/components/responses/Error
+      '401':
+        $ref: ../cdp-clone.openapi.yaml#/components/responses/Error

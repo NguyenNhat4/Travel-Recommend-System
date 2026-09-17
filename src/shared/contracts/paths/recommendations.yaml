@@ -4,6 +4,8 @@
     - recommendations
     operationId: getRecommendations
     summary: Gợi ý cá nhân hóa, hoặc phổ biến khi không có JWT
+    description: Không đọc được lịch sử từ CDP clone thì vẫn trả 200 với strategy popular, because rỗng,
+      diagnostics.coldStart true và eventsUsed 0; không trả 500 vì lỗi CDP.
     security:
     - {}
     - bearerAuth: []

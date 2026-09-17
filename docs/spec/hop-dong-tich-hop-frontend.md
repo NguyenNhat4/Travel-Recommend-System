@@ -47,10 +47,9 @@
 
 ### 1.4. Ngoài phạm vi
 
-- Endpoint ghi event `product_view` (D3, hoãn — §12).
 - Stream SSE cho trợ lý (D9, hoãn — §12).
 - Thiết kế giao diện chi tiết: xem `docs/product.md` §4–§7.
-- Insider clone, CDP clone, thuật toán xếp hạng.
+- Insider clone, CDP clone, thuật toán xếp hạng. Web không gọi CDP clone; mọi hành vi đi qua Backend (`hop-dong-tich-hop-cdp.md`).
 
 ---
 
@@ -158,6 +157,9 @@ Sau checkout (cờ `justBooked`): gọi lại ① bỏ qua cache. Chỉ hiện t
 | Tương tự | `GET /products/{productId}/similar?limit=8` | — | `results[]` + `score` | Lỗi hoặc rỗng → ẩn section |
 | Hoàn thiện chuyến | `GET /recommendations?k=4&destination=<product.destination>` | bắt buộc | như Home ① | Chỉ render khi `destination` response trùng sản phẩm |
 | Thêm vào giỏ | `POST /cart/items` | bắt buộc | `CartResponse.itemCount` (badge header) | Xem §8 |
+| Ghi lượt xem | `POST /events` `{ eventName: "product_view", productId }` | bắt buộc | — (`202` không body) | Không JWT thì không gọi. Mọi lỗi bỏ qua im lặng, không hiện gì cho người dùng |
+
+Gọi `POST /events` **một lần** khi trang chi tiết đã hiển thị trên trình duyệt với người dùng đã đăng nhập; không gọi trong Server Component, khi prefetch link hay khi render lại cùng sản phẩm. Web không gửi event `search` hay `add_to_cart`: Backend tự ghi khi xử lý `/search` và `/cart/items`.
 
 Hộp đặt gửi `nights` chỉ khi `taxonomy = hotel`. Tổng tiền trong hộp đặt là **ước tính hiển thị**, tính theo công thức `hop-dong-tich-hop-backend.md` §2.6; giá chính thức là `lineTotal` do backend trả.
 
@@ -589,7 +591,7 @@ Ca biên bắt buộc để dựng đủ 8 màn hình:
 
 | # | Nội dung | Mặc định Web trong lúc chờ |
 |---|---|---|
-| D3 | Endpoint ghi `product_view` | Không ghi. P2 chỉ có `because` sau khi thêm giỏ hoặc đặt |
+| D3 | Endpoint ghi `product_view` | **Đã chốt** — `POST /api/v1/events`, xem §4.3 |
 | D9 | SSE cho trợ lý | Không stream; spinner chung, không ✓ giả |
 | D10 | Shape `ItineraryResponse` | Code theo §9; mock theo §9. Nếu Agent từ chối, chỉ `features/itinerary` và fixture phải đổi |
 | D13 | "Đã xem gần đây" | Bỏ section ② Home |

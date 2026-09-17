@@ -14,7 +14,7 @@
 **Ngày:** `2026-09-16`  
 **Múi giờ:** `Asia/Ho_Chi_Minh`
 
-> Tài liệu này chốt hợp đồng dữ liệu cho **năm nhóm API web-facing**: Auth, Catalog, Search, Recommendation và Booking. Bề mặt Itinerary Assistant nằm ở `hop-dong-tich-hop-itinerary-assistant.md` và không được lặp lại ở đây.
+> Tài liệu này chốt hợp đồng dữ liệu cho **năm nhóm API web-facing**: Auth, Catalog, Search, Recommendation và Booking, cộng endpoint ghi hành vi `POST /api/v1/events` (§7.5). Bề mặt Itinerary Assistant nằm ở `hop-dong-tich-hop-itinerary-assistant.md` và không được lặp lại ở đây. Tích hợp với CDP clone nằm ở `hop-dong-tich-hop-cdp.md`.
 
 ---
 
@@ -28,7 +28,7 @@
 - Cung cấp gợi ý cá nhân hóa kèm mảng `because` giải thích được, và fallback phổ biến cho khách ẩn danh hoặc cold start.
 - Quản lý giỏ hàng phía server, khóa theo `cdpUserId`.
 - Xử lý checkout giả lập, sinh `referenceCode` và trả về đơn đặt đọc lại được.
-- Ghi event `purchase` vào CDP clone khi booking hoàn tất, kèm `eventGroupId` gom nhóm theo chuyến.
+- Là cổng duy nhất giữa Web và CDP clone: ghi `product_view`, `search`, `add_to_cart` ở nền và `purchase` đồng bộ qua `CdpClient` (`hop-dong-tich-hop-cdp.md`).
 - Là nguồn chính thức của giá và tình trạng còn chỗ tại thời điểm checkout.
 - Giữ ổn định tên trường trong `/api/v1` và thông báo trước mọi thay đổi enum.
 
@@ -49,9 +49,8 @@
 
 ### 1.3. Ngoài phạm vi của tài liệu này
 
-- DDL và migration của CDP clone, cùng interface `CdpClient` (handbook §6, `ARCHITECTURE.md` §9).
+- API CDP clone, cách ghi nền, bù trừ `purchase`, đường lui khi CDP lỗi: `hop-dong-tich-hop-cdp.md` và `src/shared/contracts/cdp-clone.openapi.yaml`.
 - Insider clone: `POST /user/v1/upsert`, `PATCH /user/v1/identity`, `POST /user/v1/profile`, `POST /raw/v1/export` và các quy tắc TTL 90/730 ngày.
-- Endpoint ghi event `product_view` và `add_to_cart` — xem D3 ở §10. Tài liệu này chỉ cam kết booking ghi event `purchase`.
 - Toàn bộ bề mặt `POST /api/v1/assistant/itineraries`.
 - Sinh embedding, quản lý vector index và thuật toán xếp hạng. Tài liệu này chỉ chốt *hình dạng* response, không chốt cách tính điểm.
 
@@ -413,6 +412,8 @@ Authorization: Bearer <jwt>    # tùy chọn
 
 Dùng `POST` chứ không phải `GET`, vì truy vấn là câu tiếng Việt tự do đi kèm nhiều bộ lọc; nhét tất cả vào query string làm URL khó đọc và dễ sai encoding. Route frontend `/search?q=…` là route của trình duyệt, không phải endpoint API.
 
+**Ghi hành vi:** request có JWT và `offset = 0` thì Backend ghi event `search` (`searchQuery` = `query`) sang CDP ở nền. Đổi trang, không JWT, hoặc CDP lỗi đều không ảnh hưởng response. Team Agent gọi endpoint này **không kèm JWT**, để lượt tìm của Agent không bị tính là hành vi người dùng (`hop-dong-tich-hop-cdp.md` §1.4).
+
 #### Request
 
 ```json
@@ -618,6 +619,7 @@ Cam kết:
 | Không có JWT | `200` với `cdpUserId: null`, `strategy: "popular"`, mọi `because` rỗng, `diagnostics.coldStart: true`, `eventsUsed: 0` |
 | Có JWT, dưới 3 event | `200` với `cdpUserId` thật, `strategy: "popular"` hoặc `"recent_activity"` tùy có `because` hay không, `coldStart: true` |
 | JWT sai hoặc hết hạn | `401` `INVALID_TOKEN`. Không âm thầm hạ xuống chế độ ẩn danh — client cần biết để mở modal đăng nhập lại |
+| Có JWT, CDP clone lỗi hoặc timeout | `200` với `cdpUserId` thật, `strategy: "popular"`, mọi `because` rỗng, `coldStart: true`, `eventsUsed: 0`. Không trả `500` vì lỗi CDP (`hop-dong-tich-hop-cdp.md` §6) |
 
 Lý do một endpoint: `docs/product.md` §4.1.3 yêu cầu Home của khách vãng lai và Home của P4 render cùng một section với cùng một component, chỉ khác chữ. Tách endpoint sẽ buộc client phải rẽ nhánh hai lần cho cùng một giao diện.
 
@@ -654,6 +656,8 @@ Authorization: Bearer <jwt>    # bắt buộc
 | `usingDate` | Có | Ngày sử dụng, phải nằm trong `availableFrom`–`availableTo` |
 | `quantity` | Có | Số phòng hoặc số khách, ≥ 1 |
 | `nights` | Chỉ với `hotel` | Số đêm, ≥ 1. Các `taxonomy` khác gửi `nights` thì bị bỏ qua |
+
+Thêm thành công thì Backend ghi event `add_to_cart` sang CDP ở nền, với `taxonomy` và `unitPrice` lấy từ catalog. Thêm thất bại không ghi event; `PATCH`/`DELETE` không ghi event; CDP lỗi không ảnh hưởng response.
 
 #### Response `200` — `CartResponse` (chung cho cả bốn thao tác)
 
@@ -788,9 +792,30 @@ Chỉ chủ đơn đọc được. `referenceCode` của người khác trả `4
 1. Mỗi mục trong booking thành công sinh **một** bản ghi trong bảng `events`, khóa theo `cdpUserId`.
 2. Event dùng `eventName: "purchase"`, `eventGroupId` lấy từ nhóm điểm đến tương ứng ở §7.2.
 3. Mỗi bản ghi mang đủ `productId`, `taxonomy`, `quantity`, `unitPrice`, `usingDate`, `timestamp` — đúng hình dạng `UserEvent` của handbook §6.
-4. Việc ghi event nằm **trong cùng transaction** với việc tạo booking. Booking thành công mà event thất bại là trạng thái không được phép tồn tại.
+4. CDP clone là service riêng nên không có transaction chung. Backend ghi `purchase` sang CDP **trước khi commit** booking. CDP lỗi thì rollback booking, giữ nguyên giỏ, trả `500` `INTERNAL_ERROR` `retryable: true`. Commit lỗi sau khi CDP đã ghi thì Backend **huỷ** các event đó trên CDP rồi trả `500`. Booking thành công mà thiếu event là trạng thái không được phép tồn tại. Chi tiết và rủi ro còn lại: `hop-dong-tich-hop-cdp.md` §5.
 5. Event được ghi **trước khi** response `201` trả về, để client gọi `/recommendations` ngay sau đó và thấy kết quả đã đổi.
-6. Một booking không bao giờ sinh hai event cho cùng một `bookingItemId`.
+6. Một booking không bao giờ sinh hai event cho cùng một `bookingItemId`: `eventId` là `purchase:{bookingItemId}`, CDP clone trả `duplicate` khi gửi lại. Lần checkout sau một lần lỗi sinh `bookingItemId` mới.
+
+### 7.5. Ghi hành vi `product_view`
+
+```http
+POST /api/v1/events
+Authorization: Bearer <jwt>    # bắt buộc
+Content-Type: application/json
+
+{ "eventName": "product_view", "productId": "nt-h-01" }
+```
+
+| Tình huống | Response |
+|---|---|
+| Hợp lệ | `202`, không body. Backend ghi sang CDP ở nền; không bảo đảm CDP đã lưu |
+| Thiếu, sai hoặc hết hạn JWT | `401` `INVALID_TOKEN` / `TOKEN_EXPIRED` |
+| `productId` không có trong catalog | `404` `PRODUCT_NOT_FOUND`, `details.productId`; không ghi event |
+| `eventName` khác `product_view` hoặc có trường lạ | `400` `VALIDATION_ERROR` |
+
+- Web gọi khi người dùng **thật sự mở** trang chi tiết, không gọi khi prefetch hay render phía server. `GET /products/{productId}` không ghi event.
+- `taxonomy` lấy từ catalog; client không gửi.
+- Chỉ nhận `product_view`. `search`, `add_to_cart`, `purchase` do Backend tự ghi (§5.1, §7.1, §7.4).
 
 ---
 
@@ -846,7 +871,7 @@ Mọi endpoint trả danh sách dùng `limit` và `offset`, và trả lại cả
 X-Request-ID: 01JXYZ
 ```
 
-Mọi service truyền tiếp header này. Caller chưa gửi thì service đầu tiên tự sinh. Giá trị được lặp lại trong `requestId` của response và trong mọi dòng log liên quan.
+Mọi service truyền tiếp header này, kể cả lời gọi Backend → CDP clone chạy ở nền. Caller chưa gửi thì service đầu tiên tự sinh. Giá trị được lặp lại trong `requestId` của response và trong mọi dòng log liên quan.
 
 ### 8.5. Ngân sách thời gian
 
@@ -901,7 +926,7 @@ Tài liệu này **không tự sửa** file hợp đồng Agent. Việc cập nh
 |---|---|---|
 | D1 | Giá trị `strategy` ngoài `cross_vertical` | **Chốt.** `cross_vertical`, `recent_activity`, `dormant`, `popular` — §6.2 |
 | D2 | `because[]` có `productId` / `imageUrl` không | **Chốt: có cả hai**, `productId` nhận `null` khi sản phẩm đã bị xóa — §6.3 |
-| D3 | Ai ghi event `product_view` | **Hoãn.** `GET /products/{id}` không ghi event. Cần endpoint `POST /api/v1/events` ở sprint sau. Mặc định tạm: P2 chỉ có `because` sau khi thực sự đặt hoặc thêm giỏ |
+| D3 | Ai ghi event `product_view` | **Chốt: Web gọi `POST /api/v1/events`**, Backend ghi sang CDP clone — §7.5. `GET /products/{id}` không ghi event. `search` và `add_to_cart` do Backend tự ghi. Web không gọi CDP clone |
 | D4 | `/search` hỗ trợ lọc và ngưỡng điểm không | **Chốt.** Lọc `taxonomy`, `destination`, `priceMin`/`priceMax`, `starRatingMin`; trả `topScore` và `facets` — §5.1, §5.2 |
 | D5 | Endpoint "phổ biến" cho Home công khai | **Chốt: không tách endpoint.** `GET /recommendations` không JWT trả `strategy: "popular"`. Ngoài ra `GET /products?sort=popular` phục vụ section ④ luôn-render — §4.1, §6.5 |
 | D6 | Giỏ lưu server hay client | **Chốt: server**, khóa theo `cdpUserId` — §7.1 |
@@ -911,7 +936,7 @@ Tài liệu này **không tự sửa** file hợp đồng Agent. Việc cập nh
 | D10 | Hình dạng response chat và intent có cấu trúc | **Ngoài phạm vi.** Thuộc hợp đồng Agent. Lưu ý `docs/product.md` §6.4 và hợp đồng Agent §4.2 đang mô tả hai shape khác nhau, cần thống nhất riêng |
 | D11 | Sản phẩm có nhiều ảnh không | **Chốt: không trong MVP.** Chỉ một `imageUrl`. Client hiển thị một ảnh full-width — §2.3 |
 | D12 | Ngữ nghĩa ngày của vé máy bay | **Chốt: theo khoảng.** `flight` dùng `availableFrom`–`availableTo` như mọi `taxonomy` khác; `usingDate` là ngày bay người dùng chọn — §2.2, §7.1 |
-| D13 | Danh sách "sản phẩm đã xem gần đây" | **Hoãn.** Phụ thuộc D3. Chưa có endpoint; client bỏ section ② của Home |
+| D13 | Danh sách "sản phẩm đã xem gần đây" | **Hoãn.** D3 đã chốt nên dữ liệu có trong CDP, nhưng chưa có endpoint Backend đọc và hydrate sản phẩm. Client vẫn bỏ section ② của Home |
 
 ---
 
@@ -950,6 +975,7 @@ Team Backend cung cấp fixture response mẫu cho từng endpoint tại `src/sh
 14. Sản phẩm bị đánh dấu hết chỗ giữa lúc checkout trả `409 PRODUCT_UNAVAILABLE` kèm `productId`, và giỏ không bị xóa.
 15. p95 của `/search` và `/recommendations` dưới 300 ms trên seed data.
 16. Backend integration test và frontend mock cùng kiểm tra với một file `openapi.yaml` duy nhất.
+17. Tiêu chí ghi hành vi và CDP ở `hop-dong-tich-hop-cdp.md` §12 đều đạt.
 
 ---
 
@@ -965,8 +991,8 @@ Luồng nghiệm thu bắt buộc:
 Đăng nhập tài khoản demo
 → Home hiện gợi ý có because
 → Tìm kiếm bằng câu tiếng Việt tự do
-→ Mở chi tiết một sản phẩm thật
-→ Thêm vào giỏ
+→ Mở chi tiết một sản phẩm thật (sinh product_view trong CDP)
+→ Thêm vào giỏ (sinh add_to_cart trong CDP)
 → Checkout, nhận mã tham chiếu
 → Booking sinh event purchase trong CDP
 → Quay lại Home, gợi ý đã đổi sang danh mục còn thiếu
