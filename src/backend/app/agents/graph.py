@@ -12,7 +12,7 @@ from .state import AgentState
 def build_graph(checkpointer: Any | None = None, *, tools: ToolExecutorPort | None = None,
                 tool_timeout_seconds: float = 1.0, llm: Any | None = None,
                 store: ConversationStorePort | None = None, owner: str = "anonymous",
-                require_recommendations: bool = False):
+                require_recommendations: bool = False, llm_timeout_seconds: float | None = None):
     """Build the lab topology with injected API tools; execute API tools using ainvoke.
 
     Runtime clients and JWT are captured in the tool node, never checkpointed.
@@ -20,6 +20,8 @@ def build_graph(checkpointer: Any | None = None, *, tools: ToolExecutorPort | No
     """
     if tool_timeout_seconds <= 0:
         raise ValueError("tool_timeout_seconds must be positive")
+    if llm_timeout_seconds is not None and llm_timeout_seconds <= 0:
+        raise ValueError("llm_timeout_seconds must be positive")
     from langgraph.graph import END, START, StateGraph
     from langchain_core.runnables import RunnableLambda
 
@@ -56,17 +58,21 @@ def build_graph(checkpointer: Any | None = None, *, tools: ToolExecutorPort | No
         graph.add_node(name, RunnableLambda(node, afunc=partial(run_local, node=node)))
     graph.add_node("intake", RunnableLambda(intake_node, afunc=partial(intake_node_async, store=store, owner=owner)))
     graph.add_node("finalize", RunnableLambda(finalize_node, afunc=partial(finalize_node_async, store=store, owner=owner)))
-    graph.add_node("classify", RunnableLambda(partial(classify_node, llm=llm), afunc=partial(classify_node_async, llm=llm)))
-    graph.add_node("answer", RunnableLambda(partial(answer_node, llm=llm), afunc=partial(answer_node_async, llm=llm)))
+    graph.add_node("classify", RunnableLambda(partial(classify_node, llm=llm), afunc=partial(classify_node_async, llm=llm, timeout_seconds=llm_timeout_seconds if llm_timeout_seconds is not None else 2)))
+    graph.add_node("answer", RunnableLambda(partial(answer_node, llm=llm), afunc=partial(answer_node_async, llm=llm, timeout_seconds=llm_timeout_seconds if llm_timeout_seconds is not None else 3)))
     graph.add_node("tool", partial(tool_node, tools=tools, timeout_seconds=tool_timeout_seconds,
-                                   llm=llm, require_recommendations=require_recommendations))
+                                   llm=llm, require_recommendations=require_recommendations,
+                                   llm_timeout_seconds=llm_timeout_seconds if llm_timeout_seconds is not None else 2))
 
     graph.add_edge(START, "intake")
     graph.add_edge("intake", "classify")
-    graph.add_conditional_edges("classify", route_after_classify)
+    graph.add_conditional_edges("classify", route_after_classify,
+                                {name: name for name in ("answer", "tool", "clarify", "dead_letter")})
     graph.add_edge("tool", "evaluate")
-    graph.add_conditional_edges("evaluate", route_after_evaluate)
-    graph.add_conditional_edges("retry", route_after_retry)
+    graph.add_conditional_edges("evaluate", route_after_evaluate,
+                                {name: name for name in ("retry", "dead_letter", "answer")})
+    graph.add_conditional_edges("retry", route_after_retry,
+                                {name: name for name in ("tool", "dead_letter", "answer")})
     graph.add_edge("answer", "finalize")
     graph.add_edge("clarify", "finalize")
     graph.add_edge("dead_letter", "finalize")

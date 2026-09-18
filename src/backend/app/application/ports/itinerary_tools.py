@@ -1,0 +1,44 @@
+"""Read-only ports consumed by the itinerary agent."""
+
+from __future__ import annotations
+
+from typing import Any, Protocol
+
+
+class SearchProductsPort(Protocol):
+    async def search_products(self, request: dict[str, Any]) -> dict[str, Any]: ...
+
+
+class RecommendationPort(Protocol):
+    async def get_recommendations(
+        self, request: dict[str, Any], authorization: str | None = None
+    ) -> dict[str, Any]: ...
+
+
+class CatalogPort(Protocol):
+    async def get_product_detail(self, product_id: str) -> dict[str, Any]: ...
+    async def list_destinations(self) -> dict[str, Any]: ...
+
+
+class ToolError(Exception):
+    """Safe internal error: never includes response bodies or credentials."""
+    def __init__(self, code: str, *, retryable: bool = False, http_status: int | None = None):
+        super().__init__(code)
+        self.code = code
+        self.retryable = retryable
+        self.http_status = http_status
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"code": self.code, "retryable": self.retryable, "httpStatus": self.http_status}
+
+
+class ToolExecutorPort(Protocol):
+    def definitions(self) -> list[dict[str, Any]]: ...
+    async def execute(self, call: dict[str, Any]) -> dict[str, Any]: ...
+    async def get_product_detail(self, product_id: str) -> dict[str, Any]: ...
+    async def list_destinations(self) -> dict[str, Any]: ...
+
+
+class ConversationStorePort(Protocol):
+    async def load(self, conversation_id: str | None, owner: str = "anonymous") -> dict[str, Any] | None: ...
+    async def save(self, conversation_id: str, value: dict[str, Any], owner: str = "anonymous") -> None: ...

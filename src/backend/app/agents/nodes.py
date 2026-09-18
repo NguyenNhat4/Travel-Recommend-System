@@ -158,11 +158,11 @@ def classify_node(state: AgentState, *, llm=None) -> dict:
                 "events": [_event("classify", "LLM_UNAVAILABLE")]}
 
 
-async def classify_node_async(state: AgentState, *, llm=None) -> dict:
+async def classify_node_async(state: AgentState, *, llm=None, timeout_seconds: float = 2) -> dict:
     if state.get("decision") == "error":
         return {"route": "error", "events": [_event("classify", "request rejected")]}
     try:
-        result = await asyncio.wait_for((llm or get_llm()).with_structured_output(Extraction).ainvoke(_extraction_input(state)), 2)
+        result = await asyncio.wait_for((llm or get_llm()).with_structured_output(Extraction).ainvoke(_extraction_input(state)), timeout_seconds)
         return _classify_result(state, result)
     except Exception:
         return {"route": "error", **_failure(state, "LLM_UNAVAILABLE", "Chưa thể hiểu yêu cầu lúc này. Vui lòng thử lại.", retryable=True),
@@ -202,7 +202,8 @@ def _validated_plan(state: dict, plan: list, *, require_recommendations: bool = 
 
 
 async def tool_node(state: AgentState, *, tools: ToolExecutorPort | None = None,
-                    timeout_seconds: float = 1, llm=None, require_recommendations: bool = False) -> dict:
+                    timeout_seconds: float = 1, llm=None, require_recommendations: bool = False,
+                    llm_timeout_seconds: float = 2) -> dict:
     intent = deepcopy(state.get("intent", {}))
     supported = state.get("supported_destinations")
     if intent.get("destination") and supported is None and hasattr(tools, "list_destinations"):
@@ -231,7 +232,7 @@ async def tool_node(state: AgentState, *, tools: ToolExecutorPort | None = None,
                  "Use normalized intent, correct destination, and supported arguments. Total budget is not priceMax. "
                  "Search hotel separately when required; respect excluded categories. No credentials in arguments."),
                 ("human", json.dumps({"message": state.get("query", ""), "intent": intent,
-                                      "constraints": state.get("constraints", {})}, ensure_ascii=False))]), 2)
+                                      "constraints": state.get("constraints", {})}, ensure_ascii=False))]), llm_timeout_seconds)
             plan = response.tool_calls
         plan = _validated_plan({**state, "intent": intent}, plan, require_recommendations=require_recommendations)
     except ToolError as exc:
@@ -410,11 +411,11 @@ def answer_node(state: AgentState, *, llm=None) -> dict:
     return {**update, "events": [_event("answer", "response drafted")]}
 
 
-async def answer_node_async(state: AgentState, *, llm=None) -> dict:
+async def answer_node_async(state: AgentState, *, llm=None, timeout_seconds: float = 3) -> dict:
     update = _non_compose(state)
     if update is None:
         try:
-            result = await asyncio.wait_for((llm or get_llm()).with_structured_output(Composition).ainvoke(_composition_input(state)), 3)
+            result = await asyncio.wait_for((llm or get_llm()).with_structured_output(Composition).ainvoke(_composition_input(state)), timeout_seconds)
             update = _composed(state, result)
         except Exception:
             update = _fallback(state)
