@@ -1,11 +1,24 @@
-# --- Workstream code (tracked in its own repo / not shared here) -------------
-vota-recsys/
-
-# --- Secrets -----------------------------------------------------------------
-# .env holds POSTGRES_PASSWORD and a DATABASE_URL with credentials in it.
+# Local secrets and environment overrides.
 .env
 .env.*
 !.env.example
+!**/.env.example
+*.pem
+*.key
+*.p12
 
-# macOS metadata
-.DS_Store
+# Python caches and local test artifacts.
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Local logs and generated evaluation reports.
+*.log
+src/evaluation/reports/itinerary-agent-metrics.json
