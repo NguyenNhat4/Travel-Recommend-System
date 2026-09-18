@@ -1,5 +1,7 @@
 # Toàn bộ schema Database — một sơ đồ duy nhất
 
+**[Phiên bản 2: schema đầy đủ, nguồn từng trường và tracking Web](schema-database-toan-bo-v2.html)**
+
 Ngày 17/09/2026. Bản thiết kế đề xuất, chưa chạy migration.
 
 **[Mở sơ đồ có phóng to và kéo để xem](schema-database-toan-bo.html)** · **[SVG đầy đủ](diagrams/schema-database-toan-bo.svg)**
