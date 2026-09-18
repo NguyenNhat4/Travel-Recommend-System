@@ -22,3 +22,4 @@ htmlcov/
 # Local logs and generated evaluation reports.
 *.log
 src/evaluation/reports/itinerary-agent-metrics.json
+src/evaluation/reports/eval-*.json
