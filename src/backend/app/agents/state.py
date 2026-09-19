@@ -68,6 +68,7 @@ class AgentState(TypedDict, total=False):
     details: dict[str, dict[str, Any]]
     detail_errors: dict[str, dict[str, Any]]
     supported_destinations: list[str] | None
+    language: str
 
 
 class Scenario(BaseModel):

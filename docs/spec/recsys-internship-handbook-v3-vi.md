@@ -392,6 +392,8 @@ Tin nhắn của khách hàng
         ↓
 LLM trích xuất ý định → { destination, days, party, interests }
         ↓
+Thiếu destination hoặc days? → hỏi lại, lưu phần intent đã biết, chưa gọi tool
+        ↓
 Service của bạn chạy vài lượt tìm kiếm — lưu trú, điểm tham quan, ăn uống
         ↓
 Tùy chọn trộn thêm /recommendations nếu khách hàng đã đăng nhập
@@ -401,7 +403,9 @@ LLM sắp xếp các kết quả thật thành một kế hoạch theo từng ng
 Kế hoạch được render kèm giá thật và link đặt dịch vụ hoạt động được
 ```
 
-**Giữ nó hẹp.** Nó lên kế hoạch chuyến đi. Nó không trả lời câu hỏi chung chung, không xử lý việc đặt chỗ, không duy trì hội thoại dài. Một trợ lý tập trung luôn chạy được thắng một trợ lý mở rộng thỉnh thoảng mới chạy.
+**Giữ nó hẹp.** Nó lên kế hoạch chuyến đi. Nó không trả lời câu hỏi chung chung hoặc xử lý việc đặt chỗ. Hội thoại nhiều lượt chỉ dùng để thu thập/sửa intent lập lịch; state được giữ theo `conversationId`, không biến agent thành trợ lý đa mục đích. `context.language` hỗ trợ `vi` và `en`; mặc định là `vi`, không tự đoán ngôn ngữ trong MVP.
+
+UI demo Evaluation phải gọi FastAPI giống một consumer thật và nhận trace node an toàn qua SSE; không import graph vào Streamlit. Trong development/test, tool có thể dùng fixture 50 sản phẩm để demo deterministic. Chế độ mock phải tắt mặc định ở production, và bằng chứng fixture không được trình bày như bằng chứng availability hoặc latency của service thật.
 
 Ghi chú thực tế: đặt API key trong configuration, không bao giờ trong repository. Đặt giới hạn chi tiêu ngay Tuần 1. Cache lại phản hồi trong lúc phát triển để bạn không phải trả tiền test lại cùng một prompt năm mươi lần. Nếu chi phí hoặc độ trễ thành vấn đề, phương án dự phòng là single-turn — một câu hỏi, một kế hoạch, không hội thoại.
 

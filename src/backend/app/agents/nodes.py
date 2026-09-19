@@ -50,6 +50,35 @@ For product_id=null use a matching activity_type and note_kind. No named restaur
 Return a structured proposal, not the HTTP response. Money will be calculated by backend rules.
 Every day need not have a paid product; reserve rest time. Required hotel/activity must be included."""
 
+MESSAGES = {
+    "vi": {
+        "conversation_not_found": "Hội thoại không tồn tại hoặc đã hết hạn.",
+        "invalid_override": "Thông tin chỉnh sửa không hợp lệ.",
+        "invalid_intent": "Không thể xác nhận thông tin chuyến đi.",
+        "invalid_duration": "Lịch trình hỗ trợ từ 1 đến 7 ngày.",
+        "llm_understand": "Chưa thể hiểu yêu cầu lúc này. Vui lòng thử lại.",
+        "missing_both": "Bạn muốn đi đâu và dự định đi trong mấy ngày (từ 1 đến 7 ngày)?",
+        "missing_destination": "Bạn muốn đi du lịch ở tỉnh hoặc thành phố nào?",
+        "missing_days": "Bạn dự định đi trong mấy ngày, hoặc từ ngày nào đến ngày nào?",
+        "unsupported": "Điểm đến chưa có trong danh sách catalog hiện tại.",
+    },
+    "en": {
+        "conversation_not_found": "The conversation does not exist or has expired.",
+        "invalid_override": "The itinerary update is invalid.",
+        "invalid_intent": "The trip information could not be validated.",
+        "invalid_duration": "Itineraries support trips from 1 to 7 days.",
+        "llm_understand": "I cannot understand the request right now. Please try again.",
+        "missing_both": "Where would you like to go, and for how many days (1 to 7)?",
+        "missing_destination": "Which city or province would you like to visit?",
+        "missing_days": "How many days will your trip last, or what are your start and end dates?",
+        "unsupported": "This destination is not available in the current catalog.",
+    },
+}
+
+
+def _message(state: dict, key: str) -> str:
+    return MESSAGES.get(state.get("language", "vi"), MESSAGES["vi"])[key]
+
 
 def _event(node: str, message: str, **metadata) -> dict:
     return make_event(node, "completed", message, **metadata)
@@ -71,7 +100,7 @@ def intake_node(state: AgentState) -> dict:
             "candidates": {}, "sources": {}, "response": {}, "warnings": [],
             "missing_fields": [], "refusal": False, "pending_question": None,
             "final_answer": None, "http_status": 200, "decision": "", "validation_issues": [],
-            "started_at": time(), "llm_used": False,
+            "started_at": time(), "llm_used": False, "language": state.get("language") or "vi",
             "events": [_event("intake", "request initialized")]}
 
 
@@ -81,14 +110,16 @@ async def intake_node_async(state: AgentState, *, store: ConversationStorePort |
     if store is not None and state.get("conversation_id"):
         previous = await store.load(state["conversation_id"], owner)
         if previous is None:
-            update.update(_failure(state, "CONVERSATION_NOT_FOUND", "Hội thoại không tồn tại hoặc đã hết hạn.", 404))
+            update.update(_failure(state, "CONVERSATION_NOT_FOUND", _message(update, "conversation_not_found"), 404))
         else:
-            update.update(intent=previous["intent"], constraints=previous.get("constraints", {}))
+            update.update(intent=previous["intent"], constraints=previous.get("constraints", {}),
+                          language=state.get("language") or previous.get("language", "vi"))
     return update
 
 
 def _extraction_input(state: dict) -> list:
-    return [("system", EXTRACT_PROMPT), ("human", json.dumps({"message": state.get("query", ""),
+    language = "Vietnamese" if state.get("language", "vi") == "vi" else "English"
+    return [("system", EXTRACT_PROMPT + f"\nUse {language} for any natural-language content."), ("human", json.dumps({"message": state.get("query", ""),
              "previous_intent": state.get("intent", {}), "previous_constraints": state.get("constraints", {}),
              "today": date.today().isoformat()}, ensure_ascii=False))]
 
@@ -103,8 +134,8 @@ def _classify_result(state: dict, result: Extraction) -> dict:
     override = state.get("intent_override", {})
     if override:
         if not valid("TripIntentPatch", override):
-            return {"route": "error", **_failure(state, "VALIDATION_ERROR", "Thông tin chỉnh sửa không hợp lệ.", 422)}
-        intent = merge_intent(intent, override)
+            return {"route": "error", **_failure(state, "VALIDATION_ERROR", _message(state, "invalid_override"), 422)}
+        intent.update(deepcopy(override))
     constraints = deepcopy(state.get("constraints", {}))
     changes = result.constraints.model_dump(exclude_none=True)
     for key in changes.pop("clear_fields", []):
@@ -137,9 +168,9 @@ def _classify_result(state: dict, result: Extraction) -> dict:
     if result.domain != "travel":
         return {**update, "route": "simple"}
     if intent.get("days") is not None and not 1 <= intent["days"] <= 7:
-        return {**update, "route": "error", **_failure(state, "INVALID_TRIP_DURATION", "Lịch trình hỗ trợ từ 1 đến 7 ngày.", 400)}
+        return {**update, "route": "error", **_failure(state, "INVALID_TRIP_DURATION", _message(state, "invalid_duration"), 400)}
     if not valid("TripIntent", intent):
-        return {**update, "route": "error", **_failure(state, "VALIDATION_ERROR", "Không thể xác nhận thông tin chuyến đi.", 422)}
+        return {**update, "route": "error", **_failure(state, "VALIDATION_ERROR", _message(state, "invalid_intent"), 422)}
     missing = [key for key in ("destination", "days") if not intent.get(key)]
     update["missing_fields"] = missing
     if conflict or constraints.get("unverified_requirements"):
@@ -154,7 +185,7 @@ def classify_node(state: AgentState, *, llm=None) -> dict:
         result = (llm or get_llm()).with_structured_output(Extraction).invoke(_extraction_input(state))
         return _classify_result(state, result)
     except Exception:
-        return {"route": "error", **_failure(state, "LLM_UNAVAILABLE", "Chưa thể hiểu yêu cầu lúc này. Vui lòng thử lại.", retryable=True),
+        return {"route": "error", **_failure(state, "LLM_UNAVAILABLE", _message(state, "llm_understand"), retryable=True),
                 "events": [_event("classify", "LLM_UNAVAILABLE")]}
 
 
@@ -165,7 +196,7 @@ async def classify_node_async(state: AgentState, *, llm=None, timeout_seconds: f
         result = await asyncio.wait_for((llm or get_llm()).with_structured_output(Extraction).ainvoke(_extraction_input(state)), timeout_seconds)
         return _classify_result(state, result)
     except Exception:
-        return {"route": "error", **_failure(state, "LLM_UNAVAILABLE", "Chưa thể hiểu yêu cầu lúc này. Vui lòng thử lại.", retryable=True),
+        return {"route": "error", **_failure(state, "LLM_UNAVAILABLE", _message(state, "llm_understand"), retryable=True),
                 "events": [_event("classify", "LLM_UNAVAILABLE")]}
 
 
@@ -217,7 +248,7 @@ async def tool_node(state: AgentState, *, tools: ToolExecutorPort | None = None,
     if supported is not None:
         canonical = next((name for name in supported if normalized(name) == normalized(intent["destination"])), None)
         if canonical is None:
-            failure = _failure(state, "UNSUPPORTED_DESTINATION", "Điểm đến chưa có trong danh sách catalog hiện tại.", 422)
+            failure = _failure(state, "UNSUPPORTED_DESTINATION", _message(state, "unsupported"), 422)
             failure["response"]["error"]["details"] = {"destination": intent["destination"], "supportedDestinations": supported}
             return {**failure, "tool_plan": [], "tool_results": [], "supported_destinations": supported,
                     "events": [_event("tool", "UNSUPPORTED_DESTINATION")]}
@@ -325,11 +356,11 @@ def ask_clarification_node(state: AgentState) -> dict:
     elif reason == "unverified":
         question = "Điều kiện bắt buộc bạn yêu cầu chưa có dữ liệu để xác minh. Bạn có muốn bỏ điều kiện đó hoặc cung cấp thêm thông tin không?"
     elif len(missing) == 2:
-        question = "Bạn muốn đi đâu và dự định đi trong mấy ngày (từ 1 đến 7 ngày)?"
+        question = _message(state, "missing_both")
     elif "destination" in missing:
-        question = "Bạn muốn đi du lịch ở tỉnh hoặc thành phố nào?"
+        question = _message(state, "missing_destination")
     else:
-        question = "Bạn dự định đi trong mấy ngày, hoặc từ ngày nào đến ngày nào?"
+        question = _message(state, "missing_days")
     response = {"status": "NEEDS_CLARIFICATION", "conversationId": state["conversation_id"],
                 "question": question, "knownIntent": state["intent"]}
     if missing:
@@ -372,7 +403,8 @@ def _composition_input(state: dict) -> list:
         projected["attributes"] = {key: value for key, value in product.get("attributes", {}).items() if key in relevant}
         projected["description"] = product.get("description", "")[:600]
         products.append({**projected, "allowed_times": allowed_times(product)})
-    return [("system", COMPOSE_PROMPT), ("human", json.dumps({"intent": state["intent"],
+    language = "Vietnamese" if state.get("language", "vi") == "vi" else "English"
+    return [("system", COMPOSE_PROMPT + f"\nUse {language} for presentation choices."), ("human", json.dumps({"intent": state["intent"],
             "constraints": state.get("constraints", {}), "candidates": products}, ensure_ascii=False))]
 
 
@@ -485,5 +517,7 @@ async def finalize_node_async(state: AgentState, *, store: ConversationStorePort
                               owner: str = "anonymous") -> dict:
     update = finalize_node(state)
     if store is not None and update["http_status"] == 200:
-        await store.save(state["conversation_id"], {"intent": state["intent"], "constraints": state.get("constraints", {})}, owner)
+        await store.save(state["conversation_id"], {"intent": state["intent"],
+                         "constraints": state.get("constraints", {}),
+                         "language": state.get("language", "vi")}, owner)
     return update
