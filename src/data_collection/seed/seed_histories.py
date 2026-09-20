@@ -179,21 +179,13 @@ def build_trip_events(
     if not picks:
         return events
 
-    if rng.random() < config.SEARCH_EVENT_RATE:
-        events.append(
-            {
-                "cdp_user_id": cdp_user_id,
-                "event_name": "search",
-                "timestamp": random_time_on(rng, booked_on - dt.timedelta(days=1)),
-                "product_id": None,
-                "taxonomy": None,
-                "event_group_id": group_id,
-                "quantity": None,
-                "unit_price": None,
-                "using_date": None,
-            }
-        )
+    # Một chuyến = một lần checkout, nên chốt thời điểm mua trước rồi đặt view/cart lùi về trước nó.
+    # Nếu sinh view bằng giờ ngẫu nhiên trong ngày, view lead=0 có thể rơi vào buổi tối SAU khi đã mua
+    # lúc sáng — sai thứ tự "product_view trước purchase 0–7 ngày" (§4).
+    purchase_at = at_time(booked_on, int(rng.integers(10, 22)), int(rng.integers(0, 60)))
 
+    view_times: list[dt.datetime] = []
+    view_events: list[dict] = []
     # product_view có thể trỏ sản phẩm khác cùng destination — người ta xem rồi mới chọn.
     for _ in range(inclusive_int(rng, config.VIEWS_PER_TRIP)):
         taxonomy = picks[int(rng.integers(len(picks)))][0]
@@ -201,11 +193,16 @@ def build_trip_events(
         if viewed is None:
             continue
         lead = inclusive_int(rng, config.VIEW_LEAD_DAYS)
-        events.append(
+        if lead == 0:
+            viewed_at = purchase_at - dt.timedelta(minutes=int(rng.integers(30, 600)))
+        else:
+            viewed_at = random_time_on(rng, booked_on - dt.timedelta(days=lead))
+        view_times.append(viewed_at)
+        view_events.append(
             {
                 "cdp_user_id": cdp_user_id,
                 "event_name": "product_view",
-                "timestamp": random_time_on(rng, booked_on - dt.timedelta(days=lead)),
+                "timestamp": viewed_at,
                 "product_id": str(viewed[0]),
                 "taxonomy": viewed[1],
                 "event_group_id": group_id,
@@ -215,7 +212,25 @@ def build_trip_events(
             }
         )
 
-    for taxonomy, product in picks:
+    if rng.random() < config.SEARCH_EVENT_RATE:
+        # search mở đầu chuyến: trước mọi product_view.
+        earliest = min(view_times) if view_times else purchase_at
+        events.append(
+            {
+                "cdp_user_id": cdp_user_id,
+                "event_name": "search",
+                "timestamp": earliest - dt.timedelta(minutes=int(rng.integers(5, 240))),
+                "product_id": None,
+                "taxonomy": None,
+                "event_group_id": group_id,
+                "quantity": None,
+                "unit_price": None,
+                "using_date": None,
+            }
+        )
+    events.extend(view_events)
+
+    for index, (taxonomy, product) in enumerate(picks):
         if taxonomy == "flight":
             using_date = check_in  # bay đúng ngày nhận phòng
         elif taxonomy == "attraction":
@@ -237,7 +252,7 @@ def build_trip_events(
                 {
                     "cdp_user_id": cdp_user_id,
                     "event_name": "add_to_cart",
-                    "timestamp": random_time_on(rng, booked_on),
+                    "timestamp": purchase_at - dt.timedelta(minutes=int(rng.integers(5, 25))),
                     "product_id": str(product[0]),
                     "taxonomy": taxonomy,
                     "event_group_id": group_id,
@@ -251,7 +266,9 @@ def build_trip_events(
             {
                 "cdp_user_id": cdp_user_id,
                 "event_name": "purchase",
-                "timestamp": at_time(booked_on, int(rng.integers(9, 22)), int(rng.integers(0, 60))),
+                # Các vertical của cùng một checkout cách nhau vài giây, giữ đúng thứ tự
+                # hotel → flight → attraction → golf.
+                "timestamp": purchase_at + dt.timedelta(seconds=10 * index),
                 "product_id": str(product[0]),
                 "taxonomy": taxonomy,
                 "event_group_id": group_id,

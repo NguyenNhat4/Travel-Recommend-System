@@ -439,7 +439,7 @@ Phần này do `python -m data_collection.seed` sinh tự động (`seed/report.
 | Cửa sổ đặt chỗ | `2026-09-20` → `2026-10-19` (30 ngày) |
 | Nguồn catalog | `products.synthetic.jsonl` |
 | Loại catalog | tổng hợp (`gen_products.py`) |
-| Thời gian chạy | 4.7 giây |
+| Thời gian chạy | 4.0 giây |
 
 ### Số dòng từng bảng
 
@@ -448,33 +448,32 @@ Phần này do `python -m data_collection.seed` sinh tự động (`seed/report.
 | `cdp.products` | 433 |
 | — trong đó không bán được trong cửa sổ | 0 |
 | — có lịch 30 ngày (`attributes.availability`) | 208 |
-| `catalog.combo_items` | 136 |
+| `catalog.combo_items` | 142 |
 | `cdp.profiles` | 2000 |
-| `cdp.events` | 7646 |
+| `cdp.events` | 7614 |
 | `app.users` | 54 |
 | `app.bookings` / `booking_items` | 1 / 1 |
 | `insider.insider_profiles` | 2000 |
 | `insider.identifiers` (đang hiệu lực) | 6000 |
-| `insider.insider_events` (tổng / còn hạn) | 4427 / 4413 |
+| `insider.insider_events` (tổng / còn hạn) | 4325 / 4299 |
 | `insider.channel_events` | 18532 |
 | `catalog.product_vectors` | 0 — job `embed_products` của Search, tuần 2 |
 
 ### Combo: tỷ lệ map thành phần
 
-- Combo: **40**, hạng mục: **136**, combo rỗng: **0**
-- Map được trên các loại map được: **86.3%** (tính cả `meal`/`transfer`/`other`: 50.7%)
+- Combo: **40**, hạng mục: **142**, combo rỗng: **0**
+- Map được trên các loại map được: **86.0%** (tính cả `meal`/`transfer`/`other`: 52.1%)
 - `meal`, `transfer`, `other` luôn `item_product_id = NULL`: FK `(item_product_id, item_kind) → products (product_id, taxonomy)` không có taxonomy tương ứng.
 
 | item_kind | map được | tổng | tỷ lệ |
 |---|---|---|---|
-| `attraction` | 37 | 48 | 77.1% |
+| `attraction` | 40 | 52 | 76.9% |
 | `golf` | 6 | 6 | 100.0% |
-| `hotel` | 26 | 26 | 100.0% |
-| `meal` | 0 | 37 | 0.0% |
-| `other` | 0 | 3 | 0.0% |
+| `hotel` | 28 | 28 | 100.0% |
+| `meal` | 0 | 40 | 0.0% |
 | `transfer` | 0 | 16 | 0.0% |
 
-- **Hàng đợi soát tay** (`item_product_id IS NULL` hoặc `confidence < 0.8`): **73** dòng.
+- **Hàng đợi soát tay** (`item_product_id IS NULL` hoặc `confidence < 0.8`): **74** dòng.
 
 ```sql
 SELECT combo_product_id, position, label, item_kind, confidence, evidence
@@ -486,13 +485,13 @@ WHERE  item_product_id IS NULL OR confidence < 0.8;
 
 | lifecycle_stage | số khách | tỷ lệ | mục tiêu |
 |---|---|---|---|
-| `new` | 522 | 26.1% | 25% |
-| `active` | 884 | 44.2% | 45% |
-| `dormant` | 418 | 20.9% | 20% |
-| `churned` | 176 | 8.8% | 10% |
+| `new` | 499 | 24.9% | 25% |
+| `active` | 886 | 44.3% | 45% |
+| `dormant` | 413 | 20.6% | 20% |
+| `churned` | 202 | 10.1% | 10% |
 
 - Event nhiều nhất trên một khách: **15** (trần 15).
-- Cạnh lộn xộn cố ý: **62** event `purchase` trỏ `product_id` không tồn tại, **231** event không có `event_group_id`.
+- Cạnh lộn xộn cố ý: **61** event `purchase` trỏ `product_id` không tồn tại, **220** event không có `event_group_id`.
 - Profile Insider `gdpr_optin = false`: **41**.
 
 ### Tài khoản demo
@@ -511,10 +510,8 @@ Mật khẩu chung: `Demo@2026` (BCrypt cost 10).
 
 ### Baseline most-popular-in-destination
 
-- Recall@20 = **0.766** trên 1015 khách (giấu chuyến mua cuối). Mục tiêu: 0.05–0.6 — **chưa đạt**.
+- Recall@20 = **0.501** trên 1002 khách (giấu chuyến mua cuối). Mục tiêu: 0.05–0.6 — **đạt**.
 - Gần 0 nghĩa là dữ liệu quá ngẫu nhiên (recommender hỏng trông vẫn ổn); quá cao nghĩa là baseline bất khả chiến bại, không đo được cải thiện.
-
-> **Vượt ngưỡng trên là hệ quả của catalog tổng hợp, không phải lỗi phân bố.** Mỗi điểm đến chỉ có khoảng 60 sản phẩm đặt được, nên top-20 đã phủ phần lớn giỏ hàng: baseline trúng quá dễ. Catalog crawl thật (2.216 sản phẩm, 15 điểm đến) có giỏ mỗi điểm đến lớn hơn nhiều lần và con số này sẽ giảm. **Không hạ `ZIPF_S` để ép chỉ số xuống** — làm thế là bóp méo dữ liệu cho vừa thước đo. Đo lại sau khi có `products.jsonl` thật; cùng gốc nguyên nhân với hai dòng FAIL dự kiến bên dưới.
 
 ### `db/verify.sql`
 

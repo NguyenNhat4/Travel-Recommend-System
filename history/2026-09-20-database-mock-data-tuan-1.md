@@ -3,7 +3,7 @@
 - Ngày: 2026-09-20
 - Tác giả: Nguyễn Hải Sơn / Claude Code
 - Nhánh: data_contract
-- Trạng thái: dang dở
+- Trạng thái: hoàn thành
 - Phạm vi: data, cdp, insider, docs
 - Thay thế: `2026-09-17-thiet-ke-schema-3-service.md` (phần "ba service, mỗi service một database" và "CDP clone là service HTTP")
 
@@ -59,6 +59,13 @@ Phần B — package seed:
 - `src/data_collection/README.md` — sửa: thêm khối `<!-- seed-report:start/end -->` ở cuối (138 dòng, do `report.py` sinh). Sổ tay crawler 426 dòng giữ nguyên, không xoá dòng nào.
 - `src/data_collection/.gitignore` — sửa: bỏ qua `products.jsonl` và `products.synthetic.jsonl` (sinh lại được từ `--seed` + `--as-of`).
 
+Phần C — test và chốt:
+
+- `src/data_collection/tests/test_seed.py` — thêm: 59 test `unittest` chạy offline (không cần Postgres) cho `gen_products`, cửa sổ đặt chỗ, lịch 30 ngày, regex combo, parser combo, sinh chuyến, salt BCrypt và phễu Insider.
+- `src/data_collection/seed/seed_histories.py` — sửa: chốt thời điểm mua trước rồi đặt `product_view`/`add_to_cart` lùi về trước nó; purchase của các vertical trong cùng checkout cách nhau 10 giây theo thứ tự hotel → flight → attraction → golf.
+- `src/data_collection/seed/gen_products.py` — sửa: miễn combo khỏi cạnh lộn xộn "mô tả ngắn".
+- `src/data_collection/README.md` — sửa: khối `seed-report` cập nhật theo lần chạy cuối.
+
 ## Quyết định
 
 - **CDP clone là schema `cdp` trong database `vota`, không phải service HTTP có PostgreSQL riêng.** Người yêu cầu chọn phương án "theo bundle + sửa tài liệu" ngày 20/09. Căn cứ: handbook §6 "one implementation now, reading locally"; tách database sẽ mất FK và view của `catalog`/`app` sang `cdp.products`, mà `catalog` vẫn phải là bảng local để search p95 < 300 ms. Ranh giới production được mô phỏng bằng **role + connection riêng** và bằng việc mọi truy cập của app đi qua port `CdpClient` — đổi sang `HttpCdpClient` là thay adapter, không sửa use case. Đã kiểm chứng ranh giới chạy thật (xem Kiểm tra).
@@ -80,7 +87,12 @@ Phần B:
 - **Chỉ sinh tuyến bay chiều *tới* điểm đến** (3 origin × 4 destination = 12 tuyến). Sinh cả chiều về thì `destination` của vé bay là "Hà Nội"/"TP. Hồ Chí Minh" — nơi không có khách sạn nào trong catalog — và quy tắc "mỗi chuyến một destination" sẽ ghép vé bay về Hà Nội vào chuyến đi Nha Trang.
 - **Tỷ lệ attraction không bán vé do `ATTRACTION_UNTICKETED_RATE` quyết định**, không do số lượng mẫu tên. Bản đầu có 3/9 mẫu là điểm công cộng nên ra 37% thay vì 15% như §1b.
 - **Báo cáo tách "tỷ lệ map được" theo loại map được.** `meal`/`transfer`/`other` luôn `item_product_id = NULL` vì FK `(item_product_id, item_kind) → products (product_id, taxonomy)` không có taxonomy tương ứng; gộp chúng vào mẫu số làm chỉ số trông tệ mà không phản ánh chất lượng parser. Map được 86,3% trên các loại map được (yêu cầu §1b: ≥ 70%).
-- **Không hạ `ZIPF_S` để ép baseline Recall@20 xuống dưới 0,6.** Recall cao là hệ quả của catalog tổng hợp nhỏ (~60 sản phẩm đặt được mỗi điểm đến nên top-20 phủ phần lớn giỏ), cùng gốc nguyên nhân với hai dòng FAIL dự kiến. Chỉnh phân bố cho vừa thước đo là bóp méo dữ liệu; báo cáo ghi rõ và đo lại khi có crawl thật.
+- **Không hạ `ZIPF_S` để ép baseline Recall@20 xuống dưới 0,6.** Chỉnh phân bố cho vừa thước đo là bóp méo dữ liệu. Giữ nguyên `ZIPF_S = 1.1` và ghi rõ trong báo cáo; xem mục Kiểm tra — chỉ số này tự về trong khoảng sau khi sửa thứ tự event ở phần C, không phải nhờ vặn tham số.
+
+Phần C:
+
+- **Miễn combo khỏi cạnh lộn xộn "2% mô tả ngắn".** `description` của combo là đầu vào của `parse_combos`; cắt cụt nó thì §1b ("map được ≥ 70%") không thể đạt. Hai yêu cầu trong cùng §1b xung khắc; yêu cầu về combo cụ thể hơn nên thắng. Cạnh lộn xộn vẫn áp cho các taxonomy khác, đúng mục đích của nó là làm khó search/dedupe.
+- **Một chuyến là một lần checkout: chốt `purchase_at` trước, rồi đặt `product_view`/`add_to_cart` lùi về trước nó.** Cách cũ sinh giờ ngẫu nhiên trong ngày cho view, nên view `lead = 0` có thể rơi vào buổi tối *sau* lần mua buổi sáng — sai quy tắc "product_view trước purchase 0–7 ngày" (§4).
 
 ## Kiểm tra
 
@@ -118,18 +130,32 @@ Phần B — `cd src && PYTHONUTF8=1 python -m data_collection.seed --as-of 2026
 - Chạy lại **không** `--reset`: dừng với thông báo `cdp.profiles đã có 2000 dòng…`, exit code 1 — không nhân đôi dữ liệu.
 - 4 persona đúng bảng §5: P1 active/Gold/4 đơn/3 ngày/Nha Trang, có đơn `VOTA-20261002-4D6N` với `using_date = as_of + 12` nằm trong cửa sổ và **đúng một** event `purchase` cùng `event_group_id`; P2 new/0 đơn/2 `product_view`; P3 dormant/190 ngày/Phú Quốc; P4 new/0 event.
 - Ranh giới role kiểm chứng lại sau khi có dữ liệu: `vota_app_login` đọc `cdp.products` OK, `cdp.events` bị từ chối.
-- Baseline most-popular-in-destination: Recall@20 = **0,766** — **trên** ngưỡng 0,6 của DoD mục 5. Xem phần Quyết định và Còn lại.
+
+Phần C — `cd src/data_collection && python -m unittest discover -s tests -t . -p "test_seed.py"`: **59 test, OK, 0.54 giây**, không cần database.
+
+Hai lỗi thật do test phát hiện, đã sửa (không phải sửa test cho vừa code):
+
+1. `product_view` có thể rơi vào *sau* `purchase` khi cùng ngày (`lead = 0`) — sai thứ tự §4.
+2. Cạnh lộn xộn "mô tả ngắn" cắt cụt description của combo, phá chính đầu vào của `parse_combos`.
+
+Chạy lại toàn bộ sau khi sửa: 433 products · 142 combo_items · 2.000 profiles · 7.614 events · 54 users · 18.532 channel_events; `verify.sql` 14/16 PASS (2 FAIL dự kiến), `verify_insider.sql` 6/6 PASS; md5 của `cdp.events` giống nhau qua hai lần `--reset`.
+
+Chạy cả bộ test của workstream (`python -m unittest discover -s tests -t .`): 73 test, 59 test seed **OK**, `test_quality` **OK** sau khi cài `requirements.txt`. Còn **5 lỗi có sẵn từ trước, không liên quan thay đổi này**: `test_overnight` dùng `signal.SIGKILL` — hằng số chỉ có trên POSIX, không có trên Windows (`overnight.py:155`). Cả `overnight.py` lẫn `test_overnight.py` đều không nằm trong thay đổi này.
+
+`validate_contract.py`: **lỗi có sẵn từ trước** (`KeyError: 'priceUnit'`), đã kiểm chứng bằng cách chạy lại ở commit `cbbb482` (trước thay đổi này) và ra đúng lỗi đó. Thay đổi này không đụng `src/shared/contracts`, `src/shared/mocks` hay `sample/`.
+
+**Baseline Recall@20 = 0,501 — nằm trong khoảng mục tiêu 0,05–0,60, DoD mục 5 đạt.** Trước khi sửa thứ tự event, chỉ số này là 0,766. Lý do đổi: lần mua *cuối* của mỗi khách (mục bị giấu khi đo) trước đây rơi vào vertical ngẫu nhiên, thường là hotel — vertical tập trung nhất nên baseline "phổ biến nhất" đoán trúng quá dễ. Khi checkout theo đúng thứ tự hotel → flight → attraction → golf, mục bị giấu phân bố ra nhiều vertical (hotel 538 · combo 391 · attraction 334 · flight 200 · golf 38) và phần lớn là hạng mục đuôi dài. Chỉ số tự về đúng khoảng nhờ **sửa lỗi thứ tự**, không phải nhờ vặn `ZIPF_S`.
 
 ## Còn lại / rủi ro
 
-- **Phần C chưa làm:** unit test cho các hàm `build_*`. Đang dừng sau khi pipeline chạy xanh và báo cáo đã sinh.
 - `psql` không có trên máy này; mọi lệnh psql chạy qua `docker compose exec -T postgres psql`. `report.py` tự chạy các câu verify bằng psycopg (bỏ dòng `\pset`) nên không phụ thuộc psql.
-- **Hai dòng `db/verify.sql` FAIL theo thiết kế** với catalog tổng hợp: `products = 2216` và `is_recommendable properties >= 300`. Hết FAIL khi có `products.jsonl` thật từ crawler.
-- **Baseline Recall@20 = 0,766, vượt ngưỡng 0,6** của DoD mục 5. Nguyên nhân là quy mô catalog tổng hợp: mỗi điểm đến chỉ có ~60 sản phẩm đặt được nên top-20 đã phủ phần lớn giỏ, baseline trúng quá dễ. Cùng gốc với hai dòng FAIL trên. **Cần Evaluation đo lại trên `products.jsonl` thật trước khi kết luận phân bố sai**; không hạ `ZIPF_S` để ép chỉ số.
-- Chỉ số Recall ở `report.py` là phép đo nhanh để phát hiện dữ liệu quá ngẫu nhiên, **không thay** bộ đo của `src/evaluation` (Recall@20, NDCG@10, cross-category rate, availability precision, coverage — ARCHITECTURE §10).
-- DoD mục 6 (đăng nhập 4 persona, Home hiện đúng section) **chưa kiểm được**: backend/frontend chưa đọc database này. Mới xác minh tới mức dữ liệu: stage, tier, đơn sắp tới và số event của từng persona đúng bảng §5.
+- **Hai dòng `db/verify.sql` FAIL theo thiết kế** với catalog tổng hợp: `products = 2216` và `is_recommendable properties >= 300`. Hết FAIL khi có `products.jsonl` thật từ crawler — chạy lại `--reset` với file thật, không sửa code.
+- Chỉ số Recall ở `report.py` là phép đo nhanh để phát hiện dữ liệu quá ngẫu nhiên, **không thay** bộ đo của `src/evaluation` (Recall@20, NDCG@10, cross-category rate, availability precision, coverage — ARCHITECTURE §10). Evaluation nên đo lại trên catalog thật.
+- **DoD mục 6 (đăng nhập 4 persona, Home hiện đúng section) chưa kiểm được**: backend/frontend chưa đọc database này. Mới xác minh tới mức dữ liệu — stage, tier, đơn sắp tới và số event của từng persona đúng bảng §5.
 - `products.synthetic.jsonl` không commit (đã vào `.gitignore`) vì sinh lại được từ `--seed` + `--as-of`.
-- **Code chưa theo kiến trúc mới:** `src/backend/app/infrastructure/clients/cdp_http_client.py` và `cdp_event_dispatcher.py` vẫn là thiết kế service HTTP. Các adapter mà `README.database.md` nhắc tới — `infrastructure/cdp/local_cdp_client.py`, `infrastructure/insider/http_insider_client.py`, `application/ports/insider_client.py` — **chưa tồn tại**. `src/backend/app/core/config.py` còn default `sqlite:///./data/app.db` và `cdp_base_url`. Việc này thuộc Backend, chưa nằm trong phạm vi tuần 1 của Data.
+- **Code chưa theo kiến trúc mới:** `src/backend/app/infrastructure/clients/cdp_http_client.py` và `cdp_event_dispatcher.py` vẫn là thiết kế service HTTP. Các adapter mà `README.database.md` nhắc tới — `infrastructure/cdp/local_cdp_client.py`, `infrastructure/insider/http_insider_client.py`, `application/ports/insider_client.py` — **chưa tồn tại**. `src/backend/app/core/config.py` còn default `sqlite:///./data/app.db` và `cdp_base_url`. Việc này thuộc Backend, ngoài phạm vi tuần 1 của Data.
 - `src/cdp_clone/app/infrastructure/tables.py` (revision `0001`) chưa khớp `db/init/01_vota.sql`; phải đối chiếu lại trước khi dựng `HttpCdpClient`.
-- `src/insider_clone/` vẫn rỗng (chỉ có README + `.gitkeep`); `seed_insider.py` ở phần B ghi thẳng vào database `insider`, chưa qua service.
-- Chờ xác nhận, chưa tự quyết: tên cột opt-in trong `cdp.profiles` (chờ reviewer CDP); D và model vector (tuần 2, `product_vectors` để trống); "mọi route có ≥ 1 chuyến?" — catalog tổng hợp cố ý tạo 1 route không có chuyến để câu hỏi này có ví dụ.
+- `src/insider_clone/` vẫn rỗng (chỉ có README + `.gitkeep`); `seed_insider.py` ghi thẳng vào database `insider`, chưa qua service.
+- Chờ xác nhận, chưa tự quyết: tên cột opt-in trong `cdp.profiles` (chờ reviewer CDP); D và model vector (tuần 2, `catalog.product_vectors` để trống); "mọi route có ≥ 1 chuyến?" — catalog tổng hợp cố ý tạo đúng 1 route không có chuyến để câu hỏi này có ví dụ.
+- `--reset` bị chặn với host không phải localhost trừ khi có `--allow-remote-reset`; khi reset Postgres staging chung phải báo trong nhóm (AGENTS.md §6.3).
+- **Hai lỗi có sẵn từ trước, không sửa trong thay đổi này** vì nằm ngoài phạm vi: `validate_contract.py` lỗi `KeyError: 'priceUnit'` (đã kiểm chứng có từ commit `cbbb482`) và `test_overnight` lỗi `signal.SIGKILL` trên Windows (`overnight.py:155`). Cần chủ sở hữu tương ứng (Integration, Data/crawler) xử lý.

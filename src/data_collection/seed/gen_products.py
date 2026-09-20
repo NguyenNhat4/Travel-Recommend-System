@@ -474,7 +474,10 @@ def _apply_messy_edges(rng: np.random.Generator, catalog: list[dict]) -> list[di
     for record in catalog:
         if rng.random() < config.CATALOG_MISSING_IMAGE_RATE:
             record["imageUrl"] = None
-        if rng.random() < config.CATALOG_SHORT_DESCRIPTION_RATE:
+        # Combo được miễn: description của combo là **đầu vào của parse_combos**, cắt cụt nó thì
+        # §1b ("map được ≥ 70%") không thể đạt. Cạnh lộn xộn này nhằm vào search/dedupe, nên
+        # áp cho các taxonomy khác là đủ.
+        if record["taxonomy"] != "combo" and rng.random() < config.CATALOG_SHORT_DESCRIPTION_RATE:
             record["description"] = record["name"][:39]
 
     properties = [
