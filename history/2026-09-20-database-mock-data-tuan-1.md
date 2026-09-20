@@ -159,3 +159,19 @@ Chạy cả bộ test của workstream (`python -m unittest discover -s tests -t
 - Chờ xác nhận, chưa tự quyết: tên cột opt-in trong `cdp.profiles` (chờ reviewer CDP); D và model vector (tuần 2, `catalog.product_vectors` để trống); "mọi route có ≥ 1 chuyến?" — catalog tổng hợp cố ý tạo đúng 1 route không có chuyến để câu hỏi này có ví dụ.
 - `--reset` bị chặn với host không phải localhost trừ khi có `--allow-remote-reset`; khi reset Postgres staging chung phải báo trong nhóm (AGENTS.md §6.3).
 - **Hai lỗi có sẵn từ trước, không sửa trong thay đổi này** vì nằm ngoài phạm vi: `validate_contract.py` lỗi `KeyError: 'priceUnit'` (đã kiểm chứng có từ commit `cbbb482`) và `test_overnight` lỗi `signal.SIGKILL` trên Windows (`overnight.py:155`). Cần chủ sở hữu tương ứng (Integration, Data/crawler) xử lý.
+
+---
+
+## Bổ sung 21/09 — sửa hai lỗi phát hiện khi chạy lại ở ngày khác
+
+- `src/data_collection/seed/config.py` — thêm `WINDOW_CLAMP_SKEW_DAYS = 1`.
+- `src/data_collection/seed/seed_histories.py` — sửa: kẹp `using_date` khi `>= as_of - dung sai`, thay vì `> as_of`.
+- `src/data_collection/seed/report.py` — sửa: bỏ dòng "Thời gian chạy" khỏi khối `seed-report`.
+- `src/data_collection/tests/test_seed.py` — thêm: test hồi quy `test_purchases_on_the_as_of_boundary_are_also_clamped`.
+- `src/data_collection/README.md` — sửa: khối `seed-report` sinh lại.
+
+**Lỗi 1 — `future purchases inside window: FAIL (1)`.** Chỉ lộ ra khi seed bằng `--as-of` khác ngày của database. `db/verify.sql` so `using_date > current_date` — đồng hồ **của database** — còn seed chỉ biết `as_of`. Đồng hồ container Postgres trôi một ngày so với host (container `2026-09-20`, host `2026-09-21`), nên một chuyến bay có `using_date` đúng bằng `as_of` lọt qua bước kẹp (điều kiện cũ `> as_of`) rồi bị verify bắt: `VP0000035`, bay ngày `2026-09-28`, `using_date = 2026-09-21`. Sửa bằng cách kẹp từ `as_of - 1 ngày`; event lịch sử cũ hơn vẫn được miễn (DATABASE_SCHEMA §1 mục 13). Đã chạy lại với `--as-of` 20, 21 và 22/09: cả ba đều PASS.
+
+**Lỗi 2 — báo cáo làm bẩn git sau mỗi lần seed.** Khối `seed-report` in "Thời gian chạy" chính xác tới 0,1 giây nên `src/data_collection/README.md` đổi ở **mọi** lần chạy, gây conflict vô ích khi nhiều người cùng seed. Thời gian chạy chỉ còn in ra stdout. Đã kiểm: chạy seed hai lần liên tiếp, `git status` sạch.
+
+Kiểm tra: 60 test `unittest` OK; `verify.sql` 14/16 PASS (2 FAIL dự kiến) và `verify_insider.sql` 6/6 PASS ở cả ba mốc ngày.

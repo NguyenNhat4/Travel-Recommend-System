@@ -448,6 +448,32 @@ class HistoryTests(unittest.TestCase):
             self.assertGreaterEqual(event["using_date"], start)
             self.assertLessEqual(event["using_date"], finish)
 
+    def test_purchases_on_the_as_of_boundary_are_also_clamped(self):
+        """Hồi quy: `verify.sql` so với `current_date` của database, seed chỉ biết `as_of`.
+
+        Khi đồng hồ container lệch một ngày so với host, một chuyến bay rơi đúng ngày `as_of`
+        từng lọt qua bước kẹp (điều kiện cũ là `> as_of`) rồi bị verify bắt. Bất biến phải đúng
+        cho mọi mốc trong khoảng dung sai, không chỉ cho mốc `as_of`.
+        """
+        window = {
+            row[seed_histories.ProductPool.ID]: (
+                row[seed_histories.ProductPool.FROM], row[seed_histories.ProductPool.TO]
+            )
+            for row in self.pool.rows
+        }
+        skew = dt.timedelta(days=config.WINDOW_CLAMP_SKEW_DAYS)
+        for reference in (AS_OF - skew, AS_OF, AS_OF + skew):
+            for event in self.events:
+                if event["event_name"] != "purchase" or not event["using_date"]:
+                    continue
+                if event["using_date"] <= reference:
+                    continue
+                bounds = window.get(event["product_id"])
+                if bounds is None or bounds[0] is None:
+                    continue
+                self.assertGreaterEqual(event["using_date"], bounds[0], (reference, event))
+                self.assertLessEqual(event["using_date"], bounds[1], (reference, event))
+
     def test_a_purchase_always_carries_quantity_price_and_using_date(self):
         for event in self.events:
             if event["event_name"] == "purchase":

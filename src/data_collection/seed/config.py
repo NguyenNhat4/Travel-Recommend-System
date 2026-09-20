@@ -31,6 +31,15 @@ BATCH_SIZE = 1000
 #: Cửa sổ đặt chỗ tính từ as_of: [as_of, as_of + WINDOW_DAYS - 1]. Chuỗi calendar dài đúng WINDOW_DAYS.
 WINDOW_DAYS = 30
 
+#: Số ngày dung sai khi quyết định một purchase là "sắp tới" (phải nằm trong cửa sổ của sản phẩm).
+#:
+#: `db/verify.sql` so `using_date > current_date` — đồng hồ của **database**, còn seed chỉ biết `as_of`.
+#: Hai mốc này lệch nhau khi container Postgres trôi giờ so với máy host, hoặc khi seed bằng `--as-of`
+#: không phải hôm nay. Lệch một ngày là đủ để một chuyến bay đúng ngày `as_of` lọt qua bước kẹp rồi
+#: bị verify bắt. Kẹp rộng hơn một ngày về phía quá khứ thì bất biến đúng ở cả hai mốc; event lịch sử
+#: cũ hơn thế vẫn được miễn, đúng DATABASE_SCHEMA §1 mục 13.
+WINDOW_CLAMP_SKEW_DAYS = 1
+
 # ---------------------------------------------------------------- catalog tổng hợp (§1b)
 
 #: Điểm đến Vinpearl. Thứ tự cố định để kết quả tất định.

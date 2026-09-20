@@ -527,12 +527,12 @@ stage distribution: PASS
 max events per user <= 15: PASS
 window = 30 days: PASS
 room calendars 30 chars: PASS
+future purchases inside window: PASS
 P1 booking <-> event: PASS
 persona users = 4: PASS
 P4 has no events: PASS
 products = 2216: FAIL (433)   ← FAIL dự kiến: ngưỡng của crawl thật, catalog tổng hợp không đạt
 is_recommendable properties >= 300: FAIL (40)   ← FAIL dự kiến: ngưỡng của crawl thật, catalog tổng hợp không đạt
-future purchases inside window: FAIL (1)
 ```
 
 ```

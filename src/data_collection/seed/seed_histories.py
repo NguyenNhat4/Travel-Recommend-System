@@ -242,7 +242,8 @@ def build_trip_events(
         # của chính sản phẩm (verify.sql "future purchases inside window"). Ràng buộc này chỉ áp
         # cho chuyến sắp tới, không áp cho event lịch sử (DATABASE_SCHEMA §1 mục 13).
         # Chuyến bay là ca chặt nhất: from = to = đúng ngày bay.
-        if using_date > as_of:
+        # Dùng `>=` kèm dung sai: verify so với current_date của database, seed chỉ biết as_of.
+        if using_date >= as_of - dt.timedelta(days=config.WINDOW_CLAMP_SKEW_DAYS):
             start, finish = product[ProductPool.FROM], product[ProductPool.TO]
             if start is not None and finish is not None:
                 using_date = min(max(using_date, start), finish)
