@@ -53,11 +53,15 @@ class ConstraintUpdate(StrictModel):
 
 
 class Extraction(StrictModel):
-    domain: Literal["travel", "out_of_domain", "side_effect"]
+    domain: Literal["travel", "conversation", "out_of_domain", "side_effect"]
     patch: IntentUpdate = Field(default_factory=IntentUpdate)
     constraints: ConstraintUpdate = Field(default_factory=ConstraintUpdate)
     end_date: date | None = None
     conflict: bool = False
+
+
+class ConversationalAnswer(StrictModel):
+    message: str = Field(min_length=1, max_length=500)
 
 
 class ProposedSlot(StrictModel):

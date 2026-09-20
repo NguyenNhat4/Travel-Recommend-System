@@ -36,6 +36,7 @@ class AgentState(TypedDict, total=False):
     thread_id: str
     scenario_id: str
     query: str
+    interaction_type: str
     route: str
     attempt: int
     max_attempts: int
