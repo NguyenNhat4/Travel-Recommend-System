@@ -15,8 +15,8 @@ from src.backend.app.application.itinerary.tool_contracts import normalize_argum
 from src.backend.app.application.ports.itinerary_tools import ConversationStorePort, ToolError, ToolExecutorPort
 from src.backend.app.domain.itinerary.normalization import match_destination, normalize_intent
 from src.backend.app.domain.itinerary.planning import (
-    NOTES, allowed_times, empty_intent, merge_intent, normalized,
-    render_proposal, summary, validate_plan,
+    NOTES, SCHEDULABLE_TAXONOMIES, SLOT_TAXONOMIES, STAY_TAXONOMY, allowed_times,
+    empty_intent, merge_intent, normalized, render_best_effort, summary, validate_plan,
 )
 from .llm import get_llm
 from .models import Composition, ConversationalAnswer, DestinationChoice, Extraction
@@ -389,11 +389,11 @@ def evaluate_node(state: AgentState) -> dict:
     else:
         evaluation, decision = "success", "compose" if candidates else "no_results"
     if decision == "compose":
-        if constraints.get("require_hotel") and not any(p["taxonomy"] == "hotel" for p in candidates.values()):
+        if constraints.get("require_hotel") and not any(p["taxonomy"] == STAY_TAXONOMY for p in candidates.values()):
             decision = "constraint_clarification"
-        if constraints.get("specific_activity") and not any(p["taxonomy"] in {"attraction", "golf"} for p in candidates.values()):
+        if constraints.get("specific_activity") and not any(p["taxonomy"] in SLOT_TAXONOMIES for p in candidates.values()):
             decision = "constraint_clarification"
-        if not any(p["taxonomy"] in {"hotel", "attraction", "golf"} for p in candidates.values()):
+        if not any(p["taxonomy"] in SCHEDULABLE_TAXONOMIES for p in candidates.values()):
             decision = "fallback"
     if decision == "no_results" and any(constraints.get(key) for key in ("require_hotel", "specific_hotel", "specific_activity")):
         decision = "constraint_clarification"
@@ -500,6 +500,9 @@ def _composition_input(state: dict) -> list:
     relevant = {"starRating", "oceanView", "familyFriendly", "privateBeach", "pool", "kidsPool",
                 "kidsClub", "spa", "nearBeach", "level", "parentProductId", "ticketed", "openingHours", "durationMinutes"}
     for product in state["candidates"].values():
+        # Offering a product the renderer cannot schedule only invites an invalid proposal.
+        if product.get("taxonomy") not in SCHEDULABLE_TAXONOMIES:
+            continue
         projected = summary(product)
         projected["attributes"] = {key: value for key, value in product.get("attributes", {}).items() if key in relevant}
         projected["description"] = product.get("description", "")[:600]
@@ -511,11 +514,14 @@ def _composition_input(state: dict) -> list:
 
 def _composed(state: dict, result: Composition) -> dict:
     proposal = Composition.model_validate(result).model_dump()
-    plan = render_proposal(proposal, state["candidates"], state["sources"], state["intent"])
+    plan, dropped = render_best_effort(proposal, state["candidates"], state["sources"], state["intent"])
     issues = validate_plan(plan, state["candidates"], state["sources"], state["intent"], state.get("constraints", {}))
     if issues:
         raise ValueError("invalid composition")
     warnings = deepcopy(state.get("warnings", []))
+    for slot in dropped:
+        warnings.append({"code": "SLOT_DROPPED_UNSCHEDULABLE", "productId": slot.get("product_id"),
+                         "message": "Một mục đề xuất không đáp ứng quy tắc xếp lịch và đã được bỏ khỏi lịch trình."})
     warnings.append({"code": "SNAPSHOT_ONLY", "message": "Giá và trạng thái là snapshot tham khảo; chưa xác nhận tồn kho theo ngày hoặc số khách."})
     warnings.append({"code": "SCHEDULE_ESTIMATE", "message": "Khung buổi là dự kiến; cần kiểm tra giờ mở cửa, thời gian di chuyển và điều kiện trẻ em trước khi đặt."})
     if plan["estimatedTotal"] is None:
