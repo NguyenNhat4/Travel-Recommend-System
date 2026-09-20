@@ -6,6 +6,8 @@ from copy import deepcopy
 from datetime import date, timedelta
 from typing import Any
 
+from .normalization import strip_accents
+
 NOTES = {
     "VISIT": "Tham quan theo khung giờ đề xuất.",
     "RELAX": "Dành thời gian nghỉ ngơi và thư giãn.",
@@ -22,7 +24,8 @@ SUMMARY_FIELDS = (
 
 
 def normalized(value: str | None) -> str:
-    return " ".join((value or "").casefold().split())
+    """Accent- and case-insensitive comparison key for names and destinations."""
+    return " ".join(strip_accents((value or "").casefold()).split())
 
 
 def empty_intent() -> dict[str, Any]:
@@ -91,7 +94,7 @@ def totals(plan: dict[str, Any], intent: dict[str, Any]) -> tuple[int | None, st
 def render_proposal(proposal: dict[str, Any], candidates: dict[str, dict[str, Any]],
                     sources: dict[str, str], intent: dict[str, Any]) -> dict[str, Any]:
     days_count = intent.get("days")
-    if not isinstance(days_count, int) or not 1 <= days_count <= 7:
+    if not isinstance(days_count, int) or days_count < 1:  # upper bound is enforced by TripIntent
         raise ValueError("invalid trip duration")
     start = parse_day(intent.get("startDate"))
     days = [{"day": number,

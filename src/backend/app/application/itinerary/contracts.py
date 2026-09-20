@@ -16,6 +16,24 @@ def schema(name: str) -> dict[str, Any]:
     return value
 
 
+def _property(name: str, path: tuple[str, ...]) -> dict[str, Any]:
+    node = schema(name)
+    for key in path:
+        node = node["properties"][key]
+    return node
+
+
+def enum_values(name: str, *path: str) -> tuple[str, ...]:
+    """Allowed values of a schema (or one of its properties) exactly as the OpenAPI contract declares them."""
+    return tuple(_property(name, path)["enum"])
+
+
+def bounds(name: str, *path: str) -> tuple[int | float | None, int | float | None]:
+    """(minimum, maximum) declared by the contract for a schema property; None when unbounded."""
+    node = _property(name, path)
+    return node.get("minimum"), node.get("maximum")
+
+
 def valid(name: str, value: Any) -> bool:
     try:
         json.dumps(value, allow_nan=False)

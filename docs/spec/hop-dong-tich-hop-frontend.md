@@ -316,7 +316,7 @@ Mọi response không phải 2xx có envelope `ErrorResponse` (`hop-dong-tich-ho
 | `SEARCH_UNAVAILABLE` | Search; Assistant | `ErrorState` + Thử lại |
 | `INVALID_TRIP_DURATION` | Assistant | Tin nhắn trợ lý với `message`, mở stepper số ngày |
 | `CONVERSATION_NOT_FOUND` | Assistant | Xóa `conversationId`, gửi lại tin nhắn như cuộc hội thoại mới, thêm dòng hệ thống "Đã bắt đầu cuộc trò chuyện mới" |
-| `UNSUPPORTED_DESTINATION` | Assistant | "V-OTA chưa có dịch vụ ở {details.destination}" + chip từ `details.supportedDestinations` |
+| `UNSUPPORTED_DESTINATION` | Assistant | "V-OTA chưa có dịch vụ ở {details.destination}" + chip từ `details.supportedDestinations`; lưu `details.conversationId` để lượt sau tiếp tục |
 | `LLM_UNAVAILABLE` | Assistant | Chạy `POST /search` với tin nhắn gốc, hiển thị như `FALLBACK` |
 | `ITINERARY_VALIDATION_FAILED` | Assistant | `ErrorState` + Thử lại |
 | `INTERNAL_ERROR` | mọi nơi | `ErrorState` cục bộ + Thử lại |
@@ -515,7 +515,7 @@ Trường chung mọi `status`: `status`, `conversationId`, `metadata`.
 
 ### 9.4. Lỗi
 
-HTTP status và `ErrorResponse` như §8. Mã riêng của trợ lý: `INVALID_TRIP_DURATION` (400), `CONVERSATION_NOT_FOUND` (404), `UNSUPPORTED_DESTINATION` (422, `details: { destination, supportedDestinations }`), `LLM_UNAVAILABLE` (503, chỉ khi Search cũng không dùng được), `ITINERARY_VALIDATION_FAILED` (500). Request sai định dạng dùng `VALIDATION_ERROR`; Search lỗi dùng `SEARCH_UNAVAILABLE`.
+HTTP status và `ErrorResponse` như §8. Mã riêng của trợ lý: `INVALID_TRIP_DURATION` (400), `CONVERSATION_NOT_FOUND` (404), `UNSUPPORTED_DESTINATION` (422, `details: { destination, supportedDestinations, conversationId }`; Web gửi `conversationId` này cùng điểm đến người dùng chọn lại để giữ số ngày, ngày đi và số khách đã nói), `LLM_UNAVAILABLE` (503, chỉ khi Search cũng không dùng được), `ITINERARY_VALIDATION_FAILED` (500). Request sai định dạng dùng `VALIDATION_ERROR`; Search lỗi dùng `SEARCH_UNAVAILABLE`.
 
 ### 9.5. Quy tắc render grounding Web cam kết
 
