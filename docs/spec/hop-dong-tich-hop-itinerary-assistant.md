@@ -397,7 +397,7 @@ Lỗi thực sự không nằm trong `ItineraryResponse` và không dùng `statu
 | 400 | `INVALID_TRIP_DURATION` | Số ngày ngoài phạm vi 1–7 |
 | 401 | `INVALID_TOKEN` hoặc `TOKEN_EXPIRED` | Có gửi JWT nhưng token không hợp lệ |
 | 404 | `CONVERSATION_NOT_FOUND` | Không tìm thấy cuộc hội thoại |
-| 422 | `UNSUPPORTED_DESTINATION` | Điểm đến chưa có trong catalog |
+| 422 | `UNSUPPORTED_DESTINATION` | Điểm đến chưa có trong catalog. `details` có `destination`, `supportedDestinations`, `conversationId`; backend lưu phần intent còn lại (bỏ điểm đến) nên gửi lại `conversationId` cùng điểm đến hợp lệ là tiếp tục chuyến đi |
 | 503 | `SEARCH_UNAVAILABLE` | Search API không khả dụng |
 | 503 | `LLM_UNAVAILABLE` | LLM lỗi và không thể trả kết quả dự phòng |
 | 500 | `ITINERARY_VALIDATION_FAILED` | Lịch trình không vượt qua grounding validation |

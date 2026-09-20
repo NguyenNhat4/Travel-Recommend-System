@@ -48,6 +48,13 @@ def parse_sse(response: httpx.Response):
             data_lines.append(line.removeprefix("data:").strip())
 
 
+def conversation_id_of(body: dict[str, Any]) -> str | None:
+    """Errors like UNSUPPORTED_DESTINATION carry the id in details so the chat can continue."""
+    error = body.get("error") if isinstance(body.get("error"), dict) else {}
+    details = error.get("details") if isinstance(error.get("details"), dict) else {}
+    return body.get("conversationId") or details.get("conversationId")
+
+
 def graph_dot(topology: dict[str, Any], trace: list[dict[str, Any]]) -> str:
     completed = {item["nodeId"] for item in trace}
     failed = {item["nodeId"] for item in trace if item.get("outcome") not in {"completed", "success"}}
@@ -211,7 +218,7 @@ if prompt := st.chat_input("Ví dụ: Lập lịch trình Đà Nẵng 3 ngày"):
                 trace_placeholder.dataframe(st.session_state.trace, hide_index=True, width="stretch")
         if final_body is None:
             raise RuntimeError("Stream kết thúc nhưng không có kết quả")
-        st.session_state.conversation_id = final_body.get("conversationId", st.session_state.conversation_id)
+        st.session_state.conversation_id = conversation_id_of(final_body) or st.session_state.conversation_id
         st.session_state.messages.append({"role": "assistant", "content": final_body})
     except Exception as exc:
         logger.exception(

@@ -93,4 +93,5 @@ ErrorResponse:
           description: Tùy mã lỗi. VALIDATION_ERROR {fields}; PRODUCT_NOT_FOUND và PRODUCT_UNAVAILABLE
             {productId}; CART_ITEM_NOT_FOUND {cartItemId}; PRICE_CHANGED {productId, oldPrice, newPrice};
             DATE_OUT_OF_RANGE {productId, availableFrom, availableTo}; UNSUPPORTED_DESTINATION {destination,
-            supportedDestinations}.
+            supportedDestinations, conversationId}; conversationId là hội thoại đã lưu phần chuyến đi còn lại, gửi
+            lại cùng điểm đến hợp lệ để tiếp tục.

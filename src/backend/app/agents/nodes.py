@@ -9,16 +9,17 @@ import logging
 from time import time
 import uuid
 
-from src.backend.app.application.itinerary.contracts import error_response, valid
+from src.backend.app.application.itinerary.contracts import bounds, error_response, valid
 from src.backend.app.application.itinerary.retrieval import collect, hydrate
 from src.backend.app.application.itinerary.tool_contracts import normalize_arguments, validate
 from src.backend.app.application.ports.itinerary_tools import ConversationStorePort, ToolError, ToolExecutorPort
+from src.backend.app.domain.itinerary.normalization import match_destination, normalize_intent
 from src.backend.app.domain.itinerary.planning import (
     NOTES, allowed_times, empty_intent, merge_intent, normalized,
     render_proposal, summary, validate_plan,
 )
 from .llm import get_llm
-from .models import Composition, ConversationalAnswer, Extraction
+from .models import Composition, ConversationalAnswer, DestinationChoice, Extraction
 from .state import AgentState, make_event
 
 logger = logging.getLogger("uvicorn.error")
@@ -67,29 +68,33 @@ MESSAGES = {
         "conversation_not_found": "Hội thoại không tồn tại hoặc đã hết hạn.",
         "invalid_override": "Thông tin chỉnh sửa không hợp lệ.",
         "invalid_intent": "Không thể xác nhận thông tin chuyến đi.",
-        "invalid_duration": "Lịch trình hỗ trợ từ 1 đến 7 ngày.",
+        "invalid_duration": "Lịch trình hỗ trợ từ {min_days} đến {max_days} ngày.",
         "llm_understand": "Chưa thể hiểu yêu cầu lúc này. Vui lòng thử lại.",
-        "missing_both": "Bạn muốn đi đâu và dự định đi trong mấy ngày (từ 1 đến 7 ngày)?",
+        "missing_both": "Bạn muốn đi đâu và dự định đi trong mấy ngày (từ {min_days} đến {max_days} ngày)?",
         "missing_destination": "Bạn muốn đi du lịch ở tỉnh hoặc thành phố nào?",
         "missing_days": "Bạn dự định đi trong mấy ngày, hoặc từ ngày nào đến ngày nào?",
-        "unsupported": "Điểm đến chưa có trong danh sách catalog hiện tại.",
+        "unsupported": "Rất tiếc, hiện mình chưa có dịch vụ tại {destination}. Các điểm đến mình đang hỗ trợ: "
+                       "{destinations}. Bạn muốn lên kế hoạch cho điểm đến nào trong danh sách này?",
     },
     "en": {
         "conversation_not_found": "The conversation does not exist or has expired.",
         "invalid_override": "The itinerary update is invalid.",
         "invalid_intent": "The trip information could not be validated.",
-        "invalid_duration": "Itineraries support trips from 1 to 7 days.",
+        "invalid_duration": "Itineraries support trips from {min_days} to {max_days} days.",
         "llm_understand": "I cannot understand the request right now. Please try again.",
-        "missing_both": "Where would you like to go, and for how many days (1 to 7)?",
+        "missing_both": "Where would you like to go, and for how many days ({min_days} to {max_days})?",
         "missing_destination": "Which city or province would you like to visit?",
         "missing_days": "How many days will your trip last, or what are your start and end dates?",
-        "unsupported": "This destination is not available in the current catalog.",
+        "unsupported": "Sorry, I don't have any services in {destination} yet. The destinations I can plan for: "
+                       "{destinations}. Which one would you like to plan a trip to?",
     },
 }
 
 
-def _message(state: dict, key: str) -> str:
-    return MESSAGES.get(state.get("language", "vi"), MESSAGES["vi"])[key]
+def _message(state: dict, key: str, **values) -> str:
+    min_days, max_days = bounds("TripIntent", "days")
+    return MESSAGES.get(state.get("language", "vi"), MESSAGES["vi"])[key].format(
+        min_days=min_days, max_days=max_days, **values)
 
 
 def _event(node: str, message: str, **metadata) -> dict:
@@ -182,7 +187,8 @@ def _classify_result(state: dict, result: Extraction) -> dict:
               "events": [_event("classify", "intent extracted")]}
     if result.domain != "travel":
         return {**update, "route": "simple"}
-    if intent.get("days") is not None and not 1 <= intent["days"] <= 7:
+    min_days, max_days = bounds("TripIntent", "days")
+    if intent.get("days") is not None and not min_days <= intent["days"] <= max_days:
         return {**update, "route": "error", **_failure(state, "INVALID_TRIP_DURATION", _message(state, "invalid_duration"), 400)}
     if not valid("TripIntent", intent):
         return {**update, "route": "error", **_failure(state, "VALIDATION_ERROR", _message(state, "invalid_intent"), 422)}
@@ -253,10 +259,22 @@ def _validated_plan(state: dict, plan: list, *, require_recommendations: bool = 
     return validated
 
 
+async def _choose_destination(value: str, supported: list[str], llm, timeout_seconds: float) -> str | None:
+    """Let the model pick from the catalog's own destination names; the answer is verified against them."""
+    result = await asyncio.wait_for((llm or get_llm()).with_structured_output(DestinationChoice).ainvoke([
+        ("system", "Pick the catalog destination the user means; abbreviations, alternative names and missing "
+                   "accents are allowed. Return null when no listed destination matches. "
+                   "Return a name exactly as listed; never invent one."),
+        ("human", json.dumps({"user_destination": value, "catalog_destinations": supported}, ensure_ascii=False))]),
+        timeout_seconds)
+    chosen = DestinationChoice.model_validate(result).destination
+    return chosen if chosen in supported else None
+
+
 async def tool_node(state: AgentState, *, tools: ToolExecutorPort | None = None,
                     timeout_seconds: float = 1, llm=None, require_recommendations: bool = False,
                     llm_timeout_seconds: float = 2) -> dict:
-    intent = deepcopy(state.get("intent", {}))
+    intent, constraints, changed = normalize_intent(state.get("intent", {}), state.get("constraints", {}))
     supported = state.get("supported_destinations")
     if intent.get("destination") and supported is None and hasattr(tools, "list_destinations"):
         try:
@@ -266,13 +284,26 @@ async def tool_node(state: AgentState, *, tools: ToolExecutorPort | None = None,
         except Exception:
             # Listing failure cannot prove a destination unsupported. Search may still succeed.
             supported = None
-    if supported is not None:
-        canonical = next((name for name in supported if normalized(name) == normalized(intent["destination"])), None)
+    if supported is not None and intent.get("destination"):
+        canonical = match_destination(intent["destination"], supported)
         if canonical is None:
-            failure = _failure(state, "UNSUPPORTED_DESTINATION", _message(state, "unsupported"), 422)
-            failure["response"]["error"]["details"] = {"destination": intent["destination"], "supportedDestinations": supported}
+            try:
+                canonical = await _choose_destination(intent["destination"], supported, llm, llm_timeout_seconds)
+            except Exception:
+                logger.exception("itinerary.llm_failed requestId=%s node=tool step=destination",
+                                 state.get("request_id", "unknown"))
+                failure = _failure(state, "LLM_UNAVAILABLE", _message(state, "llm_understand"), retryable=True)
+                return {**failure, "tool_plan": [], "tool_results": [], "supported_destinations": supported,
+                        "events": [_event("tool", "LLM_UNAVAILABLE")]}
+        if canonical is None:
+            message = _message(state, "unsupported", destination=intent["destination"], destinations=", ".join(supported))
+            failure = _failure(state, "UNSUPPORTED_DESTINATION", message, 422)
+            failure["response"]["error"]["details"] = {"destination": intent["destination"], "supportedDestinations": supported,
+                                                       "conversationId": state["conversation_id"]}
             return {**failure, "tool_plan": [], "tool_results": [], "supported_destinations": supported,
                     "events": [_event("tool", "UNSUPPORTED_DESTINATION")]}
+        if canonical != intent["destination"]:
+            changed.insert(0, "destination")
         intent["destination"] = canonical
     try:
         if tools is None:
@@ -286,7 +317,7 @@ async def tool_node(state: AgentState, *, tools: ToolExecutorPort | None = None,
                 ("human", json.dumps({"message": state.get("query", ""), "intent": intent,
                                       "constraints": state.get("constraints", {})}, ensure_ascii=False))]), llm_timeout_seconds)
             plan = response.tool_calls
-        plan = _validated_plan({**state, "intent": intent}, plan, require_recommendations=require_recommendations)
+        plan = _validated_plan({**state, "intent": intent, "constraints": constraints}, plan, require_recommendations=require_recommendations)
     except ToolError as exc:
         return {"tool_plan": [], "tool_results": [{"error": exc.as_dict()}], "events": [_event("tool", exc.code)]}
     except Exception:
@@ -314,8 +345,9 @@ async def tool_node(state: AgentState, *, tools: ToolExecutorPort | None = None,
     results = await asyncio.gather(*(execute(call) for call in plan))
     details, detail_errors = await hydrate(results, tools, state.get("details", {}), timeout_seconds)
     return {"tool_plan": plan, "tool_results": results, "details": details, "detail_errors": detail_errors,
-            "intent": intent, "supported_destinations": supported,
-            "events": [_event("tool", "retrieval completed", calls=len(results), detail_errors=len(detail_errors))]}
+            "intent": intent, "constraints": constraints, "supported_destinations": supported,
+            "events": [_event("tool", "retrieval completed" + (f" (normalized {', '.join(changed)})" if changed else ""),
+                              calls=len(results), detail_errors=len(detail_errors), changed=changed)]}
 
 
 def _grouped(state: dict) -> dict:
@@ -618,8 +650,11 @@ def finalize_node(state: AgentState) -> dict:
 async def finalize_node_async(state: AgentState, *, store: ConversationStorePort | None = None,
                               owner: str = "anonymous") -> dict:
     update = finalize_node(state)
-    if store is not None and update["http_status"] == 200:
-        await store.save(state["conversation_id"], {"intent": state["intent"],
+    # The user can answer an unsupported destination with a new one, so keep the rest of the trip.
+    resumable = update["response"].get("error", {}).get("code") == "UNSUPPORTED_DESTINATION"
+    if store is not None and (update["http_status"] == 200 or resumable):
+        intent = {**state["intent"], "destination": None} if resumable else state["intent"]
+        await store.save(state["conversation_id"], {"intent": intent,
                          "constraints": state.get("constraints", {}),
                          "language": state.get("language", "vi")}, owner)
     return update

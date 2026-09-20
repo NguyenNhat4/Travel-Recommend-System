@@ -7,7 +7,7 @@ import unittest
 
 from src.backend.app.agents import nodes, routing
 from src.backend.app.agents.graph import build_graph
-from src.backend.app.agents.models import Composition, ConversationalAnswer, Extraction
+from src.backend.app.agents.models import Composition, ConversationalAnswer, DestinationChoice, Extraction
 from src.backend.app.agents.persistence import build_checkpointer
 from src.backend.app.agents.tools.itinerary_gateway import ItineraryToolGateway
 from src.backend.app.application.itinerary.contracts import valid
@@ -30,7 +30,10 @@ def extracted(**patch):
 class ScriptedLlm:
     """Script model decisions rather than matching scenario IDs or query keywords."""
     def __init__(self, extraction=None, composition=None, plan=None, fail_composition=False,
-                 conversational_message='Bạn muốn đi đâu và trong bao nhiêu ngày?'):
+                 conversational_message='Bạn muốn đi đâu và trong bao nhiêu ngày?',
+                 destination_choice=None, fail_destination=False):
+        self.destination_choice = destination_choice
+        self.fail_destination = fail_destination
         self.extraction = extraction or extracted(destination='Nha Trang', days=2, party={'type': 'SOLO', 'adults': 1, 'children': 0})
         self.composition = composition or Composition(slots=[{'day': 1, 'time': 'MORNING', 'product_id': 'a'}])
         self.plan = plan or [{'name': 'search_products', 'args': {'query': 'tham quan'}}]
@@ -43,6 +46,10 @@ class ScriptedLlm:
             self.calls.append(schema.__name__)
             if schema is Extraction:
                 return self.extraction
+            if schema is DestinationChoice:
+                if self.fail_destination:
+                    raise RuntimeError('provider error')
+                return DestinationChoice(destination=self.destination_choice)
             if schema is ConversationalAnswer:
                 return ConversationalAnswer(message=self.conversational_message)
             if self.fail_composition:
@@ -58,7 +65,8 @@ class ScriptedLlm:
 
 
 class Clients:
-    def __init__(self, products=None, rec_error=None, rec=None, incomplete=False):
+    def __init__(self, products=None, rec_error=None, rec=None, incomplete=False, destinations=None):
+        self.destinations = destinations
         self.products = products if products is not None else [product()]
         self.calls = []
         self.rec_error = rec_error
@@ -85,7 +93,8 @@ class Clients:
         return deepcopy(next(p for p in self.products if p['productId'] == pid))
 
     async def list_destinations(self):
-        return {'destinations': [{'destination': 'Nha Trang', 'productCount': len(self.products)}]}
+        names = self.destinations or ['Nha Trang']
+        return {'destinations': [{'destination': name, 'productCount': len(self.products)} for name in names]}
 
 
 class RuntimeTests(unittest.IsolatedAsyncioTestCase):
@@ -120,6 +129,83 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         returned = result['response']['itinerary']['days'][0]['slots'][0]['product']
         self.assertEqual(returned['name'], source['name'])
         self.assertEqual(returned['unitPrice'], source['unitPrice'])
+
+    async def test_abbreviation_is_resolved_by_llm_from_catalog_names_only(self):
+        clients = Clients(products=[product('a', destination='TP. Hồ Chí Minh')], destinations=['Nha Trang', 'TP. Hồ Chí Minh'])
+        llm = ScriptedLlm(extraction=extracted(destination='tphcm', days=2), destination_choice='TP. Hồ Chí Minh')
+        result = await self.run_graph(llm, clients)
+        self.assertEqual(result['intent']['destination'], 'TP. Hồ Chí Minh')
+        self.assertEqual(result['response']['status'], 'COMPLETED')
+        self.assertEqual(llm.calls.count('DestinationChoice'), 1)
+        self.assertIn('normalized destination', [e['message'] for e in result['events'] if e['node'] == 'tool'][0])
+
+    async def test_accent_and_case_variants_match_without_calling_the_llm(self):
+        llm = ScriptedLlm(extraction=extracted(destination='NHA  trang', days=2))
+        result = await self.run_graph(llm)
+        self.assertEqual(result['intent']['destination'], 'Nha Trang')
+        self.assertEqual(llm.calls.count('DestinationChoice'), 0)
+
+    async def test_destination_without_catalog_match_is_rejected_before_search(self):
+        for choice in (None, 'Atlantis'):  # model says none, or names something the catalog does not list
+            with self.subTest(choice=choice):
+                clients = Clients()
+                llm = ScriptedLlm(extraction=extracted(destination='Paris', days=2), destination_choice=choice)
+                result = await self.run_graph(llm, clients)
+                self.assertEqual(result['http_status'], 422)
+                self.assertEqual(result['response']['error']['code'], 'UNSUPPORTED_DESTINATION')
+                self.assertEqual(result['response']['error']['details']['supportedDestinations'], ['Nha Trang'])
+                self.assertEqual(clients.calls, [])
+
+    async def test_unsupported_destination_keeps_trip_so_a_valid_destination_completes_it(self):
+        store = InMemoryConversationStore()
+        clients = Clients()
+        first = await self.run_graph(
+            ScriptedLlm(extraction=extracted(destination='Tokyo', days=4, startDate='2026-09-21'), destination_choice=None),
+            clients, store=store)
+        self.assertEqual(first['response']['error']['code'], 'UNSUPPORTED_DESTINATION')
+        cid = first['response']['error']['details']['conversationId']
+        self.assertEqual(cid, first['conversation_id'])
+        self.assertEqual(clients.calls, [])
+        second = await self.run_graph(ScriptedLlm(extraction=extracted(destination='Nha Trang')), clients,
+                                      state={'conversation_id': cid}, store=store)
+        self.assertEqual(second['http_status'], 200)
+        self.assertEqual(second['response']['status'], 'COMPLETED')
+        self.assertEqual((second['intent']['destination'], second['intent']['days'], second['intent']['startDate']),
+                         ('Nha Trang', 4, '2026-09-21'))
+
+    async def test_unsupported_destination_is_not_kept_when_the_user_gives_only_days(self):
+        store = InMemoryConversationStore()
+        first = await self.run_graph(ScriptedLlm(extraction=extracted(destination='Tokyo', days=4), destination_choice=None),
+                                     Clients(), store=store)
+        second = await self.run_graph(ScriptedLlm(extraction=extracted(days=5)), Clients(), store=store,
+                                      state={'conversation_id': first['conversation_id']})
+        self.assertEqual(second['response']['status'], 'NEEDS_CLARIFICATION')
+        self.assertEqual(second['response']['missingFields'], ['destination'])
+
+    async def test_unsupported_destination_message_names_the_request_and_lists_catalog_destinations(self):
+        for language, expected in (('vi', 'chưa có dịch vụ tại Paris'), ('en', 'services in Paris')):
+            with self.subTest(language=language):
+                llm = ScriptedLlm(extraction=extracted(destination='Paris', days=2), destination_choice=None)
+                result = await self.run_graph(llm, Clients(), state={'language': language})
+                message = result['response']['error']['message']
+                self.assertIn(expected, message)
+                self.assertIn('Nha Trang', message)
+
+    async def test_destination_resolution_failure_is_a_controlled_llm_error(self):
+        clients = Clients()
+        llm = ScriptedLlm(extraction=extracted(destination='tphcm', days=2), fail_destination=True)
+        result = await self.run_graph(llm, clients)
+        self.assertEqual(result['http_status'], 503)
+        self.assertEqual(result['response']['error']['code'], 'LLM_UNAVAILABLE')
+        self.assertEqual(clients.calls, [])
+
+    async def test_normalize_drops_guessed_child_count_of_family_party(self):
+        party = {'type': 'FAMILY_WITH_KIDS', 'adults': 1, 'children': 0}
+        llm = ScriptedLlm(extraction=extracted(destination='Nha Trang', days=2, party=party, interests=[' Biển ', 'biển', '']))
+        result = await self.run_graph(llm)
+        self.assertIsNone(result['intent']['party'])
+        self.assertEqual(result['constraints']['party_type_hint'], 'FAMILY_WITH_KIDS')
+        self.assertEqual(result['intent']['interests'], ['Biển'])
 
     async def test_required_hotel_features_and_unknown_occupancy_total(self):
         clients = Clients(products=[product('h', taxonomy='hotel', priceUnit='PER_NIGHT',
