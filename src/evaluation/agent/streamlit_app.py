@@ -178,26 +178,8 @@ with st.sidebar:
         st.session_state.trace = []
         st.rerun()
 
-chat_col, graph_col = st.columns([3, 2], gap="large")
-with chat_col:
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            if isinstance(message["content"], dict):
-                render_response(message["content"])
-            else:
-                st.markdown(message["content"])
-with graph_col:
-    with st.container(key="execution_panel"):
-        st.subheader("LangGraph execution")
-        graph_placeholder, trace_placeholder = st.empty(), st.empty()
-        if st.session_state.topology["nodes"]:
-            graph_placeholder.graphviz_chart(graph_dot(st.session_state.topology, st.session_state.trace), width="stretch")
-        if st.session_state.trace:
-            trace_placeholder.dataframe(st.session_state.trace, hide_index=True, width="stretch")
-
-if prompt := st.chat_input("Ví dụ: Lập lịch trình Đà Nẵng 3 ngày"):
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    st.session_state.trace = []
+def run_agent(prompt: str, language: str, graph_placeholder, trace_placeholder) -> dict[str, Any]:
+    """Stream one turn from FastAPI, updating the graph panel live; returns the response body to show."""
     payload = {"message": prompt, "context": {"language": language}}
     if st.session_state.conversation_id:
         payload["conversationId"] = st.session_state.conversation_id
@@ -219,13 +201,42 @@ if prompt := st.chat_input("Ví dụ: Lập lịch trình Đà Nẵng 3 ngày"):
         if final_body is None:
             raise RuntimeError("Stream kết thúc nhưng không có kết quả")
         st.session_state.conversation_id = conversation_id_of(final_body) or st.session_state.conversation_id
-        st.session_state.messages.append({"role": "assistant", "content": final_body})
+        return final_body
     except Exception as exc:
         logger.exception(
             "streamlit.agent_request_failed conversationId=%s apiBase=%s",
             st.session_state.conversation_id or "new", API_BASE,
         )
-        st.session_state.messages.append({"role": "assistant", "content": {
-            "status": "FALLBACK", "message": f"Không gọi được agent API: {exc}"
-        }})
-    st.rerun()
+        return {"status": "FALLBACK", "message": f"Không gọi được agent API: {exc}"}
+
+
+prompt = st.chat_input("Ví dụ: Lập lịch trình Đà Nẵng 3 ngày")
+if prompt:
+    st.session_state.trace = []
+
+chat_col, graph_col = st.columns([3, 2], gap="large")
+with graph_col:
+    with st.container(key="execution_panel"):
+        st.subheader("LangGraph execution")
+        graph_placeholder, trace_placeholder = st.empty(), st.empty()
+        if st.session_state.topology["nodes"]:
+            graph_placeholder.graphviz_chart(graph_dot(st.session_state.topology, st.session_state.trace), width="stretch")
+        if st.session_state.trace:
+            trace_placeholder.dataframe(st.session_state.trace, hide_index=True, width="stretch")
+with chat_col:
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            if isinstance(message["content"], dict):
+                render_response(message["content"])
+            else:
+                st.markdown(message["content"])
+    if prompt:
+        # Show the user's message right away; the agent reply is rendered once it arrives.
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+        with st.chat_message("assistant"):
+            with st.spinner("Agent đang xử lý..."):
+                reply = run_agent(prompt, language, graph_placeholder, trace_placeholder)
+            render_response(reply)
+        st.session_state.messages.append({"role": "assistant", "content": reply})
