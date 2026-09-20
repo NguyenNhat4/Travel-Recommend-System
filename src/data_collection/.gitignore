@@ -3,6 +3,9 @@
 data/
 cache/*
 !cache/.gitkeep
+# Catalog: bản crawl thật và bản tổng hợp do seed/gen_products.py sinh lại được từ (--seed, --as-of).
+products.jsonl
+products.synthetic.jsonl
 .venv/
 __pycache__/
 *.pyc

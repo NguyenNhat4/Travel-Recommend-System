@@ -41,6 +41,24 @@ Phần A — đối chiếu `git status` ngày 20/09:
 
 Không commit: `README.database.md`, `PROMPT_claude_code.md` (bundle ghi rõ không cần commit).
 
+Phần B — package seed:
+
+- `src/data_collection/seed/__init__.py` — thêm: docstring mô tả thứ tự bước và quy ước tách `build_*` / `write_*`.
+- `src/data_collection/seed/__main__.py` — thêm: CLI `--as-of/--seed/--users/--products/--reset/--allow-remote-reset`, điều phối 6 bước, chặn `--reset` vào host không phải local, chặn chạy lại trên bảng đã có dữ liệu, exit code 1 khi có FAIL ngoài dự kiến.
+- `src/data_collection/seed/config.py` — thêm: toàn bộ tỷ lệ, phân bố, bảng từ khoá combo, thông tin persona.
+- `src/data_collection/seed/common.py` — thêm: RNG theo stream, `stable_order_key` (crc32, không dùng `hash()`), uuid5, bỏ dấu tiếng Việt, trọng số Zipf, batch insert.
+- `src/data_collection/seed/gen_products.py` — thêm: sinh catalog tổng hợp 433 dòng đúng contract `SCHEMA.md` + `_validate()` chặn giá trị làm vỡ view `product_meta`.
+- `src/data_collection/seed/load_products.py` — thêm: cắt cửa sổ 30 ngày, dời ngày bay vào cửa sổ, lịch `availability`, regex `nights`/`minPax`/`priceBasis`, upsert idempotent.
+- `src/data_collection/seed/parse_combos.py` — thêm: tách hạng mục, nhận loại theo từ khoá, map bằng `pg_trgm` + `unaccent`, ghi `source`/`confidence`/`evidence`.
+- `src/data_collection/seed/seed_histories.py` — thêm: `ProductPool` power-law, sinh chuyến, cạnh lộn xộn, và `rebuild_profiles` suy profile từ event.
+- `src/data_collection/seed/seed_app.py` — thêm: lịch sử cố định của 4 persona, 54 tài khoản, đơn của P1, và bộ mã hoá radix-64 của BCrypt để salt tất định.
+- `src/data_collection/seed/seed_insider.py` — thêm: partners, profiles (tập con attribute), identifiers có lịch sử, event theo TTL 90/730, phễu channel_events.
+- `src/data_collection/seed/report.py` — thêm: chạy `db/verify*.sql` bằng psycopg, phân loại FAIL dự kiến, đo baseline Recall@20, ghi khối `seed-report`.
+- `src/data_collection/seed/requirements.txt` — thêm: `psycopg[binary]`, `numpy`, `bcrypt`, tách khỏi requirements của crawler.
+- `src/data_collection/seed/README.md` — sửa: thay placeholder của bundle bằng hướng dẫn chạy, 6 bước, tài khoản demo và danh sách ràng buộc dễ vấp.
+- `src/data_collection/README.md` — sửa: thêm khối `<!-- seed-report:start/end -->` ở cuối (138 dòng, do `report.py` sinh). Sổ tay crawler 426 dòng giữ nguyên, không xoá dòng nào.
+- `src/data_collection/.gitignore` — sửa: bỏ qua `products.jsonl` và `products.synthetic.jsonl` (sinh lại được từ `--seed` + `--as-of`).
+
 ## Quyết định
 
 - **CDP clone là schema `cdp` trong database `vota`, không phải service HTTP có PostgreSQL riêng.** Người yêu cầu chọn phương án "theo bundle + sửa tài liệu" ngày 20/09. Căn cứ: handbook §6 "one implementation now, reading locally"; tách database sẽ mất FK và view của `catalog`/`app` sang `cdp.products`, mà `catalog` vẫn phải là bảng local để search p95 < 300 ms. Ranh giới production được mô phỏng bằng **role + connection riêng** và bằng việc mọi truy cập của app đi qua port `CdpClient` — đổi sang `HttpCdpClient` là thay adapter, không sửa use case. Đã kiểm chứng ranh giới chạy thật (xem Kiểm tra).
@@ -50,7 +68,19 @@ Không commit: `README.database.md`, `PROMPT_claude_code.md` (bundle ghi rõ kh�
 - **Quy mô catalog: giữ đúng MOCK_DATA_SPEC §1b (~450 dòng, 40 property).** Người yêu cầu chọn phương án này ngày 20/09, chấp nhận hai dòng `db/verify.sql` FAIL theo thiết kế (`products = 2216`, `is_recommendable properties >= 300`) thay vì thổi quy mô tổng hợp lên 2.216 dòng để lách ngưỡng của crawl thật. Không sửa `db/*.sql`.
 - **Báo cáo seed ghi vào khối `<!-- seed-report:start/end -->` trong `src/data_collection/README.md`.** Spec ghi `data-collection/README.md` (gạch nối) — thư mục đó không tồn tại trong monorepo; còn cây thư mục §1 lại trỏ vào chính file sổ tay crawler 426 dòng. Dùng khối đánh dấu để vừa đúng ý spec vừa không mất sổ tay.
 - **Seed và verify chạy bằng `SEED_DATABASE_URL` (superuser).** Dòng đầu `db/verify*.sql` ghi `$DATABASE_URL` là nhầm: role `vota_app` không SELECT được `cdp.events`/`cdp.profiles` nên sẽ lỗi quyền chứ không ra FAIL. Ghi chú trong `docs/MOCK_DATA_SPEC.md` §0 thay vì sửa file .sql.
-- **Khôi phục biến môi trường crawler trong `.env.example`.** `docs/spec/data-collection-spec.md` dòng 499 quy định file này phải có `RATE_LIMIT_RPS`, `MAX_CONCURRENCY`, `USER_AGENT`, `AMADEUS_*`; `PYTHONUTF8=1` là bắt buộc trên Windows để output tiếng Việt không vỡ khi pipe. Bundle ghi đè cả file nên đã mất hết.
+- **Khôi phục biến môi trường crawler trong `.env.example`.** `docs/spec/data-collection-spec.md` dòng 499 quy định file này phải có `RATE_LIMIT_RPS`, `MAX_CONCURRENCY`, `USER_AGENT`, `AMADEUS_*`; `PYTHONUTF8=1` là bắt buộc trên Windows để output tiếng Việt không vỡ khi pipe. Bundle ghi đè cả file nên đã mất hết. (Đã gặp đúng lỗi `UnicodeEncodeError` này khi chạy thử `gen_products` không có biến đó.)
+
+Phần B:
+
+- **Số chuyến/khách chuyển từ khoảng đều sang phân bố có trọng số** (`STAGE_TRIP_WEIGHTS`). Spec §4 ghi "active 1–4 · dormant 1–2 · churned 1–2"; hiểu là phân bố đều thì 2.000 khách sinh ~15.000 event, vượt xa cổng `events 6000-8000` của `db/verify.sql`. Hai con số trong cùng bộ spec mâu thuẫn nhau; `db/verify.sql` là tiêu chí nghiệm thu nên nó thắng. Giữ đúng *khoảng* (active vẫn có thể tới 4 chuyến), nghiêng trọng số về 1, và hạ `VIEWS_PER_TRIP` từ (1,3) xuống (1,2). Kết quả 7.653 event. Knob nằm trong `config.py` để Evaluation chỉnh.
+- **`using_date` tương lai được kẹp vào `[available_from, available_to]` của chính sản phẩm.** Không kẹp thì chuyến bay (from = to = đúng một ngày) làm `verify.sql` FAIL 38 dòng. Chỉ áp cho ngày tương lai — event lịch sử không bị ràng buộc này (DATABASE_SCHEMA §1 mục 13).
+- **Salt BCrypt sinh tất định từ RNG** bằng bộ mã hoá radix-64 riêng của BCrypt. Ghép chuỗi tuỳ ý vào salt của `gensalt()` bị `ValueError: Invalid salt` vì ký tự cuối chỉ mang 2 bit. Salt tất định là có chủ ý cho dữ liệu demo dùng chung một mật khẩu; tài khoản đăng ký thật qua backend vẫn phải dùng salt ngẫu nhiên.
+- **Id "sản phẩm đã xoá" dùng uuid5, không phải uuid4**, và `profiles.updated_at` suy từ `as_of` thay vì `now()` — nếu không, hai lần chạy cùng seed cho dữ liệu khác nhau (đã đo bằng checksum md5).
+- **Persona lấy `vinclub_tier`/`home_city` từ `config.PERSONA_PROFILE`, không rút ngẫu nhiên.** UX spec §5 yêu cầu P1 là Gold; để ngẫu nhiên thì đúng Gold chỉ là may. Persona cũng luôn bật cả 3 kênh opt-in để demo không phụ thuộc vào việc có rơi vào 5% tắt email hay không.
+- **Chỉ sinh tuyến bay chiều *tới* điểm đến** (3 origin × 4 destination = 12 tuyến). Sinh cả chiều về thì `destination` của vé bay là "Hà Nội"/"TP. Hồ Chí Minh" — nơi không có khách sạn nào trong catalog — và quy tắc "mỗi chuyến một destination" sẽ ghép vé bay về Hà Nội vào chuyến đi Nha Trang.
+- **Tỷ lệ attraction không bán vé do `ATTRACTION_UNTICKETED_RATE` quyết định**, không do số lượng mẫu tên. Bản đầu có 3/9 mẫu là điểm công cộng nên ra 37% thay vì 15% như §1b.
+- **Báo cáo tách "tỷ lệ map được" theo loại map được.** `meal`/`transfer`/`other` luôn `item_product_id = NULL` vì FK `(item_product_id, item_kind) → products (product_id, taxonomy)` không có taxonomy tương ứng; gộp chúng vào mẫu số làm chỉ số trông tệ mà không phản ánh chất lượng parser. Map được 86,3% trên các loại map được (yêu cầu §1b: ≥ 70%).
+- **Không hạ `ZIPF_S` để ép baseline Recall@20 xuống dưới 0,6.** Recall cao là hệ quả của catalog tổng hợp nhỏ (~60 sản phẩm đặt được mỗi điểm đến nên top-20 phủ phần lớn giỏ), cùng gốc nguyên nhân với hai dòng FAIL dự kiến. Chỉnh phân bố cho vừa thước đo là bóp méo dữ liệu; báo cáo ghi rõ và đo lại khi có crawl thật.
 
 ## Kiểm tra
 
@@ -70,13 +100,35 @@ Không commit: `README.database.md`, `PROMPT_claude_code.md` (bundle ghi rõ kh�
   - `cdp_client_login` → `catalog.combo_items`: `ERROR: permission denied for schema catalog`.
   - `cdp_client_login` → `cdp.events`: OK (0 dòng).
 - `validate_contract.py`: không chạy — phần A không đổi OpenAPI, mock hay fixture.
-- `db/verify.sql`: chưa chạy — chưa có dữ liệu, thuộc phần B.
+
+Phần B — `cd src && PYTHONUTF8=1 python -m data_collection.seed --as-of 2026-09-20 --seed 42 --reset`, chạy hết trong **4,2 giây** (yêu cầu < 2 phút), exit code 0:
+
+| Bảng | Số dòng |
+|---|---|
+| `cdp.products` | 433 (40 property + 2 gần trùng, 140 room, 12 route, 131 flight, 60 attraction, 8 golf, 40 combo) |
+| `catalog.combo_items` | 136, 0 combo rỗng, 73 dòng trong hàng đợi soát tay |
+| `cdp.profiles` / `cdp.events` | 2.000 / 7.653 |
+| `app.users` / `bookings` / `booking_items` | 54 / 1 / 1 |
+| `insider`: profiles / identifiers / events / channel_events | 2.000 / 6.000 / 5.618 / 18.532 |
+
+- `db/verify.sql` (chạy bằng `SEED_DATABASE_URL`): **14/16 PASS**. Hai dòng FAIL đúng như dự kiến: `products = 2216` (433) và `is_recommendable properties >= 300` (40).
+- `db/verify_insider.sql`: **6/6 PASS**.
+- Combo: map được **86,3%** trên các loại map được (hotel 100%, golf 100%, attraction 77%) — trên mức ≥ 70% của §1b.
+- Tất định: chạy `--reset` ba lần, md5 của `cdp.events` (mọi cột), `cdp.profiles` và `insider.channel_events` **giống nhau cả ba lần**. Hai lỗi tất định phát hiện nhờ phép đo này (uuid4, `now()`) đã sửa.
+- Chạy lại **không** `--reset`: dừng với thông báo `cdp.profiles đã có 2000 dòng…`, exit code 1 — không nhân đôi dữ liệu.
+- 4 persona đúng bảng §5: P1 active/Gold/4 đơn/3 ngày/Nha Trang, có đơn `VOTA-20261002-4D6N` với `using_date = as_of + 12` nằm trong cửa sổ và **đúng một** event `purchase` cùng `event_group_id`; P2 new/0 đơn/2 `product_view`; P3 dormant/190 ngày/Phú Quốc; P4 new/0 event.
+- Ranh giới role kiểm chứng lại sau khi có dữ liệu: `vota_app_login` đọc `cdp.products` OK, `cdp.events` bị từ chối.
+- Baseline most-popular-in-destination: Recall@20 = **0,766** — **trên** ngưỡng 0,6 của DoD mục 5. Xem phần Quyết định và Còn lại.
 
 ## Còn lại / rủi ro
 
-- **Phần B và C chưa làm:** package `src/data_collection/seed/` và test. Đang dừng ngay sau khi database dựng xong và tài liệu đã khớp.
-- `psql` không có trên máy này; mọi lệnh psql chạy qua `docker compose exec -T postgres psql`. `report.py` ở phần B sẽ tự chạy các câu verify bằng psycopg để không phụ thuộc psql.
-- **Hai dòng `db/verify.sql` sẽ FAIL theo thiết kế** với catalog tổng hợp: `products = 2216` và `is_recommendable properties >= 300`. Hết FAIL khi có `products.jsonl` thật từ crawler.
+- **Phần C chưa làm:** unit test cho các hàm `build_*`. Đang dừng sau khi pipeline chạy xanh và báo cáo đã sinh.
+- `psql` không có trên máy này; mọi lệnh psql chạy qua `docker compose exec -T postgres psql`. `report.py` tự chạy các câu verify bằng psycopg (bỏ dòng `\pset`) nên không phụ thuộc psql.
+- **Hai dòng `db/verify.sql` FAIL theo thiết kế** với catalog tổng hợp: `products = 2216` và `is_recommendable properties >= 300`. Hết FAIL khi có `products.jsonl` thật từ crawler.
+- **Baseline Recall@20 = 0,766, vượt ngưỡng 0,6** của DoD mục 5. Nguyên nhân là quy mô catalog tổng hợp: mỗi điểm đến chỉ có ~60 sản phẩm đặt được nên top-20 đã phủ phần lớn giỏ, baseline trúng quá dễ. Cùng gốc với hai dòng FAIL trên. **Cần Evaluation đo lại trên `products.jsonl` thật trước khi kết luận phân bố sai**; không hạ `ZIPF_S` để ép chỉ số.
+- Chỉ số Recall ở `report.py` là phép đo nhanh để phát hiện dữ liệu quá ngẫu nhiên, **không thay** bộ đo của `src/evaluation` (Recall@20, NDCG@10, cross-category rate, availability precision, coverage — ARCHITECTURE §10).
+- DoD mục 6 (đăng nhập 4 persona, Home hiện đúng section) **chưa kiểm được**: backend/frontend chưa đọc database này. Mới xác minh tới mức dữ liệu: stage, tier, đơn sắp tới và số event của từng persona đúng bảng §5.
+- `products.synthetic.jsonl` không commit (đã vào `.gitignore`) vì sinh lại được từ `--seed` + `--as-of`.
 - **Code chưa theo kiến trúc mới:** `src/backend/app/infrastructure/clients/cdp_http_client.py` và `cdp_event_dispatcher.py` vẫn là thiết kế service HTTP. Các adapter mà `README.database.md` nhắc tới — `infrastructure/cdp/local_cdp_client.py`, `infrastructure/insider/http_insider_client.py`, `application/ports/insider_client.py` — **chưa tồn tại**. `src/backend/app/core/config.py` còn default `sqlite:///./data/app.db` và `cdp_base_url`. Việc này thuộc Backend, chưa nằm trong phạm vi tuần 1 của Data.
 - `src/cdp_clone/app/infrastructure/tables.py` (revision `0001`) chưa khớp `db/init/01_vota.sql`; phải đối chiếu lại trước khi dựng `HttpCdpClient`.
 - `src/insider_clone/` vẫn rỗng (chỉ có README + `.gitkeep`); `seed_insider.py` ở phần B ghi thẳng vào database `insider`, chưa qua service.
