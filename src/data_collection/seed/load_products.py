@@ -1,0 +1,172 @@
+"""Loader: products.jsonl (catalog đóng băng) → bản ghi `cdp.products` đã áp cửa sổ đặt chỗ 30 ngày, cộng `catalog.combo_items`.
+
+Theo file thiết kế DB của nhóm (20/09/2026), việc #13 + "Kế hoạch mock data". **Không sửa products.jsonl**; đầu ra là file để nạp vào DB.
+
+    python load_catalog.py [--data-dir data] [--out-dir data/loader] [--as-of YYYY-MM-DD]
+
+Quy tắc (--as-of mặc định là hôm nay; chạy lại trước demo để cuộn cửa sổ, nếu không toàn bộ catalog hết hạn):
+  * cửa sổ = [as_of, as_of + 29];  available_from = GREATEST(nguồn_from, as_of),  available_to = LEAST(nguồn_to, as_of + 29);
+    nguồn không có thì lấy nguyên cửa sổ. Nếu giao rỗng, đặt available = false và hai ngày DB = NULL để thỏa CHECK
+    available_from <= available_to; ngày nguồn vẫn nằm trong attributes.sourceAvailableFrom/To.
+  * vé máy bay: from = to = ngày bay. Lấy ngày thật trip.com đã liệt kê (attributes.datesSeen) nằm trong cửa sổ (sớm nhất); không có thì
+    sinh một ngày trong cửa sổ (xác định theo productId). attributes.departureAt / arrivalAt đổi sang ngày đó, giữ giờ và thời lượng.
+    Tuyến bay: from / to = ngày nhỏ nhất / lớn nhất của các chuyến con.
+  * hạng phòng: attributes.availability = {"calendar": <30 ký tự 1/0>} — kín 25–40% theo cụm 1–4 đêm, cuối tuần và Vinpearl kín nhiều hơn.
+    Điểm tham quan / combo / golf: calendar chỉ blackout ngày lễ và các ngày ngoài khoảng bán của nguồn.
+  * combo: gán thêm attributes.priceBasis / nights / minPax từ combo_attributes.json (kết quả parse_combos.py).
+Đầu ra: cdp_products.jsonl / .csv (cột snake_case như ERD), catalog_combo_items.jsonl, loader_report.md. Kết quả xác định.
+"""
+from __future__ import annotations
+
+import argparse
+import csv
+import json
+import random
+import shutil
+from collections import Counter
+from datetime import date, datetime, timedelta
+from pathlib import Path
+
+from .catalog_meta import WINDOW_DAYS, build_meta, room_calendar, ticket_calendar, variant, window
+
+COLUMNS = ["product_id", "name", "taxonomy", "destination", "description", "attributes", "unit_price", "currency", "available",
+           "available_from", "available_to", "image_url", "source_ref"]
+
+
+def clip(src_from: str | None, src_to: str | None, lo: date, hi: date) -> tuple[str, str]:
+    """available_from = GREATEST(nguồn_from, lo); available_to = LEAST(nguồn_to, hi); nguồn thiếu → lấy cả cửa sổ."""
+    f = max(date.fromisoformat(src_from), lo) if src_from else lo
+    t = min(date.fromisoformat(src_to), hi) if src_to else hi
+    return f.isoformat(), t.isoformat()
+
+
+def pick_flight_date(product: dict, lo: date, hi: date) -> tuple[date, bool]:
+    """(ngày bay, là ngày thật?). Ngày thật = ngày trip.com đã liệt kê nằm trong cửa sổ (sớm nhất); không có thì mock, xác định theo productId."""
+    seen = sorted(d for d in product["attributes"].get("datesSeen") or [] if lo <= date.fromisoformat(d) <= hi)
+    if seen:
+        return date.fromisoformat(seen[0]), True
+    return lo + timedelta(days=random.Random(f"flight|{product['productId']}").randint(0, WINDOW_DAYS - 1)), False
+
+
+def move_flight(attrs: dict, day: date) -> None:
+    """Đổi ngày của departureAt / arrivalAt, giữ giờ (+07:00) và thời lượng."""
+    dep, arr = attrs.get("departureAt"), attrs.get("arrivalAt")
+    if not dep:
+        return
+    d0 = datetime.fromisoformat(dep)
+    d1 = d0.replace(year=day.year, month=day.month, day=day.day)
+    attrs["departureAt"] = d1.isoformat(timespec="seconds")
+    if arr:
+        attrs["arrivalAt"] = (d1 + (datetime.fromisoformat(arr) - d0)).isoformat(timespec="seconds")
+
+
+def zero_outside(calendar: str, as_of: date, f: str, t: str) -> str:
+    """Các ngày ngoài [available_from, available_to] không đặt được."""
+    lo, hi = date.fromisoformat(f), date.fromisoformat(t)
+    return "".join(c if lo <= as_of + timedelta(days=i) <= hi else "0" for i, c in enumerate(calendar))
+
+
+def convert(rows: list[dict], combo_attrs: dict[str, dict], as_of: date) -> tuple[list[dict], dict]:
+    lo, hi = window(as_of)
+    stats: Counter = Counter()
+    out: dict[str, dict] = {}
+    flight_dates: dict[str, list[str]] = {}
+    closed_frac: list[float] = []
+    meta = build_meta(rows)
+    for r in rows:
+        v = variant(r)
+        attrs = json.loads(json.dumps(r["attributes"], ensure_ascii=False))
+        if r["availableFrom"] is not None:
+            attrs["sourceAvailableFrom"] = r["availableFrom"]
+        if r["availableTo"] is not None:
+            attrs["sourceAvailableTo"] = r["availableTo"]
+        f, t = clip(r["availableFrom"], r["availableTo"], lo, hi)
+        available = bool(r["available"])
+        if v == "flight":
+            day, real = pick_flight_date(r, lo, hi)
+            f = t = day.isoformat()
+            move_flight(attrs, day)
+            flight_dates.setdefault(attrs.get("parentProductId") or "", []).append(f)
+            stats["chuyến bay: ngày thật"] += real
+            stats["chuyến bay: ngày mock (không có ngày thật trong cửa sổ)"] += not real
+        elif v in ("hotel_room", "attraction", "combo", "golf"):
+            cal = room_calendar(r, as_of) if v == "hotel_room" else ticket_calendar(as_of)
+            cal = zero_outside(cal, as_of, f, t) if f <= t else "0" * WINDOW_DAYS
+            attrs["availability"] = {"calendar": cal}
+            if v == "hotel_room":
+                closed_frac.append(cal.count("0") / WINDOW_DAYS)
+            stats[f"lịch khả dụng: {v}"] += 1
+        if v == "combo" and r["productId"] in combo_attrs:
+            attrs.update(combo_attrs[r["productId"]]["attributes"])
+            stats["combo gán priceBasis/nights/minPax"] += 1
+        out[r["productId"]] = {"product_id": r["productId"], "name": r["name"], "taxonomy": r["taxonomy"], "destination": r["destination"],
+                               "description": r["description"], "attributes": attrs, "unit_price": r["unitPrice"], "currency": r["currency"],
+                               "available": available, "available_from": f, "available_to": t, "image_url": r["imageUrl"],
+                               "source_ref": r["sourceRef"], "_variant": v}
+    for pid, p in out.items():  # tuyến bay: khoảng của các chuyến con
+        if p["_variant"] == "flight_route" and flight_dates.get(pid):
+            p["available_from"], p["available_to"] = min(flight_dates[pid]), max(flight_dates[pid])
+            stats["tuyến bay: khoảng lấy từ các chuyến con"] += 1
+    for p in out.values():
+        if p["available_from"] > p["available_to"]:
+            source_to = p["available_to"]
+            if p["available"]:
+                stats["đổi available=false vì from > to sau khi cắt"] += 1
+                if len(stats_examples) < 5:
+                    stats_examples.append(f"{p['name'][:60]} (không giao cửa sổ; mốc cắt {source_to})")
+            p["available"] = False
+            p["available_from"] = p["available_to"] = None
+        elif p["_variant"] not in ("flight", "flight_route") and (p["available_from"] > lo.isoformat() or p["available_to"] < hi.isoformat()):
+            stats["khoảng bị cắt hẹp hơn cửa sổ (theo khoảng bán của nguồn)"] += 1
+    stats["hạng phòng: tỷ lệ đêm kín trung bình (%)"] = round(100 * sum(closed_frac) / max(1, len(closed_frac)))
+    stats["available=true"] = sum(1 for p in out.values() if p["available"])
+    stats["is_bookable"] = sum(1 for m in meta.values() if m["is_bookable"])
+    stats["is_search_unit"] = sum(1 for m in meta.values() if m["is_search_unit"])
+    stats["is_recommendable"] = sum(1 for m in meta.values() if m["is_recommendable"])
+    return [{k: v for k, v in p.items() if k != "_variant"} for p in out.values()], dict(stats)
+
+
+stats_examples: list[str] = []
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--data-dir", type=Path, default=Path("data"))
+    ap.add_argument("--out-dir", type=Path, default=None)
+    ap.add_argument("--as-of", type=date.fromisoformat, default=date.today())
+    a = ap.parse_args(argv)
+    d, out_dir = a.data_dir, a.out_dir or a.data_dir / "loader"
+    stats_examples.clear()
+    with open(d / "products.jsonl", encoding="utf-8") as f:
+        rows = [json.loads(l) for l in f if l.strip()]
+    combo_attrs = {}
+    if (d / "combo_attributes.json").exists():
+        combo_attrs = json.loads((d / "combo_attributes.json").read_text(encoding="utf-8"))
+    products, stats = convert(rows, combo_attrs, a.as_of)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    with open(out_dir / "cdp_products.jsonl", "w", encoding="utf-8") as f:
+        for p in products:
+            f.write(json.dumps(p, ensure_ascii=False) + "\n")
+    with open(out_dir / "cdp_products.csv", "w", encoding="utf-8-sig", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(COLUMNS)
+        for p in products:
+            w.writerow([json.dumps(p[c], ensure_ascii=False) if c == "attributes"
+                        else (str(p[c]).lower() if isinstance(p[c], bool) else ("" if p[c] is None else p[c])) for c in COLUMNS])
+    if (d / "combo_items.jsonl").exists():
+        shutil.copyfile(d / "combo_items.jsonl", out_dir / "catalog_combo_items.jsonl")
+    lo, hi = window(a.as_of)
+    kinds = Counter(variant(r) for r in rows)
+    report = [f"# Kết quả loader — cửa sổ {lo.isoformat()} … {hi.isoformat()} (as_of {a.as_of.isoformat()})", "",
+              f"- Dòng nạp vào `cdp.products`: **{len(products)}** ({', '.join(f'{k} {v}' for k, v in kinds.most_common())})",
+              *[f"- {k}: {v}" for k, v in sorted(stats.items())]]
+    if stats_examples:
+        report += ["", "Ví dụ dòng bị đổi `available=false`: " + "; ".join(stats_examples)]
+    report += ["", "Chạy lại với `--as-of` mới trước demo để cuộn cửa sổ. `products.jsonl` không bị sửa; đầu ra tuân theo DDL chính thức ở `db/vota_schema.sql`."]
+    (out_dir / "loader_report.md").write_text("\n".join(report) + "\n", encoding="utf-8")
+    print("\n".join(report))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

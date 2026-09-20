@@ -9,3 +9,7 @@ vota-recsys/
 
 # macOS metadata
 .DS_Store
+
+# Python runtime artifacts
+__pycache__/
+*.py[cod]
