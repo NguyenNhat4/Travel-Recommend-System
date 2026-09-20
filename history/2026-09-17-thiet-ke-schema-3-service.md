@@ -6,6 +6,7 @@
 - Trạng thái: hoàn thành
 - Phạm vi: docs
 - Thay thế: `2026-09-17-bao-cao-schema-catalog.md` (phần CDP clone một database)
+- Bị thay thế bởi: `2026-09-20-database-mock-data-tuan-1.md` (phần "ba service, mỗi service một database"; CDP clone nay là schema `cdp` trong database `vota`)
 
 ## Mục tiêu
 

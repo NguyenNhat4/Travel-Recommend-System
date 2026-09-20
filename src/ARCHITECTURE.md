@@ -38,10 +38,17 @@ FastAPI
    |-- Auth / Catalog / Search / Recommendation / Booking / Events
    |-- Itinerary application service
    |      `-- LangGraph -> SearchClient / RecommendationClient / LLM
-   |-- PostgreSQL + pgvector: products, users, bookings, product vectors
-   |-- CdpClient  -- X-Service-Token, mạng nội bộ --> CDP clone API --> PostgreSQL riêng: events, profiles
-   `-- InsiderClient --> Insider clone API
+   |-- DATABASE_URL (role vota_app) --> PostgreSQL + pgvector, database `vota`
+   |        schema app     : users, carts, bookings, conversations, itineraries, logs
+   |        schema catalog : combo_items, product_vectors, view product_meta / search_rows
+   |        schema cdp     : chỉ SELECT products (để dựng catalog)
+   |-- CdpClient --> LocalCdpClient -- CDP_DATABASE_URL (role cdp_writer) --> schema cdp: products, events, profiles
+   `-- InsiderClient --> HttpInsiderClient -- HTTP --> Insider clone API --> database `insider`
 ```
+
+CDP clone là **schema `cdp` trong cùng database `vota`**, không phải service HTTP có PostgreSQL riêng (handbook §6: "one implementation now, reading locally"). Ranh giới ép bằng **role + connection riêng**, không bằng mạng: `cdp_writer` không có USAGE trên `catalog`/`app`, `vota_app` không đọc được `cdp.events`/`cdp.profiles`. Backend vẫn chỉ đi qua port `CdpClient`, nên đổi sang `HttpCdpClient` khi lên CDP thật là thay adapter, không sửa use case. DDL: `db/init/01_vota.sql`; chi tiết: `docs/DATABASE_SCHEMA.md`, quy tắc: `AGENTS.md` §6.
+
+Hạ tầng database nằm ở gốc repo, ngoài `src/`: `db/` (DDL, initdb, verify) và `docker-compose.yml`. Lý do: `catalog.*` tham chiếu thẳng `cdp.products` nên hai schema bắt buộc cùng một database, và `docker-entrypoint-initdb.d` chỉ đọc một thư mục.
 
 Web không gọi CDP clone. Backend ghi `product_view`, `search`, `add_to_cart` ở nền và `purchase` đồng bộ (`docs/spec/hop-dong-tich-hop-cdp.md`).
 
@@ -93,11 +100,13 @@ src/
 ├── shared/
 │   ├── contracts/                  # OpenAPI dùng chung
 │   └── mocks/                      # fixture sinh từ contract
-├── data_collection/                # collector, chuẩn hóa, dedupe, seed data
+├── data_collection/                # collector, chuẩn hóa, dedupe; seed/ = loader + mock data (AGENTS.md §6)
 ├── evaluation/                     # split, metrics, benchmark và report offline
 ├── insider_clone/                  # service giả lập đúng bề mặt Insider
-└── cdp_clone/                      # service giả lập đúng bề mặt CDP
+└── cdp_clone/                      # service HTTP tạm gác; tuần 1 CDP clone là schema `cdp` ở db/
 ```
+
+Ngoài `src/` còn hai thư mục hạ tầng ở gốc repo: `db/` (DDL, initdb, verify) và `history/` (lịch sử thay đổi).
 
 ## 5. Quy tắc phụ thuộc backend
 
@@ -144,7 +153,7 @@ Nhóm endpoint v1:
 - Events: `POST /api/v1/events` cho `product_view`; Backend chuyển sang CDP clone.
 - Assistant: `POST /api/v1/assistant/itineraries`.
 - Insider clone: bốn endpoint mô phỏng được mô tả trong spec.
-- CDP clone: API nội bộ cho Backend, seed và job; contract riêng tại `src/shared/contracts/cdp-clone.openapi.yaml`.
+- CDP clone: tuần 1 không có endpoint HTTP (truy cập qua `LocalCdpClient`); `src/shared/contracts/cdp-clone.openapi.yaml` giữ lại làm contract cho `HttpCdpClient` sau này.
 
 Thay đổi tương thích ngược có thể bổ sung vào v1. Xóa/đổi tên field hoặc thay đổi semantics phải tạo v2.
 
@@ -166,9 +175,9 @@ message -> extract intent -> clarify if required -> retrieve real products
 
 ## 9. Dữ liệu và tích hợp
 
-- CDP clone (`src/cdp_clone`) là service tách biệt với PostgreSQL riêng, là system of record cho `events` và `profiles`, chỉ mở trong mạng nội bộ. Backend không truy cập database này; chỉ đọc/ghi qua `CdpClient` bằng service token.
+- CDP clone là schema `cdp` trong database `vota`, là system of record cho `products`, `events` và `profiles`. Backend không truy cập nó trực tiếp; chỉ đọc/ghi qua port `CdpClient`, adapter `LocalCdpClient` với connection riêng `CDP_DATABASE_URL` (role `cdp_writer`). Ngoại lệ duy nhất là loader/seed `src/data_collection/seed` chạy bằng `SEED_DATABASE_URL`. Thư mục `src/cdp_clone` giữ service FastAPI của tuần trước ở trạng thái tạm gác, làm nền cho `HttpCdpClient` sau này.
 - Luồng hành vi là Web → Backend → CDP. Event duyệt web ghi nền, bỏ khi CDP lỗi; `purchase` ghi đồng bộ, bù trừ bằng huỷ event khi commit booking lỗi; Recommendation rơi về `popular` khi không đọc được CDP. Chi tiết: `docs/spec/hop-dong-tich-hop-cdp.md`.
-- `products`, `users`, `bookings` và `product_vectors` hiện ở PostgreSQL của Backend; việc chuyển chúng vào CDP clone đang chờ xác nhận.
+- Nơi lưu (chốt 20/09, thay câu "đang chờ xác nhận" trước đó): `products` ở `cdp.products`; `users`, `bookings` ở `app.*`; `product_vectors`, `combo_items` ở `catalog.*`. `catalog.*` dựng lại được từ `cdp.products`, `app.*` phải backup.
 - Insider clone là service tách biệt, cố ý chỉ giữ tập con dữ liệu và TTL theo spec.
 - Collector phải cache raw response trước khi parse, hỗ trợ resume và ghi nguồn của từng field.
 - Secret, API key và JWT không được commit hoặc ghi log.
