@@ -27,17 +27,19 @@ Tổng các dòng trong ví dụ là `10.867 ms`, tức xấp xỉ `10,9 giây`.
 
 ## Chín node làm gì
 
-| Node | Trách nhiệm | Có gọi LLM/tool? | Kết quả/rẽ nhánh chính |
+Mỗi node chỉ đọc và ghi vào state chung của graph. Bảng dưới cho biết node nhận gì, trả gì và đi tiếp đâu.
+
+| Node | Nhận vào | Trả ra | Đi tiếp |
 |---|---|---|---|
-| `intake` | Chuẩn hóa message, tạo/đọc `conversationId`, khởi tạo state và nạp intent đã lưu của hội thoại. | Không gọi LLM; có thể đọc conversation store. | Luôn sang `classify`; hội thoại không tồn tại được đánh dấu lỗi để xử lý có kiểm soát. |
-| `classify` | Dùng structured output để tách intent/constraints, nhận diện hội thoại chung, yêu cầu ngoài phạm vi/side effect, xung đột và các trường còn thiếu. | Có, một lời gọi LLM. | `tool` khi đủ `destination` + `days`; `answer` khi cần hội thoại/làm rõ; `dead_letter` khi request hoặc LLM lỗi. |
-| `tool` | Đưa `destination` về đúng tên trong danh sách catalog (`list_destinations`) rồi để LLM lập tối đa 5 lời gọi read-only, validate arguments, gọi Search/Recommendation và hydrate ProductDetail khi cần. Tên khớp không phân biệt dấu/hoa thường thì dùng luôn; nếu không (`tphcm`, `sài gòn`, `pq`...) thì một lời gọi LLM chọn trong chính danh sách catalog, code kiểm tra lại kết quả có trong danh sách. Không có bảng alias viết tay. Cũng dọn `interests`, `exclude_taxonomies`, `specific_hotel/activity` và bỏ số người model đoán khi `FAMILY_WITH_KIDS` mà `children=0`. | Có thể gọi LLM để chọn điểm đến và lập tool plan; gọi các tool read-only song song. | Luôn sang `evaluate`; lỗi được giữ trong `tool_results` để node sau quyết định retry hay dừng. Điểm đến ngoài catalog trả `UNSUPPORTED_DESTINATION` (422) trước khi gọi Search, message nêu điểm đến người dùng nhập và liệt kê các điểm đến catalog đang hỗ trợ (cũng có trong `details.supportedDestinations`); `details.conversationId` trỏ tới hội thoại đã lưu intent còn lại (bỏ điểm đến) để lượt sau chỉ cần nói điểm đến hợp lệ; LLM chọn điểm đến lỗi trả `LLM_UNAVAILABLE`. |
-| `evaluate` | Gom và lọc candidate theo intent/constraints, giữ nguồn grounding, loại sản phẩm không đủ căn cứ và phân loại lỗi tool. | Không. | Sang `answer`, `retry` hoặc `dead_letter`. Message có thể là `compose`, `no_results`, `fallback` hoặc `constraint_clarification`. |
-| `answer` | Tạo câu hỏi/câu trả lời hội thoại, hoặc dùng LLM chọn các candidate thật để dựng lịch trình; khi không thể compose thì trả fallback/no-results có kiểm soát. | Có LLM cho hội thoại và composition; một số nhánh lỗi/no-results không cần gọi LLM. | Sang `finalize`. Không được tạo ID, tên hay giá ngoài candidate đã retrieval. |
-| `clarify` | Dựng response `NEEDS_CLARIFICATION` theo rule cố định. | Không. | Sang `finalize`. Node vẫn nằm trong topology, nhưng routing hiện hành đưa trường hợp thiếu thông tin qua `answer` để LLM viết câu hỏi; vì vậy trace bình thường có thể không đi qua node này. |
-| `retry` | Quyết định thử lại lỗi tool tạm thời, tối đa một lần; nếu hết lượt thì chọn fallback hoặc lỗi. | Không. | Quay lại `tool`, sang `answer` để fallback, hoặc sang `dead_letter`. |
-| `dead_letter` | Chuyển lỗi auth, tool plan/argument hoặc upstream thành `ErrorResponse` chuẩn, không che lỗi thành thành công. | Không. | Sang `finalize`. |
-| `finalize` | Validate `ItineraryResponse`/`ErrorResponse`, kiểm tra lại grounding và plan, tính latency, lưu conversation thành công rồi kết thúc graph. | Không gọi LLM; có thể ghi conversation store. | `END`; validation thất bại bị đổi thành `ITINERARY_VALIDATION_FAILED`. |
+| `intake` | Message của người dùng, `conversationId` (nếu có). | State khởi tạo: message đã chuẩn hóa, `conversationId`, intent đã lưu của hội thoại. | `classify` |
+| `classify` | Message và intent đã lưu. Gọi LLM. | Intent/constraints (`destination`, `days`...), các trường còn thiếu, cờ hội thoại chung hoặc yêu cầu bị từ chối. | `tool` nếu đủ `destination` + `days`; `answer` nếu cần hỏi lại hoặc trò chuyện; `dead_letter` nếu lỗi. |
+| `tool` | Intent/constraints. Có thể gọi LLM. | Tên điểm đến đã chuẩn hóa theo catalog, kết quả Search/Recommendation/ProductDetail (hoặc lỗi) trong `tool_results`. Điểm đến ngoài catalog trả `UNSUPPORTED_DESTINATION` (422) kèm danh sách điểm đến hỗ trợ. | `evaluate` |
+| `evaluate` | `tool_results` và intent. | Danh sách candidate hợp lệ có nguồn grounding, hoặc phân loại: `compose`, `no_results`, `fallback`, `constraint_clarification`, lỗi tạm thời/vĩnh viễn. | `answer`, `retry` hoặc `dead_letter` |
+| `answer` | Candidate đã evaluate, hoặc message hội thoại/làm rõ. Có thể gọi LLM. | Lịch trình (`COMPLETED`), hoặc `NEEDS_CLARIFICATION`, `NO_RESULTS`, `FALLBACK`, câu trả lời hội thoại, từ chối. Chỉ dùng ID/tên/giá của candidate có sẵn. | `finalize` |
+| `clarify` | Danh sách trường còn thiếu. | Response `NEEDS_CLARIFICATION` theo rule cố định. Hiện routing đưa trường hợp này qua `answer`, nên trace thường không có node này. | `finalize` |
+| `retry` | Lỗi tool tạm thời và số lần đã thử. | Quyết định thử lại (tối đa một lần), dùng fallback hoặc báo lỗi. | `tool`, `answer` hoặc `dead_letter` |
+| `dead_letter` | Lỗi auth, tool plan/argument hoặc upstream. | `ErrorResponse` chuẩn, không che lỗi thành thành công. | `finalize` |
+| `finalize` | Response từ `answer` hoặc `dead_letter`. | Response cuối đã validate schema và grounding, kèm latency; lưu conversation nếu thành công. Validation lỗi thành `ITINERARY_VALIDATION_FAILED`. | `END` |
 
 ## Các luồng thực thi
 
