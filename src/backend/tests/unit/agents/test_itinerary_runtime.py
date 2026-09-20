@@ -40,10 +40,12 @@ class ScriptedLlm:
         self.fail_composition = fail_composition
         self.conversational_message = conversational_message
         self.calls = []
+        self.prompts = {}
 
     def with_structured_output(self, schema):
         async def invoke(prompt):
             self.calls.append(schema.__name__)
+            self.prompts[schema.__name__] = str(prompt)
             if schema is Extraction:
                 return self.extraction
             if schema is DestinationChoice:
@@ -303,12 +305,38 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['response']['status'], 'NO_RESULTS')
         self.assertNotIn('trong nước', result['response']['message'])
 
-    async def test_unknown_or_duplicate_ids_never_complete(self):
-        for slots in ([{'day': 1, 'time': 'MORNING', 'product_id': 'fake'}],
-                      [{'day': 1, 'time': 'MORNING', 'product_id': 'a'}, {'day': 2, 'time': 'AFTERNOON', 'product_id': 'a'}]):
-            with self.subTest(slots=slots):
-                result = await self.run_graph(ScriptedLlm(composition=Composition(slots=slots)))
-                self.assertEqual(result['response']['status'], 'FALLBACK')
+    async def test_an_unschedulable_taxonomy_is_dropped_and_never_reaches_the_model(self):
+        # Regression: "đi Nha Trang 2 ngày từ ngày mai" returned FALLBACK because the model put the
+        # one combo of the catalog into a slot, and that single slot discarded the whole itinerary.
+        clients = Clients(products=[product('a'), product('c', taxonomy='combo')])
+        llm = ScriptedLlm(composition=Composition(slots=[{'day': 1, 'time': 'MORNING', 'product_id': 'a'},
+                                                         {'day': 1, 'time': 'NOON', 'product_id': 'c'}]))
+        result = await self.run_graph(llm, clients)
+        response = result['response']
+        self.assertEqual(response['status'], 'COMPLETED')
+        scheduled = [slot['product']['productId'] for day in response['itinerary']['days']
+                     for slot in day['slots'] if slot['product']]
+        self.assertEqual(scheduled, ['a'])
+        self.assertIn('SLOT_DROPPED_UNSCHEDULABLE', [w['code'] for w in response['warnings']])
+        # The combo is retrieved and may be shown, but it is never offered to the composer.
+        self.assertIn('c', result['candidates'])
+        self.assertIn('Catalog a', llm.prompts['Composition'])
+        self.assertNotIn('Catalog c', llm.prompts['Composition'])
+
+    async def test_an_invented_id_never_completes(self):
+        slots = [{'day': 1, 'time': 'MORNING', 'product_id': 'fake'}]
+        result = await self.run_graph(ScriptedLlm(composition=Composition(slots=slots)))
+        self.assertEqual(result['response']['status'], 'FALLBACK')
+
+    async def test_a_duplicate_id_is_dropped_instead_of_discarding_the_itinerary(self):
+        slots = [{'day': 1, 'time': 'MORNING', 'product_id': 'a'}, {'day': 2, 'time': 'AFTERNOON', 'product_id': 'a'}]
+        result = await self.run_graph(ScriptedLlm(composition=Composition(slots=slots)))
+        response = result['response']
+        self.assertEqual(response['status'], 'COMPLETED')
+        scheduled = [slot['product']['productId'] for day in response['itinerary']['days']
+                     for slot in day['slots'] if slot['product']]
+        self.assertEqual(scheduled, ['a'])
+        self.assertIn('SLOT_DROPPED_UNSCHEDULABLE', [w['code'] for w in response['warnings']])
 
     async def test_model_failure_falls_back_only_to_actual_candidates(self):
         result = await self.run_graph(ScriptedLlm(fail_composition=True))
@@ -456,7 +484,13 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         llm = ScriptedLlm(composition=Composition(slots=[{'day': 1, 'time': 'MORNING', 'product_id': 'a'},
                                                       {'day': 1, 'time': 'AFTERNOON', 'product_id': 'b'}]))
         result = await self.run_graph(llm, clients)
-        self.assertEqual(result['response']['status'], 'FALLBACK')
+        response = result['response']
+        # The overlapping slot is dropped; the full-day visit and the rest of the plan survive.
+        self.assertEqual(response['status'], 'COMPLETED')
+        scheduled = [(day['day'], slot['product']['productId']) for day in response['itinerary']['days']
+                     for slot in day['slots'] if slot['product']]
+        self.assertEqual(scheduled, [(1, 'a')])
+        self.assertIn('SLOT_DROPPED_UNSCHEDULABLE', [w['code'] for w in response['warnings']])
 
 
 if __name__ == '__main__':

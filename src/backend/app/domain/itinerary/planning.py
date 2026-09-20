@@ -21,6 +21,10 @@ SUMMARY_FIELDS = (
     "available", "availableFrom", "availableTo", "imageUrl", "rating",
     "reviewCount", "attributes", "description", "priceUnit",
 )
+# Flights and combos have no confirmed slot mapping, so they can be retrieved but never scheduled.
+STAY_TAXONOMY = "hotel"
+SLOT_TAXONOMIES = frozenset({"attraction", "golf"})
+SCHEDULABLE_TAXONOMIES = frozenset({STAY_TAXONOMY, *SLOT_TAXONOMIES})
 
 
 def normalized(value: str | None) -> str:
@@ -106,7 +110,7 @@ def render_proposal(proposal: dict[str, Any], candidates: dict[str, dict[str, An
     stay_id = proposal.get("stay_id")
     if stay_id:
         product = candidates.get(stay_id)
-        if product is None or product.get("taxonomy") != "hotel":
+        if product is None or product.get("taxonomy") != STAY_TAXONOMY:
             raise ValueError("invalid stay")
         used.add(stay_id)
         parent_keys.add(product.get("attributes", {}).get("parentProductId") or stay_id)
@@ -129,7 +133,7 @@ def render_proposal(proposal: dict[str, Any], candidates: dict[str, dict[str, An
                 "note": NOTES[note_kind], "source": None, "because": []})
             continue
         product = candidates.get(product_id)
-        if product is None or product_id in used or product.get("taxonomy") not in {"attraction", "golf"}:
+        if product is None or product_id in used or product.get("taxonomy") not in SLOT_TAXONOMIES:
             raise ValueError("invalid product selection")
         parent = product.get("attributes", {}).get("parentProductId") or product_id
         if parent in parent_keys or product_id in parent_keys:
@@ -150,6 +154,39 @@ def render_proposal(proposal: dict[str, Any], candidates: dict[str, dict[str, An
         "budgetStatus": "UNKNOWN", "priceAsOf": None}
     plan["estimatedTotal"], plan["budgetStatus"] = totals(plan, intent)
     return plan
+
+
+def render_best_effort(proposal: dict[str, Any], candidates: dict[str, dict[str, Any]],
+                       sources: dict[str, str], intent: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Render the proposal, dropping only the slots the rules reject.
+
+    One unschedulable slot must not discard an otherwise valid itinerary. Slots are added one at a
+    time and kept only when the plan still renders, so the result obeys exactly the same rules as
+    `render_proposal`; nothing is relaxed. Returns the plan and the slots that were dropped. A
+    proposal-level failure (trip duration, stay) still raises, and `validate_plan` remains the final
+    word on required-hotel and grounding rules.
+    """
+    try:
+        return render_proposal(proposal, candidates, sources, intent), []
+    except ValueError:
+        pass
+    # An id that is in no retrieval result means the model invented it. That is a grounding failure
+    # about the whole proposal, not one bad slot, so it is never repaired away quietly.
+    if any(slot.get("product_id") and slot["product_id"] not in candidates
+           for slot in proposal.get("slots", [])):
+        raise ValueError("ungrounded product selection")
+    base = {"stay_id": proposal.get("stay_id"), "slots": []}
+    render_proposal(base, candidates, sources, intent)  # duration or stay problems are not repairable
+    kept: list[dict[str, Any]] = []
+    dropped: list[dict[str, Any]] = []
+    for slot in proposal.get("slots", []):
+        try:
+            render_proposal({**base, "slots": [*kept, slot]}, candidates, sources, intent)
+        except ValueError:
+            dropped.append(slot)
+        else:
+            kept.append(slot)
+    return render_proposal({**base, "slots": kept}, candidates, sources, intent), dropped
 
 
 def validate_plan(plan: dict[str, Any], candidates: dict[str, dict[str, Any]],
