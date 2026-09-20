@@ -84,7 +84,6 @@ def load_vota(url: str, data_dir: Path, reset: bool) -> dict[str, int]:
         conn.execute("ANALYZE")
     return counts
 
-
 def load_insider(url: str, data_dir: Path, reset: bool) -> dict[str, int]:
     """Load the separate Insider clone database in one transaction."""
     counts: dict[str, int] = {}
@@ -99,4 +98,3 @@ def load_insider(url: str, data_dir: Path, reset: bool) -> dict[str, int]:
             conn.execute(f"SELECT setval(pg_get_serial_sequence('{table}', '{column}'), COALESCE((SELECT max({column}) FROM {table}), 1))")
         conn.execute("ANALYZE")
     return counts
-

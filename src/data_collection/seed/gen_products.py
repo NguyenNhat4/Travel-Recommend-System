@@ -115,4 +115,3 @@ def write(path: Path, rows: list[dict]) -> None:
     with path.open("w", encoding="utf-8") as stream:
         for row in rows:
             stream.write(json.dumps(row, ensure_ascii=False) + "\n")
-

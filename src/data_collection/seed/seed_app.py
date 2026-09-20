@@ -14,4 +14,3 @@ def rows_from_history(history: dict) -> dict[str, list[dict]]:
         "bookings": history["bookings"],
         "booking_items": history["booking_items"],
     }
-

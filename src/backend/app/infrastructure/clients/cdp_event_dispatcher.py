@@ -38,7 +38,9 @@ class BackgroundCdpEventRecorder:
             return
         try:
             await asyncio.wait_for(self._queue.join(), timeout=self._shutdown_timeout)
-        except TimeoutError:
+        # Python 3.10 still exposes asyncio.TimeoutError separately; from
+        # Python 3.11 it is an alias of the built-in TimeoutError.
+        except (asyncio.TimeoutError, TimeoutError):
             pass
         self._worker.cancel()
         try:
