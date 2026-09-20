@@ -434,12 +434,11 @@ Phần này do `python -m data_collection.seed` sinh tự động (`seed/report.
 
 | Mục | Giá trị |
 |---|---|
-| as_of | `2026-09-20` |
+| as_of | `2026-09-21` |
 | seed | `42` |
-| Cửa sổ đặt chỗ | `2026-09-20` → `2026-10-19` (30 ngày) |
+| Cửa sổ đặt chỗ | `2026-09-21` → `2026-10-20` (30 ngày) |
 | Nguồn catalog | `products.synthetic.jsonl` |
 | Loại catalog | tổng hợp (`gen_products.py`) |
-| Thời gian chạy | 4.0 giây |
 
 ### Số dòng từng bảng
 
@@ -455,7 +454,7 @@ Phần này do `python -m data_collection.seed` sinh tự động (`seed/report.
 | `app.bookings` / `booking_items` | 1 / 1 |
 | `insider.insider_profiles` | 2000 |
 | `insider.identifiers` (đang hiệu lực) | 6000 |
-| `insider.insider_events` (tổng / còn hạn) | 4325 / 4299 |
+| `insider.insider_events` (tổng / còn hạn) | 4325 / 4323 |
 | `insider.channel_events` | 18532 |
 | `catalog.product_vectors` | 0 — job `embed_products` của Search, tuần 2 |
 
@@ -506,11 +505,11 @@ Mật khẩu chung: `Demo@2026` (BCrypt cost 10).
 | `P4_no_history` | `khachmoi@vota.demo` | `VP0000004` |
 | 50 tài khoản test | `test01@vota.demo` … `test50@vota.demo` | `VP0000005` trở đi |
 
-- Đơn của P1: `VOTA-20261002-4D6N`, nối sang `cdp.events` bằng `event_group_id`.
+- Đơn của P1: `VOTA-20261003-4D6N`, nối sang `cdp.events` bằng `event_group_id`.
 
 ### Baseline most-popular-in-destination
 
-- Recall@20 = **0.501** trên 1002 khách (giấu chuyến mua cuối). Mục tiêu: 0.05–0.6 — **đạt**.
+- Recall@20 = **0.494** trên 1002 khách (giấu chuyến mua cuối). Mục tiêu: 0.05–0.6 — **đạt**.
 - Gần 0 nghĩa là dữ liệu quá ngẫu nhiên (recommender hỏng trông vẫn ổn); quá cao nghĩa là baseline bất khả chiến bại, không đo được cải thiện.
 
 ### `db/verify.sql`
@@ -528,12 +527,12 @@ stage distribution: PASS
 max events per user <= 15: PASS
 window = 30 days: PASS
 room calendars 30 chars: PASS
-future purchases inside window: PASS
 P1 booking <-> event: PASS
 persona users = 4: PASS
 P4 has no events: PASS
 products = 2216: FAIL (433)   ← FAIL dự kiến: ngưỡng của crawl thật, catalog tổng hợp không đạt
 is_recommendable properties >= 300: FAIL (40)   ← FAIL dự kiến: ngưỡng của crawl thật, catalog tổng hợp không đạt
+future purchases inside window: FAIL (1)
 ```
 
 ```

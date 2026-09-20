@@ -155,7 +155,8 @@ def render(summary: dict) -> str:
                 ("Cửa sổ đặt chỗ", f"`{summary['window'][0]}` → `{summary['window'][1]}` ({config.WINDOW_DAYS} ngày)"),
                 ("Nguồn catalog", f"`{summary['products_path']}`"),
                 ("Loại catalog", "tổng hợp (`gen_products.py`)" if summary["synthetic"] else "crawl thật"),
-                ("Thời gian chạy", f"{summary['elapsed_seconds']} giây"),
+                # Thời gian chạy chỉ in ra stdout, KHÔNG ghi vào khối này: nó đổi sau mỗi lần chạy
+                # và sẽ làm file bẩn ở mọi lần seed, gây conflict vô ích khi nhiều người cùng chạy.
             ]
         )
     )
