@@ -16,11 +16,22 @@ def schema(name: str) -> dict[str, Any]:
     return value
 
 
+def _resolve(node: dict[str, Any], document: dict[str, Any]) -> dict[str, Any]:
+    """Follow internal $ref pointers; the bundler leaves them in place instead of inlining."""
+    while "$ref" in node:
+        target = document
+        for part in node["$ref"].removeprefix("#/").split("/"):
+            target = target[part.replace("~1", "/").replace("~0", "~")]
+        node = target
+    return node
+
+
 def _property(name: str, path: tuple[str, ...]) -> dict[str, Any]:
     node = schema(name)
+    document = {"components": node["components"]}
     for key in path:
-        node = node["properties"][key]
-    return node
+        node = _resolve(node, document)["properties"][key]
+    return _resolve(node, document)
 
 
 def enum_values(name: str, *path: str) -> tuple[str, ...]:
