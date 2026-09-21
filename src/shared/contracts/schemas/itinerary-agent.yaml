@@ -154,13 +154,12 @@ ItineraryRequest:
       type: object
       properties:
         language:
-          type:
-          - string
-          - 'null'
+          type: string
           enum:
           - vi
           - en
-          - null
+          default: vi
+          description: Ngôn ngữ phản hồi. Khi context hoặc language vắng mặt, backend dùng vi; giá trị được lưu theo conversation.
   anyOf:
   - required:
     - message
@@ -513,3 +512,49 @@ ItineraryResponse:
       NEEDS_CLARIFICATION: ../openapi.yaml#/components/schemas/ItineraryNeedsClarification
       NO_RESULTS: ../openapi.yaml#/components/schemas/ItineraryNoResults
       FALLBACK: ../openapi.yaml#/components/schemas/ItineraryFallback
+AssistantStatus:
+  type: object
+  required:
+  - status
+  - agent
+  - graphVersion
+  - dataMode
+  properties:
+    status:
+      type: string
+      enum:
+      - ready
+      - not_configured
+    agent:
+      type: string
+    graphVersion:
+      type: string
+    dataMode:
+      type: string
+      enum:
+      - fixture
+      - http
+      - disabled
+    productCount:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
+AssistantStreamEvent:
+  type: object
+  description: Union logic của payload SSE; trường event nằm ở dòng event của SSE.
+  required:
+  - event
+  - data
+  properties:
+    event:
+      type: string
+      enum:
+      - run.started
+      - graph.topology
+      - node.completed
+      - run.completed
+      - run.failed
+    data:
+      type: object
+      additionalProperties: true

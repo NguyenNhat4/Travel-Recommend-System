@@ -254,9 +254,22 @@ JWT là tùy chọn.
 | `conversationId` | Không | Tiếp tục một cuộc hội thoại trước đó |
 | `message` | Có điều kiện | Yêu cầu bằng ngôn ngữ tự nhiên |
 | `intentOverride` | Có điều kiện | Patch intent có cấu trúc; chỉ dùng cùng `conversationId` khác null |
-| `context.language` | Không | Nếu thiếu, hệ thống tự phát hiện ngôn ngữ |
+| `context.language` | Không | `vi` hoặc `en`; nếu thiếu backend dùng `vi`. Giá trị tường minh được lưu theo conversation và dùng cho các lượt sau |
 
 Request hợp lệ khi có `message`, hoặc có đồng thời `conversationId` và `intentOverride`. `message` có tối đa 1.000 ký tự.
+
+`destination` và `days` là dữ liệu nghiệp vụ bắt buộc để bắt đầu retrieval và lập kế hoạch, nhưng không bắt buộc có sẵn trong request đầu tiên. Khi thiếu một hoặc cả hai, Agent trả `NEEDS_CLARIFICATION`, lưu phần intent đã biết theo `conversationId` và không gọi Search, Recommendation hoặc Catalog. MVP không tự phát hiện ngôn ngữ để tránh kết quả không ổn định; thứ tự ưu tiên là `context.language` tường minh, ngôn ngữ đã lưu của conversation, rồi `vi`.
+
+#### API stream cho UI demo
+
+```http
+POST /api/v1/assistant/itineraries/stream
+Accept: text/event-stream
+```
+
+Request giống `POST /assistant/itineraries`. Stream phát lần lượt `run.started`, `graph.topology`, các `node.completed`, rồi `run.completed` hoặc `run.failed`. Event chỉ chứa ID node, thứ tự, trạng thái, thời lượng và response công khai; không chứa raw graph state, prompt, token hoặc credential. Vì HTTP status đã được gửi khi mở SSE, lỗi phát sinh sau đó nằm trong payload `run.failed.httpStatus`.
+
+`GET /api/v1/assistant/status` trả readiness, graph version, data mode và số sản phẩm fixture nếu có. `fixture` chỉ được bật mặc định ở development/test; production mặc định `disabled` cho tới khi cấu hình upstream HTTP thật.
 
 ### 4.2. Response hoàn chỉnh
 
@@ -384,7 +397,7 @@ Lỗi thực sự không nằm trong `ItineraryResponse` và không dùng `statu
 | 400 | `INVALID_TRIP_DURATION` | Số ngày ngoài phạm vi 1–7 |
 | 401 | `INVALID_TOKEN` hoặc `TOKEN_EXPIRED` | Có gửi JWT nhưng token không hợp lệ |
 | 404 | `CONVERSATION_NOT_FOUND` | Không tìm thấy cuộc hội thoại |
-| 422 | `UNSUPPORTED_DESTINATION` | Điểm đến chưa có trong catalog |
+| 422 | `UNSUPPORTED_DESTINATION` | Điểm đến chưa có trong catalog. `details` có `destination`, `supportedDestinations`, `conversationId`; backend lưu phần intent còn lại (bỏ điểm đến) nên gửi lại `conversationId` cùng điểm đến hợp lệ là tiếp tục chuyến đi |
 | 503 | `SEARCH_UNAVAILABLE` | Search API không khả dụng |
 | 503 | `LLM_UNAVAILABLE` | LLM lỗi và không thể trả kết quả dự phòng |
 | 500 | `ITINERARY_VALIDATION_FAILED` | Lịch trình không vượt qua grounding validation |

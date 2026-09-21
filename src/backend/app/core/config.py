@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     model_name: str = "gpt-4o-mini"
     llm_temperature: float = Field(default=0.7, ge=0.0, le=2.0)
+    itinerary_service_base_url: str | None = Field(default=None, pattern=r"^https?://")
+    itinerary_data_mode: Literal["fixture", "http", "disabled"] | None = None
+    itinerary_tool_timeout_seconds: float = Field(default=1.0, gt=0)
+    itinerary_llm_timeout_seconds: float = Field(default=2.0, gt=0)
+    itinerary_request_timeout_seconds: float = Field(default=5.0, gt=0)
+    itinerary_conversation_ttl_seconds: int = Field(default=86_400, ge=60)
 
     database_url: str = "sqlite:///./data/app.db"
     chroma_persist_dir: str = "./data/chroma"

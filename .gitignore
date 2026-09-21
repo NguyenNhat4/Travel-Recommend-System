@@ -9,3 +9,28 @@ vota-recsys/
 
 # macOS metadata
 .DS_Store
+# Local secrets and environment overrides.
+.env
+.env.*
+!.env.example
+!**/.env.example
+*.pem
+*.key
+*.p12
+
+# Python caches and local test artifacts.
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Local logs and generated evaluation reports.
+*.log
+src/evaluation/reports/itinerary-agent-metrics.json
+src/evaluation/reports/eval-*.json
