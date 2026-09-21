@@ -5,9 +5,9 @@ from datetime import datetime, timezone
 
 import numpy as np
 
-from app.application.ports import CdpClientPort, UnitIndex
-from app.application.search import hit
-from app.domain.recommendation import Popularity, Purchase, ResolvedEvent, build_profile, explain, mmr_select, score_candidates
+from src.backend.app.application.ports import CdpClientPort, UnitIndex
+from src.backend.app.application.search import hit
+from src.backend.app.domain.recommendation import Popularity, Purchase, ResolvedEvent, build_profile, explain, mmr_select, score_candidates
 
 
 def _ts(x) -> float:

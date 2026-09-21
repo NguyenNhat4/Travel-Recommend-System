@@ -9,3 +9,10 @@ vota-recsys/
 
 # macOS metadata
 .DS_Store
+
+# Python runtime artifacts
+__pycache__/
+*.py[cod]
+
+# Cache embedding sinh lúc chạy (seed/backend) — dựng lại được từ catalog, ~9 MB/model.
+.embcache/

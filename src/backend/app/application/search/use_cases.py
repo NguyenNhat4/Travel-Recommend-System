@@ -4,8 +4,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from app.application.ports import EmbedderPort, UnitIndex
-from app.domain.search import exact_filter_score
+from src.backend.app.application.ports import EmbedderPort, UnitIndex
+from src.backend.app.domain.search import exact_filter_score
 
 
 def hit(index: UnitIndex, i: int, score: float, **extra) -> dict:

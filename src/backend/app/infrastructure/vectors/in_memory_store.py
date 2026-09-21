@@ -9,8 +9,8 @@ from collections import defaultdict
 
 import numpy as np
 
-from app.application.ports import EmbedderPort, UnitIndex
-from app.domain.catalog import Product, build_text
+from src.backend.app.application.ports import EmbedderPort, UnitIndex
+from src.backend.app.domain.catalog import Product, build_text
 
 
 class InMemoryVectorStore:

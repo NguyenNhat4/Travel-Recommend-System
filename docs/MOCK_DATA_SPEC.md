@@ -8,23 +8,24 @@ Bản 20/09/2026 · dành cho Claude Code sinh code trong `src/data_collection/`
 |---|---|---|
 | 1 | `docker compose up -d postgres` rồi `psql vota -c "\dt cdp.* catalog.* app.*"` | 15 bảng, 3 view (`catalog.product_meta`, `product_parents`, `search_rows`) |
 | 2 | `psql insider -c "\dt"` | 5 bảng + view `live_events` |
-| 3 | `python -m data_collection.seed --as-of 2026-09-22` (chạy từ `src/`) | chạy < 2 phút, idempotent (`--reset` xoá và nạp lại), log tóm tắt ra stdout và khối `seed-report` trong `src/data_collection/README.md` |
+| 3 | `make demo-db AS_OF=2026-09-22` từ repo root, hoặc chạy CLI seed từ `src/` | kiểm tra/bung snapshot, chạy < 2 phút, `demo-db-reset` xoá và nạp lại, log tóm tắt ra stdout và khối `seed-report` trong `src/data_collection/README.md` |
 | 4 | `psql "$SEED_DATABASE_URL" -f db/verify.sql` | mọi dòng `PASS` (xem §7), trừ hai dòng FAIL dự kiến khi dùng catalog tổng hợp (xem ghi chú dưới bảng) |
 | 5 | Baseline most-popular-in-destination (Evaluation chạy) | Recall@20 không gần 0, không > 0.6 |
 | 6 | Đăng nhập 4 persona | Home hiện đúng section theo UX spec §4.1.3 |
 
 **Ba điểm chốt 20/09 khi triển khai (khác chữ trong bản gốc bên dưới):**
 
-1. **Connection của seed và verify là `SEED_DATABASE_URL`** (superuser), không phải `DATABASE_URL`. Role `vota_app` của `DATABASE_URL` không có quyền ghi `cdp.*` và không SELECT được `cdp.events`/`cdp.profiles`, nên chạy `db/verify.sql` bằng nó sẽ lỗi `insufficient_privilege` chứ không ra `FAIL`. Dòng đầu hai file `db/verify*.sql` ghi `$DATABASE_URL` là nhầm; không sửa file .sql, chỉ chạy đúng URL.
+1. **Connection của seed và verify là `SEED_DATABASE_URL`** (superuser), không phải `DATABASE_URL`. Role `vota_app` của `DATABASE_URL` không có quyền ghi `cdp.*` và không SELECT được `cdp.events`/`profiles`, nên chạy `db/verify.sql` bằng nó sẽ lỗi `insufficient_privilege` chứ không ra `FAIL`. Ghi chú lệnh trong `db/verify.sql` đã được đồng bộ theo biến này.
 2. **Báo cáo ghi vào khối đánh dấu** `<!-- seed-report:start -->`…`<!-- seed-report:end -->` ở cuối `src/data_collection/README.md`. Thư mục `data-collection/` (gạch nối) nhắc ở §1 và §8 không tồn tại trong monorepo này, và `src/data_collection/README.md` là sổ tay crawler viết tay — `report.py` chỉ thay phần trong khối, không ghi đè cả file.
-3. **Hai dòng `db/verify.sql` FAIL theo thiết kế khi dùng `products.synthetic.jsonl`:** `products = 2216` và `is_recommendable properties >= 300`. Cả hai là ngưỡng của crawl thật (2.216 sản phẩm; 316/559 property có phòng đặt được), trong khi catalog tổng hợp §1b cố ý chỉ ~450 dòng với 40 property. Không sửa `db/*.sql` và không thổi phồng §1b để lách; `report.py` in hai dòng này kèm nhãn "FAIL dự kiến — catalog tổng hợp". Có `products.jsonl` thật thì cả hai tự PASS.
+3. **Hai dòng `db/verify.sql` FAIL theo thiết kế khi dùng `products.synthetic.jsonl`:** `products = 10320` và `is_recommendable properties >= 300`. Đây là ngưỡng của snapshot catalog thật hiện hành (10.320 sản phẩm), trong khi catalog tổng hợp §1b cố ý chỉ khoảng 400–450 dòng với 40 property. Không thổi phồng §1b để lách; `report.py` ghi rõ nguồn catalog. Có `src/data_collection/data/products.jsonl` thật thì cả hai phải PASS.
 
 ## 1. Đầu vào và bố cục code
 
 ```
 src/data_collection/
-├── products.jsonl              # từ crawler, 13 trường CDP — CHƯA CÓ ở tuần 1 → dùng products.synthetic.jsonl (bước 0)
-├── products.synthetic.jsonl    # sinh bởi gen_products.py, cùng contract SCHEMA.md; sourceRef bắt đầu bằng 'synthetic:'
+├── data/products.jsonl         # runtime artifact từ crawler, 13 trường CDP; bị gitignore
+├── data/products.synthetic.jsonl # fallback do gen_products.py sinh; sourceRef bắt đầu bằng 'synthetic:'
+├── snapshots/2026-09-21/       # snapshot catalog nén + manifest/checksum + mapping combo đã duyệt; có trong Git
 ├── seed/
 │   ├── __main__.py             # CLI: python -m data_collection.seed --as-of YYYY-MM-DD --seed 42 [--reset] [--users 2000]
 │   ├── config.py               # mọi tỷ lệ, phân bố, danh sách từ khoá — KHÔNG hard-code trong logic
@@ -44,7 +45,7 @@ Kết nối: `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/vota`, 
 
 ## 1b. Bước 0 — `gen_products.py` (chỉ chạy khi chưa có crawl)
 
-Crawler chưa xong không chặn mock: sinh một catalog tổng hợp **đúng contract `SCHEMA.md`** (13 trường, khoá `attributes` theo taxonomy) rồi mọi bước sau chạy y nguyên. Loader nhận `--products PATH`; mặc định `products.jsonl`, không có file thì tự dùng `products.synthetic.jsonl` và in cảnh báo. Khi crawl về, chạy lại `--reset` với file thật — không sửa code.
+Crawler chưa xong không chặn mock: sinh một catalog tổng hợp **đúng contract `SCHEMA.md`** (13 trường, khoá `attributes` theo taxonomy) rồi mọi bước sau chạy y nguyên. Loader nhận `--products PATH`; mặc định ưu tiên `src/data_collection/data/products.jsonl`, sau đó dùng snapshot nén có version trong `src/data_collection/snapshots/`. Snapshot được kiểm số dòng/SHA-256 và bung vào `data/snapshots/<snapshotId>/`; bản nén cùng mapping combo đã duyệt được commit, còn JSONL đã bung và output seed vẫn bị ignore. Chỉ khi cả runtime catalog lẫn snapshot đều không có mới sinh fallback tổng hợp trong `data/`.
 
 | Taxonomy | Số lượng | Cấu trúc bắt buộc |
 |---|---|---|
@@ -88,7 +89,7 @@ Tất cả ngày tính từ `as_of`. RNG = `numpy.random.default_rng(seed)`.
 **Chuyến (event_group_id = "OFF" + yyyymmdd + 3 số thứ tự trong ngày):**
 - Số chuyến/khách theo stage: new 0–1 (1 chuyến chỉ có `product_view`, không mua) · active 1–4 · dormant 1–2 (chuyến cuối cách `as_of` 180–365 ngày) · churned 1–2 (> 365 ngày). Trải trong 24 tháng trước `as_of`.
 - Mỗi chuyến **một destination**, chọn theo trọng số số sản phẩm bookable của destination. Ngày đi `using_date` = ngày đặt + 7–45 ngày; hotel `using_date` = nhận phòng; flight = ngày bay = nhận phòng; attraction = nhận phòng + 1.
-- Vertical trong chuyến: luôn có 1 vertical; 65% chuyến ≥ 2 (thứ tự hotel → flight → attraction/combo → golf 3%). Mỗi vertical chọn **một** sản phẩm `is_bookable = true` trong destination theo **power-law** Zipf s = 1.1 trên thứ tự cố định (hash product_id); `brand = Vinpearl` nhân trọng số 2.
+- Vertical trong chuyến: luôn có 1 vertical; 65% chuyến ≥ 2 (thứ tự hotel → flight → attraction/combo → golf 3%). Mỗi vertical chọn **một** sản phẩm `is_bookable = true` trong destination theo **power-law** Zipf s = 0.8 trên thứ tự cố định (hash product_id); `brand = Vinpearl` nhân trọng số 2. Mức 0.8 được hiệu chỉnh trên snapshot 10.320 dòng để baseline popular-in-destination Recall@20 khoảng 0.58, không vượt trần 0.60.
 - Event của một chuyến, theo thứ tự thời gian: 1–3 `product_view` (0–7 ngày trước mua, có thể là sản phẩm khác cùng destination) → 40% có `add_to_cart` → `purchase` với `quantity` 1–2 (hotel: 1; flight: 1–3 khách; attraction: 2–4), `unit_price` = `products.unit_price` lúc đó (cộng ±5% nhiễu, làm tròn nghìn), `taxonomy` copy từ products. `search` event: 30% chuyến có 1 event `search` trước tiên (`product_id` NULL).
 - Giới hạn: không khách nào > 15 event; tổng mục tiêu 6.000–8.000.
 
@@ -119,7 +120,7 @@ Tất cả ngày tính từ `as_of`. RNG = `numpy.random.default_rng(seed)`.
 
 ## 7. `db/verify.sql` — mỗi câu trả về `PASS` / `FAIL`
 
-Cột đếm và ngưỡng: products 2.216 · profiles 2.000 · events 6.000–8.000 · combo_items ≥ 93 · mọi `purchase` có `event_group_id` trừ ~3% · mọi chuyến một destination (JOIN events → products theo `event_group_id`, `count(DISTINCT destination) = 1`, cho phép ≤ 1% vi phạm do cạnh lộn xộn) · `is_recommendable` true cho ≥ 300 property · P1 có đúng 1 `app.bookings` và event purchase cùng `event_group_id` · `using_date` của mọi purchase tương lai nằm trong `[available_from, available_to]` · insider: `live_events` không có `product_view` cũ hơn 90 ngày · profiles = 2.000 · identifiers hiệu lực = 6.000.
+Cột đếm và ngưỡng của snapshot hiện hành: products 10.320 · profiles 2.000 · events 6.000–8.000 · combo_items ≥ 93 · mọi `purchase` có `event_group_id` trừ ~3% · mọi chuyến một destination (JOIN events → products theo `event_group_id`, `count(DISTINCT destination) = 1`, cho phép ≤ 1% vi phạm do cạnh lộn xộn) · `is_recommendable` true cho ≥ 300 property · P1 có đúng 1 `app.bookings` và event purchase cùng `event_group_id` · `using_date` của mọi purchase tương lai nằm trong `[available_from, available_to]` · insider: `live_events` không có `product_view` cũ hơn 90 ngày · profiles = 2.000 · identifiers hiệu lực = 6.000.
 
 ## 8. Việc Claude Code KHÔNG được tự quyết
 

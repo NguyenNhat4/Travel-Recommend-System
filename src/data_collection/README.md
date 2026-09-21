@@ -7,6 +7,18 @@ Khi thêm collector, phải mô tả nguồn của từng field và cách chạy
 **Chạy mọi lệnh trong thư mục này** (`src/data_collection`). Dữ liệu sinh ra nằm ở `data/` và không vào git;
 tài liệu schema cho các đội khác ở `docs/SCHEMA.md`, bộ mẫu 50 sản phẩm chạy thử ở `sample/`.
 
+## Dựng database demo từ snapshot
+
+Từ repository root, sau khi kích hoạt môi trường Python và cài requirements:
+
+```bash
+make demo-db
+```
+
+Lệnh này chạy PostgreSQL bằng Docker, kiểm tra checksum rồi bung snapshot 10.320 sản phẩm vào `data/snapshots/2026-09-21/`, sinh dữ liệu CDP/app/Insider và chạy `db/verify*.sql`. Snapshot nén cùng 64 mapping combo đã duyệt nằm trong `snapshots/2026-09-21/`; Docker volume và toàn bộ dữ liệu đã bung vẫn chỉ ở local.
+
+Nếu database local đã có dữ liệu và cần dựng lại, dùng `make demo-db-reset`. Lệnh reset sẽ xóa state demo hiện tại trước khi nạp lại; có thể truyền ngày cố định, ví dụ `make demo-db-reset AS_OF=2026-09-21`.
+
 ---
 
 Thu thập catalog theo đúng **handbook §3**: khoảng 2.000–5.000 sản phẩm thật (hotel, flight, attraction, combo, golf)
@@ -367,6 +379,25 @@ catalog trước khi áp dụng bản sửa parser mới; bản sửa ngày 16/0
 
 Kiểm tra hồi quy offline: `python -m unittest discover -s tests -t . -v`.
 
+### Nạp catalog vào DDL chính thức
+
+Catalog runtime đặt tại `src/data_collection/data/products.jsonl`; thư mục `data/` bị Git bỏ qua nên snapshot dữ liệu không đi vào lịch sử của repository này. Từ thư mục `src/`, chạy:
+
+```bash
+export SEED_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/vota
+export INSIDER_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/insider
+python -m data_collection.seed --as-of 2026-09-21 --seed 42 --reset
+```
+
+Pipeline parse combo, chuẩn hoá cửa sổ đặt chỗ, sinh lịch sử CDP/app/Insider rồi nạp hai database bằng transaction. Nó không tạo embedding; `catalog.product_vectors` phải còn rỗng cho tới job Search tuần 2. `purchase` thiếu `event_group_id` khoảng 3% là edge case cố ý và vẫn được giữ lại.
+
+Chạy kiểm tra từ repository root:
+
+```bash
+psql "$SEED_DATABASE_URL" -f db/verify.sql
+psql "$INSIDER_DATABASE_URL" -f db/verify_insider.sql
+```
+
 ## Tuỳ chọn hay dùng
 
 | Lệnh | Tuỳ chọn | Ý nghĩa |
@@ -425,138 +456,12 @@ nghỉ và chạy tiếp khi bị chặn (mã thoát 75).
 - Không lấy toạ độ từ Google Geocoding/Places API để lưu vào catalog: điều khoản Google Maps Platform chỉ cho lưu tạm
   lat/lng tối đa 30 ngày. Link Google Maps trong các file CSV chỉ để mở xem.
 
----
-
 <!-- seed-report:start -->
-## Mock data tuần 1 — kết quả lần chạy gần nhất
+### Snapshot seed gần nhất — `2026-09-21`
 
-Phần này do `python -m data_collection.seed` sinh tự động (`seed/report.py`). Đừng sửa tay — chạy lại lệnh seed để cập nhật. Phần còn lại của README là sổ tay crawler, viết tay.
-
-| Mục | Giá trị |
-|---|---|
-| as_of | `2026-09-21` |
-| seed | `42` |
-| Cửa sổ đặt chỗ | `2026-09-21` → `2026-10-20` (30 ngày) |
-| Nguồn catalog | `products.synthetic.jsonl` |
-| Loại catalog | tổng hợp (`gen_products.py`) |
-
-### Số dòng từng bảng
-
-| Mục | Giá trị |
-|---|---|
-| `cdp.products` | 433 |
-| — trong đó không bán được trong cửa sổ | 0 |
-| — có lịch 30 ngày (`attributes.availability`) | 208 |
-| `catalog.combo_items` | 142 |
-| `cdp.profiles` | 2000 |
-| `cdp.events` | 7614 |
-| `app.users` | 54 |
-| `app.bookings` / `booking_items` | 1 / 1 |
-| `insider.insider_profiles` | 2000 |
-| `insider.identifiers` (đang hiệu lực) | 6000 |
-| `insider.insider_events` (tổng / còn hạn) | 4325 / 4323 |
-| `insider.channel_events` | 18532 |
-| `catalog.product_vectors` | 0 — job `embed_products` của Search, tuần 2 |
-
-### Combo: tỷ lệ map thành phần
-
-- Combo: **40**, hạng mục: **142**, combo rỗng: **0**
-- Map được trên các loại map được: **86.0%** (tính cả `meal`/`transfer`/`other`: 52.1%)
-- `meal`, `transfer`, `other` luôn `item_product_id = NULL`: FK `(item_product_id, item_kind) → products (product_id, taxonomy)` không có taxonomy tương ứng.
-
-| item_kind | map được | tổng | tỷ lệ |
-|---|---|---|---|
-| `attraction` | 40 | 52 | 76.9% |
-| `golf` | 6 | 6 | 100.0% |
-| `hotel` | 28 | 28 | 100.0% |
-| `meal` | 0 | 40 | 0.0% |
-| `transfer` | 0 | 16 | 0.0% |
-
-- **Hàng đợi soát tay** (`item_product_id IS NULL` hoặc `confidence < 0.8`): **74** dòng.
-
-```sql
-SELECT combo_product_id, position, label, item_kind, confidence, evidence
-FROM   catalog.combo_items
-WHERE  item_product_id IS NULL OR confidence < 0.8;
-```
-
-### Phân bố khách
-
-| lifecycle_stage | số khách | tỷ lệ | mục tiêu |
-|---|---|---|---|
-| `new` | 499 | 24.9% | 25% |
-| `active` | 886 | 44.3% | 45% |
-| `dormant` | 413 | 20.6% | 20% |
-| `churned` | 202 | 10.1% | 10% |
-
-- Event nhiều nhất trên một khách: **15** (trần 15).
-- Cạnh lộn xộn cố ý: **61** event `purchase` trỏ `product_id` không tồn tại, **220** event không có `event_group_id`.
-- Profile Insider `gdpr_optin = false`: **41**.
-
-### Tài khoản demo
-
-Mật khẩu chung: `Demo@2026` (BCrypt cost 10).
-
-| Persona | Email | cdp_user_id |
-|---|---|---|
-| `P1_frequent` | `minhanh@vota.demo` | `VP0000001` |
-| `P2_first_time` | `quocbao@vota.demo` | `VP0000002` |
-| `P3_dormant` | `thuha@vota.demo` | `VP0000003` |
-| `P4_no_history` | `khachmoi@vota.demo` | `VP0000004` |
-| 50 tài khoản test | `test01@vota.demo` … `test50@vota.demo` | `VP0000005` trở đi |
-
-- Đơn của P1: `VOTA-20261003-4D6N`, nối sang `cdp.events` bằng `event_group_id`.
-
-### Baseline most-popular-in-destination
-
-- Recall@20 = **0.494** trên 1002 khách (giấu chuyến mua cuối). Mục tiêu: 0.05–0.6 — **đạt**.
-- Gần 0 nghĩa là dữ liệu quá ngẫu nhiên (recommender hỏng trông vẫn ổn); quá cao nghĩa là baseline bất khả chiến bại, không đo được cải thiện.
-
-### `db/verify.sql`
-
-Chạy bằng `SEED_DATABASE_URL` (superuser) — role `vota_app` của `DATABASE_URL` không đọc được `cdp.events`/`cdp.profiles` nên sẽ lỗi quyền chứ không ra FAIL.
-
-```
-profiles = 2000: PASS
-events 6000-8000: PASS
-combo_items >= 93: PASS
-every combo has items: PASS
-purchase without group <= 4%: PASS
-one destination per trip (<=1% bad): PASS
-stage distribution: PASS
-max events per user <= 15: PASS
-window = 30 days: PASS
-room calendars 30 chars: PASS
-future purchases inside window: PASS
-P1 booking <-> event: PASS
-persona users = 4: PASS
-P4 has no events: PASS
-products = 2216: FAIL (433)   ← FAIL dự kiến: ngưỡng của crawl thật, catalog tổng hợp không đạt
-is_recommendable properties >= 300: FAIL (40)   ← FAIL dự kiến: ngưỡng của crawl thật, catalog tổng hợp không đạt
-```
-
-```
-partners has vota: PASS
-profiles = 2000: PASS
-current identifiers = 6000: PASS
-no stale product_view in live_events: PASS
-channel_events ~10/profile: PASS
-gdpr opt-out has no channel events after opt-out: PASS
-```
-
-> Hai dòng FAIL dự kiến (`products = 2216`, `is_recommendable properties >= 300`) là ngưỡng của catalog crawl thật (2.216 sản phẩm; 316/559 property có hạng phòng đặt được). Catalog tổng hợp cố ý nhỏ hơn ~5 lần (MOCK_DATA_SPEC §1b) để chạy nhanh và đọc tay được. Có `products.jsonl` thật thì chạy lại `--reset`, cả hai tự PASS — không sửa `db/*.sql`.
-
-### Nguồn của từng trường
-
-| Trường | Nguồn |
-|---|---|
-| `cdp.products` 13 trường | `products.jsonl` (hoặc `products.synthetic.jsonl`), camelCase → snake_case |
-| `available_from/to` | cửa sổ 30 ngày từ `as_of`, cắt với khoảng nguồn; gốc giữ ở `attributes.sourceAvailableFrom/To` |
-| `attributes.availability` | `load_products.py` — chỉ `level=room` và `attraction`/`golf` |
-| `attributes.nights/minPax/priceBasis` | `load_products.py`, regex trên `name + description` |
-| `catalog.combo_items` | `parse_combos.py`, `source='description_parse'` + `confidence` + `evidence` |
-| `cdp.events` | `seed_histories.py` — chuyến theo power-law Zipf s=1.1, Vinpearl ×2 |
-| `cdp.profiles` | suy **từ** `cdp.events` (không sinh độc lập); tier/home_city/opt-in sinh riêng |
-| `app.users` | `seed_app.py`, BCrypt |
-| `insider.*` | `seed_insider.py`, bản sao tập con của `cdp` kèm TTL 90/730 ngày |
+- Nguồn catalog: `src/data_collection/data/snapshots/2026-09-21/products.jsonl` — SHA-256 `89f452e46eec24ae0fe50769037bc84dbb2609dd9c193a49336108f072acbb18`.
+- Seed `42`: 10,320 products · 2,000 profiles · 7,511 events · 218 combo items.
+- Search units: 2,897; `catalog.product_vectors`: 0 (đúng kế hoạch: embedding thuộc tuần 2).
+- Insider clone: 2,000 profiles · 4,640 events · 19,587 channel events.
+- Purchase thiếu `event_group_id` là edge case được sinh có chủ đích khoảng 3%; không xoá purchase.
 <!-- seed-report:end -->

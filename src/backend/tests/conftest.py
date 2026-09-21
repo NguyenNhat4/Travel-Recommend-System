@@ -1,6 +1,12 @@
-import json, sys, pathlib
+import asyncio, json, sys, pathlib
 import numpy as np, pytest
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
+
+# psycopg async không chạy được trên ProactorEventLoop — event loop mặc định của Windows.
+# Test gọi asyncio.run() trực tiếp nên phải đặt policy ở đây, trước khi loop đầu tiên được tạo,
+# nếu không LocalCdpClient trả InterfaceError trên mọi máy Windows.
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
 class FakeEmbedder:
@@ -46,10 +52,10 @@ def data_dir(tmp_path_factory):
 
 @pytest.fixture(scope="session")
 def services(data_dir):
-    from app.infrastructure.vectors.in_memory_store import InMemoryVectorStore
-    from app.infrastructure.cdp.local_cdp_client import LocalCdpClient
-    from app.application.search import SearchProducts, SimilarProducts
-    from app.application.recommendation import BuildPopularity, RecommendForUser
+    from src.backend.app.infrastructure.vectors.in_memory_store import InMemoryVectorStore
+    from src.backend.app.infrastructure.cdp.local_cdp_client import LocalCdpClient
+    from src.backend.app.application.search import SearchProducts, SimilarProducts
+    from src.backend.app.application.recommendation import BuildPopularity, RecommendForUser
     from datetime import datetime, timezone
     emb = FakeEmbedder()
     index = InMemoryVectorStore(str(data_dir / "products.jsonl"), emb, str(data_dir / ".embcache")).load()

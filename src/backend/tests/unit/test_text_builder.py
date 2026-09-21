@@ -1,4 +1,4 @@
-from app.domain.catalog import Product, build_text
+from src.backend.app.domain.catalog import Product, build_text
 from conftest import ROWS
 
 def test_property_text_has_name_first_and_room_vocab():

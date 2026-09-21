@@ -115,7 +115,7 @@ Sửa schema = sửa file .sql **và** cập nhật doc tương ứng trong cùn
 
 ### 6.3. Môi trường database
 
-- Dev: mỗi người một Postgres local qua `docker compose up -d --wait postgres` + `python -m data_collection.seed --seed 42` → ai cũng có đúng cùng dữ liệu, không ai giẫm lên ai. Không dùng chung một DB để dev.
+- Dev: mỗi người một Postgres local qua `make demo-db` (hoặc compose + seed thủ công) → ai cũng dùng snapshot catalog có checksum và không ai giẫm lên ai. Không dùng chung một DB để dev; `make demo-db-reset` chỉ dùng khi chủ động xoá state demo local.
 - Một Postgres cloud (có pgvector) làm **staging** chung: FE/agent/demo trỏ vào; chỉ job seed (CI hoặc một người) được `--reset` nó; tạo schema bằng `psql -f db/init/*.sql` vì cloud không chạy initdb.
 
 ### 6.4. Còn chờ chốt
@@ -126,7 +126,7 @@ Sửa schema = sửa file .sql **và** cập nhật doc tương ứng trong cùn
 
 Thứ tự, mỗi bước là một module trong `src/data_collection/seed/`, chạy chung từ `src/` qua `python -m data_collection.seed --as-of YYYY-MM-DD --seed 42 [--reset]`:
 1. Tạo bảng: `docker compose up -d --wait postgres` chạy `db/init/*.sql` (vota + insider). Không tạo bảng bằng ORM/migration khác.
-2. Chưa có `products.jsonl` từ crawler → `gen_products.py` sinh `products.synthetic.jsonl` đúng contract SCHEMA.md (MOCK_DATA_SPEC §1b), loader tự dùng file này. Có crawl → chạy lại `--reset`, không sửa code.
+2. Ưu tiên `data/products.jsonl` khi Data đang phát triển local; bản clone sạch tự dùng snapshot nén có version trong `src/data_collection/snapshots/`. Snapshot được kiểm checksum, bung vào `data/` ignored và kèm mapping combo đã duyệt. Chỉ sinh `products.synthetic.jsonl` khi cả runtime catalog lẫn snapshot đều không có.
 3. `load_products.py` — `products.jsonl` → `cdp.products`; cửa sổ 30 ngày theo `as_of`, `attributes.availability`, combo attrs.
 4. `parse_combos.py` — description → `catalog.combo_items` (source/confidence/evidence).
 5. `seed_histories.py` — 2.000 `cdp.profiles`, ~7.000 `cdp.events` theo chuyến, power-law, cạnh lộn xộn; profiles suy từ event.
@@ -134,6 +134,6 @@ Thứ tự, mỗi bước là một module trong `src/data_collection/seed/`, ch
 7. `seed_insider.py` — database `insider`: partners, profiles, identifiers, events (TTL), channel_events.
 8. `db/verify.sql` và `db/verify_insider.sql` phải toàn PASS, chạy bằng `SEED_DATABASE_URL` (superuser — `DATABASE_URL` không đọc được `cdp.events`/`profiles`). Kết quả tóm tắt ghi vào khối `<!-- seed-report:start -->`…`<!-- seed-report:end -->` trong `src/data_collection/README.md`, không ghi DB.
 
-Với catalog tổng hợp (`products.synthetic.jsonl`, ~450 dòng), hai dòng của `db/verify.sql` FAIL theo thiết kế: `products = 2216` và `is_recommendable properties >= 300` — ngưỡng của crawl thật (2.216 sản phẩm, 316/559 property có phòng). Không sửa `db/*.sql` để lách; report ghi rõ hai dòng này là FAIL dự kiến. Có `products.jsonl` thật thì cả hai tự PASS.
+Với catalog tổng hợp (`products.synthetic.jsonl`, khoảng 400–450 dòng), hai dòng của `db/verify.sql` FAIL theo thiết kế: `products = 10320` và `is_recommendable properties >= 300` — ngưỡng của snapshot catalog thật hiện hành. Không sửa `db/*.sql` để lách; report ghi rõ hai dòng này là FAIL dự kiến. Có `src/data_collection/data/products.jsonl` thật thì cả hai tự PASS.
 
 Mọi tỷ lệ/phân bố nằm trong `seed/config.py`. Thiếu thông tin thì hỏi, không tự thêm cột hay bảng.

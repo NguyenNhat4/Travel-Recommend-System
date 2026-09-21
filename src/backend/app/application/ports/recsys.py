@@ -6,7 +6,7 @@ from typing import Protocol
 
 import numpy as np
 
-from app.domain.catalog import Product
+from src.backend.app.domain.catalog import Product
 
 
 class EmbedderPort(Protocol):

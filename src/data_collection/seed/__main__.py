@@ -1,196 +1,104 @@
-"""CLI của bước seed.
-
-    cd src
-    python -m data_collection.seed --as-of 2026-09-20 --seed 42 --reset
-
-Mọi thứ có ngày sinh **tương đối theo `--as-of`**: cửa sổ đặt chỗ, `attributes.availability`,
-event lịch sử, chuyến sắp tới của persona. Chạy lại trước demo để cuộn cửa sổ, nếu không
-toàn bộ catalog hết hạn (DATABASE_SCHEMA §1 mục 13).
-
-`db/verify.sql` dùng `current_date` và `now()`, nên để mọi dòng có nghĩa thì `--as-of` nên là hôm nay.
-"""
-
+"""Run the complete V-OTA catalog/history/Insider seed pipeline."""
 from __future__ import annotations
 
 import argparse
-import datetime as dt
+import json
+import os
 import sys
-import time
+from datetime import date
 from pathlib import Path
 
-from . import config, gen_products, load_products, parse_combos, report, seed_app, seed_histories, seed_insider
-from .common import connect, parse_as_of, window_end
+from . import gen_products, load_products, parse_combos, report, seed_histories, seed_insider
+from .config import (
+    DEFAULT_DATA_DIR,
+    DEFAULT_INSIDER_EVENTS_PER_PROFILE,
+    DEFAULT_INSIDER_URL,
+    DEFAULT_MAX_EVENTS,
+    DEFAULT_SEED,
+    DEFAULT_USERS,
+    DEFAULT_VINPEARL_BOOST,
+    DEFAULT_VOTA_URL,
+    DEFAULT_ZIPF,
+    INSIDER_URL_ENV,
+    VOTA_URL_ENV,
+    find_products,
+)
+from .database import load_insider, load_vota
+from .snapshot import materialize_snapshot
 
-#: Thư mục `src/data_collection` — nơi chứa products.jsonl và README.
-PACKAGE_ROOT = Path(__file__).resolve().parent.parent
-#: Gốc repo — nơi chứa db/verify*.sql.
-REPO_ROOT = PACKAGE_ROOT.parent.parent
 
-#: Bảng do seed sở hữu. --reset chỉ xoá đúng những bảng này; carts/conversations/logs
-#: sinh khi chạy app nên không đụng tới (MOCK_DATA_SPEC §1).
-VOTA_TABLES = [
-    "app.booking_items", "app.bookings", "app.users",
-    "catalog.combo_items", "cdp.events", "cdp.profiles", "cdp.products",
-]
-INSIDER_TABLES = ["channel_events", "insider_events", "identifiers", "insider_profiles", "partners"]
-
-
-def _parse_args(argv=None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        prog="python -m data_collection.seed",
-        description="Nạp catalog và sinh mock data tuần 1 cho database vota + insider.",
-    )
-    parser.add_argument("--as-of", default=dt.date.today().isoformat(),
-                        help="Ngày nạp (YYYY-MM-DD). Mặc định hôm nay.")
-    parser.add_argument("--seed", type=int, default=42, help="Seed RNG. Cùng seed → cùng dữ liệu.")
-    parser.add_argument("--users", type=int, default=config.N_USERS, help="Số khách trong cdp.profiles.")
-    parser.add_argument("--products", type=Path, default=None,
-                        help="Đường dẫn products.jsonl. Mặc định: products.jsonl, "
-                             "không có thì dùng products.synthetic.jsonl (sinh tự động).")
-    parser.add_argument("--reset", action="store_true",
-                        help="Xoá dữ liệu seed cũ rồi nạp lại từ đầu.")
-    parser.add_argument("--allow-remote-reset", action="store_true",
-                        help="Cho phép --reset trên host không phải localhost (staging chung).")
+def _arguments(argv: list[str] | None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--as-of", type=date.fromisoformat, default=date.today())
+    parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
+    parser.add_argument("--users", type=int, default=DEFAULT_USERS)
+    parser.add_argument("--products", type=Path, help="products.jsonl; default searches src/data_collection/data first")
+    parser.add_argument("--reset", action="store_true", help="truncate local demo/seed state before loading")
+    parser.add_argument("--generate-only", action="store_true", help="generate artifacts but do not connect to PostgreSQL")
     return parser.parse_args(argv)
 
 
-def _resolve_products(path: Path | None, *, seed: int, as_of: dt.date) -> tuple[Path, bool]:
-    """Chọn file catalog. Chưa có crawl thì sinh bản tổng hợp (§1b) — không chặn mock."""
-    if path is not None:
-        if not path.exists():
-            raise SystemExit(f"Không tìm thấy {path}")
-        return path, False
-
-    real = PACKAGE_ROOT / "products.jsonl"
-    if real.exists():
-        return real, False
-
-    synthetic = PACKAGE_ROOT / "products.synthetic.jsonl"
-    print(f"! Chưa có {real.name} từ crawler — sinh catalog tổng hợp {synthetic.name} (MOCK_DATA_SPEC §1b).")
-    print("  Hai dòng db/verify.sql sẽ FAIL theo thiết kế; xem báo cáo cuối lần chạy.")
-    info = gen_products.run(seed=seed, as_of=as_of, out_path=synthetic)
-    print(f"  {info['total']} sản phẩm: " + ", ".join(f"{k}={v}" for k, v in sorted(info["variants"].items())))
-    return synthetic, True
+def _set_partner_token(seed_dir: Path) -> None:
+    path = seed_dir / "insider_partners.jsonl"
+    rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
+    if rows:
+        rows[0]["request_token"] = os.environ.get("INSIDER_TOKEN", "dev-token")
+    path.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows), encoding="utf-8")
 
 
-def _guard_remote_reset(dsn: str, allowed: bool) -> None:
-    """Chặn --reset nhầm vào Postgres staging chung.
+def main(argv: list[str] | None = None) -> int:
+    args = _arguments(argv)
+    products_path = find_products(args.products)
+    if products_path is None:
+        products_path = DEFAULT_DATA_DIR / "products.synthetic.jsonl"
+        print(f"WARNING: no crawled products.jsonl found; generating {products_path}", file=sys.stderr)
+        gen_products.write(products_path, gen_products.generate(args.as_of, args.seed))
 
-    AGENTS.md §6.3: chỉ job seed (CI hoặc một người) được reset staging, mỗi lần phải báo trong nhóm.
-    """
-    if allowed:
-        return
-    host = dsn.split("@")[-1].split("/")[0].split(":")[0] if "@" in dsn else "localhost"
-    if host not in ("localhost", "127.0.0.1", "::1", "postgres"):
-        raise SystemExit(
-            f"--reset nhắm tới host '{host}', không phải local.\n"
-            "Nếu đúng ý (staging chung), chạy lại với --allow-remote-reset và báo trong nhóm."
-        )
+    if products_path.name.endswith(".jsonl.gz"):
+        products_path = materialize_snapshot(products_path)
 
+    data_dir = products_path.parent
+    if products_path.name != "products.jsonl":
+        # The step scripts intentionally share a stable basename.  A generated
+        # fallback is copied only inside the ignored data directory.
+        canonical = DEFAULT_DATA_DIR / "products.jsonl"
+        canonical.parent.mkdir(parents=True, exist_ok=True)
+        canonical.write_bytes(products_path.read_bytes())
+        products_path, data_dir = canonical, canonical.parent
 
-def _reset(vota_conn, insider_conn) -> None:
-    with vota_conn.cursor() as cur:
-        cur.execute(f"TRUNCATE {', '.join(VOTA_TABLES)} RESTART IDENTITY CASCADE")
-    vota_conn.commit()
-    with insider_conn.cursor() as cur:
-        cur.execute(f"TRUNCATE {', '.join(INSIDER_TABLES)} RESTART IDENTITY CASCADE")
-    insider_conn.commit()
+    loader_dir, seed_dir = data_dir / "loader", data_dir / "seed"
+    print(f"[1/5] Parse {products_path}")
+    parse_combos.main(["--data-dir", str(data_dir)])
+    print("[2/5] Build cdp.products rows")
+    load_products.main(["--data-dir", str(data_dir), "--out-dir", str(loader_dir), "--as-of", args.as_of.isoformat()])
+    print("[3/5] Generate CDP history and app personas")
+    seed_histories.main([
+        "--data-dir", str(data_dir), "--out-dir", str(seed_dir), "--as-of", args.as_of.isoformat(),
+        "--seed", str(args.seed), "--profiles", str(args.users), "--zipf", str(DEFAULT_ZIPF),
+        "--vinpearl-boost", str(DEFAULT_VINPEARL_BOOST), "--max-events", str(DEFAULT_MAX_EVENTS),
+    ])
+    print("[4/5] Generate Insider clone rows")
+    seed_insider.main([
+        "--seed-dir", str(seed_dir), "--out-dir", str(seed_dir), "--as-of", args.as_of.isoformat(),
+        "--seed", str(args.seed), "--events-per-profile", str(DEFAULT_INSIDER_EVENTS_PER_PROFILE),
+    ])
+    _set_partner_token(seed_dir)
 
+    if args.generate_only:
+        print(f"Generated artifacts under {data_dir}; PostgreSQL was not changed.")
+        return 0
 
-def _assert_empty(vota_conn, insider_conn) -> None:
-    """Không có --reset thì các bước sinh dữ liệu phải chạy trên bảng rỗng.
-
-    products/combo_items thì upsert được, nhưng profiles/events/users/insider thì không:
-    chạy lại sẽ nhân đôi dữ liệu và làm verify sai. Báo rõ thay vì hỏng âm thầm.
-    """
-    checks = [(vota_conn, "cdp.profiles"), (vota_conn, "cdp.events"), (vota_conn, "app.users"),
-              (insider_conn, "insider_profiles")]
-    for conn, table in checks:
-        with conn.cursor() as cur:
-            cur.execute(f"SELECT count(*) FROM {table}")
-            count = cur.fetchone()[0]
-        if count:
-            raise SystemExit(
-                f"{table} đã có {count} dòng. Chạy lại với --reset để xoá và nạp lại, "
-                "hoặc dùng database trống."
-            )
-
-
-def main(argv=None) -> int:
-    args = _parse_args(argv)
-    as_of = parse_as_of(args.as_of)
-    started = time.monotonic()
-
-    products_path, synthetic = _resolve_products(args.products, seed=args.seed, as_of=as_of)
-
-    vota_conn = connect(config.SEED_DATABASE_URL)
-    insider_conn = connect(config.INSIDER_DATABASE_URL)
-    try:
-        if args.reset:
-            _guard_remote_reset(config.SEED_DATABASE_URL, args.allow_remote_reset)
-            _guard_remote_reset(config.INSIDER_DATABASE_URL, args.allow_remote_reset)
-            _reset(vota_conn, insider_conn)
-        else:
-            _assert_empty(vota_conn, insider_conn)
-
-        print("1/6 load_products")
-        products_info = load_products.run(
-            vota_conn, products_path=products_path, as_of=as_of, seed=args.seed
-        )
-
-        print("2/6 parse_combos")
-        combos_info = parse_combos.run(vota_conn)
-
-        # Persona dựng trước: seed_histories phải chừa VP0000001..4 và dùng đúng lịch sử này.
-        pool = seed_histories.load_pool(vota_conn)
-        persona_events, upcoming = seed_app.build_persona_events(args.seed, as_of, pool)
-
-        print("3/6 seed_histories")
-        histories_info = seed_histories.run(
-            vota_conn, seed=args.seed, as_of=as_of, n_users=args.users,
-            reserved=persona_events, pool=pool,
-        )
-
-        print("4/6 seed_app")
-        app_info = seed_app.run(vota_conn, seed=args.seed, as_of=as_of, upcoming=upcoming)
-
-        print("5/6 seed_insider")
-        insider_info = seed_insider.run(vota_conn, insider_conn, seed=args.seed, as_of=as_of)
-
-        print("6/6 report")
-        verify = report.classify(
-            report.run_verify(vota_conn, REPO_ROOT / "db" / "verify.sql"), synthetic=synthetic
-        )
-        verify_insider = report.classify(
-            report.run_verify(insider_conn, REPO_ROOT / "db" / "verify_insider.sql"), synthetic=False
-        )
-        baseline = report.baseline_recall(vota_conn)
-
-        summary = {
-            "as_of": as_of.isoformat(),
-            "seed": args.seed,
-            "window": [as_of.isoformat(), window_end(as_of).isoformat()],
-            "products_path": products_path.name,
-            "synthetic": synthetic,
-            "elapsed_seconds": round(time.monotonic() - started, 1),
-            "products": products_info,
-            "combos": combos_info,
-            "histories": histories_info,
-            "app": app_info,
-            "insider": insider_info,
-            "verify": verify,
-            "verify_insider": verify_insider,
-            "baseline": baseline,
-        }
-        report.write_block(PACKAGE_ROOT / "README.md", report.render(summary))
-        report.print_summary(summary)
-
-        # Exit code khác 0 khi có FAIL ngoài dự kiến, để CI bắt được.
-        return 1 if (verify["failed"] or verify_insider["failed"]) else 0
-    finally:
-        vota_conn.close()
-        insider_conn.close()
+    vota_url = os.environ.get(VOTA_URL_ENV, DEFAULT_VOTA_URL)
+    insider_url = os.environ.get(INSIDER_URL_ENV, DEFAULT_INSIDER_URL)
+    print("[5/5] Load V-OTA and Insider PostgreSQL transactions")
+    counts = {**load_vota(vota_url, data_dir, args.reset), **load_insider(insider_url, data_dir, args.reset)}
+    db_counts = report.collect(vota_url, insider_url)
+    block = report.render(products_path, args.as_of, args.seed, db_counts)
+    report.update_readme(Path(__file__).resolve().parents[1] / "README.md", block)
+    print("Loaded: " + " · ".join(f"{table}={count}" for table, count in counts.items()))
+    print(block)
+    return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())
