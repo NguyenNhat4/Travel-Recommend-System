@@ -16,6 +16,7 @@ vẫn phục vụ được, đúng tinh thần "CDP lỗi thì không kéo sập
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 from contextlib import AsyncExitStack, asynccontextmanager
 
@@ -88,10 +89,33 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
     }
 
 
+def _forward_langsmith_env(settings) -> None:
+    """Đẩy đúng 4 biến LangSmith vào os.environ khi được bật chủ ý qua Settings.
+
+    LangSmith SDK (bên trong `with_structured_output`/`bind_tools` của LangChain) tự đọc thẳng
+    os.environ, không biết gì về Settings — không có cách nào truyền config vào nó qua tham số.
+    Trước đây agents/llm.py:_load_local_env() đẩy TOÀN BỘ .env vào os.environ lúc import module,
+    nên các biến này bật một cách âm thầm dù không ai chủ ý cấu hình. Ở đây chỉ đẩy đúng 4 biến,
+    chỉ khi LANGSMITH_TRACING=true và có key, và chỉ ở composition root — bật là quyết định rõ
+    ràng, không phải tác dụng phụ của việc đọc .env.
+    """
+    if not settings.langsmith_tracing:
+        return
+    if not settings.langsmith_api_key:
+        print("LangSmith tracing bật nhưng thiếu LANGSMITH_API_KEY; bỏ qua.")
+        return
+    os.environ["LANGSMITH_TRACING"] = "true"
+    os.environ["LANGSMITH_API_KEY"] = settings.langsmith_api_key
+    os.environ["LANGSMITH_ENDPOINT"] = settings.langsmith_endpoint
+    os.environ["LANGSMITH_PROJECT"] = settings.langsmith_project
+    print(f"LangSmith tracing: on (project={settings.langsmith_project})")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
     print(f"Starting {settings.app_name} in {settings.app_env} mode")
+    _forward_langsmith_env(settings)
     async with AsyncExitStack() as stack:
         if settings.cdp_adapter == "local":
             cdp_client = LocalCdpClient(settings.cdp_database_url)

@@ -27,6 +27,12 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     gemini_api_key: str = ""
     anthropic_api_key: str = ""
+    # Tắt mặc định: bật tracing là việc chủ ý (composition root tự tay đẩy 4 biến này vào
+    # os.environ khi true), không phải tác dụng phụ của việc nạp .env như trước đây.
+    langsmith_tracing: bool = False
+    langsmith_api_key: str = ""
+    langsmith_endpoint: str = "https://api.smith.langchain.com"
+    langsmith_project: str = "default"
     model_name: str = "gpt-4o-mini"
     llm_temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     # false = không dựng client LLM nào; app vẫn khởi động được không cần API key và request

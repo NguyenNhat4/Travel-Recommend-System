@@ -1,4 +1,5 @@
 import asyncio
+import os
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -6,7 +7,7 @@ from unittest.mock import patch
 from src.backend.app.core.config import Settings, get_settings
 from src.backend.app.infrastructure.clients.local_cdp_client import LocalCdpClient
 from src.backend.app.infrastructure.persistence.postgres_catalog import PostgresProductLookup
-from src.backend.app.main import app, health, lifespan
+from src.backend.app.main import _forward_langsmith_env, app, health, lifespan
 
 
 def test_default_composition_root_uses_local_postgres_adapters() -> None:
@@ -71,6 +72,45 @@ class ItineraryLlmWiringTests(unittest.TestCase):
         first, second = _runtime(request, None), _runtime(request, "Bearer x")
         self.assertIs(first.llm, llm)
         self.assertIs(second.llm, llm)
+
+
+class LangSmithForwardingTests(unittest.TestCase):
+    """Chỉ 4 biến LANGSMITH_* được đẩy vào os.environ, và chỉ khi bật chủ ý.
+
+    Trước bản sửa lỗi #2, `_load_local_env()` cũ đẩy TOÀN BỘ `.env` vào `os.environ` lúc import,
+    nên tracing bật một cách âm thầm. `_forward_langsmith_env` thay nó bằng một hành động tường
+    minh trong composition root, giới hạn đúng 4 biến LangSmith cần.
+    """
+
+    LANGSMITH_KEYS = ("LANGSMITH_TRACING", "LANGSMITH_API_KEY", "LANGSMITH_ENDPOINT", "LANGSMITH_PROJECT")
+
+    def setUp(self):
+        self._saved = {key: os.environ.pop(key, None) for key in self.LANGSMITH_KEYS}
+        self.addCleanup(self._restore)
+
+    def _restore(self):
+        for key, value in self._saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+    def test_does_nothing_when_tracing_is_off(self):
+        _forward_langsmith_env(Settings(langsmith_tracing=False, langsmith_api_key="lsv2_x"))
+        self.assertNotIn("LANGSMITH_TRACING", os.environ)
+
+    def test_does_nothing_when_tracing_is_on_but_key_is_missing(self):
+        _forward_langsmith_env(Settings(langsmith_tracing=True, langsmith_api_key=""))
+        self.assertNotIn("LANGSMITH_TRACING", os.environ)
+
+    def test_forwards_exactly_the_four_langsmith_vars_when_explicitly_enabled(self):
+        _forward_langsmith_env(Settings(langsmith_tracing=True, langsmith_api_key="lsv2_x",
+                                        langsmith_endpoint="https://example.test",
+                                        langsmith_project="demo"))
+        self.assertEqual(os.environ["LANGSMITH_TRACING"], "true")
+        self.assertEqual(os.environ["LANGSMITH_API_KEY"], "lsv2_x")
+        self.assertEqual(os.environ["LANGSMITH_ENDPOINT"], "https://example.test")
+        self.assertEqual(os.environ["LANGSMITH_PROJECT"], "demo")
 
 
 if __name__ == "__main__":
