@@ -50,8 +50,24 @@ NAMESPACE = uuid.UUID("7a1c9e1e-3b0e-4f5c-9d3a-2f6f0b9c4e21")
 TAXONOMIES = ("hotel", "flight", "combo", "attraction", "golf")
 PRODUCT_FIELDS = (
     "productId", "name", "taxonomy", "destination", "description", "attributes",
-    "unitPrice", "currency", "available", "availableFrom", "availableTo", "imageUrl", "sourceRef",
+    "unitPrice", "currency", "priceUnit", "available", "availableFrom", "availableTo", "imageUrl", "sourceRef",
 )
+# `priceUnit` là required của ProductSummary (schemas/catalog.yaml). Không nguồn nào trả field này,
+# nên nó được suy ra từ taxonomy: khách sạn (kể cả hạng phòng) tính theo đêm, vé và chuyến bay tính
+# theo khách, combo tính trọn gói. Sản phẩm không có giá thì không có đơn vị để nói, giữ UNKNOWN.
+PRICE_UNIT_BY_TAXONOMY = {
+    "hotel": "PER_NIGHT",
+    "flight": "PER_PERSON",
+    "attraction": "PER_PERSON",
+    "golf": "PER_PERSON",
+    "combo": "PER_PACKAGE",
+}
+
+
+def price_unit(taxonomy: str | None, unit_price) -> str:
+    if unit_price is None:
+        return "UNKNOWN"
+    return PRICE_UNIT_BY_TAXONOMY.get(taxonomy or "", "UNKNOWN")
 SOURCE_ORDER = {"vinpearl": 0, "booking": 1, "agoda": 2}
 
 OCEAN_RE = re.compile(r"hướng biển|nhìn ra biển|view biển|giáp biển|sát biển|bãi biển riêng|ocean ?view|sea ?view|beach ?front", re.I)
@@ -1599,7 +1615,10 @@ def apply_plan(products: list[dict], plan_names: set[str], budget: Budget, dropp
 
 def write_outputs(products: list[dict], data: Path, report_rows: list[list], dropped: Counter, plan_names: set[str],
                   location_stats: Counter | None = None, venues: list[Venue] | None = None) -> None:
-    clean = [{k: p[k] for k in PRODUCT_FIELDS} for p in products]
+    # `priceUnit` chốt ở đây, sau dedupe: bước gộp OTA có thể thay `unitPrice` của bản ghi,
+    # nên suy đơn vị sớm hơn sẽ lệch với giá cuối cùng.
+    clean = [{k: (price_unit(p["taxonomy"], p["unitPrice"]) if k == "priceUnit" else p.get(k))
+              for k in PRODUCT_FIELDS} for p in products]
     jl = data / "products.jsonl"
     with open(jl, "w", encoding="utf-8") as f:
         for p in clean:

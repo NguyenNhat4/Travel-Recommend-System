@@ -7,6 +7,18 @@ Khi thêm collector, phải mô tả nguồn của từng field và cách chạy
 **Chạy mọi lệnh trong thư mục này** (`src/data_collection`). Dữ liệu sinh ra nằm ở `data/` và không vào git;
 tài liệu schema cho các đội khác ở `docs/SCHEMA.md`, bộ mẫu 50 sản phẩm chạy thử ở `sample/`.
 
+## Dựng database demo từ snapshot
+
+Từ repository root, sau khi kích hoạt môi trường Python và cài requirements:
+
+```bash
+make demo-db
+```
+
+Lệnh này chạy PostgreSQL bằng Docker, kiểm tra checksum rồi bung snapshot 10.320 sản phẩm vào `data/snapshots/2026-09-21/`, sinh dữ liệu CDP/app/Insider và chạy `db/verify*.sql`. Snapshot nén cùng 64 mapping combo đã duyệt nằm trong `snapshots/2026-09-21/`; Docker volume và toàn bộ dữ liệu đã bung vẫn chỉ ở local.
+
+Nếu database local đã có dữ liệu và cần dựng lại, dùng `make demo-db-reset`. Lệnh reset sẽ xóa state demo hiện tại trước khi nạp lại; có thể truyền ngày cố định, ví dụ `make demo-db-reset AS_OF=2026-09-21`.
+
 ---
 
 Thu thập catalog theo đúng **handbook §3**: khoảng 2.000–5.000 sản phẩm thật (hotel, flight, attraction, combo, golf)
@@ -177,8 +189,10 @@ Parser sai thì sửa code rồi chạy `python crawl.py reparse <nguồn>`: par
 
 ## Schema đầu ra
 
-Mỗi dòng `products.jsonl` có đúng 13 trường của §6. Mọi trường khác nằm trong `attributes`, để không tự thêm
-field mà CDP thật không có.
+Mỗi dòng `products.jsonl` có đúng 14 trường: 13 trường của §6 cộng `priceUnit` — field bắt buộc của
+`ProductSummary` trong contract chung, được suy ra từ `taxonomy` chứ không do nguồn cung cấp
+(xem [docs/SCHEMA.md](docs/SCHEMA.md#bốn-chỗ-dễ-hiểu-sai)). Mọi trường khác nằm trong `attributes`,
+để không tự thêm field mà CDP thật không có.
 
 ```json
 {
@@ -367,6 +381,25 @@ catalog trước khi áp dụng bản sửa parser mới; bản sửa ngày 16/0
 
 Kiểm tra hồi quy offline: `python -m unittest discover -s tests -t . -v`.
 
+### Nạp catalog vào DDL chính thức
+
+Catalog runtime đặt tại `src/data_collection/data/products.jsonl`; thư mục `data/` bị Git bỏ qua nên snapshot dữ liệu không đi vào lịch sử của repository này. Từ thư mục `src/`, chạy:
+
+```bash
+export SEED_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/vota
+export INSIDER_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/insider
+python -m data_collection.seed --as-of 2026-09-21 --seed 42 --reset
+```
+
+Pipeline parse combo, chuẩn hoá cửa sổ đặt chỗ, sinh lịch sử CDP/app/Insider rồi nạp hai database bằng transaction. Nó không tạo embedding; `catalog.product_vectors` phải còn rỗng cho tới job Search tuần 2. `purchase` thiếu `event_group_id` khoảng 3% là edge case cố ý và vẫn được giữ lại.
+
+Chạy kiểm tra từ repository root:
+
+```bash
+psql "$SEED_DATABASE_URL" -f db/verify.sql
+psql "$INSIDER_DATABASE_URL" -f db/verify_insider.sql
+```
+
 ## Tuỳ chọn hay dùng
 
 | Lệnh | Tuỳ chọn | Ý nghĩa |
@@ -424,3 +457,13 @@ nghỉ và chạy tiếp khi bị chặn (mã thoát 75).
 - Toạ độ sân bay từ OurAirports (public domain).
 - Không lấy toạ độ từ Google Geocoding/Places API để lưu vào catalog: điều khoản Google Maps Platform chỉ cho lưu tạm
   lat/lng tối đa 30 ngày. Link Google Maps trong các file CSV chỉ để mở xem.
+
+<!-- seed-report:start -->
+### Snapshot seed gần nhất — `2026-09-21`
+
+- Nguồn catalog: `src/data_collection/data/snapshots/2026-09-21/products.jsonl` — SHA-256 `89f452e46eec24ae0fe50769037bc84dbb2609dd9c193a49336108f072acbb18`.
+- Seed `42`: 10,320 products · 2,000 profiles · 7,511 events · 218 combo items.
+- Search units: 2,897; `catalog.product_vectors`: 0 (đúng kế hoạch: embedding thuộc tuần 2).
+- Insider clone: 2,000 profiles · 4,640 events · 19,587 channel events.
+- Purchase thiếu `event_group_id` là edge case được sinh có chủ đích khoảng 3%; không xoá purchase.
+<!-- seed-report:end -->

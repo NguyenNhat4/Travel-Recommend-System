@@ -6,3 +6,4 @@ beautifulsoup4>=4.12,<5
 lxml>=5.3
 protego>=0.3
 rapidfuzz>=3.9,<4
+psycopg[binary]>=3.2,<4

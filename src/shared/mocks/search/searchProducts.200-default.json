@@ -20,7 +20,8 @@
         "kidsPool": true,
         "familyFriendly": true
       },
-      "score": 0.87
+      "score": 0.87,
+      "priceUnit": "PER_NIGHT"
     },
     {
       "productId": "nt-h-02",
@@ -40,7 +41,8 @@
         "nearCenter": true,
         "pool": true
       },
-      "score": 0.74
+      "score": 0.74,
+      "priceUnit": "PER_NIGHT"
     },
     {
       "productId": "nt-a-01",
@@ -60,7 +62,8 @@
         "waterPark": true,
         "familyFriendly": true
       },
-      "score": 0.61
+      "score": 0.61,
+      "priceUnit": "PER_PERSON"
     }
   ],
   "total": 3,

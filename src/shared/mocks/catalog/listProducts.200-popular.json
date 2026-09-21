@@ -19,7 +19,8 @@
         "privateBeach": true,
         "kidsPool": true,
         "familyFriendly": true
-      }
+      },
+      "priceUnit": "PER_NIGHT"
     },
     {
       "productId": "nt-a-01",
@@ -38,7 +39,8 @@
         "outdoor": true,
         "waterPark": true,
         "familyFriendly": true
-      }
+      },
+      "priceUnit": "PER_PERSON"
     },
     {
       "productId": "pq-h-01",
@@ -58,7 +60,8 @@
         "seaside": true,
         "spa": true,
         "freeBreakfast": true
-      }
+      },
+      "priceUnit": "PER_NIGHT"
     },
     {
       "productId": "nt-a-02",
@@ -73,7 +76,8 @@
       "imageUrl": null,
       "rating": 4.1,
       "reviewCount": 212,
-      "attributes": {}
+      "attributes": {},
+      "priceUnit": "PER_PERSON"
     },
     {
       "productId": "nt-h-02",
@@ -92,7 +96,8 @@
         "starRating": 5,
         "nearCenter": true,
         "pool": true
-      }
+      },
+      "priceUnit": "PER_NIGHT"
     },
     {
       "productId": "dn-a-01",
@@ -110,7 +115,8 @@
       "attributes": {
         "outdoor": true,
         "familyFriendly": true
-      }
+      },
+      "priceUnit": "PER_PERSON"
     }
   ],
   "total": 6,

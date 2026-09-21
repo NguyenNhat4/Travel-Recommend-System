@@ -38,7 +38,8 @@
           "daysAgo": 5,
           "contribution": 0.14
         }
-      ]
+      ],
+      "priceUnit": "PER_PERSON"
     },
     {
       "rank": 2,
@@ -65,7 +66,8 @@
           "daysAgo": 3,
           "contribution": 0.55
         }
-      ]
+      ],
+      "priceUnit": "PER_PERSON"
     },
     {
       "rank": 3,
@@ -92,7 +94,8 @@
           "daysAgo": 3,
           "contribution": 0.48
         }
-      ]
+      ],
+      "priceUnit": "PER_PACKAGE"
     }
   ],
   "diagnostics": {

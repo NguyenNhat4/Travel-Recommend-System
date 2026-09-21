@@ -23,7 +23,8 @@
           "privateBeach": true,
           "kidsPool": true,
           "familyFriendly": true
-        }
+        },
+        "priceUnit": "PER_NIGHT"
       },
       "usingDate": "2026-10-15",
       "quantity": 1,
@@ -45,7 +46,8 @@
         "imageUrl": null,
         "rating": 4.1,
         "reviewCount": 212,
-        "attributes": {}
+        "attributes": {},
+        "priceUnit": "PER_PERSON"
       },
       "usingDate": "2026-10-16",
       "quantity": 2,

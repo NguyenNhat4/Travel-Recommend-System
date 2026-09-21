@@ -23,7 +23,8 @@
           "privateBeach": true,
           "kidsPool": true,
           "familyFriendly": true
-        }
+        },
+        "priceUnit": "PER_NIGHT"
       },
       "usingDate": "2026-10-15",
       "quantity": 1,

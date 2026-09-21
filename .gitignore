@@ -1,11 +1,10 @@
-# Local secrets and environment overrides.
+# macOS metadata
+.DS_Store
+
+# Secret cục bộ. .env.example mới là file được commit (AGENTS.md §3).
 .env
 .env.*
 !.env.example
-!**/.env.example
-*.pem
-*.key
-*.p12
 
 # Python caches and local test artifacts.
 __pycache__/
@@ -18,6 +17,9 @@ venv/
 .coverage
 coverage.xml
 htmlcov/
+
+# Cache embedding sinh lúc chạy (seed/backend) — dựng lại được từ catalog, ~9 MB/model.
+.embcache/
 
 # Local logs and generated evaluation reports.
 *.log

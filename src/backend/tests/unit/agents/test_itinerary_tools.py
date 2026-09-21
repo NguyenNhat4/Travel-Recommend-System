@@ -26,8 +26,10 @@ class ContractTests(unittest.TestCase):
         self.assertEqual({d['name'] for d in definitions()}, {'search_products', 'get_recommendations'})
         args = normalize_arguments('search_products', {'query': 'hotel', 'availableOnly': False,
                                                      'offset': 0, 'limit': None, 'sort': None})
+        # includeVariants mặc định false theo SearchRequest (schemas/search.yaml): chỉ tầng cha,
+        # không trả hạng phòng và chuyến bay cụ thể.
         self.assertEqual(args, {'query': 'hotel', 'availableOnly': False, 'offset': 0,
-                               'limit': 20, 'sort': 'relevance'})
+                               'limit': 20, 'sort': 'relevance', 'includeVariants': False})
         self.assertEqual(normalize_arguments('get_recommendations', {}), {'k': 5})
 
     def test_unsupported_and_invalid_arguments(self):
@@ -88,7 +90,8 @@ class HttpTests(unittest.IsolatedAsyncioTestCase):
     async def test_minimal_projection_preserves_null_false_and_because(self):
         product = {'productId': 'contract-test', 'name': 'ERROR is product text', 'taxonomy': 'hotel',
                    'destination': 'Nha Trang', 'unitPrice': None, 'currency': 'VND',
-                   'available': False, 'because': [], 'attributes': {'oceanView': False}}
+                   'priceUnit': 'UNKNOWN', 'available': False, 'because': [],
+                   'attributes': {'oceanView': False}}
         body = {'strategy': 'popular', 'recommendations': [product]}
         async with httpx.AsyncClient(base_url='https://service.test/api/v1/',
                 transport=httpx.MockTransport(lambda request: httpx.Response(200, json=body))) as http:

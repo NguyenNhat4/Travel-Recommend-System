@@ -1,8 +1,12 @@
-# Dữ liệu sinh ra khi chạy, không đưa vào git: catalog 12 MB, HTML/JSON thô 42 MB,
-# và browser-profile chứa cookie phiên đăng nhập.
+# Dữ liệu sinh ra khi chạy, không đưa vào git: catalog đã bung, HTML/JSON thô,
+# output seed và browser-profile chứa cookie phiên đăng nhập. Snapshot nén có
+# version nằm ở ../snapshots/ và được theo dõi riêng.
 data/
 cache/*
 !cache/.gitkeep
+# Catalog: bản crawl thật và bản tổng hợp do seed/gen_products.py sinh lại được từ (--seed, --as-of).
+products.jsonl
+products.synthetic.jsonl
 .venv/
 __pycache__/
 *.pyc

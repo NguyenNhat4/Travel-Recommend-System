@@ -83,8 +83,8 @@ def main() -> None:
         for o in sample:
             f.write(json.dumps(o, ensure_ascii=False) + "\n")
 
-    flat_fields = ["productId", "name", "taxonomy", "destination", "unitPrice", "currency", "available",
-                   "imageUrl", "sourceRef", "description"]
+    flat_fields = ["productId", "name", "taxonomy", "destination", "unitPrice", "currency", "priceUnit",
+                   "available", "imageUrl", "sourceRef", "description"]
     with open(out / "products-sample.csv", "w", encoding="utf-8-sig", newline="") as f:
         w = csv.writer(f)
         w.writerow(flat_fields + ["level", "latitude", "longitude", "starRating", "parentProductId"])

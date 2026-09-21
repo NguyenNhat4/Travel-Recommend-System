@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "snapshotId": "2026-09-21",
+  "description": "V-OTA catalog and reviewed combo mappings for the local demo seed",
+  "products": {
+    "file": "products.jsonl.gz",
+    "rows": 10320,
+    "sha256": "89f452e46eec24ae0fe50769037bc84dbb2609dd9c193a49336108f072acbb18",
+    "gzipSha256": "c64500ea5e5c56181402e4852d55d31eb271f15fda19384651e322656afb9f6d"
+  },
+  "comboManual": {
+    "file": "combo_items_manual.jsonl",
+    "rows": 64,
+    "sha256": "8506b183b7503dd648cf959d05da56087b049ccd2eda97929ff8e02de45502d5"
+  }
+}
