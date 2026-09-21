@@ -2,9 +2,8 @@ import React from 'react';
 import { Product, BecauseItem, Strategy, Taxonomy } from '../../types/travel';
 import { TaxonomyBadge } from './TaxonomyBadge';
 import { PriceTag } from './PriceTag';
-import { BecauseLine } from './BecauseLine';
 import { useTravel } from '../../context/TravelContext';
-import { MapPin, Star, Plus, ArrowRight } from 'lucide-react';
+import { MapPin, Star, Plus, ArrowRight, ExternalLink } from 'lucide-react';
 
 interface ProductCardProps {
   product: Product;
@@ -18,6 +17,8 @@ interface ProductCardProps {
   className?: string;
   assistantNote?: string;
   isPersonalizedMatch?: boolean;
+  openInNewTab?: boolean;
+  hideTaxonomyBadge?: boolean;
 }
 
 export const ProductCard: React.FC<ProductCardProps> = ({
@@ -31,12 +32,21 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   onQuickAdd,
   className = '',
   assistantNote,
-  isPersonalizedMatch = false
+  isPersonalizedMatch = false,
+  openInNewTab = false,
+  hideTaxonomyBadge = false
 }) => {
   const { navigate, debugMode, recordEvent } = useTravel();
 
-  const handleCardClick = () => {
+  const handleCardClick = (e?: React.MouseEvent) => {
     recordEvent('product_view', product);
+    if (openInNewTab) {
+      if (e) {
+        e.preventDefault();
+      }
+      window.open(`/product/${product.id}`, '_blank', 'noopener,noreferrer');
+      return;
+    }
     navigate(`/product/${product.id}`);
   };
 
@@ -45,7 +55,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
     return (
       <div 
         onClick={handleCardClick}
-        className={`group flex items-center justify-between p-3 bg-white rounded-lg border border-slate-200 hover:border-blue-400 hover:shadow-xs transition-all cursor-pointer ${className} ${!product.available ? 'opacity-60 bg-slate-50' : ''}`}
+        className={`flex items-center justify-between p-3 bg-white rounded-lg border border-slate-200 cursor-pointer ${className} ${!product.available ? 'opacity-60 bg-slate-50' : ''}`}
       >
         <div className="flex items-center gap-3 min-w-0">
           <div className="relative w-16 h-16 rounded-md overflow-hidden bg-slate-100 shrink-0">
@@ -53,7 +63,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
               src={product.imageUrl} 
               alt={product.name}
               referrerPolicy="no-referrer"
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+              className="w-full h-full object-cover"
             />
             {!product.available && (
               <div className="absolute inset-0 bg-slate-900/60 flex items-center justify-center text-[10px] font-semibold text-white">
@@ -63,7 +73,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
-              <TaxonomyBadge taxonomy={product.taxonomy} size="sm" />
+              {!hideTaxonomyBadge && <TaxonomyBadge taxonomy={product.taxonomy} size="sm" />}
               {isPersonalizedMatch && (
                 <span className="text-[10px] font-medium text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
                   ✨ Hợp với bạn
@@ -76,7 +86,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                 </span>
               )}
             </div>
-            <h4 className="text-xs font-semibold text-slate-900 group-hover:text-blue-700 transition-colors line-clamp-1">
+            <h4 className="text-xs font-semibold text-slate-900 line-clamp-1">
               {product.name}
             </h4>
             <div className="flex items-center gap-2 mt-0.5">
@@ -91,31 +101,28 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                 💬 &ldquo;{assistantNote}&rdquo;
               </p>
             )}
-            {because && because.length > 0 && (
-              <BecauseLine 
-                because={because}
-                productName={product.name}
-                strategy={strategy}
-                excludedVerticals={excludedVerticals}
-                destination={product.destination}
-                className="mt-1"
-              />
-            )}
           </div>
         </div>
 
-        {onQuickAdd && product.available && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onQuickAdd(product);
-            }}
-            className="ml-3 shrink-0 inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-md border border-blue-200 transition-colors"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Thêm</span>
-          </button>
-        )}
+        <div className="flex items-center gap-2 shrink-0 ml-3">
+          {onQuickAdd && product.available && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onQuickAdd(product);
+              }}
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-md border border-blue-200 transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Thêm</span>
+            </button>
+          )}
+          {openInNewTab && (
+            <span title="Mở tab mới" className="text-slate-400 p-0.5">
+              <ExternalLink className="w-3.5 h-3.5" />
+            </span>
+          )}
+        </div>
       </div>
     );
   }
@@ -125,18 +132,20 @@ export const ProductCard: React.FC<ProductCardProps> = ({
     return (
       <div 
         onClick={handleCardClick}
-        className={`group flex flex-col md:flex-row bg-white rounded-xl border border-slate-200 hover:border-blue-400 hover:shadow-md transition-all overflow-hidden cursor-pointer ${className} ${!product.available ? 'opacity-65' : ''}`}
+        className={`flex flex-col md:flex-row bg-white rounded-xl border border-slate-200 overflow-hidden cursor-pointer ${className} ${!product.available ? 'opacity-65' : ''}`}
       >
         <div className="relative w-full md:w-64 h-48 md:h-auto overflow-hidden bg-slate-100 shrink-0">
           <img 
             src={product.imageUrl} 
             alt={product.name}
             referrerPolicy="no-referrer"
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            className="w-full h-full object-cover"
           />
-          <div className="absolute top-2.5 left-2.5">
-            <TaxonomyBadge taxonomy={product.taxonomy} />
-          </div>
+          {!hideTaxonomyBadge && (
+            <div className="absolute top-2.5 left-2.5">
+              <TaxonomyBadge taxonomy={product.taxonomy} />
+            </div>
+          )}
           {!product.available && (
             <div className="absolute inset-0 bg-slate-900/60 flex items-center justify-center text-xs font-bold text-white uppercase tracking-wider">
               Tạm hết chỗ
@@ -164,7 +173,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
               )}
             </div>
 
-            <h3 className="text-base font-bold text-slate-900 group-hover:text-blue-700 transition-colors line-clamp-1 mb-1.5">
+            <h3 className="text-base font-bold text-slate-900 line-clamp-1 mb-1.5">
               {product.name}
             </h3>
 
@@ -205,7 +214,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           <div className="flex items-end justify-between pt-3 border-t border-slate-100">
             <PriceTag price={product.unitPrice} taxonomy={product.taxonomy} hasPrefixFrom showTaxesIncluded size="md" />
             <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 group-hover:translate-x-0.5 transition-transform">
+              <span className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700">
                 Xem chi tiết
                 <ArrowRight className="w-3.5 h-3.5" />
               </span>
@@ -220,18 +229,20 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   return (
     <div 
       onClick={handleCardClick}
-      className={`group flex flex-col bg-white rounded-xl border border-slate-200 hover:border-blue-400 hover:shadow-lg transition-all duration-200 overflow-hidden cursor-pointer ${className} ${!product.available ? 'opacity-60' : ''}`}
+      className={`flex flex-col bg-white rounded-xl border border-slate-200 overflow-hidden cursor-pointer ${className} ${!product.available ? 'opacity-60' : ''}`}
     >
       <div className="relative aspect-16/10 overflow-hidden bg-slate-100">
         <img 
           src={product.imageUrl} 
           alt={product.name}
           referrerPolicy="no-referrer"
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
+          className="w-full h-full object-cover"
         />
-        <div className="absolute top-2.5 left-2.5">
-          <TaxonomyBadge taxonomy={product.taxonomy} />
-        </div>
+        {!hideTaxonomyBadge && (
+          <div className="absolute top-2.5 left-2.5">
+            <TaxonomyBadge taxonomy={product.taxonomy} />
+          </div>
+        )}
         {product.attributes.starRating && (
           <div className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded bg-slate-900/70 text-amber-300 text-[11px] font-semibold backdrop-blur-xs flex items-center gap-0.5">
             <Star className="w-3 h-3 fill-amber-300 text-amber-300" />
@@ -264,23 +275,13 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             )}
           </div>
 
-          <h3 className="text-sm font-bold text-slate-900 group-hover:text-blue-700 transition-colors line-clamp-2 leading-snug mb-2">
+          <h3 className="text-sm font-bold text-slate-900 line-clamp-2 leading-snug mb-2">
             {product.name}
           </h3>
         </div>
 
-        <div className="space-y-2 pt-2 border-t border-slate-100">
+        <div className="pt-2 border-t border-slate-100">
           <PriceTag price={product.unitPrice} taxonomy={product.taxonomy} hasPrefixFrom size="md" />
-          
-          {because && because.length > 0 && (
-            <BecauseLine 
-              because={because}
-              productName={product.name}
-              strategy={strategy}
-              excludedVerticals={excludedVerticals}
-              destination={product.destination}
-            />
-          )}
         </div>
       </div>
     </div>

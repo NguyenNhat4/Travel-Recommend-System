@@ -1,10 +1,14 @@
 # macOS metadata
 .DS_Store
 
-# Secret cục bộ. .env.example mới là file được commit (AGENTS.md §3).
+# Local secrets and environment overrides.
 .env
 .env.*
 !.env.example
+!**/.env.example
+*.pem
+*.key
+*.p12
 
 # Python caches and local test artifacts.
 __pycache__/
@@ -25,3 +29,5 @@ htmlcov/
 *.log
 src/evaluation/reports/itinerary-agent-metrics.json
 src/evaluation/reports/eval-*.json
+artifacts/
+src/shared/mocks/itinerary-agent/completed-minimal-clarified.json

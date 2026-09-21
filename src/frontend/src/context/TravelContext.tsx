@@ -101,7 +101,6 @@ export const TravelProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const currentRoute = pathname || '/';
   const navigate = useCallback((route: string) => {
     router.push(route);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [router]);
 
   // Keyboard shortcut Shift+D for debug mode
