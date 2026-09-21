@@ -9,7 +9,6 @@ vota-recsys/
 
 # macOS metadata
 .DS_Store
-<<<<<<< HEAD
 # Local secrets and environment overrides.
 .env
 .env.*
@@ -37,7 +36,6 @@ src/evaluation/reports/itinerary-agent-metrics.json
 src/evaluation/reports/eval-*.json
 artifacts/
 src/shared/mocks/itinerary-agent/completed-minimal-clarified.json
-=======
 
 # Python runtime artifacts
 __pycache__/
@@ -45,4 +43,3 @@ __pycache__/
 
 # Cache embedding sinh lúc chạy (seed/backend) — dựng lại được từ catalog, ~9 MB/model.
 .embcache/
->>>>>>> 3c7768ced0e96282607b4bf11343d09faa2977b9
