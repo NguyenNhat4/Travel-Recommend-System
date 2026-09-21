@@ -6,9 +6,7 @@ Tài liệu về agent lập lịch trình (LangGraph trong `src/backend/app/age
 |---|---|
 | [langgraph-nodes.md](langgraph-nodes.md) | Đọc bảng trace, chín node, các luồng thực thi |
 | [response-and-errors.md](response-and-errors.md) | `status` so với `error.code`, luồng sau `UNSUPPORTED_DESTINATION` |
-| [evaluation-suite.md](evaluation-suite.md) | Chạy case/batch, cách chấm, fixture còn thiếu, kiểm tra local |
-| [fixture-generation.md](fixture-generation.md) | Sinh fixture và expected bằng LLM |
-| [rubric.md](rubric.md) | Rubric chấm nhanh agent |
+| [evaluation-plan.md](evaluation-plan.md) | Bộ 12 case chạy tay qua Streamlit, cách chấm, mẫu biên bản, giới hạn đã biết |
 
 ## Chạy demo
 
@@ -24,4 +22,4 @@ Cấu hình provider/key/model trong `.env` theo Backend README. UI chat chỉ g
 
 Demo yêu cầu `destination` và `days`. Nếu thiếu, backend trả `NEEDS_CLARIFICATION`, lưu phần intent đã biết theo `conversationId` và chưa gọi tool. `context.language` hỗ trợ `vi`/`en`; khi vắng mặt backend mặc định tiếng Việt và lưu lựa chọn theo conversation.
 
-Runner từng case/batch và custom chat chờ tối đa 30 giây cho mỗi lời gọi LLM (classify, planner, composition), để model thật có thời gian phản hồi. Timeout tool vẫn là 1 giây. Đây là cấu hình đánh giá offline; API giữ giới hạn classify/planner 2 giây và composition 3 giây. Không dùng kết quả này làm bằng chứng đạt SLA 5 giây của API.
+Timeout LLM của graph lấy từ `ITINERARY_LLM_TIMEOUT_SECONDS`, áp dụng cho cả `classify`, chọn điểm đến trong `tool` và `answer`; timeout tool lấy từ `ITINERARY_TOOL_TIMEOUT_SECONDS`. `.env.example` đặt 30 giây và 1 giây để model thật có thời gian phản hồi khi demo. Đây là cấu hình đánh giá offline và **vượt** ngân sách của spec §7.2 (classify 2 giây, composition 3 giây, toàn request mục tiêu 5 giây), nên không dùng số đo ở chế độ này làm bằng chứng đạt SLA. Lưu ý `ITINERARY_LLM_MODEL` trong `.env.example` không được `Settings` đọc; model thực tế là `MODEL_NAME`.

@@ -25,6 +25,8 @@ SUMMARY_FIELDS = (
 STAY_TAXONOMY = "hotel"
 SLOT_TAXONOMIES = frozenset({"attraction", "golf"})
 SCHEDULABLE_TAXONOMIES = frozenset({STAY_TAXONOMY, *SLOT_TAXONOMIES})
+# Pace is not a scheduling input yet; this is the cap the itinerary has always been held to.
+MAX_ACTIVITIES_PER_DAY = 2
 
 
 def normalized(value: str | None) -> str:
@@ -95,6 +97,73 @@ def totals(plan: dict[str, Any], intent: dict[str, Any]) -> tuple[int | None, st
     return total, "WITHIN_BUDGET" if total <= budget else "OVER_BUDGET"
 
 
+def _parent_key(product: dict[str, Any]) -> str:
+    return product.get("attributes", {}).get("parentProductId") or product["productId"]
+
+
+def _price_key(product: dict[str, Any]) -> tuple[int, float]:
+    """Cheapest first; an unknown price cannot be compared, so it goes last."""
+    price = product.get("unitPrice")
+    return (1, 0.0) if price is None else (0, float(price))
+
+
+def _stay_order(product: dict[str, Any]) -> tuple[Any, ...]:
+    star = product.get("attributes", {}).get("starRating")
+    return (*_price_key(product), -(star if isinstance(star, (int, float)) else -1), product["productId"])
+
+
+def _activity_order(product: dict[str, Any]) -> tuple[Any, ...]:
+    # A full-day item needs a day to itself, so it is placed before anything that can share one.
+    return (0 if allowed_times(product) == ["MORNING"] else 1, *_price_key(product), product["productId"])
+
+
+def compose_plan(candidates: dict[str, dict[str, Any]], intent: dict[str, Any]) -> dict[str, Any]:
+    """Choose products and lay them out on days with fixed rules. No model is involved.
+
+    Ordering is total and depends only on product data, so the same candidates always produce the
+    same proposal. The result is fed to `render_proposal`, which still enforces every rule; this
+    function only has to avoid proposing something the renderer would reject.
+    """
+    days_count = intent.get("days")
+    if not isinstance(days_count, int) or days_count < 1:  # upper bound is enforced by TripIntent
+        raise ValueError("invalid trip duration")
+    usable = [product for product in candidates.values() if product.get("available")]
+    stays = sorted((p for p in usable if p.get("taxonomy") == STAY_TAXONOMY), key=_stay_order)
+    stay = stays[0] if stays else None
+    taken = {_parent_key(stay), stay["productId"]} if stay else set()
+    activities = []
+    for product in sorted((p for p in usable if p.get("taxonomy") in SLOT_TAXONOMIES), key=_activity_order):
+        key = _parent_key(product)
+        if key in taken or product["productId"] in taken:
+            continue
+        taken.update({key, product["productId"]})
+        activities.append(product)
+    per_day: list[list[dict[str, Any]]] = [[] for _ in range(days_count)]
+    full_days: set[int] = set()
+    for product in activities:
+        full_day = allowed_times(product) == ["MORNING"]
+        # Spread across the trip instead of filling day one: least loaded day wins, earliest breaks ties.
+        open_days = [index for index in range(days_count)
+                     if not per_day[index] or (not full_day and index not in full_days
+                                               and len(per_day[index]) < MAX_ACTIVITIES_PER_DAY)]
+        if full_day:
+            open_days = [index for index in open_days if not per_day[index]]
+        if not open_days:
+            continue  # more activities than the trip can hold; the extras are simply not scheduled
+        index = min(open_days, key=lambda day: (len(per_day[day]), day))
+        if full_day:
+            full_days.add(index)
+        per_day[index].append(product)
+    slots = []
+    for index, products in enumerate(per_day):
+        for position, product in enumerate(products):
+            times = allowed_times(product)
+            slots.append({"day": index + 1, "note_kind": "VISIT", "activity_type": None,
+                          "product_id": product["productId"],
+                          "time": times[0] if len(times) == 1 else ("MORNING" if position == 0 else "AFTERNOON")})
+    return {"stay_id": stay["productId"] if stay else None, "slots": slots}
+
+
 def render_proposal(proposal: dict[str, Any], candidates: dict[str, dict[str, Any]],
                     sources: dict[str, str], intent: dict[str, Any]) -> dict[str, Any]:
     days_count = intent.get("days")
@@ -154,39 +223,6 @@ def render_proposal(proposal: dict[str, Any], candidates: dict[str, dict[str, An
         "budgetStatus": "UNKNOWN", "priceAsOf": None}
     plan["estimatedTotal"], plan["budgetStatus"] = totals(plan, intent)
     return plan
-
-
-def render_best_effort(proposal: dict[str, Any], candidates: dict[str, dict[str, Any]],
-                       sources: dict[str, str], intent: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    """Render the proposal, dropping only the slots the rules reject.
-
-    One unschedulable slot must not discard an otherwise valid itinerary. Slots are added one at a
-    time and kept only when the plan still renders, so the result obeys exactly the same rules as
-    `render_proposal`; nothing is relaxed. Returns the plan and the slots that were dropped. A
-    proposal-level failure (trip duration, stay) still raises, and `validate_plan` remains the final
-    word on required-hotel and grounding rules.
-    """
-    try:
-        return render_proposal(proposal, candidates, sources, intent), []
-    except ValueError:
-        pass
-    # An id that is in no retrieval result means the model invented it. That is a grounding failure
-    # about the whole proposal, not one bad slot, so it is never repaired away quietly.
-    if any(slot.get("product_id") and slot["product_id"] not in candidates
-           for slot in proposal.get("slots", [])):
-        raise ValueError("ungrounded product selection")
-    base = {"stay_id": proposal.get("stay_id"), "slots": []}
-    render_proposal(base, candidates, sources, intent)  # duration or stay problems are not repairable
-    kept: list[dict[str, Any]] = []
-    dropped: list[dict[str, Any]] = []
-    for slot in proposal.get("slots", []):
-        try:
-            render_proposal({**base, "slots": [*kept, slot]}, candidates, sources, intent)
-        except ValueError:
-            dropped.append(slot)
-        else:
-            kept.append(slot)
-    return render_proposal({**base, "slots": kept}, candidates, sources, intent), dropped
 
 
 def validate_plan(plan: dict[str, Any], candidates: dict[str, dict[str, Any]],
