@@ -273,17 +273,31 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(llm.calls, ['Extraction', 'ConversationalAnswer'])
         self.assertFalse(clients.calls)
 
-    async def test_broad_suggestion_uses_llm_answer_without_catalog_claims(self):
+    async def test_broad_suggestion_is_asked_by_clarify_without_catalog_claims(self):
         clients = Clients()
         llm = ScriptedLlm(
-            extraction=Extraction(domain='conversation'),
+            extraction=extracted(),
             conversational_message='Mình có thể gợi ý sau khi bạn cho biết điểm đến và số ngày nhé.',
         )
         result = await self.run_graph(llm, clients, state={'query': 'Gợi ý cho tôi một chuyến đi'})
+        self.assertEqual([event['node'] for event in result['events']], ['intake', 'classify', 'clarify', 'finalize'])
         self.assertEqual(result['response']['status'], 'NEEDS_CLARIFICATION')
         self.assertEqual(result['response']['question'], llm.conversational_message)
-        self.assertEqual(result['interaction_type'], 'conversation')
+        self.assertEqual(result['response']['missingFields'], ['destination', 'days'])
         self.assertEqual(llm.calls, ['Extraction', 'ConversationalAnswer'])
+        self.assertFalse(clients.calls)
+
+    async def test_trip_details_labelled_conversation_still_reach_clarify(self):
+        """The model sometimes calls a detail-bearing message chit-chat; routing must not follow it there."""
+        clients = Clients()
+        llm = ScriptedLlm(
+            extraction=Extraction(domain='conversation', patch={'days': 3}),
+            conversational_message='Bạn muốn đi thành phố nào?',
+        )
+        result = await self.run_graph(llm, clients, state={'query': 'đi 3 ngày'})
+        self.assertEqual([event['node'] for event in result['events']], ['intake', 'classify', 'clarify', 'finalize'])
+        self.assertEqual(result['interaction_type'], 'travel')
+        self.assertEqual(result['response']['missingFields'], ['destination'])
         self.assertFalse(clients.calls)
 
     async def test_missing_trip_details_are_asked_by_clarify_and_chit_chat_is_answered(self):

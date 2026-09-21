@@ -25,6 +25,14 @@ class LabCopyTests(unittest.TestCase):
                          {'intake', 'classify', 'tool', 'evaluate', 'converse', 'compose', 'clarify',
                           'retry', 'dead_letter', 'finalize'})
 
+    def test_every_node_is_named_for_the_trace(self):
+        """`partial` mất __name__, nên node dựng từ nó sẽ hiện là "RunnableLambda" trong LangSmith."""
+        for name, node in build_graph().nodes.items():
+            if name.startswith('__'):
+                continue
+            with self.subTest(node=name):
+                self.assertNotEqual(node.bound.get_name(), 'RunnableLambda')
+
     def test_nodes_do_not_mutate_the_input_state(self):
         state = nodes.intake_node({'query': '  request  ', 'request_id': 'test'})
         classified = nodes._classify_result(state, Extraction(domain='travel', patch={'days': 3}))

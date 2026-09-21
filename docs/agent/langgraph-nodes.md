@@ -18,6 +18,7 @@ Một lượt gọi API đi qua ba việc: **hiểu người dùng muốn gì**,
 Giai đoạn 3 có bốn node vì có đúng bốn tình huống cần nói với người dùng:
 
 - `converse` — **trò chuyện**: chào hỏi, cảm ơn, hoặc từ chối yêu cầu ngoài phạm vi. Chưa đụng tới sản phẩm.
+  Xin lên lịch trình mà chưa nói điểm đến hay số ngày **không** thuộc nhóm này — đó vẫn là yêu cầu du lịch, đi `clarify`.
 - `compose` — **dựng kết quả**: đã có sản phẩm thật, xếp thành lịch trình.
 - `clarify` — **hỏi thêm**: thiếu điểm đến hoặc số ngày, thông tin mâu thuẫn, hoặc điều kiện bắt buộc không có sản phẩm nào đáp ứng.
 - `dead_letter` — **hỏng có kiểm soát**: lỗi auth, điểm đến ngoài catalog, tool hỏng vĩnh viễn. Trả lỗi đúng chuẩn thay vì che thành thành công.
@@ -57,7 +58,7 @@ Mỗi node phải tự kiểm lấy. Hai hậu quả:
 
 Một response `COMPLETED` không qua được `validate_plan` sẽ bị nó thay bằng lỗi `ITINERARY_VALIDATION_FAILED` (HTTP 500). Nghĩa là backend tự nhận lỗi của mình, thay vì đưa cho người dùng một lịch trình chưa được kiểm chứng. Thà báo lỗi còn hơn trả dữ liệu không có căn cứ.
 
-## 3. Sáu ví dụ
+## 3. Bảy ví dụ
 
 Đi từ câu người dùng gõ, không phải từ tên node:
 
@@ -65,12 +66,13 @@ Một response `COMPLETED` không qua được `validate_plan` sẽ bị nó tha
 |---|---|---|
 | "chào bạn" | `intake → classify → converse → finalize` | Trò chuyện, chưa đụng tới sản phẩm |
 | "đi 3 ngày" (thiếu điểm đến) | `intake → classify → clarify → finalize` | Thiếu thông tin thì hỏi, không đoán |
+| "gợi ý cho tôi một chuyến đi" | `intake → classify → clarify → finalize` | Chưa nói gì vẫn là yêu cầu du lịch, không phải trò chuyện |
 | "Nha Trang 2 ngày" | `intake → classify → tool → evaluate → compose → finalize` | Luồng đầy đủ |
 | "Paris 2 ngày" | `intake → classify → tool → evaluate → dead_letter → finalize` | Ngoài catalog, dừng trước khi gọi Search |
 | "Nha Trang 2 ngày, khách sạn 5 sao" (không có) | `… → evaluate → clarify → finalize` | Điều kiện bắt buộc không đạt thì hỏi, không tự bỏ |
 | Search lỗi mạng | `… → evaluate → retry → tool → evaluate → …` | Thử lại, tối đa một lần |
 
-**Sáu tình huống khác hẳn nhau, sáu đường đi khác nhau, nhưng cột nào cũng kết thúc bằng `finalize`.** Đó là mục 2 nhìn từ phía dữ liệu thật.
+**Bảy tình huống khác hẳn nhau, nhưng cột nào cũng kết thúc bằng `finalize`.** Đó là mục 2 nhìn từ phía dữ liệu thật.
 
 Sơ đồ đầy đủ:
 
@@ -85,7 +87,7 @@ START → intake → classify
   │       └─ lỗi vĩnh viễn/auth → dead_letter → finalize → END
   ├─ thiếu destination/days, mâu thuẫn, hoặc điều kiện không xác minh được
   │    → clarify → finalize → END
-  ├─ chào hỏi, cảm ơn, hoặc yêu cầu ngoài phạm vi
+  ├─ chào hỏi, cảm ơn, hoặc yêu cầu ngoài phạm vi (không gồm yêu cầu du lịch thiếu chi tiết)
   │    → converse → finalize → END
   └─ request lỗi hoặc LLM classify lỗi
        → dead_letter → finalize → END

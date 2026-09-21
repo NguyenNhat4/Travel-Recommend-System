@@ -7,6 +7,8 @@ from unittest.mock import patch
 from src.backend.app.core.config import Settings, get_settings
 from src.backend.app.infrastructure.clients.local_cdp_client import LocalCdpClient
 from src.backend.app.infrastructure.persistence.postgres_catalog import PostgresProductLookup
+from src.backend.app.api.v1.routes.assistant import _trace_config
+from src.backend.app.domain.itinerary.schemas import ItineraryRequestModel
 from src.backend.app.main import _forward_langsmith_env, app, health, lifespan
 
 
@@ -111,6 +113,37 @@ class LangSmithForwardingTests(unittest.TestCase):
         self.assertEqual(os.environ["LANGSMITH_API_KEY"], "lsv2_x")
         self.assertEqual(os.environ["LANGSMITH_ENDPOINT"], "https://example.test")
         self.assertEqual(os.environ["LANGSMITH_PROJECT"], "demo")
+
+
+class TraceConfigTests(unittest.TestCase):
+    """Mỗi lượt phải tự nhận diện được trong LangSmith.
+
+    Không có config thì mọi trace tên "LangGraph" và không mang request id, nên một lượt
+    quan sát được trên UI demo không dò ngược ra trace của nó. Tên run lấy từ chính câu
+    người dùng gõ — dữ liệu này graph đã ghi làm input, không lộ thêm gì.
+    """
+
+    def _payload(self, message, conversation_id=None):
+        return ItineraryRequestModel(message=message, conversationId=conversation_id)
+
+    def test_run_is_named_after_the_user_message_and_carries_the_request_id(self):
+        config = _trace_config(self._payload("đi Nha Trang 2 ngày"), "req-1", "conv-9", transport="sse",
+                               run_id="run-7")
+        self.assertEqual(config["run_name"], "đi Nha Trang 2 ngày")
+        self.assertEqual(config["metadata"], {"request_id": "req-1", "conversation_id": "conv-9",
+                                              "transport": "sse", "run_id": "run-7"})
+        self.assertEqual(config["tags"], ["itinerary", "sse"])
+
+    def test_name_survives_a_blank_multiline_or_overlong_message(self):
+        self.assertEqual(_trace_config(self._payload("  "), "r", "c", transport="json")["run_name"],
+                         "itinerary turn")
+        self.assertEqual(_trace_config(self._payload("đi\n\n  Huế"), "r", "c", transport="json")["run_name"],
+                         "đi Huế")
+        long_name = _trace_config(self._payload("x" * 200), "r", "c", transport="json")["run_name"]
+        self.assertEqual(len(long_name), 60)
+
+    def test_json_transport_has_no_run_id(self):
+        self.assertNotIn("run_id", _trace_config(self._payload("x"), "r", "c", transport="json")["metadata"])
 
 
 if __name__ == "__main__":

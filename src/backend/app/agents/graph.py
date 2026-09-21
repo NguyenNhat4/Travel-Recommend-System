@@ -1,4 +1,4 @@
-"""Compile the nine-node itinerary graph with request-scoped runtime dependencies."""
+"""Compile the ten-node itinerary graph with request-scoped runtime dependencies."""
 
 from __future__ import annotations
 
@@ -48,6 +48,8 @@ def build_graph(checkpointer: Any | None = None, *, tools: ToolExecutorPort | No
         route_after_retry,
     )
 
+    # `partial` objects carry no __name__, so nodes built from one are named explicitly;
+    # otherwise their trace run shows up as the generic "RunnableLambda".
     async def run_local(state, *, node):
         # CPU-only nodes do not need a worker thread on the async path.
         return node(state)
@@ -60,9 +62,9 @@ def build_graph(checkpointer: Any | None = None, *, tools: ToolExecutorPort | No
         graph.add_node(name, RunnableLambda(node, afunc=partial(run_local, node=node)))
     graph.add_node("intake", RunnableLambda(intake_node, afunc=partial(intake_node_async, store=store, owner=owner)))
     graph.add_node("finalize", RunnableLambda(finalize_node, afunc=partial(finalize_node_async, store=store, owner=owner)))
-    graph.add_node("classify", RunnableLambda(partial(classify_node, llm=llm), afunc=partial(classify_node_async, llm=llm, timeout_seconds=llm_timeout_seconds if llm_timeout_seconds is not None else 2)))
-    graph.add_node("converse", RunnableLambda(partial(converse_node, llm=llm), afunc=partial(converse_node_async, llm=llm, timeout_seconds=llm_timeout_seconds if llm_timeout_seconds is not None else 3)))
-    graph.add_node("clarify", RunnableLambda(partial(ask_clarification_node, llm=llm), afunc=partial(ask_clarification_node_async, llm=llm, timeout_seconds=llm_timeout_seconds if llm_timeout_seconds is not None else 3)))
+    graph.add_node("classify", RunnableLambda(partial(classify_node, llm=llm), afunc=partial(classify_node_async, llm=llm, timeout_seconds=llm_timeout_seconds if llm_timeout_seconds is not None else 2), name="classify_node"))
+    graph.add_node("converse", RunnableLambda(partial(converse_node, llm=llm), afunc=partial(converse_node_async, llm=llm, timeout_seconds=llm_timeout_seconds if llm_timeout_seconds is not None else 3), name="converse_node"))
+    graph.add_node("clarify", RunnableLambda(partial(ask_clarification_node, llm=llm), afunc=partial(ask_clarification_node_async, llm=llm, timeout_seconds=llm_timeout_seconds if llm_timeout_seconds is not None else 3), name="ask_clarification_node"))
     graph.add_node("tool", partial(tool_node, tools=tools, timeout_seconds=tool_timeout_seconds,
                                    llm=llm, require_recommendations=require_recommendations,
                                    llm_timeout_seconds=llm_timeout_seconds if llm_timeout_seconds is not None else 2))
