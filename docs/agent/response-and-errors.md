@@ -18,7 +18,7 @@ Lượt 1: "tokyo 4 ngày từ ngày mai"
   → classify (destination=Tokyo, days=4, startDate) → tool → UNSUPPORTED_DESTINATION (422)
   → finalize lưu intent với destination=null, giữ days/startDate/party
 Lượt 2: "ha noi" + conversationId lấy từ error.details.conversationId
-  → intake nạp intent đã lưu → classify (destination=Hà Nội) → tool → evaluate → answer → COMPLETED 4 ngày
+  → intake nạp intent đã lưu → classify (destination=Hà Nội) → tool → evaluate → compose → COMPLETED 4 ngày
 ```
 
 - Chỉ `UNSUPPORTED_DESTINATION` được lưu intent khi lỗi; các lỗi khác (`INVALID_TRIP_DURATION`, `LLM_UNAVAILABLE`...) không lưu nên client phải gửi lại đủ thông tin.

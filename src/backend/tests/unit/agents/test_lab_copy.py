@@ -1,6 +1,8 @@
 """Structural regression checks: keep nine nodes and no risky/HITL path."""
 import copy
+import functools
 import unittest
+from types import SimpleNamespace
 from src.backend.app.agents import nodes, routing
 from src.backend.app.agents.graph import build_graph
 from src.backend.app.agents.state import AgentState, Route, Scenario
@@ -17,10 +19,11 @@ class LabCopyTests(unittest.TestCase):
         self.assertFalse(hasattr(nodes, 'risky_action_node'))
         self.assertFalse(hasattr(routing, 'route_after_approval'))
 
-    def test_nine_node_topology(self):
+    def test_ten_node_topology(self):
         graph = build_graph()
         self.assertEqual(set(graph.get_graph().nodes) - {'__start__', '__end__'},
-                         {'intake', 'classify', 'tool', 'evaluate', 'answer', 'clarify', 'retry', 'dead_letter', 'finalize'})
+                         {'intake', 'classify', 'tool', 'evaluate', 'converse', 'compose', 'clarify',
+                          'retry', 'dead_letter', 'finalize'})
 
     def test_nodes_do_not_mutate_the_input_state(self):
         state = nodes.intake_node({'query': '  request  ', 'request_id': 'test'})
@@ -29,7 +32,11 @@ class LabCopyTests(unittest.TestCase):
         state['response'] = error_response('INTERNAL_ERROR', 'safe error', 'test')
         state['http_status'] = 500
         state['decision'] = 'error'
-        for node in [nodes.intake_node, nodes.evaluate_node, nodes.ask_clarification_node,
+        # `clarify` would call a real model here, so hand it one that fails and exercise the fixed-wording fallback.
+        offline = SimpleNamespace(with_structured_output=lambda schema: (_ for _ in ()).throw(RuntimeError('offline')))
+        ask = functools.partial(nodes.ask_clarification_node, llm=offline)
+        ask.__name__ = 'ask_clarification_node'
+        for node in [nodes.intake_node, nodes.evaluate_node, ask, nodes.compose_node,
                      nodes.retry_or_fallback_node, nodes.dead_letter_node, nodes.finalize_node]:
             with self.subTest(node=node.__name__):
                 before = copy.deepcopy(state)
