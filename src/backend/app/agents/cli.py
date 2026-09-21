@@ -55,15 +55,25 @@ def run_itinerary(
     import uuid
     import httpx
     from src.backend.app.agents.tools.itinerary_gateway import ItineraryToolGateway
+    from src.backend.app.core.config import get_settings
     from src.backend.app.infrastructure.clients.itinerary_fixture_clients import FixtureItineraryClients
     from src.backend.app.infrastructure.clients.itinerary_http_clients import ItineraryHttpClients
+    from src.backend.app.infrastructure.llm import build_chat_model
+
+    # Dựng client một lần như composition root; None khi ITINERARY_USE_LLM=false, lúc đó node
+    # classify trả LLM_UNAVAILABLE và lệnh thoát với mã 1.
+    try:
+        llm = build_chat_model(get_settings())
+    except RuntimeError as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(1)
 
     async def run():
         async with httpx.AsyncClient(base_url=(api_base_url or "http://unused.local/").rstrip("/") + "/", timeout=1) as http:
             clients = ItineraryHttpClients(http) if api_base_url else FixtureItineraryClients()
             authorization = os.getenv("ITINERARY_AUTHORIZATION")
             gateway = ItineraryToolGateway(clients, clients, clients, recommendation_authorization=authorization)
-            graph = build_graph(tools=gateway, checkpointer=build_checkpointer(),
+            graph = build_graph(tools=gateway, checkpointer=build_checkpointer(), llm=llm,
                                 require_recommendations=bool(authorization))
             run_id = uuid.uuid4().hex
             return await asyncio.wait_for(graph.ainvoke({"query": message, "request_id": run_id},

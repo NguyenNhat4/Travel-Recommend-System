@@ -42,6 +42,7 @@ from src.backend.app.infrastructure.clients.itinerary_http_clients import Itiner
 from src.backend.app.application.itinerary.contracts import error_response
 from src.backend.app.core.request_context import current_request_id
 from src.backend.app.infrastructure.clients.local_cdp_client import LocalCdpClient
+from src.backend.app.infrastructure.llm import build_chat_model
 from src.backend.app.infrastructure.persistence.postgres_catalog import PostgresProductLookup
 
 # psycopg async không chạy được trên ProactorEventLoop — event loop mặc định của Windows và của
@@ -123,6 +124,18 @@ async def lifespan(app: FastAPI):
             app.state.itinerary_http_clients = ItineraryHttpClients(itinerary_http)
         else:
             app.state.itinerary_http_clients = None
+
+        # Một client LLM dùng chung cho mọi request thay vì dựng lại trong từng node. LLM tách khỏi
+        # phần dữ liệu: thiếu API key hoặc tắt hẳn thì chỉ itinerary trả 503 LLM_UNAVAILABLE, các
+        # route khác và /assistant/status vẫn phục vụ được.
+        try:
+            app.state.itinerary_llm = build_chat_model(settings)
+            app.state.itinerary_llm_mode = "live" if app.state.itinerary_llm else "disabled"
+        except Exception as exc:  # thiếu API key, thiếu SDK của provider…
+            app.state.itinerary_llm = None
+            app.state.itinerary_llm_mode = "unavailable"
+            print(f"Itinerary LLM unavailable: {exc}")
+        print(f"Itinerary LLM: {app.state.itinerary_llm_mode}")
 
         # Recsys tách khỏi phần itinerary: thiếu database hoặc model embedding thì tắt recsys,
         # các route còn lại (kể cả assistant chạy fixture) vẫn phục vụ được.

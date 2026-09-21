@@ -47,13 +47,13 @@ Chạy backend và Streamlit theo đúng lệnh trong [README.md](README.md). Tr
 | Cần ghi | Lấy ở đâu |
 |---|---|
 | Commit SHA | `git rev-parse --short HEAD` |
-| Model | biến `MODEL_NAME` trong `.env` |
-| Data mode, số sản phẩm, graph version | sidebar Streamlit (`GET /api/v1/assistant/status` trả `dataMode`, `productCount`, `graphVersion`) |
+| Model | `ITINERARY_LLM_MODEL` trong `.env`, bỏ trống thì `MODEL_NAME` |
+| Data mode, số sản phẩm, graph version | sidebar Streamlit (`GET /api/v1/assistant/status` trả `dataMode`, `llmMode`, `productCount`, `graphVersion`) |
 | Timeout đang áp dụng | `ITINERARY_LLM_TIMEOUT_SECONDS`, `ITINERARY_REQUEST_TIMEOUT_SECONDS` trong `.env` |
 
 Hai cái bẫy phải biết trước khi ghi biên bản:
 
-- **`ITINERARY_LLM_MODEL` trong `.env.example` không có tác dụng.** `Settings` đặt `extra="ignore"` và không khai báo trường này; model thực tế đưa vào `get_llm()` là `settings.model_name`, tức biến `MODEL_NAME`. Ghi nhầm biến là ghi sai bằng chứng.
+- **`ITINERARY_LLM_MODEL` nay có tác dụng.** Trước đây `Settings` không khai báo trường này nên model thực tế là `MODEL_NAME`; từ bản nối LLM vào composition root, `ITINERARY_LLM_MODEL` được đọc và thắng `MODEL_NAME` khi được đặt. Biên bản cũ ghi theo `MODEL_NAME` vẫn đúng với thời điểm của nó; biên bản mới phải ghi cả hai biến.
 - **Timeout của môi trường demo vượt ngân sách spec.** `.env.example` đặt `ITINERARY_LLM_TIMEOUT_SECONDS=30` và `ITINERARY_REQUEST_TIMEOUT_SECONDS=90`, trong khi spec §7.2 cho classify 2 s, composition 3 s, toàn request mục tiêu 5 s. Số đo latency ở chế độ này **không dùng làm bằng chứng SLA**; chỉ dùng để theo dõi xu hướng.
 
 ## 4. Bộ case lõi — 12 case

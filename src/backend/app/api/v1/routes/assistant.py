@@ -208,5 +208,6 @@ async def agent_status(request: Request):
         "status": "ready" if clients is not None else "not_configured",
         "agent": "Itinerary LangGraph Agent", "graphVersion": "1.4.0",
         "dataMode": getattr(request.app.state, "itinerary_data_mode", "disabled"),
+        "llmMode": getattr(request.app.state, "itinerary_llm_mode", "unavailable"),
         "productCount": getattr(clients, "product_count", None) if clients else None,
     }

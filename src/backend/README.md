@@ -63,3 +63,26 @@ Chạy test đọc seed thật (không ghi DB):
 ```bash
 RUN_POSTGRES_INTEGRATION=1 python -m pytest -q src/backend/tests
 ```
+
+## LLM của itinerary agent
+
+`main.py` dựng **một** client LLM trong `lifespan` (`infrastructure/llm/build_chat_model`) và tiêm vào graph
+qua `app.state.itinerary_llm`. Các node chỉ tự dựng client khi không được tiêm — đường CLI và test.
+
+```env
+ITINERARY_USE_LLM=true          # false: không dựng client nào, không cần API key
+OPENAI_API_KEY=                 # thứ tự chọn provider: GEMINI -> OPENAI -> ANTHROPIC
+GEMINI_API_KEY=
+ANTHROPIC_API_KEY=
+ITINERARY_LLM_MODEL=            # bỏ trống: OpenAI dùng MODEL_NAME, provider khác dùng mặc định
+ITINERARY_LLM_TEMPERATURE=0     # riêng của agent, không dùng chung LLM_TEMPERATURE
+```
+
+`GET /api/v1/assistant/status` trả thêm `llmMode`:
+
+- `live` — đã dựng được client dùng chung.
+- `disabled` — `ITINERARY_USE_LLM=false`.
+- `unavailable` — đã bật nhưng thiếu API key hoặc thiếu SDK của provider.
+
+Với `disabled` và `unavailable`, app vẫn khởi động và các route khác vẫn phục vụ; riêng request itinerary
+trả 503 `LLM_UNAVAILABLE` có kiểm soát.

@@ -1,13 +1,18 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Đường dẫn tuyệt đối tới .env ở gốc repo: uvicorn và CLI chạy từ nhiều thư mục khác nhau, nên
+# env_file tương đối theo CWD sẽ im lặng bỏ qua cấu hình. Biến môi trường thật vẫn thắng file.
+REPO_ROOT = Path(__file__).resolve().parents[4]
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=REPO_ROOT / ".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -20,8 +25,17 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000"
 
     openai_api_key: str = ""
+    gemini_api_key: str = ""
+    anthropic_api_key: str = ""
     model_name: str = "gpt-4o-mini"
     llm_temperature: float = Field(default=0.7, ge=0.0, le=2.0)
+    # false = không dựng client LLM nào; app vẫn khởi động được không cần API key và request
+    # itinerary trả 503 LLM_UNAVAILABLE có kiểm soát (hop-dong-tich-hop-itinerary-assistant.md §5.9).
+    itinerary_use_llm: bool = True
+    itinerary_llm_model: str | None = None
+    # Riêng của agent, không dùng chung llm_temperature (0.7): mọi lời gọi của agent là
+    # structured output hoặc tool calling, cần quyết định ổn định.
+    itinerary_llm_temperature: float = Field(default=0.0, ge=0.0, le=2.0)
     itinerary_service_base_url: str | None = Field(default=None, pattern=r"^https?://")
     itinerary_data_mode: Literal["fixture", "http", "disabled"] | None = None
     itinerary_tool_timeout_seconds: float = Field(default=1.0, gt=0)
