@@ -1,4 +1,6 @@
-<<<<<<< HEAD
+# --- Workstream code (tracked in its own repo / not shared here) -------------
+vota-recsys/
+
 # Local secrets and environment overrides.
 .env
 .env.*
@@ -7,6 +9,9 @@
 *.pem
 *.key
 *.p12
+
+# macOS metadata
+.DS_Store
 
 # Python caches and local test artifacts.
 __pycache__/
@@ -20,27 +25,10 @@ venv/
 coverage.xml
 htmlcov/
 
+# Cache embedding sinh lúc chạy (seed/backend) — dựng lại được từ catalog, ~9 MB/model.
+.embcache/
+
 # Local logs and generated evaluation reports.
 *.log
 src/evaluation/reports/itinerary-agent-metrics.json
 src/evaluation/reports/eval-*.json
-=======
-# --- Workstream code (tracked in its own repo / not shared here) -------------
-vota-recsys/
-
-# --- Secrets -----------------------------------------------------------------
-# .env holds POSTGRES_PASSWORD and a DATABASE_URL with credentials in it.
-.env
-.env.*
-!.env.example
-
-# macOS metadata
-.DS_Store
-
-# Python runtime artifacts
-__pycache__/
-*.py[cod]
-
-# Cache embedding sinh lúc chạy (seed/backend) — dựng lại được từ catalog, ~9 MB/model.
-.embcache/
->>>>>>> origin/release-mvp-v1
