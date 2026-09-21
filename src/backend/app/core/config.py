@@ -1,8 +1,16 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Biến để trống trong .env đến đây là chuỗi rỗng, không phải None. Với các trường optional có
+# `pattern` hoặc `Literal`, chuỗi rỗng làm Settings() ném ValidationError và backend không khởi
+# động nổi — mà .env.example vốn để trống đúng những biến này, nên ai làm theo hướng dẫn
+# "copy .env.example sang .env" đều vấp. Coi rỗng là "không đặt".
+# Chỉ các trường thực sự Optional: trường `str` thường (cdp_service_token, openai_api_key) coi ""
+# là "chưa cấu hình" và vẫn hợp lệ, không được đổi thành None.
+_OPTIONAL_BLANK_IS_NONE = ("itinerary_service_base_url", "itinerary_data_mode")
 
 
 class Settings(BaseSettings):
@@ -41,6 +49,14 @@ class Settings(BaseSettings):
     cdp_timeout_seconds: float = Field(default=2.0, gt=0)
     # Browse events waiting to be sent; beyond this they are dropped and logged.
     cdp_event_queue_size: int = Field(default=1000, ge=1)
+
+
+    @field_validator(*_OPTIONAL_BLANK_IS_NONE, mode="before")
+    @classmethod
+    def _blank_to_none(cls, value):
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
 
 @lru_cache

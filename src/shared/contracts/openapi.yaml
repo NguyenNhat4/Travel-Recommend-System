@@ -31,6 +31,16 @@ paths:
     $ref: ./paths/auth.yaml#/~1auth~1me
   /auth/demo-accounts:
     $ref: ./paths/auth.yaml#/~1auth~1demo-accounts
+  /auth/session:
+    $ref: ./paths/auth.yaml#/~1auth~1session
+  /auth/session/token:
+    $ref: ./paths/auth.yaml#/~1auth~1session~1token
+  /auth/session/revoke:
+    $ref: ./paths/auth.yaml#/~1auth~1session~1revoke
+  /auth/session/mfa/verify:
+    $ref: ./paths/auth.yaml#/~1auth~1session~1mfa~1verify
+  /auth/password:
+    $ref: ./paths/auth.yaml#/~1auth~1password
   /products:
     $ref: ./paths/catalog.yaml#/~1products
   /products/{productId}:
@@ -67,6 +77,13 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+    serviceToken:
+      type: apiKey
+      in: header
+      name: X-Service-Token
+      description: >-
+        Chỉ BFF, seed và job nội bộ. Tối thiểu 32 ký tự. Không bao giờ có trong
+        code frontend, URL hay log (docs/hop-dong-tich-hop-auth.md §14.4).
   parameters:
     XRequestId:
       name: X-Request-ID
@@ -165,6 +182,20 @@ components:
       $ref: ./schemas/auth.yaml#/AuthResponse
     DemoAccountListResponse:
       $ref: ./schemas/auth.yaml#/DemoAccountListResponse
+    SessionState:
+      $ref: ./schemas/auth.yaml#/SessionState
+    SessionRequest:
+      $ref: ./schemas/auth.yaml#/SessionRequest
+    SessionResponse:
+      $ref: ./schemas/auth.yaml#/SessionResponse
+    RefreshRequest:
+      $ref: ./schemas/auth.yaml#/RefreshRequest
+    RevokeRequest:
+      $ref: ./schemas/auth.yaml#/RevokeRequest
+    MfaVerifyRequest:
+      $ref: ./schemas/auth.yaml#/MfaVerifyRequest
+    PasswordChangeRequest:
+      $ref: ./schemas/auth.yaml#/PasswordChangeRequest
     SearchRequest:
       $ref: ./schemas/search.yaml#/SearchRequest
     SearchFacets:

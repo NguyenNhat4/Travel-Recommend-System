@@ -182,15 +182,20 @@ FROM   cdp.products p JOIN catalog.product_meta m USING (product_id);
 --  SCHEMA app — trạng thái của V-OTA (BE · FE · agent)
 -- =====================================================================
 
--- app.users — demo only (handbook §6, §8): email + BCrypt, mỗi user ↔ một cdp_user_id
+-- app.users — credential + persona demo (auth §3.6). Danh tính nghiệp vụ là cdp_user_id, không phải user_id:
+--   mọi thứ của khách (carts, bookings, cdp.events, recommendation) khoá theo cdp_user_id, bảng này chỉ chứng minh quyền dùng nó.
+--   Quan hệ 1–1 và BẤT BIẾN (UNIQUE hai chiều) — đổi cdp_user_id = mất toàn bộ lịch sử, không luồng nào được phép làm.
+--   vota_app KHÔNG ghi được cdp.profiles, nên đăng ký phải qua CdpClient.ensure_profile TRƯỚC rồi mới INSERT ở đây (auth §3.6.3).
 CREATE TABLE app.users (
     user_id        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    email          text NOT NULL UNIQUE,
-    password_hash  text NOT NULL,                                     -- BCrypt
+    email          text NOT NULL UNIQUE,                              -- lưu dạng thường (lower)
+    password_hash  text NOT NULL,                                     -- Argon2id, chuỗi PHC tự mô tả thuật toán (auth §8.1).
+                                                                      -- bcrypt của user seed vẫn kiểm được và được rehash ngay khi đăng nhập (auth §8.2).
     display_name   text NOT NULL,
     cdp_user_id    text NOT NULL UNIQUE REFERENCES cdp.profiles (cdp_user_id),
     persona        text CHECK (persona IN ('P1_frequent','P2_first_time','P3_dormant','P4_no_history')),  -- tài khoản seed cho demo
     created_at     timestamptz NOT NULL DEFAULT now(),
+    email_verified_at timestamptz,                                    -- NULL = chưa xác minh; chặn checkout, không chặn đăng nhập (auth §11.1)
     last_login_at  timestamptz
 );
 
@@ -325,6 +330,47 @@ CREATE TABLE app.search_logs (
 CREATE INDEX search_logs_user_idx ON app.search_logs (cdp_user_id, created_at DESC);
 
 -- =====================================================================
+--  Auth — hybrid session (docs/hop-dong-tich-hop-auth.md §16.2).
+--  Redis giữ phần phù du (session, rate-limit counter, OAuth state); hai bảng dưới giữ phần BỀN:
+--  thu hồi được kể cả khi Redis trống, và còn bằng chứng khi điều tra.
+-- =====================================================================
+
+-- app.refresh_tokens — chuỗi rotation một-lần-dùng (auth §10.4).
+--   Token bị dùng lại sau khi đã xoay = dấu hiệu bị đánh cắp → thu hồi cả family, không chỉ một dòng.
+CREATE TABLE app.refresh_tokens (
+    token_id       uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id        uuid NOT NULL REFERENCES app.users (user_id) ON DELETE CASCADE,
+    family_id      uuid NOT NULL,                                     -- cả chuỗi rotation; đơn vị thu hồi khi phát hiện tái dùng
+    token_hash     text NOT NULL UNIQUE,                              -- SHA-256 của chuỗi đục; KHÔNG bao giờ lưu bản rõ
+    session_id     text NOT NULL,                                     -- sid ràng buộc; refresh bằng token của phiên khác bị từ chối
+    issued_at      timestamptz NOT NULL DEFAULT now(),
+    expires_at     timestamptz NOT NULL,
+    rotated_at     timestamptz,                                       -- NULL = còn dùng được
+    revoked_at     timestamptz,
+    revoked_reason text CHECK (revoked_reason IN ('logout','rotation','reuse_detected','password_change','mfa_change','admin')),
+    CONSTRAINT refresh_tokens_window CHECK (expires_at > issued_at)
+);
+CREATE INDEX refresh_tokens_user_idx   ON app.refresh_tokens (user_id) WHERE revoked_at IS NULL;
+CREATE INDEX refresh_tokens_family_idx ON app.refresh_tokens (family_id);
+
+-- app.login_attempts — bằng chứng bền để điều tra; rate limit thời gian thực vẫn chạy trên Redis (auth §9).
+--   Không lưu email thô: email_hash = sha256(lower(email)). user_id NULL = email không tồn tại.
+CREATE TABLE app.login_attempts (
+    attempt_id      bigserial PRIMARY KEY,
+    email_hash      text NOT NULL,
+    user_id         uuid REFERENCES app.users (user_id) ON DELETE SET NULL,
+    ip_prefix       text NOT NULL,                                    -- /24 (IPv4) hoặc /48 (IPv6), không lưu IP đầy đủ
+    user_agent_hash text,
+    succeeded       boolean NOT NULL,
+    failure_reason  text CHECK (failure_reason IN ('bad_password','unknown_email','locked','mfa_failed','captcha_failed')),
+    attempted_at    timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT login_attempts_reason CHECK (succeeded = (failure_reason IS NULL))
+);
+CREATE INDEX login_attempts_email_idx ON app.login_attempts (email_hash, attempted_at DESC);
+CREATE INDEX login_attempts_ip_idx    ON app.login_attempts (ip_prefix, attempted_at DESC);
+
+
+-- =====================================================================
 --  Quyền — ranh giới "CdpClient là cửa duy nhất vào CDP" (handbook §6) ép bằng role, không bằng database riêng.
 --    cdp_reader : đọc cdp.* — dùng cho job/eval chỉ đọc.
 --    cdp_writer : LocalCdpClient của backend dùng MỘT connection riêng (CDP_DATABASE_URL) với role này:
@@ -354,3 +400,18 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA app TO vota_app;
 -- cdp_reader/cdp_writer KHÔNG có USAGE trên catalog/app; vota_app KHÔNG có quyền gì trên cdp.events/cdp.profiles.
 -- Login role cho .env (tạo ngoài file này, ví dụ db/init/03_roles_dev.sql):
 --   CREATE ROLE vota_app_login LOGIN PASSWORD '…' IN ROLE vota_app;  CREATE ROLE cdp_client_login LOGIN PASSWORD '…' IN ROLE cdp_writer;
+
+-- =====================================================================
+--  Theo dõi migration (db/migrations/README.md).
+--  File này chỉ chạy một lần, lúc initdb trên volume rỗng. Database đã có dữ liệu — máy dev đã seed,
+--  hay Postgres cloud làm staging — nhận thay đổi schema qua `make db-migrate`.
+--  Hai đường phải cho ra cùng một schema; mọi migration đều idempotent nên chạy trên database mới
+--  cũng an toàn (no-op, chỉ ghi nhận đã áp).
+--  Đặt SAU khối GRANT một cách có chủ ý: vota_app KHÔNG được sửa lịch sử migration của chính nó.
+-- =====================================================================
+CREATE TABLE app.schema_migrations (
+    version    text PRIMARY KEY,                                      -- 4 chữ số đầu tên file, ví dụ '0001'
+    checksum   text NOT NULL,                                         -- sha256 của file; đổi sau khi áp = runner báo lỗi
+    applied_at timestamptz NOT NULL DEFAULT now(),
+    applied_by text NOT NULL
+);

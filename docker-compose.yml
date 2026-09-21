@@ -4,6 +4,9 @@
 #   vota    — schema cdp · catalog · app (db/init/01_vota.sql)
 #   insider — storage của Insider clone   (db/init/00_create_insider.sql, 02_insider.sql)
 #
+# Và một Redis giữ state phiên của auth (docs/hop-dong-tich-hop-auth.md §16.1):
+#   docker compose up -d --wait postgres redis
+#
 # db/init/*.sql chỉ chạy khi volume pgdata còn trống. Tạo lại từ đầu: docker compose down -v && docker compose up -d --wait postgres
 services:
   postgres:
@@ -12,7 +15,9 @@ services:
       POSTGRES_DB: vota
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-    ports: ["5432:5432"]
+    # Cổng host đổi được khi máy đã có Postgres khác giữ 5432:
+    #   POSTGRES_HOST_PORT=5433 docker compose up -d --wait postgres
+    ports: ["127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"]
     volumes:
       # 00 tạo db insider · 01 schema vota + role · 02 schema insider · 03 login role cho dev
       - ./db/init:/docker-entrypoint-initdb.d:ro
@@ -23,5 +28,23 @@ services:
       timeout: 5s
       retries: 20
       start_period: 10s
+  # Redis — session, rate-limit counter, OAuth state (auth §16.1). Chỉ phần PHÙ DU:
+  # mất khi restart thì người dùng chỉ phải đăng nhập lại. Refresh token và login attempts nằm ở Postgres.
+  redis:
+    image: redis:7-alpine
+    # noeviction, KHÔNG allkeys-lru: eviction theo LRU sẽ ngẫu nhiên đá người dùng ra khi bộ nhớ đầy.
+    command: >-
+      redis-server --requirepass devpass
+                   --maxmemory 256mb
+                   --maxmemory-policy noeviction
+                   --appendonly no
+    ports: ["127.0.0.1:${REDIS_HOST_PORT:-6379}:6379"]   # chỉ loopback, không mở ra mạng ngoài
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a devpass ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 3s
+
 volumes:
   pgdata:

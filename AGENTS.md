@@ -27,7 +27,7 @@ Trước khi viết hoặc sửa code cho **feature mới, endpoint mới, modul
 | CDP clone, `CdpClient`, ghi hành vi người dùng | mục 6 bên dưới, `docs/spec/hop-dong-tich-hop-cdp.md`, `src/cdp_clone/README.md`, `src/shared/contracts/cdp-clone.openapi.yaml` |
 | Mock / fixture (`src/shared/mocks`) | `src/shared/README.md`, `src/shared/mocks/index.json`, schema response tương ứng |
 | Data collection (`src/data_collection`) | `src/data_collection/README.md`, `src/data_collection/docs/SCHEMA.md` |
-| Database: schema, DDL, loader, seed, `db/` | mục 6 bên dưới, `docs/DATABASE_SCHEMA.md`, `docs/PRODUCT_SCHEMA.md`, `db/vota_schema.sql`, `db/insider_schema.sql` |
+| Database: schema, DDL, loader, seed, `db/` | mục 6 bên dưới, `docs/DATABASE_SCHEMA.md`, `docs/PRODUCT_SCHEMA.md`, `db/vota_schema.sql`, `db/insider_schema.sql`, `db/migrations/README.md` |
 | Mock data tuần 1 (`src/data_collection/seed`) | mục 6 bên dưới, `docs/MOCK_DATA_SPEC.md`, `src/data_collection/docs/SCHEMA.md`, `db/verify.sql`, `db/verify_insider.sql` |
 | Evaluation (`src/evaluation`) | `src/evaluation/README.md`, `docs/spec/recsys-internship-handbook-v3-vi.md` |
 | Insider clone (`src/insider_clone`) | `src/insider_clone/README.md`, `docs/spec/recsys-internship-handbook-v3-vi.md` (phần Insider) |
@@ -90,8 +90,8 @@ Thiếu entry lịch sử thì thay đổi được coi là **chưa hoàn thành
 ## 6. Database — quy tắc cho mọi thay đổi (đọc trước khi chạm vào schema, loader, CdpClient)
 
 Nguồn sự thật: `docs/DATABASE_SCHEMA.md` (toàn hệ thống + DDL), `docs/PRODUCT_SCHEMA.md` (catalog sản phẩm), `docs/MOCK_DATA_SPEC.md` (cách tạo bảng + mock data tuần 1).
-DDL chạy được: `db/vota_schema.sql`, `db/insider_schema.sql`; bản initdb cho docker-compose ở `db/init/`.
-Sửa schema = sửa file .sql **và** cập nhật doc tương ứng trong cùng commit.
+DDL chạy được: `db/vota_schema.sql`, `db/insider_schema.sql`; bản initdb cho docker-compose ở `db/init/`; migration cho database đã có dữ liệu ở `db/migrations/` (đọc `db/migrations/README.md`).
+Sửa schema = sửa file .sql, **thêm migration idempotent tương ứng** và cập nhật doc — cả ba trong cùng commit. Thiếu file .sql thì máy mới thiếu bảng; thiếu migration thì máy đang chạy thiếu bảng.
 
 ### 6.1. Ranh giới
 
@@ -117,7 +117,7 @@ Sửa schema = sửa file .sql **và** cập nhật doc tương ứng trong cùn
 ### 6.3. Môi trường database
 
 - Dev: mỗi người một Postgres local qua `make demo-db` (hoặc compose + seed thủ công) → ai cũng dùng snapshot catalog có checksum và không ai giẫm lên ai. Không dùng chung một DB để dev; `make demo-db-reset` chỉ dùng khi chủ động xoá state demo local.
-- Một Postgres cloud (có pgvector) làm **staging** chung: FE/agent/demo trỏ vào; chỉ job seed (CI hoặc một người) được `--reset` nó; tạo schema bằng `psql -f db/init/*.sql` vì cloud không chạy initdb.
+- Một Postgres cloud (có pgvector) làm **staging** chung: FE/agent/demo trỏ vào; chỉ job seed (CI hoặc một người) được `--reset` nó; tạo schema lần đầu bằng `psql -f db/init/*.sql` vì cloud không chạy initdb, và mọi thay đổi schema **sau đó** bằng `python db/migrations/run.py --database-url <dsn staging>` — không chạy lại `db/init/` trên database đã có dữ liệu.
 
 ### 6.4. Còn chờ chốt
 
@@ -126,7 +126,7 @@ Sửa schema = sửa file .sql **và** cập nhật doc tương ứng trong cùn
 ### 6.5. Nhiệm vụ tuần 1 — tạo bảng và mock data (spec đầy đủ: `docs/MOCK_DATA_SPEC.md`)
 
 Thứ tự, mỗi bước là một module trong `src/data_collection/seed/`, chạy chung từ `src/` qua `python -m data_collection.seed --as-of YYYY-MM-DD --seed 42 [--reset]`:
-1. Tạo bảng: `docker compose up -d --wait postgres` chạy `db/init/*.sql` (vota + insider). Không tạo bảng bằng ORM/migration khác.
+1. Tạo bảng: `docker compose up -d --wait postgres` chạy `db/init/*.sql` (vota + insider). Không tạo bảng bằng ORM (SQLAlchemy, Alembic, Prisma...) — DDL viết tay trong `db/` là nguồn duy nhất. Database **đã có dữ liệu** nhận thay đổi schema qua `make db-migrate` (`db/migrations/README.md`), vì `db/init/*.sql` chỉ chạy lúc initdb trên volume rỗng.
 2. Ưu tiên `data/products.jsonl` khi Data đang phát triển local; bản clone sạch tự dùng snapshot nén có version trong `src/data_collection/snapshots/`. Snapshot được kiểm checksum, bung vào `data/` ignored và kèm mapping combo đã duyệt. Chỉ sinh `products.synthetic.jsonl` khi cả runtime catalog lẫn snapshot đều không có.
 3. `load_products.py` — `products.jsonl` → `cdp.products`; cửa sổ 30 ngày theo `as_of`, `attributes.availability`, combo attrs.
 4. `parse_combos.py` — description → `catalog.combo_items` (source/confidence/evidence).

@@ -127,7 +127,7 @@ erDiagram
 
 ## 4. ERD — schema `app` (BE · FE · agent)
 
-Mọi bảng móc vào `cdp.profiles` qua `cdp_user_id` — danh tính duy nhất của khách; `app.users` chỉ là credential + persona demo. CDP không có bảng booking, nên đơn nối sang `cdp.events` bằng `event_group_id` (trường CDP thật có) — mỗi dòng `booking_items` ứng với đúng một event `purchase` cùng `event_group_id`, `product_id`, `using_date`; không có FK tới `events.event_id` vì đó là id nội bộ của clone. `conversations` + `conversation_messages` + `itineraries` là toàn bộ trạng thái agent (intent chuẩn hoá, TTL 24h, plan JSON theo UX spec §6.4, `product_ids` để kiểm tra grounding). `search_logs` tồn tại vì UserEvent `search` của CDP không có chỗ chứa câu truy vấn.
+Mọi bảng móc vào `cdp.profiles` qua `cdp_user_id` — danh tính duy nhất của khách; `app.users` chỉ là credential + persona demo. CDP không có bảng booking, nên đơn nối sang `cdp.events` bằng `event_group_id` (trường CDP thật có) — mỗi dòng `booking_items` ứng với đúng một event `purchase` cùng `event_group_id`, `product_id`, `using_date`; không có FK tới `events.event_id` vì đó là id nội bộ của clone. `conversations` + `conversation_messages` + `itineraries` là toàn bộ trạng thái agent (intent chuẩn hoá, TTL 24h, plan JSON theo UX spec §6.4, `product_ids` để kiểm tra grounding). `search_logs` tồn tại vì UserEvent `search` của CDP không có chỗ chứa câu truy vấn. `refresh_tokens` và `login_attempts` là phần **bền** của auth hybrid (`docs/hop-dong-tich-hop-auth.md` §16.2): session, bộ đếm rate limit và OAuth state nằm ở Redis vì mất đi thì người dùng chỉ phải đăng nhập lại, còn hai bảng này phải thu hồi được kể cả khi Redis trống.
 
 ```mermaid
 erDiagram
@@ -143,12 +143,33 @@ erDiagram
     users {
         uuid user_id PK
         text email UK
-        text password_hash "BCrypt"
+        text password_hash "Argon2id (PHC); bcrypt seed được rehash khi đăng nhập"
         text display_name
         text cdp_user_id UK,FK "→ cdp.profiles"
         text persona "P1_frequent · P2_first_time · P3_dormant · P4_no_history"
         timestamptz created_at
+        timestamptz email_verified_at "NULL = chưa xác minh; chặn checkout, không chặn đăng nhập"
         timestamptz last_login_at
+    }
+    refresh_tokens {
+        uuid token_id PK
+        uuid user_id FK
+        uuid family_id "đơn vị thu hồi khi phát hiện tái dùng"
+        text token_hash UK "SHA-256, không lưu bản rõ"
+        text session_id "sid ràng buộc"
+        timestamptz expires_at
+        timestamptz rotated_at "NULL = còn dùng được"
+        timestamptz revoked_at
+        text revoked_reason
+    }
+    login_attempts {
+        bigserial attempt_id PK
+        text email_hash "sha256(lower(email))"
+        uuid user_id FK "NULL = email không tồn tại"
+        text ip_prefix "/24 hoặc /48"
+        boolean succeeded
+        text failure_reason
+        timestamptz attempted_at
     }
     carts {
         uuid cart_id PK
@@ -363,6 +384,8 @@ erDiagram
 | `conversations`, `conversation_messages`, `itineraries` | app | Trạng thái agent, TTL 24h | backend | 0 |
 | `recommendation_logs` | app | Mỗi lần gọi /recommendations | backend · batch | 0 |
 | `search_logs` | app | Câu truy vấn thật + kết quả; không nối id với event | backend | 0 |
+| `refresh_tokens` | app | Chuỗi rotation một-lần-dùng; tái dùng → thu hồi cả family | backend (auth) | 0 |
+| `login_attempts` | app | Bằng chứng bền cho điều tra; rate limit realtime ở Redis | backend (auth) | 0 |
 | `partners` | insider | partner_name lowercase + request_token | seed | 1 |
 | `insider_profiles`, `identifiers` | insider | Bản sao attribute (tập con) + map id có lịch sử | upsert · seed | 2.000 · 6.000 |
 | `insider_events`, `live_events` | insider | Event TTL 90/730 | upsert · seed | 90 ngày gần nhất |
@@ -372,7 +395,7 @@ erDiagram
 
 Handbook §6: random data makes a broken recommender look fine. Mục tiêu của mock data là baseline most-popular-in-destination *khó nhưng thắng được*.
 
-**Thứ tự nạp:** (1) `cdp.products` ← `products.jsonl`, loader gán thêm `attributes.nights` / `priceBasis` / `minPax` cho combo; (2) `catalog.combo_items` ← `parse_combos`; (3) `cdp.profiles` + `cdp.events` ← `seed_histories.py`, số liệu sinh ra in vào `data-collection/README.md`; (4) `app.users` 4 persona + 50 test (BCrypt cùng mật khẩu demo), `app.bookings` chỉ cho persona có chuyến sắp tới; (5) `catalog.product_vectors` ← `embed_products` cho `is_search_unit = true`, gợi ý chỉ lấy `is_recommendable = true`; (5b) lịch 30 ngày: mỗi `hotel_room` một chuỗi `attributes.availability.calendar` 30 ký tự từ ngày crawl, kín 25–40% theo cụm 1–4 đêm, cuối tuần và Vinpearl kín nhiều hơn; attraction chỉ blackout ngày lễ; flight không có; combo theo phòng thành phần; `available_from/to` của mọi sản phẩm = cửa sổ `[as_of, as_of + 29]` cắt với khoảng của nguồn; loader `--as-of`, chạy lại trước demo; (6) `insider`: `partners` → `insider_profiles` + `identifiers` → `insider_events` (bản sao 90 ngày + purchase 730) → `channel_events`; (7) sanity check: baseline không gần 0 và không bất khả chiến bại; mỗi chuyến một destination; 4 persona mở Home đúng section (UX spec §4.1.3).
+**Thứ tự nạp:** (1) `cdp.products` ← `products.jsonl`, loader gán thêm `attributes.nights` / `priceBasis` / `minPax` cho combo; (2) `catalog.combo_items` ← `parse_combos`; (3) `cdp.profiles` + `cdp.events` ← `seed_histories.py`, số liệu sinh ra in vào `data-collection/README.md`; (4) `app.users` 4 persona + 50 test — `seed_histories` ghi hash BCrypt dùng chung, sau đó `seed_auth` đặt lại 4 persona bằng **Argon2id** với mật khẩu riêng từng tài khoản để test login thật (auth §8.2), `app.bookings` chỉ cho persona có chuyến sắp tới; (5) `catalog.product_vectors` ← `embed_products` cho `is_search_unit = true`, gợi ý chỉ lấy `is_recommendable = true`; (5b) lịch 30 ngày: mỗi `hotel_room` một chuỗi `attributes.availability.calendar` 30 ký tự từ ngày crawl, kín 25–40% theo cụm 1–4 đêm, cuối tuần và Vinpearl kín nhiều hơn; attraction chỉ blackout ngày lễ; flight không có; combo theo phòng thành phần; `available_from/to` của mọi sản phẩm = cửa sổ `[as_of, as_of + 29]` cắt với khoảng của nguồn; loader `--as-of`, chạy lại trước demo; (6) `insider`: `partners` → `insider_profiles` + `identifiers` → `insider_events` (bản sao 90 ngày + purchase 730) → `channel_events`; (7) sanity check: baseline không gần 0 và không bất khả chiến bại; mỗi chuyến một destination; 4 persona mở Home đúng section (UX spec §4.1.3).
 
 | Quy tắc | Đề xuất |
 |---|---|
@@ -436,6 +459,8 @@ UPDATE cdp.products SET
 - **LLM provider và spend limit** (handbook §17.1) — `itineraries.model_version` cần tên model thật từ tuần 4.
 
 ## 11. DDL — `vota_schema.sql`
+
+> Khối dưới là bản sinh lại từ `db/vota_schema.sql` (byte-for-byte). Nó dựng **database mới**. Database đã có dữ liệu — máy dev đã seed, hay Postgres cloud làm staging — nhận thay đổi qua `db/migrations/` (`make db-migrate`); hai đường phải cho ra cùng một schema.
 
 ```sql
 -- =====================================================================
@@ -622,15 +647,20 @@ FROM   cdp.products p JOIN catalog.product_meta m USING (product_id);
 --  SCHEMA app — trạng thái của V-OTA (BE · FE · agent)
 -- =====================================================================
 
--- app.users — demo only (handbook §6, §8): email + BCrypt, mỗi user ↔ một cdp_user_id
+-- app.users — credential + persona demo (auth §3.6). Danh tính nghiệp vụ là cdp_user_id, không phải user_id:
+--   mọi thứ của khách (carts, bookings, cdp.events, recommendation) khoá theo cdp_user_id, bảng này chỉ chứng minh quyền dùng nó.
+--   Quan hệ 1–1 và BẤT BIẾN (UNIQUE hai chiều) — đổi cdp_user_id = mất toàn bộ lịch sử, không luồng nào được phép làm.
+--   vota_app KHÔNG ghi được cdp.profiles, nên đăng ký phải qua CdpClient.ensure_profile TRƯỚC rồi mới INSERT ở đây (auth §3.6.3).
 CREATE TABLE app.users (
     user_id        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    email          text NOT NULL UNIQUE,
-    password_hash  text NOT NULL,                                     -- BCrypt
+    email          text NOT NULL UNIQUE,                              -- lưu dạng thường (lower)
+    password_hash  text NOT NULL,                                     -- Argon2id, chuỗi PHC tự mô tả thuật toán (auth §8.1).
+                                                                      -- bcrypt của user seed vẫn kiểm được và được rehash ngay khi đăng nhập (auth §8.2).
     display_name   text NOT NULL,
     cdp_user_id    text NOT NULL UNIQUE REFERENCES cdp.profiles (cdp_user_id),
     persona        text CHECK (persona IN ('P1_frequent','P2_first_time','P3_dormant','P4_no_history')),  -- tài khoản seed cho demo
     created_at     timestamptz NOT NULL DEFAULT now(),
+    email_verified_at timestamptz,                                    -- NULL = chưa xác minh; chặn checkout, không chặn đăng nhập (auth §11.1)
     last_login_at  timestamptz
 );
 
@@ -763,6 +793,47 @@ CREATE TABLE app.search_logs (
     created_at          timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX search_logs_user_idx ON app.search_logs (cdp_user_id, created_at DESC);
+
+-- =====================================================================
+--  Auth — hybrid session (docs/hop-dong-tich-hop-auth.md §16.2).
+--  Redis giữ phần phù du (session, rate-limit counter, OAuth state); hai bảng dưới giữ phần BỀN:
+--  thu hồi được kể cả khi Redis trống, và còn bằng chứng khi điều tra.
+-- =====================================================================
+
+-- app.refresh_tokens — chuỗi rotation một-lần-dùng (auth §10.4).
+--   Token bị dùng lại sau khi đã xoay = dấu hiệu bị đánh cắp → thu hồi cả family, không chỉ một dòng.
+CREATE TABLE app.refresh_tokens (
+    token_id       uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id        uuid NOT NULL REFERENCES app.users (user_id) ON DELETE CASCADE,
+    family_id      uuid NOT NULL,                                     -- cả chuỗi rotation; đơn vị thu hồi khi phát hiện tái dùng
+    token_hash     text NOT NULL UNIQUE,                              -- SHA-256 của chuỗi đục; KHÔNG bao giờ lưu bản rõ
+    session_id     text NOT NULL,                                     -- sid ràng buộc; refresh bằng token của phiên khác bị từ chối
+    issued_at      timestamptz NOT NULL DEFAULT now(),
+    expires_at     timestamptz NOT NULL,
+    rotated_at     timestamptz,                                       -- NULL = còn dùng được
+    revoked_at     timestamptz,
+    revoked_reason text CHECK (revoked_reason IN ('logout','rotation','reuse_detected','password_change','mfa_change','admin')),
+    CONSTRAINT refresh_tokens_window CHECK (expires_at > issued_at)
+);
+CREATE INDEX refresh_tokens_user_idx   ON app.refresh_tokens (user_id) WHERE revoked_at IS NULL;
+CREATE INDEX refresh_tokens_family_idx ON app.refresh_tokens (family_id);
+
+-- app.login_attempts — bằng chứng bền để điều tra; rate limit thời gian thực vẫn chạy trên Redis (auth §9).
+--   Không lưu email thô: email_hash = sha256(lower(email)). user_id NULL = email không tồn tại.
+CREATE TABLE app.login_attempts (
+    attempt_id      bigserial PRIMARY KEY,
+    email_hash      text NOT NULL,
+    user_id         uuid REFERENCES app.users (user_id) ON DELETE SET NULL,
+    ip_prefix       text NOT NULL,                                    -- /24 (IPv4) hoặc /48 (IPv6), không lưu IP đầy đủ
+    user_agent_hash text,
+    succeeded       boolean NOT NULL,
+    failure_reason  text CHECK (failure_reason IN ('bad_password','unknown_email','locked','mfa_failed','captcha_failed')),
+    attempted_at    timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT login_attempts_reason CHECK (succeeded = (failure_reason IS NULL))
+);
+CREATE INDEX login_attempts_email_idx ON app.login_attempts (email_hash, attempted_at DESC);
+CREATE INDEX login_attempts_ip_idx    ON app.login_attempts (ip_prefix, attempted_at DESC);
+
 
 -- =====================================================================
 --  Quyền — ranh giới "CdpClient là cửa duy nhất vào CDP" (handbook §6) ép bằng role, không bằng database riêng.

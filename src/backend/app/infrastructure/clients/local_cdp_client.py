@@ -159,6 +159,30 @@ class LocalCdpClient:
             raise CdpUnavailableError(f"Local CDP profile read failed: {type(exc).__name__}") from exc
         return _to_profile(row) if row else None
 
+    async def ensure_profile(self, cdp_user_id: str, *, home_city: str | None = None) -> None:
+        """Tạo hồ sơ rỗng cho tài khoản mới đăng ký (auth §3.6.3 bước ③).
+
+        ON CONFLICT DO NOTHING để idempotent: caller thử lại sau lỗi mạng không bị 409, và chạy
+        lại seed không đè hồ sơ đã có. Mọi cột khác lấy DEFAULT của DDL — tài khoản mới có 0 event
+        nên lifecycle_stage='new', purchased_verticals='{}', và /recommendations trả coldStart=true.
+
+        cdp_writer có INSERT/UPDATE trên cdp.profiles nhưng KHÔNG có DELETE, nên hồ sơ tạo ở đây
+        không rút lại được. Đó là lý do use case để hồ sơ mồ côi lại và chỉ ghi log khi bước ④ hỏng.
+        """
+        try:
+            async with await psycopg.AsyncConnection.connect(self._database_url) as conn:
+                await conn.execute(
+                    """
+                    INSERT INTO cdp.profiles (cdp_user_id, home_city)
+                    VALUES (%s, %s)
+                    ON CONFLICT (cdp_user_id) DO NOTHING
+                    """,
+                    (cdp_user_id, home_city),
+                )
+                await conn.commit()
+        except (psycopg.Error, OSError) as exc:
+            raise CdpUnavailableError(f"Local CDP profile create failed: {type(exc).__name__}") from exc
+
 
 def _to_event(row: dict) -> UserEvent:
     return UserEvent(
