@@ -1,7 +1,7 @@
 # Gộp nhánh: giữ engine RecSys, chạy nó trên PostgreSQL đã seed
 
 - Ngày: 2026-09-21
-- Tác giả: Nguyễn Hải Sơn / Claude Code
+- Tác giả: Quang anh / Claude Code
 - Nhánh: mockdata
 - Trạng thái: hoàn thành
 - Phạm vi: backend, data, cdp, docs
