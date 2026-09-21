@@ -1,55 +1,39 @@
+"""Composition root — nơi duy nhất nối infrastructure vào use case (ARCHITECTURE.md §5)."""
+from __future__ import annotations
+
 from contextlib import asynccontextmanager
 
-import httpx
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 
-from src.backend.app.api.router import api_router
-from src.backend.app.core.config import get_settings
-from src.backend.app.core.request_context import install_request_id
-from src.backend.app.infrastructure.clients.cdp_event_dispatcher import BackgroundCdpEventRecorder
-from src.backend.app.infrastructure.clients.cdp_http_client import CdpHttpClient
+from app.api.v1.routes import recommendations, search
+from app.application.recommendation import BuildPopularity, RecommendForUser
+from app.application.search import SearchProducts, SimilarProducts
+from app.core.settings import settings
+from app.infrastructure.cdp.local_cdp_client import LocalCdpClient
+from app.infrastructure.embeddings.sentence_transformers_embedder import SentenceTransformersEmbedder
+from app.infrastructure.vectors.in_memory_store import InMemoryVectorStore
+
+
+def build_services(embedder=None, cdp=None):
+    embedder = embedder or SentenceTransformersEmbedder(settings.embed_model)
+    index = InMemoryVectorStore(settings.products_path, embedder, settings.embed_cache_dir).load()
+    cdp = cdp or LocalCdpClient(settings.events_path)
+    popularity = BuildPopularity(index, cdp)()
+    return {
+        "index": index,
+        "search": SearchProducts(index, embedder, cutoff=settings.search_cutoff, max_limit=settings.search_max_limit),
+        "similar": SimilarProducts(index),
+        "recommend": RecommendForUser(index, cdp, popularity, candidate_k=settings.recommend_candidate_k),
+    }
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    settings = get_settings()
-    print(f"Starting {settings.app_name} in {settings.app_env} mode")
-    async with httpx.AsyncClient(base_url=settings.cdp_base_url, timeout=settings.cdp_timeout_seconds) as cdp_http:
-        # Use cases receive these through dependencies; nothing else talks to the CDP.
-        app.state.cdp_client = CdpHttpClient(cdp_http, settings.cdp_service_token)
-        app.state.browse_event_recorder = BackgroundCdpEventRecorder(
-            app.state.cdp_client, max_queue=settings.cdp_event_queue_size
-        )
-        app.state.browse_event_recorder.start()
-        try:
-            yield
-        finally:
-            await app.state.browse_event_recorder.stop()
-    print("Shutting down...")
+    for k, v in build_services().items():
+        setattr(app.state, k, v)
+    yield
 
 
-settings = get_settings()
-app = FastAPI(
-    title=settings.app_name,
-    description="Travel recommendation and itinerary API",
-    version="1.0.0",
-    lifespan=lifespan,
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins.split(","),
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["X-Request-ID"],
-)
-install_request_id(app)
-
-app.include_router(api_router, prefix="/api/v1")
-
-
-@app.get("/health")
-async def health():
-    return {"status": "ok", "env": settings.app_env}
+app = FastAPI(title="V-OTA backend", lifespan=lifespan)
+app.include_router(search.router)
+app.include_router(recommendations.router)
