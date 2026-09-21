@@ -19,7 +19,8 @@
         "nearCenter": true,
         "pool": true
       },
-      "score": 0.83
+      "score": 0.83,
+      "priceUnit": "PER_NIGHT"
     },
     {
       "productId": "pq-h-01",
@@ -40,7 +41,8 @@
         "spa": true,
         "freeBreakfast": true
       },
-      "score": 0.71
+      "score": 0.71,
+      "priceUnit": "PER_NIGHT"
     }
   ],
   "requestId": "sim-01JXYZ"

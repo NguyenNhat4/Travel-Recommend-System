@@ -19,5 +19,6 @@
     "familyFriendly": true
   },
   "description": "Khu nghỉ dưỡng 5 sao trên đảo Hòn Tre với bãi biển riêng, hồ bơi trẻ em và lối đi thẳng tới VinWonders.",
-  "sourceRef": "vinpearl:HTNHA001"
+  "sourceRef": "vinpearl:HTNHA001",
+  "priceUnit": "PER_NIGHT"
 }

@@ -39,7 +39,8 @@
           "privateBeach": true,
           "kidsPool": true,
           "familyFriendly": true
-        }
+        },
+        "priceUnit": "PER_NIGHT"
       },
       {
         "productId": "nt-h-02",
@@ -58,7 +59,8 @@
           "starRating": 5,
           "nearCenter": true,
           "pool": true
-        }
+        },
+        "priceUnit": "PER_NIGHT"
       }
     ],
     "attraction": [
@@ -79,7 +81,8 @@
           "outdoor": true,
           "waterPark": true,
           "familyFriendly": true
-        }
+        },
+        "priceUnit": "PER_PERSON"
       }
     ],
     "combo": [
@@ -100,7 +103,8 @@
           "show": true,
           "buffet": true,
           "indoor": true
-        }
+        },
+        "priceUnit": "PER_PACKAGE"
       }
     ]
   },

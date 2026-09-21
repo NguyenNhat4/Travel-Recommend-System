@@ -10,7 +10,7 @@ sách đầy đủ. Bản ghi thật để đọc và chạy thử: **`sample/`*
 
 ## 1. Nguyên tắc
 
-- Mỗi dòng của `products.jsonl` là **một sản phẩm**, gồm **đúng 13 trường** của CDP V-OTA theo §6 handbook.
+- Mỗi dòng của `products.jsonl` là **một sản phẩm**, gồm **đúng 14 trường** của CDP V-OTA theo §6 handbook (13 trường gốc cộng `priceUnit` mà ProductSummary yêu cầu).
 - Mọi thông tin khác nằm trong `attributes`. Cố ý như vậy: thêm field cấp cao nhất mà CDP thật không có
   sẽ thành cái bẫy cho người tích hợp về sau.
 - `products.csv` là cùng dữ liệu ở dạng bảng, chỉ để mở xem. **Khi viết code, đọc `products.jsonl`.**
@@ -21,7 +21,7 @@ import json
 products = [json.loads(line) for line in open("products.jsonl", encoding="utf-8")]
 ```
 
-## 2. Mười ba trường cấp cao nhất
+## 2. Mười bốn trường cấp cao nhất
 
 | Trường | Kiểu | Độ phủ | Ý nghĩa |
 |---|---|---|---|
@@ -33,20 +33,25 @@ products = [json.loads(line) for line in open("products.jsonl", encoding="utf-8"
 | `attributes` | object | 100% | Xem mục 3. Tập khoá thay đổi theo `taxonomy` |
 | `unitPrice` | number \| null | 93,7% | Khách sạn: giá **một đêm**. `null` chỉ còn ở điểm công cộng không bán vé |
 | `currency` | string | 100% | Luôn là `"VND"` |
+| `priceUnit` | enum | 100% | **Suy ra từ `taxonomy`, không phải dữ liệu crawl.** `hotel` → `PER_NIGHT`; `flight`, `attraction`, `golf` → `PER_PERSON`; `combo` → `PER_PACKAGE`; `unitPrice = null` → `UNKNOWN` |
 | `available` | boolean | 100% | Nguồn có trả giá tại thời điểm crawl. **Không phải xác nhận còn chỗ** |
 | `availableFrom` | date \| null | 26% | Vé Vinpearl: ngày bắt đầu bán. Vé máy bay: ngày bay sớm nhất thấy được |
 | `availableTo` | date \| null | 26% | Vé Vinpearl: ngày hết hạn bán. Vé máy bay: ngày bay muộn nhất thấy được |
 | `imageUrl` | URL \| null | 89,0% | Ảnh chính. Ảnh phụ ở `attributes.images`. Chỉ vé máy bay không có ảnh |
 | `sourceRef` | string | 100% | `"<nguồn>:<loại>:<id>"`, ví dụ `vinpearl:tour:VW00466`. Truy ngược về bản ghi gốc |
 
-### Ba chỗ dễ hiểu sai
+### Bốn chỗ dễ hiểu sai
 
 1. **`available = true` không phải là còn phòng.** Nó chỉ nói nguồn có trả giá lúc crawl (15–16/09/2026).
    Luồng đặt chỗ thật phải gọi lại nguồn.
 2. **`unitPrice = null` không phải là miễn phí.** 140 sản phẩm còn `null` đều là điểm công cộng không bán vé
    (`attributes.ticketed = false`) — Phố cổ Hội An, Mỹ Sơn, hòn Thơm. Với chúng, không có giá là dữ liệu đúng.
    Mọi sản phẩm có bán vé đều đã có giá.
-3. **`destination` ≠ `province`.** `destination` là nhãn du lịch dùng để lọc và gợi ý (Hội An, Sa Pa);
+3. **`priceUnit` là quyết định của pipeline, không phải của nguồn.** Không sàn nào trả đơn vị giá, nên
+   `normalise.py` suy ra từ `taxonomy` sau bước dedupe (`price_unit()`). Nó nói `unitPrice` được hiểu theo
+   đơn vị nào, **không** khẳng định điều kiện bán của sản phẩm. Combo là `PER_PACKAGE` kể cả khi nội dung
+   combo tính theo người; số khách và số đêm thật phải kiểm tra lại ở checkout.
+4. **`destination` ≠ `province`.** `destination` là nhãn du lịch dùng để lọc và gợi ý (Hội An, Sa Pa);
    `attributes.province` là đơn vị hành chính (Quảng Nam, Lào Cai).
 
 ## 3. `attributes` theo nhóm

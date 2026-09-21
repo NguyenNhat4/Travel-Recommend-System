@@ -31,7 +31,8 @@
           "daysAgo": 0,
           "contribution": 0.41
         }
-      ]
+      ],
+      "priceUnit": "PER_NIGHT"
     },
     {
       "rank": 2,
@@ -58,7 +59,8 @@
           "daysAgo": 1,
           "contribution": 0.22
         }
-      ]
+      ],
+      "priceUnit": "PER_PACKAGE"
     }
   ],
   "diagnostics": {

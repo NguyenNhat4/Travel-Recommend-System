@@ -3,15 +3,6 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, model_validator
 
 
-class ChatRequest(BaseModel):
-    message: str = Field(..., min_length=1, max_length=5000, description="User message")
-
-
-class ChatResponse(BaseModel):
-    response: str = Field(..., description="Agent response")
-    analysis: str = Field(default="", description="Internal analysis")
-
-
 class ItineraryContext(BaseModel):
     language: Literal["vi", "en"] = "vi"
 

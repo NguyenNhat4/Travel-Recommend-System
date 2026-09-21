@@ -39,7 +39,8 @@
           "privateBeach": true,
           "kidsPool": true,
           "familyFriendly": true
-        }
+        },
+        "priceUnit": "PER_NIGHT"
       },
       "nights": 2,
       "note": "Có hồ bơi trẻ em và bãi biển riêng, gần VinWonders.",
@@ -95,7 +96,8 @@
                 "show": true,
                 "buffet": true,
                 "indoor": true
-              }
+              },
+              "priceUnit": "PER_PACKAGE"
             },
             "note": "Buffet và show nhẹ nhàng, phù hợp trẻ nhỏ.",
             "source": "SEARCH",
@@ -131,7 +133,8 @@
                 "outdoor": true,
                 "waterPark": true,
                 "familyFriendly": true
-              }
+              },
+              "priceUnit": "PER_PERSON"
             },
             "note": "Đi sớm tránh nắng cho trẻ.",
             "source": "SEARCH",
@@ -188,7 +191,8 @@
               "attributes": {
                 "directFlight": true,
                 "baggage": true
-              }
+              },
+              "priceUnit": "PER_PERSON"
             },
             "note": "Chuyến bay chiều về Hà Nội.",
             "source": "RECOMMENDATION",
@@ -233,7 +237,8 @@
           "privateBeach": true,
           "kidsPool": true,
           "familyFriendly": true
-        }
+        },
+        "priceUnit": "PER_NIGHT"
       },
       {
         "productId": "nt-h-02",
@@ -252,7 +257,8 @@
           "starRating": 5,
           "nearCenter": true,
           "pool": true
-        }
+        },
+        "priceUnit": "PER_NIGHT"
       }
     ],
     "attraction": [
@@ -273,7 +279,8 @@
           "outdoor": true,
           "waterPark": true,
           "familyFriendly": true
-        }
+        },
+        "priceUnit": "PER_PERSON"
       }
     ],
     "combo": [
@@ -294,7 +301,8 @@
           "show": true,
           "buffet": true,
           "indoor": true
-        }
+        },
+        "priceUnit": "PER_PACKAGE"
       }
     ],
     "flight": [
@@ -314,7 +322,8 @@
         "attributes": {
           "directFlight": true,
           "baggage": true
-        }
+        },
+        "priceUnit": "PER_PERSON"
       }
     ]
   },
