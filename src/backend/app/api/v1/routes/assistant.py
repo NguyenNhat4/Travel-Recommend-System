@@ -17,7 +17,7 @@ from src.backend.app.agents.tools.itinerary_gateway import ItineraryToolGateway
 from src.backend.app.application.itinerary.contracts import error_response, valid
 from src.backend.app.core.config import get_settings
 from src.backend.app.core.request_context import current_request_id
-from src.backend.app.domain.itinerary.schemas import ChatRequest, ChatResponse, ItineraryRequestModel
+from src.backend.app.domain.itinerary.schemas import ItineraryRequestModel
 
 router = APIRouter(tags=["assistant"])
 logger = logging.getLogger("uvicorn.error")
@@ -199,20 +199,6 @@ async def stream_itinerary(payload: ItineraryRequestModel, request: Request,
     return StreamingResponse(events(), media_type="text/event-stream", headers={
         "Cache-Control": "no-cache", "X-Accel-Buffering": "no",
     })
-
-
-@router.post("/chat", response_model=ChatResponse)
-async def chat(payload: ChatRequest, request: Request, authorization: str | None = Header(default=None)):
-    if len(payload.message) > 1000:
-        return JSONResponse(status_code=422, content=error_response(
-            "VALIDATION_ERROR", "Tin nhắn lịch trình tối đa 1000 ký tự.", current_request_id() or ""
-        ))
-    response = await _run(ItineraryRequestModel(message=payload.message), request, authorization)
-    if response.status_code != 200:
-        return response
-    body = json.loads(response.body)
-    text = body.get("question", body.get("message")) or json.dumps(body["itinerary"], ensure_ascii=False)
-    return ChatResponse(response=text)
 
 
 @router.get("/assistant/status")
