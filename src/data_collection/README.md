@@ -462,8 +462,8 @@ nghỉ và chạy tiếp khi bị chặn (mã thoát 75).
 ### Snapshot seed gần nhất — `2026-09-21`
 
 - Nguồn catalog: `src/data_collection/data/snapshots/2026-09-21/products.jsonl` — SHA-256 `89f452e46eec24ae0fe50769037bc84dbb2609dd9c193a49336108f072acbb18`.
-- Seed `42`: 10,320 products · 2,000 profiles · 7,511 events · 218 combo items.
+- Seed `42`: 10,320 products · 2,000 profiles · 7,131 events · 218 combo items.
 - Search units: 2,897; `catalog.product_vectors`: 0 (đúng kế hoạch: embedding thuộc tuần 2).
-- Insider clone: 2,000 profiles · 4,640 events · 19,587 channel events.
+- Insider clone: 2,000 profiles · 4,155 events · 19,517 channel events.
 - Purchase thiếu `event_group_id` là edge case được sinh có chủ đích khoảng 3%; không xoá purchase.
 <!-- seed-report:end -->
