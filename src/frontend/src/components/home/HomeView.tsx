@@ -12,13 +12,14 @@ import {
   ChevronLeft,
   ChevronRight,
   Star,
-  LayoutGrid,
-  ShieldCheck,
-  Bot,
   Sparkles,
   CheckCircle2,
   HelpCircle,
-  ArrowRight
+  ArrowRight,
+  Calendar,
+  MapPin,
+  Clock,
+  Building2
 } from 'lucide-react';
 import { WhyPopover } from '../common/WhyPopover';
 
@@ -305,19 +306,123 @@ const DESTINATIONS = [
   }
 ];
 
+export interface PopularHotelDestination {
+  name: string;
+  location: string;
+  fullName: string;
+  desc: string;
+  image: string;
+}
+
+const POPULAR_HOTEL_DESTINATIONS: PopularHotelDestination[] = [
+  {
+    name: 'V-OTA Resort & Spa',
+    location: 'tại Nha Trang',
+    fullName: 'V-OTA Resort & Spa tại Nha Trang',
+    desc: 'Đảo Hòn Tre, Nha Trang',
+    image: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?q=80&w=800&auto=format&fit=crop'
+  },
+  {
+    name: 'VinHolidays Fiesta',
+    location: 'tại Phú Quốc',
+    fullName: 'VinHolidays Fiesta tại Phú Quốc',
+    desc: 'Grand World, Bãi Dài, Phú Quốc',
+    image: 'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?q=80&w=800&auto=format&fit=crop'
+  },
+  {
+    name: 'V-OTA Resort & Golf',
+    location: 'tại Nam Hội An',
+    fullName: 'V-OTA Resort & Golf tại Nam Hội An',
+    desc: 'Bình Minh, Thăng Bình, Quảng Nam',
+    image: 'https://images.unsplash.com/photo-1584132967334-10e028bd69f7?q=80&w=800&auto=format&fit=crop'
+  },
+  {
+    name: 'V-OTA Resort & Spa',
+    location: 'tại Hạ Long',
+    fullName: 'V-OTA Resort & Spa tại Hạ Long',
+    desc: 'Đảo Rều, Bãi Cháy, Hạ Long',
+    image: 'https://images.unsplash.com/photo-1578683010236-d716f9a3f461?q=80&w=800&auto=format&fit=crop'
+  },
+  {
+    name: 'V-OTA Resort & Spa',
+    location: 'tại Đà Nẵng',
+    fullName: 'V-OTA Resort & Spa tại Đà Nẵng',
+    desc: 'Bãi biển Non Nước, Đà Nẵng',
+    image: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?q=80&w=800&auto=format&fit=crop'
+  },
+  {
+    name: 'V-OTA Landmark 81',
+    location: 'tại TP. Hồ Chí Minh',
+    fullName: 'V-OTA Landmark 81 tại TP. Hồ Chí Minh',
+    desc: '720A Điện Biên Phủ, Bình Thạnh',
+    image: 'https://images.unsplash.com/photo-1583417319070-4a69db38a482?q=80&w=800&auto=format&fit=crop'
+  }
+];
+
+function getHotelLocationTag(address: string): string {
+  if (address.includes('Nha Trang')) return 'tại Nha Trang';
+  if (address.includes('Phú Quốc')) return 'tại Phú Quốc';
+  if (address.includes('Cửa Lò') || address.includes('Cửa Hội')) return 'tại Cửa Lò';
+  if (address.includes('Hạ Long')) return 'tại Hạ Long';
+  if (address.includes('Hội An')) return 'tại Nam Hội An';
+  if (address.includes('Đà Nẵng')) return 'tại Đà Nẵng';
+  if (address.includes('TP. HCM') || address.includes('Hồ Chí Minh') || address.includes('Cần Giờ')) return 'tại TP. HCM';
+  const parts = address.split(',');
+  return `tại ${parts[parts.length - 1].trim()}`;
+}
+
+// DatePicker helper functions
+function parseDateStr(str: string): Date {
+  const parts = str.split('/');
+  if (parts.length === 3) {
+    const d = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10) - 1;
+    const y = parseInt(parts[2], 10);
+    if (!isNaN(d) && !isNaN(m) && !isNaN(y)) {
+      return new Date(y, m, d);
+    }
+  }
+  return new Date();
+}
+
+function formatDateStr(d: Date): string {
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  return `${day}/${month}/${year}`;
+}
+
+function isSameDate(d1: Date, d2: Date): boolean {
+  return (
+    d1.getFullYear() === d2.getFullYear() &&
+    d1.getMonth() === d2.getMonth() &&
+    d1.getDate() === d2.getDate()
+  );
+}
+
 export const HomeView: React.FC = () => {
   const { currentPersona, activeEvents, navigate, showToast, addToCart } = useTravel();
 
   // Search state
-  const [destinationInput, setDestinationInput] = useState('Nha Trang');
+  const [destinationInput, setDestinationInput] = useState('V-OTA Resort & Spa tại Nha Trang');
   const [checkinDate, setCheckinDate] = useState('18/09/2026');
   const [checkoutDate, setCheckoutDate] = useState('19/09/2026');
+  const [recentSearches, setRecentSearches] = useState<string[]>([
+    'V-OTA Resort & Spa tại Nha Trang',
+    'VinHolidays Fiesta tại Phú Quốc',
+    'V-OTA Resort & Golf tại Nam Hội An'
+  ]);
 
-  // Guest Popover state
-  const [isGuestOpen, setIsGuestOpen] = useState(false);
+  // Search Panel (Separate Tab) state
+  const [activeSearchTab, setActiveSearchTab] = useState<'destination' | 'dates' | 'guests' | null>(null);
+  const [selectingDateType, setSelectingDateType] = useState<'checkin' | 'checkout'>('checkin');
+  const [calendarViewDate, setCalendarViewDate] = useState(() => parseDateStr('18/09/2026'));
+  const [hoveredDate, setHoveredDate] = useState<Date | null>(null);
+  const searchBarContainerRef = useRef<HTMLDivElement>(null);
+
+  // Rooms & Guests state
   const [rooms, setRooms] = useState(1);
   const [adults, setAdults] = useState(2);
-  const guestDropdownRef = useRef<HTMLDivElement>(null);
 
   // Carousel refs
   const hotelTrack1Ref = useRef<HTMLDivElement>(null);
@@ -377,32 +482,95 @@ export const HomeView: React.FC = () => {
   const { strategy, destination = 'Nha Trang', recommendations, diagnostics } = recResponse;
   const [showSectionWhy, setShowSectionWhy] = useState(false);
 
-  // Close guest popover on click outside
+  // Close search panel on click outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (guestDropdownRef.current && !guestDropdownRef.current.contains(e.target as Node)) {
-        setIsGuestOpen(false);
+      if (searchBarContainerRef.current && !searchBarContainerRef.current.contains(e.target as Node)) {
+        setActiveSearchTab(null);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const scrollTrack = (ref: React.RefObject<HTMLDivElement | null>, offset: number) => {
+  // DatePicker state handlers & calculations
+  const parsedCheckin = parseDateStr(checkinDate);
+  const parsedCheckout = parseDateStr(checkoutDate);
+
+  const handlePrevMonth = () => {
+    setCalendarViewDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
+  };
+
+  const handleNextMonth = () => {
+    setCalendarViewDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
+  };
+
+  const handleDayClick = (dayDate: Date) => {
+    if (selectingDateType === 'checkin') {
+      setCheckinDate(formatDateStr(dayDate));
+      if (dayDate.getTime() >= parsedCheckout.getTime()) {
+        const nextDay = new Date(dayDate.getTime() + 86400000);
+        setCheckoutDate(formatDateStr(nextDay));
+      }
+      setSelectingDateType('checkout');
+    } else {
+      if (dayDate.getTime() <= parsedCheckin.getTime()) {
+        setCheckinDate(formatDateStr(dayDate));
+        const nextDay = new Date(dayDate.getTime() + 86400000);
+        setCheckoutDate(formatDateStr(nextDay));
+        setSelectingDateType('checkout');
+      } else {
+        setCheckoutDate(formatDateStr(dayDate));
+        setSelectingDateType('checkin');
+      }
+    }
+  };
+
+  const handleResetDates = () => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const tomorrow = new Date(today.getTime() + 86400000);
+    setCheckinDate(formatDateStr(today));
+    setCheckoutDate(formatDateStr(tomorrow));
+    setCalendarViewDate(new Date(today.getFullYear(), today.getMonth(), 1));
+  };
+
+  const viewYear = calendarViewDate.getFullYear();
+  const viewMonth = calendarViewDate.getMonth();
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const startDayOfWeek = (new Date(viewYear, viewMonth, 1).getDay() + 6) % 7;
+
+  const scrollTrack = (ref: React.RefObject<HTMLDivElement | null>, direction: number, cardsCount: number = 2) => {
     if (ref.current) {
-      ref.current.scrollBy({ left: offset, behavior: 'smooth' });
+      const container = ref.current;
+      const children = container.children;
+      let cardDistance = 340;
+      if (children.length >= 2) {
+        const first = (children[0] as HTMLElement).getBoundingClientRect();
+        const second = (children[1] as HTMLElement).getBoundingClientRect();
+        const diff = second.left - first.left;
+        if (diff > 0) {
+          cardDistance = diff;
+        }
+      }
+      const numCards = Math.max(2, cardsCount);
+      const sign = direction < 0 ? -1 : 1;
+      container.scrollBy({ left: sign * cardDistance * numCards, behavior: 'smooth' });
     }
   };
 
   const handleSearch = () => {
-    const q = destinationInput.trim() || 'Nha Trang';
-    showToast(`Đang tìm các khách sạn tại ${q} (${rooms} phòng, ${adults} khách)...`);
+    setActiveSearchTab(null);
+    const q = destinationInput.trim() || 'V-OTA Resort & Spa tại Nha Trang';
+    setRecentSearches(prev => [q, ...prev.filter(item => item.toLowerCase() !== q.toLowerCase())].slice(0, 5));
+    showToast(q.includes('tại') ? `Đang tìm ${q} (${rooms} phòng, ${adults} khách)...` : `Đang tìm các khách sạn tại ${q} (${rooms} phòng, ${adults} khách)...`);
     navigate(`/search?q=${encodeURIComponent(q)}&type=hotel&rooms=${rooms}&guests=${adults}`);
   };
 
   const handleSelectDestination = (destName: string) => {
-    setDestinationInput(destName);
-    showToast(`Đã chọn điểm đến: ${destName}. Đang chuyển đến kết quả phù hợp...`);
+    const hotelQuery = `Khách sạn tại ${destName}`;
+    setDestinationInput(hotelQuery);
+    showToast(`Đã chọn: ${hotelQuery}. Đang chuyển đến kết quả phù hợp...`);
     window.scrollTo({ top: 120, behavior: 'smooth' });
   };
 
@@ -505,146 +673,493 @@ export const HomeView: React.FC = () => {
         {/* Top spacing before search bar (ensures top gap > bottom gap in normal flow) */}
         <div className="h-8 sm:h-10" aria-hidden="true" />
 
-        {/* COMPACT HOTEL SEARCH BAR - STICKY */}
+                {/* COMPACT HOTEL SEARCH BAR - STICKY */}
         <section className="sticky top-1 sm:top-1.5 z-40 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-0 pb-1.5 sm:pb-2">
 
-          <div className="bg-white/95 backdrop-blur-md rounded-3xl px-3 py-1.5 sm:py-1 shadow-lg border border-white/50 text-slate-700 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-1.5 sm:gap-2 transition hover:bg-white">
-
-            {/* Field 1: Destination (Compact) */}
-            <div className="flex-1 text-left px-3 py-1 hover:bg-slate-50/80 rounded-xl sm:rounded-full transition cursor-pointer relative group">
-              <label className="block text-[9px] font-extrabold text-slate-400 uppercase tracking-wider">
-                Điểm đến
-              </label>
-              <div className="flex items-center mt-0.5">
-                <input
-                  type="text"
-                  value={destinationInput}
-                  onChange={(e) => setDestinationInput(e.target.value)}
-                  placeholder="Điểm đến khách sạn..."
-                  className="w-full text-slate-800 font-bold text-xs sm:text-sm focus:outline-none bg-transparent placeholder:text-slate-400"
-                />
-              </div>
-            </div>
-
-            <div className="hidden md:block w-px h-6 bg-slate-200"></div>
-
-            {/* Field 2: Dates (Check-in & Check-out Compact) */}
-            <div className="flex-1 text-left px-3 py-1 hover:bg-slate-50/80 rounded-xl sm:rounded-full transition cursor-pointer flex items-center justify-between gap-2">
-              <div className="w-1/2">
-                <label className="block text-[9px] font-extrabold text-slate-400 uppercase tracking-wider">Ngày đi</label>
-                <input
-                  type="text"
-                  value={checkinDate}
-                  onChange={(e) => setCheckinDate(e.target.value)}
-                  className="w-full font-bold text-xs sm:text-sm text-slate-800 bg-transparent focus:outline-none cursor-pointer"
-                />
-              </div>
-              <div className="w-px h-5 bg-slate-200"></div>
-              <div className="w-1/2">
-                <label className="block text-[9px] font-extrabold text-slate-400 uppercase tracking-wider">Ngày về</label>
-                <input
-                  type="text"
-                  value={checkoutDate}
-                  onChange={(e) => setCheckoutDate(e.target.value)}
-                  className="w-full font-bold text-xs sm:text-sm text-slate-800 bg-transparent focus:outline-none cursor-pointer"
-                />
-              </div>
-            </div>
-
-            <div className="hidden md:block w-px h-6 bg-slate-200"></div>
-
-            {/* Field 3: Rooms & Guests (Compact) */}
+          <div
+            ref={searchBarContainerRef}
+            className="relative"
+          >
+            {/* The Search Bar Trigger Bar */}
             <div
-              ref={guestDropdownRef}
-              className="flex-1 text-left px-3 py-1 hover:bg-slate-50/80 rounded-xl sm:rounded-full transition cursor-pointer relative"
-              onClick={() => setIsGuestOpen(!isGuestOpen)}
+              className={`bg-white/95 backdrop-blur-md rounded-3xl px-3 py-1.5 sm:py-1 shadow-lg border text-slate-700 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-1.5 sm:gap-2 transition hover:bg-white ${
+                activeSearchTab ? 'border-blue-500/50 ring-2 ring-blue-500/20 shadow-xl' : 'border-white/50'
+              }`}
             >
-              <label className="block text-[9px] font-extrabold text-slate-400 uppercase tracking-wider">Số lượng</label>
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-xs sm:text-sm text-slate-800 truncate">
-                  {rooms} phòng, {adults} người lớn
-                </span>
-                <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0 ml-1" />
+              {/* Field 1: Destination (Compact) */}
+              <div
+                onClick={() => setActiveSearchTab(activeSearchTab === 'destination' ? null : 'destination')}
+                className={`flex-1 text-left px-3 py-1 rounded-xl sm:rounded-full transition cursor-pointer relative group ${
+                  activeSearchTab === 'destination' ? 'bg-blue-50/80 ring-1 ring-blue-500/30' : 'hover:bg-slate-50/80'
+                }`}
+              >
+                <label className="block text-[9px] font-extrabold text-slate-400 uppercase tracking-wider group-hover:text-blue-600 transition-colors pointer-events-none">
+                  Khách sạn / Điểm đến
+                </label>
+                <div className="flex items-center mt-0.5">
+                  <input
+                    type="text"
+                    value={destinationInput}
+                    onChange={(e) => setDestinationInput(e.target.value)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveSearchTab('destination');
+                    }}
+                    onFocus={() => setActiveSearchTab('destination')}
+                    placeholder="Tên khách sạn, resort (vd: Hotel tại Nha Trang)..."
+                    className="w-full text-slate-800 font-bold text-xs sm:text-sm focus:outline-none bg-transparent placeholder:text-slate-400 cursor-pointer"
+                  />
+                </div>
               </div>
 
-              {/* Guest Popover */}
-              {isGuestOpen && (
-                <div
-                  onClick={(e) => e.stopPropagation()}
-                  className="absolute top-full mt-3 right-0 md:left-0 w-72 bg-white rounded-2xl shadow-2xl border border-slate-100 p-4 z-50 text-slate-800 animate-in fade-in zoom-in-95 duration-150"
-                >
-                  <div className="flex items-center justify-between py-2 border-b border-slate-100">
-                    <div>
-                      <div className="font-semibold text-sm">Phòng</div>
-                      <div className="text-xs text-slate-400">Số lượng phòng</div>
+              <div className="hidden md:block w-px h-6 bg-slate-200"></div>
+
+              {/* Field 2: Dates (Check-in & Check-out Compact) */}
+              <div
+                onClick={() => setActiveSearchTab(activeSearchTab === 'dates' ? null : 'dates')}
+                className={`flex-1 text-left px-3 py-1 rounded-xl sm:rounded-full transition cursor-pointer group ${
+                  activeSearchTab === 'dates' ? 'bg-blue-50/80 ring-1 ring-blue-500/30' : 'hover:bg-slate-50/80'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-1.5 sm:gap-2">
+                  {/* Ngày đi */}
+                  <div className="flex-1 min-w-0">
+                    <label className="block text-[9px] font-extrabold text-slate-400 uppercase tracking-wider group-hover:text-blue-600 transition-colors">
+                      Ngày đi
+                    </label>
+                    <div className="font-bold text-xs sm:text-sm text-slate-800 truncate">
+                      {checkinDate}
                     </div>
+                  </div>
+
+                  <div className="w-px h-5 bg-slate-200 shrink-0 mx-1"></div>
+
+                  {/* Ngày về */}
+                  <div className="flex-1 min-w-0 text-right sm:text-left">
+                    <label className="block text-[9px] font-extrabold text-slate-400 uppercase tracking-wider group-hover:text-blue-600 transition-colors">
+                      Ngày về
+                    </label>
+                    <div className="font-bold text-xs sm:text-sm text-slate-800 truncate">
+                      {checkoutDate}
+                    </div>
+                  </div>
+
+                  <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0 group-hover:text-blue-600 transition-colors hidden sm:block" />
+                </div>
+              </div>
+
+              <div className="hidden md:block w-px h-6 bg-slate-200"></div>
+
+              {/* Field 3: Rooms & Guests (Compact) */}
+              <div
+                onClick={() => setActiveSearchTab(activeSearchTab === 'guests' ? null : 'guests')}
+                className={`flex-1 text-left px-3 py-1 rounded-xl sm:rounded-full transition cursor-pointer group ${
+                  activeSearchTab === 'guests' ? 'bg-blue-50/80 ring-1 ring-blue-500/30' : 'hover:bg-slate-50/80'
+                }`}
+              >
+                <label className="block text-[9px] font-extrabold text-slate-400 uppercase tracking-wider group-hover:text-blue-600 transition-colors">
+                  Số lượng
+                </label>
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-xs sm:text-sm text-slate-800 truncate">
+                    {rooms} phòng, {adults} người lớn
+                  </span>
+                  <ChevronDown className={`w-3.5 h-3.5 text-slate-400 shrink-0 ml-1 transition-transform ${
+                    activeSearchTab === 'guests' ? 'rotate-180 text-blue-600' : 'group-hover:text-blue-600'
+                  }`} />
+                </div>
+              </div>
+
+              {/* Search Action Button (Compact) */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleSearch();
+                }}
+                className="w-full md:w-auto px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl sm:rounded-full shadow-md hover:shadow-slate-900/30 flex items-center justify-center space-x-1.5 transition duration-200 transform active:scale-95 cursor-pointer shrink-0"
+                aria-label="Tìm kiếm"
+              >
+                <Search className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* ========================================================================= */}
+            {/* PANEL 1: ĐIỂM ĐẾN (FULL-WIDTH = WIDTH THANH SEARCH)                      */}
+            {/* ========================================================================= */}
+            {activeSearchTab === 'destination' && (
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="absolute top-full left-0 right-0 mt-2 bg-white rounded-3xl shadow-2xl border border-slate-100 p-5 sm:p-6 z-50 text-slate-800 animate-in fade-in zoom-in-95 duration-150 max-h-[85vh] overflow-y-auto space-y-6"
+              >
+                {/* PHẦN 1: TÌM KIẾM GẦN ĐÂY */}
+                <div>
+                  <div className="flex items-center justify-between mb-2.5">
                     <div className="flex items-center space-x-2">
+                      <div className="w-6 h-6 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
+                        <Clock className="w-3.5 h-3.5" />
+                      </div>
+                      <h4 className="font-bold text-xs sm:text-sm text-slate-800 uppercase tracking-wider">Tìm kiếm gần đây</h4>
+                    </div>
+                    {recentSearches.length > 0 && (
                       <button
                         type="button"
-                        className="w-7 h-7 rounded-full border border-slate-200 flex items-center justify-center font-bold hover:bg-slate-100 text-slate-600 transition cursor-pointer"
+                        onClick={() => setRecentSearches([])}
+                        className="text-[11px] text-slate-400 hover:text-rose-500 transition cursor-pointer font-medium"
+                      >
+                        Xóa lịch sử
+                      </button>
+                    )}
+                  </div>
+
+                  {recentSearches.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {recentSearches.map((item) => (
+                        <button
+                          key={item}
+                          type="button"
+                          onClick={() => {
+                            setDestinationInput(item);
+                            showToast(`Đã chọn: ${item}`);
+                            setActiveSearchTab('dates');
+                          }}
+                          className="px-3.5 py-1.5 rounded-full bg-slate-50 hover:bg-blue-50 border border-slate-200/80 hover:border-blue-300 text-slate-700 hover:text-blue-700 text-xs font-semibold flex items-center space-x-1.5 transition cursor-pointer shadow-2xs group"
+                        >
+                          <Clock className="w-3 h-3 text-slate-400 group-hover:text-blue-500" />
+                          <span>{item}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-400 italic">Chưa có tìm kiếm gần đây</p>
+                  )}
+                </div>
+
+                {/* PHẦN 2: KHÁCH SẠN THEO ĐIỂM ĐẾN PHỔ BIẾN */}
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-6 h-6 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+                        <MapPin className="w-3.5 h-3.5" />
+                      </div>
+                      <h4 className="font-bold text-xs sm:text-sm text-slate-800 uppercase tracking-wider">Khách sạn & Resort theo điểm đến</h4>
+                    </div>
+                    <span className="text-xs text-slate-400 font-medium">Vinpearl Resorts & Hotels</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+                    {POPULAR_HOTEL_DESTINATIONS.map((dest) => {
+                      const isSelected = destinationInput.toLowerCase().includes(dest.name.toLowerCase()) || destinationInput.toLowerCase().includes(dest.fullName.toLowerCase());
+                      return (
+                        <button
+                          key={dest.fullName}
+                          type="button"
+                          onClick={() => {
+                            setDestinationInput(dest.fullName);
+                            showToast(`Đã chọn: ${dest.fullName}`);
+                            setActiveSearchTab('dates');
+                          }}
+                          className={`p-2 rounded-2xl text-left transition cursor-pointer border flex flex-col items-center text-center group ${
+                            isSelected
+                              ? 'bg-blue-50/80 border-blue-400 ring-2 ring-blue-500/20 shadow-xs'
+                              : 'bg-slate-50/60 hover:bg-blue-50/40 border-slate-100 hover:border-blue-200'
+                          }`}
+                        >
+                          <div className="relative w-full h-16 sm:h-20 rounded-xl overflow-hidden shadow-2xs">
+                            <img
+                              src={dest.image}
+                              alt={dest.fullName}
+                              className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                            />
+                            <div className="absolute inset-0 bg-gradient-to-t from-slate-900/70 via-transparent to-transparent"></div>
+                            <span className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 rounded-md bg-blue-600/90 text-white text-[9px] font-bold shadow-xs">
+                              {dest.location}
+                            </span>
+                          </div>
+                          <div className="mt-2 w-full text-center">
+                            <div className="font-bold text-xs text-slate-800 truncate group-hover:text-blue-600 transition-colors">
+                              {dest.name}
+                            </div>
+                            <div className="text-[10px] text-slate-400 truncate mt-0.5">
+                              {dest.desc}
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* PHẦN 3: GỢI Ý KHÁCH SẠN */}
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-6 h-6 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                        <Building2 className="w-3.5 h-3.5" />
+                      </div>
+                      <h4 className="font-bold text-xs sm:text-sm text-slate-800 uppercase tracking-wider">Gợi ý khách sạn & Resort nổi bật</h4>
+                    </div>
+                    <span className="text-xs text-blue-600 font-semibold bg-blue-50 px-2.5 py-0.5 rounded-full">
+                      Ưu đãi giá tốt
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    {SECTION_1_HOTELS.slice(0, 4).map((hotel) => {
+                      const locTag = getHotelLocationTag(hotel.address);
+                      const fullHotelName = `${hotel.name} ${locTag}`;
+                      return (
+                        <button
+                          key={hotel.id}
+                          type="button"
+                          onClick={() => {
+                            setDestinationInput(fullHotelName);
+                            showToast(`Đã chọn: ${fullHotelName}`);
+                            setActiveSearchTab('dates');
+                          }}
+                          className="p-2.5 rounded-2xl bg-white border border-slate-200/80 hover:border-blue-400 hover:shadow-md transition text-left cursor-pointer flex space-x-3 group"
+                        >
+                          <img
+                            src={hotel.image}
+                            alt={hotel.name}
+                            className="w-16 h-16 rounded-xl object-cover shrink-0 shadow-2xs group-hover:scale-103 transition duration-200"
+                          />
+                          <div className="min-w-0 flex-1 flex flex-col justify-between">
+                            <div>
+                              <div className="font-bold text-xs text-slate-900 line-clamp-1 group-hover:text-blue-600 transition-colors">
+                                {hotel.name}
+                              </div>
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                <span className="text-[9px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded shrink-0">
+                                  {locTag}
+                                </span>
+                                <div className="flex items-center space-x-1">
+                                  <Star className="w-3 h-3 text-amber-400 fill-amber-400 shrink-0" />
+                                  <span className="text-[11px] font-bold text-slate-700">{hotel.ratingScore}</span>
+                                  <span className="text-[10px] text-slate-400">({hotel.reviewsCount})</span>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="mt-1 flex items-baseline justify-between">
+                              <span className="text-[10px] text-slate-400 line-through">{hotel.originalPrice}</span>
+                              <span className="text-xs font-black text-blue-600">{hotel.price}</span>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ========================================================================= */}
+            {/* PANEL 2: DATE PICKER (COMPACT MODAL / DROPDOWN)                          */}
+            {/* ========================================================================= */}
+            {activeSearchTab === 'dates' && (
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-[340px] sm:w-[380px] bg-white rounded-3xl shadow-2xl border border-slate-100 p-4 sm:p-5 z-50 text-slate-800 animate-in fade-in zoom-in-95 duration-150 max-h-[85vh] overflow-y-auto"
+              >
+                <div className="space-y-3.5">
+                  {/* Switcher ngày nhận / trả phòng */}
+                  <div className="flex items-center justify-between gap-1.5 p-1 bg-slate-100/80 rounded-xl">
+                    <button
+                      type="button"
+                      onClick={() => setSelectingDateType('checkin')}
+                      className={`flex-1 py-1.5 px-2.5 rounded-lg text-left transition cursor-pointer ${
+                        selectingDateType === 'checkin'
+                          ? 'bg-white shadow-xs font-bold text-blue-600 ring-1 ring-blue-500/20'
+                          : 'text-slate-600 hover:text-slate-900 font-medium'
+                      }`}
+                    >
+                      <span className="block text-[9px] uppercase tracking-wider text-slate-400 font-extrabold">Ngày nhận phòng</span>
+                      <span className="text-xs sm:text-sm font-bold block truncate">{checkinDate}</span>
+                    </button>
+
+                    <div className="w-px h-6 bg-slate-200 shrink-0"></div>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectingDateType('checkout')}
+                      className={`flex-1 py-1.5 px-2.5 rounded-lg text-left transition cursor-pointer ${
+                        selectingDateType === 'checkout'
+                          ? 'bg-white shadow-xs font-bold text-blue-600 ring-1 ring-blue-500/20'
+                          : 'text-slate-600 hover:text-slate-900 font-medium'
+                      }`}
+                    >
+                      <span className="block text-[9px] uppercase tracking-wider text-slate-400 font-extrabold">Ngày trả phòng</span>
+                      <span className="text-xs sm:text-sm font-bold block truncate">{checkoutDate}</span>
+                    </button>
+                  </div>
+
+                  {/* Header điều hướng tháng */}
+                  <div className="flex items-center justify-between px-1">
+                    <button
+                      type="button"
+                      onClick={handlePrevMonth}
+                      className="w-7 h-7 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-600 transition cursor-pointer"
+                      aria-label="Tháng trước"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <span className="text-xs sm:text-sm font-bold text-slate-800 select-none">
+                      Tháng {viewMonth + 1}, {viewYear}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleNextMonth}
+                      className="w-7 h-7 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-600 transition cursor-pointer"
+                      aria-label="Tháng sau"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {/* Thứ trong tuần */}
+                  <div className="grid grid-cols-7 text-center text-[11px] font-bold text-slate-400 select-none py-1 border-b border-slate-100">
+                    <div>T2</div>
+                    <div>T3</div>
+                    <div>T4</div>
+                    <div>T5</div>
+                    <div>T6</div>
+                    <div className="text-amber-500">T7</div>
+                    <div className="text-rose-500">CN</div>
+                  </div>
+
+                  {/* Lưới ngày */}
+                  <div
+                    className="grid grid-cols-7 gap-y-1 text-center text-xs"
+                    onMouseLeave={() => setHoveredDate(null)}
+                  >
+                    {Array.from({ length: startDayOfWeek }).map((_, idx) => (
+                      <div key={`empty-${idx}`} className="h-7 sm:h-8" />
+                    ))}
+
+                    {Array.from({ length: daysInMonth }).map((_, idx) => {
+                      const dayNum = idx + 1;
+                      const dayDate = new Date(viewYear, viewMonth, dayNum);
+                      const isCheckin = isSameDate(dayDate, parsedCheckin);
+                      const isCheckout = isSameDate(dayDate, parsedCheckout);
+                      const isInRange = dayDate > parsedCheckin && dayDate < parsedCheckout;
+                      const isInHover = selectingDateType === 'checkout' && hoveredDate && hoveredDate > parsedCheckin && dayDate > parsedCheckin && dayDate <= hoveredDate;
+
+                      return (
+                        <div
+                          key={`day-${dayNum}`}
+                          className={`h-7 sm:h-8 flex items-center justify-center relative ${
+                            isInRange || isInHover ? 'bg-blue-50/80' : ''
+                          } ${isCheckin && !isCheckout ? 'rounded-l-full' : ''} ${
+                            isCheckout && !isCheckin ? 'rounded-r-full' : ''
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => handleDayClick(dayDate)}
+                            onMouseEnter={() => setHoveredDate(dayDate)}
+                            className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold transition cursor-pointer ${
+                              isCheckin || isCheckout
+                                ? 'bg-blue-600 text-white font-bold shadow-xs'
+                                : isInRange || isInHover
+                                ? 'text-blue-700 font-bold hover:bg-blue-100'
+                                : 'text-slate-700 hover:bg-slate-100'
+                            }`}
+                          >
+                            {dayNum}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Footer DatePicker: Đặt lại ngày */}
+                  <div className="flex items-center justify-end pt-2 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={handleResetDates}
+                      className="text-xs text-slate-500 hover:text-blue-600 font-medium transition cursor-pointer"
+                    >
+                      Đặt lại
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ========================================================================= */}
+            {/* PANEL 3: SỐ LƯỢNG PHÒNG & KHÁCH (COMPACT DROPDOWN BÊN PHẢI)              */}
+            {/* ========================================================================= */}
+            {activeSearchTab === 'guests' && (
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="absolute top-full right-0 mt-2 w-72 sm:w-80 bg-white rounded-3xl shadow-2xl border border-slate-100 p-4 sm:p-5 z-50 text-slate-800 animate-in fade-in zoom-in-95 duration-150 max-h-[85vh] overflow-y-auto"
+              >
+                <div className="max-w-md mx-auto space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                    <div>
+                      <h4 className="font-bold text-sm sm:text-base text-slate-900">Số lượng phòng & khách</h4>
+                      <p className="text-xs text-slate-400">Chọn số phòng và thành viên cho chuyến đi</p>
+                    </div>
+                  </div>
+
+                  {/* Phòng */}
+                  <div className="p-3.5 bg-slate-50/80 rounded-2xl flex items-center justify-between border border-slate-100">
+                    <div>
+                      <div className="font-bold text-sm text-slate-900">Phòng</div>
+                      <div className="text-xs text-slate-400">Số lượng phòng đặt</div>
+                    </div>
+                    <div className="flex items-center space-x-3">
+                      <button
+                        type="button"
+                        className="w-9 h-9 rounded-full border border-slate-200 bg-white flex items-center justify-center font-bold hover:bg-slate-100 text-slate-600 transition cursor-pointer shadow-xs disabled:opacity-40"
                         onClick={() => setRooms(Math.max(1, rooms - 1))}
+                        disabled={rooms <= 1}
                       >
                         -
                       </button>
-                      <span className="w-5 text-center font-semibold text-sm">{rooms}</span>
+                      <span className="w-6 text-center font-bold text-sm text-slate-800">{rooms}</span>
                       <button
                         type="button"
-                        className="w-7 h-7 rounded-full border border-slate-200 flex items-center justify-center font-bold hover:bg-slate-100 text-slate-600 transition cursor-pointer"
+                        className="w-9 h-9 rounded-full border border-slate-200 bg-white flex items-center justify-center font-bold hover:bg-slate-100 text-slate-600 transition cursor-pointer shadow-xs disabled:opacity-40"
                         onClick={() => setRooms(Math.min(8, rooms + 1))}
+                        disabled={rooms >= 8}
                       >
                         +
                       </button>
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between py-2.5">
+                  {/* Người lớn */}
+                  <div className="p-3.5 bg-slate-50/80 rounded-2xl flex items-center justify-between border border-slate-100">
                     <div>
-                      <div className="font-semibold text-sm">Người lớn</div>
+                      <div className="font-bold text-sm text-slate-900">Người lớn</div>
                       <div className="text-xs text-slate-400">Từ 12 tuổi trở lên</div>
                     </div>
-                    <div className="flex items-center space-x-2">
+                    <div className="flex items-center space-x-3">
                       <button
                         type="button"
-                        className="w-7 h-7 rounded-full border border-slate-200 flex items-center justify-center font-bold hover:bg-slate-100 text-slate-600 transition cursor-pointer"
+                        className="w-9 h-9 rounded-full border border-slate-200 bg-white flex items-center justify-center font-bold hover:bg-slate-100 text-slate-600 transition cursor-pointer shadow-xs disabled:opacity-40"
                         onClick={() => setAdults(Math.max(1, adults - 1))}
+                        disabled={adults <= 1}
                       >
                         -
                       </button>
-                      <span className="w-5 text-center font-semibold text-sm">{adults}</span>
+                      <span className="w-6 text-center font-bold text-sm text-slate-800">{adults}</span>
                       <button
                         type="button"
-                        className="w-7 h-7 rounded-full border border-slate-200 flex items-center justify-center font-bold hover:bg-slate-100 text-slate-600 transition cursor-pointer"
+                        className="w-9 h-9 rounded-full border border-slate-200 bg-white flex items-center justify-center font-bold hover:bg-slate-100 text-slate-600 transition cursor-pointer shadow-xs disabled:opacity-40"
                         onClick={() => setAdults(Math.min(16, adults + 1))}
+                        disabled={adults >= 16}
                       >
                         +
                       </button>
                     </div>
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setIsGuestOpen(false)}
-                    className="w-full mt-2 py-2 bg-blue-600 hover:bg-blue-700 active:scale-98 text-white font-medium text-xs rounded-xl shadow transition cursor-pointer"
-                  >
-                    Áp dụng
-                  </button>
                 </div>
-              )}
-            </div>
-
-            {/* Search Action Button (Compact) */}
-            <button
-              onClick={handleSearch}
-              className="w-full md:w-auto px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl sm:rounded-full shadow-md hover:shadow-slate-900/30 flex items-center justify-center space-x-1.5 transition duration-200 transform active:scale-95 cursor-pointer shrink-0"
-            >
-              <Search className="w-3.5 h-3.5" />
-              <span>Tìm khách sạn</span>
-            </button>
+              </div>
+            )}
           </div>
 
-        </section>
-
-        {/* ========================================================================= */}
+        </section>        {/* ========================================================================= */}
         {/* OPTIONAL PERSONALIZATION PANEL (K1 / K2 V-OTA DEMO ACCORDION)              */}
         {/* ========================================================================= */}
         {currentPersona && recommendations.length > 0 && (
@@ -659,14 +1174,14 @@ export const HomeView: React.FC = () => {
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <button
+                  {/* <button
                     type="button"
                     onClick={() => showToast('Tính năng đang được cập nhật!')}
                     className="inline-flex items-center gap-1 text-xs sm:text-sm font-semibold text-blue-600 hover:text-blue-700 transition cursor-pointer"
                   >
                     <span>Xem thêm</span>
                     <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                  </button>
+                  </button> */}
                   <button
                     onClick={() => setShowSectionWhy(true)}
                     className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-xl border border-blue-200 transition-colors cursor-pointer"
@@ -717,24 +1232,24 @@ export const HomeView: React.FC = () => {
               </h2>
             </div>
             <div className="flex items-center space-x-3">
-              <button
+              {/* <button
                 type="button"
                 onClick={() => showToast('Tính năng đang được cập nhật!')}
                 className="inline-flex items-center gap-1 text-xs sm:text-sm font-semibold text-blue-600 hover:text-blue-700 transition cursor-pointer"
               >
                 <span>Xem thêm</span>
                 <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              </button>
+              </button> */}
               <div className="flex items-center space-x-2">
                 <button
-                  onClick={() => scrollTrack(hotelTrack1Ref, -340)}
+                  onClick={() => scrollTrack(hotelTrack1Ref, -1)}
                   className="w-10 h-10 rounded-full border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-600 transition shadow-sm active:scale-95 cursor-pointer"
                   aria-label="Cuộn sang trái"
                 >
                   <ChevronLeft className="w-5 h-5" />
                 </button>
                 <button
-                  onClick={() => scrollTrack(hotelTrack1Ref, 340)}
+                  onClick={() => scrollTrack(hotelTrack1Ref, 1)}
                   className="w-10 h-10 rounded-full border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-600 transition shadow-sm active:scale-95 cursor-pointer"
                   aria-label="Cuộn sang phải"
                 >
@@ -812,34 +1327,34 @@ export const HomeView: React.FC = () => {
         </section>
 
         {/* ========================================================================= */}
-        {/* SECTION 2: KHÁCH SẠN ĐƯỢC LỰA CHỌN (CAROUSEL 2)                           */}
+        {/* SECTION 2: KHÁCH SẠN ĐƯỢC YÊU THÍCH NHẤT (CAROUSEL 2)                    */}
         {/* ========================================================================= */}
         <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="flex items-center justify-between mb-6">
             <div>
               <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-                Khách sạn được lựa chọn
+                Khách sạn được yêu thích nhất
               </h2>
             </div>
             <div className="flex items-center space-x-3">
-              <button
+              {/* <button
                 type="button"
                 onClick={() => showToast('Tính năng đang được cập nhật!')}
                 className="inline-flex items-center gap-1 text-xs sm:text-sm font-semibold text-blue-600 hover:text-blue-700 transition cursor-pointer"
               >
                 <span>Xem thêm</span>
                 <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              </button>
+              </button> */}
               <div className="flex items-center space-x-2">
                 <button
-                  onClick={() => scrollTrack(hotelTrack2Ref, -340)}
+                  onClick={() => scrollTrack(hotelTrack2Ref, -1)}
                   className="w-10 h-10 rounded-full border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-600 transition shadow-sm active:scale-95 cursor-pointer"
                   aria-label="Cuộn sang trái"
                 >
                   <ChevronLeft className="w-5 h-5" />
                 </button>
                 <button
-                  onClick={() => scrollTrack(hotelTrack2Ref, 340)}
+                  onClick={() => scrollTrack(hotelTrack2Ref, 1)}
                   className="w-10 h-10 rounded-full border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-600 transition shadow-sm active:scale-95 cursor-pointer"
                   aria-label="Cuộn sang phải"
                 >
@@ -922,24 +1437,24 @@ export const HomeView: React.FC = () => {
               </h2>
             </div>
             <div className="flex items-center space-x-3">
-              <button
+              {/* <button
                 type="button"
                 onClick={() => showToast('Tính năng đang được cập nhật!')}
                 className="inline-flex items-center gap-1 text-xs sm:text-sm font-semibold text-blue-600 hover:text-blue-700 transition cursor-pointer"
               >
                 <span>Xem thêm</span>
                 <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              </button>
+              </button> */}
               <div className="flex items-center space-x-2">
                 <button
-                  onClick={() => scrollTrack(destinationTrackRef, -260)}
+                  onClick={() => scrollTrack(destinationTrackRef, -1)}
                   className="w-10 h-10 rounded-full border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-600 transition shadow-sm active:scale-95 cursor-pointer"
                   aria-label="Cuộn sang trái"
                 >
                   <ChevronLeft className="w-5 h-5" />
                 </button>
                 <button
-                  onClick={() => scrollTrack(destinationTrackRef, 260)}
+                  onClick={() => scrollTrack(destinationTrackRef, 1)}
                   className="w-10 h-10 rounded-full border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-600 transition shadow-sm active:scale-95 cursor-pointer"
                   aria-label="Cuộn sang phải"
                 >
@@ -998,40 +1513,52 @@ export const HomeView: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {/* Trust Badge 1 */}
               <div className="glass-card rounded-2xl p-6 border border-white/70 shadow-lg hover:shadow-2xl transition duration-300 flex flex-col items-start">
-                <div className="w-12 h-12 rounded-xl bg-blue-600 text-white flex items-center justify-center mb-4 shadow-md shadow-blue-500/30">
-                  <LayoutGrid className="w-6 h-6" />
+                <div className="w-12 h-12 rounded-xl bg-blue-50 border border-blue-100/80 flex items-center justify-center mb-4 shadow-md shadow-blue-500/10 overflow-hidden">
+                  <img
+                    src="/trust_badge_ecosystem.webp"
+                    alt="Hệ sinh thái du lịch & giải trí toàn diện"
+                    className="w-10 h-10 object-contain drop-shadow-xs"
+                  />
                 </div>
                 <h3 className="text-base font-bold text-slate-900 leading-snug">
                   Hệ sinh thái du lịch & giải trí toàn diện
                 </h3>
-                <p className="text-xs sm:text-sm text-slate-600 mt-2 leading-relaxed">
-                  Mang đến trải nghiệm du lịch và giải trí đẳng cấp với hệ sinh thái dịch vụ chất lượng cao.
+                <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+                  Tích hợp đồng bộ từ khách sạn, vui chơi giải trí VinWonders, ẩm thực tới di chuyển trong cùng một tài khoản.
                 </p>
               </div>
 
               {/* Trust Badge 2 */}
               <div className="glass-card rounded-2xl p-6 border border-white/70 shadow-lg hover:shadow-2xl transition duration-300 flex flex-col items-start">
-                <div className="w-12 h-12 rounded-xl bg-blue-600 text-white flex items-center justify-center mb-4 shadow-md shadow-blue-500/30">
-                  <ShieldCheck className="w-6 h-6" />
+                <div className="w-12 h-12 rounded-xl bg-blue-50 border border-blue-100/80 flex items-center justify-center mb-4 shadow-md shadow-blue-500/10 overflow-hidden">
+                  <img
+                    src="/trust_badge_booking.webp"
+                    alt="Trải nghiệm đặt dịch vụ liền mạch"
+                    className="w-10 h-10 object-contain drop-shadow-xs"
+                  />
                 </div>
                 <h3 className="text-base font-bold text-slate-900 leading-snug">
                   Trải nghiệm đặt dịch vụ liền mạch
                 </h3>
-                <p className="text-xs sm:text-sm text-slate-600 mt-2 leading-relaxed">
-                  Tìm kiếm, đặt dịch vụ, thanh toán và quản lý hành trình trên một nền tảng duy nhất.
+                <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+                  Xác nhận đặt chỗ theo thời gian thực, lưu trữ vé điện tử và mã QR bảo mật ngay trên ứng dụng mà không cần in giấy.
                 </p>
               </div>
 
               {/* Trust Badge 3 */}
               <div className="glass-card rounded-2xl p-6 border border-white/70 shadow-lg hover:shadow-2xl transition duration-300 flex flex-col items-start">
-                <div className="w-12 h-12 rounded-xl bg-blue-600 text-white flex items-center justify-center mb-4 shadow-md shadow-blue-500/30">
-                  <Bot className="w-6 h-6" />
+                <div className="w-12 h-12 rounded-xl bg-blue-50 border border-blue-100/80 flex items-center justify-center mb-4 shadow-md shadow-blue-500/10 overflow-hidden">
+                  <img
+                    src="/trust_badge_ai_assistant.webp"
+                    alt="Trợ lý AI đồng hành du lịch"
+                    className="w-10 h-10 object-contain drop-shadow-xs"
+                  />
                 </div>
                 <h3 className="text-base font-bold text-slate-900 leading-snug">
                   Trợ lý AI đồng hành du lịch
                 </h3>
-                <p className="text-xs sm:text-sm text-slate-600 mt-2 leading-relaxed">
-                  AI tư vấn, cá nhân hóa và hỗ trợ xuyên suốt hành trình trải nghiệm của khách hàng.
+                <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+                  Lên kế hoạch thông minh theo sở thích và ngân sách, tối ưu hóa thời gian và tuyến điểm di chuyển cho cả gia đình.
                 </p>
               </div>
             </div>

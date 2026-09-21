@@ -5,7 +5,7 @@
 
 export type Taxonomy = 'hotel' | 'flight' | 'attraction' | 'combo' | 'golf';
 
-export type Destination = 'Nha Trang' | 'Phú Quốc' | 'Đà Nẵng' | 'Hà Nội' | 'Hội An' | 'Hạ Long';
+export type Destination = 'Nha Trang' | 'Phú Quốc' | 'Đà Nẵng' | 'Hà Nội' | 'Hội An' | 'Hạ Long' | 'Đà Lạt';
 
 export interface ProductAttributes {
   starRating?: number;
@@ -30,6 +30,8 @@ export interface Coordinates {
   lat: number;
   lng: number;
 }
+
+export type TransitMode = 'driving' | 'walking' | 'bicycle' | 'ferry' | 'cable' | 'flight';
 
 export interface Product {
   id: string;
@@ -161,10 +163,15 @@ export interface TravelIntent {
   party: 'solo' | 'couple' | 'family_with_kids' | 'friends';
   interests: string[];
   startDate?: string;
+  multiHotel?: boolean;
 }
 
 export interface ItinerarySlot {
   time: 'morning' | 'noon' | 'afternoon' | 'evening';
+  timeRange?: string; // e.g. "08:30 - 11:30"
+  locationName?: string; // e.g. "VinWonders Nha Trang"
+  transitInfo?: string; // e.g. "Di chuyển ~15 phút bằng xe điện sang điểm ăn trưa"
+  transitMode?: TransitMode;
   productId?: string;
   product?: Product;
   note: string;
@@ -174,6 +181,16 @@ export interface ItinerarySlot {
   activityTitle?: string;
   coordinates?: Coordinates;
   address?: string;
+}
+
+export interface ItineraryStayItem {
+  productId: string;
+  product: Product;
+  nights: number;
+  dayRange?: string; // e.g. "Đêm 1 - 2 (Ngày 1 - 2)"
+  note?: string;
+  source?: 'recommendation' | 'search';
+  because?: BecauseItem[];
 }
 
 export interface ItineraryDay {
@@ -193,6 +210,7 @@ export interface GroundedPlan {
     source: 'recommendation' | 'search';
     because?: BecauseItem[];
   };
+  stays?: ItineraryStayItem[];
   days: ItineraryDay[];
   totalEstimatedPrice: number;
   bookableProductsCount: number;
