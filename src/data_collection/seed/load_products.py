@@ -1,18 +1,20 @@
 """Loader: products.jsonl (catalog đóng băng) → bản ghi `cdp.products` đã áp cửa sổ đặt chỗ 30 ngày, cộng `catalog.combo_items`.
 
-Theo file thiết kế DB của nhóm (20/09/2026), việc #13 + "Kế hoạch mock data". **Không sửa products.jsonl**; đầu ra là file để nạp vào DB.
+Theo MOCK_DATA_SPEC §2 và file thiết kế DB của nhóm (20/09/2026). **Không sửa products.jsonl**; đầu ra là file để nạp vào DB.
 
-    python load_catalog.py [--data-dir data] [--out-dir data/loader] [--as-of YYYY-MM-DD]
+    python -m data_collection.seed.load_products [--data-dir data] [--out-dir data/loader] [--as-of YYYY-MM-DD]
 
-Quy tắc (--as-of mặc định là hôm nay; chạy lại trước demo để cuộn cửa sổ, nếu không toàn bộ catalog hết hạn):
+Quy tắc (--as-of mặc định là hôm nay; chạy lại trước demo để cuộn cửa sổ, nếu không toàn bộ catalog hết hạn). Tham số ở config.py.
   * cửa sổ = [as_of, as_of + 29];  available_from = GREATEST(nguồn_from, as_of),  available_to = LEAST(nguồn_to, as_of + 29);
     nguồn không có thì lấy nguyên cửa sổ. Nếu giao rỗng, đặt available = false và hai ngày DB = NULL để thỏa CHECK
     available_from <= available_to; ngày nguồn vẫn nằm trong attributes.sourceAvailableFrom/To.
-  * vé máy bay: from = to = ngày bay. Lấy ngày thật trip.com đã liệt kê (attributes.datesSeen) nằm trong cửa sổ (sớm nhất); không có thì
-    sinh một ngày trong cửa sổ (xác định theo productId). attributes.departureAt / arrivalAt đổi sang ngày đó, giữ giờ và thời lượng.
-    Tuyến bay: from / to = ngày nhỏ nhất / lớn nhất của các chuyến con.
-  * hạng phòng: attributes.availability = {"calendar": <30 ký tự 1/0>} — kín 25–40% theo cụm 1–4 đêm, cuối tuần và Vinpearl kín nhiều hơn.
-    Điểm tham quan / combo / golf: calendar chỉ blackout ngày lễ và các ngày ngoài khoảng bán của nguồn.
+  * vé máy bay: from = to = ngày bay. Ngày bay = ngày trip.com đã liệt kê (attributes.datesSeen) sớm nhất trong cửa sổ — trùng
+    sourceAvailableFrom khi nó nằm trong cửa sổ; không có thì dời vào cửa sổ: as_of + crc32(productId) % 30.
+    attributes.departureAt / arrivalAt đổi sang ngày đó, giữ giờ và thời lượng. Tuyến bay: from / to = ngày nhỏ nhất / lớn nhất của các chuyến con.
+  * attributes.availability = {"from": as_of, "days": 30, "calendar": <30 ký tự 1/0>} chỉ cho hạng phòng, điểm tham quan, golf:
+    hạng phòng kín 25–40% theo cụm 1–4 đêm (T6/T7 ×1,5, Vinpearl ×1,3 tối đa 40%); điểm tham quan / golf toàn trống trừ 15% sản phẩm
+    blackout 2–3 ngày. Ngày ngoài khoảng bán của nguồn luôn đóng. Chuyến bay, property, tuyến, combo không có khoá này.
+  * khách sạn (property) thiếu giờ thì gán checkInTime / checkOutTime mặc định.
   * combo: gán thêm attributes.priceBasis / nights / minPax từ combo_attributes.json (kết quả parse_combos.py).
 Đầu ra: cdp_products.jsonl / .csv (cột snake_case như ERD), catalog_combo_items.jsonl, loader_report.md. Kết quả xác định.
 """
@@ -21,13 +23,13 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import random
 import shutil
 from collections import Counter
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from .catalog_meta import WINDOW_DAYS, build_meta, room_calendar, ticket_calendar, variant, window
+from . import config
+from .catalog_meta import WINDOW_DAYS, build_meta, room_calendar, stable_order_key, ticket_calendar, variant, window
 
 COLUMNS = ["product_id", "name", "taxonomy", "destination", "description", "attributes", "unit_price", "currency", "available",
            "available_from", "available_to", "image_url", "source_ref"]
@@ -41,11 +43,15 @@ def clip(src_from: str | None, src_to: str | None, lo: date, hi: date) -> tuple[
 
 
 def pick_flight_date(product: dict, lo: date, hi: date) -> tuple[date, bool]:
-    """(ngày bay, là ngày thật?). Ngày thật = ngày trip.com đã liệt kê nằm trong cửa sổ (sớm nhất); không có thì mock, xác định theo productId."""
+    """(ngày bay, là ngày thật?). Ngày thật = ngày trip.com đã liệt kê nằm trong cửa sổ (sớm nhất; trùng sourceAvailableFrom khi nó nằm
+    trong cửa sổ); không có thì dời vào cửa sổ: as_of + crc32(productId) % 30 (MOCK_DATA_SPEC §2.1)."""
     seen = sorted(d for d in product["attributes"].get("datesSeen") or [] if lo <= date.fromisoformat(d) <= hi)
+    src = product.get("availableFrom")
+    if not seen and src and lo <= date.fromisoformat(src) <= hi:
+        seen = [src]
     if seen:
         return date.fromisoformat(seen[0]), True
-    return lo + timedelta(days=random.Random(f"flight|{product['productId']}").randint(0, WINDOW_DAYS - 1)), False
+    return lo + timedelta(days=stable_order_key(product["productId"]) % WINDOW_DAYS), False
 
 
 def move_flight(attrs: dict, day: date) -> None:
@@ -73,6 +79,7 @@ def convert(rows: list[dict], combo_attrs: dict[str, dict], as_of: date) -> tupl
     flight_dates: dict[str, list[str]] = {}
     closed_frac: list[float] = []
     meta = build_meta(rows)
+    by_id = {r["productId"]: r for r in rows}
     for r in rows:
         v = variant(r)
         attrs = json.loads(json.dumps(r["attributes"], ensure_ascii=False))
@@ -89,13 +96,18 @@ def convert(rows: list[dict], combo_attrs: dict[str, dict], as_of: date) -> tupl
             flight_dates.setdefault(attrs.get("parentProductId") or "", []).append(f)
             stats["chuyến bay: ngày thật"] += real
             stats["chuyến bay: ngày mock (không có ngày thật trong cửa sổ)"] += not real
-        elif v in ("hotel_room", "attraction", "combo", "golf"):
-            cal = room_calendar(r, as_of) if v == "hotel_room" else ticket_calendar(as_of)
+        elif v in ("hotel_room", "attraction", "golf"):
+            cal = room_calendar(r, as_of, by_id) if v == "hotel_room" else ticket_calendar(r["productId"], as_of)
             cal = zero_outside(cal, as_of, f, t) if f <= t else "0" * WINDOW_DAYS
-            attrs["availability"] = {"calendar": cal}
+            attrs["availability"] = {"from": as_of.isoformat(), "days": WINDOW_DAYS, "calendar": cal}
             if v == "hotel_room":
                 closed_frac.append(cal.count("0") / WINDOW_DAYS)
             stats[f"lịch khả dụng: {v}"] += 1
+        elif v == "hotel_property":
+            for key, default in (("checkInTime", config.HOTEL_CHECK_IN), ("checkOutTime", config.HOTEL_CHECK_OUT)):
+                if not attrs.get(key):
+                    attrs[key] = default
+                    stats[f"khách sạn: gán {key} mặc định"] += 1
         if v == "combo" and r["productId"] in combo_attrs:
             attrs.update(combo_attrs[r["productId"]]["attributes"])
             stats["combo gán priceBasis/nights/minPax"] += 1
