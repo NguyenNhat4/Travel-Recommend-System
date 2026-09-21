@@ -1,0 +1,45 @@
+erDiagram
+    insider_profiles ||--|{ identifiers : "định danh"
+    insider_profiles ||--o{ insider_events : "hành vi có TTL"
+    insider_profiles ||--o{ channel_events : "tương tác kênh"
+    insider_profiles ||--o{ identifier_changes : "lịch sử đổi định danh tùy chọn"
+    insider_profiles {
+        uuid insider_id PK
+        jsonb attributes "opt-in và custom recommendations"
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    identifiers {
+        bigint id PK
+        uuid insider_id FK
+        text identifier_type "uuid email phone_number custom.key"
+        text identifier_value
+        timestamptz updated_at
+    }
+    insider_events {
+        bigint id PK
+        uuid insider_id FK
+        text event_name
+        timestamptz timestamp
+        text event_group_id "nullable"
+        jsonb event_params "ID sản phẩm, thông tin snapshot"
+        timestamptz received_at
+        timestamptz expires_at
+    }
+    channel_events {
+        bigint id PK
+        uuid insider_id FK
+        text channel "email push sms"
+        text event_name
+        text campaign_id "nullable"
+        timestamptz timestamp
+        jsonb params
+    }
+    identifier_changes {
+        bigint id PK
+        uuid insider_id FK
+        text identifier_type
+        text old_value
+        text new_value
+        timestamptz changed_at
+    }

@@ -1,7 +1,7 @@
 """Ports to the CDP (system of record for user events and profiles).
 
-Business logic depends on these interfaces only. Today they are backed by src/cdp_clone over HTTP;
-a production adapter replaces them without touching use cases (handbook §3, ARCHITECTURE.md §9).
+Business logic depends on these interfaces only. Week 1 uses LocalCdpClient with the restricted
+CDP_DATABASE_URL role; the HTTP adapter can replace it without touching use cases.
 """
 from dataclasses import dataclass
 from datetime import date, datetime

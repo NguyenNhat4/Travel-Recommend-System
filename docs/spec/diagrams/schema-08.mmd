@@ -1,0 +1,100 @@
+erDiagram
+    users ||--o| carts : "mỗi user tối đa một giỏ"
+    users ||--o{ bookings : "chủ đơn"
+    users ||--o{ checkout_requests : "key theo user"
+    carts ||--o{ cart_items : "mục giỏ"
+    catalog_keys ||--o{ cart_items : "ID có loại rõ ràng"
+    bookings ||--|{ booking_groups : "nhóm theo destination"
+    booking_groups ||--|{ booking_items : "từng dịch vụ"
+    catalog_keys ||--o{ booking_items : "ID nguồn"
+    booking_items ||--o| booking_room_stays : "chỉ HOTEL_ROOM"
+    hotel_rooms ||--o{ booking_room_stays : "room đã đặt"
+    booking_room_stays |o--|{ hotel_room_nights : "booking chiếm các đêm"
+    checkout_requests ||--o{ checkout_purchase_journal : "danh sách purchase cần đối soát"
+    users {
+        uuid user_id PK
+        text email UK
+        text password_hash
+        text full_name
+        varchar cdp_user_id UK "không FK sang CDP"
+        timestamptz created_at
+    }
+    carts {
+        uuid cart_id PK
+        uuid user_id FK,UK
+        bigint version
+        timestamptz updated_at
+    }
+    cart_items {
+        uuid cart_item_id PK
+        uuid cart_id FK
+        uuid product_id FK
+        varchar product_kind
+        date using_date
+        int nights "phòng bắt buộc"
+        int quantity "phòng bằng 1"
+        bigint unit_price_at_add
+        bigint price_version_at_add "nullable ngoài phòng"
+        timestamptz updated_at
+    }
+    bookings {
+        uuid booking_id PK
+        uuid user_id FK
+        varchar reference_code UK
+        varchar status "CONFIRMED"
+        text contact_full_name
+        text contact_email
+        text contact_phone
+        bigint total
+        varchar currency
+        timestamptz created_at
+    }
+    booking_groups {
+        uuid booking_group_id PK
+        uuid booking_id FK
+        text destination
+        varchar event_group_id UK
+        bigint group_total
+    }
+    booking_items {
+        uuid booking_item_id PK
+        uuid booking_group_id FK
+        uuid product_id FK
+        varchar product_kind
+        date using_date
+        int nights "nullable ngoài phòng"
+        int quantity
+        bigint unit_price
+        varchar price_unit
+        bigint line_total
+        jsonb product_snapshot
+        text_array guest_names
+        text special_request
+    }
+    booking_room_stays {
+        uuid booking_item_id PK,FK
+        uuid room_product_id FK
+        date check_in
+        date check_out
+    }
+    checkout_requests {
+        uuid checkout_id PK
+        uuid user_id FK
+        text idempotency_key "UK cùng user_id"
+        text request_hash
+        jsonb cart_snapshot
+        varchar state "PROCESSING SUCCEEDED FAILED RECONCILING"
+        uuid booking_id FK "nullable"
+        jsonb response_snapshot "nullable"
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    checkout_purchase_journal {
+        uuid checkout_id PK,FK
+        varchar event_id PK "purchase UUID của booking item"
+        uuid planned_booking_item_id "giá trị; chưa FK vì booking có thể rollback"
+        varchar cdp_user_id
+        jsonb event_payload
+        varchar state "PREPARED ACKED CANCEL_PENDING CANCELLED"
+        timestamptz updated_at
+    }

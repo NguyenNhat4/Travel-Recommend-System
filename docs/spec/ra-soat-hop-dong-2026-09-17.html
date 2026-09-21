@@ -1,0 +1,399 @@
+<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Rà soát hợp đồng tích hợp</title><style>:root{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#172033;background:#f5f7fb;font-size:16px;line-height:1.65}*{box-sizing:border-box}body{margin:0}header{padding:22px 32px;background:#153553;color:#fff}header strong{font-size:22px}header p{margin:4px 0;color:#d3e4f4}main{max-width:1400px;margin:auto;padding:26px 36px 90px;background:#fff}a{color:#1568aa}nav{display:flex;gap:8px 22px;flex-wrap:wrap;border-bottom:1px solid #ccd6e3;padding:0 0 22px;margin-bottom:30px}nav a{font-size:14px}h1{font-size:30px;line-height:1.25}h2{font-size:24px;padding-top:26px;margin-top:36px;border-top:1px solid #d8e1ec}h3{font-size:19px;margin-top:28px}p,li{max-width:1100px}table{border-collapse:collapse;width:100%;margin:18px 0;font-size:14px}td,th{border:1px solid #dae2ec;padding:10px 12px;vertical-align:top;text-align:left}th{background:#eaf0f7}pre{background:#f1f5f9;padding:18px;overflow:auto;font-size:13px}code{font-size:.89em;overflow-wrap:anywhere}figure{margin:24px 0;padding:16px 0;border-top:1px solid #d8e1ec;border-bottom:1px solid #d8e1ec}figcaption{font-size:14px;color:#52647a;margin-bottom:12px}.diagram{overflow:auto;padding:8px;background:#fff}.diagram svg{display:block;max-width:none;height:auto}blockquote{margin:20px 0;border-left:4px solid #2563eb;padding:4px 18px;background:#eff6ff}@media(max-width:700px){main{padding:18px}header{padding:18px}h1{font-size:25px}table{display:block;overflow:auto}.diagram svg{max-width:none}}@media print{header,nav{display:none}main{max-width:none;padding:0}figure{break-inside:avoid}.diagram{overflow:visible}.diagram svg{max-width:100%}}</style></head><body><header><strong>V-OTA · Rà soát hợp đồng tích hợp</strong><p>3 database · Nguồn dữ liệu rõ ràng · Cập nhật theo lựa chọn mock 30 đêm</p></header><main><nav><a href="ba-database-va-luong-du-lieu.html">Ba database và luồng dữ liệu</a><a href="so-do-3-service-chi-tiet.html">12 sơ đồ bảng và nghiệp vụ</a><a href="ra-soat-hop-dong-2026-09-17.html">Review hợp đồng</a></nav><h1>Rà soát hợp đồng theo catalog thực và phương án mock 30 đêm</h1>
+<p>Ngày: <strong>17/09/2026</strong>. Phạm vi: các tài liệu được cung cấp trong <code>Downloads</code>, catalog hiện tại và thiết kế ba service. Đây là <strong>kết quả review và đề xuất sửa hợp đồng</strong>, không phải xác nhận code đã triển khai hay các team đã nghiệm thu.</p>
+<p><strong>Kết luận:</strong> ranh giới Web → Backend → CDP/Insider phù hợp. Bộ hợp đồng <strong>chưa đồng bộ để triển khai booking theo từng đêm</strong>: thiếu lịch khả dụng, còn nhầm cơ sở với hạng phòng, và nhiều đoạn Backend/Frontend cũ mâu thuẫn với baseline/Agent mới.</p>
+<p>Xem <a href="so-do-3-service-chi-tiet.html">bản vẽ database và luồng chi tiết</a>. Các hướng dẫn giao việc nằm trong brief UX được xem là nội dung tham khảo, không phải yêu cầu chạy lại nghiên cứu UX.</p>
+<h2 id="1-quyết-định-từ-cuộc-trao-đổi-này">1. Quyết định từ cuộc trao đổi này</h2>
+<table>
+<thead>
+<tr>
+<th>Nội dung</th>
+<th>Quy tắc dùng trong thiết kế</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Giá phòng</td>
+<td>Một giá VND cho <strong>mỗi hạng phòng / mỗi đêm</strong>, dùng chung trong cửa sổ 30 đêm; không nhân bản giá thành 30 dòng</td>
+</tr>
+<tr>
+<td>Khả dụng</td>
+<td>Mỗi hạng phòng có trạng thái theo từng đêm. Đặt một đêm thì đêm đó hết khả dụng; đặt ba đêm thì cả ba đêm hết khả dụng</td>
+</tr>
+<tr>
+<td>Cửa sổ</td>
+<td>Trượt theo ngày hiện tại tại <code>Asia/Ho_Chi_Minh</code>, thêm một đêm mới mỗi ngày</td>
+</tr>
+<tr>
+<td>Khoảng lưu trú</td>
+<td><code>[checkIn, checkOut)</code>: tính đêm nhận phòng, không tính ngày trả phòng</td>
+</tr>
+<tr>
+<td>Tồn mock</td>
+<td>Diễn giải thiết kế: mỗi hạng phòng đại diện <strong>một đơn vị tồn mỗi đêm</strong>, vì đặt một lần làm đêm đó hết khả dụng. <code>quantity=1</code> cho phòng. Nếu muốn nhiều phòng cùng hạng, phải mở rộng sang số lượng tồn</td>
+</tr>
+<tr>
+<td>Đặt thành công</td>
+<td>Giữ đủ dòng lịch; thay <code>available=true</code> thành <code>false</code> và liên kết dòng booking. Không xóa ngày đã đặt</td>
+</tr>
+<tr>
+<td>Tài khoản demo</td>
+<td>Bỏ bảng <code>demo_accounts</code> theo yêu cầu. Nếu cần tài khoản mẫu thì seed trực tiếp <code>users</code>; đề xuất bỏ endpoint/UI liệt kê persona tương ứng</td>
+</tr>
+</tbody></table>
+<p>Ngày 17/09/2026: 30 đêm là <strong>17/09–16/10</strong>, ngày trả phòng muộn nhất <strong>17/10</strong>. “30 ngày tiếp theo” ở đây bao gồm hôm nay, không phải hôm nay cộng thêm 30 ngày thành 31 đêm.</p>
+<h2 id="2-dữ-liệu-đã-đối-chiếu">2. Dữ liệu đã đối chiếu</h2>
+<p>Đọc toàn bộ <a href="../../src/data_collection/data/recsys/products.jsonl">products.jsonl</a>, không suy rộng từ sample 50 dòng. <a href="evidence/catalog-audit-2026-09-17.json">Bằng chứng thống kê</a> ghi checksum và ID ví dụ.</p>
+<table>
+<thead>
+<tr>
+<th>Loại thực tế</th>
+<th align="right">Số dòng</th>
+<th>Bảng chuyên biệt đề xuất</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Khách sạn / cơ sở lưu trú <code>hotel/property</code></td>
+<td align="right">1.494</td>
+<td><code>hotel_properties</code></td>
+</tr>
+<tr>
+<td>Hạng phòng <code>hotel/room</code></td>
+<td align="right">4.646</td>
+<td><code>hotel_rooms</code></td>
+</tr>
+<tr>
+<td>Tuyến bay <code>flight/route</code></td>
+<td align="right">60</td>
+<td><code>flight_routes</code></td>
+</tr>
+<tr>
+<td>Chuyến bay <code>flight/flight</code></td>
+<td align="right">184</td>
+<td><code>flight_services</code></td>
+</tr>
+<tr>
+<td>Vé, tour, điểm tham quan <code>attraction</code></td>
+<td align="right">3.517</td>
+<td><code>attraction_products</code></td>
+</tr>
+<tr>
+<td>Gói combo <code>combo</code></td>
+<td align="right">93</td>
+<td><code>combo_packages</code></td>
+</tr>
+<tr>
+<td>Voucher / địa điểm golf <code>golf</code></td>
+<td align="right">6</td>
+<td><code>golf_products</code></td>
+</tr>
+<tr>
+<td><strong>Tổng</strong></td>
+<td align="right"><strong>10.000</strong></td>
+<td><strong>7 cấu trúc sản phẩm</strong></td>
+</tr>
+</tbody></table>
+<ul>
+<li>10.000 <code>productId</code>, 10.000 <code>sourceRef</code> duy nhất; mỗi dòng có đúng 13 trường.</li>
+<li>4.830 quan hệ cha–con, không thiếu cha: 4.646 phòng → khách sạn, 184 chuyến → tuyến.</li>
+<li>243 cơ sở chưa có hạng phòng trong file: được hiển thị nhưng chưa có phòng để đặt theo thiết kế mới.</li>
+<li>7.784 dòng có <code>sourceRef</code> bắt đầu <code>synthetic:</code>; 2.216 dòng còn lại đến từ catalog nguồn, <strong>một số trường đã được điền bằng quy tắc demo</strong>. Không gọi cả 2.216 dòng là dữ liệu nguyên bản hoàn toàn.</li>
+<li>Có 9.859 <code>available=true</code>, 141 <code>false</code>; không có khóa availability/stock theo ngày trong <code>attributes</code>.</li>
+<li>Có 2.224 dòng chứa thuộc tính boolean <code>false</code>, 26 dòng có hạng sao thập phân.</li>
+<li>139 attraction có <code>ticketed=false</code>; Sea Links Golf cũng có <code>ticketed=false</code> dù được điền giá 1.700.000 VND. Có giá không đồng nghĩa được đặt.</li>
+<li>Không còn null ở giá/ngày/ảnh trong file này do bước điền mock. API vẫn cần hỗ trợ nullable cho dữ liệu khác.</li>
+<li>Lịch ban đầu cho toàn bộ phòng: <strong>4.646 × 30 = 139.380 dòng</strong>. Đây là lịch cần sinh, chưa có trong file hiện tại.</li>
+</ul>
+<p><code>SCHEMA.md</code> còn mô tả 2.216 dòng; baseline 1.1 mô tả sample 50 dòng. Cả hai không phải thống kê của catalog 10.000 dòng hiện tại. Xem <a href="../../src/data_collection/docs/EXPAND_CATALOG.md">quy tắc mở rộng catalog</a>.</p>
+<h2 id="3-phiên-bản-tài-liệu-và-code-không-trùng-nhau">3. Phiên bản tài liệu và code không trùng nhau</h2>
+<table>
+<thead>
+<tr>
+<th>Nguồn</th>
+<th>Kết quả kiểm tra</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Nhánh đang mở</td>
+<td><code>data</code>; có thay đổi chưa commit của người dùng</td>
+</tr>
+<tr>
+<td>OpenAPI tại working tree</td>
+<td><code>src/shared/contracts/openapi.yaml</code>: <strong>0.1.0</strong>, <code>paths: {}</code>; chưa phải hợp đồng triển khai đầy đủ</td>
+</tr>
+<tr>
+<td>Ref local <code>origin/data_contract</code></td>
+<td>Commit <strong><code>0f630a2</code></strong>; OpenAPI Backend <strong>1.3.0</strong>, CDP <strong>0.2.0</strong>; đọc bằng <code>git show</code>, không fetch, không khẳng định đây là bản mới nhất trên server</td>
+</tr>
+<tr>
+<td>Backend đính kèm</td>
+<td>Header phiên bản 1.0 + ghi chú MVP 1.2.0; thân tài liệu còn nhiều quy tắc cũ</td>
+</tr>
+<tr>
+<td>Frontend đính kèm</td>
+<td>Còn gọi shape Agent là đề xuất và còn bảng đối chiếu Agent cũ</td>
+</tr>
+<tr>
+<td>Agent đính kèm</td>
+<td>1.2.0; đã có nullable, <code>UNKNOWN</code>, bốn trạng thái response</td>
+</tr>
+<tr>
+<td>Thiết kế ba service cũ</td>
+<td>Dựa trên <code>origin/data_contract</code>, không phản ánh đầy đủ code đang ở nhánh <code>data</code></td>
+</tr>
+</tbody></table>
+<p>Không thể nói “OpenAPI thắng” mà để mỗi team dùng một bản OpenAPI khác nhau. Cần chọn cùng commit hợp đồng khi tích hợp. Các thay đổi lịch phòng dưới đây là <strong>đề xuất tiếp theo</strong>, chưa có trong cả 0.1.0 lẫn 1.3.0 đã kiểm tra.</p>
+<h2 id="4-những-điểm-đúng-nên-giữ">4. Những điểm đúng nên giữ</h2>
+<ol>
+<li>Web chỉ gọi Backend; không nắm token hoặc URL nội bộ CDP.</li>
+<li>Backend sở hữu catalog, tài khoản, giỏ, đơn; CDP sở hữu event/profile; Insider giữ bản sao phục vụ kích hoạt kênh.</li>
+<li>Không FK/join xuyên database. Dùng ID ổn định và các client API.</li>
+<li><code>product_view</code>, <code>search</code>, <code>add_to_cart</code> ghi nền; <code>purchase</code> là sự kiện nghiệp vụ có ID chống trùng.</li>
+<li>Agent truy xuất sản phẩm qua API; tên, ID, giá phải có căn cứ; không tự tạo booking.</li>
+<li>Khi CDP không đọc được, Recommendation có fallback; khi thiếu căn cứ tính tổng, Agent trả <code>null</code> + cảnh báo.</li>
+<li>Taxonomy công khai vẫn là <code>hotel</code>, <code>flight</code>, <code>attraction</code>, <code>combo</code>, <code>golf</code>; database có thể tách chi tiết hơn mà không tạo thêm taxonomy.</li>
+</ol>
+<h2 id="5-các-điều-khoản-cần-sửa">5. Các điều khoản cần sửa</h2>
+<p><strong>P1</strong>: cần sửa trước tích hợp luồng liên quan. <strong>P2</strong>: cần hoàn thiện để vận hành/diễn giải đúng. Đây là mức ưu tiên review, không phải lỗi đã quan sát trên server đang chạy.</p>
+<table>
+<thead>
+<tr>
+<th>Mã</th>
+<th>Mức</th>
+<th>Bằng chứng</th>
+<th>Vấn đề / sửa cụ thể</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>R01</td>
+<td>P1</td>
+<td>Backend §2.2, §5.3; Agent §2.2; baseline phần quyết định</td>
+<td><code>available</code> vừa bị gọi là còn chỗ, vừa là snapshot crawl. Giữ trường cũ cho catalog; thêm API lịch phòng có availability theo đêm và kết quả cho cả kỳ lưu trú. Checkout đọc lịch này</td>
+</tr>
+<tr>
+<td>R02</td>
+<td>P1</td>
+<td>Backend §2.6, §7.1; baseline “Đơn vị”</td>
+<td>Không được suy đơn vị của mọi sản phẩm từ taxonomy. <strong>Riêng phòng mock</strong> đã có quyết định nghiệp vụ nên dùng <code>PER_NIGHT</code>, số lượng là phòng; loại khác cần mapping có căn cứ hoặc <code>UNKNOWN</code></td>
+</tr>
+<tr>
+<td>R03</td>
+<td>P1</td>
+<td>Backend §2.5 so với catalog và <code>schemas/catalog.yaml</code> tại <code>0f630a2</code></td>
+<td>Bỏ quy tắc “attributes chỉ true; sao là integer”. Giữ false, số thập phân, mảng, object, <code>level</code>, <code>parentProductId</code>, provenance</td>
+</tr>
+<tr>
+<td>R04</td>
+<td>P1</td>
+<td>Backend §7.1, §7.2; thiết kế cũ §3.5</td>
+<td>Chỉ kiểm <code>usingDate</code> trong khoảng là thiếu. Phải kiểm <strong>đủ N đêm</strong>, cùng một room, không có đêm thiếu/hết khả dụng; ngày trả phòng không bị kiểm như đêm ở</td>
+</tr>
+<tr>
+<td>R05</td>
+<td>P1</td>
+<td>Backend §7.1 “quantity ≥ 1”; lựa chọn mock hiện tại</td>
+<td>Một lần đặt làm đêm hết khả dụng → phòng mock chỉ nhận <code>quantity=1</code>. Muốn <code>quantity&gt;1</code> phải có <code>remainingRooms</code>, không thể suy sức chứa từ boolean</td>
+</tr>
+<tr>
+<td>R06</td>
+<td>P1</td>
+<td>Backend §7.1 quy tắc 6; UNIQUE giỏ trong thiết kế cũ</td>
+<td>Cùng room/ngày nhưng khác số đêm bị gộp sai. Với tồn 1: dùng UNIQUE <code>(cart_id, room_product_id)</code> cho dòng phòng; POST lặp cùng kỳ là idempotent, đổi kỳ bằng PATCH, không cộng số lượng</td>
+</tr>
+<tr>
+<td>R07</td>
+<td>P1</td>
+<td>Catalog có 7 cấu trúc; Backend §7.1 chỉ cần ID + available</td>
+<td><code>hotel/property</code> và <code>flight/route</code> là cha, không tự thành hàng bán. Phòng phải đặt ID <code>hotel/room</code>; chuyến chọn ID <code>flight/flight</code>. <code>ticketed=false</code> không có CTA mua, kể cả giá 0 hoặc giá điền mock</td>
+</tr>
+<tr>
+<td>R08</td>
+<td>P1</td>
+<td>Backend §7.4; CDP §5, §7</td>
+<td>Chống trùng event theo <code>bookingItemId</code> <strong>không</strong> chống trùng checkout sau timeout nếu mỗi lần sinh ID mới. Thêm <code>Idempotency-Key</code> cho checkout, lưu hash request và kết quả; không tạo booking mới cho cùng key</td>
+</tr>
+<tr>
+<td>R09</td>
+<td>P1</td>
+<td>CDP §5</td>
+<td>Ghi CDP trước commit là bù trừ, không phải transaction phân tán. Timeout có thể để lại purchase mồ côi. Với tồn phòng cần rollback cả lịch. Giữ cách cũ cho MVP nhưng ghi rõ giới hạn; thêm journal để khôi phục, không khẳng định exactly-once xuyên service</td>
+</tr>
+<tr>
+<td>R10</td>
+<td>P1</td>
+<td>Frontend §9.3, §9.5, §10; Agent §4–5; baseline</td>
+<td><code>bookableCount = số available=true</code> sai cho cha/điểm không bán/đêm hết chỗ. Không cộng giá khách sạn cha và phòng con. Render tổng nullable, <code>UNKNOWN</code>, hydrate recommendation; bỏ bảng yêu cầu Agent sửa những thứ Agent đã sửa</td>
+</tr>
+<tr>
+<td>R11</td>
+<td>P1</td>
+<td>Backend §10 D12; <code>datesSeen</code> của chuyến bay</td>
+<td>Khoảng min–max ngày bay không chứng minh bay mỗi ngày. 184 chuyến có danh sách ngày rời rạc; tách <code>flight_observed_dates</code>. Mock 30 đêm do người dùng chọn <strong>chỉ áp dụng phòng</strong>, không tự áp cho chuyến/tour/golf</td>
+</tr>
+<tr>
+<td>R12</td>
+<td>P2</td>
+<td>Backend §2.2; baseline; OpenAPI 1.3.0</td>
+<td>File hiện tại đủ giá/ngày không làm nullable trong API trở nên sai. Sửa bảng required/optional cũ theo schema, không ép <code>null</code> thành 0 hoặc ngày tùy ý</td>
+</tr>
+<tr>
+<td>R13</td>
+<td>P2</td>
+<td>Backend §7.3; thiết kế cũ §3.6</td>
+<td>Đọc lại đơn từ catalog sống sẽ đổi tên/giá sau reseed. Lưu snapshot <code>name</code>, <code>taxonomy</code>, <code>destination</code>, <code>imageUrl</code>, đơn vị và giá chốt; giữ FK tới ID để truy vết</td>
+</tr>
+<tr>
+<td>R14</td>
+<td>P2</td>
+<td>CDP §6–7; Backend §8.5</td>
+<td>Timeout CDP 2 giây không bảo vệ được mục tiêu Recommendation 300 ms khi CDP chậm. Đây là khoảng trống ngân sách, không phải chứng cứ vi phạm p95 thực tế. Tách timeout đọc lịch sử/ghi purchase và đo end-to-end</td>
+</tr>
+<tr>
+<td>R15</td>
+<td>P2</td>
+<td>Thiết kế cũ §8 Q1–Q3</td>
+<td>Thiếu API thống kê popular và liệt kê khách. Demo có thể dùng snapshot seed + danh sách persona; tổng quát cần endpoint/job rõ ràng. Không join sang DB CDP để lấp thiếu hụt</td>
+</tr>
+<tr>
+<td>R16</td>
+<td>P2</td>
+<td>CDP §1.6; handbook §3; thiết kế cũ §6</td>
+<td>Chưa có hợp đồng Insider riêng. Chốt upsert/identity/profile/export, mapping opt-in, TTL, giới hạn request; đây không phải điều kiện để hoàn thành booking phòng</td>
+</tr>
+<tr>
+<td>R17</td>
+<td>P2</td>
+<td>Thiết kế cũ §5.4, §7</td>
+<td>Chỉ soft-delete theo “không có trong file” khi đó là snapshot đầy đủ của phạm vi import. Nạp một sample/delta không được xóa catalog còn lại; không tự viết lại migration đã áp dụng</td>
+</tr>
+<tr>
+<td>R18</td>
+<td>P1</td>
+<td>Yêu cầu mới của người dùng; Backend §3.4, Frontend phần chọn tài khoản mẫu</td>
+<td>Bỏ <code>demo_accounts</code> trong thiết kế; loại phụ thuộc model/seed/API/UI khi triển khai. Tài khoản mẫu vẫn là row <code>users</code> thông thường</td>
+</tr>
+</tbody></table>
+<h2 id="6-sửa-theo-từng-tài-liệu">6. Sửa theo từng tài liệu</h2>
+<table>
+<thead>
+<tr>
+<th>Tài liệu</th>
+<th>Phần giữ</th>
+<th>Phần cần cập nhật</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>hop-dong-tich-hop-backend.md</code></td>
+<td>Auth, ID, event ownership, error envelope</td>
+<td>§2.2/2.5/2.6; thêm lịch phòng; §7 giỏ/checkout/idempotency/khóa đêm/snapshot; sửa D12</td>
+</tr>
+<tr>
+<td><code>hop-dong-tich-hop-frontend.md</code></td>
+<td>Route, tracing, cấu trúc màn hình</td>
+<td>Chọn hạng phòng + check-in/out + lịch đêm; khóa CTA theo kết quả kiểm kỳ ở; quantity phòng = 1; bỏ công thức suy taxonomy và shape Agent lỗi thời</td>
+</tr>
+<tr>
+<td><code>hop-dong-tich-hop-itinerary-assistant.md</code></td>
+<td>Grounding, 4 trạng thái, nullable tổng</td>
+<td>Stay phải là room ID; có ngày thì hậu kiểm toàn kỳ qua lịch phòng; chưa có ngày thì không khẳng định đặt được; phòng mock có thể tính tổng do đơn vị đã rõ</td>
+</tr>
+<tr>
+<td><code>hop-dong-tich-hop-cdp.md</code></td>
+<td>Event store riêng; TTL không áp CDP; tracing</td>
+<td>Phân biệt idempotency checkout và event; bù trừ gồm rollback lịch phòng; dùng tiền nguyên; tùy chọn thêm nights vào event bằng thay đổi schema rõ ràng</td>
+</tr>
+<tr>
+<td><code>contract-baseline-v1.1.md</code></td>
+<td>Giữ nguyên dữ liệu, chống bịa, nullable, không đếm trùng cha–con</td>
+<td>Ghi rằng phần <strong>mock phòng</strong> đã có câu trả lời: giá cố định, 30 đêm trượt, tồn boolean. Không suy rằng đơn vị/checkout các loại khác cũng đã được chốt</td>
+</tr>
+<tr>
+<td><code>product.md</code></td>
+<td>Vòng phản hồi booking → recommendation và giải thích <code>because</code></td>
+<td>§4.3.3 hộp đặt theo loại cụ thể; §4.5 giá mock; §6 stay chọn room và kiểm từng đêm; minh bạch đây là đặt demo</td>
+</tr>
+<tr>
+<td><code>recsys-internship-handbook-v3-vi.md</code></td>
+<td>Mục tiêu học tập, thuật toán, event và tích hợp</td>
+<td>Dùng phụ lục quyết định thay vì diễn giải 13 trường JSON thành yêu cầu một bảng vật lý duy nhất</td>
+</tr>
+<tr>
+<td><code>ux-research-brief.md</code></td>
+<td>Bối cảnh UX</td>
+<td>Không phải hợp đồng DB/API và không cần chạy lại nhiệm vụ Mobbin để review này</td>
+</tr>
+</tbody></table>
+<h2 id="7-các-phần-không-nên-tự-quyết-thay-nhóm">7. Các phần không nên tự quyết thay nhóm</h2>
+<ul>
+<li>Chính sách booking/đơn vị cho combo, vé trẻ em/thành viên, golf và tồn tour chưa được người dùng chốt; bản thiết kế giữ phần chưa biết.</li>
+<li>Việc chuyển catalog sang CDP thật chưa có API thật xác nhận; tiếp tục ownership Backend theo kiến trúc được cung cấp.</li>
+<li>Mô hình embedding, kích thước vector, tên attribute Insider không được suy ra từ file catalog.</li>
+<li>Mọi endpoint/field/lỗi mới trong bản vẽ là <strong>đề xuất hợp đồng</strong>, cần được đưa vào cùng bản OpenAPI trước khi các team triển khai. Review này không sửa hợp đồng trên nhánh khác, không merge hay chạy migration.</li>
+</ul>
+<h2 id="8-tiêu-chí-kiểm-chứng-khi-triển-khai">8. Tiêu chí kiểm chứng khi triển khai</h2>
+<table>
+<thead>
+<tr>
+<th>Ca</th>
+<th>Kết quả cần đạt</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Import catalog</td>
+<td>10.000 ID; đúng subtype; không mồ côi cha–con</td>
+</tr>
+<tr>
+<td>Seed lịch</td>
+<td>30 dòng active / room; một giá / room; chạy lại không thay đêm đã đặt</td>
+</tr>
+<tr>
+<td>Đặt 1 đêm khi 30 đêm đều mở</td>
+<td>29 đêm khả dụng, 1 đêm liên kết đúng booking</td>
+</tr>
+<tr>
+<td>Đặt 3 đêm</td>
+<td>Khóa đúng 3 đêm; ngày checkout vẫn dùng được cho đơn khác</td>
+</tr>
+<tr>
+<td>Hai request đồng thời cùng room/đêm</td>
+<td>Chỉ một đơn thành công; đơn còn lại không sinh purchase thành công</td>
+</tr>
+<tr>
+<td>Hai kỳ không giao nhau</td>
+<td>Đều có thể thành công cho cùng room</td>
+</tr>
+<tr>
+<td>Kỳ có 1 đêm đóng hoặc thiếu dữ liệu</td>
+<td>Không tạo booking; không đặt một phần; không ghi purchase</td>
+</tr>
+<tr>
+<td>Retry cùng Idempotency-Key</td>
+<td>Cùng đơn/kết quả đã lưu; không trừ lịch lần hai; cùng key khác body bị từ chối</td>
+</tr>
+<tr>
+<td>Commit hoặc CDP lỗi</td>
+<td>Không có booking thành công với lịch chưa cập nhật; rollback lịch và xử lý purchase theo journal</td>
+</tr>
+<tr>
+<td>Qua ngày mới tại Việt Nam</td>
+<td>Bổ sung ngày cuối; giữ trạng thái mọi ngày giao nhau và lịch sử booking</td>
+</tr>
+<tr>
+<td>Reseed/đổi catalog</td>
+<td>Tên, giá, tổng của đơn cũ không đổi</td>
+</tr>
+<tr>
+<td>Parent/POI bị gửi vào giỏ</td>
+<td>Backend từ chối, kể cả gọi trực tiếp bỏ qua UI</td>
+</tr>
+<tr>
+<td>Đặt phòng xong</td>
+<td>Event mang ID room, taxonomy hotel; recommendation phản ánh purchase mới, không gợi ý mua khách sạn cha như dịch vụ còn thiếu</td>
+</tr>
+</tbody></table>
+<h2 id="9-nguồn-đã-đọc">9. Nguồn đã đọc</h2>
+<ul>
+<li><a href="thiet-ke-schema-3-service.md">Thiết kế ba service ban đầu</a>.</li>
+<li><a href="../../src/data_collection/cdp/models.py">Mô hình code hiện tại</a>, <a href="../../src/data_collection/docs/SCHEMA.md">schema catalog</a>, <a href="../../src/data_collection/docs/EXPAND_CATALOG.md">quy tắc mở rộng</a>.</li>
+<li>Các tài liệu trong <code>/home/dangkhoi/Downloads/</code>: <code>contract-baseline-v1.1.md</code>, <code>hop-dong-tich-hop-backend.md</code>, <code>hop-dong-tich-hop-frontend.md</code>, <code>hop-dong-tich-hop-cdp.md</code>, <code>hop-dong-tich-hop-itinerary-assistant.md</code>, <code>product.md</code>, <code>recsys-internship-handbook-v3-vi.md</code>, <code>ux-research-brief.md</code>.</li>
+<li>Nội dung Git local <code>origin/data_contract</code> tại <code>0f630a2</code>: <code>src/ARCHITECTURE.md</code>, <code>src/shared/contracts/openapi.yaml</code>, các <code>schemas/catalog.yaml</code>, <code>schemas/booking.yaml</code>, <code>schemas/recommendations.yaml</code>, <code>schemas/itinerary-agent.yaml</code>, <code>cdp-clone.openapi.yaml</code>, <code>src/cdp_clone/app/infrastructure/tables.py</code>.</li>
+</ul>
+</main></body></html>

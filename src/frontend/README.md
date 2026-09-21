@@ -1,13 +1,20 @@
-# Frontend
+<div align="center">
+<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
+</div>
 
-Vị trí dành cho Next.js (App Router) + TypeScript + Tailwind CSS app. Code UI đặt trong `src/`, tổ chức theo feature; routing/layout đặt trong `src/app`; API types/client phải được sinh từ `../shared/contracts/openapi.yaml`.
+# Run and deploy your AI Studio app
 
-Hợp đồng dữ liệu phía Web: `docs/spec/hop-dong-tich-hop-frontend.md`.
+This contains everything you need to run your app locally.
 
-Sinh kiểu API (không sửa tay file sinh ra):
+View your app in AI Studio: https://ai.studio/apps/bba69163-2c00-454c-9255-b752aaf79521
 
-```bash
-npx openapi-typescript ../shared/contracts/openapi.yaml -o src/types/api.gen.ts
-```
+## Run Locally
 
-Mock: bật `NEXT_PUBLIC_API_MOCK=1`, tầng `src/services` đọc fixture theo `../shared/mocks/index.json`; chọn ca biên bằng `?mock=<case>`.
+**Prerequisites:**  Node.js
+
+
+1. Install dependencies:
+   `npm install`
+2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+3. Run the app:
+   `npm run dev`

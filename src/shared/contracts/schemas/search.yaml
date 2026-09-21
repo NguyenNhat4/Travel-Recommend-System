@@ -1,5 +1,44 @@
+# search.yaml — /api/v1/search và chẩn đoán dùng chung cho 3 engine
+#
+# Đã áp dụng: C3 (backgroundScore, cutoff) · C4 (thứ tự query, searchMode, diagnostics)
+#             Q1 (travelContext, availabilityMode)
+# [CHỜ DUYỆT: C5] includeVariants · [CHỜ DUYỆT: C6] appliedFilters
+
+# [Q1] Ngữ cảnh chuyến đi. KHÔNG phải xác nhận availability nếu
+# availabilityMode là CATALOG_ONLY.
+TravelContext:
+  type: object
+  additionalProperties: false
+  properties:
+    checkIn:
+      type: [string, 'null']
+      format: date
+    checkOut:
+      type: [string, 'null']
+      format: date
+      description: Không bao gồm. Kiểm tra mọi đêm trong [checkIn, checkOut).
+    guests:
+      type: object
+      properties:
+        adults:   { type: integer, minimum: 1 }
+        children: { type: integer, minimum: 0 }
+    rooms:
+      type: [integer, 'null']
+      minimum: 1
+
+AvailabilityMode:
+  type: string
+  enum:
+  - CATALOG_ONLY
+  - CHECK_DATE_RANGE
+  description: >-
+    [Q1] CATALOG_ONLY là mặc định: chỉ dùng snapshot, bookable trả null.
+    CHECK_DATE_RANGE gọi availability service, yêu cầu travelContext có
+    checkIn và checkOut. FLEXIBLE_MONTH lùi sang Phase 3.
+
 SearchRequest:
   type: object
+  additionalProperties: false
   required:
   - query
   properties:
@@ -9,55 +48,124 @@ SearchRequest:
       maxLength: 500
       pattern: \S
     destination:
-      type:
-      - string
-      - 'null'
+      type: [string, 'null']
     taxonomy:
       oneOf:
       - $ref: ../openapi.yaml#/components/schemas/Taxonomy
       - type: 'null'
     priceMin:
-      type:
-      - integer
-      - 'null'
+      type: [integer, 'null']
       minimum: 0
     priceMax:
-      type:
-      - integer
-      - 'null'
+      type: [integer, 'null']
       minimum: 0
     starRatingMin:
-      type:
-      - number
-      - 'null'
+      type: [number, 'null']
       minimum: 0
       maximum: 5
+      description: >-
+        [CHỜ DUYỆT: C6] SOFT filter. starRating chỉ phủ 51% catalog, nên sản phẩm
+        KHÔNG khai starRating thì KHÔNG bị loại — chỉ xếp sau sản phẩm thỏa điều
+        kiện. Xem appliedFilters.soft trong response.
     availableOnly:
-      type:
-      - boolean
-      - 'null'
+      type: [boolean, 'null']
       default: true
+      description: >-
+        Chỉ lọc trên snapshot `available`. Lấy cả điểm không bán vé bằng false.
+    includeVariants:
+      type: boolean
+      default: false
+      description: >-
+        [CHỜ DUYỆT: C5] Mặc định false — chỉ trả tầng cha (property, route và các
+        taxonomy không phân tầng). true thì trả cả hạng phòng và chuyến bay cụ thể.
+        Bật true sẽ làm kết quả lặp: 907 hạng phòng trỏ về 316 property, và mô tả
+        của chúng tự sinh từ mô tả khách sạn cha.
+    travelContext:
+      oneOf:
+      - $ref: ../openapi.yaml#/components/schemas/TravelContext
+      - type: 'null'
+    availabilityMode:
+      $ref: ../openapi.yaml#/components/schemas/AvailabilityMode
+      default: CATALOG_ONLY
     sort:
       oneOf:
       - $ref: ../openapi.yaml#/components/schemas/SearchSort
       - type: 'null'
     limit:
-      type:
-      - integer
-      - 'null'
+      type: [integer, 'null']
       minimum: 1
       maximum: 50
       default: 20
     offset:
-      type:
-      - integer
-      - 'null'
+      type: [integer, 'null']
       minimum: 0
       default: 0
-  additionalProperties: false
-  description: 'query bắt buộc; trường tùy chọn null tương đương bỏ qua/default. Lọc priceMin/Max trên
-    unitPrice snapshot VND, không phải tổng chuyến đi; giá null bị loại khi có lọc giá. Không hỗ trợ startDate/endDate/party:
-    Agent tự kiểm tra sau retrieval. availableOnly=true chỉ lọc snapshot; lấy điểm không bán vé bằng false.'
+  description: >-
+    query bắt buộc; trường tùy chọn null tương đương bỏ qua/default.
+    Lọc priceMin/Max trên unitPrice snapshot VND, KHÔNG phải ngân sách chuyến đi;
+    giá null bị loại khi có lọc giá.
+
+    [C4] Thứ tự xử lý bắt buộc: FILTER -> SCORE -> CUTOFF -> TOTAL/FACETS -> SORT -> PAGE.
+    F = tập sau structured filter. R = { p thuộc F | score >= cutoff }.
+    total = |R|, facets tính trên R, results là một trang của R.
+
+# [CHỜ DUYỆT: C6] Echo lại filter đã áp, tách cứng và mềm.
+# Agent cần để không tuyên bố với người dùng điều mà dữ liệu không xác nhận.
+AppliedFilters:
+  type: object
+  required:
+  - hard
+  - soft
+  properties:
+    hard:
+      type: object
+      additionalProperties: true
+      description: Đã loại thẳng. taxonomy, destination, priceMin/Max, availableOnly.
+    soft:
+      type: object
+      additionalProperties: true
+      description: >-
+        Đã áp mềm — kết quả CÓ THỂ không thỏa. starRatingMin và mọi thuộc tính
+        phủ dưới 70%.
+
+# [C4] Dùng chung cho /search, /similar, /recommendations.
+EngineDiagnostics:
+  type: object
+  required:
+  - searchMode
+  - approximate
+  - latencyMs
+  properties:
+    searchMode:
+      $ref: ../openapi.yaml#/components/schemas/SearchMode
+    approximate:
+      type: boolean
+      description: false ở chế độ EXACT_FILTER_SCORE.
+    totalExact:
+      type: boolean
+      description: >-
+        [C4] false bắt buộc khi approximate là true. HNSW chỉ trả top-K nên sản
+        phẩm ngoài candidate pool vẫn có thể vượt cutoff — total khi đó không chính xác.
+    facetsExact:
+      type: boolean
+      description: Như totalExact.
+    filteredCount:
+      type: integer
+      minimum: 0
+      description: '|F| — số sản phẩm còn lại sau structured filter, trước khi tính cosine.'
+    relevantCount:
+      type: integer
+      minimum: 0
+      description: >-
+        |R| — số sản phẩm vượt cutoff. Cặp filteredCount/relevantCount trả lời
+        ngay câu "sao ít kết quả thế": |F| nhỏ là filter quá chặt, |F| lớn mà
+        |R| nhỏ là cutoff quá cao.
+    modelVersion:
+      type: string
+    latencyMs:
+      type: integer
+      minimum: 0
+
 SearchFacets:
   type: object
   required:
@@ -76,6 +184,10 @@ SearchFacets:
       additionalProperties:
         type: integer
         minimum: 0
+      description: >-
+        [C4] Sản phẩm thiếu destination gom vào bucket "UNKNOWN", không bỏ qua —
+        bỏ qua làm tổng facets nhỏ hơn total và phá bất biến.
+
 SearchResponse:
   type: object
   required:
@@ -89,17 +201,46 @@ SearchResponse:
     total:
       type: integer
       minimum: 0
+      description: '[C4] |R| — số sản phẩm vượt cutoff sau filter. KHÔNG phụ thuộc limit/offset.'
     limit:
       type: integer
     offset:
       type: integer
     topScore:
-      type:
-      - number
-      - 'null'
+      type: [number, 'null']
       minimum: 0
       maximum: 1
+      description: Điểm cao nhất trong R, hoặc null khi results rỗng.
+    backgroundScore:
+      type: [number, 'null']
+      minimum: 0
+      maximum: 1
+      description: >-
+        [C3] Trung vị cosine của TOÀN BỘ tập đã lọc F. Lấy miễn phí trong cùng
+        lượt quét exact của C4.
+
+        Dùng cho quy tắc margin: model họ e5 có dải cosine bị nén (cặp không liên
+        quan đã ở 0.72–0.78), nên ngưỡng tuyệt đối đơn thuần không đáng tin.
+        Client tính margin = topScore - backgroundScore và báo "kết quả yếu" khi
+        topScore < WEAK_RESULT_TOP_SCORE HOẶC margin < WEAK_RESULT_MARGIN.
+        null khi results rỗng.
+    cutoff:
+      type: number
+      minimum: 0
+      maximum: 1
+      description: >-
+        [C3][C4] Ngưỡng đã áp. Giá trị tạm 0.62 (PROVISIONAL), benchmark Ngày 3
+        trên 80 cặp query-product gán nhãn cộng 10 truy vấn âm.
+        Nguồn sự thật là search.cutoff trong application.yml; frontend đọc lại từ
+        trường này, KHÔNG hard-code bản sao.
     facets:
       $ref: ../openapi.yaml#/components/schemas/SearchFacets
+    appliedFilters:
+      $ref: ../openapi.yaml#/components/schemas/AppliedFilters
+    diagnostics:
+      $ref: ../openapi.yaml#/components/schemas/EngineDiagnostics
     requestId:
       type: string
+  description: >-
+    [C4] Bất biến: sum(facets.taxonomy) == total. total và facets KHÔNG đổi khi
+    thay limit/offset. total, facets và results phải dùng cùng filter và cùng cutoff.

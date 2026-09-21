@@ -1,5 +1,6 @@
 """Compile the nine-node itinerary graph with request-scoped runtime dependencies."""
 
+<<<<<<< HEAD
 from __future__ import annotations
 
 from typing import Any
@@ -7,6 +8,10 @@ from functools import partial
 from src.backend.app.application.ports.itinerary_tools import ConversationStorePort, ToolExecutorPort
 
 from .state import AgentState
+=======
+from src.backend.app.agents.nodes.example_node import analyze_node, respond_node
+from src.backend.app.agents.state import AgentState
+>>>>>>> origin/release-mvp-v1
 
 
 def build_graph(checkpointer: Any | None = None, *, tools: ToolExecutorPort | None = None,

@@ -1,0 +1,594 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Phương án MVP cho hệ thống gợi ý du lịch: ba service, bảng riêng theo sản phẩm, 19 bảng và luồng đặt dịch vụ tối giản.">
+<title>Báo cáo MVP · Hệ thống gợi ý du lịch</title><style>
+:root{color-scheme:light;--ink:#203543;--muted:#586e7b;--teal:#0b6965;--line:#dce5e8;--paper:#fff;--bg:#eef3f4;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;font-size:16px;line-height:1.75;color:var(--ink);background:var(--bg)}
+*{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:24px}body{margin:0}a{color:var(--teal);text-underline-offset:3px}a:hover{color:#073c39}a:focus-visible,button:focus-visible{outline:3px solid #d79536;outline-offset:4px}.skip{position:absolute;top:-100px;left:16px;padding:12px;background:white;z-index:5}.skip:focus{top:10px}
+.cover{background:#122f3f;color:#fff;padding:46px max(28px,calc((100vw - 1376px)/2)) 38px}.eyebrow{font-size:12px;letter-spacing:.14em;font-weight:650;text-transform:uppercase;color:#a8d6d2}.cover h1{font-size:clamp(30px,4vw,48px);letter-spacing:-.035em;line-height:1.17;margin:15px 0}.cover p{max-width:780px;font-size:17px;color:#d1e2e7;margin:0}.metrics{display:flex;gap:38px;margin-top:28px}.metrics div{padding-right:36px;border-right:1px solid #43616d}.metrics div:last-child{border:0}.metrics strong{display:block;font-size:29px;line-height:1.3}.metrics span{font-size:12px;color:#b6cdd5}.actions{display:flex;gap:18px;margin-top:26px;align-items:center}.actions a,.actions button{font:inherit;font-size:13px;color:#e0f2f0;background:transparent;border:1px solid #69828e;border-radius:7px;padding:6px 14px;text-decoration:none;cursor:pointer}
+.layout{display:grid;grid-template-columns:230px minmax(0,1fr);max-width:1440px;margin:0 auto;align-items:start}.sidebar{position:sticky;top:0;max-height:100vh;overflow:auto;padding:30px 24px 30px 28px;font-size:13px}.sidebar .label{font-size:11px;letter-spacing:.1em;color:var(--muted);font-weight:700}.sidebar ul{list-style:none;padding:0;margin:14px 0}.sidebar li{margin:0 0 11px}.sidebar a{text-decoration:none;color:#415e6b;line-height:1.5;display:block}.sidebar a:hover{color:var(--teal);text-decoration:underline}.sidebar .note{font-size:12px;color:var(--muted);border-top:1px solid #cbdadd;padding-top:18px;margin-top:24px}
+main{min-width:0;background:var(--paper);padding:35px 46px 70px;border-left:1px solid var(--line)}h2{font-size:25px;line-height:1.35;letter-spacing:-.025em;border-top:1px solid var(--line);margin:42px 0 20px;padding-top:32px;color:#153f4c}h3{font-size:18px;line-height:1.5;margin:28px 0 12px;color:#0b6965}p{margin:14px 0}li{padding-left:3px;margin:8px 0}ul,ol{padding-left:23px}strong{font-weight:650}code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.85em;background:#f0f5f6;padding:1px 4px;border-radius:4px;overflow-wrap:anywhere}pre{overflow:auto;background:#f0f5f6;padding:18px}pre code{padding:0}.table-wrap{overflow-x:auto;margin:20px 0;border:1px solid var(--line);border-radius:8px}table{width:100%;border-collapse:collapse;font-size:14px;line-height:1.6}th{text-align:left;background:#edf4f4;color:#224e59;font-weight:650}th,td{padding:12px 15px;vertical-align:top;border-bottom:1px solid var(--line)}tr:last-child td{border-bottom:0}td:first-child{min-width:125px}td p{margin:0}tbody tr:nth-child(even){background:#fafcfc}.architecture{margin:26px 0}.architecture svg{display:block;width:100%;height:auto}figcaption{font-size:12px;color:var(--muted);margin-top:8px}.footer{font-size:12px;color:var(--muted);border-top:1px solid var(--line);padding-top:24px;margin-top:38px}.footer a{margin-right:18px}
+@media(min-width:1600px){.cover{padding-left:calc((100vw - 1384px)/2)}}
+@media(max-width:1000px){.layout{grid-template-columns:185px minmax(0,1fr)}.sidebar{padding:24px 18px}main{padding:26px}table{font-size:13px}th,td{padding:10px}.architecture{overflow-x:auto}.architecture svg{min-width:790px}}
+@media(max-width:700px){.cover{padding:30px 20px}.cover p{font-size:15px}.metrics{gap:20px}.metrics div{padding-right:20px}.metrics strong{font-size:25px}.layout{display:block}.sidebar{position:static;max-height:none;padding:20px;border-bottom:1px solid var(--line)}.sidebar ul{columns:2;column-gap:22px}.sidebar li{break-inside:avoid}.sidebar .note{display:none}main{padding:24px 18px 42px;border:0}h2{font-size:23px}table{min-width:540px}h3{font-size:18px}.actions{gap:10px}}
+@media print{html{scroll-behavior:auto}.skip,.sidebar,.actions{display:none}.cover{background:white;color:#203543;padding:0 0 18px;border-bottom:2px solid #0b6965}.cover p,.eyebrow,.metrics span{color:#415e6b}.cover h1{font-size:28px}.metrics{margin-top:12px}.metrics strong{font-size:22px}.layout{display:block}main{border:0;padding:16px 0;font-size:10pt}h2{font-size:17pt;break-after:avoid;margin-top:25px;padding-top:15px}h3{break-after:avoid}table{font-size:9pt;min-width:0}.table-wrap{overflow:visible;border-radius:0}tr{break-inside:avoid}thead{display:table-header-group}.architecture{break-inside:avoid}.architecture svg{min-width:0;width:100%}a{color:inherit}body{background:white}@page{size:A4;margin:16mm}}
+</style></head>
+<body><a class="skip" href="#report">Đến nội dung báo cáo</a>
+<header class="cover"><div class="eyebrow">Travel Recommendation Product · Phương án đề xuất · 17.09.2026</div>
+<h1>Báo cáo thiết kế MVP</h1><p>Giữ ranh giới ba service và bảng riêng theo loại sản phẩm.<br>Thu gọn để hoàn thành vòng lặp đặt dịch vụ → gợi ý thay đổi.</p>
+<div class="metrics" aria-label="Phạm vi báo cáo"><div><strong>3</strong><span>service / database</span></div><div><strong>19</strong><span>bảng, từ 31 bảng</span></div><div><strong>30</strong><span>đêm trong cửa sổ phòng</span></div></div>
+<div class="actions"><a href="bao-cao-mvp.md">Bản Markdown</a><a href="so-do-mvp.svg">Mở sơ đồ</a><button type="button" onclick="window.print()">In / lưu PDF</button></div></header>
+<div class="layout"><nav class="sidebar" aria-label="Mục lục"><div class="label">NỘI DUNG</div><div class="toc">
+<ul>
+<li><a href="#1-mvp-can-chung-minh-ieu-gi">1. MVP cần chứng minh điều gì?</a></li>
+<li><a href="#2-du-lieu-nam-o-au">2. Dữ liệu nằm ở đâu?</a></li>
+<li><a href="#3-bay-bang-san-pham-cung-mot-cach-oc">3. Bảy bảng sản phẩm, cùng một cách đọc</a></li>
+<li><a href="#4-danh-sach-19-bang">4. Danh sách 19 bảng</a></li>
+<li><a href="#5-lich-phong-chi-mot-bang-bo-sung">5. Lịch phòng: chỉ một bảng bổ sung</a></li>
+<li><a href="#6-checkout-gon-giu-tinh-ung-cua-lich-phong">6. Checkout gọn, giữ tính đúng của lịch phòng</a></li>
+<li><a href="#7-goi-y-agent-va-ong-bo-insider">7. Gợi ý, Agent và đồng bộ Insider</a></li>
+<li><a href="#8-nhung-gi-uoc-giam-so-voi-bao-cao-chi-tiet">8. Những gì được giảm so với báo cáo chi tiết</a></li>
+<li><a href="#9-iem-phai-ieu-chinh-hop-ong-truoc-khi-code">9. Điểm phải điều chỉnh hợp đồng trước khi code</a></li>
+<li><a href="#10-thu-tu-lam-va-tieu-chi-u-mvp">10. Thứ tự làm và tiêu chí đủ MVP</a></li>
+<li><a href="#11-nguon-va-cach-oc-tiep">11. Nguồn và cách đọc tiếp</a></li>
+</ul>
+</div>
+<p class="note">Đã chốt: ba service riêng, bảng sản phẩm riêng.<br><br>Các bước rút gọn còn lại là đề xuất. Chưa thay đổi code hoặc hợp đồng API.</p></nav>
+<main id="report">
+<p><strong>Ngày:</strong> 17/09/2026 · <strong>Trạng thái:</strong> phương án rút gọn để nhóm xem xét, chưa triển khai.</p>
+<p><strong>Đã thống nhất với người dùng:</strong> giữ Backend, CDP clone và Insider clone thành <strong>3 service riêng</strong>; giữ <strong>bảng riêng cho từng loại sản phẩm</strong>. Các lựa chọn rút gọn khác bên dưới là đề xuất của báo cáo, chưa thay thế hợp đồng API hiện hành.</p>
+<h2 id="1-mvp-can-chung-minh-ieu-gi">1. MVP cần chứng minh điều gì?</h2>
+<p>Người dùng đăng nhập, tìm được dịch vụ phù hợp, đặt giả lập một dịch vụ và thấy gợi ý thay đổi theo lần đặt đó. Trợ lý tạo được lịch trình từ sản phẩm có thật. Insider nhận được hồ sơ và danh sách gợi ý để minh họa tích hợp.</p>
+<p><strong>Phương án đề xuất: 3 service, 3 database, 19 bảng.</strong> Backend có 13 bảng, CDP có 2 bảng, Insider có 4 bảng. Giữ việc tách loại sản phẩm nhưng giảm các bảng hỗ trợ, số bước checkout và số job phải vận hành.</p>
+<div class="table-wrap" role="region" aria-label="Bảng thông tin" tabindex="0"><table>
+<thead>
+<tr>
+<th>Giữ trong MVP</th>
+<th>Cách làm gọn</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Đăng nhập và cá nhân hóa</td>
+<td>Seed tài khoản vào <code>users</code>; đăng nhập thông thường; không có <code>demo_accounts</code></td>
+</tr>
+<tr>
+<td>Catalog, tìm kiếm, sản phẩm tương tự</td>
+<td>Dùng catalog hiện có, một model embedding, PostgreSQL + pgvector</td>
+</tr>
+<tr>
+<td>Recommendation</td>
+<td>Đọc lịch sử CDP, tính vector người dùng khi có request; chưa lưu bảng user vector</td>
+</tr>
+<tr>
+<td>Đặt dịch vụ giả lập</td>
+<td>Từ trang chi tiết đi thẳng tới checkout; mỗi đơn có một dòng dịch vụ</td>
+</tr>
+<tr>
+<td>Phòng theo ngày</td>
+<td>Một giá/phòng/đêm; một đơn vị tồn mỗi đêm; cửa sổ trượt 30 đêm</td>
+</tr>
+<tr>
+<td>Trợ lý lịch trình</td>
+<td>Một yêu cầu tạo một kế hoạch; thông tin bổ sung được gửi lại trong yêu cầu sau; không lưu hội thoại vào DB</td>
+</tr>
+<tr>
+<td>Insider clone</td>
+<td>Giữ bốn API và các quy tắc clone của handbook; một script đồng bộ có thể chạy bằng tay</td>
+</tr>
+<tr>
+<td>Đánh giá</td>
+<td>Giữ baseline, Recall@20, NDCG@10 và kiểm tra luồng đặt → gợi ý</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Chưa làm:</strong> giỏ hàng, đơn nhiều dịch vụ/nhiều điểm đến, thanh toán thật, hủy/hoàn tiền cho khách, tồn ghế bay, phân bổ tồn thành phần combo, giá theo mùa, hệ thống hàng đợi phân tán, dashboard quản trị. API hủy event nội bộ của CDP vẫn cần cho bù trừ checkout lỗi.</p>
+<h2 id="2-du-lieu-nam-o-au">2. Dữ liệu nằm ở đâu?</h2>
+<figure class="architecture"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 662" role="img" aria-labelledby="title desc">
+<title id="title">MVP: 3 service, 3 database, 19 bảng</title>
+<desc id="desc">Web gọi Backend. Backend sở hữu catalog, booking, lịch phòng và vector trong ota_app với 13 bảng. Backend gọi CDP qua HTTP để ghi và đọc hành vi trong 2 bảng. Script Backend gửi hồ sơ và gợi ý sang Insider với 4 bảng. Không kết nối chéo database.</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8Z" fill="#567281"/></marker></defs>
+<rect width="1120" height="662" rx="16" fill="#f5f8fa"/>
+<g font-family="system-ui,Segoe UI,sans-serif">
+<rect x="28" y="22" width="568" height="86" rx="12" fill="#122f3f"/>
+<path d="M312 108V153" stroke="#567281" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="28" y="164" width="568" height="450" rx="12" fill="white" stroke="#9db9bd"/>
+<path d="M28 247H596" stroke="#dbe6e9"/>
+<rect x="766" y="164" width="326" height="180" rx="12" fill="white" stroke="#b6c5e0"/>
+<rect x="766" y="390" width="326" height="224" rx="12" fill="white" stroke="#d5bd98"/>
+<path d="M604 281H758" stroke="#567281" stroke-width="2" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+<path d="M596 488H758" stroke="#567281" stroke-width="2" marker-end="url(#arrow)"/>
+
+<text x="52" y="58" font-size="17" fill="#ffffff" font-weight="650">WEB · ĐĂNG NHẬP → TÌM KIẾM → ĐẶT DỊCH VỤ</text>
+<text x="52" y="86" font-size="14" fill="#d1e6e8" font-weight="400">Mỗi checkout một dịch vụ · Trợ lý lập lịch trình một lượt</text>
+<text x="326" y="140" font-size="13" fill="#273d4f" font-weight="400">REST / JWT</text>
+<text x="52" y="201" font-size="19" fill="#0b6965" font-weight="700">01  BACKEND</text>
+<text x="52" y="228" font-size="15" fill="#273d4f" font-weight="400">DB ota_app · 13 bảng · Search / Recommendation / Agent</text>
+<text x="52" y="282" font-size="12" fill="#58757e" font-weight="700">7 BẢNG SẢN PHẨM</text>
+<text x="327" y="282" font-size="12" fill="#58757e" font-weight="700">6 BẢNG HỖ TRỢ</text>
+<text x="52" y="313" font-size="15" fill="#273d4f" font-weight="400">hotel_properties</text>
+<text x="52" y="342" font-size="15" fill="#273d4f" font-weight="400">hotel_rooms</text>
+<text x="52" y="371" font-size="15" fill="#273d4f" font-weight="400">flight_routes</text>
+<text x="52" y="400" font-size="15" fill="#273d4f" font-weight="400">flight_services</text>
+<text x="52" y="429" font-size="15" fill="#273d4f" font-weight="400">attraction_products</text>
+<text x="52" y="458" font-size="15" fill="#273d4f" font-weight="400">combo_packages</text>
+<text x="52" y="487" font-size="15" fill="#273d4f" font-weight="400">golf_products</text>
+<text x="327" y="313" font-size="15" fill="#273d4f" font-weight="400">catalog_keys</text>
+<text x="327" y="342" font-size="15" fill="#273d4f" font-weight="400">users</text>
+<text x="327" y="371" font-size="15" fill="#273d4f" font-weight="400">product_vectors</text>
+<text x="327" y="400" font-size="15" fill="#273d4f" font-weight="400">hotel_room_nights</text>
+<text x="327" y="429" font-size="15" fill="#273d4f" font-weight="400">bookings</text>
+<text x="327" y="458" font-size="15" fill="#273d4f" font-weight="400">booking_items</text>
+<text x="52" y="542" font-size="14" fill="#0b6965" font-weight="600">Nguồn: products.jsonl → chỉ nạp vào ota_app</text>
+<text x="52" y="569" font-size="14" fill="#273d4f" font-weight="400">v_catalog là view đọc chung, không thêm bảng lưu trữ.</text>
+<text x="52" y="594" font-size="14" fill="#273d4f" font-weight="400">Giá nằm trên sản phẩm; lịch phòng theo từng đêm.</text>
+<text x="790" y="201" font-size="19" fill="#38578b" font-weight="700">02  CDP CLONE</text>
+<text x="790" y="228" font-size="15" fill="#273d4f" font-weight="400">DB cdp · 2 bảng</text>
+<text x="790" y="266" font-size="17" fill="#273d4f" font-weight="600">profiles · events</text>
+<text x="790" y="298" font-size="14" fill="#273d4f" font-weight="400">Gốc của hồ sơ và lịch sử hành vi</text>
+<text x="790" y="321" font-size="13" fill="#273d4f" font-weight="400">Consent · purchase · view · search</text>
+<text x="613" y="250" font-size="13" fill="#38578b" font-weight="600">HTTP · CdpClient</text>
+<text x="619" y="307" font-size="12" fill="#273d4f" font-weight="400">Ghi / đọc hành vi</text>
+<text x="790" y="428" font-size="19" fill="#8b5c27" font-weight="700">03  INSIDER CLONE</text>
+<text x="790" y="455" font-size="15" fill="#273d4f" font-weight="400">DB insider · 4 bảng</text>
+<text x="790" y="487" font-size="15" fill="#273d4f" font-weight="400">insider_profiles</text>
+<text x="790" y="513" font-size="15" fill="#273d4f" font-weight="400">identifiers</text>
+<text x="790" y="539" font-size="15" fill="#273d4f" font-weight="400">insider_events</text>
+<text x="790" y="565" font-size="15" fill="#273d4f" font-weight="400">channel_events</text>
+<text x="790" y="596" font-size="13" fill="#273d4f" font-weight="400">Bản sao chọn lọc · TTL · kênh demo</text>
+<text x="611" y="454" font-size="13" fill="#8b5c27" font-weight="600">Script đồng bộ</text>
+<text x="615" y="474" font-size="13" fill="#273d4f" font-weight="400">InsiderClient</text>
+<text x="606" y="515" font-size="12" fill="#273d4f" font-weight="400">Profile + top gợi ý</text>
+<text x="28" y="645" font-size="14" fill="#273d4f" font-weight="400">Mỗi service chỉ truy cập DB của mình. Web không gọi CDP/Insider. Không có FK xuyên database.</text>
+</g></svg><figcaption>Phạm vi đề xuất · 13 bảng Backend + 2 bảng CDP + 4 bảng Insider</figcaption></figure>
+<div class="table-wrap" role="region" aria-label="Bảng thông tin" tabindex="0"><table>
+<thead>
+<tr>
+<th>Thành phần</th>
+<th>Sở hữu dữ liệu</th>
+<th>Gọi sang đâu?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Backend / <code>ota_app</code></strong></td>
+<td>Sản phẩm, giá, lịch phòng, tài khoản, đơn đặt, vector</td>
+<td>Gọi CDP qua <code>CdpClient</code>; gọi Insider qua <code>InsiderClient</code></td>
+</tr>
+<tr>
+<td><strong>CDP clone / <code>cdp</code></strong></td>
+<td>Hồ sơ, consent và lịch sử hành vi</td>
+<td>Cung cấp API cho Backend và script seed</td>
+</tr>
+<tr>
+<td><strong>Insider clone / <code>insider</code></strong></td>
+<td>Bản sao hồ sơ/gợi ý, định danh và tương tác kênh</td>
+<td>Nhận dữ liệu từ script đồng bộ của Backend</td>
+</tr>
+</tbody>
+</table></div>
+<p>Web chỉ gọi Backend. Mỗi service chỉ truy cập database của mình; không JOIN hay đặt khóa ngoại xuyên database. Search, Recommendation và Agent là module trong Backend, không phải service mới.</p>
+<p>Để chạy demo, có thể dùng <strong>một PostgreSQL instance chứa ba database</strong>, với ba tài khoản được giới hạn quyền theo database. Chỉ <code>ota_app</code> cần pgvector. Docker Compose chạy ba API và PostgreSQL; tách máy/database server là việc để sau.</p>
+<p><code>products.jsonl</code> chỉ được nạp vào Backend. CDP giữ <code>productId</code> trên event; Insider nhận top gợi ý. Không sao chép cả catalog và lịch phòng sang hai database còn lại.</p>
+<h2 id="3-bay-bang-san-pham-cung-mot-cach-oc">3. Bảy bảng sản phẩm, cùng một cách đọc</h2>
+<h3 id="31-cac-truong-chung">3.1. Các trường chung</h3>
+<p>Mỗi bảng sản phẩm có <code>product_id</code> (UUID, khóa chính), <code>name</code>, <code>destination</code>, <code>description</code>, <code>image_url</code>, <code>available</code> và <code>attributes</code> (JSONB). <code>available</code> là cờ đang mở bán/hiển thị theo catalog; <strong>không thay cho lịch còn phòng từng đêm</strong>.</p>
+<p>Năm bảng bán dịch vụ có thêm <code>unit_price</code> (số nguyên VND, có thể null), <code>price_unit</code> (theo enum hợp đồng; phòng là <code>PER_NIGHT</code>), <code>currency='VND'</code>, <code>available_from</code>, <code>available_to</code> và <code>bookable</code> (boolean, mặc định false). Giá null hoặc loại bán/đơn vị giá chưa rõ thì không checkout. Thuộc tính ít được truy vấn như tiện nghi, ảnh phụ, chính sách được giữ trong <code>attributes</code>, chưa tách thành bảng con.</p>
+<h3 id="32-truong-rieng-can-co">3.2. Trường riêng cần có</h3>
+<div class="table-wrap" role="region" aria-label="Bảng thông tin" tabindex="0"><table>
+<thead>
+<tr>
+<th>Bảng</th>
+<th>Đại diện cho</th>
+<th>Trường riêng tối thiểu / quy tắc</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>hotel_properties</code></td>
+<td>Khách sạn/cơ sở lưu trú</td>
+<td><code>star_rating</code> dạng số thập phân; không đặt trực tiếp cơ sở</td>
+</tr>
+<tr>
+<td><code>hotel_rooms</code></td>
+<td>Hạng phòng</td>
+<td><code>property_product_id</code> FK → property; <code>max_occupancy</code>; <code>unit_price</code> là giá/đêm; số lượng phòng mỗi đơn = 1</td>
+</tr>
+<tr>
+<td><code>flight_routes</code></td>
+<td>Tuyến bay</td>
+<td><code>origin</code>, <code>destination</code>; là dữ liệu nhóm, không đặt trực tiếp</td>
+</tr>
+<tr>
+<td><code>flight_services</code></td>
+<td>Chuyến bay có thể bán giả lập</td>
+<td><code>route_product_id</code> FK → route; <code>departure_at</code> có thể null; thuộc tính hãng/hạng vé trong JSON</td>
+</tr>
+<tr>
+<td><code>attraction_products</code></td>
+<td>Vé/tour/địa điểm tham quan</td>
+<td><code>ticketed</code> có thể null; chỉ bật <code>bookable</code> cho vé/tour đã xác định; POI không bán vé chỉ để khám phá</td>
+</tr>
+<tr>
+<td><code>combo_packages</code></td>
+<td>Gói dịch vụ</td>
+<td>Quyền lợi trong <code>attributes</code>; bán cả gói ở một giá; không tự tạo hay trừ tồn các thành phần</td>
+</tr>
+<tr>
+<td><code>golf_products</code></td>
+<td>Voucher hoặc địa điểm golf</td>
+<td><code>ticketed</code> có thể null; chỉ voucher đã xác định mới được bật <code>bookable</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Quan hệ cha–con cần giữ:</strong> phòng thuộc một khách sạn; chuyến bay thuộc một tuyến. Khi nhập dữ liệu, cha và con phải cùng điểm đến theo quy ước catalog. Không suy “có giá” thành “được đặt”.</p>
+<p>Ngoài phòng, giá dùng cho <strong>một đơn vị dịch vụ demo đã xác định</strong>. Không tự suy thành giá/người, giá/đêm hoặc giá cho mọi ngày từ giá snapshot nguồn. Dịch vụ thiếu ngày áp dụng hoặc đơn vị giá được giữ ở chế độ xem; Data cần xác nhận fixture trước khi bật checkout.</p>
+<h3 id="33-vi-sao-van-giu-catalog_keys">3.3. Vì sao vẫn giữ <code>catalog_keys</code>?</h3>
+<p><code>catalog_keys(product_id PK, product_kind, source_ref UNIQUE)</code> là danh bạ ID nhỏ cho bảy bảng. Nó không chứa nội dung hay giá sản phẩm. Booking và vector cần một nơi tham chiếu <code>product_id</code> bằng khóa ngoại, thay vì bảy cột ID tùy chọn.</p>
+<ul>
+<li>Mỗi bảng sản phẩm có FK từ <code>product_id</code> tới <code>catalog_keys</code>.</li>
+<li><code>product_kind</code> có bảy giá trị tương ứng bảy bảng; đây là loại nội bộ. API vẫn dùng năm taxonomy: hotel, flight, attraction, combo, golf.</li>
+<li>Loader tạo registry và bản ghi sản phẩm trong cùng transaction; kiểm mỗi ID có đúng một bảng con và đúng loại. MVP dùng một luồng nhập dữ liệu, chưa có màn hình sửa sản phẩm tùy ý.</li>
+<li>Tạo <strong>view <code>v_catalog</code> bằng UNION ALL</strong> để Search/Recommendation đọc cùng một dạng <code>ProductSummary</code>; view không phải bảng lưu trữ mới. Mỗi nhánh JOIN registry để lấy nguồn và loại; property/route trả giá null, không đặt được.</li>
+<li>Giữ ID từ JSONL. Nạp lại theo ID phải cập nhật nội dung, không tạo ID mới. Khi ngừng bán, đặt <code>available=false</code>; chưa xóa cứng sản phẩm đã được đơn hàng tham chiếu.</li>
+</ul>
+<h2 id="4-danh-sach-19-bang">4. Danh sách 19 bảng</h2>
+<h3 id="41-backend-13-bang">4.1. Backend — 13 bảng</h3>
+<div class="table-wrap" role="region" aria-label="Bảng thông tin" tabindex="0"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Bảng</th>
+<th>Các trường chính ngoài bảy bảng đã mô tả</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1–7</td>
+<td>Bảy bảng sản phẩm ở §3</td>
+<td>Nội dung, loại, giá và quan hệ cha–con</td>
+</tr>
+<tr>
+<td>8</td>
+<td><code>catalog_keys</code></td>
+<td><code>product_id</code>, <code>product_kind</code>, <code>source_ref</code></td>
+</tr>
+<tr>
+<td>9</td>
+<td><code>users</code></td>
+<td><code>user_id</code> UUID PK, <code>email</code> UNIQUE, <code>password_hash</code>, <code>full_name</code>, <code>cdp_user_id</code> UNIQUE</td>
+</tr>
+<tr>
+<td>10</td>
+<td><code>product_vectors</code></td>
+<td><code>product_id</code> PK/FK → registry, <code>embedding</code>, <code>model_version</code>; một model và một chiều vector cố định cho một bản chạy</td>
+</tr>
+<tr>
+<td>11</td>
+<td><code>hotel_room_nights</code></td>
+<td>PK (<code>room_product_id</code>, <code>stay_date</code>), <code>available</code>, <code>booking_item_id</code> nullable; FK → room và booking item</td>
+</tr>
+<tr>
+<td>12</td>
+<td><code>bookings</code></td>
+<td><code>booking_id</code> UUID PK, <code>user_id</code> FK, <code>reference_code</code> UNIQUE, <code>destination</code>, <code>event_group_id</code>, <code>total</code>, <code>currency</code>, <code>contact</code> JSONB, <code>idempotency_key</code>, <code>request_hash</code>, <code>created_at</code></td>
+</tr>
+<tr>
+<td>13</td>
+<td><code>booking_items</code></td>
+<td><code>booking_item_id</code> UUID PK, <code>booking_id</code> FK/UNIQUE, <code>product_id</code> FK → registry, <code>using_date</code>, <code>check_out</code> nullable, <code>quantity</code>, <code>unit_price</code>, <code>price_unit</code>, <code>line_total</code>, <code>product_snapshot</code> JSONB</td>
+</tr>
+</tbody>
+</table></div>
+<p><code>booking_items.booking_id</code> UNIQUE giới hạn <strong>một dòng dịch vụ/đơn</strong>. Phòng dùng <code>using_date=checkIn</code>, <code>check_out=checkOut</code>, <code>quantity=1</code>; các dịch vụ khác để <code>check_out=null</code>, quantity nguyên ≥ 1. Giữ bảng item để tương thích ID purchase và dễ mở rộng đơn nhiều dòng sau MVP.</p>
+<p>Chỉ lưu đơn khi đã xác nhận thành công; trạng thái API có thể trả hằng <code>CONFIRMED</code>. Không có bảng trạng thái thanh toán. <code>UNIQUE(user_id, idempotency_key)</code> giúp lần gửi lại sau thành công nhận đúng đơn cũ; khác nội dung nhưng cùng key phải báo conflict.</p>
+<p><code>event_group_id</code> mặc định là UUID mới cho chuyến đi. Khi đặt tiếp dịch vụ cho cùng chuyến, Web gửi lại ID này; Backend chỉ chấp nhận nhóm đã thuộc người dùng đăng nhập và cùng điểm đến. Như vậy nhiều đơn một dòng vẫn gom được một chuyến mà không cần bảng <code>booking_groups</code>.</p>
+<h3 id="42-cdp-2-bang">4.2. CDP — 2 bảng</h3>
+<div class="table-wrap" role="region" aria-label="Bảng thông tin" tabindex="0"><table>
+<thead>
+<tr>
+<th>Bảng</th>
+<th>Nội dung tối thiểu</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>profiles</code></td>
+<td><code>cdp_user_id</code> PK; lifecycle, thành phố, điểm đến gần nhất, hạng thành viên, tổng số đơn và các opt-in theo hợp đồng CDP</td>
+</tr>
+<tr>
+<td><code>events</code></td>
+<td>Khóa UNIQUE (<code>cdp_user_id</code>, <code>event_id</code>); <code>event_name</code>, <code>timestamp</code>, <code>product_id</code>, <code>taxonomy</code>, <code>event_group_id</code>, <code>quantity</code>, <code>unit_price</code>, <code>using_date</code>, <code>search_query</code>, <code>cancelled_at</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>Giữ tên trường API và cách chống trùng/hủy của hợp đồng CDP đang tham chiếu. <code>profiles</code> là snapshot do seed/job ghi; không mặc định tự cập nhật theo mỗi event. Recommendation lấy tín hiệu mới từ <code>events</code>.</p>
+<p>CDP không đặt FK tới catalog Backend; lịch sử có thể tham chiếu sản phẩm không còn bán. Event đã hủy phải bị loại khỏi Recommendation. Không cần bảng product, booking hay vector trong CDP.</p>
+<h3 id="43-insider-4-bang">4.3. Insider — 4 bảng</h3>
+<div class="table-wrap" role="region" aria-label="Bảng thông tin" tabindex="0"><table>
+<thead>
+<tr>
+<th>Bảng</th>
+<th>Nội dung tối thiểu</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>insider_profiles</code></td>
+<td><code>profile_id</code> PK; <code>attributes</code> JSONB chứa bản sao consent và top gợi ý; <code>updated_at</code></td>
+</tr>
+<tr>
+<td><code>identifiers</code></td>
+<td>(<code>identifier_type</code>, <code>identifier_value</code>) UNIQUE; <code>profile_id</code> FK; ánh xạ ID khách/email/điện thoại về hồ sơ</td>
+</tr>
+<tr>
+<td><code>insider_events</code></td>
+<td><code>event_id</code> PK, <code>profile_id</code> FK, <code>event_name</code>, <code>timestamp</code>, <code>payload</code> JSONB, <code>expires_at</code></td>
+</tr>
+<tr>
+<td><code>channel_events</code></td>
+<td><code>event_id</code> PK, <code>profile_id</code> FK, <code>channel</code>, <code>event_name</code>, <code>timestamp</code>, <code>payload</code> JSONB; seed email/push/SMS để export</td>
+</tr>
+</tbody>
+</table></div>
+<p>Giữ bốn endpoint trong handbook: upsert, identity, profile, export. Giữ kiểm tra header, giới hạn lô 1.000 user/5 MB, append mảng trừ khi <code>not_append=true</code>, cập nhật identifier cùng kiểu và quy tắc giá trị rỗng. Event custom có TTL 90 ngày, purchase 730 ngày; lọc event hết hạn khi đọc, dọn bằng script khi cần.</p>
+<p>Đây là phạm vi clone <strong>theo handbook của dự án</strong>, không phải tuyên bố đã kiểm chứng API Insider production hiện tại. <code>gdpr_optin=false</code> chặn mọi kênh; các opt-in theo kênh cũng phải được tôn trọng. Demo chỉ mô phỏng tương tác, không gửi email/SMS thật.</p>
+<h2 id="5-lich-phong-chi-mot-bang-bo-sung">5. Lịch phòng: chỉ một bảng bổ sung</h2>
+<p>Giá nằm ngay trên <code>hotel_rooms.unit_price</code>; không có <code>hotel_room_prices</code>. Lịch nằm trên <code>hotel_room_nights</code>; không có bảng riêng cho kỳ lưu trú của booking.</p>
+<p>Đặt <code>D</code> là ngày hiện tại theo <code>Asia/Ho_Chi_Minh</code>. Cửa sổ bán là <strong>[D, D+30)</strong>. Check-in ≥ D; check-out &gt; check-in và ≤ D+30. Đêm checkout không chiếm tồn.</p>
+<div class="table-wrap" role="region" aria-label="Bảng thông tin" tabindex="0"><table>
+<thead>
+<tr>
+<th>Quy tắc</th>
+<th>Cách thực hiện MVP</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Một hạng phòng = một đơn vị tồn/đêm</td>
+<td>Một khóa duy nhất (<code>room_product_id</code>, <code>stay_date</code>); không quản lý số phòng vật lý</td>
+</tr>
+<tr>
+<td>Giá</td>
+<td><code>tổng = unit_price × số đêm</code>; không nhân thêm quantity phòng</td>
+</tr>
+<tr>
+<td>Còn phòng</td>
+<td>Đủ tất cả dòng lịch trong kỳ, tất cả còn mở; room và property còn hoạt động, room được bật <code>bookable</code></td>
+</tr>
+<tr>
+<td>Đặt thành công</td>
+<td>Các đêm trong kỳ chuyển <code>available=false</code>, cùng trỏ tới <code>booking_item_id</code></td>
+</tr>
+<tr>
+<td>Không mất lịch khi seed lại</td>
+<td>Chỉ thêm ngày thiếu; không ghi đè đêm đã khóa hay thay giá vận hành do nạp lại catalog</td>
+</tr>
+<tr>
+<td>Sang ngày mới</td>
+<td>Script/cron thêm đủ phần thiếu trong [D, D+30); giữ các dòng cũ phục vụ đối chiếu</td>
+</tr>
+<tr>
+<td>Script chưa chạy / thiếu ngày</td>
+<td>Trả không đủ dữ liệu để đặt, không tự coi ngày thiếu là còn phòng</td>
+</tr>
+</tbody>
+</table></div>
+<p>Ví dụ fixture: giá 1.000.000 VND/đêm, nhận phòng 18/09 và trả 21/09 → khóa các đêm 18, 19, 20; tổng 3.000.000 VND. Ngày 21 vẫn có thể nhận khách khác. Đây là giá demo minh họa, không phải báo giá nhà cung cấp.</p>
+<p>Theo bản thống kê catalog ngày 17/09, có 4.646 room; seed toàn bộ cần <strong>139.380 dòng lịch active</strong>. Có thể chạy thử một tập room nhỏ đã chọn trước khi nạp đủ. Khi ngày trôi qua, bảng giữ lịch sử nên tổng số dòng có thể lớn hơn con số active này.</p>
+<h2 id="6-checkout-gon-giu-tinh-ung-cua-lich-phong">6. Checkout gọn, giữ tính đúng của lịch phòng</h2>
+<h3 id="61-luong-thanh-cong">6.1. Luồng thành công</h3>
+<ol>
+<li>Web gửi một <code>productId</code>, quantity, ngày dùng; phòng có check-in/check-out; kèm thông tin liên hệ, giá đã thấy và một idempotency key giữ nguyên khi gửi lại cùng yêu cầu.</li>
+<li>Backend lấy người dùng từ JWT; mở transaction và khóa dòng <code>users</code> của người đó để hai request checkout đồng thời của cùng người không tạo hai đơn cho cùng key. Kiểm tra đơn đã có theo key trước khi tiếp tục; cùng key khác <code>request_hash</code> thì từ chối.</li>
+<li>Đọc và khóa bản ghi sản phẩm được mua; kiểm quyền bán, giá và ngày. Với phòng, khóa các dòng lịch theo thứ tự ngày bằng <code>SELECT FOR UPDATE</code>, rồi kiểm lại đủ đêm và chưa bị chiếm. Hai khách khác nhau tranh cùng đêm thì chỉ một giao dịch được đặt.</li>
+<li>Tạo booking + một booking item, lưu giá/tên/đơn vị giá tại lúc đặt và khóa các đêm trong cùng transaction. Nếu giá khác giá Web đã thấy, trả lỗi để người dùng xác nhận lại; không âm thầm đổi tổng.</li>
+<li>Gọi CDP <strong>đồng bộ trước commit</strong> với <code>eventId=purchase:{bookingItemId}</code>. UUID item sinh mới cho mỗi lần thử đã thất bại và rollback; gửi lại một lời gọi CDP của cùng lần thử giữ nguyên event ID. Với phòng, <code>unitPrice</code> là giá/đêm, <code>quantity=1</code>, <code>usingDate=checkIn</code>; tổng nhiều đêm lấy từ booking, không suy từ event hiện chưa có số đêm.</li>
+<li>CDP xác nhận event đang có hiệu lực → commit booking, trả xác nhận. Web gọi lại Recommendation; Backend đọc lịch sử mới, không dùng cache cũ.</li>
+</ol>
+<p>MVP kiểm các ràng buộc liên bảng trong một hàm checkout và các kiểm tra tích hợp; chưa dựng bộ constraint trigger phức tạp. Vẫn giữ PK/FK/UNIQUE, giá không âm, quantity hợp lệ và CHECK <code>booking_item_id IS NULL OR available=false</code> trên lịch. Hàm checkout phải kiểm item đúng room và liên kết đúng toàn bộ tập ngày.</p>
+<h3 id="62-cac-loi-can-xu-ly">6.2. Các lỗi cần xử lý</h3>
+<div class="table-wrap" role="region" aria-label="Bảng thông tin" tabindex="0"><table>
+<thead>
+<tr>
+<th>Tình huống</th>
+<th>Hành vi tối thiểu</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Hết một đêm / sai ngày / loại không bán</td>
+<td>Không tạo đơn; báo rõ nguyên nhân</td>
+</tr>
+<tr>
+<td>CDP báo lỗi hoặc timeout</td>
+<td>Rollback booking và lịch; ghi request ID và các event ID để kiểm tra/bù trừ nếu CDP đã nhận</td>
+</tr>
+<tr>
+<td>CDP thành công, DB xác nhận commit thất bại</td>
+<td>Hủy purchase qua API CDP; rollback lịch</td>
+</tr>
+<tr>
+<td>Mất kết nối, chưa biết commit thành công hay chưa</td>
+<td>Dùng kết nối mới tra đơn theo user + idempotency key; có đơn thì trả lại đơn, chắc chắn không có mới bù trừ. Nếu chưa tra được, báo đang cần kiểm tra; không tự tạo đơn mới hay hủy event</td>
+</tr>
+<tr>
+<td>Đã thành công nhưng Web không nhận response</td>
+<td>Gửi lại cùng key trả đơn cũ; không ghi thêm purchase</td>
+</tr>
+<tr>
+<td>Hủy event cũng lỗi / tiến trình chết giữa hai bước</td>
+<td>Ghi log lỗi để đối soát thủ công; sửa xong mới tiếp tục ca demo liên quan</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Đánh đổi MVP:</strong> chưa có outbox, journal hay worker tự khôi phục. Hai service không commit nguyên khối; purchase mồ côi vẫn có thể xảy ra và làm sai gợi ý đến khi được hủy. Lưu request ID, event ID và booking item ID trước lời gọi CDP; người vận hành kiểm booking và event bằng công cụ nội bộ rồi hủy event mồ côi. Không log token, thông tin liên hệ hoặc toàn payload. Nếu cần tự phục hồi sau crash, đó là bước nâng cấp tiếp theo.</p>
+<p>Ghi nhận idempotency chỉ nằm trên đơn đã commit; đây không phải cơ chế lưu bền mọi lần checkout thất bại. Sau lỗi không rõ kết quả, phải dùng lại key và kiểm trạng thái trước khi bắt đầu một yêu cầu mới.</p>
+<h2 id="7-goi-y-agent-va-ong-bo-insider">7. Gợi ý, Agent và đồng bộ Insider</h2>
+<h3 id="71-search-va-recommendation">7.1. Search và Recommendation</h3>
+<ul>
+<li>Search đọc <code>v_catalog</code> + <code>product_vectors</code>, lọc điểm đến/loại/khả dụng và trả các trường card tối thiểu; chi tiết thuộc tính chỉ lấy khi mở sản phẩm hoặc Agent cần.</li>
+<li>Recommendation đọc tối đa 500 event gần nhất qua CDP, bỏ event đã hủy và ID không còn sản phẩm/vector hợp lệ. Tính vector người dùng từ các vector sản phẩm, có trọng số theo loại event và thời gian.</li>
+<li>Dùng <code>eventGroupId</code> xác định các danh mục đã mua trong chuyến hiện tại; ưu tiên gợi ý danh mục còn thiếu tại cùng điểm đến. Sau khi đặt phòng, fixture phải cho thấy thêm vé/chuyến bay phù hợp, không chỉ một danh sách phòng khác.</li>
+<li>Khách chưa có lịch sử hoặc CDP lỗi → <code>strategy=popular</code>, <code>because=[]</code>. Danh sách phổ biến có thể là file seed tính từ tập lịch sử huấn luyện; chưa cần bảng <code>product_popularity</code> hay API thống kê CDP mới. Nêu rõ fallback này không cập nhật realtime.</li>
+<li>Mỗi <code>because</code> dựa trên event thực. Có kỳ lưu trú thì kiểm lịch phòng; không có kỳ thì chỉ hiển thị giá tham khảo, không khẳng định còn phòng.</li>
+</ul>
+<h3 id="72-agent">7.2. Agent</h3>
+<p>Một yêu cầu → trích xuất điểm đến/ngày/sở thích → gọi Search/Recommendation → sắp lịch → Backend kiểm ID, ngày, giá và tính tổng. Thiếu dữ kiện thì hỏi lại; Web gửi đầy đủ ngữ cảnh cần thiết trong yêu cầu tiếp theo. Không cần bảng conversation trong MVP.</p>
+<p>Giữ các trạng thái <code>COMPLETED</code>, <code>NEEDS_CLARIFICATION</code>, <code>NO_RESULTS</code>, <code>FALLBACK</code>. Mọi sản phẩm phải có thật; giá thiếu thì tổng là chưa xác định, không coi là 0. Agent không tự checkout và không tự tạo nguồn cung.</p>
+<h3 id="73-insider">7.3. Insider</h3>
+<p>Script do Backend sở hữu đọc danh sách <code>users</code> demo → lấy profile/consent từ CDP → gọi Recommendation → upsert bản sao hồ sơ và top gợi ý sang Insider. Gửi <code>not_append=true</code> cho mảng gợi ý để chạy lại thay danh sách cũ. Thiếu profile/consent thì bỏ qua kích hoạt, không mặc định opt-in.</p>
+<p>Chạy script bằng tay cho demo; sau này mới lên lịch. Tắt Insider không chặn Search/booking. Bản MVP chưa đồng bộ mọi event CDP sang Insider; seed riêng event có TTL và tương tác kênh để kiểm hành vi clone. Khi consent thay đổi, cần chạy lại đồng bộ trước khi mô phỏng kích hoạt kênh.</p>
+<h2 id="8-nhung-gi-uoc-giam-so-voi-bao-cao-chi-tiet">8. Những gì được giảm so với báo cáo chi tiết</h2>
+<div class="table-wrap" role="region" aria-label="Bảng thông tin" tabindex="0"><table>
+<thead>
+<tr>
+<th>Bản chi tiết</th>
+<th>Phương án MVP</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Bảng tiện nghi, giá/ngày quan sát, quyền lợi combo riêng</td>
+<td>Để thuộc tính ít dùng trong JSON; chưa quản lý tồn thành phần combo</td>
+</tr>
+<tr>
+<td><code>hotel_room_prices</code></td>
+<td>Giá nằm trên <code>hotel_rooms</code></td>
+</tr>
+<tr>
+<td><code>carts</code>, <code>cart_items</code></td>
+<td>Đi thẳng từ sản phẩm tới checkout</td>
+</tr>
+<tr>
+<td><code>booking_groups</code></td>
+<td>Một điểm đến/đơn; giữ <code>event_group_id</code> ngay trên booking</td>
+</tr>
+<tr>
+<td><code>booking_room_stays</code></td>
+<td>Check-in/check-out nằm trên booking item</td>
+</tr>
+<tr>
+<td><code>checkout_requests</code>, <code>checkout_purchase_journal</code></td>
+<td>Key/hash trên đơn thành công; bù trừ và đối soát thủ công khi lỗi</td>
+</tr>
+<tr>
+<td><code>product_popularity</code></td>
+<td>File baseline/fallback của bản demo</td>
+</tr>
+<tr>
+<td><code>assistant_conversations</code></td>
+<td>Agent nhận đủ ngữ cảnh trong mỗi yêu cầu</td>
+</tr>
+<tr>
+<td>Sơ đồ 31 bảng của phương án chi tiết</td>
+<td>19 bảng; không tính view <code>v_catalog</code>, file fixture hay revision của Alembic</td>
+</tr>
+</tbody>
+</table></div>
+<p>Không thêm Kafka/Redis, bảng user vector, hệ thống workflow hoặc job scheduler riêng chỉ để làm demo. Các module có thể được mở rộng sau khi vòng lặp đặt → gợi ý đã chạy đúng.</p>
+<h2 id="9-iem-phai-ieu-chinh-hop-ong-truoc-khi-code">9. Điểm phải điều chỉnh hợp đồng trước khi code</h2>
+<p><strong>Báo cáo này chưa sửa OpenAPI hoặc source code.</strong> Working tree hiện có OpenAPI 0.1.0 với <code>paths: {}</code>; ref local <code>origin/data_contract</code> tại <code>0f630a2</code> có OpenAPI 1.3.0 và hợp đồng CDP. Đây là các bản đã đọc trong máy, không phải khẳng định remote mới nhất.</p>
+<div class="table-wrap" role="region" aria-label="Bảng thông tin" tabindex="0"><table>
+<thead>
+<tr>
+<th>Chủ đề</th>
+<th>Đề xuất MVP cần Web/Backend/Data/Integration thống nhất</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Checkout</td>
+<td>Bổ sung luồng đặt trực tiếp một dịch vụ; hợp đồng hiện tham chiếu giỏ hàng, không mặc định dùng nguyên request cũ</td>
+</tr>
+<tr>
+<td>Phòng</td>
+<td>Thống nhất check-in/check-out, response availability theo ngày, <code>PER_NIGHT</code>, quantity=1 và cách báo thiếu lịch</td>
+</tr>
+<tr>
+<td>Quyền đặt</td>
+<td>Trả rõ khả năng đặt/đơn vị giá; property, route, POI hoặc loại chưa rõ phải bị chặn ở Backend</td>
+</tr>
+<tr>
+<td>Retry checkout</td>
+<td>Chốt tên header/field idempotency key, cách trả đơn cũ, lỗi key khác nội dung và trường hợp chưa rõ kết quả</td>
+</tr>
+<tr>
+<td>Chuyến đi</td>
+<td>Cho phép gửi lại <code>eventGroupId</code> đã thuộc người dùng và đúng điểm đến để gom nhiều đơn</td>
+</tr>
+<tr>
+<td>Agent</td>
+<td>Chốt cách gửi lại ngữ cảnh khi hỏi thêm; nếu contract vẫn cần <code>conversationId</code>, giữ ID tương quan nhưng không hứa lưu state server</td>
+</tr>
+<tr>
+<td>Tài khoản demo</td>
+<td>Seed <code>users</code>; bỏ phụ thuộc màn hình/API liệt kê persona; không có <code>demo_accounts</code></td>
+</tr>
+<tr>
+<td>Mã lỗi</td>
+<td>Chốt schema lỗi hiện có cho hết phòng, giá thay đổi, CDP lỗi và cần đối soát; không tự tạo enum riêng trong từng team</td>
+</tr>
+</tbody>
+</table></div>
+<p>Giữ nguyên nguyên tắc CDP ghi purchase trước commit và hủy bù trừ theo hợp đồng đã đọc. Giữ bề mặt Insider theo handbook. Các đường cắt giỏ hàng/hội thoại được handbook cho phép khi cần thu hẹp, nhưng vẫn cần sửa fixture và generated client tương ứng.</p>
+<h2 id="10-thu-tu-lam-va-tieu-chi-u-mvp">10. Thứ tự làm và tiêu chí đủ MVP</h2>
+<div class="table-wrap" role="region" aria-label="Bảng thông tin" tabindex="0"><table>
+<thead>
+<tr>
+<th>Bước</th>
+<th>Sản phẩm bàn giao</th>
+<th>Qua bước khi</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Chốt phạm vi và dữ liệu</td>
+<td>Request/response tối thiểu, bảy loại sản phẩm, fixture giá/ngày/quyền bán</td>
+<td>Cả Web và Backend dùng cùng contract; import lại không sinh ID mới</td>
+</tr>
+<tr>
+<td>2. Backend + CDP</td>
+<td>Login, catalog, Search, lịch phòng, checkout và purchase</td>
+<td>Hai request đặt trùng đêm chỉ một thành công; gửi lại key không sinh đơn/event mới</td>
+</tr>
+<tr>
+<td>3. Vòng lặp gợi ý</td>
+<td>Recommendation + trang xác nhận tải gợi ý mới</td>
+<td>Đặt phòng → event xuất hiện → top gợi ý phản ánh chuyến và danh mục còn thiếu</td>
+</tr>
+<tr>
+<td>4. Agent + Insider</td>
+<td>Lịch trình một lượt; script sync; bốn API clone</td>
+<td>Sản phẩm trong lịch trình có thật; upsert chạy lại không nối dài mảng; identity/TTL/consent/export đúng fixture</td>
+</tr>
+<tr>
+<td>5. Đánh giá và demo</td>
+<td>Báo cáo chỉ số, bộ fixture lỗi, hướng dẫn chạy</td>
+<td>Có kết quả thực đo và ghi rõ giới hạn, không chỉ ảnh màn hình happy path</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Các ca nghiệm thu tối thiểu:</strong></p>
+<ol>
+<li>Đăng nhập hai tài khoản có lịch sử khác nhau cho gợi ý khác nhau; khách mới có popular fallback.</li>
+<li>Search, similar và chi tiết dùng đúng ID/giá/loại; POI có giá mock vẫn không được tự bật đặt.</li>
+<li>Đặt ba đêm khóa đúng ba đêm; ngày checkout còn dùng được; thiếu một đêm thì cả đơn thất bại.</li>
+<li>Hai người đặt cùng đêm → chỉ một đơn; gửi lại request thành công → đúng một purchase.</li>
+<li>Chạy lại seed/job không mở lại đêm đã đặt và không thay giá phòng vận hành ngoài ý muốn.</li>
+<li>Tắt CDP → Search vẫn chạy, Recommendation fallback, checkout không xác nhận; kiểm ca hủy event khi booking thất bại.</li>
+<li>Đặt xong → gợi ý đổi ngay; event hủy không còn ảnh hưởng; đặt thêm dịch vụ cùng chuyến giữ đúng nhóm.</li>
+<li>Insider ngừng hoạt động không chặn booking; opt-out không được kích hoạt; event quá TTL không còn được đọc; PATCH identifier giữ lịch sử; export trả đúng khoảng ngày.</li>
+<li>Agent không bịa sản phẩm/giá; thiếu dữ kiện, không có kết quả và LLM lỗi đều có response rõ ràng.</li>
+</ol>
+<p><strong>Đánh giá vẫn là phần của MVP.</strong> Giấu lần đặt gần nhất, chỉ dùng lịch sử trước thời điểm đó để tạo user vector và baseline; không để purchase bị giấu lọt vào dữ liệu tính phổ biến. So sánh random, most-popular và most-popular-in-destination bằng Recall@20/NDCG@10. Báo thêm cross-category rate, availability precision, coverage, grounding và p95.</p>
+<p>Mục tiêu tham chiếu từ handbook: vượt baseline phổ biến, availability precision ≥95%, coverage &gt;20%, grounding 100%, p95 Search/Recommendation &lt;300 ms, Agent &lt;5 giây. Đây là <strong>mục tiêu cần đo, chưa phải kết quả đạt được</strong>. Tách kết quả bình thường và khi CDP timeout; fallback sau timeout dài không thể được tính là đã đạt p95 300 ms. Dữ liệu hành vi seed chỉ đánh giá pipeline trên dữ liệu tổng hợp, không chứng minh hiệu quả trên khách hàng thật.</p>
+<h2 id="11-nguon-va-cach-oc-tiep">11. Nguồn và cách đọc tiếp</h2>
+<ul>
+<li><a href="../docs/spec/recsys-internship-handbook-v3-vi.md">Handbook dự án</a>: §2 phạm vi/cách cắt giảm, §3 clone, §6 dữ liệu, §10 booking, §12 đánh giá.</li>
+<li><a href="../docs/spec/ba-database-va-luong-du-lieu.html">Báo cáo database và luồng hiện tại</a>: ranh giới ba service và nguồn dữ liệu.</li>
+<li><a href="../docs/spec/thiet-ke-schema-3-service-chi-tiet.md">Thiết kế chi tiết trước đó</a>: các ràng buộc/luồng nâng cấp khi MVP cần mở rộng.</li>
+<li><a href="../docs/spec/ra-soat-hop-dong-2026-09-17.html">Rà soát hợp đồng</a> và <a href="../docs/spec/evidence/catalog-audit-2026-09-17.json">bằng chứng catalog ngày 17/09</a>: số liệu catalog và khoảng cách với hợp đồng.</li>
+<li>Hợp đồng CDP/MVP đã tham chiếu bằng <code>git show origin/data_contract:docs/spec/hop-dong-tich-hop-cdp.md</code> và <code>git show origin/data_contract:src/shared/contracts/MVP.md</code>, commit <code>0f630a2</code>.</li>
+</ul>
+<p>Tài liệu này là <strong>một phương án khác trong thư mục <code>mvp/</code></strong>, không sửa hoặc xóa các báo cáo cũ. Đọc HTML ở <code>mvp/index.html</code>; sửa nội dung nguồn ở <code>mvp/bao-cao-mvp.md</code>.</p><footer class="footer"><a href="bao-cao-mvp.md">Nguồn Markdown</a><a href="../docs/spec/ba-database-va-luong-du-lieu.html">Báo cáo trước</a><p>Bản HTML đọc offline. Dựng lại bằng: <code>python3 mvp/render_report.py</code> (cần Python-Markdown).</p></footer></main></div>
+</body></html>
