@@ -10,17 +10,18 @@ from pathlib import Path
 
 from . import gen_products, load_products, parse_combos, report, seed_histories, seed_insider
 from .config import (
+    CHANNEL_EVENTS_PER_PROFILE,
     DEFAULT_DATA_DIR,
-    DEFAULT_INSIDER_EVENTS_PER_PROFILE,
     DEFAULT_INSIDER_URL,
-    DEFAULT_MAX_EVENTS,
     DEFAULT_SEED,
     DEFAULT_USERS,
-    DEFAULT_VINPEARL_BOOST,
     DEFAULT_VOTA_URL,
-    DEFAULT_ZIPF,
+    INSIDER_TOKEN_DEFAULT,
     INSIDER_URL_ENV,
+    MAX_EVENTS_PER_USER,
+    VINPEARL_BOOST,
     VOTA_URL_ENV,
+    ZIPF_S,
     find_products,
 )
 from .database import load_insider, load_vota
@@ -42,7 +43,7 @@ def _set_partner_token(seed_dir: Path) -> None:
     path = seed_dir / "insider_partners.jsonl"
     rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
     if rows:
-        rows[0]["request_token"] = os.environ.get("INSIDER_TOKEN", "dev-token")
+        rows[0]["request_token"] = os.environ.get("INSIDER_TOKEN", INSIDER_TOKEN_DEFAULT)
     path.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows), encoding="utf-8")
 
 
@@ -72,16 +73,18 @@ def main(argv: list[str] | None = None) -> int:
     print("[2/5] Build cdp.products rows")
     load_products.main(["--data-dir", str(data_dir), "--out-dir", str(loader_dir), "--as-of", args.as_of.isoformat()])
     print("[3/5] Generate CDP history and app personas")
-    seed_histories.main([
+    if seed_histories.main([
         "--data-dir", str(data_dir), "--out-dir", str(seed_dir), "--as-of", args.as_of.isoformat(),
-        "--seed", str(args.seed), "--profiles", str(args.users), "--zipf", str(DEFAULT_ZIPF),
-        "--vinpearl-boost", str(DEFAULT_VINPEARL_BOOST), "--max-events", str(DEFAULT_MAX_EVENTS),
-    ])
+        "--seed", str(args.seed), "--profiles", str(args.users), "--zipf", str(ZIPF_S),
+        "--vinpearl-boost", str(VINPEARL_BOOST), "--max-events", str(MAX_EVENTS_PER_USER),
+    ]) != 0:
+        return 1
     print("[4/5] Generate Insider clone rows")
-    seed_insider.main([
+    if seed_insider.main([
         "--seed-dir", str(seed_dir), "--out-dir", str(seed_dir), "--as-of", args.as_of.isoformat(),
-        "--seed", str(args.seed), "--events-per-profile", str(DEFAULT_INSIDER_EVENTS_PER_PROFILE),
-    ])
+        "--seed", str(args.seed), "--events-per-profile", str(CHANNEL_EVENTS_PER_PROFILE),
+    ]) != 0:
+        return 1
     _set_partner_token(seed_dir)
 
     if args.generate_only:

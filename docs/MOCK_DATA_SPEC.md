@@ -19,6 +19,45 @@ Bản 20/09/2026 · dành cho Claude Code sinh code trong `src/data_collection/`
 2. **Báo cáo ghi vào khối đánh dấu** `<!-- seed-report:start -->`…`<!-- seed-report:end -->` ở cuối `src/data_collection/README.md`. Thư mục `data-collection/` (gạch nối) nhắc ở §1 và §8 không tồn tại trong monorepo này, và `src/data_collection/README.md` là sổ tay crawler viết tay — `report.py` chỉ thay phần trong khối, không ghi đè cả file.
 3. **Hai dòng `db/verify.sql` FAIL theo thiết kế khi dùng `products.synthetic.jsonl`:** `products = 10320` và `is_recommendable properties >= 300`. Đây là ngưỡng của snapshot catalog thật hiện hành (10.320 sản phẩm), trong khi catalog tổng hợp §1b cố ý chỉ khoảng 400–450 dòng với 40 property. Không thổi phồng §1b để lách; `report.py` ghi rõ nguồn catalog. Có `src/data_collection/data/products.jsonl` thật thì cả hai phải PASS.
 
+**Điểm chốt 21/09 — seed làm đúng §2, §4–§6; mọi tham số ở `src/data_collection/seed/config.py`:**
+
+Người dùng chốt sáu quyết định (21/09):
+
+1. **Phạm vi:** code theo §2 (lịch, ngày bay, giờ nhận/trả phòng), §4, §5, §6. §1b (`gen_products.py`) và §2.3/§3 (`parse_combos.py`, đã tinh chỉnh cùng 64 mapping duyệt tay) giữ nguyên. RNG là `random.Random` của stdlib theo stream chuỗi, không đổi sang numpy — kết quả vẫn tất định theo `--seed`.
+2. **Khách sạn `quantity = 1`** (số phòng, khớp hợp đồng booking). P1 ở **1 đêm** vì `app.booking_items.line_total = unit_price × quantity` (GENERATED) không nhân số đêm.
+3. **Có event `search`** (30% chuyến), `product_id`/`taxonomy`/`event_group_id` NULL và không có câu truy vấn: `cdp.events` không có cột query, `app.search_logs` không seed. Hệ quả đã biết: các dòng này không replay được qua `HttpCdpClient` vì `schemas/cdp-clone.yaml` bắt buộc `searchQuery`.
+4. **Chỉ `purchase` mang `event_group_id`**, giống dữ liệu app ghi thật (`BrowseEvent` không có gid). "3% event bỏ `event_group_id`" vì vậy áp lên purchase.
+5. **Lịch phòng Vinpearl:** tỷ lệ kín = `min(40%, gốc × 1,3)` để mọi phòng nằm trong 25–40%.
+6. **`lifetime_order_count` đúng chữ §4:** chỉ đếm `event_group_id` khác NULL. Vài khách có purchase mất gid (cạnh lộn xộn) nên có 0 đơn nhưng `days_since_last_booking` khác NULL — dữ liệu bẩn có chủ đích.
+
+Diễn giải cho chỗ spec mơ hồ hoặc tự mâu thuẫn:
+
+| Chỗ | Cách làm |
+|---|---|
+| Khoảng "active 1–4 · dormant 1–2 · churned 1–2" cộng 1–3 view, 40% add_to_cart, 30% search | Giữ đúng *khoảng*, nhưng trọng số nghiêng về 1 (`TRIPS_PER_STAGE`, `VIEWS_PER_TRIP`, `NEW_VIEW_TRIP_RATE`). Phân bố đều cho ~15.000 event, vượt cổng 6.000–8.000 của `db/verify.sql`; cổng nghiệm thu thắng (tiền lệ 20/09) |
+| "40% có add_to_cart" | 40% **chuyến** có add_to_cart cho mọi mục của chuyến, 5–120 phút trước purchase |
+| "1–3 product_view" | Theo chuyến. View đầu là search unit cha của mục đầu (property của phòng, tuyến của chuyến bay); view thêm là search unit **khác** cùng điểm đến. Luôn trước purchase, trong 7 ngày |
+| "Trải trong 24 tháng" | Áp cho mọi event, không chỉ purchase: lần mua cũ nhất cách as_of ≤ 730 − 7 − 1 ngày để view / search của chuyến đó cũng nằm trong 730 ngày |
+| using_date = ngày mua + 7–45 ngày | Kẹp để mọi using_date của khách thường ≤ as_of − 1 (vé bay chỉ mở đúng một ngày, using_date tương lai sẽ làm FAIL `future purchases inside window`). Lần mua cuối của active cách as_of ≥ 9 ngày nên lead vẫn ≥ 7 |
+| attraction = nhận phòng + 1 | Áp cho mọi vé (attraction, combo, golf), kể cả chuyến chỉ có vé |
+| home_city có "Vinh" | Catalog gắn sân bay Vinh vào nhãn `originDestination = "Nghệ An"`; map qua `HOME_CITY_FLIGHT_ORIGIN` |
+| Chọn sản phẩm theo Zipf | Một tầng trên mọi sản phẩm bookable của vertical trong điểm đến (khách sạn là hạng phòng), thứ tự `crc32(product_id)` thay `hash()` (hash đổi giữa các tiến trình). Hạng phòng thiếu brand thì lấy brand của property cha. Vé bay chỉ lấy tuyến xuất phát từ home_city |
+| Điểm đến | Trọng số = số sản phẩm bookable; bốc lại tối đa 30 lần khi không đủ vertical cho chuyến; hết lượt thì là chuyến chỉ khách sạn ở điểm đến nặng nhất có phòng |
+| Golf 3% | 3% **mọi chuyến**, luôn là chuyến nhiều vertical, điểm đến bốc lại tới khi có golf |
+| Chuyến một / nhiều vertical | Một vertical: bốc loại trước (`SINGLE_VERTICAL_WEIGHTS`), rồi điểm đến. Nhiều vertical: luôn có phòng, thêm vé bay (`MULTI_FLIGHT_RATE`) và/hoặc vé (`MULTI_TICKET_RATE`); không có gì thì ép loại có sẵn |
+| Khách new | 0 hoặc 1 chuyến chỉ có product_view (không search), 1–90 ngày trước as_of |
+| Persona | Khuôn cố định: không search, 1 view mỗi chuyến, không add_to_cart ở chuyến cũ (P1 = 12 event, P3 = 6, dưới cap 15 mà `verify.sql` tính cả persona). Persona luôn opt-in, gdpr true, không bị cạnh lộn xộn. P1 lấy phòng Vinpearl Nha Trang phổ biến nhất còn trống đêm as_of + 12 |
+| Lịch phòng | Sinh trực tiếp cho cửa sổ 30 ngày theo `(product_id, as_of)`: số đêm kín mục tiêu rồi xếp cụm 1–4 đêm, giữa hai cụm có ≥ 1 đêm trống. "T6/T7 ×1,5" hiểu là theo từng đêm: cụm chứa T6/T7 được chọn với trọng số ×2 (`ROOM_WEEKEND_CLUSTER_WEIGHT`), đo trên snapshot cho ×1,48–1,49 mỗi đêm. Trạng thái một đêm có thể đổi khi cuộn cửa sổ |
+| Ngày bay | Ngày trip.com đã liệt kê (`datesSeen`) sớm nhất trong cửa sổ — trùng `sourceAvailableFrom` khi nó nằm trong cửa sổ; không có thì `as_of + crc32(product_id) % 30` |
+| Phễu "open 35% → click 8%" | click 8% tính trên delivered, như open |
+| Email Insider | Luôn `<cdp_user_id viết thường>@example.com`, kể cả persona (hợp đồng Insider chỉ yêu cầu khớp `cdpUserId`) |
+| gdpr opt-out | `max(as_of − U(0, 180) ngày, created_at + 1 ngày)`, lưu ở `insider_profiles.updated_at` (mốc `verify_insider.sql` dùng) |
+| unsubscribe | Sau unsubscribe profile không còn dòng `channel_events` nào, ở mọi kênh |
+| campaign_id | 12 chiến dịch cách đều từ as_of − 176 tới as_of − 11, id `CMP-yyyymm-NN` với NN là thứ tự trong tháng |
+| Baseline Recall@20 trong report | Ẩn lần đặt cuối của khách có ≥ 2 `event_group_id` **khác NULL**. Đòn bẩy trong phạm vi spec: `MULTI_FLIGHT_RATE`, `MULTI_TICKET_RATE`, `SINGLE_VERTICAL_WEIGHTS` (mục bị ẩn là mục cuối checkout, vé bay / vé tham quan ít sản phẩm nên dễ trúng top-20). Không vặn `TRIPS_PER_STAGE` về phía 1 — làm recall tăng. Tập ẩn chỉ ~270 khách nên chỉ số dao động mạnh giữa các seed; vượt `RECALL_CEILING` thì report ghi **VƯỢT TRẦN** và `seed_histories` in WARNING nhưng không dừng pipeline (DoD #5 đo trên seed demo 42) |
+
+Số đo trên snapshot 10.320 dòng, `--seed 42`: 7.131 event (purchase 3.148, product_view 2.190, add_to_cart 1.258, search 535), stage đúng 25/45/20/10, 64% chuyến ≥ 2 vertical, golf 3,2%, chuyến có search 29%, có add_to_cart 40%, Recall@20 = 58,4%. Qua 62 seed: Recall trung bình 54,0% (sd 3,5 điểm, cao nhất 64,2%), 4/62 seed vượt 60%; event 6.795–7.286. Không tổ hợp knob nào trong phạm vi spec xoá được phần đuôi này (đã quét, trung bình luôn quanh 53–54%).
+
 ## 1. Đầu vào và bố cục code
 
 ```

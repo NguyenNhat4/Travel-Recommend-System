@@ -1,11 +1,13 @@
-"""Hồi quy cho catalog_meta.py và load_catalog.py: cửa sổ 30 ngày, ngày bay, lịch khả dụng, thuộc tính combo."""
+"""Hồi quy cho catalog_meta.py và load_products.py theo MOCK_DATA_SPEC §2: cửa sổ 30 ngày, ngày bay, lịch khả dụng, giờ nhận/trả phòng."""
 import json
+import re
 import tempfile
 import unittest
 from datetime import date, timedelta
 from pathlib import Path
 
 from data_collection.seed import catalog_meta as cm
+from data_collection.seed import config as C
 from data_collection.seed import load_products as lc
 
 AS_OF = date(2026, 9, 20)
@@ -30,6 +32,7 @@ def fixture():
                 departureAt="2026-10-05T16:20:00+07:00", arrivalAt="2026-10-05T18:30:00+07:00"),
         product("f2", "VN2: Hà Nội - Nha Trang", "flight", "flight", parent="rt", price=950000, datesSeen=["2026-11-30"],
                 departureAt="2026-11-30T23:00:00+07:00", arrivalAt="2026-12-01T01:10:00+07:00"),
+        product("f3", "VN3: Hà Nội - Nha Trang", "flight", "flight", parent="rt", price=990000, src_from="2026-10-02", src_to="2026-10-02"),
         product("t1", "Vé A", "attraction", price=300000, src_from="2025-01-01", src_to="2026-09-30"),
         product("t2", "Điểm B chưa giá", "attraction", price=None, available=True),
         product("t3", "Vé hết hạn", "attraction", price=100000, src_from="2025-01-01", src_to="2026-09-15"),
@@ -58,17 +61,39 @@ class MetaTests(unittest.TestCase):
         cal = cm.room_calendar(r, AS_OF)
         self.assertEqual(len(cal), 30)
         self.assertLessEqual(set(cal), {"0", "1"})
-        self.assertEqual(cal, cm.room_calendar(r, AS_OF))              # xác định
-        shifted = cm.room_calendar(r, AS_OF + timedelta(days=3))
-        self.assertEqual(cal[3:], shifted[:27])                        # cuộn cửa sổ: các đêm giao nhau giữ nguyên trạng thái
-        fractions = [cm.room_calendar(product(f"x{i}", "x", "hotel", "room", parent="h1"), AS_OF).count("0") / 30 for i in range(300)]
-        self.assertTrue(0.22 <= sum(fractions) / len(fractions) <= 0.42)   # kín ~25–40%
-        vin = [cm.room_calendar(product(f"x{i}", "x", "hotel", "room", parent="h1", brand="Vinpearl"), AS_OF).count("0") for i in range(300)]
-        self.assertGreater(sum(vin) / 300 / 30, sum(fractions) / len(fractions))  # Vinpearl kín nhiều hơn
-        self.assertEqual(cm.ticket_calendar(date(2026, 9, 1)).count("0"), 1)     # blackout 02/09
+        self.assertEqual(cal, cm.room_calendar(r, AS_OF))              # xác định theo (productId, as_of)
         self.assertTrue(cm.open_nights("1110", AS_OF, date(2026, 9, 21), 2))
         self.assertFalse(cm.open_nights("1110", AS_OF, date(2026, 9, 22), 2))
         self.assertFalse(cm.open_nights("1111", AS_OF, date(2026, 9, 19), 1))    # trước cửa sổ
+
+
+    def test_room_calendars_follow_spec(self):
+        rooms = [product(f"x{i}", "x", "hotel", "room", parent="h1") for i in range(300)]
+        vin_rooms = [product(f"v{i}", "x", "hotel", "room", parent="h1", brand="Vinpearl") for i in range(300)]
+        cals = [cm.room_calendar(r, AS_OF) for r in rooms]
+        vin = [cm.room_calendar(r, AS_OF) for r in vin_rooms]
+        for c in cals + vin:                                           # mọi phòng kín 25–40% (Vinpearl chặn trên 40%)
+            self.assertTrue(C.ROOM_CLOSED_SHARE[0] <= c.count("0") / 30 <= C.ROOM_CLOSED_CAP, c)
+            self.assertTrue(all(len(run) <= C.ROOM_CLOSED_CLUSTER[1] for run in re.findall("0+", c)), c)   # cụm 1–4 đêm
+        self.assertGreater(sum(c.count("0") for c in vin), sum(c.count("0") for c in cals))              # Vinpearl kín nhiều hơn
+        weekend = [i for i in range(30) if (AS_OF + timedelta(days=i)).weekday() in (4, 5)]
+        other = [i for i in range(30) if i not in weekend]
+
+        def rate(idx):
+            return sum(c[i] == "0" for c in cals for i in idx) / (len(cals) * len(idx))
+
+        self.assertAlmostEqual(rate(weekend) / rate(other), C.ROOM_WEEKEND_MULT, delta=0.2)   # T6/T7 dễ kín ×1,5 mỗi đêm
+        by_id = {"hv": product("hv", "Vinpearl Resort", "hotel", "property", ref="vinpearl:hotel:hv")}
+        child = product("rv", "Vinpearl Resort - Deluxe", "hotel", "room", parent="hv")
+        self.assertTrue(cm.is_vinpearl(child, by_id))                  # phòng nhận brand của property cha
+        self.assertFalse(cm.is_vinpearl(child))
+
+    def test_ticket_blackout_for_fifteen_percent(self):
+        cals = [cm.ticket_calendar(f"t{i}", AS_OF) for i in range(2000)]
+        closed = [c for c in cals if "0" in c]
+        self.assertAlmostEqual(len(closed) / len(cals), C.TICKET_BLACKOUT_SHARE, delta=0.03)             # 15% sản phẩm
+        self.assertTrue(all(C.TICKET_BLACKOUT_DAYS[0] <= c.count("0") <= C.TICKET_BLACKOUT_DAYS[1] for c in closed))  # 2–3 ngày
+        self.assertEqual(cals[:50], [cm.ticket_calendar(f"t{i}", AS_OF) for i in range(50)])             # xác định
 
 
 class LoaderTests(unittest.TestCase):
@@ -85,7 +110,8 @@ class LoaderTests(unittest.TestCase):
 
     def test_source_range_is_clipped_and_expired_rows_become_unavailable(self):
         self.assertEqual((self.by["t1"]["available_from"], self.by["t1"]["available_to"], self.by["t1"]["available"]), ("2026-09-20", "2026-09-30", True))
-        self.assertEqual(self.by["t1"]["attributes"]["availability"]["calendar"], "1" * 11 + "0" * 19)  # ngày sau khi hết bán đóng
+        self.assertEqual(self.by["t1"]["attributes"]["availability"],
+                         {"from": "2026-09-20", "days": 30, "calendar": cm.ticket_calendar("t1", AS_OF)[:11] + "0" * 19})  # ngày sau khi hết bán đóng
         self.assertFalse(self.by["t3"]["available"])                  # hết hạn từ 15/09
         self.assertEqual((self.by["t3"]["available_from"], self.by["t3"]["available_to"]), (None, None))
         self.assertEqual((self.by["t3"]["attributes"]["sourceAvailableFrom"], self.by["t3"]["attributes"]["sourceAvailableTo"]),
@@ -102,20 +128,26 @@ class LoaderTests(unittest.TestCase):
         self.assertEqual((f1["available_from"], f1["available_to"]), ("2026-10-05", "2026-10-05"))  # ngày thật sớm nhất trong cửa sổ
         self.assertEqual(f1["attributes"]["departureAt"], "2026-10-05T16:20:00+07:00")
         self.assertEqual(f2["available_from"], f2["available_to"])                                   # chuyến không có ngày thật: mock 1 ngày
-        self.assertTrue("2026-09-20" <= f2["available_from"] <= "2026-10-19")
+        self.assertEqual(f2["available_from"], (AS_OF + timedelta(days=cm.stable_order_key("f2") % 30)).isoformat())  # as_of + crc32 % 30
+        self.assertEqual(self.by["f3"]["available_from"], "2026-10-02")                              # sourceAvailableFrom trong cửa sổ
         d = f2["available_from"]
         self.assertEqual(f2["attributes"]["departureAt"], f"{d}T23:00:00+07:00")                    # giữ giờ
         self.assertTrue(f2["attributes"]["arrivalAt"].endswith("T01:10:00+07:00"))                   # giữ thời lượng, qua nửa đêm
         self.assertEqual(f2["attributes"]["arrivalAt"][:10], (date.fromisoformat(d) + timedelta(days=1)).isoformat())
         self.assertEqual(f2["attributes"]["datesSeen"], ["2026-11-30"])                              # ngày thật quan sát không bị sửa
-        dates = sorted([f1["available_from"], f2["available_from"]])
+        dates = sorted([f1["available_from"], f2["available_from"], self.by["f3"]["available_from"]])
         self.assertEqual((self.by["rt"]["available_from"], self.by["rt"]["available_to"]), (dates[0], dates[-1]))  # tuyến: khoảng của các chuyến con
         self.assertNotIn("availability", f1["attributes"])                                           # chuyến bay không có lịch
 
     def test_rooms_get_calendar_parents_do_not_and_combo_gets_attributes(self):
-        self.assertEqual(len(self.by["r1"]["attributes"]["availability"]["calendar"]), 30)
-        self.assertNotIn("availability", self.by["h1"]["attributes"])
-        self.assertNotIn("availability", self.by["rt"]["attributes"])
+        self.assertEqual(self.by["r1"]["attributes"]["availability"],
+                         {"from": "2026-09-20", "days": 30, "calendar": cm.room_calendar(fixture()[1], AS_OF)})
+        self.assertEqual(set(self.by["g1"]["attributes"]["availability"]), {"from", "days", "calendar"})
+        for pid in ("h1", "rt", "c1"):                                  # property, tuyến, combo: không có lịch
+            self.assertNotIn("availability", self.by[pid]["attributes"])
+        self.assertEqual((self.by["h1"]["attributes"]["checkInTime"], self.by["h1"]["attributes"]["checkOutTime"]),
+                         (C.HOTEL_CHECK_IN, C.HOTEL_CHECK_OUT))         # giờ mặc định khi nguồn không có
+        self.assertNotIn("checkInTime", self.by["r1"]["attributes"])
         self.assertEqual(self.by["c1"]["attributes"]["priceBasis"], "per_person")
         self.assertEqual(self.by["c1"]["attributes"]["nights"], 2)
         self.assertNotIn("nights", self.by["t1"]["attributes"])

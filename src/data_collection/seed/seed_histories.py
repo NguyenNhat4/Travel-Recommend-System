@@ -1,21 +1,24 @@
 """Seed lịch sử khách hàng cho CDP clone: `cdp.profiles`, `cdp.events`, cùng `app.users` / `app.bookings` / `app.booking_items` cho 4 persona.
 
-Theo "Kế hoạch mock data" trong file thiết kế DB của nhóm (20/09/2026). **Không sửa products.jsonl**; đầu ra là file để nạp vào DB.
+Theo MOCK_DATA_SPEC §4–§5 (diễn giải cho chỗ mơ hồ: §0 "Điểm chốt 21/09"). **Không sửa products.jsonl**; đầu ra là file để nạp vào DB.
 
-    python seed_histories.py [--data-dir data] [--out-dir data/seed] [--as-of YYYY-MM-DD] [--seed 42] [--profiles 2000]
+    python -m data_collection.seed.seed_histories [--data-dir data] [--out-dir data/seed] [--as-of YYYY-MM-DD] [--seed 42] [--profiles 2000]
 
-Quy tắc theo file (mọi con số là tham số, đổi được khi Evaluation chốt việc #11):
-  * 2.000 profile, cdp_user_id "VP" + 7 số; 1–5 event/năm/khách trải 24 tháng (~7.000 event), không ai quá 15 event.
-  * Vòng đời TÍNH TỪ event (không sinh độc lập): new = ≤ 2 event; còn lại theo số ngày từ lần đặt cuối: ≤ 180 active, 181–365 dormant, > 365 churned.
-    Tỷ lệ đích: new 25% · active 45% · dormant 20% · churned 10% (còn lại là "new" có đặt chỗ).
-  * Chuyến đi = một event_group_id ("OFF" + yyyymmdd + số thứ tự), một điểm đến; thứ tự hotel → flight → attraction/combo/golf; 65% chuyến
-    có ≥ 2 loại; using_date cùng khoảng ngày; product_view đi trước purchase 0–7 ngày.
-  * Độ phổ biến theo phân phối luỹ thừa (Zipf s mặc định = 0,8) trên sản phẩm ĐẶT ĐƯỢC trong từng điểm đến; Vinpearl được nâng trọng số.
-  * Cạnh lộn xộn: 5% profile email_optin = false; 2% event trỏ product_id không tồn tại; 3% purchase thiếu event_group_id.
-  * VinClub: Member 60% · Gold 25% · Platinum 10% · Diamond 5%; home_city từ 8 thành phố lớn.
-  * 4 persona (UX spec §2): P1 Minh Anh (3 chuyến Nha Trang + 1 chuyến sắp tới đã đặt khách sạn, chưa có vé bay), P2 Quốc Bảo (2 product_view
-    tuần qua), P3 Thu Hà (2 chuyến Phú Quốc, chuyến cuối ~6 tháng trước), P4 khách mới (0 event). Kèm 50 tài khoản test.
-Mọi thứ có ngày sinh tương đối theo --as-of. Kết quả xác định theo --seed.
+Quy tắc (mọi tỷ lệ, khoảng, trọng số nằm trong config.py):
+  * 2.000 profile, cdp_user_id "VP" + 7 số tuần tự từ VP0000001 (4 persona giữ 1–4). Stage đích new 25 · active 45 · dormant 20 · churned 10.
+  * Chuyến đi = một event_group_id ("OFF" + yyyymmdd + 3 số), một điểm đến chọn theo số sản phẩm bookable; 65% chuyến ≥ 2 vertical,
+    3% chuyến có golf; thứ tự checkout hotel → flight → attraction/combo → golf. Sản phẩm chọn theo Zipf s = 0,8 trên thứ tự
+    crc32(product_id), Vinpearl ×2. Nhận phòng = ngày mua + 7–45 ngày, vé = nhận phòng + 1, không sau as_of − 1.
+  * Event một chuyến: [search 30%] → 1–3 product_view (0–7 ngày trước mua) → [add_to_cart 40% chuyến] → purchase. Chỉ purchase có
+    event_group_id. quantity: hotel 1 · flight 1–3 · attraction 2–4 · combo/golf 1–2; unit_price = giá catalog ±5%, làm tròn nghìn.
+  * Không khách nào quá 15 event (bỏ search → add_to_cart → product_view cũ nhất; purchase không bao giờ bị bỏ).
+  * Cạnh lộn xộn (không áp cho persona): 2% purchase trỏ product_id không tồn tại; 3% purchase mất event_group_id; 1% khách có
+    product_view ở hai điểm đến khác nhau cùng ngày.
+  * Profile TÍNH TỪ event: lifetime_order_count = số event_group_id khác NULL có purchase; lifecycle 0 purchase → new, ≤ 180 ngày
+    active, 181–365 dormant, > 365 churned. Lệch stage đích quá 5% thì dừng.
+  * 4 persona (§5): P1 3 chuyến Nha Trang + đặt phòng Vinpearl Nha Trang tại as_of − 3 cho đêm as_of + 12 (có app.bookings, chưa có vé bay);
+    P2 2 lần xem Phú Quốc tại as_of − 2 / − 1; P3 2 chuyến Phú Quốc, chuyến cuối as_of − 190; P4 0 event. Kèm 50 tài khoản test.
+Mọi thứ có ngày sinh tương đối theo --as-of, giờ theo múi +07:00. Kết quả xác định theo --seed.
 Mọi app.users dùng chung BCrypt cost 10 của mật khẩu demo `Demo@2026`; email / số điện thoại là dữ liệu giả.
 """
 from __future__ import annotations
@@ -24,182 +27,241 @@ import argparse
 import bisect
 import json
 import random
-import re
+import sys
 import uuid
 from collections import Counter, defaultdict
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-from .catalog_meta import build_meta, is_vinpearl, open_nights, room_calendar, variant
-from .config import DEFAULT_ZIPF
+from . import config as C
+from .catalog_meta import build_meta, is_vinpearl, open_nights, room_calendar, stable_order_key, variant, window
 
 NS = uuid.UUID("6f3b1f0e-8a52-4c1e-9d0a-7a0c5b1d2e77")  # không gian tên cố định cho uuid5 (seed)
-HOME_CITIES = [("Hà Nội", 30), ("TP. Hồ Chí Minh", 30), ("Đà Nẵng", 10), ("Hải Phòng", 6), ("Cần Thơ", 6), ("Huế", 5), ("Nha Trang", 5), ("Đà Lạt", 4)]
-TIERS = [("Member", 60), ("Gold", 25), ("Platinum", 10), ("Diamond", 5)]
-VINPEARL_DESTS = {"Nha Trang", "Phú Quốc"}
-DEMO_PASSWORD_HASH = "$2b$10$pNkZJv0LGcI21m4ThFX8l.0SDw.9BryHuyzbmXMifCcRPQP9kHICa"
+TZ_VN = timezone(timedelta(hours=7))
+TICKET_KINDS = ("attraction", "combo")
+CHECKOUT_ORDER = {"hotel": 0, "flight": 1, "attraction": 2, "combo": 2, "golf": 3}
+PERSONA_IDS = {p[0] for p in C.PERSONAS}
 
 
 def uid(*parts) -> str:
     return str(uuid.uuid5(NS, "|".join(str(p) for p in parts)))
 
 
-class Sampler:
-    """Chọn phần tử theo Zipf trên thứ hạng ngẫu nhiên cố định; Vinpearl nhân thêm hệ số."""
+def weighted(rng: random.Random, weights: dict) -> str:
+    keys = list(weights)
+    return rng.choices(keys, [weights[k] for k in keys])[0]
 
-    def __init__(self, items: list[dict], key: str, seed: int, s: float, boost: float):
-        order = sorted(items, key=lambda r: r["productId"])
-        random.Random(f"{seed}|zipf|{key}").shuffle(order)
-        self.items = order
-        w = [(boost if is_vinpearl(r) else 1.0) / ((i + 1) ** s) for i, r in enumerate(order)]
-        self.cum = []
-        t = 0.0
-        for x in w:
-            t += x
-            self.cum.append(t)
+
+def inclusive(rng: random.Random, bounds: tuple[int, int]) -> int:
+    return rng.randint(bounds[0], bounds[1])
+
+
+def noisy_price(rng: random.Random, price: float | None) -> int | None:
+    """unit_price lúc mua = giá catalog × U(1 − noise, 1 + noise), làm tròn nghìn (MOCK_DATA_SPEC §4)."""
+    if price is None:
+        return None
+    step = C.PRICE_ROUNDING
+    return max(step, int(round(price * rng.uniform(1 - C.PRICE_NOISE, 1 + C.PRICE_NOISE) / step)) * step)
+
+
+def local_day(ts: datetime) -> date:
+    return ts.astimezone(TZ_VN).date()
+
+
+def end_of_day(ts: datetime) -> datetime:
+    return datetime.combine(local_day(ts), datetime.max.time().replace(microsecond=0), tzinfo=TZ_VN)
+
+
+def distinct_picks(sampler: "Sampler", rng: random.Random, n: int, taken: list[dict] | None = None, tries: int = 20) -> list[dict]:
+    """n sản phẩm khác nhau (và khác `taken`) theo Zipf; chỉ cho trùng khi nhóm có quá ít sản phẩm."""
+    seen = {r["productId"] for r in taken or []}
+    out: list[dict] = []
+    for _ in range(n):
+        pick = sampler.pick(rng)
+        for _ in range(tries):
+            if pick["productId"] not in seen:
+                break
+            pick = sampler.pick(rng)
+        seen.add(pick["productId"])
+        out.append(pick)
+    return out
+
+
+class Sampler:
+    """Chọn phần tử theo Zipf trên thứ hạng cố định crc32(productId); Vinpearl nhân thêm hệ số."""
+
+    def __init__(self, items: list[dict], s: float, boost: float, by_id: dict[str, dict]):
+        self.items = sorted(items, key=lambda r: (stable_order_key(r["productId"]), r["productId"]))
+        self.cum: list[float] = []
+        total = 0.0
+        for i, r in enumerate(self.items):
+            total += (boost if is_vinpearl(r, by_id) else 1.0) / ((i + 1) ** s)
+            self.cum.append(total)
 
     def pick(self, rng: random.Random) -> dict:
         return self.items[min(bisect.bisect_left(self.cum, rng.random() * self.cum[-1]), len(self.items) - 1)]
 
 
 class World:
-    def __init__(self, rows: list[dict], as_of: date, seed: int, zipf: float, boost: float):
-        self.rows, self.as_of, self.seed = rows, as_of, seed
+    """Catalog đã phân nhóm: sản phẩm đặt được theo (điểm đến, vertical), vé bay theo (điểm đến, nơi đi), search unit để xem."""
+
+    def __init__(self, rows: list[dict], zipf: float, boost: float):
         self.by_id = {r["productId"]: r for r in rows}
         self.meta = build_meta(rows)
-        rooms: dict[str, list[dict]] = defaultdict(list)
-        self.flights: dict[tuple[str, str], list[dict]] = defaultdict(list)
-        buckets: dict[tuple[str, str], list[dict]] = defaultdict(list)
-        for r in rows:
-            v = variant(r)
-            if not self.meta[r["productId"]]["is_bookable"]:
-                continue
-            if v == "hotel_room":
-                rooms[r["attributes"]["parentProductId"]].append(r)
-            elif v == "flight":
-                route = self.by_id.get(r["attributes"].get("parentProductId"))
-                self.flights[(r["destination"], (route or r)["attributes"].get("originDestination") or "")].append(r)
-            else:
-                buckets[(r["destination"], v)].append(r)
+        buy: dict[tuple[str, str], list[dict]] = defaultdict(list)
+        flights: dict[tuple[str, str], list[dict]] = defaultdict(list)
+        views: dict[str, list[dict]] = defaultdict(list)
         props: dict[str, list[dict]] = defaultdict(list)
+        weight: Counter = Counter()
         for r in rows:
-            if variant(r) == "hotel_property" and rooms.get(r["productId"]):
-                props[r["destination"]].append(r)
-        self.rooms = {pid: Sampler(rs, f"rooms|{pid}", seed, 0.8, 1.0) for pid, rs in rooms.items()}
-        self.hotels = {d: Sampler(ps, f"hotels|{d}", seed, zipf, boost) for d, ps in props.items()}
-        self.flight_pick = {k: Sampler(v, f"flights|{k}", seed, zipf, boost) for k, v in self.flights.items()}
-        self.tickets = {k: Sampler(v, f"{k}", seed, zipf, boost) for k, v in buckets.items()}
-        weight = {d: (len(ps) ** 0.7) * (1.5 if d in VINPEARL_DESTS else 1.0) for d, ps in props.items()}
+            m, v = self.meta[r["productId"]], variant(r)
+            if m["is_search_unit"] and m["is_recommendable"]:
+                views[r["destination"]].append(r)
+                if v == "hotel_property":
+                    props[r["destination"]].append(r)
+            if not m["is_bookable"]:
+                continue
+            weight[r["destination"]] += 1
+            if v == "hotel_room":
+                buy[(r["destination"], "hotel")].append(r)
+            elif v == "flight":
+                route = self.by_id.get(r["attributes"].get("parentProductId") or "")
+                flights[(r["destination"], (route or r)["attributes"].get("originDestination") or "")].append(r)
+            else:
+                buy[(r["destination"], v)].append(r)
+        sampler = lambda items: Sampler(items, zipf, boost, self.by_id)  # noqa: E731
+        self.buy = {k: sampler(v) for k, v in buy.items()}
+        self.flights = {k: sampler(v) for k, v in flights.items()}
+        self.views = {k: sampler(v) for k, v in views.items()}
+        self.props = {k: sampler(v) for k, v in props.items()}
         self.dest_names = sorted(weight)
-        self.dest_cum = []
-        t = 0.0
+        self.dest_cum: list[float] = []
+        total = 0.0
         for d in self.dest_names:
-            t += weight[d]
-            self.dest_cum.append(t)
+            total += weight[d]
+            self.dest_cum.append(total)
+        # hết lượt bốc lại: chuyến chỉ khách sạn ở điểm đến nặng nhất có phòng
+        self.fallback_dest = max((d for d in self.dest_names if (d, "hotel") in self.buy), key=lambda d: (weight[d], d))
 
     def destination(self, rng: random.Random) -> str:
         return self.dest_names[min(bisect.bisect_left(self.dest_cum, rng.random() * self.dest_cum[-1]), len(self.dest_names) - 1)]
 
-    KIND_WEIGHT = {"attraction": 0.62, "combo": 0.28, "golf": 0.10}
+    @staticmethod
+    def origin(home: str) -> str:
+        return C.HOME_CITY_FLIGHT_ORIGIN.get(home, home)
 
-    def pick_ticket(self, rng: random.Random, dest: str, kinds: tuple[str, ...]) -> dict | None:
-        options = [k for k in kinds if (dest, k) in self.tickets]
-        if not options:
-            return None
-        kind = rng.choices(options, [self.KIND_WEIGHT.get(k, 0.5) for k in options])[0]
-        return self.tickets[(dest, kind)].pick(rng)
+    def has(self, dest: str, vertical: str, home: str) -> bool:
+        if vertical == "flight":
+            return (dest, self.origin(home)) in self.flights
+        if vertical == "ticket":
+            return any((dest, k) in self.buy for k in TICKET_KINDS)
+        return (dest, vertical) in self.buy
 
-    def supports_multi(self, dest: str, home: str) -> bool:
-        """Điểm đến có khách sạn và ít nhất một loại khác (vé bay từ home_city, điểm tham quan, combo, golf)."""
-        return dest in self.hotels and ((dest, home) in self.flight_pick or any((dest, k) in self.tickets for k in ("attraction", "combo", "golf")))
+    def pick(self, rng: random.Random, dest: str, vertical: str, home: str) -> dict:
+        if vertical == "flight":
+            return self.flights[(dest, self.origin(home))].pick(rng)
+        if vertical == "ticket":
+            kinds = {k: C.TICKET_KIND_WEIGHTS[k] for k in TICKET_KINDS if (dest, k) in self.buy}
+            vertical = weighted(rng, kinds)
+        return self.buy[(dest, vertical)].pick(rng)
 
-    def pick_flight(self, rng: random.Random, dest: str, home: str) -> dict | None:
-        s = self.flight_pick.get((dest, home))
-        return s.pick(rng) if s else None
+    def view_of(self, product: dict) -> dict:
+        """Search unit mà khách xem trước khi mua: property của hạng phòng, tuyến của chuyến bay, còn lại là chính nó."""
+        parent = self.by_id.get(product["attributes"].get("parentProductId") or "")
+        return parent or product
 
 
 # ------------------------------------------------------------------ chuyến đi
-def plan_items(w: World, rng: random.Random, dest: str, home: str, start: date, verticals: list[str]) -> list[dict]:
-    """Các dòng đặt của một chuyến, theo thứ tự hotel → flight → attraction/combo/golf."""
-    items: list[dict] = []
-    nights = rng.choice([1, 2, 2, 3, 3, 4, 5])
-    for v in verticals:
-        if v == "hotel":
-            prop = w.hotels[dest].pick(rng)
-            room = w.rooms[prop["productId"]].pick(rng)
-            items.append({"product": room, "view": prop, "quantity": nights, "using_date": start, "using_date_to": start + timedelta(days=nights)})
-        elif v == "flight":
-            f = w.pick_flight(rng, dest, home)
-            if f:
-                items.append({"product": f, "view": w.by_id.get(f["attributes"]["parentProductId"], f), "quantity": rng.choice([1, 1, 2, 3]),
-                              "using_date": start, "using_date_to": None})
-        else:
-            t = w.pick_ticket(rng, dest, ("attraction", "combo", "golf") if v == "extra" else (v,))
-            if t:
-                items.append({"product": t, "view": t, "quantity": rng.choice([1, 2, 2, 3, 4]) if t["taxonomy"] != "golf" else rng.choice([1, 2, 4]),
-                              "using_date": start + timedelta(days=rng.randint(0, max(0, nights - 1))), "using_date_to": None})
-    return items
-
-
-def choose_verticals(w: World, rng: random.Random, dest: str, home: str, want_multi: bool) -> list[str]:
-    can_flight = (dest, home) in w.flight_pick
-    can_extra = any((dest, k) in w.tickets for k in ("attraction", "combo", "golf"))
-    if want_multi:  # ≥ 2 loại
-        v = ["hotel"]
-        if can_flight and (rng.random() < 0.55 or not can_extra):
-            v.append("flight")
-        if can_extra and (len(v) == 1 or rng.random() < 0.30):
-            v.append("extra")
-        return v
+def plan_trip(w: World, rng: random.Random, home: str) -> tuple[str, list[str]]:
+    """(điểm đến, danh sách vertical theo thứ tự checkout). 3% chuyến có golf, 65% chuyến ≥ 2 vertical (MOCK_DATA_SPEC §4)."""
     r = rng.random()
-    if r < 0.72 or not can_extra:
-        return ["hotel"]
-    return ["extra"] if r < 0.94 or not can_flight else ["flight"]
+    golf = r < C.GOLF_TRIP_RATE
+    if golf or r < C.MULTI_VERTICAL_RATE:
+        for _ in range(C.DEST_REDRAWS):
+            dest = w.destination(rng)
+            can_flight, can_ticket = w.has(dest, "flight", home), w.has(dest, "ticket", home)
+            if w.has(dest, "hotel", home) and (w.has(dest, "golf", home) if golf else (can_flight or can_ticket)):
+                break
+        else:
+            return w.fallback_dest, ["hotel"]
+        add_flight = can_flight and rng.random() < C.MULTI_FLIGHT_RATE
+        add_ticket = can_ticket and rng.random() < C.MULTI_TICKET_RATE
+        if not golf and not (add_flight or add_ticket):  # chuyến nhiều vertical: ép loại có sẵn
+            if can_flight and can_ticket:
+                add_flight = rng.random() < C.MULTI_FLIGHT_RATE / (C.MULTI_FLIGHT_RATE + C.MULTI_TICKET_RATE)
+                add_ticket = not add_flight
+            else:
+                add_flight, add_ticket = can_flight, can_ticket
+        return dest, ["hotel"] + ["flight"] * add_flight + ["ticket"] * add_ticket + ["golf"] * golf
+    vertical = weighted(rng, C.SINGLE_VERTICAL_WEIGHTS)
+    for _ in range(C.DEST_REDRAWS):
+        dest = w.destination(rng)
+        if w.has(dest, vertical, home):
+            return dest, [vertical]
+    return w.fallback_dest, ["hotel"]
 
 
 class Builder:
-    def __init__(self, w: World, seed: int):
-        self.w, self.events, self.bookings, self.booking_items = w, [], [], []
+    def __init__(self, w: World, as_of: date):
+        self.w, self.as_of = w, as_of
+        self.events: list[dict] = []
+        self.bookings: list[dict] = []
+        self.booking_items: list[dict] = []
         self.seq: Counter = Counter()
-        self.seed = seed
 
     def group_id(self, purchased: datetime) -> str:
-        d = purchased.strftime("%Y%m%d")
+        d = local_day(purchased).strftime("%Y%m%d")
         self.seq[d] += 1
         return f"OFF{d}{self.seq[d]:03d}"
 
-    def add_trip(self, user: str, rng: random.Random, dest: str, home: str, purchased: datetime, start: date, verticals: list[str],
-                 add_to_cart: float = 0.20, comparison_views: bool = True) -> list[dict]:
-        items = plan_items(self.w, rng, dest, home, start, verticals)
-        if not items:
-            return []
-        gid = self.group_id(purchased)
-        for k, it in enumerate(items):
-            p = it["product"]
-            ts = purchased + timedelta(seconds=90 * k)
-            view_ts = purchased - timedelta(days=rng.uniform(0, 7), hours=rng.uniform(0, 3)) + timedelta(seconds=k)
-            if it["view"]["taxonomy"] == "hotel" or rng.random() < 0.55:  # xem trước khi đặt (khách sạn luôn xem; loại khác 55%)
-                self.events.append(self.event(user, "product_view", view_ts, it["view"], None, None, None, None))
-            if it["view"]["taxonomy"] == "hotel" and comparison_views:  # xem thêm 0–2 khách sạn khác trong cùng điểm đến trước khi chốt
-                for _ in range(rng.choice([0, 0, 0, 1])):
-                    other = self.w.hotels[it["view"]["destination"]].pick(rng)
-                    if other["productId"] != it["view"]["productId"]:
-                        t = purchased - timedelta(days=rng.uniform(0, 7), hours=rng.uniform(0, 3))
-                        self.events.append(self.event(user, "product_view", t, other, None, None, None, None))
-            if rng.random() < add_to_cart:
-                mid = view_ts + (ts - view_ts) * rng.uniform(0.3, 0.95)
-                self.events.append(self.event(user, "add_to_cart", mid, p, gid, it["quantity"], p["unitPrice"], it["using_date"]))
-            self.events.append(self.event(user, "purchase", ts, p, gid, it["quantity"], p["unitPrice"], it["using_date"]))
-        return items
-
     @staticmethod
-    def event(user, name, ts, product, gid, qty, price, using):
-        return {"cdp_user_id": user, "event_name": name, "timestamp": ts, "product_id": product["productId"], "taxonomy": product["taxonomy"],
+    def event(user, name, ts, product, gid=None, qty=None, price=None, using=None) -> dict:
+        return {"cdp_user_id": user, "event_name": name, "timestamp": ts,
+                "product_id": product["productId"] if product else None, "taxonomy": product["taxonomy"] if product else None,
                 "event_group_id": gid, "quantity": qty, "unit_price": price, "using_date": using.isoformat() if using else None}
+
+    def trip(self, user: str, rng: random.Random, dest: str, home: str, verticals: list[str], purchased: datetime, *,
+             n_views: int, search: bool, cart: bool, lead: tuple[int, int] = C.LEAD_DAYS) -> list[dict]:
+        """Sinh một chuyến đã chốt thời điểm checkout `purchased`; trả về các dòng purchase (có giá lúc mua).
+        Vertical mà điểm đến không có (catalog tổng hợp, persona) bị bỏ qua; không còn mục nào thì không sinh gì."""
+        products = [self.w.pick(rng, dest, v, home) for v in verticals if self.w.has(dest, v, home)]
+        if not products:
+            return []
+        products.sort(key=lambda p: CHECKOUT_ORDER[p["taxonomy"]])
+        latest = self.as_of - timedelta(days=C.LATEST_PAST_USING_DAYS)
+        has_ticket = any(p["taxonomy"] not in ("hotel", "flight") for p in products)
+        check_in = local_day(purchased) + timedelta(days=inclusive(rng, lead))
+        check_in = min(check_in, latest - timedelta(days=C.TICKET_DAY_OFFSET if has_ticket else 0))
+        gid = self.group_id(purchased)
+        purchases, carts = [], []
+        for k, p in enumerate(products):
+            ts = purchased + timedelta(seconds=C.ITEM_GAP_SECONDS * k)
+            using = check_in + timedelta(days=0 if p["taxonomy"] in ("hotel", "flight") else C.TICKET_DAY_OFFSET)
+            qty, price = inclusive(rng, C.QUANTITY[p["taxonomy"]]), noisy_price(rng, p["unitPrice"])
+            if cart:
+                cart_ts = purchased - timedelta(minutes=inclusive(rng, C.CART_BEFORE_PURCHASE_MIN)) + timedelta(seconds=k)
+                carts.append(self.event(user, "add_to_cart", cart_ts, p, None, qty, price, using))
+            purchases.append(self.event(user, "purchase", ts, p, gid, qty, price, using))
+        first_touch = min([purchased] + [c["timestamp"] for c in carts])
+        first = self.w.view_of(products[0])
+        view_targets = [first] + distinct_picks(self.w.views[dest], rng, n_views - 1, [first])
+        views = []
+        latest_view = C.VIEW_LEAD_DAYS[1] * 86400
+        earliest_view = max(C.VIEW_LEAD_DAYS[0] * 86400, (purchased - first_touch).total_seconds() + 60)
+        for target in view_targets:
+            views.append(self.event(user, "product_view", purchased - timedelta(seconds=rng.uniform(earliest_view, latest_view)), target))
+        events = views + carts + purchases
+        if search:
+            first_view = min(v["timestamp"] for v in views)
+            events.insert(0, self.event(user, "search", first_view - timedelta(minutes=inclusive(rng, C.SEARCH_BEFORE_VIEW_MIN)), None))
+        self.events.extend(events)
+        return purchases
 
 
 def at(day: date, rng: random.Random) -> datetime:
-    return datetime(day.year, day.month, day.day, rng.randint(8, 22), rng.randint(0, 59), rng.randint(0, 59), tzinfo=timezone.utc)
+    """Giờ ngẫu nhiên trong ngày (giờ Việt Nam)."""
+    return datetime(day.year, day.month, day.day, rng.randint(C.EVENT_HOURS[0], C.EVENT_HOURS[1]), rng.randint(0, 59),
+                    rng.randint(0, 59), tzinfo=TZ_VN)
 
 
 def dt_iso(t: datetime) -> str:
@@ -208,73 +270,57 @@ def dt_iso(t: datetime) -> str:
 
 # ------------------------------------------------------------------ vòng đời
 def lifecycle(events: list[dict], as_of: date) -> tuple[str, int | None]:
+    """0 purchase → new; còn lại theo số ngày từ lần mua cuối: ≤ 180 active, 181–365 dormant, > 365 churned (MOCK_DATA_SPEC §4)."""
     buys = [e for e in events if e["event_name"] == "purchase"]
-    days = (as_of - max(e["timestamp"] for e in buys).date()).days if buys else None
-    if len(events) <= 2 or days is None:
-        return "new", days
+    if not buys:
+        return "new", None
+    days = (as_of - local_day(max(e["timestamp"] for e in buys))).days
     return ("active" if days <= 180 else "dormant" if days <= 365 else "churned"), days
 
 
-def stage_plan(n_profiles: int, mix: tuple[float, float, float, float]) -> list[str]:
-    """Số khách mỗi giai đoạn đúng tỷ lệ (làm tròn, phần dư vào active)."""
-    counts = [round(n_profiles * m) for m in mix]
-    counts[1] += n_profiles - sum(counts)
-    return ["new"] * counts[0] + ["active"] * counts[1] + ["dormant"] * counts[2] + ["churned"] * counts[3]
+def stage_plan(n_profiles: int) -> list[str]:
+    """Số khách mỗi giai đoạn đúng tỷ lệ STAGE_MIX (làm tròn, phần dư vào active)."""
+    counts = {s: round(n_profiles * m) for s, m in C.STAGE_MIX.items()}
+    counts["active"] += n_profiles - sum(counts.values())
+    return [s for s, n in counts.items() for _ in range(n)]
 
 
-def plan_generic(w: World, b: Builder, rng: random.Random, user: str, stage: str, home: str, as_of: date) -> None:
-    """Một khách thường: sinh chuyến theo giai đoạn (lifecycle_stage sẽ được tính lại từ event)."""
-    def trip(days_ago: int):
-        # điểm đặt cách đây days_ago ngày; chuyến diễn ra sau đó 3–40 ngày nhưng không quá hôm qua
-        purchased_day = as_of - timedelta(days=days_ago)
-        start = min(purchased_day + timedelta(days=rng.randint(3, 40)), as_of - timedelta(days=1))
-        want_multi = rng.random() < 0.75
+def plan_generic(w: World, b: Builder, rng: random.Random, user: str, stage: str, home: str, as_of: date, max_events: int) -> None:
+    """Một khách thường: sinh chuyến theo giai đoạn; lifecycle_stage được tính lại từ event sau đó."""
+    views = lambda: rng.choices(range(1, len(C.VIEWS_PER_TRIP) + 1), C.VIEWS_PER_TRIP)[0]  # noqa: E731
+    if stage == "new":
+        if rng.random() >= C.NEW_VIEW_TRIP_RATE:
+            return
         dest = w.destination(rng)
-        for _ in range(30):  # chuyến nhiều loại thì chọn điểm đến có đủ sản phẩm
-            if not want_multi or w.supports_multi(dest, home):
+        for _ in range(C.DEST_REDRAWS):
+            if dest in w.views:
                 break
             dest = w.destination(rng)
-        return b.add_trip(user, rng, dest, home, at(purchased_day, rng), max(start, purchased_day + timedelta(days=1)),
-                          choose_verticals(w, rng, dest, home, want_multi and w.supports_multi(dest, home)))
-
-    if stage == "new":
-        r = rng.random()
-        if r < 0.40:
-            return
-        if r < 0.80:  # chỉ xem
-            for _ in range(rng.randint(1, 2)):
-                dest = w.destination(rng)
-                prop = w.hotels[dest].pick(rng)
-                b.events.append(b.event(user, "product_view", at(as_of - timedelta(days=rng.randint(1, 90)), rng), prop, None, None, None, None))
-            return
-        dest = w.destination(rng)  # một lần đặt một loại: view + purchase = 2 event
-        purchased_day = as_of - timedelta(days=rng.randint(10, 90))
-        b.add_trip(user, rng, dest, home, at(purchased_day, rng), min(purchased_day + timedelta(days=rng.randint(3, 30)), as_of - timedelta(days=1)),
-                   ["hotel"], add_to_cart=0.0, comparison_views=False)
+        t0 = at(as_of - timedelta(days=inclusive(rng, C.NEW_VIEW_DAYS_AGO)), rng)
+        for k, target in enumerate(distinct_picks(w.views[dest], rng, views())):   # một chuyến chỉ có product_view, không mua
+            ts = min(t0 + timedelta(minutes=inclusive(rng, C.NEW_VIEW_GAP_MIN) * k), end_of_day(t0))
+            b.events.append(b.event(user, "product_view", ts, target))
         return
-    last = {"active": (10, 170), "dormant": (185, 360), "churned": (370, 690)}[stage]
-    n_trips = {"active": rng.choices([1, 2, 3], [0.78, 0.19, 0.03])[0], "dormant": rng.choices([1, 2], [0.85, 0.15])[0],
-               "churned": rng.choices([1, 2], [0.88, 0.12])[0]}[stage]
-    days_ago = rng.randint(*last)
+    n_trips = rng.choices(range(1, len(C.TRIPS_PER_STAGE[stage]) + 1), C.TRIPS_PER_STAGE[stage])[0]
+    oldest = C.HISTORY_DAYS - C.VIEW_LEAD_DAYS[1] - 1          # view / search của chuyến cũ nhất vẫn nằm trong 24 tháng
+    days_ago = min(inclusive(rng, C.LAST_PURCHASE_DAYS_AGO[stage]), oldest)
+    purchases = 0
     for _ in range(n_trips):
-        trip(days_ago)
-        days_ago += rng.randint(75, 260)
-        if days_ago > 700:
+        if days_ago > oldest:
             break
-    mine = [e for e in b.events if e["cdp_user_id"] == user]
-    while len(mine) <= 2:  # đã đặt chỗ thì phải có > 2 event, nếu không vòng đời tính từ event sẽ thành "new": thêm lần xem so sánh
-        buy = next((e for e in mine if e["event_name"] == "purchase"), None)
-        dest = w.by_id[buy["product_id"]]["destination"] if buy and buy["product_id"] in w.by_id else w.destination(rng)
-        t = (buy["timestamp"] if buy else at(as_of - timedelta(days=days_ago), rng)) - timedelta(days=rng.uniform(0, 6))
-        b.events.append(b.event(user, "product_view", t, w.hotels[dest].pick(rng), None, None, None, None))
-        mine = [e for e in b.events if e["cdp_user_id"] == user]
+        dest, verticals = plan_trip(w, rng, home)
+        if purchases and purchases + len(verticals) > max_events:   # purchase không bị cắt, nên không nhận thêm chuyến cũ vượt cap
+            break
+        purchases += len(b.trip(user, rng, dest, home, verticals, at(as_of - timedelta(days=days_ago), rng), n_views=views(),
+                                search=rng.random() < C.SEARCH_TRIP_RATE, cart=rng.random() < C.ADD_TO_CART_TRIP_RATE))
+        days_ago += inclusive(rng, C.TRIP_GAP_DAYS)
 
 
 def cap_events(evs: list[dict], limit: int) -> list[dict]:
-    """Không quá `limit` event/khách: bỏ add_to_cart trước, rồi product_view cũ nhất."""
+    """Không quá `limit` event/khách: bỏ theo EVENT_TRIM_ORDER (search → add_to_cart → product_view cũ nhất); không bỏ purchase."""
     if len(evs) <= limit:
         return evs
-    for name in ("add_to_cart", "product_view"):
+    for name in C.EVENT_TRIM_ORDER:
         cand = sorted((e for e in evs if e["event_name"] == name), key=lambda e: e["timestamp"])
         while len(evs) > limit and cand:
             evs.remove(cand.pop(0))
@@ -282,148 +328,189 @@ def cap_events(evs: list[dict], limit: int) -> list[dict]:
 
 
 # ------------------------------------------------------------------ persona
-PERSONAS = [
-    ("VP0000001", "P1_frequent", "Minh Anh", "minh.anh@example.com", "TP. Hồ Chí Minh", "Gold"),
-    ("VP0000002", "P2_first_time", "Quốc Bảo", "quoc.bao@example.com", "Hà Nội", "Member"),
-    ("VP0000003", "P3_dormant", "Thu Hà", "thu.ha@example.com", "Hà Nội", "Member"),
-    ("VP0000004", "P4_no_history", "Khách mới", "khach.moi@example.com", "Đà Nẵng", "Member"),
-]
-
-
 def seed_personas(w: World, b: Builder, rng: random.Random, as_of: date) -> dict:
-    info: dict = {}
-    dest = "Nha Trang"
-    for days_ago in (520, 300, 125):  # P1: 3 chuyến Nha Trang trong 18 tháng (khách sạn + điểm tham quan)
-        day = as_of - timedelta(days=days_ago)
-        b.add_trip("VP0000001", rng, dest, "TP. Hồ Chí Minh", at(day, rng), day + timedelta(days=rng.randint(5, 20)), ["hotel", "attraction"], add_to_cart=0.0, comparison_views=False)
-    # chuyến sắp tới: đã đặt khách sạn (chưa có vé bay), đêm ở nằm trong cửa sổ và còn trống
-    prop_sampler = w.hotels[dest]
-    for attempt in range(400):
-        prop = prop_sampler.pick(rng)
-        room = w.rooms[prop["productId"]].pick(rng)
-        cal = room_calendar(room, as_of)
-        start = as_of + timedelta(days=rng.randint(8, 20))
-        nights = rng.choice([2, 3])
-        if open_nights(cal, as_of, start, nights):
+    """Lịch sử cố định của 4 persona (MOCK_DATA_SPEC §5). Khuôn: không search, 1 view / chuyến, không add_to_cart ở chuyến cũ."""
+    homes = {p[0]: p[4] for p in C.PERSONAS}
+    p1, p2, p3 = (p[0] for p in C.PERSONAS[:3])
+
+    def persona_trip(user: str, spec: dict, verticals, days_ago: int) -> None:
+        if not b.trip(user, rng, spec["destination"], homes[user], list(verticals), at(as_of - timedelta(days=days_ago), rng),
+                      n_views=1, search=False, cart=False, lead=C.PERSONA_LEAD_DAYS):
+            raise SystemExit(f"Catalog không có sản phẩm {'/'.join(verticals)} đặt được ở {spec['destination']} cho persona {user}")
+
+    for days_ago in C.P1["past_trip_days_ago"]:
+        persona_trip(p1, C.P1, C.P1["past_verticals"], days_ago)
+
+    # P1 — chuyến sắp tới: đã đặt 1 phòng Vinpearl Nha Trang (1 đêm), chưa có vé bay / vé tham quan
+    using = as_of + timedelta(days=C.P1["upcoming_using_in_days"])
+    nights = C.P1["upcoming_nights"]
+    lo, hi = window(as_of)
+    room = None
+    last_night = using + timedelta(days=nights - 1)
+    rooms = w.buy.get((C.P1["destination"], "hotel"))
+    for cand in rooms.items if rooms else []:                       # thứ tự Zipf: phòng phổ biến nhất còn trống trước
+        src_from, src_to = cand.get("availableFrom"), cand.get("availableTo")
+        in_source = (not src_from or date.fromisoformat(src_from) <= using) and (not src_to or last_night <= date.fromisoformat(src_to))
+        brand_ok = is_vinpearl(cand, w.by_id) if C.P1["upcoming_brand"] == "Vinpearl" else cand["attributes"].get("brand") == C.P1["upcoming_brand"]
+        if brand_ok and cand["available"] and in_source and lo <= using <= hi and open_nights(room_calendar(cand, as_of, w.by_id), as_of, using, nights):
+            room = cand
             break
-    else:
-        raise SystemExit("Không tìm được hạng phòng Nha Trang còn trống cho chuyến sắp tới của P1")
-    purchased = at(as_of - timedelta(days=2), rng)
+    if room is None:
+        raise SystemExit(f"Không có hạng phòng {C.P1['upcoming_brand']} {C.P1['destination']} còn trống đêm {using} cho chuyến sắp tới của P1")
+    purchased = at(as_of - timedelta(days=C.P1["upcoming_purchase_days_ago"]), rng)
+    price = noisy_price(rng, room["unitPrice"])
     gid = b.group_id(purchased)
-    b.events.append(b.event("VP0000001", "product_view", purchased - timedelta(days=1, hours=3), prop, None, None, None, None))
-    b.events.append(b.event("VP0000001", "add_to_cart", purchased - timedelta(minutes=20), room, gid, nights, room["unitPrice"], start))
-    b.events.append(b.event("VP0000001", "purchase", purchased, room, gid, nights, room["unitPrice"], start))
+    b.events.append(b.event(p1, "product_view", purchased - timedelta(days=C.P1["upcoming_view_days_before"]), w.view_of(room)))
+    b.events.append(b.event(p1, "add_to_cart", purchased - timedelta(minutes=C.P1["upcoming_cart_minutes_before"]), room, None, 1, price, using))
+    b.events.append(b.event(p1, "purchase", purchased, room, gid, 1, price, using))
     booking_id = uid("booking", gid)
-    total = room["unitPrice"] * nights
-    b.bookings.append({"booking_id": booking_id, "reference_code": f"VOTA-{start.strftime('%Y%m%d')}-{uid('ref', gid)[:4].upper()}",
-                       "cdp_user_id": "VP0000001", "event_group_id": gid, "status": "confirmed", "contact_name": "Minh Anh",
-                       "contact_email": "minh.anh@example.com", "contact_phone": "0900000001", "special_request": None,
-                       "total_amount": total, "currency": "VND", "created_at": dt_iso(purchased)})
+    name, email = next((p[2], p[3]) for p in C.PERSONAS if p[0] == p1)
+    b.bookings.append({"booking_id": booking_id, "reference_code": f"VOTA-{using.strftime('%Y%m%d')}-{uid('ref', gid)[:4].upper()}",
+                       "cdp_user_id": p1, "event_group_id": gid, "status": "confirmed", "contact_name": name,
+                       "contact_email": email, "contact_phone": C.P1["phone"], "special_request": None,
+                       "total_amount": price * 1, "currency": "VND", "created_at": dt_iso(purchased)})
     b.booking_items.append({"booking_item_id": uid("item", gid, room["productId"]), "booking_id": booking_id, "product_id": room["productId"],
-                            "taxonomy": "hotel", "product_name": room["name"], "unit_price": room["unitPrice"], "quantity": nights,
-                            "using_date": start.isoformat(), "using_date_to": (start + timedelta(days=nights)).isoformat(),
-                            "guest_names": ["Minh Anh"], "line_total": total})
-    info["P1_upcoming"] = {"room": room["name"], "using_date": start.isoformat(), "nights": nights, "event_group_id": gid}
+                            "taxonomy": "hotel", "product_name": room["name"], "unit_price": price, "quantity": 1,
+                            "using_date": using.isoformat(), "using_date_to": (using + timedelta(days=nights)).isoformat(),
+                            "guest_names": [name], "line_total": price * 1})
+    info = {"P1_upcoming": {"room": room["name"], "using_date": using.isoformat(), "nights": nights, "event_group_id": gid}}
 
-    dest2 = "Đà Lạt" if "Đà Lạt" in w.hotels else w.destination(rng)  # P2: 2 lần xem trong tuần qua
-    seen = set()
-    while len(seen) < 2:
-        seen.add(w.hotels[dest2].pick(rng)["productId"])
-    for k, pid in enumerate(sorted(seen)):
-        b.events.append(b.event("VP0000002", "product_view", at(as_of - timedelta(days=1 + 2 * k), rng), w.by_id[pid], None, None, None, None))
+    props = w.props.get(C.P2["destination"])                            # P2: 2 lần xem khách sạn Phú Quốc, chưa mua
+    n_views = len(C.P2["view_days_ago"])
+    if props is None or len(props.items) < n_views:
+        raise SystemExit(f"Catalog không đủ {n_views} khách sạn ở {C.P2['destination']} cho persona {p2}")
+    for days_ago, prop in zip(C.P2["view_days_ago"], distinct_picks(props, rng, n_views)):
+        b.events.append(b.event(p2, "product_view", at(as_of - timedelta(days=days_ago), rng), prop))
 
-    for days_ago in (470, 205):  # P3: 2 chuyến Phú Quốc, chuyến cuối ~6 tháng trước
-        day = as_of - timedelta(days=days_ago)
-        b.add_trip("VP0000003", rng, "Phú Quốc", "Hà Nội", at(day, rng), day + timedelta(days=rng.randint(5, 20)), ["hotel", "extra"],
-                   add_to_cart=0.0, comparison_views=False)
+    for days_ago in C.P3["trip_days_ago"]:                              # P3: 2 chuyến Phú Quốc, chuyến cuối as_of − 190
+        persona_trip(p3, C.P3, C.P3["verticals"], days_ago)
     return info
 
 
+# ------------------------------------------------------------------ cạnh lộn xộn
+def messy_edges(w: World, b: Builder, rng: random.Random, max_events: int, n_profiles: int) -> None:
+    """Sau khi sinh (trừ persona): 2% purchase trỏ sản phẩm không tồn tại, 3% purchase mất gid, 1% khách xem hai điểm đến cùng ngày."""
+    noisy = [e for e in b.events if e["cdp_user_id"] not in PERSONA_IDS]
+    buys = [e for e in noisy if e["event_name"] == "purchase"]
+    for e in rng.sample(buys, round(C.MESSY_PURCHASE_BAD_PRODUCT * len(buys))):
+        e["product_id"] = uid("deleted-product", e["product_id"], dt_iso(e["timestamp"]))
+    grouped = [e for e in buys if e["event_group_id"]]
+    for e in rng.sample(grouped, round(C.MESSY_DROP_GROUP * len(grouped))):
+        e["event_group_id"] = None
+    per_user = Counter(e["cdp_user_id"] for e in noisy)
+    viewers = sorted({e["cdp_user_id"] for e in noisy if e["event_name"] == "product_view" and per_user[e["cdp_user_id"]] < max_events})
+    for user in rng.sample(viewers, min(len(viewers), round(C.MESSY_TWO_DEST_VIEW_USERS * n_profiles))):
+        view = rng.choice(sorted((e for e in noisy if e["cdp_user_id"] == user and e["event_name"] == "product_view"),
+                                 key=lambda e: e["timestamp"]))
+        dest = w.by_id[view["product_id"]]["destination"]
+        other = [d for d in sorted(w.views) if d != dest]
+        target = w.views[rng.choice(other)].pick(rng)
+        ts = min(view["timestamp"] + timedelta(minutes=inclusive(rng, C.MESSY_SECOND_VIEW_AFTER_MIN)), end_of_day(view["timestamp"]))
+        b.events.append(b.event(user, "product_view", ts, target))
+
+
 # ------------------------------------------------------------------ chính
-def pick_weighted(rng: random.Random, pairs: list[tuple[str, int]]) -> str:
-    return rng.choices([p[0] for p in pairs], [p[1] for p in pairs])[0]
-
-
-def generate(rows: list[dict], as_of: date, seed: int = 42, n_profiles: int = 2000, zipf: float = DEFAULT_ZIPF, boost: float = 2.0,
-             mix: tuple[float, float, float, float] = (0.25, 0.45, 0.20, 0.10), max_events: int = 15) -> dict:
-    w = World(rows, as_of, seed, zipf, boost)
-    b = Builder(w, seed)
+def generate(rows: list[dict], as_of: date, seed: int = C.DEFAULT_SEED, n_profiles: int = C.DEFAULT_USERS, zipf: float = C.ZIPF_S,
+             boost: float = C.VINPEARL_BOOST, max_events: int = C.MAX_EVENTS_PER_USER) -> dict:
+    w = World(rows, zipf, boost)
+    b = Builder(w, as_of)
     rng = random.Random(f"{seed}|seed")
     persona_info = seed_personas(w, b, random.Random(f"{seed}|personas"), as_of)
 
-    ids = set()
-    while len(ids) < n_profiles - len(PERSONAS):
-        ids.add(f"VP{rng.randint(100000, 9999999):07d}")
-    generic_ids = sorted(ids)
-    stages = stage_plan(n_profiles - len(PERSONAS), mix)
+    generic_ids = [f"VP{i:07d}" for i in range(len(C.PERSONAS) + 1, n_profiles + 1)]
+    stages = stage_plan(len(generic_ids))
     rng.shuffle(stages)
-    homes: dict[str, str] = {p[0]: p[4] for p in PERSONAS}
-    tiers: dict[str, str] = {p[0]: p[5] for p in PERSONAS}
+    homes: dict[str, str] = {p[0]: p[4] for p in C.PERSONAS}
+    tiers: dict[str, str] = {p[0]: p[5] for p in C.PERSONAS}
     for user, stage in zip(generic_ids, stages):
-        homes[user] = pick_weighted(rng, HOME_CITIES)
-        tiers[user] = pick_weighted(rng, TIERS)
-        plan_generic(w, b, random.Random(f"{seed}|{user}"), user, stage, homes[user], as_of)
+        homes[user] = weighted(rng, C.HOME_CITIES)
+        tiers[user] = weighted(rng, C.VINCLUB_TIERS)
+        plan_generic(w, b, random.Random(f"{seed}|{user}"), user, stage, homes[user], as_of, max_events)
 
     by_user: dict[str, list[dict]] = defaultdict(list)
     for e in b.events:
         by_user[e["cdp_user_id"]].append(e)
     b.events = []
-    for user in list(homes):
+    for user in homes:
         evs = sorted(by_user.get(user, []), key=lambda e: e["timestamp"])
-        if user not in {p[0] for p in PERSONAS}:
-            evs = cap_events(evs, max_events)
-        by_user[user] = evs
-        b.events.extend(evs)
-
-    # Cạnh lộn xộn (không áp cho persona): 5% email_optin=false, 2% product_id không tồn tại,
-    # 3% purchase thiếu event_group_id. Tỷ lệ cuối phải <= 4% theo db/verify.sql.
-    persona_ids = {p[0] for p in PERSONAS}
-    noisy = [e for e in b.events if e["cdp_user_id"] not in persona_ids]
-    mrng = random.Random(f"{seed}|messy")
-    for e in mrng.sample(noisy, round(0.02 * len(noisy))):
-        e["product_id"] = uid("deleted-product", e["product_id"], e["timestamp"])
-    grouped_purchases = [e for e in noisy if e["event_name"] == "purchase" and e["event_group_id"]]
-    for e in mrng.sample(grouped_purchases, round(0.03 * len(grouped_purchases))):
-        e["event_group_id"] = None
-    optout = set(mrng.sample(generic_ids, round(0.05 * len(generic_ids))))
+        b.events.extend(evs if user in PERSONA_IDS else cap_events(evs, max_events))
+    messy_edges(w, b, random.Random(f"{seed}|messy"), max_events, n_profiles)
 
     b.events.sort(key=lambda e: (e["timestamp"], e["cdp_user_id"], e["event_name"]))
     for i, e in enumerate(b.events, 1):
         e["event_id"] = i
+    by_user = defaultdict(list)
+    for e in b.events:
+        by_user[e["cdp_user_id"]].append(e)
+    over = {u: len(evs) for u, evs in by_user.items() if len(evs) > max_events}
+    if over:
+        raise SystemExit(f"Vượt {max_events} event/khách: {over}")
 
-    profiles = []
-    stage_of: dict[str, str] = {}
-    for user in list(homes):
-        evs = by_user[user]
+    optin_rng = random.Random(f"{seed}|optin")
+    profiles, stage_of = [], {}
+    for user in homes:
+        evs = by_user.get(user, [])
         stage, days = lifecycle(evs, as_of)
         stage_of[user] = stage
-        buys = [e for e in evs if e["event_name"] == "purchase"]
-        groups = {e["event_group_id"] or f"solo-{e['event_id']}" for e in buys}
-        last_buy = max(buys, key=lambda e: e["timestamp"]) if buys else None
-        last_dest = w.by_id[last_buy["product_id"]]["destination"] if last_buy and last_buy["product_id"] in w.by_id else None
-        first = evs[0]["timestamp"] if evs else None
+        buys = sorted((e for e in evs if e["event_name"] == "purchase"), key=lambda e: e["timestamp"], reverse=True)
+        last_dest = next((w.by_id[e["product_id"]]["destination"] for e in buys if e["product_id"] in w.by_id), None)
         prng = random.Random(f"{seed}|profile|{user}")
-        created = (first - timedelta(days=prng.randint(1, 240))) if first else datetime.combine(as_of - timedelta(days=prng.randint(20, 900)), datetime.min.time(), tzinfo=timezone.utc)
-        profiles.append({"cdp_user_id": user, "lifecycle_stage": stage, "days_since_last_booking": days, "lifetime_order_count": len(groups),
+        if evs:
+            created = evs[0]["timestamp"] - timedelta(days=inclusive(prng, C.PROFILE_CREATED_BEFORE_FIRST_EVENT_DAYS))
+        else:
+            created = datetime.combine(as_of - timedelta(days=inclusive(prng, C.PROFILE_CREATED_NO_EVENT_DAYS)), datetime.min.time(), tzinfo=TZ_VN)
+        optin = {k: True if user in PERSONA_IDS else optin_rng.random() >= C.OPTOUT_RATE[k] for k in ("email", "sms", "push")}
+        profiles.append({"cdp_user_id": user, "lifecycle_stage": stage, "days_since_last_booking": days,
+                         "lifetime_order_count": len({e["event_group_id"] for e in buys if e["event_group_id"]}),
                          "vinclub_tier": tiers[user], "purchased_verticals": sorted({e["taxonomy"] for e in buys}), "home_city": homes[user],
-                         "last_destination": last_dest, "email_optin": user not in optout,
-                         "sms_optin": prng.random() < 0.7, "push_optin": prng.random() < 0.6,
+                         "last_destination": last_dest, "email_optin": optin["email"], "sms_optin": optin["sms"], "push_optin": optin["push"],
                          "created_at": dt_iso(created), "updated_at": dt_iso(max([created] + [e["timestamp"] for e in evs]))})
     profiles.sort(key=lambda p: p["cdp_user_id"])
+    shares = Counter(stage_of.values())
+    drift = {s: round(shares[s] / len(profiles) - target, 4) for s, target in C.STAGE_MIX.items()}
+    if any(abs(d) > C.STAGE_TOLERANCE for d in drift.values()):
+        raise SystemExit(f"Phân bố stage lệch quá {C.STAGE_TOLERANCE:.0%} so với STAGE_MIX: {drift} — chỉnh số chuyến trong config.py")
 
     users = []
-    persona_by_id = {p[0]: p for p in PERSONAS}
-    for user in [p[0] for p in PERSONAS] + generic_ids[:50]:
+    persona_by_id = {p[0]: p for p in C.PERSONAS}
+    created_of = {p["cdp_user_id"]: p["created_at"] for p in profiles}
+    for n, user in enumerate([p[0] for p in C.PERSONAS] + generic_ids[:C.TEST_USERS], start=1 - len(C.PERSONAS)):
         p = persona_by_id.get(user)
-        n = len(users) - len(PERSONAS) + 1
-        users.append({"user_id": uid("user", user), "email": p[3] if p else f"test{n:02d}@vota.demo", "password_hash": DEMO_PASSWORD_HASH,
-                      "display_name": p[2] if p else f"Khách test {n:02d}", "cdp_user_id": user, "persona": p[1] if p else None,
-                      "created_at": next(q["created_at"] for q in profiles if q["cdp_user_id"] == user), "last_login_at": None})
+        users.append({"user_id": uid("user", user), "email": p[3] if p else C.TEST_USER_EMAIL.format(n=n), "password_hash": C.DEMO_PASSWORD_HASH,
+                      "display_name": p[2] if p else C.TEST_USER_NAME.format(n=n), "cdp_user_id": user, "persona": p[1] if p else None,
+                      "created_at": created_of[user], "last_login_at": None})
     events = [{"event_id": e["event_id"], "cdp_user_id": e["cdp_user_id"], "event_name": e["event_name"], "timestamp": dt_iso(e["timestamp"]),
                "product_id": e["product_id"], "taxonomy": e["taxonomy"], "event_group_id": e["event_group_id"], "quantity": e["quantity"],
                "unit_price": e["unit_price"], "using_date": e["using_date"]} for e in b.events]
     return {"profiles": profiles, "events": events, "users": users, "bookings": b.bookings, "booking_items": b.booking_items,
-            "persona": persona_info, "world": w, "stage": stage_of}
+            "persona": persona_info, "world": w}
+
+
+def recall_at_k(res: dict, k: int = C.RECALL_K) -> tuple[Counter, Counter]:
+    """Baseline "phổ biến nhất tại điểm đến": ẩn lần đặt cuối của mỗi khách có ≥ 2 event_group_id khác NULL, đoán bằng top-k của điểm đến."""
+    w = res["world"]
+    hist: dict[str, list[dict]] = defaultdict(list)
+    for e in res["events"]:
+        if e["event_name"] == "purchase" and e["cdp_user_id"] not in PERSONA_IDS and e["product_id"] in w.by_id:
+            hist[e["cdp_user_id"]].append(e)
+    last: dict[str, dict] = {}
+    for u, es in hist.items():
+        es.sort(key=lambda e: (e["timestamp"], e["event_id"]))
+        if len({x["event_group_id"] for x in es if x["event_group_id"]}) >= 2:
+            last[u] = es[-1]
+    hidden = {e["event_id"] for e in last.values()}
+    pop: dict[str, Counter] = defaultdict(Counter)
+    for es in hist.values():
+        for e in es:
+            if e["event_id"] not in hidden:
+                pop[w.by_id[e["product_id"]]["destination"]][e["product_id"]] += 1
+    top = {d: {p for p, _ in c.most_common(k)} for d, c in pop.items()}
+    hit_by: Counter = Counter()
+    tot_by: Counter = Counter()
+    for e in last.values():
+        tot_by[e["taxonomy"]] += 1
+        hit_by[e["taxonomy"]] += e["product_id"] in top.get(w.by_id[e["product_id"]]["destination"], set())
+    return hit_by, tot_by
 
 
 def report(res: dict, as_of: date, args: dict) -> tuple[str, dict]:
@@ -438,64 +525,61 @@ def report(res: dict, as_of: date, args: dict) -> tuple[str, dict]:
         if e["event_group_id"]:
             groups[e["event_group_id"]].append(e)
     multi = sum(1 for g in groups.values() if len({e["taxonomy"] for e in g}) >= 2)
+    golf = sum(1 for g in groups.values() if any(e["taxonomy"] == "golf" for e in g))
     dests_ok = all(len({w.by_id[e["product_id"]]["destination"] for e in g if e["product_id"] in w.by_id}) <= 1 for g in groups.values())
     by_tax = Counter(e["taxonomy"] for e in buys)
-    exist = sum(1 for e in ev if e["product_id"] not in w.by_id)
-    # baseline "phổ biến nhất tại điểm đến": ẩn lần đặt cuối của mỗi khách (≥ 2 lần đặt), đoán lại bằng top-20 của điểm đến đó
-    last: dict[str, dict] = {}
-    hist: dict[str, list[dict]] = defaultdict(list)
-    for e in buys:
-        if e["cdp_user_id"] in {p[0] for p in PERSONAS} or e["product_id"] not in w.by_id:
-            continue
-        hist[e["cdp_user_id"]].append(e)
-    pop: dict[str, Counter] = defaultdict(Counter)
-    for u, es in hist.items():
-        es.sort(key=lambda e: e["timestamp"])
-        if len({x["event_group_id"] for x in es}) >= 2:
-            last[u] = es[-1]
-    hidden = {id(e) for e in last.values()}
-    for u, es in hist.items():
-        for e in es:
-            if id(e) not in hidden:
-                pop[w.by_id[e["product_id"]]["destination"]][e["product_id"]] += 1
-    top20 = {d: {p for p, _ in c.most_common(20)} for d, c in pop.items()}
-    hit_by: Counter = Counter()
-    tot_by: Counter = Counter()
-    for e in last.values():
-        tot_by[e["taxonomy"]] += 1
-        hit_by[e["taxonomy"]] += e["product_id"] in top20.get(w.by_id[e["product_id"]]["destination"], set())
-    hits = sum(hit_by.values())
+    exist = sum(1 for e in buys if e["product_id"] not in w.by_id)
+    parse = lambda s: datetime.strptime(s, "%Y-%m-%dT%H:%M:%SZ")  # noqa: E731
+    carts: dict[tuple[str, str], list[datetime]] = defaultdict(list)
+    for e in ev:
+        if e["event_name"] == "add_to_cart":
+            carts[(e["cdp_user_id"], e["product_id"])].append(parse(e["timestamp"]))
+    generic_groups = [g for g in groups.values() if g[0]["cdp_user_id"] not in PERSONA_IDS]
+    window_cart = timedelta(minutes=C.CART_BEFORE_PURCHASE_MIN[1] + 1)
+
+    def has_cart(g: list[dict]) -> bool:
+        first = min(parse(e["timestamp"]) for e in g)
+        return any(first - window_cart <= t <= first for e in g for t in carts.get((e["cdp_user_id"], e["product_id"]), ()))
+
+    cart_trips = sum(1 for g in generic_groups if has_cart(g))
+    search_generic = sum(1 for e in ev if e["event_name"] == "search" and e["cdp_user_id"] not in PERSONA_IDS)
+    hit_by, tot_by = recall_at_k(res)
+    hits, hidden = sum(hit_by.values()), sum(tot_by.values())
+    recall = hits / max(1, hidden)
     top_share = 0.0
     prod = Counter(e["product_id"] for e in buys)
     if prod:
-        top = max(1, len(prod) // 10)
-        top_share = sum(c for _, c in prod.most_common(top)) / len(buys)
+        top_share = sum(c for _, c in prod.most_common(max(1, len(prod) // 10))) / len(buys)
     pers = res["persona"]
+    no_group = sum(1 for e in buys if e["event_group_id"] is None)
     lines = [f"# Kết quả seed_histories — as_of {as_of.isoformat()}, seed {args['seed']}", "",
              f"- Profile: **{n}** · event: **{len(ev)}** ({', '.join(f'{k} {v}' for k, v in names.most_common())}) · "
              f"trung bình {len(ev) / n:.1f} event/khách, nhiều nhất {max(per.values() or [0])} (giới hạn {args['max_events']})",
-             "- Vòng đời (tính từ event): " + " · ".join(f"{k} {v} ({100 * v / n:.0f}%)" for k, v in stages.most_common()),
-             f"- Chuyến (event_group_id): {len(groups)}; có ≥ 2 loại sản phẩm: {multi} ({100 * multi / max(1, len(groups)):.0f}%); mỗi chuyến đúng một điểm đến: "
-             f"{'đạt' if dests_ok else 'KHÔNG đạt'}",
+             "- Vòng đời (tính từ event): " + " · ".join(f"{k} {v} ({100 * v / n:.1f}%)" for k, v in stages.most_common()),
+             f"- Chuyến (event_group_id): {len(groups)}; có ≥ 2 loại sản phẩm: {multi} ({100 * multi / max(1, len(groups)):.0f}%); có golf: "
+             f"{golf} ({100 * golf / max(1, len(groups)):.1f}%); mỗi chuyến đúng một điểm đến: {'đạt' if dests_ok else 'KHÔNG đạt'}",
+             f"- Theo chuyến của khách thường ({len(generic_groups)} chuyến có event_group_id): có search "
+             f"≈ {100 * search_generic / max(1, len(generic_groups)):.0f}% (mục tiêu {100 * C.SEARCH_TRIP_RATE:.0f}%), có add_to_cart "
+             f"{cart_trips} ({100 * cart_trips / max(1, len(generic_groups)):.0f}%, mục tiêu {100 * C.ADD_TO_CART_TRIP_RATE:.0f}%)",
              "- Purchase theo loại: " + " · ".join(f"{k} {v}" for k, v in by_tax.most_common()),
              f"- Độ phổ biến: 10% sản phẩm được đặt nhiều nhất chiếm {100 * top_share:.0f}% số lần đặt",
-             f"- Baseline phổ biến nhất tại điểm đến (ẩn lần đặt cuối, top-20): {hits}/{len(last)} = {100 * hits / max(1, len(last)):.1f}% "
-             "(spec: không được gần 0 và không được bất khả chiến bại). Theo loại: "
-             + " · ".join(f"{k} {100 * hit_by[k] / tot_by[k]:.0f}% ({tot_by[k]})" for k in sorted(tot_by, key=lambda k: -tot_by[k]))
-             + " — điểm tham quan / golf gần bão hoà vì mỗi điểm đến chỉ có ít sản phẩm; khách sạn (phần lớn dữ liệu) còn nhiều chỗ để mô hình thắng. "
-             "Muốn phân bố phẳng hơn thì giảm `--zipf`.",
-             f"- Cạnh lộn xộn: email_optin=false {sum(1 for p in pr if not p['email_optin'])} ({100 * sum(1 for p in pr if not p['email_optin']) / n:.1f}%) · "
-             f"event trỏ product_id không tồn tại {exist} ({100 * exist / max(1, len(ev)):.1f}%) · "
-             f"purchase thiếu event_group_id {sum(1 for e in buys if e['event_group_id'] is None)}/{len(buys)} "
-             f"({100 * sum(1 for e in buys if e['event_group_id'] is None) / max(1, len(buys)):.1f}%)",
-             f"- Persona: P1 có chuyến sắp tới đã đặt `{pers['P1_upcoming']['room'][:50]}` ngày {pers['P1_upcoming']['using_date']} "
+             f"- Baseline phổ biến nhất tại điểm đến (ẩn lần đặt cuối của khách có ≥ 2 chuyến, top-{C.RECALL_K}): {hits}/{hidden} = "
+             f"{100 * recall:.1f}% (spec: không gần 0, không vượt {100 * C.RECALL_CEILING:.0f}%"
+             + (" — **VƯỢT TRẦN**, xem MOCK_DATA_SPEC §0" if recall > C.RECALL_CEILING else "") + "). Theo loại: "
+             + " · ".join(f"{k} {100 * hit_by[k] / tot_by[k]:.0f}% ({tot_by[k]})" for k in sorted(tot_by, key=lambda k: -tot_by[k])),
+             f"- Cạnh lộn xộn: email_optin=false {sum(1 for p in pr if not p['email_optin'])} · sms_optin=false "
+             f"{sum(1 for p in pr if not p['sms_optin'])} · push_optin=false {sum(1 for p in pr if not p['push_optin'])} · "
+             f"purchase trỏ product_id không tồn tại {exist}/{len(buys)} ({100 * exist / max(1, len(buys)):.1f}%) · "
+             f"purchase thiếu event_group_id {no_group}/{len(buys)} ({100 * no_group / max(1, len(buys)):.1f}%)",
+             f"- Persona: P1 có chuyến sắp tới đã đặt `{pers['P1_upcoming']['room'][:50]}` đêm {pers['P1_upcoming']['using_date']} "
              f"({pers['P1_upcoming']['nights']} đêm, chưa có vé bay); "
-             + " · ".join(f"{p['cdp_user_id']} {p['lifecycle_stage']} ({per.get(p['cdp_user_id'], 0)} event)" for p in pr if p["cdp_user_id"] in {x[0] for x in PERSONAS}),
-             f"- app.users: {len(res['users'])} (4 persona + 50 test) · app.bookings: {len(res['bookings'])} · app.booking_items: {len(res['booking_items'])}", "",
+             + " · ".join(f"{p['cdp_user_id']} {p['lifecycle_stage']} ({per.get(p['cdp_user_id'], 0)} event)" for p in pr if p["cdp_user_id"] in PERSONA_IDS),
+             f"- app.users: {len(res['users'])} ({len(C.PERSONAS)} persona + {C.TEST_USERS} test) · app.bookings: {len(res['bookings'])} · "
+             f"app.booking_items: {len(res['booking_items'])}", "",
              "`app.users.password_hash` là BCrypt cost 10 của mật khẩu demo chung; email / số điện thoại là dữ liệu giả. "
-             "Không sinh event `search` (UserEvent search không có sản phẩm; nội dung tìm kiếm nằm ở `app.search_logs`). "
+             "Event `search` không có câu truy vấn (cdp.events không có cột này; `app.search_logs` không seed). "
              "Insider clone (`partners`, `insider_profiles`, `identifiers`, `insider_events`, `channel_events`) sinh từ các file này ở bước sau."]
-    return "\n".join(lines) + "\n", {"stages": dict(stages), "events": len(ev), "hits": hits, "last": len(last)}
+    return "\n".join(lines) + "\n", {"stages": dict(stages), "events": len(ev), "hits": hits, "last": hidden, "recall": recall}
 
 
 def write_jsonl(path: Path, rows: list[dict]) -> None:
@@ -509,23 +593,26 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--data-dir", type=Path, default=Path("data"))
     ap.add_argument("--out-dir", type=Path, default=None)
     ap.add_argument("--as-of", type=date.fromisoformat, default=date.today())
-    ap.add_argument("--seed", type=int, default=42)
-    ap.add_argument("--profiles", type=int, default=2000)
-    ap.add_argument("--zipf", type=float, default=DEFAULT_ZIPF)
-    ap.add_argument("--vinpearl-boost", type=float, default=2.0)
-    ap.add_argument("--max-events", type=int, default=15)
+    ap.add_argument("--seed", type=int, default=C.DEFAULT_SEED)
+    ap.add_argument("--profiles", type=int, default=C.DEFAULT_USERS)
+    ap.add_argument("--zipf", type=float, default=C.ZIPF_S)
+    ap.add_argument("--vinpearl-boost", type=float, default=C.VINPEARL_BOOST)
+    ap.add_argument("--max-events", type=int, default=C.MAX_EVENTS_PER_USER)
     a = ap.parse_args(argv)
     out = a.out_dir or a.data_dir / "seed"
     with open(a.data_dir / "products.jsonl", encoding="utf-8") as f:
-        rows = [json.loads(l) for l in f if l.strip()]
-    res = generate(rows, a.as_of, a.seed, a.profiles, a.zipf, a.vinpearl_boost, max_events=a.max_events)
+        rows = [json.loads(line) for line in f if line.strip()]
+    res = generate(rows, a.as_of, a.seed, a.profiles, a.zipf, a.vinpearl_boost, a.max_events)
     out.mkdir(parents=True, exist_ok=True)
     for name, key in (("cdp_profiles", "profiles"), ("cdp_events", "events"), ("app_users", "users"), ("app_bookings", "bookings"),
                       ("app_booking_items", "booking_items")):
         write_jsonl(out / f"{name}.jsonl", res[key])
-    text, _ = report(res, a.as_of, {"seed": a.seed, "max_events": a.max_events})
+    text, stats = report(res, a.as_of, {"seed": a.seed, "max_events": a.max_events})
     (out / "seed_report.md").write_text(text, encoding="utf-8")
     print(text)
+    if stats["recall"] > C.RECALL_CEILING:   # không chặn pipeline: DoD #5 đo trên seed demo; seed khác có thể vượt do tập ẩn nhỏ
+        print(f"WARNING: baseline Recall@{C.RECALL_K} = {stats['recall']:.3f} > {C.RECALL_CEILING} với --seed {a.seed}; "
+              "chỉnh MULTI_FLIGHT_RATE / MULTI_TICKET_RATE / SINGLE_VERTICAL_WEIGHTS trong config.py hoặc dùng seed demo.", file=sys.stderr)
     return 0
 
 
