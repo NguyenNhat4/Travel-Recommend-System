@@ -10,11 +10,8 @@ PartyType = Literal[enum_values("PartyType")]
 Pace = Literal[enum_values("Pace")]
 Taxonomy = Literal[enum_values("Taxonomy")]
 PriceUnit = Literal[enum_values("ProductSummary", "priceUnit")]
-SlotTime = Literal[enum_values("SlotTime")]
-ActivityType = Literal[enum_values("ActivityType")]
 ADULTS_MIN, ADULTS_MAX = bounds("Party", "adults")
 CHILDREN_MIN, CHILDREN_MAX = bounds("Party", "children")
-DAYS_MIN, DAYS_MAX = bounds("TripIntent", "days")
 BUDGET_MIN, BUDGET_MAX = bounds("TripIntent", "budget")
 STAR_MIN, STAR_MAX = bounds("SearchRequest", "starRatingMin")
 
@@ -81,16 +78,3 @@ class DestinationChoice(StrictModel):
 
 class ConversationalAnswer(StrictModel):
     message: str = Field(min_length=1, max_length=500)
-
-
-class ProposedSlot(StrictModel):
-    day: int = Field(ge=DAYS_MIN, le=DAYS_MAX)
-    time: SlotTime
-    product_id: str | None = None
-    activity_type: ActivityType | None = None
-    note_kind: Literal["VISIT", "RELAX", "FAMILY", "REST", "MEAL", "TRANSFER"] = "VISIT"
-
-
-class Composition(StrictModel):
-    stay_id: str | None = None
-    slots: list[ProposedSlot] = Field(default_factory=list, max_length=28)

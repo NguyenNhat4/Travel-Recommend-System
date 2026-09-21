@@ -7,7 +7,7 @@ import unittest
 
 from src.backend.app.agents import nodes, routing
 from src.backend.app.agents.graph import build_graph
-from src.backend.app.agents.models import Composition, ConversationalAnswer, DestinationChoice, Extraction
+from src.backend.app.agents.models import ConversationalAnswer, DestinationChoice, Extraction
 from src.backend.app.agents.persistence import build_checkpointer
 from src.backend.app.agents.tools.itinerary_gateway import ItineraryToolGateway
 from src.backend.app.application.itinerary.contracts import valid
@@ -29,15 +29,13 @@ def extracted(**patch):
 
 class ScriptedLlm:
     """Script model decisions rather than matching scenario IDs or query keywords."""
-    def __init__(self, extraction=None, composition=None, plan=None, fail_composition=False,
+    def __init__(self, extraction=None, plan=None,
                  conversational_message='Bạn muốn đi đâu và trong bao nhiêu ngày?',
                  destination_choice=None, fail_destination=False):
         self.destination_choice = destination_choice
         self.fail_destination = fail_destination
         self.extraction = extraction or extracted(destination='Nha Trang', days=2, party={'type': 'SOLO', 'adults': 1, 'children': 0})
-        self.composition = composition or Composition(slots=[{'day': 1, 'time': 'MORNING', 'product_id': 'a'}])
         self.plan = plan or [{'name': 'search_products', 'args': {'query': 'tham quan'}}]
-        self.fail_composition = fail_composition
         self.conversational_message = conversational_message
         self.calls = []
         self.prompts = {}
@@ -54,9 +52,7 @@ class ScriptedLlm:
                 return DestinationChoice(destination=self.destination_choice)
             if schema is ConversationalAnswer:
                 return ConversationalAnswer(message=self.conversational_message)
-            if self.fail_composition:
-                raise RuntimeError('provider error containing a secret')
-            return self.composition
+            raise AssertionError(f'the itinerary path must not call the model for {schema.__name__}')
         return SimpleNamespace(ainvoke=invoke)
 
     def bind_tools(self, definitions):
@@ -124,13 +120,22 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
     async def test_checked_in_catalog_fixture_runs_through_the_graph(self):
         from src.backend.app.infrastructure.clients.itinerary_fixture_clients import FixtureItineraryClients
         clients = FixtureItineraryClients()
-        source = next(p for p in clients._products if p['destination'] == 'Nha Trang' and p['taxonomy'] == 'attraction' and p['available'])
-        llm = ScriptedLlm(composition=Composition(slots=[{'day': 1, 'time': 'MORNING', 'product_id': source['productId']}]))
-        result = await self.run_graph(llm, clients)
+        catalog = {p['productId']: p for p in clients._products}
+        result = await self.run_graph(clients=clients)
+        plan = result['response']['itinerary']
         self.assertEqual(result['response']['status'], 'COMPLETED')
-        returned = result['response']['itinerary']['days'][0]['slots'][0]['product']
-        self.assertEqual(returned['name'], source['name'])
-        self.assertEqual(returned['unitPrice'], source['unitPrice'])
+        returned = ([plan['stay']['product']] if plan.get('stay') else []) + [
+            slot['product'] for day in plan['days'] for slot in day['slots'] if slot['product']]
+        self.assertTrue(returned)
+        for item in returned:
+            source = catalog[item['productId']]
+            self.assertEqual((item['name'], item['unitPrice'], item['destination']),
+                             (source['name'], source['unitPrice'], source['destination']))
+        # Cheapest first is the documented rule, so the stay is verifiable against the catalog.
+        hotels = [p for p in clients._products
+                  if p['destination'] == 'Nha Trang' and p['taxonomy'] == 'hotel' and p['available']]
+        self.assertEqual(plan['stay']['product']['productId'],
+                         min(hotels, key=lambda p: (p['unitPrice'] is None, p['unitPrice'] or 0))['productId'])
 
     async def test_abbreviation_is_resolved_by_llm_from_catalog_names_only(self):
         clients = Clients(products=[product('a', destination='TP. Hồ Chí Minh')], destinations=['Nha Trang', 'TP. Hồ Chí Minh'])
@@ -213,8 +218,7 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         clients = Clients(products=[product('h', taxonomy='hotel', priceUnit='PER_NIGHT',
                            attributes={'starRating': 5, 'oceanView': True})])
         llm = ScriptedLlm(extraction=Extraction(domain='travel', patch={'destination': 'Nha Trang', 'days': 2},
-                         constraints={'require_hotel': True, 'star_rating_min': 5, 'hotel_attributes': {'oceanView': True}}),
-                         composition=Composition(stay_id='h'))
+                         constraints={'require_hotel': True, 'star_rating_min': 5, 'hotel_attributes': {'oceanView': True}}))
         result = await self.run_graph(llm, clients)
         self.assertEqual(result['response']['status'], 'COMPLETED')
         self.assertEqual(result['response']['itinerary']['stay']['nights'], 1)
@@ -305,44 +309,40 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['response']['status'], 'NO_RESULTS')
         self.assertNotIn('trong nước', result['response']['message'])
 
-    async def test_an_unschedulable_taxonomy_is_dropped_and_never_reaches_the_model(self):
+    async def test_an_unschedulable_taxonomy_is_retrieved_but_never_scheduled(self):
         # Regression: "đi Nha Trang 2 ngày từ ngày mai" returned FALLBACK because the model put the
         # one combo of the catalog into a slot, and that single slot discarded the whole itinerary.
         clients = Clients(products=[product('a'), product('c', taxonomy='combo')])
-        llm = ScriptedLlm(composition=Composition(slots=[{'day': 1, 'time': 'MORNING', 'product_id': 'a'},
-                                                         {'day': 1, 'time': 'NOON', 'product_id': 'c'}]))
-        result = await self.run_graph(llm, clients)
+        result = await self.run_graph(clients=clients)
         response = result['response']
         self.assertEqual(response['status'], 'COMPLETED')
         scheduled = [slot['product']['productId'] for day in response['itinerary']['days']
                      for slot in day['slots'] if slot['product']]
         self.assertEqual(scheduled, ['a'])
-        self.assertIn('SLOT_DROPPED_UNSCHEDULABLE', [w['code'] for w in response['warnings']])
-        # The combo is retrieved and may be shown, but it is never offered to the composer.
+        # The combo is still retrieved and may be shown; it simply never reaches a slot.
         self.assertIn('c', result['candidates'])
-        self.assertIn('Catalog a', llm.prompts['Composition'])
-        self.assertNotIn('Catalog c', llm.prompts['Composition'])
 
-    async def test_an_invented_id_never_completes(self):
-        slots = [{'day': 1, 'time': 'MORNING', 'product_id': 'fake'}]
-        result = await self.run_graph(ScriptedLlm(composition=Composition(slots=slots)))
-        self.assertEqual(result['response']['status'], 'FALLBACK')
+    async def test_the_itinerary_path_never_asks_the_model_to_pick_products(self):
+        llm = ScriptedLlm()
+        result = await self.run_graph(llm)
+        self.assertEqual(result['response']['status'], 'COMPLETED')
+        # Intent extraction and the tool planner remain; nothing else may consult the model.
+        self.assertEqual(llm.calls, ['Extraction', 'planner'])
 
-    async def test_a_duplicate_id_is_dropped_instead_of_discarding_the_itinerary(self):
-        slots = [{'day': 1, 'time': 'MORNING', 'product_id': 'a'}, {'day': 2, 'time': 'AFTERNOON', 'product_id': 'a'}]
-        result = await self.run_graph(ScriptedLlm(composition=Composition(slots=slots)))
-        response = result['response']
-        self.assertEqual(response['status'], 'COMPLETED')
-        scheduled = [slot['product']['productId'] for day in response['itinerary']['days']
+    async def test_only_retrieved_products_can_reach_a_slot(self):
+        clients = Clients(products=[product('a'), product('b'), product('c')])
+        result = await self.run_graph(clients=clients)
+        plan = result['response']['itinerary']
+        scheduled = [slot['product']['productId'] for day in plan['days']
                      for slot in day['slots'] if slot['product']]
-        self.assertEqual(scheduled, ['a'])
-        self.assertIn('SLOT_DROPPED_UNSCHEDULABLE', [w['code'] for w in response['warnings']])
+        self.assertTrue(set(scheduled) <= set(result['candidates']))
+        self.assertEqual(len(scheduled), len(set(scheduled)))
 
-    async def test_model_failure_falls_back_only_to_actual_candidates(self):
-        result = await self.run_graph(ScriptedLlm(fail_composition=True))
+    async def test_nothing_schedulable_falls_back_to_the_real_products(self):
+        clients = Clients(products=[product('c', taxonomy='combo')])
+        result = await self.run_graph(clients=clients)
         self.assertEqual(result['response']['status'], 'FALLBACK')
-        self.assertEqual(result['response']['searchResults']['attraction'][0]['productId'], 'a')
-        self.assertNotIn('secret', json.dumps(result))
+        self.assertEqual(result['response']['searchResults']['combo'][0]['productId'], 'c')
 
     async def test_hotel_price_boundary_unit_and_required_stay_are_enforced(self):
         for price, unit in ((1200000, 'PER_NIGHT'), (1100000, 'UNKNOWN')):
@@ -394,8 +394,7 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
                 finally:
                     self.active -= 1
         clients = CountingClients(products=[product(f'p{i}') for i in range(10)], incomplete=True)
-        llm = ScriptedLlm(composition=Composition(slots=[{'day': 1, 'time': 'MORNING', 'product_id': 'p0'}]))
-        result = await self.run_graph(llm, clients)
+        result = await self.run_graph(clients=clients)
         self.assertEqual(result['response']['status'], 'COMPLETED')
         self.assertEqual(clients.maximum, 5)
         self.assertEqual(len(result['details']), 10)
@@ -479,18 +478,15 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(result['response']['itinerary']['estimatedTotal'])
         self.assertEqual(result['response']['itinerary']['budgetStatus'], 'UNKNOWN')
 
-    async def test_full_day_activity_cannot_overlap_another_visit(self):
+    async def test_a_full_day_visit_gets_a_day_to_itself(self):
         clients = Clients(products=[product('a', attributes={'openingHours': '09:00–18:00', 'durationMinutes': 480}), product('b')])
-        llm = ScriptedLlm(composition=Composition(slots=[{'day': 1, 'time': 'MORNING', 'product_id': 'a'},
-                                                      {'day': 1, 'time': 'AFTERNOON', 'product_id': 'b'}]))
-        result = await self.run_graph(llm, clients)
+        result = await self.run_graph(clients=clients)
         response = result['response']
-        # The overlapping slot is dropped; the full-day visit and the rest of the plan survive.
+        # The full-day visit takes day one alone and the other visit moves to day two.
         self.assertEqual(response['status'], 'COMPLETED')
-        scheduled = [(day['day'], slot['product']['productId']) for day in response['itinerary']['days']
-                     for slot in day['slots'] if slot['product']]
-        self.assertEqual(scheduled, [(1, 'a')])
-        self.assertIn('SLOT_DROPPED_UNSCHEDULABLE', [w['code'] for w in response['warnings']])
+        scheduled = [(day['day'], slot['time'], slot['product']['productId'])
+                     for day in response['itinerary']['days'] for slot in day['slots'] if slot['product']]
+        self.assertEqual(scheduled, [(1, 'MORNING', 'a'), (2, 'MORNING', 'b')])
 
 
 if __name__ == '__main__':
