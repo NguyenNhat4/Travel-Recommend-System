@@ -9,7 +9,7 @@ CATALOG_SNAPSHOT ?= data_collection/snapshots/2026-09-21/products.jsonl.gz
 LOCAL_SEED_DATABASE_URL = postgresql://postgres:postgres@localhost:5432/vota
 LOCAL_INSIDER_DATABASE_URL = postgresql://postgres:postgres@localhost:5432/insider
 
-.PHONY: chat chat-full chat-api chat-ui chat-logs test-llm demo-db demo-db-reset verify-db backend
+.PHONY: chat chat-full chat-api chat-ui chat-logs web web-ui web-logs test-llm demo-db demo-db-reset verify-db backend
 
 # Chạy trọn bộ FastAPI + Streamlit; Ctrl+C sẽ dừng cả hai.
 chat:
@@ -56,6 +56,72 @@ chat:
 
 # Giữ alias cũ để không làm hỏng lệnh đang dùng.
 chat-full: chat
+
+# Chạy web chính (Next :3000 + BFF :3001) cùng FastAPI :8000; Ctrl+C dừng cả hai.
+# Lưu ý: chat trong web hiện gọi /api/assistant/chat của BFF (Gemini), CHƯA gọi
+# /api/v1/assistant/itineraries của FastAPI. FastAPI ở đây phục vụ các API khác
+# và để sẵn cho lúc Web nối vào agent.
+web:
+	@PROJECT_DIR="$$(pwd)"
+	PYTHON_BIN="$${PROJECT_DIR}/.venv/bin/python"
+	FRONTEND_DIR="$${PROJECT_DIR}/src/frontend"
+	BACKEND_PORT="$${BACKEND_PORT:-8000}"
+	LOG_FILE="$${WEB_DEMO_LOG_FILE:-$${PROJECT_DIR}/.logs/web-demo.log}"
+	if [[ ! -x "$${PYTHON_BIN}" ]]; then
+		echo "Không tìm thấy .venv. Hãy chạy:"
+		echo "  python3 -m venv .venv"
+		echo "  .venv/bin/pip install -r src/backend/requirements.txt"
+		exit 1
+	fi
+	if ! command -v npm >/dev/null 2>&1; then
+		echo "Không tìm thấy npm. Cần Node.js để chạy web chính."
+		exit 1
+	fi
+	if [[ ! -d "$${FRONTEND_DIR}/node_modules" ]]; then
+		echo "Chưa cài dependency của frontend, đang chạy npm install..."
+		npm --prefix "$${FRONTEND_DIR}" install
+	fi
+	cleanup() {
+		if [[ -n "$${BACKEND_PID:-}" ]]; then
+			kill "$${BACKEND_PID}" 2>/dev/null || true
+			wait "$${BACKEND_PID}" 2>/dev/null || true
+		fi
+	}
+	trap cleanup EXIT INT TERM
+	export ITINERARY_DATA_MODE="$${ITINERARY_DATA_MODE:-fixture}"
+	export ITINERARY_LLM_TIMEOUT_SECONDS="$${ITINERARY_LLM_TIMEOUT_SECONDS:-30}"
+	export ITINERARY_REQUEST_TIMEOUT_SECONDS="$${ITINERARY_REQUEST_TIMEOUT_SECONDS:-90}"
+	mkdir -p "$$(dirname "$${LOG_FILE}")"
+	touch "$${LOG_FILE}"
+	echo "Log được lưu tại $${LOG_FILE}"
+	echo "Khởi động FastAPI tại http://127.0.0.1:$${BACKEND_PORT}"
+	"$${PYTHON_BIN}" -m uvicorn src.backend.app.main:app \
+		--host 127.0.0.1 --port "$${BACKEND_PORT}" \
+		> >(tee -a "$${LOG_FILE}") 2>&1 &
+	BACKEND_PID=$$!
+	sleep 1
+	if ! kill -0 "$${BACKEND_PID}" 2>/dev/null; then
+		echo "FastAPI đã dừng khi khởi động."
+		exit 1
+	fi
+	echo "Mở web tại http://localhost:3000 (BFF ở :3001)"
+	echo "Nhấn Ctrl+C để dừng cả hai process."
+	npm --prefix "$${FRONTEND_DIR}" run dev \
+		> >(tee -a "$${LOG_FILE}") 2>&1
+
+# Chỉ chạy web chính; cần chat-api hoặc backend đang chạy ở terminal khác nếu muốn gọi FastAPI.
+web-ui:
+	@echo "Đang khởi động Next + BFF..."
+	npm --prefix src/frontend run dev
+
+# Theo dõi log của phiên web gần nhất.
+web-logs:
+	@LOG_FILE="$${WEB_DEMO_LOG_FILE:-$$(pwd)/.logs/web-demo.log}"
+	if [[ ! -f "$${LOG_FILE}" ]]; then
+		echo "Chưa có log. Hãy chạy make web trước."
+		exit 1
+	fi
+	tail -n 200 -f "$${LOG_FILE}"
 
 # Chỉ chạy Backend FastAPI với tool fixture.
 chat-api:
