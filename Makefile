@@ -9,7 +9,7 @@ CATALOG_SNAPSHOT ?= data_collection/snapshots/2026-09-21/products.jsonl.gz
 LOCAL_SEED_DATABASE_URL = postgresql://postgres:postgres@localhost:5432/vota
 LOCAL_INSIDER_DATABASE_URL = postgresql://postgres:postgres@localhost:5432/insider
 
-.PHONY: chat chat-full chat-api chat-ui chat-logs web web-ui web-logs test-llm demo-db demo-db-reset verify-db backend
+.PHONY: chat chat-full chat-api chat-ui chat-logs web web-ui web-logs test-llm demo-db demo-db-reset verify-db backend backend-build backend-logs backend-stop backend-local
 
 # Chạy trọn bộ FastAPI + Streamlit; Ctrl+C sẽ dừng cả hai.
 chat:
@@ -166,4 +166,20 @@ verify-db:
 	docker compose exec -T postgres psql -U postgres -d insider < db/verify_insider.sql
 
 backend:
-	$(PYTHON) -m uvicorn src.backend.app.main:app --reload
+	docker compose up -d --build backend
+	@echo "Backend API: http://localhost:$${BACKEND_PORT:-8000}"
+
+backend-build:
+	docker compose build backend
+
+backend-logs:
+	docker compose logs -f backend
+
+# Chỉ dừng Backend; PostgreSQL và volume dữ liệu được giữ nguyên.
+backend-stop:
+	docker compose stop backend
+
+# Chạy trực tiếp trên máy khi cần reload nhanh, không dùng container Backend.
+backend-local:
+	ITINERARY_DATA_MODE=$${ITINERARY_DATA_MODE:-fixture} \
+		$(PYTHON) -m uvicorn src.backend.app.main:app --reload --host 127.0.0.1 --port $${BACKEND_PORT:-8000}

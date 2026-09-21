@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,6 +23,14 @@ class Settings(BaseSettings):
     model_name: str = "gpt-4o-mini"
     llm_temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     itinerary_service_base_url: str | None = Field(default=None, pattern=r"^https?://")
+
+    @field_validator("itinerary_service_base_url", mode="before")
+    @classmethod
+    def empty_itinerary_service_base_url_is_none(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
     itinerary_data_mode: Literal["fixture", "http", "disabled"] | None = None
     itinerary_tool_timeout_seconds: float = Field(default=1.0, gt=0)
     itinerary_llm_timeout_seconds: float = Field(default=2.0, gt=0)

@@ -14,6 +14,7 @@ import { AiFloatingWidget } from '../assistant/AiFloatingWidget';
 export default function AppShell({ children }: { children: ReactNode }) {
   const { currentRoute } = useTravel();
   const isCheckout = currentRoute.startsWith('/checkout');
+  const isAssistantPage = currentRoute.startsWith('/assistant');
 
   return (
     <div className="min-h-screen bg-slate-50/70 flex flex-col font-sans antialiased text-slate-900 pb-16 md:pb-0">
@@ -26,7 +27,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
       <Toast />
       <LoginModal />
       <DebugPanel />
-      {!isCheckout && <AiFloatingWidget />}
+      {!isCheckout && !isAssistantPage && <AiFloatingWidget />}
     </div>
   );
 }

@@ -23,10 +23,16 @@ Lệnh `demo-db-reset` xóa state demo hiện có trong hai database local trư�
 ## Chạy Backend
 
 ```bash
-python -m pip install -r src/backend/requirements.txt
 make backend
 ```
 
-Backend mặc định kết nối PostgreSQL Docker tại `localhost:5432` bằng hai role giới hạn trong `.env.example`. Kiểm tra `http://localhost:8000/health` sau khi server khởi động.
+`make backend` build và chạy Backend trong Docker Compose; Compose cũng khởi động PostgreSQL nếu service đó chưa chạy. Kiểm tra `http://localhost:8000/health` sau khi server khởi động. Để xem log hoặc dừng riêng Backend, dùng `make backend-logs` hoặc `make backend-stop`; dữ liệu PostgreSQL vẫn được giữ.
+
+Để chạy Backend trực tiếp trên máy với reload khi sửa code, cài dependency rồi dùng `make backend-local`:
+
+```bash
+python -m pip install -r src/backend/requirements.txt
+make backend-local
+```
 
 Snapshot catalog có version nằm tại `src/data_collection/snapshots/`; JSONL đã bung, artifact seed và database volume đều là runtime local, không nằm trong Git.

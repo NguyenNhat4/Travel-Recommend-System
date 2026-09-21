@@ -3,11 +3,11 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useTravel } from '../../context/TravelContext';
-import { searchProducts, SortOption } from '../../services/search';
+import { searchProducts, searchProductsApi, SortOption, SearchResponse } from '../../services/search';
 import { Destination, Taxonomy } from '../../types/travel';
 import { ProductCard } from '../common/ProductCard';
 import { SearchBox } from '../common/SearchBox';
-import { Search, Filter, Sparkles, HelpCircle, X, ArrowUpDown, ChevronDown } from 'lucide-react';
+import { Search, Filter, Sparkles, HelpCircle, X, ArrowUpDown, ChevronDown, Loader2 } from 'lucide-react';
 
 export const SearchView: React.FC = () => {
   const { navigate } = useTravel();
@@ -36,6 +36,21 @@ export const SearchView: React.FC = () => {
   const [maxPrice, setMaxPrice] = useState<number | undefined>(undefined);
   const [sortOption, setSortOption] = useState<SortOption>('relevance');
   const [showRelevanceInfo, setShowRelevanceInfo] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Initial state with local search fallback
+  const [searchResponse, setSearchResponse] = useState<SearchResponse>(() => {
+    return searchProducts(
+      queryParam,
+      {
+        destination: selectedDestinations.length > 0 ? selectedDestinations : undefined,
+        taxonomy: selectedTaxonomy,
+        minStarRating,
+        maxPrice,
+      },
+      sortOption
+    );
+  });
 
   // Sync state whenever URL parameters change (e.g. from header or home submission)
   useEffect(() => {
@@ -46,18 +61,48 @@ export const SearchView: React.FC = () => {
     }
   }, [queryParam, taxonomyParam, destinationParam]);
 
-  // Perform search
-  const searchResponse = useMemo(() => {
-    return searchProducts(
+  // Perform search by calling backend endpoint /search (via searchProductsApi)
+  useEffect(() => {
+    let cancelled = false;
+    setIsLoading(true);
+
+    searchProductsApi(
       queryParam,
       {
         destination: selectedDestinations.length > 0 ? selectedDestinations : undefined,
         taxonomy: selectedTaxonomy,
         minStarRating,
-        maxPrice
+        maxPrice,
       },
       sortOption
-    );
+    )
+      .then((res) => {
+        if (!cancelled) {
+          setSearchResponse(res);
+          setIsLoading(false);
+        }
+      })
+      .catch((err) => {
+        console.warn('Backend search call failed, falling back:', err);
+        if (!cancelled) {
+          const fallback = searchProducts(
+            queryParam,
+            {
+              destination: selectedDestinations.length > 0 ? selectedDestinations : undefined,
+              taxonomy: selectedTaxonomy,
+              minStarRating,
+              maxPrice,
+            },
+            sortOption
+          );
+          setSearchResponse(fallback);
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [queryParam, selectedDestinations, selectedTaxonomy, minStarRating, maxPrice, sortOption]);
 
   const handleTabChange = (taxId: Taxonomy | undefined) => {
@@ -164,8 +209,9 @@ export const SearchView: React.FC = () => {
           <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
             {headerTitle}
           </h1>
-          <span className="text-xs font-semibold text-slate-500">
-            Tìm thấy {searchResponse.total} dịch vụ phù hợp
+          <span className="text-xs font-semibold text-slate-500 flex items-center gap-1.5">
+            {isLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />}
+            <span>Tìm thấy {searchResponse.total} dịch vụ phù hợp</span>
           </span>
         </div>
 

@@ -37,7 +37,7 @@ export const MobileTabBar: React.FC = () => {
 
         <button
           onClick={() => navigate('/assistant')}
-          className={`flex flex-col items-center justify-center gap-0.5 ${isAssistant ? 'text-indigo-600 font-bold' : 'text-slate-500'}`}
+          className={`flex flex-col items-center justify-center gap-0.5 ${isAssistant ? 'font-bold text-indigo-600' : 'text-slate-500'}`}
         >
           <Sparkles className="w-5 h-5" />
           <span className="text-[10px]">Trợ lý</span>

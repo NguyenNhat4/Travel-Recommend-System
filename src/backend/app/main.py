@@ -16,6 +16,7 @@ vẫn phục vụ được, đúng tinh thần "CDP lỗi thì không kéo sập
 from __future__ import annotations
 
 import asyncio
+import logging
 import sys
 from contextlib import AsyncExitStack, asynccontextmanager
 
@@ -44,6 +45,8 @@ from src.backend.app.core.request_context import current_request_id
 from src.backend.app.infrastructure.clients.local_cdp_client import LocalCdpClient
 from src.backend.app.infrastructure.persistence.postgres_catalog import PostgresProductLookup
 
+logger = logging.getLogger("uvicorn.error")
+
 # psycopg async không chạy được trên ProactorEventLoop — event loop mặc định của Windows và của
 # uvicorn trên Windows. Phải đặt trước khi uvicorn tạo loop, nếu không mọi truy cập cdp.* qua
 # LocalCdpClient trả InterfaceError lúc chạy thật. Trên Linux/macOS dòng này không có tác dụng gì.
@@ -62,16 +65,24 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
         )
         from src.backend.app.infrastructure.vectors.postgres_store import PostgresVectorStore
 
-        embedder = embedder or SentenceTransformersEmbedder(recsys_settings.embed_model)
+        if embedder is None:
+            embedder = SentenceTransformersEmbedder(recsys_settings.embed_model)
         # Catalog đi qua DATABASE_URL: role vota_app chỉ SELECT được cdp.products, đúng ranh giới.
         vector_store = PostgresVectorStore(
             settings.database_url, embedder, recsys_settings.embed_cache_dir
         )
+    logger.info(
+        "startup.recsys.index.load.start cache_dir=%s",
+        recsys_settings.embed_cache_dir,
+    )
     index = vector_store.load()
+    logger.info("startup.recsys.index.load.ready search_units=%d", len(index.units))
 
     # Lịch sử đi qua CDP_DATABASE_URL: vota_app không đọc được cdp.events.
     cdp_reader = cdp_reader or PostgresCdpReader(settings.cdp_database_url)
+    logger.info("startup.recsys.popularity.build.start")
     popularity = BuildPopularity(index, cdp_reader)()
+    logger.info("startup.recsys.popularity.build.ready")
     return {
         "index": index,
         "search": SearchProducts(
@@ -91,7 +102,9 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
 async def lifespan(app: FastAPI):
     settings = get_settings()
     print(f"Starting {settings.app_name} in {settings.app_env} mode")
+    logger.info("startup.begin app=%s env=%s", settings.app_name, settings.app_env)
     async with AsyncExitStack() as stack:
+        logger.info("startup.cdp_adapter.start adapter=%s", settings.cdp_adapter)
         if settings.cdp_adapter == "local":
             cdp_client = LocalCdpClient(settings.cdp_database_url)
         else:
@@ -99,18 +112,22 @@ async def lifespan(app: FastAPI):
                 httpx.AsyncClient(base_url=settings.cdp_base_url, timeout=settings.cdp_timeout_seconds)
             )
             cdp_client = CdpHttpClient(cdp_http, settings.cdp_service_token)
+        logger.info("startup.cdp_adapter.ready adapter=%s", settings.cdp_adapter)
         # Use cases receive these through dependencies; nothing else talks to the CDP.
         app.state.cdp_client = cdp_client
         app.state.product_lookup = PostgresProductLookup(settings.database_url)
         app.state.browse_event_recorder = BackgroundCdpEventRecorder(
             app.state.cdp_client, max_queue=settings.cdp_event_queue_size
         )
+        logger.info("startup.browse_event_recorder.start")
         app.state.browse_event_recorder.start()
+        logger.info("startup.browse_event_recorder.ready")
         app.state.itinerary_conversation_store = InMemoryConversationStore(
             ttl_seconds=settings.itinerary_conversation_ttl_seconds
         )
         mode = settings.itinerary_data_mode or ("fixture" if settings.app_env in {"development", "test"} else "disabled")
         app.state.itinerary_data_mode = mode
+        logger.info("startup.itinerary_clients.start mode=%s", mode)
         if mode == "fixture":
             app.state.itinerary_http_clients = FixtureItineraryClients()
         elif mode == "http":
@@ -123,20 +140,26 @@ async def lifespan(app: FastAPI):
             app.state.itinerary_http_clients = ItineraryHttpClients(itinerary_http)
         else:
             app.state.itinerary_http_clients = None
+        logger.info("startup.itinerary_clients.ready mode=%s", mode)
 
         # Recsys tách khỏi phần itinerary: thiếu database hoặc model embedding thì tắt recsys,
         # các route còn lại (kể cả assistant chạy fixture) vẫn phục vụ được.
         try:
+            logger.info("startup.recsys.start model=%s", recsys_settings.embed_model)
             for name, service in build_recsys(settings).items():
                 setattr(app.state, name, service)
             print(f"RecSys ready: {len(app.state.index.units)} search unit, model {app.state.index.model_version}")
+            logger.info("startup.recsys.ready search_units=%d", len(app.state.index.units))
         except Exception as exc:  # database chưa seed, thiếu model embedding…
             app.state.index = None
             print(f"RecSys disabled: {exc}")
+            logger.exception("startup.recsys.disabled error=%s", exc)
 
+        logger.info("startup.ready")
         try:
             yield
         finally:
+            logger.info("shutdown.browse_event_recorder.stop")
             await app.state.browse_event_recorder.stop()
     print("Shutting down...")
 
