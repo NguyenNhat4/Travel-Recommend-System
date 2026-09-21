@@ -24,7 +24,8 @@
         "familyFriendly": true
       },
       "score": 0.9,
-      "because": []
+      "because": [],
+      "priceUnit": "PER_NIGHT"
     },
     {
       "rank": 2,
@@ -41,7 +42,8 @@
         "familyFriendly": true
       },
       "score": 0.86,
-      "because": []
+      "because": [],
+      "priceUnit": "PER_PERSON"
     },
     {
       "rank": 3,
@@ -60,7 +62,8 @@
         "freeBreakfast": true
       },
       "score": 0.8,
-      "because": []
+      "because": [],
+      "priceUnit": "PER_NIGHT"
     }
   ],
   "diagnostics": {

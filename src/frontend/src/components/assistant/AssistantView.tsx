@@ -197,21 +197,7 @@ export const AssistantView: React.FC = () => {
       ]
     };
     setMessages([welcomeMsg]);
-
-    // Auto-generate initial plan for Nha Trang if not opened via share link and no incoming query
-    if (!shareId && !shareData) {
-      const incomingQuery = urlParams.get('q') || urlParams.get('prompt');
-      if (!incomingQuery) {
-        const initialIntent: TravelIntent = {
-          destination: 'Nha Trang',
-          days: 3,
-          party: 'family_with_kids',
-          interests: ['theme_park', 'beach']
-        };
-        const plan = buildGroundedItinerary(initialIntent, currentPersona, activeEvents);
-        setActivePlan(plan);
-      }
-    }
+    // Do not auto-generate mock plan on load - wait for user prompt
   }, [searchParamString]);
 
   const scrollToBottom = () => {

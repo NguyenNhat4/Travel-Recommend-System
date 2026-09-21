@@ -189,8 +189,10 @@ Parser sai thì sửa code rồi chạy `python crawl.py reparse <nguồn>`: par
 
 ## Schema đầu ra
 
-Mỗi dòng `products.jsonl` có đúng 13 trường của §6. Mọi trường khác nằm trong `attributes`, để không tự thêm
-field mà CDP thật không có.
+Mỗi dòng `products.jsonl` có đúng 14 trường: 13 trường của §6 cộng `priceUnit` — field bắt buộc của
+`ProductSummary` trong contract chung, được suy ra từ `taxonomy` chứ không do nguồn cung cấp
+(xem [docs/SCHEMA.md](docs/SCHEMA.md#bốn-chỗ-dễ-hiểu-sai)). Mọi trường khác nằm trong `attributes`,
+để không tự thêm field mà CDP thật không có.
 
 ```json
 {

@@ -1,30 +1,276 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
+import dynamic from 'next/dynamic';
 import { useTravel } from '../../context/TravelContext';
-import { X, Send } from 'lucide-react';
+import { extractIntent, buildGroundedItinerary } from '../../services/assistant';
+import { GroundedPlan, Product, TravelIntent, ItineraryDay, ItinerarySlot } from '../../types/travel';
+import { 
+  X, Send, Maximize2, Minimize2, Sparkles, MapPin, 
+  Calendar, Users, Check, Loader2, Compass, 
+  ShoppingBag, Hotel, Clock, ArrowRight, ChevronRight, ChevronLeft, List,
+  Plus, MessageSquare, Trash2, ExternalLink, Bookmark, CheckCircle2, SlidersHorizontal
+} from 'lucide-react';
 
-interface ChatMessage {
+// Dynamically load the Leaflet + OSM/OSRM itinerary map to avoid SSR issues.
+const ItineraryMap = dynamic(
+  () => import('./ItineraryMap').then((module) => module.ItineraryMap),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-full min-h-[350px] items-center justify-center bg-slate-50 text-sm text-slate-500">
+        Đang tải bản đồ lộ trình…
+      </div>
+    ),
+  }
+);
+
+export interface ClarificationData {
+  id: string;
+  title: string;
+  description: string;
+  missingFields: ('destination' | 'days' | 'party' | 'style')[];
+  suggestedDestinations: string[];
+  suggestedDays: number[];
+  selectedDestination: string;
+  selectedDays: number;
+  selectedParty: 'solo' | 'couple' | 'family_with_kids' | 'friends';
+  selectedStyle: 'luxury' | 'budget' | 'balanced';
+  isResolved?: boolean;
+}
+
+interface WidgetChatMessage {
   id: string;
   sender: 'user' | 'assistant';
   text: string;
+  plan?: GroundedPlan;
+  clarification?: ClarificationData;
 }
 
+interface ConversationSession {
+  id: string;
+  title: string;
+  timestamp: string;
+  messages: WidgetChatMessage[];
+  plan: GroundedPlan | null;
+}
+
+const DEFAULT_WELCOME_MESSAGE: WidgetChatMessage = {
+  id: 'welcome',
+  sender: 'assistant',
+  text: 'Xin chào! Mình là Trợ lý Du lịch V-OTA AI. Mình có thể hỗ trợ bạn tìm phòng, đặt vé VinWonders hay thiết kế lịch trình du lịch thông minh kèm bản đồ!'
+};
+
+interface HotelVisualData {
+  tags: { label: string; icon: string }[];
+  images: { url: string; caption: string }[];
+  isVilla: boolean;
+}
+
+/**
+ * Trích xuất điểm HOT (Nha Trang, Biệt thự, Hồ bơi...) và 2 hình ảnh to rõ cho Khách sạn lưu trú
+ */
+const getHotelVisuals = (product: Product, destination: string): HotelVisualData => {
+  const tags: { label: string; icon: string }[] = [];
+  tags.push({ label: destination, icon: '📍' });
+
+  const isVilla = product.name.toLowerCase().includes('biệt thự') ||
+    product.description?.toLowerCase().includes('biệt thự') ||
+    product.id.includes('hotel-02');
+
+  if (isVilla) {
+    tags.push({ label: 'Biệt thự sang trọng', icon: '🏡' });
+  } else {
+    tags.push({ label: 'Resort 5★ biển', icon: '🏨' });
+  }
+
+  const hasPool = product.name.toLowerCase().includes('hồ bơi') ||
+    product.attributes?.pool ||
+    product.description?.toLowerCase().includes('hồ bơi');
+
+  if (hasPool) {
+    tags.push({
+      label: isVilla ? 'Hồ bơi riêng' : 'Hồ bơi lớn',
+      icon: '🏊‍♂️'
+    });
+  }
+
+  if (product.attributes?.oceanView || product.attributes?.beachfront) {
+    tags.push({ label: 'View biển', icon: '🌊' });
+  }
+
+  // Khớp ảnh chuẩn xác theo từng khách sạn và đặc trưng
+  let img1 = product.imageUrl;
+  let img2 = 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=1200&q=80';
+
+  if (product.id === 'nt-hotel-02') {
+    // Biệt thự hồ bơi riêng Nha Trang: Biệt thự sang trọng & Hồ bơi riêng villa
+    img1 = 'https://images.unsplash.com/photo-1582719508461-905c673771fd?auto=format&fit=crop&w=1200&q=80';
+    img2 = 'https://images.unsplash.com/photo-1540555700478-4be289fbecef?auto=format&fit=crop&w=1200&q=80';
+  } else if (product.id === 'nt-hotel-01') {
+    // Deluxe Ocean View Nha Trang: Phòng nghỉ view biển & Hồ bơi lớn Hòn Tre
+    img1 = 'https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&w=1200&q=80';
+    img2 = 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=1200&q=80';
+  } else if (product.id === 'pq-hotel-02') {
+    // Wonder World Biệt thự biển Phú Quốc
+    img1 = 'https://images.unsplash.com/photo-1618773928121-c32242e63f39?auto=format&fit=crop&w=1200&q=80';
+    img2 = 'https://images.unsplash.com/photo-1540555700478-4be289fbecef?auto=format&fit=crop&w=1200&q=80';
+  } else if (product.id === 'pq-hotel-01') {
+    // Resort & Spa Bãi Dài Phú Quốc
+    img1 = 'https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&w=1200&q=80';
+    img2 = 'https://images.unsplash.com/photo-1571896349842-33c89424de2d?auto=format&fit=crop&w=1200&q=80';
+  } else if (product.id === 'dn-hotel-01') {
+    // Biệt thự Non Nước Đà Nẵng
+    img1 = 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=80';
+    img2 = 'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?auto=format&fit=crop&w=1200&q=80';
+  } else if (isVilla) {
+    img1 = 'https://images.unsplash.com/photo-1582719508461-905c673771fd?auto=format&fit=crop&w=1200&q=80';
+    img2 = 'https://images.unsplash.com/photo-1540555700478-4be289fbecef?auto=format&fit=crop&w=1200&q=80';
+  } else {
+    img1 = product.imageUrl || 'https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&w=1200&q=80';
+    img2 = 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=1200&q=80';
+  }
+
+  return {
+    tags: tags.slice(0, 4),
+    images: [
+      { url: img1, caption: isVilla ? '🏡 Không gian biệt thự nghỉ dưỡng' : '🏨 Phòng nghỉ tiện nghi 5 sao' },
+      { url: img2, caption: hasPool ? (isVilla ? '🏊‍♂️ Hồ bơi riêng & sân vườn' : '🏊‍♂️ Hồ bơi lớn & vịnh biển') : '🌊 Vịnh biển riêng tư' }
+    ],
+    isVilla
+  };
+};
+
+/**
+ * Trích xuất ảnh to rõ ĐÚNG 100% NỘI DUNG cho từng chặng hoạt động trong lộ trình
+ */
+const getSlotVisualUrl = (slot: ItinerarySlot, destination: string): string => {
+  const title = (slot.activityTitle || '').toLowerCase();
+  const note = (slot.note || '').toLowerCase();
+  const name = (slot.product?.name || '').toLowerCase();
+  const loc = (slot.locationName || '').toLowerCase();
+  const text = `${title} ${note} ${name} ${loc}`;
+
+  // 1. Show diễn nghệ thuật / Tata Show / Ánh sáng 3D mapping / Nhạc nước
+  if (text.includes('tata show') || text.includes('show') || text.includes('mapping') || text.includes('nhạc nước') || text.includes('biểu diễn nghệ thuật')) {
+    return 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=1200&q=80';
+  }
+
+  // 2. Akoya Spa thư giãn / Massage trị liệu tinh dầu
+  if (text.includes('spa') || text.includes('massage') || text.includes('thư giãn') || text.includes('trị liệu') || text.includes('akoya')) {
+    return 'https://images.unsplash.com/photo-1544161515-4ab6ce6db874?auto=format&fit=crop&w=1200&q=80';
+  }
+
+  // 3. Quán Cà phê ven biển / Ngắm sóng / Nước dừa xiêm / Trà chiều
+  if (text.includes('cà phê') || text.includes('cafe') || text.includes('ngắm sóng') || text.includes('trà chiều')) {
+    return 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=1200&q=80';
+  }
+
+  // 4. Chèo kayak / Lặn biển / Ngắm san hô
+  if (text.includes('kayak') || text.includes('chèo') || text.includes('lặn') || text.includes('san hô')) {
+    return 'https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&w=1200&q=80';
+  }
+
+  // 5. Chợ đặc sản / Mua sắm quà lưu niệm (chợ Đầm, chợ Hàn, yến sào, ngọc trai...)
+  if (text.includes('chợ') || text.includes('mua sắm') || text.includes('làm quà') || text.includes('quà lưu niệm') || text.includes('đặc sản làm quà')) {
+    return 'https://images.unsplash.com/photo-1533900298318-6b8da08a523e?auto=format&fit=crop&w=1200&q=80';
+  }
+
+  // 6. Làm thủ tục trả phòng & Xe tiễn sân bay / Chuyến bay
+  if (text.includes('sân bay') || text.includes('tiễn sân bay') || text.includes('trả phòng') || text.includes('đón xe')) {
+    return 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&w=1200&q=80';
+  }
+
+  // 7. Bãi biển / Tắm biển / Dạo bình minh trên cát / Hoàng hôn
+  if (text.includes('bình minh') || text.includes('tắm biển') || text.includes('bãi biển') || text.includes('dạo biển') || text.includes('bãi cát')) {
+    return 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80';
+  }
+
+  // 8. Ẩm thực địa phương / Ăn trưa / Bún quậy / Nem nướng / Bánh tráng thịt heo / Cao lầu / Hải sản
+  if (text.includes('ẩm thực') || text.includes('ăn trưa') || text.includes('buffet') || text.includes('nem nướng') || text.includes('bún quậy') || text.includes('cao lầu') || text.includes('hải sản')) {
+    return 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=1200&q=80';
+  }
+
+  // 9. Safari / River Safari / Động vật bán hoang dã
+  if (text.includes('safari') || text.includes('vườn thú') || text.includes('động vật')) {
+    return 'https://images.unsplash.com/photo-1534177616072-ef7dc120449d?auto=format&fit=crop&w=1200&q=80';
+  }
+
+  // 10. Bà Nà Hills / Cầu Vàng
+  if (text.includes('cầu vàng') || text.includes('bà nà') || text.includes('bana')) {
+    return 'https://images.unsplash.com/photo-1559592413-7cec4d0cae2b?auto=format&fit=crop&w=1200&q=80';
+  }
+
+  // 10b. Đà Lạt: thác, đồi chè, hoa và núi rừng
+  if (text.includes('datanla') || text.includes('thác voi') || text.includes('thác nước')) {
+    return 'https://images.unsplash.com/photo-1433086966358-54859d0ed716?auto=format&fit=crop&w=1200&q=80';
+  }
+  if (text.includes('đồi chè') || text.includes('săn mây') || text.includes('cầu đất')) {
+    return 'https://images.unsplash.com/photo-1594631252845-29fc4cc8cde9?auto=format&fit=crop&w=1200&q=80';
+  }
+  if (text.includes('langbiang') || text.includes('đồi thông') || text.includes('cao nguyên')) {
+    return 'https://images.unsplash.com/photo-1583417319070-4a69db38a482?auto=format&fit=crop&w=1200&q=80';
+  }
+  if (text.includes('vườn hoa') || text.includes('hoa theo mùa') || text.includes('trại mát')) {
+    return 'https://images.unsplash.com/photo-1490750967868-88aa4486c946?auto=format&fit=crop&w=1200&q=80';
+  }
+
+  // 11. Sân Golf
+  if (text.includes('golf') || text.includes('hố')) {
+    return 'https://images.unsplash.com/photo-1535131749006-b7f58c99034b?auto=format&fit=crop&w=1200&q=80';
+  }
+
+  // 12. Nếu slot gắn liền với sản phẩm có ảnh đại diện sẵn trong catalog
+  if (slot.product?.imageUrl) {
+    return slot.product.imageUrl;
+  }
+
+  // 13. VinWonders / Công viên vui chơi / Cáp treo
+  if (text.includes('vinwonders') || text.includes('công viên') || text.includes('cáp treo') || text.includes('vui chơi')) {
+    return 'https://images.unsplash.com/photo-1513889961551-628c1e5e2ee9?auto=format&fit=crop&w=1200&q=80';
+  }
+
+  // Fallback theo điểm đến
+  if (destination === 'Phú Quốc') {
+    return 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80';
+  }
+  if (destination === 'Đà Nẵng' || destination === 'Hội An') {
+    return 'https://images.unsplash.com/photo-1552465011-b4e21bf6e79a?auto=format&fit=crop&w=1200&q=80';
+  }
+  if (destination === 'Đà Lạt') {
+    return 'https://images.unsplash.com/photo-1578637387939-43c525550085?auto=format&fit=crop&w=1200&q=80';
+  }
+  return 'https://images.unsplash.com/photo-1513889961551-628c1e5e2ee9?auto=format&fit=crop&w=1200&q=80';
+};
+
+
 export const AiFloatingWidget: React.FC = () => {
-  const { navigate, showToast } = useTravel();
-  const [isOpen, setIsOpen] = useState(false);
-  const [showBubble, setShowBubble] = useState(true);
-  const [inputVal, setInputVal] = useState('');
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: '1',
-      sender: 'assistant',
-      text: 'Xin chào! Mình có thể giúp bạn tìm khách sạn, biệt thự nghỉ dưỡng, đặt vé VinWonders hay gợi ý lịch trình không?'
-    }
-  ]);
+  const { currentPersona, activeEvents, addToCart, showToast, navigate, currentRoute } = useTravel();
+
+  // Widget States
+  const [isOpen, setIsOpen] = useState<boolean>(false);
+  const [isExpanded, setIsExpanded] = useState<boolean>(false);
+  const [showBubble, setShowBubble] = useState<boolean>(true);
+  const [inputVal, setInputVal] = useState<string>('');
+  const [isGenerating, setIsGenerating] = useState<boolean>(false);
+  const [activePlan, setActivePlan] = useState<GroundedPlan | null>(null);
+  const [activeDayTab, setActiveDayTab] = useState<number>(1);
+  const [isSavedPlan, setIsSavedPlan] = useState<boolean>(false);
+  const [isChatCollapsed, setIsChatCollapsed] = useState<boolean>(false);
+  const [hoveredCoordinate, setHoveredCoordinate] = useState<{ lat: number; lng: number } | null>(null);
+  const [hoveredPointId, setHoveredPointId] = useState<string | null>(null);
+
+  // History Conversation & Drawer States
+  const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
+  const [conversations, setConversations] = useState<ConversationSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string>('conv-current');
+
+  const [messages, setMessages] = useState<WidgetChatMessage[]>([DEFAULT_WELCOME_MESSAGE]);
+
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Typing effect on the floating pill
   const fullBubbleText = 'Muốn mình tư vấn gì đó\nvề du lịch không?';
   const [displayedText, setDisplayedText] = useState('');
   const [isTyping, setIsTyping] = useState(true);
@@ -55,227 +301,1258 @@ export const AiFloatingWidget: React.FC = () => {
     };
   }, [showBubble, isOpen]);
 
+  // Auto-scroll messages and focus input
   useEffect(() => {
     if (isOpen) {
       chatScrollRef.current?.scrollTo({ top: chatScrollRef.current.scrollHeight, behavior: 'smooth' });
-      inputRef.current?.focus();
+      setTimeout(() => inputRef.current?.focus(), 150);
     }
-  }, [isOpen, messages]);
+  }, [isOpen, messages, isExpanded]);
 
-  const handleSendMessage = () => {
-    const text = inputVal.trim();
-    if (!text) return;
+  // Handle ESC key to close or minimize
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (isExpanded) {
+          setIsExpanded(false);
+        } else if (isOpen) {
+          setIsOpen(false);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isExpanded, isOpen]);
 
-    const userMsg: ChatMessage = {
+  // Lock main body/html scrollbar when AI assistant is open / fullscreen
+  useEffect(() => {
+    if (isOpen) {
+      const prevBodyOverflow = document.body.style.overflow;
+      const prevHtmlOverflow = document.documentElement.style.overflow;
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = prevBodyOverflow;
+        document.documentElement.style.overflow = prevHtmlOverflow;
+      };
+    }
+  }, [isOpen]);
+
+  // Close widget when navigating to checkout
+  useEffect(() => {
+    if (currentRoute.startsWith('/checkout')) {
+      setIsOpen(false);
+      setIsExpanded(false);
+    }
+  }, [currentRoute]);
+
+  // Component Human-in-the-loop: Clarification & Preference Disambiguation Card
+  const ClarificationCard: React.FC<{
+    clarification: ClarificationData;
+    onConfirm: (data: ClarificationData) => void;
+  }> = ({ clarification, onConfirm }) => {
+    const [dest, setDest] = useState(clarification.selectedDestination);
+    const [days, setDays] = useState(clarification.selectedDays);
+    const [party, setParty] = useState(clarification.selectedParty);
+    const [style, setStyle] = useState(clarification.selectedStyle);
+
+    const isResolved = !!clarification.isResolved;
+
+    const handleSubmit = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (isResolved) return;
+      onConfirm({
+        ...clarification,
+        selectedDestination: dest,
+        selectedDays: days,
+        selectedParty: party,
+        selectedStyle: style,
+        isResolved: true
+      });
+    };
+
+    return (
+      <div className="mt-3.5 bg-white border border-blue-200/90 rounded-2xl p-4 shadow-md text-slate-800 space-y-3.5 animate-in fade-in zoom-in-95 duration-200">
+        {/* Header card HITL */}
+        <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+          <div className="flex items-center space-x-2">
+            <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-blue-100 text-blue-600 shadow-xs">
+              <SlidersHorizontal className="h-4 w-4" />
+            </span>
+            <div>
+              <div className="text-xs font-bold uppercase tracking-wider text-blue-600">
+                Tương tác cùng AI (Human-in-the-loop)
+              </div>
+              <div className="text-sm font-semibold text-slate-900">
+                {clarification.title}
+              </div>
+            </div>
+          </div>
+          {isResolved && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 border border-emerald-200">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              Đã xác nhận
+            </span>
+          )}
+        </div>
+
+        <p className="text-xs text-slate-600 leading-relaxed">
+          {clarification.description}
+        </p>
+
+        <form onSubmit={handleSubmit} className="space-y-3 pt-1">
+          {/* 1. Chọn điểm đến */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center gap-1">
+              <MapPin className="w-3.5 h-3.5 text-blue-600" />
+              <span>Điểm đến:</span>
+            </label>
+            <div className="flex flex-wrap gap-1.5">
+              {clarification.suggestedDestinations.map(d => (
+                <button
+                  key={d}
+                  type="button"
+                  disabled={isResolved}
+                  onClick={() => setDest(d)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
+                    dest === d
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200 disabled:opacity-60'
+                  }`}
+                >
+                  {d}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 2. Chọn số ngày */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center gap-1">
+              <Calendar className="w-3.5 h-3.5 text-blue-600" />
+              <span>Thời lượng chuyến đi:</span>
+            </label>
+            <div className="flex flex-wrap gap-1.5">
+              {clarification.suggestedDays.map(num => (
+                <button
+                  key={num}
+                  type="button"
+                  disabled={isResolved}
+                  onClick={() => setDays(num)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
+                    days === num
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200 disabled:opacity-60'
+                  }`}
+                >
+                  {num} ngày ({num - 1 > 0 ? `${num - 1} đêm` : 'trong ngày'})
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 3. Phong cách chuyến đi & Ngân sách (Disambiguation) */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center gap-1">
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              <span>Phong cách trải nghiệm ưu tiên:</span>
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <button
+                type="button"
+                disabled={isResolved}
+                onClick={() => setStyle('luxury')}
+                className={`p-2 rounded-xl text-left border transition text-xs cursor-pointer ${
+                  style === 'luxury'
+                    ? 'border-blue-600 bg-blue-50/70 text-blue-900 font-semibold shadow-xs'
+                    : 'border-slate-200 bg-slate-50/60 hover:bg-slate-100 text-slate-700 disabled:opacity-60'
+                }`}
+              >
+                <div className="flex items-center gap-1 font-bold">
+                  <span>💎 Nghỉ dưỡng sang trọng</span>
+                </div>
+                <div className="text-[11px] text-slate-500 font-normal mt-0.5">
+                  Villa riêng tư / Resort 5★ & Spa
+                </div>
+              </button>
+
+              <button
+                type="button"
+                disabled={isResolved}
+                onClick={() => setStyle('budget')}
+                className={`p-2 rounded-xl text-left border transition text-xs cursor-pointer ${
+                  style === 'budget'
+                    ? 'border-blue-600 bg-blue-50/70 text-blue-900 font-semibold shadow-xs'
+                    : 'border-slate-200 bg-slate-50/60 hover:bg-slate-100 text-slate-700 disabled:opacity-60'
+                }`}
+              >
+                <div className="flex items-center gap-1 font-bold">
+                  <span>💰 Tối ưu chi phí</span>
+                </div>
+                <div className="text-[11px] text-slate-500 font-normal mt-0.5">
+                  Combo vé + phòng tiết kiệm, năng động
+                </div>
+              </button>
+            </div>
+          </div>
+
+          {/* 4. Nhóm đồng hành */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center gap-1">
+              <Users className="w-3.5 h-3.5 text-blue-600" />
+              <span>Đối tượng chuyến đi:</span>
+            </label>
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                { id: 'family_with_kids', label: '👨‍👩‍👧 Gia đình có trẻ nhỏ' },
+                { id: 'couple', label: '💑 Cặp đôi lãng mạn' },
+                { id: 'friends', label: '🏄 Nhóm bạn trẻ' },
+                { id: 'solo', label: '🎒 Độc hành' },
+              ].map(item => (
+                <button
+                  key={item.id}
+                  type="button"
+                  disabled={isResolved}
+                  onClick={() => setParty(item.id as any)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
+                    party === item.id
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200 disabled:opacity-60'
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Nút chốt tiêu chí (Human confirmation button) */}
+          {!isResolved && (
+            <div className="pt-2">
+              <button
+                type="submit"
+                className="w-full py-2.5 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-bold rounded-xl shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Check className="w-4 h-4" />
+                <span>Xác nhận tiêu chí & Tạo lịch trình ngay</span>
+              </button>
+            </div>
+          )}
+        </form>
+      </div>
+    );
+  };
+
+  const handleConfirmClarification = (clarification: ClarificationData) => {
+    // 1. Cập nhật message chứa clarification thành isResolved
+    setMessages(prev => prev.map(m => {
+      if (m.clarification && m.clarification.id === clarification.id) {
+        return {
+          ...m,
+          clarification: { ...clarification, isResolved: true }
+        };
+      }
+      return m;
+    }));
+
+    // 2. Thêm phản hồi của người dùng
+    const partyName = clarification.selectedParty === 'family_with_kids' 
+      ? 'gia đình' 
+      : clarification.selectedParty === 'couple' 
+        ? 'cặp đôi' 
+        : clarification.selectedParty === 'friends' 
+          ? 'nhóm bạn' 
+          : 'đi một mình';
+    const styleName = clarification.selectedStyle === 'luxury' 
+      ? 'nghỉ dưỡng sang trọng' 
+      : 'tối ưu chi phí tiết kiệm';
+
+    const userConfirmationText = `Tôi chọn đi ${clarification.selectedDestination} (${clarification.selectedDays} ngày) cho ${partyName}, ưu tiên phong cách ${styleName}.`;
+    
+    const userMsg: WidgetChatMessage = {
+      id: Date.now().toString(),
+      sender: 'user',
+      text: userConfirmationText
+    };
+
+    setMessages(prev => [...prev, userMsg]);
+    setIsGenerating(true);
+
+    // 3. AI sinh lịch trình dựa trên thông số do con người chốt (Human in the loop)
+    setTimeout(() => {
+      const interests = clarification.selectedStyle === 'luxury'
+        ? ['villa', 'relaxation', 'spa', 'beach']
+        : ['theme_park', 'beach', 'food'];
+
+      const travelIntent: TravelIntent = {
+        destination: clarification.selectedDestination as any,
+        days: clarification.selectedDays,
+        party: clarification.selectedParty,
+        interests,
+        multiHotel: clarification.selectedDays >= 4
+      };
+
+      const plan = buildGroundedItinerary(travelIntent, currentPersona, activeEvents);
+      setActivePlan(plan);
+      setActiveDayTab(1);
+      setIsSavedPlan(false);
+
+      const botReply: WidgetChatMessage = {
+        id: (Date.now() + 1).toString(),
+        sender: 'assistant',
+        text: `Tuyệt vời! Dựa trên các tiêu chí bạn vừa xác nhận, mình đã hoàn thiện lịch trình "${plan.title}" (${clarification.selectedDays} ngày tại ${clarification.selectedDestination}) được cá nhân hóa riêng cho bạn. Hãy mở rộng toàn màn hình để xem chi tiết lộ trình và bản đồ nhé!`,
+        plan
+      };
+
+      setMessages(prev => [...prev, botReply]);
+      setIsGenerating(false);
+    }, 600);
+  };
+
+  const handleSendMessage = (textToSend?: string) => {
+    const text = (textToSend || inputVal).trim();
+    if (!text || isGenerating) return;
+
+    const userMsg: WidgetChatMessage = {
       id: Date.now().toString(),
       sender: 'user',
       text
     };
+
     setMessages(prev => [...prev, userMsg]);
     setInputVal('');
+    setIsGenerating(true);
 
-    // Simulated AI response
+    // Analyze intent using real catalog assistant engine
     setTimeout(() => {
-      const botMsg: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        sender: 'assistant',
-        text: 'Dạ với chuyến đi này, V-OTA đang có gói ưu đãi độc quyền giảm 30% kèm vé vui chơi miễn phí tại VinWonders! Bạn có muốn tôi hỗ trợ xem chi tiết ưu đãi hoặc lên lịch trình không ạ?'
-      };
-      setMessages(prev => [...prev, botMsg]);
-    }, 700);
-  };
+      const { intent } = extractIntent(text);
+      const clean = text.toLowerCase();
+      
+      const isItineraryRequest = 
+        clean.includes('lịch trình') || 
+        clean.includes('kế hoạch') || 
+        clean.includes('combo') || 
+        clean.includes('ngày') || 
+        clean.includes('du lịch') ||
+        clean.includes('tư vấn') ||
+        clean.includes('đi chơi') ||
+        clean.includes('nghỉ dưỡng') ||
+        clean.includes('chuyến đi') ||
+        !!intent.destination;
 
-  const handleQuickPrompt = (promptText: string) => {
-    setInputVal(promptText);
-    const userMsg: ChatMessage = {
-      id: Date.now().toString(),
-      sender: 'user',
-      text: promptText
-    };
-    setMessages(prev => [...prev, userMsg]);
+      // CASE 2: HUMAN IN THE LOOP (Clarification & Disambiguation)
+      // Khi yêu cầu có ý định du lịch nhưng còn mơ hồ: thiếu destination HOẶC thiếu cả destination & days
+      const isAmbiguous = isItineraryRequest && (!intent.destination || (clean.includes('tư vấn') && !clean.match(/\d+\s*ngày/)));
 
-    setTimeout(() => {
-      let reply = 'Dạ mình đã ghi nhận yêu cầu và đang tìm các ưu đãi V-OTA hấp dẫn nhất cho bạn!';
-      if (promptText.includes('Nha Trang')) {
-        reply = 'Dạ tại Nha Trang, V-OTA Resort & Spa Nha Trang Bay đang có mức giá ưu đãi từ 2.294.500 ₫/đêm gồm cano đưa đón 24/7 và buffet sáng!';
-      } else if (promptText.includes('Phú Quốc')) {
-        reply = 'Dạ tại Phú Quốc, gói VinHolidays Fiesta kết hợp vé VinWonders & Safari trọn gói chỉ từ 1.007.500 ₫/khách!';
+      if (isAmbiguous) {
+        const clarificationData: ClarificationData = {
+          id: 'clarify-' + Date.now(),
+          title: 'Làm rõ yêu cầu chuyến đi của bạn',
+          description: 'Để thiết kế lịch trình tối ưu và sát với mong muốn nhất, bạn vui lòng chọn nhanh một số tiêu chí quan trọng bên dưới:',
+          missingFields: !intent.destination ? ['destination', 'days', 'style'] : ['style', 'days'],
+          suggestedDestinations: ['Nha Trang', 'Phú Quốc', 'Đà Nẵng', 'Đà Lạt'],
+          suggestedDays: [2, 3, 4, 5],
+          selectedDestination: intent.destination || 'Nha Trang',
+          selectedDays: intent.days || 3,
+          selectedParty: intent.party || 'family_with_kids',
+          selectedStyle: clean.includes('tiết kiệm') || clean.includes('rẻ') ? 'budget' : 'luxury',
+          isResolved: false
+        };
+
+        const botReply: WidgetChatMessage = {
+          id: (Date.now() + 1).toString(),
+          sender: 'assistant',
+          text: 'Dạ mình rất sẵn lòng đồng hành cùng bạn thiết kế chuyến đi! Vì nhu cầu du lịch rất đa dạng, bạn hãy tinh chỉnh các tiêu chí mong muốn dưới đây để mình lập lộ trình chuẩn xác nhất nhé:',
+          clarification: clarificationData
+        };
+
+        setMessages(prev => [...prev, botReply]);
+        setIsGenerating(false);
+        return;
       }
-      const botMsg: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        sender: 'assistant',
-        text: reply
-      };
-      setMessages(prev => [...prev, botMsg]);
+
+      if (isItineraryRequest) {
+        const dest = intent.destination || 'Nha Trang';
+        const days = intent.days || 3;
+        const travelIntent: TravelIntent = {
+          destination: dest,
+          days,
+          party: intent.party || 'family_with_kids',
+          interests: intent.interests && intent.interests.length > 0 ? intent.interests : ['theme_park', 'beach'],
+          multiHotel: intent.multiHotel
+        };
+
+        const plan = buildGroundedItinerary(travelIntent, currentPersona, activeEvents);
+        setActivePlan(plan);
+        setActiveDayTab(1);
+        setIsSavedPlan(false);
+
+        const staySummary = plan.stays && plan.stays.length >= 2 
+          ? `trải nghiệm ${plan.stays.length} khách sạn lưu trú`
+          : 'nơi lưu trú';
+        const botReply: WidgetChatMessage = {
+          id: (Date.now() + 1).toString(),
+          sender: 'assistant',
+          text: `Dạ mình đã thiết kế xong kế hoạch "${plan.title}" (${days} ngày tại ${dest}) gồm ${staySummary}, vé vui chơi và lộ trình chi tiết! Hãy nhấn nút mở rộng để xem lộ trình và bản đồ song song nhé!`,
+          plan
+        };
+        setMessages(prev => [...prev, botReply]);
+      } else {
+        let reply = 'Dạ mình đã ghi nhận câu hỏi và sẵn sàng hỗ trợ bạn tìm dịch vụ nghỉ dưỡng phù hợp nhất!';
+        if (text.includes('Nha Trang')) {
+          reply = 'Dạ tại Nha Trang, Vinpearl Resort & Spa Nha Trang Bay đang có mức giá ưu đãi từ 2.294.500 ₫/đêm gồm cano đưa đón 24/7 và buffet sáng!';
+        } else if (text.includes('Phú Quốc')) {
+          reply = 'Dạ tại Phú Quốc, gói VinHolidays Fiesta kết hợp vé VinWonders & Safari trọn gói chỉ từ 1.007.500 ₫/khách!';
+        } else if (text.toLowerCase().includes('đà lạt') || text.toLowerCase().includes('da lat')) {
+          reply = 'Dạ Đà Lạt có cung 7 ngày rất đẹp xuất phát từ TP. Hồ Chí Minh: vượt đèo Prenn cửa ngõ, Datanla, Langbiang, Cầu Đất, Trại Mát, Tà Nung và ngày tiễn về TP.HCM.';
+        }
+        const botReply: WidgetChatMessage = {
+          id: (Date.now() + 1).toString(),
+          sender: 'assistant',
+          text: reply
+        };
+        setMessages(prev => [...prev, botReply]);
+      }
+      setIsGenerating(false);
     }, 600);
   };
 
-  return (
-    <div className="fixed bottom-5 right-5 z-50 flex flex-col items-end">
-      {/* AI Chat Window Modal */}
-      {isOpen && (
-        <div className="mb-3 w-80 sm:w-96 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden transition-all duration-300 animate-in fade-in zoom-in-95 origin-bottom-right">
-          {/* Chat Header */}
-          <div className="bg-gradient-to-r from-blue-700 to-indigo-600 text-white p-3.5 flex items-center justify-between shadow-xs">
-            <div className="flex items-center space-x-2.5">
-              <div className="w-10 h-10 flex items-center justify-center">
-                <img 
-                  src="/mascot_welcome.png" 
-                  alt="Trợ lý du lịch V-OTA AI" 
-                  className="w-full h-full object-contain" 
-                />
-              </div>
-              <div>
-                <div className="text-xs font-bold">Trợ lý du lịch V-OTA AI</div>
-                <div className="text-[10px] text-blue-100 flex items-center space-x-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block animate-pulse"></span>
-                  <span>Đang trực tuyến</span>
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center space-x-1">
-              <button 
-                onClick={() => {
-                  setIsOpen(false);
-                  navigate('/assistant');
-                }} 
-                className="text-white/80 hover:text-white text-[11px] px-2 py-0.5 rounded-md hover:bg-white/15 transition cursor-pointer"
-                title="Mở toàn màn hình"
-              >
-                Mở rộng
-              </button>
-              <button 
-                onClick={() => setIsOpen(false)} 
-                className="text-white/80 hover:text-white p-1 rounded-lg hover:bg-white/15 transition cursor-pointer"
-                title="Đóng"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
+  const handleQuickPrompt = (promptText: string) => {
+    handleSendMessage(promptText);
+  };
 
-          {/* Chat Messages Body */}
-          <div ref={chatScrollRef} className="p-3.5 space-y-3 max-h-72 overflow-y-auto text-xs bg-slate-50">
-            {messages.map((m) => (
-              <div 
-                key={m.id} 
-                className={`flex items-start space-x-2 ${m.sender === 'user' ? 'justify-end' : ''}`}
-              >
-                {m.sender === 'assistant' && (
-                  <div className="w-8 h-8 shrink-0 flex items-center justify-center">
-                    <img 
-                      src="/mascot_welcome.png" 
-                      alt="AI" 
-                      className="w-full h-full object-contain" 
-                    />
-                  </div>
-                )}
-                <div 
-                  className={`p-2.5 rounded-2xl text-xs leading-relaxed shadow-xs ${
-                    m.sender === 'user'
-                      ? 'bg-blue-600 text-white rounded-tr-none max-w-[80%]'
-                      : 'bg-white border border-slate-200 text-slate-700 rounded-tl-none max-w-[85%]'
+  const handleAddAllToCart = () => {
+    if (!activePlan) return;
+    let count = 0;
+    if (activePlan.stays && activePlan.stays.length > 0) {
+      activePlan.stays.forEach(s => {
+        if (s.product) {
+          addToCart(s.product, s.nights || 1);
+          count++;
+        }
+      });
+    } else if (activePlan.stay?.product) {
+      addToCart(activePlan.stay.product, 2);
+      count++;
+    }
+    activePlan.days.forEach(day => {
+      day.slots.forEach(slot => {
+        if (slot.product) {
+          addToCart(slot.product, 2);
+          count++;
+        }
+      });
+    });
+    showToast(`Đã thêm ${count} dịch vụ trong lịch trình vào giỏ hàng!`);
+  };
+
+  const handleToggleSavePlan = (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (!activePlan) return;
+    setIsSavedPlan(prev => {
+      const next = !prev;
+      showToast(next ? 'Đã lưu hành trình vào danh sách yêu thích!' : 'Đã bỏ lưu hành trình!');
+      return next;
+    });
+  };
+
+  const handleCheckoutPlan = (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (!activePlan) return;
+    handleAddAllToCart();
+    navigate('/checkout');
+  };
+
+  const handleStartNewChat = () => {
+    // Nếu phiên hiện tại có tin nhắn từ người dùng, lưu vào danh sách lịch sử
+    const hasUserMsg = messages.some(m => m.sender === 'user');
+    if (hasUserMsg) {
+      const firstUserMsg = messages.find(m => m.sender === 'user')?.text || 'Hội thoại mới';
+      const newSession: ConversationSession = {
+        id: 'conv-' + Date.now(),
+        title: activePlan?.title || (firstUserMsg.length > 35 ? firstUserMsg.slice(0, 35) + '...' : firstUserMsg),
+        timestamp: 'Vừa xong',
+        messages: [...messages],
+        plan: activePlan
+      };
+      setConversations(prev => [newSession, ...prev]);
+    }
+
+    // Reset về hội thoại mới
+    setActiveSessionId('conv-' + Date.now());
+    setMessages([DEFAULT_WELCOME_MESSAGE]);
+    setActivePlan(null);
+    setActiveDayTab(1);
+    setIsSavedPlan(false);
+    setIsHistoryOpen(false);
+    showToast('Đã bắt đầu cuộc trò chuyện mới!');
+  };
+
+  const handleSelectConversation = (session: ConversationSession) => {
+    setActiveSessionId(session.id);
+    setMessages(session.messages);
+    setActivePlan(session.plan);
+    setActiveDayTab(1);
+    setIsSavedPlan(false);
+    setIsHistoryOpen(false);
+  };
+
+  const handleDeleteConversation = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    setConversations(prev => prev.filter(c => c.id !== id));
+  };
+
+  // Render History Drawer bên trái (gồm nút New Chat và danh sách History Conversation)
+  // Overlay toàn bộ 12/12 không gian của container chính với backdrop mờ và drawer trượt mượt mà
+  const renderHistoryDrawer = () => (
+    <div className="absolute inset-0 z-[1050] flex overflow-hidden">
+      {/* Backdrop mờ phủ kín toàn bộ 12/12 - bấm vào để đóng drawer */}
+      <div 
+        onClick={() => setIsHistoryOpen(false)}
+        className="absolute inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
+      />
+
+      {/* Drawer content trượt ra từ mép trái, chiếm 320px - max 85% */}
+      <div className="relative w-[320px] max-w-[85%] bg-white h-full shadow-2xl flex flex-col border-r border-slate-100 z-10 animate-in slide-in-from-left duration-250 ease-out">
+        {/* Header Drawer: New Chat & Đóng */}
+        <div className="p-3.5 border-b border-slate-100 flex items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={handleStartNewChat}
+            className="flex-1 flex items-center justify-center gap-2 py-2 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold transition shadow-xs cursor-pointer"
+            title="Bắt đầu hội thoại mới"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Đoạn chat mới</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsHistoryOpen(false)}
+            className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition cursor-pointer"
+            title="Đóng sidebar"
+            aria-label="Đóng sidebar"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Danh sách History Conversation */}
+        <div className="flex-1 overflow-y-auto p-3 space-y-1">
+          <div className="px-2 py-1.5 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+            Lịch sử trò chuyện
+          </div>
+          {conversations.length === 0 ? (
+            <div className="text-center py-8 text-slate-400 text-sm">
+              Chưa có lịch sử hội thoại nào
+            </div>
+          ) : (
+            conversations.map((c) => {
+              const isActive = activeSessionId === c.id;
+              return (
+                <div
+                  key={c.id}
+                  onClick={() => handleSelectConversation(c)}
+                  className={`group flex items-center justify-between p-2.5 rounded-xl cursor-pointer text-sm transition ${
+                    isActive 
+                      ? 'bg-blue-50/80 text-blue-900 font-semibold' 
+                      : 'hover:bg-slate-50 text-slate-700'
                   }`}
                 >
-                  {m.text}
+                  <div className="flex items-center space-x-2.5 min-w-0 flex-1">
+                    <MessageSquare className={`w-4 h-4 shrink-0 ${isActive ? 'text-blue-600' : 'text-slate-400 group-hover:text-slate-600'}`} />
+                    <div className="truncate">
+                      <div className="truncate text-[13.5px]">{c.title}</div>
+                      <div className="text-[11px] text-slate-400 font-normal">{c.timestamp}</div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => handleDeleteConversation(e, c.id)}
+                    className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-rose-600 rounded-md transition cursor-pointer ml-1"
+                    title="Xóa đoạn chat này"
+                    aria-label="Xóa đoạn chat này"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  // Render Chat column content (used both in Sidebar and Fullscreen left column)
+  const renderChatColumn = () => (
+    <div className="flex flex-col h-full bg-white overflow-hidden">
+      {/* Messages Scroll Area - Nền trắng đồng nhất với toàn khung chat */}
+      <div ref={chatScrollRef} className="flex-1 p-4 space-y-4 overflow-y-auto text-base bg-white">
+        {messages.map((m) => (
+          <div 
+            key={m.id} 
+            className={`flex items-start space-x-3 ${m.sender === 'user' ? 'justify-end' : ''}`}
+          >
+            {m.sender === 'assistant' && (
+              <div className="w-9 h-9 shrink-0 flex items-center justify-center mt-0.5">
+                <img 
+                  src="/mascot_welcome.webp" 
+                  alt="AI Mascot" 
+                  className="w-full h-full object-contain drop-shadow-xs" 
+                />
               </div>
-            ))}
+            )}
+            <div 
+              className={`p-4 rounded-2xl text-base leading-relaxed ${
+                m.sender === 'user'
+                  ? 'bg-blue-600 text-white rounded-tr-none max-w-[85%] shadow-xs'
+                  : 'bg-slate-100 text-slate-800 rounded-tl-none max-w-[88%]'
+              }`}
+            >
+              <div>{m.text}</div>
+              {m.clarification && (
+                <ClarificationCard 
+                  clarification={m.clarification} 
+                  onConfirm={handleConfirmClarification} 
+                />
+              )}
+              {m.plan && !isExpanded && (
+                <button
+                  onClick={() => setIsExpanded(true)}
+                  className="mt-3 w-full py-2.5 px-3.5 bg-white text-blue-600 hover:bg-blue-50 font-semibold rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer text-sm shadow-2xs"
+                  title="Mở rộng toàn màn hình để xem lộ trình và bản đồ"
+                >
+                  <Sparkles className="w-4 h-4 text-blue-600" />
+                  <span>Xem lộ trình & Bản đồ song song</span>
+                  <Maximize2 className="w-4 h-4 ml-0.5" />
+                </button>
+              )}
+            </div>
           </div>
-
-          {/* Quick prompts */}
-          <div className="px-3 py-1.5 flex gap-1.5 overflow-x-auto no-scrollbar text-[11px] bg-slate-50 border-t border-slate-100">
-            <button 
-              onClick={() => handleQuickPrompt('Khách sạn ở Nha Trang giá tốt')} 
-              className="whitespace-nowrap px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full hover:bg-blue-100 transition font-medium cursor-pointer border border-blue-200/60"
-            >
-              🏨 KS Nha Trang
-            </button>
-            <button 
-              onClick={() => handleQuickPrompt('Combo VinWonders Phú Quốc')} 
-              className="whitespace-nowrap px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full hover:bg-blue-100 transition font-medium cursor-pointer border border-blue-200/60"
-            >
-              🎢 Combo Phú Quốc
-            </button>
-            <button 
-              onClick={() => handleQuickPrompt('Lên lịch trình 3N2Đ')} 
-              className="whitespace-nowrap px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-full hover:bg-indigo-100 transition font-medium cursor-pointer border border-indigo-200/60"
-            >
-              ✨ Lịch trình 3N2Đ
-            </button>
+        ))}
+        {isGenerating && (
+          <div className="flex items-center space-x-2.5 text-slate-500 text-sm italic bg-slate-100 p-3.5 rounded-2xl w-fit">
+            <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+            <span>AI đang lập kế hoạch và tính toán lộ trình...</span>
           </div>
+        )}
+      </div>
 
-          {/* Chat Input Area */}
-          <div className="p-2.5 bg-white border-t border-slate-200 flex items-center space-x-1.5">
-            <input 
-              ref={inputRef}
-              type="text" 
-              value={inputVal}
-              onChange={(e) => setInputVal(e.target.value)}
-              placeholder="Nhập câu hỏi cho AI..." 
-              className="flex-1 bg-slate-100 text-xs px-3 py-2 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-600 text-slate-800 placeholder:text-slate-400"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  handleSendMessage();
-                }
-              }}
+      {/* Chat Input Bar - Cách đáy thêm khoảng cách rộng rãi (pb-5 sm:pb-6) */}
+      <div className="px-4 pt-2 pb-5 sm:pb-6 bg-white">
+        <div className="flex items-center space-x-2 bg-slate-100 hover:bg-slate-100/90 focus-within:bg-slate-100 focus-within:ring-2 focus-within:ring-blue-600/30 rounded-2xl p-1.5 transition-all">
+          <input 
+            ref={inputRef}
+            type="text" 
+            value={inputVal}
+            onChange={(e) => setInputVal(e.target.value)}
+            placeholder="Nhập yêu cầu du lịch hoặc lịch trình..." 
+            className="flex-1 bg-transparent text-base px-3.5 py-2.5 focus:outline-hidden text-slate-800 placeholder:text-slate-400 min-h-[46px]"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleSendMessage();
+              }
+            }}
+          />
+          <button 
+            onClick={() => handleSendMessage()} 
+            disabled={!inputVal.trim() || isGenerating}
+            className="p-3 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 text-white rounded-xl shadow-xs transition cursor-pointer shrink-0"
+            title="Gửi yêu cầu"
+            aria-label="Gửi yêu cầu"
+          >
+            <Send className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <>
+      {/* ========================================================================= */}
+      {/* 1. FLOATING TRIGGER MASCOT (Khi widget chưa mở)                             */}
+      {/* ========================================================================= */}
+      {!isOpen && (
+        <div className="fixed bottom-5 right-5 z-40 flex flex-col items-end animate-float">
+          {/* Chat Bubble Prompt */}
+          {showBubble && (
+            <div 
+              onClick={() => setIsOpen(true)}
+              className="group relative mb-2.5 bg-white text-slate-800 text-sm font-semibold pl-4 pr-8 py-3 rounded-2xl shadow-xl border border-slate-100/90 cursor-pointer hover:shadow-2xl transition-all duration-200 hover:-translate-y-0.5 text-left max-w-[240px]"
+            >
+              <div className="leading-snug whitespace-pre-line">
+                <span>{displayedText}</span>
+                {isTyping && (
+                  <span className="inline-block w-0.5 h-3.5 bg-blue-600 ml-0.5 animate-pulse align-middle" />
+                )}
+              </div>
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowBubble(false);
+                }} 
+                className="absolute top-2.5 right-2.5 text-slate-400 hover:text-slate-600 p-0.5 rounded-full hover:bg-slate-100 cursor-pointer" 
+                title="Đóng"
+                aria-label="Đóng"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+              {/* Speech bubble tail pointer pointing down to mascot */}
+              <div className="absolute -bottom-1.5 right-8 sm:right-10 w-3.5 h-3.5 bg-white border-r border-b border-slate-100/90 transform rotate-45 pointer-events-none" />
+            </div>
+          )}
+
+          {/* Mascot Avatar Button */}
+          <button 
+            onClick={() => setIsOpen(true)} 
+            className="relative transition-transform hover:scale-105 active:scale-95 cursor-pointer focus:outline-none"
+            aria-label="Mở trợ lý du lịch AI"
+          >
+            <img 
+              src="/mascot_welcome.webp" 
+              alt="Mascot V-OTA" 
+              className="w-20 h-20 sm:w-24 sm:h-24 object-contain select-none drop-shadow-xl" 
             />
-            <button 
-              onClick={handleSendMessage} 
-              className="p-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white rounded-xl shadow-md transition cursor-pointer"
-              title="Gửi"
-            >
-              <Send className="w-3.5 h-3.5" />
-            </button>
+            <span className="absolute bottom-1 right-2 w-3.5 h-3.5 bg-emerald-500 border-2 border-white rounded-full shadow-xs"></span>
+          </button>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 2. CHẾ ĐỘ SIDEBAR (Mở trượt từ MÉP TRÁI)                                   */}
+      {/* ========================================================================= */}
+      {isOpen && !isExpanded && (
+        <div className="fixed inset-0 z-50 overflow-hidden">
+          {/* Backdrop mờ phía sau - bấm vào để đóng */}
+          <div 
+            onClick={() => setIsOpen(false)}
+            className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity duration-300"
+          />
+
+          {/* Slide-over Drawer từ mép trái màn hình - Chiếm 4 phần (4/12) trên desktop */}
+          <div className="fixed inset-y-0 left-0 w-full sm:w-[420px] md:w-1/3 lg:w-4/12 min-w-[380px] max-w-[640px] bg-white shadow-2xl flex flex-col border-r border-slate-100 z-10 animate-in slide-in-from-left duration-300 ease-out">
+            {/* Top Bar tối giản khi chưa mở rộng: Không Header xanh, giữ icon List + mock title bên trái, icon Mở rộng & icon Tắt bên phải */}
+            <div className="px-4 pt-3.5 pb-2 bg-white flex items-center justify-between border-b border-slate-100/60 shadow-xs">
+              {/* Bên trái: Icon List + Mock Title */}
+              <div className="flex items-center space-x-2 text-slate-700 min-w-0 flex-1 mr-2">
+                <button 
+                  type="button"
+                  onClick={() => setIsHistoryOpen(prev => !prev)} 
+                  className="p-1.5 text-slate-600 hover:text-slate-900 rounded-lg hover:bg-slate-100 transition cursor-pointer shrink-0"
+                  title="Danh sách hội thoại & Tạo chat mới"
+                  aria-label="Danh sách hội thoại & Tạo chat mới"
+                >
+                  <List className="w-4 h-4" />
+                </button>
+                <span className="text-sm font-semibold text-slate-800 truncate">
+                  {activePlan?.title || 'Trợ lý du lịch AI'}
+                </span>
+              </div>
+
+              {/* Bên phải: 2 icon Mở rộng (Maximize2) và icon Tắt (X) */}
+              <div className="flex items-center space-x-1 shrink-0">
+                <button 
+                  type="button"
+                  onClick={() => setIsExpanded(true)} 
+                  className="p-1.5 text-slate-600 hover:text-slate-900 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+                  title="Mở rộng toàn màn hình"
+                  aria-label="Mở rộng toàn màn hình"
+                >
+                  <Maximize2 className="w-4 h-4" />
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => setIsOpen(false)} 
+                  className="p-1.5 text-slate-600 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition cursor-pointer"
+                  title="Đóng"
+                  aria-label="Đóng"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Sub-sidebar trượt ra hiển thị History Conversation & New Chat trong chế độ Sidebar */}
+            {isHistoryOpen && renderHistoryDrawer()}
+
+
+            {/* Khung chat */}
+            <div className="flex-1 overflow-hidden">
+              {renderChatColumn()}
+            </div>
           </div>
         </div>
       )}
 
-      {/* Floating Chat Trigger Pill & Mascot Button */}
-      <div className="flex flex-col items-end animate-float">
-        {/* Chat Bubble Prompt */}
-        {showBubble && !isOpen && (
-          <div 
-            onClick={() => setIsOpen(true)}
-            className="group relative mb-2.5 bg-white text-slate-800 text-xs font-semibold pl-3.5 pr-7 py-2.5 rounded-2xl shadow-xl border border-slate-100/90 cursor-pointer hover:shadow-2xl transition-all duration-200 hover:-translate-y-0.5 text-left max-w-[210px]"
-          >
-            <div className="leading-snug whitespace-pre-line">
-              <span>{displayedText}</span>
-              {isTyping && (
-                <span className="inline-block w-0.5 h-3 bg-blue-600 ml-0.5 animate-pulse align-middle" />
+      {/* ========================================================================= */}
+      {/* 3. CHẾ ĐỘ TOÀN MÀN HÌNH (Full Width, Full Height - 4 phần Trái / 8 phần Phải) */}
+      {/* ========================================================================= */}
+      {isOpen && isExpanded && (
+        <div className="fixed inset-0 z-50 bg-slate-100 flex flex-col overflow-hidden animate-in fade-in duration-200">
+          {/* Floating Control Buttons: Thu nhỏ về sidebar & Đóng hoàn toàn (Top-Right) */}
+          <div className="absolute top-3.5 right-3.5 z-[1100] flex items-center space-x-1.5 bg-white/90 backdrop-blur-md p-1.5 rounded-2xl shadow-lg border border-slate-200/80">
+            <button 
+              onClick={() => setIsExpanded(false)} 
+              className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition cursor-pointer"
+              title="Thu nhỏ về sidebar"
+              aria-label="Thu nhỏ về sidebar"
+            >
+              <Minimize2 className="w-4 h-4" />
+            </button>
+            <button 
+              onClick={() => {
+                setIsExpanded(false);
+                setIsOpen(false);
+              }} 
+              className="p-2 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition cursor-pointer"
+              title="Đóng"
+              aria-label="Đóng"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Sub-sidebar trượt ra hiển thị History Conversation & New Chat - Overlay toàn bộ 12/12 */}
+          {isHistoryOpen && renderHistoryDrawer()}
+
+          {/* Main Container: Flex layout với hiệu ứng trượt vào/ra (slide in/out) mượt mà */}
+          <div className="flex flex-1 h-full overflow-hidden relative">
+            {/* =================================================================== */}
+            {/* CỘT TRÁI (KHUNG CHAT AI): HIỆU ỨNG TRƯỢT VÀO VÀ TRƯỢT RA (SLIDE IN/OUT) */}
+            {/* =================================================================== */}
+            <div 
+              className={`h-full shrink-0 flex flex-col bg-white border-r border-slate-100/90 shadow-xs transition-all duration-300 ease-in-out overflow-hidden z-20 ${
+                isChatCollapsed 
+                  ? 'w-0 opacity-0 -translate-x-4 pointer-events-none hidden lg:flex' 
+                  : 'w-full lg:w-4/12 opacity-100 translate-x-0 flex'
+              }`}
+            >
+              <div className="w-full min-w-[320px] lg:min-w-[380px] h-full flex flex-col">
+                {/* Top chat bar: Icon List + Mock Title (không border, không khác màu) */}
+                <div className="px-4 pt-3.5 pb-2 bg-white flex items-center justify-between shrink-0">
+                  <div className="flex items-center space-x-2 text-slate-700">
+                    <button 
+                      type="button"
+                      onClick={() => setIsHistoryOpen(prev => !prev)}
+                      className="p-1.5 text-slate-600 hover:text-slate-900 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+                      title="Danh sách hội thoại & Tạo chat mới"
+                      aria-label="Danh sách hội thoại & Tạo chat mới"
+                    >
+                      <List className="w-4 h-4" />
+                    </button>
+                    <span className="text-sm font-semibold text-slate-800 truncate">
+                      {activePlan?.title || 'Trợ lý du lịch AI'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-hidden">
+                  {renderChatColumn()}
+                </div>
+              </div>
+            </div>
+
+            {/* =================================================================== */}
+            {/* CỘT PHẢI: TÁCH 2 PHẦN (LỘ TRÌNH CÓ HEADER & MAP KHÔNG CÓ HEADER)  */}
+            {/* Khi thu nhỏ chat, cột phải mở rộng trọn vẹn toàn bộ không gian    */}
+            {/* =================================================================== */}
+            <div className={`relative ${isChatCollapsed ? 'flex' : 'hidden lg:flex'} flex-1 h-full min-w-0 bg-slate-50/50`}>
+              {/* Nút thu nhỏ / mở rộng nằm ngay tại ranh giới giữa cột 1 và cột 2 */}
+              <button
+                type="button"
+                onClick={() => setIsChatCollapsed(prev => !prev)}
+                className={`hidden lg:flex absolute top-1/2 -translate-y-1/2 z-30 transition-all duration-200 cursor-pointer items-center justify-center ${
+                  isChatCollapsed
+                    ? 'left-0 w-6 h-12 bg-white hover:bg-blue-50 text-slate-500 hover:text-blue-600 border border-l-0 border-slate-300/80 rounded-r-xl shadow-md hover:w-7'
+                    : '-left-3.5 w-7 h-7 bg-white hover:bg-slate-50 text-slate-500 hover:text-blue-600 border border-slate-200 rounded-full shadow-md hover:scale-110'
+                }`}
+                title={isChatCollapsed ? "Mở rộng Khung Chat AI Assistant" : "Thu nhỏ Khung Chat AI Assistant"}
+                aria-label={isChatCollapsed ? "Mở rộng Khung Chat AI Assistant" : "Thu nhỏ Khung Chat AI Assistant"}
+              >
+                {isChatCollapsed ? (
+                  <ChevronRight className="w-4 h-4" />
+                ) : (
+                  <ChevronLeft className="w-4 h-4" />
+                )}
+              </button>
+              {activePlan ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 w-full h-full overflow-hidden divide-x divide-slate-100">
+                  {/* PHẦN Ở GIỮA: DANH SÁCH LỘ TRÌNH (CÓ HEADER) */}
+                  <div className="flex flex-col h-full bg-white overflow-hidden">
+                    {/* Header của phần ở giữa */}
+                    <div className="p-4 bg-white border-b border-slate-100 space-y-3 shrink-0 shadow-2xs">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div>
+                          <h2 className="text-base font-bold text-slate-900 tracking-tight">
+                            {activePlan.title}
+                          </h2>
+                          <div className="flex items-center gap-3 text-sm text-slate-500 mt-1">
+                            <span className="flex items-center gap-1.5">
+                              <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                              {activePlan.intent.destination}
+                            </span>
+                            <span className="flex items-center gap-1.5">
+                              <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                              {activePlan.intent.days} ngày
+                            </span>
+                            <span className="flex items-center gap-1.5">
+                              <Users className="w-3.5 h-3.5 text-slate-400" />
+                              {activePlan.intent.party === 'family_with_kids' ? 'Gia đình' : 'Cặp đôi'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Day Tabs Selector */}
+                      <div className="flex items-center gap-1.5 bg-slate-100/80 p-1 rounded-xl overflow-x-auto no-scrollbar">
+                        <button
+                          onClick={() => setActiveDayTab(0)}
+                          className={`px-3.5 py-1.5 rounded-lg text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
+                            activeDayTab === 0
+                              ? 'bg-blue-600 text-white shadow-xs'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          Tất cả
+                        </button>
+                        {activePlan.days.map((d) => (
+                          <button
+                            key={d.day}
+                            onClick={() => setActiveDayTab(d.day)}
+                            className={`px-3.5 py-1.5 rounded-lg text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
+                              activeDayTab === d.day
+                                ? 'bg-blue-600 text-white shadow-xs'
+                                : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                          >
+                            Ngày {d.day}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Nội dung danh sách chi tiết lộ trình cuộn - Nền trắng đồng bộ */}
+                    <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-white">
+                      {/* Render Days (Tất cả các ngày hoặc ngày đang chọn) */}
+                      {activePlan.days
+                        .filter((d) => activeDayTab === 0 || d.day === activeDayTab)
+                        .map((dayItem) => {
+                          const dayIndex = activePlan.days.findIndex((day) => day.day === dayItem.day);
+                          const dayStartOrder = activePlan.days
+                            .slice(0, dayIndex)
+                            .reduce((total, day) => total + day.slots.length, 0);
+                          const stayForThisDay = activePlan.stays && activePlan.stays.length >= 2
+                            ? (dayItem.day <= Math.ceil(activePlan.days.length / 2) ? activePlan.stays[0] : activePlan.stays[1])
+                            : activePlan.stay;
+                          const stayHotelName = stayForThisDay?.product?.name || 'Khách sạn lưu trú';
+                          const hotelVisuals = stayForThisDay?.product ? getHotelVisuals(stayForThisDay.product, activePlan.intent.destination) : null;
+
+                          return (
+                            <div key={dayItem.day} className="space-y-4 pt-1">
+                              {/* Day Header Badge */}
+                              <div className="flex items-center pt-1">
+                                <span className="px-3.5 py-1.5 rounded-xl bg-blue-600 text-white text-sm font-bold shadow-xs">
+                                  Ngày {dayItem.day}
+                                </span>
+                              </div>
+
+                              {/* Vertical Timeline Track */}
+                              <div className="relative pl-6 sm:pl-7 border-l-2 border-dashed border-blue-200 ml-3.5 sm:ml-4 space-y-4 my-2">
+                                {/* Khách sạn lưu trú được tích hợp trực tiếp vào lộ trình ngày - Visual to rõ, ít nhất 2 ảnh */}
+                                {stayForThisDay?.product && hotelVisuals && (
+                                  <div className="relative group">
+                                    {/* Timeline Step Node với Icon Khách Sạn */}
+                                    <div className="absolute -left-[31px] sm:-left-[35px] top-3.5 w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-indigo-600 text-white border-2 border-white shadow-xs flex items-center justify-center z-10">
+                                      <Hotel className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                                    </div>
+
+                                    {/* Hotel Card trong Lộ trình - Layout ưu tiên VISUAL TO RÕ (Ít nhất 2 ảnh: Biệt Thự & Hồ Bơi) */}
+                                    <div 
+                                      onClick={() => {
+                                        if (stayForThisDay.product) {
+                                          window.open(`/product/${stayForThisDay.product.id}`, '_blank', 'noopener,noreferrer');
+                                        }
+                                      }}
+                                      onMouseEnter={() => {
+                                        if (stayForThisDay.product?.coordinates) {
+                                          setHoveredCoordinate(stayForThisDay.product.coordinates);
+                                          setHoveredPointId('stay-' + (stayForThisDay.productId || 'default'));
+                                        }
+                                      }}
+                                      onMouseLeave={() => {
+                                        setHoveredCoordinate(null);
+                                        setHoveredPointId(null);
+                                      }}
+                                      className="p-3.5 sm:p-4 rounded-2xl bg-white border border-slate-100 cursor-pointer space-y-3"
+                                    >
+                                      {/* Row 1: Header / Giá phòng */}
+                                      <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-100">
+                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 text-xs font-bold">
+                                          <Hotel className="w-3.5 h-3.5 text-indigo-600" />
+                                          Khách sạn lưu trú {'dayRange' in stayForThisDay && stayForThisDay.dayRange ? `(${stayForThisDay.dayRange})` : ''}
+                                        </span>
+                                        <span className="text-sm font-black text-indigo-950 font-mono">
+                                          {stayForThisDay.product.unitPrice.toLocaleString('vi-VN')} ₫/đêm
+                                        </span>
+                                      </div>
+
+                                      {/* Row 2: Tên khách sạn & Icon link */}
+                                      <div className="flex items-start justify-between gap-2">
+                                        <h4 className="text-[15px] sm:text-base font-bold text-slate-900 leading-snug">
+                                          {stayHotelName}
+                                        </h4>
+                                        <div className="p-1 text-slate-400 shrink-0">
+                                          <ExternalLink className="w-4 h-4" />
+                                        </div>
+                                      </div>
+
+                                      {/* Row 3: Hot Feature Tags trực quan: Điểm đến, Biệt Thự, Hồ Bơi, View Biển... */}
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        {hotelVisuals.tags.map((tag, tIdx) => (
+                                          <span 
+                                            key={tIdx} 
+                                            className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-slate-50 border border-slate-200/80 text-xs font-semibold text-slate-700"
+                                          >
+                                            <span>{tag.icon}</span>
+                                            <span>{tag.label}</span>
+                                          </span>
+                                        ))}
+                                      </div>
+
+                                      {/* Row 4: KHÔNG GIAN HÌNH ẢNH TO RÕ (LƯỚI 2 ẢNH: BIỆT THỰ + HỒ BƠI/VIEW BIỂN) - KHÓA TỶ LỆ KHUNG HÌNH CHUẨN */}
+                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                                        {hotelVisuals.images.map((img, iIdx) => (
+                                          <div 
+                                            key={iIdx} 
+                                            className="relative aspect-[4/3] sm:aspect-[16/10] w-full rounded-xl overflow-hidden bg-slate-100 shadow-2xs"
+                                          >
+                                            <img 
+                                              src={img.url} 
+                                              alt={stayHotelName} 
+                                              className="w-full h-full object-cover"
+                                            />
+                                          </div>
+                                        ))}
+                                      </div>
+
+                                      {/* Row 5: Ghi chú súc tích */}
+                                      <p className="text-xs sm:text-sm text-slate-600 leading-relaxed pt-0.5">
+                                        {stayForThisDay.note || 'Khách sạn lưu trú tiêu chuẩn cao cấp, điểm xuất phát và nghỉ ngơi thuận tiện cho cả ngày.'}
+                                      </p>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Các chặng hoạt động trong ngày - ƯU TIÊN VISUAL TO RÕ */}
+                                {dayItem.slots.map((slot, sIdx) => {
+                                  const stepNumber = dayStartOrder + sIdx + 1;
+                                  const formattedTimeRange = slot.timeRange || (
+                                    slot.time === 'morning' ? '08:30 - 11:30' :
+                                    slot.time === 'noon' ? '11:45 - 13:30' :
+                                    slot.time === 'afternoon' ? '14:30 - 17:30' : '18:00 - 21:00'
+                                  );
+
+                                  const stopTitle = slot.activityTitle || (slot.product ? slot.product.name : 'Hoạt động trải nghiệm');
+                                  const locationTitle = slot.locationName || (slot.product ? slot.product.name : slot.address ? slot.address.split(',')[0] : 'Khu vực trung tâm');
+                                  const slotImgUrl = getSlotVisualUrl(slot, activePlan.intent.destination);
+
+                                  return (
+                                    <div key={sIdx} className="relative">
+                                      {/* Timeline Step Node */}
+                                      <div className="absolute -left-[31px] sm:-left-[35px] top-3.5 w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-blue-600 text-white border-2 border-white shadow-xs flex items-center justify-center text-[11px] sm:text-xs font-black z-10">
+                                        {stepNumber}
+                                      </div>
+
+                                      {/* Stop Card - Layout ưu tiên VISUAL TO RÕ - KHÔNG HOVER ANIMATIONS */}
+                                      <div 
+                                        onClick={() => {
+                                          if (slot.product) {
+                                            window.open(`/product/${slot.product.id}`, '_blank', 'noopener,noreferrer');
+                                          }
+                                        }}
+                                        onMouseEnter={() => {
+                                          const coord = slot.coordinates || slot.product?.coordinates;
+                                          if (coord) {
+                                            setHoveredCoordinate(coord);
+                                            setHoveredPointId(`day-${dayItem.day}-slot-${slot.time}-${stepNumber}`);
+                                          }
+                                        }}
+                                        onMouseLeave={() => {
+                                          setHoveredCoordinate(null);
+                                          setHoveredPointId(null);
+                                        }}
+                                        className={`p-3.5 sm:p-4 rounded-2xl bg-white border border-slate-100 space-y-3 ${slot.product ? 'cursor-pointer' : ''}`}
+                                      >
+                                        {/* Row 1: Khung giờ + Phân loại dịch vụ + Địa điểm */}
+                                        <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-100 flex-wrap">
+                                          <div className="flex items-center gap-1.5 flex-wrap">
+                                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-blue-50 text-blue-700 text-xs font-black font-mono tracking-wide">
+                                              <Clock className="w-3.5 h-3.5 text-blue-600" />
+                                              {formattedTimeRange}
+                                            </span>
+                                            {slot.product && (
+                                              <span className="px-2.5 py-0.5 rounded-lg bg-slate-100 text-slate-700 text-xs font-semibold">
+                                                {slot.product.taxonomy === 'attraction' ? '🎡 Vé vui chơi giải trí' :
+                                                 slot.product.taxonomy === 'combo' ? '✨ Combo & Show' : '🛎️ Dịch vụ nghỉ dưỡng'}
+                                              </span>
+                                            )}
+                                          </div>
+                                          <span className="text-xs text-slate-500 font-medium truncate max-w-[55%] flex items-center gap-1 justify-end">
+                                            <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+                                            <span className="truncate">{locationTitle}</span>
+                                          </span>
+                                        </div>
+
+                                        {/* Row 2: Tên chặng hoạt động & Giá vé */}
+                                        <div className="flex items-start justify-between gap-2">
+                                          <h4 className="text-[15px] sm:text-base font-bold text-slate-900 leading-snug">
+                                            {stopTitle}
+                                          </h4>
+                                          <div className="flex items-center gap-2 shrink-0">
+                                            {slot.product && (
+                                              <span className="text-sm font-black font-mono text-indigo-950">
+                                                {slot.product.unitPrice.toLocaleString('vi-VN')} ₫
+                                              </span>
+                                            )}
+                                            {slot.product && (
+                                              <div className="p-1 text-slate-400">
+                                                <ExternalLink className="w-4 h-4" />
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+
+                                        {/* Row 3: KHÔNG GIAN ẢNH TO RÕ CỦA CHẶNG HOẠT ĐỘNG - TỶ LỆ CHUẨN 16:9 KHÔNG KÉO DÃN KHI CO DÃN CỘT */}
+                                        <div className="relative aspect-[16/9] w-full rounded-xl overflow-hidden shadow-2xs bg-slate-100">
+                                          <img 
+                                            src={slotImgUrl} 
+                                            alt={stopTitle} 
+                                            className="w-full h-full object-cover"
+                                          />
+                                        </div>
+
+                                        {/* Row 4: Ghi chú súc tích */}
+                                        <p className="text-xs sm:text-sm text-slate-600 leading-relaxed pt-0.5">
+                                          {slot.note}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+
+                    {/* Footer của phần lịch trình: Tổng tiền & Nút Thanh Toán */}
+                    <div className="p-4 bg-white border-t border-slate-100 flex items-center justify-between gap-4 shrink-0 shadow-xs">
+                      <div>
+                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
+                          Tổng tiền
+                        </span>
+                        <span className="text-lg font-black text-blue-900 font-mono">
+                          {new Intl.NumberFormat('vi-VN').format(activePlan.totalEstimatedPrice)} ₫
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleToggleSavePlan}
+                          className={`p-2.5 rounded-xl border transition cursor-pointer flex items-center justify-center shrink-0 ${
+                            isSavedPlan 
+                              ? 'bg-amber-50 border-amber-300 text-amber-600 hover:bg-amber-100' 
+                              : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 shadow-2xs'
+                          }`}
+                          title={isSavedPlan ? "Đã lưu hành trình" : "Lưu hành trình"}
+                          aria-label="Lưu hành trình"
+                        >
+                          <Bookmark className={`w-4 h-4 ${isSavedPlan ? 'fill-amber-500 text-amber-500' : ''}`} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleCheckoutPlan}
+                          className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-sm font-bold rounded-xl shadow-xs transition flex items-center gap-2 cursor-pointer"
+                        >
+                          <span>Thanh toán</span>
+                          <ArrowRight className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* PHẦN MAP BÊN PHẢI (KHÔNG CÓ HEADER - FULL HEIGHT) */}
+                  <div className="h-full relative overflow-hidden bg-slate-100 flex flex-col">
+                    <ItineraryMap 
+                      plan={activePlan}
+                      activeDay={activeDayTab}
+                      onSelectDay={setActiveDayTab}
+                      onAddToCart={(p) => addToCart(p, 2)}
+                      focusedCoordinate={hoveredCoordinate}
+                      focusedPointId={hoveredPointId}
+                      className="w-full h-full flex-1"
+                    />
+                  </div>
+                </div>
+              ) : (
+                /* Empty state when plan has not been generated yet */
+                <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-slate-50">
+                  <div className="w-20 h-20 mb-4 rounded-3xl bg-blue-100/60 text-blue-600 flex items-center justify-center shadow-inner">
+                    <Compass className="w-10 h-10 animate-pulse" />
+                  </div>
+                  <h3 className="text-xl font-bold text-slate-900 mb-2">
+                    Lộ trình du lịch thông minh & Bản đồ tương tác
+                  </h3>
+                  <p className="text-base text-slate-600 max-w-md mb-6 leading-relaxed">
+                    Hãy nhắn cho AI ở cột bên trái (Ví dụ: &ldquo;Lên lịch trình 3 ngày ở Nha Trang&rdquo; hoặc chọn gợi ý sẵn), 
+                    lộ trình chi tiết theo ngày và bản đồ vị trí sẽ tự động xuất hiện song song tại đây!
+                  </p>
+                  <div className="flex flex-wrap gap-2.5 justify-center">
+                    <button
+                      onClick={() => handleQuickPrompt('Lịch trình Nha Trang 3 ngày lưu trú 2 khách sạn')}
+                      className="px-4 py-2.5 bg-white hover:bg-blue-50 text-blue-700 text-sm font-semibold rounded-xl border border-slate-200 shadow-2xs transition cursor-pointer"
+                    >
+                      🏨 Lịch trình 3 ngày (2 khách sạn)
+                    </button>
+                    <button
+                      onClick={() => handleQuickPrompt('Lên lịch trình 3 ngày Nha Trang biệt thự hồ bơi')}
+                      className="px-4 py-2.5 bg-white hover:bg-blue-50 text-blue-700 text-sm font-semibold rounded-xl border border-slate-200 shadow-2xs transition cursor-pointer"
+                    >
+                      🏖️ Lịch trình Nha Trang (Biệt thự & Hồ bơi)
+                    </button>
+                    <button
+                      onClick={() => handleQuickPrompt('Lịch trình Phú Quốc 3N2Đ')}
+                      className="px-4 py-2.5 bg-white hover:bg-blue-50 text-blue-700 text-sm font-semibold rounded-xl border border-slate-200 shadow-2xs transition cursor-pointer"
+                    >
+                      🌴 Lịch trình Phú Quốc 3N2Đ
+                    </button>
+                    <button
+                      onClick={() => handleQuickPrompt('Lịch trình Đà Nẵng 2 ngày')}
+                      className="px-4 py-2.5 bg-white hover:bg-blue-50 text-blue-700 text-sm font-semibold rounded-xl border border-slate-200 shadow-2xs transition cursor-pointer"
+                    >
+                      🌉 Lịch trình Đà Nẵng 2 ngày
+                    </button>
+                    <button
+                      onClick={() => handleQuickPrompt('Lịch trình Đà Lạt 7 ngày')}
+                      className="px-4 py-2.5 bg-white hover:bg-blue-50 text-blue-700 text-sm font-semibold rounded-xl border border-slate-200 shadow-2xs transition cursor-pointer"
+                    >
+                      🌲 Lịch trình Đà Lạt 7 ngày
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
-            <button 
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowBubble(false);
-              }} 
-              className="absolute top-2 right-2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full hover:bg-slate-100 cursor-pointer" 
-              title="Đóng"
-            >
-              <X className="w-3 h-3" />
-            </button>
-
-            {/* Speech bubble tail pointer pointing down to mascot */}
-            <div className="absolute -bottom-1.5 right-8 sm:right-10 w-3 h-3 bg-white border-r border-b border-slate-100/90 transform rotate-45 pointer-events-none" />
           </div>
-        )}
-
-        {/* Mascot Avatar Button */}
-        <button 
-          onClick={() => setIsOpen(!isOpen)} 
-          className="relative transition-transform hover:scale-105 active:scale-95 cursor-pointer focus:outline-none"
-          aria-label="Mở trợ lý du lịch AI"
-        >
-          <img 
-            src="/mascot_welcome.png" 
-            alt="Mascot V-OTA" 
-            className="w-20 h-20 sm:w-24 sm:h-24 object-contain select-none drop-shadow-xl" 
-          />
-          <span className="absolute bottom-1 right-2 w-3.5 h-3.5 bg-emerald-500 border-2 border-white rounded-full shadow-xs"></span>
-        </button>
-      </div>
-    </div>
+        </div>
+      )}
+    </>
   );
 };
