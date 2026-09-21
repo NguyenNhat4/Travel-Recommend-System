@@ -1,0 +1,8 @@
+# Ảnh chụp catalog được xác thực bằng sha256 ghi trong manifest.json (seed/snapshot.py).
+# Git tuyệt đối không được đổi LF -> CRLF ở đây: trên Windows `core.autocrlf=true` sẽ làm
+# checksum lệch và `make demo-db` dừng ngay ở bước materialize_snapshot với
+# "snapshot combo manual mapping checksum mismatch".
+src/data_collection/snapshots/** -text
+
+# DDL và script verify chạy qua `docker compose exec psql` trong container Linux.
+db/**/*.sql text eol=lf

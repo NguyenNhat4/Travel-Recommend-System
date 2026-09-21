@@ -23,9 +23,11 @@ Trước khi viết hoặc sửa code cho **feature mới, endpoint mới, modul
 | Frontend (`src/frontend`) | `src/frontend/README.md`, `docs/spec/hop-dong-tich-hop-frontend.md`, `docs/spec/ux-research-brief.md` |
 | Itinerary Agent (`src/backend/app/agents`, use case itinerary) | `docs/spec/hop-dong-tich-hop-itinerary-assistant.md`, `docs/agent/README.md` và các file nó liên kết, `src/shared/mocks/itinerary-agent/README.md` |
 | Search / Recommendation | `docs/spec/hop-dong-tich-hop-backend.md` (mục Search, Recommendation), `docs/spec/recsys-internship-handbook-v3-vi.md` |
-| CDP clone, `CdpClient`, ghi hành vi người dùng | `docs/spec/hop-dong-tich-hop-cdp.md`, `src/cdp_clone/README.md`, `src/shared/contracts/cdp-clone.openapi.yaml` |
+| CDP clone, `CdpClient`, ghi hành vi người dùng | mục 6 bên dưới, `docs/spec/hop-dong-tich-hop-cdp.md`, `src/cdp_clone/README.md`, `src/shared/contracts/cdp-clone.openapi.yaml` |
 | Mock / fixture (`src/shared/mocks`) | `src/shared/README.md`, `src/shared/mocks/index.json`, schema response tương ứng |
 | Data collection (`src/data_collection`) | `src/data_collection/README.md`, `src/data_collection/docs/SCHEMA.md` |
+| Database: schema, DDL, loader, seed, `db/` | mục 6 bên dưới, `docs/DATABASE_SCHEMA.md`, `docs/PRODUCT_SCHEMA.md`, `db/vota_schema.sql`, `db/insider_schema.sql` |
+| Mock data tuần 1 (`src/data_collection/seed`) | mục 6 bên dưới, `docs/MOCK_DATA_SPEC.md`, `src/data_collection/docs/SCHEMA.md`, `db/verify.sql`, `db/verify_insider.sql` |
 | Evaluation (`src/evaluation`) | `src/evaluation/README.md`, `docs/spec/recsys-internship-handbook-v3-vi.md` |
 | Insider clone (`src/insider_clone`) | `src/insider_clone/README.md`, `docs/spec/recsys-internship-handbook-v3-vi.md` (phần Insider) |
 | Tính năng sản phẩm / luồng người dùng mới | `docs/product.md` |
@@ -73,7 +75,7 @@ Không tự chọn phương án cho các mục đang "chờ xác nhận" trong b
 
 ## 5. Bắt buộc ghi lịch sử thay đổi
 
-Mọi thay đổi (thêm, sửa, xóa, đổi tên file) trong `src/` hoặc `docs/` PHẢI có một entry trong `history/`, kể cả sửa nhỏ, refactor, fix bug hay chỉ sửa tài liệu.
+Mọi thay đổi (thêm, sửa, xóa, đổi tên file) trong `src/`, `docs/` hoặc `db/` PHẢI có một entry trong `history/`, kể cả sửa nhỏ, refactor, fix bug hay chỉ sửa tài liệu.
 
 - Đọc `history/README.md` và làm đúng định dạng, tên file, mẫu tại đó.
 - Mỗi task một file mới `history/YYYY-MM-DD-<slug>.md`; không gộp vào entry của người khác.
@@ -83,3 +85,55 @@ Mọi thay đổi (thêm, sửa, xóa, đổi tên file) trong `src/` hoặc `do
 - Không sửa nội dung entry cũ; quyết định mới thay thế quyết định cũ thì tạo entry mới theo `history/README.md`.
 
 Thiếu entry lịch sử thì thay đổi được coi là **chưa hoàn thành**.
+
+## 6. Database — quy tắc cho mọi thay đổi (đọc trước khi chạm vào schema, loader, CdpClient)
+
+Nguồn sự thật: `docs/DATABASE_SCHEMA.md` (toàn hệ thống + DDL), `docs/PRODUCT_SCHEMA.md` (catalog sản phẩm), `docs/MOCK_DATA_SPEC.md` (cách tạo bảng + mock data tuần 1).
+DDL chạy được: `db/vota_schema.sql`, `db/insider_schema.sql`; bản initdb cho docker-compose ở `db/init/`.
+Sửa schema = sửa file .sql **và** cập nhật doc tương ứng trong cùng commit.
+
+### 6.1. Ranh giới
+
+- Database `vota`, ba schema: `cdp` (mirror CDP thật) · `catalog` (dựng lại được từ `cdp.products`) · `app` (trạng thái BE/FE/agent).
+- Database `insider` riêng — chỉ service Insider clone (`src/insider_clone`) chạm vào; V-OTA đi qua HTTP (`InsiderClient`).
+- `cdp.*` chỉ được đọc/ghi qua port `CdpClient` (`application/ports/cdp_client.py`). Adapter hiện tại `LocalCdpClient` (`infrastructure/cdp/`) dùng connection **riêng** `CDP_DATABASE_URL` (role `cdp_writer`, không có USAGE trên `catalog`/`app`); adapter sau `HttpCdpClient` gọi CDP thật. Code ngoài adapter không được `import` gì từ `cdp` — không SQL, không JOIN sang `cdp.events`/`cdp.profiles`. Role `vota_app` (`DATABASE_URL`) chỉ SELECT được `cdp.products` để `catalog.*` dựng từ nó.
+- **Ngoại lệ duy nhất:** loader/seed (`src/data_collection/seed`) ghi thẳng SQL vào `cdp.*` bằng `SEED_DATABASE_URL` (superuser). Đây là job nạp dữ liệu, không phải code app; khi lên CDP thật nó được thay bằng job sync qua `CdpClient`.
+- Insider: port `InsiderClient` + adapter `HttpInsiderClient` (httpx → `INSIDER_BASE_URL`, header `X-PARTNER-NAME`/`X-REQUEST-TOKEN`). Backend không có connection nào tới database `insider`.
+- Không tạo service HTTP cho CDP clone ở tuần 1 — handbook §6: CDP clone là database, Insider clone mới là service. Code FastAPI trong `src/cdp_clone/` là của tuần trước, **tạm gác**, giữ lại làm nền cho `HttpCdpClient` (xem `src/cdp_clone/README.md`); tuần 1 không chạy nó.
+- `cdp.products` giữ **đúng 13 trường** handbook §6. Không thêm cột; mọi thuộc tính theo loại vào `attributes` JSONB (khoá theo `SCHEMA.md`).
+- Không FK từ `app` tới `cdp.events.event_id` (id nội bộ của clone). Đơn nối sang event bằng `event_group_id` + `product_id` + `using_date`.
+- Không có bảng nhật ký job; job ghi kết quả ra file/report.
+
+### 6.2. Quy tắc dữ liệu
+
+- `available_from/to` = cửa sổ đặt chỗ 30 ngày từ `as_of` (ngày nạp), cắt với khoảng của nguồn; chuyến bay `from = to = ngày bay`. Loader nhận `--as-of`; mọi thứ có ngày (cửa sổ, `attributes.availability`, event seed, chuyến của persona) sinh tương đối theo `as_of`. Chạy lại loader trước demo.
+- Lịch kín/trống ở `attributes.availability {from, days, calendar "1/0"}` — đọc-only, không có bảng tồn kho.
+- Vai trò sản phẩm chỉ định nghĩa ở view `catalog.product_meta`: `variant`, `is_bookable` (property/route/điểm công cộng = false), `is_search_unit` (room/flight = false), `is_recommendable`. Chỉ đặt ở cấp `hotel_room`; property không có phòng con chỉ hiển thị.
+- Combo: một dòng `cdp.products`; thành phần ở `catalog.combo_items`, parse từ `description` (job `parse_combos`, ghi `source`/`confidence`/`evidence`). `attributes.priceBasis` mặc định `per_package`, `per_person` khi text nói giá theo khách.
+- Booking: CDP không có bảng booking. Checkout: `CdpClient.record_purchase(events, event_group_id)` trước → commit `app.bookings` + `booking_items` (transaction của `DATABASE_URL`) → commit lỗi thì `CdpClient.cancel_purchase(event_group_id)` bù trừ. Không gói hai connection vào một transaction.
+- `product_vectors`: chỉ `is_search_unit = true`; `vector(768)` là placeholder tới khi chốt model tuần 2.
+
+### 6.3. Môi trường database
+
+- Dev: mỗi người một Postgres local qua `make demo-db` (hoặc compose + seed thủ công) → ai cũng dùng snapshot catalog có checksum và không ai giẫm lên ai. Không dùng chung một DB để dev; `make demo-db-reset` chỉ dùng khi chủ động xoá state demo local.
+- Một Postgres cloud (có pgvector) làm **staging** chung: FE/agent/demo trỏ vào; chỉ job seed (CI hoặc một người) được `--reset` nó; tạo schema bằng `psql -f db/init/*.sql` vì cloud không chạy initdb.
+
+### 6.4. Còn chờ chốt
+
+- Tên cột opt-in trong `cdp.profiles` (chờ reviewer CDP) · D và model vector (tuần 2) · mọi route có ≥ 1 chuyến? (Data kiểm tra trên `products.jsonl`).
+
+### 6.5. Nhiệm vụ tuần 1 — tạo bảng và mock data (spec đầy đủ: `docs/MOCK_DATA_SPEC.md`)
+
+Thứ tự, mỗi bước là một module trong `src/data_collection/seed/`, chạy chung từ `src/` qua `python -m data_collection.seed --as-of YYYY-MM-DD --seed 42 [--reset]`:
+1. Tạo bảng: `docker compose up -d --wait postgres` chạy `db/init/*.sql` (vota + insider). Không tạo bảng bằng ORM/migration khác.
+2. Ưu tiên `data/products.jsonl` khi Data đang phát triển local; bản clone sạch tự dùng snapshot nén có version trong `src/data_collection/snapshots/`. Snapshot được kiểm checksum, bung vào `data/` ignored và kèm mapping combo đã duyệt. Chỉ sinh `products.synthetic.jsonl` khi cả runtime catalog lẫn snapshot đều không có.
+3. `load_products.py` — `products.jsonl` → `cdp.products`; cửa sổ 30 ngày theo `as_of`, `attributes.availability`, combo attrs.
+4. `parse_combos.py` — description → `catalog.combo_items` (source/confidence/evidence).
+5. `seed_histories.py` — 2.000 `cdp.profiles`, ~7.000 `cdp.events` theo chuyến, power-law, cạnh lộn xộn; profiles suy từ event.
+6. `seed_app.py` — 4 persona + 50 user test; `app.bookings` chỉ cho P1.
+7. `seed_insider.py` — database `insider`: partners, profiles, identifiers, events (TTL), channel_events.
+8. `db/verify.sql` và `db/verify_insider.sql` phải toàn PASS, chạy bằng `SEED_DATABASE_URL` (superuser — `DATABASE_URL` không đọc được `cdp.events`/`profiles`). Kết quả tóm tắt ghi vào khối `<!-- seed-report:start -->`…`<!-- seed-report:end -->` trong `src/data_collection/README.md`, không ghi DB.
+
+Với catalog tổng hợp (`products.synthetic.jsonl`, khoảng 400–450 dòng), hai dòng của `db/verify.sql` FAIL theo thiết kế: `products = 10320` và `is_recommendable properties >= 300` — ngưỡng của snapshot catalog thật hiện hành. Không sửa `db/*.sql` để lách; report ghi rõ hai dòng này là FAIL dự kiến. Có `src/data_collection/data/products.jsonl` thật thì cả hai tự PASS.
+
+Mọi tỷ lệ/phân bố nằm trong `seed/config.py`. Thiếu thông tin thì hỏi, không tự thêm cột hay bảng.

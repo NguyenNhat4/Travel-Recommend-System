@@ -11,6 +11,8 @@
 **Ngày:** `2026-09-16`  
 **Múi giờ:** lưu và trả UTC
 
+> **Cập nhật 20/09/2026 — đọc trước.** Tuần 1 CDP clone **không chạy như service HTTP**: nó là schema `cdp` trong database `vota`, Backend vào qua `CdpClient` với adapter `LocalCdpClient` và connection riêng `CDP_DATABASE_URL` (handbook §6, `AGENTS.md` §6, `docs/DATABASE_SCHEMA.md`). Vì vậy §3 (bề mặt API), §8 (`X-Service-Token`) và §9.2 (thứ tự khởi động) **chưa áp dụng ở tuần 1** — chúng là hợp đồng cho `HttpCdpClient` khi lên CDP thật hoặc khi tuần 3–4 cần test adapter HTTP. Mọi phần còn lại (§1.1–§1.4, §2, §4 quy tắc ghi nền, §5 bù trừ `purchase`, §6 đọc lịch sử, §10, §12) vẫn nguyên giá trị vì chúng nói về *hành vi*, không phải *giao thức*. Xem §13.
+>
 > Tài liệu này chốt cách hành vi người dùng đi từ Web tới CDP clone và cách Backend đọc lại để gợi ý. Luồng đã chốt là **Web → Backend → CDP**: Web không bao giờ gọi CDP clone.
 >
 > Bản máy đọc được: `src/shared/contracts/cdp-clone.openapi.yaml` (CDP clone) và `src/shared/contracts/openapi.yaml` (endpoint Backend liên quan). Khi tài liệu này và OpenAPI mâu thuẫn, **OpenAPI thắng** và tài liệu phải được sửa.
@@ -50,7 +52,7 @@
 
 ### 1.5. Team Data chịu trách nhiệm
 
-- Seed event lịch sử và profile qua API CDP clone bằng service token, không ghi thẳng vào database.
+- ~~Seed event lịch sử và profile qua API CDP clone bằng service token, không ghi thẳng vào database.~~ **Đổi 20/09:** tuần 1 CDP clone là database, nên `src/data_collection/seed` ghi thẳng SQL vào `cdp.*` bằng `SEED_DATABASE_URL` (superuser). Đây là job nạp dữ liệu, không phải code app; khi lên CDP thật nó thành job sync gọi `CdpClient`. Quy tắc "code app chỉ đi qua `CdpClient`" ở §1.2 không đổi.
 - Bảo đảm `cdpUserId` của 4 tài khoản demo (`docs/product.md` §2) khớp giữa bảng `users` của Backend và dữ liệu seed trong CDP clone.
 
 ### 1.6. Ngoài phạm vi
@@ -304,7 +306,7 @@ Cần người hiểu CDP V-OTA rà soát (handbook §17 câu 3). Đến khi có
 | Khóa chống trùng | `eventId` do caller sinh |
 | Tên trường opt-in | `emailOptin`, `smsOptin`, `pushOptin`, `gdprOptin` |
 | Giá trị `lifecycleStage` | `new`, `active`, `dormant`, `churned` |
-| Nơi lưu `products`, `users`, `bookings`, `product_vectors` | PostgreSQL của Backend |
+| ~~Nơi lưu `products`, `users`, `bookings`, `product_vectors`~~ — **đã chốt 20/09** | `products` ở `cdp.products`; `users`, `bookings` ở `app.*`; `product_vectors` ở `catalog.*` — cùng database `vota`, tách bằng schema + role |
 | Hợp đồng Agent ghi rõ "không gửi JWT khi gọi `/search`" | Hiện đúng theo ví dụ §2.1; cần buổi thống nhất để ghi thành quy tắc (`hop-dong-tich-hop-backend.md` §9) |
 
 ---
@@ -331,3 +333,5 @@ Cần người hiểu CDP V-OTA rà soát (handbook §17 câu 3). Đến khi có
 | 2026-09-16 | CDP clone là service riêng, PostgreSQL riêng | Mô phỏng ranh giới production; CDP thật là hệ thống ngoài |
 | 2026-09-16 | Bỏ phương án Web gọi thẳng CDP bằng JWT, chuyển sang Web → Backend → CDP | Tránh Web phụ thuộc API tạm của CDP; `add_to_cart` khớp giỏ; `taxonomy`/giá lấy từ catalog; không chia sẻ JWT secret; không mở CDP ra trình duyệt |
 | 2026-09-16 | `purchase` ghi đồng bộ trước commit, bù trừ bằng huỷ event | Giữ K1 (event có ngay) và không để booking thiếu event; outbox bị loại vì làm event đến trễ |
+| 2026-09-20 | **Thay quyết định 16/09 ở dòng đầu bảng này:** tuần 1 CDP clone là **schema `cdp` trong database `vota`**, không phải service HTTP có PostgreSQL riêng. Backend vẫn chỉ đi qua port `CdpClient`; adapter là `LocalCdpClient` với connection + role riêng (`CDP_DATABASE_URL`, `cdp_writer`) | Handbook §6 "one implementation now, reading locally". Tách database sẽ mất FK và view của `catalog`/`app` sang `cdp.products`, mà `catalog` vẫn phải là bảng local để search p95 < 300 ms. Ranh giới production được mô phỏng bằng role + connection riêng và bằng việc mọi truy cập đi qua port — đổi sang `HttpCdpClient` là thay adapter, không sửa use case. Chi tiết: `history/2026-09-20-database-mock-data-tuan-1.md` |
+| 2026-09-20 | Seed ghi thẳng SQL vào `cdp.*` (§1.5) | CDP clone là database ở tuần 1; seed là loader, không phải code app |

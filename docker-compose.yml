@@ -1,0 +1,27 @@
+# Hạ tầng dev của repo. Chạy từ gốc: docker compose up -d --wait postgres
+#
+# Một instance Postgres 16 + pgvector, hai database:
+#   vota    — schema cdp · catalog · app (db/init/01_vota.sql)
+#   insider — storage của Insider clone   (db/init/00_create_insider.sql, 02_insider.sql)
+#
+# db/init/*.sql chỉ chạy khi volume pgdata còn trống. Tạo lại từ đầu: docker compose down -v && docker compose up -d --wait postgres
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: vota
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports: ["5432:5432"]
+    volumes:
+      # 00 tạo db insider · 01 schema vota + role · 02 schema insider · 03 login role cho dev
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d vota"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+volumes:
+  pgdata:

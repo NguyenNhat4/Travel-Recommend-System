@@ -29,10 +29,13 @@ class Settings(BaseSettings):
     itinerary_request_timeout_seconds: float = Field(default=5.0, gt=0)
     itinerary_conversation_ttl_seconds: int = Field(default=86_400, ge=60)
 
-    database_url: str = "sqlite:///./data/app.db"
-    chroma_persist_dir: str = "./data/chroma"
+    # Local week-1 topology: one PostgreSQL instance, two roles/connections.
+    # The app role cannot read cdp.events/profiles; LocalCdpClient cannot access app/catalog.
+    database_url: str = "postgresql://vota_app_login:vota@localhost:5432/vota"
+    cdp_database_url: str = "postgresql://cdp_client_login:cdp@localhost:5432/vota"
+    cdp_adapter: Literal["local", "http"] = "local"
 
-    # CDP clone (src/cdp_clone). The token must match CDP_SERVICE_TOKEN there.
+    # Future/production HTTP adapter. Ignored while CDP_ADAPTER=local.
     cdp_base_url: str = "http://localhost:8100"
     cdp_service_token: str = ""
     cdp_timeout_seconds: float = Field(default=2.0, gt=0)

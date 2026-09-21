@@ -1,0 +1,10 @@
+# Dependency của riêng package seed (data_collection.seed).
+# Tách khỏi ../requirements.txt để người chỉ chạy crawler không phải cài driver database,
+# và người chỉ chạy seed không phải cài playwright/chromium.
+#
+#   pip install -r src/data_collection/seed/requirements.txt
+#
+# Không ORM (MOCK_DATA_SPEC §1): ghi bằng COPY hoặc batch insert qua psycopg thuần.
+psycopg[binary]>=3.2,<4
+numpy>=1.26
+bcrypt>=4.1
