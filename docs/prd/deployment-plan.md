@@ -16,7 +16,8 @@ Hệ thống được thiết kế để vận hành trên ba cấp môi trườ
 | Đặc điểm | Local Development | Staging Cloud | Production |
 |---|---|---|---|
 | **Mục đích** | Phát triển tính năng, debug | Tích hợp liên tục, kiểm thử E2E | Phục vụ người dùng thực tế |
-| **Cơ sở dữ liệu** | PostgreSQL 16 local qua Docker | PostgreSQL Cloud (có pgvector) | Managed Cloud Database Cluster |
+| **Cơ sở dữ liệu** | PostgreSQL 16 local qua Docker | PostgreSQL Cloud | Managed Cloud Database Cluster |
+| **Cơ sở dữ liệu vector** | Weaviate local qua Docker (volume riêng) | Weaviate dùng chung | Weaviate Cloud hoặc self-host có backup |
 | **Dữ liệu mẫu** | Snapshot nén hoặc dữ liệu tổng hợp | Toàn bộ dữ liệu snapshot chuẩn hóa | Dữ liệu giao dịch thực tế |
 | **Dịch vụ AI** | Local LLM hoặc API dev key | API key chia sẻ nội bộ | Dedicated API quota / Enterprise |
 
@@ -34,7 +35,10 @@ Hệ thống phân tách ranh giới bảo mật bằng các chuỗi kết nối
 | `INSIDER_BASE_URL` | URL kết nối dịch vụ Insider Clone | Tất cả | Giao tiếp qua HTTP REST |
 | `INSIDER_REQUEST_TOKEN`| Token xác thực gọi sang Insider | Staging / Prod | Bí mật, không commit vào repository |
 | `LLM_API_KEY` | Khóa xác thực mô hình AI (OpenAI / Claude) | Tất cả | Bí mật, quản lý qua Vault hoặc Secret Manager |
-| `EMBEDDING_MODEL_NAME`| Tên mô hình vector (VD: `text-embedding-3-small`)| Tất cả | Đồng bộ kích thước vector 768 chiều |
+| `COHERE_API_KEY` | Khóa gọi Cohere Embed API | Tất cả | Bí mật, không commit. Chỉ backend và job embed giữ — Weaviate **không** nhận khóa này |
+| `EMBEDDING_MODEL_NAME`| Tên mô hình vector — mặc định `embed-multilingual-v3.0` | Tất cả | Đổi giá trị này là đổi chiều vector → phải tạo lại collection và chạy lại job embed |
+| `WEAVIATE_URL` | Endpoint Weaviate (local: `http://localhost:8080`) | Tất cả | Không mở ra mạng ngoài ở local |
+| `WEAVIATE_API_KEY` | Khóa xác thực Weaviate | Staging / Prod | Bí mật. Local dùng anonymous access nên có thể bỏ trống |
 
 ---
 
@@ -46,6 +50,9 @@ Môi trường hoàn chỉnh có thể khởi chạy nhanh chóng bằng các l�
 # Khởi động cơ sở dữ liệu PostgreSQL (chạy tự động initdb trên volume rỗng)
 docker compose up -d --wait postgres
 
+# Khởi động Weaviate (volume riêng — KHÔNG bị xóa khi seed lại Postgres)
+docker compose up -d --wait weaviate
+
 # Nạp dữ liệu seed chuẩn hóa (nếu là lần chạy đầu tiên)
 python -m data_collection.seed --as-of 2026-09-22 --seed 42
 
@@ -55,6 +62,8 @@ uvicorn src.backend.app.main:app --host 0.0.0.0 --port 8000 --reload
 # Khởi động Frontend Web
 cd src/frontend && npm run dev
 ```
+
+Seed quan hệ và nạp vector là **hai vòng đời tách rời**: `make demo-db` dựng lại database `vota`, còn vector nằm trong volume của Weaviate nên chỉ chạy lại job embed khi catalog hoặc model đổi (so `textHash` / `modelVersion`).
 
 ---
 
@@ -90,7 +99,8 @@ Hệ thống cung cấp các endpoint kiểm tra trạng thái sức khỏe đ�
 - **Readiness Probe (`GET /health/ready`):** Kiểm tra trạng thái sẵn sàng phục vụ:
   - Kết nối tới PostgreSQL (`DATABASE_URL`).
   - Kết nối tới CDP (`CDP_DATABASE_URL`).
-  - Kiểm tra trạng thái sẵn sàng của dịch vụ sinh embedding.
+  - Kết nối tới Weaviate (`WEAVIATE_URL`) và sự tồn tại của collection `Product`.
+  - Kiểm tra trạng thái sẵn sàng của Cohere Embed API.
 - **Metrics Endpoint (`GET /metrics`):** Xuất các chỉ số độ trễ API, tỷ lệ lỗi HTTP 5xx và thời gian xử lý của Trợ lý AI.
 
 ---

@@ -6,7 +6,7 @@ Repository này là monorepo cho sản phẩm gợi ý du lịch gồm:
 
 - Web app Next.js + Tailwind CSS: tìm kiếm, cá nhân hóa, chi tiết sản phẩm, booking và chat lịch trình.
 - Backend Python/FastAPI: API, xác thực, search, recommendation, booking và itinerary agent.
-- PostgreSQL + pgvector: catalog, hồ sơ, event, booking và vector sản phẩm.
+- PostgreSQL: catalog, hồ sơ, event và booking. Vector sản phẩm nằm ở Weaviate (service riêng, chốt 22/09/2026).
 - CDP clone và Insider clone: mô phỏng ranh giới tích hợp production.
 - Pipeline thu thập dữ liệu và bộ đánh giá chạy offline.
 
@@ -20,7 +20,7 @@ Kiến trúc ưu tiên hợp đồng API ổn định, ownership rõ theo featur
 | Frontend | Next.js (App Router) + TypeScript + Tailwind CSS, tổ chức theo feature |
 | Backend | Python + FastAPI, kiến trúc phân lớp theo domain/application/infrastructure |
 | Agent | LangGraph nằm trong backend và chỉ điều phối use case itinerary |
-| Database | PostgreSQL + pgvector |
+| Database | PostgreSQL (quan hệ) · Weaviate (vector) |
 | Contract | `src/shared/contracts/openapi.yaml` là nguồn sự thật chung cho frontend/backend |
 | Tích hợp ngoài | Đi qua client interface; không truy cập trực tiếp database của service khác |
 | API | REST/JSON, prefix `/api/v1`, JWT tùy chọn ở các API cho khách ẩn danh |
@@ -38,7 +38,7 @@ FastAPI
    |-- Auth / Catalog / Search / Recommendation / Booking / Events
    |-- Itinerary application service
    |      `-- LangGraph -> SearchClient / RecommendationClient / LLM
-   |-- DATABASE_URL (role vota_app) --> PostgreSQL + pgvector, database `vota`
+   |-- DATABASE_URL (role vota_app) --> PostgreSQL, database `vota`
    |        schema app     : users, carts, bookings, conversations, itineraries, logs
    |        schema catalog : combo_items, product_vectors, view product_meta / search_rows
    |        schema cdp     : chỉ SELECT products (để dựng catalog)
@@ -198,7 +198,7 @@ Các tiêu chí bắt buộc từ spec: assistant grounding 100%, search/recomme
 | --- | --- |
 | Web | `src/frontend` |
 | Backend | `src/backend/app/api`, `application`, `domain` |
-| Search/Recommendation | domain/application tương ứng và pgvector adapter |
+| Search/Recommendation | domain/application tương ứng và Weaviate adapter |
 | Agent | `src/backend/app/agents`, itinerary use case |
 | Data | `src/data_collection`, CDP adapters/migrations |
 | Evaluation | `src/evaluation`, quality fixtures |

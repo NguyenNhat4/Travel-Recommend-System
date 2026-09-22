@@ -2,7 +2,7 @@
 
 Bản 20/09/2026 · tuần 1 · đi kèm trang "V-OTA Database Schema" (artifact). **Đây là nguồn DDL duy nhất** của hệ thống (`vota_schema.sql`, `insider_schema.sql` ở cuối). `PRODUCT_SCHEMA.md` giải thích sâu phần product catalog; `SCHEMA.md` là contract của file `products.jsonl`.
 
-Hai database trên một PostgreSQL 16 + pgvector (docker-compose): `vota` với ba schema `cdp` (mirror CDP), `catalog` (dựng lại được), `app` (trạng thái BE/FE/agent); và `insider` (mock của Insider, service riêng). 20 bảng, 4 view. Cả hai DDL đã chạy thử và qua test ràng buộc, quyền, TTL.
+Hai database trên một PostgreSQL 16 (docker-compose): `vota` với ba schema `cdp` (mirror CDP), `catalog` (dựng lại được), `app` (trạng thái BE/FE/agent); và `insider` (mock của Insider, service riêng). 22 bảng, 4 view (`vota` 17 bảng + 3 view, `insider` 5 bảng + 1 view — đếm lại 22/09/2026; con số "20 bảng" trước đây có từ trước khi migration `0001_auth_p0` thêm `refresh_tokens`, `login_attempts` và `schema_migrations`). Vector sản phẩm KHÔNG nằm trong Postgres — collection `Product` trên Weaviate giữ vector (`docs/prd/data-model.md` §1). Cả hai DDL đã chạy thử và qua test ràng buộc, quyền, TTL.
 
 ---
 
@@ -21,7 +21,7 @@ Hai database trên một PostgreSQL 16 + pgvector (docker-compose): `vota` với
 | 9 | 243 khách sạn không có hạng phòng: **chỉ hiển thị, không đặt** — chỉ đặt ở cấp `hotel_room`. Thêm `is_recommendable` trong `product_meta` (search unit tự đặt được hoặc có ≥ 1 con đặt được) để 243 property vẫn search ra nhưng không vào `/recommendations` | Đã chốt 20/09 | — |
 | 10 | `attributes.priceBasis`: mặc định `per_package`; parser đổi sang `per_person` khi description/attributes nói giá theo khách ("/khách", "/người", "giá cho 1 người", "mỗi khách") | Đã chốt 20/09 | Data |
 | 11 | Volume và phân bố mock data (§8): 2.000 khách, ~7.000 event, 4 persona | Chờ Evaluation chốt số | Evaluation + Data |
-| 12 | Vector D và model — DDL để `vector(768)`, đo ở tuần 2 | Tuần 2 | Search |
+| 12 | ~~Vector D và model~~ — **đã chốt 22/09/2026:** Cohere `embed-multilingual-v3.0`, 1024 chiều, lưu ở Weaviate; `catalog.product_vectors` và extension `pgvector` đã gỡ (`db/migrations/0002_drop_product_vectors.sql`) | Xong | Search |
 | 13 | `available_from/to` = **cửa sổ đặt chỗ 30 ngày tính từ ngày nạp** (`as_of`): `available_from = GREATEST(nguồn_from, as_of)`, `available_to = LEAST(nguồn_to, as_of + 29)`; nguồn không có thì lấy nguyên cửa sổ; chuyến bay `from = to = ngày bay` (mock sinh trong cửa sổ); from > to sau khi cắt → `available = false`. Ngày trong handbook chỉ là ví dụ. Loader nhận `--as-of` (mặc định hôm nay) và **mọi thứ có ngày** — cửa sổ, `attributes.availability`, event seed, chuyến sắp tới của persona — sinh tương đối theo `as_of`; chạy lại loader trước demo tuần 6 để cuộn cửa sổ, nếu không toàn bộ catalog hết hạn. Invariant `using_date` trong cửa sổ áp dụng cho checkout, không áp cho event lịch sử. Lịch kín/trống ở `attributes.availability` phủ đúng cửa sổ `{from, days, calendar "1/0"…}`, đọc-only, không có bảng tồn kho; giờ bay / mở cửa / nhận-trả phòng ở `attributes` (`departureAt`, `openingHours`, `checkInTime`) | Đã chốt 20/09 | Data |
 
 ## 2. Tổng quan: ai ghi gì, ai đọc gì
@@ -29,11 +29,11 @@ Hai database trên một PostgreSQL 16 + pgvector (docker-compose): `vota` với
 | Nơi | Chứa | Ai ghi | Ai đọc | Khi lên production |
 |---|---|---|---|---|
 | `vota.cdp` | `products` · `profiles` · `events` — mirror CDP field-for-field | Loader (crawl, seed_histories); backend ghi `events`/`profiles` **chỉ qua `LocalCdpClient`** (connection riêng `CDP_DATABASE_URL`, role `cdp_writer`) | `CdpClient` (role `cdp_reader`/`cdp_writer`, không có USAGE trên `catalog`/`app`); `vota_app` chỉ SELECT `cdp.products` để dựng `catalog.*` | `HttpCdpClient` thay `LocalCdpClient`; `cdp.products` vẫn là bảng local do job sync ghi qua CdpClient; `events`/`profiles` local không dùng nữa |
-| `vota.catalog` | `product_meta` (view) · `combo_items` · `product_vectors` · `product_parents` · `search_rows` | Job `parse_combos`, `embed_products` | Search, Recsys, Product detail | Giữ nguyên — dựng lại từ `cdp.products` |
+| `vota.catalog` | `product_meta` (view) · `combo_items` · `product_parents` · `search_rows` | Job `parse_combos` | Search, Recsys, Product detail | Giữ nguyên — dựng lại từ `cdp.products` |
 | `vota.app` | `users` · `carts` · `cart_items` · `bookings` · `booking_items` · `conversations` · `conversation_messages` · `itineraries` · `recommendation_logs` · `search_logs` | Backend (role `vota_app`), agent, job | Backend, Evaluation (chỉ đọc) | Giữ nguyên — phải backup |
 | database `insider` | `partners` · `insider_profiles` · `identifiers` · `insider_events` (+ view `live_events`) · `channel_events` | Chỉ Insider clone service | Chỉ Insider clone service; V-OTA đi qua HTTP (`InsiderClient`) | Thay bằng Insider thật |
 
-Feedback loop (handbook §2) nằm trọn trong `vota`: checkout ghi `app.bookings` + `cdp.events` (cùng `event_group_id`) → User Profile Builder đọc `cdp.events` + `catalog.product_vectors` → `/recommendations` đổi → tuần 5 batch đẩy sang Insider làm attribute. Không có mũi tên nào từ Insider về CDP. Web (React) chỉ nói chuyện với backend qua REST/JSON + JWT, không chạm DB. Data collection và Evaluation là Python, ghi một lần theo job / chỉ đọc.
+Feedback loop (handbook §2) nằm trọn trong `vota`: checkout ghi `app.bookings` + `cdp.events` (cùng `event_group_id`) → User Profile Builder đọc `cdp.events` + vector từ Weaviate → `/recommendations` đổi → tuần 5 batch đẩy sang Insider làm attribute. Không có mũi tên nào từ Insider về CDP. Web (React) chỉ nói chuyện với backend qua REST/JSON + JWT, không chạm DB. Data collection và Evaluation là Python, ghi một lần theo job / chỉ đọc.
 
 ## 3. ERD — schema `cdp` và `catalog`
 
@@ -109,17 +109,8 @@ erDiagram
         numeric confidence "0–1, độ tin của bước map"
         text evidence "đoạn description đã khớp"
     }
-    product_vectors {
-        uuid product_id PK,FK "chỉ is_search_unit"
-        vector embedding "vector(D)"
-        text model_version
-        text embed_text
-        text text_hash
-        timestamptz updated_at
-    }
     profiles ||--o{ events : "cdp_user_id"
     products ||--|| product_meta : "view 1:1"
-    products ||--o| product_vectors : "search unit"
     products ||--o{ combo_items : "combo gồm"
     combo_items }o--o| products : "thành phần"
     products ||..o{ events : "product_id (không FK)"
@@ -377,7 +368,6 @@ erDiagram
 | `events` | cdp | Event Store: view · search · add_to_cart · purchase, theo chuyến | seed_histories · backend | ~7.000 |
 | `product_meta`, `product_parents`, `search_rows` | catalog | View suy từ products | — | — |
 | `combo_items` | catalog | Thành phần combo, parse từ description | parse_combos | 93 combo → ~250 dòng |
-| `product_vectors` | catalog | Embedding của search unit | embed_products | ~1.125 |
 | `users` | app | Credential + persona demo, 1:1 profile | seed + register | 4 persona + 50 test |
 | `carts`, `cart_items` | app | Giỏ phía server, một giỏ / user | backend | 0 |
 | `bookings`, `booking_items` | app | Đơn demo, 1 checkout = 1 event_group_id; nối sang event purchase bằng event_group_id + product_id + using_date | backend · seed persona | chỉ persona |
@@ -395,7 +385,7 @@ erDiagram
 
 Handbook §6: random data makes a broken recommender look fine. Mục tiêu của mock data là baseline most-popular-in-destination *khó nhưng thắng được*.
 
-**Thứ tự nạp:** (1) `cdp.products` ← `products.jsonl`, loader gán thêm `attributes.nights` / `priceBasis` / `minPax` cho combo; (2) `catalog.combo_items` ← `parse_combos`; (3) `cdp.profiles` + `cdp.events` ← `seed_histories.py`, số liệu sinh ra in vào `data-collection/README.md`; (4) `app.users` 4 persona + 50 test — `seed_histories` ghi hash BCrypt dùng chung, sau đó `seed_auth` đặt lại 4 persona bằng **Argon2id** với mật khẩu riêng từng tài khoản để test login thật (auth §8.2), `app.bookings` chỉ cho persona có chuyến sắp tới; (5) `catalog.product_vectors` ← `embed_products` cho `is_search_unit = true`, gợi ý chỉ lấy `is_recommendable = true`; (5b) lịch 30 ngày: mỗi `hotel_room` một chuỗi `attributes.availability.calendar` 30 ký tự từ ngày crawl, kín 25–40% theo cụm 1–4 đêm, cuối tuần và Vinpearl kín nhiều hơn; attraction chỉ blackout ngày lễ; flight không có; combo theo phòng thành phần; `available_from/to` của mọi sản phẩm = cửa sổ `[as_of, as_of + 29]` cắt với khoảng của nguồn; loader `--as-of`, chạy lại trước demo; (6) `insider`: `partners` → `insider_profiles` + `identifiers` → `insider_events` (bản sao 90 ngày + purchase 730) → `channel_events`; (7) sanity check: baseline không gần 0 và không bất khả chiến bại; mỗi chuyến một destination; 4 persona mở Home đúng section (UX spec §4.1.3).
+**Thứ tự nạp:** (1) `cdp.products` ← `products.jsonl`, loader gán thêm `attributes.nights` / `priceBasis` / `minPax` cho combo; (2) `catalog.combo_items` ← `parse_combos`; (3) `cdp.profiles` + `cdp.events` ← `seed_histories.py`, số liệu sinh ra in vào `data-collection/README.md`; (4) `app.users` 4 persona + 50 test — `seed_histories` ghi hash BCrypt dùng chung, sau đó `seed_auth` đặt lại 4 persona bằng **Argon2id** với mật khẩu riêng từng tài khoản để test login thật (auth §8.2), `app.bookings` chỉ cho persona có chuyến sắp tới; (5) vector ← job `embed_products` gọi Cohere `embed-multilingual-v3.0` (`input_type=search_document`) rồi ghi vào collection `Product` của Weaviate, chỉ cho `is_search_unit = true`; gợi ý chỉ lấy `is_recommendable = true`; job này nằm NGOÀI vòng seed Postgres và chỉ chạy lại khi `textHash` hoặc `modelVersion` đổi; (5b) lịch 30 ngày: mỗi `hotel_room` một chuỗi `attributes.availability.calendar` 30 ký tự từ ngày crawl, kín 25–40% theo cụm 1–4 đêm, cuối tuần và Vinpearl kín nhiều hơn; attraction chỉ blackout ngày lễ; flight không có; combo theo phòng thành phần; `available_from/to` của mọi sản phẩm = cửa sổ `[as_of, as_of + 29]` cắt với khoảng của nguồn; loader `--as-of`, chạy lại trước demo; (6) `insider`: `partners` → `insider_profiles` + `identifiers` → `insider_events` (bản sao 90 ngày + purchase 730) → `channel_events`; (7) sanity check: baseline không gần 0 và không bất khả chiến bại; mỗi chuyến một destination; 4 persona mở Home đúng section (UX spec §4.1.3).
 
 | Quy tắc | Đề xuất |
 |---|---|
@@ -464,19 +454,19 @@ UPDATE cdp.products SET
 
 ```sql
 -- =====================================================================
---  V-OTA · Database schema · PostgreSQL 16 + pgvector
+--  V-OTA · Database schema · PostgreSQL 16
 --  Bản 20/09/2026 · đi kèm DATABASE_SCHEMA.md (nguồn DDL duy nhất của hệ thống V-OTA)
 --
 --  Database `vota`, ba schema:
 --    cdp      : mirror CDP thật, field-for-field (handbook §6) — products · profiles · events.
 --               CdpClient (role cdp_reader) chỉ được đọc schema này. Không thêm cột.
---    catalog  : dựng lại được từ cdp.products bất kỳ lúc nào — product_meta, combo_items, product_vectors.
+--    catalog  : dựng lại được từ cdp.products bất kỳ lúc nào — product_meta, combo_items.
+--               Vector KHÔNG nằm ở đây: collection `Product` trên Weaviate giữ vector (xem docs/prd/data-model.md §1).
 --    app      : trạng thái của V-OTA, phải backup — users, carts, bookings, conversations, itineraries, logs.
 --               Job batch (seed, embed, parse, eval, insider_activation) KHÔNG ghi nhật ký vào DB — kết quả ra file / report.
 --  Insider clone là database RIÊNG (insider_schema.sql) — service khác, storage khác.
 -- =====================================================================
 
-CREATE EXTENSION IF NOT EXISTS vector;
 CREATE SCHEMA IF NOT EXISTS cdp;
 CREATE SCHEMA IF NOT EXISTS catalog;
 CREATE SCHEMA IF NOT EXISTS app;
@@ -625,17 +615,6 @@ CREATE TABLE catalog.combo_items (
 );
 CREATE INDEX combo_items_item_idx ON catalog.combo_items (item_product_id) WHERE item_product_id IS NOT NULL;
 CREATE INDEX combo_items_review_idx ON catalog.combo_items (confidence) WHERE item_product_id IS NULL OR confidence < 0.8;
-
--- catalog.product_vectors — chỉ search unit; D chốt Tuần 2
-CREATE TABLE catalog.product_vectors (
-    product_id     uuid PRIMARY KEY REFERENCES cdp.products (product_id) ON DELETE CASCADE,
-    embedding      vector(768) NOT NULL,
-    model_version  text NOT NULL,
-    embed_text     text NOT NULL,
-    text_hash      text NOT NULL,
-    updated_at     timestamptz NOT NULL DEFAULT now()
-);
-CREATE INDEX product_vectors_hnsw ON catalog.product_vectors USING hnsw (embedding vector_cosine_ops);
 
 CREATE VIEW catalog.search_rows AS
 SELECT p.product_id, p.name, p.taxonomy, m.variant, m.is_bookable, m.is_search_unit, m.is_recommendable,

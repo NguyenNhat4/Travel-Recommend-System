@@ -29,7 +29,7 @@ Endpoint: `GET /api/v1/search?q=&taxonomy=&destination=&limit=&offset=` ·
 | application | `ports.py` | `EmbedderPort`, `UnitIndex`, `VectorStorePort`, `CdpClientPort` |
 | application/search | `use_cases.py` | `SearchProducts`, `SimilarProducts` |
 | application/recommendation | `use_cases.py` | `RecommendForUser`, `BuildPopularity` |
-| infrastructure | `embeddings/`, `vectors/in_memory_store.py`, `cdp/local_cdp_client.py` | hiện thực port; thay bằng `pgvector_store.py` / `PostgresCdpClient` sau |
+| infrastructure | `embeddings/`, `vectors/in_memory_store.py`, `cdp/local_cdp_client.py` | hiện thực port; thay bằng `weaviate_store.py` (Cohere embed-multilingual-v3.0, 1024 chiều) / `PostgresCdpClient` sau. `in_memory_store.py` giữ lại cho test offline |
 | api/v1/routes | `search.py`, `recommendations.py` | chỉ HTTP, đọc use case từ `app.state` |
 | `main.py` | composition root | nối infrastructure vào use case |
 

@@ -27,7 +27,7 @@ Toàn bộ trải nghiệm khám phá và đề xuất của V-OTA xoay quanh m�
 
 ```
 [ Truy vấn ngôn ngữ tự nhiên ] ──┐
-                                  ├──> [ Vector Embedding + pgvector ] ──> [ Kết quả tìm kiếm ngữ nghĩa ]
+                                  ├──> [ Cohere Embed + Weaviate ] ──────> [ Kết quả tìm kiếm ngữ nghĩa ]
 [ Hồ sơ & Hành vi người dùng ]  ──┤
                                   ├──> [ Candidate Generation & Rerank ] ──> [ Gợi ý cá nhân hóa có giải thích ]
 [ Hội thoại với Trợ lý AI ]    ──┘

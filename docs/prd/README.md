@@ -34,7 +34,7 @@ Bộ tài liệu được xây dựng theo chuẩn 9 tài liệu kỹ thuật to
   - Xem [user-flow.md](user-flow.md) để đối chiếu tuyến đường (route) và bố cục màn hình.
   - Sử dụng [api-contract.md](api-contract.md) và `src/shared/contracts/openapi.yaml` làm chuẩn khi tích hợp dữ liệu.
 - **Nếu bạn là Data / RecSys Engineer:**
-  - Tham khảo [data-model.md](data-model.md) cho cấu trúc schema `cdp` và `catalog.product_vectors`.
+  - Tham khảo [data-model.md](data-model.md) cho cấu trúc schema `cdp` và collection `Product` trên Weaviate.
   - Tham khảo [test-plan.md](test-plan.md) để nắm các chỉ số đánh giá chất lượng thuật toán (NDCG, Recall@K, Coverage).
 - **Nếu bạn là DevOps / QA Engineer:**
   - Đọc [deployment-plan.md](deployment-plan.md) để nắm quy trình migration cơ sở dữ liệu và vận hành container.

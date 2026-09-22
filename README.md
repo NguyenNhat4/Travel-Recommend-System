@@ -10,7 +10,7 @@ python -m pip install -r src/data_collection/requirements.txt
 make demo-db
 ```
 
-`make demo-db` thực hiện ba việc: chạy PostgreSQL 16 + pgvector bằng Docker, kiểm tra/bung snapshot catalog 10.320 sản phẩm và seed hai database `vota`/`insider`, sau đó chạy các câu verify chính thức. Mỗi thành viên có Docker volume riêng trên máy; không chia sẻ hoặc commit volume.
+`make demo-db` thực hiện ba việc: chạy PostgreSQL 16 bằng Docker, kiểm tra/bung snapshot catalog 10.320 sản phẩm và seed hai database `vota`/`insider`, sau đó chạy các câu verify chính thức. Mỗi thành viên có Docker volume riêng trên máy; không chia sẻ hoặc commit volume.
 
 Lần đầu dùng `make demo-db`. Khi database local đã có dữ liệu và cần dựng lại từ đầu:
 

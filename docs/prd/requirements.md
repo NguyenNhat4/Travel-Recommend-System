@@ -18,7 +18,7 @@ Tài liệu này đặc tả chi tiết toàn bộ các yêu cầu chức năng 
 
 ### 1.2. Phân Hệ Tìm Kiếm Ngữ Nghĩa (Semantic Search Engine)
 - **FR-SRC-01 (Tìm kiếm đa phương thức):** Hỗ trợ cả tìm kiếm từ khóa truyền thống và tìm kiếm ngữ nghĩa (Semantic Search) bằng ngôn ngữ tự nhiên tiếng Việt.
-- **FR-SRC-02 (Vector Embedding):** Hệ thống phải tự động vector hóa mô tả sản phẩm, tiện ích, đặc điểm nổi bật và lưu trữ trong cơ sở dữ liệu vector.
+- **FR-SRC-02 (Vector Embedding):** Hệ thống phải tự động vector hóa mô tả sản phẩm, tiện ích, đặc điểm nổi bật bằng Cohere `embed-multilingual-v3.0` (1024 chiều) và lưu trong collection `Product` của Weaviate. Chỉ vector hóa sản phẩm có `is_search_unit = true`; truy vấn phải dùng `input_type=search_query`, nạp dùng `input_type=search_document`.
 - **FR-SRC-03 (Bộ lọc đa chiều - Faceted Filtering):** Cho phép kết hợp tìm kiếm ngữ nghĩa với các bộ lọc có cấu trúc:
   - Địa điểm (Điểm đến, thành phố, khu vực).
   - Khoảng ngân sách (Giá tối thiểu, giá tối đa).
@@ -83,7 +83,7 @@ Tài liệu này đặc tả chi tiết toàn bộ các yêu cầu chức năng 
 - **NFR-PERF-02 (AI Assistant Response Time):**
   - Thời gian bắt đầu xuất luồng văn bản (First token latency) của Trợ lý AI phải $\le 1.0\text{ s}$.
   - Tổng thời gian hoàn tất một phản hồi lịch trình phức tạp phải $\le 4.0\text{ s}$.
-- **NFR-PERF-03 (Database Indexing):** Toàn bộ truy vấn vector tương đồng phải sử dụng chỉ mục chuyên biệt (HNSW hoặc IVFFlat) để đảm bảo tốc độ khi quy mô dữ liệu mở rộng.
+- **NFR-PERF-03 (Vector Indexing):** Truy vấn tương đồng phải đi qua chỉ mục HNSW của Weaviate (cosine, mặc định của collection), không quét tuần tự. Ngân sách thời gian của Cohere Embed API cho một truy vấn phải nằm trong giới hạn p95 250 ms ở NFR-PERF-01 — nếu vượt thì phải cache vector của truy vấn lặp lại.
 
 ### 2.2. Độ Tin Cậy & Tính Xác Thực (Reliability & Grounding)
 - **NFR-REL-01 (Zero Hallucination trên dữ liệu sản phẩm):** 100% các thực thể sản phẩm hiển thị trong lịch trình của AI Assistant phải là sản phẩm có thật, đang hoạt động trong hệ thống.

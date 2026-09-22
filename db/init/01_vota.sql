@@ -1,17 +1,17 @@
 -- =====================================================================
---  V-OTA · Database schema · PostgreSQL 16 + pgvector
+--  V-OTA · Database schema · PostgreSQL 16
 --  Bản 20/09/2026 · đi kèm DATABASE_SCHEMA.md (nguồn DDL duy nhất của hệ thống V-OTA)
 --
 --  Database `vota`, ba schema:
 --    cdp      : mirror CDP thật, field-for-field (handbook §6) — products · profiles · events.
 --               CdpClient (role cdp_reader) chỉ được đọc schema này. Không thêm cột.
---    catalog  : dựng lại được từ cdp.products bất kỳ lúc nào — product_meta, combo_items, product_vectors.
+--    catalog  : dựng lại được từ cdp.products bất kỳ lúc nào — product_meta, combo_items.
+--               Vector KHÔNG nằm ở đây: collection `Product` trên Weaviate giữ vector (xem docs/prd/data-model.md §1).
 --    app      : trạng thái của V-OTA, phải backup — users, carts, bookings, conversations, itineraries, logs.
 --               Job batch (seed, embed, parse, eval, insider_activation) KHÔNG ghi nhật ký vào DB — kết quả ra file / report.
 --  Insider clone là database RIÊNG (insider_schema.sql) — service khác, storage khác.
 -- =====================================================================
 
-CREATE EXTENSION IF NOT EXISTS vector;
 CREATE SCHEMA IF NOT EXISTS cdp;
 CREATE SCHEMA IF NOT EXISTS catalog;
 CREATE SCHEMA IF NOT EXISTS app;
@@ -160,17 +160,6 @@ CREATE TABLE catalog.combo_items (
 );
 CREATE INDEX combo_items_item_idx ON catalog.combo_items (item_product_id) WHERE item_product_id IS NOT NULL;
 CREATE INDEX combo_items_review_idx ON catalog.combo_items (confidence) WHERE item_product_id IS NULL OR confidence < 0.8;
-
--- catalog.product_vectors — chỉ search unit; D chốt Tuần 2
-CREATE TABLE catalog.product_vectors (
-    product_id     uuid PRIMARY KEY REFERENCES cdp.products (product_id) ON DELETE CASCADE,
-    embedding      vector(768) NOT NULL,
-    model_version  text NOT NULL,
-    embed_text     text NOT NULL,
-    text_hash      text NOT NULL,
-    updated_at     timestamptz NOT NULL DEFAULT now()
-);
-CREATE INDEX product_vectors_hnsw ON catalog.product_vectors USING hnsw (embedding vector_cosine_ops);
 
 CREATE VIEW catalog.search_rows AS
 SELECT p.product_id, p.name, p.taxonomy, m.variant, m.is_bookable, m.is_search_unit, m.is_recommendable,

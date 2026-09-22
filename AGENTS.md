@@ -131,17 +131,16 @@ Sửa schema = sửa file .sql, **thêm migration idempotent tương ứng** và
 - Vai trò sản phẩm chỉ định nghĩa ở view `catalog.product_meta`: `variant`, `is_bookable` (property/route/điểm công cộng = false), `is_search_unit` (room/flight = false), `is_recommendable`. Chỉ đặt ở cấp `hotel_room`; property không có phòng con chỉ hiển thị.
 - Combo: một dòng `cdp.products`; thành phần ở `catalog.combo_items`, parse từ `description` (job `parse_combos`, ghi `source`/`confidence`/`evidence`). `attributes.priceBasis` mặc định `per_package`, `per_person` khi text nói giá theo khách.
 - Booking: CDP không có bảng booking. Checkout: `CdpClient.record_purchase(events, event_group_id)` trước → commit `app.bookings` + `booking_items` (transaction của `DATABASE_URL`) → commit lỗi thì `CdpClient.cancel_purchase(event_group_id)` bù trừ. Không gói hai connection vào một transaction.
-- `product_vectors`: chỉ `is_search_unit = true`; `vector(768)` là placeholder tới khi chốt model tuần 2.
+- Vector **không** nằm trong Postgres. Collection `Product` của Weaviate giữ vector cho `is_search_unit = true`; `catalog.product_vectors` và extension `pgvector` đã gỡ (`db/migrations/0002_drop_product_vectors.sql`, chốt 22/09/2026). Model: Cohere `embed-multilingual-v3.0`, 1024 chiều. Backend tự gọi Cohere rồi tự ghi vector (`vectorizer: none`) — nạp dùng `input_type=search_document`, truy vấn dùng `search_query`; dùng sai làm giảm chất lượng xếp hạng mà không báo lỗi. Chi tiết: `docs/prd/architecture.md` §5, `docs/prd/data-model.md` §1.
 
 ### 6.3. Môi trường database
 
 - Dev: mỗi người một Postgres local qua `make demo-db` (hoặc compose + seed thủ công) → ai cũng dùng snapshot catalog có checksum và không ai giẫm lên ai. Không dùng chung một DB để dev; `make demo-db-reset` chỉ dùng khi chủ động xoá state demo local.
-- Một Postgres cloud (có pgvector) làm **staging** chung: FE/agent/demo trỏ vào; chỉ job seed (CI hoặc một người) được `--reset` nó; tạo schema lần đầu bằng `psql -f db/init/*.sql` vì cloud không chạy initdb, và mọi thay đổi schema **sau đó** bằng `python db/migrations/run.py --database-url <dsn staging>` — không chạy lại `db/init/` trên database đã có dữ liệu.
+- Một Postgres cloud làm **staging** chung (không cần pgvector nữa; Weaviate là service riêng, xem `docs/prd/deployment-plan.md` §1): FE/agent/demo trỏ vào; chỉ job seed (CI hoặc một người) được `--reset` nó; tạo schema lần đầu bằng `psql -f db/init/*.sql` vì cloud không chạy initdb, và mọi thay đổi schema **sau đó** bằng `python db/migrations/run.py --database-url <dsn staging>` — không chạy lại `db/init/` trên database đã có dữ liệu.
 
 ### 6.4. Còn chờ chốt
 
 - Tên cột opt-in trong `cdp.profiles` (chờ reviewer CDP) · mọi route có ≥ 1 chuyến? (Data kiểm tra trên `products.jsonl`).
-- **D và model vector (tuần 2).** PRD ghi 768 chiều với `text-embedding-3-small` / `bge-m3` (`docs/prd/architecture.md` §4, `data-model.md` §2.1, `deployment-plan.md` §2), nhưng hai model đó không sinh vector 768 chiều (1536 và 1024). Giữ `vector(768)` làm placeholder như mục 6.2; hỏi người dùng trước khi khoá D hoặc đổi model, không sửa DDL theo con số trong PRD.
 - **Bộ persona lệch giữa PRD và bản đã triển khai — không tự đồng bộ.** DDL và `docs/spec/DATABASE_SCHEMA.md` dùng cột `app.users.persona` với 4 giá trị trạng thái cold-start: `P1_frequent`, `P2_first_time`, `P3_dormant`, `P4_no_history` (mỗi persona kích hoạt một nhánh khác nhau của recommendation — bảng persona ở `DATABASE_SCHEMA.md` §8 Kế hoạch mock data). PRD lại mô tả 4 persona phong cách du lịch `P1_family`, `P2_biz`, `P3_explorer`, `P4_deal` trên cột `persona_tag` / trường `personaTag` (`docs/prd/project-brief.md` §5, `data-model.md` §2.2, `api-contract.md` §2.1), trong khi contract thật chỉ có `personaLabel` (`schemas/auth.yaml`). Khi code: theo DDL + contract. Việc hợp nhất hai bộ persona cần người dùng quyết định.
 
 ### 6.5. Nhiệm vụ tuần 1 — tạo bảng và mock data (spec đầy đủ: `docs/spec/MOCK_DATA_SPEC.md`)

@@ -49,8 +49,8 @@ gantt
 ### Giai Đoạn 2: Lõi Dịch Vụ Nghiệp Vụ & Tìm Kiếm Ngữ Nghĩa (Core Services & Semantic Search)
 - **Hạng mục công việc:**
   - Triển khai cấu trúc Clean Architecture cho Backend (`domain`, `application`, `infrastructure`, `api`).
-  - Xây dựng pipeline tạo vector embedding cho mô tả sản phẩm và tiện ích bằng pgvector.
-  - Viết logic tìm kiếm lai (Hybrid Search) kết hợp Full-text search và Vector Cosine Similarity.
+  - Xây dựng job embed: gọi Cohere `embed-multilingual-v3.0` (`input_type=search_document`) và ghi vector vào collection `Product` của Weaviate; bỏ qua sản phẩm có `textHash` không đổi.
+  - Viết logic tìm kiếm lai (Hybrid Search) bằng `hybrid` của Weaviate (BM25 + vector, tham số `alpha`).
   - Triển khai phân hệ xác thực tài khoản và chuyển đổi Persona phục vụ kiểm thử.
 - **Đầu ra then chốt:** API `/api/v1/search` phản hồi kết quả tìm kiếm ngữ nghĩa chính xác với thời gian $\le 250\text{ ms}$.
 
@@ -80,7 +80,7 @@ gantt
 ### Giai Đoạn 6: Tương Tác Đa Kênh, Tối Ưu Hóa & Đóng Gói Vận Hành (Optimization & Launch)
 - **Hạng mục công việc:**
   - Tích hợp dịch vụ Insider Clone thông qua `HttpInsiderClient` để đồng bộ thuộc tính và phân khúc.
-  - Tối ưu hóa chỉ mục cơ sở dữ liệu (HNSW tuning), cấu hình connection pooling.
+  - Tinh chỉnh HNSW của Weaviate (`efConstruction`, `maxConnections`, `ef` lúc truy vấn), cấu hình connection pooling cho Postgres.
   - Đo lường và tinh chỉnh các chỉ số RecSys (NDCG, Recall@K).
   - Hoàn thiện tài liệu vận hành và kịch bản phục hồi khi xảy ra lỗi.
 - **Đầu ra then chốt:** Toàn bộ hệ thống sẵn sàng vận hành ổn định trên môi trường Staging và Production.

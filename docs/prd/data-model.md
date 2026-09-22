@@ -6,17 +6,17 @@ Tài liệu này định nghĩa toàn bộ mô hình dữ liệu, sơ đồ quan
 
 ## 1. Tổng Quan Kiến Trúc Lưu Trữ & Phân Định Ranh Giới
 
-Hệ sinh thái lưu trữ của V-OTA bao gồm hai cơ sở dữ liệu PostgreSQL độc lập, tách biệt hoàn toàn về vai trò vật lý và quyền truy cập:
+Hệ sinh thái lưu trữ của V-OTA gồm hai cơ sở dữ liệu PostgreSQL độc lập cho dữ liệu quan hệ, cộng một dịch vụ Weaviate riêng cho vector:
 
 ```
 +-------------------------------------------------------------------------+
-| DATABASE: vota                                                          |
+| DATABASE: vota  (PostgreSQL 16)                                         |
 |                                                                         |
 |  [Schema: cdp]           [Schema: catalog]           [Schema: app]      |
 |  - profiles              - products (view/table)     - users            |
 |  - events                - product_meta (view)       - bookings         |
 |                          - combo_items               - booking_items    |
-|                          - product_vectors           - conversations    |
+|                                                      - conversations    |
 |                                                      - messages         |
 |                                                                         |
 |  (Role: cdp_writer)      (Role: vota_app)            (Role: vota_app)   |
@@ -28,7 +28,16 @@ Hệ sinh thái lưu trữ của V-OTA bao gồm hai cơ sở dữ liệu Postgr
 | DATABASE: insider (Độc lập, service Insider Clone quản lý riêng)        |
 |  - partners, profiles, identifiers, events, channel_events             |
 +-------------------------------------------------------------------------+
+
++-------------------------------------------------------------------------+
+| WEAVIATE (dịch vụ riêng, volume riêng)                                  |
+|  Collection: Product — vector 1024 chiều (Cohere embed-multilingual-v3) |
+|  Thuộc tính: productId (khóa nối về Postgres), modelVersion, textHash   |
+|  vectorizer: none — backend tự sinh vector và tự ghi                    |
++-------------------------------------------------------------------------+
 ```
+
+**Vì sao vector không nằm trong Postgres:** vòng seed `make demo-db` dựng lại database `vota` từ đầu, nên nếu vector nằm chung thì mỗi lần seed đều phải embed lại toàn bộ catalog. Tách sang Weaviate với volume riêng giúp vector sống độc lập với vòng đời seed quan hệ. Hệ quả: `catalog.product_vectors` và extension `pgvector` **đã được gỡ khỏi schema**.
 
 ### Ranh giới truy cập nghiêm ngặt:
 1. **Cô lập dữ liệu sự kiện CDP:** Ứng dụng nghiệp vụ (`vota_app`) **tuyệt đối không được phép truy cập SQL trực tiếp** (không SELECT, INSERT, JOIN) vào `cdp.events` hoặc `cdp.profiles`. Mọi thao tác đều phải đi qua cổng giao tiếp `CdpClient`.
@@ -45,7 +54,7 @@ Hệ sinh thái lưu trữ của V-OTA bao gồm hai cơ sở dữ liệu Postgr
 erDiagram
     CDP_PROFILES ||--o{ CDP_EVENTS : "sinh ra"
     CDP_PRODUCTS ||--o{ CATALOG_COMBO_ITEMS : "phân rã thành phần"
-    CDP_PRODUCTS ||--o| CATALOG_PRODUCT_VECTORS : "vector hóa"
+    CDP_PRODUCTS ||--o| WEAVIATE_PRODUCT : "vector hóa (ngoài Postgres)"
 
     CDP_PROFILES {
         uuid profile_id PK
@@ -92,10 +101,12 @@ erDiagram
         string evidence "Căn cứ từ văn bản mô tả"
     }
 
-    CATALOG_PRODUCT_VECTORS {
-        string product_id PK, FK
-        vector embedding "Vector ngữ nghĩa 768 chiều"
-        timestamp updated_at
+    WEAVIATE_PRODUCT {
+        uuid id PK "UUID do Weaviate cấp"
+        string productId "Khóa nối logic về cdp.products — KHÔNG phải FK"
+        string modelVersion "embed-multilingual-v3.0 + phiên bản text builder"
+        string textHash "Phát hiện text đổi để embed lại"
+        vector _vector "1024 chiều, HNSW + cosine, vectorizer none"
     }
 ```
 
@@ -260,4 +271,5 @@ Dữ liệu lịch trình do AI Assistant trả về phải tuân thủ cấu tr
 2. **Nguyên tắc Migration trên Cơ sở dữ liệu đang vận hành:**
    - Tuyệt đối không xóa và chạy lại init script trên database đã có dữ liệu.
    - Mọi thay đổi cấu trúc bảng, thêm cột hoặc tạo chỉ mục mới phải được đóng gói thành các file migration idempotent (có khả năng chạy lại nhiều lần mà không gây lỗi) trong `db/migrations/` và thực thi qua bộ điều phối `db/migrations/run.py`.
-3. **Phân bổ tài nguyên Vector:** Chỉ mục HNSW trên `catalog.product_vectors` chỉ được xây dựng trên các sản phẩm có `is_search_unit = true` để tối ưu hóa bộ nhớ và tốc độ truy vấn.
+3. **Phân bổ tài nguyên Vector:** Collection `Product` của Weaviate chỉ chứa sản phẩm có `is_search_unit = true` để tối ưu bộ nhớ và tốc độ truy vấn. Weaviate tự dựng HNSW (cosine) nên không cần khai báo index thủ công.
+4. **Weaviate nằm ngoài vòng migration của Postgres.** `db/migrations/run.py` chỉ áp thay đổi cho database quan hệ. Đổi chiều vector hoặc đổi model embedding = tạo lại collection và chạy lại job embed, không phải viết migration SQL. Vì `productId` chỉ là khóa nối logic (không có FK xuyên hệ), xóa sản phẩm ở Postgres **không** tự xóa vector — job embed phải dọn các vector mồ côi.

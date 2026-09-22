@@ -39,10 +39,10 @@ flowchart TB
         end
     end
 
-    subgraph Storage["Lớp Lưu Trữ & Cơ Sở Dữ Liệu (PostgreSQL 16 + pgvector)"]
+    subgraph Storage["Lớp Lưu Trữ Quan Hệ (PostgreSQL 16)"]
         subgraph VOTA_DB["Database: vota"]
             AppSchema[(Schema: app\nUsers, Bookings, Sessions)]
-            CatalogSchema[(Schema: catalog\nProducts, Vectors, Combos)]
+            CatalogSchema[(Schema: catalog\nProduct meta, Combos)]
             CdpSchema[(Schema: cdp\nProfiles, Behavioral Events)]
         end
         
@@ -51,8 +51,13 @@ flowchart TB
         end
     end
 
+    subgraph VectorStore["Lớp Lưu Trữ Vector (Weaviate)"]
+        WvProduct[(Collection: Product\nvector 1024 · HNSW cosine)]
+    end
+
     subgraph External["Dịch Vụ Mở Rộng & Bên Thứ Ba"]
         LLM[LLM Provider: Claude / OpenAI]
+        Cohere[Cohere Embed API\nembed-multilingual-v3.0]
         InsiderSvc[Insider Clone Service]
     end
 
@@ -76,6 +81,8 @@ flowchart TB
     Ports -.->|Adapter: Read-only Catalog| CatalogSchema
     Ports -.->|Adapter: Local/HttpCdpClient| CdpSchema
     Ports -.->|Adapter: HttpInsiderClient| InsiderSvc
+    Ports -.->|Adapter: CohereEmbedder| Cohere
+    Ports -.->|Adapter: WeaviateVectorStore| WvProduct
     InsiderSvc --> InsiderSchema
 ```
 
@@ -97,6 +104,7 @@ src/backend/app/
 │   │   ├── catalog_repo.py  # Cổng truy xuất kho sản phẩm
 │   │   ├── cdp_client.py    # Cổng tương tác với Customer Data Platform
 │   │   ├── insider_client.py# Cổng tương tác với hệ thống tiếp thị đa kênh
+│   │   ├── embedding_client.py # Cổng sinh vector từ văn bản
 │   │   └── vector_search.py # Cổng tìm kiếm vector ngữ nghĩa
 │   └── use_cases/           # Logic điều phối quy trình nghiệp vụ
 │       ├── search_products.py
@@ -108,7 +116,8 @@ src/backend/app/
 │   ├── repositories/        # Cài đặt cụ thể các Repository qua SQLAlchemy/SQL
 │   ├── cdp/                 # LocalCdpClient (SQL riêng) hoặc HttpCdpClient (HTTP)
 │   ├── insider/             # HttpInsiderClient (giao tiếp HTTP với Insider)
-│   └── embeddings/          # Mô hình sinh vector (OpenAI / HuggingFace)
+│   ├── embeddings/          # CohereEmbedder (embed-multilingual-v3.0)
+│   └── vectors/             # WeaviateVectorStore; in_memory_store.py cho test offline
 │
 ├── agents/                  # Phân hệ Trợ lý AI (LangGraph Workflows)
 │   ├── state.py             # Quản lý trạng thái hội thoại và context lịch trình
@@ -160,8 +169,9 @@ stateDiagram-v2
 |---|---|---|
 | **Backend Framework** | **Python 3.11+, FastAPI, Pydantic v2** | Hiệu năng cao nhờ AsyncIO, tự động sinh OpenAPI spec, xác thực dữ liệu chặt chẽ bằng Pydantic. |
 | **Orchestration Agent**| **LangGraph (LangChain ecosystem)** | Quản lý đồ thị trạng thái (Stateful Multi-turn), kiểm soát luồng rẽ nhánh chặt chẽ, dễ debug. |
-| **Cơ sở dữ liệu chính** | **PostgreSQL 16 + pgvector** | Lưu trữ quan hệ ACID vững chắc kết hợp khả năng tìm kiếm vector tương đồng (HNSW index) trong cùng một hệ cơ sở dữ liệu. |
-| **Mô hình Embedding** | **text-embedding-3-small / bge-m3** | Hiệu suất biểu diễn ngữ nghĩa tiếng Việt xuất sắc, chi phí hợp lý, kích thước vector chuẩn 768 chiều. |
+| **Cơ sở dữ liệu chính** | **PostgreSQL 16** | Lưu trữ quan hệ ACID cho `cdp`, `catalog`, `app` và database `insider`. Không còn cần extension `pgvector` — vector đã tách sang Weaviate. |
+| **Cơ sở dữ liệu vector** | **Weaviate** | Dịch vụ vector riêng, có volume riêng nên **không bị dựng lại mỗi lần seed Postgres** — đây là lý do tách khỏi pgvector. HNSW + cosine là mặc định; hỗ trợ hybrid search (BM25 + vector) natively, khớp FR-SRC-01. |
+| **Mô hình Embedding** | **Cohere `embed-multilingual-v3.0`** | Đa ngôn ngữ (bao gồm tiếng Việt), gọi qua API nên máy dev không phải tải model về. **1024 chiều.** Bắt buộc phân biệt `input_type`: `search_document` khi nạp, `search_query` khi truy vấn. |
 | **Frontend Framework** | **React / Next.js / TypeScript** | Xây dựng giao diện Single Page Application linh hoạt, tương tác mượt mà, type-safety cao. |
 | **Quản trị API** | **OpenAPI 3.1.0 Contract-First** | Hợp đồng giao tiếp trung tâm, tự động sinh mock server và kiểm tra tính tuân thủ của các nhóm phát triển. |
 | **Container & Triển khai**| **Docker, Docker Compose** | Đóng gói môi trường đồng nhất giữa phát triển local và máy chủ staging. |
@@ -176,3 +186,8 @@ stateDiagram-v2
    - Môi trường mở rộng: Giao tiếp qua `HttpCdpClient` gọi REST API tới dịch vụ CDP tập trung.
 3. **Backend $\leftrightarrow$ Insider:** Giao tiếp qua `HttpInsiderClient` bằng REST API qua giao thức HTTPS, xác thực bằng header chuyên biệt (`X-PARTNER-NAME`, `X-REQUEST-TOKEN`).
 4. **Backend $\leftrightarrow$ AI Model Providers:** Giao tiếp qua HTTPS REST / SSE (Server-Sent Events) có hỗ trợ streaming token phản hồi tức thì.
+5. **Backend $\leftrightarrow$ Weaviate / Cohere:** Backend tự sinh vector rồi tự ghi — **Weaviate không giữ khóa Cohere và không tự vector hóa** (collection khai báo `vectorizer: none`). Cụ thể:
+   - **Nạp:** job embed đọc search unit từ `catalog`, gọi Cohere với `input_type=search_document`, ghi vector kèm `productId` vào collection `Product` của Weaviate.
+   - **Truy vấn:** use case search gọi Cohere với `input_type=search_query` rồi đưa vector sang Weaviate để lấy top-K. Dùng sai `input_type` sẽ làm giảm chất lượng xếp hạng mà không báo lỗi.
+   - Giữ được đường test offline: `in_memory_store.py` hiện thực cùng port `vector_search.py`, nên unit test không cần mạng.
+   - Weaviate chỉ giữ vector và `productId`. Mọi thuộc tính hiển thị (tên, giá, ảnh) vẫn lấy từ Postgres — quy tắc grounding không đổi.
