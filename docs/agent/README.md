@@ -2,8 +2,12 @@
 
 Tài liệu về agent lập lịch trình (LangGraph trong `src/backend/app/agents`) và bộ đánh giá qua Streamlit (`src/evaluation/agent`).
 
+Nếu cần sửa, tune hoặc đánh giá Agent, bắt đầu từ [working-context.md](working-context.md). File này
+chỉ dẫn thứ tự đọc tối thiểu và chọn thêm tài liệu/source theo đúng loại task để tránh nạp context thừa.
+
 | File | Nội dung |
 |---|---|
+| [working-context.md](working-context.md) | Context tối thiểu, bản đồ module và nhánh đọc riêng cho tune/eval/debug |
 | [langgraph-nodes.md](langgraph-nodes.md) | Vì sao graph chia thành mười node, vì sao mọi nhánh qua `finalize`, cách đọc bảng trace |
 | [response-and-errors.md](response-and-errors.md) | `status` so với `error.code`, luồng sau `UNSUPPORTED_DESTINATION` |
 | [evaluation-plan.md](evaluation-plan.md) | Bộ 12 case chạy tay qua Streamlit, cách chấm, mẫu biên bản, giới hạn đã biết |
