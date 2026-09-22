@@ -69,3 +69,11 @@ class PostgresCdpReader:
             f'WHERE event_name = %s AND "timestamp" >= %s ORDER BY "timestamp" DESC',
             ("purchase", cutoff),
         )
+
+    def all_events(self) -> list[dict]:
+        """Read a deterministic full event snapshot for offline evaluation only."""
+        return self._query(
+            f'SELECT {_COLUMNS} FROM cdp.events '
+            'ORDER BY cdp_user_id, "timestamp", event_id',
+            (),
+        )

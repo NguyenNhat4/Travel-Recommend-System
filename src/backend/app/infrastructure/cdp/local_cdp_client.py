@@ -25,6 +25,10 @@ class LocalCdpClient:
         cut = (datetime.now(timezone.utc) - timedelta(days=since_days)).isoformat()
         return [e for e in self._all if e.get("eventName") == "purchase" and str(e["timestamp"]) >= cut]
 
+    def all_events(self) -> list[dict]:
+        """Return a copy of the full local event history for offline evaluation."""
+        return [dict(event) for event in self._all]
+
     # ghi purchase khi checkout (feedback loop) — bản mock chỉ giữ trong bộ nhớ
     def record_events(self, events: list[dict]) -> None:
         for e in events:
