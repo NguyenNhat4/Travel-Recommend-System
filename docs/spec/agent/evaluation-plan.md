@@ -30,11 +30,11 @@ Mỗi tiêu chí truy vết về một dòng spec cụ thể. Không thêm chu�
 
 | Tiêu chí | Ngưỡng | Nguồn |
 |---|---|---|
-| Grounding: mọi `productId`/tên/giá đến từ catalog | 100%, gate cứng | spec §5.1–5.3, architecture-repo.md §8, handbook §12 |
+| Grounding: mọi `productId`/tên/giá đến từ catalog | 100%, gate cứng | spec §5.1–5.3, architecture.md §8, handbook §12 |
 | Sản phẩm đúng điểm đến người dùng yêu cầu | 100%, gate cứng | spec §5.4, §9.3 |
 | Không chủ động trả sản phẩm `available=false` | 100%, gate cứng | spec §5.5 |
 | Response hợp lệ theo OpenAPI (4 `status` + `ErrorResponse`) | 100%, gate cứng | `paths/itinerary-agent.yaml`, spec §4, [response-and-errors.md](response-and-errors.md) |
-| Không gọi tool khi thiếu `destination`/`days` | 100%, gate cứng | spec §4.1, architecture-repo.md §8 |
+| Không gọi tool khi thiếu `destination`/`days` | 100%, gate cứng | spec §4.1, architecture.md §8 |
 | LLM lỗi → fallback hoặc lỗi có kiểm soát, không bịa | 100%, gate cứng | spec §5.9 |
 | Không lộ secret/JWT/API key trong response và log | 100%, gate cứng | spec §7.3, AGENTS.md §3 |
 | Độ trễ toàn luồng | mục tiêu < 5 s | spec §7.2, §9.12, handbook §12 |
