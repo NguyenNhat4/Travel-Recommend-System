@@ -17,23 +17,23 @@ Trước khi viết hoặc sửa code cho **feature mới, endpoint mới, modul
 
 | Phạm vi thay đổi | File phải đọc |
 |---|---|
-| API / request / response bất kỳ | `src/shared/contracts/openapi.yaml`, file `paths/<domain>.yaml` và `schemas/<domain>.yaml` liên quan, `schemas/common.yaml`, `docs/prd/api-contract.md` (chuẩn Error Envelope, phân trang, quy tắc versioning — **ví dụ endpoint trong đó chỉ để minh hoạ, xem cảnh báo ở mục 2**) |
+| API / request / response bất kỳ | `docs/spec/contracts-guide.md`, `docs/spec/mvp-minimal-fields-1.2.0.md`, `src/shared/contracts/openapi.yaml`, file `paths/<domain>.yaml` và `schemas/<domain>.yaml` liên quan, `schemas/common.yaml`, `docs/prd/api-contract.md` (chuẩn Error Envelope, phân trang, quy tắc versioning — **ví dụ endpoint trong đó chỉ để minh hoạ, xem cảnh báo ở mục 2**) |
 | Backend (`src/backend`) | `src/backend/README.md`, `docs/spec/hop-dong-tich-hop-backend.md` (các mục của domain liên quan), `docs/prd/architecture.md` §2 (phân lớp + quy tắc phụ thuộc) |
 | Frontend (`src/frontend`) | `src/frontend/README.md`, `docs/spec/hop-dong-tich-hop-frontend.md`, `docs/spec/product.md`, `docs/prd/user-flow.md` (route table, wireframe, luồng cốt lõi) |
 | Auth: đăng nhập, phiên, cookie, JWT, mật khẩu, 2FA, OAuth | `docs/spec/hop-dong-tich-hop-auth.md` (bắt buộc đọc §3 Logic mapping), `src/shared/contracts/paths/auth.yaml`, `src/shared/contracts/schemas/auth.yaml`, `docs/prd/requirements.md` §1.6 (FR-USR) |
 | Itinerary Agent (`src/backend/app/agents`, use case itinerary) | `docs/spec/hop-dong-tich-hop-itinerary-assistant.md`, `docs/spec/agent/README.md` và các file nó liên kết, `src/shared/mocks/itinerary-agent/README.md`, `docs/prd/architecture.md` §3 (StateGraph + chuẩn grounding), `docs/prd/requirements.md` §1.4 (FR-AGT) |
 | Search / Recommendation | `docs/spec/hop-dong-tich-hop-search-recommendation.md` (hợp đồng chi tiết cho cả hai engine), `docs/spec/hop-dong-tich-hop-backend.md` (mục Search, Recommendation), `docs/spec/recsys-internship-handbook-v3-vi.md`, `docs/prd/requirements.md` §1.2–1.3 (FR-SRC, FR-REC) |
 | CDP clone, `CdpClient`, ghi hành vi người dùng | mục 6 bên dưới, `docs/spec/hop-dong-tich-hop-cdp.md`, `src/cdp_clone/README.md`, `src/shared/contracts/cdp-clone.openapi.yaml`, `docs/prd/requirements.md` §1.7 (FR-CDP) |
-| Mock / fixture (`src/shared/mocks`) | `src/shared/mocks/index.json`, schema response tương ứng |
-| Data collection (`src/data_collection`) | `src/data_collection/README.md`, `src/data_collection/docs/SCHEMA.md`, `docs/prd/data-model.md` §3 (quy chuẩn `attributes`) |
+| Mock / fixture (`src/shared/mocks`) | `docs/spec/shared-assets.md`, `src/shared/mocks/index.json`, schema response tương ứng |
+| Data collection (`src/data_collection`) | `src/data_collection/README.md`, `docs/spec/data-collection/schema.md`, `docs/prd/data-model.md` §3 (quy chuẩn `attributes`) |
 | Database: schema, DDL, loader, seed, `db/` | mục 6 bên dưới, `docs/spec/DATABASE_SCHEMA.md`, `docs/spec/PRODUCT_SCHEMA.md`, `db/vota_schema.sql`, `db/insider_schema.sql`, `db/migrations/README.md`, `docs/prd/data-model.md` (ERD, ranh giới quyền, vòng đời thực thể) |
-| Mock data tuần 1 (`src/data_collection/seed`) | mục 6 bên dưới, `docs/spec/MOCK_DATA_SPEC.md`, `src/data_collection/docs/SCHEMA.md`, `db/verify.sql`, `db/verify_insider.sql` |
+| Mock data tuần 1 (`src/data_collection/seed`) | mục 6 bên dưới, `docs/spec/MOCK_DATA_SPEC.md`, `docs/spec/data-collection/schema.md`, `db/verify.sql`, `db/verify_insider.sql` |
 | Evaluation (`src/evaluation`) | `src/evaluation/README.md` (chưa tồn tại — hỏi người dùng trước khi giả định nội dung), `docs/spec/recsys-internship-handbook-v3-vi.md`, `docs/prd/test-plan.md` §2.4–2.5 (chỉ số grounding và RecSys offline) |
 | Insider clone (`src/insider_clone`) | `src/insider_clone/README.md`, `docs/spec/hop-dong-tich-hop-insider.md`, `docs/spec/recsys-internship-handbook-v3-vi.md` (phần Insider), `docs/prd/requirements.md` §1.8 (FR-ENG) |
 | Tính năng sản phẩm / luồng người dùng mới | `docs/spec/product.md`, `docs/prd/project-brief.md` (§4 phạm vi in/out), `docs/prd/requirements.md`, `docs/prd/user-flow.md` |
 | Môi trường, biến môi trường, migration, Docker, CI/CD | `docs/prd/deployment-plan.md`, `docs/prd/test-plan.md` §4, `db/migrations/README.md`, mục 6.3 bên dưới |
 | Lập kế hoạch, chia giai đoạn, định nghĩa hoàn thành | `docs/prd/implementation-plan.md` (lộ trình 6 giai đoạn, ownership theo workstream, DoD §4), các plan liên quan trong `docs/plan/` |
-| Cấu trúc repo, quy tắc phụ thuộc, quy ước thêm module (mọi thay đổi code) | `docs/prd/architecture.md` §2 (backend), §3 (agent), §6 (cấu trúc repo, frontend, module mới) |
+| Cấu trúc repo, quy tắc phụ thuộc, quy ước thêm module (mọi thay đổi code) | `docs/prd/architecture.md` §2 (backend), §3 (agent), §6 (cấu trúc repo, frontend, module mới); chi tiết bổ sung ở `docs/spec/architecture-repo.md` |
 
 Với file dài (> 500 dòng), được phép đọc mục lục (`grep -n "^#"`) rồi đọc đầy đủ các mục liên quan, nhưng phải đọc hết mục đó, không chỉ vài dòng đầu.
 
@@ -58,8 +58,10 @@ PRD (`docs/prd/`) trả lời **làm gì và vì sao** — phạm vi, FR/NFR, ti
 1. `src/shared/contracts/openapi.yaml` và các file `paths/`, `schemas/` — nguồn sự thật cho API.
 2. `db/vota_schema.sql`, `db/insider_schema.sql`, `db/migrations/` — nguồn sự thật cho DDL.
 3. `docs/prd/architecture.md`, `docs/prd/data-model.md`.
-4. `docs/spec/contract-baseline-v1.1.md`.
-5. `docs/spec/hop-dong-tich-hop-*.md`, `docs/spec/product.md`, handbook.
+4. `docs/spec/mvp-minimal-fields-1.2.0.md` — thay thế danh sách required/optional của baseline 1.1.
+5. `docs/spec/contract-baseline-v1.1.md`.
+6. `docs/spec/architecture-repo.md`.
+7. `docs/spec/hop-dong-tich-hop-*.md`, `docs/spec/product.md`, handbook.
 
 **Yêu cầu sản phẩm (phạm vi, hành vi, tiêu chí nghiệm thu)** — ưu tiên cao xuống thấp:
 
@@ -118,7 +120,7 @@ Sửa schema = sửa file .sql, **thêm migration idempotent tương ứng** và
 - **Ngoại lệ duy nhất:** loader/seed (`src/data_collection/seed`) ghi thẳng SQL vào `cdp.*` bằng `SEED_DATABASE_URL` (superuser). Đây là job nạp dữ liệu, không phải code app; khi lên CDP thật nó được thay bằng job sync qua `CdpClient`.
 - Insider: port `InsiderClient` + adapter `HttpInsiderClient` (httpx → `INSIDER_BASE_URL`, header `X-PARTNER-NAME`/`X-REQUEST-TOKEN`). Backend không có connection nào tới database `insider`.
 - Không tạo service HTTP cho CDP clone ở tuần 1 — handbook §6: CDP clone là database, Insider clone mới là service. Code FastAPI trong `src/cdp_clone/` là của tuần trước, **tạm gác**, giữ lại làm nền cho `HttpCdpClient` (xem `src/cdp_clone/README.md`); tuần 1 không chạy nó.
-- `cdp.products` giữ **đúng 13 trường** handbook §6. Không thêm cột; mọi thuộc tính theo loại vào `attributes` JSONB (khoá theo `SCHEMA.md`).
+- `cdp.products` giữ **đúng 13 trường** handbook §6. Không thêm cột; mọi thuộc tính theo loại vào `attributes` JSONB (khoá theo `docs/spec/data-collection/schema.md`).
 - Không FK từ `app` tới `cdp.events.event_id` (id nội bộ của clone). Đơn nối sang event bằng `event_group_id` + `product_id` + `using_date`.
 - Không có bảng nhật ký job; job ghi kết quả ra file/report.
 
@@ -170,4 +172,3 @@ Tài liệu dự án chỉ nằm ở ba thư mục trong `docs/`:
 - Không tạo file tài liệu (`.md`, `.html`, ...) ở chỗ khác trong repo — kể cả trong `src/`, `db/` hay thư mục gốc. Ngoại lệ: `history/` (mục 5), `AGENTS.md`/`CLAUDE.md`/`README.md` ở gốc, và `README.md` sẵn có của từng workstream trong `src/` (chỉ hướng dẫn chạy/cấu trúc, không chứa quy tắc hay spec).
 - Tên file: chữ thường, gạch nối, không dấu (ví dụ `docs/plan/2026-09-23-auth-p1.md`). Plan bắt đầu bằng ngày.
 - Mỗi spec/plan mới phải ghi nó phục vụ mã FR/NFR nào trong `docs/prd/requirements.md`. Spec mâu thuẫn với PRD thì sửa một trong hai trong cùng thay đổi, không để lệch.
-- Tài liệu cũ nằm ngoài ba thư mục trên: không mở rộng; khi cần sửa thì chuyển vào đúng thư mục và ghi `history/`.

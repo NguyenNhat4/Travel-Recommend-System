@@ -1,4 +1,4 @@
-"""Composition root — nơi duy nhất nối infrastructure vào use case (ARCHITECTURE.md §5).
+"""Composition root — nơi duy nhất nối infrastructure vào use case (docs/prd/architecture.md §2).
 
 Gộp hai nhánh: phần nối PostgreSQL (CDP client, catalog lookup, ghi event nền) và engine recsys
 (search / similar / recommendations). Recsys chạy thẳng trên database đã seed thay vì đọc file:

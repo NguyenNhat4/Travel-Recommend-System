@@ -58,6 +58,6 @@ python make_sample.py --per-variant 8
 
 ## Đọc thêm
 
-- `../SCHEMA.md` — mô tả chi tiết 13 trường và toàn bộ `attributes`
+- `docs/spec/data-collection/schema.md` — mô tả chi tiết 13 trường và toàn bộ `attributes`
 - `../template.json` — bản máy đọc được, kèm độ phủ từng khoá và ví dụ cho mỗi biến thể
-- `../BANGIAO.md` — tổng quan gói bàn giao và ghi chú riêng cho từng đội
+- `docs/spec/data-collection/ban-giao.md` — tổng quan gói bàn giao và ghi chú riêng cho từng đội

@@ -35,3 +35,4 @@ Người dùng chốt: dự án chỉ theo PRD. Sửa hoặc thêm gì thì cậ
 - Còn link hỏng tới `src/shared/contracts/MVP.md` trong `docs/spec/contract-baseline-v1.1.md`, `docs/spec/hop-dong-tich-hop-backend.md`, `docs/spec/hop-dong-tich-hop-itinerary-assistant.md`, `docs/spec/mvp-v01.md`. Còn tham chiếu `src/ARCHITECTURE.md` trong `docs/spec/thiet-ke-schema-3-service.md`. Chưa sửa, chờ người dùng quyết định.
 - Tài liệu nằm ngoài `docs/` vẫn còn: `src/data_collection/docs/` (`SCHEMA.md`, `bao-cao-schema.md`), `mvp/bao-cao-mvp.md`. Theo `AGENTS.md` §7, các file này chỉ được chuyển vào đúng thư mục khi cần sửa.
 - PRD vẫn lệch contract ở `api-contract.md` (đã ghi ở `AGENTS.md` §2) và lệch bộ persona (`AGENTS.md` §6.4).
+- Bị thay thế bởi: 2026-09-23-chuyen-tai-lieu-vao-docs-spec.md (phần xoá file và không khôi phục MVP.md)

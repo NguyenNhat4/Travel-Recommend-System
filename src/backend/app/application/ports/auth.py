@@ -1,4 +1,4 @@
-"""Port của auth. Application chỉ phụ thuộc các interface này (ARCHITECTURE.md §5).
+"""Port của auth. Application chỉ phụ thuộc các interface này (docs/prd/architecture.md §2).
 
 Hiện thực nằm ở infrastructure/auth/; chỉ composition root nối chúng vào use case.
 """

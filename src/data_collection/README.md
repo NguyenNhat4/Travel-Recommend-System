@@ -5,7 +5,7 @@ Khi thêm collector, phải mô tả nguồn của từng field và cách chạy
 [Nguồn của từng trường](#nguồn-của-từng-trường) bên dưới là nơi ghi.
 
 **Chạy mọi lệnh trong thư mục này** (`src/data_collection`). Dữ liệu sinh ra nằm ở `data/` và không vào git;
-tài liệu schema cho các đội khác ở `docs/SCHEMA.md`, bộ mẫu 50 sản phẩm chạy thử ở `sample/`.
+tài liệu schema cho các đội khác ở `docs/spec/data-collection/schema.md`, bộ mẫu 50 sản phẩm chạy thử ở `sample/`.
 
 ## Dựng database demo từ snapshot
 
@@ -191,7 +191,7 @@ Parser sai thì sửa code rồi chạy `python crawl.py reparse <nguồn>`: par
 
 Mỗi dòng `products.jsonl` có đúng 14 trường: 13 trường của §6 cộng `priceUnit` — field bắt buộc của
 `ProductSummary` trong contract chung, được suy ra từ `taxonomy` chứ không do nguồn cung cấp
-(xem [docs/SCHEMA.md](docs/SCHEMA.md#bốn-chỗ-dễ-hiểu-sai)). Mọi trường khác nằm trong `attributes`,
+(xem [schema.md](../../docs/spec/data-collection/schema.md#bốn-chỗ-dễ-hiểu-sai)). Mọi trường khác nằm trong `attributes`,
 để không tự thêm field mà CDP thật không có.
 
 ```json
