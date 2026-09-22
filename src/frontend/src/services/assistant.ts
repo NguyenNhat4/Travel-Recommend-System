@@ -8,10 +8,11 @@
  */
 
 import { CATALOG } from '../data/catalog';
-import { TravelIntent, GroundedPlan, Destination, ChatMessage, ItinerarySlot, Product } from '../types/travel';
+import { TravelIntent, GroundedPlan, Destination, ChatMessage, ItinerarySlot, ItineraryDay, Product } from '../types/travel';
 import { calculateRecommendations } from './recsys';
 import { UserPersona, UserEvent } from '../types/travel';
 import { detectTransitMode } from './routeGeometry';
+import type { components } from '../types/api.gen';
 
 export function extractIntent(text: string): { intent: Partial<TravelIntent>; missing: string[] } {
   const clean = text.toLowerCase();
@@ -626,3 +627,106 @@ export function buildGroundedItinerary(
     fallback: false
   };
 }
+
+const DESTINATION_DEFAULT_COORDS: Record<string, { lat: number; lng: number }> = {
+  'Nha Trang': { lat: 12.2388, lng: 109.1967 },
+  'Phú Quốc': { lat: 10.2899, lng: 103.9840 },
+  'Đà Nẵng': { lat: 16.0544, lng: 108.2022 },
+  'Đà Lạt': { lat: 11.9404, lng: 108.4583 },
+  'Hội An': { lat: 15.8801, lng: 108.3380 },
+  'Hạ Long': { lat: 20.9505, lng: 107.0734 },
+  'Hà Nội': { lat: 21.0285, lng: 105.8542 },
+};
+
+export function convertItineraryResponseToGroundedPlan(
+  response: components['schemas']['ItineraryResponse'] | null | undefined
+): GroundedPlan | null {
+  if (!response || response.status !== 'COMPLETED' || !response.itinerary) return null;
+  const itinerary = response.itinerary;
+  const intentDestination = (response.intent?.destination || 'Nha Trang') as Destination;
+  const defaultCoord = DESTINATION_DEFAULT_COORDS[intentDestination] || { lat: 12.2388, lng: 109.1967 };
+
+  const mapProductSummaryToProduct = (summary: components['schemas']['ProductSummary']): Product => {
+    const catalogItem = CATALOG.find((p) => p.id === summary.productId);
+    return {
+      id: summary.productId,
+      name: summary.name,
+      destination: (summary.destination || intentDestination) as Destination,
+      taxonomy: summary.taxonomy as Product['taxonomy'],
+      unitPrice: summary.unitPrice ?? catalogItem?.unitPrice ?? 0,
+      currency: 'VND',
+      imageUrl: summary.imageUrl || catalogItem?.imageUrl || '/placeholders/hotel.webp',
+      coordinates: catalogItem?.coordinates || defaultCoord,
+      address: catalogItem?.address || summary.destination,
+      description: summary.name,
+      attributes: (summary.attributes || catalogItem?.attributes || {}) as Product['attributes'],
+      available: summary.available ?? true,
+    };
+  };
+
+  const stay = itinerary.stay?.product
+    ? {
+        productId: itinerary.stay.product.productId,
+        product: mapProductSummaryToProduct(itinerary.stay.product),
+        note: itinerary.stay.note || 'Khách sạn lưu trú',
+        source: (itinerary.stay.source as 'recommendation' | 'search' | undefined) || 'search',
+      }
+    : undefined;
+
+  const days: ItineraryDay[] = (itinerary.days || []).map((d) => {
+    const slots: ItinerarySlot[] = (d.slots || []).map((slot) => {
+      const product = slot.product ? mapProductSummaryToProduct(slot.product) : undefined;
+      const catalogItem = slot.product ? CATALOG.find((p) => p.id === slot.product.productId) : undefined;
+      const coord = catalogItem?.coordinates || defaultCoord;
+      const slotTime: ItinerarySlot['time'] = ['morning', 'noon', 'afternoon', 'evening'].includes(slot.time)
+        ? (slot.time as ItinerarySlot['time'])
+        : 'morning';
+
+      return {
+        time: slotTime,
+        timeRange: slot.startTime && slot.endTime ? `${slot.startTime} - ${slot.endTime}` : undefined,
+        locationName: product?.name || slot.activityType || 'Điểm hoạt động',
+        productId: product?.id,
+        product,
+        note: slot.note || '',
+        activityTitle: product?.name || slot.activityType || slot.note || 'Hoạt động',
+        coordinates: coord,
+        address: catalogItem?.address || intentDestination,
+        transitMode: detectTransitMode({
+          title: product?.name || slot.activityType,
+          transitInfo: slot.note ?? undefined,
+        }),
+      };
+    });
+
+    return {
+      day: d.day,
+      title: d.title || `Ngày ${d.day}`,
+      slots,
+    };
+  });
+
+  let party: TravelIntent['party'] = 'family_with_kids';
+  const rawParty = response.intent?.party as { type?: string } | string | undefined;
+  const partyType = typeof rawParty === 'object' && rawParty !== null ? rawParty.type : rawParty;
+  if (partyType === 'SOLO' || partyType === 'solo') party = 'solo';
+  else if (partyType === 'COUPLE' || partyType === 'couple') party = 'couple';
+  else if (partyType === 'FRIENDS' || partyType === 'friends') party = 'friends';
+  else if (partyType === 'FAMILY_WITH_KIDS' || partyType === 'family_with_kids') party = 'family_with_kids';
+
+  return {
+    intent: {
+      destination: intentDestination,
+      days: response.intent?.days || days.length || 3,
+      party,
+      interests: response.intent?.interests || ['theme_park', 'beach'],
+    },
+    title: itinerary.title || `Lịch trình khám phá ${intentDestination}`,
+    stay,
+    days,
+    totalEstimatedPrice: itinerary.estimatedTotal ?? 0,
+    bookableProductsCount: itinerary.bookableCount ?? 0,
+    fallback: false,
+  };
+}
+

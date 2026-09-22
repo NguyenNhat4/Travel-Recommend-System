@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTravel } from '../../context/TravelContext';
 import { SUPPORTED_LOCALES } from '../../types/locale';
-import { AIAssistantDrawer } from '../assistant/AIAssistantDrawer';
+import { useAssistant } from '../../context/AssistantProvider';
 import { DemoAccountSwitcher } from './DemoAccountSwitcher';
 import { 
   Sparkles, 
@@ -32,7 +32,6 @@ export const Header: React.FC<HeaderProps> = ({ isCheckout = false }) => {
   } = useTravel();
 
   // Dropdowns state
-  const [isAIDrawerOpen, setIsAIDrawerOpen] = useState(false);
   const [isLangDropdownOpen, setIsLangDropdownOpen] = useState(false);
   const [isTripsDropdownOpen, setIsTripsDropdownOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -164,18 +163,6 @@ export const Header: React.FC<HeaderProps> = ({ isCheckout = false }) => {
 
             {/* Right Action Utilities (AI Assistant, Language, Trips, Notifications, Account) */}
             <div className="flex items-center gap-1.5 sm:gap-3 shrink-0 z-20 ml-auto">
-              {/* [AI ASSISTANT TRIGGER BUTTON] */}
-              {/* <button 
-                id="aiAssistantBtn" 
-                onClick={() => setIsAIDrawerOpen(true)}
-                className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 rounded-full bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition font-semibold text-xs sm:text-sm cursor-pointer active:scale-95 shrink-0"
-                title="Trợ lý Du lịch AI"
-              >
-                <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-indigo-600 animate-pulse" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 2l2.4 7.2h7.6l-6 4.8 2.4 7.2-6.4-4.8-6.4 4.8 2.4-7.2-6-4.8h7.6z"/>
-                </svg>
-                <span className="hidden xs:inline">Trợ lý AI</span>
-              </button> */}
 
               {/* Language & Currency Selector */}
               <div className="relative" ref={langDropdownRef}>
@@ -466,15 +453,6 @@ export const Header: React.FC<HeaderProps> = ({ isCheckout = false }) => {
           </div>
         </div>
       </header>
-
-      {/* ========================================================================= */}
-      {/* 4. AI ASSISTANT DRAWER (AI TRAVEL ASSISTANT)                              */}
-      {/* Ngăn kéo trượt bên phải phục vụ hội thoại & tư vấn du lịch thông minh AI  */}
-      {/* ========================================================================= */}
-      <AIAssistantDrawer 
-        isOpen={isAIDrawerOpen}
-        onClose={() => setIsAIDrawerOpen(false)}
-      />
     </>
   );
 };

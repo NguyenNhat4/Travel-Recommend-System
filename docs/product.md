@@ -3,14 +3,17 @@
 **Đặc tả UX cho workstream Web** · Căn cứ: `spec/recsys-internship-handbook-v3-vi.md` (gọi tắt: *handbook*) và `spec/ux-research-brief.md`
 Ngày nghiên cứu: 16/09/2026 · Nguồn pattern: MCP Mobbin (web + iOS)
 
+> **Mốc đối chiếu frontend: 21/09/2026.** §1.5 ghi nhận trạng thái theo mã nguồn. Chưa xác minh runtime. §3–§7 mô tả UX mục tiêu, trừ phần được ghi rõ là hiện trạng.
+
 ---
 
 ## 0. Cách đọc tài liệu này
 
 - **Mọi pattern tham chiếu** được đánh mã `[Rxx]`. Bảng đầy đủ (app, nền tảng, màn hình, link Mobbin) nằm ở **§8**. Trong thân bài, mỗi mã đi kèm tên app và màn hình để đọc được mà không cần tra bảng.
-- **"Đề xuất"** = quyết định UX của tài liệu này. **"Phụ thuộc"** = cần Backend/Search xác nhận vì handbook chưa quy định. Các phụ thuộc được gom lại ở **§9**.
+- **"Đề xuất"** = quyết định UX của tài liệu này. **"Phụ thuộc"** = điểm cần đối chiếu khi tích hợp; các câu hỏi tại thời điểm soạn spec nằm ở **§9**. Contract hiện hành theo OpenAPI.
 - Tên trường dữ liệu (`because`, `strategy`, `unitPrice`…) lấy đúng theo handbook §6–§7. Tài liệu này **không** đề xuất đổi schema hay engine. Chỗ nào UI cần thêm dữ liệu thì ghi là phụ thuộc.
 - Chuỗi hiển thị (copy) viết bằng tiếng Việt, đặt trong ngoặc kép, dùng được ngay.
+- §1.5 phân biệt **đã có trong code** với **UX mục tiêu/chưa xác minh runtime**. Route, client wrapper hoặc API proxy không tự xác nhận luồng đã chạy với Backend.
 
 ---
 
@@ -28,13 +31,13 @@ Theo handbook §2 và §8, bản demo thắng hay thua ở ba khoảnh khắc. U
 
 ### 1.2 Trong phạm vi
 
-8 màn hình theo handbook §4: Home (cá nhân hóa), Search, Product detail, Cart, Checkout, Confirmation, Login/Register, Chat assistant. Kèm theo đó là các thành phần dùng chung, trạng thái rỗng/tải/lỗi, và bố cục mobile.
+8 màn hình theo handbook §4: Home (cá nhân hóa), Search, Product detail, Cart, Checkout, Confirmation, Login/Register và Chat assistant. Phạm vi assistant gồm nhập yêu cầu bằng giọng nói, thời tiết, lưu/chia sẻ lịch trình và chế độ bản đồ theo UX mục tiêu. Hiện trạng từng phần xem §1.5.
 
 ### 1.3 Ngoài phạm vi (theo handbook §2, §8 và brief §5)
 
 - Thanh toán thật, form thẻ, ví. Checkout chỉ thu thông tin và hiển thị mã tham chiếu.
 - OAuth/đăng nhập mạng xã hội, xác minh email, **quên/đặt lại mật khẩu**, 2FA, phân quyền. UI **không hiển thị** link "Quên mật khẩu" hay nút "Đăng nhập với Google" dù mọi OTA tham chiếu đều có.
-- Bản đồ, đánh giá chi tiết của người dùng (handbook §3 cấm thu review), wishlist, chia sẻ chuyến, chat nhóm.
+- Đánh giá chi tiết của người dùng (handbook §3 cấm thu review), wishlist và chat nhóm. Bản đồ, lưu và chia sẻ lịch trình thuộc UX scope; trạng thái code hiện tại xem §1.5.
 - Thu thập phản hồi trên gợi ý kiểu "Không quan tâm" hay "Thêm như này" `[R107]`: không có API ghi, nên không đưa vào MVP. Có thể đưa vào đề xuất Tuần 6.
 
 ### 1.4 Nguyên tắc thiết kế xuyên suốt
@@ -44,6 +47,20 @@ Theo handbook §2 và §8, bản demo thắng hay thua ở ba khoảnh khắc. U
 3. **Trung thực khi không cá nhân hóa được.** Cold start thì ghi "Phổ biến tại…", không giả vờ "Dành riêng cho bạn".
 4. **Suy giảm êm ái.** LLM lỗi thì hiện kết quả tìm kiếm. Gợi ý lỗi thì hiện danh mục phổ biến. Không bao giờ để trang trắng.
 5. **Một component, ba khuôn mặt.** "Một engine, ba khuôn mặt" của handbook §1 ứng với một bộ `ProductCard` + `BecauseLine` dùng chung ở Home, Search, Detail, Cart, Confirmation và Chat.
+
+### 1.5 Tình trạng frontend hiện tại (21/09/2026)
+
+Các trạng thái dưới đây được đối chiếu tĩnh với mã trong `src/frontend`; đây không phải kết quả chạy ứng dụng hay kiểm thử end-to-end.
+
+| Khu vực | Hiện trạng trong code | Contract và giới hạn tích hợp |
+|---|---|---|
+| Home, Search, Product detail | Route hiện render trạng thái **API chưa khả dụng**. | Có client wrapper theo OpenAPI; các page chưa gọi operation catalog/search/recommendation. Không hiển thị dữ liệu nghiệp vụ giả. |
+| Cart, Checkout, Confirmation | Route hiện render trạng thái **API chưa khả dụng**; form thao tác bị khóa. | Client wrapper khai báo operation cart/booking; page chưa gọi các operation này. Bật operation ở client không tự mở các route này. Chưa xác minh Backend runtime. |
+| Login/Register | Route hiện render trạng thái **API chưa khả dụng**; form bị khóa. | Client wrapper khai báo operation auth; page chưa gọi operation đăng nhập/đăng ký. Persona demo không còn được dùng tại các route này. |
+| Assistant | `/assistant` đọc trạng thái và gửi yêu cầu itinerary qua client contract; widget nổi gọi operation tạo itinerary. Kết quả render theo status của response. | Client dùng `/api/v1/assistant/status`, `/api/v1/assistant/itineraries/stream` và `/api/v1/assistant/itineraries`. Operation chỉ được gọi khi có trong `NEXT_PUBLIC_API_OPERATIONS`. Runtime/config chưa được xác minh. |
+| Tiện ích Assistant | Có nhập giọng nói, thẻ thời tiết, lưu lịch trình trên thiết bị và tạo liên kết chia sẻ từ dữ liệu itinerary. | Giọng nói dùng Web Speech API; thời tiết gọi Open-Meteo; lưu dùng `localStorage`; query URL chứa dữ liệu itinerary dạng Base64URL. Không thấy chế độ bản đồ trong code hiện tại; bản đồ tại §4/§7 vẫn là UX mục tiêu. |
+
+**Quy tắc đối chiếu:** `NEXT_PUBLIC_API_OPERATIONS` quyết định operation nào được bật ở client. Route proxy `/api/[...path]` chuyển tiếp `/api/v1/*` theo `BACKEND_BASE_URL`; sự hiện diện của proxy không xác nhận Backend đã cấu hình hoặc request thành công.
 
 ---
 
@@ -72,9 +89,9 @@ Tài khoản seed được hiển thị trong **bộ chọn tài khoản demo** 
 | Route | Màn hình | Cần đăng nhập | Ghi chú |
 |---|---|---|---|
 | `/` | Home | Không (khi đã đăng nhập mới có phần cá nhân hóa) | |
-| `/search?q=&taxonomy=&destination=&sort=` | Kết quả tìm kiếm | Không | Tham số lọc: **phụ thuộc** biến thể search Tuần 4 |
+| `/search?q=&taxonomy=&destination=&sort=` | Kết quả tìm kiếm | Không | Route hiện hiển thị trạng thái API chưa khả dụng; page chưa gọi `searchProducts`, xem §1.5 |
 | `/product/:productId` | Chi tiết sản phẩm | Không | |
-| `/assistant` | Trợ lý lịch trình | Không (khi đã đăng nhập thì kế hoạch trộn thêm gợi ý) | Handbook §9: "tùy chọn trộn `/recommendations` nếu đã đăng nhập" |
+| `/assistant` | Trợ lý lịch trình | Không | Gửi itinerary qua OpenAPI client; xem §1.5 và §6 |
 | `/cart` | Giỏ hàng | **Có** | Có thể bị cắt (handbook §2, mục 4) |
 | `/checkout` | Checkout | **Có** | |
 | `/booking/:referenceCode` | Xác nhận đặt chỗ | **Có** | |
@@ -109,6 +126,8 @@ Tài khoản seed được hiển thị trong **bộ chọn tài khoản demo** 
 
    Bất kỳ hành động ghi nào khi chưa đăng nhập ──▶ [Modal Login] ──▶ quay lại đúng chỗ, tiếp tục hành động
 ```
+
+**Trong code hiện tại:** các route storefront render màn hình API chưa khả dụng; page chưa nối client wrapper để tải dữ liệu. `AppShell` gắn widget trợ lý nổi. Sơ đồ trên đây mô tả UX mục tiêu; contract và giới hạn kết nối xem §1.5.
 
 ### 3.3 Điều hướng toàn cục
 
@@ -564,7 +583,11 @@ Khi nhận 401: mở modal "Phiên đăng nhập đã hết hạn. Đăng nhập
 
 Phần này mô tả **màn hình**. Luồng từ tin nhắn tới kế hoạch, cách render sản phẩm và quy tắc grounding nằm ở **§6**.
 
+**Hiện trạng code:** `AssistantView` dùng một form nhập yêu cầu và render response itinerary theo ngày; có nhập giọng nói, lưu/chia sẻ và thẻ thời tiết. Không có giao diện chat theo chuỗi tin nhắn hoặc chế độ bản đồ trong code hiện tại. Widget nổi mở luồng tạo itinerary riêng. Chưa xác minh runtime.
+
 #### 4.8.1 Bố cục desktop: chia đôi màn hình
+
+Bố cục dưới đây là UX mục tiêu. Frontend hiện render form và kết quả theo một cột; chưa có bố cục chat/kế hoạch chia đôi hoặc panel bản đồ.
 
 ```
 ┌ Header ───────────────────────────────────────────────────────────────────────┐
@@ -612,6 +635,8 @@ Prompt điền sẵn **chỉ được điền vào ô**, không tự gửi, đ�
 #### 4.8.3 Trạng thái màn hình (chi tiết ở §6.6)
 
 Rỗng · Đang xử lý (3 bước) · Cần hỏi lại (thiếu ý định) · Có kế hoạch · Kế hoạch một phần (thiếu sản phẩm cho một số khung) · Ngoài phạm vi · LLM lỗi/timeout → fallback kết quả tìm kiếm · Lỗi mạng.
+
+Đây là tập trạng thái UX mục tiêu. Code hiện tại hiển thị lỗi khi operation chưa bật hoặc request Backend thất bại; response `FALLBACK` chỉ được render khi Backend trả về status tương ứng. Không có planner cục bộ thay thế request.
 
 ---
 
@@ -728,6 +753,8 @@ Handbook §7: `because` là "ranh giới giữa một cuộc tranh cãi và mộ
 
 ## 6. Luồng trợ lý lịch trình: từ tin nhắn tới kế hoạch có thể đặt dịch vụ
 
+> **Luồng trong code:** `AssistantView` gọi status và stream itinerary qua OpenAPI client; widget nổi gọi operation tạo itinerary. `ResponseView` render các status và dữ liệu trả về theo schema. Next.js proxy chuyển tiếp `/api/v1/*` tới `BACKEND_BASE_URL`. Runtime/config chưa được xác minh; pipeline bên dưới là UX mục tiêu.
+
 ### 6.1 Ánh xạ pipeline handbook §9 sang trải nghiệm
 
 | Bước pipeline (handbook §9) | Người dùng thấy gì | Pattern |
@@ -740,6 +767,8 @@ Handbook §7: `because` là "ranh giới giữa một cuộc tranh cãi và mộ
 | Render kèm giá thật + link đặt | Panel kế hoạch đầy đủ (6.3) + thẻ tóm tắt trong chat | `[R96]` Agoda iOS; `[R95]` Tripadvisor iOS |
 
 **Phụ thuộc: tiến độ thật hay giả lập.** Nếu chat backend trả một response duy nhất (không stream), UI **không được** tự đánh ✓ từng bước theo đồng hồ như thể đó là tiến độ thật. Khi đó hiển thị cả 3 bước dạng danh sách "Trợ lý sẽ: hiểu yêu cầu → tìm sản phẩm → sắp xếp lịch trình" với một spinner chung. Nếu Backend stream sự kiện theo bước (SSE) thì đánh ✓ theo sự kiện thật. Đề xuất Backend stream, vì mục tiêu p95 < 5 giây (handbook §12) vẫn đủ lâu để người dùng cần thấy tiến độ.
+
+**Hiện trạng code:** client đọc stream SSE; `AssistantView` chỉ chuyển event `run.failed` thành thông báo lỗi và hiển thị response cuối. UI chưa thể hiện trạng thái hoàn tất riêng cho từng bước trong bảng.
 
 ### 6.2 Chip ý định: cho phép sửa mà không phải gõ lại
 
@@ -808,7 +837,9 @@ Nếu cắt về single-turn (handbook §2, mục 6) thì thẻ này là cách *
 | Nhãn "Hợp với bạn" | Chỉ cho sản phẩm đến từ `/recommendations`, kèm `BecauseLine` (§5.2) | `[R97]` Vrbo iOS (công tắc "Showing AI recommendations" tách mục gợi ý khỏi mục đã đặt) |
 | Tổng + CTA | Đếm **chỉ** các `ProductCard` còn `available`. "Thêm tất cả vào giỏ" thêm với ngày suy từ ngày của kế hoạch (**phụ thuộc:** ý định có ngày bắt đầu; không có thì mở hộp chọn ngày một lần cho cả kế hoạch). "Chọn từng mục" mở danh sách checkbox | `[R94]` Tripadvisor iOS (màn hình "Add to itinerary": checkbox từng mục + "Select all" + nút "Add") |
 
-### 6.4 Quy tắc grounding trên UI ("LLM không tự bịa sản phẩm", handbook §9, §12, §13)
+### 6.4 Quy tắc grounding mục tiêu trên UI ("LLM không tự bịa sản phẩm", handbook §9, §12, §13)
+
+**Hiện trạng code:** `ResponseView` render `slot.product`, ghi chú, giá và cảnh báo trong response itinerary. Các quy tắc bên dưới là hợp đồng UX mục tiêu; việc có generated type không tự xác nhận mọi điều kiện đã được kiểm tra ở runtime.
 
 Đây là **hợp đồng render**, Web phải tuân thủ bất kể LLM trả gì:
 
@@ -873,6 +904,8 @@ Nếu cắt về single-turn (handbook §2, mục 6) thì thẻ này là cách *
 
 ### 6.7 Nhất quán với giỏ và vòng lặp
 
+**Hiện trạng code:** client có wrapper cho cart, event và booking; route Cart, Checkout và Confirmation hiện render màn hình API chưa khả dụng, chưa gọi các wrapper này. Chưa xác minh luồng ghi booking/event hoặc cập nhật recommendation qua Backend.
+
 - "Thêm vào giỏ" từ chat ghi `add_to_cart` như mọi nơi khác (không có đường tắt ghi `purchase`).
 - Sau khi đặt xong từ các mục của kế hoạch, Confirmation hiện CTA "Quay lại lịch trình" (giữ hội thoại trong phiên) bên cạnh "Xem gợi ý mới trên trang chủ".
 - Kế hoạch **không** tự cập nhật giá sau khi tạo. Băng grounding ghi "giá tại thời điểm tạo kế hoạch". Giỏ và Checkout luôn dùng giá mới nhất và báo nếu giá đổi.
@@ -913,6 +946,8 @@ Quy tắc chung: vùng chạm ≥ 44 × 44 px, lề ngang 16 px, không cuộn n
 | **Chat** | Xem 7.4 | |
 
 ### 7.4 Trợ lý trên mobile
+
+**Hiện trạng code:** Assistant dùng form và kết quả xếp một cột; nhập giọng nói là nút phụ trong form. Chưa có panel bản đồ hoặc giao diện sheet. Bố cục dưới đây là UX mục tiêu; chưa xác minh trực quan trên thiết bị hoặc browser mobile.
 
 ```
 ┌ ← Trợ lý lịch trình        [↻] ┐      ┌ ✕  Lịch trình 3 ngày Nha Trang ┐
@@ -1171,9 +1206,9 @@ Ghi rõ theo brief §3, không bịa nguồn:
 
 ---
 
-## 9. Phụ thuộc cần Backend / Search xác nhận
+## 9. Câu hỏi thiết kế cần đối chiếu khi tích hợp
 
-Handbook chưa quy định những điểm dưới đây, nên UI chưa thể chốt. Gom lại để đưa vào buổi thống nhất OpenAPI (handbook §13: "OpenAPI thống nhất từ Tuần 1").
+Danh sách dưới đây ghi lại các câu hỏi lúc soạn UX spec, không phải trạng thái hiện hành của API contract. Contract hiện tại lấy từ `src/shared/contracts/openapi.yaml` cùng các file liên quan. Một số mục có thể đã được contract trả lời nhưng frontend vẫn chưa nối tới; cần đối chiếu contract trước khi coi là phụ thuộc schema chưa chốt.
 
 | # | Câu hỏi | Ảnh hưởng UI | Mặc định UI nếu chưa có câu trả lời |
 |---|---|---|---|
@@ -1185,8 +1220,10 @@ Handbook chưa quy định những điểm dưới đây, nên UI chưa thể ch
 | D6 | Giỏ lưu server hay client? | Đổi tài khoản demo không lẫn giỏ §4.4 | Client, khóa theo `cdp_user_id` |
 | D7 | Checkout gán `eventGroupId` thế nào khi giỏ có nhiều điểm đến? | Gom nhóm "Chuyến {destination}" §4.4 | Gom theo `destination` ở UI |
 | D8 | Endpoint đọc booking theo `referenceCode` | Tải lại trang Confirmation §4.6 | Giữ dữ liệu trong state điều hướng; tải lại thì báo không tìm thấy |
-| D9 | Chat: có stream sự kiện theo bước (SSE) không? | Thẻ tiến độ §6.1 | Spinner chung, không đánh ✓ giả |
+| D9 | Event SSE itinerary gắn với bước pipeline nào? | Thẻ tiến độ §6.1 | Spinner chung, chỉ đánh ✓ theo event đã xác nhận |
 | D10 | Chat: hình dạng response (§6.4) và việc nhận ý định có cấu trúc để tạo lại kế hoạch | Chip ý định sửa được §6.2 | Sửa chip = gửi tin nhắn văn bản "Đổi thành 2 ngày" |
 | D11 | Sản phẩm có nhiều ảnh không? | Gallery §4.3 | 1 ảnh full-width |
 | D12 | Ngữ nghĩa ngày của vé máy bay trong dữ liệu (cố định hay theo khoảng) | Hộp đặt vé máy bay §4.3.3 | Hiển thị `availableFrom` dạng chỉ đọc |
 | D13 | Danh sách "sản phẩm đã xem gần đây" cho Home ② | Section ② | Bỏ section |
+
+Các câu hỏi này phát sinh trong giai đoạn thiết kế. Đối chiếu từng luồng với trạng thái code tại §1.5 và OpenAPI hiện hành; các mặc định trong bảng không thay thế contract.

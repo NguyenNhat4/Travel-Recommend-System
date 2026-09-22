@@ -189,3 +189,129 @@ export function getSimilarProducts(productId: string): Product[] {
     (p.taxonomy === current.taxonomy || p.destination === current.destination)
   ).slice(0, 4);
 }
+
+export const PERSONA_CDP_USER_MAP: Record<string, string> = {
+  P1: 'VP0000001',
+  P2: 'VP0000002',
+  P3: 'VP0000003',
+  P4: 'VP0000004',
+};
+
+export interface FetchRecommendationsParams {
+  cdpUserId?: string | null;
+  k?: number;
+  destination?: string;
+  fallbackUser?: UserPersona | null;
+  fallbackEvents?: UserEvent[];
+  signal?: AbortSignal;
+}
+
+/**
+ * Fetch recommendations from backend endpoint GET /api/v1/recommendations
+ * Proxied via Next.js BFF (/api/v1/recommendations)
+ * Gracefully falls back to local recommendation calculation if backend is unreachable.
+ */
+export async function fetchRecommendations(
+  params: FetchRecommendationsParams = {}
+): Promise<RecommendationResponse> {
+  const {
+    cdpUserId,
+    k = 4,
+    destination,
+    fallbackUser = null,
+    fallbackEvents = [],
+    signal,
+  } = params;
+
+  try {
+    const searchParams = new URLSearchParams();
+    if (cdpUserId) {
+      searchParams.set('cdp_user_id', cdpUserId);
+    }
+    if (k) {
+      searchParams.set('k', String(k));
+    }
+    if (destination) {
+      searchParams.set('destination', destination);
+    }
+
+    const queryString = searchParams.toString();
+    const endpoint = `/api/v1/recommendations${queryString ? `?${queryString}` : ''}`;
+
+    const response = await fetch(endpoint, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+      },
+      cache: 'no-store',
+      signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Recommendations API returned status ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    // Map backend items to frontend RecommendationResponse
+    const rawItems: any[] = Array.isArray(data.recommendations) ? data.recommendations : [];
+
+    const mappedRecs = rawItems.map((item: any, idx: number) => {
+      const pid = item.productId || item.product?.id || `rec-${idx}`;
+      const catalogMatch = CATALOG.find(p => p.id === pid);
+
+      const product: Product = catalogMatch || {
+        id: pid,
+        name: item.name || item.product?.name || 'Sản phẩm đề xuất',
+        taxonomy: (item.taxonomy || item.product?.taxonomy || 'hotel') as Taxonomy,
+        destination: (item.destination || item.product?.destination || 'Nha Trang') as Destination,
+        unitPrice: Number(item.unitPrice ?? item.product?.unitPrice ?? 0),
+        currency: 'VND',
+        imageUrl: item.imageUrl || item.product?.imageUrl || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?q=80&w=800&auto=format&fit=crop',
+        description: item.description || item.product?.description || '',
+        attributes: item.attributes || item.product?.attributes || {},
+        available: item.available ?? true,
+      };
+
+      const becauseList: BecauseItem[] = Array.isArray(item.because)
+        ? item.because.map((b: any) => ({
+            productId: b.productId,
+            productName: b.productName || 'Sản phẩm quan tâm gần đây',
+            event: b.event || 'product_view',
+            daysAgo: typeof b.daysAgo === 'number' ? Math.round(b.daysAgo) : 1,
+            contribution: typeof b.contribution === 'number' ? b.contribution : 0.5,
+            imageUrl: b.imageUrl,
+          }))
+        : [];
+
+      return {
+        product,
+        score: typeof item.score === 'number' ? item.score : +(0.9 - idx * 0.05).toFixed(2),
+        rank: typeof item.rank === 'number' ? item.rank : idx + 1,
+        because: becauseList,
+      };
+    });
+
+    return {
+      strategy: data.strategy || 'popular',
+      nextVertical: data.nextVertical,
+      destination: data.destination || (fallbackUser?.activeDestination || 'Nha Trang'),
+      recommendations: mappedRecs,
+      diagnostics: {
+        eventsUsed: data.diagnostics?.eventsUsed ?? 0,
+        coldStart: data.diagnostics?.coldStart ?? false,
+        excludedVerticals: data.diagnostics?.excludedVerticals ?? [],
+        modelVersion: data.modelVersion || 'v3.2-prod-hybrid',
+        latencyMs: data.diagnostics?.latencyMs,
+      },
+      generatedAt: data.generatedAt || new Date().toISOString(),
+    };
+  } catch (error: any) {
+    if (signal?.aborted) {
+      throw error;
+    }
+    console.warn('[recsys] Backend API fetch failed, falling back to local simulator:', error?.message || error);
+    return calculateRecommendations(fallbackUser, fallbackEvents);
+  }
+}
+

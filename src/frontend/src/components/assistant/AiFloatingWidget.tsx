@@ -1,15 +1,18 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { useTravel } from '../../context/TravelContext';
+import { useAssistant } from '../../context/AssistantProvider';
 import { extractIntent, buildGroundedItinerary } from '../../services/assistant';
+import { CATALOG } from '../../data/catalog';
+import type { components } from '../../types/api.gen';
 import { GroundedPlan, Product, TravelIntent, ItineraryDay, ItinerarySlot } from '../../types/travel';
 import { 
   X, Send, Maximize2, Minimize2, Sparkles, MapPin, 
   Calendar, Users, Check, Loader2, Compass, 
   ShoppingBag, Hotel, Clock, ArrowRight, ChevronRight, ChevronLeft, List,
-  Plus, MessageSquare, Trash2, ExternalLink, Bookmark, CheckCircle2, SlidersHorizontal
+  Plus, MessageSquare, Trash2, ExternalLink, Bookmark, CheckCircle2, SlidersHorizontal, RotateCcw, AlertCircle
 } from 'lucide-react';
 
 // Dynamically load the Leaflet + OSM/OSRM itinerary map to avoid SSR issues.
@@ -243,32 +246,218 @@ const getSlotVisualUrl = (slot: ItinerarySlot, destination: string): string => {
   return 'https://images.unsplash.com/photo-1513889961551-628c1e5e2ee9?auto=format&fit=crop&w=1200&q=80';
 };
 
+const DESTINATION_COORDINATES: Record<string, { lat: number; lng: number }> = {
+  'Nha Trang': { lat: 12.2388, lng: 109.1967 },
+  'Phú Quốc': { lat: 10.2899, lng: 103.9840 },
+  'Đà Nẵng': { lat: 16.0544, lng: 108.2022 },
+  'Đà Lạt': { lat: 11.9404, lng: 108.4376 },
+  'Hội An': { lat: 15.8801, lng: 108.3380 },
+  'Hạ Long': { lat: 20.9501, lng: 107.0734 },
+  'Hà Nội': { lat: 21.0285, lng: 105.8542 },
+};
+
+function adaptProductSummaryToProduct(summary: components['schemas']['ProductSummary']): Product {
+  const dest = (summary.destination || 'Nha Trang') as any;
+  const catalogItem = CATALOG.find(p => p.id === summary.productId);
+  const defaultCoords = DESTINATION_COORDINATES[dest] || { lat: 12.2388, lng: 109.1967 };
+
+  return {
+    id: summary.productId,
+    name: summary.name || catalogItem?.name || 'Sản phẩm du lịch',
+    taxonomy: (summary.taxonomy || catalogItem?.taxonomy || 'attraction') as any,
+    destination: dest,
+    unitPrice: summary.unitPrice ?? catalogItem?.unitPrice ?? 0,
+    currency: 'VND',
+    priceString: summary.unitPrice != null ? new Intl.NumberFormat('vi-VN').format(summary.unitPrice) + ' ₫' : catalogItem?.priceString,
+    imageUrl: summary.imageUrl || catalogItem?.imageUrl || 'https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&w=1200&q=80',
+    description: summary.description || catalogItem?.description || '',
+    attributes: { ...(catalogItem?.attributes || {}), ...((summary.attributes as any) || {}) },
+    available: summary.available ?? true,
+    coordinates: catalogItem?.coordinates || (summary.attributes as any)?.coordinates || defaultCoords,
+    address: catalogItem?.address || (summary.attributes as any)?.address || summary.destination,
+  };
+}
+
+function convertItineraryCompletedToGroundedPlan(
+  response: components['schemas']['ItineraryCompleted']
+): GroundedPlan {
+  const dest = (response.intent?.destination || 'Nha Trang') as any;
+  const daysCount = response.intent?.days || response.itinerary.days.length || 3;
+  const party = (response.intent?.party as any) || 'family_with_kids';
+  const defaultCoords = DESTINATION_COORDINATES[dest] || { lat: 12.2388, lng: 109.1967 };
+
+  const stayItem = response.itinerary.stay ? {
+    productId: response.itinerary.stay.product.productId,
+    product: adaptProductSummaryToProduct(response.itinerary.stay.product),
+    nights: response.itinerary.stay.nights || (daysCount > 1 ? daysCount - 1 : 1),
+    note: response.itinerary.stay.note || 'Khách sạn lưu trú 5 sao',
+    source: (response.itinerary.stay.source as any) || 'search',
+    because: response.itinerary.stay.because as any,
+  } : undefined;
+
+  const timeRanges: Record<string, string> = {
+    morning: '08:00 - 11:30',
+    noon: '11:45 - 13:30',
+    afternoon: '14:30 - 17:30',
+    evening: '18:00 - 21:00',
+  };
+
+  const days: ItineraryDay[] = response.itinerary.days.map((d) => {
+    const slots: ItinerarySlot[] = d.slots.map((s) => {
+      const product = s.product ? adaptProductSummaryToProduct(s.product) : undefined;
+      const title = s.product?.name || s.activityType || s.note || 'Hoạt động trải nghiệm';
+      const locName = s.product?.name || s.product?.destination || dest;
+      const timeRange = (s.startTime && s.endTime) ? `${s.startTime} - ${s.endTime}` : (timeRanges[s.time] || '08:00 - 11:30');
+      const coords = product?.coordinates || defaultCoords;
+
+      return {
+        time: s.time as any,
+        timeRange,
+        activityTitle: title,
+        locationName: locName,
+        productId: s.product?.productId,
+        product,
+        note: s.note || '',
+        source: (s.source as any) || 'curated',
+        coordinates: coords,
+        address: product?.address || dest,
+        transitInfo: '',
+        transitMode: 'driving',
+        isActivityNote: !s.product,
+        because: s.because as any,
+      };
+    });
+
+    return {
+      day: d.day,
+      title: d.title || `Ngày ${d.day} tại ${dest}`,
+      slots,
+    };
+  });
+
+  return {
+    intent: {
+      destination: dest,
+      days: daysCount,
+      party,
+      interests: response.intent?.interests || [],
+    },
+    title: response.itinerary.title || `Lịch trình ${daysCount} ngày tại ${dest}`,
+    stay: stayItem,
+    stays: stayItem ? [stayItem] : undefined,
+    days,
+    totalEstimatedPrice: response.itinerary.estimatedTotal ?? 0,
+    bookableProductsCount: response.itinerary.bookableCount ?? days.reduce((acc, cur) => acc + cur.slots.filter(s => !!s.product).length, 0),
+  };
+}
+
 
 export const AiFloatingWidget: React.FC = () => {
   const { currentPersona, activeEvents, addToCart, showToast, navigate, currentRoute } = useTravel();
+  const {
+    state: assistantState,
+    sendMessage,
+    submitIntentOverride,
+    retry,
+    abort,
+    resetConversation,
+    consumeFloatingInitialMessage,
+  } = useAssistant();
 
   // Widget States
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
   const [showBubble, setShowBubble] = useState<boolean>(true);
   const [inputVal, setInputVal] = useState<string>('');
-  const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [activePlan, setActivePlan] = useState<GroundedPlan | null>(null);
   const [activeDayTab, setActiveDayTab] = useState<number>(1);
   const [isSavedPlan, setIsSavedPlan] = useState<boolean>(false);
   const [isChatCollapsed, setIsChatCollapsed] = useState<boolean>(false);
   const [hoveredCoordinate, setHoveredCoordinate] = useState<{ lat: number; lng: number } | null>(null);
   const [hoveredPointId, setHoveredPointId] = useState<string | null>(null);
+  const [resolvedClarifications, setResolvedClarifications] = useState<Set<string>>(new Set());
 
   // History Conversation & Drawer States
   const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
   const [conversations, setConversations] = useState<ConversationSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string>('conv-current');
 
-  const [messages, setMessages] = useState<WidgetChatMessage[]>([DEFAULT_WELCOME_MESSAGE]);
+  const [localMessages, setLocalMessages] = useState<WidgetChatMessage[]>([DEFAULT_WELCOME_MESSAGE]);
+  const [isGenerating, setIsGenerating] = useState<boolean>(false);
+  const isRunning = assistantState.phase === 'connecting' || assistantState.phase === 'streaming' || isGenerating;
 
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Sync isOpen when provider requests opening floating widget
+  useEffect(() => {
+    if (assistantState.isFloatingOpen) {
+      setIsOpen(true);
+    }
+  }, [assistantState.isFloatingOpen]);
+
+  // Sync initial message if provided
+  useEffect(() => {
+    if (assistantState.floatingInitialMessage) {
+      setInputVal(assistantState.floatingInitialMessage);
+      consumeFloatingInitialMessage();
+    }
+  }, [assistantState.floatingInitialMessage, consumeFloatingInitialMessage]);
+
+  // Sync latest completed plan from backend response
+  useEffect(() => {
+    if (assistantState.response?.status === 'COMPLETED') {
+      const plan = convertItineraryCompletedToGroundedPlan(assistantState.response);
+      setActivePlan(plan);
+      setActiveDayTab(1);
+      setIsSavedPlan(false);
+    }
+  }, [assistantState.response]);
+
+  // Derive messages from assistantState.transcript or local fallback
+  const messages = useMemo<WidgetChatMessage[]>(() => {
+    if (assistantState.transcript.length === 0) {
+      return localMessages;
+    }
+
+    return assistantState.transcript.map((item) => {
+      let plan: GroundedPlan | undefined = undefined;
+      let clarification: ClarificationData | undefined = undefined;
+
+      if (item.response?.status === 'COMPLETED') {
+        plan = convertItineraryCompletedToGroundedPlan(item.response);
+      } else if (item.response?.status === 'NEEDS_CLARIFICATION') {
+        const clarify = item.response;
+        clarification = {
+          id: 'clarify-' + item.id,
+          title: 'Làm rõ yêu cầu chuyến đi của bạn',
+          description: clarify.question,
+          missingFields: (clarify.missingFields as any) || ['destination', 'days'],
+          suggestedDestinations: clarify.suggestedValues?.destination && clarify.suggestedValues.destination.length > 0
+            ? clarify.suggestedValues.destination
+            : ['Nha Trang', 'Phú Quốc', 'Đà Nẵng', 'Đà Lạt'],
+          suggestedDays: clarify.suggestedValues?.days && clarify.suggestedValues.days.length > 0
+            ? clarify.suggestedValues.days
+            : [2, 3, 4, 5],
+          selectedDestination: clarify.knownIntent?.destination || clarify.suggestedValues?.destination?.[0] || 'Nha Trang',
+          selectedDays: clarify.knownIntent?.days || clarify.suggestedValues?.days?.[0] || 3,
+          selectedParty: (clarify.knownIntent?.party as any) || 'family_with_kids',
+          selectedStyle: 'luxury',
+          isResolved: resolvedClarifications.has(item.id),
+        };
+      }
+
+      return {
+        id: item.id,
+        sender: item.sender,
+        text: item.text,
+        plan,
+        clarification,
+      };
+    });
+  }, [assistantState.transcript, localMessages, resolvedClarifications]);
+
+  const setMessages = setLocalMessages;
 
   // Typing effect on the floating pill
   const fullBubbleText = 'Muốn mình tư vấn gì đó\nvề du lịch không?';
@@ -544,18 +733,8 @@ export const AiFloatingWidget: React.FC = () => {
   };
 
   const handleConfirmClarification = (clarification: ClarificationData) => {
-    // 1. Cập nhật message chứa clarification thành isResolved
-    setMessages(prev => prev.map(m => {
-      if (m.clarification && m.clarification.id === clarification.id) {
-        return {
-          ...m,
-          clarification: { ...clarification, isResolved: true }
-        };
-      }
-      return m;
-    }));
+    setResolvedClarifications(prev => new Set(prev).add(clarification.id.replace('clarify-', '')));
 
-    // 2. Thêm phản hồi của người dùng
     const partyName = clarification.selectedParty === 'family_with_kids' 
       ? 'gia đình' 
       : clarification.selectedParty === 'couple' 
@@ -568,153 +747,15 @@ export const AiFloatingWidget: React.FC = () => {
       : 'tối ưu chi phí tiết kiệm';
 
     const userConfirmationText = `Tôi chọn đi ${clarification.selectedDestination} (${clarification.selectedDays} ngày) cho ${partyName}, ưu tiên phong cách ${styleName}.`;
-    
-    const userMsg: WidgetChatMessage = {
-      id: Date.now().toString(),
-      sender: 'user',
-      text: userConfirmationText
-    };
-
-    setMessages(prev => [...prev, userMsg]);
-    setIsGenerating(true);
-
-    // 3. AI sinh lịch trình dựa trên thông số do con người chốt (Human in the loop)
-    setTimeout(() => {
-      const interests = clarification.selectedStyle === 'luxury'
-        ? ['villa', 'relaxation', 'spa', 'beach']
-        : ['theme_park', 'beach', 'food'];
-
-      const travelIntent: TravelIntent = {
-        destination: clarification.selectedDestination as any,
-        days: clarification.selectedDays,
-        party: clarification.selectedParty,
-        interests,
-        multiHotel: clarification.selectedDays >= 4
-      };
-
-      const plan = buildGroundedItinerary(travelIntent, currentPersona, activeEvents);
-      setActivePlan(plan);
-      setActiveDayTab(1);
-      setIsSavedPlan(false);
-
-      const botReply: WidgetChatMessage = {
-        id: (Date.now() + 1).toString(),
-        sender: 'assistant',
-        text: `Tuyệt vời! Dựa trên các tiêu chí bạn vừa xác nhận, mình đã hoàn thiện lịch trình "${plan.title}" (${clarification.selectedDays} ngày tại ${clarification.selectedDestination}) được cá nhân hóa riêng cho bạn. Hãy mở rộng toàn màn hình để xem chi tiết lộ trình và bản đồ nhé!`,
-        plan
-      };
-
-      setMessages(prev => [...prev, botReply]);
-      setIsGenerating(false);
-    }, 600);
+    sendMessage(userConfirmationText);
   };
 
   const handleSendMessage = (textToSend?: string) => {
     const text = (textToSend || inputVal).trim();
-    if (!text || isGenerating) return;
+    if (!text || isRunning) return;
 
-    const userMsg: WidgetChatMessage = {
-      id: Date.now().toString(),
-      sender: 'user',
-      text
-    };
-
-    setMessages(prev => [...prev, userMsg]);
     setInputVal('');
-    setIsGenerating(true);
-
-    // Analyze intent using real catalog assistant engine
-    setTimeout(() => {
-      const { intent } = extractIntent(text);
-      const clean = text.toLowerCase();
-      
-      const isItineraryRequest = 
-        clean.includes('lịch trình') || 
-        clean.includes('kế hoạch') || 
-        clean.includes('combo') || 
-        clean.includes('ngày') || 
-        clean.includes('du lịch') ||
-        clean.includes('tư vấn') ||
-        clean.includes('đi chơi') ||
-        clean.includes('nghỉ dưỡng') ||
-        clean.includes('chuyến đi') ||
-        !!intent.destination;
-
-      // CASE 2: HUMAN IN THE LOOP (Clarification & Disambiguation)
-      // Khi yêu cầu có ý định du lịch nhưng còn mơ hồ: thiếu destination HOẶC thiếu cả destination & days
-      const isAmbiguous = isItineraryRequest && (!intent.destination || (clean.includes('tư vấn') && !clean.match(/\d+\s*ngày/)));
-
-      if (isAmbiguous) {
-        const clarificationData: ClarificationData = {
-          id: 'clarify-' + Date.now(),
-          title: 'Làm rõ yêu cầu chuyến đi của bạn',
-          description: 'Để thiết kế lịch trình tối ưu và sát với mong muốn nhất, bạn vui lòng chọn nhanh một số tiêu chí quan trọng bên dưới:',
-          missingFields: !intent.destination ? ['destination', 'days', 'style'] : ['style', 'days'],
-          suggestedDestinations: ['Nha Trang', 'Phú Quốc', 'Đà Nẵng', 'Đà Lạt'],
-          suggestedDays: [2, 3, 4, 5],
-          selectedDestination: intent.destination || 'Nha Trang',
-          selectedDays: intent.days || 3,
-          selectedParty: intent.party || 'family_with_kids',
-          selectedStyle: clean.includes('tiết kiệm') || clean.includes('rẻ') ? 'budget' : 'luxury',
-          isResolved: false
-        };
-
-        const botReply: WidgetChatMessage = {
-          id: (Date.now() + 1).toString(),
-          sender: 'assistant',
-          text: 'Dạ mình rất sẵn lòng đồng hành cùng bạn thiết kế chuyến đi! Vì nhu cầu du lịch rất đa dạng, bạn hãy tinh chỉnh các tiêu chí mong muốn dưới đây để mình lập lộ trình chuẩn xác nhất nhé:',
-          clarification: clarificationData
-        };
-
-        setMessages(prev => [...prev, botReply]);
-        setIsGenerating(false);
-        return;
-      }
-
-      if (isItineraryRequest) {
-        const dest = intent.destination || 'Nha Trang';
-        const days = intent.days || 3;
-        const travelIntent: TravelIntent = {
-          destination: dest,
-          days,
-          party: intent.party || 'family_with_kids',
-          interests: intent.interests && intent.interests.length > 0 ? intent.interests : ['theme_park', 'beach'],
-          multiHotel: intent.multiHotel
-        };
-
-        const plan = buildGroundedItinerary(travelIntent, currentPersona, activeEvents);
-        setActivePlan(plan);
-        setActiveDayTab(1);
-        setIsSavedPlan(false);
-
-        const staySummary = plan.stays && plan.stays.length >= 2 
-          ? `trải nghiệm ${plan.stays.length} khách sạn lưu trú`
-          : 'nơi lưu trú';
-        const botReply: WidgetChatMessage = {
-          id: (Date.now() + 1).toString(),
-          sender: 'assistant',
-          text: `Dạ mình đã thiết kế xong kế hoạch "${plan.title}" (${days} ngày tại ${dest}) gồm ${staySummary}, vé vui chơi và lộ trình chi tiết! Hãy nhấn nút mở rộng để xem lộ trình và bản đồ song song nhé!`,
-          plan
-        };
-        setMessages(prev => [...prev, botReply]);
-      } else {
-        let reply = 'Dạ mình đã ghi nhận câu hỏi và sẵn sàng hỗ trợ bạn tìm dịch vụ nghỉ dưỡng phù hợp nhất!';
-        if (text.includes('Nha Trang')) {
-          reply = 'Dạ tại Nha Trang, Vinpearl Resort & Spa Nha Trang Bay đang có mức giá ưu đãi từ 2.294.500 ₫/đêm gồm cano đưa đón 24/7 và buffet sáng!';
-        } else if (text.includes('Phú Quốc')) {
-          reply = 'Dạ tại Phú Quốc, gói VinHolidays Fiesta kết hợp vé VinWonders & Safari trọn gói chỉ từ 1.007.500 ₫/khách!';
-        } else if (text.toLowerCase().includes('đà lạt') || text.toLowerCase().includes('da lat')) {
-          reply = 'Dạ Đà Lạt có cung 7 ngày rất đẹp xuất phát từ TP. Hồ Chí Minh: vượt đèo Prenn cửa ngõ, Datanla, Langbiang, Cầu Đất, Trại Mát, Tà Nung và ngày tiễn về TP.HCM.';
-        }
-        const botReply: WidgetChatMessage = {
-          id: (Date.now() + 1).toString(),
-          sender: 'assistant',
-          text: reply
-        };
-        setMessages(prev => [...prev, botReply]);
-      }
-      setIsGenerating(false);
-    }, 600);
+    sendMessage(text);
   };
 
   const handleQuickPrompt = (promptText: string) => {
@@ -784,9 +825,9 @@ export const AiFloatingWidget: React.FC = () => {
       setConversations(prev => [newSession, ...prev]);
     }
 
-    // Reset về hội thoại mới
+    // Reset về hội thoại mới với backend agent
+    resetConversation();
     setActiveSessionId('conv-' + Date.now());
-    setMessages([DEFAULT_WELCOME_MESSAGE]);
     setActivePlan(null);
     setActiveDayTab(1);
     setIsSavedPlan(false);
@@ -796,7 +837,6 @@ export const AiFloatingWidget: React.FC = () => {
 
   const handleSelectConversation = (session: ConversationSession) => {
     setActiveSessionId(session.id);
-    setMessages(session.messages);
     setActivePlan(session.plan);
     setActiveDayTab(1);
     setIsSavedPlan(false);
@@ -936,10 +976,42 @@ export const AiFloatingWidget: React.FC = () => {
             </div>
           </div>
         ))}
-        {isGenerating && (
-          <div className="flex items-center space-x-2.5 text-slate-500 text-sm italic bg-slate-100 p-3.5 rounded-2xl w-fit">
-            <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
-            <span>AI đang lập kế hoạch và tính toán lộ trình...</span>
+        {isRunning && (
+          <div className="flex flex-col space-y-2 text-slate-600 text-sm bg-blue-50/70 border border-blue-100/80 p-3.5 rounded-2xl w-fit max-w-[90%]">
+            <div className="flex items-center space-x-2 font-semibold text-blue-900">
+              <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+              <span>{assistantState.isSlow ? 'Yêu cầu đang mất nhiều thời gian hơn dự kiến…' : 'AI đang lập kế hoạch và tính toán lộ trình...'}</span>
+            </div>
+            {assistantState.progress.length > 0 && (
+              <ol className="space-y-1 text-xs text-blue-800 pl-5 list-disc">
+                {assistantState.progress.map((step, index) => (
+                  <li key={`${step.sequence ?? index}-${step.nodeId ?? 'node'}`}>
+                    <span className="font-semibold">{step.nodeId ?? 'Bước xử lý'}</span>
+                    {step.message ? ` · ${step.message}` : ''}
+                  </li>
+                ))}
+              </ol>
+            )}
+          </div>
+        )}
+        {assistantState.error && (
+          <div className="flex items-start justify-between gap-3 p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-800">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              <div>
+                <div className="font-bold">Lỗi từ Backend Agent</div>
+                <div className="mt-0.5 text-rose-700">{assistantState.error.message}</div>
+              </div>
+            </div>
+            {assistantState.error.retryable && (
+              <button 
+                onClick={retry}
+                className="flex items-center gap-1 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold transition shrink-0 cursor-pointer shadow-xs"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Thử lại</span>
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -963,13 +1035,25 @@ export const AiFloatingWidget: React.FC = () => {
           />
           <button 
             onClick={() => handleSendMessage()} 
-            disabled={!inputVal.trim() || isGenerating}
+            disabled={!inputVal.trim() || isRunning}
             className="p-3 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 text-white rounded-xl shadow-xs transition cursor-pointer shrink-0"
             title="Gửi yêu cầu"
             aria-label="Gửi yêu cầu"
           >
             <Send className="w-4 h-4" />
           </button>
+        </div>
+        <div className="mt-2 flex items-center justify-between px-1 text-[11px] text-slate-400">
+          <span>{assistantState.conversationId ? 'Phiên backend đang hoạt động' : 'Trợ lý AI V-OTA'}</span>
+          {isRunning && (
+            <button 
+              type="button" 
+              onClick={abort} 
+              className="text-rose-600 hover:text-rose-700 hover:underline font-semibold cursor-pointer"
+            >
+              Dừng xử lý
+            </button>
+          )}
         </div>
       </div>
     </div>
