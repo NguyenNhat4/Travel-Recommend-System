@@ -2,7 +2,7 @@
 
 File này áp dụng cho mọi AI coding agent (Claude Code, Codex, Cursor, Copilot...) làm việc trong repository. `CLAUDE.md` chỉ import file này; sửa quy tắc tại đây.
 
-**PRD (`docs/prd/`) là tài liệu gốc của dự án.** Mọi quy tắc kiến trúc, phạm vi và tiêu chí nghiệm thu lấy từ PRD; mọi thay đổi làm lệch PRD phải cập nhật PRD trong cùng thay đổi. Nơi đặt tài liệu: mục 7.
+**PRD (`docs/prd/`) là tài liệu gốc của dự án — đây là nguyên tắc.** Mọi quy tắc kiến trúc, phạm vi, hành vi và tiêu chí nghiệm thu lấy từ PRD. **Bất kỳ thay đổi nào lệch khỏi PRD** — code, spec, contract, DDL, cấu hình, hay chính nội dung PRD — phải có đề xuất trong `docs/prd/update/` và được người dùng **chốt trước**; chưa chốt thì không được sửa source (mục 8). Nơi đặt tài liệu: mục 7.
 
 ## 1. Bắt buộc đọc tài liệu trước khi làm feature mới
 
@@ -11,7 +11,8 @@ Trước khi viết hoặc sửa code cho **feature mới, endpoint mới, modul
 ### 1.1. Luôn đọc (mọi feature)
 
 1. `docs/prd/README.md` — mục lục PRD, kèm tài liệu PRD theo phạm vi ở mục 1.2. Mỗi feature phải gắn được vào ít nhất một mã FR/NFR trong `docs/prd/requirements.md`; không có mã tương ứng thì hỏi người dùng trước, không tự mở rộng phạm vi sản phẩm.
-2. Lịch sử thay đổi trong `history/` (xem mục 5): `history/README.md`, 10 entry mới nhất, mọi entry từng chạm vào đường dẫn/workstream sắp sửa và mọi entry có `Trạng thái: dang dở` thuộc phạm vi đó.
+2. `docs/prd/update/` — các đề xuất **đang chờ chốt** hoặc **đã chốt nhưng chưa áp dụng** thuộc phạm vi sắp sửa (mục 8). Không cần đọc `docs/prd/update-archive/`: nội dung đã chốt ở đó đã nằm trong PRD.
+3. Lịch sử thay đổi trong `history/` (xem mục 5): `history/README.md`, 10 entry mới nhất, mọi entry từng chạm vào đường dẫn/workstream sắp sửa và mọi entry có `Trạng thái: dang dở` thuộc phạm vi đó.
 
 ### 1.2. Đọc thêm theo phạm vi
 
@@ -45,9 +46,10 @@ Trước lần sửa code đầu tiên, agent phải ghi ngắn cho người dù
 - Mã FR/NFR trong `docs/prd/requirements.md` mà feature này phục vụ, và tiêu chí nghiệm thu (AC) tương ứng ở §3 của tài liệu đó nếu có.
 - Các quy tắc/ràng buộc từ tài liệu áp dụng cho feature này.
 - Quyết định hoặc việc dang dở từ lịch sử liên quan tới feature này.
+- Thay đổi có lệch khỏi PRD không. Có lệch thì nêu đề xuất đã chốt cho phép nó; chưa có thì tạo đề xuất và **dừng**, chờ người dùng chốt (mục 8).
 - Điểm mâu thuẫn hoặc chưa rõ (nếu có).
 
-Nếu chưa đọc đủ file theo mục 1.1 và 1.2, **không được bắt đầu code**.
+Nếu chưa đọc đủ file theo mục 1.1 và 1.2, hoặc thay đổi lệch PRD mà chưa có đề xuất đã chốt, **không được bắt đầu code**.
 
 ## 2. Khi tài liệu mâu thuẫn hoặc thiếu
 
@@ -90,7 +92,7 @@ Chuẩn đầy đủ: Definition of Done ở `docs/prd/implementation-plan.md` �
 - Có thay đổi contract hoặc mock: chạy `PYTHONDONTWRITEBYTECODE=1 python3 src/shared/contracts/tests/validate_contract.py` từ repo root và báo kết quả.
 - Thêm test theo tháp 5 tầng của `docs/prd/test-plan.md` — unit, contract, integration/DB, grounding của agent, đánh giá RecSys offline — chỉ các tầng thuộc phạm vi thay đổi. DoD đặt mức bao phủ ≥ 80% cho `domain` và `application`.
 - Có thay đổi schema hoặc seed: `db/verify.sql` (và `db/verify_insider.sql` nếu chạm Insider) PASS, trừ hai dòng FAIL dự kiến ghi ở mục 6.5.
-- Nếu feature làm thay đổi quy ước, cập nhật tài liệu liên quan trong cùng thay đổi — **bắt buộc cập nhật PRD tương ứng** khi thay đổi chạm tới FR/NFR, kiến trúc, mô hình dữ liệu hoặc luồng người dùng. Tài liệu mới đặt đúng thư mục theo mục 7.
+- Nếu feature làm thay đổi quy ước, cập nhật tài liệu liên quan trong cùng thay đổi. Mọi phần lệch PRD phải trỏ được tới một đề xuất **đã chốt**, PRD đã được cập nhật theo đề xuất đó và đề xuất đã chuyển sang `docs/prd/update-archive/` (mục 8). Tài liệu mới đặt đúng thư mục theo mục 7.
 - Có thay đổi trong `src/`, `docs/` hoặc `db/`: đã tạo entry trong `history/` theo mục 5.
 
 ## 5. Bắt buộc ghi lịch sử thay đổi
@@ -161,14 +163,56 @@ Mọi tỷ lệ/phân bố nằm trong `seed/config.py`. Thiếu thông tin thì
 
 ## 7. Nơi đặt tài liệu
 
-Tài liệu dự án chỉ nằm ở ba thư mục trong `docs/`:
+Tài liệu dự án chỉ nằm ở các thư mục sau trong `docs/`:
 
 | Loại | Thư mục | Nội dung |
 |---|---|---|
-| PRD | `docs/prd/` | Làm gì, vì sao: phạm vi, FR/NFR, AC, kiến trúc, mô hình dữ liệu, luồng người dùng. Tài liệu gốc — cập nhật mỗi khi thay đổi làm lệch nó. |
+| PRD | `docs/prd/` | Làm gì, vì sao: phạm vi, FR/NFR, AC, kiến trúc, mô hình dữ liệu, luồng người dùng. Tài liệu gốc — chỉ đổi qua đề xuất đã chốt (mục 8). |
+| Update | `docs/prd/update/` | Đề xuất thay đổi lệch khỏi PRD **đang chờ xử lý** (mục 8). |
+| Update đã xử lý | `docs/prd/update-archive/` | Đề xuất đã áp dụng vào PRD hoặc bị từ chối — chỉ để tra cứu, agent không cần đọc (mục 8). |
 | Spec | `docs/spec/` | Đặc tả chi tiết một phần: hợp đồng tích hợp, schema, thiết kế kỹ thuật, nghiên cứu. |
 | Plan | `docs/plan/` | Kế hoạch triển khai một task/feature/giai đoạn: các bước, thứ tự, người làm, việc còn lại. |
 
 - Không tạo file tài liệu (`.md`, `.html`, ...) ở chỗ khác trong repo — kể cả trong `src/`, `db/` hay thư mục gốc. Ngoại lệ: `history/` (mục 5), `AGENTS.md`/`CLAUDE.md`/`README.md` ở gốc, và `README.md` sẵn có của từng workstream trong `src/` (chỉ hướng dẫn chạy/cấu trúc, không chứa quy tắc hay spec).
 - Tên file: chữ thường, gạch nối, không dấu (ví dụ `docs/plan/2026-09-23-auth-p1.md`). Plan bắt đầu bằng ngày.
-- Mỗi spec/plan mới phải ghi nó phục vụ mã FR/NFR nào trong `docs/prd/requirements.md`. Spec mâu thuẫn với PRD thì sửa một trong hai trong cùng thay đổi, không để lệch.
+- Mỗi spec/plan mới phải ghi nó phục vụ mã FR/NFR nào trong `docs/prd/requirements.md`. Spec không được lệch PRD; muốn lệch thì tạo đề xuất trong `docs/prd/update/` và chờ chốt trước khi viết spec đó.
+
+## 8. Mọi thay đổi lệch PRD phải có đề xuất đã chốt
+
+Nguyên tắc: **PRD là chuẩn. Thứ gì lệch khỏi PRD thì phải được chốt trong `docs/prd/update/` trước, rồi mới được sửa source.** `docs/prd/` và `docs/prd/update/` là tài liệu để **con người review**; quy tắc làm việc của agent chỉ nằm trong file này — không đề xuất đưa quy trình/quy tắc agent vào PRD. Đề xuất viết cho người đọc: ngắn, nêu rõ lệch gì, vì sao, ảnh hưởng gì. Áp dụng cho mọi thứ trong repo: code (`src/`), spec/plan (`docs/spec/`, `docs/plan/`), contract OpenAPI, DDL/migration (`db/`), cấu hình, và chính nội dung `docs/prd/`.
+
+**Thế nào là lệch PRD:** thêm, bớt hoặc đổi hành vi, phạm vi, FR/NFR, AC, kiến trúc, cấu trúc repo, mô hình dữ liệu, luồng người dùng, công nghệ so với những gì PRD đang ghi; hoặc làm cho code/spec/contract/DDL khác với PRD. Thay đổi chỉ hiện thực đúng điều PRD đã ghi thì **không** cần đề xuất.
+
+Quy trình:
+
+1. **Đề xuất.** Tạo `docs/prd/update/YYYY-MM-DD-<slug>.md` theo mẫu dưới, trạng thái `chờ chốt`. Ghi entry `history/`. Báo người dùng và **dừng** phần việc lệch PRD. Phần không lệch vẫn làm tiếp được.
+2. **Chốt.** Chỉ người dùng chốt: `đã chốt`, yêu cầu sửa đề xuất, hoặc `từ chối`. Agent không tự chốt, không coi im lặng là đồng ý. Chưa chốt thì đề xuất chưa có hiệu lực.
+3. **Áp dụng.** Sau khi chốt: cập nhật `docs/prd/` đúng nội dung đã chốt **trước**, rồi mới sửa source (code, spec, contract, DDL) theo PRD mới. Đổi trạng thái đề xuất thành `đã áp dụng`, ghi ngày chốt và người chốt, ghi entry `history/` trỏ tới đề xuất.
+4. **Lưu trữ.** Đề xuất đã áp dụng hoặc bị từ chối thì chuyển (`git mv`) từ `docs/prd/update/` sang `docs/prd/update-archive/` trong cùng thay đổi, không xoá. Như vậy `docs/prd/update/` chỉ còn việc đang chờ; agent không cần đọc lại phần đã lưu trữ vì nội dung đã chốt đã nằm trong PRD. Không sửa `docs/prd/` ngoài bước 3.
+
+Lệch đã tồn tại trước quy tắc này (ghi ở mục 2 và mục 6.4) là tồn đọng: không mở rộng thêm, và muốn xử lý thì cũng đi qua đề xuất.
+
+Mẫu đề xuất:
+
+```markdown
+# <Tiêu đề ngắn>
+
+- Ngày: YYYY-MM-DD
+- Người đề xuất: <người yêu cầu> / <agent hoặc người thực hiện>
+- Trạng thái: chờ chốt | đã chốt | đã áp dụng | từ chối
+- Chốt bởi / ngày: <tên, YYYY-MM-DD hoặc để trống>
+- PRD bị ảnh hưởng: `docs/prd/<file>.md` §<mục>
+- Mã FR/NFR: <mã hoặc "mới — cần cấp mã">
+
+## Lý do
+
+<Vì sao cần lệch khỏi PRD hiện hành.>
+
+## Nội dung đề xuất
+
+<Với mỗi mục PRD: trích đoạn hiện tại → đoạn thay thế.>
+
+## Thay đổi source sau khi chốt
+
+<Code, spec, contract, DDL, plan sẽ sửa theo — đường dẫn cụ thể.>
+```
