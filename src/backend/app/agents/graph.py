@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any
 from functools import partial
+from typing import Any
+
 from src.backend.app.application.ports.itinerary_tools import ConversationStorePort, ToolExecutorPort
 
 from .state import AgentState
@@ -36,9 +37,9 @@ def build_graph(checkpointer: Any | None = None, *, tools: ToolExecutorPort | No
         dead_letter_node,
         evaluate_node,
         finalize_node,
+        finalize_node_async,
         intake_node,
         intake_node_async,
-        finalize_node_async,
         retry_or_fallback_node,
         tool_node,
     )
