@@ -94,45 +94,41 @@ Backend tuân thủ nghiêm ngặt nguyên tắc **Clean Architecture / Hexagona
 
 ```
 src/backend/app/
-├── domain/                  # LỚP 1: Thực thể nghiệp vụ thuần túy (Entities, Value Objects, Enums)
-│   ├── booking.py           # Logic trạng thái đơn hàng, quy tắc tính giá
-│   ├── product.py           # Tiêu chuẩn sản phẩm, định nghĩa tính khả dụng
-│   └── recommendation.py    # Cấu trúc đề xuất, lý do giải thích (because)
-│
-├── application/             # LỚP 2: Các trường hợp sử dụng (Use Cases & Ports)
-│   ├── ports/               # Giao diện trừu tượng (Abstract Interfaces)
-│   │   ├── catalog_repo.py  # Cổng truy xuất kho sản phẩm
-│   │   ├── cdp_client.py    # Cổng tương tác với Customer Data Platform
-│   │   ├── insider_client.py# Cổng tương tác với hệ thống tiếp thị đa kênh
-│   │   ├── embedding_client.py # Cổng sinh vector từ văn bản
-│   │   └── vector_search.py # Cổng tìm kiếm vector ngữ nghĩa
-│   └── use_cases/           # Logic điều phối quy trình nghiệp vụ
-│       ├── search_products.py
-│       ├── get_recommendations.py
-│       └── create_booking.py
-│
-├── infrastructure/          # LỚP 3: Triển khai kỹ thuật & Adapters bên ngoài
-│   ├── database/            # Quản lý kết nối PostgreSQL, DDL migration
-│   ├── repositories/        # Cài đặt cụ thể các Repository qua SQLAlchemy/SQL
-│   ├── cdp/                 # LocalCdpClient (SQL riêng) hoặc HttpCdpClient (HTTP)
-│   ├── insider/             # HttpInsiderClient (giao tiếp HTTP với Insider)
+├── domain/<domain>/         # LỚP 1: entity, value object, business rule thuần (auth, booking, catalog, itinerary, recommendation, search)
+├── application/             # LỚP 2: use case và port
+│   ├── ports/               # Giao diện trừu tượng: CdpClient, InsiderClient, SearchClient, embedding, vector store...
+│   └── <domain>/            # Use case theo domain (auth, booking, catalog, itinerary, recommendation, search, tracking)
+├── infrastructure/          # LỚP 3: hiện thực port
+│   ├── persistence/         # PostgreSQL qua DATABASE_URL (role vota_app)
+│   ├── cdp/                 # LocalCdpClient (CDP_DATABASE_URL) hoặc HttpCdpClient sau này
+│   ├── clients/             # HTTP client ra ngoài, gồm HttpInsiderClient
+│   ├── auth/                # Hash mật khẩu, JWT
+│   ├── llm/                 # Adapter LLM provider
 │   ├── embeddings/          # CohereEmbedder (embed-multilingual-v3.0)
 │   └── vectors/             # WeaviateVectorStore; in_memory_store.py cho test offline
-│
-├── agents/                  # Phân hệ Trợ lý AI (LangGraph Workflows)
-│   ├── state.py             # Quản lý trạng thái hội thoại và context lịch trình
-│   ├── graph.py             # Định nghĩa StateGraph, các bước suy luận và rẽ nhánh
-│   └── tools/               # Các công cụ nghiệp vụ được bọc thành Tool cho LLM
-│
-└── api/                     # LỚP 4: Giao tiếp REST API (FastAPI Routers & Schemas)
-    ├── v1/                  # Routers theo từng domain nghiệp vụ
-    └── middlewares/         # Xử lý CORS, Auth, Request Tracking, Error Envelope
+├── agents/                  # LangGraph: state, graph, node và tools/
+├── api/v1/routes/           # LỚP 4: FastAPI router theo domain, chỉ xử lý HTTP
+├── core/                    # settings, logging, security, error envelope
+└── main.py                  # composition root: nối infrastructure vào use case
 ```
+
+Mỗi domain có namespace riêng trong `domain/` và `application/` để các team làm song song, tránh file tổng hợp quá lớn.
 
 ### Quy tắc Phụ Thuộc (Dependency Rules):
 1. **Hướng phụ thuộc từ ngoài vào trong:** Lớp bên trong (`domain`, `application`) tuyệt đối không được `import` bất kỳ module nào từ lớp bên ngoài (`infrastructure`, `api`).
 2. **Nghiệp vụ không phụ thuộc cơ sở dữ liệu:** Các Use Case chỉ gọi đến các abstract class trong `application/ports/`. Việc dùng PostgreSQL, MongoDB hay mock file là quyết định của tầng `infrastructure`.
-3. **Cách ly vai trò kết nối DB:** Kết nối `DATABASE_URL` (cho app) không có quyền ghi vào schema `cdp`. Adapter `LocalCdpClient` phải sử dụng một chuỗi kết nối riêng biệt `CDP_DATABASE_URL` với tài khoản `cdp_writer`.
+3. **Cách ly vai trò kết nối DB:** Kết nối `DATABASE_URL` (cho app) chỉ SELECT được `cdp.products` (để dựng `catalog.*`), không đọc được `cdp.events`/`cdp.profiles` và không ghi vào `cdp`. Adapter `LocalCdpClient` phải sử dụng một chuỗi kết nối riêng biệt `CDP_DATABASE_URL` với tài khoản `cdp_writer`.
+4. **`domain`** không import FastAPI, database driver, LangGraph hoặc SDK bên ngoài.
+5. **`application`** điều phối use case và khai báo port; chỉ composition root (`main.py`) được nối implementation vào use case.
+6. **`api`** chỉ chuyển HTTP request/response sang application model, không chứa truy vấn DB hay prompt.
+7. **`agents`** không tự truy cập DB và không tạo dữ liệu sản phẩm; chỉ dùng port do `application` cung cấp.
+
+```text
+api -> application -> domain
+                  ^
+infrastructure ---|
+agents -> application ports
+```
 
 ---
 
@@ -152,6 +148,10 @@ stateDiagram-v2
     SearchCandidates --> ToolCatalogSearch: Gọi Tool tìm kiếm phòng & tour thật
     ToolCatalogSearch --> ValidateAvailability: Kiểm tra lịch trống & giá
     
+    SearchCandidates --> NoResults: Không có sản phẩm thật phù hợp
+    NoResults --> [*]: Trả NO_RESULTS, không lấp bằng sản phẩm do LLM tạo
+    ValidateAvailability --> Rerank: (tuỳ chọn) xếp lại bằng Recommendation
+    Rerank --> ComposeItinerary
     ValidateAvailability --> ComposeItinerary: Tạo cấu trúc lịch trình
     ComposeItinerary --> SynthesizeResponse: Gắn thẻ sản phẩm Grounded + Tạo lời thoại
     SynthesizeResponse --> [*]: Trả lời người dùng
@@ -159,7 +159,10 @@ stateDiagram-v2
 
 ### Tiêu chuẩn Grounding (Chống Bịa Đặt):
 - **Không suy đoán dữ liệu sản phẩm:** LLM chỉ đóng vai trò phân tích ý định ngôn ngữ và sắp xếp lịch trình thời gian. Mọi thông tin về `productId`, `title`, `price`, `imageUrl` bắt buộc phải được lấy nguyên trạng từ kết quả trả về của `ToolCatalogSearch`.
-- **Cấu trúc dữ liệu hai thành phần:** Mỗi tin nhắn phản hồi của Assistant đều gồm hai phần độc lập: văn bản diễn đạt tự nhiên (`content`) và khối dữ liệu sản phẩm có cấu trúc (`structured_data`), giúp frontend hiển thị thẻ tương tác chuyên nghiệp.
+- **Response phân biệt theo `status`:** `ItineraryResponse` là `oneOf` gồm `COMPLETED`, `NEEDS_CLARIFICATION`, `NO_RESULTS`, `FALLBACK` (`src/shared/contracts/schemas/itinerary-agent.yaml`). Trường cụ thể theo contract, không theo ví dụ trong PRD.
+- **Backend tự tính tổng tiền;** giá thiếu thì tổng là `null` kèm cảnh báo, không coi thiếu giá là 0.
+- **LLM lỗi:** dùng fallback dựa trên luật hoặc trả `FALLBACK`/lỗi có kiểm soát.
+- **Hội thoại** lưu intent đã chuẩn hóa (TTL mục tiêu 24 giờ); giá và tình trạng còn chỗ luôn được tải lại, không dùng bản lưu trong hội thoại.
 
 ---
 
@@ -191,3 +194,54 @@ stateDiagram-v2
    - **Truy vấn:** use case search gọi Cohere với `input_type=search_query` rồi đưa vector sang Weaviate để lấy top-K. Dùng sai `input_type` sẽ làm giảm chất lượng xếp hạng mà không báo lỗi.
    - Giữ được đường test offline: `in_memory_store.py` hiện thực cùng port `vector_search.py`, nên unit test không cần mạng.
    - Weaviate chỉ giữ vector và `productId`. Mọi thuộc tính hiển thị (tên, giá, ảnh) vẫn lấy từ Postgres — quy tắc grounding không đổi.
+
+---
+
+## 6. Cấu Trúc Repository & Quy Ước Mã Nguồn
+
+### 6.1. Cấu trúc monorepo
+
+```text
+src/
+├── frontend/          # Next.js (App Router) + TypeScript + Tailwind CSS
+│   └── src/
+│       ├── app/           # route segment, layout, route handler; globals.css
+│       ├── components/    # UI dùng chung ≥ 2 feature, không chứa business rule
+│       ├── features/      # auth, booking, catalog, itinerary, recommendations, search
+│       ├── hooks/
+│       ├── services/      # HTTP client và client sinh từ OpenAPI
+│       ├── test/
+│       └── types/
+├── backend/           # FastAPI — cấu trúc ở §2; tests/unit, tests/integration, tests/contract
+├── shared/
+│   ├── contracts/     # OpenAPI dùng chung (nguồn sự thật cho API)
+│   └── mocks/         # fixture hợp lệ với contract
+├── data_collection/   # collector, chuẩn hóa, dedupe; seed/ = loader + mock data
+├── evaluation/        # split, metrics, benchmark, report offline
+├── insider_clone/     # service giả lập bề mặt Insider
+└── cdp_clone/         # service HTTP tạm gác; hiện CDP clone là schema `cdp` trong `db/`
+```
+
+Ngoài `src/`: `db/` (DDL, initdb, migration, verify), `docs/` (`prd/`, `spec/`, `plan/` — xem `AGENTS.md` §7), `history/`. Thư mục cũ ở gốc `src/` (`src/agents`, `src/api`, `src/models`, `src/services`, `src/main.py`, `src/config.py`) không được mở rộng.
+
+### 6.2. Quy tắc frontend
+
+- `app/` chỉ chứa route segment (`layout.tsx`, `page.tsx`, `route.ts`), ghép layout và feature; không chứa business rule.
+- Mỗi folder trong `features/` sở hữu component, hook, state và test của nghiệp vụ đó.
+- Ưu tiên Server Component; chỉ đánh dấu `"use client"` khi cần tương tác/state phía client.
+- Mọi HTTP call đi qua `services/`; component không gọi `fetch` trực tiếp. Web không gọi CDP clone.
+- Kiểu request/response sinh từ OpenAPI; không tự định nghĩa lại `SearchRequest`, `ProductSummary`, `ItineraryResponse`.
+- Tách server state và UI state; token không được log hoặc đưa vào URL.
+- Styling bằng Tailwind utility class; token màu/spacing ở `tailwind.config.ts`, không viết CSS tùy ý ngoài `globals.css`.
+
+### 6.3. Quy ước thêm module mới
+
+1. Xác định feature/domain sở hữu hành vi và mã FR/NFR tương ứng trong [requirements.md](requirements.md).
+2. Cập nhật OpenAPI trước nếu thay đổi giao diện giữa các team.
+3. Business rule đặt trong `domain`, orchestration trong `application`, SDK/DB/HTTP trong `infrastructure`.
+4. Thêm unit test và contract/integration test tương ứng theo [test-plan.md](test-plan.md).
+5. Không tạo folder `utils` chung; helper nằm gần domain sử dụng hoặc đặt tên theo trách nhiệm cụ thể.
+
+### 6.4. Review chéo
+
+Thay đổi contract cần reviewer của Web và Backend. Thay đổi schema CDP/Insider hoặc port `CdpClient` cần reviewer của Data/Integration. Phân công workstream: [implementation-plan.md](implementation-plan.md).

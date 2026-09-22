@@ -46,4 +46,5 @@ Bộ tài liệu được xây dựng theo chuẩn 9 tài liệu kỹ thuật to
 
 1. **Contract-First:** Mọi thay đổi giao tiếp API phải được cập nhật và kiểm thử tại `src/shared/contracts/` trước khi thay đổi mã nguồn.
 2. **Database Schema as Truth:** Mọi thay đổi cấu trúc bảng phải đồng bộ đồng thời giữa DDL (`db/vota_schema.sql`), migration (`db/migrations/`) và [data-model.md](data-model.md).
-3. **Bắt buộc ghi nhận lịch sử:** Bất kỳ chỉnh sửa nào trong thư mục `docs/` đều phải được ghi nhận vào một file mới trong thư mục `history/` theo đúng quy chuẩn `AGENTS.md`.
+3. **PRD là tài liệu gốc — đặt tài liệu đúng chỗ:** Thay đổi làm lệch PRD phải cập nhật PRD trong cùng thay đổi. Spec chi tiết ghi vào `docs/spec/`, kế hoạch triển khai ghi vào `docs/plan/`; không tạo tài liệu ở thư mục khác (`AGENTS.md` §7).
+4. **Bắt buộc ghi nhận lịch sử:** Bất kỳ chỉnh sửa nào trong thư mục `docs/` đều phải được ghi nhận vào một file mới trong thư mục `history/` theo đúng quy chuẩn `AGENTS.md`.

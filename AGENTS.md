@@ -2,6 +2,8 @@
 
 File này áp dụng cho mọi AI coding agent (Claude Code, Codex, Cursor, Copilot...) làm việc trong repository. `CLAUDE.md` chỉ import file này; sửa quy tắc tại đây.
 
+**PRD (`docs/prd/`) là tài liệu gốc của dự án.** Mọi quy tắc kiến trúc, phạm vi và tiêu chí nghiệm thu lấy từ PRD; mọi thay đổi làm lệch PRD phải cập nhật PRD trong cùng thay đổi. Nơi đặt tài liệu: mục 7.
+
 ## 1. Bắt buộc đọc tài liệu trước khi làm feature mới
 
 Trước khi viết hoặc sửa code cho **feature mới, endpoint mới, module mới hoặc thay đổi hành vi**, agent PHẢI dùng tool đọc (Read/cat) các file quy tắc bên dưới trong phiên hiện tại. Không được dựa vào trí nhớ, phiên trước hoặc suy đoán từ tên file.
@@ -9,24 +11,20 @@ Trước khi viết hoặc sửa code cho **feature mới, endpoint mới, modul
 ### 1.1. Luôn đọc (mọi feature)
 
 1. `docs/prd/README.md` — mục lục PRD, kèm tài liệu PRD theo phạm vi ở mục 1.2. Mỗi feature phải gắn được vào ít nhất một mã FR/NFR trong `docs/prd/requirements.md`; không có mã tương ứng thì hỏi người dùng trước, không tự mở rộng phạm vi sản phẩm.
-2. `src/ARCHITECTURE.md` — cấu trúc repo, quy tắc phụ thuộc, quy ước thêm module.
-3. `src/shared/contracts/MVP.md` — bộ trường tối thiểu hiện hành (1.2.0).
-4. `docs/spec/contract-baseline-v1.1.md` — quyết định đã chốt và phần còn chờ xác nhận.
-5. `README.md` của workstream sẽ sửa (`src/<workstream>/README.md`).
-6. Lịch sử thay đổi trong `history/` (xem mục 5): `history/README.md`, 10 entry mới nhất, mọi entry từng chạm vào đường dẫn/workstream sắp sửa và mọi entry có `Trạng thái: dang dở` thuộc phạm vi đó.
+2. Lịch sử thay đổi trong `history/` (xem mục 5): `history/README.md`, 10 entry mới nhất, mọi entry từng chạm vào đường dẫn/workstream sắp sửa và mọi entry có `Trạng thái: dang dở` thuộc phạm vi đó.
 
 ### 1.2. Đọc thêm theo phạm vi
 
 | Phạm vi thay đổi | File phải đọc |
 |---|---|
-| API / request / response bất kỳ | `src/shared/contracts/README.md`, `src/shared/contracts/openapi.yaml`, file `paths/<domain>.yaml` và `schemas/<domain>.yaml` liên quan, `schemas/common.yaml`, `docs/prd/api-contract.md` (chuẩn Error Envelope, phân trang, quy tắc versioning — **ví dụ endpoint trong đó chỉ để minh hoạ, xem cảnh báo ở mục 2**) |
+| API / request / response bất kỳ | `src/shared/contracts/openapi.yaml`, file `paths/<domain>.yaml` và `schemas/<domain>.yaml` liên quan, `schemas/common.yaml`, `docs/prd/api-contract.md` (chuẩn Error Envelope, phân trang, quy tắc versioning — **ví dụ endpoint trong đó chỉ để minh hoạ, xem cảnh báo ở mục 2**) |
 | Backend (`src/backend`) | `src/backend/README.md`, `docs/spec/hop-dong-tich-hop-backend.md` (các mục của domain liên quan), `docs/prd/architecture.md` §2 (phân lớp + quy tắc phụ thuộc) |
 | Frontend (`src/frontend`) | `src/frontend/README.md`, `docs/spec/hop-dong-tich-hop-frontend.md`, `docs/spec/product.md`, `docs/prd/user-flow.md` (route table, wireframe, luồng cốt lõi) |
 | Auth: đăng nhập, phiên, cookie, JWT, mật khẩu, 2FA, OAuth | `docs/spec/hop-dong-tich-hop-auth.md` (bắt buộc đọc §3 Logic mapping), `src/shared/contracts/paths/auth.yaml`, `src/shared/contracts/schemas/auth.yaml`, `docs/prd/requirements.md` §1.6 (FR-USR) |
 | Itinerary Agent (`src/backend/app/agents`, use case itinerary) | `docs/spec/hop-dong-tich-hop-itinerary-assistant.md`, `docs/spec/agent/README.md` và các file nó liên kết, `src/shared/mocks/itinerary-agent/README.md`, `docs/prd/architecture.md` §3 (StateGraph + chuẩn grounding), `docs/prd/requirements.md` §1.4 (FR-AGT) |
 | Search / Recommendation | `docs/spec/hop-dong-tich-hop-search-recommendation.md` (hợp đồng chi tiết cho cả hai engine), `docs/spec/hop-dong-tich-hop-backend.md` (mục Search, Recommendation), `docs/spec/recsys-internship-handbook-v3-vi.md`, `docs/prd/requirements.md` §1.2–1.3 (FR-SRC, FR-REC) |
 | CDP clone, `CdpClient`, ghi hành vi người dùng | mục 6 bên dưới, `docs/spec/hop-dong-tich-hop-cdp.md`, `src/cdp_clone/README.md`, `src/shared/contracts/cdp-clone.openapi.yaml`, `docs/prd/requirements.md` §1.7 (FR-CDP) |
-| Mock / fixture (`src/shared/mocks`) | `src/shared/README.md`, `src/shared/mocks/index.json`, schema response tương ứng |
+| Mock / fixture (`src/shared/mocks`) | `src/shared/mocks/index.json`, schema response tương ứng |
 | Data collection (`src/data_collection`) | `src/data_collection/README.md`, `src/data_collection/docs/SCHEMA.md`, `docs/prd/data-model.md` §3 (quy chuẩn `attributes`) |
 | Database: schema, DDL, loader, seed, `db/` | mục 6 bên dưới, `docs/spec/DATABASE_SCHEMA.md`, `docs/spec/PRODUCT_SCHEMA.md`, `db/vota_schema.sql`, `db/insider_schema.sql`, `db/migrations/README.md`, `docs/prd/data-model.md` (ERD, ranh giới quyền, vòng đời thực thể) |
 | Mock data tuần 1 (`src/data_collection/seed`) | mục 6 bên dưới, `docs/spec/MOCK_DATA_SPEC.md`, `src/data_collection/docs/SCHEMA.md`, `db/verify.sql`, `db/verify_insider.sql` |
@@ -34,7 +32,8 @@ Trước khi viết hoặc sửa code cho **feature mới, endpoint mới, modul
 | Insider clone (`src/insider_clone`) | `src/insider_clone/README.md`, `docs/spec/hop-dong-tich-hop-insider.md`, `docs/spec/recsys-internship-handbook-v3-vi.md` (phần Insider), `docs/prd/requirements.md` §1.8 (FR-ENG) |
 | Tính năng sản phẩm / luồng người dùng mới | `docs/spec/product.md`, `docs/prd/project-brief.md` (§4 phạm vi in/out), `docs/prd/requirements.md`, `docs/prd/user-flow.md` |
 | Môi trường, biến môi trường, migration, Docker, CI/CD | `docs/prd/deployment-plan.md`, `docs/prd/test-plan.md` §4, `db/migrations/README.md`, mục 6.3 bên dưới |
-| Lập kế hoạch, chia giai đoạn, định nghĩa hoàn thành | `docs/prd/implementation-plan.md` (lộ trình 6 giai đoạn, ownership theo workstream, DoD §4) |
+| Lập kế hoạch, chia giai đoạn, định nghĩa hoàn thành | `docs/prd/implementation-plan.md` (lộ trình 6 giai đoạn, ownership theo workstream, DoD §4), các plan liên quan trong `docs/plan/` |
+| Cấu trúc repo, quy tắc phụ thuộc, quy ước thêm module (mọi thay đổi code) | `docs/prd/architecture.md` §2 (backend), §3 (agent), §6 (cấu trúc repo, frontend, module mới) |
 
 Với file dài (> 500 dòng), được phép đọc mục lục (`grep -n "^#"`) rồi đọc đầy đủ các mục liên quan, nhưng phải đọc hết mục đó, không chỉ vài dòng đầu.
 
@@ -57,11 +56,10 @@ PRD (`docs/prd/`) trả lời **làm gì và vì sao** — phạm vi, FR/NFR, ti
 **Giao diện kỹ thuật (API, schema, DDL)** — ưu tiên cao xuống thấp:
 
 1. `src/shared/contracts/openapi.yaml` và các file `paths/`, `schemas/` — nguồn sự thật cho API.
-2. `src/shared/contracts/MVP.md` — thay thế danh sách required/optional của baseline 1.1.
-3. `docs/spec/contract-baseline-v1.1.md`.
-4. `db/vota_schema.sql`, `db/insider_schema.sql`, `db/migrations/` — nguồn sự thật cho DDL.
-5. `src/ARCHITECTURE.md`.
-6. `docs/spec/hop-dong-tich-hop-*.md`, `docs/spec/product.md`, handbook.
+2. `db/vota_schema.sql`, `db/insider_schema.sql`, `db/migrations/` — nguồn sự thật cho DDL.
+3. `docs/prd/architecture.md`, `docs/prd/data-model.md`.
+4. `docs/spec/contract-baseline-v1.1.md`.
+5. `docs/spec/hop-dong-tich-hop-*.md`, `docs/spec/product.md`, handbook.
 
 **Yêu cầu sản phẩm (phạm vi, hành vi, tiêu chí nghiệm thu)** — ưu tiên cao xuống thấp:
 
@@ -77,8 +75,8 @@ Không tự chọn phương án cho các mục đang "chờ xác nhận" trong b
 
 - Thay đổi giao diện giữa các team: cập nhật OpenAPI (`paths/`, `schemas/`) **trước**, rồi mới code backend/frontend. Không sửa bản bundle sinh tự động.
 - Không xóa/đổi tên field hoặc đổi semantics trong v1; thay đổi phá vỡ tương thích phải lên v2.
-- Tuân thủ quy tắc phụ thuộc backend và quy tắc frontend trong `src/ARCHITECTURE.md` (mục 5, 6, 12).
-- Code mới đặt theo cấu trúc trong `src/ARCHITECTURE.md` (`src/backend`, `src/frontend`...). Các thư mục cũ ở gốc `src/` (`src/agents`, `src/api`, `src/models`, `src/services`, `src/main.py`, `src/config.py`) không được mở rộng nếu chưa hỏi người dùng.
+- Tuân thủ quy tắc phụ thuộc backend, quy tắc frontend và quy ước thêm module trong `docs/prd/architecture.md` (§2, §6).
+- Code mới đặt theo cấu trúc trong `docs/prd/architecture.md` §6.1 (`src/backend`, `src/frontend`...). Các thư mục cũ ở gốc `src/` (`src/agents`, `src/api`, `src/models`, `src/services`, `src/main.py`, `src/config.py`) không được mở rộng nếu chưa hỏi người dùng.
 - Grounding: mọi sản phẩm, giá, `productId` phải đến từ Search/Recommendation/Catalog; không để LLM tạo dữ liệu sản phẩm. Tỷ lệ grounding bắt buộc 100% (`docs/prd/requirements.md` NFR-REL-01).
 - Không tự làm các hạng mục PRD đã ghi **ngoài phạm vi** (`docs/prd/project-brief.md` §4.2): cổng thanh toán ngân hàng thật, tồn kho thời gian thực nối hãng bay/khách sạn ngoài, app di động native. Người dùng yêu cầu thì xác nhận lại rằng đây là mở rộng phạm vi trước khi code.
 - Không commit hoặc log secret, API key, JWT. Biến bí mật theo bảng ở `docs/prd/deployment-plan.md` §2.
@@ -88,9 +86,9 @@ Không tự chọn phương án cho các mục đang "chờ xác nhận" trong b
 Chuẩn đầy đủ: Definition of Done ở `docs/prd/implementation-plan.md` §4 và tháp kiểm thử ở `docs/prd/test-plan.md`. Tối thiểu:
 
 - Có thay đổi contract hoặc mock: chạy `PYTHONDONTWRITEBYTECODE=1 python3 src/shared/contracts/tests/validate_contract.py` từ repo root và báo kết quả.
-- Thêm test theo mục 10 của `src/ARCHITECTURE.md` và tháp 5 tầng của `docs/prd/test-plan.md` — unit, contract, integration/DB, grounding của agent, đánh giá RecSys offline — chỉ các tầng thuộc phạm vi thay đổi. DoD đặt mức bao phủ ≥ 80% cho `domain` và `application`.
+- Thêm test theo tháp 5 tầng của `docs/prd/test-plan.md` — unit, contract, integration/DB, grounding của agent, đánh giá RecSys offline — chỉ các tầng thuộc phạm vi thay đổi. DoD đặt mức bao phủ ≥ 80% cho `domain` và `application`.
 - Có thay đổi schema hoặc seed: `db/verify.sql` (và `db/verify_insider.sql` nếu chạm Insider) PASS, trừ hai dòng FAIL dự kiến ghi ở mục 6.5.
-- Nếu feature làm thay đổi quy ước, cập nhật tài liệu liên quan trong cùng thay đổi — gồm tài liệu PRD tương ứng khi thay đổi chạm tới FR/NFR, mô hình dữ liệu hoặc luồng người dùng.
+- Nếu feature làm thay đổi quy ước, cập nhật tài liệu liên quan trong cùng thay đổi — **bắt buộc cập nhật PRD tương ứng** khi thay đổi chạm tới FR/NFR, kiến trúc, mô hình dữ liệu hoặc luồng người dùng. Tài liệu mới đặt đúng thư mục theo mục 7.
 - Có thay đổi trong `src/`, `docs/` hoặc `db/`: đã tạo entry trong `history/` theo mục 5.
 
 ## 5. Bắt buộc ghi lịch sử thay đổi
@@ -158,3 +156,18 @@ Thứ tự, mỗi bước là một module trong `src/data_collection/seed/`, ch
 Với catalog tổng hợp (`products.synthetic.jsonl`, khoảng 400–450 dòng), hai dòng của `db/verify.sql` FAIL theo thiết kế: `products = 10320` và `is_recommendable properties >= 300` — ngưỡng của snapshot catalog thật hiện hành. Không sửa `db/*.sql` để lách; report ghi rõ hai dòng này là FAIL dự kiến. Có `src/data_collection/data/products.jsonl` thật thì cả hai tự PASS.
 
 Mọi tỷ lệ/phân bố nằm trong `seed/config.py`. Thiếu thông tin thì hỏi, không tự thêm cột hay bảng.
+
+## 7. Nơi đặt tài liệu
+
+Tài liệu dự án chỉ nằm ở ba thư mục trong `docs/`:
+
+| Loại | Thư mục | Nội dung |
+|---|---|---|
+| PRD | `docs/prd/` | Làm gì, vì sao: phạm vi, FR/NFR, AC, kiến trúc, mô hình dữ liệu, luồng người dùng. Tài liệu gốc — cập nhật mỗi khi thay đổi làm lệch nó. |
+| Spec | `docs/spec/` | Đặc tả chi tiết một phần: hợp đồng tích hợp, schema, thiết kế kỹ thuật, nghiên cứu. |
+| Plan | `docs/plan/` | Kế hoạch triển khai một task/feature/giai đoạn: các bước, thứ tự, người làm, việc còn lại. |
+
+- Không tạo file tài liệu (`.md`, `.html`, ...) ở chỗ khác trong repo — kể cả trong `src/`, `db/` hay thư mục gốc. Ngoại lệ: `history/` (mục 5), `AGENTS.md`/`CLAUDE.md`/`README.md` ở gốc, và `README.md` sẵn có của từng workstream trong `src/` (chỉ hướng dẫn chạy/cấu trúc, không chứa quy tắc hay spec).
+- Tên file: chữ thường, gạch nối, không dấu (ví dụ `docs/plan/2026-09-23-auth-p1.md`). Plan bắt đầu bằng ngày.
+- Mỗi spec/plan mới phải ghi nó phục vụ mã FR/NFR nào trong `docs/prd/requirements.md`. Spec mâu thuẫn với PRD thì sửa một trong hai trong cùng thay đổi, không để lệch.
+- Tài liệu cũ nằm ngoài ba thư mục trên: không mở rộng; khi cần sửa thì chuyển vào đúng thư mục và ghi `history/`.

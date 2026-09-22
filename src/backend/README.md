@@ -19,7 +19,7 @@ Endpoint: `GET /api/v1/search?q=&taxonomy=&destination=&limit=&offset=` ·
 `GET /api/v1/similar/{productId}?k=` · `GET /api/v1/recommendations?k=&cdp_user_id=` (tạm, sẽ lấy từ JWT) ·
 `GET /api/v1/popular?k=`
 
-## Chỗ nào làm gì (ARCHITECTURE.md §4–5)
+## Chỗ nào làm gì (docs/prd/architecture.md §2)
 
 | Lớp | File | Nội dung |
 |---|---|---|
