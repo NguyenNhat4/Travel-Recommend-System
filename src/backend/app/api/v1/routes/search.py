@@ -1,3 +1,5 @@
+from time import perf_counter
+
 from fastapi import APIRouter, Query, Request
 
 router = APIRouter(prefix="/api/v1", tags=["search"])
@@ -6,7 +8,10 @@ router = APIRouter(prefix="/api/v1", tags=["search"])
 @router.get("/search")
 def search(request: Request, q: str, taxonomy: str | None = None, destination: str | None = None,
            limit: int = Query(20, ge=1, le=50), offset: int = Query(0, ge=0)):
-    return request.app.state.search(q, taxonomy=taxonomy, destination=destination, limit=limit, offset=offset)
+    started = perf_counter()
+    result = request.app.state.search(q, taxonomy=taxonomy, destination=destination, limit=limit, offset=offset)
+    result.setdefault("diagnostics", {})["latencyMs"] = max(0, round((perf_counter() - started) * 1000))
+    return result
 
 
 @router.get("/similar/{product_id}")

@@ -9,6 +9,8 @@ from src.backend.app.application.ports.itinerary_tools import ToolError
 
 
 class FixtureItineraryClients:
+    supports_catalog = True
+
     def __init__(self) -> None:
         fixture = Path(__file__).resolve().parents[4] / "shared/mocks/itinerary-agent/products.json"
         self._products: list[dict[str, Any]] = json.loads(fixture.read_text(encoding="utf-8"))

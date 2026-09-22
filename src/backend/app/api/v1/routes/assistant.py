@@ -32,7 +32,8 @@ def _runtime(request: Request, authorization: str | None) -> RuntimeAgentDepende
     store = getattr(request.app.state, "itinerary_conversation_store", None)
     if clients is None or store is None:
         return None
-    gateway = ItineraryToolGateway(clients, clients, clients, recommendation_authorization=authorization)
+    catalog = clients if getattr(clients, "supports_catalog", False) else None
+    gateway = ItineraryToolGateway(clients, clients, catalog, recommendation_authorization=authorization)
     settings = get_settings()
     return RuntimeAgentDependencies(
         gateway, store, getattr(request.app.state, "itinerary_llm", None), authorization,

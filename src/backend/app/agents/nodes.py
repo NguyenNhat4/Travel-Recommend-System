@@ -272,7 +272,7 @@ async def tool_node(state: AgentState, *, tools: ToolExecutorPort | None = None,
                     llm_timeout_seconds: float = 2) -> dict:
     intent, constraints, changed = normalize_intent(state.get("intent", {}), state.get("constraints", {}))
     supported = state.get("supported_destinations")
-    if intent.get("destination") and supported is None and hasattr(tools, "list_destinations"):
+    if intent.get("destination") and supported is None and getattr(tools, "supports_catalog", False):
         try:
             listing = await asyncio.wait_for(tools.list_destinations(), timeout_seconds)
             if valid("DestinationListResponse", listing):

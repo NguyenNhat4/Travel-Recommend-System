@@ -15,8 +15,8 @@ pytest tests -q                                         # 7 test, không cần t
 Lần chạy đầu tải model (~1,1 GB) và embed ~1.125 search unit (1–3 phút CPU), cache ở `.embcache/units_<hash>.npy`;
 đổi template hoặc model → hash đổi → embed lại.
 
-Endpoint: `GET /api/v1/search?q=&taxonomy=&destination=&limit=&offset=` ·
-`GET /api/v1/similar/{productId}?k=` · `GET /api/v1/recommendations?k=&cdp_user_id=` (tạm, sẽ lấy từ JWT) ·
+Endpoint: `GET /api/v1/search?q=&taxonomy=&destination=&limit=&offset=` (Agent tool `query` được adapter đổi thành `q`) ·
+`GET /api/v1/similar/{productId}?k=` · `GET /api/v1/recommendations?k=&destination=` (JWT tùy chọn) ·
 `GET /api/v1/popular?k=`
 
 ## Chỗ nào làm gì (ARCHITECTURE.md §4–5)
@@ -86,3 +86,17 @@ ITINERARY_LLM_TEMPERATURE=0     # riêng của agent, không dùng chung LLM_TEM
 
 Với `disabled` và `unavailable`, app vẫn khởi động và các route khác vẫn phục vụ; riêng request itinerary
 trả 503 `LLM_UNAVAILABLE` có kiểm soát.
+
+Để Agent dùng Search/Recommendation của chính Backend thay cho fixture:
+
+```env
+ITINERARY_DATA_MODE=http
+ITINERARY_SERVICE_BASE_URL=http://127.0.0.1:8000
+JWT_SECRET=<secret HS256 giống service Auth>
+JWT_ALGORITHM=HS256
+```
+
+Tool `search_products` gọi GET `/api/v1/search` nhưng luôn bỏ Authorization. Tool
+`get_recommendations` forward Bearer token; Backend chỉ lấy `cdp_user_id` từ JWT đã xác minh. Hai
+response RecSys chứa đủ trường catalog để Agent hậu kiểm và không cần gọi Product Detail. Fixture vẫn
+là mặc định của development/test để máy chưa seed PostgreSQL vẫn chạy được.

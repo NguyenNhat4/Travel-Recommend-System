@@ -49,6 +49,11 @@ class Settings(BaseSettings):
     itinerary_request_timeout_seconds: float = Field(default=5.0, gt=0)
     itinerary_conversation_ttl_seconds: int = Field(default=86_400, ge=60)
 
+    # JWT do Auth backend phát hành. Không có default secret; request ẩn danh vẫn hoạt động,
+    # còn request mang Bearer token sẽ fail closed nếu deployment chưa cấu hình.
+    jwt_secret: str = ""
+    jwt_algorithm: Literal["HS256"] = "HS256"
+
     # Local week-1 topology: one PostgreSQL instance, two roles/connections.
     # The app role cannot read cdp.events/profiles; LocalCdpClient cannot access app/catalog.
     database_url: str = "postgresql://vota_app_login:vota@localhost:5432/vota"

@@ -10,8 +10,14 @@ from src.backend.app.domain.search import exact_filter_score
 
 def hit(index: UnitIndex, i: int, score: float, **extra) -> dict:
     p = index.units[i]
+    normalized_score = round(max(0.0, min(1.0, float(score))), 4)
     return {"productId": p.product_id, "name": p.name, "taxonomy": p.taxonomy, "destination": p.destination,
-            "unitPrice": p.unit_price, "imageUrl": p.image_url, "score": round(float(score), 4), **extra}
+            "description": p.description, "attributes": p.attributes,
+            "unitPrice": p.unit_price, "currency": p.currency, "priceUnit": p.price_unit,
+            "available": p.available,
+            "availableFrom": p.available_from.isoformat() if p.available_from else None,
+            "availableTo": p.available_to.isoformat() if p.available_to else None,
+            "imageUrl": p.image_url, "score": normalized_score, **extra}
 
 
 @dataclass

@@ -65,7 +65,9 @@ class HttpTests(unittest.IsolatedAsyncioTestCase):
                 self.assertNotIn('authorization', requests[0].headers)
                 self.assertEqual(requests[1].headers['authorization'], 'Bearer request-jwt')
                 self.assertEqual(requests[1].url.params['k'], '5')
+                self.assertEqual(requests[0].method, 'GET')
                 self.assertEqual(requests[0].url.path, '/api/v1/search')
+                self.assertEqual(requests[0].url.params['q'], 'hotel')
                 for request in requests:
                     self.assertNotIn('cookie', request.headers)
                     self.assertEqual(request.headers['X-Request-ID'], 'tools-test')
@@ -128,6 +130,27 @@ class HttpTests(unittest.IsolatedAsyncioTestCase):
                     {'id': 'a', 'name': 'search_products', 'args': {'query': 'hotel'}})
                 self.assertEqual(result['error']['code'], code)
                 self.assertNotIn('secret', str(result))
+
+    async def test_search_maps_only_supported_legacy_query_parameters(self):
+        requests = []
+
+        async def handler(request):
+            requests.append(request)
+            return httpx.Response(200, json={'results': [], 'total': 0})
+
+        async with httpx.AsyncClient(base_url='https://service.test/api/v1/',
+                transport=httpx.MockTransport(handler)) as http:
+            clients = ItineraryHttpClients(http)
+            result = await ItineraryToolGateway(clients, clients).execute({
+                'id': 'a', 'name': 'search_products',
+                'args': {'query': 'hotel gia đình', 'destination': 'Nha Trang',
+                         'priceMax': 2_000_000, 'starRatingMin': 4},
+            })
+        self.assertNotIn('error', result)
+        self.assertEqual(dict(requests[0].url.params), {
+            'q': 'hotel gia đình', 'destination': 'Nha Trang', 'limit': '20', 'offset': '0'
+        })
+        self.assertNotIn('authorization', requests[0].headers)
 
 
 class NodeTests(unittest.IsolatedAsyncioTestCase):

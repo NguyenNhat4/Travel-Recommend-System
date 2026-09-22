@@ -11,11 +11,19 @@ from src.backend.app.core.request_context import REQUEST_ID_HEADER, current_requ
 
 
 class ItineraryHttpClients:
+    supports_catalog = False
+
     def __init__(self, http: httpx.AsyncClient):
         self._http = http
 
     async def search_products(self, request: dict[str, Any]) -> dict[str, Any]:
-        return await self._request("POST", "/search", json=request)
+        supported = {"taxonomy", "destination", "limit", "offset"}
+        params = {"q": request["query"], **{key: value for key, value in request.items()
+                                             if key in supported and value is not None}}
+        data = await self._request("GET", "/search", params=params)
+        # GET compatibility endpoint có metadata engine riêng. Tool chỉ giữ các
+        # trường SearchResponse ổn định mà Agent thực sự tiêu thụ.
+        return {key: value for key, value in data.items() if key not in {"cutoff", "diagnostics"}}
 
     async def get_recommendations(self, request: dict[str, Any], authorization: str | None = None) -> dict[str, Any]:
         return await self._request("GET", "/recommendations", params=request,

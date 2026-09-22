@@ -77,27 +77,12 @@
 ### 2.1. API semantic search
 
 ```http
-POST /api/v1/search
-Content-Type: application/json
+GET /api/v1/search?q=khu%20nghỉ%20dưỡng&destination=Nha%20Trang&taxonomy=hotel&limit=10
 ```
 
-#### Request
+#### Query parameters
 
-```json
-{
-  "query": "khu nghỉ dưỡng gần biển phù hợp gia đình có trẻ nhỏ",
-  "destination": "Nha Trang",
-  "taxonomy": "hotel",
-  "priceMin": 0,
-  "priceMax": 5000000,
-  "availableOnly": true,
-  "sort": "relevance",
-  "limit": 10,
-  "offset": 0
-}
-```
-
-Chỉ `query` là bắt buộc. Search MVP không nhận `startDate`, `endDate` hoặc `party`; Agent giữ các ràng buộc đó trong `TripIntent` và kiểm tra sau retrieval. Bộ lọc giá áp dụng lên `unitPrice` snapshot VND, không phải tổng chuyến đi.
+`q` là bắt buộc; `destination`, `taxonomy`, `limit`, `offset` là tùy chọn. Tool planner vẫn dùng tên `query`; HTTP adapter đổi sang `q`. Search MVP không nhận ngày, party hoặc bộ lọc giá/sao; Agent giữ và hậu kiểm các ràng buộc đó sau retrieval.
 
 #### Response
 

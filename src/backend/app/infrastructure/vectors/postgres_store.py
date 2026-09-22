@@ -29,7 +29,7 @@ from src.backend.app.domain.catalog import Product, build_text
 #: Đọc nguyên 13 trường CDP + ba cờ vai trò của view. `attributes` là JSONB nên psycopg trả dict sẵn.
 _QUERY = """
 SELECT p.product_id, p.name, p.taxonomy, p.destination, p.description, p.attributes,
-       p.unit_price, p.available, p.image_url,
+       p.unit_price, p.currency, p.available, p.available_from, p.available_to, p.image_url,
        m.is_search_unit, m.is_recommendable, m.parent_product_id
 FROM   cdp.products p
 JOIN   catalog.product_meta m USING (product_id)
@@ -71,7 +71,10 @@ class PostgresVectorStore:
                     "attributes": row["attributes"] or {},
                     # numeric(14,2) về Python là Decimal; ép float cho khớp Product và JSON response.
                     "unitPrice": float(row["unit_price"]) if row["unit_price"] is not None else None,
+                    "currency": row["currency"],
                     "available": row["available"],
+                    "availableFrom": row["available_from"],
+                    "availableTo": row["available_to"],
                     "imageUrl": row["image_url"],
                 }
             )

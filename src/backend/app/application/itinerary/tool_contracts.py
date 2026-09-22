@@ -9,7 +9,7 @@ from src.shared.contracts.scripts.bundle_openapi import bundle
 from src.backend.app.application.ports.itinerary_tools import ToolError
 
 OPERATIONS = {
-    "search_products": ("/search", "post"),
+    "search_products": ("/search", "get"),
     "get_recommendations": ("/recommendations", "get"),
 }
 
@@ -33,7 +33,11 @@ def contracts() -> dict[str, dict[str, Any]]:
     result = {}
     for name, (path, method) in OPERATIONS.items():
         operation = resolve(document["paths"][path][method])
-        if method == "post":
+        if name == "search_products":
+            # Planner giữ schema giàu của SearchRequest. HTTP compatibility adapter sẽ
+            # đổi `query` thành `q` và Agent hậu kiểm các filter mà GET legacy chưa hỗ trợ.
+            arguments = resolve(document["components"]["schemas"]["SearchRequest"])
+        elif method == "post":
             arguments = operation["requestBody"]["content"]["application/json"]["schema"]
         else:
             parameters = [p for p in operation["parameters"] if p["in"] == "query"]
