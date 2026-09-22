@@ -1,6 +1,6 @@
 # Hợp đồng tích hợp Backend
 
-> **MVP 1.2.0:** ưu tiên hiển thị recommendation; [bộ trường tối thiểu](../../src/shared/contracts/MVP.md) và OpenAPI hiện hành thay thế danh sách required/optional cũ bên dưới. Các trường mở rộng vẫn được hỗ trợ nhưng không bắt buộc gửi.
+> **MVP 1.2.0:** ưu tiên hiển thị recommendation; [bộ trường tối thiểu](mvp-minimal-fields-1.2.0.md) và OpenAPI hiện hành thay thế danh sách required/optional cũ bên dưới. Các trường mở rộng vẫn được hỗ trợ nhưng không bắt buộc gửi.
 
 **Phiên bản:** 1.0  
 **Người tạo:** mihhquan  
@@ -54,7 +54,7 @@
 - Toàn bộ bề mặt `POST /api/v1/assistant/itineraries`.
 - Sinh embedding, quản lý vector index và thuật toán xếp hạng. Tài liệu này chỉ chốt *hình dạng* response, không chốt cách tính điểm.
 
-**Mâu thuẫn cần Team Backend xử lý:** `src/backend/app/core/config.py` đang đặt `database_url="sqlite:///./data/app.db"` và `chroma_persist_dir`, trong khi `ARCHITECTURE.md` §2 và handbook §5 quyết định PostgreSQL + pgvector. Hợp đồng này viết theo quyết định PostgreSQL + pgvector.
+**Mâu thuẫn cần Team Backend xử lý:** `src/backend/app/core/config.py` đang đặt `database_url="sqlite:///./data/app.db"` và `chroma_persist_dir`, trong khi `architecture-repo.md` §2 và handbook §5 quyết định PostgreSQL + pgvector. Hợp đồng này viết theo quyết định PostgreSQL + pgvector.
 
 ---
 
@@ -895,7 +895,7 @@ Log **không được** chứa: mật khẩu ở bất kỳ dạng nào, JWT, AP
 - Thêm field mới hoặc thêm giá trị enum là thay đổi tương thích ngược, được phép trong v1. Riêng enum `strategy` và `taxonomy` phải thông báo trước khi triển khai.
 - Không xóa hoặc đổi tên field trong v1.
 - Thay đổi phá vỡ tương thích phải tạo `/api/v2`.
-- Một thay đổi contract cần reviewer của cả Web và Backend (`ARCHITECTURE.md` §11).
+- Một thay đổi contract cần reviewer của cả Web và Backend (`architecture-repo.md` §11).
 
 ---
 

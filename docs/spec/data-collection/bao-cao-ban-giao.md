@@ -250,7 +250,7 @@ Gói gửi cho ba đội chỉ gồm những gì cần để dùng dữ liệu:
 | `SCHEMA.md` | Tài liệu schema chi tiết: 13 trường, toàn bộ `attributes` theo nhóm, ngữ nghĩa và bẫy thường gặp |
 | `template.json` | Bản máy đọc được của schema: 97 khoá `attributes` theo từng loại kèm độ phủ thực tế |
 | `sample/` | 50 sản phẩm để chạy thử nhanh, liên kết cha–con toàn vẹn, kèm README riêng |
-| `BANGIAO.md` | Tổng quan gói và ghi chú riêng cho từng đội |
+| `ban-giao.md` | Tổng quan gói và ghi chú riêng cho từng đội |
 | `bao-cao-ban-giao.md` | Báo cáo này |
 
 Các tệp phục vụ kiểm tra chất lượng nằm trong repo chứ không gửi kèm: `stats.md`, `quality_review.csv`

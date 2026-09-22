@@ -272,7 +272,7 @@ Ba hệ quả bắt buộc phải tôn trọng:
 2. **Role của Backend (`vota_app`) không tạo được `cdp.profiles`.** Nó cũng không `SELECT` được bảng đó. Nên đăng ký **bắt buộc** đi qua `CdpClient` bằng connection `CDP_DATABASE_URL`.
 3. **Hai connection, không transaction chung** (`AGENTS.md` §6.2). Phải là hai pha có bù trừ, đúng khuôn mẫu checkout đã chốt.
 
-> `CdpClient` (`application/ports/cdp_client.py`) **hiện chưa có** phương thức tạo profile. Phải thêm `ensure_profile(cdp_user_id, *, home_city=None) -> None` (idempotent: đã có thì không lỗi), hiện thực ở `LocalCdpClient` bằng `INSERT … ON CONFLICT (cdp_user_id) DO NOTHING`. Đây là thay đổi port, cần reviewer Data/Integration (`ARCHITECTURE.md` §11).
+> `CdpClient` (`application/ports/cdp_client.py`) **hiện chưa có** phương thức tạo profile. Phải thêm `ensure_profile(cdp_user_id, *, home_city=None) -> None` (idempotent: đã có thì không lỗi), hiện thực ở `LocalCdpClient` bằng `INSERT … ON CONFLICT (cdp_user_id) DO NOTHING`. Đây là thay đổi port, cần reviewer Data/Integration (`architecture-repo.md` §11).
 
 #### 3.6.2. Cấp phát `cdp_user_id` mới
 
@@ -387,7 +387,7 @@ Insider giữ ánh xạ riêng: `identifiers(id_type, id_value) → profile_id`,
 
 Auth chạm vào đây đúng **một** trường hợp: **người dùng đổi email**. Khi đó job đẩy Insider phải đóng bản ghi cũ (`valid_to = now()`) rồi mở bản mới, chứ không `UPDATE` tại chỗ — unique index chỉ áp cho bản đang hiệu lực nên `UPDATE` sẽ va chạm nếu email mới từng thuộc về ai khác.
 
-Auth **không** gọi Insider trực tiếp. Nó phát sự kiện miền `EmailChanged(cdp_user_id, old, new)`; job đẩy Insider tiêu thụ. Backend không có connection tới database `insider` (`ARCHITECTURE.md` §9).
+Auth **không** gọi Insider trực tiếp. Nó phát sự kiện miền `EmailChanged(cdp_user_id, old, new)`; job đẩy Insider tiêu thụ. Backend không có connection tới database `insider` (`architecture-repo.md` §9).
 
 ### 3.11. Bảng quyết định — một request đến thì resolve thế nào
 
@@ -1111,7 +1111,7 @@ Sinh khoá dev: `openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -o
 
 ## 20. Kiểm thử
 
-Theo `ARCHITECTURE.md` §10.
+Theo `architecture-repo.md` §10.
 
 ### 20.1. Unit (`src/backend/tests/unit/auth/`)
 
@@ -1220,7 +1220,7 @@ OAuth/OIDC + PKCE (§13) · WebAuthn (§12.2) · bảng `oauth_identities`, `web
 
 | # | Câu hỏi | Chặn phần nào | Quy tắc tạm |
 |---|---|---|---|
-| A | Thêm `CdpClient.ensure_profile` cần reviewer Data/Integration (`ARCHITECTURE.md` §11) | Đăng ký (P0) | Viết port + `LocalCdpClient`, đánh dấu chờ duyệt trong PR |
+| A | Thêm `CdpClient.ensure_profile` cần reviewer Data/Integration (`architecture-repo.md` §11) | Đăng ký (P0) | Viết port + `LocalCdpClient`, đánh dấu chờ duyệt trong PR |
 | B | Nhà cung cấp CAPTCHA (Turnstile / reCAPTCHA / hCaptcha) | §9.3 thật (P1) | `CAPTCHA_PROVIDER=noop`, giao diện đã có chỗ cắm |
 | C | Nhà cung cấp email giao vận | §11 (P1) | `SMTP_URL` trống → ghi mail ra log ở dev |
 | D | Danh sách OAuth provider và client credentials | §13 (P2) | Chỉ `google` trong enum, thêm sau |

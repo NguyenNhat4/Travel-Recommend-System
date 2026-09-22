@@ -45,7 +45,7 @@ Ngày 17/09/2026: 30 đêm là **17/09–16/10**, ngày trả phòng muộn nh�
 - Không còn null ở giá/ngày/ảnh trong file này do bước điền mock. API vẫn cần hỗ trợ nullable cho dữ liệu khác.
 - Lịch ban đầu cho toàn bộ phòng: **4.646 × 30 = 139.380 dòng**. Đây là lịch cần sinh, chưa có trong file hiện tại.
 
-`SCHEMA.md` còn mô tả 2.216 dòng; baseline 1.1 mô tả sample 50 dòng. Cả hai không phải thống kê của catalog 10.000 dòng hiện tại. Xem [quy tắc mở rộng catalog](../../src/data_collection/docs/EXPAND_CATALOG.md).
+`SCHEMA.md` còn mô tả 2.216 dòng; baseline 1.1 mô tả sample 50 dòng. Cả hai không phải thống kê của catalog 10.000 dòng hiện tại. Xem [quy tắc mở rộng catalog](data-collection/expand-catalog.md).
 
 ## 3. Phiên bản tài liệu và code không trùng nhau
 
@@ -137,6 +137,6 @@ Không thể nói “OpenAPI thắng” mà để mỗi team dùng một bản O
 ## 9. Nguồn đã đọc
 
 - [Thiết kế ba service ban đầu](thiet-ke-schema-3-service.md).
-- [Mô hình code hiện tại](../../src/data_collection/cdp/models.py), [schema catalog](../../src/data_collection/docs/SCHEMA.md), [quy tắc mở rộng](../../src/data_collection/docs/EXPAND_CATALOG.md).
+- [Mô hình code hiện tại](../../src/data_collection/cdp/models.py), [schema catalog](data-collection/schema.md), [quy tắc mở rộng](data-collection/expand-catalog.md).
 - Các tài liệu trong `/home/dangkhoi/Downloads/`: `contract-baseline-v1.1.md`, `hop-dong-tich-hop-backend.md`, `hop-dong-tich-hop-frontend.md`, `hop-dong-tich-hop-cdp.md`, `hop-dong-tich-hop-itinerary-assistant.md`, `product.md`, `recsys-internship-handbook-v3-vi.md`, `ux-research-brief.md`.
 - Nội dung Git local `origin/data_contract` tại `0f630a2`: `src/ARCHITECTURE.md`, `src/shared/contracts/openapi.yaml`, các `schemas/catalog.yaml`, `schemas/booking.yaml`, `schemas/recommendations.yaml`, `schemas/itinerary-agent.yaml`, `cdp-clone.openapi.yaml`, `src/cdp_clone/app/infrastructure/tables.py`.

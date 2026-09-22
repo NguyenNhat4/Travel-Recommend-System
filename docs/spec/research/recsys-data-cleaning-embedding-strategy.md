@@ -1,6 +1,6 @@
 # RecSys research: cleaning a noisy travel catalog, embedding it, and searching it
 
-**Date:** 2026-09-20 · **Scope:** research only, no code · **Inputs read:** `recsys-internship-handbook-v3-vi.md`, everything in `docs/spec/`, `src/data_collection/docs/SCHEMA.md`, `EXPAND_CATALOG.md`, `sample/products-sample.jsonl`, and the catalog audit of 2026-09-17.
+**Date:** 2026-09-20 · **Scope:** research only, no code · **Inputs read:** `recsys-internship-handbook-v3-vi.md`, everything in `docs/spec/`, `docs/spec/data-collection/schema.md`, `EXPAND_CATALOG.md`, `sample/products-sample.jsonl`, and the catalog audit of 2026-09-17.
 
 This document answers three questions for the Search/Recommendation workstream:
 
@@ -285,7 +285,7 @@ Recommendations (Week 3–5):
 
 ## 10. Sources consulted
 
-Project documents: handbook v3; `data-collection-spec.md`; `hop-dong-tich-hop-search-recommendation.md`; `hop-dong-tich-hop-itinerary-assistant.md`; `ra-soat-hop-dong-2026-09-17.md`; `schema-database-toan-bo-v2.md`; `src/data_collection/docs/SCHEMA.md`, `EXPAND_CATALOG.md`; `evidence/catalog-audit-2026-09-17.json`; `sample/products-sample.jsonl`.
+Project documents: handbook v3; `data-collection-spec.md`; `hop-dong-tich-hop-search-recommendation.md`; `hop-dong-tich-hop-itinerary-assistant.md`; `ra-soat-hop-dong-2026-09-17.md`; `schema-database-toan-bo-v2.md`; `docs/spec/data-collection/schema.md`, `EXPAND_CATALOG.md`; `evidence/catalog-audit-2026-09-17.json`; `sample/products-sample.jsonl`.
 
 Deduplication
 - [Finding near-duplicates with Jaccard similarity and MinHash](https://blog.nelhage.com/post/fuzzy-dedup/)

@@ -21,7 +21,7 @@ Crawl ngày 15–16/09/2026. Người thu thập: mảng Data.
 | `template.json` | Schema dạng máy đọc: 97 khoá `attributes` theo từng loại kèm độ phủ thực tế |
 | `sample/products-sample.jsonl` · `.csv` · `README.md` | Bộ mẫu 50 sản phẩm để chạy thử, liên kết cha–con toàn vẹn |
 | `bao-cao-ban-giao.md` | Báo cáo Tuần 1: nghiệm thu handbook, nguồn, những gì đã loại và vì sao |
-| `BANGIAO.md` | File bạn đang đọc |
+| `ban-giao.md` | File bạn đang đọc |
 
 **Không kèm trong gói này**, vì chỉ dùng cho việc kiểm tra chất lượng nội bộ chứ không cần để dùng dữ liệu —
 liên hệ mảng Data nếu cần: `products.csv` (bản CSV của cùng dữ liệu), `stats.md` (thống kê),

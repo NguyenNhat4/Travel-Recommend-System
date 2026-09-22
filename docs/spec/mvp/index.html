@@ -584,11 +584,11 @@ main{min-width:0;background:var(--paper);padding:35px 46px 70px;border-left:1px 
 <p>Mục tiêu tham chiếu từ handbook: vượt baseline phổ biến, availability precision ≥95%, coverage &gt;20%, grounding 100%, p95 Search/Recommendation &lt;300 ms, Agent &lt;5 giây. Đây là <strong>mục tiêu cần đo, chưa phải kết quả đạt được</strong>. Tách kết quả bình thường và khi CDP timeout; fallback sau timeout dài không thể được tính là đã đạt p95 300 ms. Dữ liệu hành vi seed chỉ đánh giá pipeline trên dữ liệu tổng hợp, không chứng minh hiệu quả trên khách hàng thật.</p>
 <h2 id="11-nguon-va-cach-oc-tiep">11. Nguồn và cách đọc tiếp</h2>
 <ul>
-<li><a href="../docs/spec/recsys-internship-handbook-v3-vi.md">Handbook dự án</a>: §2 phạm vi/cách cắt giảm, §3 clone, §6 dữ liệu, §10 booking, §12 đánh giá.</li>
-<li><a href="../docs/spec/ba-database-va-luong-du-lieu.html">Báo cáo database và luồng hiện tại</a>: ranh giới ba service và nguồn dữ liệu.</li>
-<li><a href="../docs/spec/thiet-ke-schema-3-service-chi-tiet.md">Thiết kế chi tiết trước đó</a>: các ràng buộc/luồng nâng cấp khi MVP cần mở rộng.</li>
-<li><a href="../docs/spec/ra-soat-hop-dong-2026-09-17.html">Rà soát hợp đồng</a> và <a href="../docs/spec/evidence/catalog-audit-2026-09-17.json">bằng chứng catalog ngày 17/09</a>: số liệu catalog và khoảng cách với hợp đồng.</li>
+<li><a href="../recsys-internship-handbook-v3-vi.md">Handbook dự án</a>: §2 phạm vi/cách cắt giảm, §3 clone, §6 dữ liệu, §10 booking, §12 đánh giá.</li>
+<li><a href="../ba-database-va-luong-du-lieu.html">Báo cáo database và luồng hiện tại</a>: ranh giới ba service và nguồn dữ liệu.</li>
+<li><a href="../thiet-ke-schema-3-service-chi-tiet.md">Thiết kế chi tiết trước đó</a>: các ràng buộc/luồng nâng cấp khi MVP cần mở rộng.</li>
+<li><a href="../ra-soat-hop-dong-2026-09-17.html">Rà soát hợp đồng</a> và <a href="../evidence/catalog-audit-2026-09-17.json">bằng chứng catalog ngày 17/09</a>: số liệu catalog và khoảng cách với hợp đồng.</li>
 <li>Hợp đồng CDP/MVP đã tham chiếu bằng <code>git show origin/data_contract:docs/spec/hop-dong-tich-hop-cdp.md</code> và <code>git show origin/data_contract:src/shared/contracts/MVP.md</code>, commit <code>0f630a2</code>.</li>
 </ul>
-<p>Tài liệu này là <strong>một phương án khác trong thư mục <code>mvp/</code></strong>, không sửa hoặc xóa các báo cáo cũ. Đọc HTML ở <code>mvp/index.html</code>; sửa nội dung nguồn ở <code>mvp/bao-cao-mvp.md</code>.</p><footer class="footer"><a href="bao-cao-mvp.md">Nguồn Markdown</a><a href="../docs/spec/ba-database-va-luong-du-lieu.html">Báo cáo trước</a><p>Bản HTML đọc offline. Dựng lại bằng: <code>python3 mvp/render_report.py</code> (cần Python-Markdown).</p></footer></main></div>
+<p>Tài liệu này là <strong>một phương án khác trong thư mục <code>docs/spec/mvp/</code></strong>, không sửa hoặc xóa các báo cáo cũ. Đọc HTML ở <code>docs/spec/mvp/index.html</code>; sửa nội dung nguồn ở <code>docs/spec/mvp/bao-cao-mvp.md</code>.</p><footer class="footer"><a href="bao-cao-mvp.md">Nguồn Markdown</a><a href="../ba-database-va-luong-du-lieu.html">Báo cáo trước</a><p>Bản HTML đọc offline. Dựng lại bằng: <code>python3 mvp/render_report.py</code> (cần Python-Markdown).</p></footer></main></div>
 </body></html>

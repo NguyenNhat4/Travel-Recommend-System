@@ -1,6 +1,6 @@
 # Hợp đồng tích hợp Frontend
 
-> **MVP 1.2.0:** ưu tiên hiển thị recommendation; [bộ trường tối thiểu](../../src/shared/contracts/MVP.md) và OpenAPI hiện hành thay thế danh sách required/optional cũ bên dưới. Các trường mở rộng vẫn được hỗ trợ nhưng không bắt buộc gửi.
+> **MVP 1.2.0:** ưu tiên hiển thị recommendation; [bộ trường tối thiểu](mvp-minimal-fields-1.2.0.md) và OpenAPI hiện hành thay thế danh sách required/optional cũ bên dưới. Các trường mở rộng vẫn được hỗ trợ nhưng không bắt buộc gửi.
 
 **Phiên bản:** 1.0  
 **Người tạo:** mihhquan  
@@ -25,7 +25,7 @@
 ### 1.1. Team Web chịu trách nhiệm
 
 - Sinh kiểu TypeScript từ `openapi.yaml`; không tự khai báo lại payload trong feature.
-- Gọi HTTP **chỉ** qua `src/frontend/src/services/`; component không gọi `fetch` trực tiếp (`ARCHITECTURE.md` §6).
+- Gọi HTTP **chỉ** qua `src/frontend/src/services/`; component không gọi `fetch` trực tiếp (`architecture-repo.md` §6).
 - Cung cấp các route và deep link ở §3, giữ ổn định để Agent, email mẫu và tài liệu demo trỏ vào.
 - Sở hữu mọi chuỗi hiển thị: nhãn `taxonomy`, nhãn `attributes`, hậu tố đơn vị giá, câu `BecauseLine`, tiêu đề section theo `strategy` (§6).
 - Áp dụng quy tắc render grounding cho lịch trình (§9.5) như lưới an toàn cuối, bất kể Agent trả gì.
@@ -236,7 +236,7 @@ Không component nào nhận `priceString`, `price{}`, `category`, `bookingUrl` 
 
 ## 6. Quy tắc client sở hữu
 
-Backend chỉ trả **key và số**. Mọi quy tắc dưới đây là hằng số của Web, đặt trong feature tương ứng (không tạo `utils` chung, `ARCHITECTURE.md` §12).
+Backend chỉ trả **key và số**. Mọi quy tắc dưới đây là hằng số của Web, đặt trong feature tương ứng (không tạo `utils` chung, `architecture-repo.md` §12).
 
 ### 6.1. Nhãn `taxonomy`
 

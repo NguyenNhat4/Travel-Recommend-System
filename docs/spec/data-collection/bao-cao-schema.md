@@ -5,7 +5,7 @@ Bản 17/09/2026 · viết từ nhánh `data`, gồm cả phần chưa commit ·
 
 > **Cập nhật 17/09:** nhánh `data_contract` đã chốt CDP clone là service riêng, chỉ giữ `events` và `profiles`.
 > Các phần coi CDP clone là một database chung (§2–§6, §8.2–§8.5 và X4, X14–X16, X23) được thay bằng
-> [thiết kế schema ba service](../../../docs/spec/thiet-ke-schema-3-service.md). Phần catalog (§7, §8.1, X2–X3, X5–X13,
+> [thiết kế schema ba service](../thiet-ke-schema-3-service.md). Phần catalog (§7, §8.1, X2–X3, X5–X13,
 > Phụ lục) vẫn dùng được.
 
 Số liệu catalog đếm trực tiếp trên `data/recsys/products.jsonl` (10.000 dòng). Lệnh tái tạo ở Phụ lục C.

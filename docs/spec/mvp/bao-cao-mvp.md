@@ -248,10 +248,10 @@ Mục tiêu tham chiếu từ handbook: vượt baseline phổ biến, availabil
 
 ## 11. Nguồn và cách đọc tiếp
 
-- [Handbook dự án](../docs/spec/recsys-internship-handbook-v3-vi.md): §2 phạm vi/cách cắt giảm, §3 clone, §6 dữ liệu, §10 booking, §12 đánh giá.
-- [Báo cáo database và luồng hiện tại](../docs/spec/ba-database-va-luong-du-lieu.html): ranh giới ba service và nguồn dữ liệu.
-- [Thiết kế chi tiết trước đó](../docs/spec/thiet-ke-schema-3-service-chi-tiet.md): các ràng buộc/luồng nâng cấp khi MVP cần mở rộng.
-- [Rà soát hợp đồng](../docs/spec/ra-soat-hop-dong-2026-09-17.html) và [bằng chứng catalog ngày 17/09](../docs/spec/evidence/catalog-audit-2026-09-17.json): số liệu catalog và khoảng cách với hợp đồng.
+- [Handbook dự án](../recsys-internship-handbook-v3-vi.md): §2 phạm vi/cách cắt giảm, §3 clone, §6 dữ liệu, §10 booking, §12 đánh giá.
+- [Báo cáo database và luồng hiện tại](../ba-database-va-luong-du-lieu.html): ranh giới ba service và nguồn dữ liệu.
+- [Thiết kế chi tiết trước đó](../thiet-ke-schema-3-service-chi-tiet.md): các ràng buộc/luồng nâng cấp khi MVP cần mở rộng.
+- [Rà soát hợp đồng](../ra-soat-hop-dong-2026-09-17.html) và [bằng chứng catalog ngày 17/09](../evidence/catalog-audit-2026-09-17.json): số liệu catalog và khoảng cách với hợp đồng.
 - Hợp đồng CDP/MVP đã tham chiếu bằng `git show origin/data_contract:docs/spec/hop-dong-tich-hop-cdp.md` và `git show origin/data_contract:src/shared/contracts/MVP.md`, commit `0f630a2`.
 
-Tài liệu này là **một phương án khác trong thư mục `mvp/`**, không sửa hoặc xóa các báo cáo cũ. Đọc HTML ở `mvp/index.html`; sửa nội dung nguồn ở `mvp/bao-cao-mvp.md`.
+Tài liệu này là **một phương án khác trong thư mục `docs/spec/mvp/`**, không sửa hoặc xóa các báo cáo cũ. Đọc HTML ở `docs/spec/mvp/index.html`; sửa nội dung nguồn ở `docs/spec/mvp/bao-cao-mvp.md`.

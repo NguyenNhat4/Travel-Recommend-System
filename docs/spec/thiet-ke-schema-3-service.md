@@ -4,7 +4,7 @@
 
 > **Bản vẽ chi tiết cập nhật ngày 17/09/2026:** xem [từng loại sản phẩm và lịch phòng 30 đêm](thiet-ke-schema-3-service-chi-tiet.md) và [review hợp đồng](ra-soat-hop-dong-2026-09-17.md). Bản mới phản ánh quyết định mock một giá/phòng, availability từng đêm, cửa sổ trượt và bỏ `demo_accounts`. Nội dung bên dưới được giữ làm bản đề xuất trước đó, không dùng các quy tắc cũ mâu thuẫn với bản cập nhật để triển khai.
 
-**Trạng thái:** đề xuất, chờ review của Backend, Data và Integration (`src/ARCHITECTURE.md` §11)  
+**Trạng thái:** đề xuất, chờ review của Backend, Data và Integration (`docs/spec/architecture-repo.md` §11)  
 **Ngày:** 2026-09-17  
 **Căn cứ:** nhánh `origin/data_contract` `0f630a2` — OpenAPI 1.3.0, `cdp-clone.openapi.yaml`, `hop-dong-tich-hop-backend.md`,
 `hop-dong-tich-hop-cdp.md`, code `src/cdp_clone`, handbook §3 và §6
@@ -68,7 +68,7 @@ flowchart LR
 | `users`, `demo_accounts` | Backend | hợp đồng Backend §3; handbook §6 "demo only" |
 | `carts`, `cart_items` | Backend | hợp đồng Backend §7.1 |
 | `bookings`, `booking_groups`, `booking_items` | Backend | hợp đồng Backend §7.2; handbook §6 "demo only" |
-| Trạng thái hội thoại Agent | Backend, **chờ Team Agent chọn nơi lưu** | hợp đồng Agent §6, `src/ARCHITECTURE.md` §8 |
+| Trạng thái hội thoại Agent | Backend, **chờ Team Agent chọn nơi lưu** | hợp đồng Agent §6, `docs/spec/architecture-repo.md` §8 |
 | `events` — hành vi, giữ vĩnh viễn | CDP clone | `hop-dong-tich-hop-cdp.md` §1.1 |
 | `profiles` — snapshot do seed/job ghi | CDP clone | `hop-dong-tich-hop-cdp.md` §3.4 |
 | Hồ sơ, identifier, event TTL 90/730 ngày, tương tác kênh | Insider clone | handbook §3, §6 |
@@ -79,7 +79,7 @@ flowchart LR
 
 | # | Quy tắc | Vì sao |
 |---|---|---|
-| G1 | Không có khoá ngoại hay join giữa hai database. Tham chiếu sang service khác là **giá trị** (`cdpUserId`, `productId`, `eventId`) | `src/ARCHITECTURE.md` §2: không truy cập database của service khác |
+| G1 | Không có khoá ngoại hay join giữa hai database. Tham chiếu sang service khác là **giá trị** (`cdpUserId`, `productId`, `eventId`) | `docs/spec/architecture-repo.md` §2: không truy cập database của service khác |
 | G2 | Trong **một** database thì dùng khoá ngoại thật | Toàn vẹn rẻ nhất là do Postgres giữ |
 | G3 | ID gửi sang service khác phải duy nhất toàn cục, không phải số tự tăng | §5.1 |
 | G4 | Thời điểm lưu `timestamptz`, trả UTC; ngày dùng `date` | hợp đồng Backend §2.6, hợp đồng CDP (đầu tài liệu) |
@@ -598,7 +598,7 @@ kế này:
 | `alembic/versions/0001_cdp_schema.py` | Migration của Backend | Viết lại cho 9 bảng Backend; chưa push nên còn sửa thẳng được |
 
 Nhánh `data` chưa có `src/cdp_clone` và `src/backend/app/application/ports`. Cần merge `data_contract` vào `data`
-trước khi sửa code (xung đột dự kiến ở `src/data_collection/README.md`, `docs/SCHEMA.md`).
+trước khi sửa code (xung đột dự kiến ở `src/data_collection/README.md`, `docs/spec/data-collection/schema.md`).
 
 ---
 

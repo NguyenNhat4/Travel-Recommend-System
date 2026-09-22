@@ -2,7 +2,7 @@
 
 - Hạn chót: **thứ Hai 21/09/2026**
 - Phạm vi: năm thứ "không bao giờ được bỏ" của handbook §2 — tìm kiếm, gợi ý, đăng nhập, vòng lặp đặt dịch vụ → gợi ý, bộ khung đánh giá.
-- Contract áp dụng: OpenAPI hiện hành và [bộ trường tối thiểu 1.2.0](../src/shared/contracts/MVP.md).
+- Contract áp dụng: OpenAPI hiện hành và [bộ trường tối thiểu 1.2.0](mvp-minimal-fields-1.2.0.md).
 
 Tài liệu này chỉ chốt **đích đến và cách nghiệm thu** của v01. Chi tiết field, mã lỗi, hành vi nằm ở các hợp đồng tích hợp; khi mâu thuẫn, theo thứ tự ưu tiên trong `AGENTS.md` §2.
 
@@ -96,7 +96,7 @@ Với P3, v01 chấp nhận `strategy` là `recent_activity` hoặc `popular` v�
 | Màn hình: Home (ẩn danh + cá nhân hóa), Search, Product detail, Cart, Checkout, Confirmation, Login/Register | Chạy được trên cả mock và backend thật |
 | Đổi mock → backend thật không sửa `services` | Frontend §13 tiêu chí 8 |
 | `ProductCard` + `BecauseLine` dùng chung; `popular` hiện "Phổ biến tại…", không giả cá nhân hóa | `docs/product.md` §1.4, §5 |
-| Giá null hiện "Chưa có giá", `priceUnit` thiếu không tự thêm đơn vị | `MVP.md` mục Recommendation → Web |
+| Giá null hiện "Chưa có giá", `priceUnit` thiếu không tự thêm đơn vị | `mvp-minimal-fields-1.2.0.md` mục Recommendation → Web |
 | Bộ chọn tài khoản demo; đổi tài khoản xóa giỏ và gợi ý của người trước | Frontend §13 tiêu chí 10 |
 | Khoảnh khắc K1: Confirmation có gợi ý mới, Home báo đã cập nhật | `docs/product.md` §4.1.4 |
 | Trạng thái rỗng/đang tải/lỗi tối thiểu, không trang trắng | `docs/product.md` §1.4 nguyên tắc 4 |
@@ -118,7 +118,7 @@ Vượt baseline **chưa** là điều kiện của v01, nhưng báo cáo phải
 | Phải đạt | Nghiệm thu |
 |---|---|
 | OpenAPI và fixture hợp lệ | `PYTHONDONTWRITEBYTECODE=1 python3 src/shared/contracts/tests/validate_contract.py` pass |
-| Mọi thay đổi giao diện sửa OpenAPI trước, có reviewer Web + Backend | Theo `src/ARCHITECTURE.md` §11 |
+| Mọi thay đổi giao diện sửa OpenAPI trước, có reviewer Web + Backend | Theo `architecture-repo.md` §11 |
 | Chạy kịch bản §1 end-to-end trước hạn chót | Biên bản chạy: commit, tài khoản, kết quả từng bước |
 
 ### 3.8. Agent
