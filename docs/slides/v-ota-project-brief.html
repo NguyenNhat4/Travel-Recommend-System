@@ -1,0 +1,1028 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>V-OTA Project Brief</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=Be+Vietnam+Pro:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+/* ── V-OTA deck ──────────────────────────────────────────────────────────────
+   Single committed visual world: a night sea-chart. The deck is a projection
+   surface, so it does not follow the viewer's light/dark setting — every color
+   is painted explicitly from the token set below.
+   ────────────────────────────────────────────────────────────────────────── */
+:root{
+  /* ground + surfaces */
+  --ink:#060E17;
+  --ink-2:#0B1727;
+  --ink-3:#112436;
+  --hairline:rgba(122,176,212,.13);
+  --hairline-2:rgba(122,176,212,.30);
+
+  /* ink on ground */
+  --sand:#F2E8DA;          /* primary text — warm, against the cool ground */
+  --sand-dim:#9FB2C4;      /* secondary */
+  --sand-mute:#6C8299;     /* captions, axis labels */
+
+  /* brand + semantics */
+  --sky:#3FBEF2;           /* primary: engine, chart marks, search */
+  --sky-soft:rgba(63,190,242,.12);
+  --coral:#FF8354;         /* accent: friction, agitation, CTA */
+  --coral-soft:rgba(255,131,84,.11);
+  --jade:#46D8A6;          /* positive / grounded */
+  --amber:#F5C451;
+
+  --ff-display:'Archivo','Arial Narrow',system-ui,sans-serif;
+  --ff-body:'Be Vietnam Pro','Segoe UI',system-ui,sans-serif;
+  --ff-mono:'IBM Plex Mono',ui-monospace,'Courier New',monospace;
+
+  /* type + space scale, expressed against the 16:9 stage (1cqw ≈ 12.8px at
+     the 1280px design width). All cq units live here and nowhere else, so the
+     phone layout can swap the whole scale for px. */
+  --fs-display:9.2cqw;
+  --fs-h2:3.05cqw;
+  --fs-lead:1.5cqw;
+  --fs-body:1.17cqw;
+  --fs-small:1.02cqw;
+  --fs-mono:.86cqw;
+  --fs-metric:5cqw;
+  --fs-chip:1.1cqw;
+
+  --sp-1:.55cqw;
+  --sp-2:1.1cqw;
+  --sp-3:1.9cqw;
+  --sp-4:3cqw;
+  --pad:4.4cqw;
+  --radius:.9cqw;
+  --chart-h:23cqh;
+  --rose:44cqh;
+}
+
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{
+  background:var(--ink);
+  color:var(--sand);
+  font-family:var(--ff-body);
+  font-size:16px;
+  line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+  overflow:hidden;
+}
+
+/* sea-chart coordinate grid, faded away from the centre */
+body::before{
+  content:"";
+  position:fixed;
+  inset:0;
+  background-image:
+    linear-gradient(to right,var(--hairline) 1px,transparent 1px),
+    linear-gradient(to bottom,var(--hairline) 1px,transparent 1px);
+  background-size:52px 52px;
+  -webkit-mask-image:radial-gradient(120% 120% at 50% 45%,#000 10%,transparent 78%);
+          mask-image:radial-gradient(120% 120% at 50% 45%,#000 10%,transparent 78%);
+  pointer-events:none;
+  z-index:0;
+}
+
+/* ── stage ───────────────────────────────────────────────────────────────── */
+.viewport{
+  position:fixed;
+  inset:0;
+  display:grid;
+  place-items:center;
+  z-index:1;
+}
+.deck{
+  container-type:size;
+  position:relative;
+  width:min(100vw,calc(100vh * 16 / 9));
+  height:min(100vh,calc(100vw * 9 / 16));
+  overflow:hidden;
+}
+.slide{
+  position:absolute;
+  inset:0;
+  padding:var(--pad);
+  display:flex;
+  flex-direction:column;
+  gap:var(--sp-3);
+  opacity:0;
+  visibility:hidden;
+  transition:opacity .34s ease;
+}
+.slide.is-active{opacity:1;visibility:visible}
+
+/* ── shared chrome ───────────────────────────────────────────────────────── */
+.eyebrow{
+  font-family:var(--ff-mono);
+  font-size:var(--fs-mono);
+  letter-spacing:.16em;
+  text-transform:uppercase;
+  color:var(--sand-mute);
+  display:flex;
+  align-items:center;
+  gap:var(--sp-2);
+  flex:none;
+}
+.eyebrow::after{
+  content:"";
+  height:1px;
+  flex:1;
+  background:var(--hairline-2);
+}
+.eyebrow b{color:var(--sky);font-weight:500}
+
+h1,h2,h3{font-family:var(--ff-display);font-weight:700;text-wrap:balance;line-height:1.08}
+h2{font-size:var(--fs-h2);letter-spacing:-.018em;max-width:26ch}
+h2.wide{max-width:36ch}
+h2 em{font-style:normal;color:var(--sky)}
+h2 .warm{color:var(--coral)}
+.lead{font-size:var(--fs-lead);color:var(--sand-dim);max-width:58ch;line-height:1.45}
+.tag{
+  font-family:var(--ff-mono);
+  font-size:var(--fs-mono);
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  color:var(--sand-mute);
+}
+code{font-family:var(--ff-mono);font-size:.9em;color:var(--jade)}
+
+.slide-body{flex:1;display:flex;flex-direction:column;gap:var(--sp-3);min-height:0}
+
+/* ── 1 · title ───────────────────────────────────────────────────────────── */
+.s-title{justify-content:center;align-items:flex-start;text-align:left}
+.bearing{
+  position:absolute;
+  top:50%;right:var(--pad);
+  translate:0 -50%;
+  width:var(--rose);
+  height:var(--rose);
+  border-radius:50%;
+  background:repeating-conic-gradient(from 0deg,var(--hairline-2) 0deg .3deg,transparent .3deg 5deg);
+  -webkit-mask-image:radial-gradient(circle,transparent 58%,#000 59%,#000 63%,transparent 64%,transparent 82%,#000 83%,#000 84%,transparent 85%);
+          mask-image:radial-gradient(circle,transparent 58%,#000 59%,#000 63%,transparent 64%,transparent 82%,#000 83%,#000 84%,transparent 85%);
+  pointer-events:none;
+}
+.bearing::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  border-radius:50%;
+  background:radial-gradient(circle at 50% 50%,var(--sky-soft) 0%,transparent 62%);
+}
+.badge{
+  display:inline-flex;
+  align-items:center;
+  gap:var(--sp-1);
+  padding:calc(var(--sp-1) * .9) var(--sp-2);
+  border:1px solid var(--hairline-2);
+  border-radius:100px;
+  font-family:var(--ff-mono);
+  font-size:var(--fs-mono);
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  color:var(--sand-dim);
+}
+.badge span{width:.5em;height:.5em;border-radius:50%;background:var(--jade)}
+.wordmark{
+  font-size:var(--fs-display);
+  font-weight:800;
+  letter-spacing:-.05em;
+  line-height:.9;
+  margin-top:var(--sp-3);
+}
+.wordmark i{font-style:normal;color:var(--coral)}
+.thesis{
+  font-size:calc(var(--fs-lead) * 1.18);
+  color:var(--sand);
+  max-width:34ch;
+  margin-top:var(--sp-2);
+  line-height:1.35;
+}
+.pillars{
+  display:flex;
+  gap:var(--sp-4);
+  margin-top:var(--sp-4);
+  padding-top:var(--sp-3);
+  border-top:1px solid var(--hairline-2);
+  width:min(100%,74ch);
+}
+.pillars div{flex:1}
+.pillars dt{
+  font-family:var(--ff-mono);
+  font-size:var(--fs-mono);
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  color:var(--sky);
+  margin-bottom:calc(var(--sp-1) * .8);
+}
+.pillars dd{font-size:var(--fs-small);color:var(--sand-dim);line-height:1.4}
+
+/* ── 2 · problem ─────────────────────────────────────────────────────────── */
+.query{
+  display:flex;
+  align-items:center;
+  gap:var(--sp-2);
+  padding:var(--sp-2) var(--sp-3);
+  background:var(--ink-2);
+  border:1px solid var(--hairline-2);
+  border-radius:var(--radius);
+  flex:none;
+}
+.query .q{
+  flex:1;
+  font-size:var(--fs-chip);
+  color:var(--sand);
+  font-style:italic;
+}
+.query .verdict{
+  font-family:var(--ff-mono);
+  font-size:var(--fs-mono);
+  letter-spacing:.1em;
+  text-transform:uppercase;
+  color:var(--coral);
+  border-left:1px solid var(--hairline-2);
+  padding-left:var(--sp-2);
+  white-space:nowrap;
+}
+.grid-4{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:var(--sp-2);
+  flex:1;
+  min-height:0;
+}
+.pain{
+  padding:var(--sp-3) calc(var(--sp-2) * 1.2);
+  border:1px solid var(--hairline);
+  border-radius:var(--radius);
+  background:linear-gradient(180deg,var(--ink-2),var(--ink));
+  display:flex;
+  flex-direction:column;
+  gap:var(--sp-1);
+}
+.pain .tag{color:var(--coral)}
+.pain h3{font-size:var(--fs-chip);font-weight:600;letter-spacing:-.01em;line-height:1.2}
+.pain p{font-size:var(--fs-small);color:var(--sand-dim);line-height:1.45}
+.pain .cost{
+  margin-top:auto;
+  padding-top:var(--sp-2);
+  border-top:1px solid var(--hairline);
+  font-family:var(--ff-mono);
+  font-size:var(--fs-mono);
+  color:var(--sand-mute);
+  letter-spacing:.04em;
+}
+
+/* ── 3 · engine ──────────────────────────────────────────────────────────── */
+.engine{
+  display:grid;
+  grid-template-columns:1fr auto minmax(0,1.25fr) auto 1fr;
+  align-items:stretch;
+  gap:0;
+  flex:1;
+  min-height:0;
+}
+.engine .col{display:flex;flex-direction:column;gap:var(--sp-2)}
+.chip{
+  display:flex;
+  align-items:center;
+  padding:calc(var(--sp-1) * 1.4) var(--sp-2);
+  border:1px solid var(--hairline-2);
+  border-radius:calc(var(--radius) * .7);
+  background:var(--ink-2);
+  font-size:var(--fs-small);
+  color:var(--sand-dim);
+  line-height:1.3;
+}
+.chip.out{border-color:rgba(63,190,242,.32);color:var(--sand);background:var(--sky-soft)}
+.rail{width:var(--sp-4);align-self:stretch;min-height:1px;fill:none;stroke:var(--hairline-2);stroke-width:1}
+.core{
+  padding:var(--sp-3);
+  border:1px solid rgba(63,190,242,.38);
+  border-radius:var(--radius);
+  background:
+    radial-gradient(140% 120% at 50% 0%,var(--sky-soft),transparent 70%),
+    var(--ink-3);
+  text-align:center;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  gap:var(--sp-1);
+}
+.core .tag{color:var(--sky)}
+.core strong{
+  font-family:var(--ff-display);
+  font-size:var(--fs-chip);
+  font-weight:700;
+  letter-spacing:-.01em;
+  line-height:1.15;
+}
+.core small{font-family:var(--ff-mono);font-size:var(--fs-mono);color:var(--sand-mute);line-height:1.5}
+.faces{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:var(--sp-3);
+  padding-top:var(--sp-3);
+  border-top:1px solid var(--hairline-2);
+  flex:none;
+}
+.faces h3{font-size:var(--fs-chip);font-weight:600;letter-spacing:-.01em;margin-bottom:calc(var(--sp-1) * .8)}
+.faces p{font-size:var(--fs-small);color:var(--sand-dim);line-height:1.45}
+.faces .tag{display:block;color:var(--sky);margin-bottom:calc(var(--sp-1) * .6)}
+
+/* ── 4 · metrics ─────────────────────────────────────────────────────────── */
+.split{display:grid;grid-template-columns:.85fr 1.15fr;gap:var(--sp-4);flex:1;min-height:0}
+.hero-figure{display:flex;flex-direction:column;gap:var(--sp-1)}
+.hero-figure .n{
+  font-family:var(--ff-display);
+  font-size:var(--fs-metric);
+  font-weight:800;
+  line-height:.9;
+  letter-spacing:-.04em;
+  color:var(--jade);
+}
+.hero-figure h3{font-size:var(--fs-chip);font-weight:600}
+.hero-figure p{font-size:var(--fs-small);color:var(--sand-dim);line-height:1.4;max-width:34ch}
+.metrics{
+  margin-top:var(--sp-3);
+  padding-top:var(--sp-2);
+  border-top:1px solid var(--hairline-2);
+  display:flex;
+  flex-direction:column;
+}
+.metrics div{
+  display:grid;
+  grid-template-columns:18ch 1fr;
+  gap:var(--sp-2);
+  align-items:baseline;
+  padding:calc(var(--sp-1) * 1.25) 0;
+  border-bottom:1px solid var(--hairline);
+}
+.metrics dt{
+  font-family:var(--ff-mono);
+  font-size:var(--fs-mono);
+  color:var(--sky);
+  letter-spacing:.04em;
+  white-space:nowrap;
+}
+.metrics dd{font-size:var(--fs-small);color:var(--sand-dim);line-height:1.35}
+.chart-card{
+  display:flex;
+  flex-direction:column;
+  gap:var(--sp-2);
+  padding:var(--sp-3);
+  background:var(--ink-2);
+  border:1px solid var(--hairline);
+  border-radius:var(--radius);
+  min-height:0;
+}
+.chart-card h3{font-size:var(--fs-chip);font-weight:600;letter-spacing:-.01em}
+.chart-wrap{flex:1;min-height:var(--chart-h);position:relative}
+.chart-card figcaption{font-size:var(--fs-mono);font-family:var(--ff-mono);color:var(--sand-mute);line-height:1.5}
+
+/* ── 5 · personas ────────────────────────────────────────────────────────── */
+.persona{
+  padding:var(--sp-2) calc(var(--sp-2) * 1.1) var(--sp-3);
+  border:1px solid var(--hairline);
+  border-top:2px solid var(--p);
+  border-radius:calc(var(--radius) * .7);
+  background:var(--ink-2);
+  display:flex;
+  flex-direction:column;
+  gap:var(--sp-1);
+}
+.persona .tag{color:var(--p)}
+.persona h3{font-size:var(--fs-chip);font-weight:600;line-height:1.2}
+.persona p{font-size:var(--fs-small);color:var(--sand-dim);line-height:1.4}
+.persona .need{
+  margin-top:auto;
+  padding-top:var(--sp-2);
+  font-size:var(--fs-small);
+  color:var(--sand);
+  line-height:1.4;
+  border-top:1px solid var(--hairline);
+}
+.scope{
+  display:grid;
+  grid-template-columns:auto 1fr;
+  gap:var(--sp-2) var(--sp-3);
+  align-items:start;
+  padding-top:var(--sp-3);
+  border-top:1px solid var(--hairline-2);
+  flex:none;
+}
+.scope .tag{padding-top:.25em;white-space:nowrap}
+.scope .tag.in{color:var(--jade)}
+.scope .tag.out{color:var(--sand-mute)}
+.scope ul{display:flex;flex-wrap:wrap;gap:var(--sp-1) var(--sp-2);list-style:none}
+.scope li{
+  font-size:var(--fs-small);
+  color:var(--sand-dim);
+  padding:calc(var(--sp-1) * .5) var(--sp-2);
+  border:1px solid var(--hairline);
+  border-radius:100px;
+  background:var(--ink-2);
+}
+.scope .out-list li{color:var(--sand-mute);border-style:dashed;background:transparent}
+
+/* ── 6 · principles ──────────────────────────────────────────────────────── */
+.rules{display:flex;flex-direction:column;justify-content:center;flex:1;min-height:0}
+.rules > div{
+  display:grid;
+  grid-template-columns:14ch 1fr;
+  gap:var(--sp-3);
+  align-items:start;
+  padding:var(--sp-2) 0;
+  border-bottom:1px solid var(--hairline);
+}
+.rules > div:first-child{border-top:1px solid var(--hairline-2)}
+.rules dt{
+  font-family:var(--ff-mono);
+  font-size:var(--fs-mono);
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  color:var(--sky);
+  padding-top:.3em;
+}
+.rules dd strong{font-size:var(--fs-chip);font-weight:600;display:block;margin-bottom:calc(var(--sp-1) * .6)}
+.rules dd p{font-size:var(--fs-small);color:var(--sand-dim);line-height:1.45;max-width:72ch}
+.close{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:var(--sp-4);
+  padding-top:var(--sp-2);
+  flex:none;
+}
+.close .close-line{
+  font-family:var(--ff-display);
+  font-size:calc(var(--fs-lead) * 1.1);
+  font-weight:600;
+  letter-spacing:-.015em;
+  line-height:1.25;
+  max-width:44ch;
+}
+.close .close-line em{font-style:normal;color:var(--coral)}
+.close .tag{text-align:right;line-height:1.7;white-space:nowrap}
+
+/* entry motion — runs on the active slide, never parked waiting on an observer */
+.slide.is-active .anim > *{animation:rise .45s cubic-bezier(.22,.8,.3,1) both}
+.slide.is-active .anim > *:nth-child(2){animation-delay:.05s}
+.slide.is-active .anim > *:nth-child(3){animation-delay:.1s}
+.slide.is-active .anim > *:nth-child(4){animation-delay:.15s}
+@keyframes rise{from{opacity:0;transform:translateY(.9cqh)}to{opacity:1;transform:none}}
+
+/* ── navigation ──────────────────────────────────────────────────────────── */
+.progress{
+  position:fixed;
+  top:0;left:0;
+  height:2px;
+  background:linear-gradient(90deg,var(--sky),var(--coral));
+  transition:width .34s ease;
+  z-index:20;
+}
+.nav{
+  position:fixed;
+  bottom:0;left:50%;
+  translate:-50% 0;
+  padding:14px 18px calc(14px + env(safe-area-inset-bottom,0px));
+  display:flex;
+  align-items:center;
+  gap:16px;
+  z-index:20;
+}
+.nav button{
+  width:34px;height:34px;
+  border:1px solid var(--hairline-2);
+  border-radius:50%;
+  background:rgba(11,23,39,.72);
+  color:var(--sand);
+  font-size:14px;
+  line-height:1;
+  cursor:pointer;
+  transition:background .2s,border-color .2s,opacity .2s;
+}
+.nav button:hover:not(:disabled){background:var(--ink-3);border-color:var(--sky)}
+.nav button:disabled{opacity:.3;cursor:default}
+.dots{display:flex;gap:8px;align-items:center}
+.dots button{
+  width:22px;height:4px;
+  border-radius:2px;
+  border:0;
+  padding:0;
+  background:var(--hairline-2);
+  cursor:pointer;
+  transition:background .2s,width .2s;
+}
+.dots button[aria-current="true"]{background:var(--sky);width:30px}
+.counter{
+  font-family:var(--ff-mono);
+  font-size:12px;
+  color:var(--sand-mute);
+  letter-spacing:.08em;
+  font-variant-numeric:tabular-nums;
+}
+:is(button,a):focus-visible{outline:2px solid var(--sky);outline-offset:3px}
+
+/* ── phone: the deck unfolds into a scrollable document ──────────────────── */
+@media (max-width:860px){
+  :root{
+    --fs-display:58px; --fs-h2:26px; --fs-lead:16px; --fs-body:14.5px;
+    --fs-small:13.5px; --fs-mono:11px; --fs-metric:46px; --fs-chip:15px;
+    --sp-1:6px; --sp-2:12px; --sp-3:20px; --sp-4:28px;
+    --pad:0px; --radius:10px; --chart-h:230px; --rose:190px;
+  }
+  body{overflow:visible auto}
+  body::before{-webkit-mask-image:none;mask-image:none;opacity:.5}
+  .viewport{position:static;display:block}
+  .deck{container-type:normal;width:auto;height:auto;overflow:visible;padding:24px 16px 96px}
+  .slide{
+    position:static;
+    opacity:1;
+    visibility:visible;
+    height:auto;
+    padding:28px 0;
+    border-bottom:1px solid var(--hairline);
+    transition:none;
+  }
+  .slide:last-of-type{border-bottom:0}
+  .bearing{position:static;translate:none;margin:0 auto var(--sp-3)}
+  .s-title{align-items:stretch}
+  .pillars,.grid-4,.engine,.faces,.split,.scope,.rules > div{grid-template-columns:1fr;flex-direction:column;display:grid}
+  .pillars{width:auto;gap:var(--sp-2)}
+  .rail{display:none}
+  .engine .col{gap:var(--sp-1)}
+  .scope .tag{padding-top:0}
+  .close{flex-direction:column;align-items:flex-start}
+  .close .tag{text-align:left;white-space:normal}
+  .query{flex-wrap:wrap}
+  .progress,.nav{display:none}
+  .slide.is-active .anim > *{animation:none}
+}
+
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.001s!important;transition-duration:.001s!important}
+}
+
+@media print{
+  body{background:#fff;color:#111;overflow:visible}
+  body::before,.progress,.nav{display:none}
+  .viewport{position:static;display:block}
+  .deck{container-type:normal;width:auto;height:auto}
+  .slide{position:static;opacity:1;visibility:visible;height:auto;break-after:page}
+}
+</style>
+</head>
+<body>
+
+<div class="progress" id="progress" role="presentation"></div>
+
+<div class="viewport">
+<div class="deck" id="deck">
+
+  <!-- 1 · TITLE ─ curiosity ─────────────────────────────────────────────── -->
+  <section class="slide s-title is-active" aria-label="V-OTA — trang mở đầu">
+    <div class="bearing" aria-hidden="true"></div>
+    <div class="anim">
+      <div class="badge"><span></span>Virtual Online Travel Agency · Project Brief</div>
+      <h1 class="wordmark">V<i>-</i>OTA</h1>
+      <p class="thesis">Du lịch được tìm bằng ngữ nghĩa, gợi ý theo ngữ cảnh, và lên lịch trình chỉ từ kho hàng thật.</p>
+      <dl class="pillars">
+        <div>
+          <dt>Semantic Search</dt>
+          <dd>Truy vấn tự nhiên → vector, không so khớp chuỗi.</dd>
+        </div>
+        <div>
+          <dt>Personalized Rec</dt>
+          <dd>Gợi ý theo hành trình, kèm lý do <code>because</code>.</dd>
+        </div>
+        <div>
+          <dt>Grounded Agent</dt>
+          <dd>Lịch trình chỉ gồm sản phẩm đặt được thật.</dd>
+        </div>
+      </dl>
+    </div>
+  </section>
+
+  <!-- 2 · PROBLEM ─ frustration ─────────────────────────────────────────── -->
+  <section class="slide" aria-label="Bối cảnh và vấn đề cần giải quyết">
+    <p class="eyebrow"><b>01</b> Bối cảnh &amp; vấn đề</p>
+    <div class="slide-body anim">
+      <h2>Người dùng nói bằng ngữ cảnh. OTA truyền thống chỉ nghe được <span class="warm">từ khóa</span>.</h2>
+      <div class="query">
+        <span class="tag">Truy vấn</span>
+        <span class="q">“nghỉ dưỡng biển yên tĩnh cho gia đình có trẻ nhỏ”</span>
+        <span class="verdict">0 kết quả khớp</span>
+      </div>
+      <div class="grid-4">
+        <article class="pain">
+          <span class="tag">Keyword mismatch</span>
+          <h3>Tìm kiếm từ khóa cứng nhắc</h3>
+          <p>Không nắm được ngữ nghĩa và ý định thật; mô tả sản phẩm thiếu đúng từ là trả về rỗng.</p>
+          <p class="cost">→ Tỷ lệ thoát trang cao</p>
+        </article>
+        <article class="pain">
+          <span class="tag">Cold &amp; generic</span>
+          <h3>Gợi ý đại trà, không giải thích</h3>
+          <p>Danh mục trang chủ giống nhau cho mọi người, không dựa trên hành vi hay giai đoạn chuyến đi.</p>
+          <p class="cost">→ Không có lý do “because”</p>
+        </article>
+        <article class="pain">
+          <span class="tag">Fragmented</span>
+          <h3>Lập lịch trình phân mảnh</h3>
+          <p>Người dùng nhảy giữa ghi chú, bản đồ và trang đặt chỗ; trợ lý AI thường thì bịa địa điểm và giá.</p>
+          <p class="cost">→ Hallucination phá vỡ niềm tin</p>
+        </article>
+        <article class="pain">
+          <span class="tag">No realtime loop</span>
+          <h3>Dữ liệu hành vi không kịp về</h3>
+          <p>Xem trang, thêm giỏ, tương tác không cập nhật tức thì vào hồ sơ để phản hồi ngay trong phiên.</p>
+          <p class="cost">→ Mất thời điểm tiếp cận</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 · SOLUTION ─ hope ───────────────────────────────────────────────── -->
+  <section class="slide" aria-label="Tầm nhìn và kiến trúc giải pháp">
+    <p class="eyebrow"><b>02</b> Tầm nhìn &amp; giải pháp</p>
+    <div class="slide-body anim">
+      <h2>Một engine, <em>ba khuôn mặt</em></h2>
+      <div class="engine">
+        <div class="col">
+          <div class="chip">Truy vấn ngôn ngữ tự nhiên</div>
+          <div class="chip">Hồ sơ &amp; hành vi người dùng</div>
+          <div class="chip">Hội thoại với trợ lý AI</div>
+        </div>
+        <svg class="rail" viewBox="0 0 40 200" preserveAspectRatio="none" aria-hidden="true">
+          <path d="M0 28 H20 V100 H40" vector-effect="non-scaling-stroke"/>
+          <path d="M0 100 H40" vector-effect="non-scaling-stroke"/>
+          <path d="M0 172 H20 V100" vector-effect="non-scaling-stroke"/>
+        </svg>
+        <div class="core">
+          <span class="tag">Lõi thống nhất</span>
+          <strong>Recommendation &amp; Semantic Vector Engine</strong>
+          <small>vector embedding · pgvector · candidate generation → rerank</small>
+        </div>
+        <svg class="rail" viewBox="0 0 40 200" preserveAspectRatio="none" aria-hidden="true">
+          <path d="M0 100 H20 V28 H40" vector-effect="non-scaling-stroke"/>
+          <path d="M0 100 H40" vector-effect="non-scaling-stroke"/>
+          <path d="M20 100 V172 H40" vector-effect="non-scaling-stroke"/>
+        </svg>
+        <div class="col">
+          <div class="chip out">Kết quả tìm kiếm ngữ nghĩa</div>
+          <div class="chip out">Gợi ý cá nhân hóa có giải thích</div>
+          <div class="chip out">Lịch trình từ 100% kho hàng thật</div>
+        </div>
+      </div>
+      <div class="faces">
+        <div>
+          <span class="tag">Semantic search</span>
+          <h3>Hiểu câu, không đếm chữ</h3>
+          <p>Truy vấn tự nhiên thành vector đa chiều, truy xuất sản phẩm tương đồng về ý nghĩa thay vì so khớp chuỗi ký tự.</p>
+        </div>
+        <div>
+          <span class="tag">Personalized rec</span>
+          <h3>Gợi ý theo hành trình</h3>
+          <p>User Profile Vector tổng hợp từ lịch sử tương tác, phân loại theo chặng của chuyến đi và luôn kèm lý do minh bạch.</p>
+        </div>
+        <div>
+          <span class="tag">Grounded agent</span>
+          <h3>Chỉ nói điều đặt được</h3>
+          <p>Agent hiểu nhu cầu qua hội thoại, lập kế hoạch từng ngày và bắt buộc dùng sản phẩm, phòng, chuyến bay có thật.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 · OBJECTIVES ─ confidence ───────────────────────────────────────── -->
+  <section class="slide" aria-label="Mục tiêu sản phẩm và chỉ số thành công">
+    <p class="eyebrow"><b>03</b> Mục tiêu &amp; chỉ số thành công</p>
+    <div class="slide-body anim">
+      <h2>Thành công được đo bằng số, không bằng cảm nhận</h2>
+      <div class="split">
+        <div>
+          <div class="hero-figure">
+            <span class="n">100%</span>
+            <h3>Agent Grounding Rate</h3>
+            <p>Mọi sản phẩm trong lịch trình do AI sinh ra phải khớp cơ sở dữ liệu thật và còn trạng thái sẵn sàng phục vụ.</p>
+          </div>
+          <dl class="metrics">
+            <div><dt>NDCG@10 · Recall@K</dt><dd>Độ phù hợp của kết quả ngữ nghĩa với ý định truy vấn</dd></div>
+            <div><dt>CTR</dt><dd>Tương tác khối gợi ý: trang chủ · chi tiết · xác nhận đơn</dd></div>
+            <div><dt>Cross-sell</dt><dd>Đặt thêm vé máy bay, hoạt động sau khi đã đặt chỗ ở</dd></div>
+            <div><dt>Latency</dt><dd>Ngân sách độ trễ cho từng bề mặt — xem bên cạnh</dd></div>
+          </dl>
+        </div>
+        <figure class="chart-card">
+          <h3>Ngân sách độ trễ theo bề mặt</h3>
+          <div class="chart-wrap">
+            <canvas id="latency" role="img"
+              aria-label="Ngưỡng độ trễ mục tiêu: Search API 250 ms, Recommendation API 250 ms, token đầu của trợ lý AI 1000 ms, phản hồi đầy đủ của trợ lý AI 3000 ms."></canvas>
+          </div>
+          <figcaption>Ngưỡng mục tiêu theo §3.2 của brief — chưa phải số đo thực tế.</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5 · PERSONAS ─ trust ──────────────────────────────────────────────── -->
+  <section class="slide" aria-label="Đối tượng người dùng và phạm vi hệ thống">
+    <p class="eyebrow"><b>04</b> Người dùng &amp; phạm vi</p>
+    <div class="slide-body anim">
+      <h2>Bốn hành vi du lịch, bốn cách hệ thống phải trả lời</h2>
+      <div class="grid-4">
+        <article class="persona" style="--p:var(--sky)">
+          <span class="tag">P1 · Gia đình</span>
+          <h3>Nghỉ dưỡng trọn gói</h3>
+          <p>Resort có tiện ích cho trẻ nhỏ, bãi biển riêng; ưu tiên an toàn và tiện lợi.</p>
+          <p class="need">Combo phòng + vé tham quan, tìm theo tiêu chí “yên tĩnh”, lịch trình nhẹ.</p>
+        </article>
+        <article class="persona" style="--p:var(--coral)">
+          <span class="tag">P2 · Công tác</span>
+          <h3>Tiện ích &amp; sát ngày</h3>
+          <p>Đi một mình hoặc nhóm nhỏ, cần khách sạn trung tâm gần hội nghị, thủ tục nhanh.</p>
+          <p class="need">Tìm theo vị trí và tiện nghi làm việc, luồng đặt chỗ tối giản.</p>
+        </article>
+        <article class="persona" style="--p:var(--jade)">
+          <span class="tag">P3 · Tự túc</span>
+          <h3>Trải nghiệm bản địa</h3>
+          <p>Văn hóa, ẩm thực địa phương, hoạt động ngoài trời mạo hiểm, tối ưu chi phí.</p>
+          <p class="need">Semantic search cho hoạt động độc lạ, agent dựng lịch trình dày.</p>
+        </article>
+        <article class="persona" style="--p:var(--amber)">
+          <span class="tag">P4 · Săn ưu đãi</span>
+          <h3>Linh hoạt theo giá</h3>
+          <p>Tìm deal, combo giá rẻ; ngày đi thay đổi theo giá vé máy bay.</p>
+          <p class="need">Nhận diện ưu đãi ngay trang chủ, gợi ý theo khoảng ngân sách.</p>
+        </article>
+      </div>
+      <div class="scope">
+        <span class="tag in">Trong phạm vi</span>
+        <ul>
+          <li>Frontend web responsive</li>
+          <li>Catalog &amp; hybrid search</li>
+          <li>Recommendation engine</li>
+          <li>Booking &amp; checkout mô phỏng</li>
+          <li>Itinerary Assistant</li>
+          <li>CDP clone (unified profile)</li>
+          <li>Insider clone (đa kênh)</li>
+          <li>Contract &amp; RecSys evaluation</li>
+        </ul>
+        <span class="tag out">Ngoài phạm vi</span>
+        <ul class="out-list">
+          <li>Cổng thanh toán ngân hàng thật</li>
+          <li>Tồn kho realtime từ hãng bay / chuỗi khách sạn</li>
+          <li>App native iOS &amp; Android</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6 · PRINCIPLES ─ urgency ──────────────────────────────────────────── -->
+  <section class="slide" aria-label="Ràng buộc kỹ thuật và nguyên tắc vận hành">
+    <p class="eyebrow"><b>05</b> Ràng buộc kỹ thuật &amp; nguyên tắc vận hành</p>
+    <div class="slide-body anim">
+      <h2 class="wide">Bốn ràng buộc <span class="warm">không thương lượng</span></h2>
+      <dl class="rules">
+        <div>
+          <dt>Grounding</dt>
+          <dd>
+            <strong>LLM không được sinh dữ liệu sản phẩm</strong>
+            <p>Không tự tạo ID sản phẩm, tên địa điểm hư cấu hay mức giá giả. Mọi thực thể trong lịch trình phải truy xuất được từ catalog.</p>
+          </dd>
+        </div>
+        <div>
+          <dt>Data boundary</dt>
+          <dd>
+            <strong>Vùng dữ liệu CDP chỉ đi qua cổng dịch vụ</strong>
+            <p><code>app</code> và <code>catalog</code> không truy cập SQL trực tiếp vào <code>cdp.events</code>, <code>cdp.profiles</code> — mọi tương tác qua <code>CdpClient</code>. Insider là dịch vụ độc lập, kết nối qua HTTP.</p>
+          </dd>
+        </div>
+        <div>
+          <dt>Contract first</dt>
+          <dd>
+            <strong>OpenAPI là nguồn sự thật duy nhất</strong>
+            <p><code>src/shared/contracts/openapi.yaml</code> định nghĩa mọi request/response. Thay đổi giao tiếp giữa Frontend, Backend và AI phải cập nhật contract trước khi viết code.</p>
+          </dd>
+        </div>
+        <div>
+          <dt>Clean arch</dt>
+          <dd>
+            <strong>Đổi hạ tầng không đụng nghiệp vụ</strong>
+            <p>Tách bạch Domain Entities, Application Use Cases và Infrastructure Adapters — đổi Postgres local sang managed cloud hay nâng cấp model embedding đều không chạm logic kinh doanh.</p>
+          </dd>
+        </div>
+      </dl>
+      <div class="close">
+        <p class="close-line">Một nền tảng dữ liệu thật, ba bề mặt trải nghiệm, <em>không có chỗ cho dữ liệu bịa</em>.</p>
+        <p class="tag">docs/project-brief.md<br>docs/architecture.md · docs/api-contract.md</p>
+      </div>
+    </div>
+  </section>
+
+</div><!-- /.deck -->
+</div><!-- /.viewport -->
+
+<nav class="nav" aria-label="Điều hướng slide">
+  <button type="button" id="prev" aria-label="Slide trước">&#8592;</button>
+  <div class="dots" id="dots" role="tablist" aria-label="Chọn slide"></div>
+  <span class="counter"><span id="cur">1</span>&#8202;/&#8202;<span id="tot">6</span></span>
+  <button type="button" id="next" aria-label="Slide sau">&#8594;</button>
+</nav>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ── deck navigation ─────────────────────────────────────────────────── */
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  var total = slides.length;
+  var dots = document.getElementById('dots');
+  var prev = document.getElementById('prev');
+  var next = document.getElementById('next');
+  var cur = document.getElementById('cur');
+  var progress = document.getElementById('progress');
+  var index = 0;
+
+  document.getElementById('tot').textContent = total;
+
+  var titles = slides.map(function (s, i) {
+    return s.getAttribute('aria-label') || ('Slide ' + (i + 1));
+  });
+
+  titles.forEach(function (label, i) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.setAttribute('role', 'tab');
+    b.setAttribute('aria-label', label);
+    b.addEventListener('click', function () { show(i); });
+    dots.appendChild(b);
+  });
+
+  function show(n) {
+    index = Math.max(0, Math.min(total - 1, n));
+    slides.forEach(function (s, i) { s.classList.toggle('is-active', i === index); });
+    Array.prototype.forEach.call(dots.children, function (d, i) {
+      d.setAttribute('aria-current', i === index ? 'true' : 'false');
+    });
+    cur.textContent = index + 1;
+    progress.style.width = ((index + 1) / total * 100) + '%';
+    prev.disabled = index === 0;
+    next.disabled = index === total - 1;
+    if (history.replaceState) history.replaceState(null, '', '#' + (index + 1));
+  }
+
+  prev.addEventListener('click', function () { show(index - 1); });
+  next.addEventListener('click', function () { show(index + 1); });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    switch (e.key) {
+      case 'ArrowRight': case 'PageDown': case ' ': e.preventDefault(); show(index + 1); break;
+      case 'ArrowLeft': case 'PageUp': e.preventDefault(); show(index - 1); break;
+      case 'Home': e.preventDefault(); show(0); break;
+      case 'End': e.preventDefault(); show(total - 1); break;
+    }
+  });
+
+  var touchX = null;
+  var deck = document.getElementById('deck');
+  deck.addEventListener('touchstart', function (e) { touchX = e.changedTouches[0].clientX; }, { passive: true });
+  deck.addEventListener('touchend', function (e) {
+    if (touchX === null) return;
+    var dx = e.changedTouches[0].clientX - touchX;
+    if (Math.abs(dx) > 50) show(index + (dx < 0 ? 1 : -1));
+    touchX = null;
+  }, { passive: true });
+
+  var fromHash = parseInt((location.hash || '').replace('#', ''), 10);
+  show(isNaN(fromHash) ? 0 : fromHash - 1);
+
+  /* ── latency chart ───────────────────────────────────────────────────────
+     One nominal series (four surfaces), so one hue for every bar — a value
+     ramp here would double-encode bar length. Values are direct-labelled, so
+     the tooltip only supplements them. Sizes in px are re-tuned to the stage
+     width, since the deck's type scale is relative and Chart.js is not.
+     ─────────────────────────────────────────────────────────────────────── */
+  var canvas = document.getElementById('latency');
+  if (!canvas || typeof Chart === 'undefined') return;
+
+  var SKY = '#3FBEF2';
+  var INK = '#0B1727';
+  var GRID = 'rgba(122,176,212,.13)';
+  var MUTE = '#6C8299';
+  var SAND = '#F2E8DA';
+  var MONO = "'IBM Plex Mono', ui-monospace, monospace";
+
+  var data = [
+    { label: 'Search API', ms: 250 },
+    { label: 'Recommendation API', ms: 250 },
+    { label: 'Agent · token đầu', ms: 1000 },
+    { label: 'Agent · phản hồi đủ', ms: 3000 }
+  ];
+
+  function k() {
+    var w = deck.clientWidth || 1280;
+    return Math.max(0.55, Math.min(2.4, w / 1280));
+  }
+
+  var endLabels = {
+    id: 'endLabels',
+    afterDatasetsDraw: function (chart) {
+      var s = k();
+      var meta = chart.getDatasetMeta(0);
+      var ctx = chart.ctx;
+      ctx.save();
+      ctx.font = '500 ' + (11.5 * s).toFixed(1) + 'px ' + MONO;
+      ctx.fillStyle = SAND;
+      ctx.textBaseline = 'middle';
+      meta.data.forEach(function (bar, i) {
+        ctx.fillText(data[i].ms.toLocaleString('vi-VN') + ' ms', bar.x + 8 * s, bar.y);
+      });
+      ctx.restore();
+    }
+  };
+
+  var chart = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels: data.map(function (d) { return d.label; }),
+      datasets: [{
+        label: 'Ngưỡng độ trễ',
+        data: data.map(function (d) { return d.ms; }),
+        backgroundColor: SKY,
+        hoverBackgroundColor: '#7AD4F8',
+        borderRadius: { topLeft: 0, bottomLeft: 0, topRight: 4, bottomRight: 4 },
+        borderSkipped: 'start'
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      layout: { padding: { right: 64, left: 0, top: 2, bottom: 0 } },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#112436',
+          borderColor: 'rgba(122,176,212,.30)',
+          borderWidth: 1,
+          displayColors: false,
+          titleColor: SAND,
+          bodyColor: '#9FB2C4',
+          callbacks: {
+            label: function (c) { return 'Ngưỡng mục tiêu: ' + c.parsed.x.toLocaleString('vi-VN') + ' ms'; }
+          }
+        }
+      },
+      scales: {
+        x: {
+          beginAtZero: true,
+          suggestedMax: 3200,
+          border: { display: false },
+          grid: { color: GRID, drawTicks: false, borderDash: [] },
+          ticks: { color: MUTE, padding: 6, stepSize: 1000, callback: function (v) { return v === 0 ? '0' : (v / 1000) + 's'; } }
+        },
+        y: {
+          border: { display: false },
+          grid: { display: false },
+          ticks: { color: '#9FB2C4', crossAlign: 'far' }
+        }
+      }
+    },
+    plugins: [endLabels]
+  });
+
+  function tune() {
+    var s = k();
+    var o = chart.options;
+    o.devicePixelRatio = (window.devicePixelRatio || 1);
+    chart.data.datasets[0].barThickness = Math.round(16 * s);
+    o.layout.padding.right = Math.round(62 * s);
+    o.scales.x.ticks.font = { family: MONO, size: 10.5 * s };
+    o.scales.y.ticks.font = { family: "'Be Vietnam Pro', system-ui, sans-serif", size: 11.5 * s };
+    o.scales.x.grid.lineWidth = 1;
+    o.plugins.tooltip.titleFont = { family: "'Be Vietnam Pro', system-ui, sans-serif", size: 11.5 * s, weight: '600' };
+    o.plugins.tooltip.bodyFont = { family: MONO, size: 11 * s };
+    o.plugins.tooltip.padding = Math.round(8 * s);
+    o.plugins.tooltip.cornerRadius = Math.round(6 * s);
+    chart.update('none');
+  }
+
+  tune();
+
+  var t;
+  window.addEventListener('resize', function () {
+    clearTimeout(t);
+    t = setTimeout(tune, 120);
+  });
+})();
+</script>
+</body>
+</html>
