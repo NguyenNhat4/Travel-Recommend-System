@@ -20,18 +20,18 @@ Trước khi viết hoặc sửa code cho **feature mới, endpoint mới, modul
 |---|---|
 | API / request / response bất kỳ | `src/shared/contracts/README.md`, `src/shared/contracts/openapi.yaml`, file `paths/<domain>.yaml` và `schemas/<domain>.yaml` liên quan, `schemas/common.yaml` |
 | Backend (`src/backend`) | `src/backend/README.md`, `docs/spec/hop-dong-tich-hop-backend.md` (các mục của domain liên quan) |
-| Frontend (`src/frontend`) | `src/frontend/README.md`, `docs/spec/hop-dong-tich-hop-frontend.md`, `docs/spec/ux-research-brief.md` |
-| Auth: đăng nhập, phiên, cookie, JWT, mật khẩu, 2FA, OAuth | `docs/hop-dong-tich-hop-auth.md` (bắt buộc đọc §3 Logic mapping), `src/shared/contracts/paths/auth.yaml`, `src/shared/contracts/schemas/auth.yaml` |
-| Itinerary Agent (`src/backend/app/agents`, use case itinerary) | `docs/spec/hop-dong-tich-hop-itinerary-assistant.md`, `docs/agent/README.md` và các file nó liên kết, `src/shared/mocks/itinerary-agent/README.md` |
-| Search / Recommendation | `docs/spec/hop-dong-tich-hop-backend.md` (mục Search, Recommendation), `docs/spec/recsys-internship-handbook-v3-vi.md` |
+| Frontend (`src/frontend`) | `src/frontend/README.md`, `docs/spec/hop-dong-tich-hop-frontend.md`, `docs/spec/product.md` |
+| Auth: đăng nhập, phiên, cookie, JWT, mật khẩu, 2FA, OAuth | `docs/spec/hop-dong-tich-hop-auth.md` (bắt buộc đọc §3 Logic mapping), `src/shared/contracts/paths/auth.yaml`, `src/shared/contracts/schemas/auth.yaml` |
+| Itinerary Agent (`src/backend/app/agents`, use case itinerary) | `docs/spec/hop-dong-tich-hop-itinerary-assistant.md`, `docs/spec/agent/README.md` và các file nó liên kết, `src/shared/mocks/itinerary-agent/README.md` |
+| Search / Recommendation | `docs/spec/hop-dong-tich-hop-search-recommendation.md` (hợp đồng chi tiết cho cả hai engine), `docs/spec/hop-dong-tich-hop-backend.md` (mục Search, Recommendation), `docs/spec/recsys-internship-handbook-v3-vi.md` |
 | CDP clone, `CdpClient`, ghi hành vi người dùng | mục 6 bên dưới, `docs/spec/hop-dong-tich-hop-cdp.md`, `src/cdp_clone/README.md`, `src/shared/contracts/cdp-clone.openapi.yaml` |
 | Mock / fixture (`src/shared/mocks`) | `src/shared/README.md`, `src/shared/mocks/index.json`, schema response tương ứng |
 | Data collection (`src/data_collection`) | `src/data_collection/README.md`, `src/data_collection/docs/SCHEMA.md` |
-| Database: schema, DDL, loader, seed, `db/` | mục 6 bên dưới, `docs/DATABASE_SCHEMA.md`, `docs/PRODUCT_SCHEMA.md`, `db/vota_schema.sql`, `db/insider_schema.sql`, `db/migrations/README.md` |
-| Mock data tuần 1 (`src/data_collection/seed`) | mục 6 bên dưới, `docs/MOCK_DATA_SPEC.md`, `src/data_collection/docs/SCHEMA.md`, `db/verify.sql`, `db/verify_insider.sql` |
-| Evaluation (`src/evaluation`) | `src/evaluation/README.md`, `docs/spec/recsys-internship-handbook-v3-vi.md` |
-| Insider clone (`src/insider_clone`) | `src/insider_clone/README.md`, `docs/spec/recsys-internship-handbook-v3-vi.md` (phần Insider) |
-| Tính năng sản phẩm / luồng người dùng mới | `docs/product.md` |
+| Database: schema, DDL, loader, seed, `db/` | mục 6 bên dưới, `docs/spec/DATABASE_SCHEMA.md`, `docs/spec/PRODUCT_SCHEMA.md`, `db/vota_schema.sql`, `db/insider_schema.sql`, `db/migrations/README.md` |
+| Mock data tuần 1 (`src/data_collection/seed`) | mục 6 bên dưới, `docs/spec/MOCK_DATA_SPEC.md`, `src/data_collection/docs/SCHEMA.md`, `db/verify.sql`, `db/verify_insider.sql` |
+| Evaluation (`src/evaluation`) | `src/evaluation/README.md` (chưa tồn tại — hỏi người dùng trước khi giả định nội dung), `docs/spec/recsys-internship-handbook-v3-vi.md` |
+| Insider clone (`src/insider_clone`) | `src/insider_clone/README.md`, `docs/spec/hop-dong-tich-hop-insider.md`, `docs/spec/recsys-internship-handbook-v3-vi.md` (phần Insider) |
+| Tính năng sản phẩm / luồng người dùng mới | `docs/spec/product.md` |
 
 Với file dài (> 500 dòng), được phép đọc mục lục (`grep -n "^#"`) rồi đọc đầy đủ các mục liên quan, nhưng phải đọc hết mục đó, không chỉ vài dòng đầu.
 
@@ -54,7 +54,7 @@ Thứ tự ưu tiên (cao xuống thấp):
 2. `src/shared/contracts/MVP.md` — thay thế danh sách required/optional của baseline 1.1.
 3. `docs/spec/contract-baseline-v1.1.md`.
 4. `src/ARCHITECTURE.md`.
-5. `docs/spec/hop-dong-tich-hop-*.md`, `docs/product.md`, handbook.
+5. `docs/spec/hop-dong-tich-hop-*.md`, `docs/spec/product.md`, handbook.
 
 Không tự chọn phương án cho các mục đang "chờ xác nhận" trong baseline; áp dụng quy tắc tạm thời đã ghi và báo người dùng. Nếu tài liệu không đề cập, hỏi người dùng thay vì tự đặt quy ước mới.
 
@@ -89,7 +89,7 @@ Thiếu entry lịch sử thì thay đổi được coi là **chưa hoàn thành
 
 ## 6. Database — quy tắc cho mọi thay đổi (đọc trước khi chạm vào schema, loader, CdpClient)
 
-Nguồn sự thật: `docs/DATABASE_SCHEMA.md` (toàn hệ thống + DDL), `docs/PRODUCT_SCHEMA.md` (catalog sản phẩm), `docs/MOCK_DATA_SPEC.md` (cách tạo bảng + mock data tuần 1).
+Nguồn sự thật: `docs/spec/DATABASE_SCHEMA.md` (toàn hệ thống + DDL), `docs/spec/PRODUCT_SCHEMA.md` (catalog sản phẩm), `docs/spec/MOCK_DATA_SPEC.md` (cách tạo bảng + mock data tuần 1).
 DDL chạy được: `db/vota_schema.sql`, `db/insider_schema.sql`; bản initdb cho docker-compose ở `db/init/`; migration cho database đã có dữ liệu ở `db/migrations/` (đọc `db/migrations/README.md`).
 Sửa schema = sửa file .sql, **thêm migration idempotent tương ứng** và cập nhật doc — cả ba trong cùng commit. Thiếu file .sql thì máy mới thiếu bảng; thiếu migration thì máy đang chạy thiếu bảng.
 
@@ -123,7 +123,7 @@ Sửa schema = sửa file .sql, **thêm migration idempotent tương ứng** và
 
 - Tên cột opt-in trong `cdp.profiles` (chờ reviewer CDP) · D và model vector (tuần 2) · mọi route có ≥ 1 chuyến? (Data kiểm tra trên `products.jsonl`).
 
-### 6.5. Nhiệm vụ tuần 1 — tạo bảng và mock data (spec đầy đủ: `docs/MOCK_DATA_SPEC.md`)
+### 6.5. Nhiệm vụ tuần 1 — tạo bảng và mock data (spec đầy đủ: `docs/spec/MOCK_DATA_SPEC.md`)
 
 Thứ tự, mỗi bước là một module trong `src/data_collection/seed/`, chạy chung từ `src/` qua `python -m data_collection.seed --as-of YYYY-MM-DD --seed 42 [--reset]`:
 1. Tạo bảng: `docker compose up -d --wait postgres` chạy `db/init/*.sql` (vota + insider). Không tạo bảng bằng ORM (SQLAlchemy, Alembic, Prisma...) — DDL viết tay trong `db/` là nguồn duy nhất. Database **đã có dữ liệu** nhận thay đổi schema qua `make db-migrate` (`db/migrations/README.md`), vì `db/init/*.sql` chỉ chạy lúc initdb trên volume rỗng.
