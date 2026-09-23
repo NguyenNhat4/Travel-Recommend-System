@@ -4,7 +4,7 @@ Phục vụ FR-AGT-01 (hội thoại đa lượt), FR-AGT-02 (tool calling), FR-
 
 Bảng ở [langgraph-nodes.md](langgraph-nodes.md) mục 6.1 tổ chức theo **node** (mỗi node đọc/ghi field nào). Bảng dưới đây tổ chức theo **field** (mỗi field được node nào ghi, node nào đọc, để làm gì) — dùng khi cần tra một field cụ thể thay vì đọc lại toàn bộ một node.
 
-Nguồn field: `src/backend/app/agents/state.py` (định nghĩa `AgentState`). Nguồn hành vi: `src/backend/app/agents/nodes.py` và `src/backend/app/agents/routing.py`, khớp tại thời điểm viết — `git blame`/`git log -p` mới là nguồn xác thực khi code đã đổi.
+Nguồn field: `src/backend/app/agents/state.py` (định nghĩa `AgentState`). Nguồn hành vi: `src/backend/app/agents/nodes.py` (hàm node), `src/backend/app/agents/steps/` (luật chi tiết của từng bước) và `src/backend/app/agents/routing.py`, khớp tại thời điểm viết — `git blame`/`git log -p` mới là nguồn xác thực khi code đã đổi.
 
 | Trường | Node ghi | Node đọc | Dùng để làm gì |
 |---|---|---|---|

@@ -179,7 +179,7 @@ hai hàm này thì đó là lỗi backend, `compose` trả `FALLBACK` và ghi lo
 
 ## 6. Bảng tra cứu mười node
 
-Dùng khi đã nắm bức tranh chung ở trên và cần tra chi tiết một node. Tóm tắt hành vi trước, bảng field-level ở dưới cùng cho tên field thật trong `AgentState` (`agents/state.py`) — khớp `agents/nodes.py` tại thời điểm viết, `git blame`/`git log -p` mới là nguồn xác thực khi code đã đổi.
+Dùng khi đã nắm bức tranh chung ở trên và cần tra chi tiết một node. Tóm tắt hành vi trước, bảng field-level ở dưới cùng cho tên field thật trong `AgentState` (`agents/state.py`) — khớp `agents/nodes.py` (hàm node) và `agents/steps/` (luật chi tiết) tại thời điểm viết, `git blame`/`git log -p` mới là nguồn xác thực khi code đã đổi.
 
 | Node | Nhận vào | Trả ra | Đi tiếp |
 |---|---|---|---|
