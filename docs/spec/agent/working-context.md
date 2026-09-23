@@ -23,8 +23,8 @@ Chỉ đọc hàng khớp với task hiện tại. Không cần nạp các nhán
 | Việc cần làm | Đọc thêm | Source bắt đầu từ |
 |---|---|---|
 | Hiểu hoặc đổi topology/routing | `langgraph-nodes.md` | `agents/graph.py`, `agents/routing.py`, `agents/state.py` |
-| Tune classify/clarify/converse hoặc prompt | `langgraph-nodes.md`, phần hội thoại trong spec Itinerary | `agents/nodes.py`, `infrastructure/llm/` |
-| Tune tool planning, Search/Recommendation | spec Itinerary §2, `src/backend/README.md` | `agents/nodes.py`, `agents/tools/itinerary_gateway.py`, `application/itinerary/tool_contracts.py` |
+| Tune classify/clarify/converse hoặc prompt | `langgraph-nodes.md`, phần hội thoại trong spec Itinerary | `agents/steps/prompts.py`, `agents/steps/classification.py`, `agents/steps/conversation.py`, `infrastructure/llm/` |
+| Tune tool planning, Search/Recommendation | spec Itinerary §2, `src/backend/README.md` | `agents/steps/tool_planning.py`, `agents/tools/itinerary_gateway.py`, `application/itinerary/tool_contracts.py` |
 | Tune lọc candidate/grounding | `langgraph-nodes.md` §5, spec Itinerary §5 | `application/itinerary/retrieval.py`, `domain/itinerary/planning.py` |
 | Tune Search ranking | handbook §12 và spec Backend mục Search | `application/search/use_cases.py`, `domain/search/`, `infrastructure/vectors/` |
 | Tune Recommendation | handbook §8, §12 và spec Backend mục Recommendation | `application/recommendation/use_cases.py`, `domain/recommendation/` |
@@ -44,7 +44,7 @@ POST /api/v1/assistant/itineraries hoặc /stream
   -> application/ports/itinerary_planner.py
                                       port; main.py nối agents/runtime_dependencies.py vào theo request
   -> agents/graph.py                   topology LangGraph và dependency injection
-  -> agents/nodes.py                   hành vi của từng node
+  -> agents/nodes.py                   hàm của từng node (luật chi tiết ở agents/steps/)
        intake -> classify
          |- thiếu dữ liệu -> clarify -> finalize
          |- hội thoại/refusal -> converse -> finalize

@@ -42,6 +42,8 @@ def _normalized(value: str | None) -> str:
 
 
 def _drop_reason(product: dict[str, Any], intent: dict[str, Any], constraints: dict[str, Any]) -> str | None:
+    if product.get("productId") in constraints.get("exclude_products", []):
+        return "PRODUCT_DROPPED_EXCLUDED"
     if _normalized(product.get("destination")) != _normalized(intent.get("destination")):
         return "PRODUCT_DROPPED_DESTINATION"
     if not product.get("available"):
