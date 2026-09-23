@@ -459,7 +459,7 @@ nghỉ và chạy tiếp khi bị chặn (mã thoát 75).
   lat/lng tối đa 30 ngày. Link Google Maps trong các file CSV chỉ để mở xem.
 
 <!-- seed-report:start -->
-### Snapshot seed gần nhất — `2026-09-21`
+### Snapshot seed gần nhất — `2026-09-22`
 
 - Nguồn catalog: `src/data_collection/data/snapshots/2026-09-21/products.jsonl` — SHA-256 `89f452e46eec24ae0fe50769037bc84dbb2609dd9c193a49336108f072acbb18`.
 - Seed `42`: 10,320 products · 2,000 profiles · 7,131 events · 218 combo items.
