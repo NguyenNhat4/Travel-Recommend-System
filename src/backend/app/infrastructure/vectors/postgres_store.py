@@ -38,6 +38,13 @@ JOIN   catalog.product_meta m USING (product_id)
 
 logger = logging.getLogger("uvicorn.error")
 
+#: Thành phần combo cho ô ROLLUP của text builder ("Gồm: vé VinWonders; buffet…"); chỉ cần thứ tự và nhãn.
+_COMBO_QUERY = """
+SELECT combo_product_id, position, label
+FROM   catalog.combo_items
+ORDER  BY combo_product_id, position
+"""
+
 
 class PostgresVectorStore:
     """Dựng `UnitIndex` từ database. Cùng interface với `InMemoryVectorStore` nên đổi qua lại được."""
@@ -53,6 +60,18 @@ class PostgresVectorStore:
             with conn.cursor() as cur:
                 cur.execute(_QUERY)
                 return cur.fetchall()
+
+    def _combo_items(self) -> dict[str, list[dict]]:
+        import psycopg
+        from psycopg.rows import dict_row
+
+        items: dict[str, list[dict]] = defaultdict(list)
+        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+            with conn.cursor() as cur:
+                cur.execute(_COMBO_QUERY)
+                for row in cur.fetchall():
+                    items[str(row["combo_product_id"])].append(row)
+        return items
 
     def load(self) -> UnitIndex:
         logger.info("startup.recsys.catalog.query.start")
@@ -93,7 +112,15 @@ class PostgresVectorStore:
 
         units = [p for p in products.values() if meta[p.product_id]["is_search_unit"]]
         units.sort(key=lambda p: p.product_id)  # thứ tự cố định → cache key ổn định giữa các lần chạy
-        texts = [build_text(p, children.get(p.product_id, [])) for p in units]
+        combo_items = self._combo_items()
+        texts = [
+            build_text(
+                p,
+                children.get(p.product_id, []),
+                combo_items=combo_items.get(p.product_id, []),
+            )
+            for p in units
+        ]
 
         os.makedirs(self.cache_dir, exist_ok=True)
         key = hashlib.md5((self.embedder.name + "\n".join(texts)).encode("utf-8")).hexdigest()[:12]
