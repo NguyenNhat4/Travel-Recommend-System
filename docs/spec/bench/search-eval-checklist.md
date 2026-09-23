@@ -13,12 +13,12 @@ Ký hiệu lệnh: `sb` = `python -m evaluation.search_bench` chạy từ `src/`
 
 ## Trước ngày 1 — điều kiện tiên quyết (cả hai)
 
-- [ ] Chốt endpoint embed: Cohere API trực tiếp **hoặc** Bedrock `ap-southeast-1` (ghi vào `config/sbench.yaml → embedding.provider`)
-- [ ] Có `COHERE_API_KEY` (trial đủ: ~105 lượt gọi / lần re-embed 5.000 search unit)
-- [ ] Có `products.jsonl` bản mới nhất (contract `docs/spec/data-collection/schema.md`), đường dẫn ghi vào config — mặc định snapshot `src/data_collection/snapshots/2026-09-21/products.jsonl.gz`, `sb catalog build` tự bung
-- [ ] Docker Desktop chạy được; máy ≥ 16 GB RAM nếu chạy bge-m3 local làm đối chứng
+- [x] Chốt endpoint embed: Cohere API trực tiếp **hoặc** Bedrock `ap-southeast-1` (ghi vào `config/sbench.yaml → embedding.provider`) — *23/09: Cohere API trực tiếp, `provider: cohere`*
+- [x] Có `COHERE_API_KEY` (trial đủ: ~105 lượt gọi / lần re-embed 5.000 search unit) — *23/09: trong `.env` gốc repo, `sb doctor` xác nhận hợp lệ*
+- [x] Có `products.jsonl` bản mới nhất (contract `docs/spec/data-collection/schema.md`), đường dẫn ghi vào config — mặc định snapshot `src/data_collection/snapshots/2026-09-21/products.jsonl.gz`, `sb catalog build` tự bung — *23/09: snapshot 2026-09-21, 10.320 dòng → 2.897 search unit*
+- [x] Docker Desktop chạy được; máy ≥ 16 GB RAM nếu chạy bge-m3 local làm đối chứng — *23/09: Docker 29.7.2, RAM 31,5 GB*
 - [ ] Mentor xác nhận bằng văn bản việc lệch handbook ở 3 mục (backend, vector store, embedding)
-- [ ] Tạo nhánh `bench/embed-search` (đã có), thư mục `src/evaluation/search_bench/` theo spec
+- [x] Tạo nhánh `bench/embed-search` (đã có), thư mục `src/evaluation/search_bench/` theo spec
 
 ---
 
@@ -32,14 +32,14 @@ Ký hiệu lệnh: `sb` = `python -m evaluation.search_bench` chạy từ `src/`
 - [ ] Với slice `multi_constraint`: điền cột `filter` mong đợi (AST JSON; amenity ghi **khoá** như `kids_club`, không ghi id — xem `filter_fields` trong `vocab.json`); slice `out_of_catalog`: cột `expected_no_result=true`
 
 ### B
-- [ ] `docker compose -f evaluation/search_bench/docker/compose.yml up -d --wait weaviate` từ `src/` (image pin theo spec, cổng 127.0.0.1:58080/55051) · `sb doctor` xanh
-- [ ] Tạo collection theo `sb collection create --variant T3+R --model cohere-v3` (schema §3 spec): named vector `content`, BM25 `word` + fold dấu, `amenity_ids[]`, `parentProductId`
-- [ ] Cohere client: batch ≤ 96, `input_type` đúng chiều, `truncate=NONE`, retry 429 backoff, log token/chi phí
-- [ ] Cache embedding theo `sha1(model|input_type|text)` — chạy 2 lần không tốn tiền lần 2
-- [ ] Chạy thử với 50 sản phẩm mẫu (`sample/products-sample.jsonl` = 26 search unit): `sb --dataset sample catalog build` → `sb --dataset sample embed --variant T3+R --model cohere-v3 --limit 50` → `sb --dataset sample load`
+- [x] `docker compose -f evaluation/search_bench/docker/compose.yml up -d --wait weaviate` từ `src/` (image pin theo spec, cổng 127.0.0.1:58080/55051) · `sb doctor` xanh — *23/09: Weaviate 1.37.3, ascii_fold analyzer*
+- [x] Tạo collection theo `sb collection create --variant T3+R --model cohere-v3` (schema §3 spec): named vector `content`, BM25 `word` + fold dấu, `amenity_ids[]`, `parentProductId` — *23/09: tên vật lý `Products__T3_R__cohere_v3`; thêm `stopwords_preset: none` (đề xuất, cần xác nhận)*
+- [x] Cohere client: batch ≤ 96, `input_type` đúng chiều, `truncate=NONE`, retry 429 backoff, log token/chi phí — *23/09: + pacer 2.000 input/phút, `sb cost`*
+- [x] Cache embedding theo `sha1(model|input_type|text)` — chạy 2 lần không tốn tiền lần 2 — *23/09: `--limit 96` lần 1 = 1 lượt gọi, lần 2 = 0*
+- [x] Chạy thử với 50 sản phẩm mẫu (`sample/products-sample.jsonl` = 26 search unit): `sb --dataset sample catalog build` → `sb --dataset sample embed --variant T3+R --model cohere-v3 --limit 50` → `sb --dataset sample load` — *23/09: 26 vector thật (3.654 token, $0,000365), load 26 object*
 
 ### Sync cuối ngày
-- [ ] B demo cho A: import 26 search unit mẫu, `sb --dataset sample query "resort Nha Trang" --arm B0` ra kết quả
+- [x] B demo cho A: import 26 search unit mẫu, `sb --dataset sample query "resort Nha Trang" --arm B0` ra kết quả — *23/09: top-1 Vinpearl Resort & Spa Nha Trang Bay, top-2 Vinpearl Beachfront Nha Trang*
 - [ ] A đưa B `gold/drafts.txt` (200 dòng)
 
 ---
@@ -54,7 +54,7 @@ Ký hiệu lệnh: `sb` = `python -m evaluation.search_bench` chạy từ `src/`
 
 ### B
 - [ ] `sb embed --variant T3+R --model cohere-v3` toàn catalog → `sb load` → collection `products__T3+R__cohere_v3` (= B0)
-- [ ] `sb tokens --variant T3+R`: phân bố token bằng tokenizer Cohere; **p99 < 450, max < 512**; nếu vượt, sửa text builder (không dùng `truncate`)
+- [x] `sb tokens --variant T3+R`: phân bố token bằng tokenizer Cohere; **p99 < 450, max < 512**; nếu vượt, sửa text builder (không dùng `truncate`) — *làm sớm 23/09: p50 174, p99 276, max 379 — qua gate*
 - [ ] `sb gold pool --drafts gold/drafts.txt --depth 15` → `gold/pool.csv` (dense top-15 ∪ BM25 top-15, ~20–25 doc/query)
 - [ ] Chia pool: `pool_A.csv` (qid 1–100 + 25 chung), `pool_B.csv` (qid 101–200 + 25 chung)
 
