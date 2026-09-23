@@ -5,7 +5,7 @@ import os
 import psycopg
 import pytest
 
-from src.backend.app.infrastructure.clients.local_cdp_client import LocalCdpClient
+from src.backend.app.infrastructure.cdp.local_cdp_client import LocalCdpClient
 from src.backend.app.infrastructure.persistence.postgres_catalog import PostgresProductLookup
 
 APP_URL = os.getenv("DATABASE_URL", "postgresql://vota_app_login:vota@localhost:5432/vota")

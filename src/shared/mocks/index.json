@@ -59,6 +59,30 @@
       "file": "auth/listDemoAccounts.200-default.json"
     },
     {
+      "operationId": "createSession",
+      "method": "post",
+      "path": "/auth/session",
+      "status": 200,
+      "case": "authenticated",
+      "file": "auth/createSession.200-authenticated.json"
+    },
+    {
+      "operationId": "createSession",
+      "method": "post",
+      "path": "/auth/session",
+      "status": 200,
+      "case": "pending-mfa",
+      "file": "auth/createSession.200-pending-mfa.json"
+    },
+    {
+      "operationId": "createSession",
+      "method": "post",
+      "path": "/auth/session",
+      "status": 429,
+      "case": "too-many-attempts",
+      "file": "auth/createSession.429-too-many-attempts.json"
+    },
+    {
       "operationId": "listProducts",
       "method": "get",
       "path": "/products",

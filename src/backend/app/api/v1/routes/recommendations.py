@@ -1,20 +1,22 @@
 from time import perf_counter
 
-from fastapi import APIRouter, Header, Query, Request
+from fastapi import APIRouter, Depends, Header, Query
 from fastapi.responses import JSONResponse
 
+from src.backend.app.api.deps import get_recommend
 from src.backend.app.application.itinerary.contracts import error_response
-from src.backend.app.core.config import get_settings
+from src.backend.app.core.config import Settings, get_settings
 from src.backend.app.core.request_context import current_request_id
 from src.backend.app.core.security import JwtError, optional_cdp_user_id
 
-router = APIRouter(prefix="/api/v1", tags=["recommendations"])
+router = APIRouter(tags=["recommendations"])
 
 
 @router.get("/recommendations")
-def recommendations(request: Request, k: int = Query(5, ge=1, le=20), destination: str | None = None,
-                    authorization: str | None = Header(default=None)):
-    settings = get_settings()
+def recommendations(k: int = Query(5, ge=1, le=20), destination: str | None = None,
+                    authorization: str | None = Header(default=None),
+                    recommend=Depends(get_recommend), settings: Settings = Depends(get_settings)):
+    # cdp_user_id lấy từ JWT; không có token → None → popular cho khách vãng lai.
     try:
         cdp_user_id = optional_cdp_user_id(
             authorization, secret=settings.jwt_secret, algorithm=settings.jwt_algorithm
@@ -29,12 +31,7 @@ def recommendations(request: Request, k: int = Query(5, ge=1, le=20), destinatio
         return JSONResponse(status_code=exc.status_code, content=error_response(exc.code, message, request_id))
 
     started = perf_counter()
-    result = request.app.state.recommend(cdp_user_id, k=k, destination=destination)
+    result = recommend(cdp_user_id, k=k, destination=destination)
     result["cdpUserId"] = cdp_user_id
     result.setdefault("diagnostics", {})["latencyMs"] = max(0, round((perf_counter() - started) * 1000))
     return result
-
-
-@router.get("/popular")
-def popular(request: Request, k: int = Query(4, ge=1, le=10)):
-    return request.app.state.recommend(None, k=k)

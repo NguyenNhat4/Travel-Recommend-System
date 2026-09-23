@@ -1,10 +1,9 @@
-"""`CdpClientPort` (đường **đọc** của recsys) trên `cdp.events` của PostgreSQL local.
+"""`CdpHistoryReader` (đường **đọc** của recsys) trên `cdp.events` của PostgreSQL local.
 
-Thay `LocalCdpClient` đọc JSONL trong cùng thư mục này. Đừng nhầm với
-`infrastructure/clients/local_cdp_client.py`: file đó là đường **ghi** (async, `record_purchases`,
-`cancel`, browse event, profile) theo port `application/ports/cdp_client.py`. Hai port khác nhau,
-cùng chạm `cdp.*` và cùng đi qua `CDP_DATABASE_URL` — không có code nào ngoài hai adapter này
-được SQL thẳng vào schema `cdp` (AGENTS.md §6.1).
+Đừng nhầm với `local_cdp_client.py` cùng thư mục: file đó là đường **ghi** (async, `record_purchases`,
+`cancel`, browse event, profile) theo port `CdpClient`. Hai port nằm chung `application/ports/cdp_client.py`,
+cùng chạm `cdp.*` và cùng đi qua `CDP_DATABASE_URL` — không có code nào ngoài các adapter trong
+`infrastructure/cdp/` được SQL thẳng vào schema `cdp` (AGENTS.md §6.1).
 
 Connection phải là `CDP_DATABASE_URL` (role `cdp_reader`/`cdp_writer`). Dùng `DATABASE_URL`
 sẽ lỗi `permission denied for table events`: role `vota_app` cố ý không đọc được
@@ -41,7 +40,7 @@ def _to_cdp(row: tuple) -> dict:
 
 
 class PostgresCdpReader:
-    """Chỉ đọc. Mọi thao tác ghi đi qua `clients/local_cdp_client.LocalCdpClient`."""
+    """Chỉ đọc. Mọi thao tác ghi đi qua `local_cdp_client.LocalCdpClient`."""
 
     def __init__(self, cdp_database_url: str):
         self._cdp_database_url = cdp_database_url

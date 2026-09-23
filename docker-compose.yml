@@ -1,18 +1,27 @@
 # Hạ tầng dev của repo. Chạy từ gốc: docker compose up -d --wait postgres
 #
-# Một instance Postgres 16 + pgvector, hai database:
+# Một instance Postgres 16, hai database:
 #   vota    — schema cdp · catalog · app (db/init/01_vota.sql)
 #   insider — storage của Insider clone   (db/init/00_create_insider.sql, 02_insider.sql)
+#
+# Và một Weaviate giữ vector sản phẩm, volume RIÊNG nên không bị dựng lại theo vòng seed Postgres:
+#   docker compose up -d --wait weaviate
+#
+# Và một Redis giữ state phiên của auth (docs/hop-dong-tich-hop-auth.md §16.1):
+#   docker compose up -d --wait postgres redis
 #
 # db/init/*.sql chỉ chạy khi volume pgdata còn trống. Tạo lại từ đầu: docker compose down -v && docker compose up -d --wait postgres
 services:
   postgres:
-    image: pgvector/pgvector:pg16
+    # Không còn cần pgvector: vector đã chuyển sang Weaviate (db/migrations/0002_drop_product_vectors.sql).
+    image: postgres:16
     environment:
       POSTGRES_DB: vota
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-    ports: ["5432:5432"]
+    # Cổng host đổi được khi máy đã có Postgres khác giữ 5432:
+    #   POSTGRES_HOST_PORT=5433 docker compose up -d --wait postgres
+    ports: ["127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"]
     volumes:
       # 00 tạo db insider · 01 schema vota + role · 02 schema insider · 03 login role cho dev
       - ./db/init:/docker-entrypoint-initdb.d:ro
@@ -50,16 +59,53 @@ services:
       CDP_SERVICE_TOKEN: ${CDP_SERVICE_TOKEN:-}
     ports:
       - "${BACKEND_PORT:-8000}:8000"
-    volumes:
-      - backend-embcache:/app/.embcache
-      - backend-model-cache:/home/app/.cache/huggingface
+    
+  # Redis — session, rate-limit counter, OAuth state (auth §16.1). Chỉ phần PHÙ DU:
+  # mất khi restart thì người dùng chỉ phải đăng nhập lại. Refresh token và login attempts nằm ở Postgres.
+  redis:
+    image: redis:7-alpine
+    # noeviction, KHÔNG allkeys-lru: eviction theo LRU sẽ ngẫu nhiên đá người dùng ra khi bộ nhớ đầy.
+    command: >-
+      redis-server --requirepass devpass
+                   --maxmemory 256mb
+                   --maxmemory-policy noeviction
+                   --appendonly no
+    ports: ["127.0.0.1:${REDIS_HOST_PORT:-6379}:6379"]   # chỉ loopback, không mở ra mạng ngoài
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
-      interval: 15s
+      test: ["CMD-SHELL", "redis-cli -a devpass ping | grep -q PONG"]
+      interval: 5s
       timeout: 5s
       retries: 20
-      start_period: 180s
+      start_period: 3s
+
+  # Weaviate — vector sản phẩm (collection `Product`, 1024 chiều, HNSW cosine).
+  # vectorizer: none — backend tự gọi Cohere rồi tự ghi vector, nên Weaviate KHÔNG giữ COHERE_API_KEY
+  # và không có module text2vec nào được bật (docs/prd/architecture.md §5).
+  # Volume weaviate_data tách khỏi pgdata: `make demo-db` dựng lại Postgres không đụng tới vector.
+  weaviate:
+    image: cr.weaviate.io/semitechnologies/weaviate:1.27.0
+    command: ["--host", "0.0.0.0", "--port", "8080", "--scheme", "http"]
+    environment:
+      PERSISTENCE_DATA_PATH: /var/lib/weaviate
+      # Dev: mở anonymous cho tiện. Staging/Prod bật API key và đặt WEAVIATE_API_KEY.
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
+      DEFAULT_VECTORIZER_MODULE: none
+      ENABLE_MODULES: ""
+      QUERY_DEFAULTS_LIMIT: "25"
+    ports:
+      - "127.0.0.1:${WEAVIATE_HOST_PORT:-8080}:8080"   # REST, chỉ loopback
+      - "127.0.0.1:${WEAVIATE_GRPC_PORT:-50051}:50051" # gRPC, client Python v4 dùng cổng này
+    volumes:
+      - weaviate_data:/var/lib/weaviate
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/v1/.well-known/ready || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
 volumes:
   pgdata:
+  weaviate_data:
   backend-embcache:
   backend-model-cache:

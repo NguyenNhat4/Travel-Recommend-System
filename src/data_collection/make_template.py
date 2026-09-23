@@ -127,7 +127,7 @@ out = {
          'Bản ghi thật để đọc và chạy thử nằm ở sample/ — cố ý không lặp lại ở đây.',
  '_ban': __import__('datetime').date.today().isoformat(),
  '_tong_san_pham': n,
- '_doc_them': 'SCHEMA.md (giải thích cho người đọc) · sample/ (50 bản ghi thật) · BANGIAO.md',
+ '_doc_them': 'docs/spec/data-collection/schema.md (giải thích cho người đọc) · sample/ (50 bản ghi thật) · docs/spec/data-collection/ban-giao.md',
  'schema': {
      k: {'kieu': SCHEMA[k][0],
          'do_phu': f'{100*schema_cov[k]/n:.1f}%',

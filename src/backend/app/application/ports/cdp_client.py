@@ -108,8 +108,30 @@ class CdpClient(Protocol):
     async def get_profile(self, cdp_user_id: str) -> CdpProfile | None:
         ...
 
+    async def ensure_profile(self, cdp_user_id: str, *, home_city: str | None = None) -> None:
+        """Tạo hồ sơ CDP cho tài khoản vừa đăng ký; idempotent, đã có thì không lỗi.
+
+        Cần vì app.users.cdp_user_id là NOT NULL REFERENCES cdp.profiles, mà role vota_app của
+        backend KHÔNG ghi được cdp.profiles — chỉ cdp_writer ghi được. Đăng ký vì vậy bắt buộc
+        đi CDP trước rồi mới INSERT app.users (auth §3.6.3).
+
+        Raises CdpUnavailableError nếu không ghi được; caller không tạo user.
+        """
+        ...
+
 
 class BrowseEventRecorder(Protocol):
     def record(self, event: BrowseEvent) -> None:
         """Hand off without waiting for CDP. Never raises because CDP is slow or down."""
         ...
+
+
+class CdpHistoryReader(Protocol):
+    """Đường ĐỌC đồng bộ của RecSys: lịch sử một khách và purchase toàn hệ thống.
+
+    Trả dict theo tên trường CDP (camelCase: `cdpUserId`, `eventName`, `usingDate`...), đúng hình dạng
+    `domain/recommendation` đọc và `HttpCdpClient` sẽ trả khi lên CDP thật.
+    """
+
+    def events_for_user(self, cdp_user_id: str) -> list[dict]: ...
+    def purchase_events(self, since_days: int = 730) -> list[dict]: ...
