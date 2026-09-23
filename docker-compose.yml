@@ -32,6 +32,34 @@ services:
       timeout: 5s
       retries: 20
       start_period: 10s
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8000
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      MODEL_NAME: ${MODEL_NAME:-gpt-4o-mini}
+      ITINERARY_DATA_MODE: ${ITINERARY_DATA_MODE:-fixture}
+      ITINERARY_TOOL_TIMEOUT_SECONDS: ${ITINERARY_TOOL_TIMEOUT_SECONDS:-1}
+      ITINERARY_LLM_TIMEOUT_SECONDS: ${ITINERARY_LLM_TIMEOUT_SECONDS:-30}
+      ITINERARY_REQUEST_TIMEOUT_SECONDS: ${ITINERARY_REQUEST_TIMEOUT_SECONDS:-90}
+      ITINERARY_CONVERSATION_TTL_SECONDS: ${ITINERARY_CONVERSATION_TTL_SECONDS:-86400}
+      ITINERARY_SERVICE_BASE_URL: ${BACKEND_ITINERARY_SERVICE_BASE_URL:-}
+      DATABASE_URL: ${BACKEND_DATABASE_URL:-postgresql://vota_app_login:vota@postgres:5432/vota}
+      CDP_DATABASE_URL: ${BACKEND_CDP_DATABASE_URL:-postgresql://cdp_client_login:cdp@postgres:5432/vota}
+      CDP_ADAPTER: ${CDP_ADAPTER:-local}
+      CDP_BASE_URL: ${BACKEND_CDP_BASE_URL:-http://host.docker.internal:8100}
+      CDP_SERVICE_TOKEN: ${CDP_SERVICE_TOKEN:-}
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    
   # Redis — session, rate-limit counter, OAuth state (auth §16.1). Chỉ phần PHÙ DU:
   # mất khi restart thì người dùng chỉ phải đăng nhập lại. Refresh token và login attempts nằm ở Postgres.
   redis:
@@ -79,3 +107,5 @@ services:
 volumes:
   pgdata:
   weaviate_data:
+  backend-embcache:
+  backend-model-cache:

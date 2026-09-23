@@ -10,11 +10,11 @@ from typing import Any, Protocol
 
 
 class ItineraryPlanner(Protocol):
-    async def ainvoke(self, inputs: dict[str, Any]) -> dict[str, Any]:
-        """Chạy trọn graph, trả state cuối (có `response`, `http_status`)."""
+    async def ainvoke(self, inputs: dict[str, Any], config: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Chạy trọn graph, trả state cuối (có `response`, `http_status`). `config`: nhãn trace của run."""
         ...
 
-    def astream(self, inputs: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
+    def astream(self, inputs: dict[str, Any], config: dict[str, Any] | None = None) -> AsyncIterator[dict[str, Any]]:
         """Phát state sau mỗi node, state cuối có `response`."""
         ...
 

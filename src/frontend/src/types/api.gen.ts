@@ -284,10 +284,47 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Tạo hoặc tiếp tục lịch trình (baseline 1.1.0)
+         * Tạo hoặc tiếp tục lịch trình
          * @description Shape hợp nhất được khóa tại OpenAPI; xem docs/spec/hop-dong-tich-hop-frontend.md §9. Lỗi luôn trả ErrorResponse với HTTP status tương ứng, không có status "ERROR" trong body 200.
          */
         post: operations["createItinerary"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/assistant/itineraries/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Tạo hoặc tiếp tục lịch trình và stream tiến trình graph
+         * @description SSE chỉ phát topology, sự kiện node an toàn và kết quả cuối; không phát raw state, prompt hoặc token.
+         */
+        post: operations["streamItinerary"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/assistant/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Kiểm tra trạng thái runtime và nguồn dữ liệu của agent */
+        get: operations["getAssistantStatus"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -321,6 +358,7 @@ export interface components {
         /** @enum {string} */
         Taxonomy: "hotel" | "flight" | "attraction" | "combo" | "golf";
         /**
+         * @description popular xếp theo products.popularity_score (cột materialized). [CHỜ DUYỆT: C7] công thức và cách cập nhật.
          * @default popular
          * @enum {string}
          */
@@ -341,27 +379,56 @@ export interface components {
         Currency: "VND";
         ReferenceCode: string;
         /** @enum {string} */
-        ErrorCode: "VALIDATION_ERROR" | "CART_EMPTY" | "INVALID_CREDENTIALS" | "INVALID_TOKEN" | "TOKEN_EXPIRED" | "DEMO_ONLY" | "PRODUCT_NOT_FOUND" | "CART_ITEM_NOT_FOUND" | "BOOKING_NOT_FOUND" | "NOT_FOUND" | "EMAIL_ALREADY_EXISTS" | "PRODUCT_UNAVAILABLE" | "PRICE_CHANGED" | "DATE_OUT_OF_RANGE" | "SEARCH_UNAVAILABLE" | "INTERNAL_ERROR" | "INVALID_TRIP_DURATION" | "CONVERSATION_NOT_FOUND" | "UNSUPPORTED_DESTINATION" | "LLM_UNAVAILABLE" | "ITINERARY_VALIDATION_FAILED";
+        ErrorCode: "VALIDATION_ERROR" | "CART_EMPTY" | "INVALID_CREDENTIALS" | "INVALID_TOKEN" | "TOKEN_EXPIRED" | "DEMO_ONLY" | "PRODUCT_NOT_FOUND" | "CART_ITEM_NOT_FOUND" | "BOOKING_NOT_FOUND" | "NOT_FOUND" | "EMAIL_ALREADY_EXISTS" | "PRODUCT_UNAVAILABLE" | "PRICE_CHANGED" | "DATE_OUT_OF_RANGE" | "SEARCH_UNAVAILABLE" | "INTERNAL_ERROR" | "INVALID_TRIP_DURATION" | "CONVERSATION_NOT_FOUND" | "UNSUPPORTED_DESTINATION" | "LLM_UNAVAILABLE" | "ITINERARY_VALIDATION_FAILED" | "AVAILABILITY_NOT_FOUND" | "AVAILABILITY_EXPIRED" | "NO_RATE_PLAN" | "MIN_STAY_NOT_MET" | "CLOSED_ON_ARRIVAL" | "CLOSED_ON_DEPARTURE" | "PARTIALLY_AVAILABLE" | "PRODUCT_NOT_INDEXED";
         ErrorResponse: {
             error: {
                 code: components["schemas"]["ErrorCode"];
                 /** @description Tiếng Việt, hiển thị được trực tiếp cho người dùng. */
                 message: string;
+                /** @description true chỉ với SEARCH_UNAVAILABLE, INTERNAL_ERROR và LLM_UNAVAILABLE. Mọi mã còn lại là false — thử lại nguyên request cho cùng kết quả. */
                 retryable: boolean;
                 requestId: string;
-                /** @description Tùy mã lỗi. VALIDATION_ERROR {fields}; PRODUCT_NOT_FOUND và PRODUCT_UNAVAILABLE {productId}; CART_ITEM_NOT_FOUND {cartItemId}; PRICE_CHANGED {productId, oldPrice, newPrice}; DATE_OUT_OF_RANGE {productId, availableFrom, availableTo}; UNSUPPORTED_DESTINATION {destination, supportedDestinations}. */
+                /** @description Tùy mã lỗi. VALIDATION_ERROR {fields}; PRODUCT_NOT_FOUND và PRODUCT_UNAVAILABLE {productId}; CART_ITEM_NOT_FOUND {cartItemId}; PRICE_CHANGED {productId, oldPrice, newPrice}; DATE_OUT_OF_RANGE {productId, availableFrom, availableTo}; UNSUPPORTED_DESTINATION {destination, supportedDestinations, conversationId} — conversationId là hội thoại đã lưu phần chuyến đi còn lại, gửi lại cùng điểm đến hợp lệ để tiếp tục; MIN_STAY_NOT_MET {productId, minStay}; PRODUCT_NOT_INDEXED {productId, taxonomy}. */
                 details?: {
                     [key: string]: unknown;
                 };
             };
         };
-        /** @description Giữ nguyên attributes của catalog, gồm boolean false, khóa cha–con và metadata nguồn. UI chỉ render nhãn boolean khi giá trị true; bỏ qua khóa lạ. */
+        /**
+         * @description Đơn vị của unitPrice. UNKNOWN là van an toàn của schema; không taxonomy nào trong catalog hiện tại mang giá trị đó. nights chỉ được đưa vào phép nhân khi giá trị là PER_NIGHT — mọi đơn vị khác bỏ qua nights kể cả khi client gửi.
+         * @enum {string}
+         */
+        PriceUnit: "PER_NIGHT" | "PER_PERSON" | "PER_PACKAGE" | "UNKNOWN";
+        /**
+         * @description EXACT_FILTER_SCORE là mặc định cho cả /search, /similar và /recommendations. Lật sang ANN_CANDIDATE_SCORE khi số vector vượt 50.000 hoặc p95 của bước scan vượt 50 ms; khi lật thì totalExact và facetsExact bắt buộc là false.
+         * @enum {string}
+         */
+        SearchMode: "EXACT_FILTER_SCORE" | "ANN_CANDIDATE_SCORE";
+        /**
+         * @description NOT_CHECKED là giá trị mặc định khi chưa có checkIn/checkOut/party. EXPIRED khi snapshot availability đã quá hạn (expires_at).
+         * @enum {string}
+         */
+        AvailabilityStatus: "NOT_CHECKED" | "AVAILABLE" | "PARTIALLY_AVAILABLE" | "UNAVAILABLE" | "EXPIRED";
+        /**
+         * @description Thuộc tính nguyên bản của catalog.
+         *     [C2] BA TRẠNG THÁI, không phải hai. `true` = nguồn xác nhận có. `false` = nguồn xác nhận KHÔNG có. Key vắng mặt = KHÔNG BIẾT. Ba trạng thái chỉ tồn tại ở tầng DB và tầng embedding/filter. Tầng serialization loại key có giá trị `false` trước khi tạo JSON, nên response API chỉ còn `true` hoặc vắng mặt và client không cần lọc. TUYỆT ĐỐI KHÔNG strip `false` lúc ingest — đó là mất dữ liệu không lấy lại được, phải crawl lại toàn bộ. Strip muộn nhất có thể.
+         *     Client gặp key lạ thì bỏ qua im lặng, không hiển thị tên key thô.
+         */
         ProductAttributes: {
             starRating?: number;
             oceanView?: boolean;
+            gardenView?: boolean;
+            cityView?: boolean;
+            poolView?: boolean;
             privateBeach?: boolean;
             pool?: boolean;
             kidsPool?: boolean;
+            privatePool?: boolean;
+            jacuzzi?: boolean;
+            bathtub?: boolean;
+            standingShower?: boolean;
+            balcony?: boolean;
+            kitchenette?: boolean;
             familyFriendly?: boolean;
             kidsClub?: boolean;
             spa?: boolean;
@@ -371,6 +438,7 @@ export interface components {
             shuttle?: boolean;
             wifi?: boolean;
             parking?: boolean;
+            butlerService?: boolean;
             directFlight?: boolean;
             baggage?: boolean;
             indoor?: boolean;
@@ -380,23 +448,44 @@ export interface components {
             buffet?: boolean;
             seaside?: boolean;
             caddie?: boolean;
-            /** @enum {string} */
+            /** @description Danh sách tiện ích đầy đủ, chỉ để hiển thị. Chỉ chứa label chuẩn, không chứa văn bản tự do. Nhồi toàn bộ danh sách này vào search_text làm loãng tín hiệu ngữ nghĩa — ItemTextBuilder chỉ đọc core amenities ở trên. */
+            fullAmenities?: string[];
+            /** @description Dịch vụ khách sạn (roomService, airportShuttle…). Dùng filter, không embedding. */
+            services?: string[];
+            roomOrientation?: string;
+            nearbyAttractions?: {
+                name: string;
+                distanceKm?: number;
+                category?: string;
+            }[];
+            /**
+             * @description [CHỜ DUYỆT: C5] property và route là tầng CHA — có vector, là đối tượng của /search, /similar, /recommendations. room và flight là tầng CON — không có vector, chỉ dùng cho giá, sức chứa và checkout. Thiếu trường này (attraction, combo, golf) mặc định là tầng cha.
+             * @enum {string}
+             */
             level?: "property" | "room" | "route" | "flight";
+            /** @description [CHỜ DUYỆT: C5] Chỉ có ở tầng con. Trỏ về productId của cha. */
             parentProductId?: string;
+            /** @description false thì ẩn CTA đặt chỗ ở frontend. */
             ticketed?: boolean;
         } & {
             [key: string]: unknown;
         };
         /**
-         * @description Card tối thiểu cho Web. Các trường chi tiết tùy chọn; Agent hydrate ProductDetail trước khi kiểm tra/lập lịch nếu thiếu attributes, mô tả hoặc ngày. Không diễn giải trường thiếu là false/0.
+         * @description Card tối thiểu cho Web. Agent hydrate ProductDetail trước khi lập lịch nếu thiếu attributes, mô tả hoặc ngày. Không diễn giải trường thiếu là false/0.
          * @example {
          *       "productId": "nt-h-01",
          *       "name": "Vinpearl Resort Nha Trang - Deluxe Ocean View",
          *       "taxonomy": "hotel",
          *       "destination": "Nha Trang",
+         *       "brand": "Vinpearl",
+         *       "status": "ACTIVE",
          *       "unitPrice": 3400000,
          *       "currency": "VND",
+         *       "priceUnit": "PER_NIGHT",
+         *       "priceAsOf": "2026-09-16T12:00:00Z",
          *       "available": true,
+         *       "availabilityStatus": "NOT_CHECKED",
+         *       "bookable": null,
          *       "availableFrom": "2026-10-01",
          *       "availableTo": "2027-03-31",
          *       "imageUrl": "https://cdn.example.vn/nt-h-01.jpg",
@@ -406,7 +495,8 @@ export interface components {
          *         "starRating": 5,
          *         "oceanView": true,
          *         "privateBeach": true,
-         *         "familyFriendly": true
+         *         "familyFriendly": true,
+         *         "level": "property"
          *       }
          *     }
          */
@@ -414,44 +504,63 @@ export interface components {
             productId: string;
             name: string;
             taxonomy: components["schemas"]["Taxonomy"];
+            /** @description Nhãn du lịch đã chuẩn hóa ("Nha Trang", "Hạ Long"), KHÔNG phải tỉnh. Lấy danh sách hiện hành qua GET /api/v1/destinations. */
             destination: string;
-            /** @description Giá snapshot VND; null không nghĩa là miễn phí. Không suy đơn vị từ taxonomy. */
+            /** @description Thương hiệu ("Vinpearl", "independent"). Cần cho yêu cầu ưu tiên Vinpearl và để đo rủi ro vector space phân cụm theo nguồn crawl. */
+            brand?: string | null;
+            /**
+             * @description [CHỜ DUYỆT: U1] Soft delete. Không bao giờ DELETE hàng khỏi products, vì because[].productName của recommendation cần tên sản phẩm nguồn kể cả khi sản phẩm đã ngừng bán — UserEvent trong CDP không lưu tên. INACTIVE thì because[] trả productId null nhưng vẫn giữ productName.
+             * @default ACTIVE
+             * @enum {string}
+             */
+            status: "ACTIVE" | "INACTIVE";
+            /** @description Giá snapshot VND cho MỘT đơn vị theo priceUnit. null không nghĩa là miễn phí. */
             unitPrice: number | null;
             currency: components["schemas"]["Currency"];
-            /** @description Nguồn có trả giá lúc crawl; không xác nhận còn chỗ theo ngày/party. */
+            /** @description [C1] Bắt buộc, KHÔNG có default. Dẫn xuất từ taxonomy lúc ingest. nights chỉ được nhân khi giá trị là PER_NIGHT. */
+            priceUnit: components["schemas"]["PriceUnit"];
+            /**
+             * Format: date-time
+             * @description [Q2] Thời điểm quan sát giá từ nguồn. Không dùng generatedAt thay thế. UI hiển thị "giá ghi nhận <ngày>".
+             */
+            priceAsOf?: string | null;
+            /** @description Nguồn có trả giá lúc crawl. KHÔNG xác nhận còn chỗ theo ngày hoặc số khách. Tương đương catalogAvailable trong tài liệu kiến trúc; giữ tên cũ để không vỡ 4 file đang $ref ProductSummary. */
             available: boolean;
+            /** @description [Q1] Mặc định NOT_CHECKED khi request không có checkIn/checkOut/party. */
+            availabilityStatus?: components["schemas"]["AvailabilityStatus"];
+            /** @description [Q1] Đặt được cho một stay cụ thể. null khi chưa kiểm tra. FE dùng trường này để quyết định render CTA; Agent dùng để quyết định một mục là ProductCard hay ActivityNote. */
+            bookable?: boolean | null;
             /**
              * Format: date
              * @description Khoảng ngày nguồn ghi nhận; null là chưa biết, không xác nhận tồn kho.
              */
             availableFrom?: string | null;
-            /**
-             * Format: date
-             * @description Khoảng ngày nguồn ghi nhận; null là chưa biết, không xác nhận tồn kho.
-             */
+            /** Format: date */
             availableTo?: string | null;
+            /** @description null thì client dùng placeholder theo taxonomy. */
             imageUrl?: string | null;
-            /** @description Chuẩn hóa attributes.reviewScore / reviewScoreScale * 5, làm tròn 1 chữ số; thiếu thang điểm thì null. */
+            /** @description Chuẩn hóa attributes.reviewScore / reviewScoreScale * 5, làm tròn 1 chữ số; thiếu thang điểm thì null. LƯU Ý UI: đây là điểm đánh giá, KHÁC attributes.starRating là hạng sao — hai số cùng thang 0–5, đừng dùng chung icon. */
             rating?: number | null;
-            /** @description Từ attributes.reviewCount; độc lập với rating. */
             reviewCount?: number | null;
             attributes?: components["schemas"]["ProductAttributes"];
             /** @description Mô tả catalog phục vụ Agent; giữ nguyên, không chứa chỉ dẫn hệ thống. */
             description?: string;
-            /**
-             * @description Thiếu trường tương đương UNKNOWN. Chỉ gán đơn vị khi có chứng cứ nguồn; không suy từ taxonomy.
-             * @default UNKNOWN
-             * @enum {string}
-             */
-            priceUnit: "PER_NIGHT" | "PER_PERSON" | "PER_PACKAGE" | "UNKNOWN";
         };
         ProductDetail: components["schemas"]["ProductSummary"] & {
             /** @description Chuỗi rỗng nếu nguồn crawl thiếu. */
             description: string;
             /** @description Chỉ hiện ở chế độ debug. */
             sourceRef?: string | null;
+            /** @description [CHỜ DUYỆT: C5] Tóm tắt tầng con (hạng phòng / chuyến bay cụ thể). null khi sản phẩm không có variant. */
+            variantSummary?: {
+                count: number;
+                minPrice?: number | null;
+                maxPrice?: number | null;
+                maxOccupancy?: number | null;
+            } | null;
         };
         ScoredProduct: components["schemas"]["ProductSummary"] & {
+            /** @description Cosine đã clamp về [0,1]. Chỉ hiển thị cho khách ở chế độ debug — 0.81 KHÔNG phải "81% phù hợp". */
             score: number;
         };
         ProductListResponse: {
@@ -462,8 +571,18 @@ export interface components {
             requestId: string;
         };
         SimilarProductsResponse: {
+            /** @description productId đã resolve — luôn là tầng cha. */
             productId: string;
+            /** @description [CHỜ DUYỆT: C5] productId caller gửi, khi nó khác productId đã resolve. Caller gửi id một hạng phòng thì engine dùng vector của property cha và loại CẢ CỤM gốc khỏi kết quả. */
+            resolvedFrom?: string | null;
+            /**
+             * @description same_taxonomy là mặc định — xem khách sạn thì gợi ý khách sạn. cross_taxonomy là biến thể cross-sell mà Agent dùng khi lịch trình đã có chỗ ở và cần bổ sung hoạt động.
+             * @default same_taxonomy
+             * @enum {string}
+             */
+            strategy: "same_taxonomy" | "cross_taxonomy";
             results: components["schemas"]["ScoredProduct"][];
+            diagnostics?: components["schemas"]["EngineDiagnostics"];
             requestId: string;
         };
         DestinationListResponse: {
@@ -507,16 +626,31 @@ export interface components {
                 blurb: string;
             }[];
         };
-        /** @description query bắt buộc; trường tùy chọn null tương đương bỏ qua/default. Lọc priceMin/Max trên unitPrice snapshot VND, không phải tổng chuyến đi; giá null bị loại khi có lọc giá. Không hỗ trợ startDate/endDate/party: Agent tự kiểm tra sau retrieval. availableOnly=true chỉ lọc snapshot; lấy điểm không bán vé bằng false. */
+        /**
+         * @description query bắt buộc; trường tùy chọn null tương đương bỏ qua/default. Lọc priceMin/Max trên unitPrice snapshot VND, KHÔNG phải ngân sách chuyến đi; giá null bị loại khi có lọc giá.
+         *     [C4] Thứ tự xử lý bắt buộc: FILTER -> SCORE -> CUTOFF -> TOTAL/FACETS -> SORT -> PAGE. F = tập sau structured filter. R = { p thuộc F | score >= cutoff }. total = |R|, facets tính trên R, results là một trang của R.
+         */
         SearchRequest: {
             query: string;
             destination?: string | null;
             taxonomy?: components["schemas"]["Taxonomy"] | null;
             priceMin?: number | null;
             priceMax?: number | null;
+            /** @description [CHỜ DUYỆT: C6] SOFT filter. starRating chỉ phủ 51% catalog, nên sản phẩm KHÔNG khai starRating thì KHÔNG bị loại — chỉ xếp sau sản phẩm thỏa điều kiện. Xem appliedFilters.soft trong response. */
             starRatingMin?: number | null;
-            /** @default true */
+            /**
+             * @description Chỉ lọc trên snapshot `available`. Lấy cả điểm không bán vé bằng false.
+             * @default true
+             */
             availableOnly: boolean | null;
+            /**
+             * @description [CHỜ DUYỆT: C5] Mặc định false — chỉ trả tầng cha (property, route và các taxonomy không phân tầng). true thì trả cả hạng phòng và chuyến bay cụ thể. Bật true sẽ làm kết quả lặp: 907 hạng phòng trỏ về 316 property, và mô tả của chúng tự sinh từ mô tả khách sạn cha.
+             * @default false
+             */
+            includeVariants: boolean;
+            travelContext?: components["schemas"]["TravelContext"] | null;
+            /** @default CATALOG_ONLY */
+            availabilityMode: components["schemas"]["AvailabilityMode"];
             sort?: components["schemas"]["SearchSort"] | null;
             /** @default 20 */
             limit: number | null;
@@ -527,71 +661,153 @@ export interface components {
             taxonomy: {
                 [key: string]: number;
             };
+            /** @description [C4] Sản phẩm thiếu destination gom vào bucket "UNKNOWN", không bỏ qua — bỏ qua làm tổng facets nhỏ hơn total và phá bất biến. */
             destination: {
                 [key: string]: number;
             };
         };
+        /** @description [C4] Bất biến: sum(facets.taxonomy) == total. total và facets KHÔNG đổi khi thay limit/offset. total, facets và results phải dùng cùng filter và cùng cutoff. */
         SearchResponse: {
             results: components["schemas"]["ScoredProduct"][];
+            /** @description [C4] |R| — số sản phẩm vượt cutoff sau filter. KHÔNG phụ thuộc limit/offset. */
             total: number;
             limit?: number;
             offset?: number;
+            /** @description Điểm cao nhất trong R, hoặc null khi results rỗng. */
             topScore?: number | null;
+            /**
+             * @description [C3] Trung vị cosine của TOÀN BỘ tập đã lọc F. Lấy miễn phí trong cùng lượt quét exact của C4.
+             *     Dùng cho quy tắc margin: model họ e5 có dải cosine bị nén (cặp không liên quan đã ở 0.72–0.78), nên ngưỡng tuyệt đối đơn thuần không đáng tin. Client tính margin = topScore - backgroundScore và báo "kết quả yếu" khi topScore < WEAK_RESULT_TOP_SCORE HOẶC margin < WEAK_RESULT_MARGIN. null khi results rỗng.
+             */
+            backgroundScore?: number | null;
+            /** @description [C3][C4] Ngưỡng đã áp. Giá trị tạm 0.62 (PROVISIONAL), benchmark Ngày 3 trên 80 cặp query-product gán nhãn cộng 10 truy vấn âm. Nguồn sự thật là search.cutoff trong application.yml; frontend đọc lại từ trường này, KHÔNG hard-code bản sao. */
+            cutoff?: number;
             facets?: components["schemas"]["SearchFacets"];
+            appliedFilters?: components["schemas"]["AppliedFilters"];
+            diagnostics?: components["schemas"]["EngineDiagnostics"];
             requestId?: string;
         };
+        TravelContext: {
+            /** Format: date */
+            checkIn?: string | null;
+            /**
+             * Format: date
+             * @description Không bao gồm. Kiểm tra mọi đêm trong [checkIn, checkOut).
+             */
+            checkOut?: string | null;
+            guests?: {
+                adults?: number;
+                children?: number;
+            };
+            rooms?: number | null;
+        };
+        /**
+         * @description [Q1] CATALOG_ONLY là mặc định: chỉ dùng snapshot, bookable trả null. CHECK_DATE_RANGE gọi availability service, yêu cầu travelContext có checkIn và checkOut. FLEXIBLE_MONTH lùi sang Phase 3.
+         * @enum {string}
+         */
+        AvailabilityMode: "CATALOG_ONLY" | "CHECK_DATE_RANGE";
+        AppliedFilters: {
+            /** @description Đã loại thẳng. taxonomy, destination, priceMin/Max, availableOnly. */
+            hard: {
+                [key: string]: unknown;
+            };
+            /** @description Đã áp mềm — kết quả CÓ THỂ không thỏa. starRatingMin và mọi thuộc tính phủ dưới 70%. */
+            soft: {
+                [key: string]: unknown;
+            };
+        };
+        EngineDiagnostics: {
+            searchMode: components["schemas"]["SearchMode"];
+            /** @description false ở chế độ EXACT_FILTER_SCORE. */
+            approximate: boolean;
+            /** @description [C4] false bắt buộc khi approximate là true. HNSW chỉ trả top-K nên sản phẩm ngoài candidate pool vẫn có thể vượt cutoff — total khi đó không chính xác. */
+            totalExact?: boolean;
+            /** @description Như totalExact. */
+            facetsExact?: boolean;
+            /** @description |F| — số sản phẩm còn lại sau structured filter, trước khi tính cosine. */
+            filteredCount?: number;
+            /** @description |R| — số sản phẩm vượt cutoff. Cặp filteredCount/relevantCount trả lời ngay câu "sao ít kết quả thế": |F| nhỏ là filter quá chặt, |F| lớn mà |R| nhỏ là cutoff quá cao. */
+            relevantCount?: number;
+            modelVersion?: string;
+            latencyMs: number;
+        };
         BecauseItem: {
-            /** @description null khi sản phẩm nguồn đã bị xóa hoặc event là search. */
+            /** @description null trong hai trường hợp: event là `search` (không trỏ tới sản phẩm nào), hoặc sản phẩm nguồn có status INACTIVE. [CHỜ DUYỆT: U1] productId khác null thì sản phẩm PHẢI mở được GET /products/{id} và trả 200. */
             productId?: string | null;
-            /** @description Với event search thì là truy vấn người dùng đã gõ. */
+            /**
+             * @description Tên sản phẩm nguồn tại thời điểm sinh gợi ý. Với event `search` thì là truy vấn người dùng đã gõ.
+             *     [CHỜ DUYỆT: U1] Trường này là lý do products dùng SOFT DELETE. UserEvent trong CDP không lưu tên sản phẩm, nên xóa hàng khỏi products là mất tên vĩnh viễn và yêu cầu "vẫn giữ productName" của backend §6.3 mục 3 trở nên không thực hiện được.
+             */
             productName: string;
+            /** @description null khi sản phẩm nguồn INACTIVE hoặc event là search. */
             imageUrl?: string | null;
             event: components["schemas"]["BecauseEvent"];
+            /** @description Số ngày tính tới generatedAt. */
             daysAgo: number;
+            /** @description Mức đóng góp vào điểm cuối, đã chuẩn hóa: raw_j = w(event) × decay(daysAgo) × tripFactor × cos(v_j, v_candidate) contribution_j = raw_j / tổng raw của các nguồn dương. Client hiển thị định tính: >= 0.5 Nhiều · 0.2–0.5 Vừa · < 0.2 Ít. */
             contribution?: number;
         };
-        /** @description Projection cho card kèm rank, score, because. Agent lấy ProductDetail theo ID để bổ sung description/ngày trước khi lập lịch; không mặc định projection là ProductSummary đầy đủ. */
+        /** @description Projection cho card, kèm rank, score và because. Agent lấy ProductDetail theo ID để bổ sung description/ngày trước khi lập lịch; KHÔNG mặc định projection này là ProductSummary đầy đủ. */
         RecommendationItem: {
             rank?: number;
             productId: string;
             name: string;
             taxonomy: components["schemas"]["Taxonomy"];
             destination: string;
-            /** @description Giá snapshot VND; null không nghĩa là miễn phí. Không suy đơn vị từ taxonomy. */
+            brand?: string | null;
+            /** @description Giá snapshot VND cho một đơn vị theo priceUnit. null không nghĩa là miễn phí. */
             unitPrice: number | null;
             currency: components["schemas"]["Currency"];
+            /** @description [C1] Bắt buộc, không default. nights chỉ nhân khi PER_NIGHT. */
+            priceUnit: components["schemas"]["PriceUnit"];
+            /** @description Snapshot nguồn có trả giá lúc crawl; không xác nhận còn chỗ. */
             available: boolean;
+            /** @description [Q1] null khi chưa kiểm tra theo stay cụ thể. */
+            bookable?: boolean | null;
             imageUrl?: string | null;
             attributes?: components["schemas"]["ProductAttributes"];
             score?: number;
-            /** @description Lý do có căn cứ từ lịch sử; [] nếu chưa đủ dữ liệu hoặc popular. Không bịa lý do. Mảng đã sắp theo mức liên quan; contribution không bắt buộc. */
+            /** @description Lý do có căn cứ từ lịch sử. [] nếu chưa đủ dữ liệu hoặc strategy là popular. KHÔNG bịa lý do. Mảng đã sắp giảm dần theo contribution — because[0] là lý do mạnh nhất và là thứ client hiển thị trên thẻ. */
             because: components["schemas"]["BecauseItem"][];
-            /**
-             * @description Thiếu trường tương đương UNKNOWN. Chỉ gán đơn vị khi có chứng cứ nguồn; không suy từ taxonomy.
-             * @default UNKNOWN
-             * @enum {string}
-             */
-            priceUnit: "PER_NIGHT" | "PER_PERSON" | "PER_PACKAGE" | "UNKNOWN";
         };
         RecommendationDiagnostics: {
             eventsUsed: number;
+            /** @description Event bị bỏ vì trỏ tới sản phẩm không tồn tại. Con số lớn bất thường là dấu hiệu dữ liệu có vấn đề — lộ ra ở đây rẻ hơn lộ ra lúc demo. */
+            eventsSkipped?: number;
+            /** @description true khi dưới 3 event dùng được, hoặc khi CDP lỗi (cdp §6.3). */
             coldStart: boolean;
+            /** @description true khi event gần nhất cách trên 90 ngày. */
+            dormant?: boolean;
+            /** @description Danh mục bị loại vì đã có trong chuyến hiện tại. Đây là dữ liệu client dùng để vẽ checklist "✓ Khách sạn / ○ Vé máy bay" — hiển thị cả ở giao diện thường, không riêng debug mode. */
             excludedVerticals: components["schemas"]["Taxonomy"][];
+            /** @description true khi khách đã đặt đủ mọi taxonomy trong chuyến và engine phải bỏ category exclusion để không trả danh sách rỗng. */
+            exclusionRelaxed?: boolean;
+            /** @description [CHỜ DUYỆT: P3] false nghĩa là phải dựng lại user vector tại chỗ — đọc tối đa 500 event qua HTTP từ CDP clone. Đây là đường chậm; tỉ lệ false cao nghĩa là quy tắc vô hiệu hóa cache đang sai. */
+            userVectorCacheHit?: boolean;
+            /** @description [CHỜ DUYỆT: P3] Phải xấp xỉ 1.0. Lệch xa là dấu hiệu quên L2-normalize hoặc sai đơn vị thời gian trong decay — hai lỗi cho ra kết quả trông hoàn toàn hợp lý. */
+            userVectorNorm?: number;
+            engine?: components["schemas"]["EngineDiagnostics"];
             latencyMs: number;
         };
-        /** @description MVP ưu tiên hiển thị: strategy và recommendations. Thứ tự mảng là thứ tự hiển thị; metadata/diagnostics không bắt buộc gửi cho Web. */
+        /**
+         * @description MVP ưu tiên hiển thị strategy và recommendations. Thứ tự mảng là thứ tự hiển thị.
+         *     Quy tắc bắt buộc theo strategy: (1) cross_vertical PHẢI có nextVertical và destination khác null; (2) dormant PHẢI có ít nhất một because với daysAgo trên 90; (3) popular thì because của MỌI gợi ý là mảng rỗng; (4) coldStart true thì because rỗng — không bao giờ bịa lý do.
+         *     [C4] Engine dùng EXACT_FILTER_SCORE, không phải HNSW: category exclusion loại khoảng 50% catalog, nên lọc-trước-rồi-chấm-điểm vừa đúng vừa nhanh hơn lấy-top-K-rồi-lọc.
+         */
         RecommendationResponse: {
-            /** @description null khi không có JWT. */
+            /** @description null khi không có JWT. Không có JWT vẫn trả 200, không trả 401. */
             cdpUserId?: string | null;
             /** Format: date-time */
             generatedAt?: string;
             modelVersion?: string;
             strategy: components["schemas"]["Strategy"];
-            /** @description Tùy chọn, dùng khi hiển thị nhóm sản phẩm tiếp theo trong cross_vertical. */
+            /** @description Bắt buộc khác null khi strategy là cross_vertical. Dùng để hiển thị nhóm sản phẩm tiếp theo. */
             nextVertical?: components["schemas"]["Taxonomy"] | null;
+            /** @description Bắt buộc khác null khi strategy là cross_vertical. Bỏ trống trong request thì backend tự chọn theo lastDestination của profile. */
             destination?: string | null;
             recommendations: components["schemas"]["RecommendationItem"][];
             diagnostics?: components["schemas"]["RecommendationDiagnostics"];
+            requestId?: string;
         };
         AddCartItemRequest: {
             productId: string;
@@ -716,8 +932,12 @@ export interface components {
             message?: string | null;
             intentOverride?: components["schemas"]["TripIntentPatch"] | null;
             context?: {
-                /** @enum {string|null} */
-                language?: "vi" | "en" | null;
+                /**
+                 * @description Ngôn ngữ phản hồi. Khi context hoặc language vắng mặt, backend dùng vi; giá trị được lưu theo conversation.
+                 * @default vi
+                 * @enum {string}
+                 */
+                language: "vi" | "en";
             };
         } | {
             message: string;
@@ -843,6 +1063,23 @@ export interface components {
         };
         /** @description Baseline tích hợp 1.1.0. Phân biệt theo status. */
         ItineraryResponse: components["schemas"]["ItineraryCompleted"] | components["schemas"]["ItineraryNeedsClarification"] | components["schemas"]["ItineraryNoResults"] | components["schemas"]["ItineraryFallback"];
+        AssistantStatus: {
+            /** @enum {string} */
+            status: "ready" | "not_configured";
+            agent: string;
+            graphVersion: string;
+            /** @enum {string} */
+            dataMode: "fixture" | "http" | "disabled";
+            productCount?: number | null;
+        };
+        /** @description Union logic của payload SSE; trường event nằm ở dòng event của SSE. */
+        AssistantStreamEvent: {
+            /** @enum {string} */
+            event: "run.started" | "graph.topology" | "node.completed" | "run.completed" | "run.failed";
+            data: {
+                [key: string]: unknown;
+            };
+        };
         TrackEventRequest: {
             /**
              * @description Thêm giá trị mới là thay đổi tương thích ngược nhưng phải cập nhật contract trước.
@@ -1348,6 +1585,55 @@ export interface operations {
             422: components["responses"]["Error"];
             500: components["responses"]["Error"];
             503: components["responses"]["Error"];
+        };
+    };
+    streamItinerary: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description ID truy vết. Caller chưa gửi thì service đầu tiên tự sinh. */
+                "X-Request-ID"?: components["parameters"]["XRequestId"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ItineraryRequest"];
+            };
+        };
+        responses: {
+            /** @description Luồng Server-Sent Events. Kết quả nghiệp vụ nằm trong run.completed; lỗi sau khi mở stream nằm trong run.failed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                };
+            };
+            422: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    getAssistantStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Trạng thái agent */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantStatus"];
+                };
+            };
         };
     };
     trackEvent: {

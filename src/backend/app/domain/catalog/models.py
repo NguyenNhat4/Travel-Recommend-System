@@ -2,9 +2,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date
 from typing import Any
 
 TAXONOMIES = ("hotel", "flight", "attraction", "combo", "golf")
+
+
+def _date(value: Any) -> date | None:
+    if value is None or isinstance(value, date):
+        return value
+    return date.fromisoformat(str(value))
 
 
 @dataclass
@@ -16,7 +23,10 @@ class Product:
     description: str
     attributes: dict[str, Any] = field(default_factory=dict)
     unit_price: float | None = None
+    currency: str = "VND"
     available: bool = True
+    available_from: date | None = None
+    available_to: date | None = None
     image_url: str | None = None
 
     @classmethod
@@ -25,8 +35,21 @@ class Product:
         return cls(
             product_id=row["productId"], name=row["name"], taxonomy=row["taxonomy"], destination=row["destination"],
             description=row.get("description") or "", attributes=row.get("attributes") or {},
-            unit_price=row.get("unitPrice"), available=bool(row.get("available")), image_url=row.get("imageUrl"),
+            unit_price=row.get("unitPrice"), currency=row.get("currency") or "VND",
+            available=bool(row.get("available")),
+            available_from=_date(row.get("availableFrom")), available_to=_date(row.get("availableTo")),
+            image_url=row.get("imageUrl"),
         )
+
+    @property
+    def price_unit(self) -> str:
+        if self.unit_price is None:
+            return "UNKNOWN"
+        if self.taxonomy == "hotel":
+            return "PER_NIGHT"
+        if self.taxonomy == "combo":
+            return "PER_PACKAGE"
+        return "PER_PERSON"
 
     # --- vai trò suy ra (cùng quy tắc với view catalog.product_meta)
     @property

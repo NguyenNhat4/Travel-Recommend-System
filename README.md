@@ -41,18 +41,24 @@ POSTGRES_HOST_PORT=5433 docker compose up -d --wait postgres
 
 ## Chạy Backend
 
-Backend dùng virtualenv riêng tại `src/backend/.venv` (đã nằm trong `.gitignore`):
+```bash
+make backend
+```
+
+`make backend` build và chạy Backend trong Docker Compose; Compose cũng khởi động PostgreSQL nếu service đó chưa chạy. Kiểm tra `http://localhost:8000/health` sau khi server khởi động. Để xem log hoặc dừng riêng Backend, dùng `make backend-logs` hoặc `make backend-stop`; dữ liệu PostgreSQL vẫn được giữ.
+
+Để chạy Backend trực tiếp trên máy với reload khi sửa code, dùng virtualenv riêng tại `src/backend/.venv` (đã nằm trong `.gitignore`) rồi `make backend-local`:
 
 ```bash
 python3 -m venv src/backend/.venv
 src/backend/.venv/bin/python -m pip install -r src/backend/requirements.txt
-make backend
+make backend-local PYTHON=src/backend/.venv/bin/python
 ```
 
 `requirements.txt` kéo theo `torch` qua `sentence-transformers` (~550 MB), nên lần cài đầu khá lâu.
 Chỉ cần phần auth/contract mà không cần recsys thì cài tập con:
 `pip install fastapi uvicorn pydantic pydantic-settings psycopg[binary] argon2-cffi bcrypt 'PyJWT[crypto]' redis pytest`.
 
-Backend mặc định kết nối PostgreSQL Docker tại `localhost:5432` bằng hai role giới hạn trong `.env.example`. Kiểm tra `http://localhost:8000/health` sau khi server khởi động.
+Chạy local, Backend mặc định kết nối PostgreSQL Docker tại `localhost:5432` bằng hai role giới hạn trong `.env.example`.
 
 Snapshot catalog có version nằm tại `src/data_collection/snapshots/`; JSONL đã bung, artifact seed và database volume đều là runtime local, không nằm trong Git.

@@ -2,21 +2,43 @@
 
 Chạy từ **repo root**: code import theo dạng `src.backend.app…`.
 
+## Chạy trong Docker Compose
+
+```bash
+make backend
+```
+
+Compose dựng image Backend, đợi PostgreSQL healthy và mở API tại `http://localhost:8000`. Health endpoint là `GET /health`. Dùng `make backend-logs` để theo dõi log và `make backend-stop` để dừng riêng Backend; lệnh này giữ nguyên PostgreSQL cùng volume dữ liệu.
+
+Backend trong container kết nối PostgreSQL qua hostname `postgres` và hai role giới hạn riêng:
+
+```text
+DATABASE_URL=postgresql://vota_app_login:vota@postgres:5432/vota
+CDP_DATABASE_URL=postgresql://cdp_client_login:cdp@postgres:5432/vota
+```
+
+Không dùng URL từ máy host (`localhost`) bên trong container. Nếu cần DSN khác, cấu hình `BACKEND_DATABASE_URL` và `BACKEND_CDP_DATABASE_URL` trong shell hoặc `.env` ở repository root. Các biến `OPENAI_API_KEY`, `MODEL_NAME` và cấu hình itinerary được chuyển từ môi trường Compose vào Backend.
+
+Để dùng search/recommendation trên catalog đã seed, chạy `make demo-db` trước khi khởi động Backend. Backend không seed hoặc reset database khi container khởi động.
+
+## Chạy trực tiếp trên máy
+
 ```bash
 python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -r src/backend/requirements.txt
 docker compose up -d --wait postgres                   # hoặc make demo-db (có seed)
-uvicorn src.backend.app.main:app --reload               # hoặc make backend
+make backend-local                                     # uvicorn --reload
 python -m pytest -q src/backend/tests                   # không cần Postgres; integration tự skip
 ```
 
 Biến RecSys (đọc qua `core/config.py`): `EMBED_MODEL` (mặc định `intfloat/multilingual-e5-base`), `EMBED_CACHE_DIR`
 (`.embcache`), `SEARCH_CUTOFF` (`0.80`, calibrate theo model). Lần chạy đầu tải model và embed toàn bộ search unit,
-cache ở `.embcache/`; đổi template hoặc model thì hash đổi và phải embed lại. Thiếu database hoặc model thì RecSys tự
-tắt, các route còn lại vẫn chạy.
+cache ở `.embcache/`; đổi template hoặc model thì hash đổi và phải embed lại. Compose giữ cache model Hugging Face và
+`.embcache` trong hai named volume. Thiếu database hoặc model thì RecSys tự tắt, các route còn lại vẫn chạy.
 
-Endpoint hiện có (prefix `/api/v1`): `GET /search?q=&taxonomy=&destination=&limit=&offset=` ·
-`GET /similar/{productId}?k=` · `GET /recommendations?k=&cdp_user_id=` (tạm, sẽ lấy từ JWT) · `GET /popular?k=` ·
+Endpoint hiện có (prefix `/api/v1`): `GET|POST /search` (`q`/`query`, `taxonomy`, `destination`, `limit`, `offset`;
+Agent tool `query` được adapter đổi thành `q`) · `GET /similar/{productId}?k=` · `GET /recommendations?k=&destination=`
+(JWT tùy chọn, `cdp_user_id` lấy từ token) · `GET /popular?k=` ·
 `POST /assistant/itineraries` · `POST /assistant/itineraries/stream` · `GET /assistant/status`. Ngoài prefix: `GET /health`.
 
 ## Chỗ nào làm gì (docs/prd/architecture.md §2)
@@ -43,8 +65,9 @@ Test: `tests/unit/{domain,application,agents,infrastructure,api}`, `tests/contra
 
 ## PostgreSQL local
 
-PostgreSQL chạy trong Docker nhưng Backend vẫn kết nối qua hai DSN với hai role tách biệt. Giá trị dev mặc định
-(cũng có trong `.env.example`):
+PostgreSQL chạy trong Docker và Backend kết nối qua hai DSN với hai role tách biệt. `make backend` chạy Backend trong
+cùng Docker Compose project nên dùng hostname `postgres`; các URL host-local bên dưới (cũng có trong `.env.example`)
+chỉ dành cho `make backend-local`:
 
 ```env
 DATABASE_URL=postgresql://vota_app_login:vota@localhost:5432/vota
@@ -52,6 +75,7 @@ CDP_DATABASE_URL=postgresql://cdp_client_login:cdp@localhost:5432/vota
 CDP_ADAPTER=local
 ```
 
+- Với container, Compose đặt riêng `BACKEND_DATABASE_URL` và `BACKEND_CDP_DATABASE_URL`; giá trị mặc định dùng `postgres:5432` và vẫn giữ hai role giới hạn.
 - `DATABASE_URL`: adapter catalog/app; role này chỉ được đọc `cdp.products`, không được đọc profile/event.
 - `CDP_DATABASE_URL`: `LocalCdpClient` và `PostgresCdpReader`; role này chỉ được vào schema `cdp`.
 - `CDP_ADAPTER=http`: đường chuyển sang `CdpHttpClient` sau này; lúc đó mới dùng `CDP_BASE_URL` và `CDP_SERVICE_TOKEN`.
@@ -64,6 +88,44 @@ Chạy test đọc seed thật (không ghi DB):
 ```bash
 RUN_POSTGRES_INTEGRATION=1 python -m pytest -q src/backend/tests
 ```
+
+## LLM của itinerary agent
+
+`main.py` dựng **một** client LLM trong `lifespan` (`infrastructure/llm/build_chat_model`) và tiêm vào graph
+qua `app.state.itinerary_llm`. Node không tự dựng client: không được tiêm thì trả `LLM_UNAVAILABLE`
+(CLI đánh giá tự gọi `build_chat_model`).
+
+```env
+ITINERARY_USE_LLM=true          # false: không dựng client nào, không cần API key
+OPENAI_API_KEY=                 # thứ tự chọn provider: GEMINI -> OPENAI -> ANTHROPIC
+GEMINI_API_KEY=
+ANTHROPIC_API_KEY=
+ITINERARY_LLM_MODEL=            # bỏ trống: OpenAI dùng MODEL_NAME, provider khác dùng mặc định
+ITINERARY_LLM_TEMPERATURE=0     # riêng của agent, không dùng chung LLM_TEMPERATURE
+```
+
+`GET /api/v1/assistant/status` trả thêm `llmMode`:
+
+- `live` — đã dựng được client dùng chung.
+- `disabled` — `ITINERARY_USE_LLM=false`.
+- `unavailable` — đã bật nhưng thiếu API key hoặc thiếu SDK của provider.
+
+Với `disabled` và `unavailable`, app vẫn khởi động và các route khác vẫn phục vụ; riêng request itinerary
+trả 503 `LLM_UNAVAILABLE` có kiểm soát.
+
+Để Agent dùng Search/Recommendation của chính Backend thay cho fixture:
+
+```env
+ITINERARY_DATA_MODE=http
+ITINERARY_SERVICE_BASE_URL=http://127.0.0.1:8000
+JWT_SECRET=<secret HS256 giống service Auth>
+JWT_ALGORITHM=HS256
+```
+
+Tool `search_products` gọi GET `/api/v1/search` nhưng luôn bỏ Authorization. Tool
+`get_recommendations` forward Bearer token; Backend chỉ lấy `cdp_user_id` từ JWT đã xác minh. Hai
+response RecSys chứa đủ trường catalog để Agent hậu kiểm và không cần gọi Product Detail. Fixture vẫn
+là mặc định của development/test để máy chưa seed PostgreSQL vẫn chạy được.
 
 CLI chạy kịch bản đánh giá agent đã chuyển sang `src/evaluation/agent/cli.py`
 (`python -m src.evaluation.agent.cli --help`).

@@ -14,11 +14,11 @@ class LangGraphItineraryPlanner:
     def __init__(self, graph: Any):
         self._graph = graph
 
-    async def ainvoke(self, inputs: dict[str, Any]) -> dict[str, Any]:
-        return await self._graph.ainvoke(inputs)
+    async def ainvoke(self, inputs: dict[str, Any], config: dict[str, Any] | None = None) -> dict[str, Any]:
+        return await self._graph.ainvoke(inputs, config=config)
 
-    def astream(self, inputs: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
-        return self._graph.astream(inputs, stream_mode="values")
+    def astream(self, inputs: dict[str, Any], config: dict[str, Any] | None = None) -> AsyncIterator[dict[str, Any]]:
+        return self._graph.astream(inputs, stream_mode="values", config=config)
 
     def topology(self) -> dict[str, Any]:
         drawing = self._graph.get_graph()

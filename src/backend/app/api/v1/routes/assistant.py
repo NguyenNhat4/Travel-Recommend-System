@@ -45,7 +45,8 @@ async def _run(payload: ItineraryRequestModel, request: Request, authorization: 
     if planner is None:
         return _unavailable(request_id)
     try:
-        state = await use_case.run(planner, payload.model_dump(), request_id)
+        state = await use_case.run(planner, payload.model_dump(), request_id, config=use_case.trace_config(
+            payload.message, request_id, conversation, transport="json"))
     except TimeoutError:
         logger.warning("itinerary.timeout requestId=%s conversationId=%s transport=json", request_id, conversation)
         return JSONResponse(status_code=503, content=error_response(
@@ -110,7 +111,11 @@ async def stream_itinerary(payload: ItineraryRequestModel, request: Request,
         final_state: dict[str, Any] | None = None
         try:
             async with asyncio.timeout(use_case.request_timeout_seconds):
-                async for state in planner.astream(use_case.inputs(payload.model_dump(), request_id)):
+                async for state in planner.astream(
+                    use_case.inputs(payload.model_dump(), request_id),
+                    config=use_case.trace_config(payload.message, request_id, conversation,
+                                                 transport="sse", run_id=run_id),
+                ):
                     final_state = state
                     new_events = state.get("events", [])[emitted:]
                     if not new_events:
@@ -171,5 +176,6 @@ async def agent_status(request: Request):
         "status": "ready" if clients is not None else "not_configured",
         "agent": "Itinerary LangGraph Agent", "graphVersion": "1.4.0",
         "dataMode": getattr(request.app.state, "itinerary_data_mode", "disabled"),
+        "llmMode": getattr(request.app.state, "itinerary_llm_mode", "unavailable"),
         "productCount": getattr(clients, "product_count", None) if clients else None,
     }

@@ -59,10 +59,12 @@ def render_report(metrics: MetricsReport) -> str:
 ## 2. Architecture
 
 The workflow is a LangGraph `StateGraph` with a single entry path:
-`START -> intake -> classify`. Classification then branches to a simple answer,
-tool lookup, clarification, or error recovery. Tool results pass through
-`evaluate`; transient failures go through bounded `retry` back to `tool`, while
-exhausted retries go to `dead_letter`. Every branch ends at `finalize -> END`.
+`START -> intake -> classify`. Classification then branches to `converse` for
+chit-chat and refusals, `tool` for product lookup, `clarify` when trip details
+are missing, or `dead_letter` on error. Tool results pass through `evaluate`
+and reach `compose`, which builds the itinerary with fixed rules; transient
+failures go through bounded `retry` back to `tool`, while exhausted retries go
+to `dead_letter`. Every branch ends at `finalize -> END`.
 
 ## 3. State schema
 

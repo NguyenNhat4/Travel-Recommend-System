@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useTravel } from '../../context/TravelContext';
-import { calculateRecommendations } from '../../services/recsys';
+import { calculateRecommendations, fetchRecommendations, PERSONA_CDP_USER_MAP } from '../../services/recsys';
 import { CATALOG } from '../../data/catalog';
 import { ProductCard } from '../common/ProductCard';
 import { DemoAccountSwitcher } from '../common/DemoAccountSwitcher';
@@ -477,10 +477,48 @@ export const HomeView: React.FC = () => {
     navigate(`/search?q=${encodeURIComponent(query)}`);
   };
 
-  // Recommendation logic from V-OTA system
-  const recResponse = calculateRecommendations(currentPersona, activeEvents);
-  const { strategy, destination = 'Nha Trang', recommendations, diagnostics } = recResponse;
+  // Recommendation state from backend V-OTA system (with local fallback)
+  const [recResponse, setRecResponse] = useState(() =>
+    calculateRecommendations(currentPersona, activeEvents)
+  );
+  const [isLoadingRecs, setIsLoadingRecs] = useState(false);
   const [showSectionWhy, setShowSectionWhy] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const cdpUserId = currentPersona?.id
+      ? PERSONA_CDP_USER_MAP[currentPersona.id] || currentPersona.id
+      : null;
+
+    setIsLoadingRecs(true);
+    fetchRecommendations({
+      cdpUserId,
+      k: 4,
+      destination: currentPersona?.activeDestination,
+      fallbackUser: currentPersona,
+      fallbackEvents: activeEvents,
+      signal: controller.signal,
+    })
+      .then((data) => {
+        setRecResponse(data);
+      })
+      .catch((err) => {
+        if (!controller.signal.aborted) {
+          console.error('[HomeView] Failed to load recommendations:', err);
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setIsLoadingRecs(false);
+        }
+      });
+
+    return () => {
+      controller.abort();
+    };
+  }, [currentPersona, activeEvents]);
+
+  const { strategy, destination = 'Nha Trang', recommendations, diagnostics } = recResponse;
 
   // Close search panel on click outside
   useEffect(() => {
@@ -1192,7 +1230,7 @@ export const HomeView: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-5">
+              <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-5 transition-opacity duration-200 ${isLoadingRecs ? 'opacity-60 pointer-events-none' : 'opacity-100'}`}>
                 {recommendations.slice(0, 4).map((rec) => (
                   <ProductCard
                     key={rec.product.id}
@@ -1472,7 +1510,7 @@ export const HomeView: React.FC = () => {
               <div
                 key={dest.name}
                 onClick={() => handleSelectDestination(dest.name)}
-                className="w-56 sm:w-60 h-80 rounded-2xl overflow-hidden relative flex-shrink-0 cursor-pointer group shadow-md hover:shadow-2xl transition-all duration-300"
+                className="w-56 sm:w-60 md:w-[calc((100%-40px)/3)] lg:w-[calc((100%-60px)/4)] xl:w-[calc((100%-80px)/5)] h-80 rounded-2xl overflow-hidden relative flex-shrink-0 cursor-pointer group shadow-md hover:shadow-2xl transition-all duration-300"
               >
                 <img
                   src={dest.image}

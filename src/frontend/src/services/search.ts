@@ -173,3 +173,124 @@ export function searchProducts(
     categoryCounts
   };
 }
+
+export async function searchProductsApi(
+  query: string,
+  filters: SearchFilters = {},
+  sort: SortOption = 'relevance',
+  limit: number = 20,
+  offset: number = 0
+): Promise<SearchResponse> {
+  const cleanQ = query.trim();
+
+  try {
+    const destination = filters.destination && filters.destination.length > 0 ? filters.destination[0] : undefined;
+    const res = await fetch('/api/v1/search', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        query: cleanQ || 'khách sạn',
+        taxonomy: filters.taxonomy || null,
+        destination: destination || null,
+        limit,
+        offset,
+      }),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Search API returned status: ${res.status}`);
+    }
+
+    const data = await res.json();
+    const backendResults: any[] = Array.isArray(data.results) ? data.results : [];
+
+    let results: SearchResultItem[] = backendResults.map((item: any) => {
+      const matched = CATALOG.find(c => c.id === item.productId);
+      const product: Product = matched
+        ? {
+            ...matched,
+            name: item.name || matched.name,
+            unitPrice: item.unitPrice ?? matched.unitPrice,
+            imageUrl: item.imageUrl || matched.imageUrl,
+            destination: (item.destination as Destination) || matched.destination,
+            taxonomy: (item.taxonomy as Taxonomy) || matched.taxonomy,
+          }
+        : {
+            id: item.productId || 'p_' + Math.random().toString(36).slice(2, 7),
+            name: item.name || 'Dịch vụ du lịch',
+            taxonomy: (item.taxonomy as Taxonomy) || 'hotel',
+            destination: (item.destination as Destination) || 'Nha Trang',
+            unitPrice: item.unitPrice || 0,
+            currency: 'VND',
+            imageUrl: item.imageUrl || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?q=80&w=800&auto=format&fit=crop',
+            description: '',
+            attributes: item.attributes || {},
+            available: item.available ?? true,
+          };
+
+      const matchTags: string[] = [];
+      if (product.destination) matchTags.push(product.destination);
+      if (product.taxonomy === 'hotel') matchTags.push('Khách sạn');
+      if (product.taxonomy === 'flight') matchTags.push('Vé máy bay');
+      if (product.taxonomy === 'attraction') matchTags.push('Vé tham quan');
+      if (product.taxonomy === 'combo') matchTags.push('Combo');
+      if (product.taxonomy === 'golf') matchTags.push('Sân Golf');
+
+      return {
+        product,
+        relevanceScore: typeof item.score === 'number' ? item.score : 0.8,
+        matchTags,
+      };
+    });
+
+    // Client-side additional filters if specified
+    if (filters.minPrice !== undefined) {
+      results = results.filter(r => r.product.unitPrice >= filters.minPrice!);
+    }
+    if (filters.maxPrice !== undefined) {
+      results = results.filter(r => r.product.unitPrice <= filters.maxPrice!);
+    }
+    if (filters.minStarRating !== undefined) {
+      results = results.filter(r => !r.product.attributes.starRating || r.product.attributes.starRating >= filters.minStarRating!);
+    }
+
+    // Sort
+    if (sort === 'relevance') {
+      results.sort((a, b) => b.relevanceScore - a.relevanceScore);
+    } else if (sort === 'price_asc') {
+      results.sort((a, b) => a.product.unitPrice - b.product.unitPrice);
+    } else if (sort === 'price_desc') {
+      results.sort((a, b) => b.product.unitPrice - a.product.unitPrice);
+    }
+
+    const facetsTax = data.facets?.taxonomy || {};
+    const categoryCounts: Record<string, number> = {
+      all: data.total || results.length,
+      hotel: facetsTax.hotel ?? results.filter(r => r.product.taxonomy === 'hotel').length,
+      flight: facetsTax.flight ?? results.filter(r => r.product.taxonomy === 'flight').length,
+      attraction: facetsTax.attraction ?? results.filter(r => r.product.taxonomy === 'attraction').length,
+      combo: facetsTax.combo ?? results.filter(r => r.product.taxonomy === 'combo').length,
+      golf: facetsTax.golf ?? results.filter(r => r.product.taxonomy === 'golf').length,
+    };
+
+    const isWeakMatch = Boolean(
+      cleanQ.length > 3 &&
+      results.length > 0 &&
+      results[0].relevanceScore < (data.cutoff ?? 0.65)
+    );
+
+    return {
+      query: cleanQ,
+      total: data.total ?? results.length,
+      results,
+      isWeakMatch,
+      categoryCounts,
+    };
+  } catch (error) {
+    console.warn('Backend search API failed, falling back to local search:', error);
+    return searchProducts(cleanQ, filters, sort);
+  }
+}
+

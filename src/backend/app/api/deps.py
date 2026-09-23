@@ -14,7 +14,8 @@ def get_plan_itinerary(request: Request) -> PlanItinerary:
 
 
 def get_search(request: Request) -> Any:
-    return request.app.state.search
+    """None khi recsys bị tắt lúc khởi động; route search trả trang rỗng thay vì 500."""
+    return getattr(request.app.state, "search", None)
 
 
 def get_similar(request: Request) -> Any:
