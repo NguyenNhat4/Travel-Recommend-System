@@ -36,6 +36,60 @@ class QualityTests(unittest.TestCase):
         self.assertEqual(prop["attributes"]["descriptionLang"], "vi")
         self.assertEqual(rooms[0]["attributes"]["descriptionLang"], "vi")
 
+    def test_trip_hotel_maps_to_product_schema_with_no_rooms(self):
+        # trip_hotel() cố tình không trả rooms (chưa parse đủ giá gói phòng) — xem docstring collectors/trip_hotels.py.
+        prop, rooms = n.trip_hotel({
+            "hotelId": "999", "name": "Khách sạn thử nghiệm", "city": "Nha Trang", "province": "Khánh Hòa",
+            "minPrice": 800000, "currency": "VND", "latitude": 12.24, "longitude": 109.19,
+        }, {})
+        self.assertEqual(prop["taxonomy"], "hotel")
+        self.assertEqual(prop["attributes"]["level"], "property")
+        self.assertEqual(prop["unitPrice"], 800000)
+        self.assertEqual(prop["sourceRef"], "trip:hotel:999")
+        self.assertEqual(rooms, [])
+
+    def test_trip_combo_product_uses_flight_hotel_price_not_separate_price(self):
+        c = n.trip_combo_product({
+            "key": "combo:SGN-HPH:44319759", "fromCode": "SGN", "toCode": "HPH",
+            "fromCity": "TP. Hồ Chí Minh", "toCity": "Hải Phòng", "destination": "Hải Phòng",
+            "hotelName": "Melia Vinpearl Hải Phòng Rivera", "roomType": "Phòng Deluxe",
+            "price": 3560500, "separatePrice": 3954161, "flight": {},
+        })
+        self.assertEqual(c["taxonomy"], "combo")
+        self.assertEqual(c["unitPrice"], 3560500)
+        self.assertEqual(c["attributes"]["comboKind"], "trip_real_flight_hotel")
+        self.assertEqual(c["attributes"]["separatePrice"], 3954161)
+        self.assertEqual(c["sourceRef"], "trip:combo:SGN-HPH:44319759")
+        # Trang combo không có toạ độ khách sạn thật — phải có toạ độ tâm điểm đến, nếu không
+        # drop_missing_coordinates() sẽ loại bỏ toàn bộ combo (bug thật đã gặp khi chạy staging 23/09/2026).
+        self.assertIsNotNone(c["attributes"]["latitude"])
+        self.assertIsNotNone(c["attributes"]["longitude"])
+        self.assertEqual(c["attributes"]["locationPrecision"], "destination")
+
+    def test_trip_combo_product_has_no_coordinates_for_unknown_destination(self):
+        c = n.trip_combo_product({
+            "key": "combo:XXX-YYY:1", "fromCity": "A", "toCity": "B", "destination": "Không tồn tại",
+            "hotelName": "X", "roomType": "Y", "price": 100000, "flight": {},
+        })
+        self.assertIsNone(c["attributes"].get("latitude"))
+
+    def test_trip_combo_product_requires_a_price(self):
+        self.assertIsNone(n.trip_combo_product({"key": "combo:SGN-HPH:1", "hotelName": "X", "price": None}))
+
+    def test_booking_attraction_falls_back_to_destination_center_coordinates(self):
+        # booking_attraction_product() chưa từng lấy toạ độ thật (lỗ hổng có sẵn từ trước, không phải mới) —
+        # phát hiện lúc sửa bug giá cho Ninh Bình/Cát Bà 23/09/2026: nếu không có fallback này,
+        # drop_missing_coordinates() sẽ loại 100% sản phẩm từ nguồn này, y hệt bug combo trước đó.
+        p = n.booking_attraction_product({
+            "name": "Ninh Binh Day Tour: Hoa Lu, Trang An", "city": "Hà Nội", "price": 46, "currency": "USD",
+            "productId": "abc123",
+        }, {"USD": 23000})
+        self.assertEqual(p["destination"], "Ninh Bình")
+        self.assertIsNotNone(p["attributes"]["latitude"])
+        self.assertIsNotNone(p["attributes"]["longitude"])
+        self.assertEqual(p["attributes"]["locationPrecision"], "destination")
+        self.assertEqual(p["unitPrice"], 46 * 23000)
+
     def test_audience_city_does_not_prevent_matching_actual_ticket_venue(self):
         venue = Venue("nam-hoi-an", "VinWonders Nam Hội An", "Hội An", aliases=["vinwonders nam hoi an"],
                       latitude=15.78878, longitude=108.410788, status="auto", source="osm:W1")
@@ -91,6 +145,165 @@ class QualityTests(unittest.TestCase):
             self.assertIn("thiếu giá", rows[0]["issues"])
             self.assertIn("thiếu mô tả", rows[0]["issues"])
             self.assertEqual(p, before)
+
+    def test_rule_based_filter_drops_non_tourism_places_but_keeps_real_attractions(self):
+        for name, reason in (("Hanwha Life Việt Nam - SO Huế", "văn phòng bảo hiểm"),
+                             ("Trung tâm tiêm chủng VNVC Thành Phố Vinh", "cơ sở y tế"),
+                             ("Taxi Quy Nhơn Xanh", "hãng taxi / cho thuê xe"),
+                             ("Xuân Tính Motorbike Rental - Cho Thuê Xe Máy Quy Nhơn", "hãng taxi / cho thuê xe"),
+                             ("Ngân hàng Vietcombank Đà Nẵng", "ngân hàng"),
+                             ("Đại lý Vé Nhà hát Đó", "đại lý / công ty lữ hành"),
+                             ("Safari Cafe", "quán ăn / cà phê")):
+            self.assertEqual(n.non_tourism_reason(name), reason, name)
+        for name in ("Sun World Hạ Long", "Bãi biển Mỹ Khê", "Tháp Bà Ponagar", "Chợ đêm Đà Lạt", "Hội quán Phúc Kiến",
+                     "Bảo tàng Hồ Chí Minh", "Vịnh Hạ Long", "Nhà thờ Đức Bà", "Phố cổ Hội An", "Hòn Thơm"):
+            self.assertIsNone(n.non_tourism_reason(name), name)
+        self.assertIsNone(n.non_tourism_reason(None))
+
+    def test_hotel_granularity_flags_rooms_and_entire_places_only_with_evidence(self):
+        def product(pid, name, level, parent=None, kind=None, desc=""):
+            return {"productId": pid, "name": name, "taxonomy": "hotel", "description": desc,
+                    "attributes": {"level": level, "parentProductId": parent, "propertyType": kind}}
+        products = [
+            product("h1", "Khách sạn Có Phòng", "property"), product("r1", "Khách sạn Có Phòng - Deluxe", "room", "h1"),
+            product("h2", "Khách sạn Chỉ Agoda", "property"),
+            product("h3", "Villa Biển Xanh", "property", kind="biệt thự"), product("h4", "Căn hộ Sea View", "property", kind="Căn hộ"),
+            product("h5", "Căn hộ dịch vụ Sao", "property", kind="căn hộ dịch vụ"),
+            product("h6", "Nhà Gỗ Đà Lạt", "property", desc="Cho thuê nguyên căn 3 phòng ngủ"),
+            product("h7", "Villa Nhưng Là Khách Sạn", "property"),  # chỉ có tên "villa": không đủ bằng chứng
+        ]
+        n.annotate_hotel_granularity(products)
+        by = {p["productId"]: p["attributes"] for p in products}
+        self.assertTrue(by["h1"]["hasRoomRows"])
+        self.assertFalse(by["h2"]["hasRoomRows"])
+        self.assertNotIn("rentalUnit", by["h1"])
+        self.assertEqual(by["h3"]["rentalUnit"], "entire_place")
+        self.assertEqual(by["h4"]["rentalUnit"], "entire_place")
+        self.assertNotIn("rentalUnit", by["h5"])
+        self.assertEqual(by["h6"]["rentalUnit"], "entire_place")
+        self.assertIn("nguyên căn", by["h6"]["rentalUnitEvidence"].lower().replace("nguyen can", "nguyên căn"))
+        self.assertNotIn("rentalUnit", by["h7"])
+        self.assertNotIn("hasRoomRows", by["r1"])  # chỉ ghi ở dòng cơ sở
+
+    def test_location_warnings_are_dropped_with_their_children_but_vinpearl_is_kept(self):
+        def product(pid, ref, warning=None, parent=None, level="property", taxonomy="hotel"):
+            attrs = {"level": level, "parentProductId": parent, "latitude": 10.0, "longitude": 106.0}
+            if warning:
+                attrs["locationWarning"] = warning
+            return {"productId": pid, "sourceRef": ref, "name": pid, "taxonomy": taxonomy, "destination": "X", "attributes": attrs}
+        products = [
+            product("h1", "booking:hotel:1", "cách tâm Hà Nội 629 km"),
+            product("r1", "booking:hotel:1:room:a", parent="h1", level="room"),          # con không có cảnh báo riêng: vẫn bị xoá
+            product("r2", "booking:hotel:1:room:b", "cách tâm Hà Nội 629 km", "h1", "room"),
+            product("h2", "booking:hotel:2"),                                             # sạch: giữ
+            product("r3", "booking:hotel:2:room:a", parent="h2", level="room"),
+            product("a1", "trip:attraction:9", "cách tâm Pleiku 123 km", taxonomy="attraction", level=None),
+            product("v1", "vinpearl:hotel:x", "trùng toạ độ với khách sạn Vinpearl khác"),  # Vinpearl luôn giữ
+            {**product("v2", "booking:hotel:4139520", "cách tâm Biên Hòa 1071 km"), "name": "Meliá Vinpearl Phu Ly"},  # thương hiệu Vinpearl
+        ]
+        kept, removed = n.drop_location_warnings(products)
+        self.assertEqual({p["productId"] for p in kept}, {"h2", "r3", "v1", "v2"})
+        self.assertEqual({p["productId"] for p, _ in removed}, {"h1", "r1", "r2", "a1"})
+        reasons = {p["productId"]: why for p, why in removed}
+        self.assertIn("xa tâm điểm đến", reasons["h1"])
+        self.assertIn("thuộc sản phẩm bị xoá", reasons["r1"])
+        ids = {p["productId"] for p in kept}
+        self.assertTrue(all(p["attributes"].get("parentProductId") in ids | {None} for p in kept))  # không có dòng mồ côi
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "excluded.csv"
+            n.write_location_exclusions(removed, path)
+            with path.open(encoding="utf-8-sig") as f:
+                rows = list(csv.DictReader(f))
+            self.assertEqual({r["sourceRef"] for r in rows}, {"booking:hotel:1", "booking:hotel:1:room:a",
+                                                            "booking:hotel:1:room:b", "trip:attraction:9"})
+
+    def test_missing_coordinates_and_orphans_are_dropped_with_children_but_vinpearl_is_kept(self):
+        def product(pid, ref, lat=10.0, parent=None, level="property", name=None):
+            return {"productId": pid, "sourceRef": ref, "name": name or pid, "taxonomy": "hotel", "destination": "X",
+                    "attributes": {"level": level, "parentProductId": parent, "latitude": lat, "longitude": 106.0 if lat is not None else None}}
+        products = [product("h1", "booking:hotel:1", lat=None), product("r1", "booking:hotel:1:r", parent="h1", level="room"),
+                    product("h2", "booking:hotel:2"), product("r2", "booking:hotel:2:r", parent="h2", level="room"),
+                    product("v1", "vinpearl:hotel:x", lat=None), product("o1", "booking:hotel:9:r", parent="gone", level="room")]
+        kept, removed = n.drop_missing_coordinates(products)
+        self.assertEqual({p["productId"] for p in kept}, {"h2", "r2", "v1", "o1"})
+        self.assertEqual({p["productId"] for p, _ in removed}, {"h1", "r1"})
+        kept, orphans = n.drop_orphans(kept)  # o1 mồ côi vì cha "gone" không tồn tại
+        self.assertEqual({p["productId"] for p in kept}, {"h2", "r2", "v1"})
+        self.assertEqual([p["productId"] for p, _ in orphans], ["o1"])
+
+    def test_trip_flight_times_are_utc_and_become_vietnam_time(self):
+        self.assertEqual(n._hhmm("2026-10-10T00:10:00.000Z"), "07:10")
+        # chuyến bay sớm qua nửa đêm UTC: giờ và ngày đều phải sang ngày kế tiếp theo giờ Việt Nam
+        self.assertEqual(n._hhmm("2026-10-04T23:45:00.000Z"), "06:45")
+        self.assertEqual(n._ict_date("2026-10-04T23:45:00.000Z"), "2026-10-05")
+        self.assertEqual(n._ict_iso("2026-10-04T23:45:00.000Z"), "2026-10-05T06:45:00+07:00")
+        self.assertEqual(n._hhmm("2026-10-04T09:30:00"), "09:30")  # không có múi giờ: coi là giờ Việt Nam
+        self.assertIsNone(n._hhmm(None))
+        self.assertIsNone(n._ict_date("không phải ngày"))
+
+    def test_trip_flights_are_available_with_dates_and_carry_no_extra_flags(self):
+        record = {"fromCity": "Nha Trang", "toCity": "TP. Hồ Chí Minh", "fromCode": "nha", "toCode": "sgn",
+                  "fromAirports": ["CXR"], "toAirports": ["SGN"], "crawledAt": "2026-09-19T05:37:38Z",
+                  "url": "https://vn.trip.com/flights/x", "oneWay": {"lowPrice": 600000}, "flights": [
+                      {"flightNumber": "VJ609", "airline": "VietJet Air", "airlineCode": "VJ", "from": "CXR", "to": "SGN",
+                       "departureTime": "2026-10-04T23:45:00.000Z", "arrivalTime": "2026-10-05T00:55:00.000Z",
+                       "durationMinutes": 70, "nonstop": True, "price": 665000},
+                      {"flightNumber": "VJ609", "airline": "VietJet Air", "airlineCode": "VJ", "from": "CXR", "to": "SGN",
+                       "departureTime": "2026-10-19T00:00:00.000Z", "arrivalTime": "2026-10-19T01:00:00.000Z",
+                       "durationMinutes": 60, "nonstop": True, "price": 700000},
+                      {"flightNumber": "VN1", "airline": "Vietnam Airlines", "from": "CXR", "to": "SGN",
+                       "departureTime": "2026-10-10T13:55:00.000Z", "arrivalTime": "2026-10-10T15:00:00.000Z",
+                       "durationMinutes": 65, "price": None}]}
+        route, *flights = n.trip_route_products(record, 0)
+        by = {f["attributes"]["flightNumber"]: f for f in flights}
+        vj = by["VJ609"]
+        self.assertTrue(vj["available"])
+        self.assertEqual((vj["availableFrom"], vj["availableTo"]), ("2026-10-05", "2026-10-19"))
+        self.assertEqual(vj["attributes"]["datesSeen"], ["2026-10-05", "2026-10-19"])
+        self.assertEqual(vj["attributes"]["departureTimeLocal"], "06:45")
+        self.assertEqual(vj["attributes"]["departureAt"], "2026-10-05T06:45:00+07:00")
+        self.assertIn("(06:45)", vj["name"])
+        self.assertIn("cất cánh 06:45", vj["description"])
+        self.assertFalse(by["VN1"]["available"])  # không có giá thì không đánh dấu còn chuyến
+        self.assertTrue(route["available"])
+        self.assertEqual((route["availableFrom"], route["availableTo"]), ("2026-10-05", "2026-10-19"))
+        for p in [route, *flights]:
+            for extra in ("bookable", "priceKind", "availabilityStatus"):
+                self.assertNotIn(extra, p["attributes"])
+
+    def test_trip_attraction_without_price_is_kept_and_not_called_unticketed(self):
+        base = {"poiId": 1, "name": "Cầu Vàng", "province": "Đà Nẵng", "latitude": 15.99, "longitude": 107.99,
+                "introduction": "Cây cầu nổi tiếng " * 12, "crawledAt": "2026-09-19T00:00:00Z", "plan": {"destination": "Đà Nẵng"}}
+        free = n.trip_attraction_product({**base, "price": None})
+        paid = n.trip_attraction_product({**base, "poiId": 2, "price": 250000})
+        self.assertNotIn("ticketed", free["attributes"])  # chưa rõ: không kết luận "không bán vé"
+        self.assertIsNone(free["unitPrice"])
+        self.assertTrue(free["available"])  # điểm có trên trip.com vẫn đưa vào demo dù chưa có giá
+        self.assertTrue(paid["available"])
+        self.assertTrue(paid["attributes"]["ticketed"])
+        kept, removed = n.drop_unsellable([free, paid])
+        self.assertEqual(removed, 0)  # điểm tham quan trip.com thiếu giá không bị coi là "không đặt được"
+        self.assertEqual(len(kept), 2)
+        # nhưng khách sạn thiếu giá vẫn bị loại như trước
+        hotel = {"sourceRef": "agoda:hotel:x", "taxonomy": "hotel", "unitPrice": None, "attributes": {"level": "property"}}
+        self.assertEqual(n.drop_unsellable([hotel])[1], 1)
+
+    def test_room_price_outliers_are_dropped_but_suites_and_vinpearl_are_kept(self):
+        def room(pid, price, name, ref=None, parent="h1"):
+            return {"productId": pid, "sourceRef": ref or f"booking:hotel:1:room:{pid}", "name": name, "taxonomy": "hotel",
+                    "destination": "X", "unitPrice": price, "attributes": {"level": "room", "parentProductId": parent}}
+        rooms = [room("a", 900_000, "Khách sạn A - Phòng Superior"), room("b", 1_000_000, "Khách sạn A - Phòng Deluxe"),
+                 room("c", 1_100_000, "Khách sạn A - Phòng Gia Đình"), room("d", 1_200_000, "Khách sạn A - Phòng Premier"),
+                 room("e", 1_300_000, "Khách sạn A - Phòng Executive"),
+                 room("bad", 132_000_000, "Khách sạn A - Phòng Giường Đôi Nhỏ"),
+                 room("suite", 60_000_000, "Khách sạn A - Suite Hạng Tổng Thống"),
+                 room("vin", 70_000_000, "Vinpearl Resort - Phòng Studio", ref="vinpearl:hotel:1:room:vin")]
+        # khách sạn thứ hai chỉ có 2 hạng phòng: không đủ để so sánh nên không xoá dù chênh lệch lớn
+        rooms += [room("x1", 800_000, "B - Phòng 1", parent="h2"), room("x2", 20_000_000, "B - Phòng 2", parent="h2")]
+        kept, removed = n.drop_price_outliers(rooms)
+        self.assertEqual([p["productId"] for p, _ in removed], ["bad"])
+        self.assertIn("giá phòng bất thường", removed[0][1])
+        self.assertEqual({p["productId"] for p in kept}, {"a", "b", "c", "d", "e", "suite", "vin", "x1", "x2"})
 
 
 if __name__ == "__main__":

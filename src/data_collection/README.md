@@ -6,6 +6,8 @@ Khi thêm collector, phải mô tả nguồn của từng field và cách chạy
 
 **Chạy mọi lệnh trong thư mục này** (`src/data_collection`). Dữ liệu sinh ra nằm ở `data/` và không vào git;
 tài liệu schema cho các đội khác ở `docs/SCHEMA.md`, bộ mẫu 50 sản phẩm chạy thử ở `sample/`.
+Catalog/DB giữ 13 trường; bộ mẫu là projection `ProductSummary` cho API nên thêm `priceUnit=UNKNOWN`
+khi catalog chưa có bằng chứng về đơn vị giá.
 
 ## Dựng database demo từ snapshot
 
@@ -15,9 +17,9 @@ Từ repository root, sau khi kích hoạt môi trường Python và cài requir
 make demo-db
 ```
 
-Lệnh này chạy PostgreSQL bằng Docker, kiểm tra checksum rồi bung snapshot 10.320 sản phẩm vào `data/snapshots/2026-09-21/`, sinh dữ liệu CDP/app/Insider và chạy `db/verify*.sql`. Snapshot nén cùng 64 mapping combo đã duyệt nằm trong `snapshots/2026-09-21/`; Docker volume và toàn bộ dữ liệu đã bung vẫn chỉ ở local.
+Lệnh này chạy PostgreSQL bằng Docker, kiểm tra checksum rồi bung snapshot 11.387 sản phẩm vào `data/snapshots/2026-09-23/`, sinh dữ liệu CDP/app/Insider và chạy `db/verify*.sql`. Snapshot nén cùng 64 mapping combo đã duyệt nằm trong `snapshots/2026-09-23/`; Docker volume và toàn bộ dữ liệu đã bung vẫn chỉ ở local.
 
-Nếu database local đã có dữ liệu và cần dựng lại, dùng `make demo-db-reset`. Lệnh reset sẽ xóa state demo hiện tại trước khi nạp lại; có thể truyền ngày cố định, ví dụ `make demo-db-reset AS_OF=2026-09-21`.
+Nếu database local đã có dữ liệu và cần dựng lại, dùng `make demo-db-reset`. Lệnh reset sẽ xóa state demo hiện tại trước khi nạp lại; có thể truyền ngày cố định, ví dụ `make demo-db-reset AS_OF=2026-09-23`.
 
 ---
 
@@ -42,11 +44,32 @@ trên 15 điểm đến Việt Nam, mô tả tiếng Việt, xuất theo schema 
 Cần Python 3.10 trở lên (đã chạy thử trên 3.10 và 3.14).
 
 ```bash
-cd data-collection
+cd src/data_collection
 conda activate vsf                  # hoặc: python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 playwright install chromium         # Linux thiếu thư viện hệ thống: playwright install --with-deps chromium
 ```
+
+## Source of truth và automation
+
+`src/data_collection` là source chính duy nhất cho collector, chuẩn hoá, catalog và job nạp DB. Repository standalone cũ chỉ còn là backup/tham chiếu; không chạy hoặc phát triển pipeline từ đó nữa. Raw response, cache trình duyệt, crawl state, log, staging và backup runtime đều ở `data/` (Git ignore), không nằm trong snapshot.
+
+Catalog baseline được giữ ở hai dạng:
+
+- `data/products.jsonl`: bản runtime 11.387 sản phẩm để chạy ngay tại máy hiện tại, không track bởi Git.
+- `snapshots/2026-09-23/products.jsonl.gz`: bản nén có manifest/checksum được track, để clone sạch có cùng catalog.
+
+Pipeline tự động có thể phát lại cache, lấy live/API, chuẩn hoá, parse combo và chuẩn bị/nạp PostgreSQL bằng code `seed/` hiện hành:
+
+```bash
+python pipeline_demo.py run --no-db
+python pipeline_demo.py run --live-vinpearl --calendar-days 30 --live-trip --no-db
+python pipeline_demo.py fetch apify-agoda --max-usd 2
+python pipeline_demo.py auto --only-api
+python monitor.py                       # http://127.0.0.1:8765/pipeline
+```
+
+Muốn kiểm thử bước DB, từ repository root chạy `docker compose up -d --wait postgres`, rồi chạy `pipeline_demo.py run` (mặc định `localhost:5432/vota_demo`). Guardrail chỉ cho phép host local và tên database `vota_demo*`; job không chạm database ứng dụng `vota` hoặc `insider`. Token API chỉ đặt trong `.env` local theo `.env.example`, không commit.
 
 ## Chạy
 
@@ -170,7 +193,7 @@ flowchart LR
 
 ## Dữ liệu nằm ở đâu
 
-Mặc định trong `data-collection/data/` (đổi bằng `--data-dir` hoặc `VOTA_DATA_DIR`):
+Mặc định trong `src/data_collection/data/` (đổi bằng `--data-dir` hoặc `VOTA_DATA_DIR`):
 
 | Đường dẫn | Chứa gì |
 |---|---|
@@ -189,10 +212,11 @@ Parser sai thì sửa code rồi chạy `python crawl.py reparse <nguồn>`: par
 
 ## Schema đầu ra
 
-Mỗi dòng `products.jsonl` có đúng 14 trường: 13 trường của §6 cộng `priceUnit` — field bắt buộc của
-`ProductSummary` trong contract chung, được suy ra từ `taxonomy` chứ không do nguồn cung cấp
-(xem [docs/SCHEMA.md](docs/SCHEMA.md#bốn-chỗ-dễ-hiểu-sai)). Mọi trường khác nằm trong `attributes`,
-để không tự thêm field mà CDP thật không có.
+Mỗi dòng `products.jsonl` có đúng 13 trường của §6/CDP (xem
+[docs/SCHEMA.md](docs/SCHEMA.md#bốn-chỗ-dễ-hiểu-sai)). `priceUnit` là field bắt buộc của
+`ProductSummary` ở API, nhưng không phải cột của `cdp.products`; lớp API phải chiếu field này và dùng
+`UNKNOWN` khi nguồn catalog chưa cung cấp đơn vị, đúng contract baseline. Pipeline không tự suy đơn vị
+từ taxonomy. Mọi thông tin nguồn khác nằm trong `attributes`, để không tự thêm field mà CDP thật không có.
 
 ```json
 {
@@ -388,7 +412,7 @@ Catalog runtime đặt tại `src/data_collection/data/products.jsonl`; thư m�
 ```bash
 export SEED_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/vota
 export INSIDER_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/insider
-python -m data_collection.seed --as-of 2026-09-21 --seed 42 --reset
+python -m data_collection.seed --as-of 2026-09-23 --seed 42 --reset
 ```
 
 Pipeline parse combo, chuẩn hoá cửa sổ đặt chỗ, sinh lịch sử CDP/app/Insider rồi nạp hai database bằng transaction. Nó không tạo embedding; `catalog.product_vectors` phải còn rỗng cho tới job Search tuần 2. `purchase` thiếu `event_group_id` khoảng 3% là edge case cố ý và vẫn được giữ lại.
@@ -459,11 +483,12 @@ nghỉ và chạy tiếp khi bị chặn (mã thoát 75).
   lat/lng tối đa 30 ngày. Link Google Maps trong các file CSV chỉ để mở xem.
 
 <!-- seed-report:start -->
-### Snapshot seed gần nhất — `2026-09-21`
+### Snapshot seed gần nhất — `2026-09-23` (generate-only)
 
-- Nguồn catalog: `src/data_collection/data/snapshots/2026-09-21/products.jsonl` — SHA-256 `89f452e46eec24ae0fe50769037bc84dbb2609dd9c193a49336108f072acbb18`.
-- Seed `42`: 10,320 products · 2,000 profiles · 7,131 events · 218 combo items.
-- Search units: 2,897; `catalog.product_vectors`: 0 (đúng kế hoạch: embedding thuộc tuần 2).
-- Insider clone: 2,000 profiles · 4,155 events · 19,517 channel events.
+- Nguồn catalog: `src/data_collection/data/snapshots/2026-09-23/products.jsonl` — SHA-256 `518a9aa7820c9ded4a02a2c9148af2ffa4103272071c84b6e0235f4ee251d862`.
+- Seed `42`: 11,387 products · 2,000 profiles · 7,145 events · 307 combo items.
+- Search units: 3,183; `catalog.product_vectors`: 0 (embedding chạy ở pipeline Recommendation riêng).
+- Insider clone: 2,000 profiles · 4,167 events · 19,522 channel events.
+- Lượt kiểm tra này dùng `--generate-only`: artifact và checksum đã được kiểm, PostgreSQL chưa bị thay đổi.
 - Purchase thiếu `event_group_id` là edge case được sinh có chủ đích khoảng 3%; không xoá purchase.
 <!-- seed-report:end -->

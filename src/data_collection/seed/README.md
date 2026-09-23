@@ -2,7 +2,7 @@
 
 Pipeline deterministic theo `docs/MOCK_DATA_SPEC.md`, nạp đúng DDL trong `db/vota_schema.sql` và `db/insider_schema.sql`:
 
-1. tìm catalog runtime `src/data_collection/data/products.jsonl`, rồi snapshot có version `src/data_collection/snapshots/2026-09-21/products.jsonl.gz` (hoặc `--products PATH`); snapshot được kiểm checksum và bung dưới thư mục runtime ignored;
+1. tìm catalog runtime `src/data_collection/data/products.jsonl`, rồi snapshot có version `src/data_collection/snapshots/2026-09-23/products.jsonl.gz` (hoặc `--products PATH`); snapshot được kiểm checksum và bung dưới thư mục runtime ignored;
 2. parse combo và chuẩn hoá catalog theo cửa sổ 30 ngày;
 3. sinh CDP history, 4 persona + 50 tài khoản app, booking mẫu và dữ liệu Insider;
 4. nạp hai database bằng transaction; `--reset` xoá state local liên quan trước khi nạp;

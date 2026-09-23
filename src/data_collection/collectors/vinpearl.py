@@ -449,6 +449,10 @@ def build_hotel_record(h: dict, responses: list[tuple[str, dict]], site: dict, c
         "recordType": "vinpearl_hotel",
         "source": SOURCE,
         "key": f"hotel:{hotel_id}",
+        # ngày API thật sự trả lời hợp lệ (không phải ngày có giá — ngày hết phòng vẫn nằm trong danh sách này nhưng không có
+        # trong room["pricesByDate"]); cần cả hai để phân biệt "hết phòng" với "chưa hỏi ngày đó" khi dựng lịch trống thật
+        # (xem load_catalog.py: real_room_calendar).
+        "priceDatesQueried": [d for d, _ in responses],
         "hotelId": hotel_id,
         "hotelCode": hotel.get("code") or h.get("hotelCode"),
         "locationId": hotel.get("locationId") or h.get("locationId"),

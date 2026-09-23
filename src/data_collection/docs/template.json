@@ -1,0 +1,1086 @@
+{
+  "_doc": "Bản máy đọc được của schema catalog V-OTA: 13 trường CDP và toàn bộ khoá trong attributes theo từng loại sản phẩm, kèm độ phủ thực tế. Sinh tự động từ products.jsonl. Bản ghi thật để đọc và chạy thử nằm ở sample/ — cố ý không lặp lại ở đây.",
+  "_ban": "2026-09-23",
+  "_tong_san_pham": 11387,
+  "_doc_them": "SCHEMA.md (giải thích cho người đọc) · sample/ (50 bản ghi thật) · BANGIAO.md",
+  "schema": {
+    "productId": {
+      "kieu": "string (UUIDv5 của sourceRef)",
+      "do_phu": "100.0%",
+      "y_nghia": "Khoá chính. Ổn định giữa các lần chạy lại, dùng làm khoá ngoại được."
+    },
+    "name": {
+      "kieu": "string",
+      "do_phu": "100.0%",
+      "y_nghia": "Tên hiển thị. Hạng phòng theo mẫu \"<Khách sạn> - <Hạng phòng>\", vé máy bay \"Vé máy bay <A> - <B>\"."
+    },
+    "taxonomy": {
+      "kieu": "string enum",
+      "do_phu": "100.0%",
+      "y_nghia": "hotel | flight | attraction | combo | golf"
+    },
+    "destination": {
+      "kieu": "string",
+      "do_phu": "100.0%",
+      "y_nghia": "Nhãn điểm đến du lịch (Nha Trang, Phú Quốc…), không phải tỉnh hành chính."
+    },
+    "description": {
+      "kieu": "string",
+      "do_phu": "100.0%",
+      "y_nghia": "Văn bản để embedding. Nếu attributes.descriptionSource có giá trị thì đây là mô tả tự sinh."
+    },
+    "attributes": {
+      "kieu": "object",
+      "do_phu": "100.0%",
+      "y_nghia": "Mọi trường ngoài 13 trường CDP. Khoá thay đổi theo taxonomy, xem attributes_by_taxonomy."
+    },
+    "unitPrice": {
+      "kieu": "number | null",
+      "do_phu": "97.4%",
+      "y_nghia": "Khách sạn: giá 1 đêm. null nghĩa là chưa lấy được giá, không phải miễn phí."
+    },
+    "currency": {
+      "kieu": "string",
+      "do_phu": "100.0%",
+      "y_nghia": "Luôn là \"VND\"."
+    },
+    "available": {
+      "kieu": "boolean",
+      "do_phu": "100.0%",
+      "y_nghia": "true = nguồn có trả giá tại thời điểm crawl (vé máy bay: trip.com liệt kê chuyến có giá; điểm tham quan trip.com: địa điểm có trên trip.com, có thể chưa có giá). KHÔNG phải xác nhận còn phòng/vé/chỗ hiện tại."
+    },
+    "availableFrom": {
+      "kieu": "string (YYYY-MM-DD) | null",
+      "do_phu": "94.9%",
+      "y_nghia": "Vé/combo/golf Vinpearl: ngày bắt đầu bán (saleStartDate của API Vinpearl). Vé máy bay: ngày bay sớm nhất trip.com liệt kê (giờ VN). Khách sạn, điểm tham quan trip.com: null vì nguồn không công bố."
+    },
+    "availableTo": {
+      "kieu": "string (YYYY-MM-DD) | null",
+      "do_phu": "94.9%",
+      "y_nghia": "Vé/combo/golf Vinpearl: ngày hết hạn bán (saleEndDate của API Vinpearl). Vé máy bay: ngày bay muộn nhất trip.com liệt kê (giờ VN). Khách sạn, điểm tham quan trip.com: null vì nguồn không công bố."
+    },
+    "imageUrl": {
+      "kieu": "string (URL) | null",
+      "do_phu": "94.7%",
+      "y_nghia": "Ảnh chính. Ảnh phụ nằm trong attributes.images."
+    },
+    "sourceRef": {
+      "kieu": "string",
+      "do_phu": "100.0%",
+      "y_nghia": "Định danh gốc: \"<nguồn>:<loại>:<id>\". Nguồn: vinpearl | booking | agoda | trip."
+    }
+  },
+  "attributes_by_taxonomy": {
+    "hotel_room": {
+      "so_san_pham": 7738,
+      "attributes": {
+        "level": {
+          "do_phu": "100%",
+          "y_nghia": "property = khách sạn, room = hạng phòng; flight: route = tuyến, flight = chuyến cụ thể"
+        },
+        "priceObservedAt": {
+          "do_phu": "100%",
+          "y_nghia": ""
+        },
+        "priceQuery": {
+          "do_phu": "100%",
+          "y_nghia": ""
+        },
+        "availabilityEvidenceKind": {
+          "do_phu": "100%",
+          "y_nghia": ""
+        },
+        "hotelName": {
+          "do_phu": "100%",
+          "y_nghia": "tên khách sạn cha"
+        },
+        "roomName": {
+          "do_phu": "100%",
+          "y_nghia": "tên hạng phòng"
+        },
+        "parentProductId": {
+          "do_phu": "100%",
+          "y_nghia": "productId của khách sạn cha (hạng phòng) hoặc tuyến bay cha"
+        },
+        "latitude": {
+          "do_phu": "100%",
+          "y_nghia": "vĩ độ WGS84"
+        },
+        "longitude": {
+          "do_phu": "100%",
+          "y_nghia": "kinh độ WGS84"
+        },
+        "priceDate": {
+          "do_phu": "100%",
+          "y_nghia": "ngày nhận phòng đã dùng để hỏi giá"
+        },
+        "url": {
+          "do_phu": "100%",
+          "y_nghia": "trang nguồn của sản phẩm"
+        },
+        "descriptionLang": {
+          "do_phu": "100%",
+          "y_nghia": "vi / en — đoán theo tỷ lệ ký tự có dấu, không phải kiểm tra ngôn ngữ đầy đủ"
+        },
+        "fieldSources": {
+          "do_phu": "100%",
+          "y_nghia": "trường nào lấy từ nguồn nào, dùng để truy nguồn"
+        },
+        "locationSource": {
+          "do_phu": "100%",
+          "y_nghia": "booking.com / agoda.com / trip.com / vinpearl / osm / ourairports / manual"
+        },
+        "locationPrecision": {
+          "do_phu": "100%",
+          "y_nghia": "exact = vị trí riêng của sản phẩm; venue = khu vui chơi dùng vé; airport = sân bay đến; poi = điểm tham quan trip.com; destination = tâm điểm đến (combo bay+ở trip.com, không phải toạ độ khách sạn thật, không dùng để tính khoảng cách)"
+        },
+        "amenities": {
+          "do_phu": "100%",
+          "y_nghia": "tiện ích, đã gộp từ nhiều nguồn nên có thể trùng ý"
+        },
+        "priceNights": {
+          "do_phu": "99%",
+          "y_nghia": "số đêm của unitPrice (luôn là 1)"
+        },
+        "checkIn": {
+          "do_phu": "99%",
+          "y_nghia": ""
+        },
+        "checkOut": {
+          "do_phu": "99%",
+          "y_nghia": ""
+        },
+        "descriptionSource": {
+          "do_phu": "99%",
+          "y_nghia": "có mặt nghĩa là mô tả được tự sinh, không phải văn bản gốc của nguồn"
+        },
+        "province": {
+          "do_phu": "99%",
+          "y_nghia": "tỉnh/thành theo địa chỉ, khác với destination (nhãn điểm đến du lịch)"
+        },
+        "city": {
+          "do_phu": "99%",
+          "y_nghia": "thành phố theo địa chỉ"
+        },
+        "address": {
+          "do_phu": "99%",
+          "y_nghia": "địa chỉ nguồn cung cấp"
+        },
+        "roomId": {
+          "do_phu": "99%",
+          "y_nghia": ""
+        },
+        "conditions": {
+          "do_phu": "99%",
+          "y_nghia": "điều kiện đặt phòng / sử dụng vé"
+        },
+        "bed": {
+          "do_phu": "98%",
+          "y_nghia": "loại giường"
+        },
+        "maxOccupancy": {
+          "do_phu": "95%",
+          "y_nghia": "số khách tối đa"
+        },
+        "roomSizeM2": {
+          "do_phu": "95%",
+          "y_nghia": "diện tích phòng (m2)"
+        },
+        "starRating": {
+          "do_phu": "70%",
+          "y_nghia": "hạng sao 1–5"
+        },
+        "starRatingType": {
+          "do_phu": "69%",
+          "y_nghia": "official = hạng sao chính thức, estimated = do nguồn tự xếp"
+        },
+        "propertyType": {
+          "do_phu": "39%",
+          "y_nghia": "khách sạn / resort / căn hộ / homestay…"
+        },
+        "familyFriendly": {
+          "do_phu": "24%",
+          "y_nghia": "phù hợp gia đình có trẻ nhỏ"
+        },
+        "oceanView": {
+          "do_phu": "18%",
+          "y_nghia": "phòng hướng biển"
+        }
+      }
+    },
+    "hotel_property": {
+      "so_san_pham": 2321,
+      "attributes": {
+        "level": {
+          "do_phu": "100%",
+          "y_nghia": "property = khách sạn, room = hạng phòng; flight: route = tuyến, flight = chuyến cụ thể"
+        },
+        "priceObservedAt": {
+          "do_phu": "100%",
+          "y_nghia": ""
+        },
+        "priceQuery": {
+          "do_phu": "100%",
+          "y_nghia": ""
+        },
+        "availabilityEvidenceKind": {
+          "do_phu": "100%",
+          "y_nghia": ""
+        },
+        "address": {
+          "do_phu": "100%",
+          "y_nghia": "địa chỉ nguồn cung cấp"
+        },
+        "priceDate": {
+          "do_phu": "100%",
+          "y_nghia": "ngày nhận phòng đã dùng để hỏi giá"
+        },
+        "priceNights": {
+          "do_phu": "100%",
+          "y_nghia": "số đêm của unitPrice (luôn là 1)"
+        },
+        "priceAdults": {
+          "do_phu": "100%",
+          "y_nghia": "số người lớn đã dùng để hỏi giá"
+        },
+        "images": {
+          "do_phu": "100%",
+          "y_nghia": "ảnh phụ; ảnh chính nằm ở trường imageUrl cấp trên"
+        },
+        "url": {
+          "do_phu": "100%",
+          "y_nghia": "trang nguồn của sản phẩm"
+        },
+        "bookingUrl": {
+          "do_phu": "100%",
+          "y_nghia": ""
+        },
+        "descriptionLang": {
+          "do_phu": "100%",
+          "y_nghia": "vi / en — đoán theo tỷ lệ ký tự có dấu, không phải kiểm tra ngôn ngữ đầy đủ"
+        },
+        "fieldSources": {
+          "do_phu": "100%",
+          "y_nghia": "trường nào lấy từ nguồn nào, dùng để truy nguồn"
+        },
+        "latitude": {
+          "do_phu": "100%",
+          "y_nghia": "vĩ độ WGS84"
+        },
+        "longitude": {
+          "do_phu": "100%",
+          "y_nghia": "kinh độ WGS84"
+        },
+        "locationSource": {
+          "do_phu": "100%",
+          "y_nghia": "booking.com / agoda.com / trip.com / vinpearl / osm / ourairports / manual"
+        },
+        "locationPrecision": {
+          "do_phu": "100%",
+          "y_nghia": "exact = vị trí riêng của sản phẩm; venue = khu vui chơi dùng vé; airport = sân bay đến; poi = điểm tham quan trip.com; destination = tâm điểm đến (combo bay+ở trip.com, không phải toạ độ khách sạn thật, không dùng để tính khoảng cách)"
+        },
+        "checkIn": {
+          "do_phu": "100%",
+          "y_nghia": ""
+        },
+        "checkOut": {
+          "do_phu": "100%",
+          "y_nghia": ""
+        },
+        "otaPrices": {
+          "do_phu": "100%",
+          "y_nghia": "giá cùng sản phẩm ở các OTA khác, để so sánh"
+        },
+        "city": {
+          "do_phu": "100%",
+          "y_nghia": "thành phố theo địa chỉ"
+        },
+        "amenities": {
+          "do_phu": "100%",
+          "y_nghia": "tiện ích, đã gộp từ nhiều nguồn nên có thể trùng ý"
+        },
+        "reviewScore": {
+          "do_phu": "97%",
+          "y_nghia": "điểm đánh giá trung bình — KHÔNG có nội dung hay tên người đánh giá"
+        },
+        "reviewScoreScale": {
+          "do_phu": "97%",
+          "y_nghia": "thang điểm của reviewScore (10 hoặc 5)"
+        },
+        "reviewCount": {
+          "do_phu": "97%",
+          "y_nghia": "số lượt đánh giá"
+        },
+        "familyFriendly": {
+          "do_phu": "79%",
+          "y_nghia": "phù hợp gia đình có trẻ nhỏ"
+        },
+        "roomTypeCount": {
+          "do_phu": "79%",
+          "y_nghia": ""
+        },
+        "province": {
+          "do_phu": "79%",
+          "y_nghia": "tỉnh/thành theo địa chỉ, khác với destination (nhãn điểm đến du lịch)"
+        },
+        "starRating": {
+          "do_phu": "70%",
+          "y_nghia": "hạng sao 1–5"
+        },
+        "starRatingType": {
+          "do_phu": "70%",
+          "y_nghia": "official = hạng sao chính thức, estimated = do nguồn tự xếp"
+        },
+        "highlights": {
+          "do_phu": "68%",
+          "y_nghia": ""
+        },
+        "propertyType": {
+          "do_phu": "36%",
+          "y_nghia": "khách sạn / resort / căn hộ / homestay…"
+        },
+        "oceanView": {
+          "do_phu": "31%",
+          "y_nghia": "phòng hướng biển"
+        },
+        "nameEn": {
+          "do_phu": "13%",
+          "y_nghia": ""
+        }
+      }
+    },
+    "attraction": {
+      "so_san_pham": 610,
+      "attributes": {
+        "images": {
+          "do_phu": "100%",
+          "y_nghia": "ảnh phụ; ảnh chính nằm ở trường imageUrl cấp trên"
+        },
+        "url": {
+          "do_phu": "100%",
+          "y_nghia": "trang nguồn của sản phẩm"
+        },
+        "descriptionLang": {
+          "do_phu": "100%",
+          "y_nghia": "vi / en — đoán theo tỷ lệ ký tự có dấu, không phải kiểm tra ngôn ngữ đầy đủ"
+        },
+        "fieldSources": {
+          "do_phu": "100%",
+          "y_nghia": "trường nào lấy từ nguồn nào, dùng để truy nguồn"
+        },
+        "latitude": {
+          "do_phu": "100%",
+          "y_nghia": "vĩ độ WGS84"
+        },
+        "longitude": {
+          "do_phu": "100%",
+          "y_nghia": "kinh độ WGS84"
+        },
+        "locationSource": {
+          "do_phu": "100%",
+          "y_nghia": "booking.com / agoda.com / trip.com / vinpearl / osm / ourairports / manual"
+        },
+        "locationPrecision": {
+          "do_phu": "100%",
+          "y_nghia": "exact = vị trí riêng của sản phẩm; venue = khu vui chơi dùng vé; airport = sân bay đến; poi = điểm tham quan trip.com; destination = tâm điểm đến (combo bay+ở trip.com, không phải toạ độ khách sạn thật, không dùng để tính khoảng cách)"
+        },
+        "priceObservedAt": {
+          "do_phu": "94%",
+          "y_nghia": ""
+        },
+        "province": {
+          "do_phu": "77%",
+          "y_nghia": "tỉnh/thành theo địa chỉ, khác với destination (nhãn điểm đến du lịch)"
+        },
+        "openingHours": {
+          "do_phu": "68%",
+          "y_nghia": "giờ mở cửa, nguồn trip.com"
+        },
+        "address": {
+          "do_phu": "68%",
+          "y_nghia": "địa chỉ nguồn cung cấp"
+        },
+        "popularityScore": {
+          "do_phu": "61%",
+          "y_nghia": ""
+        },
+        "district": {
+          "do_phu": "61%",
+          "y_nghia": ""
+        },
+        "descriptionSource": {
+          "do_phu": "60%",
+          "y_nghia": "có mặt nghĩa là mô tả được tự sinh, không phải văn bản gốc của nguồn"
+        },
+        "nameEn": {
+          "do_phu": "44%",
+          "y_nghia": ""
+        },
+        "durationMinutes": {
+          "do_phu": "40%",
+          "y_nghia": "thời lượng tham quan hoặc thời gian bay (phút)"
+        },
+        "familyFriendly": {
+          "do_phu": "37%",
+          "y_nghia": "phù hợp gia đình có trẻ nhỏ"
+        },
+        "venue": {
+          "do_phu": "33%",
+          "y_nghia": "địa điểm sử dụng vé, xem collectors/venues.csv"
+        },
+        "suggestedDuration": {
+          "do_phu": "33%",
+          "y_nghia": "thời lượng gợi ý dạng chữ"
+        },
+        "brand": {
+          "do_phu": "33%",
+          "y_nghia": "thương hiệu (Vinpearl, Meliá…)"
+        },
+        "tourCode": {
+          "do_phu": "33%",
+          "y_nghia": "mã tour/vé của Vinpearl"
+        },
+        "adultOriginalPrice": {
+          "do_phu": "33%",
+          "y_nghia": "giá gốc người lớn trước khuyến mãi"
+        },
+        "childPrice": {
+          "do_phu": "33%",
+          "y_nghia": "giá trẻ em"
+        },
+        "promo": {
+          "do_phu": "33%",
+          "y_nghia": "nội dung khuyến mãi"
+        },
+        "audience": {
+          "do_phu": "33%",
+          "y_nghia": "đối tượng phù hợp do nguồn gắn nhãn"
+        },
+        "soldQuantity": {
+          "do_phu": "33%",
+          "y_nghia": "số lượng đã bán do nguồn công bố"
+        },
+        "supplier": {
+          "do_phu": "33%",
+          "y_nghia": "đơn vị cung cấp dịch vụ"
+        },
+        "vinpearlType": {
+          "do_phu": "33%",
+          "y_nghia": "mã loại sản phẩm nội bộ Vinpearl"
+        },
+        "salesChannels": {
+          "do_phu": "33%",
+          "y_nghia": "kênh bán nội bộ Vinpearl"
+        },
+        "availabilityRangeKind": {
+          "do_phu": "33%",
+          "y_nghia": ""
+        },
+        "hasDetail": {
+          "do_phu": "33%",
+          "y_nghia": "đã lấy được trang chi tiết hay chỉ có dữ liệu trang danh sách"
+        },
+        "policies": {
+          "do_phu": "32%",
+          "y_nghia": ""
+        },
+        "tags": {
+          "do_phu": "30%",
+          "y_nghia": ""
+        },
+        "rating": {
+          "do_phu": "29%",
+          "y_nghia": ""
+        },
+        "ratingScale": {
+          "do_phu": "29%",
+          "y_nghia": ""
+        },
+        "reviewCount": {
+          "do_phu": "29%",
+          "y_nghia": "số lượt đánh giá"
+        },
+        "ranking": {
+          "do_phu": "18%",
+          "y_nghia": ""
+        },
+        "ticketed": {
+          "do_phu": "12%",
+          "y_nghia": "true = trip.com có hiện giá vé; vắng mặt = chưa rõ (trip.com không hiện giá, KHÔNG có nghĩa là miễn phí)"
+        },
+        "openingHoursDetail": {
+          "do_phu": "11%",
+          "y_nghia": ""
+        }
+      }
+    },
+    "flight": {
+      "so_san_pham": 466,
+      "attributes": {
+        "level": {
+          "do_phu": "100%",
+          "y_nghia": "property = khách sạn, room = hạng phòng; flight: route = tuyến, flight = chuyến cụ thể"
+        },
+        "parentProductId": {
+          "do_phu": "100%",
+          "y_nghia": "productId của khách sạn cha (hạng phòng) hoặc tuyến bay cha"
+        },
+        "flightNumber": {
+          "do_phu": "100%",
+          "y_nghia": "số hiệu chuyến bay"
+        },
+        "airline": {
+          "do_phu": "100%",
+          "y_nghia": "hãng bay"
+        },
+        "airlineCode": {
+          "do_phu": "100%",
+          "y_nghia": ""
+        },
+        "originCity": {
+          "do_phu": "100%",
+          "y_nghia": ""
+        },
+        "destinationCity": {
+          "do_phu": "100%",
+          "y_nghia": ""
+        },
+        "originDestination": {
+          "do_phu": "100%",
+          "y_nghia": ""
+        },
+        "originAirport": {
+          "do_phu": "100%",
+          "y_nghia": ""
+        },
+        "destinationAirport": {
+          "do_phu": "100%",
+          "y_nghia": ""
+        },
+        "departureTimeLocal": {
+          "do_phu": "100%",
+          "y_nghia": ""
+        },
+        "arrivalTimeLocal": {
+          "do_phu": "100%",
+          "y_nghia": ""
+        },
+        "nonstop": {
+          "do_phu": "100%",
+          "y_nghia": ""
+        },
+        "latitude": {
+          "do_phu": "100%",
+          "y_nghia": "vĩ độ WGS84"
+        },
+        "longitude": {
+          "do_phu": "100%",
+          "y_nghia": "kinh độ WGS84"
+        },
+        "destinationAirportName": {
+          "do_phu": "100%",
+          "y_nghia": ""
+        },
+        "locationSource": {
+          "do_phu": "100%",
+          "y_nghia": "booking.com / agoda.com / trip.com / vinpearl / osm / ourairports / manual"
+        },
+        "locationPrecision": {
+          "do_phu": "100%",
+          "y_nghia": "exact = vị trí riêng của sản phẩm; venue = khu vui chơi dùng vé; airport = sân bay đến; poi = điểm tham quan trip.com; destination = tâm điểm đến (combo bay+ở trip.com, không phải toạ độ khách sạn thật, không dùng để tính khoảng cách)"
+        },
+        "originLatitude": {
+          "do_phu": "100%",
+          "y_nghia": ""
+        },
+        "originLongitude": {
+          "do_phu": "100%",
+          "y_nghia": ""
+        },
+        "datesSeen": {
+          "do_phu": "100%",
+          "y_nghia": ""
+        },
+        "departureAt": {
+          "do_phu": "100%",
+          "y_nghia": ""
+        },
+        "arrivalAt": {
+          "do_phu": "100%",
+          "y_nghia": ""
+        },
+        "priceObservedAt": {
+          "do_phu": "100%",
+          "y_nghia": ""
+        },
+        "url": {
+          "do_phu": "100%",
+          "y_nghia": "trang nguồn của sản phẩm"
+        },
+        "descriptionSource": {
+          "do_phu": "100%",
+          "y_nghia": "có mặt nghĩa là mô tả được tự sinh, không phải văn bản gốc của nguồn"
+        },
+        "descriptionLang": {
+          "do_phu": "100%",
+          "y_nghia": "vi / en — đoán theo tỷ lệ ký tự có dấu, không phải kiểm tra ngôn ngữ đầy đủ"
+        },
+        "fieldSources": {
+          "do_phu": "100%",
+          "y_nghia": "trường nào lấy từ nguồn nào, dùng để truy nguồn"
+        },
+        "durationMinutes": {
+          "do_phu": "98%",
+          "y_nghia": "thời lượng tham quan hoặc thời gian bay (phút)"
+        },
+        "notInLatestSnapshot": {
+          "do_phu": "24%",
+          "y_nghia": ""
+        }
+      }
+    },
+    "combo": {
+      "so_san_pham": 133,
+      "attributes": {
+        "url": {
+          "do_phu": "100%",
+          "y_nghia": "trang nguồn của sản phẩm"
+        },
+        "descriptionLang": {
+          "do_phu": "100%",
+          "y_nghia": "vi / en — đoán theo tỷ lệ ký tự có dấu, không phải kiểm tra ngôn ngữ đầy đủ"
+        },
+        "fieldSources": {
+          "do_phu": "100%",
+          "y_nghia": "trường nào lấy từ nguồn nào, dùng để truy nguồn"
+        },
+        "latitude": {
+          "do_phu": "100%",
+          "y_nghia": "vĩ độ WGS84"
+        },
+        "longitude": {
+          "do_phu": "100%",
+          "y_nghia": "kinh độ WGS84"
+        },
+        "locationSource": {
+          "do_phu": "100%",
+          "y_nghia": "booking.com / agoda.com / trip.com / vinpearl / osm / ourairports / manual"
+        },
+        "locationPrecision": {
+          "do_phu": "100%",
+          "y_nghia": "exact = vị trí riêng của sản phẩm; venue = khu vui chơi dùng vé; airport = sân bay đến; poi = điểm tham quan trip.com; destination = tâm điểm đến (combo bay+ở trip.com, không phải toạ độ khách sạn thật, không dùng để tính khoảng cách)"
+        },
+        "priceObservedAt": {
+          "do_phu": "99%",
+          "y_nghia": ""
+        },
+        "images": {
+          "do_phu": "71%",
+          "y_nghia": "ảnh phụ; ảnh chính nằm ở trường imageUrl cấp trên"
+        },
+        "brand": {
+          "do_phu": "70%",
+          "y_nghia": "thương hiệu (Vinpearl, Meliá…)"
+        },
+        "tourCode": {
+          "do_phu": "70%",
+          "y_nghia": "mã tour/vé của Vinpearl"
+        },
+        "province": {
+          "do_phu": "70%",
+          "y_nghia": "tỉnh/thành theo địa chỉ, khác với destination (nhãn điểm đến du lịch)"
+        },
+        "adultOriginalPrice": {
+          "do_phu": "70%",
+          "y_nghia": "giá gốc người lớn trước khuyến mãi"
+        },
+        "childPrice": {
+          "do_phu": "70%",
+          "y_nghia": "giá trẻ em"
+        },
+        "promo": {
+          "do_phu": "70%",
+          "y_nghia": "nội dung khuyến mãi"
+        },
+        "audience": {
+          "do_phu": "70%",
+          "y_nghia": "đối tượng phù hợp do nguồn gắn nhãn"
+        },
+        "familyFriendly": {
+          "do_phu": "70%",
+          "y_nghia": "phù hợp gia đình có trẻ nhỏ"
+        },
+        "soldQuantity": {
+          "do_phu": "70%",
+          "y_nghia": "số lượng đã bán do nguồn công bố"
+        },
+        "supplier": {
+          "do_phu": "70%",
+          "y_nghia": "đơn vị cung cấp dịch vụ"
+        },
+        "vinpearlType": {
+          "do_phu": "70%",
+          "y_nghia": "mã loại sản phẩm nội bộ Vinpearl"
+        },
+        "salesChannels": {
+          "do_phu": "70%",
+          "y_nghia": "kênh bán nội bộ Vinpearl"
+        },
+        "availabilityRangeKind": {
+          "do_phu": "70%",
+          "y_nghia": ""
+        },
+        "hasDetail": {
+          "do_phu": "70%",
+          "y_nghia": "đã lấy được trang chi tiết hay chỉ có dữ liệu trang danh sách"
+        },
+        "venue": {
+          "do_phu": "70%",
+          "y_nghia": "địa điểm sử dụng vé, xem collectors/venues.csv"
+        },
+        "policies": {
+          "do_phu": "64%",
+          "y_nghia": ""
+        },
+        "comboKind": {
+          "do_phu": "29%",
+          "y_nghia": ""
+        },
+        "priceBasis": {
+          "do_phu": "29%",
+          "y_nghia": ""
+        },
+        "fromCode": {
+          "do_phu": "29%",
+          "y_nghia": ""
+        },
+        "toCode": {
+          "do_phu": "29%",
+          "y_nghia": ""
+        },
+        "hotelName": {
+          "do_phu": "29%",
+          "y_nghia": "tên khách sạn cha"
+        },
+        "roomType": {
+          "do_phu": "29%",
+          "y_nghia": ""
+        },
+        "reviewScore": {
+          "do_phu": "29%",
+          "y_nghia": "điểm đánh giá trung bình — KHÔNG có nội dung hay tên người đánh giá"
+        },
+        "reviewScoreScale": {
+          "do_phu": "29%",
+          "y_nghia": "thang điểm của reviewScore (10 hoặc 5)"
+        },
+        "reviewCount": {
+          "do_phu": "29%",
+          "y_nghia": "số lượt đánh giá"
+        },
+        "hotelStarRating": {
+          "do_phu": "26%",
+          "y_nghia": ""
+        },
+        "departDate": {
+          "do_phu": "25%",
+          "y_nghia": ""
+        },
+        "returnDate": {
+          "do_phu": "25%",
+          "y_nghia": ""
+        },
+        "outboundFlight": {
+          "do_phu": "25%",
+          "y_nghia": ""
+        },
+        "inboundFlight": {
+          "do_phu": "25%",
+          "y_nghia": ""
+        },
+        "openingHours": {
+          "do_phu": "19%",
+          "y_nghia": "giờ mở cửa, nguồn trip.com"
+        },
+        "address": {
+          "do_phu": "19%",
+          "y_nghia": "địa chỉ nguồn cung cấp"
+        },
+        "poiRef": {
+          "do_phu": "19%",
+          "y_nghia": ""
+        },
+        "poiName": {
+          "do_phu": "19%",
+          "y_nghia": ""
+        },
+        "tripRating": {
+          "do_phu": "19%",
+          "y_nghia": ""
+        },
+        "tripReviewCount": {
+          "do_phu": "19%",
+          "y_nghia": ""
+        },
+        "durationMinutes": {
+          "do_phu": "18%",
+          "y_nghia": "thời lượng tham quan hoặc thời gian bay (phút)"
+        },
+        "descriptionSource": {
+          "do_phu": "18%",
+          "y_nghia": "có mặt nghĩa là mô tả được tự sinh, không phải văn bản gốc của nguồn"
+        },
+        "separatePrice": {
+          "do_phu": "18%",
+          "y_nghia": ""
+        },
+        "suggestedDuration": {
+          "do_phu": "17%",
+          "y_nghia": "thời lượng gợi ý dạng chữ"
+        },
+        "openingHoursDetail": {
+          "do_phu": "16%",
+          "y_nghia": ""
+        },
+        "tags": {
+          "do_phu": "12%",
+          "y_nghia": ""
+        }
+      }
+    },
+    "flight_route": {
+      "so_san_pham": 113,
+      "attributes": {
+        "level": {
+          "do_phu": "100%",
+          "y_nghia": "property = khách sạn, room = hạng phòng; flight: route = tuyến, flight = chuyến cụ thể"
+        },
+        "originCity": {
+          "do_phu": "100%",
+          "y_nghia": ""
+        },
+        "destinationCity": {
+          "do_phu": "100%",
+          "y_nghia": ""
+        },
+        "originDestination": {
+          "do_phu": "100%",
+          "y_nghia": ""
+        },
+        "originAirports": {
+          "do_phu": "100%",
+          "y_nghia": ""
+        },
+        "destinationAirports": {
+          "do_phu": "100%",
+          "y_nghia": ""
+        },
+        "airlines": {
+          "do_phu": "100%",
+          "y_nghia": ""
+        },
+        "durationMinutes": {
+          "do_phu": "100%",
+          "y_nghia": "thời lượng tham quan hoặc thời gian bay (phút)"
+        },
+        "roundTripFrom": {
+          "do_phu": "100%",
+          "y_nghia": ""
+        },
+        "flightCount": {
+          "do_phu": "100%",
+          "y_nghia": ""
+        },
+        "latitude": {
+          "do_phu": "100%",
+          "y_nghia": "vĩ độ WGS84"
+        },
+        "longitude": {
+          "do_phu": "100%",
+          "y_nghia": "kinh độ WGS84"
+        },
+        "destinationAirportName": {
+          "do_phu": "100%",
+          "y_nghia": ""
+        },
+        "locationSource": {
+          "do_phu": "100%",
+          "y_nghia": "booking.com / agoda.com / trip.com / vinpearl / osm / ourairports / manual"
+        },
+        "locationPrecision": {
+          "do_phu": "100%",
+          "y_nghia": "exact = vị trí riêng của sản phẩm; venue = khu vui chơi dùng vé; airport = sân bay đến; poi = điểm tham quan trip.com; destination = tâm điểm đến (combo bay+ở trip.com, không phải toạ độ khách sạn thật, không dùng để tính khoảng cách)"
+        },
+        "originLatitude": {
+          "do_phu": "100%",
+          "y_nghia": ""
+        },
+        "originLongitude": {
+          "do_phu": "100%",
+          "y_nghia": ""
+        },
+        "priceObservedAt": {
+          "do_phu": "100%",
+          "y_nghia": ""
+        },
+        "url": {
+          "do_phu": "100%",
+          "y_nghia": "trang nguồn của sản phẩm"
+        },
+        "descriptionSource": {
+          "do_phu": "100%",
+          "y_nghia": "có mặt nghĩa là mô tả được tự sinh, không phải văn bản gốc của nguồn"
+        },
+        "descriptionLang": {
+          "do_phu": "100%",
+          "y_nghia": "vi / en — đoán theo tỷ lệ ký tự có dấu, không phải kiểm tra ngôn ngữ đầy đủ"
+        },
+        "fieldSources": {
+          "do_phu": "100%",
+          "y_nghia": "trường nào lấy từ nguồn nào, dùng để truy nguồn"
+        },
+        "monthlyPrices": {
+          "do_phu": "63%",
+          "y_nghia": ""
+        },
+        "cheapestMonth": {
+          "do_phu": "63%",
+          "y_nghia": ""
+        }
+      }
+    },
+    "golf": {
+      "so_san_pham": 6,
+      "attributes": {
+        "province": {
+          "do_phu": "100%",
+          "y_nghia": "tỉnh/thành theo địa chỉ, khác với destination (nhãn điểm đến du lịch)"
+        },
+        "priceObservedAt": {
+          "do_phu": "100%",
+          "y_nghia": ""
+        },
+        "images": {
+          "do_phu": "100%",
+          "y_nghia": "ảnh phụ; ảnh chính nằm ở trường imageUrl cấp trên"
+        },
+        "url": {
+          "do_phu": "100%",
+          "y_nghia": "trang nguồn của sản phẩm"
+        },
+        "descriptionLang": {
+          "do_phu": "100%",
+          "y_nghia": "vi / en — đoán theo tỷ lệ ký tự có dấu, không phải kiểm tra ngôn ngữ đầy đủ"
+        },
+        "fieldSources": {
+          "do_phu": "100%",
+          "y_nghia": "trường nào lấy từ nguồn nào, dùng để truy nguồn"
+        },
+        "latitude": {
+          "do_phu": "100%",
+          "y_nghia": "vĩ độ WGS84"
+        },
+        "longitude": {
+          "do_phu": "100%",
+          "y_nghia": "kinh độ WGS84"
+        },
+        "locationSource": {
+          "do_phu": "100%",
+          "y_nghia": "booking.com / agoda.com / trip.com / vinpearl / osm / ourairports / manual"
+        },
+        "locationPrecision": {
+          "do_phu": "100%",
+          "y_nghia": "exact = vị trí riêng của sản phẩm; venue = khu vui chơi dùng vé; airport = sân bay đến; poi = điểm tham quan trip.com; destination = tâm điểm đến (combo bay+ở trip.com, không phải toạ độ khách sạn thật, không dùng để tính khoảng cách)"
+        },
+        "brand": {
+          "do_phu": "83%",
+          "y_nghia": "thương hiệu (Vinpearl, Meliá…)"
+        },
+        "tourCode": {
+          "do_phu": "83%",
+          "y_nghia": "mã tour/vé của Vinpearl"
+        },
+        "adultOriginalPrice": {
+          "do_phu": "83%",
+          "y_nghia": "giá gốc người lớn trước khuyến mãi"
+        },
+        "childPrice": {
+          "do_phu": "83%",
+          "y_nghia": "giá trẻ em"
+        },
+        "promo": {
+          "do_phu": "83%",
+          "y_nghia": "nội dung khuyến mãi"
+        },
+        "audience": {
+          "do_phu": "83%",
+          "y_nghia": "đối tượng phù hợp do nguồn gắn nhãn"
+        },
+        "familyFriendly": {
+          "do_phu": "83%",
+          "y_nghia": "phù hợp gia đình có trẻ nhỏ"
+        },
+        "lengthOfTour": {
+          "do_phu": "83%",
+          "y_nghia": ""
+        },
+        "soldQuantity": {
+          "do_phu": "83%",
+          "y_nghia": "số lượng đã bán do nguồn công bố"
+        },
+        "vinpearlType": {
+          "do_phu": "83%",
+          "y_nghia": "mã loại sản phẩm nội bộ Vinpearl"
+        },
+        "salesChannels": {
+          "do_phu": "83%",
+          "y_nghia": "kênh bán nội bộ Vinpearl"
+        },
+        "availabilityRangeKind": {
+          "do_phu": "83%",
+          "y_nghia": ""
+        },
+        "hasDetail": {
+          "do_phu": "83%",
+          "y_nghia": "đã lấy được trang chi tiết hay chỉ có dữ liệu trang danh sách"
+        },
+        "policies": {
+          "do_phu": "83%",
+          "y_nghia": ""
+        },
+        "venue": {
+          "do_phu": "83%",
+          "y_nghia": "địa điểm sử dụng vé, xem collectors/venues.csv"
+        },
+        "originalDestination": {
+          "do_phu": "17%",
+          "y_nghia": "nhãn điểm đến trước khi sửa theo bằng chứng"
+        },
+        "nameEn": {
+          "do_phu": "17%",
+          "y_nghia": ""
+        },
+        "address": {
+          "do_phu": "17%",
+          "y_nghia": "địa chỉ nguồn cung cấp"
+        },
+        "district": {
+          "do_phu": "17%",
+          "y_nghia": ""
+        },
+        "openingHours": {
+          "do_phu": "17%",
+          "y_nghia": "giờ mở cửa, nguồn trip.com"
+        },
+        "popularityScore": {
+          "do_phu": "17%",
+          "y_nghia": ""
+        },
+        "descriptionSource": {
+          "do_phu": "17%",
+          "y_nghia": "có mặt nghĩa là mô tả được tự sinh, không phải văn bản gốc của nguồn"
+        }
+      }
+    }
+  }
+}

@@ -32,7 +32,7 @@ Ba đội đang đọc trực tiếp từ file; cần thay bằng CDP clone trư
 | Chạy tiếp được khi gián đoạn | Xong | Hàng đợi URL trong `state/crawl_state.sqlite`; toàn bộ 899 URL của kế hoạch ở trạng thái `done` |
 | Khử trùng lặp | Xong | 53 cặp giữa các nguồn, thêm 54 biến thể giá thành viên Vinpearl gộp về sản phẩm gốc |
 | Chuẩn hoá | Xong | 13 trường CDP §6, toàn bộ VND, `productId` là UUIDv5 ổn định giữa các lần chạy |
-| README dựng lại được bộ dữ liệu | Xong | `data-collection/README.md` |
+| README dựng lại được bộ dữ liệu | Xong | `src/data_collection/README.md` |
 | Kiểm tra hồi quy | Xong | 14 test offline, chạy không cần mạng |
 | CDP clone: schema khớp CDP thật | **Chưa làm** | — |
 | CDP clone: nạp danh mục và lịch sử khách hàng | **Chưa làm** | — |

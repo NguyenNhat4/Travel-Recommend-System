@@ -34,12 +34,12 @@ import re
 import sys
 import uuid
 from collections import Counter, defaultdict
-from datetime import date
+from datetime import date, datetime, timezone, timedelta
 from pathlib import Path
 
 from collectors import mapexport
 from collectors.common import Paths, default_data_dir, read_jsonl, setup_logging
-from collectors.geo import AIRPORTS, DESTINATION_ALIASES, clean_coords, destination_in_text, destination_radius_km, km_from_destination, normalise_destination
+from collectors.geo import AIRPORTS, DESTINATION_ALIASES, DESTINATION_CENTERS, clean_coords, destination_in_text, destination_radius_km, km_from_destination, normalise_destination
 from collectors.plan import TARGET_MAX, TARGET_MIN, Budget, budget_with, select_destinations
 from collectors.textutil import clean_text, detect_lang, first_int, fold, iso_date, uniq
 from collectors.venues import Venue, VenueMatcher, load_venues, ticket_image_slug, ticket_place_name
@@ -50,25 +50,9 @@ NAMESPACE = uuid.UUID("7a1c9e1e-3b0e-4f5c-9d3a-2f6f0b9c4e21")
 TAXONOMIES = ("hotel", "flight", "combo", "attraction", "golf")
 PRODUCT_FIELDS = (
     "productId", "name", "taxonomy", "destination", "description", "attributes",
-    "unitPrice", "currency", "priceUnit", "available", "availableFrom", "availableTo", "imageUrl", "sourceRef",
+    "unitPrice", "currency", "available", "availableFrom", "availableTo", "imageUrl", "sourceRef",
 )
-# `priceUnit` là required của ProductSummary (schemas/catalog.yaml). Không nguồn nào trả field này,
-# nên nó được suy ra từ taxonomy: khách sạn (kể cả hạng phòng) tính theo đêm, vé và chuyến bay tính
-# theo khách, combo tính trọn gói. Sản phẩm không có giá thì không có đơn vị để nói, giữ UNKNOWN.
-PRICE_UNIT_BY_TAXONOMY = {
-    "hotel": "PER_NIGHT",
-    "flight": "PER_PERSON",
-    "attraction": "PER_PERSON",
-    "golf": "PER_PERSON",
-    "combo": "PER_PACKAGE",
-}
-
-
-def price_unit(taxonomy: str | None, unit_price) -> str:
-    if unit_price is None:
-        return "UNKNOWN"
-    return PRICE_UNIT_BY_TAXONOMY.get(taxonomy or "", "UNKNOWN")
-SOURCE_ORDER = {"vinpearl": 0, "booking": 1, "agoda": 2}
+SOURCE_ORDER = {"vinpearl": 0, "booking": 1, "agoda": 2, "trip": 3}
 
 OCEAN_RE = re.compile(r"hướng biển|nhìn ra biển|view biển|giáp biển|sát biển|bãi biển riêng|ocean ?view|sea ?view|beach ?front", re.I)
 FAMILY_RE = re.compile(r"gia đình|trẻ em|trẻ nhỏ|family|kids|children|phòng thông nhau|connecting", re.I)
@@ -120,6 +104,31 @@ def latest_by_key(records: list[dict]) -> list[dict]:
         if k not in best or (r.get("crawledAt") or "") >= (best[k].get("crawledAt") or ""):
             best[k] = r
     return list(best.values())
+
+
+def trip_route_history(records: list[dict]) -> list[dict]:
+    """Keep services observed in older route snapshots, with their actual timestamp.
+
+    A route SEO snapshot is a selection, not evidence that omitted services ceased
+    to exist. Each service uses its newest snapshot, never a historical low price.
+    """
+    routes = {}
+    services = defaultdict(dict)
+    for record in sorted(records, key=lambda r: r.get("crawledAt") or ""):
+        key = record.get("key")
+        if not key:
+            continue
+        routes[key] = copy.deepcopy(record)
+        by_number = defaultdict(list)
+        for flight in record.get("flights", []):
+            if flight.get("flightNumber"):
+                by_number[flight["flightNumber"]].append({**flight, "observedAt": record.get("crawledAt")})
+        services[key].update(by_number)
+    for key, route in routes.items():
+        current = {f.get("flightNumber") for f in route.get("flights", [])}
+        route["flights"] = [{**flight, "notInLatestSnapshot": number not in current}
+                            for number, flights in services[key].items() for flight in flights]
+    return list(routes.values())
 
 
 def _nights(q: dict) -> int | None:
@@ -199,6 +208,31 @@ def duration_minutes(text: str | None) -> int | None:
 # ---------------------------------------------------------------------- Vinpearl
 
 
+def price_evidence(record, prices_by_date=None):
+    """Preserve query dates and observation time. available_from/to is only set when there is
+    real evidence of a window: either a single queried stay (checkIn/checkOut), or a genuinely
+    dense/contiguous multi-date sweep (--calendar-days) — never invented from sparse sample dates
+    like the old 3-sample-date default (vd. 29/09, 15/10, 14/11 rải rác 47 ngày)."""
+    query = record.get("priceQuery") or {}
+    observed = record.get("crawledAt")
+    attrs = {"priceObservedAt": observed, "priceQuery": query or None}
+    available_from = available_to = None
+    if prices_by_date:
+        attrs["availabilityDatesObserved"] = sorted(day for day, price in prices_by_date.items() if price is not None and price > 0)
+        attrs["availabilityEvidenceKind"] = "dated_price_results"
+    elif query.get("checkin") and query.get("checkout"):
+        attrs["checkIn"] = query["checkin"]
+        attrs["checkOut"] = query["checkout"]
+        attrs["availabilityEvidenceKind"] = "queried_stay_not_a_general_date_range"
+        available_from, available_to = query["checkin"], query["checkout"]
+    queried = sorted(query.get("dates") or [])
+    if len(queried) >= 7:
+        span = (date.fromisoformat(queried[-1]) - date.fromisoformat(queried[0])).days + 1
+        if len(queried) / span >= 0.8:  # ngày hỏi nằm sát nhau, không phải vài ngày mẫu rời rạc
+            available_from, available_to = queried[0], queried[-1]
+    return attrs, available_from, available_to
+
+
 def vinpearl_hotel(r: dict) -> tuple[dict | None, list[dict]]:
     name = r.get("name")
     if not name:
@@ -218,14 +252,20 @@ def vinpearl_hotel(r: dict) -> tuple[dict | None, list[dict]]:
     text_blob = " ".join([name, description] + [x["name"] for x in rooms_raw])
     query = r.get("priceQuery") or {}
     lat, lng = clean_coords(r.get("latitude"), r.get("longitude"))
+    prop_evidence, prop_avail_from, prop_avail_to = price_evidence(
+        r, {day: price for room in rooms_raw for day, price in (room.get("pricesByDate") or {}).items()}
+    )
     prop = make_product(
         meta={"src": "vinpearl"},
         name=name,
         taxonomy="hotel",
         destination=destination,
         description=description,
+        availableFrom=prop_avail_from,
+        availableTo=prop_avail_to,
         attributes={
             "level": "property",
+            **prop_evidence,
             "brand": "Vinpearl",
             "hotelCode": r.get("hotelCode"),
             "address": r.get("address"),
@@ -280,6 +320,7 @@ def vinpearl_hotel(r: dict) -> tuple[dict | None, list[dict]]:
             if room.get("amenities"):
                 facts.append("Tiện nghi: " + ", ".join(room["amenities"][:12]))
             room_desc = ". ".join(x for x in facts if x) + "."
+        room_evidence, room_avail_from, room_avail_to = price_evidence(r, room.get("pricesByDate"))
         rooms.append(
             make_product(
                 meta={"src": "vinpearl", "roomName": room_name},
@@ -287,8 +328,11 @@ def vinpearl_hotel(r: dict) -> tuple[dict | None, list[dict]]:
                 taxonomy="hotel",
                 destination=destination,
                 description=room_desc,
+                availableFrom=room_avail_from,
+                availableTo=room_avail_to,
                 attributes={
                     "level": "room",
+                    **room_evidence,
                     "brand": "Vinpearl",
                     "hotelName": name,
                     "roomName": room_name,
@@ -308,6 +352,7 @@ def vinpearl_hotel(r: dict) -> tuple[dict | None, list[dict]]:
                     "includesBreakfast": room.get("includesBreakfast") or None,
                     "ratePlans": room.get("ratePlans"),
                     "pricesByDate": room.get("pricesByDate"),
+                    "pricesByDateQueried": r.get("priceDatesQueried"),
                     "listPrice": site_room.get("listPrice"),
                     "oceanView": bool(OCEAN_RE.search(room_text)) or None,
                     "familyFriendly": bool(FAMILY_RE.search(room_text) or (room.get("maxChild") or 0) > 0 or (occupancy or 0) >= 3) or None,
@@ -466,6 +511,8 @@ def vinpearl_tour_product(r: dict, today: date) -> dict | None:
             "supplier": r.get("supplierName"),
             "vinpearlType": r.get("type"),
             "salesChannels": r.get("salesChannels"),
+            "priceObservedAt": r.get("crawledAt"),
+            "availabilityRangeKind": "sale_window" if r.get("saleStartDate") or r.get("saleEndDate") else None,
             "memberTier": _member_tier(name),
             "images": r.get("images"),
             "url": r.get("pageUrl"),
@@ -514,24 +561,30 @@ def booking_hotel(r: dict, rates: dict[str, float]) -> tuple[dict | None, list[d
     price_query = r.get("priceQuery") or {}
     review = r.get("reviewScore")
     lat, lng = clean_coords(r.get("latitude"), r.get("longitude"))
+    via_api = r.get("transport") == "apify" and lat is not None
+    evidence, avail_from, avail_to = price_evidence(r)
     common = {
+        **evidence,
         "province": r.get("province"),
         "city": r.get("city"),
         "address": addr.get("street"),
         "latitude": lat,
         "longitude": lng,
+        "locationSource": "booking.com (API)" if via_api else None,
         "starRating": r.get("starRating"),
         "starRatingType": r.get("starRatingType"),
         "propertyType": r.get("propertyType"),
         "brand": "Vinpearl" if HOTEL_BRAND_RE.search(fold(name)) else None,
     }
-    meta = {"src": "booking", "plan": plan}
+    meta = {"src": "booking", "plan": plan, **({"coordApi": True} if via_api else {})}
     prop = make_product(
         meta=meta,
         name=name,
         taxonomy="hotel",
         destination=destination,
         description=r.get("description") or r.get("descriptionShort"),
+        availableFrom=avail_from,
+        availableTo=avail_to,
         attributes={
             "level": "property",
             **common,
@@ -581,6 +634,8 @@ def booking_hotel(r: dict, rates: dict[str, float]) -> tuple[dict | None, list[d
                 taxonomy="hotel",
                 destination=destination,
                 description=room_desc,
+                availableFrom=avail_from,
+                availableTo=avail_to,
                 attributes={
                     "level": "room",
                     **common,
@@ -622,13 +677,23 @@ def booking_attraction_product(r: dict, rates: dict[str, float]) -> dict | None:
         parts.append("Điểm nổi bật:\n" + "\n".join(f"- {h}" for h in r["highlights"]))
     description = "\n\n".join(x for x in parts if x)
     fname = fold(name)
+    destination = normalise_destination(name, r.get("subtitle"), r.get("city"))
+    # parse_attraction_html() (collectors/booking_attractions.py) không lấy toạ độ — trang chỉ có bản đồ
+    # tương tác (JS), không thấy toạ độ tĩnh trong HTML lúc kiểm tra (23/09/2026). Lỗ hổng có sẵn từ trước, không
+    # phải mới hôm nay — dùng cùng fallback tâm điểm đến đã duyệt cho trip_combo_product(), tránh bị
+    # drop_missing_coordinates() loại hết dù giá đã đúng.
+    center = DESTINATION_CENTERS.get(destination or "")
     return make_product(
         meta={"src": "booking_attraction"},
         name=name,
         taxonomy="golf" if "golf" in fname else "combo" if "combo" in fname else "attraction",
-        destination=normalise_destination(name, r.get("subtitle"), r.get("city")),
+        destination=destination,
         description=description,
         attributes={
+            "latitude": center[0] if center else None,
+            "longitude": center[1] if center else None,
+            "locationSource": "destination_center" if center else None,
+            "locationPrecision": "destination" if center else None,
             "city": r.get("city"),
             "duration": r.get("duration"),
             "durationMinutes": duration_minutes(r.get("duration")),
@@ -677,12 +742,16 @@ def agoda_hotel(r: dict, rates: dict[str, float]) -> dict | None:
     q = r.get("priceQuery") or {}
     review = r.get("reviewScore")
     lat, lng = clean_coords(r.get("latitude"), r.get("longitude"))
+    via_api = r.get("transport") == "apify" and lat is not None  # toạ độ do API trả về: được ưu tiên khi gộp (merge_hotel_cluster)
+    evidence, avail_from, avail_to = price_evidence(r)
     return make_product(
-        meta={"src": "agoda", "plan": plan},
+        meta={"src": "agoda", "plan": plan, **({"coordApi": True} if via_api else {})},
         name=name,
         taxonomy="hotel",
         destination=destination,
         description=r.get("description"),
+        availableFrom=avail_from,
+        availableTo=avail_to,
         attributes={
             "level": "property",
             "nameEn": r.get("nameEn"),
@@ -690,6 +759,7 @@ def agoda_hotel(r: dict, rates: dict[str, float]) -> dict | None:
             "city": addr.get("region"),
             "latitude": lat,
             "longitude": lng,
+            "locationSource": "agoda.com (API)" if via_api else None,
             "starRating": r.get("starRating"),
             "starRatingType": "official" if r.get("starRating") else None,
             "reviewScore": review,
@@ -700,6 +770,7 @@ def agoda_hotel(r: dict, rates: dict[str, float]) -> dict | None:
             "familyFriendly": bool(FAMILY_RE.search(text_blob)) or None,
             "brand": "Vinpearl" if any(HOTEL_BRAND_RE.search(k) for k in name_keys(name, r.get("nameEn"))) else None,
             "priceDate": q.get("checkin"),
+            **evidence,
             "priceNights": _nights(q),
             "priceAdults": q.get("adults"),
             "priceConverted": converted or None,
@@ -713,6 +784,129 @@ def agoda_hotel(r: dict, rates: dict[str, float]) -> dict | None:
         available=price is not None,
         imageUrl=(r.get("images") or [None])[0],
         sourceRef=f"agoda:hotel:{r.get('slug')}:{r.get('citySlug')}",
+    )
+
+
+# ---------------------------------------------------------------------- trip.com – khách sạn
+
+
+def trip_hotel(r: dict, rates: dict[str, float]) -> tuple[dict | None, list[dict]]:
+    """Nguồn mới 23/09/2026 (robots.txt cấm, xem collectors/trip_hotels.py). Mô phỏng booking_hotel() vì hình
+    dạng bản ghi interim gần giống nhau, nhưng KHÔNG có giá theo hạng phòng thật (getHotelRoomListOversea
+    chưa được parse đủ — xem ghi chú trong trip_hotels.py), nên rooms trả về rỗng thay vì đoán giá; chỉ property
+    có unitPrice (lấy từ giá hiển thị trên thẻ danh sách)."""
+    name = r.get("name")
+    if not name:
+        return None, []
+    plan = r.get("plan") or {}
+    destination = normalise_destination(r.get("city"), r.get("province"), r.get("address"), plan.get("destination"), name)
+    hotel_ref = f"trip:hotel:{r.get('hotelId') or fold(name).replace(' ', '-')}"
+    price, converted = to_vnd(r.get("minPrice"), r.get("currency"), rates)
+    facilities = r.get("facilities") or []
+    text_blob = " ".join([name, r.get("description") or ""] + facilities)
+    price_query = r.get("priceQuery") or {}
+    review = r.get("reviewScore")
+    lat, lng = clean_coords(r.get("latitude"), r.get("longitude"))
+    evidence, avail_from, avail_to = price_evidence(r)
+    prop = make_product(
+        meta={"src": "trip", "plan": plan},
+        name=name,
+        taxonomy="hotel",
+        destination=destination,
+        description=r.get("description"),
+        availableFrom=avail_from,
+        availableTo=avail_to,
+        attributes={
+            "level": "property",
+            **evidence,
+            "province": r.get("province"),
+            "city": r.get("city"),
+            "address": r.get("address"),
+            "latitude": lat,
+            "longitude": lng,
+            "starRating": r.get("starRating"),
+            "starRatingType": "official" if r.get("starRating") else None,
+            "propertyType": r.get("propertyType"),
+            "reviewScore": review,
+            "reviewScoreScale": r.get("reviewScoreScale") if review is not None else None,
+            "reviewCount": r.get("reviewCount"),
+            "amenities": facilities[:60],
+            "brand": "Vinpearl" if HOTEL_BRAND_RE.search(fold(name)) else None,
+            "oceanView": bool(OCEAN_RE.search(text_blob)) or None,
+            "familyFriendly": bool(FAMILY_RE.search(text_blob)) or None,
+            "priceDate": price_query.get("checkin"),
+            "priceNights": _nights(price_query),
+            "priceAdults": price_query.get("adults"),
+            "priceConverted": converted or None,
+            "images": r.get("images"),
+            "url": r.get("url"),
+            "descriptionLang": detect_lang(r.get("description")),
+            "fieldSources": {"name": "trip.com", "unitPrice": "trip.com"} if price is not None else {"name": "trip.com"},
+        },
+        unitPrice=price,
+        currency="VND",
+        available=price is not None,
+        imageUrl=(r.get("images") or [None])[0],
+        sourceRef=hotel_ref,
+    )
+    return prop, []
+
+
+def trip_combo_product(r: dict) -> dict | None:
+    """Combo bay+ở THẬT từ trip.com/packages (nguồn mới 23/09/2026, xem collectors/trip_combos.py) — khác với
+    combo Vinpearl hiện có (vé trọn gói đơn lẻ, phân loại qua từ khoá trong tên, xem vinpearl_taxonomy()).
+    Giá đã là VND (trip_combos.py chỉ crawl VND) nên không cần to_vnd()."""
+    name = r.get("hotelName")
+    if not name or not r.get("price"):
+        return None
+    flight = r.get("flight") or {}
+    out_seg, in_seg = flight.get("outbound") or {}, flight.get("inbound") or {}
+    destination = r.get("destination") or r.get("toCity")
+    title = f"Vé máy bay khứ hồi {r.get('fromCity')} - {r.get('toCity')} + {r.get('roomType') or 'phòng'} tại {name}"
+    parts = [
+        f"Chuyến bay khứ hồi {r.get('fromCity')} - {r.get('toCity')} ({out_seg.get('airlineCode') or ''})".strip(),
+        f"{r.get('roomType') or 'Phòng'} tại khách sạn {name}",
+    ]
+    # Trang combo không trả toạ độ khách sạn (xem collectors/trip_combos.py) — dùng tâm điểm đến làm toạ độ xấp
+    # xỉ, cùng cách trip_route_products() dùng toạ độ sân bay cho flight, để không bị drop_missing_coordinates()
+    # loại bỏ vì "thiếu toạ độ". Đánh dấu rõ locationPrecision="destination" (không phải "exact") để phân biệt.
+    center = DESTINATION_CENTERS.get(destination or "")
+    return make_product(
+        meta={"src": "trip_combo"},
+        name=title,
+        taxonomy="combo",
+        destination=destination,
+        description=". ".join(parts),
+        attributes={
+            "comboKind": "trip_real_flight_hotel",  # phân biệt với combo Vinpearl (vé trọn gói, phân loại qua từ khoá)
+            "priceBasis": "per_person",
+            "fromCode": r.get("fromCode"),
+            "toCode": r.get("toCode"),
+            "departDate": r.get("departDate"),
+            "returnDate": r.get("returnDate"),
+            "outboundFlight": out_seg or None,
+            "inboundFlight": in_seg or None,
+            "latitude": center[0] if center else None,
+            "longitude": center[1] if center else None,
+            "locationSource": "destination_center" if center else None,
+            "locationPrecision": "destination" if center else None,
+            "hotelName": name,
+            "hotelStarRating": r.get("starRating"),
+            "roomType": r.get("roomType"),
+            "reviewScore": r.get("reviewScore"),
+            "reviewScoreScale": r.get("reviewScoreScale"),
+            "reviewCount": r.get("reviewCount"),
+            "separatePrice": r.get("separatePrice"),  # giá đặt riêng (không combo) để so sánh mức tiết kiệm
+            "priceObservedAt": r.get("crawledAt"),
+            "url": r.get("url"),
+            "descriptionLang": "vi",
+            "fieldSources": {"unitPrice": "trip.com"},
+        },
+        unitPrice=r.get("price"),
+        currency="VND",
+        available=True,
+        imageUrl=r.get("image"),
+        sourceRef=f"trip:{r.get('key')}",  # key đã có dạng "combo:<from>-<to>:<hotelId>" (xem trip_combos.py)
     )
 
 
@@ -769,7 +963,9 @@ def trip_attraction_product(r: dict) -> dict | None:
             "reviewCount": r.get("reviewCount"),
             "popularityScore": r.get("hotScore"),
             "ranking": r.get("rankInfo"),
-            "ticketed": r.get("price") is not None,
+            # trip.com không hiện giá KHÔNG có nghĩa là miễn phí / không bán vé: chỉ ghi True khi có giá, còn lại để trống (chưa rõ)
+            "ticketed": True if r.get("price") is not None else None,
+            "priceObservedAt": r.get("crawledAt"),
             "familyFriendly": bool(FAMILY_RE.search(text_blob)) or None,
             "images": r.get("images"),
             "url": r.get("url"),
@@ -779,15 +975,40 @@ def trip_attraction_product(r: dict) -> dict | None:
         },
         unitPrice=r.get("price"),
         currency="VND",
-        available=r.get("price") is not None,
+        available=True,  # địa điểm có trên trip.com (dữ liệu mock cho demo): chưa có giá thì unitPrice = null, không kết luận "hết vé"
         imageUrl=(r.get("images") or [None])[0],
         sourceRef=f"trip:attraction:{r.get('poiId')}",
     )
 
 
+ICT = timezone(timedelta(hours=7))  # giờ Việt Nam
+
+
+def _ict(ts: str | None) -> datetime | None:
+    """Thời điểm chuyến bay của trip.com là UTC ('…T02:20:00.000Z'; đã đối chiếu với danh sách chuyến trên trang, vd. Nha Trang →
+    TP.HCM 10/10/2026 chỉ có chuyến từ 07:00, không có chuyến 00:10). Quy về giờ Việt Nam. Chuỗi không có múi giờ coi là giờ Việt Nam."""
+    if not ts:
+        return None
+    try:
+        t = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return t.astimezone(ICT) if t.tzinfo else t.replace(tzinfo=ICT)
+
+
 def _hhmm(ts: str | None) -> str | None:
-    m = re.match(r"^\d{4}-\d{2}-\d{2}T(\d{2}:\d{2})", ts or "")
-    return m.group(1) if m else None  # trip.com ghi giờ địa phương (dù có hậu tố Z)
+    t = _ict(ts)
+    return t.strftime("%H:%M") if t else None
+
+
+def _ict_date(ts: str | None) -> str | None:
+    t = _ict(ts)
+    return t.date().isoformat() if t else None
+
+
+def _ict_iso(ts: str | None) -> str | None:
+    t = _ict(ts)
+    return t.replace(microsecond=0).isoformat() if t else None
 
 
 def _fmt_vnd(v) -> str:
@@ -827,7 +1048,7 @@ def trip_route_products(r: dict, flights_per_route: int) -> list[dict]:
     round_trip = r.get("roundTrip") or {}
     monthly = [m for m in one_way.get("monthly") or [] if m.get("price")]
     cheapest_month = min(monthly, key=lambda m: m["price"])["month"] if monthly else None
-    dates = sorted((f.get("departureTime") or "")[:10] for f in flights if f.get("departureTime"))
+    dates = sorted({d for f in flights if (d := _ict_date(f.get("departureTime")))})  # ngày bay (giờ VN) trên mọi chuyến đã thấy
     from_airports = ", ".join(r.get("fromAirports") or []) or r.get("fromCode", "").upper()
     to_airports = ", ".join(r.get("toAirports") or []) or r.get("toCode", "").upper()
     price = min(prices) if prices else one_way.get("lowPrice")
@@ -862,7 +1083,7 @@ def trip_route_products(r: dict, flights_per_route: int) -> list[dict]:
             "cheapestMonth": cheapest_month,
             "flightCount": len({f["flightNumber"] for f in flights}),
             **airport_location((r.get("toAirports") or [r.get("toCode")])[0], (r.get("fromAirports") or [r.get("fromCode")])[0]),
-            "priceObservedAt": (r.get("crawledAt") or "")[:10] or None,
+            "priceObservedAt": r.get("crawledAt"),
             "url": r.get("url"),
             "descriptionSource": "derived: dữ liệu chuyến bay trip.com",
             "descriptionLang": "vi",
@@ -870,8 +1091,8 @@ def trip_route_products(r: dict, flights_per_route: int) -> list[dict]:
         },
         unitPrice=price,
         currency="VND",
-        available=bool(prices),
-        availableFrom=dates[0] if dates else None,
+        available=price is not None,
+        availableFrom=dates[0] if dates else None,  # ngày bay sớm nhất / muộn nhất trip.com liệt kê (giờ VN)
         availableTo=dates[-1] if dates else None,
         imageUrl=None,
         sourceRef=route_ref,
@@ -881,9 +1102,9 @@ def trip_route_products(r: dict, flights_per_route: int) -> list[dict]:
         by_number[f["flightNumber"]].append(f)
     ranked = sorted(by_number.items(), key=lambda kv: min((x.get("price") or 10**12) for x in kv[1]))
     out = [route]
-    for number, legs in ranked[:flights_per_route]:
+    for number, legs in (ranked if flights_per_route == 0 else ranked[:flights_per_route]):
         cheapest = min(legs, key=lambda x: x.get("price") or 10**12)
-        leg_dates = sorted((x.get("departureTime") or "")[:10] for x in legs if x.get("departureTime"))
+        leg_dates = sorted({d for x in legs if (d := _ict_date(x.get("departureTime")))})
         dep, arr = _hhmm(cheapest.get("departureTime")), _hhmm(cheapest.get("arrivalTime"))
         desc = (
             f"Chuyến bay {'thẳng ' if cheapest.get('nonstop') else ''}{cheapest.get('airline')} {number} từ "
@@ -891,7 +1112,7 @@ def trip_route_products(r: dict, flights_per_route: int) -> list[dict]:
             f"({cheapest.get('to')}), cất cánh {dep}, hạ cánh {arr}, thời gian bay {_fmt_duration(cheapest.get('durationMinutes'))}."
         )
         if cheapest.get("price"):
-            desc += f" Giá một chiều từ {_fmt_vnd(cheapest['price'])} (ngày {leg_dates[0] if leg_dates else '?'})."
+            desc += f" Giá tham khảo một chiều từ {_fmt_vnd(cheapest['price'])} (ngày {_ict_date(cheapest.get('departureTime')) or '?'})."
         out.append(
             make_product(
                 meta={"src": "trip_flight", "plan": r.get("plan") or {}, "fromDestination": normalise_destination(from_city)},
@@ -915,8 +1136,11 @@ def trip_route_products(r: dict, flights_per_route: int) -> list[dict]:
                     "durationMinutes": cheapest.get("durationMinutes"),
                     "nonstop": cheapest.get("nonstop"),
                     **airport_location(cheapest.get("to"), cheapest.get("from")),
-                    "datesSeen": leg_dates[:14],
-                    "priceObservedAt": (r.get("crawledAt") or "")[:10] or None,
+                    "datesSeen": leg_dates,
+                    "departureAt": _ict_iso(cheapest.get("departureTime")),
+                    "arrivalAt": _ict_iso(cheapest.get("arrivalTime")),
+                    "priceObservedAt": cheapest.get("observedAt") or r.get("crawledAt"),
+                    "notInLatestSnapshot": cheapest.get("notInLatestSnapshot") or None,
                     "url": r.get("url"),
                     "descriptionSource": "derived: dữ liệu chuyến bay trip.com",
                     "descriptionLang": "vi",
@@ -935,6 +1159,105 @@ def trip_route_products(r: dict, flights_per_route: int) -> list[dict]:
 
 
 # ---------------------------------------------------------------------- gộp khách sạn
+
+
+def merge_booking_flight_products(products: list[dict], records: list[dict], now=None) -> list[dict]:
+    """Booking dated observations are primary; preserve existing Trip IDs on exact service matches.
+
+    This does not compare Trip route/monthly prices with Booking offers. Full quotes
+    stay in booking_flight_offers.jsonl; Product is a representative display view.
+    """
+    from collectors.booking_flights import AIRPORT_CITIES, digest
+
+    now = now or datetime.now(timezone.utc)
+    route_existing, flight_existing = {}, {}
+    for p in products:
+        if p["taxonomy"] != "flight":
+            continue
+        a = p["attributes"]
+        if a.get("level") == "route" and len(a.get("originAirports", [])) == len(a.get("destinationAirports", [])) == 1:
+            route_existing[(a["originAirports"][0], a["destinationAirports"][0])] = p
+        if a.get("level") == "flight" and a.get("flightNumber"):
+            flight_existing[(a.get("originAirport"), a.get("destinationAirport"), a["flightNumber"])] = p
+
+    grouped = defaultdict(list)
+    for record in latest_by_key(records):
+        for offer in record.get("offers", []):
+            grouped[offer["serviceKey"]].append(offer)
+    by_route = defaultdict(list)
+    replacements = {}
+    for service, offers in grouped.items():
+        # Deduplicate repeated observations of exactly the same itinerary/conditions,
+        # selecting the newest quote first, never the historical lowest price.
+        latest = {}
+        for o in sorted(offers, key=lambda x: x["observedAt"]):
+            k = digest([o["context"], o["segments"], o.get("includedBaggage"), o.get("cardText")])
+            latest[k] = o
+        offers = list(latest.values())
+        def fresh(o):
+            observed = datetime.fromisoformat(o["observedAt"].replace("Z", "+00:00"))
+            return (timedelta(0) <= now - observed <= timedelta(hours=24)
+                    and datetime.fromisoformat(o["departureAt"]) > now)
+        # Default display context first. Never label the representative quote a
+        # globally cheapest ticket across passengers, cabins or dates.
+        chosen = min(offers, key=lambda o: (not fresh(o), o["context"]["adults"] != 1,
+                                           o["context"]["cabinClass"] != "ECONOMY", o["departureAt"], o["totalPrice"]))
+        c = chosen["context"]
+        origin, destination = c["originAirport"], c["destinationAirport"]
+        route_key = (origin, destination)
+        old_route = route_existing.get(route_key)
+        route_ref = old_route["sourceRef"] if old_route else f"booking:route:{origin}-{destination}"
+        legs = chosen["segments"]
+        old = flight_existing.get((origin, destination, legs[0]["flightNumber"])) if len(legs) == 1 else None
+        own_ref = f"booking:flight:{service}"
+        ref = old["sourceRef"] if old else own_ref
+        numbers = ", ".join(l["flightNumber"] for l in legs)
+        from_city, to_city = AIRPORT_CITIES[origin], AIRPORT_CITIES[destination]
+        desc = (f"Hành trình một chiều {from_city} ({origin}) đến {to_city} ({destination}), "
+                f"{'bay thẳng' if len(legs) == 1 else str(len(legs) - 1) + ' điểm dừng'}, "
+                f"các chuyến {numbers}. Hãng bay: {', '.join(uniq(l.get('airline') for l in legs if l.get('airline')))}.")
+        attrs = {"level": "flight", "parentProductId": product_id(route_ref),
+                 "flightNumber": legs[0]["flightNumber"] if len(legs) == 1 else None,
+                 "flightNumbers": [l["flightNumber"] for l in legs], "segments": legs,
+                 "originAirport": origin, "destinationAirport": destination,
+                 "originCity": from_city, "destinationCity": to_city, "originDestination": from_city,
+                 "departureAt": chosen["departureAt"], "arrivalAt": chosen["arrivalAt"],
+                 "datesSeen": sorted({o["departureAt"][:10] for o in offers}),
+                 "nonstop": chosen["nonstop"], "bookable": True,
+                 "priceContext": c, "priceUnit": "party_itinerary", "priceKind": "quote",
+                 "selectedOfferId": chosen["offerId"], "offerIds": [o["offerId"] for o in offers],
+                 "priceObservedAt": chosen["observedAt"], "availabilityStatus": "available" if fresh(chosen) else "stale",
+                 "url": chosen["bookingUrl"], "bookingUrl": chosen["bookingUrl"],
+                 "fieldSources": {k: "booking.com" for k in ("description", "unitPrice", "available", "bookingUrl")},
+                 "descriptionSource": "derived: lịch bay thực tế Booking.com", "descriptionLang": "vi",
+                 "sameAs": [own_ref] if old else None,
+                 **airport_location(destination, origin)}
+        p = make_product(meta={"src": "booking_flight", "fromDestination": from_city},
+                         name=f"{numbers}: {from_city} - {to_city}", taxonomy="flight", destination=to_city,
+                         description=desc, attributes=attrs, unitPrice=chosen["totalPrice"], currency=chosen["currency"],
+                         available=fresh(chosen), availableFrom=None, availableTo=None, imageUrl=None, sourceRef=ref)
+        replacements[p["productId"]] = p
+        by_route[route_key].append(p)
+    for (origin, destination), flights in by_route.items():
+        old = route_existing.get((origin, destination))
+        ref = old["sourceRef"] if old else f"booking:route:{origin}-{destination}"
+        best = min(flights, key=lambda p: (not p["available"], p["attributes"]["priceContext"]["adults"] != 1,
+                                         p["attributes"]["priceContext"]["cabinClass"] != "ECONOMY", p["unitPrice"]))
+        attrs = copy.deepcopy(best["attributes"])
+        for key in ("parentProductId", "flightNumber", "flightNumbers", "segments", "departureAt", "arrivalAt", "nonstop", "sameAs"):
+            attrs.pop(key, None)
+        attrs.update(level="route", bookable=False, priceKind="from", originAirports=[origin],
+                     destinationAirports=[destination], flightCount=len(flights))
+        if old:
+            attrs["sameAs"] = [f"booking:route:{origin}-{destination}"]
+        p = make_product(meta={"src": "booking_flight", "fromDestination": AIRPORT_CITIES[origin]},
+                         name=f"Vé máy bay {AIRPORT_CITIES[origin]} - {AIRPORT_CITIES[destination]}",
+                         taxonomy="flight", destination=AIRPORT_CITIES[destination],
+                         description=f"Tuyến bay một chiều từ {AIRPORT_CITIES[origin]} ({origin}) đến {AIRPORT_CITIES[destination]} ({destination}). Chọn chuyến và ngày cụ thể để xem báo giá Booking.com.",
+                         attributes=attrs, unitPrice=best["unitPrice"], currency=best["currency"], available=best["available"],
+                         availableFrom=None, availableTo=None, imageUrl=None, sourceRef=ref)
+        replacements[p["productId"]] = p
+    return [replacements.pop(p["productId"], p) for p in products] + list(replacements.values())
 
 
 def cluster_hotels(props: list[dict], threshold: float) -> tuple[list[list[dict]], list[tuple]]:
@@ -992,7 +1315,7 @@ def cluster_hotels(props: list[dict], threshold: float) -> tuple[list[list[dict]
 def merge_hotel_cluster(members: list[dict], rooms_of: dict[str, list[dict]], rooms_per_hotel: int) -> tuple[dict, list[dict]]:
     primary = members[0]
     by = {m["_meta"]["src"]: m for m in members}
-    vp, bk, ag = by.get("vinpearl"), by.get("booking"), by.get("agoda")
+    vp, bk, ag, tp = by.get("vinpearl"), by.get("booking"), by.get("agoda"), by.get("trip")
     out = copy.deepcopy(primary)
     a = out["attributes"]
     fs = a.setdefault("fieldSources", {})
@@ -1008,6 +1331,8 @@ def merge_hotel_cluster(members: list[dict], rooms_of: dict[str, list[dict]], ro
         ota["booking.com"] = bk
     if ag and ag.get("unitPrice"):
         ota["agoda.com"] = ag
+    if tp and tp.get("unitPrice"):
+        ota["trip.com"] = tp  # thứ tự ưu tiên booking.com → agoda.com → trip.com → Vinpearl (giả định, chưa có spec — xem plan)
     if ota:
         chosen_name, chosen = next(iter(ota.items()))
         if vp and vp.get("unitPrice"):
@@ -1017,9 +1342,15 @@ def merge_hotel_cluster(members: list[dict], rooms_of: dict[str, list[dict]], ro
         fs["unitPrice"] = fs["available"] = chosen_name
         a["priceDate"] = chosen["attributes"].get("priceDate")
         a["priceNights"] = chosen["attributes"].get("priceNights")
+        for field in ("priceObservedAt", "priceQuery", "priceAdults", "checkIn", "checkOut", "availabilityEvidenceKind"):
+            a[field] = chosen["attributes"].get(field)
+        a.pop("availabilityDatesObserved", None)
+        a["bookingUrl"] = chosen["attributes"].get("url")
         a["otaPrices"] = {k: v["unitPrice"] for k, v in ota.items()}
 
-    coord_src = primary if _coords_trusted(primary) else next((m for m in others if _coords_trusted(m)), None)
+    api_src = next((m for m in members if m["_meta"].get("coordApi") and _coords_trusted(m)), None)
+    own = primary if primary["_meta"]["src"] == "vinpearl" and _coords_trusted(primary) else None  # Vinpearl là nguồn chính chủ của khách sạn Vinpearl
+    coord_src = own or api_src or (primary if _coords_trusted(primary) else next((m for m in others if _coords_trusted(m)), None))
     coord_src = coord_src or next((m for m in members if m["attributes"].get("latitude") is not None), None)
     for field in LOCATION_FIELDS:
         a.pop(field, None)
@@ -1030,6 +1361,11 @@ def merge_hotel_cluster(members: list[dict], rooms_of: dict[str, list[dict]], ro
         a["locationPrecision"] = "exact"
         if coord_src is not primary:
             fs["latitude"] = fs["longitude"] = a["locationSource"]
+        if coord_src is api_src:  # toạ độ API thắng: ghi lại nếu nguồn HTML khác lệch đáng kể để còn soát
+            far = [(m, haversine_m(m["attributes"], ca)) for m in members if m is not coord_src and _coords_trusted(m)]
+            far = [(m, d) for m, d in far if d is not None and d > 500]
+            if far:
+                a["locationNote"] = "; ".join(f"toạ độ {_src_label(m)} lệch {d:.0f} m so với {a['locationSource']}" for m, d in far) + f"; dùng {a['locationSource']}"
         if coord_src["_meta"].get("coordSuspect"):
             a["locationWarning"] = coord_src["_meta"]["coordSuspect"]
         elif primary["_meta"].get("coordSuspect"):
@@ -1041,7 +1377,18 @@ def merge_hotel_cluster(members: list[dict], rooms_of: dict[str, list[dict]], ro
             if donor:
                 a[field] = donor["attributes"][field]
                 fs[field] = _src_label(donor)
-    for m, prefix in ((bk, "booking"), (ag, "agoda")):
+    if a.get("reviewScore") is None:
+        # primary (Vinpearl) không tự có reviewScore — mượn từ OTA khác trong cụm trước, TripAdvisor của
+        # chính Vinpearl sau (thang 5, khác thang 10 của OTA nên phải kèm đúng reviewScoreScale)
+        donor = next((m for m in others if m["attributes"].get("reviewScore") is not None), None)
+        if donor:
+            da = donor["attributes"]
+            a["reviewScore"], a["reviewScoreScale"], a["reviewCount"] = da["reviewScore"], da.get("reviewScoreScale"), da.get("reviewCount")
+            fs["reviewScore"] = _src_label(donor)
+        elif a.get("tripAdvisorRating") is not None:
+            a["reviewScore"], a["reviewScoreScale"], a["reviewCount"] = a["tripAdvisorRating"], 5.0, a.get("tripAdvisorReviewCount")
+            fs["reviewScore"] = "vinpearl (tripadvisor)"
+    for m, prefix in ((bk, "booking"), (ag, "agoda"), (tp, "trip")):
         if m and m is not primary and m["attributes"].get("reviewScore") is not None:
             a[f"{prefix}ReviewScore"] = m["attributes"]["reviewScore"]
             a[f"{prefix}ReviewCount"] = m["attributes"].get("reviewCount")
@@ -1060,9 +1407,12 @@ def merge_hotel_cluster(members: list[dict], rooms_of: dict[str, list[dict]], ro
         a["bookingComUrl"] = bk["attributes"].get("url")
     if ag and ag is not primary:
         a["agodaUrl"] = ag["attributes"].get("url")
+    if tp and tp is not primary:
+        a["tripUrl"] = tp["attributes"].get("url")
     out["attributes"] = _compact(a)
 
-    # hạng phòng
+    # hạng phòng: chỉ vp/bk có giá theo hạng phòng đáng tin; agoda không có (agoda_hotel không trả rooms), trip
+    # cũng cố tình không trả rooms (trip_hotel() – chưa parse đủ giá gói phòng, xem ghi chú ở đó).
     if vp:
         rooms = [copy.deepcopy(x) for x in rooms_of.get(vp["productId"], [])]
         if bk:
@@ -1084,7 +1434,7 @@ def merge_hotel_cluster(members: list[dict], rooms_of: dict[str, list[dict]], ro
 
 
 def _src_label(p: dict) -> str:
-    return {"vinpearl": "vinpearl", "booking": "booking.com", "agoda": "agoda.com"}.get(p["_meta"]["src"], p["_meta"]["src"])
+    return {"vinpearl": "vinpearl", "booking": "booking.com", "agoda": "agoda.com", "trip": "trip.com"}.get(p["_meta"]["src"], p["_meta"]["src"])
 
 
 def _room_key(name: str) -> str:
@@ -1121,6 +1471,10 @@ def _price_rooms_from_ota(vp_rooms: list[dict], ota_rooms: list[dict]) -> None:
         va.setdefault("fieldSources", {})["unitPrice"] = "booking.com"
         va["otaRoomName"] = o["_meta"]["roomName"]
         va["priceDate"] = o["attributes"].get("priceDate")
+        for field in ("priceObservedAt", "priceQuery", "priceNights", "checkIn", "checkOut", "availabilityEvidenceKind"):
+            va[field] = o["attributes"].get(field)
+        va.pop("availabilityDatesObserved", None)
+        va["bookingUrl"] = o["attributes"].get("url")
 
 
 def select_rooms(rooms: list[dict], n: int) -> list[dict]:
@@ -1131,7 +1485,7 @@ def select_rooms(rooms: list[dict], n: int) -> list[dict]:
             continue
         seen.add(key)
         chosen.append(copy.deepcopy(room))
-        if len(chosen) >= n:
+        if n > 0 and len(chosen) >= n:
             break
     return chosen
 
@@ -1188,6 +1542,42 @@ def merge_pois(tickets: list[dict], pois: list[dict]) -> tuple[list[dict], list[
     return kept, report
 
 
+# ---------------------------------------------------------------------- độ chi tiết khách sạn / nguyên căn
+
+# Loại hình mà đơn vị cho thuê là cả căn (biệt thự, nhà nghỉ dưỡng, căn hộ), không phải một phòng trong khách sạn.
+ENTIRE_PLACE_TYPES = {"biet thu", "nha nghi duong", "can ho"}
+ENTIRE_PLACE_PHRASE = re.compile(r"\b(nguyen can|toan bo can|entire (villa|house|home|apartment|place|property)|whole (villa|house|home))\b")
+
+
+def annotate_hotel_granularity(products: list[dict]) -> None:
+    """TUỲ CHỌN (`--annotate-hotel-granularity`, mặc định tắt vì không đổi form catalog). Ghi vào attributes của dòng
+    khách sạn (cấp property), không đổi 13 trường của Product:
+
+    - hasRoomRows: có dòng phòng đi kèm hay không. False với khách sạn chỉ có ở Agoda (adapter Agoda chỉ lấy giá rẻ nhất
+      cấp cơ sở, cố ý không lấy bảng phòng), để phía sau không hiểu nhầm là thiếu dữ liệu.
+    - rentalUnit = "entire_place" + rentalUnitEvidence: chỉ khi có bằng chứng (loại hình hoặc cụm "nguyên căn").
+      Không đoán từ tên. Tình trạng còn phòng không nằm trong mô tả/embedding: chỉ là bộ lọc lúc truy vấn.
+    """
+    room_names: dict[str, list[str]] = {}
+    for p in products:
+        a = p["attributes"]
+        if p["taxonomy"] == "hotel" and a.get("level") == "room":
+            room_names.setdefault(a.get("parentProductId"), []).append(p["name"])
+    for p in products:
+        a = p["attributes"]
+        if p["taxonomy"] != "hotel" or a.get("level") != "property":
+            continue
+        rooms = room_names.get(p["productId"], [])
+        a["hasRoomRows"] = bool(rooms)
+        kind = fold(a.get("propertyType") or "")
+        if kind in ENTIRE_PLACE_TYPES:
+            a["rentalUnit"], a["rentalUnitEvidence"] = "entire_place", f"loại hình: {a.get('propertyType')}"
+            continue
+        m = ENTIRE_PLACE_PHRASE.search(fold(" ".join([p["name"], p["description"] or ""] + rooms)))
+        if m:
+            a["rentalUnit"], a["rentalUnitEvidence"] = "entire_place", f"cụm từ: {m.group(0)}"
+
+
 # ---------------------------------------------------------------------- vị trí
 
 
@@ -1211,6 +1601,35 @@ def load_excluded_products(path: Path | None = None) -> dict[str, str]:
             if ref:
                 out[ref] = reason or "đã soát tay và loại"
     return out
+
+
+# Trip xếp cả văn phòng bảo hiểm, hãng taxi, phòng khám... vào danh sách "điểm tham quan". Danh sách tay
+# (excluded_products.csv) không theo kịp khi mở rộng ra nhiều thành phố, nên loại thêm theo quy tắc trên tên đã bỏ dấu.
+# Quy tắc cố ý hẹp (từ khoá rõ nghĩa) và chỉ áp cho điểm tham quan của trip.com; sản phẩm bị loại được ghi ra
+# data/excluded_auto.csv để soát lại, không xoá âm thầm.
+NON_TOURISM_RULES: tuple[tuple[str, re.Pattern], ...] = tuple(
+    (reason, re.compile(pattern)) for reason, pattern in (
+        ("văn phòng bảo hiểm", r"\b(bao hiem|insurance|hanwha|prudential|manulife|dai ichi)\b"),
+        ("cơ sở y tế", r"\b(benh vien|phong kham|tiem chung|vnvc|nha khoa|hospital|clinic|dental)\b"),
+        ("hãng taxi / cho thuê xe", r"\b(taxi|cho thue xe|thue xe|motorbike rental|car rental|xanh sm)\b"),
+        ("ngân hàng", r"\b(ngan hang|bank|atm)\b"),
+        ("siêu thị / cửa hàng tiện lợi", r"\b(sieu thi|winmart|circle k|bach hoa xanh|family ?mart)\b"),
+        ("trường học", r"\b(truong (mam non|tieu hoc|thcs|thpt|dai hoc|cao dang)|university|school)\b"),
+        ("cơ quan hành chính", r"\b(uy ban nhan dan|ubnd|toa an|cong an)\b"),
+        ("bất động sản", r"\b(bat dong san|real estate|du an can ho)\b"),
+        ("đại lý / công ty lữ hành", r"\b(dai ly ve|travel agency|tour operator|cong ty (du lich|lu hanh))\b"),
+        ("quán ăn / cà phê", r"\b(quan ca phe|cafe|ca phe|coffee|nha hang|restaurant)\b"),
+    )
+)
+
+
+def non_tourism_reason(name: str | None) -> str | None:
+    """Lý do tên này không phải điểm du lịch (theo quy tắc ở trên), hoặc None."""
+    folded = fold(name or "")
+    for reason, pattern in NON_TOURISM_RULES:
+        if pattern.search(folded):
+            return reason
+    return None
 
 
 DESTINATION_OVERRIDES_CSV = Path(__file__).resolve().parent / "collectors" / "destination_overrides.csv"
@@ -1383,6 +1802,100 @@ def finalize_locations(products: list[dict]) -> None:
                 a["locationWarning"] = f"cách tâm {p['destination']} {km:.0f} km"
 
 
+# Sản phẩm của chính Vinpearl và khách sạn mang thương hiệu Vinpearl trên Booking luôn được giữ (quy tắc sẵn có của
+# normalise/plan), kể cả khi toạ độ bị cảnh báo: dòng vẫn mang locationWarning để soát sau.
+KEEP_DESPITE_LOCATION_WARNING = ("vinpearl:",)
+VINPEARL_BRAND = re.compile(r"\b(vinpearl|vinholidays)\b")
+
+
+def _remove_with_children(products: list[dict], reasons: dict[str, str]) -> tuple[list[dict], list[tuple[dict, str]]]:
+    """Xoá các dòng trong `reasons` (productId → lý do) cùng mọi dòng con (hạng phòng của khách sạn, chuyến bay của tuyến)."""
+    reasons = dict(reasons)
+    grew = True
+    while grew:
+        grew = False
+        for p in products:
+            if p["attributes"].get("parentProductId") in reasons and p["productId"] not in reasons:
+                reasons[p["productId"]] = "thuộc sản phẩm bị xoá"
+                grew = True
+    kept = [p for p in products if p["productId"] not in reasons]
+    removed = [(p, reasons[p["productId"]]) for p in products if p["productId"] in reasons]
+    return kept, removed
+
+
+def _protected(p: dict) -> bool:
+    return p["sourceRef"].startswith(KEEP_DESPITE_LOCATION_WARNING) or bool(VINPEARL_BRAND.search(fold(p["name"])))
+
+
+def drop_location_warnings(products: list[dict]) -> tuple[list[dict], list[tuple[dict, str]]]:
+    """Xoá dòng có attributes.locationWarning (toạ độ nằm ngoài bán kính điểm đến hoặc bị nghi sai), kèm mọi hạng phòng /
+    chuyến bay con của dòng bị xoá để không có dòng mồ côi (catalog.py merge từ chối parent thiếu).
+    Trả (dòng còn lại, [(dòng bị xoá, lý do)]). Sản phẩm và khách sạn thương hiệu Vinpearl không bị xoá."""
+    reasons = {}
+    for p in products:
+        warning = p["attributes"].get("locationWarning")
+        if warning and not _protected(p):
+            reasons[p["productId"]] = ("cảnh báo vị trí: toạ độ xa tâm điểm đến" if str(warning).startswith("cách tâm")
+                                       else f"cảnh báo vị trí: {str(warning)[:80]}")
+    return _remove_with_children(products, reasons)
+
+
+def drop_missing_coordinates(products: list[dict]) -> tuple[list[dict], list[tuple[dict, str]]]:
+    """Xoá dòng không có toạ độ hợp lệ (không lên được bản đồ, không kiểm tra được điểm đến), kèm dòng con. Vinpearl được giữ."""
+    reasons = {p["productId"]: "thiếu toạ độ" for p in products
+               if (p["attributes"].get("latitude") is None or p["attributes"].get("longitude") is None) and not _protected(p)}
+    return _remove_with_children(products, reasons)
+
+
+# Hạng phòng cao cấp có thể đắt gấp nhiều lần phòng thường cùng khách sạn: giữ nếu tên nói rõ là suite / biệt thự / ...
+LUXURY_ROOM = re.compile(r"\b(suite|villa|biet thu|penthouse|presidential|tong thong|estate|mansion|duplex|residence)\b")
+PRICE_OUTLIER_RATIO = 8.0
+PRICE_OUTLIER_FLOOR = 10_000_000  # VND / đêm
+
+
+def drop_price_outliers(products: list[dict]) -> tuple[list[dict], list[tuple[dict, str]]]:
+    """Xoá hạng phòng có giá phi lý so với các hạng phòng khác của cùng khách sạn: >= 10 triệu/đêm VÀ > 8 lần giá trung vị của
+    khách sạn (cần >= 3 hạng phòng để so). Chính nguồn ghi giá đó (vd. Booking: "Phòng Giường Đôi Nhỏ" 132.000.000 ₫ trong khi các phòng
+    khác ~1 triệu), nên đây là lỗi của nguồn chứ không phải lỗi parse. Tên có suite / biệt thự / tổng thống / ... được giữ vì đắt là
+    hợp lý; sản phẩm Vinpearl (giá do chính Vinpearl công bố) cũng được giữ."""
+    rooms_of: dict[str, list[dict]] = defaultdict(list)
+    for p in products:
+        a = p["attributes"]
+        if p["taxonomy"] == "hotel" and a.get("level") == "room" and p.get("unitPrice") and a.get("parentProductId"):
+            rooms_of[a["parentProductId"]].append(p)
+    reasons: dict[str, str] = {}
+    for rooms in rooms_of.values():
+        if len(rooms) < 3:
+            continue
+        median = _median([int(r["unitPrice"]) for r in rooms])
+        for r in rooms:
+            price = r["unitPrice"]
+            if (price >= PRICE_OUTLIER_FLOOR and price > PRICE_OUTLIER_RATIO * median
+                    and not LUXURY_ROOM.search(fold(r["name"])) and not _protected(r)):
+                reasons[r["productId"]] = (f"giá phòng bất thường: {price / median:.0f}× giá trung vị các hạng phòng cùng khách sạn "
+                                           f"({median:,} ₫)".replace(",", "."))
+    return _remove_with_children(products, reasons)
+
+
+def drop_orphans(products: list[dict]) -> tuple[list[dict], list[tuple[dict, str]]]:
+    """Xoá hạng phòng / chuyến bay mà dòng cha đã bị loại ở bước khác (vd. khách sạn không có giá)."""
+    ids = {p["productId"] for p in products}
+    reasons = {p["productId"]: "thuộc sản phẩm cha đã bị loại" for p in products
+               if p["attributes"].get("parentProductId") and p["attributes"]["parentProductId"] not in ids}
+    return _remove_with_children(products, reasons)
+
+
+def write_location_exclusions(removed: list[tuple[dict, str]], path: Path) -> None:
+    """Danh sách dòng bị xoá vì lỗi dữ liệu (cảnh báo vị trí, thiếu toạ độ, mồ côi), để truy vết; không cần kiểm tra thủ công."""
+    with open(path, "w", encoding="utf-8-sig", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["sourceRef", "name", "taxonomy", "level", "destination", "latitude", "longitude", "locationSource", "reason"])
+        for p, reason in removed:
+            a = p["attributes"]
+            w.writerow([p["sourceRef"], p["name"], p["taxonomy"], a.get("level") or "", p["destination"] or "",
+                        a.get("latitude"), a.get("longitude"), a.get("locationSource") or "", reason])
+
+
 # ---------------------------------------------------------------------- tỉnh / thành
 
 
@@ -1553,14 +2066,16 @@ def drop_unsellable(products: list[dict]) -> tuple[list[dict], int]:
     Đã thử lấy lại bằng `crawl.py retry-missing`; API chi tiết của Vinpearl trả HTTP 500 cho các vé này và
     agoda không trả giá cho nhiều ngày nhận phòng khác nhau.
 
-    Không áp dụng cho điểm công cộng không bán vé (`attributes.ticketed = False`) — với chúng, không có giá
-    là dữ liệu đúng chứ không phải dữ liệu thiếu. Hạng phòng của khách sạn bị loại do apply_plan dọn theo.
+    Không áp dụng cho điểm tham quan của trip.com (`trip:attraction:`): đó là địa điểm, trip.com không hiện giá thì chưa rõ
+    có bán vé hay không, nên giữ dòng với `unitPrice = null` (KHÔNG kết luận "miễn phí"). Hạng phòng của khách sạn bị loại do
+    apply_plan dọn theo.
     """
     keep, removed = [], 0
     for p in products:
         a = p["attributes"]
         if (p.get("unitPrice") is None and a.get("ticketed") is not False
-                and a.get("level") not in ("room", "flight")):
+                and a.get("level") not in ("room", "flight")
+                and not p["sourceRef"].startswith("trip:attraction:")):
             removed += 1
             continue
         keep.append(p)
@@ -1582,7 +2097,7 @@ def apply_plan(products: list[dict], plan_names: set[str], budget: Budget, dropp
             keep.append(p)
             kept_ids.add(p["productId"])
             continue
-        if src == "trip_flight":
+        if src in ("trip_flight", "booking_flight"):
             if p["destination"] in plan_names and p["_meta"].get("fromDestination") in plan_names:
                 keep.append(p)
                 kept_ids.add(p["productId"])
@@ -1615,10 +2130,7 @@ def apply_plan(products: list[dict], plan_names: set[str], budget: Budget, dropp
 
 def write_outputs(products: list[dict], data: Path, report_rows: list[list], dropped: Counter, plan_names: set[str],
                   location_stats: Counter | None = None, venues: list[Venue] | None = None) -> None:
-    # `priceUnit` chốt ở đây, sau dedupe: bước gộp OTA có thể thay `unitPrice` của bản ghi,
-    # nên suy đơn vị sớm hơn sẽ lệch với giá cuối cùng.
-    clean = [{k: (price_unit(p["taxonomy"], p["unitPrice"]) if k == "priceUnit" else p.get(k))
-              for k in PRODUCT_FIELDS} for p in products]
+    clean = [{k: p[k] for k in PRODUCT_FIELDS} for p in products]
     jl = data / "products.jsonl"
     with open(jl, "w", encoding="utf-8") as f:
         for p in clean:
@@ -1648,9 +2160,9 @@ def write_quality_review(products: list[dict], path: Path) -> None:
         for p in products:
             a, issues = p["attributes"], []
             if p.get("unitPrice") is None:
-                # điểm công cộng không bán vé thì không có giá là đúng, không phải lỗi cần đối chiếu
-                issues.append("điểm công cộng không bán vé, không có giá"
-                              if a.get("ticketed") is False else "thiếu giá: cần đối chiếu nguồn")
+                # trip.com không hiện giá ≠ miễn phí: chưa rõ có bán vé không
+                issues.append("chưa có thông tin giá (trip.com không hiện giá, chưa rõ có bán vé không)"
+                              if p["sourceRef"].startswith("trip:attraction:") else "thiếu giá: cần đối chiếu nguồn")
             if not p.get("description"):
                 issues.append("thiếu mô tả")
             elif a.get("descriptionLang") != "vi":
@@ -1705,8 +2217,8 @@ def write_stats(products: list[dict], path: Path, merged: int, dropped: Counter,
         "",
         "Nhãn ngôn ngữ được ước lượng từ tỷ lệ ký tự có dấu trong mô tả; không xác nhận tên hoặc toàn bộ nội dung đã là tiếng Việt. Cần đọc tay các mẫu bên dưới.",
         "Cờ available được suy ra từ dữ liệu nguồn và giá tại thời điểm crawl; chưa xác minh đặt chỗ hiện tại. Các trường còn thiếu được liệt kê trong `quality_review.csv`.",
-        (f"Trong {n - len(priced)} sản phẩm không có giá, {sum(1 for p in products if p['attributes'].get('ticketed') is False)} "
-         "là điểm công cộng không bán vé (không có giá là đúng); phần còn lại mới là thiếu giá cần đối chiếu nguồn."),
+        (f"Trong {n - len(priced)} sản phẩm không có giá, {sum(1 for p in products if p.get('unitPrice') is None and p['sourceRef'].startswith('trip:attraction:'))} "
+         "là điểm tham quan trip.com không hiện giá (chưa rõ có bán vé hay không, `unitPrice = null`, không phải miễn phí); phần còn lại mới là thiếu giá cần đối chiếu nguồn."),
         "",
         "## Điểm đến × loại sản phẩm",
         "",
@@ -1733,8 +2245,8 @@ def write_stats(products: list[dict], path: Path, merged: int, dropped: Counter,
     pool = [p for p in products if p["attributes"].get("level") not in ("room", "flight")]
     step = max(1, len(pool) // 15)
     for p in pool[::step][:15]:
-        desc = (p.get("description") or "").replace("\n", " ")[:280]
-        lines.append(f"- **{p['name']}** · {p['taxonomy']} · {p['destination']} · {p.get('unitPrice')} VND  \n  {desc}")
+        desc = (p.get("description") or "").replace("\n", " ")[:280].rstrip()
+        lines.append(f"- **{p['name']}** · {p['taxonomy']} · {p['destination']} · {p.get('unitPrice')} VND\n\n  {desc}")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -1789,19 +2301,31 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--destinations", default=None, help="điểm đến kế hoạch (mặc định cả 15 trong collectors/plan.py)")
     ap.add_argument("--per-destination", type=int, default=None, help="số khách sạn/điểm tham quan tối đa mỗi điểm đến")
     ap.add_argument("--no-plan", action="store_true", help="giữ mọi sản phẩm đã crawl, không lọc theo kế hoạch")
-    ap.add_argument("--rooms-per-hotel", type=int, default=None, help="số hạng phòng OTA giữ lại mỗi khách sạn (mặc định 3)")
-    ap.add_argument("--flights-per-route", type=int, default=None, help="số chuyến bay cụ thể mỗi tuyến (mặc định 5)")
+    ap.add_argument("--rooms-per-hotel", type=int, default=None, help="số hạng phòng OTA giữ lại mỗi khách sạn (mặc định 3; 0 giữ tất cả)")
+    ap.add_argument("--flights-per-route", type=int, default=0, help="số chuyến bay cụ thể mỗi tuyến (mặc định 0: giữ tất cả đã thu thập)")
     ap.add_argument("--match-threshold", type=float, default=88.0, help="điểm giống tên tối thiểu để ghép khách sạn giữa các nguồn")
     ap.add_argument("--min-description", type=int, default=0, help="loại sản phẩm có mô tả ngắn hơn N ký tự")
     ap.add_argument("--vietnamese-only", action="store_true", help="loại sản phẩm có mô tả không phải tiếng Việt")
     ap.add_argument("--keep-unsellable", action="store_true",
                     help="giữ cả sản phẩm không có giá mà nguồn không cung cấp được; mặc định loại bỏ")
+    ap.add_argument("--keep-location-warnings", action="store_true",
+                    help="giữ các dòng có attributes.locationWarning (mặc định xoá cùng hạng phòng/chuyến con; sản phẩm Vinpearl luôn giữ)")
+    ap.add_argument("--keep-missing-coordinates", action="store_true",
+                    help="giữ các dòng không có toạ độ (mặc định xoá cùng dòng con; sản phẩm Vinpearl luôn giữ)")
+    ap.add_argument("--keep-price-outliers", action="store_true",
+                    help="giữ các hạng phòng có giá phi lý so với phòng khác cùng khách sạn (mặc định xoá; xem drop_price_outliers)")
+    ap.add_argument("--annotate-hotel-granularity", action="store_true",
+                    help="thêm attributes.hasRoomRows / rentalUnit cho dòng khách sạn (mặc định tắt: không đổi form catalog)")
     ap.add_argument("--keep-member-variants", action="store_true",
                     help="giữ nguyên từng biến thể giá thành viên Vinpearl ([VIN33 - Gold]…); mặc định gộp về một sản phẩm")
     ap.add_argument("--usd-vnd", type=float, default=26300.0, help="tỷ giá dùng khi trang không trả VND")
     ap.add_argument("--eur-vnd", type=float, default=30500.0)
+    ap.add_argument("--report-json", type=Path, default=None,
+                    help="ghi số liệu từng bước (bản ghi thô → cụm gộp → dòng bị loại → dòng cuối) ra file JSON cho pipeline_demo.py; không đổi kết quả")
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args(argv)
+    if any(v is not None and v < 0 for v in (a.rooms_per_hotel, a.flights_per_route)):
+        ap.error("rooms-per-hotel và flights-per-route phải >= 0 (0 giữ tất cả)")
 
     paths = Paths(a.data_dir).ensure()
     setup_logging(paths, a.verbose)
@@ -1813,7 +2337,8 @@ def main(argv: list[str] | None = None) -> int:
 
     raw: dict[str, list[dict]] = defaultdict(list)
     for f in sorted(paths.interim.glob("*.jsonl")):
-        recs = latest_by_key(list(read_jsonl(f)))
+        records = list(read_jsonl(f))
+        recs = trip_route_history(records) if f.stem == "trip_flights" else latest_by_key(records)
         raw[f.stem].extend(recs)
         log.info("Đọc %s: %d bản ghi", f.name, len(recs))
     if not raw:
@@ -1822,6 +2347,7 @@ def main(argv: list[str] | None = None) -> int:
 
     dropped: Counter = Counter()
     report_rows: list[list] = []
+    stage_report: dict = {"recordsRead": {k: len(v) for k, v in raw.items()}}  # chỉ để --report-json
 
     # khách sạn: 3 nguồn → cụm → 1 sản phẩm + hạng phòng
     props: list[dict] = []
@@ -1846,6 +2372,11 @@ def main(argv: list[str] | None = None) -> int:
         prop = agoda_hotel(r, rates)
         if prop:
             props.append(prop)
+    for r in raw.get("trip_hotels", []):
+        prop, rooms = trip_hotel(r, rates)
+        if prop:
+            props.append(prop)
+            rooms_of[prop["productId"]] = rooms
 
     pois = [p for p in (trip_attraction_product(r) for r in raw.get("trip_attractions", [])) if p]
     n_destination = apply_destination_overrides(props + tickets + pois, load_destination_overrides())
@@ -1866,6 +2397,7 @@ def main(argv: list[str] | None = None) -> int:
     for score, dist, x, y in pairs:
         report_rows.append(["hotel", f"{score:.1f}", "" if dist is None else f"{dist:.0f}", x["destination"], x["name"], x["sourceRef"], y["name"], y["sourceRef"]])
     log.info("Khách sạn: %d bản ghi → %d sau khi gộp", len(props), len(clusters))
+    stage_report.update(hotelRecords=len(props), hotelClusters=len(clusters))
 
     # vé / điểm tham quan
     venues = load_venues()
@@ -1885,7 +2417,20 @@ def main(argv: list[str] | None = None) -> int:
     # vé máy bay
     for r in raw.get("trip_flights", []):
         products.extend(trip_route_products(r, budget.flights_per_route))
+    products = merge_booking_flight_products(products, raw.get("booking_flights", []))
 
+    # combo bay+ở thật (trip.com/packages, nguồn mới 23/09/2026 — khác combo Vinpearl ở trên, không qua vinpearl_taxonomy())
+    for r in raw.get("trip_combos", []):
+        c = trip_combo_product(r)
+        if c:
+            products.append(c)
+    if raw.get("booking_flights"):
+        with open(paths.data / "booking_flight_offers.jsonl", "w", encoding="utf-8") as f:
+            for r in raw["booking_flights"]:
+                for offer in r.get("offers", []):
+                    f.write(json.dumps(offer, ensure_ascii=False) + "\n")
+
+    stage_report["rowsBuilt"] = len(products)
     excluded = load_excluded_products()
     if excluded:
         before = len(products)
@@ -1893,11 +2438,27 @@ def main(argv: list[str] | None = None) -> int:
         if before - len(products):
             dropped["đã soát tay và loại (collectors/excluded_products.csv)"] += before - len(products)
 
+    auto_excluded = [(p, non_tourism_reason(p["name"])) for p in products
+                     if p["taxonomy"] == "attraction" and p["sourceRef"].startswith("trip:attraction:")]
+    auto_excluded = [(p, reason) for p, reason in auto_excluded if reason]
+    if auto_excluded:
+        drop_refs = {p["sourceRef"] for p, _ in auto_excluded}
+        products = [p for p in products if p["sourceRef"] not in drop_refs]
+        for _p, reason in auto_excluded:
+            dropped[f"không phải điểm du lịch theo quy tắc: {reason}"] += 1
+        with open(paths.data / "excluded_auto.csv", "w", encoding="utf-8", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(["sourceRef", "name", "destination", "reason", "tags"])
+            for p, reason in auto_excluded:
+                w.writerow([p["sourceRef"], p["name"], p["destination"], reason, ", ".join(p["attributes"].get("tags") or [])])
+
+    stage_report["rowsAfterExclusions"] = len(products)
     if not a.keep_unsellable:
         products, unsellable = drop_unsellable(products)
         if unsellable:
             dropped["không có giá và nguồn không cung cấp được (không đặt được)"] += unsellable
 
+    stage_report["rowsAfterUnsellable"] = len(products)
     if not a.no_plan:
         products = apply_plan(products, plan_names, budget, dropped)
 
@@ -1919,6 +2480,7 @@ def main(argv: list[str] | None = None) -> int:
         seen.add(p["productId"])
         final.append(p)
 
+    stage_report["rowsAfterValidation"] = len(final)
     tidy = tidy_attributes(final)
     if tidy:
         log.info("Chuẩn hoá thuộc tính: %s", dict(tidy))
@@ -1932,8 +2494,32 @@ def main(argv: list[str] | None = None) -> int:
         if merged_variants:
             dropped["biến thể giá thành viên Vinpearl (đã gộp, giá từng hạng giữ trong memberPrices)"] += merged_variants
 
+    stage_report["rowsAfterMemberMerge"] = len(final)
+    if a.annotate_hotel_granularity:  # mặc định TẮT: không thêm khoá nào vào attributes (giữ nguyên form catalog)
+        annotate_hotel_granularity(final)
     finalize_locations(final)
+    # Mặc định xoá dòng lỗi dữ liệu theo yêu cầu (19/09/2026: không phải soát tay rồi thêm lại). Mỗi bước có cờ giữ lại.
+    removed_all: list[tuple[dict, str]] = []
+    if not a.keep_location_warnings:
+        final, removed = drop_location_warnings(final)
+        removed_all += removed
+    if not a.keep_missing_coordinates:
+        final, removed = drop_missing_coordinates(final)
+        removed_all += removed
+    if not a.keep_price_outliers:
+        final, removed = drop_price_outliers(final)
+        removed_all += removed
+    final, removed = drop_orphans(final)
+    removed_all += removed
+    if removed_all:
+        for _p, reason in removed_all:
+            dropped[f"{reason} (đã xoá, xem data/excluded_location.csv)"] += 1
+        write_location_exclusions(removed_all, paths.data / "excluded_location.csv")
+        log.info("Đã xoá %d dòng lỗi dữ liệu (danh sách: data/excluded_location.csv)", len(removed_all))
     write_outputs(final, paths.data, report_rows, dropped, plan_names, location_stats, venues)
+    if a.report_json:
+        stage_report.update(rowsFinal=len(final), dropped=dict(dropped), locationStats=dict(location_stats))
+        a.report_json.write_text(json.dumps(stage_report, ensure_ascii=False, indent=1), encoding="utf-8")
     n = len(final)
     if not a.no_plan and not TARGET_MIN <= n <= TARGET_MAX:
         log.warning("Catalog có %d sản phẩm – handbook nhắm %d–%d. Xem data/stats.md.", n, TARGET_MIN, TARGET_MAX)

@@ -5,7 +5,7 @@ SHELL := /bin/bash
 PYTHON ?= python
 AS_OF ?= $(shell date +%F)
 SEED ?= 42
-CATALOG_SNAPSHOT ?= data_collection/snapshots/2026-09-21/products.jsonl.gz
+CATALOG_SNAPSHOT ?= data_collection/snapshots/2026-09-23/products.jsonl.gz
 LOCAL_SEED_DATABASE_URL = postgresql://postgres:postgres@localhost:5432/vota
 LOCAL_INSIDER_DATABASE_URL = postgresql://postgres:postgres@localhost:5432/insider
 

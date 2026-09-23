@@ -1,7 +1,7 @@
 -- Kiểm tra sau khi seed catalog hiện hành: psql "$SEED_DATABASE_URL" -f db/verify.sql → mọi dòng phải PASS
 \pset format unaligned
 \pset tuples_only on
-SELECT 'products = 10320: '           || CASE WHEN count(*) = 10320 THEN 'PASS' ELSE 'FAIL ('||count(*)||')' END FROM cdp.products;
+SELECT 'products = 11387: '           || CASE WHEN count(*) = 11387 THEN 'PASS' ELSE 'FAIL ('||count(*)||')' END FROM cdp.products;
 SELECT 'profiles = 2000: '            || CASE WHEN count(*) = 2000 THEN 'PASS' ELSE 'FAIL ('||count(*)||')' END FROM cdp.profiles;
 SELECT 'events 6000-8000: '           || CASE WHEN count(*) BETWEEN 6000 AND 8000 THEN 'PASS' ELSE 'FAIL ('||count(*)||')' END FROM cdp.events;
 SELECT 'combo_items >= 93: '          || CASE WHEN count(*) >= 93 THEN 'PASS' ELSE 'FAIL ('||count(*)||')' END FROM catalog.combo_items;

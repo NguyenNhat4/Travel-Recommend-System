@@ -1,9 +1,11 @@
-"""trip.com – vé máy bay nội địa và điểm tham quan (handbook §3: nguồn flight + attraction cho gợi ý chéo tuần 3,
-giờ mở cửa / thời lượng / vị trí cho trợ lý lịch trình tuần 4).
+"""trip.com – vé máy bay nội địa, điểm tham quan, tour/hoạt động (handbook §3: nguồn flight + attraction cho gợi ý
+chéo tuần 3, giờ mở cửa / thời lượng / vị trí cho trợ lý lịch trình tuần 4).
 
 Không cần trình duyệt: trip.com trả trang SEO đầy đủ cho User-Agent khai báo là crawler.
-Tôn trọng robots.txt: trang tìm chuyến bay (/flights/*-to-*/tickets-*, showfarefirst, graphql) bị cấm nên chỉ
-dùng trang giá vé theo tuyến /flights/<a>-to-<b>/airfares-<x>-<y>/ (được phép).
+Tôn trọng robots.txt: trang tìm chuyến bay (/flights/*-to-*/tickets-*, showfarefirst, graphql) và toàn bộ mảng
+khách sạn (/hotels/list, /hotels/Detail/*, /hoh/, /m/hotels/w/list...) bị cấm nên KHÔNG cào 2 mảng này (kiểm tra
+robots.txt thật ngày 22-23/09/2026, chặn theo path nên không có tham số nào né được — không thử thêm nữa).
+`/things-to-do/list` (tour & hoạt động) chỉ cấm 1 path con hẹp (`/*/locales/*`) nên dùng được.
 
   trip_flights      /flights/airport-<iata>/        → danh sách tuyến bay từ mỗi sân bay trong kế hoạch
                     /flights/<a>-to-<b>/airfares-…/ → JSON-LD: giá thấp/cao theo tháng, các chuyến cụ thể
@@ -11,6 +13,17 @@ dùng trang giá vé theo tuyến /flights/<a>-to-<b>/airfares-<x>-<y>/ (đượ
   trip_attractions  /travel-guide/attraction/<city>/tourist-attractions/ (+ trang lọc theo loại)
                     /travel-guide/attraction/<city>/<poi>-<id>/  → __NEXT_DATA__: tên, giới thiệu, địa chỉ, toạ độ,
                                                       giờ mở cửa, thời lượng đề xuất, giá vé, điểm, loại hình
+  trip_experiences  /things-to-do/list?citytype=dt&pagetype=city&keyword=<tên điểm đến>&pshowcode=1daytrip
+                                                    → __NEXT_DATA__ chứa sẵn danh sách tour/vé hoạt động (tên, giá,
+                                                      điểm đánh giá, số đánh giá, lượt đặt, thời lượng, ảnh) ngay
+                                                      trong trang đầu, không cần ghé từng trang chi tiết — trang chi
+                                                      tiết (/things-to-do/detail/<id>) KHÔNG có __NEXT_DATA__ hữu ích,
+                                                      phần còn lại tải qua /restapi/soa2/* (bị robots.txt cấm) nên bỏ.
+                                                      Chưa tìm được cách phân trang hợp lệ → mỗi điểm đến chỉ lấy
+                                                      được trang đầu (~12 mục); tổng thật thường cao hơn nhiều
+                                                      (vd. Nha Trang 231 hoạt động thật, mới lấy được 12). Không có
+                                                      toạ độ trong dữ liệu này — record để trống, chưa nối vào
+                                                      normalise.py (raw interim only, xem README/ghi chú bàn giao).
 
 Cache raw chỉ giữ JSON-LD và phần dữ liệu sản phẩm của __NEXT_DATA__; review và tên người đánh giá bị bỏ
 trước khi ghi đĩa (handbook: product data, not people data).
@@ -19,11 +32,13 @@ trước khi ghi đĩa (handbook: product data, not people data).
 from __future__ import annotations
 
 import gzip
+import hashlib
 import json
 import logging
 import re
 from collections import Counter
 from dataclasses import dataclass, field
+from urllib.parse import quote_plus
 
 from .common import (
     BlockBreaker,
@@ -60,6 +75,8 @@ class TripOptions:
     max_blocks: int = 6
     rediscover: bool = False
     discover_only: bool = False
+    refresh: bool = False
+    routes: tuple[tuple[str, str], ...] = ()
     destinations: tuple[Destination, ...] = DESTINATIONS
     budget: Budget = field(default_factory=lambda: DEFAULT_BUDGET)
 
@@ -70,6 +87,7 @@ class TripCrawler:
     def __init__(self, paths: Paths, opts: TripOptions, state: StateDB):
         self.paths, self.opts, self.state = paths, opts, state
         self.cache = RawCache(paths, self.source)
+        self.shared_cache = RawCache.shared(paths, self.source)  # trang danh sách: tải một lần cho mọi job batch
         self.limiter = HostRateLimiter(opts.delay)
         self.http = Http(self.limiter)
         self.breaker = BlockBreaker(opts.max_blocks)
@@ -113,7 +131,15 @@ class TripCrawler:
                 log.info("[%s] Kế hoạch: đã xếp hàng %d URL", self.source, found)
             if self.opts.discover_only:
                 return self.state.counts(self.source).get(self.source, {})
+            if self.opts.refresh and self.source == "trip_flights":
+                self.state.conn.executemany(
+                    "UPDATE items SET status='pending', attempts=0 WHERE source=? AND url=?",
+                    [(self.source, u) for u in getattr(self, "discovered_urls", [])])
+                self.state.conn.commit()
             urls = self.state.pending(self.source, self.opts.max_attempts)
+            if self.source == "trip_flights":
+                allowed = set(getattr(self, "discovered_urls", []))
+                urls = [u for u in urls if u in allowed]
             if self.opts.limit:
                 urls = urls[: self.opts.limit]
             if not urls:
@@ -145,6 +171,8 @@ class TripCrawler:
                         progress.tick("failed")
                         continue
                     payload["url"] = url
+                    payload["fetchedAt"] = now_iso()
+                    self.cache.write_json("snapshot-" + hashlib.sha256((url + payload["fetchedAt"]).encode()).hexdigest()[:24], payload)
                     self.cache.write_json(url, payload)
                     record = self.parse(payload, url)
                     if not record:
@@ -154,7 +182,7 @@ class TripCrawler:
                     plan = self.state.plan_of(self.source, url)
                     if plan:
                         record["plan"] = plan
-                    record["crawledAt"] = now_iso()
+                    record["crawledAt"] = payload["fetchedAt"]
                     writer.write(record)
                     self.state.mark(self.source, url, "done", None, {"fetchedAt": record["crawledAt"]})
                     progress.tick("done")
@@ -184,7 +212,7 @@ class TripCrawler:
                     plan = self.state.plan_of(self.source, url)
                     if plan:
                         rec["plan"] = plan
-                    rec["crawledAt"] = (done.get(url) or {}).get("fetchedAt") or now_iso()
+                    rec["crawledAt"] = payload.get("fetchedAt") or (done.get(url) or {}).get("fetchedAt")
                     writer.write(rec)
                     n += 1
         if n == 0 and out.exists():
@@ -197,14 +225,16 @@ class TripCrawler:
 
     async def cached_page(self, key: str, url: str) -> str | None:
         """Trang danh sách dùng cho tìm URL: đọc cache nếu có (trừ --rediscover)."""
-        html = None if self.opts.rediscover else self.cache.read(key, "html")
+        html = None if self.opts.rediscover else self.shared_cache.read(key, "html")
+        if html is None and not self.opts.rediscover:
+            html = self.cache.read(key, "html")  # cache riêng của job từ các lần chạy trước khi có cache chung
         if html is not None:
             return html
         status, html = await self.get_html(url)
         if status != "ok":
             log.warning("[%s] không mở được %s (%s)", self.source, url, status)
             return None
-        self.cache.write(key, "html", slim_html(html))
+        self.shared_cache.write(key, "html", slim_html(html))
         return html
 
 
@@ -216,8 +246,12 @@ class TripFlights(TripCrawler):
 
     async def discover(self) -> int:
         airports = uniq(a for d in self.opts.destinations for a in d.airports)
+        if self.opts.routes:
+            # Job batch: chỉ tải trang của các sân bay xuất hiện trong --routes (đầu đi và đầu đến), không tải cả 20+ sân bay.
+            needed = {code for pair in self.opts.routes for code in pair}
+            airports = [a for a in airports if a in needed]
         pages: dict[str, list[tuple[str, str, str]]] = {}
-        origin_codes: set[str] = set()
+        trip_code: dict[str, str] = {}  # IATA → mã thành phố trong URL của Trip
         for iata in airports:
             html = await self.cached_page(f"airport-{iata.lower()}", f"{BASE}/flights/airport-{iata.lower()}/")
             if not html:
@@ -225,16 +259,22 @@ class TripFlights(TripCrawler):
             routes = [(m.group(0), m.group(3), m.group(4)) for m in ROUTE_RE.finditer(html)]
             routes = list(dict.fromkeys(routes))
             if routes:
-                origin = Counter(r[1] for r in routes).most_common(1)[0][0]
-                origin_codes.add(origin)
+                # URL tuyến dùng mã thành phố của Trip (Nha Trang là "nha", sân bay CXR), không phải mã IATA của sân bay.
+                # Mã của sân bay này là mã đi xuất hiện nhiều nhất trên chính trang của nó.
+                trip_code[iata] = Counter(r[1] for r in routes).most_common(1)[0][0]
                 pages[iata] = routes
+        iata_of = {code: iata for iata, code in trip_code.items()}
         rows = []
+        # Cả hai đầu đều phải là sân bay đã tải. Có --routes thì so theo cặp IATA (tuyến đi → đến) đã yêu cầu.
         for iata, routes in pages.items():
             for path, a, b in routes:
-                if a in origin_codes and b in origin_codes and a != b:
+                if a in iata_of and b in iata_of and a != b:
+                    if self.opts.routes and (iata_of[a], iata_of[b]) not in self.opts.routes:
+                        continue
                     rows.append((BASE + path, 50, {"via": "trip-airport", "airport": iata, "from": a, "to": b}))
         if rows:
             self.state.add_many(self.source, rows)
+        self.discovered_urls = [r[0] for r in rows]
         log.info("[%s] %d sân bay trong kế hoạch → %d tuyến nội địa giữa các điểm đến", self.source, len(pages), len(rows))
         return len(rows)
 
@@ -436,6 +476,109 @@ def parse_attraction(payload: dict, url: str) -> dict | None:
     }
 
 
+# ---------------------------------------------------------------------- tour & hoạt động (things-to-do)
+
+
+class TripExperiences(TripCrawler):
+    """1 trang danh sách/điểm đến chứa sẵn nhiều sản phẩm (khác khung 1-URL-1-bản-ghi của Attractions/Flights ở trên),
+    nên tự viết run() thay vì dùng discover()/extract()/parse() của lớp cha."""
+
+    source = "trip_experiences"
+
+    async def run(self) -> dict:
+        try:
+            want = self.opts.budget.trip_experiences
+            written = skipped_dest = 0
+            with JsonlWriter(self.paths.interim / f"{self.source}.jsonl", "a") as writer:
+                for dest in self.opts.destinations:
+                    if self.breaker.tripped:
+                        break
+                    key = f"xp:{dest.name}"
+                    if not self.opts.rediscover and self.state.is_discovered(self.source, key):
+                        skipped_dest += 1
+                        continue
+                    url = f"{BASE}/things-to-do/list?citytype=dt&pagetype=city&keyword={quote_plus(dest.booking_query)}&pshowcode=1daytrip"
+                    status, html = await self.get_html(url)
+                    if status == "blocked":
+                        self.state.mark_discovered(self.source, key, 0)  # tránh dò lại URL vừa bị chặn ngay lượt sau
+                        if self.breaker.blocked():
+                            log.error("[%s] Bị chặn %d lần liên tiếp – dừng. Chạy lại sau vài giờ.", self.source, self.breaker.streak)
+                            break
+                        self.limiter.penalise(url, self.breaker.cooldown())
+                        continue
+                    if status != "ok":
+                        log.warning("[%s] %s: không mở được trang (%s)", self.source, dest.name, status)
+                        continue
+                    self.breaker.ok()
+                    cards, total_real = _experience_cards(html)
+                    n = 0
+                    for card in cards[:want]:
+                        rec = parse_experience(card, dest.name, url)
+                        if rec:
+                            rec["crawledAt"] = now_iso()
+                            writer.write(rec)
+                            n += 1
+                    self.state.mark_discovered(self.source, key, n)
+                    written += n
+                    log.info("[%s] %s: %d hoạt động (trang đầu có %d, trip.com báo tổng %s)",
+                              self.source, dest.name, n, len(cards), total_real if total_real is not None else "?")
+            log.info("[%s] Xong: %d bản ghi mới, %d điểm đến đã lấy trước đó (bỏ qua)", self.source, written, skipped_dest)
+            return {"done": written, "skippedDestinations": skipped_dest}
+        finally:
+            await self.close()
+
+
+def _experience_cards(html: str) -> tuple[list[dict], int | None]:
+    """→ (danh sách card thô, tổng số hoạt động thật trip.com báo cáo)."""
+    m = NEXT_DATA_RE.search(html)
+    if not m:
+        return [], None
+    try:
+        page_model = json.loads(m.group(1))["props"]["pageProps"]["initialState"]["__STATE_MAP__"]["PageModel"]
+    except (json.JSONDecodeError, KeyError, TypeError):
+        return [], None
+    cards: list[dict] = []
+    total: int | None = None
+    for node in (page_model.get("mixList") or {}).values():
+        cd = (node or {}).get("cardData") or {}
+        if isinstance(cd.get("total"), int):
+            total = cd["total"] if total is None else max(total, cd["total"])
+        for c in cd.get("cardList") or []:
+            data = c.get("data")
+            if isinstance(data, dict) and data.get("title") and data.get("id"):
+                cards.append(data)
+    return cards, total
+
+
+def parse_experience(card: dict, destination: str, list_url: str) -> dict | None:
+    name = clean_text(card.get("title"))
+    if not name:
+        return None
+    price_info = card.get("priceInfo") or {}
+    price_text = "".join(p.get("text", "") for p in (price_info.get("price") or []) if isinstance(p, dict) and p.get("type") == "price")
+    price = int(re.sub(r"\D", "", price_text)) if price_text and re.search(r"\d", price_text) else None
+    image = card.get("image") or (card.get("imageInfo") or {}).get("url")
+    url = card.get("url")
+    return {
+        "recordType": "trip_experience",
+        "source": "trip_experiences",
+        "key": f"experience:{card.get('id')}",
+        "experienceId": card.get("id"),
+        "url": url.split("?")[0] if url else None,
+        "listUrl": list_url,
+        "destination": destination,
+        "name": name,
+        "rating": _to_float(card.get("score")),
+        "ratingScale": 5,
+        "reviewCount": first_int(str(card.get("reviewsCount") or "")),
+        "salesText": clean_text(card.get("sales")),
+        "activityTags": uniq(clean_text(t) for t in (card.get("activityTags") or []) if isinstance(t, str)),
+        "price": price,
+        "currency": "VND" if price is not None else None,
+        "image": image if isinstance(image, str) and image.startswith("http") else None,
+    }
+
+
 def _opening_hours(text: str | None) -> str | None:
     """Bỏ phần phụ thuộc thời điểm crawl: 'Mở cửa ngày mai lúc 08:30–20:00' → '08:30–20:00'."""
     t = clean_text(text)
@@ -485,11 +628,14 @@ def _to_float(v) -> float | None:
         return None
 
 
+_CRAWLERS = {"trip_flights": TripFlights, "trip_attractions": TripAttractions, "trip_experiences": TripExperiences}
+
+
 async def run(paths: Paths, which: str, opts: TripOptions, state: StateDB) -> dict:
-    crawler = (TripFlights if which == "trip_flights" else TripAttractions)(paths, opts, state)
+    crawler = _CRAWLERS.get(which, TripAttractions)(paths, opts, state)
     return await crawler.run()
 
 
 def reparse(paths: Paths, which: str, state: StateDB) -> int:
-    crawler = (TripFlights if which == "trip_flights" else TripAttractions)(paths, TripOptions(), state)
+    crawler = _CRAWLERS.get(which, TripAttractions)(paths, TripOptions(), state)
     return crawler.reparse()
