@@ -1,6 +1,6 @@
 # Hợp đồng tích hợp Itinerary Assistant
 
-> **Nguồn sự thật:** [OpenAPI 1.2.0](../../src/shared/contracts/openapi.yaml) quyết định endpoint, HTTP status, enum và required/optional. Tài liệu này giải thích cách tích hợp; khi có khác biệt, OpenAPI thắng. Xem thêm [payload MVP tối thiểu](../../src/shared/contracts/MVP.md).
+> **Nguồn sự thật:** [OpenAPI 1.2.0](../../src/shared/contracts/openapi.yaml) quyết định endpoint, HTTP status, enum và required/optional. Tài liệu này giải thích cách tích hợp; khi có khác biệt, OpenAPI thắng. Xem thêm [payload MVP tối thiểu](mvp-minimal-fields-1.2.0.md).
 
 **Phiên bản tài liệu:** 1.2.0
 

@@ -12,9 +12,13 @@ PyJWT>=2.9,<3
 langgraph>=1,<2
 langchain-core>=1,<2
 langchain-openai>=1,<2
-typer>=0.12,<1
 # recsys: vector trong bộ nhớ + embedding đa ngữ (catalog.product_vectors để trống tới tuần 2)
 numpy>=1.26
 sentence-transformers>=3.0
+# auth hybrid (docs/hop-dong-tich-hop-auth.md §8, §10, §16.1)
+argon2-cffi>=23.1          # Argon2id — thuật toán băm mật khẩu hiện hành
+bcrypt>=4.1                # chỉ để KIỂM hash cũ của user seed rồi rehash sang Argon2id (§8.2)
+PyJWT[crypto]>=2.9,<3      # RS256; luôn truyền algorithms=["RS256"] tường minh (§10.3)
+redis>=5.0,<6              # session, rate limit, OAuth state (§16.1)
 # test
 pytest>=8,<9

@@ -139,6 +139,21 @@ ErrorCode:
   - PARTIALLY_AVAILABLE
   # --- [CHỜ DUYỆT: C5] hai tầng property/room ---
   - PRODUCT_NOT_INDEXED
+  # --- auth hybrid (docs/hop-dong-tich-hop-auth.md §17) ---
+  - UNAUTHENTICATED
+  - SESSION_EXPIRED
+  - CSRF_FAILED
+  - MFA_REQUIRED
+  - MFA_INVALID
+  - EMAIL_NOT_VERIFIED
+  - TOO_MANY_ATTEMPTS
+  - CAPTCHA_REQUIRED
+  - CAPTCHA_FAILED
+  - WEAK_PASSWORD
+  - INVALID_VERIFICATION_TOKEN
+  - OAUTH_EMAIL_UNVERIFIED
+  - OAUTH_ALREADY_LINKED
+  - CDP_UNAVAILABLE
 
 ErrorResponse:
   type: object
@@ -161,7 +176,8 @@ ErrorResponse:
         retryable:
           type: boolean
           description: >-
-            true chỉ với SEARCH_UNAVAILABLE, INTERNAL_ERROR và LLM_UNAVAILABLE.
+            true chỉ với SEARCH_UNAVAILABLE, INTERNAL_ERROR, LLM_UNAVAILABLE,
+            TOO_MANY_ATTEMPTS và CDP_UNAVAILABLE.
             Mọi mã còn lại là false — thử lại nguyên request cho cùng kết quả.
         requestId:
           type: string
@@ -176,4 +192,8 @@ ErrorResponse:
             {destination, supportedDestinations, conversationId} — conversationId
             là hội thoại đã lưu phần chuyến đi còn lại, gửi lại cùng điểm đến
             hợp lệ để tiếp tục; MIN_STAY_NOT_MET {productId, minStay};
-            PRODUCT_NOT_INDEXED {productId, taxonomy}.
+            PRODUCT_NOT_INDEXED {productId, taxonomy}; TOO_MANY_ATTEMPTS
+            {retryAfterSeconds}; MFA_INVALID {attemptsLeft}; EMAIL_NOT_VERIFIED
+            {email}; WEAK_PASSWORD {reasons}; INVALID_VERIFICATION_TOKEN
+            {purpose}; OAUTH_EMAIL_UNVERIFIED và OAUTH_ALREADY_LINKED
+            {provider}.

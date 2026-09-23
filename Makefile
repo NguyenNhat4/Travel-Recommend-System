@@ -6,10 +6,16 @@ PYTHON ?= python
 AS_OF ?= $(shell date +%F)
 SEED ?= 42
 CATALOG_SNAPSHOT ?= data_collection/snapshots/2026-09-21/products.jsonl.gz
-LOCAL_SEED_DATABASE_URL = postgresql://postgres:postgres@localhost:5432/vota
-LOCAL_INSIDER_DATABASE_URL = postgresql://postgres:postgres@localhost:5432/insider
+# Cổng host của Postgres; đổi khi máy đã có Postgres khác giữ 5432.
+# Phải khớp POSTGRES_HOST_PORT dùng cho `docker compose up`.
+POSTGRES_HOST_PORT ?= 5432
+export POSTGRES_HOST_PORT
+LOCAL_SEED_DATABASE_URL = postgresql://postgres:postgres@localhost:$(POSTGRES_HOST_PORT)/vota
+# Runner migration cần psycopg; venv của backend có sẵn, nếu chưa tạo thì rơi về $(PYTHON).
+MIGRATE_PYTHON = $(shell test -x src/backend/.venv/bin/python && echo src/backend/.venv/bin/python || echo $(PYTHON))
+LOCAL_INSIDER_DATABASE_URL = postgresql://postgres:postgres@localhost:$(POSTGRES_HOST_PORT)/insider
 
-.PHONY: chat chat-full chat-api chat-ui chat-logs web web-ui web-logs test-llm demo-db demo-db-reset verify-db backend backend-build backend-logs backend-stop backend-local
+.PHONY: chat chat-full chat-api chat-ui chat-logs web web-ui web-logs test-llm demo-db demo-db-reset verify-db db-migrate db-migrate-status backend backend-build backend-logs backend-stop backend-local
 
 # Chạy trọn bộ FastAPI + Streamlit; Ctrl+C sẽ dừng cả hai.
 chat:
@@ -187,17 +193,28 @@ test-llm:
 
 demo-db:
 	docker compose up -d --wait postgres
+	$(MAKE) db-migrate
 	cd src && SEED_DATABASE_URL=$(LOCAL_SEED_DATABASE_URL) INSIDER_DATABASE_URL=$(LOCAL_INSIDER_DATABASE_URL) $(PYTHON) -m data_collection.seed --products $(CATALOG_SNAPSHOT) --as-of $(AS_OF) --seed $(SEED)
 	$(MAKE) verify-db
 
 demo-db-reset:
 	docker compose up -d --wait postgres
+	$(MAKE) db-migrate
 	cd src && SEED_DATABASE_URL=$(LOCAL_SEED_DATABASE_URL) INSIDER_DATABASE_URL=$(LOCAL_INSIDER_DATABASE_URL) $(PYTHON) -m data_collection.seed --products $(CATALOG_SNAPSHOT) --as-of $(AS_OF) --seed $(SEED) --reset
 	$(MAKE) verify-db
 
 verify-db:
 	docker compose exec -T postgres psql -U postgres -d vota < db/verify.sql
 	docker compose exec -T postgres psql -U postgres -d insider < db/verify_insider.sql
+
+# Áp thay đổi schema lên database ĐANG CÓ DỮ LIỆU, không xoá gì (db/migrations/README.md).
+# db/init/*.sql chỉ chạy lúc initdb trên volume rỗng nên không dùng được cho máy đã seed.
+db-migrate:
+	docker compose up -d --wait postgres
+	SEED_DATABASE_URL=$(LOCAL_SEED_DATABASE_URL) $(MIGRATE_PYTHON) db/migrations/run.py
+
+db-migrate-status:
+	SEED_DATABASE_URL=$(LOCAL_SEED_DATABASE_URL) $(MIGRATE_PYTHON) db/migrations/run.py --status
 
 backend:
 	docker compose up -d --build backend

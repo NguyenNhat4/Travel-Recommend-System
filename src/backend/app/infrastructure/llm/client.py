@@ -1,4 +1,4 @@
-"""Adapter dựng chat model. SDK của provider chỉ được import ở đây (ARCHITECTURE.md §12).
+"""Adapter dựng chat model. SDK của provider chỉ được import ở đây (docs/prd/architecture.md §2).
 
 Composition root gọi `build_chat_model` một lần trong lifespan và dùng chung client cho mọi
 request: các lớp chat model của LangChain chỉ giữ cấu hình bất biến cộng một client httpx có

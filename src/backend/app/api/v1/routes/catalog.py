@@ -1,13 +1,15 @@
 from collections import Counter
+from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends
 
-router = APIRouter(prefix="/api/v1", tags=["catalog"])
+from src.backend.app.api.deps import get_index
+
+router = APIRouter(tags=["catalog"])
 
 
 @router.get("/destinations")
-def destinations(request: Request):
-    index = getattr(request.app.state, "index", None)
+def destinations(index: Any = Depends(get_index)):
     if index is None:
         return {"destinations": []}
     counts = Counter(str(value) for value in index.destination)

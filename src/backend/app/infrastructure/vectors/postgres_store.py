@@ -1,6 +1,6 @@
-"""VectorStorePort đọc catalog từ PostgreSQL đã seed, thay cho `InMemoryVectorStore` đọc file.
+"""VectorStorePort đọc catalog từ PostgreSQL đã seed, thay cho bản giả `tests/fakes/in_memory_vector_store.py` đọc file.
 
-`in_memory_store.py` đọc `products.jsonl`; bản này đọc thẳng `cdp.products` JOIN `catalog.product_meta`
+Bản giả đọc `products.jsonl`; bản này đọc thẳng `cdp.products` JOIN `catalog.product_meta`
 nên recsys chạy trên đúng dữ liệu mà `data_collection.seed` đã nạp, không cần file trung gian.
 
 Hai điểm bám theo quy tắc repo:

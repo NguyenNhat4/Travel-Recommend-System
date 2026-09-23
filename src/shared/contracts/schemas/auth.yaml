@@ -61,6 +61,89 @@ AuthResponse:
       description: Giây
     user:
       $ref: ../openapi.yaml#/components/schemas/AuthUser
+# --- Hybrid session (docs/hop-dong-tich-hop-auth.md §5, §18) -------------------
+# Nhóm này chỉ BFF gọi, gác bằng X-Service-Token. Trình duyệt không bao giờ nhận
+# accessToken/refreshToken; BFF giữ chúng trong session store phía server.
+# Các schema v1 phía trên không đổi — client nội bộ/test vẫn dùng AuthResponse.
+SessionState:
+  type: string
+  description: >-
+    anonymous = khách vãng lai; pending_mfa = đúng mật khẩu nhưng chưa qua yếu tố
+    thứ hai, chưa mang cdpUserId; authenticated = đã xác thực đầy đủ.
+  enum:
+  - anonymous
+  - pending_mfa
+  - authenticated
+SessionRequest:
+  type: object
+  required:
+  - email
+  - password
+  properties:
+    email:
+      type: string
+      format: email
+    password:
+      type: string
+    captchaToken:
+      type: string
+      description: Bắt buộc khi lần thử trước trả details.captchaRequired = true (§9.3).
+SessionResponse:
+  type: object
+  required:
+  - state
+  properties:
+    state:
+      $ref: ../openapi.yaml#/components/schemas/SessionState
+    accessToken:
+      type: string
+      description: JWT hạn ngắn. Chỉ có khi state = authenticated. Không bao giờ tới trình duyệt.
+    refreshToken:
+      type: string
+      description: Chuỗi đục, một lần dùng. Chỉ có khi state = authenticated.
+    expiresIn:
+      type: integer
+      description: Giây tới hạn của accessToken.
+    user:
+      $ref: ../openapi.yaml#/components/schemas/AuthUser
+RefreshRequest:
+  type: object
+  required:
+  - refreshToken
+  properties:
+    refreshToken:
+      type: string
+RevokeRequest:
+  type: object
+  required:
+  - refreshToken
+  properties:
+    refreshToken:
+      type: string
+MfaVerifyRequest:
+  type: object
+  required:
+  - code
+  properties:
+    code:
+      type: string
+      minLength: 6
+      maxLength: 10
+    isRecoveryCode:
+      type: boolean
+      default: false
+PasswordChangeRequest:
+  type: object
+  required:
+  - currentPassword
+  - newPassword
+  properties:
+    currentPassword:
+      type: string
+    newPassword:
+      type: string
+      minLength: 8
+      maxLength: 128
 DemoAccountListResponse:
   type: object
   required:

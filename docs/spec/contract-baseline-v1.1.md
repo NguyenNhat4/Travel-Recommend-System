@@ -1,6 +1,6 @@
 # Baseline tích hợp 1.1.0 — 16/09/2026
 
-> **MVP 1.2.0:** ưu tiên hiển thị recommendation; [bộ trường tối thiểu](../../src/shared/contracts/MVP.md) và OpenAPI hiện hành thay thế danh sách required/optional cũ bên dưới. Các trường mở rộng vẫn được hỗ trợ nhưng không bắt buộc gửi.
+> **MVP 1.2.0:** ưu tiên hiển thị recommendation; [bộ trường tối thiểu](mvp-minimal-fields-1.2.0.md) và OpenAPI hiện hành thay thế danh sách required/optional cũ bên dưới. Các trường mở rộng vẫn được hỗ trợ nhưng không bắt buộc gửi.
 
 Baseline này chốt cấu trúc để Search, Agent, Backend và Web làm độc lập theo [OpenAPI](../../src/shared/contracts/openapi.yaml). Đây là quyết định triển khai trong repo theo yêu cầu chủ dự án, không phải xác nhận các service đã triển khai hoặc các team đã nghiệm thu. Phần còn chờ xác nhận được ghi riêng bên dưới.
 

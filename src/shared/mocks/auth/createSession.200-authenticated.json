@@ -1,0 +1,12 @@
+{
+  "state": "authenticated",
+  "accessToken": "eyJhbGciOiJSUzI1NiIsImtpZCI6Im1vY2sifQ.mock.signature",
+  "refreshToken": "rt_01JB3YQZ2M7K3F9XHB4N8PWVCD",
+  "expiresIn": 600,
+  "user": {
+    "userId": "web-user-001",
+    "cdpUserId": "VP0000001",
+    "email": "minh.anh@example.com",
+    "fullName": "Nguyễn Minh Anh"
+  }
+}

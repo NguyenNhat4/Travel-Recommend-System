@@ -4,7 +4,6 @@ import copy
 import importlib.util
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
 
 import httpx
 
@@ -184,8 +183,7 @@ class NodeTests(unittest.IsolatedAsyncioTestCase):
         async def plan(prompt):
             return SimpleNamespace(tool_calls=[{'name': 'get_recommendations', 'args': {'destination': 'Da Nang'}}])
         llm = SimpleNamespace(bind_tools=lambda schemas: SimpleNamespace(ainvoke=plan))
-        with patch.object(nodes, 'get_llm', return_value=llm):
-            result = await nodes.tool_node({'query': 'recommend Da Nang'}, tools=Executor())
+        result = await nodes.tool_node({'query': 'recommend Da Nang'}, tools=Executor(), llm=llm)
         self.assertEqual(result['tool_plan'][0]['args'], {'destination': 'Da Nang', 'k': 5})
 
     async def test_planner_wording_of_the_destination_does_not_fail_the_plan(self):
@@ -198,8 +196,7 @@ class NodeTests(unittest.IsolatedAsyncioTestCase):
             return SimpleNamespace(tool_calls=[{'name': 'get_recommendations', 'args': {'destination': 'Hồ Chí Minh'}}])
         llm = SimpleNamespace(bind_tools=lambda schemas: SimpleNamespace(ainvoke=plan))
         state = {'query': '2 ngày', 'intent': {'destination': 'TP. Hồ Chí Minh', 'days': 2}}
-        with patch.object(nodes, 'get_llm', return_value=llm):
-            result = await nodes.tool_node(state, tools=Executor())
+        result = await nodes.tool_node(state, tools=Executor(), llm=llm)
         self.assertEqual(result['tool_plan'][0]['args']['destination'], 'TP. Hồ Chí Minh')
         self.assertNotIn('error', result.get('response', {}))
 
@@ -218,8 +215,7 @@ class NodeTests(unittest.IsolatedAsyncioTestCase):
         llm = SimpleNamespace(bind_tools=lambda schemas: SimpleNamespace(ainvoke=plan))
         tools = Executor()
         state = {'query': '2 ngày', 'intent': {'destination': 'Hạ Long', 'days': 2}}
-        with patch.object(nodes, 'get_llm', return_value=llm):
-            result = await nodes.tool_node(state, tools=tools)
+        result = await nodes.tool_node(state, tools=tools, llm=llm)
         self.assertEqual(result['tool_plan'][0]['args']['query'], 'Hạ Long')
         self.assertEqual(tools.seen[0]['query'], 'Hạ Long')
 

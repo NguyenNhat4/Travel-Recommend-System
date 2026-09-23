@@ -137,6 +137,12 @@ similar:          { mode: EXACT_FILTER_SCORE, topK: 20 }
 recommendations:  { mode: EXACT_FILTER_SCORE, candidateK: 200 }
 ```
 
+> **Cần duyệt lại (22/09/2026) — xem rủi ro S8.** Đoạn dưới viết khi vector còn
+> nằm trong Postgres/pgvector. Vector đã chuyển sang Weaviate (Cohere
+> `embed-multilingual-v3.0`, 1024 chiều), nơi HNSW là mặc định, nên tiền đề
+> "toàn bộ vector nằm trong `shared_buffers`" không còn đúng. Giữ nguyên chữ cũ
+> để đối chiếu; chưa đổi cam kết `facets` trong contract khi chưa chốt.
+
 Cả ba dùng exact scan. Ở 1.125 vector × 768 chiều = 3,4 MB, toàn bộ nằm trong
 `shared_buffers`; exact scan mất 2–7 ms, HNSW ~1 ms nhưng là xấp xỉ và không
 trả được tập đầy đủ để đếm `facets`.
@@ -615,7 +621,8 @@ Bốn tiêu chí **20, 21, 22, 23** là quan trọng nhất trong cả danh sác
 | S4 | Soft delete chưa duyệt · `[U1]` | `because[].productName` giả định sản phẩm còn hàng trong `products` |
 | S5 | Cache user vector chưa duyệt · `[P3]` | Không cache thì p95 `/recommendations` là 800 ms, không phải 300 ms |
 | S6 | Công thức `popularity_score` chưa chốt · `[C7]` | Tạm dùng `log(1 + review_count)` |
-| S7 | Model embedding chưa chốt | `multilingual-e5-base`, 768 chiều. Chốt sáng Ngày 4 sau khi so 3 model |
+| S7 | ~~Model embedding chưa chốt~~ — **đã chốt 22/09/2026** | Cohere `embed-multilingual-v3.0`, **1024 chiều**, vector lưu ở Weaviate (không còn pgvector). Xem `docs/prd/architecture.md` §4–§5. Kéo theo S8. |
+| S8 | **Mới (22/09/2026): `EXACT_FILTER_SCORE` cần duyệt lại.** Mục "Chế độ truy xuất" phía trên lập luận rằng exact scan hợp lý vì toàn bộ vector nằm trong `shared_buffers` của Postgres. Weaviate là HNSW-first nên tiền đề đó không còn đúng, và HNSW chỉ trả top-K — không đủ tập đầy đủ để đếm `facets` như `[C4]` yêu cầu | Chưa chốt. Team Search quyết: (a) đếm `facets` bằng SQL trên Postgres rồi chỉ dùng Weaviate cho top-K, hay (b) đổi cam kết `facets` trong contract. **Không tự đổi `schemas/search.yaml` trước khi chốt.** |
 
 S5 là phụ thuộc nặng nhất: không duyệt `[P3]` thì tiêu chí nghiệm thu 26 không
 đạt được, và ngân sách §7.1 phải sửa.
