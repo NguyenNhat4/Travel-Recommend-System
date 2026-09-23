@@ -2,6 +2,8 @@
 
 Bản 23/09/2026 — rev 2: ngày 4–8 chạy theo cổng (`sb run --stage`, `sb promote`, `sb gold holes`), thêm bước đặt baseline regression · đi kèm `SEARCH_EVAL_LOCAL_SPEC.md` (code chạy local) và `ARMS.md` (danh sách arm) · nguồn: `EMBEDDING_STACK_SWITCH.md`, `EMBEDDING_AND_ENGINES.md` §9, `VECTOR_DB_BENCH_SPEC.md` Part 6b, `VECTOR_STORE_AND_ROBUSTNESS.md` §3.1.
 
+Phục vụ: **FR-SRC-01..04**, **NFR-PERF-01**, **NFR-PERF-03**, **AC-SRC-01** (`docs/prd/requirements.md`).
+
 **Người A** = Eval & Data (sở hữu gold, metric, report, QU/alias). **Người B** = Search & Infra (sở hữu Weaviate, Cohere client, text builder, arm, latency).
 Quy tắc: gold chỉ được **thêm** sau khi tag `gold_v1` (holes, query mới, retire) — không sửa nhãn cũ; A gán mọi hole. B không đọc nhãn gold trong lúc chỉnh text builder (chỉ xem metric tổng hợp). Mỗi arm chỉ đổi một nhóm trường so với `parent`. Promote khác đề xuất của `select()` phải có `--note`.
 
@@ -13,7 +15,7 @@ Ký hiệu lệnh: `sb` = `python -m evaluation.search_bench` chạy từ `src/`
 
 - [ ] Chốt endpoint embed: Cohere API trực tiếp **hoặc** Bedrock `ap-southeast-1` (ghi vào `config/sbench.yaml → embedding.provider`)
 - [ ] Có `COHERE_API_KEY` (trial đủ: ~105 lượt gọi / lần re-embed 5.000 search unit)
-- [ ] Có `products.jsonl` bản mới nhất (contract `SCHEMA.md`), đường dẫn ghi vào config
+- [ ] Có `products.jsonl` bản mới nhất (contract `docs/spec/data-collection/schema.md`), đường dẫn ghi vào config
 - [ ] Docker Desktop chạy được; máy ≥ 16 GB RAM nếu chạy bge-m3 local làm đối chứng
 - [ ] Mentor xác nhận bằng văn bản việc lệch handbook ở 3 mục (backend, vector store, embedding)
 - [ ] Tạo nhánh `eval/search-bench`, thư mục `src/evaluation/search_bench/` theo spec
@@ -23,11 +25,11 @@ Ký hiệu lệnh: `sb` = `python -m evaluation.search_bench` chạy từ `src/`
 ## Ngày 1 — Draft gold · Hạ tầng
 
 ### A
-- [ ] Đọc `SCHEMA.md` §3–§5 để biết trường thật; xuất danh sách destination, tên sản phẩm, amenity thô: `sb catalog vocab`
-- [ ] Viết prompt sinh draft (`gold/prompts/draft.md`): ràng buộc destination / tên / amenity vào danh sách vừa xuất; mỗi dòng `query \t slice`
-- [ ] Sinh ~600 draft, đủ 10 slice (quota ở config `gold.slices`)
-- [ ] Soát tay, chọn 200 → `gold/drafts.txt` (giữ log số draft bị loại theo lý do: bịa tên / trùng / không tự nhiên)
-- [ ] Với slice `multi_constraint`: điền cột `filter` mong đợi (AST JSON); slice `out_of_catalog`: cột `expected_no_result=true`
+- [x] Đọc `docs/spec/data-collection/schema.md` §3–§5 để biết trường thật; xuất danh sách destination, tên sản phẩm, amenity thô: `sb catalog vocab`
+- [x] Viết prompt sinh draft (`docs/spec/bench/gold-draft-prompt.md`): ràng buộc destination / tên / amenity vào danh sách vừa xuất; mỗi dòng `query \t slice`
+- [x] Sinh ~600 draft, đủ 13 slice (quota ở config `gold.slices`) → lưu `gold/drafts_raw.tsv`
+- [ ] Người dùng soát tay, chọn 200 → `gold/drafts.txt` (giữ log số draft bị loại theo lý do: bịa tên / trùng / không tự nhiên)
+- [x] Với slice `multi_constraint`: điền cột `filter` mong đợi (AST JSON); slice `out_of_catalog`: cột `expected_no_result=true`
 
 ### B
 - [ ] `docker compose -f docker/compose.yml up -d weaviate` (image pin theo spec) · `sb doctor` xanh

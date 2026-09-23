@@ -2,6 +2,8 @@
 
 Bản 23/09/2026 · đi kèm `SEARCH_EVAL_LOCAL_SPEC.md` (cách chạy) và `SEARCH_EVAL_CHECKLIST.md` (ai chạy ngày nào). File này là **nguồn duy nhất** liệt kê arm: `arms/*.yaml` phải khớp bảng §1; arm không có trong file này không được chạy.
 
+Phục vụ: **FR-SRC-01..04**, **NFR-PERF-01**, **NFR-PERF-03**, **AC-SRC-01** (`docs/prd/requirements.md`).
+
 Mọi ví dụ dưới đây là **minh hoạ cách arm hoạt động**, không phải số đo. Sản phẩm ví dụ: *Vinpearl Resort Nha Trang* (hotel_property, 5 sao, Nha Trang, family-friendly, amenities gồm bãi biển riêng · hồ bơi · công viên nước · spa · kids club · buffet sáng · Wi-Fi · máy lạnh · lễ tân 24h · bãi đỗ xe · nhà hàng · phòng gym…; hạng phòng Deluxe Ocean View · Family Suite · Villa Private Pool; giá từ 2,8 triệu; review 8,9).
 
 Sáu query dùng xuyên suốt:

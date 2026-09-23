@@ -1,6 +1,8 @@
 # spec.md — `sbench`: benchmark embedding + search trên Weaviate + Cohere, chạy local
 
-Bản 23/09/2026 — rev 2: thêm Part 11 (`gold holes`, gold append-only, rescore), Part 12 (chạy theo cổng, `promote`), Part 13 (regression); text builder thành biến thể ghép (base + modifier) · để Claude Code sinh code ở local, **mỗi Part chạy thử được độc lập** · lịch và phân việc ở `SEARCH_EVAL_CHECKLIST.md` · danh sách arm ở `ARMS.md` (mô tả) và `config/stages.yaml` (máy đọc) · nguồn yêu cầu: `EMBEDDING_STACK_SWITCH.md` (Cohere, Weaviate, cái gì đổi), `EMBEDDING_AND_ENGINES.md` §1–§2, §4, §9 (text builder, hybrid, bộ đánh giá), `VECTOR_STORE_AND_ROBUSTNESS.md` §2–§3 (query preproc, amenity), `VECTOR_DB_BENCH_SPEC.md` Part 6b (gold tool — dùng lại định nghĩa nhãn), `SCHEMA.md` (contract `products.jsonl`), `ARCHITECTURE.md` §4, §12 (vị trí code, không folder `utils`).
+Bản 23/09/2026 — rev 2: thêm Part 11 (`gold holes`, gold append-only, rescore), Part 12 (chạy theo cổng, `promote`), Part 13 (regression); text builder thành biến thể ghép (base + modifier) · để Claude Code sinh code ở local, **mỗi Part chạy thử được độc lập** · lịch và phân việc ở `SEARCH_EVAL_CHECKLIST.md` · danh sách arm ở `ARMS.md` (mô tả) và `config/stages.yaml` (máy đọc) · nguồn yêu cầu: `EMBEDDING_STACK_SWITCH.md` (Cohere, Weaviate, cái gì đổi), `EMBEDDING_AND_ENGINES.md` §1–§2, §4, §9 (text builder, hybrid, bộ đánh giá), `VECTOR_STORE_AND_ROBUSTNESS.md` §2–§3 (query preproc, amenity), `VECTOR_DB_BENCH_SPEC.md` Part 6b (gold tool — dùng lại định nghĩa nhãn), `docs/spec/data-collection/schema.md` (contract `products.jsonl`), `ARCHITECTURE.md` §4, §12 (vị trí code, không folder `utils`).
+
+Phục vụ: **FR-SRC-01..04**, **NFR-PERF-01**, **NFR-PERF-03**, **AC-SRC-01** (`docs/prd/requirements.md`).
 
 Spec này **không đặt ra ngưỡng mới**: quota slice, ngưỡng metric, quy tắc chọn chép từ plan đã chốt vào **một** file config (§1.2). Tham số kỹ thuật spec thêm ghi *(đề xuất)*.
 
@@ -83,7 +85,7 @@ src/evaluation/search_bench/
 │   ├── amenity_seed.yaml  # alias amenity tối thiểu (Part 1)
 │   └── synth_prompts.yaml # prompt sinh synthetic query (Part 7)
 ├── arms/                  # mỗi arm một YAML (ARMS.md) — commit
-├── gold/                  # drafts.txt, GUIDE.md, pool*.csv, gold.jsonl, CHANGELOG.md, holes/, prompts/ — commit
+├── gold/                  # drafts_raw.tsv, drafts.txt, GUIDE.md, pool*.csv, gold.jsonl, CHANGELOG.md, holes/ — commit
 ├── state/promotions.yaml  # arm được promote ở mỗi cổng (Part 12) — commit
 ├── regression/baseline.json  # mốc regression (Part 13) — commit, chỉ đổi bằng lệnh
 ├── docker/compose.yml     # Weaviate
@@ -111,7 +113,7 @@ run:
   default_run_id: dev            # sb run ghi <YYYYMMDD-HHMM>-<git sha>
 
 catalog:
-  products_path: src/data_collection/products.jsonl
+  products_path: src/data_collection/data/products.jsonl
   sample_path: src/data_collection/sample/products-sample.jsonl
   search_unit_taxonomies: [hotel_property, flight_route, attraction, combo, golf]
   amenity_scope: property_plus_rooms
@@ -227,7 +229,7 @@ regression:                       # Part 13
     - src/evaluation/search_bench/config/aliases.yaml
     - src/evaluation/search_bench/config/sbench.yaml
     - src/backend/app/**/text_builder*.py
-    - src/data_collection/products.jsonl
+    - src/data_collection/data/products.jsonl
     - src/evaluation/search_bench/gold/gold.jsonl
 ```
 
@@ -337,7 +339,7 @@ Không dùng module `text2vec-cohere` vì (a) `nearText` không cache được v
 
 ## Part 1 — Catalog → `items.parquet`
 
-Đọc `products.jsonl` (contract `SCHEMA.md` §3). Search unit = `taxonomy ∈ search_unit_taxonomies` **hoặc** hotel `attributes.level == property`. Phòng / chuyến bay không thành item nhưng được gom vào cha (`parentProductId`) để lấy từ vựng phòng, hãng bay, min giá.
+Đọc `products.jsonl` (contract `docs/spec/data-collection/schema.md` §3). Search unit = `taxonomy ∈ search_unit_taxonomies` **hoặc** hotel `attributes.level == property`. Phòng / chuyến bay không thành item nhưng được gom vào cha (`parentProductId`) để lấy từ vựng phòng, hãng bay, min giá.
 
 Cột `items.parquet`: `product_id, taxonomy, variant, name, brand, destination, province, city, property_type, star_rating, audience[], family_friendly, ocean_view, ticketed, nights, amenities_raw[], amenity_ids[] (smallint), room_vocab[] (từ con, khử trùng), airlines[] (từ con), description, description_is_derived, description_source, unit_price_min, review_score, lat, lon, parent_product_id (null với search unit), n_children`.
 
