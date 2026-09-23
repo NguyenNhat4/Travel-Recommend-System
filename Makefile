@@ -16,7 +16,7 @@ LOCAL_SEED_DATABASE_URL = postgresql://postgres:postgres@localhost:$(POSTGRES_HO
 MIGRATE_PYTHON = $(shell test -x src/backend/.venv/bin/python && echo src/backend/.venv/bin/python || echo $(PYTHON))
 LOCAL_INSIDER_DATABASE_URL = postgresql://postgres:postgres@localhost:$(POSTGRES_HOST_PORT)/insider
 
-.PHONY: chat chat-full chat-api chat-ui chat-logs web web-ui web-logs test-llm demo-db demo-db-reset verify-db db-migrate db-migrate-status embed-products backend backend-build backend-logs backend-stop backend-local
+.PHONY: chat chat-full chat-api chat-ui chat-logs web web-ui web-logs test-llm demo-db demo-db-reset verify-db db-migrate db-migrate-status embed-products backend backend-build backend-logs backend-stop backend-local jwt-keys
 
 # Chạy trọn bộ FastAPI + Streamlit; Ctrl+C sẽ dừng cả hai.
 chat:
@@ -240,3 +240,12 @@ backend-stop:
 backend-local:
 	ITINERARY_DATA_MODE=$${ITINERARY_DATA_MODE:-fixture} \
 		$(PYTHON) -m uvicorn src.backend.app.main:app --reload --host 127.0.0.1 --port $${BACKEND_PORT:-8000}
+
+# Cặp khoá RS256 cho JWT (docs/spec/hop-dong-tich-hop-auth.md §10.2, §19). secrets/ nằm trong .gitignore;
+# không commit, không đưa vào image. Đã có thì giữ nguyên để không làm mất hiệu lực token đang dùng.
+jwt-keys:
+	mkdir -p secrets
+	if [ -f secrets/jwt-private.pem ]; then echo "secrets/jwt-private.pem đã có, giữ nguyên"; exit 0; fi
+	openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out secrets/jwt-private.pem
+	openssl rsa -pubout -in secrets/jwt-private.pem -out secrets/jwt-public.pem
+	chmod 600 secrets/jwt-private.pem

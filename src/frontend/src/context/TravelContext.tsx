@@ -5,7 +5,7 @@
  * Manages seed personas, event tracking, cart, bookings, feedback loop flags, and debug mode.
  */
 
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { 
   UserPersona, 
@@ -19,7 +19,9 @@ import {
   Destination 
 } from '../types/travel';
 import { SupportedLocale, DEFAULT_LOCALE } from '../types/locale';
-import { SEED_PERSONAS } from '../data/personas';
+import { PERSONA_LOGIN, SEED_PERSONAS } from '../data/personas';
+import * as authApi from '../services/auth';
+import { SESSION_EXPIRED_EVENT } from '../services/http';
 import { CATALOG } from '../data/catalog';
 
 interface ToastState {
@@ -31,7 +33,14 @@ interface ToastState {
 
 interface TravelContextType {
   currentPersona: UserPersona | null;
-  switchPersona: (personaId: string | null) => void;
+  /** false tới khi GET /api/auth/session trả về lần đầu. */
+  authReady: boolean;
+  /** Đăng nhập nhanh persona demo (null = đăng xuất). Ném AuthError khi thất bại. */
+  switchPersona: (personaId: string | null) => Promise<void>;
+  signIn: (email: string, password: string) => Promise<void>;
+  signUp: (email: string, password: string, fullName: string) => Promise<void>;
+  /** Email điền sẵn khi phiên hết hạn giữa chừng (§4.2 điều 4). */
+  loginPrefillEmail: string | null;
   currentLocale: SupportedLocale;
   setLocale: (locale: SupportedLocale) => void;
   cart: CartItem[];
@@ -62,6 +71,18 @@ interface TravelContextType {
 
 const TravelContext = createContext<TravelContextType | undefined>(undefined);
 
+/** Người dùng của phiên → persona hiển thị. 4 persona seed giữ thẻ demo; tài khoản khác dùng thẻ chung. */
+function personaFromUser(user: authApi.AuthUser): UserPersona {
+  const seedKey = Object.keys(PERSONA_LOGIN).find((key) => PERSONA_LOGIN[key].cdpUserId === user.cdpUserId);
+  if (seedKey) return { ...SEED_PERSONAS[seedKey], email: user.email };
+  const initials = user.fullName.split(/\s+/).filter(Boolean).slice(-2).map((w) => w[0]).join('').toUpperCase() || 'KH';
+  return {
+    id: user.cdpUserId, code: initials, name: user.fullName, email: user.email, avatarText: initials,
+    tagline: 'Tài khoản mới', description: 'Tài khoản vừa đăng ký, chưa có lịch sử.',
+    historySummary: 'Chưa có lịch sử', coldStart: true, bookedVerticals: [], seedEvents: [],
+  };
+}
+
 export const TravelProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const router = useRouter();
   const pathname = usePathname();
@@ -86,8 +107,12 @@ export const TravelProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }
   }, []);
 
-  // Default to P1 Minh Anh so demo starts in personalized high-fidelity mode as specified
-  const [currentPersona, setCurrentPersona] = useState<UserPersona | null>(SEED_PERSONAS.P1);
+  // Danh tính chỉ đến từ phiên phía server (BFF); khởi đầu là khách tới khi GET /api/auth/session trả về.
+  const [currentPersona, setCurrentPersona] = useState<UserPersona | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [loginPrefillEmail, setLoginPrefillEmail] = useState<string | null>(null);
+  const personaRef = useRef<UserPersona | null>(null);
+  useEffect(() => { personaRef.current = currentPersona; }, [currentPersona]);
   const [activeEvents, setActiveEvents] = useState<UserEvent[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [bookings, setBookings] = useState<BookingRecord[]>([]);
@@ -138,26 +163,61 @@ export const TravelProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     return () => clearTimeout(timer);
   }, [toast]);
 
-  // Switch persona - clears active events and cart for that persona
-  const switchPersona = useCallback((personaId: string | null) => {
+  /** Đổi tài khoản/đăng xuất: xoá MỌI state phía client của người trước (§4.2 điều 6). */
+  const resetClientState = useCallback(() => {
+    setCart([]);
+    setActiveEvents([]);
+    setBookings([]);
+    setJustBooked(false);
+  }, []);
+
+  const applySession = useCallback((session: authApi.SessionView) => {
+    setCurrentPersona(session.state === 'authenticated' && session.user ? personaFromUser(session.user) : null);
+  }, []);
+
+  // Reload → khôi phục phiên. Khách (anonymous) thì ở chế độ khách, KHÔNG mở modal (§4.2 điều 3).
+  useEffect(() => {
+    let cancelled = false;
+    authApi.getSession()
+      .then((session) => { if (!cancelled) applySession(session); })
+      .catch(() => { if (!cancelled) setCurrentPersona(null); })
+      .finally(() => { if (!cancelled) setAuthReady(true); });
+    return () => { cancelled = true; };
+  }, [applySession]);
+
+  const signIn = useCallback(async (email: string, password: string) => {
+    const session = await authApi.login(email, password);
+    resetClientState();
+    applySession(session);
+    setLoginPrefillEmail(null);
+  }, [applySession, resetClientState]);
+
+  const signUp = useCallback(async (email: string, password: string, fullName: string) => {
+    const session = await authApi.register(email, password, fullName);
+    resetClientState();
+    applySession(session);
+  }, [applySession, resetClientState]);
+
+  const switchPersona = useCallback(async (personaId: string | null) => {
     if (!personaId) {
+      await authApi.logout().catch(() => undefined);
       setCurrentPersona(null);
-      setCart([]);
-      setActiveEvents([]);
+      resetClientState();
       showToast('Đã đăng xuất. Bạn đang ở chế độ khách vãng lai.');
       return;
     }
-
-    const persona = SEED_PERSONAS[personaId];
-    if (persona) {
-      setCurrentPersona(persona);
-      setCart([]);
-      setActiveEvents([]);
-      setJustBooked(false);
+    const login = PERSONA_LOGIN[personaId];
+    if (!login) return;
+    try {
+      await signIn(login.email, authApi.DEMO_PASSWORD);
+      const persona = SEED_PERSONAS[personaId];
       showToast(`Đã chuyển sang: ${persona.name} (${persona.tagline})`);
       navigate('/');
+    } catch (error) {
+      showToast(error instanceof authApi.AuthError ? error.message : 'Không đăng nhập được tài khoản demo.');
+      throw error;
     }
-  }, [showToast, navigate]);
+  }, [showToast, navigate, signIn, resetClientState]);
 
   const recordEvent = useCallback((eventType: EventType, product: Product) => {
     const newEvent: UserEvent = {
@@ -184,6 +244,21 @@ export const TravelProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     setIsLoginModalOpen(false);
     setPendingPostLoginAction(null);
   }, []);
+
+  // BFF báo phiên hết hạn giữa chừng (§3.8 dòng I): về chế độ khách, mở modal có email điền sẵn.
+  useEffect(() => {
+    const onExpired = () => {
+      const persona = personaRef.current;
+      if (!persona) return; // khách: BFF đã cấp phiên khách mới, không có gì để báo
+      setCurrentPersona(null);
+      resetClientState();
+      setLoginPrefillEmail(persona.email);
+      setIsLoginModalOpen(true);
+      showToast('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+    };
+    window.addEventListener(SESSION_EXPIRED_EVENT, onExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
+  }, [showToast, resetClientState]);
 
   const addToCart = useCallback((
     product: Product, 
@@ -311,7 +386,11 @@ export const TravelProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     <TravelContext.Provider
       value={{
         currentPersona,
+        authReady,
         switchPersona,
+        signIn,
+        signUp,
+        loginPrefillEmail,
         currentLocale,
         setLocale,
         cart,

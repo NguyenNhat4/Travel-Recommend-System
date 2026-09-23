@@ -1,38 +1,46 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTravel } from '../../context/TravelContext';
 import { X, Lock, Eye, EyeOff, UserCheck } from 'lucide-react';
 import { DemoAccountSwitcher } from './DemoAccountSwitcher';
+import { authErrorMessage } from '../auth/LoginView';
 
 export const LoginModal: React.FC = () => {
-  const { isLoginModalOpen, closeLoginModal, switchPersona, pendingPostLoginAction, showToast } = useTravel();
+  const { isLoginModalOpen, closeLoginModal, signIn, pendingPostLoginAction, showToast, loginPrefillEmail } = useTravel();
   const [email, setEmail] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  // Phiên hết hạn giữa chừng: điền sẵn email của người vừa bị đăng xuất.
+  useEffect(() => {
+    if (isLoginModalOpen && loginPrefillEmail) setEmail(loginPrefillEmail);
+  }, [isLoginModalOpen, loginPrefillEmail]);
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
 
   if (!isLoginModalOpen) return null;
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) {
       setError('Vui lòng nhập đầy đủ email và mật khẩu');
       return;
     }
-    // Simple demo login
-    switchPersona('P1');
-    closeLoginModal();
-    if (pendingPostLoginAction) {
-      setTimeout(() => pendingPostLoginAction(), 100);
+    setSubmitting(true);
+    setError('');
+    try {
+      await signIn(email, password);
+    } catch (err) {
+      setError(authErrorMessage(err));
+      return;
+    } finally {
+      setSubmitting(false);
     }
+    // Thực hiện đúng hành động đang chờ một lần (§4.2 điều 5).
+    const pending = pendingPostLoginAction;
+    closeLoginModal();
+    setPassword('');
+    if (pending) setTimeout(() => pending(), 100);
     showToast('Đăng nhập thành công!');
-  };
-
-  const handleSelectDemo = (personaId: string) => {
-    switchPersona(personaId);
-    closeLoginModal();
-    if (pendingPostLoginAction) {
-      setTimeout(() => pendingPostLoginAction(), 100);
-    }
   };
 
   return (
@@ -104,7 +112,8 @@ export const LoginModal: React.FC = () => {
 
             <button
               type="submit"
-              className="w-full py-2.5 px-4 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs transition-colors"
+              disabled={submitting}
+              className="w-full disabled:opacity-60 py-2.5 px-4 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs transition-colors"
             >
               Đăng nhập
             </button>

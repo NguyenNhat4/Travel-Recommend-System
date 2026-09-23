@@ -192,6 +192,8 @@ Thêm key mới là thay đổi tương thích ngược, được phép trong v1
 
 Theo handbook §8: xác thực tồn tại để bản demo cho những người khác nhau thấy những gợi ý khác nhau. Không có OAuth, không xác minh email, không đặt lại mật khẩu, không phân quyền.
 
+> **Cơ chế xác thực và mã lỗi auth:** xem `docs/spec/hop-dong-tich-hop-auth.md` (hybrid: cookie phiên ở BFF + JWT RS256 nội bộ). Bốn endpoint dưới đây giữ nguyên shape cho client nội bộ, Agent, CLI và test; web đi qua BFF `/api/auth/*` và nhóm `/auth/session*` (auth §4, §5).
+
 ### 3.1. Đăng ký
 
 ```http
@@ -212,7 +214,7 @@ Content-Type: application/json
 | Trường | Bắt buộc | Quy tắc |
 |---|---:|---|
 | `email` | Có | Định dạng email hợp lệ, không phân biệt hoa thường, lưu dạng thường |
-| `password` | Có | Tối thiểu 8 ký tự. Băm bằng BCrypt, không bao giờ trả về hoặc ghi log |
+| `password` | Có | 8–128 ký tự, chính sách ở auth §8.3. Băm bằng Argon2id (auth §8.1), không bao giờ trả về hoặc ghi log |
 | `fullName` | Có | 1–100 ký tự |
 
 #### Response `201`
@@ -821,6 +823,8 @@ Dùng chung một hình dạng với hợp đồng Agent §4.5, để cả hệ 
 `message` là tiếng Việt và có thể hiển thị trực tiếp cho người dùng. `details` là object tùy chọn, chỉ có với các lỗi cần thông tin bổ sung.
 
 ### 8.2. Bảng mã lỗi
+
+Mã lỗi riêng của auth (`UNAUTHENTICATED`, `SESSION_EXPIRED`, `CSRF_FAILED`, `TOO_MANY_ATTEMPTS`, `WEAK_PASSWORD`, `CDP_UNAVAILABLE`…) ở `docs/spec/hop-dong-tich-hop-auth.md` §17.
 
 | HTTP | Mã lỗi | Ý nghĩa | `details` |
 |---:|---|---|---|

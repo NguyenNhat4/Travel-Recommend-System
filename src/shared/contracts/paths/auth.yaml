@@ -239,3 +239,21 @@
         $ref: ../openapi.yaml#/components/responses/Error
       '500':
         $ref: ../openapi.yaml#/components/responses/Error
+# --- JWKS (docs/spec/hop-dong-tich-hop-auth.md §5, §10.2) ------------------------
+# Ngoài prefix /api/v1: đường dẫn chuẩn để service nội bộ tự kiểm chữ ký RS256.
+/.well-known/jwks.json:
+  get:
+    tags:
+    - auth
+    operationId: getJwks
+    security: []
+    servers:
+    - url: /
+    summary: Public key (JWK Set) để kiểm access token
+    responses:
+      '200':
+        description: Các khoá đang hiệu lực; khi xoay khoá trả cả hai
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/JwksResponse

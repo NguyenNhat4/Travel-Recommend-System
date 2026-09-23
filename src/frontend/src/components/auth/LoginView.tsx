@@ -2,38 +2,70 @@
 
 import React, { useState } from 'react';
 import { useTravel } from '../../context/TravelContext';
+import { AuthError } from '../../services/auth';
 import { DemoAccountSwitcher } from '../common/DemoAccountSwitcher';
 import { Lock, Eye, EyeOff, Check, UserPlus, LogIn } from 'lucide-react';
 
+/** Thông điệp theo `code` (hop-dong-tich-hop-frontend.md §8, auth §17). */
+export function authErrorMessage(err: unknown): string {
+  if (!(err instanceof AuthError)) return 'Không kết nối được máy chủ. Vui lòng thử lại.';
+  switch (err.code) {
+    case 'INVALID_CREDENTIALS':
+      return 'Email hoặc mật khẩu không đúng.';
+    case 'EMAIL_ALREADY_EXISTS':
+      return 'Email này đã được đăng ký. Hãy đăng nhập.';
+    case 'WEAK_PASSWORD': {
+      const reasons = err.details?.reasons;
+      return Array.isArray(reasons) && reasons.length ? reasons.join(' ') : err.message;
+    }
+    case 'TOO_MANY_ATTEMPTS':
+      return `Quá nhiều lần thử. Vui lòng thử lại sau ${Math.ceil((err.retryAfterSeconds ?? 900) / 60)} phút.`;
+    case 'VALIDATION_ERROR':
+      return 'Thông tin chưa hợp lệ. Kiểm tra lại email và mật khẩu.';
+    default:
+      return err.message;
+  }
+}
+
 export const LoginView: React.FC = () => {
-  const { switchPersona, navigate, showToast } = useTravel();
+  const { signIn, signUp, navigate, showToast } = useTravel();
   const [isRegisterMode, setIsRegisterMode] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   const has8Chars = password.length >= 8;
   const hasLetter = /[a-zA-Z]/.test(password);
   const hasNumber = /[0-9]/.test(password);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) {
       setError('Vui lòng điền đầy đủ email và mật khẩu.');
       return;
     }
 
-    if (isRegisterMode && (!has8Chars || !hasLetter || !hasNumber)) {
-      setError('Mật khẩu chưa đáp ứng đầy đủ yêu cầu bảo mật.');
+    // Chỉ độ dài là điều kiện chặn; chữ/số là gợi ý hiển thị. Server kiểm lại toàn bộ chính sách (auth §8.3).
+    if (isRegisterMode && !has8Chars) {
+      setError('Mật khẩu phải có ít nhất 8 ký tự.');
       return;
     }
 
-    // Sign in demo
-    switchPersona('P1');
-    showToast(isRegisterMode ? 'Đăng ký tài khoản thành công!' : 'Đăng nhập thành công!');
-    navigate('/');
+    setSubmitting(true);
+    setError('');
+    try {
+      if (isRegisterMode) await signUp(email, password, fullName);
+      else await signIn(email, password);
+      showToast(isRegisterMode ? 'Đăng ký tài khoản thành công!' : 'Đăng nhập thành công!');
+      navigate('/');
+    } catch (err) {
+      setError(authErrorMessage(err));
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -136,7 +168,8 @@ export const LoginView: React.FC = () => {
 
           <button
             type="submit"
-            className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm rounded-xl shadow-xs transition-colors"
+            disabled={submitting}
+            className="w-full py-3 disabled:opacity-60 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm rounded-xl shadow-xs transition-colors"
           >
             {isRegisterMode ? 'Tạo tài khoản' : 'Đăng nhập'}
           </button>

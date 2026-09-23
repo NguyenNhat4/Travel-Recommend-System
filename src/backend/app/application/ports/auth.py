@@ -4,10 +4,11 @@ Hiện thực nằm ở infrastructure/auth/; chỉ composition root nối chún
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
 
-from src.backend.app.application.auth.principal import AuthenticatedUser
+from src.backend.app.application.auth.principal import AuthenticatedUser, AuthPrincipal
 
 
 class PasswordHasher(Protocol):
@@ -34,7 +35,14 @@ class UserRepository(Protocol):
     async def find_by_email(self, email: str) -> AuthenticatedUser | None:
         ...
 
+    async def find_by_id(self, user_id: str) -> AuthenticatedUser | None:
+        ...
+
     async def email_exists(self, email: str) -> bool:
+        ...
+
+    async def list_personas(self) -> list[AuthenticatedUser]:
+        """User seed có persona, cho /auth/demo-accounts."""
         ...
 
     async def create(
@@ -50,23 +58,33 @@ class UserRepository(Protocol):
         ...
 
 
+@dataclass(frozen=True)
+class RotatedRefreshToken:
+    token: str
+    user_id: str
+    session_id: str
+
+
 class RefreshTokenStore(Protocol):
-    async def issue(self, *, user_id: str, session_id: str, family_id: str | None = None) -> str:
-        """Trả token bản rõ; chỉ SHA-256 được lưu (auth §10.4)."""
+    async def issue(self, *, user_id: str, session_id: str) -> str:
+        """Mở family mới, trả token bản rõ; chỉ SHA-256 được lưu (auth §10.4)."""
         ...
 
-    async def rotate(self, token: str, *, session_id: str) -> tuple[str, str]:
-        """Trả (token mới, user_id).
+    async def rotate(self, token: str) -> RotatedRefreshToken:
+        """Một lần dùng: token cũ đánh dấu rotated, token mới cùng family và cùng session_id.
 
-        Token đã xoay mà bị dùng lại = dấu hiệu bị đánh cắp → thu hồi CẢ family và ném
-        RefreshTokenReuse. Đây là cách duy nhất phát hiện token bị trộm.
+        Token đã xoay mà bị dùng lại = dấu hiệu bị đánh cắp → thu hồi CẢ family cùng mọi phiên
+        của user và ném RefreshTokenReuse. Token lạ/hết hạn/đã thu hồi → RefreshTokenInvalid.
         """
         ...
 
     async def revoke(self, token: str, *, reason: str) -> None:
+        """Thu hồi cả family của token. Token lạ hoặc đã thu hồi: không lỗi (idempotent)."""
         ...
 
-    async def revoke_all_for_user(self, user_id: str, *, reason: str) -> int:
+    async def revoke_all_for_user(
+        self, user_id: str, *, reason: str, except_session_id: str | None = None
+    ) -> int:
         ...
 
 
@@ -75,6 +93,22 @@ class TokenIssuer(Protocol):
         self, user: AuthenticatedUser, *, session_id: str | None, amr: tuple[str, ...]
     ) -> tuple[str, int]:
         """Trả (JWT, số giây tới hạn)."""
+        ...
+
+
+class TokenVerifier(Protocol):
+    def verify(self, token: str) -> AuthPrincipal:
+        """Kiểm đủ 10 điểm của auth §10.3. Ném TokenExpired hoặc TokenInvalid."""
+        ...
+
+    def jwks(self) -> dict:
+        """Public key cho /.well-known/jwks.json."""
+        ...
+
+
+class RevokedTokens(Protocol):
+    async def is_revoked(self, token_id: str) -> bool:
+        """jti nằm trong danh sách thu hồi khẩn `jwt:revoked:{jti}` (auth §10.3 điểm 9, §16.1)."""
         ...
 
 
@@ -95,6 +129,12 @@ class LoginAttemptLog(Protocol):
 
 
 class RateLimiter(Protocol):
+    """Scope là tên ở auth §9.1: login:email, login:ip, login:ipwide, register:ip."""
+
+    async def hit(self, scope: str, key: str) -> None:
+        """Đếm MỌI lần thử (không chỉ lần sai); vượt ngưỡng thì ném RateLimited."""
+        ...
+
     async def check(self, scope: str, key: str) -> None:
         """Ném RateLimited(retry_after_seconds) khi vượt ngưỡng (auth §9.1)."""
         ...

@@ -425,6 +425,14 @@
       "status": 404,
       "case": "product-not-found",
       "file": "events/trackEvent.404-product-not-found.json"
+    },
+    {
+      "operationId": "getJwks",
+      "method": "get",
+      "path": "/.well-known/jwks.json",
+      "status": 200,
+      "case": "default",
+      "file": "auth/getJwks.200-default.json"
     }
   ]
 }

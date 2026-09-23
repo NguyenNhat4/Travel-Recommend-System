@@ -132,7 +132,7 @@
 | ⑤ | `oauth_subject` — `(provider, sub)` (P2) | `("google", "1179…")` | Nhà cung cấp OIDC | `app.oauth_identities` | Vĩnh viễn | Backend |
 | ⑥ | `identifier` của Insider | `("email", "minh.anh@…")` | Job đẩy sang Insider | `insider.identifiers` | Có `valid_from`/`valid_to` | Insider clone |
 
-**Định danh cốt lõi là ④ `cdp_user_id`, không phải ③ `user_id`.** Toàn bộ `app.carts`, `app.bookings`, `app.conversations`, `cdp.events` và engine recommendation khoá theo `cdp_user_id` (`docs/DATABASE_SCHEMA.md` §4). `app.users` chỉ là *credential + persona*. Hệ quả thực tế: **auth không sinh ra danh tính, nó chỉ chứng minh quyền dùng một `cdp_user_id` đã có.**
+**Định danh cốt lõi là ④ `cdp_user_id`, không phải ③ `user_id`.** Toàn bộ `app.carts`, `app.bookings`, `app.conversations`, `cdp.events` và engine recommendation khoá theo `cdp_user_id` (`docs/spec/DATABASE_SCHEMA.md` §4). `app.users` chỉ là *credential + persona*. Hệ quả thực tế: **auth không sinh ra danh tính, nó chỉ chứng minh quyền dùng một `cdp_user_id` đã có.**
 
 ### 3.2. Chuỗi ánh xạ đầy đủ
 
@@ -228,7 +228,7 @@ class AuthPrincipal:
 ```
 
 ```python
-# src/backend/app/api/v1/dependencies/auth.py  (chỉ HTTP)
+# src/backend/app/api/deps.py  (chỉ HTTP; theo docs/prd/architecture.md §2)
 async def current_principal(...) -> AuthPrincipal          # 401 nếu thiếu/hỏng
 async def optional_principal(...) -> AuthPrincipal | None  # None cho khách vãng lai
 ```
@@ -855,7 +855,7 @@ Thêm service `redis:7-alpine` vào `docker-compose.yml`, bind `127.0.0.1` như 
 
 ### 16.2. Postgres — bảng mới trong schema `app`
 
-Toàn bộ vào `db/init/01_vota.sql` **và** `db/vota_schema.sql`, cập nhật `docs/DATABASE_SCHEMA.md` §4 (ERD) và §11 (DDL) trong **cùng commit** (`AGENTS.md` §6).
+Toàn bộ vào `db/init/01_vota.sql` **và** `db/vota_schema.sql`, cập nhật `docs/spec/DATABASE_SCHEMA.md` §4 (ERD) và §11 (DDL) trong **cùng commit** (`AGENTS.md` §6).
 
 ```sql
 -- app.refresh_tokens — chuỗi rotation; giữ bền để thu hồi được kể cả khi Redis trống
@@ -1117,7 +1117,7 @@ Sinh khoá dev: `openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -o
 
 Theo `architecture-repo.md` §10.
 
-### 20.1. Unit (`src/backend/tests/unit/auth/`)
+### 20.1. Unit (`src/backend/tests/unit/{domain,application,infrastructure}/test_auth_*.py` — đặt theo lớp như `docs/prd/architecture.md` §2)
 
 - Argon2id băm/kiểm; bcrypt cũ kiểm được và **được rehash** sang Argon2id.
 - Chính sách mật khẩu: độ dài, danh sách chặn, giống email/tên, NFKC.
@@ -1233,6 +1233,18 @@ OAuth/OIDC + PKCE (§13) · WebAuthn (§12.2) · bảng `oauth_identities`, `web
 | G | Có mở ghép lịch sử ẩn danh không (`hop-dong-tich-hop-cdp.md` §1.6) | §3.7 | Giữ ngoài phạm vi; `anon_id` không xuống database |
 
 ---
+
+### 22.3. Ghi chú hiện thực P0 (2026-09-23)
+
+Các điểm spec để ngỏ, đã chốt khi code (không lệch PRD):
+
+- **`session_id` phía backend** (claim `sid`, cột `app.refresh_tokens.session_id`) do FastAPI sinh lúc `POST /auth/session` (`s_` + 128 bit), vì `SessionRequest`/`RefreshRequest` không mang sid của BFF. Cookie `vota_sid` là định danh riêng của BFF và xoay theo §3.8 mà backend không cần biết. Refresh giữ nguyên `session_id` và `expires_at` của family (không kéo dài quá 12 giờ).
+- **Đăng ký qua BFF** = `POST /api/v1/auth/register` (v1) rồi `POST /api/v1/auth/session` — không thêm path mới vào contract.
+- **Tái sử dụng refresh token** thu hồi mọi refresh token còn sống của user (`reuse_detected`), không chỉ family.
+- **Điểm 9 của §10.3** kiểm ở dependency HTTP (`api/deps.py`) qua port `RevokedTokens` (Redis `jwt:revoked:{jti}`), vì cần I/O.
+- **Không có Redis** (`AUTH_REDIS_URL`/`SESSION_REDIS_URL` trống): rate limiter và session store chạy trong bộ nhớ một tiến trình, chỉ cho development/test; production từ chối khởi động. Thiếu file khoá RS256: development sinh khoá tạm, production từ chối khởi động.
+- **Key rate limit**: `rl:{scope}:{sha256(key)}` (sorted set, cửa sổ trượt) và `lockout:{scope}:{sha256(key)}`; key IP cũng băm.
+- `/auth/session/mfa/verify` có trong contract nhưng **không mount** (2FA ngoài phạm vi); CAPTCHA chỉ `noop`, backend không trả `details.captchaRequired`.
 
 ## 23. Definition of Done (P0)
 

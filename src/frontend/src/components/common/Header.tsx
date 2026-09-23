@@ -420,9 +420,8 @@ export const Header: React.FC<HeaderProps> = ({ isCheckout = false }) => {
                       <div className="pt-2 border-t border-slate-100 mt-1">
                         <button
                           onClick={() => {
-                            switchPersona(null);
                             setIsAccountDropdownOpen(false);
-                            showToast('Đã đăng xuất tài khoản');
+                            void switchPersona(null);
                           }}
                           className="w-full px-2.5 py-1.5 text-left text-xs font-semibold text-rose-600 hover:bg-rose-50 rounded-lg flex items-center gap-2 transition-colors cursor-pointer"
                         >

@@ -6,6 +6,7 @@
 
 import { CATALOG } from '../data/catalog';
 import { Product, Destination, Taxonomy } from '../types/travel';
+import { apiFetch } from './http';
 
 export interface SearchFilters {
   destination?: Destination[];
@@ -185,7 +186,7 @@ export async function searchProductsApi(
 
   try {
     const destination = filters.destination && filters.destination.length > 0 ? filters.destination[0] : undefined;
-    const res = await fetch('/api/v1/search', {
+    const res = await apiFetch('/api/v1/search', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

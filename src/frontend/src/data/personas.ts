@@ -121,3 +121,14 @@ export const SEED_PERSONAS: Record<string, UserPersona> = {
     seedEvents: []
   }
 };
+
+/**
+ * Email đăng nhập thật của 4 persona seed (src/data_collection/seed/config.py PERSONAS) và
+ * cdp_user_id tương ứng. DemoAccountSwitcher đăng nhập bằng các email này qua BFF.
+ */
+export const PERSONA_LOGIN: Record<string, { email: string; cdpUserId: string }> = {
+  P1: { email: 'minh.anh@example.com', cdpUserId: 'VP0000001' },
+  P2: { email: 'quoc.bao@example.com', cdpUserId: 'VP0000002' },
+  P3: { email: 'thu.ha@example.com', cdpUserId: 'VP0000003' },
+  P4: { email: 'khach.moi@example.com', cdpUserId: 'VP0000004' },
+};

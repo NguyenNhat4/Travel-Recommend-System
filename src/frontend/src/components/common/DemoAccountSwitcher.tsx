@@ -16,9 +16,13 @@ export const DemoAccountSwitcher: React.FC<DemoAccountSwitcherProps> = ({
 }) => {
   const { currentPersona, switchPersona } = useTravel();
 
-  const handleSwitch = (personaId: string) => {
-    switchPersona(personaId);
-    if (onSelect) onSelect();
+  const handleSwitch = async (personaId: string) => {
+    try {
+      await switchPersona(personaId);
+      if (onSelect) onSelect();
+    } catch {
+      // switchPersona đã hiện toast lỗi; giữ modal mở để chọn lại.
+    }
   };
 
   const personas = [

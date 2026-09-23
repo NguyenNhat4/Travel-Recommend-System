@@ -38,8 +38,21 @@ cache ở `.embcache/`; đổi template hoặc model thì hash đổi và phải
 
 Endpoint hiện có (prefix `/api/v1`): `GET|POST /search` (`q`/`query`, `taxonomy`, `destination`, `limit`, `offset`;
 Agent tool `query` được adapter đổi thành `q`) · `GET /similar/{productId}?k=` · `GET /recommendations?k=&destination=`
-(JWT tùy chọn, `cdp_user_id` lấy từ token) · `GET /popular?k=` ·
-`POST /assistant/itineraries` · `POST /assistant/itineraries/stream` · `GET /assistant/status`. Ngoài prefix: `GET /health`.
+(JWT tùy chọn, `cdp_user_id` lấy từ token; token hỏng → 401, không hạ thành khách) · `GET /popular?k=` ·
+`POST /assistant/itineraries` · `POST /assistant/itineraries/stream` · `GET /assistant/status` ·
+auth v1 `POST /auth/register|login`, `GET /auth/me`, `GET /auth/demo-accounts` · chỉ BFF (`X-Service-Token`)
+`POST /auth/session`, `/auth/session/token`, `/auth/session/revoke` · `PUT /auth/password` ·
+`GET /internal/recommendations?cdp_user_id=` (`X-Service-Token`, tắt ở production). Ngoài prefix: `GET /health`,
+`GET /.well-known/jwks.json`.
+
+## Auth
+
+Chi tiết: `docs/spec/hop-dong-tich-hop-auth.md`. JWT ký RS256; sinh khoá dev một lần bằng `make jwt-keys` (ghi vào
+`secrets/`, đã gitignore). Thiếu khoá thì development tự sinh khoá tạm — token mất hiệu lực mỗi lần restart.
+Đặt `AUTH_SERVICE_TOKEN` (≥ 32 ký tự, `openssl rand -hex 32`) giống hệt ở backend và BFF, nếu không web không
+đăng nhập được. `AUTH_REDIS_URL` trống thì rate limit chạy trong bộ nhớ (chỉ dev). Tài khoản demo: 4 persona +
+50 `test01..50@vota.demo`, mật khẩu `Demo@2026`. Test Postgres/Redis thật: `RUN_POSTGRES_INTEGRATION=1
+RUN_REDIS_INTEGRATION=1 python -m pytest -q src/backend/tests/integration`.
 
 ## Chỗ nào làm gì (docs/prd/architecture.md §2)
 

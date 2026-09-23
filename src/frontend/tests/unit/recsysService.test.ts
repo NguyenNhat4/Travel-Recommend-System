@@ -69,13 +69,13 @@ describe('recsys service fetchRecommendations', () => {
     });
 
     const result = await fetchRecommendations({
-      cdpUserId: 'VP0000001',
       k: 4,
       destination: 'Nha Trang',
     });
 
     expect(requestedUrl).toContain('/api/v1/recommendations?');
-    expect(requestedUrl).toContain('cdp_user_id=VP0000001');
+    // Danh tính theo cookie phiên; không bao giờ gửi cdp_user_id (IDOR, auth §3.5).
+    expect(requestedUrl).not.toContain('cdp_user_id');
     expect(requestedUrl).toContain('k=4');
     expect(requestedUrl).toContain('destination=Nha+Trang');
 
@@ -94,7 +94,6 @@ describe('recsys service fetchRecommendations', () => {
 
     const fallbackUser = SEED_PERSONAS.P1;
     const result = await fetchRecommendations({
-      cdpUserId: 'VP0000001',
       k: 4,
       fallbackUser,
     });
