@@ -6,7 +6,7 @@ import json
 import logging
 
 from src.backend.app.application.itinerary.contracts import valid
-from src.backend.app.application.itinerary.tool_contracts import normalize_arguments, validate
+from src.backend.app.application.itinerary.tool_contracts import argument_names, normalize_arguments, validate
 from src.backend.app.application.ports.itinerary_tools import ToolError, ToolExecutorPort
 from src.backend.app.domain.itinerary.normalization import match_destination
 
@@ -79,6 +79,11 @@ def validated_plan(state: dict, plan: list, *, require_recommendations: bool = F
         # đúng thứ nó điền ở các lần chạy thành công, nên dùng làm fallback tất định thay vì hỏng cả request.
         if call["name"] == "search_products" and not str(args.get("query") or "").strip():
             args["query"] = intent.get("destination") or state.get("query", "")
+        # Planner đôi khi tự thêm tham số hợp đồng không có — ví dụ `excludeProducts` khi constraints
+        # có `exclude_products`. Bỏ khóa lạ thay vì huỷ cả plan: sản phẩm bị loại đã được lọc sau
+        # truy xuất ở `retrieval.collect`, nên không mất hành vi nào.
+        known = argument_names(call["name"])
+        args = {key: value for key, value in args.items() if key in known}
         args = normalize_arguments(call["name"], args)
         if intent.get("destination"):
             # Tên catalog đã chuẩn hóa mới là nguồn sự thật; planner viết "Hồ Chí Minh" thay vì
