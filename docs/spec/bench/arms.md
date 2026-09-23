@@ -1,6 +1,8 @@
-# ARMS.md — toàn bộ arm của benchmark embedding + search (Weaviate + Cohere)
+# arms.md — toàn bộ arm của benchmark embedding + search (Weaviate + Cohere)
 
-Bản 23/09/2026 · đi kèm `SEARCH_EVAL_LOCAL_SPEC.md` (cách chạy) và `SEARCH_EVAL_CHECKLIST.md` (ai chạy ngày nào). File này là **nguồn duy nhất** liệt kê arm: `arms/*.yaml` phải khớp bảng §1; arm không có trong file này không được chạy.
+Phục vụ: FR-SRC-01, FR-SRC-02, FR-SRC-03, NFR-PERF-01, NFR-PERF-03 (`docs/prd/requirements.md`).
+
+Bản 23/09/2026 · đi kèm `search-eval-local-spec.md` (cách chạy) và `search-eval-checklist.md` (ai chạy ngày nào). File này là **nguồn duy nhất** liệt kê arm: `arms/*.yaml` phải khớp bảng §1; arm không có trong file này không được chạy.
 
 Mọi ví dụ dưới đây là **minh hoạ cách arm hoạt động**, không phải số đo. Sản phẩm ví dụ: *Vinpearl Resort Nha Trang* (hotel_property, 5 sao, Nha Trang, family-friendly, amenities gồm bãi biển riêng · hồ bơi · công viên nước · spa · kids club · buffet sáng · Wi-Fi · máy lạnh · lễ tân 24h · bãi đỗ xe · nhà hàng · phòng gym…; hạng phòng Deluxe Ocean View · Family Suite · Villa Private Pool; giá từ 2,8 triệu; review 8,9).
 
@@ -98,7 +100,7 @@ Collection Weaviate: 14–16 collection chính (8–9 text variant, 0–3 độ 
 
 ### B0 — mốc
 
-`embed_text` T4, Cohere v3, `near_vector` top-10, không filter, không preproc. Mọi Δ về sau so với đây hoặc với parent gần nhất.
+`embed_text` `T3+R` (= `build_text` của backend, xem spec §1.1), Cohere v3, `near_vector` top-10, không filter, không preproc. Mọi Δ về sau so với đây hoặc với parent gần nhất.
 
 **q1** → embed câu không dấu → cosine với 5.000 vector → top-10. Kỳ vọng thấy resort Nha Trang lẫn vài resort nơi khác (không có filter).
 **q5** → vẫn trả 10 kết quả (chưa có cutoff) — đây là lỗi mà S7 sửa.
@@ -239,7 +241,7 @@ Cohere trả `embedding_types = int8`, cast về float trước khi nạp. Kỳ 
 
 **S7 — cutoff.** Sweep `max_vector_distance ∈ {0.30 … 0.60, bước 0.02}` (distance = 1 − cosine). Chọn giá trị: **q5** `resort ở Sapa` → 0 kết quả (out_of_catalog = 100%), đồng thời zero-result trong catalog < 2%. Hit BM25 (tên riêng) giữ lại kể cả dưới cutoff. Ghi `cutoff.source = CALIBRATED_<date>`.
 
-**S8 — rerank.** Top-25 sau S7 → `rerank-v3.5` → top-10. Đo Δ nDCG, +latency (một lượt gọi mạng nữa), $2/1.000 query. Chỉ giữ nếu Δ ≥ 3 điểm và p95 vẫn < 300 ms.
+**S8 — rerank.** Top-25 sau S7 → `rerank-v3.5` → top-10. Đo Δ nDCG, +latency (một lượt gọi mạng nữa), $2/1.000 query. Chỉ giữ nếu Δ ≥ 3 điểm và p95 vẫn ≤ 250 ms (NFR-PERF-01).
 
 **S9 — CSLS (tuỳ chọn).** Trên top-50 dense: `score' = 2·cos(q,d) − r_d`, với `r_d` = cosine trung bình của d tới 10 láng giềng gần nhất (tính trước, một lần). Sản phẩm "hub" (gần mọi thứ) bị trừ điểm. Chỉ chạy nếu sau T5 `hub_score_max` vẫn > 3.
 

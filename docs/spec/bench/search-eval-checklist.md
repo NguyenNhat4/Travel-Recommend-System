@@ -1,6 +1,8 @@
 # Checklist 8 ngày — benchmark embedding + search (Weaviate + Cohere) cho V-OTA
 
-Bản 23/09/2026 — rev 2: ngày 4–8 chạy theo cổng (`sb run --stage`, `sb promote`, `sb gold holes`), thêm bước đặt baseline regression · đi kèm `SEARCH_EVAL_LOCAL_SPEC.md` (code chạy local) và `ARMS.md` (danh sách arm) · nguồn: `EMBEDDING_STACK_SWITCH.md`, `EMBEDDING_AND_ENGINES.md` §9, `VECTOR_DB_BENCH_SPEC.md` Part 6b, `VECTOR_STORE_AND_ROBUSTNESS.md` §3.1.
+Phục vụ: FR-SRC-01, FR-SRC-02, FR-SRC-03, NFR-PERF-01, NFR-PERF-03 (`docs/prd/requirements.md`).
+
+Bản 23/09/2026 — rev 2: ngày 4–8 chạy theo cổng (`sb run --stage`, `sb promote`, `sb gold holes`), thêm bước đặt baseline regression · đi kèm `search-eval-local-spec.md` (code chạy local) và `arms.md` (danh sách arm) · nguồn: `EMBEDDING_STACK_SWITCH.md`, `EMBEDDING_AND_ENGINES.md` §9, `VECTOR_DB_BENCH_SPEC.md` Part 6b, `VECTOR_STORE_AND_ROBUSTNESS.md` §3.1.
 
 **Người A** = Eval & Data (sở hữu gold, metric, report, QU/alias). **Người B** = Search & Infra (sở hữu Weaviate, Cohere client, text builder, arm, latency).
 Quy tắc: gold chỉ được **thêm** sau khi tag `gold_v1` (holes, query mới, retire) — không sửa nhãn cũ; A gán mọi hole. B không đọc nhãn gold trong lúc chỉnh text builder (chỉ xem metric tổng hợp). Mỗi arm chỉ đổi một nhóm trường so với `parent`. Promote khác đề xuất của `select()` phải có `--note`.
@@ -13,10 +15,10 @@ Ký hiệu lệnh: `sb` = `python -m evaluation.search_bench` chạy từ `src/`
 
 - [ ] Chốt endpoint embed: Cohere API trực tiếp **hoặc** Bedrock `ap-southeast-1` (ghi vào `config/sbench.yaml → embedding.provider`)
 - [ ] Có `COHERE_API_KEY` (trial đủ: ~105 lượt gọi / lần re-embed 5.000 search unit)
-- [ ] Có `products.jsonl` bản mới nhất (contract `SCHEMA.md`), đường dẫn ghi vào config
+- [ ] Có `products.jsonl` bản mới nhất (contract `docs/spec/data-collection/schema.md`), đường dẫn ghi vào config — mặc định snapshot `src/data_collection/snapshots/2026-09-21/products.jsonl.gz`, `sb catalog build` tự bung
 - [ ] Docker Desktop chạy được; máy ≥ 16 GB RAM nếu chạy bge-m3 local làm đối chứng
 - [ ] Mentor xác nhận bằng văn bản việc lệch handbook ở 3 mục (backend, vector store, embedding)
-- [ ] Tạo nhánh `eval/search-bench`, thư mục `src/evaluation/search_bench/` theo spec
+- [ ] Tạo nhánh `bench/embed-search` (đã có), thư mục `src/evaluation/search_bench/` theo spec
 
 ---
 
@@ -24,20 +26,20 @@ Ký hiệu lệnh: `sb` = `python -m evaluation.search_bench` chạy từ `src/`
 
 ### A
 - [ ] Đọc `SCHEMA.md` §3–§5 để biết trường thật; xuất danh sách destination, tên sản phẩm, amenity thô: `sb catalog vocab`
-- [ ] Viết prompt sinh draft (`gold/prompts/draft.md`): ràng buộc destination / tên / amenity vào danh sách vừa xuất; mỗi dòng `query \t slice`
+- [ ] Viết prompt sinh draft (`gold/prompts/draft.txt` — AGENTS.md §7 không cho `.md` trong `src/`): ràng buộc destination / tên / amenity vào danh sách vừa xuất; mỗi dòng `query \t slice`
 - [ ] Sinh ~600 draft, đủ 10 slice (quota ở config `gold.slices`)
 - [ ] Soát tay, chọn 200 → `gold/drafts.txt` (giữ log số draft bị loại theo lý do: bịa tên / trùng / không tự nhiên)
-- [ ] Với slice `multi_constraint`: điền cột `filter` mong đợi (AST JSON); slice `out_of_catalog`: cột `expected_no_result=true`
+- [ ] Với slice `multi_constraint`: điền cột `filter` mong đợi (AST JSON; amenity ghi **khoá** như `kids_club`, không ghi id — xem `filter_fields` trong `vocab.json`); slice `out_of_catalog`: cột `expected_no_result=true`
 
 ### B
-- [ ] `docker compose -f docker/compose.yml up -d weaviate` (image pin theo spec) · `sb doctor` xanh
+- [ ] `docker compose -f evaluation/search_bench/docker/compose.yml up -d --wait weaviate` từ `src/` (image pin theo spec, cổng 127.0.0.1:58080/55051) · `sb doctor` xanh
 - [ ] Tạo collection theo `sb collection create --variant T3+R --model cohere-v3` (schema §3 spec): named vector `content`, BM25 `word` + fold dấu, `amenity_ids[]`, `parentProductId`
 - [ ] Cohere client: batch ≤ 96, `input_type` đúng chiều, `truncate=NONE`, retry 429 backoff, log token/chi phí
 - [ ] Cache embedding theo `sha1(model|input_type|text)` — chạy 2 lần không tốn tiền lần 2
-- [ ] Chạy thử với 50 sản phẩm mẫu (`sample/products-sample.jsonl`): `sb embed --variant T3+R --model cohere-v3 --limit 50` → `sb load`
+- [ ] Chạy thử với 50 sản phẩm mẫu (`sample/products-sample.jsonl` = 26 search unit): `sb --dataset sample catalog build` → `sb --dataset sample embed --variant T3+R --model cohere-v3 --limit 50` → `sb --dataset sample load`
 
 ### Sync cuối ngày
-- [ ] B demo cho A: import 50 sản phẩm, `sb query "resort Nha Trang" --arm B0` ra kết quả
+- [ ] B demo cho A: import 26 search unit mẫu, `sb --dataset sample query "resort Nha Trang" --arm B0` ra kết quả
 - [ ] A đưa B `gold/drafts.txt` (200 dòng)
 
 ---
@@ -48,7 +50,7 @@ Ký hiệu lệnh: `sb` = `python -m evaluation.search_bench` chạy từ `src/`
 - [ ] Viết `metrics.py`: Recall@10, nDCG@10 (`2^rel−1`), MRR@10 (rel=2), Judged@10, constraint precision, recall loss do filter, parent dup rate, zero-result, hub_score
 - [ ] Paired bootstrap 1.000 lần → mean Δ, CI95, p một phía
 - [ ] Unit test trên fixture `tests/fixtures/gold_small.jsonl` (10 query) — số ra đúng bằng tay
-- [ ] Viết `gold/GUIDE.md` (1 trang): định nghĩa nhãn 2 / 1 / 0, 5 ví dụ khó (đúng nơi sai loại, phòng vs khách sạn, combo chứa vé…)
+- [ ] Viết `docs/spec/bench/gold-guide.md` (1 trang; không đặt trong `src/` — AGENTS.md §7): định nghĩa nhãn 2 / 1 / 0, 5 ví dụ khó (đúng nơi sai loại, phòng vs khách sạn, combo chứa vé…)
 
 ### B
 - [ ] `sb embed --variant T3+R --model cohere-v3` toàn catalog → `sb load` → collection `products__T3+R__cohere_v3` (= B0)
@@ -57,7 +59,7 @@ Ký hiệu lệnh: `sb` = `python -m evaluation.search_bench` chạy từ `src/`
 - [ ] Chia pool: `pool_A.csv` (qid 1–100 + 25 chung), `pool_B.csv` (qid 101–200 + 25 chung)
 
 ### Sync cuối ngày
-- [ ] A chốt `GUIDE.md`; cả hai đọc, thống nhất 5 ví dụ khó trước khi gán
+- [ ] A chốt `gold-guide.md`; cả hai đọc, thống nhất 5 ví dụ khó trước khi gán
 
 ---
 
@@ -83,7 +85,7 @@ Ký hiệu lệnh: `sb` = `python -m evaluation.search_bench` chạy từ `src/`
 ### A
 - [ ] `sb gold import gold/pool_labeled.csv` → `gold/gold.jsonl`; `sb gold check` xanh (mỗi query ≥ 1 nhãn 2 trừ out_of_catalog, không slice < 10 query)
 - [ ] `git tag gold_v1`; từ đây gold chỉ **thêm** (spec Part 11)
-- [ ] `sb arms check` xanh (ARMS.md ↔ `arms/*.yaml` ↔ `stages.yaml`)
+- [ ] `sb arms check` xanh (arms.md ↔ `arms/*.yaml` ↔ `stages.yaml`)
 - [ ] `sb run --stage B0 --until SAN` → đọc `sb compare --stage SAN`
   - [ ] `SANITY_FAIL` → dừng, cùng B kiểm cache / `input_type` (spec Part 12.2), không chạy tiếp
   - [ ] `SANITY_WARN` → xem Δ của E3 / T6 / T7, `sb ack SAN --note "…"`
@@ -94,7 +96,7 @@ Ký hiệu lệnh: `sb` = `python -m evaluation.search_bench` chạy từ `src/`
 - [ ] Cài text builder dạng base + modifier (spec Part 2): T0–T3, `R`, `DF`, `KV`, `NUM`, `w30/w60/w150/wfull`; snapshot test
 - [ ] `sb enrich summaries` cho T3 (chỉ từ attributes, prompt cấm thêm sự kiện); xuất 5% `summaries_review.csv` → **A soát** (B không tự soát)
 - [ ] `sb embed + load` cho `T0`, `T1`, `T2`, `T3`, `T3+R+KV`, `T3+R+NUM`
-- [ ] Viết `config/stages.yaml` theo spec Part 12.1 và YAML cho mọi arm trong ARMS.md (tham chiếu `@<cổng>`, không điền id cứng)
+- [ ] Viết `config/stages.yaml` theo spec Part 12.1 và YAML cho mọi arm trong arms.md (tham chiếu `@<cổng>`, không điền id cứng)
 
 ### Sync cuối ngày
 - [ ] `sb status`: B0 `INFO_DONE`, SAN `PROMOTED`/đã ack, E1a `READY` hoặc `NEEDS_LABELS`

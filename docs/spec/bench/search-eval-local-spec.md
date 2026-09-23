@@ -1,6 +1,10 @@
 # spec.md — `sbench`: benchmark embedding + search trên Weaviate + Cohere, chạy local
 
-Bản 23/09/2026 — rev 2: thêm Part 11 (`gold holes`, gold append-only, rescore), Part 12 (chạy theo cổng, `promote`), Part 13 (regression); text builder thành biến thể ghép (base + modifier) · để Claude Code sinh code ở local, **mỗi Part chạy thử được độc lập** · lịch và phân việc ở `SEARCH_EVAL_CHECKLIST.md` · danh sách arm ở `ARMS.md` (mô tả) và `config/stages.yaml` (máy đọc) · nguồn yêu cầu: `EMBEDDING_STACK_SWITCH.md` (Cohere, Weaviate, cái gì đổi), `EMBEDDING_AND_ENGINES.md` §1–§2, §4, §9 (text builder, hybrid, bộ đánh giá), `VECTOR_STORE_AND_ROBUSTNESS.md` §2–§3 (query preproc, amenity), `VECTOR_DB_BENCH_SPEC.md` Part 6b (gold tool — dùng lại định nghĩa nhãn), `SCHEMA.md` (contract `products.jsonl`), `ARCHITECTURE.md` §4, §12 (vị trí code, không folder `utils`).
+Bản 23/09/2026 — rev 2: thêm Part 11 (`gold holes`, gold append-only, rescore), Part 12 (chạy theo cổng, `promote`), Part 13 (regression); text builder thành biến thể ghép (base + modifier) · để Claude Code sinh code ở local, **mỗi Part chạy thử được độc lập** · lịch và phân việc ở `search-eval-checklist.md` · danh sách arm ở `arms.md` (mô tả) và `config/stages.yaml` (máy đọc) · nguồn yêu cầu: `EMBEDDING_STACK_SWITCH.md` (Cohere, Weaviate, cái gì đổi), `EMBEDDING_AND_ENGINES.md` §1–§2, §4, §9 (text builder, hybrid, bộ đánh giá), `VECTOR_STORE_AND_ROBUSTNESS.md` §2–§3 (query preproc, amenity), `VECTOR_DB_BENCH_SPEC.md` Part 6b (gold tool — dùng lại định nghĩa nhãn), `SCHEMA.md` (contract `products.jsonl`), `ARCHITECTURE.md` §4, §12 (vị trí code, không folder `utils`).
+
+Phục vụ: FR-SRC-01, FR-SRC-02, FR-SRC-03, NFR-PERF-01, NFR-PERF-03 (`docs/prd/requirements.md`); độ đo theo `docs/prd/test-plan.md` §2.5.
+
+> **Đối chiếu repo (23/09/2026).** `EMBEDDING_STACK_SWITCH.md`, `EMBEDDING_AND_ENGINES.md`, `VECTOR_STORE_AND_ROBUSTNESS.md` **không có trong repo**. `SCHEMA.md` = `docs/spec/data-collection/schema.md`; `VECTOR_DB_BENCH_SPEC.md` = `docs/spec/vector-bench/spec.md`; `ARCHITECTURE.md` = `docs/spec/architecture-repo.md` (bản PRD: `docs/prd/architecture.md` §6). **Chỉ dùng trong bench:** index `flat` (exact, < 10k object) và collection nhiều property — production vẫn theo NFR-PERF-03 (HNSW) và `docs/prd/architecture.md` §5 (Weaviate chỉ giữ vector + `productId`); đưa luồng thắng vào backend (ngày 8) cần đề xuất ở `docs/prd/update/`.
 
 Spec này **không đặt ra ngưỡng mới**: quota slice, ngưỡng metric, quy tắc chọn chép từ plan đã chốt vào **một** file config (§1.2). Tham số kỹ thuật spec thêm ghi *(đề xuất)*.
 
@@ -78,29 +82,30 @@ src/evaluation/search_bench/
 ├── regression.py          # Part 13
 ├── config/
 │   ├── sbench.yaml        # MỌI con số (§1.2)
-│   ├── stages.yaml        # thứ tự cổng, ứng viên, sanity (Part 12) — nguồn máy đọc của ARMS.md
+│   ├── stages.yaml        # thứ tự cổng, ứng viên, sanity (Part 12) — nguồn máy đọc của arms.md
 │   ├── aliases.yaml       # viết tắt, tên gọi khác (Part 6)
-│   ├── amenity_seed.yaml  # alias amenity tối thiểu (Part 1)
+│   ├── (amenity seed)     # dùng chung src/evaluation/vector_bench/config/amenity_seed.yaml (catalog.amenity_seed_path) — không chép
 │   └── synth_prompts.yaml # prompt sinh synthetic query (Part 7)
-├── arms/                  # mỗi arm một YAML (ARMS.md) — commit
-├── gold/                  # drafts.txt, GUIDE.md, pool*.csv, gold.jsonl, CHANGELOG.md, holes/, prompts/ — commit
+├── arms/                  # mỗi arm một YAML (arms.md) — commit
+├── gold/                  # drafts.txt, pool*.csv, gold.jsonl, changelog.yaml, holes/, prompts/*.txt — commit (GUIDE ở docs/spec/bench/gold-guide.md: AGENTS.md §7 không cho .md trong src/)
 ├── state/promotions.yaml  # arm được promote ở mỗi cổng (Part 12) — commit
 ├── regression/baseline.json  # mốc regression (Part 13) — commit, chỉ đổi bằng lệnh
-├── docker/compose.yml     # Weaviate
-├── requirements.txt
+├── docker/compose.yml     # Weaviate (project `sbench`)
+├── requirements.txt       # lõi; requirements-extra.txt = sentence-transformers, boto3 (ngày 5 / Bedrock)
 └── tests/                 # unit (không cần Weaviate/mạng) · integration (pytest -m integration)
 
 bench_out/search/          # SBENCH_HOME, thêm vào .gitignore
-├── data/items.parquet · vocab.json · text_<variant>.parquet · llm_summaries.jsonl · synth_*.jsonl
-├── cache/embeddings.sqlite
+├── data/items.parquet · vocab.json · text_<variant>.parquet · vec_<variant>_<model>.npy/.ids.json · llm_summaries.jsonl · synth_*.jsonl
+├── data/_sample/ · data/_fake/   # cùng bố cục cho --dataset sample | fake (không đè catalog thật)
+├── cache/embeddings.sqlite · cost.jsonl · tokenizers/   # dùng chung mọi dataset
 ├── runs/<run_id>/<arm>/results.json · results@<gold_version>.json · per_query.parquet
 ├── runs/<run_id>/stages/<stage>.json      # trạng thái cổng + đề xuất
 └── reports/<run_id>/*.md · reports/regression/<date>.md
 ```
 
 - Gốc repo = thư mục chứa `.git`. `SBENCH_HOME` mặc định `<repo>/bench_out/search`.
-- Nếu `src/backend/app/` đã có `build_embed_text`: import dùng lại cho variant **`T3+R`** (bản production dự kiến, dùng ở B0) và ghi `text_builder: app` vào `stats.json`; các variant khác vẫn ở `textbuild.py`.
-- Nếu `src/evaluation/vector_bench/` đã có `filters.py`, `amenities.py`, `gold.py`: import dùng lại, không chép.
+- Text builder production có sẵn: `src/backend/app/domain/catalog/text_builder.py::build_text` (repo không có hàm tên `build_embed_text`) — import dùng lại cho variant **`T3+R`** (bản production dự kiến, dùng ở B0) và ghi `text_builder: app` vào `stats.json`; các variant khác vẫn ở `textbuild.py`. `build_text` luôn nối ≤ 60 từ description và ≤ 10 amenity thô.
+- `src/evaluation/vector_bench/` có `filters.py`, `dataset/amenities.py`, `dataset/catalog.py`, `lexical.py` (không có `gold.py`): import dùng lại, không chép.
 - Không tạo folder `utils` chung.
 
 ### 1.2 Config — `config/sbench.yaml`
@@ -111,11 +116,14 @@ run:
   default_run_id: dev            # sb run ghi <YYYYMMDD-HHMM>-<git sha>
 
 catalog:
-  products_path: src/data_collection/products.jsonl
+  products_path: src/data_collection/data/snapshots/2026-09-21/products.jsonl   # bản bung (gitignore) của snapshot
+  snapshot_path: src/data_collection/snapshots/2026-09-21/products.jsonl.gz      # thiếu bản bung → tự bung, kiểm checksum
   sample_path: src/data_collection/sample/products-sample.jsonl
-  search_unit_taxonomies: [hotel_property, flight_route, attraction, combo, golf]
+  search_unit_variants: [hotel_property, flight_route, attraction, combo, golf]  # variant = taxonomy + attributes.level (như catalog.product_meta)
+  amenity_seed_path: src/evaluation/vector_bench/config/amenity_seed.yaml
   amenity_scope: property_plus_rooms
   amenity_min_freq: 5
+  amenity_fuzzy_min: 0.6          # similarity trigram kiểu pg_trgm
 
 text:                             # Part 2
   max_words: 150
@@ -139,11 +147,13 @@ embedding:                        # Part 3
   bedrock: {model_id: cohere.embed-multilingual-v3, region: ap-southeast-1}
   retry: {max_attempts: 6, backoff_s: [1, 2, 4, 8, 16, 32]}
   cost_per_1m_tokens_usd: {cohere-v3: 0.10, cohere-v4: 0.12}   # xác nhận lại trên trang giá chính thức
+  max_inputs_per_min: 2000        # (đề xuất) giới hạn tốc độ Cohere — pacer phía app
 
 weaviate:                         # Part 4
-  url: http://localhost:8080
-  grpc_port: 50051
+  url: http://127.0.0.1:58080     # cổng riêng: Weaviate 1.27 của app (docker-compose.yml gốc) giữ 8080/50051
+  grpc_port: 55051
   image: semitechnologies/weaviate:1.37.3      # pin; cần ≥ 1.37 cho text_analyzer ascii_fold
+  load_batch_size: 200            # (đề xuất)
   vector_index: flat              # < 10k object → exact
   bm25: {k1: 1.2, b: 0.75, tokenization: word}
   ascii_fold: analyzer            # analyzer | shadow  (shadow = property *_ascii do app tạo, fallback)
@@ -193,7 +203,7 @@ metrics:                          # Part 8
     parent_dup_max: 1
     zero_result_in_catalog_max: 0.02
     hub_score_max: 3.0
-    p95_cache_miss_ms_max: 300
+    p95_cache_miss_ms_max: 250      # = NFR-PERF-01 (p95 ≤ 250 ms); p99 được đo và báo cáo, không có ngưỡng (PRD không đặt)
   rerank_keep_if_delta_ndcg: 3.0
   hub_random_queries: 500
 
@@ -227,11 +237,17 @@ regression:                       # Part 13
     - src/evaluation/search_bench/config/aliases.yaml
     - src/evaluation/search_bench/config/sbench.yaml
     - src/backend/app/**/text_builder*.py
-    - src/data_collection/products.jsonl
+    - src/data_collection/snapshots/*/products.jsonl.gz
     - src/evaluation/search_bench/gold/gold.jsonl
 ```
 
-`.env`: `COHERE_API_KEY`, `AWS_PROFILE` (nếu bedrock), `LLM_PROVIDER` + key (Part 2 T3, Part 7). Không commit `.env`.
+`.env` (file `.env` ở gốc repo; sbench chỉ nạp các khoá trong danh sách cho phép, không ghi đè biến môi trường thật): `COHERE_API_KEY`, `AWS_PROFILE` (nếu bedrock), `LLM_PROVIDER` + key (Part 2 T3, Part 7). Không commit `.env`.
+
+```yaml
+doctor:                           # (đề xuất) Part 0
+  min_free_gb: 5
+  min_weaviate_version: "1.37"
+```
 
 ### 1.3 CLI
 
@@ -265,7 +281,7 @@ regression:                       # Part 13
              "constraint_precision": 0.97, "filter_recall_loss": 3, "parent_dup_rate": 0.4,
              "zero_result_in_catalog": 0.01, "zero_result_out_of_catalog": 1.0, "hub_score_max": 2.1},
  "by_slice": {"dest_type": {"recall@10": 0.8, "ndcg@10": 0.7, "n": 30}, "...": {}},
- "latency_ms": {"weaviate_p50": 8, "weaviate_p95": 15},
+ "latency_ms": {"weaviate_p50": 8, "weaviate_p95": 15, "weaviate_p99": 22},
  "cost_usd": {"embed_docs": 0.05, "embed_queries": 0.001, "rerank": 0.0},
  "vs_parent": {"delta_recall": 2.4, "ci95": [0.6, 4.1], "p_one_sided": 0.012}}
 ```
@@ -282,16 +298,24 @@ regression:                       # Part 13
 
 ### 1.6 `requirements.txt`
 
+`requirements.txt` (lõi, venv riêng `.venv-sbench`):
+
 ```
-typer, pydantic>=2, pyyaml, structlog, numpy, pandas, pyarrow
-weaviate-client>=4.16,<5
+typer, pydantic>=2, pyyaml, structlog, numpy, pandas, pyarrow, httpx
+weaviate-client>=4.23,<5  # bản đã kiểm có Configure.text_analyzer (ascii_fold) và Vectors.self_provided
 cohere>=5
-boto3                    # chỉ khi bedrock
-sentence-transformers>=3 # bge-m3 + bge-reranker-v2-m3 (đối chứng + lọc synthetic)
+tokenizers               # đếm token Cohere offline (Part 2)
 symspellpy
 unidecode
 scipy                    # bootstrap
-pytest, pytest-asyncio
+pytest
+```
+
+`requirements-extra.txt` (chỉ khi cần):
+
+```
+sentence-transformers>=3 # bge-m3 + bge-reranker-v2-m3 (đối chứng + lọc synthetic)
+boto3                    # chỉ khi bedrock
 ```
 
 ### 1.7 Việc Claude Code KHÔNG được tự quyết
@@ -300,7 +324,7 @@ pytest, pytest-asyncio
 2. Không bật `truncate=END`. Text vượt 512 token là lỗi của text builder.
 3. Không đổi `input_type` mặc định; arm E3 là arm **duy nhất** cố tình đặt sai.
 4. Không sửa `gold/gold.jsonl` bằng code ngoài `sb gold import`, `sb gold holes import`, `sb gold retire` — cả ba chỉ **thêm**, không sửa nhãn đã có.
-5. Không thêm arm ngoài `ARMS.md` + `config/stages.yaml`; `sb arms check` phải xanh trước mọi `run --stage`.
+5. Không thêm arm ngoài `arms.md` + `config/stages.yaml`; `sb arms check` phải xanh trước mọi `run --stage`.
 6. Không promote khi cổng ở trạng thái `SANITY_FAIL` hoặc `NEEDS_LABELS`; không bỏ qua `--note` khi promote khác đề xuất.
 7. `--auto-promote` không bao giờ đổi model khỏi `stages.default_model` và không bao giờ vượt cổng `SANITY_WARN`.
 8. Không cập nhật `regression/baseline.json` ngoài lệnh `sb regression baseline set` có `--note`; CI không có quyền chạy lệnh này.
@@ -312,10 +336,14 @@ pytest, pytest-asyncio
 **`docker/compose.yml`** — một service:
 
 ```yaml
+name: sbench                                 # project riêng → volume sbench_weaviate_data, không đụng stack app
 services:
   weaviate:
     image: ${WEAVIATE_IMAGE:-semitechnologies/weaviate:1.37.3}
-    ports: ["8080:8080", "50051:50051"]
+    command: ["--host", "0.0.0.0", "--port", "8080", "--scheme", "http"]
+    ports:                                   # chỉ loopback (deployment-plan §2); 8080/50051 để cho Weaviate của app
+      - "127.0.0.1:${SBENCH_WEAVIATE_HTTP_PORT:-58080}:8080"
+      - "127.0.0.1:${SBENCH_WEAVIATE_GRPC_PORT:-55051}:50051"
     environment:
       AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
       PERSISTENCE_DATA_PATH: /var/lib/weaviate
@@ -323,13 +351,16 @@ services:
       ENABLE_MODULES: ""                     # không bật text2vec-cohere: cần kiểm soát input_type + cache
       QUERY_DEFAULTS_LIMIT: 25
       LIMIT_RESOURCES: "true"
+      CLUSTER_HOSTNAME: node1                # giữ metadata cluster khi container được tạo lại
     volumes: [weaviate_data:/var/lib/weaviate]
 volumes: {weaviate_data: {}}
 ```
 
+Chạy từ `src/`: `docker compose -f evaluation/search_bench/docker/compose.yml up -d --wait weaviate`.
+
 Không dùng module `text2vec-cohere` vì (a) `nearText` không cache được vector query, (b) bench cần embed query ở app để đo RTT và mô phỏng cache hit — đúng khuyến nghị `EMBEDDING_STACK_SWITCH.md` §6.2.
 
-**`sb doctor`** kiểm và in ✔/✖: Docker daemon; Weaviate `/v1/.well-known/ready` và version ≥ 1.37; `COHERE_API_KEY` (gọi `co.tokenize("xin chào")`, in số token, chi phí 0); `products.jsonl` tồn tại và số dòng; `bge-m3` có tải được (chỉ cảnh báo); dung lượng trống ≥ 5 GB; `git` có tag `gold_v*` hay chưa.
+**`sb doctor`** kiểm và in ✔/✖: Docker daemon; Weaviate `/v1/.well-known/ready` và version ≥ `doctor.min_weaviate_version`; `ascii_fold` trong config làm được không (server ≥ 1.37 và client có `text_analyzer` — không thì ✖, gợi ý đặt `shadow`); cổng Weaviate mở được (Windows: gợi ý `netsh int ipv4 show excludedportrange protocol=tcp`); `COHERE_API_KEY` (gọi `co.tokenize("xin chào", offline=False)`, in số token, chi phí 0 — vẫn tính một lượt gọi, ghi vào `cost.jsonl`); `products.jsonl` hoặc snapshot tồn tại và số dòng; `bge-m3` có tải được (chỉ cảnh báo); dung lượng trống ≥ `doctor.min_free_gb`; `git` có tag `gold_v*` hay chưa (chỉ thông tin).
 
 **Done khi:** `sb doctor` xanh với Weaviate lên; đỏ có hướng dẫn sửa từng dòng.
 
@@ -337,17 +368,17 @@ Không dùng module `text2vec-cohere` vì (a) `nearText` không cache được v
 
 ## Part 1 — Catalog → `items.parquet`
 
-Đọc `products.jsonl` (contract `SCHEMA.md` §3). Search unit = `taxonomy ∈ search_unit_taxonomies` **hoặc** hotel `attributes.level == property`. Phòng / chuyến bay không thành item nhưng được gom vào cha (`parentProductId`) để lấy từ vựng phòng, hãng bay, min giá.
+Đọc `products.jsonl` (contract `SCHEMA.md` §3; thiếu bản bung thì bung `catalog.snapshot_path`, kiểm checksum bằng `data_collection.seed.snapshot`). Search unit = `variant ∈ search_unit_variants`, với `variant` = `taxonomy` + `attributes.level` như view `catalog.product_meta` (`hotel` → `hotel_<level>`, `flight` → `flight_route` khi `level = route`) — trường `taxonomy` của jsonl chỉ có `hotel · flight · attraction · combo · golf`. Phòng / chuyến bay không thành item nhưng được gom vào cha (`parentProductId`) để lấy từ vựng phòng, hãng bay, min giá. `--source sample|fake` ghi vào `data/_sample/`, `data/_fake/` (các lệnh sau chọn bằng `--dataset`) để không đè catalog thật.
 
 Cột `items.parquet`: `product_id, taxonomy, variant, name, brand, destination, province, city, property_type, star_rating, audience[], family_friendly, ocean_view, ticketed, nights, amenities_raw[], amenity_ids[] (smallint), room_vocab[] (từ con, khử trùng), airlines[] (từ con), description, description_is_derived, description_source, unit_price_min, review_score, lat, lon, parent_product_id (null với search unit), n_children`.
 
-`amenity_ids`: map theo `amenities.py` (alias exact sau NFC/unaccent/lower → `pg_trgm`-style similarity > 0,6 bằng `rapidfuzz` → còn lại `raw:<slug>` nếu tần suất ≥ `amenity_min_freq`). Chỉ có trạng thái **có** (mảng), không có `false`/`unknown` — theo quyết định 23/09.
+`amenity_ids`: map theo `amenities.py` (alias exact / cụm từ dài nhất sau NFC/unaccent/lower — `vector_bench/dataset/amenities.py` → similarity trigram kiểu `pg_trgm` (Jaccard tập trigram) > `amenity_fuzzy_min` = 0,6, tự cài — **không** dùng `rapidfuzz` ratio vì trên snapshot nó map sai ~141 chuỗi, ví dụ `ban công → bữa sáng` → còn lại `raw:<slug>` nếu tần suất ≥ `amenity_min_freq`). Mọi lần khớp trigram ghi ra `amenity_fuzzy_hits.csv` để Người A soát. Id không ổn định khi vocab đổi → filter trong gold ghi **khoá** amenity (`kids_club`, `raw:<slug>`), không ghi id; `catalog build` từ chối nếu id của khoá đã có bị đổi (trừ `--allow-id-drift`). Chỉ có trạng thái **có** (mảng), không có `false`/`unknown` — theo quyết định 23/09.
 
-`sb catalog vocab` → `vocab.json`: danh sách destination, tên sản phẩm + brand, amenity label, hạng phòng, airline, mã IATA; kèm bản bỏ dấu. Dùng cho Part 5 (draft gold), Part 6 (gazetteer, SymSpell), Part 7 (synthetic).
+`sb catalog vocab` → `vocab.json`: danh sách destination, tên sản phẩm + brand, amenity (khoá, label, id), hạng phòng, airline, mã IATA; kèm bản bỏ dấu; mục `filter_fields` (miền giá trị của trường lọc được: taxonomy, variant, destination, khoảng sao/giá, khoá amenity) để Người A viết filter JSON. Dùng cho Part 5 (draft gold), Part 6 (gazetteer, SymSpell), Part 7 (synthetic).
 
 `stats.json`: số search unit theo taxonomy, coverage amenity, % description derived, phân bố `n_children`.
 
-**Done khi:** `sb catalog build --source sample` ra ~50 dòng; `--source jsonl` in số search unit thật (kỳ vọng ~1.100–5.000); `vocab.json` có ≥ 10 destination.
+**Done khi:** `sb catalog build --source sample` ra 26 search unit (50 dòng mẫu gồm 15 phòng + 9 chuyến bay); `--source jsonl` in số search unit thật (snapshot 2026-09-21: 2.897); `vocab.json` có ≥ 10 destination.
 
 ---
 
@@ -372,11 +403,11 @@ Một hàm `build(item, variant) -> str`. Chuẩn hoá NFC, dấu kiểu mới, 
 | `KV` | viết lại toàn bộ thành `key: value` từng dòng — **control** | chỉ dùng trong E1.T6 |
 | `NUM` | + "Giá từ X đ, điểm đánh giá Y, toạ độ (lat, lon)" — **control** | chỉ dùng trong E1.T7 |
 
-Mapping arm → variant (chi tiết ở `ARMS.md`): B0 = `T3+R` · E1.T0–T3 = `T0`…`T3` · E1.T4 = `@E1a+R` · E1.T5 = `@E1a+R+DF` · E1.T6 = `T3+R+KV` · E1.T7 = `T3+R+NUM` · E4.* = `@E1b+w30|w150|wfull`. `@E1a` là base được promote ở cổng E1a (Part 12).
+Mapping arm → variant (chi tiết ở `arms.md`): B0 = `T3+R` · E1.T0–T3 = `T0`…`T3` · E1.T4 = `@E1a+R` · E1.T5 = `@E1a+R+DF` · E1.T6 = `T3+R+KV` · E1.T7 = `T3+R+NUM` · E4.* = `@E1b+w30|w150|wfull`. `@E1a` là base được promote ở cổng E1a (Part 12).
 
 `sb enrich summaries`: gọi LLM (provider từ `.env`) với prompt: *chỉ dùng attributes cho sẵn, cấm thêm địa điểm/giá/tiện ích không có, 2–3 câu, giữ amenity và đối tượng có giá trị tìm kiếm*. Output `llm_summaries.jsonl {product_id, summary, prompt_hash}`; cache theo `sha1(attributes)`. In 5% ngẫu nhiên ra `summaries_review.csv` để soát tay.
 
-`sb tokens --variant`: đếm bằng `co.tokenize` (model v3) cho toàn bộ text của variant → in p50/p90/p99/max và danh sách item > `token_p99_max`. **Gate:** p99 ≤ 450 và max < 512, nếu không exit code 2.
+`sb tokens --variant`: đếm bằng tokenizer của Cohere v3 tải **một lần** (`models.get(...).tokenizer_url`) vào `cache/tokenizers/`, đếm offline, tính cả token đặc biệt, **không** fallback gọi API (key trial chỉ 1.000 lượt/tháng) cho toàn bộ text của variant → in p50/p90/p99/max và danh sách item > `token_p99_max`. **Gate:** p99 ≤ 450 và max < 512, nếu không exit code 2. `sb embed` dùng cùng bộ đếm để từ chối trước khi gọi API text > `token_hard_max`.
 
 **Done khi:** `sb text --variant T3+R --show 20` in 20 văn bản; `T1+w150` bị từ chối với thông báo rõ; `T3+DF+R` được chuẩn hoá thành `T3+R+DF`; snapshot test 5 item cố định cho mỗi base và mỗi modifier; `sb tokens --variant T3+R` qua gate trên dữ liệu thật.
 
@@ -395,9 +426,9 @@ Mapping arm → variant (chi tiết ở `ARMS.md`): B0 = `T3+R` · E1.T0–T3 = 
 
 `cache.py`: sqlite `embeddings.sqlite(key TEXT PK, model, input_type, dim, vec BLOB, created_at)`, `key = sha1(model|input_type|text)`. `embed` luôn qua cache; `--no-cache` để đo RTT (Part 9).
 
-`sb embed --variant V --model M` → `data/vec_<V>_<M>.npy` + `ids.json`; in số text embed mới / lấy từ cache / token / USD.
+`sb embed --variant V --model M` → `data/vec_<V>_<M>.npy` + `vec_<V>_<M>.ids.json` + `vec_<V>_<M>.meta.json`; in số text embed mới / lấy từ cache / số lượt gọi / token / USD. Khoá cache ghi chuỗi model API kèm tuỳ chọn làm đổi vector (`@int8`, `@d<dim>`; fake bật `--fake-ignore-input-type` → `@noit`) để các chế độ không dùng lẫn vector của nhau.
 
-**Bẫy:** (1) query và document phải cùng model, khác `input_type`; (2) `E3` cố tình embed query bằng `document` — chỉ arm này; (3) không chạy hai `sb embed` Cohere song song (rate limit 2.000 input/phút).
+**Bẫy:** (1) query và document phải cùng model, khác `input_type`; (2) `E3` cố tình embed query bằng `document` — chỉ arm này; (3) không chạy hai `sb embed` Cohere song song (rate limit 2.000 input/phút — client tự giãn theo `embedding.max_inputs_per_min`, tôn trọng `Retry-After`).
 
 **Done khi:** `--model fake` chạy toàn catalog < 10 s; `--model cohere-v3 --limit 96` gọi đúng 1 lượt, chạy lần 2 gọi 0 lượt; `sb cost` in tổng USD.
 
@@ -405,10 +436,10 @@ Mapping arm → variant (chi tiết ở `ARMS.md`): B0 = `T3+R` · E1.T0–T3 = 
 
 ## Part 4 — Adapter Weaviate
 
-**Collection** `products__<variant>__<model_slug>` (một collection / cặp variant × model; không dùng multi-tenancy):
+**Collection** `products__<variant>__<model_slug>` (một collection / cặp variant × model; không dùng multi-tenancy). Tên này là tên **logic** (ghi trong results). Weaviate chỉ nhận tên khớp `^[A-Z][_0-9A-Za-z]*$`, nên tên **vật lý** là `Products__<variant, "+"→"_">__<model, "-"→"_">`, thêm hậu tố `__<dataset>` khi dataset không phải `jsonl` — ví dụ `products__T3+R__cohere_v3` → `Products__T3_R__cohere_v3`. Mô tả collection (JSON) ghi tên logic, dataset, `items_sha256`, số object, variant, model, `ascii_fold_mode`, text builder.
 
 - Vector: named vector `content` do app cung cấp (`Configure.Vectors.self_provided(name="content")` ở client ≥ 4.16, hoặc `Configure.NamedVectors.none(name="content")` ở client cũ hơn), `vector_index_config = Configure.VectorIndex.flat()`, distance cosine. Part 7 thêm named vector `query_vec` cùng cách.
-- Property: `product_id (TEXT, không tokenization cho BM25 — `skip_vectorization` không liên quan vì self-provided)`, `taxonomy, variant, destination, province, brand (TEXT, tokenization field)`, `name (TEXT, word)`, `embed_text (TEXT, word)`, `amenity_ids (INT[])`, `parent_product_id (TEXT, field)`, `star_rating (NUMBER)`, `unit_price_min (NUMBER)`, `ticketed, family_friendly, ocean_view (BOOL)`, `available (BOOL, mặc định true)`.
+- Property: `product_id (TEXT, không tokenization cho BM25 — `skip_vectorization` không liên quan vì self-provided)`, `taxonomy, variant, destination, province, brand (TEXT, tokenization field)` — các property `field` đặt `index_searchable=False` (chỉ để lọc) và BM25 luôn truyền `query_properties` tường minh, `name (TEXT, word)`, `embed_text (TEXT, word)`, `amenity_ids (INT[])`, `parent_product_id (TEXT, field)`, `star_rating (NUMBER)`, `unit_price_min (NUMBER)`, `ticketed, family_friendly, ocean_view (BOOL)`, `available (BOOL, mặc định true)`.
 - Fold dấu cho BM25: `ascii_fold: analyzer` → cấu hình `text_analyzer(ascii_fold=True)` cho `name`, `embed_text` (Weaviate ≥ 1.37). Nếu client chưa có API này → `ascii_fold: shadow`: app tạo thêm `name_ascii`, `embed_text_ascii` (unidecode, lower) và BM25 `query_properties=["name_ascii^2", "embed_text_ascii"]` với query cũng fold. `doctor` in cách nào đang dùng; results.json ghi `ascii_fold_mode`.
 
 **Query** (`WeaviateStore`):
@@ -425,9 +456,9 @@ Filter AST (JSON, dùng lại `vector_bench/filters.py` nếu có): `{"and": [{"
 
 Dedupe theo cha: làm ở app (lấy `limit × 3`, giữ ≤ 1 / `parent_product_id`, cắt `limit`) — không phụ thuộc `group_by` của Weaviate với hybrid.
 
-`sb load` batch 200 object, `wait_ready`, verify `count == n_items`.
+`sb load` batch `weaviate.load_batch_size` (200) object, `wait_ready`, verify `count ==` số id trong `vec_<V>_<M>.ids.json` (khác `n_items` khi embed có `--limit`).
 
-**Done khi:** `sb load --variant T3+R --model fake` xong < 1 phút; `sb query "resort Nha Trang" --arm B0` in top-10 với distance; `bm25` với query không dấu "nha trang" trả sản phẩm Nha Trang (chứng minh fold dấu chạy); filter `contains_all` trả đúng so với evaluator tham chiếu trên pandas (test 50 filter ngẫu nhiên).
+**Done khi:** `sb load --variant T3+R --model fake` xong < 1 phút; `sb query "resort Nha Trang" --arm B0` in top-10 với distance; `bm25` với query không dấu "da nang" trả sản phẩm Đà Nẵng (chứng minh fold dấu chạy — "nha trang" không có dấu nên không chứng minh gì); filter `contains_all` trả đúng so với evaluator tham chiếu trên pandas (test 50 filter ngẫu nhiên).
 
 ---
 
@@ -562,8 +593,8 @@ Ghi `runs/<run_id>/latency.json`. Weaviate local không đại diện cho cloud;
 
 **Bảng 1 — 6 luồng:**
 
-| Luồng | Recall@10 | nDCG@10 | MRR@10 | Slice yếu nhất (tên, Δ vs tốt nhất) | Constraint precision | Dup rate | Zero-result in/out | p95 cache-miss | p95 cache 50% | $/1.000 query | Thành phần vận hành |
-|---|---|---|---|---|---|---|---|---|---|---|---|
+| Luồng | Recall@10 | nDCG@10 | MRR@10 | Slice yếu nhất (tên, Δ vs tốt nhất) | Constraint precision | Dup rate | Zero-result in/out | p95 cache-miss | p99 cache-miss | p95 cache 50% | $/1.000 query | Thành phần vận hành |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
 
 "Thành phần vận hành" = đếm: Cohere embed, Weaviate, QU, alias/SymSpell, synth pipeline, rerank API, bge-m3 local — số càng nhỏ càng tốt.
 
@@ -573,7 +604,7 @@ Ghi `runs/<run_id>/latency.json`. Weaviate local không đại diện cho cloud;
 
 **Quy tắc chọn** — hàm `select(results, guards, order)` trong `report.py`, **dùng chung** cho bảng cuối và mọi cổng Part 12; in kèm lý do:
 
-1. Loại luồng vi phạm guard: `constraint_precision < 0.95`, `parent_dup_max > 1`, `zero_result_in_catalog > 0.02`, `p95_cache_miss > 300 ms`, `zero_result_out_of_catalog < 1.0`.
+1. Loại luồng vi phạm guard: `constraint_precision < 0.95`, `parent_dup_max > 1`, `zero_result_in_catalog > 0.02`, `p95_cache_miss > 250 ms`, `zero_result_out_of_catalog < 1.0`.
 2. Trong luồng còn lại: nDCG@10 cao nhất. Luồng khác chênh < `tie_delta_ndcg` **và** không slice nào thua > `max_slice_loss` → TIE → chọn theo `order`: ở bảng cuối là ít thành phần vận hành hơn, rồi rẻ hơn; ở cổng là thứ tự `candidates` trong `stages.yaml` (đơn giản trước).
 3. P6 (rerank) chỉ được chọn nếu Δ nDCG ≥ `rerank_keep_if_delta_ndcg` so với luồng thắng không rerank và vẫn qua guard p95.
 4. Nếu P5 (bge-m3) hơn luồng Cohere thắng ≥ 2 điểm ở slice `no_diacritics` hoặc `audience_style` → in **cảnh báo** "model mở thắng trên tiếng Việt của mình" — report không tự đổi quyết định.
@@ -588,13 +619,13 @@ Decision record template `reports/R/DECISION.md`: luồng, model, `model_version
 
 **Vấn đề.** Arm mới (T3, E5, S6…) kéo lên top-10 những sản phẩm chưa có trong pool gán nhãn ban đầu. Metric tính chúng là 0 → arm tìm ra thứ mới bị chấm thấp oan, và `judged@10` tụt. Part này lấp các "lỗ" đó mà không phá tính so sánh được của gold.
 
-**Nguyên tắc append-only.** Gold chỉ được **thêm**: thêm query, thêm nhãn cho cặp (qid, product) chưa có nhãn, hoặc chuyển query `active → retired`. Không bao giờ sửa nhãn đã có. Mỗi lần thêm là một version mới (`gold_v2`, `gold_v3`…) có tag git và một dòng `gold/CHANGELOG.md` (`version, ngày, số query mới, số nhãn mới theo nguồn, lý do`).
+**Nguyên tắc append-only.** Gold chỉ được **thêm**: thêm query, thêm nhãn cho cặp (qid, product) chưa có nhãn, hoặc chuyển query `active → retired`. Không bao giờ sửa nhãn đã có. Mỗi lần thêm là một version mới (`gold_v2`, `gold_v3`…) có tag git và một mục trong `gold/changelog.yaml` (`version, ngày, số query mới, số nhãn mới theo nguồn, lý do`).
 
 | Lệnh | Việc |
 |---|---|
 | `sb gold holes --stage S` (hoặc `--arms A,B --run-id R`) | Quét `per_query.parquet` của mọi arm trong cổng → tập (qid, product_id) nằm trong top-`holes.k` mà chưa có nhãn → hai file: `gold/holes/<gold_version>__<S>.csv` để gán (cột như `pool.csv` trừ rank và `from`, thêm `snippet` = 40 từ đầu `embed_text` của B0; **xáo thứ tự trong mỗi qid, không ghi arm nào kéo lên** để người gán không thiên vị) và `…__meta.csv` (arm, rank tốt nhất, số arm thấy) cho nội bộ. Sắp query theo số arm thấy giảm dần để gán cái ảnh hưởng nhiều nhất trước |
 | — | Query `expected_no_result=true` (slice out_of_catalog): mọi hole tự gán 0 với nguồn `auto_ooc` (người gán đã khẳng định catalog không có sản phẩm đúng) — không đưa vào file gán |
-| `sb gold holes import <csv>` | Thêm nhãn vào `gold.jsonl` với `provenance = "holes:<S>@<version mới>"`; từ chối nếu một cặp đã có nhãn; ghi CHANGELOG; in lệnh `git tag gold_vN+1` cần chạy |
+| `sb gold holes import <csv>` | Thêm nhãn vào `gold.jsonl` với `provenance = "holes:<S>@<version mới>"`; từ chối nếu một cặp đã có nhãn; ghi `gold/changelog.yaml`; in lệnh `git tag gold_vN+1` cần chạy |
 | `sb gold retire <qid> --reason "…"` | `status: retired` — query bị loại khỏi metric từ version này; dùng khi catalog đổi làm query mất nghĩa (ví dụ query out_of_catalog "resort ở Sapa" mà catalog vừa có Sapa) |
 | `sb gold check --catalog` | Ngoài kiểm tra Part 5: cảnh báo query out_of_catalog mà destination / tên trong câu nay đã có trong `vocab.json` |
 | `sb gold verify-append <old_tag> <new_tag>` | Mọi qid của bản cũ còn trong bản mới; mọi nhãn cũ giữ nguyên giá trị; `status` chỉ đổi `active → retired`. Sai → exit 1. Chạy trong CI và trước mọi `promote` |
@@ -799,11 +830,11 @@ sb status
 
 ## Phụ lục A — Arm và cổng
 
-Nguồn duy nhất: `ARMS.md` (mô tả, ví dụ, kỳ vọng) và `config/stages.yaml` (Part 12, thứ tự + cổng, máy đọc). Không chép danh sách arm vào spec này để tránh lệch.
+Nguồn duy nhất: `arms.md` (mô tả, ví dụ, kỳ vọng) và `config/stages.yaml` (Part 12, thứ tự + cổng, máy đọc). Không chép danh sách arm vào spec này để tránh lệch.
 
 `sb arms check` phải xanh trước mọi `run --stage`:
 
-1. Mọi id trong cột đầu bảng §1 của `ARMS.md` (chữ đậm) có `arms/<id>.yaml`, và ngược lại.
+1. Mọi id trong cột đầu bảng §1 của `arms.md` (chữ đậm) có `arms/<id>.yaml`, và ngược lại.
 2. Mọi arm trong `stages.yaml` có YAML, và mọi YAML thuộc đúng một cổng (trừ arm `disabled`).
 3. Mọi `@<stage>` trong `parent` / `inherit` / `text_variant` trỏ tới cổng **đứng trước** trong `stages.yaml`.
 4. Mỗi arm khác arm cha (sau khi giải) đúng **một nhóm trường**, trừ arm `P*` và arm sweep (`S1.k1b`, `S7`). Nhóm: `text` (text_variant) · `model` (model, embedding_types) · `query_embed` (query_input_type) · `retrieval` (retrieval, fusion, query_vec) · `bm25` · `filters` (filters, boost) · `dedupe_parent` · `query_preproc` · `cutoff` · `csls` · `rerank` · `fallback`.
