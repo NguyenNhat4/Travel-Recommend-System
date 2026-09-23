@@ -1,3 +1,5 @@
+from time import perf_counter
+
 from fastapi import APIRouter, Query, Request
 
 from pydantic import BaseModel, Field
@@ -15,9 +17,10 @@ class SearchRequestPayload(BaseModel):
 
 
 def _safe_search(request: Request, query: str, taxonomy: str | None, destination: str | None, limit: int, offset: int):
+    started = perf_counter()
     search_fn = getattr(request.app.state, "search", None)
     if search_fn is None or not query.strip():
-        return {
+        result = {
             "results": [],
             "total": 0,
             "limit": limit,
@@ -35,7 +38,14 @@ def _safe_search(request: Request, query: str, taxonomy: str | None, destination
                 "modelVersion": "none",
             },
         }
-    return search_fn(query.strip(), taxonomy=taxonomy, destination=destination, limit=limit, offset=offset)
+    else:
+        result = search_fn(
+            query.strip(), taxonomy=taxonomy, destination=destination, limit=limit, offset=offset
+        )
+    result.setdefault("diagnostics", {})["latencyMs"] = max(
+        0, round((perf_counter() - started) * 1000)
+    )
+    return result
 
 
 @router.get("/search")

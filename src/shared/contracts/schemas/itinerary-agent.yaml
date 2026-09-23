@@ -535,6 +535,17 @@ AssistantStatus:
       - fixture
       - http
       - disabled
+    llmMode:
+      type: string
+      description: >-
+        Trạng thái LLM do composition root dựng. live = đã có client dùng chung;
+        disabled = ITINERARY_USE_LLM=false, không dựng client; unavailable = đã bật
+        nhưng dựng thất bại (thiếu API key hoặc SDK provider). Với disabled và
+        unavailable, request itinerary trả 503 LLM_UNAVAILABLE có kiểm soát.
+      enum:
+      - live
+      - disabled
+      - unavailable
     productCount:
       type:
       - integer

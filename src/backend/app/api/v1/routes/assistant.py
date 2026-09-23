@@ -32,7 +32,8 @@ def _runtime(request: Request, authorization: str | None) -> RuntimeAgentDepende
     store = getattr(request.app.state, "itinerary_conversation_store", None)
     if clients is None or store is None:
         return None
-    gateway = ItineraryToolGateway(clients, clients, clients, recommendation_authorization=authorization)
+    catalog = clients if getattr(clients, "supports_catalog", False) else None
+    gateway = ItineraryToolGateway(clients, clients, catalog, recommendation_authorization=authorization)
     settings = get_settings()
     return RuntimeAgentDependencies(
         gateway, store, getattr(request.app.state, "itinerary_llm", None), authorization,
@@ -49,6 +50,23 @@ def _input(payload: ItineraryRequestModel, request_id: str) -> dict[str, Any]:
         "language": payload.context.language if payload.context else None,
         "request_id": request_id,
     }
+
+
+def _trace_config(payload: ItineraryRequestModel, request_id: str, conversation: str,
+                  *, transport: str, run_id: str | None = None) -> dict[str, Any]:
+    """Name and label the run so one turn can be found in LangSmith from a log line.
+
+    Without this every trace is called "LangGraph" and carries no request id, so a turn
+    observed in the demo UI cannot be matched to its trace. The name is the user's own
+    message, which the trace already records as graph input; no new data is exposed.
+    Metadata set here propagates to every node run, so it is also filterable per node.
+    """
+    message = " ".join((payload.message or "").split())[:60]
+    metadata = {"request_id": request_id, "conversation_id": conversation, "transport": transport}
+    if run_id is not None:
+        metadata["run_id"] = run_id
+    return {"run_name": message or "itinerary turn", "tags": ["itinerary", transport],
+            "metadata": metadata}
 
 
 def _unavailable(request_id: str) -> JSONResponse:
@@ -70,7 +88,8 @@ async def _run(payload: ItineraryRequestModel, request: Request, authorization: 
         return _unavailable(request_id)
     try:
         state = await asyncio.wait_for(
-            runtime.graph().ainvoke(_input(payload, request_id)),
+            runtime.graph().ainvoke(_input(payload, request_id),
+                                    config=_trace_config(payload, request_id, conversation, transport="json")),
             timeout=get_settings().itinerary_request_timeout_seconds,
         )
     except TimeoutError:
@@ -147,7 +166,10 @@ async def stream_itinerary(payload: ItineraryRequestModel, request: Request,
         final_state: dict[str, Any] | None = None
         try:
             async with asyncio.timeout(get_settings().itinerary_request_timeout_seconds):
-                async for state in graph.astream(_input(payload, request_id), stream_mode="values"):
+                async for state in graph.astream(
+                    _input(payload, request_id), stream_mode="values",
+                    config=_trace_config(payload, request_id, conversation, transport="sse", run_id=run_id),
+                ):
                     final_state = state
                     new_events = state.get("events", [])[emitted:]
                     if not new_events:
@@ -208,5 +230,6 @@ async def agent_status(request: Request):
         "status": "ready" if clients is not None else "not_configured",
         "agent": "Itinerary LangGraph Agent", "graphVersion": "1.4.0",
         "dataMode": getattr(request.app.state, "itinerary_data_mode", "disabled"),
+        "llmMode": getattr(request.app.state, "itinerary_llm_mode", "unavailable"),
         "productCount": getattr(clients, "product_count", None) if clients else None,
     }

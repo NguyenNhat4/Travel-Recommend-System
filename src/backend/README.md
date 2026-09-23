@@ -32,8 +32,8 @@ make backend-local
 
 Lần đầu chạy với catalog đã seed có thể tải model embedding và tạo cache; Compose giữ cache model Hugging Face và `.embcache` trong hai named volume qua các lần dừng container.
 
-Endpoint: `GET /api/v1/search?q=&taxonomy=&destination=&limit=&offset=` ·
-`GET /api/v1/similar/{productId}?k=` · `GET /api/v1/recommendations?k=&cdp_user_id=` (tạm, sẽ lấy từ JWT) ·
+Endpoint: `GET /api/v1/search?q=&taxonomy=&destination=&limit=&offset=` (Agent tool `query` được adapter đổi thành `q`) ·
+`GET /api/v1/similar/{productId}?k=` · `GET /api/v1/recommendations?k=&destination=` (JWT tùy chọn) ·
 `GET /api/v1/popular?k=`
 
 ## Chỗ nào làm gì (ARCHITECTURE.md §4–5)
@@ -73,3 +73,40 @@ Chạy test đọc seed thật (không ghi DB):
 ```bash
 RUN_POSTGRES_INTEGRATION=1 python -m pytest -q src/backend/tests
 ```
+
+## LLM của itinerary agent
+
+`main.py` dựng **một** client LLM trong `lifespan` (`infrastructure/llm/build_chat_model`) và tiêm vào graph
+qua `app.state.itinerary_llm`. Các node chỉ tự dựng client khi không được tiêm — đường CLI và test.
+
+```env
+ITINERARY_USE_LLM=true          # false: không dựng client nào, không cần API key
+OPENAI_API_KEY=                 # thứ tự chọn provider: GEMINI -> OPENAI -> ANTHROPIC
+GEMINI_API_KEY=
+ANTHROPIC_API_KEY=
+ITINERARY_LLM_MODEL=            # bỏ trống: OpenAI dùng MODEL_NAME, provider khác dùng mặc định
+ITINERARY_LLM_TEMPERATURE=0     # riêng của agent, không dùng chung LLM_TEMPERATURE
+```
+
+`GET /api/v1/assistant/status` trả thêm `llmMode`:
+
+- `live` — đã dựng được client dùng chung.
+- `disabled` — `ITINERARY_USE_LLM=false`.
+- `unavailable` — đã bật nhưng thiếu API key hoặc thiếu SDK của provider.
+
+Với `disabled` và `unavailable`, app vẫn khởi động và các route khác vẫn phục vụ; riêng request itinerary
+trả 503 `LLM_UNAVAILABLE` có kiểm soát.
+
+Để Agent dùng Search/Recommendation của chính Backend thay cho fixture:
+
+```env
+ITINERARY_DATA_MODE=http
+ITINERARY_SERVICE_BASE_URL=http://127.0.0.1:8000
+JWT_SECRET=<secret HS256 giống service Auth>
+JWT_ALGORITHM=HS256
+```
+
+Tool `search_products` gọi GET `/api/v1/search` nhưng luôn bỏ Authorization. Tool
+`get_recommendations` forward Bearer token; Backend chỉ lấy `cdp_user_id` từ JWT đã xác minh. Hai
+response RecSys chứa đủ trường catalog để Agent hậu kiểm và không cần gọi Product Detail. Fixture vẫn
+là mặc định của development/test để máy chưa seed PostgreSQL vẫn chạy được.

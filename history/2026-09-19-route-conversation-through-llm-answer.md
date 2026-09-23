@@ -5,6 +5,7 @@
 - Nhánh: feat/agent
 - Trạng thái: hoàn thành
 - Phạm vi: backend, agent
+- Bị thay thế bởi: 2026-09-21-tach-clarify-khoi-answer.md (một phần: route `missing_info`)
 
 ## Mục tiêu
 

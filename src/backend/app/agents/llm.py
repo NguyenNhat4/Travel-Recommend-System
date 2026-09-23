@@ -1,79 +1,29 @@
-"""LLM factory helper.
+"""Nhánh dự phòng dựng LLM cho các node.
 
-Provides a simple interface to create LLM clients for use in nodes.
-Students should use this helper so the lab works with any supported provider.
+Việc chọn provider và dựng SDK nằm ở `infrastructure/llm` (ARCHITECTURE.md §5, §12); module này
+chỉ chuyển nó về đúng dạng không-tham-số mà các node gọi khi không được tiêm sẵn client.
 
-Usage in nodes:
-    from .llm import get_llm
-    llm = get_llm()
-    response = llm.invoke("Hello")
+Đường chạy bình thường là composition root tiêm `app.state.itinerary_llm` vào graph, nên hàm dưới
+đây chỉ chạy ở CLI, ở test, hoặc khi LLM bị tắt — lúc đó nó raise và node `classify` biến lỗi này
+thành 503 LLM_UNAVAILABLE có kiểm soát.
 """
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
+from typing import Any
+
+from src.backend.app.core.config import get_settings
+from src.backend.app.infrastructure.llm import build_chat_model
 
 
-def _load_local_env() -> None:
-    """Load simple KEY=value entries without requiring a runtime dependency."""
-    env_file = Path(__file__).resolve().parents[4] / ".env"
-    if not env_file.is_file():
-        return
-    for raw_line in env_file.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        value = value.strip().strip('"').strip("'")
-        os.environ.setdefault(key.strip(), value)
-
-
-_load_local_env()
-
-
-def get_llm(model: str | None = None, temperature: float = 0.0):
-    """Create an LLM client from environment configuration.
-
-    Checks for API keys in this order:
-    1. GEMINI_API_KEY → ChatGoogleGenerativeAI
-    2. OPENAI_API_KEY → ChatOpenAI
-    3. ANTHROPIC_API_KEY → ChatAnthropic
-
-    Override model with the `model` parameter or LLM_MODEL env var.
-    """
-    if os.getenv("GEMINI_API_KEY"):
-        try:
-            from langchain_google_genai import ChatGoogleGenerativeAI
-        except ImportError as exc:
-            raise RuntimeError("Install: pip install langchain-google-genai") from exc
-        return ChatGoogleGenerativeAI(
-            model=model or os.getenv("LLM_MODEL", "gemini-2.5-flash"),
-            google_api_key=os.getenv("GEMINI_API_KEY"),
-            temperature=temperature,
-        )
-
-    if os.getenv("OPENAI_API_KEY"):
-        try:
-            from langchain_openai import ChatOpenAI
-        except ImportError as exc:
-            raise RuntimeError("Install: pip install langchain-openai") from exc
-        return ChatOpenAI(
-            model=model or os.getenv("ITINERARY_LLM_MODEL") or os.getenv("LLM_MODEL") or os.getenv("MODEL_NAME", "gpt-4o-mini"),
-            temperature=temperature,
-        )
-
-    if os.getenv("ANTHROPIC_API_KEY"):
-        try:
-            from langchain_anthropic import ChatAnthropic
-        except ImportError as exc:
-            raise RuntimeError("Install: pip install langchain-anthropic") from exc
-        return ChatAnthropic(
-            model=model or os.getenv("LLM_MODEL", "claude-sonnet-4-20250514"),
-            temperature=temperature,
-        )
-
-    raise RuntimeError(
-        "No LLM API key found. Set GEMINI_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY in .env\n"
-        "See .env.example for configuration."
-    )
+def get_llm(model: str | None = None, temperature: float | None = None) -> Any:
+    """Dựng một client LLM từ Settings; raise khi không có LLM để dùng."""
+    settings = get_settings()
+    overrides = {"itinerary_llm_model": model, "itinerary_llm_temperature": temperature}
+    overrides = {key: value for key, value in overrides.items() if value is not None}
+    if overrides:
+        settings = settings.model_copy(update=overrides)
+    llm = build_chat_model(settings)
+    if llm is None:
+        raise RuntimeError("LLM is disabled (ITINERARY_USE_LLM=false).")
+    return llm

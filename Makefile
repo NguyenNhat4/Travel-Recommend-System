@@ -31,7 +31,8 @@ chat:
 		fi
 	}
 	trap cleanup EXIT INT TERM
-	export ITINERARY_DATA_MODE="$${ITINERARY_DATA_MODE:-fixture}"
+	export ITINERARY_DATA_MODE="$${ITINERARY_DATA_MODE:-http}"
+	export ITINERARY_SERVICE_BASE_URL="$${ITINERARY_SERVICE_BASE_URL:-http://127.0.0.1:$${BACKEND_PORT}}"
 	export ITINERARY_LLM_TIMEOUT_SECONDS="$${ITINERARY_LLM_TIMEOUT_SECONDS:-30}"
 	export ITINERARY_REQUEST_TIMEOUT_SECONDS="$${ITINERARY_REQUEST_TIMEOUT_SECONDS:-90}"
 	export ASSISTANT_API_BASE_URL="$${ASSISTANT_API_BASE_URL:-http://127.0.0.1:$${BACKEND_PORT}/api/v1}"
@@ -43,9 +44,22 @@ chat:
 		--host 127.0.0.1 --port "$${BACKEND_PORT}" \
 		> >(tee -a "$${LOG_FILE}") 2>&1 &
 	BACKEND_PID=$$!
-	sleep 1
-	if ! kill -0 "$${BACKEND_PID}" 2>/dev/null; then
-		echo "FastAPI đã dừng khi khởi động."
+	echo "Đang chờ FastAPI tải model và khởi động..."
+	BACKEND_READY=false
+	for _ in $$(seq 1 300); do
+		if ! kill -0 "$${BACKEND_PID}" 2>/dev/null; then
+			echo "FastAPI đã dừng khi khởi động."
+			exit 1
+		fi
+		if curl --silent --fail --max-time 1 \
+			"http://127.0.0.1:$${BACKEND_PORT}/api/v1/assistant/status" >/dev/null; then
+			BACKEND_READY=true
+			break
+		fi
+		sleep 1
+	done
+	if [[ "$${BACKEND_READY}" != "true" ]]; then
+		echo "FastAPI chưa sẵn sàng sau 300 giây. Xem log tại $${LOG_FILE}."
 		exit 1
 	fi
 	echo "Mở UI tại http://127.0.0.1:$${STREAMLIT_PORT}"
@@ -66,6 +80,11 @@ web:
 	PYTHON_BIN="$${PROJECT_DIR}/.venv/bin/python"
 	FRONTEND_DIR="$${PROJECT_DIR}/src/frontend"
 	BACKEND_PORT="$${BACKEND_PORT:-8000}"
+	ROOT_BACKEND_BASE_URL=""
+	if [[ -f "$${PROJECT_DIR}/.env" ]]; then
+		ROOT_BACKEND_BASE_URL="$$(sed -n 's/^BACKEND_BASE_URL=//p' "$${PROJECT_DIR}/.env" | tail -n 1)"
+	fi
+	export BACKEND_BASE_URL="$${BACKEND_BASE_URL:-$${ROOT_BACKEND_BASE_URL:-http://127.0.0.1:$${BACKEND_PORT}}}"
 	LOG_FILE="$${WEB_DEMO_LOG_FILE:-$${PROJECT_DIR}/.logs/web-demo.log}"
 	if [[ ! -x "$${PYTHON_BIN}" ]]; then
 		echo "Không tìm thấy .venv. Hãy chạy:"
@@ -88,7 +107,8 @@ web:
 		fi
 	}
 	trap cleanup EXIT INT TERM
-	export ITINERARY_DATA_MODE="$${ITINERARY_DATA_MODE:-fixture}"
+	export ITINERARY_DATA_MODE="$${ITINERARY_DATA_MODE:-http}"
+	export ITINERARY_SERVICE_BASE_URL="$${ITINERARY_SERVICE_BASE_URL:-http://127.0.0.1:$${BACKEND_PORT}}"
 	export ITINERARY_LLM_TIMEOUT_SECONDS="$${ITINERARY_LLM_TIMEOUT_SECONDS:-30}"
 	export ITINERARY_REQUEST_TIMEOUT_SECONDS="$${ITINERARY_REQUEST_TIMEOUT_SECONDS:-90}"
 	mkdir -p "$$(dirname "$${LOG_FILE}")"
@@ -99,12 +119,25 @@ web:
 		--host 127.0.0.1 --port "$${BACKEND_PORT}" \
 		> >(tee -a "$${LOG_FILE}") 2>&1 &
 	BACKEND_PID=$$!
-	sleep 1
-	if ! kill -0 "$${BACKEND_PID}" 2>/dev/null; then
-		echo "FastAPI đã dừng khi khởi động."
+	echo "Đang chờ FastAPI tải model và khởi động..."
+	BACKEND_READY=false
+	for _ in $$(seq 1 300); do
+		if ! kill -0 "$${BACKEND_PID}" 2>/dev/null; then
+			echo "FastAPI đã dừng khi khởi động."
+			exit 1
+		fi
+		if curl --silent --fail --max-time 1 \
+			"http://127.0.0.1:$${BACKEND_PORT}/api/v1/assistant/status" >/dev/null; then
+			BACKEND_READY=true
+			break
+		fi
+		sleep 1
+	done
+	if [[ "$${BACKEND_READY}" != "true" ]]; then
+		echo "FastAPI chưa sẵn sàng sau 300 giây. Xem log tại $${LOG_FILE}."
 		exit 1
 	fi
-	echo "Mở web tại http://localhost:3000 (BFF ở :3001)"
+	echo "Mở web tại http://localhost:3000 (Next BFF cùng cổng :3000)"
 	echo "Nhấn Ctrl+C để dừng cả hai process."
 	npm --prefix "$${FRONTEND_DIR}" run dev \
 		> >(tee -a "$${LOG_FILE}") 2>&1
@@ -123,10 +156,11 @@ web-logs:
 	fi
 	tail -n 200 -f "$${LOG_FILE}"
 
-# Chỉ chạy Backend FastAPI với tool fixture.
+# Chỉ chạy Backend FastAPI; mặc định Agent gọi Search/Recommendation qua HTTP local.
 chat-api:
 	@echo "Đang khởi động Backend API..."
-	ITINERARY_DATA_MODE=$${ITINERARY_DATA_MODE:-fixture} \
+	ITINERARY_DATA_MODE=$${ITINERARY_DATA_MODE:-http} \
+	ITINERARY_SERVICE_BASE_URL=$${ITINERARY_SERVICE_BASE_URL:-http://127.0.0.1:$${BACKEND_PORT:-8000}} \
 		.venv/bin/uvicorn src.backend.app.main:app --reload --port $${BACKEND_PORT:-8000}
 
 # Chỉ chạy UI; cần chat-api đang chạy ở terminal khác.

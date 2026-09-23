@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import sys
 from contextlib import AsyncExitStack, asynccontextmanager
 
@@ -43,6 +44,7 @@ from src.backend.app.infrastructure.clients.itinerary_http_clients import Itiner
 from src.backend.app.application.itinerary.contracts import error_response
 from src.backend.app.core.request_context import current_request_id
 from src.backend.app.infrastructure.clients.local_cdp_client import LocalCdpClient
+from src.backend.app.infrastructure.llm import build_chat_model
 from src.backend.app.infrastructure.persistence.postgres_catalog import PostgresProductLookup
 
 logger = logging.getLogger("uvicorn.error")
@@ -98,10 +100,33 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
     }
 
 
+def _forward_langsmith_env(settings) -> None:
+    """Đẩy đúng 4 biến LangSmith vào os.environ khi được bật chủ ý qua Settings.
+
+    LangSmith SDK (bên trong `with_structured_output`/`bind_tools` của LangChain) tự đọc thẳng
+    os.environ, không biết gì về Settings — không có cách nào truyền config vào nó qua tham số.
+    Trước đây agents/llm.py:_load_local_env() đẩy TOÀN BỘ .env vào os.environ lúc import module,
+    nên các biến này bật một cách âm thầm dù không ai chủ ý cấu hình. Ở đây chỉ đẩy đúng 4 biến,
+    chỉ khi LANGSMITH_TRACING=true và có key, và chỉ ở composition root — bật là quyết định rõ
+    ràng, không phải tác dụng phụ của việc đọc .env.
+    """
+    if not settings.langsmith_tracing:
+        return
+    if not settings.langsmith_api_key:
+        print("LangSmith tracing bật nhưng thiếu LANGSMITH_API_KEY; bỏ qua.")
+        return
+    os.environ["LANGSMITH_TRACING"] = "true"
+    os.environ["LANGSMITH_API_KEY"] = settings.langsmith_api_key
+    os.environ["LANGSMITH_ENDPOINT"] = settings.langsmith_endpoint
+    os.environ["LANGSMITH_PROJECT"] = settings.langsmith_project
+    print(f"LangSmith tracing: on (project={settings.langsmith_project})")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
     print(f"Starting {settings.app_name} in {settings.app_env} mode")
+    _forward_langsmith_env(settings)
     logger.info("startup.begin app=%s env=%s", settings.app_name, settings.app_env)
     async with AsyncExitStack() as stack:
         logger.info("startup.cdp_adapter.start adapter=%s", settings.cdp_adapter)
@@ -141,6 +166,18 @@ async def lifespan(app: FastAPI):
         else:
             app.state.itinerary_http_clients = None
         logger.info("startup.itinerary_clients.ready mode=%s", mode)
+
+        # Một client LLM dùng chung cho mọi request thay vì dựng lại trong từng node. LLM tách khỏi
+        # phần dữ liệu: thiếu API key hoặc tắt hẳn thì chỉ itinerary trả 503 LLM_UNAVAILABLE, các
+        # route khác và /assistant/status vẫn phục vụ được.
+        try:
+            app.state.itinerary_llm = build_chat_model(settings)
+            app.state.itinerary_llm_mode = "live" if app.state.itinerary_llm else "disabled"
+        except Exception as exc:  # thiếu API key, thiếu SDK của provider…
+            app.state.itinerary_llm = None
+            app.state.itinerary_llm_mode = "unavailable"
+            print(f"Itinerary LLM unavailable: {exc}")
+        print(f"Itinerary LLM: {app.state.itinerary_llm_mode}")
 
         # Recsys tách khỏi phần itinerary: thiếu database hoặc model embedding thì tắt recsys,
         # các route còn lại (kể cả assistant chạy fixture) vẫn phục vụ được.

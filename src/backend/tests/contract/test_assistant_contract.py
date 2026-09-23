@@ -15,15 +15,18 @@ là lý do test này tồn tại.
 from __future__ import annotations
 
 import json
+import os
 import unittest
 from copy import deepcopy
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 from jsonschema import Draft202012Validator, FormatChecker
 
 from src.backend.app.agents.models import ConversationalAnswer, DestinationChoice, Extraction
 from src.backend.app.application.itinerary.contracts import schema
+from src.backend.app.core.config import get_settings
 from src.backend.app.main import app
 from src.shared.contracts.scripts.bundle_openapi import bundle
 
@@ -105,9 +108,9 @@ class AssistantContractTests(unittest.TestCase):
         errors = [f"{list(e.absolute_path)}: {e.message}" for e in validator(name).iter_errors(body)]
         self.assertEqual(errors, [], f"{label}: body không khớp {name}")
 
-    def post(self, payload: dict, *, llm=None, clients=..., path: str = ITINERARIES):
+    def post(self, payload: dict, *, llm=..., clients=..., path: str = ITINERARIES):
         with TestClient(app) as client:
-            app.state.itinerary_llm = llm or ScriptedLlm()
+            app.state.itinerary_llm = ScriptedLlm() if llm is ... else llm
             app.state.itinerary_http_clients = Clients() if clients is ... else clients
             return client.post(f"/api/v1{path}", json=payload)
 
@@ -237,6 +240,39 @@ class AssistantContractTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         errors = [e.message for e in validator("AssistantStatus").iter_errors(response.json())]
         self.assertEqual(errors, [])
+
+    def test_status_reports_the_llm_mode(self):
+        """llmMode là field additive: mọi giá trị enum phải hợp lệ với AssistantStatus."""
+        for mode in ("live", "disabled", "unavailable"):
+            with self.subTest(mode=mode):
+                with TestClient(app) as client:
+                    app.state.itinerary_http_clients = Clients()
+                    app.state.itinerary_llm_mode = mode
+                    response = client.get("/api/v1/assistant/status")
+                body = response.json()
+                self.assertEqual(body["llmMode"], mode)
+                errors = [e.message for e in validator("AssistantStatus").iter_errors(body)]
+                self.assertEqual(errors, [])
+
+    # ------------------------------------------------------------ LLM tắt
+
+    def test_request_without_an_llm_fails_with_a_declared_503(self):
+        """ITINERARY_USE_LLM=false: không có client, cũng không được có nhánh dự phòng gọi mạng.
+
+        Xoá hết API key trong môi trường, nếu không `get_llm()` trong node sẽ dựng client thật
+        và bài test này lặng lẽ gọi ra ngoài internet.
+        """
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "", "GEMINI_API_KEY": "",
+                                     "ANTHROPIC_API_KEY": "", "ITINERARY_USE_LLM": "false"}):
+            get_settings.cache_clear()
+            try:
+                response = self.post({"message": "3 ngày Nha Trang"}, llm=None)
+            finally:
+                get_settings.cache_clear()
+        body = response.json()
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(body["error"]["code"], "LLM_UNAVAILABLE")
+        self.assert_conforms(ITINERARIES, 503, body, "llm disabled")
 
     # ---------------------------------------------------------------- bề mặt
 

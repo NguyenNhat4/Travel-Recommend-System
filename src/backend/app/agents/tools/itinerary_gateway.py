@@ -15,6 +15,7 @@ class ItineraryToolGateway:
         self._search = search
         self._recommendations = recommendations
         self._catalog = catalog
+        self.supports_catalog = catalog is not None
         self._recommendation_authorization = recommendation_authorization
 
     def definitions(self) -> list[dict[str, Any]]:

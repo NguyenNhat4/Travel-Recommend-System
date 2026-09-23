@@ -31,7 +31,8 @@ class ScriptedLlm:
     """Script model decisions rather than matching scenario IDs or query keywords."""
     def __init__(self, extraction=None, plan=None,
                  conversational_message='Bạn muốn đi đâu và trong bao nhiêu ngày?',
-                 destination_choice=None, fail_destination=False):
+                 destination_choice=None, fail_destination=False, fail_conversation=False):
+        self.fail_conversation = fail_conversation
         self.destination_choice = destination_choice
         self.fail_destination = fail_destination
         self.extraction = extraction or extracted(destination='Nha Trang', days=2, party={'type': 'SOLO', 'adults': 1, 'children': 0})
@@ -51,6 +52,8 @@ class ScriptedLlm:
                     raise RuntimeError('provider error')
                 return DestinationChoice(destination=self.destination_choice)
             if schema is ConversationalAnswer:
+                if self.fail_conversation:
+                    raise RuntimeError('provider error')
                 return ConversationalAnswer(message=self.conversational_message)
             raise AssertionError(f'the itinerary path must not call the model for {schema.__name__}')
         return SimpleNamespace(ainvoke=invoke)
@@ -116,6 +119,9 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(plan['budgetStatus'], 'NO_BUDGET')
         self.assertEqual(clients.calls, ['search', 'detail:a'])
         self.assertEqual(result['validation_issues'], [])
+        # The itinerary is built by `compose`; `converse` only handles chit-chat and never sees products.
+        self.assertEqual([event['node'] for event in result['events']],
+                         ['intake', 'classify', 'tool', 'evaluate', 'compose', 'finalize'])
 
     async def test_checked_in_catalog_fixture_runs_through_the_graph(self):
         from src.backend.app.infrastructure.clients.itinerary_fixture_clients import FixtureItineraryClients
@@ -267,18 +273,61 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(llm.calls, ['Extraction', 'ConversationalAnswer'])
         self.assertFalse(clients.calls)
 
-    async def test_broad_suggestion_uses_llm_answer_without_catalog_claims(self):
+    async def test_broad_suggestion_is_asked_by_clarify_without_catalog_claims(self):
         clients = Clients()
         llm = ScriptedLlm(
-            extraction=Extraction(domain='conversation'),
+            extraction=extracted(),
             conversational_message='Mình có thể gợi ý sau khi bạn cho biết điểm đến và số ngày nhé.',
         )
         result = await self.run_graph(llm, clients, state={'query': 'Gợi ý cho tôi một chuyến đi'})
+        self.assertEqual([event['node'] for event in result['events']], ['intake', 'classify', 'clarify', 'finalize'])
         self.assertEqual(result['response']['status'], 'NEEDS_CLARIFICATION')
         self.assertEqual(result['response']['question'], llm.conversational_message)
-        self.assertEqual(result['interaction_type'], 'conversation')
+        self.assertEqual(result['response']['missingFields'], ['destination', 'days'])
         self.assertEqual(llm.calls, ['Extraction', 'ConversationalAnswer'])
         self.assertFalse(clients.calls)
+
+    async def test_trip_details_labelled_conversation_still_reach_clarify(self):
+        """The model sometimes calls a detail-bearing message chit-chat; routing must not follow it there."""
+        clients = Clients()
+        llm = ScriptedLlm(
+            extraction=Extraction(domain='conversation', patch={'days': 3}),
+            conversational_message='Bạn muốn đi thành phố nào?',
+        )
+        result = await self.run_graph(llm, clients, state={'query': 'đi 3 ngày'})
+        self.assertEqual([event['node'] for event in result['events']], ['intake', 'classify', 'clarify', 'finalize'])
+        self.assertEqual(result['interaction_type'], 'travel')
+        self.assertEqual(result['response']['missingFields'], ['destination'])
+        self.assertFalse(clients.calls)
+
+    async def test_missing_trip_details_are_asked_by_clarify_and_chit_chat_is_answered(self):
+        llm = ScriptedLlm(extraction=extracted(days=3), conversational_message='Bạn muốn đi thành phố nào?')
+        result = await self.run_graph(llm)
+        nodes = [event['node'] for event in result['events']]
+        self.assertEqual(nodes, ['intake', 'classify', 'clarify', 'finalize'])
+        self.assertEqual(result['response']['question'], 'Bạn muốn đi thành phố nào?')
+        self.assertEqual(result['final_answer'], 'Bạn muốn đi thành phố nào?')
+        greeting = await self.run_graph(ScriptedLlm(extraction=Extraction(domain='conversation')))
+        self.assertEqual([event['node'] for event in greeting['events']], ['intake', 'classify', 'converse', 'finalize'])
+
+    async def test_clarify_falls_back_to_the_reason_specific_fixed_question_when_the_model_fails(self):
+        clients = Clients()
+        conflict = Extraction(domain='travel', patch={'destination': 'Nha Trang', 'startDate': '2026-10-10', 'days': 2}, end_date='2026-10-12')
+        result = await self.run_graph(ScriptedLlm(extraction=conflict, fail_conversation=True), clients)
+        self.assertEqual(result['response']['status'], 'NEEDS_CLARIFICATION')
+        self.assertIn('mâu thuẫn', result['response']['question'])
+        missing = await self.run_graph(ScriptedLlm(extraction=extracted(days=3), fail_conversation=True), clients)
+        self.assertEqual(missing['response']['question'], 'Bạn muốn đi du lịch ở tỉnh hoặc thành phố nào?')
+        self.assertFalse(clients.calls)
+
+    async def test_unmet_required_condition_is_asked_by_clarify_without_calling_the_model(self):
+        clients = Clients(products=[product(taxonomy='hotel', unitPrice=1100000, priceUnit='UNKNOWN')])
+        llm = ScriptedLlm(extraction=Extraction(domain='travel', patch={'destination': 'Nha Trang', 'days': 2},
+                constraints={'require_hotel': True, 'hotel_price_max': 1200000, 'price_strict': True, 'hotel_price_unit': 'PER_NIGHT'}))
+        result = await self.run_graph(llm, clients)
+        self.assertEqual([event['node'] for event in result['events']][-3:], ['evaluate', 'clarify', 'finalize'])
+        self.assertEqual(result['response']['status'], 'NEEDS_CLARIFICATION')
+        self.assertNotIn('ConversationalAnswer', llm.calls)
 
     async def test_dates_derive_duration_and_conflicts_do_not_search(self):
         llm = ScriptedLlm(extraction=Extraction(domain='travel', patch={'destination': 'Nha Trang', 'startDate': '2026-10-10'}, end_date='2026-10-12'))

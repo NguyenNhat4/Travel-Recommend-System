@@ -405,46 +405,27 @@ GET /api/v1/destinations
 ### 5.1. `SearchRequest`
 
 ```http
-POST /api/v1/search
-Content-Type: application/json
+GET /api/v1/search?q=khu%20nghỉ%20dưỡng&destination=Nha%20Trang&taxonomy=hotel
 Authorization: Bearer <jwt>    # tùy chọn
 ```
 
-Dùng `POST` chứ không phải `GET`, vì truy vấn là câu tiếng Việt tự do đi kèm nhiều bộ lọc; nhét tất cả vào query string làm URL khó đọc và dễ sai encoding. Route frontend `/search?q=…` là route của trình duyệt, không phải endpoint API.
+Dùng `GET` theo endpoint RecSys hiện hành. Tham số `q` là truy vấn tự do; client phải URL-encode tiếng Việt. Route frontend `/search?q=…` và endpoint API có cùng tên tham số nhưng là hai bề mặt khác nhau.
 
-**Ghi hành vi:** request có JWT và `offset = 0` thì Backend ghi event `search` (`searchQuery` = `query`) sang CDP ở nền. Đổi trang, không JWT, hoặc CDP lỗi đều không ảnh hưởng response. Team Agent gọi endpoint này **không kèm JWT**, để lượt tìm của Agent không bị tính là hành vi người dùng (`hop-dong-tich-hop-cdp.md` §1.4).
+`POST /api/v1/search` với body `SearchRequest` vẫn được giữ trong OpenAPI v1 để không phá client hiện có. GET là compatibility endpoint mà Agent dùng trong giai đoạn nối RecSys hiện tại.
 
-#### Request
+**Ghi hành vi:** request có JWT và `offset = 0` thì Backend ghi event `search` (`searchQuery` lấy từ `q` hoặc `query`) sang CDP ở nền. Đổi trang, không JWT, hoặc CDP lỗi đều không ảnh hưởng response. Team Agent gọi endpoint này **không kèm JWT**, để lượt tìm của Agent không bị tính là hành vi người dùng (`hop-dong-tich-hop-cdp.md` §1.4).
 
-```json
-{
-  "query": "khu nghỉ dưỡng gần biển phù hợp gia đình có trẻ nhỏ",
-  "destination": "Nha Trang",
-  "taxonomy": "hotel",
-  "priceMin": 0,
-  "priceMax": 5000000,
-  "starRatingMin": 4,
-  "availableOnly": true,
-  "sort": "relevance",
-  "limit": 20,
-  "offset": 0
-}
-```
+#### Query parameters
 
 | Trường | Bắt buộc | Mặc định | Ý nghĩa |
 |---|---:|---|---|
-| `query` | Có | — | Câu tự do tiếng Việt hoặc tiếng Anh, 1–500 ký tự |
+| `q` | Có | — | Câu tự do tiếng Việt hoặc tiếng Anh, 1–500 ký tự |
 | `destination` | Không | `null` | Lọc đúng một điểm đến |
 | `taxonomy` | Không | `null` | Lọc đúng một danh mục |
-| `priceMin` | Không | `null` | VND, integer |
-| `priceMax` | Không | `null` | VND, integer |
-| `starRatingMin` | Không | `null` | 1–5, chỉ áp dụng cho sản phẩm có `attributes.starRating` |
-| `availableOnly` | Không | `true` | — |
-| `sort` | Không | `relevance` | `relevance` \| `price_asc` \| `price_desc` |
 | `limit` | Không | `20` | 1–50 |
 | `offset` | Không | `0` | — |
 
-Ngoài `query`, mọi trường đều nhận `null`.
+Agent vẫn có schema tool giàu hơn (`priceMin`, `priceMax`, `starRatingMin`, `availableOnly`, `sort`) và hậu kiểm các ràng buộc đó sau retrieval; adapter chỉ gửi các query parameter endpoint GET hỗ trợ.
 
 ### 5.2. `SearchResponse`
 

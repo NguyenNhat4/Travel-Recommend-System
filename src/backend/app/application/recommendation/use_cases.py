@@ -40,7 +40,8 @@ class RecommendForUser:
     popularity: Popularity | None = None
     candidate_k: int = 200
 
-    def __call__(self, cdp_user_id: str | None, k: int = 5, now: datetime | None = None, events: list[dict] | None = None) -> dict:
+    def __call__(self, cdp_user_id: str | None, k: int = 5, now: datetime | None = None,
+                 events: list[dict] | None = None, destination: str | None = None) -> dict:
         now = now or datetime.now(timezone.utc)
         t0 = now.timestamp()
         raw = events if events is not None else (self.cdp.events_for_user(cdp_user_id) if cdp_user_id else [])
@@ -57,18 +58,18 @@ class RecommendForUser:
         base = {"generatedAt": now.isoformat(), "modelVersion": idx.model_version}
 
         if not profile.trips:
-            return {**base, **self._cold_start(k, now)}
+            return {**base, **self._cold_start(k, now, destination)}
 
         # candidate mask
         if profile.active_trip is not None:
             t = profile.active_trip
-            dest, done = t.destination, t.purchased_taxonomies
+            dest, done = destination or t.destination, t.purchased_taxonomies
             m = idx.mask(destination=dest, only_recommendable=True) & ~np.isin(idx.taxonomy, list(done))
-            if not m.any():
+            if not m.any() and destination is None:
                 m = idx.mask(only_recommendable=True) & ~np.isin(idx.taxonomy, list(done))
         else:
-            dest, done = None, set()
-            m = idx.mask(only_recommendable=True)
+            dest, done = destination, set()
+            m = idx.mask(destination=dest, only_recommendable=True)
         for u in profile.bought_units:
             m[u] = False
 
@@ -79,11 +80,13 @@ class RecommendForUser:
         score, _ = score_candidates(profile, idx.E, pop)
         cand = [i for i in np.argsort(-score) if m[i]][: self.candidate_k]
         chosen = mmr_select(score, idx.E, cand, idx.taxonomy, k)
+        if not chosen:
+            return {**base, **self._cold_start(k, now, destination)}
 
         recs = []
         for rank, i in enumerate(chosen, 1):
             because = [{"productId": b["productId"], "productName": idx.units[b["unit"]].name, "event": b["event"],
-                        "daysAgo": b["daysAgo"], "contribution": b["contribution"]} for b in explain(profile, i, idx.E)]
+                        "daysAgo": int(b["daysAgo"]), "contribution": b["contribution"]} for b in explain(profile, i, idx.E)]
             recs.append(hit(idx, i, score[i], rank=rank, because=because))
         from collections import Counter
         return {**base, "strategy": profile.strategy, "destination": dest,
@@ -93,10 +96,12 @@ class RecommendForUser:
                                 "excludedVerticals": sorted(map(str, done)), "trips": len(profile.trips)}}
 
     # ---- khách mới: điểm đến của tháng + theo mùa; because[] rỗng, lý do ở section.reason
-    def _cold_start(self, k: int, now: datetime) -> dict:
+    def _cold_start(self, k: int, now: datetime, destination: str | None = None) -> dict:
         idx = self.index
         sections, flat, used = [], [], set()
-        if self.popularity:
+        if destination:
+            flat = [{**p, "rank": rank} for rank, p in enumerate(self._top_products(destination, k), 1)]
+        elif self.popularity:
             groups = [("Điểm đến được đặt nhiều tháng %d" % now.month, self.popularity.top_destinations_month(k=3)),
                       ("Điểm đến phổ biến theo mùa", self.popularity.seasonal_destinations(k=3))]
             seen = set()
@@ -114,7 +119,7 @@ class RecommendForUser:
             m = idx.mask(only_recommendable=True)
             order = sorted((i for i in range(len(idx.units)) if m[i]), key=lambda i: -(idx.units[i].attributes.get("reviewCount") or 0))
             flat = [hit(idx, i, 0.0, rank=r, because=[]) for r, i in enumerate(order[:k], 1)]
-        return {"strategy": "popular", "destination": None, "nextVertical": None, "sections": sections, "recommendations": flat,
+        return {"strategy": "popular", "destination": destination, "nextVertical": None, "sections": sections, "recommendations": flat,
                 "diagnostics": {"eventsUsed": 0, "coldStart": True, "excludedVerticals": [],
                                 "popularitySource": "events" if self.popularity else "reviewCount"}}
 
