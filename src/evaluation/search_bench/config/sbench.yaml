@@ -45,7 +45,8 @@ weaviate:                         # Part 4
   grpc_port: 55051
   image: semitechnologies/weaviate:1.37.3      # pin; cần ≥ 1.37 cho text_analyzer ascii_fold
   vector_index: flat              # < 10k object → exact
-  bm25: {k1: 1.2, b: 0.75, tokenization: word}
+  bm25: {k1: 1.2, b: 0.75, tokenization: word, stopwords_preset: none}   # (đề xuất) none: preset mặc định 'en' của Weaviate
+                                  # bỏ các âm tiết Việt trùng stopword tiếng Anh (an, be, no, to, the…) — 'Hội An', 'bể bơi'
   ascii_fold: analyzer            # analyzer | shadow  (shadow = property *_ascii do app tạo, fallback)
   hybrid_default: {fusion: ranked, alpha: 0.5}
   query_timeout_s: 5

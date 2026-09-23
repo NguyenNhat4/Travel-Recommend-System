@@ -95,6 +95,7 @@ class Bm25Config(_M):
     k1: float
     b: float
     tokenization: Literal["word", "whitespace", "lowercase", "field", "trigram"]
+    stopwords_preset: Literal["none", "en"]
 
 
 class HybridDefault(_M):
