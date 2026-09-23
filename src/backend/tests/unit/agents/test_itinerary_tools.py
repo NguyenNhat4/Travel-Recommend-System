@@ -188,6 +188,41 @@ class NodeTests(unittest.IsolatedAsyncioTestCase):
             result = await nodes.tool_node({'query': 'recommend Da Nang'}, tools=Executor())
         self.assertEqual(result['tool_plan'][0]['args'], {'destination': 'Da Nang', 'k': 5})
 
+    async def test_planner_wording_of_the_destination_does_not_fail_the_plan(self):
+        """Planner viết "Hồ Chí Minh", intent giữ tên catalog "TP. Hồ Chí Minh" — cùng một chuyến đi."""
+        class Executor:
+            definitions = staticmethod(definitions)
+            async def execute(self, call):
+                return {'tool_call_id': call['id'], 'data': {'strategy': 'popular', 'recommendations': []}}
+        async def plan(prompt):
+            return SimpleNamespace(tool_calls=[{'name': 'get_recommendations', 'args': {'destination': 'Hồ Chí Minh'}}])
+        llm = SimpleNamespace(bind_tools=lambda schemas: SimpleNamespace(ainvoke=plan))
+        state = {'query': '2 ngày', 'intent': {'destination': 'TP. Hồ Chí Minh', 'days': 2}}
+        with patch.object(nodes, 'get_llm', return_value=llm):
+            result = await nodes.tool_node(state, tools=Executor())
+        self.assertEqual(result['tool_plan'][0]['args']['destination'], 'TP. Hồ Chí Minh')
+        self.assertNotIn('error', result.get('response', {}))
+
+    async def test_search_call_without_query_falls_back_to_the_destination(self):
+        """SearchRequest bắt buộc `query`; planner bỏ quên thì không được làm hỏng cả request."""
+        class Executor:
+            definitions = staticmethod(definitions)
+            def __init__(self):
+                self.seen = []
+            async def execute(self, call):
+                self.seen.append(call['args'])
+                return {'tool_call_id': call['id'], 'data': {'results': []}}
+        async def plan(prompt):
+            return SimpleNamespace(tool_calls=[
+                {'name': 'search_products', 'args': {'destination': 'Hạ Long', 'taxonomy': 'attraction', 'limit': 5}}])
+        llm = SimpleNamespace(bind_tools=lambda schemas: SimpleNamespace(ainvoke=plan))
+        tools = Executor()
+        state = {'query': '2 ngày', 'intent': {'destination': 'Hạ Long', 'days': 2}}
+        with patch.object(nodes, 'get_llm', return_value=llm):
+            result = await nodes.tool_node(state, tools=tools)
+        self.assertEqual(result['tool_plan'][0]['args']['query'], 'Hạ Long')
+        self.assertEqual(tools.seen[0]['query'], 'Hạ Long')
+
     async def test_permanent_error_and_missing_configuration_do_not_retry(self):
         result = await nodes.tool_node({'query': 'hotel'})
         evaluated = nodes.evaluate_node(result)

@@ -16,7 +16,7 @@ from src.backend.app.application.ports.itinerary_tools import ConversationStoreP
 from src.backend.app.domain.itinerary.normalization import match_destination, normalize_intent
 from src.backend.app.domain.itinerary.planning import (
     SCHEDULABLE_TAXONOMIES, SLOT_TAXONOMIES, STAY_TAXONOMY, compose_plan, empty_intent,
-    merge_intent, normalized, render_proposal, summary, validate_plan,
+    merge_intent, render_proposal, summary, validate_plan,
 )
 from .llm import get_llm
 from .models import ConversationalAnswer, DestinationChoice, Extraction
@@ -229,10 +229,15 @@ def _validated_plan(state: dict, plan: list, *, require_recommendations: bool = 
     validated = []
     intent, constraints = state.get("intent", {}), state.get("constraints", {})
     for index, call in enumerate(plan):
-        args = normalize_arguments(call["name"], call.get("args", {}))
+        args = dict(call.get("args", {}))
+        # Planner thỉnh thoảng bỏ quên `query` dù SearchRequest bắt buộc. Điểm đến đã chuẩn hóa là
+        # đúng thứ nó điền ở các lần chạy thành công, nên dùng làm fallback tất định thay vì hỏng cả request.
+        if call["name"] == "search_products" and not str(args.get("query") or "").strip():
+            args["query"] = intent.get("destination") or state.get("query", "")
+        args = normalize_arguments(call["name"], args)
         if intent.get("destination"):
-            if args.get("destination") and normalized(args["destination"]) != normalized(intent["destination"]):
-                raise ToolError("INVALID_ARGUMENTS")
+            # Tên catalog đã chuẩn hóa mới là nguồn sự thật; planner viết "Hồ Chí Minh" thay vì
+            # "TP. Hồ Chí Minh" là cách diễn đạt khác, không phải chuyến đi khác.
             args["destination"] = intent["destination"]
         if call["name"] == "search_products":
             if args.get("taxonomy") in constraints.get("exclude_taxonomies", []):

@@ -28,6 +28,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from src.backend.app.api.router import api_router
+from src.backend.app.api.v1.routes import catalog as catalog_routes
 from src.backend.app.api.v1.routes import recommendations as recommendations_routes
 from src.backend.app.api.v1.routes import search as search_routes
 from src.backend.app.application.recommendation import BuildPopularity, RecommendForUser
@@ -232,6 +233,7 @@ app.include_router(api_router, prefix="/api/v1")
 # nếu đưa vào api_router thì đường dẫn thành /api/v1/api/v1/search.
 app.include_router(search_routes.router)
 app.include_router(recommendations_routes.router)
+app.include_router(catalog_routes.router)
 
 
 @app.get("/health")

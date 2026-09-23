@@ -11,7 +11,9 @@ from src.backend.app.core.request_context import REQUEST_ID_HEADER, current_requ
 
 
 class ItineraryHttpClients:
-    supports_catalog = False
+    # `/destinations` có thật; `/products/{id}` chưa, nhưng Search và Recommendation trả đủ
+    # DETAIL_FIELDS nên `hydrate()` không bao giờ gọi tới `get_product_detail`.
+    supports_catalog = True
 
     def __init__(self, http: httpx.AsyncClient):
         self._http = http
