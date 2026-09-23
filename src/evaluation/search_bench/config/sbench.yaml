@@ -1,0 +1,136 @@
+# sbench — file DUY NHẤT chứa con số (docs/spec/bench/search-eval-local-spec.md §1.2).
+# Code chỉ đọc, không có hằng số ngưỡng trong logic. Chỗ ghi (đề xuất) là tham số spec chưa có.
+
+run:
+  seed: 42
+  default_run_id: dev            # sb run ghi <YYYYMMDD-HHMM>-<git sha>
+
+catalog:
+  products_path: src/data_collection/data/snapshots/2026-09-21/products.jsonl   # bản bung (gitignore) của snapshot
+  snapshot_path: src/data_collection/snapshots/2026-09-21/products.jsonl.gz      # thiếu bản bung → tự bung, kiểm checksum
+  sample_path: src/data_collection/sample/products-sample.jsonl
+  search_unit_variants: [hotel_property, flight_route, attraction, combo, golf]  # variant = taxonomy + attributes.level
+  amenity_seed_path: src/evaluation/vector_bench/config/amenity_seed.yaml
+  amenity_scope: property_plus_rooms
+  amenity_min_freq: 5
+  amenity_fuzzy_min: 0.6          # similarity trigram kiểu pg_trgm
+  fake_n: 3000                    # (đề xuất) số sản phẩm của --source fake
+
+text:                             # Part 2
+  max_words: 150
+  max_amenities: 12
+  max_room_names: 8
+  max_description_words: 60
+  sentence_df_drop: 20            # modifier DF: câu xuất hiện ở > 20 sản phẩm bị loại
+  desc_words_by_modifier: {w30: 30, w60: 60, w150: 150, wfull: null}   # modifier wN; mặc định w60
+  token_p99_max: 450              # gate
+  token_hard_max: 512
+
+embedding:                        # Part 3
+  provider: cohere                # cohere | bedrock | local | fake
+  models:
+    cohere-v3: {api_model: embed-multilingual-v3.0, dim: 1024, max_batch: 96, truncate: NONE}
+    cohere-v4: {api_model: embed-v4.0, dim: 1024, max_batch: 96, output_dimension: 1024, truncate: NONE}
+    bge-m3:    {hf_model: BAAI/bge-m3, dim: 1024, max_seq_length: 512, device: cpu, batch_size: 16}
+    gte-mb:    {hf_model: Alibaba-NLP/gte-multilingual-base, dim: 768, max_seq_length: 512, device: cpu, batch_size: 32, trust_remote_code: true}   # E2.gte, tuỳ chọn
+    fake:      {dim: 1024}
+  input_type: {document: search_document, query: search_query}
+  bedrock: {model_id: cohere.embed-multilingual-v3, region: ap-southeast-1}
+  retry: {max_attempts: 6, backoff_s: [1, 2, 4, 8, 16, 32]}
+  cost_per_1m_tokens_usd: {cohere-v3: 0.10, cohere-v4: 0.12}   # xác nhận lại trên trang giá chính thức
+  max_inputs_per_min: 2000        # (đề xuất) giới hạn tốc độ Cohere — pacer phía app
+
+weaviate:                         # Part 4
+  url: http://127.0.0.1:58080     # cổng riêng: Weaviate 1.27 của app (docker-compose.yml gốc) giữ 8080/50051
+  grpc_port: 55051
+  image: semitechnologies/weaviate:1.37.3      # pin; cần ≥ 1.37 cho text_analyzer ascii_fold
+  vector_index: flat              # < 10k object → exact
+  bm25: {k1: 1.2, b: 0.75, tokenization: word}
+  ascii_fold: analyzer            # analyzer | shadow  (shadow = property *_ascii do app tạo, fallback)
+  hybrid_default: {fusion: ranked, alpha: 0.5}
+  query_timeout_s: 5
+  load_batch_size: 200            # (đề xuất)
+
+doctor:                           # (đề xuất) Part 0
+  min_free_gb: 5
+  min_weaviate_version: "1.37"
+
+gold:                             # Part 5
+  target: 200
+  minimum: 150
+  pool_depth: 15
+  overlap_queries: 25
+  kappa_min: 0.6
+  judged_at_10_min: 0.80
+  judged_at_10_slice_min: 0.70     # cổng Part 12 chặn nếu slice nào thấp hơn
+  min_per_slice: 10
+  slices:                         # quota
+    dest_type: 30
+    audience_style: 25
+    amenity_single: 15
+    amenity_multi: 10
+    amenity_negation: 5
+    amenity_offtaxonomy: 5
+    parent_child: 15
+    named_entity: 20
+    no_diacritics: 20
+    abbrev_typo: 15
+    multi_constraint: 20
+    cross_vertical: 10
+    out_of_catalog: 10
+
+synth:                            # Part 7
+  per_unit: 8
+  strata: [dest_type, audience, amenity, no_diacritics, abbrev]
+  retrieve_depth: 20
+  reranker: BAAI/bge-reranker-v2-m3
+  keep_if_rank_le: 3
+
+metrics:                          # Part 8
+  k: 10
+  ndcg_gain: pow2                 # 2^rel - 1
+  mrr_relevant_min: 2
+  recall_relevant_min: 1
+  bootstrap: 1000
+  win_rule: {min_delta_recall: 2.0, p_max: 0.05, max_slice_loss: 3.0, tie_delta_ndcg: 2.0}
+  guards:
+    constraint_precision_min: 0.95
+    parent_dup_max: 1
+    zero_result_in_catalog_max: 0.02
+    hub_score_max: 3.0
+    p95_cache_miss_ms_max: 250      # = NFR-PERF-01 (p95 ≤ 250 ms); p99 được đo và báo cáo, không có ngưỡng (PRD không đặt)
+  rerank_keep_if_delta_ndcg: 3.0
+  hub_random_queries: 500
+
+latency:                          # Part 9
+  embed_calls: 500
+  cache_hit_rates: [0.0, 0.5, 0.8]
+  load_qps: 50
+  load_seconds: 60
+  embed_timeout_ms: 150
+
+holes:                            # Part 11
+  k: 10                           # quét top-k của per_query
+  auto_label_out_of_catalog: true # query expected_no_result → hole tự gán 0, src=auto_ooc
+  labeler: A                      # người gán hole (không phải người dựng arm)
+
+stages:                           # Part 12 (cấu trúc cổng ở config/stages.yaml)
+  file: config/stages.yaml
+  pipeline_checks:                # sanity cứng — hỏng là dừng chuỗi
+    input_type_min_cos_gap: 0.005     # 1 − cos(embed_q, embed_d) trung bình trên 200 query gold phải > giá trị này
+    cache_recheck_n: 20               # embed lại n text ngẫu nhiên không qua cache, cos với cache phải ≥ 0.999
+  default_model: cohere-v3        # quyết định team 23/09; cổng E2 không tự đổi model
+
+regression:                       # Part 13
+  max_drop_ndcg: 2.0              # điểm nDCG@10 overall, kèm p < 0.05
+  max_slice_drop: 3.0
+  p_max: 0.05
+  latency_warn_ratio: 1.3         # p95 Weaviate local tăng > 30% → WARN (không FAIL)
+  watch_paths:                    # đổi file nào thì phải chạy regression
+    - src/evaluation/search_bench/textbuild.py
+    - src/evaluation/search_bench/qu.py
+    - src/evaluation/search_bench/config/aliases.yaml
+    - src/evaluation/search_bench/config/sbench.yaml
+    - src/backend/app/**/text_builder*.py
+    - src/data_collection/snapshots/*/products.jsonl.gz
+    - src/evaluation/search_bench/gold/gold.jsonl
