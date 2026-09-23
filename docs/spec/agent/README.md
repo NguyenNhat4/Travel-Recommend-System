@@ -9,6 +9,7 @@ chỉ dẫn thứ tự đọc tối thiểu và chọn thêm tài liệu/source 
 |---|---|
 | [working-context.md](working-context.md) | Context tối thiểu, bản đồ module và nhánh đọc riêng cho tune/eval/debug |
 | [langgraph-nodes.md](langgraph-nodes.md) | Vì sao graph chia thành mười node, vì sao mọi nhánh qua `finalize`, cách đọc bảng trace |
+| [state-fields.md](state-fields.md) | Tra theo từng field của `AgentState`: node nào ghi, node nào đọc, dùng để làm gì |
 | [response-and-errors.md](response-and-errors.md) | `status` so với `error.code`, luồng sau `UNSUPPORTED_DESTINATION` |
 | [evaluation-plan.md](evaluation-plan.md) | Bộ 12 case chạy tay qua Streamlit, cách chấm, mẫu biên bản, giới hạn đã biết |
 

@@ -33,3 +33,17 @@ class ClassifyRouteTests(unittest.TestCase):
                   patch={'destination': 'Nha Trang', 'days': 2, 'party': {'type': None, 'adults': 4, 'children': 0}}))
         self.assertEqual(result['route'], 'tool')
         self.assertIsNone(result['intent']['party']['type'])
+
+    def test_exclude_products_keeps_only_ids_from_previous_selection(self):
+        state = intake_node({'query': 'request', 'previous_selection': [{'productId': 'shown-1', 'name': 'Vinpearl', 'taxonomy': 'attraction'}]})
+        result = _classify_result(state, Extraction(domain='travel', patch={'destination': 'Nha Trang', 'days': 2},
+                  constraints={'exclude_products': ['shown-1', 'invented-id']}))
+        self.assertEqual(result['constraints']['exclude_products'], ['shown-1'])
+
+    def test_exclude_products_accumulates_across_turns(self):
+        state = intake_node({'query': 'request', 'constraints': {'exclude_products': ['old-1']},
+                             'previous_selection': [{'productId': 'old-1', 'name': 'A', 'taxonomy': 'attraction'},
+                                                    {'productId': 'new-1', 'name': 'B', 'taxonomy': 'attraction'}]})
+        result = _classify_result(state, Extraction(domain='travel', patch={'destination': 'Nha Trang', 'days': 2},
+                  constraints={'exclude_products': ['new-1']}))
+        self.assertEqual(sorted(result['constraints']['exclude_products']), ['new-1', 'old-1'])

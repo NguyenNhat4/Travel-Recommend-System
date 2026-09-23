@@ -492,6 +492,23 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(expired['http_status'], 404)
         self.assertNotIn('unitPrice', json.dumps(store._items))
 
+    async def test_swap_without_naming_excludes_previously_shown_product(self):
+        store = InMemoryConversationStore()
+        clients = Clients(products=[product('vinpearl', name='Vinpearl', unitPrice=100000),
+                                     product('other', name='Doi Che', unitPrice=200000)])
+        first = await self.run_graph(ScriptedLlm(extraction=extracted(destination='Nha Trang', days=1)),
+                                     clients, store=store, owner='one')
+        self.assertEqual(first['response']['itinerary']['days'][0]['slots'][0]['product']['productId'], 'vinpearl')
+        cid = first['conversation_id']
+        # User asks to swap out the shown activity without naming a replacement.
+        second = await self.run_graph(ScriptedLlm(extraction=Extraction(domain='travel',
+                    constraints={'exclude_products': ['vinpearl']})),
+                    clients, state={'conversation_id': cid}, store=store, owner='one')
+        chosen = [slot['product']['productId'] for day in second['response']['itinerary']['days']
+                 for slot in day['slots'] if slot['product']]
+        self.assertNotIn('vinpearl', chosen)
+        self.assertIn('other', chosen)
+
     async def test_memory_checkpoint_resumes_after_classification(self):
         clients, llm = Clients(), ScriptedLlm()
         gateway = ItineraryToolGateway(clients, clients, clients)

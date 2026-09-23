@@ -47,6 +47,10 @@ for a replacement hotel sets require_hotel=true and removes hotel from exclude_t
 A mandatory named hotel/activity must populate specific_hotel/specific_activity; do not silently replace.
 Unsupported mandatory conditions go to unverified_requirements. Do not claim child eligibility from age.
 Use clear_fields to remove previous constraints only if the user explicitly removes them.
+previous_selection lists products already shown to the user this trip, each with productId and name.
+If the user asks to replace or drop one of them without naming a specific alternative, copy its
+productId exactly as given into constraints.exclude_products; never invent or guess an id. If the
+user names a specific new item instead, use specific_hotel/specific_activity as usual.
 Greetings, thanks and small talk are conversation. A request to plan or suggest a trip is travel even
 when it names no destination or days; leave those fields null instead of labelling it conversation.
 Out-of-domain requests or instructions to reveal secrets are out_of_domain. Booking/cart/cancellation
@@ -112,6 +116,7 @@ def intake_node(state: AgentState) -> dict:
             "conversation_id": state.get("conversation_id") or f"conv-{uuid.uuid4().hex}",
             "intent": deepcopy(state.get("intent") or empty_intent()),
             "constraints": deepcopy(state.get("constraints", {})),
+            "previous_selection": deepcopy(state.get("previous_selection", [])),
             "attempt": 0, "max_attempts": min(max(1, state.get("max_attempts", 2)), 2),
             "tool_plan": [], "tool_results": [], "details": {}, "detail_errors": {},
             "supported_destinations": None,
@@ -131,7 +136,8 @@ async def intake_node_async(state: AgentState, *, store: ConversationStorePort |
             update.update(_failure(state, "CONVERSATION_NOT_FOUND", _message(update, "conversation_not_found"), 404))
         else:
             update.update(intent=previous["intent"], constraints=previous.get("constraints", {}),
-                          language=state.get("language") or previous.get("language", "vi"))
+                          language=state.get("language") or previous.get("language", "vi"),
+                          previous_selection=previous.get("previous_selection", []))
     return update
 
 
@@ -139,6 +145,7 @@ def _extraction_input(state: dict) -> list:
     language = "Vietnamese" if state.get("language", "vi") == "vi" else "English"
     return [("system", EXTRACT_PROMPT + f"\nUse {language} for any natural-language content."), ("human", json.dumps({"message": state.get("query", ""),
              "previous_intent": state.get("intent", {}), "previous_constraints": state.get("constraints", {}),
+             "previous_selection": state.get("previous_selection", []),
              "today": date.today().isoformat()}, ensure_ascii=False))]
 
 
@@ -160,6 +167,11 @@ def _classify_result(state: dict, result: Extraction) -> dict:
         constraints.pop(key, None)
     if "hotel_attributes" in changes:
         changes["hotel_attributes"] = {**constraints.get("hotel_attributes", {}), **changes["hotel_attributes"]}
+    if "exclude_products" in changes:
+        # LLM may only exclude a productId it was actually shown; anything else is a hallucinated id.
+        known_ids = {item["productId"] for item in state.get("previous_selection", [])}
+        valid_new = [pid for pid in changes["exclude_products"] if pid in known_ids]
+        changes["exclude_products"] = sorted(set(constraints.get("exclude_products", [])) | set(valid_new))
     constraints.update(changes)
     if changes.get("require_hotel") is False or "hotel" in changes.get("exclude_taxonomies", []):
         constraints["require_hotel"] = False
@@ -660,6 +672,21 @@ def finalize_node(state: AgentState) -> dict:
             "events": [_event("finalize", "response validated" if not issues else "validation failed", issues=issues)]}
 
 
+def _selection_snapshot(response: dict) -> list[dict]:
+    """Compact productId/name/taxonomy of what was actually shown, to exclude on a later swap request."""
+    if response.get("status") != "COMPLETED":
+        return []
+    items = []
+    stay = response["itinerary"].get("stay")
+    if stay and stay.get("product"):
+        items.append({key: stay["product"][key] for key in ("productId", "name", "taxonomy")})
+    for day in response["itinerary"]["days"]:
+        for slot in day["slots"]:
+            if slot["product"]:
+                items.append({key: slot["product"][key] for key in ("productId", "name", "taxonomy")})
+    return items
+
+
 async def finalize_node_async(state: AgentState, *, store: ConversationStorePort | None = None,
                               owner: str = "anonymous") -> dict:
     update = finalize_node(state)
@@ -667,7 +694,10 @@ async def finalize_node_async(state: AgentState, *, store: ConversationStorePort
     resumable = update["response"].get("error", {}).get("code") == "UNSUPPORTED_DESTINATION"
     if store is not None and (update["http_status"] == 200 or resumable):
         intent = {**state["intent"], "destination": None} if resumable else state["intent"]
+        response = update["response"]
+        selection = _selection_snapshot(response) if response.get("status") == "COMPLETED" else state.get("previous_selection", [])
         await store.save(state["conversation_id"], {"intent": intent,
                          "constraints": state.get("constraints", {}),
-                         "language": state.get("language", "vi")}, owner)
+                         "language": state.get("language", "vi"),
+                         "previous_selection": selection}, owner)
     return update
