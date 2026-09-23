@@ -1,6 +1,6 @@
 # vbench — benchmark chọn vector database (fast-track)
 
-Cài theo `docs/vector_bench/spec-fasttrack.md` §4, chi tiết từ `docs/vector_bench/spec.md`. Chạy thật 3 engine: pgvector 0.8.6,
+Cài theo `docs/spec/vector-bench/spec-fasttrack.md` §4, chi tiết từ `docs/spec/vector-bench/spec.md`. Chạy thật 3 engine: pgvector 0.8.6,
 Qdrant 1.19.1, pgvectorscale 0.9.1. Đo ở catalog thật (2.897 search unit từ snapshot 10.320 sản phẩm) và 1M vector khuếch đại
 từ catalog. Quy tắc chốt viết sẵn ở fasttrack §6 và được cài trong `vb fast-report`.
 
@@ -94,7 +94,7 @@ Ba điều phải nhớ khi đọc lại các số này:
   báo cáo; 1M dùng σ = 0,5.
 - Sàn transport của Docker Desktop trên Windows cộng vào mọi latency (pg `SELECT 1` ~0,7 ms, Qdrant gRPC vài ms). `fast_report.md`
   in sàn này cạnh P99.
-- Số `~5.000 vector` trong `VECTOR_DB_SELECTION.md` §2 → thực tế 2.897 (chưa sửa doc, nằm ngoài thư mục được phép sửa).
+- Số `~5.000 vector` trong `vector-db-selection.md` §2 → thực tế 2.897 (chưa sửa doc, nằm ngoài thư mục được phép sửa).
 - Muốn chốt engine: `fast.max_minutes_per_engine` ≥ 90 rồi `vb fast --engines qdrant,pgvectorscale` (Qdrant cần ~45 phút cho 1M).
 - Muốn A1(1m) có nghĩa: dùng vector 1M thật (đối chứng Wikipedia-vi, fasttrack §7) hoặc sửa bước kế thừa metadata của §3 để filter
   không chọn nguyên cụm; nên thêm chỉ số "hạng không lọc của dòng khớp thứ k" vào `stats.json` của amplify.

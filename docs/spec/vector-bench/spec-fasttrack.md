@@ -1,5 +1,7 @@
 # spec-fasttrack.md — chốt vector database trong 2 giờ chạy máy
 
+Phục vụ: FR-SRC-02, NFR-PERF-01, NFR-PERF-03 (`docs/prd/requirements.md`).
+
 Bản 22/09/2026 · rút gọn từ `spec.md` (`VECTOR_DB_BENCH_SPEC.md`) để **chốt trong chiều nay** · Claude Code chỉ cài những Part và tuỳ chọn liệt kê ở §4; mọi chi tiết không nhắc lại ở đây thì theo `spec.md`.
 
 **Phạm vi:**
@@ -14,7 +16,7 @@ Bản 22/09/2026 · rút gọn từ `spec.md` (`VECTOR_DB_BENCH_SPEC.md`) để 
 
 ## 1. Top 5 — bằng chứng
 
-Loại trừ từ landscape ~40 hệ thống (`VECTOR_DB_SELECTION.md` §1) theo gate trên giấy (G1 ≤ 3 container, G2 license, G3 ngữ nghĩa filter), rồi xếp theo mức phù hợp với V-OTA. Ký hiệu nguồn: **[paper]**, **[docs]**, **[vendor]** = số do chính hãng / đối thủ công bố, không dùng để chấm.
+Loại trừ từ landscape ~40 hệ thống (`vector-db-selection.md` §1) theo gate trên giấy (G1 ≤ 3 container, G2 license, G3 ngữ nghĩa filter), rồi xếp theo mức phù hợp với V-OTA. Ký hiệu nguồn: **[paper]**, **[docs]**, **[vendor]** = số do chính hãng / đối thủ công bố, không dùng để chấm.
 
 | # | Engine | Bằng chứng ủng hộ | Rủi ro có bằng chứng | Hôm nay |
 |---|---|---|---|---|
@@ -26,7 +28,7 @@ Loại trừ từ landscape ~40 hệ thống (`VECTOR_DB_SELECTION.md` §1) theo
 
 **Ngoài top 5:**
 
-- **Elasticsearch / OpenSearch:** JVM nặng; ES là AGPL/SSPL/ELv2 → G2 có điều kiện. Giữ làm phương án **sidecar lexical** (plugin tách từ tiếng Việt CocCoc bản 9.3.0, 03/2026), theo quy tắc 4 của VECTOR_DB_SELECTION §7.
+- **Elasticsearch / OpenSearch:** JVM nặng; ES là AGPL/SSPL/ELv2 → G2 có điều kiện. Giữ làm phương án **sidecar lexical** (plugin tách từ tiếng Việt CocCoc bản 9.3.0, 03/2026), theo quy tắc 4 của vector-db-selection.md §7.
 - **VectorChord:** AGPL/ELv2.
 - **Chroma, LanceDB:** hạn chế filter/facet hoặc serving.
 - **Redis 8:** giới hạn bởi RAM, license.
@@ -36,7 +38,7 @@ Loại trừ từ landscape ~40 hệ thống (`VECTOR_DB_SELECTION.md` §1) theo
 **Vì sao chỉ chạy 3:**
 
 - **Thời gian.** Mỗi engine ở 1M tốn ~20–30 phút (build index chiếm phần lớn), 5 engine thì hết 2 giờ, không còn dư.
-- **Logic quyết định** (VECTOR_DB_SELECTION §7 quy tắc 3): chỉ khi **cả** pgvector lẫn pgvectorscale trượt ở 1M mới chọn engine ngoài Postgres. Qdrant là engine ngoài có bằng chứng filtered search sâu nhất nên đại diện nhóm này. Milvus/Weaviate chỉ làm thay đổi quyết định nếu Qdrant cũng trượt — khi đó chạy tiếp (§7).
+- **Logic quyết định** (vector-db-selection.md §7 quy tắc 3): chỉ khi **cả** pgvector lẫn pgvectorscale trượt ở 1M mới chọn engine ngoài Postgres. Qdrant là engine ngoài có bằng chứng filtered search sâu nhất nên đại diện nhóm này. Milvus/Weaviate chỉ làm thay đổi quyết định nếu Qdrant cũng trượt — khi đó chạy tiếp (§7).
 
 ---
 
@@ -164,7 +166,7 @@ Chặn thời gian `fast.max_minutes_per_engine: 35`: vượt thì ghi kết qu�
 
 ## 6. Metric và quy tắc chốt — viết trước khi chạy
 
-| Metric | Đo ở | Ngưỡng (VECTOR_DB_SELECTION §4) |
+| Metric | Đo ở | Ngưỡng (vector-db-selection.md §4) |
 |---|---|---|
 | G3 — ngữ nghĩa filter (0 vi phạm ALL-of / NOT / range / geo) | catalog | bắt buộc |
 | A3 — precision ràng buộc | catalog + 1M | = 1,0 |
@@ -177,7 +179,7 @@ Chặn thời gian `fast.max_minutes_per_engine: 35`: vượt thì ghi kết qu�
 **Quy tắc** — `vb fast-report` in ra kết luận và lý do:
 
 1. Trượt G3 hoặc A3 < 1 → loại.
-2. **pgvector** đạt A1 và B1 (P99 ≤ 100 ms ở 100 QPS) ở 1M → **chốt pgvector**. Lý do: đáp ứng tới 1M mà chi phí migrate = 0, dữ liệu cùng DB. Khớp quy tắc 2–3 của VECTOR_DB_SELECTION §7.
+2. **pgvector** đạt A1 và B1 (P99 ≤ 100 ms ở 100 QPS) ở 1M → **chốt pgvector**. Lý do: đáp ứng tới 1M mà chi phí migrate = 0, dữ liệu cùng DB. Khớp quy tắc 2–3 của vector-db-selection.md §7.
 3. Không thì, **pgvectorscale** đạt → **chốt pgvectorscale** (vẫn trong Postgres).
 4. Không thì, **Qdrant** đạt → **chốt Qdrant**.
 5. Không engine nào đạt ở 1M → **chốt pgvector cho quy mô hiện tại** (5k → 100k vector, dựa trên số ở catalog). Chạy `spec.md` đầy đủ, thêm Milvus và Weaviate, **trước khi** catalog vượt ~200k vector.

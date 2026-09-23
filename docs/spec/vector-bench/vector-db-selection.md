@@ -1,6 +1,8 @@
 # Chọn vector database bằng số đo — landscape 2026, gate, metric, protocol benchmark
 
-Bản 22/09/2026 · thay thế phần "lý do" ở `VECTOR_STORE_AND_ROBUSTNESS.md` §1 bằng một **quy trình chọn đo được**: liệt kê đầy đủ hệ thống hiện có → loại bằng gate pass/fail → đo ứng viên còn lại trên cùng dữ liệu, cùng phần cứng → chấm điểm có trọng số → quyết định theo quy tắc viết sẵn. Kết quả đo điền vào bảng §6 (đang để trống — đây là **khung**, không phải kết luận). Nguồn §10. Spec để sinh code benchmark chạy từng phần: `VECTOR_DB_BENCH_SPEC.md`.
+Phục vụ: FR-SRC-02, NFR-PERF-01, NFR-PERF-03 (`docs/prd/requirements.md`).
+
+Bản 22/09/2026 · thay thế phần "lý do" ở `VECTOR_STORE_AND_ROBUSTNESS.md` §1 bằng một **quy trình chọn đo được**: liệt kê đầy đủ hệ thống hiện có → loại bằng gate pass/fail → đo ứng viên còn lại trên cùng dữ liệu, cùng phần cứng → chấm điểm có trọng số → quyết định theo quy tắc viết sẵn. Kết quả đo điền vào bảng §6 (đang để trống — đây là **khung**, không phải kết luận). Nguồn §10. Spec để sinh code benchmark chạy từng phần: `spec.md` (`VECTOR_DB_BENCH_SPEC.md`).
 
 Nguyên tắc: mọi metric phải có **công thức**, **cách đo**, **đơn vị**, **ngưỡng**; số của vendor chỉ dùng để chọn ứng viên, không dùng để chấm điểm.
 
@@ -159,14 +161,14 @@ Checklist 10 mục, điểm = số mục có × 1: sparse vector · multivector/
 |---|---|
 | Phần cứng | Một VM cố định 8 vCPU / 32 GB / SSD (cùng cấu hình Qdrant dùng cho benchmark công khai); engine chạy Docker, giới hạn 16 GB RAM; client cùng máy (ghi rõ) |
 | Dữ liệu quality | Catalog thật: toàn bộ search unit của 10.000 sản phẩm (~5.000 vector) 1024-d (model thắng ở tuần 2) + `amenity_ids`, `destination`, `taxonomy`, `unit_price`, `star_rating`, toạ độ |
-| Dữ liệu scale | 100k và 1M: vector passage Wikipedia tiếng Việt công khai (`CohereLabs/wikipedia-2023-11-embed-multilingual-v3`, subset `vi` ~2,84 triệu passage, 1024-d); query = 1.000 vector giữ lại từ cùng dataset; metadata sinh theo phân bố catalog. Không dùng text template embed bằng model của mình vì template sinh vector gần trùng hàng loạt → ANN không thực tế. A2 (gold) chỉ đo ở catalog. Chi tiết: `VECTOR_DB_BENCH_SPEC.md` Part 10 |
+| Dữ liệu scale | 100k và 1M: vector passage Wikipedia tiếng Việt công khai (`CohereLabs/wikipedia-2023-11-embed-multilingual-v3`, subset `vi` ~2,84 triệu passage, 1024-d); query = 1.000 vector giữ lại từ cùng dataset; metadata sinh theo phân bố catalog. Không dùng text template embed bằng model của mình vì template sinh vector gần trùng hàng loạt → ANN không thực tế. A2 (gold) chỉ đo ở catalog. Chi tiết: `spec.md` (`VECTOR_DB_BENCH_SPEC.md`) Part 10 |
 | Query | 300 gold (có slice amenity/không dấu/…) + 700 sinh; mỗi query kèm filter; 4 bucket selectivity; cùng bộ cho mọi engine; lưu `bench_out/data/<scale>/queries.jsonl` |
 | Ground truth | numpy cosine trên tập đã filter; lưu `bench_out/data/<scale>/gt.npz`; tính một lần |
 | Cấu hình engine | Mỗi engine 2 cấu hình: (a) mặc định, (b) tune tới A1 ≥ 0,95 (ghi rõ `ef_search`/`m`/`nprobe`/quantization); chấm điểm ở (b) |
 | Lặp | Warm-up 200 query; 3 lần chạy; báo **median**; ghi phiên bản engine, client, ngày |
 | Công cụ | **Harness riêng** `bench/` cho nhóm A và G3/G4 (VectorDBBench label-filter chỉ là `color == 'red'`, không phải ALL-of mảng); **VectorDBBench** (hỗ trợ pgvector, pgvectorscale, VectorChord, Qdrant, Milvus, Weaviate, ES, OpenSearch, Redis, Vespa…; filter rate 50–99,9%; streaming; full-text từ 2026) cho B3/B5 ở 1M để so chéo |
 | Bias | Không dùng số vendor để chấm; nếu dùng để tham khảo, ghi "[vendor]" |
-| Đầu ra | `bench_out/runs/<run_id>/<engine>/<scale>/*.json` + `report.md` có bảng §6 điền tự động (`VECTOR_DB_BENCH_SPEC.md` Part 12) |
+| Đầu ra | `bench_out/runs/<run_id>/<engine>/<scale>/*.json` + `report.md` có bảng §6 điền tự động (`spec.md` (`VECTOR_DB_BENCH_SPEC.md`) Part 12) |
 
 ---
 

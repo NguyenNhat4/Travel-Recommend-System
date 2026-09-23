@@ -1,5 +1,5 @@
 # vbench — file DUY NHẤT chứa con số (spec.md §1.2). Code chỉ đọc, không có hằng số ngưỡng/trọng số trong logic.
-# Chỗ ghi (đề xuất) là tham số spec thêm vào, chưa có trong VECTOR_DB_SELECTION.md.
+# Chỗ ghi (đề xuất) là tham số spec thêm vào, chưa có trong vector-db-selection.md.
 # Mục `fast:` ở cuối là phạm vi spec-fasttrack.md §3–§6; chỉ `vb fast`, `vb fast-report`, `vb scale-data --vectors amplify` đọc.
 
 run:
@@ -9,7 +9,7 @@ run:
   engines: [pgvector, qdrant, pgvectorscale, milvus, weaviate, opensearch]
   engine_limits:              # (đề xuất) chừa CPU cho client load test chạy cùng máy
     local: {cpus: 4, mem: 8g}
-    full:  {cpus: 6, mem: 16g} # 16 GB theo VECTOR_DB_SELECTION §5
+    full:  {cpus: 6, mem: 16g} # 16 GB theo vector-db-selection.md §5
   default_run_id: dev         # run-all dùng <YYYYMMDD-HHMM>-<git short sha>
 
 dataset:

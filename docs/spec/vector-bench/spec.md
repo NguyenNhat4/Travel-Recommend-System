@@ -1,10 +1,12 @@
 # spec.md — `vbench`: benchmark chọn vector database cho V-OTA
 
-Bản 22/09/2026 · để Claude Code sinh code ở local, **mỗi Part chạy thử được độc lập** · nguồn yêu cầu: `docs/VECTOR_DB_SELECTION.md` (gate, metric, trọng số, quy tắc quyết định) · `docs/EMBEDDING_AND_ENGINES.md` (model, text builder, pgvector) · `docs/VECTOR_STORE_AND_ROBUSTNESS.md` (filter amenities, hybrid) · `SCHEMA.md` (contract `products.jsonl`) · `ARCHITECTURE.md` (vị trí code).
+Phục vụ: FR-SRC-02, NFR-PERF-01, NFR-PERF-03 (`docs/prd/requirements.md`).
+
+Bản 22/09/2026 · để Claude Code sinh code ở local, **mỗi Part chạy thử được độc lập** · nguồn yêu cầu: `docs/spec/vector-bench/vector-db-selection.md` (gate, metric, trọng số, quy tắc quyết định) · `docs/EMBEDDING_AND_ENGINES.md` (model, text builder, pgvector) · `docs/VECTOR_STORE_AND_ROBUSTNESS.md` (filter amenities, hybrid) · `SCHEMA.md` (contract `products.jsonl`) · `ARCHITECTURE.md` (vị trí code).
 
 Cần chốt nhanh: dùng `spec-fasttrack.md` (`VECTOR_DB_FASTTRACK_SPEC.md`) — 3 engine, 2 giờ máy, quy tắc chốt viết sẵn. **P99 là chỉ số latency chính** (đo open-loop, Part 11).
 
-Spec này **không đặt ra con số mới** cho việc chọn DB: ngưỡng, trọng số, số query, bucket đều chép từ VECTOR_DB_SELECTION.md vào **một** file config (§1.2). Tham số kỹ thuật do spec thêm (giới hạn CPU, sweep `ef`, dung sai…) được ghi *(đề xuất)*.
+Spec này **không đặt ra con số mới** cho việc chọn DB: ngưỡng, trọng số, số query, bucket đều chép từ vector-db-selection.md vào **một** file config (§1.2). Tham số kỹ thuật do spec thêm (giới hạn CPU, sweep `ef`, dung sai…) được ghi *(đề xuất)*.
 
 ---
 
@@ -118,7 +120,7 @@ bench_out/                 # VBENCH_HOME, ở gốc repo, thêm vào .gitignore
 
 ### 1.2 Config — `config/vbench.yaml`
 
-File duy nhất chứa con số. Code chỉ đọc, không có hằng số ngưỡng/trọng số trong logic. Chỗ ghi *(đề xuất)* là tham số spec thêm vào, chưa có trong VECTOR_DB_SELECTION.md.
+File duy nhất chứa con số. Code chỉ đọc, không có hằng số ngưỡng/trọng số trong logic. Chỗ ghi *(đề xuất)* là tham số spec thêm vào, chưa có trong vector-db-selection.md.
 
 ```yaml
 run:
@@ -128,7 +130,7 @@ run:
   engines: [pgvector, qdrant, pgvectorscale, milvus, weaviate, opensearch]
   engine_limits:              # (đề xuất) chừa CPU cho client load test chạy cùng máy
     local: {cpus: 4, mem: 8g}
-    full:  {cpus: 6, mem: 16g} # 16 GB theo VECTOR_DB_SELECTION §5
+    full:  {cpus: 6, mem: 16g} # 16 GB theo vector-db-selection.md §5
   default_run_id: dev         # run-all dùng <YYYYMMDD-HHMM>-<git short sha>
 
 dataset:
@@ -679,7 +681,7 @@ python -m evaluation.vector_bench dataset catalog --source jsonl --products <đ�
 - `id` duy nhất, không `embed_text` rỗng, mọi dòng có `lat/lon`.
 - Với `--source db`: `n_search_units` = `SELECT count(*) FROM catalog.product_meta WHERE is_search_unit`.
 - Unit test: 7 bản ghi mẫu, một cho mỗi variant (có attraction `ticketed=false`, property không có phòng) cho đúng variant, đúng min giá, đúng hợp amenity.
-- `stats.json` in ra số vector thật. Cập nhật con số "~5.000" ở VECTOR_DB_SELECTION.md §2 bằng số này.
+- `stats.json` in ra số vector thật. Cập nhật con số "~5.000" ở vector-db-selection.md §2 bằng số này.
 
 **Ước lượng chạy:** < 1 phút cho 10.000 sản phẩm.
 
@@ -1401,7 +1403,7 @@ E: {sparse: null, multivector: null, bm25_native: null, vi_tokenizer: null, geo:
 - D1–D5: rời rạc.
 - E: điểm checklist.
 
-**Chuẩn hoá** (VECTOR_DB_SELECTION §4.6):
+**Chuẩn hoá** (vector-db-selection.md §4.6):
 
 ```
 higher-better, ngưỡng T, sàn F, B = giá trị tốt nhất trong các engine đạt T:
@@ -1416,7 +1418,7 @@ Tổng = Σ w_m · s_m / 100   (Σ w = 100 → thang 0–10)
 Độ nhạy: nhóm g đổi trọng số G → G' thì w'_m = w_m · G'/G cho mọi m ∈ g; tính lại tổng và thứ hạng
 ```
 
-### P12.3 `vb decide` — quy tắc VECTOR_DB_SELECTION §7, cài thành code
+### P12.3 `vb decide` — quy tắc vector-db-selection.md §7, cài thành code
 
 1. Loại engine có gate `fail`. G2 `conditional` vẫn xét nhưng gắn cờ.
 2. Scale lớn nhất đã chạy ≤ 100k: giữ `baseline` (pgvector). Chỉ đổi khi một ứng viên thoả **cả ba**:
@@ -1533,4 +1535,4 @@ vb score --run <id> && vb decide --run <id> && vb report --run <id>
 2. `run-all` chạy hết với ít nhất pgvector + Qdrant ở catalog + 100k.
 3. `report.md` có bảng §6 đầy đủ (trừ ô nhập tay còn trống, được đánh dấu).
 4. `decide` in lý do quyết định.
-5. Con số search unit thật từ Part 1 đã được cập nhật vào VECTOR_DB_SELECTION.md.
+5. Con số search unit thật từ Part 1 đã được cập nhật vào vector-db-selection.md.
