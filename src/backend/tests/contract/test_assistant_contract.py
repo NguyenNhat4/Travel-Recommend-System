@@ -74,6 +74,9 @@ class ScriptedLlm:
 
 
 class Clients:
+    # Giống FixtureItineraryClients: có list_destinations nên composition root nối làm catalog.
+    supports_catalog = True
+
     def __init__(self, products=None, destinations=None, fail=False):
         self.products = [deepcopy(PRODUCT)] if products is None else products
         self.destinations = destinations or ["Nha Trang"]

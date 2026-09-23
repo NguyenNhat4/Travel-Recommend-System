@@ -36,17 +36,19 @@ def test_optional_jwt_verifies_and_returns_cdp_user_id():
 @pytest.mark.parametrize(
     ("authorization", "secret", "code", "status"),
     [
-        ("Basic abc", SECRET, "INVALID_TOKEN", 401),
-        (f"Bearer {token()}", "wrong-secret-at-least-32-bytes-long", "INVALID_TOKEN", 401),
-        (f"Bearer {token(exp=datetime.now(timezone.utc) - timedelta(seconds=1))}", SECRET,
+        # Token sinh lúc chạy test, không lúc import: bộ test dài hơn hạn 5 phút sẽ làm token hết hạn.
+        (lambda: "Basic abc", SECRET, "INVALID_TOKEN", 401),
+        (lambda: f"Bearer {token()}", "wrong-secret-at-least-32-bytes-long", "INVALID_TOKEN", 401),
+        (lambda: f"Bearer {token(exp=datetime.now(timezone.utc) - timedelta(seconds=1))}", SECRET,
          "TOKEN_EXPIRED", 401),
-        (f"Bearer {token(cdp_user_id='')}", SECRET, "INVALID_TOKEN", 401),
-        (f"Bearer {token()}", "", "INTERNAL_ERROR", 500),
+        (lambda: f"Bearer {token(cdp_user_id='')}", SECRET, "INVALID_TOKEN", 401),
+        (lambda: f"Bearer {token()}", "", "INTERNAL_ERROR", 500),
     ],
+    ids=["basic-scheme", "wrong-secret", "expired", "empty-cdp-user-id", "missing-secret"],
 )
 def test_optional_jwt_fails_closed(authorization, secret, code, status):
     with pytest.raises(JwtError) as caught:
-        optional_cdp_user_id(authorization, secret=secret, algorithm="HS256")
+        optional_cdp_user_id(authorization(), secret=secret, algorithm="HS256")
     assert (caught.value.code, caught.value.status_code) == (code, status)
 
 
