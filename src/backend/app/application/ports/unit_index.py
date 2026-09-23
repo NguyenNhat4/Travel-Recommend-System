@@ -10,7 +10,7 @@ from src.backend.app.domain.catalog import Product
 
 @dataclass
 class UnitIndex:
-    """Ảnh chụp các search unit + vector, đủ cho 3 engine. In-memory hôm nay; pgvector sau này trả cùng cấu trúc."""
+    """Ảnh chụp search unit + vector lấy từ Weaviate, đủ cho 3 engine hiện hành."""
     units: list[Product]
     E: np.ndarray                      # (n, D), đã L2-normalise
     taxonomy: np.ndarray               # (n,) str

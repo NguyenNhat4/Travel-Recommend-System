@@ -37,6 +37,9 @@ LODGING_TYPES = {
 }
 log = logging.getLogger("crawler.booking")
 VINPEARL_RE = re.compile(r"\b(vinpearl|vinholidays)\b")
+CARD_SELECTOR = "[data-testid='property-card']"
+LOAD_MORE = "button:has-text('Tải thêm kết quả'), button:has-text('Load more results')"
+MAX_LOAD_MORE = 40  # mỗi lần ~20 thẻ: đủ cho 800 khách sạn/điểm đến, chặn vòng lặp vô hạn
 _COUNTRY_RE = re.compile(r"sitembk-hotel-vi\.(\d+)\.xml\.gz$")
 _HOTEL_URL_RE = re.compile(r"^https://www\.booking\.com/hotel/([a-z]{2})/[^/?#]+\.vi\.html$")
 
@@ -66,8 +69,9 @@ class BookingHotels(SitemapSource):
 
     # -- discovery theo kế hoạch
     def uses_sitemap(self, opts) -> bool:
-        # luôn quét sitemap (chỉ ~4 file) để lấy mọi khách sạn thương hiệu Vinpearl; --all-vietnam thì lấy hết
-        return True
+        # mặc định quét sitemap (chỉ ~4 file) để lấy mọi khách sạn thương hiệu Vinpearl; --all-vietnam thì lấy hết.
+        # Batch theo thành phố tắt việc này (--no-brand-sitemap) và chạy đúng một job --brand-only, tránh cào lặp.
+        return opts.brand_sitemap or opts.all_vietnam
 
     def search_url(self, query: str, offset: int) -> str:
         checkout = self.checkin + timedelta(days=self.nights)
@@ -84,40 +88,85 @@ class BookingHotels(SitemapSource):
         }
         return "https://www.booking.com/searchresults.vi.html?" + urlencode(params, quote_via=quote_plus)
 
+    async def _load_results(self, ctx: DiscoverContext, query: str, want: int) -> tuple[str | None, bool]:
+        """Mở trang tìm kiếm rồi cuộn + bấm "Tải thêm kết quả" tới khi đủ `want` thẻ khách sạn.
+
+        Tham số `offset` trong URL không còn hiệu lực (trang thứ 2 trả lại đúng 15 thẻ của trang đầu), nên phân trang
+        cũ dừng ở ~15–20 khách sạn mỗi điểm đến. Mỗi lần bấm nút thêm ~20 thẻ. Cuộn chỉ tải thêm khi có CSS nên bước
+        này tạm tắt --fast. Mỗi lần bấm chờ đúng nhịp --delay của host như một lần mở trang.
+
+        Trả về (html, đầy_đủ). đầy_đủ = đã đủ `want` thẻ hoặc đã hết kết quả của điểm đến (không còn nút, cuộn không thêm
+        thẻ). Bị gián đoạn giữa chừng (nút bị che, mạng chậm) thì False: không được coi là "đã tìm xong", nếu không lần
+        chạy sau sẽ bỏ qua bước tìm và điểm đến kẹt ở vài chục khách sạn."""
+        url = self.search_url(query, 0)
+        was_fast = ctx.session.opts.fast
+        await ctx.session.set_fast(False)
+        try:
+            res = await ctx.open(url, CARD_SELECTOR)
+            if res is not None and not parse_search_cards(res.html):
+                # lần đầu qua trang thử thách, booking.com chuyển hướng làm mất tham số → mở lại một lần
+                res = await ctx.open(url, CARD_SELECTOR)
+            if res is None:
+                return None, False
+            page = ctx.page
+            count = lambda: page.evaluate("(s) => document.querySelectorAll(s).length", CARD_SELECTOR)  # noqa: E731
+            cards, stalled, complete = await count(), 0, False
+            for _ in range(MAX_LOAD_MORE):
+                if cards >= want:
+                    complete = True
+                    break
+                if stalled >= 3:
+                    break
+                await page.mouse.wheel(0, 40000)
+                await page.wait_for_timeout(1200)
+                await _dismiss_sign_in_prompt(page)
+                button = page.locator(LOAD_MORE)
+                has_button = bool(await button.count())
+                if has_button:
+                    await ctx.limiter.wait(url)
+                    try:
+                        await button.first.click(timeout=8000)
+                    except Exception as e:  # lớp phủ khác chặn nút: đóng bằng Escape rồi thử lại ở vòng sau
+                        log.debug("[%s] không bấm được 'Tải thêm kết quả': %s", self.name, str(e).splitlines()[0][:100])
+                        await page.keyboard.press("Escape")
+                    await page.wait_for_timeout(2200)
+                now = await count()
+                if now > cards:
+                    stalled = 0
+                else:
+                    stalled += 1
+                    if not has_button and stalled >= 2:
+                        complete = True  # không còn nút và cuộn không thêm thẻ: đã hết kết quả của điểm đến
+                        break
+                cards = now
+            else:
+                complete = True  # chạm trần MAX_LOAD_MORE: nhiều hơn mức cần
+            return await page.content(), complete
+        finally:
+            await ctx.session.set_fast(was_fast)
+
     async def discover_plan(self, ctx: DiscoverContext) -> int:
         jobs = [(d.name, d.booking_query, ctx.opts.budget.booking_hotels) for d in ctx.opts.destinations]
         total = 0
         for dest, query, want in jobs:
-            key = f"search:{query}:{want}:{self.checkin.isoformat()}"
+            key = f"search2:{query}:{want}:{self.checkin.isoformat()}"  # search2: phân trang bằng nút "Tải thêm kết quả"
             if ctx.done(key):
                 continue
-            found: list[tuple[str, str]] = []
-            offset = 0
-            for _ in range(8):
-                if len(found) >= want:
-                    break
-                res = await ctx.open(self.search_url(query, offset), "[data-testid='property-card']")
-                if res is None:
-                    break
-                ctx.cache.write(f"search-{fold(query).replace(' ', '-')}-{offset}", "html", slim_html(res.html))
-                seen = {u for u, _ in found}
-                cards = [c for c in parse_search_cards(res.html) if c[0] not in seen]
-                if not cards and offset == 0:
-                    # lần đầu qua trang thử thách, booking.com chuyển hướng làm mất tham số → mở lại một lần
-                    res = await ctx.open(self.search_url(query, offset), "[data-testid='property-card']")
-                    cards = parse_search_cards(res.html) if res else []
-                if not cards:
-                    break
-                found.extend(cards)
-                offset += 25
+            html, complete = await self._load_results(ctx, query, want)
+            found: list[tuple[str, str]] = parse_search_cards(html) if html else []
+            if html:
+                ctx.cache.write(f"search-{fold(query).replace(' ', '-')}-all", "html", slim_html(html))
             rows = []
             for rank, (url, name) in enumerate(found[:want], 1):
                 is_vinpearl = bool(VINPEARL_RE.search(fold(name)))
                 plan = {"destination": dest, "rank": rank, "via": "booking-search", "query": query}
                 rows.append((url, 0 if is_vinpearl else rank, plan))
             ctx.state.add_many(self.name, rows)
-            if found:  # trang tìm kiếm lỗi thì để lượt sau tìm lại
+            if found and complete:  # trang lỗi hoặc tải thêm bị gián đoạn thì để lượt sau tìm lại
                 ctx.mark_done(key, len(rows))
+            elif found:
+                log.warning("[%s] %s: mới tải được %d/%d khách sạn (bị gián đoạn) – chưa đánh dấu xong, lần chạy sau tìm tiếp",
+                            self.name, dest, len(rows), want)
             total += len(rows)
             log.info("[%s] %s: %d khách sạn", self.name, dest, len(rows))
         return total
@@ -169,6 +218,18 @@ class BookingHotels(SitemapSource):
     # -- parsing
     def parse(self, html: str, url: str, meta: dict) -> dict | None:
         return parse_hotel_html(html, url, meta)
+
+
+async def _dismiss_sign_in_prompt(page) -> None:
+    """Đóng hộp thoại quảng cáo "Đăng nhập để tiết kiệm" (nút "Bỏ qua phần đăng nhập.") đang che nút tải thêm.
+    Chỉ đóng hộp thoại, không đăng nhập hay nhập gì."""
+    dismiss = page.locator("button[aria-label='Bỏ qua phần đăng nhập.'], button[aria-label='Dismiss sign-in info.']")
+    try:
+        if await dismiss.count():
+            await dismiss.first.click(timeout=3000)
+            await page.wait_for_timeout(400)
+    except Exception:
+        await page.keyboard.press("Escape")
 
 
 def parse_search_cards(html: str) -> list[tuple[str, str]]:

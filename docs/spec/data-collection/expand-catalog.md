@@ -81,7 +81,7 @@ Nếu dữ liệu tương lai có null ở trường chưa có quy tắc, script
 
 ```bash
 cd /home/dangkhoi/code/Travel-Recommendation-Product/src/data_collection
-python3 expand_catalog.py --input /home/dangkhoi/code/vsf/data-collection/data/products.jsonl --target-total 10000 --seed 42 --start-date 2026-10-15 --output-dir data/recsys
+python3 expand_catalog.py --input data/products.jsonl --target-total 10000 --seed 42 --start-date 2026-10-15 --output-dir data/recsys
 ```
 
 Catalog nguồn có 2.216 sản phẩm; lệnh trên giữ tất cả sản phẩm và giá trị không-null, điền null và thêm 7.784 sản phẩm.
@@ -92,7 +92,7 @@ không tự đổi giữa các lần chạy; đổi `--start-date` khi cần th�
 Muốn chỉ sinh mock, vẫn cần chỉ định catalog thật làm kho ảnh (không gộp sản phẩm của kho này):
 
 ```bash
-python3 expand_catalog.py --synthetic-only --image-source /home/dangkhoi/code/vsf/data-collection/data/products.jsonl --target-total 10000 --output-dir data/mock-only
+python3 expand_catalog.py --synthetic-only --image-source data/products.jsonl --target-total 10000 --output-dir data/mock-only
 ```
 
 Giới hạn điểm đến của phần mới bằng `--destinations 'Phú Quốc,Nha Trang,Đà Nẵng,Đà Lạt'`.

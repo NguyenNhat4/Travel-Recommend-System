@@ -1,7 +1,9 @@
 -- Kiểm tra sau khi seed catalog hiện hành: psql "$SEED_DATABASE_URL" -f db/verify.sql → mọi dòng phải PASS
 \pset format unaligned
 \pset tuples_only on
-SELECT 'products = 10320: '           || CASE WHEN count(*) = 10320 THEN 'PASS' ELSE 'FAIL ('||count(*)||')' END FROM cdp.products;
+-- Ngưỡng tối thiểu = snapshot 2026-09-23. Job cào hằng ngày chỉ thêm dòng (sản phẩm ngừng bán giữ dòng, available=false),
+-- nên catalog mở rộng phải PASS; catalog tổng hợp (~400–450 dòng) vẫn FAIL như dự kiến.
+SELECT 'products >= 11387: '          || CASE WHEN count(*) >= 11387 THEN 'PASS' ELSE 'FAIL ('||count(*)||')' END FROM cdp.products;
 SELECT 'profiles = 2000: '            || CASE WHEN count(*) = 2000 THEN 'PASS' ELSE 'FAIL ('||count(*)||')' END FROM cdp.profiles;
 SELECT 'events 6000-8000: '           || CASE WHEN count(*) BETWEEN 6000 AND 8000 THEN 'PASS' ELSE 'FAIL ('||count(*)||')' END FROM cdp.events;
 SELECT 'combo_items >= 93: '          || CASE WHEN count(*) >= 93 THEN 'PASS' ELSE 'FAIL ('||count(*)||')' END FROM catalog.combo_items;
