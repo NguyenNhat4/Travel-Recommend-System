@@ -2,6 +2,7 @@
 from fastapi import APIRouter
 
 from src.backend.app.api.v1.routes.assistant import router as assistant_router
+from src.backend.app.api.v1.routes.catalog import router as catalog_router
 from src.backend.app.api.v1.routes.recommendations import router as recommendations_router
 from src.backend.app.api.v1.routes.search import router as search_router
 
@@ -9,3 +10,4 @@ api_router = APIRouter()
 api_router.include_router(assistant_router)
 api_router.include_router(search_router)
 api_router.include_router(recommendations_router)
+api_router.include_router(catalog_router)

@@ -24,3 +24,8 @@ def get_similar(request: Request) -> Any:
 
 def get_recommend(request: Request) -> Any:
     return request.app.state.recommend
+
+
+def get_index(request: Request) -> Any:
+    """None khi recsys bị tắt lúc khởi động; route catalog trả danh sách rỗng thay vì 500."""
+    return getattr(request.app.state, "index", None)
