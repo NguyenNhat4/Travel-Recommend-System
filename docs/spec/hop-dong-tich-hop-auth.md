@@ -4,6 +4,8 @@
 >
 > **Cơ chế:** hybrid — **session cookie cho web app** (BFF tại Next.js) + **JWT cho service nội bộ**. Trình duyệt không bao giờ giữ token.
 >
+> **Phạm vi sau khi chốt PRD (2026-09-23, `docs/prd/update-archive/2026-09-23-auth-hybrid-session.md`):** chỉ **P0** thuộc phạm vi. Cơ chế hybrid (BFF + Redis) đã vào PRD. **P1/P2 — xác minh email, đặt lại mật khẩu, 2FA/TOTP, WebAuthn, OAuth (§11, §12, §13 và các dòng P1/P2 ở §21) — ngoài phạm vi**, giữ lại chỉ để tham khảo; không triển khai khi chưa có đề xuất PRD mới. Ghép lịch sử ẩn danh vẫn ngoài phạm vi (§3.7, FR-CDP-02 hoãn): chỉ tracking khi người dùng đã đăng nhập.
+>
 > Ưu tiên khi mâu thuẫn: `AGENTS.md` §2. Tài liệu này đứng cùng hạng với các `hop-dong-tich-hop-*.md` khác và **dưới** OpenAPI.
 
 ## Mục lục
@@ -527,7 +529,9 @@ Tuyệt đối không MD5, SHA-1, SHA-256 trần, hay bất kỳ hàm băm nhanh
 
 ### 8.2. Di trú từ BCrypt
 
-54 user seed (`seed_histories.py:419`) dùng chung một hash BCrypt cost 10. Không re-seed và không bắt họ đổi mật khẩu:
+**Cập nhật 2026-09-23:** seed đã băm **Argon2id ngay từ đầu** (`seed_histories.demo_password_hash`, đúng tham số §8.1, salt tất định theo `user_id`), nên database seed mới không còn hash BCrypt và không cần bước rehash. Đường bcrypt dưới đây giữ lại **chỉ** cho database đã seed trước ngày này mà chưa seed lại; gỡ khi mọi môi trường đã seed lại, ở một entry history riêng.
+
+Trước đó, 54 user seed dùng chung một hash BCrypt cost 10. Không re-seed và không bắt họ đổi mật khẩu:
 
 ```text
 verify(plain, stored):
@@ -1186,13 +1190,13 @@ Theo `architecture-repo.md` §10.
 
 **Nghiệm thu P0:** đăng nhập được cả 4 persona; Home mỗi persona khác nhau; `document.cookie` không có token; §20.5 đạt cả 8 dòng.
 
-### P1 — trước khi mở cho người dùng thật
+### P1 — trước khi mở cho người dùng thật (**ngoài phạm vi**, PRD 2026-09-23)
 
 Xác minh email (§11.1) · đặt lại mật khẩu (§11.2) · TOTP + recovery code (§12.1) · CAPTCHA thật (§9.3) · chặn checkout khi chưa xác minh (§11.1 điểm 5) · bảng `email_verifications`, `mfa_credentials`, `mfa_recovery_codes`.
 
 **Nghiệm thu P1:** đăng ký → nhận mail → xác minh → checkout được; bật TOTP → đăng nhập hai bước; quên mật khẩu → đặt lại → mọi phiên cũ bị đăng xuất.
 
-### P2 — mở rộng
+### P2 — mở rộng (**ngoài phạm vi**, PRD 2026-09-23)
 
 OAuth/OIDC + PKCE (§13) · WebAuthn (§12.2) · bảng `oauth_identities`, `webauthn_credentials` · `password_hash` nullable.
 

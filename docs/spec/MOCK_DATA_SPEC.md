@@ -138,7 +138,7 @@ Tất cả ngày tính từ `as_of`. RNG = `numpy.random.default_rng(seed)`.
 
 ## 5. Bước 4 — `seed_app.py`
 
-`app.users`: 4 persona + 50 tài khoản test `test01@vota.demo`…; mật khẩu chung `Demo@2026` băm BCrypt cost 10; `cdp_user_id` cố định cho persona: P1 `VP0000001`, P2 `VP0000002`, P3 `VP0000003`, P4 `VP0000004` (seed_histories phải chừa 4 id này và sinh lịch sử đúng bảng dưới).
+`app.users`: 4 persona + 50 tài khoản test `test01@vota.demo`…; mật khẩu chung `Demo@2026` băm **Argon2id** (m=19456, t=2, p=1 — đúng tham số backend, auth §8.1; salt tất định theo `user_id` để seed tái lập được); `cdp_user_id` cố định cho persona: P1 `VP0000001`, P2 `VP0000002`, P3 `VP0000003`, P4 `VP0000004` (seed_histories phải chừa 4 id này và sinh lịch sử đúng bảng dưới).
 
 | Persona | Lịch sử phải sinh (tương đối `as_of`) | Kỳ vọng Home |
 |---|---|---|

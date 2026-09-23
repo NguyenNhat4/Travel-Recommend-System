@@ -65,7 +65,7 @@ Tài liệu này đặc tả chi tiết toàn bộ các yêu cầu chức năng 
   - `search`: Thực hiện tìm kiếm với từ khóa và bộ lọc.
   - `add_to_cart`: Thêm sản phẩm vào giỏ/lịch trình.
   - `purchase`: Hoàn tất thanh toán đơn hàng.
-- **FR-CDP-02 (Hợp nhất danh tính - Identity Stitching):** Liên kết dữ liệu hành vi từ giai đoạn ẩn danh (`anonymous_id`) sang hồ sơ chính thức (`profile_id`) ngay khi người dùng đăng nhập.
+- **FR-CDP-02 (Hợp nhất danh tính - Identity Stitching) — hoãn, ngoài phạm vi MVP:** Liên kết dữ liệu hành vi từ giai đoạn ẩn danh (`anonymous_id`) sang hồ sơ chính thức (`profile_id`) khi người dùng đăng nhập. Trong MVP, sự kiện hành vi **chỉ được ghi khi người dùng đã đăng nhập** (`cdp.events.cdp_user_id` bắt buộc); khách vãng lai không sinh sự kiện CDP và không có bước gộp lịch sử.
 - **FR-CDP-03 (Hồ sơ khách hàng 360):** Tự động tính toán các thuộc tính tổng hợp: tổng chi tiêu, danh mục quan tâm nhiều nhất, điểm đến gần nhất, tần suất tương tác.
 
 ### 1.8. Phân Hệ Tương Tác Cá Nhân Hóa Đa Kênh (Multi-channel Engagement)

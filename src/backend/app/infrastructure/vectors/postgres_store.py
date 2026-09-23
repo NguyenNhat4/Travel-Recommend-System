@@ -46,13 +46,7 @@ class PostgresVectorStore:
         self.database_url, self.embedder, self.cache_dir = database_url, embedder, cache_dir
 
     def _rows(self) -> list[dict]:
-        import psycopg
-        from psycopg.rows import dict_row
-
-        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
-            with conn.cursor() as cur:
-                cur.execute(_QUERY)
-                return cur.fetchall()
+        return read_catalog_rows(self.database_url)
 
     def load(self) -> UnitIndex:
         logger.info("startup.recsys.catalog.query.start")
@@ -63,40 +57,7 @@ class PostgresVectorStore:
                 "cdp.products rỗng — chạy `make demo-db` (hoặc python -m data_collection.seed) trước khi mở backend."
             )
 
-        products: dict[str, Product] = {}
-        meta: dict[str, dict] = {}
-        for row in rows:
-            product = Product.from_cdp(
-                {
-                    "productId": str(row["product_id"]),
-                    "name": row["name"],
-                    "taxonomy": row["taxonomy"],
-                    "destination": row["destination"],
-                    "description": row["description"],
-                    "attributes": row["attributes"] or {},
-                    # numeric(14,2) về Python là Decimal; ép float cho khớp Product và JSON response.
-                    "unitPrice": float(row["unit_price"]) if row["unit_price"] is not None else None,
-                    "currency": row["currency"],
-                    "available": row["available"],
-                    "availableFrom": row["available_from"],
-                    "availableTo": row["available_to"],
-                    "imageUrl": row["image_url"],
-                }
-            )
-            products[product.product_id] = product
-            meta[product.product_id] = row
-
-        parent_of: dict[str, str] = {}
-        children: dict[str, list[Product]] = defaultdict(list)
-        for product_id, row in meta.items():
-            parent = row["parent_product_id"]
-            if parent:
-                parent_of[product_id] = str(parent)
-                children[str(parent)].append(products[product_id])
-
-        units = [p for p in products.values() if meta[p.product_id]["is_search_unit"]]
-        units.sort(key=lambda p: p.product_id)  # thứ tự cố định → cache key ổn định giữa các lần chạy
-        texts = [build_text(p, children.get(p.product_id, [])) for p in units]
+        units, texts, meta, parent_of = search_units(rows)
 
         os.makedirs(self.cache_dir, exist_ok=True)
         key = hashlib.md5((self.embedder.name + "\n".join(texts)).encode("utf-8")).hexdigest()[:12]
@@ -128,3 +89,53 @@ class PostgresVectorStore:
             parent_of=parent_of,
             model_version=f"{self.embedder.name}@{key}",
         )
+
+
+def read_catalog_rows(database_url: str) -> list[dict]:
+    """13 trường CDP + cờ vai trò của `catalog.product_meta`, qua `DATABASE_URL` (role vota_app)."""
+    import psycopg
+    from psycopg.rows import dict_row
+
+    with psycopg.connect(database_url, row_factory=dict_row) as conn:
+        with conn.cursor() as cur:
+            cur.execute(_QUERY)
+            return cur.fetchall()
+
+
+def search_units(rows: list[dict]) -> tuple[list[Product], list[str], dict[str, dict], dict[str, str]]:
+    """Search unit (sắp theo product_id) + text để embed. Dùng chung cho recsys và job embed_products."""
+    products: dict[str, Product] = {}
+    meta: dict[str, dict] = {}
+    for row in rows:
+        product = Product.from_cdp(
+            {
+                "productId": str(row["product_id"]),
+                "name": row["name"],
+                "taxonomy": row["taxonomy"],
+                "destination": row["destination"],
+                "description": row["description"],
+                "attributes": row["attributes"] or {},
+                # numeric(14,2) về Python là Decimal; ép float cho khớp Product và JSON response.
+                "unitPrice": float(row["unit_price"]) if row["unit_price"] is not None else None,
+                "currency": row["currency"],
+                "available": row["available"],
+                "availableFrom": row["available_from"],
+                "availableTo": row["available_to"],
+                "imageUrl": row["image_url"],
+            }
+        )
+        products[product.product_id] = product
+        meta[product.product_id] = row
+
+    parent_of: dict[str, str] = {}
+    children: dict[str, list[Product]] = defaultdict(list)
+    for product_id, row in meta.items():
+        parent = row["parent_product_id"]
+        if parent:
+            parent_of[product_id] = str(parent)
+            children[str(parent)].append(products[product_id])
+
+    units = [p for p in products.values() if meta[p.product_id]["is_search_unit"]]
+    units.sort(key=lambda p: p.product_id)  # thứ tự cố định → cache key ổn định giữa các lần chạy
+    texts = [build_text(p, children.get(p.product_id, [])) for p in units]
+    return units, texts, meta, parent_of

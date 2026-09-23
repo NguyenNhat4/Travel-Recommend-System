@@ -391,7 +391,7 @@ export INSIDER_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/inside
 python -m data_collection.seed --as-of 2026-09-21 --seed 42 --reset
 ```
 
-Pipeline parse combo, chuẩn hoá cửa sổ đặt chỗ, sinh lịch sử CDP/app/Insider rồi nạp hai database bằng transaction. Nó không tạo embedding; `catalog.product_vectors` phải còn rỗng cho tới job Search tuần 2. `purchase` thiếu `event_group_id` khoảng 3% là edge case cố ý và vẫn được giữ lại.
+Pipeline parse combo, chuẩn hoá cửa sổ đặt chỗ, sinh lịch sử CDP/app/Insider rồi nạp hai database bằng transaction. Nó không tạo embedding: vector nằm ở Weaviate và được nạp riêng bằng `make embed-products`. `purchase` thiếu `event_group_id` khoảng 3% là edge case cố ý và vẫn được giữ lại.
 
 Chạy kiểm tra từ repository root:
 
@@ -459,11 +459,11 @@ nghỉ và chạy tiếp khi bị chặn (mã thoát 75).
   lat/lng tối đa 30 ngày. Link Google Maps trong các file CSV chỉ để mở xem.
 
 <!-- seed-report:start -->
-### Snapshot seed gần nhất — `2026-09-22`
+### Snapshot seed gần nhất — `2026-09-23`
 
 - Nguồn catalog: `src/data_collection/data/snapshots/2026-09-21/products.jsonl` — SHA-256 `89f452e46eec24ae0fe50769037bc84dbb2609dd9c193a49336108f072acbb18`.
 - Seed `42`: 10,320 products · 2,000 profiles · 7,131 events · 218 combo items.
-- Search units: 2,897; `catalog.product_vectors`: 0 (đúng kế hoạch: embedding thuộc tuần 2).
+- Search units: 2,897; vector không nằm trong Postgres — nạp lên Weaviate bằng `make embed-products`.
 - Insider clone: 2,000 profiles · 4,155 events · 19,517 channel events.
 - Purchase thiếu `event_group_id` là edge case được sinh có chủ đích khoảng 3%; không xoá purchase.
 <!-- seed-report:end -->

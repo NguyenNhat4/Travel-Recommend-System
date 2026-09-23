@@ -83,6 +83,13 @@ class Settings(BaseSettings):
     search_max_limit: int = 50
     recommend_candidate_k: int = 200
 
+    # Vector ở Weaviate, embedding bằng Cohere (docs/prd/architecture.md §5, deployment-plan.md §2).
+    # Job embed_products dùng các biến này; Weaviate không bao giờ nhận COHERE_API_KEY.
+    cohere_api_key: str = ""
+    embedding_model_name: str = "embed-multilingual-v3.0"
+    weaviate_url: str = "http://localhost:8080"
+    weaviate_api_key: str = ""
+
     @field_validator(*_OPTIONAL_BLANK_IS_NONE, mode="before")
     @classmethod
     def _blank_to_none(cls, value):

@@ -73,7 +73,7 @@ def load_vota(url: str, data_dir: Path, reset: bool) -> dict[str, int]:
                 TRUNCATE app.search_logs, app.recommendation_logs, app.itineraries,
                          app.conversation_messages, app.conversations, app.cart_items,
                          app.carts, app.booking_items, app.bookings, app.users,
-                         catalog.product_vectors, catalog.combo_items,
+                         catalog.combo_items,
                          cdp.events, cdp.profiles, cdp.products
                 RESTART IDENTITY CASCADE
             """)

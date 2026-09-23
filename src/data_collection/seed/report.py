@@ -21,12 +21,11 @@ def sha256(path: Path) -> str:
 
 def collect(vota_url: str, insider_url: str) -> dict[str, int]:
     with psycopg.connect(vota_url) as conn:
-        products, profiles, events, combos, vectors, search_units = conn.execute("""
+        products, profiles, events, combos, search_units = conn.execute("""
             SELECT (SELECT count(*) FROM cdp.products),
                    (SELECT count(*) FROM cdp.profiles),
                    (SELECT count(*) FROM cdp.events),
                    (SELECT count(*) FROM catalog.combo_items),
-                   (SELECT count(*) FROM catalog.product_vectors),
                    (SELECT count(*) FROM catalog.product_meta WHERE is_search_unit)
         """).fetchone()
     with psycopg.connect(insider_url) as conn:
@@ -37,7 +36,7 @@ def collect(vota_url: str, insider_url: str) -> dict[str, int]:
         """).fetchone()
     return {
         "products": products, "profiles": profiles, "events": events, "combo_items": combos,
-        "vectors": vectors, "search_units": search_units, "insider_profiles": insider_profiles,
+        "search_units": search_units, "insider_profiles": insider_profiles,
         "insider_events": insider_events, "channel_events": channel_events,
     }
 
@@ -54,7 +53,7 @@ def render(products_path: Path, as_of: date, seed: int, counts: dict[str, int]) 
         "",
         f"- Nguồn catalog: `{source}` — SHA-256 `{sha256(products_path)}`.",
         f"- Seed `{seed}`: {counts['products']:,} products · {counts['profiles']:,} profiles · {counts['events']:,} events · {counts['combo_items']:,} combo items.",
-        f"- Search units: {counts['search_units']:,}; `catalog.product_vectors`: {counts['vectors']} (đúng kế hoạch: embedding thuộc tuần 2).",
+        f"- Search units: {counts['search_units']:,}; vector không nằm trong Postgres — nạp lên Weaviate bằng `make embed-products`.",
         f"- Insider clone: {counts['insider_profiles']:,} profiles · {counts['insider_events']:,} events · {counts['channel_events']:,} channel events.",
         "- Purchase thiếu `event_group_id` là edge case được sinh có chủ đích khoảng 3%; không xoá purchase.",
         END,

@@ -18,6 +18,8 @@ Hệ sinh thái lưu trữ của V-OTA gồm hai cơ sở dữ liệu PostgreSQL
 |                          - combo_items               - booking_items    |
 |                                                      - conversations    |
 |                                                      - messages         |
+|                                                      - refresh_tokens   |
+|                                                      - login_attempts   |
 |                                                                         |
 |  (Role: cdp_writer)      (Role: vota_app)            (Role: vota_app)   |
 +-------------------------------------------------------------------------+
@@ -118,6 +120,8 @@ erDiagram
     APP_USERS ||--o{ APP_CONVERSATIONS : "sở hữu cuộc trò chuyện"
     APP_BOOKINGS ||--o{ APP_BOOKING_ITEMS : "chứa các dịch vụ"
     APP_CONVERSATIONS ||--o{ APP_MESSAGES : "lưu các tin nhắn"
+    APP_USERS ||--o{ APP_REFRESH_TOKENS : "chuỗi rotation"
+    APP_USERS |o--o{ APP_LOGIN_ATTEMPTS : "nhật ký đăng nhập"
 
     APP_USERS {
         uuid user_id PK
@@ -127,7 +131,30 @@ erDiagram
         string phone
         string role "customer, admin"
         string persona_tag "P1_family, P2_biz, P3_explorer, P4_deal"
+        timestamp email_verified_at "NULL = chưa xác minh"
         timestamp created_at
+    }
+
+    APP_REFRESH_TOKENS {
+        uuid token_id PK
+        uuid user_id FK
+        uuid family_id "Cả chuỗi rotation; tái dùng thì thu hồi theo đây"
+        string token_hash UK "SHA-256, không lưu bản rõ"
+        string session_id "Ràng buộc phiên"
+        timestamp expires_at
+        timestamp rotated_at
+        timestamp revoked_at
+        string revoked_reason
+    }
+
+    APP_LOGIN_ATTEMPTS {
+        bigint attempt_id PK
+        string email_hash "sha256(lower(email)), không lưu email thô"
+        uuid user_id FK "NULL nếu email không tồn tại"
+        string ip_prefix "/24 hoặc /48"
+        boolean succeeded
+        string failure_reason
+        timestamp attempted_at
     }
 
     APP_BOOKINGS {
