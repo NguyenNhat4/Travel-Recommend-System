@@ -4,7 +4,6 @@ import copy
 import importlib.util
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
 
 import httpx
 
@@ -161,8 +160,7 @@ class NodeTests(unittest.IsolatedAsyncioTestCase):
         async def plan(prompt):
             return SimpleNamespace(tool_calls=[{'name': 'get_recommendations', 'args': {'destination': 'Da Nang'}}])
         llm = SimpleNamespace(bind_tools=lambda schemas: SimpleNamespace(ainvoke=plan))
-        with patch.object(nodes, 'get_llm', return_value=llm):
-            result = await nodes.tool_node({'query': 'recommend Da Nang'}, tools=Executor())
+        result = await nodes.tool_node({'query': 'recommend Da Nang'}, tools=Executor(), llm=llm)
         self.assertEqual(result['tool_plan'][0]['args'], {'destination': 'Da Nang', 'k': 5})
 
     async def test_permanent_error_and_missing_configuration_do_not_retry(self):

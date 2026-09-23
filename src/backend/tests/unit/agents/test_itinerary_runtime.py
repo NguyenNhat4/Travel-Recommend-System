@@ -8,12 +8,12 @@ import unittest
 from src.backend.app.agents import nodes, routing
 from src.backend.app.agents.graph import build_graph
 from src.backend.app.agents.models import ConversationalAnswer, DestinationChoice, Extraction
-from src.backend.app.agents.persistence import build_checkpointer
+from src.backend.app.infrastructure.persistence.langgraph_checkpointer import build_checkpointer
 from src.backend.app.agents.tools.itinerary_gateway import ItineraryToolGateway
 from src.backend.app.application.itinerary.contracts import valid
 from src.backend.app.application.ports.itinerary_tools import ToolError
 from src.backend.app.domain.itinerary.planning import empty_intent, render_proposal, totals, validate_plan
-from src.backend.app.infrastructure.clients.itinerary_conversation_store import InMemoryConversationStore
+from src.backend.app.infrastructure.persistence.conversation_store import InMemoryConversationStore
 
 
 def product(pid='a', **updates):

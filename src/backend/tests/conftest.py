@@ -52,14 +52,14 @@ def data_dir(tmp_path_factory):
 
 @pytest.fixture(scope="session")
 def services(data_dir):
-    from src.backend.app.infrastructure.vectors.in_memory_store import InMemoryVectorStore
-    from src.backend.app.infrastructure.cdp.local_cdp_client import LocalCdpClient
+    from src.backend.tests.fakes.in_memory_vector_store import InMemoryVectorStore
+    from src.backend.tests.fakes.jsonl_cdp_reader import JsonlCdpReader
     from src.backend.app.application.search import SearchProducts, SimilarProducts
     from src.backend.app.application.recommendation import BuildPopularity, RecommendForUser
     from datetime import datetime, timezone
     emb = FakeEmbedder()
     index = InMemoryVectorStore(str(data_dir / "products.jsonl"), emb, str(data_dir / ".embcache")).load()
-    cdp = LocalCdpClient(str(data_dir / "events.jsonl"))
+    cdp = JsonlCdpReader(str(data_dir / "events.jsonl"))
     now = datetime(2026, 9, 21, tzinfo=timezone.utc)
     pop = BuildPopularity(index, cdp)(now=now)
     return {"index": index, "search": SearchProducts(index, emb, cutoff=-1.0), "similar": SimilarProducts(index),

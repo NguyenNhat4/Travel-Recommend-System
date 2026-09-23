@@ -1,6 +1,6 @@
 import asyncio
 
-from src.backend.app.infrastructure.clients.local_cdp_client import LocalCdpClient
+from src.backend.app.infrastructure.cdp.local_cdp_client import LocalCdpClient
 from src.backend.app.infrastructure.persistence.postgres_catalog import PostgresProductLookup
 from src.backend.app.main import app, health, lifespan
 

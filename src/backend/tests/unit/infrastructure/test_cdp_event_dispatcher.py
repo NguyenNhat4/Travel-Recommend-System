@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 from src.backend.app.application.ports.cdp_client import BrowseEvent, CdpUnavailableError
 from src.backend.app.core import request_context
-from src.backend.app.infrastructure.clients.cdp_event_dispatcher import BackgroundCdpEventRecorder
+from src.backend.app.infrastructure.cdp.event_dispatcher import BackgroundCdpEventRecorder
 
 
 def event(i: int) -> BrowseEvent:

@@ -50,6 +50,13 @@ class Settings(BaseSettings):
     # Browse events waiting to be sent; beyond this they are dropped and logged.
     cdp_event_queue_size: int = Field(default=1000, ge=1)
 
+    # RecSys (search / similar / recommendations). Đọc cùng tên biến môi trường như trước khi gộp
+    # core/settings.py vào đây: EMBED_MODEL, EMBED_CACHE_DIR, SEARCH_CUTOFF.
+    embed_model: str = "intfloat/multilingual-e5-base"  # đổi sau benchmark tuần 2
+    embed_cache_dir: str = ".embcache"
+    search_cutoff: float = 0.80  # calibrate theo model
+    search_max_limit: int = 50
+    recommend_candidate_k: int = 200
 
     @field_validator(*_OPTIONAL_BLANK_IS_NONE, mode="before")
     @classmethod

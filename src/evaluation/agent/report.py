@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .metrics import MetricsReport
+from src.evaluation.agent.metrics import MetricsReport
 
 
 def render_report(metrics: MetricsReport) -> str:

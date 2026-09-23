@@ -1,14 +1,16 @@
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Depends, Query
 
-router = APIRouter(prefix="/api/v1", tags=["recommendations"])
+from src.backend.app.api.deps import get_recommend
+
+router = APIRouter(tags=["recommendations"])
 
 
 @router.get("/recommendations")
-def recommendations(request: Request, k: int = Query(5, ge=1, le=10), cdp_user_id: str | None = None):
+def recommendations(k: int = Query(5, ge=1, le=10), cdp_user_id: str | None = None, recommend=Depends(get_recommend)):
     # TODO: lấy cdp_user_id từ JWT (core/security) thay vì query param; None → popular cho khách vãng lai
-    return request.app.state.recommend(cdp_user_id, k=k)
+    return recommend(cdp_user_id, k=k)
 
 
 @router.get("/popular")
-def popular(request: Request, k: int = Query(4, ge=1, le=10)):
-    return request.app.state.recommend(None, k=k)
+def popular(k: int = Query(4, ge=1, le=10), recommend=Depends(get_recommend)):
+    return recommend(None, k=k)

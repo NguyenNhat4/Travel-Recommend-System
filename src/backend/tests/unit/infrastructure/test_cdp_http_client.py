@@ -8,9 +8,9 @@ import pytest
 
 from src.backend.app.application.ports.cdp_client import BrowseEvent, CdpUnavailableError, PurchaseEvent
 from src.backend.app.core import request_context
-from src.backend.app.infrastructure.clients.cdp_http_client import CdpHttpClient
+from src.backend.app.infrastructure.cdp.http_cdp_client import CdpHttpClient
 
-MOCKS = Path(__file__).resolve().parents[3] / "shared/mocks/cdp-clone"
+MOCKS = Path(__file__).resolve().parents[4] / "shared/mocks/cdp-clone"
 TOKEN = "service-token-for-tests"
 
 

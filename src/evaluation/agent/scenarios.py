@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .state import Scenario
+from src.backend.app.agents.state import Scenario
 
 
 def load_scenarios(path: str | Path) -> list[Scenario]:

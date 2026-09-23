@@ -1,19 +1,11 @@
-"""Port (interface) mà infrastructure phải hiện thực. Application chỉ phụ thuộc vào file này."""
+"""Ảnh chụp các search unit + vector mà ba engine Search / Similar / Recommendation cùng đọc."""
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
 
 import numpy as np
 
 from src.backend.app.domain.catalog import Product
-
-
-class EmbedderPort(Protocol):
-    name: str
-
-    def embed_docs(self, texts: list[str]) -> np.ndarray: ...
-    def embed_query(self, q: str) -> np.ndarray: ...
 
 
 @dataclass
@@ -46,14 +38,3 @@ class UnitIndex:
         if destination:
             m &= self.destination == destination
         return m
-
-
-class VectorStorePort(Protocol):
-    def load(self) -> UnitIndex: ...
-
-
-class CdpClientPort(Protocol):
-    """Cửa duy nhất vào CDP (handbook §6). Trả dict theo tên trường CDP (camelCase)."""
-
-    def events_for_user(self, cdp_user_id: str) -> list[dict]: ...
-    def purchase_events(self, since_days: int = 730) -> list[dict]: ...

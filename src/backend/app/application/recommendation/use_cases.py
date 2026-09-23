@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 import numpy as np
 
-from src.backend.app.application.ports import CdpClientPort, UnitIndex
+from src.backend.app.application.ports import CdpHistoryReader, UnitIndex
 from src.backend.app.application.search import hit
 from src.backend.app.domain.recommendation import Popularity, Purchase, ResolvedEvent, build_profile, explain, mmr_select, score_candidates
 
@@ -20,7 +20,7 @@ def _ts(x) -> float:
 class BuildPopularity:
     """Job: từ CDP purchase events → Popularity. Chạy nightly (hoặc mỗi request khi mock nhỏ)."""
     index: UnitIndex
-    cdp: CdpClientPort
+    cdp: CdpHistoryReader
 
     def __call__(self, now: datetime | None = None) -> Popularity:
         purchases = []
@@ -36,7 +36,7 @@ class BuildPopularity:
 @dataclass
 class RecommendForUser:
     index: UnitIndex
-    cdp: CdpClientPort
+    cdp: CdpHistoryReader
     popularity: Popularity | None = None
     candidate_k: int = 200
 

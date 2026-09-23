@@ -2,11 +2,11 @@
 
 Gộp hai nhánh: phần nối PostgreSQL (CDP client, catalog lookup, ghi event nền) và engine recsys
 (search / similar / recommendations). Recsys chạy thẳng trên database đã seed thay vì đọc file:
-`PostgresVectorStore` thay `InMemoryVectorStore`, `PostgresCdpReader` thay `LocalCdpClient` đọc JSONL.
+`PostgresVectorStore` và `PostgresCdpReader` thay các bản giả đọc JSONL ở `tests/fakes/`.
 
-Hai adapter CDP cùng tồn tại vì là hai chiều khác nhau, không phải bản trùng lặp:
-  * `clients.LocalCdpClient`  — GHI (async): purchase khi checkout, huỷ bù trừ, browse event, profile.
-  * `cdp.PostgresCdpReader`   — ĐỌC (sync): lịch sử của khách và bảng phổ biến cho recsys.
+Hai adapter CDP trong `infrastructure/cdp/` cùng tồn tại vì là hai chiều khác nhau, không phải bản trùng lặp:
+  * `LocalCdpClient`     — GHI (async): purchase khi checkout, huỷ bù trừ, browse event, profile.
+  * `PostgresCdpReader`  — ĐỌC (sync): lịch sử của khách và bảng phổ biến cho recsys.
 Cả hai đi qua `CDP_DATABASE_URL`; không nơi nào khác được SQL thẳng vào schema `cdp` (AGENTS.md §6.1).
 
 Nạp index tốn thời gian (embed toàn bộ search unit lần đầu, sau đó đọc cache .npy), nên chạy trong
@@ -21,27 +21,24 @@ from contextlib import AsyncExitStack, asynccontextmanager
 
 import httpx
 from fastapi import FastAPI
-from fastapi.exceptions import RequestValidationError
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 
-from src.backend.app.api.router import api_router
-from src.backend.app.api.v1.routes import recommendations as recommendations_routes
-from src.backend.app.api.v1.routes import search as search_routes
+from src.backend.app.agents.runtime_dependencies import RuntimeAgentDependencies
+from src.backend.app.agents.tools.itinerary_gateway import ItineraryToolGateway
+from src.backend.app.api.errors import install_error_handlers
+from src.backend.app.api.middleware import install_cors, install_request_id
+from src.backend.app.api.v1.router import api_router
+from src.backend.app.application.itinerary.use_cases import PlanItinerary
 from src.backend.app.application.recommendation import BuildPopularity, RecommendForUser
 from src.backend.app.application.search import SearchProducts, SimilarProducts
-from src.backend.app.core.config import get_settings
-from src.backend.app.core.request_context import install_request_id
-from src.backend.app.core.settings import settings as recsys_settings
+from src.backend.app.core.config import Settings, get_settings
+from src.backend.app.infrastructure.cdp.event_dispatcher import BackgroundCdpEventRecorder
+from src.backend.app.infrastructure.cdp.http_cdp_client import CdpHttpClient
+from src.backend.app.infrastructure.cdp.local_cdp_client import LocalCdpClient
 from src.backend.app.infrastructure.cdp.postgres_cdp_reader import PostgresCdpReader
-from src.backend.app.infrastructure.clients.cdp_event_dispatcher import BackgroundCdpEventRecorder
-from src.backend.app.infrastructure.clients.cdp_http_client import CdpHttpClient
-from src.backend.app.infrastructure.clients.itinerary_conversation_store import InMemoryConversationStore
 from src.backend.app.infrastructure.clients.itinerary_fixture_clients import FixtureItineraryClients
 from src.backend.app.infrastructure.clients.itinerary_http_clients import ItineraryHttpClients
-from src.backend.app.application.itinerary.contracts import error_response
-from src.backend.app.core.request_context import current_request_id
-from src.backend.app.infrastructure.clients.local_cdp_client import LocalCdpClient
+from src.backend.app.infrastructure.llm.client import LazyChatModel
+from src.backend.app.infrastructure.persistence.conversation_store import InMemoryConversationStore
 from src.backend.app.infrastructure.persistence.postgres_catalog import PostgresProductLookup
 
 # psycopg async không chạy được trên ProactorEventLoop — event loop mặc định của Windows và của
@@ -62,10 +59,10 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
         )
         from src.backend.app.infrastructure.vectors.postgres_store import PostgresVectorStore
 
-        embedder = embedder or SentenceTransformersEmbedder(recsys_settings.embed_model)
+        embedder = embedder or SentenceTransformersEmbedder(settings.embed_model)
         # Catalog đi qua DATABASE_URL: role vota_app chỉ SELECT được cdp.products, đúng ranh giới.
         vector_store = PostgresVectorStore(
-            settings.database_url, embedder, recsys_settings.embed_cache_dir
+            settings.database_url, embedder, settings.embed_cache_dir
         )
     index = vector_store.load()
 
@@ -77,14 +74,28 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
         "search": SearchProducts(
             index,
             embedder,
-            cutoff=recsys_settings.search_cutoff,
-            max_limit=recsys_settings.search_max_limit,
+            cutoff=settings.search_cutoff,
+            max_limit=settings.search_max_limit,
         ),
         "similar": SimilarProducts(index),
         "recommend": RecommendForUser(
-            index, cdp_reader, popularity, candidate_k=recsys_settings.recommend_candidate_k
+            index, cdp_reader, popularity, candidate_k=settings.recommend_candidate_k
         ),
     }
+
+
+def _itinerary_planner(app: FastAPI, settings: Settings, authorization: str | None):
+    """Dựng agent cho một request. Đọc `app.state` lúc gọi để test thay được client/LLM sau khi khởi động."""
+    clients = getattr(app.state, "itinerary_http_clients", None)
+    store = getattr(app.state, "itinerary_conversation_store", None)
+    if clients is None or store is None:
+        return None
+    gateway = ItineraryToolGateway(clients, clients, clients, recommendation_authorization=authorization)
+    return RuntimeAgentDependencies(
+        gateway, store, getattr(app.state, "itinerary_llm", None), authorization,
+        tool_timeout_seconds=settings.itinerary_tool_timeout_seconds,
+        llm_timeout_seconds=settings.itinerary_llm_timeout_seconds,
+    ).planner()
 
 
 @asynccontextmanager
@@ -108,6 +119,11 @@ async def lifespan(app: FastAPI):
         app.state.browse_event_recorder.start()
         app.state.itinerary_conversation_store = InMemoryConversationStore(
             ttl_seconds=settings.itinerary_conversation_ttl_seconds
+        )
+        app.state.itinerary_llm = LazyChatModel()
+        app.state.plan_itinerary = PlanItinerary(
+            lambda authorization: _itinerary_planner(app, settings, authorization),
+            settings.itinerary_request_timeout_seconds,
         )
         mode = settings.itinerary_data_mode or ("fixture" if settings.app_env in {"development", "test"} else "disabled")
         app.state.itinerary_data_mode = mode
@@ -149,29 +165,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins.split(","),
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["X-Request-ID"],
-)
+install_cors(app, settings.cors_origins)
 install_request_id(app)
-
-
-@app.exception_handler(RequestValidationError)
-async def request_validation_error(_, __):
-    request_id = current_request_id() or "validation"
-    return JSONResponse(status_code=422, content=error_response(
-        "VALIDATION_ERROR", "Yêu cầu không hợp lệ.", request_id
-    ))
-
+install_error_handlers(app)
 app.include_router(api_router, prefix="/api/v1")
-# Hai router recsys đã tự mang prefix /api/v1 nên mount thẳng vào app,
-# nếu đưa vào api_router thì đường dẫn thành /api/v1/api/v1/search.
-app.include_router(search_routes.router)
-app.include_router(recommendations_routes.router)
 
 
 @app.get("/health")

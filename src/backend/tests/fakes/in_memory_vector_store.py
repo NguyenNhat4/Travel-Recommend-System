@@ -1,5 +1,5 @@
-"""VectorStorePort in-memory: đọc products.jsonl, dựng text, embed, cache .npy.
-Bản pgvector sau này (pgvector_store.py) đọc catalog.product_vectors + catalog.product_meta và trả cùng UnitIndex."""
+"""`VectorStorePort` giả cho test offline: đọc products.jsonl, dựng text, embed, cache .npy.
+Bản chạy thật là `infrastructure/vectors/` (Postgres, sau là Weaviate) và trả cùng `UnitIndex`."""
 from __future__ import annotations
 
 import hashlib

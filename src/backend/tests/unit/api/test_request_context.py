@@ -1,7 +1,8 @@
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from src.backend.app.core.request_context import current_request_id, install_request_id
+from src.backend.app.api.middleware import install_request_id
+from src.backend.app.core.request_context import current_request_id
 
 
 def make_client():

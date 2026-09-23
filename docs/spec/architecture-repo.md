@@ -86,19 +86,21 @@ src/
 │       ├── services/               # HTTP client và generated API client
 │       ├── test/                   # test setup, fixtures, render helpers
 │       └── types/                  # kiểu dùng chung phía frontend
-├── backend/
+├── backend/                        # chi tiết từng thư mục: docs/prd/architecture.md §2
 │   ├── app/
-│   │   ├── api/v1/routes/          # FastAPI routers, chỉ xử lý HTTP
-│   │   ├── core/                   # settings, logging, security, errors
+│   │   ├── api/                    # deps.py, middleware.py, errors.py, v1/{router.py, schemas/, routes/}
+│   │   ├── core/                   # một Settings duy nhất, request context (không import FastAPI)
 │   │   ├── domain/                 # entity/value object và business rule thuần
-│   │   ├── application/            # use case và port/interface
-│   │   ├── infrastructure/         # DB, external clients, LLM implementation
-│   │   ├── agents/                 # LangGraph state, graph, node và tool
+│   │   ├── application/            # use case và port (mỗi port một file)
+│   │   ├── infrastructure/         # cdp/, persistence/, clients/, llm/, embeddings/, vectors/, auth/
+│   │   ├── agents/                 # LangGraph state, graph, node và tool; hiện thực port ItineraryPlanner
 │   │   └── main.py                 # composition root FastAPI
 │   └── tests/
-│       ├── unit/
+│       ├── fakes/                  # bản giả của port cho test offline
+│       ├── unit/                   # domain/, application/, agents/, infrastructure/, api/
 │       ├── integration/
-│       └── contract/
+│       ├── contract/
+│       └── architecture/           # kiểm tự động quy tắc phụ thuộc
 ├── shared/
 │   ├── contracts/                  # OpenAPI dùng chung
 │   └── mocks/                      # fixture sinh từ contract
@@ -124,6 +126,8 @@ agents -> application ports
 - `infrastructure` hiện thực các port; chỉ composition root được quyền nối implementation vào use case.
 - `api` chuyển HTTP request/response sang application model, không chứa truy vấn DB hay prompt.
 - `agents` không tự truy cập DB và không tạo sản phẩm; chỉ dùng các port do application cung cấp.
+- `api` chỉ gọi use case trong `application`, không import `agents` hay `infrastructure`; `core` không import FastAPI.
+- Bản giả dùng cho test nằm ở `tests/fakes/`. Các quy tắc trên được kiểm bằng `src/backend/tests/architecture/`; danh sách đầy đủ (quy tắc 1–11) ở `docs/prd/architecture.md` §2.
 
 Mỗi domain (`auth`, `booking`, `catalog`, `itinerary`, `recommendation`, `search`) có namespace riêng để team có thể làm song song và tránh file tổng hợp quá lớn.
 

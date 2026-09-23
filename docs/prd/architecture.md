@@ -96,20 +96,36 @@ Backend tuân thủ nghiêm ngặt nguyên tắc **Clean Architecture / Hexagona
 src/backend/app/
 ├── domain/<domain>/         # LỚP 1: entity, value object, business rule thuần (auth, booking, catalog, itinerary, recommendation, search)
 ├── application/             # LỚP 2: use case và port
-│   ├── ports/               # Giao diện trừu tượng: CdpClient, InsiderClient, SearchClient, embedding, vector store...
+│   ├── ports/               # Giao diện trừu tượng, MỖI PORT MỘT FILE: cdp_client, insider_client, embedder,
+│   │                        #   vector_store, llm, contract_validator, itinerary_tools, auth...
 │   └── <domain>/            # Use case theo domain (auth, booking, catalog, itinerary, recommendation, search, tracking)
 ├── infrastructure/          # LỚP 3: hiện thực port
-│   ├── persistence/         # PostgreSQL qua DATABASE_URL (role vota_app)
-│   ├── cdp/                 # LocalCdpClient (CDP_DATABASE_URL) hoặc HttpCdpClient sau này
-│   ├── clients/             # HTTP client ra ngoài, gồm HttpInsiderClient
+│   ├── persistence/         # PostgreSQL qua DATABASE_URL (role vota_app); conversation store
+│   ├── cdp/                 # Mọi adapter CDP: LocalCdpClient, đọc lịch sử, HttpCdpClient, hàng đợi ghi event nền
+│   ├── clients/             # HTTP client ra service ngoài, gồm HttpInsiderClient; fixture itinerary cho ITINERARY_DATA_MODE=fixture
 │   ├── auth/                # Hash mật khẩu, JWT
-│   ├── llm/                 # Adapter LLM provider
+│   ├── llm/                 # Adapter LLM provider (agent lấy LLM qua port llm, không tự import SDK)
 │   ├── embeddings/          # CohereEmbedder (embed-multilingual-v3.0)
-│   └── vectors/             # WeaviateVectorStore; in_memory_store.py cho test offline
-├── agents/                  # LangGraph: state, graph, node và tools/
-├── api/v1/routes/           # LỚP 4: FastAPI router theo domain, chỉ xử lý HTTP
-├── core/                    # settings, logging, security, error envelope
+│   ├── vectors/             # WeaviateVectorStore
+│   └── contracts/           # Kiểm dữ liệu theo OpenAPI bundle (jsonschema)
+├── agents/                  # LangGraph: state, graph, node và tools/; hiện thực port planner itinerary
+├── api/                     # LỚP 4: chỉ xử lý HTTP
+│   ├── deps.py              # FastAPI Depends: lấy use case đã nối sẵn, route không tự lắp ráp
+│   ├── middleware.py        # Request ID, CORS...
+│   ├── errors.py            # Error Envelope + exception handler
+│   └── v1/
+│       ├── router.py        # Router v1 duy nhất; route không tự khai prefix /api/v1
+│       ├── schemas/         # DTO request/response (pydantic) theo domain
+│       └── routes/          # Router theo domain
+├── core/                    # settings (một lớp Settings duy nhất), logging, request context (không import FastAPI)
 └── main.py                  # composition root: nối infrastructure vào use case
+
+src/backend/tests/
+├── fakes/                   # Bản giả của port cho test offline: CDP đọc JSONL, in-memory vector store
+├── unit/                    # domain/, application/, agents/
+├── integration/
+├── contract/
+└── architecture/            # Test tự động kiểm quy tắc phụ thuộc bên dưới
 ```
 
 Mỗi domain có namespace riêng trong `domain/` và `application/` để các team làm song song, tránh file tổng hợp quá lớn.
@@ -122,6 +138,10 @@ Mỗi domain có namespace riêng trong `domain/` và `application/` để các 
 5. **`application`** điều phối use case và khai báo port; chỉ composition root (`main.py`) được nối implementation vào use case.
 6. **`api`** chỉ chuyển HTTP request/response sang application model, không chứa truy vấn DB hay prompt.
 7. **`agents`** không tự truy cập DB và không tạo dữ liệu sản phẩm; chỉ dùng port do `application` cung cấp.
+8. **`api`** chỉ gọi use case trong `application`, không import `agents` hay `infrastructure`. Use case itinerary gọi agent qua port; `main.py` nối LangGraph vào port đó.
+9. **`core`** không import FastAPI. Phần dính framework (middleware, exception handler) nằm trong `api/`.
+10. Bản giả dùng cho test đặt ở `tests/fakes/`, không đặt trong `infrastructure/`.
+11. Quy tắc 1–9 được kiểm tự động bằng test trong `tests/architecture/`; test này chạy trong CI như unit test.
 
 ```text
 api -> application -> domain
@@ -192,7 +212,7 @@ stateDiagram-v2
 5. **Backend $\leftrightarrow$ Weaviate / Cohere:** Backend tự sinh vector rồi tự ghi — **Weaviate không giữ khóa Cohere và không tự vector hóa** (collection khai báo `vectorizer: none`). Cụ thể:
    - **Nạp:** job embed đọc search unit từ `catalog`, gọi Cohere với `input_type=search_document`, ghi vector kèm `productId` vào collection `Product` của Weaviate.
    - **Truy vấn:** use case search gọi Cohere với `input_type=search_query` rồi đưa vector sang Weaviate để lấy top-K. Dùng sai `input_type` sẽ làm giảm chất lượng xếp hạng mà không báo lỗi.
-   - Giữ được đường test offline: `in_memory_store.py` hiện thực cùng port `vector_search.py`, nên unit test không cần mạng.
+   - Giữ được đường test offline: `tests/fakes/in_memory_vector_store.py` hiện thực cùng port `vector_store.py`, nên unit test không cần mạng.
    - Weaviate chỉ giữ vector và `productId`. Mọi thuộc tính hiển thị (tên, giá, ảnh) vẫn lấy từ Postgres — quy tắc grounding không đổi.
 
 ---
@@ -222,7 +242,7 @@ src/
 └── cdp_clone/         # service HTTP tạm gác; hiện CDP clone là schema `cdp` trong `db/`
 ```
 
-Ngoài `src/`: `db/` (DDL, initdb, migration, verify), `docs/` (`prd/`, `spec/`, `plan/` — xem `AGENTS.md` §7), `history/`. Thư mục cũ ở gốc `src/` (`src/agents`, `src/api`, `src/models`, `src/services`, `src/main.py`, `src/config.py`) không được mở rộng.
+Ngoài `src/`: `db/` (DDL, initdb, migration, verify), `docs/` (`prd/`, `spec/`, `plan/` — xem `AGENTS.md` §7), `history/`. Các thư mục cũ ở gốc `src/` (`src/agents`, `src/api`, `src/models`, `src/services`, `src/main.py`, `src/config.py`) đã bị xoá; không tạo lại. `src/__init__.py` được giữ để import dạng `src.backend.app…` chạy được.
 
 ### 6.2. Quy tắc frontend
 

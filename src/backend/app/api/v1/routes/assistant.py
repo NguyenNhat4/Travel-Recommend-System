@@ -9,15 +9,14 @@ import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
-from fastapi import APIRouter, Header, Request
+from fastapi import APIRouter, Depends, Header, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from src.backend.app.agents.runtime_dependencies import RuntimeAgentDependencies
-from src.backend.app.agents.tools.itinerary_gateway import ItineraryToolGateway
+from src.backend.app.api.deps import get_plan_itinerary
+from src.backend.app.api.v1.schemas.itinerary import ItineraryRequestModel
 from src.backend.app.application.itinerary.contracts import error_response, valid
-from src.backend.app.core.config import get_settings
+from src.backend.app.application.itinerary.use_cases import PlanItinerary
 from src.backend.app.core.request_context import current_request_id
-from src.backend.app.domain.itinerary.schemas import ItineraryRequestModel
 
 router = APIRouter(tags=["assistant"])
 logger = logging.getLogger("uvicorn.error")
@@ -27,37 +26,14 @@ def _conversation_label(payload: ItineraryRequestModel) -> str:
     return (payload.conversationId or "new")[:64].replace("\n", "_").replace("\r", "_")
 
 
-def _runtime(request: Request, authorization: str | None) -> RuntimeAgentDependencies | None:
-    clients = getattr(request.app.state, "itinerary_http_clients", None)
-    store = getattr(request.app.state, "itinerary_conversation_store", None)
-    if clients is None or store is None:
-        return None
-    gateway = ItineraryToolGateway(clients, clients, clients, recommendation_authorization=authorization)
-    settings = get_settings()
-    return RuntimeAgentDependencies(
-        gateway, store, getattr(request.app.state, "itinerary_llm", None), authorization,
-        tool_timeout_seconds=settings.itinerary_tool_timeout_seconds,
-        llm_timeout_seconds=settings.itinerary_llm_timeout_seconds,
-    )
-
-
-def _input(payload: ItineraryRequestModel, request_id: str) -> dict[str, Any]:
-    return {
-        "query": payload.message or "",
-        "conversation_id": payload.conversationId,
-        "intent_override": payload.intentOverride or {},
-        "language": payload.context.language if payload.context else None,
-        "request_id": request_id,
-    }
-
-
 def _unavailable(request_id: str) -> JSONResponse:
     return JSONResponse(status_code=503, content=error_response(
         "SEARCH_UNAVAILABLE", "Dịch vụ dữ liệu lịch trình chưa được cấu hình.", request_id, True
     ))
 
 
-async def _run(payload: ItineraryRequestModel, request: Request, authorization: str | None):
+async def _run(payload: ItineraryRequestModel, request: Request, authorization: str | None,
+               use_case: PlanItinerary):
     request_id = current_request_id() or uuid.uuid4().hex
     conversation = _conversation_label(payload)
     logger.info("itinerary.start requestId=%s conversationId=%s transport=json", request_id, conversation)
@@ -65,14 +41,11 @@ async def _run(payload: ItineraryRequestModel, request: Request, authorization: 
         return JSONResponse(status_code=422, content=error_response(
             "VALIDATION_ERROR", "Yêu cầu lịch trình không hợp lệ.", request_id
         ))
-    runtime = _runtime(request, authorization)
-    if runtime is None:
+    planner = use_case.planner(authorization)
+    if planner is None:
         return _unavailable(request_id)
     try:
-        state = await asyncio.wait_for(
-            runtime.graph().ainvoke(_input(payload, request_id)),
-            timeout=get_settings().itinerary_request_timeout_seconds,
-        )
+        state = await use_case.run(planner, payload.model_dump(), request_id)
     except TimeoutError:
         logger.warning("itinerary.timeout requestId=%s conversationId=%s transport=json", request_id, conversation)
         return JSONResponse(status_code=503, content=error_response(
@@ -103,35 +76,25 @@ def _observed_duration_ms(started_at: float, finished_at: float | None = None) -
     return max(1, round(((finished_at if finished_at is not None else perf_counter()) - started_at) * 1000))
 
 
-def _topology(graph: Any) -> dict[str, Any]:
-    drawing = graph.get_graph()
-    nodes = [node_id for node_id in drawing.nodes if node_id not in {"__start__", "__end__"}]
-    edges = [
-        {"source": edge.source, "target": edge.target, "conditional": edge.conditional}
-        for edge in drawing.edges
-        if edge.source != "__start__" and edge.target != "__end__"
-    ]
-    return {"nodes": nodes, "edges": edges}
-
-
 @router.post("/assistant/itineraries")
 async def create_itinerary(payload: ItineraryRequestModel, request: Request,
-                           authorization: str | None = Header(default=None)):
-    return await _run(payload, request, authorization)
+                           authorization: str | None = Header(default=None),
+                           use_case: PlanItinerary = Depends(get_plan_itinerary)):
+    return await _run(payload, request, authorization, use_case)
 
 
 @router.post("/assistant/itineraries/stream")
 async def stream_itinerary(payload: ItineraryRequestModel, request: Request,
-                           authorization: str | None = Header(default=None)):
+                           authorization: str | None = Header(default=None),
+                           use_case: PlanItinerary = Depends(get_plan_itinerary)):
     request_id = current_request_id() or uuid.uuid4().hex
     if not valid("ItineraryRequest", payload.model_dump(exclude_none=True)):
         return JSONResponse(status_code=422, content=error_response(
             "VALIDATION_ERROR", "Yêu cầu lịch trình không hợp lệ.", request_id
         ))
-    runtime = _runtime(request, authorization)
-    if runtime is None:
+    planner = use_case.planner(authorization)
+    if planner is None:
         return _unavailable(request_id)
-    graph = runtime.graph()
     run_id = uuid.uuid4().hex
     conversation = _conversation_label(payload)
     logger.info(
@@ -141,13 +104,13 @@ async def stream_itinerary(payload: ItineraryRequestModel, request: Request,
 
     async def events() -> AsyncIterator[str]:
         yield _sse("run.started", {"runId": run_id, "requestId": request_id})
-        yield _sse("graph.topology", _topology(graph))
+        yield _sse("graph.topology", planner.topology())
         emitted = 0
         last_node_at = perf_counter()
         final_state: dict[str, Any] | None = None
         try:
-            async with asyncio.timeout(get_settings().itinerary_request_timeout_seconds):
-                async for state in graph.astream(_input(payload, request_id), stream_mode="values"):
+            async with asyncio.timeout(use_case.request_timeout_seconds):
+                async for state in planner.astream(use_case.inputs(payload.model_dump(), request_id)):
                     final_state = state
                     new_events = state.get("events", [])[emitted:]
                     if not new_events:

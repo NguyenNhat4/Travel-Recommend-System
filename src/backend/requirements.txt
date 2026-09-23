@@ -11,7 +11,6 @@ psycopg[binary]>=3.2,<4
 langgraph>=1,<2
 langchain-core>=1,<2
 langchain-openai>=1,<2
-typer>=0.12,<1
 # recsys: vector trong bộ nhớ + embedding đa ngữ (catalog.product_vectors để trống tới tuần 2)
 numpy>=1.26
 sentence-transformers>=3.0
