@@ -102,8 +102,8 @@ jobs:
     runs-on: ubuntu-latest
     environment: staging
     env:
-      BACKEND_IMAGE: ${{ vars.GAR_BACKEND_IMAGE }}
-      CRAWLER_IMAGE: ${{ vars.GAR_DAILY_IMAGE }}
+      BACKEND_IMAGE: ${{ secrets.GAR_BACKEND_IMAGE }}
+      CRAWLER_IMAGE: ${{ secrets.GAR_DAILY_IMAGE }}
     outputs:
       backend_digest: ${{ steps.backend.outputs.digest }}
       crawler_digest: ${{ steps.crawler.outputs.digest }}
@@ -113,10 +113,10 @@ jobs:
 
       - name: Validate publishing configuration
         env:
-          GCP_WIF_PROVIDER: ${{ vars.GCP_WIF_PROVIDER }}
-          GCP_CI_SERVICE_ACCOUNT: ${{ vars.GCP_CI_SERVICE_ACCOUNT }}
-          BACKEND_IMAGE: ${{ vars.GAR_BACKEND_IMAGE }}
-          CRAWLER_IMAGE: ${{ vars.GAR_DAILY_IMAGE }}
+          GCP_WIF_PROVIDER: ${{ secrets.GCP_WIF_PROVIDER }}
+          GCP_CI_SERVICE_ACCOUNT: ${{ secrets.GCP_CI_SERVICE_ACCOUNT }}
+          BACKEND_IMAGE: ${{ secrets.GAR_BACKEND_IMAGE }}
+          CRAWLER_IMAGE: ${{ secrets.GAR_DAILY_IMAGE }}
         run: |
           for name in GCP_WIF_PROVIDER GCP_CI_SERVICE_ACCOUNT BACKEND_IMAGE CRAWLER_IMAGE; do
             if [ -z "${!name:-}" ]; then
@@ -131,8 +131,8 @@ jobs:
         id: auth
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
-          service_account: ${{ vars.GCP_CI_SERVICE_ACCOUNT }}
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_CI_SERVICE_ACCOUNT }}
           token_format: access_token
 
       - name: Log in to Artifact Registry
@@ -184,12 +184,12 @@ jobs:
 
       - name: Validate VM configuration
         env:
-          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-          GCE_INSTANCE: ${{ vars.GCE_INSTANCE }}
-          GCE_ZONE: ${{ vars.GCE_ZONE }}
-          GCE_DEPLOY_USER: ${{ vars.GCE_DEPLOY_USER }}
-          GCE_COMPOSE_FILE: ${{ vars.GCE_COMPOSE_FILE }}
-          GCE_BACKEND_HEALTH_URL: ${{ vars.GCE_BACKEND_HEALTH_URL }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCE_INSTANCE: ${{ secrets.GCE_INSTANCE }}
+          GCE_ZONE: ${{ secrets.GCE_ZONE }}
+          GCE_DEPLOY_USER: ${{ secrets.GCE_DEPLOY_USER }}
+          GCE_COMPOSE_FILE: ${{ secrets.GCE_COMPOSE_FILE }}
+          GCE_BACKEND_HEALTH_URL: ${{ secrets.GCE_BACKEND_HEALTH_URL }}
         run: |
           for name in GCP_PROJECT_ID GCE_INSTANCE GCE_ZONE GCE_DEPLOY_USER GCE_COMPOSE_FILE GCE_BACKEND_HEALTH_URL; do
             if [ -z "${!name:-}" ]; then
@@ -201,18 +201,18 @@ jobs:
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
-          service_account: ${{ vars.GCP_CI_SERVICE_ACCOUNT }}
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_CI_SERVICE_ACCOUNT }}
 
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v2
 
       - name: Copy deploy scripts to application VM
         env:
-          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-          GCE_INSTANCE: ${{ vars.GCE_INSTANCE }}
-          GCE_ZONE: ${{ vars.GCE_ZONE }}
-          GCE_DEPLOY_USER: ${{ vars.GCE_DEPLOY_USER }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCE_INSTANCE: ${{ secrets.GCE_INSTANCE }}
+          GCE_ZONE: ${{ secrets.GCE_ZONE }}
+          GCE_DEPLOY_USER: ${{ secrets.GCE_DEPLOY_USER }}
         run: |
           remote_dir="/tmp/vota-cicd-$GITHUB_RUN_ID"
           gcloud compute ssh "$GCE_DEPLOY_USER@$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --command "mkdir -p '$remote_dir'"
@@ -220,18 +220,18 @@ jobs:
 
       - name: Deploy immutable images and update existing cron
         env:
-          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-          GCE_INSTANCE: ${{ vars.GCE_INSTANCE }}
-          GCE_ZONE: ${{ vars.GCE_ZONE }}
-          GCE_DEPLOY_USER: ${{ vars.GCE_DEPLOY_USER }}
-          GCE_COMPOSE_FILE: ${{ vars.GCE_COMPOSE_FILE }}
-          GCE_BACKEND_HEALTH_URL: ${{ vars.GCE_BACKEND_HEALTH_URL }}
-          GCE_DB_TUNNEL_PORT: ${{ vars.GCE_DB_TUNNEL_PORT || '15432' }}
-          GCE_CRON_RUNNER: ${{ vars.GCE_CRON_RUNNER || '/opt/vota/bin/run_daily_docker.sh' }}
-          GCE_CRON_DATA_DIR: ${{ vars.GCE_CRON_DATA_DIR || '/srv/vota/daily-data' }}
-          GCE_CRON_ENV_FILE: ${{ vars.GCE_CRON_ENV_FILE || '/etc/vota/daily.env' }}
-          BACKEND_IMAGE: ${{ vars.GAR_BACKEND_IMAGE }}
-          CRAWLER_IMAGE: ${{ vars.GAR_DAILY_IMAGE }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCE_INSTANCE: ${{ secrets.GCE_INSTANCE }}
+          GCE_ZONE: ${{ secrets.GCE_ZONE }}
+          GCE_DEPLOY_USER: ${{ secrets.GCE_DEPLOY_USER }}
+          GCE_COMPOSE_FILE: ${{ secrets.GCE_COMPOSE_FILE }}
+          GCE_BACKEND_HEALTH_URL: ${{ secrets.GCE_BACKEND_HEALTH_URL }}
+          GCE_DB_TUNNEL_PORT: ${{ secrets.GCE_DB_TUNNEL_PORT || '15432' }}
+          GCE_CRON_RUNNER: ${{ secrets.GCE_CRON_RUNNER || '/opt/vota/bin/run_daily_docker.sh' }}
+          GCE_CRON_DATA_DIR: ${{ secrets.GCE_CRON_DATA_DIR || '/srv/vota/daily-data' }}
+          GCE_CRON_ENV_FILE: ${{ secrets.GCE_CRON_ENV_FILE || '/etc/vota/daily.env' }}
+          BACKEND_IMAGE: ${{ secrets.GAR_BACKEND_IMAGE }}
+          CRAWLER_IMAGE: ${{ secrets.GAR_DAILY_IMAGE }}
         run: |
           remote_dir="/tmp/vota-cicd-$GITHUB_RUN_ID"
           backend_ref="$BACKEND_IMAGE:latest"
