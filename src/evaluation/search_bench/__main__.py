@@ -421,30 +421,73 @@ gold_app = typer.Typer(no_args_is_help=True, help="Part 5: gold — pool, split 
 app.add_typer(gold_app, name="gold")
 
 
+def _fill_guard(ctx):
+    """Chặn --fill lấp ý định đã chết vì catalog trôi: nguồn không còn, hoặc filter khớp 0 sản phẩm."""
+    import json as _json
+
+    import pandas as pd
+
+    from . import paths
+    from .store import filters as F
+    items = pd.read_parquet(paths.data_dir(ctx.dataset) / paths.ITEMS)
+    alive = set(items["product_id"])
+
+    def guard(row: dict) -> Optional[str]:
+        refs = [r for r in (row.get("source_refs") or "").split("|") if r.strip()]
+        if refs and not any(r.strip() in alive for r in refs):
+            return "mọi source_refs đã biến mất khỏi catalog"
+        flt = (row.get("filter_json") or "").strip()
+        if flt:
+            try:
+                n = int(F.mask(_json.loads(flt), items).sum())
+            except Exception as e:                                  # filter hỏng → để người soát xử lý
+                return f"filter không đánh giá được ({e})"
+            if n == 0:
+                return "filter khớp 0 sản phẩm trong catalog hiện hành"
+        return None
+
+    return guard
+
+
 @gold_app.command("drafts")
 def gold_drafts(c: typer.Context,
                 labels: Optional[Path] = typer.Option(None, "--labels", help="mặc định bench_out/search/labels/labels.jsonl"),
                 raw: Optional[Path] = typer.Option(None, "--raw", help="mặc định gold/drafts_raw.tsv"),
                 out: Optional[Path] = typer.Option(None, "--out", help="mặc định gold/drafts.txt"),
+                fill: bool = typer.Option(False, "--fill", help="slice thiếu quota: lấy lại 1 cách nói của ý định chưa có "
+                                                               "(chưa gán, hoặc loại vì duplicate/unnatural), có kiểm grounding"),
                 dry_run: bool = typer.Option(False, "--dry-run", help="chỉ in báo cáo, không ghi file")):
     """Nhãn của app soát draft (KEEP/REJECT/NEEDS_EDIT) → gold/drafts.txt: giữ 1 cách nói mỗi ý định, cắt theo quota."""
+    from collections import Counter
+
     from . import paths
     from .gold import (GoldError, read_draft_cases, render_drafts_report, resolve_decisions, select_drafts,
                        write_drafts)
     from .labeling import JsonlLabelStore
-    cfg = _ctx(c).cfg()
+    ctx = _ctx(c)
+    cfg = ctx.cfg()
     labels_p = labels or paths.sbench_home() / "labels" / "labels.jsonl"
     raw_p = raw or paths.GOLD_DIR / "drafts_raw.tsv"
     out_p = out or paths.GOLD_DIR / "drafts.txt"
     if not labels_p.exists():
         _fail(f"không thấy kho nhãn {labels_p} — chạy app soát draft (streamlit_app.py) trước", 2)
+    guard = _fill_guard(ctx) if fill else None
     try:
         cases = read_draft_cases(raw_p)
         decisions, conflicts = resolve_decisions(JsonlLabelStore(labels_p).load_events())
-        rows, report = select_drafts(cases, decisions, dict(cfg.gold.slices))
+        rows, report = select_drafts(cases, decisions, dict(cfg.gold.slices), fill=fill, fill_guard=guard)
     except GoldError as e:
         _fail(str(e), 2)
     typer.echo(render_drafts_report(report))
+    if report["filled"]:
+        typer.secho(f"  --fill: lấp {len(report['filled'])} ý định (nguồn: "
+                    f"{dict(Counter(f['kind'].split(' (')[0] for f in report['filled']))})", fg=typer.colors.CYAN)
+        for f in report["filled"]:
+            typer.echo(f"      + {f['case_id']} [{f['slice']}] {f['kind']}: {f['query']}")
+    if report["skipped_fill"]:
+        typer.secho(f"  --fill bỏ qua {len(report['skipped_fill'])} ý định:", fg=typer.colors.YELLOW)
+        for s in report["skipped_fill"][:40]:
+            typer.echo(f"      - {s['case_id']} [{s['slice']}] {s['why']}")
     typer.echo(f"  nhãn: {len(decisions)}/{len(cases)} case đã gán · loại {sum(report['reject_reasons'].values())} "
                f"({report['reject_reasons']}) · gộp {len(report['dropped_duplicate'])} cách nói trùng ý định")
     if conflicts:

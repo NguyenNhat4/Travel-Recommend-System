@@ -4,7 +4,10 @@ chỗ nghỉ tại TP. Hồ Chí Minh	dest_type
 tìm nơi lưu trú ở Huế, gợi ý thêm	dest_type
 khách sạn nghỉ dưỡng tại Đà Nẵng, có lựa chọn nào?	dest_type
 tìm chỗ nghỉ tại Hà Tĩnh	dest_type
+khách sạn ở Nghệ An	dest_type
 khách sạn nghỉ dưỡng tại Hội An, có lựa chọn nào?	dest_type
+chỗ nghỉ tại Sa Pa	dest_type
+tìm nơi lưu trú ở Cần Thơ	dest_type
 điểm vui chơi ở Phú Quốc	dest_type
 vé tham quan tại Phú Quốc, có lựa chọn nào?	dest_type
 tìm hoạt động trải nghiệm ở Hà Nội	dest_type
@@ -13,8 +16,11 @@ hoạt động trải nghiệm ở Nghệ An	dest_type
 tìm combo du lịch Quy Nhơn	dest_type
 tìm gói vui chơi ở Hội An	dest_type
 combo trải nghiệm tại Phú Quốc	dest_type
+gói vui chơi ở Nghệ An	dest_type
 vé máy bay đến Hà Nội	dest_type
+chuyến bay đi TP. Hồ Chí Minh	dest_type
 đường bay tới Huế, có lựa chọn nào?	dest_type
+vé máy bay đến Đà Nẵng	dest_type
 sân golf ở Nha Trang	dest_type
 voucher golf tại Hội An	dest_type
 chỗ nghỉ Huế cho gia đình có trẻ nhỏ, ưu tiên nơi được đánh giá tốt	audience_style
@@ -47,6 +53,10 @@ tìm khách sạn ở Sa Pa có nhà hàng	amenity_single
 chỗ nghỉ Côn Đảo với lễ tân 24 giờ, có lựa chọn nào?	amenity_single
 Nha Trang có nơi lưu trú nào có xe đưa đón sân bay	amenity_single
 tìm chỗ nghỉ Hạ Long có phòng nhìn ra biển	amenity_single
+Nghệ An có nơi lưu trú nào có hồ bơi view đẹp	amenity_single
+khách sạn ở Phú Quốc có phòng không hút thuốc	amenity_single
+tìm chỗ nghỉ Phan Thiết với bồn tắm	amenity_single
+Đà Lạt có nơi lưu trú nào có sân hiên	amenity_single
 chỗ nghỉ Buôn Ma Thuột có WiFi miễn phí và chỗ đỗ xe miễn phí	amenity_multi
 chỗ nghỉ Bắc Ninh có Nhà hàng và phòng không hút thuốc	amenity_multi
 chỗ nghỉ Cát Bà có WiFi miễn phí và phòng gia đình	amenity_multi
@@ -77,6 +87,7 @@ tìm Phòng Deluxe Giường Đôi Có Ban Công ở Hà Nội	parent_child
 tìm khách sạn Hà Tĩnh có Phòng Deluxe 2 Giường đơn	parent_child
 Căn Hộ Nhìn Ra Biển tại Hạ Long	parent_child
 Phòng Giường Đôi ở Hải Phòng	parent_child
+khách sạn Hội An có Phòng Deluxe Có Ban Công/Sân Hiên	parent_child
 Biệt Thự Có Hồ Bơi Riêng tại Nghệ An	parent_child
 Phòng 2 Giường Đơn Hạng Bình Dân ở Nha Trang	parent_child
 khách sạn Ninh Bình có Phòng Có Giường Cỡ King Nhìn Ra Vườn	parent_child
@@ -85,6 +96,7 @@ Vinpearl Hotel Bắc Ninh	named_entity
 thông tin Meliá Vinpearl Hue	named_entity
 thông tin Vinpearl Ha Tinh, Affiliated by Meliá	named_entity
 thông tin Vinpearl Resort & Spa Hạ Long	named_entity
+Meliá Vinpearl Hai Phong Rivera	named_entity
 tìm Vinpearl Resort & Golf Nam Hội An	named_entity
 thông tin Vinpearl Resort & Golf Nam Hội An - Deluxe Giường Đôi	named_entity
 tìm Vinpearl Resort & Golf Nam Hội An - Deluxe 2 Giường Đơn	named_entity
@@ -103,9 +115,16 @@ khach san o ha long co ho boi co tam nhin	no_diacritics
 khach san o phan thiet co phong khong hut thuoc	no_diacritics
 khach san o ha noi co san hien	no_diacritics
 khach san o phan thiet co nha hang	no_diacritics
+khach san o phu quoc co le tan 24 gio	no_diacritics
 khach san o phan thiet co nhin ra bien gia tot	no_diacritics
+khach san o ha long co phong khong hut thuoc	no_diacritics
+khach san o ha long co san hien	no_diacritics
 tim khach san o tp. ho chi minh co wifi mien phi	no_diacritics
 khach san o ha noi co may dieu hoa	no_diacritics
+khach san o ninh binh co ban cong	no_diacritics
+khach san o hai phong co phong khong hut thuoc	no_diacritics
+khach san o sa pa co san hien	no_diacritics
+khach san o da nang co wifi mien phi	no_diacritics
 KS ở PQ có hồ bơi	abbrev_typo
 KDL NT cho gia đình	abbrev_typo
 KS trung tâm ĐN có wifi	abbrev_typo
@@ -122,9 +141,24 @@ ve Safari PQ	abbrev_typo
 KS HL nhin ra bien	abbrev_typo
 KDL Phan Thiet nghi duong	abbrev_typo
 khách sạn 5 sao ở Hà Tĩnh dưới 2 triệu	multi_constraint	{"and":[{"eq":["destination","Hà Tĩnh"]},{"eq":["variant","hotel_property"]},{"gte":["star_rating",5]},{"lte":["unit_price_min",2000000]}]}
+KS 3 sao tại Sa Pa, ngân sách tối đa 2 triệu	multi_constraint	{"and":[{"eq":["destination","Sa Pa"]},{"eq":["variant","hotel_property"]},{"gte":["star_rating",3]},{"lte":["unit_price_min",2000000]}]}
 chỗ nghỉ Quy Nhơn từ 4 sao, giá không quá 1 triệu, còn lựa chọn nào?	multi_constraint	{"and":[{"eq":["destination","Quy Nhơn"]},{"eq":["variant","hotel_property"]},{"gte":["star_rating",4]},{"lte":["unit_price_min",1000000]}]}
+khách sạn 3 sao ở Côn Đảo dưới 1.5 triệu	multi_constraint	{"and":[{"eq":["destination","Côn Đảo"]},{"eq":["variant","hotel_property"]},{"gte":["star_rating",3]},{"lte":["unit_price_min",1500000]}]}
 KS 4 sao tại Hạ Long, ngân sách tối đa 1.5 triệu, còn lựa chọn nào?	multi_constraint	{"and":[{"eq":["destination","Hạ Long"]},{"eq":["variant","hotel_property"]},{"gte":["star_rating",4]},{"lte":["unit_price_min",1500000]}]}
+tìm chỗ nghỉ Phú Quốc từ 5 sao, giá không quá 3 triệu	multi_constraint	{"and":[{"eq":["destination","Phú Quốc"]},{"eq":["variant","hotel_property"]},{"gte":["star_rating",5]},{"lte":["unit_price_min",3000000]}]}
+khách sạn 4 sao ở Đà Nẵng dưới 1.5 triệu	multi_constraint	{"and":[{"eq":["destination","Đà Nẵng"]},{"eq":["variant","hotel_property"]},{"gte":["star_rating",4]},{"lte":["unit_price_min",1500000]}]}
+tìm KS 3 sao tại Điện Biên, ngân sách tối đa 0.5 triệu	multi_constraint	{"and":[{"eq":["destination","Điện Biên"]},{"eq":["variant","hotel_property"]},{"gte":["star_rating",3]},{"lte":["unit_price_min",500000]}]}
+chỗ nghỉ Nghệ An từ 3 sao, giá không quá 1 triệu	multi_constraint	{"and":[{"eq":["destination","Nghệ An"]},{"eq":["variant","hotel_property"]},{"gte":["star_rating",3]},{"lte":["unit_price_min",1000000]}]}
+khách sạn 4 sao ở Phan Thiết dưới 2 triệu	multi_constraint	{"and":[{"eq":["destination","Phan Thiết"]},{"eq":["variant","hotel_property"]},{"gte":["star_rating",4]},{"lte":["unit_price_min",2000000]}]}
+KS 3 sao tại Hải Phòng, ngân sách tối đa 1 triệu	multi_constraint	{"and":[{"eq":["destination","Hải Phòng"]},{"eq":["variant","hotel_property"]},{"gte":["star_rating",3]},{"lte":["unit_price_min",1000000]}]}
+chỗ nghỉ Đà Nẵng từ 3 sao, giá không quá 1 triệu	multi_constraint	{"and":[{"eq":["destination","Đà Nẵng"]},{"eq":["variant","hotel_property"]},{"gte":["star_rating",3]},{"lte":["unit_price_min",1000000]}]}
+khách sạn 3 sao ở Nha Trang dưới 0.5 triệu	multi_constraint	{"and":[{"eq":["destination","Nha Trang"]},{"eq":["variant","hotel_property"]},{"gte":["star_rating",3]},{"lte":["unit_price_min",500000]}]}
+KS 3 sao tại Phan Thiết, ngân sách tối đa 1.5 triệu	multi_constraint	{"and":[{"eq":["destination","Phan Thiết"]},{"eq":["variant","hotel_property"]},{"gte":["star_rating",3]},{"lte":["unit_price_min",1500000]}]}
+chỗ nghỉ TP. Hồ Chí Minh từ 3 sao, giá không quá 1 triệu	multi_constraint	{"and":[{"eq":["destination","TP. Hồ Chí Minh"]},{"eq":["variant","hotel_property"]},{"gte":["star_rating",3]},{"lte":["unit_price_min",1000000]}]}
+khách sạn 4 sao ở Hà Nội dưới 1 triệu	multi_constraint	{"and":[{"eq":["destination","Hà Nội"]},{"eq":["variant","hotel_property"]},{"gte":["star_rating",4]},{"lte":["unit_price_min",1000000]}]}
 KS 3 sao tại Phan Thiết, ngân sách tối đa 0.5 triệu, còn lựa chọn nào?	multi_constraint	{"and":[{"eq":["destination","Phan Thiết"]},{"eq":["variant","hotel_property"]},{"gte":["star_rating",3]},{"lte":["unit_price_min",500000]}]}
+chỗ nghỉ Đà Nẵng từ 4 sao, giá không quá 1 triệu	multi_constraint	{"and":[{"eq":["destination","Đà Nẵng"]},{"eq":["variant","hotel_property"]},{"gte":["star_rating",4]},{"lte":["unit_price_min",1000000]}]}
+khách sạn 4 sao ở Cần Thơ dưới 2 triệu	multi_constraint	{"and":[{"eq":["destination","Cần Thơ"]},{"eq":["variant","hotel_property"]},{"gte":["star_rating",4]},{"lte":["unit_price_min",2000000]}]}
 KS 5 sao tại Hạ Long, ngân sách tối đa 9.5 triệu	multi_constraint	{"and":[{"eq":["destination","Hạ Long"]},{"eq":["variant","hotel_property"]},{"gte":["star_rating",5]},{"lte":["unit_price_min",9500000]}]}
 khách sạn, vé máy bay và vé tham quan ở Buôn Ma Thuột	cross_vertical
 mình cần khách sạn, vé máy bay, vé tham quan và combo du lịch ở Cần Thơ	cross_vertical
@@ -141,3 +175,8 @@ vé tham quan Hà Giang	out_of_catalog		true
 resort ở Mộc Châu	out_of_catalog		true
 vé tham quan Vũng Tàu	out_of_catalog		true
 combo du lịch Cà Mau	out_of_catalog		true
+combo du lịch Lạng Sơn	out_of_catalog		true
+resort ở Hải Dương	out_of_catalog		true
+resort ở Sóc Trăng	out_of_catalog		true
+resort ở Bảo Lộc	out_of_catalog		true
+resort ở Lý Sơn	out_of_catalog		true

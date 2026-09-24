@@ -227,7 +227,15 @@ def resolve_decisions(events: list) -> tuple[dict[str, dict], list[str]]:
     return decisions, sorted(conflicts)
 
 
-def select_drafts(cases: list[dict], decisions: dict[str, dict], quota: dict[str, int]) -> tuple[list[dict], dict]:
+# `review_note` chỉ là khoá ý định đầy đủ ở hai slice này (loại x dia danh / dia danh vang);
+# o cac slice khac no chi mo ta khuon rang buoc (vi du multi_constraint: "star=3;price<=1000000"),
+# hai y dinh khac diem den van dung chung note nen KHONG duoc coi la trung.
+NOTE_IS_INTENT_KEY = ("dest_type", "out_of_catalog")
+PHRASING_REASONS = ("duplicate", "unnatural")   # lỗi của cách nói, không phải của ý định → ý định vẫn dùng được
+
+
+def select_drafts(cases: list[dict], decisions: dict[str, dict], quota: dict[str, int], *,
+                  fill: bool = False, fill_guard=None) -> tuple[list[dict], dict]:
     """Chọn bộ draft cuối: giữ 1 cách nói cho mỗi ý định, cắt theo quota từng slice.
 
     Trả về (rows, report). `rows` giữ thứ tự case_id; mỗi row có query đã áp NEEDS_EDIT.
@@ -256,12 +264,48 @@ def select_drafts(cases: list[dict], decisions: dict[str, dict], quota: dict[str
             continue
         kept_by_intent[key] = {**row, "query": query.strip(), "verdict": d["verdict"], "annotator": d["annotator"]}
 
+    by_intent_rows: dict[tuple[str, int], list[dict]] = {}
+    for row in cases:
+        by_intent_rows.setdefault(intent_key(row["case_id"], row["slice"]), []).append(row)
+
+    filled: list[dict] = []
+    skipped_fill: list[dict] = []
     selected: list[dict] = []
     over_quota: dict[str, list[str]] = {}
     per_slice: dict[str, dict] = {}
     for sl, q in quota.items():
         avail = sorted((r for r in kept_by_intent.values() if r["slice"] == sl), key=lambda r: r["case_id"])
         take, rest = avail[:q], avail[q:]
+        if fill and len(take) < q:
+            covered = {(r.get("review_note") or "").strip() for r in take} if sl in NOTE_IS_INTENT_KEY else set()
+            for key, rows_ in sorted(by_intent_rows.items(), key=lambda kv: kv[1][0]["case_id"]):
+                if len(take) >= q or key[0] != sl or key in kept_by_intent:
+                    continue
+                verdicts = [decisions.get(r["case_id"]) for r in rows_]
+                if any(v is None for v in verdicts):
+                    kind = "chưa gán"
+                elif all((v["rejection_reason"] or "other") in PHRASING_REASONS for v in verdicts):
+                    kind = "loại vì cách nói (" + ", ".join(sorted({v["rejection_reason"] for v in verdicts})) + ")"
+                else:
+                    bad = sorted({v["rejection_reason"] for v in verdicts} - set(PHRASING_REASONS))
+                    skipped_fill.append({"case_id": rows_[0]["case_id"], "slice": sl,
+                                         "why": "loại vì lỗi thật: " + ", ".join(bad)})
+                    continue
+                cand = rows_[0]                                   # cách nói gốc: case_id nhỏ nhất của ý định
+                note = (cand.get("review_note") or "").strip() if sl in NOTE_IS_INTENT_KEY else ""
+                if note and note in covered:
+                    skipped_fill.append({"case_id": cand["case_id"], "slice": sl,
+                                         "why": f"trùng khoá ý định đã có ({note})"})
+                    continue
+                why = fill_guard(cand) if fill_guard else None
+                if why:
+                    skipped_fill.append({"case_id": cand["case_id"], "slice": sl, "why": why})
+                    continue
+                row = {**cand, "verdict": "AUTO_FILL", "annotator": "auto"}
+                take.append(row)
+                filled.append({"case_id": cand["case_id"], "slice": sl, "kind": kind, "query": cand["query"]})
+                covered.add(note)
+            take.sort(key=lambda r: r["case_id"])
         selected += take
         if rest:
             over_quota[sl] = [r["case_id"] for r in rest]
@@ -278,7 +322,8 @@ def select_drafts(cases: list[dict], decisions: dict[str, dict], quota: dict[str
 
     report = {"per_slice": per_slice, "selected": len(selected), "target": sum(quota.values()),
               "dropped_duplicate": dropped_duplicate, "over_quota": over_quota,
-              "reject_reasons": dict(reasons), "ungraded_total": sum(ungraded.values())}
+              "reject_reasons": dict(reasons), "ungraded_total": sum(ungraded.values()),
+              "filled": filled, "skipped_fill": skipped_fill}
     return selected, report
 
 

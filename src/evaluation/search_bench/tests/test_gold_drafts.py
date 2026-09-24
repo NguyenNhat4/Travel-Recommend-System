@@ -12,7 +12,8 @@ HEADER = "case_id\tquery\tslice\tfilter_json\texpected_no_result\tsource_refs\tr
 
 
 def _case(n: int, slice_: str, query: str, filter_json: str = "", eno: str = "") -> str:
-    return f"c{n:04d}\t{query}\t{slice_}\t{filter_json}\t{eno}\tp1\tnote"
+    # review_note khác nhau từng case: ở dest_type/out_of_catalog nó là khoá ý định, trùng note = trùng ý định
+    return f"c{n:04d}\t{query}\t{slice_}\t{filter_json}\t{eno}\tp1\tnote-{n}"
 
 
 def _event(case_id: str, annotator: str, verdict: str, *, at: str, edited: str = "", reason: str = "",
@@ -103,3 +104,63 @@ def test_drafts_txt_doc_lai_duoc_bang_parse_drafts(tmp_path, raw_tsv):
     assert [d.qid for d in drafts] == ["q001", "q002"]
     assert drafts[0].filter is not None and drafts[0].filter_raw == flt
     assert drafts[1].expected_no_result is True and drafts[1].filter is None
+
+
+def test_fill_lay_lai_y_dinh_chua_gan_va_y_dinh_loai_vi_cach_noi(raw_tsv):
+    cases = read_draft_cases(raw_tsv)
+    events = [
+        _event("c0001", "khoi", "KEEP", at="2026-09-24T01:00:00+00:00"),
+        # cả 3 dòng của ý định c0004-c0006 bị loại vì cách nói → --fill lấy lại dòng gốc
+        *[_event(f"c{n:04d}", "khoi", "REJECT", at="2026-09-24T01:00:00+00:00", reason="duplicate") for n in (4, 5, 6)],
+    ]
+    decisions, _ = resolve_decisions(events)
+    rows, report = select_drafts(cases, decisions, QUOTA, fill=True)
+    got = [r["case_id"] for r in rows]
+    assert got == ["c0001", "c0004", "c0007", "c0008"]        # c0004 lấy lại, c0007/c0008 là ý định chưa gán
+    kinds = {f["case_id"]: f["kind"] for f in report["filled"]}
+    assert kinds["c0004"].startswith("loại vì cách nói")
+    assert kinds["c0007"] == "chưa gán"
+
+
+def test_fill_khong_dung_y_dinh_bi_loai_vi_loi_that(raw_tsv):
+    cases = read_draft_cases(raw_tsv)
+    events = [_event(f"c{n:04d}", "khoi", "REJECT", at="2026-09-24T01:00:00+00:00", reason="fabricated_entity")
+              for n in (1, 2, 3)]
+    decisions, _ = resolve_decisions(events)
+    rows, report = select_drafts(cases, decisions, QUOTA, fill=True)
+    assert "c0001" not in [r["case_id"] for r in rows]
+    assert any(s["case_id"] == "c0001" and "lỗi thật" in s["why"] for s in report["skipped_fill"])
+
+
+def test_fill_ton_trong_fill_guard(raw_tsv):
+    cases = read_draft_cases(raw_tsv)
+    rows, report = select_drafts(cases, {}, QUOTA, fill=True,
+                                 fill_guard=lambda r: "nguồn đã chết" if r["case_id"] == "c0001" else None)
+    assert [r["case_id"] for r in rows] == ["c0004", "c0007", "c0008"]
+    assert any(s["case_id"] == "c0001" and s["why"] == "nguồn đã chết" for s in report["skipped_fill"])
+
+
+def test_fill_chi_khu_trung_theo_review_note_o_slice_co_khoa(tmp_path):
+    """dest_type: note là khoá (loại × địa danh) → chặn trùng. Slice khác: note chỉ là khuôn → không chặn."""
+    rows_txt = [
+        "c0001\tkhách sạn ở Huế\tdest_type\t\t\tp1\thotel:Huế",
+        "c0002\ttìm khách sạn ở Huế\tdest_type\t\t\tp1\thotel:Huế",
+        "c0003\tkhách sạn ở Huế, còn chỗ nào?\tdest_type\t\t\tp1\thotel:Huế",
+        "c0004\tkhách sạn tại Huế\tdest_type\t\t\tp2\thotel:Huế",          # cùng khoá với c0001
+        "c0005\ttìm khách sạn tại Huế\tdest_type\t\t\tp2\thotel:Huế",
+        "c0006\tkhách sạn tại Huế nhé\tdest_type\t\t\tp2\thotel:Huế",
+        "c0007\tkhách sạn 3 sao Đà Nẵng dưới 1 triệu\tmulti_constraint\t\t\tp3\tstar=3;price<=1000000",
+        "c0008\ttìm khách sạn 3 sao Đà Nẵng dưới 1 triệu\tmulti_constraint\t\t\tp3\tstar=3;price<=1000000",
+        "c0009\tkhách sạn 3 sao Đà Nẵng dưới 1 triệu?\tmulti_constraint\t\t\tp3\tstar=3;price<=1000000",
+        "c0010\tkhách sạn 3 sao Hà Nội dưới 1 triệu\tmulti_constraint\t\t\tp4\tstar=3;price<=1000000",  # khác điểm đến
+        "c0011\ttìm khách sạn 3 sao Hà Nội dưới 1 triệu\tmulti_constraint\t\t\tp4\tstar=3;price<=1000000",
+        "c0012\tkhách sạn 3 sao Hà Nội dưới 1 triệu?\tmulti_constraint\t\t\tp4\tstar=3;price<=1000000",
+    ]
+    p = tmp_path / "raw.tsv"
+    p.write_text("\n".join([HEADER, *rows_txt]) + "\n", encoding="utf-8")
+    cases = read_draft_cases(p)
+    rows, report = select_drafts(cases, {}, {"dest_type": 2, "multi_constraint": 2}, fill=True)
+    got = [r["case_id"] for r in rows]
+    assert "c0004" not in got                                  # dest_type: cùng khoá hotel:Huế → chặn
+    assert got == ["c0001", "c0007", "c0010"]                  # multi_constraint: khác điểm đến → vẫn lấy
+    assert any(s["case_id"] == "c0004" and "trùng khoá" in s["why"] for s in report["skipped_fill"])
