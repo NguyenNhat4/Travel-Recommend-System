@@ -155,10 +155,10 @@ sudo install -D -m 600 -o "$USER" /dev/null /etc/vota/daily.env    # ENV_FILE m�
 
 Entrypoint [run_fresh_catalog_vm.sh](run_fresh_catalog_vm.sh) dùng code của repo này để cào các nguồn khác và chuẩn hóa; riêng khách sạn Trip.com dùng `tripcom-hotel-crawler`: HTTP/SSR lấy metadata nhanh, rồi Chromium trong Xvfb bắt JSON phòng/giá thật. VM không cần desktop. `cron_hotels_daily.sh` cũ nay gọi entrypoint này và **không còn ghi staging**.
 
-- Lượt đầu: cào mới tất cả nguồn, tìm ID khách sạn Trip.com, lấy giá/trạng thái ở các mốc 14/30/60 ngày; chuẩn hóa 13 trường và upsert `cdp.products`/`catalog.combo_items`. Không đọc `data/products.jsonl`, interim hay snapshot cũ làm dữ liệu nguồn.
-- Hằng ngày: dùng danh sách ID/thành phố đã tìm để hỏi JSON phòng/giá mới cho cả phòng cũ và phòng mới. Mặc định 7 ngày lại chạy full để tìm khách sạn mới và cập nhật các nguồn khác. `FULL_REFRESH_DAYS=1` nếu VM đủ tài nguyên và cần full mỗi ngày.
+- Lượt đầu và mỗi 7 ngày: cào mới các nguồn, tìm ID Trip.com ở 7 thành phố, chọn tối đa 3 ID mới/thành phố từ tối đa 300 ID đã quét/thành phố để hỏi giá tại mốc 14/30/60 ngày; chuẩn hóa 13 trường rồi upsert `cdp.products`/`catalog.combo_items`. Tăng `TRIP_DISCOVERY_SCAN_PER_CITY` khi vùng quét đã hết ID mới. Không dùng `data/products.jsonl`, interim hoặc snapshot cũ làm dữ liệu nguồn.
+- Hằng ngày còn lại: xoay vòng tối đa 60 ID đã biết, ưu tiên ID chưa thử/lâu chưa thử, hỏi JSON phòng/giá mới cho cả phòng cũ và phòng mới. Chỉ file ID/thành phố và thời điểm thử/thành công được giữ cho lịch chạy. Giá Trip.com gốc quá 7 ngày chưa làm mới sẽ được đặt chưa khả dụng để không quảng bá giá cũ.
 - DB giữ các trường mô tả đã có, cập nhật giá/trạng thái, thêm phòng mới, đánh dấu phòng Trip.com không còn xuất hiện trong phản hồi hợp lệ là hết bán. Một phản hồi lỗi/chặn **không** được coi là hết phòng. Không xóa `cdp.products` đã được đơn hàng tham chiếu.
-- Raw/HTML/JSON, `products.jsonl` và báo cáo chỉ tồn tại trong lượt chạy rồi được xóa mặc định. Chỉ giữ danh sách ID/thành phố và marker lịch full. Đặt `KEEP_FAILED_RUNS=1` nếu cần giữ mẫu lỗi để điều tra.
+- Raw/HTML/JSON, `products.jsonl` và báo cáo chỉ tồn tại trong lượt chạy rồi được xóa mặc định. Chỉ giữ danh sách ID/thành phố, thời điểm xoay vòng và marker lịch full. Đặt `KEEP_FAILED_RUNS=1` nếu cần giữ mẫu lỗi để điều tra.
 
 Cài một lần trên Ubuntu VM/VPS, với hai repo cạnh nhau; dùng Python `vsf2`, cài requirements của hai repo, Playwright Chromium và `xvfb`. Đặt secret ở file ngoài Git, quyền `600`:
 
@@ -167,8 +167,11 @@ Cài một lần trên Ubuntu VM/VPS, với hai repo cạnh nhau; dùng Python `
 PYTHON_BIN=/absolute/path/to/vsf2/bin/python
 SEED_DATABASE_URL=postgresql://USER:PASSWORD@127.0.0.1:5432/vota
 DB_TARGET=local
-PRICE_WORKERS=5
-FAST_WORKERS=5
+PRICE_WORKERS=2
+FAST_WORKERS=4
+TRIP_DAILY_HOTELS=60
+TRIP_NEW_PER_CITY=3
+TRIP_DISCOVERY_SCAN_PER_CITY=300
 MIN_DELAY=0.5
 MAX_DELAY=1.0
 FULL_REFRESH_DAYS=7
