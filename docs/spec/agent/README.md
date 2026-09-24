@@ -15,6 +15,8 @@ chỉ dẫn thứ tự đọc tối thiểu và chọn thêm tài liệu/source 
 | [golden-run.md](golden-run.md) | Chạy bộ golden: chuẩn bị Postgres/backend, các cờ của runner, đọc kết quả, lỗi thường gặp |
 | [golden-dataset.md](golden-dataset.md) | Cấu trúc bộ golden 75 case, các khoá `expect`, cách thêm case và xử lý khi case fail |
 | [evaluation-plan.md](evaluation-plan.md) | Bộ 12 case chạy tay qua Streamlit (fixture 50 sản phẩm) và bộ 75 case chạy tự động trên catalog thật (`src/evaluation/agent/golden.py`) — cách chấm, mẫu biên bản, giới hạn đã biết |
+| [presentation-slides.html](presentation-slides.html) | Bộ 14 slide giới thiệu agent (mở bằng trình duyệt, phím ←/→); số liệu golden ngày 2026-09-24 |
+| [presentation-script.md](presentation-script.md) | Kịch bản nói theo từng slide, phần demo trực tiếp và câu hỏi dễ gặp |
 
 ## Chạy demo
 

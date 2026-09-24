@@ -556,11 +556,11 @@ nghỉ và chạy tiếp khi bị chặn (mã thoát 75).
   lat/lng tối đa 30 ngày. Link Google Maps trong các file CSV chỉ để mở xem.
 
 <!-- seed-report:start -->
-### Snapshot seed gần nhất — `2026-09-23`
+### Snapshot seed gần nhất — `2026-09-24`
 
 - Nguồn catalog: `src/data_collection/data/snapshots/2026-09-23/products.jsonl` — SHA-256 `518a9aa7820c9ded4a02a2c9148af2ffa4103272071c84b6e0235f4ee251d862`.
 - Seed `42`: 11,387 products · 2,000 profiles · 7,145 events · 307 combo items.
-- Search units: 3,183; vector được index sang collection `Product` của Weaviate bằng pipeline Recommendation riêng.
+- Search units: 3,183; vector nằm ngoài PostgreSQL và được index sang Weaviate bằng `make index-vectors`.
 - Insider clone: 2,000 profiles · 4,167 events · 19,522 channel events.
 - Purchase thiếu `event_group_id` là edge case được sinh có chủ đích khoảng 3%; không xoá purchase.
 <!-- seed-report:end -->
