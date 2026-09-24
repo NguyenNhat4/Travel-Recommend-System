@@ -421,6 +421,46 @@ gold_app = typer.Typer(no_args_is_help=True, help="Part 5: gold — pool, split 
 app.add_typer(gold_app, name="gold")
 
 
+@gold_app.command("drafts")
+def gold_drafts(c: typer.Context,
+                labels: Optional[Path] = typer.Option(None, "--labels", help="mặc định bench_out/search/labels/labels.jsonl"),
+                raw: Optional[Path] = typer.Option(None, "--raw", help="mặc định gold/drafts_raw.tsv"),
+                out: Optional[Path] = typer.Option(None, "--out", help="mặc định gold/drafts.txt"),
+                dry_run: bool = typer.Option(False, "--dry-run", help="chỉ in báo cáo, không ghi file")):
+    """Nhãn của app soát draft (KEEP/REJECT/NEEDS_EDIT) → gold/drafts.txt: giữ 1 cách nói mỗi ý định, cắt theo quota."""
+    from . import paths
+    from .gold import (GoldError, read_draft_cases, render_drafts_report, resolve_decisions, select_drafts,
+                       write_drafts)
+    from .labeling import JsonlLabelStore
+    cfg = _ctx(c).cfg()
+    labels_p = labels or paths.sbench_home() / "labels" / "labels.jsonl"
+    raw_p = raw or paths.GOLD_DIR / "drafts_raw.tsv"
+    out_p = out or paths.GOLD_DIR / "drafts.txt"
+    if not labels_p.exists():
+        _fail(f"không thấy kho nhãn {labels_p} — chạy app soát draft (streamlit_app.py) trước", 2)
+    try:
+        cases = read_draft_cases(raw_p)
+        decisions, conflicts = resolve_decisions(JsonlLabelStore(labels_p).load_events())
+        rows, report = select_drafts(cases, decisions, dict(cfg.gold.slices))
+    except GoldError as e:
+        _fail(str(e), 2)
+    typer.echo(render_drafts_report(report))
+    typer.echo(f"  nhãn: {len(decisions)}/{len(cases)} case đã gán · loại {sum(report['reject_reasons'].values())} "
+               f"({report['reject_reasons']}) · gộp {len(report['dropped_duplicate'])} cách nói trùng ý định")
+    if conflicts:
+        typer.secho(f"  BẤT ĐỒNG giữa annotator, không chọn: {', '.join(conflicts)}", fg=typer.colors.YELLOW)
+    for sl, ids in report["over_quota"].items():
+        typer.secho(f"  {sl} thừa {len(ids)} ý định so với quota, bỏ: {', '.join(ids)}", fg=typer.colors.YELLOW)
+    if dry_run:
+        typer.echo("  --dry-run: không ghi file")
+        return
+    write_drafts(out_p, rows)
+    typer.echo(f"{out_p}: {len(rows)} dòng")
+    if report["selected"] < report["target"]:
+        typer.secho(f"  chưa đủ {report['target']} — còn thiếu {report['target'] - report['selected']} ý định; "
+                    f"`sb gold pool` vẫn chạy được nhưng gold sẽ mỏng hơn kế hoạch", fg=typer.colors.YELLOW)
+
+
 @gold_app.command("pool")
 def gold_pool(c: typer.Context,
               drafts: Optional[Path] = typer.Option(None, "--drafts", help="mặc định gold/drafts.txt của package"),

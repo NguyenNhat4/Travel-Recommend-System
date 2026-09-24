@@ -475,6 +475,7 @@ Dedupe theo cha: làm ở app (lấy `limit × 3`, giữ ≤ 1 / `parent_product
 
 | Lệnh | Việc |
 |---|---|
+| `sb gold drafts` | nhãn của app soát draft (`bench_out/search/labels/labels.jsonl`: KEEP / REJECT / NEEDS_EDIT) → `gold/drafts.txt`: lấy nhãn mới nhất theo `(case_id, annotator)`, bất đồng giữa annotator thì **bỏ qua và báo**, `NEEDS_EDIT` thay câu bằng `edited_query`, **giữ một cách nói cho mỗi ý định** (3 dòng liền nhau trong `drafts_raw.tsv` = 1 ý định; riêng `out_of_catalog` mỗi dòng là một ý định vì 3 dòng là 3 taxonomy), rồi cắt theo `gold.slices`. In bảng quota/thiếu/chưa gán; `--dry-run` chỉ in |
 | `sb gold pool --drafts --depth 15 [--slice]` | với mỗi draft: dense top-15 (`cohere-v3`, `T3+R` = collection của B0) ∪ BM25 top-15 (áp `filter_json` nếu có) → `pool.csv`: `qid, query, slice, product_id, name, variant, destination, from(dense\|lexical\|both), rank_dense, rank_lex, label` (xáo thứ tự dòng trong mỗi qid để người gán không thấy rank) |
 | `sb gold split --overlap 25` | `pool_A.csv` (qid lẻ + 25 chung), `pool_B.csv` (qid chẵn + 25 chung); 25 chung chọn stratified theo slice |
 | `sb gold kappa A B` | Cohen κ (weighted, 3 lớp) trên 25 chung; in ma trận nhầm và các cặp lệch 2 bậc |
