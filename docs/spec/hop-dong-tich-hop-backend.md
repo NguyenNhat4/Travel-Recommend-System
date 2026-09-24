@@ -27,7 +27,7 @@
 - Cung cấp semantic search trên catalog kèm bộ lọc điểm đến, danh mục, khoảng giá và trạng thái còn chỗ.
 - Cung cấp gợi ý cá nhân hóa kèm mảng `because` giải thích được, và fallback phổ biến cho khách ẩn danh hoặc cold start.
 - Quản lý giỏ hàng phía server, khóa theo `cdpUserId`.
-- Xử lý checkout giả lập, sinh `referenceCode` và trả về đơn đặt đọc lại được.
+- Xử lý checkout: giữ chỗ, thanh toán Stripe (test mode, V-OTA là MoR), huỷ và hoàn tiền; sinh `referenceCode` và trả về đơn đặt đọc lại được.
 - Là cổng duy nhất giữa Web và CDP clone: ghi `product_view`, `search`, `add_to_cart` ở nền và `purchase` đồng bộ qua `CdpClient` (`hop-dong-tich-hop-cdp.md`).
 - Là nguồn chính thức của giá và tình trạng còn chỗ tại thời điểm checkout.
 - Giữ ổn định tên trường trong `/api/v1` và thông báo trước mọi thay đổi enum.
@@ -677,7 +677,9 @@ Content-Type: application/json
 }
 ```
 
-Checkout luôn đặt **toàn bộ giỏ hiện tại**. `itemDetails` chỉ bổ sung thông tin theo từng mục và không được thay đổi thành phần giỏ; `cartItemId` lạ thì trả `VALIDATION_ERROR`.
+Checkout luôn đặt **toàn bộ giỏ hiện tại**. `itemDetails` chỉ bổ sung thông tin theo từng mục và không được thay đổi thành phần giỏ; `cartItemId` lạ thì trả `VALIDATION_ERROR`. Body không có trường tiền nào: số tiền do Backend tính từ catalog.
+
+`201` nghĩa là **đã giữ chỗ, chờ thanh toán** (FR-BKG-05, FR-BKG-06), không phải đã đặt xong. Backend kiểm giỏ, gọi Stripe tạo Checkout Session (`expires_at` = `holdExpiresAt`, 30 phút), rồi mới ghi đơn `PENDING_PAYMENT` + dòng `app.payments`. Web chuyển trình duyệt tới `payment.checkoutUrl`. Luồng đầy đủ và sơ đồ: `docs/spec/booking/so-do-luong-dat-cho-thanh-toan.md`.
 
 #### Response `201`
 
@@ -685,7 +687,19 @@ Checkout luôn đặt **toàn bộ giỏ hiện tại**. `itemDetails` chỉ b�
 {
   "referenceCode": "VOTA-20260916-8K3F",
   "createdAt": "2026-09-16T10:22:00Z",
-  "status": "CONFIRMED",
+  "status": "PENDING_PAYMENT",
+  "holdExpiresAt": "2026-09-16T10:53:00Z",
+  "cancellableUntil": null,
+  "payment": {
+    "status": "OPEN",
+    "amount": 14180000,
+    "currency": "VND",
+    "checkoutUrl": "https://checkout.stripe.com/c/pay/cs_test_…",
+    "failedAttempts": 0,
+    "failureReason": null,
+    "refundedAmount": 0
+  },
+  "cancellation": null,
   "contact": {
     "fullName": "Nguyễn Minh Anh",
     "email": "minhanh@example.vn",
@@ -718,9 +732,13 @@ Checkout luôn đặt **toàn bộ giỏ hiện tại**. `itemDetails` chỉ b�
 | Trường | Quy tắc |
 |---|---|
 | `referenceCode` | Định dạng `VOTA-YYYYMMDD-XXXX`, `XXXX` là 4 ký tự chữ hoa và số. Duy nhất toàn hệ thống |
-| `status` | Luôn là `"CONFIRMED"` trong MVP. Không có huỷ, không có hoàn tiền |
-| `groups[]` | **Gom theo `destination`**, mỗi nhóm nhận đúng một `eventGroupId` |
-| `total` | Tổng toàn đơn, bằng tổng các `groupTotal` |
+| `status` | `PENDING_PAYMENT` → `CONFIRMED` \| `PAYMENT_FAILED` \| `EXPIRED` \| `CANCELLED` (máy trạng thái: spec booking §5.1). `CONFIRMED` chỉ khi Stripe đã thu tiền **và** event `purchase` đã ghi |
+| `holdExpiresAt` | Hạn giữ chỗ; khác `null` chỉ khi `PENDING_PAYMENT` |
+| `cancellableUntil` | 00:00 giờ Việt Nam của ngày liền trước `usingDate` sớm nhất; khác `null` chỉ khi `CONFIRMED` |
+| `payment` | Trạng thái thanh toán tách khỏi trạng thái đơn (spec booking §5.2). `checkoutUrl` khác `null` chỉ khi `payment.status = OPEN`. `failureReason` theo bảng spec booking §10.2 |
+| `cancellation` | Khác `null` chỉ khi `CANCELLED`: `cancelledAt`, `reason`, `refundAmount` |
+| `groups[]` | **Gom theo `destination`**. Triển khai hiện tại dùng **một** `eventGroupId` cho cả đơn (DDL: `app.bookings.event_group_id` UNIQUE), nên mọi nhóm của một đơn mang cùng giá trị |
+| `total` | Tổng toàn đơn, bằng tổng các `groupTotal`, bằng `payment.amount` |
 
 Kiểm tra bắt buộc trước khi tạo booking (hợp đồng Agent §3.3):
 
@@ -730,7 +748,25 @@ Kiểm tra bắt buộc trước khi tạo booking (hợp đồng Agent §3.3):
 4. `usingDate` vẫn nằm trong `availableFrom`–`availableTo`.
 5. Giỏ không rỗng → nếu rỗng, `400` `CART_EMPTY`.
 
-Checkout thành công thì **xóa sạch giỏ**. Gửi lại cùng một request sau đó sẽ nhận `CART_EMPTY`, đây là cơ chế chống bấm hai lần ở phía server; client vẫn phải khóa nút khi đang gửi (`docs/product.md` §4.5.3).
+Kiểm thêm trước khi tạo đơn: người dùng không có đơn `PENDING_PAYMENT` còn hạn → nếu có, `409 BOOKING_PENDING_PAYMENT` kèm `{ referenceCode, holdExpiresAt }` của đơn đó. Đơn cũ đã quá hạn mà webhook hết hạn chưa tới thì Backend hỏi lại Stripe để đóng nó ngay trong request rồi tạo đơn mới. Stripe timeout/5xx khi tạo phiên → không tạo đơn, `503 PAYMENT_PROVIDER_UNAVAILABLE` (`retryable: true`, header `Retry-After`).
+
+`PRICE_CHANGED` so giá hiện tại với giá snapshot lúc thêm giỏ. `PATCH /cart/items/{cartItemId}` ghi lại snapshot bằng giá hiện tại (khách đã thấy giá mới), nên Web xác nhận giá mới bằng một `PATCH` rồi cho khách bấm Thanh toán lần nữa.
+
+**Giỏ giữ nguyên** trong lúc giữ chỗ; chỉ các mục đã đặt (khoá theo `productId` + `usingDate`) bị xoá khỏi giỏ khi đơn chuyển `CONFIRMED`. Hết hạn hay thanh toán thất bại thì khách đặt lại ngay từ giỏ. Mỗi người dùng chỉ có một đơn giữ chỗ (unique index `bookings_one_pending_per_user`), đây là cơ chế chống bấm hai lần ở phía server; client vẫn phải khóa nút khi đang gửi (`docs/product.md` §4.5.3).
+
+#### Xác nhận thanh toán — webhook Stripe
+
+```http
+POST /api/v1/payments/stripe/webhook
+Stripe-Signature: t=…,v1=…      # bắt buộc; không dùng JWT, không qua BFF
+```
+
+- Backend kiểm chữ ký HMAC-SHA256 trên **raw body** với `STRIPE_WEBHOOK_SECRET`, timestamp lệch tối đa 5 phút. Sai chữ ký → `400 INVALID_WEBHOOK_SIGNATURE`, không đổi dữ liệu.
+- Loại event xử lý: `checkout.session.completed` (và `async_payment_succeeded`), `checkout.session.expired`, `payment_intent.payment_failed`, `refund.created|updated|failed`, `charge.dispute.created` (chỉ log). Loại khác trả `200` và bỏ qua.
+- Xử lý theo máy trạng thái nên gửi trùng hay sai thứ tự không đổi gì lần hai. Lỗi tạm thời (CDP, DB) → `500` không kèm chi tiết để Stripe gửi lại.
+- Thẻ bị từ chối lần thứ `PAYMENT_MAX_FAILED_ATTEMPTS` (mặc định 3) → Backend đóng phiên Stripe, đơn `PAYMENT_FAILED`, `failureReason = TOO_MANY_ATTEMPTS`.
+- Tiền về mà số tiền/loại tiền lệch, hoặc về cho đơn đã đóng → hoàn tự động toàn bộ.
+- Job đối soát chạy trong Backend (mặc định 5 phút/lần) làm lại các việc dở dang khi webhook bị lỡ: đơn giữ chỗ quá hạn, đơn đã thu tiền chưa xác nhận, lệnh hoàn tiền chưa gửi, event `purchase` chưa huỷ.
 
 ### 7.3. Đọc lại đơn đặt chỗ
 
@@ -739,19 +775,31 @@ GET /api/v1/bookings/{referenceCode}
 Authorization: Bearer <jwt>
 ```
 
-Trả về đúng payload của §7.2. Phục vụ việc tải lại trang `/booking/:referenceCode`.
+Trả về đúng payload của §7.2 với trạng thái hiện tại. Phục vụ việc tải lại trang `/booking/:referenceCode` và polling sau khi khách quay về từ Stripe (2 giây/lần, tối đa 15 lần). Việc trình duyệt quay về `success_url` **không** phải bằng chứng đã trả tiền.
 
 Chỉ chủ đơn đọc được. `referenceCode` của người khác trả `404` `BOOKING_NOT_FOUND`, không trả `403` — không tiết lộ mã nào tồn tại.
+
+#### Huỷ đơn — `POST /api/v1/bookings/{referenceCode}/cancel`
+
+Body tuỳ chọn `{ "reason": "…" }` (≤ 500 ký tự). Huỷ **cả đơn** (FR-BKG-07), trả `200 BookingResponse`.
+
+| Trạng thái đơn | Kết quả |
+|---|---|
+| `PENDING_PAYMENT`, thanh toán `OPEN` | Đóng phiên Stripe trước, đóng được mới ghi `CANCELLED` (payment `EXPIRED`). Phiên đã `complete` → `409 BOOKING_ALREADY_PAID`. Stripe không phản hồi → `503 PAYMENT_PROVIDER_UNAVAILABLE` |
+| `CONFIRMED`, trước `cancellableUntil` | Ghi `CANCELLED` + payment `REFUND_PENDING`, gọi Refund API toàn bộ (`Idempotency-Key = refund:{bookingId}`), rồi `cancel_purchases` trên CDP. Lỗi Stripe/CDP ở hai bước sau để job đối soát làm lại |
+| `CONFIRMED`, từ `cancellableUntil` | `409 BOOKING_NOT_CANCELLABLE`, `details { referenceCode, reason: "TOO_LATE", cancellableUntil }` |
+| `CANCELLED` | `200`, trả lại đơn như cũ; không hoàn tiền lần hai |
+| `EXPIRED`, `PAYMENT_FAILED` | `409 BOOKING_NOT_CANCELLABLE`, `reason: "NOT_ACTIVE"` |
 
 ### 7.4. Cam kết ghi event
 
 Đây là vòng lặp phản hồi cốt lõi của cả sản phẩm (handbook §2, §10; `docs/product.md` §1.1 K1). Backend cam kết:
 
 1. Mỗi mục trong booking thành công sinh **một** bản ghi trong bảng `events`, khóa theo `cdpUserId`.
-2. Event dùng `eventName: "purchase"`, `eventGroupId` lấy từ nhóm điểm đến tương ứng ở §7.2.
+2. Event dùng `eventName: "purchase"`, `eventGroupId` = `app.bookings.event_group_id` (một mã cho cả đơn, theo DDL và `DATABASE_SCHEMA.md` §5: một checkout = một chuyến).
 3. Mỗi bản ghi mang đủ `productId`, `taxonomy`, `quantity`, `unitPrice`, `usingDate`, `timestamp` — đúng hình dạng `UserEvent` của handbook §6.
-4. CDP clone là service riêng nên không có transaction chung. Backend ghi `purchase` sang CDP **trước khi commit** booking. CDP lỗi thì rollback booking, giữ nguyên giỏ, trả `500` `INTERNAL_ERROR` `retryable: true`. Commit lỗi sau khi CDP đã ghi thì Backend **huỷ** các event đó trên CDP rồi trả `500`. Booking thành công mà thiếu event là trạng thái không được phép tồn tại. Chi tiết và rủi ro còn lại: `hop-dong-tich-hop-cdp.md` §5.
-5. Event được ghi **trước khi** response `201` trả về, để client gọi `/recommendations` ngay sau đó và thấy kết quả đã đổi.
+4. CDP clone là service riêng nên không có transaction chung. `purchase` chỉ ghi khi Stripe đã thu tiền: Backend commit payment `SUCCEEDED` trước, rồi ghi `purchase` sang CDP, rồi commit đơn `CONFIRMED`. CDP lỗi hoặc commit lỗi thì **không huỷ** event đã ghi (tiền đã thu, đơn phải được xác nhận); đơn giữ `PENDING_PAYMENT` + payment `SUCCEEDED`, Stripe gửi lại webhook hoặc job đối soát chạy lại cho tới khi `CONFIRMED`. Booking `CONFIRMED` mà thiếu event là trạng thái không được phép tồn tại. Khách huỷ đơn đã xác nhận thì Backend gọi `cancel_purchases`. Chi tiết: `hop-dong-tich-hop-cdp.md` §5.
+5. Event được ghi **trước khi** đơn chuyển `CONFIRMED`; Web chỉ gọi `/recommendations` sau khi thấy `CONFIRMED`, nên thấy kết quả đã đổi (AC-REC-02).
 6. Một booking không bao giờ sinh hai event cho cùng một `bookingItemId`: `eventId` là `purchase:{bookingItemId}`, CDP clone trả `duplicate` khi gửi lại. Lần checkout sau một lần lỗi sinh `bookingItemId` mới.
 
 ### 7.5. Ghi hành vi `product_view`
@@ -815,10 +863,15 @@ Mã lỗi riêng của auth (`UNAUTHENTICATED`, `SESSION_EXPIRED`, `CSRF_FAILED`
 | 409 | `PRODUCT_UNAVAILABLE` | Sản phẩm hết chỗ tại thời điểm thêm giỏ hoặc checkout | `{ productId }` |
 | 409 | `PRICE_CHANGED` | Giá đã đổi kể từ lúc thêm vào giỏ | `{ productId, oldPrice, newPrice }` |
 | 422 | `DATE_OUT_OF_RANGE` | `usingDate` ngoài `availableFrom`–`availableTo` | `{ productId, availableFrom, availableTo }` |
+| 409 | `BOOKING_PENDING_PAYMENT` | Đã có đơn giữ chỗ còn hạn | `{ referenceCode, holdExpiresAt }` |
+| 409 | `BOOKING_ALREADY_PAID` | Huỷ đơn chưa trả nhưng Stripe vừa thu tiền | `{ referenceCode }` |
+| 409 | `BOOKING_NOT_CANCELLABLE` | Quá hạn huỷ hoặc đơn đã đóng | `{ referenceCode, reason: TOO_LATE \| NOT_ACTIVE, cancellableUntil? }` |
+| 400 | `INVALID_WEBHOOK_SIGNATURE` | Webhook Stripe sai chữ ký (chỉ Stripe nhận) | — |
 | 503 | `SEARCH_UNAVAILABLE` | Vector index không khả dụng | — |
+| 503 | `PAYMENT_PROVIDER_UNAVAILABLE` | Stripe timeout hoặc 5xx khi tạo/đóng phiên; kèm `Retry-After` | — |
 | 500 | `INTERNAL_ERROR` | Lỗi không lường trước | — |
 
-`retryable: true` chỉ dành cho `SEARCH_UNAVAILABLE` và `INTERNAL_ERROR`. Mọi lỗi còn lại là `false` — thử lại nguyên request sẽ cho cùng kết quả.
+`retryable: true` chỉ dành cho `SEARCH_UNAVAILABLE`, `PAYMENT_PROVIDER_UNAVAILABLE` và `INTERNAL_ERROR` (danh sách đầy đủ gồm cả mã auth: `schemas/common.yaml`). Mọi lỗi còn lại là `false` — thử lại nguyên request sẽ cho cùng kết quả.
 
 ### 8.3. Phân trang
 
@@ -840,7 +893,7 @@ Mọi service truyền tiếp header này, kể cả lời gọi Backend → CDP
 | `GET /recommendations` | 300 ms |
 | `GET /products/{id}` | 150 ms |
 | `GET /products/{id}/similar` | 300 ms |
-| `POST /bookings` (gồm ghi event) | 1 giây |
+| `POST /bookings` (gồm tạo phiên Stripe) | 1 giây, không tính thời gian Stripe (timeout 10 giây) |
 
 ### 8.6. Logging
 
@@ -928,9 +981,9 @@ Team Backend cung cấp fixture response mẫu cho từng endpoint tại `src/sh
 8. `facets.taxonomy` cộng lại đúng bằng `total`.
 9. Mọi `because[].productId` khác `null` đều mở được `GET /products/{id}` và trả `200`.
 10. Thêm giỏ → đổi tài khoản demo → giỏ của người mới không chứa mục của người cũ.
-11. Checkout thành công trả `referenceCode` đúng định dạng `VOTA-YYYYMMDD-XXXX`, và `GET /bookings/{referenceCode}` đọc lại được đầy đủ.
-12. Checkout với giỏ có hai điểm đến sinh đúng hai `eventGroupId` khác nhau.
-13. Ngay sau checkout, `GET /recommendations` trả `strategy` hoặc `nextVertical` đã thay đổi — đây là khoảnh khắc K1.
+11. Checkout thành công trả `201 PENDING_PAYMENT` với `referenceCode` đúng định dạng `VOTA-YYYYMMDD-XXXX` và `payment.checkoutUrl`; `GET /bookings/{referenceCode}` đọc lại được đầy đủ; sau webhook thanh toán hợp lệ đơn chuyển `CONFIRMED`.
+12. Checkout với giỏ có hai điểm đến trả hai `groups[]`; theo DDL hiện hành cả hai mang cùng `eventGroupId` của đơn. (Tiêu chí cũ "hai `eventGroupId` khác nhau" mâu thuẫn với `app.bookings.event_group_id` UNIQUE — chờ người dùng quyết định, xem `history/2026-09-24-trien-khai-booking-thanh-toan-stripe.md`.)
+13. Ngay sau khi đơn chuyển `CONFIRMED`, `GET /recommendations` trả `strategy` hoặc `nextVertical` đã thay đổi — đây là khoảnh khắc K1.
 14. Sản phẩm bị đánh dấu hết chỗ giữa lúc checkout trả `409 PRODUCT_UNAVAILABLE` kèm `productId`, và giỏ không bị xóa.
 15. p95 của `/search` và `/recommendations` dưới 300 ms trên seed data.
 16. Backend integration test và frontend mock cùng kiểm tra với một file `openapi.yaml` duy nhất.

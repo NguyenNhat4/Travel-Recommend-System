@@ -153,6 +153,12 @@ ErrorCode:
   - OAUTH_EMAIL_UNVERIFIED
   - OAUTH_ALREADY_LINKED
   - CDP_UNAVAILABLE
+  # --- booking: giữ chỗ và thanh toán Stripe ---
+  - BOOKING_PENDING_PAYMENT
+  - BOOKING_ALREADY_PAID
+  - BOOKING_NOT_CANCELLABLE
+  - PAYMENT_PROVIDER_UNAVAILABLE
+  - INVALID_WEBHOOK_SIGNATURE
 
 ErrorResponse:
   type: object
@@ -176,7 +182,7 @@ ErrorResponse:
           type: boolean
           description: >-
             true chỉ với SEARCH_UNAVAILABLE, INTERNAL_ERROR, LLM_UNAVAILABLE,
-            TOO_MANY_ATTEMPTS và CDP_UNAVAILABLE.
+            TOO_MANY_ATTEMPTS, CDP_UNAVAILABLE và PAYMENT_PROVIDER_UNAVAILABLE.
             Mọi mã còn lại là false — thử lại nguyên request cho cùng kết quả.
         requestId:
           type: string
@@ -195,4 +201,6 @@ ErrorResponse:
             {retryAfterSeconds}; MFA_INVALID {attemptsLeft}; EMAIL_NOT_VERIFIED
             {email}; WEAK_PASSWORD {reasons}; INVALID_VERIFICATION_TOKEN
             {purpose}; OAUTH_EMAIL_UNVERIFIED và OAUTH_ALREADY_LINKED
-            {provider}.
+            {provider}; BOOKING_PENDING_PAYMENT {referenceCode, holdExpiresAt} — đơn đang
+            giữ chỗ để tiếp tục hoặc huỷ; BOOKING_NOT_CANCELLABLE {referenceCode, reason,
+            cancellableUntil}; BOOKING_ALREADY_PAID {referenceCode}.

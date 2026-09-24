@@ -8,6 +8,21 @@
 - Người làm: mihhquan / Claude Code, nhánh `feat/booking`
 - Lịch sử: `history/2026-09-24-ke-hoach-thanh-toan-stripe.md`
 
+## Tiến độ (cập nhật 2026-09-24)
+
+| Bước | Trạng thái | Ghi chú |
+|---|---|---|
+| 0 — Chốt đề xuất, cập nhật PRD | Xong | `history/2026-09-24-ap-dung-de-xuat-thanh-toan-stripe-mor.md` |
+| 1 — Giỏ hàng server-side (Backend + Web) | Xong | Web đọc/ghi giỏ qua BFF, `TravelContext` không còn giỏ local |
+| 2 — Contract | Xong | Contract 1.5.0, 7 fixture mới, `validate_contract.py` PASS |
+| 3 — Database | Xong | Migration `0003`, `0004`; `db/verify.sql` thêm 2 dòng |
+| 4, 5, 6, 7 — Domain, application, infrastructure, API | Xong | Adapter Stripe dùng REST qua `httpx`, không thêm SDK `stripe` |
+| 8 — Frontend | Xong | `/checkout`, `/booking/{referenceCode}` theo 5 trạng thái |
+| 9 — Đồng bộ tài liệu | Xong | spec backend/frontend/CDP/product/DATABASE_SCHEMA, README |
+| 10 — Nghiệm thu với Stripe test thật | **Chưa** | Cần khoá test + Stripe CLI (mục "Bước 10"); đã chạy E2E với `PAYMENT_PROVIDER=fake` |
+
+Chi tiết và kết quả kiểm tra: `history/2026-09-24-trien-khai-booking-thanh-toan-stripe.md`.
+
 ## Mục tiêu
 
 Thay luồng "bấm Xác nhận là xong đơn" bằng luồng thanh toán thật chạy trên Stripe test mode, V-OTA là Merchant of Record, xử lý đủ bốn tình huống:

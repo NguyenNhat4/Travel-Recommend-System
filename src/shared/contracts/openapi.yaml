@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Travel Recommendation Product API
-  version: 1.4.0
+  version: 1.5.0
   description: 'Contract chung cho frontend Next.js và backend Python/FastAPI. Nguồn mô tả nghiệp vụ:
     docs/spec/hop-dong-tich-hop-backend.md (Auth, Catalog, Search, Recommendation, Booking) và docs/spec/hop-dong-tich-hop-frontend.md
     (góc nhìn Web, đề xuất ItineraryResponse hợp nhất). Khi tài liệu và file này mâu thuẫn, file này thắng.'
@@ -17,7 +17,9 @@ tags:
 - name: recommendations
   description: Gợi ý cá nhân hóa kèm because[]
 - name: booking
-  description: Giỏ hàng server-side và checkout giả lập
+  description: Giỏ hàng server-side, giữ chỗ, thanh toán Stripe (test mode), huỷ và hoàn tiền
+- name: payments-internal
+  description: Webhook Stripe, nội bộ — Web không sinh client cho nhóm này
 - name: assistant
   description: Itinerary Assistant (đề xuất, chờ Team Agent duyệt)
 - name: events
@@ -65,6 +67,10 @@ paths:
     $ref: ./paths/booking.yaml#/~1bookings
   /bookings/{referenceCode}:
     $ref: ./paths/booking.yaml#/~1bookings~1{referenceCode}
+  /bookings/{referenceCode}/cancel:
+    $ref: ./paths/booking.yaml#/~1bookings~1{referenceCode}~1cancel
+  /payments/stripe/webhook:
+    $ref: ./paths/payments.yaml#/~1payments~1stripe~1webhook
   /assistant/itineraries:
     $ref: ./paths/itinerary-agent.yaml#/~1assistant~1itineraries
   /assistant/itineraries/stream:
@@ -240,6 +246,18 @@ components:
       $ref: ./schemas/booking.yaml#/BookingGroup
     BookingResponse:
       $ref: ./schemas/booking.yaml#/BookingResponse
+    BookingStatus:
+      $ref: ./schemas/booking.yaml#/BookingStatus
+    PaymentStatus:
+      $ref: ./schemas/booking.yaml#/PaymentStatus
+    PaymentFailureReason:
+      $ref: ./schemas/booking.yaml#/PaymentFailureReason
+    PaymentInfo:
+      $ref: ./schemas/booking.yaml#/PaymentInfo
+    CancellationInfo:
+      $ref: ./schemas/booking.yaml#/CancellationInfo
+    CancelBookingRequest:
+      $ref: ./schemas/booking.yaml#/CancelBookingRequest
     SlotTime:
       $ref: ./schemas/itinerary-agent.yaml#/SlotTime
     ItemSource:

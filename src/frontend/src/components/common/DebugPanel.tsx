@@ -4,7 +4,7 @@ import { Bug, X, ChevronUp, ChevronDown } from 'lucide-react';
 import { calculateRecommendations } from '../../services/recsys';
 
 export const DebugPanel: React.FC = () => {
-  const { debugMode, toggleDebugMode, currentPersona, activeEvents, cart, bookings } = useTravel();
+  const { debugMode, toggleDebugMode, currentPersona, activeEvents, cartCount, bookings } = useTravel();
   const [isExpanded, setIsExpanded] = useState(false);
 
   if (!debugMode) {
@@ -54,8 +54,8 @@ export const DebugPanel: React.FC = () => {
               <div>Persona: <span className="text-emerald-400 font-bold">{currentPersona ? `${currentPersona.id} (${currentPersona.name})` : 'Guest'}</span></div>
               <div>ColdStart: <span className="text-blue-300">{recs.diagnostics.coldStart ? 'true' : 'false'}</span></div>
               <div>Events count: <span className="text-amber-300">{recs.diagnostics.eventsUsed}</span></div>
-              <div>Cart items: <span className="text-slate-300">{cart.length}</span></div>
-              <div>Completed Bookings: <span className="text-slate-300">{bookings.length}</span></div>
+              <div>Cart items: <span className="text-slate-300">{cartCount}</span></div>
+              <div>Bookings (session): <span className="text-slate-300">{bookings.length}</span></div>
             </div>
           </div>
 

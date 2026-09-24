@@ -192,25 +192,34 @@ Content-Type: application/json
 
 ## 5. Ghi `purchase` và bù trừ
 
-Thay cho yêu cầu "cùng transaction" cũ, vì CDP clone là service riêng.
+`purchase` chỉ ghi khi Stripe **đã thu tiền** (FR-BKG-03, FR-BKG-06). Tạo đơn giữ chỗ (`POST /bookings`) không ghi event nào. Luồng đầy đủ: `docs/spec/booking/so-do-luong-dat-cho-thanh-toan.md` §6.3, §7.2c, §9.2.
 
 ```text
-1. Kiểm tra giỏ, giá, tình trạng (hop-dong-tich-hop-backend.md §7.2)
-2. Mở transaction booking, sinh bookingItemId, eventGroupId
-3. CdpClient.record_purchases(events)      ── lỗi ──> rollback, giữ giỏ, 500 INTERNAL_ERROR retryable
-4. Commit booking, xóa giỏ                 ── lỗi ──> CdpClient.cancel_purchases(events), rồi 500 INTERNAL_ERROR
-5. 201 BookingResponse
+Webhook checkout.session.completed (hoặc job đối soát thấy phiên đã trả)
+1. Khoá đơn, kiểm số tiền; commit payment SUCCEEDED             (DB biết tiền đã về)
+2. CdpClient.record_purchases(events), eventId = purchase:{bookingItemId}
+                                     ── lỗi ──> KHÔNG huỷ event; đơn giữ PENDING_PAYMENT + payment SUCCEEDED;
+                                                webhook trả 500, Stripe gửi lại / job đối soát chạy lại
+3. Commit đơn CONFIRMED, xoá các mục đã đặt khỏi giỏ
+                                     ── lỗi ──> KHÔNG huỷ event; thử lại như trên (lần sau CDP trả duplicate)
+
+Khách huỷ đơn đã CONFIRMED (trong hạn)
+4. Commit CANCELLED + payment REFUND_PENDING → Refund API
+5. CdpClient.cancel_purchases(events) ── lỗi ──> log WARNING; job đối soát gọi lại tới khi
+                                                ghi được purchase_events_cancelled_at
 ```
 
 | Tình huống | Kết quả | Người dùng thấy |
 |---|---|---|
-| CDP ghi xong, commit xong | Booking và event khớp | `201` |
-| CDP lỗi hoặc timeout ở bước 3 | Không booking. Có thể có event nếu CDP ghi nhưng không trả lời kịp | `500` `retryable: true`, giỏ còn nguyên |
-| Commit lỗi ở bước 4, huỷ thành công | Không booking, event đã huỷ | `500` `retryable: true` |
-| Commit lỗi, huỷ cũng lỗi | Không booking, **event mồ côi** chưa huỷ | `500`; log `ERROR` kèm `requestId` và `bookingItemId` để huỷ tay |
-| Người dùng bấm lại sau lỗi | Checkout mới sinh `bookingItemId` mới | Không ảnh hưởng event cũ |
+| Thu tiền, CDP ghi xong, commit xong | Đơn `CONFIRMED`, event khớp | Trang xác nhận |
+| CDP lỗi ở bước 2 | Đơn `PENDING_PAYMENT` + payment `SUCCEEDED`; có thể đã có event nếu CDP ghi mà không trả lời kịp | "Đã nhận thanh toán, đang xác nhận đơn"; tự chuyển `CONFIRMED` khi CDP hồi phục |
+| Commit lỗi ở bước 3 | Event đã ghi, đơn chưa `CONFIRMED` | Như trên; lần thử lại nhận `duplicate` rồi commit |
+| Webhook gửi trùng | Không đổi gì, không có event thứ hai | — |
+| Khách huỷ, CDP lỗi ở bước 5 | Đơn `CANCELLED`, event chưa huỷ | "Đã huỷ đơn"; gợi ý có thể còn dùng chuyến này tới khi job huỷ xong |
 
-Rủi ro còn lại: event mồ côi ở dòng 2 và dòng 4 của bảng. Recommendation có thể dùng chúng tới khi được huỷ tay.
+**Vì sao không bù trừ ở bước 2–3** (khác bản cũ "commit lỗi thì huỷ event"): tiền đã thu nên đơn chắc chắn phải được xác nhận. Theo §3.3 mục 4, ghi lại một `eventId` đã huỷ vẫn trả `duplicate` và event **vẫn huỷ**, nên "huỷ rồi thử lại" sẽ tạo đơn `CONFIRMED` mà Recommendation không bao giờ thấy. Giữ event và thử lại commit thì hai bên sớm muộn cũng khớp (NFR-REL-02). Hàm `commit_with_purchase_events` (ghi → commit → lỗi thì huỷ) vẫn còn trong `application/booking/purchase_events.py` cho đường chưa có tiền; đường sau thanh toán dùng `record_then_commit`.
+
+`LocalCdpClient` (adapter hiện tại) không có cột `cancelledAt` trong DDL clone nên `cancel_purchases` **xoá** event khớp `event_group_id` + `product_id` + `using_date`; `HttpCdpClient` sau này gọi API huỷ của CDP thật (§3.3 mục 2).
 
 ---
 
@@ -229,8 +238,8 @@ Rủi ro còn lại: event mồ côi ở dòng 2 và dòng 4 của bảng. Recom
 | Hạng mục | Quy tắc |
 |---|---|
 | Timeout gọi CDP | `CDP_TIMEOUT_SECONDS`, mặc định 2 giây, áp cho mọi lời gọi |
-| Retry | Không retry trong Backend. `purchase` để người dùng bấm lại (an toàn nhờ chống trùng); event duyệt web bị bỏ |
-| Checkout khi CDP sập | Không đặt được, `500` `retryable: true`. Chấp nhận: booking không được tồn tại mà thiếu event |
+| Retry | Không retry trong một request. `purchase` được thử lại nhờ Stripe gửi lại webhook và job đối soát (an toàn nhờ chống trùng); event duyệt web bị bỏ |
+| Checkout khi CDP sập | Tạo đơn giữ chỗ và thanh toán vẫn chạy; đơn dừng ở `PENDING_PAYMENT` + payment `SUCCEEDED` tới khi ghi được `purchase`. Đơn `CONFIRMED` không bao giờ thiếu event |
 | Search, giỏ, xem sản phẩm khi CDP sập | Không ảnh hưởng |
 | Gợi ý khi CDP sập | Đường lui `popular` (§6) |
 | `POST /api/v1/bookings` | Vẫn trong ngân sách p95 1 giây, gồm cả lời gọi CDP |

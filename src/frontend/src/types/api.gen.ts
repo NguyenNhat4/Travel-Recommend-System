@@ -356,8 +356,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Checkout toàn bộ giỏ hiện tại
-         * @description Backend ghi purchase sang CDP clone đồng bộ trước khi commit booking. CDP không xác nhận thì không tạo booking, giữ nguyên giỏ và trả 500 INTERNAL_ERROR retryable true. CDP đã ghi nhưng commit lỗi thì Backend huỷ các event đó trên CDP rồi trả 500.
+         * Checkout giỏ hiện tại — giữ chỗ và tạo phiên thanh toán Stripe
+         * @description Backend kiểm giỏ, tạo đơn PENDING_PAYMENT (giữ giá và thành phần 30 phút) rồi tạo phiên Stripe Checkout. 201 nghĩa là đã giữ chỗ và chờ thanh toán, KHÔNG phải đã đặt xong: Web chuyển trình duyệt tới payment.checkoutUrl. Đơn chỉ thành CONFIRMED sau khi Stripe xác nhận thu tiền (webhook có chữ ký hoặc Backend tự hỏi lại Stripe); event purchase chỉ ghi sang CDP lúc đó. Người dùng đang có đơn giữ chỗ thì trả 409 BOOKING_PENDING_PAYMENT kèm referenceCode đơn đó. Stripe không phản hồi thì không tạo đơn, trả 503 PAYMENT_PROVIDER_UNAVAILABLE. Số tiền do Backend tính từ catalog, không nhận từ client.
          */
         post: operations["createBooking"];
         delete?: never;
@@ -377,6 +377,46 @@ export interface paths {
         get: operations["getBooking"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/bookings/{referenceCode}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Khách huỷ cả đơn
+         * @description Huỷ cả đơn, không huỷ từng mục. Đơn PENDING_PAYMENT: huỷ ngay và đóng phiên thanh toán. Đơn CONFIRMED: hoàn 100% qua Stripe nếu còn trong hạn (cancellableUntil), đồng thời huỷ event purchase trên CDP; quá hạn thì 409 BOOKING_NOT_CANCELLABLE. Huỷ lặp lại trả về kết quả cũ, không hoàn tiền hai lần. Đơn đã CANCELLED, EXPIRED hoặc PAYMENT_FAILED không huỷ được.
+         */
+        post: operations["cancelBooking"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/payments/stripe/webhook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Webhook Stripe (nội bộ, chỉ Stripe gọi)
+         * @description Stripe gọi thẳng FastAPI, không qua BFF, không dùng JWT. Xác thực bằng chữ ký Stripe-Signature trên raw body. Xử lý idempotent: gửi trùng hoặc sai thứ tự không đổi trạng thái lần hai. Web không sinh client cho endpoint này.
+         */
+        post: operations["stripeWebhook"];
         delete?: never;
         options?: never;
         head?: never;
@@ -488,16 +528,16 @@ export interface components {
         Currency: "VND";
         ReferenceCode: string;
         /** @enum {string} */
-        ErrorCode: "VALIDATION_ERROR" | "CART_EMPTY" | "INVALID_CREDENTIALS" | "INVALID_TOKEN" | "TOKEN_EXPIRED" | "PRODUCT_NOT_FOUND" | "CART_ITEM_NOT_FOUND" | "BOOKING_NOT_FOUND" | "NOT_FOUND" | "EMAIL_ALREADY_EXISTS" | "PRODUCT_UNAVAILABLE" | "PRICE_CHANGED" | "DATE_OUT_OF_RANGE" | "SEARCH_UNAVAILABLE" | "INTERNAL_ERROR" | "INVALID_TRIP_DURATION" | "CONVERSATION_NOT_FOUND" | "UNSUPPORTED_DESTINATION" | "LLM_UNAVAILABLE" | "ITINERARY_VALIDATION_FAILED" | "AVAILABILITY_NOT_FOUND" | "AVAILABILITY_EXPIRED" | "NO_RATE_PLAN" | "MIN_STAY_NOT_MET" | "CLOSED_ON_ARRIVAL" | "CLOSED_ON_DEPARTURE" | "PARTIALLY_AVAILABLE" | "PRODUCT_NOT_INDEXED" | "UNAUTHENTICATED" | "SESSION_EXPIRED" | "CSRF_FAILED" | "MFA_REQUIRED" | "MFA_INVALID" | "EMAIL_NOT_VERIFIED" | "TOO_MANY_ATTEMPTS" | "CAPTCHA_REQUIRED" | "CAPTCHA_FAILED" | "WEAK_PASSWORD" | "INVALID_VERIFICATION_TOKEN" | "OAUTH_EMAIL_UNVERIFIED" | "OAUTH_ALREADY_LINKED" | "CDP_UNAVAILABLE";
+        ErrorCode: "VALIDATION_ERROR" | "CART_EMPTY" | "INVALID_CREDENTIALS" | "INVALID_TOKEN" | "TOKEN_EXPIRED" | "PRODUCT_NOT_FOUND" | "CART_ITEM_NOT_FOUND" | "BOOKING_NOT_FOUND" | "NOT_FOUND" | "EMAIL_ALREADY_EXISTS" | "PRODUCT_UNAVAILABLE" | "PRICE_CHANGED" | "DATE_OUT_OF_RANGE" | "SEARCH_UNAVAILABLE" | "INTERNAL_ERROR" | "INVALID_TRIP_DURATION" | "CONVERSATION_NOT_FOUND" | "UNSUPPORTED_DESTINATION" | "LLM_UNAVAILABLE" | "ITINERARY_VALIDATION_FAILED" | "AVAILABILITY_NOT_FOUND" | "AVAILABILITY_EXPIRED" | "NO_RATE_PLAN" | "MIN_STAY_NOT_MET" | "CLOSED_ON_ARRIVAL" | "CLOSED_ON_DEPARTURE" | "PARTIALLY_AVAILABLE" | "PRODUCT_NOT_INDEXED" | "UNAUTHENTICATED" | "SESSION_EXPIRED" | "CSRF_FAILED" | "MFA_REQUIRED" | "MFA_INVALID" | "EMAIL_NOT_VERIFIED" | "TOO_MANY_ATTEMPTS" | "CAPTCHA_REQUIRED" | "CAPTCHA_FAILED" | "WEAK_PASSWORD" | "INVALID_VERIFICATION_TOKEN" | "OAUTH_EMAIL_UNVERIFIED" | "OAUTH_ALREADY_LINKED" | "CDP_UNAVAILABLE" | "BOOKING_PENDING_PAYMENT" | "BOOKING_ALREADY_PAID" | "BOOKING_NOT_CANCELLABLE" | "PAYMENT_PROVIDER_UNAVAILABLE" | "INVALID_WEBHOOK_SIGNATURE";
         ErrorResponse: {
             error: {
                 code: components["schemas"]["ErrorCode"];
                 /** @description Tiếng Việt, hiển thị được trực tiếp cho người dùng. */
                 message: string;
-                /** @description true chỉ với SEARCH_UNAVAILABLE, INTERNAL_ERROR, LLM_UNAVAILABLE, TOO_MANY_ATTEMPTS và CDP_UNAVAILABLE. Mọi mã còn lại là false — thử lại nguyên request cho cùng kết quả. */
+                /** @description true chỉ với SEARCH_UNAVAILABLE, INTERNAL_ERROR, LLM_UNAVAILABLE, TOO_MANY_ATTEMPTS, CDP_UNAVAILABLE và PAYMENT_PROVIDER_UNAVAILABLE. Mọi mã còn lại là false — thử lại nguyên request cho cùng kết quả. */
                 retryable: boolean;
                 requestId: string;
-                /** @description Tùy mã lỗi. VALIDATION_ERROR {fields}; PRODUCT_NOT_FOUND và PRODUCT_UNAVAILABLE {productId}; CART_ITEM_NOT_FOUND {cartItemId}; PRICE_CHANGED {productId, oldPrice, newPrice}; DATE_OUT_OF_RANGE {productId, availableFrom, availableTo}; UNSUPPORTED_DESTINATION {destination, supportedDestinations, conversationId} — conversationId là hội thoại đã lưu phần chuyến đi còn lại, gửi lại cùng điểm đến hợp lệ để tiếp tục; MIN_STAY_NOT_MET {productId, minStay}; PRODUCT_NOT_INDEXED {productId, taxonomy}; TOO_MANY_ATTEMPTS {retryAfterSeconds}; MFA_INVALID {attemptsLeft}; EMAIL_NOT_VERIFIED {email}; WEAK_PASSWORD {reasons}; INVALID_VERIFICATION_TOKEN {purpose}; OAUTH_EMAIL_UNVERIFIED và OAUTH_ALREADY_LINKED {provider}. */
+                /** @description Tùy mã lỗi. VALIDATION_ERROR {fields}; PRODUCT_NOT_FOUND và PRODUCT_UNAVAILABLE {productId}; CART_ITEM_NOT_FOUND {cartItemId}; PRICE_CHANGED {productId, oldPrice, newPrice}; DATE_OUT_OF_RANGE {productId, availableFrom, availableTo}; UNSUPPORTED_DESTINATION {destination, supportedDestinations, conversationId} — conversationId là hội thoại đã lưu phần chuyến đi còn lại, gửi lại cùng điểm đến hợp lệ để tiếp tục; MIN_STAY_NOT_MET {productId, minStay}; PRODUCT_NOT_INDEXED {productId, taxonomy}; TOO_MANY_ATTEMPTS {retryAfterSeconds}; MFA_INVALID {attemptsLeft}; EMAIL_NOT_VERIFIED {email}; WEAK_PASSWORD {reasons}; INVALID_VERIFICATION_TOKEN {purpose}; OAUTH_EMAIL_UNVERIFIED và OAUTH_ALREADY_LINKED {provider}; BOOKING_PENDING_PAYMENT {referenceCode, holdExpiresAt} — đơn đang giữ chỗ để tiếp tục hoặc huỷ; BOOKING_NOT_CANCELLABLE {referenceCode, reason, cancellableUntil}; BOOKING_ALREADY_PAID {referenceCode}. */
                 details?: {
                     [key: string]: unknown;
                 };
@@ -1028,12 +1068,51 @@ export interface components {
             referenceCode: components["schemas"]["ReferenceCode"];
             /** Format: date-time */
             createdAt: string;
-            /** @constant */
-            status: "CONFIRMED";
+            status: components["schemas"]["BookingStatus"];
+            /**
+             * Format: date-time
+             * @description Hạn giữ chỗ. Chỉ khác null khi status là PENDING_PAYMENT.
+             */
+            holdExpiresAt: string | null;
+            /**
+             * Format: date-time
+             * @description Hạn huỷ có hoàn 100% (00:00 giờ Việt Nam của ngày liền trước usingDate sớm nhất). Chỉ khác null khi CONFIRMED.
+             */
+            cancellableUntil: string | null;
+            payment: components["schemas"]["PaymentInfo"] | null;
+            cancellation: components["schemas"]["CancellationInfo"] | null;
             contact: components["schemas"]["Contact"];
             groups: components["schemas"]["BookingGroup"][];
             total: number;
             currency: components["schemas"]["Currency"];
+        };
+        /**
+         * @description PENDING_PAYMENT là đang giữ chỗ (tối đa 30 phút). CONFIRMED chỉ khi Stripe xác nhận đã thu tiền.
+         * @enum {string}
+         */
+        BookingStatus: "PENDING_PAYMENT" | "CONFIRMED" | "PAYMENT_FAILED" | "EXPIRED" | "CANCELLED";
+        /** @enum {string} */
+        PaymentStatus: "OPEN" | "SUCCEEDED" | "FAILED" | "EXPIRED" | "REFUND_PENDING" | "REFUNDED" | "REFUND_FAILED";
+        /** @enum {string} */
+        PaymentFailureReason: "CARD_DECLINED" | "INSUFFICIENT_FUNDS" | "EXPIRED_CARD" | "INCORRECT_CVC" | "AUTHENTICATION_FAILED" | "PROCESSING_ERROR" | "TOO_MANY_ATTEMPTS" | "AMOUNT_MISMATCH";
+        PaymentInfo: {
+            status: components["schemas"]["PaymentStatus"];
+            amount: number;
+            currency: components["schemas"]["Currency"];
+            /** @description Trang thanh toán Stripe. Chỉ khác null khi status là OPEN. */
+            checkoutUrl: string | null;
+            failedAttempts: number;
+            failureReason: components["schemas"]["PaymentFailureReason"] | null;
+            refundedAmount: number;
+        };
+        CancellationInfo: {
+            /** Format: date-time */
+            cancelledAt: string;
+            reason: string | null;
+            refundAmount: number;
+        };
+        CancelBookingRequest: {
+            reason?: string | null;
         };
         /** @enum {string} */
         SlotTime: "MORNING" | "NOON" | "AFTERNOON" | "EVENING";
@@ -1870,7 +1949,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Đặt chỗ thành công, event purchase đã được ghi */
+            /** @description Đã giữ chỗ, chờ thanh toán */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -1884,6 +1963,7 @@ export interface operations {
             409: components["responses"]["Error"];
             422: components["responses"]["Error"];
             500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     getBooking: {
@@ -1911,6 +1991,69 @@ export interface operations {
             };
             401: components["responses"]["Error"];
             404: components["responses"]["Error"];
+            500: components["responses"]["Error"];
+        };
+    };
+    cancelBooking: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description ID truy vết. Caller chưa gửi thì service đầu tiên tự sinh. */
+                "X-Request-ID"?: components["parameters"]["XRequestId"];
+            };
+            path: {
+                referenceCode: components["schemas"]["ReferenceCode"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CancelBookingRequest"];
+            };
+        };
+        responses: {
+            /** @description Đơn sau khi huỷ */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookingResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    stripeWebhook: {
+        parameters: {
+            query?: never;
+            header: {
+                "Stripe-Signature": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Đã nhận (không có body) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Error"];
             500: components["responses"]["Error"];
         };
     };

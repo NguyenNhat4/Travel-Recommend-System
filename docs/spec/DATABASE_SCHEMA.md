@@ -2,7 +2,7 @@
 
 Bản 20/09/2026 · tuần 1 · đi kèm trang "V-OTA Database Schema" (artifact). **Đây là nguồn DDL duy nhất** của hệ thống (`vota_schema.sql`, `insider_schema.sql` ở cuối). `PRODUCT_SCHEMA.md` giải thích sâu phần product catalog; `SCHEMA.md` là contract của file `products.jsonl`.
 
-Hai database trên một PostgreSQL 16 (docker-compose): `vota` với ba schema `cdp` (mirror CDP), `catalog` (dựng lại được), `app` (trạng thái BE/FE/agent); và `insider` (mock của Insider, service riêng). 22 bảng, 4 view (`vota` 17 bảng + 3 view, `insider` 5 bảng + 1 view — đếm lại 22/09/2026; con số "20 bảng" trước đây có từ trước khi migration `0001_auth_p0` thêm `refresh_tokens`, `login_attempts` và `schema_migrations`). Vector sản phẩm KHÔNG nằm trong Postgres — collection `Product` trên Weaviate giữ vector (`docs/prd/data-model.md` §1). Cả hai DDL đã chạy thử và qua test ràng buộc, quyền, TTL.
+Hai database trên một PostgreSQL 16 (docker-compose): `vota` với ba schema `cdp` (mirror CDP), `catalog` (dựng lại được), `app` (trạng thái BE/FE/agent); và `insider` (mock của Insider, service riêng). 23 bảng, 4 view (`vota` 18 bảng + 3 view, `insider` 5 bảng + 1 view — đếm lại 24/09/2026 sau migration `0003_booking_payments` thêm `app.payments`; con số "20 bảng" trước đây có từ trước khi migration `0001_auth_p0` thêm `refresh_tokens`, `login_attempts` và `schema_migrations`). Vector sản phẩm KHÔNG nằm trong Postgres — collection `Product` trên Weaviate giữ vector (`docs/prd/data-model.md` §1). Cả hai DDL đã chạy thử và qua test ràng buộc, quyền, TTL.
 
 ---
 
@@ -30,7 +30,7 @@ Hai database trên một PostgreSQL 16 (docker-compose): `vota` với ba schema 
 |---|---|---|---|---|
 | `vota.cdp` | `products` · `profiles` · `events` — mirror CDP field-for-field | Loader (crawl, seed_histories); backend ghi `events`/`profiles` **chỉ qua `LocalCdpClient`** (connection riêng `CDP_DATABASE_URL`, role `cdp_writer`) | `CdpClient` (role `cdp_reader`/`cdp_writer`, không có USAGE trên `catalog`/`app`); `vota_app` chỉ SELECT `cdp.products` để dựng `catalog.*` | `HttpCdpClient` thay `LocalCdpClient`; `cdp.products` vẫn là bảng local do job sync ghi qua CdpClient; `events`/`profiles` local không dùng nữa |
 | `vota.catalog` | `product_meta` (view) · `combo_items` · `product_parents` · `search_rows` | Job `parse_combos` | Search, Recsys, Product detail | Giữ nguyên — dựng lại từ `cdp.products` |
-| `vota.app` | `users` · `carts` · `cart_items` · `bookings` · `booking_items` · `conversations` · `conversation_messages` · `itineraries` · `recommendation_logs` · `search_logs` | Backend (role `vota_app`), agent, job | Backend, Evaluation (chỉ đọc) | Giữ nguyên — phải backup |
+| `vota.app` | `users` · `carts` · `cart_items` · `bookings` · `booking_items` · `payments` · `conversations` · `conversation_messages` · `itineraries` · `recommendation_logs` · `search_logs` | Backend (role `vota_app`), agent, job | Backend, Evaluation (chỉ đọc) | Giữ nguyên — phải backup |
 | database `insider` | `partners` · `insider_profiles` · `identifiers` · `insider_events` (+ view `live_events`) · `channel_events` | Chỉ Insider clone service | Chỉ Insider clone service; V-OTA đi qua HTTP (`InsiderClient`) | Thay bằng Insider thật |
 
 Feedback loop (handbook §2) nằm trọn trong `vota`: checkout ghi `app.bookings` + `cdp.events` (cùng `event_group_id`) → User Profile Builder đọc `cdp.events` + vector từ Weaviate → `/recommendations` đổi → tuần 5 batch đẩy sang Insider làm attribute. Không có mũi tên nào từ Insider về CDP. Web (React) chỉ nói chuyện với backend qua REST/JSON + JWT, không chạm DB. Data collection và Evaluation là Python, ghi một lần theo job / chỉ đọc.
@@ -182,7 +182,7 @@ erDiagram
         text reference_code UK "VOTA-20261015-8K3F"
         text cdp_user_id FK
         text event_group_id UK "= eventGroupId của các event purchase"
-        text status "confirmed · cancelled"
+        text status "pending_payment · confirmed · payment_failed · expired · cancelled"
         text contact_name
         text contact_email
         text contact_phone
@@ -190,6 +190,28 @@ erDiagram
         numeric total_amount
         char currency
         timestamptz created_at
+        timestamptz updated_at
+        timestamptz hold_expires_at "hạn giữ chỗ, khi pending_payment"
+        timestamptz confirmed_at
+        timestamptz cancelled_at
+        text cancel_reason
+        timestamptz purchase_events_cancelled_at "đã huỷ event purchase trên CDP"
+    }
+    payments {
+        uuid payment_id PK
+        uuid booking_id FK,UK "một đơn một phiên thanh toán"
+        text provider "stripe · fake · seed"
+        text checkout_session_id UK
+        text payment_intent_id UK
+        text checkout_url "chỉ dùng khi open"
+        bigint amount "VND, không có số lẻ"
+        char currency
+        text status "open · succeeded · failed · expired · refund_pending · refunded · refund_failed"
+        int failed_attempts
+        text last_failure_code
+        text refund_id
+        timestamptz created_at
+        timestamptz updated_at
     }
     booking_items {
         uuid booking_item_id PK
@@ -202,6 +224,7 @@ erDiagram
         date using_date
         date using_date_to
         text[] guest_names
+        text special_request "yêu cầu riêng của từng dòng"
         numeric line_total "GENERATED"
     }
     conversations {
@@ -266,6 +289,7 @@ erDiagram
     products ||--o{ cart_items : ""
     profiles ||--o{ bookings : ""
     bookings ||--|{ booking_items : ""
+    bookings ||--o| payments : "1:1"
     products ||--o{ booking_items : ""
     bookings ||..|{ events : "event_group_id — không FK"
     profiles ||--o{ conversations : ""
@@ -370,7 +394,8 @@ erDiagram
 | `combo_items` | catalog | Thành phần combo, parse từ description | parse_combos | 93 combo → ~250 dòng |
 | `users` | app | Credential + persona demo, 1:1 profile | seed + register | 4 persona + 50 test |
 | `carts`, `cart_items` | app | Giỏ phía server, một giỏ / user | backend | 0 |
-| `bookings`, `booking_items` | app | Đơn demo, 1 checkout = 1 event_group_id; nối sang event purchase bằng event_group_id + product_id + using_date | backend · seed persona | chỉ persona |
+| `bookings`, `booking_items` | app | Đơn đặt chỗ: giữ chỗ `pending_payment` 30 phút → `confirmed` khi Stripe thu tiền (hoặc `payment_failed` · `expired` · `cancelled`); tối đa một đơn `pending_payment` mỗi user (unique index một phần). 1 checkout = 1 event_group_id; nối sang event purchase bằng event_group_id + product_id + using_date | backend · seed persona | chỉ persona |
+| `payments` | app | Một phiên Stripe Checkout mỗi đơn; trạng thái thanh toán tách khỏi trạng thái đơn (spec booking §5.2). Không lưu dữ liệu thẻ, chỉ id của Stripe (NFR-SEC-03) | backend · seed (`provider = 'seed'` cho booking của P1) | booking của P1 |
 | `conversations`, `conversation_messages`, `itineraries` | app | Trạng thái agent, TTL 24h | backend | 0 |
 | `recommendation_logs` | app | Mỗi lần gọi /recommendations | backend · batch | 0 |
 | `search_logs` | app | Câu truy vấn thật + kết quả; không nối id với event | backend | 0 |
@@ -674,16 +699,26 @@ CREATE TABLE app.bookings (
     reference_code   text NOT NULL UNIQUE,                             -- 'VOTA-20261015-8K3F'
     cdp_user_id      text NOT NULL REFERENCES cdp.profiles (cdp_user_id),
     event_group_id   text NOT NULL UNIQUE,                             -- = eventGroupId của các event purchase ghi ra
-    status           text NOT NULL DEFAULT 'confirmed' CHECK (status IN ('confirmed','cancelled')),
+    status           text NOT NULL DEFAULT 'pending_payment'
+                     CHECK (status IN ('pending_payment','confirmed','payment_failed','expired','cancelled')),
     contact_name     text NOT NULL,
     contact_email    text NOT NULL,
     contact_phone    text NOT NULL,
     special_request  text,
     total_amount     numeric(14,2) NOT NULL CHECK (total_amount >= 0),
     currency         char(3) NOT NULL DEFAULT 'VND',
-    created_at       timestamptz NOT NULL DEFAULT now()
+    created_at       timestamptz NOT NULL DEFAULT now(),
+    updated_at       timestamptz NOT NULL DEFAULT now(),
+    hold_expires_at  timestamptz,                                      -- hạn giữ chỗ; chỉ có ý nghĩa khi pending_payment
+    confirmed_at     timestamptz,
+    cancelled_at     timestamptz,
+    cancel_reason    text,
+    purchase_events_cancelled_at timestamptz                           -- đã huỷ event purchase trên CDP sau khi khách huỷ
 );
 CREATE INDEX bookings_user_idx ON app.bookings (cdp_user_id, created_at DESC);
+-- Mỗi người dùng chỉ có một đơn đang giữ chỗ (FR-BKG-05)
+CREATE UNIQUE INDEX bookings_one_pending_per_user ON app.bookings (cdp_user_id) WHERE status = 'pending_payment';
+CREATE INDEX bookings_hold_idx ON app.bookings (hold_expires_at) WHERE status = 'pending_payment';
 
 CREATE TABLE app.booking_items (
     booking_item_id  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -696,6 +731,7 @@ CREATE TABLE app.booking_items (
     using_date       date NOT NULL,
     using_date_to    date,
     guest_names      text[],                                               -- tên khách nhận phòng / hành khách
+    special_request  text,                                                 -- yêu cầu riêng của từng dòng (contract BookingItem.specialRequest)
     line_total       numeric(14,2) GENERATED ALWAYS AS (unit_price * quantity) STORED,
     -- event purchase tương ứng: cdp.events WHERE event_group_id = bookings.event_group_id
     --                                          AND product_id = booking_items.product_id AND using_date = booking_items.using_date
@@ -703,6 +739,28 @@ CREATE TABLE app.booking_items (
     CONSTRAINT booking_items_uq UNIQUE (booking_id, product_id, using_date)   -- khớp 1:1 với event purchase
 );
 CREATE INDEX booking_items_booking_idx ON app.booking_items (booking_id);
+
+-- app.payments — một đơn một phiên thanh toán Stripe Checkout (FR-BKG-06). Trạng thái thanh toán tách khỏi trạng thái đơn:
+--   'đã nhận tiền' và 'đơn đã xác nhận' là hai việc khác nhau (Stripe đã thu nhưng CDP lỗi → payment succeeded, đơn vẫn pending_payment).
+--   V-OTA không lưu dữ liệu thẻ (NFR-SEC-03); chỉ giữ id của Stripe.
+CREATE TABLE app.payments (
+    payment_id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    booking_id           uuid NOT NULL UNIQUE REFERENCES app.bookings (booking_id) ON DELETE CASCADE,
+    provider             text NOT NULL CHECK (provider IN ('stripe','fake','seed')),   -- seed = booking dựng sẵn cho persona P1
+    checkout_session_id  text UNIQUE,
+    payment_intent_id    text UNIQUE,
+    checkout_url         text,                                                        -- chỉ dùng khi status = 'open'
+    amount               bigint NOT NULL CHECK (amount >= 0),                         -- VND không có số lẻ
+    currency             char(3) NOT NULL DEFAULT 'VND',
+    status               text NOT NULL DEFAULT 'open'
+                         CHECK (status IN ('open','succeeded','failed','expired','refund_pending','refunded','refund_failed')),
+    failed_attempts      integer NOT NULL DEFAULT 0 CHECK (failed_attempts >= 0),
+    last_failure_code    text,
+    refund_id            text,
+    created_at           timestamptz NOT NULL DEFAULT now(),
+    updated_at           timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX payments_status_idx ON app.payments (status, updated_at);
 
 -- app.conversations / conversation_messages / itineraries — trợ lý lịch trình (handbook §9, ARCHITECTURE §8)
 CREATE TABLE app.conversations (

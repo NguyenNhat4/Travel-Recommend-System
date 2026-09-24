@@ -35,6 +35,8 @@ export function mapProductSummaryToProduct(summary: components['schemas']['Produ
     description: summary.name,
     attributes: (summary.attributes || {}) as Product['attributes'],
     available: summary.available,
+    availableFrom: summary.availableFrom ?? undefined,
+    availableTo: summary.availableTo ?? undefined,
   };
 }
 

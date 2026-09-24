@@ -1,12 +1,12 @@
 # Sơ đồ luồng đặt chỗ và thanh toán Stripe (MoR) — Sequence & Activity
 
 - Ngày: 2026-09-24
-- Phục vụ: FR-BKG-01…04, NFR-REL-02, NFR-SEC-01 (`docs/prd/requirements.md` §1.5, §2.2, §2.3); các mã mới FR-BKG-05 (giữ chỗ), FR-BKG-06 (thanh toán Stripe, MoR, thất bại), FR-BKG-07 (khách huỷ, hoàn tiền), NFR-SEC-03 (dữ liệu thanh toán) nằm trong đề xuất bên dưới.
+- Phục vụ: FR-BKG-01…07, NFR-REL-02, NFR-SEC-01, NFR-SEC-03 (`docs/prd/requirements.md` §1.5, §2.2, §2.3); AC-BKG-01…04.
 - Đề xuất PRD: `docs/prd/update-archive/2026-09-24-thanh-toan-stripe-mor.md`
 - Kế hoạch triển khai: `docs/plan/2026-09-24-booking-thanh-toan-stripe.md`
 - Căn cứ hiện hành: `docs/spec/hop-dong-tich-hop-backend.md` §7 (giỏ, checkout, ghi event), `docs/spec/hop-dong-tich-hop-cdp.md` §3.3 và §5 (chống trùng, huỷ, bù trừ `purchase`), `docs/spec/auth/so-do-luong-xac-thuc.md` (BFF, JWT).
 
-> **Trạng thái: bản thiết kế, chờ chốt.** PRD hiện chỉ có "thanh toán mô phỏng" (`project-brief.md` §4.1) và để cổng thanh toán thật ngoài phạm vi (§4.2). Các sơ đồ dưới đây mô tả hành vi **sau khi** đề xuất trên được chốt, theo các phương án agent đề xuất ở mục "Các quyết định cần chốt" (Q1–Q8). Chưa chốt thì không sửa contract, DDL hay code theo tài liệu này. Đề xuất được chốt với phương án khác thì phải vẽ lại các sơ đồ liên quan.
+> **Trạng thái: đã chốt và đã triển khai.** Đề xuất Stripe MoR được chốt ngày 2026-09-24 theo đúng phương án Q1–Q8 và đã áp dụng vào PRD. Contract, DDL, Backend và Web đã hiện thực theo tài liệu này (`history/2026-09-24-trien-khai-booking-thanh-toan-stripe.md`). Khác biệt giữa sơ đồ và code được ghi ngay tại mục liên quan.
 
 ## Mục lục
 
@@ -201,8 +201,10 @@ Các cặp trạng thái hợp lệ giữa đơn và thanh toán:
 | `EXPIRED` | `EXPIRED` | Hết giờ giữ chỗ |
 | `CANCELLED` | `EXPIRED` | Khách huỷ trước khi trả |
 | `CANCELLED` | `REFUND_PENDING` / `REFUNDED` / `REFUND_FAILED` | Khách huỷ sau khi trả |
+| `PAYMENT_FAILED` | `REFUND_FAILED` | Hoàn tự động (lệch số tiền, tiền về sau khi đã đóng phiên) nhưng Stripe từ chối hoàn; vận hành xử lý tay |
+| `EXPIRED` | `REFUND_PENDING` / `REFUNDED` / `REFUND_FAILED` | Tiền về cho đơn đã hết hạn giữ chỗ (nhánh đỏ "tiền về cho đơn đã đóng" ở mục 6.3), Backend hoàn tự động |
 
-Mọi cặp khác là lỗi dữ liệu; `db/verify.sql` sẽ có dòng kiểm (kế hoạch bước 3).
+Mọi cặp khác là lỗi dữ liệu; dòng `booking/payment status pairs valid` trong `db/verify.sql` kiểm đúng bảng này.
 
 ---
 
@@ -746,7 +748,9 @@ sequenceDiagram
     end
 ```
 
-`FOR UPDATE SKIP LOCKED` để khi chạy nhiều worker Backend, mỗi đơn chỉ do một worker xử lý. Cùng vòng quét, job còn làm lại ba việc dở dang: xác nhận đơn đã thu tiền nhưng chưa ghi được CDP (mục 7.2c), gọi lại Refund API cho payment `REFUND_PENDING` chưa có `refund_id`, và gọi lại `cancel_purchases` cho đơn huỷ chưa có `purchase_events_cancelled_at` (mục 9).
+`FOR UPDATE SKIP LOCKED` để khi chạy nhiều worker Backend, mỗi đơn chỉ do một worker xử lý.
+
+**Khác biệt so với sơ đồ (đã triển khai):** job không chờ thêm 5 phút ân hạn; đơn được chọn ngay khi quá `holdExpiresAt` hoặc khi thanh toán đã `SUCCEEDED` mà đơn chưa xác nhận. An toàn vì mỗi bước khoá dòng đơn (`FOR UPDATE`) trước khi đổi trạng thái và mọi bước đều idempotent: nếu webhook và job cùng xử lý một đơn thì bên đến sau thấy trạng thái đã đổi và không làm gì, `record_purchases` gửi trùng nhận `duplicate`, Refund API dùng cùng `Idempotency-Key`. Chu kỳ quét cấu hình bằng `BOOKING_RECONCILE_INTERVAL_SECONDS` (mặc định 300; `0` tắt job, chỉ dùng cho test). Cùng vòng quét, job còn làm lại ba việc dở dang: xác nhận đơn đã thu tiền nhưng chưa ghi được CDP (mục 7.2c), gọi lại Refund API cho payment `REFUND_PENDING` chưa có `refund_id`, và gọi lại `cancel_purchases` cho đơn huỷ chưa có `purchase_events_cancelled_at` (mục 9).
 
 ### 8.3. Activity — vòng đời một đơn giữ chỗ
 
@@ -821,7 +825,7 @@ flowchart TB
 
 ## 9. Case 4 — Khách huỷ booking
 
-Chính sách huỷ (phương án đề xuất Q5, **chờ chốt**). Huỷ **cả đơn**, không huỷ từng mục.
+Chính sách huỷ (Q5, đã chốt — FR-BKG-07). Huỷ **cả đơn**, không huỷ từng mục.
 
 | Trạng thái đơn lúc bấm huỷ | Điều kiện | Kết quả | Tiền |
 |---|---|---|---|
@@ -1015,7 +1019,7 @@ flowchart TB
 
 ### 10.1. Mã lỗi của API
 
-Mã có ghi **(mới)** chỉ được thêm vào `schemas/common.yaml` sau khi đề xuất được chốt. Các mã còn lại đã có trong `hop-dong-tich-hop-backend.md` §8.2.
+Mã có ghi **(mới)** là năm mã thêm vào `schemas/common.yaml` cùng đợt triển khai Stripe (contract 1.5.0); tất cả đều có trong `hop-dong-tich-hop-backend.md` §8.2.
 
 | HTTP | Mã | Loại | Khi nào | `retryable` | Web hiển thị |
 |---:|---|---|---|---|---|

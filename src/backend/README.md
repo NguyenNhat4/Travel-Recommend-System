@@ -39,7 +39,10 @@ Agent tool `query` được adapter đổi thành `q`) · `GET /similar/{product
 `POST /assistant/itineraries` · `POST /assistant/itineraries/stream` · `GET /assistant/status` ·
 auth v1 `POST /auth/register|login`, `GET /auth/me` · chỉ BFF (`X-Service-Token`)
 `POST /auth/session`, `/auth/session/token`, `/auth/session/revoke` · `PUT /auth/password` ·
-`GET /internal/recommendations?cdp_user_id=` (`X-Service-Token`, tắt ở production). Ngoài prefix: `GET /health`,
+`GET /internal/recommendations?cdp_user_id=` (`X-Service-Token`, tắt ở production) · booking (JWT bắt buộc)
+`GET /cart`, `POST /cart/items`, `PATCH|DELETE /cart/items/{cartItemId}`, `POST /bookings`,
+`GET /bookings/{referenceCode}`, `POST /bookings/{referenceCode}/cancel` · Stripe gọi thẳng (chữ ký, không JWT)
+`POST /payments/stripe/webhook`. Ngoài prefix: `GET /health`,
 `GET /.well-known/jwks.json`.
 
 ## Auth
@@ -51,18 +54,44 @@ Chi tiết: `docs/spec/hop-dong-tich-hop-auth.md`. JWT ký RS256; sinh khoá dev
 thường): 4 persona + 50 `test01..50@vota.demo`, mật khẩu `Demo@2026`. Test Postgres/Redis thật: `RUN_POSTGRES_INTEGRATION=1
 RUN_REDIS_INTEGRATION=1 python -m pytest -q src/backend/tests/integration`.
 
+## Booking và thanh toán Stripe (test mode)
+
+Luồng và sơ đồ: `docs/spec/booking/so-do-luong-dat-cho-thanh-toan.md`. `POST /bookings` giữ chỗ 30 phút và trả
+`payment.checkoutUrl` (trang Stripe Checkout); đơn chỉ `CONFIRMED` khi webhook có chữ ký báo đã thu tiền (hoặc job
+đối soát tự hỏi Stripe). Database cần migration `0003`, `0004` (`make db-migrate`).
+
+```env
+STRIPE_SECRET_KEY=sk_test_...      # chỉ khoá test; sk_live_ bị từ chối khi khởi động
+STRIPE_WEBHOOK_SECRET=whsec_...    # in ra bởi `stripe listen`, mỗi máy một giá trị
+PAYMENT_PROVIDER=stripe            # fake: không gọi mạng (test/offline); trang thanh toán giả không mở được
+BOOKING_HOLD_MINUTES=30            # >= 30 (giới hạn expires_at của Stripe)
+PAYMENT_MAX_FAILED_ATTEMPTS=3
+PUBLIC_WEB_URL=http://localhost:3000
+BOOKING_RECONCILE_INTERVAL_SECONDS=300   # job đối soát trong tiến trình; 0 = tắt
+```
+
+Nhận webhook ở local bằng Stripe CLI (cài một lần, `stripe login`):
+
+```bash
+stripe listen --forward-to localhost:8000/api/v1/payments/stripe/webhook   # chép whsec_… vào .env
+```
+
+Thẻ test: `4242 4242 4242 4242` (thành công), `4000 0000 0000 0002` (từ chối), `4000 0000 0000 9995` (không đủ số
+dư), `4000 0027 6000 3184` (3DS). Test integration adapter Postgres booking: `RUN_POSTGRES_INTEGRATION=1 python -m
+pytest -q src/backend/tests/integration/test_booking_postgres.py` (dùng user test `VP0000054`, tự dọn dữ liệu).
+
 ## Chỗ nào làm gì (docs/prd/architecture.md §2)
 
 | Lớp | Thư mục | Nội dung |
 |---|---|---|
-| domain | `domain/<domain>/` | Business rule thuần: vai trò sản phẩm + text builder (`catalog`), FILTER → SCORE → CUTOFF (`search`), hồ sơ người dùng + MMR + phổ biến (`recommendation`), chuẩn hoá intent + ghép lịch trình (`itinerary`), mật khẩu + phiên (`auth`) |
-| application | `application/ports/` | Mỗi port một file: `cdp_client.py` (`CdpClient` ghi, `CdpHistoryReader` đọc), `embedder.py`, `vector_store.py`, `unit_index.py`, `llm.py`, `itinerary_planner.py`, `itinerary_tools.py`, `auth.py` |
+| domain | `domain/<domain>/` | Business rule thuần: vai trò sản phẩm + text builder (`catalog`), FILTER → SCORE → CUTOFF (`search`), hồ sơ người dùng + MMR + phổ biến (`recommendation`), chuẩn hoá intent + ghép lịch trình (`itinerary`), mật khẩu + phiên (`auth`), máy trạng thái đơn/thanh toán + giữ chỗ + chính sách huỷ (`booking`) |
+| application | `application/ports/` | Mỗi port một file: `cdp_client.py` (`CdpClient` ghi, `CdpHistoryReader` đọc), `embedder.py`, `vector_store.py`, `unit_index.py`, `llm.py`, `itinerary_planner.py`, `itinerary_tools.py`, `auth.py`, `payment_gateway.py`, `booking_store.py`, `cart_repository.py`, `product_catalog.py` |
 | application | `application/<domain>/` | Use case: `SearchProducts`, `SimilarProducts`, `RecommendForUser`, `BuildPopularity`, `PlanItinerary`, auth, booking, tracking |
 | agents | `agents/` | LangGraph 9 node; `runtime_dependencies.py` hiện thực port `ItineraryPlanner`; `tools/itinerary_gateway.py` gọi Search/Recommendation qua port |
 | infrastructure | `cdp/` | `LocalCdpClient` (ghi), `PostgresCdpReader` (đọc), `CdpHttpClient`, `BackgroundCdpEventRecorder` — mọi SQL vào schema `cdp` nằm ở đây |
-| infrastructure | `persistence/` | `PostgresProductLookup`, conversation store, LangGraph checkpointer |
+| infrastructure | `persistence/` | `PostgresProductLookup`, conversation store, LangGraph checkpointer, giỏ/đơn/thanh toán (`postgres_booking.py`) |
 | infrastructure | `clients/` | HTTP client itinerary; fixture 50 sản phẩm cho `ITINERARY_DATA_MODE=fixture` |
-| infrastructure | `llm/`, `embeddings/`, `vectors/`, `auth/` | Provider LLM (`LazyChatModel`), `CohereEmbedder`, `WeaviateVectorStore`, hash mật khẩu + JWT |
+| infrastructure | `llm/`, `embeddings/`, `vectors/`, `auth/`, `payments/` | Provider LLM (`LazyChatModel`), `CohereEmbedder`, `WeaviateVectorStore`, hash mật khẩu + JWT, `StripePaymentGateway` (REST qua httpx, kiểm chữ ký webhook) + `FakeGateway` (`PAYMENT_PROVIDER=fake`) |
 | api | `api/` | `deps.py` (Depends lấy use case), `middleware.py` (X-Request-ID, CORS), `errors.py` (Error Envelope), `v1/router.py`, `v1/schemas/` (DTO), `v1/routes/` |
 | core | `core/` | `config.py` (một `Settings` duy nhất), `request_context.py` (ContextVar, không import FastAPI) |
 | — | `main.py` | Composition root: nơi duy nhất nối infrastructure và agent vào use case |

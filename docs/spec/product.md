@@ -35,7 +35,7 @@ Theo handbook §2 và §8, bản demo thắng hay thua ở ba khoảnh khắc. U
 
 ### 1.3 Ngoài phạm vi (theo handbook §2, §8 và brief §5)
 
-- Thanh toán thật, form thẻ, ví. Checkout chỉ thu thông tin và hiển thị mã tham chiếu.
+- Thanh toán tiền thật, Stripe live mode, form thẻ tự dựng, ví điện tử và chuyển khoản. Checkout thu tiền qua **Stripe Checkout ở test mode** (trang nhập thẻ do Stripe host, V-OTA là Merchant of Record — FR-BKG-06); V-OTA không vẽ form thẻ.
 - OAuth/đăng nhập mạng xã hội, xác minh email, **quên/đặt lại mật khẩu**, 2FA, phân quyền. UI **không hiển thị** link "Quên mật khẩu" hay nút "Đăng nhập với Google" dù mọi OTA tham chiếu đều có.
 - Đánh giá chi tiết của người dùng (handbook §3 cấm thu review), wishlist và chat nhóm. Bản đồ, lưu và chia sẻ lịch trình thuộc UX scope; trạng thái code hiện tại xem §1.5.
 - Thu thập phản hồi trên gợi ý kiểu "Không quan tâm" hay "Thêm như này" `[R107]`: không có API ghi, nên không đưa vào MVP. Có thể đưa vào đề xuất Tuần 6.
@@ -427,8 +427,8 @@ Có thể bị cắt (handbook §2, mục 4). Nếu cắt: bỏ route `/cart`, n
 
 ```
 ┌ Header rút gọn: Logo · ← Quay lại giỏ hàng ────────────────────────────────────┐
-│ ⓘ Bản demo: không có thanh toán thật. Bấm "Xác nhận" sẽ tạo mã tham chiếu và    │
-│   ghi nhận lượt đặt vào lịch sử để hệ thống gợi ý học từ nó.                     │
+│ ⓘ Thanh toán qua Stripe (chế độ test). Bấm "Thanh toán" sẽ giữ chỗ 30 phút và   │
+│   chuyển sang trang nhập thẻ của Stripe.                                        │
 ├──────────────────────────────────────────────────┬────────────────────────────┤
 │ 1 · THÔNG TIN LIÊN HỆ                  [✓]       │ ĐƠN ĐẶT CỦA BẠN            │
 │   Họ và tên *        [Nguyễn Minh Anh      ] ✓   │ [ảnh] Vinpearl Resort ...  │
@@ -440,9 +440,11 @@ Có thể bị cắt (handbook §2, mục 4). Nếu cắt: bỏ route `/cart`, n
 │   Vinpearl Resort: Tên khách nhận phòng [    ]   │ ─────────────────────────  │
 │   Vé máy bay: Họ tên hành khách 1 [   ] 2 [   ]  │ Tổng          14.180.000 ₫ │
 │   Yêu cầu đặc biệt (không bắt buộc) [       ]    │ [Sửa giỏ hàng]             │
-│ 3 · XEM LẠI & XÁC NHẬN                           │                            │
-│   ☐ Tôi hiểu đây là đặt chỗ demo, không có thật  │                            │
-│   [      Xác nhận đặt chỗ (14.180.000 ₫)      ]  │                            │
+│ 3 · PHƯƠNG THỨC THANH TOÁN                       │                            │
+│   (●) Stripe — Thẻ thanh toán (test)             │                            │
+│   ( ) Ví điện tử [Sắp có]  ( ) Chuyển khoản [Sắp có]                            │
+│   ☐ Đồng ý điều khoản và chính sách huỷ          │                            │
+│   [        Thanh toán 14.180.000 ₫            ]  │                            │
 └──────────────────────────────────────────────────┴────────────────────────────┘
 ```
 
@@ -454,18 +456,20 @@ Có thể bị cắt (handbook §2, mục 4). Nếu cắt: bỏ route `/cart`, n
 | Điền sẵn | Họ tên + email lấy từ tài khoản. Email khóa (đổi email ngoài phạm vi) | `[R67]` Tripadvisor web (email khóa, trường hợp lệ có ✓ xanh) |
 | Kiểm tra hợp lệ | Kiểm tra khi rời trường (blur), không kiểm tra theo từng phím. Lỗi hiện ngay dưới trường: "Vui lòng nhập số điện thoại hợp lệ". Khi bấm Xác nhận mà còn lỗi thì cuộn tới lỗi đầu tiên | `[R67]` Tripadvisor web |
 | Thông tin theo dịch vụ | Mỗi mục giỏ có trường tối thiểu: khách sạn → tên khách nhận phòng; vé máy bay → họ tên từng hành khách (theo `quantity`); vé tham quan → không thêm gì | `[R119]` Agoda iOS (khối "Special requests" dạng không bắt buộc) |
-| **Không có khối thanh toán** | Thay bằng băng thông tin "Bản demo" ở đầu trang. Không vẽ form thẻ giả, vì brief §5 và handbook §2 loại trừ thanh toán | `[R69]` Expedia web ("Reserve now, pay later" + "Pay today $0.00") là tiền lệ cho việc đặt mà không trả ngay |
+| **Khối phương thức thanh toán** | Chỉ Stripe (chọn sẵn); ví điện tử, chuyển khoản hiển thị vô hiệu hoá, nhãn "Sắp có" (`docs/prd/user-flow.md` §3.3). Không vẽ form thẻ: khách nhập thẻ trên trang do Stripe host | `[R68]` Airbnb web ("Add a payment method") |
 | Tóm tắt dính phải | Ảnh thu nhỏ + tên + ngày + số lượng + thành tiền từng mục, tổng, link "Sửa giỏ hàng" | `[R66]` Klook web; `[R57]` Navan web ("In this booking") |
-| CTA | "Xác nhận đặt chỗ ({tổng})". Disabled cho tới khi tick checkbox demo. Điều khoản ghi ngay trên nút | `[R70]` KAYAK web (nút "Confirm booking" disabled + đoạn điều khoản ngay trên) |
+| CTA | "Thanh toán ({tổng})". Disabled cho tới khi thông tin hợp lệ, đã chọn phương thức và tick điều khoản (gồm chính sách huỷ). Dưới nút: "Giữ chỗ 30 phút sau khi bấm Thanh toán. Bạn sẽ được chuyển sang Stripe." | `[R70]` KAYAK web (nút "Confirm booking" disabled + đoạn điều khoản ngay trên) |
 
 #### 4.5.3 Trạng thái
 
 | Trạng thái | Hành vi |
 |---|---|
-| Đang gửi | Nút đổi thành spinner + "Đang xác nhận…", disabled để **chống bấm hai lần** (hai lần bấm sẽ ghi hai event `purchase` và làm sai vòng lặp phản hồi). Form khóa. Pattern: `[R86]` Uvodo web (spinner nằm trong nút chính) |
-| Thành công | `replace` sang `/booking/:referenceCode` để nút Back không quay lại form đã gửi |
-| Một mục hết chỗ (4xx) | Banner trên cùng: "{tên} vừa hết chỗ. Hãy xóa khỏi đơn để tiếp tục." + [Quay lại giỏ]. Dữ liệu đã nhập được giữ nguyên |
-| Lỗi mạng / 5xx | Toast "Chưa xác nhận được đặt chỗ. Thông tin của bạn vẫn được giữ. [Thử lại]". Không xóa form |
+| Đang gửi | Nút đổi thành spinner + "Đang giữ chỗ và mở trang thanh toán…", disabled để **chống bấm hai lần** (Backend cũng chỉ cho một đơn giữ chỗ mỗi người). Pattern: `[R86]` Uvodo web (spinner nằm trong nút chính) |
+| Thành công (`201 PENDING_PAYMENT`) | Chuyển trình duyệt sang `payment.checkoutUrl` (trang Stripe). Stripe đưa về `/booking/:referenceCode?payment=return` hoặc `?payment=cancelled` |
+| Đang có đơn giữ chỗ (`409 BOOKING_PENDING_PAYMENT`) | Hộp thoại: "Tiếp tục thanh toán đơn đó" hoặc "Huỷ đơn đó và đặt lại từ giỏ" |
+| Giá đổi (`409 PRICE_CHANGED`) | Banner giá cũ → giá mới + [Cập nhật và tiếp tục] (xác nhận giá mới vào giỏ), khách bấm Thanh toán lần nữa |
+| Một mục hết chỗ (4xx) | Banner trên cùng: "{tên} vừa hết chỗ." + [Quay lại giỏ]. Dữ liệu đã nhập được giữ nguyên |
+| Stripe không phản hồi (`503`) / lỗi mạng / 5xx | Banner "Cổng thanh toán tạm thời không phản hồi" (hoặc thông điệp lỗi) + [Thử lại]. Không xóa form, không tạo đơn |
 | 401 giữa chừng | Modal đăng nhập lại, giữ dữ liệu form trong bộ nhớ, sau đó gửi lại |
 | Giỏ rỗng khi vào `/checkout` | Chuyển về `/cart` |
 
@@ -503,13 +507,17 @@ Có thể bị cắt (handbook §2, mục 4). Nếu cắt: bỏ route `/cart`, n
 | Mã tham chiếu | Font mono, cỡ lớn, có nút sao chép (toast "Đã sao chép") | `[R72]` Tripadvisor web ("Confirmation number: 1625480075") |
 | Chi tiết đơn | Danh sách mục + tổng + thông tin liên hệ | `[R75]` KAYAK web ("Your flight booking" + Summary); `[R76]` Time2book web (thẻ xác nhận gọn) |
 | Hai CTA | "Xem gợi ý mới trên trang chủ" (→ `/` với cờ `justBooked`, xem §4.1.4) · "Lên lịch trình cho chuyến {destination}" (→ `/assistant` điền sẵn điểm đến + ngày của khách sạn vừa đặt) | `[R76]` Time2book web ("My schedule" / "Book more"); `[R09]` Booking.com iOS ("Want to keep planning your trip itinerary? — Continue planning") |
-| **Tiếp theo cho chuyến** | Gọi `/recommendations` **sau khi** booking trả thành công. Tiêu đề + phụ đề theo §5.3. Thẻ có `BecauseLine` "Vì bạn vừa đặt {tên} · hôm nay" | `[R26]` Expedia web (trang xác nhận có "People who bought "Jakarta Museum…" also viewed" nêu đích danh sản phẩm nguồn); `[R74]` Kiwi.com web (xác nhận vé máy bay kèm "Latest hotel deals in Las Vegas", tức gợi ý chéo danh mục ngay sau khi đặt) |
+| **Tiếp theo cho chuyến** | Gọi `/recommendations` **chỉ khi** đơn đã `CONFIRMED`. Tiêu đề + phụ đề theo §5.3. Thẻ có `BecauseLine` "Vì bạn vừa đặt {tên} · hôm nay" | `[R26]` Expedia web (trang xác nhận có "People who bought "Jakarta Museum…" also viewed" nêu đích danh sản phẩm nguồn); `[R74]` Kiwi.com web (xác nhận vé máy bay kèm "Latest hotel deals in Las Vegas", tức gợi ý chéo danh mục ngay sau khi đặt) |
 
 #### 4.6.3 Trạng thái
 
 | Trạng thái | Hành vi |
 |---|---|
-| Tải lại trang / mở từ link | Gọi lại dữ liệu booking theo `referenceCode` (**phụ thuộc:** endpoint đọc booking). Không có thì hiện "Không tìm thấy đơn đặt chỗ này" + [Về trang chủ] |
+| Tải lại trang / mở từ link | `GET /bookings/{referenceCode}`. Không có thì hiện "Không tìm thấy đơn đặt chỗ này" + [Về trang chủ] |
+| Vừa quay về từ Stripe (`?payment=return`) | "Đang kiểm tra thanh toán…"; hỏi lại 2 giây/lần tối đa 15 lần tới khi đơn rời `PENDING_PAYMENT`. Đã thu tiền mà chưa xác nhận xong → "Đã nhận thanh toán, đang xác nhận đơn" |
+| Đang giữ chỗ | "Đơn đang được giữ chỗ" + đồng hồ đếm ngược theo `holdExpiresAt` + [Tiếp tục thanh toán] [Huỷ đơn]. Hết giờ → "Hết thời gian giữ chỗ" + [Đặt lại từ giỏ] |
+| Thanh toán thất bại / hết hạn / đã huỷ | Theo `docs/spec/hop-dong-tich-hop-frontend.md` §4.6; không gọi gợi ý |
+| Huỷ đơn đã xác nhận | Nút [Huỷ đơn] khi còn trước `cancellableUntil`; hộp thoại nêu số tiền hoàn, hạn huỷ, "không thể hoàn tác" |
 | Gợi ý đang tải | Phần đơn hàng hiện ngay. Section gợi ý hiện skeleton |
 | Gợi ý lỗi / rỗng | Ẩn section, giữ hai CTA. Không để lỗi gợi ý làm người dùng nghĩ đặt chỗ thất bại |
 | Gợi ý vẫn cùng danh mục đã đặt (engine chưa loại trừ) | Vẫn hiển thị, nhưng dùng tiêu đề chung "Có thể bạn quan tâm" thay vì "Tiếp theo cho chuyến…", tránh lời hứa sai |

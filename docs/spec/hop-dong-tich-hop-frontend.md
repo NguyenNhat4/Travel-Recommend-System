@@ -107,7 +107,7 @@ type ProductSummary = components["schemas"]["ProductSummary"];
 | `/assistant` | Trợ lý lịch trình | Không | `q` (prompt điền sẵn, không tự gửi), `destination` |
 | `/cart` | Giỏ hàng | Có | — |
 | `/checkout` | Checkout | Có | — |
-| `/booking/{referenceCode}` | Xác nhận đặt chỗ | Có | — |
+| `/booking/{referenceCode}` | Trạng thái đơn / xác nhận đặt chỗ | Có | `payment` (`return` \| `cancelled`) — do Backend đặt vào `success_url`/`cancel_url` của phiên Stripe |
 | `/login`, `/register` | Đăng nhập, đăng ký | — | `redirect` (đường dẫn nội bộ, bắt đầu bằng `/`) |
 
 Quy ước:
@@ -178,19 +178,37 @@ Web **không** tự cộng tiền. Mọi con số tiền trên trang giỏ lấy
 
 | Khu vực | Endpoint | Auth | Trường Web đọc / gửi | Khi lỗi |
 |---|---|---|---|---|
-| Tóm tắt | `GET /cart` | bắt buộc | như §4.4 | `items: []` → chuyển `/cart` |
-| Điền sẵn | phiên hiện tại | — | `user.fullName`, `user.email` | — |
-| Xác nhận | `POST /bookings` | bắt buộc | gửi `contact`, `itemDetails[]`; đọc `referenceCode` | Xem §8. Thành công → `replace` sang `/booking/{referenceCode}` |
+| Tóm tắt | `GET /cart` | bắt buộc | như §4.4 | `items: []` → chuyển `/cart`. Mục `product.available: false` → khoá nút Thanh toán |
+| Điền sẵn | phiên hiện tại | — | `user.fullName`, `user.email` (email khoá theo tài khoản) | — |
+| Phương thức thanh toán | — | — | — | Chỉ Stripe (chọn sẵn); ví điện tử, chuyển khoản hiển thị vô hiệu hoá, nhãn "Sắp có" (`user-flow.md` §3.3) |
+| Thanh toán | `POST /bookings` | bắt buộc | gửi `contact`, `itemDetails[]`; đọc `referenceCode`, `payment.checkoutUrl` | Xem §8. `201` → `window.location.assign(payment.checkoutUrl)` sang trang Stripe |
 
-Quy tắc form → `itemDetails[]`: `hotel` gửi `guestNames` 1 phần tử; `flight` gửi `guestNames` đủ `quantity` phần tử; loại khác không gửi `guestNames`. `specialRequest` tùy chọn.
+Nút **Thanh toán** bị khoá tới khi họ tên hợp lệ, `phone` khớp `^0[0-9]{9}$`, đủ tên khách theo quy tắc dưới, đã đồng ý điều khoản và đã chọn phương thức; khi đang gửi thì hiện trạng thái xử lý và chặn bấm lặp. Web không gửi số tiền; tổng hiển thị lấy từ `CartResponse.total`.
 
-### 4.6. Confirmation `/booking/{referenceCode}`
+Quy tắc form → `itemDetails[]`: `hotel` gửi `guestNames` 1 phần tử; `flight` gửi `guestNames` đủ `quantity` phần tử; loại khác không gửi `guestNames`. `specialRequest` tùy chọn, theo từng mục.
+
+### 4.6. Trạng thái đơn `/booking/{referenceCode}`
 
 | Khu vực | Endpoint | Auth | Trường Web đọc | Khi lỗi / rỗng |
 |---|---|---|---|---|
-| Đơn đặt | dùng response `POST /bookings` nếu có trong state; tải lại → `GET /bookings/{referenceCode}` | bắt buộc | `referenceCode`, `createdAt`, `contact`, `groups[]` (`destination`, `items[]`, `groupTotal`), `total` | `404 BOOKING_NOT_FOUND` → "Không tìm thấy đơn đặt chỗ này" |
-| Tiếp theo cho chuyến | `GET /recommendations?k=4&destination=<groups[0].destination>` — gọi **sau** khi đơn đã hiển thị | bắt buộc | như Home ① | Lỗi hoặc rỗng → ẩn section, giữ CTA |
-| CTA trợ lý | — | — | `groups[0].destination`, `usingDate` của mục `hotel` | → `/assistant?destination=…&q=…` |
+| Đơn đặt | `GET /bookings/{referenceCode}` (dùng bản trong state nếu có để hiện ngay) | bắt buộc | `status`, `holdExpiresAt`, `cancellableUntil`, `payment` (`status`, `amount`, `checkoutUrl`, `failedAttempts`, `failureReason`, `refundedAmount`), `cancellation`, `contact`, `groups[]`, `total` | `404 BOOKING_NOT_FOUND` → "Không tìm thấy đơn đặt chỗ này" |
+| Chờ xác nhận | `GET /bookings/{referenceCode}` lặp lại | bắt buộc | `status`, `payment.status` | `?payment=return`, `payment.status = SUCCEEDED` hoặc đồng hồ giữ chỗ về 0: hỏi lại 2 giây/lần, tối đa 15 lần, dừng khi `status` khác `PENDING_PAYMENT`. Quay về từ Stripe **không** phải bằng chứng đã trả |
+| Huỷ đơn | `POST /bookings/{referenceCode}/cancel` | bắt buộc | `BookingResponse` thay thế state | Xem §8 |
+| Tiếp theo cho chuyến | `GET /recommendations?k=4&destination=<groups[0].destination>` — **chỉ khi `CONFIRMED`**, gọi sau khi đơn đã hiển thị | bắt buộc | như Home ① | Lỗi hoặc rỗng → ẩn section, giữ CTA |
+| CTA trợ lý | — | — | `groups[0].destination` | → `/assistant?destination=…` |
+
+Hiển thị theo trạng thái (spec booking §5.1):
+
+| `status` | Web hiển thị |
+|---|---|
+| `PENDING_PAYMENT`, `payment.status = OPEN` | "Đơn đang được giữ chỗ" + đồng hồ đếm ngược theo `holdExpiresAt` + nút "Tiếp tục thanh toán" (mở lại `checkoutUrl`) + "Huỷ đơn". Có `failureReason` thì hiện lý do lần trước và số lần còn thử. Đồng hồ về 0 → "Hết thời gian giữ chỗ", ẩn nút tiếp tục |
+| `PENDING_PAYMENT`, `payment.status = SUCCEEDED` | "Đã nhận thanh toán, đang xác nhận đơn. Bạn có thể đóng trang." |
+| `CONFIRMED` | Mã đặt chỗ, tóm tắt chuyến, gợi ý chặng tiếp, nút "Huỷ đơn" khi còn trước `cancellableUntil`; tải lại giỏ (Backend đã bỏ các mục vừa đặt) và bật cờ `justBooked` nếu vừa quay về từ Stripe |
+| `PAYMENT_FAILED` | Lý do theo `failureReason` (spec booking §10.2) + "Đặt lại từ giỏ" |
+| `EXPIRED` | "Hết thời gian giữ chỗ" + "Đặt lại từ giỏ" |
+| `CANCELLED` | "Đã huỷ đơn" + trạng thái hoàn tiền theo `payment.status` (`REFUND_PENDING`, `REFUNDED`, `REFUND_FAILED`, hoặc `EXPIRED` = chưa thanh toán nên không hoàn) |
+
+Hộp thoại huỷ: đơn `CONFIRMED` hiện số tiền hoàn (`payment.amount`), `cancellableUntil` và "không thể hoàn tác"; đơn chưa thanh toán ghi rõ không phát sinh tiền, giỏ còn nguyên.
 
 ### 4.7. Login / Register
 
@@ -310,6 +328,10 @@ Mọi response không phải 2xx có envelope `ErrorResponse` (`hop-dong-tich-ho
 |---|---|---|
 | `VALIDATION_ERROR` | form bất kỳ | Gắn `details.fields[]` vào trường tương ứng; không có `fields` → `message` phía trên nút |
 | `CART_EMPTY` | Checkout | Chuyển `/cart` |
+| `BOOKING_PENDING_PAYMENT` | Checkout | Hộp thoại "Bạn đang có một đơn chờ thanh toán" với `details.referenceCode`, `details.holdExpiresAt`: "Tiếp tục thanh toán đơn đó" (đọc lại đơn, mở `checkoutUrl`) hoặc "Huỷ đơn đó và đặt lại từ giỏ" |
+| `BOOKING_ALREADY_PAID` | Huỷ đơn | Tải lại đơn, báo "Đơn vừa được thanh toán" |
+| `BOOKING_NOT_CANCELLABLE` | Huỷ đơn | `details.reason = TOO_LATE` → "Đã quá hạn huỷ trực tuyến (hạn: {cancellableUntil})"; `NOT_ACTIVE` → "Đơn này không còn hiệu lực" |
+| `PAYMENT_PROVIDER_UNAVAILABLE` | Checkout; Huỷ đơn | "Cổng thanh toán tạm thời không phản hồi" + Thử lại (`retryable: true`); ở lại trang, giỏ còn nguyên |
 | `INVALID_CREDENTIALS` | Login | "Email hoặc mật khẩu không đúng" phía trên nút |
 | `INVALID_TOKEN`, `TOKEN_EXPIRED` | mọi nơi có JWT | §7 mục 3–4 |
 | `PRODUCT_NOT_FOUND` | Detail; thêm giỏ | Detail → trang 404 sản phẩm. Thêm giỏ → toast `message` |
@@ -317,7 +339,7 @@ Mọi response không phải 2xx có envelope `ErrorResponse` (`hop-dong-tich-ho
 | `BOOKING_NOT_FOUND` | Confirmation | "Không tìm thấy đơn đặt chỗ này" + Về trang chủ |
 | `EMAIL_ALREADY_EXISTS` | Register | Dưới trường email + link Đăng nhập |
 | `PRODUCT_UNAVAILABLE` | Thêm giỏ; Checkout | Banner "{tên} vừa hết chỗ" dùng `details.productId` để tìm tên trong giỏ; giữ form; link Quay lại giỏ |
-| `PRICE_CHANGED` | Checkout | Banner "Giá {tên} đã đổi từ {oldPrice} thành {newPrice}" + nút "Cập nhật và tiếp tục" (gọi lại `GET /cart`, người dùng bấm xác nhận lần nữa) |
+| `PRICE_CHANGED` | Checkout | Banner "Giá {tên} đã đổi từ {oldPrice} thành {newPrice}" + nút "Cập nhật và tiếp tục": gọi `PATCH /cart/items/{cartItemId}` với `quantity` hiện tại để Backend ghi lại giá snapshot (khách đã thấy giá mới), rồi người dùng bấm Thanh toán lần nữa. Chỉ `GET /cart` thì lần bấm sau vẫn nhận `PRICE_CHANGED` |
 | `DATE_OUT_OF_RANGE` | Thêm giỏ; Checkout | Lỗi dưới ô ngày, dùng `details.availableFrom/To` để giới hạn lịch |
 | `SEARCH_UNAVAILABLE` | Search; Assistant | `ErrorState` + Thử lại |
 | `INVALID_TRIP_DURATION` | Assistant | Tin nhắn trợ lý với `message`, mở stepper số ngày |
@@ -585,6 +607,8 @@ Ca biên bắt buộc để dựng đủ 8 màn hình:
 | Giỏ rỗng / có hai điểm đến | `booking/getCart.200-empty`, `booking/getCart.200-two-destinations` |
 | Checkout `409 PRICE_CHANGED`, `409 PRODUCT_UNAVAILABLE` | `booking/createBooking.409-*` |
 | Booking hai nhóm điểm đến | `booking/createBooking.201-two-groups` |
+| Đơn theo 5 trạng thái: giữ chỗ, đã xác nhận, thanh toán thất bại, hết hạn, đã huỷ + hoàn tiền | `booking/createBooking.201-default` (`PENDING_PAYMENT`), `booking/getBooking.200-default` (`CONFIRMED`), `booking/getBooking.200-payment-failed`, `booking/getBooking.200-expired`, `booking/getBooking.200-cancelled-refunded` |
+| Đang có đơn giữ chỗ, Stripe không phản hồi, huỷ quá hạn | `booking/createBooking.409-pending-payment`, `booking/createBooking.503-payment-unavailable`, `booking/cancelBooking.409-too-late` |
 | Trợ lý: bốn `status` + điểm đến không hỗ trợ + hội thoại hết hạn | `assistant/createItinerary.*` |
 | Lịch trình chứa slot hết chỗ và slot sai điểm đến (lưới an toàn §9.5) | `assistant/createItinerary.200-completed-invalid-slots` |
 | Search kết quả yếu (`topScore < 0.35`), Search `503` | `search/searchProducts.200-weak`, `search/searchProducts.503-unavailable` |

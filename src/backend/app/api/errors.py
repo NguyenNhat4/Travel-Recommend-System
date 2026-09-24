@@ -4,6 +4,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from src.backend.app.application.auth.errors import AuthError, RateLimited
+from src.backend.app.application.booking.errors import BookingError
 from src.backend.app.application.itinerary.contracts import error_response
 from src.backend.app.core.request_context import current_request_id
 
@@ -40,6 +41,34 @@ async def auth_error(_: Request, exc: AuthError):
     return JSONResponse(status_code=exc.http_status, content=body, headers=headers)
 
 
+# Thông điệp booking (docs/spec/booking/so-do-luong-dat-cho-thanh-toan.md §10.1); tiếng Việt, hiển thị được cho người dùng.
+_BOOKING_MESSAGES = {
+    "CART_EMPTY": "Giỏ hàng đang trống.",
+    "VALIDATION_ERROR": "Yêu cầu không hợp lệ.",
+    "PRODUCT_NOT_FOUND": "Không tìm thấy sản phẩm.",
+    "CART_ITEM_NOT_FOUND": "Không tìm thấy mục trong giỏ hàng.",
+    "BOOKING_NOT_FOUND": "Không tìm thấy đơn đặt chỗ này.",
+    "PRODUCT_UNAVAILABLE": "Sản phẩm vừa hết chỗ.",
+    "PRICE_CHANGED": "Giá sản phẩm đã thay đổi.",
+    "DATE_OUT_OF_RANGE": "Ngày sử dụng nằm ngoài thời gian mở bán.",
+    "BOOKING_PENDING_PAYMENT": "Bạn đang có một đơn chờ thanh toán.",
+    "BOOKING_ALREADY_PAID": "Đơn vừa được thanh toán.",
+    "BOOKING_NOT_CANCELLABLE": "Đơn này không huỷ được.",
+    "PAYMENT_PROVIDER_UNAVAILABLE": "Cổng thanh toán tạm thời không phản hồi. Vui lòng thử lại.",
+    "INVALID_WEBHOOK_SIGNATURE": "Chữ ký không hợp lệ.",
+}
+
+
+async def booking_error(_: Request, exc: BookingError):
+    body = error_response(
+        exc.code, _BOOKING_MESSAGES.get(exc.code, "Có lỗi xảy ra."), current_request_id() or "booking", exc.retryable)
+    if exc.details:
+        body["error"]["details"] = exc.details
+    headers = {"Retry-After": "5"} if exc.http_status == 503 else None
+    return JSONResponse(status_code=exc.http_status, content=body, headers=headers)
+
+
 def install_error_handlers(app: FastAPI) -> None:
+    app.add_exception_handler(BookingError, booking_error)
     app.add_exception_handler(RequestValidationError, request_validation_error)
     app.add_exception_handler(AuthError, auth_error)

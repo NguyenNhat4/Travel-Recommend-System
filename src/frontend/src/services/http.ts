@@ -45,6 +45,50 @@ async function errorCode(response: Response): Promise<string | null> {
   }
 }
 
+/**
+ * Lỗi API theo Error Envelope (docs/spec/hop-dong-tich-hop-frontend.md §8). Không có response thì
+ * `code = NETWORK_ERROR`, `retryable = true` — mã giả phía client, không gửi lên server.
+ */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly code: string,
+    readonly status: number,
+    readonly retryable: boolean,
+    readonly requestId: string | null = null,
+    readonly details: Record<string, any> | null = null,
+  ) {
+    super(message);
+  }
+}
+
+export async function toApiError(response: Response): Promise<ApiError> {
+  let body: any = null;
+  try { body = await response.json(); } catch { /* không có envelope */ }
+  const error = body?.error ?? {};
+  return new ApiError(
+    error.message || 'Có lỗi xảy ra. Vui lòng thử lại.',
+    error.code || 'INTERNAL_ERROR',
+    response.status,
+    Boolean(error.retryable ?? response.status >= 500),
+    error.requestId ?? response.headers.get('x-request-id'),
+    error.details ?? null,
+  );
+}
+
+/** Gọi BFF và trả JSON; lỗi HTTP hoặc mạng đều thành `ApiError`. */
+export async function apiJson<T>(input: string, init: RequestInit = {}): Promise<T> {
+  let response: Response;
+  try {
+    response = await apiFetch(input, init);
+  } catch (error) {
+    if ((error as Error)?.name === 'AbortError') throw error;
+    throw new ApiError('Mất kết nối. Vui lòng thử lại.', 'NETWORK_ERROR', 0, true);
+  }
+  if (!response.ok) throw await toApiError(response);
+  return response.json() as Promise<T>;
+}
+
 export async function apiFetch(input: string, init: RequestInit = {}, retried = false): Promise<Response> {
   const method = (init.method || 'GET').toUpperCase();
   const headers = new Headers(init.headers);

@@ -1,37 +1,81 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useTravel } from '../../context/TravelContext';
-import { calculateRecommendations } from '../../services/recsys';
+import { fetchRecommendations } from '../../services/recsys';
+import type { ApiCartItem } from '../../services/booking';
+import type { RecommendationResponse, Taxonomy } from '../../types/travel';
 import { TaxonomyBadge } from '../common/TaxonomyBadge';
-import { PriceTag } from '../common/PriceTag';
 import { ProductCard } from '../common/ProductCard';
-import { Trash2, ShoppingBag, ArrowRight, ShieldCheck, Plus, Sparkles } from 'lucide-react';
-import { Destination, CartItem } from '../../types/travel';
+import { Trash2, ShoppingBag, ArrowRight, ShieldCheck, Sparkles, Loader2, AlertTriangle } from 'lucide-react';
+import { formatVnd } from '../confirmation/bookingLabels';
+
+function addDays(isoDate: string, days: number): string {
+  const d = new Date(`${isoDate}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function itemSummary(item: ApiCartItem): string {
+  if (item.product.taxonomy === 'hotel') {
+    const nights = item.nights ?? 1;
+    return `${item.usingDate} → ${addDays(item.usingDate, nights)} · ${nights} đêm · ${item.quantity} phòng`;
+  }
+  return `Ngày dùng: ${item.usingDate} · Số lượng: ${item.quantity}`;
+}
 
 export const CartView: React.FC = () => {
-  const { cart, removeFromCart, updateCartItem, navigate, currentPersona, activeEvents, addToCart } = useTravel();
+  const {
+    cart, removeFromCart, navigate, currentPersona, authReady, activeEvents, addToCart, openLoginModal,
+  } = useTravel();
+  const [recs, setRecs] = useState<RecommendationResponse | null>(null);
 
-  // Group items by destination
+  const items = useMemo(() => cart?.items ?? [], [cart]);
+  const hasUnavailable = items.some((item) => !item.product.available);
+  const primaryDestination = items[0]?.product.destination;
+
+  // Gom nhóm "Chuyến {destination}" phía client (docs/spec/hop-dong-tich-hop-frontend.md §4.4)
   const itemsByDestination = useMemo(() => {
-    const groups: { [destination: string]: CartItem[] } = {};
-    cart.forEach(item => {
-      const dest = item.destination || 'Chung';
-      if (!groups[dest]) groups[dest] = [];
-      groups[dest].push(item);
-    });
+    const groups: Record<string, ApiCartItem[]> = {};
+    for (const item of items) (groups[item.product.destination || 'Khác'] ??= []).push(item);
     return groups;
-  }, [cart]);
+  }, [items]);
 
-  const totalAmount = useMemo(() => {
-    return cart.reduce((sum, item) => sum + item.totalPrice, 0);
-  }, [cart]);
+  // Thường được đặt cùng: GET /recommendations theo điểm đến đầu tiên; lỗi thì ẩn.
+  useEffect(() => {
+    if (!currentPersona || !primaryDestination) return;
+    const controller = new AbortController();
+    fetchRecommendations({
+      k: 4, destination: primaryDestination, fallbackUser: currentPersona, fallbackEvents: activeEvents,
+      signal: controller.signal,
+    }).then(setRecs).catch(() => setRecs(null));
+    return () => controller.abort();
+  }, [currentPersona, primaryDestination, activeEvents]);
 
-  // Recommendations for cross-sell in cart
-  const recResponse = useMemo(() => calculateRecommendations(currentPersona, activeEvents), [currentPersona, activeEvents]);
-  const primaryDestination = cart[0]?.destination || 'Nha Trang';
+  if (authReady && !currentPersona) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 py-16 text-center space-y-4">
+        <h2 className="text-xl font-bold text-slate-900">Đăng nhập để xem giỏ hàng</h2>
+        <p className="text-xs text-slate-500">Giỏ hàng được lưu theo tài khoản của bạn.</p>
+        <button
+          onClick={() => openLoginModal()}
+          className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors"
+        >
+          Đăng nhập
+        </button>
+      </div>
+    );
+  }
 
-  if (cart.length === 0) {
+  if (!cart) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 py-16 flex justify-center text-slate-400">
+        <Loader2 className="w-6 h-6 animate-spin" aria-label="Đang tải giỏ hàng" />
+      </div>
+    );
+  }
+
+  if (items.length === 0) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-16 text-center space-y-6">
         <div className="w-16 h-16 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto">
@@ -66,7 +110,7 @@ export const CartView: React.FC = () => {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-10">
       <div className="flex items-baseline justify-between border-b border-slate-200 pb-4">
         <h1 className="text-2xl font-black text-slate-900 tracking-tight">
-          Giỏ hàng của bạn ({cart.length})
+          Giỏ hàng của bạn ({cart.itemCount})
         </h1>
         <span className="text-xs text-slate-500">
           Các dịch vụ được gom nhóm theo từng điểm đến
@@ -76,59 +120,62 @@ export const CartView: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
         {/* Left: Cart Items by Destination */}
         <div className="lg:col-span-2 space-y-6">
-          {Object.entries(itemsByDestination).map(([dest, items]: [string, CartItem[]]) => (
+          {Object.entries(itemsByDestination).map(([dest, group]) => (
             <div key={dest} className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
               <div className="px-5 py-3.5 bg-slate-50 border-b border-slate-200/80 flex items-center justify-between">
                 <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
                   CHUYẾN {dest.toUpperCase()}
                 </h3>
                 <span className="text-xs text-slate-500 font-medium">
-                  {items.length} dịch vụ
+                  {group.length} dịch vụ
                 </span>
               </div>
 
               <div className="divide-y divide-slate-100 p-2">
-                {items.map(item => (
-                  <div key={item.id} className="p-3 flex items-center justify-between gap-4">
+                {group.map(item => (
+                  <div
+                    key={item.cartItemId}
+                    data-testid="cart-item"
+                    className={`p-3 flex items-center justify-between gap-4 ${item.product.available ? '' : 'border-2 border-rose-400 rounded-xl bg-rose-50/40'}`}
+                  >
                     <div className="flex items-center gap-3.5 min-w-0">
                       <img
-                        src={item.product.imageUrl}
+                        src={item.product.imageUrl || '/placeholders/hotel.webp'}
                         alt={item.product.name}
                         referrerPolicy="no-referrer"
                         className="w-16 h-16 rounded-lg object-cover bg-slate-100 shrink-0"
                       />
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5 mb-1">
-                          <TaxonomyBadge taxonomy={item.taxonomy} size="sm" />
+                          <TaxonomyBadge taxonomy={item.product.taxonomy as Taxonomy} size="sm" />
                           <span className="text-[11px] text-slate-400 font-medium">
-                            {item.destination}
+                            {item.product.destination}
                           </span>
                         </div>
                         <h4 className="text-xs sm:text-sm font-bold text-slate-900 truncate">
                           {item.product.name}
                         </h4>
-                        <div className="text-[11px] text-slate-500 mt-0.5">
-                          {item.taxonomy === 'hotel' 
-                            ? `${item.usingDate} → ${item.checkOutDate} · ${item.nights} đêm · ${item.quantity} phòng`
-                            : `Ngày dùng: ${item.usingDate} · Số lượng: ${item.quantity} khách`}
-                        </div>
+                        <div className="text-[11px] text-slate-500 mt-0.5">{itemSummary(item)}</div>
+                        {!item.product.available && (
+                          <div className="text-[11px] text-rose-600 font-semibold mt-0.5">
+                            Hết chỗ — xoá mục này để tiếp tục đặt chỗ
+                          </div>
+                        )}
                       </div>
                     </div>
 
                     <div className="flex flex-col items-end gap-1.5 shrink-0">
                       <span className="text-sm font-bold text-blue-900 font-mono">
-                        {new Intl.NumberFormat('vi-VN').format(item.totalPrice)} ₫
+                        {formatVnd(item.lineTotal)}
                       </span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => removeFromCart(item.id)}
-                          className="text-xs text-slate-400 hover:text-rose-600 flex items-center gap-1 transition-colors"
-                          title="Xóa mục này"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          <span>Xóa</span>
-                        </button>
-                      </div>
+                      <button
+                        onClick={() => void removeFromCart(item.cartItemId)}
+                        className="text-xs text-slate-400 hover:text-rose-600 flex items-center gap-1 transition-colors"
+                        title="Xóa mục này"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Xóa</span>
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -136,26 +183,28 @@ export const CartView: React.FC = () => {
             </div>
           ))}
 
-          {/* Frequently Booked Together Section (§4.4.2) */}
-          <div className="pt-4 space-y-3">
-            <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-              Thường được đặt cùng chuyến {primaryDestination}
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {recResponse.recommendations.slice(0, 2).map(rec => (
-                <ProductCard
-                  key={rec.product.id}
-                  product={rec.product}
-                  variant="compact"
-                  because={rec.because}
-                  onQuickAdd={(p) => addToCart(p, 1)}
-                />
-              ))}
+          {/* Thường được đặt cùng (§4.4) */}
+          {recs && recs.recommendations.length > 0 && (
+            <div className="pt-4 space-y-3">
+              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Thường được đặt cùng chuyến {primaryDestination}
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {recs.recommendations.slice(0, 2).map(rec => (
+                  <ProductCard
+                    key={rec.product.id}
+                    product={rec.product}
+                    variant="compact"
+                    because={rec.because}
+                    onQuickAdd={(p) => void addToCart(p, 1)}
+                  />
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
-        {/* Right: Sticky Summary Box */}
+        {/* Right: Sticky Summary Box — mọi con số lấy từ CartResponse */}
         <div className="sticky top-20 bg-white p-6 rounded-2xl border border-slate-200 shadow-xl space-y-5">
           <h3 className="text-sm font-bold text-slate-900 border-b border-slate-100 pb-3">
             Tóm tắt đơn đặt chỗ
@@ -164,13 +213,11 @@ export const CartView: React.FC = () => {
           <div className="space-y-2.5 text-xs">
             <div className="flex justify-between text-slate-600">
               <span>Tổng số dịch vụ:</span>
-              <span className="font-semibold text-slate-800">{cart.length}</span>
+              <span className="font-semibold text-slate-800">{cart.itemCount}</span>
             </div>
             <div className="flex justify-between text-slate-600">
               <span>Tạm tính:</span>
-              <span className="font-mono text-slate-800">
-                {new Intl.NumberFormat('vi-VN').format(totalAmount)} ₫
-              </span>
+              <span className="font-mono text-slate-800">{formatVnd(cart.subtotal)}</span>
             </div>
             <div className="flex justify-between text-slate-600">
               <span>Thuế và phí:</span>
@@ -178,15 +225,21 @@ export const CartView: React.FC = () => {
             </div>
             <div className="pt-3 border-t border-slate-200 flex justify-between items-baseline">
               <span className="text-sm font-bold text-slate-900">Tổng thanh toán:</span>
-              <span className="text-lg font-black text-blue-900 font-mono">
-                {new Intl.NumberFormat('vi-VN').format(totalAmount)} ₫
-              </span>
+              <span className="text-lg font-black text-blue-900 font-mono">{formatVnd(cart.total)}</span>
             </div>
           </div>
 
+          {hasUnavailable && (
+            <div className="flex items-start gap-2 p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-[11px] text-rose-700">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <span>Giỏ có dịch vụ đã hết chỗ. Xoá mục đó để tiếp tục.</span>
+            </div>
+          )}
+
           <button
             onClick={() => navigate('/checkout')}
-            className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm rounded-xl shadow-xs transition-colors flex items-center justify-center gap-2"
+            disabled={hasUnavailable}
+            className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-bold text-sm rounded-xl shadow-xs transition-colors flex items-center justify-center gap-2"
           >
             <span>Tiến hành đặt chỗ</span>
             <ArrowRight className="w-4 h-4" />
@@ -195,7 +248,7 @@ export const CartView: React.FC = () => {
           <div className="text-center text-[11px] text-slate-500 space-y-1">
             <div className="flex items-center justify-center gap-1 text-slate-600 font-medium">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Thanh toán an toàn & bảo mật thông tin 100%</span>
+              <span>Thanh toán qua Stripe — V-OTA không lưu thông tin thẻ</span>
             </div>
           </div>
         </div>

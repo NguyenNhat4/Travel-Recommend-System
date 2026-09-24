@@ -120,41 +120,7 @@ export interface UserEvent {
   eventGroupId?: string;
 }
 
-export interface CartItem {
-  id: string;
-  productId: string;
-  product: Product;
-  destination: Destination;
-  taxonomy: Taxonomy;
-  usingDate?: string;
-  checkOutDate?: string;
-  quantity: number;
-  nights?: number;
-  totalPrice: number;
-}
-
-export interface BookingContact {
-  fullName: string;
-  email: string;
-  phoneNumber: string;
-}
-
-export interface BookingGuestDetails {
-  hotelGuestName?: string;
-  passengers?: string[];
-  specialRequests?: string;
-}
-
-export interface BookingRecord {
-  referenceCode: string;
-  createdAt: string;
-  userId: string;
-  contact: BookingContact;
-  items: CartItem[];
-  totalAmount: number;
-  destination: Destination;
-  guestDetails?: BookingGuestDetails;
-}
+// Giỏ hàng và đơn đặt chỗ dùng kiểu sinh từ OpenAPI: services/booking.ts (CartResponse, BookingResponse).
 
 // Assistant & Itinerary Types
 export interface TravelIntent {

@@ -1,7 +1,7 @@
 {
   "referenceCode": "VOTA-20260916-8K3F",
   "createdAt": "2026-09-16T10:22:00Z",
-  "status": "CONFIRMED",
+  "status": "PENDING_PAYMENT",
   "contact": {
     "fullName": "Nguyễn Minh Anh",
     "email": "minhanh@example.vn",
@@ -114,5 +114,17 @@
     }
   ],
   "total": 18040000,
-  "currency": "VND"
+  "currency": "VND",
+  "holdExpiresAt": "2026-09-16T10:52:00Z",
+  "cancellableUntil": null,
+  "cancellation": null,
+  "payment": {
+    "status": "OPEN",
+    "amount": 18040000,
+    "currency": "VND",
+    "checkoutUrl": "https://checkout.stripe.com/c/pay/cs_test_a1B2c3D4",
+    "failedAttempts": 0,
+    "failureReason": null,
+    "refundedAmount": 0
+  }
 }
