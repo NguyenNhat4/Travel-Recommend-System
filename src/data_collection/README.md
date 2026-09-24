@@ -52,7 +52,7 @@ playwright install chromium         # Linux thiếu thư viện hệ thống: pl
 
 ## Source of truth và automation
 
-`src/data_collection` là source chính cho collector đa nguồn, chuẩn hoá và DB. Nhánh `codex/fresh-trip-catalog-release-mvp-v1` chạy collector Trip.com và job catalog mới ngay trong repository này qua `run_fresh_catalog_vm.sh`; trên VM chỉ cần checkout Travel-Recommendation-Product. Các job `daily.py`/Docker cũ vẫn có để tham khảo hoặc chạy riêng, nhưng không được lên lịch đồng thời với job mới trên cùng DB. Raw response, cache trình duyệt, crawl state, log, staging và backup runtime đều ở `data/` (Git ignore), không nằm trong snapshot.
+`src/data_collection` là source chính cho collector đa nguồn, chuẩn hoá và DB. Nhánh `test/newcrawl` chạy collector Trip.com và job catalog mới ngay trong repository này qua `run_fresh_catalog_vm.sh`; trên VM chỉ cần checkout Travel-Recommendation-Product. Các job `daily.py`/Docker cũ vẫn có để tham khảo hoặc chạy riêng, nhưng không được lên lịch đồng thời với job mới trên cùng DB. Raw response, cache trình duyệt, crawl state, log, staging và backup runtime đều ở `data/` (Git ignore), không nằm trong snapshot.
 
 Catalog baseline được giữ ở hai dạng:
 
