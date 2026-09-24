@@ -1,6 +1,6 @@
 # Checklist 8 ngày — benchmark embedding + search (Weaviate + Cohere) cho V-OTA
 
-Phục vụ: FR-SRC-01, FR-SRC-02, FR-SRC-03, NFR-PERF-01, NFR-PERF-03 (`docs/prd/requirements.md`).
+Phục vụ: **FR-SRC-01..04**, **NFR-PERF-01**, **NFR-PERF-03**, **AC-SRC-01** (`docs/prd/requirements.md`).
 
 Bản 23/09/2026 — rev 2: ngày 4–8 chạy theo cổng (`sb run --stage`, `sb promote`, `sb gold holes`), thêm bước đặt baseline regression · đi kèm `search-eval-local-spec.md` (code chạy local) và `arms.md` (danh sách arm) · nguồn: `EMBEDDING_STACK_SWITCH.md`, `EMBEDDING_AND_ENGINES.md` §9, `VECTOR_DB_BENCH_SPEC.md` Part 6b, `VECTOR_STORE_AND_ROBUSTNESS.md` §3.1.
 
@@ -25,11 +25,11 @@ Ký hiệu lệnh: `sb` = `python -m evaluation.search_bench` chạy từ `src/`
 ## Ngày 1 — Draft gold · Hạ tầng
 
 ### A
-- [ ] Đọc `SCHEMA.md` §3–§5 để biết trường thật; xuất danh sách destination, tên sản phẩm, amenity thô: `sb catalog vocab`
-- [ ] Viết prompt sinh draft (`gold/prompts/draft.txt` — AGENTS.md §7 không cho `.md` trong `src/`): ràng buộc destination / tên / amenity vào danh sách vừa xuất; mỗi dòng `query \t slice`
-- [ ] Sinh ~600 draft, đủ 10 slice (quota ở config `gold.slices`)
-- [ ] Soát tay, chọn 200 → `gold/drafts.txt` (giữ log số draft bị loại theo lý do: bịa tên / trùng / không tự nhiên)
-- [ ] Với slice `multi_constraint`: điền cột `filter` mong đợi (AST JSON; amenity ghi **khoá** như `kids_club`, không ghi id — xem `filter_fields` trong `vocab.json`); slice `out_of_catalog`: cột `expected_no_result=true`
+- [x] Đọc `docs/spec/data-collection/schema.md` §3–§5 để biết trường thật; xuất danh sách destination, tên sản phẩm, amenity thô: `sb catalog vocab`
+- [x] Viết prompt sinh draft (`docs/spec/bench/gold-draft-prompt.md` — AGENTS.md §7 không cho `.md` trong `src/`): ràng buộc destination / tên / amenity vào danh sách vừa xuất; mỗi dòng `query \t slice`
+- [x] Sinh ~600 draft, đủ 13 slice (quota ở config `gold.slices`) → lưu `gold/drafts_raw.tsv`
+- [ ] Người dùng soát tay, chọn 200 → `gold/drafts.txt` (giữ log số draft bị loại theo lý do: bịa tên / trùng / không tự nhiên)
+- [x] Với slice `multi_constraint`: điền cột `filter` mong đợi (AST JSON; amenity ghi **khoá** như `kids_club`, không ghi id — xem `filter_fields` trong `vocab.json`); slice `out_of_catalog`: cột `expected_no_result=true`
 
 ### B
 - [x] `docker compose -f evaluation/search_bench/docker/compose.yml up -d --wait weaviate` từ `src/` (image pin theo spec, cổng 127.0.0.1:58080/55051) · `sb doctor` xanh — *23/09: Weaviate 1.37.3, ascii_fold analyzer*

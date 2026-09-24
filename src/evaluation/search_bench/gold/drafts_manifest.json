@@ -1,0 +1,61 @@
+{
+  "generated_on": "2026-09-23",
+  "role": "A",
+  "seed": 42,
+  "catalog_source": "src/data_collection/data/products.jsonl",
+  "catalog_sha256": "518a9aa7820c9ded4a02a2c9148af2ffa4103272071c84b6e0235f4ee251d862",
+  "catalog_rows": 11387,
+  "search_units": 3183,
+  "destinations": 38,
+  "vocab_sha256": "7268026d48278fcd9ad47dd5c5ff6eec05ee85749bd13584f17ecf99e8ac7482",
+  "vocab_counts": {
+    "destinations": 38,
+    "destinations_ascii": 38,
+    "product_names": 11380,
+    "product_names_ascii": 11380,
+    "brands": 1,
+    "amenities": 1864,
+    "room_names": 1954,
+    "airlines": 4,
+    "iata_codes": 19
+  },
+  "raw_cases": 600,
+  "draft_quota": {
+    "dest_type": 90,
+    "audience_style": 75,
+    "amenity_single": 45,
+    "amenity_multi": 30,
+    "amenity_negation": 15,
+    "amenity_offtaxonomy": 15,
+    "parent_child": 45,
+    "named_entity": 60,
+    "no_diacritics": 60,
+    "abbrev_typo": 45,
+    "multi_constraint": 60,
+    "cross_vertical": 30,
+    "out_of_catalog": 30
+  },
+  "selection_status": "pending_user_review",
+  "target_cases_after_user_filter": 200,
+  "target_quota_after_user_filter": {
+    "dest_type": 30,
+    "audience_style": 25,
+    "amenity_single": 15,
+    "amenity_multi": 10,
+    "amenity_negation": 5,
+    "amenity_offtaxonomy": 5,
+    "parent_child": 15,
+    "named_entity": 20,
+    "no_diacritics": 20,
+    "abbrev_typo": 15,
+    "multi_constraint": 20,
+    "cross_vertical": 10,
+    "out_of_catalog": 10
+  },
+  "qa": "passed: 600 unique grounded candidates; no deliberate invalid/rejected cases",
+  "notes": [
+    "Every in-catalog case has source_refs in drafts_raw.tsv.",
+    "out_of_catalog destinations were checked absent from the current vocabulary.",
+    "No relevance labels or keep/reject decisions are assigned; the user will filter the 600 cases."
+  ]
+}
