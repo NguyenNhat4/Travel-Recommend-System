@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 PROJECT_ID=${PROJECT_ID:-vinpearl-508801}
 REGISTRY_HOST=${REGISTRY_HOST:-asia-southeast1-docker.pkg.dev}
-IMAGE=${IMAGE:-$REGISTRY_HOST/$PROJECT_ID/v-ota-data-pipeline-crawler/vota-db:pg16}
+IMAGE=${IMAGE:-$REGISTRY_HOST/$PROJECT_ID/v-ota/vota-db:pg16}
 CONTAINER_NAME=${CONTAINER_NAME:-vota-postgres}
 NETWORK_NAME=${NETWORK_NAME:-app-private}
 VOLUME_NAME=${VOLUME_NAME:-vota-pg16}
