@@ -78,13 +78,33 @@ done
 [[ "$backend_service" =~ ^[a-zA-Z0-9_.-]+$ ]] || die 'invalid Backend service name'
 [[ "$db_tunnel_host" == 127.0.0.1 || "$db_tunnel_host" == localhost ]] || die 'DB tunnel host must be loopback'
 [[ "$db_tunnel_port" =~ ^[0-9]+$ ]] || die 'DB tunnel port must be numeric'
-[[ "$health_timeout_seconds" =~ ^[0-9]+$ && "$health_interval_seconds" =~ ^[0-9]+$ ]] || die 'health timeouts must be numeric'
+[[ "$health_timeout_seconds" =~ ^[1-9][0-9]*$ && "$health_interval_seconds" =~ ^[1-9][0-9]*$ ]] || die 'health timeout and interval must be positive integers'
 [ -f "$compose_file" ] || die "Compose file not found: $compose_file"
 grep -Eq '^[[:space:]]+postgres([[:space:]]*:|[[:space:]]*$)' "$compose_file" && die 'application Compose file must not declare a postgres service'
 command -v docker >/dev/null 2>&1 || die 'docker is required'
 command -v curl >/dev/null 2>&1 || die 'curl is required'
 [ -x "$script_dir/check-db-tunnel.sh" ] || die 'check-db-tunnel.sh is missing or not executable'
 [ -x "$script_dir/install-vota-cron.sh" ] || die 'install-vota-cron.sh is missing or not executable'
+
+if [ "$dry_run" -eq 0 ]; then
+  [ "$(id -u)" -ne 0 ] || die 'deploy must run as the SSH user, not root (cron is per-user)'
+  [ -r "$compose_file" ] || die "Compose file is not readable: $compose_file"
+  [ -x "$cron_runner" ] || die "Crawler runner is not executable: $cron_runner"
+  [ -d "$cron_data_dir" ] && [ -w "$cron_data_dir" ] || die "Crawler data directory is not writable: $cron_data_dir"
+  [ -r "$cron_env_file" ] || die "Crawler env file is not readable: $cron_env_file"
+  command -v crontab >/dev/null 2>&1 || die 'crontab is required for the SSH user'
+  docker info >/dev/null 2>&1 || die 'SSH user cannot access the Docker daemon'
+  if existing_crontab="$(LC_ALL=C crontab -l 2>&1)"; then
+    :
+  elif [[ "$existing_crontab" == *'no crontab'* ]]; then
+    existing_crontab=''
+  else
+    die 'SSH user cannot read its crontab'
+  fi
+  if [[ "$existing_crontab" == *run_daily_docker.sh* && "$existing_crontab" != *'# BEGIN VOTA CRAWLER'* ]]; then
+    die 'an unmanaged crawler cron entry already exists for the SSH user; migrate it before deploying'
+  fi
+fi
 
 "$script_dir/check-db-tunnel.sh" --host "$db_tunnel_host" --port "$db_tunnel_port"
 
@@ -120,23 +140,28 @@ previous_image="$(docker inspect --format '{{range .RepoDigests}}{{println .}}{{
 
 docker pull "$crawler_image"
 docker compose -f "$compose_file" -f "$override_file" pull "$backend_service"
-docker compose -f "$compose_file" -f "$override_file" up -d --force-recreate --no-deps "$backend_service"
 
 wait_for_health() {
-  local attempts=$((health_timeout_seconds / health_interval_seconds))
-  [ "$attempts" -ge 1 ] || attempts=1
-  local attempt
-  for ((attempt = 1; attempt <= attempts; attempt += 1)); do
-    if curl --silent --show-error --fail --max-time 10 "$backend_health_url" >/dev/null 2>&1; then
+  local deadline=$((SECONDS + health_timeout_seconds))
+  local remaining curl_timeout pause
+  while :; do
+    remaining=$((deadline - SECONDS))
+    [ "$remaining" -gt 0 ] || return 1
+    curl_timeout=10
+    [ "$remaining" -ge 10 ] || curl_timeout="$remaining"
+    if curl --silent --show-error --fail --max-time "$curl_timeout" "$backend_health_url" >/dev/null 2>&1; then
       return 0
     fi
-    sleep "$health_interval_seconds"
+    remaining=$((deadline - SECONDS))
+    [ "$remaining" -gt 0 ] || return 1
+    pause="$health_interval_seconds"
+    [ "$pause" -le "$remaining" ] || pause="$remaining"
+    sleep "$pause"
   done
-  return 1
 }
 
-if ! wait_for_health; then
-  printf 'Backend health failed; restoring previous image.\n' >&2
+rollback_backend() {
+  printf 'Restoring previous Backend image.\n' >&2
   rollback_file="$(mktemp)"
   cat > "$rollback_file" <<EOF
 services:
@@ -145,6 +170,16 @@ services:
 EOF
   docker compose -f "$compose_file" -f "$rollback_file" up -d --force-recreate --no-deps "$backend_service" || die 'Backend rollback command failed'
   wait_for_health || die 'Backend rollback did not become healthy'
+}
+
+if ! docker compose -f "$compose_file" -f "$override_file" up -d --force-recreate --no-deps "$backend_service"; then
+  rollback_backend
+  die 'Backend recreate failed; previous image restored'
+fi
+
+if ! wait_for_health; then
+  printf 'Backend health failed.\n' >&2
+  rollback_backend
   die 'Backend deploy failed; previous image restored'
 fi
 
@@ -157,8 +192,12 @@ install_cron() {
     --schedule "$cron_schedule" "$@"
 }
 if [ -n "$cron_crontab_file" ]; then
-  install_cron --crontab-file "$cron_crontab_file"
-else
-  install_cron
+  if ! install_cron --crontab-file "$cron_crontab_file"; then
+    rollback_backend
+    die 'Crawler cron update failed; previous Backend image restored'
+  fi
+elif ! install_cron; then
+  rollback_backend
+  die 'Crawler cron update failed; previous Backend image restored'
 fi
 printf 'Backend deploy and crawler cron update completed.\n'
