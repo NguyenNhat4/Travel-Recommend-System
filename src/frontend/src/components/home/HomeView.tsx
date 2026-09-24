@@ -2,7 +2,8 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useTravel } from '../../context/TravelContext';
-import { calculateRecommendations, fetchRecommendations } from '../../services/recsys';
+import { fetchRecommendations } from '../../services/recsys';
+import type { RecommendationResponse } from '../../types/travel';
 import { CATALOG } from '../../data/catalog';
 import { ProductCard } from '../common/ProductCard';
 import {
@@ -476,10 +477,10 @@ export const HomeView: React.FC = () => {
     navigate(`/search?q=${encodeURIComponent(query)}`);
   };
 
-  // Recommendation state from backend V-OTA system (with local fallback)
-  const [recResponse, setRecResponse] = useState(() =>
-    calculateRecommendations(currentPersona, activeEvents)
-  );
+  // Gợi ý từ engine thật (GET /recommendations). Không mô phỏng khi lỗi: lỗi thì hiện dòng "Thử lại" (frontend §4.1).
+  const [recResponse, setRecResponse] = useState<RecommendationResponse | null>(null);
+  const [recError, setRecError] = useState(false);
+  const [recReload, setRecReload] = useState(0);
   const [isLoadingRecs, setIsLoadingRecs] = useState(false);
   const [showSectionWhy, setShowSectionWhy] = useState(false);
 
@@ -487,12 +488,12 @@ export const HomeView: React.FC = () => {
     const controller = new AbortController();
 
     // Danh tính do BFF gắn từ cookie phiên; đổi persona = đổi phiên nên effect chạy lại.
+    // Không gửi destination: engine tự lấy điểm đến của chuyến vừa đặt, nên đặt phòng Đà Nẵng xong
+    // thì trang chủ chuyển sang chuyến Đà Nẵng (AC-REC-02).
     setIsLoadingRecs(true);
+    setRecError(false);
     fetchRecommendations({
       k: 4,
-      destination: currentPersona?.activeDestination,
-      fallbackUser: currentPersona,
-      fallbackEvents: activeEvents,
       signal: controller.signal,
     })
       .then((data) => {
@@ -501,6 +502,8 @@ export const HomeView: React.FC = () => {
       .catch((err) => {
         if (!controller.signal.aborted) {
           console.error('[HomeView] Failed to load recommendations:', err);
+          setRecResponse(null);
+          setRecError(true);
         }
       })
       .finally(() => {
@@ -512,9 +515,12 @@ export const HomeView: React.FC = () => {
     return () => {
       controller.abort();
     };
-  }, [currentPersona, activeEvents]);
+  }, [currentPersona, activeEvents, recReload]);
 
-  const { strategy, destination = 'Nha Trang', recommendations, diagnostics } = recResponse;
+  const strategy = recResponse?.strategy ?? 'popular';
+  const destination = recResponse?.destination ?? '';
+  const recommendations = recResponse?.recommendations ?? [];
+  const excludedVerticals = recResponse?.diagnostics.excludedVerticals ?? [];
 
   // Close search panel on click outside
   useEffect(() => {
@@ -1196,6 +1202,16 @@ export const HomeView: React.FC = () => {
         </section>        {/* ========================================================================= */}
         {/* OPTIONAL PERSONALIZATION PANEL (K1 / K2 V-OTA DEMO ACCORDION)              */}
         {/* ========================================================================= */}
+        {currentPersona && recError && (
+          <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-3 pb-4">
+            <p className="text-xs text-slate-500">
+              Chưa tải được gợi ý ·{' '}
+              <button type="button" onClick={() => setRecReload((n) => n + 1)} className="font-semibold text-blue-700 hover:underline">
+                Thử lại
+              </button>
+            </p>
+          </section>
+        )}
         {currentPersona && recommendations.length > 0 && (
           <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-3 pb-10">
             <div className="p-6 rounded-3xl bg-white border border-slate-200/80 shadow-sm">
@@ -1234,7 +1250,7 @@ export const HomeView: React.FC = () => {
                     variant="grid"
                     because={rec.because}
                     strategy={strategy}
-                    excludedVerticals={diagnostics.excludedVerticals}
+                    excludedVerticals={excludedVerticals}
                     score={rec.score}
                     rank={rec.rank}
                   />
@@ -1244,10 +1260,10 @@ export const HomeView: React.FC = () => {
               <WhyPopover
                 isOpen={showSectionWhy}
                 onClose={() => setShowSectionWhy(false)}
-                targetProductName={`Toàn bộ danh mục chuyến ${destination}`}
+                targetProductName={destination ? `Toàn bộ danh mục chuyến ${destination}` : 'Gợi ý cho bạn'}
                 becauseItems={recommendations[0]?.because || []}
                 strategy={strategy}
-                excludedVerticals={diagnostics.excludedVerticals}
+                excludedVerticals={excludedVerticals}
                 destination={destination}
               />
             </div>

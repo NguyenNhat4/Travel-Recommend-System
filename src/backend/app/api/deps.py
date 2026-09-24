@@ -31,6 +31,22 @@ def get_recommend(request: Request) -> Any:
     return request.app.state.recommend
 
 
+def get_product_detail(request: Request) -> Any:
+    return request.app.state.product_detail
+
+
+def get_cart_service(request: Request) -> Any:
+    return request.app.state.cart_service
+
+
+def get_checkout(request: Request) -> Any:
+    return request.app.state.checkout
+
+
+def get_booking_reader(request: Request) -> Any:
+    return request.app.state.get_booking
+
+
 # --- Auth (docs/spec/hop-dong-tich-hop-auth.md §3.5, §3.11, §9.4, §14.4) --------------------------
 
 class ServiceTokenInvalid(AuthError):

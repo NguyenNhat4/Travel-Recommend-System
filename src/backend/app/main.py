@@ -37,9 +37,12 @@ from src.backend.app.application.auth.use_cases import (
     RevokeSession,
     RotateSession,
 )
+from src.backend.app.application.booking import CartService, Checkout, GetBooking
+from src.backend.app.application.catalog.use_cases import GetProductDetail
 from src.backend.app.application.itinerary.use_cases import PlanItinerary
 from src.backend.app.application.recommendation import BuildPopularity, RecommendForUser
 from src.backend.app.application.search import SearchProducts, SimilarProducts
+from src.backend.app.application.tracking.behaviour import BehaviourTracker
 from src.backend.app.core.config import REPO_ROOT, Settings, get_settings
 from src.backend.app.infrastructure.auth.argon2_hasher import Argon2Hasher
 from src.backend.app.infrastructure.auth.jwt_issuer import JwtConfig, JwtIssuer
@@ -57,7 +60,9 @@ from src.backend.app.infrastructure.clients.itinerary_fixture_clients import Fix
 from src.backend.app.infrastructure.clients.itinerary_http_clients import ItineraryHttpClients
 from src.backend.app.infrastructure.llm import build_chat_model
 from src.backend.app.infrastructure.persistence.conversation_store import InMemoryConversationStore
-from src.backend.app.infrastructure.persistence.postgres_catalog import PostgresProductLookup
+from src.backend.app.infrastructure.persistence.postgres_bookings import PostgresBookingRepository
+from src.backend.app.infrastructure.persistence.postgres_cart import PostgresCartRepository
+from src.backend.app.infrastructure.persistence.postgres_catalog import PostgresProductCatalog, PostgresProductLookup
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -268,6 +273,17 @@ async def lifespan(app: FastAPI):
         logger.info("startup.browse_event_recorder.start")
         app.state.browse_event_recorder.start()
         logger.info("startup.browse_event_recorder.ready")
+
+        # Chi tiết sản phẩm, giỏ, checkout (backend §4.2, §7): catalog đọc lại giá và tình trạng mỗi request;
+        # checkout ghi purchase sang CDP trước khi commit booking, nên /recommendations thấy ngay lượt đặt (K1).
+        product_catalog = PostgresProductCatalog(settings.database_url)
+        carts = PostgresCartRepository(settings.database_url)
+        bookings = PostgresBookingRepository(settings.database_url)
+        tracker = BehaviourTracker(app.state.browse_event_recorder, app.state.product_lookup)
+        app.state.product_detail = GetProductDetail(product_catalog)
+        app.state.cart_service = CartService(carts, product_catalog, tracker)
+        app.state.checkout = Checkout(carts, bookings, product_catalog, cdp_client)
+        app.state.get_booking = GetBooking(bookings, product_catalog)
         app.state.itinerary_conversation_store = InMemoryConversationStore(
             ttl_seconds=settings.itinerary_conversation_ttl_seconds
         )

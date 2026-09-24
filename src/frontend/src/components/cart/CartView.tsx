@@ -1,16 +1,15 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useTravel } from '../../context/TravelContext';
-import { calculateRecommendations } from '../../services/recsys';
+import { fetchRecommendations } from '../../services/recsys';
 import { TaxonomyBadge } from '../common/TaxonomyBadge';
-import { PriceTag } from '../common/PriceTag';
 import { ProductCard } from '../common/ProductCard';
-import { Trash2, ShoppingBag, ArrowRight, ShieldCheck, Plus, Sparkles } from 'lucide-react';
-import { Destination, CartItem } from '../../types/travel';
+import { Trash2, ShoppingBag, ArrowRight, ShieldCheck, Sparkles } from 'lucide-react';
+import { CartItem, RecommendationResponse } from '../../types/travel';
 
 export const CartView: React.FC = () => {
-  const { cart, removeFromCart, updateCartItem, navigate, currentPersona, activeEvents, addToCart } = useTravel();
+  const { cart, cartTotal, removeFromCart, navigate } = useTravel();
 
   // Group items by destination
   const itemsByDestination = useMemo(() => {
@@ -23,13 +22,23 @@ export const CartView: React.FC = () => {
     return groups;
   }, [cart]);
 
-  const totalAmount = useMemo(() => {
-    return cart.reduce((sum, item) => sum + item.totalPrice, 0);
-  }, [cart]);
+  // Web không tự cộng tiền: tổng lấy từ CartResponse.total (frontend §4.4).
+  const totalAmount = cartTotal;
 
-  // Recommendations for cross-sell in cart
-  const recResponse = useMemo(() => calculateRecommendations(currentPersona, activeEvents), [currentPersona, activeEvents]);
-  const primaryDestination = cart[0]?.destination || 'Nha Trang';
+  // "Thường được đặt cùng": engine thật theo điểm đến đầu tiên của giỏ; lỗi thì ẩn (frontend §4.4).
+  const primaryDestination = cart[0]?.destination;
+  const [recResponse, setRecResponse] = useState<RecommendationResponse | null>(null);
+  useEffect(() => {
+    if (!primaryDestination) return;
+    const controller = new AbortController();
+    fetchRecommendations({ k: 4, destination: primaryDestination, signal: controller.signal })
+      .then(setRecResponse)
+      .catch(() => { if (!controller.signal.aborted) setRecResponse(null); });
+    return () => controller.abort();
+  }, [primaryDestination, cart.length]);
+  const crossSell = (recResponse?.recommendations ?? [])
+    .filter(rec => !cart.some(item => item.productId === rec.product.id))
+    .slice(0, 2);
 
   if (cart.length === 0) {
     return (
@@ -121,7 +130,7 @@ export const CartView: React.FC = () => {
                       </span>
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => removeFromCart(item.id)}
+                          onClick={() => { void removeFromCart(item.id); }}
                           className="text-xs text-slate-400 hover:text-rose-600 flex items-center gap-1 transition-colors"
                           title="Xóa mục này"
                         >
@@ -136,23 +145,24 @@ export const CartView: React.FC = () => {
             </div>
           ))}
 
-          {/* Frequently Booked Together Section (§4.4.2) */}
-          <div className="pt-4 space-y-3">
-            <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-              Thường được đặt cùng chuyến {primaryDestination}
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {recResponse.recommendations.slice(0, 2).map(rec => (
-                <ProductCard
-                  key={rec.product.id}
-                  product={rec.product}
-                  variant="compact"
-                  because={rec.because}
-                  onQuickAdd={(p) => addToCart(p, 1)}
-                />
-              ))}
+          {/* Frequently Booked Together Section (§4.4.2) — mở chi tiết để chọn hạng phòng/chuyến bay */}
+          {crossSell.length > 0 && (
+            <div className="pt-4 space-y-3">
+              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Thường được đặt cùng chuyến {primaryDestination}
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {crossSell.map(rec => (
+                  <ProductCard
+                    key={rec.product.id}
+                    product={rec.product}
+                    variant="compact"
+                    because={rec.because}
+                  />
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Right: Sticky Summary Box */}

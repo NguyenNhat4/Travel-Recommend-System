@@ -14,6 +14,17 @@ def _date(value: Any) -> date | None:
     return date.fromisoformat(str(value))
 
 
+def price_unit(taxonomy: str, unit_price: float | None) -> str:
+    """Đơn vị giá dẫn xuất từ taxonomy (backend §2.6); không có giá thì UNKNOWN."""
+    if unit_price is None:
+        return "UNKNOWN"
+    if taxonomy == "hotel":
+        return "PER_NIGHT"
+    if taxonomy == "combo":
+        return "PER_PACKAGE"
+    return "PER_PERSON"
+
+
 @dataclass
 class Product:
     product_id: str
@@ -43,13 +54,7 @@ class Product:
 
     @property
     def price_unit(self) -> str:
-        if self.unit_price is None:
-            return "UNKNOWN"
-        if self.taxonomy == "hotel":
-            return "PER_NIGHT"
-        if self.taxonomy == "combo":
-            return "PER_PACKAGE"
-        return "PER_PERSON"
+        return price_unit(self.taxonomy, self.unit_price)
 
     # --- vai trò suy ra (cùng quy tắc với view catalog.product_meta)
     @property

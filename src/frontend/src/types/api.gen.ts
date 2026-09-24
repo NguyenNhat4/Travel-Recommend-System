@@ -667,6 +667,8 @@ export interface components {
                 maxPrice?: number | null;
                 maxOccupancy?: number | null;
             } | null;
+            /** @description Tầng con đặt được của sản phẩm: hạng phòng của một property, chuyến bay cụ thể của một route (FR-CAT-02 — property/route không đặt trực tiếp mà đặt qua con). Chỉ gồm con còn bán (`available: true`, có giá), sắp theo giá tăng dần rồi ngày. Web gửi `productId` của phần tử được chọn vào POST /cart/items. Mảng rỗng khi sản phẩm tự đặt được hoặc không còn con nào bán. */
+            variants?: components["schemas"]["ProductSummary"][];
         };
         ScoredProduct: components["schemas"]["ProductSummary"] & {
             /** @description Cosine đã clamp về [0,1]. Chỉ hiển thị cho khách ở chế độ debug — 0.81 KHÔNG phải "81% phù hợp". */

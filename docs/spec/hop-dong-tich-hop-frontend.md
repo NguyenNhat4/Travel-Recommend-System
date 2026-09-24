@@ -161,6 +161,8 @@ Sau checkout (cờ `justBooked`): gọi lại ① bỏ qua cache. Chỉ hiện t
 
 Gọi `POST /events` **một lần** khi trang chi tiết đã hiển thị trên trình duyệt với người dùng đã đăng nhập; không gọi trong Server Component, khi prefetch link hay khi render lại cùng sản phẩm. Web không gửi event `search` hay `add_to_cart`: Backend tự ghi khi xử lý `/search` và `/cart/items`.
 
+Hộp đặt đặt theo **đơn vị đặt được** (`docs/prd/requirements.md` FR-CAT-02): khi `ProductDetail.variants[]` khác rỗng (property → hạng phòng, route → chuyến bay), người dùng chọn một phần tử và Web gửi `productId` của phần tử đó, không gửi id của property/route. Ngày nhận phòng phải nằm trong `availableFrom`–`availableTo` của hạng phòng và mọi đêm trong `attributes.availability.calendar` phải là `1`; chuyến bay dùng đúng ngày bay. Backend kiểm lại các điều này (`hop-dong-tich-hop-backend.md` §7.1–7.2), Web chỉ hiển thị trước.
+
 Hộp đặt gửi `nights` chỉ khi `taxonomy = hotel`. Tổng tiền trong hộp đặt là **ước tính hiển thị**, tính theo công thức `hop-dong-tich-hop-backend.md` §2.6; giá chính thức là `lineTotal` do backend trả.
 
 ### 4.4. Cart `/cart`

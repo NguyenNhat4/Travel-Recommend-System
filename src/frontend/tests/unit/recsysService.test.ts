@@ -2,9 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   fetchRecommendations,
   PERSONA_CDP_USER_MAP,
-  calculateRecommendations,
 } from '../../src/services/recsys';
-import { SEED_PERSONAS } from '../../src/data/personas';
 
 describe('recsys service fetchRecommendations', () => {
   const originalFetch = global.fetch;
@@ -89,18 +87,12 @@ describe('recsys service fetchRecommendations', () => {
     expect(result.diagnostics.coldStart).toBe(false);
   });
 
-  it('falls back to local calculation if backend fetch fails', async () => {
+  // Màn gợi ý là bằng chứng engine thật chạy: lỗi thì báo lỗi, không thay bằng gợi ý mô phỏng (frontend §4.1).
+  it('throws instead of returning simulated recommendations when the backend fails', async () => {
     global.fetch = vi.fn().mockRejectedValue(new Error('Network error (backend down)'));
+    await expect(fetchRecommendations({ k: 4 })).rejects.toThrow('backend down');
 
-    const fallbackUser = SEED_PERSONAS.P1;
-    const result = await fetchRecommendations({
-      k: 4,
-      fallbackUser,
-    });
-
-    // Should return fallback calculation matching P1
-    const expectedFallback = calculateRecommendations(fallbackUser, []);
-    expect(result.strategy).toBe(expectedFallback.strategy);
-    expect(result.recommendations.length).toBeGreaterThan(0);
+    global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 500, json: async () => ({}) } as Response);
+    await expect(fetchRecommendations({ k: 4 })).rejects.toThrow('500');
   });
 });

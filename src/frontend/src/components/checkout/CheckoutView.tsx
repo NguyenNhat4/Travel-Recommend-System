@@ -1,21 +1,24 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useTravel } from '../../context/TravelContext';
+import { ApiError } from '../../services/booking';
 import { TaxonomyBadge } from '../common/TaxonomyBadge';
 import { Check, ShieldAlert, Loader2, Edit3, Info } from 'lucide-react';
 
 export const CheckoutView: React.FC = () => {
-  const { cart, currentPersona, createBooking, navigate } = useTravel();
+  const { cart, cartTotal, currentPersona, createBooking, navigate } = useTravel();
   const isEmptyCart = cart.length === 0;
+  // Đặt xong thì giỏ rỗng (backend đã xoá); không được để lối "giỏ rỗng → /cart" đè lên trang xác nhận.
+  const bookedRef = useRef(false);
 
   useEffect(() => {
-    if (isEmptyCart) navigate('/cart');
+    if (isEmptyCart && !bookedRef.current) navigate('/cart');
   }, [isEmptyCart, navigate]);
 
   // Contact info state
   const [fullName, setFullName] = useState(currentPersona?.name || 'Nguyễn Minh Anh');
-  const [email] = useState(currentPersona?.email || 'minhanh.nguyen@v-ota.demo');
+  const [email] = useState(currentPersona?.email || '');
   const [phoneNumber, setPhoneNumber] = useState('0912345678');
   const [specialRequests, setSpecialRequests] = useState('');
 
@@ -23,8 +26,10 @@ export const CheckoutView: React.FC = () => {
   const [termsAgreed, setTermsAgreed] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [phoneError, setPhoneError] = useState('');
+  const [submitError, setSubmitError] = useState('');
 
-  const totalAmount = cart.reduce((sum, item) => sum + item.totalPrice, 0);
+  // Giá chính thức là của backend (CartResponse.total); Web không tự cộng (frontend §4.4–4.5).
+  const totalAmount = cartTotal;
 
   if (isEmptyCart) {
     return null;
@@ -34,11 +39,12 @@ export const CheckoutView: React.FC = () => {
     e.preventDefault();
     if (isSubmitting) return; // Prevent double click
 
-    if (!phoneNumber || phoneNumber.length < 9) {
-      setPhoneError('Vui lòng nhập số điện thoại hợp lệ (từ 9-11 số)');
+    if (!/^0\d{9}$/.test(phoneNumber.replace(/\s/g, ''))) {
+      setPhoneError('Vui lòng nhập số điện thoại 10 số, bắt đầu bằng 0');
       return;
     }
     setPhoneError('');
+    setSubmitError('');
 
     setIsSubmitting(true);
     try {
@@ -46,7 +52,7 @@ export const CheckoutView: React.FC = () => {
         {
           fullName,
           email,
-          phoneNumber
+          phoneNumber: phoneNumber.replace(/\s/g, '')
         },
         {
           specialRequests
@@ -54,9 +60,12 @@ export const CheckoutView: React.FC = () => {
       );
 
       // Navigate to confirmation page
+      bookedRef.current = true;
       navigate(`/booking/${booking.referenceCode}`);
     } catch (err) {
+      // CDP lỗi (500 retryable), giá đổi, hết chỗ...: backend giữ nguyên giỏ, người dùng sửa rồi đặt lại.
       console.error('Booking failed:', err);
+      setSubmitError(err instanceof ApiError ? err.message : 'Chưa đặt được lúc này. Vui lòng thử lại.');
       setIsSubmitting(false);
     }
   };
@@ -207,6 +216,12 @@ export const CheckoutView: React.FC = () => {
                     Tôi đồng ý với <strong>Điều khoản dịch vụ</strong> và <strong>Chính sách bảo mật</strong> khi đặt chỗ trên V-OTA.
                   </span>
                 </label>
+
+                {submitError && (
+                  <p role="alert" className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
+                    {submitError}
+                  </p>
+                )}
 
                 <button
                   type="submit"

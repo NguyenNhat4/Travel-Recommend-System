@@ -329,6 +329,8 @@ GET /api/v1/products/{productId}
 
 Trả `ProductDetail` (§2.3) ở cấp cao nhất, không bọc thêm lớp.
 
+`variants[]` là tầng con đặt được: hạng phòng của một property, chuyến bay cụ thể của một route. Property và route không đặt trực tiếp mà đặt qua con (`docs/prd/requirements.md` FR-CAT-02), nên hộp đặt ở trang chi tiết cho chọn một phần tử của `variants[]` và gửi `productId` của nó vào `POST /cart/items` (§7.1). Chỉ gồm con còn bán (`available: true`, có giá), sắp theo giá tăng dần rồi ngày. Mảng rỗng khi sản phẩm tự đặt được (vé tham quan, combo, golf) hoặc không còn con nào bán.
+
 Sản phẩm không tồn tại hoặc đã bị xóa khỏi catalog → `404` với code `PRODUCT_NOT_FOUND`. Đây là trường hợp "event trỏ tới sản phẩm đã bị xóa" mà handbook §6 gọi là "những rìa lộn xộn"; client hiển thị trang "Sản phẩm này không còn trên V-OTA" thay vì lỗi kỹ thuật.
 
 **Endpoint này không ghi event `product_view`** — xem D3 ở §10.
@@ -610,8 +612,8 @@ Authorization: Bearer <jwt>    # bắt buộc
 
 | Trường | Bắt buộc | Ý nghĩa |
 |---|---:|---|
-| `productId` | Có | Phải tồn tại và `available: true` |
-| `usingDate` | Có | Ngày sử dụng, phải nằm trong `availableFrom`–`availableTo` |
+| `productId` | Có | Phải tồn tại, `available: true` và là đơn vị đặt được (hạng phòng, chuyến bay, vé, combo, golf — `is_bookable` của `catalog.product_meta`; FR-CAT-02). Property/route trả `400 VALIDATION_ERROR` với `details.fields: ["productId"]` |
+| `usingDate` | Có | Ngày sử dụng, phải nằm trong `availableFrom`–`availableTo`. Sản phẩm có `attributes.availability` thì mọi đêm (hotel: `nights` đêm từ `usingDate`; loại khác: ngày `usingDate`) phải là `1` trong `calendar`, nếu không trả `409 PRODUCT_UNAVAILABLE` |
 | `quantity` | Có | Số phòng hoặc số khách, ≥ 1 |
 | `nights` | Chỉ với `hotel` | Số đêm, ≥ 1. Các `taxonomy` khác gửi `nights` thì bị bỏ qua |
 
@@ -727,8 +729,10 @@ Kiểm tra bắt buộc trước khi tạo booking (hợp đồng Agent §3.3):
 1. Mọi sản phẩm trong giỏ còn tồn tại.
 2. `available` vẫn là `true` → nếu không, `409` `PRODUCT_UNAVAILABLE` kèm `productId`.
 3. `unitPrice` hiện tại khớp với lúc thêm vào giỏ → nếu lệch, `409` `PRICE_CHANGED` kèm giá cũ và giá mới. Giá trong giỏ và trong lịch trình của Agent chỉ là ước tính; **giá tại checkout là dữ liệu chính thức**.
-4. `usingDate` vẫn nằm trong `availableFrom`–`availableTo`.
+4. `usingDate` vẫn nằm trong `availableFrom`–`availableTo`, và lịch `attributes.availability` (nếu có) còn trống mọi đêm của mục (AC-BKG-01 "kiểm tra lịch trống") → nếu không, `409` `PRODUCT_UNAVAILABLE` kèm `productId`.
 5. Giỏ không rỗng → nếu rỗng, `400` `CART_EMPTY`.
+
+Một checkout sinh **một** `eventGroupId` dùng chung cho mọi nhóm trong `groups[]`: DDL giữ `app.bookings.event_group_id` là `UNIQUE` một-một với booking ("một checkout = một booking = một `event_group_id`", `db/vota_schema.sql`). Giỏ nhiều điểm đến vì vậy vẫn thành một chuyến trong CDP; tách mỗi điểm đến một `eventGroupId` cần đổi DDL trước.
 
 Checkout thành công thì **xóa sạch giỏ**. Gửi lại cùng một request sau đó sẽ nhận `CART_EMPTY`, đây là cơ chế chống bấm hai lần ở phía server; client vẫn phải khóa nút khi đang gửi (`docs/product.md` §4.5.3).
 
