@@ -4,7 +4,7 @@ Phục vụ `docs/prd/test-plan.md` §2.4 (Tool Calling Accuracy ≥ 95%, Ground
 Output Integrity 100%) và FR-AGT-01..05, NFR-REL-01, NFR-SEC-01 trong `docs/prd/requirements.md`.
 
 Dành cho người thêm hoặc sửa case trong bộ golden. Luật chấm tổng quát và lý do chọn cách chấm nằm ở
-[evaluation-plan.md](evaluation-plan.md) §0; lệnh chạy ở [README.md](README.md) mục "Chạy đánh giá tự động".
+[evaluation-plan.md](evaluation-plan.md) §0; cách chạy và đọc kết quả ở [golden-run.md](golden-run.md).
 
 | Thành phần | Đường dẫn |
 |---|---|

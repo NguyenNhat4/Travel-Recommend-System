@@ -41,6 +41,8 @@ Nhánh: `feat/agent`. Trạng thái: **đã xong và đã commit** trên `feat/a
 
 ## 3. Cách chạy
 
+Hướng dẫn đầy đủ: `docs/spec/agent/golden-run.md`.
+
 ```bash
 docker compose up -d --wait postgres
 .venv/bin/uvicorn src.backend.app.main:app --port 8000     # .env đã có ITINERARY_DATA_MODE=http
