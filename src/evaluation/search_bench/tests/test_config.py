@@ -14,7 +14,7 @@ def test_config_loads_with_spec_numbers(cfg):
     assert cfg.embedding.input_type == {"document": "search_document", "query": "search_query"}
     assert cfg.model_cfg("cohere-v3").truncate == "NONE"
     assert cfg.model_cfg("cohere-v3").max_batch <= 96
-    assert cfg.metrics.guards["p95_cache_miss_ms_max"] == 250            # NFR-PERF-01
+    assert cfg.metrics.guards.p95_cache_miss_ms_max == 250                # NFR-PERF-01
     assert cfg.catalog.search_unit_variants == ["hotel_property", "flight_route", "attraction", "combo", "golf"]
     assert cfg.weaviate.url.startswith("http://127.0.0.1:")
 

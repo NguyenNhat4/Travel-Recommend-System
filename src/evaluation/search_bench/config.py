@@ -116,6 +116,34 @@ class WeaviateConfig(_M):
     load_batch_size: int
 
 
+class WinRule(_M):
+    min_delta_recall: float
+    p_max: float
+    max_slice_loss: float
+    tie_delta_ndcg: float
+
+
+class Guards(_M):
+    constraint_precision_min: float
+    parent_dup_max: float
+    zero_result_in_catalog_max: float
+    hub_score_max: float
+    p95_cache_miss_ms_max: float
+
+
+class MetricsConfig(_M):
+    k: int
+    ndcg_gain: Literal["pow2"]
+    mrr_relevant_min: int
+    recall_relevant_min: int
+    extra_recall_k: list[int]
+    bootstrap: int
+    win_rule: WinRule
+    guards: Guards
+    rerank_keep_if_delta_ndcg: float
+    hub_random_queries: int
+
+
 class DoctorConfig(_M):
     min_free_gb: float
     min_weaviate_version: str
@@ -130,7 +158,7 @@ class SBenchConfig(_M):
     doctor: DoctorConfig
     gold: _Open
     synth: _Open
-    metrics: _Open
+    metrics: MetricsConfig
     latency: _Open
     holes: _Open
     stages: _Open

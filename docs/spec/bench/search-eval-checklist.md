@@ -47,9 +47,9 @@ Ký hiệu lệnh: `sb` = `python -m evaluation.search_bench` chạy từ `src/`
 ## Ngày 2 — Metric · Baseline import · Pool
 
 ### A
-- [ ] Viết `metrics.py`: Recall@10, nDCG@10 (`2^rel−1`), MRR@10 (rel=2), Judged@10, constraint precision, recall loss do filter, parent dup rate, zero-result, hub_score
-- [ ] Paired bootstrap 1.000 lần → mean Δ, CI95, p một phía
-- [ ] Unit test trên fixture `tests/fixtures/gold_small.jsonl` (10 query) — số ra đúng bằng tay
+- [x] Viết `metrics.py`: Recall@10, nDCG@10 (`2^rel−1`), MRR@10 (rel=2), Judged@10, constraint precision, recall loss do filter, parent dup rate, zero-result, hub_score — *24/09: thêm Recall@5 (test-plan §2.5, `metrics.extra_recall_k`)*
+- [x] Paired bootstrap 1.000 lần → mean Δ, CI95, p một phía — *24/09: p theo mid-p để arm so với chính nó ra p = 0,5; kèm `win_verdict` / `compare_rows`*
+- [x] Unit test trên fixture `tests/fixtures/gold_small.jsonl` (10 query) — số ra đúng bằng tay — *24/09: + `run_small.json` (arm A/B), 13 test; tính tay q001, q004, q007*
 - [ ] Viết `docs/spec/bench/gold-guide.md` (1 trang; không đặt trong `src/` — AGENTS.md §7): định nghĩa nhãn 2 / 1 / 0, 5 ví dụ khó (đúng nơi sai loại, phòng vs khách sạn, combo chứa vé…)
 
 ### B

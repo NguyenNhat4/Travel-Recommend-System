@@ -93,6 +93,7 @@ metrics:                          # Part 8
   ndcg_gain: pow2                 # 2^rel - 1
   mrr_relevant_min: 2
   recall_relevant_min: 1
+  extra_recall_k: [5]             # (đề xuất) docs/prd/test-plan.md §2.5: Recall@K với K = 5, 10
   bootstrap: 1000
   win_rule: {min_delta_recall: 2.0, p_max: 0.05, max_slice_loss: 3.0, tie_delta_ndcg: 2.0}
   guards:
