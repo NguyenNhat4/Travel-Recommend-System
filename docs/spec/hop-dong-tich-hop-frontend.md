@@ -207,7 +207,8 @@ Quy tắc form → `itemDetails[]`: `hotel` gửi `guestNames` 1 phần tử; `f
 |---|---|---|---|---|
 | Gửi tin nhắn | `POST /assistant/itineraries` | tùy | theo `status`, xem §9.3 | Nút "Dừng" hủy request bằng `AbortController` |
 | Sửa chip ý định | cùng endpoint với `intentOverride` | tùy | như trên | §9.2 |
-| Thêm vào giỏ từ kế hoạch | `POST /cart/items` (mỗi mục một lần, tuần tự) | bắt buộc | `CartResponse` cuối cùng | Một mục lỗi không chặn mục còn lại; tổng kết lỗi trong một toast |
+| Thêm vào giỏ từ kế hoạch | `POST /cart/items` (mỗi mục một lần, tuần tự) | bắt buộc | `CartResponse` cuối cùng | Một mục lỗi không chặn mục còn lại; tổng kết lỗi trong một toast. Nút theo thẻ và nút "Thêm cả lịch trình". Mục đủ điều kiện: `available`, `unitPrice` khác null, `bookable` khác `false`, `attributes.ticketed` khác `false`; mỗi `productId` một lần. `usingDate` = `day.date` của slot; `stay` lấy check-in = `days[0].date`, check-out = check-in + `nights` |
+| Chỉnh nhanh lịch trình | cùng endpoint: `intentOverride.days` (1–7) hoặc `message` soạn sẵn nêu tên sản phẩm cần đổi | tùy | như trên | Khoá khi đang chạy; ẩn khi xem lịch trình đã lưu/chia sẻ |
 | Danh sách điểm đến (thẻ hỏi lại) | `GET /destinations` | — | `destinations[]` | Dùng khi `suggestedValues.destination` rỗng |
 
 ---

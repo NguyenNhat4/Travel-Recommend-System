@@ -219,6 +219,29 @@ class NodeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['tool_plan'][0]['args']['query'], 'Hạ Long')
         self.assertEqual(tools.seen[0]['query'], 'Hạ Long')
 
+    async def test_unknown_argument_from_planner_is_dropped_not_fatal(self):
+        """Planner tự thêm `excludeProducts` (không có trong SearchRequest) khi constraints có
+        exclude_products; trước đây cả plan bị huỷ → 503 LLM_UNAVAILABLE ở lượt đổi số ngày."""
+        class Executor:
+            definitions = staticmethod(definitions)
+            def __init__(self):
+                self.seen = []
+            async def execute(self, call):
+                self.seen.append(call['args'])
+                return {'tool_call_id': call['id'], 'data': {'results': []}}
+        async def plan(prompt):
+            return SimpleNamespace(tool_calls=[{'name': 'search_products', 'args': {
+                'query': 'Đà Lạt', 'taxonomy': 'attraction', 'limit': 5, 'excludeProducts': ['p-1']}}])
+        llm = SimpleNamespace(bind_tools=lambda schemas: SimpleNamespace(ainvoke=plan))
+        tools = Executor()
+        state = {'query': 'rút ngắn còn 2 ngày', 'intent': {'destination': 'Đà Lạt', 'days': 2},
+                 'constraints': {'exclude_products': ['p-1']}}
+        result = await nodes.tool_node(state, tools=tools, llm=llm)
+        self.assertEqual(len(result['tool_plan']), 1)
+        self.assertNotIn('excludeProducts', result['tool_plan'][0]['args'])
+        self.assertNotIn('excludeProducts', tools.seen[0])
+        self.assertNotIn('error', result.get('response', {}))
+
     async def test_permanent_error_and_missing_configuration_do_not_retry(self):
         result = await nodes.tool_node({'query': 'hotel'})
         evaluated = nodes.evaluate_node(result)

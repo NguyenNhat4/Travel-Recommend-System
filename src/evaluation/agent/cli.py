@@ -1,47 +1,20 @@
-"""CLI for the lab."""
+"""CLI chạy tay một lượt qua Itinerary Agent với LLM thật. Bộ đánh giá tự động 50 case chấm
+theo docs/prd/test-plan.md §2.4 nằm ở `src/evaluation/agent/golden.py` (`python -m
+src.evaluation.agent.golden`), không qua CLI này."""
 
 from __future__ import annotations
 
 import asyncio
-
 import json
 from pathlib import Path
 from typing import Annotated
 
 import typer
-import yaml
 
 from src.backend.app.agents.graph import build_graph
-from src.evaluation.agent.metrics import MetricsReport, metric_from_state, summarize_metrics, write_metrics
 from src.backend.app.infrastructure.persistence.langgraph_checkpointer import build_checkpointer
-from src.evaluation.agent.report import write_report
-from src.evaluation.agent.scenarios import load_scenarios
-from src.backend.app.agents.state import initial_state
 
 app = typer.Typer(no_args_is_help=True)
-
-
-@app.command("run-scenarios")
-def run_scenarios(
-    config: Annotated[Path, typer.Option("--config")],
-    output: Annotated[Path, typer.Option("--output")],
-) -> None:
-    """Run all grading scenarios and write metrics JSON."""
-    cfg = yaml.safe_load(config.read_text(encoding="utf-8"))
-    scenarios = load_scenarios(cfg["scenarios_path"])
-    checkpointer = build_checkpointer(cfg.get("checkpointer", "memory"), cfg.get("database_url"))
-    graph = build_graph(checkpointer=checkpointer)
-    metrics = []
-    for scenario in scenarios:
-        state = initial_state(scenario)
-        run_config = {"configurable": {"thread_id": state["thread_id"]}}
-        final_state = asyncio.run(graph.ainvoke(state, config=run_config))
-        metrics.append(metric_from_state(final_state, scenario.expected_route.value))
-    report = summarize_metrics(metrics)
-    write_metrics(report, output)
-    if cfg.get("report_path"):
-        write_report(report, cfg["report_path"])
-    typer.echo(f"Wrote metrics to {output}")
 
 
 @app.command("itinerary")
@@ -88,16 +61,6 @@ def run_itinerary(
     typer.echo(f"Wrote response and trace to {output}")
     if state["http_status"] != 200:
         raise typer.Exit(1)
-
-
-@app.command("validate-metrics")
-def validate_metrics(metrics: Annotated[Path, typer.Option("--metrics")]) -> None:
-    """Validate metrics JSON schema for grading."""
-    payload = json.loads(metrics.read_text(encoding="utf-8"))
-    report = MetricsReport.model_validate(payload)
-    if report.total_scenarios < 6:
-        raise typer.BadParameter("Expected at least 6 scenarios")
-    typer.echo(f"Metrics valid. success_rate={report.success_rate:.2%}")
 
 
 if __name__ == "__main__":

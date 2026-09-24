@@ -11,7 +11,9 @@ chỉ dẫn thứ tự đọc tối thiểu và chọn thêm tài liệu/source 
 | [langgraph-nodes.md](langgraph-nodes.md) | Vì sao graph chia thành mười node, vì sao mọi nhánh qua `finalize`, cách đọc bảng trace |
 | [state-fields.md](state-fields.md) | Tra theo từng field của `AgentState`: node nào ghi, node nào đọc, dùng để làm gì |
 | [response-and-errors.md](response-and-errors.md) | `status` so với `error.code`, luồng sau `UNSUPPORTED_DESTINATION` |
-| [evaluation-plan.md](evaluation-plan.md) | Bộ 12 case chạy tay qua Streamlit, cách chấm, mẫu biên bản, giới hạn đã biết |
+| [golden-run.md](golden-run.md) | Chạy bộ golden: chuẩn bị Postgres/backend, các cờ của runner, đọc kết quả, lỗi thường gặp |
+| [golden-dataset.md](golden-dataset.md) | Cấu trúc bộ golden 50 case, các khoá `expect`, cách thêm case và xử lý khi case fail |
+| [evaluation-plan.md](evaluation-plan.md) | Bộ 12 case chạy tay qua Streamlit (fixture 50 sản phẩm) và bộ 50 case chạy tự động trên catalog thật (`src/evaluation/agent/golden.py`) — cách chấm, mẫu biên bản, giới hạn đã biết |
 
 ## Chạy demo
 
@@ -28,6 +30,25 @@ Cấu hình provider/key/model trong `.env` theo Backend README. UI chat chỉ g
 Demo yêu cầu `destination` và `days`. Nếu thiếu, backend trả `NEEDS_CLARIFICATION`, lưu phần intent đã biết theo `conversationId` và chưa gọi tool. `context.language` hỗ trợ `vi`/`en`; khi vắng mặt backend mặc định tiếng Việt và lưu lựa chọn theo conversation.
 
 Timeout LLM của graph lấy từ `ITINERARY_LLM_TIMEOUT_SECONDS`, áp dụng cho cả `classify`, chọn điểm đến trong `tool`, `clarify` và `converse`; timeout tool lấy từ `ITINERARY_TOOL_TIMEOUT_SECONDS`. `.env.example` đặt 30 giây và 1 giây để model thật có thời gian phản hồi khi demo. Đây là cấu hình đánh giá offline và **vượt** ngân sách của spec §7.2 (classify 2 giây, composition 3 giây, toàn request mục tiêu 5 giây), nên không dùng số đo ở chế độ này làm bằng chứng đạt SLA. `ITINERARY_LLM_MODEL` và `ITINERARY_USE_LLM` nay **được** `Settings` đọc; bỏ trống `ITINERARY_LLM_MODEL` thì OpenAI dùng `MODEL_NAME`, các provider khác dùng mặc định của mình. Nhiệt độ của agent lấy từ `ITINERARY_LLM_TEMPERATURE` (mặc định 0), không dùng chung `LLM_TEMPERATURE`.
+
+## Chạy đánh giá tự động (golden dataset)
+
+Hướng dẫn đầy đủ: [golden-run.md](golden-run.md). Bộ 50 case cố định, chấm tự động theo `docs/prd/test-plan.md` §2.4 (Grounding Rate, Structured Output
+Integrity, Tool Calling Accuracy). Chi tiết luật chấm: [evaluation-plan.md](evaluation-plan.md) mục
+"Golden dataset tự động". Cần Postgres đã seed và backend chạy `ITINERARY_DATA_MODE=http`:
+
+```bash
+docker compose up -d --wait postgres
+ITINERARY_DATA_MODE=http ITINERARY_SERVICE_BASE_URL=http://127.0.0.1:8000 \
+    .venv/bin/uvicorn src.backend.app.main:app --port 8000 &
+.venv/bin/python -m src.evaluation.agent.golden
+```
+
+Ghi `src/evaluation/reports/eval-YYYY-MM-DD-golden.md` (commit được) và `.json` cùng tên (gitignored).
+`--only G-001,G-002` chạy một phần; `--sweep` thêm một lượt cho mọi điểm đến thật hiện có trong catalog;
+`--repeat N` chạy lại để soi độ ổn định của bước `classify`; `--trace-project <tên>` gửi trace từng
+lượt lên LangSmith project đó (key lấy từ `.env`), tên trace dạng `G-012#2 <câu nhập>`, tag `golden`,
+id case và category. Runner không qua `lifespan` nên không bật cờ này thì không có trace nào.
 
 ## Đọc input/output từng node bằng LangSmith
 
