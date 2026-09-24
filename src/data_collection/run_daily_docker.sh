@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# Job VM: `run` cào mới đa nguồn + giá phòng Trip.com rồi upsert DB.
-# `legacy-run`, `init`, `daily`, `monitor` giữ workflow Docker/daily.py cũ để tra cứu.
-# Cron: 0 2 * * * CATALOG_ENV_FILE=/etc/vota/fresh-catalog.env /path/run_daily_docker.sh run
-# Job mới chạy crawler trên host/Xvfb; Docker chỉ khởi động Postgres khi DB_TARGET=local.
+# Job VM: `run` starts the fresh multi-source crawler image and upserts DB.
+# `legacy-run`, `init`, `daily`, `monitor` retain the older Docker/daily.py workflow.
+# Only this runner script, Docker, an env file and a data volume are needed on the VM.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -14,6 +13,11 @@ DOCKER_NETWORK="${DOCKER_NETWORK:-}"             # vd. app-private nếu Postgre
 NAME="${CONTAINER_NAME:-vota-daily}"
 PULL="${PULL:-1}"                                # 1 = kéo IMAGE mới trước mỗi lượt (lỗi kéo thì dùng image đã có)
 MANUAL_IN_IMAGE=/app/src/data_collection/snapshots/2026-09-23/combo_items_manual.jsonl
+FRESH_IMAGE="${FRESH_IMAGE:-vota-fresh-catalog:latest}"
+FRESH_DATA_DIR="${FRESH_DATA_DIR:-/srv/vota/fresh-catalog-data}"
+FRESH_ENV_FILE="${CATALOG_ENV_FILE:-/etc/vota/fresh-catalog.env}"
+FRESH_NETWORK="${FRESH_NETWORK:-${DOCKER_NETWORK:-host}}"
+FRESH_NAME="${FRESH_CONTAINER_NAME:-vota-fresh-catalog}"
 
 die() { echo "$(date -Is) $*" >&2; exit 1; }
 
@@ -70,12 +74,36 @@ cmd_legacy_run() {
 }
 
 cmd_run() {
-  local log_dir="${CATALOG_LOG_DIR:-$here/data/logs}" log status=0
+  local mode="${1:-auto}" log_dir log status=0 container_name
+  [ "$#" -le 1 ] || die 'run accepts one mode: auto, full, daily or status'
+  case "$mode" in
+    auto|full|daily|status|--auto|--full|--daily|--status) mode="${mode#--}" ;;
+    *) die 'run accepts one mode: auto, full, daily or status' ;;
+  esac
+  [ -d "$FRESH_DATA_DIR" ] || die "chưa có $FRESH_DATA_DIR (tạo với UID/GID 10001 cho app trong image)"
+  log_dir="${CATALOG_LOG_DIR:-/srv/vota/fresh-catalog-logs}"
   mkdir -p "$log_dir"
+  [ "$mode" = status ] || [ -r "$FRESH_ENV_FILE" ] || die "không đọc được $FRESH_ENV_FILE"
+  container_name="$FRESH_NAME"
+  if [ "$mode" = status ]; then container_name="$FRESH_NAME-status-$$"; fi
+  local args=(--rm --init --name "$container_name"
+              --network "$FRESH_NETWORK" --shm-size "${FRESH_SHM_SIZE:-512m}"
+              -v "$FRESH_DATA_DIR:/data")
+  if [ -r "$FRESH_ENV_FILE" ]; then args+=(--env-file "$FRESH_ENV_FILE"); fi
+  args+=(-e CATALOG_STATE_DIR=/data/state -e CATALOG_RUN_ROOT=/data/fresh_runs)
+  if [ "$mode" = status ]; then
+    docker run "${args[@]}" "$FRESH_IMAGE" status
+    return
+  fi
   find "$log_dir" -maxdepth 1 -name 'fresh-catalog-*.log' -mtime +30 -delete 2>/dev/null || true
+  if [ -n "$(docker ps -q --filter "name=^${FRESH_NAME}\$")" ]; then
+    echo "$(date -Is) SKIP: container $FRESH_NAME vẫn đang chạy" >> "$log_dir/fresh-catalog-errors.log"
+    echo "fresh catalog: previous run still active"
+    return 0
+  fi
+  if [ "$PULL" = 1 ]; then docker pull -q "$FRESH_IMAGE" >/dev/null 2>&1 || true; fi
   log="$log_dir/fresh-catalog-$(date +%Y%m%d-%H%M%S).log"
-  CATALOG_ENV_FILE="${CATALOG_ENV_FILE:-/etc/vota/fresh-catalog.env}" \
-    "$here/run_fresh_catalog_vm.sh" "$@" >> "$log" 2>&1 || status=$?
+  docker run "${args[@]}" "$FRESH_IMAGE" "$mode" >> "$log" 2>&1 || status=$?
   if [ "$status" -ne 0 ]; then
     echo "$(date -Is) fresh catalog exit=$status — xem $log" >> "$log_dir/fresh-catalog-errors.log"
   fi

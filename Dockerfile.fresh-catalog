@@ -1,0 +1,31 @@
+# Fresh catalog crawler: all collectors, Chromium and Xvfb run inside this image.
+# Build from the repository root: docker build -f Dockerfile.fresh-catalog -t vota-fresh-catalog:latest .
+FROM python:3.11-slim-bookworm
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app/src \
+    VOTA_DATA_DIR=/data \
+    CATALOG_STATE_DIR=/data/state \
+    CATALOG_RUN_ROOT=/data/fresh_runs \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+    TZ=Asia/Ho_Chi_Minh
+
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends xvfb xauth tzdata ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY src/data_collection/requirements.txt /tmp/catalog-requirements.txt
+RUN python -m pip install --no-cache-dir -r /tmp/catalog-requirements.txt \
+    && python -m playwright install --with-deps chromium \
+    && useradd --create-home --uid 10001 app \
+    && mkdir -p /data \
+    && chmod -R a+rX /ms-playwright \
+    && chown app:app /data
+
+COPY src/data_collection /app/src/data_collection
+WORKDIR /app/src/data_collection
+USER app
+
+ENTRYPOINT ["bash", "/app/src/data_collection/run_fresh_catalog_container.sh"]
+CMD ["auto"]

@@ -1,0 +1,15 @@
+# Image contains code only. Runtime data, snapshots, tests and secrets stay outside.
+*
+!src
+!src/data_collection
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.venv
+**/.env
+**/.env.*
+src/data_collection/data
+src/data_collection/cache
+src/data_collection/tests
+src/data_collection/sample
+src/data_collection/snapshots
