@@ -188,8 +188,8 @@ jobs:
           GCE_INSTANCE: ${{ secrets.GCE_INSTANCE }}
           GCE_ZONE: ${{ secrets.GCE_ZONE }}
           GCE_DEPLOY_USER: ${{ secrets.GCE_DEPLOY_USER }}
-          GCE_COMPOSE_FILE: ${{ secrets.GCE_COMPOSE_FILE }}
-          GCE_BACKEND_HEALTH_URL: ${{ secrets.GCE_BACKEND_HEALTH_URL }}
+          GCE_COMPOSE_FILE: ${{ vars.GCE_COMPOSE_FILE }}
+          GCE_BACKEND_HEALTH_URL: ${{ vars.GCE_BACKEND_HEALTH_URL }}
         run: |
           for name in GCP_PROJECT_ID GCE_INSTANCE GCE_ZONE GCE_DEPLOY_USER GCE_COMPOSE_FILE GCE_BACKEND_HEALTH_URL; do
             if [ -z "${!name:-}" ]; then
@@ -224,8 +224,8 @@ jobs:
           GCE_INSTANCE: ${{ secrets.GCE_INSTANCE }}
           GCE_ZONE: ${{ secrets.GCE_ZONE }}
           GCE_DEPLOY_USER: ${{ secrets.GCE_DEPLOY_USER }}
-          GCE_COMPOSE_FILE: ${{ secrets.GCE_COMPOSE_FILE }}
-          GCE_BACKEND_HEALTH_URL: ${{ secrets.GCE_BACKEND_HEALTH_URL }}
+          GCE_COMPOSE_FILE: ${{ vars.GCE_COMPOSE_FILE }}
+          GCE_BACKEND_HEALTH_URL: ${{ vars.GCE_BACKEND_HEALTH_URL }}
           GCE_DB_TUNNEL_PORT: ${{ secrets.GCE_DB_TUNNEL_PORT || '15432' }}
           GCE_CRON_RUNNER: ${{ secrets.GCE_CRON_RUNNER || '/opt/vota/bin/run_daily_docker.sh' }}
           GCE_CRON_DATA_DIR: ${{ secrets.GCE_CRON_DATA_DIR || '/srv/vota/daily-data' }}
