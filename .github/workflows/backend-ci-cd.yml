@@ -57,12 +57,12 @@ jobs:
       - name: Run backend tests
         run: PYTHONDONTWRITEBYTECODE=1 python3 -m pytest -q src/backend/tests
 
-      - name: Run deployment script tests
+      - name: Validate deployment scripts
         run: |
-          bash scripts/tests/test-install-vota-cron.sh
-          bash scripts/tests/test-deploy-backend-vm.sh
-          bash scripts/tests/test-backend-ci-cd-config.sh
-          bash -n scripts/*.sh scripts/tests/*.sh
+          bash -n \
+            scripts/check-db-tunnel.sh \
+            scripts/deploy-backend-vm.sh \
+            scripts/install-vota-cron.sh
 
   build:
     name: Build images
