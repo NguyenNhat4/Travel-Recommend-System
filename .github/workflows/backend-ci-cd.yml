@@ -252,6 +252,15 @@ jobs:
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v2
 
+      - name: Initialize non-interactive SSH access
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCE_INSTANCE: ${{ secrets.GCE_INSTANCE }}
+          GCE_ZONE: ${{ secrets.GCE_ZONE }}
+        run: |
+          gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" \
+            --tunnel-through-iap --quiet --command true
+
       - name: Copy deploy scripts to application VM
         env:
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
@@ -260,7 +269,7 @@ jobs:
         run: |
           remote_dir="/tmp/vota-cicd-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           tar -C scripts -czf - deploy-backend-vm.sh install-vota-cron.sh check-db-tunnel.sh \
-            | gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap \
+            | gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --quiet \
                 --command "umask 077; mkdir -m 700 '$remote_dir' && tar -xzf - -C '$remote_dir'"
 
       - name: Deploy latest images and update existing cron
@@ -281,4 +290,4 @@ jobs:
           backend_ref="$BACKEND_IMAGE:latest"
           crawler_ref="$CRAWLER_IMAGE:latest"
           remote_command="chmod +x '$remote_dir'/*.sh && '$remote_dir/deploy-backend-vm.sh' --backend-image '$backend_ref' --crawler-image '$crawler_ref' --compose-file '$GCE_COMPOSE_FILE' --backend-health-url '$GCE_BACKEND_HEALTH_URL' --db-tunnel-port '$GCE_DB_TUNNEL_PORT' --cron-runner '$GCE_CRON_RUNNER' --cron-data-dir '$GCE_CRON_DATA_DIR' --cron-env-file '$GCE_CRON_ENV_FILE'"
-          gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --command "$remote_command"
+          gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --quiet --command "$remote_command"
