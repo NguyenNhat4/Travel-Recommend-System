@@ -1,14 +1,11 @@
 #!/usr/bin/env bash
-# Job hằng ngày chạy bằng Docker trên VPS (image từ Dockerfile.daily). Một script cho người vận hành:
-#   run_daily_docker.sh init <thư mục interim> [<thư mục raw>]  # một lần: chuẩn bị thư mục dữ liệu trên VPS
-#   run_daily_docker.sh run                                     # một lượt: cào → chuẩn hoá → gate → promote → nạp DB → embed
-#   run_daily_docker.sh daily <lệnh daily.py…>                  # thao tác tay: status | versions | accept <lượt> | switch <version>…
-#   run_daily_docker.sh monitor                                 # trang /daily ở 127.0.0.1:8765 của VPS (xem qua ssh -L)
-# Cron gợi ý (02:00 giờ máy): 0 2 * * * /đường/dẫn/run_daily_docker.sh run
-# Biến (export hoặc đặt trước lệnh): IMAGE, DATA_DIR, ENV_FILE, MAX_HOURS, DOCKER_NETWORK, CONTAINER_NAME, PULL — mặc định bên dưới.
-# Kết nối DB/Weaviate/Cohere chỉ nằm trong ENV_FILE (chmod 600), không bao giờ trong image, log hay script này.
+# Job VM: `run` cào mới đa nguồn + giá phòng Trip.com rồi upsert DB.
+# `legacy-run`, `init`, `daily`, `monitor` giữ workflow Docker/daily.py cũ để tra cứu.
+# Cron: 0 2 * * * CATALOG_ENV_FILE=/etc/vota/fresh-catalog.env /path/run_daily_docker.sh run
+# Job mới chạy crawler trên host/Xvfb; Docker chỉ khởi động Postgres khi DB_TARGET=local.
 set -euo pipefail
 
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 IMAGE="${IMAGE:-vota-daily:latest}"
 DATA_DIR="${DATA_DIR:-/srv/vota/daily-data}"     # interim, cache, sqlite tiến độ, catalog, version — phải giữ giữa các lượt
 ENV_FILE="${ENV_FILE:-/etc/vota/daily.env}"      # KEY=VALUE, không nháy (docker --env-file), mẫu: src/data_collection/.env.example
@@ -55,7 +52,7 @@ cmd_init() {
   echo "Đã chuẩn bị $DATA_DIR: chép $copied file interim, hiện có $(find "$DATA_DIR/interim" -maxdepth 1 -name '*.jsonl' | wc -l) file."
 }
 
-cmd_run() {
+cmd_legacy_run() {
   mkdir -p "$DATA_DIR/logs"
   find "$DATA_DIR/logs" -maxdepth 1 -name 'daily-*.log' -mtime +30 -delete 2>/dev/null || true
   if [ -n "$(docker ps -q --filter "name=^${NAME}\$")" ]; then  # lượt trước chưa xong (daily.py cũng có khoá riêng trong /data/state)
@@ -72,9 +69,24 @@ cmd_run() {
   exit "$status"
 }
 
+cmd_run() {
+  local log_dir="${CATALOG_LOG_DIR:-$here/data/logs}" log status=0
+  mkdir -p "$log_dir"
+  find "$log_dir" -maxdepth 1 -name 'fresh-catalog-*.log' -mtime +30 -delete 2>/dev/null || true
+  log="$log_dir/fresh-catalog-$(date +%Y%m%d-%H%M%S).log"
+  CATALOG_ENV_FILE="${CATALOG_ENV_FILE:-/etc/vota/fresh-catalog.env}" \
+    "$here/run_fresh_catalog_vm.sh" "$@" >> "$log" 2>&1 || status=$?
+  if [ "$status" -ne 0 ]; then
+    echo "$(date -Is) fresh catalog exit=$status — xem $log" >> "$log_dir/fresh-catalog-errors.log"
+  fi
+  echo "fresh catalog exit=$status; log=$log"
+  return "$status"
+}
+
 case "${1:-}" in
   init) shift; cmd_init "$@" ;;
-  run) cmd_run ;;
+  run) shift; cmd_run "$@" ;;
+  legacy-run) shift; cmd_legacy_run "$@" ;;
   daily) shift; docker_run "$NAME-manual-$$" -- python daily.py "$@" ;;
   # monitor.py chỉ nghe 127.0.0.1 (chống DNS rebinding) nên dùng mạng của host: trang nằm ở 127.0.0.1:8765 của VPS
   monitor) shift; DOCKER_NETWORK='' docker_run "$NAME-monitor" --network host -- python monitor.py "$@" ;;
