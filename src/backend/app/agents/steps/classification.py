@@ -9,14 +9,16 @@ from src.backend.app.application.itinerary.contracts import bounds, valid
 from src.backend.app.domain.itinerary.planning import merge_intent
 
 from ..models import Extraction
+from .history import sanitize_conversation_history
 from .messages import event, failure, message
 from .prompts import EXTRACT_PROMPT
 
 
 def extraction_input(state: dict) -> list:
-    """Message hiện tại cộng intent/constraints/sản phẩm đã hiển thị của các lượt trước."""
+    """Message hiện tại cộng lịch sử, intent/constraints và sản phẩm đã hiển thị ở các lượt trước."""
     language = "Vietnamese" if state.get("language", "vi") == "vi" else "English"
     payload = {"message": state.get("query", ""),
+               "conversation_history": sanitize_conversation_history(state.get("conversation_history", [])),
                "previous_intent": state.get("intent", {}),
                "previous_constraints": state.get("constraints", {}),
                "previous_selection": state.get("previous_selection", []),
