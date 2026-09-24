@@ -4,7 +4,7 @@ Phục vụ FR-AGT-01..05 và NFR-PERF-02 (thời gian phản hồi trợ lý) t
 Tài liệu review, **chưa có quyết định**: cột "Quyết định" để người review điền. Chưa sửa code nào theo
 tài liệu này.
 
-Phạm vi: request/response của `POST /api/v1/assistant/itineraries` (và `/stream`), và 38 field của
+Phạm vi: request/response của `POST /api/v1/assistant/itineraries` (và `/stream`), và 39 field của
 `AgentState` (`src/backend/app/agents/state.py`). Bằng chứng lấy bằng grep ai ghi/đọc từng field trong
 `src/backend/app` và `src/frontend/src` (code assistant) ngày 2026-09-24, không dựa trên tài liệu cũ.
 Bảng tra theo field hiện hành: [state-fields.md](state-fields.md).
@@ -115,7 +115,7 @@ Cắt hai field này không ảnh hưởng grounding: `steps/validation.py` (bư
 
 | Nhóm | Field |
 |---|---|
-| Đầu vào | `query`, `conversation_id`, `intent`, `intent_override`, `constraints`, `previous_selection`, `language`, `request_id` |
+| Đầu vào | `query`, `conversation_id`, `conversation_history`, `intent`, `intent_override`, `constraints`, `previous_selection`, `language`, `request_id` |
 | Hỏi lại | `missing_fields`, `clarification_reason`, `refusal`, `interaction_type` |
 | Tool | `tool_plan`, `tool_results`, `supported_destinations`, `detail_errors`, `attempt`, `max_attempts` |
 | Đầu ra | `candidates`, `sources`, `warnings`, `response`, `http_status`, `validation_issues` (route ghi vào metrics), `started_at`, `latency_ms` (route log) |
