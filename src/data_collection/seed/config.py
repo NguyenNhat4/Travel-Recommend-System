@@ -10,7 +10,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DATA_COLLECTION_DIR = REPO_ROOT / "src" / "data_collection"
 DEFAULT_DATA_DIR = DATA_COLLECTION_DIR / "data"
-DEFAULT_SNAPSHOT_DIR = DATA_COLLECTION_DIR / "snapshots" / "2026-09-21"
+DEFAULT_SNAPSHOT_DIR = DATA_COLLECTION_DIR / "snapshots" / "2026-09-23"
 DEFAULT_PRODUCTS_SNAPSHOT = DEFAULT_SNAPSHOT_DIR / "products.jsonl.gz"
 DEFAULT_PRODUCTS_CANDIDATES = (
     DEFAULT_DATA_DIR / "products.jsonl",
@@ -118,7 +118,12 @@ PERSONA_LEAD_DAYS = (7, 20)               # chuyến cũ của persona: nhận p
 TEST_USERS = 50
 TEST_USER_EMAIL = "test{n:02d}@vota.demo"
 TEST_USER_NAME = "Khách test {n:02d}"
-DEMO_PASSWORD_HASH = "$2b$10$pNkZJv0LGcI21m4ThFX8l.0SDw.9BryHuyzbmXMifCcRPQP9kHICa"   # BCrypt cost 10 của "Demo@2026"
+DEMO_PASSWORD = "Demo@2026"               # mật khẩu demo công khai, dùng chung cho 4 persona + 50 test
+# Argon2id đúng tham số backend (auth §8.1) → backend không phải rehash khi đăng nhập.
+ARGON2_MEMORY_KIB = 19456
+ARGON2_TIME_COST = 2
+ARGON2_PARALLELISM = 1
+ARGON2_HASH_LEN = 32
 
 # ================================================================== §6 Insider clone
 INSIDER_PARTNER = "vota"

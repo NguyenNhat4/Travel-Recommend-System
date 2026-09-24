@@ -196,10 +196,14 @@ Quy tắc form → `itemDetails[]`: `hotel` gửi `guestNames` 1 phần tử; `f
 
 | Hành động | Endpoint | Trường gửi | Trường đọc | Lỗi |
 |---|---|---|---|---|
-| Đăng nhập | `POST /auth/login` | `email`, `password` | `accessToken`, `expiresIn`, `user` | `401 INVALID_CREDENTIALS` → một thông điệp chung |
-| Đăng ký | `POST /auth/register` | `email`, `password`, `fullName` | như đăng nhập | `409 EMAIL_ALREADY_EXISTS` dưới trường email; `400 VALIDATION_ERROR` → `details.fields` gắn vào từng trường |
-| Khôi phục phiên | `GET /auth/me` | — | `AuthUser` | `401` → xóa token, chế độ khách |
-| Tài khoản demo | `GET /auth/demo-accounts` | — | `accounts[]` | `404` (production) → ẩn `DemoAccountSwitcher` |
+Web gọi route BFF `/api/auth/*`, không gọi thẳng `/api/v1/auth/*` (docs/spec/hop-dong-tich-hop-auth.md §4). Response không bao giờ chứa token.
+
+| Hành động | Endpoint | Trường gửi | Trường đọc | Lỗi |
+|---|---|---|---|---|
+| Đăng nhập | `POST /api/auth/login` | `email`, `password` | `state`, `user`, `csrfToken` | `401 INVALID_CREDENTIALS` → một thông điệp chung; `429 TOO_MANY_ATTEMPTS` → đếm ngược theo `Retry-After` |
+| Đăng ký | `POST /api/auth/register` | `email`, `password`, `fullName` | như đăng nhập | `409 EMAIL_ALREADY_EXISTS` dưới trường email; `400 WEAK_PASSWORD` → `details.reasons`; `400 VALIDATION_ERROR` → `details.fields` |
+| Khôi phục phiên | `GET /api/auth/session` | — | `state`, `user?`, `csrfToken` | Không bao giờ 401: khách nhận `state: anonymous` |
+| Đăng xuất | `POST /api/auth/logout` | — | `204` | Cookie luôn bị xoá, kể cả khi backend lỗi |
 
 ### 4.8. Assistant `/assistant`
 
@@ -285,14 +289,16 @@ Dùng bảng nhãn tiếng Việt ở `hop-dong-tich-hop-backend.md` §2.5. Key 
 
 ## 7. Auth và phiên phía client
 
-1. `accessToken` lưu trong bộ nhớ và `sessionStorage` (khóa `vota.session`), không lưu `localStorage`, không đưa vào URL, không log.
-2. Mỗi request có token gửi `Authorization: Bearer <accessToken>`. API đọc vẫn gửi token nếu có, để nhận kết quả cá nhân hóa.
-3. Tải lại trang → đọc token từ `sessionStorage` → `GET /auth/me`. `401` → xóa phiên, chuyển chế độ khách, **không** mở modal.
-4. Nhận `401 INVALID_TOKEN` hoặc `TOKEN_EXPIRED` giữa phiên → mở modal "Phiên đăng nhập đã hết hạn" với email điền sẵn; sau khi đăng nhập lại, **gửi lại đúng request đã hỏng** một lần. Người dùng hủy → chế độ khách tại trang hiện tại.
+> Điều 1, 2 và 8 cũ (token trong `sessionStorage`, browser tự gửi `Authorization`, không refresh) **bị thay thế** bởi `docs/spec/hop-dong-tich-hop-auth.md` §4.2 và §6. Các điều còn lại giữ tinh thần, diễn đạt theo cơ chế phiên BFF.
+
+1. Trình duyệt **không bao giờ** giữ token: không `sessionStorage`, không `localStorage`, không URL, không body. Phiên là cookie `vota_sid` (HttpOnly) do BFF phát; mọi `fetch` đi qua `services/http.ts` với `credentials: 'same-origin'`.
+2. Method ghi gửi `X-CSRF-Token` đọc từ cookie `vota_csrf`. BFF gắn `Authorization: Bearer` khi proxy sang FastAPI; client không bao giờ tự đặt header này.
+3. Tải lại trang → `GET /api/auth/session`. `state = anonymous` → chế độ khách, **không** mở modal.
+4. Nhận `401 SESSION_EXPIRED` giữa phiên → mở modal "Phiên đăng nhập đã hết hạn" với email điền sẵn; sau khi đăng nhập lại, **gửi lại đúng request đã hỏng** một lần. Người dùng hủy → chế độ khách tại trang hiện tại.
 5. Web **không** tự hạ về chế độ ẩn danh khi token hỏng; backend cũng không (`hop-dong-tich-hop-backend.md` §6.5).
 6. Khách vãng lai bấm hành động ghi (thêm giỏ, checkout) → modal đăng nhập tại chỗ; thành công → tự thực hiện hành động đang chờ.
-7. Đổi tài khoản (demo hoặc đăng xuất) → xóa **mọi** cache phía client: query cache, `conversationId`, state kế hoạch, badge giỏ.
-8. Không tự làm mới token trong v1 (backend không có refresh token). Có thể chủ động mở modal khi `expiresIn` còn dưới 60 giây và người dùng đang ở Checkout.
+7. Đổi tài khoản (đăng nhập tài khoản khác hoặc đăng xuất) → xóa **mọi** cache phía client: query cache, `conversationId`, state kế hoạch, badge giỏ.
+8. Web không biết hạn token: BFF tự refresh khi access token còn ≤ 60 giây (auth §3.4).
 
 ---
 
@@ -306,7 +312,6 @@ Mọi response không phải 2xx có envelope `ErrorResponse` (`hop-dong-tich-ho
 | `CART_EMPTY` | Checkout | Chuyển `/cart` |
 | `INVALID_CREDENTIALS` | Login | "Email hoặc mật khẩu không đúng" phía trên nút |
 | `INVALID_TOKEN`, `TOKEN_EXPIRED` | mọi nơi có JWT | §7 mục 3–4 |
-| `DEMO_ONLY`, `NOT_FOUND` | Demo switcher | Ẩn switcher (`GET /auth/demo-accounts` trả `404 NOT_FOUND` ở production) |
 | `PRODUCT_NOT_FOUND` | Detail; thêm giỏ | Detail → trang 404 sản phẩm. Thêm giỏ → toast `message` |
 | `CART_ITEM_NOT_FOUND` | Cart | Tải lại `GET /cart`, không báo lỗi |
 | `BOOKING_NOT_FOUND` | Confirmation | "Không tìm thấy đơn đặt chỗ này" + Về trang chủ |
@@ -612,7 +617,7 @@ Ca biên bắt buộc để dựng đủ 8 màn hình:
 7. Chế độ mock dựng đủ 8 màn hình và mọi ca biên §11.
 8. Đổi `NEXT_PUBLIC_API_MOCK=0` và trỏ `NEXT_PUBLIC_API_BASE_URL` sang backend thật mà không sửa dòng nào trong `services`.
 9. Mọi link sản phẩm trong app có dạng `/product/{productId}`; không có chuỗi `bookingUrl` trong code Web.
-10. Đổi tài khoản demo xóa sạch giỏ, gợi ý và hội thoại của người trước.
+10. Đăng xuất rồi đăng nhập tài khoản khác xóa sạch giỏ, gợi ý và hội thoại của người trước.
 11. Với fixture `createItinerary.200-completed-invalid-slots`, slot `nt-a-02` (`available: false`) và slot `dn-a-01` (sai điểm đến) không render thành thẻ.
 
 ## 14. Definition of Done

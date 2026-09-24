@@ -1,4 +1,5 @@
 import { GroundedPlan, SharedTripRecord } from '../types/travel';
+import { apiFetch } from './http';
 
 export interface ShareResult {
   shareId: string;
@@ -73,7 +74,7 @@ export async function createSharedTripUrl(
   let origin = typeof window !== 'undefined' ? window.location.origin : '';
 
   try {
-    const res = await fetch('/api/trips/share', {
+    const res = await apiFetch('/api/trips/share', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ plan, senderName, note })
@@ -129,7 +130,7 @@ export async function getSharedTrip(shareId: string, urlDataParam?: string): Pro
   // Try fetching from server first
   if (shareId) {
     try {
-      const res = await fetch(`/api/trips/share/${encodeURIComponent(shareId)}`);
+      const res = await apiFetch(`/api/trips/share/${encodeURIComponent(shareId)}`);
       if (res.ok) {
         const data = await res.json();
         if (data.success && data.trip) {

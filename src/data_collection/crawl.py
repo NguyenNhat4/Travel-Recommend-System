@@ -10,6 +10,8 @@ Hoặc từng nguồn:
   python crawl.py trip-attractions      # điểm tham quan: giờ mở cửa, thời lượng, toạ độ (trip.com)
   python crawl.py booking-hotels        # N khách sạn phổ biến mỗi điểm đến + hạng phòng + giá (booking.com)
   python crawl.py agoda-hotels          # N khách sạn phổ biến mỗi điểm đến + giá (agoda.com)
+  python crawl.py trip-hotels           # N khách sạn mỗi điểm đến (trip.com) — robots.txt cấm, chỉ dùng nội bộ
+  python crawl.py trip-combos           # combo bay+ở thật (trip.com/packages) — robots.txt cấm, chỉ dùng nội bộ
   python crawl.py venues                # toạ độ địa điểm vé/combo/golf Vinpearl → collectors/venues.csv
   python normalise.py                   # → data/products.jsonl, products.csv, stats.md, map/ (Google My Maps, GeoJSON)
 
@@ -33,7 +35,7 @@ from collections import Counter
 from datetime import date, timedelta
 from pathlib import Path
 
-from collectors import booking_base, retry_missing, trip, venues, vinpearl
+from collectors import agoda_api, booking_base, booking_flights, retry_missing, trip, trip_combos, trip_hotels, venues, vinpearl, vinpearl_bundles
 from collectors.agoda_hotels import AgodaHotels
 from collectors.booking_attractions import BookingAttractions
 from collectors.booking_hotels import BookingHotels
@@ -43,8 +45,8 @@ from collectors.plan import budget_with, select_destinations
 log = logging.getLogger("crawler")
 
 BROWSER_SOURCES = ("booking-hotels", "agoda-hotels", "booking-attractions")
-TRIP_SOURCES = ("trip-flights", "trip-attractions")
-SOURCES = ("vinpearl",) + TRIP_SOURCES + BROWSER_SOURCES
+TRIP_SOURCES = ("trip-flights", "trip-attractions", "trip-experiences")
+SOURCES = ("vinpearl",) + TRIP_SOURCES + BROWSER_SOURCES + ("booking-flights", "trip-hotels", "trip-combos")
 EXIT_BLOCKED = 75  # bị chặn liên tiếp nên tự dừng: nghỉ vài giờ rồi chạy lại (xem run_forever.sh)
 
 
@@ -69,6 +71,8 @@ def _plan(a: argparse.Namespace):
 
 def _crawl_opts(a: argparse.Namespace, default_delay: float) -> booking_base.CrawlOptions:
     destinations, budget = _plan(a)
+    if getattr(a, "brand_only", False):
+        destinations = ()  # chỉ khách sạn thương hiệu Vinpearl từ sitemap, không tìm theo điểm đến
     return booking_base.CrawlOptions(
         browser=_browser_opts(a),
         delay=a.delay if a.delay is not None else default_delay,
@@ -82,6 +86,7 @@ def _crawl_opts(a: argparse.Namespace, default_delay: float) -> booking_base.Cra
         full_sitemap_scan=getattr(a, "full_sitemap_scan", False),
         full_cache=getattr(a, "full_cache", False),
         all_vietnam=getattr(a, "all_vietnam", False),
+        brand_sitemap=not getattr(a, "no_brand_sitemap", False),
         destinations=destinations,
         budget=budget,
     )
@@ -131,6 +136,7 @@ async def cmd_vinpearl(paths: Paths, a: argparse.Namespace, offline: bool = Fals
         price_dates=_price_dates(a),
         adults=getattr(a, "adults", 2),
         site_pages=getattr(a, "site_pages", False),
+        no_browser=getattr(a, "no_browser", False),
     )
     stats = await vinpearl.run(paths, opts)
     log.info("Vinpearl: %s", stats)
@@ -161,11 +167,66 @@ async def cmd_trip(paths: Paths, a: argparse.Namespace, which: str) -> dict:
         discover_only=getattr(a, "discover_only", False),
         destinations=destinations,
         budget=budget,
+        refresh=getattr(a, "refresh", False),
+        routes=tuple(booking_flights.flight_routes(a.routes)) if getattr(a, "routes", None) else (),
     )
     state = StateDB(paths)
     try:
         result = await trip.run(paths, _name(which), opts, state)
         log.info("[%s] Trạng thái: %s", _name(which), result)
+        return result
+    finally:
+        state.close()
+
+
+async def cmd_trip_combos(paths: Paths, a: argparse.Namespace) -> dict:
+    """trip.com – combo bay+ở. Cũng không qua cmd_browser (cùng lý do trip_hotels), và không có hàng đợi
+    StateDB theo URL (giống TripExperiences trong trip.py: 1 trang cho nhiều bản ghi)."""
+    destinations, budget = _plan(a)
+    opts = trip_combos.TripComboOptions(
+        delay=a.delay if a.delay is not None else 3.0,
+        limit=getattr(a, "limit", None),
+        max_blocks=a.max_blocks,
+        rediscover=getattr(a, "rediscover", False),
+        destinations=destinations,
+        budget=budget,
+        depart=_checkin(a),
+        nights=getattr(a, "nights", 3),
+        adults=getattr(a, "adults", 2),
+        browser=_browser_opts(a),
+    )
+    state = StateDB(paths)
+    try:
+        result = await trip_combos.run(paths, opts, state)
+        log.info("[trip-combos] Trạng thái: %s", result)
+        return result
+    finally:
+        state.close()
+
+
+async def cmd_trip_hotels(paths: Paths, a: argparse.Namespace) -> dict:
+    """trip.com – khách sạn. KHÔNG dùng cmd_browser/_browser_source: trip_hotels.py tự quản lý BrowserSession
+    riêng (không qua booking_base.crawl(), vốn gọi robots.allowed() sẽ tự chặn mọi URL của nguồn này — xem
+    docstring collectors/trip_hotels.py)."""
+    destinations, budget = _plan(a)
+    opts = trip_hotels.TripHotelsOptions(
+        delay=a.delay if a.delay is not None else 3.0,
+        limit=getattr(a, "limit", None),
+        max_attempts=getattr(a, "max_attempts", 3),
+        max_blocks=a.max_blocks,
+        rediscover=getattr(a, "rediscover", False),
+        discover_only=getattr(a, "discover_only", False),
+        destinations=destinations,
+        budget=budget,
+        checkin=_checkin(a),
+        nights=getattr(a, "nights", 1),
+        adults=getattr(a, "adults", 2),
+        browser=_browser_opts(a),
+    )
+    state = StateDB(paths)
+    try:
+        result = await trip_hotels.run(paths, opts, state)
+        log.info("[trip-hotels] Trạng thái: %s", result)
         return result
     finally:
         state.close()
@@ -214,6 +275,9 @@ def cmd_status(paths: Paths) -> None:
 
 
 async def cmd_reparse(paths: Paths, a: argparse.Namespace) -> None:
+    if a.source == "booking-flights":
+        log.info("Booking flights reparse: %s", booking_flights.reparse(paths))
+        return
     if a.source == "vinpearl":
         await cmd_vinpearl(paths, a, offline=True)
         return
@@ -221,6 +285,10 @@ async def cmd_reparse(paths: Paths, a: argparse.Namespace) -> None:
     try:
         if a.source in TRIP_SOURCES:
             trip.reparse(paths, _name(a.source), state)
+        elif a.source == "trip-hotels":
+            trip_hotels.reparse(paths, state)
+        elif a.source == "trip-combos":
+            trip_combos.reparse(paths)
         else:
             await booking_base.reparse(paths, _browser_source(a.source, a), state)
     finally:
@@ -312,14 +380,60 @@ def build_parser() -> argparse.ArgumentParser:
     v.add_argument("--price-dates", default=None, help="ngày hỏi giá phòng: YYYY-MM-DD hoặc số ngày từ hôm nay (mặc định 30,14,60)")
     v.add_argument("--adults", type=int, default=2)
     v.add_argument("--site-pages", action="store_true", help="bổ sung trang vinpearl.com (Cloudflare – có thể phải tự xác minh)")
+    v.add_argument("--no-browser", action="store_true",
+                   help="VPS/console: không mở Chromium; danh sách tour qua HTTP (bị chặn thì dùng voucher API), chi tiết tour lấy cache")
 
+    vb = sub.add_parser("vinpearl-bundles", help="Vinpearl: combo vé máy bay khứ hồi + khách sạn theo ngày khởi hành (HTTP)")
+    vb.add_argument("--days", type=int, default=30, help="số ngày khởi hành liên tiếp (mặc định 30)")
+    vb.add_argument("--start-offset", type=int, default=0, help="ngày khởi hành đầu tiên = hôm nay + N (mặc định 0)")
+    vb.add_argument("--origins", default=",".join(vinpearl_bundles.DEFAULT_ORIGINS), help="sân bay đi, vd. HAN,SGN")
+    vb.add_argument("--delay", type=float, default=None, help="giây tối thiểu giữa 2 request (mặc định 4)")
+    vb.add_argument("--limit-routes", type=int, default=None, help="chỉ N tuyến đầu (chạy thử)")
+    vb.add_argument("--max-blocks", type=int, default=3, help="bị chặn liên tiếp bấy nhiêu lần thì dừng")
+
+    aa = sub.add_parser("agoda-api", help="agoda.com qua HTTP (không trình duyệt): sitemap → hotel_id → giá từng ngày (GetSecondaryData)")
+    aa.add_argument("--destinations", default="@v1", help="điểm đến trong kế hoạch (mặc định @v1 = 38 điểm)")
+    aa.add_argument("--per-city", type=int, default=50, help="tối đa N khách sạn mỗi điểm đến; khách sạn đã có trong dữ liệu được ưu tiên")
+    aa.add_argument("--days", type=int, default=30, help="cửa sổ ngày nhận phòng từ hôm nay (mặc định 30)")
+    aa.add_argument("--delay", type=float, default=None, help="giây tối thiểu giữa 2 request (mặc định 4, cộng jitter)")
+    aa.add_argument("--max-requests", type=int, default=None, help="ngân sách request của lượt này (mặc định không giới hạn)")
+    aa.add_argument("--limit-hotels", type=int, default=None, help="chỉ N khách sạn đầu của phạm vi (chạy thử)")
+    aa.add_argument("--discover", action="store_true", help="đọc lại sitemap ngay (mặc định tự đọc lại sau 7 ngày)")
+    aa.add_argument("--export-only", action="store_true", help="không gọi mạng, chỉ xuất lại interim/agoda_api.jsonl từ trạng thái đã lưu")
+    aa.add_argument("--max-blocks", type=int, default=3, help="bị chặn liên tiếp bấy nhiêu lần thì dừng")
+    aa.add_argument("--max-hours", type=float, default=None, help="hết giờ thì dừng êm và xuất interim (lượt sau làm tiếp)")
+
+    TRIP_LABEL = {"trip-flights": "vé máy bay", "trip-attractions": "điểm tham quan", "trip-experiences": "tour/hoạt động (things-to-do)"}
     for s in TRIP_SOURCES:
-        sub.add_parser(s, parents=[browser, plan, crawl], help=f"trip.com – {'vé máy bay' if s == 'trip-flights' else 'điểm tham quan'} (HTTP, không cần trình duyệt)")
+        tp = sub.add_parser(s, parents=[browser, plan, crawl], help=f"trip.com – {TRIP_LABEL[s]} (HTTP, không cần trình duyệt)")
+        if s == "trip-flights":
+            tp.add_argument("--routes", help="lọc tuyến có hướng, vd. SGN-HAN,HAN-CXR")
+            tp.add_argument("--refresh", action="store_true", help="lấy snapshot giá mới cho các tuyến được discovery trong phạm vi điểm đến")
     bh = sub.add_parser("booking-hotels", parents=[browser, plan, crawl, dates], help="booking.com – khách sạn theo điểm đến")
     bh.add_argument("--all-vietnam", action="store_true", help="thêm toàn bộ ~34.000 chỗ ở VN từ sitemap (không theo handbook)")
     bh.add_argument("--full-sitemap-scan", action="store_true", help="với --all-vietnam: quét mọi file sitemap")
+    bh.add_argument("--no-brand-sitemap", action="store_true", help="không quét sitemap khách sạn thương hiệu Vinpearl (batch theo thành phố dùng cờ này)")
+    bh.add_argument("--brand-only", action="store_true", help="chỉ khách sạn thương hiệu Vinpearl từ sitemap, bỏ tìm theo điểm đến")
     sub.add_parser("agoda-hotels", parents=[browser, plan, crawl, dates], help="agoda.com – khách sạn theo điểm đến")
+    sub.add_parser("trip-hotels", parents=[browser, plan, crawl, dates],
+                    help="trip.com – khách sạn (nguồn mới, robots.txt cấm — chỉ dùng nội bộ, xem collectors/trip_hotels.py)")
+    tc = sub.add_parser("trip-combos", parents=[browser, plan, dates],
+                         help="trip.com – combo bay+ở /packages (nguồn mới, robots.txt cấm — chỉ dùng nội bộ)")
+    tc.add_argument("--limit", type=int, default=None, help="chỉ N tuyến đầu trong lượt này")
+    tc.add_argument("--rediscover", action="store_true", help="tìm lại combo cho tuyến đã có (bỏ qua cache 'đã tìm')")
     sub.add_parser("booking-attractions", parents=[browser, crawl], help="booking.com – vé tham quan (nguồn phụ, ngoài kế hoạch)")
+
+    bf = sub.add_parser("booking-flights", parents=[browser, plan], help="Booking Flights – chuyến cụ thể và giá theo ngày/tháng")
+    bf.add_argument("--routes", help="cặp IATA có hướng, vd. SGN-HAN,HAN-CXR; mặc định giữa sân bay trong kế hoạch")
+    bf.add_argument("--months", help="mọi ngày của tháng, vd. 2026-10,2026-11")
+    bf.add_argument("--depart-dates", help="ngày bay YYYY-MM-DD, cách nhau dấu phẩy; mặc định hôm nay + 30")
+    bf.add_argument("--adults", type=int, default=1)
+    bf.add_argument("--cabin", choices=["ECONOMY", "PREMIUM_ECONOMY", "BUSINESS", "FIRST"], default="ECONOMY")
+    bf.add_argument("--limit", type=int, help="giới hạn số trang tìm kiếm mỗi lượt; không coi là đã lấy hết")
+    bf.add_argument("--max-pages", type=int, default=0, help="giới hạn trang/tuyến/ngày; 0 là tất cả trang nguồn trả")
+    bf.add_argument("--max-attempts", type=int, default=3)
+    bf.add_argument("--discover-only", action="store_true", help="xếp hàng offline, chưa mở mạng/trình duyệt")
+    bf.add_argument("--refresh", action="store_true", help="lấy snapshot giá mới cho phạm vi được chọn")
 
     ve = sub.add_parser("venues", help="toạ độ địa điểm vé/combo/golf Vinpearl: trip.com → OpenStreetMap, ghi collectors/venues.csv")
     ve.add_argument("--refresh", action="store_true", help="tìm lại cả dòng auto/review (không bao giờ ghi đè dòng status=ok)")
@@ -343,15 +457,56 @@ def main(argv: list[str] | None = None) -> int:
     setup_logging(paths, a.verbose)
     result = None
     try:
-        if a.cmd == "vinpearl":
+        if a.cmd == "booking-flights":
+            try:
+                if not 1 <= a.adults <= 9 or a.max_pages < 0 or a.max_attempts < 1 or (a.limit is not None and a.limit < 1):
+                    raise ValueError("adults: 1..9; max-pages >= 0; max-attempts và limit > 0")
+                opts = booking_flights.Options(
+                    browser=_browser_opts(a), routes=booking_flights.flight_routes(a.routes, select_destinations(a.destinations)),
+                    dates=booking_flights.flight_dates(a.months, a.depart_dates), adults=a.adults, cabin=a.cabin,
+                    delay=a.delay if a.delay is not None else 4, max_attempts=a.max_attempts,
+                    max_pages=a.max_pages, limit=a.limit, discover_only=a.discover_only, refresh=a.refresh)
+            except ValueError as exc:
+                log.error("%s", exc)
+                return 2
+            with RunLock(paths, "booking_flights"):
+                result = asyncio.run(booking_flights.run(paths, opts))
+            log.info("Booking flights: %s", result)
+        elif a.cmd == "vinpearl":
             with RunLock(paths, "vinpearl"):
                 result = asyncio.run(cmd_vinpearl(paths, a))
+        elif a.cmd == "agoda-api":
+            if a.per_city < 1 or a.days < 1:
+                log.error("--per-city và --days phải >= 1")
+                return 2
+            opts = agoda_api.AgodaOptions(
+                destinations=select_destinations(a.destinations), per_city=a.per_city, days=a.days,
+                delay=a.delay if a.delay is not None else 4.0, max_requests=a.max_requests, max_blocks=a.max_blocks,
+                discover=a.discover, limit_hotels=a.limit_hotels, export_only=a.export_only, max_hours=a.max_hours)
+            with RunLock(paths, "agoda_api"):
+                result = asyncio.run(agoda_api.run(paths, opts))
+        elif a.cmd == "vinpearl-bundles":
+            if a.days < 1 or a.start_offset < 0:
+                log.error("--days phải >= 1, --start-offset >= 0")
+                return 2
+            opts = vinpearl_bundles.BundleOptions(
+                days=a.days, start_offset=a.start_offset, delay=a.delay if a.delay is not None else 4.0,
+                origins=tuple(x.strip().upper() for x in a.origins.split(",") if x.strip()),
+                limit_routes=a.limit_routes, max_blocks=a.max_blocks)
+            with RunLock(paths, "vinpearl_bundles"):
+                result = asyncio.run(vinpearl_bundles.run(paths, opts))
         elif a.cmd in TRIP_SOURCES:
             with RunLock(paths, _name(a.cmd)):
                 result = asyncio.run(cmd_trip(paths, a, a.cmd))
         elif a.cmd in BROWSER_SOURCES:
             with RunLock(paths, _name(a.cmd)):
                 result = asyncio.run(cmd_browser(paths, a, a.cmd))
+        elif a.cmd == "trip-hotels":
+            with RunLock(paths, _name(a.cmd)):
+                result = asyncio.run(cmd_trip_hotels(paths, a))
+        elif a.cmd == "trip-combos":
+            with RunLock(paths, _name(a.cmd)):
+                result = asyncio.run(cmd_trip_combos(paths, a))
         elif a.cmd in ("handbook", "all"):
             result = cmd_handbook(paths, a)
         elif a.cmd == "venues":
@@ -372,6 +527,9 @@ def main(argv: list[str] | None = None) -> int:
         return 130
     if isinstance(result, dict) and result.get("stopped") == "blocked":
         return EXIT_BLOCKED
+    if a.cmd == "booking-flights" and result and (result.get("failed") or result.get("skipped")
+            or ("coverage" in result and not result["coverage"]["discoveredPagesComplete"])):
+        return 2
     return 0
 
 

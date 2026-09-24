@@ -57,10 +57,27 @@ class Settings(BaseSettings):
     itinerary_request_timeout_seconds: float = Field(default=10.0, gt=0)
     itinerary_conversation_ttl_seconds: int = Field(default=86_400, ge=60)
 
-    # JWT do Auth backend phát hành. Không có default secret; request ẩn danh vẫn hoạt động,
-    # còn request mang Bearer token sẽ fail closed nếu deployment chưa cấu hình.
-    jwt_secret: str = ""
-    jwt_algorithm: Literal["HS256"] = "HS256"
+    # --- Auth (docs/spec/hop-dong-tich-hop-auth.md §19) ---------------------------------------
+    # RS256; HS256 bị loại (§10.2). Đường dẫn tương đối tính từ gốc repo. Thiếu file: dev/test sinh
+    # khoá tạm, production không khởi động.
+    jwt_private_key_path: str = "./secrets/jwt-private.pem"
+    jwt_public_key_path: str = "./secrets/jwt-public.pem"
+    jwt_issuer: str = "https://api.vota.local"
+    jwt_audience: str = "vota-api"
+    jwt_access_ttl_seconds: int = Field(default=600, ge=60, le=3600)
+    jwt_clock_skew_seconds: int = Field(default=60, ge=0, le=60)
+    refresh_ttl_seconds: int = Field(default=43_200, ge=600)
+    argon2_memory_kib: int = Field(default=19_456, ge=19_456)
+    argon2_time_cost: int = Field(default=2, ge=2)
+    argon2_parallelism: int = Field(default=1, ge=1)
+    # Trống: dev/test dùng rate limiter trong bộ nhớ; production bắt buộc có Redis.
+    auth_redis_url: str = ""
+    # Chỉ tin X-Forwarded-For khi peer thuộc các dải này (§9.4). Phân cách bằng dấu phẩy.
+    trusted_proxies: str = "127.0.0.1/32"
+    captcha_provider: Literal["noop"] = "noop"  # nhà cung cấp thật là P1, ngoài phạm vi
+    # >= 32 ký tự; BFF và FastAPI trùng giá trị. Trống = nhóm /auth/session* và /internal/* luôn 401.
+    auth_service_token: str = ""
+    internal_api_enabled: bool = False
 
     # Local week-1 topology: one PostgreSQL instance, two roles/connections.
     # The app role cannot read cdp.events/profiles; LocalCdpClient cannot access app/catalog.
@@ -75,13 +92,27 @@ class Settings(BaseSettings):
     # Browse events waiting to be sent; beyond this they are dropped and logged.
     cdp_event_queue_size: int = Field(default=1000, ge=1)
 
-    # RecSys (search / similar / recommendations). Đọc cùng tên biến môi trường như trước khi gộp
-    # core/settings.py vào đây: EMBED_MODEL, EMBED_CACHE_DIR, SEARCH_CUTOFF.
-    embed_model: str = "intfloat/multilingual-e5-base"  # đổi sau benchmark tuần 2
+    # RecSys (search / similar / recommendations). Model và chiều đã chốt trong PRD 22/09/2026.
+    embed_model: Literal["embed-multilingual-v3.0"] = "embed-multilingual-v3.0"
+    embed_dimension: Literal[1024] = 1024
     embed_cache_dir: str = ".embcache"
-    search_cutoff: float = 0.80  # calibrate theo model
+    cohere_api_key: str = ""
+    cohere_base_url: str = "https://api.cohere.com"
+    cohere_timeout_seconds: float = Field(default=30.0, gt=0)
+    weaviate_url: str = "http://localhost:8080"
+    weaviate_api_key: str = ""
+    weaviate_collection: str = "Product"
+    weaviate_timeout_seconds: float = Field(default=30.0, gt=0)
+    search_cutoff: float = 0.62  # quy tắc tạm của Search contract; phải benchmark lại với Cohere
     search_max_limit: int = 50
     recommend_candidate_k: int = 200
+
+    # Vector ở Weaviate, embedding bằng Cohere (docs/prd/architecture.md §5, deployment-plan.md §2).
+    # Runtime và job index-vectors dùng các biến này; Weaviate không bao giờ nhận COHERE_API_KEY.
+    cohere_api_key: str = ""
+    embedding_model_name: str = "embed-multilingual-v3.0"
+    weaviate_url: str = "http://localhost:8080"
+    weaviate_api_key: str = ""
 
     @field_validator(*_OPTIONAL_BLANK_IS_NONE, mode="before")
     @classmethod

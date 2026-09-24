@@ -1,10 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { POST } from '../../src/app/api/[...path]/route';
+import { createAnonymousSession } from '../../src/services/server/bffSession';
+import { MemorySessionStore, setSessionStoreForTests } from '../../src/services/server/sessionStore';
 
 describe('Next BFF streaming proxy', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     delete process.env.BACKEND_BASE_URL;
+    setSessionStoreForTests(undefined);
   });
 
   it('forwards status and headers and returns upstream chunks without buffering', async () => {
@@ -21,10 +24,19 @@ describe('Next BFF streaming proxy', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
+    const store = new MemorySessionStore();
+    setSessionStoreForTests(store);
+    const ua = { 'user-agent': 'vitest' };
+    const { sid, record } = await createAnonymousSession(new Request('http://localhost:3000/', { headers: ua }), store);
+
     const abortController = new AbortController();
     const request = new Request('http://localhost:3000/api/v1/assistant/itineraries/stream', {
       method: 'POST',
-      headers: { 'content-type': 'application/json', accept: 'text/event-stream' },
+      headers: {
+        'content-type': 'application/json', accept: 'text/event-stream', ...ua,
+        origin: 'http://localhost:3000', cookie: `vota_sid=${sid}; vota_csrf=${record.csrfToken}`,
+        'x-csrf-token': record.csrfToken,
+      },
       body: JSON.stringify({ message: 'stream this' }),
       signal: abortController.signal,
     });
