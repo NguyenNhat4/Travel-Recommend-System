@@ -183,8 +183,9 @@ class WeaviateStore:
         self.client.collections.get(physical).config.update(description=json.dumps(desc, ensure_ascii=False))
         return desc
 
-    def check_ready(self, physical: str, items_sha256: str | None = None) -> dict:
-        """Collection phải nạp xong (complete, count == n) và — nếu truyền — khớp items hiện tại; không thì StoreError."""
+    def check_ready(self, physical: str, items_sha256: str | None = None, expected: dict | None = None) -> dict:
+        """Collection phải nạp xong (complete, count == n) và — nếu truyền — khớp items hiện tại và mọi khoá trong `expected`
+        (vd builder_fingerprint, combo_manual_sha256 của text hiện tại); không thì StoreError."""
         desc = self.description(physical)
         if not desc.get("complete"):
             raise StoreError(f"collection {physical} chưa nạp xong (load lỗi giữa chừng?) — chạy lại `sb load`")
@@ -193,6 +194,10 @@ class WeaviateStore:
             raise StoreError(f"collection {physical} có {n} object nhưng mô tả ghi {desc.get('n')} — chạy lại `sb load`")
         if items_sha256 is not None and desc.get("items_sha256") != items_sha256:
             raise StoreError(f"collection {physical} dựng từ items cũ (catalog đã build lại) — chạy lại `sb embed` + `sb load`")
+        stale = [k for k, v in (expected or {}).items() if desc.get(k) != v]
+        if stale:
+            raise StoreError(f"collection {physical} dựng từ text cũ ({', '.join(stale)} khác hiện tại — text builder / soát tay "
+                             "combo đã đổi) — chạy lại `sb embed` + `sb load`")
         return desc
 
     def description(self, physical: str) -> dict:
