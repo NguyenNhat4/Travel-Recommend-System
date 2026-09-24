@@ -117,6 +117,28 @@ results = một trang của R
 Áp cho cả ba endpoint. Với `/recommendations`, `query` được thay bằng user vector.
 `K` là `candidateK` (mặc định 200); `score = 1 − cosine distance`.
 
+**Riêng `/search` ở chế độ `HYBRID_CANDIDATE_SCORE` (từ 25/09/2026, FR-SRC-01):**
+
+```
+FILTER → TOP-K dense ∪ TOP-K BM25 (Weaviate) → CUTOFF + VỚT → TOTAL/FACETS → SORT (RRF) → PAGE
+
+C_dense = top-candidateK của F theo cosine
+C_lex   = top-lexicalCandidateK của F theo BM25 trên nameAscii + searchTextAscii (đã fold dấu; truy vấn fold cùng cách)
+R_dense = { p ∈ C_dense | score(p) >= cutoff }
+R_lex   = { p ∈ C_lex \ R_dense | rank_lex(p) <= lexicalK ∧ score(p) >= lexicalCutoff ∧ phủ(tên p, truy vấn) >= lexicalMinCoverage }
+R       = R_dense ∪ R_lex
+SORT    = giảm dần theo RRF(p) = Σ 1/(rrfK + rank) trên các nhánh p có mặt; hoà thì theo score
+```
+
+`score` vẫn là cosine (§2.6); RRF chỉ quyết định thứ tự, nên `score` không đơn điệu trong một trang.
+`phủ(tên, truy vấn)` = tỉ lệ token của truy vấn (đã fold, dài ≥ 2, bỏ từ chức năng) có trong tên. Truy vấn gần
+như là tên/thương hiệu thì qua ("VinWonders" → mọi tên chứa VinWonders: 1/1; "melia vinpearl hue" →
+"Meliá Vinpearl Hai Phong": 2/3); câu mô tả dài để nhánh dense lo; "khách sạn ở Cà Mau" không vớt được
+"Hoa Mau Don Homestay" (1/4). Không dùng độ hiếm (DF) của token: trên catalog 2026-09-21 "vinwonders" có mặt
+trong 4,9% tên, "trang" 5,0% — DF không tách được thương hiệu với địa danh phổ biến.
+Nhánh BM25 lỗi (collection chưa có property) → engine chạy dense-only nhưng vẫn khai `HYBRID_CANDIDATE_SCORE`
+với `diagnostics.lexicalCandidates = 0`, không trả 500.
+
 **Vì sao filter trước:** category exclusion của `/recommendations` loại khoảng
 50% catalog. Chấm điểm trước rồi lọc sau có thể để lại dưới `k` kết quả. Vì vậy
 id của `F` được gửi làm filter cho truy vấn top-K, không lấy top-K rồi mới lọc.
@@ -128,7 +150,8 @@ Các bất biến dưới đây tính trên tập ứng viên `C`, không phải
 ```
 1. sum(facets.taxonomy) == total
 2. total và facets KHÔNG đổi khi thay limit/offset (trong phạm vi K ứng viên)
-3. mọi results[].score >= cutoff
+3. mọi results[].score >= cutoff — TRỪ ở HYBRID_CANDIDATE_SCORE: phần vớt từ nhánh BM25
+   có score >= diagnostics.lexicalCutoff, số lượng ghi ở diagnostics.lexicalCount
 4. results, total, facets dùng CÙNG filter và CÙNG cutoff
 5. sản phẩm thiếu destination → bucket "UNKNOWN", không biến mất
 ```
@@ -136,10 +159,15 @@ Các bất biến dưới đây tính trên tập ứng viên `C`, không phải
 ### 2.4. Chế độ truy xuất — khai báo, không đổi ngầm · `[C4]`
 
 ```yaml
-search:           { mode: ANN_CANDIDATE_SCORE, cutoff: 0.62, candidateK: 200 }
+search:           { mode: HYBRID_CANDIDATE_SCORE, cutoff: 0.62, candidateK: 200,
+                    lexicalCandidateK: 50, lexicalK: 10, lexicalCutoff: 0.50, lexicalMinCoverage: 0.6, fusion: rrf(60) }
 similar:          { mode: ANN_CANDIDATE_SCORE, topK: 20 }
 recommendations:  { mode: ANN_CANDIDATE_SCORE, candidateK: 200 }
 ```
+
+`/search` chuyển sang hybrid ngày 25/09/2026 (§2.2). `SEARCH_HYBRID=false` đưa `/search` về
+`ANN_CANDIDATE_SCORE` dense-only đúng như trước; các tham số `lexical*` đọc từ `core/config.py`
+(`SEARCH_LEXICAL_K`, `SEARCH_LEXICAL_CUTOFF`…) và chưa benchmark (§10 S9).
 
 **Chốt 24/09/2026 (S8, hướng b — `docs/prd/update-archive/2026-09-24-recsys-truy-van-weaviate-top-k.md`).**
 Backend không còn tải toàn bộ vector vào RAM lúc khởi động: tải 3.183 vector từ
@@ -572,13 +600,19 @@ Team Search cung cấp:
    `familyFriendly`.
 2. Đổi `limit`/`offset` (trong phạm vi `candidateK`), giữ nguyên filter → `total` và `facets` **không đổi**.
 3. `sum(facets.taxonomy) == total` trên mọi truy vấn (tính trên tập ứng viên).
-4. Mọi `results[].score >= cutoff`.
+4. Mọi `results[].score >= cutoff`; ở `HYBRID_CANDIDATE_SCORE` phần vớt từ BM25 có
+   `score >= diagnostics.lexicalCutoff` và đếm đúng bằng `diagnostics.lexicalCount`.
 5. Truy vấn vô nghĩa → `results: []`, `topScore: null`, `backgroundScore: null`.
 6. ≥ 95% cặp đúng trong bộ 80 cặp có `score >= cutoff`.
 7. Cả 10 truy vấn âm rơi vào nhánh weak (theo abs hoặc theo margin).
 8. `availableOnly: true` không trả sản phẩm `available: false`.
 9. Mặc định không có sản phẩm `level: room` trong `results`.
-10. `diagnostics.searchMode: ANN_CANDIDATE_SCORE`, `approximate: true`, `totalExact: false`, `facetsExact: false`.
+10. `diagnostics.searchMode: HYBRID_CANDIDATE_SCORE` (hoặc `ANN_CANDIDATE_SCORE` khi `SEARCH_HYBRID=false`),
+    `approximate: true`, `totalExact: false`, `facetsExact: false`.
+10b. `search("VinWonders")` → có kết quả tên chứa VinWonders ở top và `diagnostics.lexicalCount >= 1` khi
+    cosine của chúng dưới `cutoff`; `search("khách sạn ở Cà Mau")` → `diagnostics.lexicalCount == 0` (không vớt
+    tên chỉ trùng một âm tiết). Nhánh dense của truy vấn ngoài catalog vẫn có thể trả kết quả ≥ cutoff — đó là
+    việc của S1 (cutoff), không phải của hybrid.
 11. p95 dưới 300 ms trên catalog đầy đủ, đo với Weaviate cùng mạng nội bộ (local hoặc cùng region).
 
 ### Similar
@@ -625,7 +659,8 @@ Bốn tiêu chí **20, 21, 22, 23** là quan trọng nhất trong cả danh sác
 | S5 | Cache user vector chưa duyệt · `[P3]` | Không cache thì p95 `/recommendations` là 800 ms, không phải 300 ms |
 | S6 | Công thức `popularity_score` chưa chốt · `[C7]` | Tạm dùng `log(1 + review_count)` |
 | S7 | ~~Model embedding chưa chốt~~ — **đã chốt 22/09/2026** | Cohere `embed-multilingual-v3.0`, **1024 chiều**, vector lưu ở Weaviate (không còn pgvector). Xem `docs/prd/architecture.md` §4–§5. Kéo theo S8. |
-| S8 | ~~`EXACT_FILTER_SCORE` cần duyệt lại~~ — **đã chốt 24/09/2026, hướng (b)** | Đổi cam kết `total`/`facets` thành xấp xỉ trên tập ứng viên, khai báo qua `approximate`/`totalExact`/`facetsExact`. Cả ba engine chạy `ANN_CANDIDATE_SCORE` (§2.4). |
+| S8 | ~~`EXACT_FILTER_SCORE` cần duyệt lại~~ — **đã chốt 24/09/2026, hướng (b)** | Đổi cam kết `total`/`facets` thành xấp xỉ trên tập ứng viên, khai báo qua `approximate`/`totalExact`/`facetsExact`. `/similar`, `/recommendations` chạy `ANN_CANDIDATE_SCORE`; `/search` chạy `HYBRID_CANDIDATE_SCORE` từ 25/09 (§2.4). |
+| S9 | `lexicalK` / `lexicalCutoff` / `lexicalMinCoverage` của hybrid chưa benchmark | Dùng `10` / `0.50` / `0.6`; đo ở cổng S2 của bench (`docs/spec/bench/arms.md`) trên gold, kèm slice `named_entity`, `no_diacritics`, `out_of_catalog` |
 
 S5 là phụ thuộc nặng nhất: không duyệt `[P3]` thì tiêu chí nghiệm thu 26 không
 đạt được, và ngân sách §7.1 phải sửa.

@@ -53,6 +53,7 @@ from src.backend.app.domain.booking import HoldPolicy
 from src.backend.app.domain.catalog import ListingItem
 from src.backend.app.application.recommendation import BuildPopularity, RecommendForUser
 from src.backend.app.application.search import SearchProducts, SimilarProducts
+from src.backend.app.domain.search import HybridConfig
 from src.backend.app.core.config import REPO_ROOT, Settings, get_settings
 from src.backend.app.infrastructure.auth.argon2_hasher import Argon2Hasher
 from src.backend.app.infrastructure.auth.jwt_issuer import JwtConfig, JwtIssuer
@@ -155,6 +156,14 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
     logger.info("startup.recsys.popularity.build.start")
     popularity = BuildPopularity(index, cdp_reader)()
     logger.info("startup.recsys.popularity.build.ready")
+    # Hybrid dùng chính adapter vector làm nhánh BM25 (cùng collection `Product`); tắt bằng SEARCH_HYBRID=false.
+    hybrid = HybridConfig(
+        rrf_k=settings.search_rrf_k,
+        lexical_k=settings.search_lexical_k,
+        lexical_cutoff=min(settings.search_lexical_cutoff, settings.search_cutoff),  # contract: lexicalCutoff ≤ cutoff
+        min_coverage=settings.search_lexical_min_coverage,
+    ) if settings.search_hybrid and hasattr(vector_search, "bm25") else None
+    logger.info("startup.recsys.search.mode=%s", "HYBRID_CANDIDATE_SCORE" if hybrid else "ANN_CANDIDATE_SCORE")
     return {
         "recsys_embedder": embedder,
         "recsys_vectors": vector_search,
@@ -166,6 +175,9 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
             cutoff=settings.search_cutoff,
             max_limit=settings.search_max_limit,
             candidate_k=settings.search_candidate_k,
+            lexical=vector_search if hybrid else None,
+            hybrid=hybrid,
+            lexical_candidate_k=settings.search_lexical_candidate_k,
         ),
         "similar": SimilarProducts(index, vector_search),
         # GET /products: cùng tập search unit với /search, sắp xếp popular theo lượt mua CDP (backend §4.1).
