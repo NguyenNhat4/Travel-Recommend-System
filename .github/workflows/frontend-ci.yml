@@ -1,0 +1,174 @@
+name: Frontend CI
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/frontend-ci.yml'
+      - 'src/frontend/**'
+      - 'src/shared/contracts/**'
+  push:
+    branches:
+      - dev
+      - main
+    paths:
+      - '.github/workflows/frontend-ci.yml'
+      - 'src/frontend/**'
+      - 'src/shared/contracts/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  quality:
+    name: Frontend quality checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: src/frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend
+        run: npm ci
+
+      - name: Install contract validator dependency
+        run: python3 -m pip install --disable-pip-version-check pyyaml
+
+      - name: Validate OpenAPI contract
+        run: PYTHONDONTWRITEBYTECODE=1 python3 src/shared/contracts/tests/validate_contract.py
+
+      - name: Regenerate OpenAPI types
+        working-directory: src/frontend
+        run: npm run generate:api-types
+
+      - name: Check generated OpenAPI types are committed
+        run: git diff --exit-code -- src/frontend/src/types/api.gen.ts
+
+      - name: Lint
+        working-directory: src/frontend
+        run: npm run lint
+
+      - name: Typecheck
+        working-directory: src/frontend
+        run: npm run typecheck
+
+      - name: Unit and contract tests
+        working-directory: src/frontend
+        run: npm run test
+
+      - name: Build frontend and API bundle
+        working-directory: src/frontend
+        run: npm run build
+
+  e2e:
+    name: Frontend E2E smoke tests
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: src/frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend
+        run: npm ci
+
+      - name: Install Chromium
+        working-directory: src/frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright smoke tests
+        working-directory: src/frontend
+        env:
+          CI: 'true'
+        run: npm run test:e2e
+
+  deploy:
+    name: Deploy frontend to Vercel
+    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+    needs: e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment:
+      name: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'production' || 'preview' }}
+      url: ${{ steps.deploy.outputs.url }}
+    permissions:
+      contents: read
+    env:
+      DEPLOY_ENVIRONMENT: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'production' || 'preview' }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: src/frontend/package-lock.json
+
+      - name: Validate Vercel configuration
+        run: |
+          for name in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID; do
+            if [ -z "${!name:-}" ]; then
+              echo "Missing Vercel configuration: $name" >&2
+              exit 1
+            fi
+          done
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend
+        run: npm ci
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Pull Vercel project settings and environment
+        working-directory: src/frontend
+        run: vercel pull --yes --environment="$DEPLOY_ENVIRONMENT" --token="$VERCEL_TOKEN"
+
+      - name: Build Vercel output
+        working-directory: src/frontend
+        run: |
+          if [ "$DEPLOY_ENVIRONMENT" = 'production' ]; then
+            vercel build --prod --token="$VERCEL_TOKEN"
+          else
+            vercel build --token="$VERCEL_TOKEN"
+          fi
+
+      - name: Deploy prebuilt output to Vercel
+        id: deploy
+        working-directory: src/frontend
+        run: |
+          if [ "$DEPLOY_ENVIRONMENT" = 'production' ]; then
+            deployment_url="$(vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN")"
+          else
+            deployment_url="$(vercel deploy --prebuilt --token="$VERCEL_TOKEN")"
+          fi
+          echo "url=$deployment_url" >> "$GITHUB_OUTPUT"
+          echo "$deployment_url"
