@@ -134,8 +134,11 @@ EOF
 
 container_id="$(docker compose -f "$compose_file" -f "$override_file" ps -q "$backend_service" | head -n 1)"
 [ -n "$container_id" ] || die "Backend service is not running: $backend_service"
-previous_image="$(docker inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$container_id" | head -n 1)"
+image_id="$(docker inspect --format '{{.Image}}' "$container_id")"
+[ -n "$image_id" ] || die 'could not capture the previous Backend image ID'
+previous_image="$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$image_id" | head -n 1)"
 [ -n "$previous_image" ] || die 'could not capture the previous Backend image digest'
+[[ "$previous_image" == *@sha256:* ]] || die 'previous Backend image is not pinned by digest'
 [[ "$previous_image" != *$'\n'* ]] || die 'previous Backend image contains a newline'
 
 docker pull "$crawler_image"
