@@ -148,6 +148,7 @@ embedding:                        # Part 3
   retry: {max_attempts: 6, backoff_s: [1, 2, 4, 8, 16, 32]}
   cost_per_1m_tokens_usd: {cohere-v3: 0.10, cohere-v4: 0.12}   # xác nhận lại trên trang giá chính thức
   max_inputs_per_min: 2000        # (đề xuất) giới hạn tốc độ Cohere — pacer phía app
+  max_tokens_per_min: 90000       # (đề xuất) đo 24/09: key trial trả 429 quanh 90–100k token/phút — pacer đếm token offline
 
 weaviate:                         # Part 4
   url: http://127.0.0.1:58080     # cổng riêng: Weaviate 1.27 của app (docker-compose.yml gốc) giữ 8080/50051
@@ -454,6 +455,8 @@ Mapping arm → variant (chi tiết ở `arms.md`): B0 = `T3+R` · E1.T0–T3 = 
 | `count(filters)` / `facets(filters, prop)` | `aggregate.over_all(filters, total_count=True)` / `aggregate.over_all(group_by=prop)` — exact khi không có vector |
 
 Filter AST (JSON, dùng lại `vector_bench/filters.py` nếu có): `{"and": [{"eq": ["destination", "Nha Trang"]}, {"in": ["taxonomy", [...]]}, {"contains_all": ["amenity_ids", [3, 17]]}, {"not": {"contains_any": ["amenity_ids", [5]]}}, {"lte": ["unit_price_min", 3000000]}, {"gte": ["star_rating", 4]}]}` → `weaviate.classes.query.Filter`.
+
+Cài đặt (24/09): `store/filters.py` — `validate` · `resolve` (khoá amenity → id theo `amenity_vocab.json`) · `to_weaviate` · `mask` (evaluator pandas). `not` chỉ bọc `eq` trên trường không null (`product_id, taxonomy, variant, destination`) hoặc `contains_any` trên `amenity_ids` (→ `contains_none`; sản phẩm không ghi nhận amenity nào vẫn thoả). Collection bật `index_null_state`. 50 filter ngẫu nhiên khớp pandas 100%.
 
 Dedupe theo cha: làm ở app (lấy `limit × 3`, giữ ≤ 1 / `parent_product_id`, cắt `limit`) — không phụ thuộc `group_by` của Weaviate với hybrid.
 

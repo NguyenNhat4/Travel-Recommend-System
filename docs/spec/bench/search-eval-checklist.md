@@ -53,10 +53,10 @@ Ký hiệu lệnh: `sb` = `python -m evaluation.search_bench` chạy từ `src/`
 - [ ] Viết `docs/spec/bench/gold-guide.md` (1 trang; không đặt trong `src/` — AGENTS.md §7): định nghĩa nhãn 2 / 1 / 0, 5 ví dụ khó (đúng nơi sai loại, phòng vs khách sạn, combo chứa vé…)
 
 ### B
-- [ ] `sb embed --variant T3+R --model cohere-v3` toàn catalog → `sb load` → collection `products__T3+R__cohere_v3` (= B0)
+- [x] `sb embed --variant T3+R --model cohere-v3` toàn catalog → `sb load` → collection `products__T3+R__cohere_v3` (= B0) — *24/09: 2.897 vector (30 lượt gọi, 451.021 token, $0,045); load 2.897 object, complete. Gặp 22 lượt 429 (giới hạn thật của key trial ~90–100k token/phút) → thêm `embedding.max_tokens_per_min: 90000`*
 - [x] `sb tokens --variant T3+R`: phân bố token bằng tokenizer Cohere; **p99 < 450, max < 512**; nếu vượt, sửa text builder (không dùng `truncate`) — *làm sớm 23/09: p50 174, p99 276, max 379 — qua gate*
-- [ ] `sb gold pool --drafts gold/drafts.txt --depth 15` → `gold/pool.csv` (dense top-15 ∪ BM25 top-15, ~20–25 doc/query)
-- [ ] Chia pool: `pool_A.csv` (qid 1–100 + 25 chung), `pool_B.csv` (qid 101–200 + 25 chung)
+- [ ] `sb gold pool --drafts gold/drafts.txt --depth 15` → `gold/pool.csv` (dense top-15 ∪ BM25 top-15, ~20–25 doc/query) — *24/09: công cụ + filter AST sẵn sàng, chạy thử 10 draft fixture trên B0 ra 258 dòng (~26 doc/query); **chờ `gold/drafts.txt` của A***
+- [ ] Chia pool (`sb gold split --overlap 25`): `pool_A.csv` (qid lẻ + 25 chung), `pool_B.csv` (qid chẵn + 25 chung), 25 chung chọn stratified theo slice (theo spec Part 5) — *24/09: công cụ sẵn sàng, đã thử trên pool fixture; chờ pool thật*
 
 ### Sync cuối ngày
 - [ ] A chốt `gold-guide.md`; cả hai đọc, thống nhất 5 ví dụ khó trước khi gán

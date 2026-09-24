@@ -3,7 +3,9 @@
 - `input_type` map từ config (`search_document` / `search_query`) — spec §1.7: không đổi mặc định; E3 là arm duy nhất sai cố ý.
 - `truncate="NONE"`: text vượt giới hạn là lỗi của text builder, không cắt ngầm. Có bộ đếm token offline thì từ chối trước
   khi gọi API; không có thì API trả 400 và lỗi nêu đúng lô.
-- Lô ≤ min(max_batch, 96). Pacer giữ tổng input/phút ≤ embedding.max_inputs_per_min (không chạy hai embed song song).
+- Lô ≤ min(max_batch, 96). Pacer giữ tổng input/phút ≤ embedding.max_inputs_per_min và tổng token/phút ≤
+  embedding.max_tokens_per_min (đếm bằng tokenizer offline trước khi gửi; key trial trả 429 quanh 90–100k token/phút,
+  đo 24/09). Không chạy hai embed song song.
 - Retry của SDK tắt (`max_retries: 0`); tự retry 429 / 5xx / timeout theo `embedding.retry`: `max_attempts` = số lần
   thử LẠI sau lượt đầu, lần thử lại thứ i chờ `backoff_s[i-1]` (dùng đủ mọi mức, 6 mức = 63 s > cửa sổ rate limit 60 s),
   ưu tiên header Retry-After.
@@ -31,22 +33,31 @@ MAX_API_BATCH = 96                       # giới hạn cứng của Cohere embe
 
 
 class Pacer:
-    """Cửa sổ trượt 60 s: trước khi gửi n input, chờ tới khi tổng input trong 60 s gần nhất + n ≤ giới hạn."""
+    """Cửa sổ trượt 60 s: trước khi gửi một lô (n input, t token), chờ tới khi tổng trong 60 s gần nhất + lô này nằm
+    trong CẢ HAI giới hạn. Cửa sổ trống thì lô luôn được gửi (một lô to hơn giới hạn token vẫn đi, không kẹt)."""
 
-    def __init__(self, max_per_min: int, *, clock: Callable[[], float] = time.monotonic,
-                 sleep: Callable[[float], None] = time.sleep, window_s: float = 60.0):
-        self.max_per_min, self.clock, self.sleep, self.window_s = max_per_min, clock, sleep, window_s
-        self._sent: deque[tuple[float, int]] = deque()
+    def __init__(self, max_inputs_per_min: int, max_tokens_per_min: int | None = None, *,
+                 clock: Callable[[], float] = time.monotonic, sleep: Callable[[float], None] = time.sleep,
+                 window_s: float = 60.0):
+        self.max_inputs, self.max_tokens = max_inputs_per_min, max_tokens_per_min
+        self.clock, self.sleep, self.window_s = clock, sleep, window_s
+        self._sent: deque[tuple[float, int, int]] = deque()
 
-    def wait(self, n: int) -> float:
+    def _fits(self, n: int, t: int) -> bool:
+        if not self._sent:
+            return True
+        used_n = sum(k for _, k, _ in self._sent)
+        used_t = sum(k for _, _, k in self._sent)
+        return used_n + n <= self.max_inputs and (self.max_tokens is None or used_t + t <= self.max_tokens)
+
+    def wait(self, n: int, tokens: int = 0) -> float:
         waited = 0.0
         while True:
             now = self.clock()
             while self._sent and now - self._sent[0][0] >= self.window_s:
                 self._sent.popleft()
-            used = sum(k for _, k in self._sent)
-            if not self._sent or used + n <= self.max_per_min:
-                self._sent.append((now, n))
+            if self._fits(n, tokens):
+                self._sent.append((now, n, tokens))
                 return waited
             pause = self.window_s - (now - self._sent[0][0])
             self.sleep(pause)
@@ -98,34 +109,37 @@ class CohereEmbedder:
             client = cohere.ClientV2(api_key=api_key, httpx_client=self._http)
         self.client = client
         self.sleep = sleep
-        self.pacer = Pacer(ecfg.max_inputs_per_min, clock=clock, sleep=sleep)
+        self.pacer = Pacer(ecfg.max_inputs_per_min, ecfg.max_tokens_per_min, clock=clock, sleep=sleep)
         self.token_counter = token_counter
         self.token_hard_max = token_hard_max
-        self.stats = EmbedStats()
+        self.stats = EmbedStats()       # không có token_counter → pacer chỉ giới hạn theo input (embed query: cố ý)
 
     def close(self) -> None:
         if self._http is not None:
             self._http.close()
 
     # ------------------------------------------------------------------
-    def preflight(self, texts: list[str]) -> None:
-        if self.token_counter is None or self.token_hard_max is None:
-            return
+    def preflight(self, texts: list[str]) -> list[int] | None:
+        """Số token từng text (None nếu không có bộ đếm); text vượt token_hard_max → TokenLimitError, chưa gọi API."""
+        if self.token_counter is None:
+            return None
         counts = self.token_counter.count(texts)
-        over = [(i, c) for i, c in enumerate(counts) if c > self.token_hard_max]
-        if over:
-            raise TokenLimitError(over, self.token_hard_max)
+        if self.token_hard_max is not None:
+            over = [(i, c) for i, c in enumerate(counts) if c > self.token_hard_max]
+            if over:
+                raise TokenLimitError(over, self.token_hard_max)
+        return counts
 
     def embed(self, texts: list[str], input_type: InputType) -> np.ndarray:
         check_input_type(input_type)
         if not texts:
             return np.zeros((0, self.dim), dtype=np.float32)
-        self.preflight(texts)
+        counts = self.preflight(texts)
         api_it = self.ecfg.input_type[input_type]
         out = []
         for start in range(0, len(texts), self.batch):
             batch = texts[start:start + self.batch]
-            self.pacer.wait(len(batch))
+            self.pacer.wait(len(batch), sum(counts[start:start + self.batch]) if counts is not None else 0)
             resp, attempts = self._call(batch, api_it, start)
             vecs = self._vectors(resp, len(batch), start)
             tokens = int(getattr(getattr(getattr(resp, "meta", None), "billed_units", None), "input_tokens", 0) or 0)

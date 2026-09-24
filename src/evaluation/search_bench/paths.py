@@ -16,6 +16,7 @@ PKG_DIR = Path(__file__).resolve().parent
 CONFIG_DIR = PKG_DIR / "config"
 DEFAULT_CONFIG = CONFIG_DIR / "sbench.yaml"
 ARMS_DIR = PKG_DIR / "arms"
+GOLD_DIR = PKG_DIR / "gold"          # của Người A: drafts.txt, pool*.csv, gold.jsonl — commit
 COMPOSE_FILE = PKG_DIR / "docker" / "compose.yml"
 
 DATASETS = ("jsonl", "sample", "fake")      # jsonl = catalog thật; sample/fake nằm thư mục riêng để không đè

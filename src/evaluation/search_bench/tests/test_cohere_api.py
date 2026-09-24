@@ -200,3 +200,30 @@ def test_error_positions_are_caller_positions(cfg, home):
     with pytest.raises(TokenLimitError) as ti:
         e3.embed(["dup"] * 3 + texts, "document")
     assert ti.value.over == [(153, 600)]                        # vị trí của "t150" trong danh sách người gọi
+
+
+def test_pacer_token_budget():
+    now = [0.0]
+    sleeps: list[float] = []
+
+    def sleep(s):
+        sleeps.append(s)
+        now[0] += s
+    p = Pacer(2000, 90_000, clock=lambda: now[0], sleep=sleep)
+    for _ in range(4):
+        assert p.wait(96, 20_000) == 0.0          # 80k token trong cửa sổ
+    now[0] = 5.0
+    assert p.wait(96, 20_000) == pytest.approx(55.0)   # 100k > 90k → chờ lô đầu hết hạn
+    assert p.wait(96, 200_000) == pytest.approx(60.0)  # lô to hơn giới hạn: chờ cửa sổ trống rồi vẫn gửi, không kẹt
+
+
+def test_embed_passes_token_counts_to_pacer(cfg, home):
+    class Counter:
+        def count(self, texts):
+            return [100] * len(texts)
+    e = make(cfg, FakeClient(), token_counter=Counter(), token_hard_max=512)
+    seen = []
+    real = e.pacer.wait
+    e.pacer.wait = lambda n, t=0: seen.append((n, t)) or real(n, t)
+    e.embed([f"t{i}" for i in range(100)], "document")
+    assert seen == [(96, 9600), (4, 400)]

@@ -67,7 +67,7 @@ def _cohere(cfg: SBenchConfig, model: str, embedding_type: str, preflight: bool)
         try:
             counter = tokens.TokenCounter(tokens.ensure_tokenizer(mcfg.api_model, key))
         except tokens.TokenizerUnavailable as e:   # không có tokenizer thì vẫn embed, API tự từ chối text quá dài
-            log.warning("không có tokenizer offline — bỏ kiểm token trước khi gọi API", model=mcfg.api_model,
+            log.warning("không có tokenizer offline — bỏ kiểm token trước khi gọi API, pacer chỉ đếm input", model=mcfg.api_model,
                         error=str(e).replace(key, "***")[:160])
     return CohereEmbedder(model, mcfg, cfg.embedding, api_key=key, embedding_type=embedding_type,
                           token_counter=counter, token_hard_max=cfg.text.token_hard_max)

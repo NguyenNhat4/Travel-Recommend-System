@@ -5,6 +5,7 @@ Mã thoát: 0 ok · 1 lỗi · 2 gate trượt / variant, arm chưa cài.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Optional
 
 import typer
@@ -413,6 +414,85 @@ def query(c: typer.Context, q: str = typer.Argument(..., help="câu truy vấn")
     con = _console()
     con.print(t)
     con.print(note, style="dim", highlight=False)
+
+
+# ------------------------------------------------------------------ Part 5 (ngày 2: pool, split)
+gold_app = typer.Typer(no_args_is_help=True, help="Part 5: gold — pool, split (kappa/merge/import/check: ngày 3–4)")
+app.add_typer(gold_app, name="gold")
+
+
+@gold_app.command("pool")
+def gold_pool(c: typer.Context,
+              drafts: Optional[Path] = typer.Option(None, "--drafts", help="mặc định gold/drafts.txt của package"),
+              depth: Optional[int] = typer.Option(None, "--depth", min=1, help="mặc định gold.pool_depth"),
+              slice_: Optional[str] = typer.Option(None, "--slice", help="chỉ lấy draft của một slice"),
+              out: Optional[Path] = typer.Option(None, "--out", help="mặc định gold/pool.csv của package"),
+              arm: str = typer.Option("B0", "--arm", help="arm cung cấp collection + cách embed query")):
+    """Dense top-depth ∪ BM25 top-depth (cùng filter của draft) trên collection của B0 → pool.csv, xáo trong mỗi qid."""
+    from . import paths
+    from .arms import ArmError, load_arm
+    from .catalog import CatalogError, read_stats
+    from .embed import EmbedBatchError, EmbedderUnavailable, make_embedder
+    from .gold import GoldError, build_pool, load_key_index, parse_drafts, pool_summary, write_csv
+    from .store.weaviate_store import StoreError, collection_name
+    ctx = _ctx(c)
+    cfg = ctx.cfg()
+    drafts_p = drafts or paths.GOLD_DIR / "drafts.txt"
+    out_p = out or paths.GOLD_DIR / "pool.csv"
+    try:
+        a = load_arm(arm)
+        ds = parse_drafts(drafts_p, list(cfg.gold.slices), load_key_index(paths.data_dir(ctx.dataset) / paths.AMENITY_VOCAB))
+        if slice_:
+            ds = [d for d in ds if d.slice == slice_]
+            if not ds:
+                raise GoldError(f"không có draft nào thuộc slice {slice_}")
+        logical, phys = collection_name(a.text_variant, a.model, ctx.dataset)
+        items_sha = read_stats(ctx.dataset)["items_sha256"]
+    except (ArmError, GoldError, StoreError) as e:
+        _fail(str(e), 2)
+    except CatalogError as e:
+        _fail(str(e))
+    with _store(cfg) as st:
+        try:
+            desc = st.check_ready(phys, items_sha)
+            emb = make_embedder(cfg, a.model, embedding_type=a.embedding_types, preflight=False)
+            try:
+                if emb.name != desc.get("cache_model"):
+                    raise StoreError(f"collection {phys} nạp vector của {desc.get('cache_model')}, query embed bằng {emb.name}")
+                df = build_pool(ds, store=st, embedder=emb, physical=phys, fold_mode=desc["ascii_fold_mode"],
+                                depth=depth or cfg.gold.pool_depth, query_input_type=a.query_input_type, seed=cfg.run.seed)
+            finally:
+                emb.close()
+        except (EmbedderUnavailable, EmbedBatchError, *_weaviate_errors()) as e:
+            _fail(str(e))
+    write_csv(df, out_p)
+    s = pool_summary(ds, df)
+    typer.echo(f"{out_p}: {s['n_queries']} query · {s['n_rows']} dòng · doc/query p50 {s['docs_per_query']['p50']:.0f} "
+               f"max {s['docs_per_query']['max']} · from {s['from']} · collection {logical}")
+    typer.echo(f"  query embed: mới {emb.n_new} · từ cache {emb.n_cached}")
+    if s["empty_queries"]:
+        typer.secho(f"  query không có kết quả nào: {s['empty_queries']}", fg=typer.colors.YELLOW)
+
+
+@gold_app.command("split")
+def gold_split(c: typer.Context,
+               pool: Optional[Path] = typer.Option(None, "--pool", help="mặc định gold/pool.csv"),
+               overlap: Optional[int] = typer.Option(None, "--overlap", min=0, help="mặc định gold.overlap_queries"),
+               out_dir: Optional[Path] = typer.Option(None, "--out-dir", help="mặc định gold/")):
+    """pool_A.csv (qid lẻ + chung) và pool_B.csv (qid chẵn + chung); các qid chung chọn stratified theo slice."""
+    from . import paths
+    from .gold import GoldError, read_pool, split_pool, write_csv
+    cfg = _ctx(c).cfg()
+    try:
+        df = read_pool(pool or paths.GOLD_DIR / "pool.csv")
+        a, b, shared = split_pool(df, cfg.gold.overlap_queries if overlap is None else overlap, cfg.run.seed)
+    except GoldError as e:
+        _fail(str(e), 2)
+    d = out_dir or paths.GOLD_DIR
+    write_csv(a, d / "pool_A.csv")
+    write_csv(b, d / "pool_B.csv")
+    typer.echo(f"pool_A.csv: {a['qid'].nunique()} query / {len(a)} dòng · pool_B.csv: {b['qid'].nunique()} query / {len(b)} dòng · "
+               f"chung {len(shared)}: {', '.join(shared)}")
 
 
 # ------------------------------------------------------------------ chi phí API

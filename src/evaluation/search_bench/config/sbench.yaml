@@ -39,6 +39,7 @@ embedding:                        # Part 3
   retry: {max_attempts: 6, backoff_s: [1, 2, 4, 8, 16, 32]}
   cost_per_1m_tokens_usd: {cohere-v3: 0.10, cohere-v4: 0.12}   # xác nhận lại trên trang giá chính thức
   max_inputs_per_min: 2000        # (đề xuất) giới hạn tốc độ Cohere — pacer phía app
+  max_tokens_per_min: 90000       # (đề xuất) đo 24/09: key trial trả 429 quanh 90–100k token/phút — pacer đếm token offline
 
 weaviate:                         # Part 4
   url: http://127.0.0.1:58080     # cổng riêng: Weaviate 1.27 của app (docker-compose.yml gốc) giữ 8080/50051

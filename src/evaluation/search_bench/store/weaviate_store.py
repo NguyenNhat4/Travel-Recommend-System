@@ -163,7 +163,8 @@ class WeaviateStore:
         props = build_properties(mode, bm.tokenization)
         index = (Configure.VectorIndex.flat(distance_metric=VectorDistances.COSINE) if self.cfg.vector_index == "flat"
                  else Configure.VectorIndex.hnsw(distance_metric=VectorDistances.COSINE))
-        inverted = Configure.inverted_index(bm25_k1=bm.k1, bm25_b=bm.b, stopwords_preset=StopwordsPreset(bm.stopwords_preset))
+        inverted = Configure.inverted_index(bm25_k1=bm.k1, bm25_b=bm.b, stopwords_preset=StopwordsPreset(bm.stopwords_preset),
+                                            index_null_state=True)      # lọc được "thiếu giá trị" (is_none) cho filter AST
         desc = {**description, "complete": False, "ascii_fold_mode": mode, "vector_index": self.cfg.vector_index,
                 "bm25": {"k1": bm.k1, "b": bm.b, "tokenization": bm.tokenization, "stopwords_preset": bm.stopwords_preset}}
         if self.exists(physical):
@@ -215,8 +216,15 @@ class WeaviateStore:
             raise StoreError(f"không có collection {physical}")
         self.client.collections.delete(physical)
 
-    def count(self, physical: str) -> int:
-        return int(self.client.collections.get(physical).aggregate.over_all(total_count=True).total_count)
+    def count(self, physical: str, filters: Any = None) -> int:
+        agg = self.client.collections.get(physical).aggregate.over_all(filters=filters, total_count=True)
+        return int(agg.total_count)
+
+    def fetch_ids(self, physical: str, filters: Any = None, limit: int = 10_000) -> list[str]:
+        """product_id của mọi object thoả filter (không dùng vector) — để đối chiếu với evaluator pandas."""
+        r = self.client.collections.get(physical).query.fetch_objects(filters=filters, limit=limit,
+                                                                      return_properties=["product_id"])
+        return [o.properties["product_id"] for o in r.objects]
 
     # ------------------------------------------------------------------ nạp
     def load(self, physical: str, items: pd.DataFrame, texts: dict[str, str], ids: list[str], vectors: np.ndarray,

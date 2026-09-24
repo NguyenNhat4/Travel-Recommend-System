@@ -89,6 +89,7 @@ class EmbeddingConfig(_M):
     retry: RetryConfig
     cost_per_1m_tokens_usd: dict[str, float]
     max_inputs_per_min: int
+    max_tokens_per_min: int
 
 
 class Bm25Config(_M):
