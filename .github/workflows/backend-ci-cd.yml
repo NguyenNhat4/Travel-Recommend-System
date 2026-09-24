@@ -269,8 +269,9 @@ jobs:
         run: |
           remote_dir="/tmp/vota-cicd-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           tar -C scripts -czf - deploy-backend-vm.sh install-vota-cron.sh check-db-tunnel.sh \
+            -C ../src/data_collection run_daily_docker.sh \
             | gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --quiet \
-                --command "umask 077; mkdir -m 700 '$remote_dir' && tar -xzf - -C '$remote_dir'"
+                --command "umask 077; mkdir -m 700 '$remote_dir' && tar -xzf - -C '$remote_dir' && sudo -n install -D -m 0755 '$remote_dir/run_daily_docker.sh' /opt/vota/bin/run_daily_docker.sh && sudo -n test -x /opt/vota/bin/run_daily_docker.sh"
 
       - name: Deploy latest images and update existing cron
         env:
