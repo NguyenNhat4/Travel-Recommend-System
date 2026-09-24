@@ -302,6 +302,7 @@ GET /api/v1/products?destination=Nha%20Trang&taxonomy=hotel&sort=popular&limit=2
 |---|---:|---|---|
 | `destination` | Không | — | Lọc đúng một điểm đến |
 | `taxonomy` | Không | — | Lọc đúng một danh mục |
+| `parentProductId` | Không | — | Trả tầng con (hạng phòng, chuyến bay cụ thể) của sản phẩm cha này thay vì tầng cha |
 | `availableOnly` | Không | `false` | `true` thì loại sản phẩm hết chỗ |
 | `sort` | Không | `popular` | `popular` \| `price_asc` \| `price_desc` |
 | `limit` | Không | `20` | 1–50 |
@@ -319,7 +320,9 @@ GET /api/v1/products?destination=Nha%20Trang&taxonomy=hotel&sort=popular&limit=2
 }
 ```
 
-`sort=popular` dùng baseline độ phổ biến theo số lượt `purchase` trong `events`. Đây là nguồn dữ liệu cho section "Phổ biến tại các điểm đến Việt Nam" ở Home (`docs/product.md` §4.1.2 ④), section phải **luôn render được** kể cả khi `/recommendations` lỗi.
+Không có `parentProductId` thì chỉ trả **tầng cha** (search unit của `catalog.product_meta`: property, route, taxonomy không phân tầng), cùng tập với `/search`. Có `parentProductId` thì trả các **tầng con** của sản phẩm đó — đơn vị đặt chỗ mà Web thêm vào giỏ (FR-CAT-02: không đặt trên property, đặt qua hạng phòng); `sort=popular` với tầng con xếp theo giá tăng dần. Cha không tồn tại hoặc không có con → `results: []`.
+
+`sort=popular` dùng baseline độ phổ biến theo số lượt `purchase` trong `events` (90 ngày, cùng số liệu RecSys dựng lúc khởi động qua `CdpHistoryReader`); hoà điểm thì sản phẩm gợi ý được (`is_recommendable`) và có giá đứng trước. Đây là nguồn dữ liệu cho section "Phổ biến tại các điểm đến Việt Nam" ở Home (`docs/product.md` §4.1.2 ④), section phải **luôn render được** kể cả khi `/recommendations` lỗi.
 
 ### 4.2. Chi tiết sản phẩm
 
@@ -327,7 +330,9 @@ GET /api/v1/products?destination=Nha%20Trang&taxonomy=hotel&sort=popular&limit=2
 GET /api/v1/products/{productId}
 ```
 
-Trả `ProductDetail` (§2.3) ở cấp cao nhất, không bọc thêm lớp.
+Trả `ProductDetail` (§2.3) ở cấp cao nhất, không bọc thêm lớp. Mọi tầng đều đọc được (property, hạng phòng, route, chuyến bay).
+
+`variantSummary` chỉ có ở sản phẩm cha (`attributes.level` là `property` hoặc `route`): `count` đếm mọi tầng con, `minPrice`/`maxPrice` tính trên tầng con đang mở bán và có giá, `maxOccupancy` lớn nhất trong các con. Property không có hạng phòng nào → `count: 0` (chỉ để xem). Sản phẩm không phân tầng → `variantSummary: null`.
 
 Sản phẩm không tồn tại hoặc đã bị xóa khỏi catalog → `404` với code `PRODUCT_NOT_FOUND`. Đây là trường hợp "event trỏ tới sản phẩm đã bị xóa" mà handbook §6 gọi là "những rìa lộn xộn"; client hiển thị trang "Sản phẩm này không còn trên V-OTA" thay vì lỗi kỹ thuật.
 
@@ -354,6 +359,9 @@ Cam kết:
 1. Không bao giờ chứa chính `productId` được hỏi.
 2. Chỉ dựa trên độ gần vector sản phẩm, **không** dùng user vector. Endpoint này giống nhau với mọi người dùng.
 3. Trả mảng rỗng khi không đủ ứng viên; client ẩn hẳn section, không báo lỗi.
+4. Id của tầng con được resolve lên cha: `productId` là cha, `resolvedFrom` là id đã gửi.
+
+Lỗi: id không có trong catalog → `404 PRODUCT_NOT_FOUND`; có trong catalog nhưng chưa có vector → `409 PRODUCT_NOT_INDEXED`; RecSys chưa khởi động được → `503 SEARCH_UNAVAILABLE` (`retryable: true`).
 
 ### 4.4. Danh sách điểm đến
 

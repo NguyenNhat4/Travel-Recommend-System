@@ -45,10 +45,8 @@ export const CartView: React.FC = () => {
   useEffect(() => {
     if (!currentPersona || !primaryDestination) return;
     const controller = new AbortController();
-    fetchRecommendations({
-      k: 4, destination: primaryDestination, fallbackUser: currentPersona, fallbackEvents: activeEvents,
-      signal: controller.signal,
-    }).then(setRecs).catch(() => setRecs(null));
+    fetchRecommendations({ k: 4, destination: primaryDestination, signal: controller.signal })
+      .then(setRecs).catch(() => setRecs(null));
     return () => controller.abort();
   }, [currentPersona, primaryDestination, activeEvents]);
 
@@ -140,7 +138,7 @@ export const CartView: React.FC = () => {
                   >
                     <div className="flex items-center gap-3.5 min-w-0">
                       <img
-                        src={item.product.imageUrl || '/placeholders/hotel.webp'}
+                        src={item.product.imageUrl || '/placeholders/hotel.svg'}
                         alt={item.product.name}
                         referrerPolicy="no-referrer"
                         className="w-16 h-16 rounded-lg object-cover bg-slate-100 shrink-0"

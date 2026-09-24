@@ -52,18 +52,30 @@ class SearchProducts:
         }
 
 
+@dataclass(frozen=True)
+class SimilarLookup:
+    """status: ok · not_in_index (id không phải search unit, cũng không có cha là search unit) · no_vector."""
+    status: str
+    anchor_id: str | None = None
+    results: tuple[dict, ...] = ()
+
+
 @dataclass
 class SimilarProducts:
     index: UnitIndex
     vectors: VectorSearchPort
 
     def __call__(self, product_id: str, k: int = 8, same_taxonomy: bool = True) -> list[dict]:
+        return list(self.lookup(product_id, k, same_taxonomy).results)
+
+    def lookup(self, product_id: str, k: int = 8, same_taxonomy: bool = True) -> SimilarLookup:
         i0 = self.index.resolve(product_id)
         if i0 is None:
-            return []
-        anchor = self.vectors.vectors([self.index.units[i0].product_id]).get(self.index.units[i0].product_id)
+            return SimilarLookup("not_in_index")
+        anchor_id = self.index.units[i0].product_id
+        anchor = self.vectors.vectors([anchor_id]).get(anchor_id)
         if anchor is None:  # có trong catalog nhưng chưa index
-            return []
+            return SimilarLookup("no_vector", anchor_id)
         m = self.index.mask(taxonomy=str(self.index.taxonomy[i0]) if same_taxonomy else None)
         m[i0] = False
         root = self.index.parent_of.get(product_id, product_id)
@@ -71,4 +83,5 @@ class SimilarProducts:
             if parent == root and child in self.index.idx:
                 m[self.index.idx[child]] = False
         hits = self.vectors.near_vector(anchor, self.index.allowed_ids(m), k)
-        return [hit(self.index, self.index.idx[h.product_id], h.score) for h in hits if h.product_id in self.index.idx]
+        return SimilarLookup("ok", anchor_id, tuple(
+            hit(self.index, self.index.idx[h.product_id], h.score) for h in hits if h.product_id in self.index.idx))

@@ -11,3 +11,5 @@ Auth goes through the Next.js BFF (`src/app/api/auth/*`, logic in `src/services/
 Cart, checkout and booking pages call `/api/v1/cart*` and `/api/v1/bookings*` through the same BFF (`src/services/booking.ts`). Pressing **Thanh toán** creates a 30-minute hold and redirects the browser to Stripe Checkout (test mode); the backend needs the Stripe variables from `src/backend/README.md` (§Booking và thanh toán Stripe). Stripe returns to `/booking/{referenceCode}?payment=return`, which polls the booking until the webhook confirms it.
 
 The optional `npm run dev:api` process serves the independent Express health endpoint on port 3001. It is not an assistant backend. Regenerate OpenAPI types with `npm run generate:api-types` after contract updates.
+
+Catalog data comes only from the API (`src/services/catalog.ts`: `/products`, `/products/{id}`, `/products/{id}/similar`, `POST /events`); there is no local product catalog. Hotels (`level: property`) and flight routes (`level: route`) are view-only — the product page lists their rooms/flights via `GET /products?parentProductId=` and adds the chosen one to the cart. Missing images use `public/placeholders/<taxonomy>.svg`.

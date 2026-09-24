@@ -46,9 +46,11 @@ from src.backend.app.application.booking import (
     ReconcileBookings,
     Settlement,
 )
+from src.backend.app.application.catalog.use_cases import GetProductDetail, GetSimilarProducts, ListProducts
 from src.backend.app.application.itinerary.use_cases import PlanItinerary
 from src.backend.app.application.tracking.behaviour import BehaviourTracker
 from src.backend.app.domain.booking import HoldPolicy
+from src.backend.app.domain.catalog import ListingItem
 from src.backend.app.application.recommendation import BuildPopularity, RecommendForUser
 from src.backend.app.application.search import SearchProducts, SimilarProducts
 from src.backend.app.core.config import REPO_ROOT, Settings, get_settings
@@ -75,7 +77,7 @@ from src.backend.app.infrastructure.persistence.postgres_booking import (
     PostgresCartRepository,
     PostgresProductCatalog,
 )
-from src.backend.app.infrastructure.persistence.postgres_catalog import PostgresProductLookup
+from src.backend.app.infrastructure.persistence.postgres_catalog import PostgresProductLookup, PostgresProductQuery
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -84,6 +86,18 @@ logger = logging.getLogger("uvicorn.error")
 # LocalCdpClient trả InterfaceError lúc chạy thật. Trên Linux/macOS dòng này không có tác dụng gì.
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+
+def build_catalog(settings, state) -> dict:
+    """Use case /products. `state` là app.state sau bước dựng RecSys (có thể đã tắt)."""
+    products = PostgresProductQuery(settings.database_url)
+    return {
+        "get_product_detail": GetProductDetail(products),
+        "list_products": ListProducts(
+            products, getattr(state, "listing_units", None), getattr(state, "product_popularity", None) or {},
+            max_limit=settings.search_max_limit),
+        "get_similar_products": GetSimilarProducts(products, getattr(state, "similar", None)),
+    }
 
 
 def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) -> dict:
@@ -154,6 +168,9 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
             candidate_k=settings.search_candidate_k,
         ),
         "similar": SimilarProducts(index, vector_search),
+        # GET /products: cùng tập search unit với /search, sắp xếp popular theo lượt mua CDP (backend §4.1).
+        "listing_units": [ListingItem(p, bool(index.recommendable[i])) for i, p in enumerate(index.units)],
+        "product_popularity": {index.units[u].product_id: s for u, s in popularity.unit_scores().items()},
         "recommend": RecommendForUser(
             index, vector_search, cdp_reader, popularity, candidate_k=settings.recommend_candidate_k
         ),
@@ -388,6 +405,12 @@ async def lifespan(app: FastAPI):
             print(f"RecSys disabled: {exc}")
             logger.exception("startup.recsys.disabled error=%s", exc)
 
+        # Catalog đọc thẳng database nên vẫn chạy khi RecSys tắt; khi đó danh sách đọc search unit mỗi request
+        # và /similar trả 503 SEARCH_UNAVAILABLE.
+        for name, service in build_catalog(settings, app.state).items():
+            setattr(app.state, name, service)
+        app.state.behaviour_tracker = BehaviourTracker(app.state.browse_event_recorder, app.state.product_lookup)
+
         logger.info("startup.ready")
         try:
             yield
@@ -405,7 +428,7 @@ settings = get_settings()
 app = FastAPI(
     title=settings.app_name,
     description="Travel recommendation and itinerary API",
-    version="1.5.0",
+    version="1.6.0",
     lifespan=lifespan,
 )
 

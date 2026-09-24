@@ -133,7 +133,7 @@ Ký hiệu auth: **—** không gửi JWT · **tùy** gửi nếu có · **bắt
 | ① Gợi ý cá nhân hóa | `GET /recommendations?k=5` | tùy | `strategy`, `nextVertical`, `destination`, `recommendations[]` (`rank`, `productId`, `name`, `taxonomy`, `destination`, `unitPrice`, `currency`, `available`, `imageUrl`, `attributes`, `score`, `because[]`), `diagnostics.excludedVerticals`, `diagnostics.coldStart` | 5xx / timeout > 3 giây → ẩn ①, hiện dòng "Chưa tải được gợi ý · Thử lại". Khách vãng lai → không gọi, hiện banner đăng nhập |
 | ② Đã xem gần đây | — | — | — | **Bỏ section** (D13) |
 | ③ Thẻ trợ lý | dùng lại response ① | — | `destination` | Không có → câu chung |
-| ④ Phổ biến | `GET /products?sort=popular&taxonomy=<tab>&limit=10` | — | `results[]` (`ProductSummary`) | **Luôn render**. Lỗi → `ErrorState` cục bộ |
+| ④ Phổ biến | `GET /products?sort=popular&taxonomy=<tab>&limit=10` | — | `results[]` (`ProductSummary`) | **Luôn render**. Lỗi → `ErrorState` cục bộ. Hiện là hai carousel: "Khách sạn và resort" (`taxonomy=hotel`) và "Phổ biến tại các điểm đến Việt Nam" (mọi taxonomy) |
 | Chip điểm đến | `GET /destinations` | — | `destinations[].destination` | Lỗi → ẩn chip |
 
 Sau checkout (cờ `justBooked`): gọi lại ① bỏ qua cache. Chỉ hiện toast "Trang chủ đã cập nhật" khi `strategy` **hoặc** `nextVertical` khác lần gọi trước.
@@ -153,13 +153,16 @@ Sau checkout (cờ `justBooked`): gọi lại ① bỏ qua cache. Chỉ hiện t
 
 | Khu vực | Endpoint | Auth | Trường Web đọc | Khi lỗi / rỗng |
 |---|---|---|---|---|
-| Thông tin, hộp đặt | `GET /products/{productId}` | — | `ProductDetail` đầy đủ | `404 PRODUCT_NOT_FOUND` → trang "Sản phẩm này không còn trên V-OTA" |
+| Thông tin, hộp đặt | `GET /products/{productId}` | — | `ProductDetail` đầy đủ, `variantSummary` | `404 PRODUCT_NOT_FOUND` → trang "Sản phẩm này không còn trên V-OTA" + carousel `GET /products?sort=popular` |
+| Chọn hạng phòng / chuyến bay | `GET /products?parentProductId={productId}&sort=price_asc` | — | `results[]` (`ProductSummary` của tầng con) | Chỉ gọi khi `attributes.level` là `property` hoặc `route`. Rỗng → "chưa có hạng phòng/chuyến bay đặt được", khoá nút đặt. Lỗi → dòng thông báo, khoá nút đặt |
 | Tương tự | `GET /products/{productId}/similar?limit=8` | — | `results[]` + `score` | Lỗi hoặc rỗng → ẩn section |
 | Hoàn thiện chuyến | `GET /recommendations?k=4&destination=<product.destination>` | bắt buộc | như Home ① | Chỉ render khi `destination` response trùng sản phẩm |
 | Thêm vào giỏ | `POST /cart/items` | bắt buộc | `CartResponse.itemCount` (badge header) | Xem §8 |
 | Ghi lượt xem | `POST /events` `{ eventName: "product_view", productId }` | bắt buộc | — (`202` không body) | Không JWT thì không gọi. Mọi lỗi bỏ qua im lặng, không hiện gì cho người dùng |
 
 Gọi `POST /events` **một lần** khi trang chi tiết đã hiển thị trên trình duyệt với người dùng đã đăng nhập; không gọi trong Server Component, khi prefetch link hay khi render lại cùng sản phẩm. Web không gửi event `search` hay `add_to_cart`: Backend tự ghi khi xử lý `/search` và `/cart/items`.
+
+Khách sạn (`property`) và tuyến bay (`route`) không đặt trực tiếp: hộp đặt dùng mục tầng con khách đã chọn (mặc định mục rẻ nhất còn đặt được), và `POST /cart/items` gửi `productId` của **tầng con**. Sản phẩm không phân tầng đặt trực tiếp. Chuyến bay có một ngày cố định (`availableFrom = availableTo`) nên ngày hiện ở dạng chỉ đọc.
 
 Hộp đặt gửi `nights` chỉ khi `taxonomy = hotel`. Tổng tiền trong hộp đặt là **ước tính hiển thị**, tính theo công thức `hop-dong-tich-hop-backend.md` §2.6; giá chính thức là `lineTotal` do backend trả.
 

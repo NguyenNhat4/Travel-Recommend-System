@@ -348,8 +348,8 @@ Khi người dùng quay về Home từ Confirmation (bấm "Xem gợi ý mới t
 
 | `taxonomy` | Trường chọn | Công thức tổng | Ghi chú |
 |---|---|---|---|
-| `hotel` | Nhận phòng, trả phòng, số phòng | `unitPrice × số đêm × số phòng` | Mặc định: `availableFrom` + 2 đêm |
-| `flight` | Ngày bay (nếu dữ liệu có nhiều ngày), số hành khách | `unitPrice × số khách` | Nếu vé gắn cố định một ngày thì hiện ngày ở dạng chỉ đọc (**phụ thuộc:** ngữ nghĩa ngày bay trong dữ liệu) |
+| `hotel` | **Hạng phòng** (danh sách từ `GET /products?parentProductId=`), nhận phòng, trả phòng, số phòng | `unitPrice của hạng phòng × số đêm × số phòng` | Khách sạn (property) không đặt trực tiếp: chọn một hạng phòng, mặc định hạng rẻ nhất còn đặt được. Ngày mặc định: ngày mai (giờ Việt Nam) trong cửa sổ mở bán, 1 đêm. Khách sạn không có hạng phòng thì chỉ để xem |
+| `flight` | **Chuyến bay** của tuyến (danh sách như trên), số hành khách | `unitPrice × số khách` | Mỗi chuyến bay có một ngày cố định (`availableFrom = availableTo`), hiện ở dạng chỉ đọc |
 | `attraction` / `golf` | Ngày sử dụng (chip nhanh "Hôm nay · Ngày mai · Chọn ngày"), số khách | `unitPrice × số khách` | `[R53]` Klook web (chip "Today / Tomorrow / 27 Jan / All dates"); `[R52]` Klook web (panel "What's included") |
 | `combo` | Ngày bắt đầu, số khách | `unitPrice × số khách` | — |
 

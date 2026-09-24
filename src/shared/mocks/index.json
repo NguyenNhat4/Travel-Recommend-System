@@ -83,6 +83,14 @@
       "file": "catalog/listProducts.200-popular.json"
     },
     {
+      "operationId": "listProducts",
+      "method": "get",
+      "path": "/products",
+      "status": 200,
+      "case": "variants",
+      "file": "catalog/listProducts.200-variants.json"
+    },
+    {
       "operationId": "getProduct",
       "method": "get",
       "path": "/products/{productId}",
@@ -105,6 +113,14 @@
       "status": 404,
       "case": "not-found",
       "file": "catalog/getProduct.404-not-found.json"
+    },
+    {
+      "operationId": "getProduct",
+      "method": "get",
+      "path": "/products/{productId}",
+      "status": 200,
+      "case": "property",
+      "file": "catalog/getProduct.200-property.json"
     },
     {
       "operationId": "getSimilarProducts",

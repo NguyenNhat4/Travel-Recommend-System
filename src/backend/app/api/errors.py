@@ -5,7 +5,9 @@ from fastapi.responses import JSONResponse
 
 from src.backend.app.application.auth.errors import AuthError, RateLimited
 from src.backend.app.application.booking.errors import BookingError
+from src.backend.app.application.catalog.errors import CatalogError
 from src.backend.app.application.itinerary.contracts import error_response
+from src.backend.app.application.tracking.behaviour import ProductNotFoundError
 from src.backend.app.core.request_context import current_request_id
 
 # Thông điệp cho người dùng theo mã (auth §17). Sai email và sai mật khẩu dùng CHUNG một câu.
@@ -68,7 +70,34 @@ async def booking_error(_: Request, exc: BookingError):
     return JSONResponse(status_code=exc.http_status, content=body, headers=headers)
 
 
+# Thông điệp catalog (backend §4.2, §8.2; frontend §8).
+_CATALOG_MESSAGES = {
+    "VALIDATION_ERROR": "Yêu cầu không hợp lệ.",
+    "PRODUCT_NOT_FOUND": "Sản phẩm này không còn trên V-OTA.",
+    "PRODUCT_NOT_INDEXED": "Chưa có gợi ý tương tự cho sản phẩm này.",
+    "SEARCH_UNAVAILABLE": "Dịch vụ gợi ý tạm thời chưa sẵn sàng. Vui lòng thử lại.",
+}
+
+
+def _catalog_response(code: str, http_status: int, retryable: bool, details: dict | None) -> JSONResponse:
+    body = error_response(code, _CATALOG_MESSAGES.get(code, "Có lỗi xảy ra."),
+                          current_request_id() or "catalog", retryable)
+    if details:
+        body["error"]["details"] = details
+    return JSONResponse(status_code=http_status, content=body)
+
+
+async def catalog_error(_: Request, exc: CatalogError):
+    return _catalog_response(exc.code, exc.http_status, exc.retryable, exc.details)
+
+
+async def tracked_product_not_found(_: Request, exc: ProductNotFoundError):
+    return _catalog_response("PRODUCT_NOT_FOUND", 404, False, {"productId": exc.product_id})
+
+
 def install_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(BookingError, booking_error)
+    app.add_exception_handler(CatalogError, catalog_error)
+    app.add_exception_handler(ProductNotFoundError, tracked_product_not_found)
     app.add_exception_handler(RequestValidationError, request_validation_error)
     app.add_exception_handler(AuthError, auth_error)

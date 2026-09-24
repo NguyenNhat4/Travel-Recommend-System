@@ -164,7 +164,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Danh sách sản phẩm */
+        /**
+         * Danh sách sản phẩm
+         * @description Không có parentProductId: chỉ trả tầng cha (search unit — property, route và taxonomy không phân tầng), giống /search và /recommendations. Có parentProductId: trả các sản phẩm tầng con (hạng phòng, chuyến bay cụ thể) của sản phẩm cha đó, là đơn vị đặt chỗ mà Web thêm vào giỏ; sort=popular với tầng con xếp theo giá tăng dần. parentProductId không có trong catalog hoặc không có tầng con thì trả results rỗng.
+         */
         get: operations["listProducts"];
         put?: never;
         post?: never;
@@ -1612,6 +1615,8 @@ export interface operations {
     listProducts: {
         parameters: {
             query?: {
+                /** @description productId của sản phẩm cha (property hoặc route). Lọc các tầng con của nó. */
+                parentProductId?: string;
                 destination?: string;
                 taxonomy?: components["schemas"]["Taxonomy"];
                 availableOnly?: boolean;

@@ -390,7 +390,7 @@ const NextForTrip: React.FC<{
   useEffect(() => {
     if (!destination) return;
     const controller = new AbortController();
-    fetchRecommendations({ k: 4, destination, fallbackUser: persona, fallbackEvents: events, signal: controller.signal })
+    fetchRecommendations({ k: 4, destination, signal: controller.signal })
       .then(setRecs)
       .catch(() => setRecs(null));
     return () => controller.abort();
