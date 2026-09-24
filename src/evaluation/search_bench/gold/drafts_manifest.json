@@ -38,12 +38,12 @@
   "selection_status": "pending_user_review",
   "target_cases_after_user_filter": 200,
   "target_quota_after_user_filter": {
-    "dest_type": 30,
-    "audience_style": 25,
+    "dest_type": 25,
+    "audience_style": 20,
     "amenity_single": 15,
     "amenity_multi": 10,
-    "amenity_negation": 5,
-    "amenity_offtaxonomy": 5,
+    "amenity_negation": 10,
+    "amenity_offtaxonomy": 10,
     "parent_child": 15,
     "named_entity": 20,
     "no_diacritics": 20,
@@ -52,10 +52,18 @@
     "cross_vertical": 10,
     "out_of_catalog": 10
   },
+  "target_quota_revised_on": "2026-09-24",
+  "target_quota_revision_note": "User decision: amenity_negation and amenity_offtaxonomy raised 5 -> 10 to satisfy gold.min_per_slice: 10; dest_type 30 -> 25 and audience_style 25 -> 20 keep the total at 200.",
+  "draft_shortfall_vs_target": {
+    "amenity_negation": {"rows": 15, "distinct_intents": 5, "target": 10, "rows_needed": 15},
+    "amenity_offtaxonomy": {"rows": 15, "distinct_intents": 5, "target": 10, "rows_needed": 15}
+  },
   "qa": "passed: 600 unique grounded candidates; no deliberate invalid/rejected cases",
   "notes": [
     "Every in-catalog case has source_refs in drafts_raw.tsv.",
     "out_of_catalog destinations were checked absent from the current vocabulary.",
-    "No relevance labels or keep/reject decisions are assigned; the user will filter the 600 cases."
+    "No relevance labels or keep/reject decisions are assigned; the user will filter the 600 cases.",
+    "draft_quota and raw_cases describe the 2026-09-23 generation run and are not touched by the 2026-09-24 target revision.",
+    "Every slice was generated as (target) distinct intents x 3 phrasings; amenity_negation and amenity_offtaxonomy hold only 5 intents each, so the revised target of 10 needs 15 more rows per slice, appended as c0601-c0630 without renumbering (separate role-A task)."
   ]
 }

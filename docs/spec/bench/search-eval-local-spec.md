@@ -171,13 +171,13 @@ gold:                             # Part 5
   judged_at_10_min: 0.80
   judged_at_10_slice_min: 0.70     # cổng Part 12 chặn nếu slice nào thấp hơn
   min_per_slice: 10
-  slices:                         # quota
-    dest_type: 30
-    audience_style: 25
+  slices:                         # quota — tổng = target, mỗi mục ≥ min_per_slice
+    dest_type: 25
+    audience_style: 20
     amenity_single: 15
     amenity_multi: 10
-    amenity_negation: 5
-    amenity_offtaxonomy: 5
+    amenity_negation: 10
+    amenity_offtaxonomy: 10
     parent_child: 15
     named_entity: 20
     no_diacritics: 20
@@ -282,7 +282,7 @@ doctor:                           # (đề xuất) Part 0
  "overall": {"recall@10": 0.71, "ndcg@10": 0.58, "mrr@10": 0.62, "judged@10": 0.84,
              "constraint_precision": 0.97, "filter_recall_loss": 3, "parent_dup_rate": 0.4,
              "zero_result_in_catalog": 0.01, "zero_result_out_of_catalog": 1.0, "hub_score_max": 2.1},
- "by_slice": {"dest_type": {"recall@10": 0.8, "ndcg@10": 0.7, "n": 30}, "...": {}},
+ "by_slice": {"dest_type": {"recall@10": 0.8, "ndcg@10": 0.7, "n": 25}, "...": {}},
  "latency_ms": {"weaviate_p50": 8, "weaviate_p95": 15, "weaviate_p99": 22},
  "cost_usd": {"embed_docs": 0.05, "embed_queries": 0.001, "rerank": 0.0},
  "vs_parent": {"delta_recall": 2.4, "ci95": [0.6, 4.1], "p_one_sided": 0.012}}

@@ -19,6 +19,14 @@ def test_config_loads_with_spec_numbers(cfg):
     assert cfg.weaviate.url.startswith("http://127.0.0.1:")
 
 
+def test_gold_slice_quota_matches_target_and_min(cfg):
+    """spec §1.2 + Part 5 `sb gold check`: tổng quota = target, mỗi slice ≥ min_per_slice."""
+    q = cfg.gold.slices
+    assert sum(q.values()) == cfg.gold.target                            # 200
+    assert min(q.values()) >= cfg.gold.min_per_slice                     # không slice < 10
+    assert len(q) * cfg.gold.min_per_slice <= cfg.gold.minimum <= cfg.gold.target
+
+
 def test_strict_section_rejects_unknown_key(tmp_path):
     raw = yaml.safe_load(paths.DEFAULT_CONFIG.read_text(encoding="utf-8"))
     raw["catalog"]["typo_key"] = 1

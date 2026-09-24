@@ -28,6 +28,7 @@ Ký hiệu lệnh: `sb` = `python -m evaluation.search_bench` chạy từ `src/`
 - [x] Đọc `docs/spec/data-collection/schema.md` §3–§5 để biết trường thật; xuất danh sách destination, tên sản phẩm, amenity thô: `sb catalog vocab`
 - [x] Viết prompt sinh draft (`docs/spec/bench/gold-draft-prompt.md` — AGENTS.md §7 không cho `.md` trong `src/`): ràng buộc destination / tên / amenity vào danh sách vừa xuất; mỗi dòng `query \t slice`
 - [x] Sinh ~600 draft, đủ 13 slice (quota ở config `gold.slices`) → lưu `gold/drafts_raw.tsv`
+- [ ] Bổ sung 30 ứng viên: `amenity_negation` và `amenity_offtaxonomy` mỗi slice thêm **5 ý định mới × 3 cách nói**, append `c0601`–`c0630` vào `gold/drafts_raw.tsv`, không đánh số lại dòng cũ (quota mới 10/slice cần ≥ 10 ý định phân biệt — `docs/spec/bench/gold-draft-prompt.md` rule 10)
 - [ ] Người dùng soát tay, chọn 200 → `gold/drafts.txt` (giữ log số draft bị loại theo lý do: bịa tên / trùng / không tự nhiên)
 - [x] Với slice `multi_constraint`: điền cột `filter` mong đợi (AST JSON; amenity ghi **khoá** như `kids_club`, không ghi id — xem `filter_fields` trong `vocab.json`); slice `out_of_catalog`: cột `expected_no_result=true`
 
@@ -83,7 +84,7 @@ Ký hiệu lệnh: `sb` = `python -m evaluation.search_bench` chạy từ `src/`
 ## Ngày 4 — Khoá gold · B0 · SAN · E1a
 
 ### A
-- [ ] `sb gold import gold/pool_labeled.csv` → `gold/gold.jsonl`; `sb gold check` xanh (mỗi query ≥ 1 nhãn 2 trừ out_of_catalog, không slice < 10 query)
+- [ ] `sb gold import gold/pool_labeled.csv` → `gold/gold.jsonl`; `sb gold check` xanh (mỗi query ≥ 1 nhãn 2 trừ out_of_catalog, không slice < `gold.min_per_slice` = 10 query)
 - [ ] `git tag gold_v1`; từ đây gold chỉ **thêm** (spec Part 11)
 - [ ] `sb arms check` xanh (arms.md ↔ `arms/*.yaml` ↔ `stages.yaml`)
 - [ ] `sb run --stage B0 --until SAN` → đọc `sb compare --stage SAN`
@@ -191,6 +192,7 @@ Ký hiệu lệnh: `sb` = `python -m evaluation.search_bench` chạy từ `src/`
 |---|---|
 | κ < 0,6 sau lần gán lại | Thu hẹp nhãn 1 thành định nghĩa cụ thể theo taxonomy (đúng nơi + đúng loại, thiếu điều kiện); gán lại 25 chung lần cuối; lịch lùi 1 ngày |
 | Judged@10 < 80% ở ≥ 3 slice | Pool sâu hơn (depth 25) cho slice đó, gán thêm ½ ngày |
+| Slice không đủ **ý định phân biệt** cho quota | Sinh thêm ứng viên cho slice đó (ý định mới × 3 cách nói); **không** đưa hai cách nói của cùng một ý định vào bộ 200 — n tăng mà thông tin không tăng |
 | SAN `SANITY_FAIL` | Kiểm tra cứng hỏng (vector hai `input_type` giống nhau, cache sai, collection thiếu, gold bị sửa) — dừng mọi cổng cho tới khi sửa, `--force` chạy lại |
 | SAN `SANITY_WARN` | E3/T6/T7 không thua B0 như kỳ vọng — xem Δ theo slice, `sb ack` kèm ghi chú; không chặn chuỗi |
 | `NEEDS_LABELS` lặp ở nhiều cổng | Bình thường ở E1a, S4, S7, Pb; ước vài chục cặp mỗi lần — A gán ngay trong ngày, không dồn |
