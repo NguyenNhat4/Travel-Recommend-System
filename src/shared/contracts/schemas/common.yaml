@@ -61,9 +61,11 @@ SearchMode:
   - EXACT_FILTER_SCORE
   - ANN_CANDIDATE_SCORE
   description: >-
-    EXACT_FILTER_SCORE là mặc định cho cả /search, /similar và /recommendations.
-    Lật sang ANN_CANDIDATE_SCORE khi số vector vượt 50.000 hoặc p95 của bước scan
-    vượt 50 ms; khi lật thì totalExact và facetsExact bắt buộc là false.
+    ANN_CANDIDATE_SCORE là mặc định cho cả /search, /similar và /recommendations
+    (từ 2026-09-24): lọc id theo structured filter, lấy top-K ứng viên từ Weaviate,
+    rồi chấm điểm và đếm trên tập ứng viên đó. Ở chế độ này approximate là true,
+    totalExact và facetsExact bắt buộc là false. EXACT_FILTER_SCORE giữ cho
+    engine quét toàn bộ vector (bản chạy offline).
 
 # [Q1] Kết quả kiểm tra availability theo một khoảng ngày cụ thể.
 AvailabilityStatus:
@@ -113,7 +115,6 @@ ErrorCode:
   - INVALID_CREDENTIALS
   - INVALID_TOKEN
   - TOKEN_EXPIRED
-  - DEMO_ONLY
   - PRODUCT_NOT_FOUND
   - CART_ITEM_NOT_FOUND
   - BOOKING_NOT_FOUND

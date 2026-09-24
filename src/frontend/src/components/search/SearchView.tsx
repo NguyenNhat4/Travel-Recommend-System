@@ -211,7 +211,7 @@ export const SearchView: React.FC = () => {
           </h1>
           <span className="text-xs font-semibold text-slate-500 flex items-center gap-1.5">
             {isLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />}
-            <span>Tìm thấy {searchResponse.total} dịch vụ phù hợp</span>
+            <span>Tìm thấy {searchResponse.total}{searchResponse.totalExact === false ? '+' : ''} dịch vụ phù hợp</span>
           </span>
         </div>
 

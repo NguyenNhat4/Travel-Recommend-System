@@ -6,6 +6,7 @@
 
 import { CATALOG } from '../data/catalog';
 import { Product, Destination, Taxonomy } from '../types/travel';
+import { apiFetch } from './http';
 
 export interface SearchFilters {
   destination?: Destination[];
@@ -26,6 +27,8 @@ export interface SearchResultItem {
 export interface SearchResponse {
   query: string;
   total: number;
+  /** false khi backend chỉ đếm trên top-K ứng viên (ANN_CANDIDATE_SCORE): total là cận dưới. */
+  totalExact?: boolean;
   results: SearchResultItem[];
   isWeakMatch: boolean;
   categoryCounts: Record<string, number>;
@@ -185,7 +188,7 @@ export async function searchProductsApi(
 
   try {
     const destination = filters.destination && filters.destination.length > 0 ? filters.destination[0] : undefined;
-    const res = await fetch('/api/v1/search', {
+    const res = await apiFetch('/api/v1/search', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -284,6 +287,7 @@ export async function searchProductsApi(
     return {
       query: cleanQ,
       total: data.total ?? results.length,
+      totalExact: data.diagnostics?.totalExact,
       results,
       isWeakMatch,
       categoryCounts,

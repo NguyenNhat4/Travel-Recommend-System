@@ -69,6 +69,17 @@ SECRET_PATTERNS = [
 class Turn:
     message: str
     expect: dict[str, Any] = field(default_factory=dict)
+    language: str | None = None          # context.language của request; None = backend tự chọn (vi)
+    conversation_id: str | None = None   # ép conversationId cho lượt này, ví dụ id không tồn tại
+
+
+# Runner từng bỏ qua khoá lạ, nên gõ nhầm tên khoá làm case PASS mà không kiểm gì. Giờ nạp dataset
+# sẽ báo lỗi ngay; thêm khoá mới thì thêm tên vào đây cùng lúc với nhánh kiểm trong dataset_findings.
+TURN_KEYS = {"message", "expect", "language", "conversationId"}
+EXPECT_KEYS = {
+    "httpStatus", "status", "errorCode", "intent", "missingFieldsInclude", "toolCalled", "nodesInclude",
+    "nodesExclude", "forbiddenText", "excludeProductsFromTurn", "minActivities", "hasStay", "warningsExclude",
+}
 
 
 @dataclass
@@ -90,7 +101,13 @@ def load_dataset(path: Path) -> list[Case]:
         if case_id in seen_ids:
             raise ValueError(f"Trùng id case: {case_id}")
         seen_ids.add(case_id)
-        turns = [Turn(message=t["message"], expect=t.get("expect") or {}) for t in item["turns"]]
+        turns = []
+        for t in item["turns"]:
+            unknown = (set(t) - TURN_KEYS) | (set(t.get("expect") or {}) - EXPECT_KEYS)
+            if unknown:
+                raise ValueError(f"{case_id}: khoá không được hỗ trợ {sorted(unknown)}")
+            turns.append(Turn(message=t["message"], expect=t.get("expect") or {},
+                              language=t.get("language"), conversation_id=t.get("conversationId")))
         if not turns:
             raise ValueError(f"{case_id}: không có turn nào")
         cases.append(Case(id=case_id, category=item["category"], fr=list(item.get("fr", [])), turns=turns))
@@ -151,11 +168,12 @@ def trace_config(case: "Case", turn_index: int, message: str, request_id: str) -
 
 
 async def run_turn(planner, message: str, conversation_id: str | None, timeout: float,
-                   config: dict[str, Any] | None = None, request_id: str | None = None) -> dict[str, Any]:
+                   config: dict[str, Any] | None = None, request_id: str | None = None,
+                   language: str | None = None) -> dict[str, Any]:
     request_id = request_id or uuid.uuid4().hex
     inputs = {
         "query": message, "conversation_id": conversation_id, "intent_override": {},
-        "language": None, "request_id": request_id,
+        "language": language, "request_id": request_id,
     }
     config = {**(config or {}), "configurable": {"thread_id": request_id}}
     return await asyncio.wait_for(planner.ainvoke(inputs, config=config), timeout=timeout)
@@ -354,6 +372,18 @@ def dataset_findings(
         overlap = prior & _product_ids(response, spec["role"])
         if overlap:
             failures.append(f"sản phẩm lượt {spec['turn']} ({spec['role']}) vẫn xuất hiện lại: {sorted(overlap)}")
+    itinerary = response.get("itinerary") or {}
+    if "minActivities" in expect:
+        count = sum(1 for day in itinerary.get("days", []) for slot in day.get("slots", []) if slot.get("product"))
+        if count < expect["minActivities"]:
+            failures.append(f"lịch có {count} hoạt động, kỳ vọng ít nhất {expect['minActivities']}")
+    if "hasStay" in expect:
+        has_stay = bool((itinerary.get("stay") or {}).get("product"))
+        if has_stay != expect["hasStay"]:
+            failures.append(f"lịch {'có' if has_stay else 'không có'} chỗ ở, mong ngược lại")
+    for code in expect.get("warningsExclude", []):
+        if any(w.get("code") == code for w in response.get("warnings") or []):
+            failures.append(f"response có warning {code!r} không được phép")
     return failures
 
 
@@ -388,8 +418,9 @@ async def run_case(
         started = time.perf_counter()
         request_id = uuid.uuid4().hex
         try:
-            state = await run_turn(planner, turn.message, conversation_id, timeout,
-                                   trace_config(case, index, turn.message, request_id), request_id)
+            state = await run_turn(planner, turn.message, turn.conversation_id or conversation_id, timeout,
+                                   trace_config(case, index, turn.message, request_id), request_id,
+                                   turn.language)
         except TimeoutError:
             results.append(TurnResult(
                 case.id, index, turn.message, 503, "TIMEOUT", 0, 0, False, None,

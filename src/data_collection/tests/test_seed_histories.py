@@ -11,6 +11,9 @@ from pathlib import Path
 from data_collection.seed import catalog_meta as cm
 from data_collection.seed import config as C
 from data_collection.seed import seed_histories as sh
+from data_collection.seed.seed_histories import demo_password_hash
+
+from argon2 import PasswordHasher
 
 AS_OF = date(2026, 9, 20)
 N = 600
@@ -247,7 +250,10 @@ class SeedTests(unittest.TestCase):
         self.assertEqual(len(users), len(C.PERSONAS) + C.TEST_USERS)
         self.assertEqual([u["persona"] for u in users[:4]], ["P1_frequent", "P2_first_time", "P3_dormant", "P4_no_history"])
         self.assertEqual((users[4]["email"], users[4]["cdp_user_id"], users[-1]["email"]), ("test01@vota.demo", "VP0000005", "test50@vota.demo"))
-        self.assertTrue(all(u["password_hash"].startswith("$2b$10$") for u in users))
+        self.assertTrue(all(u["password_hash"].startswith("$argon2id$v=19$m=19456,t=2,p=1$") for u in users))
+        self.assertEqual(len({u["password_hash"] for u in users}), len(users))   # salt riêng từng user
+        self.assertTrue(PasswordHasher().verify(users[0]["password_hash"], C.DEMO_PASSWORD))
+        self.assertEqual(users[0]["password_hash"], demo_password_hash(users[0]["user_id"]))   # tái lập được
         self.assertTrue(all(u["cdp_user_id"] in self.profiles for u in users))
         self.assertEqual(len({u["email"] for u in users}), len(users))
 

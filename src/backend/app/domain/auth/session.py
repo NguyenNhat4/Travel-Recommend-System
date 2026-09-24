@@ -9,6 +9,7 @@ Quy tắc xuyên suốt: bất cứ khi nào mức đặc quyền đổi thì si
 """
 from __future__ import annotations
 
+import secrets
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -76,3 +77,11 @@ def apply(state: SessionState, event: SessionEvent) -> Transition:
         return _TABLE[(state, event)]
     except KeyError:
         raise InvalidTransition(f"{state} + {event}") from None
+
+
+def new_session_id() -> str:
+    """sid phía backend: 128 bit ngẫu nhiên, ràng buộc refresh token và claim `sid` của JWT.
+
+    Khác cookie `vota_sid` của BFF — BFF xoay sid cookie theo bảng §3.8 mà không cần backend biết.
+    """
+    return "s_" + secrets.token_urlsafe(16)

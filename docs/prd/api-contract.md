@@ -50,7 +50,6 @@ Các API trả về danh sách sử dụng cơ chế phân trang dựa trên `pa
 | `POST` | `/api/v1/auth/login` | Đăng nhập tài khoản | `email`, `password` $\rightarrow$ Auth token / Cookie session |
 | `POST` | `/api/v1/auth/logout` | Hủy phiên đăng nhập | Thu hồi token |
 | `GET` | `/api/v1/auth/me` | Lấy thông tin hồ sơ hiện tại | Trả về `userId`, `email`, `fullName`, `personaTag` |
-| `POST` | `/api/v1/auth/persona-switch` | Chuyển đổi nhanh persona | Nhận `personaTag` (`P1_family`, `P2_biz`,...) $\rightarrow$ Phiên mới |
 
 ### 2.2. Phân Nhóm Danh Mục Sản Phẩm (`/api/v1/products`)
 | Phương thức | Endpoint | Chức năng | Ghi chú & Ràng buộc |
@@ -164,6 +163,7 @@ Các API trả về danh sách sử dụng cơ chế phân trang dựa trên `pa
    - Trong phiên bản API v1, tuyệt đối không được xóa, đổi tên hoặc thay đổi ngữ nghĩa của các trường hiện hữu.
    - Các trường mới bổ sung bắt buộc phải ở dạng không bắt buộc (Optional).
    - Những thay đổi mang tính phá vỡ cấu trúc (Breaking changes) phải được thảo luận và nâng cấp lên phiên bản API v2 (`/api/v2/...`).
+   - Ngoại lệ đã chốt: `GET /api/v1/auth/demo-accounts` và mã lỗi `DEMO_ONLY` được gỡ khỏi v1 (2026-09-24) vì không có client sử dụng và endpoint đã tắt ở production.
 
 ---
 

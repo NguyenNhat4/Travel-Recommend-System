@@ -211,6 +211,6 @@ RecommendationResponse:
     (3) popular thì because của MỌI gợi ý là mảng rỗng;
     (4) coldStart true thì because rỗng — không bao giờ bịa lý do.
 
-    [C4] Engine dùng EXACT_FILTER_SCORE, không phải HNSW: category exclusion loại
-    khoảng 50% catalog, nên lọc-trước-rồi-chấm-điểm vừa đúng vừa nhanh hơn
-    lấy-top-K-rồi-lọc.
+    [C4] Engine dùng ANN_CANDIDATE_SCORE nhưng vẫn lọc trước: category exclusion
+    loại khoảng 50% catalog, nên danh sách id hợp lệ được gửi làm filter cho
+    truy vấn top-K của Weaviate, không lấy-top-K-rồi-lọc.

@@ -17,6 +17,7 @@ Hệ thống được thiết kế để vận hành trên ba cấp môi trườ
 |---|---|---|---|
 | **Mục đích** | Phát triển tính năng, debug | Tích hợp liên tục, kiểm thử E2E | Phục vụ người dùng thực tế |
 | **Cơ sở dữ liệu** | PostgreSQL 16 local qua Docker | PostgreSQL Cloud | Managed Cloud Database Cluster |
+| **Session store** | Redis local qua Docker (bind `127.0.0.1`, có mật khẩu) | Redis dùng chung (managed hay tự host: chờ chốt) | Redis managed, `noeviction` |
 | **Cơ sở dữ liệu vector** | Weaviate local qua Docker (volume riêng) | Weaviate dùng chung | Weaviate Cloud hoặc self-host có backup |
 | **Dữ liệu mẫu** | Snapshot nén hoặc dữ liệu tổng hợp | Toàn bộ dữ liệu snapshot chuẩn hóa | Dữ liệu giao dịch thực tế |
 | **Dịch vụ AI** | Local LLM hoặc API dev key | API key chia sẻ nội bộ | Dedicated API quota / Enterprise |
@@ -38,6 +39,13 @@ Hệ thống phân tách ranh giới bảo mật bằng các chuỗi kết nối
 | `COHERE_API_KEY` | Khóa gọi Cohere Embed API | Tất cả | Bí mật, không commit. Chỉ backend và job embed giữ — Weaviate **không** nhận khóa này |
 | `EMBEDDING_MODEL_NAME`| Tên mô hình vector — mặc định `embed-multilingual-v3.0` | Tất cả | Đổi giá trị này là đổi chiều vector → phải tạo lại collection và chạy lại job embed |
 | `WEAVIATE_URL` | Endpoint Weaviate (local: `http://localhost:8080`) | Tất cả | Không mở ra mạng ngoài ở local |
+| `WEAVIATE_GRPC_PORT` | Cổng gRPC của Weaviate (mặc định `50051`). Search, Similar và Recommendation truy vấn top-K qua gRPC; Weaviate Cloud tự dùng cổng 443 của host `grpc-<cluster>` nên bỏ qua biến này | Tất cả | Không mở ra mạng ngoài ở local |
+| `JWT_PRIVATE_KEY_PATH` / `JWT_PUBLIC_KEY_PATH` | Khoá RS256 để FastAPI ký và kiểm JWT; public key công bố qua JWKS | Tất cả | Khoá riêng bí mật: không commit, không vào image. Chỉ FastAPI giữ |
+| `JWT_ISSUER` / `JWT_AUDIENCE` | Giá trị `iss`/`aud` bắt buộc khớp khi kiểm token | Tất cả | Không bí mật |
+| `AUTH_SERVICE_TOKEN` | Header `X-Service-Token` BFF gửi tới nhóm `/auth/session/*` và `/internal/*` | Tất cả | Bí mật, ≥ 32 ký tự, BFF và FastAPI dùng chung giá trị |
+| `AUTH_REDIS_URL` / `SESSION_REDIS_URL` | Redis cho rate limit (FastAPI) và session (BFF) | Tất cả | Có mật khẩu; không mở ra mạng ngoài |
+| `TRUSTED_PROXIES` | Dải proxy được tin header `X-Forwarded-For` khi tính rate limit | Staging / Prod | Sai giá trị = rate limit bị vượt qua bằng một header |
+| `CAPTCHA_PROVIDER` / `CAPTCHA_SECRET` | CAPTCHA khi đăng nhập sai nhiều lần | Tất cả | `noop` ở dev/test; secret chỉ ở FastAPI |
 | `WEAVIATE_API_KEY` | Khóa xác thực Weaviate | Staging / Prod | Bí mật. Local dùng anonymous access nên có thể bỏ trống |
 
 ---
@@ -49,6 +57,9 @@ Môi trường hoàn chỉnh có thể khởi chạy nhanh chóng bằng các l�
 ```bash
 # Khởi động cơ sở dữ liệu PostgreSQL (chạy tự động initdb trên volume rỗng)
 docker compose up -d --wait postgres
+
+# Khởi động Redis (session web + rate limit auth)
+docker compose up -d --wait redis
 
 # Khởi động Weaviate (volume riêng — KHÔNG bị xóa khi seed lại Postgres)
 docker compose up -d --wait weaviate

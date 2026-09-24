@@ -2,41 +2,40 @@
 
 Chạy từ **repo root**: code import theo dạng `src.backend.app…`.
 
-## Chạy trong Docker Compose
+Setup và lệnh chạy: [README gốc](../../README.md). Phần dưới chỉ mô tả chi tiết riêng của backend.
 
-```bash
-make backend
-```
+## Kết nối trong Docker Compose
 
-Compose dựng image Backend, đợi PostgreSQL và Weaviate healthy rồi mở API tại `http://localhost:8000`. Health endpoint là `GET /health`. Dùng `make backend-logs` để theo dõi log và `make backend-stop` để dừng riêng Backend; lệnh này giữ nguyên PostgreSQL cùng các volume dữ liệu.
-
-Backend trong container kết nối PostgreSQL qua hostname `postgres` và hai role giới hạn riêng:
+Backend trong container (`make backend`) kết nối PostgreSQL qua hostname `postgres` và hai role giới hạn riêng:
 
 ```text
 DATABASE_URL=postgresql://vota_app_login:vota@postgres:5432/vota
 CDP_DATABASE_URL=postgresql://cdp_client_login:cdp@postgres:5432/vota
 ```
 
-Không dùng URL từ máy host (`localhost`) bên trong container. Nếu cần DSN khác, cấu hình `BACKEND_DATABASE_URL` và `BACKEND_CDP_DATABASE_URL` trong shell hoặc `.env` ở repository root. Các biến `OPENAI_API_KEY`, `MODEL_NAME` và cấu hình itinerary được chuyển từ môi trường Compose vào Backend.
+Không dùng URL từ máy host (`localhost`) bên trong container. Nếu cần DSN khác, cấu hình `BACKEND_DATABASE_URL` và `BACKEND_CDP_DATABASE_URL` trong shell hoặc `.env` ở repository root. Backend không seed, reset hay tự gọi Cohere hàng loạt khi container khởi động.
 
-Để dùng search/recommendation, chạy `make demo-db`, đặt `COHERE_API_KEY` trong `.env`, rồi chạy `make index-vectors` trước khi khởi động Backend. Backend không seed, reset hay tự gọi Cohere hàng loạt khi container khởi động.
-
-## Chạy trực tiếp trên máy
-
-```bash
-python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
-pip install -r src/backend/requirements.txt
-docker compose up -d --wait postgres weaviate          # hoặc make demo-db rồi make index-vectors
-make backend-local                                     # uvicorn --reload
-python -m pytest -q src/backend/tests                   # không cần Postgres; integration tự skip
-```
+## Search / Recommendation
 
 RecSys cố định Cohere `embed-multilingual-v3.0` (1024 chiều). Job index dùng `search_document`; request tìm kiếm dùng `search_query`. `WEAVIATE_URL`, `WEAVIATE_COLLECTION`, `COHERE_API_KEY` và `SEARCH_CUTOFF` (`0.62`, còn phải benchmark lại) được đọc qua `core/config.py`. Weaviate chỉ giữ vector + `productId`/`modelVersion`/`textHash`; tên, giá, ảnh và availability luôn hydrate từ PostgreSQL. Thiếu PostgreSQL, Weaviate, khóa Cohere hoặc index thì RecSys tự tắt, các route còn lại vẫn chạy.
 
 Endpoint hiện có (prefix `/api/v1`): `GET|POST /search` (`q`/`query`, `taxonomy`, `destination`, `limit`, `offset`;
 Agent tool `query` được adapter đổi thành `q`) · `GET /similar/{productId}?k=` · `GET /recommendations?k=&destination=`
-(JWT tùy chọn, `cdp_user_id` lấy từ token) · `GET /popular?k=` ·
-`POST /assistant/itineraries` · `POST /assistant/itineraries/stream` · `GET /assistant/status`. Ngoài prefix: `GET /health`.
+(JWT tùy chọn, `cdp_user_id` lấy từ token; token hỏng → 401, không hạ thành khách) · `GET /destinations` ·
+`POST /assistant/itineraries` · `POST /assistant/itineraries/stream` · `GET /assistant/status` ·
+auth v1 `POST /auth/register|login`, `GET /auth/me` · chỉ BFF (`X-Service-Token`)
+`POST /auth/session`, `/auth/session/token`, `/auth/session/revoke` · `PUT /auth/password` ·
+`GET /internal/recommendations?cdp_user_id=` (`X-Service-Token`, tắt ở production). Ngoài prefix: `GET /health`,
+`GET /.well-known/jwks.json`.
+
+## Auth
+
+Chi tiết: `docs/spec/hop-dong-tich-hop-auth.md`. JWT ký RS256; sinh khoá dev một lần bằng `make jwt-keys` (ghi vào
+`secrets/`, đã gitignore). Thiếu khoá thì development tự sinh khoá tạm — token mất hiệu lực mỗi lần restart.
+Đặt `AUTH_SERVICE_TOKEN` (≥ 32 ký tự, `openssl rand -hex 32`) giống hệt ở backend và BFF, nếu không web không
+đăng nhập được. `AUTH_REDIS_URL` trống thì rate limit chạy trong bộ nhớ (chỉ dev). Tài khoản seed (đăng nhập qua `/login` như user
+thường): 4 persona + 50 `test01..50@vota.demo`, mật khẩu `Demo@2026`. Test Postgres/Redis thật: `RUN_POSTGRES_INTEGRATION=1
+RUN_REDIS_INTEGRATION=1 python -m pytest -q src/backend/tests/integration`.
 
 ## Chỗ nào làm gì (docs/prd/architecture.md §2)
 
@@ -45,7 +44,7 @@ Agent tool `query` được adapter đổi thành `q`) · `GET /similar/{product
 | domain | `domain/<domain>/` | Business rule thuần: vai trò sản phẩm + text builder (`catalog`), FILTER → SCORE → CUTOFF (`search`), hồ sơ người dùng + MMR + phổ biến (`recommendation`), chuẩn hoá intent + ghép lịch trình (`itinerary`), mật khẩu + phiên (`auth`) |
 | application | `application/ports/` | Mỗi port một file: `cdp_client.py` (`CdpClient` ghi, `CdpHistoryReader` đọc), `embedder.py`, `vector_store.py`, `unit_index.py`, `llm.py`, `itinerary_planner.py`, `itinerary_tools.py`, `auth.py` |
 | application | `application/<domain>/` | Use case: `SearchProducts`, `SimilarProducts`, `RecommendForUser`, `BuildPopularity`, `PlanItinerary`, auth, booking, tracking |
-| agents | `agents/` | LangGraph 9 node; `runtime_dependencies.py` hiện thực port `ItineraryPlanner`; `tools/itinerary_gateway.py` gọi Search/Recommendation qua port |
+| agents | `agents/` | LangGraph 10 node; `runtime_dependencies.py` hiện thực port `ItineraryPlanner`; `tools/itinerary_gateway.py` gọi Search/Recommendation qua port |
 | infrastructure | `cdp/` | `LocalCdpClient` (ghi), `PostgresCdpReader` (đọc), `CdpHttpClient`, `BackgroundCdpEventRecorder` — mọi SQL vào schema `cdp` nằm ở đây |
 | infrastructure | `persistence/` | `PostgresProductLookup`, conversation store, LangGraph checkpointer |
 | infrastructure | `clients/` | HTTP client itinerary; fixture 50 sản phẩm cho `ITINERARY_DATA_MODE=fixture` |
