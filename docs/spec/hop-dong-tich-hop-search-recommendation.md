@@ -104,26 +104,30 @@ của cùng một resort.
 ### 2.2. Thứ tự xử lý bắt buộc · `[C4]`
 
 ```
-FILTER → SCORE → CUTOFF → TOTAL/FACETS → SORT → PAGE
+FILTER → TOP-K (Weaviate) → CUTOFF → TOTAL/FACETS → SORT → PAGE
 
-F       = tập sản phẩm sau structured filter
-R       = { p ∈ F | score(p, query) >= cutoff }
+F       = tập sản phẩm sau structured filter (tính trên metadata trong RAM)
+C       = top-K của F theo score(p, query), Weaviate trả về (filter theo id của F)
+R       = { p ∈ C | score(p, query) >= cutoff }
 total   = |R|
 facets  = aggregation trên R
 results = một trang của R
 ```
 
 Áp cho cả ba endpoint. Với `/recommendations`, `query` được thay bằng user vector.
+`K` là `candidateK` (mặc định 200); `score = 1 − cosine distance`.
 
 **Vì sao filter trước:** category exclusion của `/recommendations` loại khoảng
-50% catalog. Chấm điểm trước rồi lọc sau (kiểu ANN top-K) có thể để lại dưới
-`k` kết quả. Lọc trước còn ~300 ứng viên rồi chấm 300 cosine vừa đúng vừa nhanh hơn.
+50% catalog. Chấm điểm trước rồi lọc sau có thể để lại dưới `k` kết quả. Vì vậy
+id của `F` được gửi làm filter cho truy vấn top-K, không lấy top-K rồi mới lọc.
 
 ### 2.3. Bất biến
 
+Các bất biến dưới đây tính trên tập ứng viên `C`, không phải toàn bộ catalog.
+
 ```
 1. sum(facets.taxonomy) == total
-2. total và facets KHÔNG đổi khi thay limit/offset
+2. total và facets KHÔNG đổi khi thay limit/offset (trong phạm vi K ứng viên)
 3. mọi results[].score >= cutoff
 4. results, total, facets dùng CÙNG filter và CÙNG cutoff
 5. sản phẩm thiếu destination → bucket "UNKNOWN", không biến mất
@@ -132,33 +136,32 @@ results = một trang của R
 ### 2.4. Chế độ truy xuất — khai báo, không đổi ngầm · `[C4]`
 
 ```yaml
-search:           { mode: EXACT_FILTER_SCORE, cutoff: 0.62 }
-similar:          { mode: EXACT_FILTER_SCORE, topK: 20 }
-recommendations:  { mode: EXACT_FILTER_SCORE, candidateK: 200 }
+search:           { mode: ANN_CANDIDATE_SCORE, cutoff: 0.62, candidateK: 200 }
+similar:          { mode: ANN_CANDIDATE_SCORE, topK: 20 }
+recommendations:  { mode: ANN_CANDIDATE_SCORE, candidateK: 200 }
 ```
 
-> **Cần duyệt lại (22/09/2026) — xem rủi ro S8.** Đoạn dưới viết khi vector còn
-> nằm trong Postgres/pgvector. Vector đã chuyển sang Weaviate (Cohere
-> `embed-multilingual-v3.0`, 1024 chiều), nơi HNSW là mặc định, nên tiền đề
-> "toàn bộ vector nằm trong `shared_buffers`" không còn đúng. Giữ nguyên chữ cũ
-> để đối chiếu; chưa đổi cam kết `facets` trong contract khi chưa chốt.
+**Chốt 24/09/2026 (S8, hướng b — `docs/prd/update-archive/2026-09-24-recsys-truy-van-weaviate-top-k.md`).**
+Backend không còn tải toàn bộ vector vào RAM lúc khởi động: tải 3.183 vector từ
+Weaviate Cloud mất 453 giây. Mỗi request gửi truy vấn top-K sang Weaviate
+(`nearVector` qua gRPC, filter theo id), đúng `docs/prd/architecture.md` §5.
+Metadata (taxonomy, destination, available, recommendable, parent) vẫn nạp từ
+Postgres lúc khởi động để tính filter.
 
-Cả ba dùng exact scan. Ở 1.125 vector × 768 chiều = 3,4 MB, toàn bộ nằm trong
-`shared_buffers`; exact scan mất 2–7 ms, HNSW ~1 ms nhưng là xấp xỉ và không
-trả được tập đầy đủ để đếm `facets`.
-
-**Ngưỡng lật sang ANN:**
+Vì chỉ có top-K, sản phẩm ngoài tập ứng viên vẫn có thể vượt cutoff. Do đó bốn
+trường sau là **bắt buộc**:
 
 ```
-Lật khi:  số vector > 50.000  HOẶC  p95 bước scan > 50 ms
-Lật thì:  BẮT BUỘC searchMode = ANN_CANDIDATE_SCORE
-                   approximate = true
-                   totalExact = false
-                   facetsExact = false
+searchMode  = ANN_CANDIDATE_SCORE
+approximate = true
+totalExact  = false
+facetsExact = false
 ```
 
-Chuyển sang approximate mà không đổi bốn trường này là **vi phạm hợp đồng** — nó
+Trả `approximate: true` mà vẫn khai `totalExact: true` là **vi phạm hợp đồng** — nó
 phá tiêu chí 8 của `hop-dong-tich-hop-backend.md` §12 một cách âm thầm.
+`EXACT_FILTER_SCORE` chỉ còn dùng cho engine quét toàn bộ vector trong RAM (bản
+chạy offline trong test).
 
 ### 2.5. Hard filter và soft filter · `[C6]`
 
@@ -261,7 +264,7 @@ Quy tắc margin tồn tại vì ngưỡng tuyệt đối mong manh với model 
 
 Truy vấn thứ hai bị bắt đúng dù `0.74` vượt mọi ngưỡng tuyệt đối đang đặt.
 
-`backgroundScore` lấy **miễn phí** trong cùng lượt quét exact của §2.2.
+`backgroundScore` lấy **miễn phí** từ cùng tập ứng viên top-K của §2.2, không cần truy vấn thêm.
 
 ### 3.5. Cam kết dữ liệu
 
@@ -294,7 +297,7 @@ Ba ràng buộc bắt buộc:
 
 `strategy=cross_taxonomy` là biến thể cross-sell dành cho Agent.
 
-**Không embed lại.** Lấy thẳng vector đã lưu của anchor. Embed lại vừa tốn ~60 ms
+**Không embed lại.** Lấy thẳng vector đã lưu của anchor từ Weaviate, rồi truy vấn top-K với filter id (cùng taxonomy, loại chính nó và anh em cùng cha). Embed lại vừa tốn ~60 ms
 vừa có nguy cơ so hai vector thuộc hai `embedding_version` khác nhau — kết quả
 vẫn trả về, chỉ là vô nghĩa.
 
@@ -505,7 +508,7 @@ khác hẳn nhau.
 
 | Hoạt động | p95 |
 |---|---:|
-| `POST /search` (exact) | 300 ms |
+| `POST /search` | 300 ms (Weaviate cùng mạng nội bộ; qua Weaviate Cloud từ mạng dev thì mỗi lượt thêm 0,5–2 s) |
 | `GET /products/{id}/similar` | 300 ms |
 | `GET /recommendations`, cache hit | 300 ms |
 | `GET /recommendations`, cache miss (đọc 500 event từ CDP) | 800 ms |
@@ -567,16 +570,16 @@ Team Search cung cấp:
 
 1. `search("nghỉ dưỡng biển cho gia đình")` → top-5 toàn resort/hotel biển hoặc
    `familyFriendly`.
-2. Đổi `limit`/`offset`, giữ nguyên filter → `total` và `facets` **không đổi**.
-3. `sum(facets.taxonomy) == total` trên mọi truy vấn.
+2. Đổi `limit`/`offset` (trong phạm vi `candidateK`), giữ nguyên filter → `total` và `facets` **không đổi**.
+3. `sum(facets.taxonomy) == total` trên mọi truy vấn (tính trên tập ứng viên).
 4. Mọi `results[].score >= cutoff`.
 5. Truy vấn vô nghĩa → `results: []`, `topScore: null`, `backgroundScore: null`.
 6. ≥ 95% cặp đúng trong bộ 80 cặp có `score >= cutoff`.
 7. Cả 10 truy vấn âm rơi vào nhánh weak (theo abs hoặc theo margin).
 8. `availableOnly: true` không trả sản phẩm `available: false`.
 9. Mặc định không có sản phẩm `level: room` trong `results`.
-10. `diagnostics.approximate: false` và `totalExact: true` ở chế độ exact.
-11. p95 dưới 300 ms trên catalog đầy đủ.
+10. `diagnostics.searchMode: ANN_CANDIDATE_SCORE`, `approximate: true`, `totalExact: false`, `facetsExact: false`.
+11. p95 dưới 300 ms trên catalog đầy đủ, đo với Weaviate cùng mạng nội bộ (local hoặc cùng region).
 
 ### Similar
 
@@ -622,7 +625,7 @@ Bốn tiêu chí **20, 21, 22, 23** là quan trọng nhất trong cả danh sác
 | S5 | Cache user vector chưa duyệt · `[P3]` | Không cache thì p95 `/recommendations` là 800 ms, không phải 300 ms |
 | S6 | Công thức `popularity_score` chưa chốt · `[C7]` | Tạm dùng `log(1 + review_count)` |
 | S7 | ~~Model embedding chưa chốt~~ — **đã chốt 22/09/2026** | Cohere `embed-multilingual-v3.0`, **1024 chiều**, vector lưu ở Weaviate (không còn pgvector). Xem `docs/prd/architecture.md` §4–§5. Kéo theo S8. |
-| S8 | **Mới (22/09/2026): `EXACT_FILTER_SCORE` cần duyệt lại.** Mục "Chế độ truy xuất" phía trên lập luận rằng exact scan hợp lý vì toàn bộ vector nằm trong `shared_buffers` của Postgres. Weaviate là HNSW-first nên tiền đề đó không còn đúng, và HNSW chỉ trả top-K — không đủ tập đầy đủ để đếm `facets` như `[C4]` yêu cầu | Chưa chốt. Team Search quyết: (a) đếm `facets` bằng SQL trên Postgres rồi chỉ dùng Weaviate cho top-K, hay (b) đổi cam kết `facets` trong contract. **Không tự đổi `schemas/search.yaml` trước khi chốt.** |
+| S8 | ~~`EXACT_FILTER_SCORE` cần duyệt lại~~ — **đã chốt 24/09/2026, hướng (b)** | Đổi cam kết `total`/`facets` thành xấp xỉ trên tập ứng viên, khai báo qua `approximate`/`totalExact`/`facetsExact`. Cả ba engine chạy `ANN_CANDIDATE_SCORE` (§2.4). |
 
 S5 là phụ thuộc nặng nhất: không duyệt `[P3]` thì tiêu chí nghiệm thu 26 không
 đạt được, và ngân sách §7.1 phải sửa.

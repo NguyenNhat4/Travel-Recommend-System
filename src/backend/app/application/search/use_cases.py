@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-import numpy as np
+from src.backend.app.application.ports import EmbedderPort, UnitIndex, VectorSearchPort
+from src.backend.app.domain.search import candidate_filter_score
 
-from src.backend.app.application.ports import EmbedderPort, UnitIndex
-from src.backend.app.domain.search import exact_filter_score
+#: Khai báo ở diagnostics khi total/facets chỉ đếm trên top-K ứng viên (contract `[C4]`).
+ANN_DIAGNOSTICS = {"searchMode": "ANN_CANDIDATE_SCORE", "approximate": True, "totalExact": False, "facetsExact": False}
 
 
 def hit(index: UnitIndex, i: int, score: float, **extra) -> dict:
@@ -23,24 +24,29 @@ def hit(index: UnitIndex, i: int, score: float, **extra) -> dict:
 @dataclass
 class SearchProducts:
     index: UnitIndex
+    vectors: VectorSearchPort
     embedder: EmbedderPort
     cutoff: float
     max_limit: int = 50
+    candidate_k: int = 200
 
     def __call__(self, q: str, *, taxonomy: str | None = None, destination: str | None = None,
                  limit: int = 20, offset: int = 0) -> dict:
         limit = min(limit, self.max_limit)
         qvec = self.embedder.embed_query(q)
         mask = self.index.mask(taxonomy, destination)
-        out = exact_filter_score(self.index.E, qvec, mask, self.cutoff,
-                                 {"taxonomy": self.index.taxonomy, "destination": self.index.destination})
+        hits = [h for h in self.vectors.near_vector(qvec, self.index.allowed_ids(mask), self.candidate_k)
+                if h.product_id in self.index.idx]
+        out = candidate_filter_score([self.index.idx[h.product_id] for h in hits], [h.score for h in hits],
+                                     self.cutoff, int(mask.sum()),
+                                     {"taxonomy": self.index.taxonomy, "destination": self.index.destination})
         page = out.order[offset: offset + limit]
         return {
             "results": [hit(self.index, i, out.scores[i]) for i in page],
             "total": out.total, "limit": limit, "offset": offset,
             "topScore": round(float(out.scores[out.order[0]]), 4) if out.order else None, "cutoff": self.cutoff,
             "facets": out.facets,
-            "diagnostics": {"searchMode": "EXACT_FILTER_SCORE", "approximate": False, "totalExact": True, "facetsExact": True,
+            "diagnostics": {**ANN_DIAGNOSTICS,
                             "filteredCount": out.filtered_count, "relevantCount": out.total,
                             "modelVersion": self.index.model_version},
         }
@@ -49,17 +55,20 @@ class SearchProducts:
 @dataclass
 class SimilarProducts:
     index: UnitIndex
+    vectors: VectorSearchPort
 
     def __call__(self, product_id: str, k: int = 8, same_taxonomy: bool = True) -> list[dict]:
         i0 = self.index.resolve(product_id)
         if i0 is None:
             return []
-        scores = self.index.E @ self.index.E[i0]
+        anchor = self.vectors.vectors([self.index.units[i0].product_id]).get(self.index.units[i0].product_id)
+        if anchor is None:  # có trong catalog nhưng chưa index
+            return []
         m = self.index.mask(taxonomy=str(self.index.taxonomy[i0]) if same_taxonomy else None)
         m[i0] = False
         root = self.index.parent_of.get(product_id, product_id)
         for child, parent in self.index.parent_of.items():  # loại anh em cùng cha
             if parent == root and child in self.index.idx:
                 m[self.index.idx[child]] = False
-        order = [i for i in np.argsort(-scores) if m[i]][:k]
-        return [hit(self.index, i, scores[i]) for i in order]
+        hits = self.vectors.near_vector(anchor, self.index.allowed_ids(m), k)
+        return [hit(self.index, self.index.idx[h.product_id], h.score) for h in hits if h.product_id in self.index.idx]

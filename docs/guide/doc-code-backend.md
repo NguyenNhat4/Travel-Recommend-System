@@ -74,21 +74,23 @@ Cách làm chung: **đi từ route vào trong, rồi tìm adapter ở `main.py`.
 | 1. Contract | `src/shared/contracts/paths/search.yaml` | Tham số, response, mã lỗi được hứa |
 | 2. Route | `app/api/v1/routes/search.py` | Nhận `q/taxonomy/destination/limit/offset`; RecSys tắt thì trả trang rỗng thay vì 500 |
 | 3. Dependency | `app/api/deps.py` → `get_search` | Lấy `app.state.search`, có thể là `None` |
-| 4. Use case | `app/application/search/use_cases.py` → `SearchProducts` | Embed câu hỏi, lọc, chấm điểm, phân trang, dựng `diagnostics` |
-| 5. Rule thuần | `app/domain/search/scoring.py` → `exact_filter_score` | FILTER → SCORE → CUTOFF → FACETS → SORT |
-| 6. Port | `application/ports/embedder.py`, `unit_index.py`, `vector_store.py` | Hợp đồng mà use case dựa vào |
-| 7. Adapter | `main.py` → `build_recsys()` | `CohereEmbedder` + `WeaviateVectorStore`; index nạp **một lần** lúc khởi động |
-| 8. Adapter chi tiết | `infrastructure/embeddings/cohere_embedder.py`, `infrastructure/vectors/weaviate_store.py` | Gọi Cohere, đọc Weaviate, hydrate tên/giá từ Postgres |
+| 4. Use case | `app/application/search/use_cases.py` → `SearchProducts` | Embed câu hỏi, lọc id, hỏi Weaviate top-K, cắt cutoff, phân trang, dựng `diagnostics` |
+| 5. Rule thuần | `app/domain/search/scoring.py` → `candidate_filter_score` | CUTOFF → FACETS → SORT trên tập ứng viên top-K |
+| 6. Port | `application/ports/embedder.py`, `unit_index.py`, `vector_search.py`, `vector_store.py` | Hợp đồng mà use case dựa vào |
+| 7. Adapter | `main.py` → `build_recsys()` | `CohereEmbedder` + `WeaviateVectorStore`; chỉ metadata nạp lúc khởi động |
+| 8. Adapter chi tiết | `infrastructure/embeddings/cohere_embedder.py`, `infrastructure/vectors/weaviate_store.py` | Gọi Cohere; `WeaviateVectorSearch` truy vấn `nearVector` qua gRPC; tên/giá lấy từ Postgres |
 
-Điều rút ra từ ví dụ: search không truy vấn Weaviate mỗi request. Toàn bộ vector nằm trong `UnitIndex` trong
-bộ nhớ; muốn thấy dữ liệu mới phải chạy lại `make index-vectors` rồi khởi động lại backend.
+Điều rút ra từ ví dụ: vector không nằm trong bộ nhớ backend. `UnitIndex` chỉ giữ metadata (taxonomy, destination,
+available…) để tính filter; mỗi request gửi danh sách id hợp lệ cùng vector truy vấn sang Weaviate và nhận top-K
+(`ANN_CANDIDATE_SCORE`, nên `total`/`facets` là xấp xỉ). Chạy lại `make index-vectors` thì request sau thấy vector
+mới ngay; chỉ khi catalog trong Postgres đổi mới phải khởi động lại backend.
 
 Các luồng khác đi đúng khuôn này:
 
 | Endpoint | Route | Use case | Rule thuần | Adapter chính |
 |---|---|---|---|---|
-| `/similar/{id}` | `routes/search.py` | `search/use_cases.py` → `SimilarProducts` | — | `UnitIndex` |
-| `/recommendations` | `routes/recommendations.py` | `recommendation/use_cases.py` → `RecommendForUser` (khách → phổ biến) | `domain/recommendation/{profile,popularity}.py` | `PostgresCdpReader` (lịch sử qua `CDP_DATABASE_URL`) |
+| `/similar/{id}` | `routes/search.py` | `search/use_cases.py` → `SimilarProducts` | — | `UnitIndex` + `WeaviateVectorSearch` |
+| `/recommendations` | `routes/recommendations.py` | `recommendation/use_cases.py` → `RecommendForUser` (khách → phổ biến) | `domain/recommendation/{profile,popularity}.py` | `PostgresCdpReader` (lịch sử qua `CDP_DATABASE_URL`) + `WeaviateVectorSearch` (vector event, top-K ứng viên) |
 | `/destinations` | `routes/catalog.py` | — (đếm thẳng trên `UnitIndex`) | — | `UnitIndex` |
 | `/auth/*` | `routes/auth.py` | `auth/use_cases.py` | `domain/auth/*` | `infrastructure/auth/*` |
 | `/assistant/itineraries[/stream]` | `routes/assistant.py` | `itinerary/use_cases.py` → `PlanItinerary` | `domain/itinerary/*` | `agents/` qua port `ItineraryPlanner` |
