@@ -37,6 +37,11 @@ class BookingAttractions(SitemapSource):
     ready_selector = "[data-testid='attr-content'], [data-testid='inline-ticket-config'], [data-testid='product-gallery']"
     expect_url = re.compile(r"/attractions/")
     people_selectors = ("[data-testid='review-card']", "[data-testid='reviews-list']", "[data-testid='review-item']")
+    # Khối giá (`[data-testid='cheapest-price-label']`) lazy-load theo viewport, nằm dưới phần đầu trang mà
+    # ready_selector đã đợi xong — không cuộn thì page.content() chụp trước khi khối này render, ra priceText
+    # rỗng (bug thật gặp 40/40 khi cào Ninh Bình/Cát Bà 23/09/2026; selector/parse giá vẫn đúng, xem
+    # collectors/booking_base.py needs_scroll_before_read).
+    needs_scroll_before_read = True
 
     def __init__(self, currency: str = "VND"):
         self.currency = currency

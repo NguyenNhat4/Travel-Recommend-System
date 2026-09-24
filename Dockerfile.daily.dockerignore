@@ -1,0 +1,17 @@
+# Chỉ cho Dockerfile.daily — BuildKit đọc file này thay cho .dockerignore ở root (file đó loại cả src/data_collection).
+# Không đưa dữ liệu cào, cache, .env hay test vào image.
+*
+!src/__init__.py
+!src/backend
+!src/data_collection
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.embcache
+**/.venv
+**/.env
+**/.env.*
+src/backend/tests
+src/data_collection/data
+src/data_collection/cache
+src/data_collection/tests

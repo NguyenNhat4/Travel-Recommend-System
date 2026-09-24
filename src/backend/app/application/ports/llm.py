@@ -1,6 +1,6 @@
 """Port chat model mà agent itinerary dùng.
 
-Khớp phần giao diện LangChain mà `agents/nodes.py` gọi; adapter cụ thể nằm ở `infrastructure/llm/`.
+Khớp phần giao diện LangChain mà `agents/nodes.py` và `agents/steps/tool_planning.py` gọi; adapter cụ thể nằm ở `infrastructure/llm/`.
 """
 from __future__ import annotations
 

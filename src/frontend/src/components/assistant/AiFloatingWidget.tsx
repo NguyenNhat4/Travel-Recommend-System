@@ -4,7 +4,6 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { useTravel } from '../../context/TravelContext';
 import { useAssistant } from '../../context/AssistantProvider';
-import { extractIntent, buildGroundedItinerary } from '../../services/assistant';
 import { CATALOG } from '../../data/catalog';
 import type { components } from '../../types/api.gen';
 import { GroundedPlan, Product, TravelIntent, ItineraryDay, ItinerarySlot } from '../../types/travel';

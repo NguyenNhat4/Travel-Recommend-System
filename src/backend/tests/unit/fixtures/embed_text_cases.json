@@ -1,0 +1,247 @@
+{
+  "_readme": [
+    "Dữ liệu thu thập thật (catalog 20260920) rút gọn cho dễ đọc. Mỗi case: collected (dòng cha) → children / combo_items → enriched (5 ô) → embed_text (đoạn văn đưa vào model).",
+    "children chỉ giữ các trường template đọc; test tự điền productId/taxonomy/parentProductId. Đây cũng là golden file của test_text_builder.py: đổi template thì cập nhật file này."
+  ],
+  "slots": {
+    "headline": "tên + loại hình + sao + điểm đến",
+    "fit": "phù hợp với ai",
+    "features": "tiện ích / loại hình",
+    "rollup": "tóm tắt phần con (phòng, chuyến bay, thành phần combo)",
+    "excerpt": "mô tả gốc đã làm sạch, ≤ 60 từ"
+  },
+  "cases": [
+    {
+      "id": "hotel_property/my-lan-hotel",
+      "note": "3 phòng: ROLLUP gom tính năng chỉ có ở phòng (ban công, bếp riêng) lên khách sạn. unitPrice, reviewScore, reviewCount có trong dữ liệu nhưng không vào text.",
+      "collected": {
+        "productId": "83f1a4f5-a0e7-5d71-9494-4a9739eb4d35",
+        "name": "Mỹ Lan hotel",
+        "taxonomy": "hotel",
+        "destination": "Đà Lạt",
+        "description": "Nhìn ra thành phố, Mỹ Lan hotel ở Đà Lạt cung cấp chỗ nghỉ có sân hiên. Wi-Fi miễn phí được cung cấp.\n\nKhách sạn căn hộ có TV màn hình phẳng và phòng tắm riêng với đồ vệ sinh cá nhân miễn phí, máy",
+        "attributes": {
+          "level": "property",
+          "propertyType": "căn hộ dịch vụ",
+          "starRating": 3,
+          "province": "Lâm Đồng",
+          "familyFriendly": true,
+          "amenities": ["Dịch vụ phòng", "Đi bộ đường dài", "Sân thượng / hiên", "Lễ tân 24 giờ", "Giữ hành lí"],
+          "highlights": ["Căn hộ", "Bãi đỗ xe miễn phí", "WiFi miễn phí\n26 Mbps", "Phòng không hút thuốc", "Phòng gia đình"],
+          "reviewScore": 9.5,
+          "reviewCount": 254
+        },
+        "unitPrice": 400000,
+        "available": true
+      },
+      "children": [
+        {"roomName": "Căn Hộ 1 Phòng Ngủ", "bed": "1 giường đôi lớn", "maxOccupancy": 2, "amenities": ["Bếp riêng", "Ban công"], "unitPrice": 650000},
+        {"roomName": "Phòng Giường Đôi Có Ban Công", "bed": "1 giường đôi lớn", "maxOccupancy": 2, "amenities": ["Ban công"], "unitPrice": 400000},
+        {
+          "roomName": "Suite Gia Đình Có Ban Công",
+          "bed": "1 giường đôi cực lớn\n\nvà\n\n1 giường đôi lớn",
+          "maxOccupancy": 3,
+          "amenities": ["Ban công"],
+          "unitPrice": 643500
+        }
+      ],
+      "enriched": {
+        "headline": "Mỹ Lan hotel — căn hộ dịch vụ 3 sao tại Đà Lạt (Lâm Đồng).",
+        "fit": "Phù hợp gia đình có trẻ nhỏ.",
+        "features": "Tiện ích: phòng gia đình, bãi đỗ xe.",
+        "rollup": "Hạng phòng: suite, căn hộ, phòng gia đình. Tên hạng phòng: Căn Hộ 1 Phòng Ngủ; Phòng Giường Đôi Có Ban Công; Suite Gia Đình Có Ban Công. Giường: 1 giường đôi. Một số phòng có ban công, bếp riêng.",
+        "excerpt": "Nhìn ra thành phố, Mỹ Lan hotel ở Đà Lạt cung cấp chỗ nghỉ có sân hiên. Wi-Fi miễn phí được cung cấp. Khách sạn căn hộ có TV màn hình phẳng và phòng tắm riêng với đồ vệ sinh cá nhân miễn phí, máy."
+      },
+      "embed_text": "Mỹ Lan hotel — căn hộ dịch vụ 3 sao tại Đà Lạt (Lâm Đồng). Phù hợp gia đình có trẻ nhỏ. Tiện ích: phòng gia đình, bãi đỗ xe. Hạng phòng: suite, căn hộ, phòng gia đình. Tên hạng phòng: Căn Hộ 1 Phòng Ngủ; Phòng Giường Đôi Có Ban Công; Suite Gia Đình Có Ban Công. Giường: 1 giường đôi. Một số phòng có ban công, bếp riêng. Nhìn ra thành phố, Mỹ Lan hotel ở Đà Lạt cung cấp chỗ nghỉ có sân hiên. Wi-Fi miễn phí được cung cấp. Khách sạn căn hộ có TV màn hình phẳng và phòng tắm riêng với đồ vệ sinh cá nhân miễn phí, máy."
+    },
+    {
+      "id": "hotel_property/agoda-seo-description",
+      "note": "Nguồn agoda: mô tả gốc ~3.000 từ, tiêu đề SEO dính thân bài (\"…biếtCONIHOUSE\"); thiếu propertyType nên suy từ tên; không có phòng con nào trong catalog nên ROLLUP rỗng.",
+      "collected": {
+        "productId": "3c66729f-a2d5-5047-a0fc-84f40804cd9c",
+        "name": "CONIHOUSE - Homestay & Villa",
+        "taxonomy": "hotel",
+        "destination": "Huế",
+        "description": "CONIHOUSE - Homestay & Villa tại Huế: Tất cả những gì bạn cần biếtCONIHOUSE - Homestay & Villa mang đến một không gian lưu trú riêng tư và",
+        "attributes": {
+          "level": "property",
+          "starRating": 5.0,
+          "familyFriendly": true,
+          "amenities": ["Dịch vụ Internet", "Internet", "Wi-Fi miễn phí trong tất cả các phòng! Miễn phí", "Wi-Fi ở nơi công cộng", "Dịch vụ giặt là"],
+          "reviewScore": 8.2,
+          "reviewCount": 212
+        },
+        "unitPrice": 413603,
+        "available": true
+      },
+      "enriched": {
+        "headline": "CONIHOUSE - Homestay & Villa — homestay 5 sao tại Huế.",
+        "fit": "Phù hợp gia đình có trẻ nhỏ.",
+        "features": "",
+        "rollup": "",
+        "excerpt": "CONIHOUSE - Homestay & Villa mang đến một không gian lưu trú riêng tư và."
+      },
+      "embed_text": "CONIHOUSE - Homestay & Villa — homestay 5 sao tại Huế. Phù hợp gia đình có trẻ nhỏ. CONIHOUSE - Homestay & Villa mang đến một không gian lưu trú riêng tư và."
+    },
+    {
+      "id": "flight_route/nha-trang-nghe-an",
+      "note": "Tuyến + 3 chuyến: ROLLUP tóm hãng, bay thẳng/nối chuyến, khung giờ. Giá vé và mô tả gốc (có giá, mã sân bay) không được dùng.",
+      "collected": {
+        "productId": "e2ccd75f-c4c7-502b-9daf-3b662046d840",
+        "name": "Vé máy bay Nha Trang - Nghệ An",
+        "taxonomy": "flight",
+        "destination": "Nghệ An",
+        "description": "Vé máy bay một chiều từ Nha Trang (CXR) đến Nghệ An (VII). Hãng khai thác: Vietnam Airlines, VietJet Air. Thời gian bay khoảng 1 giờ 35 phút.",
+        "attributes": {
+          "level": "route",
+          "originCity": "Nha Trang",
+          "destinationCity": "Nghệ An",
+          "destinationAirportName": "Sân bay Vinh",
+          "airlines": ["Vietnam Airlines", "VietJet Air"],
+          "durationMinutes": 95
+        },
+        "unitPrice": 1465000,
+        "available": true
+      },
+      "children": [
+        {"airline": "VietJet Air", "flightNumber": "VJ1605", "departureTimeLocal": "05:00", "nonstop": false, "unitPrice": 1663000},
+        {"airline": "VietJet Air", "flightNumber": "VJ609", "departureTimeLocal": "07:00", "nonstop": false, "unitPrice": 1722000},
+        {"airline": "Vietnam Airlines", "flightNumber": "VN1530", "departureTimeLocal": "10:50", "nonstop": true, "unitPrice": 1465000}
+      ],
+      "enriched": {
+        "headline": "Vé máy bay từ Nha Trang đến Nghệ An, hạ cánh tại Sân bay Vinh.",
+        "fit": "",
+        "features": "",
+        "rollup": "Hãng bay: Vietnam Airlines, VietJet Air. Có cả chuyến bay thẳng và nối chuyến. Khung giờ khởi hành: sáng sớm, sáng. Thời gian bay khoảng 1 giờ 35 phút.",
+        "excerpt": ""
+      },
+      "embed_text": "Vé máy bay từ Nha Trang đến Nghệ An, hạ cánh tại Sân bay Vinh. Hãng bay: Vietnam Airlines, VietJet Air. Có cả chuyến bay thẳng và nối chuyến. Khung giờ khởi hành: sáng sớm, sáng. Thời gian bay khoảng 1 giờ 35 phút."
+    },
+    {
+      "id": "attraction/no-price",
+      "note": "unitPrice = null nhưng nguồn trip.com ghi isFree = false (có bán vé, chưa lấy được giá): template KHÔNG suy ra \"công cộng\". Mô tả gốc là khuôn tự sinh nên bị lọc hết.",
+      "collected": {
+        "productId": "8fc49317-20e1-5c3e-878c-a0eba7fdefa0",
+        "name": "Bãi Biển Sun World Hạ Long",
+        "taxonomy": "attraction",
+        "destination": "Hạ Long",
+        "description": "Bãi Biển Sun World Hạ Long. Loại hình: Bãi biển và bờ biển. Địa chỉ: Kỳ Quan, Bãi Cháy, Quảng Ninh, Việt Nam. Giờ mở cửa: 00:00–19:00. Thời gian tham quan đề xuất: 2–3 tiếng",
+        "attributes": {"tags": ["Bãi biển và bờ biển"], "durationMinutes": 120},
+        "unitPrice": null,
+        "available": true
+      },
+      "enriched": {
+        "headline": "Bãi Biển Sun World Hạ Long — điểm tham quan tại Hạ Long.",
+        "fit": "",
+        "features": "Loại hình bãi biển và bờ biển; thời gian tham quan dưới 2 giờ.",
+        "rollup": "",
+        "excerpt": ""
+      },
+      "embed_text": "Bãi Biển Sun World Hạ Long — điểm tham quan tại Hạ Long. Loại hình bãi biển và bờ biển; thời gian tham quan dưới 2 giờ."
+    },
+    {
+      "id": "attraction/ticketed",
+      "note": "Vé có giá: FIT lấy audience, FEATURES lấy tags + thời lượng, EXCERPT lấy mô tả gốc đã làm sạch.",
+      "collected": {
+        "productId": "3db61b76-2aea-5c50-8827-69ac5e08e311",
+        "name": "VinWonders Nha Trang Passport (All-in-one Deals)",
+        "taxonomy": "attraction",
+        "destination": "Nha Trang",
+        "description": "VinWonders Nha Trang Passport (All-in-one Deals)\n\nĐẢO HÒN TRE - NHA TRANG\nVinWonders Nha Trang\nTọa lạc trên đảo Hòn Tre, VinWonders Nha Trang vừa sở hữu vẻ đẹp thơ mộng của vịnh biển, vừa mang đến vô vàn trải",
+        "attributes": {
+          "venue": "VinWonders Nha Trang",
+          "audience": ["Nhóm bạn", "Gia đình", "Cặp đôi", "Doanh nhân"],
+          "tags": ["Công viên giải trí", "Cảnh đêm"],
+          "durationMinutes": 480
+        },
+        "unitPrice": 400000,
+        "available": true
+      },
+      "enriched": {
+        "headline": "VinWonders Nha Trang Passport (All-in-one Deals) — điểm tham quan tại Nha Trang.",
+        "fit": "Phù hợp: Nhóm bạn, Gia đình, Cặp đôi, Doanh nhân.",
+        "features": "Loại hình công viên giải trí, cảnh đêm; thời gian tham quan cả ngày.",
+        "rollup": "",
+        "excerpt": "Tọa lạc trên đảo Hòn Tre, VinWonders Nha Trang vừa sở hữu vẻ đẹp thơ mộng của vịnh biển, vừa mang đến vô vàn trải."
+      },
+      "embed_text": "VinWonders Nha Trang Passport (All-in-one Deals) — điểm tham quan tại Nha Trang. Phù hợp: Nhóm bạn, Gia đình, Cặp đôi, Doanh nhân. Loại hình công viên giải trí, cảnh đêm; thời gian tham quan cả ngày. Tọa lạc trên đảo Hòn Tre, VinWonders Nha Trang vừa sở hữu vẻ đẹp thơ mộng của vịnh biển, vừa mang đến vô vàn trải."
+    },
+    {
+      "id": "combo/three-items",
+      "note": "ROLLUP = \"Gồm: …\" lấy từ catalog.combo_items theo thứ tự position.",
+      "collected": {
+        "productId": "b8c5cc38-f8a6-5281-b384-a2de17082393",
+        "name": "[VinWonders Nha Trang] - Combo Vé VinWonders + Dịch vụ Buffet Cao Cấp | TẶNG Fastpass Cáp Treo",
+        "taxonomy": "combo",
+        "destination": "Nha Trang",
+        "description": "[VinWonders Nha Trang] - Combo Vé VinWonders + Dịch vụ Buffet Cao Cấp | TẶNG Fastpass Cáp Treo\n\nThiên đường vui chơi, giải trí và nghỉ dưỡng VinWonders Nha Trang nổi tiếng với những trò chơi mang đẳng cấp quốc",
+        "attributes": {"audience": ["Nhóm bạn", "Gia đình", "Cặp đôi", "Doanh nhân"]},
+        "unitPrice": 1450000,
+        "available": true
+      },
+      "combo_items": [
+        {"position": 1, "label": "Vé VinWonders"},
+        {"position": 2, "label": "Dịch vụ Buffet Cao Cấp"},
+        {"position": 3, "label": "TẶNG Fastpass Cáp Treo"}
+      ],
+      "enriched": {
+        "headline": "[VinWonders Nha Trang] - Combo Vé VinWonders + Dịch vụ Buffet Cao Cấp | TẶNG Fastpass Cáp Treo — combo tại Nha Trang.",
+        "fit": "Phù hợp: Nhóm bạn, Gia đình, Cặp đôi, Doanh nhân.",
+        "features": "",
+        "rollup": "Gồm: Vé VinWonders; Dịch vụ Buffet Cao Cấp; TẶNG Fastpass Cáp Treo.",
+        "excerpt": "Thiên đường vui chơi, giải trí và nghỉ dưỡng VinWonders Nha Trang nổi tiếng với những trò chơi mang đẳng cấp quốc."
+      },
+      "embed_text": "[VinWonders Nha Trang] - Combo Vé VinWonders + Dịch vụ Buffet Cao Cấp | TẶNG Fastpass Cáp Treo — combo tại Nha Trang. Phù hợp: Nhóm bạn, Gia đình, Cặp đôi, Doanh nhân. Gồm: Vé VinWonders; Dịch vụ Buffet Cao Cấp; TẶNG Fastpass Cáp Treo. Thiên đường vui chơi, giải trí và nghỉ dưỡng VinWonders Nha Trang nổi tiếng với những trò chơi mang đẳng cấp quốc."
+    },
+    {
+      "id": "golf/vinpearl-golf-leman",
+      "note": "Golf: chỉ HEADLINE + EXCERPT; không in (tỉnh) vì province của golf là tỉnh bên bán, hay sai.",
+      "collected": {
+        "productId": "8ab35bd0-cd0c-5e2f-be56-e20cd628b709",
+        "name": "[Vinpearl Golf LéMan] - Trải nghiệm đẳng cấp, voucher giá tối ưu",
+        "taxonomy": "golf",
+        "destination": "TP. Hồ Chí Minh",
+        "description": "[Vinpearl Golf LéMan] - Trải nghiệm đẳng cấp, voucher giá tối ưu\n\nTỔ HỢP GOLF GIẢI TRÍ VÀ THI ĐẤU HÀNG ĐẦU VIỆT NAM\nTọa lạc tại xã Tân Thông Hội (huyện Củ Chi cũ), TP. Hồ Chí Minh –",
+        "attributes": {"venue": "Vinpearl Golf Léman"},
+        "unitPrice": 1700000,
+        "available": true
+      },
+      "enriched": {
+        "headline": "[Vinpearl Golf LéMan] - Trải nghiệm đẳng cấp, voucher giá tối ưu — sân golf tại TP. Hồ Chí Minh.",
+        "fit": "",
+        "features": "",
+        "rollup": "",
+        "excerpt": "Tọa lạc tại xã Tân Thông Hội (huyện Củ Chi cũ), TP. Hồ Chí Minh –."
+      },
+      "embed_text": "[Vinpearl Golf LéMan] - Trải nghiệm đẳng cấp, voucher giá tối ưu — sân golf tại TP. Hồ Chí Minh. Tọa lạc tại xã Tân Thông Hội (huyện Củ Chi cũ), TP. Hồ Chí Minh –."
+    },
+    {
+      "id": "hotel_room/not-embedded",
+      "note": "Phòng không có vector riêng: text rỗng, thông tin đã nằm trong đoạn văn của khách sạn cha.",
+      "collected": {
+        "productId": "dc29659c-bf50-5dba-b713-2642ec9157c1",
+        "name": "Mỹ Lan hotel - Căn Hộ 1 Phòng Ngủ",
+        "taxonomy": "hotel",
+        "destination": "Đà Lạt",
+        "attributes": {"level": "room", "parentProductId": "83f1a4f5-a0e7-5d71-9494-4a9739eb4d35", "roomName": "Căn Hộ 1 Phòng Ngủ"},
+        "unitPrice": 650000
+      },
+      "enriched": {"headline": "", "fit": "", "features": "", "rollup": "", "excerpt": ""},
+      "embed_text": ""
+    },
+    {
+      "id": "flight/not-embedded",
+      "note": "Chuyến bay không có vector riêng: text rỗng, thông tin đã nằm trong đoạn văn của tuyến.",
+      "collected": {
+        "productId": "4ddad830-e4d3-5d18-b4e1-8f74674349cf",
+        "name": "VietJet Air VJ1605: Nha Trang - Nghệ An (05:00)",
+        "taxonomy": "flight",
+        "destination": "Nghệ An",
+        "attributes": {"level": "flight", "parentProductId": "e2ccd75f-c4c7-502b-9daf-3b662046d840", "airline": "VietJet Air", "flightNumber": "VJ1605"},
+        "unitPrice": 1663000
+      },
+      "enriched": {"headline": "", "fit": "", "features": "", "rollup": "", "excerpt": ""},
+      "embed_text": ""
+    }
+  ]
+}

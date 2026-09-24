@@ -1,4 +1,4 @@
-# Product schema — catalog V-OTA trên PostgreSQL
+# Product schema — catalog PostgreSQL và vector Weaviate
 
 Bản 2.2 · 20/09/2026 · **phương án tối giản theo handbook** · đi kèm trang ERD "V-OTA Product Schema" (artifact).
 Schema toàn hệ thống (cdp · catalog · app · insider) và **DDL chính thức** nằm ở `DATABASE_SCHEMA.md` — tài liệu này chỉ giải thích phần product catalog.
@@ -10,7 +10,7 @@ Tài liệu này là **schema quan hệ trong PostgreSQL của V-OTA**; `SCHEMA.
 
 1. **Một bảng `products`, không tách bảng theo loại.** Đúng 13 trường CDP (handbook §6). Thuộc tính khác nhau giữa 5 `taxonomy` nằm ở `attributes` JSONB, truy vấn bằng expression index và view. Không có 7 bảng chi tiết như bản 1.
 2. **Hai schema trong một database.** `cdp` = mirror CDP thật, `CdpClient` (role `cdp_reader`) chỉ được đọc schema này. `catalog` = bảng và view riêng của V-OTA. **Insider clone là service riêng, không có bảng nào ở đây** — nó chỉ nhận customer attributes và events có TTL qua `InsiderClient`.
-3. **Combo = sản phẩm + bill of materials.** Combo là một dòng `cdp.products` có giá, vector, event riêng. Thành phần ở `catalog.combo_items` — bảng duy nhất thêm ngoài contract. Không lồng combo.
+3. **Combo = sản phẩm + bill of materials.** Combo là một dòng `cdp.products` có giá, vector Weaviate và event riêng. Thành phần ở `catalog.combo_items` — bảng duy nhất thêm ngoài contract. Không lồng combo.
 4. **Vai trò suy ra, không nhập tay.** View `catalog.product_meta` tính `variant`, `is_bookable` (property, route, điểm công cộng = false) và `is_search_unit` (room, flight = false) từ 13 trường + attributes. Không lưu, không thể lệch.
 
 ## 2. Hai schema, một database — ai đọc gì
@@ -18,9 +18,10 @@ Tài liệu này là **schema quan hệ trong PostgreSQL của V-OTA**; `SCHEMA.
 | Schema | Đối tượng | Ai ghi | Ai đọc |
 |---|---|---|---|
 | **`cdp`** (contract) | `products` (13 trường + attributes); sau này `profiles`, `events`, `users`, `bookings` | Loader, từ `products.jsonl` | `CdpClient` (role `cdp_reader`, chỉ USAGE trên `cdp`); Search dùng cột để lọc |
-| **`catalog`** (riêng V-OTA) | view `product_meta`, bảng `combo_items`, bảng `product_vectors`, view `product_parents`, view `search_rows` | Loader (combo_items), text builder → `POST /embed` (product_vectors) | Backend V-OTA (role `vota_app`), Search, Recsys |
+| **`catalog`** (riêng V-OTA) | view `product_meta`, bảng `combo_items`, view `product_parents`, view `search_rows` | Loader (`combo_items`) | Backend V-OTA (role `vota_app`), Search, Recsys |
+| **Weaviate** (dịch vụ riêng) | collection `Product`: vector 1024 chiều + `productId`, `modelVersion`, `textHash` | job `embed_products`: text builder → Cohere → Weaviate | Search, Recsys |
 
-Handbook gọi DB này là "CDP clone" vì nó chứa cả bảng mirror CDP lẫn bảng demo-only; ranh giới thật nằm ở cấp schema. Khi lên CDP production chỉ phải viết hai chỗ: adapter `CdpClient` và job đồng bộ `catalog.product_vectors`; mọi thứ ở `catalog` đã khoá theo `product_id`.
+Handbook gọi PostgreSQL này là "CDP clone" vì nó chứa cả bảng mirror CDP lẫn bảng demo-only; ranh giới thật nằm ở cấp schema. Khi lên CDP production, adapter `CdpClient` và job đồng bộ collection `Product` nối hai phía qua `productId`; Weaviate không giữ field hiển thị và không có FK sang PostgreSQL.
 
 ## 3. ERD
 
@@ -64,13 +65,12 @@ erDiagram
         text unit "đêm · vé · khách · suất · lượt"
         boolean is_optional
     }
-    product_vectors {
-        uuid product_id PK,FK "chỉ is_search_unit = true"
-        vector embedding "vector(D), D chốt Tuần 2"
-        text model_version
-        text embed_text "văn bản đã embed (text builder)"
+    weaviate_product {
+        uuid object_id PK "Weaviate UUID xác định từ productId"
+        uuid product_id "khóa nối logic, chỉ is_search_unit = true"
+        vector embedding "1024 chiều · Cohere embed-multilingual-v3.0"
+        text model_version "model + phiên bản text builder"
         text text_hash "chỉ re-embed khi đổi"
-        timestamptz updated_at
     }
     events {
         text cdp_user_id "CDP Event Store — ngoài phạm vi"
@@ -81,13 +81,13 @@ erDiagram
         timestamptz timestamp
     }
     products ||--|| product_meta : "view 1:1"
-    products ||--o| product_vectors : "1 vector / search unit"
+    products ||--o| weaviate_product : "khóa nối logic productId"
     products ||--o{ combo_items : "combo gồm"
     combo_items }o--o| products : "item_product_id + item_kind = taxonomy"
     products ||--o{ events : "product_id"
 ```
 
-Bốn quan hệ: `products` ↔ `product_meta` (1:1, view); `products` → `product_vectors` (0..1, chỉ search unit); `products` (combo) → `combo_items` (1:N); `combo_items` → `products` (thành phần, 0..1 vì có thể chưa map). Cha–con hạng phòng → khách sạn, chuyến → tuyến đi qua `attributes.parentProductId`, có index biểu thức và view `product_parents`. `events` vẽ để thấy khoá nối cho Recsys; thiết kế `events`/`bookings` nằm ngoài tài liệu này.
+Bốn quan hệ logic: `products` ↔ `product_meta` (1:1, view); `products` → Weaviate `Product` (0..1, chỉ search unit, không FK); `products` (combo) → `combo_items` (1:N); `combo_items` → `products` (thành phần, 0..1 vì có thể chưa map). Cha–con hạng phòng → khách sạn, chuyến → tuyến đi qua `attributes.parentProductId`, có index biểu thức và view `product_parents`. `events` vẽ để thấy khoá nối cho Recsys; thiết kế `events`/`bookings` nằm ngoài tài liệu này.
 
 ## 4. Vai trò sản phẩm: `variant`, `is_bookable`, `is_search_unit`
 
@@ -123,7 +123,7 @@ Property và route là nơi chứa sản phẩm, không phải thứ khách tr�
 | `catalog.combo_items` | position 1 · "2 đêm phòng Deluxe Ocean View" · item_kind `hotel` · item_product_id = *hạng phòng R…* · quantity 2 · unit `đêm` |
 | `catalog.combo_items` | position 2 · "Vé VinWonders 1 ngày" · item_kind `attraction` · item_product_id = *vé VW00466* · quantity 1 · unit `vé` |
 | `catalog.combo_items` | position 3 · "Buffet sáng" · item_kind `meal` · item_product_id `NULL` · quantity 2 · unit `suất` |
-| `catalog.product_vectors` | embed_text = "Combo 3N2Đ … Nha Trang. Gồm: 2 đêm phòng Deluxe Ocean View, vé VinWonders 1 ngày, buffet sáng. <description>" |
+| Weaviate `Product` | `productId = C…`; vector của text "Combo 3N2Đ … Nha Trang. Gồm: 2 đêm phòng Deluxe Ocean View, vé VinWonders 1 ngày, buffet sáng. <description>"; kèm `modelVersion`, `textHash` |
 
 ### Quy tắc
 
@@ -147,7 +147,7 @@ AND    item_kind IN ('hotel','flight','attraction','golf');   -- {attraction, ho
 | `products` | cdp | bảng | Catalog CDP, đúng 13 trường, mọi taxonomy; `attributes` JSONB giữ mọi thuộc tính theo loại | PK `product_id` · UNIQUE `source_ref` · UNIQUE `(product_id, taxonomy)` · index cột: taxonomy, (destination, taxonomy), available; GIN attributes; index biểu thức: level, parentProductId, province, starRating |
 | `product_meta` | catalog | view | variant, is_bookable, is_search_unit, parent_product_id, toạ độ, province, sao, review — suy từ products. Nơi duy nhất định nghĩa hai cờ | — |
 | `combo_items` | catalog | bảng | Thành phần combo, có thứ tự, số lượng, đơn vị; link tuỳ chọn sang sản phẩm thật | PK `(combo_product_id, position)` · FK combo → products (…, 'combo') · FK `(item_product_id, item_kind)` → products |
-| `product_vectors` | catalog | bảng | Embedding + model_version + văn bản đã embed. HNSW cosine. Chỉ nạp search unit | PK `product_id` → products |
+| `Product` | Weaviate | collection | Vector 1024 chiều + `productId`, `modelVersion`, `textHash`; HNSW cosine, `vectorizer: none`; chỉ nạp search unit | UUID xác định từ `productId`; nối logic, không FK |
 | `product_parents` | catalog | view | Cặp (con, cha) — roll-up event phòng → khách sạn, chuyến → tuyến | — |
 | `search_rows` | catalog | view | Dòng phẳng 13 trường + meta cho Search, không JSON | — |
 
@@ -174,13 +174,13 @@ Không tách cột nên câu hỏi là "khoá này truy vấn bằng gì": cột
 | `originCity`, `destinationCity`, `originDestination`, `destinationAirportName`, `originLatitude`, `originLongitude`, `airline`, `flightNumber`, `priceObservedAt` | đọc JSONB; thêm index `originDestination` khi có filter cặp điểm đến | |
 | `hotelName` | không dùng | = `name` của cha |
 | *mới:* `nights`, `priceBasis`, `minPax` | đọc JSONB | khoá cấp combo do loader gán; `priceBasis` mặc định `per_package`, `per_person` khi text nói giá theo khách |
-| *mới:* `availability` {from, days, calendar}, `sourceAvailableFrom/To` | đọc JSONB ở hộp đặt | lịch kín/trống 30 ngày, chuỗi 1/0 đọc-only; ký tự i = ngày from + i. `available_from/to` = cửa sổ `[as_of, as_of+29]` cắt với khoảng của nguồn (giữ nguồn ở `sourceAvailableFrom/To`); loader `--as-of`, chạy lại trước demo |
+| *mới:* `availability` {from, days, calendar}, `sourceAvailableFrom/To` | đọc JSONB ở hộp đặt | lịch kín/trống 30 ngày, chuỗi 1/0 đọc-only; ký tự i = ngày from + i. Vinpearl dùng lịch thật khi đã hỏi ≥ 26/30 ngày (`pricesByDateQueried`), dữ liệu thưa fallback sang lịch mô phỏng. `available_from/to` = cửa sổ `[as_of, as_of+29]` cắt với khoảng của nguồn (giữ nguồn ở `sourceAvailableFrom/To`); loader `--as-of`, chạy lại trước demo |
 | *mới:* `departureAt`, `arrivalAt`, `checkInTime`, `checkOutTime` | đọc JSONB | giờ cố định — không nằm trong `available_from/to` |
 | *thành phần combo* | `catalog.combo_items` | chưa có trong attributes — việc mở #1 |
 
 ## 8. Search & Recsys dùng catalog thế nào
 
-**Cái gì được index.** Chỉ dòng `is_search_unit = true` vào `product_vectors`: property, route, attraction, combo, golf — khoảng 1.125 vector thay vì 2.216, nên kết quả search không lặp một khách sạn ba lần. Phòng và chuyến bay hiện ở trang cha; khi tính user vector từ event mua phòng/chuyến, map con → cha qua `product_parents` rồi lấy vector của cha.
+**Cái gì được index.** Chỉ dòng `is_search_unit = true` vào collection `Product` của Weaviate: property, route, attraction, combo, golf — snapshot 11.387 sản phẩm hiện có 3.183 search unit. Phòng và chuyến bay hiện ở trang cha; khi tính user vector từ event mua phòng/chuyến, map con → cha qua `product_parents` rồi lấy vector của cha.
 
 **Text builder theo variant** — mỗi biến thể một công thức; dùng hay bỏ mô tả tự sinh (`description_is_derived`) là quyết định của Search, ghi vào `model_version`.
 
@@ -192,39 +192,11 @@ Không tách cột nên câu hỏi là "khoá này truy vấn bằng gì": cột
 | `combo` | name · destination · "N đêm" · **label của mọi combo_items** · description |
 | `golf` | name · venue · destination · description |
 
-**Ba truy vấn** — mọi `WHERE` là cột của `cdp.products`; không JSONB trên đường nóng.
+**Ba luồng truy xuất.** Search embed câu hỏi bằng Cohere `input_type=search_query`, lấy ứng viên HNSW cosine từ Weaviate rồi hydrate card theo `productId` từ PostgreSQL. Similar lấy vector của search unit (phòng/chuyến resolve về cha) và hỏi near-vector. Recommendation dựng user vector từ event CDP, loại taxonomy đã mua rồi xếp hạng/MMR trên ứng viên. Weaviate không phải nguồn cho tên, giá, ảnh hay availability.
 
-```sql
--- GET /search?q=   (embed(q) → :q)
-SELECT p.*
-FROM   catalog.product_vectors v
-JOIN   cdp.products p USING (product_id)
-WHERE  p.available
-AND    (:taxonomy IS NULL OR p.taxonomy = :taxonomy)
-AND    (:destination IS NULL OR p.destination = :destination)
-ORDER  BY v.embedding <=> :q
-LIMIT  20;
+Contract hiện vẫn yêu cầu `EXACT_FILTER_SCORE`, `total` và facet chính xác; trong khi Weaviate là HNSW-first. Theo `hop-dong-tich-hop-search-recommendation.md` S8, chưa được tự đổi contract: runtime hiện tải 3.183 vector đã persist từ Weaviate vào snapshot bộ nhớ để giữ semantics exact; bước chuyển search sang top-K HNSW + facet SQL cần team Search chốt trước.
 
--- GET /similar/{id}  (id là search unit; nếu là phòng/chuyến → dùng cha)
-WITH me AS (SELECT embedding FROM catalog.product_vectors WHERE product_id = :id)
-SELECT p.*
-FROM   catalog.product_vectors v JOIN cdp.products p USING (product_id), me
-WHERE  p.available AND p.product_id <> :id
-ORDER  BY v.embedding <=> me.embedding
-LIMIT  8;
-
--- GET /recommendations  (user vector :u từ events, decay theo event_group_id;
---                        :done = taxonomy đã đặt trong chuyến, kể cả vertical combo đã mua phủ)
-SELECT p.*
-FROM   catalog.product_vectors v JOIN cdp.products p USING (product_id)
-WHERE  p.available
-AND    p.destination = :trip_destination
-AND    p.taxonomy <> ALL (:done)
-ORDER  BY v.embedding <=> :u
-LIMIT  10;
-```
-
-## 9. Ràng buộc toàn vẹn và quyền (đã test trên PostgreSQL 16 + pgvector 0.6)
+## 9. Ràng buộc toàn vẹn và quyền
 
 1. `cdp.products` có `UNIQUE (product_id, taxonomy)` — khoá phụ để bảng khác khoá đúng loại bằng FK thay vì trigger.
 2. `combo_items.combo_taxonomy` GENERATED = `'combo'` + FK về cặp trên → chỉ combo mới có thành phần.
@@ -239,7 +211,7 @@ Kết quả test: view `product_meta` cho đúng cờ với 6 bản ghi mẫu (p
 | # | Câu hỏi | Ảnh hưởng | Ai chốt |
 |---|---|---|---|
 | 1 | ~~Nguồn dữ liệu thành phần combo~~ — **đã chốt: parse từ description** (18/09), spec ở DATABASE_SCHEMA.md §8 | — | — |
-| 2 | Kích thước vector D và model (đo ở Tuần 2) | `vector(D)`; đổi = re-index | Search |
+| 2 | ~~Kích thước vector D và model~~ — đã chốt 22/09/2026 | Cohere `embed-multilingual-v3.0`, 1024 chiều; đổi model/text builder = re-index collection | — |
 | 3 | ~~Ngữ nghĩa ngày bay~~ — đã chốt 20/09: `available_from = available_to = ngày bay`, giờ ở `attributes.departureAt`; quy tắc chung: from/to = ngày sớm nhất–muộn nhất được chọn usingDate; lịch 30 ngày ở `attributes.availability` {from, days, calendar "1/0"} đọc-only | — | — |
 | 4 | ~~243 khách sạn không có hạng phòng~~ — đã chốt 20/09: chỉ hiển thị, không đặt; `is_recommendable` loại khỏi gợi ý | — | — |
 | 5 | ~~`priceBasis` mặc định~~ — đã chốt 20/09: `per_package`; parser đổi sang `per_person` khi description/attributes nói giá theo khách | — | — |
@@ -259,4 +231,4 @@ DDL chính thức (đã gộp cả `combo_items` bản có `source`/`confidence`
 
 1. `cdp.products` ← `products.jsonl`, đúng 13 trường, `attributes` giữ nguyên; loader gán thêm `nights`/`priceBasis`/`minPax` cho combo khi parse được.
 2. `catalog.combo_items` ← nguồn thành phần combo (việc mở #1); có thể nạp trước chỉ với `label` + `item_kind`.
-3. Text builder theo variant cho các dòng `is_search_unit = true` → `POST /embed` → `catalog.product_vectors` (chỉ re-embed khi `text_hash` đổi).
+3. `python -m src.backend.jobs.embed_products`: text builder cho `is_search_unit = true` → Cohere v2 `search_document` → collection Weaviate `Product`; chỉ re-embed khi `textHash` hoặc `modelVersion` đổi, đồng thời xoá vector mồ côi.

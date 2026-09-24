@@ -12,7 +12,8 @@ Quy tắc (--as-of mặc định là hôm nay; chạy lại trước demo để 
     sourceAvailableFrom khi nó nằm trong cửa sổ; không có thì dời vào cửa sổ: as_of + crc32(productId) % 30.
     attributes.departureAt / arrivalAt đổi sang ngày đó, giữ giờ và thời lượng. Tuyến bay: from / to = ngày nhỏ nhất / lớn nhất của các chuyến con.
   * attributes.availability = {"from": as_of, "days": 30, "calendar": <30 ký tự 1/0>} chỉ cho hạng phòng, điểm tham quan, golf:
-    hạng phòng kín 25–40% theo cụm 1–4 đêm (T6/T7 ×1,5, Vinpearl ×1,3 tối đa 40%); điểm tham quan / golf toàn trống trừ 15% sản phẩm
+    hạng phòng Vinpearl dùng lịch thật khi `pricesByDateQueried` phủ ít nhất 85% cửa sổ; dữ liệu thưa fallback sang lịch mô phỏng kín
+    25–40% theo cụm 1–4 đêm (T6/T7 ×1,5, Vinpearl ×1,3 tối đa 40%). Điểm tham quan / golf toàn trống trừ 15% sản phẩm
     blackout 2–3 ngày. Ngày ngoài khoảng bán của nguồn luôn đóng. Chuyến bay, property, tuyến, combo không có khoá này.
   * khách sạn (property) thiếu giờ thì gán checkInTime / checkOutTime mặc định.
   * combo: gán thêm attributes.priceBasis / nights / minPax từ combo_attributes.json (kết quả parse_combos.py).
@@ -72,6 +73,23 @@ def zero_outside(calendar: str, as_of: date, f: str, t: str) -> str:
     return "".join(c if lo <= as_of + timedelta(days=i) <= hi else "0" for i, c in enumerate(calendar))
 
 
+def real_room_calendar(prices_by_date: dict | None, dates_queried: list | None, as_of: date,
+                       min_coverage: float = 0.85) -> str | None:
+    """Build a real 30-day room calendar only from a sufficiently dense Vinpearl sweep.
+
+    A queried day with a positive price is open; a queried day without one is closed. Unqueried
+    days must never be interpreted as sold out, so sparse samples fall back to the deterministic
+    demo calendar. At 85%, a 30-day window needs at least 26 queried dates.
+    """
+    if not dates_queried:
+        return None
+    queried = {d for d in dates_queried if 0 <= (date.fromisoformat(d) - as_of).days < WINDOW_DAYS}
+    if len(queried) < min_coverage * WINDOW_DAYS:
+        return None
+    priced = {d for d, value in (prices_by_date or {}).items() if value is not None and value > 0}
+    return "".join("1" if (as_of + timedelta(days=i)).isoformat() in priced else "0" for i in range(WINDOW_DAYS))
+
+
 def convert(rows: list[dict], combo_attrs: dict[str, dict], as_of: date) -> tuple[list[dict], dict]:
     lo, hi = window(as_of)
     stats: Counter = Counter()
@@ -97,12 +115,13 @@ def convert(rows: list[dict], combo_attrs: dict[str, dict], as_of: date) -> tupl
             stats["chuyến bay: ngày thật"] += real
             stats["chuyến bay: ngày mock (không có ngày thật trong cửa sổ)"] += not real
         elif v in ("hotel_room", "attraction", "golf"):
-            cal = room_calendar(r, as_of, by_id) if v == "hotel_room" else ticket_calendar(r["productId"], as_of)
+            real_cal = real_room_calendar(attrs.get("pricesByDate"), attrs.get("pricesByDateQueried"), as_of) if v == "hotel_room" else None
+            cal = real_cal if real_cal is not None else (room_calendar(r, as_of, by_id) if v == "hotel_room" else ticket_calendar(r["productId"], as_of))
             cal = zero_outside(cal, as_of, f, t) if f <= t else "0" * WINDOW_DAYS
             attrs["availability"] = {"from": as_of.isoformat(), "days": WINDOW_DAYS, "calendar": cal}
             if v == "hotel_room":
                 closed_frac.append(cal.count("0") / WINDOW_DAYS)
-            stats[f"lịch khả dụng: {v}"] += 1
+            stats[f"lịch khả dụng: {v}" + (" (dữ liệu thật)" if real_cal is not None else "")] += 1
         elif v == "hotel_property":
             for key, default in (("checkInTime", config.HOTEL_CHECK_IN), ("checkOutTime", config.HOTEL_CHECK_OUT)):
                 if not attrs.get(key):
