@@ -31,7 +31,13 @@ src/evaluation/reports/itinerary-agent-metrics.json
 src/evaluation/reports/eval-*.json
 artifacts/
 src/shared/mocks/itinerary-agent/completed-minimal-clarified.json
-bench_out/
 
 # Khóa ký JWT sinh tại máy (auth §19). Không bao giờ commit.
 secrets/
+
+# Search benchmark runtime artifacts
+bench_out/
+
+# Streamlit secrets (mật khẩu nhóm của app soát draft gold). Không bao giờ commit.
+.streamlit/secrets.toml
+**/.streamlit/secrets.toml

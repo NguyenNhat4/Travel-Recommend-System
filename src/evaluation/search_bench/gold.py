@@ -174,3 +174,249 @@ def load_key_index(amenity_vocab_path: Path) -> dict[str, int]:
     if not amenity_vocab_path.exists():
         raise GoldError(f"chưa có {amenity_vocab_path} — chạy `sb catalog build` trước")
     return F.amenity_key_index(json.loads(amenity_vocab_path.read_text(encoding="utf-8")))
+
+
+# ------------------------------------------------------------------ Part 5 (ngày 1): drafts_raw.tsv + nhãn app → drafts.txt
+
+DRAFT_RAW_COLUMNS = ("case_id", "query", "slice", "filter_json", "expected_no_result", "source_refs", "review_note")
+PHRASINGS_PER_INTENT = 3        # mỗi ý định sinh 3 cách nói liền nhau (gold-draft-prompt.md rule 10)
+PER_ROW_INTENT_SLICES = ("out_of_catalog",)   # ở slice này 3 dòng là 3 taxonomy khác nhau → 3 ý định
+
+
+def read_draft_cases(path: Path) -> list[dict]:
+    """drafts_raw.tsv → list dict theo thứ tự file; kiểm đủ cột."""
+    import csv as _csv
+
+    if not path.exists():
+        raise GoldError(f"không thấy {path}")
+    with path.open(encoding="utf-8-sig", newline="") as fh:
+        rows = list(_csv.DictReader(fh, delimiter="\t"))
+    if not rows:
+        raise GoldError(f"{path.name}: không có dòng nào")
+    missing = [c for c in DRAFT_RAW_COLUMNS if c not in rows[0]]
+    if missing:
+        raise GoldError(f"{path.name} thiếu cột {missing}")
+    return rows
+
+
+def intent_key(case_id: str, slice_: str) -> tuple[str, int]:
+    """Ý định của một case. Mặc định 3 dòng liền nhau = 1 ý định; `out_of_catalog` thì mỗi dòng một ý định."""
+    n = int(case_id.lstrip("c"))
+    return (slice_, n) if slice_ in PER_ROW_INTENT_SLICES else (slice_, (n - 1) // PHRASINGS_PER_INTENT)
+
+
+def resolve_decisions(events: list) -> tuple[dict[str, dict], list[str]]:
+    """Nhãn mới nhất theo (case_id, annotator) → một quyết định cho mỗi case.
+
+    Nhiều annotator cho cùng case mà khác verdict → bất đồng: trả về ở danh sách thứ hai và KHÔNG chọn case đó.
+    """
+    from .labeling import latest_by_annotator
+
+    per_case: dict[str, list] = {}
+    for (case_id, _ann), ev in latest_by_annotator(events).items():
+        per_case.setdefault(case_id, []).append(ev)
+    decisions: dict[str, dict] = {}
+    conflicts: list[str] = []
+    for case_id, evs in per_case.items():
+        if len({e.verdict for e in evs}) > 1:
+            conflicts.append(case_id)
+            continue
+        newest = max(evs, key=lambda e: (e.updated_at, e.event_id))
+        decisions[case_id] = {"verdict": newest.verdict, "edited_query": newest.edited_query,
+                              "rejection_reason": newest.rejection_reason, "annotator": newest.annotator}
+    return decisions, sorted(conflicts)
+
+
+# `review_note` chỉ là khoá ý định đầy đủ ở hai slice này (loại x dia danh / dia danh vang);
+# o cac slice khac no chi mo ta khuon rang buoc (vi du multi_constraint: "star=3;price<=1000000"),
+# hai y dinh khac diem den van dung chung note nen KHONG duoc coi la trung.
+NOTE_IS_INTENT_KEY = ("dest_type", "out_of_catalog")
+PHRASING_REASONS = ("duplicate", "unnatural")   # lỗi của cách nói, không phải của ý định → ý định vẫn dùng được
+
+
+def select_drafts(cases: list[dict], decisions: dict[str, dict], quota: dict[str, int], *,
+                  fill: bool = False, fill_guard=None) -> tuple[list[dict], dict]:
+    """Chọn bộ draft cuối: giữ 1 cách nói cho mỗi ý định, cắt theo quota từng slice.
+
+    Trả về (rows, report). `rows` giữ thứ tự case_id; mỗi row có query đã áp NEEDS_EDIT.
+    """
+    kept_by_intent: dict[tuple[str, int], dict] = {}
+    dropped_duplicate: list[str] = []
+    reasons: Counter = Counter()
+    ungraded: Counter = Counter()
+    for row in cases:
+        case_id, sl = row["case_id"], row["slice"]
+        if sl not in quota:
+            raise GoldError(f"{case_id}: slice {sl!r} không có trong gold.slices")
+        d = decisions.get(case_id)
+        if d is None:
+            ungraded[sl] += 1
+            continue
+        if d["verdict"] == "REJECT":
+            reasons[d["rejection_reason"] or "other"] += 1
+            continue
+        query = d["edited_query"] if d["verdict"] == "NEEDS_EDIT" else row["query"]
+        if not query.strip():
+            raise GoldError(f"{case_id}: NEEDS_EDIT nhưng edited_query rỗng")
+        key = intent_key(case_id, sl)
+        if key in kept_by_intent:
+            dropped_duplicate.append(case_id)     # giữ cách nói có case_id nhỏ nhất (dạng câu gốc)
+            continue
+        kept_by_intent[key] = {**row, "query": query.strip(), "verdict": d["verdict"], "annotator": d["annotator"]}
+
+    by_intent_rows: dict[tuple[str, int], list[dict]] = {}
+    for row in cases:
+        by_intent_rows.setdefault(intent_key(row["case_id"], row["slice"]), []).append(row)
+
+    filled: list[dict] = []
+    skipped_fill: list[dict] = []
+    selected: list[dict] = []
+    over_quota: dict[str, list[str]] = {}
+    per_slice: dict[str, dict] = {}
+    for sl, q in quota.items():
+        avail = sorted((r for r in kept_by_intent.values() if r["slice"] == sl), key=lambda r: r["case_id"])
+        take, rest = avail[:q], avail[q:]
+        if fill and len(take) < q:
+            covered = {(r.get("review_note") or "").strip() for r in take} if sl in NOTE_IS_INTENT_KEY else set()
+            # Ở slice mà note là khoá ý định, lỗi thật trên MỘT dòng (vd. out_of_catalog: điểm đến có sản phẩm trùng tên)
+            # áp cho mọi dòng cùng note — không lấp lại "vé tham quan X" khi "resort ở X" đã bị loại vì X có trong catalog.
+            dead_notes = set()
+            if sl in NOTE_IS_INTENT_KEY:
+                for r in cases:
+                    v = decisions.get(r["case_id"])
+                    if r["slice"] == sl and v and v["verdict"] == "REJECT" and (
+                            (v["rejection_reason"] or "other") not in PHRASING_REASONS or v.get("annotator") == "override"):
+                        dead_notes.add((r.get("review_note") or "").strip())
+                dead_notes.discard("")
+            for key, rows_ in sorted(by_intent_rows.items(), key=lambda kv: kv[1][0]["case_id"]):
+                if len(take) >= q or key[0] != sl or key in kept_by_intent:
+                    continue
+                verdicts = [decisions.get(r["case_id"]) for r in rows_]
+                graded = [v for v in verdicts if v is not None]
+                # Lỗi của ý định (bịa thực thể, sai slice, grounding…) hay một REJECT trong overrides.tsv áp cho mọi cách
+                # nói → loại cả ý định, kể cả khi còn dòng chưa gán. Chỉ duplicate/unnatural là lỗi của riêng một câu.
+                bad = sorted({v["rejection_reason"] or "other" for v in graded if v["verdict"] == "REJECT"
+                              and ((v["rejection_reason"] or "other") not in PHRASING_REASONS
+                                   or v.get("annotator") == "override")})
+                if bad:
+                    skipped_fill.append({"case_id": rows_[0]["case_id"], "slice": sl,
+                                         "why": "loại vì lỗi thật: " + ", ".join(bad)})
+                    continue
+                if len(graded) < len(verdicts):
+                    kind = "chưa gán"
+                else:
+                    kind = "loại vì cách nói (" + ", ".join(sorted({v["rejection_reason"] for v in graded})) + ")"
+                # Cách nói còn dùng được: chưa gán, hoặc chỉ bị loại vì trùng; bỏ câu người soát đã đánh `unnatural`.
+                usable = [r for r, v in zip(rows_, verdicts) if v is None or v["rejection_reason"] == "duplicate"]
+                if not usable:
+                    skipped_fill.append({"case_id": rows_[0]["case_id"], "slice": sl,
+                                         "why": "mọi cách nói đều bị đánh unnatural"})
+                    continue
+                cand = usable[0]                                  # cách nói gốc nhất còn dùng được
+                note = (cand.get("review_note") or "").strip() if sl in NOTE_IS_INTENT_KEY else ""
+                if note and note in dead_notes:
+                    skipped_fill.append({"case_id": cand["case_id"], "slice": sl,
+                                         "why": f"khoá ý định đã bị loại vì lỗi thật ở dòng khác ({note})"})
+                    continue
+                if note and note in covered:
+                    skipped_fill.append({"case_id": cand["case_id"], "slice": sl,
+                                         "why": f"trùng khoá ý định đã có ({note})"})
+                    continue
+                why = fill_guard(cand) if fill_guard else None
+                if why:
+                    skipped_fill.append({"case_id": cand["case_id"], "slice": sl, "why": why})
+                    continue
+                row = {**cand, "verdict": "AUTO_FILL", "annotator": "auto"}
+                take.append(row)
+                filled.append({"case_id": cand["case_id"], "slice": sl, "kind": kind, "query": cand["query"]})
+                covered.add(note)
+            take.sort(key=lambda r: r["case_id"])
+        selected += take
+        if rest:
+            over_quota[sl] = [r["case_id"] for r in rest]
+        per_slice[sl] = {"quota": q, "available_intents": len(avail), "selected": len(take),
+                         "shortfall": max(0, q - len(take)), "ungraded_rows": ungraded[sl]}
+    selected.sort(key=lambda r: r["case_id"])
+
+    seen: dict[tuple[str, str], str] = {}
+    for r in selected:
+        k = (r["query"].casefold(), r["slice"])
+        if k in seen:
+            raise GoldError(f"{r['case_id']} trùng (query, slice) với {seen[k]} — parse_drafts sẽ từ chối")
+        seen[k] = r["case_id"]
+
+    report = {"per_slice": per_slice, "selected": len(selected), "target": sum(quota.values()),
+              "dropped_duplicate": dropped_duplicate, "over_quota": over_quota,
+              "reject_reasons": dict(reasons), "ungraded_total": sum(ungraded.values()),
+              "filled": filled, "skipped_fill": skipped_fill}
+    return selected, report
+
+
+def write_drafts(path: Path, rows: list[dict]) -> None:
+    """Ghi `query \t slice [\t filter_json] [\t expected_no_result]` — đúng định dạng parse_drafts đọc."""
+    out: list[str] = []
+    for r in rows:
+        flt = (r.get("filter_json") or "").strip()
+        eno = (r.get("expected_no_result") or "").strip().lower()
+        parts = [r["query"], r["slice"]]
+        if eno in ("true", "false"):
+            parts += [flt, eno]
+        elif flt:
+            parts.append(flt)
+        if any("\t" in p for p in parts):
+            raise GoldError(f"{r['case_id']}: giá trị chứa TAB, không ghi được")
+        out.append("\t".join(parts))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(out) + "\n", encoding="utf-8")
+
+
+def render_drafts_report(report: dict) -> str:
+    lines = [f"| {'slice':22} | {'chọn':>5} | {'quota':>5} | {'ý định có':>9} | {'thiếu':>5} | {'chưa gán':>8} |",
+             f"|{'-' * 24}|{'-' * 7}|{'-' * 7}|{'-' * 11}|{'-' * 7}|{'-' * 10}|"]
+    for sl, s in report["per_slice"].items():
+        lines.append(f"| {sl:22} | {s['selected']:>5} | {s['quota']:>5} | {s['available_intents']:>9} | "
+                     f"{s['shortfall']:>5} | {s['ungraded_rows']:>8} |")
+    lines.append(f"| {'TỔNG':22} | {report['selected']:>5} | {report['target']:>5} | {'':>9} | "
+                 f"{report['target'] - report['selected']:>5} | {report['ungraded_total']:>8} |")
+    return "\n".join(lines)
+
+
+OVERRIDE_COLUMNS = ("case_id", "verdict", "edited_query", "reason", "note")
+OVERRIDE_VERDICTS = ("KEEP", "REJECT", "NEEDS_EDIT")
+
+
+def read_overrides(path: Path, case_ids: set[str]) -> dict[str, dict]:
+    """`gold/overrides.tsv`: quyết định ghi đè nhãn của app, có commit để truy được ai mở lại cái gì, vì sao.
+
+    Dùng khi người dùng chốt sửa một quyết định mà không muốn ghi event giả mạo tên annotator vào kho nhãn.
+    """
+    import csv as _csv
+
+    if not path.exists():
+        return {}
+    with path.open(encoding="utf-8-sig", newline="") as fh:
+        rows = [r for r in _csv.DictReader(fh, delimiter="\t") if (r.get("case_id") or "").strip()]
+    out: dict[str, dict] = {}
+    for i, r in enumerate(rows, 2):
+        cid, verdict = r["case_id"].strip(), (r.get("verdict") or "").strip().upper()
+        if cid not in case_ids:
+            raise GoldError(f"{path.name}:{i}: case {cid} không có trong drafts_raw.tsv")
+        if verdict not in OVERRIDE_VERDICTS:
+            raise GoldError(f"{path.name}:{i}: verdict phải thuộc {OVERRIDE_VERDICTS}, gặp {verdict!r}")
+        edited = (r.get("edited_query") or "").strip()
+        if (verdict == "NEEDS_EDIT") != bool(edited):
+            raise GoldError(f"{path.name}:{i}: edited_query chỉ có và bắt buộc có khi verdict = NEEDS_EDIT")
+        if not (r.get("note") or "").strip():
+            raise GoldError(f"{path.name}:{i}: cần ghi note lý do ghi đè")
+        if cid in out:
+            raise GoldError(f"{path.name}:{i}: case {cid} ghi đè hai lần")
+        out[cid] = {"verdict": verdict, "edited_query": edited, "rejection_reason": (r.get("reason") or "").strip(),
+                    "annotator": "override", "note": r["note"].strip()}
+    return out
+
+
+def apply_overrides(decisions: dict[str, dict], conflicts: list[str],
+                    overrides: dict[str, dict]) -> tuple[dict[str, dict], list[str]]:
+    """Ghi đè thắng mọi nhãn của app cho case đó, kể cả khi các annotator đang bất đồng."""
+    merged = {**decisions, **overrides}
+    return merged, [c for c in conflicts if c not in overrides]

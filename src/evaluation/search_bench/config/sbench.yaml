@@ -66,13 +66,13 @@ gold:                             # Part 5
   judged_at_10_min: 0.80
   judged_at_10_slice_min: 0.70     # cổng Part 12 chặn nếu slice nào thấp hơn
   min_per_slice: 10
-  slices:                         # quota
-    dest_type: 30
-    audience_style: 25
+  slices:                         # quota — tổng = target, mỗi mục ≥ min_per_slice
+    dest_type: 25
+    audience_style: 20
     amenity_single: 15
     amenity_multi: 10
-    amenity_negation: 5
-    amenity_offtaxonomy: 5
+    amenity_negation: 10
+    amenity_offtaxonomy: 10
     parent_child: 15
     named_entity: 20
     no_diacritics: 20

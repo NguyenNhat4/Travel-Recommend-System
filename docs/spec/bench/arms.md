@@ -1,6 +1,6 @@
 # arms.md — toàn bộ arm của benchmark embedding + search (Weaviate + Cohere)
 
-Phục vụ: FR-SRC-01, FR-SRC-02, FR-SRC-03, NFR-PERF-01, NFR-PERF-03 (`docs/prd/requirements.md`).
+Phục vụ: **FR-SRC-01..04**, **NFR-PERF-01**, **NFR-PERF-03**, **AC-SRC-01** (`docs/prd/requirements.md`).
 
 Bản 23/09/2026 · đi kèm `search-eval-local-spec.md` (cách chạy) và `search-eval-checklist.md` (ai chạy ngày nào). File này là **nguồn duy nhất** liệt kê arm: `arms/*.yaml` phải khớp bảng §1; arm không có trong file này không được chạy.
 

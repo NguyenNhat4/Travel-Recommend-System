@@ -1,6 +1,6 @@
 # Checklist 8 ngày — benchmark embedding + search (Weaviate + Cohere) cho V-OTA
 
-Phục vụ: FR-SRC-01, FR-SRC-02, FR-SRC-03, NFR-PERF-01, NFR-PERF-03 (`docs/prd/requirements.md`).
+Phục vụ: **FR-SRC-01..04**, **NFR-PERF-01**, **NFR-PERF-03**, **AC-SRC-01** (`docs/prd/requirements.md`).
 
 Bản 23/09/2026 — rev 2: ngày 4–8 chạy theo cổng (`sb run --stage`, `sb promote`, `sb gold holes`), thêm bước đặt baseline regression · đi kèm `search-eval-local-spec.md` (code chạy local) và `arms.md` (danh sách arm) · nguồn: `EMBEDDING_STACK_SWITCH.md`, `EMBEDDING_AND_ENGINES.md` §9, `VECTOR_DB_BENCH_SPEC.md` Part 6b, `VECTOR_STORE_AND_ROBUSTNESS.md` §3.1.
 
@@ -27,20 +27,23 @@ Ký hiệu lệnh: `sb` = `python -m evaluation.search_bench` chạy từ `src/`
 ## Ngày 1 — Draft gold · Hạ tầng
 
 ### A
-- [ ] Đọc `docs/spec/data-collection/schema.md` §3–§5 để biết trường thật; xuất danh sách destination, tên sản phẩm, amenity thô: `sb catalog vocab` — *24/09: `vocab.json` đã dựng lại trên snapshot 2026-09-23 (38 điểm đến · 3.183 sản phẩm · 517 amenity) — draft dùng bản này; id amenity đổi so với 2026-09-21, nên ghi **khoá** amenity, không ghi id*
-- [ ] Viết prompt sinh draft (`gold/prompts/draft.txt` — AGENTS.md §7 không cho `.md` trong `src/`): ràng buộc destination / tên / amenity vào danh sách vừa xuất; mỗi dòng `query \t slice`
-- [ ] Sinh ~600 draft, đủ 10 slice (quota ở config `gold.slices`)
-- [ ] Soát tay, chọn 200 → `gold/drafts.txt` (giữ log số draft bị loại theo lý do: bịa tên / trùng / không tự nhiên)
-- [ ] Với slice `multi_constraint`: điền cột `filter` mong đợi (AST JSON; amenity ghi **khoá** như `kids_club`, không ghi id — xem `filter_fields` trong `vocab.json`); slice `out_of_catalog`: cột `expected_no_result=true`
+- [x] Đọc `docs/spec/data-collection/schema.md` §3–§5 để biết trường thật; xuất danh sách destination, tên sản phẩm, amenity thô: `sb catalog vocab` — *24/09: `vocab.json` đã dựng lại trên snapshot 2026-09-23 (38 điểm đến · 3.183 sản phẩm · 517 amenity) — draft dùng bản này; id amenity đổi so với 2026-09-21, nên ghi **khoá** amenity, không ghi id*
+- [x] Viết prompt sinh draft (`docs/spec/bench/gold-draft-prompt.md` — AGENTS.md §7 không cho `.md` trong `src/`): ràng buộc destination / tên / amenity vào danh sách vừa xuất; mỗi dòng `query \t slice`
+- [x] Sinh ~600 draft, đủ 13 slice (quota ở config `gold.slices`) → lưu `gold/drafts_raw.tsv`
+- [x] Bổ sung ứng viên cho slice đã cạn ý định: append vào `gold/drafts_raw.tsv`, không đánh số lại dòng cũ, mỗi ý định 3 cách nói (`docs/spec/bench/gold-draft-prompt.md` rule 10) — *24/09: `c0601`–`c0672` (72 dòng / 24 ý định) trên snapshot 2026-09-23; luật chọn ở `drafts_manifest.json → supplements`*
+- [ ] Người dùng soát tay, chọn 200 → `gold/drafts.txt` bằng app `streamlit_app.py` rồi `sb gold drafts --fill` (giữ log số draft bị loại theo lý do: bịa tên / trùng / không tự nhiên) — *24/09: **200/200, 13/13 slice đúng quota**. 158 dòng từ quyết định của người soát (kể cả 29 dòng ghi đè có bằng chứng trong `gold/overrides.tsv`), **42 dòng do `--fill` lấp tự động** — đã qua một vòng phản biện máy trên catalog 2026-09-23 nhưng **chưa có người rà**; tick ô này sau khi rà xong 42 dòng đó*
+- [x] Với slice `multi_constraint`: điền cột `filter` mong đợi (AST JSON; amenity ghi **khoá** như `kids_club`, không ghi id — xem `filter_fields` trong `vocab.json`); slice `out_of_catalog`: cột `expected_no_result=true`
 
 ### B
 - [x] `docker compose -f evaluation/search_bench/docker/compose.yml up -d --wait weaviate` từ `src/` (image pin theo spec, cổng 127.0.0.1:58080/55051) · `sb doctor` xanh — *23/09: Weaviate 1.37.3, ascii_fold analyzer*
-- [x] Tạo collection theo `sb collection create --variant T3+R --model cohere-v3` (schema §3 spec): named vector `content`, BM25 `word` + fold dấu, `amenity_ids[]`, `parentProductId` — *23/09: tên vật lý `Products__T3_R__cohere_v3`; thêm `stopwords_preset: none` (đề xuất, cần xác nhận)*
+- [x] Tạo collection theo `sb collection create --variant T3+R --model cohere-v3` (schema §3 spec): named vector `content`, BM25 `word` + fold dấu, `amenity_ids[]`, `parentProductId` — *23/09: tên vật lý `Products__T3_R__cohere_v3`; thêm `stopwords_preset: none` (đề xuất, cần xác nhận)*; property trong Weaviate là **`parent_product_id`** (snake_case, tokenization FIELD, chỉ để lọc) — `parentProductId` ở đây là tên field của `products.jsonl`
 - [x] Cohere client: batch ≤ 96, `input_type` đúng chiều, `truncate=NONE`, retry 429 backoff, log token/chi phí — *23/09: + pacer 2.000 input/phút, `sb cost`*
 - [x] Cache embedding theo `sha1(model|input_type|text)` — chạy 2 lần không tốn tiền lần 2 — *23/09: `--limit 96` lần 1 = 1 lượt gọi, lần 2 = 0*
 - [ ] Text builder tối thiểu cho B0: base `T1`, `T3` + modifier `R` (spec Part 2); các base/modifier còn lại để ngày 4 — *24/09: chưa làm — B0 hiện là `build_text` của backend (spec §1.1, `text_builder: app`); chờ chốt B0 dựng từ `textbuild.py` (T3 = T1 + tóm tắt LLM khi description tự sinh, còn lại description gốc — spec Part 2) hay giữ bản backend* — *24/09 chiều: chốt B0 = `build_text` backend `catalog-text-v2` như production (spec §1.1) → `T1`/`T3`/`R` của `textbuild.py` chỉ còn phục vụ E1a (ngày 4), không chặn B0 hay pool*
 - [ ] `sb enrich summaries` chạy nền (chỉ từ attributes, prompt cấm thêm sự kiện) → `llm_summaries.jsonl` + `summaries_review.csv` (5%) → **A soát** (B không tự soát) — *24/09: chưa làm (cần `LLM_PROVIDER` + key trong `.env`); không chặn B0 (B0 = `build_text` backend)*
 - [x] Chạy thử với 50 sản phẩm mẫu (`sample/products-sample.jsonl` = 26 search unit): `sb --dataset sample catalog build` → `sb --dataset sample embed --variant T3+R --model cohere-v3 --limit 50` → `sb --dataset sample load` — *23/09: 26 vector thật (3.654 token, $0,000365), load 26 object*
+
+> *24/09 kiểm lại trên clone mới (PR gộp app gán nhãn của Người A vào `bench/embed-search`): `.venv-sbench` dựng lại từ `requirements.txt`; `sb doctor` xanh exit 0 (Docker 29.4.2, Weaviate 1.37.3, ascii_fold analyzer, gRPC 55051, `COHERE_API_KEY` hợp lệ, snapshot 10.320 dòng) — `bge-m3` WARN và `gold tags` INFO là bình thường. `--dataset sample catalog build` 26 search unit / 50 bản ghi, 9 điểm đến. `collection create` → `Products__T3_R__cohere_v3__sample`. `embed --limit 50` = 26 vector × 1024, 1 lượt gọi, 3.654 token, $0,000365; chạy lại = 0 lượt gọi / 26 từ cache. `load` 26 object, `collection list` `complete=True`, `items=39e24f766b`. `tokens` n=26 p50 134 p90 188 p99 214 max 217 — qua gate. `query "resort Nha Trang" --arm B0` top-1 Vinpearl Resort & Spa Nha Trang Bay (0,3225), top-2 Vinpearl Beachfront Nha Trang (0,3608), `input_type=query`. `sb cost` tổng 4 lượt gọi / 3.659 token / $0,000365. `pytest` 129 passed, 9 skipped; `pytest -m integration` 9 passed (gồm 50 filter ngẫu nhiên khớp evaluator pandas). App gán nhãn: mật khẩu sai bị chặn, mật khẩu đúng hiện 600 case và 13 slice. Chi tiết: `history/2026-09-24-sbench-ngay-1-kiem-lai-tren-clone-moi.md`.*
 
 ### Sync cuối ngày
 - [x] B demo cho A: import 26 search unit mẫu, `sb --dataset sample query "resort Nha Trang" --arm B0` ra kết quả — *23/09: top-1 Vinpearl Resort & Spa Nha Trang Bay, top-2 Vinpearl Beachfront Nha Trang*
@@ -88,7 +91,7 @@ Ký hiệu lệnh: `sb` = `python -m evaluation.search_bench` chạy từ `src/`
 ## Ngày 4 — Khoá gold · B0 · SAN · E1a
 
 ### A
-- [ ] `sb gold import gold/pool_labeled.csv` → `gold/gold.jsonl`; `sb gold check` xanh (mỗi query ≥ 1 nhãn 2 trừ out_of_catalog, không slice < 10 query)
+- [ ] `sb gold import gold/pool_labeled.csv` → `gold/gold.jsonl`; `sb gold check` xanh (mỗi query ≥ 1 nhãn 2 trừ out_of_catalog, không slice < `gold.min_per_slice` = 10 query)
 - [ ] `git tag gold_v1`; từ đây gold chỉ **thêm** (spec Part 11)
 - [ ] `sb arms check` xanh (arms.md ↔ `arms/*.yaml` ↔ `stages.yaml`)
 - [ ] `sb run --stage B0 --until SAN` → đọc `sb compare --stage SAN`
@@ -195,6 +198,7 @@ Ký hiệu lệnh: `sb` = `python -m evaluation.search_bench` chạy từ `src/`
 |---|---|
 | κ < 0,6 sau lần gán lại | Thu hẹp nhãn 1 thành định nghĩa cụ thể theo taxonomy (đúng nơi + đúng loại, thiếu điều kiện); gán lại 25 chung lần cuối; lịch lùi 1 ngày |
 | Judged@10 < 80% ở ≥ 3 slice | Pool sâu hơn (depth 25) cho slice đó, gán thêm ½ ngày |
+| Slice không đủ **ý định phân biệt** cho quota | Sinh thêm ứng viên cho slice đó (ý định mới × 3 cách nói); **không** đưa hai cách nói của cùng một ý định vào bộ 200 — n tăng mà thông tin không tăng |
 | SAN `SANITY_FAIL` | Kiểm tra cứng hỏng (vector hai `input_type` giống nhau, cache sai, collection thiếu, gold bị sửa) — dừng mọi cổng cho tới khi sửa, `--force` chạy lại |
 | SAN `SANITY_WARN` | E3/T6/T7 không thua B0 như kỳ vọng — xem Δ theo slice, `sb ack` kèm ghi chú; không chặn chuỗi |
 | `NEEDS_LABELS` lặp ở nhiều cổng | Bình thường ở E1a, S4, S7, Pb; ước vài chục cặp mỗi lần — A gán ngay trong ngày, không dồn |

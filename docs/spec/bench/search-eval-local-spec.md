@@ -1,10 +1,10 @@
 # spec.md — `sbench`: benchmark embedding + search trên Weaviate + Cohere, chạy local
 
-Bản 23/09/2026 — rev 2: thêm Part 11 (`gold holes`, gold append-only, rescore), Part 12 (chạy theo cổng, `promote`), Part 13 (regression); text builder thành biến thể ghép (base + modifier) · để Claude Code sinh code ở local, **mỗi Part chạy thử được độc lập** · lịch và phân việc ở `search-eval-checklist.md` · danh sách arm ở `arms.md` (mô tả) và `config/stages.yaml` (máy đọc) · nguồn yêu cầu: `EMBEDDING_STACK_SWITCH.md` (Cohere, Weaviate, cái gì đổi), `EMBEDDING_AND_ENGINES.md` §1–§2, §4, §9 (text builder, hybrid, bộ đánh giá), `VECTOR_STORE_AND_ROBUSTNESS.md` §2–§3 (query preproc, amenity), `VECTOR_DB_BENCH_SPEC.md` Part 6b (gold tool — dùng lại định nghĩa nhãn), `SCHEMA.md` (contract `products.jsonl`), `ARCHITECTURE.md` §4, §12 (vị trí code, không folder `utils`).
+Bản 23/09/2026 — rev 2: thêm Part 11 (`gold holes`, gold append-only, rescore), Part 12 (chạy theo cổng, `promote`), Part 13 (regression); text builder thành biến thể ghép (base + modifier) · để Claude Code sinh code ở local, **mỗi Part chạy thử được độc lập** · lịch và phân việc ở `search-eval-checklist.md` · danh sách arm ở `arms.md` (mô tả) và `config/stages.yaml` (máy đọc) · nguồn yêu cầu: `EMBEDDING_STACK_SWITCH.md` (Cohere, Weaviate, cái gì đổi), `EMBEDDING_AND_ENGINES.md` §1–§2, §4, §9 (text builder, hybrid, bộ đánh giá), `VECTOR_STORE_AND_ROBUSTNESS.md` §2–§3 (query preproc, amenity), `VECTOR_DB_BENCH_SPEC.md` Part 6b (gold tool — dùng lại định nghĩa nhãn), `docs/spec/data-collection/schema.md` (contract `products.jsonl`), `ARCHITECTURE.md` §4, §12 (vị trí code, không folder `utils`).
 
-Phục vụ: FR-SRC-01, FR-SRC-02, FR-SRC-03, NFR-PERF-01, NFR-PERF-03 (`docs/prd/requirements.md`); độ đo theo `docs/prd/test-plan.md` §2.5.
+Phục vụ: **FR-SRC-01..04**, **NFR-PERF-01**, **NFR-PERF-03**, **AC-SRC-01** (`docs/prd/requirements.md`); độ đo theo `docs/prd/test-plan.md` §2.5.
 
-> **Đối chiếu repo (23/09/2026).** `EMBEDDING_STACK_SWITCH.md`, `EMBEDDING_AND_ENGINES.md`, `VECTOR_STORE_AND_ROBUSTNESS.md` **không có trong repo**. `SCHEMA.md` = `docs/spec/data-collection/schema.md`; `VECTOR_DB_BENCH_SPEC.md` = `docs/spec/vector-bench/spec.md`; `ARCHITECTURE.md` = `docs/spec/architecture-repo.md` (bản PRD: `docs/prd/architecture.md` §6). **Chỉ dùng trong bench:** index `flat` (exact, < 10k object) và collection nhiều property — production vẫn theo NFR-PERF-03 (HNSW) và `docs/prd/architecture.md` §5 (Weaviate chỉ giữ vector + `productId`); đưa luồng thắng vào backend (ngày 8) cần đề xuất ở `docs/prd/update/`.
+> **Đối chiếu repo (23/09/2026).** `EMBEDDING_STACK_SWITCH.md`, `EMBEDDING_AND_ENGINES.md`, `VECTOR_STORE_AND_ROBUSTNESS.md` **không có trong repo**. `VECTOR_DB_BENCH_SPEC.md` = `docs/spec/vector-bench/spec.md`; `ARCHITECTURE.md` = `docs/spec/architecture-repo.md` (bản PRD: `docs/prd/architecture.md` §6). **Chỉ dùng trong bench:** index `flat` (exact, < 10k object) và collection nhiều property — production vẫn theo NFR-PERF-03 (HNSW) và `docs/prd/architecture.md` §5 (Weaviate chỉ giữ vector + `productId`); đưa luồng thắng vào backend (ngày 8) cần đề xuất ở `docs/prd/update/`.
 
 Spec này **không đặt ra ngưỡng mới**: quota slice, ngưỡng metric, quy tắc chọn chép từ plan đã chốt vào **một** file config (§1.2). Tham số kỹ thuật spec thêm ghi *(đề xuất)*.
 
@@ -87,7 +87,7 @@ src/evaluation/search_bench/
 │   ├── (amenity seed)     # dùng chung src/evaluation/vector_bench/config/amenity_seed.yaml (catalog.amenity_seed_path) — không chép
 │   └── synth_prompts.yaml # prompt sinh synthetic query (Part 7)
 ├── arms/                  # mỗi arm một YAML (arms.md) — commit
-├── gold/                  # drafts.txt, pool*.csv, gold.jsonl, changelog.yaml, holes/, prompts/*.txt — commit (GUIDE ở docs/spec/bench/gold-guide.md: AGENTS.md §7 không cho .md trong src/)
+├── gold/                  # drafts_raw.tsv, drafts.txt, pool*.csv, gold.jsonl, changelog.yaml, holes/ — commit (prompt ở docs/spec/bench/gold-draft-prompt.md, GUIDE ở docs/spec/bench/gold-guide.md: AGENTS.md §7 không cho .md trong src/)
 ├── state/promotions.yaml  # arm được promote ở mỗi cổng (Part 12) — commit
 ├── regression/baseline.json  # mốc regression (Part 13) — commit, chỉ đổi bằng lệnh
 ├── docker/compose.yml     # Weaviate (project `sbench`)
@@ -171,13 +171,13 @@ gold:                             # Part 5
   judged_at_10_min: 0.80
   judged_at_10_slice_min: 0.70     # cổng Part 12 chặn nếu slice nào thấp hơn
   min_per_slice: 10
-  slices:                         # quota
-    dest_type: 30
-    audience_style: 25
+  slices:                         # quota — tổng = target, mỗi mục ≥ min_per_slice
+    dest_type: 25
+    audience_style: 20
     amenity_single: 15
     amenity_multi: 10
-    amenity_negation: 5
-    amenity_offtaxonomy: 5
+    amenity_negation: 10
+    amenity_offtaxonomy: 10
     parent_child: 15
     named_entity: 20
     no_diacritics: 20
@@ -283,7 +283,7 @@ doctor:                           # (đề xuất) Part 0
  "overall": {"recall@10": 0.71, "ndcg@10": 0.58, "mrr@10": 0.62, "judged@10": 0.84,
              "constraint_precision": 0.97, "filter_recall_loss": 3, "parent_dup_rate": 0.4,
              "zero_result_in_catalog": 0.01, "zero_result_out_of_catalog": 1.0, "hub_score_max": 2.1},
- "by_slice": {"dest_type": {"recall@10": 0.8, "ndcg@10": 0.7, "n": 30}, "...": {}},
+ "by_slice": {"dest_type": {"recall@10": 0.8, "ndcg@10": 0.7, "n": 25}, "...": {}},
  "latency_ms": {"weaviate_p50": 8, "weaviate_p95": 15, "weaviate_p99": 22},
  "cost_usd": {"embed_docs": 0.05, "embed_queries": 0.001, "rerank": 0.0},
  "vs_parent": {"delta_recall": 2.4, "ci95": [0.6, 4.1], "p_one_sided": 0.012}}
@@ -312,6 +312,7 @@ symspellpy
 unidecode
 scipy                    # bootstrap
 pytest
+streamlit>=1.64,<2       # app soát draft gold (streamlit_app.py) — cùng file này vì Streamlit Community Cloud chỉ tự nhận requirements.txt cạnh entrypoint hoặc ở gốc repo
 ```
 
 `requirements-extra.txt` (chỉ khi cần):
@@ -371,7 +372,7 @@ Không dùng module `text2vec-cohere` vì (a) `nearText` không cache được v
 
 ## Part 1 — Catalog → `items.parquet`
 
-Đọc `products.jsonl` (contract `SCHEMA.md` §3; thiếu bản bung thì bung `catalog.snapshot_path`, kiểm checksum bằng `data_collection.seed.snapshot`). Search unit = `variant ∈ search_unit_variants`, với `variant` = `taxonomy` + `attributes.level` như view `catalog.product_meta` (`hotel` → `hotel_<level>`, `flight` → `flight_route` khi `level = route`) — trường `taxonomy` của jsonl chỉ có `hotel · flight · attraction · combo · golf`. Phòng / chuyến bay không thành item nhưng được gom vào cha (`parentProductId`) để lấy từ vựng phòng, hãng bay, min giá. `--source sample|fake` ghi vào `data/_sample/`, `data/_fake/` (các lệnh sau chọn bằng `--dataset`) để không đè catalog thật.
+Đọc `products.jsonl` (contract `docs/spec/data-collection/schema.md` §3; thiếu bản bung thì bung `catalog.snapshot_path`, kiểm checksum bằng `data_collection.seed.snapshot`). Search unit = `variant ∈ search_unit_variants`, với `variant` = `taxonomy` + `attributes.level` như view `catalog.product_meta` (`hotel` → `hotel_<level>`, `flight` → `flight_route` khi `level = route`) — trường `taxonomy` của jsonl chỉ có `hotel · flight · attraction · combo · golf`. Phòng / chuyến bay không thành item nhưng được gom vào cha (`parentProductId`) để lấy từ vựng phòng, hãng bay, min giá. `--source sample|fake` ghi vào `data/_sample/`, `data/_fake/` (các lệnh sau chọn bằng `--dataset`) để không đè catalog thật.
 
 Cột `items.parquet`: `product_id, taxonomy, variant, name, brand, destination, province, city, property_type, star_rating, audience[], family_friendly, ocean_view, ticketed, nights, amenities_raw[], amenity_ids[] (smallint), room_vocab[] (từ con, khử trùng), airlines[] (từ con), description, description_is_derived, description_source, unit_price_min, review_score, lat, lon, parent_product_id (null với search unit), n_children`.
 
@@ -475,6 +476,7 @@ Dedupe theo cha: làm ở app (lấy `limit × 3`, giữ ≤ 1 / `parent_product
 
 | Lệnh | Việc |
 |---|---|
+| `sb gold drafts` | nhãn của app soát draft (`bench_out/search/labels/labels.jsonl`: KEEP / REJECT / NEEDS_EDIT) → `gold/drafts.txt`: lấy nhãn mới nhất theo `(case_id, annotator)`, bất đồng giữa annotator thì **bỏ qua và báo**, `NEEDS_EDIT` thay câu bằng `edited_query`, **giữ một cách nói cho mỗi ý định** (3 dòng liền nhau trong `drafts_raw.tsv` = 1 ý định; riêng `out_of_catalog` mỗi dòng là một ý định vì 3 dòng là 3 taxonomy), rồi cắt theo `gold.slices`. In bảng quota/thiếu/chưa gán; `--dry-run` chỉ in. `--fill`: slice thiếu quota thì lấy lại **1 cách nói** của ý định chưa có — chỉ nhận ý định *chưa gán* hoặc *bị loại toàn bộ vì cách nói* (`duplicate`/`unnatural`); bỏ qua ý định bị loại vì lỗi thật (`fabricated_entity`/`bad_grounding`/`invalid_filter`/`wrong_slice`), ý định trùng khoá `review_note` ở `dest_type`/`out_of_catalog` (hai slice duy nhất mà note là khoá đủ), và ý định mà mọi `source_refs` đã chết hoặc `filter_json` khớp 0 sản phẩm. Một dòng bị loại vì lỗi thật (hoặc REJECT trong `overrides.tsv`) loại **cả ý định**, kể cả khi còn dòng chưa gán; ở `dest_type`/`out_of_catalog` loại luôn mọi dòng cùng `review_note` (vd. "resort ở X" bị loại vì X có trong catalog thì không lấp "vé tham quan X"). Trong một ý định, lấy cách nói đầu tiên chưa gán hoặc chỉ bị loại vì trùng — không lấy câu người soát đã đánh `unnatural`. `gold/overrides.tsv` (`case_id, verdict, edited_query, reason, note`, commit) ghi đè nhãn của app cho từng case khi người dùng chốt sửa một quyết định — thắng mọi nhãn kể cả bất đồng, bắt buộc có `note`; dùng thay cho việc ghi event giả mạo tên annotator vào kho nhãn |
 | `sb gold pool --drafts --depth 15 [--slice]` | với mỗi draft: dense top-15 (`cohere-v3`, `T3+R` = collection của B0) ∪ BM25 top-15 (áp `filter_json` nếu có) → `pool.csv`: `qid, query, slice, product_id, name, variant, destination, from(dense\|lexical\|both), rank_dense, rank_lex, label` (xáo thứ tự dòng trong mỗi qid để người gán không thấy rank) |
 | `sb gold split --overlap 25` | `pool_A.csv` (qid lẻ + 25 chung), `pool_B.csv` (qid chẵn + 25 chung); 25 chung chọn stratified theo slice |
 | `sb gold kappa A B` | Cohen κ (weighted, 3 lớp) trên 25 chung; in ma trận nhầm và các cặp lệch 2 bậc |
