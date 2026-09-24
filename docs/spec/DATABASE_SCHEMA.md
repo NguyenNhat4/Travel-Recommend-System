@@ -927,6 +927,8 @@ CREATE INDEX channel_events_time_idx    ON channel_events (event_time);
 CREATE INDEX channel_events_profile_idx ON channel_events (profile_id, event_time DESC);
 ```
 
-## 13. Test đã chạy (PostgreSQL 16 + pgvector 0.6)
+## 13. Test đã chạy (PostgreSQL 16; vector nằm ngoài DB)
+
+Các kiểm tra dưới đây là kiểm tra phần quan hệ. `pgvector` và `catalog.product_vectors` đã được gỡ bằng migration `0002`; Cohere/Weaviate được kiểm riêng bởi job index và test adapter backend.
 
 `vota`: 15 bảng + 3 view tạo được; luồng checkout mẫu (cart → booking → booking_items, 2 event purchase cùng `event_group_id`, JOIN đơn ↔ event bằng event_group_id + product_id + using_date) chạy đúng; từ chối đúng: purchase không có `product_id`, xoá sản phẩm đã có booking, hai user cùng `cdp_user_id`, `cdp_reader` đọc schema `app`; hàng đợi soát tay combo trả đúng dòng chưa map. `insider`: 5 bảng + 1 view; từ chối `partner_name` viết hoa và identifier trùng đang hiệu lực; PATCH identity giữ lịch sử 3 dòng; view `live_events` giữ purchase 400 ngày, bỏ product_view 100 ngày.

@@ -196,8 +196,16 @@ class Catalog:
         self.by_dest_tickets: dict[str, list[dict]] = defaultdict(list)
         self.by_dest_hotels: dict[str, list[dict]] = defaultdict(list)
         self.rooms_of: dict[str, list[dict]] = defaultdict(list)
+        self.hotel_by_code: dict[str, dict] = {}
+        self.route_by_airports: dict[tuple[str, str], dict] = {}
         for r in rows:
             a = r["attributes"]
+            if r["taxonomy"] == "hotel" and a.get("level") == "property" and a.get("hotelCode"):
+                self.hotel_by_code.setdefault(a["hotelCode"], r)
+            if r["taxonomy"] == "flight" and a.get("level") == "route":
+                for o in a.get("originAirports") or []:
+                    for t in a.get("destinationAirports") or []:
+                        self.route_by_airports.setdefault((o, t), r)
             if r["taxonomy"] in ("attraction", "golf"):
                 self.by_dest_tickets[r["destination"]].append(r)
             elif r["taxonomy"] == "hotel" and a.get("level") == "property":
@@ -274,8 +282,31 @@ class Catalog:
 
 
 # ------------------------------------------------------------------ parse một combo
+def structured_items(combo: dict, cat: Catalog) -> list[dict]:
+    """Combo bay + ở từ API bundle Vinpearl (attributes.comboKind = flight_hotel): thành phần đã có cấu trúc trong attributes nên
+    không tách từ tên (tên khách sạn như "Resort & Golf" sẽ bị cắt sai ở '&'). source = 'api' theo CHECK của DDL."""
+    a = combo["attributes"]
+    origin, dest = a.get("originAirport"), a.get("destinationAirport")
+    route = cat.route_by_airports.get((origin, dest))
+    hotel = cat.hotel_by_code.get(a.get("hotelCode") or "")
+    return [
+        {"combo_product_id": combo["productId"], "position": 1, "label": f"Vé máy bay khứ hồi {a.get('originCity') or origin} – {dest}",
+         "item_kind": "flight", "item_product_id": route["productId"] if route else None, "quantity": float(a.get("priceAdults") or 2),
+         "unit": "khách", "is_optional": False, "source": "api", "confidence": 0.9 if route else None,
+         "evidence": f"attributes.originAirport={origin}, destinationAirport={dest} | "
+                     + (f"tuyến chiều đi: {route['name'][:60]}" if route else "chưa có tuyến bay này trong catalog")},
+        {"combo_product_id": combo["productId"], "position": 2, "label": a.get("hotelName") or combo["name"],
+         "item_kind": "hotel", "item_product_id": hotel["productId"] if hotel else None, "quantity": float(a.get("nights") or 1),
+         "unit": "đêm", "is_optional": False, "source": "api", "confidence": 1.0 if hotel else None,
+         "evidence": f"attributes.hotelCode={a.get('hotelCode')} | " + (f"khớp mã khách sạn: {hotel['name'][:60]}" if hotel
+                                                                          else "khách sạn chưa có trong catalog")},
+    ]
+
+
 def parse_combo(combo: dict, cat: Catalog) -> list[dict]:
     a = combo["attributes"]
+    if a.get("comboKind") == "flight_hotel":
+        return structured_items(combo, cat)
     venue_fold = fold(a.get("venue") or "")
     ctx_tokens = set(venue_fold.split()) | set(fold(combo["destination"]).split()) | set(fold(a.get("province") or "").split())
     candidates: list[tuple[str, str]] = [(p, f"tên: {p}") for p in name_pieces(combo["name"])]

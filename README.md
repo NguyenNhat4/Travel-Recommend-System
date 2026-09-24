@@ -10,7 +10,7 @@ python -m pip install -r src/data_collection/requirements.txt
 make demo-db
 ```
 
-`make demo-db` thực hiện ba việc: chạy PostgreSQL 16 bằng Docker, kiểm tra/bung snapshot catalog 10.320 sản phẩm và seed hai database `vota`/`insider`, sau đó chạy các câu verify chính thức. Mỗi thành viên có Docker volume riêng trên máy; không chia sẻ hoặc commit volume.
+`make demo-db` thực hiện ba việc: chạy PostgreSQL 16 bằng Docker, kiểm tra/bung snapshot catalog 11.387 sản phẩm và seed hai database `vota`/`insider`, sau đó chạy các câu verify chính thức. Vector nằm trong Weaviate riêng, không dùng pgvector. Mỗi thành viên có Docker volume riêng trên máy; không chia sẻ hoặc commit volume.
 
 Lần đầu dùng `make demo-db`. Khi database local đã có dữ liệu và cần dựng lại từ đầu:
 
@@ -18,7 +18,9 @@ Lần đầu dùng `make demo-db`. Khi database local đã có dữ liệu và c
 make demo-db-reset
 ```
 
-Lệnh `demo-db-reset` xóa state demo hiện có trong hai database local trước khi nạp lại. Target này cố định URL vào PostgreSQL Docker `localhost:5432`, không đọc URL staging từ shell. Có thể cố định ngày cửa sổ dữ liệu bằng `make demo-db AS_OF=2026-09-21`.
+Lệnh `demo-db-reset` xóa state demo hiện có trong hai database local trước khi nạp lại. Target này cố định URL vào PostgreSQL Docker `localhost:5432`, không đọc URL staging từ shell. Có thể cố định ngày cửa sổ dữ liệu bằng `make demo-db AS_OF=2026-09-23`.
+
+Sau khi seed catalog, đặt `COHERE_API_KEY` trong `.env` rồi chạy `make index-vectors`. Job khởi động Weaviate, chỉ embed search unit mới/đã đổi bằng `embed-multilingual-v3.0` và giữ vector trong volume riêng; `make demo-db-reset` không xóa volume này.
 
 ## Đổi schema database
 
@@ -55,8 +57,7 @@ src/backend/.venv/bin/python -m pip install -r src/backend/requirements.txt
 make backend-local PYTHON=src/backend/.venv/bin/python
 ```
 
-`requirements.txt` kéo theo `torch` qua `sentence-transformers` (~550 MB), nên lần cài đầu khá lâu.
-Chỉ cần phần auth/contract mà không cần recsys thì cài tập con:
+Chỉ cần phần auth/contract mà không cần recsys thì có thể cài tập con:
 `pip install fastapi uvicorn pydantic pydantic-settings psycopg[binary] argon2-cffi bcrypt 'PyJWT[crypto]' redis pytest`.
 
 Chạy local, Backend mặc định kết nối PostgreSQL Docker tại `localhost:5432` bằng hai role giới hạn trong `.env.example`.

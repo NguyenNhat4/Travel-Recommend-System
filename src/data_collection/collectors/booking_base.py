@@ -53,6 +53,7 @@ class CrawlOptions:
     full_sitemap_scan: bool = False
     full_cache: bool = False
     all_vietnam: bool = False
+    brand_sitemap: bool = True  # False: bỏ quét sitemap thương hiệu Vinpearl (job theo thành phố; đã có job riêng)
     destinations: tuple[Destination, ...] = DESTINATIONS
     budget: Budget = field(default_factory=lambda: DEFAULT_BUDGET)
 
@@ -113,6 +114,10 @@ class SitemapSource:
         """True nếu trang về thiếu tham số (vd. trang thử thách chuyển hướng làm mất ngày) → mở lại một lần."""
         return False
 
+    # Mặc định KHÔNG cuộn (booking_hotels/agoda_hotels không cần) — chỉ nguồn nào có nội dung lazy-load theo
+    # scroll (vd. giá vé booking_attractions, xem needs_scroll_before_read()) mới bật.
+    needs_scroll_before_read: bool = False
+
     def sanitize(self, html: str, full_cache: bool) -> str:
         html = strip_elements(html, self.people_selectors)
         return html if full_cache else slim_html(html)
@@ -152,7 +157,7 @@ class DiscoverContext:
 
 
 async def discover_sitemap(paths: Paths, src: SitemapSource, opts: CrawlOptions, state: StateDB) -> int:
-    cache = RawCache(paths, src.name)
+    cache = RawCache.shared(paths, src.name)
     limiter = HostRateLimiter(max(1.0, opts.delay / 2))
     http = Http(limiter)
     added = 0
@@ -264,6 +269,13 @@ async def _run_queue(paths, src, opts, state, cache, session, first_page, limite
 
         async def fetch(page, target):
             res = await session.fetch_html(page, target, src.ready_selector, src.expect_url, error_markers=src.error_markers)
+            if src.needs_scroll_before_read:
+                # Một số khối (vd. giá vé booking_attractions) chỉ render khi cuộn tới (lazy-load theo viewport),
+                # ready_selector ở đầu trang đã qua nên fetch_html() không tự chờ — cuộn rồi đọc lại DOM.
+                for _ in range(3):
+                    await page.mouse.wheel(0, 3000)
+                    await page.wait_for_timeout(1200)
+                res = replace(res, html=await page.content())
             if refetch["enabled"] and src.needs_refetch(res.html, res.final_url):
                 await limiter.wait(target)
                 res = await session.fetch_html(page, target, src.ready_selector, src.expect_url, error_markers=src.error_markers)

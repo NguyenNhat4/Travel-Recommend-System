@@ -17,7 +17,7 @@ Bản 20/09/2026 · dành cho Claude Code sinh code trong `src/data_collection/`
 
 1. **Connection của seed và verify là `SEED_DATABASE_URL`** (superuser), không phải `DATABASE_URL`. Role `vota_app` của `DATABASE_URL` không có quyền ghi `cdp.*` và không SELECT được `cdp.events`/`profiles`, nên chạy `db/verify.sql` bằng nó sẽ lỗi `insufficient_privilege` chứ không ra `FAIL`. Ghi chú lệnh trong `db/verify.sql` đã được đồng bộ theo biến này.
 2. **Báo cáo ghi vào khối đánh dấu** `<!-- seed-report:start -->`…`<!-- seed-report:end -->` ở cuối `src/data_collection/README.md`. Thư mục `data-collection/` (gạch nối) nhắc ở §1 và §8 không tồn tại trong monorepo này, và `src/data_collection/README.md` là sổ tay crawler viết tay — `report.py` chỉ thay phần trong khối, không ghi đè cả file.
-3. **Hai dòng `db/verify.sql` FAIL theo thiết kế khi dùng `products.synthetic.jsonl`:** `products = 10320` và `is_recommendable properties >= 300`. Đây là ngưỡng của snapshot catalog thật hiện hành (10.320 sản phẩm), trong khi catalog tổng hợp §1b cố ý chỉ khoảng 400–450 dòng với 40 property. Không thổi phồng §1b để lách; `report.py` ghi rõ nguồn catalog. Có `src/data_collection/data/products.jsonl` thật thì cả hai phải PASS.
+3. **Hai dòng `db/verify.sql` FAIL theo thiết kế khi dùng `products.synthetic.jsonl`:** `products >= 11387` và `is_recommendable properties >= 300`. Đây là ngưỡng tối thiểu theo snapshot catalog thật 2026-09-23 (11.387 sản phẩm; catalog mở rộng chỉ tăng nên vẫn PASS), trong khi catalog tổng hợp §1b cố ý chỉ khoảng 400–450 dòng với 40 property. Không thổi phồng §1b để lách; `report.py` ghi rõ nguồn catalog. Có `src/data_collection/data/products.jsonl` thật thì cả hai phải PASS.
 
 **Điểm chốt 21/09 — seed làm đúng §2, §4–§6; mọi tham số ở `src/data_collection/seed/config.py`:**
 
@@ -56,7 +56,7 @@ Diễn giải cho chỗ spec mơ hồ hoặc tự mâu thuẫn:
 | campaign_id | 12 chiến dịch cách đều từ as_of − 176 tới as_of − 11, id `CMP-yyyymm-NN` với NN là thứ tự trong tháng |
 | Baseline Recall@20 trong report | Ẩn lần đặt cuối của khách có ≥ 2 `event_group_id` **khác NULL**. Đòn bẩy trong phạm vi spec: `MULTI_FLIGHT_RATE`, `MULTI_TICKET_RATE`, `SINGLE_VERTICAL_WEIGHTS` (mục bị ẩn là mục cuối checkout, vé bay / vé tham quan ít sản phẩm nên dễ trúng top-20). Không vặn `TRIPS_PER_STAGE` về phía 1 — làm recall tăng. Tập ẩn chỉ ~270 khách nên chỉ số dao động mạnh giữa các seed; vượt `RECALL_CEILING` thì report ghi **VƯỢT TRẦN** và `seed_histories` in WARNING nhưng không dừng pipeline (DoD #5 đo trên seed demo 42) |
 
-Số đo trên snapshot 10.320 dòng, `--seed 42`: 7.131 event (purchase 3.148, product_view 2.190, add_to_cart 1.258, search 535), stage đúng 25/45/20/10, 64% chuyến ≥ 2 vertical, golf 3,2%, chuyến có search 29%, có add_to_cart 40%, Recall@20 = 58,4%. Qua 62 seed: Recall trung bình 54,0% (sd 3,5 điểm, cao nhất 64,2%), 4/62 seed vượt 60%; event 6.795–7.286. Không tổ hợp knob nào trong phạm vi spec xoá được phần đuôi này (đã quét, trung bình luôn quanh 53–54%).
+Số đo trên snapshot hiện hành 11.387 dòng, `--seed 42`: 7.145 event (purchase 3.153, product_view 2.179, add_to_cart 1.284, search 529), stage đúng 25/45/20/10, 64% chuyến ≥ 2 vertical, golf 3,2%, chuyến có search 29%, có add_to_cart 41%, Recall@20 = 59,9%. Đợt quét 62 seed trước đó trên snapshot 10.320 dòng cho Recall trung bình 54,0% (sd 3,5 điểm, cao nhất 64,2%), 4/62 seed vượt 60%; event 6.795–7.286. Chưa quét lại toàn bộ 62 seed cho snapshot mới; seed demo 42 vẫn nằm dưới trần 60%.
 
 ## 1. Đầu vào và bố cục code
 
@@ -64,7 +64,7 @@ Số đo trên snapshot 10.320 dòng, `--seed 42`: 7.131 event (purchase 3.148, 
 src/data_collection/
 ├── data/products.jsonl         # runtime artifact từ crawler, 13 trường CDP; bị gitignore
 ├── data/products.synthetic.jsonl # fallback do gen_products.py sinh; sourceRef bắt đầu bằng 'synthetic:'
-├── snapshots/2026-09-21/       # snapshot catalog nén + manifest/checksum + mapping combo đã duyệt; có trong Git
+├── snapshots/2026-09-23/       # snapshot catalog nén + manifest/checksum + mapping combo đã duyệt; có trong Git
 ├── seed/
 │   ├── __main__.py             # CLI: python -m data_collection.seed --as-of YYYY-MM-DD --seed 42 [--reset] [--users 2000]
 │   ├── config.py               # mọi tỷ lệ, phân bố, danh sách từ khoá — KHÔNG hard-code trong logic
@@ -80,7 +80,7 @@ src/data_collection/
 
 Kết nối: `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/vota`, `INSIDER_DATABASE_URL=…/insider` (env, `.env.example`). Thư viện: `psycopg[binary]`, `numpy` cho phân bố; không ORM. Mọi bước ghi bằng `COPY` hoặc batch insert 1.000 dòng; toàn bộ một bước trong một transaction.
 
-**Không nạp vector** (`catalog.product_vectors` để trống — job `embed_products` của Search tuần 2). **Không nạp `carts`, `conversations`, `recommendation_logs`, `search_logs`** — sinh khi chạy app.
+**Seed PostgreSQL không nạp vector.** Vector thuộc collection `Product` của Weaviate và được đồng bộ riêng bằng `python -m src.backend.jobs.embed_products`/`make index-vectors`; job chỉ gọi Cohere lại khi `textHash` hoặc `modelVersion` đổi. **Không nạp `carts`, `conversations`, `recommendation_logs`, `search_logs`** — sinh khi chạy app.
 
 ## 1b. Bước 0 — `gen_products.py` (chỉ chạy khi chưa có crawl)
 
@@ -105,7 +105,7 @@ Tổng ≈ 450 dòng. `destination` lấy từ danh sách Vinpearl: Nha Trang, P
    Chuyến bay (`taxonomy = flight`, `level = flight`): `available_from = available_to = ngày bay`; ngày bay = `sourceAvailableFrom` nếu nằm trong cửa sổ, nếu không thì **dời** vào cửa sổ: `as_of + (hash(product_id) % 30)`. Tuyến (`level = route`): min/max của các chuyến con.
    Sau khi cắt mà `available_from > available_to` → đặt `available = false`, `available_from = available_to = NULL`.
 2. **Lịch 30 ngày** `attributes.availability = {from: as_of, days: 30, calendar: "…30 ký tự…"}` chỉ cho `level = room` và `taxonomy ∈ {attraction, golf}`:
-   - room: kín theo cụm 1–4 đêm, tổng 25–40% đêm; thứ Sáu/Bảy xác suất kín ×1.5; `brand = Vinpearl` ×1.3. Ký tự i = ngày `as_of + i`; `1` trống, `0` kín.
+   - room: nếu Vinpearl có `pricesByDateQueried` phủ ≥ 85% cửa sổ (ít nhất 26/30 ngày), dùng lịch thật từ `pricesByDate`; ngày đã hỏi có giá = `1`, đã hỏi không có giá = `0`. Dữ liệu hỏi thưa không được coi ngày chưa hỏi là hết phòng mà fallback sang lịch mô phỏng: kín theo cụm 1–4 đêm, tổng 25–40% đêm; thứ Sáu/Bảy xác suất kín ×1.5; `brand = Vinpearl` ×1.3. Ký tự i = ngày `as_of + i`; `1` trống, `0` kín.
    - attraction/golf: toàn `1`, trừ blackout: 2–3 ngày ngẫu nhiên cho 15% sản phẩm.
    - flight, property, route, combo: không có khoá này.
 3. **Combo:** `attributes.nights` từ regex `(\d+)\s*[Nn]\s*(\d+)\s*[ĐđD]` hoặc "(\d+) ngày (\d+) đêm" trên `name + description`; `attributes.minPax` từ "cho (\d+) (người|khách)"; `attributes.priceBasis = per_person` nếu text khớp `/khách|/người|giá cho 1 người|mỗi khách|per person`, ngược lại `per_package`.
@@ -159,7 +159,7 @@ Tất cả ngày tính từ `as_of`. RNG = `numpy.random.default_rng(seed)`.
 
 ## 7. `db/verify.sql` — mỗi câu trả về `PASS` / `FAIL`
 
-Cột đếm và ngưỡng của snapshot hiện hành: products 10.320 · profiles 2.000 · events 6.000–8.000 · combo_items ≥ 93 · mọi `purchase` có `event_group_id` trừ ~3% · mọi chuyến một destination (JOIN events → products theo `event_group_id`, `count(DISTINCT destination) = 1`, cho phép ≤ 1% vi phạm do cạnh lộn xộn) · `is_recommendable` true cho ≥ 300 property · P1 có đúng 1 `app.bookings` và event purchase cùng `event_group_id` · `using_date` của mọi purchase tương lai nằm trong `[available_from, available_to]` · insider: `live_events` không có `product_view` cũ hơn 90 ngày · profiles = 2.000 · identifiers hiệu lực = 6.000.
+Cột đếm và ngưỡng của snapshot hiện hành: products ≥ 11.387 · profiles 2.000 · events 6.000–8.000 · combo_items ≥ 93 · mọi `purchase` có `event_group_id` trừ ~3% · mọi chuyến một destination (JOIN events → products theo `event_group_id`, `count(DISTINCT destination) = 1`, cho phép ≤ 1% vi phạm do cạnh lộn xộn) · `is_recommendable` true cho ≥ 300 property · P1 có đúng 1 `app.bookings` và event purchase cùng `event_group_id` · `using_date` của mọi purchase tương lai nằm trong `[available_from, available_to]` · insider: `live_events` không có `product_view` cũ hơn 90 ngày · profiles = 2.000 · identifiers hiệu lực = 6.000.
 
 ## 8. Việc Claude Code KHÔNG được tự quyết
 

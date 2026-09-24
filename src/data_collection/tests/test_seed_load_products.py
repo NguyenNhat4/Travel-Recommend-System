@@ -108,6 +108,24 @@ class LoaderTests(unittest.TestCase):
         self.assertEqual(lc.clip("2026-12-01", "2027-06-01", lo, hi), ("2026-12-01", "2026-10-19"))  # from > to
         self.assertEqual(lc.clip("2026-10-01", "2026-12-01", lo, hi), ("2026-10-01", "2026-10-19"))
 
+    def test_dense_real_room_calendar_overrides_fallback_but_sparse_samples_do_not(self):
+        queried = [(AS_OF + timedelta(days=i)).isoformat() for i in range(30)]
+        priced = {(AS_OF + timedelta(days=i)).isoformat(): 900000 for i in range(30) if i % 3}
+        expected = "".join("0" if i % 3 == 0 else "1" for i in range(30))
+        self.assertEqual(lc.real_room_calendar(priced, queried, AS_OF), expected)
+        self.assertIsNone(lc.real_room_calendar(priced, queried[:25], AS_OF))
+        self.assertIsNotNone(lc.real_room_calendar({}, queried[:26], AS_OF))
+        self.assertIsNone(lc.real_room_calendar(priced, queried[:20] + [
+            (AS_OF + timedelta(days=60 + i)).isoformat() for i in range(10)
+        ], AS_OF))
+
+        rows = fixture() + [product("r3", "Khách sạn A - Real", "hotel", "room", parent="h1", price=900000,
+                                    pricesByDate=priced, pricesByDateQueried=queried)]
+        converted, stats = lc.convert(rows, {}, AS_OF)
+        by_id = {row["product_id"]: row for row in converted}
+        self.assertEqual(by_id["r3"]["attributes"]["availability"]["calendar"], expected)
+        self.assertEqual(stats["lịch khả dụng: hotel_room (dữ liệu thật)"], 1)
+
     def test_source_range_is_clipped_and_expired_rows_become_unavailable(self):
         self.assertEqual((self.by["t1"]["available_from"], self.by["t1"]["available_to"], self.by["t1"]["available"]), ("2026-09-20", "2026-09-30", True))
         self.assertEqual(self.by["t1"]["attributes"]["availability"],

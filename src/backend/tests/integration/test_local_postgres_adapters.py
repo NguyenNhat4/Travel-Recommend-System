@@ -45,7 +45,7 @@ def test_local_cdp_and_catalog_adapters_read_seeded_persona() -> None:
 
 def test_database_roles_enforce_the_two_connection_boundary() -> None:
     with psycopg.connect(APP_URL, autocommit=True) as app:
-        assert app.execute("SELECT count(*) FROM cdp.products").fetchone()[0] == 10_320
+        assert app.execute("SELECT count(*) FROM cdp.products").fetchone()[0] == 11_387
         with pytest.raises(psycopg.errors.InsufficientPrivilege):
             app.execute("SELECT count(*) FROM cdp.events")
 

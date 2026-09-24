@@ -75,11 +75,18 @@ class Settings(BaseSettings):
     # Browse events waiting to be sent; beyond this they are dropped and logged.
     cdp_event_queue_size: int = Field(default=1000, ge=1)
 
-    # RecSys (search / similar / recommendations). Đọc cùng tên biến môi trường như trước khi gộp
-    # core/settings.py vào đây: EMBED_MODEL, EMBED_CACHE_DIR, SEARCH_CUTOFF.
-    embed_model: str = "intfloat/multilingual-e5-base"  # đổi sau benchmark tuần 2
+    # RecSys (search / similar / recommendations). Model và chiều đã chốt trong PRD 22/09/2026.
+    embed_model: Literal["embed-multilingual-v3.0"] = "embed-multilingual-v3.0"
+    embed_dimension: Literal[1024] = 1024
     embed_cache_dir: str = ".embcache"
-    search_cutoff: float = 0.80  # calibrate theo model
+    cohere_api_key: str = ""
+    cohere_base_url: str = "https://api.cohere.com"
+    cohere_timeout_seconds: float = Field(default=30.0, gt=0)
+    weaviate_url: str = "http://localhost:8080"
+    weaviate_api_key: str = ""
+    weaviate_collection: str = "Product"
+    weaviate_timeout_seconds: float = Field(default=30.0, gt=0)
+    search_cutoff: float = 0.62  # quy tắc tạm của Search contract; phải benchmark lại với Cohere
     search_max_limit: int = 50
     recommend_candidate_k: int = 200
 
