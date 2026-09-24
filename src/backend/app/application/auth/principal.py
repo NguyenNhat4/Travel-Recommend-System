@@ -18,6 +18,7 @@ class AuthPrincipal:
     session_id: str | None = None          # sid khi đến từ BFF; None khi là service nội bộ
     amr: tuple[str, ...] = ()              # pwd · otp · webauthn · oauth
     email_verified: bool = False
+    token_id: str | None = None             # claim jti; dùng cho danh sách thu hồi khẩn (auth §10.3 điểm 9)
 
     def __post_init__(self) -> None:
         if not self.user_id or not self.cdp_user_id:

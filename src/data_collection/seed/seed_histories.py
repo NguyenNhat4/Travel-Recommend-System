@@ -19,12 +19,13 @@ Quy tắc (mọi tỷ lệ, khoảng, trọng số nằm trong config.py):
   * 4 persona (§5): P1 3 chuyến Nha Trang + đặt phòng Vinpearl Nha Trang tại as_of − 3 cho đêm as_of + 12 (có app.bookings, chưa có vé bay);
     P2 2 lần xem Phú Quốc tại as_of − 2 / − 1; P3 2 chuyến Phú Quốc, chuyến cuối as_of − 190; P4 0 event. Kèm 50 tài khoản test.
 Mọi thứ có ngày sinh tương đối theo --as-of, giờ theo múi +07:00. Kết quả xác định theo --seed.
-Mọi app.users dùng chung BCrypt cost 10 của mật khẩu demo `Demo@2026`; email / số điện thoại là dữ liệu giả.
+Mọi app.users dùng mật khẩu demo `Demo@2026`, băm Argon2id (salt tất định theo user_id); email / số điện thoại là dữ liệu giả.
 """
 from __future__ import annotations
 
 import argparse
 import bisect
+import hashlib
 import json
 import random
 import sys
@@ -32,6 +33,8 @@ import uuid
 from collections import Counter, defaultdict
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+
+from argon2.low_level import Type, hash_secret
 
 from . import config as C
 from .catalog_meta import build_meta, is_vinpearl, open_nights, room_calendar, stable_order_key, variant, window
@@ -45,6 +48,17 @@ PERSONA_IDS = {p[0] for p in C.PERSONAS}
 
 def uid(*parts) -> str:
     return str(uuid.uuid5(NS, "|".join(str(p) for p in parts)))
+
+
+def demo_password_hash(user_id: str) -> str:
+    """Argon2id (PHC) của mật khẩu demo, đúng tham số backend nên không bị rehash khi đăng nhập.
+
+    Salt 16 byte suy từ user_id thay vì ngẫu nhiên: seed phải tái lập được byte-for-byte, và mỗi
+    user vẫn có salt riêng. Chỉ chấp nhận được vì mật khẩu demo vốn công khai.
+    """
+    salt = hashlib.sha256(f"vota-seed-salt|{user_id}".encode()).digest()[:16]
+    return hash_secret(C.DEMO_PASSWORD.encode(), salt, time_cost=C.ARGON2_TIME_COST, memory_cost=C.ARGON2_MEMORY_KIB,
+                       parallelism=C.ARGON2_PARALLELISM, hash_len=C.ARGON2_HASH_LEN, type=Type.ID).decode()
 
 
 def weighted(rng: random.Random, weights: dict) -> str:
@@ -476,7 +490,7 @@ def generate(rows: list[dict], as_of: date, seed: int = C.DEFAULT_SEED, n_profil
     created_of = {p["cdp_user_id"]: p["created_at"] for p in profiles}
     for n, user in enumerate([p[0] for p in C.PERSONAS] + generic_ids[:C.TEST_USERS], start=1 - len(C.PERSONAS)):
         p = persona_by_id.get(user)
-        users.append({"user_id": uid("user", user), "email": p[3] if p else C.TEST_USER_EMAIL.format(n=n), "password_hash": C.DEMO_PASSWORD_HASH,
+        users.append({"user_id": uid("user", user), "email": p[3] if p else C.TEST_USER_EMAIL.format(n=n), "password_hash": demo_password_hash(uid("user", user)),
                       "display_name": p[2] if p else C.TEST_USER_NAME.format(n=n), "cdp_user_id": user, "persona": p[1] if p else None,
                       "created_at": created_of[user], "last_login_at": None})
     events = [{"event_id": e["event_id"], "cdp_user_id": e["cdp_user_id"], "event_name": e["event_name"], "timestamp": dt_iso(e["timestamp"]),
@@ -576,7 +590,7 @@ def report(res: dict, as_of: date, args: dict) -> tuple[str, dict]:
              + " · ".join(f"{p['cdp_user_id']} {p['lifecycle_stage']} ({per.get(p['cdp_user_id'], 0)} event)" for p in pr if p["cdp_user_id"] in PERSONA_IDS),
              f"- app.users: {len(res['users'])} ({len(C.PERSONAS)} persona + {C.TEST_USERS} test) · app.bookings: {len(res['bookings'])} · "
              f"app.booking_items: {len(res['booking_items'])}", "",
-             "`app.users.password_hash` là BCrypt cost 10 của mật khẩu demo chung; email / số điện thoại là dữ liệu giả. "
+             "`app.users.password_hash` là Argon2id của mật khẩu demo chung; email / số điện thoại là dữ liệu giả. "
              "Event `search` không có câu truy vấn (cdp.events không có cột này; `app.search_logs` không seed). "
              "Insider clone (`partners`, `insider_profiles`, `identifiers`, `insider_events`, `channel_events`) sinh từ các file này ở bước sau."]
     return "\n".join(lines) + "\n", {"stages": dict(stages), "events": len(ev), "hits": hits, "last": hidden, "recall": recall}

@@ -54,7 +54,7 @@ Tài liệu này đặc tả chi tiết toàn bộ các yêu cầu chức năng 
 - **FR-BKG-04 (Trang xác nhận & Kích hoạt gợi ý tiếp nối):** Sau khi hoàn tất đơn hàng, hiển thị mã đặt chỗ, tóm tắt chuyến đi và lập tức hiển thị các sản phẩm gợi ý bổ trợ cho chặng tiếp theo.
 
 ### 1.6. Phân Hệ Người Dùng & Xác Thực (User & Authentication)
-- **FR-USR-01 (Quản lý danh tính):** Hỗ trợ đăng ký, đăng nhập an toàn qua email/mật khẩu hoặc cơ chế định danh mô phỏng (Persona Switcher phục vụ kiểm thử và trình diễn).
+- **FR-USR-01 (Quản lý danh tính):** Hỗ trợ đăng ký, đăng nhập an toàn qua email/mật khẩu.
 - **FR-USR-02 (Hồ sơ & Sở thích):** Lưu trữ thông tin cá nhân, danh sách yêu thích, lịch sử đơn hàng và các tiêu chí ưu tiên du lịch (phong cách, ngân sách, thành viên đi cùng).
 - **FR-USR-03 (Quản lý phiên):** Bảo vệ các endpoint nhạy cảm bằng phiên đăng nhập (Session token / Cookie / JWT), đảm bảo phân tách quyền riêng tư giữa các tài khoản.
 
@@ -65,7 +65,7 @@ Tài liệu này đặc tả chi tiết toàn bộ các yêu cầu chức năng 
   - `search`: Thực hiện tìm kiếm với từ khóa và bộ lọc.
   - `add_to_cart`: Thêm sản phẩm vào giỏ/lịch trình.
   - `purchase`: Hoàn tất thanh toán đơn hàng.
-- **FR-CDP-02 (Hợp nhất danh tính - Identity Stitching):** Liên kết dữ liệu hành vi từ giai đoạn ẩn danh (`anonymous_id`) sang hồ sơ chính thức (`profile_id`) ngay khi người dùng đăng nhập.
+- **FR-CDP-02 (Hợp nhất danh tính - Identity Stitching) — hoãn, ngoài phạm vi MVP:** Liên kết dữ liệu hành vi từ giai đoạn ẩn danh (`anonymous_id`) sang hồ sơ chính thức (`profile_id`) khi người dùng đăng nhập. Trong MVP, sự kiện hành vi **chỉ được ghi khi người dùng đã đăng nhập** (`cdp.events.cdp_user_id` bắt buộc); khách vãng lai không sinh sự kiện CDP và không có bước gộp lịch sử.
 - **FR-CDP-03 (Hồ sơ khách hàng 360):** Tự động tính toán các thuộc tính tổng hợp: tổng chi tiêu, danh mục quan tâm nhiều nhất, điểm đến gần nhất, tần suất tương tác.
 
 ### 1.8. Phân Hệ Tương Tác Cá Nhân Hóa Đa Kênh (Multi-channel Engagement)

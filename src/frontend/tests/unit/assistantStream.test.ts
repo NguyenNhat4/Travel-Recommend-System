@@ -61,7 +61,7 @@ describe('assistant SSE parsing', () => {
     const signal = new AbortController().signal;
     const onEvent = vi.fn();
 
-    await requestAssistantStream(request, { signal, onEvent, authorizationToken: 'real-token' });
+    await requestAssistantStream(request, { signal, onEvent });
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     const headers = new Headers(init.headers);
@@ -69,7 +69,9 @@ describe('assistant SSE parsing', () => {
     expect(headers.get('content-type')).toBe('application/json');
     expect(headers.get('accept')).toBe('text/event-stream');
     expect(headers.get('x-request-id')).toBeTruthy();
-    expect(headers.get('authorization')).toBe('Bearer real-token');
+    // Trình duyệt không giữ token: BFF gắn Authorization từ cookie phiên (auth §4.2).
+    expect(headers.get('authorization')).toBeNull();
+    expect(init.credentials).toBe('same-origin');
     expect(JSON.parse(String(init.body))).toEqual(request);
     expect(onEvent).toHaveBeenCalledWith({ event: 'run.failed', data: { error: { code: 'LLM_UNAVAILABLE', message: 'Unavailable' } } });
   });

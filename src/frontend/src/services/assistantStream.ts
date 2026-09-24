@@ -1,4 +1,5 @@
 import type { components } from '../types/api.gen';
+import { apiFetch } from './http';
 
 export type AssistantRequest = {
   message: string | null;
@@ -157,7 +158,6 @@ export async function requestAssistantStream(
   options: {
     signal: AbortSignal;
     onEvent: (event: AssistantStreamEvent) => void;
-    authorizationToken?: string | null;
   },
 ): Promise<void> {
   const headers = new Headers({
@@ -165,9 +165,8 @@ export async function requestAssistantStream(
     'Content-Type': 'application/json',
     'X-Request-ID': requestId(),
   });
-  if (options.authorizationToken) headers.set('Authorization', `Bearer ${options.authorizationToken}`);
-
-  const response = await fetch('/api/v1/assistant/itineraries/stream', {
+  // Danh tính do BFF gắn từ cookie phiên; client không bao giờ tự đặt Authorization.
+  const response = await apiFetch('/api/v1/assistant/itineraries/stream', {
     method: 'POST',
     headers,
     body: JSON.stringify(request),

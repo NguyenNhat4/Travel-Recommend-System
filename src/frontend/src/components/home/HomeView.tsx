@@ -2,10 +2,9 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useTravel } from '../../context/TravelContext';
-import { calculateRecommendations, fetchRecommendations, PERSONA_CDP_USER_MAP } from '../../services/recsys';
+import { calculateRecommendations, fetchRecommendations } from '../../services/recsys';
 import { CATALOG } from '../../data/catalog';
 import { ProductCard } from '../common/ProductCard';
-import { DemoAccountSwitcher } from '../common/DemoAccountSwitcher';
 import {
   Search,
   ChevronDown,
@@ -486,13 +485,10 @@ export const HomeView: React.FC = () => {
 
   useEffect(() => {
     const controller = new AbortController();
-    const cdpUserId = currentPersona?.id
-      ? PERSONA_CDP_USER_MAP[currentPersona.id] || currentPersona.id
-      : null;
 
+    // Danh tính do BFF gắn từ cookie phiên; đổi persona = đổi phiên nên effect chạy lại.
     setIsLoadingRecs(true);
     fetchRecommendations({
-      cdpUserId,
       k: 4,
       destination: currentPersona?.activeDestination,
       fallbackUser: currentPersona,
