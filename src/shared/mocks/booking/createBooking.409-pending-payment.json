@@ -1,0 +1,12 @@
+{
+  "error": {
+    "code": "BOOKING_PENDING_PAYMENT",
+    "message": "Bạn đang có một đơn chờ thanh toán. Hãy tiếp tục thanh toán hoặc huỷ đơn đó.",
+    "retryable": false,
+    "requestId": "book-01JXYZ",
+    "details": {
+      "referenceCode": "VOTA-20260916-8K3F",
+      "holdExpiresAt": "2026-09-16T10:52:00Z"
+    }
+  }
+}

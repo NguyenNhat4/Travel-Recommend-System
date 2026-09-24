@@ -2,9 +2,11 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useTravel } from '../../context/TravelContext';
-import { calculateRecommendations, fetchRecommendations } from '../../services/recsys';
-import { CATALOG } from '../../data/catalog';
+import { fetchRecommendations } from '../../services/recsys';
+import { listProducts, productFromApi } from '../../services/catalog';
+import type { Product, RecommendationResponse, Taxonomy } from '../../types/travel';
 import { ProductCard } from '../common/ProductCard';
+import { PriceTag } from '../common/PriceTag';
 import {
   Search,
   ChevronDown,
@@ -22,250 +24,32 @@ import {
 } from 'lucide-react';
 import { WhyPopover } from '../common/WhyPopover';
 
-interface HotelItem {
-  id: string;
-  name: string;
-  tag: string;
-  tagColor: string;
-  image: string;
-  address: string;
-  stars: number;
-  ratingScore: number;
-  reviewsCount: number;
-  originalPrice: string;
-  price: string;
-  catalogId?: string;
+/** Một khối sản phẩm trên trang chủ: dữ liệu từ GET /products, lỗi thì hiện lỗi cục bộ (product.md §4.1.5). */
+interface ProductShelf {
+  items: Product[];
+  loading: boolean;
+  error: string | null;
 }
 
-const SECTION_1_HOTELS: HotelItem[] = [
-  {
-    id: 'h1',
-    name: 'V-OTA Resort & Spa Nha Trang Bay',
-    tag: 'Biển Hòn Tre',
-    tagColor: 'text-blue-700 bg-white/90',
-    image: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?q=80&w=800&auto=format&fit=crop',
-    address: 'Hòn Tre, Vĩnh Nguyên, Tp. Nha Trang, Khánh Hòa',
-    stars: 5,
-    ratingScore: 4.8,
-    reviewsCount: 4149,
-    originalPrice: '3.530.000 ₫',
-    price: '2.294.500 ₫',
-    catalogId: 'nt-hotel-01'
-  },
-  {
-    id: 'h2',
-    name: 'VinHolidays Fiesta Phú Quốc',
-    tag: 'Grand World',
-    tagColor: 'text-emerald-700 bg-white/90',
-    image: 'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?q=80&w=800&auto=format&fit=crop',
-    address: 'Gành Dầu, Cửa Cạn, Dương Đông, Phú Quốc',
-    stars: 4,
-    ratingScore: 4.8,
-    reviewsCount: 773,
-    originalPrice: '1.550.000 ₫',
-    price: '1.007.500 ₫',
-    catalogId: 'pq-hotel-01'
-  },
-  {
-    id: 'h3',
-    name: 'Hòn Tằm Resort',
-    tag: 'Tắm Bùn Khoáng',
-    tagColor: 'text-blue-700 bg-white/90',
-    image: 'https://images.unsplash.com/photo-1571896349842-33c89424de2d?q=80&w=800&auto=format&fit=crop',
-    address: 'Đảo Hòn Tằm, Phường Vĩnh Nguyên, Tp. Nha Trang',
-    stars: 5,
-    ratingScore: 4.7,
-    reviewsCount: 1941,
-    originalPrice: '2.970.000 ₫',
-    price: '1.930.500 ₫',
-    catalogId: 'nt-hotel-02'
-  },
-  {
-    id: 'h4',
-    name: 'V-OTA Beachfront Nha Trang',
-    tag: 'Mặt Biển Trần Phú',
-    tagColor: 'text-indigo-700 bg-white/90',
-    image: 'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?q=80&w=800&auto=format&fit=crop',
-    address: '78 - 80 Đường Trần Phú, Phường Lộc Thọ',
-    stars: 5,
-    ratingScore: 4.9,
-    reviewsCount: 2180,
-    originalPrice: '1.870.000 ₫',
-    price: '1.215.500 ₫',
-    catalogId: 'nt-hotel-01'
-  },
-  {
-    id: 'h5',
-    name: 'V-OTA Resort & Spa Phú Quốc',
-    tag: 'Bãi Dài Hoàng Hôn',
-    tagColor: 'text-rose-700 bg-white/90',
-    image: 'https://images.unsplash.com/photo-1582719508461-905c673771fd?q=80&w=800&auto=format&fit=crop',
-    address: 'Bãi Dài, Xã Gành Dầu, Tp. Phú Quốc, Kiên Giang',
-    stars: 5,
-    ratingScore: 4.8,
-    reviewsCount: 2650,
-    originalPrice: '3.200.000 ₫',
-    price: '2.080.000 ₫',
-    catalogId: 'pq-hotel-01'
-  },
-  {
-    id: 'h6',
-    name: 'V-OTA Resort & Spa Hạ Long',
-    tag: 'Đảo Rều Độc Bản',
-    tagColor: 'text-teal-700 bg-white/90',
-    image: 'https://images.unsplash.com/photo-1578683010236-d716f9a3f461?q=80&w=800&auto=format&fit=crop',
-    address: 'Đảo Rều, Phường Bãi Cháy, Tp. Hạ Long, Quảng Ninh',
-    stars: 5,
-    ratingScore: 4.9,
-    reviewsCount: 3120,
-    originalPrice: '3.650.000 ₫',
-    price: '2.372.500 ₫',
-    catalogId: 'nt-hotel-01'
-  },
-  {
-    id: 'h7',
-    name: 'V-OTA Luxury Nha Trang',
-    tag: 'Biệt Thự Riêng Tư',
-    tagColor: 'text-amber-700 bg-white/90',
-    image: 'https://images.unsplash.com/photo-1618773928121-c32242e63f39?q=80&w=800&auto=format&fit=crop',
-    address: 'Đảo Hòn Tre, Vĩnh Nguyên, Tp. Nha Trang',
-    stars: 5,
-    ratingScore: 5.0,
-    reviewsCount: 1420,
-    originalPrice: '5.800.000 ₫',
-    price: '3.770.000 ₫',
-    catalogId: 'nt-hotel-02'
-  },
-  {
-    id: 'h8',
-    name: 'V-OTA Resort & Golf Nam Hội An',
-    tag: 'Di Sản & Nghỉ Dưỡng',
-    tagColor: 'text-emerald-700 bg-white/90',
-    image: 'https://images.unsplash.com/photo-1584132967334-10e028bd69f7?q=80&w=800&auto=format&fit=crop',
-    address: 'Xã Bình Dương, Thăng Bình, Quảng Nam',
-    stars: 5,
-    ratingScore: 4.9,
-    reviewsCount: 3825,
-    originalPrice: '2.900.000 ₫',
-    price: '1.885.000 ₫',
-    catalogId: 'dn-hotel-01'
-  }
-];
+const EMPTY_SHELF: ProductShelf = { items: [], loading: true, error: null };
 
-const SECTION_2_HOTELS: HotelItem[] = [
-  {
-    id: 'p1',
-    name: 'V-OTA Resort & Spa Nha Trang Bay',
-    tag: 'Top Yêu Thích',
-    tagColor: 'bg-amber-500 text-white',
-    image: 'https://images.unsplash.com/photo-1540541338287-41700207dee6?q=80&w=800&auto=format&fit=crop',
-    address: 'Hòn Tre, Vĩnh Nguyên, Tp. Nha Trang, Khánh Hòa',
-    stars: 5,
-    ratingScore: 4.8,
-    reviewsCount: 4149,
-    originalPrice: '3.530.000 ₫',
-    price: '2.294.500 ₫',
-    catalogId: 'nt-hotel-01'
-  },
-  {
-    id: 'p2',
-    name: 'V-OTA Resort & Golf Nam Hội An',
-    tag: 'Golf 18 Lỗ',
-    tagColor: 'text-emerald-700 bg-white/90',
-    image: 'https://images.unsplash.com/photo-1584132967334-10e028bd69f7?q=80&w=800&auto=format&fit=crop',
-    address: 'Xã Bình Dương, Xã Bình Minh, Huyện Thăng Bình',
-    stars: 5,
-    ratingScore: 4.9,
-    reviewsCount: 3825,
-    originalPrice: '2.710.000 ₫',
-    price: '1.761.500 ₫',
-    catalogId: 'dn-hotel-01'
-  },
-  {
-    id: 'p3',
-    name: 'VinHolidays Fiesta Phú Quốc',
-    tag: 'Tiết Kiệm Nhất',
-    tagColor: 'text-sky-700 bg-white/90',
-    image: 'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?q=80&w=800&auto=format&fit=crop',
-    address: 'Gành Dầu, Cửa Cạn, Dương Đông, Phú Quốc',
-    stars: 4,
-    ratingScore: 4.8,
-    reviewsCount: 773,
-    originalPrice: '1.550.000 ₫',
-    price: '1.007.500 ₫',
-    catalogId: 'pq-hotel-01'
-  },
-  {
-    id: 'p4',
-    name: 'V-OTA Resort Nha Trang',
-    tag: 'Đảo Thiên Đường',
-    tagColor: 'text-blue-700 bg-white/90',
-    image: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=800&auto=format&fit=crop',
-    address: 'Đảo Hòn Tre, Tp. Nha Trang, Tỉnh Khánh Hòa',
-    stars: 5,
-    ratingScore: 4.6,
-    reviewsCount: 3120,
-    originalPrice: '3.120.000 ₫',
-    price: '2.028.000 ₫',
-    catalogId: 'nt-hotel-01'
-  },
-  {
-    id: 'p5',
-    name: 'V-OTA Discovery Cửa Hội',
-    tag: 'Biển Cửa Lò',
-    tagColor: 'text-cyan-700 bg-white/90',
-    image: 'https://images.unsplash.com/photo-1563911302283-d2bc129e7570?q=80&w=800&auto=format&fit=crop',
-    address: 'Đường Bình Minh, Phường Nghi Hải, Cửa Lò, Nghệ An',
-    stars: 5,
-    ratingScore: 4.7,
-    reviewsCount: 1840,
-    originalPrice: '2.100.000 ₫',
-    price: '1.365.000 ₫',
-    catalogId: 'nt-hotel-01'
-  },
-  {
-    id: 'p6',
-    name: 'V-OTA Condotel Empire Nha Trang',
-    tag: 'Phố Biển Sôi Động',
-    tagColor: 'text-violet-700 bg-white/90',
-    image: 'https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?q=80&w=800&auto=format&fit=crop',
-    address: '44 - 46 Lê Thánh Tôn, Lộc Thọ, Nha Trang',
-    stars: 5,
-    ratingScore: 4.8,
-    reviewsCount: 2290,
-    originalPrice: '1.650.000 ₫',
-    price: '1.072.500 ₫',
-    catalogId: 'nt-hotel-01'
-  },
-  {
-    id: 'p7',
-    name: 'V-OTA Wonderworld Phú Quốc',
-    tag: 'Công Viên Safari',
-    tagColor: 'text-orange-700 bg-white/90',
-    image: 'https://images.unsplash.com/photo-1590490360182-c33d57733427?q=80&w=800&auto=format&fit=crop',
-    address: 'Khu Bãi Dài, Gành Dầu, Tp. Phú Quốc',
-    stars: 5,
-    ratingScore: 4.9,
-    reviewsCount: 3410,
-    originalPrice: '3.800.000 ₫',
-    price: '2.470.000 ₫',
-    catalogId: 'pq-hotel-01'
-  },
-  {
-    id: 'p8',
-    name: 'V-OTA Resort Cần Giờ',
-    tag: 'Sinh Thái Rừng Ngập Mặn',
-    tagColor: 'text-emerald-800 bg-white/90',
-    image: 'https://images.unsplash.com/photo-1549294413-26f195200c16?q=80&w=800&auto=format&fit=crop',
-    address: 'Đường Thạnh Thới, Long Hòa, Cần Giờ, TP. HCM',
-    stars: 5,
-    ratingScore: 4.6,
-    reviewsCount: 1560,
-    originalPrice: '2.300.000 ₫',
-    price: '1.495.000 ₫',
-    catalogId: 'nt-hotel-02'
-  }
-];
+function useProductShelf(params: { taxonomy?: Taxonomy; limit: number }, retry: number): ProductShelf {
+  const [shelf, setShelf] = React.useState<ProductShelf>(EMPTY_SHELF);
+  const { taxonomy, limit } = params;
+  React.useEffect(() => {
+    const controller = new AbortController();
+    setShelf((prev) => ({ ...prev, loading: true, error: null }));
+    listProducts({ taxonomy, sort: 'popular', limit }, controller.signal)
+      .then((page) => setShelf({ items: page.results.map(productFromApi), loading: false, error: null }))
+      .catch((error) => {
+        if (!controller.signal.aborted) {
+          setShelf({ items: [], loading: false, error: error?.message || 'Chưa tải được danh sách.' });
+        }
+      });
+    return () => controller.abort();
+  }, [taxonomy, limit, retry]);
+  return shelf;
+}
 
 const DESTINATIONS = [
   {
@@ -358,7 +142,8 @@ const POPULAR_HOTEL_DESTINATIONS: PopularHotelDestination[] = [
   }
 ];
 
-function getHotelLocationTag(address: string): string {
+function getHotelLocationTag(address: string | undefined): string {
+  if (!address) return '';
   if (address.includes('Nha Trang')) return 'tại Nha Trang';
   if (address.includes('Phú Quốc')) return 'tại Phú Quốc';
   if (address.includes('Cửa Lò') || address.includes('Cửa Hội')) return 'tại Cửa Lò';
@@ -399,8 +184,91 @@ function isSameDate(d1: Date, d2: Date): boolean {
   );
 }
 
+/** Thẻ sản phẩm của carousel trang chủ, giữ style cũ; dữ liệu là Product thật từ GET /products. */
+const ShelfCards: React.FC<{ shelf: ProductShelf; onOpen: (product: Product) => void; onRetry: () => void }> = ({
+  shelf, onOpen, onRetry,
+}) => {
+  const cardClass = 'w-[280px] sm:w-[305px] lg:w-[calc((100%-72px)/4)] flex-shrink-0';
+  if (shelf.loading && shelf.items.length === 0) {
+    return (
+      <>
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className={`${cardClass} h-[360px] rounded-2xl bg-slate-100 animate-pulse`} aria-busy="true" />
+        ))}
+      </>
+    );
+  }
+  if (shelf.error) {
+    return (
+      <div className="w-full p-6 rounded-2xl bg-white border border-slate-200 text-center text-sm text-slate-600">
+        Chưa tải được danh sách ·{' '}
+        <button onClick={onRetry} className="font-semibold text-blue-600 hover:underline cursor-pointer">Thử lại</button>
+      </div>
+    );
+  }
+  return (
+    <>
+      {shelf.items.map((product) => {
+        const stars = Math.round(Number(product.attributes?.starRating) || 0);
+        return (
+          <div
+            key={product.id}
+            onClick={() => onOpen(product)}
+            className={`${cardClass} bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col group cursor-pointer`}
+          >
+            <div className="relative h-48 overflow-hidden">
+              <img
+                src={product.imageUrl}
+                alt={product.name}
+                referrerPolicy="no-referrer"
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+              />
+              <span className="absolute top-3 left-3 backdrop-blur-md px-2.5 py-1 rounded-full text-[11px] font-bold shadow-sm text-blue-700 bg-white/90">
+                {product.destination}
+              </span>
+            </div>
+            <div className="p-4 flex flex-col flex-grow justify-between">
+              <div>
+                <h3 className="font-bold text-slate-900 text-base leading-snug group-hover:text-blue-600 transition-colors line-clamp-1">
+                  {product.name}
+                </h3>
+                {stars > 0 && (
+                  <div className="flex items-center text-amber-400 text-xs mt-1">
+                    {Array.from({ length: stars }).map((_, i) => (
+                      <Star key={i} className="w-3.5 h-3.5 fill-current" />
+                    ))}
+                  </div>
+                )}
+                <p className="text-xs text-slate-500 mt-1 truncate">{product.address}</p>
+                {product.aggregateRating && (
+                  <div className="flex items-center space-x-2 mt-2.5 text-xs text-slate-600">
+                    <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+                    <span className="font-bold text-slate-800">{product.aggregateRating.score}</span>
+                    {product.aggregateRating.count > 0 && (
+                      <span className="text-slate-400">· {product.aggregateRating.count.toLocaleString('vi-VN')} đánh giá</span>
+                    )}
+                  </div>
+                )}
+              </div>
+              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                <PriceTag price={product.unitPrice} taxonomy={product.taxonomy} hasPrefixFrom size="md" />
+                <button
+                  onClick={(e) => { e.stopPropagation(); onOpen(product); }}
+                  className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white transition cursor-pointer shrink-0"
+                >
+                  {product.level === 'property' ? 'Chọn phòng' : 'Xem chi tiết'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </>
+  );
+};
+
 export const HomeView: React.FC = () => {
-  const { currentPersona, activeEvents, navigate, showToast, addToCart } = useTravel();
+  const { currentPersona, activeEvents, navigate, showToast } = useTravel();
 
   // Search state
   const [destinationInput, setDestinationInput] = useState('V-OTA Resort & Spa tại Nha Trang');
@@ -476,31 +344,38 @@ export const HomeView: React.FC = () => {
     navigate(`/search?q=${encodeURIComponent(query)}`);
   };
 
-  // Recommendation state from backend V-OTA system (with local fallback)
-  const [recResponse, setRecResponse] = useState(() =>
-    calculateRecommendations(currentPersona, activeEvents)
-  );
+  // Gợi ý thật từ GET /recommendations; lỗi thì ẩn khối và hiện dòng "Thử lại" (product.md §4.1.5).
+  const [recResponse, setRecResponse] = useState<RecommendationResponse | null>(null);
+  const [recsFailed, setRecsFailed] = useState(false);
+  const [recsRetry, setRecsRetry] = useState(0);
   const [isLoadingRecs, setIsLoadingRecs] = useState(false);
+  const [shelfRetry, setShelfRetry] = useState(0);
+  const hotelShelf = useProductShelf({ taxonomy: 'hotel', limit: 8 }, shelfRetry);
+  const popularShelf = useProductShelf({ limit: 8 }, shelfRetry);
   const [showSectionWhy, setShowSectionWhy] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
 
     // Danh tính do BFF gắn từ cookie phiên; đổi persona = đổi phiên nên effect chạy lại.
+    if (!currentPersona) {
+      setRecResponse(null);
+      return () => controller.abort();
+    }
     setIsLoadingRecs(true);
+    setRecsFailed(false);
     fetchRecommendations({
       k: 4,
       destination: currentPersona?.activeDestination,
-      fallbackUser: currentPersona,
-      fallbackEvents: activeEvents,
       signal: controller.signal,
     })
       .then((data) => {
         setRecResponse(data);
       })
-      .catch((err) => {
+      .catch(() => {
         if (!controller.signal.aborted) {
-          console.error('[HomeView] Failed to load recommendations:', err);
+          setRecResponse(null);
+          setRecsFailed(true);
         }
       })
       .finally(() => {
@@ -512,9 +387,12 @@ export const HomeView: React.FC = () => {
     return () => {
       controller.abort();
     };
-  }, [currentPersona, activeEvents]);
+  }, [currentPersona, activeEvents, recsRetry]);
 
-  const { strategy, destination = 'Nha Trang', recommendations, diagnostics } = recResponse;
+  const strategy = recResponse?.strategy ?? 'popular';
+  const destination = recResponse?.destination ?? '';
+  const recommendations = recResponse?.recommendations ?? [];
+  const excludedVerticals = recResponse?.diagnostics.excludedVerticals ?? [];
 
   // Close search panel on click outside
   useEffect(() => {
@@ -608,11 +486,8 @@ export const HomeView: React.FC = () => {
     window.scrollTo({ top: 120, behavior: 'smooth' });
   };
 
-  const handleBookHotel = (item: HotelItem) => {
-    const matchedProduct = CATALOG.find(p => p.id === item.catalogId) || CATALOG[0];
-    addToCart(matchedProduct, 1);
-    showToast(`Đã thêm "${item.name}" vào chuyến đi của bạn!`);
-  };
+  // Khách sạn đặt theo hạng phòng: mở trang chi tiết để chọn phòng rồi mới thêm vào giỏ.
+  const openProduct = (product: Product) => navigate(`/product/${product.id}`);
 
   return (
     <div className="bg-[#f8fafc] text-slate-800 antialiased font-sans flex flex-col min-h-screen">
@@ -938,8 +813,8 @@ export const HomeView: React.FC = () => {
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                    {SECTION_1_HOTELS.slice(0, 4).map((hotel) => {
-                      const locTag = getHotelLocationTag(hotel.address);
+                    {hotelShelf.items.slice(0, 4).map((hotel) => {
+                      const locTag = `tại ${hotel.destination}`;
                       const fullHotelName = `${hotel.name} ${locTag}`;
                       return (
                         <button
@@ -953,8 +828,9 @@ export const HomeView: React.FC = () => {
                           className="p-2.5 rounded-2xl bg-white border border-slate-200/80 hover:border-blue-400 hover:shadow-md transition text-left cursor-pointer flex space-x-3 group"
                         >
                           <img
-                            src={hotel.image}
+                            src={hotel.imageUrl}
                             alt={hotel.name}
+                            referrerPolicy="no-referrer"
                             className="w-16 h-16 rounded-xl object-cover shrink-0 shadow-2xs group-hover:scale-103 transition duration-200"
                           />
                           <div className="min-w-0 flex-1 flex flex-col justify-between">
@@ -966,16 +842,17 @@ export const HomeView: React.FC = () => {
                                 <span className="text-[9px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded shrink-0">
                                   {locTag}
                                 </span>
-                                <div className="flex items-center space-x-1">
-                                  <Star className="w-3 h-3 text-amber-400 fill-amber-400 shrink-0" />
-                                  <span className="text-[11px] font-bold text-slate-700">{hotel.ratingScore}</span>
-                                  <span className="text-[10px] text-slate-400">({hotel.reviewsCount})</span>
-                                </div>
+                                {hotel.aggregateRating && (
+                                  <div className="flex items-center space-x-1">
+                                    <Star className="w-3 h-3 text-amber-400 fill-amber-400 shrink-0" />
+                                    <span className="text-[11px] font-bold text-slate-700">{hotel.aggregateRating.score}</span>
+                                    <span className="text-[10px] text-slate-400">({hotel.aggregateRating.count})</span>
+                                  </div>
+                                )}
                               </div>
                             </div>
-                            <div className="mt-1 flex items-baseline justify-between">
-                              <span className="text-[10px] text-slate-400 line-through">{hotel.originalPrice}</span>
-                              <span className="text-xs font-black text-blue-600">{hotel.price}</span>
+                            <div className="mt-1 flex items-baseline justify-end">
+                              <PriceTag price={hotel.unitPrice} taxonomy={hotel.taxonomy} hasPrefixFrom size="sm" />
                             </div>
                           </div>
                         </button>
@@ -1196,6 +1073,16 @@ export const HomeView: React.FC = () => {
         </section>        {/* ========================================================================= */}
         {/* OPTIONAL PERSONALIZATION PANEL (K1 / K2 V-OTA DEMO ACCORDION)              */}
         {/* ========================================================================= */}
+        {currentPersona && recsFailed && (
+          <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-3">
+            <p className="text-xs text-slate-500">
+              Chưa tải được gợi ý cho bạn ·{' '}
+              <button onClick={() => setRecsRetry((n) => n + 1)} className="font-semibold text-blue-600 hover:underline cursor-pointer">
+                Thử lại
+              </button>
+            </p>
+          </section>
+        )}
         {currentPersona && recommendations.length > 0 && (
           <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-3 pb-10">
             <div className="p-6 rounded-3xl bg-white border border-slate-200/80 shadow-sm">
@@ -1234,7 +1121,7 @@ export const HomeView: React.FC = () => {
                     variant="grid"
                     because={rec.because}
                     strategy={strategy}
-                    excludedVerticals={diagnostics.excludedVerticals}
+                    excludedVerticals={excludedVerticals}
                     score={rec.score}
                     rank={rec.rank}
                   />
@@ -1247,7 +1134,7 @@ export const HomeView: React.FC = () => {
                 targetProductName={`Toàn bộ danh mục chuyến ${destination}`}
                 becauseItems={recommendations[0]?.because || []}
                 strategy={strategy}
-                excludedVerticals={diagnostics.excludedVerticals}
+                excludedVerticals={excludedVerticals}
                 destination={destination}
               />
             </div>
@@ -1298,65 +1185,7 @@ export const HomeView: React.FC = () => {
             ref={hotelTrack1Ref}
             className="flex space-x-6 overflow-x-auto no-scrollbar scroll-smooth pb-4 -mx-4 px-4 sm:mx-0 sm:px-0"
           >
-            {SECTION_1_HOTELS.map((hotel) => (
-              <div
-                key={hotel.id}
-                className="w-[280px] sm:w-[305px] lg:w-[calc((100%-72px)/4)] flex-shrink-0 bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col group"
-              >
-                <div className="relative h-48 overflow-hidden">
-                  <img
-                    src={hotel.image}
-                    alt={hotel.name}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                  />
-                  <span className={`absolute top-3 left-3 backdrop-blur-md px-2.5 py-1 rounded-full text-[11px] font-bold shadow-sm ${hotel.tagColor}`}>
-                    {hotel.tag}
-                  </span>
-                </div>
-                <div className="p-4 flex flex-col flex-grow justify-between">
-                  <div>
-                    <h3 className="font-bold text-slate-900 text-base leading-snug group-hover:text-blue-600 transition-colors line-clamp-1">
-                      {hotel.name}
-                    </h3>
-
-                    {/* Stars */}
-                    <div className="flex items-center text-amber-400 text-xs mt-1">
-                      {Array.from({ length: hotel.stars }).map((_, i) => (
-                        <Star key={i} className="w-3.5 h-3.5 fill-current" />
-                      ))}
-                    </div>
-                    <p className="text-xs text-slate-500 mt-1 truncate">{hotel.address}</p>
-
-                    {/* TripAdvisor Review Rating */}
-                    <div className="flex items-center space-x-2 mt-2.5 text-xs text-slate-600">
-                      <div className="tripadvisor-dots">
-                        <div className="tripadvisor-dot"></div>
-                        <div className="tripadvisor-dot"></div>
-                        <div className="tripadvisor-dot"></div>
-                        <div className="tripadvisor-dot"></div>
-                        <div className="tripadvisor-dot tripadvisor-dot-half"></div>
-                      </div>
-                      <span className="font-bold text-slate-800">{hotel.ratingScore}</span>
-                      <span className="text-slate-400">· {hotel.reviewsCount.toLocaleString('vi-VN')} đánh giá</span>
-                    </div>
-                  </div>
-
-                  {/* Pricing & CTA */}
-                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-baseline justify-between">
-                    <div>
-                      <span className="text-xs text-slate-400 line-through">{hotel.originalPrice}</span>
-                      <div className="text-lg font-extrabold text-slate-900 tracking-tight">{hotel.price}</div>
-                    </div>
-                    <button
-                      onClick={() => handleBookHotel(hotel)}
-                      className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white transition cursor-pointer"
-                    >
-                      Đặt ngay
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
+            <ShelfCards shelf={hotelShelf} onOpen={openProduct} onRetry={() => setShelfRetry((n) => n + 1)} />
           </div>
         </section>
 
@@ -1367,7 +1196,7 @@ export const HomeView: React.FC = () => {
           <div className="flex items-center justify-between mb-6">
             <div>
               <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-                Khách sạn được yêu thích nhất
+                Phổ biến tại các điểm đến Việt Nam
               </h2>
             </div>
             <div className="flex items-center space-x-3">
@@ -1402,61 +1231,7 @@ export const HomeView: React.FC = () => {
             ref={hotelTrack2Ref}
             className="flex space-x-6 overflow-x-auto no-scrollbar scroll-smooth pb-4 -mx-4 px-4 sm:mx-0 sm:px-0"
           >
-            {SECTION_2_HOTELS.map((hotel) => (
-              <div
-                key={hotel.id}
-                className="w-[280px] sm:w-[305px] lg:w-[calc((100%-72px)/4)] flex-shrink-0 bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col group"
-              >
-                <div className="relative h-48 overflow-hidden">
-                  <img
-                    src={hotel.image}
-                    alt={hotel.name}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                  />
-                  <span className={`absolute top-3 left-3 px-2.5 py-0.5 rounded-full text-[11px] font-bold shadow-sm ${hotel.tagColor}`}>
-                    {hotel.tag}
-                  </span>
-                </div>
-                <div className="p-4 flex flex-col flex-grow justify-between">
-                  <div>
-                    <h3 className="font-bold text-slate-900 text-base leading-snug group-hover:text-blue-600 transition-colors line-clamp-1">
-                      {hotel.name}
-                    </h3>
-                    <div className="flex items-center text-amber-400 text-xs mt-1">
-                      {Array.from({ length: hotel.stars }).map((_, i) => (
-                        <Star key={i} className="w-3.5 h-3.5 fill-current" />
-                      ))}
-                    </div>
-                    <p className="text-xs text-slate-500 mt-1 truncate">{hotel.address}</p>
-
-                    <div className="flex items-center space-x-2 mt-2.5 text-xs text-slate-600">
-                      <div className="tripadvisor-dots">
-                        <div className="tripadvisor-dot"></div>
-                        <div className="tripadvisor-dot"></div>
-                        <div className="tripadvisor-dot"></div>
-                        <div className="tripadvisor-dot"></div>
-                        <div className="tripadvisor-dot tripadvisor-dot-half"></div>
-                      </div>
-                      <span className="font-bold text-slate-800">{hotel.ratingScore}</span>
-                      <span className="text-slate-400">· {hotel.reviewsCount.toLocaleString('vi-VN')} đánh giá</span>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-baseline justify-between">
-                    <div>
-                      <span className="text-xs text-slate-400 line-through">{hotel.originalPrice}</span>
-                      <div className="text-lg font-extrabold text-slate-900 tracking-tight">{hotel.price}</div>
-                    </div>
-                    <button
-                      onClick={() => handleBookHotel(hotel)}
-                      className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white transition cursor-pointer"
-                    >
-                      Đặt ngay
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
+            <ShelfCards shelf={popularShelf} onOpen={openProduct} onRetry={() => setShelfRetry((n) => n + 1)} />
           </div>
         </section>
 

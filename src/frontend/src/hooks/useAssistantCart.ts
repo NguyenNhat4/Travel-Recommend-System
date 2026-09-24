@@ -16,18 +16,21 @@ export function useAssistantCart() {
     latest.current = { addToCart, currentPersona };
   }, [addToCart, currentPersona]);
 
-  const addItems = useCallback((items: AssistantCartItem[]) => {
+  const addItems = useCallback(async (items: AssistantCartItem[]) => {
+    if (items.length === 1) {
+      const [item] = items;
+      await latest.current.addToCart(mapProductSummaryToProduct(item.product), 1, item.usingDate, item.checkOutDate);
+      return; // addToCart đã tự báo toast cho một mục.
+    }
+    // Tuần tự, mỗi mục một request; một mục lỗi không chặn mục còn lại.
     let added = 0;
     const failed: string[] = [];
     for (const item of items) {
-      try {
-        latest.current.addToCart(mapProductSummaryToProduct(item.product), 1, item.usingDate, item.checkOutDate);
-        added += 1;
-      } catch {
-        failed.push(item.product.name);
-      }
+      const ok = await latest.current.addToCart(
+        mapProductSummaryToProduct(item.product), 1, item.usingDate, item.checkOutDate, { silent: true });
+      if (ok) added += 1;
+      else failed.push(item.product.name);
     }
-    if (items.length <= 1 && failed.length === 0) return; // addToCart đã tự báo toast cho một mục.
     const summary = failed.length
       ? `Đã thêm ${added}/${items.length} mục vào giỏ. Chưa thêm được: ${failed.join(', ')}.`
       : `Đã thêm ${added} mục của lịch trình vào giỏ. Giá chính thức hiển thị ở giỏ hàng.`;
@@ -37,9 +40,9 @@ export function useAssistantCart() {
   return useCallback((items: AssistantCartItem[]) => {
     if (!items.length) return;
     if (!currentPersona) {
-      openLoginModal(() => addItems(items));
+      openLoginModal(() => { void addItems(items); });
       return;
     }
-    addItems(items);
+    void addItems(items);
   }, [addItems, currentPersona, openLoginModal]);
 }

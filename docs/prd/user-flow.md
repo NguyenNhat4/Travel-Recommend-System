@@ -34,8 +34,8 @@ Hệ thống được tối ưu hóa cho 4 luồng trải nghiệm chính tươn
 | `/search` | **Kết quả tìm kiếm** | Hiển thị kết quả tìm kiếm ngữ nghĩa và bộ lọc đa chiều | Query Header, Filter Sidebar, Sort Controls, Product Grid Cards, Pagination |
 | `/products/:id` | **Chi tiết sản phẩm** | Thông tin đầy đủ về phòng, vé, tour; trạng thái khả dụng | Image Gallery, Attribute Badges, Availability Calendar, Pricing, Add-to-Cart CTA |
 | `/assistant` | **Trợ lý Lịch trình** | Tương tác trò chuyện với AI Agent để tạo và tùy chỉnh kế hoạch | Chat Stream, Intent Chips, Day-by-Day Timeline, Grounded Product Cards |
-| `/checkout` | **Thanh toán / Đặt chỗ** | Xem lại thông tin đơn hàng, nhập thông tin liên lạc và xác nhận | Cart Items Summary, Guest Info Form, Price Breakdown, Confirm Booking CTA |
-| `/booking/confirmation` | **Xác nhận đơn hàng** | Thông báo thành công, tóm tắt mã đặt chỗ và gợi ý chặng tiếp | Booking Status Card, Next Best Action Recommendations (Flight, Tours) |
+| `/checkout` | **Thanh toán / Đặt chỗ** | Xem lại đơn, nhập thông tin liên lạc, chọn phương thức thanh toán, bấm Thanh toán để chuyển sang trang Stripe | Cart Items Summary, Guest Info Form, Price Breakdown, Payment Method Selector, Pay CTA |
+| `/booking/:referenceCode` | **Xác nhận đơn hàng** | Hiển thị đơn theo trạng thái: đang giữ chỗ (đồng hồ đếm ngược, tiếp tục thanh toán), đã xác nhận (mã đặt chỗ, gợi ý chặng tiếp), thanh toán thất bại, hết hạn, đã huỷ; huỷ đơn | Booking Status Card, Next Best Action Recommendations (Flight, Tours) |
 | `/profile` | **Hồ sơ & Lịch sử** | Quản lý thông tin cá nhân, lịch sử đơn hàng và chuyến đi | User Preferences, Booking History, Saved Items |
 
 ---
@@ -76,16 +76,29 @@ flowchart TD
 
 ### 3.3. Luồng Đặt Chỗ & Khép Kín Vòng Lặp Cá Nhân Hóa (Booking & Recs Loop)
 
+> Ở `/checkout`, khách làm lần lượt ba việc: (1) điền đủ thông tin liên lạc; (2) chọn phương thức thanh toán; (3) bấm **Thanh toán**.
+>
+> - **Phương thức thanh toán.** Trang hiển thị danh sách phương thức. Hiện chỉ hỗ trợ **Stripe** (thẻ, test mode); phương thức này được chọn sẵn. Các phương thức khác (ví điện tử, chuyển khoản, cổng ngân hàng nội địa…) nếu có hiển thị thì ở dạng vô hiệu hoá kèm nhãn "Sắp có", không chọn được. Danh sách để mở rộng về sau mà không đổi luồng.
+> - **Chưa rời trang khi chưa bấm Thanh toán.** Điền thông tin và chọn phương thức chỉ là thao tác trên `/checkout`, không gọi Stripe và không tạo đơn. Nút **Thanh toán** bị vô hiệu hoá cho tới khi thông tin liên lạc hợp lệ và đã chọn phương thức.
+> - **Bấm Thanh toán mới sang Stripe.** Khi bấm, Web gọi Backend; Backend kiểm giỏ, tạo đơn giữ chỗ 30 phút và Stripe Checkout Session, rồi Web chuyển trình duyệt sang trang Stripe để nhập thẻ. Nút hiện trạng thái đang xử lý và chặn bấm lặp. Nếu Backend hoặc Stripe lỗi thì khách ở lại `/checkout` với thông báo lỗi và bấm lại được.
+> - **Quay về.** Xong trên Stripe (thành công, thất bại hoặc khách bấm quay lại), trình duyệt về `/booking/:referenceCode`; trạng thái đơn do Backend quyết định, không do việc quay về.
+
 ```mermaid
 flowchart TD
     A[Khách chọn sản phẩm & nhấn 'Đặt ngay'] --> B[Mở trang /checkout]
-    B --> C[Xác nhận thông tin & bấm 'Hoàn tất']
-    C --> D[Ghi nhận sự kiện purchase vào CDP]
-    D --> E[Lưu đơn hàng vào app.bookings]
-    E --> F[Chuyển đến trang /booking/confirmation]
-    F --> G[Hệ thống kích hoạt thuật toán Next-Best-Action]
-    G --> H[Gợi ý vé máy bay & vé vui chơi bổ trợ cho chuyến đi]
-    H --> I[Người dùng tiếp tục đặt thêm hoặc quay về Trang chủ đã được cá nhân hóa]
+    B --> C[Điền thông tin liên lạc]
+    C --> M[Chọn phương thức thanh toán: hiện chỉ có Stripe]
+    M --> P[Bấm 'Thanh toán']
+    P --> D[Backend kiểm giỏ, tạo đơn giữ chỗ 30 phút và phiên Stripe]
+    D -->|Lỗi Backend hoặc Stripe| B
+    D --> S[Chuyển sang trang Stripe: nhập thẻ]
+    S -->|Thẻ bị từ chối, dưới 3 lần| S
+    S -->|Từ chối lần 3| X1[Đơn PAYMENT_FAILED, giỏ còn nguyên]
+    S -->|Quá 30 phút| X2[Đơn EXPIRED, giỏ còn nguyên]
+    S -->|Stripe thu tiền| F[Ghi purchase vào CDP, đơn CONFIRMED]
+    F --> G[Trang /booking/:referenceCode]
+    G --> H[Gợi ý vé máy bay & vé vui chơi cho chuyến đi]
+    G -->|Khách huỷ trong hạn| X3[Đơn CANCELLED, hoàn 100%]
 ```
 
 ---
@@ -148,7 +161,7 @@ flowchart TD
 +-------------------------------------------------------------------------------+
 ```
 
-### 4.3. Màn hình Xác Nhận Đơn Hàng & Vòng Lặp Gợi Ý Tiếp Theo (`/booking/confirmation`)
+### 4.3. Màn hình Xác Nhận Đơn Hàng & Vòng Lặp Gợi Ý Tiếp Theo (`/booking/:referenceCode`)
 ```
 +-------------------------------------------------------------------------------+
 | [LOGO] V-OTA                                                    [Tài khoản v] |
@@ -178,5 +191,24 @@ flowchart TD
 |   [ Thẻ Tour lặn ngắm san hô Hòn Mun ]     [ Thẻ Vé tắm bùn khoáng I-Resort ] |
 |                                                                               |
 |   [ QUAY VỀ TRANG CHỦ ]                            [ QUẢN LÝ ĐƠN HÀNG NÀY ]   |
++-------------------------------------------------------------------------------+
+```
+
+### 4.4. Màn hình Thanh Toán (`/checkout`)
+```
++-------------------------------------------------------------------------------+
+| [LOGO] V-OTA                                                    [Tài khoản v] |
++-------------------------------------------------------------------------------+
+| 1. Thông tin liên lạc                     | Tóm tắt đơn                       |
+|   Họ tên      [__________________]        |  Vinpearl Resort - Deluxe (2 đêm) |
+|   Email       [__________________]        |  Vé VinWonders x2                 |
+|   Số điện thoại [________________]        |  -------------------------------- |
+|                                           |  Tổng thanh toán: 6.400.000 đ     |
+| 2. Phương thức thanh toán                 |                                   |
+|   (o) Stripe - Thẻ thanh toán (test)      |  Giữ chỗ 30 phút sau khi bấm      |
+|   ( ) Ví điện tử          [Sắp có]        |  Thanh toán.                      |
+|   ( ) Chuyển khoản        [Sắp có]        |                                   |
+|                                           |  [        THANH TOÁN        ]     |
+|                                           |  Bạn sẽ được chuyển sang Stripe.  |
 +-------------------------------------------------------------------------------+
 ```

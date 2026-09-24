@@ -1,0 +1,44 @@
+{
+  "results": [
+    {
+      "productId": "nt-h-10-r1",
+      "name": "Vinpearl Resort & Spa Nha Trang Bay - Deluxe King",
+      "taxonomy": "hotel",
+      "destination": "Nha Trang",
+      "unitPrice": 2890000,
+      "currency": "VND",
+      "priceUnit": "PER_NIGHT",
+      "available": true,
+      "availableFrom": "2026-10-01",
+      "availableTo": "2026-10-30",
+      "imageUrl": null,
+      "attributes": {
+        "level": "room",
+        "parentProductId": "nt-h-10",
+        "maxOccupancy": 2
+      }
+    },
+    {
+      "productId": "nt-h-10-r2",
+      "name": "Vinpearl Resort & Spa Nha Trang Bay - Family Suite",
+      "taxonomy": "hotel",
+      "destination": "Nha Trang",
+      "unitPrice": 4150000,
+      "currency": "VND",
+      "priceUnit": "PER_NIGHT",
+      "available": true,
+      "availableFrom": "2026-10-01",
+      "availableTo": "2026-10-30",
+      "imageUrl": null,
+      "attributes": {
+        "level": "room",
+        "parentProductId": "nt-h-10",
+        "maxOccupancy": 4
+      }
+    }
+  ],
+  "total": 2,
+  "limit": 20,
+  "offset": 0,
+  "requestId": "cat-01JXYV"
+}

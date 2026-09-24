@@ -1,0 +1,13 @@
+{
+  "error": {
+    "code": "BOOKING_NOT_CANCELLABLE",
+    "message": "Đơn đã quá hạn huỷ trực tuyến.",
+    "retryable": false,
+    "requestId": "book-01JXYZ",
+    "details": {
+      "referenceCode": "VOTA-20260916-8K3F",
+      "reason": "TOO_LATE",
+      "cancellableUntil": "2026-10-13T17:00:00Z"
+    }
+  }
+}
