@@ -16,7 +16,7 @@ import {
 import { TaxonomyBadge } from '../common/TaxonomyBadge';
 import { PriceTag } from '../common/PriceTag';
 import { ProductCard } from '../common/ProductCard';
-import { MapPin, Star, ShieldCheck, Sparkles, Loader2, BedDouble, Plane } from 'lucide-react';
+import { MapPin, Star, ShieldCheck, Loader2, BedDouble, Plane } from 'lucide-react';
 
 interface ProductDetailViewProps {
   productId: string;
@@ -240,19 +240,6 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({ productId 
               </div>
             </div>
           )}
-
-          <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-xl flex items-center justify-between gap-4">
-            <div className="text-xs font-bold text-indigo-900 flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
-              Lên lịch trình kết hợp xung quanh {product.destination}
-            </div>
-            <button
-              onClick={() => navigate('/assistant')}
-              className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg shadow-xs transition-colors shrink-0"
-            >
-              Hỏi Trợ lý AI →
-            </button>
-          </div>
         </div>
 
         {/* Right: booking box */}
