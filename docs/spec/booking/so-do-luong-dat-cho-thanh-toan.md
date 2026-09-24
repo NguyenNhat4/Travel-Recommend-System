@@ -80,7 +80,7 @@ flowchart LR
     B["🔀 BFF<br/>Next.js route handler"]
     F["⚙️ Backend<br/>FastAPI"]
     J["⏱️ Job đối soát<br/>chạy trong Backend, 5 phút/lần"]
-    P[("🗄️ Postgres app.*<br/>carts, bookings,<br/>booking_items, payments")]
+    P[("🗄️ Postgres app.*<br/>carts, bookings,<br/>booking_items, payments<br/>+ đọc cdp.products")]
     C[("🗄️ CDP cdp.events<br/>chỉ qua CdpClient")]
     S["💳 Stripe<br/>Checkout, Refund API"]
 
@@ -224,7 +224,7 @@ sequenceDiagram
     U->>W: Điền liên hệ, bấm "Thanh toán"
     W->>B: POST /api/bookings (contact, itemDetails), cookie + CSRF
     B->>F: POST /api/v1/bookings, Bearer JWT
-    F->>P: Đọc giỏ, catalog, đơn PENDING_PAYMENT của user
+    F->>P: Đọc giỏ, đơn PENDING_PAYMENT của user (app.*)<br/>và sản phẩm (cdp.products, chỉ đọc)
     F->>F: Kiểm giỏ không rỗng, còn chỗ, giá không đổi, ngày trong cửa sổ bán
     F->>F: Sinh bookingId, referenceCode, eventGroupId<br/>holdExpiresAt = now + 30 phút, tính tổng từ catalog
     F->>S: POST /v1/checkout/sessions, Idempotency-Key = booking:{bookingId}<br/>mode payment, currency vnd, line_items, expires_at = holdExpiresAt<br/>metadata.bookingId, payment_intent_data.metadata.bookingId<br/>success_url, cancel_url, customer_email, locale vi, submit_type book
@@ -322,7 +322,7 @@ flowchart TB
 
     subgraph LD["🗄️ Dữ liệu"]
         D1[("app.carts, cart_items")]
-        D2[("catalog.products")]
+        D2[("cdp.products<br/>chỉ đọc")]
         D3[("app.bookings, booking_items")]
         D4[("app.payments")]
     end
@@ -355,6 +355,8 @@ flowchart TB
     F4 -.-> D2
     F5 -.-> D1
     F5 -.-> D2
+    F6 -.-> D2
+    F7 -.-> D2
     F10 -.-> D3
     F10 -.-> D4
 

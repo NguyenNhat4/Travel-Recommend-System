@@ -63,7 +63,7 @@ Hệ thống áp dụng mô hình tháp kiểm thử 5 tầng toàn diện:
   - Tập 50 câu prompt đa dạng: từ yêu cầu rõ ràng đến các câu hỏi mơ hồ, câu hỏi có điều kiện ngân sách ngặt nghèo, hoặc các yêu cầu cố tình bẫy địa danh không có trong catalog.
 - **Chỉ số đánh giá:**
   - **Tool Calling Accuracy:** $\ge 95\%$ trường hợp gọi đúng công cụ tìm kiếm với các tham số địa điểm, thời gian hợp lệ.
-  - **Grounding Rate:** Bắt buộc đạt $100\%$. Tất cả các ID sản phẩm được render thành thẻ đặt chỗ phải tồn tại thực trong bảng `catalog.products`.
+  - **Grounding Rate:** Bắt buộc đạt $100\%$. Tất cả các ID sản phẩm được render thành thẻ đặt chỗ phải tồn tại thực trong bảng `cdp.products`.
   - **Structured Output Integrity:** Phản hồi JSON khớp chính xác schema `ItineraryOutput`.
 
 ### 2.5. Tầng 5: Đánh Giá Thuật Toán Gợi Ý (RecSys Offline Evaluation)

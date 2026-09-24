@@ -13,9 +13,9 @@ Hệ sinh thái lưu trữ của V-OTA gồm hai cơ sở dữ liệu PostgreSQL
 | DATABASE: vota  (PostgreSQL 16)                                         |
 |                                                                         |
 |  [Schema: cdp]           [Schema: catalog]           [Schema: app]      |
-|  - profiles              - products (view/table)     - users            |
-|  - events                - product_meta (view)       - bookings         |
-|                          - combo_items               - booking_items    |
+|  - products              - product_meta (view)       - users            |
+|  - profiles              - combo_items               - bookings         |
+|  - events                                            - booking_items    |
 |                                                      - payments         |
 |                                                      - conversations    |
 |                                                      - messages         |
@@ -179,7 +179,7 @@ erDiagram
     APP_BOOKING_ITEMS {
         uuid item_id PK
         uuid booking_id FK
-        string product_id "Tham chiếu logic tới catalog.products"
+        string product_id 
         string product_title
         string product_type
         numeric price_at_booking
