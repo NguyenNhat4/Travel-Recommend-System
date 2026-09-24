@@ -19,6 +19,7 @@ Hệ thống được thiết kế để vận hành trên ba cấp môi trườ
 | **Cơ sở dữ liệu** | PostgreSQL 16 local qua Docker | PostgreSQL Cloud | Managed Cloud Database Cluster |
 | **Session store** | Redis local qua Docker (bind `127.0.0.1`, có mật khẩu) | Redis dùng chung (managed hay tự host: chờ chốt) | Redis managed, `noeviction` |
 | **Cơ sở dữ liệu vector** | Weaviate local qua Docker (volume riêng) | Weaviate dùng chung | Weaviate Cloud hoặc self-host có backup |
+| **Cổng thanh toán** | Stripe test mode, `stripe listen` chuyển webhook về máy | Stripe test mode, webhook trỏ về URL staging | Ngoài phạm vi (live mode) |
 | **Dữ liệu mẫu** | Snapshot nén hoặc dữ liệu tổng hợp | Toàn bộ dữ liệu snapshot chuẩn hóa | Dữ liệu giao dịch thực tế |
 | **Dịch vụ AI** | Local LLM hoặc API dev key | API key chia sẻ nội bộ | Dedicated API quota / Enterprise |
 
@@ -46,6 +47,12 @@ Hệ thống phân tách ranh giới bảo mật bằng các chuỗi kết nối
 | `TRUSTED_PROXIES` | Dải proxy được tin header `X-Forwarded-For` khi tính rate limit | Staging / Prod | Sai giá trị = rate limit bị vượt qua bằng một header |
 | `CAPTCHA_PROVIDER` / `CAPTCHA_SECRET` | CAPTCHA khi đăng nhập sai nhiều lần | Tất cả | `noop` ở dev/test; secret chỉ ở FastAPI |
 | `WEAVIATE_API_KEY` | Khóa xác thực Weaviate | Staging / Prod | Bí mật. Local dùng anonymous access nên có thể bỏ trống |
+| `STRIPE_SECRET_KEY` | Khoá API Stripe (`sk_test_…`) | Tất cả | Bí mật, chỉ Backend giữ, không commit. Backend từ chối khởi động nếu nhận khoá `sk_live_` |
+| `STRIPE_WEBHOOK_SECRET` | Khoá kiểm chữ ký webhook (`whsec_…`); ở local lấy từ `stripe listen` | Tất cả | Bí mật |
+| `PAYMENT_PROVIDER` | `stripe` hoặc `fake` (test/offline, không gọi mạng) | Tất cả | Không bí mật |
+| `BOOKING_HOLD_MINUTES` | Thời gian giữ chỗ, mặc định `30`, không được nhỏ hơn 30 | Tất cả | Không bí mật |
+| `PAYMENT_MAX_FAILED_ATTEMPTS` | Số lần thẻ bị từ chối tối đa, mặc định `3` | Tất cả | Không bí mật |
+| `PUBLIC_WEB_URL` | Gốc URL web để dựng `success_url`, `cancel_url` | Tất cả | Không bí mật |
 
 ---
 

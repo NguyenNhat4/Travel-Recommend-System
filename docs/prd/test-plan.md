@@ -49,6 +49,7 @@ Hệ thống áp dụng mô hình tháp kiểm thử 5 tầng toàn diện:
 - **Các kịch bản trọng yếu:**
   - Kiểm tra quyền cách ly: Role `vota_app` không thể đọc hoặc ghi vào schema `cdp`.
   - Kiểm tra cơ chế giao dịch bù trừ: Khi ghi `cdp.events` thành công nhưng commit đơn hàng tại `app.bookings` thất bại, adapter phải kích hoạt lệnh hủy/bù trừ sự kiện.
+  - Kiểm tra webhook Stripe: webhook sai chữ ký bị từ chối và không đổi dữ liệu; webhook gửi trùng không đổi trạng thái lần hai.
   - Chạy kịch bản SQL thẩm định hệ thống:
     ```bash
     psql "$SEED_DATABASE_URL" -f db/verify.sql
@@ -86,8 +87,9 @@ Kịch bản xác thực tổng thể trước khi phát hành phiên bản mớ
 | 3 | Mở xem chi tiết sản phẩm khách sạn A | Hiển thị đủ ảnh, tiện ích, lịch phòng khả dụng | Không sinh sự kiện `product_view` vì đang ẩn danh |
 | 4 | Đăng nhập tài khoản Persona P1 (Gia đình), rồi tìm kiếm và xem lại khách sạn A | Trang chủ chuyển sang giao diện cá nhân hóa cho gia đình; trình duyệt chỉ có cookie `vota_sid`, không có token | Từ lúc này mới sinh `search`, `product_view` gắn `cdp_user_id` của P1; không gộp lịch sử ẩn danh |
 | 5 | Mở Trợ lý AI, yêu cầu lên lịch trình 3N2Đ | Nhận được kế hoạch có cấu trúc, chứa thẻ đặt phòng khách sạn thật | Log Agent ghi nhận luồng StateGraph và tool call thành công |
-| 6 | Thêm sản phẩm vào giỏ và nhấn Đặt chỗ | Nhận thông báo thành công, mã đơn hàng VOTA-XXXXXX | Có bản ghi tại `app.bookings` và event `purchase` trong CDP |
+| 6 | Thêm sản phẩm vào giỏ, điền thông tin, chọn Stripe, bấm Thanh toán và trả bằng thẻ test `4242 4242 4242 4242` | Qua trang Stripe, quay về trang thành công với mã `VOTA-…` | `app.bookings` = `confirmed`, `app.payments` = `succeeded`, có event `purchase` trong CDP |
 | 7 | Quan sát màn hình xác nhận đơn hàng | Hiển thị các khối gợi ý vé máy bay và tour phù hợp với chuyến đi vừa đặt | API recommendation nhận context `checkout_confirmation` |
+| 8 | Huỷ đơn vừa đặt | Đơn `CANCELLED` | Stripe Dashboard (test) có refund; event `purchase` bị huỷ |
 
 ---
 
