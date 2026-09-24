@@ -37,3 +37,7 @@ secrets/
 
 # Search benchmark runtime artifacts
 bench_out/
+
+# Streamlit secrets (mật khẩu nhóm của app soát draft gold). Không bao giờ commit.
+.streamlit/secrets.toml
+**/.streamlit/secrets.toml
