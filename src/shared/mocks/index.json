@@ -51,14 +51,6 @@
       "file": "auth/getMe.401-token-expired.json"
     },
     {
-      "operationId": "listDemoAccounts",
-      "method": "get",
-      "path": "/auth/demo-accounts",
-      "status": 200,
-      "case": "default",
-      "file": "auth/listDemoAccounts.200-default.json"
-    },
-    {
       "operationId": "createSession",
       "method": "post",
       "path": "/auth/session",
@@ -425,6 +417,14 @@
       "status": 404,
       "case": "product-not-found",
       "file": "events/trackEvent.404-product-not-found.json"
+    },
+    {
+      "operationId": "getJwks",
+      "method": "get",
+      "path": "/.well-known/jwks.json",
+      "status": 200,
+      "case": "default",
+      "file": "auth/getJwks.200-default.json"
     }
   ]
 }

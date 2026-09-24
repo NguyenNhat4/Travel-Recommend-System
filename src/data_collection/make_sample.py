@@ -19,13 +19,14 @@ def variant(o: dict) -> str:
     return o["taxonomy"] + (f"/{level}" if level else "")
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--data-dir", type=Path, default=Path("data"))
     ap.add_argument("--per-variant", type=int, default=4, help="số sản phẩm mỗi biến thể (mặc định 4)")
-    a = ap.parse_args()
+    a = ap.parse_args(argv)
 
-    rows = [json.loads(line) for line in open(a.data_dir / "products.jsonl", encoding="utf-8")]
+    with (a.data_dir / "products.jsonl").open(encoding="utf-8") as stream:
+        rows = [json.loads(line) for line in stream]
     by_id = {o["productId"]: o for o in rows}
     children: dict[str, list[dict]] = {}
     for o in rows:
@@ -35,14 +36,20 @@ def main() -> None:
 
     picked: dict[str, dict] = {}
 
+    def api_summary(o: dict) -> dict:
+        """Project the 13-field CDP row to the API sample without inventing a pricing unit."""
+        projected = dict(o)
+        projected["priceUnit"] = o.get("priceUnit") or "UNKNOWN"
+        return projected
+
     def take(o: dict, with_children: bool = False) -> None:
-        picked.setdefault(o["productId"], o)
+        picked.setdefault(o["productId"], api_summary(o))
         parent = (o.get("attributes") or {}).get("parentProductId")
         if parent and parent in by_id:
-            picked.setdefault(parent, by_id[parent])   # không để hạng phòng mất cha
+            picked.setdefault(parent, api_summary(by_id[parent]))   # không để hạng phòng mất cha
         if with_children:
             for c in children.get(o["productId"], [])[:3]:
-                picked.setdefault(c["productId"], c)
+                picked.setdefault(c["productId"], api_summary(c))
 
     # trường hợp đặc biệt, lấy trước để chắc chắn có mặt
     special = [

@@ -60,8 +60,13 @@ class ConstraintUpdate(StrictModel):
     specific_activity: str | None = Field(default=None, max_length=200)
     children_ages: list[int] | None = Field(default=None, max_length=20)
     unverified_requirements: list[str] | None = Field(default=None, max_length=20)
+    exclude_products: list[str] | None = Field(
+        default=None, max_length=20,
+        description="productId của sản phẩm đã cho xem ở lượt trước mà người dùng muốn bỏ; "
+                    "chỉ được copy nguyên văn từ previous_selection, không tự tạo id.")
     clear_fields: list[Literal["hotel_price_max", "hotel_price_unit", "price_strict", "star_rating_min",
-                               "hotel_attributes", "specific_hotel", "specific_activity", "unverified_requirements"]] = Field(default_factory=list)
+                               "hotel_attributes", "specific_hotel", "specific_activity", "unverified_requirements",
+                               "exclude_products"]] = Field(default_factory=list)
 
 
 class Extraction(StrictModel):

@@ -2,13 +2,14 @@
 
 import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Bookmark, BookmarkCheck, CloudSun, List, Map, MapPin, Share2, Trash2, X } from 'lucide-react';
+import { Bookmark, BookmarkCheck, CloudSun, History, List, Map, Share2, Trash2, X } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import type { components } from '../../types/api.gen';
 import { useAssistant } from '../../context/AssistantProvider';
 import { useTravel } from '../../context/TravelContext';
 import { createAssistantShareUrl, decodeAssistantResponse } from '../../services/assistantShare';
-import { convertItineraryResponseToGroundedPlan } from '../../services/assistant';
+import { convertItineraryResponseToGroundedPlan, planLocationCoverage } from '../../services/assistant';
+import { useAssistantCart } from '../../hooks/useAssistantCart';
 import type { GroundedPlan } from '../../types/travel';
 import { AssistantConversation } from './AssistantConversation';
 import { AssistantMapPanel, AssistantResultPanel } from './AssistantResultPanel';
@@ -55,6 +56,7 @@ function destinationOf(response: Response) {
 export function AssistantView() {
   const { state, submitIntentOverride, sendMessage } = useAssistant();
   const { showToast, addToCart } = useTravel();
+  const addItineraryToCart = useAssistantCart();
   const searchParams = useSearchParams();
   const sharedData = searchParams.get('data');
   const [sharedResponse, setSharedResponse] = useState<Response | null>(null);
@@ -86,9 +88,19 @@ export function AssistantView() {
   const destination = response ? destinationOf(response) : undefined;
   const isSaved = Boolean(response && savedItems.some((item) => JSON.stringify(item.response) === JSON.stringify(response)));
 
+  const isRunning = state.phase === 'connecting' || state.phase === 'streaming';
+  const isArchived = Boolean(selectedResponse ?? sharedResponse);
+  const archivedPriceAsOf = isArchived && response?.status === 'COMPLETED' ? response.itinerary.priceAsOf : null;
+
   const plan: GroundedPlan | null = React.useMemo(() => {
     return response ? convertItineraryResponseToGroundedPlan(response) : null;
   }, [response]);
+  const coverage = plan ? planLocationCoverage(plan) : null;
+  // Không có điểm nào có tọa độ thật thì hiện panel trống thay vì bản đồ không ghim.
+  const mapPlan = plan && coverage && coverage.located > 0 ? plan : null;
+  const missingPinsNote = coverage && coverage.missing > 0 && coverage.located > 0
+    ? `${coverage.missing} địa điểm chưa có vị trí nên không hiện trên bản đồ.`
+    : null;
 
   const saveResponse = () => {
     if (!response || response.status !== 'COMPLETED') return;
@@ -123,10 +135,10 @@ export function AssistantView() {
 
       <div className="grid min-h-[72vh] gap-4 xl:h-[calc(100dvh-13.5rem)] xl:min-h-[650px] xl:grid-cols-[minmax(300px,0.86fr)_minmax(380px,1.24fr)] 2xl:grid-cols-[minmax(320px,0.84fr)_minmax(480px,1.16fr)_minmax(320px,0.80fr)]">
         <section aria-label="Trò chuyện với trợ lý" className="flex min-h-[560px] min-w-0 flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm xl:min-h-0">
-          <header className="flex items-center justify-between border-b border-slate-100 px-4 py-3.5"><div><h2 className="text-sm font-extrabold text-slate-800">Cuộc trò chuyện</h2><p className="mt-0.5 text-[10px] text-slate-500">Yêu cầu được xử lý bởi backend</p></div><span className={`h-2 w-2 rounded-full ${state.phase === 'connecting' || state.phase === 'streaming' ? 'animate-pulse bg-amber-400' : 'bg-emerald-500'}`} aria-label={state.phase === 'connecting' || state.phase === 'streaming' ? 'Agent đang chạy' : 'Agent sẵn sàng'} /></header>
+          <header className="flex items-center justify-between border-b border-slate-100 px-4 py-3.5"><div><h2 className="text-sm font-extrabold text-slate-800">Cuộc trò chuyện</h2><p className="mt-0.5 text-[10px] text-slate-500">Mô tả chuyến đi, trợ lý sẽ xếp lịch trình</p></div><span className={`h-2 w-2 rounded-full ${state.phase === 'connecting' || state.phase === 'streaming' ? 'animate-pulse bg-amber-400' : 'bg-emerald-500'}`} aria-label={state.phase === 'connecting' || state.phase === 'streaming' ? 'Agent đang chạy' : 'Agent sẵn sàng'} /></header>
           <AssistantConversation inputId="assistant-page-input" showResponseInline={false} />
         </section>
-        <section aria-label="Lịch trình từ backend" className="flex min-w-0 flex-col overflow-hidden rounded-3xl border border-slate-200 bg-slate-100/70 p-3 shadow-sm sm:p-4">
+        <section aria-label="Lịch trình" className="flex min-w-0 flex-col overflow-hidden rounded-3xl border border-slate-200 bg-slate-100/70 p-3 shadow-sm sm:p-4">
           <div className="mb-3 flex shrink-0 items-center justify-between px-1">
             <h2 className="text-sm font-extrabold text-slate-800">
               {viewMode === 'map' ? 'Bản đồ lộ trình' : 'Lịch trình chi tiết'}
@@ -159,21 +171,34 @@ export function AssistantView() {
             )}
           </div>
 
+          {isArchived && (
+            <div role="status" className="mb-3 flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-[11px] leading-relaxed text-amber-900">
+              <History className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <p>
+                Đây là lịch trình {sharedResponse && !selectedResponse ? 'được chia sẻ' : 'đã lưu'}
+                {archivedPriceAsOf ? `, giá ghi nhận ngày ${new Date(archivedPriceAsOf).toLocaleDateString('vi-VN')}` : ''}. Giá và chỗ có thể đã thay đổi; giá chính thức hiển thị ở giỏ hàng.
+                {' '}<button type="button" onClick={() => { setSelectedResponse(null); setSharedResponse(null); }} className="font-bold underline">Quay lại cuộc trò chuyện</button>
+              </p>
+            </div>
+          )}
           <div className="min-h-0 flex-1 overflow-y-auto">
             {viewMode === 'map' && plan ? (
               <div className="h-full min-h-[450px] overflow-hidden rounded-2xl border border-slate-200 bg-white p-2">
-                <ItineraryMap
-                  plan={plan}
+                {mapPlan ? <ItineraryMap
+                  plan={mapPlan}
                   activeDay={activeDayTab}
                   onSelectDay={setActiveDayTab}
                   onAddToCart={addToCart}
-                />
+                /> : <AssistantMapPanel />}
               </div>
             ) : (
               <>
                 <AssistantResultPanel
                   response={response}
                   showMap={false}
+                  onAddToCart={addItineraryToCart}
+                  busy={isRunning}
+                  readOnly={isArchived}
                   onIntentOverride={(intent) => {
                     setSelectedResponse(null);
                     submitIntentOverride(intent);
@@ -184,10 +209,10 @@ export function AssistantView() {
                   }}
                 />
                 <div className="mt-4 2xl:hidden">
-                  {plan ? (
+                  {mapPlan ? (
                     <div className="h-[380px] overflow-hidden rounded-2xl border border-slate-200 bg-white p-2">
                       <ItineraryMap
-                        plan={plan}
+                        plan={mapPlan}
                         activeDay={activeDayTab}
                         onSelectDay={setActiveDayTab}
                         onAddToCart={addToCart}
@@ -211,9 +236,9 @@ export function AssistantView() {
             )}
           </div>
           <div className="min-h-64 flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white">
-            {plan ? (
+            {mapPlan ? (
               <ItineraryMap
-                plan={plan}
+                plan={mapPlan}
                 activeDay={activeDayTab}
                 onSelectDay={setActiveDayTab}
                 onAddToCart={addToCart}
@@ -223,7 +248,7 @@ export function AssistantView() {
             )}
           </div>
           <p className="rounded-xl border border-slate-200 bg-white p-3 text-[11px] leading-relaxed text-slate-500">
-            Lộ trình giữ nguyên thứ tự ngày do backend trả về; tọa độ chưa có trong contract.
+            Bản đồ đi theo thứ tự hoạt động trong ngày.{missingPinsNote ? ` ${missingPinsNote}` : ''}
           </p>
         </aside>
       </div>
@@ -232,10 +257,10 @@ export function AssistantView() {
         <section role="dialog" aria-modal="true" aria-labelledby="saved-assistant-title" className="flex max-h-[85dvh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
           <header className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-5 py-4"><div><h2 id="saved-assistant-title" className="text-lg font-extrabold text-slate-900">Chuyến đi đã lưu</h2><p className="mt-0.5 text-xs text-slate-500">Lưu trên thiết bị này · {savedItems.length} lịch trình</p></div><button type="button" onClick={() => setShowSaved(false)} aria-label="Đóng danh sách chuyến đi đã lưu" className="rounded-xl p-2 text-slate-500 hover:bg-white"><X className="h-4 w-4" /></button></header>
           <div className="flex-1 space-y-3 overflow-y-auto p-4 sm:p-5">
-            {!savedItems.length && <div className="rounded-2xl border border-dashed border-slate-300 py-12 text-center"><Bookmark className="mx-auto h-7 w-7 text-slate-300" /><p className="mt-3 text-sm font-bold text-slate-700">Chưa có lịch trình được lưu</p><p className="mt-1 text-xs text-slate-500">Lưu lịch trình từ phản hồi backend để xem lại sau.</p></div>}
+            {!savedItems.length && <div className="rounded-2xl border border-dashed border-slate-300 py-12 text-center"><Bookmark className="mx-auto h-7 w-7 text-slate-300" /><p className="mt-3 text-sm font-bold text-slate-700">Chưa có lịch trình được lưu</p><p className="mt-1 text-xs text-slate-500">Bấm “Lưu lịch trình” để xem lại sau.</p></div>}
             {savedItems.map((item) => <article key={item.id} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 p-4"><button type="button" onClick={() => { setSelectedResponse(item.response); setSharedResponse(null); setShowSaved(false); }} className="min-w-0 flex-1 text-left"><span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-bold text-indigo-700">{destinationOf(item.response) || item.response.status}</span><h3 className="mt-2 truncate text-sm font-bold text-slate-900">{titleOf(item.response)}</h3><p className="mt-1 text-[11px] text-slate-500">{new Date(item.savedAt).toLocaleString('vi-VN')}</p></button><button type="button" onClick={() => setSavedItems((items) => items.filter((saved) => saved.id !== item.id))} aria-label={`Xóa ${titleOf(item.response)}`} className="rounded-xl p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600"><Trash2 className="h-4 w-4" /></button></article>)}
           </div>
-          <footer className="border-t border-slate-100 bg-slate-50 px-5 py-3 text-[11px] text-slate-500">Dữ liệu được lưu trong trình duyệt, không gửi lên backend.</footer>
+          <footer className="border-t border-slate-100 bg-slate-50 px-5 py-3 text-[11px] text-slate-500">Lịch trình chỉ lưu trong trình duyệt này.</footer>
         </section>
       </div>}
     </div>

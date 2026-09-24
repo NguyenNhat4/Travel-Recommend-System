@@ -100,7 +100,7 @@ Collection Weaviate: 14–16 collection chính (8–9 text variant, 0–3 độ 
 
 ### B0 — mốc
 
-`embed_text` `T3+R` (= `build_text` của backend, xem spec §1.1), Cohere v3, `near_vector` top-10, không filter, không preproc. Mọi Δ về sau so với đây hoặc với parent gần nhất.
+`embed_text` `T3+R` (= `build_text` production của backend, `catalog-text-v2` — chốt 24/09, xem spec §1.1), Cohere v3, `near_vector` top-10, không filter, không preproc. Mọi Δ về sau so với đây hoặc với parent gần nhất.
 
 **q1** → embed câu không dấu → cosine với 5.000 vector → top-10. Kỳ vọng thấy resort Nha Trang lẫn vài resort nơi khác (không có filter).
 **q5** → vẫn trả 10 kết quả (chưa có cutoff) — đây là lỗi mà S7 sửa.

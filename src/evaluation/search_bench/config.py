@@ -116,6 +116,34 @@ class WeaviateConfig(_M):
     load_batch_size: int
 
 
+class WinRule(_M):
+    min_delta_recall: float
+    p_max: float
+    max_slice_loss: float
+    tie_delta_ndcg: float
+
+
+class Guards(_M):
+    constraint_precision_min: float
+    parent_dup_max: float
+    zero_result_in_catalog_max: float
+    hub_score_max: float
+    p95_cache_miss_ms_max: float
+
+
+class MetricsConfig(_M):
+    k: int
+    ndcg_gain: Literal["pow2"]
+    mrr_relevant_min: int
+    recall_relevant_min: int
+    extra_recall_k: list[int]
+    bootstrap: int
+    win_rule: WinRule
+    guards: Guards
+    rerank_keep_if_delta_ndcg: float
+    hub_random_queries: int
+
+
 class DoctorConfig(_M):
     min_free_gb: float
     min_weaviate_version: str
@@ -130,7 +158,7 @@ class SBenchConfig(_M):
     doctor: DoctorConfig
     gold: _Open
     synth: _Open
-    metrics: _Open
+    metrics: MetricsConfig
     latency: _Open
     holes: _Open
     stages: _Open
@@ -153,7 +181,21 @@ def load_env(env_file: Path | None = None) -> list[str]:
     return loaded
 
 
-def load_config(path: str | Path | None = None) -> SBenchConfig:
+def deep_merge(base: dict, overrides: dict) -> dict:
+    """Bản sao của `base` với `overrides` ghi đè theo từng khoá lồng nhau (dict gộp, giá trị khác thay thế)."""
+    out = dict(base)
+    for k, v in overrides.items():
+        out[k] = deep_merge(out[k], v) if isinstance(v, dict) and isinstance(out.get(k), dict) else v
+    return out
+
+
+def load_config(path: str | Path | None = None, *, overrides_path: str | Path | None = None) -> SBenchConfig:
+    """Nạp sbench.yaml; `overrides_path` (chỉ dùng cho test) ghi đè một phần — file config thật không đổi."""
     p = Path(path) if path else paths.DEFAULT_CONFIG
     raw = yaml.safe_load(p.read_text(encoding="utf-8"))
+    if overrides_path:
+        over = yaml.safe_load(Path(overrides_path).read_text(encoding="utf-8")) or {}
+        if not isinstance(over, dict):
+            raise ValueError(f"{overrides_path}: phải là mapping YAML")
+        raw = deep_merge(raw, over)
     return SBenchConfig.model_validate(raw)

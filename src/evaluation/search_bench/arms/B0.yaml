@@ -3,7 +3,7 @@
 id: B0
 stage: B0
 parent: null
-description: "Mốc: T3+R (build_text backend) · cohere-v3 · near_vector top-10 · không filter"
+description: "Mốc: T3+R (build_text production catalog-text-v2, có combo_items) · cohere-v3 · near_vector top-10 · không filter"
 text_variant: T3+R
 model: cohere-v3
 embedding_types: float

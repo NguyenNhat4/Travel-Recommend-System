@@ -1,9 +1,55 @@
-# Kế hoạch đánh giá Itinerary Agent (chạy thủ công)
+# Kế hoạch đánh giá Itinerary Agent
 
-Bộ case cố định và cách chấm để chứng minh agent chạy đúng yêu cầu, làm hoàn toàn bằng tay qua Streamlit.
-Không cần runner, không cần viết code. Cách chạy demo: [README.md](README.md).
+Hai cách chấm agent, dùng cho hai mục đích khác nhau:
+
+- **§0 Golden dataset tự động** — 50 case, chạy bằng `python -m src.evaluation.agent.golden` trên
+  **catalog Postgres thật**. Đo trực tiếp ba chỉ số PRD `docs/prd/test-plan.md` §2.4 (Grounding Rate,
+  Structured Output Integrity, Tool Calling Accuracy). Không cần thao tác tay, chạy được trong CI cá nhân.
+- **§1–9 Bộ 12 case chạy tay qua Streamlit** — trên **fixture 50 sản phẩm** cố định
+  (`ITINERARY_DATA_MODE=fixture`), khoá được `productId`/giá cụ thể vì dữ liệu không đổi. Dùng khi cần
+  soi từng bước bằng mắt (trace LangGraph trong UI) hoặc khi không có Postgres đã seed. Cách chạy demo:
+  [README.md](README.md).
 
 Người dùng: team Agent và Evaluation, người chạy đánh giá trước demo và trước code freeze.
+
+## 0. Golden dataset tự động (catalog thật)
+
+Dataset: `src/evaluation/datasets/itinerary_agent_golden.yaml` — 50 case, một số đa lượt (FR-AGT-01,
+FR-AGT-05). Runner: `src/evaluation/agent/golden.py`. Cách chạy: [README.md](README.md) mục "Chạy đánh
+giá tự động". Cấu trúc case và cách bổ sung: [golden-dataset.md](golden-dataset.md).
+
+Vì chạy trên catalog thật (dữ liệu đổi theo lần seed), case **không khoá `productId` hay tên sản phẩm cụ
+thể** — chỉ khoá bất biến. Runner tự kiểm bốn nhóm quy tắc:
+
+| Nhóm | Áp dụng | Nguồn |
+|---|---|---|
+| A — gate cứng | Mọi lượt, không cần case khai báo: mọi `productId` có thật và khớp DB (`cdp.products`), đúng điểm đến, không sản phẩm `available=false`, response khớp schema contract, không gọi tool trước khi đủ destination/days, không lộ secret, không tuyên bố đã đặt/thanh toán | FR-AGT-04, NFR-REL-01, NFR-SEC-01, test-plan §2.4 |
+| B — cấu trúc lịch trình | Mọi response `COMPLETED`: số ngày đúng, slot chỉ hotel/attraction/golf, tối đa 2 hoạt động/ngày đúng thứ tự MORNING→AFTERNOON, ngày trống có warning `DAY_WITHOUT_PRODUCTS`, không trùng `productId` | [langgraph-nodes.md](langgraph-nodes.md) §5 |
+| C — suy từ candidate nội bộ | Chỗ ở phải là hotel rẻ nhất trong `candidates` mà graph thực sự nhận được (đọc được vì chạy in-process, không qua HTTP) | [langgraph-nodes.md](langgraph-nodes.md) §5 |
+| D — case tự khai báo | `status`/`errorCode`/`intent`/`missingFields`/node bắt buộc có-không/`forbiddenText`/loại trừ sản phẩm lượt trước | dataset YAML, mỗi case ghi `fr` tương ứng |
+
+Tool Calling Accuracy được tính tự động từ chính response (không cần case khai báo): `NEEDS_CLARIFICATION`
+do thiếu field → không được gọi tool; `COMPLETED`/`FALLBACK`/`NO_RESULTS`/`UNSUPPORTED_DESTINATION` → phải
+gọi tool; `VALIDATION_ERROR` (side-effect/out-of-domain) → không được gọi tool. Đây là cách vận hành hoá
+"gọi đúng công cụ" của test-plan §2.4 — đo quyết định gọi/không gọi, không đo độ khớp tham số chi tiết.
+
+`--sweep` chạy thêm nhóm A/B/C cho **mọi điểm đến hiện có** trong catalog (qua `GET /api/v1/destinations`),
+nên điểm đến mới thêm vào seed cũng được kiểm mà không cần ai viết case tay.
+
+### 0.1. Lỗi phát hiện lần chạy đầu (2026-09-23) và trạng thái
+
+Ghi lại để không lặp lại điều tra; chi tiết ở `history/2026-09-23-golden-dataset-itinerary-agent.md`.
+
+- **Đã sửa — planner bịa tham số `excludeProducts`.** Khi `constraints.exclude_products` khác rỗng, bước
+  lập tool plan thêm `excludeProducts` (không có trong `SearchRequest`, `additionalProperties: false`),
+  làm huỷ cả plan → 503 `LLM_UNAVAILABLE` ở lượt sau (ví dụ "rút ngắn còn 2 ngày"). Nay `validated_plan`
+  bỏ khoá không có trong hợp đồng tool; loại trừ sản phẩm vẫn áp dụng sau truy xuất.
+- **Đã sửa — mất `party` khi nói "N người lớn".** LLM gán `FAMILY_WITH_KIDS` với `children=0`, bị
+  `normalize_party` xoá. `EXTRACT_PROMPT` nay quy định type cho số người lớn không kèm trẻ em.
+- **Đã sửa (lỗi runner) — G-042.** `conversationId` của lỗi có thể tiếp tục nằm trong `error.details`.
+- **Còn mở — nhiễu phân loại của `classify`.** G-032 (Bangkok) và G-047 (đặt phòng) thỉnh thoảng ra
+  `NEEDS_CLARIFICATION` thay vì 422/400; G-013 (`tphcm`) khoảng 1/8 lần ra `clarification_reason=conflict`
+  dù LLM không báo conflict (nghi `_days_from_end_date`, chưa kiểm). Theo dõi bằng `--repeat`.
 
 ## 1. Tài liệu này chứng minh gì và không chứng minh gì
 

@@ -81,7 +81,7 @@ def load_records(cfg: SBenchConfig, source: str) -> tuple[list[dict], dict[str, 
     if not p.exists():
         raise CatalogError(f"không thấy {p}")
     records = read_jsonl(p)
-    return records, {"source": source, "path": str(p.relative_to(paths.repo_root()) if p.is_relative_to(paths.repo_root()) else p),
+    return records, {"source": source, "path": (p.relative_to(paths.repo_root()) if p.is_relative_to(paths.repo_root()) else p).as_posix(),
                      "file_sha256": sha256_file(p), "records_sha256": _records_sha256(records)}
 
 
@@ -122,6 +122,54 @@ def group_children(records: list[dict], unit_variants: list[str]) -> tuple[list[
                 orphans += 1
     units = [r for r in records if variants[r["productId"]] in unit_variants]
     return units, children, variants, orphans
+
+
+# ------------------------------------------------------------------ combo (như job seed → catalog.combo_items)
+COMBO_MANUAL = "combo_items_manual.jsonl"
+
+
+def combo_enrichment(records: list[dict], manual_path: Path | None) -> tuple[dict[str, list[dict]], dict[str, dict], dict]:
+    """Thành phần combo + thuộc tính combo đúng như production nhận được, nhưng tính trong bộ nhớ (bench không đọc DB).
+
+    Production: job seed chạy `parse_combos` (tên + mô tả → thành phần, gộp bản soát tay `combo_items_manual.jsonl` đi kèm
+    snapshot) → bảng `catalog.combo_items`; `load_products` gắn `priceBasis / nights / minPax` vào attributes combo;
+    `PostgresCatalogReader` truyền `combo_items` vào `build_text` (ô ROLLUP "Gồm: …"). Ở đây dùng lại đúng các hàm đó
+    (`data_collection.seed.parse_combos`), cùng thứ tự gộp như `parse_combos.main`.
+    Trả ({combo_id: [item…]}, {combo_id: attributes thêm}, thống kê).
+    """
+    from data_collection.seed import parse_combos as pc
+    combos = [r for r in records if r.get("taxonomy") == "combo"]
+    manual = pc.load_manual(manual_path) if manual_path and manual_path.exists() else {}
+    n_manual_file = len(manual)
+    cat = pc.Catalog(records) if combos else None
+    items_by: dict[str, list[dict]] = {}
+    attrs_by: dict[str, dict] = {}
+    for c in combos:
+        pid = c["productId"]
+        parsed = pc.parse_combo(c, cat)
+        merged = [manual.pop((pid, it["position"]), it) for it in parsed]
+        merged += [m for k, m in sorted(manual.items()) if k[0] == pid]
+        items_by[pid] = [pc.normalize_unit(it) for it in merged]
+        attrs_by[pid] = pc.combo_attributes(c)[0]
+    n_items = sum(len(v) for v in items_by.values())
+    info = {"n_combos": len(combos), "n_items": n_items,
+            "n_manual_rows": sum(1 for v in items_by.values() for it in v if it.get("source") == "manual"),
+            "manual_file": (None if not (manual_path and manual_path.exists()) else
+                            manual_path.relative_to(paths.repo_root()).as_posix() if manual_path.is_relative_to(paths.repo_root())
+                            else manual_path.resolve().as_posix()),
+            "manual_file_rows": n_manual_file,
+            "n_with_nights": sum(1 for a in attrs_by.values() if "nights" in a)}
+    return items_by, attrs_by, info
+
+
+def source_manual_path(dataset: str) -> Path | None:
+    """File soát tay combo đi kèm nguồn đã dựng dataset (snapshot bung ra cùng thư mục với products.jsonl)."""
+    stats = read_stats(dataset)
+    p = stats.get("path")
+    if not p:
+        return None
+    cand = paths.resolve_repo_path(p).parent / COMBO_MANUAL
+    return cand if cand.exists() else None
 
 
 # ------------------------------------------------------------------ cột

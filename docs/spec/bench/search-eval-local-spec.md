@@ -104,7 +104,7 @@ bench_out/search/          # SBENCH_HOME, thêm vào .gitignore
 ```
 
 - Gốc repo = thư mục chứa `.git`. `SBENCH_HOME` mặc định `<repo>/bench_out/search`.
-- Text builder production có sẵn: `src/backend/app/domain/catalog/text_builder.py::build_text` (repo không có hàm tên `build_embed_text`) — import dùng lại cho variant **`T3+R`** (bản production dự kiến, dùng ở B0) và ghi `text_builder: app` vào `stats.json`; các variant khác vẫn ở `textbuild.py`. `build_text` luôn nối ≤ 60 từ description và ≤ 10 amenity thô.
+- Text builder production có sẵn: `src/backend/app/domain/catalog/text_builder.py::build_text` (repo không có hàm tên `build_embed_text`) — import dùng lại cho variant **`T3+R`** (bản production dự kiến, dùng ở B0) và ghi `text_builder: app` vào `stats.json`; các variant khác vẫn ở `textbuild.py`. Từ 24/09 builder là `catalog-text-v2` (merge `release-mvp-v1`): khung 5 ô HEADLINE · FIT · FEATURES · ROLLUP · EXCERPT, không đưa giá / ngày / điểm đánh giá vào text, tuyến bay không lấy description. Bench gọi đúng như `PostgresCatalogReader` của production: truyền phòng / chuyến bay con, `combo_items` (tính trong bộ nhớ bằng `data_collection.seed.parse_combos` + `combo_items_manual.jsonl` đi kèm snapshot) và thuộc tính combo mà loader gắn (`priceBasis / nights / minPax`); ghi `text_builder_version` vào meta. **Người dùng chốt 24/09: B0 = bản production này**, không phải T3 dựng từ tóm tắt LLM; T1 / T3 / `R` của `textbuild.py` phục vụ cổng E1a.
 - `src/evaluation/vector_bench/` có `filters.py`, `dataset/amenities.py`, `dataset/catalog.py`, `lexical.py` (không có `gold.py`): import dùng lại, không chép.
 - Không tạo folder `utils` chung.
 
@@ -116,8 +116,8 @@ run:
   default_run_id: dev            # sb run ghi <YYYYMMDD-HHMM>-<git sha>
 
 catalog:
-  products_path: src/data_collection/data/snapshots/2026-09-21/products.jsonl   # bản bung (gitignore) của snapshot
-  snapshot_path: src/data_collection/snapshots/2026-09-21/products.jsonl.gz      # thiếu bản bung → tự bung, kiểm checksum
+  products_path: src/data_collection/data/snapshots/2026-09-23/products.jsonl   # bản bung (gitignore) của snapshot
+  snapshot_path: src/data_collection/snapshots/2026-09-23/products.jsonl.gz      # thiếu bản bung → tự bung, kiểm checksum
   sample_path: src/data_collection/sample/products-sample.jsonl
   search_unit_variants: [hotel_property, flight_route, attraction, combo, golf]  # variant = taxonomy + attributes.level (như catalog.product_meta)
   amenity_seed_path: src/evaluation/vector_bench/config/amenity_seed.yaml
@@ -198,6 +198,7 @@ metrics:                          # Part 8
   ndcg_gain: pow2                 # 2^rel - 1
   mrr_relevant_min: 2
   recall_relevant_min: 1
+  extra_recall_k: [5]             # (đề xuất) docs/prd/test-plan.md §2.5: Recall@K với K = 5, 10
   bootstrap: 1000
   win_rule: {min_delta_recall: 2.0, p_max: 0.05, max_slice_loss: 3.0, tie_delta_ndcg: 2.0}
   guards:
@@ -381,7 +382,7 @@ Cột `items.parquet`: `product_id, taxonomy, variant, name, brand, destination,
 
 `stats.json`: số search unit theo taxonomy, coverage amenity, % description derived, phân bố `n_children`.
 
-**Done khi:** `sb catalog build --source sample` ra 26 search unit (50 dòng mẫu gồm 15 phòng + 9 chuyến bay); `--source jsonl` in số search unit thật (snapshot 2026-09-21: 2.897); `vocab.json` có ≥ 10 destination.
+**Done khi:** `sb catalog build --source sample` ra 26 search unit (50 dòng mẫu gồm 15 phòng + 9 chuyến bay); `--source jsonl` in số search unit thật (snapshot 2026-09-21: 2.897; 2026-09-23: 3.183); `vocab.json` có ≥ 10 destination.
 
 ---
 
@@ -483,7 +484,7 @@ Dedupe theo cha: làm ở app (lấy `limit × 3`, giữ ≤ 1 / `parent_product
 | `sb gold import <csv>` | → `gold/gold.jsonl` `{qid, text, slice, filter?, expected_no_result?, judgments: {product_id: 0\|1\|2}, provenance: {product_id: "pool@gold_v1"}, status: "active"}`; `judgments` giữ đúng định dạng của `VECTOR_DB_BENCH_SPEC` P6.3, nguồn gốc nhãn nằm ở trường riêng `provenance`; từ chối nếu còn `needs_discussion` |
 | `sb gold check` | mỗi query ≥ 1 nhãn 2 (trừ `out_of_catalog`); mỗi slice ≥ `min_per_slice`; in bảng số query / số nhãn theo slice; nhắc `git tag gold_v1` |
 
-**Done khi:** `sb gold pool` trên 10 draft fixture ra `pool.csv` ~200 dòng; `kappa` tính đúng trên fixture có sẵn đáp án; `import` + `check` xanh trên `tests/fixtures/gold_small.jsonl`.
+**Done khi:** `sb gold pool` trên 10 draft fixture ra `pool.csv` ~200 dòng; `kappa` tính đúng trên fixture có sẵn đáp án; `import` + `check` xanh trên `tests/fixtures/gold_small.jsonl` (dùng config riêng cho test `tests/fixtures/config_test_overrides.yaml` — `gold.min_per_slice: 1`, vì fixture chỉ có 10 query trải 9 slice; `config/sbench.yaml` giữ 10).
 
 ---
 

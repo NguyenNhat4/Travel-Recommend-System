@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useTravel } from '../../context/TravelContext';
 import { SUPPORTED_LOCALES } from '../../types/locale';
 import { useAssistant } from '../../context/AssistantProvider';
-import { DemoAccountSwitcher } from './DemoAccountSwitcher';
 import { 
   Sparkles, 
   Luggage, 
@@ -21,7 +20,7 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({ isCheckout = false }) => {
   const { 
     currentPersona, 
-    switchPersona, 
+    signOut, 
     cart, 
     bookings, 
     navigate, 
@@ -36,7 +35,6 @@ export const Header: React.FC<HeaderProps> = ({ isCheckout = false }) => {
   const [isTripsDropdownOpen, setIsTripsDropdownOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isAccountDropdownOpen, setIsAccountDropdownOpen] = useState(false);
-  const [showDemoPersonasInAccount, setShowDemoPersonasInAccount] = useState(false);
 
   // Refs for click outside
   const langDropdownRef = useRef<HTMLDivElement>(null);
@@ -400,29 +398,11 @@ export const Header: React.FC<HeaderProps> = ({ isCheckout = false }) => {
                         </button>
                       </div>
 
-                      <div className="pt-2 border-t border-slate-100">
-                        <button
-                          type="button"
-                          onClick={() => setShowDemoPersonasInAccount(!showDemoPersonasInAccount)}
-                          className="w-full px-2 py-1.5 text-left text-[11px] font-semibold text-slate-500 hover:text-slate-800 flex items-center justify-between cursor-pointer"
-                        >
-                          <span>Thử nghiệm hồ sơ mẫu (Demo)</span>
-                          <ChevronDown className={`w-3 h-3 transition-transform ${showDemoPersonasInAccount ? 'rotate-180' : ''}`} />
-                        </button>
-
-                        {showDemoPersonasInAccount && (
-                          <div className="p-2 bg-slate-50 rounded-xl mt-1 border border-slate-200/60">
-                            <DemoAccountSwitcher compact onSelect={() => setIsAccountDropdownOpen(false)} />
-                          </div>
-                        )}
-                      </div>
-
                       <div className="pt-2 border-t border-slate-100 mt-1">
                         <button
                           onClick={() => {
-                            switchPersona(null);
                             setIsAccountDropdownOpen(false);
-                            showToast('Đã đăng xuất tài khoản');
+                            void signOut();
                           }}
                           className="w-full px-2.5 py-1.5 text-left text-xs font-semibold text-rose-600 hover:bg-rose-50 rounded-lg flex items-center gap-2 transition-colors cursor-pointer"
                         >
@@ -442,7 +422,7 @@ export const Header: React.FC<HeaderProps> = ({ isCheckout = false }) => {
                     Đăng nhập
                   </button>
                   <button 
-                    onClick={() => openLoginModal()}
+                    onClick={() => navigate('/register')}
                     className="px-4 py-1.5 text-xs sm:text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 active:scale-95 transition rounded-full shadow-sm cursor-pointer"
                   >
                     Đăng ký

@@ -215,7 +215,8 @@ def embed(c: typer.Context,
     tag = vectors.tag_of(emb.name)
     meta = vectors.write(ctx.dataset, tmeta["variant"], model, input_type, ids, vecs, tag=tag, extra={
         "cache_model": emb.name, "items_sha256": tmeta["items_sha256"], "text_builder": tmeta["text_builder"],
-        "builder_fingerprint": tmeta.get("builder_fingerprint"),
+        "builder_fingerprint": tmeta.get("builder_fingerprint"), "combo_manual_sha256": tmeta.get("combo_manual_sha256"),
+        "text_builder_version": tmeta.get("text_builder_version"),
         "text_sha256": vectors.texts_digest(df["text_hash"].tolist()), "limit": limit, "no_cache": no_cache,
         "n_new": emb.n_new, "n_cached": emb.n_cached, "n_calls": st.n_calls if st else None,
         "n_tokens": st.n_tokens if st else None, "usd": round(st.usd, 6) if st else None, "seconds": round(dt, 2)})
@@ -243,13 +244,14 @@ def _weaviate_errors():
 
 
 def _collection_description(ctx: Ctx, variant: str, model: str, *, n: int | None, cache_model: str | None,
-                            text_builder: str | None, builder_fingerprint: str | None) -> dict:
+                            text_builder: str | None, builder_fingerprint: str | None,
+                            combo_manual_sha256: str | None = None) -> dict:
     from .catalog import read_stats
     from .store.weaviate_store import collection_name
     logical, _ = collection_name(variant, model, ctx.dataset)
     return {"logical_name": logical, "dataset": ctx.dataset, "variant": variant, "model": model, "cache_model": cache_model,
             "items_sha256": read_stats(ctx.dataset)["items_sha256"], "n": n, "text_builder": text_builder,
-            "builder_fingerprint": builder_fingerprint}
+            "builder_fingerprint": builder_fingerprint, "combo_manual_sha256": combo_manual_sha256}
 
 
 @collection_app.command("create")
@@ -344,7 +346,8 @@ def load(c: typer.Context, variant: str = typer.Option(..., "--variant"), model:
     if any(pid not in hashes for pid in ids) or vectors.texts_digest([hashes[pid] for pid in ids]) != vmeta.get("text_sha256"):
         _fail("text hiện tại khác text đã embed (builder / config / catalog đổi) — chạy lại `sb embed`")
     desc = _collection_description(ctx, v, model, n=len(ids), cache_model=expected, text_builder=tmeta.get("text_builder"),
-                                   builder_fingerprint=tmeta.get("builder_fingerprint"))
+                                   builder_fingerprint=tmeta.get("builder_fingerprint"),
+                                   combo_manual_sha256=tmeta.get("combo_manual_sha256"))
     t0 = time.perf_counter()
     with _store(cfg) as st:
         try:
@@ -383,13 +386,15 @@ def query(c: typer.Context, q: str = typer.Argument(..., help="câu truy vấn")
             raise ArmError(f"retrieval {how} chưa cài (ngày 1: dense | bm25)")
         logical, phys = collection_name(a.text_variant, m, ctx.dataset)
         items_sha = read_stats(ctx.dataset)["items_sha256"]
+        from .textbuild import text_inputs
+        now = text_inputs(cfg, ctx.dataset)
     except (ArmError, StoreError) as e:
         _fail(str(e), 2)
     except CatalogError as e:
         _fail(str(e))
     with _store(cfg) as st:
         try:
-            desc = st.check_ready(phys, items_sha)
+            desc = st.check_ready(phys, items_sha, now)
             if how == "dense":
                 emb = make_embedder(cfg, m, embedding_type=a.embedding_types, preflight=False)
                 try:
@@ -537,13 +542,15 @@ def gold_pool(c: typer.Context,
                 raise GoldError(f"không có draft nào thuộc slice {slice_}")
         logical, phys = collection_name(a.text_variant, a.model, ctx.dataset)
         items_sha = read_stats(ctx.dataset)["items_sha256"]
+        from .textbuild import text_inputs
+        now = text_inputs(cfg, ctx.dataset)
     except (ArmError, GoldError, StoreError) as e:
         _fail(str(e), 2)
     except CatalogError as e:
         _fail(str(e))
     with _store(cfg) as st:
         try:
-            desc = st.check_ready(phys, items_sha)
+            desc = st.check_ready(phys, items_sha, now)
             emb = make_embedder(cfg, a.model, embedding_type=a.embedding_types, preflight=False)
             try:
                 if emb.name != desc.get("cache_model"):

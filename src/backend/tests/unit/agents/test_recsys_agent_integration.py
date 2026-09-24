@@ -29,9 +29,8 @@ def test_agent_gateway_consumes_enriched_backend_endpoints(services):
         else:
             body = recommendations.recommendations(
                 k=int(http_request.url.params.get("k", 5)),
-                destination=http_request.url.params.get("destination"), authorization=None,
+                destination=http_request.url.params.get("destination"), principal=None,
                 recommend=request.app.state.recommend,
-                settings=SimpleNamespace(jwt_secret="", jwt_algorithm="HS256"),
             )
         responses.append(body)
         return httpx.Response(200, json=body)

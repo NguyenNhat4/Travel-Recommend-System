@@ -71,6 +71,12 @@ def validate(name: str, value: Any, kind: str) -> None:
             raise ToolError("INVALID_TOOL_RESPONSE")
 
 
+def argument_names(name: str) -> frozenset[str]:
+    """Tên tham số hợp đồng khai báo cho tool; rỗng khi tool không có trong hợp đồng."""
+    contract = contracts().get(name)
+    return frozenset(contract["arguments"].get("properties", {})) if contract else frozenset()
+
+
 def normalize_arguments(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     validate(name, arguments, "arguments")
     result = {key: deepcopy(value) for key, value in arguments.items() if value is not None}

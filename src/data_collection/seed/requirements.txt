@@ -6,4 +6,4 @@
 #
 # Không ORM (MOCK_DATA_SPEC §1): ghi bằng COPY hoặc batch insert qua psycopg thuần.
 psycopg[binary]>=3.2,<4
-bcrypt>=4.1
+argon2-cffi>=23.1   # băm mật khẩu demo Argon2id (auth §8.1)

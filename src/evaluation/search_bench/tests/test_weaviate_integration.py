@@ -80,3 +80,12 @@ def test_check_ready_requires_complete(loaded):
     assert d["complete"] is True and d["n"] == len(ids)
     with pytest.raises(StoreError, match="items cũ"):
         st.check_ready(name, items_sha256="khac")
+
+
+def test_check_ready_rejects_stale_text(loaded):
+    st, name, *_ = loaded
+    from evaluation.search_bench.store.weaviate_store import StoreError
+    st.mark_complete(name, builder_fingerprint="old", combo_manual_sha256=None)
+    assert st.check_ready(name, expected={"builder_fingerprint": "old"})
+    with pytest.raises(StoreError, match="text cũ"):
+        st.check_ready(name, expected={"builder_fingerprint": "new"})

@@ -4,6 +4,7 @@ import functools
 import unittest
 from types import SimpleNamespace
 from src.backend.app.agents import nodes, routing
+from src.backend.app.agents.steps import classification
 from src.backend.app.agents.graph import build_graph
 from src.backend.app.agents.state import AgentState, Route, Scenario
 from src.backend.app.agents.models import Extraction
@@ -35,7 +36,7 @@ class LabCopyTests(unittest.TestCase):
 
     def test_nodes_do_not_mutate_the_input_state(self):
         state = nodes.intake_node({'query': '  request  ', 'request_id': 'test'})
-        classified = nodes._classify_result(state, Extraction(domain='travel', patch={'days': 3}))
+        classified = classification.classify_result(state, Extraction(domain='travel', patch={'days': 3}))
         state.update(classified)
         state['response'] = error_response('INTERNAL_ERROR', 'safe error', 'test')
         state['http_status'] = 500

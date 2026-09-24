@@ -14,7 +14,10 @@ flowchart TB
         UI[React / Next.js Web App]
         State[Client State & Query Cache]
         Tracker[Client-side Behavioral Tracker]
+        BFF[BFF: Next.js route handler\ncookie phiên HttpOnly, CSRF, giữ token]
     end
+
+    Redis[(Redis 7\nsession, rate limit)]
 
     subgraph Gateway["Lớp Cổng Giao Tiếp (API Gateway / FastAPI)"]
         Router[REST API Router & Auth Middleware]
@@ -41,7 +44,7 @@ flowchart TB
 
     subgraph Storage["Lớp Lưu Trữ Quan Hệ (PostgreSQL 16)"]
         subgraph VOTA_DB["Database: vota"]
-            AppSchema[(Schema: app\nUsers, Bookings, Sessions)]
+            AppSchema[(Schema: app\nUsers, Bookings, Refresh tokens, Login attempts)]
             CatalogSchema[(Schema: catalog\nProduct meta, Combos)]
             CdpSchema[(Schema: cdp\nProfiles, Behavioral Events)]
         end
@@ -61,8 +64,11 @@ flowchart TB
         InsiderSvc[Insider Clone Service]
     end
 
-    UI --> Router
-    Tracker --> Router
+    UI --> BFF
+    Tracker --> BFF
+    BFF -->|Bearer JWT + X-Service-Token| Router
+    BFF --> Redis
+    Router --> Redis
     Router --> Contract
     Contract --> UseCase
     UseCase --> Domain
@@ -108,7 +114,7 @@ src/backend/app/
 │   ├── embeddings/          # CohereEmbedder (embed-multilingual-v3.0)
 │   ├── vectors/             # WeaviateVectorStore
 │   └── contracts/           # Kiểm dữ liệu theo OpenAPI bundle (jsonschema)
-├── agents/                  # LangGraph: state, graph, node và tools/; hiện thực port planner itinerary
+├── agents/                  # LangGraph: state, graph, node, steps/ (luật của từng bước) và tools/; hiện thực port planner itinerary
 ├── api/                     # LỚP 4: chỉ xử lý HTTP
 │   ├── deps.py              # FastAPI Depends: lấy use case đã nối sẵn, route không tự lắp ráp
 │   ├── middleware.py        # Request ID, CORS...
@@ -196,6 +202,7 @@ stateDiagram-v2
 | **Cơ sở dữ liệu vector** | **Weaviate** | Dịch vụ vector riêng, có volume riêng nên **không bị dựng lại mỗi lần seed Postgres** — đây là lý do tách khỏi pgvector. HNSW + cosine là mặc định; hỗ trợ hybrid search (BM25 + vector) natively, khớp FR-SRC-01. |
 | **Mô hình Embedding** | **Cohere `embed-multilingual-v3.0`** | Đa ngôn ngữ (bao gồm tiếng Việt), gọi qua API nên máy dev không phải tải model về. **1024 chiều.** Bắt buộc phân biệt `input_type`: `search_document` khi nạp, `search_query` khi truy vấn. |
 | **Frontend Framework** | **React / Next.js / TypeScript** | Xây dựng giao diện Single Page Application linh hoạt, tương tác mượt mà, type-safety cao. |
+| **Session store & rate limit** | **Redis 7** (`maxmemory-policy noeviction`) | Giữ phiên web, bộ đếm rate limit/lockout, khoá refresh. Mất dữ liệu thì người dùng chỉ phải đăng nhập lại; refresh token vẫn thu hồi được nhờ bản bền trong `app.refresh_tokens`. Không dùng `allkeys-lru` vì sẽ ngẫu nhiên đá người dùng ra. |
 | **Quản trị API** | **OpenAPI 3.1.0 Contract-First** | Hợp đồng giao tiếp trung tâm, tự động sinh mock server và kiểm tra tính tuân thủ của các nhóm phát triển. |
 | **Container & Triển khai**| **Docker, Docker Compose** | Đóng gói môi trường đồng nhất giữa phát triển local và máy chủ staging. |
 
@@ -252,6 +259,7 @@ Ngoài `src/`: `db/` (DDL, initdb, migration, verify), `docs/` (`prd/`, `spec/`,
 - Mọi HTTP call đi qua `services/`; component không gọi `fetch` trực tiếp. Web không gọi CDP clone.
 - Kiểu request/response sinh từ OpenAPI; không tự định nghĩa lại `SearchRequest`, `ProductSummary`, `ItineraryResponse`.
 - Tách server state và UI state; token không được log hoặc đưa vào URL.
+- **Trình duyệt không bao giờ giữ JWT**: không `localStorage`/`sessionStorage`/URL/body. Route handler BFF trong `src/frontend/src/app/api/` giữ cookie phiên `vota_sid` (HttpOnly), kiểm CSRF (double-submit `vota_csrf` + `Origin`), xoá `cookie`/`authorization` do trình duyệt gửi và gắn `Authorization: Bearer` khi proxy sang FastAPI. BFF không ký token — khoá ký RS256 chỉ ở FastAPI. Chi tiết: `docs/spec/hop-dong-tich-hop-auth.md`.
 - Styling bằng Tailwind utility class; token màu/spacing ở `tailwind.config.ts`, không viết CSS tùy ý ngoài `globals.css`.
 
 ### 6.3. Quy ước thêm module mới

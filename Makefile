@@ -5,17 +5,18 @@ SHELL := /bin/bash
 PYTHON ?= python
 AS_OF ?= $(shell date +%F)
 SEED ?= 42
-CATALOG_SNAPSHOT ?= data_collection/snapshots/2026-09-21/products.jsonl.gz
+CATALOG_SNAPSHOT ?= data_collection/snapshots/2026-09-23/products.jsonl.gz
 # Cổng host của Postgres; đổi khi máy đã có Postgres khác giữ 5432.
 # Phải khớp POSTGRES_HOST_PORT dùng cho `docker compose up`.
 POSTGRES_HOST_PORT ?= 5432
 export POSTGRES_HOST_PORT
 LOCAL_SEED_DATABASE_URL = postgresql://postgres:postgres@localhost:$(POSTGRES_HOST_PORT)/vota
+# .ONESHELL: mọi dòng của một recipe chạy chung shell, nên `cd` phải nằm trong subshell `( … )`.
 # Runner migration cần psycopg; venv của backend có sẵn, nếu chưa tạo thì rơi về $(PYTHON).
 MIGRATE_PYTHON = $(shell test -x src/backend/.venv/bin/python && echo src/backend/.venv/bin/python || echo $(PYTHON))
 LOCAL_INSIDER_DATABASE_URL = postgresql://postgres:postgres@localhost:$(POSTGRES_HOST_PORT)/insider
 
-.PHONY: chat chat-full chat-api chat-ui chat-logs web web-ui web-logs test-llm demo-db demo-db-reset verify-db db-migrate db-migrate-status backend backend-build backend-logs backend-stop backend-local
+.PHONY: chat chat-full chat-api chat-ui chat-logs web web-ui web-logs test-llm demo-db demo-db-reset verify-db index-vectors db-migrate db-migrate-status backend backend-build backend-logs backend-stop backend-local jwt-keys
 
 # Chạy trọn bộ FastAPI + Streamlit; Ctrl+C sẽ dừng cả hai.
 chat:
@@ -194,27 +195,32 @@ test-llm:
 demo-db:
 	docker compose up -d --wait postgres
 	$(MAKE) db-migrate
-	cd src && SEED_DATABASE_URL=$(LOCAL_SEED_DATABASE_URL) INSIDER_DATABASE_URL=$(LOCAL_INSIDER_DATABASE_URL) $(PYTHON) -m data_collection.seed --products $(CATALOG_SNAPSHOT) --as-of $(AS_OF) --seed $(SEED)
+	(cd src && SEED_DATABASE_URL=$(LOCAL_SEED_DATABASE_URL) INSIDER_DATABASE_URL=$(LOCAL_INSIDER_DATABASE_URL) "$(PYTHON)" -m data_collection.seed --products $(CATALOG_SNAPSHOT) --as-of $(AS_OF) --seed $(SEED))
 	$(MAKE) verify-db
 
 demo-db-reset:
 	docker compose up -d --wait postgres
 	$(MAKE) db-migrate
-	cd src && SEED_DATABASE_URL=$(LOCAL_SEED_DATABASE_URL) INSIDER_DATABASE_URL=$(LOCAL_INSIDER_DATABASE_URL) $(PYTHON) -m data_collection.seed --products $(CATALOG_SNAPSHOT) --as-of $(AS_OF) --seed $(SEED) --reset
+	(cd src && SEED_DATABASE_URL=$(LOCAL_SEED_DATABASE_URL) INSIDER_DATABASE_URL=$(LOCAL_INSIDER_DATABASE_URL) "$(PYTHON)" -m data_collection.seed --products $(CATALOG_SNAPSHOT) --as-of $(AS_OF) --seed $(SEED) --reset)
 	$(MAKE) verify-db
 
 verify-db:
 	docker compose exec -T postgres psql -U postgres -d vota < db/verify.sql
 	docker compose exec -T postgres psql -U postgres -d insider < db/verify_insider.sql
 
+# Job tốn quota Cohere nên không tự chạy trong demo-db. Cần COHERE_API_KEY trong .env.
+index-vectors:
+	docker compose up -d --wait postgres weaviate
+	$(PYTHON) -m src.backend.jobs.embed_products
+
 # Áp thay đổi schema lên database ĐANG CÓ DỮ LIỆU, không xoá gì (db/migrations/README.md).
 # db/init/*.sql chỉ chạy lúc initdb trên volume rỗng nên không dùng được cho máy đã seed.
 db-migrate:
 	docker compose up -d --wait postgres
-	SEED_DATABASE_URL=$(LOCAL_SEED_DATABASE_URL) $(MIGRATE_PYTHON) db/migrations/run.py
+	SEED_DATABASE_URL=$(LOCAL_SEED_DATABASE_URL) "$(MIGRATE_PYTHON)" db/migrations/run.py
 
 db-migrate-status:
-	SEED_DATABASE_URL=$(LOCAL_SEED_DATABASE_URL) $(MIGRATE_PYTHON) db/migrations/run.py --status
+	SEED_DATABASE_URL=$(LOCAL_SEED_DATABASE_URL) "$(MIGRATE_PYTHON)" db/migrations/run.py --status
 
 backend:
 	docker compose up -d --build backend
@@ -234,3 +240,12 @@ backend-stop:
 backend-local:
 	ITINERARY_DATA_MODE=$${ITINERARY_DATA_MODE:-fixture} \
 		$(PYTHON) -m uvicorn src.backend.app.main:app --reload --host 127.0.0.1 --port $${BACKEND_PORT:-8000}
+
+# Cặp khoá RS256 cho JWT (docs/spec/hop-dong-tich-hop-auth.md §10.2, §19). secrets/ nằm trong .gitignore;
+# không commit, không đưa vào image. Đã có thì giữ nguyên để không làm mất hiệu lực token đang dùng.
+jwt-keys:
+	mkdir -p secrets
+	if [ -f secrets/jwt-private.pem ]; then echo "secrets/jwt-private.pem đã có, giữ nguyên"; exit 0; fi
+	openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out secrets/jwt-private.pem
+	openssl rsa -pubout -in secrets/jwt-private.pem -out secrets/jwt-public.pem
+	chmod 600 secrets/jwt-private.pem

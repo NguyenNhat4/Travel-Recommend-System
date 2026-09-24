@@ -13,7 +13,7 @@ import random
 import re
 import sqlite3
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -103,6 +103,13 @@ class RawCache:
     def __init__(self, paths: Paths, source: str):
         self.dir = paths.raw / source
 
+    @classmethod
+    def shared(cls, paths: Paths, source: str) -> "RawCache":
+        """Cache trang dùng chung giữa các job batch (danh sách sân bay, sitemap): `batch.py` đặt CRAWL_SHARED_CACHE
+        để mỗi trang chỉ tải một lần thay vì một lần cho mỗi job. Không đặt biến này thì giống cache riêng của job."""
+        shared = os.environ.get("CRAWL_SHARED_CACHE")
+        return cls(Paths(Path(shared)) if shared else paths, source)
+
     def path(self, key: str, ext: str) -> Path:
         safe = re.sub(r"[^A-Za-z0-9._-]+", "_", key)
         if len(safe) > 120 or safe != key:
@@ -122,7 +129,7 @@ class RawCache:
     def write(self, key: str, ext: str, text: str) -> Path:
         p = self.path(key, ext)
         p.parent.mkdir(parents=True, exist_ok=True)
-        tmp = p.with_suffix(p.suffix + ".tmp")
+        tmp = p.with_suffix(p.suffix + f".{os.getpid()}.tmp")  # theo pid: nhiều tiến trình cùng ghi cache dùng chung
         with gzip.open(tmp, "wt", encoding="utf-8") as f:
             f.write(text)
         tmp.replace(p)
@@ -138,7 +145,7 @@ class RawCache:
     def write_bytes(self, key: str, ext: str, data: bytes) -> Path:
         p = self.path(key, ext)
         p.parent.mkdir(parents=True, exist_ok=True)
-        tmp = p.with_suffix(p.suffix + ".tmp")
+        tmp = p.with_suffix(p.suffix + f".{os.getpid()}.tmp")
         with gzip.open(tmp, "wb") as f:
             f.write(data)
         tmp.replace(p)
@@ -374,6 +381,21 @@ class HostRateLimiter:
         self.per_host = per_host or {}
         self._next: dict[str, float] = {}
         self._locks: dict[str, asyncio.Lock] = {}
+        self.shared_db = os.environ.get("CRAWL_RATE_DB")
+        if self.shared_db:
+            Path(self.shared_db).parent.mkdir(parents=True, exist_ok=True)
+            with sqlite3.connect(self.shared_db, timeout=30) as db:
+                db.execute("CREATE TABLE IF NOT EXISTS rate_slots (host TEXT PRIMARY KEY, ready REAL NOT NULL, interval REAL NOT NULL)")
+
+    def reserve_shared(self, host: str, interval: float) -> float:
+        """Atomic cross-process reservation; wall time survives process restarts."""
+        with sqlite3.connect(self.shared_db, timeout=30) as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT ready, interval FROM rate_slots WHERE host=?", (host,)).fetchone()
+            interval = max(interval, row[1] if row else 0)
+            ready = max(time.time(), row[0] if row else 0)
+            db.execute("INSERT OR REPLACE INTO rate_slots VALUES (?, ?, ?)", (host, ready + interval, interval))
+        return ready
 
     def set_interval(self, host: str, seconds: float) -> None:
         self.per_host[host] = max(self.per_host.get(host, 0.0), seconds)
@@ -383,6 +405,10 @@ class HostRateLimiter:
         lock = self._locks.setdefault(host, asyncio.Lock())
         async with lock:
             interval = max(self.min_interval, self.per_host.get(host, 0.0))
+            if self.shared_db:
+                ready = self.reserve_shared(host, interval * (1 + random.uniform(0, self.jitter)))
+                await asyncio.sleep(max(0, ready - time.time()))
+                return
             now = time.monotonic()
             ready = self._next.get(host, 0.0)
             if ready > now:
@@ -391,6 +417,11 @@ class HostRateLimiter:
 
     def penalise(self, url_or_host: str, seconds: float) -> None:
         host = urlsplit(url_or_host).netloc or url_or_host
+        if self.shared_db:
+            with sqlite3.connect(self.shared_db, timeout=30) as db:
+                db.execute("BEGIN IMMEDIATE")
+                db.execute("INSERT INTO rate_slots VALUES (?, ?, ?) ON CONFLICT(host) DO UPDATE SET ready=MAX(ready, excluded.ready)",
+                           (host, time.time() + seconds, self.min_interval))
         self._next[host] = max(self._next.get(host, 0.0), time.monotonic() + seconds)
 
 
@@ -518,6 +549,7 @@ def looks_like_challenge(html: str, title: str | None = None) -> bool:
 
 @dataclass
 class BrowserOptions:
+    locale: str = "vi-VN"
     headless: bool = False
     block_resources: bool = True
     fast: bool = False  # không chờ tải xong trang + chặn CSS/tracker: dữ liệu cần đã có trong HTML server trả về
@@ -563,10 +595,10 @@ class BrowserSession:
         launch: dict[str, Any] = dict(
             user_data_dir=str(profile),
             headless=self.opts.headless,
-            locale="vi-VN",
+            locale=self.opts.locale,
             timezone_id="Asia/Ho_Chi_Minh",
             viewport={"width": 1366, "height": 900},
-            extra_http_headers={"Accept-Language": "vi-VN,vi;q=0.9,en;q=0.6"},
+            extra_http_headers={"Accept-Language": "en-US,en;q=0.9" if self.opts.locale == "en-US" else "vi-VN,vi;q=0.9,en;q=0.6"},
         )
         if self.opts.channel:
             launch["channel"] = self.opts.channel
@@ -582,6 +614,15 @@ class BrowserSession:
         if self.opts.block_resources:
             await self.context.route("**/*", _block_fast if self.opts.fast else _block_heavy)
         return self
+
+    async def set_fast(self, fast: bool) -> None:
+        """Đổi chế độ chặn tài nguyên giữa chừng. Trang tìm kiếm Booking chỉ tải thêm kết quả khi có CSS (cuộn không
+        kích hoạt được khi bị chặn), nên bước tìm URL tạm tắt --fast rồi bật lại cho các trang khách sạn."""
+        if not self.opts.block_resources or self.opts.fast == fast:
+            return
+        await self.context.unroute("**/*")
+        self.opts = replace(self.opts, fast=fast)
+        await self.context.route("**/*", _block_fast if fast else _block_heavy)
 
     async def __aexit__(self, *exc) -> None:
         try:
@@ -678,14 +719,21 @@ class BrowserSession:
             raise ChallengeBlocked(f"bị chặn bởi trang thử thách: {url}")
         return FetchResult(html=html, final_url=page.url, title=title, elapsed=time.monotonic() - t0)
 
-    async def fetch_json(self, page, url: str, headers: dict | None = None) -> tuple[int, Any]:
-        """Gọi API từ bên trong trang (cùng origin với frontend, như chính website gọi)."""
+    async def fetch_json(
+        self, page, url: str, *, method: str = "GET", body: Any = None, headers: dict | None = None
+    ) -> tuple[int, Any]:
+        """Gọi API từ bên trong trang (cùng origin với frontend, như chính website gọi).
+
+        `body` là dict (tự json.stringify) hoặc chuỗi đã encode sẵn; bỏ trống với GET."""
+        payload = body if body is None or isinstance(body, str) else json.dumps(body)
         status, text = await page.evaluate(
-            """async ([url, headers]) => {
-                const r = await fetch(url, { headers: headers || {} });
+            """async ([url, method, payload, headers]) => {
+                const init = { method, headers: headers || {} };
+                if (payload !== null) init.body = payload;
+                const r = await fetch(url, init);
                 return [r.status, await r.text()];
             }""",
-            [url, headers or {}],
+            [url, method, payload, headers or {}],
         )
         try:
             return status, json.loads(text)

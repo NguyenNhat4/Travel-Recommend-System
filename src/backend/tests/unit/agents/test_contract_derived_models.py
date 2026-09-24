@@ -3,7 +3,7 @@ import unittest
 from typing import get_args
 
 from src.backend.app.agents import models
-from src.backend.app.agents.nodes import _message
+from src.backend.app.agents.steps.messages import message
 from src.backend.app.application.itinerary.contracts import bounds, enum_values, schema
 
 
@@ -21,7 +21,7 @@ class ContractDerivedModelTests(unittest.TestCase):
     def test_numeric_bounds_and_user_messages_follow_the_contract(self):
         low, high = bounds('TripIntent', 'days')
         for language in ('vi', 'en'):
-            text = _message({'language': language}, 'invalid_duration')
+            text = message({'language': language}, 'invalid_duration')
             self.assertIn(str(low), text)
             self.assertIn(str(high), text)
         self.assertEqual(models.PartyUpdate.model_fields['adults'].metadata[0].ge, bounds('Party', 'adults')[0])

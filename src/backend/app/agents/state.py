@@ -70,6 +70,7 @@ class AgentState(TypedDict, total=False):
     detail_errors: dict[str, dict[str, Any]]
     supported_destinations: list[str] | None
     language: str
+    previous_selection: list[dict[str, Any]]
 
 
 class Scenario(BaseModel):

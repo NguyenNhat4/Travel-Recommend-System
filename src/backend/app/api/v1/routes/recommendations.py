@@ -1,37 +1,33 @@
 from time import perf_counter
 
-from fastapi import APIRouter, Depends, Header, Query
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, Query
 
-from src.backend.app.api.deps import get_recommend
-from src.backend.app.application.itinerary.contracts import error_response
-from src.backend.app.core.config import Settings, get_settings
-from src.backend.app.core.request_context import current_request_id
-from src.backend.app.core.security import JwtError, optional_cdp_user_id
+from src.backend.app.api.deps import get_recommend, optional_principal, require_internal_api, require_service_token
+from src.backend.app.application.auth.principal import AuthPrincipal
 
 router = APIRouter(tags=["recommendations"])
 
 
-@router.get("/recommendations")
-def recommendations(k: int = Query(5, ge=1, le=20), destination: str | None = None,
-                    authorization: str | None = Header(default=None),
-                    recommend=Depends(get_recommend), settings: Settings = Depends(get_settings)):
-    # cdp_user_id lấy từ JWT; không có token → None → popular cho khách vãng lai.
-    try:
-        cdp_user_id = optional_cdp_user_id(
-            authorization, secret=settings.jwt_secret, algorithm=settings.jwt_algorithm
-        )
-    except JwtError as exc:
-        request_id = current_request_id() or "recommendations"
-        message = "Phiên đăng nhập không hợp lệ."
-        if exc.code == "TOKEN_EXPIRED":
-            message = "Phiên đăng nhập đã hết hạn."
-        elif exc.code == "INTERNAL_ERROR":
-            message = "Dịch vụ xác thực chưa được cấu hình."
-        return JSONResponse(status_code=exc.status_code, content=error_response(exc.code, message, request_id))
-
+def _run(recommend, cdp_user_id: str | None, k: int, destination: str | None) -> dict:
     started = perf_counter()
     result = recommend(cdp_user_id, k=k, destination=destination)
     result["cdpUserId"] = cdp_user_id
     result.setdefault("diagnostics", {})["latencyMs"] = max(0, round((perf_counter() - started) * 1000))
     return result
+
+
+@router.get("/recommendations")
+def recommendations(k: int = Query(5, ge=1, le=20), destination: str | None = None,
+                    principal: AuthPrincipal | None = Depends(optional_principal),
+                    recommend=Depends(get_recommend)):
+    # Danh tính chỉ đến từ JWT đã kiểm (auth §3.5). Không nhận cdp_user_id qua query: đó là IDOR.
+    # Không token → khách → popular. Token hỏng → 401 ở optional_principal, không hạ thành khách.
+    return _run(recommend, principal.cdp_user_id if principal else None, k, destination)
+
+
+@router.get("/internal/recommendations",
+            dependencies=[Depends(require_internal_api), Depends(require_service_token)])
+def internal_recommendations(cdp_user_id: str = Query(min_length=1), k: int = Query(5, ge=1, le=20),
+                             destination: str | None = None, recommend=Depends(get_recommend)):
+    """Gợi ý theo cdp_user_id tuỳ ý cho demo/eval (auth §14.4). Chỉ service nội bộ."""
+    return _run(recommend, cdp_user_id, k, destination)

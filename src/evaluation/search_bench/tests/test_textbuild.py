@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from evaluation.search_bench import catalog, textbuild
@@ -35,25 +37,50 @@ def sample_built(cfg, home):
 
 
 def test_t3r_is_backend_build_text(cfg, sample_built, sample_records):
-    """Snapshot: T3+R phải trùng khít build_text của backend trên 5 search unit cố định của sample."""
-    from backend.app.domain.catalog import Product, build_text
+    """T3+R gọi build_text của backend đúng như PostgresCatalogReader: con + combo_items + thuộc tính combo."""
+    from backend.app.domain.catalog import TEXT_BUILDER_VERSION, Product, build_text
     df, meta = textbuild.build_texts(cfg, "sample", "T3+R")
     assert meta["text_builder"].startswith("app:backend:") and meta["complete"] and len(df) == 26
+    assert meta["text_builder_version"] == TEXT_BUILDER_VERSION
     by_id = {r["productId"]: r for r in sample_records}
     kids: dict[str, list] = {}
     for r in sample_records:
         p = (r.get("attributes") or {}).get("parentProductId")
         if p:
             kids.setdefault(p, []).append(r)
-    for row in df.sort_values("product_id").head(5).itertuples():
-        expected = build_text(Product.from_cdp(by_id[row.product_id]),
-                              [Product.from_cdp(k) for k in kids.get(row.product_id, [])], max_desc_words=60)
-        assert row.text == expected
-        assert row.text_hash == textbuild.text_hash(row.text)
+    got = dict(zip(df["product_id"], df["text"]))
+    non_combo = [pid for pid in sorted(got) if by_id[pid]["taxonomy"] != "combo"][:5]
+    for pid in non_combo:                                   # không phải combo → không cần combo_items
+        expected = build_text(Product.from_cdp(by_id[pid]), [Product.from_cdp(k) for k in kids.get(pid, [])], max_desc_words=60)
+        assert got[pid] == expected
+    combos = [pid for pid in got if by_id[pid]["taxonomy"] == "combo"]
+    assert combos and all("Gồm:" in got[pid] for pid in combos)      # ô ROLLUP từ combo_items
+    assert meta["combo_items"]["n_combos"] == len(combos) and meta["combo_items"]["n_items"] >= len(combos)
+
+
+def test_combo_enrichment_matches_seed_pipeline(sample_records, tmp_path):
+    from evaluation.search_bench.catalog import combo_enrichment
+    items, attrs, info = combo_enrichment(sample_records, None)
+    combos = [r["productId"] for r in sample_records if r["taxonomy"] == "combo"]
+    assert set(items) == set(combos) == set(attrs)
+    assert all(a.get("priceBasis") in ("per_package", "per_person") for a in attrs.values())
+    assert info["manual_file"] is None and info["n_manual_rows"] == 0
+    # bản soát tay (như combo_items_manual.jsonl đi kèm snapshot) thay dòng parse cùng (combo, position)
+    cid = combos[0]
+    manual = tmp_path / "combo_items_manual.jsonl"
+    manual.write_text(json.dumps({"combo_product_id": cid, "position": 1, "label": "NHÃN SOÁT TAY", "item_kind": "attraction",
+                                  "item_product_id": None, "quantity": 1.0, "unit": "vé", "is_optional": False,
+                                  "source": "manual", "confidence": 0.9, "evidence": "test"}, ensure_ascii=False) + chr(10),
+                      encoding="utf-8")
+    items2, _, info2 = combo_enrichment(sample_records, manual)
+    assert items2[cid][0]["label"] == "NHÃN SOÁT TAY" and items2[cid][0]["source"] == "manual"
+    assert info2["n_manual_rows"] == 1 and info2["manual_file_rows"] == 1
 
 
 def test_missing_backend_builder_is_hard_error(cfg, sample_built, monkeypatch):
-    monkeypatch.setattr(textbuild, "backend_text_builder", lambda: (None, "fallback"))
+    def boom():
+        raise ImportError("không có backend")
+    monkeypatch.setattr(textbuild, "_import_backend", boom)
     with pytest.raises(textbuild.TextBuildError, match="bắt buộc dùng bản production"):
         textbuild.build_texts(cfg, "sample", "T3+R")
 
@@ -79,10 +106,14 @@ def test_t3r_snapshot(cfg, sample_built):
     phải cập nhật snapshot có chủ đích (và chạy lại embed/regression)."""
     import json
     from pathlib import Path
-    snap = json.loads((Path(__file__).parent / "fixtures" / "text_snapshot_T3+R.json").read_text(encoding="utf-8"))["texts"]
+    from backend.app.domain.catalog import TEXT_BUILDER_VERSION
+    fx = json.loads((Path(__file__).parent / "fixtures" / "text_snapshot_T3+R.json").read_text(encoding="utf-8"))
+    assert fx["text_builder_version"] == TEXT_BUILDER_VERSION          # builder backend đổi phiên bản → cập nhật có chủ đích
+    snap = fx["texts"]
     df, _ = textbuild.build_texts(cfg, "sample", "T3+R")
     got = dict(zip(df["product_id"], df["text"]))
     assert {pid: got[pid] for pid in snap} == snap
+    assert all(h == textbuild.text_hash(t) for t, h in zip(df["text"], df["text_hash"]))
 
 
 def test_fingerprint_change_forces_rebuild(cfg, sample_built, monkeypatch):
@@ -93,3 +124,74 @@ def test_fingerprint_change_forces_rebuild(cfg, sample_built, monkeypatch):
     monkeypatch.setattr(textbuild, "build_texts", lambda *a, **k: calls.append(1) or real(*a, **k))
     textbuild.load_texts(cfg, "sample", "T3+R")
     assert calls == [1]
+
+
+def _seed_emulated_texts(cfg, seed_dir):
+    """Đường production không cần DB: parse_combos.main + load_products.convert (như job seed ghi cdp.products /
+    catalog.combo_items), rồi dựng text như PostgresCatalogReader.load() — JSONB round-trip, search unit theo view
+    (level ∉ room/flight), con theo parentProductId, combo_items theo position, build_text với mặc định."""
+    from datetime import date
+    from backend.app.domain.catalog import Product, build_text
+    from data_collection.seed import load_products, parse_combos
+    parse_combos.main(["--data-dir", str(seed_dir)])
+    rows = [json.loads(x) for x in (seed_dir / "products.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+    combo_attrs = json.loads((seed_dir / "combo_attributes.json").read_text(encoding="utf-8"))
+    loaded, _ = load_products.convert(rows, combo_attrs, date(2026, 9, 24))
+    prods = {}
+    for r in loaded:
+        prods[r["product_id"]] = Product.from_cdp({
+            "productId": r["product_id"], "name": r["name"], "taxonomy": r["taxonomy"], "destination": r["destination"],
+            "description": r["description"], "attributes": json.loads(json.dumps(r["attributes"], sort_keys=True)),
+            "unitPrice": r["unit_price"], "currency": r["currency"], "available": r["available"],
+            "availableFrom": r["available_from"], "availableTo": r["available_to"], "imageUrl": r["image_url"]})
+    children: dict[str, list] = {}
+    for p in prods.values():
+        if p.attributes.get("parentProductId"):
+            children.setdefault(p.attributes["parentProductId"], []).append(p)
+    items: dict[str, list] = {}
+    for x in (seed_dir / "combo_items.jsonl").read_text(encoding="utf-8").splitlines():
+        if x.strip():
+            it = json.loads(x)
+            items.setdefault(it["combo_product_id"], []).append(it)
+    return {pid: build_text(p, children.get(pid, []), combo_items=sorted(items.get(pid, []), key=lambda i: i["position"]))
+            for pid, p in prods.items() if (p.attributes.get("level") or "") not in ("room", "flight")}
+
+
+def test_t3r_equals_production_path(cfg, home, tmp_path, monkeypatch, sample_records):
+    """B0 = production (chốt 24/09): text của bench trùng khít text mà job seed + PostgresCatalogReader tạo, kể cả combo có
+    dòng soát tay."""
+    import shutil
+    seed_dir = tmp_path / "seed"
+    seed_dir.mkdir()
+    shutil.copyfile(catalog.paths.resolve_repo_path(cfg.catalog.sample_path), seed_dir / "products.jsonl")
+    combo = next(r["productId"] for r in sample_records if r["taxonomy"] == "combo")
+    manual = seed_dir / catalog.COMBO_MANUAL
+    manual.write_text(json.dumps({"combo_product_id": combo, "position": 1, "label": "NHÃN SOÁT TAY", "item_kind": "attraction",
+                                  "item_product_id": None, "quantity": 1.0, "unit": "vé", "is_optional": False, "source": "manual",
+                                  "confidence": 0.9, "evidence": "test"}, ensure_ascii=False) + chr(10), encoding="utf-8")
+    want = _seed_emulated_texts(cfg, seed_dir)
+    catalog.build_catalog(cfg, "sample")
+    monkeypatch.setattr(catalog, "source_manual_path", lambda dataset: manual)
+    df, meta = textbuild.build_texts(cfg, "sample", "T3+R")
+    got = dict(zip(df["product_id"], df["text"]))
+    assert got == want
+    assert "NHÃN SOÁT TAY" in got[combo] and meta["combo_items"]["n_manual_rows"] == 1
+
+
+def test_manual_change_forces_rebuild(cfg, sample_built, monkeypatch, tmp_path):
+    textbuild.load_texts(cfg, "sample", "T3+R")
+    manual = tmp_path / "combo_items_manual.jsonl"
+    manual.write_text("", encoding="utf-8")
+    monkeypatch.setattr(catalog, "source_manual_path", lambda dataset: manual)
+    calls = []
+    real = textbuild.build_texts
+    monkeypatch.setattr(textbuild, "build_texts", lambda *a, **k: calls.append(1) or real(*a, **k))
+    _, meta = textbuild.load_texts(cfg, "sample", "T3+R")
+    assert calls == [1] and meta["combo_manual_sha256"] is not None
+
+
+def test_jsonl_without_manual_is_an_error(cfg, home):
+    jcfg = cfg.model_copy(update={"catalog": cfg.catalog.model_copy(update={"products_path": cfg.catalog.sample_path})})
+    catalog.build_catalog(jcfg, "jsonl")                       # nguồn "jsonl" không có combo_items_manual.jsonl bên cạnh
+    with pytest.raises(textbuild.TextBuildError, match="combo_items_manual"):
+        textbuild.build_texts(jcfg, "jsonl", "T3+R")
