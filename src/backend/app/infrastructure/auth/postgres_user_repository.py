@@ -37,6 +37,16 @@ class PostgresUserRepository:
             ).fetchone()
         return _to_user(row) if row else None
 
+    async def find_by_id(self, user_id: str) -> AuthenticatedUser | None:
+        async with await psycopg.AsyncConnection.connect(self._database_url, row_factory=dict_row) as conn:
+            try:
+                row = await (
+                    await conn.execute(f"SELECT {_COLUMNS} FROM app.users WHERE user_id = %s::uuid", (user_id,))
+                ).fetchone()
+            except psycopg.errors.InvalidTextRepresentation:
+                return None  # sub không phải uuid: không tồn tại, không phải lỗi 500
+        return _to_user(row) if row else None
+
     async def email_exists(self, email: str) -> bool:
         async with await psycopg.AsyncConnection.connect(self._database_url) as conn:
             row = await (

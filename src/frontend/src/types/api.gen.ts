@@ -55,15 +55,100 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/auth/demo-accounts": {
+    "/auth/session": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Danh sách tài khoản demo (tắt khi APP_ENV=production) */
-        get: operations["listDemoAccounts"];
+        get?: never;
+        put?: never;
+        /** Xác thực credential, trả cặp token cho BFF */
+        post: operations["createSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/session/token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Đổi refresh token lấy cặp mới (một lần dùng, phát hiện tái sử dụng) */
+        post: operations["rotateSessionToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/session/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Thu hồi refresh token (đăng xuất) */
+        post: operations["revokeSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/session/mfa/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Xác minh yếu tố thứ hai, nâng pending_mfa lên authenticated */
+        post: operations["verifySessionMfa"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Đổi mật khẩu; thu hồi mọi phiên khác của người dùng */
+        put: operations["changePassword"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/.well-known/jwks.json": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Public key (JWK Set) để kiểm access token */
+        get: operations["getJwks"];
         put?: never;
         post?: never;
         delete?: never;
@@ -147,11 +232,15 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
-        put?: never;
         /**
          * Semantic search trên catalog
-         * @description Có JWT và offset = 0 thì Backend ghi event search (searchQuery = query) sang CDP clone ở nền; đổi trang không ghi thêm, CDP lỗi không ảnh hưởng response. Agent gọi endpoint này không kèm JWT để lượt tìm của Agent không bị tính là hành vi người dùng.
+         * @description Có JWT và offset = 0 thì Backend ghi event search (searchQuery = q) sang CDP clone ở nền; đổi trang không ghi thêm, CDP lỗi không ảnh hưởng response. Agent gọi endpoint này không kèm JWT để lượt tìm của Agent không bị tính là hành vi người dùng.
+         */
+        get: operations["searchProductsCompat"];
+        put?: never;
+        /**
+         * Semantic search trên catalog theo hợp đồng v1
+         * @description Bề mặt v1 được giữ để không phá client hiện có. Agent dùng GET compatibility endpoint và không kèm JWT; Web có thể tiếp tục dùng POST với SearchRequest.
          */
         post: operations["searchProducts"];
         delete?: never;
@@ -172,6 +261,26 @@ export interface paths {
          * @description Không đọc được lịch sử từ CDP clone thì vẫn trả 200 với strategy popular, because rỗng, diagnostics.coldStart true và eventsUsed 0; không trả 500 vì lỗi CDP.
          */
         get: operations["getRecommendations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/internal/recommendations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Gợi ý theo cdp_user_id tuỳ ý cho demo/eval (chỉ service nội bộ)
+         * @description Thay cho query param cdp_user_id đã gỡ khỏi /recommendations (auth §3.5, §14.4). Bắt buộc X-Service-Token. Trả 404 NOT_FOUND khi APP_ENV=production trừ khi INTERNAL_API_ENABLED=true.
+         */
+        get: operations["getInternalRecommendations"];
         put?: never;
         post?: never;
         delete?: never;
@@ -379,16 +488,16 @@ export interface components {
         Currency: "VND";
         ReferenceCode: string;
         /** @enum {string} */
-        ErrorCode: "VALIDATION_ERROR" | "CART_EMPTY" | "INVALID_CREDENTIALS" | "INVALID_TOKEN" | "TOKEN_EXPIRED" | "DEMO_ONLY" | "PRODUCT_NOT_FOUND" | "CART_ITEM_NOT_FOUND" | "BOOKING_NOT_FOUND" | "NOT_FOUND" | "EMAIL_ALREADY_EXISTS" | "PRODUCT_UNAVAILABLE" | "PRICE_CHANGED" | "DATE_OUT_OF_RANGE" | "SEARCH_UNAVAILABLE" | "INTERNAL_ERROR" | "INVALID_TRIP_DURATION" | "CONVERSATION_NOT_FOUND" | "UNSUPPORTED_DESTINATION" | "LLM_UNAVAILABLE" | "ITINERARY_VALIDATION_FAILED" | "AVAILABILITY_NOT_FOUND" | "AVAILABILITY_EXPIRED" | "NO_RATE_PLAN" | "MIN_STAY_NOT_MET" | "CLOSED_ON_ARRIVAL" | "CLOSED_ON_DEPARTURE" | "PARTIALLY_AVAILABLE" | "PRODUCT_NOT_INDEXED";
+        ErrorCode: "VALIDATION_ERROR" | "CART_EMPTY" | "INVALID_CREDENTIALS" | "INVALID_TOKEN" | "TOKEN_EXPIRED" | "PRODUCT_NOT_FOUND" | "CART_ITEM_NOT_FOUND" | "BOOKING_NOT_FOUND" | "NOT_FOUND" | "EMAIL_ALREADY_EXISTS" | "PRODUCT_UNAVAILABLE" | "PRICE_CHANGED" | "DATE_OUT_OF_RANGE" | "SEARCH_UNAVAILABLE" | "INTERNAL_ERROR" | "INVALID_TRIP_DURATION" | "CONVERSATION_NOT_FOUND" | "UNSUPPORTED_DESTINATION" | "LLM_UNAVAILABLE" | "ITINERARY_VALIDATION_FAILED" | "AVAILABILITY_NOT_FOUND" | "AVAILABILITY_EXPIRED" | "NO_RATE_PLAN" | "MIN_STAY_NOT_MET" | "CLOSED_ON_ARRIVAL" | "CLOSED_ON_DEPARTURE" | "PARTIALLY_AVAILABLE" | "PRODUCT_NOT_INDEXED" | "UNAUTHENTICATED" | "SESSION_EXPIRED" | "CSRF_FAILED" | "MFA_REQUIRED" | "MFA_INVALID" | "EMAIL_NOT_VERIFIED" | "TOO_MANY_ATTEMPTS" | "CAPTCHA_REQUIRED" | "CAPTCHA_FAILED" | "WEAK_PASSWORD" | "INVALID_VERIFICATION_TOKEN" | "OAUTH_EMAIL_UNVERIFIED" | "OAUTH_ALREADY_LINKED" | "CDP_UNAVAILABLE";
         ErrorResponse: {
             error: {
                 code: components["schemas"]["ErrorCode"];
                 /** @description Tiếng Việt, hiển thị được trực tiếp cho người dùng. */
                 message: string;
-                /** @description true chỉ với SEARCH_UNAVAILABLE, INTERNAL_ERROR và LLM_UNAVAILABLE. Mọi mã còn lại là false — thử lại nguyên request cho cùng kết quả. */
+                /** @description true chỉ với SEARCH_UNAVAILABLE, INTERNAL_ERROR, LLM_UNAVAILABLE, TOO_MANY_ATTEMPTS và CDP_UNAVAILABLE. Mọi mã còn lại là false — thử lại nguyên request cho cùng kết quả. */
                 retryable: boolean;
                 requestId: string;
-                /** @description Tùy mã lỗi. VALIDATION_ERROR {fields}; PRODUCT_NOT_FOUND và PRODUCT_UNAVAILABLE {productId}; CART_ITEM_NOT_FOUND {cartItemId}; PRICE_CHANGED {productId, oldPrice, newPrice}; DATE_OUT_OF_RANGE {productId, availableFrom, availableTo}; UNSUPPORTED_DESTINATION {destination, supportedDestinations, conversationId} — conversationId là hội thoại đã lưu phần chuyến đi còn lại, gửi lại cùng điểm đến hợp lệ để tiếp tục; MIN_STAY_NOT_MET {productId, minStay}; PRODUCT_NOT_INDEXED {productId, taxonomy}. */
+                /** @description Tùy mã lỗi. VALIDATION_ERROR {fields}; PRODUCT_NOT_FOUND và PRODUCT_UNAVAILABLE {productId}; CART_ITEM_NOT_FOUND {cartItemId}; PRICE_CHANGED {productId, oldPrice, newPrice}; DATE_OUT_OF_RANGE {productId, availableFrom, availableTo}; UNSUPPORTED_DESTINATION {destination, supportedDestinations, conversationId} — conversationId là hội thoại đã lưu phần chuyến đi còn lại, gửi lại cùng điểm đến hợp lệ để tiếp tục; MIN_STAY_NOT_MET {productId, minStay}; PRODUCT_NOT_INDEXED {productId, taxonomy}; TOO_MANY_ATTEMPTS {retryAfterSeconds}; MFA_INVALID {attemptsLeft}; EMAIL_NOT_VERIFIED {email}; WEAK_PASSWORD {reasons}; INVALID_VERIFICATION_TOKEN {purpose}; OAUTH_EMAIL_UNVERIFIED và OAUTH_ALREADY_LINKED {provider}. */
                 details?: {
                     [key: string]: unknown;
                 };
@@ -617,13 +726,53 @@ export interface components {
             expiresIn: number;
             user: components["schemas"]["AuthUser"];
         };
-        DemoAccountListResponse: {
-            accounts: {
-                /** Format: email */
-                email: string;
-                fullName: string;
-                personaLabel: string;
-                blurb: string;
+        /**
+         * @description anonymous = khách vãng lai; pending_mfa = đúng mật khẩu nhưng chưa qua yếu tố thứ hai, chưa mang cdpUserId; authenticated = đã xác thực đầy đủ.
+         * @enum {string}
+         */
+        SessionState: "anonymous" | "pending_mfa" | "authenticated";
+        SessionRequest: {
+            /** Format: email */
+            email: string;
+            password: string;
+            /** @description Bắt buộc khi lần thử trước trả details.captchaRequired = true (§9.3). */
+            captchaToken?: string;
+        };
+        SessionResponse: {
+            state: components["schemas"]["SessionState"];
+            /** @description JWT hạn ngắn. Chỉ có khi state = authenticated. Không bao giờ tới trình duyệt. */
+            accessToken?: string;
+            /** @description Chuỗi đục, một lần dùng. Chỉ có khi state = authenticated. */
+            refreshToken?: string;
+            /** @description Giây tới hạn của accessToken. */
+            expiresIn?: number;
+            user?: components["schemas"]["AuthUser"];
+        };
+        RefreshRequest: {
+            refreshToken: string;
+        };
+        RevokeRequest: {
+            refreshToken: string;
+        };
+        MfaVerifyRequest: {
+            code: string;
+            /** @default false */
+            isRecoveryCode: boolean;
+        };
+        PasswordChangeRequest: {
+            currentPassword: string;
+            newPassword: string;
+        };
+        JwksResponse: {
+            keys: {
+                kty: string;
+                kid: string;
+                /** @constant */
+                use: "sig";
+                /** @enum {string} */
+                alg: "RS256" | "ES256";
+                n?: string;
+                e?: string;
             }[];
         };
         /**
@@ -1070,6 +1219,11 @@ export interface components {
             graphVersion: string;
             /** @enum {string} */
             dataMode: "fixture" | "http" | "disabled";
+            /**
+             * @description Trạng thái LLM do composition root dựng. live = đã có client dùng chung; disabled = ITINERARY_USE_LLM=false, không dựng client; unavailable = đã bật nhưng dựng thất bại (thiếu API key hoặc SDK provider). Với disabled và unavailable, request itinerary trả 503 LLM_UNAVAILABLE có kiểm soát.
+             * @enum {string}
+             */
+            llmMode?: "live" | "disabled" | "unavailable";
             productCount?: number | null;
         };
         /** @description Union logic của payload SSE; trường event nằm ở dòng event của SSE. */
@@ -1208,7 +1362,7 @@ export interface operations {
             500: components["responses"]["Error"];
         };
     };
-    listDemoAccounts: {
+    createSession: {
         parameters: {
             query?: never;
             header?: {
@@ -1218,19 +1372,162 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionRequest"];
+            };
+        };
         responses: {
-            /** @description Tài khoản demo theo thứ tự trình bày */
+            /** @description Xác thực thành công; state cho biết đã xong hay còn chờ 2FA */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DemoAccountListResponse"];
+                    "application/json": components["schemas"]["SessionResponse"];
                 };
             };
-            404: components["responses"]["Error"];
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            429: components["responses"]["Error"];
             500: components["responses"]["Error"];
+        };
+    };
+    rotateSessionToken: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description ID truy vết. Caller chưa gửi thì service đầu tiên tự sinh. */
+                "X-Request-ID"?: components["parameters"]["XRequestId"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RefreshRequest"];
+            };
+        };
+        responses: {
+            /** @description Cặp token mới */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            500: components["responses"]["Error"];
+        };
+    };
+    revokeSession: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description ID truy vết. Caller chưa gửi thì service đầu tiên tự sinh. */
+                "X-Request-ID"?: components["parameters"]["XRequestId"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevokeRequest"];
+            };
+        };
+        responses: {
+            /** @description Đã thu hồi; gọi lại với token đã thu hồi vẫn trả 204 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            500: components["responses"]["Error"];
+        };
+    };
+    verifySessionMfa: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description ID truy vết. Caller chưa gửi thì service đầu tiên tự sinh. */
+                "X-Request-ID"?: components["parameters"]["XRequestId"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MfaVerifyRequest"];
+            };
+        };
+        responses: {
+            /** @description Xác minh thành công */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+            500: components["responses"]["Error"];
+        };
+    };
+    changePassword: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description ID truy vết. Caller chưa gửi thì service đầu tiên tự sinh. */
+                "X-Request-ID"?: components["parameters"]["XRequestId"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Đã đổi mật khẩu */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            500: components["responses"]["Error"];
+        };
+    };
+    getJwks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Các khoá đang hiệu lực; khi xoay khoá trả cả hai */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JwksResponse"];
+                };
+            };
         };
     };
     listProducts: {
@@ -1345,6 +1642,39 @@ export interface operations {
             500: components["responses"]["Error"];
         };
     };
+    searchProductsCompat: {
+        parameters: {
+            query: {
+                q: string;
+                taxonomy?: components["schemas"]["Taxonomy"];
+                destination?: string;
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                /** @description ID truy vết. Caller chưa gửi thì service đầu tiên tự sinh. */
+                "X-Request-ID"?: components["parameters"]["XRequestId"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Kết quả tìm kiếm */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
     searchProducts: {
         parameters: {
             query?: never;
@@ -1402,6 +1732,36 @@ export interface operations {
             };
             400: components["responses"]["Error"];
             401: components["responses"]["Error"];
+            500: components["responses"]["Error"];
+        };
+    };
+    getInternalRecommendations: {
+        parameters: {
+            query: {
+                cdp_user_id: string;
+                k?: number;
+                destination?: string;
+            };
+            header?: {
+                /** @description ID truy vết. Caller chưa gửi thì service đầu tiên tự sinh. */
+                "X-Request-ID"?: components["parameters"]["XRequestId"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Gợi ý */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecommendationResponse"];
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
             500: components["responses"]["Error"];
         };
     };

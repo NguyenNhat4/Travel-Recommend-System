@@ -31,13 +31,14 @@ class ScriptedLlm:
     """Script model decisions rather than matching scenario IDs or query keywords."""
     def __init__(self, extraction=None, plan=None,
                  conversational_message='Bạn muốn đi đâu và trong bao nhiêu ngày?',
-                 destination_choice=None, fail_destination=False, fail_conversation=False):
+                 destination_choice=None, fail_destination=False, fail_conversation=False, plan_delay=0):
         self.fail_conversation = fail_conversation
         self.destination_choice = destination_choice
         self.fail_destination = fail_destination
         self.extraction = extraction or extracted(destination='Nha Trang', days=2, party={'type': 'SOLO', 'adults': 1, 'children': 0})
         self.plan = plan or [{'name': 'search_products', 'args': {'query': 'tham quan'}}]
         self.conversational_message = conversational_message
+        self.plan_delay = plan_delay
         self.calls = []
         self.prompts = {}
 
@@ -61,6 +62,8 @@ class ScriptedLlm:
     def bind_tools(self, definitions):
         async def invoke(prompt):
             self.calls.append('planner')
+            if self.plan_delay and self.calls.count('planner') == 1:
+                await asyncio.sleep(self.plan_delay)
             return SimpleNamespace(tool_calls=deepcopy(self.plan))
         return SimpleNamespace(ainvoke=invoke)
 
@@ -248,6 +251,15 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         result = await self.run_graph(llm)
         self.assertEqual(result['http_status'], 503)
         self.assertNotIn('runtime-secret', json.dumps(result))
+
+    async def test_llm_plan_timeout_is_retried_instead_of_treated_as_a_permanent_invalid_plan(self):
+        # A slow planner call is a transient provider hiccup, not a structurally invalid plan;
+        # it must go through `retry` (a fresh planning attempt) rather than straight to `dead_letter`.
+        llm = ScriptedLlm(plan_delay=0.3)
+        result = await self.run_graph(llm, llm_timeout_seconds=0.05)
+        self.assertEqual(result['response']['status'], 'COMPLETED')
+        self.assertEqual(result['attempt'], 1)
+        self.assertEqual(llm.calls.count('planner'), 2)
 
     async def test_missing_destination_prevents_tools_and_preserves_known_fields(self):
         clients = Clients()
@@ -491,6 +503,23 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         expired = await self.run_graph(state={'conversation_id': cid}, store=store, owner='one')
         self.assertEqual(expired['http_status'], 404)
         self.assertNotIn('unitPrice', json.dumps(store._items))
+
+    async def test_swap_without_naming_excludes_previously_shown_product(self):
+        store = InMemoryConversationStore()
+        clients = Clients(products=[product('vinpearl', name='Vinpearl', unitPrice=100000),
+                                     product('other', name='Doi Che', unitPrice=200000)])
+        first = await self.run_graph(ScriptedLlm(extraction=extracted(destination='Nha Trang', days=1)),
+                                     clients, store=store, owner='one')
+        self.assertEqual(first['response']['itinerary']['days'][0]['slots'][0]['product']['productId'], 'vinpearl')
+        cid = first['conversation_id']
+        # User asks to swap out the shown activity without naming a replacement.
+        second = await self.run_graph(ScriptedLlm(extraction=Extraction(domain='travel',
+                    constraints={'exclude_products': ['vinpearl']})),
+                    clients, state={'conversation_id': cid}, store=store, owner='one')
+        chosen = [slot['product']['productId'] for day in second['response']['itinerary']['days']
+                 for slot in day['slots'] if slot['product']]
+        self.assertNotIn('vinpearl', chosen)
+        self.assertIn('other', chosen)
 
     async def test_memory_checkpoint_resumes_after_classification(self):
         clients, llm = Clients(), ScriptedLlm()

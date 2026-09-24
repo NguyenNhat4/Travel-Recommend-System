@@ -42,17 +42,18 @@ describe('search service searchProductsApi', () => {
 
     const response = await searchProductsApi('resort nha trang');
 
-    expect(global.fetch).toHaveBeenCalledWith('/api/v1/search', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        query: 'resort nha trang',
-        taxonomy: null,
-        destination: null,
-        limit: 20,
-        offset: 0,
-      }),
-    });
+    const [url, init] = vi.mocked(global.fetch).mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/v1/search');
+    expect(init.method).toBe('POST');
+    expect(init.credentials).toBe('same-origin');
+    expect(new Headers(init.headers).get('content-type')).toBe('application/json');
+    expect(init.body).toBe(JSON.stringify({
+      query: 'resort nha trang',
+      taxonomy: null,
+      destination: null,
+      limit: 20,
+      offset: 0,
+    }));
 
     expect(response.total).toBe(1);
     expect(response.results.length).toBe(1);

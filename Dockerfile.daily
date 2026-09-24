@@ -1,0 +1,37 @@
+# Job hằng ngày của data collection (src/data_collection/daily.py) cho VPS: console, không trình duyệt.
+# Build từ repository root:  docker build -f Dockerfile.daily -t vota-daily .
+# Chạy qua src/data_collection/run_daily_docker.sh; dữ liệu làm việc (interim, cache, sqlite tiến độ, catalog, version)
+# nằm trên ổ VPS, mount vào /data. Image không chứa data/, .env hay secret — kết nối DB/Weaviate/Cohere đến từ --env-file.
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app \
+    VOTA_DATA_DIR=/data \
+    TZ=Asia/Ho_Chi_Minh
+
+# tzdata: "hôm nay" của daily.py (giữ dòng 7 ngày, --as-of của loader, tên version) theo giờ Việt Nam, không theo UTC.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tzdata \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --create-home --uid 10001 app \
+    && mkdir -p /data \
+    && chown app:app /data
+
+# Bỏ playwright: chỉ collector cần trình duyệt mới import, job hằng ngày không chạy các nguồn đó.
+# Bước embed chạy `python -m src.backend.jobs.embed_products`; chuỗi import của nó chỉ cần pydantic, pydantic-settings, numpy
+# (httpx, psycopg đã có ở trên) nên không cài cả requirements backend (langgraph, openai…). Ràng buộc phiên bản lấy từ file backend.
+COPY src/data_collection/requirements.txt /tmp/data-collection-requirements.txt
+COPY src/backend/requirements.txt /tmp/backend-requirements.txt
+RUN grep -iv '^playwright' /tmp/data-collection-requirements.txt > /tmp/job-requirements.txt \
+    && grep -E '^(pydantic|pydantic-settings|numpy)[<>=]' /tmp/backend-requirements.txt | sed 's/[[:space:]]*#.*//' >> /tmp/job-requirements.txt \
+    && python -m pip install --no-cache-dir -r /tmp/job-requirements.txt
+
+COPY src/__init__.py /app/src/__init__.py
+COPY src/backend /app/src/backend
+COPY src/data_collection /app/src/data_collection
+
+WORKDIR /app/src/data_collection
+USER app
+
+CMD ["python", "daily.py", "status"]

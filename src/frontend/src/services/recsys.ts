@@ -9,6 +9,7 @@
 
 import { CATALOG } from '../data/catalog';
 import { Product, RecommendationResponse, UserPersona, UserEvent, Taxonomy, Destination, BecauseItem } from '../types/travel';
+import { apiFetch } from './http';
 
 export function calculateRecommendations(
   user: UserPersona | null,
@@ -198,7 +199,6 @@ export const PERSONA_CDP_USER_MAP: Record<string, string> = {
 };
 
 export interface FetchRecommendationsParams {
-  cdpUserId?: string | null;
   k?: number;
   destination?: string;
   fallbackUser?: UserPersona | null;
@@ -208,14 +208,13 @@ export interface FetchRecommendationsParams {
 
 /**
  * Fetch recommendations from backend endpoint GET /api/v1/recommendations
- * Proxied via Next.js BFF (/api/v1/recommendations)
+ * Proxied via Next.js BFF (/api/v1/recommendations); cá nhân hoá theo phiên đăng nhập.
  * Gracefully falls back to local recommendation calculation if backend is unreachable.
  */
 export async function fetchRecommendations(
   params: FetchRecommendationsParams = {}
 ): Promise<RecommendationResponse> {
   const {
-    cdpUserId,
     k = 4,
     destination,
     fallbackUser = null,
@@ -224,10 +223,8 @@ export async function fetchRecommendations(
   } = params;
 
   try {
+    // Danh tính đi theo cookie phiên qua BFF; không gửi cdp_user_id (IDOR, auth §3.5).
     const searchParams = new URLSearchParams();
-    if (cdpUserId) {
-      searchParams.set('cdp_user_id', cdpUserId);
-    }
     if (k) {
       searchParams.set('k', String(k));
     }
@@ -238,7 +235,7 @@ export async function fetchRecommendations(
     const queryString = searchParams.toString();
     const endpoint = `/api/v1/recommendations${queryString ? `?${queryString}` : ''}`;
 
-    const response = await fetch(endpoint, {
+    const response = await apiFetch(endpoint, {
       method: 'GET',
       headers: {
         Accept: 'application/json',

@@ -4,6 +4,8 @@
 >
 > **Cơ chế:** hybrid — **session cookie cho web app** (BFF tại Next.js) + **JWT cho service nội bộ**. Trình duyệt không bao giờ giữ token.
 >
+> **Phạm vi sau khi chốt PRD (2026-09-23, `docs/prd/update-archive/2026-09-23-auth-hybrid-session.md`):** chỉ **P0** thuộc phạm vi. Cơ chế hybrid (BFF + Redis) đã vào PRD. **P1/P2 — xác minh email, đặt lại mật khẩu, 2FA/TOTP, WebAuthn, OAuth (§11, §12, §13 và các dòng P1/P2 ở §21) — ngoài phạm vi**, giữ lại chỉ để tham khảo; không triển khai khi chưa có đề xuất PRD mới. Ghép lịch sử ẩn danh vẫn ngoài phạm vi (§3.7, FR-CDP-02 hoãn): chỉ tracking khi người dùng đã đăng nhập.
+>
 > Ưu tiên khi mâu thuẫn: `AGENTS.md` §2. Tài liệu này đứng cùng hạng với các `hop-dong-tich-hop-*.md` khác và **dưới** OpenAPI.
 
 ## Mục lục
@@ -68,7 +70,7 @@
 |---|---|---|
 | handbook `recsys-internship-handbook-v3-vi.md` §8 | "Đừng xây: OAuth provider, xác minh email, luồng đặt lại mật khẩu" | **Bị thay thế.** Chủ dự án chốt đưa các mục này vào, chia pha ở §21. Handbook vẫn đúng ở điểm: auth tồn tại để demo cá nhân hóa, và JWT hạn ngắn. |
 | handbook §8 | "băm bằng BCrypt" | **Bị thay thế** bằng Argon2id (§8). BCrypt giữ đường xác minh cho 54 user seed. |
-| `hop-dong-tich-hop-backend.md` §3.1–§3.5 | Register/login/me/demo-accounts, JWT claims | **Giữ nguyên, vẫn hợp lệ** cho client nội bộ. Web chuyển sang nhóm endpoint session mới (§5). |
+| `hop-dong-tich-hop-backend.md` §3.1–§3.5 | Register/login/me, JWT claims | **Giữ nguyên, vẫn hợp lệ** cho client nội bộ (§3.4 demo-accounts đã gỡ ngày 2026-09-24). Web chuyển sang nhóm endpoint session mới (§5). |
 | `hop-dong-tich-hop-backend.md` §8.2 | Bảng mã lỗi | **Mở rộng** ở §17, không sửa mã cũ. |
 | `hop-dong-tich-hop-frontend.md` §7.1, §7.2, §7.8 | Token trong `sessionStorage`, gửi `Authorization` từ browser, không refresh | **Bị thay thế** bởi §4 và §6. Các điều 3–7 của §7 giữ nguyên tinh thần, diễn đạt lại ở §4.5. |
 | `hop-dong-tich-hop-cdp.md` §1.6 | Ghép lịch sử ẩn danh ngoài phạm vi | **Giữ nguyên.** Xem §3.7. |
@@ -130,7 +132,7 @@
 | ⑤ | `oauth_subject` — `(provider, sub)` (P2) | `("google", "1179…")` | Nhà cung cấp OIDC | `app.oauth_identities` | Vĩnh viễn | Backend |
 | ⑥ | `identifier` của Insider | `("email", "minh.anh@…")` | Job đẩy sang Insider | `insider.identifiers` | Có `valid_from`/`valid_to` | Insider clone |
 
-**Định danh cốt lõi là ④ `cdp_user_id`, không phải ③ `user_id`.** Toàn bộ `app.carts`, `app.bookings`, `app.conversations`, `cdp.events` và engine recommendation khoá theo `cdp_user_id` (`docs/DATABASE_SCHEMA.md` §4). `app.users` chỉ là *credential + persona*. Hệ quả thực tế: **auth không sinh ra danh tính, nó chỉ chứng minh quyền dùng một `cdp_user_id` đã có.**
+**Định danh cốt lõi là ④ `cdp_user_id`, không phải ③ `user_id`.** Toàn bộ `app.carts`, `app.bookings`, `app.conversations`, `cdp.events` và engine recommendation khoá theo `cdp_user_id` (`docs/spec/DATABASE_SCHEMA.md` §4). `app.users` chỉ là *credential + persona*. Hệ quả thực tế: **auth không sinh ra danh tính, nó chỉ chứng minh quyền dùng một `cdp_user_id` đã có.**
 
 ### 3.2. Chuỗi ánh xạ đầy đủ
 
@@ -226,7 +228,7 @@ class AuthPrincipal:
 ```
 
 ```python
-# src/backend/app/api/v1/dependencies/auth.py  (chỉ HTTP)
+# src/backend/app/api/deps.py  (chỉ HTTP; theo docs/prd/architecture.md §2)
 async def current_principal(...) -> AuthPrincipal          # 401 nếu thiếu/hỏng
 async def optional_principal(...) -> AuthPrincipal | None  # None cho khách vãng lai
 ```
@@ -349,7 +351,7 @@ Mỗi dòng là một chuyển trạng thái. Cột "Xoay sid" là biện pháp 
 | C | Đăng nhập, không 2FA | `anonymous` → `authenticated` | **Có** | gán từ `app.users` | `UPDATE app.users SET last_login_at = now()`; xoá bộ đếm lockout |
 | D | Đăng nhập, có 2FA | `anonymous` → `pending_mfa` | **Có** | **vẫn `null`** | Phiên này **chỉ** gọi được `/auth/session/mfa/verify`; mọi route khác trả `403 MFA_REQUIRED` |
 | E | Nhập đúng OTP | `pending_mfa` → `authenticated` | **Có** (lần hai) | gán | `amr += ["otp"]` |
-| F | Đổi tài khoản demo | `authenticated` → `authenticated` | **Có** | đổi sang user mới | Là đăng xuất + đăng nhập; Web xoá **mọi** cache client (`hop-dong-tich-hop-frontend.md` §7.7) |
+| F | Đăng nhập tài khoản khác khi đang đăng nhập | `authenticated` → `authenticated` | **Có** | đổi sang user mới | Là đăng xuất + đăng nhập; Web xoá **mọi** cache client (`hop-dong-tich-hop-frontend.md` §7.7) |
 | G | Đăng xuất | bất kỳ → — | `DEL` | — | Thu hồi refresh token, xoá cookie, `revoked_reason='logout'` |
 | H | `uaHash` lệch | bất kỳ → — | `DEL` | — | Log `session.ua_mismatch` mức WARN |
 | I | Quá idle 30′ / absolute 12h | bất kỳ → — | `DEL` | — | Web hiện modal "Phiên đăng nhập đã hết hạn" (`product.md` §4.7.5) |
@@ -446,13 +448,11 @@ Thay điều 1–2 và 8 của `hop-dong-tich-hop-frontend.md` §7:
 6. Đổi tài khoản hoặc đăng xuất → xoá **mọi** cache client: query cache, `conversationId`, state kế hoạch, badge giỏ (giữ nguyên §7.7 cũ).
 7. Không còn "chủ động mở modal khi `expiresIn` < 60s" — BFF tự refresh, Web không biết hạn token.
 
-`DemoAccountSwitcher` vẫn gọi `POST /api/auth/login` với mật khẩu demo dùng chung cấu hình phía client. Endpoint demo không trả mật khẩu (giữ nguyên `hop-dong-tich-hop-backend.md` §3.4).
-
 ---
 
 ## 5. Bề mặt Backend (FastAPI)
 
-**Nhóm v1 cũ giữ nguyên, không sửa một dòng nào.** `POST /auth/register`, `POST /auth/login`, `GET /auth/me`, `GET /auth/demo-accounts` tiếp tục trả `AuthResponse` có `accessToken` cho client nội bộ, Agent, CLI và contract test. Đây là điều kiện để không phải lên v2 (`AGENTS.md` §3).
+**Nhóm v1 cũ giữ nguyên, không sửa một dòng nào.** `POST /auth/register`, `POST /auth/login`, `GET /auth/me` tiếp tục trả `AuthResponse` có `accessToken` cho client nội bộ, Agent, CLI và contract test. Đây là điều kiện để không phải lên v2 (`AGENTS.md` §3).
 
 Nhóm mới, **chỉ BFF gọi**, bắt buộc `X-Service-Token`:
 
@@ -527,7 +527,9 @@ Tuyệt đối không MD5, SHA-1, SHA-256 trần, hay bất kỳ hàm băm nhanh
 
 ### 8.2. Di trú từ BCrypt
 
-54 user seed (`seed_histories.py:419`) dùng chung một hash BCrypt cost 10. Không re-seed và không bắt họ đổi mật khẩu:
+**Cập nhật 2026-09-23:** seed đã băm **Argon2id ngay từ đầu** (`seed_histories.demo_password_hash`, đúng tham số §8.1, salt tất định theo `user_id`), nên database seed mới không còn hash BCrypt và không cần bước rehash. Đường bcrypt dưới đây giữ lại **chỉ** cho database đã seed trước ngày này mà chưa seed lại; gỡ khi mọi môi trường đã seed lại, ở một entry history riêng.
+
+Trước đó, 54 user seed dùng chung một hash BCrypt cost 10. Không re-seed và không bắt họ đổi mật khẩu:
 
 ```text
 verify(plain, stored):
@@ -757,7 +759,6 @@ Mọi thứ frontend kiểm đều phải kiểm lại ở FastAPI, không có n
 | Ẩn nút "Thêm vào giỏ" khi chưa đăng nhập | `current_principal` trên `POST /cart/items` → `401` |
 | Kiểm mật khẩu ≥ 8 ký tự (`LoginView.tsx:17-19`) | Validate lại toàn bộ chính sách §8.3 |
 | Chỉ hiện đơn của người dùng | `WHERE cdp_user_id = :principal` trong truy vấn |
-| Ẩn `DemoAccountSwitcher` ở production | `GET /auth/demo-accounts` trả `404` khi `APP_ENV=production` |
 | Không gửi `cdp_user_id` của người khác | Không đọc `cdp_user_id` từ request, chấm hết |
 
 ### 14.2. Quyền sở hữu tài nguyên
@@ -851,7 +852,7 @@ Thêm service `redis:7-alpine` vào `docker-compose.yml`, bind `127.0.0.1` như 
 
 ### 16.2. Postgres — bảng mới trong schema `app`
 
-Toàn bộ vào `db/init/01_vota.sql` **và** `db/vota_schema.sql`, cập nhật `docs/DATABASE_SCHEMA.md` §4 (ERD) và §11 (DDL) trong **cùng commit** (`AGENTS.md` §6).
+Toàn bộ vào `db/init/01_vota.sql` **và** `db/vota_schema.sql`, cập nhật `docs/spec/DATABASE_SCHEMA.md` §4 (ERD) và §11 (DDL) trong **cùng commit** (`AGENTS.md` §6).
 
 ```sql
 -- app.refresh_tokens — chuỗi rotation; giữ bền để thu hồi được kể cả khi Redis trống
@@ -990,7 +991,7 @@ Bổ sung vào `ErrorCode` trong `src/shared/contracts/schemas/common.yaml` và 
 | 409 | `OAUTH_ALREADY_LINKED` | `(provider, subject)` đã thuộc user khác | `{ provider }` | false | Thông điệp chung |
 | 503 | `CDP_UNAVAILABLE` | Không tạo được `cdp.profiles` lúc đăng ký (§3.6.3) | — | **true** | `ErrorState` + Thử lại |
 
-`INVALID_CREDENTIALS`, `INVALID_TOKEN`, `TOKEN_EXPIRED`, `EMAIL_ALREADY_EXISTS`, `DEMO_ONLY`, `VALIDATION_ERROR` giữ nguyên ý nghĩa cũ.
+`INVALID_CREDENTIALS`, `INVALID_TOKEN`, `TOKEN_EXPIRED`, `EMAIL_ALREADY_EXISTS`, `VALIDATION_ERROR` giữ nguyên ý nghĩa cũ. `DEMO_ONLY` đã gỡ khỏi enum ngày 2026-09-24.
 
 Hai mã `retryable: true` mới (`TOO_MANY_ATTEMPTS`, `CDP_UNAVAILABLE`) nới danh sách hiện hành. Danh sách đó **đang không khớp nhau giữa hai nguồn**: `hop-dong-tich-hop-backend.md` §8.2 ghi hai mã (`SEARCH_UNAVAILABLE`, `INTERNAL_ERROR`), còn `schemas/common.yaml:163-165` ghi ba (thêm `LLM_UNAVAILABLE`). Sửa cả hai về cùng một danh sách năm mã trong cùng thay đổi: `SEARCH_UNAVAILABLE`, `INTERNAL_ERROR`, `LLM_UNAVAILABLE`, `TOO_MANY_ATTEMPTS`, `CDP_UNAVAILABLE`.
 
@@ -1001,8 +1002,8 @@ Hai mã `retryable: true` mới (`TOO_MANY_ATTEMPTS`, `CDP_UNAVAILABLE`) nới d
 `AGENTS.md` §3: cập nhật contract **trước**, rồi mới code. Thứ tự file:
 
 1. `src/shared/contracts/schemas/common.yaml` — thêm 13 giá trị `ErrorCode` (§17); sửa mô tả `retryable`.
-2. `src/shared/contracts/schemas/auth.yaml` — thêm schema mới, **giữ nguyên** `RegisterRequest`, `LoginRequest`, `AuthUser`, `AuthResponse`, `DemoAccountListResponse`.
-3. `src/shared/contracts/paths/auth.yaml` — thêm path mới, **giữ nguyên** 4 path cũ.
+2. `src/shared/contracts/schemas/auth.yaml` — thêm schema mới, **giữ nguyên** `RegisterRequest`, `LoginRequest`, `AuthUser`, `AuthResponse`.
+3. `src/shared/contracts/paths/auth.yaml` — thêm path mới, **giữ nguyên** các path v1 cũ (`/auth/demo-accounts` gỡ sau, ngày 2026-09-24).
 4. `src/shared/contracts/openapi.yaml` — khai báo path/schema mới; thêm `serviceToken` vào `securitySchemes`.
 
 ```yaml
@@ -1113,7 +1114,7 @@ Sinh khoá dev: `openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -o
 
 Theo `architecture-repo.md` §10.
 
-### 20.1. Unit (`src/backend/tests/unit/auth/`)
+### 20.1. Unit (`src/backend/tests/unit/{domain,application,infrastructure}/test_auth_*.py` — đặt theo lớp như `docs/prd/architecture.md` §2)
 
 - Argon2id băm/kiểm; bcrypt cũ kiểm được và **được rehash** sang Argon2id.
 - Chính sách mật khẩu: độ dài, danh sách chặn, giống email/tên, NFKC.
@@ -1148,7 +1149,7 @@ Theo `architecture-repo.md` §10.
 - Proxy `[...path]/route.ts` **xoá** `cookie` và `authorization` đến từ client, **đặt** `authorization` từ session, **giữ** `x-request-id` hai chiều.
 - Request ghi không có `X-CSRF-Token` → `403 CSRF_FAILED`.
 - `401 SESSION_EXPIRED` → modal, đăng nhập lại, gửi lại request hỏng **đúng một lần**.
-- Đổi tài khoản demo xoá hết cache client.
+- Đăng nhập tài khoản khác xoá hết cache client.
 
 ### 20.5. Kiểm tra bảo mật thủ công trước khi đóng
 
@@ -1186,13 +1187,13 @@ Theo `architecture-repo.md` §10.
 
 **Nghiệm thu P0:** đăng nhập được cả 4 persona; Home mỗi persona khác nhau; `document.cookie` không có token; §20.5 đạt cả 8 dòng.
 
-### P1 — trước khi mở cho người dùng thật
+### P1 — trước khi mở cho người dùng thật (**ngoài phạm vi**, PRD 2026-09-23)
 
 Xác minh email (§11.1) · đặt lại mật khẩu (§11.2) · TOTP + recovery code (§12.1) · CAPTCHA thật (§9.3) · chặn checkout khi chưa xác minh (§11.1 điểm 5) · bảng `email_verifications`, `mfa_credentials`, `mfa_recovery_codes`.
 
 **Nghiệm thu P1:** đăng ký → nhận mail → xác minh → checkout được; bật TOTP → đăng nhập hai bước; quên mật khẩu → đặt lại → mọi phiên cũ bị đăng xuất.
 
-### P2 — mở rộng
+### P2 — mở rộng (**ngoài phạm vi**, PRD 2026-09-23)
 
 OAuth/OIDC + PKCE (§13) · WebAuthn (§12.2) · bảng `oauth_identities`, `webauthn_credentials` · `password_hash` nullable.
 
@@ -1229,6 +1230,18 @@ OAuth/OIDC + PKCE (§13) · WebAuthn (§12.2) · bảng `oauth_identities`, `web
 | G | Có mở ghép lịch sử ẩn danh không (`hop-dong-tich-hop-cdp.md` §1.6) | §3.7 | Giữ ngoài phạm vi; `anon_id` không xuống database |
 
 ---
+
+### 22.3. Ghi chú hiện thực P0 (2026-09-23)
+
+Các điểm spec để ngỏ, đã chốt khi code (không lệch PRD):
+
+- **`session_id` phía backend** (claim `sid`, cột `app.refresh_tokens.session_id`) do FastAPI sinh lúc `POST /auth/session` (`s_` + 128 bit), vì `SessionRequest`/`RefreshRequest` không mang sid của BFF. Cookie `vota_sid` là định danh riêng của BFF và xoay theo §3.8 mà backend không cần biết. Refresh giữ nguyên `session_id` và `expires_at` của family (không kéo dài quá 12 giờ).
+- **Đăng ký qua BFF** = `POST /api/v1/auth/register` (v1) rồi `POST /api/v1/auth/session` — không thêm path mới vào contract.
+- **Tái sử dụng refresh token** thu hồi mọi refresh token còn sống của user (`reuse_detected`), không chỉ family.
+- **Điểm 9 của §10.3** kiểm ở dependency HTTP (`api/deps.py`) qua port `RevokedTokens` (Redis `jwt:revoked:{jti}`), vì cần I/O.
+- **Không có Redis** (`AUTH_REDIS_URL`/`SESSION_REDIS_URL` trống): rate limiter và session store chạy trong bộ nhớ một tiến trình, chỉ cho development/test; production từ chối khởi động. Thiếu file khoá RS256: development sinh khoá tạm, production từ chối khởi động.
+- **Key rate limit**: `rl:{scope}:{sha256(key)}` (sorted set, cửa sổ trượt) và `lockout:{scope}:{sha256(key)}`; key IP cũng băm.
+- `/auth/session/mfa/verify` có trong contract nhưng **không mount** (2FA ngoài phạm vi); CAPTCHA chỉ `noop`, backend không trả `details.captchaRequired`.
 
 ## 23. Definition of Done (P0)
 

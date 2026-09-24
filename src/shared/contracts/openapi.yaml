@@ -29,8 +29,6 @@ paths:
     $ref: ./paths/auth.yaml#/~1auth~1login
   /auth/me:
     $ref: ./paths/auth.yaml#/~1auth~1me
-  /auth/demo-accounts:
-    $ref: ./paths/auth.yaml#/~1auth~1demo-accounts
   /auth/session:
     $ref: ./paths/auth.yaml#/~1auth~1session
   /auth/session/token:
@@ -41,6 +39,8 @@ paths:
     $ref: ./paths/auth.yaml#/~1auth~1session~1mfa~1verify
   /auth/password:
     $ref: ./paths/auth.yaml#/~1auth~1password
+  /.well-known/jwks.json:
+    $ref: ./paths/auth.yaml#/~1.well-known~1jwks.json
   /products:
     $ref: ./paths/catalog.yaml#/~1products
   /products/{productId}:
@@ -53,6 +53,8 @@ paths:
     $ref: ./paths/search.yaml#/~1search
   /recommendations:
     $ref: ./paths/recommendations.yaml#/~1recommendations
+  /internal/recommendations:
+    $ref: ./paths/recommendations.yaml#/~1internal~1recommendations
   /cart:
     $ref: ./paths/booking.yaml#/~1cart
   /cart/items:
@@ -180,8 +182,6 @@ components:
       $ref: ./schemas/auth.yaml#/AuthUser
     AuthResponse:
       $ref: ./schemas/auth.yaml#/AuthResponse
-    DemoAccountListResponse:
-      $ref: ./schemas/auth.yaml#/DemoAccountListResponse
     SessionState:
       $ref: ./schemas/auth.yaml#/SessionState
     SessionRequest:
@@ -196,6 +196,8 @@ components:
       $ref: ./schemas/auth.yaml#/MfaVerifyRequest
     PasswordChangeRequest:
       $ref: ./schemas/auth.yaml#/PasswordChangeRequest
+    JwksResponse:
+      $ref: ./schemas/auth.yaml#/JwksResponse
     SearchRequest:
       $ref: ./schemas/search.yaml#/SearchRequest
     SearchFacets:

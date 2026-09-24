@@ -1,16 +1,16 @@
 """Composition root — nơi duy nhất nối infrastructure vào use case (docs/prd/architecture.md §2).
 
 Gộp hai nhánh: phần nối PostgreSQL (CDP client, catalog lookup, ghi event nền) và engine recsys
-(search / similar / recommendations). Recsys chạy thẳng trên database đã seed thay vì đọc file:
-`PostgresVectorStore` và `PostgresCdpReader` thay các bản giả đọc JSONL ở `tests/fakes/`.
+(search / similar / recommendations). `WeaviateVectorStore` lấy vector đã persist, hydrate sản phẩm từ
+PostgreSQL; `PostgresCdpReader` đọc lịch sử. Cả hai thay các bản giả ở `tests/fakes/`.
 
 Hai adapter CDP trong `infrastructure/cdp/` cùng tồn tại vì là hai chiều khác nhau, không phải bản trùng lặp:
   * `LocalCdpClient`     — GHI (async): purchase khi checkout, huỷ bù trừ, browse event, profile.
   * `PostgresCdpReader`  — ĐỌC (sync): lịch sử của khách và bảng phổ biến cho recsys.
 Cả hai đi qua `CDP_DATABASE_URL`; không nơi nào khác được SQL thẳng vào schema `cdp` (AGENTS.md §6.1).
 
-Nạp index tốn thời gian (embed toàn bộ search unit lần đầu, sau đó đọc cache .npy), nên chạy trong
-`lifespan` một lần lúc khởi động. Thiếu database thì log rồi bỏ qua phần recsys — các route còn lại
+Nạp index từ collection `Product` của Weaviate trong `lifespan` một lần lúc khởi động. Thiếu database,
+Weaviate hoặc index thì log rồi bỏ qua phần recsys — các route còn lại
 vẫn phục vụ được, đúng tinh thần "CDP lỗi thì không kéo sập cả app" (hop-dong-tich-hop-cdp.md §6).
 """
 from __future__ import annotations
@@ -28,11 +28,27 @@ from src.backend.app.agents.runtime_dependencies import RuntimeAgentDependencies
 from src.backend.app.agents.tools.itinerary_gateway import ItineraryToolGateway
 from src.backend.app.api.errors import install_error_handlers
 from src.backend.app.api.middleware import install_cors, install_request_id
-from src.backend.app.api.v1.router import api_router
+from src.backend.app.api.v1.router import api_router, root_router
+from src.backend.app.application.auth.use_cases import (
+    AuthenticateUser,
+    ChangePassword,
+    GetCurrentUser,
+    RegisterUser,
+    RevokeSession,
+    RotateSession,
+)
 from src.backend.app.application.itinerary.use_cases import PlanItinerary
 from src.backend.app.application.recommendation import BuildPopularity, RecommendForUser
 from src.backend.app.application.search import SearchProducts, SimilarProducts
-from src.backend.app.core.config import Settings, get_settings
+from src.backend.app.core.config import REPO_ROOT, Settings, get_settings
+from src.backend.app.infrastructure.auth.argon2_hasher import Argon2Hasher
+from src.backend.app.infrastructure.auth.jwt_issuer import JwtConfig, JwtIssuer
+from src.backend.app.infrastructure.auth.keys import load_rsa_pem_pair
+from src.backend.app.infrastructure.auth.postgres_login_attempts import PostgresLoginAttemptLog
+from src.backend.app.infrastructure.auth.postgres_refresh_tokens import PostgresRefreshTokenStore
+from src.backend.app.infrastructure.auth.postgres_user_repository import PostgresUserRepository
+from src.backend.app.infrastructure.auth.rate_limiter import InMemoryRateLimiter, RedisRateLimiter
+from src.backend.app.infrastructure.auth.revoked_tokens import NoRevokedTokens, RedisRevokedTokens
 from src.backend.app.infrastructure.cdp.event_dispatcher import BackgroundCdpEventRecorder
 from src.backend.app.infrastructure.cdp.http_cdp_client import CdpHttpClient
 from src.backend.app.infrastructure.cdp.local_cdp_client import LocalCdpClient
@@ -57,20 +73,44 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
 
     Ba tham số override để test tiêm giả lập mà không cần Postgres hay tải model embedding.
     """
+    owns_embedder = False
     if vector_store is None:
-        from src.backend.app.infrastructure.embeddings.sentence_transformers_embedder import (
-            SentenceTransformersEmbedder,
-        )
-        from src.backend.app.infrastructure.vectors.postgres_store import PostgresVectorStore
+        from src.backend.app.domain.catalog import TEXT_BUILDER_VERSION
+        from src.backend.app.infrastructure.embeddings.cohere_embedder import CohereEmbedder
+        from src.backend.app.infrastructure.vectors.weaviate_store import WeaviateClient, WeaviateVectorStore
 
         if embedder is None:
-            embedder = SentenceTransformersEmbedder(settings.embed_model)
-        # Catalog đi qua DATABASE_URL: role vota_app chỉ SELECT được cdp.products, đúng ranh giới.
-        vector_store = PostgresVectorStore(
-            settings.database_url, embedder, settings.embed_cache_dir
+            embedder = CohereEmbedder(
+                settings.cohere_api_key,
+                settings.embed_model,
+                base_url=settings.cohere_base_url,
+                dimension=settings.embed_dimension,
+                timeout_seconds=settings.cohere_timeout_seconds,
+            )
+            owns_embedder = True
+        weaviate = WeaviateClient(
+            settings.weaviate_url,
+            collection=settings.weaviate_collection,
+            api_key=settings.weaviate_api_key,
+            timeout_seconds=settings.weaviate_timeout_seconds,
         )
-    logger.info("startup.recsys.index.load.start cache_dir=%s", settings.embed_cache_dir)
-    index = vector_store.load()
+        vector_store = WeaviateVectorStore(
+            settings.database_url,
+            weaviate,
+            expected_model_version=f"{settings.embed_model}:{TEXT_BUILDER_VERSION}",
+            dimension=settings.embed_dimension,
+        )
+    logger.info("startup.recsys.index.load.start source=weaviate")
+    try:
+        index = vector_store.load()
+    except Exception:
+        if owns_embedder and hasattr(embedder, "close"):
+            embedder.close()
+        raise
+    finally:
+        client = getattr(vector_store, "client", None)
+        if client is not None:
+            client.close()
     logger.info("startup.recsys.index.load.ready search_units=%d", len(index.units))
 
     # Lịch sử đi qua CDP_DATABASE_URL: vota_app không đọc được cdp.events.
@@ -79,6 +119,7 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
     popularity = BuildPopularity(index, cdp_reader)()
     logger.info("startup.recsys.popularity.build.ready")
     return {
+        "recsys_embedder": embedder,
         "index": index,
         "search": SearchProducts(
             index,
@@ -90,6 +131,55 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
         "recommend": RecommendForUser(
             index, cdp_reader, popularity, candidate_k=settings.recommend_candidate_k
         ),
+    }
+
+
+def build_auth(settings: Settings, cdp_client, redis_client=None) -> dict:
+    """Dựng use case auth (docs/spec/hop-dong-tich-hop-auth.md). Trả dict để lifespan gắn vào app.state.
+
+    Production bắt buộc có file khoá RS256 và Redis; dev/test được dùng khoá tạm và rate limiter
+    trong bộ nhớ để chạy được không cần hạ tầng.
+    """
+    is_production = settings.app_env == "production"
+    private_pem, public_pem = load_rsa_pem_pair(
+        settings.jwt_private_key_path, settings.jwt_public_key_path,
+        base_dir=REPO_ROOT, allow_ephemeral=not is_production,
+    )
+    issuer = JwtIssuer(JwtConfig(
+        private_key=private_pem, public_key=public_pem, issuer=settings.jwt_issuer,
+        audience=settings.jwt_audience, access_ttl_seconds=settings.jwt_access_ttl_seconds,
+        leeway_seconds=settings.jwt_clock_skew_seconds,
+    ))
+    if redis_client is not None:
+        limiter = RedisRateLimiter(redis_client)
+        revoked = RedisRevokedTokens(redis_client)
+    elif is_production:
+        raise RuntimeError("AUTH_REDIS_URL là bắt buộc khi APP_ENV=production")
+    else:
+        logger.warning("auth.ratelimit.in_memory — AUTH_REDIS_URL trống, bộ đếm chỉ sống trong tiến trình này")
+        limiter = InMemoryRateLimiter()
+        revoked = NoRevokedTokens()
+
+    users = PostgresUserRepository(settings.database_url)
+    hasher = Argon2Hasher(
+        memory_kib=settings.argon2_memory_kib, time_cost=settings.argon2_time_cost,
+        parallelism=settings.argon2_parallelism,
+    )
+    refresh = PostgresRefreshTokenStore(settings.database_url, ttl_seconds=settings.refresh_ttl_seconds)
+    return {
+        "token_verifier": issuer,
+        "revoked_tokens": revoked,
+        "register_user": RegisterUser(
+            users=users, hasher=hasher, cdp=cdp_client, tokens=issuer, refresh=refresh, limiter=limiter
+        ),
+        "authenticate_user": AuthenticateUser(
+            users=users, hasher=hasher, tokens=issuer, refresh=refresh, limiter=limiter,
+            attempts=PostgresLoginAttemptLog(settings.database_url),
+        ),
+        "rotate_session": RotateSession(users=users, tokens=issuer, refresh=refresh),
+        "revoke_session": RevokeSession(refresh=refresh),
+        "change_password": ChangePassword(users=users, hasher=hasher, refresh=refresh),
+        "get_current_user": GetCurrentUser(users=users),
     }
 
 
@@ -153,6 +243,16 @@ async def lifespan(app: FastAPI):
         logger.info("startup.cdp_adapter.ready adapter=%s", settings.cdp_adapter)
         # Use cases receive these through dependencies; nothing else talks to the CDP.
         app.state.cdp_client = cdp_client
+
+        redis_client = None
+        if settings.auth_redis_url:
+            import redis.asyncio as redis_asyncio
+
+            redis_client = redis_asyncio.from_url(settings.auth_redis_url)
+            stack.push_async_callback(redis_client.aclose)
+        for name, service in build_auth(settings, cdp_client, redis_client).items():
+            setattr(app.state, name, service)
+        logger.info("startup.auth.ready ratelimit=%s", "redis" if redis_client else "memory")
         app.state.product_lookup = PostgresProductLookup(settings.database_url)
         app.state.browse_event_recorder = BackgroundCdpEventRecorder(
             app.state.cdp_client, max_queue=settings.cdp_event_queue_size
@@ -213,6 +313,9 @@ async def lifespan(app: FastAPI):
         try:
             yield
         finally:
+            embedder = getattr(app.state, "recsys_embedder", None)
+            if embedder is not None and hasattr(embedder, "close"):
+                embedder.close()
             logger.info("shutdown.browse_event_recorder.stop")
             await app.state.browse_event_recorder.stop()
     print("Shutting down...")
@@ -230,6 +333,7 @@ install_cors(app, settings.cors_origins)
 install_request_id(app)
 install_error_handlers(app)
 app.include_router(api_router, prefix="/api/v1")
+app.include_router(root_router)
 
 
 @app.get("/health")

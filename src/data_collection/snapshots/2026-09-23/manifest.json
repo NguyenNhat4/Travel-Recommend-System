@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "snapshotId": "2026-09-23",
+  "description": "Canonical 11,387-product catalog migrated from the former standalone data-collection repository",
+  "products": {
+    "file": "products.jsonl.gz",
+    "rows": 11387,
+    "sha256": "518a9aa7820c9ded4a02a2c9148af2ffa4103272071c84b6e0235f4ee251d862",
+    "gzipSha256": "1b11d9054ff20429c884aa9df8f5a84cce731037c24b1d8e1d7f261b772d50a9"
+  },
+  "comboManual": {
+    "file": "combo_items_manual.jsonl",
+    "rows": 64,
+    "sha256": "8506b183b7503dd648cf959d05da56087b049ccd2eda97929ff8e02de45502d5"
+  }
+}

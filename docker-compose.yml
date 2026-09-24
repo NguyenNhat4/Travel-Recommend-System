@@ -39,6 +39,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+      weaviate:
+        condition: service_healthy
     environment:
       APP_ENV: ${APP_ENV:-development}
       APP_HOST: 0.0.0.0
@@ -57,6 +61,19 @@ services:
       CDP_ADAPTER: ${CDP_ADAPTER:-local}
       CDP_BASE_URL: ${BACKEND_CDP_BASE_URL:-http://host.docker.internal:8100}
       CDP_SERVICE_TOKEN: ${CDP_SERVICE_TOKEN:-}
+      # Auth (docs/spec/hop-dong-tich-hop-auth.md §19). Khoá RS256 mount từ ./secrets, KHÔNG nằm trong image;
+      # thiếu file thì development tự sinh khoá tạm (token mất hiệu lực khi restart container).
+      JWT_PRIVATE_KEY_PATH: /app/secrets/jwt-private.pem
+      JWT_PUBLIC_KEY_PATH: /app/secrets/jwt-public.pem
+      AUTH_REDIS_URL: ${BACKEND_AUTH_REDIS_URL:-redis://:devpass@redis:6379/1}
+      AUTH_SERVICE_TOKEN: ${AUTH_SERVICE_TOKEN:-}
+      # BFF gọi từ máy host qua cổng publish: peer là gateway của mạng Docker.
+      TRUSTED_PROXIES: ${BACKEND_TRUSTED_PROXIES:-127.0.0.1/32,172.16.0.0/12}
+      COHERE_API_KEY: ${COHERE_API_KEY:-}
+      WEAVIATE_URL: http://weaviate:8080
+      WEAVIATE_API_KEY: ${WEAVIATE_API_KEY:-}
+    volumes:
+      - ./secrets:/app/secrets:ro
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     
@@ -107,5 +124,3 @@ services:
 volumes:
   pgdata:
   weaviate_data:
-  backend-embcache:
-  backend-model-cache:
