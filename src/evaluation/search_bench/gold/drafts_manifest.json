@@ -19,21 +19,21 @@
     "airlines": 4,
     "iata_codes": 19
   },
-  "raw_cases": 600,
+  "raw_cases": 672,
   "draft_quota": {
     "dest_type": 90,
     "audience_style": 75,
-    "amenity_single": 45,
+    "amenity_single": 51,
     "amenity_multi": 30,
-    "amenity_negation": 15,
-    "amenity_offtaxonomy": 15,
+    "amenity_negation": 30,
+    "amenity_offtaxonomy": 30,
     "parent_child": 45,
     "named_entity": 60,
-    "no_diacritics": 60,
+    "no_diacritics": 69,
     "abbrev_typo": 45,
-    "multi_constraint": 60,
+    "multi_constraint": 72,
     "cross_vertical": 30,
-    "out_of_catalog": 30
+    "out_of_catalog": 45
   },
   "selection_status": "pending_user_review",
   "target_cases_after_user_filter": 200,
@@ -54,16 +54,44 @@
   },
   "target_quota_revised_on": "2026-09-24",
   "target_quota_revision_note": "User decision: amenity_negation and amenity_offtaxonomy raised 5 -> 10 to satisfy gold.min_per_slice: 10; dest_type 30 -> 25 and audience_style 25 -> 20 keep the total at 200.",
-  "draft_shortfall_vs_target": {
-    "amenity_negation": {"rows": 15, "distinct_intents": 5, "target": 10, "rows_needed": 15},
-    "amenity_offtaxonomy": {"rows": 15, "distinct_intents": 5, "target": 10, "rows_needed": 15}
-  },
   "qa": "passed: 600 unique grounded candidates; no deliberate invalid/rejected cases",
   "notes": [
     "Every in-catalog case has source_refs in drafts_raw.tsv.",
     "out_of_catalog destinations were checked absent from the current vocabulary.",
     "No relevance labels or keep/reject decisions are assigned; the user will filter the 600 cases.",
     "draft_quota and raw_cases describe the 2026-09-23 generation run and are not touched by the 2026-09-24 target revision.",
-    "Every slice was generated as (target) distinct intents x 3 phrasings; amenity_negation and amenity_offtaxonomy hold only 5 intents each, so the revised target of 10 needs 15 more rows per slice, appended as c0601-c0630 without renumbering (separate role-A task)."
+    "Snapshot 2026-09-23 có sha256 trùng catalog_sha256 ở trên: 600 draft gốc và 36 draft bổ sung cùng được grounding trên đúng catalog mà bench đang dùng."
+  ],
+  "supplements": [
+    {
+      "generated_on": "2026-09-24",
+      "case_ids": "c0601-c0636",
+      "rows": 36,
+      "catalog_sha256": "518a9aa7820c9ded4a02a2c9148af2ffa4103272071c84b6e0235f4ee251d862",
+      "catalog_snapshot": "src/data_collection/snapshots/2026-09-23/products.jsonl.gz",
+      "by_slice": {
+        "amenity_negation": 15,
+        "amenity_offtaxonomy": 15,
+        "amenity_single": 3,
+        "no_diacritics": 3
+      },
+      "reason": "Pool 600 dòng cạn ý định ở 4 slice sau khi nâng quota amenity_negation/amenity_offtaxonomy lên 10 và loại c0193 (sai slice) / c0397 (điều hòa phủ 92% property Hải Phòng).",
+      "selection_rules": "negation: khoá seed, 40–70% property ở điểm đến KHÔNG có; offtaxonomy: khoá raw freq>=5, cụm từ không chứa alias seed, 15–40% property có; single/no_diacritics: khoá seed 15–60% có; điểm đến và tiện ích khác các ý định cũ; source_refs = 2 property thoả câu, xếp theo review_score; mỗi ý định 3 cách nói liền nhau.",
+      "revised_after_review": "Phản biện 24/09: đổi source_refs c0601–c0615 sang khách sạn thật không có tiện ích bị phủ định (ref cũ gồm căn hộ/homestay và 1 property thực ra có \"Chỗ đậu xe\"); thay c0628–c0630 \"phòng tắm riêng\" (gần như mọi khách sạn đều có) bằng \"chỗ gửi hành lý\" (raw:giu-hanh-ly, 27% TP.HCM)."
+    },
+    {
+      "generated_on": "2026-09-24",
+      "case_ids": "c0637-c0672",
+      "rows": 36,
+      "catalog_sha256": "518a9aa7820c9ded4a02a2c9148af2ffa4103272071c84b6e0235f4ee251d862",
+      "by_slice": {
+        "amenity_single": 3,
+        "no_diacritics": 6,
+        "multi_constraint": 12,
+        "out_of_catalog": 15
+      },
+      "reason": "Thay các ý định bị phản biện 24/09 loại: c0199 (trùng khoá pool), c0430 (wifi 91%), c0412 (sân hiên lần 3), c0484/c0511 (filter khớp 65/52), c0520/c0532 (trùng tập kết quả), và 5 điểm đến out_of_catalog có sản phẩm trùng tên trong catalog (Hà Giang, Vũng Tàu, Hải Dương) hoặc bị người soát loại (Lạng Sơn, Tam Đảo).",
+      "selection_rules": "multi_constraint: filter khớp 16–26 sản phẩm, ref là khách sạn thoả filter; out_of_catalog: điểm đến có 0 lần xuất hiện (bỏ dấu) trong toàn snapshot và 0 trong vocab destinations/provinces/products — Pù Luông, Mai Châu, Lai Châu, Đồng Văn bị loại vì có trong catalog; 3 dòng/điểm đến như pool gốc (resort / vé tham quan / combo)."
+    }
   ]
 }

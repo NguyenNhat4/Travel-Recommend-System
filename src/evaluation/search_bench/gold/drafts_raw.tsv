@@ -599,3 +599,75 @@ c0597	combo du lịch Bảo Lộc	out_of_catalog		true		absent destination:Bảo
 c0598	resort ở Lý Sơn	out_of_catalog		true		absent destination:Lý Sơn
 c0599	vé tham quan Lý Sơn	out_of_catalog		true		absent destination:Lý Sơn
 c0600	combo du lịch Lý Sơn	out_of_catalog		true		absent destination:Lý Sơn
+c0601	khách sạn Đà Lạt không có chỗ đỗ xe	amenity_negation			adf189b9-8ae6-5a8c-b6e0-dd51ceae2941|65c74d36-3480-5cc4-88c2-4a8959fe7965	absence means not-recorded: chỗ đỗ xe (parking)
+c0602	tìm khách sạn Đà Lạt không có chỗ đỗ xe	amenity_negation			adf189b9-8ae6-5a8c-b6e0-dd51ceae2941|65c74d36-3480-5cc4-88c2-4a8959fe7965	absence means not-recorded: chỗ đỗ xe (parking)
+c0603	khách sạn Đà Lạt không có chỗ đỗ xe, có lựa chọn nào?	amenity_negation			adf189b9-8ae6-5a8c-b6e0-dd51ceae2941|65c74d36-3480-5cc4-88c2-4a8959fe7965	absence means not-recorded: chỗ đỗ xe (parking)
+c0604	khách sạn Hội An không có spa	amenity_negation			997ce437-42e9-542b-ab6b-47f6f9e50471|9509d07f-b5dd-560c-980c-19fce6c697e5	absence means not-recorded: spa (spa)
+c0605	tìm khách sạn Hội An không có spa	amenity_negation			997ce437-42e9-542b-ab6b-47f6f9e50471|9509d07f-b5dd-560c-980c-19fce6c697e5	absence means not-recorded: spa (spa)
+c0606	khách sạn Hội An không có spa, có lựa chọn nào?	amenity_negation			997ce437-42e9-542b-ab6b-47f6f9e50471|9509d07f-b5dd-560c-980c-19fce6c697e5	absence means not-recorded: spa (spa)
+c0607	khách sạn Sa Pa không có thang máy	amenity_negation			63829209-69cf-52a6-9ef0-b79cc2efe125|18cfba97-fe25-5f2a-b583-5c6c534b3664	absence means not-recorded: thang máy (elevator)
+c0608	tìm khách sạn Sa Pa không có thang máy	amenity_negation			63829209-69cf-52a6-9ef0-b79cc2efe125|18cfba97-fe25-5f2a-b583-5c6c534b3664	absence means not-recorded: thang máy (elevator)
+c0609	khách sạn Sa Pa không có thang máy, có lựa chọn nào?	amenity_negation			63829209-69cf-52a6-9ef0-b79cc2efe125|18cfba97-fe25-5f2a-b583-5c6c534b3664	absence means not-recorded: thang máy (elevator)
+c0610	khách sạn Hà Nội không có bữa sáng	amenity_negation			dd091821-8c04-5d17-ae05-5314ef403e3c|f9718902-b703-5e4c-884e-c25f717ebfab	absence means not-recorded: bữa sáng (breakfast)
+c0611	tìm khách sạn Hà Nội không có bữa sáng	amenity_negation			dd091821-8c04-5d17-ae05-5314ef403e3c|f9718902-b703-5e4c-884e-c25f717ebfab	absence means not-recorded: bữa sáng (breakfast)
+c0612	khách sạn Hà Nội không có bữa sáng, có lựa chọn nào?	amenity_negation			dd091821-8c04-5d17-ae05-5314ef403e3c|f9718902-b703-5e4c-884e-c25f717ebfab	absence means not-recorded: bữa sáng (breakfast)
+c0613	khách sạn Nha Trang không có quầy bar	amenity_negation			249e03b6-e2e1-5d80-a8a5-95aa28f145a0|b4b15434-ddc0-52ec-93e9-849a1664c050	absence means not-recorded: quầy bar (bar)
+c0614	tìm khách sạn Nha Trang không có quầy bar	amenity_negation			249e03b6-e2e1-5d80-a8a5-95aa28f145a0|b4b15434-ddc0-52ec-93e9-849a1664c050	absence means not-recorded: quầy bar (bar)
+c0615	khách sạn Nha Trang không có quầy bar, có lựa chọn nào?	amenity_negation			249e03b6-e2e1-5d80-a8a5-95aa28f145a0|b4b15434-ddc0-52ec-93e9-849a1664c050	absence means not-recorded: quầy bar (bar)
+c0616	chỗ nghỉ ở Sa Pa có máy sưởi	amenity_offtaxonomy			012f74ab-daf8-575d-bfac-4738d70e30ae|0a2e985f-adf1-504c-b11b-e279333bd3e1	raw amenity:Hệ thống sưởi
+c0617	tìm chỗ nghỉ ở Sa Pa có máy sưởi	amenity_offtaxonomy			012f74ab-daf8-575d-bfac-4738d70e30ae|0a2e985f-adf1-504c-b11b-e279333bd3e1	raw amenity:Hệ thống sưởi
+c0618	chỗ nghỉ ở Sa Pa có máy sưởi, có lựa chọn nào?	amenity_offtaxonomy			012f74ab-daf8-575d-bfac-4738d70e30ae|0a2e985f-adf1-504c-b11b-e279333bd3e1	raw amenity:Hệ thống sưởi
+c0619	chỗ nghỉ ở Hải Phòng có phòng cách âm	amenity_offtaxonomy			014df0f7-516e-5b85-8f93-79668152b34d|9e9f4a63-b8cb-502b-ada4-3859bf2f1f1f	raw amenity:Cách âm
+c0620	tìm chỗ nghỉ ở Hải Phòng có phòng cách âm	amenity_offtaxonomy			014df0f7-516e-5b85-8f93-79668152b34d|9e9f4a63-b8cb-502b-ada4-3859bf2f1f1f	raw amenity:Cách âm
+c0621	chỗ nghỉ ở Hải Phòng có phòng cách âm, có lựa chọn nào?	amenity_offtaxonomy			014df0f7-516e-5b85-8f93-79668152b34d|9e9f4a63-b8cb-502b-ada4-3859bf2f1f1f	raw amenity:Cách âm
+c0622	chỗ nghỉ ở Phú Quốc có két an toàn	amenity_offtaxonomy			b1c750fa-863e-5347-ab4f-abea079a601b|d809ea12-ac96-5b17-808a-a08d9c66fb26	raw amenity:Két an toàn
+c0623	tìm chỗ nghỉ ở Phú Quốc có két an toàn	amenity_offtaxonomy			b1c750fa-863e-5347-ab4f-abea079a601b|d809ea12-ac96-5b17-808a-a08d9c66fb26	raw amenity:Két an toàn
+c0624	chỗ nghỉ ở Phú Quốc có két an toàn, có lựa chọn nào?	amenity_offtaxonomy			b1c750fa-863e-5347-ab4f-abea079a601b|d809ea12-ac96-5b17-808a-a08d9c66fb26	raw amenity:Két an toàn
+c0625	chỗ nghỉ ở Đà Lạt có sân vườn	amenity_offtaxonomy			adf189b9-8ae6-5a8c-b6e0-dd51ceae2941|cb98127e-8ae1-5169-b0f5-0cfba6ee12cb	raw amenity:Sân vườn
+c0626	tìm chỗ nghỉ ở Đà Lạt có sân vườn	amenity_offtaxonomy			adf189b9-8ae6-5a8c-b6e0-dd51ceae2941|cb98127e-8ae1-5169-b0f5-0cfba6ee12cb	raw amenity:Sân vườn
+c0627	chỗ nghỉ ở Đà Lạt có sân vườn, có lựa chọn nào?	amenity_offtaxonomy			adf189b9-8ae6-5a8c-b6e0-dd51ceae2941|cb98127e-8ae1-5169-b0f5-0cfba6ee12cb	raw amenity:Sân vườn
+c0628	chỗ nghỉ ở TP. Hồ Chí Minh có chỗ gửi hành lý	amenity_offtaxonomy			f7fb91ba-7b4f-557a-b7f0-61bd4c8fc0ad|27d29209-dcf3-5106-a088-9b7f5e82815e	raw amenity:Giữ hành lý
+c0629	tìm chỗ nghỉ ở TP. Hồ Chí Minh có chỗ gửi hành lý	amenity_offtaxonomy			f7fb91ba-7b4f-557a-b7f0-61bd4c8fc0ad|27d29209-dcf3-5106-a088-9b7f5e82815e	raw amenity:Giữ hành lý
+c0630	chỗ nghỉ ở TP. Hồ Chí Minh có chỗ gửi hành lý, có lựa chọn nào?	amenity_offtaxonomy			f7fb91ba-7b4f-557a-b7f0-61bd4c8fc0ad|27d29209-dcf3-5106-a088-9b7f5e82815e	raw amenity:Giữ hành lý
+c0631	khách sạn ở Huế có hồ bơi	amenity_single			2de3de34-b7f2-5d25-9932-df46bb6819fc|d5be1d9d-c833-5f65-a352-fa9a21938d45	hồ bơi (pool)
+c0632	tìm khách sạn ở Huế có hồ bơi	amenity_single			2de3de34-b7f2-5d25-9932-df46bb6819fc|d5be1d9d-c833-5f65-a352-fa9a21938d45	hồ bơi (pool)
+c0633	khách sạn ở Huế có hồ bơi, có lựa chọn nào?	amenity_single			2de3de34-b7f2-5d25-9932-df46bb6819fc|d5be1d9d-c833-5f65-a352-fa9a21938d45	hồ bơi (pool)
+c0634	khach san o hai phong co bua sang	no_diacritics			014df0f7-516e-5b85-8f93-79668152b34d|5675f8ee-7840-5ec5-9ff0-0920458698df	unaccent:Hải Phòng|bữa sáng (breakfast)
+c0635	tim khach san o hai phong co bua sang	no_diacritics			014df0f7-516e-5b85-8f93-79668152b34d|5675f8ee-7840-5ec5-9ff0-0920458698df	unaccent:Hải Phòng|bữa sáng (breakfast)
+c0636	khach san o hai phong co bua sang gia tot	no_diacritics			014df0f7-516e-5b85-8f93-79668152b34d|5675f8ee-7840-5ec5-9ff0-0920458698df	unaccent:Hải Phòng|bữa sáng (breakfast)
+c0637	khách sạn ở Nghệ An có bữa sáng	amenity_single			504123c9-d3c9-55f5-9bc9-171d5d1b6579|981e42ae-60b4-547e-a387-c1a5f50018af	bữa sáng (breakfast)
+c0638	tìm khách sạn ở Nghệ An có bữa sáng	amenity_single			504123c9-d3c9-55f5-9bc9-171d5d1b6579|981e42ae-60b4-547e-a387-c1a5f50018af	bữa sáng (breakfast)
+c0639	khách sạn ở Nghệ An có bữa sáng, có lựa chọn nào?	amenity_single			504123c9-d3c9-55f5-9bc9-171d5d1b6579|981e42ae-60b4-547e-a387-c1a5f50018af	bữa sáng (breakfast)
+c0640	khach san o da nang co phong gym	no_diacritics			a02d011d-715a-580d-9f91-090cd5d05c8c|74c71a51-0c69-51ec-9813-aac84c8e733d	unaccent:Đà Nẵng|phòng gym (fitness)
+c0641	tim khach san o da nang co phong gym	no_diacritics			a02d011d-715a-580d-9f91-090cd5d05c8c|74c71a51-0c69-51ec-9813-aac84c8e733d	unaccent:Đà Nẵng|phòng gym (fitness)
+c0642	khach san o da nang co phong gym gia tot	no_diacritics			a02d011d-715a-580d-9f91-090cd5d05c8c|74c71a51-0c69-51ec-9813-aac84c8e733d	unaccent:Đà Nẵng|phòng gym (fitness)
+c0643	khach san o nha trang co spa	no_diacritics			3bc6a6fe-cdf9-5b38-8f88-e19536c78af8|b5fc5fa8-5076-5c0f-90b9-fc9b8d012b1f	unaccent:Nha Trang|spa (spa)
+c0644	tim khach san o nha trang co spa	no_diacritics			3bc6a6fe-cdf9-5b38-8f88-e19536c78af8|b5fc5fa8-5076-5c0f-90b9-fc9b8d012b1f	unaccent:Nha Trang|spa (spa)
+c0645	khach san o nha trang co spa gia tot	no_diacritics			3bc6a6fe-cdf9-5b38-8f88-e19536c78af8|b5fc5fa8-5076-5c0f-90b9-fc9b8d012b1f	unaccent:Nha Trang|spa (spa)
+c0646	chỗ nghỉ Huế từ 4 sao, giá không quá 1 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Huế""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",1000000]}]}"		82dac6d3-ad0f-5064-beaf-c42422724901|0e1ffe78-41be-5b34-a933-35626f4b973a	star=4;price<=1000000
+c0647	tìm chỗ nghỉ Huế từ 4 sao, giá không quá 1 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Huế""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",1000000]}]}"		82dac6d3-ad0f-5064-beaf-c42422724901|0e1ffe78-41be-5b34-a933-35626f4b973a	star=4;price<=1000000
+c0648	chỗ nghỉ Huế từ 4 sao, giá không quá 1 triệu, còn lựa chọn nào?	multi_constraint	"{""and"":[{""eq"":[""destination"",""Huế""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",1000000]}]}"		82dac6d3-ad0f-5064-beaf-c42422724901|0e1ffe78-41be-5b34-a933-35626f4b973a	star=4;price<=1000000
+c0649	khách sạn 4 sao tại Đà Lạt, ngân sách tối đa 1.5 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Đà Lạt""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",1500000]}]}"		adf189b9-8ae6-5a8c-b6e0-dd51ceae2941|9a3195b3-3028-5815-862a-c36ac2f679e4	star=4;price<=1500000
+c0650	tìm khách sạn 4 sao tại Đà Lạt, ngân sách tối đa 1.5 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Đà Lạt""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",1500000]}]}"		adf189b9-8ae6-5a8c-b6e0-dd51ceae2941|9a3195b3-3028-5815-862a-c36ac2f679e4	star=4;price<=1500000
+c0651	khách sạn 4 sao tại Đà Lạt, ngân sách tối đa 1.5 triệu, còn lựa chọn nào?	multi_constraint	"{""and"":[{""eq"":[""destination"",""Đà Lạt""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",1500000]}]}"		adf189b9-8ae6-5a8c-b6e0-dd51ceae2941|9a3195b3-3028-5815-862a-c36ac2f679e4	star=4;price<=1500000
+c0652	khách sạn 4 sao ở Sa Pa dưới 2 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Sa Pa""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",2000000]}]}"		9afef1b2-aa5a-51de-a25d-d4bb23621634|a5c7af0a-a369-5a2f-b5ba-1e593dab06d0	star=4;price<=2000000
+c0653	tìm khách sạn 4 sao ở Sa Pa dưới 2 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Sa Pa""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",2000000]}]}"		9afef1b2-aa5a-51de-a25d-d4bb23621634|a5c7af0a-a369-5a2f-b5ba-1e593dab06d0	star=4;price<=2000000
+c0654	khách sạn 4 sao ở Sa Pa dưới 2 triệu, còn lựa chọn nào?	multi_constraint	"{""and"":[{""eq"":[""destination"",""Sa Pa""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",2000000]}]}"		9afef1b2-aa5a-51de-a25d-d4bb23621634|a5c7af0a-a369-5a2f-b5ba-1e593dab06d0	star=4;price<=2000000
+c0655	khách sạn 4 sao ở Hải Phòng dưới 1 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Hải Phòng""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",1000000]}]}"		4a7c3d93-46c3-5b1f-adc1-dca0da1f4029|dd71c19f-2cb1-539c-ad46-28f4be1341b4	star=4;price<=1000000
+c0656	tìm khách sạn 4 sao ở Hải Phòng dưới 1 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Hải Phòng""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",1000000]}]}"		4a7c3d93-46c3-5b1f-adc1-dca0da1f4029|dd71c19f-2cb1-539c-ad46-28f4be1341b4	star=4;price<=1000000
+c0657	khách sạn 4 sao ở Hải Phòng dưới 1 triệu, còn lựa chọn nào?	multi_constraint	"{""and"":[{""eq"":[""destination"",""Hải Phòng""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",1000000]}]}"		4a7c3d93-46c3-5b1f-adc1-dca0da1f4029|dd71c19f-2cb1-539c-ad46-28f4be1341b4	star=4;price<=1000000
+c0658	resort ở Mù Cang Chải	out_of_catalog		true		absent destination:Mù Cang Chải
+c0659	vé tham quan Mù Cang Chải	out_of_catalog		true		absent destination:Mù Cang Chải
+c0660	combo du lịch Mù Cang Chải	out_of_catalog		true		absent destination:Mù Cang Chải
+c0661	resort ở Bắc Kạn	out_of_catalog		true		absent destination:Bắc Kạn
+c0662	vé tham quan Bắc Kạn	out_of_catalog		true		absent destination:Bắc Kạn
+c0663	combo du lịch Bắc Kạn	out_of_catalog		true		absent destination:Bắc Kạn
+c0664	resort ở Ninh Chữ	out_of_catalog		true		absent destination:Ninh Chữ
+c0665	vé tham quan Ninh Chữ	out_of_catalog		true		absent destination:Ninh Chữ
+c0666	combo du lịch Ninh Chữ	out_of_catalog		true		absent destination:Ninh Chữ
+c0667	resort ở Ba Bể	out_of_catalog		true		absent destination:Ba Bể
+c0668	vé tham quan Ba Bể	out_of_catalog		true		absent destination:Ba Bể
+c0669	combo du lịch Ba Bể	out_of_catalog		true		absent destination:Ba Bể
+c0670	resort ở Hà Tiên	out_of_catalog		true		absent destination:Hà Tiên
+c0671	vé tham quan Hà Tiên	out_of_catalog		true		absent destination:Hà Tiên
+c0672	combo du lịch Hà Tiên	out_of_catalog		true		absent destination:Hà Tiên

@@ -211,3 +211,55 @@ def test_override_tu_choi_dong_sai(tmp_path, raw_tsv, line, msg):
 
     with pytest.raises(GoldError, match=msg):
         read_overrides(_overrides(tmp_path, line), {r["case_id"] for r in read_draft_cases(raw_tsv)})
+
+
+def test_fill_bo_ca_y_dinh_khi_mot_dong_bi_loai_vi_loi_that_du_con_dong_chua_gan(raw_tsv):
+    cases = read_draft_cases(raw_tsv)
+    # c0001 bị loại vì lỗi của ý định; c0002, c0003 chưa gán → không được lấp lại bằng c0002
+    decisions, _ = resolve_decisions([_event("c0001", "khoi", "REJECT", at="2026-09-24T01:00:00+00:00",
+                                             reason="fabricated_entity")])
+    rows, report = select_drafts(cases, decisions, QUOTA, fill=True)
+    got = [r["case_id"] for r in rows]
+    assert not {"c0001", "c0002", "c0003"} & set(got)
+    assert any(s["case_id"] == "c0001" and "lỗi thật" in s["why"] for s in report["skipped_fill"])
+
+
+def test_fill_khong_chon_cach_noi_bi_danh_unnatural(raw_tsv):
+    cases = read_draft_cases(raw_tsv)
+    events = [_event("c0001", "khoi", "REJECT", at="2026-09-24T01:00:00+00:00", reason="unnatural"),
+              _event("c0002", "khoi", "REJECT", at="2026-09-24T01:00:00+00:00", reason="duplicate"),
+              _event("c0003", "khoi", "REJECT", at="2026-09-24T01:00:00+00:00", reason="duplicate")]
+    decisions, _ = resolve_decisions(events)
+    rows, _ = select_drafts(cases, decisions, QUOTA, fill=True)
+    got = [r["case_id"] for r in rows]
+    assert "c0001" not in got and "c0002" in got                  # lấy cách nói chỉ bị loại vì trùng
+
+
+def test_fill_khong_lap_y_dinh_da_reject_trong_overrides(tmp_path, raw_tsv):
+    from evaluation.search_bench.gold import apply_overrides, read_overrides
+
+    cases = read_draft_cases(raw_tsv)
+    decisions, conflicts = resolve_decisions([])
+    ov = read_overrides(_overrides(tmp_path, "c0001\tREJECT\t\tduplicate\ttrùng khoá với ý định khác"),
+                        {r["case_id"] for r in cases})
+    decisions, conflicts = apply_overrides(decisions, conflicts, ov)
+    rows, _ = select_drafts(cases, decisions, QUOTA, fill=True)
+    assert not {"c0001", "c0002", "c0003"} & {r["case_id"] for r in rows}
+
+
+def test_fill_out_of_catalog_chan_ca_diem_den_khi_mot_dong_bi_loai_vi_loi_that(tmp_path):
+    """out_of_catalog: 3 dòng là 3 ý định, nhưng lỗi 'điểm đến có trong catalog' áp cho cả 3 (cùng note)."""
+    rows_txt = [
+        "c0001\tresort ở Hà Giang\tout_of_catalog\t\ttrue\t\tabsent destination:Hà Giang",
+        "c0002\tvé tham quan Hà Giang\tout_of_catalog\t\ttrue\t\tabsent destination:Hà Giang",
+        "c0003\tcombo du lịch Hà Giang\tout_of_catalog\t\ttrue\t\tabsent destination:Hà Giang",
+        "c0004\tresort ở Lý Sơn\tout_of_catalog\t\ttrue\t\tabsent destination:Lý Sơn",
+    ]
+    p = tmp_path / "raw.tsv"
+    p.write_text("\n".join([HEADER, *rows_txt]) + "\n", encoding="utf-8")
+    cases = read_draft_cases(p)
+    decisions, _ = resolve_decisions([_event("c0001", "qanh", "REJECT", at="2026-09-24T01:00:00+00:00",
+                                             reason="bad_grounding", slice_="out_of_catalog")])
+    rows, report = select_drafts(cases, decisions, {"out_of_catalog": 3}, fill=True)
+    assert [r["case_id"] for r in rows] == ["c0004"]
+    assert any(s["case_id"] == "c0002" and "Hà Giang" in s["why"] for s in report["skipped_fill"])

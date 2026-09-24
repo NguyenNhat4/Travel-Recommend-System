@@ -278,21 +278,46 @@ def select_drafts(cases: list[dict], decisions: dict[str, dict], quota: dict[str
         take, rest = avail[:q], avail[q:]
         if fill and len(take) < q:
             covered = {(r.get("review_note") or "").strip() for r in take} if sl in NOTE_IS_INTENT_KEY else set()
+            # Ở slice mà note là khoá ý định, lỗi thật trên MỘT dòng (vd. out_of_catalog: điểm đến có sản phẩm trùng tên)
+            # áp cho mọi dòng cùng note — không lấp lại "vé tham quan X" khi "resort ở X" đã bị loại vì X có trong catalog.
+            dead_notes = set()
+            if sl in NOTE_IS_INTENT_KEY:
+                for r in cases:
+                    v = decisions.get(r["case_id"])
+                    if r["slice"] == sl and v and v["verdict"] == "REJECT" and (
+                            (v["rejection_reason"] or "other") not in PHRASING_REASONS or v.get("annotator") == "override"):
+                        dead_notes.add((r.get("review_note") or "").strip())
+                dead_notes.discard("")
             for key, rows_ in sorted(by_intent_rows.items(), key=lambda kv: kv[1][0]["case_id"]):
                 if len(take) >= q or key[0] != sl or key in kept_by_intent:
                     continue
                 verdicts = [decisions.get(r["case_id"]) for r in rows_]
-                if any(v is None for v in verdicts):
-                    kind = "chưa gán"
-                elif all((v["rejection_reason"] or "other") in PHRASING_REASONS for v in verdicts):
-                    kind = "loại vì cách nói (" + ", ".join(sorted({v["rejection_reason"] for v in verdicts})) + ")"
-                else:
-                    bad = sorted({v["rejection_reason"] for v in verdicts} - set(PHRASING_REASONS))
+                graded = [v for v in verdicts if v is not None]
+                # Lỗi của ý định (bịa thực thể, sai slice, grounding…) hay một REJECT trong overrides.tsv áp cho mọi cách
+                # nói → loại cả ý định, kể cả khi còn dòng chưa gán. Chỉ duplicate/unnatural là lỗi của riêng một câu.
+                bad = sorted({v["rejection_reason"] or "other" for v in graded if v["verdict"] == "REJECT"
+                              and ((v["rejection_reason"] or "other") not in PHRASING_REASONS
+                                   or v.get("annotator") == "override")})
+                if bad:
                     skipped_fill.append({"case_id": rows_[0]["case_id"], "slice": sl,
                                          "why": "loại vì lỗi thật: " + ", ".join(bad)})
                     continue
-                cand = rows_[0]                                   # cách nói gốc: case_id nhỏ nhất của ý định
+                if len(graded) < len(verdicts):
+                    kind = "chưa gán"
+                else:
+                    kind = "loại vì cách nói (" + ", ".join(sorted({v["rejection_reason"] for v in graded})) + ")"
+                # Cách nói còn dùng được: chưa gán, hoặc chỉ bị loại vì trùng; bỏ câu người soát đã đánh `unnatural`.
+                usable = [r for r, v in zip(rows_, verdicts) if v is None or v["rejection_reason"] == "duplicate"]
+                if not usable:
+                    skipped_fill.append({"case_id": rows_[0]["case_id"], "slice": sl,
+                                         "why": "mọi cách nói đều bị đánh unnatural"})
+                    continue
+                cand = usable[0]                                  # cách nói gốc nhất còn dùng được
                 note = (cand.get("review_note") or "").strip() if sl in NOTE_IS_INTENT_KEY else ""
+                if note and note in dead_notes:
+                    skipped_fill.append({"case_id": cand["case_id"], "slice": sl,
+                                         "why": f"khoá ý định đã bị loại vì lỗi thật ở dòng khác ({note})"})
+                    continue
                 if note and note in covered:
                     skipped_fill.append({"case_id": cand["case_id"], "slice": sl,
                                          "why": f"trùng khoá ý định đã có ({note})"})
