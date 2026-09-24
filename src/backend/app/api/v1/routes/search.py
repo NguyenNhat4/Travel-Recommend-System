@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
 from src.backend.app.api.deps import get_search, get_similar
+from src.backend.app.application.search.use_cases import ANN_DIAGNOSTICS
 
 router = APIRouter(tags=["search"])
 
@@ -30,10 +31,7 @@ def _safe_search(search_products, query: str, taxonomy: str | None, destination:
             "cutoff": 0.62,
             "facets": {"taxonomy": {}, "destination": {}},
             "diagnostics": {
-                "searchMode": "EXACT_FILTER_SCORE",
-                "approximate": False,
-                "totalExact": True,
-                "facetsExact": True,
+                **ANN_DIAGNOSTICS,
                 "filteredCount": 0,
                 "relevantCount": 0,
                 "modelVersion": "none",

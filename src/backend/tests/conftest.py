@@ -58,9 +58,9 @@ def services(data_dir):
     from src.backend.app.application.recommendation import BuildPopularity, RecommendForUser
     from datetime import datetime, timezone
     emb = FakeEmbedder()
-    index = InMemoryVectorStore(str(data_dir / "products.jsonl"), emb, str(data_dir / ".embcache")).load()
+    index, vectors = InMemoryVectorStore(str(data_dir / "products.jsonl"), emb, str(data_dir / ".embcache")).load()
     cdp = JsonlCdpReader(str(data_dir / "events.jsonl"))
     now = datetime(2026, 9, 21, tzinfo=timezone.utc)
     pop = BuildPopularity(index, cdp)(now=now)
-    return {"index": index, "search": SearchProducts(index, emb, cutoff=-1.0), "similar": SimilarProducts(index),
-            "recommend": RecommendForUser(index, cdp, pop), "now": now}
+    return {"index": index, "vectors": vectors, "search": SearchProducts(index, vectors, emb, cutoff=-1.0),
+            "similar": SimilarProducts(index, vectors), "recommend": RecommendForUser(index, vectors, cdp, pop), "now": now}

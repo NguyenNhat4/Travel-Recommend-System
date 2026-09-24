@@ -103,8 +103,11 @@ class Settings(BaseSettings):
     weaviate_api_key: str = ""
     weaviate_collection: str = "Product"
     weaviate_timeout_seconds: float = Field(default=30.0, gt=0)
+    # Cổng gRPC cho truy vấn top-K mỗi request; Weaviate Cloud tự dùng 443 của host grpc-<cluster>.
+    weaviate_grpc_port: int = Field(default=50051, ge=1, le=65535)
     search_cutoff: float = 0.62  # quy tắc tạm của Search contract; phải benchmark lại với Cohere
     search_max_limit: int = 50
+    search_candidate_k: int = Field(default=200, ge=1)
     recommend_candidate_k: int = 200
 
     # Vector ở Weaviate, embedding bằng Cohere (docs/prd/architecture.md §5, deployment-plan.md §2).

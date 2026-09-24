@@ -140,7 +140,7 @@ EngineDiagnostics:
       $ref: ../openapi.yaml#/components/schemas/SearchMode
     approximate:
       type: boolean
-      description: false ở chế độ EXACT_FILTER_SCORE.
+      description: false ở chế độ EXACT_FILTER_SCORE, true ở ANN_CANDIDATE_SCORE.
     totalExact:
       type: boolean
       description: >-
