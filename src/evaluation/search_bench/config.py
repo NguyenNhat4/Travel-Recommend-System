@@ -181,7 +181,21 @@ def load_env(env_file: Path | None = None) -> list[str]:
     return loaded
 
 
-def load_config(path: str | Path | None = None) -> SBenchConfig:
+def deep_merge(base: dict, overrides: dict) -> dict:
+    """Bản sao của `base` với `overrides` ghi đè theo từng khoá lồng nhau (dict gộp, giá trị khác thay thế)."""
+    out = dict(base)
+    for k, v in overrides.items():
+        out[k] = deep_merge(out[k], v) if isinstance(v, dict) and isinstance(out.get(k), dict) else v
+    return out
+
+
+def load_config(path: str | Path | None = None, *, overrides_path: str | Path | None = None) -> SBenchConfig:
+    """Nạp sbench.yaml; `overrides_path` (chỉ dùng cho test) ghi đè một phần — file config thật không đổi."""
     p = Path(path) if path else paths.DEFAULT_CONFIG
     raw = yaml.safe_load(p.read_text(encoding="utf-8"))
+    if overrides_path:
+        over = yaml.safe_load(Path(overrides_path).read_text(encoding="utf-8")) or {}
+        if not isinstance(over, dict):
+            raise ValueError(f"{overrides_path}: phải là mapping YAML")
+        raw = deep_merge(raw, over)
     return SBenchConfig.model_validate(raw)

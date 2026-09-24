@@ -482,7 +482,7 @@ Dedupe theo cha: làm ở app (lấy `limit × 3`, giữ ≤ 1 / `parent_product
 | `sb gold import <csv>` | → `gold/gold.jsonl` `{qid, text, slice, filter?, expected_no_result?, judgments: {product_id: 0\|1\|2}, provenance: {product_id: "pool@gold_v1"}, status: "active"}`; `judgments` giữ đúng định dạng của `VECTOR_DB_BENCH_SPEC` P6.3, nguồn gốc nhãn nằm ở trường riêng `provenance`; từ chối nếu còn `needs_discussion` |
 | `sb gold check` | mỗi query ≥ 1 nhãn 2 (trừ `out_of_catalog`); mỗi slice ≥ `min_per_slice`; in bảng số query / số nhãn theo slice; nhắc `git tag gold_v1` |
 
-**Done khi:** `sb gold pool` trên 10 draft fixture ra `pool.csv` ~200 dòng; `kappa` tính đúng trên fixture có sẵn đáp án; `import` + `check` xanh trên `tests/fixtures/gold_small.jsonl`.
+**Done khi:** `sb gold pool` trên 10 draft fixture ra `pool.csv` ~200 dòng; `kappa` tính đúng trên fixture có sẵn đáp án; `import` + `check` xanh trên `tests/fixtures/gold_small.jsonl` (dùng config riêng cho test `tests/fixtures/config_test_overrides.yaml` — `gold.min_per_slice: 1`, vì fixture chỉ có 10 query trải 9 slice; `config/sbench.yaml` giữ 10).
 
 ---
 

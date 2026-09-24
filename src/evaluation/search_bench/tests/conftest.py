@@ -32,6 +32,17 @@ def cfg():
     return load_config()
 
 
+TEST_OVERRIDES = Path(__file__).resolve().parent / "fixtures" / "config_test_overrides.yaml"
+
+
+@pytest.fixture(scope="session")
+def test_cfg():
+    """Config riêng cho test: config/sbench.yaml + ghi đè ở fixtures/config_test_overrides.yaml (vd gold.min_per_slice: 1
+    để `gold check` chạy được trên gold_small.jsonl). Config thật không đổi."""
+    from evaluation.search_bench.config import load_config
+    return load_config(overrides_path=TEST_OVERRIDES)
+
+
 @pytest.fixture()
 def home(tmp_path, monkeypatch):
     monkeypatch.setenv("SBENCH_HOME", str(tmp_path / "sbench"))
