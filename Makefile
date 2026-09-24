@@ -16,7 +16,7 @@ LOCAL_SEED_DATABASE_URL = postgresql://postgres:postgres@localhost:$(POSTGRES_HO
 MIGRATE_PYTHON = $(shell test -x src/backend/.venv/bin/python && echo src/backend/.venv/bin/python || echo $(PYTHON))
 LOCAL_INSIDER_DATABASE_URL = postgresql://postgres:postgres@localhost:$(POSTGRES_HOST_PORT)/insider
 
-.PHONY: chat chat-full chat-api chat-ui chat-logs web web-ui web-logs test-llm demo-db demo-db-reset verify-db index-vectors db-migrate db-migrate-status backend backend-build backend-logs backend-stop backend-local jwt-keys
+.PHONY: chat web demo-db demo-db-reset verify-db index-vectors db-migrate db-migrate-status update backend backend-logs backend-stop backend-local jwt-keys
 
 # Chạy trọn bộ FastAPI + Streamlit; Ctrl+C sẽ dừng cả hai.
 chat:
@@ -74,9 +74,6 @@ chat:
 	"$${PYTHON_BIN}" -m streamlit run src/evaluation/agent/streamlit_app.py \
 		--server.port "$${STREAMLIT_PORT}" \
 		> >(tee -a "$${LOG_FILE}") 2>&1
-
-# Giữ alias cũ để không làm hỏng lệnh đang dùng.
-chat-full: chat
 
 # Chạy web chính (Next :3000 + BFF :3001) cùng FastAPI :8000; Ctrl+C dừng cả hai.
 # Lưu ý: chat trong web hiện gọi /api/assistant/chat của BFF (Gemini), CHƯA gọi
@@ -149,49 +146,6 @@ web:
 	npm --prefix "$${FRONTEND_DIR}" run dev \
 		> >(tee -a "$${LOG_FILE}") 2>&1
 
-# Chỉ chạy web chính; cần chat-api hoặc backend đang chạy ở terminal khác nếu muốn gọi FastAPI.
-web-ui:
-	@echo "Đang khởi động Next + BFF..."
-	npm --prefix src/frontend run dev
-
-# Theo dõi log của phiên web gần nhất.
-web-logs:
-	@LOG_FILE="$${WEB_DEMO_LOG_FILE:-$$(pwd)/.logs/web-demo.log}"
-	if [[ ! -f "$${LOG_FILE}" ]]; then
-		echo "Chưa có log. Hãy chạy make web trước."
-		exit 1
-	fi
-	tail -n 200 -f "$${LOG_FILE}"
-
-# Chỉ chạy Backend FastAPI; mặc định Agent gọi Search/Recommendation qua HTTP local.
-chat-api:
-	@echo "Đang khởi động Backend API..."
-	ITINERARY_DATA_MODE=$${ITINERARY_DATA_MODE:-http} \
-	ITINERARY_SERVICE_BASE_URL=$${ITINERARY_SERVICE_BASE_URL:-http://127.0.0.1:$${BACKEND_PORT:-8000}} \
-		.venv/bin/uvicorn src.backend.app.main:app --reload --port $${BACKEND_PORT:-8000}
-
-# Chỉ chạy UI; cần chat-api đang chạy ở terminal khác.
-chat-ui:
-	@echo "Đang khởi động Streamlit Agent Chat..."
-	ASSISTANT_API_BASE_URL=$${ASSISTANT_API_BASE_URL:-http://127.0.0.1:$${BACKEND_PORT:-8000}/api/v1} \
-		.venv/bin/streamlit run src/evaluation/agent/streamlit_app.py \
-		--server.port $${STREAMLIT_PORT:-8502}
-
-# Theo dõi log của phiên demo gần nhất.
-chat-logs:
-	@LOG_FILE="$${AGENT_DEMO_LOG_FILE:-$$(pwd)/.logs/agent-demo.log}"
-	if [[ ! -f "$${LOG_FILE}" ]]; then
-		echo "Chưa có log. Hãy chạy make chat trước."
-		exit 1
-	fi
-	tail -n 200 -f "$${LOG_FILE}"
-
-# Chạy script test kết nối LLM
-test-llm:
-	@echo "Đang chạy test LLM..."
-	.venv/bin/python test_llm.py
-
-
 demo-db:
 	docker compose up -d --wait postgres
 	$(MAKE) db-migrate
@@ -207,6 +161,24 @@ demo-db-reset:
 verify-db:
 	docker compose exec -T postgres psql -U postgres -d vota < db/verify.sql
 	docker compose exec -T postgres psql -U postgres -d insider < db/verify_insider.sql
+
+# Cài thêm dependency khi requirements.txt hoặc package.json đổi (vd sau git pull). Không đụng DB hay dữ liệu.
+# Venv: .venv (make web/chat dùng) hoặc src/backend/.venv (README dùng), cái nào có trước.
+update:
+	@VENV="$$(for v in .venv src/backend/.venv; do [[ -x $$v/bin/python ]] && echo $$v && break; done || true)"
+	if [[ -z "$${VENV}" ]]; then
+		echo "Không tìm thấy venv. Hãy chạy: python3 -m venv .venv"
+		exit 1
+	fi
+	echo "==> Python: $${VENV}"
+	"$${VENV}/bin/python" -m pip install -r src/backend/requirements.txt -r src/evaluation/requirements.txt
+	if ! command -v npm >/dev/null 2>&1; then
+		echo "Không tìm thấy npm. Cần Node.js để cập nhật frontend."
+		exit 1
+	fi
+	echo "==> Frontend: src/frontend"
+	npm --prefix src/frontend install
+	echo "Đã cập nhật dependency."
 
 # Job tốn quota Cohere nên không tự chạy trong demo-db. Cần COHERE_API_KEY trong .env.
 index-vectors:
@@ -225,9 +197,6 @@ db-migrate-status:
 backend:
 	docker compose up -d --build backend
 	@echo "Backend API: http://localhost:$${BACKEND_PORT:-8000}"
-
-backend-build:
-	docker compose build backend
 
 backend-logs:
 	docker compose logs -f backend

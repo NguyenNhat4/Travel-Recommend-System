@@ -1,15 +1,21 @@
-"""Weaviate adapter with self-provided Cohere vectors."""
+"""Weaviate adapter with self-provided Cohere vectors.
+
+`WeaviateClient` (REST) phục vụ job `embed_products`; `WeaviateVectorSearch` (client v4, gRPC) phục vụ
+truy vấn top-K mỗi request của Search / Similar / Recommendation.
+"""
 from __future__ import annotations
 
 import re
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
 import httpx
 import numpy as np
 
-from src.backend.app.application.ports import UnitIndex
-from src.backend.app.infrastructure.vectors.postgres_store import CatalogUnits, PostgresCatalogReader
+from src.backend.app.application.ports import UnitIndex, VectorHit
+from src.backend.app.infrastructure.vectors.postgres_store import PostgresCatalogReader
 
 
 @dataclass(frozen=True)
@@ -78,36 +84,36 @@ class WeaviateClient:
         )
         created.raise_for_status()
 
-    def _graphql(self, query: str) -> dict:
-        response = self._client.post("/v1/graphql", json={"query": query})
-        response.raise_for_status()
-        payload = response.json()
-        if payload.get("errors"):
-            raise RuntimeError(f"Weaviate GraphQL error: {payload['errors']}")
-        return payload["data"]
-
-    def fetch(self, *, include_vectors: bool) -> tuple[dict[str, VectorMetadata], dict[str, np.ndarray]]:
-        additional = "_additional { id vector }" if include_vectors else "_additional { id }"
-        data = self._graphql(
-            "{ Get { "
-            + self.collection
-            + f"(limit: 10000) {{ productId modelVersion textHash {additional} }} }} }}"
-        )
-        rows = data.get("Get", {}).get(self.collection) or []
+    def fetch(
+        self, *, include_vectors: bool, page_size: int = 500
+    ) -> tuple[dict[str, VectorMetadata], dict[str, np.ndarray]]:
+        """List objects via REST cursor pagination (Weaviate Cloud may disable GraphQL)."""
         metadata: dict[str, VectorMetadata] = {}
         vectors: dict[str, np.ndarray] = {}
-        for row in rows:
-            product_id = str(row["productId"])
-            extra = row.get("_additional") or {}
-            metadata[product_id] = VectorMetadata(
-                uuid=str(extra["id"]),
-                product_id=product_id,
-                model_version=str(row.get("modelVersion") or ""),
-                text_hash=str(row.get("textHash") or ""),
-            )
+        after = ""
+        while True:
+            params = {"class": self.collection, "limit": page_size}
+            if after:
+                params["after"] = after
             if include_vectors:
-                vectors[product_id] = np.asarray(extra.get("vector") or [], dtype=np.float32)
-        return metadata, vectors
+                params["include"] = "vector"
+            response = self._client.get("/v1/objects", params=params)
+            response.raise_for_status()
+            rows = response.json().get("objects") or []
+            for row in rows:
+                props = row.get("properties") or {}
+                product_id = str(props["productId"])
+                metadata[product_id] = VectorMetadata(
+                    uuid=str(row["id"]),
+                    product_id=product_id,
+                    model_version=str(props.get("modelVersion") or ""),
+                    text_hash=str(props.get("textHash") or ""),
+                )
+                if include_vectors:
+                    vectors[product_id] = np.asarray(row.get("vector") or [], dtype=np.float32)
+            if len(rows) < page_size:
+                return metadata, vectors
+            after = str(rows[-1]["id"])
 
     @staticmethod
     def object_uuid(product_id: str) -> str:
@@ -131,47 +137,121 @@ class WeaviateClient:
                 raise RuntimeError(f"Weaviate batch failed for {len(failures)} objects: {failures[:1]}")
 
 
-class WeaviateVectorStore:
-    """Load persisted vectors from Weaviate and grounded display data from PostgreSQL."""
+def connect_weaviate(url: str, *, api_key: str = "", grpc_port: int = 50051, timeout_seconds: float = 30.0):
+    """Client v4 (REST + gRPC). Truy vấn `nearVector` phải đi gRPC vì Weaviate Cloud của nhóm tắt GraphQL."""
+    import weaviate
+    from weaviate.classes.init import AdditionalConfig, Auth, Timeout
 
-    def __init__(
-        self,
-        database_url: str,
-        client: WeaviateClient,
-        *,
-        expected_model_version: str,
-        dimension: int = 1024,
-    ):
-        self.reader = PostgresCatalogReader(database_url)
+    parsed = urlparse(url if "://" in url else f"https://{url}")
+    host = parsed.hostname or "localhost"
+    auth = Auth.api_key(api_key) if api_key else None
+    config = AdditionalConfig(timeout=Timeout(init=timeout_seconds, query=timeout_seconds, insert=timeout_seconds))
+    if host.endswith((".weaviate.cloud", ".weaviate.network")):
+        # Cloud tự suy ra host gRPC `grpc-<cluster>` ở cổng 443.
+        return weaviate.connect_to_weaviate_cloud(parsed.geturl(), auth_credentials=auth, additional_config=config)
+    secure = parsed.scheme == "https"
+    return weaviate.connect_to_custom(
+        http_host=host,
+        http_port=parsed.port or (443 if secure else 80),
+        http_secure=secure,
+        grpc_host=host,
+        grpc_port=grpc_port,
+        grpc_secure=secure,
+        auth_credentials=auth,
+        additional_config=config,
+    )
+
+
+def _object_vector(obj) -> np.ndarray:
+    vector = obj.vector
+    if isinstance(vector, dict):  # collection tạo bằng REST không đặt tên vector → key "default"
+        vector = vector.get("default")
+    return np.asarray(vector or [], dtype=np.float32)
+
+
+class WeaviateVectorSearch:
+    """`VectorSearchPort` trên collection `Product`: mỗi request một truy vấn top-K, lọc theo id object."""
+
+    _ID_CHUNK = 1000
+
+    def __init__(self, client, *, collection: str = "Product", dimension: int = 1024):
         self.client = client
-        self.expected_model_version = expected_model_version
+        self.collection = client.collections.get(collection)
         self.dimension = dimension
 
-    def load(self) -> UnitIndex:
-        catalog = self.reader.load()
-        self.client.ready()
-        self.client.ensure_collection()
-        metadata, vectors = self.client.fetch(include_vectors=True)
-        missing = [p.product_id for p in catalog.units if p.product_id not in vectors]
-        if missing:
-            raise RuntimeError(
-                f"Weaviate thiếu {len(missing)} search unit; chạy `make index-vectors` trước khi mở RecSys"
+    def close(self) -> None:
+        self.client.close()
+
+    @staticmethod
+    def _id_filter(product_ids: Sequence[str]):
+        from weaviate.classes.query import Filter
+
+        return Filter.by_id().contains_any([WeaviateClient.object_uuid(p) for p in product_ids])
+
+    def near_vector(self, vector: np.ndarray, allowed: Sequence[str] | None, limit: int,
+                    *, with_vectors: bool = False) -> list[VectorHit]:
+        from weaviate.classes.query import MetadataQuery
+
+        if limit <= 0 or (allowed is not None and not allowed):
+            return []
+        result = self.collection.query.near_vector(
+            near_vector=np.asarray(vector, dtype=np.float32).tolist(),
+            limit=limit,
+            filters=self._id_filter(allowed) if allowed is not None else None,
+            return_properties=["productId"],
+            return_metadata=MetadataQuery(distance=True),
+            include_vector=with_vectors,
+        )
+        return [
+            VectorHit(
+                product_id=str(obj.properties["productId"]),
+                score=1.0 - float(obj.metadata.distance),
+                vector=_object_vector(obj) if with_vectors else None,
             )
-        wrong_model = [
-            p.product_id
-            for p in catalog.units
-            if metadata[p.product_id].model_version != self.expected_model_version
+            for obj in result.objects
         ]
-        if wrong_model:
-            raise RuntimeError(
-                f"Weaviate có {len(wrong_model)} vector sai model/text version; chạy lại `make index-vectors`"
+
+    def vectors(self, product_ids: Sequence[str]) -> dict[str, np.ndarray]:
+        ids = list(dict.fromkeys(product_ids))
+        out: dict[str, np.ndarray] = {}
+        for start in range(0, len(ids), self._ID_CHUNK):
+            chunk = ids[start : start + self._ID_CHUNK]
+            result = self.collection.query.fetch_objects(
+                filters=self._id_filter(chunk), limit=len(chunk), include_vector=True, return_properties=["productId"]
             )
-        embeddings = np.vstack([vectors[p.product_id] for p in catalog.units]).astype(np.float32)
-        if embeddings.shape != (len(catalog.units), self.dimension):
+            for obj in result.objects:
+                out[str(obj.properties["productId"])] = _object_vector(obj)
+        return out
+
+    def count(self, *, model_version: str) -> int:
+        from weaviate.classes.query import Filter
+
+        return int(
+            self.collection.aggregate.over_all(
+                total_count=True, filters=Filter.by_property("modelVersion").equal(model_version)
+            ).total_count
+            or 0
+        )
+
+
+class WeaviateVectorStore:
+    """Metadata search unit từ PostgreSQL + kho vector Weaviate để truy vấn theo request.
+
+    Không tải vector lúc khởi động (tải 3.183 vector từ Weaviate Cloud mất 453 giây); chỉ kiểm số vector
+    đúng model để fail-closed như trước khi collection còn thiếu.
+    """
+
+    def __init__(self, database_url: str, search: WeaviateVectorSearch, *, expected_model_version: str):
+        self.reader = PostgresCatalogReader(database_url)
+        self.search = search
+        self.expected_model_version = expected_model_version
+
+    def load(self) -> tuple[UnitIndex, WeaviateVectorSearch]:
+        catalog = self.reader.load()
+        indexed = self.search.count(model_version=self.expected_model_version)
+        if indexed < len(catalog.units):
             raise RuntimeError(
-                f"Weaviate vector shape {embeddings.shape}; expected ({len(catalog.units)}, {self.dimension})"
+                f"Weaviate thiếu {len(catalog.units) - indexed} search unit (model {self.expected_model_version}); "
+                "chạy `make index-vectors` trước khi mở RecSys"
             )
-        norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
-        if np.any(norms == 0):
-            raise RuntimeError("Weaviate contains a zero-length embedding")
-        return catalog.to_index(embeddings / norms, self.expected_model_version)
+        return catalog.to_index(self.expected_model_version), self.search

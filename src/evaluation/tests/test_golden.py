@@ -22,9 +22,9 @@ class DatasetTests(unittest.TestCase):
     def setUp(self):
         self.cases = load_dataset(DATASET_PATH)
 
-    def test_has_fifty_cases_with_unique_ids(self):
-        self.assertEqual(len(self.cases), 50)
-        self.assertEqual(len({c.id for c in self.cases}), 50)
+    def test_has_seventy_five_cases_with_unique_ids(self):
+        self.assertEqual(len(self.cases), 75)
+        self.assertEqual(len({c.id for c in self.cases}), 75)
 
     def test_every_case_has_fr_codes_and_turns(self):
         for case in self.cases:
@@ -56,6 +56,24 @@ class DatasetTests(unittest.TestCase):
             )
             with self.assertRaises(ValueError):
                 load_dataset(path)
+
+    def test_load_dataset_rejects_unknown_expect_key(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "typo.yaml"
+            path.write_text("- id: X-1\n  category: c\n  fr: [FR-AGT-01]\n"
+                            "  turns: [{message: a, expect: {missingField: [days]}}]\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "missingField"):
+                load_dataset(path)
+
+    def test_turn_language_and_conversation_id_are_loaded(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "turn.yaml"
+            path.write_text("- id: X-1\n  category: c\n  fr: [FR-AGT-01]\n"
+                            "  turns: [{message: a, language: en, conversationId: conv-x}]\n", encoding="utf-8")
+            turn = load_dataset(path)[0].turns[0]
+        self.assertEqual((turn.language, turn.conversation_id), ("en", "conv-x"))
 
 
 class GateSchemaTests(unittest.TestCase):
@@ -243,6 +261,29 @@ class DatasetFindingsTests(unittest.TestCase):
         self.assertEqual(findings, [])
         findings = dataset_findings(response, 422, [], {"httpStatus": 200, "errorCode": "VALIDATION_ERROR"}, {})
         self.assertEqual(len(findings), 2)
+
+
+def _itinerary_response(activity_count, stay=True, warnings=()):
+    slots = [{"time": "MORNING", "product": {"productId": f"a{i}"}} for i in range(activity_count)]
+    itinerary = {"days": [{"day": 1, "slots": slots}]}
+    if stay:
+        itinerary["stay"] = {"product": {"productId": "h1"}}
+    return {"status": "COMPLETED", "itinerary": itinerary, "warnings": [{"code": c} for c in warnings]}
+
+
+class NewExpectKeyTests(unittest.TestCase):
+    def test_min_activities(self):
+        self.assertTrue(dataset_findings(_itinerary_response(1), 200, [], {"minActivities": 3}, {}))
+        self.assertEqual(dataset_findings(_itinerary_response(3), 200, [], {"minActivities": 3}, {}), [])
+
+    def test_has_stay(self):
+        self.assertTrue(dataset_findings(_itinerary_response(1), 200, [], {"hasStay": False}, {}))
+        self.assertEqual(dataset_findings(_itinerary_response(1, stay=False), 200, [], {"hasStay": False}, {}), [])
+
+    def test_warnings_exclude(self):
+        response = _itinerary_response(1, warnings=["SNAPSHOT_ONLY", "PRODUCT_DROPPED_EXCLUDED"])
+        self.assertTrue(dataset_findings(response, 200, [], {"warningsExclude": ["PRODUCT_DROPPED_EXCLUDED"]}, {}))
+        self.assertEqual(dataset_findings(response, 200, [], {"warningsExclude": ["PRODUCT_DROPPED_DATE"]}, {}), [])
 
 
 if __name__ == "__main__":

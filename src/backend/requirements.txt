@@ -14,6 +14,9 @@ langchain-core>=1,<2
 langchain-openai>=1,<2
 # recsys: vector persist ở Weaviate; Cohere gọi qua httpx ở trên
 numpy>=1.26
+# truy vấn top-K mỗi request qua gRPC (Weaviate Cloud tắt GraphQL). Bản 4.23 ghim grpcio<1.80;
+# nếu venv có langgraph-api (cần grpcio>=1.81) thì pip báo xung đột nhưng client vẫn chạy với 1.81.
+weaviate-client>=4.9,<5
 # auth hybrid (docs/hop-dong-tich-hop-auth.md §8, §10, §16.1)
 argon2-cffi>=23.1          # Argon2id — thuật toán băm mật khẩu hiện hành
 bcrypt>=4.1                # chỉ để KIỂM hash cũ của user seed rồi rehash sang Argon2id (§8.2)

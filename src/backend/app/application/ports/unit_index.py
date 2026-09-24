@@ -1,4 +1,4 @@
-"""Ảnh chụp các search unit + vector mà ba engine Search / Similar / Recommendation cùng đọc."""
+"""Metadata các search unit mà ba engine Search / Similar / Recommendation cùng đọc để lọc trước."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -10,9 +10,8 @@ from src.backend.app.domain.catalog import Product
 
 @dataclass
 class UnitIndex:
-    """Ảnh chụp search unit + vector lấy từ Weaviate, đủ cho 3 engine hiện hành."""
+    """Ảnh chụp search unit từ Postgres; vector không nằm ở đây mà truy vấn qua `VectorSearchPort`."""
     units: list[Product]
-    E: np.ndarray                      # (n, D), đã L2-normalise
     taxonomy: np.ndarray               # (n,) str
     destination: np.ndarray            # (n,) str
     available: np.ndarray              # (n,) bool
@@ -38,3 +37,9 @@ class UnitIndex:
         if destination:
             m &= self.destination == destination
         return m
+
+    def allowed_ids(self, mask: np.ndarray) -> list[str] | None:
+        """productId của các unit trong mask; None khi mask phủ toàn bộ (khỏi gửi filter)."""
+        if mask.all():
+            return None
+        return [self.units[i].product_id for i in np.flatnonzero(mask)]

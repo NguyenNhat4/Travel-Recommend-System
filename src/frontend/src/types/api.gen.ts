@@ -549,7 +549,7 @@ export interface components {
          */
         PriceUnit: "PER_NIGHT" | "PER_PERSON" | "PER_PACKAGE" | "UNKNOWN";
         /**
-         * @description EXACT_FILTER_SCORE là mặc định cho cả /search, /similar và /recommendations. Lật sang ANN_CANDIDATE_SCORE khi số vector vượt 50.000 hoặc p95 của bước scan vượt 50 ms; khi lật thì totalExact và facetsExact bắt buộc là false.
+         * @description ANN_CANDIDATE_SCORE là mặc định cho cả /search, /similar và /recommendations (từ 2026-09-24): lọc id theo structured filter, lấy top-K ứng viên từ Weaviate, rồi chấm điểm và đếm trên tập ứng viên đó. Ở chế độ này approximate là true, totalExact và facetsExact bắt buộc là false. EXACT_FILTER_SCORE giữ cho engine quét toàn bộ vector (bản chạy offline).
          * @enum {string}
          */
         SearchMode: "EXACT_FILTER_SCORE" | "ANN_CANDIDATE_SCORE";
@@ -907,7 +907,7 @@ export interface components {
         };
         EngineDiagnostics: {
             searchMode: components["schemas"]["SearchMode"];
-            /** @description false ở chế độ EXACT_FILTER_SCORE. */
+            /** @description false ở chế độ EXACT_FILTER_SCORE, true ở ANN_CANDIDATE_SCORE. */
             approximate: boolean;
             /** @description [C4] false bắt buộc khi approximate là true. HNSW chỉ trả top-K nên sản phẩm ngoài candidate pool vẫn có thể vượt cutoff — total khi đó không chính xác. */
             totalExact?: boolean;
@@ -981,7 +981,7 @@ export interface components {
         /**
          * @description MVP ưu tiên hiển thị strategy và recommendations. Thứ tự mảng là thứ tự hiển thị.
          *     Quy tắc bắt buộc theo strategy: (1) cross_vertical PHẢI có nextVertical và destination khác null; (2) dormant PHẢI có ít nhất một because với daysAgo trên 90; (3) popular thì because của MỌI gợi ý là mảng rỗng; (4) coldStart true thì because rỗng — không bao giờ bịa lý do.
-         *     [C4] Engine dùng EXACT_FILTER_SCORE, không phải HNSW: category exclusion loại khoảng 50% catalog, nên lọc-trước-rồi-chấm-điểm vừa đúng vừa nhanh hơn lấy-top-K-rồi-lọc.
+         *     [C4] Engine dùng ANN_CANDIDATE_SCORE nhưng vẫn lọc trước: category exclusion loại khoảng 50% catalog, nên danh sách id hợp lệ được gửi làm filter cho truy vấn top-K của Weaviate, không lấy-top-K-rồi-lọc.
          */
         RecommendationResponse: {
             /** @description null khi không có JWT. Không có JWT vẫn trả 200, không trả 401. */

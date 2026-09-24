@@ -27,6 +27,8 @@ export interface SearchResultItem {
 export interface SearchResponse {
   query: string;
   total: number;
+  /** false khi backend chỉ đếm trên top-K ứng viên (ANN_CANDIDATE_SCORE): total là cận dưới. */
+  totalExact?: boolean;
   results: SearchResultItem[];
   isWeakMatch: boolean;
   categoryCounts: Record<string, number>;
@@ -285,6 +287,7 @@ export async function searchProductsApi(
     return {
       query: cleanQ,
       total: data.total ?? results.length,
+      totalExact: data.diagnostics?.totalExact,
       results,
       isWeakMatch,
       categoryCounts,

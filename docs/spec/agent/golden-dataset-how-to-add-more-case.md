@@ -69,6 +69,8 @@ Case chỉ cần khai phần riêng của nó.
 
 - `id`: dạng `G-NNN`, số tiếp theo sau id lớn nhất hiện có. Không dùng lại id của case đã xoá, vì biên
   bản cũ và trace LangSmith còn tham chiếu tới nó.
+- Mỗi lượt có thể thêm `language: en` (gửi `context.language`) và `conversationId` (ép id cho lượt đó,
+  ví dụ id không tồn tại để kiểm `CONVERSATION_NOT_FOUND`).
 - `turns`: một case có thể có nhiều lượt. Runner tự lấy `conversationId` từ response của lượt trước rồi
   gửi kèm lượt sau, giống frontend. Với lỗi có thể tiếp tục (ví dụ 422 `UNSUPPORTED_DESTINATION`),
   `conversationId` nằm trong `error.details` và runner cũng tự lấy.
@@ -90,6 +92,9 @@ Mọi khoá đều tuỳ chọn; runner chỉ kiểm khoá có mặt.
 | `nodesExclude` | Node không được có trong trace | `[tool]` |
 | `forbiddenText` | Chuỗi không được xuất hiện ở đâu trong response; không phân biệt hoa thường | `["Ritz Carlton"]` |
 | `excludeProductsFromTurn` | `productId` của lượt `turn` (đếm từ 1) không xuất hiện lại ở lượt này; `role: stay` chỉ so chỗ ở, `role: any` so cả chỗ ở lẫn hoạt động | `{turn: 1, role: stay}` |
+| `minActivities` | Tổng số slot có sản phẩm trong lịch ít nhất bằng số này. Chỉ dùng cho điểm đến catalog có nhiều điểm tham quan | `3` |
+| `hasStay` | Lịch có hoặc không có chỗ ở | `false` |
+| `warningsExclude` | Các `warnings[].code` này không được xuất hiện | `[PRODUCT_DROPPED_EXCLUDED]` |
 
 Giá trị hợp lệ:
 
@@ -101,27 +106,31 @@ Giá trị hợp lệ:
 - `intent.destination` phải viết đúng tên catalog đã chuẩn hoá, ví dụ `TP. Hồ Chí Minh`, không viết
   `TPHCM`. Danh sách hiện hành lấy từ `GET /api/v1/destinations`.
 
-> **Cảnh báo:** runner bỏ qua khoá nó không biết. Gõ nhầm `missingField` thay vì `missingFieldsInclude`
-> thì kỳ vọng đó không được kiểm và case vẫn PASS. Sau khi thêm case, đối chiếu tên khoá với bảng trên.
+Runner từ chối khoá lạ khi nạp dataset: gõ nhầm `missingField` thay vì `missingFieldsInclude` làm
+`load_dataset` báo lỗi. Danh sách khoá hợp lệ nằm ở `TURN_KEYS` và `EXPECT_KEYS` trong `golden.py`.
 
 ## 5. Các nhóm case hiện có
 
 | `category` | Số case | Kiểm điều gì |
 |---|---|---|
-| `clear_request` | 12 | Đủ điểm đến và số ngày → `COMPLETED`/`FALLBACK`, intent đúng, có gọi tool |
-| `destination_normalization` | 6 | Viết không dấu, viết tắt, viết hoa → ra đúng tên catalog |
-| `intent_extraction` | 6 | Trích số người, ngân sách, sở thích |
-| `ambiguous` | 6 | Thiếu điểm đến hoặc số ngày → `NEEDS_CLARIFICATION`, không gọi tool |
-| `unsupported_destination` | 4 | Điểm đến ngoài catalog → 422 `UNSUPPORTED_DESTINATION` |
-| `fake_product_name` | 3 | Tên khách sạn hoặc điểm vui chơi không có thật → không xuất hiện trong response |
-| `multi_turn` | 7 | Bổ sung thông tin, đổi điểm đến, đổi số ngày, đổi món (FR-AGT-05) |
-| `greeting` | 1 | Chào hỏi → không gọi tool |
+| `clear_request` | 13 | Đủ điểm đến và số ngày → `COMPLETED`/`FALLBACK`, intent đúng, có gọi tool |
+| `destination_normalization` | 7 | Viết không dấu, viết tắt, viết hoa → ra đúng tên catalog |
+| `intent_extraction` | 12 | Trích số người, ngân sách, sở thích |
+| `ambiguous` | 7 | Thiếu điểm đến hoặc số ngày → `NEEDS_CLARIFICATION`, không gọi tool |
+| `unsupported_destination` | 5 | Điểm đến ngoài catalog → 422 `UNSUPPORTED_DESTINATION` |
+| `fake_product_name` | 5 | Tên khách sạn hoặc điểm vui chơi không có thật → không xuất hiện trong response |
+| `multi_turn` | 11 | Bổ sung thông tin, đổi điểm đến, đổi số ngày, đổi món (FR-AGT-05); chỉ đổi ngân sách hoặc số người thì không được loại sản phẩm cũ |
+| `language_en` | 2 | `context.language=en` → câu trả lời, note và warning tiếng Anh |
+| `invalid_duration` | 2 | Số ngày ngoài 1–7 → 400 `INVALID_TRIP_DURATION` |
+| `invalid_request` | 1 | `conversationId` không tồn tại → 404 `CONVERSATION_NOT_FOUND` |
+| `greeting` | 2 | Chào hỏi → không gọi tool |
 | `out_of_domain` | 1 | Câu hỏi ngoài du lịch → không gọi tool |
-| `side_effect` | 2 | Đặt phòng, thanh toán → 400 `VALIDATION_ERROR`, không nói "đã đặt" |
-| `prompt_injection` | 2 | Chèn lệnh, đòi secret → không lộ key, không có sản phẩm bịa |
+| `side_effect` | 4 | Đặt phòng, thanh toán → 400 `VALIDATION_ERROR`, không nói "đã đặt" |
+| `prompt_injection` | 3 | Chèn lệnh, đòi secret → không lộ key, không có sản phẩm bịa |
 
-Các nhóm `greeting`, `out_of_domain`, `side_effect`, `prompt_injection` và `fake_product_name` còn mỏng;
-nên thêm case vào đây trước. Có thể tạo nhóm mới nếu không nhóm nào khớp; tên nhóm viết `snake_case`.
+G-051..G-075 lấy từ một buổi đóng vai người dùng thật (24/09/2026). Tám case trong đó FAIL có chủ đích vì
+lộ lỗi agent, ghi ở comment YAML và `history/2026-09-24-bo-sung-golden-tu-test-nguoi-dung.md`.
+Nhóm `greeting`, `out_of_domain` và `language_en` vẫn mỏng; nên thêm case vào đây trước. Có thể tạo nhóm mới nếu không nhóm nào khớp; tên nhóm viết `snake_case`.
 
 ## 6. Chọn độ chặt của kỳ vọng
 
@@ -191,9 +200,6 @@ Với case nhiều lượt fail ở lượt 2, kiểm lượt 1 trước: lượ
 
 ## 9. Giới hạn hiện tại của schema
 
-- **Khoá lạ bị bỏ qua âm thầm** (mục 4).
-- **Chưa khai báo được ngôn ngữ cho từng lượt.** Runner luôn gửi `language: None` nên agent trả lời tiếng
-  Việt; chưa viết được case tiếng Anh (`context.language=en`).
 - **Chưa khai báo được `intentOverride`** (chip người dùng sửa tay trên UI).
 - **Chưa kiểm tham số chi tiết của tool plan.** Tool Calling Accuracy chỉ đo quyết định gọi hay không gọi
   tool; độ đúng của điểm đến được kiểm gián tiếp qua `intent.destination` và grounding.

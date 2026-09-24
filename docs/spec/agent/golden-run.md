@@ -2,7 +2,7 @@
 
 Phục vụ `docs/prd/test-plan.md` §2.4 và FR-AGT-01..05, NFR-REL-01, NFR-SEC-01 trong `docs/prd/requirements.md`.
 
-Hướng dẫn chạy bộ đánh giá tự động 50 case. Cấu trúc case và cách thêm case: [golden-dataset.md](golden-dataset.md).
+Hướng dẫn chạy bộ đánh giá tự động 75 case. Cấu trúc case và cách thêm case: [golden-dataset.md](golden-dataset.md).
 Luật chấm: [evaluation-plan.md](evaluation-plan.md) §0.
 
 Mọi lệnh chạy từ thư mục gốc repo.
@@ -59,11 +59,11 @@ Response phải có `"status":"ready"`, `"dataMode":"http"`, `"llmMode":"live"`.
 .venv/bin/python -m src.evaluation.agent.golden
 ```
 
-Lệnh trên chạy 50 case (57 lượt), mất khoảng 4 phút.
+Lệnh trên chạy 75 case (89 lượt), mất khoảng 6 phút.
 
 | Cờ | Tác dụng | Ví dụ |
 |---|---|---|
-| `--sweep` | Thêm một lượt `"<điểm đến> 2 ngày"` cho mọi điểm đến trong catalog (35 điểm, tổng 92 lượt, khoảng 6 phút) | `--sweep` |
+| `--sweep` | Thêm một lượt `"<điểm đến> 2 ngày"` cho mọi điểm đến trong catalog (35 điểm, tổng 124 lượt, khoảng 9 phút) | `--sweep` |
 | `--only` | Chỉ chạy các case liệt kê, cách nhau bằng dấu phẩy | `--only G-013,G-032` |
 | `--repeat N` | Chạy lại các case đã chọn N lần, để đo độ ổn định | `--repeat 5` |
 | `--trace-project` | Gửi trace từng lượt lên LangSmith project này (key lấy từ `.env`) | `--trace-project claude-golden` |

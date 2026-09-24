@@ -1,15 +1,15 @@
 """Composition root — nơi duy nhất nối infrastructure vào use case (docs/prd/architecture.md §2).
 
 Gộp hai nhánh: phần nối PostgreSQL (CDP client, catalog lookup, ghi event nền) và engine recsys
-(search / similar / recommendations). `WeaviateVectorStore` lấy vector đã persist, hydrate sản phẩm từ
-PostgreSQL; `PostgresCdpReader` đọc lịch sử. Cả hai thay các bản giả ở `tests/fakes/`.
+(search / similar / recommendations). `WeaviateVectorStore` nạp metadata search unit từ PostgreSQL và
+trả kho vector Weaviate để mỗi request truy vấn top-K; `PostgresCdpReader` đọc lịch sử. Cả hai thay các bản giả ở `tests/fakes/`.
 
 Hai adapter CDP trong `infrastructure/cdp/` cùng tồn tại vì là hai chiều khác nhau, không phải bản trùng lặp:
   * `LocalCdpClient`     — GHI (async): purchase khi checkout, huỷ bù trừ, browse event, profile.
   * `PostgresCdpReader`  — ĐỌC (sync): lịch sử của khách và bảng phổ biến cho recsys.
 Cả hai đi qua `CDP_DATABASE_URL`; không nơi nào khác được SQL thẳng vào schema `cdp` (AGENTS.md §6.1).
 
-Nạp index từ collection `Product` của Weaviate trong `lifespan` một lần lúc khởi động. Thiếu database,
+Nạp metadata search unit trong `lifespan` một lần lúc khởi động; vector ở lại Weaviate. Thiếu database,
 Weaviate hoặc index thì log rồi bỏ qua phần recsys — các route còn lại
 vẫn phục vụ được, đúng tinh thần "CDP lỗi thì không kéo sập cả app" (hop-dong-tich-hop-cdp.md §6).
 """
@@ -92,43 +92,48 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
     Ba tham số override để test tiêm giả lập mà không cần Postgres hay tải model embedding.
     """
     owns_embedder = False
-    if vector_store is None:
-        from src.backend.app.domain.catalog import TEXT_BUILDER_VERSION
-        from src.backend.app.infrastructure.embeddings.cohere_embedder import CohereEmbedder
-        from src.backend.app.infrastructure.vectors.weaviate_store import WeaviateClient, WeaviateVectorStore
-
-        if embedder is None:
-            embedder = CohereEmbedder(
-                settings.cohere_api_key,
-                settings.embed_model,
-                base_url=settings.cohere_base_url,
-                dimension=settings.embed_dimension,
-                timeout_seconds=settings.cohere_timeout_seconds,
-            )
-            owns_embedder = True
-        weaviate = WeaviateClient(
-            settings.weaviate_url,
-            collection=settings.weaviate_collection,
-            api_key=settings.weaviate_api_key,
-            timeout_seconds=settings.weaviate_timeout_seconds,
-        )
-        vector_store = WeaviateVectorStore(
-            settings.database_url,
-            weaviate,
-            expected_model_version=f"{settings.embed_model}:{TEXT_BUILDER_VERSION}",
-            dimension=settings.embed_dimension,
-        )
-    logger.info("startup.recsys.index.load.start source=weaviate")
     try:
-        index = vector_store.load()
+        if vector_store is None:
+            from src.backend.app.domain.catalog import TEXT_BUILDER_VERSION
+            from src.backend.app.infrastructure.embeddings.cohere_embedder import CohereEmbedder
+            from src.backend.app.infrastructure.vectors.weaviate_store import (
+                WeaviateVectorSearch,
+                WeaviateVectorStore,
+                connect_weaviate,
+            )
+
+            if embedder is None:
+                embedder = CohereEmbedder(
+                    settings.cohere_api_key,
+                    settings.embed_model,
+                    base_url=settings.cohere_base_url,
+                    dimension=settings.embed_dimension,
+                    timeout_seconds=settings.cohere_timeout_seconds,
+                )
+                owns_embedder = True
+            vector_store = WeaviateVectorStore(
+                settings.database_url,
+                WeaviateVectorSearch(
+                    connect_weaviate(
+                        settings.weaviate_url,
+                        api_key=settings.weaviate_api_key,
+                        grpc_port=settings.weaviate_grpc_port,
+                        timeout_seconds=settings.weaviate_timeout_seconds,
+                    ),
+                    collection=settings.weaviate_collection,
+                    dimension=settings.embed_dimension,
+                ),
+                expected_model_version=f"{settings.embed_model}:{TEXT_BUILDER_VERSION}",
+            )
+        logger.info("startup.recsys.index.load.start source=weaviate")
+        index, vector_search = vector_store.load()
     except Exception:
         if owns_embedder and hasattr(embedder, "close"):
             embedder.close()
+        search_store = getattr(vector_store, "search", None)
+        if search_store is not None and hasattr(search_store, "close"):
+            search_store.close()
         raise
-    finally:
-        client = getattr(vector_store, "client", None)
-        if client is not None:
-            client.close()
     logger.info("startup.recsys.index.load.ready search_units=%d", len(index.units))
 
     # Lịch sử đi qua CDP_DATABASE_URL: vota_app không đọc được cdp.events.
@@ -138,16 +143,19 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
     logger.info("startup.recsys.popularity.build.ready")
     return {
         "recsys_embedder": embedder,
+        "recsys_vectors": vector_search,
         "index": index,
         "search": SearchProducts(
             index,
+            vector_search,
             embedder,
             cutoff=settings.search_cutoff,
             max_limit=settings.search_max_limit,
+            candidate_k=settings.search_candidate_k,
         ),
-        "similar": SimilarProducts(index),
+        "similar": SimilarProducts(index, vector_search),
         "recommend": RecommendForUser(
-            index, cdp_reader, popularity, candidate_k=settings.recommend_candidate_k
+            index, vector_search, cdp_reader, popularity, candidate_k=settings.recommend_candidate_k
         ),
     }
 
@@ -384,9 +392,10 @@ async def lifespan(app: FastAPI):
         try:
             yield
         finally:
-            embedder = getattr(app.state, "recsys_embedder", None)
-            if embedder is not None and hasattr(embedder, "close"):
-                embedder.close()
+            for name in ("recsys_embedder", "recsys_vectors"):
+                resource = getattr(app.state, name, None)
+                if resource is not None and hasattr(resource, "close"):
+                    resource.close()
             logger.info("shutdown.browse_event_recorder.stop")
             await app.state.browse_event_recorder.stop()
     print("Shutting down...")
