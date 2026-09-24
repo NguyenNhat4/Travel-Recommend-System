@@ -52,9 +52,6 @@ class InMemoryUsers:
     async def email_exists(self, email):
         return await self.find_by_email(email) is not None
 
-    async def list_personas(self):
-        return [u for u in self.by_id.values() if u.persona]
-
     async def create(self, *, email, password_hash, display_name, cdp_user_id):
         if self.fail_create_with is not None:
             error, self.fail_create_with = self.fail_create_with, None

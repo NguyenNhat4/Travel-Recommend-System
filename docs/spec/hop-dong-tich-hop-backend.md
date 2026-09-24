@@ -268,34 +268,9 @@ Authorization: Bearer <jwt>
 
 Trả về đúng object `user` của §3.2. Dùng để khôi phục phiên sau khi tải lại trang.
 
-### 3.4. Danh sách tài khoản demo
+### 3.4. Danh sách tài khoản demo — đã gỡ
 
-```http
-GET /api/v1/auth/demo-accounts
-```
-
-Phục vụ `DemoAccountSwitcher` (`docs/product.md` §4.7.3). Không cần JWT.
-
-#### Response `200`
-
-```json
-{
-  "accounts": [
-    {
-      "email": "minhanh@example.vn",
-      "fullName": "Nguyễn Minh Anh",
-      "personaLabel": "Khách thân thiết",
-      "blurb": "Nhiều chuyến Nha Trang · đã đặt khách sạn cho chuyến sắp tới"
-    }
-  ]
-}
-```
-
-Cam kết:
-
-1. Endpoint **không** trả mật khẩu. Bộ chọn tài khoản demo vẫn gọi `POST /auth/login` như bình thường với mật khẩu dùng chung được cấu hình phía client cho bản demo.
-2. Endpoint bị tắt khi `APP_ENV=production`, trả `404`.
-3. Thứ tự trong mảng là thứ tự trình bày demo: khách thân thiết → mới tham gia → ngủ đông → không lịch sử.
+`GET /api/v1/auth/demo-accounts` và bộ chọn tài khoản demo đã bị gỡ ngày 2026-09-24 (`docs/prd/update-archive/2026-09-24-go-bo-chon-tai-khoan-demo.md`). Tài khoản seed đăng nhập bằng `POST /auth/login` như mọi user. Giữ số mục để không đổi các tham chiếu tới §3.5.
 
 ### 3.5. JWT claims
 
@@ -612,7 +587,7 @@ Lý do một endpoint: `docs/product.md` §4.1.3 yêu cầu Home của khách v�
 
 ### 7.1. Giỏ hàng
 
-Giỏ lưu **phía server**, khóa theo `cdpUserId`. Lý do: bản demo đổi tài khoản liên tục trên cùng một máy (`DemoAccountSwitcher`), giỏ lưu ở client sẽ lẫn giữa các persona và phá kịch bản demo.
+Giỏ lưu **phía server**, khóa theo `cdpUserId`. Lý do: khi kiểm thử, nhiều tài khoản đăng nhập lần lượt trên cùng một máy; giỏ lưu ở client sẽ lẫn giữa các tài khoản.
 
 ```http
 GET    /api/v1/cart
@@ -833,7 +808,6 @@ Mã lỗi riêng của auth (`UNAUTHENTICATED`, `SESSION_EXPIRED`, `CSRF_FAILED`
 | 401 | `INVALID_CREDENTIALS` | Sai email hoặc mật khẩu | — |
 | 401 | `INVALID_TOKEN` | JWT không hợp lệ | — |
 | 401 | `TOKEN_EXPIRED` | JWT hết hạn | — |
-| 403 | `DEMO_ONLY` | Gọi endpoint chỉ dành cho bản demo ở môi trường production | — |
 | 404 | `PRODUCT_NOT_FOUND` | Sản phẩm không tồn tại hoặc đã bị xóa | `{ productId }` |
 | 404 | `CART_ITEM_NOT_FOUND` | `cartItemId` không thuộc giỏ hiện tại | `{ cartItemId }` |
 | 404 | `BOOKING_NOT_FOUND` | Không tìm thấy đơn, hoặc đơn không thuộc người dùng | — |

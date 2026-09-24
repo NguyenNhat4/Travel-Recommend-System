@@ -1,11 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useTravel } from '../../context/TravelContext';
 import { X, Lock, Eye, EyeOff, UserCheck } from 'lucide-react';
-import { DemoAccountSwitcher } from './DemoAccountSwitcher';
 import { authErrorMessage } from '../auth/LoginView';
 
 export const LoginModal: React.FC = () => {
-  const { isLoginModalOpen, closeLoginModal, signIn, pendingPostLoginAction, showToast, loginPrefillEmail } = useTravel();
+  const { isLoginModalOpen, closeLoginModal, signIn, pendingPostLoginAction, showToast, loginPrefillEmail, navigate } = useTravel();
   const [email, setEmail] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -119,17 +118,17 @@ export const LoginModal: React.FC = () => {
             </button>
           </form>
 
-          <div className="relative my-4">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-slate-200"></div>
-            </div>
-            <div className="relative flex justify-center text-xs">
-              <span className="bg-white px-3 text-slate-500 font-medium">Hoặc đăng nhập nhanh qua Demo</span>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <DemoAccountSwitcher compact onSelect={closeLoginModal} />
+          <div className="text-center">
+            <button
+              type="button"
+              onClick={() => {
+                closeLoginModal();
+                navigate('/register');
+              }}
+              className="text-xs text-blue-600 hover:underline font-semibold"
+            >
+              Chưa có tài khoản? Đăng ký miễn phí
+            </button>
           </div>
         </div>
       </div>

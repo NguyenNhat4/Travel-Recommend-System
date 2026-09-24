@@ -6,7 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from src.backend.app.application.auth.principal import AuthenticatedUser
-from src.backend.app.application.auth.use_cases import AuthOutcome, DemoAccount
+from src.backend.app.application.auth.use_cases import AuthOutcome
 
 
 # Kiểm dạng tối thiểu; không kéo thêm email-validator. Email so khớp sau khi lower() ở use case.
@@ -74,19 +74,3 @@ class SessionResponse(BaseModel):
             state="authenticated", accessToken=outcome.access_token, refreshToken=outcome.refresh_token,
             expiresIn=outcome.expires_in, user=AuthUser.of(outcome.user),
         )
-
-
-class DemoAccountOut(BaseModel):
-    email: str
-    fullName: str
-    personaLabel: str
-    blurb: str
-
-    @classmethod
-    def of(cls, account: DemoAccount) -> "DemoAccountOut":
-        return cls(email=account.email, fullName=account.full_name,
-                   personaLabel=account.persona_label, blurb=account.blurb)
-
-
-class DemoAccountListResponse(BaseModel):
-    accounts: list[DemoAccountOut]

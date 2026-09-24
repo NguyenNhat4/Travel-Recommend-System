@@ -204,7 +204,6 @@ Web gọi route BFF `/api/auth/*`, không gọi thẳng `/api/v1/auth/*` (docs/s
 | Đăng ký | `POST /api/auth/register` | `email`, `password`, `fullName` | như đăng nhập | `409 EMAIL_ALREADY_EXISTS` dưới trường email; `400 WEAK_PASSWORD` → `details.reasons`; `400 VALIDATION_ERROR` → `details.fields` |
 | Khôi phục phiên | `GET /api/auth/session` | — | `state`, `user?`, `csrfToken` | Không bao giờ 401: khách nhận `state: anonymous` |
 | Đăng xuất | `POST /api/auth/logout` | — | `204` | Cookie luôn bị xoá, kể cả khi backend lỗi |
-| Tài khoản demo | `GET /api/v1/auth/demo-accounts` | — | `accounts[]` | `404` (production) → ẩn `DemoAccountSwitcher` |
 
 ### 4.8. Assistant `/assistant`
 
@@ -298,7 +297,7 @@ Dùng bảng nhãn tiếng Việt ở `hop-dong-tich-hop-backend.md` §2.5. Key 
 4. Nhận `401 SESSION_EXPIRED` giữa phiên → mở modal "Phiên đăng nhập đã hết hạn" với email điền sẵn; sau khi đăng nhập lại, **gửi lại đúng request đã hỏng** một lần. Người dùng hủy → chế độ khách tại trang hiện tại.
 5. Web **không** tự hạ về chế độ ẩn danh khi token hỏng; backend cũng không (`hop-dong-tich-hop-backend.md` §6.5).
 6. Khách vãng lai bấm hành động ghi (thêm giỏ, checkout) → modal đăng nhập tại chỗ; thành công → tự thực hiện hành động đang chờ.
-7. Đổi tài khoản (demo hoặc đăng xuất) → xóa **mọi** cache phía client: query cache, `conversationId`, state kế hoạch, badge giỏ.
+7. Đổi tài khoản (đăng nhập tài khoản khác hoặc đăng xuất) → xóa **mọi** cache phía client: query cache, `conversationId`, state kế hoạch, badge giỏ.
 8. Web không biết hạn token: BFF tự refresh khi access token còn ≤ 60 giây (auth §3.4).
 
 ---
@@ -313,7 +312,6 @@ Mọi response không phải 2xx có envelope `ErrorResponse` (`hop-dong-tich-ho
 | `CART_EMPTY` | Checkout | Chuyển `/cart` |
 | `INVALID_CREDENTIALS` | Login | "Email hoặc mật khẩu không đúng" phía trên nút |
 | `INVALID_TOKEN`, `TOKEN_EXPIRED` | mọi nơi có JWT | §7 mục 3–4 |
-| `DEMO_ONLY`, `NOT_FOUND` | Demo switcher | Ẩn switcher (`GET /auth/demo-accounts` trả `404 NOT_FOUND` ở production) |
 | `PRODUCT_NOT_FOUND` | Detail; thêm giỏ | Detail → trang 404 sản phẩm. Thêm giỏ → toast `message` |
 | `CART_ITEM_NOT_FOUND` | Cart | Tải lại `GET /cart`, không báo lỗi |
 | `BOOKING_NOT_FOUND` | Confirmation | "Không tìm thấy đơn đặt chỗ này" + Về trang chủ |
@@ -619,7 +617,7 @@ Ca biên bắt buộc để dựng đủ 8 màn hình:
 7. Chế độ mock dựng đủ 8 màn hình và mọi ca biên §11.
 8. Đổi `NEXT_PUBLIC_API_MOCK=0` và trỏ `NEXT_PUBLIC_API_BASE_URL` sang backend thật mà không sửa dòng nào trong `services`.
 9. Mọi link sản phẩm trong app có dạng `/product/{productId}`; không có chuỗi `bookingUrl` trong code Web.
-10. Đổi tài khoản demo xóa sạch giỏ, gợi ý và hội thoại của người trước.
+10. Đăng xuất rồi đăng nhập tài khoản khác xóa sạch giỏ, gợi ý và hội thoại của người trước.
 11. Với fixture `createItinerary.200-completed-invalid-slots`, slot `nt-a-02` (`available: false`) và slot `dn-a-01` (sai điểm đến) không render thành thẻ.
 
 ## 14. Definition of Done

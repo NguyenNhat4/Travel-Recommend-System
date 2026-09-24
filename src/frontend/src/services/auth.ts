@@ -28,10 +28,6 @@ export class AuthError extends Error {
   }
 }
 
-// Mật khẩu demo dùng chung, công khai trong seed (src/data_collection/seed/config.py DEMO_PASSWORD).
-// Endpoint demo-accounts không trả mật khẩu (hop-dong-tich-hop-backend.md §3.4).
-export const DEMO_PASSWORD = process.env.NEXT_PUBLIC_DEMO_PASSWORD || 'Demo@2026';
-
 async function toAuthError(response: Response): Promise<AuthError> {
   let body: any = null;
   try { body = await response.json(); } catch { /* không có envelope */ }

@@ -35,8 +35,8 @@ interface TravelContextType {
   currentPersona: UserPersona | null;
   /** false tới khi GET /api/auth/session trả về lần đầu. */
   authReady: boolean;
-  /** Đăng nhập nhanh persona demo (null = đăng xuất). Ném AuthError khi thất bại. */
-  switchPersona: (personaId: string | null) => Promise<void>;
+  /** Đăng xuất, về chế độ khách. */
+  signOut: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, fullName: string) => Promise<void>;
   /** Email điền sẵn khi phiên hết hạn giữa chừng (§4.2 điều 4). */
@@ -198,26 +198,12 @@ export const TravelProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     applySession(session);
   }, [applySession, resetClientState]);
 
-  const switchPersona = useCallback(async (personaId: string | null) => {
-    if (!personaId) {
-      await authApi.logout().catch(() => undefined);
-      setCurrentPersona(null);
-      resetClientState();
-      showToast('Đã đăng xuất. Bạn đang ở chế độ khách vãng lai.');
-      return;
-    }
-    const login = PERSONA_LOGIN[personaId];
-    if (!login) return;
-    try {
-      await signIn(login.email, authApi.DEMO_PASSWORD);
-      const persona = SEED_PERSONAS[personaId];
-      showToast(`Đã chuyển sang: ${persona.name} (${persona.tagline})`);
-      navigate('/');
-    } catch (error) {
-      showToast(error instanceof authApi.AuthError ? error.message : 'Không đăng nhập được tài khoản demo.');
-      throw error;
-    }
-  }, [showToast, navigate, signIn, resetClientState]);
+  const signOut = useCallback(async () => {
+    await authApi.logout().catch(() => undefined);
+    setCurrentPersona(null);
+    resetClientState();
+    showToast('Đã đăng xuất. Bạn đang ở chế độ khách vãng lai.');
+  }, [showToast, resetClientState]);
 
   const recordEvent = useCallback((eventType: EventType, product: Product) => {
     const newEvent: UserEvent = {
@@ -387,7 +373,7 @@ export const TravelProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       value={{
         currentPersona,
         authReady,
-        switchPersona,
+        signOut,
         signIn,
         signUp,
         loginPrefillEmail,

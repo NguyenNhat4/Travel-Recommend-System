@@ -149,19 +149,6 @@ def test_emergency_revoked_jti_is_rejected(client, world):
     assert client.get("/api/v1/recommendations", headers=headers).status_code == 401
 
 
-def test_demo_accounts_order_and_production_404(client):
-    r = client.get("/api/v1/auth/demo-accounts")
-    assert r.status_code == 200
-    assert_contract(r, "/auth/demo-accounts", "get")
-    assert [a["email"] for a in r.json()["accounts"]] == [p.email for p in PERSONAS]
-    assert "password" not in r.text.lower()
-
-    app.dependency_overrides[get_settings] = lambda: settings(app_env="production")
-    r = client.get("/api/v1/auth/demo-accounts")
-    assert r.status_code == 404
-    assert_contract(r, "/auth/demo-accounts", "get")
-
-
 # --- nhóm chỉ BFF -----------------------------------------------------------------------------
 
 def test_session_endpoints_require_service_token(client):

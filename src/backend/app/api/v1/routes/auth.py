@@ -1,7 +1,7 @@
 """Auth (docs/spec/hop-dong-tich-hop-auth.md §5).
 
 Hai nhóm:
-  * v1 — /auth/register, /auth/login, /auth/me, /auth/demo-accounts: shape không đổi, cho client
+  * v1 — /auth/register, /auth/login, /auth/me: shape không đổi, cho client
     nội bộ, Agent, CLI và test. Không có refresh token.
   * Chỉ BFF — /auth/session, /auth/session/token, /auth/session/revoke: bắt X-Service-Token; trả
     thêm refresh token để BFF cất trong session Redis. Trình duyệt không bao giờ thấy các token này.
@@ -15,7 +15,6 @@ import hashlib
 from fastapi import APIRouter, Depends, Request, Response, status
 
 from src.backend.app.api.deps import (
-    NotFoundError,
     client_ip,
     current_principal,
     get_auth_use_case,
@@ -25,8 +24,6 @@ from src.backend.app.api.deps import (
 from src.backend.app.api.v1.schemas.auth import (
     AuthResponse,
     AuthUser,
-    DemoAccountListResponse,
-    DemoAccountOut,
     LoginRequest,
     PasswordChangeRequest,
     RefreshRequest,
@@ -35,7 +32,6 @@ from src.backend.app.api.v1.schemas.auth import (
     SessionResponse,
 )
 from src.backend.app.application.auth.principal import AuthPrincipal
-from src.backend.app.core.config import Settings, get_settings
 
 router = APIRouter(tags=["auth"])
 well_known_router = APIRouter(tags=["auth"])
@@ -65,14 +61,6 @@ async def login(body: LoginRequest, request: Request, ip: str = Depends(client_i
 async def me(principal: AuthPrincipal = Depends(current_principal),
              use_case=Depends(get_auth_use_case("get_current_user"))):
     return AuthUser.of(await use_case(principal))
-
-
-@router.get("/auth/demo-accounts", response_model=DemoAccountListResponse)
-async def demo_accounts(settings: Settings = Depends(get_settings),
-                        use_case=Depends(get_auth_use_case("list_demo_accounts"))):
-    if settings.app_env == "production":
-        raise NotFoundError("demo tắt ở production")
-    return DemoAccountListResponse(accounts=[DemoAccountOut.of(a) for a in await use_case()])
 
 
 # --- Chỉ BFF -------------------------------------------------------------------------------------

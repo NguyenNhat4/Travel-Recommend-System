@@ -20,7 +20,6 @@ from src.backend.app.application.auth.use_cases import (
     AuthenticateUser,
     ChangePassword,
     GetCurrentUser,
-    ListDemoAccounts,
     RegisterUser,
     RevokeSession,
     RotateSession,
@@ -261,14 +260,3 @@ def test_current_user_rejects_principal_not_matching_row():
         run(get(AuthPrincipal(seeded_user().user_id, "VP0000999", "x")))
     with pytest.raises(TokenInvalid):
         run(get(AuthPrincipal("missing", "VP0000001", "x")))
-
-
-def test_demo_accounts_follow_presentation_order_without_passwords():
-    users = [
-        seeded_user(user_id=f"u{n}", email=f"p{n}@example.com", cdp_user_id=f"VP000000{n}", persona=persona)
-        for n, persona in [(4, "P4_no_history"), (2, "P2_first_time"), (1, "P1_frequent"), (3, "P3_dormant")]
-    ] + [seeded_user(user_id="t1", email="test01@vota.demo", cdp_user_id="VP0000005", persona=None)]
-    accounts = run(ListDemoAccounts(users=InMemoryUsers(users))())
-    assert [a.email for a in accounts] == ["p1@example.com", "p2@example.com", "p3@example.com", "p4@example.com"]
-    assert accounts[0].persona_label == "Khách thân thiết"
-    assert not any(hasattr(a, "password") for a in accounts)

@@ -36,7 +36,7 @@ Hệ thống được tối ưu hóa cho 4 luồng trải nghiệm chính tươn
 | `/assistant` | **Trợ lý Lịch trình** | Tương tác trò chuyện với AI Agent để tạo và tùy chỉnh kế hoạch | Chat Stream, Intent Chips, Day-by-Day Timeline, Grounded Product Cards |
 | `/checkout` | **Thanh toán / Đặt chỗ** | Xem lại thông tin đơn hàng, nhập thông tin liên lạc và xác nhận | Cart Items Summary, Guest Info Form, Price Breakdown, Confirm Booking CTA |
 | `/booking/confirmation` | **Xác nhận đơn hàng** | Thông báo thành công, tóm tắt mã đặt chỗ và gợi ý chặng tiếp | Booking Status Card, Next Best Action Recommendations (Flight, Tours) |
-| `/profile` | **Hồ sơ & Lịch sử** | Quản lý thông tin cá nhân, lịch sử đơn hàng và chuyến đi | User Preferences, Booking History, Saved Items, Persona Selector |
+| `/profile` | **Hồ sơ & Lịch sử** | Quản lý thông tin cá nhân, lịch sử đơn hàng và chuyến đi | User Preferences, Booking History, Saved Items |
 
 ---
 
@@ -95,7 +95,7 @@ flowchart TD
 ### 4.1. Màn hình Trang Chủ (`/`)
 ```
 +-------------------------------------------------------------------------------+
-| [LOGO] V-OTA       Khách sạn   Vé máy bay   Tour   Trợ lý AI   [Persona: P1 v] |
+| [LOGO] V-OTA       Khách sạn   Vé máy bay   Tour   Trợ lý AI   [Tài khoản v]   |
 +-------------------------------------------------------------------------------+
 |                                                                               |
 |   KHÁM PHÁ KỲ NGHỈ TIẾP THEO BẰNG NGÔN NGỮ CỦA BẠN                           |

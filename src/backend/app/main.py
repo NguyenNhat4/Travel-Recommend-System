@@ -33,7 +33,6 @@ from src.backend.app.application.auth.use_cases import (
     AuthenticateUser,
     ChangePassword,
     GetCurrentUser,
-    ListDemoAccounts,
     RegisterUser,
     RevokeSession,
     RotateSession,
@@ -181,7 +180,6 @@ def build_auth(settings: Settings, cdp_client, redis_client=None) -> dict:
         "revoke_session": RevokeSession(refresh=refresh),
         "change_password": ChangePassword(users=users, hasher=hasher, refresh=refresh),
         "get_current_user": GetCurrentUser(users=users),
-        "list_demo_accounts": ListDemoAccounts(users=users),
     }
 
 

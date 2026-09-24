@@ -5,7 +5,6 @@ import { useTravel } from '../../context/TravelContext';
 import { calculateRecommendations, fetchRecommendations } from '../../services/recsys';
 import { CATALOG } from '../../data/catalog';
 import { ProductCard } from '../common/ProductCard';
-import { DemoAccountSwitcher } from '../common/DemoAccountSwitcher';
 import {
   Search,
   ChevronDown,

@@ -219,26 +219,6 @@
         $ref: ../openapi.yaml#/components/responses/Error
       '500':
         $ref: ../openapi.yaml#/components/responses/Error
-/auth/demo-accounts:
-  get:
-    tags:
-    - auth
-    operationId: listDemoAccounts
-    security: []
-    summary: Danh sách tài khoản demo (tắt khi APP_ENV=production)
-    parameters:
-    - $ref: ../openapi.yaml#/components/parameters/XRequestId
-    responses:
-      '200':
-        description: Tài khoản demo theo thứ tự trình bày
-        content:
-          application/json:
-            schema:
-              $ref: ../openapi.yaml#/components/schemas/DemoAccountListResponse
-      '404':
-        $ref: ../openapi.yaml#/components/responses/Error
-      '500':
-        $ref: ../openapi.yaml#/components/responses/Error
 # --- JWKS (docs/spec/hop-dong-tich-hop-auth.md §5, §10.2) ------------------------
 # Ngoài prefix /api/v1: đường dẫn chuẩn để service nội bộ tự kiểm chữ ký RS256.
 /.well-known/jwks.json:

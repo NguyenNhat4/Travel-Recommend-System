@@ -55,23 +55,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/auth/demo-accounts": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Danh sách tài khoản demo (tắt khi APP_ENV=production) */
-        get: operations["listDemoAccounts"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/auth/session": {
         parameters: {
             query?: never;
@@ -505,7 +488,7 @@ export interface components {
         Currency: "VND";
         ReferenceCode: string;
         /** @enum {string} */
-        ErrorCode: "VALIDATION_ERROR" | "CART_EMPTY" | "INVALID_CREDENTIALS" | "INVALID_TOKEN" | "TOKEN_EXPIRED" | "DEMO_ONLY" | "PRODUCT_NOT_FOUND" | "CART_ITEM_NOT_FOUND" | "BOOKING_NOT_FOUND" | "NOT_FOUND" | "EMAIL_ALREADY_EXISTS" | "PRODUCT_UNAVAILABLE" | "PRICE_CHANGED" | "DATE_OUT_OF_RANGE" | "SEARCH_UNAVAILABLE" | "INTERNAL_ERROR" | "INVALID_TRIP_DURATION" | "CONVERSATION_NOT_FOUND" | "UNSUPPORTED_DESTINATION" | "LLM_UNAVAILABLE" | "ITINERARY_VALIDATION_FAILED" | "AVAILABILITY_NOT_FOUND" | "AVAILABILITY_EXPIRED" | "NO_RATE_PLAN" | "MIN_STAY_NOT_MET" | "CLOSED_ON_ARRIVAL" | "CLOSED_ON_DEPARTURE" | "PARTIALLY_AVAILABLE" | "PRODUCT_NOT_INDEXED" | "UNAUTHENTICATED" | "SESSION_EXPIRED" | "CSRF_FAILED" | "MFA_REQUIRED" | "MFA_INVALID" | "EMAIL_NOT_VERIFIED" | "TOO_MANY_ATTEMPTS" | "CAPTCHA_REQUIRED" | "CAPTCHA_FAILED" | "WEAK_PASSWORD" | "INVALID_VERIFICATION_TOKEN" | "OAUTH_EMAIL_UNVERIFIED" | "OAUTH_ALREADY_LINKED" | "CDP_UNAVAILABLE";
+        ErrorCode: "VALIDATION_ERROR" | "CART_EMPTY" | "INVALID_CREDENTIALS" | "INVALID_TOKEN" | "TOKEN_EXPIRED" | "PRODUCT_NOT_FOUND" | "CART_ITEM_NOT_FOUND" | "BOOKING_NOT_FOUND" | "NOT_FOUND" | "EMAIL_ALREADY_EXISTS" | "PRODUCT_UNAVAILABLE" | "PRICE_CHANGED" | "DATE_OUT_OF_RANGE" | "SEARCH_UNAVAILABLE" | "INTERNAL_ERROR" | "INVALID_TRIP_DURATION" | "CONVERSATION_NOT_FOUND" | "UNSUPPORTED_DESTINATION" | "LLM_UNAVAILABLE" | "ITINERARY_VALIDATION_FAILED" | "AVAILABILITY_NOT_FOUND" | "AVAILABILITY_EXPIRED" | "NO_RATE_PLAN" | "MIN_STAY_NOT_MET" | "CLOSED_ON_ARRIVAL" | "CLOSED_ON_DEPARTURE" | "PARTIALLY_AVAILABLE" | "PRODUCT_NOT_INDEXED" | "UNAUTHENTICATED" | "SESSION_EXPIRED" | "CSRF_FAILED" | "MFA_REQUIRED" | "MFA_INVALID" | "EMAIL_NOT_VERIFIED" | "TOO_MANY_ATTEMPTS" | "CAPTCHA_REQUIRED" | "CAPTCHA_FAILED" | "WEAK_PASSWORD" | "INVALID_VERIFICATION_TOKEN" | "OAUTH_EMAIL_UNVERIFIED" | "OAUTH_ALREADY_LINKED" | "CDP_UNAVAILABLE";
         ErrorResponse: {
             error: {
                 code: components["schemas"]["ErrorCode"];
@@ -742,15 +725,6 @@ export interface components {
             /** @description Giây */
             expiresIn: number;
             user: components["schemas"]["AuthUser"];
-        };
-        DemoAccountListResponse: {
-            accounts: {
-                /** Format: email */
-                email: string;
-                fullName: string;
-                personaLabel: string;
-                blurb: string;
-            }[];
         };
         /**
          * @description anonymous = khách vãng lai; pending_mfa = đúng mật khẩu nhưng chưa qua yếu tố thứ hai, chưa mang cdpUserId; authenticated = đã xác thực đầy đủ.
@@ -1385,31 +1359,6 @@ export interface operations {
                 };
             };
             401: components["responses"]["Error"];
-            500: components["responses"]["Error"];
-        };
-    };
-    listDemoAccounts: {
-        parameters: {
-            query?: never;
-            header?: {
-                /** @description ID truy vết. Caller chưa gửi thì service đầu tiên tự sinh. */
-                "X-Request-ID"?: components["parameters"]["XRequestId"];
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Tài khoản demo theo thứ tự trình bày */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DemoAccountListResponse"];
-                };
-            };
-            404: components["responses"]["Error"];
             500: components["responses"]["Error"];
         };
     };

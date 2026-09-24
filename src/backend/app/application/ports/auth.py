@@ -41,10 +41,6 @@ class UserRepository(Protocol):
     async def email_exists(self, email: str) -> bool:
         ...
 
-    async def list_personas(self) -> list[AuthenticatedUser]:
-        """User seed có persona, cho /auth/demo-accounts."""
-        ...
-
     async def create(
         self, *, email: str, password_hash: str, display_name: str, cdp_user_id: str
     ) -> AuthenticatedUser:

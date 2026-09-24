@@ -3,7 +3,6 @@
 import React, { useState } from 'react';
 import { useTravel } from '../../context/TravelContext';
 import { AuthError } from '../../services/auth';
-import { DemoAccountSwitcher } from '../common/DemoAccountSwitcher';
 import { Lock, Eye, EyeOff, Check, UserPlus, LogIn } from 'lucide-react';
 
 /** Thông điệp theo `code` (hop-dong-tich-hop-frontend.md §8, auth §17). */
@@ -27,9 +26,14 @@ export function authErrorMessage(err: unknown): string {
   }
 }
 
-export const LoginView: React.FC = () => {
+interface LoginViewProps {
+  /** `/register` mở thẳng form đăng ký; `/login` mở form đăng nhập. */
+  initialMode?: 'login' | 'register';
+}
+
+export const LoginView: React.FC<LoginViewProps> = ({ initialMode = 'login' }) => {
   const { signIn, signUp, navigate, showToast } = useTravel();
-  const [isRegisterMode, setIsRegisterMode] = useState(false);
+  const [isRegisterMode, setIsRegisterMode] = useState(initialMode === 'register');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
@@ -188,11 +192,6 @@ export const LoginView: React.FC = () => {
               ? 'Đã có tài khoản? Đăng nhập ngay' 
               : 'Chưa có tài khoản? Đăng ký miễn phí'}
           </button>
-        </div>
-
-        {/* Demo Account Switcher for 1-click test (§4.7.3) */}
-        <div className="pt-6 border-t border-slate-100 space-y-3">
-          <DemoAccountSwitcher />
         </div>
       </div>
     </div>

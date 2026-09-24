@@ -331,35 +331,3 @@ class GetCurrentUser:
         if user is None or user.cdp_user_id != principal.cdp_user_id:
             raise TokenInvalid("principal không khớp app.users")
         return user
-
-
-@dataclass(frozen=True)
-class DemoAccount:
-    email: str
-    full_name: str
-    persona_label: str
-    blurb: str
-
-
-# Thứ tự trình bày demo (hop-dong-tich-hop-backend.md §3.4 cam kết 3). Khoá theo app.users.persona
-# (DDL + AGENTS.md §6.4), không theo bộ persona phong cách du lịch của PRD.
-_PERSONA_CARDS: dict[str, tuple[str, str]] = {
-    "P1_frequent": ("Khách thân thiết", "Nhiều chuyến Nha Trang · đã đặt khách sạn cho chuyến sắp tới"),
-    "P2_first_time": ("Mới tham gia", "Vừa xem vài khách sạn Phú Quốc, chưa đặt gì"),
-    "P3_dormant": ("Ngủ đông", "Chuyến cuối ở Phú Quốc đã lâu"),
-    "P4_no_history": ("Không lịch sử", "Chưa có hoạt động nào"),
-}
-
-
-class ListDemoAccounts:
-    def __init__(self, *, users: UserRepository):
-        self._users = users
-
-    async def __call__(self) -> list[DemoAccount]:
-        order = list(_PERSONA_CARDS)
-        personas = [u for u in await self._users.list_personas() if u.persona in _PERSONA_CARDS]
-        personas.sort(key=lambda u: order.index(u.persona))
-        return [
-            DemoAccount(u.email, u.display_name, *_PERSONA_CARDS[u.persona])
-            for u in personas
-        ]

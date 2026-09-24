@@ -54,7 +54,7 @@ Tài liệu này đặc tả chi tiết toàn bộ các yêu cầu chức năng 
 - **FR-BKG-04 (Trang xác nhận & Kích hoạt gợi ý tiếp nối):** Sau khi hoàn tất đơn hàng, hiển thị mã đặt chỗ, tóm tắt chuyến đi và lập tức hiển thị các sản phẩm gợi ý bổ trợ cho chặng tiếp theo.
 
 ### 1.6. Phân Hệ Người Dùng & Xác Thực (User & Authentication)
-- **FR-USR-01 (Quản lý danh tính):** Hỗ trợ đăng ký, đăng nhập an toàn qua email/mật khẩu hoặc cơ chế định danh mô phỏng (Persona Switcher phục vụ kiểm thử và trình diễn).
+- **FR-USR-01 (Quản lý danh tính):** Hỗ trợ đăng ký, đăng nhập an toàn qua email/mật khẩu.
 - **FR-USR-02 (Hồ sơ & Sở thích):** Lưu trữ thông tin cá nhân, danh sách yêu thích, lịch sử đơn hàng và các tiêu chí ưu tiên du lịch (phong cách, ngân sách, thành viên đi cùng).
 - **FR-USR-03 (Quản lý phiên):** Bảo vệ các endpoint nhạy cảm bằng phiên đăng nhập (Session token / Cookie / JWT), đảm bảo phân tách quyền riêng tư giữa các tài khoản.
 

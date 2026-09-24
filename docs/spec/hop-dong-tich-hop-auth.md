@@ -70,7 +70,7 @@
 |---|---|---|
 | handbook `recsys-internship-handbook-v3-vi.md` §8 | "Đừng xây: OAuth provider, xác minh email, luồng đặt lại mật khẩu" | **Bị thay thế.** Chủ dự án chốt đưa các mục này vào, chia pha ở §21. Handbook vẫn đúng ở điểm: auth tồn tại để demo cá nhân hóa, và JWT hạn ngắn. |
 | handbook §8 | "băm bằng BCrypt" | **Bị thay thế** bằng Argon2id (§8). BCrypt giữ đường xác minh cho 54 user seed. |
-| `hop-dong-tich-hop-backend.md` §3.1–§3.5 | Register/login/me/demo-accounts, JWT claims | **Giữ nguyên, vẫn hợp lệ** cho client nội bộ. Web chuyển sang nhóm endpoint session mới (§5). |
+| `hop-dong-tich-hop-backend.md` §3.1–§3.5 | Register/login/me, JWT claims | **Giữ nguyên, vẫn hợp lệ** cho client nội bộ (§3.4 demo-accounts đã gỡ ngày 2026-09-24). Web chuyển sang nhóm endpoint session mới (§5). |
 | `hop-dong-tich-hop-backend.md` §8.2 | Bảng mã lỗi | **Mở rộng** ở §17, không sửa mã cũ. |
 | `hop-dong-tich-hop-frontend.md` §7.1, §7.2, §7.8 | Token trong `sessionStorage`, gửi `Authorization` từ browser, không refresh | **Bị thay thế** bởi §4 và §6. Các điều 3–7 của §7 giữ nguyên tinh thần, diễn đạt lại ở §4.5. |
 | `hop-dong-tich-hop-cdp.md` §1.6 | Ghép lịch sử ẩn danh ngoài phạm vi | **Giữ nguyên.** Xem §3.7. |
@@ -351,7 +351,7 @@ Mỗi dòng là một chuyển trạng thái. Cột "Xoay sid" là biện pháp 
 | C | Đăng nhập, không 2FA | `anonymous` → `authenticated` | **Có** | gán từ `app.users` | `UPDATE app.users SET last_login_at = now()`; xoá bộ đếm lockout |
 | D | Đăng nhập, có 2FA | `anonymous` → `pending_mfa` | **Có** | **vẫn `null`** | Phiên này **chỉ** gọi được `/auth/session/mfa/verify`; mọi route khác trả `403 MFA_REQUIRED` |
 | E | Nhập đúng OTP | `pending_mfa` → `authenticated` | **Có** (lần hai) | gán | `amr += ["otp"]` |
-| F | Đổi tài khoản demo | `authenticated` → `authenticated` | **Có** | đổi sang user mới | Là đăng xuất + đăng nhập; Web xoá **mọi** cache client (`hop-dong-tich-hop-frontend.md` §7.7) |
+| F | Đăng nhập tài khoản khác khi đang đăng nhập | `authenticated` → `authenticated` | **Có** | đổi sang user mới | Là đăng xuất + đăng nhập; Web xoá **mọi** cache client (`hop-dong-tich-hop-frontend.md` §7.7) |
 | G | Đăng xuất | bất kỳ → — | `DEL` | — | Thu hồi refresh token, xoá cookie, `revoked_reason='logout'` |
 | H | `uaHash` lệch | bất kỳ → — | `DEL` | — | Log `session.ua_mismatch` mức WARN |
 | I | Quá idle 30′ / absolute 12h | bất kỳ → — | `DEL` | — | Web hiện modal "Phiên đăng nhập đã hết hạn" (`product.md` §4.7.5) |
@@ -448,13 +448,11 @@ Thay điều 1–2 và 8 của `hop-dong-tich-hop-frontend.md` §7:
 6. Đổi tài khoản hoặc đăng xuất → xoá **mọi** cache client: query cache, `conversationId`, state kế hoạch, badge giỏ (giữ nguyên §7.7 cũ).
 7. Không còn "chủ động mở modal khi `expiresIn` < 60s" — BFF tự refresh, Web không biết hạn token.
 
-`DemoAccountSwitcher` vẫn gọi `POST /api/auth/login` với mật khẩu demo dùng chung cấu hình phía client. Endpoint demo không trả mật khẩu (giữ nguyên `hop-dong-tich-hop-backend.md` §3.4).
-
 ---
 
 ## 5. Bề mặt Backend (FastAPI)
 
-**Nhóm v1 cũ giữ nguyên, không sửa một dòng nào.** `POST /auth/register`, `POST /auth/login`, `GET /auth/me`, `GET /auth/demo-accounts` tiếp tục trả `AuthResponse` có `accessToken` cho client nội bộ, Agent, CLI và contract test. Đây là điều kiện để không phải lên v2 (`AGENTS.md` §3).
+**Nhóm v1 cũ giữ nguyên, không sửa một dòng nào.** `POST /auth/register`, `POST /auth/login`, `GET /auth/me` tiếp tục trả `AuthResponse` có `accessToken` cho client nội bộ, Agent, CLI và contract test. Đây là điều kiện để không phải lên v2 (`AGENTS.md` §3).
 
 Nhóm mới, **chỉ BFF gọi**, bắt buộc `X-Service-Token`:
 
@@ -761,7 +759,6 @@ Mọi thứ frontend kiểm đều phải kiểm lại ở FastAPI, không có n
 | Ẩn nút "Thêm vào giỏ" khi chưa đăng nhập | `current_principal` trên `POST /cart/items` → `401` |
 | Kiểm mật khẩu ≥ 8 ký tự (`LoginView.tsx:17-19`) | Validate lại toàn bộ chính sách §8.3 |
 | Chỉ hiện đơn của người dùng | `WHERE cdp_user_id = :principal` trong truy vấn |
-| Ẩn `DemoAccountSwitcher` ở production | `GET /auth/demo-accounts` trả `404` khi `APP_ENV=production` |
 | Không gửi `cdp_user_id` của người khác | Không đọc `cdp_user_id` từ request, chấm hết |
 
 ### 14.2. Quyền sở hữu tài nguyên
@@ -994,7 +991,7 @@ Bổ sung vào `ErrorCode` trong `src/shared/contracts/schemas/common.yaml` và 
 | 409 | `OAUTH_ALREADY_LINKED` | `(provider, subject)` đã thuộc user khác | `{ provider }` | false | Thông điệp chung |
 | 503 | `CDP_UNAVAILABLE` | Không tạo được `cdp.profiles` lúc đăng ký (§3.6.3) | — | **true** | `ErrorState` + Thử lại |
 
-`INVALID_CREDENTIALS`, `INVALID_TOKEN`, `TOKEN_EXPIRED`, `EMAIL_ALREADY_EXISTS`, `DEMO_ONLY`, `VALIDATION_ERROR` giữ nguyên ý nghĩa cũ.
+`INVALID_CREDENTIALS`, `INVALID_TOKEN`, `TOKEN_EXPIRED`, `EMAIL_ALREADY_EXISTS`, `VALIDATION_ERROR` giữ nguyên ý nghĩa cũ. `DEMO_ONLY` đã gỡ khỏi enum ngày 2026-09-24.
 
 Hai mã `retryable: true` mới (`TOO_MANY_ATTEMPTS`, `CDP_UNAVAILABLE`) nới danh sách hiện hành. Danh sách đó **đang không khớp nhau giữa hai nguồn**: `hop-dong-tich-hop-backend.md` §8.2 ghi hai mã (`SEARCH_UNAVAILABLE`, `INTERNAL_ERROR`), còn `schemas/common.yaml:163-165` ghi ba (thêm `LLM_UNAVAILABLE`). Sửa cả hai về cùng một danh sách năm mã trong cùng thay đổi: `SEARCH_UNAVAILABLE`, `INTERNAL_ERROR`, `LLM_UNAVAILABLE`, `TOO_MANY_ATTEMPTS`, `CDP_UNAVAILABLE`.
 
@@ -1005,8 +1002,8 @@ Hai mã `retryable: true` mới (`TOO_MANY_ATTEMPTS`, `CDP_UNAVAILABLE`) nới d
 `AGENTS.md` §3: cập nhật contract **trước**, rồi mới code. Thứ tự file:
 
 1. `src/shared/contracts/schemas/common.yaml` — thêm 13 giá trị `ErrorCode` (§17); sửa mô tả `retryable`.
-2. `src/shared/contracts/schemas/auth.yaml` — thêm schema mới, **giữ nguyên** `RegisterRequest`, `LoginRequest`, `AuthUser`, `AuthResponse`, `DemoAccountListResponse`.
-3. `src/shared/contracts/paths/auth.yaml` — thêm path mới, **giữ nguyên** 4 path cũ.
+2. `src/shared/contracts/schemas/auth.yaml` — thêm schema mới, **giữ nguyên** `RegisterRequest`, `LoginRequest`, `AuthUser`, `AuthResponse`.
+3. `src/shared/contracts/paths/auth.yaml` — thêm path mới, **giữ nguyên** các path v1 cũ (`/auth/demo-accounts` gỡ sau, ngày 2026-09-24).
 4. `src/shared/contracts/openapi.yaml` — khai báo path/schema mới; thêm `serviceToken` vào `securitySchemes`.
 
 ```yaml
@@ -1152,7 +1149,7 @@ Theo `architecture-repo.md` §10.
 - Proxy `[...path]/route.ts` **xoá** `cookie` và `authorization` đến từ client, **đặt** `authorization` từ session, **giữ** `x-request-id` hai chiều.
 - Request ghi không có `X-CSRF-Token` → `403 CSRF_FAILED`.
 - `401 SESSION_EXPIRED` → modal, đăng nhập lại, gửi lại request hỏng **đúng một lần**.
-- Đổi tài khoản demo xoá hết cache client.
+- Đăng nhập tài khoản khác xoá hết cache client.
 
 ### 20.5. Kiểm tra bảo mật thủ công trước khi đóng
 

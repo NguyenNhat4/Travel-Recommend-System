@@ -7,7 +7,6 @@ from src.backend.app.application.auth.use_cases import (
     AuthenticateUser,
     ChangePassword,
     GetCurrentUser,
-    ListDemoAccounts,
     RegisterUser,
     RevokeSession,
     RotateSession,
@@ -58,7 +57,6 @@ class AuthWorld:
             "revoke_session": RevokeSession(refresh=self.refresh),
             "change_password": ChangePassword(**common, refresh=self.refresh),
             "get_current_user": GetCurrentUser(users=self.users),
-            "list_demo_accounts": ListDemoAccounts(users=self.users),
             "recommend": self.recommend,
         }
 
