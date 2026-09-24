@@ -4,6 +4,7 @@ from fastapi import APIRouter
 from src.backend.app.api.v1.routes.assistant import router as assistant_router
 from src.backend.app.api.v1.routes.auth import router as auth_router
 from src.backend.app.api.v1.routes.auth import well_known_router
+from src.backend.app.api.v1.routes.catalog import router as catalog_router
 from src.backend.app.api.v1.routes.recommendations import router as recommendations_router
 from src.backend.app.api.v1.routes.search import router as search_router
 
@@ -16,3 +17,4 @@ api_router.include_router(recommendations_router)
 # Ngoài prefix /api/v1: main.py gắn thẳng vào app.
 root_router = APIRouter()
 root_router.include_router(well_known_router)
+api_router.include_router(catalog_router)

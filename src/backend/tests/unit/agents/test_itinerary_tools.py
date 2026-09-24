@@ -186,6 +186,62 @@ class NodeTests(unittest.IsolatedAsyncioTestCase):
         result = await nodes.tool_node({'query': 'recommend Da Nang'}, tools=Executor(), llm=llm)
         self.assertEqual(result['tool_plan'][0]['args'], {'destination': 'Da Nang', 'k': 5})
 
+    async def test_planner_wording_of_the_destination_does_not_fail_the_plan(self):
+        """Planner viết "Hồ Chí Minh", intent giữ tên catalog "TP. Hồ Chí Minh" — cùng một chuyến đi."""
+        class Executor:
+            definitions = staticmethod(definitions)
+            async def execute(self, call):
+                return {'tool_call_id': call['id'], 'data': {'strategy': 'popular', 'recommendations': []}}
+        async def plan(prompt):
+            return SimpleNamespace(tool_calls=[{'name': 'get_recommendations', 'args': {'destination': 'Hồ Chí Minh'}}])
+        llm = SimpleNamespace(bind_tools=lambda schemas: SimpleNamespace(ainvoke=plan))
+        state = {'query': '2 ngày', 'intent': {'destination': 'TP. Hồ Chí Minh', 'days': 2}}
+        result = await nodes.tool_node(state, tools=Executor(), llm=llm)
+        self.assertEqual(result['tool_plan'][0]['args']['destination'], 'TP. Hồ Chí Minh')
+        self.assertNotIn('error', result.get('response', {}))
+
+    async def test_search_call_without_query_falls_back_to_the_destination(self):
+        """SearchRequest bắt buộc `query`; planner bỏ quên thì không được làm hỏng cả request."""
+        class Executor:
+            definitions = staticmethod(definitions)
+            def __init__(self):
+                self.seen = []
+            async def execute(self, call):
+                self.seen.append(call['args'])
+                return {'tool_call_id': call['id'], 'data': {'results': []}}
+        async def plan(prompt):
+            return SimpleNamespace(tool_calls=[
+                {'name': 'search_products', 'args': {'destination': 'Hạ Long', 'taxonomy': 'attraction', 'limit': 5}}])
+        llm = SimpleNamespace(bind_tools=lambda schemas: SimpleNamespace(ainvoke=plan))
+        tools = Executor()
+        state = {'query': '2 ngày', 'intent': {'destination': 'Hạ Long', 'days': 2}}
+        result = await nodes.tool_node(state, tools=tools, llm=llm)
+        self.assertEqual(result['tool_plan'][0]['args']['query'], 'Hạ Long')
+        self.assertEqual(tools.seen[0]['query'], 'Hạ Long')
+
+    async def test_unknown_argument_from_planner_is_dropped_not_fatal(self):
+        """Planner tự thêm `excludeProducts` (không có trong SearchRequest) khi constraints có
+        exclude_products; trước đây cả plan bị huỷ → 503 LLM_UNAVAILABLE ở lượt đổi số ngày."""
+        class Executor:
+            definitions = staticmethod(definitions)
+            def __init__(self):
+                self.seen = []
+            async def execute(self, call):
+                self.seen.append(call['args'])
+                return {'tool_call_id': call['id'], 'data': {'results': []}}
+        async def plan(prompt):
+            return SimpleNamespace(tool_calls=[{'name': 'search_products', 'args': {
+                'query': 'Đà Lạt', 'taxonomy': 'attraction', 'limit': 5, 'excludeProducts': ['p-1']}}])
+        llm = SimpleNamespace(bind_tools=lambda schemas: SimpleNamespace(ainvoke=plan))
+        tools = Executor()
+        state = {'query': 'rút ngắn còn 2 ngày', 'intent': {'destination': 'Đà Lạt', 'days': 2},
+                 'constraints': {'exclude_products': ['p-1']}}
+        result = await nodes.tool_node(state, tools=tools, llm=llm)
+        self.assertEqual(len(result['tool_plan']), 1)
+        self.assertNotIn('excludeProducts', result['tool_plan'][0]['args'])
+        self.assertNotIn('excludeProducts', tools.seen[0])
+        self.assertNotIn('error', result.get('response', {}))
+
     async def test_permanent_error_and_missing_configuration_do_not_retry(self):
         result = await nodes.tool_node({'query': 'hotel'})
         evaluated = nodes.evaluate_node(result)

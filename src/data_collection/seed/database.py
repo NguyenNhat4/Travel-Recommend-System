@@ -84,6 +84,54 @@ def load_vota(url: str, data_dir: Path, reset: bool) -> dict[str, int]:
         conn.execute("ANALYZE")
     return counts
 
+def upsert_catalog(url: str, data_dir: Path, retire_missing: bool = False) -> dict[str, int]:
+    """Nạp riêng catalog vào database đang dùng (staging cloud hoặc local đã seed), một transaction.
+
+    - `cdp.products`: INSERT … ON CONFLICT (product_id) DO UPDATE, chỉ ghi dòng có thay đổi. Không DELETE: `app.booking_items`
+      và `app.cart_items` có khoá ngoại RESTRICT tới bảng này; sản phẩm ngừng bán đã mang `available=false` trong catalog.
+    - `catalog.combo_items`: thay toàn bộ dòng của các combo có trong catalog mới (parse lại + mapping duyệt tay).
+    - `retire_missing` (đổi sang một data version khác): dòng có trong DB mà không có trong catalog này → available=false.
+    - Không chạm `cdp.profiles`, `cdp.events`, `app.*` và database `insider`.
+    """
+    products = read_jsonl(data_dir / "loader" / "cdp_products.jsonl")
+    combos_path = data_dir / "loader" / "catalog_combo_items.jsonl"
+    combos = read_jsonl(combos_path) if combos_path.exists() else []
+    cols = ", ".join(PRODUCT)
+    changed = " OR ".join(f"p.{c} IS DISTINCT FROM EXCLUDED.{c}" for c in PRODUCT[1:])
+    with psycopg.connect(url) as conn:
+        conn.execute("CREATE TEMP TABLE incoming_products (LIKE cdp.products INCLUDING DEFAULTS) ON COMMIT DROP")
+        copy_rows(conn, "incoming_products", PRODUCT, products)
+        before = conn.execute("SELECT count(*) FROM cdp.products").fetchone()[0]
+        written = conn.execute(f"""
+            INSERT INTO cdp.products AS p ({cols}) SELECT {cols} FROM incoming_products
+            ON CONFLICT (product_id) DO UPDATE SET {", ".join(f"{c} = EXCLUDED.{c}" for c in PRODUCT[1:])}
+            WHERE {changed}
+            RETURNING (xmax = 0) AS inserted
+        """).fetchall()
+        untouched = conn.execute(
+            "SELECT count(*) FROM cdp.products p WHERE NOT EXISTS (SELECT 1 FROM incoming_products i WHERE i.product_id = p.product_id)"
+        ).fetchone()[0]
+        retired = conn.execute("""
+            UPDATE cdp.products p SET available = false
+            WHERE p.available AND NOT EXISTS (SELECT 1 FROM incoming_products i WHERE i.product_id = p.product_id)
+        """).rowcount if retire_missing else 0
+        removed = conn.execute("""
+            DELETE FROM catalog.combo_items c USING incoming_products i
+            WHERE c.combo_product_id = i.product_id AND i.taxonomy = 'combo'
+        """).rowcount
+        added = copy_rows(conn, "catalog.combo_items", COMBO, combos)
+    inserted = sum(1 for (flag,) in written if flag)
+    return {
+        "cdp.products before": before,
+        "cdp.products inserted": inserted,
+        "cdp.products updated": len(written) - inserted,
+        "cdp.products not in catalog (kept)": untouched,
+        "cdp.products not in catalog → available=false": retired,
+        "catalog.combo_items replaced": removed,
+        "catalog.combo_items written": added,
+    }
+
+
 def load_insider(url: str, data_dir: Path, reset: bool) -> dict[str, int]:
     """Load the separate Insider clone database in one transaction."""
     counts: dict[str, int] = {}

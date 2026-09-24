@@ -14,6 +14,10 @@ Nguồn:
        /api/frontend/tour/{slug}?Channel=<kênh>     → mô tả chi tiết, điểm nổi bật, bao gồm, lịch trình
   3. (tuỳ chọn --site-pages) vinpearl.com/vi/hotels/{slug}[/rooms] — có Cloudflare, có thể phải tự xác minh
      trong cửa sổ trình duyệt; bổ sung đoạn giới thiệu và giá công bố hiển thị trên website.
+
+Chế độ không trình duyệt (`no_browser`, dùng trên VPS chỉ có console): danh sách tour gọi thẳng bằng HTTP (23/09/2026
+trả 200, còn trang chi tiết trả 403 Cloudflare) → chi tiết chỉ đọc từ cache. Danh sách tour bị chặn thì dùng danh sách
+SKU của booking-voucher-api.vinpearl.com/api/frontend/experience (cùng id và mã với tour, chỉ gồm vé/voucher, giá "từ").
 """
 
 from __future__ import annotations
@@ -61,6 +65,7 @@ SITE = "https://vinpearl.com"
 BOOKING_SITE = "https://booking.vinpearl.com"
 HOTEL_API = "https://booking-hotel-api.vinpearl.com"
 TOUR_API = "https://booking-tour-api.vinpearl.com"
+VOUCHER_API = "https://booking-voucher-api.vinpearl.com"
 STATIC = "https://booking-static.vinpearl.com"
 API_HEADERS = {"Accept": "application/json", "accept-language": "vi-VN", "x-display-currency": "VND"}
 HOTEL_URL_RE = re.compile(r"^(?:https://vinpearl\.com)?/vi/hotels/([a-z0-9-]+)/?$")
@@ -84,6 +89,7 @@ class VinpearlOptions:
     price_dates: list[date] = field(default_factory=default_price_dates)
     adults: int = 2
     site_pages: bool = False
+    no_browser: bool = False  # VPS/console: không bao giờ mở Chromium
 
 
 class VinpearlCollector:
@@ -97,6 +103,8 @@ class VinpearlCollector:
         self._session: BrowserSession | None = None
         self._site_page = None
         self._api_page = None
+        self._detail_blocked = False
+        self.tour_list_source: str | None = None
         self._previous_dates: dict[str, list[str]] = {}
         if opts.offline:  # reparse: nhớ thứ tự ngày hỏi giá của lần crawl trước
             for r in read_jsonl(paths.interim / f"{SOURCE}.jsonl"):
@@ -105,31 +113,56 @@ class VinpearlCollector:
 
     # ------------------------------------------------------------------ fetch helpers
 
-    async def _http_json(self, key: str, url: str, browser_fallback: bool = True) -> object | None:
+    async def _get_json(self, url: str, quiet_404: bool = False) -> tuple[int | None, object | None]:
+        """Một lần GET bằng HTTP thường → (mã HTTP, JSON). Lỗi mạng / robots → (None, None)."""
+        try:
+            r = await self.http.get(url, headers=API_HEADERS)
+        except PermissionError as e:
+            log.warning("%s", e)
+            return None, None
+        except Exception as e:
+            log.warning("Lỗi gọi %s: %s", url, e)
+            return None, None
+        if r.status_code == 200 and "json" in r.headers.get("content-type", ""):
+            return 200, r.json()
+        if not (quiet_404 and r.status_code == 404):
+            log.warning("HTTP %s cho %s: %s", r.status_code, url, r.text[:200])
+        return r.status_code, None
+
+    async def _http_json(self, key: str, url: str, browser_fallback: bool = True, stale_ok: bool = False) -> object | None:
+        """`stale_ok`: gọi lại thất bại thì trả bản đã cache (kể cả khi --refresh) thay vì None."""
         cached = self.cache.read_json(key)
         if cached is not None and (self.opts.offline or not self.opts.refresh):
             return cached
         if self.opts.offline:
             return None
-        try:
-            r = await self.http.get(url, headers=API_HEADERS)
-        except PermissionError as e:
-            log.warning("%s", e)
-            return None
-        except Exception as e:
-            log.warning("Lỗi gọi %s: %s", url, e)
-            return None
-        if r.status_code == 200 and "json" in r.headers.get("content-type", ""):
-            data = r.json()
+        status, data = await self._get_json(url)
+        if data is not None:
             self.cache.write_json(key, data)
             return data
-        if r.status_code in (403, 429, 503) and browser_fallback:
-            log.info("HTTP %s cho %s – thử qua trình duyệt", r.status_code, url)
+        if status in (403, 429, 503) and browser_fallback and not self.opts.no_browser:
+            log.info("HTTP %s cho %s – thử qua trình duyệt", status, url)
             return await self._browser_json(key, url)
-        log.warning("HTTP %s cho %s: %s", r.status_code, url, r.text[:200])
+        return cached if stale_ok else None
+
+    async def _tour_detail_http(self, key: str, url: str) -> object | None:
+        """Chi tiết tour ở chế độ không trình duyệt: cache trước (nội dung ít đổi, giá lấy từ danh sách), chưa có thì
+        thử HTTP; gặp Cloudflare một lần thì cả lượt chỉ dùng cache, không gõ cửa tiếp."""
+        cached = self.cache.read_json(key)
+        if cached is not None or self.opts.offline or self._detail_blocked:
+            return cached
+        status, data = await self._get_json(url, quiet_404=True)
+        if data is not None:
+            self.cache.write_json(key, data)
+            return data
+        if status in (401, 403, 429, 503):
+            self._detail_blocked = True
+            log.warning("Chi tiết tour Vinpearl trả HTTP %s (Cloudflare) – lượt này chỉ dùng chi tiết đã cache", status)
         return None
 
     async def _browser(self) -> BrowserSession:
+        if self.opts.no_browser:
+            raise RuntimeError("Đang ở chế độ không trình duyệt (--no-browser) – không mở Chromium")
         if self._session is None:
             self._session = await BrowserSession(self.paths, SOURCE, self.opts.browser).__aenter__()
         return self._session
@@ -341,14 +374,16 @@ class VinpearlCollector:
 
     # ------------------------------------------------------------------ tours
 
-    async def collect_tours(self):
-        page_size = 100
+    async def _tour_list(self, page_size: int = 100, stale_ok: bool = False) -> tuple[list[dict], int | None]:
         index = 1
         items: list[dict] = []
         total = None
         while True:
-            url = f"{TOUR_API}/api/frontend/tour?pageIndex={index}&pageSize={page_size}"
-            data = await self._browser_json(f"api-tour-list-p{index:03d}-s{page_size}", url)
+            key, url = f"api-tour-list-p{index:03d}-s{page_size}", f"{TOUR_API}/api/frontend/tour?pageIndex={index}&pageSize={page_size}"
+            if self.opts.no_browser:
+                data = await self._http_json(key, url, browser_fallback=False, stale_ok=stale_ok)
+            else:
+                data = await self._browser_json(key, url)
             if not isinstance(data, dict):
                 break
             payload = data.get("data") or {}
@@ -358,6 +393,43 @@ class VinpearlCollector:
             if not result or (total and len(items) >= total):
                 break
             index += 1
+        return items, total
+
+    async def _voucher_list(self, page_size: int = 100, max_pages: int = 5) -> list[dict]:
+        """SKU vé/voucher của booking-voucher-api (PageSize > 100 → HTTP 400), đổi về dạng phần tử danh sách tour."""
+        items: list[dict] = []
+        for index in range(1, max_pages + 1):
+            data = await self._http_json(
+                f"api-voucher-list-p{index:03d}-s{page_size}",
+                f"{VOUCHER_API}/api/frontend/experience?Channel=1&PageIndex={index}&PageSize={page_size}",
+                browser_fallback=False,
+            )
+            result = data.get("result") if isinstance(data, dict) else None
+            if not result:
+                break
+            items.extend(voucher_item(x) for x in result if isinstance(x, dict))
+            if len(result) < page_size:
+                break
+        return items
+
+    async def _tour_items(self) -> tuple[list[dict], int | None]:
+        items, total = await self._tour_list()
+        self.tour_list_source = "booking-tour-api" if items else None
+        if items or not self.opts.no_browser:
+            return items, total
+        items = await self._voucher_list()
+        if items:
+            self.tour_list_source = "booking-voucher-api"
+            log.warning("Vinpearl: danh sách tour bị chặn – dùng %d SKU của booking-voucher-api (chỉ vé/voucher, giá 'từ')", len(items))
+            return items, len(items)
+        items, total = await self._tour_list(stale_ok=True)
+        if items:
+            self.tour_list_source = "cache"
+            log.warning("Vinpearl: không gọi được danh sách tour lẫn voucher – dùng danh sách đã cache (giá có thể cũ)")
+        return items, total
+
+    async def collect_tours(self):
+        items, total = await self._tour_items()
         seen: set[str] = set()
         unique = [t for t in items if t.get("id") and not (t["id"] in seen or seen.add(t["id"]))]
         if self.opts.tour_limit:
@@ -373,9 +445,11 @@ class VinpearlCollector:
             for ch in channels:
                 if not slug or self.breaker.tripped:
                     break
-                detail = await self._browser_json(
-                    f"api-tour-detail-{slug}", f"{TOUR_API}/api/frontend/tour/{slug}?Channel={ch}", quiet_404=True
-                )
+                key, url = f"api-tour-detail-{slug}", f"{TOUR_API}/api/frontend/tour/{slug}?Channel={ch}"
+                if self.opts.no_browser:
+                    detail = await self._tour_detail_http(key, url)
+                else:
+                    detail = await self._browser_json(key, url, quiet_404=True)
                 if isinstance(detail, dict) and detail.get("data"):
                     break
             if not (isinstance(detail, dict) and detail.get("data")):
@@ -449,6 +523,10 @@ def build_hotel_record(h: dict, responses: list[tuple[str, dict]], site: dict, c
         "recordType": "vinpearl_hotel",
         "source": SOURCE,
         "key": f"hotel:{hotel_id}",
+        # ngày API thật sự trả lời hợp lệ (không phải ngày có giá — ngày hết phòng vẫn nằm trong danh sách này nhưng không có
+        # trong room["pricesByDate"]); cần cả hai để phân biệt "hết phòng" với "chưa hỏi ngày đó" khi dựng lịch trống thật
+        # (xem load_catalog.py: real_room_calendar).
+        "priceDatesQueried": [d for d, _ in responses],
         "hotelId": hotel_id,
         "hotelCode": hotel.get("code") or h.get("hotelCode"),
         "locationId": hotel.get("locationId") or h.get("locationId"),
@@ -608,6 +686,29 @@ def _tour_record(item: dict, detail: dict | None, crawled_at: str) -> dict:
         "images": uniq([thumb] + images)[:15],
         "hasDetail": detail is not None,
         "crawledAt": crawled_at,
+    }
+
+
+def voucher_item(v: dict) -> dict:
+    """Một SKU của booking-voucher-api → cùng dạng phần tử danh sách tour. `id` và `skuCode` trùng `id`/`tourCode`
+    của booking-tour-api (kiểm 23/09/2026), nên sourceRef vinpearl:tour:<mã> không đổi khi phải dùng nguồn này."""
+    thumb = v.get("thumbImageUri")
+    kind = v.get("type")
+    return {
+        "id": v.get("id"),
+        "tourCode": v.get("skuCode"),
+        "tourName": v.get("name"),
+        "urlSlug": v.get("urlSlug"),
+        "type": int(kind) if str(kind or "").isdigit() else kind,
+        "adultOriginalPrice": _to_float(v.get("originalPrice")),
+        "adultSalePrice": _to_float(v.get("salePrice")),
+        "shortDescription": v.get("shortDescription"),
+        "saleStartDate": v.get("saleStartDate"),
+        "saleEndDate": v.get("saleEndDate"),
+        "lengthOfTour": v.get("lengthOfStay"),
+        "soldQuantity": v.get("soldQuantity"),
+        "thumbImageView": {"fileUri": thumb} if thumb else None,
+        "channel": [1],
     }
 
 

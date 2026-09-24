@@ -114,7 +114,7 @@ src/backend/app/
 │   ├── embeddings/          # CohereEmbedder (embed-multilingual-v3.0)
 │   ├── vectors/             # WeaviateVectorStore
 │   └── contracts/           # Kiểm dữ liệu theo OpenAPI bundle (jsonschema)
-├── agents/                  # LangGraph: state, graph, node và tools/; hiện thực port planner itinerary
+├── agents/                  # LangGraph: state, graph, node, steps/ (luật của từng bước) và tools/; hiện thực port planner itinerary
 ├── api/                     # LỚP 4: chỉ xử lý HTTP
 │   ├── deps.py              # FastAPI Depends: lấy use case đã nối sẵn, route không tự lắp ráp
 │   ├── middleware.py        # Request ID, CORS...

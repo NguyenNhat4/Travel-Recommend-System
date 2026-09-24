@@ -1,16 +1,16 @@
 """Composition root — nơi duy nhất nối infrastructure vào use case (docs/prd/architecture.md §2).
 
 Gộp hai nhánh: phần nối PostgreSQL (CDP client, catalog lookup, ghi event nền) và engine recsys
-(search / similar / recommendations). Recsys chạy thẳng trên database đã seed thay vì đọc file:
-`PostgresVectorStore` và `PostgresCdpReader` thay các bản giả đọc JSONL ở `tests/fakes/`.
+(search / similar / recommendations). `WeaviateVectorStore` lấy vector đã persist, hydrate sản phẩm từ
+PostgreSQL; `PostgresCdpReader` đọc lịch sử. Cả hai thay các bản giả ở `tests/fakes/`.
 
 Hai adapter CDP trong `infrastructure/cdp/` cùng tồn tại vì là hai chiều khác nhau, không phải bản trùng lặp:
   * `LocalCdpClient`     — GHI (async): purchase khi checkout, huỷ bù trừ, browse event, profile.
   * `PostgresCdpReader`  — ĐỌC (sync): lịch sử của khách và bảng phổ biến cho recsys.
 Cả hai đi qua `CDP_DATABASE_URL`; không nơi nào khác được SQL thẳng vào schema `cdp` (AGENTS.md §6.1).
 
-Nạp index tốn thời gian (embed toàn bộ search unit lần đầu, sau đó đọc cache .npy), nên chạy trong
-`lifespan` một lần lúc khởi động. Thiếu database thì log rồi bỏ qua phần recsys — các route còn lại
+Nạp index từ collection `Product` của Weaviate trong `lifespan` một lần lúc khởi động. Thiếu database,
+Weaviate hoặc index thì log rồi bỏ qua phần recsys — các route còn lại
 vẫn phục vụ được, đúng tinh thần "CDP lỗi thì không kéo sập cả app" (hop-dong-tich-hop-cdp.md §6).
 """
 from __future__ import annotations
@@ -74,20 +74,44 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
 
     Ba tham số override để test tiêm giả lập mà không cần Postgres hay tải model embedding.
     """
+    owns_embedder = False
     if vector_store is None:
-        from src.backend.app.infrastructure.embeddings.sentence_transformers_embedder import (
-            SentenceTransformersEmbedder,
-        )
-        from src.backend.app.infrastructure.vectors.postgres_store import PostgresVectorStore
+        from src.backend.app.domain.catalog import TEXT_BUILDER_VERSION
+        from src.backend.app.infrastructure.embeddings.cohere_embedder import CohereEmbedder
+        from src.backend.app.infrastructure.vectors.weaviate_store import WeaviateClient, WeaviateVectorStore
 
         if embedder is None:
-            embedder = SentenceTransformersEmbedder(settings.embed_model)
-        # Catalog đi qua DATABASE_URL: role vota_app chỉ SELECT được cdp.products, đúng ranh giới.
-        vector_store = PostgresVectorStore(
-            settings.database_url, embedder, settings.embed_cache_dir
+            embedder = CohereEmbedder(
+                settings.cohere_api_key,
+                settings.embed_model,
+                base_url=settings.cohere_base_url,
+                dimension=settings.embed_dimension,
+                timeout_seconds=settings.cohere_timeout_seconds,
+            )
+            owns_embedder = True
+        weaviate = WeaviateClient(
+            settings.weaviate_url,
+            collection=settings.weaviate_collection,
+            api_key=settings.weaviate_api_key,
+            timeout_seconds=settings.weaviate_timeout_seconds,
         )
-    logger.info("startup.recsys.index.load.start cache_dir=%s", settings.embed_cache_dir)
-    index = vector_store.load()
+        vector_store = WeaviateVectorStore(
+            settings.database_url,
+            weaviate,
+            expected_model_version=f"{settings.embed_model}:{TEXT_BUILDER_VERSION}",
+            dimension=settings.embed_dimension,
+        )
+    logger.info("startup.recsys.index.load.start source=weaviate")
+    try:
+        index = vector_store.load()
+    except Exception:
+        if owns_embedder and hasattr(embedder, "close"):
+            embedder.close()
+        raise
+    finally:
+        client = getattr(vector_store, "client", None)
+        if client is not None:
+            client.close()
     logger.info("startup.recsys.index.load.ready search_units=%d", len(index.units))
 
     # Lịch sử đi qua CDP_DATABASE_URL: vota_app không đọc được cdp.events.
@@ -96,6 +120,7 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
     popularity = BuildPopularity(index, cdp_reader)()
     logger.info("startup.recsys.popularity.build.ready")
     return {
+        "recsys_embedder": embedder,
         "index": index,
         "search": SearchProducts(
             index,
@@ -290,6 +315,9 @@ async def lifespan(app: FastAPI):
         try:
             yield
         finally:
+            embedder = getattr(app.state, "recsys_embedder", None)
+            if embedder is not None and hasattr(embedder, "close"):
+                embedder.close()
             logger.info("shutdown.browse_event_recorder.stop")
             await app.state.browse_event_recorder.stop()
     print("Shutting down...")

@@ -5,7 +5,7 @@ SHELL := /bin/bash
 PYTHON ?= python
 AS_OF ?= $(shell date +%F)
 SEED ?= 42
-CATALOG_SNAPSHOT ?= data_collection/snapshots/2026-09-21/products.jsonl.gz
+CATALOG_SNAPSHOT ?= data_collection/snapshots/2026-09-23/products.jsonl.gz
 # Cổng host của Postgres; đổi khi máy đã có Postgres khác giữ 5432.
 # Phải khớp POSTGRES_HOST_PORT dùng cho `docker compose up`.
 POSTGRES_HOST_PORT ?= 5432
@@ -16,7 +16,7 @@ LOCAL_SEED_DATABASE_URL = postgresql://postgres:postgres@localhost:$(POSTGRES_HO
 MIGRATE_PYTHON = $(shell test -x src/backend/.venv/bin/python && echo src/backend/.venv/bin/python || echo $(PYTHON))
 LOCAL_INSIDER_DATABASE_URL = postgresql://postgres:postgres@localhost:$(POSTGRES_HOST_PORT)/insider
 
-.PHONY: chat chat-full chat-api chat-ui chat-logs web web-ui web-logs test-llm demo-db demo-db-reset verify-db db-migrate db-migrate-status embed-products backend backend-build backend-logs backend-stop backend-local jwt-keys
+.PHONY: chat chat-full chat-api chat-ui chat-logs web web-ui web-logs test-llm demo-db demo-db-reset verify-db index-vectors db-migrate db-migrate-status backend backend-build backend-logs backend-stop backend-local jwt-keys
 
 # Chạy trọn bộ FastAPI + Streamlit; Ctrl+C sẽ dừng cả hai.
 chat:
@@ -208,6 +208,11 @@ verify-db:
 	docker compose exec -T postgres psql -U postgres -d vota < db/verify.sql
 	docker compose exec -T postgres psql -U postgres -d insider < db/verify_insider.sql
 
+# Job tốn quota Cohere nên không tự chạy trong demo-db. Cần COHERE_API_KEY trong .env.
+index-vectors:
+	docker compose up -d --wait postgres weaviate
+	$(PYTHON) -m src.backend.jobs.embed_products
+
 # Áp thay đổi schema lên database ĐANG CÓ DỮ LIỆU, không xoá gì (db/migrations/README.md).
 # db/init/*.sql chỉ chạy lúc initdb trên volume rỗng nên không dùng được cho máy đã seed.
 db-migrate:
@@ -216,11 +221,6 @@ db-migrate:
 
 db-migrate-status:
 	SEED_DATABASE_URL=$(LOCAL_SEED_DATABASE_URL) "$(MIGRATE_PYTHON)" db/migrations/run.py --status
-
-# Nạp vector search unit lên Weaviate (WEAVIATE_URL trong .env) bằng Cohere; chỉ embed phần text/model đổi.
-# Vòng đời tách khỏi demo-db: seed lại Postgres không cần chạy lại, trừ khi catalog đổi. Thử: EMBED_ARGS=--dry-run
-embed-products:
-	"$(MIGRATE_PYTHON)" -m src.backend.app.infrastructure.vectors.embed_products $(EMBED_ARGS)
 
 backend:
 	docker compose up -d --build backend

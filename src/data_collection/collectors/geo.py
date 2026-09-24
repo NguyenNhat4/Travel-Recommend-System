@@ -26,9 +26,9 @@ DESTINATION_ALIASES: dict[str, list[str]] = {
     "Vũng Tàu": ["vung tau", "ba ria", "long hai", "ho tram"],
     "Côn Đảo": ["con dao", "con son"],
     "Cần Thơ": ["can tho"],
-    "Hải Phòng": ["hai phong", "cat ba", "do son", "vinhomes imperia"],
+    "Hải Phòng": ["hai phong", "do son", "vinhomes imperia"],
     "Ninh Bình": ["ninh binh", "trang an", "tam coc", "hoa lu", "bai dinh"],
-    "Quảng Bình": ["quang binh", "dong hoi", "phong nha"],
+    "Quảng Bình": ["quang binh", "dong hoi"],
     "Nghệ An": ["nghe an", "cua lo", "cua hoi", "thanh pho vinh", "tp vinh"],
     "Hà Tĩnh": ["ha tinh", "cua sot", "thien cam"],
     "Bắc Ninh": ["bac ninh"],
@@ -37,14 +37,49 @@ DESTINATION_ALIASES: dict[str, list[str]] = {
     "Tam Đảo": ["tam dao"],
     "Tuy Hòa": ["tuy hoa", "phu yen"],
     "Phan Rang": ["phan rang", "ninh thuan", "vinh hy"],
-    "Quảng Ngãi": ["quang ngai", "ly son"],
+    "Quảng Ngãi": ["quang ngai"],
     "Buôn Ma Thuột": ["buon ma thuot", "dak lak"],
     "Hà Nam": ["ha nam", "tam chuc"],
-    "Thanh Hóa": ["thanh hoa", "sam son"],
+    "Thanh Hóa": ["thanh hoa"],
     "Mai Châu": ["mai chau", "hoa binh"],
     "Cao Bằng": ["cao bang", "ban gioc"],
-    "Rạch Giá": ["rach gia", "ha tien"],
+    "Rạch Giá": ["rach gia"],
     "Châu Đốc": ["chau doc", "an giang"],
+    # Mở rộng 19/09/2026
+    "Pleiku": ["pleiku", "gia lai"],
+    "Kon Tum": ["kon tum", "mang den"],
+    "Tây Ninh": ["tay ninh", "nui ba den"],
+    "Cà Mau": ["ca mau", "dat mui"],
+    "Bến Tre": ["ben tre"],
+    "Mỹ Tho": ["my tho", "tien giang", "cai be"],
+    "Sóc Trăng": ["soc trang"],
+    "Bạc Liêu": ["bac lieu"],
+    "Điện Biên": ["dien bien", "thanh pho dien bien phu", "tp dien bien phu"],  # "Điện Biên Phủ" một mình là tên đường ở mọi thành phố
+    "Lạng Sơn": ["lang son", "dong dang"],
+    "Sơn La": ["son la"],
+    "Biên Hòa": ["bien hoa", "dong nai"],
+    "Vĩnh Long": ["vinh long"],
+    "Đồng Tháp": ["dong thap", "sa dec", "cao lanh"],
+    "Quảng Trị": ["quang tri", "dong ha"],
+    # Điểm đến nhỏ chỉ cào từ Booking (19/09/2026). Chỉ dùng tên riêng ít trùng tên phường/xã.
+    "Cát Bà": ["cat ba"],
+    "Lý Sơn": ["ly son"],
+    "Sầm Sơn": ["sam son"],
+    "Hà Tiên": ["ha tien"],
+    "Bảo Lộc": ["bao loc"],
+    "Phong Nha": ["phong nha"],
+    "Vân Đồn": ["van don"],
+    "Mù Cang Chải": ["mu cang chai", "yen bai"],
+    "Thái Nguyên": ["thai nguyen"],
+    "Nam Định": ["nam dinh"],
+    "Vĩnh Phúc": ["vinh phuc", "vinh yen", "dai lai"],
+    "Móng Cái": ["mong cai"],
+    "Long Xuyên": ["long xuyen"],
+    "Bắc Kạn": ["bac kan", "ba be"],
+    "Trà Vinh": ["tra vinh"],
+    "Tam Kỳ": ["tam ky"],
+    "Gia Nghĩa": ["gia nghia", "dak nong"],
+    "Thái Bình": ["thai binh"],
 }
 
 # Tên tỉnh / thành cấp tỉnh: yếu hơn tên thành phố, địa danh. Sau sáp nhập 2025 nhiều địa chỉ ghi
@@ -53,6 +88,8 @@ PROVINCE_ALIASES = {
     "khanh hoa", "kien giang", "quang ninh", "quang nam", "lam dong", "lao cai", "binh dinh", "binh thuan",
     "thua thien", "ba ria", "nghe an", "ha tinh", "dak lak", "hoa binh", "an giang", "ninh thuan", "phu yen",
     "quang ngai", "quang binh", "ninh binh", "da nang", "hai phong", "ha noi", "ho chi minh", "can tho", "bac ninh",
+    "gia lai", "tien giang", "dong thap", "dong nai", "quang tri", "son la", "dien bien", "lang son", "soc trang",
+    "bac lieu", "ca mau", "ben tre", "vinh long", "yen bai", "dak nong",
 }
 
 _ALIAS_TABLE: list[tuple[re.Pattern, str, bool]] = [
@@ -62,16 +99,30 @@ _ALIAS_TABLE: list[tuple[re.Pattern, str, bool]] = [
 ]
 
 
+# Tên đường trùng tên địa danh ("Đường Hai Bà Trưng", "Phố Huế", "Bien Hoa Street") không phải nơi cơ sở toạ lạc.
+_STREET_BEFORE = re.compile(r"(?<![a-z0-9])(?<!thanh )(?:duong|pho|ngo|hem)\s$")  # "thành phố" không phải "phố"
+_STREET_AFTER = re.compile(r"^\s(?:street|st|road|rd|avenue|ave)(?![a-z0-9])")
+# "Điện Biên Phủ" không kèm "thành phố" là con đường (135 Điện Biên Phủ, Hải Phòng), không phải tỉnh Điện Biên.
+_NOT_FOLLOWED_BY = {"Điện Biên": re.compile(r"^ phu(?![a-z0-9])")}
+
+
 def destination_in_text(text: str | None) -> str | None:
-    """Điểm đến nêu trong chuỗi (tên thành phố/địa danh thắng tên tỉnh, cùng cấp thì cái xuất hiện trước), hoặc None."""
+    """Điểm đến nêu trong chuỗi (tên thành phố/địa danh thắng tên tỉnh, cùng cấp thì cái xuất hiện trước), hoặc None.
+    Bỏ qua chỗ tên địa danh chỉ là tên đường (đứng sau "đường/phố/ngõ/hẻm" hoặc trước "street/road")."""
     f = fold(text)
     if not f:
         return None
+    # "Nguyễn Huệ" là tên đường ở hầu hết các thành phố, không phải Huế.
+    f = re.sub(r"(?<![a-z0-9])nguyen hue(?![a-z0-9])", " ", f)
     hits = []
     for pat, canonical, is_province in _ALIAS_TABLE:
-        m = pat.search(f)
-        if m:
+        for m in pat.finditer(f):
+            if _STREET_BEFORE.search(f[max(0, m.start() - 12):m.start()]) or _STREET_AFTER.match(f[m.end():m.end() + 8]):
+                continue
+            if canonical in _NOT_FOLLOWED_BY and _NOT_FOLLOWED_BY[canonical].match(f[m.end():m.end() + 6]):
+                continue
             hits.append((is_province, m.start(), -len(m.group(0)), canonical))
+            break
     return min(hits)[3] if hits else None
 
 
@@ -127,6 +178,40 @@ DESTINATION_CENTERS: dict[str, tuple[float, float]] = {
     "Cao Bằng": (22.6667, 106.2583),
     "Rạch Giá": (10.0107, 105.0833),
     "Châu Đốc": (10.7102, 105.1175),
+    # Mở rộng 19/09/2026: trung tâm thành phố/thị xã tỉnh lỵ (sai vài km không ảnh hưởng, chỉ để phát hiện toạ độ lệch)
+    "Pleiku": (13.9833, 108.0000),
+    "Kon Tum": (14.3500, 108.0000),
+    "Tây Ninh": (11.3100, 106.0980),
+    "Cà Mau": (9.1769, 105.1500),
+    "Bến Tre": (10.2434, 106.3756),
+    "Mỹ Tho": (10.3600, 106.3600),
+    "Sóc Trăng": (9.6025, 105.9739),
+    "Bạc Liêu": (9.2940, 105.7216),
+    "Điện Biên": (21.3860, 103.0230),
+    "Lạng Sơn": (21.8530, 106.7610),
+    "Sơn La": (21.3270, 103.9140),
+    "Biên Hòa": (10.9574, 106.8427),
+    "Vĩnh Long": (10.2537, 105.9722),
+    "Đồng Tháp": (10.4600, 105.6330),    # Cao Lãnh
+    "Quảng Trị": (16.8163, 107.1003),    # Đông Hà
+    "Cát Bà": (20.7267, 107.0489),
+    "Lý Sơn": (15.3833, 109.1167),
+    "Sầm Sơn": (19.7381, 105.9086),
+    "Hà Tiên": (10.3833, 104.4833),
+    "Bảo Lộc": (11.5475, 107.8078),
+    "Phong Nha": (17.5911, 106.2836),
+    "Vân Đồn": (21.0700, 107.4300),
+    "Mù Cang Chải": (21.8531, 104.0833),
+    "Thái Nguyên": (21.5928, 105.8442),
+    "Nam Định": (20.4388, 106.1621),
+    "Vĩnh Phúc": (21.3089, 105.6049),    # Vĩnh Yên
+    "Móng Cái": (21.5333, 107.9667),
+    "Long Xuyên": (10.3865, 105.4352),
+    "Bắc Kạn": (22.1470, 105.8348),
+    "Trà Vinh": (9.9347, 106.3452),
+    "Tam Kỳ": (15.5736, 108.4740),
+    "Gia Nghĩa": (12.0037, 107.6876),
+    "Thái Bình": (20.4463, 106.3366),
 }
 
 # Bán kính hợp lý quanh tâm (km). Xa hơn thì toạ độ (hoặc chính điểm đến) đáng ngờ. Rộng hơn mặc định khi alias
@@ -134,8 +219,11 @@ DESTINATION_CENTERS: dict[str, tuple[float, float]] = {
 DEFAULT_RADIUS_KM = 40.0
 DESTINATION_RADIUS_KM: dict[str, float] = {
     "Nha Trang": 55, "TP. Hồ Chí Minh": 60, "Huế": 60, "Quảng Bình": 60, "Cao Bằng": 70, "Hạ Long": 50, "Hà Nội": 50,
-    "Hải Phòng": 50, "Vũng Tàu": 50, "Hội An": 30, "Đà Nẵng": 30, "Nghệ An": 30, "Hà Tĩnh": 30, "Sa Pa": 30,
-    "Ninh Bình": 30, "Côn Đảo": 25,
+    "Hải Phòng": 50, "Vũng Tàu": 50, "Hội An": 30, "Đà Nẵng": 30, "Nghệ An": 30, "Sa Pa": 30,
+    "Ninh Bình": 30, "Côn Đảo": 25, "Cà Mau": 60,   # Đất Mũi cách thành phố Cà Mau ~90 km
+    "Hà Tĩnh": 50,   # khu resort ven biển (Thiên Cầm, Xuân Thành, Vinpearl Hà Tĩnh) cách thành phố Hà Tĩnh 34–45 km
+    "Cát Bà": 25, "Lý Sơn": 15, "Sầm Sơn": 20, "Hà Tiên": 30, "Bảo Lộc": 30, "Phong Nha": 40, "Vân Đồn": 40,
+    "Mù Cang Chải": 40, "Móng Cái": 30, "Bắc Kạn": 60, "Tam Kỳ": 30,   # Ba Bể cách TP Bắc Kạn ~55 km
 }
 
 # Sân bay có đường bay thường lệ. Nguồn toạ độ: OurAirports (public domain), tải 15/09/2026.

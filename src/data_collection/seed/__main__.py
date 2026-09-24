@@ -24,7 +24,7 @@ from .config import (
     ZIPF_S,
     find_products,
 )
-from .database import load_insider, load_vota
+from .database import load_insider, load_vota, upsert_catalog
 from .snapshot import materialize_snapshot
 
 
@@ -36,6 +36,11 @@ def _arguments(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--products", type=Path, help="products.jsonl; default searches src/data_collection/data first")
     parser.add_argument("--reset", action="store_true", help="truncate local demo/seed state before loading")
     parser.add_argument("--generate-only", action="store_true", help="generate artifacts but do not connect to PostgreSQL")
+    parser.add_argument("--catalog-only", action="store_true",
+                        help="only upsert cdp.products and replace catalog.combo_items of the catalog's combos; never deletes, "
+                             "never touches cdp.profiles/events, app.* or insider (for a database already in use, e.g. staging)")
+    parser.add_argument("--retire-missing", action="store_true",
+                        help="with --catalog-only: set available=false on database rows absent from this catalog (switching data version)")
     return parser.parse_args(argv)
 
 
@@ -68,6 +73,21 @@ def main(argv: list[str] | None = None) -> int:
         products_path, data_dir = canonical, canonical.parent
 
     loader_dir, seed_dir = data_dir / "loader", data_dir / "seed"
+    if args.catalog_only:
+        if args.reset:
+            print("--catalog-only never truncates; drop --reset", file=sys.stderr)
+            return 2
+        print(f"[1/3] Parse {products_path}")
+        parse_combos.main(["--data-dir", str(data_dir)])
+        print("[2/3] Build cdp.products rows")
+        load_products.main(["--data-dir", str(data_dir), "--out-dir", str(loader_dir), "--as-of", args.as_of.isoformat()])
+        if args.generate_only:
+            print(f"Generated catalog artifacts under {loader_dir}; PostgreSQL was not changed.")
+            return 0
+        print(f"[3/3] Upsert catalog into ${VOTA_URL_ENV}")
+        counts = upsert_catalog(os.environ.get(VOTA_URL_ENV, DEFAULT_VOTA_URL), data_dir, retire_missing=args.retire_missing)
+        print("Catalog: " + " · ".join(f"{name}={count}" for name, count in counts.items()))
+        return 0
     print(f"[1/5] Parse {products_path}")
     parse_combos.main(["--data-dir", str(data_dir)])
     print("[2/5] Build cdp.products rows")

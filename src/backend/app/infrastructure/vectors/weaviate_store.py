@@ -1,116 +1,177 @@
-"""Collection `Product` trên Weaviate (docs/prd/architecture.md §5, data-model.md entity WEAVIATE_PRODUCT).
-
-Gọi REST `/v1` bằng httpx thay vì `weaviate-client` để không thêm dependency. Collection khai báo
-`vectorizer: none`: backend tự embed rồi tự ghi, Weaviate không giữ khóa Cohere. Weaviate chỉ giữ
-vector + `productId` / `modelVersion` / `textHash`; mọi thuộc tính hiển thị vẫn lấy từ Postgres.
-
-Hiện chỉ có phần ghi cho job `embed_products`; đường truy vấn của backend chưa chuyển sang đây.
-"""
+"""Weaviate adapter with self-provided Cohere vectors."""
 from __future__ import annotations
 
+import re
+import uuid
 from dataclasses import dataclass
 
 import httpx
+import numpy as np
 
-COLLECTION = "Product"
-_PAGE = 500
-_BATCH = 100
+from src.backend.app.application.ports import UnitIndex
+from src.backend.app.infrastructure.vectors.postgres_store import CatalogUnits, PostgresCatalogReader
 
 
 @dataclass(frozen=True)
-class StoredVector:
-    object_id: str       # UUID do Weaviate cấp
+class VectorMetadata:
+    uuid: str
+    product_id: str
     model_version: str
     text_hash: str
 
 
-def normalise_url(url: str) -> str:
-    """WEAVIATE_URL của Weaviate Cloud thường chỉ là hostname; thêm https:// khi thiếu scheme."""
-    url = url.strip().strip('"').rstrip("/")
-    return url if url.startswith(("http://", "https://")) else f"https://{url}"
+class WeaviateClient:
+    """Small REST client for the subset needed by the index job and runtime loader."""
 
-
-class WeaviateVectorStore:
-    def __init__(self, url: str, api_key: str = "", *, client: httpx.Client | None = None):
+    def __init__(
+        self,
+        base_url: str,
+        *,
+        collection: str = "Product",
+        api_key: str = "",
+        timeout_seconds: float = 30.0,
+        client: httpx.Client | None = None,
+    ):
+        if not re.fullmatch(r"[A-Z][A-Za-z0-9_]*", collection):
+            raise ValueError("WEAVIATE_COLLECTION must be a valid GraphQL collection name")
+        self.collection = collection
+        self._owns_client = client is None
         headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-        self._client = client or httpx.Client(timeout=60)
-        self._base = normalise_url(url) + "/v1"
-        self._headers = headers
+        self._client = client or httpx.Client(
+            base_url=base_url.rstrip("/"), timeout=timeout_seconds, headers=headers
+        )
 
-    def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
-        return self._client.request(method, self._base + path, headers=self._headers, **kwargs)
+    def close(self) -> None:
+        if self._owns_client:
+            self._client.close()
 
-    def exists(self) -> bool:
-        response = self._request("GET", f"/schema/{COLLECTION}")
-        if response.status_code == 404:
-            return False
+    def ready(self) -> None:
+        response = self._client.get("/v1/.well-known/ready")
         response.raise_for_status()
-        return True
 
-    def ensure_collection(self) -> bool:
-        """Tạo collection nếu chưa có. Trả True khi vừa tạo."""
-        if self.exists():
-            return False
-        text = {"dataType": ["text"], "tokenization": "field", "indexSearchable": False}
-        schema = {
-            "class": COLLECTION,
-            "vectorizer": "none",
-            "vectorIndexType": "hnsw",
-            "vectorIndexConfig": {"distance": "cosine"},
-            "properties": [
-                {"name": "productId", **text, "description": "Khóa nối logic về cdp.products — không phải FK"},
-                {"name": "modelVersion", **text},
-                {"name": "textHash", **text},
-            ],
-        }
-        self._request("POST", "/schema", json=schema).raise_for_status()
-        return True
-
-    def stored(self) -> dict[str, StoredVector]:
-        """productId → object đang có, đọc hết collection theo cursor `after`."""
-        found: dict[str, StoredVector] = {}
-        after = None
-        while True:
-            params = {"class": COLLECTION, "limit": _PAGE}
-            if after:
-                params["after"] = after
-            response = self._request("GET", "/objects", params=params)
+    def ensure_collection(self) -> None:
+        response = self._client.get(f"/v1/schema/{self.collection}")
+        if response.status_code == 200:
+            schema = response.json()
+            if schema.get("vectorizer") != "none":
+                raise RuntimeError(f"Weaviate collection {self.collection} must use vectorizer=none")
+            distance = (schema.get("vectorIndexConfig") or {}).get("distance")
+            if distance and distance != "cosine":
+                raise RuntimeError(f"Weaviate collection {self.collection} must use cosine distance")
+            return
+        if response.status_code != 404:
             response.raise_for_status()
-            objects = response.json().get("objects") or []
-            for obj in objects:
-                props = obj.get("properties") or {}
-                found[props.get("productId", "")] = StoredVector(
-                    obj["id"], props.get("modelVersion", ""), props.get("textHash", "")
-                )
-            if len(objects) < _PAGE:
-                return found
-            after = objects[-1]["id"]
+        created = self._client.post(
+            "/v1/schema",
+            json={
+                "class": self.collection,
+                "description": "V-OTA search units indexed with Cohere embed-multilingual-v3.0",
+                "vectorizer": "none",
+                "vectorIndexType": "hnsw",
+                "vectorIndexConfig": {"distance": "cosine"},
+                "properties": [
+                    {"name": "productId", "dataType": ["text"], "indexFilterable": True, "indexSearchable": False},
+                    {"name": "modelVersion", "dataType": ["text"], "indexFilterable": True, "indexSearchable": False},
+                    {"name": "textHash", "dataType": ["text"], "indexFilterable": True, "indexSearchable": False},
+                ],
+            },
+        )
+        created.raise_for_status()
 
-    def upsert(self, rows: list[dict]) -> None:
-        """rows: {productId, modelVersion, textHash, vector, object_id?}. Có object_id thì ghi đè, không thì Weaviate cấp UUID."""
-        for i in range(0, len(rows), _BATCH):
-            objects = []
-            for row in rows[i : i + _BATCH]:
-                obj = {
-                    "class": COLLECTION,
-                    "properties": {k: row[k] for k in ("productId", "modelVersion", "textHash")},
-                    "vector": [float(x) for x in row["vector"]],
-                }
-                if row.get("object_id"):
-                    obj["id"] = row["object_id"]
-                objects.append(obj)
-            response = self._request("POST", "/batch/objects", json={"objects": objects})
-            response.raise_for_status()
-            errors = [
-                item["result"]["errors"]
-                for item in response.json()
-                if (item.get("result") or {}).get("errors")
-            ]
-            if errors:
-                raise RuntimeError(f"Weaviate từ chối {len(errors)} object, ví dụ: {errors[0]}")
+    def _graphql(self, query: str) -> dict:
+        response = self._client.post("/v1/graphql", json={"query": query})
+        response.raise_for_status()
+        payload = response.json()
+        if payload.get("errors"):
+            raise RuntimeError(f"Weaviate GraphQL error: {payload['errors']}")
+        return payload["data"]
+
+    def fetch(self, *, include_vectors: bool) -> tuple[dict[str, VectorMetadata], dict[str, np.ndarray]]:
+        additional = "_additional { id vector }" if include_vectors else "_additional { id }"
+        data = self._graphql(
+            "{ Get { "
+            + self.collection
+            + f"(limit: 10000) {{ productId modelVersion textHash {additional} }} }} }}"
+        )
+        rows = data.get("Get", {}).get(self.collection) or []
+        metadata: dict[str, VectorMetadata] = {}
+        vectors: dict[str, np.ndarray] = {}
+        for row in rows:
+            product_id = str(row["productId"])
+            extra = row.get("_additional") or {}
+            metadata[product_id] = VectorMetadata(
+                uuid=str(extra["id"]),
+                product_id=product_id,
+                model_version=str(row.get("modelVersion") or ""),
+                text_hash=str(row.get("textHash") or ""),
+            )
+            if include_vectors:
+                vectors[product_id] = np.asarray(extra.get("vector") or [], dtype=np.float32)
+        return metadata, vectors
+
+    @staticmethod
+    def object_uuid(product_id: str) -> str:
+        return str(uuid.uuid5(uuid.NAMESPACE_URL, f"vota:product:{product_id}"))
 
     def delete(self, object_ids: list[str]) -> None:
         for object_id in object_ids:
-            response = self._request("DELETE", f"/objects/{COLLECTION}/{object_id}")
-            if response.status_code != 404:
+            response = self._client.delete(f"/v1/objects/{self.collection}/{object_id}")
+            if response.status_code not in {200, 204, 404}:
                 response.raise_for_status()
+
+    def insert(self, objects: list[dict], *, batch_size: int = 100) -> None:
+        for start in range(0, len(objects), batch_size):
+            response = self._client.post("/v1/batch/objects", json={"objects": objects[start : start + batch_size]})
+            response.raise_for_status()
+            failures = [
+                item for item in response.json()
+                if ((item.get("result") or {}).get("status") or "SUCCESS").upper() != "SUCCESS"
+            ]
+            if failures:
+                raise RuntimeError(f"Weaviate batch failed for {len(failures)} objects: {failures[:1]}")
+
+
+class WeaviateVectorStore:
+    """Load persisted vectors from Weaviate and grounded display data from PostgreSQL."""
+
+    def __init__(
+        self,
+        database_url: str,
+        client: WeaviateClient,
+        *,
+        expected_model_version: str,
+        dimension: int = 1024,
+    ):
+        self.reader = PostgresCatalogReader(database_url)
+        self.client = client
+        self.expected_model_version = expected_model_version
+        self.dimension = dimension
+
+    def load(self) -> UnitIndex:
+        catalog = self.reader.load()
+        self.client.ready()
+        self.client.ensure_collection()
+        metadata, vectors = self.client.fetch(include_vectors=True)
+        missing = [p.product_id for p in catalog.units if p.product_id not in vectors]
+        if missing:
+            raise RuntimeError(
+                f"Weaviate thiếu {len(missing)} search unit; chạy `make index-vectors` trước khi mở RecSys"
+            )
+        wrong_model = [
+            p.product_id
+            for p in catalog.units
+            if metadata[p.product_id].model_version != self.expected_model_version
+        ]
+        if wrong_model:
+            raise RuntimeError(
+                f"Weaviate có {len(wrong_model)} vector sai model/text version; chạy lại `make index-vectors`"
+            )
+        embeddings = np.vstack([vectors[p.product_id] for p in catalog.units]).astype(np.float32)
+        if embeddings.shape != (len(catalog.units), self.dimension):
+            raise RuntimeError(
+                f"Weaviate vector shape {embeddings.shape}; expected ({len(catalog.units)}, {self.dimension})"
+            )
+        norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+        if np.any(norms == 0):
+            raise RuntimeError("Weaviate contains a zero-length embedding")
+        return catalog.to_index(embeddings / norms, self.expected_model_version)

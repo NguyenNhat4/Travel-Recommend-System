@@ -20,7 +20,7 @@ src/backend/.venv/bin/python -m pip install -r src/backend/requirements.txt -r s
 make demo-db
 ```
 
-`make demo-db` làm bốn việc:
+`make demo-db` thực hiện ba việc: chạy PostgreSQL 16 bằng Docker, kiểm tra/bung snapshot catalog 11.387 sản phẩm và seed hai database `vota`/`insider`, sau đó chạy các câu verify chính thức. Vector nằm trong Weaviate riêng, không dùng pgvector. Mỗi thành viên có Docker volume riêng trên máy; không chia sẻ hoặc commit volume.
 
 1. Chạy PostgreSQL 16 bằng Docker.
 2. Áp các migration còn thiếu.
@@ -35,7 +35,9 @@ Khi database local đã có dữ liệu và cần dựng lại từ đầu:
 make demo-db-reset
 ```
 
-`demo-db-reset` xoá state demo trong hai database local rồi nạp lại. Target này luôn trỏ vào PostgreSQL Docker trên `localhost`, không đọc URL staging từ shell. Cố định ngày của cửa sổ dữ liệu bằng `make demo-db AS_OF=2026-09-21`.
+Lệnh `demo-db-reset` xóa state demo hiện có trong hai database local trước khi nạp lại. Target này cố định URL vào PostgreSQL Docker `localhost:5432`, không đọc URL staging từ shell. Có thể cố định ngày cửa sổ dữ liệu bằng `make demo-db AS_OF=2026-09-23`.
+
+Sau khi seed catalog, đặt `COHERE_API_KEY` trong `.env` rồi chạy `make index-vectors`. Job khởi động Weaviate, chỉ embed search unit mới/đã đổi bằng `embed-multilingual-v3.0` và giữ vector trong volume riêng; `make demo-db-reset` không xóa volume này.
 
 Nếu máy đã có Postgres khác giữ cổng 5432, truyền cổng khác cho **mọi** target và sửa cả bốn DSN `localhost:5432` trong `.env` cho khớp:
 
@@ -57,12 +59,10 @@ make db-migrate            # áp phần còn thiếu, không xoá dữ liệu
 
 ## Vector: Cohere + Weaviate (Sẽ thay đổi trong tương lai)
 
-Vector sản phẩm không nằm trong Postgres. Job `embed-products` đọc các search unit (`is_search_unit = true`) từ database đã seed, gọi Cohere `embed-multilingual-v3.0` (1024 chiều, `input_type=search_document`), rồi ghi vào collection `Product` trên Weaviate kèm `productId`, `modelVersion`, `textHash` (`docs/prd/architecture.md` §5).
+Vector sản phẩm không nằm trong Postgres. Job `index-vectors` (`src/backend/jobs/embed_products.py`) đọc các search unit (`is_search_unit = true`) từ database đã seed, gọi Cohere `embed-multilingual-v3.0` (1024 chiều, `input_type=search_document`), rồi ghi vào collection `Product` trên Weaviate kèm `productId`, `modelVersion`, `textHash` (`docs/prd/architecture.md` §5).
 
 ```bash
-make embed-products EMBED_ARGS=--dry-run     # đếm việc cần làm, không gọi Cohere, không ghi Weaviate
-make embed-products                          # nạp phần còn thiếu hoặc đã đổi
-make embed-products EMBED_ARGS="--limit 5"   # thử nhanh 5 sản phẩm
+make index-vectors     # embed phần mới/đã đổi bằng Cohere rồi ghi lên Weaviate
 ```
 
 - Cần `COHERE_API_KEY` và `WEAVIATE_URL` trong `.env`. `WEAVIATE_API_KEY` chỉ cần khi dùng Weaviate Cloud.
@@ -85,6 +85,8 @@ make backend-local PYTHON=src/backend/.venv/bin/python
 ```
 
 Chạy local, Backend đọc `.env` ở gốc repo và kết nối PostgreSQL Docker tại `localhost:5432` bằng hai role giới hạn (`DATABASE_URL`, `CDP_DATABASE_URL`).
+Chỉ cần phần auth/contract mà không cần recsys thì có thể cài tập con:
+`pip install fastapi uvicorn pydantic pydantic-settings psycopg[binary] argon2-cffi bcrypt 'PyJWT[crypto]' redis pytest`.
 
 > Search/recommendation của Backend lúc chạy **chưa** đọc vector từ Weaviate. Hiện nó vẫn tự embed bằng `sentence-transformers` (`intfloat/multilingual-e5-base`) và cache ở `.embcache/`, nên lần cài `requirements.txt` đầu tiên sẽ kéo `torch` (khoảng 550 MB). Phần chuyển đường truy vấn sang Weaviate là việc tiếp theo.
 

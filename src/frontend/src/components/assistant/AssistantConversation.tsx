@@ -2,11 +2,13 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
-import { Loader2, Mic, MicOff, RotateCcw, Send, Square } from 'lucide-react';
+import { Check, Loader2, Mic, MicOff, RotateCcw, Send, Square } from 'lucide-react';
 import { useAssistant } from '../../context/AssistantProvider';
 import { useTravel } from '../../context/TravelContext';
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition';
+import { useAssistantCart } from '../../hooks/useAssistantCart';
 import { AssistantResultPanel } from './AssistantResultPanel';
+import { nodeLabel } from './assistantLabels';
 
 export function AssistantConversation({
   inputId,
@@ -21,6 +23,7 @@ export function AssistantConversation({
 }) {
   const { state, sendMessage, submitIntentOverride, retry, abort, resetConversation, consumeFloatingInitialMessage } = useAssistant();
   const { currentLocale, showToast } = useTravel();
+  const addItineraryToCart = useAssistantCart();
   const [input, setInput] = useState('');
   const endRef = useRef<HTMLDivElement>(null);
   const isRunning = state.phase === 'connecting' || state.phase === 'streaming';
@@ -69,7 +72,7 @@ export function AssistantConversation({
             <Image src="/mascot_welcome.webp" alt="" width={38} height={38} className="mt-0.5 h-9 w-9 shrink-0 object-contain" />
             <div className="max-w-[90%] rounded-2xl rounded-tl-sm border border-slate-100 bg-white p-4 shadow-sm">
               <p className="text-sm font-bold text-slate-800">Xin chào! Mình có thể giúp bạn lên lịch trình.</p>
-              <p className="mt-1.5 text-xs leading-relaxed text-slate-500">Hãy cho biết điểm đến, số ngày và nhu cầu của bạn. Lịch trình cùng thông tin sản phẩm sẽ được tải từ backend.</p>
+              <p className="mt-1.5 text-xs leading-relaxed text-slate-500">Hãy cho biết điểm đến, số ngày và nhu cầu của bạn. Mình sẽ tìm sản phẩm thật và xếp lịch trình theo từng ngày cho bạn.</p>
             </div>
           </div>
         )}
@@ -86,6 +89,9 @@ export function AssistantConversation({
                     showMap={false}
                     onSuggestion={sendMessage}
                     onIntentOverride={submitIntentOverride}
+                    onAddToCart={addItineraryToCart}
+                    busy={isRunning}
+                    readOnly={message.response !== state.response}
                   />
                 </div>
               )}
@@ -94,8 +100,8 @@ export function AssistantConversation({
         ))}
 
         {isRunning && <div className="ml-10 rounded-2xl border border-blue-100 bg-blue-50/80 p-3.5 text-xs text-blue-900">
-          <p className="flex items-center gap-2 font-semibold">{state.isSlow ? 'Yêu cầu đang mất nhiều thời gian hơn dự kiến…' : 'Agent đang tìm kiếm và xử lý yêu cầu…'} {!state.isSlow && <Loader2 className="h-4 w-4 animate-spin text-blue-600" />}</p>
-          {!!state.progress.length && <ol className="mt-2 space-y-1 border-l border-blue-200 pl-3 text-[11px] text-blue-800">{state.progress.map((step, index) => <li key={`${step.sequence ?? index}-${step.nodeId ?? 'node'}`}>{step.nodeId ?? 'Bước xử lý'}{step.message ? ` · ${step.message}` : ''}</li>)}</ol>}
+          <p className="flex items-center gap-2 font-semibold">{state.isSlow ? 'Yêu cầu đang mất nhiều thời gian hơn dự kiến…' : 'Trợ lý đang tìm kiếm và xếp lịch trình…'} {!state.isSlow && <Loader2 className="h-4 w-4 animate-spin text-blue-600" />}</p>
+          {!!state.progress.length && <ol aria-label="Tiến trình xử lý" className="mt-2 space-y-1 text-[11px] text-blue-800">{state.progress.map((step, index) => <li key={`${step.sequence ?? index}-${step.nodeId ?? 'node'}`} className="flex items-center gap-1.5"><Check className="h-3 w-3 shrink-0 text-emerald-600" aria-hidden="true" /><span>{nodeLabel(step.nodeId)}</span>{step.durationMs != null && <span className="text-blue-500">· {(step.durationMs / 1000).toFixed(1)} giây</span>}</li>)}</ol>}
         </div>}
 
         {state.error && <div role="alert" className="ml-10 rounded-2xl border border-rose-200 bg-rose-50 p-3.5 text-xs text-rose-800">
@@ -122,7 +128,7 @@ export function AssistantConversation({
           </div>
         </form>
         <div className="mt-2 flex items-center justify-between px-1 text-[10px] text-slate-400">
-          <span>{state.conversationId ? 'Đang tiếp tục phiên của tab này' : 'Phiên backend mới'}</span>
+          <span>{state.conversationId ? 'Đang tiếp tục phiên của tab này' : 'Cuộc trò chuyện mới'}</span>
           <button type="button" onClick={resetConversation} className="inline-flex items-center gap-1 font-medium transition hover:text-slate-700"><RotateCcw className="h-3 w-3" /> Cuộc trò chuyện mới</button>
         </div>
       </div>

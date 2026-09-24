@@ -53,7 +53,7 @@ def render(products_path: Path, as_of: date, seed: int, counts: dict[str, int]) 
         "",
         f"- Nguồn catalog: `{source}` — SHA-256 `{sha256(products_path)}`.",
         f"- Seed `{seed}`: {counts['products']:,} products · {counts['profiles']:,} profiles · {counts['events']:,} events · {counts['combo_items']:,} combo items.",
-        f"- Search units: {counts['search_units']:,}; vector không nằm trong Postgres — nạp lên Weaviate bằng `make embed-products`.",
+        f"- Search units: {counts['search_units']:,}; vector nằm ngoài PostgreSQL và được index sang Weaviate bằng `make index-vectors`.",
         f"- Insider clone: {counts['insider_profiles']:,} profiles · {counts['insider_events']:,} events · {counts['channel_events']:,} channel events.",
         "- Purchase thiếu `event_group_id` là edge case được sinh có chủ đích khoảng 3%; không xoá purchase.",
         END,

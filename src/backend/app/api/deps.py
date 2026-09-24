@@ -132,3 +132,6 @@ def client_ip(request: Request, settings: Settings = Depends(get_settings)) -> s
         if not any(addr in net for net in networks):
             return hop
     return peer
+def get_index(request: Request) -> Any:
+    """None khi recsys bị tắt lúc khởi động; route catalog trả danh sách rỗng thay vì 500."""
+    return getattr(request.app.state, "index", None)

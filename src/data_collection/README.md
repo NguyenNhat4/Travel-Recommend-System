@@ -6,6 +6,8 @@ Khi thêm collector, phải mô tả nguồn của từng field và cách chạy
 
 **Chạy mọi lệnh trong thư mục này** (`src/data_collection`). Dữ liệu sinh ra nằm ở `data/` và không vào git;
 tài liệu schema cho các đội khác ở `docs/spec/data-collection/schema.md`, bộ mẫu 50 sản phẩm chạy thử ở `sample/`.
+Catalog/DB giữ 13 trường; bộ mẫu là projection `ProductSummary` cho API nên thêm `priceUnit=UNKNOWN`
+khi catalog chưa có bằng chứng về đơn vị giá.
 
 ## Dựng database demo từ snapshot
 
@@ -15,9 +17,9 @@ Từ repository root, sau khi kích hoạt môi trường Python và cài requir
 make demo-db
 ```
 
-Lệnh này chạy PostgreSQL bằng Docker, kiểm tra checksum rồi bung snapshot 10.320 sản phẩm vào `data/snapshots/2026-09-21/`, sinh dữ liệu CDP/app/Insider và chạy `db/verify*.sql`. Snapshot nén cùng 64 mapping combo đã duyệt nằm trong `snapshots/2026-09-21/`; Docker volume và toàn bộ dữ liệu đã bung vẫn chỉ ở local.
+Lệnh này chạy PostgreSQL bằng Docker, kiểm tra checksum rồi bung snapshot 11.387 sản phẩm vào `data/snapshots/2026-09-23/`, sinh dữ liệu CDP/app/Insider và chạy `db/verify*.sql`. Snapshot nén cùng 64 mapping combo đã duyệt nằm trong `snapshots/2026-09-23/`; Docker volume và toàn bộ dữ liệu đã bung vẫn chỉ ở local.
 
-Nếu database local đã có dữ liệu và cần dựng lại, dùng `make demo-db-reset`. Lệnh reset sẽ xóa state demo hiện tại trước khi nạp lại; có thể truyền ngày cố định, ví dụ `make demo-db-reset AS_OF=2026-09-21`.
+Nếu database local đã có dữ liệu và cần dựng lại, dùng `make demo-db-reset`. Lệnh reset sẽ xóa state demo hiện tại trước khi nạp lại; có thể truyền ngày cố định, ví dụ `make demo-db-reset AS_OF=2026-09-23`.
 
 ---
 
@@ -42,11 +44,112 @@ trên 15 điểm đến Việt Nam, mô tả tiếng Việt, xuất theo schema 
 Cần Python 3.10 trở lên (đã chạy thử trên 3.10 và 3.14).
 
 ```bash
-cd data-collection
+cd src/data_collection
 conda activate vsf                  # hoặc: python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 playwright install chromium         # Linux thiếu thư viện hệ thống: playwright install --with-deps chromium
 ```
+
+## Source of truth và automation
+
+`src/data_collection` là source chính duy nhất cho collector, chuẩn hoá, catalog và job nạp DB. Repository standalone cũ chỉ còn là backup/tham chiếu; không chạy hoặc phát triển pipeline từ đó nữa. Raw response, cache trình duyệt, crawl state, log, staging và backup runtime đều ở `data/` (Git ignore), không nằm trong snapshot.
+
+Catalog baseline được giữ ở hai dạng:
+
+- `data/products.jsonl`: bản runtime 11.387 sản phẩm để chạy ngay tại máy hiện tại, không track bởi Git.
+- `snapshots/2026-09-23/products.jsonl.gz`: bản nén có manifest/checksum được track, để clone sạch có cùng catalog.
+
+Pipeline tự động có thể phát lại cache, lấy live/API, chuẩn hoá, parse combo và chuẩn bị/nạp PostgreSQL bằng code `seed/` hiện hành:
+
+```bash
+python pipeline_demo.py run --no-db
+python pipeline_demo.py run --live-vinpearl --calendar-days 30 --live-trip --no-db
+python pipeline_demo.py fetch apify-agoda --max-usd 2
+python pipeline_demo.py auto --only-api
+python monitor.py                       # http://127.0.0.1:8765/pipeline
+```
+
+Muốn kiểm thử bước DB, từ repository root chạy `docker compose up -d --wait postgres`, rồi chạy `pipeline_demo.py run` (mặc định `localhost:5432/vota_demo`). Guardrail chỉ cho phép host local và tên database `vota_demo*`; job không chạm database ứng dụng `vota` hoặc `insider`. Token API chỉ đặt trong `.env` local theo `.env.example`, không commit.
+
+## Job hằng ngày trên VPS (console, không trình duyệt)
+
+`daily.py` chạy các nguồn HTTP song song theo site (Vinpearl: khách sạn + lịch 30 ngày, vé/tour, combo bay + ở; trip.com:
+vé máy bay + điểm tham quan; agoda.com qua API: tối đa 50 khách sạn mỗi điểm đến, hạng phòng + giá từng ngày; phạm vi 38 điểm
+đến `@v1`), chuẩn hoá lại toàn bộ catalog từ `data/interim/`, giữ dòng không thấy
+(quá 7 ngày thì `available=false`, không xoá), chặn nếu số lượng/độ phủ tụt, promote thành một **data version**, rồi nạp
+`seed --catalog-only` vào Postgres local/cloud và embed vào Weaviate. Nguồn cần trình duyệt (booking.com, trip.com khách sạn)
+không chạy ở đây; bản ghi cũ của chúng trong interim vẫn được giữ.
+
+Chuẩn bị một lần trên VPS:
+
+```bash
+conda activate vsf                        # hoặc Python ≥ 3.10 + pip install -r requirements.txt
+cp -r <interim nền>/*.jsonl data/interim/  # 49 MB interim của lần cào trước; không commit (dữ liệu nội bộ)
+cp snapshots/2026-09-23/combo_items_manual.jsonl data/
+cp .env.example .env                      # điền các biến ở khối "Job hằng ngày", không commit
+```
+
+| Biến trong `.env` | Dùng cho |
+|---|---|
+| `DAILY_LOAD` | `local`, `cloud` hoặc `local,cloud`: nạp sau mỗi lần promote |
+| `SEED_DATABASE_URL`, `DATABASE_URL`, `WEAVIATE_URL` | đích `local` (Postgres Docker + Weaviate local) |
+| `CLOUD_SEED_DATABASE_URL` | đích `cloud`: `postgresql://<user>:<mật khẩu mã hoá URL>@127.0.0.1:15432/vota` qua SSH tunnel |
+| `CLOUD_WEAVIATE_URL`, `CLOUD_WEAVIATE_API_KEY` | Weaviate Cloud (`https://<cluster>.weaviate.cloud`) |
+| `COHERE_API_KEY` | embed, dùng chung mọi đích |
+| `DAILY_DESTINATIONS` | phạm vi điểm đến, mặc định `@v1` (38 điểm, `collectors/plan.py`) |
+| `DAILY_AGODA_PER_CITY`, `DAILY_AGODA_HOURS` | số khách sạn Agoda tối đa mỗi điểm đến (50), số giờ Agoda chạy mỗi ngày (14, hết giờ thì dừng êm) |
+
+Máy chạy job cùng mạng nội bộ (VPC) với VM Postgres staging thì `CLOUD_SEED_DATABASE_URL` trỏ thẳng IP nội bộ của VM DB, không
+cần tunnel. Máy ngoài VPC thì người vận hành tự mở SSH tunnel (nên dùng SSH key, vd. `autossh -M 0 -N -L 127.0.0.1:15432:<host DB>:5432 <user>@<vps>`); job chỉ đọc chuỗi kết nối trong `.env`.
+
+```bash
+python daily.py run --load local,cloud      # một lượt đầy đủ; cron: 0 2 * * * .../cron_daily.sh
+python daily.py publish --load local        # chỉ chuẩn hoá + promote + nạp từ interim hiện có
+python daily.py status | versions           # lượt gần nhất · danh sách version
+python daily.py diff 2026-09-24 2026-09-25  # khác biệt giữa hai version
+python daily.py switch 2026-09-24 --load cloud   # quay lại version cũ; dòng không có trong version đó → available=false
+python daily.py freeze 2026-09-24 v1        # gắn nhãn, chép thành snapshots/2026-09-24/ để commit
+python monitor.py                           # UI: http://127.0.0.1:8765/daily (trên VPS: ssh -L 8765:127.0.0.1:8765 <vps>)
+```
+
+Trang `/daily` hiển thị luồng của từng lượt (cào → chuẩn hoá → giữ dòng → gate → promote → nạp), log, phễu số dòng qua từng
+bước, bảng version (switch, đóng băng, so sánh) và tra một sản phẩm qua raw → interim → chuẩn hoá → catalog → dòng nạp DB.
+Mã thoát `daily.py`: 0 ổn · 1 gate chặn / lỗi · 2 có worker lỗi hoặc bị chặn · 3 promote xong nhưng nạp DB/embed lỗi.
+
+### Chạy bằng Docker trên VPS (bàn giao team deploy)
+
+Image `Dockerfile.daily` (repository root) gói `src/data_collection` + phần backend mà bước embed cần, Python 3.11, không
+trình duyệt, không chứa `data/`, `.env` hay secret. Dữ liệu làm việc nằm trên ổ VPS (`DATA_DIR`, mount vào `/data`) nên giữ
+nguyên giữa các lượt; kết nối DB/Weaviate/Cohere nằm trong `ENV_FILE`. Mọi thao tác đi qua một script:
+`run_daily_docker.sh` (`init` · `run` · `daily <lệnh>` · `monitor`).
+
+```bash
+# Build + push (máy có repo, từ repository root; <AR> = asia-southeast1-docker.pkg.dev/<project>/<repository>)
+docker build -f Dockerfile.daily -t <AR>/vota-daily:<tag> .
+docker push <AR>/vota-daily:<tag>
+
+# Một lần trên VPS (user sẽ chạy cron, có quyền docker)
+export IMAGE=<AR>/vota-daily:<tag>          # hoặc đặt trong crontab; mặc định vota-daily:latest
+sudo install -d -o "$USER" /srv/vota/daily-data                 # DATA_DIR mặc định
+sudo install -D -m 600 -o "$USER" /dev/null /etc/vota/daily.env    # ENV_FILE mặc định: điền khối "Job hằng ngày" của .env.example
+./run_daily_docker.sh init <thư mục interim nền> [<thư mục raw>]  # interim 49 MB của lần cào trước (dữ liệu nội bộ, không commit)
+
+# Hằng ngày (crontab của user đó)
+0 2 * * * IMAGE=<AR>/vota-daily:<tag> /đường/dẫn/src/data_collection/run_daily_docker.sh run
+
+# Thao tác tay, cùng ổ dữ liệu và ENV_FILE
+./run_daily_docker.sh daily status          # hoặc versions · diff <cũ> <mới> · accept <lượt> · switch <version> --load cloud
+./run_daily_docker.sh monitor               # trang /daily ở 127.0.0.1:8765 của VPS: ssh -L 8765:127.0.0.1:8765 <vps>
+```
+
+- `init` không đè interim đã có trên VPS và tự chép `combo_items_manual.jsonl` từ snapshot trong image vào `DATA_DIR`
+  (`seed --catalog-only` đọc file này; thiếu thì 64 mapping combo duyệt tay bị bỏ qua mà không báo lỗi).
+- `run`: log mỗi lượt ở `DATA_DIR/logs/daily-*.log` (giữ 30 ngày), lượt lỗi ghi thêm một dòng vào `daily-errors.log`; container
+  lượt trước còn chạy thì lượt mới bỏ qua; mỗi lượt kéo lại `IMAGE` trước (`PULL=0` để tắt); `MAX_HOURS` mặc định 16.
+- Container chạy bằng uid:gid của chủ `DATA_DIR`, nên file ghi ra vẫn thuộc người vận hành.
+- VPS cần ra được internet (cào) và tới được Postgres + Weaviate staging. Postgres chạy bằng Docker trên cùng VM thì đặt
+  `DOCKER_NETWORK=<mạng docker của Postgres>` và dùng tên container làm host trong `CLOUD_SEED_DATABASE_URL`.
+- `freeze` vẫn làm ở máy có repo (ghi `snapshots/<version>/` để commit), không làm trong container.
 
 ## Chạy
 
@@ -124,6 +227,7 @@ khoảng **3.000–3.500 sản phẩm**.
 | **trip.com, điểm tham quan** | `/travel-guide/attraction/<city>/tourist-attractions/` → trang điểm (`__NEXT_DATA__`) | không | giới thiệu, địa chỉ, toạ độ, **giờ mở cửa**, **thời lượng đề xuất**, giá vé, điểm, loại hình |
 | **booking.com, khách sạn** | trang tìm kiếm theo điểm đến (`order=popularity`) + sitemap lọc thương hiệu Vinpearl → trang khách sạn kèm ngày | có | mô tả tiếng Việt, toạ độ, sao, điểm, tiện nghi, hạng phòng + giá + điều kiện |
 | **agoda.com, khách sạn** | trang thành phố → trang khách sạn kèm ngày | có | mô tả tiếng Việt, toạ độ, sao, điểm, tiện nghi, giá rẻ nhất |
+| **agoda.com qua API** (`crawl.py agoda-api`) | sitemap → trang khách sạn (lấy `hotel_id`) → `/api/cronos/property/BelowFoldParams/GetSecondaryData` từng ngày nhận phòng; tiến độ ở `data/state/agoda_api.sqlite` | không | mô tả tiếng Anh, toạ độ, sao, điểm, tiện nghi, ảnh; từng hạng phòng: diện tích, giường, sức chứa, giá rẻ nhất mỗi ngày (USD gồm thuế phí → VND) |
 | booking.com, attraction *(nguồn phụ, ngoài kế hoạch)* | sitemap → trang attraction | có | mô tả (đa phần tiếng Anh), thời lượng, bao gồm, điểm khởi hành, giá |
 
 Robots.txt được tôn trọng. Riêng trip.com cấm các trang tìm chuyến bay (`showfarefirst`, `/*-to-*/tickets-*`,
@@ -170,7 +274,7 @@ flowchart LR
 
 ## Dữ liệu nằm ở đâu
 
-Mặc định trong `data-collection/data/` (đổi bằng `--data-dir` hoặc `VOTA_DATA_DIR`):
+Mặc định trong `src/data_collection/data/` (đổi bằng `--data-dir` hoặc `VOTA_DATA_DIR`):
 
 | Đường dẫn | Chứa gì |
 |---|---|
@@ -189,10 +293,11 @@ Parser sai thì sửa code rồi chạy `python crawl.py reparse <nguồn>`: par
 
 ## Schema đầu ra
 
-Mỗi dòng `products.jsonl` có đúng 14 trường: 13 trường của §6 cộng `priceUnit` — field bắt buộc của
-`ProductSummary` trong contract chung, được suy ra từ `taxonomy` chứ không do nguồn cung cấp
-(xem [schema.md](../../docs/spec/data-collection/schema.md#bốn-chỗ-dễ-hiểu-sai)). Mọi trường khác nằm trong `attributes`,
-để không tự thêm field mà CDP thật không có.
+Mỗi dòng `products.jsonl` có đúng 13 trường của §6/CDP (xem
+[schema.md](../../docs/spec/data-collection/schema.md#bốn-chỗ-dễ-hiểu-sai)). `priceUnit` là field bắt buộc của
+`ProductSummary` ở API, nhưng không phải cột của `cdp.products`; lớp API phải chiếu field này và dùng
+`UNKNOWN` khi nguồn catalog chưa cung cấp đơn vị, đúng contract baseline. Pipeline không tự suy đơn vị
+từ taxonomy. Mọi thông tin nguồn khác nằm trong `attributes`, để không tự thêm field mà CDP thật không có.
 
 ```json
 {
@@ -239,7 +344,7 @@ Mỗi dòng `products.jsonl` có đúng 14 trường: 13 trường của §6 c�
 | `name` | Vinpearl → booking → agoda | ghép từ tên thành phố | Vinpearl → trip.com |
 | `description` | Vinpearl → booking (nếu tiếng Việt) → agoda | tự sinh từ dữ liệu chuyến bay | Vinpearl → trip.com (giới thiệu) |
 | `destination` | `geo.py`: tên Vinpearl / thành phố / địa chỉ, tên cụ thể thắng tên tỉnh | thành phố đến | quận/huyện → địa chỉ → tỉnh |
-| `unitPrice` | **booking.com → agoda.com → Vinpearl**; phòng Vinpearl khớp tên với phòng booking.com thì lấy giá booking | giá một chiều rẻ nhất | **trip.com → Vinpearl** |
+| `unitPrice` | **nguồn có giá mới nhất**, cùng ngày thì booking.com → agoda.com → Vinpearl; phòng Vinpearl khớp tên với phòng booking.com thì lấy giá booking nếu không cũ hơn; khách sạn có ở cả booking và agoda (API) thì hạng phòng lấy bên mới hơn | giá một chiều rẻ nhất | **trip.com → Vinpearl** |
 | `available` | có giá cho ngày đã hỏi | có chuyến có giá | có giá vé (điểm công cộng không bán vé → `false`, `attributes.ticketed=false`) |
 | `availableFrom/To` | – | ngày bay sớm nhất / muộn nhất thấy được | thời gian bán của vé Vinpearl |
 | toạ độ (`latitude`, `longitude`) | nguồn chính; nghi sai hoặc thiếu thì nguồn khác | sân bay đến | vé Vinpearl: địa điểm dùng vé (`venues.csv`), rồi trip.com; điểm tham quan: trip.com |
@@ -388,10 +493,10 @@ Catalog runtime đặt tại `src/data_collection/data/products.jsonl`; thư m�
 ```bash
 export SEED_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/vota
 export INSIDER_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/insider
-python -m data_collection.seed --as-of 2026-09-21 --seed 42 --reset
+python -m data_collection.seed --as-of 2026-09-23 --seed 42 --reset
 ```
 
-Pipeline parse combo, chuẩn hoá cửa sổ đặt chỗ, sinh lịch sử CDP/app/Insider rồi nạp hai database bằng transaction. Nó không tạo embedding: vector nằm ở Weaviate và được nạp riêng bằng `make embed-products`. `purchase` thiếu `event_group_id` khoảng 3% là edge case cố ý và vẫn được giữ lại.
+Pipeline parse combo, chuẩn hoá cửa sổ đặt chỗ, sinh lịch sử CDP/app/Insider rồi nạp hai database bằng transaction. Vector không nằm trong PostgreSQL; sau khi seed, chạy `make index-vectors` ở repository root để chỉ embed text mới/đã đổi và đồng bộ collection `Product` của Weaviate. `purchase` thiếu `event_group_id` khoảng 3% là edge case cố ý và vẫn được giữ lại.
 
 Chạy kiểm tra từ repository root:
 
@@ -461,9 +566,9 @@ nghỉ và chạy tiếp khi bị chặn (mã thoát 75).
 <!-- seed-report:start -->
 ### Snapshot seed gần nhất — `2026-09-23`
 
-- Nguồn catalog: `src/data_collection/data/snapshots/2026-09-21/products.jsonl` — SHA-256 `89f452e46eec24ae0fe50769037bc84dbb2609dd9c193a49336108f072acbb18`.
-- Seed `42`: 10,320 products · 2,000 profiles · 7,131 events · 218 combo items.
-- Search units: 2,897; vector không nằm trong Postgres — nạp lên Weaviate bằng `make embed-products`.
-- Insider clone: 2,000 profiles · 4,155 events · 19,517 channel events.
+- Nguồn catalog: `src/data_collection/data/snapshots/2026-09-23/products.jsonl` — SHA-256 `518a9aa7820c9ded4a02a2c9148af2ffa4103272071c84b6e0235f4ee251d862`.
+- Seed `42`: 11,387 products · 2,000 profiles · 7,145 events · 307 combo items.
+- Search units: 3,183; vector được index sang collection `Product` của Weaviate bằng pipeline Recommendation riêng.
+- Insider clone: 2,000 profiles · 4,167 events · 19,522 channel events.
 - Purchase thiếu `event_group_id` là edge case được sinh có chủ đích khoảng 3%; không xoá purchase.
 <!-- seed-report:end -->
