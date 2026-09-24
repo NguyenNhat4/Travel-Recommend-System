@@ -461,11 +461,12 @@ def gold_drafts(c: typer.Context,
     from collections import Counter
 
     from . import paths
-    from .gold import (GoldError, read_draft_cases, render_drafts_report, resolve_decisions, select_drafts,
-                       write_drafts)
+    from .gold import (GoldError, apply_overrides, read_draft_cases, read_overrides, render_drafts_report,
+                       resolve_decisions, select_drafts, write_drafts)
     from .labeling import JsonlLabelStore
     ctx = _ctx(c)
     cfg = ctx.cfg()
+    overrides_p = paths.GOLD_DIR / "overrides.tsv"
     labels_p = labels or paths.sbench_home() / "labels" / "labels.jsonl"
     raw_p = raw or paths.GOLD_DIR / "drafts_raw.tsv"
     out_p = out or paths.GOLD_DIR / "drafts.txt"
@@ -475,10 +476,15 @@ def gold_drafts(c: typer.Context,
     try:
         cases = read_draft_cases(raw_p)
         decisions, conflicts = resolve_decisions(JsonlLabelStore(labels_p).load_events())
+        overrides = read_overrides(overrides_p, {r["case_id"] for r in cases})
+        decisions, conflicts = apply_overrides(decisions, conflicts, overrides)
         rows, report = select_drafts(cases, decisions, dict(cfg.gold.slices), fill=fill, fill_guard=guard)
     except GoldError as e:
         _fail(str(e), 2)
     typer.echo(render_drafts_report(report))
+    if overrides:
+        typer.secho(f"  ghi đè từ {overrides_p.name}: {len(overrides)} case "
+                    f"({dict(Counter(o['verdict'] for o in overrides.values()))})", fg=typer.colors.CYAN)
     if report["filled"]:
         typer.secho(f"  --fill: lấp {len(report['filled'])} ý định (nguồn: "
                     f"{dict(Counter(f['kind'].split(' (')[0] for f in report['filled']))})", fg=typer.colors.CYAN)

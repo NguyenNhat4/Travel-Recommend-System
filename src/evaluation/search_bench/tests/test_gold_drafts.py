@@ -164,3 +164,50 @@ def test_fill_chi_khu_trung_theo_review_note_o_slice_co_khoa(tmp_path):
     assert "c0004" not in got                                  # dest_type: cùng khoá hotel:Huế → chặn
     assert got == ["c0001", "c0007", "c0010"]                  # multi_constraint: khác điểm đến → vẫn lấy
     assert any(s["case_id"] == "c0004" and "trùng khoá" in s["why"] for s in report["skipped_fill"])
+
+
+def _overrides(tmp_path, *lines: str):
+    p = tmp_path / "overrides.tsv"
+    p.write_text("\n".join(["case_id\tverdict\tedited_query\treason\tnote", *lines]) + "\n", encoding="utf-8")
+    return p
+
+
+def test_override_keep_mo_lai_y_dinh_da_loai(tmp_path, raw_tsv):
+    from evaluation.search_bench.gold import apply_overrides, read_overrides
+
+    cases = read_draft_cases(raw_tsv)
+    events = [_event(f"c{n:04d}", "qanh", "REJECT", at="2026-09-24T01:00:00+00:00", reason="fabricated_entity")
+              for n in (1, 2, 3)]
+    decisions, conflicts = resolve_decisions(events)
+    ov = read_overrides(_overrides(tmp_path, "c0001\tKEEP\t\t\tthực thể có thật"), {r["case_id"] for r in cases})
+    decisions, conflicts = apply_overrides(decisions, conflicts, ov)
+    rows, _ = select_drafts(cases, decisions, QUOTA)
+    assert [r["case_id"] for r in rows] == ["c0001"]
+    assert rows[0]["annotator"] == "override"
+
+
+def test_override_thang_ca_bat_dong(tmp_path, raw_tsv):
+    from evaluation.search_bench.gold import apply_overrides, read_overrides
+
+    cases = read_draft_cases(raw_tsv)
+    events = [_event("c0001", "khoi", "KEEP", at="2026-09-24T01:00:00+00:00"),
+              _event("c0001", "qanh", "REJECT", at="2026-09-24T02:00:00+00:00", reason="unnatural")]
+    decisions, conflicts = resolve_decisions(events)
+    assert conflicts == ["c0001"]
+    ov = read_overrides(_overrides(tmp_path, "c0001\tREJECT\t\tbad_grounding\tđiểm đến đã hết sản phẩm"),
+                        {r["case_id"] for r in cases})
+    decisions, conflicts = apply_overrides(decisions, conflicts, ov)
+    assert conflicts == [] and decisions["c0001"]["verdict"] == "REJECT"
+
+
+@pytest.mark.parametrize("line, msg", [
+    ("c9999\tKEEP\t\t\tghi chú", "không có trong drafts_raw"),
+    ("c0001\tMAYBE\t\t\tghi chú", "verdict phải thuộc"),
+    ("c0001\tNEEDS_EDIT\t\t\tghi chú", "edited_query"),
+    ("c0001\tKEEP\t\t\t", "cần ghi note"),
+])
+def test_override_tu_choi_dong_sai(tmp_path, raw_tsv, line, msg):
+    from evaluation.search_bench.gold import read_overrides
+
+    with pytest.raises(GoldError, match=msg):
+        read_overrides(_overrides(tmp_path, line), {r["case_id"] for r in read_draft_cases(raw_tsv)})

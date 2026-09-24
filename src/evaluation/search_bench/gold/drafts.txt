@@ -100,9 +100,14 @@ Meliá Vinpearl Hai Phong Rivera	named_entity
 tìm Vinpearl Resort & Golf Nam Hội An	named_entity
 thông tin Vinpearl Resort & Golf Nam Hội An - Deluxe Giường Đôi	named_entity
 tìm Vinpearl Resort & Golf Nam Hội An - Deluxe 2 Giường Đơn	named_entity
+Công Viên 30/4	named_entity
 Thác Đray Nur	named_entity
 thông tin Lò Kẹo Dừa Thiên Ái	named_entity
+Sông Bằng	named_entity
+Núi Sam	named_entity
 Bus Ha Noi to Cat Ba	named_entity
+tiNiWorld	named_entity
+Chợ nổi Cái Răng	named_entity
 thông tin Nhà cổ Bình Thủy	named_entity
 Sea Links Golf & Country Club	named_entity
 thông tin Gói dịch vụ VIP Tour VinWonders Phú Quốc (3 tiếng)	named_entity

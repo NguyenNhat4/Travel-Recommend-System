@@ -1,0 +1,6 @@
+case_id	verdict	edited_query	reason	note
+c0340	KEEP			mở lại 24/09 theo chốt người dùng: thực thể có thật — search unit 6f8afb28 'Công Viên 30/4' (attraction, Biên Hòa), ref còn sống; REJECT cũ mang mã fabricated_entity/other trong khi selectbox mặc định là fabricated_entity
+c0349	KEEP			mở lại 24/09 theo chốt người dùng: thực thể có thật — search unit fea7ce28 'Sông Bằng' (attraction, Cao Bằng), ref còn sống; REJECT cũ mang mã fabricated_entity/other trong khi selectbox mặc định là fabricated_entity
+c0352	KEEP			mở lại 24/09 theo chốt người dùng: thực thể có thật — search unit 7d7a2dd6 'Núi Sam' (attraction, Châu Đốc), ref còn sống; REJECT cũ mang mã fabricated_entity/other trong khi selectbox mặc định là fabricated_entity
+c0358	KEEP			mở lại 24/09 theo chốt người dùng: thực thể có thật — search unit c9005b53 'tiNiWorld' (attraction, Cần Thơ), ref còn sống; REJECT cũ mang mã fabricated_entity/other trong khi selectbox mặc định là fabricated_entity
+c0361	KEEP			mở lại 24/09 theo chốt người dùng: thực thể có thật — search unit 6864d508 'Chợ nổi Cái Răng' (attraction, Cần Thơ), ref còn sống; REJECT cũ mang mã fabricated_entity/other trong khi selectbox mặc định là fabricated_entity

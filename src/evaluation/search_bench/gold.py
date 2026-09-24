@@ -354,3 +354,44 @@ def render_drafts_report(report: dict) -> str:
     lines.append(f"| {'TỔNG':22} | {report['selected']:>5} | {report['target']:>5} | {'':>9} | "
                  f"{report['target'] - report['selected']:>5} | {report['ungraded_total']:>8} |")
     return "\n".join(lines)
+
+
+OVERRIDE_COLUMNS = ("case_id", "verdict", "edited_query", "reason", "note")
+OVERRIDE_VERDICTS = ("KEEP", "REJECT", "NEEDS_EDIT")
+
+
+def read_overrides(path: Path, case_ids: set[str]) -> dict[str, dict]:
+    """`gold/overrides.tsv`: quyết định ghi đè nhãn của app, có commit để truy được ai mở lại cái gì, vì sao.
+
+    Dùng khi người dùng chốt sửa một quyết định mà không muốn ghi event giả mạo tên annotator vào kho nhãn.
+    """
+    import csv as _csv
+
+    if not path.exists():
+        return {}
+    with path.open(encoding="utf-8-sig", newline="") as fh:
+        rows = [r for r in _csv.DictReader(fh, delimiter="\t") if (r.get("case_id") or "").strip()]
+    out: dict[str, dict] = {}
+    for i, r in enumerate(rows, 2):
+        cid, verdict = r["case_id"].strip(), (r.get("verdict") or "").strip().upper()
+        if cid not in case_ids:
+            raise GoldError(f"{path.name}:{i}: case {cid} không có trong drafts_raw.tsv")
+        if verdict not in OVERRIDE_VERDICTS:
+            raise GoldError(f"{path.name}:{i}: verdict phải thuộc {OVERRIDE_VERDICTS}, gặp {verdict!r}")
+        edited = (r.get("edited_query") or "").strip()
+        if (verdict == "NEEDS_EDIT") != bool(edited):
+            raise GoldError(f"{path.name}:{i}: edited_query chỉ có và bắt buộc có khi verdict = NEEDS_EDIT")
+        if not (r.get("note") or "").strip():
+            raise GoldError(f"{path.name}:{i}: cần ghi note lý do ghi đè")
+        if cid in out:
+            raise GoldError(f"{path.name}:{i}: case {cid} ghi đè hai lần")
+        out[cid] = {"verdict": verdict, "edited_query": edited, "rejection_reason": (r.get("reason") or "").strip(),
+                    "annotator": "override", "note": r["note"].strip()}
+    return out
+
+
+def apply_overrides(decisions: dict[str, dict], conflicts: list[str],
+                    overrides: dict[str, dict]) -> tuple[dict[str, dict], list[str]]:
+    """Ghi đè thắng mọi nhãn của app cho case đó, kể cả khi các annotator đang bất đồng."""
+    merged = {**decisions, **overrides}
+    return merged, [c for c in conflicts if c not in overrides]
