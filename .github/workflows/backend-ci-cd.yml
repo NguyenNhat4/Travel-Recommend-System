@@ -1,0 +1,240 @@
+name: Backend CI/CD
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/backend-ci-cd.yml'
+      - 'Dockerfile.backend'
+      - 'Dockerfile.daily'
+      - 'src/backend/**'
+      - 'src/data_collection/**'
+      - 'src/shared/contracts/**'
+      - 'scripts/**'
+  push:
+    branches:
+      - dev
+    paths:
+      - '.github/workflows/backend-ci-cd.yml'
+      - 'Dockerfile.backend'
+      - 'Dockerfile.daily'
+      - 'src/backend/**'
+      - 'src/data_collection/**'
+      - 'src/shared/contracts/**'
+      - 'scripts/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  quality:
+    name: CI checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: src/backend/requirements.txt
+
+      - name: Install backend test dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r src/backend/requirements.txt
+
+      - name: Validate contract
+        run: PYTHONDONTWRITEBYTECODE=1 python3 src/shared/contracts/tests/validate_contract.py
+
+      - name: Compile Python
+        run: PYTHONDONTWRITEBYTECODE=1 python3 -m compileall -q src/backend src/data_collection
+
+      - name: Run backend tests
+        run: PYTHONDONTWRITEBYTECODE=1 python3 -m pytest -q src/backend/tests
+
+      - name: Run deployment script tests
+        run: |
+          bash scripts/tests/test-install-vota-cron.sh
+          bash scripts/tests/test-deploy-backend-vm.sh
+          bash scripts/tests/test-backend-ci-cd-config.sh
+          bash -n scripts/*.sh scripts/tests/*.sh
+
+  build:
+    name: Build images
+    needs: quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.backend
+          push: false
+          tags: vota-backend-ci:${{ github.sha }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      - name: Build crawler image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.daily
+          push: false
+          tags: vota-daily-ci:${{ github.sha }}
+          cache-from: type=gha,scope=crawler
+          cache-to: type=gha,mode=max,scope=crawler
+
+  publish:
+    name: Publish immutable images
+    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+    needs: build
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      BACKEND_IMAGE: ${{ vars.GAR_BACKEND_IMAGE }}
+      CRAWLER_IMAGE: ${{ vars.GAR_DAILY_IMAGE }}
+    outputs:
+      backend_digest: ${{ steps.backend.outputs.digest }}
+      crawler_digest: ${{ steps.crawler.outputs.digest }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate publishing configuration
+        env:
+          GCP_WIF_PROVIDER: ${{ vars.GCP_WIF_PROVIDER }}
+          GCP_CI_SERVICE_ACCOUNT: ${{ vars.GCP_CI_SERVICE_ACCOUNT }}
+          BACKEND_IMAGE: ${{ vars.GAR_BACKEND_IMAGE }}
+          CRAWLER_IMAGE: ${{ vars.GAR_DAILY_IMAGE }}
+        run: |
+          for name in GCP_WIF_PROVIDER GCP_CI_SERVICE_ACCOUNT BACKEND_IMAGE CRAWLER_IMAGE; do
+            if [ -z "${!name:-}" ]; then
+              echo "Missing repository variable: $name" >&2
+              exit 1
+            fi
+          done
+          case "$BACKEND_IMAGE" in *:*) echo 'GAR_BACKEND_IMAGE must not include a tag.' >&2; exit 1 ;; esac
+          case "$CRAWLER_IMAGE" in *:*) echo 'GAR_DAILY_IMAGE must not include a tag.' >&2; exit 1 ;; esac
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_CI_SERVICE_ACCOUNT }}
+          token_format: access_token
+
+      - name: Log in to Artifact Registry
+        uses: docker/login-action@v3
+        with:
+          registry: asia-southeast1-docker.pkg.dev
+          username: oauth2accesstoken
+          password: ${{ steps.auth.outputs.access_token }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Publish Backend image
+        id: backend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.backend
+          push: true
+          tags: |
+            ${{ env.BACKEND_IMAGE }}:${{ github.sha }}
+            ${{ env.BACKEND_IMAGE }}:latest
+          cache-from: type=gha,scope=backend-publish
+          cache-to: type=gha,mode=max,scope=backend-publish
+
+      - name: Publish crawler image
+        id: crawler
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.daily
+          push: true
+          tags: |
+            ${{ env.CRAWLER_IMAGE }}:${{ github.sha }}
+            ${{ env.CRAWLER_IMAGE }}:latest
+          cache-from: type=gha,scope=crawler-publish
+          cache-to: type=gha,mode=max,scope=crawler-publish
+
+  deploy:
+    name: Deploy application VM in place
+    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: staging
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate VM configuration
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCE_INSTANCE: ${{ vars.GCE_INSTANCE }}
+          GCE_ZONE: ${{ vars.GCE_ZONE }}
+          GCE_DEPLOY_USER: ${{ vars.GCE_DEPLOY_USER }}
+          GCE_COMPOSE_FILE: ${{ vars.GCE_COMPOSE_FILE }}
+          GCE_BACKEND_HEALTH_URL: ${{ vars.GCE_BACKEND_HEALTH_URL }}
+        run: |
+          for name in GCP_PROJECT_ID GCE_INSTANCE GCE_ZONE GCE_DEPLOY_USER GCE_COMPOSE_FILE GCE_BACKEND_HEALTH_URL; do
+            if [ -z "${!name:-}" ]; then
+              echo "Missing staging environment variable: $name" >&2
+              exit 1
+            fi
+          done
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_CI_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Copy deploy scripts to application VM
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCE_INSTANCE: ${{ vars.GCE_INSTANCE }}
+          GCE_ZONE: ${{ vars.GCE_ZONE }}
+          GCE_DEPLOY_USER: ${{ vars.GCE_DEPLOY_USER }}
+        run: |
+          remote_dir="/tmp/vota-cicd-$GITHUB_RUN_ID"
+          gcloud compute ssh "$GCE_DEPLOY_USER@$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --command "mkdir -p '$remote_dir'"
+          gcloud compute scp scripts/deploy-backend-vm.sh scripts/install-vota-cron.sh scripts/check-db-tunnel.sh "$GCE_DEPLOY_USER@$GCE_INSTANCE:$remote_dir/" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap
+
+      - name: Deploy immutable images and update existing cron
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCE_INSTANCE: ${{ vars.GCE_INSTANCE }}
+          GCE_ZONE: ${{ vars.GCE_ZONE }}
+          GCE_DEPLOY_USER: ${{ vars.GCE_DEPLOY_USER }}
+          GCE_COMPOSE_FILE: ${{ vars.GCE_COMPOSE_FILE }}
+          GCE_BACKEND_HEALTH_URL: ${{ vars.GCE_BACKEND_HEALTH_URL }}
+          GCE_DB_TUNNEL_PORT: ${{ vars.GCE_DB_TUNNEL_PORT || '15432' }}
+          GCE_CRON_RUNNER: ${{ vars.GCE_CRON_RUNNER || '/opt/vota/bin/run_daily_docker.sh' }}
+          GCE_CRON_DATA_DIR: ${{ vars.GCE_CRON_DATA_DIR || '/srv/vota/daily-data' }}
+          GCE_CRON_ENV_FILE: ${{ vars.GCE_CRON_ENV_FILE || '/etc/vota/daily.env' }}
+          BACKEND_IMAGE: ${{ vars.GAR_BACKEND_IMAGE }}
+          CRAWLER_IMAGE: ${{ vars.GAR_DAILY_IMAGE }}
+        run: |
+          remote_dir="/tmp/vota-cicd-$GITHUB_RUN_ID"
+          backend_ref="$BACKEND_IMAGE:latest"
+          crawler_ref="$CRAWLER_IMAGE:latest"
+          remote_command="chmod +x '$remote_dir'/*.sh && '$remote_dir/deploy-backend-vm.sh' --backend-image '$backend_ref' --crawler-image '$crawler_ref' --compose-file '$GCE_COMPOSE_FILE' --backend-health-url '$GCE_BACKEND_HEALTH_URL' --db-tunnel-port '$GCE_DB_TUNNEL_PORT' --cron-runner '$GCE_CRON_RUNNER' --cron-data-dir '$GCE_CRON_DATA_DIR' --cron-env-file '$GCE_CRON_ENV_FILE'"
+          gcloud compute ssh "$GCE_DEPLOY_USER@$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --command "$remote_command"
