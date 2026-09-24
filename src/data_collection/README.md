@@ -52,7 +52,7 @@ playwright install chromium         # Linux thiếu thư viện hệ thống: pl
 
 ## Source of truth và automation
 
-`src/data_collection` là source chính cho collector đa nguồn, chuẩn hoá và DB. Nhánh `codex/fresh-trip-catalog-release-mvp-v1` ghép thêm collector Trip.com từ checkout `tripcom-hotel-crawler` qua `run_fresh_catalog_vm.sh`; hai repo cần nằm trên cùng VM. Các job `daily.py`/Docker cũ vẫn có để tham khảo hoặc chạy riêng, nhưng không được lên lịch đồng thời với job mới trên cùng DB. Raw response, cache trình duyệt, crawl state, log, staging và backup runtime đều ở `data/` (Git ignore), không nằm trong snapshot.
+`src/data_collection` là source chính cho collector đa nguồn, chuẩn hoá và DB. Nhánh `codex/fresh-trip-catalog-release-mvp-v1` chạy collector Trip.com và job catalog mới ngay trong repository này qua `run_fresh_catalog_vm.sh`; trên VM chỉ cần checkout Travel-Recommendation-Product. Các job `daily.py`/Docker cũ vẫn có để tham khảo hoặc chạy riêng, nhưng không được lên lịch đồng thời với job mới trên cùng DB. Raw response, cache trình duyệt, crawl state, log, staging và backup runtime đều ở `data/` (Git ignore), không nằm trong snapshot.
 
 Catalog baseline được giữ ở hai dạng:
 
@@ -153,14 +153,14 @@ sudo install -D -m 600 -o "$USER" /dev/null /etc/vota/daily.env    # ENV_FILE m�
 
 ## Job catalog mới trên VM console: Trip.com + đa nguồn → DB
 
-Entrypoint [run_fresh_catalog_vm.sh](run_fresh_catalog_vm.sh) dùng code của repo này để cào các nguồn khác và chuẩn hóa; riêng khách sạn Trip.com dùng `tripcom-hotel-crawler`: HTTP/SSR lấy metadata nhanh, rồi Chromium trong Xvfb bắt JSON phòng/giá thật. VM không cần desktop. `cron_hotels_daily.sh` cũ nay gọi entrypoint này và **không còn ghi staging**.
+Entrypoint [run_fresh_catalog_vm.sh](run_fresh_catalog_vm.sh) chạy toàn bộ trong repo này. Collector Trip.com dùng HTTP/SSR lấy metadata nhanh, rồi Chromium trong Xvfb bắt JSON phòng/giá thật. Các collector đa nguồn và bộ chuẩn hóa hiện có của Travel vẫn được dùng. VM không cần desktop. `cron_hotels_daily.sh` cũ nay gọi entrypoint này và **không còn ghi staging**.
 
-- Lượt đầu và mỗi 7 ngày: cào mới các nguồn, tìm ID Trip.com ở 7 thành phố, chọn tối đa 3 ID mới/thành phố từ tối đa 300 ID đã quét/thành phố để hỏi giá tại mốc 14/30/60 ngày; chuẩn hóa 13 trường rồi upsert `cdp.products`/`catalog.combo_items`. Tăng `TRIP_DISCOVERY_SCAN_PER_CITY` khi vùng quét đã hết ID mới. Không dùng `data/products.jsonl`, interim hoặc snapshot cũ làm dữ liệu nguồn.
-- Hằng ngày còn lại: xoay vòng tối đa 60 ID đã biết, ưu tiên ID chưa thử/lâu chưa thử, hỏi JSON phòng/giá mới cho cả phòng cũ và phòng mới. Chỉ file ID/thành phố và thời điểm thử/thành công được giữ cho lịch chạy. Giá Trip.com gốc quá 7 ngày chưa làm mới sẽ được đặt chưa khả dụng để không quảng bá giá cũ.
+- Lượt đầu và mỗi 7 ngày: cào mới các nguồn, tìm ID Trip.com ở 7 thành phố có cityId trong `@deep`; lần đầu chọn tối đa 10 ID/thành phố, các lượt tuần chọn tối đa 3 ID mới/thành phố từ tối đa 300 ID đã quét/thành phố để hỏi giá tại mốc 14/30/60 ngày; chuẩn hóa 13 trường rồi upsert `cdp.products`/`catalog.combo_items`. Tăng `TRIP_DISCOVERY_SCAN_PER_CITY` khi vùng quét đã hết ID mới. Không dùng `data/products.jsonl`, interim hoặc snapshot cũ làm dữ liệu nguồn.
+- Hằng ngày còn lại: xoay vòng tối đa 60 ID đã biết, ưu tiên ID chưa thử/lâu chưa thử, hỏi JSON phòng/giá mới cho cả phòng cũ và phòng mới. Chỉ file ID/thành phố và thời điểm thử/thành công được giữ cho lịch chạy; marker full chỉ ghi sau khi nạp DB thành công. Giá Trip.com gốc quá 7 ngày chưa làm mới sẽ được đặt chưa khả dụng để không quảng bá giá cũ.
 - DB giữ các trường mô tả đã có, cập nhật giá/trạng thái, thêm phòng mới, đánh dấu phòng Trip.com không còn xuất hiện trong phản hồi hợp lệ là hết bán. Một phản hồi lỗi/chặn **không** được coi là hết phòng. Không xóa `cdp.products` đã được đơn hàng tham chiếu.
 - Raw/HTML/JSON, `products.jsonl` và báo cáo chỉ tồn tại trong lượt chạy rồi được xóa mặc định. Chỉ giữ danh sách ID/thành phố, thời điểm xoay vòng và marker lịch full. Đặt `KEEP_FAILED_RUNS=1` nếu cần giữ mẫu lỗi để điều tra.
 
-Cài một lần trên Ubuntu VM/VPS, với hai repo cạnh nhau; dùng Python `vsf2`, cài requirements của hai repo, Playwright Chromium và `xvfb`. Đặt secret ở file ngoài Git, quyền `600`:
+Cài một lần trên Ubuntu VM/VPS, chỉ clone repo Travel-Recommendation-Product; dùng Python `vsf2`, cài requirements của `src/data_collection`, Playwright Chromium và `xvfb`. Từ repository root: `sudo apt-get install -y xvfb`, `python -m pip install -r src/data_collection/requirements.txt`, `python -m playwright install --with-deps chromium`. Đặt secret ở file ngoài Git, quyền `600`:
 
 ```bash
 # Ví dụ /etc/vota/fresh-catalog.env (thay giá trị theo VM)
@@ -170,6 +170,7 @@ DB_TARGET=local
 PRICE_WORKERS=2
 FAST_WORKERS=4
 TRIP_DAILY_HOTELS=60
+TRIP_INITIAL_PER_CITY=10
 TRIP_NEW_PER_CITY=3
 TRIP_DISCOVERY_SCAN_PER_CITY=300
 MIN_DELAY=0.5
