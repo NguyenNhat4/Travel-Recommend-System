@@ -17,7 +17,7 @@ dựng dependency cho một request thật.
 Usage:
     .venv/bin/python -m src.evaluation.agent.golden \\
         --dataset src/evaluation/datasets/itinerary_agent_golden.yaml \\
-        --api-base-url http://127.0.0.1:8000 [--only G-001,G-002] [--sweep] [--repeat N] \\
+        --api-base-url http://127.0.0.1:8000 [--only G-051,G-062] [--sweep] [--repeat N] \\
         [--trace-project claude-golden]
 """
 
@@ -34,7 +34,7 @@ import sys
 import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +42,7 @@ import httpx
 import yaml
 
 from src.backend.app.agents.runtime_dependencies import RuntimeAgentDependencies
+from src.backend.app.agents.steps.classification import vietnam_today
 from src.backend.app.agents.tools.itinerary_gateway import ItineraryToolGateway
 from src.backend.app.application.itinerary.contracts import valid
 from src.backend.app.core.config import get_settings
@@ -60,6 +61,28 @@ SECRET_PATTERNS = [
         r"sk-[a-zA-Z0-9]{10,}", r"bearer\s+[a-zA-Z0-9._-]{10,}", r"AIzaSy[a-zA-Z0-9_-]{10,}",
     )
 ]
+
+
+# ----------------------------------------------------------------------------------------- dates
+
+# `{today}`, `{today+7}`, `{today-1}` → dd/mm/yyyy (câu người dùng gõ); thêm `:iso` → yyyy-mm-dd (để so `intent.startDate`).
+# Runner đổi lúc chạy theo ngày ở Việt Nam, cùng nguồn với mốc `today` của agent (`vietnam_today`), nên ngày luôn nằm
+# gần hôm nay và trong cửa sổ đặt chỗ 30 ngày của catalog mới nạp; câu gửi đi là ngày tường minh, LLM không phải đoán.
+DATE_PLACEHOLDER = re.compile(r"\{today([+-]\d+)?(:iso)?\}")
+
+
+def resolve_dates(value: Any, today: date) -> Any:
+    """Thay placeholder ngày trong chuỗi, kể cả lồng trong dict/list (dùng cho message và expect)."""
+    if isinstance(value, str):
+        def replace(match: re.Match[str]) -> str:
+            day = today + timedelta(days=int(match.group(1) or 0))
+            return day.isoformat() if match.group(2) else day.strftime("%d/%m/%Y")
+        return DATE_PLACEHOLDER.sub(replace, value)
+    if isinstance(value, dict):
+        return {key: resolve_dates(item, today) for key, item in value.items()}
+    if isinstance(value, list):
+        return [resolve_dates(item, today) for item in value]
+    return value
 
 
 # --------------------------------------------------------------------------------------- dataset
@@ -414,16 +437,19 @@ async def run_case(
     results: list[TurnResult] = []
     conversation_id: str | None = None
     previous_products: dict[int, dict[str, set[str]]] = {}
+    today = vietnam_today()
     for index, turn in enumerate(case.turns, start=1):
+        message = resolve_dates(turn.message, today)
+        expect = resolve_dates(turn.expect, today)
         started = time.perf_counter()
         request_id = uuid.uuid4().hex
         try:
-            state = await run_turn(planner, turn.message, turn.conversation_id or conversation_id, timeout,
-                                   trace_config(case, index, turn.message, request_id), request_id,
+            state = await run_turn(planner, message, turn.conversation_id or conversation_id, timeout,
+                                   trace_config(case, index, message, request_id), request_id,
                                    turn.language)
         except TimeoutError:
             results.append(TurnResult(
-                case.id, index, turn.message, 503, "TIMEOUT", 0, 0, False, None,
+                case.id, index, message, 503, "TIMEOUT", 0, 0, False, None,
                 [f"vượt timeout {timeout}s"],
             ))
             break
@@ -442,7 +468,7 @@ async def run_case(
         findings += gate_no_booking_claim(response)
         findings += gate_no_tool_before_info(response, events)
         findings += schedule_findings(response, candidates)
-        findings += dataset_findings(response, http_status, events, turn.expect, previous_products)
+        findings += dataset_findings(response, http_status, events, expect, previous_products)
 
         tool_called = "tool" in {e.get("node") for e in events}
         tool_expected = expected_tool_call(response)
@@ -454,7 +480,7 @@ async def run_case(
             "stay": _product_ids(response, "stay"), "any": _product_ids(response, "any"),
         }
         results.append(TurnResult(
-            case.id, index, turn.message, http_status, response.get("status") or
+            case.id, index, message, http_status, response.get("status") or
             (response.get("error") or {}).get("code"), latency_ms, grounding_checked,
             tool_called, tool_expected, findings,
         ))
@@ -470,7 +496,9 @@ async def run_sweep(planner, dsn: str | None, settings: Any, timeout: float, htt
     for item in listed:
         destination = item["destination"]
         case = Case(id=f"SWEEP-{destination}", category="sweep", fr=["FR-AGT-04"],
-                    turns=[Turn(message=f"{destination} 2 ngày", expect={})])
+                    # Chưa nêu ngày đi thì agent hỏi ngày (AC-AGT-01); lượt thứ hai trả lời để chạm tới truy xuất.
+                    turns=[Turn(message=f"{destination} 2 ngày", expect={}),
+                           Turn(message="chưa chốt ngày đi", expect={})])
         results += await run_case(case, planner, dsn, settings, timeout)
     return results
 
