@@ -5,6 +5,7 @@ on:
     branches:
       - dev
       - main
+      - release-mvp-v1
     paths:
       - '.github/workflows/backend-ci-cd.yml'
       - 'Dockerfile.backend'
@@ -17,6 +18,7 @@ on:
     branches:
       - dev
       - main
+      - release-mvp-v1
     paths:
       - '.github/workflows/backend-ci-cd.yml'
       - 'Dockerfile.backend'
@@ -42,10 +44,10 @@ jobs:
     name: CI checks
     runs-on: ubuntu-latest
     steps:
-      - name: Refuse staging dispatch from another ref
-        if: ${{ github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/dev' && github.ref != 'refs/heads/main' }}
+      - name: Refuse dispatch from another ref
+        if: ${{ github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/dev' && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/release-mvp-v1' }}
         run: |
-          echo 'This workflow_dispatch must run from the dev or main branch.' >&2
+          echo 'This workflow_dispatch must run from the dev, main, or release-mvp-v1 branch.' >&2
           exit 1
 
       - name: Checkout
@@ -110,7 +112,7 @@ jobs:
 
   publish:
     name: Publish SHA and latest images
-    if: ${{ github.ref == 'refs/heads/dev' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+    if: ${{ (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/release-mvp-v1') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
     needs: build
     runs-on: ubuntu-latest
     environment: staging
@@ -193,7 +195,7 @@ jobs:
 
   deploy:
     name: Deploy application VM in place
-    if: ${{ github.ref == 'refs/heads/dev' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+    if: ${{ (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/release-mvp-v1') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
     needs: publish
     runs-on: ubuntu-latest
     # Two 15-minute health windows (deploy and rollback) plus image pull and SSH.
