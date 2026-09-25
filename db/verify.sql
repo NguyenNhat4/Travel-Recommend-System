@@ -30,3 +30,17 @@ SELECT 'P1 booking <-> event: '       || CASE WHEN count(*) = 1 THEN 'PASS' ELSE
   FROM app.bookings b JOIN cdp.events e ON e.event_group_id = b.event_group_id AND e.event_name='purchase' WHERE b.cdp_user_id='VP0000001';
 SELECT 'persona users = 4: '          || CASE WHEN count(*) = 4 THEN 'PASS' ELSE 'FAIL ('||count(*)||')' END FROM app.users WHERE persona IS NOT NULL;
 SELECT 'P4 has no events: '           || CASE WHEN count(*) = 0 THEN 'PASS' ELSE 'FAIL' END FROM cdp.events WHERE cdp_user_id='VP0000004';
+-- Cặp trạng thái đơn/thanh toán hợp lệ: docs/spec/booking/so-do-luong-dat-cho-thanh-toan.md §5.2.
+-- refund_* ở đơn payment_failed/expired: tiền về cho đơn đã đóng hoặc lệch số tiền, Backend hoàn tự động.
+SELECT 'booking/payment status pairs valid: ' || CASE WHEN count(*) = 0 THEN 'PASS' ELSE 'FAIL ('||count(*)||')' END
+  FROM app.bookings b LEFT JOIN app.payments p USING (booking_id)
+  WHERE (b.status = 'pending_payment' AND b.hold_expires_at IS NULL)
+     OR (b.status, p.status) NOT IN (
+          ('pending_payment','open'), ('pending_payment','succeeded'), ('confirmed','succeeded'),
+          ('payment_failed','failed'), ('payment_failed','refund_pending'), ('payment_failed','refunded'),
+          ('payment_failed','refund_failed'), ('expired','expired'), ('expired','refund_pending'),
+          ('expired','refunded'), ('expired','refund_failed'), ('cancelled','expired'), ('cancelled','refund_pending'),
+          ('cancelled','refunded'), ('cancelled','refund_failed'))
+     OR p.status IS NULL;
+SELECT 'one pending booking per user: ' || CASE WHEN count(*) = 0 THEN 'PASS' ELSE 'FAIL ('||count(*)||')' END
+  FROM (SELECT cdp_user_id FROM app.bookings WHERE status = 'pending_payment' GROUP BY cdp_user_id HAVING count(*) > 1) t;

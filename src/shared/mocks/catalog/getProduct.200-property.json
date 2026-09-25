@@ -1,0 +1,28 @@
+{
+  "productId": "nt-h-10",
+  "name": "Vinpearl Resort & Spa Nha Trang Bay",
+  "taxonomy": "hotel",
+  "destination": "Nha Trang",
+  "unitPrice": 2890000,
+  "currency": "VND",
+  "priceUnit": "PER_NIGHT",
+  "available": true,
+  "availableFrom": "2026-10-01",
+  "availableTo": "2026-10-30",
+  "imageUrl": "https://cdn.example.vn/nt-h-10.jpg",
+  "rating": 4.5,
+  "reviewCount": 812,
+  "attributes": {
+    "starRating": 5,
+    "level": "property",
+    "privateBeach": true,
+    "pool": true
+  },
+  "description": "Khu nghỉ dưỡng trên vịnh Nha Trang. Đặt chỗ theo từng hạng phòng.",
+  "variantSummary": {
+    "count": 2,
+    "minPrice": 2890000,
+    "maxPrice": 4150000,
+    "maxOccupancy": 4
+  }
+}

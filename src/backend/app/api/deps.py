@@ -55,6 +55,13 @@ def get_auth_use_case(name: str):
     return dependency
 
 
+def get_use_case(name: str):
+    """Use case đã được composition root gắn vào `app.state` (booking, thanh toán)."""
+    def dependency(request: Request) -> Any:
+        return getattr(request.app.state, name)
+    return dependency
+
+
 def _bearer(authorization: str | None) -> str | None:
     if authorization is None:
         return None

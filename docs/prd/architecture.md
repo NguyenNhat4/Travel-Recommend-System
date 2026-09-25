@@ -62,6 +62,7 @@ flowchart TB
         LLM[LLM Provider: Claude / OpenAI]
         Cohere[Cohere Embed API\nembed-multilingual-v3.0]
         InsiderSvc[Insider Clone Service]
+        Stripe[Stripe: Checkout, Refund, Webhook]
     end
 
     UI --> BFF
@@ -87,6 +88,8 @@ flowchart TB
     Ports -.->|Adapter: Read-only Catalog| CatalogSchema
     Ports -.->|Adapter: Local/HttpCdpClient| CdpSchema
     Ports -.->|Adapter: HttpInsiderClient| InsiderSvc
+    Ports -.->|Adapter: StripePaymentGateway| Stripe
+    Stripe -->|Webhook có chữ ký| Router
     Ports -.->|Adapter: CohereEmbedder| Cohere
     Ports -.->|Adapter: WeaviateVectorStore| WvProduct
     InsiderSvc --> InsiderSchema
@@ -103,7 +106,7 @@ src/backend/app/
 ├── domain/<domain>/         # LỚP 1: entity, value object, business rule thuần (auth, booking, catalog, itinerary, recommendation, search)
 ├── application/             # LỚP 2: use case và port
 │   ├── ports/               # Giao diện trừu tượng, MỖI PORT MỘT FILE: cdp_client, insider_client, embedder,
-│   │                        #   vector_store, llm, contract_validator, itinerary_tools, auth...
+│   │                        #   vector_store, payment_gateway, llm, contract_validator, itinerary_tools, auth...
 │   └── <domain>/            # Use case theo domain (auth, booking, catalog, itinerary, recommendation, search, tracking)
 ├── infrastructure/          # LỚP 3: hiện thực port
 │   ├── persistence/         # PostgreSQL qua DATABASE_URL (role vota_app); conversation store
@@ -113,6 +116,7 @@ src/backend/app/
 │   ├── llm/                 # Adapter LLM provider (agent lấy LLM qua port llm, không tự import SDK)
 │   ├── embeddings/          # CohereEmbedder (embed-multilingual-v3.0)
 │   ├── vectors/             # WeaviateVectorStore
+│   ├── payments/            # StripePaymentGateway: Checkout Session, Refund, kiểm chữ ký webhook
 │   └── contracts/           # Kiểm dữ liệu theo OpenAPI bundle (jsonschema)
 ├── agents/                  # LangGraph: state, graph, node, steps/ (luật của từng bước) và tools/; hiện thực port planner itinerary
 ├── api/                     # LỚP 4: chỉ xử lý HTTP
@@ -200,6 +204,7 @@ stateDiagram-v2
 | **Orchestration Agent**| **LangGraph (LangChain ecosystem)** | Quản lý đồ thị trạng thái (Stateful Multi-turn), kiểm soát luồng rẽ nhánh chặt chẽ, dễ debug. |
 | **Cơ sở dữ liệu chính** | **PostgreSQL 16** | Lưu trữ quan hệ ACID cho `cdp`, `catalog`, `app` và database `insider`. Không còn cần extension `pgvector` — vector đã tách sang Weaviate. |
 | **Cơ sở dữ liệu vector** | **Weaviate** | Dịch vụ vector riêng, có volume riêng nên **không bị dựng lại mỗi lần seed Postgres** — đây là lý do tách khỏi pgvector. Index ANN + cosine (HNSW ở local/self-host, `hfresh` trên Weaviate Cloud nếu gói chỉ cho phép loại này); hỗ trợ hybrid search (BM25 + vector) natively, khớp FR-SRC-01. |
+| **Cổng thanh toán** | **Stripe (test mode), Stripe Checkout hosted page** | V-OTA không chạm dữ liệu thẻ; có sẵn 3DS; có thẻ test cho từng loại lỗi; webhook có chữ ký. |
 | **Mô hình Embedding** | **Cohere `embed-multilingual-v3.0`** | Đa ngôn ngữ (bao gồm tiếng Việt), gọi qua API nên máy dev không phải tải model về. **1024 chiều.** Bắt buộc phân biệt `input_type`: `search_document` khi nạp, `search_query` khi truy vấn. |
 | **Frontend Framework** | **React / Next.js / TypeScript** | Xây dựng giao diện Single Page Application linh hoạt, tương tác mượt mà, type-safety cao. |
 | **Session store & rate limit** | **Redis 7** (`maxmemory-policy noeviction`) | Giữ phiên web, bộ đếm rate limit/lockout, khoá refresh. Mất dữ liệu thì người dùng chỉ phải đăng nhập lại; refresh token vẫn thu hồi được nhờ bản bền trong `app.refresh_tokens`. Không dùng `allkeys-lru` vì sẽ ngẫu nhiên đá người dùng ra. |
@@ -221,6 +226,7 @@ stateDiagram-v2
    - **Truy vấn:** use case search gọi Cohere với `input_type=search_query` rồi đưa vector sang Weaviate để lấy top-K. Dùng sai `input_type` sẽ làm giảm chất lượng xếp hạng mà không báo lỗi.
    - Giữ được đường test offline: `tests/fakes/in_memory_vector_store.py` hiện thực cùng port `vector_store.py`, nên unit test không cần mạng.
    - Weaviate chỉ giữ vector và `productId`. Mọi thuộc tính hiển thị (tên, giá, ảnh) vẫn lấy từ Postgres — quy tắc grounding không đổi.
+6. **Backend $\leftrightarrow$ Stripe:** Backend gọi Stripe qua HTTPS bằng secret key; mọi lệnh ghi (tạo phiên, đóng phiên, hoàn tiền) có `Idempotency-Key`. Stripe gọi lại Backend qua webhook `POST /api/v1/payments/stripe/webhook`, không qua BFF, xác thực bằng chữ ký `Stripe-Signature`. Số tiền luôn do Backend tính từ catalog.
 
 ---
 

@@ -38,7 +38,8 @@ export interface Product {
   name: string;
   taxonomy: Taxonomy;
   destination: Destination;
-  unitPrice: number;
+  /** null = chưa có giá (khách sạn/tuyến bay cấp cha, điểm công cộng); không phải miễn phí. */
+  unitPrice: number | null;
   currency: 'VND';
   priceString?: string;
   imageUrl: string;
@@ -55,6 +56,9 @@ export interface Product {
   included?: string[];
   coordinates?: Coordinates;
   address?: string;
+  /** attributes.level: property/route chỉ để xem, đặt qua tầng con room/flight. */
+  level?: string;
+  parentProductId?: string;
 }
 
 export type EventType = 'purchase' | 'add_to_cart' | 'product_view' | 'search';
@@ -120,41 +124,7 @@ export interface UserEvent {
   eventGroupId?: string;
 }
 
-export interface CartItem {
-  id: string;
-  productId: string;
-  product: Product;
-  destination: Destination;
-  taxonomy: Taxonomy;
-  usingDate?: string;
-  checkOutDate?: string;
-  quantity: number;
-  nights?: number;
-  totalPrice: number;
-}
-
-export interface BookingContact {
-  fullName: string;
-  email: string;
-  phoneNumber: string;
-}
-
-export interface BookingGuestDetails {
-  hotelGuestName?: string;
-  passengers?: string[];
-  specialRequests?: string;
-}
-
-export interface BookingRecord {
-  referenceCode: string;
-  createdAt: string;
-  userId: string;
-  contact: BookingContact;
-  items: CartItem[];
-  totalAmount: number;
-  destination: Destination;
-  guestDetails?: BookingGuestDetails;
-}
+// Giỏ hàng và đơn đặt chỗ dùng kiểu sinh từ OpenAPI: services/booking.ts (CartResponse, BookingResponse).
 
 // Assistant & Itinerary Types
 export interface TravelIntent {

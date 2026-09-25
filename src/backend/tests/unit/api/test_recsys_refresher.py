@@ -101,6 +101,19 @@ def test_startup_failure_leaves_recsys_off_and_retries_before_the_full_interval(
     assert app.state.search == "search-3"
 
 
+def test_catalog_is_rebuilt_after_every_successful_reload_only():
+    # build_catalog giữ tham chiếu tới `similar`/`listing_units`: phải dựng lại mỗi lần có bản mới.
+    app, seen = _app(), []
+    build = _Build(_services(3), RuntimeError("tạm lỗi"), _services(4))
+    refresher = RecsysRefresher(app, _settings(), build=build,
+                                on_publish=lambda: seen.append(app.state.search))
+
+    for _ in range(3):
+        asyncio.run(refresher.reload())
+
+    assert seen == ["search-3", "search-4"]
+
+
 def test_close_releases_the_shared_clients():
     refresher = RecsysRefresher(_app(), _settings(), build=_Build(_services(1)))
     asyncio.run(refresher.reload())

@@ -79,5 +79,17 @@
     }
   ],
   "total": 12840000,
-  "currency": "VND"
+  "currency": "VND",
+  "holdExpiresAt": null,
+  "cancellableUntil": "2026-10-13T17:00:00Z",
+  "cancellation": null,
+  "payment": {
+    "status": "SUCCEEDED",
+    "amount": 12840000,
+    "currency": "VND",
+    "checkoutUrl": null,
+    "failedAttempts": 0,
+    "failureReason": null,
+    "refundedAmount": 0
+  }
 }

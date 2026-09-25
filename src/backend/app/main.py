@@ -38,7 +38,20 @@ from src.backend.app.application.auth.use_cases import (
     RevokeSession,
     RotateSession,
 )
+from src.backend.app.application.booking import (
+    CancelBooking,
+    CartService,
+    CreateBookingHold,
+    GetBooking,
+    PaymentEventHandler,
+    ReconcileBookings,
+    Settlement,
+)
+from src.backend.app.application.catalog.use_cases import GetProductDetail, GetSimilarProducts, ListProducts
 from src.backend.app.application.itinerary.use_cases import PlanItinerary
+from src.backend.app.application.tracking.behaviour import BehaviourTracker
+from src.backend.app.domain.booking import HoldPolicy
+from src.backend.app.domain.catalog import ListingItem
 from src.backend.app.application.recommendation import BuildPopularity, RecommendForUser
 from src.backend.app.application.search import SearchProducts, SimilarProducts
 from src.backend.app.core.config import REPO_ROOT, Settings, get_settings
@@ -57,8 +70,15 @@ from src.backend.app.infrastructure.cdp.postgres_cdp_reader import PostgresCdpRe
 from src.backend.app.infrastructure.clients.itinerary_fixture_clients import FixtureItineraryClients
 from src.backend.app.infrastructure.clients.itinerary_http_clients import ItineraryHttpClients
 from src.backend.app.infrastructure.llm import build_chat_model
+from src.backend.app.infrastructure.payments.fake_gateway import FakeGateway
+from src.backend.app.infrastructure.payments.stripe_gateway import StripePaymentGateway
 from src.backend.app.infrastructure.persistence.conversation_store import InMemoryConversationStore
-from src.backend.app.infrastructure.persistence.postgres_catalog import PostgresProductLookup
+from src.backend.app.infrastructure.persistence.postgres_booking import (
+    PostgresBookingStore,
+    PostgresCartRepository,
+    PostgresProductCatalog,
+)
+from src.backend.app.infrastructure.persistence.postgres_catalog import PostgresProductLookup, PostgresProductQuery
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -67,6 +87,18 @@ logger = logging.getLogger("uvicorn.error")
 # LocalCdpClient trả InterfaceError lúc chạy thật. Trên Linux/macOS dòng này không có tác dụng gì.
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+
+def build_catalog(settings, state) -> dict:
+    """Use case /products. `state` là app.state sau bước dựng RecSys (có thể đã tắt)."""
+    products = PostgresProductQuery(settings.database_url)
+    return {
+        "get_product_detail": GetProductDetail(products),
+        "list_products": ListProducts(
+            products, getattr(state, "listing_units", None), getattr(state, "product_popularity", None) or {},
+            max_limit=settings.search_max_limit),
+        "get_similar_products": GetSimilarProducts(products, getattr(state, "similar", None)),
+    }
 
 
 def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) -> dict:
@@ -139,6 +171,9 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
             candidate_k=settings.search_candidate_k,
         ),
         "similar": SimilarProducts(index, vector_search),
+        # GET /products: cùng tập search unit với /search, sắp xếp popular theo lượt mua CDP (backend §4.1).
+        "listing_units": [ListingItem(p, bool(index.recommendable[i])) for i, p in enumerate(index.units)],
+        "product_popularity": {index.units[u].product_id: s for u, s in popularity.unit_scores().items()},
         "recommend": RecommendForUser(
             index, vector_search, cdp_reader, popularity, candidate_k=settings.recommend_candidate_k
         ),
@@ -156,9 +191,10 @@ class RecsysRefresher:
     client nào bị đóng giữa chừng. Lần nạp lại lỗi thì giữ bản đang phục vụ thay vì tắt recsys.
     """
 
-    def __init__(self, app: FastAPI, settings: Settings, build=None):
+    def __init__(self, app: FastAPI, settings: Settings, build=None, on_publish=None):
         self.app, self.settings = app, settings
         self._build = build  # test tiêm bản giả; mặc định là build_recsys
+        self._on_publish = on_publish  # dựng lại use case đọc engine recsys (catalog) sau mỗi lần nạp
         self.services: dict = {}
         self._failures = 0
         self._stop = asyncio.Event()
@@ -184,6 +220,8 @@ class RecsysRefresher:
         self.services = updated
         for name, service in updated.items():  # không có await giữa các phép gán: request thấy trọn một bản
             setattr(self.app.state, name, service)
+        if self._on_publish is not None:
+            self._on_publish()
         if first:
             print(f"RecSys ready: {len(updated['index'].units)} search unit, model {updated['index'].model_version}")
             logger.info("startup.recsys.ready search_units=%d", len(updated["index"].units))
@@ -258,6 +296,47 @@ def build_auth(settings: Settings, cdp_client, redis_client=None) -> dict:
         "change_password": ChangePassword(users=users, hasher=hasher, refresh=refresh),
         "get_current_user": GetCurrentUser(users=users),
     }
+
+
+def build_booking(settings: Settings, cdp_client, recorder, product_lookup, *, clock=None) -> dict:
+    """Dựng giỏ hàng, giữ chỗ, thanh toán Stripe, huỷ và đối soát (spec booking)."""
+    from datetime import datetime, timezone
+
+    clock = clock or (lambda: datetime.now(timezone.utc))
+    if settings.payment_provider == "fake":
+        if settings.app_env == "production":
+            raise RuntimeError("PAYMENT_PROVIDER=fake không được dùng ở production")
+        gateway = FakeGateway()
+    else:
+        gateway = StripePaymentGateway(settings.stripe_secret_key, settings.stripe_webhook_secret)
+    store = PostgresBookingStore(settings.database_url)
+    carts = PostgresCartRepository(settings.database_url)
+    catalog = PostgresProductCatalog(settings.database_url)
+    settlement = Settlement(store, gateway, cdp_client, clock)
+    handler = PaymentEventHandler(
+        store, gateway, settlement, max_failed_attempts=settings.payment_max_failed_attempts, clock=clock)
+    reconciler = ReconcileBookings(store, gateway, settlement, handler, clock)
+    return {
+        "payment_gateway": gateway,
+        "cart_service": CartService(carts, catalog, BehaviourTracker(recorder, product_lookup), clock=clock),
+        "create_booking_hold": CreateBookingHold(
+            store, carts, catalog, gateway, reconciler, HoldPolicy(settings.booking_hold_minutes),
+            public_web_url=settings.public_web_url, provider=settings.payment_provider, clock=clock),
+        "get_booking": GetBooking(store, catalog),
+        "cancel_booking": CancelBooking(store, gateway, settlement, catalog, clock),
+        "payment_event_handler": handler,
+        "reconcile_bookings": reconciler,
+    }
+
+
+async def _reconcile_loop(reconcile, interval_seconds: int) -> None:
+    """Job đối soát trong tiến trình Backend (đủ cho MVP nhờ trạng thái idempotent; tách worker thì chỉ đổi chỗ gọi)."""
+    while True:
+        await asyncio.sleep(interval_seconds)
+        try:
+            await reconcile()
+        except Exception:
+            logger.exception("booking.reconcile.loop_failed")
 
 
 def _itinerary_runtime(app: FastAPI, settings: Settings, authorization: str | None):
@@ -337,6 +416,18 @@ async def lifespan(app: FastAPI):
         logger.info("startup.browse_event_recorder.start")
         app.state.browse_event_recorder.start()
         logger.info("startup.browse_event_recorder.ready")
+        for name, service in build_booking(
+            settings, cdp_client, app.state.browse_event_recorder, app.state.product_lookup
+        ).items():
+            setattr(app.state, name, service)
+        if settings.booking_reconcile_interval_seconds:
+            reconcile_task = asyncio.create_task(
+                _reconcile_loop(app.state.reconcile_bookings, settings.booking_reconcile_interval_seconds))
+            stack.callback(reconcile_task.cancel)
+        gateway_close = getattr(app.state.payment_gateway, "aclose", None)
+        if gateway_close is not None:
+            stack.push_async_callback(gateway_close)
+        logger.info("startup.booking.ready payment_provider=%s", settings.payment_provider)
         app.state.itinerary_conversation_store = InMemoryConversationStore(
             ttl_seconds=settings.itinerary_conversation_ttl_seconds
         )
@@ -376,11 +467,22 @@ async def lifespan(app: FastAPI):
         # Recsys tách khỏi phần itinerary: chưa nạp được thì tắt recsys và thử lại sau, các route còn lại
         # (kể cả assistant chạy fixture) vẫn phục vụ được.
         logger.info("startup.recsys.start model=%s", settings.embed_model)
-        for name in ("index", "search", "similar", "recommend"):
+        for name in ("index", "search", "similar", "recommend", "listing_units", "product_popularity"):
             setattr(app.state, name, None)
-        recsys = RecsysRefresher(app, settings)
-        await recsys.reload()
+
+        # Catalog đọc thẳng database nên vẫn chạy khi RecSys tắt; khi đó danh sách đọc search unit mỗi request
+        # và /similar trả 503 SEARCH_UNAVAILABLE. Catalog giữ tham chiếu tới engine recsys nên phải dựng lại
+        # sau mỗi lần RecsysRefresher nạp bản mới, nếu không /products và /similar dùng mãi bản lúc khởi động.
+        def publish_catalog() -> None:
+            for name, service in build_catalog(settings, app.state).items():
+                setattr(app.state, name, service)
+
+        recsys = RecsysRefresher(app, settings, on_publish=publish_catalog)
+        if not await recsys.reload():
+            publish_catalog()
+        app.state.behaviour_tracker = BehaviourTracker(app.state.browse_event_recorder, app.state.product_lookup)
         refresh_task = asyncio.create_task(recsys.run())
+
         logger.info("startup.ready")
         try:
             yield
@@ -397,7 +499,7 @@ settings = get_settings()
 app = FastAPI(
     title=settings.app_name,
     description="Travel recommendation and itinerary API",
-    version="1.4.0",
+    version="1.6.0",
     lifespan=lifespan,
 )
 

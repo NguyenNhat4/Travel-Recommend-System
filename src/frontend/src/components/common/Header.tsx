@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTravel } from '../../context/TravelContext';
+import { bookingItems } from '../../services/booking';
+import { BOOKING_STATUS_BADGE } from '../confirmation/bookingLabels';
 import { SUPPORTED_LOCALES } from '../../types/locale';
 import { useAssistant } from '../../context/AssistantProvider';
 import { 
@@ -20,8 +22,8 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({ isCheckout = false }) => {
   const { 
     currentPersona, 
-    signOut,
-    cart, 
+    signOut, 
+    cartCount, 
     bookings, 
     navigate, 
     openLoginModal, 
@@ -66,8 +68,8 @@ export const Header: React.FC<HeaderProps> = ({ isCheckout = false }) => {
 
   const currentLocaleInfo = SUPPORTED_LOCALES.find(l => l.code === currentLocale) || SUPPORTED_LOCALES[0];
 
-  const upcomingBookingsCount = bookings.length;
-  const activeTripsBadge = upcomingBookingsCount > 0 ? upcomingBookingsCount : (cart.length > 0 ? cart.length : 0);
+  const upcomingBookingsCount = bookings.filter(b => b.status === 'CONFIRMED' || b.status === 'PENDING_PAYMENT').length;
+  const activeTripsBadge = upcomingBookingsCount > 0 ? upcomingBookingsCount : cartCount;
 
   // Simplified Checkout Header
   if (isCheckout) {
@@ -234,7 +236,7 @@ export const Header: React.FC<HeaderProps> = ({ isCheckout = false }) => {
                         }}
                         className="text-[11px] text-blue-600 hover:underline font-semibold cursor-pointer"
                       >
-                        Giỏ hàng ({cart.length})
+                        Giỏ hàng ({cartCount})
                       </button>
                     </div>
 
@@ -251,10 +253,12 @@ export const Header: React.FC<HeaderProps> = ({ isCheckout = false }) => {
                           >
                             <div className="text-[11px] font-bold text-slate-900 flex items-center justify-between">
                               <span>Đơn #{b.referenceCode}</span>
-                              <span className="text-emerald-700 text-[10px]">Đã xác nhận</span>
+                              <span className={`text-[10px] ${BOOKING_STATUS_BADGE[b.status].className}`}>
+                                {BOOKING_STATUS_BADGE[b.status].label}
+                              </span>
                             </div>
                             <div className="text-[10px] text-slate-500 mt-0.5">
-                              {b.items.length} dịch vụ · {new Intl.NumberFormat('vi-VN').format(b.totalAmount)} ₫
+                              {bookingItems(b).length} dịch vụ · {new Intl.NumberFormat('vi-VN').format(b.total)} ₫
                             </div>
                           </div>
                         ))

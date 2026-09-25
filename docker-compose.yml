@@ -77,6 +77,14 @@ services:
       WEAVIATE_COLLECTION: ${WEAVIATE_COLLECTION:-Product}
       WEAVIATE_GRPC_PORT: ${BACKEND_WEAVIATE_GRPC_PORT:-50051}
       CATALOG_REFRESH_SECONDS: ${CATALOG_REFRESH_SECONDS:-900}
+      # Stripe test mode (docs/prd/deployment-plan.md §2). Webhook: `stripe listen --forward-to
+      # localhost:${BACKEND_PORT:-8000}/api/v1/payments/stripe/webhook` chạy trên máy host.
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:-stripe}
+      BOOKING_HOLD_MINUTES: ${BOOKING_HOLD_MINUTES:-30}
+      PAYMENT_MAX_FAILED_ATTEMPTS: ${PAYMENT_MAX_FAILED_ATTEMPTS:-3}
+      PUBLIC_WEB_URL: ${PUBLIC_WEB_URL:-http://localhost:3000}
     volumes:
       - ./secrets:/app/secrets:ro
     ports:
