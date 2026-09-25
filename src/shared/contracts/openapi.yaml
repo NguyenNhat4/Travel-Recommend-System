@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Travel Recommendation Product API
-  version: 1.6.0
+  version: 1.7.0
   description: 'Contract chung cho frontend Next.js và backend Python/FastAPI. Nguồn mô tả nghiệp vụ:
     docs/spec/hop-dong-tich-hop-backend.md (Auth, Catalog, Search, Recommendation, Booking) và docs/spec/hop-dong-tich-hop-frontend.md
     (góc nhìn Web, đề xuất ItineraryResponse hợp nhất). Khi tài liệu và file này mâu thuẫn, file này thắng.'
@@ -75,6 +75,10 @@ paths:
     $ref: ./paths/itinerary-agent.yaml#/~1assistant~1itineraries
   /assistant/itineraries/stream:
     $ref: ./paths/itinerary-agent.yaml#/~1assistant~1itineraries~1stream
+  /assistant/conversations:
+    $ref: ./paths/itinerary-agent.yaml#/~1assistant~1conversations
+  /assistant/conversations/{conversationId}:
+    $ref: ./paths/itinerary-agent.yaml#/~1assistant~1conversations~1{conversationId}
   /assistant/status:
     $ref: ./paths/itinerary-agent.yaml#/~1assistant~1status
   /events:
@@ -302,6 +306,16 @@ components:
       $ref: ./schemas/itinerary-agent.yaml#/ItineraryFallback
     ItineraryResponse:
       $ref: ./schemas/itinerary-agent.yaml#/ItineraryResponse
+    AssistantConversationSummary:
+      $ref: ./schemas/itinerary-agent.yaml#/AssistantConversationSummary
+    AssistantConversationMessage:
+      $ref: ./schemas/itinerary-agent.yaml#/AssistantConversationMessage
+    AssistantConversationList:
+      $ref: ./schemas/itinerary-agent.yaml#/AssistantConversationList
+    AssistantConversationDetail:
+      $ref: ./schemas/itinerary-agent.yaml#/AssistantConversationDetail
+    AssistantConversationPagination:
+      $ref: ./schemas/itinerary-agent.yaml#/AssistantConversationPagination
     AssistantStatus:
       $ref: ./schemas/itinerary-agent.yaml#/AssistantStatus
     AssistantStreamEvent:

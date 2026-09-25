@@ -56,6 +56,8 @@ class Settings(BaseSettings):
     itinerary_llm_timeout_seconds: float = Field(default=10.0, gt=0)
     itinerary_request_timeout_seconds: float = Field(default=10.0, gt=0)
     itinerary_conversation_ttl_seconds: int = Field(default=86_400, ge=60)
+    # Redis DB index riêng cho working memory của agent; production không được dùng process memory.
+    itinerary_redis_url: str = ""
 
     # --- Auth (docs/spec/hop-dong-tich-hop-auth.md §19) ---------------------------------------
     # RS256; HS256 bị loại (§10.2). Đường dẫn tương đối tính từ gốc repo. Thiếu file: dev/test sinh
@@ -104,7 +106,7 @@ class Settings(BaseSettings):
     weaviate_timeout_seconds: float = Field(default=30.0, gt=0)
     # Cổng gRPC cho truy vấn top-K mỗi request; Weaviate Cloud tự dùng 443 của host grpc-<cluster>.
     weaviate_grpc_port: int = Field(default=50051, ge=1, le=65535)
-    search_cutoff: float = 0.62  # quy tắc tạm của Search contract; phải benchmark lại với Cohere
+    search_cutoff: float = 0.52  # quy tắc tạm của Search contract; phải benchmark lại với Cohere
     search_max_limit: int = 50
     search_candidate_k: int = Field(default=200, ge=1)
     recommend_candidate_k: int = 200

@@ -11,11 +11,16 @@ from fastapi import Depends, Header, Request
 from src.backend.app.application.auth.errors import AuthError, TokenInvalid, Unauthenticated
 from src.backend.app.application.auth.principal import AuthPrincipal
 from src.backend.app.application.itinerary.use_cases import PlanItinerary
+from src.backend.app.application.itinerary.history import ConversationHistory
 from src.backend.app.core.config import Settings, get_settings
 
 
 def get_plan_itinerary(request: Request) -> PlanItinerary:
     return request.app.state.plan_itinerary
+
+
+def get_conversation_history(request: Request) -> ConversationHistory:
+    return request.app.state.conversation_history
 
 
 def get_search(request: Request) -> Any:

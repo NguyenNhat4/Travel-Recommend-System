@@ -127,7 +127,7 @@ erDiagram
 
 ## 4. ERD — schema `app` (BE · FE · agent)
 
-Mọi bảng móc vào `cdp.profiles` qua `cdp_user_id` — danh tính duy nhất của khách; `app.users` chỉ là credential + persona demo. CDP không có bảng booking, nên đơn nối sang `cdp.events` bằng `event_group_id` (trường CDP thật có) — mỗi dòng `booking_items` ứng với đúng một event `purchase` cùng `event_group_id`, `product_id`, `using_date`; không có FK tới `events.event_id` vì đó là id nội bộ của clone. `conversations` + `conversation_messages` + `itineraries` là toàn bộ trạng thái agent (intent chuẩn hoá, TTL 24h, plan JSON theo UX spec §6.4, `product_ids` để kiểm tra grounding). `search_logs` tồn tại vì UserEvent `search` của CDP không có chỗ chứa câu truy vấn. `refresh_tokens` và `login_attempts` là phần **bền** của auth hybrid (`docs/hop-dong-tich-hop-auth.md` §16.2): session, bộ đếm rate limit và OAuth state nằm ở Redis vì mất đi thì người dùng chỉ phải đăng nhập lại, còn hai bảng này phải thu hồi được kể cả khi Redis trống.
+Mọi bảng móc vào `cdp.profiles` qua `cdp_user_id` — danh tính duy nhất của khách; `app.users` chỉ là credential + persona demo. CDP không có bảng booking, nên đơn nối sang `cdp.events` bằng `event_group_id` (trường CDP thật có) — mỗi dòng `booking_items` ứng với đúng một event `purchase` cùng `event_group_id`, `product_id`, `using_date`; không có FK tới `events.event_id` vì đó là id nội bộ của clone. Redis giữ working memory agent 24 giờ; `conversations` + `conversation_messages` là archive lâu dài của user đăng nhập và `itineraries` giữ plan JSON theo UX spec §6.4 cùng `product_ids` để kiểm tra grounding. `expires_at` đánh dấu hạn working memory, không phải lịch xoá archive. `search_logs` tồn tại vì UserEvent `search` của CDP không có chỗ chứa câu truy vấn. `refresh_tokens` và `login_attempts` là phần **bền** của auth hybrid (`docs/hop-dong-tich-hop-auth.md` §16.2): session, bộ đếm rate limit và OAuth state nằm ở Redis vì mất đi thì người dùng chỉ phải đăng nhập lại, còn hai bảng này phải thu hồi được kể cả khi Redis trống.
 
 ```mermaid
 erDiagram
@@ -405,7 +405,7 @@ erDiagram
 | `carts`, `cart_items` | app | Giỏ phía server, một giỏ / user | backend | 0 |
 | `bookings`, `booking_items` | app | Đơn đặt chỗ: giữ chỗ `pending_payment` 30 phút → `confirmed` khi Stripe thu tiền (hoặc `payment_failed` · `expired` · `cancelled`); tối đa một đơn `pending_payment` mỗi user (unique index một phần). 1 checkout = 1 event_group_id; nối sang event purchase bằng event_group_id + product_id + using_date | backend · seed persona | chỉ persona |
 | `payments` | app | Một phiên Stripe Checkout mỗi đơn; trạng thái thanh toán tách khỏi trạng thái đơn (spec booking §5.2). Không lưu dữ liệu thẻ, chỉ id của Stripe (NFR-SEC-03) | backend · seed (`provider = 'seed'` cho booking của P1) | booking của P1 |
-| `conversations`, `conversation_messages`, `itineraries` | app | Trạng thái agent, TTL 24h | backend | 0 |
+| `conversations`, `conversation_messages`, `itineraries` | app | Archive agent của user đăng nhập; working memory Redis TTL 24h, archive không tự xoá | backend | 0 |
 | `recommendation_logs` | app | Mỗi lần gọi /recommendations | backend · batch | 0 |
 | `search_logs` | app | Câu truy vấn thật + kết quả; không nối id với event | backend | 0 |
 | `refresh_tokens` | app | Chuỗi rotation một-lần-dùng; tái dùng → thu hồi cả family | backend (auth) | 0 |

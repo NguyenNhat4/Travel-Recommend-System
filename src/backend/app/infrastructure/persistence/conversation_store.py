@@ -1,6 +1,7 @@
-"""Process-local conversation storage for development and tests."""
+"""Working-memory stores for itinerary conversations."""
 
 from copy import deepcopy
+import json
 from time import monotonic
 from typing import Any, Callable
 
@@ -21,3 +22,33 @@ class InMemoryConversationStore:
 
     async def save(self, conversation_id: str, value: dict[str, Any], owner: str = "anonymous") -> None:
         self._items[(owner, conversation_id)] = (self.clock(), deepcopy(value))
+
+
+class RedisConversationStore:
+    """Redis JSON store with a sliding 24-hour TTL refreshed on every successful turn."""
+
+    def __init__(self, client, ttl_seconds: int = 86_400, key_prefix: str = "itinerary:conversation"):
+        self._client = client
+        self.ttl_seconds = ttl_seconds
+        self._key_prefix = key_prefix
+
+    def _key(self, owner: str, conversation_id: str) -> str:
+        return f"{self._key_prefix}:{owner}:{conversation_id}"
+
+    async def load(self, conversation_id: str | None, owner: str = "anonymous") -> dict[str, Any] | None:
+        if not conversation_id:
+            return None
+        raw = await self._client.get(self._key(owner, conversation_id))
+        if raw is None:
+            return None
+        if isinstance(raw, bytes):
+            raw = raw.decode("utf-8")
+        value = json.loads(raw)
+        return value if isinstance(value, dict) else None
+
+    async def save(self, conversation_id: str, value: dict[str, Any], owner: str = "anonymous") -> None:
+        await self._client.set(
+            self._key(owner, conversation_id),
+            json.dumps(value, ensure_ascii=False, separators=(",", ":")),
+            ex=self.ttl_seconds,
+        )

@@ -243,7 +243,7 @@ JWT là tùy chọn.
 
 Request hợp lệ khi có `message`, hoặc có đồng thời `conversationId` và `intentOverride`. `message` có tối đa 1.000 ký tự.
 
-`destination` và `days` là dữ liệu nghiệp vụ bắt buộc để bắt đầu retrieval và lập kế hoạch, nhưng không bắt buộc có sẵn trong request đầu tiên. Khi thiếu một hoặc cả hai, Agent trả `NEEDS_CLARIFICATION`, lưu phần intent đã biết cùng lịch sử chat gần đây theo `conversationId` và không gọi Search, Recommendation hoặc Catalog. MVP không tự phát hiện ngôn ngữ để tránh kết quả không ổn định; thứ tự ưu tiên là `context.language` tường minh, ngôn ngữ đã lưu của conversation, rồi `vi`.
+`destination` và `days` là dữ liệu nghiệp vụ bắt buộc để bắt đầu retrieval và lập kế hoạch, nhưng không bắt buộc có sẵn trong request đầu tiên. Khi thiếu một hoặc cả hai, Agent trả `NEEDS_CLARIFICATION`, lưu phần intent đã biết cùng lịch sử chat gần đây theo `conversationId` và không gọi Search, Recommendation hoặc Catalog. Khi đã đủ điểm đến và số ngày, Agent hỏi **gộp một câu, một lần** những gì còn thiếu trong ngày đi (`startDate`), số người (`party`) và ngân sách (`budget`): trả `NEEDS_CLARIFICATION` với `missingFields` là tập con của `["startDate", "party", "budget"]` và chưa gọi tool (AC-AGT-01). Người dùng trả lời đủ, một phần hay nói chưa chốt thì lượt sau vẫn lập lịch với phần đã biết (trường còn thiếu để `null`), không hỏi lại. Chỉ hỏi trước lần lập lịch đầu tiên của hội thoại; câu đầu đã nói chưa chốt ngày thì ngày đi không tính là thiếu. Agent không tự điền `startDate` khi người dùng không nói ngày. Ngày không nêu năm dùng năm hiện tại theo giờ Việt Nam: nếu LLM trích ra năm cũ hơn (ví dụ `2023-09-20` cho "20/9") thì backend sửa về năm nay (`2026-09-20`); ngày không bị từ chối dù đã qua. Yêu cầu chỉ gồm `intentOverride` (chip sửa tay) không bị hỏi thêm. Trước bước này, `classify` phân luồng lượt chat: đặt chỗ, thanh toán, chèn lệnh hoặc đòi secret là ngoài phạm vi và bị từ chối (400 `VALIDATION_ERROR`) mà không trích intent. MVP không tự phát hiện ngôn ngữ để tránh kết quả không ổn định; thứ tự ưu tiên là `context.language` tường minh, ngôn ngữ đã lưu của conversation, rồi `vi`.
 
 #### API stream cho UI demo
 
@@ -255,6 +255,12 @@ Accept: text/event-stream
 Request giống `POST /assistant/itineraries`. Stream phát lần lượt `run.started`, `graph.topology`, các `node.completed`, rồi `run.completed` hoặc `run.failed`. Event chỉ chứa ID node, thứ tự, trạng thái, thời lượng và response công khai; không chứa raw graph state, prompt, token hoặc credential. Vì HTTP status đã được gửi khi mở SSE, lỗi phát sinh sau đó nằm trong payload `run.failed.httpStatus`.
 
 `GET /api/v1/assistant/status` trả readiness, graph version, data mode và số sản phẩm fixture nếu có. `fixture` chỉ được bật mặc định ở development/test; production mặc định `disabled` cho tới khi cấu hình upstream HTTP thật.
+
+#### API lịch sử hội thoại
+
+- `GET /api/v1/assistant/conversations?page=1&pageSize=20`: danh sách hội thoại mới nhất trước.
+- `GET /api/v1/assistant/conversations/{conversationId}`: transcript đầy đủ và response có cấu trúc đã lưu.
+- Hai endpoint bắt buộc JWT hợp lệ, luôn lọc theo `cdp_user_id`; hội thoại không thuộc user hiện tại trả `404 CONVERSATION_NOT_FOUND`.
 
 ### 4.2. Response hoàn chỉnh
 
@@ -409,15 +415,16 @@ Lỗi thực sự không nằm trong `ItineraryResponse` và không dùng `statu
 
 - Mỗi conversation lưu trip intent đã chuẩn hóa gần nhất và lịch sử chat user/assistant gần đây.
 - Lịch sử chat chỉ nhận role `user`/`assistant`, tối đa 20 message, 1.000 ký tự/message và 8.000 ký tự tổng; khi vượt giới hạn thì bỏ message cũ nhất trước.
-- `classify`, bước lập tool plan, `converse` và `clarify` nhận lịch sử để hiểu tham chiếu đa lượt. Lịch sử là dữ liệu không tin cậy, không phải instruction và message mới nhất vẫn có quyền cao hơn.
+- **Mọi** lượt gọi LLM (`classify`, `extract`, chọn tên điểm đến và lập tool plan ở `tool`, `converse`, `clarify`) nhận cùng ngữ cảnh hội thoại: lịch sử chat trong giới hạn trên, chuyến đi đã chốt (intent, ràng buộc), sản phẩm đã cho xem và câu hỏi gần nhất của trợ lý. Nhờ phần tóm tắt, thông tin của lượt cũ vẫn còn khi message cũ bị cắt. Ngữ cảnh là dữ liệu không tin cậy, không phải instruction, và message mới nhất vẫn có quyền cao hơn.
 - Tin nhắn mới chỉ cập nhật các trường người dùng thay đổi rõ ràng.
 - “Đổi thành Đà Nẵng” chỉ thay `destination`.
 - “Tăng ngân sách lên 20 triệu” chỉ thay `budget`.
 - Thực hiện tìm kiếm lại khi điểm đến, ngày, ngân sách, số người hoặc sở thích thay đổi.
 - Không dùng trạng thái hội thoại làm nguồn chính thức cho giá và availability.
-- MVP nên cho conversation hết hạn sau 24 giờ.
+- Working memory trong Redis hết hạn sau 24 giờ; archive Postgres của user đăng nhập không tự xoá.
 - Conversation thuộc về user đã xác thực (`cdp_user_id` của Bearer hợp lệ), không thuộc về access token: BFF làm mới token khoảng 9 phút một lần và hội thoại phải giữ nguyên qua lần làm mới. Khách không có Bearer dùng chung nhóm `anonymous`; Bearer không xác thực được thì cô lập theo hash của chính token đó.
-- Adapter hiện tại lưu trong memory của process; restart backend sẽ mất conversation. Việc lưu bền vững vào các bảng `app.conversations`/`app.conversation_messages` đã có trong DDL là hạng mục adapter riêng.
+- Production dùng Redis DB index riêng qua `ITINERARY_REDIS_URL`; dev/test được phép dùng memory trong process khi biến này trống.
+- Mỗi lượt của user đăng nhập được ghi best-effort vào `app.conversations`/`app.conversation_messages`; lỗi archive không làm hỏng response. Redis miss có thể phục hồi working state gần nhất từ archive. Khách không được ghi archive.
 
 ---
 

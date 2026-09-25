@@ -2,9 +2,9 @@
 
 - Ngày: 2026-09-25
 - Người đề xuất: Nguyễn Minh Nhật / Claude Code
-- Trạng thái: chờ chốt
-- Chốt bởi / ngày:
-- PRD bị ảnh hưởng: `docs/prd/architecture.md` §1 (sơ đồ), §3 (dòng "Hội thoại…"), §4 (bảng công nghệ, dòng Redis); `docs/prd/deployment-plan.md` §1 (dòng Session store), §2 (bảng biến môi trường)
+- Trạng thái: đã áp dụng
+- Chốt bởi / ngày: Nguyễn Minh Nhật, 2026-09-25
+- PRD bị ảnh hưởng: `docs/prd/requirements.md` §1.4; `docs/prd/architecture.md` §1, §3, §4; `docs/prd/data-model.md` §2.2; `docs/prd/user-flow.md` §3.2, §4.2; `docs/prd/deployment-plan.md` §1, §2
 - Mã FR/NFR: FR-AGT-01, FR-AGT-05
 
 ## Lý do
@@ -15,7 +15,7 @@ Hội thoại của trợ lý hiện nằm trong RAM của process backend. Vi�
 - Khi chạy nhiều worker hoặc nhiều instance, mỗi lượt chat có thể rơi vào một process khác, nên thỉnh thoảng báo "không tìm thấy hội thoại".
 - Không có lịch sử chat nào được giữ lại để phân tích và cải thiện trợ lý.
 
-Phương án chọn: dùng Redis có sẵn làm "trí nhớ làm việc" 24 giờ của trợ lý, và ghi thêm lịch sử chat của người đã đăng nhập vào hai bảng `app.conversations`, `app.conversation_messages`. Hai bảng này đã có trong DDL nhưng chưa được dùng. Phương án không đổi schema và không đổi API contract.
+Phương án chọn: dùng Redis có sẵn làm "trí nhớ làm việc" 24 giờ của trợ lý, và ghi thêm lịch sử chat của người đã đăng nhập vào hai bảng `app.conversations`, `app.conversation_messages`. Hai bảng này đã có trong DDL nhưng chưa được dùng. Bổ sung API đọc danh sách/chi tiết hội thoại và màn hình Web để chọn, xem lại, tiếp tục hội thoại đã lưu.
 
 Phương án thay thế đã cân nhắc là lưu bằng checkpointer Postgres của LangGraph (`update-archive/2026-09-25-luu-hoi-thoai-bang-langgraph-checkpointer.md`). Người dùng không chọn phương án đó.
 
@@ -25,7 +25,7 @@ Phương án thay thế đã cân nhắc là lưu bằng checkpointer Postgres c
 |---|---|
 | Lưu lâu dài chat của khách chưa đăng nhập? | Không. Khách chỉ có trí nhớ 24 giờ trong Redis. |
 | Giữ lịch sử trong Postgres bao lâu? | Không giới hạn. Không có job xoá. |
-| Có màn hình xem lại chat cũ? | Chưa. Đợt này chỉ lưu dữ liệu. |
+| Có màn hình xem lại chat cũ? | Có. User đăng nhập xem danh sách, chọn một hội thoại để tải transcript và tiếp tục. |
 
 ## Nội dung đề xuất
 
@@ -56,6 +56,18 @@ Phương án thay thế đã cân nhắc là lưu bằng checkpointer Postgres c
 
 - Thêm dòng: `ITINERARY_REDIS_URL` | Redis cho trí nhớ hội thoại của trợ lý (DB index riêng, ví dụ `/2`) | Tất cả | Có mật khẩu; để trống ở dev/test thì dùng bộ nhớ của process; bắt buộc ở production.
 
+**`docs/prd/user-flow.md` §3.2 và §4.2**
+
+- Người dùng đăng nhập thấy danh sách hội thoại của chính mình ở màn hình `/assistant`.
+- Chọn một hội thoại tải lại transcript đã lưu và đặt nó làm hội thoại đang hoạt động; có thể tiếp tục gửi tin nhắn.
+- Khách chưa đăng nhập không thấy lịch sử lâu dài.
+
+**API v1**
+
+- `GET /api/v1/assistant/conversations?page=&pageSize=`: danh sách hội thoại của user hiện tại, mới nhất trước.
+- `GET /api/v1/assistant/conversations/{conversationId}`: transcript và response có cấu trúc của một hội thoại thuộc user hiện tại.
+- Cả hai endpoint bắt buộc Bearer hợp lệ; truy cập hội thoại của user khác trả `404 CONVERSATION_NOT_FOUND`.
+
 ## Ảnh hưởng và rủi ro
 
 - **Dữ liệu cá nhân:** nội dung chat của người đã đăng nhập được giữ vô thời hạn và tích luỹ dần.
@@ -68,6 +80,8 @@ Phương án thay thế đã cân nhắc là lưu bằng checkpointer Postgres c
 - `src/backend/app/infrastructure/persistence/conversation_store.py`: thêm `RedisConversationStore`.
 - `src/backend/app/application/ports/itinerary_tools.py`: thêm `ConversationArchivePort`.
 - `src/backend/app/infrastructure/persistence/postgres_conversation_archive.py`: thêm adapter ghi `app.conversations`, `app.conversation_messages` qua `DATABASE_URL`.
+- `src/shared/contracts/paths/itinerary-agent.yaml`, `schemas/itinerary-agent.yaml`: thêm API danh sách/chi tiết lịch sử có phân trang.
+- `src/frontend/src/services/assistantHistory.ts`, provider/state và UI `/assistant`: tải danh sách, chọn và tiếp tục hội thoại.
 - `src/backend/app/core/config.py`, `src/backend/app/main.py`, `docker-compose.yml`: biến `ITINERARY_REDIS_URL` và nối adapter.
 - `src/backend/app/agents/nodes.py`, `graph.py`, `runtime_dependencies.py`: id UUID; `finalize` ghi lịch sử cho người đã đăng nhập.
 - Test unit và integration (Redis thật, Postgres thật) cho hai adapter.

@@ -9,10 +9,17 @@ import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, Request
+from fastapi import APIRouter, Depends, Header, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from src.backend.app.api.deps import conversation_owner, get_plan_itinerary
+from src.backend.app.api.deps import (
+    conversation_owner,
+    current_principal,
+    get_conversation_history,
+    get_plan_itinerary,
+)
+from src.backend.app.application.auth.principal import AuthPrincipal
+from src.backend.app.application.itinerary.history import ConversationHistory
 from src.backend.app.api.v1.schemas.itinerary import ItineraryRequestModel
 from src.backend.app.application.itinerary.contracts import error_response, valid
 from src.backend.app.application.itinerary.use_cases import PlanItinerary
@@ -189,3 +196,28 @@ async def agent_status(request: Request):
         "llmMode": getattr(request.app.state, "itinerary_llm_mode", "unavailable"),
         "productCount": getattr(clients, "product_count", None) if clients else None,
     }
+
+
+@router.get("/assistant/conversations")
+async def list_conversations(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, alias="pageSize", ge=1, le=50),
+    principal: AuthPrincipal = Depends(current_principal),
+    history: ConversationHistory = Depends(get_conversation_history),
+):
+    return await history.list(principal.cdp_user_id, page=page, page_size=page_size)
+
+
+@router.get("/assistant/conversations/{conversationId}")
+async def get_conversation(
+    conversationId: str,
+    principal: AuthPrincipal = Depends(current_principal),
+    history: ConversationHistory = Depends(get_conversation_history),
+):
+    result = await history.get(conversationId, principal.cdp_user_id)
+    if result is None:
+        return JSONResponse(status_code=404, content=error_response(
+            "CONVERSATION_NOT_FOUND", "Không tìm thấy cuộc hội thoại.",
+            current_request_id() or uuid.uuid4().hex,
+        ))
+    return result

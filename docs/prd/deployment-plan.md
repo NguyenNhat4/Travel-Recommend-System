@@ -17,7 +17,7 @@ Hệ thống được thiết kế để vận hành trên ba cấp môi trườ
 |---|---|---|---|
 | **Mục đích** | Phát triển tính năng, debug | Tích hợp liên tục, kiểm thử E2E | Phục vụ người dùng thực tế |
 | **Cơ sở dữ liệu** | PostgreSQL 16 local qua Docker | PostgreSQL Cloud | Managed Cloud Database Cluster |
-| **Session store** | Redis local qua Docker (bind `127.0.0.1`, có mật khẩu) | Redis dùng chung (managed hay tự host: chờ chốt) | Redis managed, `noeviction` |
+| **Session store** | Redis local qua Docker (bind `127.0.0.1`, có mật khẩu); hội thoại dùng DB index riêng | Redis dùng chung, hội thoại dùng DB index riêng | Redis managed, `noeviction`; hội thoại dùng DB index riêng |
 | **Cơ sở dữ liệu vector** | Weaviate local qua Docker (volume riêng) | Weaviate dùng chung | Weaviate Cloud hoặc self-host có backup |
 | **Cổng thanh toán** | Stripe test mode, `stripe listen` chuyển webhook về máy | Stripe test mode, webhook trỏ về URL staging | Ngoài phạm vi (live mode) |
 | **Dữ liệu mẫu** | Snapshot nén hoặc dữ liệu tổng hợp | Toàn bộ dữ liệu snapshot chuẩn hóa | Dữ liệu giao dịch thực tế |
@@ -45,6 +45,7 @@ Hệ thống phân tách ranh giới bảo mật bằng các chuỗi kết nối
 | `JWT_ISSUER` / `JWT_AUDIENCE` | Giá trị `iss`/`aud` bắt buộc khớp khi kiểm token | Tất cả | Không bí mật |
 | `AUTH_SERVICE_TOKEN` | Header `X-Service-Token` BFF gửi tới nhóm `/auth/session/*` và `/internal/*` | Tất cả | Bí mật, ≥ 32 ký tự, BFF và FastAPI dùng chung giá trị |
 | `AUTH_REDIS_URL` / `SESSION_REDIS_URL` | Redis cho rate limit (FastAPI) và session (BFF) | Tất cả | Có mật khẩu; không mở ra mạng ngoài |
+| `ITINERARY_REDIS_URL` | Redis cho working memory 24 giờ của trợ lý, dùng DB index riêng (ví dụ `/2`) | Tất cả | Có mật khẩu; để trống ở dev/test thì dùng memory trong process; bắt buộc ở production |
 | `TRUSTED_PROXIES` | Dải proxy được tin header `X-Forwarded-For` khi tính rate limit | Staging / Prod | Sai giá trị = rate limit bị vượt qua bằng một header |
 | `CAPTCHA_PROVIDER` / `CAPTCHA_SECRET` | CAPTCHA khi đăng nhập sai nhiều lần | Tất cả | `noop` ở dev/test; secret chỉ ở FastAPI |
 | `WEAVIATE_API_KEY` | Khóa xác thực Weaviate | Staging / Prod | Bí mật. Local dùng anonymous access nên có thể bỏ trống |

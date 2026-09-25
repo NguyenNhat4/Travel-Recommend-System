@@ -23,6 +23,7 @@ Endpoint hiện có (prefix `/api/v1`): `GET|POST /search` (`q`/`query`, `taxono
 Agent tool `query` được adapter đổi thành `q`) · `GET /similar/{productId}?k=` · `GET /recommendations?k=&destination=`
 (JWT tùy chọn, `cdp_user_id` lấy từ token; token hỏng → 401, không hạ thành khách) · `GET /destinations` ·
 `POST /assistant/itineraries` · `POST /assistant/itineraries/stream` · `GET /assistant/status` ·
+`GET /assistant/conversations` · `GET /assistant/conversations/{conversationId}` (JWT bắt buộc) ·
 auth v1 `POST /auth/register|login`, `GET /auth/me` · chỉ BFF (`X-Service-Token`)
 `POST /auth/session`, `/auth/session/token`, `/auth/session/revoke` · `PUT /auth/password` ·
 `GET /internal/recommendations?cdp_user_id=` (`X-Service-Token`, tắt ở production) · booking (JWT bắt buộc)
@@ -75,7 +76,7 @@ pytest -q src/backend/tests/integration/test_booking_postgres.py` (dùng user te
 | application | `application/<domain>/` | Use case: `SearchProducts`, `SimilarProducts`, `RecommendForUser`, `BuildPopularity`, `PlanItinerary`, auth, booking, tracking |
 | agents | `agents/` | LangGraph 10 node; `runtime_dependencies.py` hiện thực port `ItineraryPlanner`; `tools/itinerary_gateway.py` gọi Search/Recommendation qua port |
 | infrastructure | `cdp/` | `LocalCdpClient` (ghi), `PostgresCdpReader` (đọc), `CdpHttpClient`, `BackgroundCdpEventRecorder` — mọi SQL vào schema `cdp` nằm ở đây |
-| infrastructure | `persistence/` | `PostgresProductLookup`, conversation store, LangGraph checkpointer, giỏ/đơn/thanh toán (`postgres_booking.py`) |
+| infrastructure | `persistence/` | `PostgresProductLookup`, Redis conversation store, Postgres conversation archive, LangGraph checkpointer, giỏ/đơn/thanh toán (`postgres_booking.py`) |
 | infrastructure | `clients/` | HTTP client itinerary; fixture 50 sản phẩm cho `ITINERARY_DATA_MODE=fixture` |
 | infrastructure | `llm/`, `embeddings/`, `vectors/`, `auth/`, `payments/` | Provider LLM (`LazyChatModel`), `CohereEmbedder`, `WeaviateVectorStore`, hash mật khẩu + JWT, `StripePaymentGateway` (REST qua httpx, kiểm chữ ký webhook) + `FakeGateway` (`PAYMENT_PROVIDER=fake`) |
 | api | `api/` | `deps.py` (Depends lấy use case), `middleware.py` (X-Request-ID, CORS), `errors.py` (Error Envelope), `v1/router.py`, `v1/schemas/` (DTO), `v1/routes/` |
@@ -127,7 +128,12 @@ GEMINI_API_KEY=
 ANTHROPIC_API_KEY=
 ITINERARY_LLM_MODEL=            # bỏ trống: OpenAI dùng MODEL_NAME, provider khác dùng mặc định
 ITINERARY_LLM_TEMPERATURE=0     # riêng của agent, không dùng chung LLM_TEMPERATURE
+ITINERARY_REDIS_URL=redis://:devpass@localhost:6379/2  # working memory 24h; bắt buộc production
 ```
+
+User đăng nhập được ghi thêm transcript vào `app.conversations`/`app.conversation_messages`; lỗi archive
+không làm hỏng lượt chat. Khách không được lưu lâu dài. Web đọc lại lịch sử qua hai endpoint
+`/assistant/conversations`; mọi truy vấn đều lọc bằng `cdp_user_id` từ JWT đã xác minh.
 
 `GET /api/v1/assistant/status` trả thêm `llmMode`:
 

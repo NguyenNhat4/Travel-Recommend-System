@@ -436,6 +436,9 @@ ItineraryNeedsClarification:
         enum:
         - destination
         - days
+        - startDate
+        - party
+        - budget
     knownIntent:
       $ref: ../openapi.yaml#/components/schemas/TripIntent
     suggestedValues:
@@ -512,6 +515,104 @@ ItineraryResponse:
       NEEDS_CLARIFICATION: ../openapi.yaml#/components/schemas/ItineraryNeedsClarification
       NO_RESULTS: ../openapi.yaml#/components/schemas/ItineraryNoResults
       FALLBACK: ../openapi.yaml#/components/schemas/ItineraryFallback
+AssistantConversationSummary:
+  type: object
+  required:
+  - conversationId
+  - title
+  - status
+  - createdAt
+  - updatedAt
+  - messageCount
+  properties:
+    conversationId:
+      type: string
+      format: uuid
+    title:
+      type: string
+      maxLength: 120
+    status:
+      type: string
+      enum:
+      - open
+      - planned
+      - expired
+    createdAt:
+      type: string
+      format: date-time
+    updatedAt:
+      type: string
+      format: date-time
+    messageCount:
+      type: integer
+      minimum: 0
+AssistantConversationMessage:
+  type: object
+  required:
+  - messageId
+  - role
+  - content
+  - createdAt
+  properties:
+    messageId:
+      type: integer
+      minimum: 1
+    role:
+      type: string
+      enum:
+      - user
+      - assistant
+    content:
+      type: string
+    response:
+      $ref: ../openapi.yaml#/components/schemas/ItineraryResponse
+    createdAt:
+      type: string
+      format: date-time
+AssistantConversationPagination:
+  type: object
+  required:
+  - page
+  - pageSize
+  - totalItems
+  - totalPages
+  properties:
+    page:
+      type: integer
+      minimum: 1
+    pageSize:
+      type: integer
+      minimum: 1
+    totalItems:
+      type: integer
+      minimum: 0
+    totalPages:
+      type: integer
+      minimum: 0
+AssistantConversationList:
+  type: object
+  required:
+  - data
+  - pagination
+  properties:
+    data:
+      type: array
+      items:
+        $ref: ../openapi.yaml#/components/schemas/AssistantConversationSummary
+    pagination:
+      $ref: ../openapi.yaml#/components/schemas/AssistantConversationPagination
+AssistantConversationDetail:
+  type: object
+  required:
+  - conversation
+  - messages
+  properties:
+    conversation:
+      $ref: ../openapi.yaml#/components/schemas/AssistantConversationSummary
+    messages:
+      type: array
+      items:
+        $ref: ../openapi.yaml#/components/schemas/AssistantConversationMessage
 AssistantStatus:
   type: object
   required:

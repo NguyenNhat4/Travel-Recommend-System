@@ -17,7 +17,7 @@ flowchart TB
         BFF[BFF: Next.js route handler\ncookie phiên HttpOnly, CSRF, giữ token]
     end
 
-    Redis[(Redis 7\nsession, rate limit)]
+    Redis[(Redis 7\nsession, rate limit,\nhội thoại trợ lý 24h)]
 
     subgraph Gateway["Lớp Cổng Giao Tiếp (API Gateway / FastAPI)"]
         Router[REST API Router & Auth Middleware]
@@ -70,6 +70,7 @@ flowchart TB
     BFF -->|Bearer JWT + X-Service-Token| Router
     BFF --> Redis
     Router --> Redis
+    AIAgent --> Redis
     Router --> Contract
     Contract --> UseCase
     UseCase --> Domain
@@ -168,10 +169,13 @@ Trợ lý lập lịch trình không phải là một chuỗi prompt đơn giả
 
 ```mermaid
 stateDiagram-v2
-    [*] --> AnalyzeIntent: Người dùng gửi yêu cầu
-    AnalyzeIntent --> CheckClarification: Trích xuất thông tin (Điểm đến, Ngày, Ngân sách)
+    [*] --> ClassifyTurn: Người dùng gửi yêu cầu
+    ClassifyTurn --> Converse: Trò chuyện / ngoài phạm vi (đặt chỗ, chèn lệnh)
+    Converse --> [*]: Trả lời hoặc từ chối, không gọi tool
+    ClassifyTurn --> AnalyzeIntent: Yêu cầu du lịch
+    AnalyzeIntent --> CheckClarification: Trích xuất thông tin (Điểm đến, Ngày, Số người, Ngân sách)
     
-    CheckClarification --> AskUser: Thiếu thông tin thiết yếu
+    CheckClarification --> AskUser: Thiếu điểm đến/số ngày, hoặc chưa hỏi ngày đi–số người–ngân sách
     AskUser --> [*]: Chờ phản hồi tiếp theo
     
     CheckClarification --> SearchCandidates: Đủ thông tin cơ bản
@@ -192,7 +196,8 @@ stateDiagram-v2
 - **Response phân biệt theo `status`:** `ItineraryResponse` là `oneOf` gồm `COMPLETED`, `NEEDS_CLARIFICATION`, `NO_RESULTS`, `FALLBACK` (`src/shared/contracts/schemas/itinerary-agent.yaml`). Trường cụ thể theo contract, không theo ví dụ trong PRD.
 - **Backend tự tính tổng tiền;** giá thiếu thì tổng là `null` kèm cảnh báo, không coi thiếu giá là 0.
 - **LLM lỗi:** dùng fallback dựa trên luật hoặc trả `FALLBACK`/lỗi có kiểm soát.
-- **Hội thoại** lưu intent đã chuẩn hóa (TTL mục tiêu 24 giờ); giá và tình trạng còn chỗ luôn được tải lại, không dùng bản lưu trong hội thoại.
+- **Ngữ cảnh cho LLM:** mọi lượt gọi LLM (phân luồng, trích intent, chọn điểm đến, lập tool plan, viết câu trả lời) nhận cùng ngữ cảnh hội thoại: lịch sử gần nhất có giới hạn, chuyến đi đã chốt, sản phẩm đã cho xem và câu hỏi gần nhất của trợ lý. Ngữ cảnh là dữ liệu không tin cậy, không phải chỉ dẫn.
+- **Hội thoại** có hai tầng lưu: Redis giữ working memory 24 giờ (intent, ràng buộc, lịch sử gần nhất và sản phẩm vừa hiển thị); Postgres giữ lâu dài các lượt `user`/`assistant` của người dùng đã đăng nhập trong `app.conversations` và `app.conversation_messages`. Web cho phép user đã đăng nhập liệt kê, mở lại và tiếp tục hội thoại của chính mình. Ghi archive lỗi không làm hỏng lượt chat. Giá và tình trạng còn chỗ luôn được tải lại, không dùng bản lưu trong hội thoại.
 
 ---
 
@@ -207,7 +212,7 @@ stateDiagram-v2
 | **Cổng thanh toán** | **Stripe (test mode), Stripe Checkout hosted page** | V-OTA không chạm dữ liệu thẻ; có sẵn 3DS; có thẻ test cho từng loại lỗi; webhook có chữ ký. |
 | **Mô hình Embedding** | **Cohere `embed-multilingual-v3.0`** | Đa ngôn ngữ (bao gồm tiếng Việt), gọi qua API nên máy dev không phải tải model về. **1024 chiều.** Bắt buộc phân biệt `input_type`: `search_document` khi nạp, `search_query` khi truy vấn. |
 | **Frontend Framework** | **React / Next.js / TypeScript** | Xây dựng giao diện Single Page Application linh hoạt, tương tác mượt mà, type-safety cao. |
-| **Session store & rate limit** | **Redis 7** (`maxmemory-policy noeviction`) | Giữ phiên web, bộ đếm rate limit/lockout, khoá refresh. Mất dữ liệu thì người dùng chỉ phải đăng nhập lại; refresh token vẫn thu hồi được nhờ bản bền trong `app.refresh_tokens`. Không dùng `allkeys-lru` vì sẽ ngẫu nhiên đá người dùng ra. |
+| **Session store, rate limit & working memory** | **Redis 7** (`maxmemory-policy noeviction`) | Giữ phiên web, bộ đếm rate limit/lockout, khoá refresh và working memory 24 giờ của trợ lý ở DB index riêng. Mất dữ liệu thì trợ lý nạp lại bản archive gần nhất cho user đăng nhập hoặc bắt đầu ngữ cảnh mới cho khách; lịch sử lâu dài vẫn còn trong Postgres. Không dùng `allkeys-lru`. |
 | **Quản trị API** | **OpenAPI 3.1.0 Contract-First** | Hợp đồng giao tiếp trung tâm, tự động sinh mock server và kiểm tra tính tuân thủ của các nhóm phát triển. |
 | **Container & Triển khai**| **Docker, Docker Compose** | Đóng gói môi trường đồng nhất giữa phát triển local và máy chủ staging. |
 
