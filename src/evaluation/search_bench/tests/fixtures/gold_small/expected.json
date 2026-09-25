@@ -1,0 +1,88 @@
+{
+  "note": "Đáp án cho fixture gold_small. Dữ liệu giả. Nhãn và kết quả merge/import/check viết tay.",
+  "overlap_qids": [
+    "c9005",
+    "c9006",
+    "c9007"
+  ],
+  "kappa": {
+    "n_pairs": 12,
+    "confusion_A_rows_B_cols": [
+      [
+        3,
+        0,
+        0
+      ],
+      [
+        1,
+        3,
+        0
+      ],
+      [
+        1,
+        0,
+        4
+      ]
+    ],
+    "unweighted": 0.752577,
+    "linear": 0.731343,
+    "quadratic": 0.711538,
+    "spec_uses": "linear",
+    "threshold": 0.6,
+    "passes": true
+  },
+  "disagreements": [
+    {
+      "qid": "c9006",
+      "product_id": "P011",
+      "A": 1,
+      "B": 0,
+      "gap": 1
+    },
+    {
+      "qid": "c9007",
+      "product_id": "P003",
+      "A": 2,
+      "B": 0,
+      "gap": 2
+    }
+  ],
+  "merge": {
+    "output": "merged_expected.csv",
+    "n_rows": 25,
+    "needs_discussion": [
+      [
+        "c9007",
+        "P003"
+      ]
+    ],
+    "gap1_takes_lower": [
+      [
+        "c9006",
+        "P011",
+        0
+      ]
+    ],
+    "children_ok_intersection": [
+      [
+        "c9005",
+        "P003",
+        [
+          "R0033"
+        ]
+      ]
+    ]
+  },
+  "import": {
+    "merged_expected.csv": "REFUSE (còn needs_discussion ở c9007/P003)",
+    "merged_resolved.csv": "OK -> giống gold_expected.jsonl"
+  },
+  "check": {
+    "gold_expected.jsonl --min-per-slice 1": "PASS",
+    "gold_expected.jsonl --min-per-slice 10": "FAIL (mỗi slice chỉ có 1 câu)"
+  },
+  "files": {
+    "pool_A.csv": "6d32e824c5bc5c4a4c8aeaa3f8202222356c067e73b0304d433d24a9b4268244",
+    "pool_B.csv": "40fc9e926ea3808f5f6e3af6f5889fb70ea6e426d5b35bcf8f6107e5d9905f3f"
+  }
+}
