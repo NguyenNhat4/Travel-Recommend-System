@@ -120,8 +120,13 @@ results = một trang của R
 **Riêng `/search` ở chế độ `HYBRID_CANDIDATE_SCORE` (từ 25/09/2026, FR-SRC-01):**
 
 ```
-FILTER → TOP-K dense ∪ TOP-K BM25 (Weaviate) → CUTOFF + VỚT → TOTAL/FACETS → SORT (RRF) → PAGE
+CHUẨN HOÁ → FILTER → TOP-K dense ∪ TOP-K BM25 (Weaviate) → CUTOFF + VỚT → TOTAL/FACETS → SORT (RRF) → PAGE
 
+q'      = chuẩn_hoá(query): NFC → viết tắt (KS, KDL, gd, VW; NT, PQ, ĐN, HN, HL, SG/HCM/TPHCM/Sài Gòn; Ntr → N triệu)
+          → sửa chính tả tên riêng theo từ vựng tên sản phẩm + điểm đến của catalog (không bảng chép tay)
+          → tên điểm đến về đúng giá trị catalog (khớp dài nhất trên token đã fold)
+          → kiểu đi về nhãn `audience` catalog dùng (bạn trai/bạn gái → cặp đôi, 1 mình → một mình, công ty → công tác)
+          Embed và BM25 đều dùng q'. Không tách điểm đến/số khách thành filter (bước 2). `query` gốc giữ ở event `search` (§3.2).
 C_dense = top-candidateK của F theo cosine
 C_lex   = top-lexicalCandidateK của F theo BM25 trên nameAscii + searchTextAscii (đã fold dấu; truy vấn fold cùng cách)
 R_dense = { p ∈ C_dense | score(p) >= cutoff }
@@ -138,6 +143,12 @@ như là tên/thương hiệu thì qua ("VinWonders" → mọi tên chứa VinWo
 trong 4,9% tên, "trang" 5,0% — DF không tách được thương hiệu với địa danh phổ biến.
 Nhánh BM25 lỗi (collection chưa có property) → engine chạy dense-only nhưng vẫn khai `HYBRID_CANDIDATE_SCORE`
 với `diagnostics.lexicalCandidates = 0`, không trả 500.
+
+Bước chuẩn hoá khai ở `diagnostics.normalizedQuery` / `appliedAliases` / `corrections` / `party`, chỉ khi có
+nhận ra hoặc đổi gì; `SEARCH_NORMALIZE=false` tắt cả bước. Sửa chính tả chỉ đụng token không phải âm tiết tiếng
+Việt, dài ≥ 5, cách ≤ 1 ký tự (≤ 2 khi ≥ 8) so với token có mặt ở ≥ 3 tên sản phẩm — "Vinpeal" → "Vinpearl",
+còn "cong", "bien", "view" không bao giờ bị sửa. Bảng viết tắt chỉ chứa cách viết; điểm đến đích không có trong
+catalog thì alias đó bị bỏ lúc khởi động.
 
 **Vì sao filter trước:** category exclusion của `/recommendations` loại khoảng
 50% catalog. Chấm điểm trước rồi lọc sau có thể để lại dưới `k` kết quả. Vì vậy
@@ -160,7 +171,8 @@ Các bất biến dưới đây tính trên tập ứng viên `C`, không phải
 
 ```yaml
 search:           { mode: HYBRID_CANDIDATE_SCORE, cutoff: 0.62, candidateK: 200,
-                    lexicalCandidateK: 50, lexicalK: 10, lexicalCutoff: 0.50, lexicalMinCoverage: 0.6, fusion: rrf(60) }
+                    lexicalCandidateK: 50, lexicalK: 10, lexicalCutoff: 0.50, lexicalMinCoverage: 0.6, fusion: rrf(60),
+                    normalize: true }
 similar:          { mode: ANN_CANDIDATE_SCORE, topK: 20 }
 recommendations:  { mode: ANN_CANDIDATE_SCORE, candidateK: 200 }
 ```
@@ -613,6 +625,10 @@ Team Search cung cấp:
     cosine của chúng dưới `cutoff`; `search("khách sạn ở Cà Mau")` → `diagnostics.lexicalCount == 0` (không vớt
     tên chỉ trùng một âm tiết). Nhánh dense của truy vấn ngoài catalog vẫn có thể trả kết quả ≥ cutoff — đó là
     việc của S1 (cutoff), không phải của hybrid.
+10c. `search("KS ở PQ có hồ bơi")` → `diagnostics.normalizedQuery == "khách sạn ở Phú Quốc có hồ bơi"`;
+    `search("Vinpeal Resort Nha Trang")` → `corrections` có Vinpeal → Vinpearl và top-1 như câu viết đúng;
+    `search("khach san co ban cong")` → không có `corrections`; `search("chỗ nghỉ Đà Lạt đi cùng bạn gái")` →
+    `party: COUPLE`, `normalizedQuery` chứa "cặp đôi".
 11. p95 dưới 300 ms trên catalog đầy đủ, đo với Weaviate cùng mạng nội bộ (local hoặc cùng region).
 
 ### Similar
@@ -661,6 +677,7 @@ Bốn tiêu chí **20, 21, 22, 23** là quan trọng nhất trong cả danh sác
 | S7 | ~~Model embedding chưa chốt~~ — **đã chốt 22/09/2026** | Cohere `embed-multilingual-v3.0`, **1024 chiều**, vector lưu ở Weaviate (không còn pgvector). Xem `docs/prd/architecture.md` §4–§5. Kéo theo S8. |
 | S8 | ~~`EXACT_FILTER_SCORE` cần duyệt lại~~ — **đã chốt 24/09/2026, hướng (b)** | Đổi cam kết `total`/`facets` thành xấp xỉ trên tập ứng viên, khai báo qua `approximate`/`totalExact`/`facetsExact`. `/similar`, `/recommendations` chạy `ANN_CANDIDATE_SCORE`; `/search` chạy `HYBRID_CANDIDATE_SCORE` từ 25/09 (§2.4). |
 | S9 | `lexicalK` / `lexicalCutoff` / `lexicalMinCoverage` của hybrid chưa benchmark | Dùng `10` / `0.50` / `0.6`; đo ở cổng S2 của bench (`docs/spec/bench/arms.md`) trên gold, kèm slice `named_entity`, `no_diacritics`, `out_of_catalog` |
+| S10 | Bảng viết tắt, cụm kiểu đi và ngưỡng sửa chính tả của bước chuẩn hoá chưa benchmark | Dùng bảng trong `domain/search/normalize.py`; đo trên slice `abbrev_typo`, `audience_style` (bench Part 6, cổng S3/S6). Bảng backend là nguồn cho `config/aliases.yaml` của bench |
 
 S5 là phụ thuộc nặng nhất: không duyệt `[P3]` thì tiêu chí nghiệm thu 26 không
 đạt được, và ngân sách §7.1 phải sửa.

@@ -15,6 +15,8 @@ from src.backend.app.application.ports import (
 )
 from src.backend.app.domain.search import (
     HybridConfig,
+    NormalizedQuery,
+    QueryNormalizer,
     SearchOutcome,
     candidate_filter_score,
     coverage,
@@ -30,6 +32,20 @@ ANN_DIAGNOSTICS = {"searchMode": "ANN_CANDIDATE_SCORE", "approximate": True, "to
 #: /search hybrid (spec §2.4): R = dense ≥ cutoff ∪ phần vớt từ BM25; thứ tự theo RRF, score vẫn là cosine.
 HYBRID_DIAGNOSTICS = {"searchMode": "HYBRID_CANDIDATE_SCORE", "approximate": True, "totalExact": False,
                       "facetsExact": False}
+
+
+def _normalization_diagnostics(q: str, nq: NormalizedQuery) -> dict:
+    """Trường tuỳ chọn của contract, chỉ có khi bước chuẩn hoá nhận ra hoặc đổi gì (EngineDiagnostics)."""
+    out: dict = {}
+    if nq.text != q:
+        out["normalizedQuery"] = nq.text
+    if nq.applied_aliases:
+        out["appliedAliases"] = [{"from": a, "to": b} for a, b in nq.applied_aliases]
+    if nq.corrections:
+        out["corrections"] = [{"from": a, "to": b} for a, b in nq.corrections]
+    if nq.party:
+        out["party"] = nq.party
+    return out
 
 
 def hit(index: UnitIndex, i: int, score: float, **extra) -> dict:
@@ -55,12 +71,17 @@ class SearchProducts:
     lexical: LexicalSearchPort | None = None   # nhánh BM25; cùng adapter Weaviate. None → dense-only (ANN)
     hybrid: HybridConfig | None = None
     lexical_candidate_k: int = 50
+    normalize: bool = True                       # bước chuẩn hoá truy vấn (spec §2.2); False → đưa nguyên câu vào
     _name_tokens: list[set[str]] = field(default_factory=list, init=False, repr=False, compare=False)
+    _normalizer: QueryNormalizer | None = field(default=None, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         # Token (đã fold) của tên từng search unit, tính một lần: dùng để xét độ phủ khi vớt hit BM25.
         if self.hybrid_on:
             self._name_tokens = [set(tokens(p.name)) for p in self.index.units]
+        if self.normalize:   # từ vựng sửa chính tả + gazetteer lấy từ chính catalog đang chạy
+            self._normalizer = QueryNormalizer(destinations=set(self.index.destination.tolist()),
+                                               names=(p.name for p in self.index.units))
 
     @property
     def hybrid_on(self) -> bool:
@@ -69,17 +90,21 @@ class SearchProducts:
     def __call__(self, q: str, *, taxonomy: str | None = None, destination: str | None = None,
                  limit: int = 20, offset: int = 0) -> dict:
         limit = min(limit, self.max_limit)
-        qvec = self.embedder.embed_query(q)
+        nq = self._normalizer(q) if self._normalizer else None
+        text = nq.text if nq else q   # embed, BM25 và độ phủ đều dùng câu đã chuẩn hoá; `q` gốc chỉ còn để đối chiếu
+        qvec = self.embedder.embed_query(text)
         mask = self.index.mask(taxonomy, destination)
         allowed = self.index.allowed_ids(mask)
         facet_fields = {"taxonomy": self.index.taxonomy, "destination": self.index.destination}
         dense = [h for h in self.vectors.near_vector(qvec, allowed, self.candidate_k) if h.product_id in self.index.idx]
         if self.hybrid_on:
-            out, diagnostics = self._hybrid(q, qvec, dense, allowed, int(mask.sum()), facet_fields)
+            out, diagnostics = self._hybrid(text, qvec, dense, allowed, int(mask.sum()), facet_fields)
         else:
             out = candidate_filter_score([self.index.idx[h.product_id] for h in dense], [h.score for h in dense],
                                          self.cutoff, int(mask.sum()), facet_fields)
             diagnostics = dict(ANN_DIAGNOSTICS)
+        if nq:
+            diagnostics.update(_normalization_diagnostics(q, nq))
         page = out.order[offset: offset + limit]
         return {
             "results": [hit(self.index, i, out.scores[i]) for i in page],

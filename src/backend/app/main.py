@@ -164,6 +164,7 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
         min_coverage=settings.search_lexical_min_coverage,
     ) if settings.search_hybrid and hasattr(vector_search, "bm25") else None
     logger.info("startup.recsys.search.mode=%s", "HYBRID_CANDIDATE_SCORE" if hybrid else "ANN_CANDIDATE_SCORE")
+    logger.info("startup.recsys.search.normalize=%s", settings.search_normalize)
     return {
         "recsys_embedder": embedder,
         "recsys_vectors": vector_search,
@@ -178,6 +179,7 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
             lexical=vector_search if hybrid else None,
             hybrid=hybrid,
             lexical_candidate_k=settings.search_lexical_candidate_k,
+            normalize=settings.search_normalize,
         ),
         "similar": SimilarProducts(index, vector_search),
         # GET /products: cùng tập search unit với /search, sắp xếp popular theo lượt mua CDP (backend §4.1).

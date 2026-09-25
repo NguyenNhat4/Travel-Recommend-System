@@ -199,6 +199,44 @@ EngineDiagnostics:
       type: integer
       minimum: 0
       description: Số phần tử của R chỉ vào nhờ nhánh BM25 (score trong [lexicalCutoff, cutoff)).
+    # Chuẩn hoá truy vấn /search (bước 1, từ 2026-09-25): viết tắt, chính tả tên riêng, tên điểm đến về dạng chuẩn,
+    # kiểu đi về nhãn catalog. Chỉ xuất hiện khi bước này nhận ra hoặc đổi gì; SEARCH_NORMALIZE=false thì không bao giờ có.
+    normalizedQuery:
+      type: string
+      minLength: 1
+      description: >-
+        Chuỗi thực sự đưa vào embed và BM25. Vắng mặt khi không khác `query`. Event `search` ghi sang CDP
+        (§3.2) vẫn dùng `query` gốc.
+    appliedAliases:
+      type: array
+      items:
+        type: object
+        required: [from, to]
+        additionalProperties: false
+        properties:
+          from: { type: string }
+          to: { type: string }
+      description: >-
+        Cụm đã thay theo thứ tự xuất hiện: viết tắt (KS → khách sạn, PQ → Phú Quốc), tên điểm đến về giá trị
+        catalog (da nang → Đà Nẵng), kiểu đi về nhãn catalog (bạn gái → cặp đôi).
+    corrections:
+      type: array
+      items:
+        type: object
+        required: [from, to]
+        additionalProperties: false
+        properties:
+          from: { type: string }
+          to: { type: string }
+      description: >-
+        Token đã sửa chính tả theo từ vựng tên sản phẩm + điểm đến của catalog (Vinpeal → Vinpearl). Chỉ sửa token
+        không phải âm tiết tiếng Việt, dài >= 5, khoảng cách <= 1 (<= 2 khi >= 8), từ đích có mặt ở >= 3 tên.
+    party:
+      type: string
+      enum: [SOLO, COUPLE, FAMILY, FRIENDS, BUSINESS]
+      description: >-
+        Kiểu đi nhận ra trong câu (đi một mình / cặp đôi, bạn trai, bạn gái / gia đình, có trẻ nhỏ / nhóm bạn /
+        công ty, công tác). Mới chỉ để chuẩn hoá chữ và khai báo; chưa lọc hay suy số khách (bước 2).
 
 SearchFacets:
   type: object

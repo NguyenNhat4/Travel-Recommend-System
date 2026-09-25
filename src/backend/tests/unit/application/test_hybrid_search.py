@@ -38,7 +38,7 @@ def test_hybrid_response_matches_contract(services):
     # Giá trị trong miền của contract (cutoff, lexicalCutoff ∈ [0, 1]) — fixture ở trên cố ý vượt miền để ép nhánh vớt.
     s = SearchProducts(services["index"], services["vectors"], FakeEmbedder(), cutoff=0.0,
                        lexical=services["vectors"], hybrid=HybridConfig(lexical_cutoff=0.0))
-    for q in ("VinWonders Nha Trang", "resort", "zzzz không khớp gì"):
+    for q in ("VinWonders Nha Trang", "resort", "zzzz không khớp gì", "KS ở PQ Vinpeal cho gd"):
         r = s(q, limit=5)
         r["diagnostics"]["latencyMs"] = 0  # route `_safe_search` gắn trường này, use case thì không
         errors = [e.message for e in Draft202012Validator(contracts()["search_products"]["response"]).iter_errors(r)]

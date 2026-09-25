@@ -111,6 +111,7 @@ class Settings(BaseSettings):
     recommend_candidate_k: int = 200
     # Hybrid /search (HYBRID_CANDIDATE_SCORE, spec §2.4): BM25 trên nameAscii/searchTextAscii + RRF ở app.
     search_hybrid: bool = True  # False → dense-only ANN_CANDIDATE_SCORE như trước 25/09
+    search_normalize: bool = True  # bước chuẩn hoá truy vấn (viết tắt, chính tả tên riêng, điểm đến, kiểu đi); False → nguyên câu
     search_rrf_k: int = Field(default=60, ge=1)
     search_lexical_candidate_k: int = Field(default=50, ge=1)  # top-K BM25 lấy từ Weaviate mỗi request
     search_lexical_k: int = Field(default=10, ge=0)  # chỉ vớt hit BM25 có rank ≤ giá trị này

@@ -940,6 +940,23 @@ export interface components {
             lexicalCandidates?: number;
             /** @description Số phần tử của R chỉ vào nhờ nhánh BM25 (score trong [lexicalCutoff, cutoff)). */
             lexicalCount?: number;
+            /** @description Chuỗi thực sự đưa vào embed và BM25. Vắng mặt khi không khác `query`. Event `search` ghi sang CDP (§3.2) vẫn dùng `query` gốc. */
+            normalizedQuery?: string;
+            /** @description Cụm đã thay theo thứ tự xuất hiện: viết tắt (KS → khách sạn, PQ → Phú Quốc), tên điểm đến về giá trị catalog (da nang → Đà Nẵng), kiểu đi về nhãn catalog (bạn gái → cặp đôi). */
+            appliedAliases?: {
+                from: string;
+                to: string;
+            }[];
+            /** @description Token đã sửa chính tả theo từ vựng tên sản phẩm + điểm đến của catalog (Vinpeal → Vinpearl). Chỉ sửa token không phải âm tiết tiếng Việt, dài >= 5, khoảng cách <= 1 (<= 2 khi >= 8), từ đích có mặt ở >= 3 tên. */
+            corrections?: {
+                from: string;
+                to: string;
+            }[];
+            /**
+             * @description Kiểu đi nhận ra trong câu (đi một mình / cặp đôi, bạn trai, bạn gái / gia đình, có trẻ nhỏ / nhóm bạn / công ty, công tác). Mới chỉ để chuẩn hoá chữ và khai báo; chưa lọc hay suy số khách (bước 2).
+             * @enum {string}
+             */
+            party?: "SOLO" | "COUPLE" | "FAMILY" | "FRIENDS" | "BUSINESS";
         };
         BecauseItem: {
             /** @description null trong hai trường hợp: event là `search` (không trỏ tới sản phẩm nào), hoặc sản phẩm nguồn có status INACTIVE. [CHỜ DUYỆT: U1] productId khác null thì sản phẩm PHẢI mở được GET /products/{id} và trả 200. */
