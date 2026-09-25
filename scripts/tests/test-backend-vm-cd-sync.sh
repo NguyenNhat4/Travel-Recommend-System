@@ -13,6 +13,15 @@ done
 grep -q 'docker-compose.backend-vm.yml' "$workflow"
 grep -q 'install -D -m 0644' "$workflow"
 grep -q 'GCE_COMPOSE_FILE' "$workflow"
+grep -q '\$GITHUB_WORKSPACE/scripts' "$workflow"
+grep -q '\$GITHUB_WORKSPACE/src/data_collection' "$workflow"
+grep -q '\$GITHUB_WORKSPACE/ops' "$workflow"
+
+tar -czf - \
+  -C "$repo_root/scripts" deploy-backend-vm.sh install-vota-cron.sh check-db-tunnel.sh \
+  -C "$repo_root/src/data_collection" run_daily_docker.sh \
+  -C "$repo_root/ops" docker-compose.backend-vm.yml \
+  | tar -tzf - >/dev/null
 
 grep -q 'network_mode: host' "$compose"
 grep -q '/etc/vota/backend.env' "$compose"

@@ -77,7 +77,9 @@ jobs:
           bash -n \
             scripts/check-db-tunnel.sh \
             scripts/deploy-backend-vm.sh \
-            scripts/install-vota-cron.sh
+            scripts/install-vota-cron.sh \
+            scripts/tests/test-backend-vm-cd-sync.sh
+          bash scripts/tests/test-backend-vm-cd-sync.sh
 
   build:
     name: Build images
@@ -287,9 +289,10 @@ jobs:
           GCE_COMPOSE_FILE: ${{ vars.GCE_COMPOSE_FILE }}
         run: |
           remote_dir="/tmp/vota-cicd-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          tar -C scripts -czf - deploy-backend-vm.sh install-vota-cron.sh check-db-tunnel.sh \
-            -C ../src/data_collection run_daily_docker.sh \
-            -C ../ops docker-compose.backend-vm.yml \
+          tar -czf - \
+            -C "$GITHUB_WORKSPACE/scripts" deploy-backend-vm.sh install-vota-cron.sh check-db-tunnel.sh \
+            -C "$GITHUB_WORKSPACE/src/data_collection" run_daily_docker.sh \
+            -C "$GITHUB_WORKSPACE/ops" docker-compose.backend-vm.yml \
             | gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --quiet \
                 --command "umask 077; mkdir -m 700 '$remote_dir' && tar -xzf - -C '$remote_dir' && sudo -n install -D -m 0755 '$remote_dir/run_daily_docker.sh' /opt/vota/bin/run_daily_docker.sh && sudo -n install -D -m 0644 '$remote_dir/docker-compose.backend-vm.yml' '$GCE_COMPOSE_FILE' && sudo -n test -x /opt/vota/bin/run_daily_docker.sh && sudo -n docker compose -f '$GCE_COMPOSE_FILE' config >/dev/null"
 
