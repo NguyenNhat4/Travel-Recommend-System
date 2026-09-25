@@ -1,5 +1,6 @@
 import type { components } from '../types/api.gen';
 import type { AssistantRequest, AssistantResponse } from '../services/assistantStream';
+import type { AssistantConversationDetail } from '../services/assistantHistory';
 
 export type AssistantPhase =
   | 'idle'
@@ -65,6 +66,7 @@ type Action =
   | { type: 'response-received'; response: AssistantResponse }
   | { type: 'request-failed'; error: AssistantError }
   | { type: 'conversation-restarted' }
+  | { type: 'conversation-loaded'; detail: AssistantConversationDetail }
   | { type: 'request-aborted' }
   | { type: 'slow-state'; isSlow: boolean }
   | { type: 'reset' }
@@ -176,6 +178,28 @@ export function assistantReducer(state: AssistantState, action: Action): Assista
           createdAt: Date.now(),
         }],
       };
+    case 'conversation-loaded': {
+      const transcript = action.detail.messages.map((message) => ({
+        id: `archive-${message.messageId}`,
+        sender: message.role,
+        text: message.content,
+        response: message.response,
+        createdAt: new Date(message.createdAt).getTime(),
+      }));
+      const response = [...action.detail.messages].reverse().find((message) => message.response)?.response ?? null;
+      return {
+        ...state,
+        phase: response ? responsePhase(response) : 'idle',
+        transcript,
+        response,
+        conversationId: action.detail.conversation.conversationId,
+        topology: null,
+        progress: [],
+        error: null,
+        lastRequest: null,
+        isSlow: false,
+      };
+    }
     case 'request-aborted':
       return { ...state, phase: 'aborted', error: null, isSlow: false };
     case 'slow-state':

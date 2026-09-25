@@ -3,7 +3,7 @@ import React from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ requestAssistantStream: vi.fn() }));
+const mocks = vi.hoisted(() => ({ requestAssistantStream: vi.fn(), getAssistantConversation: vi.fn() }));
 
 vi.mock('../../src/services/assistantStream', () => ({
   AssistantStreamError: class AssistantStreamError extends Error {
@@ -11,6 +11,10 @@ vi.mock('../../src/services/assistantStream', () => ({
     retryable = false;
   },
   requestAssistantStream: mocks.requestAssistantStream,
+}));
+
+vi.mock('../../src/services/assistantHistory', () => ({
+  getAssistantConversation: mocks.getAssistantConversation,
 }));
 
 vi.mock('next/navigation', () => ({
@@ -35,6 +39,7 @@ function Probe() {
     <button onClick={assistant.retry}>retry</button>
     <button onClick={assistant.abort}>abort</button>
     <button onClick={assistant.resetConversation}>reset</button>
+    <button onClick={() => void assistant.loadConversation('archive-id')}>load</button>
   </div>;
 }
 
@@ -51,6 +56,7 @@ describe('AssistantProvider', () => {
     sessionStorage.clear();
     mocks.requestAssistantStream.mockReset();
     mocks.requestAssistantStream.mockResolvedValue(undefined);
+    mocks.getAssistantConversation.mockReset();
   });
   afterEach(cleanup);
 
@@ -96,6 +102,26 @@ describe('AssistantProvider', () => {
       intentOverride: { days: 3 },
       context: { language: 'en' },
     });
+  });
+
+  it('loads an archived transcript and makes it the active conversation', async () => {
+    mocks.getAssistantConversation.mockResolvedValue({
+      conversation: {
+        conversationId: 'archive-id', title: 'Nha Trang', status: 'open',
+        createdAt: '2026-09-25T01:00:00Z', updatedAt: '2026-09-25T01:01:00Z', messageCount: 2,
+      },
+      messages: [
+        { messageId: 1, role: 'user', content: 'Nha Trang 3 ngày', createdAt: '2026-09-25T01:00:00Z' },
+        { messageId: 2, role: 'assistant', content: 'Bạn đi ngày nào?', createdAt: '2026-09-25T01:01:00Z',
+          response: { status: 'NEEDS_CLARIFICATION', conversationId: 'archive-id', question: 'Bạn đi ngày nào?' } },
+      ],
+    });
+    mount();
+    fireEvent.click(screen.getByText('load'));
+
+    await waitFor(() => expect(screen.getByTestId('conversation').textContent).toBe('archive-id'));
+    expect(screen.getByTestId('transcript').textContent).toBe('Nha Trang 3 ngày|Bạn đi ngày nào?');
+    expect(sessionStorage.getItem('vota.assistant.conversationId')).toBe('archive-id');
   });
 
   it('resends an expired conversation once as a new conversation', async () => {

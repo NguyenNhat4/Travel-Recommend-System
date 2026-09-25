@@ -17,6 +17,7 @@ import {
   type AssistantResponse,
   type AssistantStreamEvent,
 } from '../services/assistantStream';
+import { getAssistantConversation } from '../services/assistantHistory';
 
 const CONVERSATION_STORAGE_KEY = 'vota.assistant.conversationId';
 type IntentOverride = components['schemas']['TripIntentPatch'];
@@ -29,6 +30,7 @@ interface AssistantContextValue {
   retry: () => void;
   abort: () => void;
   resetConversation: () => void;
+  loadConversation: (conversationId: string) => Promise<void>;
   openFloatingWidget: (initialMessage?: string) => void;
   openHeaderDrawer: () => void;
   closeFloatingWidget: () => void;
@@ -253,6 +255,12 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'reset' });
   }, [abortCurrentRun]);
 
+  const loadConversation = useCallback(async (conversationId: string) => {
+    abortCurrentRun();
+    const detail = await getAssistantConversation(conversationId);
+    dispatch({ type: 'conversation-loaded', detail });
+  }, [abortCurrentRun]);
+
   const value = useMemo<AssistantContextValue>(() => ({
     state,
     sendMessage,
@@ -260,12 +268,13 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     retry,
     abort,
     resetConversation,
+    loadConversation,
     openFloatingWidget: (initialMessage) => dispatch({ type: 'open-floating', initialMessage }),
     openHeaderDrawer: () => dispatch({ type: 'open-header-drawer' }),
     closeFloatingWidget: () => dispatch({ type: 'close-floating' }),
     closeHeaderDrawer: () => dispatch({ type: 'close-header-drawer' }),
     consumeFloatingInitialMessage: () => dispatch({ type: 'consume-floating-initial-message' }),
-  }), [state, sendMessage, submitIntentOverride, retry, abort, resetConversation]);
+  }), [state, sendMessage, submitIntentOverride, retry, abort, resetConversation, loadConversation]);
 
   return <AssistantContext.Provider value={value}>{children}</AssistantContext.Provider>;
 }
