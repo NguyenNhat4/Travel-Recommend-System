@@ -81,7 +81,7 @@ def test_job_moves_legacy_objects_to_deterministic_ids_and_uses_configured_index
         database_url="postgresql://unused", embed_model="embed-multilingual-v3.0", weaviate_url="http://weaviate.test",
         weaviate_collection="Product", weaviate_vector_index_type="hfresh", weaviate_api_key="",
         weaviate_timeout_seconds=5.0, cohere_api_key="k", cohere_base_url="http://cohere.test",
-        embed_dimension=1024, cohere_timeout_seconds=5.0,
+        embed_dimension=1024, cohere_timeout_seconds=5.0, search_bm25_k1=1.2, search_bm25_b=0.75,
     )
 
     report = embed_products.run(settings=settings)
