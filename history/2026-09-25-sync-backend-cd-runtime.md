@@ -36,7 +36,7 @@
 - Đóng gói đúng các file deploy bằng `tar` với ba thư mục nguồn tuyệt đối — PASS; cách dùng `-C` tương đối cũ tái hiện lỗi `could not chdir to '../ops'` và đã được loại bỏ.
 - `git diff --check` — PASS.
 - Compose local chưa resolve được vì `/etc/vota/backend.env` chỉ tồn tại trên VM; sẽ validate lại bằng Compose trên VM trong bước áp dụng template.
-- Monitor được restart sau Backend deploy; crawler batch vẫn chỉ chạy theo cron, không bị chạy thêm một lượt trong CD.
+- Monitor được restart sau Backend deploy; CD cũng khởi động một lượt crawler nền bằng image mới và kiểm tra container đã bắt đầu. Cron vẫn giữ lịch 02:00, không tạo lịch thứ hai.
 
 ## Còn lại / rủi ro
 
