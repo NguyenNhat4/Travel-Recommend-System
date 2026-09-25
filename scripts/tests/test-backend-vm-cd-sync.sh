@@ -36,5 +36,10 @@ grep -q 'JWT_PRIVATE_KEY_PATH' "$deploy"
 grep -q 'AUTH_REDIS_URL' "$deploy"
 grep -q '/app/secrets' "$deploy"
 grep -q -- '--no-deps' "$deploy"
+grep -q 'Restart crawler monitor with published image' "$workflow"
+grep -q 'docker rm -f vota-daily-monitor' "$workflow"
+grep -q 'CONTAINER_NAME=vota-daily' "$workflow"
+grep -q 'PULL=0' "$workflow"
+grep -q 'docker inspect --format' "$workflow"
 
 echo 'backend VM CD sync checks passed'
