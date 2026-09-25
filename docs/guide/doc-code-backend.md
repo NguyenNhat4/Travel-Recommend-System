@@ -77,13 +77,14 @@ Cách làm chung: **đi từ route vào trong, rồi tìm adapter ở `main.py`.
 | 4. Use case | `app/application/search/use_cases.py` → `SearchProducts` | Embed câu hỏi, lọc id, hỏi Weaviate top-K, cắt cutoff, phân trang, dựng `diagnostics` |
 | 5. Rule thuần | `app/domain/search/scoring.py` → `candidate_filter_score` | CUTOFF → FACETS → SORT trên tập ứng viên top-K |
 | 6. Port | `application/ports/embedder.py`, `unit_index.py`, `vector_search.py`, `vector_store.py` | Hợp đồng mà use case dựa vào |
-| 7. Adapter | `main.py` → `build_recsys()` | `CohereEmbedder` + `WeaviateVectorStore`; chỉ metadata nạp lúc khởi động |
+| 7. Adapter | `main.py` → `build_recsys()`, `RecsysRefresher` | `CohereEmbedder` + `WeaviateVectorStore`; chỉ metadata nạp lúc khởi động và nạp lại theo chu kỳ |
 | 8. Adapter chi tiết | `infrastructure/embeddings/cohere_embedder.py`, `infrastructure/vectors/weaviate_store.py` | Gọi Cohere; `WeaviateVectorSearch` truy vấn `nearVector` qua gRPC; tên/giá lấy từ Postgres |
 
 Điều rút ra từ ví dụ: vector không nằm trong bộ nhớ backend. `UnitIndex` chỉ giữ metadata (taxonomy, destination,
 available…) để tính filter; mỗi request gửi danh sách id hợp lệ cùng vector truy vấn sang Weaviate và nhận top-K
 (`ANN_CANDIDATE_SCORE`, nên `total`/`facets` là xấp xỉ). Chạy lại `make index-vectors` thì request sau thấy vector
-mới ngay; chỉ khi catalog trong Postgres đổi mới phải khởi động lại backend.
+mới ngay; catalog trong Postgres đổi thì `RecsysRefresher` nạp lại metadata sau tối đa `CATALOG_REFRESH_SECONDS`,
+không cần khởi động lại backend.
 
 Các luồng khác đi đúng khuôn này:
 

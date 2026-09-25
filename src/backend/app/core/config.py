@@ -95,13 +95,14 @@ class Settings(BaseSettings):
     # RecSys (search / similar / recommendations). Model và chiều đã chốt trong PRD 22/09/2026.
     embed_model: Literal["embed-multilingual-v3.0"] = "embed-multilingual-v3.0"
     embed_dimension: Literal[1024] = 1024
-    embed_cache_dir: str = ".embcache"
     cohere_api_key: str = ""
     cohere_base_url: str = "https://api.cohere.com"
     cohere_timeout_seconds: float = Field(default=30.0, gt=0)
     weaviate_url: str = "http://localhost:8080"
     weaviate_api_key: str = ""
     weaviate_collection: str = "Product"
+    # Chỉ dùng khi job index tạo collection mới; Weaviate Cloud của nhóm chỉ cho phép hfresh.
+    weaviate_vector_index_type: Literal["hnsw", "hfresh"] = "hnsw"
     weaviate_timeout_seconds: float = Field(default=30.0, gt=0)
     # Cổng gRPC cho truy vấn top-K mỗi request; Weaviate Cloud tự dùng 443 của host grpc-<cluster>.
     weaviate_grpc_port: int = Field(default=50051, ge=1, le=65535)
@@ -119,13 +120,9 @@ class Settings(BaseSettings):
     search_lexical_min_coverage: float = Field(default=0.6, ge=0, le=1)  # tên phải chứa ≥ 60% token của truy vấn
     search_bm25_k1: float = 1.2  # chỉ job index dùng (invertedIndexConfig của collection)
     search_bm25_b: float = 0.75
-
-    # Vector ở Weaviate, embedding bằng Cohere (docs/prd/architecture.md §5, deployment-plan.md §2).
-    # Runtime và job index-vectors dùng các biến này; Weaviate không bao giờ nhận COHERE_API_KEY.
-    cohere_api_key: str = ""
-    embedding_model_name: str = "embed-multilingual-v3.0"
-    weaviate_url: str = "http://localhost:8080"
-    weaviate_api_key: str = ""
+    # Chu kỳ nạp lại metadata catalog (giá, trạng thái, cửa sổ ngày) từ Postgres. Job cào chạy mỗi ngày
+    # một lần nên 15 phút là đủ; mỗi lần nạp đọc lại toàn bảng và dựng lại text của mọi search unit.
+    catalog_refresh_seconds: float = Field(default=900.0, gt=0)
 
     # --- Thanh toán Stripe (test mode, docs/prd/deployment-plan.md §2) --------------------------------
     stripe_secret_key: str = ""

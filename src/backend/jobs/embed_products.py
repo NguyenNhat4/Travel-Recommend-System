@@ -24,13 +24,14 @@ def text_hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def run(*, dry_run: bool = False, backfill_lexical: bool = False) -> dict[str, int | str]:
-    settings = get_settings()
+def run(*, dry_run: bool = False, backfill_lexical: bool = False, settings=None) -> dict[str, int | str]:
+    settings = settings or get_settings()
     catalog = PostgresCatalogReader(settings.database_url).load()
     version = model_version(settings.embed_model)
     client = WeaviateClient(
         settings.weaviate_url,
         collection=settings.weaviate_collection,
+        vector_index_type=settings.weaviate_vector_index_type,
         api_key=settings.weaviate_api_key,
         timeout_seconds=settings.weaviate_timeout_seconds,
         bm25_k1=settings.search_bm25_k1,
@@ -50,6 +51,7 @@ def run(*, dry_run: bool = False, backfill_lexical: bool = False) -> dict[str, i
             if product_id not in existing
             or existing[product_id].text_hash != digest
             or existing[product_id].model_version != version
+            or existing[product_id].uuid != client.object_uuid(product_id)
         ]
         orphans = sorted(set(existing) - set(desired))
         # Object index trước 25/09 chưa có property BM25: ghi thêm bằng PATCH, không gọi Cohere (chỉ khi được yêu cầu).

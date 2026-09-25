@@ -148,7 +148,8 @@ Bước chuẩn hoá khai ở `diagnostics.normalizedQuery` / `appliedAliases` /
 nhận ra hoặc đổi gì; `SEARCH_NORMALIZE=false` tắt cả bước. Sửa chính tả chỉ đụng token không phải âm tiết tiếng
 Việt, dài ≥ 5, cách ≤ 1 ký tự (≤ 2 khi ≥ 8) so với token có mặt ở ≥ 3 tên sản phẩm — "Vinpeal" → "Vinpearl",
 còn "cong", "bien", "view" không bao giờ bị sửa. Bảng viết tắt chỉ chứa cách viết; điểm đến đích không có trong
-catalog thì alias đó bị bỏ lúc khởi động.
+catalog thì alias đó bị bỏ. Từ vựng sửa chính tả và danh sách điểm đến dựng từ catalog đang phục vụ, lúc khởi động
+và mỗi lần nạp lại catalog (`CATALOG_REFRESH_SECONDS`, §2.4).
 
 **Vì sao filter trước:** category exclusion của `/recommendations` loại khoảng
 50% catalog. Chấm điểm trước rồi lọc sau có thể để lại dưới `k` kết quả. Vì vậy
@@ -186,7 +187,14 @@ Backend không còn tải toàn bộ vector vào RAM lúc khởi động: tải 
 Weaviate Cloud mất 453 giây. Mỗi request gửi truy vấn top-K sang Weaviate
 (`nearVector` qua gRPC, filter theo id), đúng `docs/prd/architecture.md` §5.
 Metadata (taxonomy, destination, available, recommendable, parent) vẫn nạp từ
-Postgres lúc khởi động để tính filter.
+Postgres để tính filter: lúc khởi động và sau đó mỗi `CATALOG_REFRESH_SECONDS`
+(mặc định 900 giây), để giá, trạng thái và cửa sổ ngày theo kịp job cào hằng ngày.
+Lần nạp lại lỗi thì giữ bản đang phục vụ. Mỗi lần nạp kiểm từng search unit
+theo object id, `modelVersion`, `textHash` (không tải vector): unit chưa có vector
+vẫn nằm trong metadata nhưng Weaviate chưa trả nó cho tới khi job index xong; unit
+có vector của text cũ dùng tạm vector đó. Engine chỉ từ chối (tương đương
+`SEARCH_UNAVAILABLE` ở §6) khi dưới một nửa search unit có vector đúng model —
+collection rỗng, chưa index, hoặc vừa đổi text builder.
 
 Vì chỉ có top-K, sản phẩm ngoài tập ứng viên vẫn có thể vượt cutoff. Do đó bốn
 trường sau là **bắt buộc**:

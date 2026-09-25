@@ -47,6 +47,7 @@ Hệ thống phân tách ranh giới bảo mật bằng các chuỗi kết nối
 | `AUTH_REDIS_URL` / `SESSION_REDIS_URL` | Redis cho rate limit (FastAPI) và session (BFF) | Tất cả | Có mật khẩu; không mở ra mạng ngoài |
 | `TRUSTED_PROXIES` | Dải proxy được tin header `X-Forwarded-For` khi tính rate limit | Staging / Prod | Sai giá trị = rate limit bị vượt qua bằng một header |
 | `CAPTCHA_PROVIDER` / `CAPTCHA_SECRET` | CAPTCHA khi đăng nhập sai nhiều lần | Tất cả | `noop` ở dev/test; secret chỉ ở FastAPI |
+| `WEAVIATE_VECTOR_INDEX_TYPE` | Loại index của collection `Product`, mặc định `hnsw`; đặt `hfresh` khi dùng Weaviate Cloud chỉ cho phép loại này. Đổi giá trị không chuyển đổi collection đã có; cần kế hoạch tạo lại và index lại riêng | Tất cả | Không bí mật |
 | `WEAVIATE_API_KEY` | Khóa xác thực Weaviate | Staging / Prod | Bí mật. Local dùng anonymous access nên có thể bỏ trống |
 | `STRIPE_SECRET_KEY` | Khoá API Stripe (`sk_test_…`) | Tất cả | Bí mật, chỉ Backend giữ, không commit. Backend từ chối khởi động nếu nhận khoá `sk_live_` |
 | `STRIPE_WEBHOOK_SECRET` | Khoá kiểm chữ ký webhook (`whsec_…`); ở local lấy từ `stripe listen` | Tất cả | Bí mật |

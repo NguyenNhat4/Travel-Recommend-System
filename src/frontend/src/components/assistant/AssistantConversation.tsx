@@ -8,6 +8,7 @@ import { useTravel } from '../../context/TravelContext';
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition';
 import { useAssistantCart } from '../../hooks/useAssistantCart';
 import { AssistantResultPanel } from './AssistantResultPanel';
+import { AssistantTripStarter, tripStarterMessage } from './AssistantTripStarter';
 import { nodeLabel } from './assistantLabels';
 
 export function AssistantConversation({
@@ -72,17 +73,25 @@ export function AssistantConversation({
             <Image src="/mascot_welcome.webp" alt="" width={38} height={38} className="mt-0.5 h-9 w-9 shrink-0 object-contain" />
             <div className="max-w-[90%] rounded-2xl rounded-tl-sm border border-slate-100 bg-white p-4 shadow-sm">
               <p className="text-sm font-bold text-slate-800">Xin chào! Mình có thể giúp bạn lên lịch trình.</p>
-              <p className="mt-1.5 text-xs leading-relaxed text-slate-500">Hãy cho biết điểm đến, số ngày và nhu cầu của bạn. Mình sẽ tìm sản phẩm thật và xếp lịch trình theo từng ngày cho bạn.</p>
+              <p className="mt-1.5 text-xs leading-relaxed text-slate-500">Hãy cung cấp thông tin đầy đủ nhất có thể về điểm đến, số ngày, nhóm đồng hành, ngân sách và sở thích để đề xuất chính xác và sát nhu cầu của bạn hơn. Bạn có thể chọn nhanh bên dưới hoặc nhập yêu cầu chi tiết ở ô chat.</p>
+              <AssistantTripStarter
+                disabled={isRunning}
+                onSubmit={(selection) => sendMessage(tripStarterMessage(selection))}
+              />
             </div>
           </div>
         )}
 
-        {state.transcript.map((message) => (
-          <div key={message.id} className={`flex items-start gap-2.5 ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+        {state.transcript.map((message) => {
+          const showStructuredResponse = message.response
+            && message.response.status !== 'NEEDS_CLARIFICATION'
+            && message.response.status !== 'NO_RESULTS';
+
+          return <div key={message.id} className={`flex items-start gap-2.5 ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
             {message.sender === 'assistant' && <Image src="/mascot_welcome.webp" alt="" width={34} height={34} className="mt-1 h-8 w-8 shrink-0 object-contain" />}
             <div className={`min-w-0 max-w-[92%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${message.sender === 'user' ? 'rounded-tr-sm bg-blue-600 text-white shadow-sm' : 'rounded-tl-sm border border-slate-100 bg-white text-slate-800 shadow-sm'}`}>
               <p className="whitespace-pre-line">{message.text}</p>
-              {message.response && showResponseInline && (
+              {showStructuredResponse && showResponseInline && (
                 <div className="mt-4 border-t border-slate-100 pt-4">
                   <AssistantResultPanel
                     response={message.response}
@@ -96,8 +105,8 @@ export function AssistantConversation({
                 </div>
               )}
             </div>
-          </div>
-        ))}
+          </div>;
+        })}
 
         {isRunning && <div className="ml-10 rounded-2xl border border-blue-100 bg-blue-50/80 p-3.5 text-xs text-blue-900">
           <p className="flex items-center gap-2 font-semibold">{state.isSlow ? 'Yêu cầu đang mất nhiều thời gian hơn dự kiến…' : 'Trợ lý đang tìm kiếm và xếp lịch trình…'} {!state.isSlow && <Loader2 className="h-4 w-4 animate-spin text-blue-600" />}</p>

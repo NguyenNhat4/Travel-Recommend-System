@@ -49,6 +49,7 @@ class AgentState(TypedDict, total=False):
     errors: Annotated[list[str], add]
     events: Annotated[list[dict[str, Any]], add]
     conversation_id: str
+    conversation_history: list[dict[str, str]]
     intent: dict[str, Any]
     intent_override: dict[str, Any]
     constraints: dict[str, Any]

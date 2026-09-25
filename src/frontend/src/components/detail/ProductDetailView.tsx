@@ -12,7 +12,7 @@ import type { Product, RecommendationResponse } from '../../types/travel';
 import { TaxonomyBadge } from '../common/TaxonomyBadge';
 import { PriceTag } from '../common/PriceTag';
 import { ProductCard } from '../common/ProductCard';
-import { MapPin, Star, ShieldCheck, Sparkles, Users, BedDouble, Plane, Loader2 } from 'lucide-react';
+import { MapPin, Star, ShieldCheck, Users, BedDouble, Plane, Loader2 } from 'lucide-react';
 
 /**
  * Trang chi tiết `/product/{productId}` (docs/spec/hop-dong-tich-hop-frontend.md §4.3, product.md §4.3).
@@ -383,20 +383,6 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
             </div>
           )}
 
-          <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-xl flex items-center justify-between gap-4">
-            <div className="space-y-0.5">
-              <div className="text-xs font-bold text-indigo-900 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
-                Lên lịch trình quanh {product.name}
-              </div>
-              <p className="text-[11px] text-indigo-700">Nhờ Trợ lý AI sắp xếp ngày giờ từ chỗ ở này đến các điểm tham quan.</p>
-            </div>
-            <button
-              onClick={() => navigate(`/assistant?q=${encodeURIComponent(`Gợi ý lịch trình 3 ngày ở ${product.destination}, tôi ở ${product.name}`)}&destination=${encodeURIComponent(product.destination)}`)}
-              className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg shadow-xs transition-colors shrink-0">
-              Hỏi Trợ lý AI →
-            </button>
-          </div>
         </div>
 
         {/* Cột phải: hộp đặt */}

@@ -29,7 +29,7 @@ _WEB = {"fastapi", "starlette"}
 _DB = {"psycopg", "psycopg2", "psycopg_pool", "sqlalchemy", "sqlite3", "weaviate"}
 _HTTP = {"httpx", "requests"}
 _LLM_SDK = {"openai", "anthropic", "cohere", "langchain_openai", "langchain_anthropic", "langchain_google_genai",
-            "google", "sentence_transformers", "torch"}
+            "google"}
 _AGENT_FRAMEWORK = {"langgraph", "langchain", "langchain_core"}
 
 # Thư viện bên ngoài mà mỗi lớp KHÔNG được import (so theo tên module gốc).

@@ -38,7 +38,7 @@ Ba ô dưới:
 
 - "Chỉ dựng một LLM client lúc app khởi động. Có key nào thì dùng provider đó, thứ tự Gemini, OpenAI, Anthropic."
 - "Tắt được LLM bằng một biến môi trường: app vẫn chạy, chỉ có API lịch trình trả 503. Tiện khi demo không có key."
-- "Hội thoại chỉ lưu *ý định* của người dùng trong 24 giờ. Giá và tình trạng còn chỗ luôn tải lại, không tin bản lưu."
+- "Hội thoại lưu *ý định* và lịch sử chat gần đây trong 24 giờ để hiểu các câu nối tiếp. Giá và tình trạng còn chỗ luôn tải lại, không tin bản lưu."
 
 ## Slide 5 — Graph mười node (2 phút)
 

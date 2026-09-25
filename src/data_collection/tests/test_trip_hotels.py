@@ -72,6 +72,13 @@ class ParseSearchCardsTests(unittest.TestCase):
         html = '<div class="hotel-card" id="1"><div class="hotel-title"></div></div>'
         self.assertEqual(parse_search_cards(html), [])
 
+    def test_ssr_card_with_span_name_is_discovered(self):
+        html = '<div class="hotel-card" id="10201344"><span class="hotelName">Ale Nha Trang Hotel</span></div>'
+        cards = parse_search_cards(html)
+        self.assertEqual(len(cards), 1)
+        self.assertEqual(cards[0]["hotelId"], "10201344")
+        self.assertEqual(cards[0]["name"], "Ale Nha Trang Hotel")
+
     def test_duplicate_hotel_ids_deduped(self):
         html = CARD_HTML + CARD_HTML
         self.assertEqual(len(parse_search_cards(html)), 1)

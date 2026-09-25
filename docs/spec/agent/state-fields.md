@@ -10,6 +10,7 @@ Nguồn field: `src/backend/app/agents/state.py` (định nghĩa `AgentState`). 
 |---|---|---|---|
 | `query` | `intake` (strip) | `classify`, `tool`, `converse`, `clarify` | Message gốc của người dùng — đầu vào prompt LLM và fallback `query` cho `search_products` |
 | `conversation_id` | `intake` (tạo mới nếu chưa có) | `tool` (thông báo lỗi), `compose`, `clarify`, `converse`, `finalize` | ID hội thoại trả về client, khóa lưu/khôi phục context multi-turn |
+| `conversation_history` | `intake` (khởi tạo/khôi phục), `finalize` (nối lượt user/assistant đã chốt) | `classify`, `tool` (lập plan), `converse`, `clarify`, `finalize` | Lịch sử chat gần nhất để hiểu tham chiếu đa lượt. Chỉ nhận role `user`/`assistant`, tối đa 20 message, 1.000 ký tự/message và 8.000 ký tự tổng; mọi node nhận field này qua state nhưng node tất định không dùng nó làm nguồn dữ liệu sản phẩm |
 | `intent` | `intake` (khởi tạo/khôi phục), `classify` (merge patch+override), `tool` (chuẩn hóa destination) | `classify`, `tool`, `evaluate`, `compose`, `converse`, `clarify`, `finalize` | Trục dữ liệu chính: destination, days, budget, party... |
 | `intent_override` | *(set từ API request, ngoài graph)* | `classify` | Chip edit của UI, ghi đè patch LLM trích xuất |
 | `constraints` | `intake` (khởi tạo), `classify` (merge), `tool` (chuẩn hóa) | `classify`, `tool`, `evaluate`, `compose`, `finalize` | Ràng buộc thêm: `require_hotel`, `specific_hotel/activity`, `exclude_taxonomies`, `exclude_products` (loại đúng productId đã cho xem trước đó khi user xin đổi mà không nêu tên thay thế — FR-AGT-05), giá hotel... |
@@ -37,7 +38,7 @@ Nguồn field: `src/backend/app/agents/state.py` (định nghĩa `AgentState`). 
 | `tool_results` | `intake` (init []), `tool` | `tool` (khớp `tool_call_id` cũ khi retry), `evaluate`, `dead_letter` | Kết quả thực thi từng tool call (data hoặc error) |
 | `errors` (append-only) | `retry` (`TRANSIENT_TOOL_FAILURE`) | *(không đọc lại)* | Audit trail lỗi tạm thời tích lũy qua các lần retry |
 | `events` (append-only) | **mọi node** | *(không đọc lại trong graph, chỉ tầng SSE/trace ngoài dùng)* | Trace từng bước cho Streamlit/debug |
-| `messages` | chỉ `initial_state()` (harness Scenario) | *(không dùng trong `nodes.py`)* | Field cho bộ đánh giá kịch bản, không thuộc luồng API chính |
+| `messages` | chỉ `initial_state()` (harness Scenario) | *(không dùng trong `nodes.py`)* | Field append-only cũ của bộ đánh giá kịch bản, không phải lịch sử chat của luồng API; lịch sử thật nằm ở `conversation_history` |
 | `attempt` | `intake` (0), `retry` (+1) | `retry`, `route_after_retry` | Đếm số lần đã retry tool |
 | `max_attempts` | `intake` (clamp 1..2) | `retry`, `route_after_retry` | Giới hạn số lần retry tối đa |
 | `request_id` | *(set từ API layer, ngoài graph)* | mọi log lỗi + `_failure()` ở `classify`/`tool`/`converse`/`clarify`/`dead_letter`, `finalize` | Nối log/trace theo request |

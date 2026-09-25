@@ -1001,65 +1001,95 @@ def agoda_api_hotel(r: dict, rates: dict[str, float], today: date) -> tuple[dict
 
 
 def trip_hotel(r: dict, rates: dict[str, float]) -> tuple[dict | None, list[dict]]:
-    """Nguồn mới 23/09/2026 (robots.txt cấm, xem collectors/trip_hotels.py). Mô phỏng booking_hotel() vì hình
-    dạng bản ghi interim gần giống nhau, nhưng KHÔNG có giá theo hạng phòng thật (getHotelRoomListOversea
-    chưa được parse đủ — xem ghi chú trong trip_hotels.py), nên rooms trả về rỗng thay vì đoán giá; chỉ property
-    có unitPrice (lấy từ giá hiển thị trên thẻ danh sách)."""
+    """Normalize fresh Trip room JSON at 14/30/60-day sample dates.
+
+    The old list-card price is never used as a room price. Physical room IDs
+    stay stable across runs; a missing API response is excluded upstream.
+    """
     name = r.get("name")
     if not name:
         return None, []
     plan = r.get("plan") or {}
     destination = normalise_destination(r.get("city"), r.get("province"), r.get("address"), plan.get("destination"), name)
     hotel_ref = f"trip:hotel:{r.get('hotelId') or fold(name).replace(' ', '-')}"
-    price, converted = to_vnd(r.get("minPrice"), r.get("currency"), rates)
+    queried = sorted(set(r.get("priceDatesQueried") or []))
+    raw_rooms = ([room for room in r.get("rooms") or [] if room.get("name") and room.get("roomId")]
+                 if queried else [])
+    by_day: dict[str, int] = {}
+    for room in raw_rooms:
+        for day, amount in (room.get("pricesByDate") or {}).items():
+            price, _ = to_vnd(amount, room.get("currency") or "VND", rates)
+            if price is not None:
+                by_day[day] = min(price, by_day.get(day, price))
+    first_day = min(by_day) if by_day else None
+    price = by_day[first_day] if first_day else None
+    if not queried:
+        price, _ = to_vnd(r.get("minPrice"), r.get("currency"), rates)
     facilities = r.get("facilities") or []
     text_blob = " ".join([name, r.get("description") or ""] + facilities)
-    price_query = r.get("priceQuery") or {}
-    review = r.get("reviewScore")
     lat, lng = clean_coords(r.get("latitude"), r.get("longitude"))
-    evidence, avail_from, avail_to = price_evidence(r)
+    evidence, avail_from, avail_to = price_evidence(
+        {**r, "priceQuery": {"dates": queried, "adults": 2, "currency": "VND"}}, by_day)
+    common = {"pricesByDateQueried": queried, "pricesByDate": by_day,
+              "availabilityByDate": {day: day in by_day for day in queried},
+              "priceRefreshedAt": r.get("crawledAt")}
     prop = make_product(
-        meta={"src": "trip", "plan": plan},
-        name=name,
-        taxonomy="hotel",
+        meta={"src": "trip", "plan": plan}, name=name, taxonomy="hotel",
         destination=destination,
-        description=r.get("description"),
-        availableFrom=avail_from,
-        availableTo=avail_to,
-        attributes={
-            "level": "property",
-            **evidence,
-            "province": r.get("province"),
-            "city": r.get("city"),
-            "address": r.get("address"),
-            "latitude": lat,
-            "longitude": lng,
-            "starRating": r.get("starRating"),
-            "starRatingType": "official" if r.get("starRating") else None,
-            "propertyType": r.get("propertyType"),
-            "reviewScore": review,
-            "reviewScoreScale": r.get("reviewScoreScale") if review is not None else None,
-            "reviewCount": r.get("reviewCount"),
-            "amenities": facilities[:60],
-            "brand": "Vinpearl" if HOTEL_BRAND_RE.search(fold(name)) else None,
-            "oceanView": bool(OCEAN_RE.search(text_blob)) or None,
-            "familyFriendly": bool(FAMILY_RE.search(text_blob)) or None,
-            "priceDate": price_query.get("checkin"),
-            "priceNights": _nights(price_query),
-            "priceAdults": price_query.get("adults"),
-            "priceConverted": converted or None,
-            "images": r.get("images"),
-            "url": r.get("url"),
-            "descriptionLang": detect_lang(r.get("description")),
-            "fieldSources": {"name": "trip.com", "unitPrice": "trip.com"} if price is not None else {"name": "trip.com"},
-        },
-        unitPrice=price,
-        currency="VND",
-        available=price is not None,
-        imageUrl=(r.get("images") or [None])[0],
-        sourceRef=hotel_ref,
-    )
-    return prop, []
+        description=r.get("description") or f"{name} tại {destination}.",
+        availableFrom=avail_from, availableTo=avail_to,
+        attributes={"level": "property", **evidence, **common,
+                    "province": r.get("province"), "city": r.get("city"),
+                    "address": r.get("address"), "latitude": lat, "longitude": lng,
+                    "starRating": r.get("starRating"),
+                    "starRatingType": "official" if r.get("starRating") else None,
+                    "propertyType": r.get("propertyType"),
+                    "reviewScore": r.get("reviewScore"),
+                    "reviewScoreScale": r.get("reviewScoreScale"),
+                    "reviewCount": r.get("reviewCount"),
+                    "amenities": facilities[:60],
+                    "brand": "Vinpearl" if HOTEL_BRAND_RE.search(fold(name)) else None,
+                    "oceanView": bool(OCEAN_RE.search(text_blob)) or None,
+                    "familyFriendly": bool(FAMILY_RE.search(text_blob)) or None,
+                    "priceDate": first_day, "priceNights": 1, "priceAdults": 2,
+                    "roomTypeCount": len(raw_rooms), "images": r.get("images"),
+                    "url": r.get("url"), "descriptionLang": "vi",
+                    "fieldSources": {"name": "trip.com", **({"unitPrice": "trip.com"} if price else {})}},
+        unitPrice=price, currency="VND", available=price is not None,
+        imageUrl=(r.get("images") or [None])[0], sourceRef=hotel_ref)
+    rooms = []
+    for room in raw_rooms:
+        room_prices = {}
+        for day, amount in (room.get("pricesByDate") or {}).items():
+            converted, _ = to_vnd(amount, room.get("currency") or "VND", rates)
+            if converted is not None:
+                room_prices[day] = converted
+        first = min(room_prices) if room_prices else None
+        room_price = room_prices[first] if first else None
+        room_name = room["name"]
+        description = f"Phòng {room_name} tại {name}."
+        if room.get("sizeM2"):
+            description += f" Diện tích {room['sizeM2']} m²."
+        if room.get("maxOccupancy"):
+            description += f" Tối đa {room['maxOccupancy']} khách."
+        rooms.append(make_product(
+            meta={"src": "trip", "roomName": room_name},
+            name=f"{name} - {room_name}", taxonomy="hotel", destination=destination,
+            description=description, attributes={
+                "level": "room", "parentProductId": prop["productId"],
+                "hotelName": name, "roomName": room_name, "roomId": room["roomId"],
+                "maxOccupancy": room.get("maxOccupancy"), "roomSizeM2": room.get("sizeM2"),
+                "images": room.get("images"), "latitude": lat, "longitude": lng,
+                "pricesByDate": room_prices, "pricesByDateQueried": queried,
+                "availabilityByDate": {day: day in room_prices for day in queried},
+                "priceDate": first, "priceNights": 1, "priceAdults": 2,
+                "priceRefreshedAt": r.get("crawledAt"), "url": r.get("url"),
+                "descriptionLang": "vi",
+                "fieldSources": {"unitPrice": "trip.com"} if room_price else {}},
+            unitPrice=room_price, currency="VND", available=room_price is not None,
+            imageUrl=(room.get("images") or r.get("images") or [None])[0],
+            sourceRef=f"{hotel_ref}:room:{room['roomId']}"))
+    return prop, rooms
 
 
 def trip_combo_product(r: dict) -> dict | None:
@@ -1624,9 +1654,10 @@ def merge_hotel_cluster(members: list[dict], rooms_of: dict[str, list[dict]], ro
         a["tripUrl"] = tp["attributes"].get("url")
     out["attributes"] = _compact(a)
 
-    # hạng phòng: chỉ vp/bk có giá theo hạng phòng đáng tin; agoda không có (agoda_hotel không trả rooms), trip
-    # cũng cố tình không trả rooms (trip_hotel() – chưa parse đủ giá gói phòng, xem ghi chú ở đó).
+    # Giữ hạng phòng Trip theo physicalRoomId ổn định. Mỗi ID có giá/tình trạng
+    # ở các mốc ngày vừa hỏi; khi gộp khách sạn với nguồn khác vẫn phải giữ chúng.
     ag_rooms = rooms_of.get(ag["productId"], []) if ag else []
+    trip_rooms = rooms_of.get(tp["productId"], []) if tp else []
     if vp:
         rooms = [copy.deepcopy(x) for x in rooms_of.get(vp["productId"], [])]
         if bk and _observed_day(bk) >= _observed_day(vp):  # giá booking cũ hơn giá Vinpearl thì không đè
@@ -1639,6 +1670,10 @@ def merge_hotel_cluster(members: list[dict], rooms_of: dict[str, list[dict]], ro
         rooms = select_rooms(ag_rooms, rooms_per_hotel)
     else:
         rooms = []
+    # Room IDs của Trip là khóa gốc; không khử theo tên vì hai physical rooms
+    # có thể cùng tên nhưng tồn kho/giá khác nhau. Ngân sách OTA không cắt phòng
+    # Trip đã được xác nhận qua JSON giá của lượt hiện tại.
+    rooms.extend(copy.deepcopy(trip_rooms))
     for room in rooms:
         room["destination"] = out["destination"]
         ra = room["attributes"]
