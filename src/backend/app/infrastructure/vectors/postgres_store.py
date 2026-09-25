@@ -83,7 +83,7 @@ class PostgresCatalogReader:
         import psycopg
         from psycopg.rows import dict_row
 
-        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+        with psycopg.connect(self.database_url, row_factory=dict_row, connect_timeout=10) as conn:
             with conn.cursor() as cur:
                 cur.execute(_QUERY)
                 return cur.fetchall()
@@ -93,7 +93,7 @@ class PostgresCatalogReader:
         from psycopg.rows import dict_row
 
         items: dict[str, list[dict]] = defaultdict(list)
-        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+        with psycopg.connect(self.database_url, row_factory=dict_row, connect_timeout=10) as conn:
             with conn.cursor() as cur:
                 cur.execute(_COMBO_QUERY)
                 for row in cur.fetchall():

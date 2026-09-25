@@ -319,23 +319,25 @@ class TripHotels:
 def parse_search_cards(html: str) -> list[dict]:
     """Trang /hotels/list (đã cuộn hoặc chưa) → danh sách thẻ khách sạn theo thứ tự hiển thị.
 
-    Selector xác nhận qua browser thật 23/09/2026: div.hotel-card (id=hotelId chuỗi số), a.hotelName
-    (href=URL chi tiết đầy đủ tham số), div.hotelStar[aria-label="Điểm đánh giá N/5"], div.hotel-comment
-    (điểm/10 + mô tả + số đánh giá), div.room-price (giá hiển thị), img.m-lazyImg__img (ảnh đại diện)."""
+    div.hotel-card có id=hotelId; Trip có thể dùng a.hotelName kèm href hoặc
+    span.hotelName không có href (SSR quan sát 24/09/2026). URL chi tiết chuẩn
+    được dựng từ ID bởi TripHotels.detail_url(). Các trường sao, đánh giá, giá
+    và ảnh được lấy từ phần tử tương ứng trên thẻ nếu có."""
     soup = BeautifulSoup(html, "lxml")
     out: list[dict] = []
     seen: set[str] = set()
     for card in soup.select(CARD_SELECTOR):
-        hotel_id = card.get("id")
-        link = card.select_one("a.hotelName")
-        if link is None or not link.get("href"):
+        hotel_id = str(card.get("id") or "")
+        link = card.select_one("a.hotelName[href]")
+        name_el = link or card.select_one("span.hotelName")
+        if not hotel_id.isdigit() or name_el is None:
             continue
-        href = link["href"]
-        url = href if href.startswith("http") else f"{BASE}{href}"
-        if hotel_id in seen:
+        name = clean_text(name_el.get_text())
+        if not name or hotel_id in seen:
             continue
         seen.add(hotel_id)
-        name = clean_text(link.get_text())
+        href = link["href"] if link is not None else f"/hotels/detail/?hotelId={hotel_id}"
+        url = href if href.startswith("http") else f"{BASE}{href}"
         star_el = card.select_one("div.hotelStar[aria-label]")
         star = first_int(star_el.get("aria-label", "")) if star_el is not None else None
         comment_el = card.select_one("div.hotel-comment")

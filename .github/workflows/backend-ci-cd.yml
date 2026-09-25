@@ -2,6 +2,9 @@ name: Backend CI/CD
 
 on:
   pull_request:
+    branches:
+      - main
+      - release-mvp-v1
     paths:
       - '.github/workflows/backend-ci-cd.yml'
       - 'Dockerfile.backend'
@@ -10,9 +13,11 @@ on:
       - 'src/data_collection/**'
       - 'src/shared/contracts/**'
       - 'scripts/**'
+      - 'ops/docker-compose.backend-vm.yml'
   push:
     branches:
-      - dev
+      - main
+      - release-mvp-v1
     paths:
       - '.github/workflows/backend-ci-cd.yml'
       - 'Dockerfile.backend'
@@ -21,6 +26,7 @@ on:
       - 'src/data_collection/**'
       - 'src/shared/contracts/**'
       - 'scripts/**'
+      - 'ops/docker-compose.backend-vm.yml'
   workflow_dispatch:
 
 permissions:
@@ -38,10 +44,10 @@ jobs:
     name: CI checks
     runs-on: ubuntu-latest
     steps:
-      - name: Refuse staging dispatch from another ref
-        if: ${{ github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/dev' }}
+      - name: Refuse dispatch from another ref
+        if: ${{ github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/release-mvp-v1' }}
         run: |
-          echo 'Staging workflow_dispatch must run from the dev branch.' >&2
+          echo 'This workflow_dispatch must run from the main or release-mvp-v1 branch.' >&2
           exit 1
 
       - name: Checkout
@@ -71,7 +77,9 @@ jobs:
           bash -n \
             scripts/check-db-tunnel.sh \
             scripts/deploy-backend-vm.sh \
-            scripts/install-vota-cron.sh
+            scripts/install-vota-cron.sh \
+            scripts/tests/test-backend-vm-cd-sync.sh
+          bash scripts/tests/test-backend-vm-cd-sync.sh
 
   build:
     name: Build images
@@ -106,7 +114,7 @@ jobs:
 
   publish:
     name: Publish SHA and latest images
-    if: ${{ github.ref == 'refs/heads/dev' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+    if: ${{ github.ref == 'refs/heads/release-mvp-v1' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
     needs: build
     runs-on: ubuntu-latest
     environment: staging
@@ -189,7 +197,7 @@ jobs:
 
   deploy:
     name: Deploy application VM in place
-    if: ${{ github.ref == 'refs/heads/dev' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+    if: ${{ github.ref == 'refs/heads/release-mvp-v1' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
     needs: publish
     runs-on: ubuntu-latest
     # Two 15-minute health windows (deploy and rollback) plus image pull and SSH.
@@ -278,12 +286,15 @@ jobs:
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
           GCE_INSTANCE: ${{ secrets.GCE_INSTANCE }}
           GCE_ZONE: ${{ secrets.GCE_ZONE }}
+          GCE_COMPOSE_FILE: ${{ vars.GCE_COMPOSE_FILE }}
         run: |
           remote_dir="/tmp/vota-cicd-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          tar -C scripts -czf - deploy-backend-vm.sh install-vota-cron.sh check-db-tunnel.sh \
-            -C ../src/data_collection run_daily_docker.sh \
+          tar -czf - \
+            -C "$GITHUB_WORKSPACE/scripts" deploy-backend-vm.sh install-vota-cron.sh check-db-tunnel.sh \
+            -C "$GITHUB_WORKSPACE/src/data_collection" run_daily_docker.sh \
+            -C "$GITHUB_WORKSPACE/ops" docker-compose.backend-vm.yml \
             | gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --quiet \
-                --command "umask 077; mkdir -m 700 '$remote_dir' && tar -xzf - -C '$remote_dir' && sudo -n install -D -m 0755 '$remote_dir/run_daily_docker.sh' /opt/vota/bin/run_daily_docker.sh && sudo -n test -x /opt/vota/bin/run_daily_docker.sh"
+                --command "umask 077; mkdir -m 700 '$remote_dir' && tar -xzf - -C '$remote_dir' && sudo -n install -D -m 0755 '$remote_dir/run_daily_docker.sh' /opt/vota/bin/run_daily_docker.sh && sudo -n install -D -m 0644 '$remote_dir/docker-compose.backend-vm.yml' '$GCE_COMPOSE_FILE' && sudo -n test -x /opt/vota/bin/run_daily_docker.sh && sudo -n docker compose -f '$GCE_COMPOSE_FILE' config >/dev/null"
 
       - name: Deploy latest images and update existing cron
         env:
@@ -303,4 +314,32 @@ jobs:
           backend_ref="$BACKEND_IMAGE:latest"
           crawler_ref="$CRAWLER_IMAGE:latest"
           remote_command="chmod +x '$remote_dir'/*.sh && '$remote_dir/deploy-backend-vm.sh' --backend-image '$backend_ref' --crawler-image '$crawler_ref' --compose-file '$GCE_COMPOSE_FILE' --backend-health-url '$GCE_BACKEND_HEALTH_URL' --db-tunnel-port '$GCE_DB_TUNNEL_PORT' --cron-runner '$GCE_CRON_RUNNER' --cron-data-dir '$GCE_CRON_DATA_DIR' --cron-env-file '$GCE_CRON_ENV_FILE'"
+          gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --quiet --command "$remote_command"
+
+      - name: Restart crawler monitor with published image
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCE_INSTANCE: ${{ secrets.GCE_INSTANCE }}
+          GCE_ZONE: ${{ secrets.GCE_ZONE }}
+          GCE_CRON_RUNNER: ${{ secrets.GCE_CRON_RUNNER || '/opt/vota/bin/run_daily_docker.sh' }}
+          GCE_CRON_DATA_DIR: ${{ secrets.GCE_CRON_DATA_DIR || '/srv/vota/daily-data' }}
+          GCE_CRON_ENV_FILE: ${{ secrets.GCE_CRON_ENV_FILE || '/etc/vota/daily.env' }}
+          CRAWLER_IMAGE: ${{ secrets.GAR_DAILY_IMAGE }}
+        run: |
+          crawler_ref="$CRAWLER_IMAGE:latest"
+          remote_command="set -eu; docker rm -f vota-daily-monitor >/dev/null 2>&1 || true; mkdir -p '$GCE_CRON_DATA_DIR/logs'; nohup env IMAGE='$crawler_ref' DATA_DIR='$GCE_CRON_DATA_DIR' ENV_FILE='$GCE_CRON_ENV_FILE' PULL=0 CONTAINER_NAME=vota-daily '$GCE_CRON_RUNNER' monitor > '$GCE_CRON_DATA_DIR/logs/monitor-cd.log' 2>&1 < /dev/null & for attempt in \$(seq 1 30); do status=\$(docker inspect --format '{{.State.Status}}' vota-daily-monitor 2>/dev/null || true); if [ \"\$status\" = running ]; then exit 0; fi; sleep 1; done; docker logs --tail=100 vota-daily-monitor || true; exit 1"
+          gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --quiet --command "$remote_command"
+
+      - name: Start crawler run after deploy
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCE_INSTANCE: ${{ secrets.GCE_INSTANCE }}
+          GCE_ZONE: ${{ secrets.GCE_ZONE }}
+          GCE_CRON_RUNNER: ${{ secrets.GCE_CRON_RUNNER || '/opt/vota/bin/run_daily_docker.sh' }}
+          GCE_CRON_DATA_DIR: ${{ secrets.GCE_CRON_DATA_DIR || '/srv/vota/daily-data' }}
+          GCE_CRON_ENV_FILE: ${{ secrets.GCE_CRON_ENV_FILE || '/etc/vota/daily.env' }}
+          CRAWLER_IMAGE: ${{ secrets.GAR_DAILY_IMAGE }}
+        run: |
+          crawler_ref="$CRAWLER_IMAGE:latest"
+          remote_command="set -eu; mkdir -p '$GCE_CRON_DATA_DIR/logs'; nohup env IMAGE='$crawler_ref' DATA_DIR='$GCE_CRON_DATA_DIR' ENV_FILE='$GCE_CRON_ENV_FILE' PULL=0 CONTAINER_NAME=vota-daily '$GCE_CRON_RUNNER' run > '$GCE_CRON_DATA_DIR/logs/daily-cd.log' 2>&1 < /dev/null & runner_pid=\$!; sleep 3; started=\$(docker ps --filter name=vota-daily --format '{{.Names}}' | grep -Fx vota-daily || true); if [ -n \"\$started\" ]; then echo 'vota-daily started by CD'; else echo 'vota-daily did not start; see daily-cd.log' >&2; tail -n 100 '$GCE_CRON_DATA_DIR/logs/daily-cd.log' || true; exit 1; fi"
           gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --quiet --command "$remote_command"

@@ -109,7 +109,7 @@ erDiagram
         string productId "Khóa nối logic về cdp.products — KHÔNG phải FK"
         string modelVersion "embed-multilingual-v3.0 + phiên bản text builder"
         string textHash "Phát hiện text đổi để embed lại"
-        vector _vector "1024 chiều, HNSW + cosine, vectorizer none"
+        vector _vector "1024 chiều, ANN (HNSW hoặc hfresh) + cosine, vectorizer none"
     }
 ```
 
@@ -325,5 +325,5 @@ CONFIRMED       PAYMENT_FAILED         EXPIRED        CANCELLED
 2. **Nguyên tắc Migration trên Cơ sở dữ liệu đang vận hành:**
    - Tuyệt đối không xóa và chạy lại init script trên database đã có dữ liệu.
    - Mọi thay đổi cấu trúc bảng, thêm cột hoặc tạo chỉ mục mới phải được đóng gói thành các file migration idempotent (có khả năng chạy lại nhiều lần mà không gây lỗi) trong `db/migrations/` và thực thi qua bộ điều phối `db/migrations/run.py`.
-3. **Phân bổ tài nguyên Vector:** Collection `Product` của Weaviate chỉ chứa sản phẩm có `is_search_unit = true` để tối ưu bộ nhớ và tốc độ truy vấn. Weaviate tự dựng HNSW (cosine) nên không cần khai báo index thủ công.
+3. **Phân bổ tài nguyên Vector:** Collection `Product` của Weaviate chỉ chứa sản phẩm có `is_search_unit = true` để tối ưu bộ nhớ và tốc độ truy vấn. Weaviate tự dựng index ANN (cosine) theo loại mà cluster cho phép nên không cần khai báo index thủ công.
 4. **Weaviate nằm ngoài vòng migration của Postgres.** `db/migrations/run.py` chỉ áp thay đổi cho database quan hệ. Đổi chiều vector hoặc đổi model embedding = tạo lại collection và chạy lại job embed, không phải viết migration SQL. Vì `productId` chỉ là khóa nối logic (không có FK xuyên hệ), xóa sản phẩm ở Postgres **không** tự xóa vector — job embed phải dọn các vector mồ côi.

@@ -71,8 +71,13 @@ services:
       # BFF gọi từ máy host qua cổng publish: peer là gateway của mạng Docker.
       TRUSTED_PROXIES: ${BACKEND_TRUSTED_PROXIES:-127.0.0.1/32,172.16.0.0/12}
       COHERE_API_KEY: ${COHERE_API_KEY:-}
-      WEAVIATE_URL: http://weaviate:8080
-      WEAVIATE_API_KEY: ${WEAVIATE_API_KEY:-}
+      # Dev dùng Weaviate local của compose (deployment-plan.md §1), không lấy WEAVIATE_URL/khoá của máy host.
+      # Môi trường dùng cluster chung thì đặt BACKEND_WEAVIATE_URL và BACKEND_WEAVIATE_API_KEY.
+      WEAVIATE_URL: ${BACKEND_WEAVIATE_URL:-http://weaviate:8080}
+      WEAVIATE_API_KEY: ${BACKEND_WEAVIATE_API_KEY:-}
+      WEAVIATE_COLLECTION: ${WEAVIATE_COLLECTION:-Product}
+      WEAVIATE_GRPC_PORT: ${BACKEND_WEAVIATE_GRPC_PORT:-50051}
+      CATALOG_REFRESH_SECONDS: ${CATALOG_REFRESH_SECONDS:-900}
       # Stripe test mode (docs/prd/deployment-plan.md §2). Webhook: `stripe listen --forward-to
       # localhost:${BACKEND_PORT:-8000}/api/v1/payments/stripe/webhook` chạy trên máy host.
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}

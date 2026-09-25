@@ -88,9 +88,9 @@ export async function searchProductsApi(
     results = results.filter(r => !r.product.attributes.starRating || r.product.attributes.starRating >= filters.minStarRating!);
   }
 
-  if (sort === 'relevance') {
-    results.sort((a, b) => b.relevanceScore - a.relevanceScore);
-  } else if (sort === 'price_asc') {
+  // 'relevance' giữ nguyên thứ tự backend: hybrid sắp theo RRF (spec §2.2), còn score là cosine nên không
+  // dùng nó để sắp lại — sắp lại sẽ đẩy kết quả khớp tên/thương hiệu xuống cuối.
+  if (sort === 'price_asc') {
     results.sort(byPrice(1));
   } else if (sort === 'price_desc') {
     results.sort(byPrice(-1));
