@@ -7,8 +7,12 @@ into view. Every response belongs to the current run directory.
 from __future__ import annotations
 
 import asyncio
+import gzip
 import json
+import math
 import random
+import shutil
+import time
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -19,7 +23,8 @@ from playwright.async_api import async_playwright
 
 from .common import BrowserOptions, BrowserSession, Paths, StateDB, now_iso
 from .plan import DEFAULT_BUDGET, Destination
-from .trip_hotels import TripHotels, TripHotelsOptions, parse_hotel_detail
+from .trip import _scrub as scrub_people
+from .trip_hotels import DETAIL_ANCHOR, TripHotels, TripHotelsOptions, extract_anchored_json, parse_hotel_detail
 
 BASE = 'https://vn.trip.com/hotels/detail/?'
 HEADERS = {
@@ -57,7 +62,7 @@ async def discover(paths: Paths, destinations: tuple[Destination, ...], scan_per
     if scan_per_city < 1 or new_per_city < 1:
         raise ValueError('Mức tìm ID và số ID mới mỗi thành phố phải >= 1')
     opts = TripHotelsOptions(destinations=destinations,
-                             budget=replace(DEFAULT_BUDGET, trip_hotels=scan_per_city),
+                             budget=replace(DEFAULT_BUDGET, trip_hotels=min(scan_per_city, new_per_city) if not known else scan_per_city),
                              browser=BrowserOptions(headless=False))
     state = StateDB(paths)
     chosen, report = [], []
@@ -90,9 +95,12 @@ async def discover(paths: Paths, destinations: tuple[Destination, ...], scan_per
     return unique, report
 
 
-def _capture_path(run_dir: Path, hotel_id: str, day: str, suffix: str) -> Path:
-    path = run_dir / 'raw' / 'trip_hotels' / hotel_id / f'{day}.{suffix}'
+def _write_capture(run_dir: Path, hotel_id: str, name: str, payload: dict) -> Path:
+    """Raw của một lần hỏi, để monitor xem lại: JSON nén, đã bỏ review/tên người (handbook) trước khi ghi đĩa."""
+    path = run_dir / 'raw' / 'trip_hotels' / hotel_id / f'{name}.json.gz'
     path.parent.mkdir(parents=True, exist_ok=True)
+    with gzip.open(path, 'wt', encoding='utf-8') as out:
+        json.dump(scrub_people(payload), out, ensure_ascii=False)
     return path
 
 
@@ -102,6 +110,7 @@ async def fetch_metadata(targets: list[dict], stay: tuple[str, str], run_dir: Pa
     start_lock = asyncio.Lock()
     last_start = 0.0
     out: dict[str, dict | None] = {}
+    session = AsyncSession(impersonate="chrome124", timeout=30)
 
     async def one(target: dict) -> None:
         nonlocal last_start
@@ -115,22 +124,31 @@ async def fetch_metadata(targets: list[dict], stay: tuple[str, str], run_dir: Pa
                     if pause:
                         await asyncio.sleep(pause)
                     last_start = asyncio.get_running_loop().time()
+                started = time.monotonic()
                 try:
-                    async with AsyncSession(impersonate='chrome124', timeout=30) as session:
-                        response = await session.get(url, headers=HEADERS, allow_redirects=True)
-                    if response.status_code != 200 or 'hotelDetailResponse' not in response.text:
+                    response = await session.get(url, headers=HEADERS, allow_redirects=True)
+                    ok = response.status_code == 200 and 'hotelDetailResponse' in response.text
+                    print(f'Trip meta {hotel_id} lần {attempt + 1}: HTTP {response.status_code} · '
+                          f'{round((time.monotonic() - started) * 1000)} ms · {len(response.content)} B'
+                          + ('' if ok else ' · thiếu hotelDetailResponse'), flush=True)
+                    if not ok:
                         continue
-                    raw_path = _capture_path(run_dir, hotel_id, stay[0], 'html')
-                    raw_path.write_text(response.text, encoding='utf-8')
+                    _write_capture(run_dir, hotel_id, f'{stay[0]}.detail', {
+                        'url': url, 'fetchedAt': now_iso(), 'httpStatus': response.status_code,
+                        'hotelDetailResponse': extract_anchored_json(response.text, DETAIL_ANCHOR)})
                     out[hotel_id] = parse_hotel_detail(response.text, url, target.get('card') or {}, now_iso(),
                                                         checkin=stay[0], checkout=stay[1], adults=2)
                     return
-                except Exception:
+                except Exception as exc:
+                    print(f'Trip meta {hotel_id} lần {attempt + 1}: lỗi {type(exc).__name__}: {str(exc)[:160]}', flush=True)
                     if attempt == 1:
                         break
         out[hotel_id] = None
 
-    await asyncio.gather(*(one(target) for target in targets))
+    try:
+        await asyncio.gather(*(one(target) for target in targets))
+    finally:
+        await session.close()
     return out
 
 
@@ -139,6 +157,8 @@ def price_packet(payload: dict) -> tuple[str, dict[str, dict], int]:
     if not isinstance(payload, dict):
         return 'missing', {}, 0
     data = payload.get('data') or {}
+    if not isinstance(data, dict):
+        return 'missing', {}, 0
     physical = data.get('physicRoomMap') or {}
     sales = data.get('saleRoomMap') or {}
     if not isinstance(physical, dict) or not isinstance(sales, dict):
@@ -156,7 +176,7 @@ def price_packet(payload: dict) -> tuple[str, dict[str, dict], int]:
             amount = float(info.get('price'))
         except (TypeError, ValueError):
             continue
-        if amount <= 0:
+        if not math.isfinite(amount) or amount <= 0:
             continue
         if room_id not in best or amount < best[room_id]['price']:
             best[room_id] = {'price': round(amount),
@@ -166,6 +186,23 @@ def price_packet(payload: dict) -> tuple[str, dict[str, dict], int]:
     if data.get('isRoomListSoldOut') is True and not sales:
         return 'sold_out', {'physical': physical, 'best': {}}, 0
     return 'missing', {}, offers
+
+
+async def wait_for_prices(page, ready: asyncio.Event) -> None:
+    """Stop waiting as soon as room evidence arrives; keep the existing maximum wait."""
+    for ratio in (0.55, 0.75, 0.95):
+        if ready.is_set():
+            return
+        await page.evaluate(f'window.scrollTo(0, document.body.scrollHeight * {ratio})')
+        try:
+            await asyncio.wait_for(ready.wait(), timeout=1.3)
+            return
+        except asyncio.TimeoutError:
+            pass
+    try:
+        await asyncio.wait_for(ready.wait(), timeout=16)
+    except asyncio.TimeoutError:
+        pass
 
 
 async def capture_prices(targets: list[dict], date_pairs: list[tuple[str, str]], run_dir: Path,
@@ -195,6 +232,7 @@ async def capture_prices(targets: list[dict], date_pairs: list[tuple[str, str]],
                     url = detail_url(target, checkin, checkout)
                     page = await context.new_page()
                     packets: list[dict] = []
+                    ready = asyncio.Event()
                     pending: set[asyncio.Task] = set()
                     browser_html = None
                     async def receive(response) -> None:
@@ -204,9 +242,13 @@ async def capture_prices(targets: list[dict], date_pairs: list[tuple[str, str]],
                             body = await response.json()
                             if isinstance(body, dict):
                                 packets.append(body)
+                                if price_packet(body)[0] != 'missing':
+                                    ready.set()
                         except Exception:
                             pass
                     def on_response(response) -> None:
+                        if 'getHotelRoomListOversea' not in response.url:
+                            return
                         task = asyncio.create_task(receive(response))
                         pending.add(task)
                         task.add_done_callback(pending.discard)
@@ -226,31 +268,33 @@ async def capture_prices(targets: list[dict], date_pairs: list[tuple[str, str]],
                             # Raw navigation response keeps the SSR blob after React
                             # removes it from the live DOM during hydration.
                             browser_html = await navigation.text()
-                        for ratio in (0.55, 0.75, 0.95):
-                            await page.evaluate(f'window.scrollTo(0, document.body.scrollHeight * {ratio})')
-                            await page.wait_for_timeout(1300)
-                        for _ in range(40):
-                            if packets:
-                                break
-                            await page.wait_for_timeout(400)
+                        await wait_for_prices(page, ready)
                         if pending:
                             await asyncio.gather(*pending, return_exceptions=True)
                     except Exception:
                         pass
                     finally:
+                        page.remove_listener("response", on_response)
+                        for task in pending:
+                            task.cancel()
+                        if pending:
+                            await asyncio.gather(*pending, return_exceptions=True)
                         await page.close()
                     status, data, offers = next((parsed for packet in packets
                                                  if (parsed := price_packet(packet))[0] != 'missing'),
                                                 ('missing', {}, 0))
-                    if packets:
-                        raw_path = _capture_path(run_dir, hotel_id, checkin, 'json')
-                        raw_path.write_text(json.dumps(packets, ensure_ascii=False), encoding='utf-8')
+                    _write_capture(run_dir, hotel_id, f'{checkin}.rooms', {
+                        'url': url, 'fetchedAt': now_iso(), 'status': status, 'offers': offers,
+                        'packets': packets})
                     results[(hotel_id, checkin)] = (status, data, offers, browser_html)
                     print(f'Trip {hotel_id}@{checkin}: {status}, {offers} offers', flush=True)
                     jobs.task_done()
             await asyncio.gather(*(worker() for _ in range(min(options.price_workers, jobs.qsize()))))
         finally:
-            await context.close()
+            try:
+                await context.close()
+            finally:
+                shutil.rmtree(run_dir / "trip_price_profile", ignore_errors=True)
     return results
 
 
@@ -286,6 +330,9 @@ def assemble(targets: list[dict], date_pairs: list[tuple[str, str]], metadata: d
         record = metadata.get(hotel_id)
         if record is None and fallback_html:
             url = detail_url(target, *date_pairs[0])
+            _write_capture(run_dir, hotel_id, f'{date_pairs[0][0]}.detail', {
+                'url': url, 'fetchedAt': now_iso(), 'source': 'browser',
+                'hotelDetailResponse': extract_anchored_json(fallback_html, DETAIL_ANCHOR)})
             record = parse_hotel_detail(fallback_html, url, target.get('card') or {}, now_iso(),
                                         checkin=date_pairs[0][0], checkout=date_pairs[0][1], adults=2)
         if not record:

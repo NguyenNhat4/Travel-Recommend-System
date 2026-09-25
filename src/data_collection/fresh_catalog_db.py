@@ -342,9 +342,50 @@ def maintain_catalog(url: str, *, today: date | None = None, now: datetime | Non
     return {"staleTrip": counts["staleTrip"], "windowRows": len(windowed)}
 
 
-def load_into_db(products_path: Path, coverage_path: Path, url: str,
-                 collection_root: Path) -> dict[str, int]:
-    """COPY into a temporary table then upsert in one transaction, as V-OTA does."""
+def row_action(row: dict, previous: dict | None, fresh_ids: set[str]) -> str:
+    """Vì sao một dòng được ghi ở lượt này (cho báo cáo nạp DB của monitor)."""
+    if previous is None:
+        return "new"
+    freshness = (row.get("attributes") or {}).get("priceFreshness")
+    if freshness == "missing_from_live_response":
+        return "missing"
+    if freshness == "stale":
+        return "stale"
+    return "refresh" if str(row["product_id"]) in fresh_ids else "window"
+
+
+def _brief(row: dict | None) -> dict | None:
+    if row is None:
+        return None
+    return {"unitPrice": None if row.get("unit_price") is None else float(row["unit_price"]),
+            "available": row.get("available"),
+            "availableFrom": str(row["available_from"]) if row.get("available_from") else None,
+            "availableTo": str(row["available_to"]) if row.get("available_to") else None}
+
+
+def write_load_report(path: Path, prepared: list[dict], existing: list[dict], fresh_ids: set[str],
+                      written: set[str]) -> None:
+    old = {str(row["product_id"]): row for row in existing}
+    with open(path, "w", encoding="utf-8") as out:
+        for row in prepared:
+            pid = str(row["product_id"])
+            previous = old.get(pid)
+            attrs = row.get("attributes") or {}
+            out.write(json.dumps({
+                "productId": pid, "sourceRef": row.get("source_ref"), "name": row.get("name"),
+                "taxonomy": row.get("taxonomy"), "level": attrs.get("level"), "destination": row.get("destination"),
+                "action": row_action(row, previous, fresh_ids), "written": pid in written,
+                "before": _brief(previous), "after": _brief(row),
+                "priceSource": (attrs.get("fieldSources") or {}).get("unitPrice"),
+            }, ensure_ascii=False, default=str) + "\n")
+
+
+def load_into_db(products_path: Path, coverage_path: Path | None, url: str,
+                 collection_root: Path, report_path: Path | None = None) -> dict[str, int]:
+    """COPY into a temporary table then upsert in one transaction, as V-OTA does.
+
+    `coverage_path` None = lượt không cào khách sạn Trip (không dòng Trip nào được nạp).
+    `report_path`: ghi mỗi dòng được nạp kèm hành động (new/refresh/missing/stale/window) và giá trước/sau."""
     import psycopg
     source_root = collection_root.parent
     if str(source_root) not in sys.path:
@@ -353,7 +394,7 @@ def load_into_db(products_path: Path, coverage_path: Path, url: str,
     from data_collection.seed import parse_combos
 
     fresh = list(read_jsonl(products_path))
-    checked = checked_trip_hotels(coverage_path)
+    checked = checked_trip_hotels(coverage_path) if coverage_path is not None else set()
     for item in fresh:
         match = re.match(r"^trip:hotel:(\d+)(?::room:.*)?$", item["sourceRef"])
         if match and match.group(1) not in checked:
@@ -411,4 +452,10 @@ def load_into_db(products_path: Path, coverage_path: Path, url: str,
             copy_rows(conn, "catalog.combo_items", COMBO, combos)
         counts["dbRowsWritten"] = len(written)
         counts["comboItemsWritten"] = len(combos)
+    # Publish the report only after the connection context has committed successfully.
+    if report_path is not None:
+        temporary = report_path.with_suffix(".jsonl.tmp")
+        write_load_report(temporary, prepared, existing, {str(pid) for pid in canonical_ids.values()},
+                          {str(row[0]) for row in written})
+        temporary.replace(report_path)
     return counts

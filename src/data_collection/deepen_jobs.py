@@ -14,15 +14,62 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import re
 import sqlite3
 import sys
 from pathlib import Path
 
 import batch
 from collectors.common import Paths
-from monitor import Monitor
+from monitor import pid_alive
 
 ROOT = Path(__file__).resolve().parent
+
+
+def holds_file(pid: int, target: Path) -> bool | None:
+    """Tiến trình `pid` đang mở `target`? RunLock giữ file khoá mở suốt thời gian chạy, còn file cũ vẫn ghi PID của
+    tiến trình đã xong nên không thể tin PID. None = không kiểm tra được."""
+    fd_dir = Path(f"/proc/{pid}/fd")
+    if not fd_dir.is_dir():
+        return None
+    want = str(target.resolve())
+    try:
+        for fd in fd_dir.iterdir():
+            try:
+                if os.readlink(fd) == want:
+                    return True
+            except OSError:
+                continue
+    except OSError:
+        return None
+    return False
+
+
+def running_pid(path: Path) -> int | None:
+    """PID tiến trình đang giữ một khoá trong state/ của job batch này, hoặc None."""
+    for lock in (path / "state").glob("*.lock"):
+        try:
+            pid = int(lock.read_text().strip() or 0)
+        except (OSError, ValueError):
+            continue
+        if not (pid and pid_alive(pid)):
+            continue
+        held = holds_file(pid, lock)
+        if held:
+            return pid
+        if held is None:
+            try:
+                cmd = Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\0", b" ").decode(errors="replace")
+            except OSError:
+                continue
+            if "python" not in cmd:
+                continue
+            if lock.stem == "batch_job" and "batch.py" in cmd:
+                return pid
+            if any(x in cmd for x in ("crawl.py", "normalise.py")) and re.search(rf"--data-dir {re.escape(str(path))}(\s|$)", cmd):
+                return pid
+    return None
 
 
 def city_spec(city: str, dates: str, per_destination: int) -> dict:
@@ -40,7 +87,7 @@ def plan(root: Path, cities: str, dates: str, old: int, new: int) -> list[dict]:
         row = {"city": dest.name, "oldDir": old_dir, "newDir": new_dir, "newSpec": new_spec, "action": "clone"}
         if not (old_dir / "state" / "crawl_state.sqlite").exists():
             row["action"] = f"bỏ qua: chưa có job {old} khách sạn để tái dùng"
-        elif Monitor.running_pid(old_dir):
+        elif running_pid(old_dir):
             row["action"] = "bỏ qua: job cũ đang chạy (chờ xong)"
         elif (new_dir / "state" / "crawl_state.sqlite").exists():
             row["action"] = "đã có (giữ nguyên, không ghi đè)"

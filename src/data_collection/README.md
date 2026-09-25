@@ -58,7 +58,7 @@ python pipeline_demo.py run --no-db
 python pipeline_demo.py run --live-vinpearl --calendar-days 30 --live-trip --no-db
 python pipeline_demo.py fetch apify-agoda --max-usd 2
 python pipeline_demo.py auto --only-api
-python monitor.py                       # http://127.0.0.1:8765/pipeline
+python monitor.py                       # monitor job mới: http://127.0.0.1:8765/
 ```
 
 Muốn kiểm thử bước DB, từ repository root chạy `docker compose up -d --wait postgres`, rồi chạy `pipeline_demo.py run` (mặc định `localhost:5432/vota_demo`). Guardrail chỉ cho phép host local và tên database `vota_demo*`; job không chạm database ứng dụng `vota` hoặc `insider`. Token API chỉ đặt trong `.env` local theo `.env.example`, không commit.
@@ -101,11 +101,10 @@ python daily.py status | versions           # lượt gần nhất · danh sách
 python daily.py diff 2026-09-24 2026-09-25  # khác biệt giữa hai version
 python daily.py switch 2026-09-24 --load cloud   # quay lại version cũ; dòng không có trong version đó → available=false
 python daily.py freeze 2026-09-24 v1        # gắn nhãn, chép thành snapshots/2026-09-24/ để commit
-python monitor.py                           # UI: http://127.0.0.1:8765/daily (trên VPS: ssh -L 8765:127.0.0.1:8765 <vps>)
+
 ```
 
-Trang `/daily` hiển thị luồng của từng lượt (cào → chuẩn hoá → giữ dòng → gate → promote → nạp), log, phễu số dòng qua từng
-bước, bảng version (switch, đóng băng, so sánh) và tra một sản phẩm qua raw → interim → chuẩn hoá → catalog → dòng nạp DB.
+Monitor hiện theo dõi `fresh_catalog.py`; `/daily` và `/pipeline` chuyển tới trang mới. Job cũ vẫn thao tác qua CLI.
 Mã thoát `daily.py`: 0 ổn · 1 gate chặn / lỗi · 2 có worker lỗi hoặc bị chặn · 3 promote xong nhưng nạp DB/embed lỗi.
 
 ### Luồng Docker/daily.py cũ (chỉ chạy khi chủ động chọn `legacy-run`)
@@ -113,7 +112,7 @@ Mã thoát `daily.py`: 0 ổn · 1 gate chặn / lỗi · 2 có worker lỗi ho�
 Image `Dockerfile.daily` (repository root) gói `src/data_collection` + phần backend mà bước embed cần, Python 3.11, không
 trình duyệt, không chứa `data/`, `.env` hay secret. Dữ liệu làm việc nằm trên ổ VPS (`DATA_DIR`, mount vào `/data`) nên giữ
 nguyên giữa các lượt; kết nối DB/Weaviate/Cohere nằm trong `ENV_FILE`. Mọi thao tác đi qua một script:
-`run_daily_docker.sh` (`init` · `legacy-run` · `daily <lệnh>` · `monitor`). Lệnh `run` nay gọi luồng cào mới ở mục tiếp theo.
+`run_daily_docker.sh` (`init` · `run`/`legacy-run` · `daily <lệnh>`). `run` giữ job cũ để tương thích CI/CD; job mới dùng `fresh-run`, monitor mới dùng `fresh-monitor`.
 
 ```bash
 # Build + push (máy có repo, từ repository root; <AR> = asia-southeast1-docker.pkg.dev/<project>/<repository>)
@@ -131,7 +130,6 @@ sudo install -D -m 600 -o "$USER" /dev/null /etc/vota/daily.env    # ENV_FILE m�
 
 # Thao tác tay, cùng ổ dữ liệu và ENV_FILE
 ./run_daily_docker.sh daily status          # hoặc versions · diff <cũ> <mới> · accept <lượt> · switch <version> --load cloud
-./run_daily_docker.sh monitor               # trang /daily ở 127.0.0.1:8765 của VPS: ssh -L 8765:127.0.0.1:8765 <vps>
 ```
 
 - `init` không đè interim đã có trên VPS và tự chép `combo_items_manual.jsonl` từ snapshot trong image vào `DATA_DIR`
@@ -145,17 +143,19 @@ sudo install -D -m 600 -o "$USER" /dev/null /etc/vota/daily.env    # ENV_FILE m�
 
 ## Job catalog mới trên VM console: Trip.com + đa nguồn → DB
 
-Image [Dockerfile.fresh-catalog](../../Dockerfile.fresh-catalog) chứa collector đa nguồn, bộ chuẩn hóa Travel, Chromium và Xvfb. Collector Trip.com dùng HTTP/SSR lấy metadata rồi Chromium trong Xvfb bắt JSON phòng/giá thật. `run_daily_docker.sh fresh-run` khởi chạy image này; `run_fresh_catalog_vm.sh` và `cron_hotels_daily.sh` chỉ là wrapper tương thích. Lệnh `run` vẫn là job `daily.py` (`Dockerfile.daily`) mà cron của CI/CD (`scripts/install-vota-cron.sh`) đang gọi; chuyển VM sang job mới = thay dòng cron đó bằng `fresh-run auto`, không chạy song song hai job trên cùng DB. VM không cần desktop, Python, Playwright hoặc source tree.
+Image [Dockerfile.fresh-catalog](../../Dockerfile.fresh-catalog) chứa collector đa nguồn, bộ chuẩn hóa Travel, Chromium và Xvfb. Collector Trip.com dùng HTTP/SSR lấy metadata rồi Chromium trong Xvfb bắt JSON phòng/giá thật. `run_daily_docker.sh fresh-run` khởi chạy image này; `run_fresh_catalog_vm.sh` và `cron_hotels_daily.sh` chỉ là wrapper tương thích. Lệnh `run` vẫn là job `daily.py` (`Dockerfile.daily`) mà cron của CI/CD (`scripts/install-vota-cron.sh`) đang gọi; chuyển VM sang job mới = thay dòng cron đó bằng `fresh-run tick` mỗi 15 phút, không chạy song song hai job trên cùng DB. VM không cần desktop, Python, Playwright hoặc source tree.
 
-- Lượt đầu và mỗi 7 ngày: cào mới các nguồn, tìm ID Trip.com ở 7 thành phố có cityId trong `@deep`; lần đầu chọn tối đa 10 ID/thành phố, các lượt tuần chọn tối đa 3 ID mới/thành phố từ tối đa 300 ID đã quét/thành phố để hỏi giá tại mốc 14/30/60 ngày; chuẩn hóa 13 trường rồi upsert `cdp.products`/`catalog.combo_items`. Tăng `TRIP_DISCOVERY_SCAN_PER_CITY` khi vùng quét đã hết ID mới. Không dùng `data/products.jsonl`, interim hoặc snapshot cũ làm dữ liệu nguồn.
+- Lượt đầu và mỗi 7 ngày: cào mới các nguồn, tìm ID Trip.com ở 7 thành phố có cityId trong `@deep`; lần đầu chọn tối đa 30 ID/thành phố, các lượt tuần chọn tối đa 10 ID mới/thành phố từ tối đa 300 ID đã quét/thành phố để hỏi giá tại mốc 14/30/60 ngày; chuẩn hóa 13 trường rồi upsert `cdp.products`/`catalog.combo_items`. Tăng `TRIP_DISCOVERY_SCAN_PER_CITY` khi vùng quét đã hết ID mới. Không dùng `data/products.jsonl`, interim hoặc snapshot cũ làm dữ liệu nguồn.
 - Lượt full chạy song song theo site: Vinpearl, Trip.com (tìm ID khách sạn → vé máy bay → điểm tham quan → giá phòng), Booking, Agoda; tối đa `CRAWL_PARALLEL` site cùng lúc (mặc định 2, vì Vinpearl, Booking, Agoda và giá phòng Trip đều mở Chromium trên VM 4 GB). Trong một site các bước vẫn tuần tự như trước. Một nguồn lỗi thì các site chưa bắt đầu bị bỏ và lượt dừng trước khi nạp DB. Log mỗi dòng của nguồn có tiền tố `[trip]`, `[vinpearl]`…; mốc `catalog.group.start/done` cho biết site nào đang chạy. Lượt daily chỉ cào Trip nên không đổi.
-- Hằng ngày còn lại: xoay vòng tối đa 60 ID đã biết, ưu tiên ID chưa thử/lâu chưa thử, hỏi JSON phòng/giá mới cho cả phòng cũ và phòng mới. Chỉ file ID/thành phố và thời điểm thử/thành công được giữ cho lịch chạy; marker full chỉ ghi sau khi nạp DB thành công. Giá Trip.com gốc quá 7 ngày chưa làm mới sẽ được đặt chưa khả dụng để không quảng bá giá cũ.
+- Hằng ngày còn lại: xoay vòng tối đa 180 ID đã biết, ưu tiên ID chưa thử/lâu chưa thử, hỏi JSON phòng/giá mới cho cả phòng cũ và phòng mới. Chỉ file ID/thành phố và thời điểm thử/thành công được giữ cho lịch chạy; marker full chỉ ghi sau khi nạp DB thành công. Giá Trip.com gốc quá 7 ngày chưa làm mới sẽ được đặt chưa khả dụng để không quảng bá giá cũ.
 - DB giữ các trường mô tả đã có, cập nhật giá/trạng thái, thêm phòng mới, đánh dấu phòng Trip.com không còn xuất hiện trong phản hồi hợp lệ là hết bán. Một phản hồi lỗi/chặn **không** được coi là hết phòng. Không xóa `cdp.products` đã được đơn hàng tham chiếu.
 - Đầu mỗi lượt (kể cả khi mọi nguồn lỗi sau đó) job chạy một transaction riêng: đặt chưa khả dụng các giá Trip.com quá 7 ngày, và cuộn cửa sổ đặt chỗ 30 ngày cho toàn catalog đúng như seed (`docs/spec/DATABASE_SCHEMA.md` #13): `available_from/to` = khoảng nguồn `attributes.sourceAvailableFrom/To` cắt vào `[hôm nay, +29]`, thiếu thì lấy cả cửa sổ; chuyến bay `from = to` = ngày bay; giao rỗng → `available = false`. Dòng mới/làm mới trong lượt ghi lại khoảng nguồn của lượt đó. Lịch `attributes.availability` của hạng phòng, điểm tham quan, golf được sinh lại theo cửa sổ mới như seed (`docs/spec/MOCK_DATA_SPEC.md` §2 bước 2); ngày Trip.com đã hỏi ghi theo kết quả thật, dòng chưa khả dụng có lịch toàn `0`.
-- Sau khi nạp DB (và cả khi lượt cào lỗi), job gọi bước index `embed_products` vào Weaviate của **cùng đích**: chỉ embed search unit mới hoặc đổi text, xoá vector mồ côi. Index lỗi sau khi DB đã nạp thì lượt trả mã 3; chạy lại riêng bước này bằng `run index`. Backend tự nạp lại giá/trạng thái mỗi `CATALOG_REFRESH_SECONDS` (mặc định 15 phút), không cần restart.
-- Raw/HTML/JSON, `products.jsonl` và báo cáo chỉ tồn tại trong lượt chạy rồi được xóa mặc định. Chỉ giữ danh sách ID/thành phố, thời điểm xoay vòng và marker lịch full. Đặt `KEEP_FAILED_RUNS=1` nếu cần giữ mẫu lỗi để điều tra.
+- Sau khi nạp DB (và cả khi lượt cào lỗi), job gọi bước index `embed_products` vào Weaviate của **cùng đích**: chỉ embed search unit mới hoặc đổi text, xoá vector mồ côi. Index lỗi sau khi DB đã nạp thì lượt trả mã 3; chạy lại riêng bước này bằng `fresh-run index`. Backend tự nạp lại giá/trạng thái mỗi `CATALOG_REFRESH_SECONDS` (mặc định 15 phút), không cần restart.
+- Raw/JSON đã bỏ review/tên người, interim, `products.jsonl`, log và báo cáo giữ theo từng lượt; mặc định giữ 7 lượt (`runs.keep` trong monitor). Tóm tắt lịch sử, ID và lịch xoay vòng được giữ lâu dài. Giá/input vẫn chỉ lấy từ phản hồi mới của lượt hiện tại. `KEEP_FAILED_RUNS` cũ không còn dùng; browser profile Trip được dọn sau bước hỏi giá.
 
 ### Đóng gói và bàn giao cho đội deploy
+
+Bộ bàn giao có checklist, hai file env và mẫu systemd: [Bàn giao fresh catalog trên VM](../../docs/plan/2026-09-25-ban-giao-fresh-catalog-vm.md).
 
 Trên máy build/CI có checkout nhánh `test/newcrawl`, build và push image riêng. Image không chứa snapshot, `data/`, `.env` hay secret; Chromium/Xvfb nằm **trong image**:
 
@@ -182,9 +182,9 @@ DB_TARGET=cloud
 CLOUD_SEED_DATABASE_URL=postgresql://USER:PASSWORD@DB_HOST:5432/vota
 PRICE_WORKERS=2
 FAST_WORKERS=4
-TRIP_DAILY_HOTELS=60
-TRIP_INITIAL_PER_CITY=10
-TRIP_NEW_PER_CITY=3
+TRIP_DAILY_HOTELS=180
+TRIP_INITIAL_PER_CITY=30
+TRIP_NEW_PER_CITY=10
 TRIP_DISCOVERY_SCAN_PER_CITY=300
 MIN_DELAY=0.5
 MAX_DELAY=1.0
@@ -210,8 +210,8 @@ FRESH_IMAGE=<AR>/vota-fresh-catalog:<tag> /opt/vota/bin/run_daily_docker.sh fres
 FRESH_IMAGE=<AR>/vota-fresh-catalog:<tag> /opt/vota/bin/run_daily_docker.sh fresh-run index
 FRESH_IMAGE=<AR>/vota-fresh-catalog:<tag> /opt/vota/bin/run_daily_docker.sh fresh-run full
 
-# Cron mỗi ngày 02:00 theo giờ của VM. `auto` chạy full mỗi 7 ngày, còn lại xoay ID hằng ngày.
-0 2 * * * FRESH_IMAGE=<AR>/vota-fresh-catalog:<tag> /opt/vota/bin/run_daily_docker.sh fresh-run auto
+# Cron đánh thức mỗi 15 phút. Giờ chạy cấu hình trên monitor (mặc định 02:00 Việt Nam).
+*/15 * * * * FRESH_IMAGE=<AR>/vota-fresh-catalog:<tag> /opt/vota/bin/run_daily_docker.sh fresh-run tick
 ```
 
 Theo dõi trên console của VM (chỉ cần Docker, `curl` cho lệnh backend):
@@ -226,7 +226,31 @@ Theo dõi trên console của VM (chỉ cần Docker, `curl` cho lệnh backend)
 
 `backend` gọi `BACKEND_URL` (mặc định `http://127.0.0.1:8000`) và tìm container có nhãn compose `service=backend`; tên khác thì đặt `BACKEND_CONTAINER`. Cột RESULT của `report`: `ok`, `partial:3` (còn ngày chưa có giá hoặc nguồn bị chặn), `fail:3` (lượt dừng, xem cột NOTE), `running`.
 
-`fresh-run` mount `/srv/vota/fresh-catalog-data` vào `/data`, giữ ID và lịch xoay vòng ở `/data/state`, còn raw/`products.jsonl` của mỗi lượt chỉ là tạm và bị xóa mặc định. Log được giữ 30 ngày ở `/srv/vota/fresh-catalog-logs/fresh-catalog-*.log` (có thể đổi bằng `CATALOG_LOG_DIR`). Kiểm tra job bằng `docker ps --filter name=vota-fresh-catalog`, `fresh-run status`, và log gần nhất; container dùng `--rm` nên biến mất khi lượt chạy xong. Chỉ đặt **một** lịch cào cho cùng DB; tắt cron `legacy-run`/`cron_daily.sh` cũ trước khi bật lịch mới. `legacy-run`, `init`, `daily`, `monitor` vẫn thuộc workflow Docker/daily.py cũ.
+`fresh-run` mount `/srv/vota/fresh-catalog-data` vào `/data`: state ở `/data/state`, dữ liệu từng lượt ở `/data/fresh_runs/<runId>/`. Log runner được giữ 30 ngày ở `/srv/vota/fresh-catalog-logs/` (đổi bằng `CATALOG_LOG_DIR`). Chỉ đặt **một** lịch cào cho cùng DB; thay cron `run`/`legacy-run`/`cron_daily.sh` cũ trước khi bật lịch mới. CI/CD hiện vẫn cài `run`: đội deploy phải đồng bộ cấu hình cron để lần deploy tiếp theo không bật lại job cũ.
+
+### Monitor của cron mới
+
+Phục vụ FR-CAT-01/03 và NFR-SEC-01. Dùng cùng **image/tag, env file và volume** với `fresh-run`:
+
+```bash
+FRESH_IMAGE=<AR>/vota-fresh-catalog:<tag> /opt/vota/bin/run_daily_docker.sh fresh-monitor
+# `monitor` là alias của `fresh-monitor`. Chạy ở terminal/tmux riêng để giữ server sống.
+# Trên máy cá nhân:
+ssh -L 8765:127.0.0.1:8765 <user>@<vm>
+# Mở http://127.0.0.1:8765/ ; /daily và /pipeline tự chuyển về đây.
+```
+
+Server chỉ nghe loopback trên mạng host của VM; URL DB trong env phải phân giải được từ mạng host (IP nội bộ/loopback, không chỉ tên service Docker). Không mở cổng monitor ra internet. Nếu cổng 8765 còn bị monitor cũ chiếm, dừng **đúng tiến trình/container monitor cũ** trước khi khởi động bản mới; không dừng backend/DB. Monitor không mount Docker socket.
+
+- **Tổng quan:** lượt hiện tại, bước đang chạy, lịch kế, log runner và trạng thái cấu hình kết nối. Secret chỉ báo đã đặt/chưa đặt.
+- **Lịch sử lượt:** step/timing/status, raw JSON/HTML đã làm sạch, interim, catalog 13 trường, truy vết sản phẩm, báo cáo DB trước/sau và báo cáo index. Lượt bị kill được đánh dấu mất tiến trình qua khoá file; heartbeat cũ được báo riêng.
+- **Cấu hình:** file `/data/state/settings.json` ưu tiên hơn env, rồi mới tới mặc định. Chỉ gửi thay đổi; nút “Về env/mặc định” xoá override của trường đó. Lượt đang chạy giữ cấu hình ban đầu.
+- **Trip nhiều khách sạn:** bấm “Áp ngân sách Trip 30 / 10 / 180” rồi Lưu, kể cả env cũ vẫn đặt 10/3/60. Có thể tăng thêm: tối đa 500 ID/thành phố, quét 2.000 ID/thành phố, 2.000 ID/daily. Đây là ngân sách, không bảo đảm nguồn trả đủ. Giữ 2 tab giá + 4 worker HTTP trên VM 2 CPU/4 GB; mức này chưa được benchmark với ngân sách mới trên VM.
+- Collector dùng lại HTTP session và kết thúc chờ khi có JSON phòng hợp lệ; lượt khám phá đầu dừng ở ngân sách chọn, thay vì quét đủ 300 rồi bỏ phần dư. Không rút ngắn giới hạn chờ tối đa hoặc bỏ kiểm coverage ba mốc ngày.
+- **Chạy/dừng:** chạy tay bỏ qua lịch; cron `tick` kiểm lịch dưới khoá và chỉ bắt đầu một lượt/ngày theo giờ Việt Nam. Lượt đã bắt đầu nhưng lỗi không tự retry mỗi 15 phút; xem log rồi chạy tay. `fresh-run auto` vẫn chạy ngay theo chu kỳ, không chịu công tắc giờ lịch của monitor. `fresh-run due` chỉ in mode đang tới lịch, không chạy job.
+- Dừng qua file dùng chung nên có hiệu lực cả khi cron/monitor ở hai container. Tác vụ cào bị huỷ tại điểm kiểm tra; bước DB đã bắt đầu có thể hoàn tất và dữ liệu đã commit được giữ. Bước bảo trì DB ở đầu lượt không bị hoàn tác khi dừng.
+
+Job cũ không sinh `run.json` mới nên lịch sử cũ không được chuyển sang giao diện này. Log runner của job mới trước lần nâng cấp vẫn có thể xem khi thư mục log được mount. Runner thêm group của thư mục log cho monitor để đọc được thư mục mode `750`; các file log phải cho group đọc (ví dụ `640` hoặc `644`).
 
 ## Chạy
 

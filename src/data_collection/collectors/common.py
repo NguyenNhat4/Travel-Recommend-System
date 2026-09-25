@@ -483,15 +483,19 @@ class Http:
         delay = 5.0
         for attempt in range(1, retries + 1):
             await self.limiter.wait(url)
+            t0 = time.monotonic()
             try:
                 r = await self.client.get(url, headers=headers)
             except httpx.HTTPError as e:
+                log.debug("GET %s → lỗi %s sau %.0f ms (lần %d)", url, type(e).__name__, (time.monotonic() - t0) * 1000, attempt)
                 if attempt == retries:
                     raise
                 log.warning("Lỗi mạng %s (%s) – thử lại sau %.0fs", url, e, delay)
                 await asyncio.sleep(delay)
                 delay *= 2
                 continue
+            log.debug("GET %s → HTTP %s · %.0f ms · %d B (lần %d)", url, r.status_code,
+                      (time.monotonic() - t0) * 1000, len(r.content), attempt)
             if r.status_code in (429, 500, 502, 503, 504) and attempt < retries:
                 wait = _retry_after(r) or delay
                 log.warning("%s trả %s – chờ %.0fs rồi thử lại", url, r.status_code, wait)
@@ -716,7 +720,9 @@ class BrowserSession:
         html = await page.content()
         title = await page.title()
         if looks_like_challenge(html, title):
+            log.debug("[%s] mở %s → trang thử thách sau %.1f s", self.name, url, time.monotonic() - t0)
             raise ChallengeBlocked(f"bị chặn bởi trang thử thách: {url}")
+        log.debug("[%s] mở %s → %s · %.1f s · %d B HTML", self.name, url, page.url, time.monotonic() - t0, len(html))
         return FetchResult(html=html, final_url=page.url, title=title, elapsed=time.monotonic() - t0)
 
     async def fetch_json(
