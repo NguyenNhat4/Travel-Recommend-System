@@ -108,6 +108,8 @@ SearchRequest:
     [C4] Thứ tự xử lý bắt buộc: FILTER -> SCORE -> CUTOFF -> TOTAL/FACETS -> SORT -> PAGE.
     F = tập sau structured filter. R = { p thuộc F | score >= cutoff }.
     total = |R|, facets tính trên R, results là một trang của R.
+    Ở HYBRID_CANDIDATE_SCORE (xem SearchMode) R gồm thêm phần vớt từ nhánh BM25 và
+    SORT theo RRF thay vì theo score.
 
 # [CHỜ DUYỆT: C6] Echo lại filter đã áp, tách cứng và mềm.
 # Agent cần để không tuyên bố với người dùng điều mà dữ liệu không xác nhận.
@@ -140,7 +142,7 @@ EngineDiagnostics:
       $ref: ../openapi.yaml#/components/schemas/SearchMode
     approximate:
       type: boolean
-      description: false ở chế độ EXACT_FILTER_SCORE.
+      description: false ở chế độ EXACT_FILTER_SCORE, true ở ANN_CANDIDATE_SCORE và HYBRID_CANDIDATE_SCORE.
     totalExact:
       type: boolean
       description: >-
@@ -165,6 +167,76 @@ EngineDiagnostics:
     latencyMs:
       type: integer
       minimum: 0
+    # Chỉ có ở HYBRID_CANDIDATE_SCORE (/search từ 2026-09-25); mọi trường tuỳ chọn.
+    fusion:
+      type: string
+      enum: [rrf]
+      description: Cách hợp nhất hai nhánh dense và BM25. rrf = Σ 1/(rrfK + rank) trên các nhánh có mặt.
+    rrfK:
+      type: integer
+      minimum: 1
+    lexicalK:
+      type: integer
+      minimum: 0
+      description: Chỉ hit BM25 có rank <= lexicalK mới được vớt vào R khi score < cutoff.
+    lexicalCutoff:
+      type: number
+      minimum: 0
+      maximum: 1
+      description: Cosine tối thiểu của hit được vớt từ nhánh BM25; luôn <= cutoff.
+    lexicalMinCoverage:
+      type: number
+      minimum: 0
+      maximum: 1
+      description: >-
+        Tỉ lệ token của truy vấn (đã fold dấu, bỏ từ chức năng) phải có trong tên để hit BM25
+        được vớt — truy vấn gần như là tên/thương hiệu thì qua, câu mô tả dài thì để nhánh dense lo.
+    lexicalCandidates:
+      type: integer
+      minimum: 0
+      description: Số hit nhánh BM25 trả về (0 khi nhánh lexical lỗi — engine tự lùi về dense-only, không 500).
+    lexicalCount:
+      type: integer
+      minimum: 0
+      description: Số phần tử của R chỉ vào nhờ nhánh BM25 (score trong [lexicalCutoff, cutoff)).
+    # Chuẩn hoá truy vấn /search (bước 1, từ 2026-09-25): viết tắt, chính tả tên riêng, tên điểm đến về dạng chuẩn,
+    # kiểu đi về nhãn catalog. Chỉ xuất hiện khi bước này nhận ra hoặc đổi gì; SEARCH_NORMALIZE=false thì không bao giờ có.
+    normalizedQuery:
+      type: string
+      minLength: 1
+      description: >-
+        Chuỗi thực sự đưa vào embed và BM25. Vắng mặt khi không khác `query`. Event `search` ghi sang CDP
+        (§3.2) vẫn dùng `query` gốc.
+    appliedAliases:
+      type: array
+      items:
+        type: object
+        required: [from, to]
+        additionalProperties: false
+        properties:
+          from: { type: string }
+          to: { type: string }
+      description: >-
+        Cụm đã thay theo thứ tự xuất hiện: viết tắt (KS → khách sạn, PQ → Phú Quốc), tên điểm đến về giá trị
+        catalog (da nang → Đà Nẵng), kiểu đi về nhãn catalog (bạn gái → cặp đôi).
+    corrections:
+      type: array
+      items:
+        type: object
+        required: [from, to]
+        additionalProperties: false
+        properties:
+          from: { type: string }
+          to: { type: string }
+      description: >-
+        Token đã sửa chính tả theo từ vựng tên sản phẩm + điểm đến của catalog (Vinpeal → Vinpearl). Chỉ sửa token
+        không phải âm tiết tiếng Việt, dài >= 5, khoảng cách <= 1 (<= 2 khi >= 8), từ đích có mặt ở >= 3 tên.
+    party:
+      type: string
+      enum: [SOLO, COUPLE, FAMILY, FRIENDS, BUSINESS]
+      description: >-
+        Kiểu đi nhận ra trong câu (đi một mình / cặp đôi, bạn trai, bạn gái / gia đình, có trẻ nhỏ / nhóm bạn /
+        công ty, công tác). Mới chỉ để chuẩn hoá chữ và khai báo; chưa lọc hay suy số khách (bước 2).
 
 SearchFacets:
   type: object
@@ -201,7 +273,10 @@ SearchResponse:
     total:
       type: integer
       minimum: 0
-      description: '[C4] |R| — số sản phẩm vượt cutoff sau filter. KHÔNG phụ thuộc limit/offset.'
+      description: >-
+        [C4] |R| — số sản phẩm vượt cutoff sau filter. KHÔNG phụ thuộc limit/offset.
+        Ở HYBRID_CANDIDATE_SCORE, R gồm thêm diagnostics.lexicalCount phần tử vớt từ nhánh BM25
+        có score trong [diagnostics.lexicalCutoff, cutoff).
     limit:
       type: integer
     offset:
@@ -229,10 +304,11 @@ SearchResponse:
       minimum: 0
       maximum: 1
       description: >-
-        [C3][C4] Ngưỡng đã áp. Giá trị tạm 0.62 (PROVISIONAL), benchmark Ngày 3
+        [C3][C4] Ngưỡng đã áp cho nhánh dense. Giá trị tạm 0.62 (PROVISIONAL), benchmark Ngày 3
         trên 80 cặp query-product gán nhãn cộng 10 truy vấn âm.
         Nguồn sự thật là search.cutoff trong application.yml; frontend đọc lại từ
-        trường này, KHÔNG hard-code bản sao.
+        trường này, KHÔNG hard-code bản sao. Ở HYBRID_CANDIDATE_SCORE, kết quả vớt từ
+        nhánh BM25 có score trong [diagnostics.lexicalCutoff, cutoff).
     facets:
       $ref: ../openapi.yaml#/components/schemas/SearchFacets
     appliedFilters:

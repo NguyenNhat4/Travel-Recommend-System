@@ -95,24 +95,52 @@ class Settings(BaseSettings):
     # RecSys (search / similar / recommendations). Model và chiều đã chốt trong PRD 22/09/2026.
     embed_model: Literal["embed-multilingual-v3.0"] = "embed-multilingual-v3.0"
     embed_dimension: Literal[1024] = 1024
-    embed_cache_dir: str = ".embcache"
     cohere_api_key: str = ""
     cohere_base_url: str = "https://api.cohere.com"
     cohere_timeout_seconds: float = Field(default=30.0, gt=0)
     weaviate_url: str = "http://localhost:8080"
     weaviate_api_key: str = ""
     weaviate_collection: str = "Product"
+    # Chỉ dùng khi job index tạo collection mới; Weaviate Cloud của nhóm chỉ cho phép hfresh.
+    weaviate_vector_index_type: Literal["hnsw", "hfresh"] = "hnsw"
     weaviate_timeout_seconds: float = Field(default=30.0, gt=0)
+    # Cổng gRPC cho truy vấn top-K mỗi request; Weaviate Cloud tự dùng 443 của host grpc-<cluster>.
+    weaviate_grpc_port: int = Field(default=50051, ge=1, le=65535)
     search_cutoff: float = 0.62  # quy tắc tạm của Search contract; phải benchmark lại với Cohere
     search_max_limit: int = 50
+    search_candidate_k: int = Field(default=200, ge=1)
     recommend_candidate_k: int = 200
+    # Hybrid /search (HYBRID_CANDIDATE_SCORE, spec §2.4): BM25 trên nameAscii/searchTextAscii + RRF ở app.
+    search_hybrid: bool = True  # False → dense-only ANN_CANDIDATE_SCORE như trước 25/09
+    search_normalize: bool = True  # bước chuẩn hoá truy vấn (viết tắt, chính tả tên riêng, điểm đến, kiểu đi); False → nguyên câu
+    search_rrf_k: int = Field(default=60, ge=1)
+    search_lexical_candidate_k: int = Field(default=50, ge=1)  # top-K BM25 lấy từ Weaviate mỗi request
+    search_lexical_k: int = Field(default=10, ge=0)  # chỉ vớt hit BM25 có rank ≤ giá trị này
+    search_lexical_cutoff: float = 0.50  # cosine tối thiểu của hit được vớt; luôn ≤ search_cutoff
+    search_lexical_min_coverage: float = Field(default=0.6, ge=0, le=1)  # tên phải chứa ≥ 60% token của truy vấn
+    search_bm25_k1: float = 1.2  # chỉ job index dùng (invertedIndexConfig của collection)
+    search_bm25_b: float = 0.75
+    # Chu kỳ nạp lại metadata catalog (giá, trạng thái, cửa sổ ngày) từ Postgres. Job cào chạy mỗi ngày
+    # một lần nên 15 phút là đủ; mỗi lần nạp đọc lại toàn bảng và dựng lại text của mọi search unit.
+    catalog_refresh_seconds: float = Field(default=900.0, gt=0)
 
-    # Vector ở Weaviate, embedding bằng Cohere (docs/prd/architecture.md §5, deployment-plan.md §2).
-    # Runtime và job index-vectors dùng các biến này; Weaviate không bao giờ nhận COHERE_API_KEY.
-    cohere_api_key: str = ""
-    embedding_model_name: str = "embed-multilingual-v3.0"
-    weaviate_url: str = "http://localhost:8080"
-    weaviate_api_key: str = ""
+    # --- Thanh toán Stripe (test mode, docs/prd/deployment-plan.md §2) --------------------------------
+    stripe_secret_key: str = ""
+    stripe_webhook_secret: str = ""
+    payment_provider: Literal["stripe", "fake"] = "stripe"  # fake: offline, không gọi mạng; cấm ở production
+    booking_hold_minutes: int = Field(default=30, ge=30)  # Stripe chỉ cho phiên Checkout hết hạn sau ít nhất 30 phút
+    payment_max_failed_attempts: int = Field(default=3, ge=1)
+    public_web_url: str = "http://localhost:3000"
+    # 0 = tắt job đối soát (test); mặc định 5 phút/lần.
+    booking_reconcile_interval_seconds: int = Field(default=300, ge=0)
+
+    @field_validator("stripe_secret_key")
+    @classmethod
+    def _test_keys_only(cls, value: str) -> str:
+        # Dự án chỉ dùng Stripe test mode (PRD project-brief §4.2): khoá live không bao giờ được nạp.
+        if value.startswith(("sk_live_", "rk_live_")):
+            raise ValueError("STRIPE_SECRET_KEY phải là khoá test (sk_test_…); dự án không dùng Stripe live mode")
+        return value
 
     @field_validator(*_OPTIONAL_BLANK_IS_NONE, mode="before")
     @classmethod

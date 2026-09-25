@@ -16,6 +16,7 @@ class CohereEmbedder:
     """
 
     batch_size = 96
+    max_attempts = 6
 
     def __init__(
         self,
@@ -42,11 +43,19 @@ class CohereEmbedder:
         if self._owns_client:
             self._client.close()
 
+    @staticmethod
+    def _backoff_seconds(response: httpx.Response, attempt: int) -> float:
+        """Honor Retry-After when Cohere sends it; otherwise back off up to 60s (rate limits are per minute)."""
+        try:
+            return min(float(response.headers["Retry-After"]), 120.0)
+        except (KeyError, ValueError):
+            return min(2.0 ** (attempt + 1), 60.0)
+
     def _request(self, texts: list[str], input_type: str) -> np.ndarray:
         if not texts:
             return np.empty((0, self.dimension), dtype=np.float32)
         response: httpx.Response | None = None
-        for attempt in range(3):
+        for attempt in range(self.max_attempts):
             response = self._client.post(
                 "/v2/embed",
                 json={
@@ -59,8 +68,8 @@ class CohereEmbedder:
             )
             if response.status_code not in {429, 500, 502, 503, 504}:
                 break
-            if attempt < 2:
-                time.sleep(2**attempt)
+            if attempt < self.max_attempts - 1:
+                time.sleep(self._backoff_seconds(response, attempt))
         assert response is not None
         response.raise_for_status()
         vectors = np.asarray(response.json()["embeddings"]["float"], dtype=np.float32)

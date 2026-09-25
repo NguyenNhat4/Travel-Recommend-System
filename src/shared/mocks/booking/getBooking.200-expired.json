@@ -1,0 +1,95 @@
+{
+  "referenceCode": "VOTA-20260916-8K3F",
+  "createdAt": "2026-09-16T10:22:00Z",
+  "status": "EXPIRED",
+  "contact": {
+    "fullName": "Nguyễn Minh Anh",
+    "email": "minhanh@example.vn",
+    "phone": "0912345678"
+  },
+  "groups": [
+    {
+      "destination": "Nha Trang",
+      "eventGroupId": "OFF20260916001",
+      "items": [
+        {
+          "bookingItemId": "bi-01",
+          "product": {
+            "productId": "nt-h-01",
+            "name": "Vinpearl Resort Nha Trang - Deluxe Ocean View",
+            "taxonomy": "hotel",
+            "destination": "Nha Trang",
+            "unitPrice": 3400000,
+            "currency": "VND",
+            "available": true,
+            "availableFrom": "2026-10-01",
+            "availableTo": "2027-03-31",
+            "imageUrl": "https://cdn.example.vn/nt-h-01.jpg",
+            "rating": 4.6,
+            "reviewCount": 1293,
+            "attributes": {
+              "starRating": 5,
+              "oceanView": true,
+              "privateBeach": true,
+              "kidsPool": true,
+              "familyFriendly": true
+            },
+            "priceUnit": "PER_NIGHT"
+          },
+          "usingDate": "2026-10-15",
+          "quantity": 1,
+          "nights": 3,
+          "lineTotal": 10200000,
+          "guestNames": [
+            "Nguyễn Minh Anh"
+          ],
+          "specialRequest": "Phòng tầng cao nếu còn"
+        },
+        {
+          "bookingItemId": "bi-02",
+          "product": {
+            "productId": "nt-a-01",
+            "name": "VinWonders Nha Trang",
+            "taxonomy": "attraction",
+            "destination": "Nha Trang",
+            "unitPrice": 880000,
+            "currency": "VND",
+            "available": true,
+            "availableFrom": "2026-09-01",
+            "availableTo": "2027-08-31",
+            "imageUrl": "https://cdn.example.vn/nt-a-01.jpg",
+            "rating": 4.5,
+            "reviewCount": 8421,
+            "attributes": {
+              "outdoor": true,
+              "waterPark": true,
+              "familyFriendly": true
+            },
+            "priceUnit": "PER_PERSON"
+          },
+          "usingDate": "2026-10-16",
+          "quantity": 3,
+          "nights": null,
+          "lineTotal": 2640000,
+          "guestNames": [],
+          "specialRequest": null
+        }
+      ],
+      "groupTotal": 12840000
+    }
+  ],
+  "total": 12840000,
+  "currency": "VND",
+  "holdExpiresAt": null,
+  "cancellableUntil": null,
+  "cancellation": null,
+  "payment": {
+    "status": "EXPIRED",
+    "amount": 12840000,
+    "currency": "VND",
+    "checkoutUrl": null,
+    "failedAttempts": 0,
+    "failureReason": null,
+    "refundedAmount": 0
+  }
+}

@@ -1,0 +1,232 @@
+#!/usr/bin/env bash
+# Deploy only the Backend service on an already-running application VM.
+# PostgreSQL lives on a separate VM and is reached through a local SSH tunnel.
+set -euo pipefail
+
+script_dir="$(cd -- "$(dirname -- "$0")" && pwd)"
+backend_image=''
+crawler_image=''
+compose_file=''
+backend_service='backend'
+backend_health_url='http://127.0.0.1:8000/health'
+db_tunnel_host='127.0.0.1'
+db_tunnel_port='15432'
+cron_runner='/opt/vota/bin/run_daily_docker.sh'
+cron_data_dir='/srv/vota/daily-data'
+cron_env_file='/etc/vota/daily.env'
+backend_env_file='/etc/vota/backend.env'
+jwt_secrets_dir='/etc/vota/backend-secrets'
+cron_schedule='0 2 * * *'
+cron_crontab_file=''
+health_timeout_seconds='900'
+health_interval_seconds='5'
+dry_run=0
+
+usage() {
+  cat <<'EOF'
+Usage:
+  deploy-backend-vm.sh --backend-image IMAGE:latest
+                       --crawler-image IMAGE:latest
+                       --compose-file /absolute/path/compose.yml
+                       [--backend-service backend]
+                       [--backend-health-url http://127.0.0.1:8000/health]
+                       [--db-tunnel-host 127.0.0.1] [--db-tunnel-port 15432]
+                       [--cron-runner /opt/vota/bin/run_daily_docker.sh]
+                       [--cron-data-dir /srv/vota/daily-data]
+                       [--cron-env-file /etc/vota/daily.env]
+                       [--cron-schedule '0 2 * * *']
+                       [--cron-crontab-file PATH]
+                       [--health-timeout SECONDS] [--health-interval SECONDS]
+                       [--dry-run]
+EOF
+}
+
+die() {
+  printf 'deploy-backend-vm.sh: %s\n' "$*" >&2
+  exit 1
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --backend-image) [ "$#" -ge 2 ] || die '--backend-image requires a value'; backend_image="$2"; shift 2 ;;
+    --crawler-image) [ "$#" -ge 2 ] || die '--crawler-image requires a value'; crawler_image="$2"; shift 2 ;;
+    --compose-file) [ "$#" -ge 2 ] || die '--compose-file requires a value'; compose_file="$2"; shift 2 ;;
+    --backend-service) [ "$#" -ge 2 ] || die '--backend-service requires a value'; backend_service="$2"; shift 2 ;;
+    --backend-health-url) [ "$#" -ge 2 ] || die '--backend-health-url requires a value'; backend_health_url="$2"; shift 2 ;;
+    --db-tunnel-host) [ "$#" -ge 2 ] || die '--db-tunnel-host requires a value'; db_tunnel_host="$2"; shift 2 ;;
+    --db-tunnel-port) [ "$#" -ge 2 ] || die '--db-tunnel-port requires a value'; db_tunnel_port="$2"; shift 2 ;;
+    --cron-runner) [ "$#" -ge 2 ] || die '--cron-runner requires a value'; cron_runner="$2"; shift 2 ;;
+    --cron-data-dir) [ "$#" -ge 2 ] || die '--cron-data-dir requires a value'; cron_data_dir="$2"; shift 2 ;;
+    --cron-env-file) [ "$#" -ge 2 ] || die '--cron-env-file requires a value'; cron_env_file="$2"; shift 2 ;;
+    --cron-schedule) [ "$#" -ge 2 ] || die '--cron-schedule requires a value'; cron_schedule="$2"; shift 2 ;;
+    --cron-crontab-file) [ "$#" -ge 2 ] || die '--cron-crontab-file requires a value'; cron_crontab_file="$2"; shift 2 ;;
+    --health-timeout) [ "$#" -ge 2 ] || die '--health-timeout requires a value'; health_timeout_seconds="$2"; shift 2 ;;
+    --health-interval) [ "$#" -ge 2 ] || die '--health-interval requires a value'; health_interval_seconds="$2"; shift 2 ;;
+    --dry-run) dry_run=1; shift ;;
+    --help|-h) usage; exit 0 ;;
+    *) die "unknown option: $1" ;;
+  esac
+done
+
+[ -n "$backend_image" ] || die '--backend-image is required'
+[ -n "$crawler_image" ] || die '--crawler-image is required'
+[ -n "$compose_file" ] || die '--compose-file is required'
+[[ "$backend_image" =~ :latest$ ]] || die 'Backend image must use the :latest tag'
+[[ "$crawler_image" =~ :latest$ ]] || die 'Crawler image must use the :latest tag'
+[[ "$compose_file" == /* ]] || die '--compose-file must be an absolute path'
+[[ "$cron_runner" == /* ]] || die '--cron-runner must be an absolute path'
+[[ "$cron_data_dir" == /* ]] || die '--cron-data-dir must be an absolute path'
+[[ "$cron_env_file" == /* ]] || die '--cron-env-file must be an absolute path'
+[[ "$backend_service" =~ ^[a-zA-Z0-9_.-]+$ ]] || die 'invalid Backend service name'
+[[ "$db_tunnel_host" == 127.0.0.1 || "$db_tunnel_host" == localhost ]] || die 'DB tunnel host must be loopback'
+[[ "$db_tunnel_port" =~ ^[0-9]+$ ]] || die 'DB tunnel port must be numeric'
+[[ "$health_timeout_seconds" =~ ^[1-9][0-9]*$ && "$health_interval_seconds" =~ ^[1-9][0-9]*$ ]] || die 'health timeout and interval must be positive integers'
+[ -f "$compose_file" ] || die "Compose file not found: $compose_file"
+grep -Eq '^[[:space:]]+postgres([[:space:]]*:|[[:space:]]*$)' "$compose_file" && die 'application Compose file must not declare a postgres service'
+command -v docker >/dev/null 2>&1 || die 'docker is required'
+command -v curl >/dev/null 2>&1 || die 'curl is required'
+[ -x "$script_dir/check-db-tunnel.sh" ] || die 'check-db-tunnel.sh is missing or not executable'
+[ -x "$script_dir/install-vota-cron.sh" ] || die 'install-vota-cron.sh is missing or not executable'
+
+if [ "$dry_run" -eq 0 ]; then
+  [ "$(id -u)" -ne 0 ] || die 'deploy must run as the SSH user, not root (cron is per-user)'
+  [ -r "$compose_file" ] || die "Compose file is not readable: $compose_file"
+  [ -x "$cron_runner" ] || die "Crawler runner is not executable: $cron_runner"
+  [ -d "$cron_data_dir" ] && [ -w "$cron_data_dir" ] || die "Crawler data directory is not writable: $cron_data_dir"
+  [ -r "$cron_env_file" ] || die "Crawler env file is not readable: $cron_env_file"
+  command -v crontab >/dev/null 2>&1 || die 'crontab is required for the SSH user'
+  docker info >/dev/null 2>&1 || die 'SSH user cannot access the Docker daemon'
+  grep -Fq '/etc/vota/backend.env' "$compose_file" || die 'Compose file must load /etc/vota/backend.env'
+  grep -Fq '/etc/vota/backend-secrets:/app/secrets:ro' "$compose_file" || die 'Compose file must mount the RS256 key directory read-only'
+
+  has_readable_file() {
+    [ -r "$1" ] 2>/dev/null || sudo -n test -r "$1" 2>/dev/null
+  }
+
+  has_nonempty_file() {
+    [ -s "$1" ] 2>/dev/null || sudo -n test -s "$1" 2>/dev/null
+  }
+
+  env_has_key() {
+    grep -Eq "^$1=" "$backend_env_file" 2>/dev/null || \
+      sudo -n grep -Eq "^$1=" "$backend_env_file" 2>/dev/null
+  }
+
+  has_readable_file "$backend_env_file" || die "Backend env file is not readable: $backend_env_file"
+  for required_key in DATABASE_URL CDP_DATABASE_URL JWT_PRIVATE_KEY_PATH JWT_PUBLIC_KEY_PATH AUTH_REDIS_URL; do
+    env_has_key "$required_key" || die "Backend env is missing ${required_key}"
+  done
+  for key_file in jwt-private.pem jwt-public.pem; do
+    has_nonempty_file "$jwt_secrets_dir/$key_file" || die "Missing backend key file: $jwt_secrets_dir/$key_file"
+  done
+  docker compose -f "$compose_file" config >/dev/null || die 'Backend Compose configuration is invalid'
+  if existing_crontab="$(LC_ALL=C crontab -l 2>&1)"; then
+    :
+  elif [[ "$existing_crontab" == *'no crontab'* ]]; then
+    existing_crontab=''
+  else
+    die 'SSH user cannot read its crontab'
+  fi
+  if [[ "$existing_crontab" == *run_daily_docker.sh* && "$existing_crontab" != *'# BEGIN VOTA CRAWLER'* ]]; then
+    die 'an unmanaged crawler cron entry already exists for the SSH user; migrate it before deploying'
+  fi
+fi
+
+"$script_dir/check-db-tunnel.sh" --host "$db_tunnel_host" --port "$db_tunnel_port"
+
+override_file=''
+rollback_file=''
+cleanup() {
+  [ -z "$override_file" ] || rm -f "$override_file"
+  [ -z "$rollback_file" ] || rm -f "$rollback_file"
+}
+trap cleanup EXIT
+
+if [ "$dry_run" -eq 1 ]; then
+  printf 'DRY-RUN: docker pull %s\n' "$crawler_image"
+  printf 'DRY-RUN: docker compose -f %s -f backend-override.yml pull %s\n' "$compose_file" "$backend_service"
+  printf 'DRY-RUN: docker compose -f %s -f backend-override.yml up -d --no-deps %s\n' "$compose_file" "$backend_service"
+  printf 'DRY-RUN: curl --fail %s for up to %ss\n' "$backend_health_url" "$health_timeout_seconds"
+  printf 'DRY-RUN: install cron for %s with %s\n' "$crawler_image" "$cron_runner"
+  exit 0
+fi
+
+override_file="$(mktemp)"
+cat > "$override_file" <<EOF
+services:
+  $backend_service:
+    image: $backend_image
+EOF
+
+container_id="$(docker compose -f "$compose_file" -f "$override_file" ps -q "$backend_service" | head -n 1)"
+[ -n "$container_id" ] || die "Backend service is not running: $backend_service"
+image_id="$(docker inspect --format '{{.Image}}' "$container_id")"
+[ -n "$image_id" ] || die 'could not capture the previous Backend image ID'
+previous_image="$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$image_id" | head -n 1)"
+[ -n "$previous_image" ] || die 'could not capture the previous Backend image digest'
+[[ "$previous_image" == *@sha256:* ]] || die 'previous Backend image is not pinned by digest'
+[[ "$previous_image" != *$'\n'* ]] || die 'previous Backend image contains a newline'
+
+docker pull "$crawler_image"
+docker compose -f "$compose_file" -f "$override_file" pull "$backend_service"
+
+wait_for_health() {
+  local deadline=$((SECONDS + health_timeout_seconds))
+  local remaining curl_timeout pause
+  while :; do
+    remaining=$((deadline - SECONDS))
+    [ "$remaining" -gt 0 ] || return 1
+    curl_timeout=10
+    [ "$remaining" -ge 10 ] || curl_timeout="$remaining"
+    if curl --silent --show-error --fail --max-time "$curl_timeout" "$backend_health_url" >/dev/null 2>&1; then
+      return 0
+    fi
+    remaining=$((deadline - SECONDS))
+    [ "$remaining" -gt 0 ] || return 1
+    pause="$health_interval_seconds"
+    [ "$pause" -le "$remaining" ] || pause="$remaining"
+    sleep "$pause"
+  done
+}
+
+rollback_backend() {
+  printf 'Restoring previous Backend image.\n' >&2
+  rollback_file="$(mktemp)"
+  cat > "$rollback_file" <<EOF
+services:
+  $backend_service:
+    image: $previous_image
+EOF
+  docker compose -f "$compose_file" -f "$rollback_file" up -d --force-recreate --no-deps "$backend_service" || die 'Backend rollback command failed'
+  wait_for_health || die 'Backend rollback did not become healthy'
+}
+
+if ! docker compose -f "$compose_file" -f "$override_file" up -d --force-recreate --no-deps "$backend_service"; then
+  rollback_backend
+  die 'Backend recreate failed; previous image restored'
+fi
+
+if ! wait_for_health; then
+  printf 'Backend health failed.\n' >&2
+  rollback_backend
+  die 'Backend deploy failed; previous image restored'
+fi
+
+install_cron() {
+  "$script_dir/install-vota-cron.sh" \
+    --image "$crawler_image" \
+    --runner "$cron_runner" \
+    --data-dir "$cron_data_dir" \
+    --env-file "$cron_env_file" \
+    --schedule "$cron_schedule" "$@"
+}
+if [ -n "$cron_crontab_file" ]; then
+  if ! install_cron --crontab-file "$cron_crontab_file"; then
+    rollback_backend
+    die 'Crawler cron update failed; previous Backend image restored'
+  fi
+elif ! install_cron; then
+  rollback_backend
+  die 'Crawler cron update failed; previous Backend image restored'
+fi
+printf 'Backend deploy and crawler cron update completed.\n'

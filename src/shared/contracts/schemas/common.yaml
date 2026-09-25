@@ -60,10 +60,24 @@ SearchMode:
   enum:
   - EXACT_FILTER_SCORE
   - ANN_CANDIDATE_SCORE
+  - HYBRID_CANDIDATE_SCORE
   description: >-
-    EXACT_FILTER_SCORE là mặc định cho cả /search, /similar và /recommendations.
-    Lật sang ANN_CANDIDATE_SCORE khi số vector vượt 50.000 hoặc p95 của bước scan
-    vượt 50 ms; khi lật thì totalExact và facetsExact bắt buộc là false.
+    ANN_CANDIDATE_SCORE là mặc định cho /similar và /recommendations
+    (từ 2026-09-24): lọc id theo structured filter, lấy top-K ứng viên từ Weaviate,
+    rồi chấm điểm và đếm trên tập ứng viên đó. Ở chế độ này approximate là true,
+    totalExact và facetsExact bắt buộc là false.
+
+    HYBRID_CANDIDATE_SCORE là mặc định của /search (từ 2026-09-25): R = R_dense ∪ R_lex.
+    R_dense = top-K dense có score >= cutoff (như ANN). R_lex = hit BM25 (trên
+    nameAscii/searchTextAscii đã fold dấu) có rank <= diagnostics.lexicalK, score
+    trong [diagnostics.lexicalCutoff, cutoff) và tên chứa >= diagnostics.lexicalMinCoverage
+    token của truy vấn.
+    results sắp theo RRF (k = diagnostics.rrfK) nên score — vẫn là cosine đã clamp —
+    KHÔNG đơn điệu trong một trang; đếm phần vớt ở diagnostics.lexicalCount.
+    approximate/totalExact/facetsExact như ANN. Backend tắt hybrid (SEARCH_HYBRID=false)
+    thì /search khai lại ANN_CANDIDATE_SCORE.
+
+    EXACT_FILTER_SCORE giữ cho engine quét toàn bộ vector (bản chạy offline).
 
 # [Q1] Kết quả kiểm tra availability theo một khoảng ngày cụ thể.
 AvailabilityStatus:
@@ -153,6 +167,12 @@ ErrorCode:
   - OAUTH_EMAIL_UNVERIFIED
   - OAUTH_ALREADY_LINKED
   - CDP_UNAVAILABLE
+  # --- booking: giữ chỗ và thanh toán Stripe ---
+  - BOOKING_PENDING_PAYMENT
+  - BOOKING_ALREADY_PAID
+  - BOOKING_NOT_CANCELLABLE
+  - PAYMENT_PROVIDER_UNAVAILABLE
+  - INVALID_WEBHOOK_SIGNATURE
 
 ErrorResponse:
   type: object
@@ -176,7 +196,7 @@ ErrorResponse:
           type: boolean
           description: >-
             true chỉ với SEARCH_UNAVAILABLE, INTERNAL_ERROR, LLM_UNAVAILABLE,
-            TOO_MANY_ATTEMPTS và CDP_UNAVAILABLE.
+            TOO_MANY_ATTEMPTS, CDP_UNAVAILABLE và PAYMENT_PROVIDER_UNAVAILABLE.
             Mọi mã còn lại là false — thử lại nguyên request cho cùng kết quả.
         requestId:
           type: string
@@ -195,4 +215,6 @@ ErrorResponse:
             {retryAfterSeconds}; MFA_INVALID {attemptsLeft}; EMAIL_NOT_VERIFIED
             {email}; WEAK_PASSWORD {reasons}; INVALID_VERIFICATION_TOKEN
             {purpose}; OAUTH_EMAIL_UNVERIFIED và OAUTH_ALREADY_LINKED
-            {provider}.
+            {provider}; BOOKING_PENDING_PAYMENT {referenceCode, holdExpiresAt} — đơn đang
+            giữ chỗ để tiếp tục hoặc huỷ; BOOKING_NOT_CANCELLABLE {referenceCode, reason,
+            cancellableUntil}; BOOKING_ALREADY_PAID {referenceCode}.

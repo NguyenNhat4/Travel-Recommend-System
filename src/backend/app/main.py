@@ -1,17 +1,18 @@
 """Composition root — nơi duy nhất nối infrastructure vào use case (docs/prd/architecture.md §2).
 
 Gộp hai nhánh: phần nối PostgreSQL (CDP client, catalog lookup, ghi event nền) và engine recsys
-(search / similar / recommendations). `WeaviateVectorStore` lấy vector đã persist, hydrate sản phẩm từ
-PostgreSQL; `PostgresCdpReader` đọc lịch sử. Cả hai thay các bản giả ở `tests/fakes/`.
+(search / similar / recommendations). `WeaviateVectorStore` nạp metadata search unit từ PostgreSQL và
+trả kho vector Weaviate để mỗi request truy vấn top-K; `PostgresCdpReader` đọc lịch sử. Cả hai thay các bản giả ở `tests/fakes/`.
 
 Hai adapter CDP trong `infrastructure/cdp/` cùng tồn tại vì là hai chiều khác nhau, không phải bản trùng lặp:
   * `LocalCdpClient`     — GHI (async): purchase khi checkout, huỷ bù trừ, browse event, profile.
   * `PostgresCdpReader`  — ĐỌC (sync): lịch sử của khách và bảng phổ biến cho recsys.
 Cả hai đi qua `CDP_DATABASE_URL`; không nơi nào khác được SQL thẳng vào schema `cdp` (AGENTS.md §6.1).
 
-Nạp index từ collection `Product` của Weaviate trong `lifespan` một lần lúc khởi động. Thiếu database,
-Weaviate hoặc index thì log rồi bỏ qua phần recsys — các route còn lại
-vẫn phục vụ được, đúng tinh thần "CDP lỗi thì không kéo sập cả app" (hop-dong-tich-hop-cdp.md §6).
+Nạp metadata search unit lúc khởi động rồi nạp lại mỗi `CATALOG_REFRESH_SECONDS`; vector ở lại Weaviate.
+Lần nạp lại lỗi thì giữ bản đang phục vụ. Chưa nạp được lần nào (thiếu database, Weaviate hoặc index) thì log
+rồi bỏ qua phần recsys — các route còn lại vẫn phục vụ được, đúng tinh thần "CDP lỗi thì không kéo sập cả app"
+(hop-dong-tich-hop-cdp.md §6).
 """
 from __future__ import annotations
 
@@ -37,9 +38,23 @@ from src.backend.app.application.auth.use_cases import (
     RevokeSession,
     RotateSession,
 )
+from src.backend.app.application.booking import (
+    CancelBooking,
+    CartService,
+    CreateBookingHold,
+    GetBooking,
+    PaymentEventHandler,
+    ReconcileBookings,
+    Settlement,
+)
+from src.backend.app.application.catalog.use_cases import GetProductDetail, GetSimilarProducts, ListProducts
 from src.backend.app.application.itinerary.use_cases import PlanItinerary
+from src.backend.app.application.tracking.behaviour import BehaviourTracker
+from src.backend.app.domain.booking import HoldPolicy
+from src.backend.app.domain.catalog import ListingItem
 from src.backend.app.application.recommendation import BuildPopularity, RecommendForUser
 from src.backend.app.application.search import SearchProducts, SimilarProducts
+from src.backend.app.domain.search import HybridConfig
 from src.backend.app.core.config import REPO_ROOT, Settings, get_settings
 from src.backend.app.infrastructure.auth.argon2_hasher import Argon2Hasher
 from src.backend.app.infrastructure.auth.jwt_issuer import JwtConfig, JwtIssuer
@@ -56,8 +71,15 @@ from src.backend.app.infrastructure.cdp.postgres_cdp_reader import PostgresCdpRe
 from src.backend.app.infrastructure.clients.itinerary_fixture_clients import FixtureItineraryClients
 from src.backend.app.infrastructure.clients.itinerary_http_clients import ItineraryHttpClients
 from src.backend.app.infrastructure.llm import build_chat_model
+from src.backend.app.infrastructure.payments.fake_gateway import FakeGateway
+from src.backend.app.infrastructure.payments.stripe_gateway import StripePaymentGateway
 from src.backend.app.infrastructure.persistence.conversation_store import InMemoryConversationStore
-from src.backend.app.infrastructure.persistence.postgres_catalog import PostgresProductLookup
+from src.backend.app.infrastructure.persistence.postgres_booking import (
+    PostgresBookingStore,
+    PostgresCartRepository,
+    PostgresProductCatalog,
+)
+from src.backend.app.infrastructure.persistence.postgres_catalog import PostgresProductLookup, PostgresProductQuery
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -68,49 +90,67 @@ if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
+def build_catalog(settings, state) -> dict:
+    """Use case /products. `state` là app.state sau bước dựng RecSys (có thể đã tắt)."""
+    products = PostgresProductQuery(settings.database_url)
+    return {
+        "get_product_detail": GetProductDetail(products),
+        "list_products": ListProducts(
+            products, getattr(state, "listing_units", None), getattr(state, "product_popularity", None) or {},
+            max_limit=settings.search_max_limit),
+        "get_similar_products": GetSimilarProducts(products, getattr(state, "similar", None)),
+    }
+
+
 def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) -> dict:
     """Dựng engine recsys trên database đã seed.
 
     Ba tham số override để test tiêm giả lập mà không cần Postgres hay tải model embedding.
     """
     owns_embedder = False
-    if vector_store is None:
-        from src.backend.app.domain.catalog import TEXT_BUILDER_VERSION
-        from src.backend.app.infrastructure.embeddings.cohere_embedder import CohereEmbedder
-        from src.backend.app.infrastructure.vectors.weaviate_store import WeaviateClient, WeaviateVectorStore
-
-        if embedder is None:
-            embedder = CohereEmbedder(
-                settings.cohere_api_key,
-                settings.embed_model,
-                base_url=settings.cohere_base_url,
-                dimension=settings.embed_dimension,
-                timeout_seconds=settings.cohere_timeout_seconds,
-            )
-            owns_embedder = True
-        weaviate = WeaviateClient(
-            settings.weaviate_url,
-            collection=settings.weaviate_collection,
-            api_key=settings.weaviate_api_key,
-            timeout_seconds=settings.weaviate_timeout_seconds,
-        )
-        vector_store = WeaviateVectorStore(
-            settings.database_url,
-            weaviate,
-            expected_model_version=f"{settings.embed_model}:{TEXT_BUILDER_VERSION}",
-            dimension=settings.embed_dimension,
-        )
-    logger.info("startup.recsys.index.load.start source=weaviate")
+    owns_vector_store = vector_store is None
     try:
-        index = vector_store.load()
+        if vector_store is None:
+            from src.backend.app.domain.catalog import TEXT_BUILDER_VERSION
+            from src.backend.app.infrastructure.embeddings.cohere_embedder import CohereEmbedder
+            from src.backend.app.infrastructure.vectors.weaviate_store import (
+                WeaviateVectorSearch,
+                WeaviateVectorStore,
+                connect_weaviate,
+            )
+
+            if embedder is None:
+                embedder = CohereEmbedder(
+                    settings.cohere_api_key,
+                    settings.embed_model,
+                    base_url=settings.cohere_base_url,
+                    dimension=settings.embed_dimension,
+                    timeout_seconds=settings.cohere_timeout_seconds,
+                )
+                owns_embedder = True
+            vector_store = WeaviateVectorStore(
+                settings.database_url,
+                WeaviateVectorSearch(
+                    connect_weaviate(
+                        settings.weaviate_url,
+                        api_key=settings.weaviate_api_key,
+                        grpc_port=settings.weaviate_grpc_port,
+                        timeout_seconds=settings.weaviate_timeout_seconds,
+                    ),
+                    collection=settings.weaviate_collection,
+                    dimension=settings.embed_dimension,
+                ),
+                expected_model_version=f"{settings.embed_model}:{TEXT_BUILDER_VERSION}",
+            )
+        logger.info("startup.recsys.index.load.start source=weaviate")
+        index, vector_search = vector_store.load()
     except Exception:
         if owns_embedder and hasattr(embedder, "close"):
             embedder.close()
+        search_store = getattr(vector_store, "search", None)
+        if owns_vector_store and search_store is not None and hasattr(search_store, "close"):
+            search_store.close()
         raise
-    finally:
-        client = getattr(vector_store, "client", None)
-        if client is not None:
-            client.close()
     logger.info("startup.recsys.index.load.ready search_units=%d", len(index.units))
 
     # Lịch sử đi qua CDP_DATABASE_URL: vota_app không đọc được cdp.events.
@@ -118,20 +158,109 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
     logger.info("startup.recsys.popularity.build.start")
     popularity = BuildPopularity(index, cdp_reader)()
     logger.info("startup.recsys.popularity.build.ready")
+    # Hybrid dùng chính adapter vector làm nhánh BM25 (cùng collection `Product`); tắt bằng SEARCH_HYBRID=false.
+    hybrid = HybridConfig(
+        rrf_k=settings.search_rrf_k,
+        lexical_k=settings.search_lexical_k,
+        lexical_cutoff=min(settings.search_lexical_cutoff, settings.search_cutoff),  # contract: lexicalCutoff ≤ cutoff
+        min_coverage=settings.search_lexical_min_coverage,
+    ) if settings.search_hybrid and hasattr(vector_search, "bm25") else None
+    logger.info("startup.recsys.search.mode=%s", "HYBRID_CANDIDATE_SCORE" if hybrid else "ANN_CANDIDATE_SCORE")
+    logger.info("startup.recsys.search.normalize=%s", settings.search_normalize)
     return {
         "recsys_embedder": embedder,
+        "recsys_vectors": vector_search,
+        "recsys_store": vector_store,
         "index": index,
         "search": SearchProducts(
             index,
+            vector_search,
             embedder,
             cutoff=settings.search_cutoff,
             max_limit=settings.search_max_limit,
+            candidate_k=settings.search_candidate_k,
+            lexical=vector_search if hybrid else None,
+            hybrid=hybrid,
+            lexical_candidate_k=settings.search_lexical_candidate_k,
+            normalize=settings.search_normalize,
         ),
-        "similar": SimilarProducts(index),
+        "similar": SimilarProducts(index, vector_search),
+        # GET /products: cùng tập search unit với /search, sắp xếp popular theo lượt mua CDP (backend §4.1).
+        "listing_units": [ListingItem(p, bool(index.recommendable[i])) for i, p in enumerate(index.units)],
+        "product_popularity": {index.units[u].product_id: s for u, s in popularity.unit_scores().items()},
         "recommend": RecommendForUser(
-            index, cdp_reader, popularity, candidate_k=settings.recommend_candidate_k
+            index, vector_search, cdp_reader, popularity, candidate_k=settings.recommend_candidate_k
         ),
     }
+
+
+#: Chưa nạp được lần nào (database chưa seed, Weaviate chưa index…) thì thử lại sớm, không chờ trọn chu kỳ.
+RECSYS_RETRY_SECONDS = 30.0
+
+
+class RecsysRefresher:
+    """Nạp lại engine recsys theo chu kỳ để giá, trạng thái và cửa sổ ngày theo kịp job cào.
+
+    Client Cohere/Weaviate dùng chung giữa các lần nạp; request đang chạy giữ use case của bản cũ nên không
+    client nào bị đóng giữa chừng. Lần nạp lại lỗi thì giữ bản đang phục vụ thay vì tắt recsys.
+    """
+
+    def __init__(self, app: FastAPI, settings: Settings, build=None, on_publish=None):
+        self.app, self.settings = app, settings
+        self._build = build  # test tiêm bản giả; mặc định là build_recsys
+        self._on_publish = on_publish  # dựng lại use case đọc engine recsys (catalog) sau mỗi lần nạp
+        self.services: dict = {}
+        self._failures = 0
+        self._stop = asyncio.Event()
+
+    async def reload(self) -> bool:
+        first = not self.services
+        try:
+            updated = await asyncio.to_thread(
+                self._build or build_recsys, self.settings,
+                self.services.get("recsys_embedder"), self.services.get("recsys_store"),
+            )
+        except Exception as exc:  # database chưa seed, Weaviate chưa index, lỗi mạng…
+            self._failures += 1
+            if not first:
+                logger.warning("catalog.refresh.failed error=%s; giữ bản đang phục vụ", exc)
+            elif self._failures == 1:
+                print(f"RecSys disabled: {exc}")
+                logger.warning("startup.recsys.disabled error=%s; retry_seconds=%s", exc, RECSYS_RETRY_SECONDS)
+            else:  # vẫn chưa lên: không lặp cảnh báo mỗi 30 giây
+                logger.debug("startup.recsys.retry_failed error=%s", exc)
+            return False
+        self._failures = 0
+        self.services = updated
+        for name, service in updated.items():  # không có await giữa các phép gán: request thấy trọn một bản
+            setattr(self.app.state, name, service)
+        if self._on_publish is not None:
+            self._on_publish()
+        if first:
+            print(f"RecSys ready: {len(updated['index'].units)} search unit, model {updated['index'].model_version}")
+            logger.info("startup.recsys.ready search_units=%d", len(updated["index"].units))
+        else:
+            logger.info("catalog.refresh.ready search_units=%d", len(updated["index"].units))
+        return True
+
+    async def run(self) -> None:
+        while not self._stop.is_set():
+            delay = self.settings.catalog_refresh_seconds
+            if not self.services:
+                delay = min(delay, RECSYS_RETRY_SECONDS)
+            try:
+                await asyncio.wait_for(self._stop.wait(), delay)
+            except asyncio.TimeoutError:
+                await self.reload()
+
+    def stop(self) -> None:
+        self._stop.set()
+
+    def close(self) -> None:
+        for name in ("recsys_embedder", "recsys_vectors"):
+            resource = self.services.get(name)
+            if resource is not None and hasattr(resource, "close"):
+                resource.close()
 
 
 def build_auth(settings: Settings, cdp_client, redis_client=None) -> dict:
@@ -181,6 +310,47 @@ def build_auth(settings: Settings, cdp_client, redis_client=None) -> dict:
         "change_password": ChangePassword(users=users, hasher=hasher, refresh=refresh),
         "get_current_user": GetCurrentUser(users=users),
     }
+
+
+def build_booking(settings: Settings, cdp_client, recorder, product_lookup, *, clock=None) -> dict:
+    """Dựng giỏ hàng, giữ chỗ, thanh toán Stripe, huỷ và đối soát (spec booking)."""
+    from datetime import datetime, timezone
+
+    clock = clock or (lambda: datetime.now(timezone.utc))
+    if settings.payment_provider == "fake":
+        if settings.app_env == "production":
+            raise RuntimeError("PAYMENT_PROVIDER=fake không được dùng ở production")
+        gateway = FakeGateway()
+    else:
+        gateway = StripePaymentGateway(settings.stripe_secret_key, settings.stripe_webhook_secret)
+    store = PostgresBookingStore(settings.database_url)
+    carts = PostgresCartRepository(settings.database_url)
+    catalog = PostgresProductCatalog(settings.database_url)
+    settlement = Settlement(store, gateway, cdp_client, clock)
+    handler = PaymentEventHandler(
+        store, gateway, settlement, max_failed_attempts=settings.payment_max_failed_attempts, clock=clock)
+    reconciler = ReconcileBookings(store, gateway, settlement, handler, clock)
+    return {
+        "payment_gateway": gateway,
+        "cart_service": CartService(carts, catalog, BehaviourTracker(recorder, product_lookup), clock=clock),
+        "create_booking_hold": CreateBookingHold(
+            store, carts, catalog, gateway, reconciler, HoldPolicy(settings.booking_hold_minutes),
+            public_web_url=settings.public_web_url, provider=settings.payment_provider, clock=clock),
+        "get_booking": GetBooking(store, catalog),
+        "cancel_booking": CancelBooking(store, gateway, settlement, catalog, clock),
+        "payment_event_handler": handler,
+        "reconcile_bookings": reconciler,
+    }
+
+
+async def _reconcile_loop(reconcile, interval_seconds: int) -> None:
+    """Job đối soát trong tiến trình Backend (đủ cho MVP nhờ trạng thái idempotent; tách worker thì chỉ đổi chỗ gọi)."""
+    while True:
+        await asyncio.sleep(interval_seconds)
+        try:
+            await reconcile()
+        except Exception:
+            logger.exception("booking.reconcile.loop_failed")
 
 
 def _itinerary_runtime(app: FastAPI, settings: Settings, authorization: str | None):
@@ -260,6 +430,18 @@ async def lifespan(app: FastAPI):
         logger.info("startup.browse_event_recorder.start")
         app.state.browse_event_recorder.start()
         logger.info("startup.browse_event_recorder.ready")
+        for name, service in build_booking(
+            settings, cdp_client, app.state.browse_event_recorder, app.state.product_lookup
+        ).items():
+            setattr(app.state, name, service)
+        if settings.booking_reconcile_interval_seconds:
+            reconcile_task = asyncio.create_task(
+                _reconcile_loop(app.state.reconcile_bookings, settings.booking_reconcile_interval_seconds))
+            stack.callback(reconcile_task.cancel)
+        gateway_close = getattr(app.state.payment_gateway, "aclose", None)
+        if gateway_close is not None:
+            stack.push_async_callback(gateway_close)
+        logger.info("startup.booking.ready payment_provider=%s", settings.payment_provider)
         app.state.itinerary_conversation_store = InMemoryConversationStore(
             ttl_seconds=settings.itinerary_conversation_ttl_seconds
         )
@@ -296,26 +478,32 @@ async def lifespan(app: FastAPI):
             print(f"Itinerary LLM unavailable: {exc}")
         print(f"Itinerary LLM: {app.state.itinerary_llm_mode}")
 
-        # Recsys tách khỏi phần itinerary: thiếu database hoặc model embedding thì tắt recsys,
-        # các route còn lại (kể cả assistant chạy fixture) vẫn phục vụ được.
-        try:
-            logger.info("startup.recsys.start model=%s", settings.embed_model)
-            for name, service in build_recsys(settings).items():
+        # Recsys tách khỏi phần itinerary: chưa nạp được thì tắt recsys và thử lại sau, các route còn lại
+        # (kể cả assistant chạy fixture) vẫn phục vụ được.
+        logger.info("startup.recsys.start model=%s", settings.embed_model)
+        for name in ("index", "search", "similar", "recommend", "listing_units", "product_popularity"):
+            setattr(app.state, name, None)
+
+        # Catalog đọc thẳng database nên vẫn chạy khi RecSys tắt; khi đó danh sách đọc search unit mỗi request
+        # và /similar trả 503 SEARCH_UNAVAILABLE. Catalog giữ tham chiếu tới engine recsys nên phải dựng lại
+        # sau mỗi lần RecsysRefresher nạp bản mới, nếu không /products và /similar dùng mãi bản lúc khởi động.
+        def publish_catalog() -> None:
+            for name, service in build_catalog(settings, app.state).items():
                 setattr(app.state, name, service)
-            print(f"RecSys ready: {len(app.state.index.units)} search unit, model {app.state.index.model_version}")
-            logger.info("startup.recsys.ready search_units=%d", len(app.state.index.units))
-        except Exception as exc:  # database chưa seed, thiếu model embedding…
-            app.state.index = None
-            print(f"RecSys disabled: {exc}")
-            logger.exception("startup.recsys.disabled error=%s", exc)
+
+        recsys = RecsysRefresher(app, settings, on_publish=publish_catalog)
+        if not await recsys.reload():
+            publish_catalog()
+        app.state.behaviour_tracker = BehaviourTracker(app.state.browse_event_recorder, app.state.product_lookup)
+        refresh_task = asyncio.create_task(recsys.run())
 
         logger.info("startup.ready")
         try:
             yield
         finally:
-            embedder = getattr(app.state, "recsys_embedder", None)
-            if embedder is not None and hasattr(embedder, "close"):
-                embedder.close()
+            recsys.stop()
+            await refresh_task  # chờ lần nạp đang chạy xong rồi mới đóng client dùng chung
+            recsys.close()
             logger.info("shutdown.browse_event_recorder.stop")
             await app.state.browse_event_recorder.stop()
     print("Shutting down...")
@@ -325,7 +513,7 @@ settings = get_settings()
 app = FastAPI(
     title=settings.app_name,
     description="Travel recommendation and itinerary API",
-    version="1.4.0",
+    version="1.6.0",
     lifespan=lifespan,
 )
 

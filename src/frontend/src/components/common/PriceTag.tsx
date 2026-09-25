@@ -2,7 +2,8 @@ import React from 'react';
 import { Taxonomy } from '../../types/travel';
 
 interface PriceTagProps {
-  price: number;
+  /** null = chưa có giá (không phải miễn phí): hiển thị "Chưa có giá", không tiền tố/hậu tố. */
+  price: number | null;
   taxonomy?: Taxonomy;
   hasPrefixFrom?: boolean;
   showTaxesIncluded?: boolean;
@@ -18,11 +19,15 @@ export const PriceTag: React.FC<PriceTagProps> = ({
   size = 'md',
   className = ''
 }) => {
+  if (price == null) {
+    return <span className={`text-sm font-medium text-slate-500 ${className}`}>Chưa có giá</span>;
+  }
   const formatted = new Intl.NumberFormat('vi-VN').format(price) + ' ₫';
 
   let suffix = '';
   if (taxonomy === 'hotel') suffix = '/ đêm';
-  else if (taxonomy === 'flight' || taxonomy === 'attraction' || taxonomy === 'golf') suffix = '/ khách';
+  else if (taxonomy === 'flight' || taxonomy === 'attraction') suffix = '/ khách';
+  else if (taxonomy === 'golf') suffix = '/ lượt';
   else if (taxonomy === 'combo') suffix = '/ gói';
 
   const sizeClasses = {

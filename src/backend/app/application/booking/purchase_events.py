@@ -39,3 +39,19 @@ async def _cancel_quietly(cdp: CdpClient, events: Sequence[PurchaseEvent]) -> No
             current_request_id(),
             booking_item_ids,
         )
+
+
+async def record_then_commit(
+    cdp: CdpClient,
+    events: Sequence[PurchaseEvent],
+    commit: Callable[[], Awaitable[T]],
+) -> T:
+    """Ghi purchase rồi commit, KHÔNG huỷ event khi commit lỗi.
+
+    Dùng cho đường xác nhận sau khi Stripe đã thu tiền (hop-dong-tich-hop-cdp.md §3.3 mục 4): khách đã trả tiền
+    nên đơn phải được xác nhận, không được lùi lại. Commit lỗi thì để exception nổi lên, Stripe gửi lại webhook
+    (hoặc job đối soát chạy lại) và `eventId = purchase:{bookingItemId}` khiến lần ghi sau là duplicate, không nhân đôi.
+    `commit_with_purchase_events` giữ nguyên cho đường chưa có tiền.
+    """
+    await cdp.record_purchases(events)
+    return await commit()

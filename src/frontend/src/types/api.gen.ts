@@ -164,7 +164,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Danh sách sản phẩm */
+        /**
+         * Danh sách sản phẩm
+         * @description Không có parentProductId: chỉ trả tầng cha (search unit — property, route và taxonomy không phân tầng), giống /search và /recommendations. Có parentProductId: trả các sản phẩm tầng con (hạng phòng, chuyến bay cụ thể) của sản phẩm cha đó, là đơn vị đặt chỗ mà Web thêm vào giỏ; sort=popular với tầng con xếp theo giá tăng dần. parentProductId không có trong catalog hoặc không có tầng con thì trả results rỗng.
+         */
         get: operations["listProducts"];
         put?: never;
         post?: never;
@@ -356,8 +359,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Checkout toàn bộ giỏ hiện tại
-         * @description Backend ghi purchase sang CDP clone đồng bộ trước khi commit booking. CDP không xác nhận thì không tạo booking, giữ nguyên giỏ và trả 500 INTERNAL_ERROR retryable true. CDP đã ghi nhưng commit lỗi thì Backend huỷ các event đó trên CDP rồi trả 500.
+         * Checkout giỏ hiện tại — giữ chỗ và tạo phiên thanh toán Stripe
+         * @description Backend kiểm giỏ, tạo đơn PENDING_PAYMENT (giữ giá và thành phần 30 phút) rồi tạo phiên Stripe Checkout. 201 nghĩa là đã giữ chỗ và chờ thanh toán, KHÔNG phải đã đặt xong: Web chuyển trình duyệt tới payment.checkoutUrl. Đơn chỉ thành CONFIRMED sau khi Stripe xác nhận thu tiền (webhook có chữ ký hoặc Backend tự hỏi lại Stripe); event purchase chỉ ghi sang CDP lúc đó. Người dùng đang có đơn giữ chỗ thì trả 409 BOOKING_PENDING_PAYMENT kèm referenceCode đơn đó. Stripe không phản hồi thì không tạo đơn, trả 503 PAYMENT_PROVIDER_UNAVAILABLE. Số tiền do Backend tính từ catalog, không nhận từ client.
          */
         post: operations["createBooking"];
         delete?: never;
@@ -377,6 +380,46 @@ export interface paths {
         get: operations["getBooking"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/bookings/{referenceCode}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Khách huỷ cả đơn
+         * @description Huỷ cả đơn, không huỷ từng mục. Đơn PENDING_PAYMENT: huỷ ngay và đóng phiên thanh toán. Đơn CONFIRMED: hoàn 100% qua Stripe nếu còn trong hạn (cancellableUntil), đồng thời huỷ event purchase trên CDP; quá hạn thì 409 BOOKING_NOT_CANCELLABLE. Huỷ lặp lại trả về kết quả cũ, không hoàn tiền hai lần. Đơn đã CANCELLED, EXPIRED hoặc PAYMENT_FAILED không huỷ được.
+         */
+        post: operations["cancelBooking"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/payments/stripe/webhook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Webhook Stripe (nội bộ, chỉ Stripe gọi)
+         * @description Stripe gọi thẳng FastAPI, không qua BFF, không dùng JWT. Xác thực bằng chữ ký Stripe-Signature trên raw body. Xử lý idempotent: gửi trùng hoặc sai thứ tự không đổi trạng thái lần hai. Web không sinh client cho endpoint này.
+         */
+        post: operations["stripeWebhook"];
         delete?: never;
         options?: never;
         head?: never;
@@ -488,16 +531,16 @@ export interface components {
         Currency: "VND";
         ReferenceCode: string;
         /** @enum {string} */
-        ErrorCode: "VALIDATION_ERROR" | "CART_EMPTY" | "INVALID_CREDENTIALS" | "INVALID_TOKEN" | "TOKEN_EXPIRED" | "PRODUCT_NOT_FOUND" | "CART_ITEM_NOT_FOUND" | "BOOKING_NOT_FOUND" | "NOT_FOUND" | "EMAIL_ALREADY_EXISTS" | "PRODUCT_UNAVAILABLE" | "PRICE_CHANGED" | "DATE_OUT_OF_RANGE" | "SEARCH_UNAVAILABLE" | "INTERNAL_ERROR" | "INVALID_TRIP_DURATION" | "CONVERSATION_NOT_FOUND" | "UNSUPPORTED_DESTINATION" | "LLM_UNAVAILABLE" | "ITINERARY_VALIDATION_FAILED" | "AVAILABILITY_NOT_FOUND" | "AVAILABILITY_EXPIRED" | "NO_RATE_PLAN" | "MIN_STAY_NOT_MET" | "CLOSED_ON_ARRIVAL" | "CLOSED_ON_DEPARTURE" | "PARTIALLY_AVAILABLE" | "PRODUCT_NOT_INDEXED" | "UNAUTHENTICATED" | "SESSION_EXPIRED" | "CSRF_FAILED" | "MFA_REQUIRED" | "MFA_INVALID" | "EMAIL_NOT_VERIFIED" | "TOO_MANY_ATTEMPTS" | "CAPTCHA_REQUIRED" | "CAPTCHA_FAILED" | "WEAK_PASSWORD" | "INVALID_VERIFICATION_TOKEN" | "OAUTH_EMAIL_UNVERIFIED" | "OAUTH_ALREADY_LINKED" | "CDP_UNAVAILABLE";
+        ErrorCode: "VALIDATION_ERROR" | "CART_EMPTY" | "INVALID_CREDENTIALS" | "INVALID_TOKEN" | "TOKEN_EXPIRED" | "PRODUCT_NOT_FOUND" | "CART_ITEM_NOT_FOUND" | "BOOKING_NOT_FOUND" | "NOT_FOUND" | "EMAIL_ALREADY_EXISTS" | "PRODUCT_UNAVAILABLE" | "PRICE_CHANGED" | "DATE_OUT_OF_RANGE" | "SEARCH_UNAVAILABLE" | "INTERNAL_ERROR" | "INVALID_TRIP_DURATION" | "CONVERSATION_NOT_FOUND" | "UNSUPPORTED_DESTINATION" | "LLM_UNAVAILABLE" | "ITINERARY_VALIDATION_FAILED" | "AVAILABILITY_NOT_FOUND" | "AVAILABILITY_EXPIRED" | "NO_RATE_PLAN" | "MIN_STAY_NOT_MET" | "CLOSED_ON_ARRIVAL" | "CLOSED_ON_DEPARTURE" | "PARTIALLY_AVAILABLE" | "PRODUCT_NOT_INDEXED" | "UNAUTHENTICATED" | "SESSION_EXPIRED" | "CSRF_FAILED" | "MFA_REQUIRED" | "MFA_INVALID" | "EMAIL_NOT_VERIFIED" | "TOO_MANY_ATTEMPTS" | "CAPTCHA_REQUIRED" | "CAPTCHA_FAILED" | "WEAK_PASSWORD" | "INVALID_VERIFICATION_TOKEN" | "OAUTH_EMAIL_UNVERIFIED" | "OAUTH_ALREADY_LINKED" | "CDP_UNAVAILABLE" | "BOOKING_PENDING_PAYMENT" | "BOOKING_ALREADY_PAID" | "BOOKING_NOT_CANCELLABLE" | "PAYMENT_PROVIDER_UNAVAILABLE" | "INVALID_WEBHOOK_SIGNATURE";
         ErrorResponse: {
             error: {
                 code: components["schemas"]["ErrorCode"];
                 /** @description Tiếng Việt, hiển thị được trực tiếp cho người dùng. */
                 message: string;
-                /** @description true chỉ với SEARCH_UNAVAILABLE, INTERNAL_ERROR, LLM_UNAVAILABLE, TOO_MANY_ATTEMPTS và CDP_UNAVAILABLE. Mọi mã còn lại là false — thử lại nguyên request cho cùng kết quả. */
+                /** @description true chỉ với SEARCH_UNAVAILABLE, INTERNAL_ERROR, LLM_UNAVAILABLE, TOO_MANY_ATTEMPTS, CDP_UNAVAILABLE và PAYMENT_PROVIDER_UNAVAILABLE. Mọi mã còn lại là false — thử lại nguyên request cho cùng kết quả. */
                 retryable: boolean;
                 requestId: string;
-                /** @description Tùy mã lỗi. VALIDATION_ERROR {fields}; PRODUCT_NOT_FOUND và PRODUCT_UNAVAILABLE {productId}; CART_ITEM_NOT_FOUND {cartItemId}; PRICE_CHANGED {productId, oldPrice, newPrice}; DATE_OUT_OF_RANGE {productId, availableFrom, availableTo}; UNSUPPORTED_DESTINATION {destination, supportedDestinations, conversationId} — conversationId là hội thoại đã lưu phần chuyến đi còn lại, gửi lại cùng điểm đến hợp lệ để tiếp tục; MIN_STAY_NOT_MET {productId, minStay}; PRODUCT_NOT_INDEXED {productId, taxonomy}; TOO_MANY_ATTEMPTS {retryAfterSeconds}; MFA_INVALID {attemptsLeft}; EMAIL_NOT_VERIFIED {email}; WEAK_PASSWORD {reasons}; INVALID_VERIFICATION_TOKEN {purpose}; OAUTH_EMAIL_UNVERIFIED và OAUTH_ALREADY_LINKED {provider}. */
+                /** @description Tùy mã lỗi. VALIDATION_ERROR {fields}; PRODUCT_NOT_FOUND và PRODUCT_UNAVAILABLE {productId}; CART_ITEM_NOT_FOUND {cartItemId}; PRICE_CHANGED {productId, oldPrice, newPrice}; DATE_OUT_OF_RANGE {productId, availableFrom, availableTo}; UNSUPPORTED_DESTINATION {destination, supportedDestinations, conversationId} — conversationId là hội thoại đã lưu phần chuyến đi còn lại, gửi lại cùng điểm đến hợp lệ để tiếp tục; MIN_STAY_NOT_MET {productId, minStay}; PRODUCT_NOT_INDEXED {productId, taxonomy}; TOO_MANY_ATTEMPTS {retryAfterSeconds}; MFA_INVALID {attemptsLeft}; EMAIL_NOT_VERIFIED {email}; WEAK_PASSWORD {reasons}; INVALID_VERIFICATION_TOKEN {purpose}; OAUTH_EMAIL_UNVERIFIED và OAUTH_ALREADY_LINKED {provider}; BOOKING_PENDING_PAYMENT {referenceCode, holdExpiresAt} — đơn đang giữ chỗ để tiếp tục hoặc huỷ; BOOKING_NOT_CANCELLABLE {referenceCode, reason, cancellableUntil}; BOOKING_ALREADY_PAID {referenceCode}. */
                 details?: {
                     [key: string]: unknown;
                 };
@@ -509,10 +552,12 @@ export interface components {
          */
         PriceUnit: "PER_NIGHT" | "PER_PERSON" | "PER_PACKAGE" | "UNKNOWN";
         /**
-         * @description EXACT_FILTER_SCORE là mặc định cho cả /search, /similar và /recommendations. Lật sang ANN_CANDIDATE_SCORE khi số vector vượt 50.000 hoặc p95 của bước scan vượt 50 ms; khi lật thì totalExact và facetsExact bắt buộc là false.
+         * @description ANN_CANDIDATE_SCORE là mặc định cho /similar và /recommendations (từ 2026-09-24): lọc id theo structured filter, lấy top-K ứng viên từ Weaviate, rồi chấm điểm và đếm trên tập ứng viên đó. Ở chế độ này approximate là true, totalExact và facetsExact bắt buộc là false.
+         *     HYBRID_CANDIDATE_SCORE là mặc định của /search (từ 2026-09-25): R = R_dense ∪ R_lex. R_dense = top-K dense có score >= cutoff (như ANN). R_lex = hit BM25 (trên nameAscii/searchTextAscii đã fold dấu) có rank <= diagnostics.lexicalK, score trong [diagnostics.lexicalCutoff, cutoff) và tên chứa >= diagnostics.lexicalMinCoverage token của truy vấn. results sắp theo RRF (k = diagnostics.rrfK) nên score — vẫn là cosine đã clamp — KHÔNG đơn điệu trong một trang; đếm phần vớt ở diagnostics.lexicalCount. approximate/totalExact/facetsExact như ANN. Backend tắt hybrid (SEARCH_HYBRID=false) thì /search khai lại ANN_CANDIDATE_SCORE.
+         *     EXACT_FILTER_SCORE giữ cho engine quét toàn bộ vector (bản chạy offline).
          * @enum {string}
          */
-        SearchMode: "EXACT_FILTER_SCORE" | "ANN_CANDIDATE_SCORE";
+        SearchMode: "EXACT_FILTER_SCORE" | "ANN_CANDIDATE_SCORE" | "HYBRID_CANDIDATE_SCORE";
         /**
          * @description NOT_CHECKED là giá trị mặc định khi chưa có checkIn/checkOut/party. EXPIRED khi snapshot availability đã quá hạn (expires_at).
          * @enum {string}
@@ -777,7 +822,7 @@ export interface components {
         };
         /**
          * @description query bắt buộc; trường tùy chọn null tương đương bỏ qua/default. Lọc priceMin/Max trên unitPrice snapshot VND, KHÔNG phải ngân sách chuyến đi; giá null bị loại khi có lọc giá.
-         *     [C4] Thứ tự xử lý bắt buộc: FILTER -> SCORE -> CUTOFF -> TOTAL/FACETS -> SORT -> PAGE. F = tập sau structured filter. R = { p thuộc F | score >= cutoff }. total = |R|, facets tính trên R, results là một trang của R.
+         *     [C4] Thứ tự xử lý bắt buộc: FILTER -> SCORE -> CUTOFF -> TOTAL/FACETS -> SORT -> PAGE. F = tập sau structured filter. R = { p thuộc F | score >= cutoff }. total = |R|, facets tính trên R, results là một trang của R. Ở HYBRID_CANDIDATE_SCORE (xem SearchMode) R gồm thêm phần vớt từ nhánh BM25 và SORT theo RRF thay vì theo score.
          */
         SearchRequest: {
             query: string;
@@ -818,7 +863,7 @@ export interface components {
         /** @description [C4] Bất biến: sum(facets.taxonomy) == total. total và facets KHÔNG đổi khi thay limit/offset. total, facets và results phải dùng cùng filter và cùng cutoff. */
         SearchResponse: {
             results: components["schemas"]["ScoredProduct"][];
-            /** @description [C4] |R| — số sản phẩm vượt cutoff sau filter. KHÔNG phụ thuộc limit/offset. */
+            /** @description [C4] |R| — số sản phẩm vượt cutoff sau filter. KHÔNG phụ thuộc limit/offset. Ở HYBRID_CANDIDATE_SCORE, R gồm thêm diagnostics.lexicalCount phần tử vớt từ nhánh BM25 có score trong [diagnostics.lexicalCutoff, cutoff). */
             total: number;
             limit?: number;
             offset?: number;
@@ -829,7 +874,7 @@ export interface components {
              *     Dùng cho quy tắc margin: model họ e5 có dải cosine bị nén (cặp không liên quan đã ở 0.72–0.78), nên ngưỡng tuyệt đối đơn thuần không đáng tin. Client tính margin = topScore - backgroundScore và báo "kết quả yếu" khi topScore < WEAK_RESULT_TOP_SCORE HOẶC margin < WEAK_RESULT_MARGIN. null khi results rỗng.
              */
             backgroundScore?: number | null;
-            /** @description [C3][C4] Ngưỡng đã áp. Giá trị tạm 0.62 (PROVISIONAL), benchmark Ngày 3 trên 80 cặp query-product gán nhãn cộng 10 truy vấn âm. Nguồn sự thật là search.cutoff trong application.yml; frontend đọc lại từ trường này, KHÔNG hard-code bản sao. */
+            /** @description [C3][C4] Ngưỡng đã áp cho nhánh dense. Giá trị tạm 0.62 (PROVISIONAL), benchmark Ngày 3 trên 80 cặp query-product gán nhãn cộng 10 truy vấn âm. Nguồn sự thật là search.cutoff trong application.yml; frontend đọc lại từ trường này, KHÔNG hard-code bản sao. Ở HYBRID_CANDIDATE_SCORE, kết quả vớt từ nhánh BM25 có score trong [diagnostics.lexicalCutoff, cutoff). */
             cutoff?: number;
             facets?: components["schemas"]["SearchFacets"];
             appliedFilters?: components["schemas"]["AppliedFilters"];
@@ -867,7 +912,7 @@ export interface components {
         };
         EngineDiagnostics: {
             searchMode: components["schemas"]["SearchMode"];
-            /** @description false ở chế độ EXACT_FILTER_SCORE. */
+            /** @description false ở chế độ EXACT_FILTER_SCORE, true ở ANN_CANDIDATE_SCORE và HYBRID_CANDIDATE_SCORE. */
             approximate: boolean;
             /** @description [C4] false bắt buộc khi approximate là true. HNSW chỉ trả top-K nên sản phẩm ngoài candidate pool vẫn có thể vượt cutoff — total khi đó không chính xác. */
             totalExact?: boolean;
@@ -879,6 +924,39 @@ export interface components {
             relevantCount?: number;
             modelVersion?: string;
             latencyMs: number;
+            /**
+             * @description Cách hợp nhất hai nhánh dense và BM25. rrf = Σ 1/(rrfK + rank) trên các nhánh có mặt.
+             * @enum {string}
+             */
+            fusion?: "rrf";
+            rrfK?: number;
+            /** @description Chỉ hit BM25 có rank <= lexicalK mới được vớt vào R khi score < cutoff. */
+            lexicalK?: number;
+            /** @description Cosine tối thiểu của hit được vớt từ nhánh BM25; luôn <= cutoff. */
+            lexicalCutoff?: number;
+            /** @description Tỉ lệ token của truy vấn (đã fold dấu, bỏ từ chức năng) phải có trong tên để hit BM25 được vớt — truy vấn gần như là tên/thương hiệu thì qua, câu mô tả dài thì để nhánh dense lo. */
+            lexicalMinCoverage?: number;
+            /** @description Số hit nhánh BM25 trả về (0 khi nhánh lexical lỗi — engine tự lùi về dense-only, không 500). */
+            lexicalCandidates?: number;
+            /** @description Số phần tử của R chỉ vào nhờ nhánh BM25 (score trong [lexicalCutoff, cutoff)). */
+            lexicalCount?: number;
+            /** @description Chuỗi thực sự đưa vào embed và BM25. Vắng mặt khi không khác `query`. Event `search` ghi sang CDP (§3.2) vẫn dùng `query` gốc. */
+            normalizedQuery?: string;
+            /** @description Cụm đã thay theo thứ tự xuất hiện: viết tắt (KS → khách sạn, PQ → Phú Quốc), tên điểm đến về giá trị catalog (da nang → Đà Nẵng), kiểu đi về nhãn catalog (bạn gái → cặp đôi). */
+            appliedAliases?: {
+                from: string;
+                to: string;
+            }[];
+            /** @description Token đã sửa chính tả theo từ vựng tên sản phẩm + điểm đến của catalog (Vinpeal → Vinpearl). Chỉ sửa token không phải âm tiết tiếng Việt, dài >= 5, khoảng cách <= 1 (<= 2 khi >= 8), từ đích có mặt ở >= 3 tên. */
+            corrections?: {
+                from: string;
+                to: string;
+            }[];
+            /**
+             * @description Kiểu đi nhận ra trong câu (đi một mình / cặp đôi, bạn trai, bạn gái / gia đình, có trẻ nhỏ / nhóm bạn / công ty, công tác). Mới chỉ để chuẩn hoá chữ và khai báo; chưa lọc hay suy số khách (bước 2).
+             * @enum {string}
+             */
+            party?: "SOLO" | "COUPLE" | "FAMILY" | "FRIENDS" | "BUSINESS";
         };
         BecauseItem: {
             /** @description null trong hai trường hợp: event là `search` (không trỏ tới sản phẩm nào), hoặc sản phẩm nguồn có status INACTIVE. [CHỜ DUYỆT: U1] productId khác null thì sản phẩm PHẢI mở được GET /products/{id} và trả 200. */
@@ -941,7 +1019,7 @@ export interface components {
         /**
          * @description MVP ưu tiên hiển thị strategy và recommendations. Thứ tự mảng là thứ tự hiển thị.
          *     Quy tắc bắt buộc theo strategy: (1) cross_vertical PHẢI có nextVertical và destination khác null; (2) dormant PHẢI có ít nhất một because với daysAgo trên 90; (3) popular thì because của MỌI gợi ý là mảng rỗng; (4) coldStart true thì because rỗng — không bao giờ bịa lý do.
-         *     [C4] Engine dùng EXACT_FILTER_SCORE, không phải HNSW: category exclusion loại khoảng 50% catalog, nên lọc-trước-rồi-chấm-điểm vừa đúng vừa nhanh hơn lấy-top-K-rồi-lọc.
+         *     [C4] Engine dùng ANN_CANDIDATE_SCORE nhưng vẫn lọc trước: category exclusion loại khoảng 50% catalog, nên danh sách id hợp lệ được gửi làm filter cho truy vấn top-K của Weaviate, không lấy-top-K-rồi-lọc.
          */
         RecommendationResponse: {
             /** @description null khi không có JWT. Không có JWT vẫn trả 200, không trả 401. */
@@ -1028,12 +1106,51 @@ export interface components {
             referenceCode: components["schemas"]["ReferenceCode"];
             /** Format: date-time */
             createdAt: string;
-            /** @constant */
-            status: "CONFIRMED";
+            status: components["schemas"]["BookingStatus"];
+            /**
+             * Format: date-time
+             * @description Hạn giữ chỗ. Chỉ khác null khi status là PENDING_PAYMENT.
+             */
+            holdExpiresAt: string | null;
+            /**
+             * Format: date-time
+             * @description Hạn huỷ có hoàn 100% (00:00 giờ Việt Nam của ngày liền trước usingDate sớm nhất). Chỉ khác null khi CONFIRMED.
+             */
+            cancellableUntil: string | null;
+            payment: components["schemas"]["PaymentInfo"] | null;
+            cancellation: components["schemas"]["CancellationInfo"] | null;
             contact: components["schemas"]["Contact"];
             groups: components["schemas"]["BookingGroup"][];
             total: number;
             currency: components["schemas"]["Currency"];
+        };
+        /**
+         * @description PENDING_PAYMENT là đang giữ chỗ (tối đa 30 phút). CONFIRMED chỉ khi Stripe xác nhận đã thu tiền.
+         * @enum {string}
+         */
+        BookingStatus: "PENDING_PAYMENT" | "CONFIRMED" | "PAYMENT_FAILED" | "EXPIRED" | "CANCELLED";
+        /** @enum {string} */
+        PaymentStatus: "OPEN" | "SUCCEEDED" | "FAILED" | "EXPIRED" | "REFUND_PENDING" | "REFUNDED" | "REFUND_FAILED";
+        /** @enum {string} */
+        PaymentFailureReason: "CARD_DECLINED" | "INSUFFICIENT_FUNDS" | "EXPIRED_CARD" | "INCORRECT_CVC" | "AUTHENTICATION_FAILED" | "PROCESSING_ERROR" | "TOO_MANY_ATTEMPTS" | "AMOUNT_MISMATCH";
+        PaymentInfo: {
+            status: components["schemas"]["PaymentStatus"];
+            amount: number;
+            currency: components["schemas"]["Currency"];
+            /** @description Trang thanh toán Stripe. Chỉ khác null khi status là OPEN. */
+            checkoutUrl: string | null;
+            failedAttempts: number;
+            failureReason: components["schemas"]["PaymentFailureReason"] | null;
+            refundedAmount: number;
+        };
+        CancellationInfo: {
+            /** Format: date-time */
+            cancelledAt: string;
+            reason: string | null;
+            refundAmount: number;
+        };
+        CancelBookingRequest: {
+            reason?: string | null;
         };
         /** @enum {string} */
         SlotTime: "MORNING" | "NOON" | "AFTERNOON" | "EVENING";
@@ -1533,6 +1650,8 @@ export interface operations {
     listProducts: {
         parameters: {
             query?: {
+                /** @description productId của sản phẩm cha (property hoặc route). Lọc các tầng con của nó. */
+                parentProductId?: string;
                 destination?: string;
                 taxonomy?: components["schemas"]["Taxonomy"];
                 availableOnly?: boolean;
@@ -1870,7 +1989,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Đặt chỗ thành công, event purchase đã được ghi */
+            /** @description Đã giữ chỗ, chờ thanh toán */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -1884,6 +2003,7 @@ export interface operations {
             409: components["responses"]["Error"];
             422: components["responses"]["Error"];
             500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     getBooking: {
@@ -1911,6 +2031,69 @@ export interface operations {
             };
             401: components["responses"]["Error"];
             404: components["responses"]["Error"];
+            500: components["responses"]["Error"];
+        };
+    };
+    cancelBooking: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description ID truy vết. Caller chưa gửi thì service đầu tiên tự sinh. */
+                "X-Request-ID"?: components["parameters"]["XRequestId"];
+            };
+            path: {
+                referenceCode: components["schemas"]["ReferenceCode"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CancelBookingRequest"];
+            };
+        };
+        responses: {
+            /** @description Đơn sau khi huỷ */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookingResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    stripeWebhook: {
+        parameters: {
+            query?: never;
+            header: {
+                "Stripe-Signature": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Đã nhận (không có body) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Error"];
             500: components["responses"]["Error"];
         };
     };

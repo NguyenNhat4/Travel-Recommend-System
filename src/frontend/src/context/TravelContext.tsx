@@ -7,22 +7,13 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { 
-  UserPersona, 
-  Product, 
-  CartItem, 
-  BookingRecord, 
-  BookingContact, 
-  BookingGuestDetails, 
-  UserEvent, 
-  EventType,
-  Destination 
-} from '../types/travel';
+import { UserPersona, Product, UserEvent, EventType } from '../types/travel';
 import { SupportedLocale, DEFAULT_LOCALE } from '../types/locale';
 import { PERSONA_LOGIN, SEED_PERSONAS } from '../data/personas';
 import * as authApi from '../services/auth';
-import { SESSION_EXPIRED_EVENT } from '../services/http';
-import { CATALOG } from '../data/catalog';
+import * as bookingApi from '../services/booking';
+import type { BookingResponse, CartResponse, UpdateCartItemRequest } from '../services/booking';
+import { ApiError, SESSION_EXPIRED_EVENT } from '../services/http';
 
 interface ToastState {
   id: string;
@@ -43,17 +34,24 @@ interface TravelContextType {
   loginPrefillEmail: string | null;
   currentLocale: SupportedLocale;
   setLocale: (locale: SupportedLocale) => void;
-  cart: CartItem[];
-  addToCart: (product: Product, quantity?: number, usingDate?: string, checkOutDate?: string) => void;
-  removeFromCart: (cartItemId: string) => void;
-  updateCartItem: (cartItemId: string, updates: Partial<CartItem>) => void;
-  clearCart: () => void;
+  /** Giỏ phía server (`GET /cart`); null khi là khách hoặc chưa tải xong. Mọi con số tiền lấy từ đây. */
+  cart: CartResponse | null;
+  cartCount: number;
+  refreshCart: () => Promise<CartResponse | null>;
+  /** true nếu Backend đã nhận mục. `silent` bỏ toast từng mục (thêm nhiều mục thì caller tự tổng kết). */
+  addToCart: (
+    product: Product, quantity?: number, usingDate?: string, checkOutDate?: string, options?: { silent?: boolean },
+  ) => Promise<boolean>;
+  removeFromCart: (cartItemId: string) => Promise<void>;
+  updateCartItem: (cartItemId: string, updates: UpdateCartItemRequest) => Promise<void>;
   activeEvents: UserEvent[];
   recordEvent: (eventType: EventType, product: Product) => void;
-  bookings: BookingRecord[];
-  createBooking: (contact: BookingContact, guestDetails?: BookingGuestDetails) => Promise<BookingRecord>;
-  getBookingByCode: (code: string) => BookingRecord | undefined;
+  /** Đơn đã tạo hoặc đã xem trong phiên này (contract không có API liệt kê đơn). */
+  bookings: BookingResponse[];
+  rememberBooking: (booking: BookingResponse) => void;
+  getBookingByCode: (code: string) => BookingResponse | undefined;
   justBooked: boolean;
+  markJustBooked: () => void;
   clearJustBooked: () => void;
   debugMode: boolean;
   setDebugMode: (enabled: boolean) => void;
@@ -70,6 +68,42 @@ interface TravelContextType {
 }
 
 const TravelContext = createContext<TravelContextType | undefined>(undefined);
+
+function isoDate(date: Date): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }).format(date);
+}
+
+/** Không chọn ngày (thêm nhanh): ngày mai theo giờ Việt Nam, hoặc ngày mở bán nếu muộn hơn. Backend kiểm lại cửa sổ bán. */
+function defaultUsingDate(product: Product): string {
+  const tomorrow = isoDate(new Date(Date.now() + 24 * 3600 * 1000));
+  return product.availableFrom && product.availableFrom > tomorrow ? product.availableFrom : tomorrow;
+}
+
+function nightsBetween(checkIn: string, checkOut?: string): number {
+  if (!checkOut) return 1;
+  const days = Math.round((Date.parse(checkOut) - Date.parse(checkIn)) / (24 * 3600 * 1000));
+  return Math.max(1, days);
+}
+
+/** Thông điệp cho lỗi thêm/sửa giỏ (docs/spec/hop-dong-tich-hop-frontend.md §8). */
+function cartErrorMessage(error: unknown, productName?: string): string {
+  if (!(error instanceof ApiError)) return 'Không cập nhật được giỏ hàng. Vui lòng thử lại.';
+  const name = productName ? `"${productName}"` : 'Sản phẩm';
+  switch (error.code) {
+    case 'PRODUCT_NOT_FOUND':
+      return `${name} hiện không bán trên V-OTA.`;
+    case 'PRODUCT_UNAVAILABLE':
+      return `${name} vừa hết chỗ.`;
+    case 'DATE_OUT_OF_RANGE': {
+      const from = error.details?.availableFrom, to = error.details?.availableTo;
+      return from && to ? `${name} chỉ mở bán từ ${from} đến ${to}.` : `Ngày sử dụng của ${name} nằm ngoài thời gian mở bán.`;
+    }
+    case 'NETWORK_ERROR':
+      return 'Mất kết nối. Vui lòng thử lại.';
+    default:
+      return error.message;
+  }
+}
 
 /** Người dùng của phiên → persona hiển thị. 4 persona seed giữ thẻ demo; tài khoản khác dùng thẻ chung. */
 function personaFromUser(user: authApi.AuthUser): UserPersona {
@@ -114,8 +148,8 @@ export const TravelProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const personaRef = useRef<UserPersona | null>(null);
   useEffect(() => { personaRef.current = currentPersona; }, [currentPersona]);
   const [activeEvents, setActiveEvents] = useState<UserEvent[]>([]);
-  const [cart, setCart] = useState<CartItem[]>([]);
-  const [bookings, setBookings] = useState<BookingRecord[]>([]);
+  const [cart, setCartState] = useState<CartResponse | null>(null);
+  const [bookings, setBookings] = useState<BookingResponse[]>([]);
   const [justBooked, setJustBooked] = useState<boolean>(false);
   const [debugMode, setDebugMode] = useState<boolean>(false);
   const [toast, setToast] = useState<ToastState | null>(null);
@@ -163,9 +197,22 @@ export const TravelProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     return () => clearTimeout(timer);
   }, [toast]);
 
+  // Response giỏ về không theo thứ tự gửi (GET lúc đăng nhập vs POST ngay sau đó): chỉ nhận bản mới hơn bản đã áp.
+  const cartSeq = useRef({ issued: 0, applied: 0 });
+  const trackCart = useCallback(async (request: () => Promise<CartResponse>): Promise<CartResponse> => {
+    const seq = ++cartSeq.current.issued;
+    const response = await request();
+    if (seq > cartSeq.current.applied) {
+      cartSeq.current.applied = seq;
+      setCartState(response);
+    }
+    return response;
+  }, []);
+
   /** Đổi tài khoản/đăng xuất: xoá MỌI state phía client của người trước (§4.2 điều 6). */
   const resetClientState = useCallback(() => {
-    setCart([]);
+    cartSeq.current.applied = ++cartSeq.current.issued;   // bỏ mọi response giỏ của người trước đang bay
+    setCartState(null);
     setActiveEvents([]);
     setBookings([]);
     setJustBooked(false);
@@ -246,119 +293,95 @@ export const TravelProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
   }, [showToast, resetClientState]);
 
-  const addToCart = useCallback((
-    product: Product, 
-    quantity: number = 1, 
-    usingDate?: string, 
-    checkOutDate?: string
-  ) => {
-    // Guest must login before write action (§3.1)
-    if (!currentPersona) {
-      openLoginModal(() => {
-        addToCart(product, quantity, usingDate, checkOutDate);
-      });
+  const refreshCart = useCallback(async (): Promise<CartResponse | null> => {
+    if (!personaRef.current) return null;
+    try {
+      return await trackCart(bookingApi.getCart);
+    } catch (error) {
+      console.warn('[cart] GET /cart failed', error);
+      return null;
+    }
+  }, [trackCart]);
+
+  // Giỏ là state phía server: tải lại mỗi khi người dùng đăng nhập hoặc đổi tài khoản.
+  const personaId = currentPersona?.id ?? null;
+  useEffect(() => {
+    if (personaId) void refreshCart();
+  }, [personaId, refreshCart]);
+
+  const addToCart = useCallback(async (
+    product: Product,
+    quantity: number = 1,
+    usingDate?: string,
+    checkOutDate?: string,
+    options: { silent?: boolean } = {},
+  ): Promise<boolean> => {
+    // Khách phải đăng nhập trước hành động ghi (§3.1). Đọc qua ref: callback sau đăng nhập chạy ở render sau.
+    if (!personaRef.current) {
+      openLoginModal(() => { void addToCart(product, quantity, usingDate, checkOutDate, options); });
+      return false;
+    }
+    const start = usingDate || defaultUsingDate(product);
+    const nights = product.taxonomy === 'hotel' ? nightsBetween(start, checkOutDate) : undefined;
+    try {
+      await trackCart(() => bookingApi.addCartItem({ productId: product.id, usingDate: start, quantity, nights }));
+    } catch (error) {
+      if (!options.silent) showToast(cartErrorMessage(error, product.name));
+      return false;
+    }
+    recordEvent('add_to_cart', product);
+    if (!options.silent) {
+      showToast(`Đã thêm "${product.name}" vào giỏ hàng`, 'Xem giỏ', () => navigate('/cart'));
+    }
+    return true;
+  }, [openLoginModal, trackCart, recordEvent, showToast, navigate]);
+
+  const removeFromCart = useCallback(async (cartItemId: string) => {
+    const item = cart?.items.find((i) => i.cartItemId === cartItemId);
+    try {
+      await trackCart(() => bookingApi.removeCartItem(cartItemId));
+    } catch (error) {
+      // 404 CART_ITEM_NOT_FOUND: mục đã không còn, tải lại giỏ, không báo lỗi (§8).
+      if (error instanceof ApiError && error.code === 'CART_ITEM_NOT_FOUND') {
+        await refreshCart();
+        return;
+      }
+      showToast(cartErrorMessage(error));
       return;
     }
-
-    let nights = 1;
-    if (product.taxonomy === 'hotel' && usingDate && checkOutDate) {
-      const d1 = new Date(usingDate).getTime();
-      const d2 = new Date(checkOutDate).getTime();
-      nights = Math.max(1, Math.round((d2 - d1) / (24 * 3600 * 1000)));
+    if (item) {
+      showToast(`Đã xóa "${item.product.name}"`, 'Hoàn tác', () => {
+        void trackCart(() => bookingApi.addCartItem({
+          productId: item.product.productId, usingDate: item.usingDate, quantity: item.quantity,
+          nights: item.nights ?? undefined,
+        })).catch((error) => showToast(cartErrorMessage(error, item.product.name)));
+      });
     }
+  }, [cart, trackCart, refreshCart, showToast]);
 
-    const unitTotal = product.taxonomy === 'hotel' 
-      ? product.unitPrice * nights * quantity 
-      : product.unitPrice * quantity;
-
-    const newItem: CartItem = {
-      id: 'cart-' + Math.random().toString(36).substring(5),
-      productId: product.id,
-      product,
-      destination: product.destination,
-      taxonomy: product.taxonomy,
-      usingDate: usingDate || '2026-10-15',
-      checkOutDate: checkOutDate || '2026-10-18',
-      quantity,
-      nights,
-      totalPrice: unitTotal
-    };
-
-    setCart(prev => [...prev, newItem]);
-    recordEvent('add_to_cart', product);
-
-    showToast(
-      `Đã thêm "${product.name}" vào giỏ hàng`,
-      'Xem giỏ',
-      () => navigate('/cart')
-    );
-  }, [currentPersona, openLoginModal, recordEvent, showToast, navigate]);
-
-  const removeFromCart = useCallback((cartItemId: string) => {
-    setCart(prev => {
-      const item = prev.find(i => i.id === cartItemId);
-      if (item) {
-        showToast(`Đã xóa "${item.product.name}"`, 'Hoàn tác', () => {
-          setCart(current => [...current, item]);
-        });
+  const updateCartItem = useCallback(async (cartItemId: string, updates: UpdateCartItemRequest) => {
+    try {
+      await trackCart(() => bookingApi.updateCartItem(cartItemId, updates));
+    } catch (error) {
+      if (error instanceof ApiError && error.code === 'CART_ITEM_NOT_FOUND') {
+        await refreshCart();
+        return;
       }
-      return prev.filter(i => i.id !== cartItemId);
-    });
-  }, [showToast]);
+      showToast(cartErrorMessage(error));
+    }
+  }, [trackCart, refreshCart, showToast]);
 
-  const updateCartItem = useCallback((cartItemId: string, updates: Partial<CartItem>) => {
-    setCart(prev => prev.map(item => {
-      if (item.id !== cartItemId) return item;
-      const updated = { ...item, ...updates };
-      if (updates.quantity !== undefined || updates.nights !== undefined) {
-        const qty = updates.quantity ?? item.quantity;
-        const n = updates.nights ?? item.nights ?? 1;
-        updated.totalPrice = item.taxonomy === 'hotel' 
-          ? item.product.unitPrice * n * qty 
-          : item.product.unitPrice * qty;
-      }
-      return updated;
-    }));
+  const rememberBooking = useCallback((booking: BookingResponse) => {
+    setBookings((prev) => [booking, ...prev.filter((b) => b.referenceCode !== booking.referenceCode)]);
   }, []);
-
-  const clearCart = useCallback(() => {
-    setCart([]);
-  }, []);
-
-  const createBooking = useCallback(async (
-    contact: BookingContact, 
-    guestDetails?: BookingGuestDetails
-  ): Promise<BookingRecord> => {
-    const refCode = `VOTA-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-    const totalAmount = cart.reduce((sum, item) => sum + item.totalPrice, 0);
-    const dest = cart[0]?.destination || 'Nha Trang';
-
-    const newBooking: BookingRecord = {
-      referenceCode: refCode,
-      createdAt: new Date().toISOString(),
-      userId: currentPersona?.id || 'guest',
-      contact,
-      items: [...cart],
-      totalAmount,
-      destination: dest,
-      guestDetails
-    };
-
-    // Record purchase events for each item (Crucial for Moment K1 feedback loop!)
-    cart.forEach(item => {
-      recordEvent('purchase', item.product);
-    });
-
-    setBookings(prev => [newBooking, ...prev]);
-    setCart([]);
-    setJustBooked(true);
-
-    return newBooking;
-  }, [cart, currentPersona, recordEvent]);
 
   const getBookingByCode = useCallback((code: string) => {
     return bookings.find(b => b.referenceCode === code);
   }, [bookings]);
+
+  const markJustBooked = useCallback(() => {
+    setJustBooked(true);
+  }, []);
 
   const clearJustBooked = useCallback(() => {
     setJustBooked(false);
@@ -380,16 +403,18 @@ export const TravelProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         currentLocale,
         setLocale,
         cart,
+        cartCount: cart?.itemCount ?? 0,
+        refreshCart,
         addToCart,
         removeFromCart,
         updateCartItem,
-        clearCart,
         activeEvents,
         recordEvent,
         bookings,
-        createBooking,
+        rememberBooking,
         getBookingByCode,
         justBooked,
+        markJustBooked,
         clearJustBooked,
         debugMode,
         setDebugMode,

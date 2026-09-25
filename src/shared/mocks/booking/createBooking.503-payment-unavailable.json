@@ -1,0 +1,9 @@
+{
+  "error": {
+    "code": "PAYMENT_PROVIDER_UNAVAILABLE",
+    "message": "Cổng thanh toán tạm thời không phản hồi. Vui lòng thử lại.",
+    "retryable": true,
+    "requestId": "book-01JXYZ",
+    "details": {}
+  }
+}

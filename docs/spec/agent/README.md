@@ -10,10 +10,13 @@ chỉ dẫn thứ tự đọc tối thiểu và chọn thêm tài liệu/source 
 | [working-context.md](working-context.md) | Context tối thiểu, bản đồ module và nhánh đọc riêng cho tune/eval/debug |
 | [langgraph-nodes.md](langgraph-nodes.md) | Vì sao graph chia thành mười node, vì sao mọi nhánh qua `finalize`, cách đọc bảng trace |
 | [state-fields.md](state-fields.md) | Tra theo từng field của `AgentState`: node nào ghi, node nào đọc, dùng để làm gì |
+| [field-review.md](field-review.md) | Review field của request/response và `AgentState`: đề xuất giữ, bỏ, gộp; chờ quyết định |
 | [response-and-errors.md](response-and-errors.md) | `status` so với `error.code`, luồng sau `UNSUPPORTED_DESTINATION` |
 | [golden-run.md](golden-run.md) | Chạy bộ golden: chuẩn bị Postgres/backend, các cờ của runner, đọc kết quả, lỗi thường gặp |
-| [golden-dataset.md](golden-dataset.md) | Cấu trúc bộ golden 50 case, các khoá `expect`, cách thêm case và xử lý khi case fail |
-| [evaluation-plan.md](evaluation-plan.md) | Bộ 12 case chạy tay qua Streamlit (fixture 50 sản phẩm) và bộ 50 case chạy tự động trên catalog thật (`src/evaluation/agent/golden.py`) — cách chấm, mẫu biên bản, giới hạn đã biết |
+| [golden-dataset.md](golden-dataset.md) | Cấu trúc bộ golden 75 case, các khoá `expect`, cách thêm case và xử lý khi case fail |
+| [evaluation-plan.md](evaluation-plan.md) | Bộ 12 case chạy tay qua Streamlit (fixture 50 sản phẩm) và bộ 75 case chạy tự động trên catalog thật (`src/evaluation/agent/golden.py`) — cách chấm, mẫu biên bản, giới hạn đã biết |
+| [presentation-slides.html](presentation-slides.html) | Bộ 14 slide giới thiệu agent (mở bằng trình duyệt, phím ←/→); số liệu golden ngày 2026-09-24 |
+| [presentation-script.md](presentation-script.md) | Kịch bản nói theo từng slide, phần demo trực tiếp và câu hỏi dễ gặp |
 
 ## Chạy demo
 
@@ -27,13 +30,13 @@ ASSISTANT_API_BASE_URL=http://127.0.0.1:8000/api/v1 .venv/bin/python -m streamli
 
 Cấu hình provider/key/model trong `.env` theo Backend README. UI chat chỉ gọi FastAPI và nhận trace LangGraph an toàn bằng SSE; không import graph trong process Streamlit. FastAPI dựng **một** client LLM dùng chung trong `lifespan` (`infrastructure/llm/build_chat_model`) và tiêm vào graph qua `app.state.itinerary_llm`; provider chọn theo key có mặt, thứ tự Gemini → OpenAI → Anthropic. `ITINERARY_USE_LLM=false` thì không client nào được dựng: app vẫn khởi động không cần API key, `/assistant/status` trả `llmMode=disabled` và mọi request itinerary trả 503 `LLM_UNAVAILABLE`. Ở development, `ITINERARY_DATA_MODE=fixture` dùng 50 sản phẩm trong fixture chung. Nút gửi có thể phát sinh request/chi phí LLM; không hiển thị hoặc lưu key/JWT.
 
-Demo yêu cầu `destination` và `days`. Nếu thiếu, backend trả `NEEDS_CLARIFICATION`, lưu phần intent đã biết theo `conversationId` và chưa gọi tool. `context.language` hỗ trợ `vi`/`en`; khi vắng mặt backend mặc định tiếng Việt và lưu lựa chọn theo conversation.
+Demo yêu cầu `destination` và `days`. Nếu thiếu, backend trả `NEEDS_CLARIFICATION`, lưu phần intent đã biết cùng lịch sử chat user/assistant gần đây theo `conversationId` và chưa gọi tool. Lịch sử được giới hạn ở 20 message/8.000 ký tự và chỉ dùng để hiểu tham chiếu; giá/availability vẫn tải lại từ tool. `context.language` hỗ trợ `vi`/`en`; khi vắng mặt backend mặc định tiếng Việt và lưu lựa chọn theo conversation. Store hiện tại nằm trong memory của process nên restart backend sẽ mất conversation.
 
 Timeout LLM của graph lấy từ `ITINERARY_LLM_TIMEOUT_SECONDS`, áp dụng cho cả `classify`, chọn điểm đến trong `tool`, `clarify` và `converse`; timeout tool lấy từ `ITINERARY_TOOL_TIMEOUT_SECONDS`. `.env.example` đặt 30 giây và 1 giây để model thật có thời gian phản hồi khi demo. Đây là cấu hình đánh giá offline và **vượt** ngân sách của spec §7.2 (classify 2 giây, composition 3 giây, toàn request mục tiêu 5 giây), nên không dùng số đo ở chế độ này làm bằng chứng đạt SLA. `ITINERARY_LLM_MODEL` và `ITINERARY_USE_LLM` nay **được** `Settings` đọc; bỏ trống `ITINERARY_LLM_MODEL` thì OpenAI dùng `MODEL_NAME`, các provider khác dùng mặc định của mình. Nhiệt độ của agent lấy từ `ITINERARY_LLM_TEMPERATURE` (mặc định 0), không dùng chung `LLM_TEMPERATURE`.
 
 ## Chạy đánh giá tự động (golden dataset)
 
-Hướng dẫn đầy đủ: [golden-run.md](golden-run.md). Bộ 50 case cố định, chấm tự động theo `docs/prd/test-plan.md` §2.4 (Grounding Rate, Structured Output
+Hướng dẫn đầy đủ: [golden-run.md](golden-run.md). Bộ 75 case cố định, chấm tự động theo `docs/prd/test-plan.md` §2.4 (Grounding Rate, Structured Output
 Integrity, Tool Calling Accuracy). Chi tiết luật chấm: [evaluation-plan.md](evaluation-plan.md) mục
 "Golden dataset tự động". Cần Postgres đã seed và backend chạy `ITINERARY_DATA_MODE=http`:
 

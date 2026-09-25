@@ -85,6 +85,9 @@ export function AssistantView() {
   }, [savedReady, savedItems, showToast]);
 
   const response = selectedResponse ?? sharedResponse ?? state.response;
+  const resultResponse = response?.status === 'NEEDS_CLARIFICATION' || response?.status === 'NO_RESULTS'
+    ? null
+    : response;
   const destination = response ? destinationOf(response) : undefined;
   const isSaved = Boolean(response && savedItems.some((item) => JSON.stringify(item.response) === JSON.stringify(response)));
 
@@ -194,7 +197,7 @@ export function AssistantView() {
             ) : (
               <>
                 <AssistantResultPanel
-                  response={response}
+                  response={resultResponse}
                   showMap={false}
                   onAddToCart={addItineraryToCart}
                   busy={isRunning}

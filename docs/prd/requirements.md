@@ -47,11 +47,16 @@ Tài liệu này đặc tả chi tiết toàn bộ các yêu cầu chức năng 
 - **FR-BKG-02 (Quy trình xác nhận đơn hàng):**
   - Kiểm tra trạng thái khả dụng của từng sản phẩm trong khoảng thời gian sử dụng trước khi tạo đơn.
   - Tính tổng giá trị đơn hàng, hiển thị chi tiết phụ phí và thuế (nếu có).
+  - Kiểm tra đạt thì tạo đơn ở trạng thái giữ chỗ `PENDING_PAYMENT`. Số tiền tính từ catalog tại thời điểm tạo đơn, không nhận từ client.
 - **FR-BKG-03 (Xử lý giao dịch & Bù trừ):**
-  - Ghi nhận sự kiện chuyển đổi (`purchase`) sang phân hệ dữ liệu khách hàng.
-  - Lưu thông tin đơn hàng vào bảng quản lý trạng thái (`app.bookings`).
-  - Cung cấp cơ chế hoàn tác/hủy sự kiện (`cancel_purchase`) nếu tiến trình lưu trữ đơn hàng gặp sự cố kỹ thuật.
-- **FR-BKG-04 (Trang xác nhận & Kích hoạt gợi ý tiếp nối):** Sau khi hoàn tất đơn hàng, hiển thị mã đặt chỗ, tóm tắt chuyến đi và lập tức hiển thị các sản phẩm gợi ý bổ trợ cho chặng tiếp theo.
+  - Thu tiền qua Stripe Checkout (VND, thẻ) theo FR-BKG-06.
+  - Chỉ chuyển đơn sang `CONFIRMED` khi Stripe xác nhận đã thu tiền: qua webhook có chữ ký hợp lệ, hoặc do Backend tự hỏi lại Stripe. Việc trình duyệt quay về từ trang Stripe không phải bằng chứng thanh toán.
+  - Ghi sự kiện `purchase` sang CDP ngay trước khi lưu `CONFIRMED` vào `app.bookings`. Khi tiền đã thu mà lưu đơn lỗi thì **không huỷ** sự kiện, mà thử lại cho tới khi đơn được xác nhận (Stripe gửi lại webhook, job đối soát chạy lại).
+  - Huỷ sự kiện `purchase` (`cancel_purchase`) khi khách huỷ đơn đã xác nhận (FR-BKG-07), để gợi ý không dùng chuyến đã huỷ.
+- **FR-BKG-04 (Trang xác nhận & Kích hoạt gợi ý tiếp nối):** Sau khi đơn chuyển `CONFIRMED`, hiển thị mã đặt chỗ, tóm tắt chuyến đi và lập tức hiển thị các sản phẩm gợi ý bổ trợ cho chặng tiếp theo.
+- **FR-BKG-05 (Giữ chỗ):** Đơn `PENDING_PAYMENT` giữ giá và thành phần trong 30 phút. Mỗi người dùng có tối đa một đơn đang giữ chỗ; tạo đơn mới khi còn đơn giữ chỗ thì bị từ chối kèm mã đơn cũ để tiếp tục hoặc huỷ. Hết hạn mà chưa trả tiền thì đơn chuyển `EXPIRED`. Giữ chỗ không trừ tồn kho. Giỏ hàng giữ nguyên cho tới khi đơn `CONFIRMED`.
+- **FR-BKG-06 (Thanh toán Stripe theo mô hình MoR và xử lý thất bại):** V-OTA là Merchant of Record, thu toàn bộ tiền đơn bằng một tài khoản Stripe ở test mode. Trang thanh toán cho khách chọn phương thức; hiện chỉ hỗ trợ Stripe. Chỉ khi khách điền đủ thông tin, chọn phương thức và bấm Thanh toán thì hệ thống mới tạo đơn giữ chỗ và chuyển sang trang Stripe. Thẻ bị từ chối thì khách thử lại trong cùng phiên, tối đa 3 lần; lần thứ 3 thì đơn chuyển `PAYMENT_FAILED`. Stripe không phản hồi khi tạo phiên thì không tạo đơn và trả lỗi cho phép thử lại. Phân biệt thông báo cho lỗi nghiệp vụ (thẻ bị từ chối, không đủ số dư, xác thực 3DS thất bại) và lỗi kỹ thuật (cổng thanh toán không phản hồi, lỗi hệ thống).
+- **FR-BKG-07 (Khách huỷ và hoàn tiền):** Khách huỷ cả đơn. Đơn chưa trả tiền: huỷ ngay, đóng phiên thanh toán. Đơn đã trả tiền: hoàn 100% qua Stripe nếu huỷ trước 00:00 (giờ Việt Nam) của ngày liền trước ngày sử dụng sớm nhất; quá hạn thì không huỷ trực tuyến. Huỷ lặp lại trả về kết quả cũ, không hoàn tiền hai lần.
 
 ### 1.6. Phân Hệ Người Dùng & Xác Thực (User & Authentication)
 - **FR-USR-01 (Quản lý danh tính):** Hỗ trợ đăng ký, đăng nhập an toàn qua email/mật khẩu.
@@ -83,7 +88,7 @@ Tài liệu này đặc tả chi tiết toàn bộ các yêu cầu chức năng 
 - **NFR-PERF-02 (AI Assistant Response Time):**
   - Thời gian bắt đầu xuất luồng văn bản (First token latency) của Trợ lý AI phải $\le 1.0\text{ s}$.
   - Tổng thời gian hoàn tất một phản hồi lịch trình phức tạp phải $\le 4.0\text{ s}$.
-- **NFR-PERF-03 (Vector Indexing):** Truy vấn tương đồng phải đi qua chỉ mục HNSW của Weaviate (cosine, mặc định của collection), không quét tuần tự. Ngân sách thời gian của Cohere Embed API cho một truy vấn phải nằm trong giới hạn p95 250 ms ở NFR-PERF-01 — nếu vượt thì phải cache vector của truy vấn lặp lại.
+- **NFR-PERF-03 (Vector Indexing):** Truy vấn tương đồng phải đi qua chỉ mục ANN của Weaviate, cosine: HNSW khi chạy local/self-host, `hfresh` khi gói Weaviate Cloud chỉ cho phép loại này, không quét tuần tự. Ngân sách thời gian của Cohere Embed API cho một truy vấn phải nằm trong giới hạn p95 250 ms ở NFR-PERF-01 — nếu vượt thì phải cache vector của truy vấn lặp lại.
 
 ### 2.2. Độ Tin Cậy & Tính Xác Thực (Reliability & Grounding)
 - **NFR-REL-01 (Zero Hallucination trên dữ liệu sản phẩm):** 100% các thực thể sản phẩm hiển thị trong lịch trình của AI Assistant phải là sản phẩm có thật, đang hoạt động trong hệ thống.
@@ -94,6 +99,7 @@ Tài liệu này đặc tả chi tiết toàn bộ các yêu cầu chức năng 
 - **NFR-SEC-02 (Cô lập ranh giới cơ sở dữ liệu):**
   - Các phân hệ nghiệp vụ không được phép cấp quyền truy cập trực tiếp vào vùng dữ liệu nhạy cảm của CDP qua SQL. Mọi thao tác bắt buộc qua cổng dịch vụ (Port/Adapter pattern).
   - Sử dụng cơ chế Role-Based Access Control (RBAC) nghiêm ngặt trong PostgreSQL cho từng role kết nối (`vota_app`, `cdp_writer`, `cdp_reader`).
+- **NFR-SEC-03 (Dữ liệu thanh toán):** V-OTA không nhận, lưu hay ghi log dữ liệu thẻ; trang nhập thẻ do Stripe host. Khoá Stripe chỉ nằm ở Backend. Webhook phải được kiểm chữ ký `Stripe-Signature` trước khi xử lý, và xử lý phải idempotent vì Stripe có thể gửi trùng hoặc sai thứ tự.
 
 ### 2.4. Khả Năng Mở Rộng & Bảo Trì (Scalability & Maintainability)
 - **NFR-MAINT-01 (Clean Architecture):** Mã nguồn Backend phải tuân thủ kiến trúc phân lớp sạch, tách biệt hoàn toàn giữa lớp nghiệp vụ (Domain/Application) và lớp giao tiếp bên ngoài (Infrastructure/Framework).
@@ -109,5 +115,8 @@ Tài liệu này đặc tả chi tiết toàn bộ các yêu cầu chức năng 
 | **AC-REC-01** | Người dùng P1 (Gia đình) đăng nhập vào hệ thống | Trang chủ hiển thị khu vực gợi ý với tiêu đề và nội dung phù hợp cho gia đình, mỗi thẻ sản phẩm hiển thị lý do `because` tương ứng. |
 | **AC-REC-02** | Người dùng hoàn tất đặt phòng tại Đà Nẵng | Tại trang xác nhận và khi quay lại trang chủ, khối gợi ý ưu tiên hiển thị vé máy bay đến Đà Nẵng và tour tham quan tại Bà Nà / Hội An. |
 | **AC-AGT-01** | Người dùng yêu cầu: *"Lập lịch trình 3 ngày 2 đêm tại Nha Trang ngân sách 5 triệu"* | Trợ lý xuất ra lịch trình 3 ngày có cấu trúc; các địa điểm nghỉ ngơi và hoạt động đều là thẻ sản phẩm thật kèm giá rõ ràng và nút bấm xem chi tiết. |
-| **AC-BKG-01** | Người dùng bấm thanh toán giỏ hàng | Hệ thống kiểm tra lịch trống, ghi nhận event `purchase` vào CDP, lưu đơn hàng vào bảng quản lý, và điều hướng đến trang thành công với mã đơn hợp lệ. |
+| **AC-BKG-01** | Người dùng điền thông tin, chọn Stripe, bấm thanh toán giỏ hàng và trả bằng thẻ test hợp lệ | Chỉ sau khi bấm thanh toán hệ thống mới kiểm tra lịch trống, tạo đơn giữ chỗ và chuyển sang trang Stripe. Sau khi Stripe xác nhận thu tiền: ghi event `purchase` vào CDP, chuyển đơn `CONFIRMED`, hiển thị trang thành công với mã đơn hợp lệ. |
+| **AC-BKG-02** | Thẻ bị từ chối 3 lần liên tiếp | Mỗi lần trang Stripe báo lỗi và cho thử lại. Lần thứ 3 đơn chuyển `PAYMENT_FAILED`, không có event `purchase`, giỏ hàng còn nguyên. |
+| **AC-BKG-03** | Người dùng không trả tiền trong 30 phút; hoặc bấm thanh toán lần nữa khi đang có đơn giữ chỗ | Đơn chuyển `EXPIRED`, trang thanh toán Stripe không còn dùng được. Trường hợp thứ hai trả `409 BOOKING_PENDING_PAYMENT` kèm mã đơn đang giữ. |
+| **AC-BKG-04** | Người dùng huỷ đơn đã thanh toán, còn trong hạn huỷ | Đơn `CANCELLED`, Stripe có một lệnh hoàn toàn bộ tiền, event `purchase` bị huỷ và không còn được dùng cho gợi ý. Huỷ khi quá hạn trả `409 BOOKING_NOT_CANCELLABLE`. |
 | **AC-SEC-01** | Mã nguồn hoặc ứng dụng kết nối DB bằng role `vota_app` cố ý truy vấn bảng `cdp.events` | PostgreSQL từ chối quyền truy cập (Permission Denied), ngăn chặn việc rò rỉ hoặc can thiệp dữ liệu trái phép. |

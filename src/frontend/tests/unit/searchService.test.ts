@@ -62,13 +62,21 @@ describe('search service searchProductsApi', () => {
     expect(response.categoryCounts.hotel).toBe(1);
   });
 
-  it('falls back to local search if backend fetch fails', async () => {
+  it('throws instead of returning local results when the backend fails', async () => {
     global.fetch = vi.fn().mockRejectedValue(new Error('Network error (backend down)'));
+    await expect(searchProductsApi('VinWonders')).rejects.toMatchObject({ code: 'NETWORK_ERROR', retryable: true });
+  });
 
-    const response = await searchProductsApi('VinWonders');
-
-    expect(response).toBeDefined();
-    expect(response.results.length).toBeGreaterThan(0);
-    expect(response.query).toBe('VinWonders');
+  it('keeps unpriced products last when sorting by price', async () => {
+    const item = (productId: string, unitPrice: number | null) => ({
+      productId, name: productId, taxonomy: 'hotel', destination: 'Nha Trang', unitPrice, currency: 'VND',
+      priceUnit: unitPrice == null ? 'UNKNOWN' : 'PER_NIGHT', available: true, score: 0.8,
+    });
+    global.fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      results: [item('free', null), item('dear', 9), item('cheap', 1)], total: 3, topScore: 0.8,
+    }), { status: 200 }));
+    const asc = await searchProductsApi('x', {}, 'price_asc');
+    expect(asc.results.map((r) => r.product.id)).toEqual(['cheap', 'dear', 'free']);
+    expect(asc.isWeakMatch).toBe(false);
   });
 });

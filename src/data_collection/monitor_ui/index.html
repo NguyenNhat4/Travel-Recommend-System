@@ -1,403 +1,70 @@
 <!doctype html>
 <html lang="vi">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>V-OTA · Theo dõi cào dữ liệu</title>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>V-OTA · Fresh catalog</title>
 <style>
-:root {
-  --bg: #f6f7f9; --panel: #ffffff; --ink: #1c2330; --muted: #5d6778; --line: #dfe3ea; --soft: #eef1f5;
-  --brand: #1f5fbf; --brand-soft: #e6effc;
-  --ok: #17803d; --ok-bg: #e3f4e9; --warn: #a15c00; --warn-bg: #fff1d6; --err: #b42318; --err-bg: #fde7e4;
-  --run: #1f5fbf; --run-bg: #e6effc; --idle: #5d6778; --idle-bg: #eceff3;
-  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0f141b; --panel: #171e28; --ink: #e6eaf0; --muted: #98a2b3; --line: #283241; --soft: #1e2733;
-    --brand: #6ea4ff; --brand-soft: #1c2a44;
-    --ok: #5fd08a; --ok-bg: #163524; --warn: #f2b45a; --warn-bg: #3a2c12; --err: #ff8a7d; --err-bg: #3d1a17;
-    --run: #6ea4ff; --run-bg: #1c2a44; --idle: #98a2b3; --idle-bg: #232c3a;
-  }
-}
-* { box-sizing: border-box; }
-html { color-scheme: light dark; }
-body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-header { position: sticky; top: 0; z-index: 5; background: var(--panel); border-bottom: 1px solid var(--line); }
-.bar { display: flex; align-items: center; gap: 16px; padding: 10px 20px; flex-wrap: wrap; }
-.brand { font-weight: 700; font-size: 16px; letter-spacing: .1px; }
-.brand small { font-weight: 500; color: var(--muted); margin-left: 8px; }
-.spacer { flex: 1; }
-.live { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
-.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--idle); }
-.dot.on { background: var(--ok); box-shadow: 0 0 0 3px var(--ok-bg); }
-.dot.err { background: var(--err); box-shadow: 0 0 0 3px var(--err-bg); }
-nav { display: flex; gap: 2px; padding: 0 14px; overflow-x: auto; }
-nav button { appearance: none; border: 0; background: none; color: var(--muted); padding: 10px 14px; font: inherit; font-weight: 600; cursor: pointer; border-bottom: 3px solid transparent; white-space: nowrap; }
-nav button:hover { color: var(--ink); }
-nav button[aria-selected="true"] { color: var(--brand); border-bottom-color: var(--brand); }
-nav .count { display: inline-block; min-width: 18px; padding: 0 6px; margin-left: 6px; border-radius: 9px; font-size: 11px; line-height: 18px; text-align: center; background: var(--soft); color: var(--muted); }
-nav .count.err { background: var(--err-bg); color: var(--err); }
-nav .count.warn { background: var(--warn-bg); color: var(--warn); }
-main { padding: 18px 20px 60px; max-width: 1500px; margin: 0 auto; }
-button.btn, select, input[type=search] { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 7px; padding: 6px 10px; }
-button.btn { cursor: pointer; font-weight: 600; }
-button.btn:hover { border-color: var(--brand); color: var(--brand); }
-button.btn.primary { background: var(--brand); color: #fff; border-color: var(--brand); }
-button.btn.primary:hover { color: #fff; filter: brightness(1.08); }
-button.btn:disabled { opacity: .55; cursor: default; }
-:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
-.grid { display: grid; gap: 14px; }
-.kpis { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
-.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
-.card h2 { margin: 0 0 10px; font-size: 14px; letter-spacing: .2px; }
-.card h2 small { color: var(--muted); font-weight: 500; margin-left: 6px; }
-.kpi .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .5px; }
-.kpi .value { font-size: 26px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; }
-.kpi .value small { font-size: 14px; font-weight: 500; color: var(--muted); }
-.kpi .sub { color: var(--muted); font-size: 12px; margin-top: 4px; }
-.bar-track { height: 8px; background: var(--soft); border-radius: 5px; overflow: hidden; margin-top: 8px; }
-.bar-fill { height: 100%; background: var(--brand); border-radius: 5px; }
-.bar-fill.ok { background: var(--ok); } .bar-fill.warn { background: var(--warn); } .bar-fill.err { background: var(--err); }
-.two { grid-template-columns: 1fr 1fr; } .split { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
-@media (max-width: 1000px) { .two, .split { grid-template-columns: 1fr; } }
-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
-th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; position: sticky; top: 0; background: var(--panel); }
-td { padding: 7px 8px; border-bottom: 1px solid var(--soft); vertical-align: middle; }
-td.num, th.num { text-align: right; }
-tr.click { cursor: pointer; } tr.click:hover td { background: var(--soft); }
-.scroll { overflow: auto; max-height: 560px; }
-.badge { display: inline-block; padding: 1px 9px; border-radius: 10px; font-size: 12px; font-weight: 600; white-space: nowrap; }
-.b-running { background: var(--run-bg); color: var(--run); } .b-done { background: var(--ok-bg); color: var(--ok); }
-.b-paused { background: var(--warn-bg); color: var(--warn); } .b-idle { background: var(--idle-bg); color: var(--idle); }
-.b-blocked, .b-failed, .b-error { background: var(--err-bg); color: var(--err); } .b-warn { background: var(--warn-bg); color: var(--warn); }
-.b-info { background: var(--run-bg); color: var(--run); } .b-ok { background: var(--ok-bg); color: var(--ok); }
-.muted { color: var(--muted); } .mono { font-family: var(--mono); font-size: 12px; }
-.chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
-.chip { border: 1px solid var(--line); background: var(--panel); border-radius: 16px; padding: 3px 12px; cursor: pointer; font: inherit; color: var(--muted); font-weight: 600; }
-.chip[aria-pressed="true"] { background: var(--brand-soft); color: var(--brand); border-color: var(--brand); }
-.cell0 { background: var(--err-bg); color: var(--err); font-weight: 600; }
-.cellNA { color: var(--muted); }
-.cellN { font-weight: 600; }
-.progress { display: flex; align-items: center; gap: 8px; min-width: 150px; }
-.progress .bar-track { flex: 1; margin: 0; } .progress span { min-width: 74px; text-align: right; font-size: 12px; color: var(--muted); }
-.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(640px, 100vw); background: var(--panel); border-left: 1px solid var(--line); box-shadow: -10px 0 30px rgba(0,0,0,.18); z-index: 20; display: none; flex-direction: column; }
-.drawer.open { display: flex; }
-.drawer header { position: static; display: flex; align-items: center; gap: 10px; padding: 12px 16px; }
-.drawer .body { overflow: auto; padding: 4px 16px 24px; }
-.drawer h3 { font-size: 13px; margin: 18px 0 6px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
-.kv { display: grid; grid-template-columns: 130px 1fr; gap: 4px 12px; font-size: 13px; }
-.kv div:nth-child(odd) { color: var(--muted); }
-pre.json, pre.log { margin: 0; padding: 10px 12px; background: var(--soft); border-radius: 8px; overflow: auto; font: 12px/1.5 var(--mono); white-space: pre-wrap; word-break: break-word; }
-pre.log { max-height: 320px; }
-.logbox { background: var(--soft); border-radius: 8px; padding: 8px 10px; max-height: 68vh; overflow: auto; font: 12px/1.55 var(--mono); }
-.logbox .row { display: grid; grid-template-columns: 150px 1fr; gap: 10px; white-space: pre-wrap; word-break: break-word; }
-.logbox .tag { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lv-WARNING { color: var(--warn); } .lv-ERROR, .lv-CRITICAL { color: var(--err); font-weight: 600; } .lv-DEBUG { color: var(--muted); }
-.hitem { display: grid; grid-template-columns: 78px 1fr; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--soft); }
-.hitem .t { font-weight: 600; } .hitem .d { color: var(--muted); font-size: 13px; }
-.note { color: var(--muted); font-size: 12px; margin-top: 8px; }
-.empty { color: var(--muted); padding: 22px; text-align: center; }
-.modal { position: fixed; inset: 0; background: rgba(8,12,18,.55); display: none; align-items: center; justify-content: center; z-index: 30; padding: 20px; }
-.modal.open { display: flex; }
-.modal .card { width: min(900px, 100%); max-height: 86vh; display: flex; flex-direction: column; }
-.modal pre.json { flex: 1; max-height: none; overflow: auto; }
-.row-flex { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-.tag-missing { display: inline-block; margin-right: 4px; padding: 0 7px; border-radius: 8px; font-size: 11px; background: var(--warn-bg); color: var(--warn); }
-.split-bars .r { display: grid; grid-template-columns: 120px 1fr 70px; gap: 8px; align-items: center; margin: 6px 0; font-size: 13px; }
-.split-bars .bar-track { margin: 0; }
+:root{--bg:#f3f6fa;--panel:#fff;--ink:#15233b;--muted:#637187;--line:#dae2ed;--brand:#215aca;--good:#12714b;--bad:#ac2939}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,sans-serif}header{background:var(--panel);border-bottom:1px solid var(--line);padding:18px 26px}header h1{font-size:21px;margin:0}header p{margin:4px 0;color:var(--muted)}nav,.actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:14px}button,select,input{font:inherit;color:inherit;background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:8px 12px}button{cursor:pointer}button:hover{border-color:var(--brand)}button:disabled{opacity:.5;cursor:default}button.primary,nav button[aria-current=true]{background:var(--brand);color:#fff;border-color:var(--brand)}button.danger{color:var(--bad)}:focus-visible{outline:3px solid #84acf7;outline-offset:2px}main{max-width:1500px;margin:24px auto;padding:0 24px 60px}.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px;margin-bottom:18px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(205px,1fr));gap:16px}.kpi strong{display:block;font-size:25px;margin:6px 0}.muted,small{color:var(--muted)}h2{font-size:18px;margin:0 0 12px}h3{font-size:15px}.status{display:inline-block;border-radius:20px;padding:2px 9px;background:#e9eef5;font-size:12px;white-space:nowrap}.ok{background:#dff2e9;color:var(--good)}.running{background:#e3edff;color:var(--brand)}.failed,.dead,.error{background:#fce6e8;color:var(--bad)}.partial,.blocked,.stopped{background:#fff0d2;color:#825400}.scroll{overflow:auto}table{border-collapse:collapse;width:100%;font-size:13px}th,td{text-align:left;vertical-align:top;padding:10px 12px;border-bottom:1px solid var(--line);max-width:370px;overflow-wrap:anywhere}th{color:var(--muted);font-weight:600;white-space:nowrap}tr:last-child td{border-bottom:0}pre{background:#102037;color:#d8e6fb;padding:16px;border-radius:9px;overflow:auto;max-height:65vh;white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.6 ui-monospace,monospace}.empty{padding:30px;text-align:center;color:var(--muted)}#notice{padding:0 24px;max-width:1500px;margin:15px auto;color:var(--bad);white-space:pre-wrap}.field{display:grid;grid-template-columns:minmax(200px,1fr) minmax(120px,300px);gap:12px;border-top:1px solid var(--line);padding:15px 0}.field label{font-weight:600}.field small{display:block;font-weight:400}.field input:not([type=checkbox]){width:100%}.badge-row{display:flex;gap:8px;flex-wrap:wrap}.link{color:var(--brand);border:0;background:transparent;padding:0;text-align:left}.meta{display:flex;gap:20px;flex-wrap:wrap}.pager{display:flex;align-items:center;gap:12px;margin-top:14px}dialog{border:1px solid var(--line);border-radius:12px;width:min(1050px,95vw);max-height:90vh;color:var(--ink)}dialog::backdrop{background:#13233d99}dialog .actions{justify-content:flex-end}details{margin:12px 0}summary{cursor:pointer}#connection{font-size:12px;color:var(--muted)}@media(max-width:620px){header{padding:16px}main{padding:0 12px}.field{grid-template-columns:1fr}th,td{padding:8px}.card{padding:14px}}
 </style>
 </head>
 <body>
-<header>
-  <div class="bar">
-    <div class="brand">V-OTA · Theo dõi cào dữ liệu <small id="target">mục tiêu 10.000 Product</small></div>
-    <div class="spacer"></div>
-    <a class="btn" href="/pipeline" style="text-decoration:none;display:inline-block">Luồng dữ liệu tự động →</a>
-    <div class="live"><span class="dot" id="dot"></span><span id="liveText">đang tải…</span></div>
-    <button class="btn" id="pauseBtn" type="button">Tạm dừng làm mới</button>
-  </div>
-  <nav role="tablist" id="tabs">
-    <button role="tab" data-tab="overview" aria-selected="true">Tổng quan</button>
-    <button role="tab" data-tab="jobs" aria-selected="false">Jobs<span class="count" id="cJobs">0</span></button>
-    <button role="tab" data-tab="records" aria-selected="false">Dữ liệu đã parse</button>
-    <button role="tab" data-tab="files" aria-selected="false">Files</button>
-    <button role="tab" data-tab="logs" aria-selected="false">Nhật ký</button>
-    <button role="tab" data-tab="health" aria-selected="false">Kiểm tra<span class="count" id="cHealth">0</span></button>
-  </nav>
+<header><h1>V-OTA <span class="muted">/ Fresh catalog</span></h1><p>Theo dõi cào mới → chuẩn hoá → nạp Postgres → index Weaviate</p><div id="connection" aria-live="polite">Đang kết nối…</div>
+<nav aria-label="Điều hướng"><button data-view="overview" aria-current="true">Tổng quan</button><button data-view="runs">Lịch sử lượt</button><button data-view="hotels">Khách sạn Trip</button><button data-view="settings">Cấu hình</button></nav>
 </header>
-<main id="main"></main>
-
-<aside class="drawer" id="drawer" aria-label="Chi tiết job">
-  <header><strong id="drawerTitle">Job</strong><span class="spacer"></span><button class="btn" id="drawerClose" type="button">Đóng</button></header>
-  <div class="body" id="drawerBody"></div>
-</aside>
-<div class="modal" id="modal"><div class="card"><div class="row-flex" style="margin-bottom:10px"><strong id="modalTitle">Bản ghi</strong><span class="spacer"></span><a id="modalLink" class="muted" target="_blank" rel="noopener noreferrer">mở nguồn</a><button class="btn" id="modalClose" type="button">Đóng</button></div><div id="modalMissing" style="margin-bottom:8px"></div><pre class="json" id="modalJson"></pre></div></div>
-
+<div id="notice" role="alert"></div><main id="main" aria-live="polite"></main>
+<dialog id="detail"><h2 id="detailTitle">Chi tiết</h2><div id="detailBody"></div><div class="actions"><button id="closeDetail">Đóng</button></div></dialog>
 <script>
-"use strict";
-const $ = (s, r = document) => r.querySelector(s);
-const fmt = n => n == null ? "–" : Number(n).toLocaleString("vi-VN");
-const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const gb = b => b == null ? "–" : (b / 2 ** 30).toFixed(1) + " GB";
-const mb = b => b == null ? "–" : b >= 2 ** 30 ? (b / 2 ** 30).toFixed(2) + " GB" : (b / 2 ** 20).toFixed(b < 2 ** 20 * 10 ? 1 : 0) + " MB";
-const pct = (a, b) => b ? Math.min(100, Math.round(100 * a / b)) : 0;
-const STATUS = { running: "Đang chạy", done: "Xong", paused: "Dừng giữa chừng", blocked: "Bị chặn", failed: "Lỗi", idle: "Chưa chạy" };
-const SRC = { vinpearl: "Vinpearl", booking_hotels: "Booking KS", agoda_hotels: "Agoda KS", trip_attractions: "Trip điểm", trip_flights: "Trip bay", booking_flights: "Booking bay", booking_attractions: "Booking vé/tour", mixed: "Đợt gốc" };
-const state = { tab: "overview", paused: false, jobs: [], filter: "all", source: "", q: "", recSource: "booking_hotels", recJob: "all", recQ: "", recLimit: 40, logJob: "running", logLevel: "ALL", logQ: "", autoscroll: true, drawerId: null, lastOk: 0, err: false };
-
-async function api(path, opts) {
-  const res = await fetch(path, opts);
-  if (!res.ok) throw new Error(path + " → " + res.status);
-  return res.json();
+'use strict';
+const $=s=>document.querySelector(s), main=$('#main');
+const esc=v=>String(v??'—').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pretty=v=>`<pre>${esc(typeof v==='string'?v:JSON.stringify(v,null,2))}</pre>`;
+const labels={ok:'Thành công',running:'Đang chạy',partial:'Chưa đủ dữ liệu',failed:'Thất bại',dead:'Đã mất tiến trình',stopped:'Đã dừng',error:'Lỗi',blocked:'Bị chặn',unknown:'Chưa có trạng thái'};
+const badge=v=>`<span class="status ${esc(v)}">${esc(labels[v]||v)}</span>`;
+const when=v=>v?new Date(v).toLocaleString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh'}):'—';
+const bytes=n=>n>1048576?`${(n/1048576).toFixed(1)} MB`:`${Math.round((n||0)/1024)} KB`;
+const button=(label,action,args={},css='')=>`<button class="${css}" data-action="${action}" data-args="${esc(JSON.stringify(args))}">${esc(label)}</button>`;
+const card=(title,body)=>`<section class="card"><h2>${esc(title)}</h2>${body}</section>`;
+const table=(heads,rows)=>rows.length?`<div class="scroll"><table><thead><tr>${heads.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${c??'—'}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`:'<div class="empty">Chưa có dữ liệu.</div>';
+let view='overview', activeRun=null, listState=null, refreshing=false, settingsData=null;
+async function api(path,params={},body){const url=new URL(path,location.origin);Object.entries(params).forEach(([k,v])=>{if(v!==undefined&&v!==null)url.searchParams.set(k,v)});const response=await fetch(url,{cache:'no-store',...(body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json','X-Requested-With':'vota-monitor'},body:JSON.stringify(body)})});const data=await response.json();if(!response.ok)throw Error(typeof data.error==='string'?data.error:JSON.stringify(data.error||data));return data}
+function fail(error){$('#notice').textContent=error.message||String(error)}
+function modal(title,html){$('#detailTitle').textContent=title;$('#detailBody').innerHTML=html;if(!$('#detail').open)$('#detail').showModal()}
+function runsTable(runs){return table(['Bắt đầu (VN)','Chế độ','Trạng thái','Thời gian','Sản phẩm / Trip','Dữ liệu'],runs.map(r=>[esc(when(r.startedAt)),esc(r.mode),badge(r.status),r.seconds==null?'—':`${esc(r.seconds)} s`,esc(`${r.counts?.catalog?.products??'—'} / ${r.counts?.trip?.completed??'—'}`),r.retained?button(r.id,'run',{id:r.id},'link'):'Chỉ còn tóm tắt']))}
+async function overview(){const d=await api('/api/overview');const running=d.running;main.innerHTML=`<div class="grid">${[
+ ['Hiện tại',running?(running.stale?'Mất nhịp sống':running.starting?'Đang khởi động':running.mode):'Đang nghỉ',running?.runId||'Không có lượt giữ khoá'],
+ ['Lượt theo lịch',d.nextRun?.mode||'Đã tắt',when(d.nextRun?.at)],['Khách sạn Trip',d.tripHotelIds,'ID đã lưu để xoay vòng'],['Dữ liệu giữ lại',bytes(d.diskBytes),'Raw, interim, catalog và báo cáo']
+].map(([label,value,sub])=>`<div class="card kpi"><small>${esc(label)}</small><strong>${esc(value)}</strong><small>${esc(sub)}</small></div>`).join('')}</div>`+
+card('Điều khiển lượt cào',`<p class="muted">Cấu hình mới áp dụng từ lượt kế tiếp. Giờ lịch hiển thị theo Việt Nam; cron phải gọi <code>fresh-run tick</code>.</p><div class="actions">${['auto','full','daily','index'].map(mode=>button({auto:'Chạy theo chu kỳ',full:'Cào lớn',daily:'Làm mới Trip',index:'Bảo trì và index'}[mode],'start',{mode},mode==='auto'?'primary':'')).join('')}${button('Dừng lượt đang chạy','stop',{},'danger')}</div>${running?`<p>Bước hiện tại: ${esc((running.steps||[]).join(', ')||'Đang khởi động')}</p>${running.runId?button('Xem lượt đang chạy','run',{id:running.runId}):''}`:''}${d.settingsError?`<p>${esc(d.settingsError)}</p>`:''}${d.spawned?.launchLog?pretty(d.spawned.launchLog.join('\n')):''}`)+
+card('Lượt gần nhất',runsTable(d.runs))+
+card('Log runner',table(['File','Cập nhật','Mã thoát'],d.runnerLogs.map(r=>[button(r.name,'runnerlog',{name:r.name},'link'),esc(when(r.modifiedAt)),esc(r.exitCode)])))+
+card('Kết nối được cấu hình',`<div class="badge-row">${Object.entries(d.env).map(([key,value])=>`<span class="status">${esc(key)}: ${typeof value==='boolean'?(value?'đã đặt':'chưa đặt'):esc(value)}</span>`).join('')}</div>`);
+main.querySelectorAll('[data-action=start]').forEach(b=>b.disabled=!!running);main.querySelector('[data-action=stop]').disabled=!running||running.starting;
 }
-function ago(iso) {
-  if (!iso) return "–";
-  const s = Math.max(0, (Date.now() - new Date(iso.endsWith("Z") || iso.includes("+") ? iso : iso + "Z").getTime()) / 1000);
-  if (s < 90) return Math.round(s) + " giây trước";
-  if (s < 5400) return Math.round(s / 60) + " phút trước";
-  if (s < 172800) return Math.round(s / 3600) + " giờ trước";
-  return Math.round(s / 86400) + " ngày trước";
+async function showRun(id){activeRun=id;view='run';listState=null;const d=await api('/api/run',{id});main.innerHTML=card(id,`<div class="meta">${badge(d.status)}<span>${esc(d.mode)} · ${esc(d.trigger)}</span><span>${esc(when(d.startedAt))}</span><span>${esc(d.seconds??'—')} s</span></div>${d.error?`<p>${esc(d.error)}</p>`:''}<div class="actions">${button('Làm mới','run',{id})}${button('Log lượt','log',{run:id})}${d.hasProducts?button('Catalog chuẩn hoá','list',{kind:'products',run:id}):''}${d.hasDbReport?button('Báo cáo nạp DB','list',{kind:'db',run:id}):''}</div>`)+
+card('Các bước',table(['Bước','Nhóm','Trạng thái','Giây'],(d.steps||[]).map(s=>[esc(s.label||s.name),esc(s.group),badge(s.status),esc(s.seconds)])))+
+card('Số liệu của lượt',pretty(d.counts||{}))+
+card('Nguồn dữ liệu',table(['Nguồn','Raw','Interim','Xem dữ liệu'],(d.sourcesData||[]).map(s=>[esc(s.label),`${s.rawFiles} file · ${bytes(s.rawBytes)}`,esc(s.interimRecords),button('Raw','list',{kind:'raw',run:id,source:s.source})+' '+button('Interim','list',{kind:'interim',run:id,source:s.source})])))+
+card('Báo cáo',table(['File','Dung lượng'],(d.artifacts||[]).map(a=>[button(a.name,'artifact',{run:id,name:a.name},'link'),bytes(a.bytes)])))+`<details><summary>Cấu hình đã dùng trong lượt này</summary>${pretty(d.settings||{})}</details>`;
 }
-const badge = (s) => `<span class="badge b-${esc(s)}">${esc(STATUS[s] || s)}</span>`;
-const bar = (a, b, cls = "") => `<div class="progress"><div class="bar-track"><div class="bar-fill ${cls}" style="width:${pct(a, b)}%"></div></div><span>${fmt(a)}/${fmt(b)}</span></div>`;
-
-/* ------------------------------------------------------------------ Tổng quan */
-async function renderOverview() {
-  const o = await api("/api/overview");
-  $("#target").textContent = "mục tiêu " + fmt(o.target) + " Product";
-  const est = o.rowsEstimate, res = o.resources, byS = o.jobs.byStatus;
-  $("#cJobs").textContent = o.jobs.total;
-  const cat = o.catalog, pv = o.preview;
-  const jobsTotal = o.jobs.total;
-  const urls = Object.values(o.sources).reduce((a, s) => ({ done: a.done + s.done, total: a.total + s.urls, failed: a.failed + s.failed }), { done: 0, total: 0, failed: 0 });
-  const memWarn = res.memAvailable != null && res.memAvailable < 2 * 2 ** 30;
-  const kpis = `
-  <div class="grid kpis">
-    <div class="card kpi"><div class="label">Ước tính số Product</div><div class="value">${fmt(est.total)} <small>/ ${fmt(o.target)}</small></div>
-      <div class="bar-track"><div class="bar-fill ${est.total >= o.target ? "ok" : ""}" style="width:${pct(est.total, o.target)}%"></div></div>
-      <div class="sub">${fmt(est.baseline)} từ đợt cào trước + ${fmt(est.batch)} mới từ các job (${fmt(est.refreshed)} trang cào lại, tính một lần). Ước tính thô: dùng “Tạo bản xem trước” để có số thật sau khử trùng.</div></div>
-    <div class="card kpi"><div class="label">Job</div><div class="value">${fmt(byS.running || 0)} <small>đang chạy / ${fmt(jobsTotal)}</small></div>
-      <div class="sub">${fmt(byS.done || 0)} xong · ${fmt(byS.paused || 0)} dừng giữa chừng · ${fmt((byS.failed || 0) + (byS.blocked || 0))} lỗi/chặn</div></div>
-    <div class="card kpi"><div class="label">Trang đã cào</div><div class="value">${fmt(urls.done)} <small>/ ${fmt(urls.total)}</small></div>
-      <div class="bar-track"><div class="bar-fill" style="width:${pct(urls.done, urls.total)}%"></div></div><div class="sub">${fmt(urls.failed)} URL lỗi</div></div>
-    <div class="card kpi"><div class="label">Trình duyệt Chromium</div><div class="value">${fmt(res.chromeProcesses)} <small>tiến trình</small></div>
-      <div class="sub">${gb(res.chromeRss)} RAM · ${res.crawlers.length} tiến trình cào</div></div>
-    <div class="card kpi"><div class="label">RAM khả dụng</div><div class="value" style="color:${memWarn ? "var(--err)" : "inherit"}">${gb(res.memAvailable)} <small>/ ${gb(res.memTotal)}</small></div>
-      <div class="sub">${memWarn ? "Thấp: cân nhắc đóng bớt ứng dụng." : "Đủ cho các cửa sổ hiện tại."} Đĩa trống ${gb(res.diskFree)}</div></div>
-  </div>`;
-  const srcRows = Object.keys(o.sources).sort().map(k => { const s = o.sources[k]; return `<tr>
-    <td>${esc(o.sourceLabels[k] || k)}</td><td class="num">${fmt(s.running)}</td><td class="num">${fmt(s.jobs)}</td>
-    <td>${bar(s.done, s.urls, s.failed ? "warn" : "")}</td><td class="num">${fmt(s.failed)}</td><td class="num">${fmt(s.records)}</td><td class="num">${fmt(s.rows)}</td></tr>`; }).join("");
-  const sourcesCard = `<div class="card"><h2>Tiến độ theo nguồn <small>các job batch mới</small></h2><div class="scroll"><table>
-    <thead><tr><th>Nguồn</th><th class="num">Chạy</th><th class="num">Job</th><th>URL đã cào</th><th class="num">Lỗi</th><th class="num">Bản ghi</th><th class="num">≈ Dòng</th></tr></thead>
-    <tbody>${srcRows || `<tr><td colspan="7" class="empty">Chưa có job batch nào.</td></tr>`}</tbody></table></div>
-    <div class="note">${esc(est.note)}</div></div>`;
-  const cols = ["booking_hotels", "agoda_hotels", "trip_attractions", "trip_flights"];
-  const covRows = o.coverage.map(c => {
-    const cells = cols.map(k => {
-      const n = (c.counts || {})[k] || 0, cfg = c.configured ? c.configured[k] : true;
-      if (!cfg) return `<td class="num cellNA" title="Chưa cấu hình nguồn này cho điểm đến (không đoán ID)">—</td>`;
-      return n ? `<td class="num cellN">${fmt(n)}</td>` : `<td class="num cell0" title="Đã cấu hình nhưng chưa có bản ghi">0</td>`;
-    }).join("");
-    return `<tr><td>${esc(c.destination)}${c.extra ? ` <span class="muted">(ngoài kế hoạch)</span>` : ""}</td>${cells}</tr>`;
-  }).join("");
-  const covCard = `<div class="card"><h2>Độ phủ theo điểm đến <small>số bản ghi đã parse</small></h2><div class="scroll"><table>
-    <thead><tr><th>Điểm đến</th><th class="num">Booking</th><th class="num">Agoda</th><th class="num">Trip điểm</th><th class="num">Trip bay</th></tr></thead>
-    <tbody>${covRows}</tbody></table></div>
-    <div class="note">“—” = nguồn chưa có ID/slug đã kiểm chứng cho điểm đến. Ô đỏ “0” = đã cấu hình nhưng chưa có dữ liệu (chưa tới lượt cào hoặc cấu hình sai). Trip bay tính theo sân bay đến.</div></div>`;
-  const bars = (map, total) => Object.entries(map).map(([k, v]) => `<div class="r"><div>${esc(k)}</div><div class="bar-track"><div class="bar-fill" style="width:${pct(v, total)}%"></div></div><div class="num">${fmt(v)}</div></div>`).join("");
-  const catBlock = cat ? `<div class="split-bars">${bars(cat.byTaxonomy, cat.rows)}</div>
-     <div class="note">${fmt(cat.rows)} dòng · giá ${pct(cat.withPrice, cat.rows)}% · toạ độ ${pct(cat.withCoords, cat.rows)}% · mô tả ${pct(cat.withDescription, cat.rows)}% · cập nhật ${ago(cat.modified)}</div>` : `<div class="empty">Chưa có data/products.jsonl.</div>`;
-  const pvBlock = pv.status === "running" ? `<div class="note">⏳ ${esc(pv.message)} (bắt đầu ${ago(pv.startedAt)})</div>`
-    : pv.status === "error" ? `<div class="note" style="color:var(--err)">Lỗi: ${esc(pv.message)}</div>`
-    : pv.summary ? `<h2 style="margin-top:14px">Bản xem trước <small>${ago(pv.finishedAt)}</small></h2><div class="kpi"><div class="value">${fmt(pv.summary.rows)} <small>/ ${fmt(o.target)} Product sau chuẩn hoá</small></div><div class="bar-track"><div class="bar-fill ${pv.summary.rows >= o.target ? "ok" : ""}" style="width:${pct(pv.summary.rows, o.target)}%"></div></div></div>
-        <div class="split-bars">${bars(pv.summary.byTaxonomy, pv.summary.rows)}</div>
-        <div class="note">giá ${pct(pv.summary.withPrice, pv.summary.rows)}% · toạ độ ${pct(pv.summary.withCoords, pv.summary.rows)}% · mô tả ${pct(pv.summary.withDescription, pv.summary.rows)}% · ${Object.keys(pv.summary.byDestination).length} điểm đến. ${esc(pv.message)}</div>`
-    : `<div class="note">Chuẩn hoá thử dữ liệu hiện có để biết con số thật sau khử trùng. Không đụng catalog chính (ghi vào data/preview/).</div>`;
-  const catCard = `<div class="card"><h2>Catalog chuẩn hoá <small>data/products.jsonl</small></h2>${catBlock}
-    <div class="row-flex" style="margin-top:12px"><button class="btn primary" id="previewBtn" type="button" ${pv.status === "running" ? "disabled" : ""}>${pv.status === "running" ? "Đang chuẩn hoá…" : "Tạo bản xem trước"}</button></div>${pvBlock}</div>`;
-  $("#main").innerHTML = kpis + `<div class="grid split" style="margin-top:14px"><div class="grid">${sourcesCard}${covCard}</div><div class="grid" style="align-content:start">${catCard}</div></div>`;
-  const btn = $("#previewBtn");
-  if (btn) btn.onclick = async () => { btn.disabled = true; await api("/api/preview", { method: "POST", headers: { "X-Requested-With": "vota-monitor" } }); tick(); };
+async function showLog(args,runner=false){const d=await api('/api/log',{...args,runner:runner?'1':'',name:args.name||'job.log',lines:500});modal(d.name,pretty(d.lines.join('\n'))+button('Làm mới log',runner?'runnerlog':'log',args))}
+async function showList(args){view='data';listState={...args,offset:args.offset||0};const {kind,run,source,offset,q=''}=listState;const d=await api('/api/'+kind,{run,source,offset,q,limit:100});let heads,rows;
+ if(kind==='raw'){heads=['File','Dung lượng','Loại'];rows=d.rows.map(r=>[button(r.path,'rawfile',{run,source,path:r.path},'link'),bytes(r.bytes),esc(r.kind)])}
+ if(kind==='interim'){heads=['ID','Tên','Điểm đến','Phòng','Chi tiết'];rows=d.rows.map(r=>[esc(r.id),esc(r.name),esc(r.destination),esc(r.rooms),button('Xem','record',{run,source,index:r.index})])}
+ if(kind==='products'){heads=['Sản phẩm','Loại / cấp','Điểm đến','Giá VND','Khả dụng','Nguồn'];rows=d.rows.map(r=>[button(r.name||r.productId,'product',{run,id:r.productId},'link'),esc(`${r.taxonomy}/${r.level||'—'}`),esc(r.destination),esc(r.unitPrice),r.available?'Có':'Không',esc(r.sourceRef)])}
+ if(kind==='db'){heads=['Sản phẩm','Hành động','Đã ghi','Giá trước → sau'];rows=d.rows.map(r=>[button(r.name||r.productId,'json',{title:r.productId,data:r},'link'),esc(r.action),r.written?'Có':'Không đổi',esc(`${r.before?.unitPrice??'—'} → ${r.after?.unitPrice??'—'}`)])}
+ main.innerHTML=card({raw:'File raw',interim:'Bản ghi interim',products:'Catalog chuẩn hoá',db:'Báo cáo nạp DB'}[kind],`<p>${esc(run)} ${source?'· '+esc(source):''}</p><form id="searchForm" class="actions"><input name="q" type="search" placeholder="Lọc theo tên hoặc ID" value="${esc(q)}" aria-label="Tìm dữ liệu"><button type="submit">Tìm</button>${button('Quay lại lượt','run',{id:run})}</form><p>${esc(d.total)} kết quả</p>${table(heads,rows)}<div class="pager">${offset>0?button('← Trước','list',{...listState,offset:Math.max(0,offset-100)}):''}<span>${offset+1}–${offset+d.rows.length} / ${d.total}</span>${offset+100<d.total?button('Tiếp →','list',{...listState,offset:offset+100}):''}</div>`);
 }
-
-/* ------------------------------------------------------------------ Jobs */
-function jobLabel(j) { return j.route ? `${esc(j.city)} <span class="muted mono" title="${esc(j.route)}">${j.route.split(",").length} tuyến</span>` : esc(j.city || "–"); }
-async function renderJobs() {
-  state.jobs = await api("/api/jobs");
-  const jobs = state.jobs.filter(j => j.kind === "batch");
-  $("#cJobs").textContent = jobs.length;
-  const match = j => (state.filter === "all" || (state.filter === "problem" ? ["failed", "blocked"].includes(j.status) : j.status === state.filter))
-    && (!state.source || j.source === state.source) && (!state.q || (j.city + " " + (j.route || "")).toLowerCase().includes(state.q.toLowerCase()));
-  const shown = jobs.filter(match).sort((a, b) => (a.status === "running" ? 0 : 1) - (b.status === "running" ? 0 : 1) || (b.lastActivity || "").localeCompare(a.lastActivity || ""));
-  const cnt = k => jobs.filter(j => k === "all" ? true : k === "problem" ? ["failed", "blocked"].includes(j.status) : j.status === k).length;
-  const chip = (k, t) => `<button class="chip" data-f="${k}" aria-pressed="${state.filter === k}">${t} ${cnt(k)}</button>`;
-  const sources = [...new Set(jobs.map(j => j.source))].sort();
-  const rows = shown.map(j => `<tr class="click" data-id="${j.id}">
-    <td>${badge(j.status)}${j.stalled ? ` <span class="badge b-warn" title="Không có hoạt động > 10 phút">im lặng</span>` : ""}</td><td>${esc(SRC[j.source] || j.source)}</td><td>${jobLabel(j)}</td>
-    <td>${j.total ? bar(j.done, j.total, j.failed ? "warn" : "") : `<span class="muted">${j.source === "vinpearl" ? "API" : "chưa có URL"}</span>`}</td>
-    <td class="num">${j.failed ? `<span style="color:var(--err)">${fmt(j.failed)}</span>` : "0"}</td><td class="num">${fmt(j.records)}</td><td class="num">${fmt(j.rowsEstimate)}</td>
-    <td class="muted">${ago(j.lastActivity)}</td></tr>`).join("");
-  $("#main").innerHTML = `<div class="chips">${chip("all", "Tất cả")}${chip("running", "Đang chạy")}${chip("paused", "Dừng giữa chừng")}${chip("done", "Xong")}${chip("problem", "Lỗi/Chặn")}
-    <select id="srcSel" aria-label="Lọc theo nguồn"><option value="">Mọi nguồn</option>${sources.map(s => `<option value="${s}" ${state.source === s ? "selected" : ""}>${esc(SRC[s] || s)}</option>`).join("")}</select>
-    <input type="search" id="qBox" placeholder="Lọc theo điểm đến / tuyến" value="${esc(state.q)}"></div>
-    <div class="card"><div class="scroll" style="max-height:none"><table><thead><tr><th>Trạng thái</th><th>Nguồn</th><th>Điểm đến / tuyến</th><th>URL đã cào</th><th class="num">Lỗi</th><th class="num">Bản ghi</th><th class="num">≈ Dòng</th><th>Hoạt động</th></tr></thead>
-    <tbody>${rows || `<tr><td colspan="8" class="empty">Không có job khớp bộ lọc.</td></tr>`}</tbody></table></div></div>`;
-  document.querySelectorAll(".chip").forEach(b => b.onclick = () => { state.filter = b.dataset.f; renderJobs(); });
-  $("#srcSel").onchange = e => { state.source = e.target.value; renderJobs(); };
-  const q = $("#qBox"); q.oninput = e => { state.q = e.target.value; renderJobs().then(() => { const n = $("#qBox"); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }); };
-  document.querySelectorAll("tr.click").forEach(r => r.onclick = () => openDrawer(r.dataset.id));
-}
-async function openDrawer(id) {
-  state.drawerId = id;
-  const j = await api("/api/job?id=" + id);
-  $("#drawerTitle").textContent = `${SRC[j.source] || j.source} · ${j.city || ""}`;
-  const kv = (k, v) => `<div>${k}</div><div>${v}</div>`;
-  const files = Object.entries(j.files || {}).map(([k, f]) => `<tr><td>${esc(k)}</td><td class="num">${fmt(f.lines)}</td><td class="num">${fmt(f.noPrice)}</td><td class="num">${fmt(f.noCoords)}</td><td class="num">${fmt(f.noDesc)}</td><td class="num">${mb(f.bytes)}</td></tr>`).join("");
-  $("#drawerBody").innerHTML = `
-    <div class="kv">${kv("Trạng thái", badge(j.status) + (j.pid ? ` <span class="muted">pid ${j.pid}</span>` : ""))}${kv("Mã thoát lần cuối", j.exitCode ?? "–")}
-    ${kv("Tiến độ", `${fmt(j.done)} xong · ${fmt(j.pending)} chờ · ${fmt(j.failed)} lỗi / ${fmt(j.total)} URL`)}${kv("Bản ghi đã parse", fmt(j.records))}${kv("≈ Dòng Product", fmt(j.rowsEstimate))}
-    ${kv("Cập nhật hàng đợi", ago(j.updatedAt))}${kv("Hoạt động cuối", ago(j.lastActivity))}${kv("Thư mục", `<span class="mono">data/batches/${esc(j.id)}</span>`)}</div>
-    <h3>Tham số job</h3><pre class="json">${esc(JSON.stringify(j.spec, null, 2))}</pre>
-    ${files ? `<h3>Dữ liệu đã parse (interim)</h3><table><thead><tr><th>Nguồn</th><th class="num">Bản ghi</th><th class="num">Thiếu giá</th><th class="num">Thiếu toạ độ</th><th class="num">Thiếu mô tả</th><th class="num">Dung lượng</th></tr></thead><tbody>${files}</tbody></table>` : ""}
-    ${(j.discovery || []).length ? `<h3>Tìm URL (discovery)</h3><table><tbody>${j.discovery.map(d => `<tr><td class="mono">${esc(d.key)}</td><td class="num">${fmt(d.found)} URL</td></tr>`).join("")}</tbody></table>` : ""}
-    ${(j.errors || []).length ? `<h3>Lỗi phổ biến</h3><table><tbody>${j.errors.map(e => `<tr><td>${esc(e.error)}</td><td class="num">${fmt(e.count)}</td></tr>`).join("")}</tbody></table>` : ""}
-    <h3>Nhật ký gần nhất</h3><pre class="log">${esc((j.log || []).join("\n")) || "Chưa có nhật ký."}</pre>
-    <div class="row-flex" style="margin-top:14px"><button class="btn" id="seeRecs" type="button">Xem bản ghi đã parse của job này</button></div>`;
-  $("#drawer").classList.add("open");
-  $("#seeRecs").onclick = () => { state.recSource = j.source === "mixed" ? "booking_hotels" : j.source; state.recJob = j.id; closeDrawer(); setTab("records"); };
-}
-function closeDrawer() { $("#drawer").classList.remove("open"); state.drawerId = null; }
-
-/* ------------------------------------------------------------------ Dữ liệu đã parse */
-async function renderRecords(keepFocus) {
-  if (!state.jobs.length) state.jobs = await api("/api/jobs");
-  const sources = ["booking_hotels", "agoda_hotels", "trip_attractions", "trip_flights", "vinpearl", "booking_attractions"];
-  const jobOpts = state.jobs.filter(j => (j.source === state.recSource || j.kind === "legacy")).map(j => `<option value="${j.id}" ${state.recJob === j.id ? "selected" : ""}>${esc(j.city || "")}${j.route ? " (" + j.route.split(",").length + " tuyến)" : ""} · ${j.id.slice(0, 6)}</option>`).join("");
-  const url = `/api/records?source=${state.recSource}&job=${encodeURIComponent(state.recJob)}&limit=${state.recLimit}&q=${encodeURIComponent(state.recQ)}`;
-  const d = await api(url);
-  const rows = d.items.map((r, i) => `<tr class="click" data-i="${i}"><td>${esc(r.name || "(không tên)")}<div class="muted" style="font-size:12px">${esc(r.extra)}</div></td><td>${esc(r.destination || "–")}</td>
-    <td class="num">${r.price ? fmt(r.price) : `<span class="muted">–</span>`}</td><td>${r.missing.map(m => `<span class="tag-missing">thiếu ${esc(m)}</span>`).join("") || `<span class="muted">đủ</span>`}</td><td class="muted">${ago(r.crawledAt)}</td><td class="muted mono">${esc(r.jobCity || "")}</td></tr>`).join("");
-  const html = `<div class="chips"><select id="rSrc" aria-label="Nguồn">${sources.map(s => `<option value="${s}" ${state.recSource === s ? "selected" : ""}>${esc(SRC[s])}</option>`).join("")}</select>
-    <select id="rJob" aria-label="Job"><option value="all">Tất cả job</option>${jobOpts}</select>
-    <input type="search" id="rQ" placeholder="Tìm trong tên, điểm đến, thông tin…" value="${esc(state.recQ)}">
-    <select id="rLim" aria-label="Số dòng">${[40, 100, 200].map(n => `<option ${state.recLimit === n ? "selected" : ""}>${n}</option>`).join("")}</select>
-    <span class="muted">${fmt(d.total)} bản ghi đã parse · hiển thị ${d.items.length} mới nhất</span></div>
-    <div class="card"><div class="scroll" style="max-height:none"><table><thead><tr><th>Tên</th><th>Điểm đến</th><th class="num">Giá (VND)</th><th>Chất lượng</th><th>Cào lúc</th><th>Job</th></tr></thead>
-    <tbody>${rows || `<tr><td colspan="6" class="empty">Chưa có bản ghi nào.</td></tr>`}</tbody></table></div><div class="note">Bấm một dòng để xem toàn bộ JSON đã parse. “thiếu …” là trường quan trọng đang trống, không nhất thiết là lỗi (điểm công cộng không có giá vé).</div></div>`;
-  const active = document.activeElement && document.activeElement.id;
-  $("#main").innerHTML = html;
-  $("#rSrc").onchange = e => { state.recSource = e.target.value; state.recJob = "all"; renderRecords(); };
-  $("#rJob").onchange = e => { state.recJob = e.target.value; renderRecords(); };
-  $("#rLim").onchange = e => { state.recLimit = +e.target.value; renderRecords(); };
-  const q = $("#rQ"); q.oninput = e => { state.recQ = e.target.value; clearTimeout(q._t); q._t = setTimeout(() => renderRecords(true), 350); };
-  if (active === "rQ") { q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
-  document.querySelectorAll("tr.click").forEach(r => r.onclick = () => showRecord(d.items[+r.dataset.i]));
-}
-async function showRecord(item) {
-  const rec = await api(`/api/record?job=${encodeURIComponent(item.job)}&source=${state.recSource}&key=${encodeURIComponent(item.key || "")}`);
-  $("#modalTitle").textContent = item.name || "Bản ghi";
-  $("#modalJson").textContent = JSON.stringify(rec, null, 2);
-  $("#modalMissing").innerHTML = item.missing.map(m => `<span class="tag-missing">thiếu ${esc(m)}</span>`).join("");
-  const a = $("#modalLink"); if (item.url) { a.href = item.url; a.style.display = ""; } else a.style.display = "none";
-  $("#modal").classList.add("open");
-}
-
-/* ------------------------------------------------------------------ Files */
-async function renderFiles() {
-  const f = await api("/api/files");
-  const top = f.top.map(t => `<tr><td class="mono">${esc(t.name)}</td><td class="num">${fmt(t.files)}</td><td class="num">${mb(t.bytes)}</td></tr>`).join("");
-  const rows = f.jobs.map(j => {
-    const okRaw = j.source === "vinpearl" || j.kind === "legacy" || j.rawFiles >= j.doneItems;
-    const okParse = j.doneItems === 0 || j.interimLines > 0;
-    const verdict = okRaw && okParse ? `<span class="badge b-ok">hợp lý</span>` : `<span class="badge b-warn" title="${!okRaw ? "Số file raw ít hơn số trang đã cào: không parse lại (reparse) được." : "Đã cào trang nhưng chưa có bản ghi đã parse."}">cần xem</span>`;
-    return `<tr><td class="mono">${j.kind === "batch" ? esc(j.id.slice(0, 8)) : esc(j.id)}</td><td>${esc(SRC[(j.source || "").replace("-", "_")] || j.source)}</td><td>${esc(j.city || "")}</td><td class="num">${fmt(j.doneItems)}</td>
-      <td class="num">${fmt(j.rawFiles)}</td><td class="num">${mb(j.rawBytes)}</td><td class="num">${fmt(j.interimLines)}</td><td class="num">${mb(j.interimBytes)}</td><td class="num">${mb(j.profileBytes)}</td><td>${verdict}</td></tr>`; }).join("");
-  $("#main").innerHTML = `<div class="grid two"><div class="card"><h2>Thư mục dữ liệu <small>tổng quan</small></h2><table><thead><tr><th>Đường dẫn</th><th class="num">File</th><th class="num">Dung lượng</th></tr></thead><tbody>${top}</tbody></table>
-      <div class="note">Cache dùng chung giữa các job (trang sân bay, sitemap): ${fmt(f.shared.files)} file, ${mb(f.shared.bytes)} — mỗi trang chỉ tải một lần.</div></div>
-    <div class="card"><h2>Cấu trúc một job</h2><pre class="json">data/batches/&lt;job&gt;/
-  job.json           tham số job (nguồn, điểm đến, ngày hỏi giá)
-  last-run.json      mã thoát lần chạy gần nhất (75 = bị chặn)
-  raw/&lt;nguồn&gt;/       trang gốc đã lược review, nén gzip — để parse lại
-  interim/&lt;nguồn&gt;.jsonl   bản ghi đã parse, mỗi dòng một khách sạn/điểm/tuyến
-  state/             hàng đợi URL (SQLite) + khoá tiến trình
-  logs/              nhật ký
-  browser-profile/   cookie trình duyệt
-
-sau đó:  batch.py merge → data/interim/
-         normalise.py  → data/products.jsonl (13 trường)
-         catalog.py    → data/catalog/*.json, products.json</pre></div></div>
-    <div class="card" style="margin-top:14px"><h2>Từng job <small>kiểm tra file có khớp với số trang đã cào</small></h2><div class="scroll" style="max-height:none"><table><thead><tr><th>Job</th><th>Nguồn</th><th>Điểm đến</th><th class="num">Trang xong</th><th class="num">File raw</th><th class="num">Raw</th><th class="num">Bản ghi</th><th class="num">Interim</th><th class="num">Profile</th><th>Kiểm tra</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <div class="note">“hợp lý” = mỗi trang đã cào có file raw tương ứng (parse lại được) và đã có bản ghi đã parse. Vinpearl không có hàng đợi trang nên không so sánh.</div></div>`;
-}
-
-/* ------------------------------------------------------------------ Nhật ký */
-async function renderLogs() {
-  if (!state.jobs.length) state.jobs = await api("/api/jobs");
-  const d = await api(`/api/log?job=${encodeURIComponent(state.logJob)}&lines=250`);
-  const rank = { DEBUG: 0, INFO: 1, WARNING: 2, ERROR: 3, CRITICAL: 3 };
-  const min = state.logLevel === "ALL" ? 0 : rank[state.logLevel];
-  const lines = d.lines.filter(l => rank[l.level] >= min && (!state.logQ || l.text.toLowerCase().includes(state.logQ.toLowerCase())));
-  const opts = state.jobs.filter(j => j.kind === "batch").map(j => `<option value="${j.id}" ${state.logJob === j.id ? "selected" : ""}>${esc(SRC[j.source] || j.source)} · ${esc(j.city || "")} · ${j.status}</option>`).join("");
-  const wasBottom = (() => { const b = $("#logbox"); return !b || b.scrollHeight - b.scrollTop - b.clientHeight < 40; })();
-  $("#main").innerHTML = `<div class="chips"><select id="lJob"><option value="running" ${state.logJob === "running" ? "selected" : ""}>Các job đang chạy</option>${opts}</select>
-    <select id="lLvl">${["ALL", "WARNING", "ERROR"].map(l => `<option value="${l}" ${state.logLevel === l ? "selected" : ""}>${l === "ALL" ? "Mọi mức" : l + " trở lên"}</option>`).join("")}</select>
-    <input type="search" id="lQ" placeholder="Lọc nội dung" value="${esc(state.logQ)}"><label class="muted"><input type="checkbox" id="lAuto" ${state.autoscroll ? "checked" : ""}> tự cuộn xuống cuối</label>
-    <span class="muted">${esc(d.jobs.join(" · ") || "chưa có nhật ký")}</span></div>
-    <div class="logbox" id="logbox">${lines.map(l => `<div class="row lv-${l.level}"><div class="tag" title="${esc(l.job)}">${esc(l.job)}</div><div>${esc(l.text)}</div></div>`).join("") || `<div class="empty">Chưa có dòng nhật ký nào.</div>`}</div>`;
-  $("#lJob").onchange = e => { state.logJob = e.target.value; renderLogs(); };
-  $("#lLvl").onchange = e => { state.logLevel = e.target.value; renderLogs(); };
-  const q = $("#lQ"); q.oninput = e => { state.logQ = e.target.value; renderLogs().then(() => { const n = $("#lQ"); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }); };
-  $("#lAuto").onchange = e => { state.autoscroll = e.target.checked; };
-  const box = $("#logbox"); if (state.autoscroll && wasBottom) box.scrollTop = box.scrollHeight;
-}
-
-/* ------------------------------------------------------------------ Kiểm tra */
-async function renderHealth() {
-  const h = await api("/api/health");
-  const c = h.counts; const cnt = $("#cHealth"); const bad = (c.error || 0), warn = (c.warn || 0);
-  cnt.textContent = bad + warn; cnt.className = "count " + (bad ? "err" : warn ? "warn" : "");
-  const label = { error: "Lỗi", warn: "Cảnh báo", info: "Lưu ý", ok: "Ổn" };
-  $("#main").innerHTML = `<div class="card"><h2>Kiểm tra tự động <small>cập nhật ${ago(h.generatedAt)}</small></h2>${h.items.map(i => `<div class="hitem"><div><span class="badge b-${i.severity}">${label[i.severity]}</span></div>
-    <div><div class="t">${esc(i.title)}</div><div class="d">${esc(i.detail)}${i.job ? ` · <a href="#" data-job="${i.job}">xem job</a>` : ""}</div></div></div>`).join("")}</div>`;
-  document.querySelectorAll("a[data-job]").forEach(a => a.onclick = e => { e.preventDefault(); openDrawer(a.dataset.job); });
-}
-
-/* ------------------------------------------------------------------ điều khiển chung */
-const RENDER = { overview: renderOverview, jobs: renderJobs, records: renderRecords, files: renderFiles, logs: renderLogs, health: renderHealth };
-const INTERVAL = { overview: 5000, jobs: 5000, records: 8000, files: 30000, logs: 3000, health: 8000 };
-let timer = null, busy = false;
-async function tick() {
-  if (busy) return; busy = true;
-  try {
-    const ae = document.activeElement;
-    const typing = ae && (ae.tagName === "INPUT" || ae.tagName === "SELECT") && state.tab !== "overview";
-    if (!(typing && ae.type === "search")) await RENDER[state.tab](true);
-    state.lastOk = Date.now(); state.err = false;
-    if (state.tab !== "health") api("/api/health").then(h => { const b = h.counts.error || 0, w = h.counts.warn || 0; const c = $("#cHealth"); c.textContent = b + w; c.className = "count " + (b ? "err" : w ? "warn" : ""); }).catch(() => {});
-    if (state.drawerId && $("#drawer").classList.contains("open") && state.tab === "jobs") { /* giữ nguyên drawer đang xem */ }
-  } catch (e) { state.err = true; console.error(e); }
-  finally { busy = false; paintLive(); }
-}
-function paintLive() {
-  $("#dot").className = "dot " + (state.err ? "err" : state.paused ? "" : "on");
-  $("#liveText").textContent = state.err ? "mất kết nối với monitor.py" : state.paused ? "đã tạm dừng làm mới" : "cập nhật " + new Date(state.lastOk).toLocaleTimeString("vi-VN");
-}
-function schedule() { clearTimeout(timer); if (!state.paused) timer = setTimeout(async () => { if (document.visibilityState === "visible") await tick(); schedule(); }, INTERVAL[state.tab]); }
-function setTab(t) {
-  state.tab = t;
-  document.querySelectorAll("#tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === t));
-  history.replaceState(null, "", "#" + t); tick().then(schedule);
-}
-$("#tabs").onclick = e => { const b = e.target.closest("button[data-tab]"); if (b) setTab(b.dataset.tab); };
-$("#pauseBtn").onclick = () => { state.paused = !state.paused; $("#pauseBtn").textContent = state.paused ? "Tiếp tục làm mới" : "Tạm dừng làm mới"; paintLive(); schedule(); };
-$("#drawerClose").onclick = closeDrawer; $("#modalClose").onclick = () => $("#modal").classList.remove("open");
-$("#modal").onclick = e => { if (e.target.id === "modal") $("#modal").classList.remove("open"); };
-document.addEventListener("keydown", e => { if (e.key === "Escape") { closeDrawer(); $("#modal").classList.remove("open"); } });
-const start = location.hash.slice(1); if (RENDER[start]) state.tab = start;
-document.querySelectorAll("#tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === state.tab));
-tick().then(schedule);
+async function hotels(){const d=await api('/api/trip-hotels');main.innerHTML=card('Khách sạn Trip · xoay vòng',`<p>Lượt daily tối đa <strong>${d.dailyBatch}</strong> khách sạn. Ưu tiên ID chưa thử hoặc lâu chưa thử.</p><p class="muted">Coverage lấy từ lượt gần nhất: ${esc(d.coverageRun)}. Trống nghĩa là chưa có quan sát trong lượt đó.</p>`+table(['Thứ tự','ID','Thành phố','Lần thử gần nhất','Thành công gần nhất','Lượt kế','Coverage'],d.hotels.map(r=>[esc(r.queue),esc(r.hotelId),esc(r.destination),esc(when(r.lastAttemptAt)),esc(when(r.lastSuccessAt)),r.nextBatch?'Có':'—',esc(r.lastCoverage?Object.entries(r.lastCoverage).map(([k,v])=>`${k}: ${v}`).join(', '):'—')])))}
+function fieldHtml(f){const value=Array.isArray(f.value)?f.value.join(','):f.value??'';let input;if(f.kind==='bool')input=`<input id="f-${esc(f.key)}" data-key="${esc(f.key)}" type="checkbox" ${f.value?'checked':''}>`;else input=`<input id="f-${esc(f.key)}" data-key="${esc(f.key)}" type="${['int','float'].includes(f.kind)?'number':f.kind==='time'?'time':'text'}" value="${esc(value)}" ${f.minimum!=null?`min="${f.minimum}"`:''} ${f.maximum!=null?`max="${f.maximum}"`:''} step="${f.kind==='float'?'any':'1'}">`;return `<div class="field"><label for="f-${esc(f.key)}">${esc(f.label)}<small>${esc(f.help||'')} · Nguồn: ${esc(f.source)}${f.env?' · '+esc(f.env):''}</small></label><div>${input}${button('Về env/mặc định','resetSetting',{key:f.key},'link')}</div></div>`}
+async function settings(){settingsData=await api('/api/settings');main.innerHTML=`<form id="settingsForm">${card('Cấu hình lượt kế tiếp',`<p>Lưu tại volume dùng chung với cron. Lượt đang chạy giữ cấu hình lúc bắt đầu.</p><p class="muted">Trip: mặc định mới 30 ID/thành phố lần đầu, 10 ID mới/thành phố mỗi lượt full và 180 khách sạn/daily. Giá trị env hoặc đã lưu được ưu tiên.</p>${button('Áp ngân sách Trip 30 / 10 / 180','tripBudget')} <button class="primary" type="submit">Lưu thay đổi</button>${settingsData.error?`<p>${esc(settingsData.error)}</p>`:''}`)}${settingsData.groups.map(g=>card(g.label,settingsData.fields.filter(f=>f.group===g.id).map(fieldHtml).join(''))).join('')}<button class="primary" type="submit">Lưu thay đổi</button></form>`;main.querySelectorAll('[data-action]').forEach(b=>b.type='button')}
+async function navigate(name){view=name;activeRun=null;listState=null;$('#notice').textContent='';document.querySelectorAll('nav button').forEach(b=>b.setAttribute('aria-current',b.dataset.view===view));main.innerHTML='<p class="muted">Đang tải…</p>';if(name==='overview')await overview();if(name==='runs')main.innerHTML=card('Lịch sử lượt',runsTable(await api('/api/runs',{limit:200})));if(name==='hotels')await hotels();if(name==='settings')await settings()}
+async function action(name,args){$('#notice').textContent='';if(name==='run')return showRun(args.id);if(name==='list')return showList(args);if(name==='log')return showLog(args);if(name==='runnerlog')return showLog(args,true);if(name==='json')return modal(args.title,pretty(args.data));if(name==='rawfile'){const d=await api('/api/raw/file',args);return modal(d.path,(d.truncated?'<p>File đã cắt bớt khi hiển thị.</p>':'')+pretty(d.json||d.text||d.visibleText||d))}if(name==='record')return modal('Bản ghi interim',pretty(await api('/api/interim/record',args)));if(name==='product'){const d=await api('/api/product',args);return modal('Sản phẩm và nguồn',pretty(d.product)+card('Truy vết raw / interim',d.trace.map(t=>`<p>${esc(t.ref)} · ${esc(t.source)}</p>${button('Xem interim','record',{run:args.run,source:t.source,index:t.interim.index})} ${(t.raw||[]).map(path=>button(path,'rawfile',{run:args.run,source:t.source,path})).join(' ')}`).join('')||'<p>Không tìm thấy bản ghi tương ứng.</p>')+card('Dòng nạp DB',pretty(d.db)))}if(name==='artifact'){const d=await api('/api/artifact',args);return modal(d.name,d.kind==='table'?table(d.header,d.rows.map(r=>r.map(esc))):pretty(d.json||d.text||d))}if(name==='start'){await api('/api/run',{},args);return navigate('overview')}if(name==='stop'){const d=await api('/api/stop',{},{});await navigate('overview');$('#notice').textContent=d.message;return}if(name==='tripBudget'){for(const [key,value] of Object.entries({'tripHotels.initialPerCity':30,'tripHotels.newPerCity':10,'tripHotels.dailyHotels':180}))main.querySelector(`[data-key="${key}"]`).value=value;$('#notice').textContent='Đã điền ngân sách Trip. Bấm Lưu thay đổi để áp dụng.';return}if(name==='resetSetting'){await api('/api/settings',{}, {values:{[args.key]:null}});return settings()}}
+document.addEventListener('click',e=>{const nav=e.target.closest('[data-view]'),b=e.target.closest('[data-action]');if(nav)navigate(nav.dataset.view).catch(fail);if(b){e.preventDefault();b.disabled=true;action(b.dataset.action,JSON.parse(b.dataset.args)).catch(fail).finally(()=>b.disabled=false)}});
+document.addEventListener('submit',async e=>{if(e.target.id==='searchForm'){e.preventDefault();showList({...listState,q:new FormData(e.target).get('q'),offset:0}).catch(fail)}if(e.target.id==='settingsForm'){e.preventDefault();const values={};for(const f of settingsData.fields){const input=main.querySelector(`[data-key="${f.key}"]`);let value=f.kind==='bool'?input.checked:['int','float'].includes(f.kind)?Number(input.value):input.value;const old=Array.isArray(f.value)?f.value.join(','):f.value??'';if(value!==old)values[f.key]=value}try{await api('/api/settings',{}, {values});await settings();$('#notice').textContent='Đã lưu. Cấu hình áp dụng từ lượt kế tiếp.'}catch(err){fail(err)}}});
+$('#closeDetail').onclick=()=>$('#detail').close();
+async function poll(){if(refreshing||view!=='overview'||$('#detail').open)return;refreshing=true;try{await overview();$('#connection').textContent='Đã kết nối · '+when(new Date().toISOString())+' · tự làm mới 5 giây'}catch(e){$('#connection').textContent='Không kết nối được';fail(e)}finally{refreshing=false}}
+navigate('overview').then(()=>$('#connection').textContent='Đã kết nối · tự làm mới 5 giây').catch(fail);setInterval(poll,5000);
 </script>
 </body>
 </html>

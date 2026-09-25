@@ -60,15 +60,15 @@ Toàn bộ trải nghiệm khám phá và đề xuất của V-OTA xoay quanh m�
 ## 4. Phạm Vi Hệ Thống (Scope Boundaries)
 
 ### 4.1. Trong phạm vi (In-Scope)
-- **Cổng thông tin & Khám phá (Frontend Web App):** Giao diện responsive cho phép tìm kiếm, duyệt danh mục, xem gợi ý theo persona, tương tác chat lập lịch trình và thanh toán mô phỏng.
-- **Dịch vụ Backend & API:** Quản lý danh mục sản phẩm (Catalog), xử lý tìm kiếm lai (Hybrid / Semantic Search), hệ thống gợi ý (Recommendation Engine), quản lý đơn hàng (Booking/Checkout), quản lý người dùng & phiên đăng nhập.
+- **Cổng thông tin & Khám phá (Frontend Web App):** Giao diện responsive cho phép tìm kiếm, duyệt danh mục, xem gợi ý theo persona, tương tác chat lập lịch trình và thanh toán qua trang Stripe Checkout ở chế độ test (không có giao dịch tiền thật).
+- **Dịch vụ Backend & API:** Quản lý danh mục sản phẩm (Catalog), xử lý tìm kiếm lai (Hybrid / Semantic Search), hệ thống gợi ý (Recommendation Engine), quản lý đơn hàng (Booking/Checkout: giữ chỗ, thanh toán Stripe, huỷ và hoàn tiền), quản lý người dùng & phiên đăng nhập.
 - **Trợ lý AI Lập Lịch Trình (Itinerary Assistant):** Điều phối hội thoại đa lượt, trích xuất thực thể, gọi công cụ tìm kiếm và tổng hợp lịch trình có cấu trúc (Structured Output).
 - **Hệ thống Dữ liệu Khách hàng (CDP Clone):** Thu thập và lưu trữ toàn diện sự kiện hành vi (`page_view`, `product_view`, `search`, `add_to_cart`, `purchase`), duy trì hồ sơ hợp nhất (Unified Profile).
 - **Hệ thống Tương tác Cá nhân hóa (Insider Clone):** Đồng bộ thuộc tính và phân khúc người dùng, hỗ trợ kích hoạt thông điệp đa kênh (On-site banner, Notification trigger).
 - **Quy chuẩn Kiểm thử & Đánh giá:** Bộ khung kiểm thử hợp đồng (OpenAPI), kiểm thử tích hợp cơ sở dữ liệu, và công cụ đánh giá thuật toán RecSys/Agent độc lập.
 
 ### 4.2. Ngoài phạm vi (Out-of-Scope)
-- Tích hợp cổng thanh toán thực tế của ngân hàng (hệ thống sử dụng luồng xác nhận đơn hàng và mô phỏng giao dịch nội bộ).
+- Nhận tiền thật: Stripe live mode, cổng thanh toán ngân hàng hoặc ví nội địa. Dự án chỉ dùng Stripe test mode, V-OTA đóng vai Merchant of Record. Cũng ngoài phạm vi: trả tiền cho nhà cung cấp, tự động xử lý tranh chấp (chargeback), hoá đơn VAT.
 - Hệ thống quản lý tồn kho thời gian thực liên kết trực tiếp với hãng hàng không / chuỗi khách sạn ngoài (dữ liệu được nạp qua snapshot và cấu hình khả dụng định kỳ).
 - Ứng dụng di động native (iOS / Android) — giai đoạn này tập trung vào Web Application chuẩn hóa giao diện di động.
 

@@ -2,7 +2,7 @@
 
 Hai cách chấm agent, dùng cho hai mục đích khác nhau:
 
-- **§0 Golden dataset tự động** — 50 case, chạy bằng `python -m src.evaluation.agent.golden` trên
+- **§0 Golden dataset tự động** — 75 case, chạy bằng `python -m src.evaluation.agent.golden` trên
   **catalog Postgres thật**. Đo trực tiếp ba chỉ số PRD `docs/prd/test-plan.md` §2.4 (Grounding Rate,
   Structured Output Integrity, Tool Calling Accuracy). Không cần thao tác tay, chạy được trong CI cá nhân.
 - **§1–9 Bộ 12 case chạy tay qua Streamlit** — trên **fixture 50 sản phẩm** cố định
@@ -14,7 +14,7 @@ Người dùng: team Agent và Evaluation, người chạy đánh giá trước 
 
 ## 0. Golden dataset tự động (catalog thật)
 
-Dataset: `src/evaluation/datasets/itinerary_agent_golden.yaml` — 50 case, một số đa lượt (FR-AGT-01,
+Dataset: `src/evaluation/datasets/itinerary_agent_golden.yaml` — 75 case, một số đa lượt (FR-AGT-01,
 FR-AGT-05). Runner: `src/evaluation/agent/golden.py`. Cách chạy: [README.md](README.md) mục "Chạy đánh
 giá tự động". Cấu trúc case và cách bổ sung: [golden-dataset.md](golden-dataset.md).
 
@@ -171,7 +171,7 @@ Nội dung bắt buộc:
 - **Sản phẩm xếp lịch được (`hotel`, `attraction`, `golf`) theo điểm đến:** Nha Trang 8, Phú Quốc 8, Hạ Long 5 (4 sau khi loại `available=false`), Hà Tĩnh 4, Hội An 4, Hà Nội 1, TP.HCM 1, Đà Nẵng 1, Hải Phòng 0. Riêng **hoạt động** (`attraction` + `golf`) thì tối đa 2 mỗi điểm đến, nên chuyến từ 3 ngày trở lên **chắc chắn** có ngày trống.
 - **Chỉ một mẫu availability.** Đúng 1 sản phẩm `available=false` và 1 sản phẩm giá null, và đó là cùng một sản phẩm (`Vịnh Hạ Long`). Case 04 là case duy nhất kiểm được quy tắc này.
 - **`SEARCH_UNAVAILABLE` và `availability precision ≥ 95%`** (handbook §12) không tạo được ở chế độ fixture; cần upstream Search thật. Ghi là *chưa kiểm*, không ghi là pass.
-- **Nhánh 12 case này không phủ**, ghi thẳng để biên bản không bị đọc quá mức: `context.language=en`; `INVALID_TRIP_DURATION` (`days` ngoài khoảng 1–7); `CONVERSATION_NOT_FOUND`; sửa intent giữa chừng ("đổi thành Đà Nẵng"); mâu thuẫn ngày với số ngày; `LLM_UNAVAILABLE` khi key sai; `retry` sau lỗi tool tạm thời. Các nhánh này hiện chỉ có unit test backend bảo vệ.
+- **Nhánh 12 case này không phủ**, ghi thẳng để biên bản không bị đọc quá mức: `context.language=en`; `INVALID_TRIP_DURATION` (`days` ngoài khoảng 1–7); `CONVERSATION_NOT_FOUND`; sửa intent giữa chừng ("đổi thành Đà Nẵng"); mâu thuẫn ngày với số ngày; `LLM_UNAVAILABLE` khi key sai; `retry` sau lỗi tool tạm thời. Bộ golden §0 phủ `language=en` (G-062, G-063), `INVALID_TRIP_DURATION` (G-064, G-065), `CONVERSATION_NOT_FOUND` (G-066), sửa intent giữa chừng (G-039, G-060) và mâu thuẫn số ngày (G-075); `LLM_UNAVAILABLE` và `retry` vẫn chỉ có unit test backend bảo vệ.
 - **Latency đo ở chế độ fixture** bỏ qua network của Search/Recommendation thật.
 
 ## 8. Ngưỡng kết luận

@@ -13,9 +13,10 @@ Hệ sinh thái lưu trữ của V-OTA gồm hai cơ sở dữ liệu PostgreSQL
 | DATABASE: vota  (PostgreSQL 16)                                         |
 |                                                                         |
 |  [Schema: cdp]           [Schema: catalog]           [Schema: app]      |
-|  - profiles              - products (view/table)     - users            |
-|  - events                - product_meta (view)       - bookings         |
-|                          - combo_items               - booking_items    |
+|  - products              - product_meta (view)       - users            |
+|  - profiles              - combo_items               - bookings         |
+|  - events                                            - booking_items    |
+|                                                      - payments         |
 |                                                      - conversations    |
 |                                                      - messages         |
 |                                                      - refresh_tokens   |
@@ -108,7 +109,7 @@ erDiagram
         string productId "Khóa nối logic về cdp.products — KHÔNG phải FK"
         string modelVersion "embed-multilingual-v3.0 + phiên bản text builder"
         string textHash "Phát hiện text đổi để embed lại"
-        vector _vector "1024 chiều, HNSW + cosine, vectorizer none"
+        vector _vector "1024 chiều, ANN (HNSW hoặc hfresh) + cosine, vectorizer none"
     }
 ```
 
@@ -119,6 +120,7 @@ erDiagram
     APP_USERS ||--o{ APP_BOOKINGS : "đặt hàng"
     APP_USERS ||--o{ APP_CONVERSATIONS : "sở hữu cuộc trò chuyện"
     APP_BOOKINGS ||--o{ APP_BOOKING_ITEMS : "chứa các dịch vụ"
+    APP_BOOKINGS ||--o| APP_PAYMENTS : "thanh toán"
     APP_CONVERSATIONS ||--o{ APP_MESSAGES : "lưu các tin nhắn"
     APP_USERS ||--o{ APP_REFRESH_TOKENS : "chuỗi rotation"
     APP_USERS |o--o{ APP_LOGIN_ATTEMPTS : "nhật ký đăng nhập"
@@ -162,7 +164,12 @@ erDiagram
         uuid user_id FK
         string booking_code UK "Mã hiển thị: VOTA-XXXXXX"
         string event_group_id "Liên kết logic với CDP purchase event"
-        string status "pending, confirmed, cancelled, completed"
+        string status "pending_payment, confirmed, payment_failed, expired, cancelled, completed"
+        timestamp hold_expires_at
+        timestamp confirmed_at
+        timestamp cancelled_at
+        string cancel_reason
+        timestamp purchase_events_cancelled_at
         numeric total_amount
         string currency "VND"
         timestamp created_at
@@ -172,13 +179,30 @@ erDiagram
     APP_BOOKING_ITEMS {
         uuid item_id PK
         uuid booking_id FK
-        string product_id "Tham chiếu logic tới catalog.products"
+        string product_id 
         string product_title
         string product_type
         numeric price_at_booking
         int quantity
         date using_date
         jsonb metadata "Thông tin vé, phòng, ghi chú đặc biệt"
+    }
+
+    APP_PAYMENTS {
+        uuid payment_id PK
+        uuid booking_id FK "UNIQUE — một đơn một phiên thanh toán"
+        string provider "stripe | fake | seed (booking dựng sẵn cho P1)"
+        string checkout_session_id UK
+        string payment_intent_id UK
+        string checkout_url "Chỉ dùng khi status = open"
+        bigint amount "VND, là số nguyên (Stripe coi VND là tiền tệ không có số lẻ)"
+        string currency "VND"
+        string status "open, succeeded, failed, expired, refund_pending, refunded, refund_failed"
+        int failed_attempts
+        string last_failure_code
+        string refund_id
+        timestamp created_at
+        timestamp updated_at
     }
 
     APP_CONVERSATIONS {
@@ -273,16 +297,17 @@ Dữ liệu lịch trình do AI Assistant trả về phải tuân thủ cấu tr
 
 ### 4.1. Vòng đời Đơn hàng (`app.bookings.status`)
 ```
-[ Khởi tạo đơn ] ──> PENDING
-                        │
-      ┌─────────────────┴─────────────────┐
-      │ (Thanh toán & Ghi CDP thành công)  │ (Lỗi hệ thống hoặc Hủy thanh toán)
-      v                                   v
-  CONFIRMED                           CANCELLED
-      │
-      │ (Qua thời gian sử dụng dịch vụ)
-      v
-  COMPLETED
+                 [ Tạo giữ chỗ + phiên Stripe ] ──> PENDING_PAYMENT (tối đa 30 phút)
+                                                          │
+   ┌──────────────────┬───────────────────┬───────────────┼──────────────────────┐
+   │ Stripe thu tiền  │ Từ chối thẻ lần 3 │ Hết 30 phút   │ Khách huỷ            │
+   │ + ghi CDP        │ (hoặc tiền lệch)  │               │ (chưa trả tiền)      │
+   v                  v                   v               v
+CONFIRMED       PAYMENT_FAILED         EXPIRED        CANCELLED
+   │
+   ├── Khách huỷ trong hạn → hoàn 100% ──> CANCELLED
+   │
+   └── Qua ngày sử dụng ──> COMPLETED
 ```
 
 ### 4.2. Vòng đời Sản phẩm & Khả năng phục vụ
@@ -298,5 +323,5 @@ Dữ liệu lịch trình do AI Assistant trả về phải tuân thủ cấu tr
 2. **Nguyên tắc Migration trên Cơ sở dữ liệu đang vận hành:**
    - Tuyệt đối không xóa và chạy lại init script trên database đã có dữ liệu.
    - Mọi thay đổi cấu trúc bảng, thêm cột hoặc tạo chỉ mục mới phải được đóng gói thành các file migration idempotent (có khả năng chạy lại nhiều lần mà không gây lỗi) trong `db/migrations/` và thực thi qua bộ điều phối `db/migrations/run.py`.
-3. **Phân bổ tài nguyên Vector:** Collection `Product` của Weaviate chỉ chứa sản phẩm có `is_search_unit = true` để tối ưu bộ nhớ và tốc độ truy vấn. Weaviate tự dựng HNSW (cosine) nên không cần khai báo index thủ công.
+3. **Phân bổ tài nguyên Vector:** Collection `Product` của Weaviate chỉ chứa sản phẩm có `is_search_unit = true` để tối ưu bộ nhớ và tốc độ truy vấn. Weaviate tự dựng index ANN (cosine) theo loại mà cluster cho phép nên không cần khai báo index thủ công.
 4. **Weaviate nằm ngoài vòng migration của Postgres.** `db/migrations/run.py` chỉ áp thay đổi cho database quan hệ. Đổi chiều vector hoặc đổi model embedding = tạo lại collection và chạy lại job embed, không phải viết migration SQL. Vì `productId` chỉ là khóa nối logic (không có FK xuyên hệ), xóa sản phẩm ở Postgres **không** tự xóa vector — job embed phải dọn các vector mồ côi.

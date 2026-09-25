@@ -7,3 +7,4 @@ lxml>=5.3
 protego>=0.3
 rapidfuzz>=3.9,<4
 psycopg[binary]>=3.2,<4
+curl_cffi>=0.13,<1

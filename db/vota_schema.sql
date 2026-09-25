@@ -217,16 +217,26 @@ CREATE TABLE app.bookings (
     reference_code   text NOT NULL UNIQUE,                             -- 'VOTA-20261015-8K3F'
     cdp_user_id      text NOT NULL REFERENCES cdp.profiles (cdp_user_id),
     event_group_id   text NOT NULL UNIQUE,                             -- = eventGroupId của các event purchase ghi ra
-    status           text NOT NULL DEFAULT 'confirmed' CHECK (status IN ('confirmed','cancelled')),
+    status           text NOT NULL DEFAULT 'pending_payment'
+                     CHECK (status IN ('pending_payment','confirmed','payment_failed','expired','cancelled')),
     contact_name     text NOT NULL,
     contact_email    text NOT NULL,
     contact_phone    text NOT NULL,
     special_request  text,
     total_amount     numeric(14,2) NOT NULL CHECK (total_amount >= 0),
     currency         char(3) NOT NULL DEFAULT 'VND',
-    created_at       timestamptz NOT NULL DEFAULT now()
+    created_at       timestamptz NOT NULL DEFAULT now(),
+    updated_at       timestamptz NOT NULL DEFAULT now(),
+    hold_expires_at  timestamptz,                                      -- hạn giữ chỗ; chỉ có ý nghĩa khi pending_payment
+    confirmed_at     timestamptz,
+    cancelled_at     timestamptz,
+    cancel_reason    text,
+    purchase_events_cancelled_at timestamptz                           -- đã huỷ event purchase trên CDP sau khi khách huỷ
 );
 CREATE INDEX bookings_user_idx ON app.bookings (cdp_user_id, created_at DESC);
+-- Mỗi người dùng chỉ có một đơn đang giữ chỗ (FR-BKG-05)
+CREATE UNIQUE INDEX bookings_one_pending_per_user ON app.bookings (cdp_user_id) WHERE status = 'pending_payment';
+CREATE INDEX bookings_hold_idx ON app.bookings (hold_expires_at) WHERE status = 'pending_payment';
 
 CREATE TABLE app.booking_items (
     booking_item_id  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -239,6 +249,7 @@ CREATE TABLE app.booking_items (
     using_date       date NOT NULL,
     using_date_to    date,
     guest_names      text[],                                               -- tên khách nhận phòng / hành khách
+    special_request  text,                                                 -- yêu cầu riêng của từng dòng (contract BookingItem.specialRequest)
     line_total       numeric(14,2) GENERATED ALWAYS AS (unit_price * quantity) STORED,
     -- event purchase tương ứng: cdp.events WHERE event_group_id = bookings.event_group_id
     --                                          AND product_id = booking_items.product_id AND using_date = booking_items.using_date
@@ -246,6 +257,28 @@ CREATE TABLE app.booking_items (
     CONSTRAINT booking_items_uq UNIQUE (booking_id, product_id, using_date)   -- khớp 1:1 với event purchase
 );
 CREATE INDEX booking_items_booking_idx ON app.booking_items (booking_id);
+
+-- app.payments — một đơn một phiên thanh toán Stripe Checkout (FR-BKG-06). Trạng thái thanh toán tách khỏi trạng thái đơn:
+--   'đã nhận tiền' và 'đơn đã xác nhận' là hai việc khác nhau (Stripe đã thu nhưng CDP lỗi → payment succeeded, đơn vẫn pending_payment).
+--   V-OTA không lưu dữ liệu thẻ (NFR-SEC-03); chỉ giữ id của Stripe.
+CREATE TABLE app.payments (
+    payment_id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    booking_id           uuid NOT NULL UNIQUE REFERENCES app.bookings (booking_id) ON DELETE CASCADE,
+    provider             text NOT NULL CHECK (provider IN ('stripe','fake','seed')),   -- seed = booking dựng sẵn cho persona P1
+    checkout_session_id  text UNIQUE,
+    payment_intent_id    text UNIQUE,
+    checkout_url         text,                                                        -- chỉ dùng khi status = 'open'
+    amount               bigint NOT NULL CHECK (amount >= 0),                         -- VND không có số lẻ
+    currency             char(3) NOT NULL DEFAULT 'VND',
+    status               text NOT NULL DEFAULT 'open'
+                         CHECK (status IN ('open','succeeded','failed','expired','refund_pending','refunded','refund_failed')),
+    failed_attempts      integer NOT NULL DEFAULT 0 CHECK (failed_attempts >= 0),
+    last_failure_code    text,
+    refund_id            text,
+    created_at           timestamptz NOT NULL DEFAULT now(),
+    updated_at           timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX payments_status_idx ON app.payments (status, updated_at);
 
 -- app.conversations / conversation_messages / itineraries — trợ lý lịch trình (handbook §9, ARCHITECTURE §8)
 CREATE TABLE app.conversations (

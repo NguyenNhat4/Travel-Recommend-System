@@ -13,7 +13,8 @@ Hai điểm bám theo quy tắc repo:
   view là mọi nơi cùng đổi. (`InMemoryVectorStore` tự suy vì file JSONL không có view.)
 
 `PostgresCatalogReader` là phần dùng chung cho job index Weaviate và adapter runtime. `PostgresVectorStore`
-được giữ làm fallback/test offline; composition root mặc định dùng Cohere + Weaviate theo PRD.
+được giữ làm fallback/test offline (quét vector trong RAM qua `NumpyVectorSearch`); composition root mặc
+định dùng Cohere + Weaviate theo PRD.
 """
 from __future__ import annotations
 
@@ -25,8 +26,9 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from src.backend.app.application.ports import EmbedderPort, UnitIndex
+from src.backend.app.application.ports import EmbedderPort, UnitIndex, VectorSearchPort
 from src.backend.app.domain.catalog import Product, build_text
+from src.backend.app.infrastructure.vectors.numpy_search import NumpyVectorSearch
 
 #: Đọc nguyên 13 trường CDP + ba cờ vai trò của view. `attributes` là JSONB nên psycopg trả dict sẵn.
 _QUERY = """
@@ -59,10 +61,9 @@ class CatalogUnits:
     recommendable: np.ndarray
     parent_of: dict[str, str]
 
-    def to_index(self, embeddings: np.ndarray, model_version: str) -> UnitIndex:
+    def to_index(self, model_version: str) -> UnitIndex:
         return UnitIndex(
             units=self.units,
-            E=embeddings,
             taxonomy=self.taxonomy,
             destination=self.destination,
             available=self.available,
@@ -82,7 +83,7 @@ class PostgresCatalogReader:
         import psycopg
         from psycopg.rows import dict_row
 
-        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+        with psycopg.connect(self.database_url, row_factory=dict_row, connect_timeout=10) as conn:
             with conn.cursor() as cur:
                 cur.execute(_QUERY)
                 return cur.fetchall()
@@ -92,7 +93,7 @@ class PostgresCatalogReader:
         from psycopg.rows import dict_row
 
         items: dict[str, list[dict]] = defaultdict(list)
-        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+        with psycopg.connect(self.database_url, row_factory=dict_row, connect_timeout=10) as conn:
             with conn.cursor() as cur:
                 cur.execute(_COMBO_QUERY)
                 for row in cur.fetchall():
@@ -169,7 +170,7 @@ class PostgresVectorStore:
         self.reader = PostgresCatalogReader(database_url)
         self.embedder, self.cache_dir = embedder, cache_dir
 
-    def load(self) -> UnitIndex:
+    def load(self) -> tuple[UnitIndex, VectorSearchPort]:
         catalog = self.reader.load()
         os.makedirs(self.cache_dir, exist_ok=True)
         key = hashlib.md5((self.embedder.name + "\n".join(catalog.texts)).encode("utf-8")).hexdigest()[:12]
@@ -191,4 +192,5 @@ class PostgresVectorStore:
             np.save(path, embeddings)
             logger.info("startup.recsys.embedding.compute.ready cache=%s", path)
 
-        return catalog.to_index(embeddings, f"{self.embedder.name}@{key}")
+        index = catalog.to_index(f"{self.embedder.name}@{key}")
+        return index, NumpyVectorSearch([p.product_id for p in catalog.units], embeddings)
