@@ -102,6 +102,14 @@ python daily.py diff 2026-09-24 2026-09-25  # khác biệt giữa hai version
 python daily.py switch 2026-09-24 --load cloud   # quay lại version cũ; dòng không có trong version đó → available=false
 python daily.py freeze 2026-09-24 v1        # gắn nhãn, chép thành snapshots/2026-09-24/ để commit
 python monitor.py                           # UI: http://127.0.0.1:8765/daily (trên VPS: ssh -L 8765:127.0.0.1:8765 <vps>)
+
+# Chỉ dùng tạm thời khi cần mở dashboard qua external IP của VPS. Monitor có
+# các POST endpoint điều khiển job/pipeline nên chế độ này không có giới hạn IP
+# hoặc lớp đăng nhập; tắt bằng cách bỏ hai biến MONITOR_* rồi restart container.
+MONITOR_HOST='0.0.0.0' MONITOR_PUBLIC=1 \
+  IMAGE='asia-southeast1-docker.pkg.dev/vinpearl-508801/v-ota/vota-daily:latest' \
+  DATA_DIR='/srv/vota/daily-data' ENV_FILE='/etc/vota/daily.env' \
+  /opt/vota/bin/run_daily_docker.sh monitor
 ```
 
 Trang `/daily` hiển thị luồng của từng lượt (cào → chuẩn hoá → giữ dòng → gate → promote → nạp), log, phễu số dòng qua từng

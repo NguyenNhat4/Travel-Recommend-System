@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """UI theo dõi cào dữ liệu V-OTA: tiến độ từng job, dữ liệu đã parse, file, nhật ký, cảnh báo.
 
-Chỉ đọc (không ghi vào dữ liệu đang cào), chỉ nghe 127.0.0.1, không cần thư viện ngoài:
+Chỉ đọc (không ghi vào dữ liệu đang cào), mặc định chỉ nghe 127.0.0.1, không cần thư viện ngoài:
 
   python monitor.py                 # http://127.0.0.1:8765
   python monitor.py --port 9000 --data-dir /đường/dẫn/data
+  python monitor.py --host 0.0.0.0 --allow-public-host  # public tạm thời; có cả POST endpoint điều khiển
   http://127.0.0.1:8765/daily       # job hằng ngày: lượt chạy, bước đang chạy, data version, so sánh, dữ liệu qua từng bước
 
 Nguồn số liệu: data/batches/<job>/{job.json,last-run.json,state/,interim/,raw/,logs/}, data/interim, data/products.jsonl.
@@ -970,9 +971,18 @@ class Monitor:
 # ------------------------------------------------------------------------------------------ HTTP
 
 
+def host_allowed(host_header: str, allow_public: bool = False) -> bool:
+    """Kiểm tra Host HTTP; public mode là opt-in cho dashboard vận hành tạm thời."""
+    if allow_public:
+        return bool((host_header or "").strip())
+    host = (host_header or "").split(":")[0]
+    return host in ("127.0.0.1", "localhost", "[::1]")
+
+
 class Handler(BaseHTTPRequestHandler):
     monitor: Monitor
     daily: DailyApi
+    allow_public_host = False
     server_version = "VotaMonitor/1"
 
     def log_message(self, fmt, *args):  # im lặng: đây là công cụ nền
@@ -991,8 +1001,7 @@ class Handler(BaseHTTPRequestHandler):
         self._send(code, json.dumps(obj, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8")
 
     def _host_ok(self) -> bool:
-        host = (self.headers.get("Host") or "").split(":")[0]
-        return host in ("127.0.0.1", "localhost", "[::1]")  # chống DNS rebinding
+        return host_allowed(self.headers.get("Host") or "", self.allow_public_host)
 
     def do_GET(self):  # noqa: N802
         if not self._host_ok():
@@ -1116,13 +1125,16 @@ class Handler(BaseHTTPRequestHandler):
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--host", default="127.0.0.1", help="địa chỉ bind; mặc định chỉ nghe loopback")
     ap.add_argument("--port", type=int, default=8765)
+    ap.add_argument("--allow-public-host", action="store_true", help="chấp nhận Host public; chỉ bật khi dashboard cần public tạm thời")
     ap.add_argument("--data-dir", type=Path, default=Path(os.environ.get("VOTA_DATA_DIR", ROOT / "data")))
     a = ap.parse_args(argv)
     Handler.monitor = Monitor(a.data_dir.resolve())
     Handler.daily = DailyApi(a.data_dir.resolve())
-    server = ThreadingHTTPServer(("127.0.0.1", a.port), Handler)
-    print(f"Theo dõi cào dữ liệu: http://127.0.0.1:{a.port}  (dữ liệu: {a.data_dir.resolve()}) — Ctrl+C để dừng", flush=True)
+    Handler.allow_public_host = a.allow_public_host
+    server = ThreadingHTTPServer((a.host, a.port), Handler)
+    print(f"Theo dõi cào dữ liệu: http://{a.host}:{a.port}  (dữ liệu: {a.data_dir.resolve()}) — Ctrl+C để dừng", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

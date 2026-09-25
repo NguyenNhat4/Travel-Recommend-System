@@ -3,7 +3,7 @@
 #   run_daily_docker.sh init <thư mục interim> [<thư mục raw>]  # một lần: chuẩn bị thư mục dữ liệu trên VPS
 #   run_daily_docker.sh run                                     # một lượt: cào → chuẩn hoá → gate → promote → nạp DB → embed
 #   run_daily_docker.sh daily <lệnh daily.py…>                  # thao tác tay: status | versions | accept <lượt> | switch <version>…
-#   run_daily_docker.sh monitor                                 # trang /daily ở 127.0.0.1:8765 của VPS (xem qua ssh -L)
+#   run_daily_docker.sh monitor                                 # trang /daily ở 127.0.0.1:8765 (mặc định); public tạm thời dùng MONITOR_HOST/MONITOR_PUBLIC
 # Cron gợi ý (02:00 giờ máy): 0 2 * * * /đường/dẫn/run_daily_docker.sh run
 # Biến (export hoặc đặt trước lệnh): IMAGE, DATA_DIR, ENV_FILE, MAX_HOURS, DOCKER_NETWORK, CONTAINER_NAME, PULL — mặc định bên dưới.
 # Kết nối DB/Weaviate/Cohere chỉ nằm trong ENV_FILE (chmod 600), không bao giờ trong image, log hay script này.
@@ -16,6 +16,8 @@ MAX_HOURS="${MAX_HOURS:-16}"                     # hạn phần cào; quá hạn
 DOCKER_NETWORK="${DOCKER_NETWORK:-}"             # vd. app-private nếu Postgres chạy bằng Docker trên cùng VM
 NAME="${CONTAINER_NAME:-vota-daily}"
 PULL="${PULL:-1}"                                # 1 = kéo IMAGE mới trước mỗi lượt (lỗi kéo thì dùng image đã có)
+MONITOR_HOST="${MONITOR_HOST:-127.0.0.1}"        # monitor chỉ nghe loopback mặc định
+MONITOR_PUBLIC="${MONITOR_PUBLIC:-0}"            # 1 = chấp nhận Host public; chỉ bật tạm thời khi cần
 MANUAL_IN_IMAGE=/app/src/data_collection/snapshots/2026-09-23/combo_items_manual.jsonl
 
 die() { echo "$(date -Is) $*" >&2; exit 1; }
@@ -76,7 +78,16 @@ case "${1:-}" in
   init) shift; cmd_init "$@" ;;
   run) cmd_run ;;
   daily) shift; docker_run "$NAME-manual-$$" -- python daily.py "$@" ;;
-  # monitor.py chỉ nghe 127.0.0.1 (chống DNS rebinding) nên dùng mạng của host: trang nằm ở 127.0.0.1:8765 của VPS
-  monitor) shift; DOCKER_NETWORK='' docker_run "$NAME-monitor" --network host -- python monitor.py "$@" ;;
+  # monitor.py dùng mạng host; public mode là opt-in vì UI có các POST endpoint điều khiển job/pipeline.
+  monitor)
+    shift
+    monitor_args=(--host "$MONITOR_HOST")
+    case "$MONITOR_PUBLIC" in
+      1|true|yes) monitor_args+=(--allow-public-host) ;;
+      0|false|no) ;;
+      *) die "MONITOR_PUBLIC phải là 0/1, true/false hoặc yes/no" ;;
+    esac
+    DOCKER_NETWORK='' docker_run "$NAME-monitor" --network host -- python monitor.py "${monitor_args[@]}" "$@"
+    ;;
   *) sed -n '2,9p' "$0"; exit 2 ;;
 esac
