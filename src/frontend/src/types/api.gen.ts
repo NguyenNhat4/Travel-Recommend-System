@@ -552,10 +552,12 @@ export interface components {
          */
         PriceUnit: "PER_NIGHT" | "PER_PERSON" | "PER_PACKAGE" | "UNKNOWN";
         /**
-         * @description ANN_CANDIDATE_SCORE là mặc định cho cả /search, /similar và /recommendations (từ 2026-09-24): lọc id theo structured filter, lấy top-K ứng viên từ Weaviate, rồi chấm điểm và đếm trên tập ứng viên đó. Ở chế độ này approximate là true, totalExact và facetsExact bắt buộc là false. EXACT_FILTER_SCORE giữ cho engine quét toàn bộ vector (bản chạy offline).
+         * @description ANN_CANDIDATE_SCORE là mặc định cho /similar và /recommendations (từ 2026-09-24): lọc id theo structured filter, lấy top-K ứng viên từ Weaviate, rồi chấm điểm và đếm trên tập ứng viên đó. Ở chế độ này approximate là true, totalExact và facetsExact bắt buộc là false.
+         *     HYBRID_CANDIDATE_SCORE là mặc định của /search (từ 2026-09-25): R = R_dense ∪ R_lex. R_dense = top-K dense có score >= cutoff (như ANN). R_lex = hit BM25 (trên nameAscii/searchTextAscii đã fold dấu) có rank <= diagnostics.lexicalK, score trong [diagnostics.lexicalCutoff, cutoff) và tên chứa >= diagnostics.lexicalMinCoverage token của truy vấn. results sắp theo RRF (k = diagnostics.rrfK) nên score — vẫn là cosine đã clamp — KHÔNG đơn điệu trong một trang; đếm phần vớt ở diagnostics.lexicalCount. approximate/totalExact/facetsExact như ANN. Backend tắt hybrid (SEARCH_HYBRID=false) thì /search khai lại ANN_CANDIDATE_SCORE.
+         *     EXACT_FILTER_SCORE giữ cho engine quét toàn bộ vector (bản chạy offline).
          * @enum {string}
          */
-        SearchMode: "EXACT_FILTER_SCORE" | "ANN_CANDIDATE_SCORE";
+        SearchMode: "EXACT_FILTER_SCORE" | "ANN_CANDIDATE_SCORE" | "HYBRID_CANDIDATE_SCORE";
         /**
          * @description NOT_CHECKED là giá trị mặc định khi chưa có checkIn/checkOut/party. EXPIRED khi snapshot availability đã quá hạn (expires_at).
          * @enum {string}
@@ -820,7 +822,7 @@ export interface components {
         };
         /**
          * @description query bắt buộc; trường tùy chọn null tương đương bỏ qua/default. Lọc priceMin/Max trên unitPrice snapshot VND, KHÔNG phải ngân sách chuyến đi; giá null bị loại khi có lọc giá.
-         *     [C4] Thứ tự xử lý bắt buộc: FILTER -> SCORE -> CUTOFF -> TOTAL/FACETS -> SORT -> PAGE. F = tập sau structured filter. R = { p thuộc F | score >= cutoff }. total = |R|, facets tính trên R, results là một trang của R.
+         *     [C4] Thứ tự xử lý bắt buộc: FILTER -> SCORE -> CUTOFF -> TOTAL/FACETS -> SORT -> PAGE. F = tập sau structured filter. R = { p thuộc F | score >= cutoff }. total = |R|, facets tính trên R, results là một trang của R. Ở HYBRID_CANDIDATE_SCORE (xem SearchMode) R gồm thêm phần vớt từ nhánh BM25 và SORT theo RRF thay vì theo score.
          */
         SearchRequest: {
             query: string;
@@ -861,7 +863,7 @@ export interface components {
         /** @description [C4] Bất biến: sum(facets.taxonomy) == total. total và facets KHÔNG đổi khi thay limit/offset. total, facets và results phải dùng cùng filter và cùng cutoff. */
         SearchResponse: {
             results: components["schemas"]["ScoredProduct"][];
-            /** @description [C4] |R| — số sản phẩm vượt cutoff sau filter. KHÔNG phụ thuộc limit/offset. */
+            /** @description [C4] |R| — số sản phẩm vượt cutoff sau filter. KHÔNG phụ thuộc limit/offset. Ở HYBRID_CANDIDATE_SCORE, R gồm thêm diagnostics.lexicalCount phần tử vớt từ nhánh BM25 có score trong [diagnostics.lexicalCutoff, cutoff). */
             total: number;
             limit?: number;
             offset?: number;
@@ -872,7 +874,7 @@ export interface components {
              *     Dùng cho quy tắc margin: model họ e5 có dải cosine bị nén (cặp không liên quan đã ở 0.72–0.78), nên ngưỡng tuyệt đối đơn thuần không đáng tin. Client tính margin = topScore - backgroundScore và báo "kết quả yếu" khi topScore < WEAK_RESULT_TOP_SCORE HOẶC margin < WEAK_RESULT_MARGIN. null khi results rỗng.
              */
             backgroundScore?: number | null;
-            /** @description [C3][C4] Ngưỡng đã áp. Giá trị tạm 0.62 (PROVISIONAL), benchmark Ngày 3 trên 80 cặp query-product gán nhãn cộng 10 truy vấn âm. Nguồn sự thật là search.cutoff trong application.yml; frontend đọc lại từ trường này, KHÔNG hard-code bản sao. */
+            /** @description [C3][C4] Ngưỡng đã áp cho nhánh dense. Giá trị tạm 0.62 (PROVISIONAL), benchmark Ngày 3 trên 80 cặp query-product gán nhãn cộng 10 truy vấn âm. Nguồn sự thật là search.cutoff trong application.yml; frontend đọc lại từ trường này, KHÔNG hard-code bản sao. Ở HYBRID_CANDIDATE_SCORE, kết quả vớt từ nhánh BM25 có score trong [diagnostics.lexicalCutoff, cutoff). */
             cutoff?: number;
             facets?: components["schemas"]["SearchFacets"];
             appliedFilters?: components["schemas"]["AppliedFilters"];
@@ -910,7 +912,7 @@ export interface components {
         };
         EngineDiagnostics: {
             searchMode: components["schemas"]["SearchMode"];
-            /** @description false ở chế độ EXACT_FILTER_SCORE, true ở ANN_CANDIDATE_SCORE. */
+            /** @description false ở chế độ EXACT_FILTER_SCORE, true ở ANN_CANDIDATE_SCORE và HYBRID_CANDIDATE_SCORE. */
             approximate: boolean;
             /** @description [C4] false bắt buộc khi approximate là true. HNSW chỉ trả top-K nên sản phẩm ngoài candidate pool vẫn có thể vượt cutoff — total khi đó không chính xác. */
             totalExact?: boolean;
@@ -922,6 +924,39 @@ export interface components {
             relevantCount?: number;
             modelVersion?: string;
             latencyMs: number;
+            /**
+             * @description Cách hợp nhất hai nhánh dense và BM25. rrf = Σ 1/(rrfK + rank) trên các nhánh có mặt.
+             * @enum {string}
+             */
+            fusion?: "rrf";
+            rrfK?: number;
+            /** @description Chỉ hit BM25 có rank <= lexicalK mới được vớt vào R khi score < cutoff. */
+            lexicalK?: number;
+            /** @description Cosine tối thiểu của hit được vớt từ nhánh BM25; luôn <= cutoff. */
+            lexicalCutoff?: number;
+            /** @description Tỉ lệ token của truy vấn (đã fold dấu, bỏ từ chức năng) phải có trong tên để hit BM25 được vớt — truy vấn gần như là tên/thương hiệu thì qua, câu mô tả dài thì để nhánh dense lo. */
+            lexicalMinCoverage?: number;
+            /** @description Số hit nhánh BM25 trả về (0 khi nhánh lexical lỗi — engine tự lùi về dense-only, không 500). */
+            lexicalCandidates?: number;
+            /** @description Số phần tử của R chỉ vào nhờ nhánh BM25 (score trong [lexicalCutoff, cutoff)). */
+            lexicalCount?: number;
+            /** @description Chuỗi thực sự đưa vào embed và BM25. Vắng mặt khi không khác `query`. Event `search` ghi sang CDP (§3.2) vẫn dùng `query` gốc. */
+            normalizedQuery?: string;
+            /** @description Cụm đã thay theo thứ tự xuất hiện: viết tắt (KS → khách sạn, PQ → Phú Quốc), tên điểm đến về giá trị catalog (da nang → Đà Nẵng), kiểu đi về nhãn catalog (bạn gái → cặp đôi). */
+            appliedAliases?: {
+                from: string;
+                to: string;
+            }[];
+            /** @description Token đã sửa chính tả theo từ vựng tên sản phẩm + điểm đến của catalog (Vinpeal → Vinpearl). Chỉ sửa token không phải âm tiết tiếng Việt, dài >= 5, khoảng cách <= 1 (<= 2 khi >= 8), từ đích có mặt ở >= 3 tên. */
+            corrections?: {
+                from: string;
+                to: string;
+            }[];
+            /**
+             * @description Kiểu đi nhận ra trong câu (đi một mình / cặp đôi, bạn trai, bạn gái / gia đình, có trẻ nhỏ / nhóm bạn / công ty, công tác). Mới chỉ để chuẩn hoá chữ và khai báo; chưa lọc hay suy số khách (bước 2).
+             * @enum {string}
+             */
+            party?: "SOLO" | "COUPLE" | "FAMILY" | "FRIENDS" | "BUSINESS";
         };
         BecauseItem: {
             /** @description null trong hai trường hợp: event là `search` (không trỏ tới sản phẩm nào), hoặc sản phẩm nguồn có status INACTIVE. [CHỜ DUYỆT: U1] productId khác null thì sản phẩm PHẢI mở được GET /products/{id} và trả 200. */

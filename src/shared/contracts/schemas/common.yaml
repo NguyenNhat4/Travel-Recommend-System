@@ -60,12 +60,24 @@ SearchMode:
   enum:
   - EXACT_FILTER_SCORE
   - ANN_CANDIDATE_SCORE
+  - HYBRID_CANDIDATE_SCORE
   description: >-
-    ANN_CANDIDATE_SCORE là mặc định cho cả /search, /similar và /recommendations
+    ANN_CANDIDATE_SCORE là mặc định cho /similar và /recommendations
     (từ 2026-09-24): lọc id theo structured filter, lấy top-K ứng viên từ Weaviate,
     rồi chấm điểm và đếm trên tập ứng viên đó. Ở chế độ này approximate là true,
-    totalExact và facetsExact bắt buộc là false. EXACT_FILTER_SCORE giữ cho
-    engine quét toàn bộ vector (bản chạy offline).
+    totalExact và facetsExact bắt buộc là false.
+
+    HYBRID_CANDIDATE_SCORE là mặc định của /search (từ 2026-09-25): R = R_dense ∪ R_lex.
+    R_dense = top-K dense có score >= cutoff (như ANN). R_lex = hit BM25 (trên
+    nameAscii/searchTextAscii đã fold dấu) có rank <= diagnostics.lexicalK, score
+    trong [diagnostics.lexicalCutoff, cutoff) và tên chứa >= diagnostics.lexicalMinCoverage
+    token của truy vấn.
+    results sắp theo RRF (k = diagnostics.rrfK) nên score — vẫn là cosine đã clamp —
+    KHÔNG đơn điệu trong một trang; đếm phần vớt ở diagnostics.lexicalCount.
+    approximate/totalExact/facetsExact như ANN. Backend tắt hybrid (SEARCH_HYBRID=false)
+    thì /search khai lại ANN_CANDIDATE_SCORE.
+
+    EXACT_FILTER_SCORE giữ cho engine quét toàn bộ vector (bản chạy offline).
 
 # [Q1] Kết quả kiểm tra availability theo một khoảng ngày cụ thể.
 AvailabilityStatus:

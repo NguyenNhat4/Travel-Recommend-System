@@ -2,6 +2,7 @@
 import asyncio
 from types import SimpleNamespace
 
+from src.backend.app.core.config import Settings
 from src.backend.app.main import RecsysRefresher
 
 
@@ -119,3 +120,9 @@ def test_close_releases_the_shared_clients():
     asyncio.run(refresher.reload())
     refresher.close()
     assert refresher.services["recsys_embedder"].closed and refresher.services["recsys_vectors"].closed
+
+
+def test_real_settings_carry_the_refresh_interval():
+    # Các test trên dùng SimpleNamespace; test này giữ Settings thật không mất trường mà run() đọc.
+    assert Settings(catalog_refresh_seconds=60).catalog_refresh_seconds == 60
+    assert Settings.model_fields["catalog_refresh_seconds"].default == 900.0
