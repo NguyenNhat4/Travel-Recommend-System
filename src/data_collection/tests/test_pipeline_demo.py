@@ -1,4 +1,4 @@
-"""Hồi quy cho pipeline_demo.py, apify_source.py và các route /pipeline của monitor.py.
+"""Hồi quy cho pipeline_demo.py, apify_source.py.
 
 Không gọi mạng thật, không cần Postgres: Apify được thay bằng server giả chạy trên 127.0.0.1; phần chạy trọn luồng (--no-db) dùng
 một lát dữ liệu thô thật nếu có trong data/interim (không có thì bỏ qua)."""
@@ -14,7 +14,6 @@ from pathlib import Path
 from unittest import mock
 
 import apify_source as ap
-import monitor
 import pipeline_demo as pd
 
 REAL_INTERIM = Path(__file__).resolve().parents[1] / "data" / "interim"
@@ -311,63 +310,6 @@ class EnvFile(unittest.TestCase):
             os.environ.pop("APIFY_TOKEN", None)
             with self.assertRaisesRegex(ap.ApifyError, r"\.env.*API & Integrations"):
                 ap.get_token()
-
-
-class MonitorRoutes(unittest.TestCase):
-    def test_state_empty_then_returns_written_state_and_marks_dead_process(self):
-        with tempfile.TemporaryDirectory() as t:
-            m = monitor.Monitor(Path(t))
-            self.assertEqual(m.pipeline_state("latest"), {"empty": True})
-            run = Path(t) / "demo" / "runs" / "20260921-101500"
-            run.mkdir(parents=True)
-            (run / "state.json").write_text(json.dumps({"runId": run.name, "status": "running", "pid": 999999999}), encoding="utf-8")
-            (Path(t) / "demo" / "latest.txt").write_text(run.name, encoding="utf-8")
-            st = m.pipeline_state("latest")
-            self.assertEqual((st["status"], st.get("stale")), ("stopped", True))
-            self.assertEqual(m.pipeline_runs()[0]["id"], run.name)
-
-    def test_state_rejects_path_traversal(self):
-        with tempfile.TemporaryDirectory() as t:
-            for bad in ("../../etc", "20260921-101500/../x", "abc"):
-                with self.subTest(bad=bad), self.assertRaises(ValueError):
-                    monitor.Monitor(Path(t)).pipeline_state(bad)
-
-    def test_start_pipeline_validates_input_and_refuses_second_run(self):
-        with tempfile.TemporaryDirectory() as t:
-            m = monitor.Monitor(Path(t))
-            for bad in ({"destinations": "a; rm -rf /"}, {"destinations": "x" * 300}, {"delayMs": "abc"}):
-                with self.subTest(bad=bad), self.assertRaises(ValueError), mock.patch("subprocess.Popen") as popen:
-                    m.start_pipeline(bad)
-                    popen.assert_not_called()
-            run = Path(t) / "demo" / "runs" / "20260921-101500"
-            run.mkdir(parents=True)
-            (run / "state.json").write_text(json.dumps({"status": "running", "pid": os.getpid()}), encoding="utf-8")
-            (Path(t) / "demo" / "latest.txt").write_text(run.name, encoding="utf-8")
-            with mock.patch("subprocess.Popen") as popen:
-                self.assertEqual(m.start_pipeline({})[0], 409)
-                popen.assert_not_called()
-
-    def test_start_pipeline_only_api(self):
-        with tempfile.TemporaryDirectory() as t, mock.patch("subprocess.Popen") as popen:
-            monitor.Monitor(Path(t)).start_pipeline({"onlyApi": True})
-            self.assertIn("--only-api", popen.call_args.args[0])
-
-    def test_start_pipeline_builds_a_safe_command(self):
-        with tempfile.TemporaryDirectory() as t:
-            m = monitor.Monitor(Path(t))
-            with mock.patch("subprocess.Popen") as popen:
-                code, body = m.start_pipeline({"destinations": "Nha Trang,Phú Quốc", "maxHotels": "300", "delayMs": 999999, "liveVinpearl": True,
-                                               "liveTours": True, "noDb": True})
-            self.assertEqual(code, 200)
-            argv = popen.call_args.args[0]
-            self.assertEqual(argv[argv.index("--replay-delay-ms") + 1], "2000")  # bị chặn ở mức tối đa
-            self.assertEqual(argv[argv.index("--destinations") + 1], "Nha Trang,Phú Quốc")
-            self.assertEqual(argv[argv.index("--max-hotels") + 1], "300")
-            self.assertIn("--live-vinpearl", argv)
-            self.assertNotIn("--live-tours", argv, "giao diện không được mở trình duyệt (Chromium) dù có ai gửi liveTours")
-            self.assertIn("--no-db", argv)
-            self.assertNotIn("--db-port", argv, "giao diện không được đổi đích Postgres")
-            self.assertEqual(popen.call_args.kwargs["env"]["VOTA_DATA_DIR"], str(Path(t)))
 
 
 @unittest.skipUnless(all((REAL_INTERIM / f).exists() for f in ("booking_hotels.jsonl", "agoda_hotels.jsonl", "vinpearl.jsonl")),

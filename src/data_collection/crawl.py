@@ -65,8 +65,28 @@ def _browser_opts(a: argparse.Namespace) -> BrowserOptions:
     )
 
 
+def parse_budget(text: str | None) -> dict[str, int]:
+    """`booking_hotels=30,agoda_hotels=20` → ngân sách từng loại (tên trường của collectors/plan.py Budget)."""
+    from dataclasses import fields as dc_fields
+
+    from collectors.plan import Budget
+
+    known = {f.name for f in dc_fields(Budget)}
+    out: dict[str, int] = {}
+    for part in (text or "").split(","):
+        if not part.strip():
+            continue
+        key, sep, value = part.partition("=")
+        key = key.strip()
+        if not sep or key not in known or not value.strip().isdigit():
+            raise SystemExit(f"--budget sai: {part!r} (dạng KHOÁ=SỐ, khoá: {', '.join(sorted(known))})")
+        out[key] = int(value)
+    return out
+
+
 def _plan(a: argparse.Namespace):
-    return select_destinations(getattr(a, "destinations", None)), budget_with(getattr(a, "per_destination", None))
+    budget = budget_with(getattr(a, "per_destination", None), **parse_budget(getattr(a, "budget", None)))
+    return select_destinations(getattr(a, "destinations", None)), budget
 
 
 def _crawl_opts(a: argparse.Namespace, default_delay: float) -> booking_base.CrawlOptions:
@@ -347,6 +367,8 @@ def build_parser() -> argparse.ArgumentParser:
     pl = plan.add_argument_group("kế hoạch (collectors/plan.py)")
     pl.add_argument("--destinations", default=None, help="chỉ các điểm đến này, vd. 'Nha Trang,Phú Quốc' (mặc định cả 15)")
     pl.add_argument("--per-destination", type=int, default=None, help="số khách sạn/điểm tham quan mỗi điểm đến (mặc định 30/20/25)")
+    pl.add_argument("--budget", default=None,
+                    help="ghi đè từng ngân sách, vd. booking_hotels=40,agoda_hotels=10,trip_attractions=25 (sau --per-destination)")
 
     crawl = argparse.ArgumentParser(add_help=False)
     c = crawl.add_argument_group("hàng đợi")

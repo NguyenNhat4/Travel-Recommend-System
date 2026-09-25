@@ -1,0 +1,10 @@
+services:
+  backend:
+    container_name: vota-backend
+    image: asia-southeast1-docker.pkg.dev/vinpearl-508801/v-ota-data-pipeline-crawler/vota-backend:latest
+    restart: unless-stopped
+    network_mode: host
+    env_file:
+      - /etc/vota/backend.env
+    volumes:
+      - /etc/vota/backend-secrets:/app/secrets:ro
