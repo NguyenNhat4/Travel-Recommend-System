@@ -7,11 +7,12 @@ import { useAssistant } from '../../context/AssistantProvider';
 import { productFromApi } from '../../services/catalog';
 import type { components } from '../../types/api.gen';
 import { GroundedPlan, Product, TravelIntent, ItineraryDay, ItinerarySlot } from '../../types/travel';
+import { AssistantTripStarter, tripStarterMessage } from './AssistantTripStarter';
 import { 
   X, Send, Maximize2, Minimize2, Sparkles, MapPin, 
-  Calendar, Users, Check, Loader2, Compass, 
+  Calendar, Users, Loader2, Compass,
   ShoppingBag, Hotel, Clock, ArrowRight, ChevronRight, ChevronLeft, List,
-  Plus, MessageSquare, Trash2, ExternalLink, Bookmark, CheckCircle2, SlidersHorizontal, RotateCcw, AlertCircle
+  Plus, MessageSquare, Trash2, ExternalLink, Bookmark, RotateCcw, AlertCircle
 } from 'lucide-react';
 
 // Dynamically load the Leaflet + OSM/OSRM itinerary map to avoid SSR issues.
@@ -27,26 +28,11 @@ const ItineraryMap = dynamic(
   }
 );
 
-export interface ClarificationData {
-  id: string;
-  title: string;
-  description: string;
-  missingFields: ('destination' | 'days' | 'party' | 'style')[];
-  suggestedDestinations: string[];
-  suggestedDays: number[];
-  selectedDestination: string;
-  selectedDays: number;
-  selectedParty: 'solo' | 'couple' | 'family_with_kids' | 'friends';
-  selectedStyle: 'luxury' | 'budget' | 'balanced';
-  isResolved?: boolean;
-}
-
 interface WidgetChatMessage {
   id: string;
   sender: 'user' | 'assistant';
   text: string;
   plan?: GroundedPlan;
-  clarification?: ClarificationData;
 }
 
 interface ConversationSession {
@@ -60,7 +46,7 @@ interface ConversationSession {
 const DEFAULT_WELCOME_MESSAGE: WidgetChatMessage = {
   id: 'welcome',
   sender: 'assistant',
-  text: 'Xin chào! Mình là Trợ lý Du lịch V-OTA AI. Mình có thể hỗ trợ bạn tìm phòng, đặt vé VinWonders hay thiết kế lịch trình du lịch thông minh kèm bản đồ!'
+  text: 'Xin chào! Mình là Trợ lý Du lịch V-OTA AI. Hãy cung cấp thông tin đầy đủ nhất có thể về điểm đến, số ngày, nhóm đồng hành, ngân sách và sở thích để đề xuất chính xác và sát nhu cầu của bạn hơn.'
 };
 
 interface HotelVisualData {
@@ -344,7 +330,6 @@ export const AiFloatingWidget: React.FC = () => {
   const {
     state: assistantState,
     sendMessage,
-    submitIntentOverride,
     retry,
     abort,
     resetConversation,
@@ -362,8 +347,6 @@ export const AiFloatingWidget: React.FC = () => {
   const [isChatCollapsed, setIsChatCollapsed] = useState<boolean>(false);
   const [hoveredCoordinate, setHoveredCoordinate] = useState<{ lat: number; lng: number } | null>(null);
   const [hoveredPointId, setHoveredPointId] = useState<string | null>(null);
-  const [resolvedClarifications, setResolvedClarifications] = useState<Set<string>>(new Set());
-
   // History Conversation & Drawer States
   const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
   const [conversations, setConversations] = useState<ConversationSession[]>([]);
@@ -409,29 +392,8 @@ export const AiFloatingWidget: React.FC = () => {
 
     return assistantState.transcript.map((item) => {
       let plan: GroundedPlan | undefined = undefined;
-      let clarification: ClarificationData | undefined = undefined;
-
       if (item.response?.status === 'COMPLETED') {
         plan = convertItineraryCompletedToGroundedPlan(item.response);
-      } else if (item.response?.status === 'NEEDS_CLARIFICATION') {
-        const clarify = item.response;
-        clarification = {
-          id: 'clarify-' + item.id,
-          title: 'Làm rõ yêu cầu chuyến đi của bạn',
-          description: clarify.question,
-          missingFields: (clarify.missingFields as any) || ['destination', 'days'],
-          suggestedDestinations: clarify.suggestedValues?.destination && clarify.suggestedValues.destination.length > 0
-            ? clarify.suggestedValues.destination
-            : ['Nha Trang', 'Phú Quốc', 'Đà Nẵng', 'Đà Lạt'],
-          suggestedDays: clarify.suggestedValues?.days && clarify.suggestedValues.days.length > 0
-            ? clarify.suggestedValues.days
-            : [2, 3, 4, 5],
-          selectedDestination: clarify.knownIntent?.destination || clarify.suggestedValues?.destination?.[0] || 'Nha Trang',
-          selectedDays: clarify.knownIntent?.days || clarify.suggestedValues?.days?.[0] || 3,
-          selectedParty: (clarify.knownIntent?.party as any) || 'family_with_kids',
-          selectedStyle: 'luxury',
-          isResolved: resolvedClarifications.has(item.id),
-        };
       }
 
       return {
@@ -439,10 +401,9 @@ export const AiFloatingWidget: React.FC = () => {
         sender: item.sender,
         text: item.text,
         plan,
-        clarification,
       };
     });
-  }, [assistantState.transcript, localMessages, resolvedClarifications]);
+  }, [assistantState.transcript, localMessages]);
 
   const setMessages = setLocalMessages;
 
@@ -521,221 +482,6 @@ export const AiFloatingWidget: React.FC = () => {
       setIsExpanded(false);
     }
   }, [currentRoute]);
-
-  // Component Human-in-the-loop: Clarification & Preference Disambiguation Card
-  const ClarificationCard: React.FC<{
-    clarification: ClarificationData;
-    onConfirm: (data: ClarificationData) => void;
-  }> = ({ clarification, onConfirm }) => {
-    const [dest, setDest] = useState(clarification.selectedDestination);
-    const [days, setDays] = useState(clarification.selectedDays);
-    const [party, setParty] = useState(clarification.selectedParty);
-    const [style, setStyle] = useState(clarification.selectedStyle);
-
-    const isResolved = !!clarification.isResolved;
-
-    const handleSubmit = (e: React.FormEvent) => {
-      e.preventDefault();
-      if (isResolved) return;
-      onConfirm({
-        ...clarification,
-        selectedDestination: dest,
-        selectedDays: days,
-        selectedParty: party,
-        selectedStyle: style,
-        isResolved: true
-      });
-    };
-
-    return (
-      <div className="mt-3.5 bg-white border border-blue-200/90 rounded-2xl p-4 shadow-md text-slate-800 space-y-3.5 animate-in fade-in zoom-in-95 duration-200">
-        {/* Header card HITL */}
-        <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
-          <div className="flex items-center space-x-2">
-            <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-blue-100 text-blue-600 shadow-xs">
-              <SlidersHorizontal className="h-4 w-4" />
-            </span>
-            <div>
-              <div className="text-xs font-bold uppercase tracking-wider text-blue-600">
-                Tương tác cùng AI (Human-in-the-loop)
-              </div>
-              <div className="text-sm font-semibold text-slate-900">
-                {clarification.title}
-              </div>
-            </div>
-          </div>
-          {isResolved && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 border border-emerald-200">
-              <CheckCircle2 className="h-3.5 w-3.5" />
-              Đã xác nhận
-            </span>
-          )}
-        </div>
-
-        <p className="text-xs text-slate-600 leading-relaxed">
-          {clarification.description}
-        </p>
-
-        <form onSubmit={handleSubmit} className="space-y-3 pt-1">
-          {/* 1. Chọn điểm đến */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center gap-1">
-              <MapPin className="w-3.5 h-3.5 text-blue-600" />
-              <span>Điểm đến:</span>
-            </label>
-            <div className="flex flex-wrap gap-1.5">
-              {clarification.suggestedDestinations.map(d => (
-                <button
-                  key={d}
-                  type="button"
-                  disabled={isResolved}
-                  onClick={() => setDest(d)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
-                    dest === d
-                      ? 'bg-blue-600 text-white shadow-xs'
-                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200 disabled:opacity-60'
-                  }`}
-                >
-                  {d}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* 2. Chọn số ngày */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center gap-1">
-              <Calendar className="w-3.5 h-3.5 text-blue-600" />
-              <span>Thời lượng chuyến đi:</span>
-            </label>
-            <div className="flex flex-wrap gap-1.5">
-              {clarification.suggestedDays.map(num => (
-                <button
-                  key={num}
-                  type="button"
-                  disabled={isResolved}
-                  onClick={() => setDays(num)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
-                    days === num
-                      ? 'bg-blue-600 text-white shadow-xs'
-                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200 disabled:opacity-60'
-                  }`}
-                >
-                  {num} ngày ({num - 1 > 0 ? `${num - 1} đêm` : 'trong ngày'})
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* 3. Phong cách chuyến đi & Ngân sách (Disambiguation) */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center gap-1">
-              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              <span>Phong cách trải nghiệm ưu tiên:</span>
-            </label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <button
-                type="button"
-                disabled={isResolved}
-                onClick={() => setStyle('luxury')}
-                className={`p-2 rounded-xl text-left border transition text-xs cursor-pointer ${
-                  style === 'luxury'
-                    ? 'border-blue-600 bg-blue-50/70 text-blue-900 font-semibold shadow-xs'
-                    : 'border-slate-200 bg-slate-50/60 hover:bg-slate-100 text-slate-700 disabled:opacity-60'
-                }`}
-              >
-                <div className="flex items-center gap-1 font-bold">
-                  <span>💎 Nghỉ dưỡng sang trọng</span>
-                </div>
-                <div className="text-[11px] text-slate-500 font-normal mt-0.5">
-                  Villa riêng tư / Resort 5★ & Spa
-                </div>
-              </button>
-
-              <button
-                type="button"
-                disabled={isResolved}
-                onClick={() => setStyle('budget')}
-                className={`p-2 rounded-xl text-left border transition text-xs cursor-pointer ${
-                  style === 'budget'
-                    ? 'border-blue-600 bg-blue-50/70 text-blue-900 font-semibold shadow-xs'
-                    : 'border-slate-200 bg-slate-50/60 hover:bg-slate-100 text-slate-700 disabled:opacity-60'
-                }`}
-              >
-                <div className="flex items-center gap-1 font-bold">
-                  <span>💰 Tối ưu chi phí</span>
-                </div>
-                <div className="text-[11px] text-slate-500 font-normal mt-0.5">
-                  Combo vé + phòng tiết kiệm, năng động
-                </div>
-              </button>
-            </div>
-          </div>
-
-          {/* 4. Nhóm đồng hành */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center gap-1">
-              <Users className="w-3.5 h-3.5 text-blue-600" />
-              <span>Đối tượng chuyến đi:</span>
-            </label>
-            <div className="flex flex-wrap gap-1.5">
-              {[
-                { id: 'family_with_kids', label: '👨‍👩‍👧 Gia đình có trẻ nhỏ' },
-                { id: 'couple', label: '💑 Cặp đôi lãng mạn' },
-                { id: 'friends', label: '🏄 Nhóm bạn trẻ' },
-                { id: 'solo', label: '🎒 Độc hành' },
-              ].map(item => (
-                <button
-                  key={item.id}
-                  type="button"
-                  disabled={isResolved}
-                  onClick={() => setParty(item.id as any)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
-                    party === item.id
-                      ? 'bg-blue-600 text-white shadow-xs'
-                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200 disabled:opacity-60'
-                  }`}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Nút chốt tiêu chí (Human confirmation button) */}
-          {!isResolved && (
-            <div className="pt-2">
-              <button
-                type="submit"
-                className="w-full py-2.5 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-bold rounded-xl shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <Check className="w-4 h-4" />
-                <span>Xác nhận tiêu chí & Tạo lịch trình ngay</span>
-              </button>
-            </div>
-          )}
-        </form>
-      </div>
-    );
-  };
-
-  const handleConfirmClarification = (clarification: ClarificationData) => {
-    setResolvedClarifications(prev => new Set(prev).add(clarification.id.replace('clarify-', '')));
-
-    const partyName = clarification.selectedParty === 'family_with_kids' 
-      ? 'gia đình' 
-      : clarification.selectedParty === 'couple' 
-        ? 'cặp đôi' 
-        : clarification.selectedParty === 'friends' 
-          ? 'nhóm bạn' 
-          : 'đi một mình';
-    const styleName = clarification.selectedStyle === 'luxury' 
-      ? 'nghỉ dưỡng sang trọng' 
-      : 'tối ưu chi phí tiết kiệm';
-
-    const userConfirmationText = `Tôi chọn đi ${clarification.selectedDestination} (${clarification.selectedDays} ngày) cho ${partyName}, ưu tiên phong cách ${styleName}.`;
-    sendMessage(userConfirmationText);
-  };
 
   const handleSendMessage = (textToSend?: string) => {
     const text = (textToSend || inputVal).trim();
@@ -943,10 +689,10 @@ export const AiFloatingWidget: React.FC = () => {
               }`}
             >
               <div>{m.text}</div>
-              {m.clarification && (
-                <ClarificationCard 
-                  clarification={m.clarification} 
-                  onConfirm={handleConfirmClarification} 
+              {m.id === DEFAULT_WELCOME_MESSAGE.id && assistantState.transcript.length === 0 && (
+                <AssistantTripStarter
+                  disabled={isRunning}
+                  onSubmit={(selection) => handleSendMessage(tripStarterMessage(selection))}
                 />
               )}
               {m.plan && !isExpanded && (

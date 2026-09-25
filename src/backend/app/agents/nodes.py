@@ -31,6 +31,7 @@ from src.backend.app.domain.itinerary.planning import empty_intent
 from .steps import composition, conversation, evaluation, messages, tool_planning, validation
 from .steps.classification import classify_result, extraction_input
 from .steps.failures import terminal_failure
+from .steps.history import append_conversation_turn, sanitize_conversation_history
 from .steps.messages import chat_model, event, failure, message
 from .models import ConversationalAnswer, Extraction
 from .state import AgentState
@@ -43,12 +44,14 @@ MAX_ATTEMPTS = 2
 def intake_node(state: AgentState) -> dict:
     """Khởi tạo state cho lượt này.
 
-    Đọc: `query`/`message`, `conversation_id`, `intent`, `constraints`, `previous_selection`, `language`.
+    Đọc: `query`/`message`, `conversation_id`, `conversation_history`, `intent`, `constraints`,
+    `previous_selection`, `language`.
     Ghi: toàn bộ field của `AgentState` về giá trị đầu lượt, kể cả bộ đếm retry và mốc đo latency.
     Đi tiếp: `classify`.
     """
     return {"query": state.get("query", state.get("message", "")).strip(),
             "conversation_id": state.get("conversation_id") or f"conv-{uuid.uuid4().hex}",
+            "conversation_history": sanitize_conversation_history(state.get("conversation_history", [])),
             "intent": deepcopy(state.get("intent") or empty_intent()),
             "constraints": deepcopy(state.get("constraints", {})),
             "previous_selection": deepcopy(state.get("previous_selection", [])),
@@ -65,10 +68,11 @@ def intake_node(state: AgentState) -> dict:
 
 async def intake_node_async(state: AgentState, *, store: ConversationStorePort | None = None,
                             owner: str = "anonymous") -> dict:
-    """`intake` trên đường async: nạp thêm intent/constraints đã lưu của hội thoại.
+    """`intake` trên đường async: nạp intent/constraints/lịch sử đã lưu của hội thoại.
 
     Đọc thêm: bản ghi trong `ConversationStorePort` theo `conversation_id` và chủ sở hữu.
-    Ghi thêm: intent/constraints/`previous_selection` của lượt trước, hoặc lỗi `CONVERSATION_NOT_FOUND` (404).
+    Ghi thêm: intent/constraints/`previous_selection`/`conversation_history` của lượt trước,
+    hoặc lỗi `CONVERSATION_NOT_FOUND` (404).
     """
     update = intake_node(state)
     if store is not None and state.get("conversation_id"):
@@ -78,14 +82,17 @@ async def intake_node_async(state: AgentState, *, store: ConversationStorePort |
         else:
             update.update(intent=previous["intent"], constraints=previous.get("constraints", {}),
                           language=state.get("language") or previous.get("language", "vi"),
-                          previous_selection=previous.get("previous_selection", []))
+                          previous_selection=previous.get("previous_selection", []),
+                          conversation_history=sanitize_conversation_history(
+                              previous.get("conversation_history", [])))
     return update
 
 
 def classify_node(state: AgentState, *, llm=None) -> dict:
     """Trích intent từ message bằng LLM và chọn nhánh cho cả lượt. **Gọi LLM.**
 
-    Đọc: `query`, `intent`, `constraints`, `previous_selection`, `intent_override`.
+    Đọc: `query`, `conversation_history`, `intent`, `constraints`, `previous_selection`,
+    `intent_override`.
     Ghi: `intent`, `constraints`, `missing_fields`, `interaction_type`, `refusal`, `route`.
     Đi tiếp (`routing.route_after_classify`): `tool` khi đủ điểm đến + số ngày · `clarify` khi thiếu,
     mâu thuẫn hoặc có điều kiện không xác minh được · `converse` khi chào hỏi/bị từ chối · `dead_letter` khi lỗi.
@@ -124,7 +131,8 @@ async def tool_node(state: AgentState, *, tools: ToolExecutorPort | None = None,
                     llm_timeout_seconds: float = 2) -> dict:
     """Chuẩn hóa điểm đến, lập tool plan rồi gọi Search/Recommendation. **Có thể gọi LLM.**
 
-    Đọc: `intent`, `constraints`, `tool_plan` (lần retry), `tool_results` và `details` của lần trước.
+    Đọc: `intent`, `constraints`, `conversation_history`, `tool_plan` (lần retry), `tool_results`
+    và `details` của lần trước.
     Ghi: `intent`/`constraints` đã chuẩn hóa, `supported_destinations`, `tool_plan`, `tool_results`,
     `details`, `detail_errors`; điểm đến ngoài catalog thành `UNSUPPORTED_DESTINATION` (422).
     Đi tiếp: `evaluate` — kể cả khi mọi lời gọi đều lỗi, vì `evaluate` mới phân loại tạm thời/vĩnh viễn.
@@ -171,7 +179,7 @@ def evaluate_node(state: AgentState) -> dict:
 def ask_clarification_node(state: AgentState, *, llm=None) -> dict:
     """Ask for what a trip still lacks; the model words the question, fixed text is the fallback.
 
-    Đọc: `missing_fields`, `clarification_reason`, `decision`, `intent`.
+    Đọc: `conversation_history`, `missing_fields`, `clarification_reason`, `decision`, `intent`.
     Ghi: `response` `NEEDS_CLARIFICATION` kèm `knownIntent` (và `missingFields` nếu có), `pending_question`.
     Đi tiếp: `finalize`. Riêng `decision = constraint_clarification` dùng câu cố định, không hỏi LLM.
     """
@@ -207,7 +215,7 @@ async def ask_clarification_node_async(state: AgentState, *, llm=None, timeout_s
 def converse_node(state: AgentState, *, llm=None) -> dict:
     """Reply to chit-chat and refusals. No product has been retrieved at this point.
 
-    Đọc: `query`, `interaction_type`, `refusal`, `intent`, `missing_fields`.
+    Đọc: `query`, `conversation_history`, `interaction_type`, `refusal`, `intent`, `missing_fields`.
     Ghi: `response` `NEEDS_CLARIFICATION`, hoặc `VALIDATION_ERROR` (400) khi yêu cầu ngoài phạm vi.
     Đi tiếp: `finalize`.
     """
@@ -281,8 +289,10 @@ def dead_letter_node(state: AgentState) -> dict:
 def finalize_node(state: AgentState) -> dict:
     """Chốt chặn cuối cho mọi nhánh: validate response theo contract và grounding. **Không gọi LLM.**
 
-    Đọc: `response`, `http_status`, `candidates`, `sources`, `intent`, `constraints`, `started_at`.
-    Ghi: `response` đã kiểm, `http_status`, `validation_issues`, `final_answer`, `latency_ms`.
+    Đọc: `response`, `http_status`, `candidates`, `sources`, `intent`, `constraints`,
+    `conversation_history`, `query`, `started_at`.
+    Ghi: `response` đã kiểm, `http_status`, `validation_issues`, `final_answer`,
+    `conversation_history`, `latency_ms`.
     Sai schema hoặc lệch grounding thì thay bằng `ITINERARY_VALIDATION_FAILED` (500).
     Đi tiếp: `END`.
     """
@@ -293,8 +303,10 @@ def finalize_node(state: AgentState) -> dict:
         response = error_response("ITINERARY_VALIDATION_FAILED", messages.VALIDATION_FAILED,
                                   state.get("request_id", ""))
         http_status = 500
+    answer = validation.answer_text(response)
+    history = append_conversation_turn(state.get("conversation_history", []), state.get("query", ""), answer)
     return {"response": response, "http_status": http_status, "validation_issues": issues,
-            "final_answer": validation.answer_text(response),
+            "final_answer": answer, "conversation_history": history,
             "latency_ms": max(0, int((time() - state.get("started_at", time())) * 1000)),
             "events": [event("finalize", "response validated" if not issues else "validation failed", issues=issues)]}
 
@@ -303,7 +315,8 @@ async def finalize_node_async(state: AgentState, *, store: ConversationStorePort
                               owner: str = "anonymous") -> dict:
     """`finalize` trên đường async: lưu hội thoại để lượt sau nối tiếp được.
 
-    Ghi thêm (qua `ConversationStorePort`): intent, constraints, ngôn ngữ và các sản phẩm đã hiển thị.
+    Ghi thêm (qua `ConversationStorePort`): intent, constraints, lịch sử user/assistant đã giới hạn,
+    ngôn ngữ và các sản phẩm đã hiển thị.
     `UNSUPPORTED_DESTINATION` vẫn được lưu (bỏ riêng điểm đến) để người dùng đổi điểm đến mà giữ phần còn lại.
     """
     update = finalize_node(state)
@@ -316,6 +329,7 @@ async def finalize_node_async(state: AgentState, *, store: ConversationStorePort
                      else state.get("previous_selection", []))
         await store.save(state["conversation_id"], {"intent": intent,
                          "constraints": state.get("constraints", {}),
+                         "conversation_history": update["conversation_history"],
                          "language": state.get("language", "vi"),
                          "previous_selection": selection}, owner)
     return update

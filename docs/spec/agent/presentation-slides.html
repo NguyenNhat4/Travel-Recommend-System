@@ -295,7 +295,7 @@ pre.cmd{margin:0;background:var(--ink);color:var(--paper);border-radius:6px;padd
   <div class="grid3">
     <div class="panel"><h3>Một LLM client</h3><p class="body">Dựng một lần trong <code>lifespan</code>, tiêm qua <code>app.state.itinerary_llm</code>. Provider chọn theo key có mặt: Gemini → OpenAI → Anthropic.</p></div>
     <div class="panel"><h3>Tắt được LLM</h3><p class="body"><code>ITINERARY_USE_LLM=false</code>: app vẫn chạy, <code>/status</code> báo <code>llmMode=disabled</code>, itinerary trả 503 <code>LLM_UNAVAILABLE</code>.</p></div>
-    <div class="panel"><h3>Hội thoại</h3><p class="body">Lưu intent đã chuẩn hóa theo <code>conversationId</code> (TTL 24 giờ). Giá và availability luôn tải lại, không lấy từ bản lưu.</p></div>
+    <div class="panel"><h3>Hội thoại</h3><p class="body">Lưu intent và lịch sử chat gần đây theo <code>conversationId</code> (TTL 24 giờ). Giá và availability luôn tải lại, không lấy từ bản lưu.</p></div>
   </div>
   <div class="foot"><span>Itinerary Agent</span><span>04</span></div>
 </section>
