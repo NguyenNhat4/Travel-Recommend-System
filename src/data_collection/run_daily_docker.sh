@@ -1,12 +1,9 @@
 #!/usr/bin/env bash
-# Job hằng ngày chạy bằng Docker trên VPS (image từ Dockerfile.daily). Một script cho người vận hành:
-#   run_daily_docker.sh init <thư mục interim> [<thư mục raw>]  # một lần: chuẩn bị thư mục dữ liệu trên VPS
-#   run_daily_docker.sh run                                     # một lượt: cào → chuẩn hoá → gate → promote → nạp DB → embed
-#   run_daily_docker.sh daily <lệnh daily.py…>                  # thao tác tay: status | versions | accept <lượt> | switch <version>…
-#   run_daily_docker.sh monitor                                 # trang /daily ở 127.0.0.1:8765 (mặc định); public tạm thời dùng MONITOR_HOST/MONITOR_PUBLIC
-# Cron gợi ý (02:00 giờ máy): 0 2 * * * /đường/dẫn/run_daily_docker.sh run
-# Biến (export hoặc đặt trước lệnh): IMAGE, DATA_DIR, ENV_FILE, MAX_HOURS, DOCKER_NETWORK, CONTAINER_NAME, PULL — mặc định bên dưới.
-# Kết nối DB/Weaviate/Cohere chỉ nằm trong ENV_FILE (chmod 600), không bao giờ trong image, log hay script này.
+# Job VM. `run` (= `legacy-run`), `init`, `daily`, `monitor`: job daily.py (Dockerfile.daily) mà cron của CI/CD đang gọi.
+# `fresh-run [auto|full|daily|index|status]`: job cào mới (Dockerfile.fresh-catalog), nạp DB rồi index Weaviate. Chỉ một
+#   trong hai job được lên lịch cho cùng DB. Theo dõi job mới: `logs [-f] [-n SỐ_DÒNG] [LƯỢT]` · `report [SỐ_LƯỢT]` ·
+#   `fresh-run status`; backend compose cùng VM: `backend [logs [-f] [-n SỐ_DÒNG]]`.
+# Only this runner script, Docker, an env file and a data volume are needed on the VM.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -85,25 +82,25 @@ cmd_legacy_run() {
 
 cmd_fresh_run() {
   local mode="${1:-auto}" log_dir log status=0 container_name
-  [ "$#" -le 1 ] || die 'fresh-run accepts one mode: auto, full, daily, index or status'
+  [ "$#" -le 1 ] || die 'fresh-run accepts one mode: auto, full, daily, index, status, due or tick'
   case "$mode" in
-    auto|full|daily|index|status|--auto|--full|--daily|--index|--status) mode="${mode#--}" ;;
-    *) die 'fresh-run accepts one mode: auto, full, daily, index or status' ;;
+    auto|full|daily|index|status|due|tick|--auto|--full|--daily|--index|--status|--due|--tick) mode="${mode#--}" ;;
+    *) die 'fresh-run accepts one mode: auto, full, daily, index, status, due or tick' ;;
   esac
   [ -d "$FRESH_DATA_DIR" ] || die "chưa có $FRESH_DATA_DIR (tạo với UID/GID 10001 cho app trong image)"
   log_dir="$FRESH_LOG_DIR"
   mkdir -p "$log_dir"
-  [ "$mode" = status ] || [ -r "$FRESH_ENV_FILE" ] || die "không đọc được $FRESH_ENV_FILE"
+  [[ "$mode" = status || "$mode" = due ]] || [ -r "$FRESH_ENV_FILE" ] || die "không đọc được $FRESH_ENV_FILE"
   container_name="$FRESH_NAME"
-  if [ "$mode" = status ]; then container_name="$FRESH_NAME-status-$$"; fi
+  if [[ "$mode" = status || "$mode" = due ]]; then container_name="$FRESH_NAME-$mode-$$"; fi
   local args=(--rm --init --name "$container_name"
               --network "$FRESH_NETWORK" --shm-size "${FRESH_SHM_SIZE:-512m}"
               -v "$FRESH_DATA_DIR:/data")
   if [ -r "$FRESH_ENV_FILE" ]; then args+=(--env-file "$FRESH_ENV_FILE"); fi
   args+=(-e CATALOG_STATE_DIR=/data/state -e CATALOG_RUN_ROOT=/data/fresh_runs)
-  if [ "$mode" = status ]; then
-    status_host
-    docker run "${args[@]}" "$FRESH_IMAGE" status
+  if [[ "$mode" = status || "$mode" = due ]]; then
+    if [ "$mode" = status ]; then status_host; fi
+    docker run "${args[@]}" "$FRESH_IMAGE" "$mode"
     return
   fi
   find "$log_dir" -maxdepth 1 -name 'fresh-catalog-*.log' -mtime +30 -delete 2>/dev/null || true
@@ -122,6 +119,21 @@ cmd_fresh_run() {
   fi
   echo "fresh catalog exit=$status; log=$log"
   return "$status"
+}
+
+# Same image and shared volume as cron; no Docker socket is exposed to the monitor.
+cmd_fresh_monitor() {
+  [ -d "$FRESH_DATA_DIR" ] || die "chưa có $FRESH_DATA_DIR (UID/GID 10001)"
+  [ -r "$FRESH_ENV_FILE" ] || die "không đọc được $FRESH_ENV_FILE"
+  local args=(--rm --init --name "$FRESH_NAME-monitor" --network host
+              --shm-size "${FRESH_SHM_SIZE:-512m}" -v "$FRESH_DATA_DIR:/data"
+              --env-file "$FRESH_ENV_FILE" -e CATALOG_STATE_DIR=/data/state
+              -e CATALOG_RUN_ROOT=/data/fresh_runs --entrypoint python)
+  if [ -d "$FRESH_LOG_DIR" ]; then
+    args+=(--group-add "$(stat -c %g "$FRESH_LOG_DIR")"
+           -v "$FRESH_LOG_DIR:/runner-logs:ro" -e CATALOG_LOG_DIR=/runner-logs)
+  fi
+  docker run "${args[@]}" "$FRESH_IMAGE" /app/src/data_collection/monitor.py "$@"
 }
 
 # ---------------------------------------------------------------------- theo dõi trên console
@@ -260,16 +272,7 @@ case "${1:-}" in
   backend) shift; cmd_backend "$@" ;;
   legacy-run) shift; cmd_legacy_run "$@" ;;
   daily) shift; docker_run "$NAME-manual-$$" -- python daily.py "$@" ;;
-  # monitor.py dùng mạng host; public mode là opt-in vì UI có các POST endpoint điều khiển job/pipeline.
-  monitor)
-    shift
-    monitor_args=(--host "$MONITOR_HOST")
-    case "$MONITOR_PUBLIC" in
-      1|true|yes) monitor_args+=(--allow-public-host) ;;
-      0|false|no) ;;
-      *) die "MONITOR_PUBLIC phải là 0/1, true/false hoặc yes/no" ;;
-    esac
-    DOCKER_NETWORK='' docker_run "$NAME-monitor" --network host -- python monitor.py "${monitor_args[@]}" "$@"
-    ;;
-  *) sed -n '2,9p' "$0"; exit 2 ;;
+  # monitor.py chỉ nghe 127.0.0.1 (chống DNS rebinding) nên dùng mạng của host: trang nằm ở 127.0.0.1:8765 của VPS
+  monitor) shift; DOCKER_NETWORK='' docker_run "$NAME-monitor" --network host -- python monitor.py "$@" ;;
+  *) sed -n '2,6p' "$0"; exit 2 ;;
 esac

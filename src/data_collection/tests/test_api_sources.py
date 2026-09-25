@@ -1,5 +1,5 @@
 """Hồi quy cho api_sources.py (hộp thư đến, bộ đổi dạng, tải hàng loạt), quy tắc tọa độ API ưu tiên trong normalise.py, chế độ --api / auto /
-pull của pipeline_demo.py và các route API của monitor.py.
+pull của pipeline_demo.py và phát hiện PID zombie trong monitor.py.
 
 Không gọi mạng thật, không cần token: Apify / SerpApi / Travelpayouts được thay bằng server giả trên 127.0.0.1. Các bản ghi kiểu API trong test dựng theo
 TÊN TRƯỜNG ghi ở trang mô tả của actor (chưa kiểm với dữ liệu thật): test chứng minh mã của ta nhất quán, không chứng minh actor trả đúng tên trường đó."""
@@ -883,70 +883,6 @@ class PidAlive(unittest.TestCase):
 
     def test_pid_that_never_existed(self):
         self.assertFalse(monitor.pid_alive(2**30))
-
-
-class MonitorSettings(unittest.TestCase):
-    def test_save_and_clear_token_through_monitor(self):
-        # has_secret()/token_status() gọi apify_source.load_env() nạp từ ROOT/.env THẬT (không đi qua api.ENV_PATH đã vá) — phải chặn nốt
-        # cái này, nếu không test sẽ đọc nhầm .env thật của máy đang chạy (có thể đang có token thật, như sau khi người dùng vừa dán).
-        with tempfile.TemporaryDirectory() as t, mock.patch.object(api, "ENV_PATH", Path(t) / ".env"), mock.patch.object(ap, "load_env"):
-            m = monitor.Monitor(Path(t))
-            self.assertEqual(m.save_token("APIFY_TOKEN", "  tok-abc  "), {"apify": True, "serpapi": False, "travelpayouts": False})
-            self.assertEqual(m.clear_token("APIFY_TOKEN"), {"apify": False, "serpapi": False, "travelpayouts": False})
-            with self.assertRaises(api.ApiError):
-                m.save_token("NOT_A_REAL_KEY", "x")
-
-    def test_run_probe_validates_and_clamps_before_calling_apify(self):
-        with tempfile.TemporaryDirectory() as t:
-            m = monitor.Monitor(Path(t))
-            with mock.patch.object(api, "probe_kind") as pk:
-                for bad in ("Nha Trang; DROP TABLE", "x" * 61):  # ký tự lạ / quá dài đều phải bị chặn trước khi gọi Apify
-                    with self.subTest(bad=bad[:20]), self.assertRaises(ValueError):
-                        m.run_probe("apify-agoda", bad, 5, 0.1)
-            pk.assert_not_called()
-            with mock.patch.object(api, "probe_kind", return_value={"ok": True}) as pk:
-                out = m.run_probe("apify-agoda", "", 999, 999)  # điểm đến trống -> mặc định Nha Trang, không phải lỗi
-                self.assertEqual(pk.call_args.args[:4], ("apify-agoda", "Nha Trang", 10, 0.5), "limit/maxUsd bị chặn ở trần an toàn")
-                self.assertEqual(out, {"ok": True})
-
-
-class MonitorApi(unittest.TestCase):
-    def test_pull_validation_tokens_and_safe_command(self):
-        with tempfile.TemporaryDirectory() as t:
-            m = monitor.Monitor(Path(t))
-            with mock.patch.object(api, "token_status", return_value={"apify": False, "serpapi": True, "travelpayouts": False}):
-                with self.assertRaises(ValueError):
-                    m.start_pull({"source": "rm -rf"})
-                self.assertEqual(m.start_pull({"source": "apify-agoda"})[0], 400, "chưa có token thì không chạy")
-                with mock.patch("subprocess.Popen") as popen:
-                    for bad in ({"source": "serpapi", "destinations": "a; rm -rf /"}, {"source": "serpapi", "maxItems": "abc"}):
-                        with self.subTest(bad=bad), self.assertRaises(ValueError):
-                            m.start_pull(bad)
-                    code, body = m.start_pull({"source": "serpapi", "destinations": "Nha Trang,Phú Quốc", "maxItems": 99999, "maxUsd": 99, "pages": 50})
-                    self.assertEqual(code, 200)
-                    argv = popen.call_args.args[0]
-                    self.assertEqual(argv[2:4], ["pull", "serpapi"])
-                    self.assertEqual(argv[argv.index("--max-items") + 1], "500", "trần cứng 500 mục/điểm đến")
-                    self.assertEqual(argv[argv.index("--max-usd") + 1], "5.0", "trần cứng $5")
-                    self.assertEqual(argv[argv.index("--pages") + 1], "5")
-                    self.assertIn("--only-api", argv)
-                    self.assertNotIn("--db-port", argv)
-                    self.assertEqual(popen.call_args.kwargs["env"]["VOTA_DATA_DIR"], str(Path(t)))
-                write(Path(t) / "demo" / "fetch.json", {"status": "fetching", "pid": os.getpid()})
-                with mock.patch("subprocess.Popen") as popen:
-                    self.assertEqual(m.start_pull({"source": "serpapi"})[0], 409)
-                    popen.assert_not_called()
-
-    def test_config_inbox_and_stale_fetch(self):
-        with tempfile.TemporaryDirectory() as t:
-            m = monitor.Monitor(Path(t))
-            cfg = m.pipeline_config()
-            self.assertEqual(set(cfg["tokens"]), {"apify", "serpapi", "travelpayouts"})
-            self.assertEqual(len(cfg["defaultDestinations"]), 15)
-            self.assertEqual(m.pipeline_inbox()["counts"]["_processed"], 0)
-            self.assertEqual(m.pipeline_fetch(), {"status": "idle"})
-            write(Path(t) / "demo" / "fetch.json", {"status": "fetching", "pid": 999999999})
-            self.assertEqual((m.pipeline_fetch()["status"], m.pipeline_fetch()["stale"]), ("failed", True))
 
 
 if __name__ == "__main__":

@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """UI theo dõi cào dữ liệu V-OTA: tiến độ từng job, dữ liệu đã parse, file, nhật ký, cảnh báo.
 
-Chỉ đọc (không ghi vào dữ liệu đang cào), mặc định chỉ nghe 127.0.0.1, không cần thư viện ngoài:
+Chỉ đọc (không ghi vào dữ liệu đang cào), chỉ nghe 127.0.0.1, không cần thư viện ngoài:
 
   python monitor.py                 # http://127.0.0.1:8765
   python monitor.py --port 9000 --data-dir /đường/dẫn/data
-  python monitor.py --host 0.0.0.0 --allow-public-host  # public tạm thời; có cả POST endpoint điều khiển
   http://127.0.0.1:8765/daily       # job hằng ngày: lượt chạy, bước đang chạy, data version, so sánh, dữ liệu qua từng bước
 
 Nguồn số liệu: data/batches/<job>/{job.json,last-run.json,state/,interim/,raw/,logs/}, data/interim, data/products.jsonl.
@@ -14,55 +13,62 @@ Nút "Tạo bản xem trước" chuẩn hoá thử toàn bộ dữ liệu hiện
 from __future__ import annotations
 
 import argparse
+import csv
+import fcntl
+import gzip
+import io
 import json
 import os
 import re
 import shutil
-import sqlite3
 import subprocess
 import sys
 import threading
 import time
-from collections import Counter, defaultdict
+from collections import Counter
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-import api_sources
-from daily_api import DailyApi
-from collectors.plan import DESTINATIONS
-
-DEST_BY_NAME = {d.name: d for d in DESTINATIONS}
+import fresh_settings
+from fresh_run_log import HISTORY_FILE, LOG_FILE, RUN_FILE, RUNNING_FILE, STOP_FILE, run_dirs, write_json
 
 ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "monitor_ui"
-TARGET_ROWS = 10_000
-SOURCE_ORDER = ("vinpearl", "booking_hotels", "agoda_hotels", "trip_attractions", "trip_flights", "booking_flights",
-                "booking_attractions")
-SOURCE_LABEL = {"vinpearl": "Vinpearl", "booking_hotels": "Booking khách sạn", "agoda_hotels": "Agoda khách sạn",
-                "trip_attractions": "Trip điểm tham quan", "trip_flights": "Trip chuyến bay", "booking_flights": "Booking chuyến bay",
-                "booking_attractions": "Booking vé/tour"}
-JOB_ID = re.compile(r"^[0-9a-f]{20}$")
-PIPELINE_RUN = re.compile(r"^\d{8}-\d{6}(-[a-z0-9]{1,12})?$")  # trùng RUN_ID trong pipeline_demo.py
-LEVEL_RE = re.compile(r"\b(DEBUG|INFO|WARNING|ERROR|CRITICAL)\b")
-RUNNING_STALE_SECONDS = 600
+RUN_ID = re.compile(r"^(full|daily|index)-\d{8}T\d{6}Z-\d+$")
+SOURCE_NAME = re.compile(r"^[a-z][a-z0-9_]{0,40}$")
+LOG_NAME = re.compile(r"^(job\.log|crawl-\d{8}\.log|fresh-catalog-[0-9-]+\.log|fresh-catalog-errors\.log)$")
+MAX_TEXT = 2_000_000          # ký tự tối đa trả về cho một file raw
+MAX_READ = 30_000_000         # byte tối đa giải nén một file
+HEARTBEAT_STALE = 90          # giây không có nhịp sống thì coi lượt đã chết
+PROGRESS_RE = re.compile(r"(\d+)/(\d+) xong · (\d+) lỗi · (\d+) bỏ qua · ([\d.]+) trang/phút · còn ~(\S+)")
+TRIP_PRICE_RE = re.compile(r"Trip (\d+)@(\d{4}-\d{2}-\d{2}): (\w+), (\d+) offers")
+TRIP_META_RE = re.compile(r"Trip meta (\d+) lần \d: (HTTP \d+|lỗi)")
+FAMILIES = {"vinpearl": ("vinpearl", "vinpearl_bundles"),
+            "booking": ("booking_hotels", "booking_attractions", "booking_flights"),
+            "agoda": ("agoda_hotels", "agoda_api"),
+            "trip": ("trip_flights", "trip_attractions", "trip_hotels", "trip_combos", "trip_experiences")}
+ID_KEYS = ("key", "hotelId", "poiId", "productId", "tourCode", "id", "slug", "hotelCode", "roomId", "code")
+NAME_KEYS = ("name", "title", "hotelName", "productName", "tourName", "routeName")
+PRICE_KEYS = ("minPrice", "price", "lowestPrice", "priceFrom", "adultPrice", "unitPrice", "amount")
+SOURCE_LABELS = {
+    "vinpearl": "Vinpearl", "vinpearl_bundles": "Vinpearl combo bay + ở",
+    "trip_flights": "trip.com – vé máy bay", "trip_attractions": "trip.com – điểm tham quan",
+    "trip_hotels": "trip.com – khách sạn", "booking_hotels": "booking.com – khách sạn",
+    "agoda_hotels": "agoda.com – khách sạn", "agoda_api": "agoda.com (API)",
+}
+STEP_SOURCE = {"vinpearl": "vinpearl", "trip-flights": "trip_flights", "trip-attractions": "trip_attractions",
+               "booking-hotels": "booking_hotels", "agoda-hotels": "agoda_hotels",
+               "trip-hotels.discover": "trip_hotels", "trip-hotels.prices": "trip_hotels"}
 
 
-# ------------------------------------------------------------------------------------------ tiện ích nhỏ
-
-
-def now() -> float:
-    return time.time()
-
-
-def iso(ts: float | None) -> str | None:
-    return datetime.fromtimestamp(ts, timezone.utc).isoformat(timespec="seconds") if ts else None
+# ---------------------------------------------------------------------------------------------------- tiện ích
 
 
 def read_json(path: Path, default=None):
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        return json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return default
 
@@ -79,7 +85,7 @@ def tail_lines(path: Path, n: int, chunk: int = 256 * 1024) -> list[str]:
                 pos -= step
                 fh.seek(pos)
                 data = fh.read(step) + data
-        lines = data.decode("utf-8", errors="replace").split("\n")  # không dùng splitlines(): cắt cả ở U+0085/U+2028 trong JSON
+        lines = data.decode("utf-8", errors="replace").split("\n")  # không dùng splitlines(): cắt cả ở U+2028 trong JSON
         if lines and lines[-1] == "":
             lines.pop()
         if pos > 0 and lines:
@@ -90,9 +96,8 @@ def tail_lines(path: Path, n: int, chunk: int = 256 * 1024) -> list[str]:
 
 
 def pid_alive(pid: int) -> bool:
-    """os.kill(pid, 0) vẫn thành công với tiến trình đã chết nhưng ở trạng thái "zombie" (con của chính tiến trình này, cha chưa
-    "nhận xác") — kiểm tra thêm /proc/{pid}/stat để không coi zombie là còn sống (gặp thật 22/09/2026: fetch con đã chết hẳn nhưng
-    giao diện vẫn báo "đang tải" mãi)."""
+    """os.kill(pid, 0) vẫn thành công với tiến trình zombie (cha chưa "nhận xác") — kiểm thêm /proc/{pid}/stat để không coi
+    zombie là còn sống (gặp thật 22/09/2026: giao diện báo "đang chạy" mãi dù tiến trình đã chết)."""
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -128,847 +133,658 @@ def dir_size(path: Path, limit_files: int = 200_000) -> tuple[int, int]:
     return files, size
 
 
-class TTLCache:
-    """Cache theo khoá + thời gian sống, tránh tính lại khi nhiều tab cùng làm mới."""
-
-    def __init__(self):
-        self._data: dict = {}
-        self._lock = threading.Lock()
-
-    def get(self, key, ttl: float, fn):
-        with self._lock:
-            hit = self._data.get(key)
-            if hit and now() - hit[0] < ttl:
-                return hit[1]
-        value = fn()
-        with self._lock:
-            self._data[key] = (now(), value)
-        return value
+def lock_busy(state_dir: Path) -> bool:
+    path = state_dir / "fresh_catalog.lock"
+    if not path.exists():
+        return False
+    try:
+        with path.open("a") as handle:
+            try:
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return True
+            fcntl.flock(handle, fcntl.LOCK_UN)
+    except OSError:
+        return False
+    return False
 
 
-CACHE = TTLCache()
-_FILE_STATS: dict[tuple, dict] = {}
+def age_seconds(stamp: str | None) -> float | None:
+    if not stamp:
+        return None
+    try:
+        dt = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - dt).total_seconds()
 
 
-# ------------------------------------------------------------------------------------------ đọc bản ghi trung gian
+def read_text(path: Path, limit: int = MAX_READ) -> tuple[str, bool]:
+    """Nội dung file (tự giải nén .gz), cắt ở `limit` byte. → (text, bị cắt?)"""
+    opener = gzip.open if path.suffix == ".gz" else open
+    with opener(path, "rb") as fh:
+        data = fh.read(limit + 1)
+    return data[:limit].decode("utf-8", errors="replace"), len(data) > limit
 
 
-def price_of(source: str, r: dict):
-    if source == "booking_hotels" or source == "agoda_hotels":
-        return r.get("minPrice")
-    if source == "trip_attractions":
-        return r.get("price")
-    if source == "booking_attractions":
-        return r.get("price") or r.get("minPrice") or r.get("fromPrice")
-    if source == "trip_flights":
-        return (r.get("oneWay") or {}).get("lowPrice")
-    if source == "vinpearl":
-        if r.get("recordType") == "vinpearl_tour":
-            return r.get("adultSalePrice") or r.get("adultOriginalPrice")
-        return (r.get("bestPrice") or {}).get("price")
+def iter_jsonl(path: Path):
+    try:
+        with open(path, encoding="utf-8") as fh:
+            for index, line in enumerate(fh):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    yield index, json.loads(line)
+                except ValueError:
+                    continue
+    except OSError:
+        return
+
+
+def first_value(record: dict, keys) -> object:
+    for key in keys:
+        value = record.get(key)
+        if value not in (None, "", [], {}):
+            return value
     return None
 
 
-def destination_of(r: dict) -> str | None:
-    return (r.get("plan") or {}).get("destination")
+def record_ids(record: dict) -> set[str]:
+    ids = {str(record[k]) for k in ID_KEYS if record.get(k) not in (None, "", [], {}) and not isinstance(record[k], (dict, list))}
+    if record.get("fromCode") and record.get("toCode"):
+        ids.add(f"{record['fromCode']}-{record['toCode']}")
+    return ids
 
 
-def rows_estimate(source: str, r: dict) -> int:
-    """Số dòng Product mà một bản ghi trung gian sinh ra (thô, chưa khử trùng giữa các nguồn)."""
-    if source == "booking_hotels":
-        return 1 + len(r.get("rooms") or [])
-    if source == "vinpearl" and r.get("recordType") == "vinpearl_hotel":
-        return 1 + len(r.get("rooms") or [])
-    if source == "trip_flights":
-        return 1 + len(r.get("flights") or [])
-    return 1
+def ref_parts(ref: str) -> tuple[str, str, str]:
+    """`booking:hotel:123:room:abc` → (booking, hotel, 123). Combo Trip: `trip:combo:…` giữ phần sau `trip:`."""
+    parts = ref.split(":")
+    family = parts[0] if parts else ""
+    kind = parts[1] if len(parts) > 1 else ""
+    if family == "trip" and kind == "combo":
+        return family, kind, ref[len("trip:"):]
+    return family, kind, parts[2] if len(parts) > 2 else ""
 
 
-def has_coords(r: dict) -> bool:
-    return r.get("latitude") not in (None, "") and r.get("longitude") not in (None, "")
+def safe_name(name: str, pattern: re.Pattern, what: str) -> str:
+    if not name or not pattern.match(name):
+        raise ValueError(f"{what} không hợp lệ")
+    return name
 
 
-def summarize(source: str, r: dict) -> dict:
-    name = r.get("name")
-    extra = ""
-    if source == "booking_hotels":
-        extra = f"{len(r.get('rooms') or [])} phòng · {r.get('starRating') or '–'}★"
-    elif source == "agoda_hotels":
-        extra = f"{r.get('starRating') or '–'}★ · {r.get('reviewScore') or '–'}/10"
-    elif source == "trip_attractions":
-        extra = ", ".join(r.get("tags") or [])[:60] or (r.get("suggestedDuration") or "")
-    elif source == "trip_flights":
-        name = f"{r.get('fromCity') or r.get('fromCode')} → {r.get('toCity') or r.get('toCode')}"
-        extra = f"{len(r.get('flights') or [])} chuyến · {', '.join(r.get('airlines') or [])[:40]}"
-    elif source == "vinpearl":
-        extra = r.get("recordType", "").replace("vinpearl_", "")
-        if r.get("recordType") == "vinpearl_hotel":
-            extra += f" · {len(r.get('rooms') or [])} hạng phòng"
-        else:
-            extra += f" · {r.get('supplierName') or ''}"
-    missing = []
-    if not name:
-        missing.append("tên")
-    if price_of(source, r) in (None, "", 0):
-        missing.append("giá")
-    if source != "trip_flights" and not has_coords(r):
-        missing.append("toạ độ")
-    desc = r.get("description") or r.get("introduction") or r.get("seoDescription")
-    if source != "trip_flights" and (not desc or len(str(desc)) < 40):
-        missing.append("mô tả")
-    return {"name": name, "destination": destination_of(r) or r.get("destinationName") or r.get("city"),
-            "price": price_of(source, r), "extra": extra, "url": r.get("url") or r.get("pageUrl"),
-            "crawledAt": r.get("crawledAt"), "missing": missing}
+def brief_record(record: dict) -> dict:
+    rooms = record.get("rooms")
+    return {
+        "name": first_value(record, NAME_KEYS),
+        "id": first_value(record, ID_KEYS),
+        "recordType": record.get("recordType"),
+        "destination": record.get("destination") or (record.get("plan") or {}).get("destination"),
+        "price": first_value(record, PRICE_KEYS),
+        "currency": record.get("currency"),
+        "rooms": len(rooms) if isinstance(rooms, list) else None,
+        "url": record.get("url") or record.get("detailUrl"),
+        "crawledAt": record.get("crawledAt"),
+    }
 
 
-def file_stats(path: Path, source: str) -> dict:
-    """Thống kê một file interim JSONL; cache theo (đường dẫn, kích thước, mtime)."""
-    try:
-        st = path.stat()
-    except OSError:
-        return {"lines": 0, "bytes": 0, "rows": 0, "noPrice": 0, "noCoords": 0, "noDesc": 0, "dest": {}, "urlRows": {}}
-    key = (str(path), st.st_size, int(st.st_mtime))
-    if key in _FILE_STATS:
-        return _FILE_STATS[key]
-    lines = rows = no_price = no_coords = no_desc = 0
-    dest: Counter = Counter()
-    url_rows: dict[str, int] = {}
-    try:
-        with open(path, encoding="utf-8") as fh:
-            for line in fh:
-                if not line.strip():
-                    continue
-                try:
-                    r = json.loads(line)
-                except ValueError:
-                    continue  # dòng cuối đang được ghi dở
-                lines += 1
-                n_rows = rows_estimate(source, r)
-                rows += n_rows
-                ident = r.get("url") or r.get("pageUrl") or r.get("key")
-                if ident:
-                    url_rows[ident] = max(url_rows.get(ident, 0), n_rows)
-                no_price += price_of(source, r) in (None, "", 0)
-                if source != "trip_flights":
-                    no_coords += not has_coords(r)
-                    desc = r.get("description") or r.get("introduction") or r.get("seoDescription")
-                    no_desc += not desc or len(str(desc)) < 40
-                d = destination_of(r)
-                if d:
-                    dest[d] += 1
-    except OSError:
-        pass
-    out = {"lines": lines, "bytes": st.st_size, "rows": rows, "noPrice": no_price, "noCoords": no_coords,
-           "noDesc": no_desc, "dest": dict(dest), "mtime": st.st_mtime, "urlRows": url_rows}
-    for stale in [k for k in _FILE_STATS if k[0] == key[0]]:
-        _FILE_STATS.pop(stale, None)
-    _FILE_STATS[key] = out
-    return out
+def brief_product(row: dict) -> dict:
+    attrs = row.get("attributes") or {}
+    return {
+        "productId": row.get("productId"), "name": row.get("name"), "taxonomy": row.get("taxonomy"),
+        "level": attrs.get("level"), "destination": row.get("destination"), "unitPrice": row.get("unitPrice"),
+        "available": row.get("available"), "availableFrom": row.get("availableFrom"), "availableTo": row.get("availableTo"),
+        "sourceRef": row.get("sourceRef"), "sameAs": len(attrs.get("sameAs") or []),
+        "priceSource": (attrs.get("fieldSources") or {}).get("unitPrice"),
+        "hasImage": bool(row.get("imageUrl")), "descriptionChars": len(row.get("description") or ""),
+    }
 
 
-def read_records(path: Path, limit: int) -> list[dict]:
-    """`limit` bản ghi cuối file (mới nhất trước). Bỏ dòng lỗi (đang ghi dở)."""
-    out = []
-    for line in tail_lines(path, limit + 5, chunk=1024 * 1024)[::-1]:
-        if not line.strip():
-            continue
+def page(rows: list, offset: int, limit: int) -> dict:
+    offset = max(0, offset)
+    limit = max(1, min(limit, 500))
+    return {"total": len(rows), "offset": offset, "limit": limit, "rows": rows[offset:offset + limit]}
+
+
+class FileCache:
+    """Kết quả đọc file lớn (interim, products) theo (đường dẫn, mtime, cỡ)."""
+
+    def __init__(self, size: int = 24):
+        self.size, self.items, self.lock = size, {}, threading.Lock()
+
+    def get(self, path: Path, loader):
         try:
-            out.append(json.loads(line))
-        except ValueError:
-            continue
-        if len(out) >= limit:
-            break
-    return out
-
-
-# ------------------------------------------------------------------------------------------ job
-
-
-class Monitor:
-    def __init__(self, data: Path):
-        self.data = data
-        self.batches = data / "batches"
-        self.preview_state = {"status": "idle", "startedAt": None, "finishedAt": None, "message": "", "summary": None}
-        self.preview_lock = threading.Lock()
-
-    # -- danh sách "gốc dữ liệu": job batch + thư mục data/ gốc + các thư mục bổ sung
-    def roots(self) -> list[dict]:
-        out = []
-        if self.batches.is_dir():
-            for job in sorted(self.batches.iterdir()):
-                spec = read_json(job / "job.json")
-                if spec and JOB_ID.match(job.name):
-                    out.append({"id": job.name, "path": job, "kind": "batch", "spec": spec})
-        main_paths = [("main", self.data, "data/ gốc (đợt cào 15–19/09)")]
-        main_paths += [(p.name, p, p.name) for p in sorted(self.data.glob("enrichment-*")) if p.is_dir()]
-        for rid, path, label in main_paths:
-            if (path / "interim").is_dir():
-                out.append({"id": rid, "path": path, "kind": "legacy",
-                            "spec": {"source": "mixed", "city": label, "period": None, "args": []}})
-        return out
-
-    def root_by_id(self, rid: str) -> dict | None:
-        return next((r for r in self.roots() if r["id"] == rid), None)
-
-    # -- trạng thái SQLite của một gốc
-    @staticmethod
-    def state_of(path: Path) -> dict:
-        db = path / "state" / "crawl_state.sqlite"
-        out = {"items": {}, "discovery": [], "updatedAt": None, "errors": []}
-        if not db.exists():
-            return out
-        try:
-            con = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=3)
-        except sqlite3.Error:
-            return out
-        try:
-            for src, status, n in con.execute("SELECT source, status, COUNT(*) FROM items GROUP BY source, status"):
-                out["items"].setdefault(src, {})[status] = n
-            out["discovery"] = [{"source": s, "key": k, "found": f, "doneAt": d}
-                                for s, k, f, d in con.execute("SELECT source, key, found, done_at FROM discovery")]
-            row = con.execute("SELECT MAX(updated_at) FROM items").fetchone()
-            out["updatedAt"] = row[0] if row else None
-            out["errors"] = [{"error": e, "count": n} for e, n in con.execute(
-                "SELECT last_error, COUNT(*) FROM items WHERE status='failed' AND last_error IS NOT NULL "
-                "GROUP BY last_error ORDER BY 2 DESC LIMIT 4")]
-        except sqlite3.Error:
-            pass
-        finally:
-            con.close()
-        return out
-
-    @staticmethod
-    def holds_file(pid: int, target: Path) -> bool | None:
-        """Tiến trình `pid` đang mở `target`? RunLock giữ file khoá mở suốt thời gian chạy, còn file cũ vẫn ghi PID của
-        tiến trình đã xong (hoặc của batch.py đang chạy job khác) nên không thể tin PID. None = không kiểm tra được."""
-        fd_dir = Path(f"/proc/{pid}/fd")
-        if not fd_dir.is_dir():
-            return None
-        want = str(target.resolve())
-        try:
-            for fd in fd_dir.iterdir():
-                try:
-                    if os.readlink(fd) == want:
-                        return True
-                except OSError:
-                    continue
+            st = path.stat()
         except OSError:
             return None
-        return False
+        key = (str(path), st.st_mtime_ns, st.st_size)
+        with self.lock:
+            if key in self.items:
+                return self.items[key]
+        value = loader(path)
+        with self.lock:
+            if len(self.items) >= self.size:
+                self.items.pop(next(iter(self.items)))
+            self.items[key] = value
+        return value
 
-    @classmethod
-    def running_pid(cls, path: Path) -> int | None:
-        """PID tiến trình đang giữ một khoá trong state/ của job này, hoặc None."""
-        for lock in (path / "state").glob("*.lock"):
-            try:
-                pid = int(lock.read_text().strip() or 0)
-            except (OSError, ValueError):
-                continue
-            if not (pid and pid_alive(pid)):
-                continue
-            held = cls.holds_file(pid, lock)
-            if held:
-                return pid
-            if held is None:
-                # Không đọc được fd (tiến trình khác người dùng, luồng hệ thống dùng lại PID cũ trong file khoá): chỉ tin khi
-                # dòng lệnh đúng là crawl/batch của chính job này.
-                try:
-                    cmd = Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\0", b" ").decode(errors="replace")
-                except OSError:
-                    continue
-                if "python" not in cmd:
-                    continue
-                if lock.stem == "batch_job" and "batch.py" in cmd:
-                    return pid
-                if any(x in cmd for x in ("crawl.py", "normalise.py")) and re.search(rf"--data-dir {re.escape(str(path))}(\s|$)", cmd):
-                    return pid
-        return None
 
-    def log_file(self, path: Path) -> Path | None:
-        logs = sorted((path / "logs").glob("crawl-*.log"), key=lambda p: p.stat().st_mtime) if (path / "logs").is_dir() else []
-        return logs[-1] if logs else None
+# ---------------------------------------------------------------------------------------------------- dữ liệu
 
-    def job_view(self, root: dict, detail: bool = False) -> dict:
-        path, spec = root["path"], root["spec"]
-        source = (spec.get("source") or "").replace("-", "_")
-        st = self.state_of(path)
-        sources = [source] if source and source != "mixed" else sorted(st["items"])
-        counts: Counter = Counter()
-        for s in sources:
-            counts.update(st["items"].get(s, {}))
-        skipped_n = counts.get("skipped", 0) + counts.get("gone", 0)
-        total = sum(counts.values()) - skipped_n  # URL đã cào ở job khác (deepen_jobs) hoặc không cào được: ngoài mẫu số
-        interim_dir = path / "interim"
-        files = {p.stem: file_stats(p, p.stem) for p in interim_dir.glob("*.jsonl")} if interim_dir.is_dir() else {}
-        records = sum(f["lines"] for f in files.values())
-        rows_est = sum(f["rows"] for f in files.values())
-        last_run = read_json(path / "last-run.json")
-        pid = self.running_pid(path)
-        code = (last_run or {}).get("exitCode")
-        pending = counts.get("pending", 0)
-        if pid:
-            status = "running"
-        elif root["kind"] == "legacy":
-            status = "done"
-        elif code == 75:
-            status = "blocked"
-        elif code not in (None, 0):
-            status = "failed"
-        elif pending:
-            status = "paused"
-        elif code == 0:
-            status = "done"
-        else:
-            status = "idle"
-        updated = st["updatedAt"]
-        log_path = self.log_file(path)
-        last_activity = max([x for x in (log_path.stat().st_mtime if log_path else 0,
-                                         (path / "last-run.json").stat().st_mtime if (path / "last-run.json").exists() else 0) if x] or [0])
-        view = {
-            "id": root["id"], "kind": root["kind"], "source": source or "mixed", "city": spec.get("city"),
-            "route": spec.get("route"), "period": spec.get("period"), "once": bool(spec.get("once")),
-            "status": status, "pid": pid, "exitCode": code,
-            "pending": pending, "done": counts.get("done", 0), "failed": counts.get("failed", 0),
-            "skipped": skipped_n, "total": total,
-            "records": records, "rowsEstimate": rows_est,
-            "updatedAt": updated, "lastActivity": iso(last_activity) if last_activity else None,
-            "stalled": bool(pid and last_activity and now() - last_activity > RUNNING_STALE_SECONDS),
-            "discoveryFound": sum((d["found"] or 0) for d in st["discovery"] if d["source"] in sources),
-        }
-        if detail:
-            view.update({
-                "spec": spec, "errors": st["errors"], "discovery": st["discovery"], "counts": dict(counts),
-                "files": {k: {"lines": v["lines"], "bytes": v["bytes"], "noPrice": v["noPrice"],
-                              "noCoords": v["noCoords"], "noDesc": v["noDesc"]} for k, v in files.items()},
-                "log": tail_lines(log_path, 80) if log_path else [],
-            })
-        return view
 
-    def jobs(self) -> list[dict]:
-        return [self.job_view(r) for r in self.roots()]
+class FreshMonitor:
+    def __init__(self, state_dir: Path, run_root: Path, log_dir: Path | None = None):
+        self.state_dir, self.run_root = Path(state_dir), Path(run_root)
+        self.log_dir = Path(log_dir) if log_dir else None
+        self.cache = FileCache()
+        self.spawn_lock = threading.Lock()
+        self.spawned: dict | None = None
+        self._disk = (0.0, None)
+
+    # -- lượt đang chạy
+    def running(self) -> dict | None:
+        info = read_json(self.state_dir / RUNNING_FILE) or {}
+        busy = lock_busy(self.state_dir)
+        spawned = self.spawned
+        if not busy:
+            if spawned and spawned.get("returncode") is None and pid_alive(spawned["pid"]):
+                return {"starting": True, "mode": spawned["mode"], "startedAt": spawned["startedAt"], "trigger": "monitor"}
+            return None
+        heartbeat = age_seconds(info.get("heartbeatAt"))
+        out = dict(info)
+        out["heartbeatAgeSeconds"] = None if heartbeat is None else round(heartbeat)
+        out["stale"] = heartbeat is not None and heartbeat > HEARTBEAT_STALE
+        if info.get("runId"):
+            out["progress"] = self.progress(info["runId"])
+        return out
+
+    def progress(self, run_id: str) -> dict:
+        """Tiến độ từ log của lượt: dòng x/y mới nhất của từng nhóm, số lần hỏi giá / thông tin Trip."""
+        path = self.run_path(run_id) / LOG_FILE
+        groups: dict[str, dict] = {}
+        trip = Counter()
+        meta = Counter()
+        for line in tail_lines(path, 4000):
+            group = re.search(r"\[([a-z]+)\]", line)
+            match = PROGRESS_RE.search(line)
+            if match:
+                done, total, failed, skipped, rate, eta = match.groups()
+                groups[group.group(1) if group else "-"] = {
+                    "done": int(done), "total": int(total), "failed": int(failed), "skipped": int(skipped),
+                    "perMinute": float(rate), "eta": eta, "line": line[-300:]}
+            price = TRIP_PRICE_RE.search(line)
+            if price:
+                trip[price.group(3)] += 1
+            info = TRIP_META_RE.search(line)
+            if info:
+                meta["ok" if info.group(2) == "HTTP 200" else "failed"] += 1
+        return {"groups": groups, "tripPrices": dict(trip), "tripMeta": dict(meta)}
 
     # -- tổng quan
     def overview(self) -> dict:
-        jobs = self.jobs()
-        by_status = Counter(j["status"] for j in jobs if j["kind"] == "batch")
-        per_source: dict[str, dict] = {}
-        for j in jobs:
-            s = per_source.setdefault(j["source"], {"jobs": 0, "running": 0, "done": 0, "failed": 0, "pending": 0,
-                                                     "urls": 0, "records": 0, "rows": 0})
-            if j["kind"] != "batch":
-                continue
-            s["jobs"] += 1
-            s["running"] += j["status"] == "running"
-            s["urls"] += j["total"]
-            s["done"] += j["done"]
-            s["failed"] += j["failed"]
-            s["pending"] += j["pending"]
-            s["records"] += j["records"]
-            s["rows"] += j["rowsEstimate"]
-        per_source.pop("mixed", None)
-        # Độ phủ: (điểm đến × nguồn) = số bản ghi đã parse, từ job batch (theo thành phố của job) + đợt cào gốc (theo plan)
-        cover: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
-        base_urls: dict[tuple, int] = {}   # (nguồn, url) → số dòng, từ đợt cào gốc data/interim
-        new_urls: dict[tuple, int] = {}    # các URL chỉ có ở job batch mới
-        for root in self.roots():
-            spec = root["spec"]
-            interim = root["path"] / "interim"
-            if not interim.is_dir():
-                continue
-            for f in interim.glob("*.jsonl"):
-                fs = file_stats(f, f.stem)
-                if root["kind"] == "legacy":
-                    if root["id"] == "main":
-                        for u, n in fs["urlRows"].items():
-                            base_urls[(f.stem, u)] = max(base_urls.get((f.stem, u), 0), n)
-                    for dest, n in fs["dest"].items():
-                        cover[dest][f.stem] += n
-                else:
-                    for u, n in fs["urlRows"].items():
-                        new_urls[(f.stem, u)] = max(new_urls.get((f.stem, u), 0), n)
-                    if spec.get("city") and spec["city"] != "all":
-                        cover[spec["city"]][f.stem] += fs["lines"]
-        legacy_rows = sum(base_urls.values())
-        fresh_rows = sum(n for k, n in new_urls.items() if k not in base_urls)
-        refreshed = sum(1 for k in new_urls if k in base_urls)
-        plan_names = [d.name for d in DESTINATIONS]
-        coverage = [{"destination": d.name, "counts": dict(cover.get(d.name, {})), "hasAirport": bool(d.airports),
-                     "configured": {"booking_hotels": True, "agoda_hotels": bool(d.agoda_city),
-                                    "trip_attractions": bool(d.trip_city), "trip_flights": bool(d.airports)}}
-                    for d in DESTINATIONS]
-        extra = [{"destination": n, "counts": dict(c), "extra": True} for n, c in cover.items() if n not in plan_names]
-        rows_batch = fresh_rows
-        catalog = self.catalog_summary(self.data / "products.jsonl")
-        mem = self.memory()
+        described = fresh_settings.describe(self.state_dir)
+        values = {f["key"]: f["value"] for f in described["fields"]}
+        try:
+            upcoming = fresh_settings.next_run(values, self.state_dir) if not described["error"] else None
+        except (KeyError, ValueError):
+            upcoming = None
+        targets = read_json(self.state_dir / "trip_targets.json", {}) or {}
+        now = time.monotonic()
+        if now - self._disk[0] > 60 or self._disk[1] is None:
+            self._disk = (now, dir_size(self.run_root)[1] if self.run_root.is_dir() else 0)
+        spawned = dict(self.spawned) if self.spawned else None
+        if spawned and spawned.get("returncode") not in (None, 0):
+            spawned["launchLog"] = tail_lines(self.state_dir / "monitor-launch.log", 12)
         return {
-            "generatedAt": iso(now()), "target": TARGET_ROWS,
-            "jobs": {"total": sum(1 for j in jobs if j["kind"] == "batch"), "byStatus": dict(by_status)},
-            "sources": per_source, "sourceLabels": SOURCE_LABEL, "coverage": coverage + extra,
-            "rowsEstimate": {"batch": rows_batch, "baseline": legacy_rows, "total": rows_batch + legacy_rows,
-                             "refreshed": refreshed,
-                             "note": "Ước tính thô theo URL duy nhất: 1 dòng cơ sở + số hạng phòng, 1 dòng mỗi điểm/vé/tuyến + chuyến bay. "
-                                     "Trang cào lại (đã có ở đợt trước) chỉ tính một lần. Chưa khử trùng giữa Booking/Agoda/Vinpearl "
-                                     "và chưa lọc sản phẩm thiếu giá, nên dùng nút “Tạo bản xem trước” để có con số thật."},
-            "catalog": catalog, "preview": self.preview_view(), "resources": mem,
+            "now": datetime.now().astimezone().isoformat(timespec="seconds"),
+            "running": self.running(),
+            "nextRun": upcoming,
+            "settingsError": described["error"],
+            "schedule": {k: values.get(k) for k in ("schedule.enabled", "schedule.time", "schedule.fullEveryDays",
+                                                     "schedule.dailyEnabled")},
+            "lastFull": str(fresh_settings.last_full_date(self.state_dir) or "") or None,
+            "tripHotelIds": len(targets.get("hotels") or []),
+            "runs": self.runs(limit=12),
+            "diskBytes": self._disk[1],
+            "env": described["env"],
+            "spawned": spawned,
+            "runnerLogs": self.runner_logs()[:8],
         }
 
-    def catalog_summary(self, path: Path) -> dict | None:
-        if not path.exists():
-            return None
-        st = path.stat()
+    # -- danh sách lượt
+    def run_path(self, run_id: str) -> Path:
+        safe_name(run_id, RUN_ID, "Mã lượt")
+        path = self.run_root / run_id
+        if not path.is_dir():
+            raise ValueError(f"Không còn dữ liệu của lượt {run_id} (đã quá số lượt giữ lại)")
+        if path.is_symlink() or self.run_root.resolve() not in path.resolve().parents:
+            raise ValueError("Đường dẫn lượt không hợp lệ")
+        return path
 
-        def build():
-            tax, level, dest = Counter(), Counter(), Counter()
-            price = coords = desc = rows = 0
-            with open(path, encoding="utf-8") as fh:
-                for line in fh:
-                    if not line.strip():
-                        continue
-                    r = json.loads(line)
-                    rows += 1
-                    tax[r["taxonomy"]] += 1
-                    level[f"{r['taxonomy']}:{(r.get('attributes') or {}).get('level') or '-'}"] += 1
-                    dest[r["destination"] or "?"] += 1
-                    price += r["unitPrice"] is not None
-                    a = r.get("attributes") or {}
-                    coords += a.get("latitude") is not None
-                    desc += bool(r.get("description") and len(r["description"]) >= 40)
-            return {"rows": rows, "byTaxonomy": dict(tax), "byLevel": dict(level),
-                    "byDestination": dict(dest.most_common()), "withPrice": price, "withCoords": coords, "withDescription": desc,
-                    "modified": iso(st.st_mtime)}
-        return CACHE.get(("catalog", str(path), st.st_mtime, st.st_size), 3600, build)
+    def runs(self, limit: int = 60) -> list[dict]:
+        retained = {p.name: p for p in run_dirs(self.run_root)}
+        out: dict[str, dict] = {}
+        for _, summary in iter_jsonl(self.state_dir / HISTORY_FILE):
+            if isinstance(summary, dict) and summary.get("id"):
+                out[summary["id"]] = dict(summary, retained=False)
+        running = read_json(self.state_dir / RUNNING_FILE) or {}
+        busy = lock_busy(self.state_dir)
+        for name, path in retained.items():
+            data = read_json(path / RUN_FILE) or {"id": name, "status": "unknown"}
+            entry = {k: data.get(k) for k in ("id", "mode", "trigger", "status", "startedAt", "finishedAt", "seconds",
+                                               "exitCode", "error", "counts", "diskBytes")}
+            entry["id"] = entry["id"] or name
+            entry["retained"] = True
+            entry["steps"] = [{k: s.get(k) for k in ("name", "group", "status", "seconds")} for s in data.get("steps") or []]
+            if entry["status"] == "running" and not (busy and running.get("runId") == name):
+                entry["status"] = "dead"  # tiến trình bị kill, không kịp ghi kết thúc
+            out[entry["id"]] = entry
+        rows = sorted(out.values(), key=lambda r: r.get("startedAt") or "", reverse=True)
+        return rows[:limit]
 
-    @staticmethod
-    def memory() -> dict:
-        info = {}
-        try:
-            for line in Path("/proc/meminfo").read_text().splitlines():
-                k, v = line.split(":", 1)
-                info[k] = int(v.split()[0]) * 1024
-        except (OSError, ValueError):
-            pass
-        chrome = [0, 0]
-        crawlers = []
-        try:
-            for p in Path("/proc").iterdir():
-                if not p.name.isdigit():
-                    continue
-                try:
-                    cmd = (p / "cmdline").read_bytes().replace(b"\0", b" ").decode(errors="replace")
-                    if not cmd:
-                        continue
-                    rss = 0
-                    for line in (p / "status").read_text().splitlines():
-                        if line.startswith("VmRSS:"):
-                            rss = int(line.split()[1]) * 1024
-                            break
-                except OSError:
-                    continue
-                if "ms-playwright" in cmd and "chrome" in cmd:
-                    chrome[0] += 1
-                    chrome[1] += rss
-                elif "python" in cmd and re.search(r"(crawl|batch|normalise)\.py", cmd):
-                    crawlers.append({"pid": int(p.name), "rss": rss, "cmd": re.sub(r".*?(crawl|batch|normalise)\.py", r"\1.py", cmd)[:170]})
-        except OSError:
-            pass
-        disk = shutil.disk_usage(ROOT)
-        return {"memTotal": info.get("MemTotal"), "memAvailable": info.get("MemAvailable"), "chromeProcesses": chrome[0],
-                "chromeRss": chrome[1], "crawlers": crawlers, "diskFree": disk.free, "diskTotal": disk.total}
+    def run(self, run_id: str) -> dict:
+        path = self.run_path(run_id)
+        data = read_json(path / RUN_FILE) or {"id": run_id}
+        if data.get("status") == "running":
+            running = read_json(self.state_dir / RUNNING_FILE) or {}
+            if not (lock_busy(self.state_dir) and running.get("runId") == run_id):
+                data["status"] = "dead"
+            else:
+                data["progress"] = self.progress(run_id)
+        data["sourcesData"] = self.sources(path)
+        data["normalise"] = read_json(path / "normalise_report.json")
+        data["artifacts"] = self.artifacts(path)
+        data["logs"] = sorted(p.name for p in [path / LOG_FILE, *sorted((path / "logs").glob("crawl-*.log"))] if p.is_file())
+        data["hasProducts"] = (path / "products.jsonl").is_file()
+        data["hasDbReport"] = (path / "db_load.jsonl").is_file()
+        return data
 
-    # -- dữ liệu đã parse
-    def records(self, source: str, job: str, limit: int, q: str) -> dict:
-        roots = [r for r in self.roots() if (job in ("all", "") or r["id"] == job)]
-        files = []
-        for r in roots:
-            p = r["path"] / "interim" / f"{source}.jsonl"
-            if p.exists() and p.stat().st_size:
-                files.append((p.stat().st_mtime, r, p))
-        files.sort(key=lambda x: x[0], reverse=True)
-        window = 3000 if q else limit
-        out, total = [], 0
-        for _mtime, root, p in files:
-            total += file_stats(p, source)["lines"]
-            if len(out) >= limit:
-                continue
-            for rec in read_records(p, window):
-                s = summarize(source, rec)
-                if q and q.lower() not in json.dumps(s, ensure_ascii=False).lower():
-                    continue
-                s.update({"job": root["id"], "jobCity": root["spec"].get("city"), "key": rec.get("key")})
-                out.append(s)
-                if len(out) >= limit:
-                    break
-        return {"source": source, "total": total, "items": out}
-
-    def record(self, job: str, source: str, key: str) -> dict | None:
-        """Bản ghi đầy đủ theo key (lần xuất hiện cuối cùng trong file)."""
-        root = self.root_by_id(job)
-        if not root or not key:
-            return None
-        found = None
-        try:
-            with open(root["path"] / "interim" / f"{source}.jsonl", encoding="utf-8") as fh:
-                for text in fh:
-                    if key in text:
-                        try:
-                            rec = json.loads(text)
-                        except ValueError:
-                            continue
-                        if rec.get("key") == key:
-                            found = rec
-        except OSError:
-            return None
-        return found
-
-    # -- file
-    def files(self) -> dict:
-        def build():
-            rows = []
-            total_files = total_bytes = 0
-            for r in self.roots():
-                path = r["path"]
-                raw_files, raw_bytes = dir_size(path / "raw")
-                prof_files, prof_bytes = dir_size(path / "browser-profile")
-                interim = {p.stem: file_stats(p, p.stem) for p in (path / "interim").glob("*.jsonl")} if (path / "interim").is_dir() else {}
-                st = self.state_of(path)
-                done = sum(c.get("done", 0) for c in st["items"].values())
-                rows.append({"id": r["id"], "kind": r["kind"], "source": (r["spec"].get("source") or ""), "city": r["spec"].get("city"),
-                             "rawFiles": raw_files, "rawBytes": raw_bytes, "profileBytes": prof_bytes,
-                             "interimLines": sum(v["lines"] for v in interim.values()),
-                             "interimBytes": sum(v["bytes"] for v in interim.values()), "doneItems": done,
-                             "hasState": (path / "state" / "crawl_state.sqlite").exists()})
-                total_files += raw_files
-                total_bytes += raw_bytes + prof_bytes
-            shared_files, shared_bytes = dir_size(self.batches / "shared")
-            top = []
-            for name in ("raw", "interim", "batches", "catalog", "map", "backups", "browser-profile", "preview", "logs"):
-                d = self.data / name
-                if d.exists():
-                    n, b = dir_size(d)
-                    top.append({"name": f"data/{name}", "files": n, "bytes": b})
-            for f in ("products.jsonl", "products.json", "products.csv"):
-                p = self.data / f
-                if p.exists():
-                    top.append({"name": f"data/{f}", "files": 1, "bytes": p.stat().st_size})
-            return {"jobs": rows, "top": top, "shared": {"files": shared_files, "bytes": shared_bytes},
-                    "totals": {"rawFiles": total_files, "bytes": total_bytes}}
-        return CACHE.get("files", 30, build)
-
-    # -- nhật ký
-    def log(self, job: str, lines: int) -> dict:
-        roots = self.roots()
-        if job in ("running", "", "all"):
-            chosen = [r for r in roots if r["kind"] == "batch" and self.running_pid(r["path"])] or \
-                     sorted((r for r in roots if r["kind"] == "batch"), key=lambda r: (self.log_file(r["path"]).stat().st_mtime
-                            if self.log_file(r["path"]) else 0), reverse=True)[:3]
-        else:
-            chosen = [r for r in roots if r["id"] == job]
-        merged = []
-        for r in chosen:
-            lf = self.log_file(r["path"])
-            if not lf:
-                continue
-            tag = f"{(r['spec'].get('source') or '')[:14]} {str(r['spec'].get('city') or '')[:12]}".strip()
-            for line in tail_lines(lf, lines):
-                m = re.match(r"^(\d{4}-\d{2}-\d{2} )?(\d{2}:\d{2}:\d{2})", line)
-                merged.append((m.group(2) if m else "", tag, line))
-        merged.sort(key=lambda x: x[0])
+    def sources(self, path: Path) -> list[dict]:
+        names = set()
+        if (path / "raw").is_dir():
+            names |= {p.name for p in (path / "raw").iterdir() if p.is_dir() and SOURCE_NAME.match(p.name)}
+        if (path / "interim").is_dir():
+            names |= {p.stem for p in (path / "interim").glob("*.jsonl") if SOURCE_NAME.match(p.stem)}
         out = []
-        for _t, tag, line in merged[-lines:]:
-            m = LEVEL_RE.search(line)
-            out.append({"job": tag, "level": m.group(1) if m else "INFO", "text": line})
-        return {"jobs": [f"{r['spec'].get('source')} {r['spec'].get('city')}" for r in chosen], "lines": out}
-
-    # -- kiểm tra hợp lý
-    def health(self) -> dict:
-        items = []
-
-        def add(sev, title, detail="", job=None):
-            items.append({"severity": sev, "title": title, "detail": detail, "job": job})
-
-        jobs = [j for j in self.jobs() if j["kind"] == "batch"]
-        mem = self.memory()
-        if mem.get("memAvailable") is not None and mem["memAvailable"] < 1.0 * 2**30:
-            add("error", "RAM khả dụng dưới 1 GB", f"Chỉ còn {mem['memAvailable'] / 2**30:.1f} GB; đóng bớt ứng dụng hoặc dừng một terminal cào.")
-        elif mem.get("memAvailable") is not None and mem["memAvailable"] < 2.0 * 2**30:
-            add("warn", "RAM khả dụng dưới 2 GB", f"{mem['memAvailable'] / 2**30:.1f} GB; {mem['chromeProcesses']} tiến trình Chromium đang dùng {mem['chromeRss'] / 2**30:.1f} GB.")
-        if mem["diskFree"] < 20 * 2**30:
-            add("warn", "Đĩa còn dưới 20 GB", f"{mem['diskFree'] / 2**30:.0f} GB trống.")
-        for j in jobs:
-            label = f"{j['source']} · {j['city']}"
-            if j["status"] == "blocked":
-                add("error", f"Bị chặn (mã 75): {label}", "Nghỉ vài giờ rồi chạy lại đúng lệnh; không giảm --delay.", j["id"])
-            elif j["status"] == "failed":
-                add("error", f"Job lỗi (mã {j['exitCode']}): {label}", "Xem nhật ký của job.", j["id"])
-            if j["stalled"]:
-                add("warn", f"Đang chạy nhưng không có hoạt động > 10 phút: {label}", "Có thể đang chờ xác minh trong cửa sổ trình duyệt.", j["id"])
-            dest = DEST_BY_NAME.get(j["city"])
-            unconfigured = bool(dest) and ((j["source"] == "trip_attractions" and not dest.trip_city)
-                                           or (j["source"] == "agoda_hotels" and not dest.agoda_city))  # cố ý chưa có ID kiểm chứng
-            if (j["status"] in ("done", "paused") and j["total"] == 0 and not unconfigured
-                    and j["source"] in ("booking_hotels", "agoda_hotels", "trip_attractions") and not j["once"]):
-                add("warn", f"Không tìm được URL nào: {label}", "Kiểm tra booking_query / slug Agoda / ID Trip trong collectors/plan.py.", j["id"])
-            if j["done"] and j["records"] < j["done"] * 0.9 and j["source"] not in ("trip_flights", "vinpearl"):
-                add("warn", f"Đã cào {j['done']} trang nhưng chỉ {j['records']} bản ghi: {label}", "Parser có thể đang bỏ sót trang; thử `crawl.py reparse`.", j["id"])
-            asked = self._per_destination(j["id"])
-            found = max((d["found"] or 0 for d in self.state_of(self.batches / j["id"])["discovery"]
-                         if d["key"].startswith("search2:")), default=None) if asked else None
-            if asked and found is not None and j["source"] == "booking_hotels" and found < asked * 0.5 and j["status"] != "running":
-                add("info", f"Booking chỉ trả {found}/{asked} khách sạn: {label}",
-                    "Thành phố nhỏ, hoặc cách tải thêm kết quả đã đổi; so sánh với các thành phố khác.", j["id"])
-            if j["failed"] and j["total"] and j["failed"] / j["total"] > 0.2:
-                add("warn", f"{j['failed']}/{j['total']} URL lỗi: {label}", "Chạy `crawl.py retry-failed <nguồn>` sau khi kiểm tra lỗi.", j["id"])
-        # Chất lượng dữ liệu đã parse theo nguồn
-        agg: dict[str, Counter] = defaultdict(Counter)
-        for r in self.roots():
-            if r["kind"] != "batch":
-                continue
-            for p in (r["path"] / "interim").glob("*.jsonl") if (r["path"] / "interim").is_dir() else []:
-                fs = file_stats(p, p.stem)
-                a = agg[p.stem]
-                a["lines"] += fs["lines"]; a["noPrice"] += fs["noPrice"]; a["noCoords"] += fs["noCoords"]; a["noDesc"] += fs["noDesc"]
-        for src, a in agg.items():
-            if a["lines"] < 20:
-                continue
-            for key, label, limit in (("noPrice", "giá", 0.35), ("noCoords", "toạ độ", 0.15), ("noDesc", "mô tả", 0.4)):
-                if src == "trip_attractions" and key == "noPrice":
-                    continue  # điểm công cộng không bán vé
-                if a[key] / a["lines"] > limit:
-                    add("warn", f"{SOURCE_LABEL.get(src, src)}: {a[key]}/{a['lines']} bản ghi thiếu {label}",
-                        f"Ngưỡng bình thường < {int(limit * 100)}%.")
-        # URL trùng giữa các job cùng nguồn (cào lặp)
-        dup = self.duplicate_urls()
-        for src, n in dup.items():
-            add("info", f"{SOURCE_LABEL.get(src, src)}: {n} URL xuất hiện ở nhiều job", "Cào lặp cùng một trang; chuẩn hoá sẽ gộp nhưng tốn request.")
-        if not items:
-            add("ok", "Không có cảnh báo", "Mọi kiểm tra hiện tại đều ổn.")
-        order = {"error": 0, "warn": 1, "info": 2, "ok": 3}
-        items.sort(key=lambda x: order[x["severity"]])
-        return {"generatedAt": iso(now()), "items": items, "counts": dict(Counter(i["severity"] for i in items))}
-
-    def _per_destination(self, job_id: str) -> int | None:
-        spec = (read_json(self.batches / job_id / "job.json") or {}).get("args") or []
-        return int(spec[spec.index("--per-destination") + 1]) if "--per-destination" in spec else None
-
-    def duplicate_urls(self) -> dict[str, int]:
-        def build():
-            urls: dict[str, Counter] = defaultdict(Counter)
-            for r in self.roots():
-                if r["kind"] != "batch":
-                    continue
-                for p in (r["path"] / "interim").glob("*.jsonl") if (r["path"] / "interim").is_dir() else []:
-                    try:
-                        with open(p, encoding="utf-8") as fh:
-                            for line in fh:
-                                m = re.search(r'"url": "([^"]+)"', line)
-                                if m:
-                                    urls[p.stem][m.group(1)] += 1
-                    except OSError:
-                        continue
-            return {s: sum(1 for n in c.values() if n > 1) for s, c in urls.items() if any(n > 1 for n in c.values())}
-        return CACHE.get("dups", 60, build)
-
-    # -- xem trước catalog chuẩn hoá
-    def preview_view(self) -> dict:
-        with self.preview_lock:
-            view = dict(self.preview_state)
-        return view
-
-    def start_preview(self) -> dict:
-        with self.preview_lock:
-            if self.preview_state["status"] == "running":
-                return dict(self.preview_state)
-            self.preview_state = {"status": "running", "startedAt": iso(now()), "finishedAt": None,
-                                  "message": "Đang gộp dữ liệu...", "summary": None}
-        threading.Thread(target=self._preview_worker, daemon=True).start()
-        return self.preview_view()
-
-    def _set_preview(self, **kw):
-        with self.preview_lock:
-            self.preview_state.update(kw)
-
-    def _preview_worker(self):
-        prev = self.data / "preview"
-        try:
-            shutil.rmtree(prev, ignore_errors=True)
-            (prev / "interim").mkdir(parents=True)
-            seen: dict[str, set] = defaultdict(set)
-            lines: dict[str, list] = defaultdict(list)
-
-            def add_lines(path: Path, source: str, raw_archive: str | None):
-                try:
-                    text = path.read_text(encoding="utf-8")
-                except OSError:
-                    return
-                for line in text.split("\n"):
-                    if not line.strip():
-                        continue
-                    try:
-                        rec = json.loads(line)
-                    except ValueError:
-                        continue  # dòng cuối đang được ghi dở
-                    if raw_archive:
-                        rec["rawArchive"] = raw_archive
-                    canon = json.dumps(rec, sort_keys=True, ensure_ascii=False)
-                    if canon not in seen[source]:
-                        seen[source].add(canon)
-                        lines[source].append(canon)
-
-            for f in sorted((self.data / "interim").glob("*.jsonl")):
-                add_lines(f, f.stem, None)
-            for r in self.roots():
-                if r["kind"] != "batch":
-                    continue
-                for f in (r["path"] / "interim").glob("*.jsonl") if (r["path"] / "interim").is_dir() else []:
-                    add_lines(f, f.stem, str((r["path"] / "raw").resolve()))
-            for source, ls in lines.items():
-                (prev / "interim" / f"{source}.jsonl").write_text("\n".join(ls) + "\n", encoding="utf-8")
-            self._set_preview(message="Đang chuẩn hoá (khử trùng, gộp nguồn)...")
-            cmd = [sys.executable, str(ROOT / "normalise.py"), "--data-dir", str(prev), "--no-plan",
-                   "--rooms-per-hotel", "0", "--flights-per-route", "0"]
-            proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, timeout=1800)
-            if proc.returncode != 0:
-                self._set_preview(status="error", finishedAt=iso(now()),
-                                  message=(proc.stderr or proc.stdout)[-600:] or f"normalise thoát mã {proc.returncode}")
-                return
-            summary = self.catalog_summary(prev / "products.jsonl")
-            self._set_preview(status="done", finishedAt=iso(now()), message="Xong. Đây chỉ là bản xem trước, catalog chính chưa đổi.",
-                              summary=summary)
-        except Exception as e:  # noqa: BLE001 - báo lỗi lên UI thay vì làm chết luồng
-            self._set_preview(status="error", finishedAt=iso(now()), message=f"{type(e).__name__}: {e}")
-
-    # -- luồng demo (pipeline_demo.py): trang /pipeline chỉ đọc state.json và khởi chạy tiến trình con với tham số đã kiểm tra
-    def pipeline_state(self, run: str) -> dict:
-        demo = self.data / "demo"
-        rid = run
-        if run == "latest":
-            try:
-                rid = (demo / "latest.txt").read_text(encoding="utf-8").strip()
-            except OSError:
-                return {"empty": True}
-        if not PIPELINE_RUN.match(rid):
-            raise ValueError("lượt chạy không hợp lệ")
-        st = read_json(demo / "runs" / rid / "state.json")
-        if not st:
-            return {"empty": True}
-        if st.get("status") == "running" and not pid_alive(int(st.get("pid") or 0)):
-            st["status"], st["stale"] = "stopped", True  # tiến trình đã chết giữa chừng
-        return st
-
-    def pipeline_runs(self) -> list[dict]:
-        runs = self.data / "demo" / "runs"
-        out = []
-        if runs.is_dir():
-            for p in sorted((x for x in runs.iterdir() if x.is_dir() and PIPELINE_RUN.match(x.name)), reverse=True)[:12]:
-                st = read_json(p / "state.json") or {}
-                out.append({"id": p.name, "status": st.get("status", "?"), "startedAt": st.get("startedAt")})
+        for name in sorted(names):
+            files, size = dir_size(path / "raw" / name) if (path / "raw" / name).is_dir() else (0, 0)
+            interim = path / "interim" / f"{name}.jsonl"
+            count = sum(1 for _ in iter_jsonl(interim)) if interim.is_file() else 0
+            out.append({"source": name, "label": SOURCE_LABELS.get(name, name), "rawFiles": files, "rawBytes": size,
+                        "interimRecords": count})
         return out
 
-    def pipeline_config(self) -> dict:
-        return {"tokens": api_sources.token_status(), "kinds": list(api_sources.FETCH_KINDS),
-                "defaultDestinations": [d.name for d in DESTINATIONS[:15]]}
+    def artifacts(self, path: Path) -> list[dict]:
+        skip = {RUN_FILE, LOG_FILE, "products.jsonl", "db_load.jsonl"}
+        out = []
+        for p in sorted(list(path.glob("*")) + list((path / "map").glob("*"))):
+            if p.is_file() and p.name not in skip and not p.name.startswith("."):
+                out.append({"name": str(p.relative_to(path)), "bytes": p.stat().st_size})
+        return out
 
-    def pipeline_inbox(self) -> dict:
-        return api_sources.inbox_overview(self.data / "demo" / "inbox")
+    # -- log
+    def runner_logs(self) -> list[dict]:
+        if not self.log_dir or not self.log_dir.is_dir():
+            return []
+        files = sorted(self.log_dir.glob("fresh-catalog-*.log"), key=lambda p: p.stat().st_mtime, reverse=True)
+        out = []
+        for p in files[:40]:
+            last = tail_lines(p, 3)
+            code = next((m.group(1) for line in reversed(last) if (m := re.search(r"fresh-catalog\.exit=(\d+)", line))), None)
+            out.append({"name": p.name, "bytes": p.stat().st_size,
+                        "modifiedAt": datetime.fromtimestamp(p.stat().st_mtime).astimezone().isoformat(timespec="seconds"),
+                        "exitCode": code})
+        return out
 
-    def save_token(self, key: str, value: str) -> dict:
-        api_sources.save_env_var(key, value)
-        return api_sources.token_status()
+    def log(self, run_id: str | None, name: str, lines: int = 400, grep: str = "", runner: bool = False) -> dict:
+        name = safe_name(name, LOG_NAME, "Tên log")
+        if runner:
+            if not self.log_dir:
+                raise ValueError("Monitor chưa được chạy với --log-dir")
+            path = self.log_dir / name
+        else:
+            base = self.run_path(run_id or "")
+            path = base / name if name == LOG_FILE else base / "logs" / name
+        if not path.is_file():
+            raise ValueError("Không có file log này")
+        lines = max(10, min(int(lines), 20000))
+        if grep:
+            needle = grep.lower()
+            matched = [line for line in tail_lines(path, 200_000) if needle in line.lower()]
+            content = matched[-lines:]
+        else:
+            content = tail_lines(path, lines)
+        return {"name": name, "bytes": path.stat().st_size, "lines": content}
 
-    def clear_token(self, key: str) -> dict:
-        api_sources.clear_env_var(key)
-        return api_sources.token_status()
+    # -- dữ liệu gốc
+    def raw_dir(self, run_id: str, source: str) -> Path:
+        return self.run_path(run_id) / "raw" / safe_name(source, SOURCE_NAME, "Nguồn")
 
-    def run_probe(self, kind: str, destination: str, limit, max_usd) -> dict:
-        destination = str(destination or "").strip() or "Nha Trang"
-        if len(destination) > 60 or not re.fullmatch(r"[\w ,.\-]+", destination):
-            raise ValueError("điểm đến không hợp lệ")
+    def raw_list(self, run_id: str, source: str, q: str = "", offset: int = 0, limit: int = 100) -> dict:
+        base = self.raw_dir(run_id, source)
+        rows = []
+        if base.is_dir():
+            for p in base.rglob("*"):
+                if p.is_file():
+                    rel = str(p.relative_to(base))
+                    if q and q.lower() not in rel.lower():
+                        continue
+                    st = p.stat()
+                    rows.append({"path": rel, "bytes": st.st_size, "kind": raw_kind(p),
+                                 "modifiedAt": datetime.fromtimestamp(st.st_mtime).astimezone().isoformat(timespec="seconds")})
+        rows.sort(key=lambda r: r["path"])
+        return page(rows, offset, limit)
+
+    def raw_file(self, run_id: str, source: str, rel: str) -> dict:
+        base = self.raw_dir(run_id, source).resolve()
+        path = (base / rel).resolve()
+        if base not in path.parents or not path.is_file():
+            raise ValueError("Đường dẫn file raw không hợp lệ")
+        text, cut = read_text(path)
+        kind = raw_kind(path)
+        out = {"path": rel, "bytes": path.stat().st_size, "kind": kind, "truncated": cut, "chars": len(text)}
+        if kind == "json":
+            try:
+                data = json.loads(text)
+                pretty = json.dumps(data, ensure_ascii=False, indent=1)
+                out["json"] = pretty[:MAX_TEXT]
+                out["truncated"] = cut or len(pretty) > MAX_TEXT
+                out["summary"] = json_summary(data)
+            except ValueError:
+                out["text"] = text[:MAX_TEXT]
+        elif kind == "html":
+            out.update(html_views(text))
+            out["text"] = text[:MAX_TEXT]
+        else:
+            out["text"] = text[:MAX_TEXT]
+        return out
+
+    # -- interim
+    def _interim_rows(self, run_id: str, source: str) -> list[dict]:
+        path = self.run_path(run_id) / "interim" / f"{safe_name(source, SOURCE_NAME, 'Nguồn')}.jsonl"
+        rows = self.cache.get(path, lambda p: [(i, r) for i, r in iter_jsonl(p)])
+        if rows is None:
+            raise ValueError("Nguồn này không có interim trong lượt")
+        return rows
+
+    def interim(self, run_id: str, source: str, q: str = "", offset: int = 0, limit: int = 100) -> dict:
+        rows = self._interim_rows(run_id, source)
+        needle = q.lower().strip()
+        out = []
+        for index, record in rows:
+            if needle and needle not in json.dumps(record, ensure_ascii=False).lower():
+                continue
+            out.append(dict(brief_record(record), index=index))
+        result = page(out, offset, limit)
+        result["fields"] = sorted({k for _, r in rows[:200] for k in r})
+        return result
+
+    def interim_record(self, run_id: str, source: str, index: int) -> dict:
+        for i, record in self._interim_rows(run_id, source):
+            if i == index:
+                return {"index": i, "record": record}
+        raise ValueError("Không có bản ghi này")
+
+    # -- catalog chuẩn hoá
+    def _products(self, run_id: str) -> list[dict]:
+        path = self.run_path(run_id) / "products.jsonl"
+        rows = self.cache.get(path, lambda p: [r for _, r in iter_jsonl(p)])
+        if rows is None:
+            raise ValueError("Lượt này chưa tới bước chuẩn hoá")
+        return rows
+
+    def products(self, run_id: str, q: str = "", taxonomy: str = "", level: str = "", source: str = "",
+                 destination: str = "", flag: str = "", offset: int = 0, limit: int = 100) -> dict:
+        rows = self._products(run_id)
+        facets = {"taxonomy": Counter(), "level": Counter(), "source": Counter(), "destination": Counter()}
+        out = []
+        needle = q.lower().strip()
+        for row in rows:
+            b = brief_product(row)
+            src = (b["sourceRef"] or "").split(":")[0]
+            for key, value in (("taxonomy", b["taxonomy"]), ("level", b["level"] or "-"), ("source", src),
+                               ("destination", b["destination"])):
+                facets[key][value] += 1
+            if taxonomy and b["taxonomy"] != taxonomy:
+                continue
+            if level and (b["level"] or "-") != level:
+                continue
+            if source and src != source:
+                continue
+            if destination and b["destination"] != destination:
+                continue
+            if flag == "noPrice" and b["unitPrice"] is not None:
+                continue
+            if flag == "unavailable" and b["available"]:
+                continue
+            if flag == "noImage" and b["hasImage"]:
+                continue
+            if needle and needle not in f"{b['name']} {b['sourceRef']} {b['productId']}".lower():
+                continue
+            out.append(b)
+        result = page(out, offset, limit)
+        result["facets"] = {k: dict(v.most_common()) for k, v in facets.items()}
+        return result
+
+    def product(self, run_id: str, product_id: str) -> dict:
+        path = self.run_path(run_id)
+        row = next((r for r in self._products(run_id) if r.get("productId") == product_id), None)
+        if row is None:
+            raise ValueError("Không có sản phẩm này trong catalog của lượt")
+        attrs = row.get("attributes") or {}
+        refs = [row.get("sourceRef")] + list(attrs.get("sameAs") or [])
+        trace = []
+        for ref in [r for r in refs if r]:
+            family, kind, ident = ref_parts(ref)
+            for source in FAMILIES.get(family, ()):
+                interim = path / "interim" / f"{source}.jsonl"
+                if not interim.is_file():
+                    continue
+                matches = []
+                for index, record in self.cache.get(interim, lambda p: [(i, r) for i, r in iter_jsonl(p)]) or []:
+                    if ident and ident in record_ids(record):
+                        matches.append(dict(brief_record(record), index=index))
+                    elif kind == "route" and ident and ident == f"{record.get('fromCode')}-{record.get('toCode')}":
+                        matches.append(dict(brief_record(record), index=index))
+                    if len(matches) >= 5:
+                        break
+                for match in matches:
+                    trace.append({"ref": ref, "source": source, "interim": match,
+                                  "raw": self.raw_for(path, source, ident, match.get("url"))})
+        db = next((r for _, r in iter_jsonl(path / "db_load.jsonl") if r.get("productId") == product_id), None)
+        return {"product": row, "trace": trace, "db": db}
+
+    def raw_for(self, path: Path, source: str, ident: str, url: str | None) -> list[str]:
+        base = path / "raw" / source
+        if not base.is_dir():
+            return []
+        found = []
+        if source == "trip_hotels" and ident and (base / ident).is_dir():
+            return sorted(str(p.relative_to(base)) for p in (base / ident).iterdir() if p.is_file())[:20]
+        tokens = [t for t in {ident, re.sub(r"[^A-Za-z0-9._-]+", "_", url or "")[:60]} if t and len(t) >= 3]
+        if url:
+            from collectors.common import Paths, RawCache
+            cache = RawCache(Paths(path), source)
+            for ext in ("html", "json"):
+                candidate = cache.path(url, ext)
+                if candidate.is_file():
+                    found.append(str(candidate.relative_to(base)))
+        if not found and tokens:
+            for p in base.rglob("*"):
+                if p.is_file() and any(t in p.name for t in tokens):
+                    found.append(str(p.relative_to(base)))
+                    if len(found) >= 20:
+                        break
+        return sorted(set(found))
+
+    # -- nạp DB
+    def db_rows(self, run_id: str, action: str = "", q: str = "", written: str = "", offset: int = 0,
+                limit: int = 100) -> dict:
+        path = self.run_path(run_id) / "db_load.jsonl"
+        rows = self.cache.get(path, lambda p: [r for _, r in iter_jsonl(p)])
+        if rows is None:
+            raise ValueError("Lượt này chưa nạp DB")
+        counts = Counter(r.get("action") for r in rows)
+        written_count = sum(1 for r in rows if r.get("written"))
+        needle = q.lower().strip()
+        out = [r for r in rows
+               if (not action or r.get("action") == action)
+               and (not written or (written == "yes") == bool(r.get("written")))
+               and (not needle or needle in f"{r.get('name')} {r.get('sourceRef')} {r.get('productId')}".lower())]
+        result = page(out, offset, limit)
+        result.update(actions=dict(counts), written=written_count)
+        return result
+
+    # -- báo cáo khác của lượt
+    def artifact(self, run_id: str, name: str) -> dict:
+        base = self.run_path(run_id).resolve()
+        if name not in {item["name"] for item in self.artifacts(base)}:
+            raise ValueError("Không có báo cáo này trong lượt")
+        path = (base / name).resolve()
+        if base not in path.parents or not path.is_file():
+            raise ValueError("Không có file này trong lượt")
+        text, cut = read_text(path, 8_000_000)
+        out = {"name": name, "bytes": path.stat().st_size, "truncated": cut}
+        if path.suffix == ".csv":
+            reader = csv.reader(io.StringIO(text.lstrip("﻿")))
+            rows = list(reader)
+            out.update(kind="table", header=rows[0] if rows else [], rows=rows[1:2001], total=max(0, len(rows) - 1))
+        elif path.suffix in (".json", ".geojson"):
+            try:
+                out.update(kind="json", json=json.dumps(json.loads(text), ensure_ascii=False, indent=1)[:MAX_TEXT])
+            except ValueError:
+                out.update(kind="text", text=text[:MAX_TEXT])
+        elif path.suffix == ".jsonl":
+            rows = [json.loads(line) for line in text.splitlines()[:500] if line.strip()]
+            out.update(kind="json", json=json.dumps(rows, ensure_ascii=False, indent=1)[:MAX_TEXT])
+        else:
+            out.update(kind="text", text=text[:MAX_TEXT])
+        return out
+
+    # -- khách sạn Trip
+    def trip_hotels(self) -> dict:
+        from fresh_catalog_schedule import select_batch
+        targets = (read_json(self.state_dir / "trip_targets.json", {}) or {}).get("hotels") or []
+        schedule = (read_json(self.state_dir / "trip_schedule.json", {}) or {}).get("hotels") or {}
+        order = {row["trip_hotel_id"]: i + 1 for i, row in enumerate(select_batch(targets, schedule, max(1, len(targets))))} \
+            if targets else {}
+        values = fresh_settings.load(self.state_dir) if not fresh_settings.describe(self.state_dir)["error"] else {}
+        batch = values.get("tripHotels.dailyHotels", 60)
+        coverage, coverage_run = {}, None
+        for path in run_dirs(self.run_root):
+            report = read_json(path / "trip_price_coverage.json")
+            if report:
+                coverage_run = path.name
+                for row in report.get("results") or []:
+                    coverage.setdefault(str(row.get("hotelId")), {})[row.get("checkin")] = row.get("status")
+                break
+        rows = []
+        for row in targets:
+            hid = row["trip_hotel_id"]
+            entry = schedule.get(hid) or {}
+            rows.append({"hotelId": hid, "cityId": row.get("city_id"), "destination": row.get("destination"),
+                         "lastAttemptAt": entry.get("lastAttemptAt"), "lastSuccessAt": entry.get("lastSuccessAt"),
+                         "queue": order.get(hid), "nextBatch": order.get(hid, 10**9) <= batch,
+                         "lastCoverage": coverage.get(hid)})
+        rows.sort(key=lambda r: r["queue"] or 10**9)
+        return {"hotels": rows, "dailyBatch": batch, "coverageRun": coverage_run,
+                "cities": dict(Counter(r["destination"] for r in rows))}
+
+    # -- cấu hình
+    def settings(self) -> dict:
+        return fresh_settings.describe(self.state_dir)
+
+    def save_settings(self, changes: dict) -> dict:
+        fresh_settings.save(self.state_dir, changes)
+        return fresh_settings.describe(self.state_dir)
+
+    # -- chạy / dừng
+    def start(self, mode: str) -> tuple[int, dict]:
+        if mode not in ("auto", "full", "daily", "index"):
+            raise ValueError("Chế độ chạy không hợp lệ")
+        with self.spawn_lock:
+            if self.running():
+                return 409, {"error": "Đang có lượt chạy; đợi xong hoặc bấm Dừng"}
+            cmd = [sys.executable, str(ROOT / "fresh_catalog.py"), mode, "--trigger", "monitor"]
+            if mode != "index" and not os.environ.get("DISPLAY") and shutil.which("xvfb-run"):
+                cmd = ["xvfb-run", "-a", "-s", "-screen 0 1366x768x24"] + cmd
+            env = dict(os.environ, CATALOG_STATE_DIR=str(self.state_dir), CATALOG_RUN_ROOT=str(self.run_root),
+                       PYTHONUNBUFFERED="1")
+            self.state_dir.mkdir(parents=True, exist_ok=True)
+            with open(self.state_dir / "monitor-launch.log", "a", encoding="utf-8") as log:
+                log.write(f"\n=== {datetime.now().astimezone().isoformat(timespec='seconds')} {' '.join(cmd)}\n")
+                log.flush()
+                proc = subprocess.Popen(cmd, cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT,
+                                        stdin=subprocess.DEVNULL, start_new_session=True)
+            self.spawned = {"pid": proc.pid, "mode": mode, "returncode": None,
+                            "startedAt": datetime.now().astimezone().isoformat(timespec="seconds")}
+
+            def reap(p=proc, info=self.spawned):
+                info["returncode"] = p.wait()
+
+            threading.Thread(target=reap, daemon=True).start()
+            return 202, {"started": True, "mode": mode, "pid": proc.pid}
+
+    def stop(self) -> tuple[int, dict]:
+        info = read_json(self.state_dir / RUNNING_FILE) or {}
+        if not lock_busy(self.state_dir) or not info.get("runId"):
+            return 409, {"error": "Không có lượt nào đang chạy"}
+        write_json(self.state_dir / STOP_FILE, {"runId": info["runId"],
+                                                "requestedAt": datetime.now(timezone.utc).isoformat(timespec="seconds")})
+        return 202, {"stopping": info["runId"],
+                     "message": "Đã gửi yêu cầu dừng; crawler sẽ dừng ở điểm kiểm tra tiếp theo. Bước DB đã bắt đầu có thể hoàn tất; dữ liệu đã commit được giữ lại."}
+
+
+def raw_kind(path: Path) -> str:
+    name = path.name[:-3] if path.name.endswith(".gz") else path.name
+    for ext, kind in ((".json", "json"), (".html", "html"), (".htm", "html"), (".xml", "xml")):
+        if name.endswith(ext):
+            return kind
+    parent = path.parent.name
+    return {"json": "json", "html": "html", "xmlgz": "xml"}.get(parent, "text")
+
+
+def json_summary(data) -> dict:
+    if isinstance(data, dict):
+        return {"type": "object", "keys": list(data)[:60]}
+    if isinstance(data, list):
+        return {"type": "array", "length": len(data)}
+    return {"type": type(data).__name__}
+
+
+def html_views(html: str) -> dict:
+    """Các khối có cấu trúc trong HTML (JSON-LD, __NEXT_DATA__, hotelDetailResponse) và văn bản hiển thị."""
+    out: dict = {}
+    title = re.search(r"<title[^>]*>(.*?)</title>", html[:20000], re.S | re.I)
+    out["title"] = re.sub(r"\s+", " ", title.group(1)).strip() if title else None
+    blocks = []
+    for match in re.finditer(r'<script[^>]*application/ld\+json[^>]*>(.*?)</script>', html, re.S | re.I):
         try:
-            limit = min(max(int(limit), 1), 10)
-            max_usd = min(max(float(max_usd), 0.01), 0.5)
-        except (TypeError, ValueError):
-            raise ValueError("limit/maxUsd phải là số") from None
-        return api_sources.probe_kind(kind, destination, limit, max_usd, self.data / "demo" / "probe")
-
-    def pipeline_fetch(self) -> dict:
-        st = read_json(self.data / "demo" / "fetch.json") or {"status": "idle"}
-        if st.get("status") == "fetching" and not pid_alive(int(st.get("pid") or 0)):
-            st["status"], st["stale"] = "failed", True
-        return st
-
-    def start_pull(self, opts: dict) -> tuple[int, dict]:
-        """Tải hàng loạt từ API rồi tự xử lý hết. Chi tiêu bị chặn cứng ở phía này (≤ $5, ≤ 500 mục/điểm đến), token chỉ đọc từ .env."""
-        kind = str(opts.get("source") or "")
-        if kind not in api_sources.FETCH_KINDS:
-            raise ValueError("nguồn không hợp lệ")
-        need = {"apify-agoda": "apify", "apify-booking": "apify", "apify-booking-full": "apify", "serpapi": "serpapi", "travelpayouts": "travelpayouts"}[kind]
-        if not api_sources.token_status()[need]:
-            return 400, {"error": "Chưa có token cho nguồn này trong file .env (xem README, mục Nguồn API). Điền xong tải lại trang."}
-        if self.pipeline_state("latest").get("status") == "running" or self.pipeline_fetch().get("status") == "fetching":
-            return 409, {"error": "Đang có một lượt tải hoặc lượt chạy, đợi nó xong."}
-
-        def num(key: str, lo: float, hi: float, default: float, cast=int):
-            try:
-                v = cast(opts.get(key) if opts.get(key) not in (None, "") else default)
-            except (TypeError, ValueError):
-                raise ValueError(f"{key} phải là số") from None
-            return min(max(v, lo), hi)
-
-        dests = str(opts.get("destinations") or "").strip()
-        if dests and (len(dests) > 300 or not re.fullmatch(r"[\w ,.\-]+", dests)):
-            raise ValueError("điểm đến chỉ gồm chữ, số, dấu cách và dấu phẩy")
-        run_id = datetime.now().strftime("%Y%m%d-%H%M%S")
-        argv = [sys.executable, str(ROOT / "pipeline_demo.py"), "pull", kind, "--run-id", run_id, "--source-data-dir", str(self.data),
-                "--max-items", str(num("maxItems", 1, api_sources.MAX_ITEMS_PER_DESTINATION, 50)),
-                "--max-usd", str(num("maxUsd", 0.01, api_sources.MAX_USD_PER_FETCH, 1.0, float)),
-                "--pages", str(num("pages", 1, 5, 1)), "--replay-delay-ms", str(num("delayMs", 0, 2000, 300))]
-        if dests:
-            argv += ["--destinations", dests]
-        if opts.get("onlyApi", True):
-            argv.append("--only-api")
-        if opts.get("noDb"):
-            argv.append("--no-db")
-        (self.data / "demo").mkdir(parents=True, exist_ok=True)
-        env = {**os.environ, "VOTA_DATA_DIR": str(self.data)}
-        with open(self.data / "demo" / f"launcher-{run_id}.log", "w", encoding="utf-8") as log:
-            subprocess.Popen(argv, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, start_new_session=True, env=env)
-        return 200, {"runId": run_id}
-
-    def start_pipeline(self, opts: dict) -> tuple[int, dict]:
-        if self.pipeline_state("latest").get("status") == "running":
-            return 409, {"error": "Đang có một lượt chạy, đợi nó xong."}
-
-        def num(key: str, lo: int, hi: int, default: int) -> int:
-            try:
-                v = int(opts.get(key) if opts.get(key) not in (None, "") else default)
-            except (TypeError, ValueError):
-                raise ValueError(f"{key} phải là số") from None
-            return min(max(v, lo), hi)
-
-        run_id = datetime.now().strftime("%Y%m%d-%H%M%S")
-        argv = [sys.executable, str(ROOT / "pipeline_demo.py"), "run", "--run-id", run_id, "--source-data-dir", str(self.data),
-                "--replay-delay-ms", str(num("delayMs", 0, 2000, 300))]
-        dests = str(opts.get("destinations") or "").strip()
-        if dests:
-            if len(dests) > 200 or not re.fullmatch(r"[\w ,.\-]+", dests):
-                raise ValueError("điểm đến chỉ gồm chữ, số, dấu cách và dấu phẩy")
-            argv += ["--destinations", dests]
-        if opts.get("maxHotels") not in (None, "", 0, "0"):
-            argv += ["--max-hotels", str(num("maxHotels", 1, 20000, 2000))]
-        if opts.get("liveVinpearl"):  # HTTP thường, không mở trình duyệt; vé/tour Vinpearl cần Chromium nên giao diện không có
-            argv.append("--live-vinpearl")
-        if opts.get("onlyApi"):
-            argv.append("--only-api")
-        if opts.get("noDb"):
-            argv.append("--no-db")
-        (self.data / "demo").mkdir(parents=True, exist_ok=True)
-        env = {**os.environ, "VOTA_DATA_DIR": str(self.data)}
-        with open(self.data / "demo" / f"launcher-{run_id}.log", "w", encoding="utf-8") as log:
-            subprocess.Popen(argv, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, start_new_session=True, env=env)
-        return 200, {"runId": run_id}
+            blocks.append(json.loads(match.group(1).strip()))
+        except ValueError:
+            continue
+    out["jsonLd"] = json.dumps(blocks, ensure_ascii=False, indent=1)[:MAX_TEXT] if blocks else None
+    nxt = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.S)
+    if nxt:
+        try:
+            out["nextData"] = json.dumps(json.loads(nxt.group(1)), ensure_ascii=False, indent=1)[:MAX_TEXT]
+        except ValueError:
+            out["nextData"] = None
+    try:
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(html[:5_000_000], "lxml")
+        for tag in soup(["script", "style", "noscript", "svg"]):
+            tag.decompose()
+        text = re.sub(r"\n\s*\n+", "\n", soup.get_text("\n"))
+        out["visibleText"] = text.strip()[:60000]
+    except Exception:  # bs4/lxml thiếu hoặc HTML hỏng: vẫn trả mã nguồn
+        out["visibleText"] = None
+    return out
 
 
-# ------------------------------------------------------------------------------------------ HTTP
+# ---------------------------------------------------------------------------------------------------- HTTP
 
 
 def host_allowed(host_header: str, allow_public: bool = False) -> bool:
@@ -982,7 +798,6 @@ def host_allowed(host_header: str, allow_public: bool = False) -> bool:
 class Handler(BaseHTTPRequestHandler):
     monitor: Monitor
     daily: DailyApi
-    allow_public_host = False
     server_version = "VotaMonitor/1"
 
     def log_message(self, fmt, *args):  # im lặng: đây là công cụ nền
@@ -994,83 +809,58 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
         self.end_headers()
         self.wfile.write(body)
 
     def _json(self, obj, code: int = 200):
-        self._send(code, json.dumps(obj, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8")
+        self._send(code, json.dumps(obj, ensure_ascii=False, default=str).encode("utf-8"), "application/json; charset=utf-8")
 
     def _host_ok(self) -> bool:
-        return host_allowed(self.headers.get("Host") or "", self.allow_public_host)
+        host = (self.headers.get("Host") or "").split(":")[0]
+        return host in ("127.0.0.1", "localhost", "[::1]")  # chống DNS rebinding
 
     def do_GET(self):  # noqa: N802
         if not self._host_ok():
             return self._json({"error": "host không hợp lệ"}, 403)
         url = urlparse(self.path)
-        q = {k: v[0] for k, v in parse_qs(url.query).items()}
+        q = {k: v[-1] for k, v in parse_qs(url.query).items()}
         m = self.monitor
+        num = lambda key, default: int(q.get(key) or default)  # noqa: E731
         try:
+            if url.path in ("/daily", "/pipeline"):
+                self.send_response(302)
+                self.send_header("Location", "/")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
             if url.path in ("/", "/index.html"):
                 return self._send(200, (STATIC / "index.html").read_bytes(), "text/html; charset=utf-8")
-            if url.path == "/api/overview":
-                return self._json(CACHE.get("overview", 2.5, m.overview))
-            if url.path == "/api/jobs":
-                return self._json(CACHE.get("jobs", 2.5, m.jobs))
-            if url.path == "/api/job":
-                root = m.root_by_id(q.get("id", ""))
-                return self._json(m.job_view(root, detail=True)) if root else self._json({"error": "không có job"}, 404)
-            if url.path == "/api/records":
-                source = q.get("source", "booking_hotels")
-                if source not in SOURCE_ORDER:
-                    return self._json({"error": "nguồn không hợp lệ"}, 400)
-                job = q.get("job", "all")
-                if job != "all" and not (JOB_ID.match(job) or job == "main" or job.startswith("enrichment-")):
-                    return self._json({"error": "job không hợp lệ"}, 400)
-                return self._json(m.records(source, job, min(int(q.get("limit", 40)), 200), q.get("q", "")))
-            if url.path == "/api/record":
-                source = q.get("source", "")
-                if source not in SOURCE_ORDER:
-                    return self._json({"error": "nguồn không hợp lệ"}, 400)
-                rec = m.record(q.get("job", ""), source, q.get("key", ""))
-                return self._json(rec) if rec is not None else self._json({"error": "không thấy bản ghi"}, 404)
-            if url.path == "/api/files":
-                return self._json(m.files())
-            if url.path == "/api/log":
-                return self._json(m.log(q.get("job", "running"), min(int(q.get("lines", 150)), 500)))
-            if url.path == "/api/health":
-                return self._json(CACHE.get("health", 5, m.health))
-            if url.path == "/api/preview":
-                return self._json(m.preview_view())
-            if url.path == "/pipeline":
-                return self._send(200, (STATIC / "pipeline.html").read_bytes(), "text/html; charset=utf-8")
-            if url.path == "/api/pipeline/state":
-                return self._json(m.pipeline_state(q.get("run", "latest")))
-            if url.path == "/api/pipeline/runs":
-                return self._json(m.pipeline_runs())
-            if url.path == "/api/pipeline/config":
-                return self._json(m.pipeline_config())
-            if url.path == "/api/pipeline/inbox":
-                return self._json(m.pipeline_inbox())
-            if url.path == "/api/pipeline/fetch":
-                return self._json(m.pipeline_fetch())
-            if url.path == "/daily":
-                return self._send(200, (STATIC / "daily.html").read_bytes(), "text/html; charset=utf-8")
-            if url.path.startswith("/api/daily/"):
-                d, name = self.daily, url.path.rsplit("/", 1)[1]
-                routes = {
-                    "overview": lambda: d.overview(),
-                    "run": lambda: d.run(q.get("id", "latest")),
-                    "log": lambda: d.log(q.get("run", "latest"), q.get("name", ""), min(int(q.get("lines", 200)), 2000)),
-                    "versions": lambda: d.versions(),
-                    "version": lambda: d.version(q.get("v", "")),
-                    "diff": lambda: d.diff(q.get("a", ""), q.get("b") or None),
-                    "search": lambda: d.search(q.get("q", "")),
-                    "trace": lambda: d.trace(q.get("id", "")),
-                    "raw": lambda: d.raw(q.get("path", "")),
-                }
-                if name in routes:
-                    return self._json(routes[name]())
-        except (ValueError, KeyError) as e:
+            routes = {
+                "/api/overview": lambda: m.overview(),
+                "/api/runs": lambda: m.runs(limit=num("limit", 60)),
+                "/api/run": lambda: m.run(q.get("id", "")),
+                "/api/log": lambda: m.log(q.get("run"), q.get("name", LOG_FILE), num("lines", 400), q.get("grep", ""),
+                                          runner=q.get("runner") == "1"),
+                "/api/raw": lambda: m.raw_list(q.get("run", ""), q.get("source", ""), q.get("q", ""),
+                                               num("offset", 0), num("limit", 100)),
+                "/api/raw/file": lambda: m.raw_file(q.get("run", ""), q.get("source", ""), q.get("path", "")),
+                "/api/interim": lambda: m.interim(q.get("run", ""), q.get("source", ""), q.get("q", ""),
+                                                  num("offset", 0), num("limit", 100)),
+                "/api/interim/record": lambda: m.interim_record(q.get("run", ""), q.get("source", ""), num("index", -1)),
+                "/api/products": lambda: m.products(q.get("run", ""), q.get("q", ""), q.get("taxonomy", ""),
+                                                    q.get("level", ""), q.get("source", ""), q.get("destination", ""),
+                                                    q.get("flag", ""), num("offset", 0), num("limit", 100)),
+                "/api/product": lambda: m.product(q.get("run", ""), q.get("id", "")),
+                "/api/db": lambda: m.db_rows(q.get("run", ""), q.get("action", ""), q.get("q", ""), q.get("written", ""),
+                                             num("offset", 0), num("limit", 100)),
+                "/api/artifact": lambda: m.artifact(q.get("run", ""), q.get("name", "")),
+                "/api/trip-hotels": lambda: m.trip_hotels(),
+                "/api/settings": lambda: m.settings(),
+            }
+            if url.path in routes:
+                return self._json(routes[url.path]())
+        except (ValueError, KeyError, fresh_settings.SettingsError) as e:
             return self._json({"error": str(e)}, 400)
         return self._json({"error": "không tìm thấy"}, 404)
 
@@ -1078,48 +868,23 @@ class Handler(BaseHTTPRequestHandler):
         if not self._host_ok() or self.headers.get("X-Requested-With") != "vota-monitor":
             return self._json({"error": "bị từ chối"}, 403)
         path = urlparse(self.path).path
-        if path == "/api/preview":
-            return self._json(self.monitor.start_preview())
-        if path.startswith("/api/daily/"):
-            try:
-                length = int(self.headers.get("Content-Length") or 0)
-                if length > 4096:
-                    raise ValueError("nội dung quá lớn")
-                body = json.loads((self.rfile.read(length) if length else b"{}").decode("utf-8"))
-                if not isinstance(body, dict):
-                    raise ValueError("cần một đối tượng JSON")
-                return self._json(self.daily.act(path.rsplit("/", 1)[1], body), 202)
-            except (ValueError, UnicodeDecodeError) as e:
-                return self._json({"error": str(e)}, 400)
-        if path in ("/api/pipeline/run", "/api/pipeline/pull"):
-            try:
-                length = int(self.headers.get("Content-Length") or 0)
-                if length > 4096:
-                    raise ValueError("nội dung quá lớn")
-                opts = json.loads((self.rfile.read(length) if length else b"{}").decode("utf-8"))
-                if not isinstance(opts, dict):
-                    raise ValueError("cần một đối tượng JSON")
-                code, body = (self.monitor.start_pull if path.endswith("/pull") else self.monitor.start_pipeline)(opts)
-            except (ValueError, UnicodeDecodeError) as e:
-                return self._json({"error": str(e)}, 400)
-            return self._json(body, code)
-        if path in ("/api/pipeline/token", "/api/pipeline/token/clear", "/api/pipeline/probe"):
-            try:
-                length = int(self.headers.get("Content-Length") or 0)
-                if length > 2048:
-                    raise ValueError("nội dung quá lớn")
-                body = json.loads((self.rfile.read(length) if length else b"{}").decode("utf-8"))
-                if not isinstance(body, dict):
-                    raise ValueError("cần một đối tượng JSON")
-                if path == "/api/pipeline/token":
-                    out = {"tokens": self.monitor.save_token(str(body.get("key") or ""), str(body.get("value") or ""))}
-                elif path == "/api/pipeline/token/clear":
-                    out = {"tokens": self.monitor.clear_token(str(body.get("key") or ""))}
-                else:
-                    out = self.monitor.run_probe(str(body.get("kind") or ""), body.get("destination"), body.get("limit", 5), body.get("maxUsd", 0.1))
-            except (ValueError, UnicodeDecodeError, api_sources.ApiError) as e:
-                return self._json({"error": str(e)}, 400)
-            return self._json(out)
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+            if not 0 <= length <= 64_000:
+                raise ValueError("nội dung quá lớn")
+            body = json.loads((self.rfile.read(length) if length else b"{}").decode("utf-8"))
+            if not isinstance(body, dict):
+                raise ValueError("cần một đối tượng JSON")
+            if path == "/api/settings":
+                return self._json(self.monitor.save_settings(body.get("values") or {}))
+            if path == "/api/run":
+                code, out = self.monitor.start(str(body.get("mode") or ""))
+                return self._json(out, code)
+            if path == "/api/stop":
+                code, out = self.monitor.stop()
+                return self._json(out, code)
+        except (ValueError, UnicodeDecodeError, fresh_settings.SettingsError) as e:
+            return self._json({"error": str(e)}, 400)
         return self._json({"error": "không tìm thấy"}, 404)
 
 
@@ -1127,14 +892,12 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--host", default="127.0.0.1", help="địa chỉ bind; mặc định chỉ nghe loopback")
     ap.add_argument("--port", type=int, default=8765)
-    ap.add_argument("--allow-public-host", action="store_true", help="chấp nhận Host public; chỉ bật khi dashboard cần public tạm thời")
     ap.add_argument("--data-dir", type=Path, default=Path(os.environ.get("VOTA_DATA_DIR", ROOT / "data")))
     a = ap.parse_args(argv)
     Handler.monitor = Monitor(a.data_dir.resolve())
     Handler.daily = DailyApi(a.data_dir.resolve())
-    Handler.allow_public_host = a.allow_public_host
-    server = ThreadingHTTPServer((a.host, a.port), Handler)
-    print(f"Theo dõi cào dữ liệu: http://{a.host}:{a.port}  (dữ liệu: {a.data_dir.resolve()}) — Ctrl+C để dừng", flush=True)
+    server = ThreadingHTTPServer(("127.0.0.1", a.port), Handler)
+    print(f"Theo dõi cào dữ liệu: http://127.0.0.1:{a.port}  (dữ liệu: {a.data_dir.resolve()}) — Ctrl+C để dừng", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
