@@ -13,6 +13,7 @@ on:
       - 'src/data_collection/**'
       - 'src/shared/contracts/**'
       - 'scripts/**'
+      - 'ops/docker-compose.backend-vm.yml'
   push:
     branches:
       - main
@@ -25,6 +26,7 @@ on:
       - 'src/data_collection/**'
       - 'src/shared/contracts/**'
       - 'scripts/**'
+      - 'ops/docker-compose.backend-vm.yml'
   workflow_dispatch:
 
 permissions:
@@ -282,12 +284,14 @@ jobs:
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
           GCE_INSTANCE: ${{ secrets.GCE_INSTANCE }}
           GCE_ZONE: ${{ secrets.GCE_ZONE }}
+          GCE_COMPOSE_FILE: ${{ vars.GCE_COMPOSE_FILE }}
         run: |
           remote_dir="/tmp/vota-cicd-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           tar -C scripts -czf - deploy-backend-vm.sh install-vota-cron.sh check-db-tunnel.sh \
             -C ../src/data_collection run_daily_docker.sh \
+            -C ../ops docker-compose.backend-vm.yml \
             | gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --quiet \
-                --command "umask 077; mkdir -m 700 '$remote_dir' && tar -xzf - -C '$remote_dir' && sudo -n install -D -m 0755 '$remote_dir/run_daily_docker.sh' /opt/vota/bin/run_daily_docker.sh && sudo -n test -x /opt/vota/bin/run_daily_docker.sh"
+                --command "umask 077; mkdir -m 700 '$remote_dir' && tar -xzf - -C '$remote_dir' && sudo -n install -D -m 0755 '$remote_dir/run_daily_docker.sh' /opt/vota/bin/run_daily_docker.sh && sudo -n install -D -m 0644 '$remote_dir/docker-compose.backend-vm.yml' '$GCE_COMPOSE_FILE' && sudo -n test -x /opt/vota/bin/run_daily_docker.sh && sudo -n docker compose -f '$GCE_COMPOSE_FILE' config >/dev/null"
 
       - name: Deploy latest images and update existing cron
         env:
