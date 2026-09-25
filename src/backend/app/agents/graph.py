@@ -1,4 +1,4 @@
-"""Compile the ten-node itinerary graph with request-scoped runtime dependencies."""
+"""Compile the eleven-node itinerary graph with request-scoped runtime dependencies."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ from functools import partial
 from typing import Any
 
 from src.backend.app.application.ports.itinerary_tools import ConversationStorePort, ToolExecutorPort
+from src.backend.app.application.ports.conversation_archive import ConversationArchivePort
 
 from .state import AgentState
 
@@ -13,6 +14,7 @@ from .state import AgentState
 def build_graph(checkpointer: Any | None = None, *, tools: ToolExecutorPort | None = None,
                 tool_timeout_seconds: float = 1.0, llm: Any | None = None,
                 store: ConversationStorePort | None = None, owner: str = "anonymous",
+                archive: ConversationArchivePort | None = None, cdp_user_id: str | None = None,
                 require_recommendations: bool = False, llm_timeout_seconds: float | None = None):
     """Build the lab topology with injected API tools; execute API tools using ainvoke.
 
@@ -31,6 +33,8 @@ def build_graph(checkpointer: Any | None = None, *, tools: ToolExecutorPort | No
         ask_clarification_node_async,
         classify_node,
         classify_node_async,
+        extract_node,
+        extract_node_async,
         compose_node,
         converse_node,
         converse_node_async,
@@ -46,6 +50,7 @@ def build_graph(checkpointer: Any | None = None, *, tools: ToolExecutorPort | No
     from .routing import (
         route_after_classify,
         route_after_evaluate,
+        route_after_extract,
         route_after_retry,
     )
 
@@ -61,9 +66,12 @@ def build_graph(checkpointer: Any | None = None, *, tools: ToolExecutorPort | No
         "retry": retry_or_fallback_node, "dead_letter": dead_letter_node,
     }.items():
         graph.add_node(name, RunnableLambda(node, afunc=partial(run_local, node=node)))
-    graph.add_node("intake", RunnableLambda(intake_node, afunc=partial(intake_node_async, store=store, owner=owner)))
-    graph.add_node("finalize", RunnableLambda(finalize_node, afunc=partial(finalize_node_async, store=store, owner=owner)))
+    graph.add_node("intake", RunnableLambda(intake_node, afunc=partial(
+        intake_node_async, store=store, owner=owner, archive=archive, cdp_user_id=cdp_user_id)))
+    graph.add_node("finalize", RunnableLambda(finalize_node, afunc=partial(
+        finalize_node_async, store=store, owner=owner, archive=archive, cdp_user_id=cdp_user_id)))
     graph.add_node("classify", RunnableLambda(partial(classify_node, llm=llm), afunc=partial(classify_node_async, llm=llm, timeout_seconds=llm_timeout_seconds if llm_timeout_seconds is not None else 2), name="classify_node"))
+    graph.add_node("extract", RunnableLambda(partial(extract_node, llm=llm), afunc=partial(extract_node_async, llm=llm, timeout_seconds=llm_timeout_seconds if llm_timeout_seconds is not None else 2), name="extract_node"))
     graph.add_node("converse", RunnableLambda(partial(converse_node, llm=llm), afunc=partial(converse_node_async, llm=llm, timeout_seconds=llm_timeout_seconds if llm_timeout_seconds is not None else 3), name="converse_node"))
     graph.add_node("clarify", RunnableLambda(partial(ask_clarification_node, llm=llm), afunc=partial(ask_clarification_node_async, llm=llm, timeout_seconds=llm_timeout_seconds if llm_timeout_seconds is not None else 3), name="ask_clarification_node"))
     graph.add_node("tool", partial(tool_node, tools=tools, timeout_seconds=tool_timeout_seconds,
@@ -73,7 +81,9 @@ def build_graph(checkpointer: Any | None = None, *, tools: ToolExecutorPort | No
     graph.add_edge(START, "intake")
     graph.add_edge("intake", "classify")
     graph.add_conditional_edges("classify", route_after_classify,
-                                {name: name for name in ("converse", "tool", "clarify", "dead_letter")})
+                                {name: name for name in ("converse", "extract", "dead_letter")})
+    graph.add_conditional_edges("extract", route_after_extract,
+                                {name: name for name in ("tool", "clarify", "dead_letter")})
     graph.add_edge("tool", "evaluate")
     graph.add_conditional_edges("evaluate", route_after_evaluate,
                                 {name: name for name in ("retry", "dead_letter", "compose", "clarify")})

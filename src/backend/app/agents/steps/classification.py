@@ -1,28 +1,54 @@
-"""Đầu vào cho LLM trích intent, và luật biến kết quả trích được thành update cho state."""
+"""Hai bước hiểu người dùng: `classify` phân luồng lượt chat, `extract` trích intent của lượt du lịch."""
 from __future__ import annotations
 
 from copy import deepcopy
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 import json
 
 from src.backend.app.application.itinerary.contracts import bounds, valid
 from src.backend.app.domain.itinerary.planning import merge_intent
 
-from ..models import Extraction
-from .history import sanitize_conversation_history
+from ..models import Extraction, TurnRoute
+from .history import llm_context
 from .messages import event, failure, message
-from .prompts import EXTRACT_PROMPT
+from .prompts import CLASSIFY_PROMPT, EXTRACT_PROMPT
+
+
+# Việt Nam không có giờ mùa hè, nên lệch cố định UTC+7 là đủ và không cần gói dữ liệu múi giờ (tzdata).
+VIETNAM = timezone(timedelta(hours=7))
+
+
+def vietnam_today(now: datetime | None = None) -> date:
+    """Ngày hôm nay theo giờ Việt Nam, không theo giờ máy chạy backend.
+
+    Đây là mốc để LLM đổi "ngày mai", "tuần sau" thành ngày cụ thể; server chạy giờ UTC thì từ 0h đến
+    7h sáng ở Việt Nam `date.today()` vẫn là hôm qua và "ngày mai" bị lệch một ngày.
+    """
+    return (now or datetime.now(timezone.utc)).astimezone(VIETNAM).date()
+
+
+def route_input(state: dict) -> list:
+    """Message hiện tại cộng ngữ cảnh hội thoại chung; `classify` chỉ trả một nhãn."""
+    payload = {"message": state.get("query", ""), **llm_context(state)}
+    return [("system", CLASSIFY_PROMPT), ("human", json.dumps(payload, ensure_ascii=False))]
+
+
+def route_result(state: dict, result: TurnRoute) -> dict:
+    """Update của `classify`: `travel` đi tiếp `extract`; trò chuyện và ngoài phạm vi đi `converse`."""
+    label = TurnRoute.model_validate(result).route
+    update = {"llm_used": True, "interaction_type": label, "refusal": label == "out_of_scope",
+              "events": [event("classify", f"route {label}")]}
+    if label == "travel":
+        return {**update, "route": "travel"}
+    # `converse` dùng `missing_fields` để mời người dùng nói tiếp phần chuyến đi còn thiếu.
+    missing = [key for key in ("destination", "days") if not state.get("intent", {}).get(key)]
+    return {**update, "route": "simple", "missing_fields": missing}
 
 
 def extraction_input(state: dict) -> list:
-    """Message hiện tại cộng lịch sử, intent/constraints và sản phẩm đã hiển thị ở các lượt trước."""
+    """Message hiện tại cộng ngữ cảnh hội thoại chung và mốc `today` để đổi ngày tương đối."""
     language = "Vietnamese" if state.get("language", "vi") == "vi" else "English"
-    payload = {"message": state.get("query", ""),
-               "conversation_history": sanitize_conversation_history(state.get("conversation_history", [])),
-               "previous_intent": state.get("intent", {}),
-               "previous_constraints": state.get("constraints", {}),
-               "previous_selection": state.get("previous_selection", []),
-               "today": date.today().isoformat()}
+    payload = {"message": state.get("query", ""), **llm_context(state), "today": vietnam_today().isoformat()}
     return [("system", EXTRACT_PROMPT + f"\nUse {language} for any natural-language content."),
             ("human", json.dumps(payload, ensure_ascii=False))]
 
@@ -70,6 +96,28 @@ def _merged_constraints(state: dict, result: Extraction, patch: dict, intent: di
     return constraints
 
 
+def _this_year(value: date, today: date) -> date:
+    """LLM hay gán năm theo dữ liệu huấn luyện ("20/9" → 2023-09-20); năm cũ hơn hiện tại coi là năm nay."""
+    if value.year >= today.year:
+        return value
+    try:
+        return value.replace(year=today.year)
+    except ValueError:  # 29/02 của năm không nhuận
+        return value.replace(year=today.year, day=28)
+
+
+def _default_year(result: Extraction, intent: dict, patch: dict, today: date) -> Extraction:
+    """Năm mặc định là năm hiện tại: ngày đi và ngày kết thúc LLM vừa trích mà mang năm cũ được sửa về năm nay.
+
+    Chỉ xét ngày có trong patch lượt này; ngày đã lưu từ lượt trước thì người dùng đã chốt rồi.
+    """
+    if "startDate" in patch and intent.get("startDate"):
+        intent["startDate"] = _this_year(date.fromisoformat(intent["startDate"]), today).isoformat()
+    if result.end_date is not None:
+        result = result.model_copy(update={"end_date": _this_year(result.end_date, today)})
+    return result
+
+
 def _days_from_end_date(result: Extraction, intent: dict, patch: dict, override: dict) -> bool:
     """Suy `days` từ `end_date`; trả về True khi `days` LLM trích được mâu thuẫn với ngày kết thúc."""
     if not (result.end_date and intent.get("startDate")):
@@ -82,8 +130,20 @@ def _days_from_end_date(result: Extraction, intent: dict, patch: dict, override:
     return False
 
 
-def classify_result(state: dict, result: Extraction) -> dict:
-    """Update của `classify`, gồm `route` quyết định nhánh đi tiếp (`routing.route_after_classify`)."""
+#: Chi tiết chuyến đi được hỏi một lần sau điểm đến và số ngày (AC-AGT-01); trả lời bỏ qua vẫn lập lịch.
+TRIP_DETAILS = ("startDate", "party", "budget")
+
+
+def trip_details_missing(intent: dict, result: Extraction) -> list[str]:
+    """Chi tiết còn thiếu; người dùng nói rõ chưa chốt ngày thì ngày đi không tính là thiếu."""
+    missing = [key for key in TRIP_DETAILS if intent.get(key) is None]
+    if result.start_date_undecided and "startDate" in missing:
+        missing.remove("startDate")
+    return missing
+
+
+def extract_result(state: dict, result: Extraction) -> dict:
+    """Update của `extract`, gồm `route` quyết định nhánh đi tiếp (`routing.route_after_extract`)."""
     result = Extraction.model_validate(result)
     patch = result.patch.model_dump(mode="json", exclude_none=True)
     if result.patch.party is not None:
@@ -92,18 +152,15 @@ def classify_result(state: dict, result: Extraction) -> dict:
     if invalid_override is not None:
         return invalid_override
     constraints = _merged_constraints(state, result, patch, intent)
+    result = _default_year(result, intent, patch, vietnam_today())
     conflicting_days = _days_from_end_date(result, intent, patch, state.get("intent_override", {}))
     conflict = result.conflict or conflicting_days
     missing = [key for key in ("destination", "days") if not intent.get(key)]
-    refusal = result.domain in {"out_of_domain", "side_effect"}
-    # A message that states any trip detail is a travel request even when the model calls it conversation;
-    # otherwise `converse` would answer it and the missing fields would never be asked for.
-    domain = "travel" if result.domain == "conversation" and any(patch.values()) else result.domain
+    # Ngày đi, số người, ngân sách: hỏi gộp một câu, một lần mỗi hội thoại và chỉ trước lần lập lịch đầu tiên.
+    asked = bool(state.get("start_date_asked"))
     update = {"intent": intent, "constraints": constraints, "llm_used": True,
-              "interaction_type": domain, "refusal": refusal, "missing_fields": missing,
-              "events": [event("classify", "intent extracted")]}
-    if domain != "travel":
-        return {**update, "route": "simple"}
+              "missing_fields": missing, "start_date_asked": asked,
+              "events": [event("extract", "intent extracted")]}
     min_days, max_days = bounds("TripIntent", "days")
     if intent.get("days") is not None and not min_days <= intent["days"] <= max_days:
         return {**update, "route": "error",
@@ -113,4 +170,12 @@ def classify_result(state: dict, result: Extraction) -> dict:
                 **failure(state, "VALIDATION_ERROR", message(state, "invalid_intent"), 422)}
     if conflict or constraints.get("unverified_requirements"):
         return {**update, "route": "missing_info", "clarification_reason": "conflict" if conflict else "unverified"}
-    return {**update, "route": "missing_info" if missing else "tool", "clarification_reason": None}
+    if missing:
+        return {**update, "route": "missing_info", "clarification_reason": None}
+    details = trip_details_missing(intent, result)
+    # Chip sửa tay là chỉnh có chủ ý trên hội thoại đã có, không hỏi thêm ở đó.
+    if details and not asked and not state.get("intent_override"):
+        return {**update, "route": "missing_info", "missing_fields": details,
+                "start_date_asked": True, "clarification_reason": None}
+    # Đã lập lịch một lần thì không hỏi các chi tiết này nữa, kể cả khi người dùng đổi điểm đến sau đó.
+    return {**update, "route": "tool", "start_date_asked": True, "clarification_reason": None}

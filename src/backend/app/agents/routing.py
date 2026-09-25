@@ -3,8 +3,11 @@ from .state import AgentState
 
 
 def route_after_classify(state: AgentState) -> str:
-    return {"simple": "converse", "tool": "tool", "missing_info": "clarify",
-            "error": "dead_letter"}.get(state.get("route"), "dead_letter")
+    return {"simple": "converse", "travel": "extract", "error": "dead_letter"}.get(state.get("route"), "dead_letter")
+
+
+def route_after_extract(state: AgentState) -> str:
+    return {"tool": "tool", "missing_info": "clarify", "error": "dead_letter"}.get(state.get("route"), "dead_letter")
 
 
 def route_after_evaluate(state: AgentState) -> str:
