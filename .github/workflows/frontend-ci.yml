@@ -3,7 +3,6 @@ name: Frontend CI
 on:
   pull_request:
     branches:
-      - dev
       - main
       - release-mvp-v1
     paths:
@@ -12,7 +11,6 @@ on:
       - 'src/shared/contracts/**'
   push:
     branches:
-      - dev
       - main
       - release-mvp-v1
     paths:
@@ -38,9 +36,9 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Refuse manual dispatch from another ref
-        if: ${{ github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/dev' && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/release-mvp-v1' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/release-mvp-v1' }}
         run: |
-          echo 'This workflow_dispatch must run from the dev, main, or release-mvp-v1 branch.' >&2
+          echo 'This workflow_dispatch must run from the main or release-mvp-v1 branch.' >&2
           exit 1
 
       - name: Checkout
@@ -123,12 +121,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     environment:
-      name: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'production' || 'preview' }}
+      name: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1') && 'production' || 'preview' }}
       url: ${{ steps.deploy.outputs.url }}
     permissions:
       contents: read
     env:
-      DEPLOY_ENVIRONMENT: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'production' || 'preview' }}
+      DEPLOY_ENVIRONMENT: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1') && 'production' || 'preview' }}
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
