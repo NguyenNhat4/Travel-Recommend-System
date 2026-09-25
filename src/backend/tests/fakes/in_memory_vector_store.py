@@ -1,5 +1,6 @@
 """`VectorStorePort` giả cho test offline: đọc products.jsonl, dựng text, embed, cache .npy.
-Bản chạy thật là `infrastructure/vectors/` (Postgres, sau là Weaviate) và trả cùng `UnitIndex`."""
+Bản chạy thật là `infrastructure/vectors/weaviate_store.py`; cả hai trả `(UnitIndex, VectorSearchPort)`.
+Kho vector ở đây là `NumpyVectorSearch` quét toàn bộ ma trận, nên test không cần Weaviate."""
 from __future__ import annotations
 
 import hashlib
@@ -9,15 +10,16 @@ from collections import defaultdict
 
 import numpy as np
 
-from src.backend.app.application.ports import EmbedderPort, UnitIndex
+from src.backend.app.application.ports import EmbedderPort, UnitIndex, VectorSearchPort
 from src.backend.app.domain.catalog import Product, build_text
+from src.backend.app.infrastructure.vectors.numpy_search import NumpyVectorSearch
 
 
 class InMemoryVectorStore:
     def __init__(self, products_path: str, embedder: EmbedderPort, cache_dir: str = ".embcache"):
         self.products_path, self.embedder, self.cache_dir = products_path, embedder, cache_dir
 
-    def load(self) -> UnitIndex:
+    def load(self) -> tuple[UnitIndex, VectorSearchPort]:
         products: dict[str, Product] = {}
         with open(self.products_path, encoding="utf-8") as f:
             for line in f:
@@ -42,11 +44,12 @@ class InMemoryVectorStore:
         if not os.path.exists(path):
             np.save(path, E)
 
-        return UnitIndex(
-            units=units, E=E,
+        index = UnitIndex(
+            units=units,
             taxonomy=np.array([p.taxonomy for p in units]),
             destination=np.array([p.destination for p in units]),
             available=np.array([p.available for p in units]),
             recommendable=np.array([p.is_bookable or any(c.is_bookable and c.available for c in children.get(p.product_id, [])) for p in units]),
             parent_of=parent_of, model_version=f"{self.embedder.name}@{key}",
         )
+        return index, NumpyVectorSearch([p.product_id for p in units], E)

@@ -13,11 +13,14 @@ Hệ sinh thái lưu trữ của V-OTA gồm hai cơ sở dữ liệu PostgreSQL
 | DATABASE: vota  (PostgreSQL 16)                                         |
 |                                                                         |
 |  [Schema: cdp]           [Schema: catalog]           [Schema: app]      |
-|  - profiles              - products (view/table)     - users            |
-|  - events                - product_meta (view)       - bookings         |
-|                          - combo_items               - booking_items    |
+|  - products              - product_meta (view)       - users            |
+|  - profiles              - combo_items               - bookings         |
+|  - events                                            - booking_items    |
+|                                                      - payments         |
 |                                                      - conversations    |
 |                                                      - messages         |
+|                                                      - refresh_tokens   |
+|                                                      - login_attempts   |
 |                                                                         |
 |  (Role: cdp_writer)      (Role: vota_app)            (Role: vota_app)   |
 +-------------------------------------------------------------------------+
@@ -117,7 +120,10 @@ erDiagram
     APP_USERS ||--o{ APP_BOOKINGS : "đặt hàng"
     APP_USERS ||--o{ APP_CONVERSATIONS : "sở hữu cuộc trò chuyện"
     APP_BOOKINGS ||--o{ APP_BOOKING_ITEMS : "chứa các dịch vụ"
+    APP_BOOKINGS ||--o| APP_PAYMENTS : "thanh toán"
     APP_CONVERSATIONS ||--o{ APP_MESSAGES : "lưu các tin nhắn"
+    APP_USERS ||--o{ APP_REFRESH_TOKENS : "chuỗi rotation"
+    APP_USERS |o--o{ APP_LOGIN_ATTEMPTS : "nhật ký đăng nhập"
 
     APP_USERS {
         uuid user_id PK
@@ -127,7 +133,30 @@ erDiagram
         string phone
         string role "customer, admin"
         string persona_tag "P1_family, P2_biz, P3_explorer, P4_deal"
+        timestamp email_verified_at "NULL = chưa xác minh"
         timestamp created_at
+    }
+
+    APP_REFRESH_TOKENS {
+        uuid token_id PK
+        uuid user_id FK
+        uuid family_id "Cả chuỗi rotation; tái dùng thì thu hồi theo đây"
+        string token_hash UK "SHA-256, không lưu bản rõ"
+        string session_id "Ràng buộc phiên"
+        timestamp expires_at
+        timestamp rotated_at
+        timestamp revoked_at
+        string revoked_reason
+    }
+
+    APP_LOGIN_ATTEMPTS {
+        bigint attempt_id PK
+        string email_hash "sha256(lower(email)), không lưu email thô"
+        uuid user_id FK "NULL nếu email không tồn tại"
+        string ip_prefix "/24 hoặc /48"
+        boolean succeeded
+        string failure_reason
+        timestamp attempted_at
     }
 
     APP_BOOKINGS {
@@ -135,7 +164,12 @@ erDiagram
         uuid user_id FK
         string booking_code UK "Mã hiển thị: VOTA-XXXXXX"
         string event_group_id "Liên kết logic với CDP purchase event"
-        string status "pending, confirmed, cancelled, completed"
+        string status "pending_payment, confirmed, payment_failed, expired, cancelled, completed"
+        timestamp hold_expires_at
+        timestamp confirmed_at
+        timestamp cancelled_at
+        string cancel_reason
+        timestamp purchase_events_cancelled_at
         numeric total_amount
         string currency "VND"
         timestamp created_at
@@ -145,13 +179,30 @@ erDiagram
     APP_BOOKING_ITEMS {
         uuid item_id PK
         uuid booking_id FK
-        string product_id "Tham chiếu logic tới catalog.products"
+        string product_id 
         string product_title
         string product_type
         numeric price_at_booking
         int quantity
         date using_date
         jsonb metadata "Thông tin vé, phòng, ghi chú đặc biệt"
+    }
+
+    APP_PAYMENTS {
+        uuid payment_id PK
+        uuid booking_id FK "UNIQUE — một đơn một phiên thanh toán"
+        string provider "stripe | fake | seed (booking dựng sẵn cho P1)"
+        string checkout_session_id UK
+        string payment_intent_id UK
+        string checkout_url "Chỉ dùng khi status = open"
+        bigint amount "VND, là số nguyên (Stripe coi VND là tiền tệ không có số lẻ)"
+        string currency "VND"
+        string status "open, succeeded, failed, expired, refund_pending, refunded, refund_failed"
+        int failed_attempts
+        string last_failure_code
+        string refund_id
+        timestamp created_at
+        timestamp updated_at
     }
 
     APP_CONVERSATIONS {
@@ -246,16 +297,17 @@ Dữ liệu lịch trình do AI Assistant trả về phải tuân thủ cấu tr
 
 ### 4.1. Vòng đời Đơn hàng (`app.bookings.status`)
 ```
-[ Khởi tạo đơn ] ──> PENDING
-                        │
-      ┌─────────────────┴─────────────────┐
-      │ (Thanh toán & Ghi CDP thành công)  │ (Lỗi hệ thống hoặc Hủy thanh toán)
-      v                                   v
-  CONFIRMED                           CANCELLED
-      │
-      │ (Qua thời gian sử dụng dịch vụ)
-      v
-  COMPLETED
+                 [ Tạo giữ chỗ + phiên Stripe ] ──> PENDING_PAYMENT (tối đa 30 phút)
+                                                          │
+   ┌──────────────────┬───────────────────┬───────────────┼──────────────────────┐
+   │ Stripe thu tiền  │ Từ chối thẻ lần 3 │ Hết 30 phút   │ Khách huỷ            │
+   │ + ghi CDP        │ (hoặc tiền lệch)  │               │ (chưa trả tiền)      │
+   v                  v                   v               v
+CONFIRMED       PAYMENT_FAILED         EXPIRED        CANCELLED
+   │
+   ├── Khách huỷ trong hạn → hoàn 100% ──> CANCELLED
+   │
+   └── Qua ngày sử dụng ──> COMPLETED
 ```
 
 ### 4.2. Vòng đời Sản phẩm & Khả năng phục vụ

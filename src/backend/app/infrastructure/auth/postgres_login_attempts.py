@@ -4,26 +4,12 @@ Không bao giờ lưu email thô hay IP đầy đủ: email băm SHA-256, IP rú
 """
 from __future__ import annotations
 
-import hashlib
-import ipaddress
 from datetime import datetime
 
 import psycopg
 
-
-def hash_email(email: str) -> str:
-    return "sha256:" + hashlib.sha256(email.strip().lower().encode("utf-8")).hexdigest()
-
-
-def ip_prefix(raw: str) -> str:
-    """/24 cho IPv4, /48 cho IPv6. Giá trị không parse được trả 'unknown' thay vì ném lỗi:
-    ghi nhật ký đăng nhập không được phép làm hỏng chính lần đăng nhập đó."""
-    try:
-        addr = ipaddress.ip_address(raw.strip())
-    except ValueError:
-        return "unknown"
-    net = 24 if addr.version == 4 else 48
-    return str(ipaddress.ip_network(f"{addr}/{net}", strict=False))
+# Giữ tên cũ cho caller đang import từ đây; hiện thực nằm ở domain để api/application dùng chung.
+from src.backend.app.domain.auth.privacy import hash_email, ip_prefix  # noqa: F401
 
 
 class PostgresLoginAttemptLog:

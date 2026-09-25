@@ -1,3 +1,3 @@
-from .scoring import SearchOutcome, exact_filter_score
+from .scoring import SearchOutcome, candidate_filter_score, exact_filter_score
 
-__all__ = ["SearchOutcome", "exact_filter_score"]
+__all__ = ["SearchOutcome", "candidate_filter_score", "exact_filter_score"]

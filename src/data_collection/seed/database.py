@@ -72,7 +72,7 @@ def load_vota(url: str, data_dir: Path, reset: bool) -> dict[str, int]:
             conn.execute("""
                 TRUNCATE app.search_logs, app.recommendation_logs, app.itineraries,
                          app.conversation_messages, app.conversations, app.cart_items,
-                         app.carts, app.booking_items, app.bookings, app.users,
+                         app.carts, app.payments, app.booking_items, app.bookings, app.users,
                          catalog.combo_items,
                          cdp.events, cdp.profiles, cdp.products
                 RESTART IDENTITY CASCADE
@@ -80,6 +80,14 @@ def load_vota(url: str, data_dir: Path, reset: bool) -> dict[str, int]:
         for table, columns, filename, subdir in VOTA_TABLES:
             rows = read_jsonl(data_dir / subdir / filename)
             counts[table] = copy_rows(conn, table, columns, rows)
+        # Booking seed đã thu tiền: mỗi đơn confirmed có một dòng thanh toán provider='seed' (spec booking §5.2)
+        conn.execute("""
+            INSERT INTO app.payments (payment_id, booking_id, provider, amount, currency, status, created_at, updated_at)
+            SELECT md5('payment:' || booking_id::text)::uuid, booking_id, 'seed', total_amount::bigint, currency, 'succeeded',
+                   created_at, created_at
+              FROM app.bookings WHERE status = 'confirmed'
+        """)
+        conn.execute("UPDATE app.bookings SET confirmed_at = created_at WHERE status = 'confirmed' AND confirmed_at IS NULL")
         conn.execute("SELECT setval(pg_get_serial_sequence('cdp.events', 'event_id'), COALESCE((SELECT max(event_id) FROM cdp.events), 1))")
         conn.execute("ANALYZE")
     return counts

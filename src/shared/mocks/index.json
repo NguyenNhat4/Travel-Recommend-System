@@ -51,14 +51,6 @@
       "file": "auth/getMe.401-token-expired.json"
     },
     {
-      "operationId": "listDemoAccounts",
-      "method": "get",
-      "path": "/auth/demo-accounts",
-      "status": 200,
-      "case": "default",
-      "file": "auth/listDemoAccounts.200-default.json"
-    },
-    {
       "operationId": "createSession",
       "method": "post",
       "path": "/auth/session",
@@ -91,6 +83,14 @@
       "file": "catalog/listProducts.200-popular.json"
     },
     {
+      "operationId": "listProducts",
+      "method": "get",
+      "path": "/products",
+      "status": 200,
+      "case": "variants",
+      "file": "catalog/listProducts.200-variants.json"
+    },
+    {
       "operationId": "getProduct",
       "method": "get",
       "path": "/products/{productId}",
@@ -113,6 +113,14 @@
       "status": 404,
       "case": "not-found",
       "file": "catalog/getProduct.404-not-found.json"
+    },
+    {
+      "operationId": "getProduct",
+      "method": "get",
+      "path": "/products/{productId}",
+      "status": 200,
+      "case": "property",
+      "file": "catalog/getProduct.200-property.json"
     },
     {
       "operationId": "getSimilarProducts",
@@ -425,6 +433,70 @@
       "status": 404,
       "case": "product-not-found",
       "file": "events/trackEvent.404-product-not-found.json"
+    },
+    {
+      "operationId": "getJwks",
+      "method": "get",
+      "path": "/.well-known/jwks.json",
+      "status": 200,
+      "case": "default",
+      "file": "auth/getJwks.200-default.json"
+    },
+    {
+      "operationId": "createBooking",
+      "method": "post",
+      "path": "/bookings",
+      "status": 409,
+      "case": "pending-payment",
+      "file": "booking/createBooking.409-pending-payment.json"
+    },
+    {
+      "operationId": "createBooking",
+      "method": "post",
+      "path": "/bookings",
+      "status": 503,
+      "case": "payment-unavailable",
+      "file": "booking/createBooking.503-payment-unavailable.json"
+    },
+    {
+      "operationId": "getBooking",
+      "method": "get",
+      "path": "/bookings/{referenceCode}",
+      "status": 200,
+      "case": "payment-failed",
+      "file": "booking/getBooking.200-payment-failed.json"
+    },
+    {
+      "operationId": "getBooking",
+      "method": "get",
+      "path": "/bookings/{referenceCode}",
+      "status": 200,
+      "case": "expired",
+      "file": "booking/getBooking.200-expired.json"
+    },
+    {
+      "operationId": "getBooking",
+      "method": "get",
+      "path": "/bookings/{referenceCode}",
+      "status": 200,
+      "case": "cancelled-refunded",
+      "file": "booking/getBooking.200-cancelled-refunded.json"
+    },
+    {
+      "operationId": "cancelBooking",
+      "method": "post",
+      "path": "/bookings/{referenceCode}/cancel",
+      "status": 409,
+      "case": "too-late",
+      "file": "booking/cancelBooking.409-too-late.json"
+    },
+    {
+      "operationId": "cancelBooking",
+      "method": "post",
+      "path": "/bookings/{referenceCode}/cancel",
+      "status": 200,
+      "case": "cancelled-refunded",
+      "file": "booking/getBooking.200-cancelled-refunded.json"
     }
   ]
 }

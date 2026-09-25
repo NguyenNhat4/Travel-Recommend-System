@@ -3,7 +3,7 @@
  * Lịch trình do Itinerary Agent ở backend dựng; frontend không tự lập lịch trình.
  */
 
-import { CATALOG } from '../data/catalog';
+import { productFromApi } from './catalog';
 import { TravelIntent, GroundedPlan, Destination, ItinerarySlot, ItineraryDay, Product } from '../types/travel';
 import { detectTransitMode } from './routeGeometry';
 import type { components } from '../types/api.gen';
@@ -16,27 +16,10 @@ const SLOT_TIME_FROM_API: Record<components['schemas']['SlotTime'], ItinerarySlo
 };
 
 /**
- * Chuyển ProductSummary của API sang Product của giỏ hàng/bản đồ.
- * Tên và giá luôn lấy từ response (grounding). CATALOG local chỉ bổ sung tọa độ/địa chỉ;
- * không có thì để trống, không đặt ghim giả ở tâm thành phố.
+ * Chuyển ProductSummary của API sang Product của giỏ hàng/bản đồ. Tên và giá luôn lấy từ response (grounding);
+ * tọa độ đọc từ attributes của catalog, không có thì để trống — không đặt ghim giả ở tâm thành phố.
  */
-export function mapProductSummaryToProduct(summary: components['schemas']['ProductSummary']): Product {
-  const catalogItem = CATALOG.find((p) => p.id === summary.productId);
-  return {
-    id: summary.productId,
-    name: summary.name,
-    destination: summary.destination as Destination,
-    taxonomy: summary.taxonomy as Product['taxonomy'],
-    unitPrice: summary.unitPrice ?? 0,
-    currency: 'VND',
-    imageUrl: summary.imageUrl || catalogItem?.imageUrl || '/placeholders/hotel.webp',
-    coordinates: catalogItem?.coordinates,
-    address: catalogItem?.address || summary.destination,
-    description: summary.name,
-    attributes: (summary.attributes || {}) as Product['attributes'],
-    available: summary.available,
-  };
-}
+export const mapProductSummaryToProduct = productFromApi;
 
 /** Số điểm trong lịch trình có/không có tọa độ để vẽ bản đồ. */
 export function planLocationCoverage(plan: GroundedPlan) {

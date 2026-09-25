@@ -68,26 +68,31 @@ def run(*, dry_run: bool = False) -> dict[str, int | str]:
             timeout_seconds=settings.cohere_timeout_seconds,
         )
         try:
-            vectors = embedder.embed_docs([desired[product_id][0] for product_id in changed])
+            # Embed and write one Cohere batch at a time so a rate-limit failure keeps finished work;
+            # rerunning the job then only embeds what is still missing.
+            step = CohereEmbedder.batch_size
+            for start in range(0, len(changed), step):
+                ids = changed[start : start + step]
+                vectors = embedder.embed_docs([desired[product_id][0] for product_id in ids])
+                client.delete([existing[product_id].uuid for product_id in ids if product_id in existing])
+                client.insert([
+                    {
+                        "class": settings.weaviate_collection,
+                        "id": client.object_uuid(product_id),
+                        "properties": {
+                            "productId": product_id,
+                            "modelVersion": version,
+                            "textHash": desired[product_id][1],
+                        },
+                        "vector": vector.tolist(),
+                    }
+                    for product_id, vector in zip(ids, vectors, strict=True)
+                ])
+                print(f"indexed {min(start + step, len(changed))}/{len(changed)}", flush=True)
         finally:
             embedder.close()
 
-        stale_ids = [existing[product_id].uuid for product_id in changed if product_id in existing]
-        stale_ids.extend(existing[product_id].uuid for product_id in orphans)
-        client.delete(stale_ids)
-        client.insert([
-            {
-                "class": settings.weaviate_collection,
-                "id": client.object_uuid(product_id),
-                "properties": {
-                    "productId": product_id,
-                    "modelVersion": version,
-                    "textHash": desired[product_id][1],
-                },
-                "vector": vector.tolist(),
-            }
-            for product_id, vector in zip(changed, vectors, strict=True)
-        ])
+        client.delete([existing[product_id].uuid for product_id in orphans])
         return report
     finally:
         client.close()

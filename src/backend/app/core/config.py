@@ -57,10 +57,27 @@ class Settings(BaseSettings):
     itinerary_request_timeout_seconds: float = Field(default=10.0, gt=0)
     itinerary_conversation_ttl_seconds: int = Field(default=86_400, ge=60)
 
-    # JWT do Auth backend phát hành. Không có default secret; request ẩn danh vẫn hoạt động,
-    # còn request mang Bearer token sẽ fail closed nếu deployment chưa cấu hình.
-    jwt_secret: str = ""
-    jwt_algorithm: Literal["HS256"] = "HS256"
+    # --- Auth (docs/spec/hop-dong-tich-hop-auth.md §19) ---------------------------------------
+    # RS256; HS256 bị loại (§10.2). Đường dẫn tương đối tính từ gốc repo. Thiếu file: dev/test sinh
+    # khoá tạm, production không khởi động.
+    jwt_private_key_path: str = "./secrets/jwt-private.pem"
+    jwt_public_key_path: str = "./secrets/jwt-public.pem"
+    jwt_issuer: str = "https://api.vota.local"
+    jwt_audience: str = "vota-api"
+    jwt_access_ttl_seconds: int = Field(default=600, ge=60, le=3600)
+    jwt_clock_skew_seconds: int = Field(default=60, ge=0, le=60)
+    refresh_ttl_seconds: int = Field(default=43_200, ge=600)
+    argon2_memory_kib: int = Field(default=19_456, ge=19_456)
+    argon2_time_cost: int = Field(default=2, ge=2)
+    argon2_parallelism: int = Field(default=1, ge=1)
+    # Trống: dev/test dùng rate limiter trong bộ nhớ; production bắt buộc có Redis.
+    auth_redis_url: str = ""
+    # Chỉ tin X-Forwarded-For khi peer thuộc các dải này (§9.4). Phân cách bằng dấu phẩy.
+    trusted_proxies: str = "127.0.0.1/32"
+    captcha_provider: Literal["noop"] = "noop"  # nhà cung cấp thật là P1, ngoài phạm vi
+    # >= 32 ký tự; BFF và FastAPI trùng giá trị. Trống = nhóm /auth/session* và /internal/* luôn 401.
+    auth_service_token: str = ""
+    internal_api_enabled: bool = False
 
     # Local week-1 topology: one PostgreSQL instance, two roles/connections.
     # The app role cannot read cdp.events/profiles; LocalCdpClient cannot access app/catalog.
@@ -85,9 +102,37 @@ class Settings(BaseSettings):
     weaviate_api_key: str = ""
     weaviate_collection: str = "Product"
     weaviate_timeout_seconds: float = Field(default=30.0, gt=0)
+    # Cổng gRPC cho truy vấn top-K mỗi request; Weaviate Cloud tự dùng 443 của host grpc-<cluster>.
+    weaviate_grpc_port: int = Field(default=50051, ge=1, le=65535)
     search_cutoff: float = 0.62  # quy tắc tạm của Search contract; phải benchmark lại với Cohere
     search_max_limit: int = 50
+    search_candidate_k: int = Field(default=200, ge=1)
     recommend_candidate_k: int = 200
+
+    # Vector ở Weaviate, embedding bằng Cohere (docs/prd/architecture.md §5, deployment-plan.md §2).
+    # Runtime và job index-vectors dùng các biến này; Weaviate không bao giờ nhận COHERE_API_KEY.
+    cohere_api_key: str = ""
+    embedding_model_name: str = "embed-multilingual-v3.0"
+    weaviate_url: str = "http://localhost:8080"
+    weaviate_api_key: str = ""
+
+    # --- Thanh toán Stripe (test mode, docs/prd/deployment-plan.md §2) --------------------------------
+    stripe_secret_key: str = ""
+    stripe_webhook_secret: str = ""
+    payment_provider: Literal["stripe", "fake"] = "stripe"  # fake: offline, không gọi mạng; cấm ở production
+    booking_hold_minutes: int = Field(default=30, ge=30)  # Stripe chỉ cho phiên Checkout hết hạn sau ít nhất 30 phút
+    payment_max_failed_attempts: int = Field(default=3, ge=1)
+    public_web_url: str = "http://localhost:3000"
+    # 0 = tắt job đối soát (test); mặc định 5 phút/lần.
+    booking_reconcile_interval_seconds: int = Field(default=300, ge=0)
+
+    @field_validator("stripe_secret_key")
+    @classmethod
+    def _test_keys_only(cls, value: str) -> str:
+        # Dự án chỉ dùng Stripe test mode (PRD project-brief §4.2): khoá live không bao giờ được nạp.
+        if value.startswith(("sk_live_", "rk_live_")):
+            raise ValueError("STRIPE_SECRET_KEY phải là khoá test (sk_test_…); dự án không dùng Stripe live mode")
+        return value
 
     @field_validator(*_OPTIONAL_BLANK_IS_NONE, mode="before")
     @classmethod

@@ -4,11 +4,23 @@
     - catalog
     operationId: listProducts
     summary: Danh sách sản phẩm
+    description: >-
+      Không có parentProductId: chỉ trả tầng cha (search unit — property, route và taxonomy không phân tầng),
+      giống /search và /recommendations. Có parentProductId: trả các sản phẩm tầng con (hạng phòng, chuyến bay
+      cụ thể) của sản phẩm cha đó, là đơn vị đặt chỗ mà Web thêm vào giỏ; sort=popular với tầng con xếp theo
+      giá tăng dần. parentProductId không có trong catalog hoặc không có tầng con thì trả results rỗng.
     security:
     - {}
     - bearerAuth: []
     parameters:
     - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    - name: parentProductId
+      in: query
+      required: false
+      description: productId của sản phẩm cha (property hoặc route). Lọc các tầng con của nó.
+      schema:
+        type: string
+        minLength: 1
     - name: destination
       in: query
       schema:

@@ -4,7 +4,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { useTravel } from '../../context/TravelContext';
 import { useAssistant } from '../../context/AssistantProvider';
-import { CATALOG } from '../../data/catalog';
+import { productFromApi } from '../../services/catalog';
 import type { components } from '../../types/api.gen';
 import { GroundedPlan, Product, TravelIntent, ItineraryDay, ItinerarySlot } from '../../types/travel';
 import { 
@@ -256,24 +256,12 @@ const DESTINATION_COORDINATES: Record<string, { lat: number; lng: number }> = {
 };
 
 function adaptProductSummaryToProduct(summary: components['schemas']['ProductSummary']): Product {
-  const dest = (summary.destination || 'Nha Trang') as any;
-  const catalogItem = CATALOG.find(p => p.id === summary.productId);
-  const defaultCoords = DESTINATION_COORDINATES[dest] || { lat: 12.2388, lng: 109.1967 };
-
+  const product = productFromApi(summary);
+  const defaultCoords = DESTINATION_COORDINATES[product.destination] || { lat: 12.2388, lng: 109.1967 };
   return {
-    id: summary.productId,
-    name: summary.name || catalogItem?.name || 'Sản phẩm du lịch',
-    taxonomy: (summary.taxonomy || catalogItem?.taxonomy || 'attraction') as any,
-    destination: dest,
-    unitPrice: summary.unitPrice ?? catalogItem?.unitPrice ?? 0,
-    currency: 'VND',
-    priceString: summary.unitPrice != null ? new Intl.NumberFormat('vi-VN').format(summary.unitPrice) + ' ₫' : catalogItem?.priceString,
-    imageUrl: summary.imageUrl || catalogItem?.imageUrl || 'https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&w=1200&q=80',
-    description: summary.description || catalogItem?.description || '',
-    attributes: { ...(catalogItem?.attributes || {}), ...((summary.attributes as any) || {}) },
-    available: summary.available ?? true,
-    coordinates: catalogItem?.coordinates || (summary.attributes as any)?.coordinates || defaultCoords,
-    address: catalogItem?.address || (summary.attributes as any)?.address || summary.destination,
+    ...product,
+    priceString: summary.unitPrice != null ? new Intl.NumberFormat('vi-VN').format(summary.unitPrice) + ' ₫' : undefined,
+    coordinates: product.coordinates || defaultCoords,
   };
 }
 
@@ -1383,7 +1371,7 @@ export const AiFloatingWidget: React.FC = () => {
                                           Khách sạn lưu trú {'dayRange' in stayForThisDay && stayForThisDay.dayRange ? `(${stayForThisDay.dayRange})` : ''}
                                         </span>
                                         <span className="text-sm font-black text-indigo-950 font-mono">
-                                          {stayForThisDay.product.unitPrice.toLocaleString('vi-VN')} ₫/đêm
+                                          {stayForThisDay.product.unitPrice != null ? `${stayForThisDay.product.unitPrice.toLocaleString('vi-VN')} ₫/đêm` : 'Chưa có giá'}
                                         </span>
                                       </div>
 
@@ -1500,7 +1488,7 @@ export const AiFloatingWidget: React.FC = () => {
                                             {stopTitle}
                                           </h4>
                                           <div className="flex items-center gap-2 shrink-0">
-                                            {slot.product && (
+                                            {slot.product && slot.product.unitPrice != null && (
                                               <span className="text-sm font-black font-mono text-indigo-950">
                                                 {slot.product.unitPrice.toLocaleString('vi-VN')} ₫
                                               </span>

@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTravel } from '../../context/TravelContext';
+import { bookingItems } from '../../services/booking';
+import { BOOKING_STATUS_BADGE } from '../confirmation/bookingLabels';
 import { SUPPORTED_LOCALES } from '../../types/locale';
 import { useAssistant } from '../../context/AssistantProvider';
-import { DemoAccountSwitcher } from './DemoAccountSwitcher';
 import { 
   Sparkles, 
   Luggage, 
@@ -21,8 +22,8 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({ isCheckout = false }) => {
   const { 
     currentPersona, 
-    switchPersona, 
-    cart, 
+    signOut, 
+    cartCount, 
     bookings, 
     navigate, 
     openLoginModal, 
@@ -36,7 +37,6 @@ export const Header: React.FC<HeaderProps> = ({ isCheckout = false }) => {
   const [isTripsDropdownOpen, setIsTripsDropdownOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isAccountDropdownOpen, setIsAccountDropdownOpen] = useState(false);
-  const [showDemoPersonasInAccount, setShowDemoPersonasInAccount] = useState(false);
 
   // Refs for click outside
   const langDropdownRef = useRef<HTMLDivElement>(null);
@@ -68,8 +68,8 @@ export const Header: React.FC<HeaderProps> = ({ isCheckout = false }) => {
 
   const currentLocaleInfo = SUPPORTED_LOCALES.find(l => l.code === currentLocale) || SUPPORTED_LOCALES[0];
 
-  const upcomingBookingsCount = bookings.length;
-  const activeTripsBadge = upcomingBookingsCount > 0 ? upcomingBookingsCount : (cart.length > 0 ? cart.length : 0);
+  const upcomingBookingsCount = bookings.filter(b => b.status === 'CONFIRMED' || b.status === 'PENDING_PAYMENT').length;
+  const activeTripsBadge = upcomingBookingsCount > 0 ? upcomingBookingsCount : cartCount;
 
   // Simplified Checkout Header
   if (isCheckout) {
@@ -236,7 +236,7 @@ export const Header: React.FC<HeaderProps> = ({ isCheckout = false }) => {
                         }}
                         className="text-[11px] text-blue-600 hover:underline font-semibold cursor-pointer"
                       >
-                        Giỏ hàng ({cart.length})
+                        Giỏ hàng ({cartCount})
                       </button>
                     </div>
 
@@ -253,10 +253,12 @@ export const Header: React.FC<HeaderProps> = ({ isCheckout = false }) => {
                           >
                             <div className="text-[11px] font-bold text-slate-900 flex items-center justify-between">
                               <span>Đơn #{b.referenceCode}</span>
-                              <span className="text-emerald-700 text-[10px]">Đã xác nhận</span>
+                              <span className={`text-[10px] ${BOOKING_STATUS_BADGE[b.status].className}`}>
+                                {BOOKING_STATUS_BADGE[b.status].label}
+                              </span>
                             </div>
                             <div className="text-[10px] text-slate-500 mt-0.5">
-                              {b.items.length} dịch vụ · {new Intl.NumberFormat('vi-VN').format(b.totalAmount)} ₫
+                              {bookingItems(b).length} dịch vụ · {new Intl.NumberFormat('vi-VN').format(b.total)} ₫
                             </div>
                           </div>
                         ))
@@ -400,29 +402,11 @@ export const Header: React.FC<HeaderProps> = ({ isCheckout = false }) => {
                         </button>
                       </div>
 
-                      <div className="pt-2 border-t border-slate-100">
-                        <button
-                          type="button"
-                          onClick={() => setShowDemoPersonasInAccount(!showDemoPersonasInAccount)}
-                          className="w-full px-2 py-1.5 text-left text-[11px] font-semibold text-slate-500 hover:text-slate-800 flex items-center justify-between cursor-pointer"
-                        >
-                          <span>Thử nghiệm hồ sơ mẫu (Demo)</span>
-                          <ChevronDown className={`w-3 h-3 transition-transform ${showDemoPersonasInAccount ? 'rotate-180' : ''}`} />
-                        </button>
-
-                        {showDemoPersonasInAccount && (
-                          <div className="p-2 bg-slate-50 rounded-xl mt-1 border border-slate-200/60">
-                            <DemoAccountSwitcher compact onSelect={() => setIsAccountDropdownOpen(false)} />
-                          </div>
-                        )}
-                      </div>
-
                       <div className="pt-2 border-t border-slate-100 mt-1">
                         <button
                           onClick={() => {
-                            switchPersona(null);
                             setIsAccountDropdownOpen(false);
-                            showToast('Đã đăng xuất tài khoản');
+                            void signOut();
                           }}
                           className="w-full px-2.5 py-1.5 text-left text-xs font-semibold text-rose-600 hover:bg-rose-50 rounded-lg flex items-center gap-2 transition-colors cursor-pointer"
                         >
@@ -442,7 +426,7 @@ export const Header: React.FC<HeaderProps> = ({ isCheckout = false }) => {
                     Đăng nhập
                   </button>
                   <button 
-                    onClick={() => openLoginModal()}
+                    onClick={() => navigate('/register')}
                     className="px-4 py-1.5 text-xs sm:text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 active:scale-95 transition rounded-full shadow-sm cursor-pointer"
                   >
                     Đăng ký

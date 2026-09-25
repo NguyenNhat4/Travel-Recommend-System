@@ -26,7 +26,7 @@ Theo handbook §2 và §8, bản demo thắng hay thua ở ba khoảnh khắc. U
 | # | Khoảnh khắc demo | Màn hình gánh | UX phải làm cho nó *nhìn thấy được* |
 |---|---|---|---|
 | K1 | **Vòng lặp phản hồi:** đặt khách sạn Nha Trang → gợi ý chuyển sang vé máy bay / vé tham quan | Checkout → Confirmation → Home | Ngay trên trang Confirmation đã có gợi ý mới. Home có section "Hoàn thiện chuyến Nha Trang" kèm lý do và một thông báo "trang chủ đã cập nhật" |
-| K2 | **Cá nhân hóa theo người:** đăng nhập lần lượt 4 tài khoản seed → Home khác nhau | Login → Home | Đổi tài khoản demo trong 1 click. Tiêu đề section và dòng lý do khác nhau rõ rệt giữa các persona |
+| K2 | **Cá nhân hóa theo người:** đăng nhập lần lượt 4 tài khoản seed → Home khác nhau | Login → Home | Đăng xuất rồi đăng nhập bằng email seed qua `/login` thật. Tiêu đề section và dòng lý do khác nhau rõ rệt giữa các persona |
 | K3 | **Trợ lý không bịa:** hỏi lịch trình 3 ngày → kế hoạch toàn sản phẩm thật → bấm vào → đặt được | Chat → Detail/Cart | Mọi mục đặt được đều là thẻ sản phẩm có giá và nút. Mục không phải sản phẩm trông khác hẳn và không có nút đặt |
 
 ### 1.2 Trong phạm vi
@@ -35,7 +35,7 @@ Theo handbook §2 và §8, bản demo thắng hay thua ở ba khoảnh khắc. U
 
 ### 1.3 Ngoài phạm vi (theo handbook §2, §8 và brief §5)
 
-- Thanh toán thật, form thẻ, ví. Checkout chỉ thu thông tin và hiển thị mã tham chiếu.
+- Thanh toán tiền thật, Stripe live mode, form thẻ tự dựng, ví điện tử và chuyển khoản. Checkout thu tiền qua **Stripe Checkout ở test mode** (trang nhập thẻ do Stripe host, V-OTA là Merchant of Record — FR-BKG-06); V-OTA không vẽ form thẻ.
 - OAuth/đăng nhập mạng xã hội, xác minh email, **quên/đặt lại mật khẩu**, 2FA, phân quyền. UI **không hiển thị** link "Quên mật khẩu" hay nút "Đăng nhập với Google" dù mọi OTA tham chiếu đều có.
 - Đánh giá chi tiết của người dùng (handbook §3 cấm thu review), wishlist và chat nhóm. Bản đồ, lưu và chia sẻ lịch trình thuộc UX scope; trạng thái code hiện tại xem §1.5.
 - Thu thập phản hồi trên gợi ý kiểu "Không quan tâm" hay "Thêm như này" `[R107]`: không có API ghi, nên không đưa vào MVP. Có thể đưa vào đề xuất Tuần 6.
@@ -78,7 +78,7 @@ Các trạng thái dưới đây được đối chiếu tĩnh với mã trong `
 
 **Phụ thuộc:** handbook chỉ minh họa giá trị `strategy: "cross_vertical"`. Các giá trị cho P2/P3/P4 (ví dụ `popular`, `dormant`…) cần Backend chốt. UI map mọi `strategy` lạ về copy chung (§5.3).
 
-Tài khoản seed được hiển thị trong **bộ chọn tài khoản demo** trên màn hình Login (§4.7.3). Mỗi thẻ ghi persona và một dòng mô tả lịch sử, để người trình bày không phải nhớ email.
+Tài khoản seed đăng nhập qua `/login` như mọi user (email seed + mật khẩu demo chung); không có bộ chọn tài khoản trên giao diện (§4.7.3). Người trình bày chuẩn bị sẵn danh sách email.
 
 ---
 
@@ -134,7 +134,7 @@ Tài khoản seed được hiển thị trong **bộ chọn tài khoản demo** 
 - **Desktop:** header dính trên cùng gồm logo, ô tìm kiếm ngôn ngữ tự nhiên ở giữa (luôn hiện, trừ trang Checkout), nút "Trợ lý", biểu tượng giỏ kèm số lượng, menu tài khoản. Pattern: `[R01]` Klook web (ô tìm kiếm + "Cart" + avatar trên cùng một hàng) và `[R06]` Airbnb web.
 - **Checkout** dùng header rút gọn (logo + "Quay lại giỏ hàng") để giảm rơi rụng. Pattern: `[R70]` KAYAK web checkout (header chỉ còn logo).
 - **Mobile:** thanh tab dưới cùng, xem §7.2.
-- **Menu tài khoản:** tên + persona, "Đổi tài khoản demo", "Đăng xuất". Không có trang hồ sơ, vì handbook không yêu cầu.
+- **Menu tài khoản:** tên + persona, "Đăng xuất". Không có trang hồ sơ, vì handbook không yêu cầu.
 - **Banner demo** mảnh, cố định dưới header: "Bản demo — không thu tiền và không gửi xác nhận thật." Người dùng đóng được, lựa chọn lưu theo phiên.
 
 ---
@@ -157,7 +157,6 @@ Mọi màn hình dưới đây đều tham chiếu tới các component này. Đ
 | **`EmptyState`** | icon + tiêu đề + 1 câu + 1–2 CTA + (tùy chọn) nội dung thay thế | Luôn đưa ra bước tiếp theo, không bao giờ chỉ ghi "Không có dữ liệu" |
 | **`ErrorState`** | thông điệp + "Thử lại" | Lỗi cục bộ theo section không làm hỏng cả trang. Pattern: `[R114]` Typeform web ("Oops! Something went wrong" + Retry / Start over) |
 | **`Toast`** | chuỗi ngắn + hành động (tùy chọn) | Góc dưới, tự ẩn sau 5 giây. Dùng cho "Đã thêm vào giỏ", "Trang chủ đã cập nhật…" |
-| **`DemoAccountSwitcher`** | danh sách tài khoản seed | §4.7.3 |
 
 ---
 
@@ -210,7 +209,7 @@ Mọi màn hình dưới đây đều tham chiếu tới các component này. Đ
 | P2 · cold start, có `because` | "Gợi ý từ những gì bạn vừa xem" + `BecauseLine` "Vì bạn đã xem …" | |
 | P2/P4 · cold start, `because` rỗng | "Phổ biến tại {destination}" hoặc "Được đặt nhiều trên V-OTA". **Không** có `BecauseLine` cá nhân. Nhãn trên thẻ: "Được đặt nhiều" | Nguyên tắc 1.4-3 |
 | P3 · dormant | Lời chào đổi thành "Chào mừng quay lại, {tên}". Phụ đề: "Dựa trên chuyến {destination} của bạn cách đây {n} tháng" | `daysAgo` lớn hiển thị theo tháng (§5.2) |
-| Khách vãng lai | Không có ①. Thay bằng banner: "Đăng nhập để nhận gợi ý theo chuyến đi của bạn" + [Đăng nhập] [Dùng tài khoản demo] | `[R82]` Skyscanner iOS ("Get the full experience — Track prices, make trip planning easier"); `[R81]` Best Buy iOS (danh sách lợi ích trước khi đăng nhập) |
+| Khách vãng lai | Không có ①. Thay bằng banner: "Đăng nhập để nhận gợi ý theo chuyến đi của bạn" + [Đăng nhập] [Đăng ký] | `[R82]` Skyscanner iOS ("Get the full experience — Track prices, make trip planning easier"); `[R81]` Best Buy iOS (danh sách lợi ích trước khi đăng nhập) |
 
 #### 4.1.4 Khoảnh khắc "trang chủ đã cập nhật" (K1)
 
@@ -349,8 +348,8 @@ Khi người dùng quay về Home từ Confirmation (bấm "Xem gợi ý mới t
 
 | `taxonomy` | Trường chọn | Công thức tổng | Ghi chú |
 |---|---|---|---|
-| `hotel` | Nhận phòng, trả phòng, số phòng | `unitPrice × số đêm × số phòng` | Mặc định: `availableFrom` + 2 đêm |
-| `flight` | Ngày bay (nếu dữ liệu có nhiều ngày), số hành khách | `unitPrice × số khách` | Nếu vé gắn cố định một ngày thì hiện ngày ở dạng chỉ đọc (**phụ thuộc:** ngữ nghĩa ngày bay trong dữ liệu) |
+| `hotel` | **Hạng phòng** (danh sách từ `GET /products?parentProductId=`), nhận phòng, trả phòng, số phòng | `unitPrice của hạng phòng × số đêm × số phòng` | Khách sạn (property) không đặt trực tiếp: chọn một hạng phòng, mặc định hạng rẻ nhất còn đặt được. Ngày mặc định: ngày mai (giờ Việt Nam) trong cửa sổ mở bán, 1 đêm. Khách sạn không có hạng phòng thì chỉ để xem |
+| `flight` | **Chuyến bay** của tuyến (danh sách như trên), số hành khách | `unitPrice × số khách` | Mỗi chuyến bay có một ngày cố định (`availableFrom = availableTo`), hiện ở dạng chỉ đọc |
 | `attraction` / `golf` | Ngày sử dụng (chip nhanh "Hôm nay · Ngày mai · Chọn ngày"), số khách | `unitPrice × số khách` | `[R53]` Klook web (chip "Today / Tomorrow / 27 Jan / All dates"); `[R52]` Klook web (panel "What's included") |
 | `combo` | Ngày bắt đầu, số khách | `unitPrice × số khách` | — |
 
@@ -418,7 +417,7 @@ Có thể bị cắt (handbook §2, mục 4). Nếu cắt: bỏ route `/cart`, n
 | Xóa mục | Xóa ngay + toast "Đã xóa {tên} · [Hoàn tác]" | `[R23]` Instagram iOS (toast có "Undo") |
 | Lỗi tải giỏ | `ErrorState` + [Thử lại] |  |
 
-**Phụ thuộc:** giỏ được lưu phía server (theo user) hay client? Đề xuất phía server nếu Booking API có endpoint giỏ, vì đổi tài khoản demo trên cùng một máy không được làm lẫn giỏ giữa các persona. Nếu lưu client thì phải khóa `localStorage` theo `cdp_user_id`.
+**Phụ thuộc:** giỏ được lưu phía server (theo user) hay client? Đề xuất phía server nếu Booking API có endpoint giỏ, vì đăng nhập lần lượt nhiều tài khoản trên cùng một máy không được làm lẫn giỏ giữa các persona. Nếu lưu client thì phải khóa `localStorage` theo `cdp_user_id`.
 
 ---
 
@@ -428,8 +427,8 @@ Có thể bị cắt (handbook §2, mục 4). Nếu cắt: bỏ route `/cart`, n
 
 ```
 ┌ Header rút gọn: Logo · ← Quay lại giỏ hàng ────────────────────────────────────┐
-│ ⓘ Bản demo: không có thanh toán thật. Bấm "Xác nhận" sẽ tạo mã tham chiếu và    │
-│   ghi nhận lượt đặt vào lịch sử để hệ thống gợi ý học từ nó.                     │
+│ ⓘ Thanh toán qua Stripe (chế độ test). Bấm "Thanh toán" sẽ giữ chỗ 30 phút và   │
+│   chuyển sang trang nhập thẻ của Stripe.                                        │
 ├──────────────────────────────────────────────────┬────────────────────────────┤
 │ 1 · THÔNG TIN LIÊN HỆ                  [✓]       │ ĐƠN ĐẶT CỦA BẠN            │
 │   Họ và tên *        [Nguyễn Minh Anh      ] ✓   │ [ảnh] Vinpearl Resort ...  │
@@ -441,9 +440,11 @@ Có thể bị cắt (handbook §2, mục 4). Nếu cắt: bỏ route `/cart`, n
 │   Vinpearl Resort: Tên khách nhận phòng [    ]   │ ─────────────────────────  │
 │   Vé máy bay: Họ tên hành khách 1 [   ] 2 [   ]  │ Tổng          14.180.000 ₫ │
 │   Yêu cầu đặc biệt (không bắt buộc) [       ]    │ [Sửa giỏ hàng]             │
-│ 3 · XEM LẠI & XÁC NHẬN                           │                            │
-│   ☐ Tôi hiểu đây là đặt chỗ demo, không có thật  │                            │
-│   [      Xác nhận đặt chỗ (14.180.000 ₫)      ]  │                            │
+│ 3 · PHƯƠNG THỨC THANH TOÁN                       │                            │
+│   (●) Stripe — Thẻ thanh toán (test)             │                            │
+│   ( ) Ví điện tử [Sắp có]  ( ) Chuyển khoản [Sắp có]                            │
+│   ☐ Đồng ý điều khoản và chính sách huỷ          │                            │
+│   [        Thanh toán 14.180.000 ₫            ]  │                            │
 └──────────────────────────────────────────────────┴────────────────────────────┘
 ```
 
@@ -455,18 +456,20 @@ Có thể bị cắt (handbook §2, mục 4). Nếu cắt: bỏ route `/cart`, n
 | Điền sẵn | Họ tên + email lấy từ tài khoản. Email khóa (đổi email ngoài phạm vi) | `[R67]` Tripadvisor web (email khóa, trường hợp lệ có ✓ xanh) |
 | Kiểm tra hợp lệ | Kiểm tra khi rời trường (blur), không kiểm tra theo từng phím. Lỗi hiện ngay dưới trường: "Vui lòng nhập số điện thoại hợp lệ". Khi bấm Xác nhận mà còn lỗi thì cuộn tới lỗi đầu tiên | `[R67]` Tripadvisor web |
 | Thông tin theo dịch vụ | Mỗi mục giỏ có trường tối thiểu: khách sạn → tên khách nhận phòng; vé máy bay → họ tên từng hành khách (theo `quantity`); vé tham quan → không thêm gì | `[R119]` Agoda iOS (khối "Special requests" dạng không bắt buộc) |
-| **Không có khối thanh toán** | Thay bằng băng thông tin "Bản demo" ở đầu trang. Không vẽ form thẻ giả, vì brief §5 và handbook §2 loại trừ thanh toán | `[R69]` Expedia web ("Reserve now, pay later" + "Pay today $0.00") là tiền lệ cho việc đặt mà không trả ngay |
+| **Khối phương thức thanh toán** | Chỉ Stripe (chọn sẵn); ví điện tử, chuyển khoản hiển thị vô hiệu hoá, nhãn "Sắp có" (`docs/prd/user-flow.md` §3.3). Không vẽ form thẻ: khách nhập thẻ trên trang do Stripe host | `[R68]` Airbnb web ("Add a payment method") |
 | Tóm tắt dính phải | Ảnh thu nhỏ + tên + ngày + số lượng + thành tiền từng mục, tổng, link "Sửa giỏ hàng" | `[R66]` Klook web; `[R57]` Navan web ("In this booking") |
-| CTA | "Xác nhận đặt chỗ ({tổng})". Disabled cho tới khi tick checkbox demo. Điều khoản ghi ngay trên nút | `[R70]` KAYAK web (nút "Confirm booking" disabled + đoạn điều khoản ngay trên) |
+| CTA | "Thanh toán ({tổng})". Disabled cho tới khi thông tin hợp lệ, đã chọn phương thức và tick điều khoản (gồm chính sách huỷ). Dưới nút: "Giữ chỗ 30 phút sau khi bấm Thanh toán. Bạn sẽ được chuyển sang Stripe." | `[R70]` KAYAK web (nút "Confirm booking" disabled + đoạn điều khoản ngay trên) |
 
 #### 4.5.3 Trạng thái
 
 | Trạng thái | Hành vi |
 |---|---|
-| Đang gửi | Nút đổi thành spinner + "Đang xác nhận…", disabled để **chống bấm hai lần** (hai lần bấm sẽ ghi hai event `purchase` và làm sai vòng lặp phản hồi). Form khóa. Pattern: `[R86]` Uvodo web (spinner nằm trong nút chính) |
-| Thành công | `replace` sang `/booking/:referenceCode` để nút Back không quay lại form đã gửi |
-| Một mục hết chỗ (4xx) | Banner trên cùng: "{tên} vừa hết chỗ. Hãy xóa khỏi đơn để tiếp tục." + [Quay lại giỏ]. Dữ liệu đã nhập được giữ nguyên |
-| Lỗi mạng / 5xx | Toast "Chưa xác nhận được đặt chỗ. Thông tin của bạn vẫn được giữ. [Thử lại]". Không xóa form |
+| Đang gửi | Nút đổi thành spinner + "Đang giữ chỗ và mở trang thanh toán…", disabled để **chống bấm hai lần** (Backend cũng chỉ cho một đơn giữ chỗ mỗi người). Pattern: `[R86]` Uvodo web (spinner nằm trong nút chính) |
+| Thành công (`201 PENDING_PAYMENT`) | Chuyển trình duyệt sang `payment.checkoutUrl` (trang Stripe). Stripe đưa về `/booking/:referenceCode?payment=return` hoặc `?payment=cancelled` |
+| Đang có đơn giữ chỗ (`409 BOOKING_PENDING_PAYMENT`) | Hộp thoại: "Tiếp tục thanh toán đơn đó" hoặc "Huỷ đơn đó và đặt lại từ giỏ" |
+| Giá đổi (`409 PRICE_CHANGED`) | Banner giá cũ → giá mới + [Cập nhật và tiếp tục] (xác nhận giá mới vào giỏ), khách bấm Thanh toán lần nữa |
+| Một mục hết chỗ (4xx) | Banner trên cùng: "{tên} vừa hết chỗ." + [Quay lại giỏ]. Dữ liệu đã nhập được giữ nguyên |
+| Stripe không phản hồi (`503`) / lỗi mạng / 5xx | Banner "Cổng thanh toán tạm thời không phản hồi" (hoặc thông điệp lỗi) + [Thử lại]. Không xóa form, không tạo đơn |
 | 401 giữa chừng | Modal đăng nhập lại, giữ dữ liệu form trong bộ nhớ, sau đó gửi lại |
 | Giỏ rỗng khi vào `/checkout` | Chuyển về `/cart` |
 
@@ -504,13 +507,17 @@ Có thể bị cắt (handbook §2, mục 4). Nếu cắt: bỏ route `/cart`, n
 | Mã tham chiếu | Font mono, cỡ lớn, có nút sao chép (toast "Đã sao chép") | `[R72]` Tripadvisor web ("Confirmation number: 1625480075") |
 | Chi tiết đơn | Danh sách mục + tổng + thông tin liên hệ | `[R75]` KAYAK web ("Your flight booking" + Summary); `[R76]` Time2book web (thẻ xác nhận gọn) |
 | Hai CTA | "Xem gợi ý mới trên trang chủ" (→ `/` với cờ `justBooked`, xem §4.1.4) · "Lên lịch trình cho chuyến {destination}" (→ `/assistant` điền sẵn điểm đến + ngày của khách sạn vừa đặt) | `[R76]` Time2book web ("My schedule" / "Book more"); `[R09]` Booking.com iOS ("Want to keep planning your trip itinerary? — Continue planning") |
-| **Tiếp theo cho chuyến** | Gọi `/recommendations` **sau khi** booking trả thành công. Tiêu đề + phụ đề theo §5.3. Thẻ có `BecauseLine` "Vì bạn vừa đặt {tên} · hôm nay" | `[R26]` Expedia web (trang xác nhận có "People who bought "Jakarta Museum…" also viewed" nêu đích danh sản phẩm nguồn); `[R74]` Kiwi.com web (xác nhận vé máy bay kèm "Latest hotel deals in Las Vegas", tức gợi ý chéo danh mục ngay sau khi đặt) |
+| **Tiếp theo cho chuyến** | Gọi `/recommendations` **chỉ khi** đơn đã `CONFIRMED`. Tiêu đề + phụ đề theo §5.3. Thẻ có `BecauseLine` "Vì bạn vừa đặt {tên} · hôm nay" | `[R26]` Expedia web (trang xác nhận có "People who bought "Jakarta Museum…" also viewed" nêu đích danh sản phẩm nguồn); `[R74]` Kiwi.com web (xác nhận vé máy bay kèm "Latest hotel deals in Las Vegas", tức gợi ý chéo danh mục ngay sau khi đặt) |
 
 #### 4.6.3 Trạng thái
 
 | Trạng thái | Hành vi |
 |---|---|
-| Tải lại trang / mở từ link | Gọi lại dữ liệu booking theo `referenceCode` (**phụ thuộc:** endpoint đọc booking). Không có thì hiện "Không tìm thấy đơn đặt chỗ này" + [Về trang chủ] |
+| Tải lại trang / mở từ link | `GET /bookings/{referenceCode}`. Không có thì hiện "Không tìm thấy đơn đặt chỗ này" + [Về trang chủ] |
+| Vừa quay về từ Stripe (`?payment=return`) | "Đang kiểm tra thanh toán…"; hỏi lại 2 giây/lần tối đa 15 lần tới khi đơn rời `PENDING_PAYMENT`. Đã thu tiền mà chưa xác nhận xong → "Đã nhận thanh toán, đang xác nhận đơn" |
+| Đang giữ chỗ | "Đơn đang được giữ chỗ" + đồng hồ đếm ngược theo `holdExpiresAt` + [Tiếp tục thanh toán] [Huỷ đơn]. Hết giờ → "Hết thời gian giữ chỗ" + [Đặt lại từ giỏ] |
+| Thanh toán thất bại / hết hạn / đã huỷ | Theo `docs/spec/hop-dong-tich-hop-frontend.md` §4.6; không gọi gợi ý |
+| Huỷ đơn đã xác nhận | Nút [Huỷ đơn] khi còn trước `cancellableUntil`; hộp thoại nêu số tiền hoàn, hạn huỷ, "không thể hoàn tác" |
 | Gợi ý đang tải | Phần đơn hàng hiện ngay. Section gợi ý hiện skeleton |
 | Gợi ý lỗi / rỗng | Ẩn section, giữ hai CTA. Không để lỗi gợi ý làm người dùng nghĩ đặt chỗ thất bại |
 | Gợi ý vẫn cùng danh mục đã đặt (engine chưa loại trừ) | Vẫn hiển thị, nhưng dùng tiêu đề chung "Có thể bạn quan tâm" thay vì "Tiếp theo cho chuyến…", tránh lời hứa sai |
@@ -519,7 +526,7 @@ Có thể bị cắt (handbook §2, mục 4). Nếu cắt: bỏ route `/cart`, n
 
 ### 4.7 Login / Register
 
-Theo handbook §8, xác thực tồn tại "để bản demo có thể cho những người khác nhau thấy những gợi ý khác nhau". Vì vậy UX tối ưu cho **tốc độ đổi người**, không cho việc giữ chân người dùng mới.
+Theo handbook §8, xác thực tồn tại "để bản demo có thể cho những người khác nhau thấy những gợi ý khác nhau". Từ MVP, kiểm thử và trình diễn đi qua đúng luồng đăng ký/đăng nhập thật, không có đường tắt chọn tài khoản.
 
 #### 4.7.1 Hai hình thức
 
@@ -538,8 +545,6 @@ Theo handbook §8, xác thực tồn tại "để bản demo có thể cho nhữ
 │ Mật khẩu    [                  👁 ]   │
 │ [          Đăng nhập           ]       │
 │ Chưa có tài khoản? Đăng ký             │
-│ ─────────── Tài khoản demo ──────────  │
-│ ┌P1┐ ┌P2┐ ┌P3┐ ┌P4┐   (xem 4.7.3)       │
 └───────────────────────────────────────┘
 ```
 
@@ -549,22 +554,9 @@ Theo handbook §8, xác thực tồn tại "để bản demo có thể cho nhữ
 - Thành công: đóng modal hoặc chuyển tới `redirect` (mặc định `/`), rồi thực hiện tiếp hành động đang chờ (nếu có). Toast "Xin chào, {tên}".
 - Câu giá trị dưới tiêu đề: "Nhận gợi ý theo chuyến đi của bạn". Pattern: `[R82]` Skyscanner iOS và `[R81]` Best Buy iOS (nói lợi ích trước khi đòi đăng nhập).
 
-#### 4.7.3 Bộ chọn tài khoản demo (`DemoAccountSwitcher`)
+#### 4.7.3 Bộ chọn tài khoản demo — đã gỡ
 
-Hiện khi build có cờ demo (mặc định bật cho bản demo Tuần 6). Nằm dưới form đăng nhập và trong menu tài khoản ("Đổi tài khoản demo").
-
-```
-┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
-│  (MA)        │ │  (QB)        │ │  (TH)        │ │  (KM)        │
-│ Minh Anh     │ │ Quốc Bảo     │ │ Thu Hà       │ │ Khách mới    │
-│ Hay đi       │ │ Mới xem 2    │ │ Chuyến cuối  │ │ Chưa có      │
-│ Nha Trang    │ │ sản phẩm     │ │ 6 tháng trước│ │ lịch sử      │
-└──────────────┘ └──────────────┘ └──────────────┘ └──────────────┘
-```
-
-- Một click sẽ đăng nhập bằng thông tin seed (gọi đúng API login, không bỏ qua xác thực), chuyển về Home và **xóa mọi cache phía client** của người trước (giỏ, gợi ý, hội thoại chat).
-- Đang ở một tài khoản mà chọn tài khoản khác thì đăng xuất rồi đăng nhập lại ngầm, không cần hỏi xác nhận.
-- Pattern: không có OTA nào trên Mobbin có bộ chọn nhiều hồ sơ. Mượn từ ứng dụng streaming: `[R83]` Netflix web và `[R84]` Disney+ web ("Who's watching?": lưới avatar + tên, một chạm vào hồ sơ). Lý do mượn: đúng bài toán "một thiết bị, nhiều người, trải nghiệm khác nhau".
+`DemoAccountSwitcher` đã bị gỡ ngày 2026-09-24 (`docs/prd/update-archive/2026-09-24-go-bo-chon-tai-khoan-demo.md`). Tài khoản seed đăng nhập qua form §4.7.2. Giữ số mục để không đổi các tham chiếu.
 
 #### 4.7.4 Đăng ký
 
@@ -941,7 +933,7 @@ Quy tắc chung: vùng chạm ≥ 44 × 44 px, lề ngang 16 px, không cuộn n
 | **Cart** | Danh sách 1 cột. Tóm tắt thành **thanh dính đáy**: "Tổng 14.180.000 ₫ ▴" (bấm để mở chi tiết) + [Đặt chỗ]. "Thường được đặt cùng" carousel dưới danh sách | `[R58]` Klook web (bản desktop; cấu trúc tương đương) |
 | **Checkout** | 1 cột, 3 khối xếp dọc, khối tóm tắt đơn gập được ở đầu trang ("Đơn của bạn · 2 dịch vụ ▾"). CTA dính đáy "Xác nhận đặt chỗ" + dòng "Bản demo — không thu tiền" dưới nút. Bàn phím: email `type=email`, điện thoại `type=tel` | `[R119]` Agoda iOS (CTA dính đáy "NEXT: FINAL STEP" + dòng "You will pay SGD0 today") |
 | **Confirmation** | Mã tham chiếu + nút sao chép trên cùng. Hai CTA xếp dọc full-width. Gợi ý thành carousel | — |
-| **Login / Register** | Trang toàn màn hình (không dùng modal). Bộ chọn tài khoản demo thành lưới 2 × 2 | `[R82]` Skyscanner iOS (màn hình đăng nhập toàn phần) |
+| **Login / Register** | Trang toàn màn hình (không dùng modal) | `[R82]` Skyscanner iOS (màn hình đăng nhập toàn phần) |
 | **Popover "Vì sao?"** | Bottom sheet cao ≤ 70% màn hình, kéo xuống để đóng | `[R24]` Vinted iOS |
 | **Chat** | Xem 7.4 | |
 
@@ -1200,7 +1192,7 @@ Ghi rõ theo brief §3, không bịa nguồn:
 4. **Hiển thị mức đóng góp của từng lý do** (`contribution`): không tìm thấy pattern. Thang 4 chấm định tính (§5.4) là đề xuất riêng.
 5. **Trợ lý lịch trình mà *mọi* mục đặt được đều là thẻ sản phẩm thật có giá + nút:** chưa thấy sản phẩm nào làm trọn vẹn. Gần nhất có Agoda `[R96]` (chèn thẻ chuyến bay thật vào itinerary), Tripadvisor `[R95]` (khối "Places to stay" trong kế hoạch AI), Trip.com `[R103]` (thẻ vé có giá trong chat). Booking.com `[R88]` vẫn trả itinerary **thuần văn bản**, Mindtrip `[R91]` link hóa địa danh trong văn bản. Quy tắc tách `ProductCard` / `ActivityNote` (§6.3–6.4) là đề xuất riêng để đáp ứng handbook §9.
 6. **Tiến độ AI gắn với các bước pipeline tìm kiếm thật** (hiểu ý định → tìm → sắp xếp): chỉ có pattern tiến độ nhiều bước chung chung `[R109]`, không có ví dụ du lịch.
-7. **Bộ chọn tài khoản demo:** không có trong app du lịch. Mượn từ app streaming `[R83]`, `[R84]`.
+7. **Bộ chọn tài khoản demo:** không có trong app du lịch. Mượn từ app streaming `[R83]`, `[R84]`. (Đã gỡ khỏi sản phẩm ngày 2026-09-24, §4.7.3.)
 8. **Màn hình chẩn đoán/debug gợi ý:** không có trên Mobbin (app production không công khai). §5.6 là đề xuất riêng.
 9. **Trạng thái "kết quả yếu" của semantic search:** không có pattern, vì các OTA đều dùng tìm kiếm có cấu trúc. §4.2.4 là đề xuất riêng.
 
@@ -1217,7 +1209,7 @@ Danh sách dưới đây ghi lại các câu hỏi lúc soạn UX spec, không p
 | D3 | Ai ghi event `product_view`: Backend khi đọc sản phẩm, hay Web gọi riêng? | Gợi ý của P2 | Web gọi endpoint ghi event nếu có |
 | D4 | `/search` hỗ trợ lọc `taxonomy`, `destination`, khoảng giá không? Có trả ngưỡng/điểm để xác định "kết quả yếu"? | Bộ lọc, trạng thái kết quả yếu §4.2 | Lọc client-side trên top-K; không hiện băng "kết quả yếu" |
 | D5 | Endpoint "phổ biến" cho Home công khai / cold start | Section ④ Home | Dùng `/search` với vài truy vấn cố định theo điểm đến |
-| D6 | Giỏ lưu server hay client? | Đổi tài khoản demo không lẫn giỏ §4.4 | Client, khóa theo `cdp_user_id` |
+| D6 | Giỏ lưu server hay client? | Đăng nhập lần lượt nhiều tài khoản không lẫn giỏ §4.4 | Client, khóa theo `cdp_user_id` |
 | D7 | Checkout gán `eventGroupId` thế nào khi giỏ có nhiều điểm đến? | Gom nhóm "Chuyến {destination}" §4.4 | Gom theo `destination` ở UI |
 | D8 | Endpoint đọc booking theo `referenceCode` | Tải lại trang Confirmation §4.6 | Giữ dữ liệu trong state điều hướng; tải lại thì báo không tìm thấy |
 | D9 | Event SSE itinerary gắn với bước pipeline nào? | Thẻ tiến độ §6.1 | Spinner chung, chỉ đánh ✓ theo event đã xác nhận |

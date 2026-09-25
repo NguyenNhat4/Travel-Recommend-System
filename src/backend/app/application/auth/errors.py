@@ -76,3 +76,22 @@ class CdpUnavailable(AuthError):
     code = "CDP_UNAVAILABLE"
     http_status = 503
     retryable = True
+
+
+class TokenInvalid(AuthError):
+    """Bearer hỏng: sai chữ ký/issuer/audience/alg, thiếu claim. KHÔNG hạ thành khách (auth §3.11 dòng 2)."""
+
+    code = "INVALID_TOKEN"
+    http_status = 401
+
+
+class TokenExpired(TokenInvalid):
+    code = "TOKEN_EXPIRED"
+    http_status = 401
+
+
+class Unauthenticated(AuthError):
+    """Route cần đăng nhập mà request không mang Bearer (auth §3.5)."""
+
+    code = "UNAUTHENTICATED"
+    http_status = 401

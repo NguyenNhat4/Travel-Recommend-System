@@ -35,3 +35,45 @@
         $ref: ../openapi.yaml#/components/responses/Error
       '500':
         $ref: ../openapi.yaml#/components/responses/Error
+/internal/recommendations:
+  get:
+    tags:
+    - recommendations
+    operationId: getInternalRecommendations
+    summary: Gợi ý theo cdp_user_id tuỳ ý cho demo/eval (chỉ service nội bộ)
+    description: Thay cho query param cdp_user_id đã gỡ khỏi /recommendations (auth §3.5, §14.4).
+      Bắt buộc X-Service-Token. Trả 404 NOT_FOUND khi APP_ENV=production trừ khi INTERNAL_API_ENABLED=true.
+    security:
+    - serviceToken: []
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    - name: cdp_user_id
+      in: query
+      required: true
+      schema:
+        type: string
+        minLength: 1
+    - name: k
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 20
+        default: 5
+    - name: destination
+      in: query
+      schema:
+        type: string
+    responses:
+      '200':
+        description: Gợi ý
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/RecommendationResponse
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '404':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error

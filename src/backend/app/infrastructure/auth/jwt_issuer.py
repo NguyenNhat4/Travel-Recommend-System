@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 
 import jwt
 
+from src.backend.app.application.auth.errors import TokenExpired, TokenInvalid
 from src.backend.app.application.auth.principal import AuthenticatedUser, AuthPrincipal
 
 # Allowlist CỨNG. Không bao giờ đọc header `alg` của token để chọn hàm kiểm — đó là đường vào của
@@ -19,12 +20,8 @@ ALLOWED_ALGORITHMS = ("RS256", "ES256")
 _REQUIRED_CLAIMS = ["exp", "iat", "nbf", "sub", "aud", "iss"]
 
 
-class InvalidToken(Exception):
-    """Token hỏng, sai issuer/audience, sai chữ ký, hoặc thiếu claim bắt buộc."""
-
-
-class TokenExpired(InvalidToken):
-    pass
+# Tên cũ; lỗi thật là của application để tầng API dịch sang HTTP mà không import infrastructure.
+InvalidToken = TokenInvalid
 
 
 @dataclass(frozen=True)
@@ -73,13 +70,29 @@ class JwtIssuer:
         return token, self._c.access_ttl_seconds
 
     def verify(self, token: str) -> AuthPrincipal:
-        """Kiểm đủ 10 điểm của auth §10.3 rồi dựng principal."""
+        """Kiểm đủ 10 điểm của auth §10.3 rồi dựng principal.
+
+        Điểm 9 (danh sách thu hồi khẩn jwt:revoked) cần I/O nên kiểm ở dependency HTTP qua port
+        RevokedTokens, dựa trên principal.token_id trả về từ đây.
+        """
+        try:
+            header = jwt.get_unverified_header(token)
+        except jwt.InvalidTokenError as exc:
+            raise InvalidToken(str(exc)) from exc
+        # Điểm 1: chỉ xác nhận alg khớp cấu hình, không dùng nó để chọn hàm kiểm.
+        if header.get("alg") != self._c.algorithm:
+            raise InvalidToken("alg không được phép")
+        # Điểm 2 và 10.
+        if header.get("kid") != self._c.key_id:
+            raise InvalidToken("kid lạ")
+        if header.get("typ", "JWT") != "JWT":
+            raise InvalidToken("typ không phải JWT")
         try:
             claims = jwt.decode(
                 token,
                 self._c.public_key,
                 # Tường minh, không lấy từ header token.
-                algorithms=list(ALLOWED_ALGORITHMS),
+                algorithms=[self._c.algorithm],
                 audience=self._c.audience,
                 issuer=self._c.issuer,
                 leeway=self._c.leeway_seconds,
@@ -91,7 +104,9 @@ class JwtIssuer:
             raise InvalidToken(str(exc)) from exc
 
         cdp_user_id = claims.get("cdp_user_id")
-        if not cdp_user_id:
+        if not isinstance(claims.get("sub"), str) or not claims["sub"].strip():
+            raise InvalidToken("thiếu claim sub")
+        if not isinstance(cdp_user_id, str) or not cdp_user_id.strip():
             # Token hợp lệ nhưng không mang danh tính nghiệp vụ: phiên pending_mfa hoặc token dựng sai.
             # Không có cdp_user_id thì không truy vấn được gì của người dùng, nên từ chối thẳng.
             raise InvalidToken("thiếu claim cdp_user_id")
@@ -103,6 +118,7 @@ class JwtIssuer:
             session_id=claims.get("sid"),
             amr=tuple(claims.get("amr", ())),
             email_verified=bool(claims.get("email_verified", False)),
+            token_id=claims.get("jti"),
         )
 
     def jwks(self) -> dict:

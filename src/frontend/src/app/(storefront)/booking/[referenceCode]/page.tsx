@@ -2,9 +2,12 @@ import { ConfirmationView } from '../../../../components/confirmation/Confirmati
 
 export default async function BookingPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ referenceCode: string }>;
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const { referenceCode } = await params;
-  return <ConfirmationView referenceCode={referenceCode} />;
+  const { payment } = await searchParams;
+  return <ConfirmationView referenceCode={referenceCode} paymentReturn={typeof payment === 'string' ? payment : undefined} />;
 }
