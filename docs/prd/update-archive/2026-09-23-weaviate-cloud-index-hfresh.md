@@ -2,8 +2,8 @@
 
 - Ngày: 2026-09-23
 - Người đề xuất: mihhquan / Claude Code
-- Trạng thái: chờ chốt
-- Chốt bởi / ngày:
+- Trạng thái: đã áp dụng
+- Chốt bởi / ngày: Đăng Khôi, 2026-09-24 (đồng ý hfresh trên Cloud, hnsw local)
 - PRD bị ảnh hưởng: `docs/prd/requirements.md` §2.1 (NFR-PERF-03), `docs/prd/architecture.md` §4, `docs/prd/data-model.md` §2.1 (entity `WEAVIATE_PRODUCT`) và §5 mục 3
 - Mã FR/NFR: NFR-PERF-03, FR-SRC-02
 

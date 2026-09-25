@@ -11,6 +11,7 @@ from src.backend.app.application.ports.itinerary_tools import ToolError, ToolExe
 from src.backend.app.domain.itinerary.normalization import match_destination
 
 from ..models import DestinationChoice
+from .history import sanitize_conversation_history
 from .messages import chat_model, event, failure, message
 from .prompts import DESTINATION_PROMPT, TOOL_PLAN_PROMPT
 
@@ -120,7 +121,10 @@ async def build_plan(state: dict, intent: dict, constraints: dict, *, tools: Too
         if not plan:
             response = await asyncio.wait_for(chat_model(llm).bind_tools(tools.definitions()).ainvoke([
                 ("system", TOOL_PLAN_PROMPT),
-                ("human", json.dumps({"message": state.get("query", ""), "intent": intent,
+                ("human", json.dumps({"message": state.get("query", ""),
+                                      "conversation_history": sanitize_conversation_history(
+                                          state.get("conversation_history", [])),
+                                      "intent": intent,
                                       "constraints": state.get("constraints", {})}, ensure_ascii=False))]),
                 llm_timeout_seconds)
             plan = response.tool_calls

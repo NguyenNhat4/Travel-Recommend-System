@@ -62,12 +62,12 @@ test('floating assistant drawer streams a backend result', async ({ page }) => {
   await expect(page.getByText('Phiên backend đang hoạt động').first()).toBeVisible();
 });
 
-test('clarification submits an intent override on the same backend conversation', async ({ page }) => {
+test('clarification is a plain assistant message and the answer continues the same backend conversation', async ({ page }) => {
   const payloads: Array<Record<string, unknown>> = [];
   await page.route('**/api/v1/assistant/itineraries/stream', async (route) => {
     const payload = route.request().postDataJSON() as Record<string, unknown>;
     payloads.push(payload);
-    const response = payload.intentOverride
+    const response = payloads.length > 1
       ? { status: 'NO_RESULTS', conversationId: 'clarification-session', message: 'Chưa tìm thấy lựa chọn phù hợp.', suggestions: [] }
       : {
           status: 'NEEDS_CLARIFICATION',
@@ -86,10 +86,15 @@ test('clarification submits an intent override on the same backend conversation'
   await page.goto('/assistant');
   await page.getByLabel('Tin nhắn cho trợ lý').fill('Tôi muốn đi nghỉ dưỡng');
   await page.getByRole('button', { name: 'Gửi' }).click();
-  await page.getByRole('button', { name: '3 ngày' }).click();
+  // Câu hỏi làm rõ chỉ hiện một lần, dạng tin nhắn thường (không có card/nút gợi ý riêng).
+  await expect(page.getByText('Bạn muốn đi trong bao nhiêu ngày?')).toHaveCount(1);
+  await expect(page.getByRole('button', { name: '3 ngày' })).toHaveCount(0);
+
+  await page.getByLabel('Tin nhắn cho trợ lý').fill('3 ngày');
+  await page.getByRole('button', { name: 'Gửi' }).click();
   await expect(page.getByText('Chưa tìm thấy lựa chọn phù hợp.').first()).toBeVisible();
 
   expect(payloads).toHaveLength(2);
   expect(payloads[0]).toMatchObject({ message: 'Tôi muốn đi nghỉ dưỡng', conversationId: null });
-  expect(payloads[1]).toMatchObject({ message: null, conversationId: 'clarification-session', intentOverride: { days: 3 } });
+  expect(payloads[1]).toMatchObject({ message: '3 ngày', conversationId: 'clarification-session', intentOverride: null });
 });

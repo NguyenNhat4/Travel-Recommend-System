@@ -9,9 +9,10 @@ Hai adapter CDP trong `infrastructure/cdp/` cùng tồn tại vì là hai chiề
   * `PostgresCdpReader`  — ĐỌC (sync): lịch sử của khách và bảng phổ biến cho recsys.
 Cả hai đi qua `CDP_DATABASE_URL`; không nơi nào khác được SQL thẳng vào schema `cdp` (AGENTS.md §6.1).
 
-Nạp metadata search unit trong `lifespan` một lần lúc khởi động; vector ở lại Weaviate. Thiếu database,
-Weaviate hoặc index thì log rồi bỏ qua phần recsys — các route còn lại
-vẫn phục vụ được, đúng tinh thần "CDP lỗi thì không kéo sập cả app" (hop-dong-tich-hop-cdp.md §6).
+Nạp metadata search unit lúc khởi động rồi nạp lại mỗi `CATALOG_REFRESH_SECONDS`; vector ở lại Weaviate.
+Lần nạp lại lỗi thì giữ bản đang phục vụ. Chưa nạp được lần nào (thiếu database, Weaviate hoặc index) thì log
+rồi bỏ qua phần recsys — các route còn lại vẫn phục vụ được, đúng tinh thần "CDP lỗi thì không kéo sập cả app"
+(hop-dong-tich-hop-cdp.md §6).
 """
 from __future__ import annotations
 
@@ -106,6 +107,7 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
     Ba tham số override để test tiêm giả lập mà không cần Postgres hay tải model embedding.
     """
     owns_embedder = False
+    owns_vector_store = vector_store is None
     try:
         if vector_store is None:
             from src.backend.app.domain.catalog import TEXT_BUILDER_VERSION
@@ -145,7 +147,7 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
         if owns_embedder and hasattr(embedder, "close"):
             embedder.close()
         search_store = getattr(vector_store, "search", None)
-        if search_store is not None and hasattr(search_store, "close"):
+        if owns_vector_store and search_store is not None and hasattr(search_store, "close"):
             search_store.close()
         raise
     logger.info("startup.recsys.index.load.ready search_units=%d", len(index.units))
@@ -158,6 +160,7 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
     return {
         "recsys_embedder": embedder,
         "recsys_vectors": vector_search,
+        "recsys_store": vector_store,
         "index": index,
         "search": SearchProducts(
             index,
@@ -175,6 +178,75 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
             index, vector_search, cdp_reader, popularity, candidate_k=settings.recommend_candidate_k
         ),
     }
+
+
+#: Chưa nạp được lần nào (database chưa seed, Weaviate chưa index…) thì thử lại sớm, không chờ trọn chu kỳ.
+RECSYS_RETRY_SECONDS = 30.0
+
+
+class RecsysRefresher:
+    """Nạp lại engine recsys theo chu kỳ để giá, trạng thái và cửa sổ ngày theo kịp job cào.
+
+    Client Cohere/Weaviate dùng chung giữa các lần nạp; request đang chạy giữ use case của bản cũ nên không
+    client nào bị đóng giữa chừng. Lần nạp lại lỗi thì giữ bản đang phục vụ thay vì tắt recsys.
+    """
+
+    def __init__(self, app: FastAPI, settings: Settings, build=None, on_publish=None):
+        self.app, self.settings = app, settings
+        self._build = build  # test tiêm bản giả; mặc định là build_recsys
+        self._on_publish = on_publish  # dựng lại use case đọc engine recsys (catalog) sau mỗi lần nạp
+        self.services: dict = {}
+        self._failures = 0
+        self._stop = asyncio.Event()
+
+    async def reload(self) -> bool:
+        first = not self.services
+        try:
+            updated = await asyncio.to_thread(
+                self._build or build_recsys, self.settings,
+                self.services.get("recsys_embedder"), self.services.get("recsys_store"),
+            )
+        except Exception as exc:  # database chưa seed, Weaviate chưa index, lỗi mạng…
+            self._failures += 1
+            if not first:
+                logger.warning("catalog.refresh.failed error=%s; giữ bản đang phục vụ", exc)
+            elif self._failures == 1:
+                print(f"RecSys disabled: {exc}")
+                logger.warning("startup.recsys.disabled error=%s; retry_seconds=%s", exc, RECSYS_RETRY_SECONDS)
+            else:  # vẫn chưa lên: không lặp cảnh báo mỗi 30 giây
+                logger.debug("startup.recsys.retry_failed error=%s", exc)
+            return False
+        self._failures = 0
+        self.services = updated
+        for name, service in updated.items():  # không có await giữa các phép gán: request thấy trọn một bản
+            setattr(self.app.state, name, service)
+        if self._on_publish is not None:
+            self._on_publish()
+        if first:
+            print(f"RecSys ready: {len(updated['index'].units)} search unit, model {updated['index'].model_version}")
+            logger.info("startup.recsys.ready search_units=%d", len(updated["index"].units))
+        else:
+            logger.info("catalog.refresh.ready search_units=%d", len(updated["index"].units))
+        return True
+
+    async def run(self) -> None:
+        while not self._stop.is_set():
+            delay = self.settings.catalog_refresh_seconds
+            if not self.services:
+                delay = min(delay, RECSYS_RETRY_SECONDS)
+            try:
+                await asyncio.wait_for(self._stop.wait(), delay)
+            except asyncio.TimeoutError:
+                await self.reload()
+
+    def stop(self) -> None:
+        self._stop.set()
+
+    def close(self) -> None:
+        for name in ("recsys_embedder", "recsys_vectors"):
+            resource = self.services.get(name)
+            if resource is not None and hasattr(resource, "close"):
+                resource.close()
 
 
 def build_auth(settings: Settings, cdp_client, redis_client=None) -> dict:
@@ -392,33 +464,32 @@ async def lifespan(app: FastAPI):
             print(f"Itinerary LLM unavailable: {exc}")
         print(f"Itinerary LLM: {app.state.itinerary_llm_mode}")
 
-        # Recsys tách khỏi phần itinerary: thiếu database hoặc model embedding thì tắt recsys,
-        # các route còn lại (kể cả assistant chạy fixture) vẫn phục vụ được.
-        try:
-            logger.info("startup.recsys.start model=%s", settings.embed_model)
-            for name, service in build_recsys(settings).items():
-                setattr(app.state, name, service)
-            print(f"RecSys ready: {len(app.state.index.units)} search unit, model {app.state.index.model_version}")
-            logger.info("startup.recsys.ready search_units=%d", len(app.state.index.units))
-        except Exception as exc:  # database chưa seed, thiếu model embedding…
-            app.state.index = None
-            print(f"RecSys disabled: {exc}")
-            logger.exception("startup.recsys.disabled error=%s", exc)
+        # Recsys tách khỏi phần itinerary: chưa nạp được thì tắt recsys và thử lại sau, các route còn lại
+        # (kể cả assistant chạy fixture) vẫn phục vụ được.
+        logger.info("startup.recsys.start model=%s", settings.embed_model)
+        for name in ("index", "search", "similar", "recommend", "listing_units", "product_popularity"):
+            setattr(app.state, name, None)
 
         # Catalog đọc thẳng database nên vẫn chạy khi RecSys tắt; khi đó danh sách đọc search unit mỗi request
-        # và /similar trả 503 SEARCH_UNAVAILABLE.
-        for name, service in build_catalog(settings, app.state).items():
-            setattr(app.state, name, service)
+        # và /similar trả 503 SEARCH_UNAVAILABLE. Catalog giữ tham chiếu tới engine recsys nên phải dựng lại
+        # sau mỗi lần RecsysRefresher nạp bản mới, nếu không /products và /similar dùng mãi bản lúc khởi động.
+        def publish_catalog() -> None:
+            for name, service in build_catalog(settings, app.state).items():
+                setattr(app.state, name, service)
+
+        recsys = RecsysRefresher(app, settings, on_publish=publish_catalog)
+        if not await recsys.reload():
+            publish_catalog()
         app.state.behaviour_tracker = BehaviourTracker(app.state.browse_event_recorder, app.state.product_lookup)
+        refresh_task = asyncio.create_task(recsys.run())
 
         logger.info("startup.ready")
         try:
             yield
         finally:
-            for name in ("recsys_embedder", "recsys_vectors"):
-                resource = getattr(app.state, name, None)
-                if resource is not None and hasattr(resource, "close"):
-                    resource.close()
+            recsys.stop()
+            await refresh_task  # chờ lần nạp đang chạy xong rồi mới đóng client dùng chung
+            recsys.close()
             logger.info("shutdown.browse_event_recorder.stop")
             await app.state.browse_event_recorder.stop()
     print("Shutting down...")
