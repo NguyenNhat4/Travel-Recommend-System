@@ -52,4 +52,6 @@ class InMemoryVectorStore:
             recommendable=np.array([p.is_bookable or any(c.is_bookable and c.available for c in children.get(p.product_id, [])) for p in units]),
             parent_of=parent_of, model_version=f"{self.embedder.name}@{key}",
         )
-        return index, NumpyVectorSearch([p.product_id for p in units], E)
+        # Văn bản BM25 như job index ghi lên Weaviate: tên (trọng số 2) + text đã dựng.
+        return index, NumpyVectorSearch([p.product_id for p in units], E,
+                                        texts=[f"{p.name} {p.name} {t}" for p, t in zip(units, texts)])

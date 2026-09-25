@@ -1,12 +1,51 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+import logging
+from dataclasses import dataclass, field
 
-from src.backend.app.application.ports import EmbedderPort, UnitIndex, VectorSearchPort
-from src.backend.app.domain.search import candidate_filter_score
+import numpy as np
+
+from src.backend.app.application.ports import (
+    EmbedderPort,
+    LexicalHit,
+    LexicalSearchPort,
+    UnitIndex,
+    VectorHit,
+    VectorSearchPort,
+)
+from src.backend.app.domain.search import (
+    HybridConfig,
+    NormalizedQuery,
+    QueryNormalizer,
+    SearchOutcome,
+    candidate_filter_score,
+    coverage,
+    hybrid_filter_score,
+    query_tokens,
+    tokens,
+)
+
+logger = logging.getLogger("uvicorn.error")
 
 #: Khai báo ở diagnostics khi total/facets chỉ đếm trên top-K ứng viên (contract `[C4]`).
 ANN_DIAGNOSTICS = {"searchMode": "ANN_CANDIDATE_SCORE", "approximate": True, "totalExact": False, "facetsExact": False}
+#: /search hybrid (spec §2.4): R = dense ≥ cutoff ∪ phần vớt từ BM25; thứ tự theo RRF, score vẫn là cosine.
+HYBRID_DIAGNOSTICS = {"searchMode": "HYBRID_CANDIDATE_SCORE", "approximate": True, "totalExact": False,
+                      "facetsExact": False}
+
+
+def _normalization_diagnostics(q: str, nq: NormalizedQuery) -> dict:
+    """Trường tuỳ chọn của contract, chỉ có khi bước chuẩn hoá nhận ra hoặc đổi gì (EngineDiagnostics)."""
+    out: dict = {}
+    if nq.text != q:
+        out["normalizedQuery"] = nq.text
+    if nq.applied_aliases:
+        out["appliedAliases"] = [{"from": a, "to": b} for a, b in nq.applied_aliases]
+    if nq.corrections:
+        out["corrections"] = [{"from": a, "to": b} for a, b in nq.corrections]
+    if nq.party:
+        out["party"] = nq.party
+    return out
 
 
 def hit(index: UnitIndex, i: int, score: float, **extra) -> dict:
@@ -29,27 +68,85 @@ class SearchProducts:
     cutoff: float
     max_limit: int = 50
     candidate_k: int = 200
+    lexical: LexicalSearchPort | None = None   # nhánh BM25; cùng adapter Weaviate. None → dense-only (ANN)
+    hybrid: HybridConfig | None = None
+    lexical_candidate_k: int = 50
+    normalize: bool = True                       # bước chuẩn hoá truy vấn (spec §2.2); False → đưa nguyên câu vào
+    _name_tokens: list[set[str]] = field(default_factory=list, init=False, repr=False, compare=False)
+    _normalizer: QueryNormalizer | None = field(default=None, init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        # Token (đã fold) của tên từng search unit, tính một lần: dùng để xét độ phủ khi vớt hit BM25.
+        if self.hybrid_on:
+            self._name_tokens = [set(tokens(p.name)) for p in self.index.units]
+        if self.normalize:   # từ vựng sửa chính tả + gazetteer lấy từ chính catalog đang chạy
+            self._normalizer = QueryNormalizer(destinations=set(self.index.destination.tolist()),
+                                               names=(p.name for p in self.index.units))
+
+    @property
+    def hybrid_on(self) -> bool:
+        return self.lexical is not None and self.hybrid is not None
 
     def __call__(self, q: str, *, taxonomy: str | None = None, destination: str | None = None,
                  limit: int = 20, offset: int = 0) -> dict:
         limit = min(limit, self.max_limit)
-        qvec = self.embedder.embed_query(q)
+        nq = self._normalizer(q) if self._normalizer else None
+        text = nq.text if nq else q   # embed, BM25 và độ phủ đều dùng câu đã chuẩn hoá; `q` gốc chỉ còn để đối chiếu
+        qvec = self.embedder.embed_query(text)
         mask = self.index.mask(taxonomy, destination)
-        hits = [h for h in self.vectors.near_vector(qvec, self.index.allowed_ids(mask), self.candidate_k)
-                if h.product_id in self.index.idx]
-        out = candidate_filter_score([self.index.idx[h.product_id] for h in hits], [h.score for h in hits],
-                                     self.cutoff, int(mask.sum()),
-                                     {"taxonomy": self.index.taxonomy, "destination": self.index.destination})
+        allowed = self.index.allowed_ids(mask)
+        facet_fields = {"taxonomy": self.index.taxonomy, "destination": self.index.destination}
+        dense = [h for h in self.vectors.near_vector(qvec, allowed, self.candidate_k) if h.product_id in self.index.idx]
+        if self.hybrid_on:
+            out, diagnostics = self._hybrid(text, qvec, dense, allowed, int(mask.sum()), facet_fields)
+        else:
+            out = candidate_filter_score([self.index.idx[h.product_id] for h in dense], [h.score for h in dense],
+                                         self.cutoff, int(mask.sum()), facet_fields)
+            diagnostics = dict(ANN_DIAGNOSTICS)
+        if nq:
+            diagnostics.update(_normalization_diagnostics(q, nq))
         page = out.order[offset: offset + limit]
         return {
             "results": [hit(self.index, i, out.scores[i]) for i in page],
             "total": out.total, "limit": limit, "offset": offset,
-            "topScore": round(float(out.scores[out.order[0]]), 4) if out.order else None, "cutoff": self.cutoff,
+            # Cosine cao nhất trong R: ở hybrid phần tử đầu là theo RRF, chưa chắc là cosine cao nhất.
+            "topScore": round(max(0.0, min(1.0, max(float(out.scores[i]) for i in out.order))), 4) if out.order else None,
+            "cutoff": self.cutoff,
             "facets": out.facets,
-            "diagnostics": {**ANN_DIAGNOSTICS,
+            "diagnostics": {**diagnostics,
                             "filteredCount": out.filtered_count, "relevantCount": out.total,
                             "modelVersion": self.index.model_version},
         }
+
+    def _hybrid(self, q: str, qvec: np.ndarray, dense: list[VectorHit], allowed, filtered_count: int,
+                facet_fields: dict) -> tuple[SearchOutcome, dict]:
+        try:
+            lex: list[LexicalHit] = [h for h in self.lexical.bm25(q, allowed, self.lexical_candidate_k, with_vectors=True)
+                                     if h.product_id in self.index.idx]
+        except Exception as exc:  # nhánh lexical hỏng (collection chưa có property BM25…) → dense-only, không 500
+            logger.warning("search.lexical.failed %s", exc)
+            lex = []
+        qv = np.asarray(qvec, dtype=np.float32)
+        qn = float(np.linalg.norm(qv)) or 1.0
+        cosines = {self.index.idx[h.product_id]: float(h.score) for h in dense}
+        for h in lex:  # hit chỉ có ở nhánh BM25: cosine tính từ vector kho trả về (cả hai đã chuẩn hoá L2)
+            u = self.index.idx[h.product_id]
+            if u not in cosines and h.vector is not None and len(h.vector):
+                v = np.asarray(h.vector, dtype=np.float32)
+                cosines[u] = float(v @ qv) / ((float(np.linalg.norm(v)) or 1.0) * qn)
+        dense_rank = {self.index.idx[h.product_id]: r for r, h in enumerate(dense, 1)}
+        lexical_rank = {self.index.idx[h.product_id]: r for r, h in enumerate(lex, 1)}
+        q_tokens = query_tokens(q)
+        cfg = self.hybrid
+        out = hybrid_filter_score(
+            cosines, dense_rank, lexical_rank,
+            lambda u: coverage(q_tokens, self._name_tokens[u]) >= cfg.min_coverage,
+            self.cutoff, cfg, filtered_count, facet_fields,
+        )
+        diagnostics = {**HYBRID_DIAGNOSTICS, "fusion": "rrf", "rrfK": cfg.rrf_k, "lexicalK": cfg.lexical_k,
+                       "lexicalCutoff": cfg.lexical_cutoff, "lexicalMinCoverage": cfg.min_coverage,
+                       "lexicalCandidates": len(lex), "lexicalCount": len(out.lexical_only)}
+        return out, diagnostics
 
 
 @dataclass(frozen=True)

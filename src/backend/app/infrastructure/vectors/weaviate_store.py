@@ -16,10 +16,25 @@ from urllib.parse import urlparse
 import httpx
 import numpy as np
 
-from src.backend.app.application.ports import UnitIndex, VectorHit
+from src.backend.app.application.ports import LexicalHit, UnitIndex, VectorHit
+from src.backend.app.domain.search import fold
 from src.backend.app.infrastructure.vectors.postgres_store import PostgresCatalogReader
 
 logger = logging.getLogger("uvicorn.error")
+
+#: Property cho nhánh BM25 của /search (HYBRID_CANDIDATE_SCORE). Fold dấu ở app vì Weaviate 1.27 chưa có
+#: ascii_fold analyzer; truy vấn fold cùng hàm `fold` nên "da nang" khớp "Đà Nẵng". Không lọc theo hai trường này.
+LEXICAL_PROPERTIES = [
+    {"name": "nameAscii", "dataType": ["text"], "tokenization": "word", "indexFilterable": False, "indexSearchable": True},
+    {"name": "searchTextAscii", "dataType": ["text"], "tokenization": "word", "indexFilterable": False,
+     "indexSearchable": True},
+]
+BM25_QUERY_PROPERTIES = ["nameAscii^2", "searchTextAscii"]
+
+
+def lexical_properties(name: str, text: str) -> dict[str, str]:
+    """Giá trị hai property BM25 của một search unit — job index và backfill dùng chung."""
+    return {"nameAscii": fold(name), "searchTextAscii": fold(text)}
 
 
 @dataclass(frozen=True)
@@ -28,6 +43,7 @@ class VectorMetadata:
     product_id: str
     model_version: str
     text_hash: str
+    lexical: bool = False   # object đã có property BM25 chưa (object index trước 25/09 thì chưa → cần backfill)
 
 
 def normalize_weaviate_url(url: str) -> str:
@@ -52,6 +68,8 @@ class WeaviateClient:
         api_key: str = "",
         timeout_seconds: float = 30.0,
         client: httpx.Client | None = None,
+        bm25_k1: float = 1.2,
+        bm25_b: float = 0.75,
     ):
         if not re.fullmatch(r"[A-Z][A-Za-z0-9_]*", collection):
             raise ValueError("WEAVIATE_COLLECTION must be a valid GraphQL collection name")
@@ -59,6 +77,7 @@ class WeaviateClient:
             raise ValueError("WEAVIATE_VECTOR_INDEX_TYPE must be hnsw or hfresh")
         self.vector_index_type = vector_index_type
         self.collection = collection
+        self.bm25 = {"k1": bm25_k1, "b": bm25_b}
         self._owns_client = client is None
         headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
         self._client = client or httpx.Client(
@@ -89,6 +108,7 @@ class WeaviateClient:
                     "weaviate.collection.index_type collection=%s actual=%s configured=%s; giữ collection hiện có",
                     self.collection, actual, self.vector_index_type,
                 )
+            self._ensure_lexical_properties(schema)
             return
         if response.status_code != 404:
             response.raise_for_status()
@@ -100,14 +120,32 @@ class WeaviateClient:
                 "vectorizer": "none",
                 "vectorIndexType": self.vector_index_type,
                 "vectorIndexConfig": {"distance": "cosine"},
+                # stopwords preset `none`: preset `en` mặc định bỏ cả âm tiết tiếng Việt ("an", "to") khỏi BM25.
+                "invertedIndexConfig": {"bm25": self.bm25, "stopwords": {"preset": "none"}},
                 "properties": [
                     {"name": "productId", "dataType": ["text"], "indexFilterable": True, "indexSearchable": False},
                     {"name": "modelVersion", "dataType": ["text"], "indexFilterable": True, "indexSearchable": False},
                     {"name": "textHash", "dataType": ["text"], "indexFilterable": True, "indexSearchable": False},
+                    *LEXICAL_PROPERTIES,
                 ],
             },
         )
         created.raise_for_status()
+
+    def _ensure_lexical_properties(self, schema: dict) -> None:
+        """Class đã có (vd Weaviate Cloud) thì thêm property BM25 còn thiếu; object cũ cần `--backfill-lexical`."""
+        have = {p.get("name") for p in schema.get("properties") or []}
+        for prop in LEXICAL_PROPERTIES:
+            if prop["name"] not in have:
+                self._client.post(f"/v1/schema/{self.collection}/properties", json=prop).raise_for_status()
+
+    def patch_properties(self, object_id: str, properties: dict) -> None:
+        """Ghi thêm/đè property, giữ nguyên vector — backfill BM25 cho object đã index mà không gọi Cohere."""
+        response = self._client.patch(
+            f"/v1/objects/{self.collection}/{object_id}",
+            json={"class": self.collection, "id": object_id, "properties": properties},
+        )
+        response.raise_for_status()
 
     def fetch(
         self, *, include_vectors: bool, page_size: int = 500
@@ -133,6 +171,7 @@ class WeaviateClient:
                     product_id=product_id,
                     model_version=str(props.get("modelVersion") or ""),
                     text_hash=str(props.get("textHash") or ""),
+                    lexical=bool(props.get("searchTextAscii")),
                 )
                 if include_vectors:
                     vectors[product_id] = np.asarray(row.get("vector") or [], dtype=np.float32)
@@ -231,6 +270,32 @@ class WeaviateVectorSearch:
             VectorHit(
                 product_id=str(obj.properties["productId"]),
                 score=1.0 - float(obj.metadata.distance),
+                vector=_object_vector(obj) if with_vectors else None,
+            )
+            for obj in result.objects
+        ]
+
+    def bm25(self, query: str, allowed: Sequence[str] | None, limit: int,
+             *, with_vectors: bool = False) -> list[LexicalHit]:
+        """`LexicalSearchPort`: BM25 trên `nameAscii^2` + `searchTextAscii`, truy vấn fold dấu như lúc index."""
+        from weaviate.classes.query import MetadataQuery
+
+        q = fold(query)
+        if not q or limit <= 0 or (allowed is not None and not allowed):
+            return []
+        result = self.collection.query.bm25(
+            query=q,
+            query_properties=BM25_QUERY_PROPERTIES,
+            limit=limit,
+            filters=self._id_filter(allowed) if allowed is not None else None,
+            return_properties=["productId"],
+            return_metadata=MetadataQuery(score=True),
+            include_vector=with_vectors,
+        )
+        return [
+            LexicalHit(
+                product_id=str(obj.properties["productId"]),
+                score=float(obj.metadata.score or 0.0),
                 vector=_object_vector(obj) if with_vectors else None,
             )
             for obj in result.objects
