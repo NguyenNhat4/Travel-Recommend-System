@@ -5,7 +5,8 @@
 - ndcg@k     = DCG/IDCG, gain 2^rel − 1, sản phẩm chưa gán nhãn = 0
 - mrr@k      = 1/rank của kết quả đầu tiên có rel ≥ mrr_relevant_min, 0 nếu không có trong top-k
 - judged@k   = tỷ lệ kết quả trong top-k đã có nhãn
-- constraint_precision = trên query có filter: tỷ lệ kết quả thoả filter (evaluator pandas `store/filters.mask`)
+- constraint_precision = trên query có filter: tỷ lệ kết quả thoả filter (evaluator pandas `store/filters.mask`);
+  filter chấm = `filter` cấp parent của gold + phần `child_filter` chấm được trên items (giá lte/lt → unit_price_min)
 - filter_recall_loss   = số cặp (qid, product) có rel ≥ 1 bị filter cứng của arm loại
 - parent_dup_rate      = trung bình số kết quả vượt 1 cùng `parent_product_id` trong top-k
 - zero_result_in_catalog / out_of_catalog, hub_score_max
@@ -42,9 +43,31 @@ class GoldQuery:
     text: str
     slice: str
     judgments: dict[str, int]
-    filter: dict | None = None               # AST như trong gold.jsonl (amenity có thể là khoá)
+    filter: dict | None = None               # AST chấm constraint precision (amenity có thể là khoá) — `constraint_filter`
     expected_no_result: bool = False
     status: str = "active"
+    child_filter: dict | None = None         # nguyên văn gold.jsonl (điều kiện cấp room / chuyến bay)
+
+
+CHILD_TO_ITEMS = {"unit_price": "unit_price_min"}      # child_filter (gold_schema) → cột items.parquet
+
+
+def _conjuncts(node: dict | None) -> list[dict]:
+    if not node:
+        return []
+    return list(node["and"]) if next(iter(node)) == "and" else [node]
+
+
+def constraint_filter(flt: dict | None, child_filter: dict | None) -> dict | None:
+    """`filter` cấp parent + điều kiện child chấm được trên items: `unit_price ≤ X` (có phòng giá ≤ X) tương đương
+    `unit_price_min ≤ X`. `max_occupancy`, `departure_date` và `gte` trên giá không có cột tương ứng → bỏ qua."""
+    extra = []
+    for n in _conjuncts(child_filter):
+        (op, arg), = n.items()
+        if op in ("lte", "lt") and isinstance(arg, list) and arg and arg[0] in CHILD_TO_ITEMS:
+            extra.append({op: [CHILD_TO_ITEMS[arg[0]], arg[1]]})
+    parts = _conjuncts(flt) + extra
+    return None if not parts else parts[0] if len(parts) == 1 else {"and": parts}
 
 
 def load_gold(path: Path, *, include_retired: bool = False) -> list[GoldQuery]:
@@ -61,8 +84,11 @@ def load_gold(path: Path, *, include_retired: bool = False) -> list[GoldQuery]:
         bad = [k for k, v in j.items() if v not in (0, 1, 2)]
         if bad:
             raise MetricsError(f"{path.name}:{lineno}: nhãn phải là 0/1/2 ({bad[:3]})")
-        gq = GoldQuery(qid=r["qid"], text=r.get("text", ""), slice=r["slice"], judgments=j, filter=r.get("filter") or None,
-                       expected_no_result=bool(r.get("expected_no_result", False)), status=r.get("status", "active"))
+        child = r.get("child_filter") or None
+        gq = GoldQuery(qid=r["qid"], text=r.get("text", ""), slice=r["slice"], judgments=j,
+                       filter=constraint_filter(r.get("filter") or None, child),
+                       expected_no_result=bool(r.get("expected_no_result", False)), status=r.get("status", "active"),
+                       child_filter=child)
         if include_retired or gq.status == "active":
             out.append(gq)
     return out

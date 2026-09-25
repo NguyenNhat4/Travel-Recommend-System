@@ -1,31 +1,63 @@
-"""Part 5 (phần Người B chạy ngày 2) — `sb gold pool` và `sb gold split`.
+"""Part 5 — gold: drafts → pool → split → (app gán nhãn) → kappa / merge → import → check.
 
-- `drafts.txt`: mỗi dòng `query \\t slice [\\t filter_json] [\\t expected_no_result]`; dòng trống / bắt đầu `#` bỏ qua;
-  qid `q001…` theo thứ tự dòng. Slice phải thuộc `gold.slices`; filter kiểm và đổi khoá amenity → id (`store/filters.py`).
-- `pool`: với mỗi draft, dense top-`depth` (collection của B0, embed query theo arm) ∪ BM25 top-`depth`, cùng filter →
-  `pool.csv` đúng cột spec, **xáo thứ tự trong mỗi qid** (seed cố định) để người gán không thấy rank.
-- `split`: 25 qid chung chọn stratified theo slice; phần còn lại qid lẻ → `pool_A.csv`, chẵn → `pool_B.csv`.
-`kappa`, `merge`, `import`, `check` thuộc ngày 3–4 (Người A) — chưa cài ở đây.
+Hợp đồng file giữa các bước nằm ở `gold_schema.py` (không sửa ở đây); luật gán nhãn ở `docs/spec/bench/gold-guide.md`.
+
+- `drafts.txt`: mỗi dòng `query \\t slice [\\t filter_json] [\\t expected_no_result]`; dòng trống / bắt đầu `#` bỏ qua.
+  qid = `case_id` của `drafts_raw.tsv` (map qua query + slice, kể cả query đã sửa trong `overrides.tsv`) hoặc `q001…`
+  theo thứ tự dòng (`--qid line`, dùng cho fixture).
+- `pool`: dense top-`depth` ∪ BM25 top-`depth` trên collection B0, cùng filter **đầy đủ** của draft (`unit_price_min ≤ X`
+  là điều kiện cần của "có phòng ≤ X"). Mỗi dòng mang đủ thông tin để app hiển thị mà không cần catalog; filter ghi ra
+  tách hai phần: điều kiện cấp parent (`filter_json`) và giá / số khách / ngày ở cấp room (`child_filter_json`).
+  → `pool.csv` + `pool.build.json` (snapshot, collection, depth, seed, sha drafts và pool).
+- `split`: các câu chung chọn phân tầng theo slice; câu còn lại chia xen kẽ A/B trong từng slice; mỗi người thấy ứng viên
+  theo một thứ tự xáo riêng → `pool_A.csv`, `pool_B.csv`, `pool_meta.json`.
+- `kappa` / `merge` / `import` / `check`: xem từng hàm. Mã thoát của nhóm lệnh `sb gold`: 0 đạt · 1 dữ liệu vi phạm luật
+  (`RuleViolation`) · 2 lỗi đầu vào (`GoldError`, `SchemaError`: file thiếu, sai định dạng, sai sha).
 """
 from __future__ import annotations
 
 import json
+import re
+import tempfile
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import numpy as np
-import pandas as pd
+from pydantic import BaseModel, ConfigDict
 
+from .gold_schema import (CHILD_FILTER_FIELDS, OUT_OF_CATALOG_SLICE, PARENT_CHILD_SLICE, SLICES, Child, GoldRecord,
+                          LabelRow, MergedRow, PoolFile, PoolMeta, PoolRow, SchemaError, atomic_write_text,
+                          children_visible, file_sha256, read_labels_csv, read_pool_csv, read_pool_meta,
+                          validate_label_against_pool, write_gold_jsonl, write_pool_csv, write_pool_meta)
 from .store import filters as F
 
-POOL_COLUMNS = ["qid", "query", "slice", "product_id", "name", "variant", "destination", "from", "rank_dense", "rank_lex", "label"]
-CSV_ENCODING = "utf-8-sig"      # Excel mở đúng tiếng Việt
+POOL_BUILD_SUFFIX = ".build.json"
+AMENITIES_SHOWN = 12
+SNIPPET_WORDS = 40
 
 
 class GoldError(ValueError):
-    pass
+    """Lỗi đầu vào (file thiếu, sai định dạng, sai sha) → exit 2."""
+
+
+class RuleViolation(Exception):
+    """Dữ liệu vi phạm luật gold (thiếu nhãn, κ thấp, còn needs_discussion…) → exit 1. Gom đủ mọi lỗi rồi mới ném."""
+
+    def __init__(self, title: str, problems: list[str]):
+        self.title = title
+        self.problems = list(problems)
+        super().__init__(f"{title}: {len(self.problems)} lỗi")
+
+
+def qid_num(qid: str) -> int:
+    """Phần số ở cuối qid (`q007` → 7, `c0202` → 202) — dùng cho seed xáo và thứ tự."""
+    m = re.search(r"(\d+)$", qid)
+    if not m:
+        raise GoldError(f"qid {qid!r} không có phần số ở cuối")
+    return int(m.group(1))
 
 
 @dataclass
@@ -33,13 +65,19 @@ class Draft:
     qid: str
     query: str
     slice: str
-    filter: dict | None           # AST đã resolve (id amenity)
+    filter: dict | None           # AST đã resolve (id amenity) — dùng truy vấn Weaviate
     filter_raw: str
     expected_no_result: bool
     line: int
+    filter_keys: dict | None = None   # AST gốc (khoá amenity) — ghi ra pool / gold
+
+    def with_qid(self, qid: str) -> "Draft":
+        return Draft(qid, self.query, self.slice, self.filter, self.filter_raw, self.expected_no_result, self.line,
+                     self.filter_keys)
 
 
 def parse_drafts(path: Path, slices: list[str], key_to_id: dict[str, int]) -> list[Draft]:
+    """drafts.txt → Draft (qid `q001…` theo thứ tự dòng; `case_ids_for` đổi sang case_id)."""
     if not path.exists():
         raise GoldError(f"không thấy {path} — drafts.txt do Người A soạn (checklist ngày 1)")
     out: list[Draft] = []
@@ -56,15 +94,16 @@ def parse_drafts(path: Path, slices: list[str], key_to_id: dict[str, int]) -> li
             raise GoldError(f"{path.name}:{lineno}: slice lạ {sl!r} (có: {', '.join(slices)})")
         fraw = parts[2].strip() if len(parts) > 2 else ""
         try:
-            flt = F.parse(fraw)
-            flt = F.resolve(flt, key_to_id) if flt else None
-        except F.FilterError as e:
+            fkeys = F.parse(fraw)
+            flt = F.resolve(fkeys, key_to_id) if fkeys else None
+            split_filter(fkeys)                                        # tách được parent/child mới nhận
+        except (F.FilterError, GoldError) as e:
             raise GoldError(f"{path.name}:{lineno}: {e}") from None
         eno_raw = parts[3].strip().lower() if len(parts) > 3 else ""
         if eno_raw not in ("", "true", "false"):
             raise GoldError(f"{path.name}:{lineno}: expected_no_result phải là true/false, gặp {parts[3]!r}")
         out.append(Draft(qid=f"q{len(out) + 1:03d}", query=query, slice=sl, filter=flt, filter_raw=fraw,
-                         expected_no_result=eno_raw == "true", line=lineno))
+                         expected_no_result=eno_raw == "true", line=lineno, filter_keys=fkeys))
     if not out:
         raise GoldError(f"{path.name}: không có draft nào")
     dup = [q for q, n in Counter((d.query.lower(), d.slice) for d in out).items() if n > 1]
@@ -73,65 +112,308 @@ def parse_drafts(path: Path, slices: list[str], key_to_id: dict[str, int]) -> li
     return out
 
 
-def _qnum(qid: str) -> int:
-    return int(qid.lstrip("q"))
+def case_ids_for(drafts: list[Draft], raw_cases: list[dict], overrides: dict[str, dict]) -> list[str]:
+    """case_id cho từng draft: khớp (query, slice) với `drafts_raw.tsv`, hoặc với `edited_query` của `overrides.tsv`.
+
+    Không khớp / khớp nhiều case → GoldError (dùng `--qid line` nếu drafts không sinh từ drafts_raw.tsv).
+    """
+    index: dict[tuple[str, str], set[str]] = {}
+    for r in raw_cases:
+        qs = {r["query"].strip()}
+        o = overrides.get(r["case_id"])
+        if o and o.get("verdict") == "NEEDS_EDIT" and o.get("edited_query"):
+            qs.add(o["edited_query"].strip())
+        for q in qs:
+            index.setdefault((q.casefold(), r["slice"]), set()).add(r["case_id"])
+    out: list[str] = []
+    bad: list[str] = []
+    for d in drafts:
+        cands = sorted(index.get((d.query.casefold(), d.slice), ()))
+        if len(cands) != 1:
+            bad.append(f"dòng {d.line} {d.query!r} [{d.slice}]: " + ("không khớp case nào" if not cands else f"khớp {cands}"))
+        else:
+            out.append(cands[0])
+    if bad:
+        raise GoldError("không map được draft sang case_id (thử `--qid line`):\n  " + "\n  ".join(bad[:20]))
+    dup = [c for c, n in Counter(out).items() if n > 1]
+    if dup:
+        raise GoldError(f"nhiều draft cùng map về một case_id: {dup[:5]}")
+    return out
 
 
-def pool_rows(draft: Draft, dense: list, lexical: list, seed: int) -> list[dict]:
-    """Hợp dense ∪ BM25 cho một draft, ghi rank ở từng kênh, xáo thứ tự dòng (seed cố định theo qid)."""
+# ------------------------------------------------------------------ filter: tách parent / child, viết thành chữ
+CHILD_FIELD_MAP = {"unit_price_min": "unit_price"}      # field của drafts (cấp parent) → field của child_filter
+assert set(CHILD_FIELD_MAP.values()) <= CHILD_FILTER_FIELDS
+CHILD_OPS = ("eq", "lte", "lt", "gte", "gt")
+_LEAF_OPS = ("eq", "in", "contains_all", "contains_any", "lte", "lt", "gte", "gt")
+
+
+def _fields(node: dict) -> set[str]:
+    (op, arg), = node.items()
+    if op in ("and", "or"):
+        return set().union(*(_fields(ch) for ch in arg))
+    if op == "not":
+        return _fields(arg)
+    return {arg[0]}
+
+
+def _conj(nodes: list[dict]) -> dict | None:
+    return None if not nodes else nodes[0] if len(nodes) == 1 else {"and": nodes}
+
+
+def split_filter(ast: dict | None) -> tuple[dict | None, dict | None]:
+    """Filter của draft → (filter cấp parent, filter cấp room/flight). Chỉ tách conjunct ở mức ngoài cùng."""
+    if not ast:
+        return None, None
+    conj = ast["and"] if next(iter(ast)) == "and" else [ast]
+    parent: list[dict] = []
+    child: list[dict] = []
+    for n in conj:
+        (op, arg), = n.items()
+        if op in _LEAF_OPS and arg[0] in CHILD_FIELD_MAP:
+            child.append({op: [CHILD_FIELD_MAP[arg[0]], arg[1]]})
+        elif _fields(n) & set(CHILD_FIELD_MAP):
+            raise GoldError(f"{', '.join(sorted(CHILD_FIELD_MAP))} chỉ được là điều kiện AND ở mức ngoài cùng, gặp {n}")
+        else:
+            parent.append(n)
+    return _conj(parent), _conj(child)
+
+
+def validate_child_filter(ast: dict | None) -> None:
+    if ast is None:
+        return
+    (op, arg), = ast.items()
+    if op == "and":
+        for ch in arg:
+            validate_child_filter(ch)
+        return
+    if op not in CHILD_OPS or not isinstance(arg, list) or len(arg) != 2 or arg[0] not in CHILD_FILTER_FIELDS:
+        raise GoldError(f"child_filter chỉ gồm AND của {'/'.join(CHILD_OPS)} trên {sorted(CHILD_FILTER_FIELDS)}, gặp {ast}")
+
+
+_SYM = {"eq": "=", "lte": "≤", "lt": "<", "gte": "≥", "gt": ">"}
+_FIELD_VI = {"destination": "destination", "taxonomy": "loại", "variant": "loại", "star_rating": "hạng sao",
+             "province": "tỉnh", "brand": "thương hiệu", "unit_price_min": "giá thấp nhất",
+             "unit_price": "giá", "max_occupancy": "số khách", "departure_date": "ngày bay"}
+_CHILD_SUFFIX = {"unit_price": "room", "max_occupancy": "room", "departure_date": "chuyến bay"}
+
+
+def _num_vi(v: Any) -> str:
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return str(v)
+    if float(v).is_integer():
+        return f"{int(v):,}".replace(",", ".")
+    return str(v).replace(".", ",")
+
+
+def _amen(xs: list, labels: dict) -> str:
+    return ", ".join(str(labels.get(x, x)) for x in xs)
+
+
+def _text(node: dict, labels: dict, child: bool) -> list[str]:
+    (op, arg), = node.items()
+    if op == "and":
+        return [t for ch in arg for t in _text(ch, labels, child)]
+    if op == "or":
+        return ["(" + " hoặc ".join(" · ".join(_text(ch, labels, child)) for ch in arg) + ")"]
+    if op == "not":
+        (cop, carg), = arg.items()
+        if cop == "contains_any":
+            return [f"không có: {_amen(carg[1], labels)}"]
+        return [f"{_FIELD_VI.get(carg[0], carg[0])} ≠ {carg[1]}"]
+    f, v = arg
+    if op == "contains_all":
+        return [f"có tiện ích: {_amen(v, labels)}"]
+    if op == "contains_any":
+        return [f"có một trong: {_amen(v, labels)}"]
+    if op == "in":
+        return [f"{_FIELD_VI.get(f, f)} thuộc: {', '.join(map(str, v))}"]
+    s = f"{_FIELD_VI.get(f, f)} {_SYM[op]} {_num_vi(v)}"
+    if child:
+        s += f" (kiểm ở cấp {_CHILD_SUFFIX.get(f, 'room')})"
+    return [s]
+
+
+def render_filter_text(parent: dict | None, child: dict | None, amenity_labels: dict | None = None) -> str:
+    """Filter viết thành chữ cho người gán (mẫu c9003 của fixture); `amenity_labels` đổi khoá/id amenity → tên."""
+    labels = amenity_labels or {}
+    parts = (_text(parent, labels, False) if parent else []) + (_text(child, labels, True) if child else [])
+    return " · ".join(parts)
+
+
+# ------------------------------------------------------------------ pool: làm giàu ứng viên từ catalog của dataset
+def _fold(s: str) -> str:
+    from ..vector_bench.lexical import fold
+    return fold(s)
+
+
+@dataclass
+class PoolView:
+    """Những gì pool cần biết về từng search unit, không đọc lại Weaviate."""
+    items: dict[str, dict]                       # product_id → name, variant, destination, star_rating, amenity_ids
+    snippets: dict[str, str]
+    children: dict[str, list[Child]]             # chỉ hotel_property
+    amenity_label: dict[int, str]
+    amenity_order: dict[int, tuple]              # seed trước raw, rồi tần suất giảm dần
+    key_to_id: dict[str, int] = field(default_factory=dict)
+
+    def labels_by_key(self) -> dict:
+        out: dict = dict(self.amenity_label)
+        out.update({k: self.amenity_label.get(i, k) for k, i in self.key_to_id.items()})
+        return out
+
+
+def snippet_of(text: str, n_words: int = SNIPPET_WORDS) -> str:
+    return " ".join((text or "").split()[:n_words])
+
+
+def load_pool_view(cfg, dataset: str, text_variant: str) -> PoolView:
+    from . import catalog, paths
+    from .textbuild import load_texts
+    items = catalog.read_items(dataset)
+    texts, _ = load_texts(cfg, dataset, text_variant)
+    vocab = json.loads((paths.data_dir(dataset) / paths.AMENITY_VOCAB).read_text(encoding="utf-8"))
+    records = catalog.reload_records(cfg, dataset)
+    _, kids, _, _ = catalog.group_children(records, cfg.catalog.search_unit_variants)
     rows: dict[str, dict] = {}
+    for r in items[["product_id", "name", "variant", "destination", "star_rating", "amenity_ids"]].to_dict("records"):
+        star = r["star_rating"]
+        r["star_rating"] = None if star is None or np.isnan(star) else round(float(star), 1)
+        r["amenity_ids"] = [int(x) for x in (r["amenity_ids"] if r["amenity_ids"] is not None else [])]
+        rows[r["product_id"]] = r
+    children = {pid: sorted((Child(id=k["productId"], name=catalog._room_name(k) or k.get("name") or k["productId"])
+                             for k in kids.get(pid, [])), key=lambda c: (c.name, c.id))
+                for pid, r in rows.items() if r["variant"] == "hotel_property"}
+    return PoolView(items=rows, snippets={p: snippet_of(t) for p, t in zip(texts["product_id"], texts["text"])},
+                    children=children,
+                    amenity_label={int(i): e["label"] for i, e in vocab.items()},
+                    amenity_order={int(i): (0 if e.get("source") == "seed" else 1, -int(e.get("freq") or 0), int(i))
+                                   for i, e in vocab.items()},
+                    key_to_id=F.amenity_key_index(vocab))
+
+
+def _amenity_ids_in(node: dict | None) -> set[int]:
+    if not node:
+        return set()
+    (op, arg), = node.items()
+    if op in ("and", "or"):
+        return set().union(*(_amenity_ids_in(ch) for ch in arg))
+    if op == "not":
+        return _amenity_ids_in(arg)
+    if op in ("contains_all", "contains_any"):
+        return {x for x in arg[1] if isinstance(x, int)}
+    return set()
+
+
+def pick_amenities(ids: list[int], view: PoolView, *, must: set[int], query: str, k: int = AMENITIES_SHOWN) -> list[str]:
+    """Tối đa k tên tiện ích: có trong filter → khớp nguyên từ trong câu hỏi (bỏ dấu) → seed → raw (tần suất giảm)."""
+    q = f" {_fold(query)} "
+
+    def key(i: int) -> tuple:
+        lab = view.amenity_label.get(i, "")
+        in_query = bool(lab) and f" {_fold(lab)} " in q
+        return (0 if i in must else 1 if in_query else 2, *view.amenity_order.get(i, (2, 0, i)))
+
+    return [view.amenity_label[i] for i in sorted(set(ids), key=key) if i in view.amenity_label][:k]
+
+
+def pool_rows(draft: Draft, dense: list, lexical: list, view: PoolView) -> list[PoolRow]:
+    """Hợp dense ∪ BM25 của một draft thành các dòng pool (sắp theo product_id; `split` xáo riêng cho từng người)."""
+    ranks: dict[str, dict[str, int | None]] = {}
     for kind, hits in (("dense", dense), ("lexical", lexical)):
         for h in hits:
-            r = rows.setdefault(h.product_id, {"qid": draft.qid, "query": draft.query, "slice": draft.slice,
-                                               "product_id": h.product_id, "name": h.name, "variant": h.variant,
-                                               "destination": h.destination, "rank_dense": None, "rank_lex": None, "label": ""})
-            r["rank_dense" if kind == "dense" else "rank_lex"] = h.rank
-    for r in rows.values():
-        r["from"] = "both" if r["rank_dense"] and r["rank_lex"] else ("dense" if r["rank_dense"] else "lexical")
-    ordered = sorted(rows.values(), key=lambda r: r["product_id"])
-    perm = np.random.default_rng([seed, _qnum(draft.qid)]).permutation(len(ordered))
-    return [ordered[i] for i in perm]
+            ranks.setdefault(h.product_id, {"dense": None, "lexical": None})[kind] = h.rank
+    parent, child = split_filter(draft.filter_keys)
+    ftext = render_filter_text(parent, child, view.labels_by_key())
+    must = _amenity_ids_in(draft.filter)
+    out: list[PoolRow] = []
+    for pid in sorted(ranks):
+        it = view.items.get(pid)
+        if it is None:
+            raise GoldError(f"{pid} có trong collection nhưng không có trong items.parquet — collection và catalog lệch nhau")
+        rd, rl = ranks[pid]["dense"], ranks[pid]["lexical"]
+        out.append(PoolRow(
+            qid=draft.qid, query=draft.query, slice=draft.slice, filter_text=ftext, filter_json=parent,
+            child_filter_json=child, expected_no_result=draft.expected_no_result, product_id=pid, name=it["name"],
+            taxonomy=it["variant"], destination=it["destination"] or "", star_rating=it["star_rating"],
+            amenities=pick_amenities(it["amenity_ids"], view, must=must, query=draft.query),
+            snippet=view.snippets.get(pid, ""), children=view.children.get(pid, []),
+            source="both" if rd and rl else ("dense" if rd else "lexical"), rank_dense=rd, rank_lex=rl))
+    return out
 
 
 def build_pool(drafts: list[Draft], *, store: Any, embedder: Any, physical: str, fold_mode: str, depth: int,
-               query_input_type: str, seed: int) -> pd.DataFrame:
+               query_input_type: str, view: PoolView) -> list[PoolRow]:
     qvecs = embedder.embed([d.query for d in drafts], query_input_type)       # một lượt gom, qua cache
-    rows: list[dict] = []
+    rows: list[PoolRow] = []
     for d, qv in zip(drafts, qvecs):
         flt = F.to_weaviate(d.filter)
         dense = store.dense(physical, qv, depth, filters=flt)
         lexical = store.bm25(physical, d.query, depth, fold_mode=fold_mode, filters=flt)
-        rows += pool_rows(d, dense, lexical, seed)
-    df = pd.DataFrame(rows, columns=POOL_COLUMNS)
-    for c in ("rank_dense", "rank_lex"):
-        df[c] = df[c].astype("Int64")
-    return df
+        rows += pool_rows(d, dense, lexical, view)
+    return rows
 
 
-def pool_summary(drafts: list[Draft], df: pd.DataFrame) -> dict:
-    per_q = df.groupby("qid").size() if len(df) else pd.Series(dtype=int)
-    empty = [d.qid for d in drafts if d.qid not in per_q.index]
-    return {"n_queries": len(drafts), "n_rows": int(len(df)),
-            "docs_per_query": {"p50": float(per_q.median()) if len(per_q) else 0.0, "max": int(per_q.max()) if len(per_q) else 0},
-            "from": dict(Counter(df["from"])), "empty_queries": empty,
+def empty_queries(drafts: list[Draft], rows: list[PoolRow]) -> list[str]:
+    have = {r.qid for r in rows}
+    return [d.qid for d in drafts if d.qid not in have]
+
+
+def pool_summary(drafts: list[Draft], rows: list[PoolRow]) -> dict:
+    per_q = Counter(r.qid for r in rows)
+    n = sorted(per_q.values())
+    return {"n_queries": len(drafts), "n_rows": len(rows),
+            "docs_per_query": {"p50": float(np.median(n)) if n else 0.0, "max": max(n) if n else 0},
+            "from": dict(Counter(r.source for r in rows)), "empty_queries": empty_queries(drafts, rows),
             "by_slice": dict(Counter(d.slice for d in drafts))}
 
 
-def write_csv(df: pd.DataFrame, path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(path, index=False, encoding=CSV_ENCODING)
+class PoolBuild(BaseModel):
+    """`pool.build.json` cạnh `pool.csv`: những gì `split` cần chép vào `pool_meta.json`."""
+    model_config = ConfigDict(extra="forbid")
+
+    snapshot: str
+    collection: str
+    depth: int
+    seed: int
+    qid_mode: str
+    drafts_sha256: Optional[str] = None
+    pool_sha256: str
+    qids: list[str]
+    empty_qids: list[str]
+    slice_filter: Optional[str] = None
+    created_at: datetime
 
 
-def read_pool(path: Path) -> pd.DataFrame:
+def pool_build_path(pool_csv: Path) -> Path:
+    return pool_csv.with_name(pool_csv.stem + POOL_BUILD_SUFFIX)
+
+
+def write_pool_build(b: PoolBuild, path: Path) -> None:
+    atomic_write_text(path, b.model_dump_json(indent=2) + "\n")
+
+
+def read_pool_build(path: Path) -> PoolBuild:
     if not path.exists():
-        raise GoldError(f"không thấy {path} — chạy `sb gold pool` trước")
-    df = pd.read_csv(path, encoding=CSV_ENCODING, dtype={"qid": str, "product_id": str, "label": str}, keep_default_na=False)
-    missing = [c for c in POOL_COLUMNS if c not in df.columns]
-    if missing:
-        raise GoldError(f"{path.name} thiếu cột {missing}")
-    return df
+        raise GoldError(f"không thấy {path} — chạy lại `sb gold pool` (bản mới ghi kèm file này)")
+    try:
+        return PoolBuild.model_validate_json(path.read_text(encoding="utf-8"))
+    except ValueError as e:
+        raise GoldError(f"{path}: {e}") from None
 
 
+def snapshot_of(stats: dict, dataset: str) -> str:
+    m = re.search(r"snapshots[\\/](\d{4}-\d{2}-\d{2})", str(stats.get("path", "")))
+    return m.group(1) if m else dataset
+
+
+def load_key_index(amenity_vocab_path: Path) -> dict[str, int]:
+    if not amenity_vocab_path.exists():
+        raise GoldError(f"chưa có {amenity_vocab_path} — chạy `sb catalog build` trước")
+    return F.amenity_key_index(json.loads(amenity_vocab_path.read_text(encoding="utf-8")))
+
+
+# ------------------------------------------------------------------ split → pool_A / pool_B / pool_meta
 def overlap_quota(slice_counts: dict[str, int], overlap: int) -> dict[str, int]:
     """Chia `overlap` theo tỷ lệ slice (largest remainder; hoà → tên slice), không vượt số query của slice."""
     total = sum(slice_counts.values())
@@ -151,29 +433,70 @@ def overlap_quota(slice_counts: dict[str, int], overlap: int) -> dict[str, int]:
     return quota
 
 
-def split_pool(df: pd.DataFrame, overlap: int, seed: int) -> tuple[pd.DataFrame, pd.DataFrame, list[str]]:
-    q = df.drop_duplicates("qid")[["qid", "slice"]]
-    n = len(q)
+LABELER_INDEX = {"A": 0, "B": 1}
+
+
+def split_pool(rows: list[PoolRow], overlap: int, seed: int) -> tuple[list[PoolRow], list[PoolRow], list[str]]:
+    """(dòng của A, dòng của B, qid chung). Chung: phân tầng theo slice; còn lại: xen kẽ A/B trong từng slice (đếm tiếp
+    qua các slice nên tổng hai bên lệch nhau tối đa 1); mỗi người một thứ tự xáo riêng trong từng câu."""
+    order: list[str] = []
+    slice_of: dict[str, str] = {}
+    by_q: dict[str, list[PoolRow]] = {}
+    for r in rows:
+        if r.qid not in by_q:
+            order.append(r.qid)
+            slice_of[r.qid] = r.slice
+        by_q.setdefault(r.qid, []).append(r)
+    n = len(order)
     if not 0 <= overlap < n:
         raise GoldError(f"overlap {overlap} phải trong [0, {n}) (số query của pool)")
-    by_slice = {s: sorted(g["qid"], key=_qnum) for s, g in q.groupby("slice")}
+    by_slice: dict[str, list[str]] = {}
+    for q in order:
+        by_slice.setdefault(slice_of[q], []).append(q)
     quota = overlap_quota({s: len(v) for s, v in by_slice.items()}, overlap)
     rng = np.random.default_rng(seed)
-    shared: list[str] = []
+    shared: set[str] = set()
     for s in sorted(by_slice):
         if quota[s]:
-            shared += [str(x) for x in rng.choice(by_slice[s], size=quota[s], replace=False)]
-    shared_set = set(shared)
-    rest = [x for x in q["qid"] if x not in shared_set]
-    a = shared_set | {x for x in rest if _qnum(x) % 2 == 1}
-    b = shared_set | {x for x in rest if _qnum(x) % 2 == 0}
-    return df[df["qid"].isin(a)].copy(), df[df["qid"].isin(b)].copy(), sorted(shared, key=_qnum)
+            shared |= {str(x) for x in rng.choice(by_slice[s], size=quota[s], replace=False)}
+    side: dict[str, str] = {}
+    turn = 0
+    for s in sorted(by_slice):
+        for q in by_slice[s]:
+            if q not in shared:
+                side[q] = "AB"[turn % 2]
+                turn += 1
+
+    def rows_for(labeler: str) -> list[PoolRow]:
+        out: list[PoolRow] = []
+        for q in order:
+            if q in shared or side[q] == labeler:
+                rs = sorted(by_q[q], key=lambda r: r.product_id)
+                perm = np.random.default_rng([seed, qid_num(q), LABELER_INDEX[labeler]]).permutation(len(rs))
+                out += [rs[i].model_copy(update={"is_overlap": q in shared}) for i in perm]
+        return out
+
+    return rows_for("A"), rows_for("B"), [q for q in order if q in shared]
 
 
-def load_key_index(amenity_vocab_path: Path) -> dict[str, int]:
-    if not amenity_vocab_path.exists():
-        raise GoldError(f"chưa có {amenity_vocab_path} — chạy `sb catalog build` trước")
-    return F.amenity_key_index(json.loads(amenity_vocab_path.read_text(encoding="utf-8")))
+def write_split(rows_a: list[PoolRow], rows_b: list[PoolRow], shared: list[str], build: PoolBuild, out_dir: Path, *,
+                force: bool = False) -> PoolMeta:
+    meta_p = out_dir / "pool_meta.json"
+    labels = sorted((out_dir / "labels").glob("*.csv")) if (out_dir / "labels").exists() else []
+    if meta_p.exists() and labels and not force:
+        raise GoldError(f"{out_dir / 'labels'} đã có nhãn ({', '.join(p.name for p in labels)}) gắn với pool hiện tại — "
+                        "chia lại sẽ làm lệch sha; thêm --force nếu thật sự muốn bỏ")
+    files = {}
+    for x, rs in (("A", rows_a), ("B", rows_b)):
+        p = out_dir / f"pool_{x}.csv"
+        write_pool_csv(rs, p)
+        files[x] = PoolFile(path=p.name, sha256=file_sha256(p), labeler=x, n_queries=len({r.qid for r in rs}),
+                            n_pairs=len(rs))
+    meta = PoolMeta(snapshot=build.snapshot, collection=build.collection, depth=build.depth, seed=build.seed,
+                    drafts_sha256=build.drafts_sha256, overlap_qids=shared, files=files,
+                    created_at=datetime.now().astimezone().replace(microsecond=0))
+    write_pool_meta(meta, meta_p)
+    return meta
 
 
 # ------------------------------------------------------------------ Part 5 (ngày 1): drafts_raw.tsv + nhãn app → drafts.txt
@@ -420,3 +743,317 @@ def apply_overrides(decisions: dict[str, dict], conflicts: list[str],
     """Ghi đè thắng mọi nhãn của app cho case đó, kể cả khi các annotator đang bất đồng."""
     merged = {**decisions, **overrides}
     return merged, [c for c in conflicts if c not in overrides]
+
+
+# ------------------------------------------------------------------ Part 5 (ngày 3–4): kappa · merge · import · check
+@dataclass
+class PoolSet:
+    """pool_meta.json + hai file pool đã kiểm sha, số dòng và câu chung."""
+    meta: PoolMeta
+    meta_path: Path
+    rows: dict[str, list[PoolRow]]
+    by_key: dict[str, dict[tuple[str, str], PoolRow]]
+
+    def keys(self, labeler: str) -> set[tuple[str, str]]:
+        return set(self.by_key[labeler])
+
+    def all_keys(self) -> set[tuple[str, str]]:
+        return self.keys("A") | self.keys("B")
+
+    def row(self, key: tuple[str, str]) -> PoolRow:
+        return self.by_key["A"].get(key) or self.by_key["B"][key]
+
+    def overlap_keys(self) -> list[tuple[str, str]]:
+        ov = set(self.meta.overlap_qids)
+        return sorted(k for k in self.by_key["A"] if k[0] in ov)
+
+
+_QUERY_FIELDS = ("query", "slice", "filter_json", "child_filter_json", "expected_no_result")
+
+
+def load_pool_set(meta_path: Path) -> PoolSet:
+    if not meta_path.exists():
+        raise GoldError(f"không thấy {meta_path} — chạy `sb gold split` trước")
+    try:
+        meta = read_pool_meta(meta_path)
+    except ValueError as e:
+        raise GoldError(f"{meta_path}: {e}") from None
+    rows: dict[str, list[PoolRow]] = {}
+    by_key: dict[str, dict[tuple[str, str], PoolRow]] = {}
+    for x in ("A", "B"):
+        pf = meta.files.get(x)
+        if pf is None:
+            raise GoldError(f"{meta_path.name} thiếu files.{x}")
+        p = Path(pf.path)
+        p = p if p.is_absolute() else meta_path.parent / p
+        if not p.exists():
+            raise GoldError(f"không thấy {p} (files.{x} trong {meta_path.name})")
+        sha = file_sha256(p)
+        if sha != pf.sha256:
+            raise GoldError(f"{p.name}: sha {sha[:12]}… khác meta {pf.sha256[:12]}… — pool đã bị sửa, hoặc git đổi ký tự "
+                            "xuống dòng (xem .gitattributes)")
+        try:
+            rows[x] = read_pool_csv(p)
+        except SchemaError as e:
+            raise GoldError(str(e)) from None
+        by_key[x] = {r.key: r for r in rows[x]}
+        nq = len({r.qid for r in rows[x]})
+        if (len(rows[x]), nq) != (pf.n_pairs, pf.n_queries):
+            raise GoldError(f"{p.name}: {len(rows[x])} cặp / {nq} câu, meta ghi {pf.n_pairs} / {pf.n_queries}")
+    ov = set(meta.overlap_qids)
+    qa, qb = {k[0] for k in by_key["A"]}, {k[0] for k in by_key["B"]}
+    problems = [f"{q}: câu chung nhưng không có trong pool_{x}" for q in sorted(ov)
+                for x, qs in (("A", qa), ("B", qb)) if q not in qs]
+    problems += [f"{q}: có trong cả hai pool nhưng không phải câu chung" for q in sorted((qa & qb) - ov)]
+    for x in ("A", "B"):
+        problems += [f"pool_{x} {r.qid}/{r.product_id}: is_overlap={r.is_overlap} lệch overlap_qids" for r in rows[x]
+                     if r.is_overlap != (r.qid in ov)]
+    for q in sorted(ov & qa & qb):
+        pa = {k[1] for k in by_key["A"] if k[0] == q}
+        pb = {k[1] for k in by_key["B"] if k[0] == q}
+        if pa != pb:
+            problems.append(f"{q}: hai pool có tập ứng viên khác nhau")
+        ha = next(r for r in rows["A"] if r.qid == q)
+        hb = next(r for r in rows["B"] if r.qid == q)
+        diff = [f for f in _QUERY_FIELDS if getattr(ha, f) != getattr(hb, f)]
+        if diff:
+            problems.append(f"{q}: hai pool ghi khác nhau ở {diff}")
+    if problems:
+        raise GoldError(f"{meta_path.name}: pool A/B không nhất quán:\n  " + "\n  ".join(problems[:20]))
+    return PoolSet(meta=meta, meta_path=meta_path, rows=rows, by_key=by_key)
+
+
+def load_labels(path: Path, labeler: str, pools: PoolSet) -> list[LabelRow]:
+    """labels_<X>.csv của đúng người gán X, gắn với đúng pool_<X> trong meta."""
+    if not path.exists():
+        raise GoldError(f"không thấy {path}")
+    try:
+        rows = read_labels_csv(path)
+    except SchemaError as e:
+        raise GoldError(str(e)) from None
+    other = sorted({r.labeler for r in rows} - {labeler})
+    if other:
+        raise GoldError(f"{path.name} là nhãn của người gán {other[0]}, được đưa vào vị trí {labeler} — đảo thứ tự A/B?")
+    want = pools.meta.files[labeler].sha256
+    stale = Counter(r.pool_sha[:12] for r in rows if r.pool_sha != want)
+    if stale:
+        raise GoldError(f"{path.name}: {sum(stale.values())} nhãn gắn với pool khác (sha {dict(stale)}), meta hiện tại "
+                        f"{want[:12]}… — nhãn gán trên pool cũ")
+    return rows
+
+
+@dataclass
+class KappaResult:
+    n: int
+    confusion: list[list[int]]
+    unweighted: float | None
+    linear: float | None
+    quadratic: float | None
+
+
+def cohen_kappa(pairs: list[tuple[int, int]], k: int = 3) -> KappaResult:
+    """κ Cohen cho nhãn 0..k-1; trọng số bất đồng: không trọng số, linear |i-j|/(k-1), quadratic. Không xác định → None."""
+    conf = [[0] * k for _ in range(k)]
+    for a, b in pairs:
+        conf[a][b] += 1
+    n = len(pairs)
+    rows = [sum(r) for r in conf]
+    cols = [sum(conf[i][j] for i in range(k)) for j in range(k)]
+
+    def weighted(w) -> float | None:
+        if n == 0:
+            return None
+        obs = sum(w(i, j) * conf[i][j] for i in range(k) for j in range(k))
+        exp = sum(w(i, j) * rows[i] * cols[j] / n for i in range(k) for j in range(k))
+        return None if exp == 0 else round(1 - obs / exp, 6)
+
+    return KappaResult(n=n, confusion=conf, unweighted=weighted(lambda i, j: 0 if i == j else 1),
+                       linear=weighted(lambda i, j: abs(i - j) / (k - 1)),
+                       quadratic=weighted(lambda i, j: ((i - j) / (k - 1)) ** 2))
+
+
+def overlap_pairs(pools: PoolSet, la: list[LabelRow], lb: list[LabelRow]
+                  ) -> tuple[list[tuple[tuple[str, str], int, int]], list[str]]:
+    """(các cặp chung đủ hai nhãn, danh sách cặp chung còn thiếu nhãn)."""
+    a = {r.key: r.label for r in la}
+    b = {r.key: r.label for r in lb}
+    pairs, missing = [], []
+    for key in pools.overlap_keys():
+        lack = [x for x, m in (("A", a), ("B", b)) if key not in m]
+        if lack:
+            missing.append(f"{key[0]}/{key[1]} thiếu nhãn của {' và '.join(lack)}")
+        else:
+            pairs.append((key, a[key], b[key]))
+    return pairs, missing
+
+
+NOTE_GAP1 = "lệch 1 bậc: lấy nhãn thấp hơn"
+NOTE_GAP2 = "lệch 2 bậc: cần thảo luận"
+NOTE_NO_COMMON_CHILD = "cả hai gán 2 nhưng không tick chung hạng phòng nào"
+
+
+def merge_pair(a: LabelRow | None, b: LabelRow | None, row: PoolRow) -> MergedRow:
+    """Hoà nhãn một cặp theo luật may1 / gold-guide; note của người gán nối sau dạng ` | A: …`."""
+    notes: list[str] = []
+    if a and b:
+        source = "both"
+        if a.label == b.label:
+            label, nd = a.label, False
+            children = sorted(set(a.children_ok) & set(b.children_ok)) if a.label == 2 else []
+            if a.label == 2 and children_visible(row) and not children:
+                label, nd = None, True
+                notes.append(f"{NOTE_NO_COMMON_CHILD} (A: {';'.join(a.children_ok)} · B: {';'.join(b.children_ok)})")
+        elif abs(a.label - b.label) == 1:
+            label, nd, children = min(a.label, b.label), False, []
+            notes.append(NOTE_GAP1)
+        else:
+            label, nd, children = None, True, []
+            notes.append(NOTE_GAP2)
+    else:
+        one = a or b
+        source, label, nd, children = ("A" if a else "B"), one.label, False, list(one.children_ok)
+    notes += [f"{x}: {r.note.strip()}" for x, r in (("A", a), ("B", b)) if r and r.note.strip()]
+    return MergedRow(qid=row.qid, product_id=row.product_id, label=label, label_A=a.label if a else None,
+                     label_B=b.label if b else None, children_ok=children, needs_discussion=nd, source=source,
+                     note=" | ".join(notes))
+
+
+def merge_labels(pools: PoolSet, la: list[LabelRow], lb: list[LabelRow]) -> list[MergedRow]:
+    """Mọi cặp của pool phải có nhãn của người được giao; nhãn phải hợp lệ với dòng pool."""
+    problems: list[str] = []
+    by = {"A": {r.key: r for r in la}, "B": {r.key: r for r in lb}}
+    for x in ("A", "B"):
+        pool = pools.by_key[x]
+        for key, r in sorted(by[x].items()):
+            if key not in pool:
+                problems.append(f"labels_{x}: {key[0]}/{key[1]} không có trong pool_{x}")
+            else:
+                problems += [f"labels_{x} {key[0]}/{key[1]}: {e}" for e in validate_label_against_pool(r, pool[key])]
+        problems += [f"labels_{x}: {k[0]}/{k[1]} chưa gán" for k in sorted(set(pool) - set(by[x]))]
+    if problems:
+        raise RuleViolation("merge", problems)
+    out = []
+    for key in sorted(pools.all_keys()):
+        a = by["A"].get(key) if key in pools.by_key["A"] else None
+        b = by["B"].get(key) if key in pools.by_key["B"] else None
+        out.append(merge_pair(a, b, pools.row(key)))
+    return out
+
+
+def read_catalog_parents(path: Path) -> dict[str, str | None]:
+    """products.jsonl (snapshot) hoặc catalog giả → {productId: parentProductId | None}."""
+    if not path.exists():
+        raise GoldError(f"không thấy catalog {path}")
+    out: dict[str, str | None] = {}
+    with path.open(encoding="utf-8") as fh:
+        for n, line in enumerate(fh, 1):
+            if not line.strip():
+                continue
+            try:
+                r = json.loads(line)
+                pid = r["productId"]
+            except (json.JSONDecodeError, KeyError, TypeError) as e:
+                raise GoldError(f"{path.name}:{n}: {e}") from None
+            out[pid] = r.get("parentProductId") or (r.get("attributes") or {}).get("parentProductId")
+    return out
+
+
+def build_gold(pools: PoolSet, merged: list, parents: dict[str, str | None], provenance: str) -> list[GoldRecord]:
+    """merged.csv (đã hoà, đã thảo luận) → GoldRecord mỗi câu. Gom mọi lỗi rồi mới từ chối."""
+    problems: list[str] = []
+    by_key = {m.key: m for m in merged}
+    want = pools.all_keys()
+    problems += [f"{k[0]}/{k[1]}: còn needs_discussion — sửa trong merged.csv trước" for k, m in sorted(by_key.items())
+                 if m.needs_discussion]
+    problems += [f"{k[0]}/{k[1]}: thiếu trong merged.csv" for k in sorted(want - set(by_key))]
+    problems += [f"{k[0]}/{k[1]}: không có trong pool" for k in sorted(set(by_key) - want)]
+    stamp = datetime.now().astimezone()
+    for key, m in sorted(by_key.items()):
+        if key not in want or m.needs_discussion:
+            continue
+        pid = m.product_id
+        if pid not in parents:
+            problems.append(f"{key[0]}/{pid}: không có trong catalog snapshot")
+        elif parents[pid]:
+            problems.append(f"{key[0]}/{pid}: là sản phẩm con (của {parents[pid]}), nhãn phải ở cấp parent")
+        for c in m.children_ok:
+            if parents.get(c, "∅") != pid:
+                problems.append(f"{key[0]}/{pid}: hạng phòng {c} không phải con của {pid} trong catalog")
+        stand = LabelRow(qid=m.qid, product_id=pid, label=m.label, children_ok=m.children_ok, labeler="A",
+                         labeled_at=stamp, pool_sha="")
+        problems += [f"{key[0]}/{pid}: {e}" for e in validate_label_against_pool(stand, pools.row(key))]
+    if problems:
+        raise RuleViolation("import", problems)
+    heads: dict[str, PoolRow] = {}
+    for r in pools.rows["A"] + pools.rows["B"]:
+        heads.setdefault(r.qid, r)
+    records = []
+    for qid in sorted(heads):
+        ms = [m for k, m in sorted(by_key.items()) if k[0] == qid]
+        h = heads[qid]
+        records.append(GoldRecord(
+            qid=qid, text=h.query, slice=h.slice, filter=h.filter_json, child_filter=h.child_filter_json,
+            expected_no_result=h.expected_no_result, judgments={m.product_id: m.label for m in ms},
+            provenance={m.product_id: provenance for m in ms},
+            expected_children={m.product_id: m.children_ok for m in ms if m.children_ok}))
+    return records
+
+
+def write_gold_checked(records: list[GoldRecord], out: Path, *, overwrite: bool = False) -> bool:
+    """Ghi gold.jsonl (qua `write_gold_jsonl`); file đã có mà khác nội dung → GoldError trừ khi overwrite (Part 11:
+    gold chỉ thêm). Trả về True nếu nội dung đổi."""
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td) / "gold.jsonl"
+        write_gold_jsonl(records, tmp)
+        new = tmp.read_bytes()
+    if out.exists():
+        if out.read_bytes() == new:
+            return False
+        if not overwrite:
+            raise GoldError(f"{out} đã có và khác nội dung mới — gold chỉ được thêm (spec Part 11); "
+                            "thêm --overwrite nếu chưa tag gold_v1")
+    atomic_write_text(out, new.decode("utf-8"))
+    return True
+
+
+@dataclass
+class CheckReport:
+    per_slice: dict[str, Counter]
+    n_queries: dict[str, int]
+    problems: list[str]
+    warnings: list[str]
+
+
+def check_gold(records: list[GoldRecord], min_per_slice: int, configured_slices: list[str]) -> CheckReport:
+    """Luật `sb gold check` trên các câu active; slice chỉ xét các slice có mặt (slice cấu hình mà vắng → cảnh báo)."""
+    problems: list[str] = []
+    warnings: list[str] = []
+    dup = [q for q, n in Counter(r.qid for r in records).items() if n > 1]
+    problems += [f"{q}: qid trùng" for q in dup]
+    active = [r for r in records if r.status == "active"]
+    per_slice: dict[str, Counter] = {}
+    n_q: Counter = Counter()
+    for r in active:
+        labels = list(r.judgments.values())
+        n_q[r.slice] += 1
+        per_slice.setdefault(r.slice, Counter()).update(labels)
+        if r.slice not in SLICES:
+            problems.append(f"{r.qid}: slice lạ {r.slice!r}")
+        if r.slice == OUT_OF_CATALOG_SLICE:
+            if 2 in labels:
+                problems.append(f"{r.qid}: out_of_catalog nhưng có nhãn 2 ({[p for p, v in r.judgments.items() if v == 2]})")
+            if not r.expected_no_result:
+                problems.append(f"{r.qid}: out_of_catalog thiếu expected_no_result")
+        else:
+            if 2 not in labels:
+                problems.append(f"{r.qid} [{r.slice}]: không có nhãn 2")
+            if r.expected_no_result:
+                warnings.append(f"{r.qid} [{r.slice}]: expected_no_result=true ngoài out_of_catalog")
+        if r.slice == PARENT_CHILD_SLICE:
+            problems += [f"{r.qid}/{p}: nhãn 2 ở parent_child thiếu expected_children" for p, v in r.judgments.items()
+                         if v == 2 and not r.expected_children.get(p)]
+    problems += [f"slice {s}: {n} câu < {min_per_slice}" for s, n in sorted(n_q.items()) if n < min_per_slice]
+    absent = [s for s in configured_slices if s not in n_q]
+    if absent:
+        warnings.append(f"slice trong config chưa có câu active nào: {', '.join(absent)}")
+    return CheckReport(per_slice=per_slice, n_queries=dict(n_q), problems=problems, warnings=warnings)

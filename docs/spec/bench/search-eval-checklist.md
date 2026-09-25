@@ -58,13 +58,13 @@ Ký hiệu lệnh: `sb` = `python -m evaluation.search_bench` chạy từ `src/`
 - [x] Paired bootstrap 1.000 lần → mean Δ, CI95, p một phía — *24/09: p theo mid-p để arm so với chính nó ra p = 0,5; kèm `win_verdict` / `compare_rows`*
 - [x] Unit test trên fixture `tests/fixtures/gold_small.jsonl` (10 query) — số ra đúng bằng tay — *24/09: + `run_small.json` (arm A/B), 13 test; tính tay q001, q004, q007*
 - [ ] Sáng: soát `summaries_review.csv` (5% tóm tắt LLM) **trước khi B embed toàn catalog**; có câu bịa sự kiện → báo B sửa prompt, chạy lại — *24/09: B đã embed toàn catalog bằng `build_text` backend (không dùng tóm tắt LLM); mục này áp dụng khi T3 dựng từ tóm tắt* — *24/09 chiều: B0 chốt là `build_text` backend nên mục này không chặn B0; làm trước khi embed T3 cho E1a*
-- [ ] Viết `docs/spec/bench/gold-guide.md` (1 trang; không đặt trong `src/` — AGENTS.md §7): định nghĩa nhãn 2 / 1 / 0, 5 ví dụ khó (đúng nơi sai loại, phòng vs khách sạn, combo chứa vé…)
+- [x] Viết `docs/spec/bench/gold-guide.md` (1 trang; không đặt trong `src/` — AGENTS.md §7): định nghĩa nhãn 2 / 1 / 0, 5 ví dụ khó (đúng nơi sai loại, phòng vs khách sạn, combo chứa vé…) — *25/09: viết theo `prompts/may1-gold-cli.md`; luật destination đã chốt (sai destination → 0, kể cả đúng loại); ví dụ lấy từ fixture `gold_small/` — còn chờ cả hai đọc và thống nhất (mục sync bên dưới)*
 
 ### B
 - [x] `sb embed --variant T3+R --model cohere-v3` toàn catalog → `sb load` → collection `products__T3+R__cohere_v3` (= B0) — *24/09: 2.897 vector (30 lượt gọi, 451.021 token, $0,045); load 2.897 object, complete. Gặp 22 lượt 429 (giới hạn thật của key trial ~90–100k token/phút) → thêm `embedding.max_tokens_per_min: 90000`* — ⚠ *24/09 (12:36): merge `release-mvp-v1` (80c3611) đổi `build_text` backend sang `catalog-text-v2` và thêm snapshot catalog `2026-09-23` → B0 hiện có đã cũ (builder_fingerprint khác), cần chốt rồi embed + load lại. Muốn B0 khớp production v2 thì adapter của bench phải truyền `combo_items` (production truyền, bench chưa) và spec §1.1 phải cập nhật mô tả builder* — ✅ *24/09 chiều: đã xử lý — bench gọi `build_text` như `PostgresCatalogReader` (con + `combo_items` từ `parse_combos` + `combo_items_manual.jsonl`); 3.183/3.183 text trùng khít production (test `test_t3r_equals_production_path`). Embed lại trên snapshot 2026-09-23: 3.183 vector (34 lượt gọi, 425.088 token, $0,0425, 0 lượt 429 nhờ pacer token); load 3.183 object, complete; `check_ready` giờ từ chối collection dựng từ text cũ*
 - [x] `sb tokens --variant T3+R`: phân bố token bằng tokenizer Cohere; **p99 < 450, max < 512**; nếu vượt, sửa text builder (không dùng `truncate`) — *làm sớm 23/09: p50 174, p99 276, max 379 — qua gate* — ⚠ *24/09: đo trên text trước `catalog-text-v2` — chạy lại `sb tokens` khi dựng lại B0* — *24/09 chiều: đo lại trên `catalog-text-v2`, snapshot 2026-09-23: p50 142, p90 201, p99 234, max 299 — qua gate*
-- [ ] `sb gold pool --drafts gold/drafts.txt --depth 15` → `gold/pool.csv` (dense top-15 ∪ BM25 top-15, ~20–25 doc/query) — *24/09: công cụ + filter AST sẵn sàng, chạy thử 10 draft fixture trên B0 ra 258 dòng (~26 doc/query); **chờ `gold/drafts.txt` của A** và B0 dựng lại (⚠ ở trên; `sb gold pool` hiện chỉ kiểm items, chưa kiểm builder, nên vẫn chạy được trên B0 cũ — chấp nhận được theo quy tắc buffer "pool chỉ cần đa dạng")* — *24/09 chiều: B0 đã dựng lại; `sb gold pool` giờ kiểm cả builder_fingerprint + file combo soát tay; chạy lại fixture: 255 dòng (p50 26, max 30 doc/query), 0 query rỗng — chỉ còn **chờ `gold/drafts.txt` của A***
-- [ ] Chia pool (`sb gold split --overlap 25`): `pool_A.csv` (qid lẻ + 25 chung), `pool_B.csv` (qid chẵn + 25 chung), 25 chung chọn stratified theo slice (theo spec Part 5) — *24/09: công cụ sẵn sàng, đã thử trên pool fixture; chờ pool thật*
+- [ ] `sb gold pool --drafts gold/drafts.txt --depth 15` → `gold/pool.csv` (dense top-15 ∪ BM25 top-15, ~20–25 doc/query) — *24/09: công cụ + filter AST sẵn sàng, chạy thử 10 draft fixture trên B0 ra 258 dòng (~26 doc/query); **chờ `gold/drafts.txt` của A** và B0 dựng lại (⚠ ở trên; `sb gold pool` hiện chỉ kiểm items, chưa kiểm builder, nên vẫn chạy được trên B0 cũ — chấp nhận được theo quy tắc buffer "pool chỉ cần đa dạng")* — *24/09 chiều: B0 đã dựng lại; `sb gold pool` giờ kiểm cả builder_fingerprint + file combo soát tay; chạy lại fixture: 255 dòng (p50 26, max 30 doc/query), 0 query rỗng — chỉ còn **chờ `gold/drafts.txt` của A*** — *25/09: `pool` viết lại theo hợp đồng `gold_schema.py` (bước 0): đủ `POOL_COLUMNS`, filter tách `filter_json` / `child_filter_json` + `filter_text`, tiện ích / snippet / hạng phòng, qid = `case_id`, kèm `pool.build.json`. Thử trên 200 draft hiện tại (ghi vào `bench_out/`, không vào `gold/`): 5.046 dòng, 6–30 ứng viên/câu (p50 26), 0 câu rỗng. Chạy thật vào `gold/` sau khi đóng băng `drafts.txt` (`docs/spec/bench/README.md`)*
+- [ ] Chia pool (`sb gold split --overlap 25`): `pool_A.csv` (qid lẻ + 25 chung), `pool_B.csv` (qid chẵn + 25 chung), 25 chung chọn stratified theo slice (theo spec Part 5) — *24/09: công cụ sẵn sàng, đã thử trên pool fixture; chờ pool thật* — *25/09: ghi thêm `pool_meta.json` (sha, số dòng, `overlap_qids`) và `is_overlap`; câu riêng chia **xen kẽ A/B trong từng slice** thay cho lẻ/chẵn (qid giờ là `case_id`, lẻ/chẵn lệch theo slice); mỗi người một thứ tự xáo. Thử trên 200 draft: A 113 câu / 2.871 cặp, B 112 câu / 2.830 cặp*
 
 ### Sync cuối ngày
 - [ ] A chốt `gold-guide.md`; cả hai đọc, thống nhất 5 ví dụ khó trước khi gán
@@ -82,16 +82,16 @@ Ký hiệu lệnh: `sb` = `python -m evaluation.search_bench` chạy từ `src/`
 - [ ] Gán 25 query chung độc lập
 
 ### Sync cuối ngày
-- [ ] `sb gold kappa pool_A.csv pool_B.csv` → Cohen κ trên 25 chung
+- [ ] `sb gold kappa gold/labels/labels_A.csv gold/labels/labels_B.csv` → Cohen κ (linear) trên 25 chung — *25/09: lệnh đã có, đúng đáp án fixture (κ linear 0,731343); lệnh cũ ghi `pool_A.csv pool_B.csv`, nay nhãn ở file riêng do app xuất*
 - [ ] κ ≥ 0,6 → tiếp. κ < 0,6 → ghi lại chỗ lệch, sửa `gold-guide.md`, **gán lại 25 chung** sáng ngày 4 (lịch lùi ½ ngày, chấp nhận)
-- [ ] Hoà nhãn 25 chung: lệch 1 bậc lấy nhãn thấp hơn; lệch 2 bậc thảo luận
+- [ ] Hoà nhãn 25 chung: lệch 1 bậc lấy nhãn thấp hơn; lệch 2 bậc thảo luận — *25/09: `sb gold merge gold/labels/labels_A.csv gold/labels/labels_B.csv` → `gold/labels/merged.csv`; sửa dòng `needs_discussion` ngay trong file (`gold-guide.md`)*
 
 ---
 
 ## Ngày 4 — Khoá gold · B0 · SAN · E1a
 
 ### A
-- [ ] `sb gold import gold/pool_labeled.csv` → `gold/gold.jsonl`; `sb gold check` xanh (mỗi query ≥ 1 nhãn 2 trừ out_of_catalog, không slice < `gold.min_per_slice` = 10 query)
+- [ ] `sb gold import gold/labels/merged.csv` → `gold/gold.jsonl`; `sb gold check` xanh (mỗi query ≥ 1 nhãn 2 trừ out_of_catalog, không slice < `gold.min_per_slice` = 10 query) — *25/09: hai lệnh đã có (thêm luật: out_of_catalog có `expected_no_result`, parent_child nhãn 2 có `expected_children`; import kiểm id với catalog snapshot); lệnh cũ ghi `gold/pool_labeled.csv`*
 - [ ] `git tag gold_v1`; từ đây gold chỉ **thêm** (spec Part 11)
 - [ ] `sb arms check` xanh (arms.md ↔ `arms/*.yaml` ↔ `stages.yaml`)
 - [ ] `sb run --stage B0 --until SAN` → đọc `sb compare --stage SAN`
@@ -196,7 +196,7 @@ Ký hiệu lệnh: `sb` = `python -m evaluation.search_bench` chạy từ `src/`
 
 | Tình huống | Xử lý |
 |---|---|
-| κ < 0,6 sau lần gán lại | Thu hẹp nhãn 1 thành định nghĩa cụ thể theo taxonomy (đúng nơi + đúng loại, thiếu điều kiện); gán lại 25 chung lần cuối; lịch lùi 1 ngày |
+| κ < 0,6 sau lần gán lại | Thu hẹp nhãn 1 thành định nghĩa cụ thể theo taxonomy (đúng nơi + đúng loại, thiếu điều kiện — hẹp hơn luật hiện tại của `gold-guide.md`: đúng nơi mà sai loại hoặc thiếu điều kiện); gán lại 25 chung lần cuối; lịch lùi 1 ngày |
 | Judged@10 < 80% ở ≥ 3 slice | Pool sâu hơn (depth 25) cho slice đó, gán thêm ½ ngày |
 | Slice không đủ **ý định phân biệt** cho quota | Sinh thêm ứng viên cho slice đó (ý định mới × 3 cách nói); **không** đưa hai cách nói của cùng một ý định vào bộ 200 — n tăng mà thông tin không tăng |
 | SAN `SANITY_FAIL` | Kiểm tra cứng hỏng (vector hai `input_type` giống nhau, cache sai, collection thiếu, gold bị sửa) — dừng mọi cổng cho tới khi sửa, `--force` chạy lại |

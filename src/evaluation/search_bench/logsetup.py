@@ -24,6 +24,7 @@ def setup_logging(verbose: bool = False) -> None:
         wrapper_class=structlog.make_filtering_bound_logger(level),
         processors=[structlog.processors.add_log_level, structlog.processors.TimeStamper(fmt="%H:%M:%S"),
                     structlog.dev.ConsoleRenderer(colors=False)],
-        logger_factory=structlog.PrintLoggerFactory(file=sys.stderr),
+        # lấy sys.stderr lúc ghi, không phải lúc configure: CliRunner (test) thay rồi đóng stderr sau mỗi lệnh
+        logger_factory=lambda *_: structlog.PrintLogger(file=sys.stderr),
         cache_logger_on_first_use=False,
     )

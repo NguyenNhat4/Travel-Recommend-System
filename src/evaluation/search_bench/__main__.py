@@ -1,9 +1,12 @@
 """CLI sbench (spec §1.3). Chạy từ `src/`: `python -m evaluation.search_bench <lệnh>` (trên Windows đặt PYTHONUTF8=1).
 
-Mã thoát: 0 ok · 1 lỗi · 2 gate trượt / variant, arm chưa cài.
+Mã thoát: 0 ok · 1 lỗi · 2 gate trượt / variant, arm chưa cài. Nhóm `sb gold`: 0 đạt · 1 dữ liệu vi phạm luật ·
+2 lỗi đầu vào.
 """
 from __future__ import annotations
 
+from collections import Counter
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -422,7 +425,8 @@ def query(c: typer.Context, q: str = typer.Argument(..., help="câu truy vấn")
 
 
 # ------------------------------------------------------------------ Part 5 (ngày 2: pool, split)
-gold_app = typer.Typer(no_args_is_help=True, help="Part 5: gold — pool, split (kappa/merge/import/check: ngày 3–4)")
+gold_app = typer.Typer(no_args_is_help=True, help="Part 5: gold — drafts, pool, split, kappa, merge, import, check. "
+                        "Mã thoát: 0 đạt · 1 dữ liệu vi phạm luật · 2 lỗi đầu vào (file thiếu, sai định dạng, sai sha)")
 app.add_typer(gold_app, name="gold")
 
 
@@ -521,74 +525,255 @@ def gold_pool(c: typer.Context,
               depth: Optional[int] = typer.Option(None, "--depth", min=1, help="mặc định gold.pool_depth"),
               slice_: Optional[str] = typer.Option(None, "--slice", help="chỉ lấy draft của một slice"),
               out: Optional[Path] = typer.Option(None, "--out", help="mặc định gold/pool.csv của package"),
-              arm: str = typer.Option("B0", "--arm", help="arm cung cấp collection + cách embed query")):
-    """Dense top-depth ∪ BM25 top-depth (cùng filter của draft) trên collection của B0 → pool.csv, xáo trong mỗi qid."""
+              arm: str = typer.Option("B0", "--arm", help="arm cung cấp collection + cách embed query"),
+              qid_mode: str = typer.Option("case", "--qid", help="case: case_id của drafts_raw.tsv · line: q001… theo dòng"),
+              raw: Optional[Path] = typer.Option(None, "--raw", help="mặc định gold/drafts_raw.tsv (cho --qid case)"),
+              allow_empty: bool = typer.Option(False, "--allow-empty", help="vẫn ghi khi câu thường không có ứng viên nào")):
+    """Dense top-depth ∪ BM25 top-depth (filter đầy đủ của draft) trên collection B0 → pool.csv đúng hợp đồng
+    gold_schema + pool.build.json. Mã thoát: 0 · 1 câu thường không có ứng viên · 2 lỗi đầu vào."""
+    from datetime import datetime
+
     from . import paths
     from .arms import ArmError, load_arm
     from .catalog import CatalogError, read_stats
     from .embed import EmbedBatchError, EmbedderUnavailable, make_embedder
-    from .gold import GoldError, build_pool, load_key_index, parse_drafts, pool_summary, write_csv
+    from .gold import (GoldError, PoolBuild, build_pool, case_ids_for, load_key_index, load_pool_view, parse_drafts,
+                       pool_build_path, pool_summary, read_draft_cases, read_overrides, snapshot_of, write_pool_build)
+    from .gold_schema import OUT_OF_CATALOG_SLICE, file_sha256, write_pool_csv
     from .store.weaviate_store import StoreError, collection_name
     ctx = _ctx(c)
     cfg = ctx.cfg()
     drafts_p = drafts or paths.GOLD_DIR / "drafts.txt"
     out_p = out or paths.GOLD_DIR / "pool.csv"
+    if qid_mode not in ("case", "line"):
+        _fail("--qid phải là case hoặc line", 2)
     try:
         a = load_arm(arm)
         ds = parse_drafts(drafts_p, list(cfg.gold.slices), load_key_index(paths.data_dir(ctx.dataset) / paths.AMENITY_VOCAB))
+        if qid_mode == "case":
+            raw_p = raw or paths.GOLD_DIR / "drafts_raw.tsv"
+            cases = read_draft_cases(raw_p)
+            overrides = read_overrides(paths.GOLD_DIR / "overrides.tsv", {r["case_id"] for r in cases})
+            ds = [d.with_qid(q) for d, q in zip(ds, case_ids_for(ds, cases, overrides))]
         if slice_:
             ds = [d for d in ds if d.slice == slice_]
             if not ds:
                 raise GoldError(f"không có draft nào thuộc slice {slice_}")
         logical, phys = collection_name(a.text_variant, a.model, ctx.dataset)
-        items_sha = read_stats(ctx.dataset)["items_sha256"]
+        stats = read_stats(ctx.dataset)
         from .textbuild import text_inputs
         now = text_inputs(cfg, ctx.dataset)
-    except (ArmError, GoldError, StoreError) as e:
+        view = load_pool_view(cfg, ctx.dataset, a.text_variant)
+    except (ArmError, GoldError, StoreError, CatalogError) as e:
         _fail(str(e), 2)
-    except CatalogError as e:
-        _fail(str(e))
     with _store(cfg) as st:
         try:
-            desc = st.check_ready(phys, items_sha, now)
+            desc = st.check_ready(phys, stats["items_sha256"], now)
             emb = make_embedder(cfg, a.model, embedding_type=a.embedding_types, preflight=False)
             try:
                 if emb.name != desc.get("cache_model"):
                     raise StoreError(f"collection {phys} nạp vector của {desc.get('cache_model')}, query embed bằng {emb.name}")
-                df = build_pool(ds, store=st, embedder=emb, physical=phys, fold_mode=desc["ascii_fold_mode"],
-                                depth=depth or cfg.gold.pool_depth, query_input_type=a.query_input_type, seed=cfg.run.seed)
+                rows = build_pool(ds, store=st, embedder=emb, physical=phys, fold_mode=desc["ascii_fold_mode"],
+                                  depth=depth or cfg.gold.pool_depth, query_input_type=a.query_input_type, view=view)
             finally:
                 emb.close()
+        except GoldError as e:
+            _fail(str(e), 2)
         except (EmbedderUnavailable, EmbedBatchError, *_weaviate_errors()) as e:
             _fail(str(e))
-    write_csv(df, out_p)
-    s = pool_summary(ds, df)
+    s = pool_summary(ds, rows)
+    slice_of = {d.qid: d.slice for d in ds}
+    bad_empty = [q for q in s["empty_queries"] if slice_of[q] != OUT_OF_CATALOG_SLICE]
+    if bad_empty and not allow_empty:
+        _fail(f"câu thường không có ứng viên nào (filter quá chặt?): {', '.join(bad_empty)} — sửa drafts hoặc --allow-empty", 1)
+    write_pool_csv(rows, out_p)
+    build = PoolBuild(snapshot=snapshot_of(stats, ctx.dataset), collection=logical, depth=depth or cfg.gold.pool_depth,
+                      seed=cfg.run.seed, qid_mode=qid_mode, drafts_sha256=file_sha256(drafts_p),
+                      pool_sha256=file_sha256(out_p), qids=[d.qid for d in ds], empty_qids=s["empty_queries"],
+                      slice_filter=slice_, created_at=datetime.now().astimezone().replace(microsecond=0))
+    write_pool_build(build, pool_build_path(out_p))
     typer.echo(f"{out_p}: {s['n_queries']} query · {s['n_rows']} dòng · doc/query p50 {s['docs_per_query']['p50']:.0f} "
-               f"max {s['docs_per_query']['max']} · from {s['from']} · collection {logical}")
+               f"max {s['docs_per_query']['max']} · from {s['from']} · collection {logical} · snapshot {build.snapshot}")
     typer.echo(f"  query embed: mới {emb.n_new} · từ cache {emb.n_cached}")
     if s["empty_queries"]:
-        typer.secho(f"  query không có kết quả nào: {s['empty_queries']}", fg=typer.colors.YELLOW)
+        typer.secho(f"  query không có ứng viên: {s['empty_queries']}", fg=typer.colors.YELLOW)
 
 
 @gold_app.command("split")
 def gold_split(c: typer.Context,
                pool: Optional[Path] = typer.Option(None, "--pool", help="mặc định gold/pool.csv"),
                overlap: Optional[int] = typer.Option(None, "--overlap", min=0, help="mặc định gold.overlap_queries"),
-               out_dir: Optional[Path] = typer.Option(None, "--out-dir", help="mặc định gold/")):
-    """pool_A.csv (qid lẻ + chung) và pool_B.csv (qid chẵn + chung); các qid chung chọn stratified theo slice."""
+               out_dir: Optional[Path] = typer.Option(None, "--out-dir", help="mặc định gold/"),
+               force: bool = typer.Option(False, "--force", help="ghi đè pool_meta.json dù đã có file nhãn")):
+    """pool.csv → pool_A.csv, pool_B.csv (câu chung phân tầng theo slice, còn lại xen kẽ A/B trong từng slice, mỗi người
+    một thứ tự xáo) + pool_meta.json. Mã thoát: 0 · 2 lỗi đầu vào / pool lệch sha."""
     from . import paths
-    from .gold import GoldError, read_pool, split_pool, write_csv
+    from .gold import GoldError, pool_build_path, read_pool_build, split_pool, write_split
+    from .gold_schema import SchemaError, file_sha256, read_pool_csv
     cfg = _ctx(c).cfg()
-    try:
-        df = read_pool(pool or paths.GOLD_DIR / "pool.csv")
-        a, b, shared = split_pool(df, cfg.gold.overlap_queries if overlap is None else overlap, cfg.run.seed)
-    except GoldError as e:
-        _fail(str(e), 2)
+    pool_p = pool or paths.GOLD_DIR / "pool.csv"
     d = out_dir or paths.GOLD_DIR
-    write_csv(a, d / "pool_A.csv")
-    write_csv(b, d / "pool_B.csv")
-    typer.echo(f"pool_A.csv: {a['qid'].nunique()} query / {len(a)} dòng · pool_B.csv: {b['qid'].nunique()} query / {len(b)} dòng · "
+    try:
+        if not pool_p.exists():
+            raise GoldError(f"không thấy {pool_p} — chạy `sb gold pool` trước")
+        build = read_pool_build(pool_build_path(pool_p))
+        if file_sha256(pool_p) != build.pool_sha256:
+            raise GoldError(f"{pool_p.name} đã đổi sau khi `sb gold pool` ghi (sha khác {pool_build_path(pool_p).name})")
+        rows = read_pool_csv(pool_p)
+        a, b, shared = split_pool(rows, cfg.gold.overlap_queries if overlap is None else overlap, build.seed)
+        meta = write_split(a, b, shared, build, d, force=force)
+    except (GoldError, SchemaError) as e:
+        _fail(str(e), 2)
+    if build.slice_filter:
+        typer.secho(f"  pool chỉ gồm slice {build.slice_filter} — không dùng làm gold thật", fg=typer.colors.YELLOW)
+    fa, fb = meta.files["A"], meta.files["B"]
+    typer.echo(f"pool_A.csv: {fa.n_queries} query / {fa.n_pairs} dòng · pool_B.csv: {fb.n_queries} query / {fb.n_pairs} dòng · "
                f"chung {len(shared)}: {', '.join(shared)}")
+    typer.echo(f"{d / 'pool_meta.json'}: snapshot {meta.snapshot} · {meta.collection} · depth {meta.depth} · seed {meta.seed}")
+
+
+@contextmanager
+def _gold_errors():
+    """Nhóm lệnh gold: RuleViolation → exit 1 (in từng lỗi); lỗi đầu vào → exit 2."""
+    from pydantic import ValidationError
+
+    from .gold import GoldError, RuleViolation
+    from .gold_schema import SchemaError
+    try:
+        yield
+    except RuleViolation as e:
+        for p in e.problems[:60]:
+            typer.secho(f"  ✗ {p}", fg=typer.colors.RED, err=True)
+        if len(e.problems) > 60:
+            typer.secho(f"  … và {len(e.problems) - 60} lỗi nữa", fg=typer.colors.RED, err=True)
+        _fail(f"{e.title}: {len(e.problems)} vi phạm", 1)
+    except (GoldError, SchemaError, ValidationError, OSError) as e:
+        _fail(str(e), 2)
+
+
+def _meta_path(meta: Optional[Path]) -> Path:
+    from . import paths
+    return meta or paths.GOLD_DIR / "pool_meta.json"
+
+
+@gold_app.command("kappa")
+def gold_kappa(c: typer.Context,
+               labels_a: Path = typer.Argument(..., help="gold/labels/labels_A.csv"),
+               labels_b: Path = typer.Argument(..., help="gold/labels/labels_B.csv"),
+               meta: Optional[Path] = typer.Option(None, "--meta", help="mặc định gold/pool_meta.json"),
+               kmin: Optional[float] = typer.Option(None, "--min", help="mặc định gold.kappa_min")):
+    """Cohen κ trên các câu chung: ma trận nhầm (A theo hàng), κ linear (quyết định), không trọng số, quadratic, các cặp
+    lệch 2 bậc. Mã thoát: 0 đạt · 1 thiếu nhãn / κ < min · 2 lỗi đầu vào."""
+    from .gold import RuleViolation, cohen_kappa, load_labels, load_pool_set, overlap_pairs
+    threshold = _ctx(c).cfg().gold.kappa_min if kmin is None else kmin
+    with _gold_errors():
+        ps = load_pool_set(_meta_path(meta))
+        la, lb = load_labels(labels_a, "A", ps), load_labels(labels_b, "B", ps)
+        pairs, missing = overlap_pairs(ps, la, lb)
+        if missing:
+            raise RuleViolation("kappa: câu chung còn thiếu nhãn", missing)
+        k = cohen_kappa([(a, b) for _, a, b in pairs])
+    typer.echo(f"{k.n} cặp chung ({len(ps.meta.overlap_qids)} câu) · ma trận nhầm (A hàng × B cột, nhãn 0/1/2):")
+    for i, row in enumerate(k.confusion):
+        typer.echo(f"  A={i}: " + "  ".join(f"{v:>4}" for v in row))
+    fmt = lambda v: "không xác định" if v is None else f"{v:.6f}"          # noqa: E731
+    typer.echo(f"κ linear {fmt(k.linear)} (quyết định, ngưỡng {threshold}) · không trọng số {fmt(k.unweighted)} · "
+               f"quadratic {fmt(k.quadratic)}")
+    gap2 = [(key, a, b) for key, a, b in pairs if abs(a - b) == 2]
+    for (q, p), a, b in gap2:
+        r = ps.row((q, p))
+        typer.echo(f"  lệch 2 bậc: {q}/{p} A={a} B={b} · {r.query} → {r.name}")
+    if k.linear is None or k.linear < threshold:
+        _fail(f"κ linear {fmt(k.linear)} < {threshold} — sửa gold-guide, gán lại câu chung", 1)
+
+
+@gold_app.command("merge")
+def gold_merge(c: typer.Context,
+               labels_a: Path = typer.Argument(..., help="gold/labels/labels_A.csv"),
+               labels_b: Path = typer.Argument(..., help="gold/labels/labels_B.csv"),
+               out: Optional[Path] = typer.Option(None, "-o", "--out", help="mặc định gold/labels/merged.csv"),
+               meta: Optional[Path] = typer.Option(None, "--meta", help="mặc định gold/pool_meta.json")):
+    """Hoà nhãn hai người → merged.csv: lệch 1 bậc lấy nhãn thấp; lệch 2 bậc → needs_discussion; hạng phòng lấy phần giao.
+    Mã thoát: 0 (kể cả khi còn needs_discussion) · 1 thiếu / thừa / sai nhãn · 2 lỗi đầu vào."""
+    from . import paths
+    from .gold import load_labels, load_pool_set, merge_labels
+    from .gold_schema import write_merged_csv
+    out_p = out or paths.GOLD_DIR / "labels" / "merged.csv"
+    with _gold_errors():
+        ps = load_pool_set(_meta_path(meta))
+        merged = merge_labels(ps, load_labels(labels_a, "A", ps), load_labels(labels_b, "B", ps))
+        write_merged_csv(merged, out_p)
+    nd = [m for m in merged if m.needs_discussion]
+    src = dict(sorted(Counter(m.source for m in merged).items()))
+    typer.echo(f"{out_p}: {len(merged)} cặp · nguồn {src} · needs_discussion {len(nd)}")
+    for m in nd:
+        typer.echo(f"  cần thảo luận: {m.qid}/{m.product_id} A={m.label_A} B={m.label_B} · {m.note}")
+    if nd:
+        typer.secho("  sửa các dòng trên trong merged.csv (điền label, needs_discussion=false, ghi lý do) rồi `sb gold import`",
+                    fg=typer.colors.YELLOW)
+
+
+@gold_app.command("import")
+def gold_import(c: typer.Context,
+                merged: Path = typer.Argument(..., help="gold/labels/merged.csv đã thảo luận xong"),
+                meta: Optional[Path] = typer.Option(None, "--meta", help="mặc định gold/pool_meta.json"),
+                catalog_p: Optional[Path] = typer.Option(None, "--catalog", help="products.jsonl của snapshot (mặc định "
+                                                                                  "catalog.products_path)"),
+                out: Optional[Path] = typer.Option(None, "-o", "--out", help="mặc định gold/gold.jsonl"),
+                provenance: str = typer.Option("pool@gold_v1", "--provenance"),
+                overwrite: bool = typer.Option(False, "--overwrite", help="ghi đè gold.jsonl khác nội dung (chỉ trước tag)")):
+    """merged.csv → gold.jsonl (GoldRecord). Từ chối nếu còn needs_discussion, thiếu / thừa cặp, id lạ với catalog, nhãn
+    sai luật (exit 1) hoặc sha pool lệch meta, file thiếu / sai định dạng (exit 2)."""
+    from . import paths
+    from .catalog import CatalogError, _jsonl_path
+    from .gold import GoldError, build_gold, load_pool_set, read_catalog_parents, write_gold_checked
+    from .gold_schema import read_merged_csv
+    out_p = out or paths.GOLD_DIR / "gold.jsonl"
+    with _gold_errors():
+        ps = load_pool_set(_meta_path(meta))
+        try:
+            cat = catalog_p or _jsonl_path(_ctx(c).cfg())
+        except CatalogError as e:
+            raise GoldError(str(e)) from None
+        if ps.meta.snapshot not in str(cat):
+            typer.secho(f"  cảnh báo: pool dựng từ snapshot {ps.meta.snapshot}, catalog đang kiểm là {cat}",
+                        fg=typer.colors.YELLOW)
+        records = build_gold(ps, read_merged_csv(merged), read_catalog_parents(cat), provenance)
+        changed = write_gold_checked(records, out_p, overwrite=overwrite)
+    n = sum(len(r.judgments) for r in records)
+    typer.echo(f"{out_p}: {len(records)} câu · {n} nhãn · provenance {provenance}" + ("" if changed else " (không đổi)"))
+    typer.echo("  tiếp: `sb gold check`")
+
+
+@gold_app.command("check")
+def gold_check(c: typer.Context,
+               gold_p: Optional[Path] = typer.Argument(None, help="mặc định gold/gold.jsonl"),
+               min_per_slice: Optional[int] = typer.Option(None, "--min-per-slice", min=1,
+                                                           help="mặc định gold.min_per_slice")):
+    """Luật gold trên câu active: câu thường có nhãn 2 · out_of_catalog không có nhãn 2 và có expected_no_result ·
+    parent_child nhãn 2 có expected_children · mỗi slice ≥ N câu. Mã thoát: 0 xanh · 1 đỏ · 2 lỗi đầu vào."""
+    from . import paths
+    from .gold import GoldError, check_gold
+    from .gold_schema import read_gold_jsonl
+    cfg = _ctx(c).cfg()
+    p = gold_p or paths.GOLD_DIR / "gold.jsonl"
+    n_min = cfg.gold.min_per_slice if min_per_slice is None else min_per_slice
+    with _gold_errors():
+        if not p.exists():
+            raise GoldError(f"không thấy {p} — chạy `sb gold import` trước")
+        rep = check_gold(read_gold_jsonl(p), n_min, list(cfg.gold.slices))
+    typer.echo(f"{'slice':22} {'câu':>5} {'nhãn 0':>7} {'nhãn 1':>7} {'nhãn 2':>7}")
+    for s in sorted(rep.n_queries):
+        cn = rep.per_slice.get(s, Counter())
+        typer.echo(f"{s:22} {rep.n_queries[s]:>5} {cn[0]:>7} {cn[1]:>7} {cn[2]:>7}")
+    for w in rep.warnings:
+        typer.secho(f"  cảnh báo: {w}", fg=typer.colors.YELLOW)
+    if rep.problems:
+        for pr in rep.problems:
+            typer.secho(f"  ✗ {pr}", fg=typer.colors.RED, err=True)
+        _fail(f"gold check đỏ: {len(rep.problems)} lỗi (min_per_slice = {n_min})", 1)
+    typer.secho(f"gold check xanh ({sum(rep.n_queries.values())} câu, min_per_slice = {n_min}) — chốt bằng: git tag gold_v1 "
+                "(lần thêm sau: gold_vN+1, spec Part 11)", fg=typer.colors.GREEN)
 
 
 # ------------------------------------------------------------------ chi phí API

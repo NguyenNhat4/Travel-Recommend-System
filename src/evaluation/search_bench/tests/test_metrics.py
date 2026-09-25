@@ -198,3 +198,19 @@ def test_dup_parent_count():
     assert M.dup_parent_count(["r1", "r2", "r3", "r4", "p"], parent, 10) == 2      # H1 có 3 → vượt 2
     assert M.dup_parent_count(["p", "n1", "n2", "e"], parent, 10) == 0             # NaN của parquet không phải cha
     assert M.dup_parent_count(["r1", "r2", "r3"], parent, 2) == 1                   # chỉ xét top-k
+
+
+def test_constraint_filter_folds_child_price(tmp_path):
+    """gold.jsonl mới tách giá sang child_filter (cấp room): constraint precision vẫn chấm giá qua unit_price_min."""
+    parent = {"and": [{"eq": ["destination", "Đà Nẵng"]}, {"gte": ["star_rating", 4]}]}
+    child = {"and": [{"lte": ["unit_price", 2000000]}, {"gte": ["max_occupancy", 4]}]}
+    assert M.constraint_filter(parent, child) == {"and": [
+        {"eq": ["destination", "Đà Nẵng"]}, {"gte": ["star_rating", 4]}, {"lte": ["unit_price_min", 2000000]}]}
+    assert M.constraint_filter(None, {"lt": ["unit_price", 5]}) == {"lt": ["unit_price_min", 5]}
+    assert M.constraint_filter(None, {"gte": ["max_occupancy", 2]}) is None
+    rec = {"qid": "c1", "text": "q", "slice": "multi_constraint", "judgments": {"a": 2}, "filter": parent,
+           "child_filter": child}
+    p = tmp_path / "gold.jsonl"
+    p.write_bytes((json.dumps(rec, ensure_ascii=False) + "\n").encode("utf-8"))
+    gq = M.load_gold(p)[0]
+    assert gq.child_filter == child and gq.filter["and"][-1] == {"lte": ["unit_price_min", 2000000]}
