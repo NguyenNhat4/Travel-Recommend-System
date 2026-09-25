@@ -2,8 +2,8 @@
 
 - Ngày: 2026-09-24
 - Người đề xuất: Nguyễn Minh Nhật / Claude Code
-- Trạng thái: chờ chốt
-- Chốt bởi / ngày:
+- Trạng thái: đã áp dụng
+- Chốt bởi / ngày: mihhquan, 2026-09-25
 - PRD bị ảnh hưởng: `docs/prd/architecture.md` §6.1
 - Mã FR/NFR: không gắn FR — tài liệu nội bộ cho người phát triển
 
