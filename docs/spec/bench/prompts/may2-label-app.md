@@ -1,10 +1,12 @@
 # Việc cho máy 2: mở rộng app Streamlit để gán nhãn relevance 0/1/2
 
-Nhánh: `feat/label-app`, tách từ main sau commit "gold: schema + fixtures (bước 0)".
+Phục vụ: **FR-SRC-01..04**, **AC-SRC-01** (`docs/prd/requirements.md`) và test-plan §2.5 (`docs/prd/test-plan.md`).
+
+Nhánh: `feat/label-app`, tách từ main sau commit "gold: schema + fixtures (bước 0)". *25/09: chưa chia máy — khi làm thì tách từ `bench/embed-search` (main chưa có `src/evaluation/search_bench/`).*
 
 ## Mục tiêu
 
-App hiện chỉ có chế độ soát câu hỏi (KEEP / REJECT / NEEDS_EDIT). Cần thêm chế độ **Gán nhãn relevance**. Người A và người B mỗi người gán khoảng 125 câu × 26 ứng viên ≈ 3.200 cặp và xuất ra `gold/labels/labels_<X>.csv` đúng hợp đồng. Máy 1 làm CLI song song; hai bên chỉ nối với nhau qua file.
+App hiện chỉ có chế độ soát câu hỏi (KEEP / REJECT / NEEDS_EDIT). Cần thêm chế độ **Gán nhãn relevance**. Người A và người B mỗi người gán khoảng 112 câu (≈ 87 câu riêng + 25 câu chung) × 26 ứng viên ≈ 2.900 cặp và xuất ra `gold/labels/labels_<X>.csv` đúng hợp đồng. Máy 1 làm CLI song song; hai bên chỉ nối với nhau qua file.
 
 ## Đọc trước
 

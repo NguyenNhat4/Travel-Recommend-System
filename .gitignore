@@ -41,3 +41,6 @@ bench_out/
 # Streamlit secrets (mật khẩu nhóm của app soát draft gold). Không bao giờ commit.
 .streamlit/secrets.toml
 **/.streamlit/secrets.toml
+
+# File tạm của gold_schema.atomic_write_text khi app/CLI chết giữa chừng
+src/evaluation/search_bench/gold/**/.*.tmp

@@ -1,5 +1,9 @@
 # Bước 0 trước khi chia việc cho 2 máy: hợp đồng dữ liệu gold
 
+Phục vụ: **FR-SRC-01..04**, **AC-SRC-01** (`docs/prd/requirements.md`) và test-plan §2.5 (`docs/prd/test-plan.md`).
+
+> **Trạng thái 25/09:** chưa chia 2 máy. Bộ này đã commit trên `bench/embed-search` (`38ad63c`), không phải main, vì main chưa có `src/evaluation/search_bench/`. Việc của máy 1 làm luôn trên nhánh này; bước 4–5 bên dưới áp dụng khi thật sự chia máy (tách nhánh từ `bench/embed-search`).
+
 Bộ file này là phần chung mà cả hai máy cùng dựa vào. Commit bộ này lên main trước, sau đó mỗi máy mới tách nhánh riêng.
 
 ```text
@@ -25,14 +29,11 @@ docs/spec/bench/prompts/may2-label-app.md                  việc cho máy 2: ap
 
 ## Lưu ý khi hai máy dùng git khác hệ điều hành
 
-Sha của file pool được ghi vào `pool_meta.json` và vào từng dòng nhãn. Git trên Windows với `core.autocrlf=true` sẽ đổi ký tự xuống dòng khi checkout, làm sha lệch: test đỏ và app chặn không cho gán. Trước khi commit bước 0, thêm các dòng sau vào `.gitattributes` ở gốc repo (tạo file nếu chưa có) để git giữ nguyên từng byte:
+Sha của file pool được ghi vào `pool_meta.json` và vào từng dòng nhãn. Git trên Windows với `core.autocrlf=true` sẽ đổi ký tự xuống dòng khi checkout, làm sha lệch: test đỏ và app chặn không cho gán. Trước khi commit bước 0, thêm các dòng sau vào `.gitattributes` ở gốc repo để git giữ nguyên từng byte (đã thêm ngày 25/09). Pattern có `/` được neo ở gốc repo, nên phải ghi đủ đường dẫn tới `src/evaluation/search_bench/gold/`:
 
 ```text
-src/evaluation/search_bench/tests/fixtures/** -text
-gold/pool_*.csv -text
-gold/pool_meta.json -text
-gold/labels/*.csv -text
-gold/gold.jsonl -text
+src/evaluation/search_bench/gold/** -text
+src/evaluation/search_bench/tests/fixtures/gold_small/** -text
 ```
 
 Mở file pool bằng Excel rồi lưu lại cũng làm đổi sha. App sẽ chặn trong trường hợp này; đó là hành vi đúng, vì pool không được sửa tay.

@@ -1,6 +1,8 @@
 # Việc cho máy 1: gold-guide.md + 4 lệnh `sb gold` (kappa, merge, import, check)
 
-Nhánh: `feat/gold-cli`, tách từ main sau commit "gold: schema + fixtures (bước 0)".
+Phục vụ: **FR-SRC-01..04**, **AC-SRC-01** (`docs/prd/requirements.md`) và test-plan §2.5 (`docs/prd/test-plan.md`).
+
+Nhánh: `feat/gold-cli`, tách từ main sau commit "gold: schema + fixtures (bước 0)". *25/09: chưa chia máy — làm luôn trên `bench/embed-search` (bước 0 là commit `38ad63c`).*
 
 ## Mục tiêu
 
