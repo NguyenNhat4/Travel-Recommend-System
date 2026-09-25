@@ -13,3 +13,16 @@ src/data_collection/cache
 src/data_collection/tests
 src/data_collection/sample
 src/data_collection/snapshots
+
+# The index job imports backend code. Re-exclude caches, virtualenvs and secrets after the re-include.
+!src/backend/
+!src/backend/**
+src/backend/tests/
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.venv
+**/.env
+**/.env.*
+**/*.pem
+**/*.key

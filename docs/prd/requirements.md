@@ -83,7 +83,7 @@ Tài liệu này đặc tả chi tiết toàn bộ các yêu cầu chức năng 
 - **NFR-PERF-02 (AI Assistant Response Time):**
   - Thời gian bắt đầu xuất luồng văn bản (First token latency) của Trợ lý AI phải $\le 1.0\text{ s}$.
   - Tổng thời gian hoàn tất một phản hồi lịch trình phức tạp phải $\le 4.0\text{ s}$.
-- **NFR-PERF-03 (Vector Indexing):** Truy vấn tương đồng phải đi qua chỉ mục HNSW của Weaviate (cosine, mặc định của collection), không quét tuần tự. Ngân sách thời gian của Cohere Embed API cho một truy vấn phải nằm trong giới hạn p95 250 ms ở NFR-PERF-01 — nếu vượt thì phải cache vector của truy vấn lặp lại.
+- **NFR-PERF-03 (Vector Indexing):** Truy vấn tương đồng phải đi qua chỉ mục ANN của Weaviate, cosine: HNSW khi chạy local/self-host, `hfresh` khi gói Weaviate Cloud chỉ cho phép loại này, không quét tuần tự. Ngân sách thời gian của Cohere Embed API cho một truy vấn phải nằm trong giới hạn p95 250 ms ở NFR-PERF-01 — nếu vượt thì phải cache vector của truy vấn lặp lại.
 
 ### 2.2. Độ Tin Cậy & Tính Xác Thực (Reliability & Grounding)
 - **NFR-REL-01 (Zero Hallucination trên dữ liệu sản phẩm):** 100% các thực thể sản phẩm hiển thị trong lịch trình của AI Assistant phải là sản phẩm có thật, đang hoạt động trong hệ thống.

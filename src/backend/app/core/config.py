@@ -102,6 +102,8 @@ class Settings(BaseSettings):
     weaviate_url: str = "http://localhost:8080"
     weaviate_api_key: str = ""
     weaviate_collection: str = "Product"
+    # Chỉ dùng khi job index tạo collection mới; Weaviate Cloud của nhóm chỉ cho phép hfresh.
+    weaviate_vector_index_type: Literal["hnsw", "hfresh"] = "hnsw"
     weaviate_timeout_seconds: float = Field(default=30.0, gt=0)
     # Cổng gRPC cho truy vấn top-K mỗi request; Weaviate Cloud tự dùng 443 của host grpc-<cluster>.
     weaviate_grpc_port: int = Field(default=50051, ge=1, le=65535)
@@ -109,13 +111,9 @@ class Settings(BaseSettings):
     search_max_limit: int = 50
     search_candidate_k: int = Field(default=200, ge=1)
     recommend_candidate_k: int = 200
-
-    # Vector ở Weaviate, embedding bằng Cohere (docs/prd/architecture.md §5, deployment-plan.md §2).
-    # Runtime và job index-vectors dùng các biến này; Weaviate không bao giờ nhận COHERE_API_KEY.
-    cohere_api_key: str = ""
-    embedding_model_name: str = "embed-multilingual-v3.0"
-    weaviate_url: str = "http://localhost:8080"
-    weaviate_api_key: str = ""
+    # Chu kỳ nạp lại metadata catalog (giá, trạng thái, cửa sổ ngày) từ Postgres. Job cào chạy mỗi ngày
+    # một lần nên 15 phút là đủ; mỗi lần nạp đọc lại toàn bảng và dựng lại text của mọi search unit.
+    catalog_refresh_seconds: float = Field(default=900.0, gt=0)
 
     @field_validator(*_OPTIONAL_BLANK_IS_NONE, mode="before")
     @classmethod

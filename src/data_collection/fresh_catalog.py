@@ -15,18 +15,24 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 
 from collectors.common import Paths
 from collectors.plan import select_destinations
 from collectors.trip_live import LiveOptions, crawl, discover
-from fresh_catalog_db import checked_trip_hotels, load_into_db
+from fresh_catalog_db import checked_trip_hotels, load_into_db, maintain_catalog
 from fresh_catalog_schedule import read_state, read_targets, record_batch, select_batch, write_state
 from normalise import PRODUCT_FIELDS, main as normalise_main
 
 ROOT = Path(__file__).resolve().parent
-SOURCES = ('vinpearl', 'trip-flights', 'trip-attractions', 'booking-hotels', 'agoda-hotels')
+# Lượt full: mỗi site một nhóm. Các nhóm chạy song song (CRAWL_PARALLEL), trong một nhóm vẫn tuần tự như trước
+# nên số request đồng thời tới từng site không đổi. Nhóm trip còn tìm ID khách sạn trước và hỏi giá phòng sau.
+SITE_GROUPS = (('trip', ('trip-flights', 'trip-attractions')), ('vinpearl', ('vinpearl',)),
+               ('booking', ('booking-hotels',)), ('agoda', ('agoda-hotels',)))
 REQUIRED = {('hotel', 'property'), ('hotel', 'room'), ('flight', 'route'),
             ('flight', 'flight'), ('attraction', None), ('combo', None)}
 
@@ -55,21 +61,71 @@ def merge_targets(path: Path, fresh: list[dict]) -> list[dict]:
     return list(by_id.values())
 
 
-def crawl_sources(run_dir: Path, destinations: str) -> dict[str, int]:
-    statuses = {}
-    for source in SOURCES:
-        command = [sys.executable, str(ROOT / 'crawl.py'), '--data-dir', str(run_dir), source]
-        if source == 'vinpearl':
-            command.append('--refresh')
-        else:
-            command.extend(['--destinations', destinations])
-            if source == 'booking-hotels':
-                command.append('--fast')
-        print('$ ' + ' '.join(command), flush=True)
-        result = subprocess.run(command, cwd=ROOT, check=False)
-        statuses[source] = result.returncode
-        if result.returncode not in (0, 75):
-            raise RuntimeError(f'Nguồn {source} dừng với mã {result.returncode}')
+_print_lock = threading.Lock()
+
+
+def say(line: str) -> None:
+    """Một dòng log nguyên vẹn khi nhiều nhóm cùng in."""
+    with _print_lock:
+        print(line, flush=True)
+
+
+def run_source(run_dir: Path, source: str, destinations: str, group: str) -> int:
+    command = [sys.executable, str(ROOT / 'crawl.py'), '--data-dir', str(run_dir), source]
+    if source == 'vinpearl':
+        command.append('--refresh')
+    else:
+        command.extend(['--destinations', destinations])
+        if source == 'booking-hotels':
+            command.append('--fast')
+    say(f'[{group}] $ ' + ' '.join(command))
+    with subprocess.Popen(command, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                          text=True, errors='replace') as proc:
+        for line in proc.stdout:
+            say(f'[{group}] {line.rstrip()}')
+    return proc.returncode
+
+
+def crawl_sites(run_dir: Path, destinations: str, groups, parallel: int) -> dict[str, int]:
+    """Chạy các nhóm site song song, tối đa `parallel` nhóm; mỗi bước là tên nguồn crawl.py hoặc một hàm.
+
+    Một bước lỗi thì nhóm đó dừng và các nhóm chưa bắt đầu bị bỏ; nhóm đang chạy được chạy xong rồi mới raise,
+    giống lượt tuần tự cũ dừng ở nguồn lỗi đầu tiên. Mã 75 (bị chặn, đã lưu tiến độ) vẫn được coi là chạy xong.
+    """
+    statuses: dict[str, int] = {}
+    errors: list[Exception] = []
+    stop = threading.Event()
+
+    def run_group(name: str, steps) -> None:
+        if stop.is_set():
+            say(f'catalog.group.skip name={name}')
+            return
+        started, status = time.monotonic(), 'ok'
+        say(f'catalog.group.start name={name}')
+        try:
+            for step in steps:
+                if stop.is_set():
+                    status = 'stopped'
+                    break
+                if callable(step):
+                    step()
+                    continue
+                statuses[step] = code = run_source(run_dir, step, destinations, name)
+                if code not in (0, 75):
+                    raise RuntimeError(f'Nguồn {step} dừng với mã {code}')
+        except Exception as exc:
+            status = 'error'
+            errors.append(exc)
+            stop.set()
+            say(f'[{name}] {type(exc).__name__}: {exc}')
+        finally:
+            say(f'catalog.group.done name={name} status={status} seconds={round(time.monotonic() - started)}')
+
+    with ThreadPoolExecutor(max_workers=parallel, thread_name_prefix='site') as pool:
+        for name, steps in groups:
+            pool.submit(run_group, name, steps)
+    if errors:
+        raise errors[0]
     return statuses
 
 
@@ -104,6 +160,44 @@ def validate_run(products_path: Path, coverage_path: Path, *, full: bool) -> dic
             'variants': sorted(f'{a}/{b or "-"}' for a, b in variants)}
 
 
+def index_settings(db_target: str):
+    """Cấu hình bước index: cùng cặp Postgres/Weaviate với đích nạp, theo quy ước `TARGETS` của daily.py.
+
+    Đích cloud đọc catalog bằng CLOUD_DATABASE_URL (thiếu thì CLOUD_SEED_DATABASE_URL) và ghi vào CLOUD_WEAVIATE_URL
+    với CLOUD_WEAVIATE_API_KEY; đích local dùng DATABASE_URL (thiếu thì SEED_DATABASE_URL) và WEAVIATE_URL như backend.
+    Kiểm trước khi cào để VM cấu hình thiếu không cào hàng giờ rồi mới lỗi ở bước cuối.
+    """
+    repo_root = str(ROOT.parent.parent)
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+    from src.backend.app.core.config import Settings
+    from src.backend.app.infrastructure.vectors.weaviate_store import normalize_weaviate_url
+    if db_target == 'cloud':
+        values = {'database_url': os.environ.get('CLOUD_DATABASE_URL') or os.environ['CLOUD_SEED_DATABASE_URL'],
+                  'weaviate_url': os.environ.get('CLOUD_WEAVIATE_URL', ''),
+                  'weaviate_api_key': os.environ.get('CLOUD_WEAVIATE_API_KEY', '')}
+        required = {'CLOUD_WEAVIATE_URL': values['weaviate_url']}
+    else:
+        values = {'database_url': os.environ.get('DATABASE_URL') or os.environ['SEED_DATABASE_URL']}
+        required = {}
+    settings = Settings(**values)
+    required['COHERE_API_KEY'] = settings.cohere_api_key
+    missing = [name for name, value in required.items() if not value]
+    if missing:
+        raise ValueError(f'Thiếu biến cho bước index: {", ".join(missing)}')
+    normalize_weaviate_url(settings.weaviate_url)
+    return settings
+
+
+def index_catalog(settings) -> dict:
+    # Đọc lại đúng DB vừa ghi, ghi vào Weaviate của cùng đích; runtime API vẫn dùng role chỉ đọc của nó.
+    from src.backend.jobs.embed_products import run
+    print("catalog.index.start", flush=True)
+    report = run(settings=settings)
+    print("catalog.index.complete " + json.dumps(report, ensure_ascii=False), flush=True)
+    return report
+
+
 def run_job(mode: str) -> int:
     state_dir = Path(os.environ.get('CATALOG_STATE_DIR', ROOT / 'data' / 'state')).resolve()
     run_root = Path(os.environ.get('CATALOG_RUN_ROOT', ROOT / 'data' / 'fresh_runs')).resolve()
@@ -127,12 +221,14 @@ def run_job(mode: str) -> int:
         print(f'Next run: {selected}; known Trip IDs: {len(saved_targets(targets_file))}; '
               f'daily batch: {positive_env("TRIP_DAILY_HOTELS", 60)}; '
               f'initial/city: {positive_env("TRIP_INITIAL_PER_CITY", 10)}; '
-              f'new/city: {positive_env("TRIP_NEW_PER_CITY", 3)}')
+              f'new/city: {positive_env("TRIP_NEW_PER_CITY", 3)}; '
+              f'parallel sites (full): {positive_env("CRAWL_PARALLEL", 2)}')
         return 0
     db_target = os.environ.get('DB_TARGET', 'local')
     key = 'SEED_DATABASE_URL' if db_target == 'local' else 'CLOUD_SEED_DATABASE_URL'
     if db_target not in ('local', 'cloud') or not os.environ.get(key):
         raise ValueError(f'Cần DB_TARGET=local/cloud và {key}')
+    index_config = index_settings(db_target)
     options = LiveOptions(
         http_workers=positive_env('FAST_WORKERS', 4),
         price_workers=positive_env('PRICE_WORKERS', 2),
@@ -145,6 +241,11 @@ def run_job(mode: str) -> int:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             raise RuntimeError('Đã có job catalog khác đang chạy') from None
+        maintenance = maintain_catalog(os.environ[key])
+        print("catalog.maintain.complete " + json.dumps(maintenance), flush=True)
+        if mode == 'index':
+            index_catalog(index_config)
+            return 0
         # A killed process can leave temporary captures. They never become inputs.
         if os.environ.get('KEEP_FAILED_RUNS') != '1' and os.environ.get('KEEP_SUCCESS_RUNS') != '1':
             for old in run_root.iterdir():
@@ -161,13 +262,25 @@ def run_job(mode: str) -> int:
                 known = {row['trip_hotel_id'] for row in saved_targets(targets_file)}
                 new_per_city = (positive_env('TRIP_NEW_PER_CITY', 3) if known else
                                 positive_env('TRIP_INITIAL_PER_CITY', 10))
-                targets, discovery = asyncio.run(discover(
-                    Paths(run_dir).ensure(), cities,
-                    positive_env('TRIP_DISCOVERY_SCAN_PER_CITY', 300),
-                    new_per_city, known))
-                if not targets:
-                    raise RuntimeError('Trip không trả ID khách sạn mới hoặc cũ để kiểm tra')
-                statuses = crawl_sources(run_dir, destinations)
+                trip: dict = {}
+
+                def find_hotels() -> None:
+                    trip['targets'], trip['discovery'] = asyncio.run(discover(
+                        Paths(run_dir).ensure(), cities,
+                        positive_env('TRIP_DISCOVERY_SCAN_PER_CITY', 300),
+                        new_per_city, known))
+                    if not trip['targets']:
+                        raise RuntimeError('Trip không trả ID khách sạn mới hoặc cũ để kiểm tra')
+
+                def price_rooms() -> None:
+                    trip['records'], trip['coverage'] = asyncio.run(
+                        crawl(Paths(run_dir).ensure(), trip['targets'], options))
+
+                groups = [(name, (find_hotels, *sources, price_rooms) if name == 'trip' else sources)
+                          for name, sources in SITE_GROUPS]
+                statuses = crawl_sites(run_dir, destinations, groups, positive_env('CRAWL_PARALLEL', 2))
+                targets, discovery = trip['targets'], trip['discovery']
+                records, coverage = trip['records'], trip['coverage']
             else:
                 destinations = None
                 known = saved_targets(targets_file)
@@ -176,7 +289,7 @@ def run_job(mode: str) -> int:
                 targets = select_batch(known, read_state(schedule_file),
                                        positive_env('TRIP_DAILY_HOTELS', 60))
                 discovery, statuses = [], {}
-            records, coverage = asyncio.run(crawl(Paths(run_dir).ensure(), targets, options))
+                records, coverage = asyncio.run(crawl(Paths(run_dir).ensure(), targets, options))
             print(f'Trip complete: {len(records)}/{len(targets)}', flush=True)
             if not records:
                 state = record_batch(targets, coverage, read_state(schedule_file),
@@ -196,17 +309,29 @@ def run_job(mode: str) -> int:
                               'catalog': summary, 'database': counts}, ensure_ascii=False), flush=True)
             return 3 if coverage['unpricedHotelDates'] or any(status != 0 for status in statuses.values()) else 0
         finally:
-            if os.environ.get('KEEP_FAILED_RUNS') == '1' and sys.exc_info()[0] is not None:
-                print(f'Kept failed run: {run_dir}', flush=True)
-            elif os.environ.get('KEEP_SUCCESS_RUNS') == '1' and sys.exc_info()[0] is None:
-                print(f'Kept run: {run_dir}', flush=True)
-            else:
-                shutil.rmtree(run_dir, ignore_errors=False)
+            crawl_failed = sys.exc_info()[0] is not None
+            try:
+                index_catalog(index_config)
+            except Exception as exc:
+                print(f"catalog.index.failed {type(exc).__name__}: {exc}; retry mode=index", file=sys.stderr, flush=True)
+                if not crawl_failed:
+                    raise RuntimeError("Index thất bại; DB đã giữ dữ liệu mới. Chạy lại mode=index") from exc
+            finally:
+                cleanup_run(run_dir, crawl_failed)
+
+
+def cleanup_run(run_dir: Path, failed: bool) -> None:
+    if os.environ.get('KEEP_FAILED_RUNS') == '1' and failed:
+        print(f'Kept failed run: {run_dir}', flush=True)
+    elif os.environ.get('KEEP_SUCCESS_RUNS') == '1' and not failed:
+        print(f'Kept run: {run_dir}', flush=True)
+    else:
+        shutil.rmtree(run_dir, ignore_errors=False)
 
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('mode', nargs='?', choices=('auto', 'full', 'daily', 'status'), default='auto')
+    ap.add_argument('mode', nargs='?', choices=('auto', 'full', 'daily', 'status', 'index'), default='auto')
     args = ap.parse_args(argv)
     try:
         return run_job(args.mode)

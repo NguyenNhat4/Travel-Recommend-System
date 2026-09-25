@@ -10,6 +10,7 @@ import copy
 import json
 import re
 import sys
+from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -108,6 +109,23 @@ def price_attributes(fresh: dict, previous: dict | None, seen_at: str) -> dict:
     return attrs
 
 
+def trip_price_reference(row: dict):
+    """Only expire offers whose current price belongs to Trip, including aliases."""
+    attrs = row.get("attributes") or {}
+    source = (attrs.get("fieldSources") or {}).get("unitPrice")
+    if source and source not in {"trip.com", "trip"}:
+        return None, None
+    refs = [row["source_ref"]]
+    if source in {"trip.com", "trip"}:
+        refs.extend(attrs.get("sameAs") or [])
+    for ref in refs:
+        room = ROOM_REF.fullmatch(ref)
+        prop = PROPERTY_REF.fullmatch(ref)
+        if room or prop:
+            return room, prop
+    return None, None
+
+
 def prepare_rows(fresh: list[dict], existing: list[dict], checked_hotels: set[str],
                  seen_at: str, *, trip_max_age_days: int = 7,
                  now: datetime | None = None) -> tuple[list[dict], dict[str, int]]:
@@ -138,6 +156,12 @@ def prepare_rows(fresh: list[dict], existing: list[dict], checked_hotels: set[st
         if pid in old and not previous:
             raise ValueError(f"ID conflict for {pid}: sourceRef changed")
         attrs = price_attributes(item, previous["attributes"] if previous else None, seen_at)
+        # Khoảng ngày của nguồn trong lượt này; apply_window cắt nó vào cửa sổ 30 ngày như seed.
+        for key, value in (("sourceAvailableFrom", item["availableFrom"]), ("sourceAvailableTo", item["availableTo"])):
+            if value is None:
+                attrs.pop(key, None)
+            else:
+                attrs[key] = value
         parent = attrs.get("parentProductId")
         if parent in mapped_ids:
             attrs["parentProductId"] = mapped_ids[parent]
@@ -150,15 +174,14 @@ def prepare_rows(fresh: list[dict], existing: list[dict], checked_hotels: set[st
         canonical_refs.add(row["source_ref"])
         if previous:
             counts["refreshed"] += 1
-            # SQL UPDATE below only writes attributes, price and available.
+            # SQL UPDATE below only writes attributes, price, available and the booking window.
         else:
             counts["new"] += 1
             counts["newRooms"] += item["taxonomy"] == "hotel" and item["attributes"].get("level") == "room"
         result.append(row)
     represented = {str(row["product_id"]) for row in result}
     for previous in existing:
-        room_match = ROOM_REF.fullmatch(previous["source_ref"])
-        property_match = PROPERTY_REF.fullmatch(previous["source_ref"])
+        room_match, property_match = trip_price_reference(previous)
         match = room_match or property_match
         if not match or match.group(1) not in checked_hotels or previous["source_ref"] in canonical_refs:
             continue
@@ -176,9 +199,9 @@ def prepare_rows(fresh: list[dict], existing: list[dict], checked_hotels: set[st
     # Rotation can take more than one day. Never leave native Trip prices and
     # availability marked live after their last successful capture ages out.
     for previous in existing:
-        if (str(previous["product_id"]) in represented or not previous["available"]
-                or not (ROOM_REF.fullmatch(previous["source_ref"])
-                        or PROPERTY_REF.fullmatch(previous["source_ref"]))):
+        if (str(previous["product_id"]) in represented
+                or (previous.get("attributes") or {}).get("priceFreshness") == "stale"
+                or not any(trip_price_reference(previous))):
             continue
         attrs = previous["attributes"] or {}
         refreshed = attrs.get("priceRefreshedAt")
@@ -191,6 +214,7 @@ def prepare_rows(fresh: list[dict], existing: list[dict], checked_hotels: set[st
         if refreshed_at >= cutoff:
             continue
         expired = copy.deepcopy(attrs)
+        expired.pop("availability", None)
         for key in PRICE_KEYS:
             expired.pop(key, None)
         sources = expired.get("fieldSources") or {}
@@ -202,6 +226,120 @@ def prepare_rows(fresh: list[dict], existing: list[dict], checked_hotels: set[st
         result.append(dict(previous, attributes=expired, unit_price=None, available=False))
         counts["staleTrip"] += 1
     return result, counts
+
+
+CALENDAR_VARIANTS = ("hotel_room", "attraction", "golf")
+
+
+def _seed_rules():
+    """Dùng lại đúng hàm cửa sổ và lịch của seed (MOCK_DATA_SPEC §2 bước 1–2) thay vì chép lại quy tắc."""
+    source_root = str(Path(__file__).resolve().parent.parent)
+    if source_root not in sys.path:
+        sys.path.insert(0, source_root)
+    from data_collection.seed import catalog_meta, load_products
+    return catalog_meta, load_products
+
+
+def _as_date(value) -> date | None:
+    return date.fromisoformat(value) if isinstance(value, str) else value
+
+
+def _with_observed(calendar: str, attrs: dict, as_of: date) -> str:
+    """Ngày đã hỏi giá nằm trong cửa sổ ghi theo kết quả thật: có giá = 1, hết phòng = 0."""
+    marks, priced = list(calendar), attrs.get("pricesByDate") or {}
+    for day in attrs.get("pricesByDateQueried") or []:
+        index = (date.fromisoformat(day) - as_of).days
+        if 0 <= index < len(marks):
+            value = priced.get(day)
+            marks[index] = "1" if value is not None and value > 0 else "0"
+    return "".join(marks)
+
+
+def _calendar(kind: str, row: dict, view: dict, views: dict, as_of: date, meta, loader) -> str:
+    """Lịch 30 ký tự như seed; dòng chưa khả dụng (hết bán, giá quá hạn, ngoài cửa sổ) đóng cả 30 ngày."""
+    if not row["available"] or row["available_from"] is None:
+        return "0" * meta.WINDOW_DAYS
+    attrs = row["attributes"]
+    if kind == "hotel_room":
+        calendar = loader.real_room_calendar(attrs.get("pricesByDate"), attrs.get("pricesByDateQueried"), as_of)
+        if calendar is None:  # dữ liệu hỏi thưa: lịch mô phỏng của seed, cộng các ngày mẫu đã biết
+            calendar = _with_observed(meta.room_calendar(view, as_of, views), attrs, as_of)
+    else:
+        calendar = meta.ticket_calendar(view["productId"], as_of)
+    return loader.zero_outside(calendar, as_of, row["available_from"].isoformat(), row["available_to"].isoformat())
+
+
+def apply_window(rows: list[dict], as_of: date) -> dict[str, dict]:
+    """Cửa sổ đặt chỗ và lịch 30 ngày cho toàn catalog, như seed (DATABASE_SCHEMA.md #13, MOCK_DATA_SPEC.md §2).
+
+    available_from/to = khoảng nguồn `attributes.sourceAvailableFrom/To` cắt vào [as_of, as_of + 29]; nguồn không
+    có thì lấy cả cửa sổ. Chuyến bay: from = to = ngày bay (ngày đã thấy trong cửa sổ, không có thì dời vào cửa sổ
+    theo crc32), giờ bay đổi theo. Tuyến: min/max ngày của các chuyến con. Giao rỗng thì available = false và hai
+    ngày = NULL. Không bật lại dòng đang available = false: nguồn còn bán thì lượt cào sau ghi lại.
+    Hạng phòng, điểm tham quan, golf có `attributes.availability` phủ đúng cửa sổ (xem `_calendar`).
+    Trả về các dòng có thay đổi, theo product_id.
+    """
+    meta, loader = _seed_rules()
+    lo, hi = meta.window(as_of)
+    before = {str(row["product_id"]): row for row in rows}
+    views = {pid: {"productId": pid, "sourceRef": row["source_ref"], "attributes": row["attributes"] or {}}
+             for pid, row in before.items()}
+    after: dict[str, dict] = {}
+    kinds: dict[str, str] = {}
+    flight_days: dict[str, list[date]] = defaultdict(list)
+    for pid, row in before.items():
+        attrs = row["attributes"] or {}
+        kinds[pid] = meta.variant({"taxonomy": row["taxonomy"], "attributes": attrs})
+        start, end = (date.fromisoformat(day) for day in
+                      loader.clip(attrs.get("sourceAvailableFrom"), attrs.get("sourceAvailableTo"), lo, hi))
+        if kinds[pid] == "flight":
+            start, _ = loader.pick_flight_date({"productId": pid, "availableFrom": attrs.get("sourceAvailableFrom"),
+                                                "attributes": attrs}, lo, hi)
+            end = start
+            attrs = copy.deepcopy(attrs)
+            loader.move_flight(attrs, start)
+            flight_days[attrs.get("parentProductId") or ""].append(start)
+        after[pid] = dict(row, attributes=attrs, available_from=start, available_to=end)
+    changed = {}
+    for pid, row in after.items():
+        if kinds[pid] == "flight_route" and flight_days.get(pid):
+            row["available_from"], row["available_to"] = min(flight_days[pid]), max(flight_days[pid])
+        if row["available_from"] > row["available_to"]:
+            row.update(available=False, available_from=None, available_to=None)
+        if kinds[pid] in CALENDAR_VARIANTS:
+            calendar = _calendar(kinds[pid], row, views[pid], views, as_of, meta, loader)
+            row["attributes"] = dict(row["attributes"], availability={
+                "from": as_of.isoformat(), "days": meta.WINDOW_DAYS, "calendar": calendar})
+        old = before[pid]
+        if ((row["available"], row["available_from"], row["available_to"], row["attributes"])
+                != (old["available"], _as_date(old["available_from"]), _as_date(old["available_to"]),
+                    old["attributes"] or {})):
+            changed[pid] = row
+    return changed
+
+
+def maintain_catalog(url: str, *, today: date | None = None, now: datetime | None = None) -> dict[str, int]:
+    """Transaction riêng ở đầu mỗi lượt, chạy cả khi mọi nguồn lỗi: hết hạn giá Trip quá hạn và cuộn cửa sổ 30 ngày."""
+    import psycopg
+    from psycopg.types.json import Jsonb
+    today = today or date.today()
+    with psycopg.connect(url, row_factory=psycopg.rows.dict_row) as conn:
+        conn.execute("SELECT pg_advisory_xact_lock(7791024)")
+        existing = conn.execute("SELECT * FROM cdp.products").fetchall()
+        expired, counts = prepare_rows([], existing, set(), today.isoformat(), now=now)
+        state = {str(row["product_id"]): row for row in existing}
+        state.update((str(row["product_id"]), row) for row in expired)
+        windowed = apply_window(list(state.values()), today)
+        writes = {str(row["product_id"]): row for row in expired}
+        writes.update(windowed)
+        with conn.cursor() as cursor:
+            cursor.executemany(
+                """UPDATE cdp.products SET attributes = %s, unit_price = %s, available = %s,
+                       available_from = %s, available_to = %s
+                   WHERE product_id = %s""",
+                [(Jsonb(row["attributes"]), row["unit_price"], row["available"], row["available_from"],
+                  row["available_to"], row["product_id"]) for row in writes.values()])
+    return {"staleTrip": counts["staleTrip"], "windowRows": len(windowed)}
 
 
 def load_into_db(products_path: Path, coverage_path: Path, url: str,
@@ -234,6 +372,13 @@ def load_into_db(products_path: Path, coverage_path: Path, url: str,
             cursor.execute("SELECT * FROM cdp.products")
             existing = cursor.fetchall()
         prepared, counts = prepare_rows(fresh, existing, checked, seen_at)
+        # Cửa sổ 30 ngày tính trên trạng thái sau lượt này: dòng mới/làm mới, và tuyến có chuyến con đổi ngày.
+        state = {str(row["product_id"]): row for row in existing}
+        state.update((str(row["product_id"]), row) for row in prepared)
+        windowed = apply_window(list(state.values()), date.fromisoformat(seen_at))
+        # Giữ thứ tự: canonical_ids bên dưới ánh xạ fresh[i] với prepared[i].
+        prepared = [windowed.pop(str(row["product_id"]), row) for row in prepared]
+        prepared.extend(windowed.values())
         # Combo parser sees IDs from this run. Existing DB aliases can retain an
         # older canonical productId, so map both ends before FK validation.
         canonical_ids = {item["productId"]: prepared[index]["product_id"]
@@ -248,13 +393,15 @@ def load_into_db(products_path: Path, coverage_path: Path, url: str,
         copy_rows(conn, "incoming_products", list(COLUMNS), prepared)
         cols = ", ".join(COLUMNS)
         changed = " OR ".join(f"p.{c} IS DISTINCT FROM EXCLUDED.{c}" for c in
-                              ("attributes", "unit_price", "available"))
+                              ("attributes", "unit_price", "available", "available_from", "available_to"))
         written = conn.execute(f"""
             INSERT INTO cdp.products AS p ({cols}) SELECT {cols} FROM incoming_products WHERE true
             ON CONFLICT (product_id) DO UPDATE SET
                 attributes = EXCLUDED.attributes,
                 unit_price = EXCLUDED.unit_price,
-                available = EXCLUDED.available
+                available = EXCLUDED.available,
+                available_from = EXCLUDED.available_from,
+                available_to = EXCLUDED.available_to
             WHERE {changed}
             RETURNING product_id
         """).fetchall()

@@ -3,12 +3,12 @@
 set -euo pipefail
 
 mode="${1:-auto}"
-[[ "$#" -le 1 && "$mode" =~ ^(auto|full|daily|status|--auto|--full|--daily|--status)$ ]] || {
-  echo 'Usage: crawler image [auto|full|daily|status]' >&2
+[[ "$#" -le 1 && "$mode" =~ ^(auto|full|daily|index|status|--auto|--full|--daily|--index|--status)$ ]] || {
+  echo 'Usage: crawler image [auto|full|daily|index|status]' >&2
   exit 2
 }
 mode="${mode#--}"
-if [[ "$mode" == status ]]; then
-  exec python /app/src/data_collection/fresh_catalog.py status
+if [[ "$mode" == status || "$mode" == index ]]; then
+  exec python /app/src/data_collection/fresh_catalog.py "$mode"
 fi
 exec xvfb-run -a -s '-screen 0 1366x768x24' python /app/src/data_collection/fresh_catalog.py "$mode"
