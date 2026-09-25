@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Job VM. `run` (= `legacy-run`), `init`, `daily`, `monitor`: job daily.py (Dockerfile.daily) mà cron của CI/CD đang gọi.
-# `fresh-run [auto|full|daily|index|status]`: job cào mới (Dockerfile.fresh-catalog), nạp DB rồi index Weaviate. Chỉ một
+# Job VM. `run` (= `legacy-run`), `init`, `daily`: job daily.py (Dockerfile.daily) mà cron của CI/CD đang gọi.
+# `fresh-run [auto|full|daily|index|status|due|tick]`: job cào mới (Dockerfile.fresh-catalog), nạp DB rồi index Weaviate. Chỉ một
 #   trong hai job được lên lịch cho cùng DB. Theo dõi job mới: `logs [-f] [-n SỐ_DÒNG] [LƯỢT]` · `report [SỐ_LƯỢT]` ·
 #   `fresh-run status`; backend compose cùng VM: `backend [logs [-f] [-n SỐ_DÒNG]]`.
 # Only this runner script, Docker, an env file and a data volume are needed on the VM.
@@ -80,25 +80,25 @@ cmd_legacy_run() {
 
 cmd_fresh_run() {
   local mode="${1:-auto}" log_dir log status=0 container_name
-  [ "$#" -le 1 ] || die 'fresh-run accepts one mode: auto, full, daily, index or status'
+  [ "$#" -le 1 ] || die 'fresh-run accepts one mode: auto, full, daily, index, status, due or tick'
   case "$mode" in
-    auto|full|daily|index|status|--auto|--full|--daily|--index|--status) mode="${mode#--}" ;;
-    *) die 'fresh-run accepts one mode: auto, full, daily, index or status' ;;
+    auto|full|daily|index|status|due|tick|--auto|--full|--daily|--index|--status|--due|--tick) mode="${mode#--}" ;;
+    *) die 'fresh-run accepts one mode: auto, full, daily, index, status, due or tick' ;;
   esac
   [ -d "$FRESH_DATA_DIR" ] || die "chưa có $FRESH_DATA_DIR (tạo với UID/GID 10001 cho app trong image)"
   log_dir="$FRESH_LOG_DIR"
   mkdir -p "$log_dir"
-  [ "$mode" = status ] || [ -r "$FRESH_ENV_FILE" ] || die "không đọc được $FRESH_ENV_FILE"
+  [[ "$mode" = status || "$mode" = due ]] || [ -r "$FRESH_ENV_FILE" ] || die "không đọc được $FRESH_ENV_FILE"
   container_name="$FRESH_NAME"
-  if [ "$mode" = status ]; then container_name="$FRESH_NAME-status-$$"; fi
+  if [[ "$mode" = status || "$mode" = due ]]; then container_name="$FRESH_NAME-$mode-$$"; fi
   local args=(--rm --init --name "$container_name"
               --network "$FRESH_NETWORK" --shm-size "${FRESH_SHM_SIZE:-512m}"
               -v "$FRESH_DATA_DIR:/data")
   if [ -r "$FRESH_ENV_FILE" ]; then args+=(--env-file "$FRESH_ENV_FILE"); fi
   args+=(-e CATALOG_STATE_DIR=/data/state -e CATALOG_RUN_ROOT=/data/fresh_runs)
-  if [ "$mode" = status ]; then
-    status_host
-    docker run "${args[@]}" "$FRESH_IMAGE" status
+  if [[ "$mode" = status || "$mode" = due ]]; then
+    if [ "$mode" = status ]; then status_host; fi
+    docker run "${args[@]}" "$FRESH_IMAGE" "$mode"
     return
   fi
   find "$log_dir" -maxdepth 1 -name 'fresh-catalog-*.log' -mtime +30 -delete 2>/dev/null || true
@@ -117,6 +117,21 @@ cmd_fresh_run() {
   fi
   echo "fresh catalog exit=$status; log=$log"
   return "$status"
+}
+
+# Same image and shared volume as cron; no Docker socket is exposed to the monitor.
+cmd_fresh_monitor() {
+  [ -d "$FRESH_DATA_DIR" ] || die "chưa có $FRESH_DATA_DIR (UID/GID 10001)"
+  [ -r "$FRESH_ENV_FILE" ] || die "không đọc được $FRESH_ENV_FILE"
+  local args=(--rm --init --name "$FRESH_NAME-monitor" --network host
+              --shm-size "${FRESH_SHM_SIZE:-512m}" -v "$FRESH_DATA_DIR:/data"
+              --env-file "$FRESH_ENV_FILE" -e CATALOG_STATE_DIR=/data/state
+              -e CATALOG_RUN_ROOT=/data/fresh_runs --entrypoint python)
+  if [ -d "$FRESH_LOG_DIR" ]; then
+    args+=(--group-add "$(stat -c %g "$FRESH_LOG_DIR")"
+           -v "$FRESH_LOG_DIR:/runner-logs:ro" -e CATALOG_LOG_DIR=/runner-logs)
+  fi
+  docker run "${args[@]}" "$FRESH_IMAGE" /app/src/data_collection/monitor.py "$@"
 }
 
 # ---------------------------------------------------------------------- theo dõi trên console
@@ -256,6 +271,6 @@ case "${1:-}" in
   legacy-run) shift; cmd_legacy_run "$@" ;;
   daily) shift; docker_run "$NAME-manual-$$" -- python daily.py "$@" ;;
   # monitor.py chỉ nghe 127.0.0.1 (chống DNS rebinding) nên dùng mạng của host: trang nằm ở 127.0.0.1:8765 của VPS
-  monitor) shift; DOCKER_NETWORK='' docker_run "$NAME-monitor" --network host -- python monitor.py "$@" ;;
+  monitor|fresh-monitor) shift; cmd_fresh_monitor "$@" ;;
   *) sed -n '2,6p' "$0"; exit 2 ;;
 esac
