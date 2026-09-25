@@ -212,6 +212,24 @@ class AssistantContractTests(unittest.TestCase):
         final = payloads[-1]
         self.assert_conforms(ITINERARIES, final["httpStatus"], final["response"], "run.completed")
 
+    def test_stream_reports_a_graph_error_as_run_failed(self):
+        """Lỗi sinh trong graph (hội thoại hết hạn) là run.failed mang Error Envelope, không phải run.completed."""
+        with TestClient(app) as client:
+            app.state.itinerary_llm = ScriptedLlm()
+            app.state.itinerary_http_clients = Clients()
+            response = client.post(f"/api/v1{STREAM}",
+                                   json={"conversationId": "conv-khong-co", "message": "đổi sang Hà Nội"})
+        events = []
+        for block in response.text.strip().split("\n\n"):
+            name, data = block.split("\n", 1)
+            events.append((name.removeprefix("event: "), json.loads(data.removeprefix("data: "))))
+        self.assertEqual(events[-1][0], "run.failed")
+        self.assertNotIn("run.completed", [name for name, _ in events])
+        final = events[-1][1]
+        self.assertEqual(final["httpStatus"], 404)
+        self.assertEqual(final["error"]["error"]["code"], "CONVERSATION_NOT_FOUND")
+        self.assert_conforms(ITINERARIES, 404, final["error"], "run.failed")
+
     def test_stream_never_leaks_prompt_state_or_credentials(self):
         """Hợp đồng Agent §4.1: event chỉ mang ID node, thứ tự, trạng thái, thời lượng, response."""
         with TestClient(app) as client:

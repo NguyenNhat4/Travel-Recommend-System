@@ -445,12 +445,14 @@ pre.cmd{margin:0;background:var(--ink);color:var(--paper);border-radius:6px;padd
     <thead><tr><th>Mã lỗi</th><th>HTTP</th><th>Khi nào</th></tr></thead>
     <tbody>
       <tr><td class="mono">VALIDATION_ERROR</td><td class="mono">400</td><td>Yêu cầu bị từ chối vì ngoài phạm vi (qua <code>converse</code>)</td></tr>
+      <tr><td class="mono">CONVERSATION_NOT_FOUND</td><td class="mono">404</td><td>Hội thoại hết hạn hoặc thuộc người khác; Web tự gửi lại tin nhắn như hội thoại mới</td></tr>
       <tr><td class="mono">UNSUPPORTED_DESTINATION</td><td class="mono">422</td><td>Điểm đến ngoài catalog, kèm danh sách điểm đến hỗ trợ; hội thoại vẫn tiếp được</td></tr>
       <tr><td class="mono">LLM_UNAVAILABLE</td><td class="mono">503</td><td>LLM tắt hoặc <code>classify</code> lỗi</td></tr>
       <tr><td class="mono">ITINERARY_VALIDATION_FAILED</td><td class="mono">500</td><td><code>finalize</code> bác response vi phạm schema hoặc grounding</td></tr>
     </tbody>
   </table>
   </div>
+  <p class="small">Qua SSE: response hợp lệ nằm trong <code>run.completed</code>, mọi lỗi (kể cả lỗi sinh trong graph) nằm trong <code>run.failed</code> kèm <code>httpStatus</code>.</p>
   <div class="foot"><span>Itinerary Agent</span><span>09</span></div>
 </section>
 
@@ -463,7 +465,7 @@ pre.cmd{margin:0;background:var(--ink);color:var(--paper);border-radius:6px;padd
     <div class="turn"><span class="no">LƯỢT 3</span><span class="say">“đổi thành Đà Nẵng”</span><span class="eff">Chỉ thay <code>destination</code>, giữ số ngày, ngân sách. Tìm lại từ đầu.</span></div>
     <div class="turn"><span class="no">LƯỢT 4</span><span class="say">“bỏ khách sạn này đi”</span><span class="eff">LLM chỉ được chọn <code>productId</code> có trong <code>previous_selection</code> để loại; ID lạ bị lọc.</span></div>
   </div>
-  <p class="small">Intent lưu 24 giờ. Giá và availability luôn tải lại mỗi lượt. <code>context.language</code> hỗ trợ <code>vi</code>/<code>en</code>, mặc định tiếng Việt.</p>
+  <p class="small">Intent lưu 24 giờ, gắn với user đã xác thực (<code>cdp_user_id</code>) nên sống qua lần BFF làm mới access token. Giá và availability luôn tải lại mỗi lượt. <code>context.language</code> hỗ trợ <code>vi</code>/<code>en</code>, mặc định tiếng Việt.</p>
   <div class="foot"><span>Itinerary Agent</span><span>10</span></div>
 </section>
 
@@ -531,6 +533,7 @@ python -m src.evaluation.agent.golden --only G-001,G-002   # --sweep · --repeat
         <li>Không tự suy <code>startDate</code> khi người dùng không nói</li>
         <li>Đo lại latency với ngân sách timeout của spec, hướng tới p95 &lt; 5 giây</li>
         <li>Cân nhắc đưa <code>pace</code> vào bước xếp lịch</li>
+        <li>Lưu hội thoại bền vào <code>app.conversations</code> (hiện trong RAM, mất khi backend restart)</li>
       </ul>
     </div>
     <div class="head" style="gap:18px;align-self:center">

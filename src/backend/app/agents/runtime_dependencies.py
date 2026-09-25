@@ -34,12 +34,17 @@ class LangGraphItineraryPlanner:
 class RuntimeAgentDependencies:
     def __init__(self, tools: ToolExecutorPort, store: ConversationStorePort,
                  llm: ChatModelPort | None = None, authorization: str | None = None,
-                 *, tool_timeout_seconds: float = 1.0,
+                 *, owner: str | None = None, tool_timeout_seconds: float = 1.0,
                  llm_timeout_seconds: float = 2.0):
         self.tools = tools
         self.store = store
         self.llm = llm
-        self.owner = sha256(authorization.encode()).hexdigest() if authorization else "anonymous"
+        # Chủ là user đã xác thực, không phải token: BFF làm mới access token mỗi ~9 phút và hội thoại
+        # phải sống qua lần làm mới đó. Bearer không xác thực được thì cô lập theo hash của chính nó.
+        if owner:
+            self.owner = f"user:{owner}"
+        else:
+            self.owner = f"token:{sha256(authorization.encode()).hexdigest()}" if authorization else "anonymous"
         self.require_recommendations = authorization is not None
         self.tool_timeout_seconds = tool_timeout_seconds
         self.llm_timeout_seconds = llm_timeout_seconds

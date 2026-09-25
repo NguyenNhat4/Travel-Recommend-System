@@ -12,7 +12,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Header, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from src.backend.app.api.deps import get_plan_itinerary
+from src.backend.app.api.deps import conversation_owner, get_plan_itinerary
 from src.backend.app.api.v1.schemas.itinerary import ItineraryRequestModel
 from src.backend.app.application.itinerary.contracts import error_response, valid
 from src.backend.app.application.itinerary.use_cases import PlanItinerary
@@ -33,7 +33,7 @@ def _unavailable(request_id: str) -> JSONResponse:
 
 
 async def _run(payload: ItineraryRequestModel, request: Request, authorization: str | None,
-               use_case: PlanItinerary):
+               owner: str | None, use_case: PlanItinerary):
     request_id = current_request_id() or uuid.uuid4().hex
     conversation = _conversation_label(payload)
     logger.info("itinerary.start requestId=%s conversationId=%s transport=json", request_id, conversation)
@@ -41,7 +41,7 @@ async def _run(payload: ItineraryRequestModel, request: Request, authorization: 
         return JSONResponse(status_code=422, content=error_response(
             "VALIDATION_ERROR", "Yêu cầu lịch trình không hợp lệ.", request_id
         ))
-    planner = use_case.planner(authorization)
+    planner = use_case.planner(authorization, owner)
     if planner is None:
         return _unavailable(request_id)
     try:
@@ -80,20 +80,22 @@ def _observed_duration_ms(started_at: float, finished_at: float | None = None) -
 @router.post("/assistant/itineraries")
 async def create_itinerary(payload: ItineraryRequestModel, request: Request,
                            authorization: str | None = Header(default=None),
+                           owner: str | None = Depends(conversation_owner),
                            use_case: PlanItinerary = Depends(get_plan_itinerary)):
-    return await _run(payload, request, authorization, use_case)
+    return await _run(payload, request, authorization, owner, use_case)
 
 
 @router.post("/assistant/itineraries/stream")
 async def stream_itinerary(payload: ItineraryRequestModel, request: Request,
                            authorization: str | None = Header(default=None),
+                           owner: str | None = Depends(conversation_owner),
                            use_case: PlanItinerary = Depends(get_plan_itinerary)):
     request_id = current_request_id() or uuid.uuid4().hex
     if not valid("ItineraryRequest", payload.model_dump(exclude_none=True)):
         return JSONResponse(status_code=422, content=error_response(
             "VALIDATION_ERROR", "Yêu cầu lịch trình không hợp lệ.", request_id
         ))
-    planner = use_case.planner(authorization)
+    planner = use_case.planner(authorization, owner)
     if planner is None:
         return _unavailable(request_id)
     run_id = uuid.uuid4().hex
@@ -137,10 +139,18 @@ async def stream_itinerary(payload: ItineraryRequestModel, request: Request,
                     last_node_at = perf_counter()
             if final_state is None or "response" not in final_state:
                 raise RuntimeError("graph ended without a response")
-            yield _sse("run.completed", {
-                "runId": run_id, "httpStatus": final_state["http_status"],
-                "response": final_state["response"],
-            })
+            if final_state["http_status"] >= 400:
+                # Hợp đồng: lỗi nghiệp vụ (404 hội thoại hết hạn, 422 điểm đến ngoài catalog...) là
+                # run.failed mang Error Envelope; run.completed chỉ dành cho AssistantResponse hợp lệ.
+                yield _sse("run.failed", {
+                    "runId": run_id, "httpStatus": final_state["http_status"],
+                    "error": final_state["response"],
+                })
+            else:
+                yield _sse("run.completed", {
+                    "runId": run_id, "httpStatus": final_state["http_status"],
+                    "response": final_state["response"],
+                })
             logger.info(
                 "itinerary.completed requestId=%s runId=%s conversationId=%s transport=sse httpStatus=%s status=%s latencyMs=%s retryCount=%s",
                 request_id, run_id, final_state["response"].get("conversationId", conversation),

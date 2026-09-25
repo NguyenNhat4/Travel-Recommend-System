@@ -148,6 +148,8 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => () => abortCurrentRun(), [abortCurrentRun]);
 
+  const executeRequestRef = useRef<((request: AssistantRequest, userText: string, appendUser: boolean) => void) | null>(null);
+
   const executeRequest = useCallback((
     request: AssistantRequest,
     userText: string,
@@ -183,7 +185,16 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
           dispatch({ type: 'response-received', response });
           activeRunIdRef.current = null;
         } else if (event.event === 'run.failed') {
-          dispatch({ type: 'request-failed', error: backendEventError(event.data) });
+          const error = backendEventError(event.data);
+          // Hội thoại đã hết hạn: gửi lại đúng tin nhắn như hội thoại mới (hợp đồng Frontend §8).
+          // Request mới có conversationId null nên không thể 404 lần nữa. Patch chip không có
+          // message thì không gửi lại được, vì contract bắt intentOverride đi cùng conversationId.
+          if (error.code === 'CONVERSATION_NOT_FOUND' && request.conversationId && request.message) {
+            dispatch({ type: 'conversation-restarted' });
+            executeRequestRef.current?.({ ...request, conversationId: null }, userText, false);
+            return;
+          }
+          dispatch({ type: 'request-failed', error });
           activeRunIdRef.current = null;
         }
       },
@@ -197,6 +208,10 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       if (abortControllerRef.current === controller) abortControllerRef.current = null;
     });
   }, [abortCurrentRun]);
+
+  useEffect(() => {
+    executeRequestRef.current = executeRequest;
+  }, [executeRequest]);
 
   const sendMessage = useCallback((message: string, context?: AssistantContextData) => {
     const cleanMessage = message.trim();

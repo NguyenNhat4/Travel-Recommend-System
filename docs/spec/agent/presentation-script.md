@@ -83,11 +83,15 @@ Lướt sáu luật, nhấn luật 2 và 4: "Khách sạn chọn giá thấp nh�
 
 "Response có bốn trạng thái nghiệp vụ: hoàn thành, cần hỏi thêm, không có kết quả và suy giảm. Tổng tiền do backend tính; thiếu giá thì tổng để trống kèm cảnh báo, không coi thiếu giá là 0."
 
-"Lỗi đi riêng theo chuẩn Error Envelope. Đáng chú ý nhất là 422 cho điểm đến ngoài catalog: hội thoại vẫn tiếp tục được, người dùng chỉ cần chọn điểm đến khác."
+"Lỗi đi riêng theo chuẩn Error Envelope. Đáng chú ý nhất là 422 cho điểm đến ngoài catalog: hội thoại vẫn tiếp tục được, người dùng chỉ cần chọn điểm đến khác. Còn 404 là hội thoại đã hết hạn: Web tự gửi lại tin nhắn như một hội thoại mới, người dùng không phải làm gì."
+
+"Với stream, response hợp lệ nằm trong sự kiện `run.completed`, còn mọi lỗi nằm trong `run.failed` kèm mã HTTP, để Web phân biệt được hai trường hợp."
 
 ## Slide 10 — Hội thoại nhiều lượt (1 phút)
 
 Đọc theo bốn lượt: "Mỗi lượt chỉ sửa phần người dùng vừa đổi. Nói *đổi thành Đà Nẵng* thì chỉ đổi điểm đến, giữ nguyên số ngày và ngân sách."
+
+"Hội thoại gắn với tài khoản đã đăng nhập chứ không gắn với token. Token tự làm mới khoảng chín phút một lần, và hội thoại vẫn giữ nguyên qua các lần đó."
 
 Lượt 4: "Khi người dùng nói *bỏ khách sạn này*, LLM chỉ được chọn trong các sản phẩm đã hiển thị ở lượt trước. Mã lạ bị lọc bỏ, nên kể cả ở bước này LLM cũng không đưa được sản phẩm lạ vào."
 
@@ -119,7 +123,7 @@ Nếu có thời gian thì chuyển sang demo trực tiếp bằng ba lệnh tr�
 
 ## Slide 14 — Việc tiếp theo và hỏi đáp (1 phút)
 
-"Hướng tiếp theo: giữ nguyên grounding 100%, kéo phần hành vi lên cùng mức." Đọc lướt danh sách: bảng alias điểm đến, đủ hoạt động cho chuyến gia đình, từ chối rõ yêu cầu đặt chỗ thay người dùng, không tự đặt ngày đi, đo lại độ trễ với timeout theo spec, và cân nhắc đưa `pace` vào bước xếp lịch.
+"Hướng tiếp theo: giữ nguyên grounding 100%, kéo phần hành vi lên cùng mức." Đọc lướt danh sách: bảng alias điểm đến, đủ hoạt động cho chuyến gia đình, từ chối rõ yêu cầu đặt chỗ thay người dùng, không tự đặt ngày đi, đo lại độ trễ với timeout theo spec, cân nhắc đưa `pace` vào bước xếp lịch, và lưu hội thoại bền vào database thay cho bộ nhớ của process.
 
 "Em xin hết, mời mọi người đặt câu hỏi."
 
@@ -152,3 +156,5 @@ Demo gọi LLM thật và phát sinh chi phí. Không bật LangSmith khi chia s
 **Giá trong lịch trình có đúng lúc thanh toán không?** Giá và `available` là snapshot lúc tìm. Checkout kiểm tra lại; hội thoại không bao giờ dùng giá đã lưu.
 
 **Sao không hỗ trợ Paris hay điểm đến ngoài catalog?** Agent chỉ đề xuất những gì V-OTA bán được. Điểm đến ngoài catalog trả 422 kèm danh sách điểm đến hỗ trợ để người dùng chọn tiếp.
+
+**Đang chat mà backend khởi động lại thì sao?** Hiện hội thoại lưu trong bộ nhớ của process nên sẽ mất. Web nhận 404 `CONVERSATION_NOT_FOUND`, tự bắt đầu hội thoại mới và gửi lại câu vừa gõ; ngữ cảnh các lượt trước không còn. Bước tiếp theo là lưu vào bảng `app.conversations` đã có trong DDL.

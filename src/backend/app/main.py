@@ -267,7 +267,7 @@ async def _reconcile_loop(reconcile, interval_seconds: int) -> None:
             logger.exception("booking.reconcile.loop_failed")
 
 
-def _itinerary_runtime(app: FastAPI, settings: Settings, authorization: str | None):
+def _itinerary_runtime(app: FastAPI, settings: Settings, authorization: str | None, owner: str | None = None):
     """Dựng dependency của agent cho một request. Đọc `app.state` lúc gọi để test thay được client/LLM."""
     clients = getattr(app.state, "itinerary_http_clients", None)
     store = getattr(app.state, "itinerary_conversation_store", None)
@@ -276,14 +276,14 @@ def _itinerary_runtime(app: FastAPI, settings: Settings, authorization: str | No
     catalog = clients if getattr(clients, "supports_catalog", False) else None
     gateway = ItineraryToolGateway(clients, clients, catalog, recommendation_authorization=authorization)
     return RuntimeAgentDependencies(
-        gateway, store, getattr(app.state, "itinerary_llm", None), authorization,
+        gateway, store, getattr(app.state, "itinerary_llm", None), authorization, owner=owner,
         tool_timeout_seconds=settings.itinerary_tool_timeout_seconds,
         llm_timeout_seconds=settings.itinerary_llm_timeout_seconds,
     )
 
 
-def _itinerary_planner(app: FastAPI, settings: Settings, authorization: str | None):
-    runtime = _itinerary_runtime(app, settings, authorization)
+def _itinerary_planner(app: FastAPI, settings: Settings, authorization: str | None, owner: str | None = None):
+    runtime = _itinerary_runtime(app, settings, authorization, owner)
     return runtime.planner() if runtime is not None else None
 
 
@@ -360,7 +360,7 @@ async def lifespan(app: FastAPI):
             ttl_seconds=settings.itinerary_conversation_ttl_seconds
         )
         app.state.plan_itinerary = PlanItinerary(
-            lambda authorization: _itinerary_planner(app, settings, authorization),
+            lambda authorization, owner: _itinerary_planner(app, settings, authorization, owner),
             settings.itinerary_request_timeout_seconds,
         )
         mode = settings.itinerary_data_mode or ("fixture" if settings.app_env in {"development", "test"} else "disabled")

@@ -14,6 +14,8 @@ export type AssistantPhase =
 
 export type AssistantRequestSnapshot = AssistantRequest;
 
+export const CONVERSATION_RESTARTED_TEXT = 'Đã bắt đầu cuộc trò chuyện mới.';
+
 export interface AssistantProgress {
   sequence?: number;
   nodeId?: string;
@@ -62,6 +64,7 @@ type Action =
   | { type: 'node-completed'; progress: AssistantProgress }
   | { type: 'response-received'; response: AssistantResponse }
   | { type: 'request-failed'; error: AssistantError }
+  | { type: 'conversation-restarted' }
   | { type: 'request-aborted' }
   | { type: 'slow-state'; isSlow: boolean }
   | { type: 'reset' }
@@ -161,6 +164,18 @@ export function assistantReducer(state: AssistantState, action: Action): Assista
           : state.conversationId;
       return { ...state, phase: 'failed', conversationId, error: action.error, isSlow: false };
     }
+    case 'conversation-restarted':
+      // Hợp đồng Frontend §8: hội thoại hết hạn thì bỏ conversationId và báo đã bắt đầu hội thoại mới.
+      return {
+        ...state,
+        conversationId: null,
+        transcript: [...state.transcript, {
+          id: `assistant-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          sender: 'assistant',
+          text: CONVERSATION_RESTARTED_TEXT,
+          createdAt: Date.now(),
+        }],
+      };
     case 'request-aborted':
       return { ...state, phase: 'aborted', error: null, isSlow: false };
     case 'slow-state':

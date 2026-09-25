@@ -91,6 +91,22 @@ async def optional_principal(
     return await _verified(token, verifier, revoked) if token is not None else None
 
 
+async def conversation_owner(request: Request, authorization: str | None = Header(default=None)) -> str | None:
+    """Chủ hội thoại của trợ lý = cdp_user_id của Bearer hợp lệ, để token được BFF làm mới vẫn cùng chủ.
+
+    Không có hoặc hỏng Bearer → None, không 401: contract stream không khai báo 401; agent tự trả
+    INVALID_TOKEN khi gọi Recommendation bằng token đó.
+    """
+    verifier = getattr(request.app.state, "token_verifier", None)
+    if verifier is None:
+        return None
+    try:
+        token = _bearer(authorization)
+        return (await _verified(token, verifier, get_revoked_tokens(request))).cdp_user_id if token else None
+    except AuthError:
+        return None
+
+
 async def current_principal(
     authorization: str | None = Header(default=None), verifier=Depends(get_token_verifier),
     revoked=Depends(get_revoked_tokens),

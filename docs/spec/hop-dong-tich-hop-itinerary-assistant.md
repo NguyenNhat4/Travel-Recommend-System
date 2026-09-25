@@ -416,6 +416,7 @@ Lỗi thực sự không nằm trong `ItineraryResponse` và không dùng `statu
 - Thực hiện tìm kiếm lại khi điểm đến, ngày, ngân sách, số người hoặc sở thích thay đổi.
 - Không dùng trạng thái hội thoại làm nguồn chính thức cho giá và availability.
 - MVP nên cho conversation hết hạn sau 24 giờ.
+- Conversation thuộc về user đã xác thực (`cdp_user_id` của Bearer hợp lệ), không thuộc về access token: BFF làm mới token khoảng 9 phút một lần và hội thoại phải giữ nguyên qua lần làm mới. Khách không có Bearer dùng chung nhóm `anonymous`; Bearer không xác thực được thì cô lập theo hash của chính token đó.
 - Adapter hiện tại lưu trong memory của process; restart backend sẽ mất conversation. Việc lưu bền vững vào các bảng `app.conversations`/`app.conversation_messages` đã có trong DDL là hạng mục adapter riêng.
 
 ---

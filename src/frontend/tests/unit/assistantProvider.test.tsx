@@ -98,7 +98,7 @@ describe('AssistantProvider', () => {
     });
   });
 
-  it('keeps an expired request without auto retry and retries the exact payload only on user action', async () => {
+  it('resends an expired conversation once as a new conversation', async () => {
     const eventHandlers: Array<(event: AssistantStreamEvent) => void> = [];
     mocks.requestAssistantStream.mockImplementation((_request, options) => {
       eventHandlers.push(options.onEvent);
@@ -109,18 +109,40 @@ describe('AssistantProvider', () => {
     await waitFor(() => expect(screen.getByTestId('conversation').textContent).toBe('expired-id'));
     fireEvent.click(screen.getByText('send'));
     const originalRequest = mocks.requestAssistantStream.mock.calls[0][0];
-    eventHandlers[0]({
+    act(() => eventHandlers[0]({
       event: 'run.failed',
       data: { httpStatus: 404, error: { code: 'CONVERSATION_NOT_FOUND', message: 'Expired', retryable: false } },
-    });
+    }));
 
-    await waitFor(() => expect(screen.getByTestId('conversation').textContent).toBe('none'));
-    expect(mocks.requestAssistantStream).toHaveBeenCalledTimes(1);
-    await waitFor(() => expect(sessionStorage.getItem('vota.assistant.conversationId')).toBeNull());
-    fireEvent.click(screen.getByText('retry'));
     expect(mocks.requestAssistantStream).toHaveBeenCalledTimes(2);
-    expect(mocks.requestAssistantStream.mock.calls[1][0]).toEqual(originalRequest);
-    expect(screen.getByTestId('transcript').textContent).toBe('Plan trip');
+    expect(mocks.requestAssistantStream.mock.calls[1][0]).toEqual({ ...originalRequest, conversationId: null });
+    expect(screen.getByTestId('error').textContent).toBe('none');
+    expect(screen.getByTestId('transcript').textContent).toBe('Plan trip|Đã bắt đầu cuộc trò chuyện mới.');
+    await waitFor(() => expect(sessionStorage.getItem('vota.assistant.conversationId')).toBeNull());
+
+    act(() => eventHandlers[1](completed({ status: 'NO_RESULTS', conversationId: 'fresh-id', message: 'None' })));
+    await waitFor(() => expect(screen.getByTestId('conversation').textContent).toBe('fresh-id'));
+    expect(mocks.requestAssistantStream).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows an expired intent override instead of resending it without a conversation', async () => {
+    let onEvent: ((event: AssistantStreamEvent) => void) | undefined;
+    mocks.requestAssistantStream.mockImplementation((_request, options) => {
+      onEvent = options.onEvent;
+      return Promise.resolve();
+    });
+    sessionStorage.setItem('vota.assistant.conversationId', 'expired-id');
+    mount();
+    await waitFor(() => expect(screen.getByTestId('conversation').textContent).toBe('expired-id'));
+    fireEvent.click(screen.getByText('override'));
+    act(() => onEvent?.({
+      event: 'run.failed',
+      data: { httpStatus: 404, error: { code: 'CONVERSATION_NOT_FOUND', message: 'Expired', retryable: false } },
+    }));
+
+    await waitFor(() => expect(screen.getByTestId('error').textContent).toBe('CONVERSATION_NOT_FOUND'));
+    expect(screen.getByTestId('conversation').textContent).toBe('none');
+    expect(mocks.requestAssistantStream).toHaveBeenCalledTimes(1);
   });
 
   it('keeps backend conversation context for unsupported destinations', async () => {
