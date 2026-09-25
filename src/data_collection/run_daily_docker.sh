@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Job VM. `run` (= `legacy-run`), `init`, `daily`: job daily.py (Dockerfile.daily) mà cron của CI/CD đang gọi.
-# `fresh-run [auto|full|daily|index|status|due|tick]`: job cào mới (Dockerfile.fresh-catalog), nạp DB rồi index Weaviate. Chỉ một
+# Job VM. `run` (= `legacy-run`), `init`, `daily`, `monitor`: job daily.py (Dockerfile.daily) mà cron của CI/CD đang gọi.
+# `fresh-run [auto|full|daily|index|status]`: job cào mới (Dockerfile.fresh-catalog), nạp DB rồi index Weaviate. Chỉ một
 #   trong hai job được lên lịch cho cùng DB. Theo dõi job mới: `logs [-f] [-n SỐ_DÒNG] [LƯỢT]` · `report [SỐ_LƯỢT]` ·
 #   `fresh-run status`; backend compose cùng VM: `backend [logs [-f] [-n SỐ_DÒNG]]`.
 # Only this runner script, Docker, an env file and a data volume are needed on the VM.
@@ -14,6 +14,8 @@ MAX_HOURS="${MAX_HOURS:-16}"                     # hạn phần cào; quá hạn
 DOCKER_NETWORK="${DOCKER_NETWORK:-}"             # vd. app-private nếu Postgres chạy bằng Docker trên cùng VM
 NAME="${CONTAINER_NAME:-vota-daily}"
 PULL="${PULL:-1}"                                # 1 = kéo IMAGE mới trước mỗi lượt (lỗi kéo thì dùng image đã có)
+MONITOR_HOST="${MONITOR_HOST:-127.0.0.1}"        # monitor chỉ nghe loopback mặc định
+MONITOR_PUBLIC="${MONITOR_PUBLIC:-0}"            # 1 = chấp nhận Host public; chỉ bật tạm thời khi cần
 MANUAL_IN_IMAGE=/app/src/data_collection/snapshots/2026-09-23/combo_items_manual.jsonl
 FRESH_IMAGE="${FRESH_IMAGE:-vota-fresh-catalog:latest}"
 FRESH_DATA_DIR="${FRESH_DATA_DIR:-/srv/vota/fresh-catalog-data}"
@@ -271,6 +273,6 @@ case "${1:-}" in
   legacy-run) shift; cmd_legacy_run "$@" ;;
   daily) shift; docker_run "$NAME-manual-$$" -- python daily.py "$@" ;;
   # monitor.py chỉ nghe 127.0.0.1 (chống DNS rebinding) nên dùng mạng của host: trang nằm ở 127.0.0.1:8765 của VPS
-  monitor|fresh-monitor) shift; cmd_fresh_monitor "$@" ;;
+  monitor) shift; DOCKER_NETWORK='' docker_run "$NAME-monitor" --network host -- python monitor.py "$@" ;;
   *) sed -n '2,6p' "$0"; exit 2 ;;
 esac

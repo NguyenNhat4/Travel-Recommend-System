@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""Monitor của job cào mới (fresh_catalog.py): xem từng lượt từ dữ liệu gốc tới dòng nạp DB, chỉnh cấu hình, chạy/dừng.
+"""UI theo dõi cào dữ liệu V-OTA: tiến độ từng job, dữ liệu đã parse, file, nhật ký, cảnh báo.
 
-  python monitor.py                                   # http://127.0.0.1:8765 (dữ liệu: data/state, data/fresh_runs)
-  python monitor.py --state-dir /data/state --run-root /data/fresh_runs --log-dir /logs   # trong container trên VM
+Chỉ đọc (không ghi vào dữ liệu đang cào), chỉ nghe 127.0.0.1, không cần thư viện ngoài:
 
-Chỉ nghe 127.0.0.1 và từ chối Host khác localhost (chống DNS rebinding); trên VM xem qua SSH tunnel:
-  ssh -L 8765:127.0.0.1:8765 <user>@<vm>
-Monitor đọc file của các lượt (không đọc DB), ghi đúng ba thứ: settings.json (Cấu hình), stop.request (Dừng) và tiến trình
-fresh_catalog.py khi bấm Chạy. Không bao giờ trả giá trị secret: biến kết nối chỉ báo đã đặt hay chưa.
+  python monitor.py                 # http://127.0.0.1:8765
+  python monitor.py --port 9000 --data-dir /đường/dẫn/data
+  http://127.0.0.1:8765/daily       # job hằng ngày: lượt chạy, bước đang chạy, data version, so sánh, dữ liệu qua từng bước
+
+Nguồn số liệu: data/batches/<job>/{job.json,last-run.json,state/,interim/,raw/,logs/}, data/interim, data/products.jsonl.
+Nút "Tạo bản xem trước" chuẩn hoá thử toàn bộ dữ liệu hiện có vào data/preview/ (không đụng catalog chính).
 """
 from __future__ import annotations
 
@@ -786,9 +787,18 @@ def html_views(html: str) -> dict:
 # ---------------------------------------------------------------------------------------------------- HTTP
 
 
+def host_allowed(host_header: str, allow_public: bool = False) -> bool:
+    """Kiểm tra Host HTTP; public mode là opt-in cho dashboard vận hành tạm thời."""
+    if allow_public:
+        return bool((host_header or "").strip())
+    host = (host_header or "").split(":")[0]
+    return host in ("127.0.0.1", "localhost", "[::1]")
+
+
 class Handler(BaseHTTPRequestHandler):
-    monitor: FreshMonitor
-    server_version = "VotaMonitor/2"
+    monitor: Monitor
+    daily: DailyApi
+    server_version = "VotaMonitor/1"
 
     def log_message(self, fmt, *args):  # im lặng: đây là công cụ nền
         pass
@@ -807,8 +817,7 @@ class Handler(BaseHTTPRequestHandler):
         self._send(code, json.dumps(obj, ensure_ascii=False, default=str).encode("utf-8"), "application/json; charset=utf-8")
 
     def _host_ok(self) -> bool:
-        raw = self.headers.get("Host") or ""
-        host = raw.split("]")[0] + "]" if raw.startswith("[") else raw.split(":")[0]
+        host = (self.headers.get("Host") or "").split(":")[0]
         return host in ("127.0.0.1", "localhost", "[::1]")  # chống DNS rebinding
 
     def do_GET(self):  # noqa: N802
@@ -881,18 +890,14 @@ class Handler(BaseHTTPRequestHandler):
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--host", default="127.0.0.1", help="địa chỉ bind; mặc định chỉ nghe loopback")
     ap.add_argument("--port", type=int, default=8765)
-    ap.add_argument("--state-dir", type=Path,
-                    default=Path(os.environ.get("CATALOG_STATE_DIR", ROOT / "data" / "state")))
-    ap.add_argument("--run-root", type=Path,
-                    default=Path(os.environ.get("CATALOG_RUN_ROOT", ROOT / "data" / "fresh_runs")))
-    ap.add_argument("--log-dir", type=Path, default=Path(os.environ["CATALOG_LOG_DIR"]) if os.environ.get("CATALOG_LOG_DIR") else None,
-                    help="thư mục log của runner (fresh-catalog-*.log) để xem lỗi xảy ra trước khi lượt tạo thư mục riêng")
+    ap.add_argument("--data-dir", type=Path, default=Path(os.environ.get("VOTA_DATA_DIR", ROOT / "data")))
     a = ap.parse_args(argv)
-    Handler.monitor = FreshMonitor(a.state_dir.resolve(), a.run_root.resolve(), a.log_dir.resolve() if a.log_dir else None)
+    Handler.monitor = Monitor(a.data_dir.resolve())
+    Handler.daily = DailyApi(a.data_dir.resolve())
     server = ThreadingHTTPServer(("127.0.0.1", a.port), Handler)
-    print(f"Monitor job cào: http://127.0.0.1:{a.port}  (state: {a.state_dir.resolve()}, lượt: {a.run_root.resolve()})"
-          " — Ctrl+C để dừng", flush=True)
+    print(f"Theo dõi cào dữ liệu: http://127.0.0.1:{a.port}  (dữ liệu: {a.data_dir.resolve()}) — Ctrl+C để dừng", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

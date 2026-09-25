@@ -14,6 +14,8 @@ db_tunnel_port='15432'
 cron_runner='/opt/vota/bin/run_daily_docker.sh'
 cron_data_dir='/srv/vota/daily-data'
 cron_env_file='/etc/vota/daily.env'
+backend_env_file='/etc/vota/backend.env'
+jwt_secrets_dir='/etc/vota/backend-secrets'
 cron_schedule='0 2 * * *'
 cron_crontab_file=''
 health_timeout_seconds='900'
@@ -94,6 +96,30 @@ if [ "$dry_run" -eq 0 ]; then
   [ -r "$cron_env_file" ] || die "Crawler env file is not readable: $cron_env_file"
   command -v crontab >/dev/null 2>&1 || die 'crontab is required for the SSH user'
   docker info >/dev/null 2>&1 || die 'SSH user cannot access the Docker daemon'
+  grep -Fq '/etc/vota/backend.env' "$compose_file" || die 'Compose file must load /etc/vota/backend.env'
+  grep -Fq '/etc/vota/backend-secrets:/app/secrets:ro' "$compose_file" || die 'Compose file must mount the RS256 key directory read-only'
+
+  has_readable_file() {
+    [ -r "$1" ] 2>/dev/null || sudo -n test -r "$1" 2>/dev/null
+  }
+
+  has_nonempty_file() {
+    [ -s "$1" ] 2>/dev/null || sudo -n test -s "$1" 2>/dev/null
+  }
+
+  env_has_key() {
+    grep -Eq "^$1=" "$backend_env_file" 2>/dev/null || \
+      sudo -n grep -Eq "^$1=" "$backend_env_file" 2>/dev/null
+  }
+
+  has_readable_file "$backend_env_file" || die "Backend env file is not readable: $backend_env_file"
+  for required_key in DATABASE_URL CDP_DATABASE_URL JWT_PRIVATE_KEY_PATH JWT_PUBLIC_KEY_PATH AUTH_REDIS_URL; do
+    env_has_key "$required_key" || die "Backend env is missing ${required_key}"
+  done
+  for key_file in jwt-private.pem jwt-public.pem; do
+    has_nonempty_file "$jwt_secrets_dir/$key_file" || die "Missing backend key file: $jwt_secrets_dir/$key_file"
+  done
+  docker compose -f "$compose_file" config >/dev/null || die 'Backend Compose configuration is invalid'
   if existing_crontab="$(LC_ALL=C crontab -l 2>&1)"; then
     :
   elif [[ "$existing_crontab" == *'no crontab'* ]]; then

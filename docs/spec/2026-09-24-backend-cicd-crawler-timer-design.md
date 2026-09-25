@@ -100,6 +100,7 @@ Backend dùng `DATABASE_URL`/`CDP_DATABASE_URL` trỏ tới `127.0.0.1:15432`; c
 ## File dự kiến
 
 - `.github/workflows/backend-ci-cd.yml`: CI, build/publish image và gọi deploy.
+- `ops/docker-compose.backend-vm.yml`: Compose app-only được workflow chép lên VM; dùng đúng image Backend, `network_mode: host`, `/etc/vota/backend.env` và mount key RS256 read-only.
 - `scripts/deploy-backend-vm.sh`: deploy `latest`, health check, rollback về digest trước.
 - `scripts/install-vota-cron.sh`: tùy chọn bootstrap một dòng cron idempotent trên VM mới; không chạy nếu VM đã có lịch.
 - `docs/spec/2026-09-24-backend-cicd-crawler-timer-design.md`: thiết kế này.
