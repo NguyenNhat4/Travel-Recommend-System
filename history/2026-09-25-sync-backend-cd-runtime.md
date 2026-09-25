@@ -12,7 +12,7 @@
 
 ## File thay đổi
 
-- `.github/workflows/backend-ci-cd.yml` — sửa: theo dõi template Compose, chép template lên VM và validate bằng Docker Compose trước deploy.
+- `.github/workflows/backend-ci-cd.yml` — sửa: theo dõi template Compose, chép template lên VM bằng đường dẫn tuyệt đối và validate bằng Docker Compose trước deploy; chạy test đồng bộ trong CI.
 - `ops/docker-compose.backend-vm.yml` — thêm: Compose app-only dùng host network, env file trên VM và mount khóa RS256 read-only; không quản lý PostgreSQL, Redis hoặc Weaviate.
 - `scripts/deploy-backend-vm.sh` — sửa: preflight env/key/runtime Compose và giữ deploy Backend ở `--no-deps`; hỗ trợ file có quyền đọc giới hạn qua `sudo`.
 - `scripts/tests/test-backend-vm-cd-sync.sh` — thêm: kiểm tra workflow, template Compose và các guard bắt buộc của deploy script.
@@ -33,6 +33,7 @@
 - `bash scripts/tests/test-backend-vm-cd-sync.sh` — PASS.
 - `bash -n scripts/deploy-backend-vm.sh scripts/check-db-tunnel.sh scripts/install-vota-cron.sh scripts/tests/test-backend-vm-cd-sync.sh` — PASS.
 - PyYAML parse `.github/workflows/backend-ci-cd.yml` và `ops/docker-compose.backend-vm.yml` — PASS.
+- Đóng gói đúng các file deploy bằng `tar` với ba thư mục nguồn tuyệt đối — PASS; cách dùng `-C` tương đối cũ tái hiện lỗi `could not chdir to '../ops'` và đã được loại bỏ.
 - `git diff --check` — PASS.
 - Compose local chưa resolve được vì `/etc/vota/backend.env` chỉ tồn tại trên VM; sẽ validate lại bằng Compose trên VM trong bước áp dụng template.
 
