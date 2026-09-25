@@ -157,6 +157,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Xác thực credential, trả cặp token cho BFF */
+        post: operations["createSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/session/token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Đổi refresh token lấy cặp mới (một lần dùng, phát hiện tái sử dụng) */
+        post: operations["rotateSessionToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/session/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Thu hồi refresh token (đăng xuất) */
+        post: operations["revokeSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/session/mfa/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Xác minh yếu tố thứ hai, nâng pending_mfa lên authenticated */
+        post: operations["verifySessionMfa"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Đổi mật khẩu; thu hồi mọi phiên khác của người dùng */
+        put: operations["changePassword"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/products": {
         parameters: {
             query?: never;
@@ -817,6 +902,43 @@ export interface components {
                 n?: string;
                 e?: string;
             }[];
+        };
+        /**
+         * @description anonymous = khách vãng lai; pending_mfa = đúng mật khẩu nhưng chưa qua yếu tố thứ hai, chưa mang cdpUserId; authenticated = đã xác thực đầy đủ.
+         * @enum {string}
+         */
+        SessionState: "anonymous" | "pending_mfa" | "authenticated";
+        SessionRequest: {
+            /** Format: email */
+            email: string;
+            password: string;
+            /** @description Bắt buộc khi lần thử trước trả details.captchaRequired = true (§9.3). */
+            captchaToken?: string;
+        };
+        SessionResponse: {
+            state: components["schemas"]["SessionState"];
+            /** @description JWT hạn ngắn. Chỉ có khi state = authenticated. Không bao giờ tới trình duyệt. */
+            accessToken?: string;
+            /** @description Chuỗi đục, một lần dùng. Chỉ có khi state = authenticated. */
+            refreshToken?: string;
+            /** @description Giây tới hạn của accessToken. */
+            expiresIn?: number;
+            user?: components["schemas"]["AuthUser"];
+        };
+        RefreshRequest: {
+            refreshToken: string;
+        };
+        RevokeRequest: {
+            refreshToken: string;
+        };
+        MfaVerifyRequest: {
+            code: string;
+            /** @default false */
+            isRecoveryCode: boolean;
+        };
+        PasswordChangeRequest: {
+            currentPassword: string;
+            newPassword: string;
         };
         /**
          * @description query bắt buộc; trường tùy chọn null tương đương bỏ qua/default. Lọc priceMin/Max trên unitPrice snapshot VND, KHÔNG phải ngân sách chuyến đi; giá null bị loại khi có lọc giá.

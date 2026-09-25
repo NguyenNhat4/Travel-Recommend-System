@@ -95,7 +95,6 @@ class Settings(BaseSettings):
     # RecSys (search / similar / recommendations). Model và chiều đã chốt trong PRD 22/09/2026.
     embed_model: Literal["embed-multilingual-v3.0"] = "embed-multilingual-v3.0"
     embed_dimension: Literal[1024] = 1024
-    embed_cache_dir: str = ".embcache"
     cohere_api_key: str = ""
     cohere_base_url: str = "https://api.cohere.com"
     cohere_timeout_seconds: float = Field(default=30.0, gt=0)
