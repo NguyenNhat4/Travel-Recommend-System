@@ -172,6 +172,7 @@ Tài liệu dự án chỉ nằm ở các thư mục sau trong `docs/`:
 | Update đã xử lý | `docs/prd/update-archive/` | Đề xuất đã áp dụng vào PRD hoặc bị từ chối — chỉ để tra cứu, agent không cần đọc (mục 8). |
 | Spec | `docs/spec/` | Đặc tả chi tiết một phần: hợp đồng tích hợp, schema, thiết kế kỹ thuật, nghiên cứu. |
 | Plan | `docs/plan/` | Kế hoạch triển khai một task/feature/giai đoạn: các bước, thứ tự, người làm, việc còn lại. |
+| Guide | `docs/guide/` | Hướng dẫn cho người phát triển (cách đọc code, cách chạy, quy trình); không chứa quy tắc hay spec — lệch PRD, contract hoặc file này thì các nguồn đó thắng. |
 
 - Không tạo file tài liệu (`.md`, `.html`, ...) ở chỗ khác trong repo — kể cả trong `src/`, `db/` hay thư mục gốc. Ngoại lệ: `history/` (mục 5), `AGENTS.md`/`CLAUDE.md`/`README.md` ở gốc, và `README.md` sẵn có của từng workstream trong `src/` (chỉ hướng dẫn chạy/cấu trúc, không chứa quy tắc hay spec).
 - Tên file: chữ thường, gạch nối, không dấu (ví dụ `docs/plan/2026-09-23-auth-p1.md`). Plan bắt đầu bằng ngày.

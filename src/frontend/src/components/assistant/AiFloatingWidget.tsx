@@ -8,6 +8,8 @@ import { productFromApi } from '../../services/catalog';
 import type { components } from '../../types/api.gen';
 import { GroundedPlan, Product, TravelIntent, ItineraryDay, ItinerarySlot } from '../../types/travel';
 import { AssistantTripStarter, tripStarterMessage } from './AssistantTripStarter';
+import { itineraryCartItems, type AssistantCartItem } from './AssistantResultPanel';
+import { useAssistantCart } from '../../hooks/useAssistantCart';
 import { 
   X, Send, Maximize2, Minimize2, Sparkles, MapPin, 
   Calendar, Users, Loader2, Compass,
@@ -28,11 +30,17 @@ const ItineraryMap = dynamic(
   }
 );
 
+/**
+ * Lịch trình hiển thị kèm các mục đặt được, tính từ response gốc theo đúng quy tắc của `/assistant`
+ * (docs/spec/hop-dong-tich-hop-frontend.md §4.8): mỗi productId một lần, ngày dùng theo `days[].date`.
+ */
+type WidgetPlan = GroundedPlan & { cartItems: AssistantCartItem[] };
+
 interface WidgetChatMessage {
   id: string;
   sender: 'user' | 'assistant';
   text: string;
-  plan?: GroundedPlan;
+  plan?: WidgetPlan;
 }
 
 interface ConversationSession {
@@ -40,7 +48,7 @@ interface ConversationSession {
   title: string;
   timestamp: string;
   messages: WidgetChatMessage[];
-  plan: GroundedPlan | null;
+  plan: WidgetPlan | null;
 }
 
 const DEFAULT_WELCOME_MESSAGE: WidgetChatMessage = {
@@ -253,7 +261,7 @@ function adaptProductSummaryToProduct(summary: components['schemas']['ProductSum
 
 function convertItineraryCompletedToGroundedPlan(
   response: components['schemas']['ItineraryCompleted']
-): GroundedPlan {
+): WidgetPlan {
   const dest = (response.intent?.destination || 'Nha Trang') as any;
   const daysCount = response.intent?.days || response.itinerary.days.length || 3;
   const party = (response.intent?.party as any) || 'family_with_kids';
@@ -321,6 +329,7 @@ function convertItineraryCompletedToGroundedPlan(
     days,
     totalEstimatedPrice: response.itinerary.estimatedTotal ?? 0,
     bookableProductsCount: response.itinerary.bookableCount ?? days.reduce((acc, cur) => acc + cur.slots.filter(s => !!s.product).length, 0),
+    cartItems: itineraryCartItems(response.itinerary),
   };
 }
 
@@ -335,15 +344,17 @@ export const AiFloatingWidget: React.FC = () => {
     resetConversation,
     consumeFloatingInitialMessage,
   } = useAssistant();
+  const addItineraryToCart = useAssistantCart();
 
   // Widget States
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
   const [showBubble, setShowBubble] = useState<boolean>(true);
   const [inputVal, setInputVal] = useState<string>('');
-  const [activePlan, setActivePlan] = useState<GroundedPlan | null>(null);
+  const [activePlan, setActivePlan] = useState<WidgetPlan | null>(null);
   const [activeDayTab, setActiveDayTab] = useState<number>(1);
   const [isSavedPlan, setIsSavedPlan] = useState<boolean>(false);
+  const [isCheckingOut, setIsCheckingOut] = useState<boolean>(false);
   const [isChatCollapsed, setIsChatCollapsed] = useState<boolean>(false);
   const [hoveredCoordinate, setHoveredCoordinate] = useState<{ lat: number; lng: number } | null>(null);
   const [hoveredPointId, setHoveredPointId] = useState<string | null>(null);
@@ -391,7 +402,7 @@ export const AiFloatingWidget: React.FC = () => {
     }
 
     return assistantState.transcript.map((item) => {
-      let plan: GroundedPlan | undefined = undefined;
+      let plan: WidgetPlan | undefined = undefined;
       if (item.response?.status === 'COMPLETED') {
         plan = convertItineraryCompletedToGroundedPlan(item.response);
       }
@@ -495,30 +506,6 @@ export const AiFloatingWidget: React.FC = () => {
     handleSendMessage(promptText);
   };
 
-  const handleAddAllToCart = () => {
-    if (!activePlan) return;
-    let count = 0;
-    if (activePlan.stays && activePlan.stays.length > 0) {
-      activePlan.stays.forEach(s => {
-        if (s.product) {
-          addToCart(s.product, s.nights || 1);
-          count++;
-        }
-      });
-    } else if (activePlan.stay?.product) {
-      addToCart(activePlan.stay.product, 2);
-      count++;
-    }
-    activePlan.days.forEach(day => {
-      day.slots.forEach(slot => {
-        if (slot.product) {
-          addToCart(slot.product, 2);
-          count++;
-        }
-      });
-    });
-    showToast(`Đã thêm ${count} dịch vụ trong lịch trình vào giỏ hàng!`);
-  };
 
   const handleToggleSavePlan = (e?: React.MouseEvent) => {
     if (e) {
@@ -538,9 +525,15 @@ export const AiFloatingWidget: React.FC = () => {
       e.preventDefault();
       e.stopPropagation();
     }
-    if (!activePlan) return;
-    handleAddAllToCart();
-    navigate('/checkout');
+    if (!activePlan || isCheckingOut) return;
+    if (!activePlan.cartItems.length) {
+      showToast('Lịch trình chưa có dịch vụ nào đặt được.');
+      return;
+    }
+    // Thêm tuần tự rồi mới sang /checkout: checkout đọc GET /cart ngay khi mở, nên phải chờ mọi mục vào giỏ.
+    setIsCheckingOut(true);
+    void addItineraryToCart(activePlan.cartItems, () => navigate('/checkout'))
+      .finally(() => setIsCheckingOut(false));
   };
 
   const handleStartNewChat = () => {
@@ -1297,10 +1290,12 @@ export const AiFloatingWidget: React.FC = () => {
                         <button
                           type="button"
                           onClick={handleCheckoutPlan}
-                          className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-sm font-bold rounded-xl shadow-xs transition flex items-center gap-2 cursor-pointer"
+                          disabled={isCheckingOut}
+                          aria-busy={isCheckingOut}
+                          className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-60 disabled:cursor-wait text-white text-sm font-bold rounded-xl shadow-xs transition flex items-center gap-2 cursor-pointer"
                         >
-                          <span>Thanh toán</span>
-                          <ArrowRight className="w-4 h-4" />
+                          <span>{isCheckingOut ? 'Đang thêm vào giỏ…' : 'Thanh toán'}</span>
+                          {isCheckingOut ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
                         </button>
                       </div>
                     </div>
