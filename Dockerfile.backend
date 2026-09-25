@@ -1,0 +1,24 @@
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app
+
+WORKDIR /app
+
+RUN useradd --create-home --uid 10001 app \
+    && chown -R app:app /app
+
+COPY src/backend/requirements.txt /tmp/backend-requirements.txt
+RUN python -m pip install --no-cache-dir -r /tmp/backend-requirements.txt
+
+# The API imports the backend package, OpenAPI bundle and shared itinerary fixtures.
+COPY src/backend /app/src/backend
+COPY src/shared/contracts /app/src/shared/contracts
+COPY src/shared/mocks /app/src/shared/mocks
+
+USER app
+
+EXPOSE 8000
+
+CMD ["python", "-m", "uvicorn", "src.backend.app.main:app", "--host", "0.0.0.0", "--port", "8000"]

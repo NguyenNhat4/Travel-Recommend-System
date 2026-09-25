@@ -1,0 +1,17 @@
+{
+  "error": {
+    "code": "UNSUPPORTED_DESTINATION",
+    "message": "V-OTA chưa có dịch vụ ở Sa Pa.",
+    "retryable": false,
+    "requestId": "agent-01JXYZ",
+    "details": {
+      "destination": "Sa Pa",
+      "supportedDestinations": [
+        "Nha Trang",
+        "Phú Quốc",
+        "Đà Nẵng"
+      ],
+      "conversationId": "conv-01JXYZ"
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "error": {
+    "code": "BOOKING_NOT_FOUND",
+    "message": "Không tìm thấy đơn đặt chỗ này.",
+    "retryable": false,
+    "requestId": "book-01JXYZ"
+  }
+}

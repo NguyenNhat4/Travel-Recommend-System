@@ -1,0 +1,7 @@
+{
+  "query": "tham quan Phú Quốc",
+  "destination": "Phú Quốc",
+  "taxonomy": "attraction",
+  "availableOnly": false,
+  "limit": 10
+}

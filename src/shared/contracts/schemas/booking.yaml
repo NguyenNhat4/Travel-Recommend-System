@@ -1,0 +1,344 @@
+AddCartItemRequest:
+  type: object
+  required:
+  - productId
+  - usingDate
+  - quantity
+  properties:
+    productId:
+      type: string
+    usingDate:
+      type: string
+      format: date
+    quantity:
+      type: integer
+      minimum: 1
+    nights:
+      type:
+      - integer
+      - 'null'
+      minimum: 1
+      description: Chỉ dùng với taxonomy hotel; loại khác bị bỏ qua.
+UpdateCartItemRequest:
+  type: object
+  minProperties: 1
+  properties:
+    usingDate:
+      type: string
+      format: date
+    quantity:
+      type: integer
+      minimum: 1
+    nights:
+      type:
+      - integer
+      - 'null'
+      minimum: 1
+CartItem:
+  type: object
+  required:
+  - cartItemId
+  - product
+  - usingDate
+  - quantity
+  - nights
+  - lineTotal
+  properties:
+    cartItemId:
+      type: string
+    product:
+      $ref: ../openapi.yaml#/components/schemas/ProductSummary
+    usingDate:
+      type: string
+      format: date
+    quantity:
+      type: integer
+      minimum: 1
+    nights:
+      type:
+      - integer
+      - 'null'
+      minimum: 1
+    lineTotal:
+      type: integer
+      minimum: 0
+CartResponse:
+  type: object
+  required:
+  - cartId
+  - cdpUserId
+  - items
+  - itemCount
+  - subtotal
+  - total
+  - currency
+  - updatedAt
+  properties:
+    cartId:
+      type: string
+    cdpUserId:
+      type: string
+    items:
+      type: array
+      items:
+        $ref: ../openapi.yaml#/components/schemas/CartItem
+    itemCount:
+      type: integer
+      minimum: 0
+    subtotal:
+      type: integer
+      minimum: 0
+    total:
+      type: integer
+      minimum: 0
+    currency:
+      $ref: ../openapi.yaml#/components/schemas/Currency
+    updatedAt:
+      type: string
+      format: date-time
+Contact:
+  type: object
+  required:
+  - fullName
+  - email
+  - phone
+  properties:
+    fullName:
+      type: string
+      minLength: 1
+      maxLength: 100
+    email:
+      type: string
+      format: email
+    phone:
+      type: string
+      pattern: ^0[0-9]{9}$
+CheckoutItemDetail:
+  type: object
+  required:
+  - cartItemId
+  properties:
+    cartItemId:
+      type: string
+    guestNames:
+      type: array
+      items:
+        type: string
+        minLength: 1
+    specialRequest:
+      type:
+      - string
+      - 'null'
+      maxLength: 500
+CheckoutRequest:
+  type: object
+  required:
+  - contact
+  - itemDetails
+  properties:
+    contact:
+      $ref: ../openapi.yaml#/components/schemas/Contact
+    itemDetails:
+      type: array
+      items:
+        $ref: ../openapi.yaml#/components/schemas/CheckoutItemDetail
+BookingItem:
+  type: object
+  required:
+  - bookingItemId
+  - product
+  - usingDate
+  - quantity
+  - nights
+  - lineTotal
+  - guestNames
+  - specialRequest
+  properties:
+    bookingItemId:
+      type: string
+    product:
+      $ref: ../openapi.yaml#/components/schemas/ProductSummary
+    usingDate:
+      type: string
+      format: date
+    quantity:
+      type: integer
+      minimum: 1
+    nights:
+      type:
+      - integer
+      - 'null'
+      minimum: 1
+    lineTotal:
+      type: integer
+      minimum: 0
+    guestNames:
+      type: array
+      items:
+        type: string
+    specialRequest:
+      type:
+      - string
+      - 'null'
+BookingGroup:
+  type: object
+  required:
+  - destination
+  - eventGroupId
+  - items
+  - groupTotal
+  properties:
+    destination:
+      type: string
+    eventGroupId:
+      type: string
+    items:
+      type: array
+      minItems: 1
+      items:
+        $ref: ../openapi.yaml#/components/schemas/BookingItem
+    groupTotal:
+      type: integer
+      minimum: 0
+BookingStatus:
+  type: string
+  enum:
+  - PENDING_PAYMENT
+  - CONFIRMED
+  - PAYMENT_FAILED
+  - EXPIRED
+  - CANCELLED
+  description: PENDING_PAYMENT là đang giữ chỗ (tối đa 30 phút). CONFIRMED chỉ khi Stripe xác nhận đã thu tiền.
+PaymentStatus:
+  type: string
+  enum:
+  - OPEN
+  - SUCCEEDED
+  - FAILED
+  - EXPIRED
+  - REFUND_PENDING
+  - REFUNDED
+  - REFUND_FAILED
+PaymentFailureReason:
+  type: string
+  enum:
+  - CARD_DECLINED
+  - INSUFFICIENT_FUNDS
+  - EXPIRED_CARD
+  - INCORRECT_CVC
+  - AUTHENTICATION_FAILED
+  - PROCESSING_ERROR
+  - TOO_MANY_ATTEMPTS
+  - AMOUNT_MISMATCH
+PaymentInfo:
+  type: object
+  required:
+  - status
+  - amount
+  - currency
+  - checkoutUrl
+  - failedAttempts
+  - failureReason
+  - refundedAmount
+  properties:
+    status:
+      $ref: ../openapi.yaml#/components/schemas/PaymentStatus
+    amount:
+      type: integer
+      minimum: 0
+    currency:
+      $ref: ../openapi.yaml#/components/schemas/Currency
+    checkoutUrl:
+      type:
+      - string
+      - 'null'
+      description: Trang thanh toán Stripe. Chỉ khác null khi status là OPEN.
+    failedAttempts:
+      type: integer
+      minimum: 0
+    failureReason:
+      oneOf:
+      - $ref: ../openapi.yaml#/components/schemas/PaymentFailureReason
+      - type: 'null'
+    refundedAmount:
+      type: integer
+      minimum: 0
+CancellationInfo:
+  type: object
+  required:
+  - cancelledAt
+  - reason
+  - refundAmount
+  properties:
+    cancelledAt:
+      type: string
+      format: date-time
+    reason:
+      type:
+      - string
+      - 'null'
+    refundAmount:
+      type: integer
+      minimum: 0
+CancelBookingRequest:
+  type: object
+  properties:
+    reason:
+      type:
+      - string
+      - 'null'
+      maxLength: 500
+BookingResponse:
+  type: object
+  required:
+  - referenceCode
+  - createdAt
+  - status
+  - holdExpiresAt
+  - cancellableUntil
+  - payment
+  - cancellation
+  - contact
+  - groups
+  - total
+  - currency
+  properties:
+    referenceCode:
+      $ref: ../openapi.yaml#/components/schemas/ReferenceCode
+    createdAt:
+      type: string
+      format: date-time
+    status:
+      $ref: ../openapi.yaml#/components/schemas/BookingStatus
+    holdExpiresAt:
+      type:
+      - string
+      - 'null'
+      format: date-time
+      description: Hạn giữ chỗ. Chỉ khác null khi status là PENDING_PAYMENT.
+    cancellableUntil:
+      type:
+      - string
+      - 'null'
+      format: date-time
+      description: Hạn huỷ có hoàn 100% (00:00 giờ Việt Nam của ngày liền trước usingDate sớm nhất). Chỉ khác null khi CONFIRMED.
+    payment:
+      oneOf:
+      - $ref: ../openapi.yaml#/components/schemas/PaymentInfo
+      - type: 'null'
+    cancellation:
+      oneOf:
+      - $ref: ../openapi.yaml#/components/schemas/CancellationInfo
+      - type: 'null'
+    contact:
+      $ref: ../openapi.yaml#/components/schemas/Contact
+    groups:
+      type: array
+      minItems: 1
+      items:
+        $ref: ../openapi.yaml#/components/schemas/BookingGroup
+    total:
+      type: integer
+      minimum: 0
+    currency:
+      $ref: ../openapi.yaml#/components/schemas/Currency

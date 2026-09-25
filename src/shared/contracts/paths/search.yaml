@@ -1,0 +1,91 @@
+/search:
+  get:
+    tags:
+    - search
+    operationId: searchProductsCompat
+    summary: Semantic search trên catalog
+    description: 'Có JWT và offset = 0 thì Backend ghi event search (searchQuery = q) sang CDP clone ở nền;
+      đổi trang không ghi thêm, CDP lỗi không ảnh hưởng response. Agent gọi endpoint này không kèm JWT để lượt
+      tìm của Agent không bị tính là hành vi người dùng.'
+    security:
+    - {}
+    - bearerAuth: []
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    - name: q
+      in: query
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 500
+        pattern: \S
+    - name: taxonomy
+      in: query
+      schema:
+        $ref: ../openapi.yaml#/components/schemas/Taxonomy
+    - name: destination
+      in: query
+      schema:
+        type: string
+    - name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 50
+        default: 20
+    - name: offset
+      in: query
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+    responses:
+      '200':
+        description: Kết quả tìm kiếm
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/SearchResponse
+      '400':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '503':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error
+  post:
+    tags:
+    - search
+    operationId: searchProducts
+    summary: Semantic search trên catalog theo hợp đồng v1
+    description: 'Bề mặt v1 được giữ để không phá client hiện có. Agent dùng GET compatibility endpoint và
+      không kèm JWT; Web có thể tiếp tục dùng POST với SearchRequest.'
+    security:
+    - {}
+    - bearerAuth: []
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/SearchRequest
+    responses:
+      '200':
+        description: Kết quả tìm kiếm
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/SearchResponse
+      '400':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '503':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error

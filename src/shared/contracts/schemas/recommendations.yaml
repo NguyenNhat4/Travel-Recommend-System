@@ -1,0 +1,216 @@
+# recommendations.yaml — GET /api/v1/recommendations
+#
+# Đã áp dụng: C1 (priceUnit bắt buộc) · C4 (EngineDiagnostics)
+# [CHỜ DUYỆT: U1] because với sản phẩm INACTIVE · [CHỜ DUYỆT: P3] user vector cache
+
+BecauseItem:
+  type: object
+  required:
+  - productName
+  - event
+  - daysAgo
+  properties:
+    productId:
+      type:
+      - string
+      - 'null'
+      description: >-
+        null trong hai trường hợp: event là `search` (không trỏ tới sản phẩm nào),
+        hoặc sản phẩm nguồn có status INACTIVE.
+        [CHỜ DUYỆT: U1] productId khác null thì sản phẩm PHẢI mở được
+        GET /products/{id} và trả 200.
+    productName:
+      type: string
+      description: >-
+        Tên sản phẩm nguồn tại thời điểm sinh gợi ý. Với event `search` thì là
+        truy vấn người dùng đã gõ.
+
+        [CHỜ DUYỆT: U1] Trường này là lý do products dùng SOFT DELETE. UserEvent
+        trong CDP không lưu tên sản phẩm, nên xóa hàng khỏi products là mất tên
+        vĩnh viễn và yêu cầu "vẫn giữ productName" của backend §6.3 mục 3 trở
+        nên không thực hiện được.
+    imageUrl:
+      type:
+      - string
+      - 'null'
+      description: null khi sản phẩm nguồn INACTIVE hoặc event là search.
+    event:
+      $ref: ../openapi.yaml#/components/schemas/BecauseEvent
+    daysAgo:
+      type: integer
+      minimum: 0
+      description: Số ngày tính tới generatedAt.
+    contribution:
+      type: number
+      minimum: 0
+      maximum: 1
+      description: >-
+        Mức đóng góp vào điểm cuối, đã chuẩn hóa:
+        raw_j = w(event) × decay(daysAgo) × tripFactor × cos(v_j, v_candidate)
+        contribution_j = raw_j / tổng raw của các nguồn dương.
+        Client hiển thị định tính: >= 0.5 Nhiều · 0.2–0.5 Vừa · < 0.2 Ít.
+
+RecommendationItem:
+  type: object
+  description: >-
+    Projection cho card, kèm rank, score và because. Agent lấy ProductDetail theo
+    ID để bổ sung description/ngày trước khi lập lịch; KHÔNG mặc định projection
+    này là ProductSummary đầy đủ.
+  required:
+  - productId
+  - name
+  - taxonomy
+  - destination
+  - unitPrice
+  - currency
+  - priceUnit
+  - available
+  - because
+  properties:
+    rank:
+      type: integer
+      minimum: 1
+    productId:
+      type: string
+    name:
+      type: string
+    taxonomy:
+      $ref: ../openapi.yaml#/components/schemas/Taxonomy
+    destination:
+      type: string
+    brand:
+      type: [string, 'null']
+    unitPrice:
+      type: [number, 'null']
+      minimum: 0
+      description: Giá snapshot VND cho một đơn vị theo priceUnit. null không nghĩa là miễn phí.
+    currency:
+      $ref: ../openapi.yaml#/components/schemas/Currency
+    priceUnit:
+      $ref: ../openapi.yaml#/components/schemas/PriceUnit
+      description: '[C1] Bắt buộc, không default. nights chỉ nhân khi PER_NIGHT.'
+    available:
+      type: boolean
+      description: Snapshot nguồn có trả giá lúc crawl; không xác nhận còn chỗ.
+    bookable:
+      type: [boolean, 'null']
+      description: '[Q1] null khi chưa kiểm tra theo stay cụ thể.'
+    imageUrl:
+      type: [string, 'null']
+    attributes:
+      $ref: ../openapi.yaml#/components/schemas/ProductAttributes
+    score:
+      type: number
+      minimum: 0
+      maximum: 1
+    because:
+      type: array
+      description: >-
+        Lý do có căn cứ từ lịch sử. [] nếu chưa đủ dữ liệu hoặc strategy là popular.
+        KHÔNG bịa lý do. Mảng đã sắp giảm dần theo contribution — because[0] là lý
+        do mạnh nhất và là thứ client hiển thị trên thẻ.
+      items:
+        $ref: ../openapi.yaml#/components/schemas/BecauseItem
+
+RecommendationDiagnostics:
+  type: object
+  required:
+  - eventsUsed
+  - coldStart
+  - excludedVerticals
+  - latencyMs
+  properties:
+    eventsUsed:
+      type: integer
+      minimum: 0
+    eventsSkipped:
+      type: integer
+      minimum: 0
+      description: >-
+        Event bị bỏ vì trỏ tới sản phẩm không tồn tại. Con số lớn bất thường là
+        dấu hiệu dữ liệu có vấn đề — lộ ra ở đây rẻ hơn lộ ra lúc demo.
+    coldStart:
+      type: boolean
+      description: true khi dưới 3 event dùng được, hoặc khi CDP lỗi (cdp §6.3).
+    dormant:
+      type: boolean
+      description: true khi event gần nhất cách trên 90 ngày.
+    excludedVerticals:
+      type: array
+      items:
+        $ref: ../openapi.yaml#/components/schemas/Taxonomy
+      description: >-
+        Danh mục bị loại vì đã có trong chuyến hiện tại. Đây là dữ liệu client
+        dùng để vẽ checklist "✓ Khách sạn / ○ Vé máy bay" — hiển thị cả ở giao
+        diện thường, không riêng debug mode.
+    exclusionRelaxed:
+      type: boolean
+      description: >-
+        true khi khách đã đặt đủ mọi taxonomy trong chuyến và engine phải bỏ
+        category exclusion để không trả danh sách rỗng.
+    userVectorCacheHit:
+      type: boolean
+      description: >-
+        [CHỜ DUYỆT: P3] false nghĩa là phải dựng lại user vector tại chỗ — đọc
+        tối đa 500 event qua HTTP từ CDP clone. Đây là đường chậm; tỉ lệ false
+        cao nghĩa là quy tắc vô hiệu hóa cache đang sai.
+    userVectorNorm:
+      type: number
+      description: >-
+        [CHỜ DUYỆT: P3] Phải xấp xỉ 1.0. Lệch xa là dấu hiệu quên L2-normalize
+        hoặc sai đơn vị thời gian trong decay — hai lỗi cho ra kết quả trông
+        hoàn toàn hợp lý.
+    engine:
+      $ref: ../openapi.yaml#/components/schemas/EngineDiagnostics
+    latencyMs:
+      type: integer
+      minimum: 0
+
+RecommendationResponse:
+  type: object
+  required:
+  - strategy
+  - recommendations
+  properties:
+    cdpUserId:
+      type: [string, 'null']
+      description: null khi không có JWT. Không có JWT vẫn trả 200, không trả 401.
+    generatedAt:
+      type: string
+      format: date-time
+    modelVersion:
+      type: string
+    strategy:
+      $ref: ../openapi.yaml#/components/schemas/Strategy
+    nextVertical:
+      description: >-
+        Bắt buộc khác null khi strategy là cross_vertical. Dùng để hiển thị nhóm
+        sản phẩm tiếp theo.
+      oneOf:
+      - $ref: ../openapi.yaml#/components/schemas/Taxonomy
+      - type: 'null'
+    destination:
+      type: [string, 'null']
+      description: >-
+        Bắt buộc khác null khi strategy là cross_vertical. Bỏ trống trong request
+        thì backend tự chọn theo lastDestination của profile.
+    recommendations:
+      type: array
+      items:
+        $ref: ../openapi.yaml#/components/schemas/RecommendationItem
+    diagnostics:
+      $ref: ../openapi.yaml#/components/schemas/RecommendationDiagnostics
+    requestId:
+      type: string
+  description: >-
+    MVP ưu tiên hiển thị strategy và recommendations. Thứ tự mảng là thứ tự hiển thị.
+
+    Quy tắc bắt buộc theo strategy:
+    (1) cross_vertical PHẢI có nextVertical và destination khác null;
+    (2) dormant PHẢI có ít nhất một because với daysAgo trên 90;
+    (3) popular thì because của MỌI gợi ý là mảng rỗng;
+    (4) coldStart true thì because rỗng — không bao giờ bịa lý do.
+
+    [C4] Engine dùng ANN_CANDIDATE_SCORE nhưng vẫn lọc trước: category exclusion
+    loại khoảng 50% catalog, nên danh sách id hợp lệ được gửi làm filter cho
+    truy vấn top-K của Weaviate, không lấy-top-K-rồi-lọc.

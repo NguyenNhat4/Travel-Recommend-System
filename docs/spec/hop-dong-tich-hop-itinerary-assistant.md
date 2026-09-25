@@ -1,15 +1,25 @@
 # Hợp đồng tích hợp Itinerary Assistant
 
-**Phiên bản:** 1.0  
-** Người tạo:** NhatNM  
-**Bên sử dụng:** Team Web  
-**Bên phụ thuộc:** Team Recommendation/Search và Backend Booking  
-**Giao thức:** REST/JSON qua HTTP  
-**Xác thực:** JWT Bearer Token, không bắt buộc với người dùng ẩn danh  
-**Mã hóa:** UTF-8  
-**Tiền tệ mặc định:** VND  
-**Ngày:** `2026-09-15`  
-**Giờ:** `16:42`  
+> **Nguồn sự thật:** [OpenAPI 1.2.0](../../src/shared/contracts/openapi.yaml) quyết định endpoint, HTTP status, enum và required/optional. Tài liệu này giải thích cách tích hợp; khi có khác biệt, OpenAPI thắng. Xem thêm [payload MVP tối thiểu](mvp-minimal-fields-1.2.0.md).
+
+**Phiên bản tài liệu:** 1.2.0
+
+**Người tạo:** NhatNM
+
+**Bên sử dụng:** Team Web
+
+**Bên phụ thuộc:** Team Recommendation/Search và Backend Booking
+
+**Giao thức:** REST/JSON qua HTTP
+
+**Xác thực:** JWT Bearer Token, không bắt buộc với người dùng ẩn danh
+
+**Mã hóa:** UTF-8
+
+**Tiền tệ mặc định:** VND
+
+**Cập nhật:** `2026-09-17`
+
 **Múi giờ:** `Asia/Ho_Chi_Minh`
 
 ---
@@ -34,11 +44,11 @@
 
 - Sinh embedding và lập chỉ mục vector cho sản phẩm.
 - Semantic search trên danh mục sản phẩm.
-- Lọc theo điểm đến, loại sản phẩm, giá và trạng thái còn chỗ.
+- Lọc theo điểm đến, taxonomy, giá và snapshot `available`.
 - Trả đề xuất cá nhân hóa cho người dùng đã đăng nhập.
 - Cung cấp `productId` ổn định và điểm liên quan.
 - Đảm bảo chất lượng và độ trễ của kết quả tìm kiếm.
-- Loại sản phẩm hết chỗ khi request có `availableOnly=true`.
+- Lọc theo snapshot `available` khi request có `availableOnly=true`; không tuyên bố tồn kho theo ngày hoặc số khách.
 
 ### 1.3. Team Web/Backend chịu trách nhiệm
 
@@ -67,34 +77,12 @@
 ### 2.1. API semantic search
 
 ```http
-POST /api/v1/search
-Content-Type: application/json
+GET /api/v1/search?q=khu%20nghỉ%20dưỡng&destination=Nha%20Trang&taxonomy=hotel&limit=10
 ```
 
-#### Request
+#### Query parameters
 
-```json
-{
-  "query": "khu nghỉ dưỡng gần biển phù hợp gia đình có trẻ nhỏ",
-  "destination": "Nha Trang",
-  "category": "HOTEL",
-  "startDate": "2026-10-10",
-  "endDate": "2026-10-13",
-  "party": {
-    "adults": 2,
-    "children": 1
-  },
-  "price": {
-    "min": 0,
-    "max": 5000000,
-    "currency": "VND"
-  },
-  "availableOnly": true,
-  "limit": 10
-}
-```
-
-Ngoại trừ `query`, `availableOnly` và `limit`, các trường còn lại có thể nhận `null`.
+`q` là bắt buộc; `destination`, `taxonomy`, `limit`, `offset` là tùy chọn. Tool planner vẫn dùng tên `query`; HTTP adapter đổi sang `q`. Search MVP không nhận ngày, party hoặc bộ lọc giá/sao; Agent giữ và hậu kiểm các ràng buộc đó sau retrieval.
 
 #### Response
 
@@ -104,25 +92,19 @@ Ngoại trừ `query`, `availableOnly` và `limit`, các trường còn lại c�
     {
       "productId": "VP-HOTEL-001",
       "name": "Vinpearl Resort Nha Trang",
-      "category": "HOTEL",
+      "taxonomy": "hotel",
       "destination": "Nha Trang",
       "description": "Khu nghỉ dưỡng ven biển phù hợp gia đình.",
-      "price": {
-        "amount": 3200000,
-        "currency": "VND",
-        "unit": "PER_NIGHT"
-      },
+      "unitPrice": 3200000,
+      "currency": "VND",
+      "priceUnit": "PER_NIGHT",
       "available": true,
       "imageUrl": "https://example.com/hotel.jpg",
-      "bookingUrl": "/products/VP-HOTEL-001",
-      "location": {
-        "latitude": 12.216,
-        "longitude": 109.242
+      "attributes": {
+        "familyFriendly": true,
+        "privateBeach": true
       },
-      "openingHours": null,
-      "estimatedDurationMinutes": null,
-      "attributes": ["family-friendly", "beach", "swimming-pool"],
-      "semanticScore": 0.87
+      "score": 0.87
     }
   ],
   "total": 1,
@@ -133,28 +115,28 @@ Ngoại trừ `query`, `availableOnly` và `limit`, các trường còn lại c�
 ### 2.2. Cam kết dữ liệu từ Team Recommendation/Search
 
 1. `productId` là duy nhất và ổn định.
-2. `name`, `price`, `available` và `bookingUrl` lấy từ catalog.
+2. `name`, `unitPrice`, `currency` và `available` lấy từ catalog.
 3. `destination` được chuẩn hóa theo danh sách tên thống nhất giữa các team.
-4. `category` chỉ dùng enum đã thống nhất.
-5. Khi `availableOnly=true`, kết quả không chứa sản phẩm hết chỗ.
+4. `taxonomy` dùng enum lowercase trong OpenAPI.
+5. `available=true` chỉ là snapshot nguồn có trả giá lúc crawl, không xác nhận tồn kho theo ngày hoặc số khách.
 6. Nếu không có sản phẩm phù hợp, API trả mảng rỗng; không tự tạo dữ liệu thay thế.
 7. Mục tiêu độ trễ p95 của API Search dưới 300 ms.
 8. Thay đổi phá vỡ tương thích phải tạo phiên bản API mới.
 
-### 2.3. Enum loại sản phẩm
+### 2.3. Enum taxonomy
 
 ```text
-HOTEL
-FLIGHT
-ATTRACTION
-COMBO
-GOLF
+hotel
+flight
+attraction
+combo
+golf
 ```
 
 ### 2.4. API recommendation cá nhân hóa
 
 ```http
-GET /api/v1/recommendations?destination=Nha%20Trang&limit=10
+GET /api/v1/recommendations?destination=Nha%20Trang&k=10
 Authorization: Bearer <jwt>
 ```
 
@@ -162,35 +144,25 @@ Authorization: Bearer <jwt>
 
 ```json
 {
-  "userId": "cdp-user-001",
-  "results": [
+  "cdpUserId": "cdp-user-001",
+  "recommendations": [
     {
       "productId": "VP-ATTR-001",
       "name": "VinWonders Nha Trang",
-      "category": "ATTRACTION",
+      "taxonomy": "attraction",
       "destination": "Nha Trang",
-      "price": {
-        "amount": 950000,
-        "currency": "VND",
-        "unit": "PER_PERSON"
-      },
+      "unitPrice": 950000,
+      "currency": "VND",
+      "priceUnit": "PER_PERSON",
       "available": true,
-      "bookingUrl": "/products/VP-ATTR-001",
-      "recommendationScore": 0.82,
-      "reason": "Phù hợp với chuyến đi gia đình tại Nha Trang"
+      "because": []
     }
   ],
-  "strategy": "PERSONALISED"
+  "strategy": "popular"
 }
 ```
 
-Với người dùng ẩn danh hoặc chưa đủ lịch sử, hệ thống có thể trả sản phẩm phổ biến và đặt:
-
-```json
-{
-  "strategy": "POPULAR_IN_DESTINATION"
-}
-```
+`strategy` dùng enum OpenAPI: `cross_vertical`, `recent_activity`, `dormant`, `popular`. Người dùng ẩn danh hoặc chưa đủ lịch sử nhận `popular`; `because=[]` khi không có căn cứ cá nhân hóa. Agent lấy `ProductDetail` theo ID nếu cần thêm dữ liệu trước khi lập lịch.
 
 ---
 
@@ -212,13 +184,13 @@ Agent API vẫn phải chấp nhận request không có JWT. Người dùng ẩn
 
 ### 3.2. Đường dẫn chi tiết sản phẩm
 
-Mỗi `bookingUrl` phải mở được route frontend tương ứng:
+OpenAPI cung cấp API chi tiết sản phẩm:
 
 ```text
-/products/{productId}
+GET /api/v1/products/{productId}
 ```
 
-Team Agent sao chép nguyên giá trị này, không tự xây URL khác.
+`ProductSummary` MVP không bắt buộc có `bookingUrl`. Web điều hướng bằng `productId` theo route giao diện đã thống nhất; Agent không tự tạo URL ngoài contract.
 
 ### 3.3. Kiểm tra trước checkout
 
@@ -230,11 +202,11 @@ Trước khi tạo booking, Web/Backend phải kiểm tra lại:
 - Ngày sử dụng.
 - Số lượng khách.
 
-Giá trong lịch trình chỉ là ước tính. Giá tại checkout là dữ liệu chính thức.
+Giá và `available` trong lịch trình chỉ là snapshot tham khảo. Giá và availability tại checkout là dữ liệu chính thức.
 
 ### 3.4. Bàn giao sang booking
 
-Team Agent trả về `productId` và `bookingUrl`. Team Web chịu trách nhiệm điều hướng từ mục trong lịch trình sang trang chi tiết hoặc checkout. Trong MVP v1, Team Agent không trực tiếp tạo booking.
+Team Agent trả `ProductSummary` chứa `productId`. Team Web chịu trách nhiệm điều hướng sang trang chi tiết hoặc checkout. Agent không trực tiếp tạo booking.
 
 ---
 
@@ -265,80 +237,75 @@ JWT là tùy chọn.
 | Trường | Bắt buộc | Ý nghĩa |
 |---|---:|---|
 | `conversationId` | Không | Tiếp tục một cuộc hội thoại trước đó |
-| `message` | Có | Yêu cầu bằng ngôn ngữ tự nhiên |
-| `context.language` | Không | Nếu thiếu, hệ thống tự phát hiện ngôn ngữ |
+| `message` | Có điều kiện | Yêu cầu bằng ngôn ngữ tự nhiên |
+| `intentOverride` | Có điều kiện | Patch intent có cấu trúc; chỉ dùng cùng `conversationId` khác null |
+| `context.language` | Không | `vi` hoặc `en`; nếu thiếu backend dùng `vi`. Giá trị tường minh được lưu theo conversation và dùng cho các lượt sau |
+
+Request hợp lệ khi có `message`, hoặc có đồng thời `conversationId` và `intentOverride`. `message` có tối đa 1.000 ký tự.
+
+`destination` và `days` là dữ liệu nghiệp vụ bắt buộc để bắt đầu retrieval và lập kế hoạch, nhưng không bắt buộc có sẵn trong request đầu tiên. Khi thiếu một hoặc cả hai, Agent trả `NEEDS_CLARIFICATION`, lưu phần intent đã biết cùng lịch sử chat gần đây theo `conversationId` và không gọi Search, Recommendation hoặc Catalog. MVP không tự phát hiện ngôn ngữ để tránh kết quả không ổn định; thứ tự ưu tiên là `context.language` tường minh, ngôn ngữ đã lưu của conversation, rồi `vi`.
+
+#### API stream cho UI demo
+
+```http
+POST /api/v1/assistant/itineraries/stream
+Accept: text/event-stream
+```
+
+Request giống `POST /assistant/itineraries`. Stream phát lần lượt `run.started`, `graph.topology`, các `node.completed`, rồi `run.completed` hoặc `run.failed`. Event chỉ chứa ID node, thứ tự, trạng thái, thời lượng và response công khai; không chứa raw graph state, prompt, token hoặc credential. Vì HTTP status đã được gửi khi mở SSE, lỗi phát sinh sau đó nằm trong payload `run.failed.httpStatus`.
+
+`GET /api/v1/assistant/status` trả readiness, graph version, data mode và số sản phẩm fixture nếu có. `fixture` chỉ được bật mặc định ở development/test; production mặc định `disabled` cho tới khi cấu hình upstream HTTP thật.
 
 ### 4.2. Response hoàn chỉnh
+
+Payload MVP chỉ bắt buộc `status`, `conversationId`, `itinerary` và `warnings`. Các trường `intent`, `searchResults` và `metadata` là tùy chọn.
 
 ```json
 {
   "status": "COMPLETED",
   "conversationId": "conv-01JXYZ",
-  "intent": {
-    "destination": "Nha Trang",
-    "startDate": null,
-    "days": 3,
-    "party": {
-      "adults": 2,
-      "children": 1
-    },
-    "budget": {
-      "amount": 15000000,
-      "currency": "VND"
-    },
-    "interests": ["biển", "hoạt động cho trẻ nhỏ"],
-    "pace": "RELAXED"
-  },
   "itinerary": {
-    "title": "Lịch trình gia đình 3 ngày tại Nha Trang",
     "days": [
       {
         "day": 1,
-        "title": "Nhận phòng và khám phá biển",
-        "items": [
+        "slots": [
           {
-            "startTime": "14:00",
-            "endTime": "15:00",
-            "type": "HOTEL",
-            "productId": "VP-HOTEL-001",
-            "productName": "Vinpearl Resort Nha Trang",
-            "description": "Nhận phòng và nghỉ ngơi.",
-            "price": {
-              "amount": 3200000,
+            "time": "AFTERNOON",
+            "product": {
+              "productId": "VP-HOTEL-001",
+              "name": "Vinpearl Resort Nha Trang",
+              "taxonomy": "hotel",
+              "destination": "Nha Trang",
+              "unitPrice": 3200000,
               "currency": "VND",
-              "unit": "PER_NIGHT"
+              "available": true
             },
-            "imageUrl": "https://example.com/hotel.jpg",
-            "bookingUrl": "/products/VP-HOTEL-001"
+            "note": "Nhận phòng và nghỉ ngơi."
           },
           {
-            "startTime": "16:00",
-            "endTime": "18:00",
-            "type": "FREE_TIME",
-            "productId": null,
-            "productName": null,
-            "description": "Nghỉ ngơi và tự do tham quan bãi biển.",
-            "price": null,
-            "imageUrl": null,
-            "bookingUrl": null
+            "time": "EVENING",
+            "product": null,
+            "activityType": "FREE_TIME",
+            "note": "Tự do khám phá khu vực ven biển."
           }
         ]
       }
     ],
-    "estimatedTotal": {
-      "amount": 12350000,
-      "currency": "VND"
-    },
-    "budgetStatus": "WITHIN_BUDGET"
+    "estimatedTotal": null,
+    "currency": "VND",
+    "budgetStatus": "UNKNOWN"
   },
-  "warnings": [],
-  "metadata": {
-    "personalised": true,
-    "searchRequestIds": ["search-01JABC", "search-01JDEF"],
-    "generatedAt": "2026-09-15T08:00:00Z"
-  }
+  "warnings": [
+    {
+      "code": "TOTAL_UNKNOWN",
+      "message": "Chưa đủ đơn vị và số lượng để tính tổng chi phí.",
+      "productId": null
+    }
+  ]
 }
 ```
+
+Nếu `estimatedTotal=null`, `budgetStatus` bắt buộc là `UNKNOWN` và cần warning. Backend tính tổng khi đủ căn cứ; LLM không tính hoặc sửa giá.
 
 ### 4.3. Response cần hỏi thêm
 
@@ -349,21 +316,18 @@ JWT là tùy chọn.
   "question": "Bạn muốn đi thành phố nào?",
   "missingFields": ["destination"],
   "knownIntent": {
+    "destination": null,
+    "startDate": null,
     "days": 3,
-    "party": {
-      "adults": 2,
-      "children": 1
-    }
+    "party": null,
+    "budget": null,
+    "interests": [],
+    "pace": null
   }
 }
 ```
 
-Mỗi lần chỉ hỏi một câu rõ ràng. Thông tin bắt buộc tối thiểu gồm:
-
-- Điểm đến.
-- Số ngày.
-
-Ngày cụ thể, ngân sách, số người và sở thích có thể để trống hoặc dùng giá trị mặc định đã thống nhất.
+Payload tối thiểu chỉ bắt buộc `status`, `conversationId`, `question`. Thông tin bắt buộc tối thiểu để lập lịch gồm điểm đến và số ngày từ 1 đến 7. Mỗi lượt chỉ hỏi một câu rõ ràng; các trường còn lại có thể để trống.
 
 ### 4.4. Response không có kết quả
 
@@ -372,23 +336,39 @@ Ngày cụ thể, ngân sách, số người và sở thích có thể để tr�
   "status": "NO_RESULTS",
   "conversationId": "conv-01JXYZ",
   "message": "Hiện chưa có sản phẩm phù hợp tại Quy Nhơn trong khoảng giá này.",
-  "suggestions": [
-    "Tăng ngân sách",
-    "Chọn điểm đến khác",
-    "Bỏ điều kiện gần biển"
-  ]
+  "suggestions": ["Tăng ngân sách", "Chọn điểm đến khác", "Bỏ điều kiện gần biển"]
 }
 ```
 
-Team Agent không được lấp kết quả rỗng bằng sản phẩm do LLM tự tạo.
+Agent không lấp kết quả rỗng bằng sản phẩm do LLM tự tạo.
 
-### 4.5. Response lỗi
+### 4.5. Response suy giảm
+
+Khi Search vẫn trả sản phẩm thật nhưng Agent không thể dựng lịch trình, API có thể trả HTTP 200 với `FALLBACK`:
 
 ```json
 {
-  "status": "ERROR",
+  "status": "FALLBACK",
+  "conversationId": "conv-01JXYZ",
+  "message": "Chưa thể dựng lịch trình; bạn có thể xem các sản phẩm phù hợp bên dưới.",
+  "searchResults": {
+    "hotel": [],
+    "flight": [],
+    "attraction": []
+  }
+}
+```
+
+Nếu rule-based planner dựng được itinerary hợp lệ và vượt qua grounding validation, API có thể trả `COMPLETED` kèm warning cho biết đã dùng fallback.
+
+### 4.6. Response lỗi
+
+Lỗi thực sự không nằm trong `ItineraryResponse` và không dùng `status: ERROR` trong body HTTP 200. API trả HTTP 4xx/5xx với `ErrorResponse` dùng chung:
+
+```json
+{
   "error": {
-    "code": "SEARCH_SERVICE_UNAVAILABLE",
+    "code": "SEARCH_UNAVAILABLE",
     "message": "Không thể tải sản phẩm vào lúc này.",
     "retryable": true,
     "requestId": "agent-01JXYZ"
@@ -398,14 +378,14 @@ Team Agent không được lấp kết quả rỗng bằng sản phẩm do LLM t
 
 | HTTP | Mã lỗi | Ý nghĩa |
 |---:|---|---|
-| 400 | `INVALID_REQUEST` | Request không hợp lệ hoặc nội dung rỗng |
-| 400 | `INVALID_TRIP_DURATION` | Số ngày ngoài phạm vi hỗ trợ |
-| 401 | `INVALID_TOKEN` | Có gửi JWT nhưng token không hợp lệ |
+| 400 | `VALIDATION_ERROR` | Request rỗng hoặc không đúng schema |
+| 400 | `INVALID_TRIP_DURATION` | Số ngày ngoài phạm vi 1–7 |
+| 401 | `INVALID_TOKEN` hoặc `TOKEN_EXPIRED` | Có gửi JWT nhưng token không hợp lệ |
 | 404 | `CONVERSATION_NOT_FOUND` | Không tìm thấy cuộc hội thoại |
-| 422 | `UNSUPPORTED_DESTINATION` | Điểm đến chưa có trong catalog |
-| 503 | `SEARCH_SERVICE_UNAVAILABLE` | Search API không khả dụng |
-| 503 | `LLM_UNAVAILABLE` | LLM lỗi và không thể tạo kết quả dự phòng |
-| 500 | `ITINERARY_VALIDATION_FAILED` | Lịch trình không vượt qua bước kiểm tra grounding |
+| 422 | `UNSUPPORTED_DESTINATION` | Điểm đến chưa có trong catalog. `details` có `destination`, `supportedDestinations`, `conversationId`; backend lưu phần intent còn lại (bỏ điểm đến) nên gửi lại `conversationId` cùng điểm đến hợp lệ là tiếp tục chuyến đi |
+| 503 | `SEARCH_UNAVAILABLE` | Search API không khả dụng |
+| 503 | `LLM_UNAVAILABLE` | LLM lỗi và không thể trả kết quả dự phòng |
+| 500 | `ITINERARY_VALIDATION_FAILED` | Lịch trình không vượt qua grounding validation |
 
 ---
 
@@ -415,11 +395,11 @@ Team Agent không được lấp kết quả rỗng bằng sản phẩm do LLM t
 2. Tên sản phẩm được sao chép chính xác từ kết quả tìm kiếm.
 3. LLM không được tạo hoặc sửa giá.
 4. Sản phẩm phải thuộc đúng điểm đến người dùng yêu cầu.
-5. Không chủ động trả sản phẩm hết chỗ.
-6. Backend tính `estimatedTotal`; không sử dụng phép tính của LLM.
-7. Mỗi sản phẩm có đường dẫn chi tiết hoặc booking hoạt động được.
+5. Không chủ động trả sản phẩm có `available=false`; `available=true` vẫn chỉ là snapshot và phải được kiểm tra lại tại checkout.
+6. Backend tính `estimatedTotal`; không sử dụng phép tính của LLM. Khi không đủ căn cứ, trả `null`, `UNKNOWN` và warning.
+7. Mỗi sản phẩm có `productId` mở được API/trang chi tiết đã thống nhất.
 8. LLM có thể viết mô tả, thời gian nghỉ và bữa ăn không nêu tên; không được tạo sản phẩm có tên riêng.
-9. Nếu LLM lỗi, Agent trả lịch trình dựng bằng rule hoặc lỗi có kiểm soát.
+9. Nếu LLM lỗi, Agent trả lịch trình dựng bằng rule, `FALLBACK`, hoặc lỗi HTTP có kiểm soát theo OpenAPI.
 10. Mục tiêu grounding là 100%.
 11. Mục tiêu độ trễ p95 toàn luồng dưới 5 giây.
 
@@ -427,13 +407,16 @@ Team Agent không được lấp kết quả rỗng bằng sản phẩm do LLM t
 
 ## 6. Quy tắc hội thoại
 
-- Mỗi conversation lưu trip intent đã chuẩn hóa gần nhất.
+- Mỗi conversation lưu trip intent đã chuẩn hóa gần nhất và lịch sử chat user/assistant gần đây.
+- Lịch sử chat chỉ nhận role `user`/`assistant`, tối đa 20 message, 1.000 ký tự/message và 8.000 ký tự tổng; khi vượt giới hạn thì bỏ message cũ nhất trước.
+- `classify`, bước lập tool plan, `converse` và `clarify` nhận lịch sử để hiểu tham chiếu đa lượt. Lịch sử là dữ liệu không tin cậy, không phải instruction và message mới nhất vẫn có quyền cao hơn.
 - Tin nhắn mới chỉ cập nhật các trường người dùng thay đổi rõ ràng.
 - “Đổi thành Đà Nẵng” chỉ thay `destination`.
 - “Tăng ngân sách lên 20 triệu” chỉ thay `budget`.
 - Thực hiện tìm kiếm lại khi điểm đến, ngày, ngân sách, số người hoặc sở thích thay đổi.
 - Không dùng trạng thái hội thoại làm nguồn chính thức cho giá và availability.
 - MVP nên cho conversation hết hạn sau 24 giờ.
+- Adapter hiện tại lưu trong memory của process; restart backend sẽ mất conversation. Việc lưu bền vững vào các bảng `app.conversations`/`app.conversation_messages` đã có trong DDL là hạng mục adapter riêng.
 
 ---
 
@@ -499,15 +482,15 @@ Team Recommendation/Search cung cấp:
 - Tối thiểu 10 địa điểm tham quan.
 - Tối thiểu 3 chuyến bay hoặc dữ liệu mẫu chuyến bay.
 - Tối thiểu 2 điểm đến.
-- Ít nhất một sản phẩm hết chỗ.
+- Ít nhất một sản phẩm có `available=false`.
 - Ít nhất một trường hợp không có kết quả.
 
 Team Agent cung cấp các response lịch trình mock cho Team Web trước khi pipeline thật hoàn thành.
 
-Team Web cung cấp route placeholder hoạt động được:
+Team Web cung cấp route giao diện từ `productId`; API chi tiết chuẩn là:
 
 ```text
-/products/{productId}
+GET /api/v1/products/{productId}
 ```
 
 ---
@@ -522,8 +505,8 @@ Team Web cung cấp route placeholder hoạt động được:
 6. Thiếu điểm đến thì Agent trả câu hỏi làm rõ.
 7. Điểm đến chưa hỗ trợ trả lỗi có kiểm soát.
 8. Search trả rỗng không dẫn đến việc LLM bịa sản phẩm.
-9. Search bị lỗi thì Agent trả lỗi retryable hoặc kết quả dự phòng.
-10. Mỗi liên kết sản phẩm mở được trang chi tiết thật.
+9. Search bị lỗi thì Agent trả `SEARCH_UNAVAILABLE` retryable; chỉ dùng `FALLBACK` khi vẫn còn kết quả Search thật để hiển thị.
+10. Mỗi `productId` mở được trang chi tiết thật.
 11. Checkout kiểm tra lại giá và availability.
 12. Độ trễ p95 toàn luồng dưới 5 giây.
 13. Automated grounding test đạt 100%.
@@ -535,7 +518,7 @@ Team Web cung cấp route placeholder hoạt động được:
 
 Itinerary Assistant được xem là hoàn thành khi:
 
-> Khách hàng nhập yêu cầu chuyến đi, nhận lịch trình theo từng ngày chỉ chứa sản phẩm thật và còn khả dụng, có thể mở một sản phẩm bất kỳ và tiếp tục sang luồng booking hiện có.
+> Khách hàng nhập yêu cầu chuyến đi, nhận lịch trình theo từng ngày chỉ chứa sản phẩm thật từ catalog, có thể mở một sản phẩm bất kỳ và tiếp tục sang luồng booking để kiểm tra lại giá và availability.
 
 Luồng demo bắt buộc:
 
@@ -550,12 +533,12 @@ Yêu cầu lịch trình
 
 ---
 
-## 11. Ba schema cần chốt đầu tiên
+## 11. Ba schema dùng chung đã khóa
 
-Trước khi các team code độc lập, cần khóa phiên bản đầu tiên của:
+OpenAPI 1.2.0 đã khóa phiên bản đầu tiên của:
 
 1. `SearchRequest` — Team Agent gửi sang Search.
 2. `ProductSummary` — Search trả về cho Agent và Web.
 3. `ItineraryResponse` — Agent trả về cho Web.
 
-Ba schema này nên được đưa vào một file OpenAPI dùng chung. Frontend tạo mock từ chính file đó; backend cũng dùng nó cho contract test để tránh mỗi team tự hiểu payload theo một cách khác.
+Ba schema được tham chiếu từ `src/shared/contracts/openapi.yaml`. Frontend tạo mock/client từ contract này; backend dùng cùng contract cho validation và contract test. Mọi thay đổi required field, enum hoặc HTTP behavior phải sửa OpenAPI trước, cập nhật fixture và chạy validator.

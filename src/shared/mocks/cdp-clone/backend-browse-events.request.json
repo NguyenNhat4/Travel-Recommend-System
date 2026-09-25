@@ -1,0 +1,30 @@
+{
+  "events": [
+    {
+      "eventId": "search:0f6a3b1e-5d0c-4e8a-9b3f-2c7d1e4a5b60",
+      "cdpUserId": "VP0092381",
+      "eventName": "search",
+      "timestamp": "2026-09-16T10:05:12Z",
+      "searchQuery": "resort Nha Trang cho gia đình có trẻ nhỏ"
+    },
+    {
+      "eventId": "product_view:7c1d9e2f-3a4b-4c5d-8e6f-0a1b2c3d4e5f",
+      "cdpUserId": "VP0092381",
+      "eventName": "product_view",
+      "timestamp": "2026-09-16T10:06:40Z",
+      "productId": "5febedf3-74ba-5200-a5ec-2a6ab5162acb",
+      "taxonomy": "attraction"
+    },
+    {
+      "eventId": "add_to_cart:a2b3c4d5-e6f7-4a8b-9c0d-1e2f3a4b5c6d",
+      "cdpUserId": "VP0092381",
+      "eventName": "add_to_cart",
+      "timestamp": "2026-09-16T10:08:03Z",
+      "productId": "5febedf3-74ba-5200-a5ec-2a6ab5162acb",
+      "taxonomy": "attraction",
+      "quantity": 2,
+      "unitPrice": 1050000,
+      "usingDate": "2026-10-03"
+    }
+  ]
+}

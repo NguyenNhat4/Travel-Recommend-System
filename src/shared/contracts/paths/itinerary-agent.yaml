@@ -1,0 +1,81 @@
+/assistant/itineraries:
+  post:
+    tags:
+    - assistant
+    operationId: createItinerary
+    summary: Tạo hoặc tiếp tục lịch trình
+    description: Shape hợp nhất được khóa tại OpenAPI; xem docs/spec/hop-dong-tich-hop-frontend.md §9.
+      Lỗi luôn trả ErrorResponse với HTTP status tương ứng, không có status "ERROR" trong body 200.
+    security:
+    - {}
+    - bearerAuth: []
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/ItineraryRequest
+    responses:
+      '200':
+        description: Kết quả theo status
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ItineraryResponse
+      '400':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '404':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '422':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '503':
+        $ref: ../openapi.yaml#/components/responses/Error
+/assistant/itineraries/stream:
+  post:
+    tags:
+    - assistant
+    operationId: streamItinerary
+    summary: Tạo hoặc tiếp tục lịch trình và stream tiến trình graph
+    description: SSE chỉ phát topology, sự kiện node an toàn và kết quả cuối; không phát raw state, prompt hoặc token.
+    security:
+    - {}
+    - bearerAuth: []
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/ItineraryRequest
+    responses:
+      '200':
+        description: Luồng Server-Sent Events. Kết quả nghiệp vụ nằm trong run.completed; lỗi sau khi mở stream nằm trong run.failed.
+        content:
+          text/event-stream:
+            schema:
+              type: string
+              description: Mỗi data là AssistantStreamEvent được mã hóa JSON.
+      '422':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '503':
+        $ref: ../openapi.yaml#/components/responses/Error
+/assistant/status:
+  get:
+    tags:
+    - assistant
+    operationId: getAssistantStatus
+    summary: Kiểm tra trạng thái runtime và nguồn dữ liệu của agent
+    responses:
+      '200':
+        description: Trạng thái agent
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/AssistantStatus

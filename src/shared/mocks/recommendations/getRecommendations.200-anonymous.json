@@ -1,0 +1,75 @@
+{
+  "cdpUserId": null,
+  "generatedAt": "2026-09-16T10:14:22Z",
+  "modelVersion": "multilingual-e5-base-v1.2",
+  "strategy": "popular",
+  "nextVertical": null,
+  "destination": null,
+  "recommendations": [
+    {
+      "rank": 1,
+      "productId": "nt-h-01",
+      "name": "Vinpearl Resort Nha Trang - Deluxe Ocean View",
+      "taxonomy": "hotel",
+      "destination": "Nha Trang",
+      "unitPrice": 3400000,
+      "currency": "VND",
+      "available": true,
+      "imageUrl": "https://cdn.example.vn/nt-h-01.jpg",
+      "attributes": {
+        "starRating": 5,
+        "oceanView": true,
+        "privateBeach": true,
+        "kidsPool": true,
+        "familyFriendly": true
+      },
+      "score": 0.9,
+      "because": [],
+      "priceUnit": "PER_NIGHT"
+    },
+    {
+      "rank": 2,
+      "productId": "dn-a-01",
+      "name": "Vé cáp treo Bà Nà Hills",
+      "taxonomy": "attraction",
+      "destination": "Đà Nẵng",
+      "unitPrice": 900000,
+      "currency": "VND",
+      "available": true,
+      "imageUrl": "https://cdn.example.vn/dn-a-01.jpg",
+      "attributes": {
+        "outdoor": true,
+        "familyFriendly": true
+      },
+      "score": 0.86,
+      "because": [],
+      "priceUnit": "PER_PERSON"
+    },
+    {
+      "rank": 3,
+      "productId": "pq-h-01",
+      "name": "Vinpearl Resort & Spa Phú Quốc",
+      "taxonomy": "hotel",
+      "destination": "Phú Quốc",
+      "unitPrice": 3980000,
+      "currency": "VND",
+      "available": true,
+      "imageUrl": "https://cdn.example.vn/pq-h-01.jpg",
+      "attributes": {
+        "starRating": 5,
+        "seaside": true,
+        "spa": true,
+        "freeBreakfast": true
+      },
+      "score": 0.8,
+      "because": [],
+      "priceUnit": "PER_NIGHT"
+    }
+  ],
+  "diagnostics": {
+    "eventsUsed": 0,
+    "coldStart": true,
+    "excludedVerticals": [],
+    "latencyMs": 11
+  }
+}

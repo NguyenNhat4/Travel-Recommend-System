@@ -1,0 +1,239 @@
+/auth/register:
+  post:
+    tags:
+    - auth
+    operationId: register
+    security: []
+    summary: Đăng ký và tự đăng nhập
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/RegisterRequest
+    responses:
+      '201':
+        description: Đăng ký thành công
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/AuthResponse
+      '400':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '409':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error
+/auth/login:
+  post:
+    tags:
+    - auth
+    operationId: login
+    security: []
+    summary: Đăng nhập
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/LoginRequest
+    responses:
+      '200':
+        description: Đăng nhập thành công
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/AuthResponse
+      '400':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error
+/auth/me:
+  get:
+    tags:
+    - auth
+    operationId: getMe
+    summary: Thông tin phiên hiện tại
+    security:
+    - bearerAuth: []
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    responses:
+      '200':
+        description: Người dùng hiện tại
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/AuthUser
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error
+# --- Hybrid session (docs/hop-dong-tich-hop-auth.md §5) ------------------------
+# Chỉ BFF (Next.js route handler) gọi nhóm này, gác bằng X-Service-Token.
+# Bốn path phía trên giữ nguyên cho client nội bộ, Agent, CLI và contract test.
+/auth/session:
+  post:
+    tags:
+    - auth
+    operationId: createSession
+    security:
+    - serviceToken: []
+    summary: Xác thực credential, trả cặp token cho BFF
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/SessionRequest
+    responses:
+      '200':
+        description: Xác thực thành công; state cho biết đã xong hay còn chờ 2FA
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/SessionResponse
+      '400':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '429':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error
+/auth/session/token:
+  post:
+    tags:
+    - auth
+    operationId: rotateSessionToken
+    security:
+    - serviceToken: []
+    summary: Đổi refresh token lấy cặp mới (một lần dùng, phát hiện tái sử dụng)
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/RefreshRequest
+    responses:
+      '200':
+        description: Cặp token mới
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/SessionResponse
+      '400':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error
+/auth/session/revoke:
+  post:
+    tags:
+    - auth
+    operationId: revokeSession
+    security:
+    - serviceToken: []
+    summary: Thu hồi refresh token (đăng xuất)
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/RevokeRequest
+    responses:
+      '204':
+        description: Đã thu hồi; gọi lại với token đã thu hồi vẫn trả 204
+      '400':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error
+/auth/session/mfa/verify:
+  post:
+    tags:
+    - auth
+    operationId: verifySessionMfa
+    security:
+    - serviceToken: []
+    summary: Xác minh yếu tố thứ hai, nâng pending_mfa lên authenticated
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/MfaVerifyRequest
+    responses:
+      '200':
+        description: Xác minh thành công
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/SessionResponse
+      '400':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '429':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error
+/auth/password:
+  put:
+    tags:
+    - auth
+    operationId: changePassword
+    security:
+    - bearerAuth: []
+    summary: Đổi mật khẩu; thu hồi mọi phiên khác của người dùng
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/PasswordChangeRequest
+    responses:
+      '204':
+        description: Đã đổi mật khẩu
+      '400':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error
+# --- JWKS (docs/spec/hop-dong-tich-hop-auth.md §5, §10.2) ------------------------
+# Ngoài prefix /api/v1: đường dẫn chuẩn để service nội bộ tự kiểm chữ ký RS256.
+/.well-known/jwks.json:
+  get:
+    tags:
+    - auth
+    operationId: getJwks
+    security: []
+    servers:
+    - url: /
+    summary: Public key (JWK Set) để kiểm access token
+    responses:
+      '200':
+        description: Các khoá đang hiệu lực; khi xoay khoá trả cả hai
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/JwksResponse

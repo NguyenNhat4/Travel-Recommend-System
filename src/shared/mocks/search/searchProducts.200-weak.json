@@ -1,0 +1,63 @@
+{
+  "results": [
+    {
+      "productId": "dn-a-01",
+      "name": "Vé cáp treo Bà Nà Hills",
+      "taxonomy": "attraction",
+      "destination": "Đà Nẵng",
+      "unitPrice": 900000,
+      "currency": "VND",
+      "available": true,
+      "availableFrom": "2026-09-01",
+      "availableTo": "2027-08-31",
+      "imageUrl": "https://cdn.example.vn/dn-a-01.jpg",
+      "rating": 4.5,
+      "reviewCount": 15320,
+      "attributes": {
+        "outdoor": true,
+        "familyFriendly": true
+      },
+      "score": 0.29,
+      "priceUnit": "PER_PERSON"
+    },
+    {
+      "productId": "nt-a-01",
+      "name": "VinWonders Nha Trang",
+      "taxonomy": "attraction",
+      "destination": "Nha Trang",
+      "unitPrice": 880000,
+      "currency": "VND",
+      "available": true,
+      "availableFrom": "2026-09-01",
+      "availableTo": "2027-08-31",
+      "imageUrl": "https://cdn.example.vn/nt-a-01.jpg",
+      "rating": 4.5,
+      "reviewCount": 8421,
+      "attributes": {
+        "outdoor": true,
+        "waterPark": true,
+        "familyFriendly": true
+      },
+      "score": 0.22,
+      "priceUnit": "PER_PERSON"
+    }
+  ],
+  "total": 2,
+  "limit": 20,
+  "offset": 0,
+  "topScore": 0.29,
+  "facets": {
+    "taxonomy": {
+      "hotel": 0,
+      "attraction": 2,
+      "flight": 0,
+      "combo": 0,
+      "golf": 0
+    },
+    "destination": {
+      "Đà Nẵng": 1,
+      "Nha Trang": 1
+    }
+  },
+  "requestId": "search-01JXYZ"
+}

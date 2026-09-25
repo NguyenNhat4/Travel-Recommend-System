@@ -1,0 +1,80 @@
+{
+  "cdpUserId": "VP0034567",
+  "generatedAt": "2026-09-16T10:14:22Z",
+  "modelVersion": "multilingual-e5-base-v1.2",
+  "strategy": "dormant",
+  "nextVertical": null,
+  "destination": "Phú Quốc",
+  "recommendations": [
+    {
+      "rank": 1,
+      "productId": "pq-g-01",
+      "name": "Vinpearl Golf Phú Quốc - 18 hố",
+      "taxonomy": "golf",
+      "destination": "Phú Quốc",
+      "unitPrice": 2600000,
+      "currency": "VND",
+      "available": true,
+      "imageUrl": "https://cdn.example.vn/pq-g-01.jpg",
+      "attributes": {
+        "caddie": true,
+        "outdoor": true
+      },
+      "score": 0.63,
+      "because": [
+        {
+          "productId": "pq-h-01",
+          "productName": "Vinpearl Resort & Spa Phú Quốc",
+          "imageUrl": "https://cdn.example.vn/pq-h-01.jpg",
+          "event": "purchase",
+          "daysAgo": 184,
+          "contribution": 0.51
+        },
+        {
+          "productId": null,
+          "productName": "Tour 4 đảo Phú Quốc (đã ngừng bán)",
+          "imageUrl": null,
+          "event": "purchase",
+          "daysAgo": 186,
+          "contribution": 0.2
+        }
+      ],
+      "priceUnit": "PER_PERSON"
+    },
+    {
+      "rank": 2,
+      "productId": "pq-h-01",
+      "name": "Vinpearl Resort & Spa Phú Quốc",
+      "taxonomy": "hotel",
+      "destination": "Phú Quốc",
+      "unitPrice": 3980000,
+      "currency": "VND",
+      "available": true,
+      "imageUrl": "https://cdn.example.vn/pq-h-01.jpg",
+      "attributes": {
+        "starRating": 5,
+        "seaside": true,
+        "spa": true,
+        "freeBreakfast": true
+      },
+      "score": 0.57,
+      "because": [
+        {
+          "productId": null,
+          "productName": "Tour 4 đảo Phú Quốc (đã ngừng bán)",
+          "imageUrl": null,
+          "event": "product_view",
+          "daysAgo": 190,
+          "contribution": 0.33
+        }
+      ],
+      "priceUnit": "PER_NIGHT"
+    }
+  ],
+  "diagnostics": {
+    "eventsUsed": 9,
+    "coldStart": false,
+    "excludedVerticals": [],
+    "latencyMs": 52
+  }
+}

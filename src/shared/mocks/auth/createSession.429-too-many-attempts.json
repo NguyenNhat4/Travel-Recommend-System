@@ -1,0 +1,9 @@
+{
+  "error": {
+    "code": "TOO_MANY_ATTEMPTS",
+    "message": "Quá nhiều lần thử. Vui lòng thử lại sau 15 phút.",
+    "retryable": true,
+    "requestId": "auth-01JXYZ",
+    "details": { "retryAfterSeconds": 900 }
+  }
+}

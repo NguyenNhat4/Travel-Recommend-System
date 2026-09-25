@@ -1,0 +1,15 @@
+TrackEventRequest:
+  type: object
+  additionalProperties: false
+  required:
+  - eventName
+  - productId
+  properties:
+    eventName:
+      type: string
+      enum:
+      - product_view
+      description: Thêm giá trị mới là thay đổi tương thích ngược nhưng phải cập nhật contract trước.
+    productId:
+      type: string
+      minLength: 1

@@ -1,0 +1,72 @@
+{
+  "cdpUserId": "VP0100234",
+  "generatedAt": "2026-09-16T10:14:22Z",
+  "modelVersion": "multilingual-e5-base-v1.2",
+  "strategy": "recent_activity",
+  "nextVertical": null,
+  "destination": "Nha Trang",
+  "recommendations": [
+    {
+      "rank": 1,
+      "productId": "nt-h-02",
+      "name": "Vinpearl Beachfront Nha Trang",
+      "taxonomy": "hotel",
+      "destination": "Nha Trang",
+      "unitPrice": 2150000,
+      "currency": "VND",
+      "available": true,
+      "imageUrl": "https://cdn.example.vn/nt-h-02.jpg",
+      "attributes": {
+        "starRating": 5,
+        "nearCenter": true,
+        "pool": true
+      },
+      "score": 0.58,
+      "because": [
+        {
+          "productId": "nt-h-01",
+          "productName": "Vinpearl Resort Nha Trang - Deluxe Ocean View",
+          "imageUrl": "https://cdn.example.vn/nt-h-01.jpg",
+          "event": "add_to_cart",
+          "daysAgo": 0,
+          "contribution": 0.41
+        }
+      ],
+      "priceUnit": "PER_NIGHT"
+    },
+    {
+      "rank": 2,
+      "productId": "nt-c-01",
+      "name": "Combo Tata Show + buffet tối Nha Trang",
+      "taxonomy": "combo",
+      "destination": "Nha Trang",
+      "unitPrice": 1250000,
+      "currency": "VND",
+      "available": true,
+      "imageUrl": "https://cdn.example.vn/nt-c-01.jpg",
+      "attributes": {
+        "show": true,
+        "buffet": true,
+        "indoor": true
+      },
+      "score": 0.52,
+      "because": [
+        {
+          "productId": null,
+          "productName": "khu vui chơi cho trẻ em Nha Trang",
+          "imageUrl": null,
+          "event": "search",
+          "daysAgo": 1,
+          "contribution": 0.22
+        }
+      ],
+      "priceUnit": "PER_PACKAGE"
+    }
+  ],
+  "diagnostics": {
+    "eventsUsed": 2,
+    "coldStart": true,
+    "excludedVerticals": [],
+    "latencyMs": 39
+  }
+}

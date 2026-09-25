@@ -1,0 +1,124 @@
+/products:
+  get:
+    tags:
+    - catalog
+    operationId: listProducts
+    summary: Danh sách sản phẩm
+    description: >-
+      Không có parentProductId: chỉ trả tầng cha (search unit — property, route và taxonomy không phân tầng),
+      giống /search và /recommendations. Có parentProductId: trả các sản phẩm tầng con (hạng phòng, chuyến bay
+      cụ thể) của sản phẩm cha đó, là đơn vị đặt chỗ mà Web thêm vào giỏ; sort=popular với tầng con xếp theo
+      giá tăng dần. parentProductId không có trong catalog hoặc không có tầng con thì trả results rỗng.
+    security:
+    - {}
+    - bearerAuth: []
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    - name: parentProductId
+      in: query
+      required: false
+      description: productId của sản phẩm cha (property hoặc route). Lọc các tầng con của nó.
+      schema:
+        type: string
+        minLength: 1
+    - name: destination
+      in: query
+      schema:
+        type: string
+    - name: taxonomy
+      in: query
+      schema:
+        $ref: ../openapi.yaml#/components/schemas/Taxonomy
+    - name: availableOnly
+      in: query
+      schema:
+        type: boolean
+        default: false
+    - name: sort
+      in: query
+      schema:
+        $ref: ../openapi.yaml#/components/schemas/ProductSort
+    - $ref: ../openapi.yaml#/components/parameters/Limit
+    - $ref: ../openapi.yaml#/components/parameters/Offset
+    responses:
+      '200':
+        description: Trang sản phẩm
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ProductListResponse
+      '400':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error
+/products/{productId}:
+  get:
+    tags:
+    - catalog
+    operationId: getProduct
+    summary: Chi tiết sản phẩm
+    security:
+    - {}
+    - bearerAuth: []
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    - $ref: ../openapi.yaml#/components/parameters/ProductId
+    responses:
+      '200':
+        description: Chi tiết sản phẩm
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ProductDetail
+      '404':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error
+/products/{productId}/similar:
+  get:
+    tags:
+    - catalog
+    operationId: getSimilarProducts
+    summary: Sản phẩm tương tự theo độ gần vector sản phẩm
+    security:
+    - {}
+    - bearerAuth: []
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    - $ref: ../openapi.yaml#/components/parameters/ProductId
+    - name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 20
+        default: 8
+    responses:
+      '200':
+        description: Sản phẩm tương tự, có thể rỗng
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/SimilarProductsResponse
+      '404':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error
+/destinations:
+  get:
+    tags:
+    - catalog
+    operationId: listDestinations
+    security: []
+    summary: Danh sách điểm đến chuẩn hóa
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    responses:
+      '200':
+        description: Điểm đến
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/DestinationListResponse
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error

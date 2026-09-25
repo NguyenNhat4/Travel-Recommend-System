@@ -1,0 +1,109 @@
+{
+  "cdpUserId": "VP0092381",
+  "generatedAt": "2026-09-16T10:14:22Z",
+  "modelVersion": "multilingual-e5-base-v1.2",
+  "strategy": "cross_vertical",
+  "nextVertical": "flight",
+  "destination": "Nha Trang",
+  "recommendations": [
+    {
+      "rank": 1,
+      "productId": "nt-f-01",
+      "name": "Vé máy bay Hà Nội – Cam Ranh (khứ hồi)",
+      "taxonomy": "flight",
+      "destination": "Nha Trang",
+      "unitPrice": 1890000,
+      "currency": "VND",
+      "available": true,
+      "imageUrl": "https://cdn.example.vn/nt-f-01.jpg",
+      "attributes": {
+        "directFlight": true,
+        "baggage": true
+      },
+      "score": 0.81,
+      "because": [
+        {
+          "productId": "nt-h-01",
+          "productName": "Vinpearl Resort Nha Trang - Deluxe Ocean View",
+          "imageUrl": "https://cdn.example.vn/nt-h-01.jpg",
+          "event": "purchase",
+          "daysAgo": 3,
+          "contribution": 0.62
+        },
+        {
+          "productId": "nt-a-01",
+          "productName": "VinWonders Nha Trang",
+          "imageUrl": "https://cdn.example.vn/nt-a-01.jpg",
+          "event": "product_view",
+          "daysAgo": 5,
+          "contribution": 0.14
+        }
+      ],
+      "priceUnit": "PER_PERSON"
+    },
+    {
+      "rank": 2,
+      "productId": "nt-a-01",
+      "name": "VinWonders Nha Trang",
+      "taxonomy": "attraction",
+      "destination": "Nha Trang",
+      "unitPrice": 880000,
+      "currency": "VND",
+      "available": true,
+      "imageUrl": "https://cdn.example.vn/nt-a-01.jpg",
+      "attributes": {
+        "outdoor": true,
+        "waterPark": true,
+        "familyFriendly": true
+      },
+      "score": 0.74,
+      "because": [
+        {
+          "productId": "nt-h-01",
+          "productName": "Vinpearl Resort Nha Trang - Deluxe Ocean View",
+          "imageUrl": "https://cdn.example.vn/nt-h-01.jpg",
+          "event": "purchase",
+          "daysAgo": 3,
+          "contribution": 0.55
+        }
+      ],
+      "priceUnit": "PER_PERSON"
+    },
+    {
+      "rank": 3,
+      "productId": "nt-c-01",
+      "name": "Combo Tata Show + buffet tối Nha Trang",
+      "taxonomy": "combo",
+      "destination": "Nha Trang",
+      "unitPrice": 1250000,
+      "currency": "VND",
+      "available": true,
+      "imageUrl": "https://cdn.example.vn/nt-c-01.jpg",
+      "attributes": {
+        "show": true,
+        "buffet": true,
+        "indoor": true
+      },
+      "score": 0.66,
+      "because": [
+        {
+          "productId": "nt-h-01",
+          "productName": "Vinpearl Resort Nha Trang - Deluxe Ocean View",
+          "imageUrl": "https://cdn.example.vn/nt-h-01.jpg",
+          "event": "purchase",
+          "daysAgo": 3,
+          "contribution": 0.48
+        }
+      ],
+      "priceUnit": "PER_PACKAGE"
+    }
+  ],
+  "diagnostics": {
+    "eventsUsed": 14,
+    "coldStart": false,
+    "excludedVerticals": [
+      "hotel"
+    ],
+    "latencyMs": 47
+  }
+}

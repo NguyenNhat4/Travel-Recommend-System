@@ -1,0 +1,37 @@
+{
+  "status": "COMPLETED",
+  "conversationId": "sample-conv",
+  "itinerary": {
+    "days": [
+      {
+        "day": 1,
+        "slots": [
+          {
+            "time": "MORNING",
+            "product": {
+              "productId": "8a4c5920-55c2-5370-b2e5-01956c3e7288",
+              "name": "VinWonders Phú Quốc",
+              "taxonomy": "attraction",
+              "destination": "Phú Quốc",
+              "unitPrice": 950000,
+              "currency": "VND",
+              "available": true,
+              "imageUrl": "https://booking-static.vinpearl.com/tours/cd6d85b0b27a4609809ef3c64e3e0d76_27be58d21e244664bf34d11d72e77860_Castle_vinwonders-phu-quoc-ve-vao-cua_vinwonders-phu-quoc-ve-vao-cua.jpg",
+              "priceUnit": "UNKNOWN"
+            },
+            "note": "Thời gian đề xuất; chưa xác minh giờ sử dụng."
+          }
+        ]
+      }
+    ],
+    "estimatedTotal": null,
+    "currency": "VND",
+    "budgetStatus": "UNKNOWN"
+  },
+  "warnings": [
+    {
+      "code": "PRICE_BASIS_UNKNOWN",
+      "message": "Giá tham khảo; chưa đủ dữ liệu tính tổng."
+    }
+  ]
+}

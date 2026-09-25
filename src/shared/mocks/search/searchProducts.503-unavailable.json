@@ -1,0 +1,8 @@
+{
+  "error": {
+    "code": "SEARCH_UNAVAILABLE",
+    "message": "Tìm kiếm tạm thời không khả dụng. Vui lòng thử lại.",
+    "retryable": true,
+    "requestId": "search-01JXYZ"
+  }
+}

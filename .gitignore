@@ -1,0 +1,36 @@
+# macOS metadata
+.DS_Store
+
+# Local secrets and environment overrides.
+.env
+.env.*
+!.env.example
+!**/.env.example
+*.pem
+*.key
+*.p12
+
+# Python caches and local test artifacts.
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Cache embedding sinh lúc chạy (seed/backend) — dựng lại được từ catalog, ~9 MB/model.
+.embcache/
+
+# Local logs and generated evaluation reports.
+*.log
+src/evaluation/reports/itinerary-agent-metrics.json
+src/evaluation/reports/eval-*.json
+artifacts/
+src/shared/mocks/itinerary-agent/completed-minimal-clarified.json
+
+# Khóa ký JWT sinh tại máy (auth §19). Không bao giờ commit.
+secrets/

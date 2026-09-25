@@ -1,0 +1,24 @@
+{
+  "productId": "nt-h-01",
+  "name": "Vinpearl Resort Nha Trang - Deluxe Ocean View",
+  "taxonomy": "hotel",
+  "destination": "Nha Trang",
+  "unitPrice": 3400000,
+  "currency": "VND",
+  "available": true,
+  "availableFrom": "2026-10-01",
+  "availableTo": "2027-03-31",
+  "imageUrl": "https://cdn.example.vn/nt-h-01.jpg",
+  "rating": 4.6,
+  "reviewCount": 1293,
+  "attributes": {
+    "starRating": 5,
+    "oceanView": true,
+    "privateBeach": true,
+    "kidsPool": true,
+    "familyFriendly": true
+  },
+  "description": "Khu nghỉ dưỡng 5 sao trên đảo Hòn Tre với bãi biển riêng, hồ bơi trẻ em và lối đi thẳng tới VinWonders.",
+  "sourceRef": "vinpearl:HTNHA001",
+  "priceUnit": "PER_NIGHT"
+}

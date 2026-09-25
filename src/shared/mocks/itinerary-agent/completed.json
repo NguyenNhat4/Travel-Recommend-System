@@ -1,0 +1,220 @@
+{
+  "status": "COMPLETED",
+  "conversationId": "sample-conv",
+  "intent": {
+    "destination": "Phú Quốc",
+    "startDate": null,
+    "days": 1,
+    "party": null,
+    "budget": null,
+    "interests": [],
+    "pace": null
+  },
+  "itinerary": {
+    "title": "Tham quan Phú Quốc",
+    "stay": null,
+    "days": [
+      {
+        "day": 1,
+        "date": null,
+        "title": "Tham quan",
+        "slots": [
+          {
+            "slotId": "sample-slot-1",
+            "time": "MORNING",
+            "startTime": null,
+            "endTime": null,
+            "activityType": null,
+            "product": {
+              "productId": "8a4c5920-55c2-5370-b2e5-01956c3e7288",
+              "name": "VinWonders Phú Quốc",
+              "taxonomy": "attraction",
+              "destination": "Phú Quốc",
+              "unitPrice": 950000,
+              "currency": "VND",
+              "available": true,
+              "availableFrom": "2025-11-12",
+              "availableTo": "2026-12-31",
+              "attributes": {
+                "brand": "Vinpearl",
+                "tourCode": "VW00616",
+                "province": "Kiên Giang",
+                "adultOriginalPrice": 950000.0,
+                "childPrice": 660000.0,
+                "promo": "Ưu đãi độc quyền online: Nhập mã XINCHAO giảm 5%",
+                "audience": [
+                  "Nhóm bạn",
+                  "Gia đình",
+                  "Cặp đôi",
+                  "Doanh nhân"
+                ],
+                "familyFriendly": true,
+                "soldQuantity": 0,
+                "supplier": "VINWONDERS PHÚ QUỐC",
+                "vinpearlType": 7,
+                "salesChannels": [
+                  1,
+                  2
+                ],
+                "images": [
+                  "https://booking-static.vinpearl.com/tours/cd6d85b0b27a4609809ef3c64e3e0d76_27be58d21e244664bf34d11d72e77860_Castle_vinwonders-phu-quoc-ve-vao-cua_vinwonders-phu-quoc-ve-vao-cua.jpg",
+                  "https://booking-static.vinpearl.com/tours/64cc5702776c4c42926337eafa76f0d2_3_vinwonders-phu-quoc-ve-vao-cua.jpg",
+                  "https://booking-static.vinpearl.com/tours/f36388e035204680b05d7e71776f3c3c_1_vinwonders-phu-quoc-ve-vao-cua.jpg",
+                  "https://booking-static.vinpearl.com/tours/0ed81ada01bb4752a78fdb1b8fcaceeb_7_vinwonders-phu-quoc-ve-vao-cua.jpg",
+                  "https://booking-static.vinpearl.com/tours/b1e5fe2a8b3e44c4b4be8074a51e763e_CAO01326%20(1)_vinwonders-phu-quoc-ve-vao-cua.jpg"
+                ],
+                "url": "https://booking.vinpearl.com/vi-VND/tour/ve-vao-cua-vinwonders-phu-quoc-vw00616",
+                "hasDetail": true,
+                "policies": {
+                  "Điều khoản": "LƯU Ý QUAN TRỌNG: Vé chỉ có hiệu lực 1 lần trong thời gian sử dụng ghi trên vé. Vui lòng lựa chọn ngày sử dụng và kiểm tra kỹ thông tin ngày sử dụng trong quá trình đặt vé.\nVé vào cửa trực tiếp khu vui chơi VinWonders Phú Quốc sử dụng trong ngày dành cho 01 người\nXe buýt đưa đón từ thị trấn Dương Đông theo thời gian & địa điểm theo lịch trình cố định. Lịch trình có thể thay đổi mà không báo trước.\nQuý khách hàng cao dưới 100 cm được miễn phí.\nQuy định để áp dụng giá vé cho trẻ em: Khách hàng cao từ 100cm đến dưới 140cm\nQuy định để áp dụng giá vé cho người cao tuổi: Là người có độ tuổi từ 60 tuổi trở lên và có mang theo giấy tờ tuỳ thân có hình ảnh để chứng minh.\nKhông áp dụng đồng thời các chương trình ưu đãi, khuyến mại, giảm giá.\nKhông áp dụng tích điểm VinID.",
+                  "Chính sách hoàn huỷ": "Vé không được hoàn, hủy hoặc quy đổi thành dịch vụ khác\nTrường hợp phát sinh vấn đề đổi ngày, đổi loại vé hoặc hoàn hủy do trường hợp bất khả kháng (khu vui chơi buộc phải đóng cửa và không có cơ sở thay thế) chúng tôi sẽ áp dụng theo chính sách tại thời điểm sử dụng dịch vụ.",
+                  "Hướng dẫn sử dụng": "Khách hàng có thể xuất trình voucher in sẵn hoặc voucher điện tử này tại cổng để vào cửa\nVoucher chỉ có hiệu lực 01 lần trong thời gian sử dụng ghi trên vé",
+                  "Bao gồm (trích từ mô tả)": "Vé chỉ có hiệu lực 01 lần trong thời gian sử dụng ghi trên vé\nVé không được hoàn, hủy hoặc quy đổi thành dịch vụ khác\nQuý khách hàng cao dưới 100 cm được miễn phí.\nQuy định để áp dụng giá vé cho trẻ em: Khách hàng cao từ 100cm đến dưới 140 cm\nQuy định để áp dụng giá vé cho người cao tuổi: Là người có độ tuổi từ 60 tuổi trở lên và có mang theo giấy tờ tuỳ thân có hình ảnh để chứng minh"
+                },
+                "descriptionLang": "vi",
+                "fieldSources": {
+                  "unitPrice": "trip.com"
+                },
+                "venue": "VinWonders Phú Quốc",
+                "latitude": 10.340735,
+                "longitude": 103.854047,
+                "locationSource": "trip.com",
+                "locationPrecision": "venue",
+                "openingHours": "09:00–19:30 (Thời gian nhận khách kết thúc vào 18:30)",
+                "openingHoursDetail": "Phố Châu Âu: 09:00 – 19:30\nThế Giới Cổ Tích: 10:00 – 18:00\nLàng Viking Bí Ẩn: 10:00 – 17:30\nThế Giới Phiêu Lưu: 10:00 – 18:00\nThế Giới Bão Táp: 10:00 – 17:30\nVỏ Sò Biển: 10:00 – 18:00",
+                "suggestedDuration": "1 ngày",
+                "durationMinutes": 480,
+                "address": "Khu Bãi Dài, Phú Quốc, Kiên Giang 92512, Việt Nam",
+                "tags": [
+                  "Công viên giải trí"
+                ],
+                "poiRef": "trip:attraction:18832359",
+                "poiName": "VinWonders Phú Quốc",
+                "tripRating": 4.5,
+                "tripReviewCount": 2349,
+                "vinpearlPrice": 950000,
+                "otaPrices": {
+                  "trip.com": 950000
+                },
+                "sameAs": [
+                  "trip:attraction:18832359"
+                ],
+                "tripUrl": "https://vn.trip.com/travel-guide/attraction/phu-quoc-island/vinwonders-phu-quoc-18832359/"
+              },
+              "description": "VinWonders Phú Quốc\n\nTổng quan VinWonders Phú Quốc:\nVinWonders Phú Quốc là công viên chủ đề lớn nhất tại Việt Nam và có quy mô hàng đầu ở châu Á. Tại đây, du khách từ mọi lứa tuổi, mọi cá tính đều có thể tìm cho mình những điểm đến lý tưởng. Những trò chơi kỷ lục của thế giới hay cuộc sống muôn màu muôn vẻ của hàng chục ngàn sinh vật biển tại VinWonders sẽ đem tới cho chuyến du lịch Phú Quốc của bạn trải nghiệm giải trí thích thú chưa từng có.\n\nVinWonders Phú Quốc – Thế giới của kỳ quan và cảm xúc\nHãy tưởng tượng bạn đang bước vào một thế giới nơi trí tưởng tượng gặp gỡ những cuộc phiêu lưu kỳ thú, nơi các nền văn minh cổ đại sống lại, và những kỳ quan dưới nước khiến bạn choáng ngợp. Đó chính là những gì đang chờ đón bạn tại VinWonders Phú Quốc – công viên chủ đề lớn nhất Việt Nam và là một trong những điểm đến nổi bật của châu Á.\n\n6 thế giới chủ đề sống động, mỗi bước chân là một hành trình\nVinWonders Phú Quốc gồm 6 phân khu chủ đề đặc sắc, được thiết kế công phu theo cảm hứng từ 12 nền văn minh nhân loại và các câu chuyện cổ tích toàn cầu. Dù bạn là người yêu khám phá, đam mê cảm giác mạnh, hay đi cùng gia đình nhỏ – ở đây đều có những trải nghiệm dành riêng cho bạn.\n\nĐại Lộ Châu Âu – Trở về thời Trung Cổ\nHành trình bắt đầu từ Đại Lộ Châu Âu – một thị trấn cổ kính mang đậm hơi thở Trung Cổ với những con đường lát đá, các tòa nhà Phục Hưng lộng lẫy, và những cửa hàng nhộn nhịp. Các buổi biểu diễn đường phố đầy màu sắc diễn ra suốt ngày sẽ đưa bạn lạc vào một không khí lễ hội rộn ràng và đậm chất châu Âu.\n\nThế Giới Diệu Kỳ – Phiêu lưu vào vũ trụ cổ tích\nTiếp theo, bạn sẽ được đắm chìm trong Fantasy World – nơi hội tụ của những vương quốc huyền ảo như bước ra từ các câu chuyện thần thoại. Bạn có thể khám phá Vương quốc Diệu Kỳ như Alice ở xứ sở thần tiên, phiêu lưu trong Ốc Đảo Ả Rập huyền bí, hay đối mặt với lời nguyền rồng độc ác trong trò chơi nhà tối đầu tiên của Việt Nam – \"Lời Nguyền Ác Long\".\n\nLàng Viking & Thế Giới Phiêu Lưu – Đẩy giới hạn bản thân\nBiến hóa thành một chiến binh Bắc Âu tại Khu làng Viking với những trò chơi vận động mạo hiểm như zipline xuyên rừng, cầu treo, leo núi,... Và nếu bạn đam mê tốc độ, đừng bỏ qua \"Cơn Thịnh Nộ của Zeus\" – tàu lượn siêu tốc đạt vận tốc 110 km/h, thuộc hàng nhanh nhất thế giới. Ngoài ra, các công trình kỳ bí như kim tự tháp Maya hay rừng Amazon hoang dã cũng đang chờ bạn khám phá.\n\nCung Điện Hải Vương – Hành trình dưới lòng đại dương\nMột trong những điểm thu hút nhất chính là Cung điện Hải Vương – thủy cung hình con rùa khổng lồ, nằm trong top lớn nhất thế giới. Tại đây, bạn sẽ được ngắm nhìn cá mập, sứa phát sáng, rùa biển, và cả những rạn san hô rực rỡ. Đặc biệt, đừng bỏ lỡ chương trình Nàng Tiên Cá biểu diễn, cho cá ăn, và trải nghiệm cà phê với view toàn cảnh bể cá mập cực độc đáo.\n\nTyphoon World – Giải nhiệt với công viên nước lớn nhất Đông Nam Á\nNếu bạn là người yêu thích nước và muốn tìm chút “giải nhiệt”, thì Typhoon World là thiên đường dành cho bạn. Đây là công viên nước lớn nhất Đông Nam Á, mô phỏng theo vùng nhiệt đới Hawaii, với 36 trò chơi hấp dẫn. Hãy thử sức với đường trượt “Nọc Độc Mãng Xà” dài 175m hoặc đắm mình trong hồ sóng thần Oahu cuồng nhiệt.\n\nHơn cả trò chơi – Một bữa tiệc cảm xúc với show diễn mãn nhãn\nVinWonders Phú Quốc không chỉ là nơi của trò chơi và khám phá – đây còn là trung tâm trình diễn nghệ thuật ngoài trời. Từ Once Show hoành tráng tại Quảng trường Phượng Hoàng với âm thanh, ánh sáng, nước, lửa kết hợp nhuần nhuyễn, cho đến hàng ngàn mini show, diễu hành và biểu diễn đường phố. Mỗi ngày ở VinWonders là một ngày hội rực rỡ.\n\nDành cho mọi lứa tuổi – Từ gia đình đến tín đồ cảm giác mạnh\nDù bạn đi với ai, VinWonders Phú Quốc đều có lựa chọn phù hợp. Trẻ nhỏ sẽ mê mẩn vòng quay ngựa gỗ, khu vui chơi tương tác, trong khi người lớn có thể trải nghiệm rạp phim 4D, trò chơi cảm giác mạnh, và không gian thư giãn đầy tiện nghi. Hơn 100 hoạt động giải trí đang chờ bạn khám phá!\n\nTiện lợi – Dễ tiếp cận – Ăn uống đa dạng\nCông viên mở cửa từ sáng - tối (khoảng 9:00 - 19:30 hàng ngày), có xe buýt đưa đón miễn phí từ trung tâm Dương Đông. Bên trong công viên, bạn có thể dễ dàng tìm thấy các quầy thức ăn nhanh, buffet Á – Âu, hoặc các quán cà phê đậm phong cách để nạp năng lượng cho chuyến vui chơi kéo dài cả ngày.\n\nTrọn vẹn hơn với Combo: Safari & Grand World\nĐể chuyến đi thêm phong phú, bạn có thể kết hợp với Vinpearl Safari – công viên bán hoang dã lớn nhất Việt Nam, nơi bạn được nhìn ngắm động vật từ chính chiếc xe bus chuyên dụng. Hoặc ghé thăm Grand World – Thành phố không ngủ, để thưởng thức show Tinh Hoa Việt Nam, mua sắm, dạo chơi và check-in giữa kiến trúc châu Âu rực rỡ.\n\nHành trình không thể quên – Chờ bạn khám phá!\nVới vô vàn trò chơi đỉnh cao, không gian rực rỡ, show diễn ngoạn mục và dịch vụ đẳng cấp – VinWonders Phú Quốc không chỉ là công viên giải trí, mà là một hành trình cảm xúc và trải nghiệm khó quên. Nếu bạn đang tìm một điểm đến vừa choáng ngợp, vừa trọn vẹn cho gia đình, bạn bè hay người thương – thì đây chính là nơi nên có trong checklist của bạn.\n\nBao gồm\nVé vào cửa trực tiếp khu vui chơi VinWonders Phú Quốc sử dụng trong ngày dành cho 01 người",
+              "imageUrl": "https://booking-static.vinpearl.com/tours/cd6d85b0b27a4609809ef3c64e3e0d76_27be58d21e244664bf34d11d72e77860_Castle_vinwonders-phu-quoc-ve-vao-cua_vinwonders-phu-quoc-ve-vao-cua.jpg",
+              "priceUnit": "UNKNOWN"
+            },
+            "note": "Thời gian đề xuất; chưa xác minh giờ sử dụng.",
+            "source": "SEARCH",
+            "because": []
+          }
+        ]
+      }
+    ],
+    "bookableCount": 1,
+    "estimatedTotal": null,
+    "currency": "VND",
+    "budgetStatus": "UNKNOWN",
+    "priceAsOf": null
+  },
+  "searchResults": {
+    "attraction": [
+      {
+        "productId": "8a4c5920-55c2-5370-b2e5-01956c3e7288",
+        "name": "VinWonders Phú Quốc",
+        "taxonomy": "attraction",
+        "destination": "Phú Quốc",
+        "unitPrice": 950000,
+        "currency": "VND",
+        "available": true,
+        "availableFrom": "2025-11-12",
+        "availableTo": "2026-12-31",
+        "attributes": {
+          "brand": "Vinpearl",
+          "tourCode": "VW00616",
+          "province": "Kiên Giang",
+          "adultOriginalPrice": 950000.0,
+          "childPrice": 660000.0,
+          "promo": "Ưu đãi độc quyền online: Nhập mã XINCHAO giảm 5%",
+          "audience": [
+            "Nhóm bạn",
+            "Gia đình",
+            "Cặp đôi",
+            "Doanh nhân"
+          ],
+          "familyFriendly": true,
+          "soldQuantity": 0,
+          "supplier": "VINWONDERS PHÚ QUỐC",
+          "vinpearlType": 7,
+          "salesChannels": [
+            1,
+            2
+          ],
+          "images": [
+            "https://booking-static.vinpearl.com/tours/cd6d85b0b27a4609809ef3c64e3e0d76_27be58d21e244664bf34d11d72e77860_Castle_vinwonders-phu-quoc-ve-vao-cua_vinwonders-phu-quoc-ve-vao-cua.jpg",
+            "https://booking-static.vinpearl.com/tours/64cc5702776c4c42926337eafa76f0d2_3_vinwonders-phu-quoc-ve-vao-cua.jpg",
+            "https://booking-static.vinpearl.com/tours/f36388e035204680b05d7e71776f3c3c_1_vinwonders-phu-quoc-ve-vao-cua.jpg",
+            "https://booking-static.vinpearl.com/tours/0ed81ada01bb4752a78fdb1b8fcaceeb_7_vinwonders-phu-quoc-ve-vao-cua.jpg",
+            "https://booking-static.vinpearl.com/tours/b1e5fe2a8b3e44c4b4be8074a51e763e_CAO01326%20(1)_vinwonders-phu-quoc-ve-vao-cua.jpg"
+          ],
+          "url": "https://booking.vinpearl.com/vi-VND/tour/ve-vao-cua-vinwonders-phu-quoc-vw00616",
+          "hasDetail": true,
+          "policies": {
+            "Điều khoản": "LƯU Ý QUAN TRỌNG: Vé chỉ có hiệu lực 1 lần trong thời gian sử dụng ghi trên vé. Vui lòng lựa chọn ngày sử dụng và kiểm tra kỹ thông tin ngày sử dụng trong quá trình đặt vé.\nVé vào cửa trực tiếp khu vui chơi VinWonders Phú Quốc sử dụng trong ngày dành cho 01 người\nXe buýt đưa đón từ thị trấn Dương Đông theo thời gian & địa điểm theo lịch trình cố định. Lịch trình có thể thay đổi mà không báo trước.\nQuý khách hàng cao dưới 100 cm được miễn phí.\nQuy định để áp dụng giá vé cho trẻ em: Khách hàng cao từ 100cm đến dưới 140cm\nQuy định để áp dụng giá vé cho người cao tuổi: Là người có độ tuổi từ 60 tuổi trở lên và có mang theo giấy tờ tuỳ thân có hình ảnh để chứng minh.\nKhông áp dụng đồng thời các chương trình ưu đãi, khuyến mại, giảm giá.\nKhông áp dụng tích điểm VinID.",
+            "Chính sách hoàn huỷ": "Vé không được hoàn, hủy hoặc quy đổi thành dịch vụ khác\nTrường hợp phát sinh vấn đề đổi ngày, đổi loại vé hoặc hoàn hủy do trường hợp bất khả kháng (khu vui chơi buộc phải đóng cửa và không có cơ sở thay thế) chúng tôi sẽ áp dụng theo chính sách tại thời điểm sử dụng dịch vụ.",
+            "Hướng dẫn sử dụng": "Khách hàng có thể xuất trình voucher in sẵn hoặc voucher điện tử này tại cổng để vào cửa\nVoucher chỉ có hiệu lực 01 lần trong thời gian sử dụng ghi trên vé",
+            "Bao gồm (trích từ mô tả)": "Vé chỉ có hiệu lực 01 lần trong thời gian sử dụng ghi trên vé\nVé không được hoàn, hủy hoặc quy đổi thành dịch vụ khác\nQuý khách hàng cao dưới 100 cm được miễn phí.\nQuy định để áp dụng giá vé cho trẻ em: Khách hàng cao từ 100cm đến dưới 140 cm\nQuy định để áp dụng giá vé cho người cao tuổi: Là người có độ tuổi từ 60 tuổi trở lên và có mang theo giấy tờ tuỳ thân có hình ảnh để chứng minh"
+          },
+          "descriptionLang": "vi",
+          "fieldSources": {
+            "unitPrice": "trip.com"
+          },
+          "venue": "VinWonders Phú Quốc",
+          "latitude": 10.340735,
+          "longitude": 103.854047,
+          "locationSource": "trip.com",
+          "locationPrecision": "venue",
+          "openingHours": "09:00–19:30 (Thời gian nhận khách kết thúc vào 18:30)",
+          "openingHoursDetail": "Phố Châu Âu: 09:00 – 19:30\nThế Giới Cổ Tích: 10:00 – 18:00\nLàng Viking Bí Ẩn: 10:00 – 17:30\nThế Giới Phiêu Lưu: 10:00 – 18:00\nThế Giới Bão Táp: 10:00 – 17:30\nVỏ Sò Biển: 10:00 – 18:00",
+          "suggestedDuration": "1 ngày",
+          "durationMinutes": 480,
+          "address": "Khu Bãi Dài, Phú Quốc, Kiên Giang 92512, Việt Nam",
+          "tags": [
+            "Công viên giải trí"
+          ],
+          "poiRef": "trip:attraction:18832359",
+          "poiName": "VinWonders Phú Quốc",
+          "tripRating": 4.5,
+          "tripReviewCount": 2349,
+          "vinpearlPrice": 950000,
+          "otaPrices": {
+            "trip.com": 950000
+          },
+          "sameAs": [
+            "trip:attraction:18832359"
+          ],
+          "tripUrl": "https://vn.trip.com/travel-guide/attraction/phu-quoc-island/vinwonders-phu-quoc-18832359/"
+        },
+        "description": "VinWonders Phú Quốc\n\nTổng quan VinWonders Phú Quốc:\nVinWonders Phú Quốc là công viên chủ đề lớn nhất tại Việt Nam và có quy mô hàng đầu ở châu Á. Tại đây, du khách từ mọi lứa tuổi, mọi cá tính đều có thể tìm cho mình những điểm đến lý tưởng. Những trò chơi kỷ lục của thế giới hay cuộc sống muôn màu muôn vẻ của hàng chục ngàn sinh vật biển tại VinWonders sẽ đem tới cho chuyến du lịch Phú Quốc của bạn trải nghiệm giải trí thích thú chưa từng có.\n\nVinWonders Phú Quốc – Thế giới của kỳ quan và cảm xúc\nHãy tưởng tượng bạn đang bước vào một thế giới nơi trí tưởng tượng gặp gỡ những cuộc phiêu lưu kỳ thú, nơi các nền văn minh cổ đại sống lại, và những kỳ quan dưới nước khiến bạn choáng ngợp. Đó chính là những gì đang chờ đón bạn tại VinWonders Phú Quốc – công viên chủ đề lớn nhất Việt Nam và là một trong những điểm đến nổi bật của châu Á.\n\n6 thế giới chủ đề sống động, mỗi bước chân là một hành trình\nVinWonders Phú Quốc gồm 6 phân khu chủ đề đặc sắc, được thiết kế công phu theo cảm hứng từ 12 nền văn minh nhân loại và các câu chuyện cổ tích toàn cầu. Dù bạn là người yêu khám phá, đam mê cảm giác mạnh, hay đi cùng gia đình nhỏ – ở đây đều có những trải nghiệm dành riêng cho bạn.\n\nĐại Lộ Châu Âu – Trở về thời Trung Cổ\nHành trình bắt đầu từ Đại Lộ Châu Âu – một thị trấn cổ kính mang đậm hơi thở Trung Cổ với những con đường lát đá, các tòa nhà Phục Hưng lộng lẫy, và những cửa hàng nhộn nhịp. Các buổi biểu diễn đường phố đầy màu sắc diễn ra suốt ngày sẽ đưa bạn lạc vào một không khí lễ hội rộn ràng và đậm chất châu Âu.\n\nThế Giới Diệu Kỳ – Phiêu lưu vào vũ trụ cổ tích\nTiếp theo, bạn sẽ được đắm chìm trong Fantasy World – nơi hội tụ của những vương quốc huyền ảo như bước ra từ các câu chuyện thần thoại. Bạn có thể khám phá Vương quốc Diệu Kỳ như Alice ở xứ sở thần tiên, phiêu lưu trong Ốc Đảo Ả Rập huyền bí, hay đối mặt với lời nguyền rồng độc ác trong trò chơi nhà tối đầu tiên của Việt Nam – \"Lời Nguyền Ác Long\".\n\nLàng Viking & Thế Giới Phiêu Lưu – Đẩy giới hạn bản thân\nBiến hóa thành một chiến binh Bắc Âu tại Khu làng Viking với những trò chơi vận động mạo hiểm như zipline xuyên rừng, cầu treo, leo núi,... Và nếu bạn đam mê tốc độ, đừng bỏ qua \"Cơn Thịnh Nộ của Zeus\" – tàu lượn siêu tốc đạt vận tốc 110 km/h, thuộc hàng nhanh nhất thế giới. Ngoài ra, các công trình kỳ bí như kim tự tháp Maya hay rừng Amazon hoang dã cũng đang chờ bạn khám phá.\n\nCung Điện Hải Vương – Hành trình dưới lòng đại dương\nMột trong những điểm thu hút nhất chính là Cung điện Hải Vương – thủy cung hình con rùa khổng lồ, nằm trong top lớn nhất thế giới. Tại đây, bạn sẽ được ngắm nhìn cá mập, sứa phát sáng, rùa biển, và cả những rạn san hô rực rỡ. Đặc biệt, đừng bỏ lỡ chương trình Nàng Tiên Cá biểu diễn, cho cá ăn, và trải nghiệm cà phê với view toàn cảnh bể cá mập cực độc đáo.\n\nTyphoon World – Giải nhiệt với công viên nước lớn nhất Đông Nam Á\nNếu bạn là người yêu thích nước và muốn tìm chút “giải nhiệt”, thì Typhoon World là thiên đường dành cho bạn. Đây là công viên nước lớn nhất Đông Nam Á, mô phỏng theo vùng nhiệt đới Hawaii, với 36 trò chơi hấp dẫn. Hãy thử sức với đường trượt “Nọc Độc Mãng Xà” dài 175m hoặc đắm mình trong hồ sóng thần Oahu cuồng nhiệt.\n\nHơn cả trò chơi – Một bữa tiệc cảm xúc với show diễn mãn nhãn\nVinWonders Phú Quốc không chỉ là nơi của trò chơi và khám phá – đây còn là trung tâm trình diễn nghệ thuật ngoài trời. Từ Once Show hoành tráng tại Quảng trường Phượng Hoàng với âm thanh, ánh sáng, nước, lửa kết hợp nhuần nhuyễn, cho đến hàng ngàn mini show, diễu hành và biểu diễn đường phố. Mỗi ngày ở VinWonders là một ngày hội rực rỡ.\n\nDành cho mọi lứa tuổi – Từ gia đình đến tín đồ cảm giác mạnh\nDù bạn đi với ai, VinWonders Phú Quốc đều có lựa chọn phù hợp. Trẻ nhỏ sẽ mê mẩn vòng quay ngựa gỗ, khu vui chơi tương tác, trong khi người lớn có thể trải nghiệm rạp phim 4D, trò chơi cảm giác mạnh, và không gian thư giãn đầy tiện nghi. Hơn 100 hoạt động giải trí đang chờ bạn khám phá!\n\nTiện lợi – Dễ tiếp cận – Ăn uống đa dạng\nCông viên mở cửa từ sáng - tối (khoảng 9:00 - 19:30 hàng ngày), có xe buýt đưa đón miễn phí từ trung tâm Dương Đông. Bên trong công viên, bạn có thể dễ dàng tìm thấy các quầy thức ăn nhanh, buffet Á – Âu, hoặc các quán cà phê đậm phong cách để nạp năng lượng cho chuyến vui chơi kéo dài cả ngày.\n\nTrọn vẹn hơn với Combo: Safari & Grand World\nĐể chuyến đi thêm phong phú, bạn có thể kết hợp với Vinpearl Safari – công viên bán hoang dã lớn nhất Việt Nam, nơi bạn được nhìn ngắm động vật từ chính chiếc xe bus chuyên dụng. Hoặc ghé thăm Grand World – Thành phố không ngủ, để thưởng thức show Tinh Hoa Việt Nam, mua sắm, dạo chơi và check-in giữa kiến trúc châu Âu rực rỡ.\n\nHành trình không thể quên – Chờ bạn khám phá!\nVới vô vàn trò chơi đỉnh cao, không gian rực rỡ, show diễn ngoạn mục và dịch vụ đẳng cấp – VinWonders Phú Quốc không chỉ là công viên giải trí, mà là một hành trình cảm xúc và trải nghiệm khó quên. Nếu bạn đang tìm một điểm đến vừa choáng ngợp, vừa trọn vẹn cho gia đình, bạn bè hay người thương – thì đây chính là nơi nên có trong checklist của bạn.\n\nBao gồm\nVé vào cửa trực tiếp khu vui chơi VinWonders Phú Quốc sử dụng trong ngày dành cho 01 người",
+        "imageUrl": "https://booking-static.vinpearl.com/tours/cd6d85b0b27a4609809ef3c64e3e0d76_27be58d21e244664bf34d11d72e77860_Castle_vinwonders-phu-quoc-ve-vao-cua_vinwonders-phu-quoc-ve-vao-cua.jpg",
+        "priceUnit": "UNKNOWN"
+      }
+    ]
+  },
+  "warnings": [
+    {
+      "code": "PRICE_BASIS_UNKNOWN",
+      "message": "Giá snapshot; chưa đủ cơ sở tính tổng và xác nhận còn chỗ.",
+      "productId": "8a4c5920-55c2-5370-b2e5-01956c3e7288"
+    }
+  ],
+  "metadata": {
+    "personalised": false,
+    "searchRequestIds": [
+      "sample-search"
+    ],
+    "generatedAt": "2026-09-16T08:00:00Z",
+    "requestId": "sample-agent"
+  }
+}

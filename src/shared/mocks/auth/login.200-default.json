@@ -1,0 +1,11 @@
+{
+  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.mock.signature",
+  "tokenType": "Bearer",
+  "expiresIn": 3600,
+  "user": {
+    "userId": "web-user-001",
+    "cdpUserId": "VP0092381",
+    "email": "minhanh@example.vn",
+    "fullName": "Nguyễn Minh Anh"
+  }
+}

@@ -1,0 +1,601 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Itinerary Agent V-OTA</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@500;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#E6ECEB; --paper:#F8FAF9; --ink:#10272B; --ink-2:#3E5559; --muted:#6B8083; --line:#CFDAD8;
+  --accent:#0B7A70; --accent-soft:#D6ECE8; --llm:#A96300; --llm-soft:#FBEBD0;
+  --bad:#B23A2A; --bad-soft:#F6DCD6; --ok:#2C7A37; --ok-soft:#DCEFDC; --shadow:0 20px 50px rgba(16,39,43,.12);
+  --display:"Be Vietnam Pro",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#071113; --paper:#0F1E21; --ink:#E3EEEC; --ink-2:#B2C5C2; --muted:#7C9491; --line:#25393C;
+    --accent:#47C3B4; --accent-soft:#12383A; --llm:#F0AE4A; --llm-soft:#3A2A10;
+    --bad:#F07C68; --bad-soft:#3B1B16; --ok:#7CCB87; --ok-soft:#163420; --shadow:0 20px 50px rgba(0,0,0,.45);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#071113; --paper:#0F1E21; --ink:#E3EEEC; --ink-2:#B2C5C2; --muted:#7C9491; --line:#25393C;
+  --accent:#47C3B4; --accent-soft:#12383A; --llm:#F0AE4A; --llm-soft:#3A2A10;
+  --bad:#F07C68; --bad-soft:#3B1B16; --ok:#7CCB87; --ok-soft:#163420; --shadow:0 20px 50px rgba(0,0,0,.45);
+}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:14px;overflow:hidden}
+*{box-sizing:border-box}
+
+/* ---------- stage (wide screens) ---------- */
+.viewport{position:fixed;inset:0;display:grid;place-items:center;padding:16px 16px 72px}
+.stage{width:1280px;height:720px;position:relative;transform-origin:center center;flex:none}
+.slide{position:absolute;inset:0;background:var(--paper);border-radius:6px;box-shadow:var(--shadow);
+  padding:56px 72px 64px;display:flex;flex-direction:column;gap:28px;overflow:hidden;
+  opacity:0;visibility:hidden;transition:opacity .25s ease}
+.slide.on{opacity:1;visibility:visible}
+@media (prefers-reduced-motion:reduce){.slide{transition:none}}
+.foot{position:absolute;left:72px;right:72px;bottom:24px;display:flex;justify-content:space-between;
+  font:500 12px/1 var(--mono);color:var(--muted);letter-spacing:.04em}
+
+.controls{position:fixed;left:0;right:0;bottom:0;padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));
+  display:flex;justify-content:center;align-items:center;gap:12px}
+.controls button{font:500 13px var(--body);color:var(--ink);background:var(--paper);border:1px solid var(--line);
+  border-radius:4px;padding:8px 14px;cursor:pointer}
+.controls button:hover{border-color:var(--accent);color:var(--accent)}
+.controls button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.counter{font:500 13px var(--mono);color:var(--ink-2);min-width:64px;text-align:center;font-variant-numeric:tabular-nums}
+.progress{position:absolute;left:0;top:0;height:3px;background:var(--accent);border-radius:6px 0 0 0;transition:width .25s}
+
+/* ---------- type ---------- */
+.eyebrow{font:500 13px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
+h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance;letter-spacing:-.01em}
+h1{font-size:68px;line-height:1.02;font-weight:800}
+h2{font-size:40px;line-height:1.1;font-weight:700}
+h3{font-size:19px;line-height:1.25;font-weight:700}
+p{margin:0}
+.lead{font-size:21px;line-height:1.45;color:var(--ink-2);max-width:58ch}
+.body{font-size:16px;line-height:1.5;color:var(--ink-2)}
+.small{font-size:13.5px;line-height:1.45;color:var(--muted)}
+code,.mono{font-family:var(--mono);font-size:.9em}
+code{background:var(--accent-soft);color:var(--ink);padding:1px 5px;border-radius:3px}
+.head{display:flex;flex-direction:column;gap:12px}
+
+/* ---------- building blocks ---------- */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:28px;flex:1;min-height:0}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.panel{border:1px solid var(--line);border-radius:6px;padding:22px 24px;display:flex;flex-direction:column;gap:12px}
+.panel.fill{background:var(--accent-soft);border-color:transparent}
+.panel.llm{background:var(--llm-soft);border-color:transparent}
+ul.list{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:10px}
+ul.list li{font-size:16px;line-height:1.45;color:var(--ink-2);padding-left:20px;position:relative}
+ul.list li::before{content:"";position:absolute;left:0;top:.62em;width:8px;height:2px;background:var(--accent)}
+ul.list.no li::before{background:var(--bad)}
+.tag{display:inline-block;font:500 12px/1 var(--mono);padding:5px 8px;border-radius:3px;background:var(--accent-soft);color:var(--accent);white-space:nowrap}
+.tag.llm{background:var(--llm-soft);color:var(--llm)}
+.tag.bad{background:var(--bad-soft);color:var(--bad)}
+.tag.ok{background:var(--ok-soft);color:var(--ok)}
+.tags{display:flex;flex-wrap:wrap;gap:8px}
+
+table{border-collapse:collapse;width:100%;font-size:15px}
+th{font:500 12px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);text-align:left;padding:0 12px 10px;border-bottom:1px solid var(--line)}
+td{padding:10px 12px;border-bottom:1px solid var(--line);color:var(--ink-2);vertical-align:top;line-height:1.4}
+td:first-child,th:first-child{padding-left:0}
+.path{font:400 13.5px var(--mono);color:var(--ink)}
+.path b{color:var(--accent);font-weight:500}
+.path i{color:var(--bad);font-style:normal;font-weight:500}
+.tablewrap{overflow-x:auto}
+
+/* title slide */
+.title-wrap{display:grid;grid-template-columns:1.15fr .85fr;gap:48px;flex:1;align-items:center}
+.chat{display:flex;flex-direction:column;gap:14px}
+.bubble{align-self:flex-end;max-width:90%;background:var(--ink);color:var(--paper);padding:14px 18px;border-radius:14px 14px 4px 14px;font-size:16px;line-height:1.4}
+.card{border:1px solid var(--line);border-radius:10px;padding:16px 18px;background:var(--paper);display:flex;flex-direction:column;gap:10px}
+.dayrow{display:grid;grid-template-columns:90px 1fr;gap:10px;align-items:baseline;font-size:14px}
+.dayrow .t{font:500 11.5px var(--mono);color:var(--muted);letter-spacing:.06em}
+.prod{display:flex;justify-content:space-between;gap:12px;border:1px dashed var(--accent);border-radius:6px;padding:8px 10px;font-size:13.5px}
+.prod .pid{font:500 11.5px var(--mono);color:var(--accent)}
+.prod .price{font:500 13px var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+
+/* architecture flow */
+.flow{display:grid;grid-template-columns:repeat(5,1fr);gap:0;align-items:stretch}
+.flow .step{border:1px solid var(--line);border-radius:6px;padding:16px;display:flex;flex-direction:column;gap:8px;background:var(--paper);position:relative}
+.flow .step + .step{margin-left:26px}
+.flow .step + .step::before{content:"→";position:absolute;left:-22px;top:50%;transform:translateY(-50%);color:var(--muted);font:500 18px var(--mono)}
+.flow .step.core{border-color:var(--accent);border-width:2px}
+.flow .step .k{font:500 11px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.flow .step .f{font:400 12.5px/1.5 var(--mono);color:var(--ink-2)}
+
+/* graph svg */
+.graph{flex:1;min-height:0;display:flex}
+.graph svg{width:100%;height:100%}
+.g-band{fill:var(--accent-soft);opacity:.45}
+.g-band-label{font:500 12px var(--mono);letter-spacing:.08em;fill:var(--muted);text-transform:uppercase}
+.g-node rect{fill:var(--paper);stroke:var(--ink-2);stroke-width:1.3}
+.g-node text{font:500 14px var(--mono);fill:var(--ink);text-anchor:middle;dominant-baseline:central}
+.g-node.llm rect{stroke:var(--llm);stroke-width:2.6;fill:var(--llm-soft)}
+.g-node.maybe rect{stroke:var(--llm);stroke-width:2.2;stroke-dasharray:6 4}
+.g-node.gate rect{fill:var(--accent);stroke:var(--accent)}
+.g-node.gate text{fill:var(--paper)}
+.g-term{fill:var(--ink)}
+.g-term-t{font:500 10px var(--mono);fill:var(--paper);text-anchor:middle;dominant-baseline:central}
+.g-edge{fill:none;stroke:var(--muted);stroke-width:1.4}
+.g-edge.main{stroke:var(--accent);stroke-width:2.2}
+.g-arrow{fill:var(--muted)}
+.g-arrow-main{fill:var(--accent)}
+.legend{display:flex;gap:22px;flex-wrap:wrap;font-size:13.5px;color:var(--ink-2);align-items:center}
+.sw{display:inline-block;width:22px;height:12px;border-radius:3px;vertical-align:middle;margin-right:6px}
+
+/* stat tiles */
+.stat{border-top:3px solid var(--accent);padding-top:14px;display:flex;flex-direction:column;gap:6px}
+.stat .n{font:800 52px/1 var(--display);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.stat .l{font-size:15px;font-weight:600;color:var(--ink)}
+.stat .s{font:400 12.5px var(--mono);color:var(--muted)}
+.stat.warn{border-top-color:var(--llm)}
+.bars{display:flex;flex-direction:column;gap:12px;position:relative}
+.bar{display:grid;grid-template-columns:52px 1fr 70px;gap:12px;align-items:center;font:500 13px var(--mono);color:var(--ink-2)}
+.bar .track{height:18px;position:relative;background:var(--accent-soft);border-radius:3px}
+.bar .v{position:absolute;left:0;top:0;bottom:0;background:var(--accent);border-radius:3px}
+.bar .v.over{background:var(--llm)}
+.bar .num{text-align:right;font-variant-numeric:tabular-nums;color:var(--ink)}
+.target{position:absolute;top:-8px;bottom:-8px;width:0;border-left:2px dashed var(--bad)}
+.axis{display:grid;grid-template-columns:52px 1fr 70px;gap:12px;font:400 11.5px var(--mono);color:var(--muted)}
+.axis .ticks{display:flex;justify-content:space-between}
+
+.fails{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.fail{border:1px solid var(--line);border-radius:6px;padding:16px 18px;display:flex;flex-direction:column;gap:8px}
+.fail .ids{font:500 12px var(--mono);color:var(--bad)}
+.fail p{font-size:14.5px;line-height:1.45;color:var(--ink-2)}
+
+.turns{display:flex;flex-direction:column;gap:12px}
+.turn{display:grid;grid-template-columns:44px 1fr 1.25fr;gap:16px;align-items:start;padding-bottom:12px;border-bottom:1px solid var(--line)}
+.turn .no{font:500 12px var(--mono);color:var(--muted);padding-top:3px}
+.turn .say{font-size:16px;font-weight:500;color:var(--ink)}
+.turn .eff{font-size:14.5px;color:var(--ink-2);line-height:1.45}
+
+.statuses{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.st{border:1px solid var(--line);border-radius:6px;padding:16px;display:flex;flex-direction:column;gap:8px}
+.st .code{font:500 13px var(--mono);color:var(--accent)}
+.st p{font-size:14px;line-height:1.45;color:var(--ink-2)}
+
+.gate-list{display:flex;flex-direction:column;gap:0}
+.gate-list .row{display:grid;grid-template-columns:200px 1fr;gap:20px;padding:12px 0;border-bottom:1px solid var(--line)}
+.gate-list .row b{font-family:var(--display);font-weight:700;font-size:16px}
+.gate-list .row span{font-size:15px;color:var(--ink-2);line-height:1.45}
+.veto{background:var(--bad-soft);border-radius:6px;padding:20px 22px;display:flex;flex-direction:column;gap:10px}
+.veto h3{color:var(--bad)}
+
+.rules{counter-reset:r;display:flex;flex-direction:column;gap:12px;margin:0;padding:0;list-style:none}
+.rules li{counter-increment:r;display:grid;grid-template-columns:32px 1fr;gap:12px;font-size:15.5px;line-height:1.45;color:var(--ink-2)}
+.rules li::before{content:counter(r);font:700 15px var(--display);color:var(--paper);background:var(--accent);width:26px;height:26px;border-radius:50%;display:grid;place-items:center}
+.rules li b{color:var(--ink)}
+
+pre.cmd{margin:0;background:var(--ink);color:var(--paper);border-radius:6px;padding:14px 16px;font:400 12.5px/1.6 var(--mono);overflow-x:auto;white-space:pre}
+
+.closing{display:grid;grid-template-columns:1.2fr .8fr;gap:48px;flex:1;align-items:start}
+.qa{font:800 120px/1 var(--display);color:var(--accent);letter-spacing:-.03em}
+
+/* ---------- narrow screens: slides stack and reflow ---------- */
+@media (max-width:760px){
+  body{overflow:auto}
+  .viewport{position:static;display:block;padding:16px 16px 24px}
+  .stage{width:auto;height:auto;transform:none!important;display:flex;flex-direction:column;gap:16px}
+  .slide{position:relative;inset:auto;opacity:1;visibility:visible;padding:28px 20px 48px;gap:20px}
+  .foot{left:20px;right:20px;bottom:16px}
+  .controls,.progress{display:none}
+  h1{font-size:40px} h2{font-size:28px} .lead{font-size:17px}
+  .grid2,.grid3,.grid4,.title-wrap,.closing,.fails,.statuses{grid-template-columns:1fr}
+  .flow{grid-template-columns:1fr;gap:26px}
+  .flow .step + .step{margin-left:0}
+  .flow .step + .step::before{content:"↓";left:50%;top:-22px;transform:translateX(-50%)}
+  .graph{overflow-x:auto} .graph svg{min-width:720px;height:auto}
+  .gate-list .row{grid-template-columns:1fr;gap:4px}
+  .turn{grid-template-columns:1fr;gap:6px}
+  .stat .n{font-size:40px}
+  .qa{font-size:72px}
+}
+</style>
+</head>
+<body>
+
+<div class="viewport" id="viewport">
+<div class="stage" id="stage">
+
+<!-- 1 -->
+<section class="slide" data-label="Mở đầu">
+  <div class="title-wrap">
+    <div class="head" style="gap:22px">
+      <span class="eyebrow">V-OTA · Demo nội bộ · 24/09/2026</span>
+      <h1>Trợ lý lập lịch trình</h1>
+      <p class="lead">Itinerary Agent: từ một câu chat tới lịch trình theo ngày, mỗi thẻ sản phẩm đều có <code>productId</code> thật trong catalog.</p>
+      <div class="tags"><span class="tag">LangGraph · 10 node</span><span class="tag">FastAPI + SSE</span><span class="tag">Grounding 100%</span><span class="tag">FR-AGT-01…05</span></div>
+    </div>
+    <div class="chat">
+      <div class="bubble">Lập lịch trình 3 ngày 2 đêm tại Nha Trang ngân sách 5 triệu</div>
+      <div class="card">
+        <div class="dayrow"><span class="t">NGÀY 1 · CHIỀU</span><span>Nhận phòng và nghỉ ngơi</span></div>
+        <div class="prod"><div><div class="pid">VP-HOTEL-001 · hotel</div>Vinpearl Resort Nha Trang</div><span class="price">3.200.000 ₫</span></div>
+        <div class="dayrow"><span class="t">NGÀY 1 · TỐI</span><span style="color:var(--ink-2)">Tự do khám phá khu ven biển</span></div>
+        <div class="small">Ví dụ response <code>COMPLETED</code> trong spec §4.2. Viền nét đứt: sản phẩm lấy từ Search, không do LLM tạo.</div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span>Itinerary Agent</span><span>01</span></div>
+</section>
+
+<!-- 2 -->
+<section class="slide" data-label="Bài toán">
+  <div class="head"><span class="eyebrow">Bài toán &amp; phạm vi</span><h2>Người dùng nói bằng lời, hệ thống trả lịch trình đặt được</h2></div>
+  <div class="grid2">
+    <div class="panel">
+      <h3>Yêu cầu trong PRD</h3>
+      <table>
+        <tr><td class="mono" style="color:var(--accent);white-space:nowrap">FR-AGT-01</td><td>Hội thoại đa lượt, hỏi lại khi thiếu điểm đến, số ngày, số người, ngân sách</td></tr>
+        <tr><td class="mono" style="color:var(--accent)">FR-AGT-02</td><td>Gọi tool nghiệp vụ: tìm sản phẩm, kiểm tra lịch trống, tính chi phí</td></tr>
+        <tr><td class="mono" style="color:var(--accent)">FR-AGT-03</td><td>Lịch trình theo từng ngày, chia sáng, trưa, chiều, tối</td></tr>
+        <tr><td class="mono" style="color:var(--accent)">FR-AGT-04</td><td>Grounding 100%: mỗi sản phẩm đặt được có <code>productId</code> thật và giá cụ thể</td></tr>
+        <tr><td class="mono" style="color:var(--accent)">FR-AGT-05</td><td>Điều chỉnh qua lượt chat tiếp: đổi phòng, đổi điểm, đổi số ngày</td></tr>
+      </table>
+    </div>
+    <div class="panel fill">
+      <span class="eyebrow">Tiêu chí nghiệm thu · AC-AGT-01</span>
+      <p class="lead" style="font-size:19px;color:var(--ink)">“Lập lịch trình 3 ngày 2 đêm tại Nha Trang ngân sách 5 triệu”</p>
+      <p class="body">→ Lịch trình 3 ngày có cấu trúc; chỗ ở và hoạt động đều là thẻ sản phẩm thật, giá rõ ràng, có nút xem chi tiết.</p>
+      <p class="small" style="margin-top:auto">Ràng buộc chung: NFR-REL-01 (grounding 100%), mục tiêu p95 toàn luồng dưới 5 giây (spec §7.2).</p>
+    </div>
+  </div>
+  <div class="foot"><span>Itinerary Agent</span><span>02</span></div>
+</section>
+
+<!-- 3 -->
+<section class="slide" data-label="Chia vai">
+  <div class="head"><span class="eyebrow">Nguyên tắc cốt lõi</span><h2>LLM hiểu ngôn ngữ, backend quyết định dữ liệu</h2></div>
+  <div class="grid2">
+    <div class="panel llm">
+      <span class="tag llm" style="align-self:flex-start">LLM được làm</span>
+      <ul class="list">
+        <li>Trích intent: điểm đến, số ngày, ngân sách, số người, điều kiện (<code>classify</code>)</li>
+        <li>Khớp tên điểm đến với catalog khi luật không khớp được (<code>tool</code>)</li>
+        <li>Viết câu hỏi làm rõ khi thiếu hoặc mâu thuẫn (<code>clarify</code>)</li>
+        <li>Chào hỏi, cảm ơn, từ chối yêu cầu ngoài phạm vi (<code>converse</code>)</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <span class="tag bad" style="align-self:flex-start">LLM không được làm</span>
+      <ul class="list no">
+        <li>Tạo <code>productId</code>, tên hay giá sản phẩm</li>
+        <li>Tính hoặc sửa tổng tiền; thiếu giá thì tổng là <code>null</code> + warning</li>
+        <li>Xếp lịch: <code>compose</code> chạy luật cố định, không gọi LLM</li>
+        <li>Quyết định response cuối: chỉ <code>finalize</code> được trả ra ngoài</li>
+      </ul>
+    </div>
+  </div>
+  <p class="body">Mọi sản phẩm, giá, <code>productId</code> đi qua Search / Recommendation / Catalog. LLM lỗi thì vẫn có câu cố định hoặc <code>FALLBACK</code>, không bịa.</p>
+  <div class="foot"><span>Itinerary Agent</span><span>03</span></div>
+</section>
+
+<!-- 4 -->
+<section class="slide" data-label="Kiến trúc">
+  <div class="head"><span class="eyebrow">Kiến trúc</span><h2>Một request đi qua năm lớp</h2></div>
+  <div class="flow">
+    <div class="step"><span class="k">Frontend</span><h3>Chat UI</h3><span class="f">AssistantProvider<br>assistantStream.ts</span></div>
+    <div class="step"><span class="k">API</span><h3>FastAPI</h3><span class="f">POST /assistant/itineraries<br>…/stream (SSE)<br>GET /assistant/status</span></div>
+    <div class="step core"><span class="k">Agent</span><h3>LangGraph</h3><span class="f">agents/graph.py<br>nodes.py · routing.py<br>steps/</span></div>
+    <div class="step"><span class="k">Tool</span><h3>Gateway</h3><span class="f">ItineraryToolGateway<br>search · recommend<br>detail · destinations</span></div>
+    <div class="step"><span class="k">Dữ liệu</span><h3>Search / RecSys</h3><span class="f">Weaviate (vector)<br>Postgres catalog</span></div>
+  </div>
+  <div class="grid3">
+    <div class="panel"><h3>Một LLM client</h3><p class="body">Dựng một lần trong <code>lifespan</code>, tiêm qua <code>app.state.itinerary_llm</code>. Provider chọn theo key có mặt: Gemini → OpenAI → Anthropic.</p></div>
+    <div class="panel"><h3>Tắt được LLM</h3><p class="body"><code>ITINERARY_USE_LLM=false</code>: app vẫn chạy, <code>/status</code> báo <code>llmMode=disabled</code>, itinerary trả 503 <code>LLM_UNAVAILABLE</code>.</p></div>
+    <div class="panel"><h3>Hội thoại</h3><p class="body">Lưu intent và lịch sử chat gần đây theo <code>conversationId</code> (TTL 24 giờ). Giá và availability luôn tải lại, không lấy từ bản lưu.</p></div>
+  </div>
+  <div class="foot"><span>Itinerary Agent</span><span>04</span></div>
+</section>
+
+<!-- 5 -->
+<section class="slide" data-label="Graph">
+  <div class="head" style="gap:8px"><span class="eyebrow">LangGraph</span><h2>Mười node, bốn giai đoạn, một cửa ra</h2></div>
+  <div class="graph">
+    <svg viewBox="0 0 1136 470" role="img" aria-label="Sơ đồ mười node của Itinerary Agent">
+      <defs>
+        <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="g-arrow"/></marker>
+        <marker id="ahm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="g-arrow-main"/></marker>
+      </defs>
+      <!-- phase bands -->
+      <rect class="g-band" x="70" y="26" width="290" height="410" rx="6"/>
+      <rect class="g-band" x="385" y="26" width="320" height="410" rx="6"/>
+      <rect class="g-band" x="740" y="26" width="160" height="410" rx="6"/>
+      <rect class="g-band" x="920" y="26" width="140" height="410" rx="6"/>
+      <text class="g-band-label" x="82" y="16">Hiểu người dùng</text>
+      <text class="g-band-label" x="397" y="16">Lấy dữ liệu thật</text>
+      <text class="g-band-label" x="752" y="16">Soạn trả lời</text>
+      <text class="g-band-label" x="932" y="16">Cửa ra</text>
+
+      <!-- edges -->
+      <path class="g-edge main" d="M44 220 H70" marker-end="url(#ahm)"/>
+      <path class="g-edge main" d="M190 220 H230" marker-end="url(#ahm)"/>
+      <path class="g-edge" d="M290 200 V60 H760" marker-end="url(#ah)"/>
+      <path class="g-edge" d="M350 218 C 560 218, 560 160, 760 160" marker-end="url(#ah)"/>
+      <path class="g-edge main" d="M350 228 C 380 228, 370 300, 400 300" marker-end="url(#ahm)"/>
+      <path class="g-edge" d="M290 240 V455 H820 V382" marker-end="url(#ah)"/>
+      <path class="g-edge main" d="M520 300 H570" marker-end="url(#ahm)"/>
+      <path class="g-edge main" d="M690 294 C 725 294, 725 262, 760 262" marker-end="url(#ahm)"/>
+      <path class="g-edge" d="M680 280 C 720 230, 720 168, 760 166" marker-end="url(#ah)"/>
+      <path class="g-edge" d="M690 308 C 725 308, 725 354, 760 354" marker-end="url(#ah)"/>
+      <path class="g-edge" d="M630 320 V378" marker-end="url(#ah)"/>
+      <path class="g-edge" d="M570 400 C 490 400, 460 380, 460 322" marker-end="url(#ah)"/>
+      <path class="g-edge" d="M690 396 C 735 396, 730 272, 760 270" marker-end="url(#ah)"/>
+      <path class="g-edge" d="M690 406 C 730 406, 735 370, 760 368" marker-end="url(#ah)"/>
+      <path class="g-edge" d="M880 60 C 910 60, 900 206, 930 206" marker-end="url(#ah)"/>
+      <path class="g-edge" d="M880 160 C 905 160, 905 214, 930 214" marker-end="url(#ah)"/>
+      <path class="g-edge main" d="M880 260 C 905 260, 905 226, 930 226" marker-end="url(#ahm)"/>
+      <path class="g-edge" d="M880 360 C 910 360, 900 234, 930 234" marker-end="url(#ah)"/>
+      <path class="g-edge main" d="M1050 220 H1076" marker-end="url(#ahm)"/>
+
+      <!-- terminals -->
+      <circle class="g-term" cx="30" cy="220" r="14"/><text class="g-term-t" x="30" y="220">START</text>
+      <circle class="g-term" cx="1100" cy="220" r="18"/><text class="g-term-t" x="1100" y="220">END</text>
+
+      <!-- nodes -->
+      <g class="g-node"><rect x="70" y="200" width="120" height="40" rx="5"/><text x="130" y="220">intake</text></g>
+      <g class="g-node llm"><rect x="230" y="200" width="120" height="40" rx="5"/><text x="290" y="220">classify</text></g>
+      <g class="g-node maybe"><rect x="400" y="280" width="120" height="40" rx="5"/><text x="460" y="300">tool</text></g>
+      <g class="g-node"><rect x="570" y="280" width="120" height="40" rx="5"/><text x="630" y="300">evaluate</text></g>
+      <g class="g-node"><rect x="570" y="380" width="120" height="40" rx="5"/><text x="630" y="400">retry</text></g>
+      <g class="g-node llm"><rect x="760" y="40" width="120" height="40" rx="5"/><text x="820" y="60">converse</text></g>
+      <g class="g-node llm"><rect x="760" y="140" width="120" height="40" rx="5"/><text x="820" y="160">clarify</text></g>
+      <g class="g-node"><rect x="760" y="240" width="120" height="40" rx="5"/><text x="820" y="260">compose</text></g>
+      <g class="g-node"><rect x="760" y="340" width="120" height="40" rx="5"/><text x="820" y="360">dead_letter</text></g>
+      <g class="g-node gate"><rect x="930" y="198" width="120" height="44" rx="5"/><text x="990" y="220">finalize</text></g>
+    </svg>
+  </div>
+  <div class="legend">
+    <span><span class="sw" style="background:var(--llm-soft);border:2px solid var(--llm)"></span>Gọi LLM</span>
+    <span><span class="sw" style="border:2px dashed var(--llm)"></span>Gọi LLM khi cần khớp điểm đến</span>
+    <span><span class="sw" style="background:var(--accent)"></span>Luồng đầy đủ “Nha Trang 2 ngày”</span>
+    <span class="small">Retry tối đa một lần. <code>compose</code> không gọi LLM.</span>
+  </div>
+  <div class="foot"><span>Itinerary Agent</span><span>05</span></div>
+</section>
+
+<!-- 6 -->
+<section class="slide" data-label="finalize">
+  <div class="head"><span class="eyebrow">Cửa ra chung</span><h2><code style="font-size:.85em">finalize</code> như cổng soi chiếu ở sân bay</h2>
+    <p class="lead">Nhiều quầy check-in, chỉ một cổng an ninh. Bốn node soạn response, không node nào được tự trả ra ngoài.</p></div>
+  <div class="grid2" style="grid-template-columns:1.3fr 1fr">
+    <div class="gate-list">
+      <div class="row"><b>Kiểm schema OpenAPI</b><span>Client sinh từ contract sẽ vỡ nếu một nhánh trả sai hình dạng</span></div>
+      <div class="row"><b>Kiểm grounding</b><span><code>validate_plan</code>: mọi sản phẩm phải nằm trong <code>candidates</code></span></div>
+      <div class="row"><b>Đo latency</b><span><code>latency_ms</code> chỉ đo đúng được ở điểm cuối</span></div>
+      <div class="row"><b>Lưu hội thoại</b><span>Lượt sau còn nhớ intent, bất kể lượt này kết thúc thế nào</span></div>
+      <div class="row"><b>Sinh final_answer</b><span>Một chỗ duy nhất quyết định text hiển thị</span></div>
+    </div>
+    <div class="veto">
+      <h3>Có quyền phủ quyết</h3>
+      <p class="body">Response <code>COMPLETED</code> không qua <code>validate_plan</code> bị thay bằng <code>ITINERARY_VALIDATION_FAILED</code> (HTTP 500).</p>
+      <p class="body">Thà backend tự nhận lỗi còn hơn đưa người dùng một lịch trình không có căn cứ.</p>
+      <p class="small" style="margin-top:auto">Không có cửa ra chung: logic kiểm lặp bốn lần, và thêm node mới mà quên kiểm là có ngay một đường lách grounding.</p>
+    </div>
+  </div>
+  <div class="foot"><span>Itinerary Agent</span><span>06</span></div>
+</section>
+
+<!-- 7 -->
+<section class="slide" data-label="Đường chính">
+  <div class="head"><span class="eyebrow">Bốn đường chính</span><h2>Mỗi đường một kiểu trả lời, cùng ra ở finalize</h2></div>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th style="width:22%">Người dùng gõ</th><th style="width:48%">Đường đi</th><th>Khi nào</th></tr></thead>
+    <tbody>
+      <tr><td>“chào bạn”</td><td class="path">intake → classify → <b>converse</b> → finalize</td><td>Chào hỏi, cảm ơn, từ chối yêu cầu ngoài phạm vi. Không đụng sản phẩm</td></tr>
+      <tr><td>“đi 3 ngày”</td><td class="path">intake → classify → <b>clarify</b> → finalize</td><td>Thiếu điểm đến hoặc số ngày, thông tin mâu thuẫn: hỏi lại, không đoán</td></tr>
+      <tr><td>“Nha Trang 2 ngày”</td><td class="path">intake → classify → tool → evaluate → <b>compose</b> → finalize</td><td>Có sản phẩm thật: dựng lịch trình</td></tr>
+      <tr><td>“Paris 2 ngày”</td><td class="path">intake → classify → tool → evaluate → <i>dead_letter</i> → finalize</td><td>Lỗi có kiểm soát: ngoài catalog (422), tool hỏng, lỗi xác thực</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="foot"><span>Itinerary Agent</span><span>07</span></div>
+</section>
+
+<!-- 8 -->
+<section class="slide" data-label="compose">
+  <div class="head"><span class="eyebrow">Xếp lịch không dùng LLM</span><h2>Cùng tập candidate, luôn ra cùng một lịch trình</h2>
+    <p class="body"><code>compose_plan</code> trong <code>domain/itinerary/planning.py</code>. Thứ tự xác định, chạy vài mili giây.</p></div>
+  <div class="grid2" style="grid-template-columns:1.35fr 1fr">
+    <ol class="rules">
+      <li><span><b>Chỉ xét</b> candidate <code>available=true</code> thuộc <code>hotel</code>, <code>attraction</code>, <code>golf</code>. Flight và combo không vào slot.</span></li>
+      <li><span><b>Chỗ ở:</b> một hotel, giá thấp nhất; hòa thì sao cao hơn, rồi <code>productId</code> nhỏ hơn. Giá <code>null</code> xếp cuối.</span></li>
+      <li><span><b>Hoạt động nguyên ngày</b> (≥ 360 phút) xếp trước, chiếm trọn một ngày; còn lại theo giá rồi <code>productId</code>.</span></li>
+      <li><span><b>Rải ngày:</b> vào ngày đang ít việc nhất. Tối đa 2 hoạt động/ngày: <code>MORNING</code> rồi <code>AFTERNOON</code>.</span></li>
+      <li><span><b>Dư thì bỏ,</b> không dồn vào ngày đã đủ.</span></li>
+      <li><span><b>Ngày trống</b> có <code>slots</code> rỗng kèm warning <code>DAY_WITHOUT_PRODUCTS</code>, không bịa slot ăn/nghỉ.</span></li>
+    </ol>
+    <div class="panel fill">
+      <h3>Vì sao không để LLM xếp?</h3>
+      <ul class="list">
+        <li>Kiểm chứng được: cùng input, cùng output, test được bằng unit test</li>
+        <li>Không có cửa để LLM chèn sản phẩm lạ vào slot</li>
+        <li>Đề xuất tự sinh không qua <code>render_proposal</code> + <code>validate_plan</code> thì trả <code>FALLBACK</code> và log <code>itinerary.composition_failed</code></li>
+      </ul>
+      <p class="small" style="margin-top:auto"><code>pace</code> chưa là đầu vào; trần 2 hoạt động/ngày áp cho mọi pace.</p>
+    </div>
+  </div>
+  <div class="foot"><span>Itinerary Agent</span><span>08</span></div>
+</section>
+
+<!-- 9 -->
+<section class="slide" data-label="Response">
+  <div class="head"><span class="eyebrow">Contract · schemas/itinerary-agent.yaml</span><h2>Bốn trạng thái nghiệp vụ, lỗi đi riêng</h2></div>
+  <div class="statuses">
+    <div class="st"><span class="code">COMPLETED</span><p>Lịch trình theo ngày, <code>estimatedTotal</code> do backend tính. Thiếu căn cứ: <code>null</code> + <code>budgetStatus=UNKNOWN</code> + warning.</p></div>
+    <div class="st"><span class="code">NEEDS_CLARIFICATION</span><p>Kèm <code>knownIntent</code> và <code>missingFields</code>. Chưa gọi tool.</p></div>
+    <div class="st"><span class="code">NO_RESULTS</span><p>Không có sản phẩm thật phù hợp. Không lấp chỗ trống bằng dữ liệu tự tạo.</p></div>
+    <div class="st"><span class="code">FALLBACK</span><p>Suy giảm có kiểm soát: trả <code>searchResults</code> thật khi không dựng được lịch.</p></div>
+  </div>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Mã lỗi</th><th>HTTP</th><th>Khi nào</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">VALIDATION_ERROR</td><td class="mono">400</td><td>Yêu cầu bị từ chối vì ngoài phạm vi (qua <code>converse</code>)</td></tr>
+      <tr><td class="mono">UNSUPPORTED_DESTINATION</td><td class="mono">422</td><td>Điểm đến ngoài catalog, kèm danh sách điểm đến hỗ trợ; hội thoại vẫn tiếp được</td></tr>
+      <tr><td class="mono">LLM_UNAVAILABLE</td><td class="mono">503</td><td>LLM tắt hoặc <code>classify</code> lỗi</td></tr>
+      <tr><td class="mono">ITINERARY_VALIDATION_FAILED</td><td class="mono">500</td><td><code>finalize</code> bác response vi phạm schema hoặc grounding</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="foot"><span>Itinerary Agent</span><span>09</span></div>
+</section>
+
+<!-- 10 -->
+<section class="slide" data-label="Đa lượt">
+  <div class="head"><span class="eyebrow">Hội thoại đa lượt · FR-AGT-01, FR-AGT-05</span><h2>Mỗi lượt chỉ vá phần người dùng đổi</h2></div>
+  <div class="turns">
+    <div class="turn"><span class="no">LƯỢT 1</span><span class="say">“đi 3 ngày”</span><span class="eff"><code>NEEDS_CLARIFICATION</code>, lưu <code>days=3</code> theo <code>conversationId</code>, hỏi điểm đến.</span></div>
+    <div class="turn"><span class="no">LƯỢT 2</span><span class="say">“Nha Trang nhé”</span><span class="eff">Ghép với intent đã lưu → đủ <code>destination</code> + <code>days</code> → gọi Search → <code>COMPLETED</code>. Lưu <code>previous_selection</code>.</span></div>
+    <div class="turn"><span class="no">LƯỢT 3</span><span class="say">“đổi thành Đà Nẵng”</span><span class="eff">Chỉ thay <code>destination</code>, giữ số ngày, ngân sách. Tìm lại từ đầu.</span></div>
+    <div class="turn"><span class="no">LƯỢT 4</span><span class="say">“bỏ khách sạn này đi”</span><span class="eff">LLM chỉ được chọn <code>productId</code> có trong <code>previous_selection</code> để loại; ID lạ bị lọc.</span></div>
+  </div>
+  <p class="small">Intent lưu 24 giờ. Giá và availability luôn tải lại mỗi lượt. <code>context.language</code> hỗ trợ <code>vi</code>/<code>en</code>, mặc định tiếng Việt.</p>
+  <div class="foot"><span>Itinerary Agent</span><span>10</span></div>
+</section>
+
+<!-- 11 -->
+<section class="slide" data-label="Đánh giá">
+  <div class="head"><span class="eyebrow">Golden dataset · 24/09/2026 · commit 601f112</span><h2>Ba chỉ số PRD đều đạt ngưỡng</h2>
+    <p class="body">75 case + sweep điểm đến = 124 lượt trên catalog thật, model <code>gpt-4o-mini</code>, <code>dataMode=http</code>. Chấm theo test-plan §2.4.</p></div>
+  <div class="grid4">
+    <div class="stat"><span class="n">100%</span><span class="l">Grounding Rate</span><span class="s">ngưỡng 100%</span></div>
+    <div class="stat"><span class="n">100%</span><span class="l">Structured Output</span><span class="s">ngưỡng 100%</span></div>
+    <div class="stat"><span class="n">100%</span><span class="l">Tool Calling</span><span class="s">ngưỡng ≥ 95% · 110 lượt</span></div>
+    <div class="stat warn"><span class="n">113<span style="font-size:28px;color:var(--muted)">/124</span></span><span class="l">Lượt PASS</span><span class="s">11 FAIL theo kỳ vọng hành vi</span></div>
+  </div>
+  <div class="panel" style="gap:14px">
+    <h3>Độ trễ toàn request (mục tiêu &lt; 5 giây, chưa gate)</h3>
+    <div class="bars">
+      <div class="bar"><span>p50</span><div class="track"><div class="v" style="width:38.1%"></div><div class="target" style="left:50%"></div></div><span class="num">3,81 s</span></div>
+      <div class="bar"><span>p95</span><div class="track"><div class="v over" style="width:53%"></div><div class="target" style="left:50%"></div></div><span class="num">5,30 s</span></div>
+      <div class="bar"><span>max</span><div class="track"><div class="v over" style="width:89.9%"></div><div class="target" style="left:50%"></div></div><span class="num">8,99 s</span></div>
+    </div>
+    <div class="axis"><span></span><div class="ticks"><span>0</span><span>2,5</span><span>5 s</span><span>7,5</span><span>10</span></div><span></span></div>
+    <p class="small">Đo với timeout LLM demo 30 giây, cao hơn ngân sách spec (classify 2 s, compose 3 s), nên chưa phải bằng chứng đạt SLA.</p>
+  </div>
+  <div class="foot"><span>Itinerary Agent</span><span>11</span></div>
+</section>
+
+<!-- 12 -->
+<section class="slide" data-label="Lượt FAIL">
+  <div class="head"><span class="eyebrow">11 lượt FAIL · nhóm theo nguyên nhân</span><h2>Grounding không hỏng; lỗi nằm ở hiểu ý và độ phủ</h2></div>
+  <div class="fails">
+    <div class="fail"><span class="ids">G-013 · G-072</span><h3>Chuẩn hóa điểm đến</h3><p>“tphcm” không thành “TP. Hồ Chí Minh”; “Mũi Né” bị trả 422 thay vì khớp “Phan Thiết”.</p></div>
+    <div class="fail"><span class="ids">G-051 · G-052 · G-055 · G-059</span><h3>Thiếu hoạt động</h3><p>Chuyến gia đình có trẻ nhỏ hoặc Hà Nội theo khoảng ngày: lịch có 0–1 hoạt động, kỳ vọng ≥ 3.</p></div>
+    <div class="fail"><span class="ids">G-058 · G-059</span><h3>Warning ngoài ý muốn</h3><p>Đổi ngân sách hoặc số người ở lượt 2 sinh <code>PRODUCT_DROPPED_EXCLUDED</code>.</p></div>
+    <div class="fail"><span class="ids">G-047</span><h3>Không từ chối</h3><p>“đặt phòng và thanh toán giúp tôi” ra 200 hỏi thêm, kỳ vọng 400 <code>VALIDATION_ERROR</code>.</p></div>
+    <div class="fail"><span class="ids">G-053 · G-056</span><h3>Suy diễn intent</h3><p>“3n2d” tự gán <code>startDate</code> hôm nay; “ngân sách 5tr” ở Hà Nội lại đi hỏi thêm.</p></div>
+    <div class="fail"><span class="ids">G-062</span><h3>Lẫn ngôn ngữ</h3><p>Yêu cầu tiếng Anh nhưng note vẫn chứa câu tiếng Việt cố định.</p></div>
+  </div>
+  <div class="foot"><span>Itinerary Agent</span><span>12</span></div>
+</section>
+
+<!-- 13 -->
+<section class="slide" data-label="Quan sát">
+  <div class="head"><span class="eyebrow">Quan sát &amp; chạy thử</span><h2>Nhìn được từng node đã làm gì</h2></div>
+  <div class="grid3">
+    <div class="panel"><h3>Trace SSE trên Streamlit</h3><p class="body">Mỗi node xong phát một event: <code>sequence</code>, <code>nodeId</code>, <code>outcome</code>, <code>message</code>, <code>durationMs</code>. Không lộ state, prompt, JWT.</p><p class="small">Thấy <code>converse</code> là chắc chắn không có sản phẩm; thấy <code>compose</code> là đã có dữ liệu thật.</p></div>
+    <div class="panel"><h3>LangSmith</h3><p class="body">Trace đặt tên theo câu người dùng gõ; <code>output</code> của mỗi node chỉ là phần state nó thay đổi.</p><p class="small">Chỉ bật ở dev cá nhân: prompt và dữ liệu người dùng được gửi lên LangSmith.</p></div>
+    <div class="panel"><h3>X-Request-ID</h3><p class="body">Truyền qua mọi service. Lọc log backend theo <code>requestId=</code> để nối với trace.</p><p class="small">Metadata <code>transport</code>: <code>sse</code> là Streamlit, <code>json</code> là gọi thẳng API.</p></div>
+  </div>
+  <pre class="cmd">uvicorn src.backend.app.main:app --reload --port 8000
+ASSISTANT_API_BASE_URL=http://127.0.0.1:8000/api/v1 streamlit run src/evaluation/agent/streamlit_app.py --server.port 8502
+python -m src.evaluation.agent.golden --only G-001,G-002   # --sweep · --repeat N · --trace-project &lt;tên&gt;</pre>
+  <div class="foot"><span>Itinerary Agent</span><span>13</span></div>
+</section>
+
+<!-- 14 -->
+<section class="slide" data-label="Tiếp theo">
+  <div class="closing">
+    <div class="head" style="gap:20px">
+      <span class="eyebrow">Việc tiếp theo</span>
+      <h2>Giữ grounding 100%, kéo hành vi lên cùng mức</h2>
+      <ul class="list">
+        <li>Bảng alias điểm đến (TPHCM, Mũi Né → Phan Thiết) trước khi trả 422</li>
+        <li>Bảo đảm đủ hoạt động cho chuyến gia đình có trẻ nhỏ</li>
+        <li>Từ chối rõ yêu cầu đặt chỗ / thanh toán thay người dùng</li>
+        <li>Không tự suy <code>startDate</code> khi người dùng không nói</li>
+        <li>Đo lại latency với ngân sách timeout của spec, hướng tới p95 &lt; 5 giây</li>
+        <li>Cân nhắc đưa <code>pace</code> vào bước xếp lịch</li>
+      </ul>
+    </div>
+    <div class="head" style="gap:18px;align-self:center">
+      <span class="qa">Hỏi<br>&amp; đáp</span>
+      <p class="small">Tài liệu: <code>docs/spec/agent/</code> · <code>docs/spec/hop-dong-tich-hop-itinerary-assistant.md</code><br>Báo cáo: <code>src/evaluation/reports/eval-2026-09-24-golden.md</code></p>
+    </div>
+  </div>
+  <div class="foot"><span>Itinerary Agent</span><span>14</span></div>
+</section>
+
+<div class="progress" id="progress"></div>
+</div>
+</div>
+
+<nav class="controls" aria-label="Điều hướng slide">
+  <button id="prev" type="button" aria-label="Slide trước">← Trước</button>
+  <span class="counter" id="counter">1 / 14</span>
+  <button id="next" type="button" aria-label="Slide sau">Sau →</button>
+  <button id="fs" type="button">Toàn màn hình</button>
+</nav>
+
+<script>
+(function(){
+  var slides=[].slice.call(document.querySelectorAll('.slide'));
+  var stage=document.getElementById('stage'), vp=document.getElementById('viewport');
+  var counter=document.getElementById('counter'), progress=document.getElementById('progress');
+  var i=0, n=slides.length;
+  function narrow(){return window.matchMedia('(max-width:760px)').matches}
+  function fit(){
+    if(narrow()){stage.style.transform='';return}
+    var w=vp.clientWidth-32, h=vp.clientHeight-88;
+    var s=Math.min(w/1280,h/720);
+    stage.style.transform='scale('+s+')';
+  }
+  function show(k){
+    i=Math.max(0,Math.min(n-1,k));
+    slides.forEach(function(el,j){el.classList.toggle('on',j===i)});
+    counter.textContent=(i+1)+' / '+n;
+    progress.style.width=((i+1)/n*100)+'%';
+    try{history.replaceState(null,'','#'+(i+1))}catch(e){}
+  }
+  document.getElementById('prev').onclick=function(){show(i-1)};
+  document.getElementById('next').onclick=function(){show(i+1)};
+  document.getElementById('fs').onclick=function(){
+    try{
+      if(document.fullscreenElement){document.exitFullscreen()}
+      else{var p=document.documentElement.requestFullscreen();if(p&&p.catch)p.catch(function(){})}
+    }catch(e){}
+  };
+  document.addEventListener('keydown',function(e){
+    if(narrow())return;
+    if(['ArrowRight','PageDown',' '].indexOf(e.key)>-1){e.preventDefault();show(i+1)}
+    else if(['ArrowLeft','PageUp'].indexOf(e.key)>-1){e.preventDefault();show(i-1)}
+    else if(e.key==='Home'){show(0)} else if(e.key==='End'){show(n-1)}
+  });
+  var x0=null;
+  vp.addEventListener('touchstart',function(e){x0=e.touches[0].clientX},{passive:true});
+  vp.addEventListener('touchend',function(e){
+    if(x0===null||narrow())return;
+    var dx=e.changedTouches[0].clientX-x0; if(Math.abs(dx)>50)show(i+(dx<0?1:-1)); x0=null;
+  });
+  window.addEventListener('resize',fit);
+  var h=parseInt((location.hash||'').slice(1),10);
+  show(isNaN(h)?0:h-1); fit();
+})();
+</script>
+</body>
+</html>

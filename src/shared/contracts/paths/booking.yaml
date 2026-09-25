@@ -1,0 +1,214 @@
+/cart:
+  get:
+    tags:
+    - booking
+    operationId: getCart
+    summary: Giỏ hàng của người dùng hiện tại
+    security:
+    - bearerAuth: []
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    responses:
+      '200':
+        $ref: ../openapi.yaml#/components/responses/Cart
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error
+/cart/items:
+  post:
+    tags:
+    - booking
+    operationId: addCartItem
+    summary: Thêm mục vào giỏ (cộng dồn nếu trùng productId và usingDate)
+    description: Thêm thành công thì Backend ghi event add_to_cart sang CDP clone ở nền, với taxonomy và unitPrice
+      lấy từ catalog. Thêm thất bại không ghi event. CDP lỗi không ảnh hưởng response.
+    security:
+    - bearerAuth: []
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/AddCartItemRequest
+    responses:
+      '200':
+        $ref: ../openapi.yaml#/components/responses/Cart
+      '400':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '404':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '409':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '422':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error
+/cart/items/{cartItemId}:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/CartItemId
+  patch:
+    tags:
+    - booking
+    operationId: updateCartItem
+    summary: Sửa ngày, số lượng hoặc số đêm của một mục giỏ
+    security:
+    - bearerAuth: []
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/UpdateCartItemRequest
+    responses:
+      '200':
+        $ref: ../openapi.yaml#/components/responses/Cart
+      '400':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '404':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '409':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '422':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error
+  delete:
+    tags:
+    - booking
+    operationId: removeCartItem
+    summary: Xóa một mục giỏ
+    security:
+    - bearerAuth: []
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    responses:
+      '200':
+        $ref: ../openapi.yaml#/components/responses/Cart
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '404':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error
+/bookings:
+  post:
+    tags:
+    - booking
+    operationId: createBooking
+    summary: Checkout giỏ hiện tại — giữ chỗ và tạo phiên thanh toán Stripe
+    description: 'Backend kiểm giỏ, tạo đơn PENDING_PAYMENT (giữ giá và thành phần 30 phút) rồi tạo phiên Stripe Checkout.
+      201 nghĩa là đã giữ chỗ và chờ thanh toán, KHÔNG phải đã đặt xong: Web chuyển trình duyệt tới payment.checkoutUrl.
+      Đơn chỉ thành CONFIRMED sau khi Stripe xác nhận thu tiền (webhook có chữ ký hoặc Backend tự hỏi lại Stripe); event
+      purchase chỉ ghi sang CDP lúc đó. Người dùng đang có đơn giữ chỗ thì trả 409 BOOKING_PENDING_PAYMENT kèm referenceCode
+      đơn đó. Stripe không phản hồi thì không tạo đơn, trả 503 PAYMENT_PROVIDER_UNAVAILABLE. Số tiền do Backend tính từ
+      catalog, không nhận từ client.'
+    security:
+    - bearerAuth: []
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/CheckoutRequest
+    responses:
+      '201':
+        description: Đã giữ chỗ, chờ thanh toán
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/BookingResponse
+      '400':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '409':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '422':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '503':
+        $ref: ../openapi.yaml#/components/responses/Error
+/bookings/{referenceCode}:
+  get:
+    tags:
+    - booking
+    operationId: getBooking
+    summary: Đọc lại đơn đặt chỗ của chính người dùng
+    security:
+    - bearerAuth: []
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    - name: referenceCode
+      in: path
+      required: true
+      schema:
+        $ref: ../openapi.yaml#/components/schemas/ReferenceCode
+    responses:
+      '200':
+        description: Đơn đặt chỗ
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/BookingResponse
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '404':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error
+/bookings/{referenceCode}/cancel:
+  post:
+    tags:
+    - booking
+    operationId: cancelBooking
+    summary: Khách huỷ cả đơn
+    description: 'Huỷ cả đơn, không huỷ từng mục. Đơn PENDING_PAYMENT: huỷ ngay và đóng phiên thanh toán. Đơn CONFIRMED:
+      hoàn 100% qua Stripe nếu còn trong hạn (cancellableUntil), đồng thời huỷ event purchase trên CDP; quá hạn thì 409
+      BOOKING_NOT_CANCELLABLE. Huỷ lặp lại trả về kết quả cũ, không hoàn tiền hai lần. Đơn đã CANCELLED, EXPIRED hoặc
+      PAYMENT_FAILED không huỷ được.'
+    security:
+    - bearerAuth: []
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    - name: referenceCode
+      in: path
+      required: true
+      schema:
+        $ref: ../openapi.yaml#/components/schemas/ReferenceCode
+    requestBody:
+      required: false
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/CancelBookingRequest
+    responses:
+      '200':
+        description: Đơn sau khi huỷ
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/BookingResponse
+      '400':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '404':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '409':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '503':
+        $ref: ../openapi.yaml#/components/responses/Error

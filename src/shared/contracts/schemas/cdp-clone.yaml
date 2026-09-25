@@ -1,0 +1,315 @@
+UserEventInput:
+  type: object
+  description: Một hành vi theo hình dạng UserEvent (handbook §6). Trường bắt buộc phụ thuộc eventName.
+  additionalProperties: false
+  required:
+  - cdpUserId
+  - eventName
+  properties:
+    eventId:
+      type: string
+      minLength: 1
+      maxLength: 128
+      description: Khóa chống trùng do caller sinh, duy nhất theo cdpUserId. Bỏ trống thì server tự sinh.
+        Gửi lại cùng eventId trả status duplicate, bản ghi đầu tiên được giữ. Backend dùng
+        "purchase:{bookingItemId}".
+    cdpUserId:
+      type: string
+      minLength: 1
+      maxLength: 64
+    eventName:
+      $ref: ../cdp-clone.openapi.yaml#/components/schemas/EventName
+    timestamp:
+      type: string
+      format: date-time
+      description: Thời điểm hành vi xảy ra. Bỏ trống thì dùng thời điểm server nhận.
+    productId:
+      type:
+      - string
+      - 'null'
+      minLength: 1
+    taxonomy:
+      anyOf:
+      - $ref: ../cdp-clone.openapi.yaml#/components/schemas/Taxonomy
+      - type: 'null'
+    eventGroupId:
+      type:
+      - string
+      - 'null'
+      minLength: 1
+      description: Gom nhóm một chuyến đi. Bắt buộc với purchase.
+    quantity:
+      type:
+      - integer
+      - 'null'
+      minimum: 1
+    unitPrice:
+      type:
+      - number
+      - 'null'
+      minimum: 0
+      description: Giá VND tại thời điểm hành vi.
+    usingDate:
+      type:
+      - string
+      - 'null'
+      format: date
+    searchQuery:
+      type:
+      - string
+      - 'null'
+      minLength: 1
+      maxLength: 500
+      description: 'Chờ xác nhận với CDP thật: UserEvent của handbook không có trường chứa truy vấn, nhưng
+        because[] của event search cần hiển thị truy vấn. Bắt buộc với search.'
+  allOf:
+  - if:
+      properties:
+        eventName:
+          const: search
+    then:
+      required:
+      - searchQuery
+      properties:
+        searchQuery:
+          type: string
+  - if:
+      properties:
+        eventName:
+          enum:
+          - product_view
+          - add_to_cart
+          - purchase
+    then:
+      required:
+      - productId
+      - taxonomy
+      properties:
+        productId:
+          type: string
+        taxonomy:
+          $ref: ../cdp-clone.openapi.yaml#/components/schemas/Taxonomy
+  - if:
+      properties:
+        eventName:
+          const: add_to_cart
+    then:
+      required:
+      - quantity
+      properties:
+        quantity:
+          type: integer
+  - if:
+      properties:
+        eventName:
+          const: purchase
+    then:
+      required:
+      - eventId
+      - eventGroupId
+      - quantity
+      - unitPrice
+      - usingDate
+      properties:
+        eventGroupId:
+          type: string
+        quantity:
+          type: integer
+        unitPrice:
+          type: number
+        usingDate:
+          type: string
+RecordEventsRequest:
+  type: object
+  additionalProperties: false
+  required:
+  - events
+  properties:
+    events:
+      type: array
+      minItems: 1
+      maxItems: 100
+      items:
+        $ref: ../cdp-clone.openapi.yaml#/components/schemas/UserEventInput
+RecordedEvent:
+  type: object
+  required:
+  - eventId
+  - status
+  properties:
+    eventId:
+      type: string
+    status:
+      type: string
+      enum:
+      - created
+      - duplicate
+RecordEventsResponse:
+  type: object
+  required:
+  - results
+  properties:
+    results:
+      type: array
+      description: Cùng thứ tự với events[] của request.
+      items:
+        $ref: ../cdp-clone.openapi.yaml#/components/schemas/RecordedEvent
+UserEvent:
+  type: object
+  description: Event đã lưu. CDP giữ vĩnh viễn, không có TTL (khác Insider).
+  required:
+  - eventId
+  - cdpUserId
+  - eventName
+  - timestamp
+  - productId
+  - taxonomy
+  - eventGroupId
+  - quantity
+  - unitPrice
+  - usingDate
+  - searchQuery
+  - cancelledAt
+  properties:
+    eventId:
+      type: string
+    cdpUserId:
+      type: string
+    eventName:
+      $ref: ../cdp-clone.openapi.yaml#/components/schemas/EventName
+    timestamp:
+      type: string
+      format: date-time
+    productId:
+      type:
+      - string
+      - 'null'
+    taxonomy:
+      anyOf:
+      - $ref: ../cdp-clone.openapi.yaml#/components/schemas/Taxonomy
+      - type: 'null'
+    eventGroupId:
+      type:
+      - string
+      - 'null'
+    quantity:
+      type:
+      - integer
+      - 'null'
+    unitPrice:
+      type:
+      - number
+      - 'null'
+    usingDate:
+      type:
+      - string
+      - 'null'
+      format: date
+    searchQuery:
+      type:
+      - string
+      - 'null'
+    cancelledAt:
+      type:
+      - string
+      - 'null'
+      format: date-time
+      description: 'Chờ xác nhận với CDP thật. Khác null khi event đã bị huỷ bằng PUT .../cancellation (booking
+        commit lỗi sau khi purchase đã ghi). Bên đọc không được dùng event đã huỷ.'
+EventListResponse:
+  type: object
+  required:
+  - events
+  - total
+  - limit
+  - offset
+  properties:
+    events:
+      type: array
+      description: Mới nhất trước.
+      items:
+        $ref: ../cdp-clone.openapi.yaml#/components/schemas/UserEvent
+    total:
+      type: integer
+      minimum: 0
+    limit:
+      type: integer
+    offset:
+      type: integer
+LifecycleStage:
+  type: string
+  description: 'Chờ xác nhận với CDP thật. Giá trị lấy theo các giai đoạn handbook §6 mô tả: mới, đang
+    hoạt động, ngủ đông, rời bỏ.'
+  enum:
+  - new
+  - active
+  - dormant
+  - churned
+ProfileAttributes:
+  type: object
+  description: 'Thuộc tính CDP Profile Store (handbook §6). Tên opt-in đang chờ xác nhận. Đây là snapshot
+    do seed/Backend ghi; Recommendation đọc lịch sử từ events, không suy từ các trường tổng hợp này.'
+  additionalProperties: false
+  properties:
+    lifecycleStage:
+      anyOf:
+      - $ref: ../cdp-clone.openapi.yaml#/components/schemas/LifecycleStage
+      - type: 'null'
+    daysSinceLastBooking:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
+    lifetimeOrderCount:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
+    vinclubTier:
+      type:
+      - string
+      - 'null'
+    purchasedVerticals:
+      type: array
+      uniqueItems: true
+      items:
+        $ref: ../cdp-clone.openapi.yaml#/components/schemas/Taxonomy
+    homeCity:
+      type:
+      - string
+      - 'null'
+    lastDestination:
+      type:
+      - string
+      - 'null'
+    emailOptin:
+      type:
+      - boolean
+      - 'null'
+    smsOptin:
+      type:
+      - boolean
+      - 'null'
+    pushOptin:
+      type:
+      - boolean
+      - 'null'
+    gdprOptin:
+      type:
+      - boolean
+      - 'null'
+      description: false nghĩa là không gửi gì qua bất kỳ kênh nào.
+Profile:
+  type: object
+  required:
+  - cdpUserId
+  - attributes
+  - updatedAt
+  properties:
+    cdpUserId:
+      type: string
+    attributes:
+      $ref: ../cdp-clone.openapi.yaml#/components/schemas/ProfileAttributes
+    updatedAt:
+      type: string
+      format: date-time
