@@ -6,8 +6,7 @@ import type { AssistantCartItem } from '../components/assistant/AssistantResultP
 /**
  * Thêm một hoặc nhiều mục của lịch trình vào giỏ, tuần tự, gom kết quả vào một toast
  * (docs/spec/hop-dong-tich-hop-frontend.md §4.8). Khách chưa đăng nhập thì mở LoginModal
- * một lần rồi thêm cả nhóm sau khi đăng nhập. Giỏ ở backend nên mỗi mục chờ POST /cart/items xong
- * mới sang mục sau; khách sạn (property) phải chọn hạng phòng ở trang chi tiết nên backend từ chối.
+ * một lần rồi thêm cả nhóm sau khi đăng nhập.
  */
 export function useAssistantCart() {
   const { addToCart, currentPersona, openLoginModal, showToast, navigate } = useTravel();
@@ -18,14 +17,20 @@ export function useAssistantCart() {
   }, [addToCart, currentPersona]);
 
   const addItems = useCallback(async (items: AssistantCartItem[]) => {
+    if (items.length === 1) {
+      const [item] = items;
+      await latest.current.addToCart(mapProductSummaryToProduct(item.product), 1, item.usingDate, item.checkOutDate);
+      return; // addToCart đã tự báo toast cho một mục.
+    }
+    // Tuần tự, mỗi mục một request; một mục lỗi không chặn mục còn lại.
     let added = 0;
     const failed: string[] = [];
     for (const item of items) {
-      const ok = await latest.current.addToCart(mapProductSummaryToProduct(item.product), 1, item.usingDate, item.checkOutDate);
+      const ok = await latest.current.addToCart(
+        mapProductSummaryToProduct(item.product), 1, item.usingDate, item.checkOutDate, { silent: true });
       if (ok) added += 1;
       else failed.push(item.product.name);
     }
-    if (items.length <= 1) return; // addToCart đã tự báo toast cho một mục (thành công hoặc lỗi).
     const summary = failed.length
       ? `Đã thêm ${added}/${items.length} mục vào giỏ. Chưa thêm được: ${failed.join(', ')}.`
       : `Đã thêm ${added} mục của lịch trình vào giỏ. Giá chính thức hiển thị ở giỏ hàng.`;

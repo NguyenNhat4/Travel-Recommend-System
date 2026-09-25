@@ -95,7 +95,6 @@ class Settings(BaseSettings):
     # RecSys (search / similar / recommendations). Model và chiều đã chốt trong PRD 22/09/2026.
     embed_model: Literal["embed-multilingual-v3.0"] = "embed-multilingual-v3.0"
     embed_dimension: Literal[1024] = 1024
-    embed_cache_dir: str = ".embcache"
     cohere_api_key: str = ""
     cohere_base_url: str = "https://api.cohere.com"
     cohere_timeout_seconds: float = Field(default=30.0, gt=0)
@@ -116,6 +115,24 @@ class Settings(BaseSettings):
     embedding_model_name: str = "embed-multilingual-v3.0"
     weaviate_url: str = "http://localhost:8080"
     weaviate_api_key: str = ""
+
+    # --- Thanh toán Stripe (test mode, docs/prd/deployment-plan.md §2) --------------------------------
+    stripe_secret_key: str = ""
+    stripe_webhook_secret: str = ""
+    payment_provider: Literal["stripe", "fake"] = "stripe"  # fake: offline, không gọi mạng; cấm ở production
+    booking_hold_minutes: int = Field(default=30, ge=30)  # Stripe chỉ cho phiên Checkout hết hạn sau ít nhất 30 phút
+    payment_max_failed_attempts: int = Field(default=3, ge=1)
+    public_web_url: str = "http://localhost:3000"
+    # 0 = tắt job đối soát (test); mặc định 5 phút/lần.
+    booking_reconcile_interval_seconds: int = Field(default=300, ge=0)
+
+    @field_validator("stripe_secret_key")
+    @classmethod
+    def _test_keys_only(cls, value: str) -> str:
+        # Dự án chỉ dùng Stripe test mode (PRD project-brief §4.2): khoá live không bao giờ được nạp.
+        if value.startswith(("sk_live_", "rk_live_")):
+            raise ValueError("STRIPE_SECRET_KEY phải là khoá test (sk_test_…); dự án không dùng Stripe live mode")
+        return value
 
     @field_validator(*_OPTIONAL_BLANK_IS_NONE, mode="before")
     @classmethod

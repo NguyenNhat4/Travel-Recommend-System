@@ -1,0 +1,29 @@
+/payments/stripe/webhook:
+  post:
+    tags:
+    - payments-internal
+    operationId: stripeWebhook
+    summary: Webhook Stripe (nội bộ, chỉ Stripe gọi)
+    description: 'Stripe gọi thẳng FastAPI, không qua BFF, không dùng JWT. Xác thực bằng chữ ký Stripe-Signature trên raw
+      body. Xử lý idempotent: gửi trùng hoặc sai thứ tự không đổi trạng thái lần hai. Web không sinh client cho endpoint này.'
+    security: []
+    parameters:
+    - name: Stripe-Signature
+      in: header
+      required: true
+      schema:
+        type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+    responses:
+      '200':
+        description: Đã nhận (không có body)
+      '400':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error

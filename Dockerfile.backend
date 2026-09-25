@@ -2,26 +2,14 @@ FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app \
-    HF_HOME=/home/app/.cache/huggingface \
-    EMBED_CACHE_DIR=/app/.embcache
+    PYTHONPATH=/app
 
 WORKDIR /app
 
-# PyTorch (used by sentence-transformers) needs OpenMP at runtime.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends libgomp1 \
-    && rm -rf /var/lib/apt/lists/* \
-    && useradd --create-home --uid 10001 app \
-    && mkdir -p /app/.embcache /home/app/.cache/huggingface \
-    && chown -R app:app /app /home/app
+RUN useradd --create-home --uid 10001 app \
+    && chown -R app:app /app
 
 COPY src/backend/requirements.txt /tmp/backend-requirements.txt
-# Install CPU PyTorch first so the CPU-only Compose service does not pull CUDA wheels.
-RUN python -m pip install --no-cache-dir \
-    --index-url https://download.pytorch.org/whl/cpu \
-    --extra-index-url https://pypi.org/simple \
-    'torch>=2.2'
 RUN python -m pip install --no-cache-dir -r /tmp/backend-requirements.txt
 
 # The API imports the backend package, OpenAPI bundle and shared itinerary fixtures.

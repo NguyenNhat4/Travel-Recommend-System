@@ -1,159 +1,198 @@
-"""Bản giả in-memory cho catalog, giỏ, booking và CDP, để test giỏ, checkout và vòng K1 không cần database.
-
-`RecordingCdp` đóng cả hai vai trên cùng một kho event, giống `LocalCdpClient` (ghi) và `PostgresCdpReader`
-(đọc) cùng trỏ vào `cdp.events`: purchase vừa ghi phải thấy ngay ở lần đọc lịch sử kế tiếp.
-"""
+"""Bản giả cho test booking: kho đơn/giỏ/catalog trong bộ nhớ, CDP giả, đồng hồ điều khiển được. Không gọi mạng, không cần DB."""
 from __future__ import annotations
 
-import json
+import copy
 import uuid
-from dataclasses import replace
-from datetime import datetime, timezone
+from contextlib import asynccontextmanager
+from datetime import date, datetime, timedelta, timezone
 
-from src.backend.app.application.ports.booking_repository import Booking
-from src.backend.app.application.ports.cart_repository import Cart, CartLine
-from src.backend.app.application.ports.cdp_client import CdpUnavailableError, PurchaseEvent
-from src.backend.app.domain.catalog import Product
+from src.backend.app.application.auth.principal import AuthPrincipal
+from src.backend.app.application.booking import (
+    CancelBooking, CartService, CreateBookingHold, GetBooking, PaymentEventHandler, ReconcileBookings, Settlement,
+)
+from src.backend.app.application.ports.booking_store import PendingBookingExists
+from src.backend.app.application.ports.cdp_client import CdpUnavailableError
+from src.backend.app.application.tracking.behaviour import BehaviourTracker
+from src.backend.app.domain.booking import Booking, Cart, CartLine, HoldPolicy
+from src.backend.app.domain.booking.status import BookingStatus, PaymentStatus
+from src.backend.app.domain.catalog.models import Product
+from src.backend.app.infrastructure.payments.fake_gateway import FakeGateway
+
+NOW = datetime(2026, 9, 16, 3, 0, tzinfo=timezone.utc)
+USER = "VP0000001"
+PRINCIPAL = AuthPrincipal(user_id="u-1", cdp_user_id=USER, email="minh@example.vn")
+HOTEL, TICKET = "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
 
 
-class InMemoryProductCatalog:
-    def __init__(self, products: list[Product]):
-        self.by_id = {product.product_id: product for product in products}
+def product(pid=HOTEL, taxonomy="hotel", price=3_400_000, **kw) -> Product:
+    attrs = {"level": "room"} if taxonomy == "hotel" else {}
+    base = dict(product_id=pid, name=f"SP {pid[:2]}", taxonomy=taxonomy, destination="Nha Trang", description="",
+                attributes=attrs, unit_price=price, available=True,
+                available_from=date(2026, 9, 1), available_to=date(2026, 12, 31))
+    base.update(kw)
+    return Product(**base)
 
-    @classmethod
-    def from_jsonl(cls, path) -> "InMemoryProductCatalog":
-        with open(path, encoding="utf-8") as handle:
-            return cls([Product.from_cdp(json.loads(line)) for line in handle if line.strip()])
 
-    async def get(self, product_id):
-        return self.by_id.get(product_id)
+class Clock:
+    def __init__(self, now=NOW):
+        self.now = now
 
-    async def get_many(self, product_ids):
-        return {product_id: self.by_id[product_id] for product_id in product_ids if product_id in self.by_id}
+    def __call__(self):
+        return self.now
 
-    async def children(self, parent_id):
-        return [product for product in self.by_id.values() if product.parent_id == parent_id]
+    def advance(self, **kw):
+        self.now += timedelta(**kw)
+
+
+class InMemoryCatalog:
+    def __init__(self, *products: Product):
+        self.products = {p.product_id: p for p in products}
+
+    async def get_products(self, ids):
+        return {i: self.products[i] for i in ids if i in self.products}
 
 
 class InMemoryCarts:
     def __init__(self):
-        self.carts: dict[str, Cart] = {}
+        self.lines: dict[str, list[CartLine]] = {}
 
-    def _cart(self, cdp_user_id: str) -> Cart:
-        return self.carts.setdefault(cdp_user_id, Cart(
-            cart_id=f"cart-{cdp_user_id}", cdp_user_id=cdp_user_id,
-            updated_at=datetime(2026, 9, 21, tzinfo=timezone.utc), lines=()))
+    async def get(self, user):
+        return Cart(f"cart-{user}", user, list(self.lines.get(user, [])), NOW)
 
-    def _save(self, cart: Cart, lines) -> None:
-        self.carts[cart.cdp_user_id] = replace(cart, lines=tuple(lines), updated_at=datetime.now(timezone.utc))
-
-    def clear(self, cdp_user_id: str) -> None:
-        self._save(self._cart(cdp_user_id), ())
-
-    async def load(self, cdp_user_id):
-        return self._cart(cdp_user_id)
-
-    async def add(self, cdp_user_id, product_id, using_date, using_date_to, quantity, unit_price):
-        cart = self._cart(cdp_user_id)
-        lines = list(cart.lines)
+    async def add(self, user, *, product_id, using_date, quantity, nights, unit_price):
+        lines = self.lines.setdefault(user, [])
         for i, line in enumerate(lines):
             if line.product_id == product_id and line.using_date == using_date:
-                lines[i] = replace(line, quantity=line.quantity + quantity)
-                break
-        else:
-            lines.append(CartLine(cart_item_id=str(uuid.uuid4()), product_id=product_id, quantity=quantity,
-                                  using_date=using_date, using_date_to=using_date_to,
-                                  unit_price_snapshot=unit_price, added_at=datetime.now(timezone.utc)))
-        self._save(cart, lines)
+                lines[i] = CartLine(line.cart_item_id, product_id, line.quantity + quantity, using_date, nights, unit_price)
+                return
+        lines.append(CartLine(str(uuid.uuid4()), product_id, quantity, using_date, nights, unit_price))
 
-    async def update(self, cdp_user_id, cart_item_id, using_date, using_date_to, quantity):
-        cart = self._cart(cdp_user_id)
-        if not any(line.cart_item_id == cart_item_id for line in cart.lines):
-            return False
-        self._save(cart, [replace(line, using_date=using_date, using_date_to=using_date_to, quantity=quantity)
-                          if line.cart_item_id == cart_item_id else line for line in cart.lines])
-        return True
+    async def update(self, user, cart_item_id, *, using_date, quantity, nights, nights_given, unit_price):
+        lines = self.lines.get(user, [])
+        for i, l in enumerate(lines):
+            if l.cart_item_id == cart_item_id:
+                lines[i] = CartLine(l.cart_item_id, l.product_id, quantity or l.quantity, using_date or l.using_date,
+                                    nights, unit_price)
+                return True
+        return False
 
-    async def remove(self, cdp_user_id, cart_item_id):
-        cart = self._cart(cdp_user_id)
-        kept = [line for line in cart.lines if line.cart_item_id != cart_item_id]
-        if len(kept) == len(cart.lines):
-            return False
-        self._save(cart, kept)
-        return True
+    async def remove(self, user, cart_item_id):
+        before = len(self.lines.get(user, []))
+        self.lines[user] = [l for l in self.lines.get(user, []) if l.cart_item_id != cart_item_id]
+        return len(self.lines[user]) < before
 
 
-class InMemoryBookings:
-    """Lưu booking và xoá giỏ cùng lúc, như transaction của `PostgresBookingRepository.save`."""
+class _Tx:
+    def __init__(self, store):
+        self.s = store
 
-    def __init__(self, carts: InMemoryCarts, fail_save: Exception | None = None):
-        self.carts = carts
-        self.fail_save = fail_save
-        self.saved: dict[str, Booking] = {}
+    def _find(self, pred):
+        return next((copy.deepcopy(b) for b in self.s.bookings.values() if pred(b)), None)
 
-    async def reference_taken(self, reference_code):
-        return reference_code in self.saved
+    async def get_by_id(self, booking_id, *, lock=False):
+        return self._find(lambda b: b.booking_id == booking_id)
+
+    async def get_by_reference(self, reference_code, cdp_user_id, *, lock=False):
+        return self._find(lambda b: b.reference_code == reference_code and b.cdp_user_id == cdp_user_id)
+
+    async def get_by_session(self, session_id, *, lock=False):
+        return self._find(lambda b: b.payment and b.payment.checkout_session_id == session_id)
+
+    async def get_pending_for_user(self, cdp_user_id, *, lock=False):
+        return self._find(lambda b: b.cdp_user_id == cdp_user_id and b.status is BookingStatus.PENDING_PAYMENT)
+
+    async def insert(self, booking):
+        if self.s.fail_insert:
+            raise RuntimeError("db down")
+        if any(b.cdp_user_id == booking.cdp_user_id and b.status is BookingStatus.PENDING_PAYMENT
+               for b in self.s.bookings.values()):
+            raise PendingBookingExists(booking.cdp_user_id)
+        self.s.bookings[booking.booking_id] = copy.deepcopy(booking)
 
     async def save(self, booking):
-        if self.fail_save is not None:
-            raise self.fail_save
-        self.saved[booking.reference_code] = booking
-        self.carts.clear(booking.cdp_user_id)
+        self.s.bookings[booking.booking_id] = copy.deepcopy(booking)
 
-    async def find(self, reference_code, cdp_user_id):
-        booking = self.saved.get(reference_code)
-        return booking if booking is not None and booking.cdp_user_id == cdp_user_id else None
+    async def clear_cart_items(self, cdp_user_id, keys):
+        wanted = set(keys)
+        lines = self.s.carts.lines.get(cdp_user_id, [])
+        self.s.carts.lines[cdp_user_id] = [l for l in lines if (l.product_id, l.using_date) not in wanted]
+
+    async def find_reconcile_ids(self, now, limit):
+        out = []
+        for b in self.s.bookings.values():
+            p = b.payment
+            if (b.status is BookingStatus.PENDING_PAYMENT and (p.status is PaymentStatus.SUCCEEDED or (
+                    p.status is PaymentStatus.OPEN and b.hold_expires_at < now))
+                    or p.status is PaymentStatus.REFUND_PENDING and not p.refund_id
+                    or b.status is BookingStatus.CANCELLED and b.confirmed_at and not b.purchase_events_cancelled_at):
+                out.append(b.booking_id)
+        return out[:limit]
 
 
-def _iso(value) -> str:
-    return value.isoformat().replace("+00:00", "Z") if isinstance(value, datetime) else value.isoformat()
+class InMemoryBookingStore:
+    def __init__(self, carts: InMemoryCarts):
+        self.carts, self.bookings, self.fail_insert = carts, {}, False
+
+    @asynccontextmanager
+    async def transaction(self):
+        yield _Tx(self)
 
 
-class RecordingCdp:
-    """Port `CdpClient` (ghi purchase, huỷ bù trừ) và `CdpHistoryReader` (đọc lịch sử) trên cùng một kho."""
-
-    def __init__(self, base_events: list[dict] | None = None, *, fail_record: bool = False,
-                 fail_cancel: bool = False):
-        self.base_events = list(base_events or [])
-        self.fail_record = fail_record
-        self.fail_cancel = fail_cancel
-        self.purchases: dict[str, PurchaseEvent] = {}
-        self.cancelled: set[str] = set()
+class FakeCdp:
+    def __init__(self):
+        self.recorded, self.cancelled, self.down = [], [], False
 
     async def record_purchases(self, events):
-        if self.fail_record:
-            raise CdpUnavailableError("cdp down")
-        for event in events:
-            self.purchases.setdefault(event.event_id, event)  # gửi lại cùng eventId không sinh event thứ hai
+        if self.down:
+            raise CdpUnavailableError("down")
+        self.recorded.append(list(events))
 
     async def cancel_purchases(self, events):
-        if self.fail_cancel:
-            raise CdpUnavailableError("cdp down")
-        self.cancelled.update(event.event_id for event in events)
-
-    def active_purchases(self) -> list[PurchaseEvent]:
-        return [event for event_id, event in self.purchases.items() if event_id not in self.cancelled]
-
-    def _as_cdp(self, event: PurchaseEvent) -> dict:
-        return {"cdpUserId": event.cdp_user_id, "eventName": "purchase", "timestamp": _iso(event.timestamp),
-                "productId": event.product_id, "taxonomy": event.taxonomy, "eventGroupId": event.event_group_id,
-                "quantity": event.quantity, "unitPrice": event.unit_price, "usingDate": event.using_date.isoformat()}
-
-    def events_for_user(self, cdp_user_id):
-        events = [event for event in self.base_events if event["cdpUserId"] == cdp_user_id]
-        events += [self._as_cdp(event) for event in self.active_purchases() if event.cdp_user_id == cdp_user_id]
-        return sorted(events, key=lambda event: event["timestamp"], reverse=True)
-
-    def purchase_events(self, since_days: int = 730):
-        events = [event for event in self.base_events if event["eventName"] == "purchase"]
-        return events + [self._as_cdp(event) for event in self.active_purchases()]
+        if self.down:
+            raise CdpUnavailableError("down")
+        self.cancelled.append(list(events))
 
 
-class RecordingEventRecorder:
-    """Port `BrowseEventRecorder`: giữ event duyệt web để test kiểm, không gọi CDP."""
-
+class Recorder:
     def __init__(self):
         self.events = []
 
     def record(self, event):
         self.events.append(event)
+
+
+class World:
+    """Ghép mọi use case booking trên bản giả, giống cách main.build_booking ghép trên bản thật."""
+
+    def __init__(self, *, products=None, max_attempts=3):
+        self.clock, self.gateway, self.cdp = Clock(), FakeGateway(), FakeCdp()
+        self.catalog = InMemoryCatalog(*(products or [product(), product(TICKET, "attraction", 880_000)]))
+        self.carts = InMemoryCarts()
+        self.store = InMemoryBookingStore(self.carts)
+        self.recorder = Recorder()
+        self.settlement = Settlement(self.store, self.gateway, self.cdp, self.clock)
+        self.handler = PaymentEventHandler(
+            self.store, self.gateway, self.settlement, max_failed_attempts=max_attempts, clock=self.clock)
+        self.reconciler = ReconcileBookings(self.store, self.gateway, self.settlement, self.handler, self.clock)
+        self.cart = CartService(self.carts, self.catalog, BehaviourTracker(self.recorder, _Lookup()), clock=self.clock)
+        self.create = CreateBookingHold(
+            self.store, self.carts, self.catalog, self.gateway, self.reconciler, HoldPolicy(30),
+            public_web_url="http://web.test", provider="fake", clock=self.clock)
+        self.get = GetBooking(self.store, self.catalog)
+        self.cancel = CancelBooking(self.store, self.gateway, self.settlement, self.catalog, self.clock)
+
+    def state(self) -> dict:
+        return {"cart_service": self.cart, "create_booking_hold": self.create, "get_booking": self.get,
+                "cancel_booking": self.cancel, "payment_event_handler": self.handler, "payment_gateway": self.gateway}
+
+    def booking(self, reference_code: str) -> Booking:
+        return next(b for b in self.store.bookings.values() if b.reference_code == reference_code)
+
+    async def fill_cart(self, using=date(2026, 10, 15), nights=3):
+        await self.cart.add(PRINCIPAL, product_id=HOTEL, using_date=using, quantity=1, nights=nights)
+        await self.cart.add(PRINCIPAL, product_id=TICKET, using_date=using, quantity=2, nights=None)
+
+
+class _Lookup:
+    async def find_product(self, product_id):
+        return None

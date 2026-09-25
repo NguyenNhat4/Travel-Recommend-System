@@ -3,7 +3,7 @@ import { useTravel } from '../../context/TravelContext';
 import { Home, Search, Sparkles, ShoppingBag, User } from 'lucide-react';
 
 export const MobileTabBar: React.FC = () => {
-  const { currentRoute, navigate, cart, currentPersona, openLoginModal } = useTravel();
+  const { currentRoute, navigate, cartCount, currentPersona, openLoginModal } = useTravel();
 
   // Hide in checkout
   if (currentRoute.startsWith('/checkout')) {
@@ -49,9 +49,9 @@ export const MobileTabBar: React.FC = () => {
         >
           <div className="relative">
             <ShoppingBag className="w-5 h-5" />
-            {cart.length > 0 && (
+            {cartCount > 0 && (
               <span className="absolute -top-1 -right-2 w-4 h-4 bg-blue-600 text-white rounded-full text-[9px] font-bold flex items-center justify-center">
-                {cart.length}
+                {cartCount}
               </span>
             )}
           </div>

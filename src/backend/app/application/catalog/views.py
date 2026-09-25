@@ -1,50 +1,50 @@
-"""Chiếu `Product` sang payload contract `ProductSummary` / `ProductDetail` (schemas/catalog.yaml)."""
+"""Chuyển entity catalog sang payload contract (ProductSummary, ProductDetail — schemas/catalog.yaml)."""
 from __future__ import annotations
 
-from src.backend.app.domain.catalog import Product
+from typing import Any
+
+from src.backend.app.domain.catalog import Product, VariantSummary
 
 
-def _rating(attributes: dict) -> float | None:
-    """reviewScore / reviewScoreScale * 5, một chữ số thập phân; thiếu thang điểm thì None (contract `rating`)."""
-    try:
-        score, scale = float(attributes["reviewScore"]), float(attributes["reviewScoreScale"])
-    except (KeyError, TypeError, ValueError):
+def _money(value: float | None) -> int | float | None:
+    """Giá VND là số nguyên (backend §2.6); numeric(14,2) của DB về float nên bỏ phần .0."""
+    if value is None:
         return None
-    if scale <= 0:
-        return None
-    return round(min(5.0, max(0.0, score / scale * 5)), 1)
+    return int(value) if float(value).is_integer() else value
 
 
-def _review_count(attributes: dict) -> int | None:
-    try:
-        return int(attributes["reviewCount"])
-    except (KeyError, TypeError, ValueError):
-        return None
+def public_attributes(attributes: dict[str, Any]) -> dict[str, Any]:
+    """[C2] Tầng serialization bỏ key có giá trị false: API chỉ trả true hoặc vắng mặt."""
+    return {k: v for k, v in attributes.items() if v is not False}
 
 
-def product_summary(product: Product) -> dict:
-    attributes = product.attributes or {}
+def product_summary(product: Product) -> dict[str, Any]:
     return {
         "productId": product.product_id,
         "name": product.name,
         "taxonomy": product.taxonomy,
         "destination": product.destination,
-        "brand": attributes.get("brand"),
-        "unitPrice": product.unit_price,
+        "unitPrice": _money(product.unit_price),
         "currency": product.currency,
         "priceUnit": product.price_unit,
         "available": product.available,
-        # Property/route không đặt trực tiếp (FR-CAT-02). null = đơn vị đặt được nhưng chưa kiểm theo kỳ ở.
-        "bookable": None if product.is_bookable else False,
         "availableFrom": product.available_from.isoformat() if product.available_from else None,
         "availableTo": product.available_to.isoformat() if product.available_to else None,
         "imageUrl": product.image_url,
-        "rating": _rating(attributes),
-        "reviewCount": _review_count(attributes),
-        "attributes": attributes,
+        "rating": product.rating,
+        "reviewCount": product.review_count,
+        "attributes": public_attributes(product.attributes),
     }
 
 
-def product_detail(product: Product, variants: list[Product]) -> dict:
-    return {**product_summary(product), "description": product.description or "",
-            "variants": [product_summary(variant) for variant in variants]}
+def product_detail(product: Product, variants: VariantSummary | None) -> dict[str, Any]:
+    return {
+        **product_summary(product),
+        "description": product.description or "",
+        "variantSummary": None if variants is None else {
+            "count": variants.count,
+            "minPrice": _money(variants.min_price),
+            "maxPrice": _money(variants.max_price),
+            "maxOccupancy": variants.max_occupancy,
+        },
+    }

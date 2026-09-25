@@ -7,8 +7,6 @@ from unittest.mock import patch
 from src.backend.app.core.config import Settings, get_settings
 from src.backend.app.infrastructure.cdp.local_cdp_client import LocalCdpClient
 from src.backend.app.infrastructure.persistence.postgres_catalog import PostgresProductLookup
-from src.backend.app.application.booking import CartService, Checkout
-from src.backend.app.application.catalog.use_cases import GetProductDetail
 from src.backend.app.application.itinerary.use_cases import PlanItinerary
 from src.backend.app.main import _forward_langsmith_env, _itinerary_runtime, app, health, lifespan
 
@@ -20,10 +18,6 @@ def test_default_composition_root_uses_local_postgres_adapters() -> None:
             assert any(getattr(route, "path", None) == "/health" for route in app.routes)
             assert isinstance(app.state.cdp_client, LocalCdpClient)
             assert isinstance(app.state.product_lookup, PostgresProductLookup)
-            # Checkout ghi purchase qua đúng CdpClient mà /recommendations đọc lại (vòng K1).
-            assert isinstance(app.state.checkout, Checkout) and app.state.checkout.cdp is app.state.cdp_client
-            assert isinstance(app.state.cart_service, CartService)
-            assert isinstance(app.state.product_detail, GetProductDetail)
 
     asyncio.run(scenario())
 

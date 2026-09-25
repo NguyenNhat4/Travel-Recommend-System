@@ -1,21 +1,26 @@
-"""Adapter giỏ, booking và catalog trên PostgreSQL local đã seed (role `vota_app`).
+"""Adapter Postgres của giỏ hàng, đơn giữ chỗ và thanh toán trên database local đã seed + migrate (0003, 0004).
 
-Ghi vào giỏ và `app.bookings` của một tài khoản test seed rồi tự dọn lại; không chạm `cdp.*`.
+Chạy bằng role `vota_app` (DATABASE_URL) như Backend thật. Dùng một user test seed và tự dọn mọi dòng đã tạo.
 """
 import asyncio
 import os
-from datetime import datetime, timedelta, timezone
+import uuid
+from datetime import date, datetime, timedelta, timezone
 
 import psycopg
 import pytest
 
-from src.backend.app.application.ports.booking_repository import Booking, BookingLine
-from src.backend.app.domain.booking import reference_code
-from src.backend.app.infrastructure.persistence.postgres_bookings import PostgresBookingRepository
-from src.backend.app.infrastructure.persistence.postgres_cart import PostgresCartRepository
-from src.backend.app.infrastructure.persistence.postgres_catalog import PostgresProductCatalog
+from src.backend.app.application.ports.booking_store import PendingBookingExists
+from src.backend.app.domain.booking import Booking, BookingItem, Payment
+from src.backend.app.domain.booking.status import BookingStatus, PaymentStatus
+from src.backend.app.infrastructure.persistence.postgres_booking import (
+    PostgresBookingStore,
+    PostgresCartRepository,
+    PostgresProductCatalog,
+)
 
 APP_URL = os.getenv("DATABASE_URL", "postgresql://vota_app_login:vota@localhost:5432/vota")
+USER = os.getenv("BOOKING_TEST_CDP_USER_ID", "VP0000054")       # test50@vota.demo — không phải persona
 
 pytestmark = pytest.mark.skipif(
     os.getenv("RUN_POSTGRES_INTEGRATION") != "1",
@@ -23,76 +28,107 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-@pytest.fixture
-def seeded():
+def _cleanup() -> None:
     with psycopg.connect(APP_URL, autocommit=True) as conn:
-        user = conn.execute("SELECT cdp_user_id FROM app.users WHERE email = 'test50@vota.demo'").fetchone()
-        room = conn.execute(
-            "SELECT p.product_id::text, p.attributes->>'parentProductId' FROM cdp.products p "
-            "JOIN catalog.product_meta m USING (product_id) "
-            "WHERE m.variant = 'hotel_room' AND m.is_bookable AND p.available LIMIT 1").fetchone()
-    assert user and room, "cần database đã seed (make demo-db)"
-    yield {"user": user[0], "room": room[0], "property": room[1]}
-    with psycopg.connect(APP_URL, autocommit=True) as conn:  # dọn: không để lại giỏ hay đơn của test
-        conn.execute("DELETE FROM app.bookings WHERE cdp_user_id = %s AND event_group_id LIKE 'WEBTEST%%'",
-                     (user[0],))
-        conn.execute("DELETE FROM app.cart_items WHERE cart_id IN (SELECT cart_id FROM app.carts WHERE cdp_user_id = %s)",
-                     (user[0],))
+        conn.execute("DELETE FROM app.bookings WHERE cdp_user_id = %s", (USER,))   # payments, items: ON DELETE CASCADE
+        conn.execute("DELETE FROM app.carts WHERE cdp_user_id = %s", (USER,))
 
 
-def test_catalog_reads_any_level_and_children(seeded):
-    async def scenario():
-        catalog = PostgresProductCatalog(APP_URL)
-        room = await catalog.get(seeded["room"])
-        assert room is not None and room.is_bookable and room.parent_id == seeded["property"]
-        parent = await catalog.get(seeded["property"])
-        assert parent is not None and not parent.is_bookable
-        assert seeded["room"] in {child.product_id for child in await catalog.children(seeded["property"])}
-        assert await catalog.get("not-a-uuid") is None
-        assert await catalog.get_many([seeded["room"], "not-a-uuid"]) == {seeded["room"]: room}
+@pytest.fixture
+def bookable_hotel_room() -> str:
+    _cleanup()
+    with psycopg.connect(APP_URL) as conn:
+        row = conn.execute(
+            """
+            SELECT product_id::text FROM cdp.products
+             WHERE taxonomy = 'hotel' AND attributes->>'level' = 'room' AND available AND unit_price IS NOT NULL
+               AND available_from IS NOT NULL
+             ORDER BY product_id LIMIT 1
+            """).fetchone()
+    if row is None:
+        pytest.skip("không có phòng khách sạn bán được trong catalog local")
+    yield row[0]
+    _cleanup()
 
+
+def _booking(product, using: date, *, status=BookingStatus.PENDING_PAYMENT) -> Booking:
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    booking_id = str(uuid.uuid4())
+    booking = Booking(
+        booking_id=booking_id, reference_code=f"VOTA-{now:%Y%m%d}-{uuid.uuid4().hex[:4].upper()}", cdp_user_id=USER,
+        event_group_id=f"OFFIT{uuid.uuid4().hex[:10].upper()}", contact_name="Test", contact_email="t@vota.demo",
+        contact_phone="0912345678", created_at=now, status=status, hold_expires_at=now + timedelta(minutes=31),
+        items=[BookingItem(str(uuid.uuid4()), product.product_id, "hotel", product.name, int(product.unit_price), 1,
+                           using, nights=2, guest_names=["Test"], special_request="Tầng cao")],
+    )
+    booking.payment = Payment(str(uuid.uuid4()), "fake", booking.total_amount,
+                              checkout_session_id=f"cs_it_{uuid.uuid4().hex[:12]}", checkout_url="https://checkout.fake/x")
+    return booking
+
+
+def test_cart_repository_merges_updates_and_removes(bookable_hotel_room) -> None:
+    async def scenario() -> None:
+        catalog, carts = PostgresProductCatalog(APP_URL), PostgresCartRepository(APP_URL)
+        product = (await catalog.get_products([bookable_hotel_room, "not-a-uuid"]))[bookable_hotel_room]
+        using = product.available_from
+        for _ in range(2):
+            await carts.add(USER, product_id=product.product_id, using_date=using, quantity=1, nights=2,
+                            unit_price=int(product.unit_price))
+        cart = await carts.get(USER)
+        assert len(cart.lines) == 1 and cart.lines[0].quantity == 2 and cart.lines[0].nights == 2
+        line = cart.lines[0]
+        assert await carts.update(USER, line.cart_item_id, using_date=None, quantity=3, nights=4, nights_given=True,
+                                  unit_price=int(product.unit_price))
+        line = (await carts.get(USER)).lines[0]
+        assert (line.quantity, line.nights, line.unit_price_snapshot) == (3, 4, int(product.unit_price))
+        assert not await carts.update(USER, str(uuid.uuid4()), using_date=None, quantity=1, nights=None,
+                                      nights_given=False, unit_price=1)
+        assert await carts.remove(USER, line.cart_item_id)
+        assert not await carts.remove(USER, "not-a-uuid")
+        assert (await carts.get(USER)).lines == []
     asyncio.run(scenario())
 
 
-def test_cart_merges_updates_and_removes(seeded):
-    async def scenario():
-        carts, user, room = PostgresCartRepository(APP_URL), seeded["user"], seeded["room"]
-        day = datetime.now(timezone.utc).date() + timedelta(days=3)
-        await carts.add(user, room, day, day + timedelta(days=1), 1, 1_000_000)
-        await carts.add(user, room, day, day + timedelta(days=1), 2, 1_000_000)
-        [line] = (await carts.load(user)).lines
-        assert (line.product_id, line.quantity, line.unit_price_snapshot) == (room, 3, 1_000_000)
-        assert await carts.update(user, line.cart_item_id, day, day + timedelta(days=2), 1)
-        assert (await carts.load(user)).lines[0].using_date_to == day + timedelta(days=2)
-        assert not await carts.update("VP-khac", line.cart_item_id, day, None, 1)
-        assert not await carts.remove(user, "not-a-uuid")
-        assert await carts.remove(user, line.cart_item_id)
-        assert (await carts.load(user)).lines == ()
+def test_booking_store_round_trip_one_pending_per_user_and_reconcile_query(bookable_hotel_room) -> None:
+    async def scenario() -> None:
+        catalog, carts, store = (PostgresProductCatalog(APP_URL), PostgresCartRepository(APP_URL),
+                                 PostgresBookingStore(APP_URL))
+        product = (await catalog.get_products([bookable_hotel_room]))[bookable_hotel_room]
+        using = product.available_from
+        await carts.add(USER, product_id=product.product_id, using_date=using, quantity=1, nights=2,
+                        unit_price=int(product.unit_price))
 
-    asyncio.run(scenario())
+        booking = _booking(product, using)
+        async with store.transaction() as tx:
+            await tx.insert(booking)
+        with pytest.raises(PendingBookingExists):                  # unique index bookings_one_pending_per_user
+            async with store.transaction() as tx:
+                await tx.insert(_booking(product, using))
 
+        async with store.transaction() as tx:
+            loaded = await tx.get_by_session(booking.payment.checkout_session_id, lock=True)
+            assert loaded.reference_code == booking.reference_code and loaded.total_amount == booking.total_amount
+            assert loaded.items[0].nights == 2 and loaded.items[0].special_request == "Tầng cao"
+            assert loaded.payment.status is PaymentStatus.OPEN
+            assert (await tx.get_pending_for_user(USER)).booking_id == booking.booking_id
+            assert await tx.get_by_reference(booking.reference_code, "VP0000001") is None   # đơn người khác
+            assert await tx.get_by_id("not-a-uuid") is None
 
-def test_booking_save_clears_the_cart_and_reads_back_for_the_owner_only(seeded):
-    async def scenario():
-        carts, bookings = PostgresCartRepository(APP_URL), PostgresBookingRepository(APP_URL)
-        user, room = seeded["user"], seeded["room"]
-        now = datetime.now(timezone.utc).replace(microsecond=0)
-        day = now.date() + timedelta(days=3)
-        await carts.add(user, room, day, day + timedelta(days=2), 1, 1_000_000)
-        booking = Booking(
-            reference_code=reference_code(now.date()), cdp_user_id=user,
-            event_group_id=f"WEBTEST{now:%Y%m%d%H%M%S}",  # tiền tố riêng để fixture dọn đúng đơn của test
-            contact_name="Khách Test", contact_email="khach@example.com", contact_phone="0912345678",
-            special_request=None, total_amount=2_000_000, currency="VND", created_at=now,
-            lines=(BookingLine(booking_item_id="00000000-0000-4000-8000-000000000001", product_id=room,
-                               taxonomy="hotel", product_name="Phòng test", unit_price=1_000_000, quantity=1,
-                               using_date=day, using_date_to=day + timedelta(days=2), guest_names=("Khách",)),),
-        )
-        assert not await bookings.reference_taken(booking.reference_code)
-        await bookings.save(booking)
-        assert await bookings.reference_taken(booking.reference_code)
-        assert (await carts.load(user)).lines == ()  # cùng transaction với booking
-        assert await bookings.find(booking.reference_code, user) == booking
-        assert await bookings.find(booking.reference_code, "VP-khac") is None
+            loaded.record_payment_received("pi_it_1")
+            await tx.save(loaded)
+        async with store.transaction() as tx:
+            ids = await tx.find_reconcile_ids(datetime.now(timezone.utc), 100)
+        assert booking.booking_id in ids                           # đã thu tiền nhưng chưa xác nhận
 
+        async with store.transaction() as tx:
+            loaded = await tx.get_by_id(booking.booking_id, lock=True)
+            loaded.confirm(datetime.now(timezone.utc))
+            await tx.save(loaded)
+            await tx.clear_cart_items(USER, [(i.product_id, i.using_date) for i in loaded.items])
+        async with store.transaction() as tx:
+            confirmed = await tx.get_by_id(booking.booking_id)
+            assert confirmed.status is BookingStatus.CONFIRMED and confirmed.payment.payment_intent_id == "pi_it_1"
+            assert confirmed.hold_expires_at is None and confirmed.payment.checkout_url is None
+            assert booking.booking_id not in await tx.find_reconcile_ids(datetime.now(timezone.utc), 100)
+        assert (await carts.get(USER)).lines == []
     asyncio.run(scenario())

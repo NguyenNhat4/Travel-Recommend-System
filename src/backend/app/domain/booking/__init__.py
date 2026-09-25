@@ -1,22 +1,14 @@
-"""Booking domain: luật giỏ và đặt chỗ thuần, không phụ thuộc framework hay database."""
-from .errors import (
-    BookingError,
-    BookingNotFound,
-    CartEmpty,
-    CartItemNotFound,
-    CheckoutFailed,
-    DateOutOfRange,
-    InvalidField,
-    NotBookable,
-    PriceChanged,
-    ProductNotFound,
-    ProductUnavailable,
-)
-from .rules import bookable_product, calendar_open, ensure_open, event_group_id, line_total, reference_code, stay_nights
+"""Booking domain: giỏ hàng, đơn giữ chỗ, thanh toán, huỷ (docs/prd/requirements.md FR-BKG-01…07)."""
+from .cancellation import CancelDecision, cancellable_until, decide_cancellation
+from .hold import HoldPolicy
+from .models import Booking, BookingItem, Cart, CartLine, Payment
+from .payment_failure import MAX_FAILED_ATTEMPTS, failure_reason_from_stripe
+from .pricing import LineIssue, check_product, line_total
+from .reference_code import new_reference_code
+from .status import BookingStatus, InvalidTransition, PaymentStatus
 
 __all__ = [
-    "BookingError", "BookingNotFound", "CartEmpty", "CartItemNotFound", "CheckoutFailed", "DateOutOfRange",
-    "InvalidField", "NotBookable", "PriceChanged", "ProductNotFound", "ProductUnavailable",
-    "bookable_product", "calendar_open", "ensure_open", "event_group_id", "line_total", "reference_code",
-    "stay_nights",
+    "Booking", "BookingItem", "BookingStatus", "CancelDecision", "Cart", "CartLine", "HoldPolicy", "InvalidTransition",
+    "LineIssue", "MAX_FAILED_ATTEMPTS", "Payment", "PaymentStatus", "cancellable_until", "check_product",
+    "decide_cancellation", "failure_reason_from_stripe", "line_total", "new_reference_code",
 ]

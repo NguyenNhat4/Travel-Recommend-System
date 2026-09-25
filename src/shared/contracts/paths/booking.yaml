@@ -104,10 +104,13 @@
     tags:
     - booking
     operationId: createBooking
-    summary: Checkout toàn bộ giỏ hiện tại
-    description: 'Backend ghi purchase sang CDP clone đồng bộ trước khi commit booking. CDP không xác nhận thì
-      không tạo booking, giữ nguyên giỏ và trả 500 INTERNAL_ERROR retryable true. CDP đã ghi nhưng commit lỗi thì
-      Backend huỷ các event đó trên CDP rồi trả 500.'
+    summary: Checkout giỏ hiện tại — giữ chỗ và tạo phiên thanh toán Stripe
+    description: 'Backend kiểm giỏ, tạo đơn PENDING_PAYMENT (giữ giá và thành phần 30 phút) rồi tạo phiên Stripe Checkout.
+      201 nghĩa là đã giữ chỗ và chờ thanh toán, KHÔNG phải đã đặt xong: Web chuyển trình duyệt tới payment.checkoutUrl.
+      Đơn chỉ thành CONFIRMED sau khi Stripe xác nhận thu tiền (webhook có chữ ký hoặc Backend tự hỏi lại Stripe); event
+      purchase chỉ ghi sang CDP lúc đó. Người dùng đang có đơn giữ chỗ thì trả 409 BOOKING_PENDING_PAYMENT kèm referenceCode
+      đơn đó. Stripe không phản hồi thì không tạo đơn, trả 503 PAYMENT_PROVIDER_UNAVAILABLE. Số tiền do Backend tính từ
+      catalog, không nhận từ client.'
     security:
     - bearerAuth: []
     parameters:
@@ -120,7 +123,7 @@
             $ref: ../openapi.yaml#/components/schemas/CheckoutRequest
     responses:
       '201':
-        description: Đặt chỗ thành công, event purchase đã được ghi
+        description: Đã giữ chỗ, chờ thanh toán
         content:
           application/json:
             schema:
@@ -134,6 +137,8 @@
       '422':
         $ref: ../openapi.yaml#/components/responses/Error
       '500':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '503':
         $ref: ../openapi.yaml#/components/responses/Error
 /bookings/{referenceCode}:
   get:
@@ -162,4 +167,48 @@
       '404':
         $ref: ../openapi.yaml#/components/responses/Error
       '500':
+        $ref: ../openapi.yaml#/components/responses/Error
+/bookings/{referenceCode}/cancel:
+  post:
+    tags:
+    - booking
+    operationId: cancelBooking
+    summary: Khách huỷ cả đơn
+    description: 'Huỷ cả đơn, không huỷ từng mục. Đơn PENDING_PAYMENT: huỷ ngay và đóng phiên thanh toán. Đơn CONFIRMED:
+      hoàn 100% qua Stripe nếu còn trong hạn (cancellableUntil), đồng thời huỷ event purchase trên CDP; quá hạn thì 409
+      BOOKING_NOT_CANCELLABLE. Huỷ lặp lại trả về kết quả cũ, không hoàn tiền hai lần. Đơn đã CANCELLED, EXPIRED hoặc
+      PAYMENT_FAILED không huỷ được.'
+    security:
+    - bearerAuth: []
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    - name: referenceCode
+      in: path
+      required: true
+      schema:
+        $ref: ../openapi.yaml#/components/schemas/ReferenceCode
+    requestBody:
+      required: false
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/CancelBookingRequest
+    responses:
+      '200':
+        description: Đơn sau khi huỷ
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/BookingResponse
+      '400':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '404':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '409':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '503':
         $ref: ../openapi.yaml#/components/responses/Error

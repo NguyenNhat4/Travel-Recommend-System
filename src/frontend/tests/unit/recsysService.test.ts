@@ -1,8 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  fetchRecommendations,
-  PERSONA_CDP_USER_MAP,
-} from '../../src/services/recsys';
+import { fetchRecommendations } from '../../src/services/recsys';
+import { ApiError } from '../../src/services/http';
 
 describe('recsys service fetchRecommendations', () => {
   const originalFetch = global.fetch;
@@ -15,14 +13,7 @@ describe('recsys service fetchRecommendations', () => {
     global.fetch = originalFetch;
   });
 
-  it('maps persona IDs to CDP user IDs correctly', () => {
-    expect(PERSONA_CDP_USER_MAP.P1).toBe('VP0000001');
-    expect(PERSONA_CDP_USER_MAP.P2).toBe('VP0000002');
-    expect(PERSONA_CDP_USER_MAP.P3).toBe('VP0000003');
-    expect(PERSONA_CDP_USER_MAP.P4).toBe('VP0000004');
-  });
-
-  it('calls /api/v1/recommendations and parses backend response', async () => {
+  it('calls /api/v1/recommendations and keeps name and price from the API (grounding)', async () => {
     const mockBackendResponse = {
       strategy: 'cross_vertical',
       destination: 'Nha Trang',
@@ -34,42 +25,28 @@ describe('recsys service fetchRecommendations', () => {
           taxonomy: 'attraction',
           destination: 'Nha Trang',
           unitPrice: 750000,
+          currency: 'VND',
+          priceUnit: 'PER_PERSON',
+          available: true,
           imageUrl: 'https://example.com/vinwonders.jpg',
           score: 0.95,
           rank: 1,
           because: [
-            {
-              productId: 'nt-hotel-01',
-              productName: 'V-OTA Resort Nha Trang',
-              event: 'purchase',
-              daysAgo: 2,
-              contribution: 0.75,
-            },
+            { productId: 'nt-hotel-01', productName: 'V-OTA Resort Nha Trang', event: 'purchase', daysAgo: 2, contribution: 0.75 },
           ],
         },
       ],
-      diagnostics: {
-        eventsUsed: 4,
-        coldStart: false,
-        excludedVerticals: ['hotel'],
-      },
+      diagnostics: { eventsUsed: 4, coldStart: false, excludedVerticals: ['hotel'] },
       generatedAt: '2026-09-21T10:00:00Z',
     };
 
     let requestedUrl = '';
     global.fetch = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
       requestedUrl = String(input);
-      return {
-        ok: true,
-        status: 200,
-        json: async () => mockBackendResponse,
-      } as Response;
+      return new Response(JSON.stringify(mockBackendResponse), { status: 200 });
     });
 
-    const result = await fetchRecommendations({
-      k: 4,
-      destination: 'Nha Trang',
-    });
+    const result = await fetchRecommendations({ k: 4, destination: 'Nha Trang' });
 
     expect(requestedUrl).toContain('/api/v1/recommendations?');
     // Danh tính theo cookie phiên; không bao giờ gửi cdp_user_id (IDOR, auth §3.5).
@@ -81,18 +58,22 @@ describe('recsys service fetchRecommendations', () => {
     expect(result.destination).toBe('Nha Trang');
     expect(result.nextVertical).toBe('attraction');
     expect(result.recommendations).toHaveLength(1);
-    expect(result.recommendations[0].product.name).toBe('Vé Vui Chơi VinWonders Nha Trang (Cáp Treo Hai Chiều)');
-    expect(result.recommendations[0].because).toHaveLength(1);
+    expect(result.recommendations[0].product).toMatchObject({
+      id: 'nt-attraction-01', name: 'Vé Vui Chơi VinWonders Nha Trang', unitPrice: 750000,
+    });
     expect(result.recommendations[0].because[0].productName).toBe('V-OTA Resort Nha Trang');
-    expect(result.diagnostics.coldStart).toBe(false);
+    expect(result.diagnostics.excludedVerticals).toEqual(['hotel']);
   });
 
-  // Màn gợi ý là bằng chứng engine thật chạy: lỗi thì báo lỗi, không thay bằng gợi ý mô phỏng (frontend §4.1).
-  it('throws instead of returning simulated recommendations when the backend fails', async () => {
+  it('throws instead of inventing recommendations when the backend fails', async () => {
     global.fetch = vi.fn().mockRejectedValue(new Error('Network error (backend down)'));
-    await expect(fetchRecommendations({ k: 4 })).rejects.toThrow('backend down');
+    await expect(fetchRecommendations({ k: 4 })).rejects.toBeInstanceOf(ApiError);
+  });
 
-    global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 500, json: async () => ({}) } as Response);
-    await expect(fetchRecommendations({ k: 4 })).rejects.toThrow('500');
+  it('surfaces the error envelope of a 5xx response', async () => {
+    global.fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      error: { code: 'SEARCH_UNAVAILABLE', message: 'Chưa sẵn sàng', retryable: true, requestId: 'r-1' },
+    }), { status: 503 }));
+    await expect(fetchRecommendations()).rejects.toMatchObject({ code: 'SEARCH_UNAVAILABLE', retryable: true });
   });
 });

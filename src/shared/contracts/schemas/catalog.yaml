@@ -291,17 +291,6 @@ ProductDetail:
           minPrice:     { type: [number, 'null'], minimum: 0 }
           maxPrice:     { type: [number, 'null'], minimum: 0 }
           maxOccupancy: { type: [integer, 'null'], minimum: 1 }
-      variants:
-        type: array
-        description: >-
-          Tầng con đặt được của sản phẩm: hạng phòng của một property, chuyến bay
-          cụ thể của một route (FR-CAT-02 — property/route không đặt trực tiếp mà
-          đặt qua con). Chỉ gồm con còn bán (`available: true`, có giá), sắp theo
-          giá tăng dần rồi ngày. Web gửi `productId` của phần tử được chọn vào
-          POST /cart/items. Mảng rỗng khi sản phẩm tự đặt được hoặc không còn con
-          nào bán.
-        items:
-          $ref: ../openapi.yaml#/components/schemas/ProductSummary
 
 ScoredProduct:
   allOf:
