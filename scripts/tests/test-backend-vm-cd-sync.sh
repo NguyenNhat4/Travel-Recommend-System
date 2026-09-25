@@ -41,5 +41,8 @@ grep -q 'docker rm -f vota-daily-monitor' "$workflow"
 grep -q 'CONTAINER_NAME=vota-daily' "$workflow"
 grep -q 'PULL=0' "$workflow"
 grep -q 'docker inspect --format' "$workflow"
+grep -q 'Start crawler run after deploy' "$workflow"
+grep -q 'run >.*daily-cd.log' "$workflow"
+grep -q 'docker ps --filter name=vota-daily' "$workflow"
 
 echo 'backend VM CD sync checks passed'
