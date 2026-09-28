@@ -1,8 +1,18 @@
-"""Read-only ports consumed by the itinerary agent."""
+"""Read-only ports consumed by the itinerary agent.
+
+`request`/response payloads below mirror `SearchRequest`/`SearchResponse`,
+`RecommendationResponse`, `ProductDetail` and `DestinationListResponse` in
+`src/shared/contracts/schemas/*.yaml` — the contract, not this file, is the source of truth for
+their shape (AGENTS.md §2), so they stay `dict[str, Any]` here rather than a second, hand-kept copy.
+`ToolCall`/`ToolResult`/`ToolDefinition` are internal-only (never serialized against the public API)
+and are typed accordingly.
+"""
 
 from __future__ import annotations
 
 from typing import Any, Protocol
+
+from src.backend.app.domain.itinerary.types import ToolCall, ToolDefinition, ToolErrorPayload, ToolResult
 
 
 class SearchProductsPort(Protocol):
@@ -28,18 +38,21 @@ class ToolError(Exception):
         self.retryable = retryable
         self.http_status = http_status
 
-    def as_dict(self) -> dict[str, Any]:
+    def as_dict(self) -> ToolErrorPayload:
         return {"code": self.code, "retryable": self.retryable, "httpStatus": self.http_status}
 
 
 class ToolExecutorPort(Protocol):
     supports_catalog: bool
-    def definitions(self) -> list[dict[str, Any]]: ...
-    async def execute(self, call: dict[str, Any]) -> dict[str, Any]: ...
+    def definitions(self) -> list[ToolDefinition]: ...
+    async def execute(self, call: ToolCall) -> ToolResult: ...
     async def get_product_detail(self, product_id: str) -> dict[str, Any]: ...
     async def list_destinations(self) -> dict[str, Any]: ...
 
 
 class ConversationStorePort(Protocol):
+    """`value` is a serialized `agents.state.AgentState` checkpoint; `application` cannot depend on
+    `agents` (docs/prd/architecture.md §2 quy tắc 1, 5), so it stays untyped here."""
+
     async def load(self, conversation_id: str | None, owner: str = "anonymous") -> dict[str, Any] | None: ...
     async def save(self, conversation_id: str, value: dict[str, Any], owner: str = "anonymous") -> None: ...

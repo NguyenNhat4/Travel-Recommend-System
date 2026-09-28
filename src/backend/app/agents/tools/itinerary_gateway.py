@@ -7,6 +7,7 @@ from src.backend.app.application.ports.itinerary_tools import (
 )
 from src.backend.app.application.itinerary.tool_contracts import definitions, normalize_arguments, validate
 from src.backend.app.application.itinerary.contracts import valid
+from src.backend.app.domain.itinerary.types import ToolCall, ToolDefinition, ToolResult
 
 
 class ItineraryToolGateway:
@@ -18,7 +19,7 @@ class ItineraryToolGateway:
         self.supports_catalog = catalog is not None
         self._recommendation_authorization = recommendation_authorization
 
-    def definitions(self) -> list[dict[str, Any]]:
+    def definitions(self) -> list[ToolDefinition]:
         return definitions()
 
     async def get_product_detail(self, product_id: str) -> dict[str, Any]:
@@ -55,10 +56,10 @@ class ItineraryToolGateway:
         validate(name, data, "response")
         return data
 
-    async def execute(self, call: dict[str, Any]) -> dict[str, Any]:
+    async def execute(self, call: ToolCall) -> ToolResult:
         started = monotonic()
         # Validate before recording arguments; invalid values cannot leak credentials.
-        result = {"tool_call_id": call.get("id"), "name": call.get("name"), "arguments": {}}
+        result: ToolResult = {"tool_call_id": call.get("id"), "name": call.get("name"), "arguments": {}}
         try:
             args = normalize_arguments(call.get("name"), call.get("args", {}))
             result["arguments"] = args
