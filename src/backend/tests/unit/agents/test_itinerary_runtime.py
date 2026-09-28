@@ -518,7 +518,9 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         result = await self.run_graph(clients=clients)
         self.assertEqual(result['response']['status'], 'COMPLETED')
         self.assertEqual(clients.maximum, 5)
-        self.assertEqual(len(result['details']), 10)
+        # `details` bị `evaluate` xoá sau khi dùng (docs/spec/agent/field-review.md §3.2); đếm qua
+        # số lời gọi get_product_detail thay vì đọc lại state.
+        self.assertEqual(len([call for call in clients.calls if call.startswith('detail:')]), 10)
 
     async def test_all_transient_failures_terminate_without_fake_results(self):
         clients = Clients(rec_error=ToolError('TOOL_TIMEOUT', retryable=True))

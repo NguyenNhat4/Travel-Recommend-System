@@ -71,7 +71,6 @@ const getHotelVisuals = (product: Product, destination: string): HotelVisualData
   tags.push({ label: destination, icon: '📍' });
 
   const isVilla = product.name.toLowerCase().includes('biệt thự') ||
-    product.description?.toLowerCase().includes('biệt thự') ||
     product.id.includes('hotel-02');
 
   if (isVilla) {
@@ -81,8 +80,7 @@ const getHotelVisuals = (product: Product, destination: string): HotelVisualData
   }
 
   const hasPool = product.name.toLowerCase().includes('hồ bơi') ||
-    product.attributes?.pool ||
-    product.description?.toLowerCase().includes('hồ bơi');
+    product.attributes?.pool;
 
   if (hasPool) {
     tags.push({
@@ -91,7 +89,7 @@ const getHotelVisuals = (product: Product, destination: string): HotelVisualData
     });
   }
 
-  if (product.attributes?.oceanView || product.attributes?.beachfront) {
+  if (product.attributes?.oceanView || product.attributes?.privateBeach) {
     tags.push({ label: 'View biển', icon: '🌊' });
   }
 

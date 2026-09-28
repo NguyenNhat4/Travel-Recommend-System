@@ -19,8 +19,11 @@ NOTES = {
 SUMMARY_FIELDS = (
     "productId", "name", "taxonomy", "destination", "unitPrice", "currency",
     "available", "availableFrom", "availableTo", "imageUrl", "rating",
-    "reviewCount", "attributes", "description", "priceUnit",
+    "reviewCount", "attributes", "priceUnit",
 )
+# `attributes` chỉ giữ khoá FE thật sự đọc trong lịch trình (docs/spec/agent/field-review.md §2.1);
+# nguồn đầy đủ vẫn ở `candidates`/`ProductDetail`, không mất dữ liệu.
+SUMMARY_ATTRIBUTE_KEYS = frozenset({"oceanView", "privateBeach", "pool", "ticketed"})
 # Flights and combos have no confirmed slot mapping, so they can be retrieved but never scheduled.
 STAY_TAXONOMY = "hotel"
 SLOT_TAXONOMIES = frozenset({"attraction", "golf"})
@@ -50,7 +53,14 @@ def merge_intent(current: dict[str, Any] | None, patch: dict[str, Any] | None) -
 def summary(product: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(product, dict):
         return {}
-    return {key: deepcopy(product[key]) for key in SUMMARY_FIELDS if key in product}
+    result = {key: deepcopy(product[key]) for key in SUMMARY_FIELDS if key in product}
+    attributes = {key: value for key, value in result.get("attributes", {}).items()
+                 if key in SUMMARY_ATTRIBUTE_KEYS}
+    if attributes:
+        result["attributes"] = attributes
+    else:
+        result.pop("attributes", None)
+    return result
 
 
 def parse_day(value: str | None) -> date | None:

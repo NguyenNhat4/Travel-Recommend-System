@@ -63,9 +63,9 @@ def intake_node(state: AgentState) -> dict:
             "supported_destinations": None,
             "candidates": {}, "sources": {}, "response": {}, "warnings": [],
             "missing_fields": [], "start_date_asked": bool(state.get("start_date_asked", False)),
-            "interaction_type": "", "refusal": False, "pending_question": None,
+            "interaction_type": "", "refusal": False,
             "final_answer": None, "http_status": 200, "decision": "", "validation_issues": [],
-            "started_at": time(), "llm_used": False, "language": state.get("language") or "vi",
+            "started_at": time(), "language": state.get("language") or "vi",
             "events": [event("intake", "request initialized")]}
 
 
@@ -109,7 +109,7 @@ async def intake_node_async(state: AgentState, *, store: ConversationStorePort |
 def _travel_without_message(state: AgentState) -> dict | None:
     """Chip sửa tay (`intentOverride`, không có message) chắc chắn là lượt du lịch: không cần LLM phân luồng."""
     if not state.get("query") and state.get("intent_override"):
-        return {"route": "travel", "interaction_type": "travel", "refusal": False,
+        return {"decision": "travel", "interaction_type": "travel", "refusal": False,
                 "events": [event("classify", "route travel (intent override)")]}
     return None
 
@@ -117,8 +117,7 @@ def _travel_without_message(state: AgentState) -> dict | None:
 def _llm_failed(state: AgentState, node: str, mode: str, timeout_seconds: float | None = None) -> dict:
     logger.exception("itinerary.llm_failed requestId=%s node=%s mode=%s timeoutSeconds=%s",
                      state.get("request_id", "unknown"), node, mode, timeout_seconds)
-    return {"route": "error",
-            **failure(state, "LLM_UNAVAILABLE", message(state, "llm_understand"), retryable=True),
+    return {**failure(state, "LLM_UNAVAILABLE", message(state, "llm_understand"), retryable=True),
             "events": [event(node, "LLM_UNAVAILABLE")]}
 
 
@@ -126,12 +125,12 @@ def classify_node(state: AgentState, *, llm=None) -> dict:
     """Phân luồng lượt chat, không trích gì khác. **Gọi LLM** (prompt ngắn, output một nhãn).
 
     Đọc: `query` và ngữ cảnh hội thoại chung (`history.llm_context`).
-    Ghi: `route`, `interaction_type` (`travel`/`conversation`/`out_of_scope`), `refusal`, `missing_fields`.
+    Ghi: `decision` (`travel`/`simple`/`error`), `interaction_type` (`travel`/`conversation`/`out_of_scope`), `refusal`, `missing_fields`.
     Đi tiếp (`routing.route_after_classify`): `extract` khi là du lịch · `converse` khi trò chuyện hoặc
     ngoài phạm vi (đặt chỗ, thanh toán, chèn lệnh đều là ngoài phạm vi) · `dead_letter` khi lỗi.
     """
     if state.get("decision") == "error":
-        return {"route": "error", "events": [event("classify", "request rejected")]}
+        return {"events": [event("classify", "request rejected")]}
     shortcut = _travel_without_message(state)
     if shortcut is not None:
         return shortcut
@@ -145,7 +144,7 @@ def classify_node(state: AgentState, *, llm=None) -> dict:
 async def classify_node_async(state: AgentState, *, llm=None, timeout_seconds: float = 2) -> dict:
     """`classify` trên đường async: LLM quá `timeout_seconds` thì coi như provider lỗi (`LLM_UNAVAILABLE`)."""
     if state.get("decision") == "error":
-        return {"route": "error", "events": [event("classify", "request rejected")]}
+        return {"events": [event("classify", "request rejected")]}
     shortcut = _travel_without_message(state)
     if shortcut is not None:
         return shortcut
@@ -161,7 +160,7 @@ def extract_node(state: AgentState, *, llm=None) -> dict:
     """Trích intent của lượt du lịch và quyết định còn thiếu gì. **Gọi LLM.**
 
     Đọc: `query`, ngữ cảnh hội thoại chung, `intent_override`, `start_date_asked`.
-    Ghi: `intent`, `constraints`, `missing_fields`, `start_date_asked`, `clarification_reason`, `route`.
+    Ghi: `intent`, `constraints`, `missing_fields`, `start_date_asked`, `clarification_reason`, `decision` (`tool`/`missing_info`/`error`).
     Đi tiếp (`routing.route_after_extract`): `tool` khi đủ điểm đến, số ngày và đã xử lý ngày đi ·
     `clarify` khi thiếu, mâu thuẫn hoặc có điều kiện không xác minh được · `dead_letter` khi lỗi.
     """
@@ -219,25 +218,25 @@ def evaluate_node(state: AgentState) -> dict:
     """Lọc candidate có grounding và quyết định hướng xử lý. **Không gọi LLM.**
 
     Đọc: `tool_results`, `detail_errors`, `intent`, `constraints`.
-    Ghi: `candidates`, `sources`, `warnings`, `decision`, `evaluation_result`. Vertical mà Recommendation
+    Ghi: `candidates`, `sources`, `warnings`, `decision` (`compose`/`no_results`/`fallback`/`constraint_clarification`/
+    `needs_retry`/`failed`), `details={}` (đã tiêu thụ). Vertical mà Recommendation
     bỏ chỉ lọc candidate của lượt này, không ghi vào `constraints`.
     Đi tiếp (`routing.route_after_evaluate`): `compose` · `clarify` khi `constraint_clarification` ·
     `retry` khi lỗi tạm thời · `dead_letter` khi lỗi vĩnh viễn hoặc lỗi auth.
     """
     if state.get("decision") == "error":
-        return {"evaluation_result": "failed", "events": [event("evaluate", "request rejected")]}
+        return {"events": [event("evaluate", "request rejected")]}
     update = evaluation.evaluate_retrieval(state)
     if "candidates" not in update:  # chưa có điểm đến thì chưa có gì để chấm
-        return {**update, "events": [event("evaluate", update["evaluation_result"])]}
-    return {**update, "events": [event("evaluate", update["decision"] or update["evaluation_result"],
-                                       verified=len(update["candidates"]))]}
+        return {**update, "events": [event("evaluate", update["decision"])]}
+    return {**update, "events": [event("evaluate", update["decision"], verified=len(update["candidates"]))]}
 
 
 def ask_clarification_node(state: AgentState, *, llm=None) -> dict:
     """Ask for what a trip still lacks; the model words the question, fixed text is the fallback.
 
     Đọc: `conversation_history`, `missing_fields`, `clarification_reason`, `decision`, `intent`.
-    Ghi: `response` `NEEDS_CLARIFICATION` kèm `knownIntent` (và `missingFields` nếu có), `pending_question`.
+    Ghi: `response` `NEEDS_CLARIFICATION` kèm `knownIntent` (và `missingFields` nếu có).
     Đi tiếp: `finalize`. Riêng `decision = constraint_clarification` dùng câu cố định, không hỏi LLM.
     """
     if state.get("decision") == "constraint_clarification":
@@ -326,7 +325,7 @@ def retry_or_fallback_node(state: AgentState) -> dict:
     decision = "" if can_retry else "fallback" if state.get("candidates") else "error"
     if can_retry:
         attempt += 1
-    return {"attempt": attempt, "decision": decision, "errors": ["TRANSIENT_TOOL_FAILURE"],
+    return {"attempt": attempt, "decision": decision,
             "events": [event("retry", "retry bounded", attempt=attempt)]}
 
 

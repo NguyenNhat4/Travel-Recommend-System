@@ -10,7 +10,7 @@ chỉ dẫn thứ tự đọc tối thiểu và chọn thêm tài liệu/source 
 | [working-context.md](working-context.md) | Context tối thiểu, bản đồ module và nhánh đọc riêng cho tune/eval/debug |
 | [langgraph-nodes.md](langgraph-nodes.md) | Vì sao graph chia thành mười node, vì sao mọi nhánh qua `finalize`, cách đọc bảng trace |
 | [state-fields.md](state-fields.md) | Tra theo từng field của `AgentState`: node nào ghi, node nào đọc, dùng để làm gì |
-| [field-review.md](field-review.md) | Review field của request/response và `AgentState`: đề xuất giữ, bỏ, gộp; chờ quyết định |
+| [field-review.md](field-review.md) | Review field của request/response và `AgentState`: đề xuất giữ, bỏ, gộp — đã chốt và áp dụng 2026-09-28 |
 | [response-and-errors.md](response-and-errors.md) | `status` so với `error.code`, luồng sau `UNSUPPORTED_DESTINATION` |
 | [golden-run.md](golden-run.md) | Chạy bộ golden: chuẩn bị Postgres/backend, các cờ của runner, đọc kết quả, lỗi thường gặp |
 | [golden-dataset.md](golden-dataset.md) | Cấu trúc bộ golden 14 case (mỗi category một case khó nhất), các khoá `expect`, cách thêm case và xử lý khi case fail |

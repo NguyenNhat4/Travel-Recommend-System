@@ -25,9 +25,17 @@ def conversation_input(state: dict) -> list:
 def _question_response(state: dict, question: str) -> dict:
     response = {"status": "NEEDS_CLARIFICATION", "conversationId": state["conversation_id"],
                 "question": question, "knownIntent": state["intent"]}
-    if state.get("missing_fields"):
-        response["missingFields"] = state["missing_fields"]
-    return {"response": response, "pending_question": question}
+    missing = state.get("missing_fields")
+    if missing:
+        response["missingFields"] = missing
+    suggested = {}
+    if "destination" in (missing or []) and state.get("supported_destinations"):
+        suggested["destination"] = state["supported_destinations"]
+    if "days" in (missing or []):
+        suggested["days"] = list(range(1, 8))
+    if suggested:
+        response["suggestedValues"] = suggested
+    return {"response": response}
 
 
 def conversational_update(state: dict, result: ConversationalAnswer) -> dict:
@@ -35,7 +43,7 @@ def conversational_update(state: dict, result: ConversationalAnswer) -> dict:
     text = ConversationalAnswer.model_validate(result).message.strip()
     if state.get("refusal"):
         return failure(state, "VALIDATION_ERROR", text, 400)
-    return {**_question_response(state, text), "llm_used": True}
+    return _question_response(state, text)
 
 
 def clarification_fallback(state: dict) -> dict:
@@ -69,8 +77,7 @@ def constraint_clarification(state: dict) -> dict:
     """Retrieval finished but no product meets a required condition; ask before relaxing it."""
     question = messages.CLARIFY_CONSTRAINT
     return {"response": {"status": "NEEDS_CLARIFICATION", "conversationId": state["conversation_id"],
-                         "knownIntent": state["intent"], "question": question},
-            "pending_question": question}
+                         "knownIntent": state["intent"], "question": question}}
 
 
 def clarify_result(update: dict) -> dict:

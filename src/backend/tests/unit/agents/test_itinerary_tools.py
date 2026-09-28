@@ -100,7 +100,7 @@ class HttpTests(unittest.IsolatedAsyncioTestCase):
             result = await ItineraryToolGateway(clients, clients).execute(
                 {'id': 'a', 'name': 'get_recommendations', 'args': {}})
             self.assertEqual(result['data'], body)
-            self.assertEqual(nodes.evaluate_node({'tool_results': [result]})['evaluation_result'], 'success')
+            self.assertEqual(nodes.evaluate_node({'tool_results': [result]})['decision'], 'compose')
             product['because'] = [{'productName': 'Hotel', 'event': 'product_view', 'daysAgo': 1}]
             invalid = await ItineraryToolGateway(clients, clients).execute(
                 {'id': 'b', 'name': 'get_recommendations', 'args': {}})
@@ -169,10 +169,10 @@ class NodeTests(unittest.IsolatedAsyncioTestCase):
         before = copy.deepcopy(state)
         first = await nodes.tool_node(state, tools=tools)
         self.assertEqual(state, before)
-        self.assertEqual(nodes.evaluate_node(first)['evaluation_result'], 'needs_retry')
+        self.assertEqual(nodes.evaluate_node(first)['decision'], 'needs_retry')
         second = await nodes.tool_node({**state, **first, 'attempt': 1}, tools=tools)
         self.assertEqual(tools.calls, ['search_products', 'get_recommendations', 'get_recommendations'])
-        self.assertEqual(nodes.evaluate_node(second)['evaluation_result'], 'success')
+        self.assertEqual(nodes.evaluate_node(second)['decision'], 'compose')
         self.assertEqual(routing.route_after_retry({'attempt': 2, 'max_attempts': 100}), 'dead_letter')
 
     async def test_planner_uses_tool_definitions(self):
@@ -246,7 +246,7 @@ class NodeTests(unittest.IsolatedAsyncioTestCase):
         result = await nodes.tool_node({'query': 'hotel'})
         evaluated = nodes.evaluate_node(result)
         self.assertEqual(routing.route_after_evaluate(evaluated), 'dead_letter')
-        self.assertEqual(nodes.evaluate_node({'tool_results': [{'error': ToolError('TOOL_HTTP_ERROR', http_status=401).as_dict()}]})['evaluation_result'], 'failed')
+        self.assertEqual(nodes.evaluate_node({'tool_results': [{'error': ToolError('TOOL_HTTP_ERROR', http_status=401).as_dict()}]})['decision'], 'failed')
 
     async def test_deadline_is_bounded(self):
         class Slow:
@@ -281,7 +281,7 @@ class GraphToolTests(unittest.TestCase):
             result = asyncio.run(build_graph(tools=gateway, llm=llm).ainvoke(state))
             self.assertEqual(calls, ['/api/v1/search', '/api/v1/recommendations', '/api/v1/recommendations'])
             self.assertEqual(result['attempt'], 1)
-            self.assertEqual(result['evaluation_result'], 'success')
+            self.assertEqual(result['decision'], 'no_results')
             self.assertEqual(len(result['tool_results']), 2)
             self.assertEqual(result['events'][-1]['node'], 'finalize')
         finally:

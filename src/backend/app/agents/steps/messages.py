@@ -24,6 +24,12 @@ MESSAGES = {
         "detail_joiner": ", ",
         "unsupported": "Rất tiếc, hiện mình chưa có dịch vụ tại {destination}. Các điểm đến mình đang hỗ trợ: "
                        "{destinations}. Bạn muốn lên kế hoạch cho điểm đến nào trong danh sách này?",
+        "suggestion_hotel": "Thử bỏ yêu cầu khách sạn cụ thể",
+        "suggestion_price": "Thử tăng ngân sách khách sạn tối đa",
+        "suggestion_star_rating": "Thử giảm yêu cầu số sao khách sạn",
+        "suggestion_activity": "Thử bỏ yêu cầu hoạt động cụ thể",
+        "suggestion_taxonomy": "Thử bỏ bớt loại dịch vụ đã loại trừ",
+        "suggestion_generic": "Thử đổi điểm đến hoặc điều chỉnh thời gian chuyến đi",
     },
     "en": {
         "conversation_not_found": "The conversation does not exist or has expired.",
@@ -42,6 +48,12 @@ MESSAGES = {
         "detail_joiner": ", ",
         "unsupported": "Sorry, I don't have any services in {destination} yet. The destinations I can plan for: "
                        "{destinations}. Which one would you like to plan a trip to?",
+        "suggestion_hotel": "Try dropping the specific hotel requirement",
+        "suggestion_price": "Try raising the maximum hotel budget",
+        "suggestion_star_rating": "Try lowering the minimum hotel star rating",
+        "suggestion_activity": "Try dropping the specific activity requirement",
+        "suggestion_taxonomy": "Try removing some of the excluded service types",
+        "suggestion_generic": "Try a different destination or adjust the trip dates",
     },
 }
 
