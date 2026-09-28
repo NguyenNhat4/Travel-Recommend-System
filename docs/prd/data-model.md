@@ -224,6 +224,8 @@ erDiagram
     }
 ```
 
+`expires_at` của `app.conversations` là hạn của working memory 24 giờ, không phải hạn xoá archive. Hội thoại và tin nhắn của user đã đăng nhập được giữ lâu dài; API lịch sử luôn lọc theo `cdp_user_id`. Khách chưa đăng nhập không được ghi vào hai bảng này.
+
 ---
 
 ## 3. Đặc Tả Thuộc Tính JSONB & Quy Chuẩn Trường

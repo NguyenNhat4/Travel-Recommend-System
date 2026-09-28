@@ -17,6 +17,7 @@ import {
   type AssistantResponse,
   type AssistantStreamEvent,
 } from '../services/assistantStream';
+import { getAssistantConversation } from '../services/assistantHistory';
 
 const CONVERSATION_STORAGE_KEY = 'vota.assistant.conversationId';
 type IntentOverride = components['schemas']['TripIntentPatch'];
@@ -29,6 +30,7 @@ interface AssistantContextValue {
   retry: () => void;
   abort: () => void;
   resetConversation: () => void;
+  loadConversation: (conversationId: string) => Promise<void>;
   openFloatingWidget: (initialMessage?: string) => void;
   openHeaderDrawer: () => void;
   closeFloatingWidget: () => void;
@@ -148,6 +150,8 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => () => abortCurrentRun(), [abortCurrentRun]);
 
+  const executeRequestRef = useRef<((request: AssistantRequest, userText: string, appendUser: boolean) => void) | null>(null);
+
   const executeRequest = useCallback((
     request: AssistantRequest,
     userText: string,
@@ -183,7 +187,16 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
           dispatch({ type: 'response-received', response });
           activeRunIdRef.current = null;
         } else if (event.event === 'run.failed') {
-          dispatch({ type: 'request-failed', error: backendEventError(event.data) });
+          const error = backendEventError(event.data);
+          // Hội thoại đã hết hạn: gửi lại đúng tin nhắn như hội thoại mới (hợp đồng Frontend §8).
+          // Request mới có conversationId null nên không thể 404 lần nữa. Patch chip không có
+          // message thì không gửi lại được, vì contract bắt intentOverride đi cùng conversationId.
+          if (error.code === 'CONVERSATION_NOT_FOUND' && request.conversationId && request.message) {
+            dispatch({ type: 'conversation-restarted' });
+            executeRequestRef.current?.({ ...request, conversationId: null }, userText, false);
+            return;
+          }
+          dispatch({ type: 'request-failed', error });
           activeRunIdRef.current = null;
         }
       },
@@ -197,6 +210,10 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       if (abortControllerRef.current === controller) abortControllerRef.current = null;
     });
   }, [abortCurrentRun]);
+
+  useEffect(() => {
+    executeRequestRef.current = executeRequest;
+  }, [executeRequest]);
 
   const sendMessage = useCallback((message: string, context?: AssistantContextData) => {
     const cleanMessage = message.trim();
@@ -238,6 +255,12 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'reset' });
   }, [abortCurrentRun]);
 
+  const loadConversation = useCallback(async (conversationId: string) => {
+    abortCurrentRun();
+    const detail = await getAssistantConversation(conversationId);
+    dispatch({ type: 'conversation-loaded', detail });
+  }, [abortCurrentRun]);
+
   const value = useMemo<AssistantContextValue>(() => ({
     state,
     sendMessage,
@@ -245,12 +268,13 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     retry,
     abort,
     resetConversation,
+    loadConversation,
     openFloatingWidget: (initialMessage) => dispatch({ type: 'open-floating', initialMessage }),
     openHeaderDrawer: () => dispatch({ type: 'open-header-drawer' }),
     closeFloatingWidget: () => dispatch({ type: 'close-floating' }),
     closeHeaderDrawer: () => dispatch({ type: 'close-header-drawer' }),
     consumeFloatingInitialMessage: () => dispatch({ type: 'consume-floating-initial-message' }),
-  }), [state, sendMessage, submitIntentOverride, retry, abort, resetConversation]);
+  }), [state, sendMessage, submitIntentOverride, retry, abort, resetConversation, loadConversation]);
 
   return <AssistantContext.Provider value={value}>{children}</AssistantContext.Provider>;
 }

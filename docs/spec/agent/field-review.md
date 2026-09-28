@@ -116,7 +116,7 @@ Cắt hai field này không ảnh hưởng grounding: `steps/validation.py` (bư
 | Nhóm | Field |
 |---|---|
 | Đầu vào | `query`, `conversation_id`, `conversation_history`, `intent`, `intent_override`, `constraints`, `previous_selection`, `language`, `request_id` |
-| Hỏi lại | `missing_fields`, `clarification_reason`, `refusal`, `interaction_type` |
+| Hỏi lại | `missing_fields`, `start_date_asked` (đã hỏi chi tiết chuyến đi), `clarification_reason`, `refusal`, `interaction_type` |
 | Tool | `tool_plan`, `tool_results`, `supported_destinations`, `detail_errors`, `attempt`, `max_attempts` |
 | Đầu ra | `candidates`, `sources`, `warnings`, `response`, `http_status`, `validation_issues` (route ghi vào metrics), `started_at`, `latency_ms` (route log) |
 | Trace | `events` (SSE `node.completed`, runner golden) |

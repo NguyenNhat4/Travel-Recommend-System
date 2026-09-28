@@ -63,7 +63,11 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[Mở màn hình /assistant] --> B[Nhập yêu cầu lịch trình hoặc chọn gợi ý]
+    A[Mở màn hình /assistant] --> H{Đã đăng nhập?}
+    H -->|Có| L[Xem danh sách hội thoại của chính mình]
+    L --> M[Chọn hội thoại cũ hoặc tạo hội thoại mới]
+    H -->|Không| B[Nhập yêu cầu lịch trình hoặc chọn gợi ý]
+    M --> B
     B --> C[Backend trích xuất Intent: Điểm đến, Thời gian, Ngân sách]
     C --> D[Gọi Tool Search truy xuất sản phẩm thật từ Catalog]
     D --> E{Có sản phẩm phù hợp?}
@@ -135,7 +139,7 @@ flowchart TD
 ### 4.2. Màn hình Trợ Lý Lịch Trình AI (`/assistant`)
 ```
 +-------------------------------------------------------------------------------+
-| [LOGO] V-OTA  >  Trợ lý Lịch trình Thông minh               [Lịch trình mới] |
+| [LOGO] V-OTA  >  Trợ lý Lịch trình Thông minh   [Lịch sử] [Lịch trình mới] |
 +-------------------------------------------------------------------------------+
 |                                    | BẢN XEM TRƯỚC LỊCH TRÌNH                 |
 | [AI]: Chào bạn! Mình có thể giúp gì| Nha Trang 3 Ngày 2 Đêm - Gia đình        |

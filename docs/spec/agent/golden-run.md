@@ -2,7 +2,7 @@
 
 Phục vụ `docs/prd/test-plan.md` §2.4 và FR-AGT-01..05, NFR-REL-01, NFR-SEC-01 trong `docs/prd/requirements.md`.
 
-Hướng dẫn chạy bộ đánh giá tự động 75 case. Cấu trúc case và cách thêm case: [golden-dataset.md](golden-dataset.md).
+Hướng dẫn chạy bộ đánh giá tự động 14 case (mỗi category một case). Cấu trúc case và cách thêm case: [golden-dataset.md](golden-dataset.md).
 Luật chấm: [evaluation-plan.md](evaluation-plan.md) §0.
 
 Mọi lệnh chạy từ thư mục gốc repo.
@@ -59,12 +59,12 @@ Response phải có `"status":"ready"`, `"dataMode":"http"`, `"llmMode":"live"`.
 .venv/bin/python -m src.evaluation.agent.golden
 ```
 
-Lệnh trên chạy 75 case (89 lượt), mất khoảng 6 phút.
+Lệnh trên chạy 14 case (23 lượt). Chưa đo thời gian; bộ 75 case cũ (89 lượt) mất khoảng 6 phút, nên bộ này ước chừng dưới 2 phút.
 
 | Cờ | Tác dụng | Ví dụ |
 |---|---|---|
-| `--sweep` | Thêm một lượt `"<điểm đến> 2 ngày"` cho mọi điểm đến trong catalog (35 điểm, tổng 124 lượt, khoảng 9 phút) | `--sweep` |
-| `--only` | Chỉ chạy các case liệt kê, cách nhau bằng dấu phẩy | `--only G-013,G-032` |
+| `--sweep` | Thêm hai lượt (`"<điểm đến> 2 ngày"` rồi `"chưa chốt ngày đi"`) cho mọi điểm đến trong catalog (35 điểm, tổng 93 lượt; chưa đo thời gian) | `--sweep` |
+| `--only` | Chỉ chạy các case liệt kê, cách nhau bằng dấu phẩy | `--only G-047,G-072` |
 | `--repeat N` | Chạy lại các case đã chọn N lần, để đo độ ổn định | `--repeat 5` |
 | `--trace-project` | Gửi trace từng lượt lên LangSmith project này (key lấy từ `.env`) | `--trace-project claude-golden` |
 | `--api-base-url` | Địa chỉ backend, mặc định `http://127.0.0.1:8000` | |
@@ -81,7 +81,7 @@ Các cách chạy thường dùng:
 .venv/bin/python -m src.evaluation.agent.golden --only G-051 --repeat 3 --trace-project claude-golden
 
 # Đo tỷ lệ fail của các case hay dao động
-.venv/bin/python -m src.evaluation.agent.golden --only G-013,G-032,G-047 --repeat 5
+.venv/bin/python -m src.evaluation.agent.golden --only G-047,G-072 --repeat 5
 ```
 
 Runner không tự gửi trace. Không có `--trace-project` thì LangSmith không ghi lượt nào.
@@ -113,8 +113,8 @@ Biên bản ghi vào `src/evaluation/reports/`:
 
 Chạy nhiều lần trong cùng ngày thì file bị ghi đè; biên bản còn lại là của lần chạy cuối.
 
-Trên LangSmith, mỗi lượt là một trace tên `G-032#1 Bangkok 2 ngày`, gắn tag `golden`, id case và category.
-Lọc theo id case để xem đúng lượt đó; mở node `classify` để xem LLM trích ra gì, node `tool` để xem tool plan.
+Trên LangSmith, mỗi lượt là một trace tên `G-073#2 chưa chốt ngày đi`, gắn tag `golden`, id case và category.
+Lọc theo id case để xem đúng lượt đó; mở node `classify` để xem nhãn phân luồng, node `extract` để xem LLM trích ra gì, node `tool` để xem tool plan.
 
 Khi có lượt FAIL, xác định là kỳ vọng sai, lỗi agent hay nhiễu LLM theo
 [golden-dataset.md](golden-dataset.md) mục 8.
@@ -127,7 +127,7 @@ Khi có lượt FAIL, xác định là kỳ vọng sai, lỗi agent hay nhiễu 
 | Hầu hết case ra `FALLBACK` hoặc sai điểm đến | Backend chạy khi Postgres tắt, nên recsys bị tắt | Bật Postgres rồi khởi động lại backend; kiểm log có `startup.recsys.index.load.ready` |
 | `Không dựng được LLM` | `ITINERARY_USE_LLM=false` hoặc thiếu key | Sửa `.env` |
 | `--trace-project cần LANGSMITH_API_KEY` | Thiếu key LangSmith | Thêm `LANGSMITH_API_KEY` vào `.env` |
-| G-013, G-032, G-047 lúc PASS lúc FAIL | Bước `classify` phân loại không ổn định | Đo bằng `--repeat 5`; xem [evaluation-plan.md](evaluation-plan.md) §0.1 |
+| G-047 (và các case đã bị bỏ khỏi bộ rút gọn như G-013, G-032) lúc PASS lúc FAIL | Bước `classify` phân loại không ổn định | Đo bằng `--repeat 5`; xem [evaluation-plan.md](evaluation-plan.md) §0.1 |
 
 Đừng đọc P50 hay tổng token của project LangSmith dev (`nhat-23-9`) như số đo agent. `pytest src/backend/tests`
 gửi khoảng 140 trace giả (0 token, khoảng 30ms) lên project đó mỗi lần chạy.

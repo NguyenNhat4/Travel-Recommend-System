@@ -11,7 +11,7 @@ from src.backend.app.application.ports.itinerary_tools import ToolError, ToolExe
 from src.backend.app.domain.itinerary.normalization import match_destination
 
 from ..models import DestinationChoice
-from .history import sanitize_conversation_history
+from .history import llm_context
 from .messages import chat_model, event, failure, message
 from .prompts import DESTINATION_PROMPT, TOOL_PLAN_PROMPT
 
@@ -32,11 +32,12 @@ async def catalog_destinations(tools: ToolExecutorPort, timeout_seconds: float) 
     return None
 
 
-async def _choose_destination(value: str, supported: list[str], llm, timeout_seconds: float) -> str | None:
+async def _choose_destination(state: dict, value: str, supported: list[str], llm,
+                              timeout_seconds: float) -> str | None:
     """Let the model pick from the catalog's own destination names; the answer is verified against them."""
+    payload = {"user_destination": value, "catalog_destinations": supported, **llm_context(state)}
     result = await asyncio.wait_for(chat_model(llm).with_structured_output(DestinationChoice).ainvoke([
-        ("system", DESTINATION_PROMPT),
-        ("human", json.dumps({"user_destination": value, "catalog_destinations": supported}, ensure_ascii=False))]),
+        ("system", DESTINATION_PROMPT), ("human", json.dumps(payload, ensure_ascii=False))]),
         timeout_seconds)
     chosen = DestinationChoice.model_validate(result).destination
     return chosen if chosen in supported else None
@@ -48,7 +49,7 @@ async def canonical_destination(state: dict, intent: dict, changed: list, suppor
     canonical = match_destination(intent["destination"], supported)
     if canonical is None:
         try:
-            canonical = await _choose_destination(intent["destination"], supported, llm, llm_timeout_seconds)
+            canonical = await _choose_destination(state, intent["destination"], supported, llm, llm_timeout_seconds)
         except Exception:
             logger.exception("itinerary.llm_failed requestId=%s node=tool step=destination",
                              state.get("request_id", "unknown"))
@@ -122,10 +123,10 @@ async def build_plan(state: dict, intent: dict, constraints: dict, *, tools: Too
             response = await asyncio.wait_for(chat_model(llm).bind_tools(tools.definitions()).ainvoke([
                 ("system", TOOL_PLAN_PROMPT),
                 ("human", json.dumps({"message": state.get("query", ""),
-                                      "conversation_history": sanitize_conversation_history(
-                                          state.get("conversation_history", [])),
+                                      **llm_context(state, intent=intent, constraints=constraints),
+                                      # Tên khoá cũ mà TOOL_PLAN_PROMPT nhắc tới: intent đã chuẩn hóa là nguồn chính.
                                       "intent": intent,
-                                      "constraints": state.get("constraints", {})}, ensure_ascii=False))]),
+                                      "constraints": constraints}, ensure_ascii=False))]),
                 llm_timeout_seconds)
             plan = response.tool_calls
         plan = validated_plan({**state, "intent": intent, "constraints": constraints}, plan,

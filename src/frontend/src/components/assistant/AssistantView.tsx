@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Bookmark, BookmarkCheck, CloudSun, History, List, Map, Share2, Trash2, X } from 'lucide-react';
+import { Bookmark, BookmarkCheck, CloudSun, History, List, Loader2, Map, Share2, Trash2, X } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import type { components } from '../../types/api.gen';
 import { useAssistant } from '../../context/AssistantProvider';
@@ -14,6 +14,7 @@ import type { GroundedPlan } from '../../types/travel';
 import { AssistantConversation } from './AssistantConversation';
 import { AssistantMapPanel, AssistantResultPanel } from './AssistantResultPanel';
 import { WeatherForecastCard } from './WeatherForecastCard';
+import { listAssistantConversations } from '../../services/assistantHistory';
 
 const ItineraryMap = dynamic(
   () => import('./ItineraryMap').then((module) => module.ItineraryMap),
@@ -29,6 +30,7 @@ const ItineraryMap = dynamic(
 
 type Response = components['schemas']['ItineraryResponse'];
 type SavedItem = { id: string; savedAt: string; response: Response };
+type ConversationSummary = components['schemas']['AssistantConversationSummary'];
 const SAVED_KEY = 'vota.assistant.savedResponses';
 
 function isResponse(value: unknown): value is Response {
@@ -54,8 +56,8 @@ function destinationOf(response: Response) {
 }
 
 export function AssistantView() {
-  const { state, submitIntentOverride, sendMessage } = useAssistant();
-  const { showToast, addToCart } = useTravel();
+  const { state, submitIntentOverride, sendMessage, loadConversation } = useAssistant();
+  const { showToast, addToCart, currentPersona, authReady } = useTravel();
   const addItineraryToCart = useAssistantCart();
   const searchParams = useSearchParams();
   const sharedData = searchParams.get('data');
@@ -64,6 +66,10 @@ export function AssistantView() {
   const [savedReady, setSavedReady] = useState(false);
   const [selectedResponse, setSelectedResponse] = useState<Response | null>(null);
   const [showSaved, setShowSaved] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyItems, setHistoryItems] = useState<ConversationSummary[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const [showWeather, setShowWeather] = useState(false);
   const [activeDayTab, setActiveDayTab] = useState(1);
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
@@ -123,11 +129,45 @@ export function AssistantView() {
     }
   };
 
+  const openHistory = async () => {
+    if (!currentPersona) {
+      showToast('Đăng nhập để xem lịch sử hội thoại.');
+      return;
+    }
+    setShowHistory(true);
+    setHistoryLoading(true);
+    setHistoryError(null);
+    try {
+      const result = await listAssistantConversations();
+      setHistoryItems(result.data);
+    } catch (error) {
+      setHistoryError(error instanceof Error ? error.message : 'Không thể tải lịch sử hội thoại.');
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const selectHistory = async (conversationId: string) => {
+    setHistoryLoading(true);
+    setHistoryError(null);
+    try {
+      await loadConversation(conversationId);
+      setSelectedResponse(null);
+      setSharedResponse(null);
+      setShowHistory(false);
+    } catch (error) {
+      setHistoryError(error instanceof Error ? error.message : 'Không thể mở hội thoại.');
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
   return (
     <div className="mx-auto w-full max-w-[1760px] px-3 pb-6 pt-4 sm:px-5 lg:px-7">
       <header className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm sm:px-5">
         <div className="flex min-w-0 items-center gap-3"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-600 to-blue-600 text-white shadow-md shadow-indigo-200"><span className="text-xl">✦</span></span><div className="min-w-0"><p className="text-[10px] font-extrabold uppercase tracking-[0.17em] text-indigo-600">V-OTA · ITINERARY AGENT</p><h1 className="truncate text-lg font-extrabold text-slate-900 sm:text-xl">Trợ lý du lịch AI</h1></div></div>
         <div className="flex flex-wrap items-center gap-2">
+          <button type="button" onClick={openHistory} disabled={!authReady || !currentPersona} className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 hover:border-indigo-200 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-40" title={currentPersona ? 'Xem lịch sử hội thoại' : 'Đăng nhập để xem lịch sử'}><History className="h-3.5 w-3.5 text-indigo-600" /> Lịch sử</button>
           <button type="button" onClick={() => setShowSaved(true)} className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 hover:border-indigo-200 hover:bg-indigo-50"><Bookmark className="h-3.5 w-3.5 text-indigo-600" /> Đã lưu <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px]">{savedItems.length}</span></button>
           <button type="button" onClick={() => setShowWeather((value) => !value)} disabled={!destination} className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 hover:border-sky-200 hover:bg-sky-50 disabled:opacity-40"><CloudSun className="h-3.5 w-3.5 text-sky-600" /> Thời tiết</button>
           <button type="button" onClick={shareResponse} disabled={!response} className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 hover:border-indigo-200 hover:bg-indigo-50 disabled:opacity-40"><Share2 className="h-3.5 w-3.5 text-indigo-600" /> Chia sẻ</button>
@@ -264,6 +304,18 @@ export function AssistantView() {
             {savedItems.map((item) => <article key={item.id} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 p-4"><button type="button" onClick={() => { setSelectedResponse(item.response); setSharedResponse(null); setShowSaved(false); }} className="min-w-0 flex-1 text-left"><span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-bold text-indigo-700">{destinationOf(item.response) || item.response.status}</span><h3 className="mt-2 truncate text-sm font-bold text-slate-900">{titleOf(item.response)}</h3><p className="mt-1 text-[11px] text-slate-500">{new Date(item.savedAt).toLocaleString('vi-VN')}</p></button><button type="button" onClick={() => setSavedItems((items) => items.filter((saved) => saved.id !== item.id))} aria-label={`Xóa ${titleOf(item.response)}`} className="rounded-xl p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600"><Trash2 className="h-4 w-4" /></button></article>)}
           </div>
           <footer className="border-t border-slate-100 bg-slate-50 px-5 py-3 text-[11px] text-slate-500">Lịch trình chỉ lưu trong trình duyệt này.</footer>
+        </section>
+      </div>}
+
+      {showHistory && <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowHistory(false); }}>
+        <section role="dialog" aria-modal="true" aria-labelledby="assistant-history-title" className="flex max-h-[85dvh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+          <header className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-5 py-4"><div><h2 id="assistant-history-title" className="text-lg font-extrabold text-slate-900">Lịch sử hội thoại</h2><p className="mt-0.5 text-xs text-slate-500">Chỉ hiển thị hội thoại của tài khoản đang đăng nhập</p></div><button type="button" onClick={() => setShowHistory(false)} aria-label="Đóng lịch sử hội thoại" className="rounded-xl p-2 text-slate-500 hover:bg-white"><X className="h-4 w-4" /></button></header>
+          <div className="flex-1 space-y-3 overflow-y-auto p-4 sm:p-5">
+            {historyLoading && <div className="flex items-center justify-center gap-2 py-12 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Đang tải lịch sử…</div>}
+            {!historyLoading && historyError && <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800"><p>{historyError}</p><button type="button" onClick={openHistory} className="mt-2 font-bold underline">Thử lại</button></div>}
+            {!historyLoading && !historyError && !historyItems.length && <div className="rounded-2xl border border-dashed border-slate-300 py-12 text-center"><History className="mx-auto h-7 w-7 text-slate-300" /><p className="mt-3 text-sm font-bold text-slate-700">Chưa có hội thoại đã lưu</p><p className="mt-1 text-xs text-slate-500">Hội thoại mới sẽ xuất hiện sau lượt trả lời đầu tiên.</p></div>}
+            {!historyLoading && !historyError && historyItems.map((item) => <button key={item.conversationId} type="button" onClick={() => void selectHistory(item.conversationId)} className={`w-full rounded-2xl border p-4 text-left transition hover:border-indigo-300 hover:bg-indigo-50/40 ${state.conversationId === item.conversationId ? 'border-indigo-300 bg-indigo-50' : 'border-slate-200 bg-white'}`}><div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="truncate text-sm font-bold text-slate-900">{item.title}</h3><p className="mt-1 text-[11px] text-slate-500">{new Date(item.updatedAt).toLocaleString('vi-VN')} · {item.messageCount} tin nhắn</p></div>{state.conversationId === item.conversationId && <span className="shrink-0 rounded-full bg-indigo-100 px-2 py-1 text-[10px] font-bold text-indigo-700">Đang mở</span>}</div></button>)}
+          </div>
         </section>
       </div>}
     </div>

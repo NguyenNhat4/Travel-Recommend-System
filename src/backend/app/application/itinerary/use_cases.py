@@ -12,9 +12,9 @@ class PlanItinerary:
         self._planner_factory = planner_factory
         self.request_timeout_seconds = request_timeout_seconds
 
-    def planner(self, authorization: str | None) -> ItineraryPlanner | None:
+    def planner(self, authorization: str | None, owner: str | None = None) -> ItineraryPlanner | None:
         """None khi chưa cấu hình nguồn dữ liệu cho agent; route trả SEARCH_UNAVAILABLE."""
-        return self._planner_factory(authorization)
+        return self._planner_factory(authorization, owner)
 
     @staticmethod
     def inputs(request: dict[str, Any], request_id: str) -> dict[str, Any]:

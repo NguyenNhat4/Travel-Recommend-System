@@ -48,6 +48,7 @@ from src.backend.app.application.booking import (
     Settlement,
 )
 from src.backend.app.application.catalog.use_cases import GetProductDetail, GetSimilarProducts, ListProducts
+from src.backend.app.application.itinerary.history import ConversationHistory
 from src.backend.app.application.itinerary.use_cases import PlanItinerary
 from src.backend.app.application.tracking.behaviour import BehaviourTracker
 from src.backend.app.domain.booking import HoldPolicy
@@ -73,7 +74,11 @@ from src.backend.app.infrastructure.clients.itinerary_http_clients import Itiner
 from src.backend.app.infrastructure.llm import build_chat_model
 from src.backend.app.infrastructure.payments.fake_gateway import FakeGateway
 from src.backend.app.infrastructure.payments.stripe_gateway import StripePaymentGateway
-from src.backend.app.infrastructure.persistence.conversation_store import InMemoryConversationStore
+from src.backend.app.infrastructure.persistence.conversation_store import (
+    InMemoryConversationStore,
+    RedisConversationStore,
+)
+from src.backend.app.infrastructure.persistence.postgres_conversation_archive import PostgresConversationArchive
 from src.backend.app.infrastructure.persistence.postgres_booking import (
     PostgresBookingStore,
     PostgresCartRepository,
@@ -353,7 +358,7 @@ async def _reconcile_loop(reconcile, interval_seconds: int) -> None:
             logger.exception("booking.reconcile.loop_failed")
 
 
-def _itinerary_runtime(app: FastAPI, settings: Settings, authorization: str | None):
+def _itinerary_runtime(app: FastAPI, settings: Settings, authorization: str | None, owner: str | None = None):
     """Dựng dependency của agent cho một request. Đọc `app.state` lúc gọi để test thay được client/LLM."""
     clients = getattr(app.state, "itinerary_http_clients", None)
     store = getattr(app.state, "itinerary_conversation_store", None)
@@ -362,14 +367,15 @@ def _itinerary_runtime(app: FastAPI, settings: Settings, authorization: str | No
     catalog = clients if getattr(clients, "supports_catalog", False) else None
     gateway = ItineraryToolGateway(clients, clients, catalog, recommendation_authorization=authorization)
     return RuntimeAgentDependencies(
-        gateway, store, getattr(app.state, "itinerary_llm", None), authorization,
+        gateway, store, getattr(app.state, "itinerary_llm", None), authorization, owner=owner,
+        archive=getattr(app.state, "itinerary_conversation_archive", None),
         tool_timeout_seconds=settings.itinerary_tool_timeout_seconds,
         llm_timeout_seconds=settings.itinerary_llm_timeout_seconds,
     )
 
 
-def _itinerary_planner(app: FastAPI, settings: Settings, authorization: str | None):
-    runtime = _itinerary_runtime(app, settings, authorization)
+def _itinerary_planner(app: FastAPI, settings: Settings, authorization: str | None, owner: str | None = None):
+    runtime = _itinerary_runtime(app, settings, authorization, owner)
     return runtime.planner() if runtime is not None else None
 
 
@@ -442,11 +448,25 @@ async def lifespan(app: FastAPI):
         if gateway_close is not None:
             stack.push_async_callback(gateway_close)
         logger.info("startup.booking.ready payment_provider=%s", settings.payment_provider)
-        app.state.itinerary_conversation_store = InMemoryConversationStore(
-            ttl_seconds=settings.itinerary_conversation_ttl_seconds
-        )
+        archive = PostgresConversationArchive(settings.database_url)
+        app.state.itinerary_conversation_archive = archive
+        app.state.conversation_history = ConversationHistory(archive)
+        if settings.itinerary_redis_url:
+            import redis.asyncio as redis_asyncio
+
+            itinerary_redis = redis_asyncio.from_url(settings.itinerary_redis_url)
+            stack.push_async_callback(itinerary_redis.aclose)
+            app.state.itinerary_conversation_store = RedisConversationStore(
+                itinerary_redis, ttl_seconds=settings.itinerary_conversation_ttl_seconds)
+            logger.info("startup.itinerary_conversation_store.ready mode=redis")
+        elif settings.app_env == "production":
+            raise RuntimeError("ITINERARY_REDIS_URL là bắt buộc khi APP_ENV=production")
+        else:
+            app.state.itinerary_conversation_store = InMemoryConversationStore(
+                ttl_seconds=settings.itinerary_conversation_ttl_seconds)
+            logger.warning("startup.itinerary_conversation_store.ready mode=memory")
         app.state.plan_itinerary = PlanItinerary(
-            lambda authorization: _itinerary_planner(app, settings, authorization),
+            lambda authorization, owner: _itinerary_planner(app, settings, authorization, owner),
             settings.itinerary_request_timeout_seconds,
         )
         mode = settings.itinerary_data_mode or ("fixture" if settings.app_env in {"development", "test"} else "disabled")
@@ -513,7 +533,7 @@ settings = get_settings()
 app = FastAPI(
     title=settings.app_name,
     description="Travel recommendation and itinerary API",
-    version="1.6.0",
+    version="1.7.0",
     lifespan=lifespan,
 )
 

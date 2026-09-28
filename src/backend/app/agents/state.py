@@ -54,6 +54,7 @@ class AgentState(TypedDict, total=False):
     intent_override: dict[str, Any]
     constraints: dict[str, Any]
     missing_fields: list[str]
+    start_date_asked: bool
     clarification_reason: str | None
     refusal: bool
     candidates: dict[str, dict[str, Any]]

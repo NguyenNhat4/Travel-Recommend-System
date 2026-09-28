@@ -11,11 +11,16 @@ from fastapi import Depends, Header, Request
 from src.backend.app.application.auth.errors import AuthError, TokenInvalid, Unauthenticated
 from src.backend.app.application.auth.principal import AuthPrincipal
 from src.backend.app.application.itinerary.use_cases import PlanItinerary
+from src.backend.app.application.itinerary.history import ConversationHistory
 from src.backend.app.core.config import Settings, get_settings
 
 
 def get_plan_itinerary(request: Request) -> PlanItinerary:
     return request.app.state.plan_itinerary
+
+
+def get_conversation_history(request: Request) -> ConversationHistory:
+    return request.app.state.conversation_history
 
 
 def get_search(request: Request) -> Any:
@@ -89,6 +94,22 @@ async def optional_principal(
     """Không có Bearer → khách (None). Bearer hỏng → 401, KHÔNG hạ thành khách (§3.11 dòng 2)."""
     token = _bearer(authorization)
     return await _verified(token, verifier, revoked) if token is not None else None
+
+
+async def conversation_owner(request: Request, authorization: str | None = Header(default=None)) -> str | None:
+    """Chủ hội thoại của trợ lý = cdp_user_id của Bearer hợp lệ, để token được BFF làm mới vẫn cùng chủ.
+
+    Không có hoặc hỏng Bearer → None, không 401: contract stream không khai báo 401; agent tự trả
+    INVALID_TOKEN khi gọi Recommendation bằng token đó.
+    """
+    verifier = getattr(request.app.state, "token_verifier", None)
+    if verifier is None:
+        return None
+    try:
+        token = _bearer(authorization)
+        return (await _verified(token, verifier, get_revoked_tokens(request))).cdp_user_id if token else None
+    except AuthError:
+        return None
 
 
 async def current_principal(
