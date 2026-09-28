@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - release-mvp-v1
+      - release-mvp-v2
     paths:
       - '.github/workflows/backend-ci-cd.yml'
       - 'Dockerfile.backend'
@@ -202,6 +203,9 @@ jobs:
     runs-on: ubuntu-latest
     # Two 15-minute health windows (deploy and rollback) plus image pull and SSH.
     timeout-minutes: 45
+    concurrency:
+      group: vota-application-vm-deploy
+      cancel-in-progress: false
     environment: staging
     permissions:
       contents: read
