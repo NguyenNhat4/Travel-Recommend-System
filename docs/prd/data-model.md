@@ -120,6 +120,7 @@ erDiagram
     APP_USERS ||--o{ APP_BOOKINGS : "đặt hàng"
     APP_USERS ||--o{ APP_CONVERSATIONS : "sở hữu cuộc trò chuyện"
     APP_BOOKINGS ||--o{ APP_BOOKING_ITEMS : "chứa các dịch vụ"
+    APP_BOOKINGS ||--o{ APP_BOOKING_TRAVELERS : "đoàn khách"
     APP_BOOKINGS ||--o| APP_PAYMENTS : "thanh toán"
     APP_CONVERSATIONS ||--o{ APP_MESSAGES : "lưu các tin nhắn"
     APP_USERS ||--o{ APP_REFRESH_TOKENS : "chuỗi rotation"
@@ -185,7 +186,19 @@ erDiagram
         numeric price_at_booking
         int quantity
         date using_date
-        jsonb metadata "Thông tin vé, phòng, ghi chú đặc biệt"
+        jsonb metadata "Các dòng giá, danh sách hành khách của mục và phân phòng; thông tin vé, phòng, ghi chú đặc biệt; vé máy bay có ticketing {status ISSUING|ISSUED|VOIDED, pnr, tickets theo travelerRef, simulated: true}; ghế và hành lý ký gửi theo từng hành khách và chặng"
+    }
+
+    APP_BOOKING_TRAVELERS {
+        uuid traveler_id PK
+        uuid booking_id FK
+        string traveler_ref "Mã tham chiếu trong đơn"
+        int position
+        string traveler_type "adult, child"
+        string surname "Họ"
+        string given_names "Tên đệm và tên"
+        string full_name "Nối từ surname và given_names"
+        date birth_date "Bắt buộc với trẻ em; không trả qua API, không gửi CDP/Insider/Stripe"
     }
 
     APP_PAYMENTS {
@@ -224,6 +237,8 @@ erDiagram
     }
 ```
 
+Giỏ hàng (FR-BKG-08): mỗi mục lưu thêm số người lớn, số trẻ em và snapshot giá trẻ em của sản phẩm tại thời điểm thêm. Ngày sinh chỉ lưu ở `app.booking_travelers`.
+
 `expires_at` của `app.conversations` là hạn của working memory 24 giờ, không phải hạn xoá archive. Hội thoại và tin nhắn của user đã đăng nhập được giữ lâu dài; API lịch sử luôn lọc theo `cdp_user_id`. Khách chưa đăng nhập không được ghi vào hai bảng này.
 
 ---
@@ -256,10 +271,22 @@ Mọi thông tin động theo loại sản phẩm được chuẩn hóa trong tr
     "destination": "CXR",
     "departureTime": "08:30:00",
     "arrivalTime": "09:45:00",
-    "cabinClass": "Economy",
-    "baggageAllowanceKg": 23
+    "fareClasses": [
+      { "code": "ECO", "name": "Phổ thông", "price": 634000, "carryOnKg": 7, "checkedKg": 0, "mealIncluded": false, "changeRule": "Phí + chênh lệch giá", "soldOut": false }
+    ]
   }
   ```
+  Dịch vụ thêm của hãng (FR-BKG-11) nằm trong `attributes` của chuyến bay (nạp từ bảng giá theo hãng):
+  ```json
+  {
+    "baggageOptions": [ { "kg": 20, "price": 220000 }, { "kg": 30, "price": 330000 } ],
+    "seatPricing": { "standard": 0, "front": 150000, "exit": 200000 },
+    "aircraft": { "type": "A321", "rows": 30, "columns": ["A","B","C","D","E","F"], "exitRows": [12,13], "frontRows": [1,2,3,4,5] }
+  }
+  ```
+  Thiếu `baggageOptions`/`seatPricing` thì không bán dịch vụ thêm tương ứng. Ghế "đã có người" trên sơ đồ là mô phỏng.
+
+  `unitPrice` của sản phẩm là giá của hạng rẻ nhất còn chỗ. Thiếu `fareClasses` thì coi như một hạng duy nhất với giá `unitPrice`.
 
 ### 3.2. Cấu trúc `app.messages.structured_data` (Grounded Itinerary)
 Dữ liệu lịch trình do AI Assistant trả về phải tuân thủ cấu trúc định dạng chuẩn:
@@ -311,6 +338,8 @@ CONFIRMED       PAYMENT_FAILED         EXPIRED        CANCELLED
    │
    └── Qua ngày sử dụng ──> COMPLETED
 ```
+
+Trạng thái xuất vé máy bay (FR-BKG-12) thuộc từng mục đơn (`booking_items.metadata.ticketing`), không đổi vòng đời đơn.
 
 ### 4.2. Vòng đời Sản phẩm & Khả năng phục vụ
 - **is_search_unit = true:** Sản phẩm đại diện cho một thực thể tìm kiếm (Ví dụ: Một resort/khách sạn tổng quan). Xuất hiện trong kết quả tìm kiếm và danh mục gợi ý.

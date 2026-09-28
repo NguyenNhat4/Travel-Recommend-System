@@ -34,7 +34,7 @@ Hệ thống được tối ưu hóa cho 4 luồng trải nghiệm chính tươn
 | `/search` | **Kết quả tìm kiếm** | Hiển thị kết quả tìm kiếm ngữ nghĩa và bộ lọc đa chiều | Query Header, Filter Sidebar, Sort Controls, Product Grid Cards, Pagination |
 | `/products/:id` | **Chi tiết sản phẩm** | Thông tin đầy đủ về phòng, vé, tour; trạng thái khả dụng | Image Gallery, Attribute Badges, Availability Calendar, Pricing, Add-to-Cart CTA |
 | `/assistant` | **Trợ lý Lịch trình** | Tương tác trò chuyện với AI Agent để tạo và tùy chỉnh kế hoạch | Chat Stream, Intent Chips, Day-by-Day Timeline, Grounded Product Cards |
-| `/checkout` | **Thanh toán / Đặt chỗ** | Xem lại đơn, nhập thông tin liên lạc, chọn phương thức thanh toán, bấm Thanh toán để chuyển sang trang Stripe | Cart Items Summary, Guest Info Form, Price Breakdown, Payment Method Selector, Pay CTA |
+| `/checkout` | **Thanh toán / Đặt chỗ** | Ba bước: khai đoàn khách và người liên hệ; chọn ai dùng từng dịch vụ (khách sạn xếp phòng); xem lại, chọn phương thức, bấm Thanh toán để chuyển sang trang Stripe | Stepper, Party Counter, Traveler Forms, Service Allocation Cards, Order Summary (sticky; bottom bar trên mobile), Payment Method Selector, Pay CTA |
 | `/booking/:referenceCode` | **Xác nhận đơn hàng** | Hiển thị đơn theo trạng thái: đang giữ chỗ (đồng hồ đếm ngược, tiếp tục thanh toán), đã xác nhận (mã đặt chỗ, gợi ý chặng tiếp), thanh toán thất bại, hết hạn, đã huỷ; huỷ đơn | Booking Status Card, Next Best Action Recommendations (Flight, Tours) |
 | `/profile` | **Hồ sơ & Lịch sử** | Quản lý thông tin cá nhân, lịch sử đơn hàng và chuyến đi | User Preferences, Booking History, Saved Items |
 
@@ -80,21 +80,23 @@ flowchart TD
 
 ### 3.3. Luồng Đặt Chỗ & Khép Kín Vòng Lặp Cá Nhân Hóa (Booking & Recs Loop)
 
-> Ở `/checkout`, khách làm lần lượt ba việc: (1) điền đủ thông tin liên lạc; (2) chọn phương thức thanh toán; (3) bấm **Thanh toán**.
+> Ở `/checkout`, khách đi qua ba bước: (1) **Hành khách**: số người lớn, trẻ em, họ và tên đệm và tên từng người, ngày sinh trẻ em và người liên hệ; (2) **Dịch vụ**: chọn ai dùng từng dịch vụ, khách sạn xếp khách vào phòng, giá cập nhật theo loại khách; (3) **Xem lại và thanh toán**: kiểm tra, chọn phương thức, đồng ý điều khoản và bấm **Thanh toán**. Bấm Tiếp tục khi còn lỗi thì ở lại bước đó và thấy danh sách lỗi. Chỉ sửa giỏ, không tạo đơn cho tới khi bấm Thanh toán.
 >
 > - **Phương thức thanh toán.** Trang hiển thị danh sách phương thức. Hiện chỉ hỗ trợ **Stripe** (thẻ, test mode); phương thức này được chọn sẵn. Các phương thức khác (ví điện tử, chuyển khoản, cổng ngân hàng nội địa…) nếu có hiển thị thì ở dạng vô hiệu hoá kèm nhãn "Sắp có", không chọn được. Danh sách để mở rộng về sau mà không đổi luồng.
-> - **Chưa rời trang khi chưa bấm Thanh toán.** Điền thông tin và chọn phương thức chỉ là thao tác trên `/checkout`, không gọi Stripe và không tạo đơn. Nút **Thanh toán** bị vô hiệu hoá cho tới khi thông tin liên lạc hợp lệ và đã chọn phương thức.
+> - **Chưa rời trang khi chưa bấm Thanh toán.** Điền thông tin và chọn phương thức chỉ là thao tác trên `/checkout`, không gọi Stripe và không tạo đơn. Nút **Thanh toán** ở bước (3) bị vô hiệu hoá cho tới khi đã chọn phương thức và đồng ý điều khoản; thông tin ở bước (1) và (2) đã được kiểm khi bấm Tiếp tục.
 > - **Bấm Thanh toán mới sang Stripe.** Khi bấm, Web gọi Backend; Backend kiểm giỏ, tạo đơn giữ chỗ 30 phút và Stripe Checkout Session, rồi Web chuyển trình duyệt sang trang Stripe để nhập thẻ. Nút hiện trạng thái đang xử lý và chặn bấm lặp. Nếu Backend hoặc Stripe lỗi thì khách ở lại `/checkout` với thông báo lỗi và bấm lại được.
 > - **Quay về.** Xong trên Stripe (thành công, thất bại hoặc khách bấm quay lại), trình duyệt về `/booking/:referenceCode`; trạng thái đơn do Backend quyết định, không do việc quay về.
 
 ```mermaid
 flowchart TD
     A[Khách chọn sản phẩm & nhấn 'Đặt ngay'] --> B[Mở trang /checkout]
-    B --> C[Điền thông tin liên lạc]
-    C --> M[Chọn phương thức thanh toán: hiện chỉ có Stripe]
+    B --> C1[Bước 1: Hành khách] --> C2[Bước 2: Dịch vụ] --> C3[Bước 3: Xem lại]
+    C3 --> M[Chọn phương thức thanh toán: hiện chỉ có Stripe]
     M --> P[Bấm 'Thanh toán']
     P --> D[Backend kiểm giỏ, tạo đơn giữ chỗ 30 phút và phiên Stripe]
-    D -->|Lỗi Backend hoặc Stripe| B
+    D -->|400: lỗi hành khách| C1
+    D -->|400: lỗi dịch vụ| C2
+    D -->|Lỗi khác hoặc Stripe| C3
     D --> S[Chuyển sang trang Stripe: nhập thẻ]
     S -->|Thẻ bị từ chối, dưới 3 lần| S
     S -->|Từ chối lần 3| X1[Đơn PAYMENT_FAILED, giỏ còn nguyên]
@@ -181,6 +183,106 @@ flowchart TD
 |   | Nhận phòng: 15/10/2026  -  Trả phòng: 17/10/2026 (2 đêm)             |   |
 |   | Tổng thanh toán: 6.400.000 đ                                          |   |
 |   +-----------------------------------------------------------------------+   |
+|   Khối này còn liệt kê hành khách của từng dịch vụ (khách sạn theo phòng,    |
+|   đánh dấu người đại diện) và các dòng giá; không hiện ngày sinh.            |
+|   Với vé máy bay, khối này thêm: trạng thái xuất vé; từng chặng có PNR và    |
+|   bảng hành khách (tên in trên vé, ghế, hành lý, số vé); hai ô nhắc làm thủ  |
+|   tục và giấy tờ cần mang. Nhãn "Mô phỏng - không dùng được tại sân bay".    |
+|                                                                               |
+|   BẠN ĐÃ CÓ VÉ MÁY BAY ĐẾN NHA TRANG CHƯA?                                    |
+|   Hệ thống tìm thấy các chuyến bay phù hợp với lịch nhận phòng của bạn:       |
+|   +------------------------------------+ +--------------------------------+   |
+|   | Vietnam Airlines (SGN -> CXR)      | | Vietjet Air (SGN -> CXR)       |   |
+|   | Khởi hành: 08:30 - 15/10/2026      | | Khởi hành: 10:15 - 15/10/2026   |   |
+|   | Giá từ: 1.450.000 đ/khách          | | Giá từ: 920.000 đ/khách        |   |
+|   | [ Đặt thêm chuyến này ]            | | [ Đặt thêm chuyến này ]        |   |
+|   +------------------------------------+ +--------------------------------+   |
+|                                                                               |
+|   HOẠT ĐỘNG NỔI BẬT GẦN KHÁCH SẠN CỦA BẠN:                                    |
+|   [ Thẻ Tour lặn ngắm san hô Hòn Mun ]     [ Thẻ Vé tắm bùn khoáng I-Resort ] |
+|                                                                               |
+|   [ QUAY VỀ TRANG CHỦ ]                            [ QUẢN LÝ ĐƠN HÀNG NÀY ]   |
++-------------------------------------------------------------------------------+
+```
+
+### 4.4. Màn hình Thanh Toán (`/checkout`)
+Bước ① Hành khách (bước ② Dịch vụ: mỗi dịch vụ một thẻ chọn ai dùng, khách sạn xếp người vào từng phòng, giá theo loại khách; bước ③ Xem lại và thanh toán: tóm tắt, phương thức, điều khoản, nút Thanh toán):
+```
++-------------------------------------------------------------------------------+
+| [LOGO] V-OTA                                                    [Tài khoản v] |
++-------------------------------------------------------------------------------+
+| (1) Hành khách  -->  (2) Dịch vụ  -->  (3) Xem lại và thanh toán              |
++-------------------------------------------+-----------------------------------+
+| Đoàn khách                                | Tóm tắt đơn (dính bên phải)       |
+|   Người lớn (từ 12 tuổi)   [-] 2 [+]      |  Vinpearl Resort - Deluxe (2 đêm) |
+|   Trẻ em (dưới 12 tuổi)    [-] 1 [+]      |  Vé VinWonders: 2 NL + 1 TE       |
+|                                           |  -------------------------------- |
+| Hành khách 1 (người lớn)                  |  Tổng thanh toán: 6.400.000 đ     |
+|   Họ [____________] Tên đệm và tên [____] |                                   |
+| Hành khách 3 (trẻ em)                     |  Giữ chỗ 30 phút sau khi bấm      |
+|   Họ [____________] Tên đệm và tên [____] |  Thanh toán.                      |
+|   Ngày sinh [__/__/____]                  |                                   |
+|                                           |  [   TIẾP TỤC   ]                 |
+| Người liên hệ                             |                                   |
+|   Email [______________]  SĐT [________]  |                                   |
++-------------------------------------------+-----------------------------------+
+```
+Bước ③ có khối "Phương thức thanh toán" như cũ: (o) Stripe - Thẻ thanh toán (test); ( ) Ví điện tử [Sắp có]; ( ) Chuyển khoản [Sắp có].
+
+Thẻ vé máy bay khứ hồi ]    [ Thẻ vé công viên giải trí ]                   |
++-------------------------------------------------------------------------------+
+```
+
+### 4.2. Màn hình Trợ Lý Lịch Trình AI (`/assistant`)
+```
++-------------------------------------------------------------------------------+
+| [LOGO] V-OTA  >  Trợ lý Lịch trình Thông minh   [Lịch sử] [Lịch trình mới] |
++-------------------------------------------------------------------------------+
+|                                    | BẢN XEM TRƯỚC LỊCH TRÌNH                 |
+| [AI]: Chào bạn! Mình có thể giúp gì| Nha Trang 3 Ngày 2 Đêm - Gia đình        |
+| cho chuyến đi sắp tới?             | --------------------------------------- |
+|                                    | NGÀY 1: Nhận phòng & Tắm biển           |
+| [User]: Lên giúp mình lịch trình   | 14:00 - Nhận phòng Vinpearl Resort      |
+| Nha Trang 3N2Đ cho 2 người lớn,    | +-------------------------------------+ |
+| 1 bé 5 tuổi, ngân sách 10 triệu.   | | [Img] Vinpearl Resort & Spa         | |
+|                                    | | Giá: 3.200.000 đ - Deluxe Ocean     | |
+| [AI]: Dưới đây là kế hoạch chi tiết| | [Xem phòng] [Thêm vào đơn hàng]     | |
+| đã được thiết kế phù hợp với lịch  | +-------------------------------------+ |
+| sinh hoạt của bé:                  | 18:00 - Ăn tối hải sản Tháp Bà        |
+| - Ngày 1: Nhận phòng & nghỉ ngơi   | --------------------------------------- |
+| - Ngày 2: Vui chơi tại VinWonders  | NGÀY 2: Khám phá VinWonders             |
+| - Ngày 3: Mua sắm & về TP.HCM      | 08:30 - Vé vui chơi trọn gói            |
+|                                    | +-------------------------------------+ |
+| Bạn có muốn đổi giờ bay hay khách  | | [Img] Vé VinWonders Nha Trang       | |
+| sạn khác không?                    | | Giá: 850.000 đ/người                | |
+|                                    | | [Đặt vé ngay]                       | |
+| +--------------------------------+ | +-------------------------------------+ |
+| | Nhập yêu cầu tùy chỉnh...      | | TỔNG CHI PHÍ TẠM TÍNH: 8.900.000 đ      |
+| +--------------------------------+ | [ TIẾN HÀNH ĐẶT TRỌN LỊCH TRÌNH ]       |
++-------------------------------------------------------------------------------+
+```
+
+### 4.3. Màn hình Xác Nhận Đơn Hàng & Vòng Lặp Gợi Ý Tiếp Theo (`/booking/:referenceCode`)
+```
++-------------------------------------------------------------------------------+
+| [LOGO] V-OTA                                                    [Tài khoản v] |
++-------------------------------------------------------------------------------+
+|                                                                               |
+|   [v] ĐẶT CHỖ THÀNH CÔNG!                                                     |
+|   Mã đơn hàng: #VOTA-2026-89412                                               |
+|   Đã gửi email xác nhận đến: customer@example.com                             |
+|                                                                               |
+|   +-----------------------------------------------------------------------+   |
+|   | THÔNG TIN CHUYẾN ĐI ĐÃ ĐẶT                                            |   |
+|   | Vinpearl Resort & Spa Nha Trang - Phòng Deluxe Hướng Biển             |   |
+|   | Nhận phòng: 15/10/2026  -  Trả phòng: 17/10/2026 (2 đêm)             |   |
+|   | Tổng thanh toán: 6.400.000 đ                                          |   |
+|   +-----------------------------------------------------------------------+   |
+|   Khối này còn liệt kê hành khách của từng dịch vụ (khách sạn theo phòng,    |
+|   đánh dấu người đại diện) và các dòng giá; không hiện ngày sinh.            |
+|   Với vé máy bay, khối này thêm: trạng thái xuất vé; từng chặng có PNR và    |
+|   bảng hành khách (tên in trên vé, ghế, hành lý, số vé); hai ô nhắc làm thủ  |
+|   tục và giấy tờ cần mang. Nhãn "Mô phỏng - không dùng được tại sân bay".    |
 |                                                                               |
 |   BẠN ĐÃ CÓ VÉ MÁY BAY ĐẾN NHA TRANG CHƯA?                                    |
 |   Hệ thống tìm thấy các chuyến bay phù hợp với lịch nhận phòng của bạn:       |
@@ -214,5 +316,34 @@ flowchart TD
 |   ( ) Chuyển khoản        [Sắp có]        |                                   |
 |                                           |  [        THANH TOÁN        ]     |
 |                                           |  Bạn sẽ được chuyển sang Stripe.  |
++-------------------------------------------------------------------------------+
+```
+
+Thẻ vé máy bay khứ hồi (FR-BKG-10), hiển thị ở bước Dịch vụ, tóm tắt đơn, bước Xem lại và trang đơn:
+```
++-------------------------------------------------------------------------------+
+| Khứ hồi · 2 chặng                                                             |
+|  VJ1602  SGN -> CXR   17/10  08:30 - 09:45                                    |
+|    Hạng: (o) Phổ thông   ( ) Phổ thông linh hoạt      [So sánh điều kiện các hạng] |
+|                    -- 2 đêm ở Nha Trang --                                    |
+|  VJ601   CXR -> SGN   19/10  18:10 - 19:25                                    |
+|    Hạng: ( ) Phổ thông   (o) Phổ thông linh hoạt      [So sánh điều kiện các hạng] |
++-------------------------------------------------------------------------------+
+```
+
+Mục "Chỗ ngồi" và màn hình sơ đồ ghế của vé máy bay (FR-BKG-11), ở bước Dịch vụ:
+```
++-------------------------------------------------------------------------------+
+| Chỗ ngồi                                                                      |
+|  SGN -> CXR   Nguyễn A: 6A · Trần B: chưa chọn (hãng xếp miễn phí)  [Chọn ghế] |
+|  CXR -> SGN   chưa chọn                                             [Chọn ghế] |
++-------------------------------------------------------------------------------+
+
++-------------------------------------------------------------------------------+
+| Chọn ghế   [ SGN -> CXR ] [ CXR -> SGN ]        Hành khách: (o) Nguyễn A ( ) Trần B |
+|         A  B  C     D  E  F        Chú giải: [ ] Tiêu chuẩn  [H] Hàng đầu         |
+|   6    [ ][ ][X]   [ ][ ][ ]                 [T] Lối thoát hiểm  [X] Đã có người  |
+|  12    [T][T][T]   [T][T][T]        Phí chọn ghế: 150.000 đ        [ XÁC NHẬN ]  |
+|  Tình trạng ghế là mô phỏng; hãng có thể xếp ghế khác.                          |
 +-------------------------------------------------------------------------------+
 ```
