@@ -48,6 +48,7 @@ class AgentState(TypedDict, total=False):
     start_date_asked: bool
     clarification_reason: str | None
     refusal: bool
+    blocked_by_guardrail: str | None
     candidates: Candidates
     sources: Sources
     warnings: list[PlanWarning]
