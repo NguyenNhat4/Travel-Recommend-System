@@ -40,10 +40,27 @@ Ví dụ (minh hoạ, `productId` giả; giá lấy theo khoảng của dữ li�
 ]
 ```
 
+## Có dữ liệu trên máy
+
+Snapshot mặc định `2026-09-29` có vé khứ hồi trip.com (cào ngày 29/09/2026). Sau khi pull:
+
+```bash
+make demo-db-reset
+```
+
+- Lệnh này xoá dữ liệu demo local (user thử, giỏ, đơn) rồi seed lại. Máy đã seed trước đây thì `make demo-db` dừng vì DB đã
+  có dữ liệu.
+- Khởi động lại backend. Không cần `make index-vectors`: chuyến bay không được index.
+- Kết quả: 11.708 sản phẩm; **290 vé khứ hồi, tất cả đặt được** ở bất kỳ ngày seed nào; 497 vé một chiều / vé cũ. Vé khứ hồi
+  thuộc 29 tuyến giữa 6 thành phố: Hà Nội, TP.HCM, Đà Nẵng, Nha Trang, Đà Lạt, Phú Quốc.
+- Vé có ngày đi ngoài cửa sổ 30 ngày được seed dời vào cửa sổ, cả hai chặng cùng số ngày; tên / `returnDate` đổi theo. Giá giữ
+  nguyên của ngày gốc, nên chỉ là **giá tham khảo** trên máy dev. Dữ liệu thật trên VM giữ ngày thật và cào lại hằng ngày.
+- Kiểm nhanh: `GET /api/v1/products?parentProductId=<id tuyến>` có vé tên "Khứ hồi …" kèm `fareClasses`.
+
 ## Lấy ở đâu
 
 - `GET /products?parentProductId=<tuyến>` — backend gom hạng trên **toàn tuyến trước khi phân trang**, nên trang một dòng
-  vẫn đủ hạng.
+  vẫn đủ hạng. `limit` tối đa 20 theo contract (`limit=100` trả `VALIDATION_ERROR`).
 - `GET /products/{id}` của một chuyến bay (`level: flight`).
 - Sản phẩm không phải vé máy bay: **không có** key `fareClasses`.
 
@@ -55,13 +72,15 @@ Ví dụ (minh hoạ, `productId` giả; giá lấy theo khoảng của dữ li�
 - **`null` = chưa biết.** Đừng hiện "0 kg", "không có suất ăn" hay "không đổi được". Hiện chưa nguồn nào có số liệu hành
   lý / suất ăn / đổi vé nên các trường này đang `null`.
 - `soldOut: null` = chưa biết. `EXPIRED` **không** có nghĩa hết ghế — chỉ là báo giá cũ, chờ lượt cào sau làm mới.
+  Vé khứ hồi trong snapshot có `priceValidUntil: 2026-09-30`, nên từ 01/10 trên máy dev hiện `EXPIRED` nhưng vẫn thêm giỏ và
+  đặt được. Nên hiện nhãn kiểu "Giá có thể đã thay đổi", không khoá nút đặt.
 - Vé trip.com: `code: null`, `name: "Giá rẻ nhất"`. Backend không đoán hạng; đừng gắn nhãn "Phổ thông".
 - Chưa có giá thương gia. Thiếu hạng là chưa có dữ liệu, không phải hết chỗ. Khi có, hạng mới chỉ thêm phần tử vào mảng,
   shape không đổi.
 
 ## Vé khứ hồi
 
-- `attributes.tripType`: `oneWay` \| `roundTrip`.
+- `attributes.tripType`: `oneWay` \| `roundTrip`. Vé cũ (snapshot 23/09) không có khoá này: coi là một chiều.
 - `price` của vé khứ hồi là **giá tổng cả hai chiều cho một người lớn** (`priceBasis: per_person`).
 - Chiều về: `attributes.returnFlight` và `attributes.returnDate`.
 
