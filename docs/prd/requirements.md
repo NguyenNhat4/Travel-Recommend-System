@@ -37,10 +37,10 @@ Tài liệu này đặc tả chi tiết toàn bộ các yêu cầu chức năng 
 
 ### 1.4. Phân Hệ Trợ Lý AI Lập Lịch Trình (Itinerary AI Assistant)
 - **FR-AGT-01 (Hội thoại đa lượt):** Trợ lý có khả năng duy trì ngữ cảnh trò chuyện, làm rõ nhu cầu du lịch (thời gian, địa điểm, số người, ngân sách, phong cách du lịch).
-- **FR-AGT-02 (Gọi công cụ nghiệp vụ - Tool Calling):** Trợ lý tương tác trực tiếp với API hệ thống thông qua các công cụ: tìm kiếm sản phẩm, kiểm tra lịch trống, tính toán chi phí dự kiến.
+- **FR-AGT-02 (Gọi công cụ nghiệp vụ - Tool Calling):** Trợ lý gọi trực tiếp engine nghiệp vụ của hệ thống qua các công cụ có schema lấy từ OpenAPI: tìm kiếm sản phẩm, gợi ý cá nhân hoá, tìm sản phẩm tương tự một sản phẩm đã đề xuất (khi đổi món, FR-AGT-05), kiểm tra lịch trống, tính toán chi phí dự kiến. Khi chạy với dữ liệu thật, công cụ gọi engine trong cùng tiến trình với Backend, qua port của tầng application, không gọi ngược HTTP API của chính Backend.
 - **FR-AGT-03 (Lập lịch trình cấu trúc - Structured Itinerary):** Kết quả phản hồi phải trả về lịch trình theo từng ngày (Day-by-Day), phân chia các buổi sáng - trưa - chiều - tối, bao gồm địa điểm, thời gian di chuyển ước tính và danh sách sản phẩm đề xuất.
 - **FR-AGT-04 (Nguyên tắc Grounding 100%):** Mọi mục sản phẩm trong lịch trình có thể đặt được phải tương ứng với một `productId` thật tồn tại trong catalog, có giá cụ thể và đường dẫn chuyển tiếp vào trang chi tiết hoặc giỏ hàng.
-- **FR-AGT-05 (Điều chỉnh linh hoạt):** Người dùng có thể yêu cầu đổi phòng, đổi điểm tham quan hoặc rút ngắn/kéo dài số ngày trong lịch trình qua hội thoại tiếp theo.
+- **FR-AGT-05 (Điều chỉnh linh hoạt):** Người dùng có thể yêu cầu đổi phòng, đổi điểm tham quan hoặc rút ngắn/kéo dài số ngày trong lịch trình qua hội thoại tiếp theo. Khi người dùng muốn đổi một sản phẩm đã hiển thị mà không nêu tên thay thế, trợ lý có thể tìm sản phẩm tương tự sản phẩm đó: sản phẩm gốc chỉ lấy từ lịch trình lượt trước, kết quả cùng loại (taxonomy).
 
 ### 1.5. Phân Hệ Đặt Hàng & Thanh Toán (Booking & Checkout)
 - **FR-BKG-01 (Quản lý giỏ hàng & Đơn hàng tạm thời):** Cho phép người dùng lưu trữ nhiều dịch vụ (khách sạn, vé máy bay, trải nghiệm) trong cùng một lịch trình.
