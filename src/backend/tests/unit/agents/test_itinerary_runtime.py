@@ -272,6 +272,34 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(second['intent']['startDate'])
         self.assertEqual(clients.calls[0], 'search')
 
+    async def test_second_round_of_missing_destination_or_days_offers_a_prefilled_form(self):
+        """Không có giới hạn số lần hỏi lại trước đây khiến hội thoại kẹt vòng khi người dùng không nêu
+        số ngày; lượt 2 vẫn thiếu thì trả `clarificationForm` thay vì hỏi lại y hệt (không gọi tool)."""
+        store = InMemoryConversationStore()
+        clients = Clients()
+        full_details = {'startDate': '2026-10-10', 'party': {'type': 'SOLO', 'adults': 1, 'children': 0}, 'budget': 5_000_000}
+        llm = ScriptedLlm(extraction=extracted(destination='Nha Trang', **full_details))
+        first = await self.run_graph(llm, clients, state={'start_date_asked': False}, store=store, owner='one')
+        self.assertEqual(first['response']['status'], 'NEEDS_CLARIFICATION')
+        self.assertEqual(first['response']['missingFields'], ['days'])
+        self.assertNotIn('clarificationForm', first['response'])
+
+        second = await self.run_graph(ScriptedLlm(extraction=extracted()), clients,
+                                      state={'conversation_id': first['conversation_id']}, store=store, owner='one')
+        self.assertEqual(second['response']['status'], 'NEEDS_CLARIFICATION')
+        self.assertEqual(second['response']['missingFields'], ['days'])
+        form = second['response']['clarificationForm']
+        self.assertIn('days', form['fields'])
+        self.assertEqual(form['defaults']['destination'], 'Nha Trang')
+        self.assertEqual(form['defaults']['days'], 1)
+        self.assertEqual(clients.calls, [])
+        self.assertEqual([e['node'] for e in second['events']], ['intake', 'classify', 'extract', 'clarify', 'finalize'])
+
+        # Người dùng chỉnh form rồi gửi câu hoàn chỉnh: lượt 3 lập lịch bình thường, như mọi câu chat khác.
+        third = await self.run_graph(ScriptedLlm(extraction=extracted(days=3)), clients,
+                                     state={'conversation_id': first['conversation_id']}, store=store, owner='one')
+        self.assertEqual(third['response']['status'], 'COMPLETED')
+
     async def test_trip_details_given_in_the_first_message_are_not_asked(self):
         llm = ScriptedLlm(extraction=Extraction(
                           patch={'destination': 'Nha Trang', 'days': 2, 'startDate': '2026-10-10', 'budget': 5_000_000,
@@ -623,11 +651,17 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         bad['response'] = {'status': 'COMPLETED'}
         self.assertEqual(nodes.finalize_node(bad)['http_status'], 500)
 
-    async def test_total_budget_is_not_certified_from_a_product_subtotal(self):
+    async def test_a_stated_budget_keeps_the_total_and_says_what_it_covers(self):
+        # A budget is the reason to show the number, not to hide it; the warning carries the caveat.
         result = await self.run_graph(ScriptedLlm(extraction=extracted(destination='Nha Trang', days=2,
                         budget=1000000, party={'type': 'SOLO', 'adults': 1, 'children': 0})))
-        self.assertIsNone(result['response']['itinerary']['estimatedTotal'])
-        self.assertEqual(result['response']['itinerary']['budgetStatus'], 'UNKNOWN')
+        itinerary = result['response']['itinerary']
+        self.assertIsNotNone(itinerary['estimatedTotal'])
+        self.assertIn(itinerary['budgetStatus'], ('WITHIN_BUDGET', 'OVER_BUDGET'))
+        codes = [w['code'] for w in result['response']['warnings']]
+        self.assertIn('PRODUCT_COST_ONLY', codes)
+        self.assertIn('BUDGET_ON_PRODUCT_COST', codes)
+        self.assertNotIn('UNKNOWN_TOTAL', codes)
 
     async def test_a_full_day_visit_gets_a_day_to_itself(self):
         clients = Clients(products=[product('a', attributes={'openingHours': '09:00–18:00', 'durationMinutes': 480}), product('b')])

@@ -92,7 +92,7 @@ export function convertItineraryCompletedToGroundedPlan(
     stay: stayItem,
     stays: stayItem ? [stayItem] : undefined,
     days,
-    totalEstimatedPrice: response.itinerary.estimatedTotal ?? 0,
+    totalEstimatedPrice: response.itinerary.estimatedTotal ?? null,
     bookableProductsCount: response.itinerary.bookableCount ?? days.reduce((acc, cur) => acc + cur.slots.filter(s => !!s.product).length, 0),
     cartItems: itineraryCartItems(response.itinerary),
   };

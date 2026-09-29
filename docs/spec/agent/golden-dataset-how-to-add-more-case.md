@@ -4,7 +4,7 @@ Phục vụ `docs/prd/test-plan.md` §2.4 (Tool Calling Accuracy ≥ 95%, Ground
 Output Integrity 100%) và FR-AGT-01..05, NFR-REL-01, NFR-SEC-01 trong `docs/prd/requirements.md`.
 
 Dành cho người thêm hoặc sửa case trong bộ golden. Luật chấm tổng quát và lý do chọn cách chấm nằm ở
-[evaluation-plan.md](evaluation-plan.md) §0; cách chạy và đọc kết quả ở [golden-run.md](golden-run.md).
+[golden-run.md](golden-run.md) mục 4; cách chạy và đọc kết quả ở [golden-run.md](golden-run.md).
 
 | Thành phần | Đường dẫn |
 |---|---|
@@ -141,6 +141,14 @@ bắt đầu bằng câu như vậy có hai lượt liền nhau: lượt hỏi (
 `missingFieldsInclude: [startDate]`, `toolCalled: false`) rồi lượt trả lời `chưa chốt ngày đi`; kỳ vọng kết quả nằm ở
 lượt trả lời. Số lượt trong `excludeProductsFromTurn` tính cả lượt hỏi. Case mới cần tới bước truy xuất thì làm
 theo cách này, hoặc nêu ngày đi ngay trong câu đầu (như nhóm `clear_request`).
+
+**Lượt hỏi thiếu điểm đến/số ngày, không chốt được sau hai lượt.** Không giới hạn số lần hỏi lại từng làm hội thoại
+kẹt vòng khi người dùng trả lời kiểu "bao nhiêu ngày cũng được" (LLM không trích được số). Từ đề xuất
+`docs/prd/update-archive/2026-09-29-form-goi-y-thong-tin-chuyen-di.md` (đã áp dụng): lượt 1 hỏi bằng câu chữ như
+bình thường; lượt 2 vẫn thiếu thì response có thêm `clarificationForm` thay vì hỏi lại y hệt. Runner chưa có khoá
+`expect` kiểm trực tiếp `clarificationForm` — case kiểm gián tiếp bằng `missingFieldsInclude` giữ nguyên ở cả hai lượt
+và `toolCalled: false` ở cả hai, để chứng minh agent không lặp vô hạn cũng không gọi tool khi thiếu thông tin
+(xem G-076). Lượt thứ ba mô phỏng người dùng gửi câu hoàn chỉnh (frontend dựng từ form) như một câu chat bình thường.
 
 **Ngày trong câu dùng placeholder.** Ngày cứng như "20/10" sẽ cũ đi theo thời gian và có thể rơi ra ngoài cửa sổ đặt chỗ 30 ngày
 của catalog; cách nói tương đối như "tuần sau" thì LLM tự diễn giải nên không kiểm được ngày chính xác. Vì vậy dùng

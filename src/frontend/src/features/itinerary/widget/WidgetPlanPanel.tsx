@@ -84,11 +84,25 @@ export function WidgetPlanPanel({ widget }: { widget: FloatingWidgetController }
     <div className="p-4 bg-white border-t border-slate-100 flex items-center justify-between gap-4 shrink-0 shadow-xs">
       <div>
         <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
-          Tổng tiền
+          Chi phí sản phẩm
         </span>
-        <span className="text-lg font-black text-blue-900 font-mono">
-          {new Intl.NumberFormat('vi-VN').format(activePlan.totalEstimatedPrice)} ₫
-        </span>
+        {activePlan.totalEstimatedPrice != null ? (
+          <>
+            <span className="text-lg font-black text-blue-900 font-mono">
+              {new Intl.NumberFormat('vi-VN').format(activePlan.totalEstimatedPrice)} ₫
+            </span>
+            <span className="block text-[10px] text-slate-400 leading-tight">
+              Chưa gồm ăn uống, đi lại và phát sinh
+            </span>
+          </>
+        ) : (
+          <span
+            className="text-sm font-bold text-slate-500"
+            title="Một số mục trong lịch trình chưa có giá nên không cộng được tổng; giá thiếu không được coi là 0."
+          >
+            Chưa tính được
+          </span>
+        )}
       </div>
       <div className="flex items-center gap-2">
         <button

@@ -182,7 +182,8 @@ export interface GroundedPlan {
   };
   stays?: ItineraryStayItem[];
   days: ItineraryDay[];
-  totalEstimatedPrice: number;
+  /** Tổng chi phí các sản phẩm trong lịch trình. `null` = backend chưa đủ căn cứ để tính, KHÔNG phải 0. */
+  totalEstimatedPrice: number | null;
   bookableProductsCount: number;
   fallback?: boolean;
 }

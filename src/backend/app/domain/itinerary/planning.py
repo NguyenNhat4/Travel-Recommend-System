@@ -268,14 +268,7 @@ def validate_plan(plan: Plan, candidates: Candidates,
     if constraints.get("require_hotel") and not plan.get("stay"):
         issues.append("required_hotel")
     expected_total, expected_status = totals(plan, intent)
-    deliberately_uncertified = (
-        intent.get("budget") is not None
-        and plan.get("estimatedTotal") is None
-        and plan.get("budgetStatus") == "UNKNOWN"
-    )
-    if not deliberately_uncertified and (
-        plan.get("estimatedTotal") != expected_total or plan.get("budgetStatus") != expected_status
-    ):
+    if plan.get("estimatedTotal") != expected_total or plan.get("budgetStatus") != expected_status:
         issues.append("total")
     return sorted(set(issues))
 

@@ -18,7 +18,8 @@ WARNINGS = {
                          "trẻ em trước khi đặt.",
     "UNKNOWN_TOTAL": "Chưa đủ đơn vị giá, số lượng hoặc điều kiện để tính tổng chi phí; không coi giá thiếu là 0.",
     "PRODUCT_COST_ONLY": "Tổng chỉ gồm các sản phẩm được chọn; chưa bao gồm chi phí phát sinh ngoài lịch trình.",
-    "UNKNOWN_BUDGET": "Chưa đủ dữ liệu toàn chuyến để xác nhận ngân sách.",
+    "BUDGET_ON_PRODUCT_COST": "Đối chiếu ngân sách chỉ dựa trên chi phí các sản phẩm trong lịch trình; "
+                              "chưa gồm ăn uống, đi lại và phát sinh ngoài lịch trình.",
 }
 
 
@@ -74,15 +75,19 @@ def retrieval_outcome(state: dict) -> dict | None:
 
 
 def _budget_warnings(plan: dict, intent: dict, warnings: list) -> None:
-    """Cảnh báo về tổng tiền; tổng của phần sản phẩm không được dùng để xác nhận ngân sách cả chuyến."""
+    """Cảnh báo kèm tổng tiền. Tổng là dữ kiện và luôn được giữ; cảnh báo nói rõ nó chỉ gồm sản phẩm.
+
+    Tổng của phần sản phẩm không phải chi phí cả chuyến, nên nó đi kèm `PRODUCT_COST_ONLY`. Trước đây chỗ
+    này xoá luôn `estimatedTotal` khi người dùng có nêu ngân sách — huỷ dữ kiện để khỏi phải kết luận. Điều
+    đó trái `architecture.md` §3 ("giá thiếu thì tổng là null" — chỉ khi thiếu giá) và FR-AGT-02, đồng thời
+    làm thanh ngân sách ở frontend không bao giờ hiện được vì nó cần cả `budget` lẫn `estimatedTotal`.
+    """
     if plan["estimatedTotal"] is None:
         warnings.append({"code": "UNKNOWN_TOTAL", "message": WARNINGS["UNKNOWN_TOTAL"]})
         return
     warnings.append({"code": "PRODUCT_COST_ONLY", "message": WARNINGS["PRODUCT_COST_ONLY"]})
-    # A known subtotal cannot certify a whole-trip budget.
     if intent.get("budget") is not None:
-        plan.update(estimatedTotal=None, budgetStatus="UNKNOWN")
-        warnings.append({"code": "UNKNOWN_TOTAL", "message": WARNINGS["UNKNOWN_BUDGET"]})
+        warnings.append({"code": "BUDGET_ON_PRODUCT_COST", "message": WARNINGS["BUDGET_ON_PRODUCT_COST"]})
 
 
 def composed(state: dict) -> dict:

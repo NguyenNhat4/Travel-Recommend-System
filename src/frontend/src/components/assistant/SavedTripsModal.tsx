@@ -130,7 +130,9 @@ export const SavedTripsModal: React.FC<SavedTripsModalProps> = ({
                           {item.plan.bookableProductsCount} dịch vụ đặt được
                         </span>
                         <span className="font-mono font-bold text-slate-900">
-                          ~{new Intl.NumberFormat('vi-VN').format(item.plan.totalEstimatedPrice)} ₫
+                          {item.plan.totalEstimatedPrice != null
+                            ? `~${new Intl.NumberFormat('vi-VN').format(item.plan.totalEstimatedPrice)} ₫`
+                            : 'Chưa tính được'}
                         </span>
                       </div>
                     </div>
