@@ -2,6 +2,11 @@ name: Crawler CI/CD
 
 on:
   pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - closed
     branches:
       - main
       - release-mvp-v1
@@ -42,14 +47,9 @@ env:
 jobs:
   quality:
     name: Crawler quality checks
+    if: ${{ github.event_name == 'push' || github.event.action == 'opened' || github.event.action == 'synchronize' || github.event.action == 'reopened' || (github.event.action == 'closed' && github.event.pull_request.merged == true) || (github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3')) }}
     runs-on: ubuntu-latest
     steps:
-      - name: Refuse dispatch from another ref
-        if: ${{ github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/release-mvp-v1' && github.ref != 'refs/heads/release-mvp-v2' && github.ref != 'refs/heads/release-mvp-v3' }}
-        run: |
-          echo 'This workflow_dispatch must run from main or release-mvp-v1/release-mvp-v2/release-mvp-v3.' >&2
-          exit 1
-
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -78,7 +78,7 @@ jobs:
 
   publish:
     name: Publish crawler SHA and latest image
-    if: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+    if: ${{ (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true) || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3') }}
     needs: build
     runs-on: ubuntu-latest
     environment: staging
@@ -140,7 +140,7 @@ jobs:
 
   deploy:
     name: Deploy crawler on application VM
-    if: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+    if: ${{ (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true) || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3') }}
     needs: publish
     runs-on: ubuntu-latest
     # Two 15-minute health windows (deploy and rollback) plus image pull and SSH.
