@@ -10,6 +10,10 @@ test -f "$root_dir/variables.tf"
 test -f "$root_dir/outputs.tf"
 test -f "$root_dir/staging.tfvars.example"
 test -f "$root_dir/ops-agent-staging.yaml"
+test -f "$root_dir/vota-docker-event-watcher.py"
+test -f "$root_dir/vota-docker-event-watcher.service"
+test -f "$root_dir/install-vota-docker-event-watcher.sh"
+test -f "$root_dir/vota-monitoring-logrotate.conf"
 
 test -d "$root_dir/modules"
 test -f "$root_dir/main.tf"
@@ -35,5 +39,28 @@ for required in \
     exit 1
   }
 done
+
+for required in \
+  'fresh_catalog_logs' \
+  'docker_events' \
+  'staging_crawler_warning' \
+  'staging_crawler_failure' \
+  'staging_container_stop' \
+  'staging_docker_watcher_absent'; do
+  grep -R -q -F "$required" "$root_dir" || {
+    echo "missing crawler monitoring component: $required" >&2
+    exit 1
+  }
+done
+
+grep -q -F '/srv/vota/fresh-catalog-logs/*.log' "$root_dir/ops-agent-staging.yaml"
+grep -q -F '/var/log/vota/docker-events.jsonl' "$root_dir/ops-agent-staging.yaml"
+grep -q -F 'rotate 14' "$root_dir/vota-monitoring-logrotate.conf"
+grep -q -F 'maxsize 100M' "$root_dir/vota-monitoring-logrotate.conf"
+grep -q -F 'jsonPayload.message:\"fresh-catalog.exit=3\"' "$root_dir/main.tf"
+grep -q -F 'Docker watcher heartbeat' "$root_dir/main.tf"
+grep -q -F 'Crawler warnings and failures' "$root_dir/main.tf"
+grep -q -F 'Container stops and OOM' "$root_dir/main.tf"
+python3 -m py_compile "$root_dir/vota-docker-event-watcher.py"
 
 echo 'staging monitoring layout: PASS'
