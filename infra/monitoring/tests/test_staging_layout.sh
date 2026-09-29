@@ -14,11 +14,12 @@ test -f "$root_dir/ops-agent-staging.yaml"
 test -d "$root_dir/modules"
 test -f "$root_dir/main.tf"
 
-if rg -n -i 'production|prod(uction)?_state|prod_state' "$root_dir" \
-  --glob '*.tf' \
-  --glob '*.yaml' \
-  --glob '*.yml' \
-  --glob '*.tfvars*'; then
+if grep -R -n -i -E \
+  --include='*.tf' \
+  --include='*.yaml' \
+  --include='*.yml' \
+  --include='*.tfvars*' \
+  'production|prod(uction)?_state|prod_state' "$root_dir"; then
   echo 'production configuration must not be present in the staging package' >&2
   exit 1
 fi
@@ -29,7 +30,7 @@ for required in \
   'google_monitoring_uptime_check_config' \
   'google_logging_metric' \
   'google_monitoring_notification_channel'; do
-  rg -q "$required" "$root_dir" || {
+  grep -R -q -F "$required" "$root_dir" || {
     echo "missing required monitoring resource: $required" >&2
     exit 1
   }
