@@ -66,10 +66,41 @@ workflow trước (mục dưới), không cài tay.
      - monitor (`ssh -L 8765:127.0.0.1:8765 <vm>` rồi mở http://127.0.0.1:8765): sơ đồ luồng không có ô đỏ.
 4. **Quay lại job cũ** (nếu cần): `install-vota-cron.sh --job legacy …` và dùng lại `monitor`.
 
+## Nạp catalog snapshot lên DB staging một lần (tuỳ chọn)
+
+Dùng khi FE cần vé khứ hồi trên staging **trước** khi job mới chạy trên VM. Snapshot `2026-09-29` là snapshot `2026-09-23` cộng
+vé máy bay trip.com cào ngày 29/09/2026: 11.708 sản phẩm, có 290 vé khứ hồi (`src/data_collection/snapshots/README.md`).
+
+Chế độ `--catalog-only` chỉ upsert `cdp.products` và thay `catalog.combo_items` của các combo. Nó **không xoá** gì, không đụng
+`cdp.profiles` / `cdp.events`, `app.*` (user, giỏ, đơn) hay database `insider`. Không cần Weaviate / Cohere: chuyến bay không được
+index, tuyến đã có vector.
+
+1. Mở SSH tunnel tới Postgres staging rồi kiểm: `bash scripts/check-db-tunnel.sh` (mặc định `127.0.0.1:15432`).
+2. Tài khoản cần quyền ghi `cdp.products`, `catalog.combo_items`: tài khoản seed/superuser của staging, không phải
+   `vota_app_login`.
+3. Chạy từ gốc repo (DSN để trong biến môi trường, không ghi vào file commit):
+
+   ```bash
+   cd src && SEED_DATABASE_URL='postgresql://<user>:<mật khẩu>@127.0.0.1:15432/vota' python -m data_collection.seed --products data_collection/snapshots/2026-09-29/products.jsonl.gz --as-of "$(date +%F)" --catalog-only
+   ```
+
+   - Kết quả mong đợi trên DB đang có catalog 11.387: `inserted=321 · updated=110`.
+   - Đã thử trên database nháp: `app.bookings`, `cdp.events` không đổi, `db/verify.sql` 0 FAIL.
+   - Muốn xem trước, không ghi DB: thêm `--generate-only`.
+
+Lưu ý:
+
+- **Seed** dời vé khứ hồi có ngày đi ngoài cửa sổ vào cửa sổ, giá giữ nguyên. Đó là giá tham khảo; quy tắc ở
+  `docs/prd/data-model.md` §3.
+- **Job cào** không dời ngày. Mỗi lượt, nó khoá vé hết hạn báo giá (`priceValidUntil` 30/09/2026), rồi nạp vé mới với ngày và
+  giá thật.
+- Vì vậy khi job mới đã chạy trên staging, **không cần** bước này nữa.
+
 ## Không dùng trên VM
 
 - `src/data_collection/cron_daily.sh`: cron **máy cá nhân** của job cũ, không cài trên VM.
 - Đã gỡ ngày 29/09/2026: `cron_hotels_daily.sh`, `run_fresh_catalog_vm.sh`, `cron_run.sh`, `run_forever.sh`,
   `run_extra_queue.sh`, `stop_crawl.sh` và các script chạy tay khác. Hướng dẫn cũ nhắc tới chúng không còn đúng.
+- `make demo-db` / `make demo-db-reset`: chỉ cho máy dev (Postgres local); không chạy lên staging (có `--reset`).
 - Chạy liên tục (`stream.enabled`, `stream.db`) mặc định **tắt**. Bật trên monitor sau khi lượt đầu trên VM ổn
   (`docs/plan/2026-09-29-bo-cho-doi-giua-cac-buoc.md`, P2).

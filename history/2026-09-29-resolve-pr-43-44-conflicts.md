@@ -24,9 +24,16 @@
 ## Kiểm tra
 
 - `git diff --check`: PASS.
+- `git diff --cached --check` trên các file conflict: PASS.
 - Kiểm tra trạng thái merge của PR sau push: chưa chạy.
 - Test suite: chưa chạy.
 
 ## Còn lại / rủi ro
 
 - Xác nhận GitHub báo PR mergeable sau khi push merge commit.
+
+## Đồng bộ bổ sung với target mới
+
+- Target đã tiến lên `origin/release-mvp-v2` tại `67c384c` (merge PR #44 và #45).
+- Giữ event gating, digest pinning và readiness checks của nhánh hiện tại trong hai workflow CI/CD.
+- Giữ các cập nhật guide từ target; conflict add/add của history được hợp nhất vào entry này.
