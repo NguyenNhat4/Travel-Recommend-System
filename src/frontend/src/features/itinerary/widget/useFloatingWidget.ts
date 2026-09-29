@@ -81,6 +81,7 @@ export function useFloatingWidget() {
         sender: item.sender,
         text: item.text,
         plan,
+        clarificationForm: item.response?.status === 'NEEDS_CLARIFICATION' ? item.response.clarificationForm : undefined,
       };
     });
   }, [assistantState.transcript]);
@@ -142,6 +143,11 @@ export function useFloatingWidget() {
 
   const handleQuickPrompt = (promptText: string) => {
     setInputVal(promptText);
+  };
+
+  // Xác nhận form gợi ý: đặt câu yêu cầu hoàn chỉnh vào ô nhập để người dùng đọc lại, sửa rồi mới gửi — không tự gửi.
+  const handleConfirmTripDetails = (prompt: string) => {
+    setInputVal(prompt);
   };
 
 
@@ -224,8 +230,8 @@ export function useFloatingWidget() {
     isSavedPlan, isCheckingOut, isChatCollapsed, setIsChatCollapsed, hoveredCoordinate, hoveredPointId,
     setHoveredCoordinate, setHoveredPointId, isHistoryOpen, setIsHistoryOpen, conversations, activeSessionId,
     assistantState, isRunning, messages, inputVal, setInputVal, chatScrollRef, addToCart, retry, abort,
-    handleSendMessage, handleQuickPrompt, handleToggleSavePlan, handleCheckoutPlan, handleStartNewChat,
-    handleSelectConversation, handleDeleteConversation };
+    handleSendMessage, handleQuickPrompt, handleConfirmTripDetails, handleToggleSavePlan, handleCheckoutPlan,
+    handleStartNewChat, handleSelectConversation, handleDeleteConversation };
 }
 
 export type FloatingWidgetController = ReturnType<typeof useFloatingWidget>;

@@ -875,3 +875,34 @@
         excludeProductsFromTurn: {turn: 1, role: stay}
         warningsExclude: [PRODUCT_DROPPED_DESTINATION]
         toolsInclude: [get_similar_products]
+
+# ---------------------------------------------------------------------------------------------------
+# G-077: thêm ngày 2026-09-29 (đề xuất đã chốt
+# docs/prd/update-archive/2026-09-29-form-goi-y-thong-tin-chuyen-di.md). Đánh số lại từ G-076 vì trùng id
+# với case Similar-tool ở trên khi merge hai nhánh (mỗi bên độc lập lấy "id tiếp theo" lúc chưa thấy nhau).
+
+- id: G-077
+  category: multi_turn
+  fr: [FR-AGT-01, FR-AGT-03, FR-AGT-05]
+  turns:
+    # Người dùng không nêu số ngày: lượt 1 hỏi lại bằng câu chữ, chưa gợi ý form, chưa gọi tool.
+    - message: hà nội
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        missingFieldsInclude: [days]
+        toolCalled: false
+    # Vẫn không nêu số ngày: lượt 2 không hỏi lại y hệt nữa (hết ngân sách hỏi), phải gợi ý form.
+    - message: bao nhiêu ngày cũng được
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        missingFieldsInclude: [days]
+        toolCalled: false
+    # Người dùng chỉnh form rồi gửi câu hoàn chỉnh (mô phỏng bằng câu chat thường): lập lịch bình thường.
+    - message: lên lịch trình 3 ngày tại Hà Nội
+      expect:
+        httpStatus: 200
+        status: [COMPLETED, FALLBACK]
+        intent: {destination: Hà Nội, days: 3}
+        toolCalled: true

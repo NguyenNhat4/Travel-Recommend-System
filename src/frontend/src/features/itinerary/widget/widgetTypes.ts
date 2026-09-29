@@ -1,5 +1,6 @@
 import type { GroundedPlan } from '../../../types/travel';
 import type { AssistantCartItem } from '../../../components/assistant/AssistantResultPanel';
+import type { ClarificationForm } from '../../../components/assistant/TripDetailsForm';
 
 export type WidgetPlan = GroundedPlan & { cartItems: AssistantCartItem[] };
 
@@ -8,6 +9,7 @@ export interface WidgetChatMessage {
   sender: 'user' | 'assistant';
   text: string;
   plan?: WidgetPlan;
+  clarificationForm?: ClarificationForm;
 }
 
 export interface ConversationSession {

@@ -149,7 +149,8 @@ kẹt vòng khi người dùng trả lời kiểu "bao nhiêu ngày cũng đư�
 bình thường; lượt 2 vẫn thiếu thì response có thêm `clarificationForm` thay vì hỏi lại y hệt. Runner chưa có khoá
 `expect` kiểm trực tiếp `clarificationForm` — case kiểm gián tiếp bằng `missingFieldsInclude` giữ nguyên ở cả hai lượt
 và `toolCalled: false` ở cả hai, để chứng minh agent không lặp vô hạn cũng không gọi tool khi thiếu thông tin
-(xem G-076). Lượt thứ ba mô phỏng người dùng gửi câu hoàn chỉnh (frontend dựng từ form) như một câu chat bình thường.
+(xem G-077 — đánh số lại từ G-076 vì trùng id với case Similar-tool khi merge hai nhánh). Lượt thứ ba mô
+phỏng người dùng gửi câu hoàn chỉnh (frontend dựng từ form) như một câu chat bình thường.
 
 **Ngày trong câu dùng placeholder.** Ngày cứng như "20/10" sẽ cũ đi theo thời gian và có thể rơi ra ngoài cửa sổ đặt chỗ 30 ngày
 của catalog; cách nói tương đối như "tuần sau" thì LLM tự diễn giải nên không kiểm được ngày chính xác. Vì vậy dùng
@@ -190,7 +191,7 @@ không phải với điều mình đoán.
 
 ## 7. Quy trình thêm case
 
-1. Thêm khối YAML vào cuối file dataset, với `id` tiếp theo (lớn hơn mọi id từng dùng, kể cả id đã xoá khỏi bộ rút gọn: hiện là G-076), `category` và `fr`. Mỗi category chỉ một case; case mới cho category đã có thì thay case cũ hoặc đổi quy ước (xem mục 5).
+1. Thêm khối YAML vào cuối file dataset, với `id` tiếp theo (lớn hơn mọi id từng dùng, kể cả id đã xoá khỏi bộ rút gọn: hiện là G-077), `category` và `fr`. Mỗi category chỉ một case; case mới cho category đã có thì thay case cũ hoặc đổi quy ước (xem mục 5).
 2. Chạy test của dataset:
 
    ```bash

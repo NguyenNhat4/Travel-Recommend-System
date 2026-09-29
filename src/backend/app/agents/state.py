@@ -46,6 +46,7 @@ class AgentState(TypedDict, total=False):
     constraints: Constraints
     missing_fields: list[str]
     start_date_asked: bool
+    clarification_rounds: int
     clarification_reason: str | None
     refusal: bool
     blocked_by_guardrail: str | None

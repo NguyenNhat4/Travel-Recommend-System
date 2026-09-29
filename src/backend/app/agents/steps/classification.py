@@ -157,8 +157,10 @@ def extract_result(state: dict, result: Extraction) -> dict:
     missing = [key for key in ("destination", "days") if not intent.get(key)]
     # Ngày đi, số người, ngân sách: hỏi gộp một câu, một lần mỗi hội thoại và chỉ trước lần lập lịch đầu tiên.
     asked = bool(state.get("start_date_asked"))
+    rounds = int(state.get("clarification_rounds", 0) or 0)
     update = {"intent": intent, "constraints": constraints,
               "missing_fields": missing, "start_date_asked": asked,
+              "clarification_rounds": rounds,
               "events": [event("extract", "intent extracted")]}
     min_days, max_days = bounds("TripIntent", "days")
     if intent.get("days") is not None and not min_days <= intent["days"] <= max_days:
@@ -169,7 +171,11 @@ def extract_result(state: dict, result: Extraction) -> dict:
         return {**update, "decision": "missing_info",
                 "clarification_reason": "conflict" if conflict else "unverified"}
     if missing:
-        return {**update, "decision": "missing_info", "clarification_reason": None}
+        # Hỏi bằng câu chữ một lượt; từ lượt sau `clarify` gửi kèm form đã điền sẵn thay vì hỏi lại y hệt.
+        asked_once = rounds + 1 >= 2
+        return {**update, "decision": "missing_info",
+                "clarification_reason": "suggest_form" if asked_once else None,
+                "clarification_rounds": rounds + 1}
     details = trip_details_missing(intent, result)
     # Chip sửa tay là chỉnh có chủ ý trên hội thoại đã có, không hỏi thêm ở đó.
     if details and not asked and not state.get("intent_override"):

@@ -47,6 +47,22 @@ class ClassifyRouteTests(unittest.TestCase):
         self.assertEqual(result['decision'], 'missing_info')
         self.assertEqual(result['missing_fields'], ['destination'])
 
+    def test_first_round_missing_field_asks_by_text_without_form_reason(self):
+        """Lượt 1 thiếu điểm đến/số ngày: hỏi bằng câu chữ, chưa gợi ý form (clarification_reason=None)."""
+        state = intake_node({'query': 'request'})
+        result = extract_result(state, Extraction(start_date_undecided=True, patch={'days': 3}))
+        self.assertEqual(result['decision'], 'missing_info')
+        self.assertIsNone(result['clarification_reason'])
+        self.assertEqual(result['clarification_rounds'], 1)
+
+    def test_second_round_still_missing_switches_to_suggest_form(self):
+        """Đã hỏi một lượt mà vẫn thiếu điểm đến/số ngày: chuyển sang gợi ý form thay vì hỏi lại y hệt."""
+        state = {**intake_node({'query': 'bao nhiêu ngày cũng được'}), 'clarification_rounds': 1}
+        result = extract_result(state, Extraction(start_date_undecided=True, patch={}))
+        self.assertEqual(result['decision'], 'missing_info')
+        self.assertEqual(result['clarification_reason'], 'suggest_form')
+        self.assertEqual(result['clarification_rounds'], 2)
+
     def test_complete_intent_uses_tools_without_keyword_override(self):
         state = intake_node({'query': 'timeout search status'})
         result = extract_result(state, Extraction(start_date_undecided=True, patch={'budget': 5000000, 'party': {'type': 'SOLO', 'adults': 1, 'children': 0}} | {'destination': 'Nha Trang', 'days': 3}))

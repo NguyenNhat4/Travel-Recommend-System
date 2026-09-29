@@ -16,6 +16,8 @@ MESSAGES = {
         "missing_both": "Bạn muốn đi đâu và dự định đi trong mấy ngày (từ {min_days} đến {max_days} ngày)?",
         "missing_destination": "Bạn muốn đi du lịch ở tỉnh hoặc thành phố nào?",
         "missing_days": "Bạn dự định đi trong mấy ngày, hoặc từ ngày nào đến ngày nào?",
+        "suggest_form": "Mình đã điền sẵn một vài gợi ý cho chuyến đi bên dưới. "
+                        "Bạn chỉnh lại theo nhu cầu rồi bấm xác nhận giúp mình nhé.",
         "missing_trip_details": "Để lên lịch sát hơn, bạn cho mình biết thêm {details} nhé. "
                                 "Mục nào chưa rõ thì cứ nói, mình vẫn lên lịch được.",
         "detail_startDate": "ngày khởi hành",
@@ -40,6 +42,8 @@ MESSAGES = {
         "missing_both": "Where would you like to go, and for how many days ({min_days} to {max_days})?",
         "missing_destination": "Which city or province would you like to visit?",
         "missing_days": "How many days will your trip last, or what are your start and end dates?",
+        "suggest_form": "I have filled in a few suggestions for your trip below. "
+                        "Adjust anything you like, then confirm.",
         "missing_trip_details": "To plan this better, could you tell me {details}? "
                                 "If any of it is not decided yet, just say so and I will still plan the trip.",
         "detail_startDate": "your departure date",

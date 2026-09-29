@@ -63,6 +63,7 @@ def intake_node(state: AgentState) -> dict:
             "supported_destinations": None,
             "candidates": {}, "sources": {}, "response": {}, "warnings": [],
             "missing_fields": [], "start_date_asked": bool(state.get("start_date_asked", False)),
+            "clarification_rounds": int(state.get("clarification_rounds", 0) or 0),
             "interaction_type": "", "refusal": False, "blocked_by_guardrail": None,
             "final_answer": None, "http_status": 200, "decision": "", "validation_issues": [],
             "started_at": time(), "language": state.get("language") or "vi",
@@ -99,6 +100,7 @@ async def intake_node_async(state: AgentState, *, store: ConversationStorePort |
         else:
             update.update(intent=previous["intent"], constraints=previous.get("constraints", {}),
                           start_date_asked=bool(previous.get("start_date_asked", False)),
+                          clarification_rounds=int(previous.get("clarification_rounds", 0) or 0),
                           language=state.get("language") or previous.get("language", "vi"),
                           previous_selection=previous.get("previous_selection", []),
                           conversation_history=sanitize_conversation_history(
@@ -422,6 +424,7 @@ async def finalize_node_async(state: AgentState, *, store: ConversationStorePort
         working_state = {"intent": intent,
                          "constraints": state.get("constraints", {}),
                          "start_date_asked": state.get("start_date_asked", False),
+                         "clarification_rounds": state.get("clarification_rounds", 0),
                          "conversation_history": update["conversation_history"],
                          "language": state.get("language", "vi"),
                          "previous_selection": selection}

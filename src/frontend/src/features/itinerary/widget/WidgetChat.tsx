@@ -2,14 +2,16 @@ import React from 'react';
 import Image from 'next/image';
 import { AlertCircle, Loader2, Maximize2, RotateCcw, Sparkles } from 'lucide-react';
 import { nodeLabel } from '../../../components/assistant/assistantLabels';
+import { TripDetailsForm } from '../../../components/assistant/TripDetailsForm';
 import { WidgetOpening } from './WidgetOpening';
 import { WidgetComposer } from './WidgetComposer';
 import type { FloatingWidgetController } from './useFloatingWidget';
 
 export function WidgetChat({ widget }: { widget: FloatingWidgetController }) {
   const { messages, assistantState, isRunning, isExpanded, setIsExpanded, chatScrollRef,
-    inputVal, setInputVal, handleSendMessage, retry, abort } = widget;
+    inputVal, setInputVal, handleSendMessage, handleConfirmTripDetails, retry, abort } = widget;
   const isInitial = messages.length === 0 && !isRunning;
+  const lastMessageId = messages.length > 0 ? messages[messages.length - 1].id : null;
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-white">
@@ -25,6 +27,10 @@ export function WidgetChat({ widget }: { widget: FloatingWidgetController }) {
                   <button onClick={() => setIsExpanded(true)} className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-blue-600 hover:bg-blue-50">
                     <Sparkles className="h-4 w-4" aria-hidden="true" />Xem lộ trình & Bản đồ song song<Maximize2 className="h-4 w-4" aria-hidden="true" />
                   </button>
+                )}
+                {/* Chỉ hiện form ở tin nhắn mới nhất: người dùng xác nhận thì lượt sau đã có câu trả lời khác. */}
+                {message.clarificationForm && message.id === lastMessageId && (
+                  <TripDetailsForm form={message.clarificationForm} onConfirm={handleConfirmTripDetails} disabled={isRunning} />
                 )}
               </div>
             </div>
