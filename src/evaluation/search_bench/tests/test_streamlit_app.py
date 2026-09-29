@@ -201,3 +201,32 @@ def test_selection_buttons_need_author_and_show_feedback(env):
     assert f"\n{cid}\tREJECT\t" in (env / "overrides.tsv").read_text(encoding="utf-8")
     assert any("Đã ghi vào gold/overrides.tsv" in t.value for t in at.toast)
     assert sum("Đã ghi vào gold/overrides.tsv" in s.value for s in at.success) == 2       # đầu trang + cạnh nút
+
+
+def test_selection_copies_local_only_edit_to_overrides(env, tmp_path):
+    """Câu NEEDS_EDIT chỉ có trong kho nhãn local → cảnh báo + nút “Chép vào overrides.tsv” (cần tên người sửa); bấm thì
+    ghi dòng NEEDS_EDIT đúng câu đó và hết cảnh báo."""
+    from evaluation.search_bench.labeling import JsonlLabelStore, LabelEvent
+    raw = gold.read_draft_cases(env / "drafts_raw.tsv")
+    over = gold.read_overrides(env / "overrides.tsv", {r["case_id"] for r in raw})
+    case = next(r for r in raw if r["slice"] == "dest_type" and r["case_id"] not in over
+                and all(gold.intent_key(o, "dest_type") != gold.intent_key(r["case_id"], "dest_type") for o in over))
+    edited = f"{case['query']} bản sửa thử"
+    JsonlLabelStore(tmp_path / "labels.jsonl").append(LabelEvent(
+        event_id="e-test", case_id=case["case_id"], annotator="qanh", verdict="NEEDS_EDIT", rejection_reason="",
+        edited_query=edited, notes="", updated_at="2026-09-29T01:00:00+00:00", case_slice="dest_type",
+        original_query=case["query"]))
+    at = _run(AppTest.from_file(str(APP), default_timeout=120))
+    at.sidebar.radio(key="mode").set_value("Bộ câu đã chọn")
+    _run(at)
+    assert any("chỉ có trong kho nhãn local" in w.value and case["case_id"] in w.value for w in at.warning)
+    btn = next(b for b in at.button if b.label == "Chép vào overrides.tsv")
+    assert btn.disabled
+    at.sidebar.text_input(key="author_sel").set_value("tester")
+    _run(at)
+    next(b for b in at.button if b.label == "Chép vào overrides.tsv").click()
+    _run(at)
+    ov = (env / "overrides.tsv").read_text(encoding="utf-8")
+    assert f"\n{case['case_id']}\tNEEDS_EDIT\t{edited}\t" in ov and "tester" in ov and "qanh" in ov
+    assert not any("chỉ có trong kho nhãn local" in w.value for w in at.warning)
+    assert any("Đã chép 1 câu" in s.value for s in at.success)

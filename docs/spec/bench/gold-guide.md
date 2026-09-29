@@ -52,6 +52,14 @@ Phục vụ: **FR-SRC-01..04**, **AC-SRC-01** (`docs/prd/requirements.md`) và t
 | khách sạn Đà Nẵng không có hồ bơi | Khách sạn Mỹ Khê Đà Nẵng (có ghi hồ bơi) | **1** | Câu phủ định: có tiện ích bị loại trừ thì tối đa 1. |
 | vé VinWonders Phú Quốc | Combo 2 ngày Vinpearl Safari + VinWonders Phú Quốc | **1** | Combo có kèm vé: có thứ khách tìm nhưng bán theo gói, khác đơn vị. Nếu câu hỏi "combo … có vé VinWonders" thì là **2**. |
 
+## Gán độc lập (để κ đo đúng)
+
+- Mỗi file có khoảng 25 câu chung với người kia, rải trong cả file. **Không tìm, không đoán** câu nào là câu chung: app không hiện điều này, và mọi câu gán cùng một mức cẩn thận.
+- Thứ tự câu của A và B khác nhau có chủ đích (B bắt đầu từ slice khác, ứng viên cũng xếp khác), để hai người không gán cùng một câu cùng lúc. Cứ gán theo thứ tự app đưa ra.
+- Cho tới khi `sb gold kappa` chạy xong: không trao đổi về từng câu hay ứng viên cụ thể, không mở file pool / nhãn của người kia, không mở `pool_meta.json` (`overlap_qids`) hay cột `is_overlap` trong file pool của mình. Hỏi chung về luật thì được, và luật chốt thêm phải ghi vào file này cho cả hai.
+- `sb gold split` mặc định không in qid câu chung; chỉ người không gán nhãn mới dùng `--show-shared`.
+- Sau khi có κ, không sửa nhãn của mình chỉ để khớp người kia; chỗ lệch đi qua `sb gold merge` như dưới.
+
 ## Hoà nhãn (`sb gold merge`)
 
 - Cặp chung lệch 1 bậc thì merge tự lấy nhãn thấp hơn.

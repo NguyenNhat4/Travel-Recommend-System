@@ -206,14 +206,34 @@ def test_build_pool_embeds_once_and_retrieves_with_full_filter(slices, monkeypat
 
 
 # ------------------------------------------------------------------ split
-def _synthetic_rows(n_per_slice: dict[str, int], per_q: int = 5) -> list[PoolRow]:
+def _synthetic_rows(n_per_slice: dict[str, int], per_q: int = 5, sizes=None) -> list[PoolRow]:
+    """`sizes(q)` (nếu có) cho số ứng viên của câu thứ q — pool thật có 6–30 ứng viên mỗi câu."""
     rows, q = [], 0
     for s, n in n_per_slice.items():
         for _ in range(n):
             q += 1
+            k_max = sizes(q) if sizes else per_q
             rows += [PoolRow(qid=f"c{q:04d}", query=f"câu {q}", slice=s, product_id=f"p{q}_{k}", name=f"SP {k}",
-                             taxonomy="hotel_property", source="dense", rank_dense=k + 1) for k in range(per_q)]
+                             taxonomy="hotel_property", source="dense", rank_dense=k + 1) for k in range(k_max)]
     return rows
+
+
+FINAL_132 = {"dest_type": 12, "audience_style": 11, "amenity_single": 13, "amenity_multi": 10, "amenity_negation": 5,
+             "amenity_offtaxonomy": 5, "parent_child": 11, "named_entity": 18, "no_diacritics": 12, "abbrev_typo": 13,
+             "multi_constraint": 9, "cross_vertical": 10, "out_of_catalog": 3}       # drafts.txt chốt 29/09
+
+
+def _size(q: int) -> int:
+    return 6 + (q * 7919) % 25                                                      # 6..30, tất định
+
+
+# split_pool(_synthetic_rows(FINAL_132, sizes=_size), overlap=25, seed=42) — trùng nhau với PYTHONHASHSEED 0 / 1 / random
+GOLDEN_SHARED = ["c0002", "c0004", "c0020", "c0022", "c0034", "c0036", "c0038", "c0045", "c0049", "c0055", "c0065",
+                 "c0067", "c0073", "c0076", "c0083", "c0087", "c0089", "c0098", "c0105", "c0108", "c0113", "c0115",
+                 "c0124", "c0126", "c0130"]
+GOLDEN_A8 = ["c0002", "c0003", "c0009", "c0008", "c0004", "c0010", "c0006", "c0022"]
+GOLDEN_B8 = ["c0068", "c0071", "c0075", "c0076", "c0080", "c0074", "c0073", "c0081"]
+GOLDEN_SHA = "432e7c74065843d9ff695a938fd16c9a9de453fb6ca284dce79c39ea5164d4c9"
 
 
 def _build(rows_path: Path, **kw) -> gold.PoolBuild:
@@ -273,6 +293,139 @@ def test_overlap_quota_small_slices():
     assert gold.overlap_quota({"a": 1, "b": 1, "c": 10}, 5) == {"a": 1, "b": 0, "c": 4}   # dư 1 → phần lẻ lớn nhất, hoà theo tên
     q = gold.overlap_quota({"a": 1, "b": 20}, 3)
     assert sum(q.values()) == 3 and q["a"] <= 1
+
+
+def test_overlap_quota_floor_every_slice():
+    """Slice có ≥ 2 câu luôn có ≥ 1 câu chung khi overlap đủ (trước 29/09: out_of_catalog 2 câu → 0 câu chung)."""
+    sim = {**FINAL_132, "audience_style": 8, "parent_child": 9, "named_entity": 18, "abbrev_typo": 11, "out_of_catalog": 2}
+    q = gold.overlap_quota(sim, 25)
+    assert sum(q.values()) == 25 and min(q.values()) == 1 and q["out_of_catalog"] == 1 and q["audience_style"] == 1
+    assert gold.overlap_quota(FINAL_132, 25) == {
+        "abbrev_typo": 3, "amenity_multi": 2, "amenity_negation": 1, "amenity_offtaxonomy": 1, "amenity_single": 2,
+        "audience_style": 2, "cross_vertical": 2, "dest_type": 2, "multi_constraint": 2, "named_entity": 3,
+        "no_diacritics": 2, "out_of_catalog": 1, "parent_child": 2}
+    assert gold.overlap_quota({"a": 2, "b": 2, "c": 40}, 2) == {"a": 0, "b": 0, "c": 2}      # overlap < số slice: không sàn
+    assert gold.overlap_quota({"a": 1, "b": 1}, 3) == {"a": 1, "b": 1}                        # không vượt số câu của slice
+    assert gold.overlap_quota({"b": 5, "a": 5}, 1) == {"a": 1, "b": 0}                        # hoà → tên slice
+
+
+def _queue_of(rows: list[PoolRow]) -> list[str]:
+    return list(dict.fromkeys(r.qid for r in rows))
+
+
+def test_split_balances_pairs():
+    """Khối lượng gán tính theo cặp: |cặp A − cặp B| ≤ 1, mỗi slice và tổng lệch ≤ 1 câu riêng."""
+    for seed in (42, 7, 2026):
+        rows = _synthetic_rows(FINAL_132, sizes=_size)
+        a, b, shared = gold.split_pool(rows, overlap=25, seed=seed)
+        assert abs(len(a) - len(b)) <= 1, (seed, len(a), len(b))
+        slice_of = {r.qid: r.slice for r in rows}
+        only_a, only_b = set(_queue_of(a)) - set(shared), set(_queue_of(b)) - set(shared)
+        assert abs(len(only_a) - len(only_b)) <= 1
+        for s in FINAL_132:
+            assert abs(sum(slice_of[q] == s for q in only_a) - sum(slice_of[q] == s for q in only_b)) <= 1, (seed, s)
+
+
+def test_split_queue_order():
+    """Khối slice liền; B lệch nửa vòng nên mỗi câu chung được hai người gán ở hai thời điểm xa nhau; câu chung rải đều,
+    không dồn thành khối; ứng viên của một câu nằm liền nhau."""
+    rows = _synthetic_rows(FINAL_132, sizes=_size)
+    a, b, shared = gold.split_pool(rows, overlap=25, seed=42)
+    slice_of = {r.qid: r.slice for r in rows}
+    for rs in (a, b):
+        qs = _queue_of(rs)
+        runs = [s for i, s in enumerate(slice_of[q] for q in qs) if i == 0 or slice_of[qs[i - 1]] != s]
+        assert len(runs) == len(set(runs)) == len(FINAL_132)                      # mỗi slice đúng một khối liền
+        seen = [r.qid for i, r in enumerate(rs) if i == 0 or rs[i - 1].qid != r.qid]
+        assert seen == qs                                                          # ứng viên một câu nằm liền
+        half = len(qs) // 2
+        assert any(q in shared for q in qs[:half]) and any(q in shared for q in qs[half:])
+        # hai câu chung không đứng liền nhau — kể cả qua ranh giới khối — trừ khi khối không có câu riêng nào của người này
+        for x, y in zip(qs, qs[1:]):
+            if x in shared and y in shared:
+                assert all(q in shared for q in qs if slice_of[q] == slice_of[y]), (x, y)
+    qa, qb = _queue_of(a), _queue_of(b)
+    assert slice_of[qa[0]] != slice_of[qb[0]]
+    rel_a = {q: i / len(qa) for i, q in enumerate(qa)}
+    rel_b = {q: i / len(qb) for i, q in enumerate(qb)}
+    assert min(abs(rel_a[q] - rel_b[q]) for q in shared) >= 0.25
+
+
+def _lis_members(xs: list[int]) -> set[int]:
+    """Chỉ số các phần tử thuộc một dãy con tăng dài nhất (O(n²), đủ cho khối ≤ 20 câu)."""
+    best = [1] * len(xs)
+    prev = [-1] * len(xs)
+    for i in range(len(xs)):
+        for j in range(i):
+            if xs[j] < xs[i] and best[j] + 1 > best[i]:
+                best[i], prev[i] = best[j] + 1, j
+    i = max(range(len(xs)), key=lambda k: best[k]) if xs else -1
+    out = set()
+    while i >= 0:
+        out.add(i)
+        i = prev[i]
+    return out
+
+
+def test_split_order_does_not_reveal_shared():
+    """Người gán thấy qid theo thứ tự file: nếu câu riêng giữ thứ tự case_id tăng dần thì câu chung chen vào lệch thứ tự
+    và đoán được (review 29/09: độ chính xác 0,80 so với 0,32 đoán mò). Câu nằm ngoài dãy tăng dài nhất của khối không
+    được là câu chung nhiều hơn tỷ lệ nền."""
+    flagged = hit = n_shared = n_all = 0
+    for seed in range(30):
+        rows = _synthetic_rows(FINAL_132, sizes=_size)
+        a, b, shared = gold.split_pool(rows, overlap=25, seed=seed)
+        sh = set(shared)
+        slice_of = {r.qid: r.slice for r in rows}
+        for rs in (a, b):
+            qs = _queue_of(rs)
+            n_shared += sum(q in sh for q in qs)
+            n_all += len(qs)
+            for s in FINAL_132:
+                block = [q for q in qs if slice_of[q] == s]
+                keep = _lis_members([gold.qid_num(q) for q in block])
+                off = [q for i, q in enumerate(block) if i not in keep]
+                flagged += len(off)
+                hit += sum(q in sh for q in off)
+    base = n_shared / n_all
+    assert flagged and hit / flagged < base + 0.1, (hit / flagged, base)
+
+
+def test_split_golden_output():
+    """Chốt kết quả trên dữ liệu cố định: lệch tất định (hash(), thứ tự set, đổi luồng RNG) làm đổi file pool và sha trong
+    meta — test này đỏ ngay cả khi mọi bất biến khác vẫn đúng."""
+    import hashlib
+    rows = _synthetic_rows(FINAL_132, sizes=_size)
+    a, b, shared = gold.split_pool(rows, overlap=25, seed=42)
+    assert shared == GOLDEN_SHARED
+    assert _queue_of(a)[:8] == GOLDEN_A8 and _queue_of(b)[:8] == GOLDEN_B8
+    digest = hashlib.sha256("".join(f"{r.qid}:{r.product_id}:{int(r.is_overlap)};" for r in a + b).encode()).hexdigest()
+    assert digest == GOLDEN_SHA
+
+
+def test_split_report_flags_when_order_cannot_separate():
+    rows = _synthetic_rows(FINAL_132, sizes=_size)
+    rep = gold.split_report(*gold.split_pool(rows, overlap=25, seed=42))
+    assert rep["apart"] and rep["first_slice"] == {"A": "dest_type", "B": "named_entity"}
+    assert rep["overlap_by_slice"]["out_of_catalog"] == "1/3" and abs(rep["delta_pairs"]) <= 1
+    one = _synthetic_rows({"named_entity": 18}, sizes=_size)
+    assert not gold.split_report(*gold.split_pool(one, overlap=5, seed=0))["apart"]
+    dominant = _synthetic_rows({"named_entity": 30, "out_of_catalog": 3}, sizes=_size)
+    assert not gold.split_report(*gold.split_pool(dominant, overlap=6, seed=0))["apart"]
+
+
+def test_split_shared_inclusion_uniform():
+    """Lấy mẫu hệ thống theo cỡ pool vẫn cho mỗi câu xác suất vào câu chung ≈ quota/n của slice."""
+    counts = {"dest_type": 6, "named_entity": 5, "out_of_catalog": 3}
+    rows = _synthetic_rows(counts, sizes=_size)
+    quota = gold.overlap_quota(counts, 5)
+    slice_of = {r.qid: r.slice for r in rows}
+    hits = Counter()
+    n_seeds = 300
+    for seed in range(n_seeds):
+        hits.update(gold.split_pool(rows, overlap=5, seed=seed)[2])
+    for q, s in slice_of.items():
+        assert abs(hits[q] / n_seeds - quota[s] / counts[s]) < 0.1, (q, s, hits[q])
 
 
 def test_pool_build_roundtrip(tmp_path):

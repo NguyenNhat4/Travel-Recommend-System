@@ -454,8 +454,8 @@ def gold_drafts(c: typer.Context,
     from collections import Counter
 
     from . import paths
-    from .gold import (GoldError, apply_overrides, read_draft_cases, read_overrides, render_drafts_report,
-                       resolve_decisions, select_drafts, slices_below_min, write_drafts)
+    from .gold import (GoldError, apply_overrides, local_only_edits, read_draft_cases, read_overrides,
+                       render_drafts_report, resolve_decisions, select_drafts, slices_below_min, write_drafts)
     from .labeling import JsonlLabelStore
     ctx = _ctx(c)
     cfg = ctx.cfg()
@@ -492,6 +492,13 @@ def gold_drafts(c: typer.Context,
                f"({report['reject_reasons']}) · gộp {len(report['dropped_duplicate'])} cách nói trùng ý định")
     if conflicts:
         typer.secho(f"  BẤT ĐỒNG giữa annotator, không chọn: {', '.join(conflicts)}", fg=typer.colors.YELLOW)
+    local = local_only_edits(rows, cases, overrides)
+    if local:
+        typer.secho(f"  {len(local)} câu sửa chỉ có trong kho nhãn local (không commit) — `sb gold pool --qid case` và máy "
+                    "khác không map được sang case_id. App: Bộ câu đã chọn → nút “Chép vào overrides.tsv”; hoặc thêm tay "
+                    "dòng `case_id  NEEDS_EDIT  <đúng câu dưới>  (trống)  <note ghi nguồn>`:", fg=typer.colors.YELLOW)
+        for r in local:
+            typer.echo(f"      {r['case_id']} [{r['slice']}] ({r.get('annotator', '')}): {r['query']}")
     short = slices_below_min(report, n_min)
     if short:
         typer.secho(f"  {len(short)} slice dưới {n_min} câu: {', '.join(short)} — chọn thêm (app: Bộ câu đã chọn / Bổ sung "
@@ -588,11 +595,15 @@ def gold_split(c: typer.Context,
                pool: Optional[Path] = typer.Option(None, "--pool", help="mặc định gold/pool.csv"),
                overlap: Optional[int] = typer.Option(None, "--overlap", min=0, help="mặc định gold.overlap_queries"),
                out_dir: Optional[Path] = typer.Option(None, "--out-dir", help="mặc định gold/"),
-               force: bool = typer.Option(False, "--force", help="ghi đè pool_meta.json dù đã có file nhãn")):
-    """pool.csv → pool_A.csv, pool_B.csv (câu chung phân tầng theo slice, còn lại xen kẽ A/B trong từng slice, mỗi người
-    một thứ tự xáo) + pool_meta.json. Mã thoát: 0 · 2 lỗi đầu vào / pool lệch sha."""
+               force: bool = typer.Option(False, "--force", help="ghi đè pool_meta.json dù đã có file nhãn"),
+               show_shared: bool = typer.Option(False, "--show-shared",
+                                                help="in qid các câu chung — chỉ dùng khi người chạy lệnh không gán nhãn")):
+    """pool.csv → pool_A.csv, pool_B.csv + pool_meta.json. Câu chung phân tầng theo slice (slice ≥ 2 câu có ≥ 1 câu chung);
+    câu riêng cân theo số cặp; mỗi người đi slice theo khối, B lệch nửa vòng, trong khối câu riêng xáo và câu chung rải
+    đều (thứ tự không lộ câu chung, không gán cùng lúc); ứng viên xáo riêng từng người. Mặc định chỉ in số câu chung,
+    không in qid (người chạy có thể là người gán). Mã thoát: 0 · 2 lỗi đầu vào / pool lệch sha."""
     from . import paths
-    from .gold import GoldError, pool_build_path, read_pool_build, split_pool, write_split
+    from .gold import GoldError, pool_build_path, read_pool_build, split_pool, split_report, write_split
     from .gold_schema import SchemaError, file_sha256, read_pool_csv
     cfg = _ctx(c).cfg()
     pool_p = pool or paths.GOLD_DIR / "pool.csv"
@@ -611,8 +622,21 @@ def gold_split(c: typer.Context,
     if build.slice_filter:
         typer.secho(f"  pool chỉ gồm slice {build.slice_filter} — không dùng làm gold thật", fg=typer.colors.YELLOW)
     fa, fb = meta.files["A"], meta.files["B"]
+    rep = split_report(a, b, shared)
     typer.echo(f"pool_A.csv: {fa.n_queries} query / {fa.n_pairs} dòng · pool_B.csv: {fb.n_queries} query / {fb.n_pairs} dòng · "
-               f"chung {len(shared)}: {', '.join(shared)}")
+               f"chung {len(shared)} câu / {rep['overlap_pairs']} cặp · lệch số cặp A−B: {rep['delta_pairs']:+d}")
+    typer.echo("  câu chung theo slice: " + ", ".join(f"{s} {v}" for s, v in rep["overlap_by_slice"].items()))
+    if show_shared:
+        typer.echo(f"  qid câu chung (--show-shared; đừng cho người gán xem): {', '.join(shared)}")
+    else:
+        typer.echo("  không in qid câu chung để người gán không biết câu nào được chấm κ (`--show-shared` nếu người "
+                   "chạy lệnh không gán nhãn)")
+    if rep["apart"]:
+        typer.echo(f"  A bắt đầu ở slice {rep['first_slice']['A']}, B ở slice {rep['first_slice']['B']} — thứ tự câu của hai "
+                   "người khác nhau có chủ đích (không gán cùng một câu chung cùng lúc)")
+    else:
+        typer.secho("  có slice chiếm quá nửa số câu (hoặc chỉ một slice): A và B không lệch nhau được nửa vòng, một số câu "
+                    "chung có thể được hai người gán gần cùng lúc", fg=typer.colors.YELLOW)
     typer.echo(f"{d / 'pool_meta.json'}: snapshot {meta.snapshot} · {meta.collection} · depth {meta.depth} · seed {meta.seed}")
 
 

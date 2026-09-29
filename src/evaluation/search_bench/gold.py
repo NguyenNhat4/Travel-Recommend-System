@@ -9,8 +9,11 @@ Hợp đồng file giữa các bước nằm ở `gold_schema.py` (không sửa 
   là điều kiện cần của "có phòng ≤ X"). Mỗi dòng mang đủ thông tin để app hiển thị mà không cần catalog; filter ghi ra
   tách hai phần: điều kiện cấp parent (`filter_json`) và giá / số khách / ngày ở cấp room (`child_filter_json`).
   → `pool.csv` + `pool.build.json` (snapshot, collection, depth, seed, sha drafts và pool).
-- `split`: các câu chung chọn phân tầng theo slice; câu còn lại chia xen kẽ A/B trong từng slice; mỗi người thấy ứng viên
-  theo một thứ tự xáo riêng → `pool_A.csv`, `pool_B.csv`, `pool_meta.json`.
+- `split`: câu chung phân tầng theo slice (slice có ≥ 2 câu có ≥ 1 câu chung), trong slice lấy mẫu hệ thống theo cỡ
+  pool; câu riêng cân theo số **cặp** (mỗi slice lệch ≤ 1 câu, số cặp thường lệch ≤ 1); mỗi người đi các slice theo
+  khối liền, B lệch nửa vòng so với A; trong khối câu riêng xáo riêng từng người và câu chung rải đều, nên thứ tự câu
+  không cho biết câu nào là câu chung và hai người không gán cùng một câu chung cùng lúc; ứng viên mỗi câu xáo riêng
+  từng người → `pool_A.csv`, `pool_B.csv`, `pool_meta.json`.
 - `kappa` / `merge` / `import` / `check`: xem từng hàm. Mã thoát của nhóm lệnh `sb gold`: 0 đạt · 1 dữ liệu vi phạm luật
   (`RuleViolation`) · 2 lỗi đầu vào (`GoldError`, `SchemaError`: file thiếu, sai định dạng, sai sha).
 """
@@ -134,10 +137,27 @@ def case_ids_for(drafts: list[Draft], raw_cases: list[dict], overrides: dict[str
         else:
             out.append(cands[0])
     if bad:
-        raise GoldError("không map được draft sang case_id (thử `--qid line`):\n  " + "\n  ".join(bad[:20]))
+        raise GoldError("không map được draft sang case_id (thử `--qid line`; câu sửa chỉ có trong kho nhãn local thì "
+                        "chép nó thành dòng NEEDS_EDIT của overrides.tsv — xem `sb gold drafts`):\n  "
+                        + "\n  ".join(bad[:20]))
     dup = [c for c, n in Counter(out).items() if n > 1]
     if dup:
         raise GoldError(f"nhiều draft cùng map về một case_id: {dup[:5]}")
+    return out
+
+
+def local_only_edits(rows: list[dict], raw_cases: list[dict], overrides: dict[str, dict]) -> list[dict]:
+    """Dòng đã chọn mang câu sửa (NEEDS_EDIT) chỉ có trong kho nhãn local (không commit): `drafts_raw.tsv` +
+    `overrides.tsv` không tái hiện được câu này, nên `case_ids_for` — tức `sb gold pool --qid case`, máy khác, test
+    trên drafts.txt đã commit — không map được sang case_id. So khớp đúng như `case_ids_for` (strip + casefold)."""
+    raw_q = {r["case_id"]: r["query"].strip().casefold() for r in raw_cases}
+    out = []
+    for r in rows:
+        q = r["query"].strip().casefold()
+        o = overrides.get(r["case_id"]) or {}
+        edited = (o.get("edited_query") or "").strip().casefold() if o.get("verdict") == "NEEDS_EDIT" else ""
+        if q != raw_q.get(r["case_id"]) and q != edited:
+            out.append(r)
     return out
 
 
@@ -415,30 +435,136 @@ def load_key_index(amenity_vocab_path: Path) -> dict[str, int]:
 
 # ------------------------------------------------------------------ split → pool_A / pool_B / pool_meta
 def overlap_quota(slice_counts: dict[str, int], overlap: int) -> dict[str, int]:
-    """Chia `overlap` theo tỷ lệ slice (largest remainder; hoà → tên slice), không vượt số query của slice."""
+    """Số câu chung mỗi slice, không vượt số câu của slice. Slice có ≥ 2 câu được ít nhất 1 câu chung khi `overlap` ≥ số
+    slice đó (κ phủ mọi slice); phần còn lại chia theo tỷ lệ — largest remainder, hoà → tên slice. Chỉ số nguyên."""
     total = sum(slice_counts.values())
-    raw = {s: overlap * n / total for s, n in slice_counts.items()}
-    quota = {s: min(int(np.floor(v)), slice_counts[s]) for s, v in raw.items()}
-    rest = overlap - sum(quota.values())
-    for s in sorted(raw, key=lambda s: (-(raw[s] - np.floor(raw[s])), s)):
-        if rest <= 0:
+    names = sorted(slice_counts)
+    eligible = [s for s in names if slice_counts[s] >= 2]
+    floor = overlap >= len(eligible)
+    quota = {s: int(floor and slice_counts[s] >= 2) for s in names}
+    for _ in range(overlap - sum(quota.values())):
+        open_ = [s for s in names if quota[s] < slice_counts[s]]
+        if not open_:
             break
-        if quota[s] < slice_counts[s]:
-            quota[s] += 1
-            rest -= 1
-    for s in sorted(slice_counts):              # còn dư (slice nhỏ đã đầy) → dồn sang slice còn chỗ
-        while rest > 0 and quota[s] < slice_counts[s]:
-            quota[s] += 1
-            rest -= 1
+        # max giữ slice đầu tiên khi hoà → tên slice nhỏ hơn thắng
+        s = max(open_, key=lambda s: overlap * slice_counts[s] - quota[s] * total)
+        quota[s] += 1
     return quota
 
 
 LABELER_INDEX = {"A": 0, "B": 1}
+TAG_PICK = 1_000_001        # nhãn luồng RNG (qid_num < 10^5 nên không trùng luồng xáo ứng viên [seed, qid_num, người])
+TAG_POS = 1_000_002
+
+
+def _pick_shared(by_slice: dict[str, list[str]], size: dict[str, int], quota: dict[str, int],
+                 seed: int) -> dict[str, bool]:
+    """Câu chung trong mỗi slice: mẫu hệ thống, điểm đầu ngẫu nhiên, trên các câu xếp theo (cỡ pool, qid) → câu chung
+    trải từ pool nhỏ tới pool lớn; mỗi câu có xác suất vào đúng quota/n. Mỗi slice một luồng RNG riêng."""
+    shared: dict[str, bool] = {}
+    for s, qs in by_slice.items():
+        k = quota[s]
+        if not k:
+            continue
+        cand = sorted(qs, key=lambda q: (size[q], qid_num(q), q))
+        u = np.random.default_rng([seed, TAG_PICK, SLICES.index(s)]).random()
+        for i in range(k):
+            shared[cand[int((i + u) * len(cand) / k)]] = True
+    return shared
+
+
+def _assign_private(by_slice: dict[str, list[str]], size: dict[str, int], shared: dict[str, bool]) -> dict[str, str]:
+    """Câu riêng → "A" / "B", cân theo số cặp (thời gian gán tỷ lệ với số ứng viên, không với số câu).
+
+    Trong mỗi slice xếp câu theo cỡ giảm dần, chia từng cặp (lớn, nhỏ): câu lớn cho bên đang ít cặp hơn; câu lẻ cho bên
+    đang ít câu hơn → mỗi slice và tổng lệch ≤ 1 câu. Sau đó đổi chéo A↔B trong cùng slice (giữ nguyên số câu) chừng nào
+    còn thu hẹp được độ lệch số cặp. Không ngẫu nhiên, không dựa vào nội dung câu."""
+    side: dict[str, str] = {}
+    cnt = {"A": [0, 0], "B": [0, 0]}                      # [số cặp, số câu]
+
+    def give(q: str, x: str) -> None:
+        side[q] = x
+        cnt[x][0] += size[q]
+        cnt[x][1] += 1
+
+    for qs in by_slice.values():
+        priv = sorted((q for q in qs if q not in shared), key=lambda q: (-size[q], qid_num(q), q))
+        for j in range(0, len(priv) - 1, 2):
+            first = "A" if tuple(cnt["A"]) <= tuple(cnt["B"]) else "B"
+            give(priv[j], first)
+            give(priv[j + 1], "B" if first == "A" else "A")
+        if len(priv) % 2:
+            give(priv[-1], "A" if (cnt["A"][1], cnt["A"][0]) <= (cnt["B"][1], cnt["B"][0]) else "B")
+    while True:
+        delta = cnt["A"][0] - cnt["B"][0]
+        best = None
+        for si, qs in enumerate(by_slice.values()):
+            qa = [q for q in qs if side.get(q) == "A"]
+            qb = [q for q in qs if side.get(q) == "B"]
+            for a in qa:
+                for b in qb:
+                    nd = abs(delta - 2 * (size[a] - size[b]))
+                    key = (nd, si, qid_num(a), qid_num(b))
+                    if nd < abs(delta) and (best is None or key < best[0]):
+                        best = (key, a, b)
+        if best is None:                                  # |delta| giảm ngặt mỗi vòng → vòng lặp dừng
+            return side
+        _, a, b = best
+        cnt["A"][0] += size[b] - size[a]
+        cnt["B"][0] += size[a] - size[b]
+        side[a], side[b] = "B", "A"
+
+
+def _rotation(slice_seq: list[str], counts: dict[str, int]) -> int:
+    """Chỉ số r để tổng số câu của slice_seq[:r] gần một nửa nhất (hoà → r nhỏ hơn): B bắt đầu từ slice này."""
+    total = sum(counts[s] for s in slice_seq)
+    best, best_r, cum = None, 0, 0
+    for r, s in enumerate(slice_seq):
+        d = abs(2 * cum - total)
+        if best is None or d < best:
+            best, best_r = d, r
+        cum += counts[s]
+    return best_r
+
+
+def _queue(labeler: str, slices: list[str], by_slice: dict[str, list[str]], side: dict[str, str],
+           shared: dict[str, bool], seed: int) -> list[str]:
+    """Thứ tự câu của một người: từng slice là một khối liền (luật riêng của slice gán liền mạch); trong khối, câu riêng
+    xáo riêng từng người — giữ thứ tự pool (case_id tăng dần) thì câu chung chen vào sẽ lộ vì lệch thứ tự — câu chung đặt
+    cách đều với điểm lệch ngẫu nhiên riêng từng người; tránh hai câu chung liền nhau qua ranh giới khối khi được."""
+    out: list[str] = []
+    for s in slices:
+        # thứ tự rút cố định (câu riêng → câu chung → điểm lệch) để tất định
+        rng = np.random.default_rng([seed, TAG_POS, SLICES.index(s), LABELER_INDEX[labeler]])
+        priv = [q for q in by_slice[s] if side.get(q) == labeler]
+        priv = [priv[i] for i in rng.permutation(len(priv))]
+        sh = [q for q in by_slice[s] if q in shared]
+        if not sh:
+            out += priv
+            continue
+        sh = [sh[i] for i in rng.permutation(len(sh))]
+        m, k = len(priv) + len(sh), len(sh)
+        u = rng.random()
+        pos = [int((i + u) * m / k) for i in range(k)]
+        if out and out[-1] in shared and pos[0] == 0 and pos[-1] + 1 < m:
+            pos = [p + 1 for p in pos]
+        it_p, it_s = iter(priv), iter(sh)
+        out += [next(it_s) if p in pos else next(it_p) for p in range(m)]
+    return out
 
 
 def split_pool(rows: list[PoolRow], overlap: int, seed: int) -> tuple[list[PoolRow], list[PoolRow], list[str]]:
-    """(dòng của A, dòng của B, qid chung). Chung: phân tầng theo slice; còn lại: xen kẽ A/B trong từng slice (đếm tiếp
-    qua các slice nên tổng hai bên lệch nhau tối đa 1); mỗi người một thứ tự xáo riêng trong từng câu."""
+    """(dòng của A, dòng của B, qid chung theo thứ tự pool).
+
+    - Câu chung: `overlap_quota` theo slice (slice có ≥ 2 câu có ≥ 1 câu chung), trong slice lấy mẫu hệ thống theo cỡ pool.
+    - Câu riêng: cân theo số cặp — mỗi slice và tổng lệch ≤ 1 câu, rồi đổi chéo trong slice tới khi không một lần đổi nào
+      thu hẹp được |cặp A − cặp B| (thường ≤ 1; không bảo đảm, vd. mỗi slice chỉ một câu riêng thì không đổi được).
+    - Thứ tự câu: khối slice liền; A đi các slice theo thứ tự pool, B bắt đầu từ slice ở khoảng giữa (lệch nửa vòng) → mỗi
+      câu chung được hai người gán ở hai thời điểm xa nhau, không cùng lúc — cần không slice nào chiếm quá nửa số câu
+      (một slice duy nhất thì A và B cùng bắt đầu, chỉ khác thứ tự trong khối). Trong khối câu riêng xáo riêng từng
+      người, câu chung rải đều → thứ tự câu không cho biết câu nào là câu chung.
+    - Ứng viên trong một câu: xếp theo product_id rồi xáo bằng rng([seed, qid_num, người gán]) — mỗi người một thứ tự.
+    Tất định theo `seed`: không dùng `hash()`, không lặp theo thứ tự của set."""
     order: list[str] = []
     slice_of: dict[str, str] = {}
     by_q: dict[str, list[PoolRow]] = {}
@@ -446,37 +572,50 @@ def split_pool(rows: list[PoolRow], overlap: int, seed: int) -> tuple[list[PoolR
         if r.qid not in by_q:
             order.append(r.qid)
             slice_of[r.qid] = r.slice
-        by_q.setdefault(r.qid, []).append(r)
+            by_q[r.qid] = []
+        by_q[r.qid].append(r)
     n = len(order)
     if not 0 <= overlap < n:
         raise GoldError(f"overlap {overlap} phải trong [0, {n}) (số query của pool)")
-    by_slice: dict[str, list[str]] = {}
+    size = {q: len(by_q[q]) for q in order}
+    by_slice: dict[str, list[str]] = {}                   # slice theo thứ tự xuất hiện trong pool, câu theo thứ tự pool
     for q in order:
         by_slice.setdefault(slice_of[q], []).append(q)
-    quota = overlap_quota({s: len(v) for s, v in by_slice.items()}, overlap)
-    rng = np.random.default_rng(seed)
-    shared: set[str] = set()
-    for s in sorted(by_slice):
-        if quota[s]:
-            shared |= {str(x) for x in rng.choice(by_slice[s], size=quota[s], replace=False)}
-    side: dict[str, str] = {}
-    turn = 0
-    for s in sorted(by_slice):
-        for q in by_slice[s]:
-            if q not in shared:
-                side[q] = "AB"[turn % 2]
-                turn += 1
+    slices = list(by_slice)
+    counts = {s: len(qs) for s, qs in by_slice.items()}
+    shared = _pick_shared(by_slice, size, overlap_quota(counts, overlap), seed)
+    side = _assign_private(by_slice, size, shared)
+    r0 = _rotation(slices, counts)
+    queues = {"A": _queue("A", slices, by_slice, side, shared, seed),
+              "B": _queue("B", slices[r0:] + slices[:r0], by_slice, side, shared, seed)}
 
     def rows_for(labeler: str) -> list[PoolRow]:
         out: list[PoolRow] = []
-        for q in order:
-            if q in shared or side[q] == labeler:
-                rs = sorted(by_q[q], key=lambda r: r.product_id)
-                perm = np.random.default_rng([seed, qid_num(q), LABELER_INDEX[labeler]]).permutation(len(rs))
-                out += [rs[i].model_copy(update={"is_overlap": q in shared}) for i in perm]
+        for q in queues[labeler]:
+            rs = sorted(by_q[q], key=lambda r: r.product_id)
+            perm = np.random.default_rng([seed, qid_num(q), LABELER_INDEX[labeler]]).permutation(len(rs))
+            out += [rs[i].model_copy(update={"is_overlap": q in shared}) for i in perm]
         return out
 
     return rows_for("A"), rows_for("B"), [q for q in order if q in shared]
+
+
+def split_report(rows_a: list[PoolRow], rows_b: list[PoolRow], shared: list[str]) -> dict:
+    """Số liệu để in sau `split` (không có qid câu chung): câu chung theo slice (k/n), số cặp chung, lệch số cặp, slice
+    đầu của mỗi người, và `apart` — hai người có bắt đầu ở slice khác nhau và không slice nào chiếm quá nửa số câu (điều
+    kiện để mỗi câu chung được gán ở hai thời điểm xa nhau)."""
+    n_slice: dict[str, set] = {}
+    for r in (*rows_a, *rows_b):
+        n_slice.setdefault(r.slice, set()).add(r.qid)
+    shared_set = set(shared)
+    per = {s: f"{sum(q in shared_set for q in qs)}/{len(qs)}" for s, qs in n_slice.items()}
+    first = {"A": rows_a[0].slice if rows_a else None, "B": rows_b[0].slice if rows_b else None}
+    total = sum(len(qs) for qs in n_slice.values())
+    return {"overlap_by_slice": per,
+            "overlap_pairs": sum(r.is_overlap for r in rows_a),
+            "delta_pairs": len(rows_a) - len(rows_b),
+            "first_slice": first,
+            "apart": first["A"] != first["B"] and all(2 * len(qs) <= total for qs in n_slice.values())}
 
 
 def write_split(rows_a: list[PoolRow], rows_b: list[PoolRow], shared: list[str], build: PoolBuild, out_dir: Path, *,

@@ -228,3 +228,27 @@ def test_split_cli_writes_contract_and_checks_pool_sha(tmp_path):
     assert ps.meta.snapshot == "2026-09-23" and len(ps.meta.overlap_qids) == 3
     pool.write_bytes(pool.read_bytes() + b"\n")
     assert_exit(run("split", "--pool", pool, "--overlap", 3, "--out-dir", out), 2, "đã đổi sau khi")
+
+
+def test_split_cli_hides_shared_qids_by_default(tmp_path):
+    """Người chạy `split` có thể là người gán: mặc định chỉ in số câu chung, không in qid; `--show-shared` mới in."""
+    from evaluation.search_bench import gold
+    from evaluation.search_bench.tests.test_gold import _build, _synthetic_rows
+    rows = _synthetic_rows({"dest_type": 6, "parent_child": 4, "named_entity": 5})
+    pool = tmp_path / "pool.csv"
+    write_pool_csv(rows, pool)
+    gold.write_pool_build(_build(pool), gold.pool_build_path(pool))
+    out = tmp_path / "out"
+    out.mkdir()
+    res = run("split", "--pool", pool, "--overlap", 4, "--out-dir", out)
+    assert_exit(res, 0, "chung 4 câu")
+    shared = gold.load_pool_set(out / "pool_meta.json").meta.overlap_qids
+    assert not any(q in res.output for q in shared) and "--show-shared" in res.output
+    assert "B ở slice" in res.output and "lệch số cặp" in res.output
+    res = run("split", "--pool", pool, "--overlap", 4, "--out-dir", out, "--show-shared")
+    assert_exit(res, 0, "qid câu chung")
+    assert all(q in res.output for q in shared)
+    one = _synthetic_rows({"named_entity": 8})
+    write_pool_csv(one, pool)
+    gold.write_pool_build(_build(pool), gold.pool_build_path(pool))
+    assert_exit(run("split", "--pool", pool, "--overlap", 2, "--out-dir", out), 0, "không lệch nhau được nửa vòng")

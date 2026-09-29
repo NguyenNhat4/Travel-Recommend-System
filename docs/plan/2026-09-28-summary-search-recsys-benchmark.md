@@ -75,7 +75,7 @@
 - **Hạ tầng:** Weaviate 1.37.3 riêng cho bench; Cohere client có cache và pacer token; `sb doctor` xanh.
 - **B0** = text builder production `catalog-text-v2`. Đã embed 3.183 vector (~$0,04); token p99 234, qua gate < 450.
 - **`metrics.py`:** Recall@5/10, nDCG@10, MRR@10, Judged@10, constraint precision, parent dup rate, zero-result…, kèm paired bootstrap.
-- **Gold draft:** 672 câu nháp → 200 câu trong `gold/drafts.txt`, đủ quota 13 slice.
+- **Gold draft:** 672 câu nháp → 200 câu trong `gold/drafts.txt`, đủ quota 13 slice. *(29/09: luật mới, chốt 132 câu — mỗi slice ≥ 3.)*
 - **Hợp đồng gold:** `gold_schema.py` + fixture `gold_small/`.
 - **CLI:** `sb gold pool / split / kappa / merge / import / check`, test khớp đáp án fixture.
 - **Hướng dẫn gán nhãn:** `docs/spec/bench/gold-guide.md`.
@@ -83,10 +83,10 @@
 
 **Chưa làm, theo thứ tự:**
 
-1. Rà 42 câu do `--fill` tự lấp; sửa `c0241`, `c0503`, `c0531`. Thêm 2 câu dự phòng cho 5 slice đang đúng 10 câu (`amenity_multi`, `amenity_negation`, `amenity_offtaxonomy`, `cross_vertical`, `out_of_catalog`). Sau đó đóng băng `drafts.txt`.
+1. Rà 42 câu do `--fill` tự lấp; sửa `c0241`, `c0503`, `c0531`. Thêm 2 câu dự phòng cho 5 slice đang đúng 10 câu (`amenity_multi`, `amenity_negation`, `amenity_offtaxonomy`, `cross_vertical`, `out_of_catalog`). Sau đó đóng băng `drafts.txt`. *(29/09: xong — không cần câu dự phòng nữa; `drafts.txt` chốt 132 câu.)*
 2. Hai người đọc `gold-guide.md` và thống nhất các ví dụ khó.
 3. App gán nhãn 0/1/2 (việc máy 2, `docs/spec/bench/prompts/may2-label-app.md`). App Streamlit hiện có chỉ soát câu hỏi (KEEP / REJECT / NEEDS_EDIT).
-4. Chạy pool thật vào `gold/` → split → gán nhãn (~2.900 cặp/người) → κ ≥ 0,6 → merge → import → tag `gold_v1`.
+4. Chạy pool thật vào `gold/` → split → gán nhãn (~2.000 cặp/người với 132 câu chốt 29/09) → κ ≥ 0,6 → merge → import → tag `gold_v1`.
 5. Toàn bộ Ngày 4–8:
    - mới có `arms/B0.yaml`, chưa có `stages.yaml`;
    - chưa chạy cổng nào (SAN, E1–E6, S0–S9, F1, P, FINAL);

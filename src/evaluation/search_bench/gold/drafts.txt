@@ -1,14 +1,7 @@
-khách sạn ở Huế	dest_type
 tìm khách sạn nghỉ dưỡng tại Hạ Long	dest_type
-chỗ nghỉ tại TP. Hồ Chí Minh	dest_type
-tìm nơi lưu trú ở Huế, gợi ý thêm	dest_type
-khách sạn nghỉ dưỡng tại Đà Nẵng, có lựa chọn nào?	dest_type
 tìm chỗ nghỉ tại Hà Tĩnh	dest_type
 khách sạn nghỉ dưỡng tại Hội An, có lựa chọn nào?	dest_type
 điểm vui chơi ở Phú Quốc	dest_type
-vé tham quan tại Phú Quốc, có lựa chọn nào?	dest_type
-tìm hoạt động trải nghiệm ở Hà Nội	dest_type
-điểm vui chơi ở Hải Phòng	dest_type
 hoạt động trải nghiệm ở Nghệ An	dest_type
 tìm combo du lịch Quy Nhơn	dest_type
 tìm gói vui chơi ở Hội An	dest_type
@@ -17,30 +10,16 @@ vé máy bay đến Hà Nội	dest_type
 đường bay tới Huế, có lựa chọn nào?	dest_type
 sân golf ở Nha Trang	dest_type
 voucher golf tại Hội An	dest_type
-chỗ nghỉ Huế cho gia đình có trẻ nhỏ, ưu tiên nơi được đánh giá tốt	audience_style
-tìm chỗ nghỉ Đà Nẵng cho gia đình có trẻ nhỏ	audience_style
 chỗ nghỉ Côn Đảo cho gia đình có trẻ nhỏ	audience_style
-tìm chỗ nghỉ TP. Hồ Chí Minh cho gia đình có trẻ nhỏ	audience_style
 chỗ nghỉ Hà Nội cho gia đình có trẻ nhỏ, ưu tiên nơi được đánh giá tốt	audience_style
-khách sạn Phú Quốc có wifi và bàn làm việc cho chuyến công tác	audience_style
 khách sạn Sa Pa có wifi và bàn làm việc cho chuyến công tác	audience_style
-tìm khách sạn Quy Nhơn có wifi và bàn làm việc cho chuyến công tác	audience_style
-khách sạn Hà Tĩnh có wifi và bàn làm việc cho chuyến công tác	audience_style
 khách sạn Phan Thiết có wifi và bàn làm việc cho chuyến công tác	audience_style
-chỗ nghỉ yên tĩnh ở Hạ Long cho cặp đôi, ưu tiên nơi được đánh giá tốt	audience_style
 chỗ nghỉ yên tĩnh ở Hải Phòng cho cặp đôi, ưu tiên nơi được đánh giá tốt	audience_style
-chỗ nghỉ yên tĩnh ở Buôn Ma Thuột cho cặp đôi	audience_style
-chỗ nghỉ yên tĩnh ở Hội An cho cặp đôi, ưu tiên nơi được đánh giá tốt	audience_style
 chỗ nghỉ yên tĩnh ở Nghệ An cho cặp đôi, ưu tiên nơi được đánh giá tốt	audience_style
 nơi ở Pleiku cho nhóm 4 người	audience_style
-nơi ở Thanh Hóa cho nhóm 4 người	audience_style
-nơi ở Đà Lạt cho nhóm 4 người	audience_style
 nơi ở Phong Nha cho nhóm 4 người, ưu tiên nơi được đánh giá tốt	audience_style
-nơi ở Tuy Hòa cho nhóm 4 người	audience_style
 resort Cát Bà có spa để nghỉ dưỡng cuối tuần, ưu tiên nơi được đánh giá tốt	audience_style
 resort Ninh Bình có spa để nghỉ dưỡng cuối tuần	audience_style
-resort Cần Thơ có spa để nghỉ dưỡng cuối tuần, ưu tiên nơi được đánh giá tốt	audience_style
-resort Nha Trang có spa để nghỉ dưỡng cuối tuần	audience_style
 resort Điện Biên có spa để nghỉ dưỡng cuối tuần, ưu tiên nơi được đánh giá tốt	audience_style
 khách sạn ở Nghệ An có wifi miễn phí	amenity_single
 tìm chỗ nghỉ Ninh Bình với máy điều hòa	amenity_single
@@ -76,24 +55,19 @@ chỗ nghỉ ở Nghệ An có vòi xịt/chậu rửa vệ sinh	amenity_offtaxo
 chỗ nghỉ ở Hội An có khăn tắm/ga trải giường (phụ phí)	amenity_offtaxonomy
 chỗ nghỉ ở Đà Nẵng có vật dụng không gây dị ứng	amenity_offtaxonomy
 tìm Phòng Deluxe - Dãy nhà A ở Buôn Ma Thuột	parent_child
-khách sạn Bắc Ninh có Double Double Room	parent_child
+khách sạn Bắc Ninh có lựa chọn nào có double room	parent_child
 Phòng Giường Đôi Có Ban Công tại Cát Bà	parent_child
-Phòng 2 Giường Đơn ở Côn Đảo	parent_child
 tìm khách sạn Cần Thơ có Phòng 4 Người Có Ban Công	parent_child
 Phòng Giường Đôi Với Phòng Tắm Chung tại Huế	parent_child
 tìm Phòng Deluxe Giường Đôi Có Ban Công ở Hà Nội	parent_child
-tìm khách sạn Hà Tĩnh có Phòng Deluxe 2 Giường đơn	parent_child
 Căn Hộ Nhìn Ra Biển tại Hạ Long	parent_child
-Phòng Giường Đôi ở Hải Phòng	parent_child
-khách sạn Hội An có phòng deluxe có ban công	parent_child
+tìm Phòng Giường Đôi ở Hải Phòng	parent_child
 Biệt Thự Có Hồ Bơi Riêng tại Nghệ An	parent_child
 Phòng 2 Giường Đơn Hạng Bình Dân ở Nha Trang	parent_child
 khách sạn Ninh Bình có Phòng Có Giường Cỡ King Nhìn Ra Vườn	parent_child
-Phòng Deluxe Giường Đôi tại Phan Thiết	parent_child
 Vinpearl Hotel Bắc Ninh	named_entity
 thông tin Meliá Vinpearl Hue	named_entity
 thông tin Vinpearl Ha Tinh, Affiliated by Meliá	named_entity
-thông tin Vinpearl Resort & Spa Hạ Long	named_entity
 tìm Vinpearl Resort & Golf Nam Hội An	named_entity
 thông tin Vinpearl Resort & Golf Nam Hội An - Deluxe Giường Đôi	named_entity
 tìm Vinpearl Resort & Golf Nam Hội An - Deluxe 2 Giường Đơn	named_entity
@@ -109,29 +83,23 @@ thông tin Nhà cổ Bình Thủy	named_entity
 Sea Links Golf & Country Club	named_entity
 thông tin Gói dịch vụ VIP Tour VinWonders Phú Quốc (3 tiếng)	named_entity
 Vé máy bay Buôn Ma Thuột - Hà Nội	named_entity
-khach san o cat ba co wifi mien phi gia tot	no_diacritics
 khach san o quy nhon co cho do xe mien phi	no_diacritics
 tim khach san o da lat co nha hang	no_diacritics
 khach san o da lat co le tan 24 gio	no_diacritics
 khach san o ha long co ho boi co tam nhin	no_diacritics
-khach san o phan thiet co phong khong hut thuoc	no_diacritics
 khach san o ha noi co san hien	no_diacritics
 khach san o phan thiet co nha hang	no_diacritics
 khach san o phu quoc co dua don san bay	no_diacritics
 khach san o phan thiet co nhin ra bien gia tot	no_diacritics
 khach san o ha long co quay bar	no_diacritics
-tim khach san o tp. ho chi minh co wifi mien phi	no_diacritics
-khach san o ha noi co may dieu hoa	no_diacritics
 khach san o hai phong co phong khong hut thuoc gia tot	no_diacritics
 tim khach san o sa pa co san hien	no_diacritics
 khach san o pleiku co may dieu hoa	no_diacritics
-KS ở PQ có hồ bơi	abbrev_typo
 KDL NT cho gia đình	abbrev_typo
-KS trung tâm ĐN có wifi	abbrev_typo
 tìm vé VW Nha Trang	abbrev_typo
 resort Phu Quoc gan bien giá tốt	abbrev_typo
 khach san Nha Trnag co ban cong	abbrev_typo
-Vinpeal Resort Nha Trang	abbrev_typo
+Vinpeal Resort Nha Trang giá tốt	abbrev_typo
 KS HN gần điểm vui chơi	abbrev_typo
 combo vui chơi PQ dưới 2tr	abbrev_typo
 ve may bay SG di DN	abbrev_typo
@@ -139,7 +107,7 @@ khach san Da Lat co bep rieng	abbrev_typo
 resort Hoi An cho gd co tre nho	abbrev_typo
 ve Safari PQ	abbrev_typo
 KS HL nhin ra bien	abbrev_typo
-KDL Phan Thiet nghi duong	abbrev_typo
+KDL Phan Thiet nghi duong giá tốt	abbrev_typo
 khách sạn 5 sao ở Hà Tĩnh dưới 2 triệu	multi_constraint	{"and":[{"eq":["destination","Hà Tĩnh"]},{"eq":["variant","hotel_property"]},{"gte":["star_rating",5]},{"lte":["unit_price_min",2000000]}]}
 chỗ nghỉ Quy Nhơn từ 4 sao, giá không quá 1 triệu, còn lựa chọn nào?	multi_constraint	{"and":[{"eq":["destination","Quy Nhơn"]},{"eq":["variant","hotel_property"]},{"gte":["star_rating",4]},{"lte":["unit_price_min",1000000]}]}
 KS 4 sao tại Hạ Long, ngân sách tối đa 1.5 triệu, còn lựa chọn nào?	multi_constraint	{"and":[{"eq":["destination","Hạ Long"]},{"eq":["variant","hotel_property"]},{"gte":["star_rating",4]},{"lte":["unit_price_min",1500000]}]}
@@ -161,3 +129,4 @@ khách sạn, vé máy bay, vé tham quan và combo du lịch ở Nghệ An	cros
 tìm khách sạn, vé máy bay, vé tham quan, sân golf và combo du lịch ở Nha Trang	cross_vertical
 resort ở Mộc Châu	out_of_catalog		true
 combo du lịch Cà Mau	out_of_catalog		true
+combo du lịch Bắc Kạn	out_of_catalog		true

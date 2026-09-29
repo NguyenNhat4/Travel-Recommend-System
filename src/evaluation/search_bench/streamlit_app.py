@@ -397,6 +397,29 @@ def _add_candidates() -> None:
     ss["sel_slice"] = "Tất cả"
 
 
+def _copy_local_edits(case_ids: list[str]) -> None:
+    """Callback: chép nguyên câu NEEDS_EDIT chỉ có trong kho nhãn local sang overrides.tsv (drafts.txt không đổi)."""
+    from evaluation.search_bench import draft_selection as S
+    from evaluation.search_bench import gold
+    author = (st.session_state.get("author_sel") or st.session_state.get("author") or "").strip()
+    if not author:
+        _flash("error", "Chưa ghi gì: nhập tên người sửa ở sidebar trước.", "local")
+        return
+    try:
+        sel = _selection()
+        rows = [r for c in case_ids for r in S.decision_rows(sel, c, "copy_local", author=author)]
+        S.upsert_overrides(GOLD_DIR / "overrides.tsv", rows, set(sel.by_id))
+        after = _selection()
+        left = gold.local_only_edits(after.rows, after.cases, after.overrides)
+        removed, added = S.diff_with_file(after, GOLD_DIR / "drafts.txt")
+    except Exception as exc:
+        _flash("error", f"Không ghi được overrides.tsv: {exc}", "local")
+        return
+    _flash("success" if not left else "warning",
+           f"Đã chép {len(rows)} câu vào gold/overrides.tsv ({', '.join(case_ids)}); còn {len(left)} câu chỉ có ở kho "
+           f"local; drafts.txt {'khớp' if not (removed or added) else f'lệch {len(removed)}/{len(added)} dòng'}.", "local")
+
+
 def _write_drafts_file() -> None:
     from evaluation.search_bench import draft_selection as S
     sel = _selection()
@@ -415,6 +438,7 @@ def _next_fill(ids: list[str], fill_ids: set[str]) -> None:
 
 def render_selection() -> None:
     from evaluation.search_bench import draft_selection as S
+    from evaluation.search_bench import gold
 
     ss = st.session_state
     n_min = int(_config().gold.min_per_slice)
@@ -464,6 +488,16 @@ def render_selection() -> None:
         _show_flash("write")
     else:
         st.success("gold/drafts.txt khớp lựa chọn hiện tại.", icon="✔")
+    local = gold.local_only_edits(sel.rows, sel.cases, sel.overrides)
+    if local:
+        st.warning(f"{len(local)} câu sửa chỉ có trong kho nhãn local (không commit): `sb gold pool --qid case` và máy "
+                   "khác không map được sang case_id. Bấm nút dưới để chép nguyên các câu này thành dòng NEEDS_EDIT của "
+                   "overrides.tsv (drafts.txt không đổi): " + ", ".join(f"`{r['case_id']}` {r['query']}" for r in local))
+        st.button("Chép vào overrides.tsv", on_click=_copy_local_edits, args=([r["case_id"] for r in local],),
+                  disabled=not author)
+        if not author:
+            _need_author_note()
+        _show_flash("local")
 
     with st.expander("Số câu theo slice", expanded=bool(short)):
         st.dataframe(status, hide_index=True, width="stretch",

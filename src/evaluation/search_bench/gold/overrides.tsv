@@ -24,7 +24,7 @@ c0511	REJECT		other	phản biện 24/09 trên snapshot 2026-09-23: filter quá r
 c0205	NEEDS_EDIT	chỗ nghỉ Phan Thiết có spa		phản biện 24/09 trên snapshot 2026-09-23: "bồn tắm" là khoá raw:bon-tam → sai slice amenity_single; spa là khoá seed, 32% property Phan Thiết, ref c2dc6824 có spa
 c0208	NEEDS_EDIT	Đà Lạt có nơi lưu trú nào có dịch vụ giặt ủi		phản biện 24/09 trên snapshot 2026-09-23: "sân hiên" là khoá raw:san-hien → sai slice; laundry là khoá seed, 25% property Đà Lạt, ref 3d5cbfc5 có laundry
 c0202	NEEDS_EDIT	khách sạn ở Phú Quốc có thang máy		phản biện 24/09 trên snapshot 2026-09-23: non_smoking phủ 79% property Phú Quốc → ràng buộc yếu; elevator 42%, ref 20c08a1d có elevator
-c0301	NEEDS_EDIT	khách sạn Hội An có phòng deluxe có ban công		phản biện 24/09 trên snapshot 2026-09-23: bỏ tên phòng dán nguyên từ catalog ("Phòng Deluxe Có Ban Công/Sân Hiên"), QAnh đã đánh unnatural
+c0301	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
 c0403	NEEDS_EDIT	khach san o phu quoc co dua don san bay		phản biện 24/09 trên snapshot 2026-09-23: ý định "lễ tân 24 giờ" thứ hai trong no_diacritics; đổi sang airport_shuttle (57% Phú Quốc), ref fa5d4cd4 có khoá này
 c0409	NEEDS_EDIT	khach san o ha long co quay bar		phản biện 24/09 trên snapshot 2026-09-23: ý định "không hút thuốc" thứ ba trong no_diacritics; đổi sang bar (34% Hạ Long). Ref 79a1b4b4 là du thuyền — người gán pool nên dựa vào khách sạn thật
 c0517	NEEDS_EDIT	khách sạn 3 sao ở Nha Trang dưới 500 nghìn		phản biện 24/09 trên snapshot 2026-09-23: "0.5 triệu" không phải cách người thật gõ; filter giữ nguyên lte 500000
@@ -49,3 +49,23 @@ c0160	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
 c0159	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
 c0148	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
 c0127	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0139	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0161	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0142	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0132	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0293	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0274	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0298	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0313	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0280	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0282	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0327	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0378	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0416	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0391	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0418	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0454	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0442	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0478	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0436	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0276	NEEDS_EDIT	khách sạn Bắc Ninh có lựa chọn nào có double room		chép nguyên NEEDS_EDIT của QAnh (app soát câu, 2026-09-24T03:43Z) từ kho nhãn local để drafts.txt map được sang case_id từ file commit (sb gold pool --qid case), 2026-09-29

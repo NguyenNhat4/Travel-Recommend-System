@@ -247,10 +247,18 @@ def decision_rows(sel: Selection, case_id: str, action: str, *, chosen: str | No
                   note: str = "", edited: str = "", today: date | None = None) -> list[dict]:
     """Dòng overrides cho một thao tác: `add` (thêm câu chưa chọn) · `replace` (cần chosen) · `keep` · `drop` ·
     `rewrite` (cần edited: câu viết lại cùng ý định → NEEDS_EDIT) · `replace_new` (cần chosen = case vừa thêm bằng
-    `draft_authoring.append_intent`)."""
+    `draft_authoring.append_intent`) · `copy_local` (chép nguyên câu NEEDS_EDIT chỉ có trong kho nhãn local sang
+    overrides.tsv — `gold.local_only_edits` — để drafts.txt map được case_id từ file commit)."""
     when = (today or date.today()).isoformat()
     who = author or "không ghi"
     extra = f": {note.strip()}" if note and note.strip() else ""
+    if action == "copy_local":
+        d = sel.decisions.get(case_id) or {}
+        if d.get("verdict") != "NEEDS_EDIT" or not d.get("edited_query"):
+            raise ValueError(f"{case_id} không có câu NEEDS_EDIT trong kho nhãn")
+        return [{"case_id": case_id, "verdict": "NEEDS_EDIT", "edited_query": d["edited_query"].strip(),
+                 "note": f"chép nguyên NEEDS_EDIT của {d.get('annotator') or 'không rõ'} từ kho nhãn local ngày {when} "
+                         f"qua app ({who}) — để drafts.txt map được case_id từ file commit{extra}"}]
     if action == "rewrite":
         if not edited.strip():
             raise ValueError("rewrite cần câu thay thế")

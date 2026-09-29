@@ -8,7 +8,7 @@ Nhánh: `feat/label-app`, tách từ main sau commit "gold: schema + fixtures (b
 
 ## Mục tiêu
 
-App hiện chỉ có chế độ soát câu hỏi (KEEP / REJECT / NEEDS_EDIT). Cần thêm chế độ **Gán nhãn relevance**. Người A và người B mỗi người gán khoảng 112 câu (≈ 87 câu riêng + 25 câu chung) × 26 ứng viên ≈ 2.900 cặp và xuất ra `gold/labels/labels_<X>.csv` đúng hợp đồng. Máy 1 làm CLI song song; hai bên chỉ nối với nhau qua file.
+App hiện chỉ có chế độ soát câu hỏi (KEEP / REJECT / NEEDS_EDIT). Cần thêm chế độ **Gán nhãn relevance**. Người A và người B mỗi người gán khoảng 78–79 câu (25 câu chung + 53–54 câu riêng) × ~25 ứng viên ≈ 2.000 cặp (drafts chốt 29/09: 132 câu; trước đó 200 câu → ≈ 112 câu / 2.900 cặp) và xuất ra `gold/labels/labels_<X>.csv` đúng hợp đồng. Máy 1 làm CLI song song; hai bên chỉ nối với nhau qua file.
 
 ## Đọc trước
 

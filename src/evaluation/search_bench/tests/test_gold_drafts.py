@@ -274,3 +274,70 @@ def test_write_drafts_uses_lf(tmp_path):
                           {"case_id": "c0002", "query": "resort ở Sapa", "slice": "out_of_catalog", "filter_json": "",
                            "expected_no_result": "true"}])
     assert p.read_bytes() == "resort ở Huế\tdest_type\nresort ở Sapa\tout_of_catalog\t\ttrue\n".encode("utf-8")
+
+
+def test_local_only_edits_bao_cau_sua_chi_co_o_kho_nhan_local(tmp_path, raw_tsv):
+    """Câu NEEDS_EDIT chỉ nằm trong kho nhãn local thì file commit không map được sang case_id; chép sang
+    overrides.tsv là hết báo và `case_ids_for` (tức `sb gold pool --qid case`) map được."""
+    from evaluation.search_bench.gold import apply_overrides, case_ids_for, local_only_edits, read_overrides
+
+    cases = read_draft_cases(raw_tsv)
+    events = [_event("c0001", "qanh", "KEEP", at="2026-09-24T01:00:00+00:00"),
+              _event("c0004", "qanh", "NEEDS_EDIT", at="2026-09-24T01:00:00+00:00", edited="Khách sạn Huế "),
+              _event("c0007", "qanh", "KEEP", at="2026-09-24T01:00:00+00:00", slice_="out_of_catalog")]
+    decisions, conflicts = resolve_decisions(events)
+    rows, _ = select_drafts(cases, decisions, QUOTA)
+    assert [r["case_id"] for r in local_only_edits(rows, cases, {})] == ["c0004"]
+    drafts = tmp_path / "drafts.txt"
+    write_drafts(drafts, rows)
+    ds = parse_drafts(drafts, list(QUOTA), {})
+    with pytest.raises(GoldError, match="overrides.tsv"):
+        case_ids_for(ds, cases, {})
+    ov = read_overrides(_overrides(tmp_path, "c0004\tNEEDS_EDIT\tkhách sạn huế\t\tchép từ kho nhãn local"),
+                        {r["case_id"] for r in cases})
+    decisions, conflicts = apply_overrides(decisions, conflicts, ov)
+    rows, _ = select_drafts(cases, decisions, QUOTA)
+    assert local_only_edits(rows, cases, ov) == []                              # so khớp strip + casefold như case_ids_for
+    assert case_ids_for(ds, cases, ov) == ["c0001", "c0004", "c0007"]
+
+
+def test_local_only_edits_bo_qua_khac_hoa_thuong_va_khoang_trang(raw_tsv):
+    """Câu sửa chỉ khác câu gốc ở hoa / thường / khoảng trắng vẫn map được (`case_ids_for` so strip + casefold) → không báo."""
+    from evaluation.search_bench.gold import local_only_edits
+
+    cases = read_draft_cases(raw_tsv)
+    events = [_event("c0001", "qanh", "NEEDS_EDIT", at="2026-09-24T01:00:00+00:00", edited="  Khách Sạn Ở Nơi 1 "),
+              _event("c0004", "qanh", "NEEDS_EDIT", at="2026-09-24T01:00:00+00:00", edited="khách sạn ở nơi bốn")]
+    decisions, _ = resolve_decisions(events)
+    rows, _ = select_drafts(cases, decisions, QUOTA)
+    assert [r["case_id"] for r in rows] == ["c0001", "c0004"]
+    assert [r["case_id"] for r in local_only_edits(rows, cases, {})] == ["c0004"]
+
+
+def test_copy_local_ghi_needs_edit_vao_overrides(tmp_path, raw_tsv):
+    """App “Chép vào overrides.tsv”: `decision_rows(copy_local)` + `upsert_overrides` → hết câu chỉ có ở kho local,
+    drafts.txt không đổi."""
+    from evaluation.search_bench import draft_selection as S
+    from evaluation.search_bench.gold import local_only_edits
+    from evaluation.search_bench.labeling import JsonlLabelStore
+
+    gdir = tmp_path / "g"
+    gdir.mkdir()
+    (gdir / "drafts_raw.tsv").write_bytes(raw_tsv.read_bytes())
+    store = JsonlLabelStore(tmp_path / "labels.jsonl")
+    for e in (_event("c0001", "qanh", "KEEP", at="2026-09-24T01:00:00+00:00"),
+              _event("c0004", "qanh", "NEEDS_EDIT", at="2026-09-24T01:00:00+00:00", edited="khách sạn Huế")):
+        store.append(e)
+    sel = S.compute(gdir, tmp_path / "labels.jsonl", QUOTA)
+    S.write_drafts(sel, gdir / "drafts.txt")
+    local = local_only_edits(sel.rows, sel.cases, sel.overrides)
+    assert [r["case_id"] for r in local] == ["c0004"]
+    with pytest.raises(ValueError, match="NEEDS_EDIT"):
+        S.decision_rows(sel, "c0001", "copy_local", author="tester")
+    rows = S.decision_rows(sel, "c0004", "copy_local", author="tester")
+    assert rows[0]["verdict"] == "NEEDS_EDIT" and rows[0]["edited_query"] == "khách sạn Huế"
+    assert "qanh" in rows[0]["note"] and "tester" in rows[0]["note"]
+    S.upsert_overrides(gdir / "overrides.tsv", rows, set(sel.by_id))
+    after = S.compute(gdir, tmp_path / "labels.jsonl", QUOTA)
+    assert local_only_edits(after.rows, after.cases, after.overrides) == []
+    assert S.diff_with_file(after, gdir / "drafts.txt") == ([], [])
