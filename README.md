@@ -78,6 +78,8 @@ Luôn `source .venv/bin/activate` trước khi chạy các lệnh dưới.
 | Muốn làm gì | Lệnh | Mở ở đâu |
 |---|---|---|
 | Chạy web đầy đủ (FastAPI + Next.js) | `make web` | http://localhost:3000 |
+| Build frontend image bằng Docker Compose | `docker compose build frontend` | image `travel-recommendation-product-frontend` |
+| Chạy Backend + Frontend trong Docker | `docker compose up -d --build backend frontend` | http://localhost:3000 |
 | Thử trợ lý lịch trình bằng UI Streamlit | `make chat` | http://127.0.0.1:8502 |
 | Chỉ chạy backend, tự reload khi sửa code | `make backend-local` | http://127.0.0.1:8000/docs |
 | Chạy backend trong Docker | `make backend` (log: `make backend-logs`, dừng: `make backend-stop`) | http://localhost:8000/health |
@@ -133,6 +135,7 @@ curl http://127.0.0.1:8000/api/v1/assistant/status    # llmMode: live | disabled
 | Weaviate (vector sản phẩm) | 8080, 50051 | `make index-vectors` |
 | FastAPI backend | 8000 | `make web` / `make chat` / `make backend-local` |
 | Next.js web + BFF | 3000 | `make web` |
+| Next.js web + BFF trong Docker | 3000 | `docker compose up -d frontend` |
 | Streamlit (demo trợ lý) | 8502 | `make chat` |
 
 Dữ liệu Postgres và Weaviate nằm trong Docker volume riêng trên máy của từng người. Không chia sẻ hay commit các
