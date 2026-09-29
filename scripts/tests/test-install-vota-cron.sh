@@ -17,13 +17,13 @@ printf '%s\n' 'MAILTO=ops@example.test' '5 * * * * /usr/local/bin/other-job' > "
 
 # 1. Default = legacy, exactly the line the current CD installs.
 bash "$installer" --image registry/daily:latest --runner "$runner" --crontab-file "$tab" >/dev/null
-expected="0 2 * * * IMAGE='registry/daily:latest' DATA_DIR='/srv/vota/daily-data' ENV_FILE='/etc/vota/daily.env' PULL=1 $runner run"
+expected="0 2 * * * IMAGE='registry/daily:latest' DATA_DIR='/srv/vota/daily-data' ENV_FILE='/etc/vota/daily.env' PULL=0 $runner run"
 grep -qxF "$expected" "$tab" || fail "default line changed"
 [ "$(blocks)" = 1 ] || fail "expected one managed block"
 
 # 2. Switching to the fresh job replaces the legacy entry; unrelated lines are kept.
 bash "$installer" --job fresh --image registry/fresh:latest --runner "$runner" --crontab-file "$tab" >/dev/null
-expected="*/15 * * * * FRESH_IMAGE='registry/fresh:latest' FRESH_DATA_DIR='/srv/vota/fresh-catalog-data' CATALOG_ENV_FILE='/etc/vota/fresh-catalog.env' CATALOG_LOG_DIR='/srv/vota/fresh-catalog-logs' PULL=1 $runner fresh-run tick"
+expected="*/15 * * * * FRESH_IMAGE='registry/fresh:latest' FRESH_DATA_DIR='/srv/vota/fresh-catalog-data' CATALOG_ENV_FILE='/etc/vota/fresh-catalog.env' CATALOG_LOG_DIR='/srv/vota/fresh-catalog-logs' PULL=0 $runner fresh-run tick"
 grep -qxF "$expected" "$tab" || fail "fresh line missing"
 grep -q " run$" "$tab" && fail "legacy entry still scheduled"
 [ "$(blocks)" = 1 ] || fail "expected one managed block after switch"
@@ -49,5 +49,11 @@ fi
 if bash "$installer" --job fresh --image r/x:latest --runner "$runner" --log-dir relative --crontab-file "$tab" >/dev/null 2>&1; then
   fail "relative --log-dir accepted"
 fi
+
+# 5. Immutable digest references are accepted for deployed jobs.
+digest_image='asia-southeast1-docker.pkg.dev/project/repo/vota-fresh-catalog@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+bash "$installer" --job fresh --image "$digest_image" --runner "$runner" --crontab-file "$tab" >/dev/null
+grep -qxF "*/15 * * * * FRESH_IMAGE='$digest_image' FRESH_DATA_DIR='/srv/vota/fresh-catalog-data' CATALOG_ENV_FILE='/etc/vota/fresh-catalog.env' CATALOG_LOG_DIR='/srv/vota/fresh-catalog-logs' PULL=0 $runner fresh-run tick" "$tab" \
+  || fail "immutable digest image was rejected or not installed"
 
 echo "install-vota-cron checks passed"
