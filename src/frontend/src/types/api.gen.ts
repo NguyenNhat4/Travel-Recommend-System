@@ -653,6 +653,40 @@ export interface components {
             level?: "property" | "room" | "route" | "flight";
             /** @description [CHỜ DUYỆT: C5] Chỉ có ở tầng con. Trỏ về productId của cha. */
             parentProductId?: string;
+            /**
+             * @description Vé khứ hồi là một flight có hai chặng, giá tổng cho một người lớn.
+             * @enum {string}
+             */
+            tripType?: "oneWay" | "roundTrip";
+            /**
+             * @description Hạng vé được nguồn xác nhận. Vắng mặt là chưa biết, không mặc định phổ thông.
+             * @enum {string}
+             */
+            cabinClass?: "ECONOMY" | "PREMIUM_ECONOMY" | "BUSINESS" | "FIRST";
+            /** @description Báo giá theo ngày cố định; không dời lịch vào cửa sổ demo. */
+            fixedDepartureDate?: boolean;
+            /**
+             * Format: date
+             * @description Ngày khởi hành chặng về, không phải nights hoặc usingDateTo.
+             */
+            returnDate?: string;
+            returnFlight?: {
+                flightNumber?: string;
+                airline?: string;
+                originAirport?: string;
+                destinationAirport?: string;
+                /** Format: date-time */
+                departureAt?: string;
+                /** Format: date-time */
+                arrivalAt?: string;
+            } & {
+                [key: string]: unknown;
+            };
+            /**
+             * Format: date
+             * @description Ngày cuối của báo giá tại nguồn, khi nguồn có cung cấp.
+             */
+            priceValidUntil?: string;
             /** @description false thì ẩn CTA đặt chỗ ở frontend. */
             ticketed?: boolean;
         } & {

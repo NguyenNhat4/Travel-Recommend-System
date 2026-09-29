@@ -261,6 +261,8 @@ Mọi thông tin động theo loại sản phẩm được chuẩn hóa trong tr
   }
   ```
 
+Vé có báo giá theo ngày cố định giữ `level: flight`, `fixedDepartureDate: true`, `tripType: oneWay | roundTrip` và `cabinClass` khi nguồn xác nhận. Định danh mới bao gồm hành trình, ngày và hạng vé, không thay ID cũ. `available_from = available_to` là ngày đi; loader không dời ngày của vé này vào cửa sổ demo. Ngoài cửa sổ hoặc hết hạn báo giá thì không đặt được. Vé khứ hồi có `returnFlight` (số hiệu, hãng, sân bay đi/đến, giờ đi/đến), `returnDate`, `stayDays`, `priceValidUntil` nếu có. `unitPrice` là tổng hai chặng cho một người lớn (`priceBasis: per_person`); `quantity` là số khách. Ngày về không ghi vào `using_date_to`, không nhân số đêm. Thiếu hạng vé thì giữ chưa biết. Giá lịch sử giữ thời điểm nguồn, không được coi là báo giá mới.
+
 ### 3.2. Cấu trúc `app.messages.structured_data` (Grounded Itinerary)
 Dữ liệu lịch trình do AI Assistant trả về phải tuân thủ cấu trúc định dạng chuẩn:
 ```json

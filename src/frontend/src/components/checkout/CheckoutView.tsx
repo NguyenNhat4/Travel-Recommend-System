@@ -1,5 +1,6 @@
 'use client';
 
+import { FlightSummary } from '../common/FlightSummary';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTravel } from '../../context/TravelContext';
 import * as bookingApi from '../../services/booking';
@@ -386,6 +387,7 @@ export const CheckoutView: React.FC = () => {
                   <h5 className={`text-xs font-bold truncate ${item.product.available ? 'text-slate-900' : 'text-rose-600'}`}>
                     {item.product.name}
                   </h5>
+                  <FlightSummary product={item.product} />
                   <div className="text-[10px] text-slate-500">
                     {item.usingDate} · {item.quantity} {item.product.taxonomy === 'hotel' ? `phòng · ${item.nights ?? 1} đêm` : 'khách'}
                   </div>

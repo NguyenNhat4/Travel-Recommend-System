@@ -43,6 +43,15 @@ def clip(src_from: str | None, src_to: str | None, lo: date, hi: date) -> tuple[
     return f.isoformat(), t.isoformat()
 
 
+def fixed_flight_window(attrs: dict, lo: date, hi: date) -> tuple[date, date]:
+    try:
+        departure = date.fromisoformat(str(attrs['departureAt'])[:10])
+        expires = date.fromisoformat(attrs['priceValidUntil']) if attrs.get('priceValidUntil') else hi
+    except (ValueError, KeyError):
+        return lo, lo - timedelta(days=1)
+    return max(lo, departure), min(hi, departure, expires if expires < lo else hi)
+
+
 def pick_flight_date(product: dict, lo: date, hi: date) -> tuple[date, bool]:
     """(ngày bay, là ngày thật?). Ngày thật = ngày trip.com đã liệt kê nằm trong cửa sổ (sớm nhất; trùng sourceAvailableFrom khi nó nằm
     trong cửa sổ); không có thì dời vào cửa sổ: as_of + crc32(productId) % 30 (MOCK_DATA_SPEC §2.1)."""
@@ -107,7 +116,13 @@ def convert(rows: list[dict], combo_attrs: dict[str, dict], as_of: date) -> tupl
             attrs["sourceAvailableTo"] = r["availableTo"]
         f, t = clip(r["availableFrom"], r["availableTo"], lo, hi)
         available = bool(r["available"])
-        if v == "flight":
+        if v == "flight" and attrs.get('fixedDepartureDate'):
+            start, end = fixed_flight_window(attrs, lo, hi)
+            f, t = start.isoformat(), end.isoformat()
+            if start <= end:
+                flight_dates.setdefault(attrs.get('parentProductId') or '', []).append(f)
+            stats['chuyến bay: báo giá ngày cố định'] += 1
+        elif v == "flight":
             day, real = pick_flight_date(r, lo, hi)
             f = t = day.isoformat()
             move_flight(attrs, day)

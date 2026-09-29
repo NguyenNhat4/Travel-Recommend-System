@@ -100,6 +100,35 @@ ProductAttributes:
     parentProductId:
       type: string
       description: '[CHỜ DUYỆT: C5] Chỉ có ở tầng con. Trỏ về productId của cha.'
+    tripType:
+      type: string
+      enum: [oneWay, roundTrip]
+      description: Vé khứ hồi là một flight có hai chặng, giá tổng cho một người lớn.
+    cabinClass:
+      type: string
+      enum: [ECONOMY, PREMIUM_ECONOMY, BUSINESS, FIRST]
+      description: Hạng vé được nguồn xác nhận. Vắng mặt là chưa biết, không mặc định phổ thông.
+    fixedDepartureDate:
+      type: boolean
+      description: Báo giá theo ngày cố định; không dời lịch vào cửa sổ demo.
+    returnDate:
+      type: string
+      format: date
+      description: Ngày khởi hành chặng về, không phải nights hoặc usingDateTo.
+    returnFlight:
+      type: object
+      properties:
+        flightNumber: { type: string }
+        airline: { type: string }
+        originAirport: { type: string }
+        destinationAirport: { type: string }
+        departureAt: { type: string, format: date-time }
+        arrivalAt: { type: string, format: date-time }
+      additionalProperties: true
+    priceValidUntil:
+      type: string
+      format: date
+      description: Ngày cuối của báo giá tại nguồn, khi nguồn có cung cấp.
     ticketed:
       type: boolean
       description: false thì ẩn CTA đặt chỗ ở frontend.

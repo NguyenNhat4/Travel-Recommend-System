@@ -160,15 +160,17 @@ class BookingFlightsTests(unittest.TestCase):
                                 sourceRef="trip:flight:SGN-HAN:VJ138", attributes={"level": "flight", "flightNumber": "VJ138", "originAirport": "SGN", "destinationAirport": "HAN"})
         rows = [{"key": "search:x", "crawledAt": offer["observedAt"], "offers": [offer]}]
         result = n.merge_booking_flight_products([route, flight], rows, now=datetime(2026, 9, 18, 10, tzinfo=timezone.utc))
-        self.assertEqual([x["productId"] for x in result], [route["productId"], flight["productId"]])
-        r, f = result
+        self.assertEqual([x["productId"] for x in result[:2]], [route["productId"], flight["productId"]])
+        self.assertEqual(result[1], flight)
+        r, _, f = result
+        self.assertNotEqual(f["productId"], flight["productId"])
         self.assertEqual(f["attributes"]["parentProductId"], r["productId"])
         self.assertEqual(f["attributes"]["bookingUrl"], offer["bookingUrl"])
         self.assertEqual(f["attributes"]["fieldSources"]["unitPrice"], "booking.com")
         self.assertEqual(f["unitPrice"], 1223323)
         self.assertTrue(f["available"])
         self.assertFalse(r["attributes"]["bookable"])
-        self.assertIsNone(f["availableFrom"])
+        self.assertEqual(f["availableFrom"], "2026-10-17")
         stale = n.merge_booking_flight_products([], rows, now=datetime(2026, 9, 20, tzinfo=timezone.utc))
         self.assertTrue(all(not x["available"] for x in stale))
 
@@ -187,7 +189,8 @@ class BookingFlightsTests(unittest.TestCase):
         out = n.merge_booking_flight_products([], rows, now=datetime(2026, 9, 18, 11, tzinfo=timezone.utc))
         flight = next(x for x in out if x["attributes"]["level"] == "flight")
         self.assertEqual(flight["unitPrice"], 1500000)
-        self.assertEqual(flight["attributes"]["datesSeen"], ["2026-10-17", "2026-10-18"])
+        self.assertEqual(flight["attributes"]["datesSeen"], ["2026-10-17"])
+        self.assertEqual(len([p for p in out if p["attributes"]["level"] == "flight"]), 2)
 
 
 if __name__ == "__main__":
