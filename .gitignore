@@ -34,3 +34,12 @@ src/shared/mocks/itinerary-agent/completed-minimal-clarified.json
 
 # Khóa ký JWT sinh tại máy (auth §19). Không bao giờ commit.
 secrets/
+
+# Terraform local state, provider cache and generated plans.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+!**/*.tfvars.example
+crash.log
