@@ -7,6 +7,7 @@ from datetime import date, timedelta
 from typing import Any
 
 from .normalization import strip_accents
+from .types import Candidates, Constraints, Party, Plan, Product, Proposal, Sources, TripIntent
 
 NOTES = {
     "VISIT": "Tham quan theo khung giờ đề xuất.",
@@ -19,8 +20,11 @@ NOTES = {
 SUMMARY_FIELDS = (
     "productId", "name", "taxonomy", "destination", "unitPrice", "currency",
     "available", "availableFrom", "availableTo", "imageUrl", "rating",
-    "reviewCount", "attributes", "description", "priceUnit",
+    "reviewCount", "attributes", "priceUnit",
 )
+# `attributes` chỉ giữ khoá FE thật sự đọc trong lịch trình (docs/spec/agent/field-review.md §2.1);
+# nguồn đầy đủ vẫn ở `candidates`/`ProductDetail`, không mất dữ liệu.
+SUMMARY_ATTRIBUTE_KEYS = frozenset({"oceanView", "privateBeach", "pool", "ticketed"})
 # Flights and combos have no confirmed slot mapping, so they can be retrieved but never scheduled.
 STAY_TAXONOMY = "hotel"
 SLOT_TAXONOMIES = frozenset({"attraction", "golf"})
@@ -34,12 +38,12 @@ def normalized(value: str | None) -> str:
     return " ".join(strip_accents((value or "").casefold()).split())
 
 
-def empty_intent() -> dict[str, Any]:
+def empty_intent() -> TripIntent:
     return {"destination": None, "startDate": None, "days": None, "party": None,
             "budget": None, "interests": [], "pace": None}
 
 
-def merge_intent(current: dict[str, Any] | None, patch: dict[str, Any] | None) -> dict[str, Any]:
+def merge_intent(current: TripIntent | None, patch: TripIntent | None) -> TripIntent:
     result = deepcopy(current or empty_intent())
     for key, value in (patch or {}).items():
         if value is not None:
@@ -47,17 +51,24 @@ def merge_intent(current: dict[str, Any] | None, patch: dict[str, Any] | None) -
     return result
 
 
-def summary(product: dict[str, Any]) -> dict[str, Any]:
+def summary(product: Product) -> Product:
     if not isinstance(product, dict):
         return {}
-    return {key: deepcopy(product[key]) for key in SUMMARY_FIELDS if key in product}
+    result = {key: deepcopy(product[key]) for key in SUMMARY_FIELDS if key in product}
+    attributes = {key: value for key, value in result.get("attributes", {}).items()
+                 if key in SUMMARY_ATTRIBUTE_KEYS}
+    if attributes:
+        result["attributes"] = attributes
+    else:
+        result.pop("attributes", None)
+    return result
 
 
 def parse_day(value: str | None) -> date | None:
     return date.fromisoformat(value) if value else None
 
 
-def allowed_times(product: dict[str, Any]) -> list[str]:
+def allowed_times(product: Product) -> list[str]:
     duration = product.get("attributes", {}).get("durationMinutes")
     return ["MORNING"] if isinstance(duration, (int, float)) and duration >= 360 else ["MORNING", "NOON", "AFTERNOON", "EVENING"]
 
@@ -66,11 +77,11 @@ def _source(value: str | None) -> str:
     return "RECOMMENDATION" if value == "recommendation" else "SEARCH"
 
 
-def _because(product: dict[str, Any], source: str | None) -> list[dict[str, Any]]:
+def _because(product: Product, source: str | None) -> list[dict[str, Any]]:
     return deepcopy(product.get("because", [])) if source == "recommendation" else []
 
 
-def _known_cost(product: dict[str, Any], *, nights: int, party: dict[str, Any] | None) -> int | None:
+def _known_cost(product: Product, *, nights: int, party: Party | None) -> int | None:
     price, unit = product.get("unitPrice"), product.get("priceUnit", "UNKNOWN")
     if price is None or unit == "UNKNOWN":
         return None
@@ -81,8 +92,8 @@ def _known_cost(product: dict[str, Any], *, nights: int, party: dict[str, Any] |
     return int(price) if unit == "PER_PACKAGE" else None
 
 
-def totals(plan: dict[str, Any], intent: dict[str, Any]) -> tuple[int | None, str]:
-    products: list[tuple[dict[str, Any], int]] = []
+def totals(plan: Plan, intent: TripIntent) -> tuple[int | None, str]:
+    products: list[tuple[Product, int]] = []
     if plan.get("stay"):
         products.append((plan["stay"]["product"], plan["stay"]["nights"]))
     products.extend((slot["product"], 1) for day in plan.get("days", [])
@@ -97,27 +108,27 @@ def totals(plan: dict[str, Any], intent: dict[str, Any]) -> tuple[int | None, st
     return total, "WITHIN_BUDGET" if total <= budget else "OVER_BUDGET"
 
 
-def _parent_key(product: dict[str, Any]) -> str:
+def _parent_key(product: Product) -> str:
     return product.get("attributes", {}).get("parentProductId") or product["productId"]
 
 
-def _price_key(product: dict[str, Any]) -> tuple[int, float]:
+def _price_key(product: Product) -> tuple[int, float]:
     """Cheapest first; an unknown price cannot be compared, so it goes last."""
     price = product.get("unitPrice")
     return (1, 0.0) if price is None else (0, float(price))
 
 
-def _stay_order(product: dict[str, Any]) -> tuple[Any, ...]:
+def _stay_order(product: Product) -> tuple[Any, ...]:
     star = product.get("attributes", {}).get("starRating")
     return (*_price_key(product), -(star if isinstance(star, (int, float)) else -1), product["productId"])
 
 
-def _activity_order(product: dict[str, Any]) -> tuple[Any, ...]:
+def _activity_order(product: Product) -> tuple[Any, ...]:
     # A full-day item needs a day to itself, so it is placed before anything that can share one.
     return (0 if allowed_times(product) == ["MORNING"] else 1, *_price_key(product), product["productId"])
 
 
-def compose_plan(candidates: dict[str, dict[str, Any]], intent: dict[str, Any]) -> dict[str, Any]:
+def compose_plan(candidates: Candidates, intent: TripIntent) -> Proposal:
     """Choose products and lay them out on days with fixed rules. No model is involved.
 
     Ordering is total and depends only on product data, so the same candidates always produce the
@@ -131,14 +142,14 @@ def compose_plan(candidates: dict[str, dict[str, Any]], intent: dict[str, Any]) 
     stays = sorted((p for p in usable if p.get("taxonomy") == STAY_TAXONOMY), key=_stay_order)
     stay = stays[0] if stays else None
     taken = {_parent_key(stay), stay["productId"]} if stay else set()
-    activities = []
+    activities: list[Product] = []
     for product in sorted((p for p in usable if p.get("taxonomy") in SLOT_TAXONOMIES), key=_activity_order):
         key = _parent_key(product)
         if key in taken or product["productId"] in taken:
             continue
         taken.update({key, product["productId"]})
         activities.append(product)
-    per_day: list[list[dict[str, Any]]] = [[] for _ in range(days_count)]
+    per_day: list[list[Product]] = [[] for _ in range(days_count)]
     full_days: set[int] = set()
     for product in activities:
         full_day = allowed_times(product) == ["MORNING"]
@@ -164,8 +175,8 @@ def compose_plan(candidates: dict[str, dict[str, Any]], intent: dict[str, Any]) 
     return {"stay_id": stay["productId"] if stay else None, "slots": slots}
 
 
-def render_proposal(proposal: dict[str, Any], candidates: dict[str, dict[str, Any]],
-                    sources: dict[str, str], intent: dict[str, Any]) -> dict[str, Any]:
+def render_proposal(proposal: Proposal, candidates: Candidates,
+                    sources: Sources, intent: TripIntent) -> Plan:
     days_count = intent.get("days")
     if not isinstance(days_count, int) or days_count < 1:  # upper bound is enforced by TripIntent
         raise ValueError("invalid trip duration")
@@ -218,15 +229,15 @@ def render_proposal(proposal: dict[str, Any], candidates: dict[str, dict[str, An
         days[day_number - 1]["slots"].append({"time": proposed["time"], "activityType": None,
             "product": summary(product), "note": NOTES[note_kind], "source": _source(source),
             "because": _because(product, source)})
-    plan: dict[str, Any] = {**({"stay": stay} if stay else {}), "days": days,
+    plan: Plan = {**({"stay": stay} if stay else {}), "days": days,
         "bookableCount": len(used), "estimatedTotal": None, "currency": "VND",
         "budgetStatus": "UNKNOWN", "priceAsOf": None}
     plan["estimatedTotal"], plan["budgetStatus"] = totals(plan, intent)
     return plan
 
 
-def validate_plan(plan: dict[str, Any], candidates: dict[str, dict[str, Any]],
-                  sources: dict[str, str], intent: dict[str, Any], constraints: dict[str, Any]) -> list[str]:
+def validate_plan(plan: Plan, candidates: Candidates,
+                  sources: Sources, intent: TripIntent, constraints: Constraints) -> list[str]:
     issues: list[str] = []
     days = plan.get("days")
     if not isinstance(days, list) or [day.get("day") for day in days] != list(range(1, (intent.get("days") or 0) + 1)):
@@ -257,19 +268,12 @@ def validate_plan(plan: dict[str, Any], candidates: dict[str, dict[str, Any]],
     if constraints.get("require_hotel") and not plan.get("stay"):
         issues.append("required_hotel")
     expected_total, expected_status = totals(plan, intent)
-    deliberately_uncertified = (
-        intent.get("budget") is not None
-        and plan.get("estimatedTotal") is None
-        and plan.get("budgetStatus") == "UNKNOWN"
-    )
-    if not deliberately_uncertified and (
-        plan.get("estimatedTotal") != expected_total or plan.get("budgetStatus") != expected_status
-    ):
+    if plan.get("estimatedTotal") != expected_total or plan.get("budgetStatus") != expected_status:
         issues.append("total")
     return sorted(set(issues))
 
 
-def estimate_total(plan: dict[str, Any]) -> int | None:
+def estimate_total(plan: Plan) -> int | None:
     values = [slot["product"].get("unitPrice") for day in plan.get("days", [])
               for slot in day.get("slots", []) if slot.get("product")]
     return None if any(value is None for value in values) else int(sum(values))

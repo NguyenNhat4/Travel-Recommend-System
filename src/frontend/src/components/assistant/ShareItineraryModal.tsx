@@ -192,9 +192,11 @@ export const ShareItineraryModal: React.FC<ShareItineraryModalProps> = ({
               </div>
               <div className="text-right shrink-0">
                 <span className="text-xs font-bold text-emerald-600">
-                  ~{new Intl.NumberFormat('vi-VN').format(plan.totalEstimatedPrice)} ₫
+                  {plan.totalEstimatedPrice != null
+                    ? `~${new Intl.NumberFormat('vi-VN').format(plan.totalEstimatedPrice)} ₫`
+                    : 'Chưa tính được'}
                 </span>
-                <p className="text-[10px] text-slate-500">Ước tính toàn chuyến</p>
+                <p className="text-[10px] text-slate-500">Chi phí sản phẩm trong lịch trình</p>
               </div>
             </div>
 

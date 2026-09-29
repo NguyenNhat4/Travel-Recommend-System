@@ -44,12 +44,21 @@
 
 **Team Agent**
 
-- Gọi `/search` **không kèm JWT**, để lượt tìm của Agent không bị ghi thành
-  hành vi người dùng (`hop-dong-tich-hop-cdp.md` §1.4).
+- Với dữ liệu thật, tool gọi engine Search/Recommendation trong cùng tiến trình
+  qua port (`ITINERARY_DATA_MODE=inprocess`, `application/itinerary/engine_tools.py`);
+  mode `http` gọi các endpoint dưới đây và chỉ còn là tuỳ chọn. Output giữ đúng
+  hình dạng response của route, nên hành vi engine trong tài liệu này áp như nhau
+  cho route lẫn tool (`hop-dong-tich-hop-itinerary-assistant.md` §2).
+- Tìm kiếm **không gắn danh tính**: mode `inprocess` gọi engine không qua route
+  nên không ghi event, mode `http` gọi `/search` **không kèm JWT**. Nhờ vậy lượt
+  tìm của Agent không bị ghi thành hành vi người dùng (`hop-dong-tich-hop-cdp.md` §1.4).
 - Sao chép nguyên `productId`, `name`, `unitPrice` từ response. Không tự tạo sản phẩm.
 - Kiểm tra ngày và số khách **sau** retrieval; không tuyên bố engine đã xác minh.
-- Dùng `/similar?strategy=cross_taxonomy` cho cross-sell, không dùng
-  `/recommendations` cho việc đó.
+- Chỉ dùng `/products/{productId}/similar` (`same_taxonomy`) ở lượt đổi món, qua
+  tool `get_similar_products`, với sản phẩm gốc lấy từ lịch trình lượt trước
+  (`hop-dong-tich-hop-itinerary-assistant.md` §2.5; đã chốt 2026-09-29,
+  `docs/prd/update-archive/2026-09-28-tool-similar-cho-agent.md`). Agent không
+  dùng `cross_taxonomy`: route chưa hiện thực chế độ này.
 
 **Team Web**
 
@@ -271,7 +280,8 @@ Hình dạng: `SearchRequest` / `SearchResponse` trong `search.yaml`.
 | Đổi trang, không JWT, hoặc Agent gọi | **Không** ghi event |
 | CDP lỗi | Response search không đổi |
 
-Agent gọi không kèm JWT là **quy tắc**, không phải khuyến nghị: lượt tìm của
+Agent tìm không gắn danh tính là **quy tắc**, không phải khuyến nghị (mode `http`
+không kèm JWT, mode `inprocess` gọi engine không qua route): lượt tìm của
 Agent lọt vào lịch sử sẽ làm lệch user vector của chính người dùng đó.
 
 ### 3.3. Cutoff · `[C3]`
@@ -343,7 +353,9 @@ Ba ràng buộc bắt buộc:
    — nếu không sẽ trả 10 hạng phòng của cùng một resort
 ```
 
-`strategy=cross_taxonomy` là biến thể cross-sell dành cho Agent.
+`strategy=cross_taxonomy` là biến thể cross-sell trong schema, nhưng route chưa
+hiện thực (luôn trả `same_taxonomy`) và Agent không dùng. Agent chỉ gọi
+`same_taxonomy` ở lượt đổi món (§1.2).
 
 **Không embed lại.** Lấy thẳng vector đã lưu của anchor từ Weaviate, rồi truy vấn top-K với filter id (cùng taxonomy, loại chính nó và anh em cùng cha). Embed lại vừa tốn ~60 ms
 vừa có nguy cơ so hai vector thuộc hai `embedding_version` khác nhau — kết quả
@@ -428,7 +440,29 @@ có trip đang mở + đã purchase ít nhất 1 taxonomy  → cross_vertical
 >= 3 event dùng được, không có trip đang mở       → recent_activity
 event gần nhất > 90 ngày                          → dormant
 < 3 event, không JWT, hoặc CDP lỗi                → popular
+có trip đang mở, chưa purchase trong trip,
+  tổng < 3 event dùng được                        → cold_start_content
+có lịch sử, không có trip đang mở,
+  chưa quá ngưỡng dormant của engine              → long_term
 ```
+
+**Bổ sung 2026-09-28 (OpenAPI 1.8.0).** Hai dòng cuối ghi đúng điều kiện engine
+đang chạy (`Profile.strategy` trong `domain/recommendation/profile.py`). Engine
+đã trả hai giá trị này từ trước, nhưng contract thiếu. Các dòng cũ **lệch với
+engine và chưa sửa**, đang chờ Team Recommendation/Search cùng Web quyết định:
+
+- `recent_activity`: bảng ghi "không có trip đang mở", nhưng engine chỉ trả giá
+  trị này khi **có** trip đang mở, trip đó chưa purchase và tổng ≥ 3 event dùng được. Engine
+  coi trip đang mở là trip có event gần nhất trong 60 ngày (`ACTIVE_TRIP_MAX_AGE_DAYS`).
+- `dormant`: bảng này và `hop-dong-tich-hop-backend.md` §6.2 ghi 90 ngày; engine
+  dùng 180 ngày (`DORMANT_AFTER_DAYS`).
+- `< 3 event → popular`: engine trả `popular` khi không còn event nào dùng
+  được (kể cả khách ẩn danh và CDP lỗi). Dưới 3 event mà có trip đang mở thì ra
+  `cold_start_content`; chỉ có trip cũ thì ra `long_term` hoặc `dormant`.
+- Ràng buộc 4 dưới đây: engine đặt `coldStart = eventsUsed < 3` nhưng vẫn sinh
+  `because` khi có nguồn đạt ngưỡng, nên `coldStart: true` có thể đi kèm
+  `because` khác rỗng. Mock `getRecommendations.200-cold-start-content.json`
+  theo ràng buộc 4 (`because: []`).
 
 **Ràng buộc bắt buộc:**
 
@@ -697,8 +731,9 @@ S5 là phụ thuộc nặng nhất: không duyệt `[P3]` thì tiêu chí nghi�
 > Team Backend gọi được cả ba endpoint bằng mock sinh từ
 > `src/shared/contracts/schemas/`, rồi đổi sang engine thật mà không phải sửa
 > tầng `services`. Team Agent dựng được lịch trình 3 ngày mà mọi `productId`
-> trong đó truy nguyên về một response của `/search` hoặc `/recommendations`
-> trong cùng request.
+> trong đó truy nguyên về một kết quả Search hoặc Recommendation trong cùng
+> request (tool gọi engine trong tiến trình, hoặc response của `/search`,
+> `/recommendations` ở mode `http`).
 
 Luồng nghiệm thu bắt buộc:
 

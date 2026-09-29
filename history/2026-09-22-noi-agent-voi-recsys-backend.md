@@ -5,6 +5,7 @@
 - Nhánh: feat/agent
 - Trạng thái: hoàn thành
 - Phạm vi: backend, agent, contract, docs
+- Bị thay thế bởi: 2026-09-28-agent-goi-engine-trong-tien-trinh.md
 
 ## Mục tiêu
 
