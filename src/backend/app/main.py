@@ -25,6 +25,7 @@ from contextlib import AsyncExitStack, asynccontextmanager
 
 import httpx
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 
 from src.backend.app.agents.runtime_dependencies import RuntimeAgentDependencies
 from src.backend.app.agents.tools.itinerary_gateway import ItineraryToolGateway
@@ -428,6 +429,7 @@ def _forward_langsmith_env(settings) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
+    app.state.ready = False
     print(f"Starting {settings.app_name} in {settings.app_env} mode")
     _forward_langsmith_env(settings)
     logger.info("startup.begin app=%s env=%s", settings.app_name, settings.app_env)
@@ -547,9 +549,11 @@ async def lifespan(app: FastAPI):
         refresh_task = asyncio.create_task(recsys.run())
 
         logger.info("startup.ready")
+        app.state.ready = True
         try:
             yield
         finally:
+            app.state.ready = False
             recsys.stop()
             await refresh_task  # chờ lần nạp đang chạy xong rồi mới đóng client dùng chung
             recsys.close()
@@ -576,3 +580,12 @@ app.include_router(root_router)
 @app.get("/health")
 async def health():
     return {"status": "ok", "env": settings.app_env}
+
+
+@app.get("/health/ready")
+async def health_ready():
+    ready = bool(getattr(app.state, "ready", False))
+    return JSONResponse(
+        status_code=200 if ready else 503,
+        content={"status": "ok" if ready else "starting", "ready": ready, "env": settings.app_env},
+    )
