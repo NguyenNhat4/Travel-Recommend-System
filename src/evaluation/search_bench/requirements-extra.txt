@@ -1,0 +1,3 @@
+# Tuỳ chọn — chỉ khi chạy bge-m3 / gte-multilingual-base local (E2, P5) hoặc embed qua Bedrock.
+sentence-transformers>=3
+boto3>=1.34

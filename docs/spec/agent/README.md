@@ -28,7 +28,7 @@ Chạy từ repo root bằng môi trường có dependencies Backend và Streaml
 ASSISTANT_API_BASE_URL=http://127.0.0.1:8000/api/v1 .venv/bin/python -m streamlit run src/evaluation/agent/streamlit_app.py --server.port 8502
 ```
 
-Cấu hình provider/key/model trong `.env` theo Backend README. UI chat chỉ gọi FastAPI và nhận trace LangGraph an toàn bằng SSE; không import graph trong process Streamlit. FastAPI dựng **một** client LLM dùng chung trong `lifespan` (`infrastructure/llm/build_chat_model`) và tiêm vào graph qua `app.state.itinerary_llm`; provider chọn theo key có mặt, thứ tự Gemini → OpenAI → Anthropic. `ITINERARY_USE_LLM=false` thì không client nào được dựng: app vẫn khởi động không cần API key, `/assistant/status` trả `llmMode=disabled` và mọi request itinerary trả 503 `LLM_UNAVAILABLE`. Ở development, `ITINERARY_DATA_MODE=fixture` dùng 50 sản phẩm trong fixture chung. Nút gửi có thể phát sinh request/chi phí LLM; không hiển thị hoặc lưu key/JWT.
+Cấu hình provider/key/model trong `.env` theo Backend README. UI chat chỉ gọi FastAPI và nhận trace LangGraph an toàn bằng SSE; không import graph trong process Streamlit. FastAPI dựng **một** client LLM dùng chung trong `lifespan` (`infrastructure/llm/build_chat_model`) và tiêm vào graph qua `app.state.itinerary_llm`; provider chọn theo key có mặt, thứ tự Gemini → OpenAI → Anthropic. `ITINERARY_USE_LLM=false` thì không client nào được dựng: app vẫn khởi động không cần API key, `/assistant/status` trả `llmMode=disabled` và mọi request itinerary trả 503 `LLM_UNAVAILABLE`. Ở development, `ITINERARY_DATA_MODE=fixture` dùng 50 sản phẩm trong fixture chung; chạy với dữ liệu thật (Postgres đã seed, Weaviate, Cohere) thì đặt `ITINERARY_DATA_MODE=inprocess` để tool gọi engine Search/Recommendation trong cùng tiến trình (Backend README mục "LLM của itinerary agent"). Nút gửi có thể phát sinh request/chi phí LLM; không hiển thị hoặc lưu key/JWT.
 
 Demo yêu cầu `destination` và `days`. Nếu thiếu, backend trả `NEEDS_CLARIFICATION`, lưu phần intent đã biết cùng lịch sử chat user/assistant gần đây theo `conversationId` và chưa gọi tool. Lịch sử được giới hạn ở 20 message/8.000 ký tự và chỉ dùng để hiểu tham chiếu; giá/availability vẫn tải lại từ tool. `context.language` hỗ trợ `vi`/`en`; khi vắng mặt backend mặc định tiếng Việt và lưu lựa chọn theo conversation. Store hiện tại nằm trong memory của process nên restart backend sẽ mất conversation.
 
@@ -36,16 +36,21 @@ Timeout LLM của graph lấy từ `ITINERARY_LLM_TIMEOUT_SECONDS`, áp dụng c
 
 ## Chạy đánh giá tự động (golden dataset)
 
-Hướng dẫn đầy đủ: [golden-run.md](golden-run.md). Bộ 14 case cố định (mỗi category một case agent dễ fail nhất), chấm tự động theo `docs/prd/test-plan.md` §2.4 (Grounding Rate, Structured Output
+Hướng dẫn đầy đủ: [golden-run.md](golden-run.md). Bộ 75 case cố định, chấm tự động theo `docs/prd/test-plan.md` §2.4 (Grounding Rate, Structured Output
 Integrity, Tool Calling Accuracy). Chi tiết luật chấm: [evaluation-plan.md](evaluation-plan.md) mục
-"Golden dataset tự động". Cần Postgres đã seed và backend chạy `ITINERARY_DATA_MODE=http`:
+"Golden dataset tự động". Cần Postgres đã seed và backend đã nạp RecSys, chạy `ITINERARY_DATA_MODE=inprocess`
+(hoặc `http`, không để `fixture`):
 
 ```bash
 docker compose up -d --wait postgres
-ITINERARY_DATA_MODE=http ITINERARY_SERVICE_BASE_URL=http://127.0.0.1:8000 \
-    .venv/bin/uvicorn src.backend.app.main:app --port 8000 &
+ITINERARY_DATA_MODE=inprocess .venv/bin/uvicorn src.backend.app.main:app --port 8000 &
 .venv/bin/python -m src.evaluation.agent.golden
 ```
+
+Runner dựng graph trong tiến trình của nó và luôn gọi Search/Recommendation của backend qua HTTP
+(`ItineraryHttpClients`, `--api-base-url`), bất kể mode của backend; mode đó chỉ quyết định `productCount` trong biên
+bản (golden-run.md). Staging/production chạy `ITINERARY_DATA_MODE=inprocess`, nên golden không đo đường gọi engine
+trong tiến trình; hai đường được đối chiếu output bằng test parity trong `src/backend/tests`.
 
 Ghi `src/evaluation/reports/eval-YYYY-MM-DD-golden.md` (commit được) và `.json` cùng tên (gitignored).
 `--only G-051,G-062` chạy một phần; `--sweep` thêm một lượt cho mọi điểm đến thật hiện có trong catalog;

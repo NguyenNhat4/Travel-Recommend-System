@@ -72,8 +72,8 @@ class JwtIssuer:
     def verify(self, token: str) -> AuthPrincipal:
         """Kiểm đủ 10 điểm của auth §10.3 rồi dựng principal.
 
-        Điểm 9 (danh sách thu hồi khẩn jwt:revoked) cần I/O nên kiểm ở dependency HTTP qua port
-        RevokedTokens, dựa trên principal.token_id trả về từ đây.
+        Điểm 9 (danh sách thu hồi khẩn jwt:revoked) cần I/O nên kiểm ở `application/auth/bearer.py` qua port
+        RevokedTokens, dựa trên principal.token_id trả về từ đây — chung cho dependency HTTP và tool itinerary.
         """
         try:
             header = jwt.get_unverified_header(token)

@@ -1,0 +1,7 @@
+# Config RIÊNG CHO TEST — chỉ ghi các khoá cần thu nhỏ, gộp đè lên config/sbench.yaml (load_config(overrides_path=…)).
+# Không dùng cho chạy thật; config/sbench.yaml giữ nguyên số của spec.
+#
+# gold.min_per_slice: fixture tests/fixtures/gold_small.jsonl chỉ có 10 query trải 9 slice, nên `sb gold check`
+# (spec Part 5, "Done khi": check xanh trên gold_small.jsonl) chỉ qua được khi mỗi slice cần ≥ 1 query thay vì 10.
+gold:
+  min_per_slice: 1

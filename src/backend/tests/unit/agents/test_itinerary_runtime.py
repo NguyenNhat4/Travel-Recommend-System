@@ -8,6 +8,7 @@ import unittest
 from src.backend.app.agents import nodes, routing
 from src.backend.app.agents.graph import build_graph
 from src.backend.app.agents.models import ConversationalAnswer, DestinationChoice, Extraction, TurnRoute
+from src.backend.app.agents.steps.prompts import SIMILAR_HINT, TOOL_PLAN_PROMPT
 from src.backend.app.infrastructure.persistence.langgraph_checkpointer import build_checkpointer
 from src.backend.app.agents.tools.itinerary_gateway import ItineraryToolGateway
 from src.backend.app.application.itinerary.contracts import valid
@@ -42,6 +43,8 @@ class ScriptedLlm:
         self.plan_delay = plan_delay
         self.calls = []
         self.prompts = {}
+        self.bound_tools = []  # tên tool đưa cho planner ở mỗi lần bind_tools
+        self.planner_messages = []  # (system, human) của mỗi lần lập plan
 
     def with_structured_output(self, schema):
         async def invoke(prompt):
@@ -63,8 +66,11 @@ class ScriptedLlm:
         return SimpleNamespace(ainvoke=invoke)
 
     def bind_tools(self, definitions):
+        self.bound_tools.append([d['name'] for d in definitions])
+
         async def invoke(prompt):
             self.calls.append('planner')
+            self.planner_messages.append(prompt)
             if self.plan_delay and self.calls.count('planner') == 1:
                 await asyncio.sleep(self.plan_delay)
             return SimpleNamespace(tool_calls=deepcopy(self.plan))
@@ -108,7 +114,9 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
     async def run_graph(self, llm=None, clients=None, state=None, **kwargs):
         llm = llm or ScriptedLlm()
         clients = clients or Clients()
-        gateway = ItineraryToolGateway(clients, clients, clients)
+        # Như composition root: chỉ nối port Similar khi adapter khai báo supports_similar.
+        gateway = ItineraryToolGateway(clients, clients, clients,
+                                       similar=clients if getattr(clients, 'supports_similar', False) else None)
         graph = build_graph(tools=gateway, llm=llm, **kwargs)
         # Mặc định coi như đã hỏi ngày đi/số người/ngân sách, để test tập trung vào luồng đang kiểm.
         inputs = {'query': 'a user request', 'request_id': 'test', 'start_date_asked': True, **(state or {})}
@@ -590,6 +598,109 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
                  for slot in day['slots'] if slot['product']]
         self.assertNotIn('vinpearl', chosen)
         self.assertIn('other', chosen)
+
+    async def swap_turns(self, clients=None):
+        """Hai lượt trên fixture catalog: lịch trình có chỗ ở, rồi "đổi khách sạn khác giống cái này"."""
+        from src.backend.app.infrastructure.clients.itinerary_fixture_clients import FixtureItineraryClients
+        store, clients = InMemoryConversationStore(), clients or FixtureItineraryClients()
+        first_llm = ScriptedLlm()
+        first = await self.run_graph(first_llm, clients, store=store)
+        stay = first['response']['itinerary']['stay']['product']['productId']
+        # Như LLM ở lượt đổi món: loại chỗ ở cũ, tìm chỗ ở tương tự nó và vẫn search loại còn lại.
+        second_llm = ScriptedLlm(
+            extraction=Extraction(start_date_undecided=True, constraints={'exclude_products': [stay]}),
+            plan=[{'name': 'get_similar_products', 'args': {'productId': stay}},
+                  {'name': 'search_products', 'args': {'query': 'tham quan', 'taxonomy': 'attraction'}}])
+        second = await self.run_graph(second_llm, clients, state={'conversation_id': first['conversation_id']},
+                                      store=store)
+        return clients, first_llm, first, second_llm, second
+
+    async def test_similar_is_offered_only_on_a_swap_turn(self):
+        from src.backend.app.agents.steps.validation import selection_snapshot
+        _, first_llm, first, second_llm, _ = await self.swap_turns()
+        # Lượt đầu chưa có sản phẩm đã hiển thị: đúng bộ tool và prompt như trước khi có Similar.
+        self.assertEqual(first_llm.bound_tools, [['search_products', 'get_recommendations']])
+        (_, system), (_, human) = first_llm.planner_messages[0]
+        self.assertEqual(system, TOOL_PLAN_PROMPT)
+        self.assertEqual(json.loads(human)['previous_selection'], [])    # ngữ cảnh chung: chưa hiển thị gì
+        # Lượt đổi món: tool, gợi ý prompt và danh sách anchor lưu phía server cùng xuất hiện.
+        self.assertIn('get_similar_products', second_llm.bound_tools[0])
+        (_, system), (_, human) = second_llm.planner_messages[0]
+        self.assertEqual(system, f'{TOOL_PLAN_PROMPT} {SIMILAR_HINT}')
+        self.assertEqual(json.loads(human)['previous_selection'], selection_snapshot(first['response']))
+
+    async def test_swap_turn_gets_a_grounded_similar_stay_labelled_search(self):
+        clients, _, first, _, second = await self.swap_turns()
+        catalog = {p['productId']: p for p in clients._products}
+        old = first['response']['itinerary']['stay']['product']['productId']
+        self.assertEqual(second['response']['status'], 'COMPLETED')
+        self.assertEqual(second['validation_issues'], [])
+        self.assertEqual(second['attempt'], 0)
+        stay = second['response']['itinerary']['stay']
+        new = stay['product']['productId']
+        self.assertNotEqual(new, old)
+        self.assertEqual(stay['source'], 'SEARCH')
+        # Tên, giá lấy nguyên từ catalog; cùng taxonomy và cùng điểm đến với chỗ ở cũ.
+        source = catalog[new]
+        self.assertEqual((stay['product']['name'], stay['product']['unitPrice']), (source['name'], source['unitPrice']))
+        self.assertEqual((source['taxonomy'], source['destination']), ('hotel', 'Nha Trang'))
+        similar = next(r for r in second['tool_results'] if r['name'] == 'get_similar_products')
+        self.assertEqual(similar['arguments']['productId'], old)
+        # Kết quả Similar cùng điểm đến thành ứng viên nguồn search. Compose vẫn chọn chỗ ở theo luật cố định
+        # (rẻ nhất trước) trên cả kết quả search khách sạn mà lưới an toàn thêm vào, nên stay có thể đến từ search.
+        alternatives = [p['productId'] for p in similar['data']['results'] if p['destination'] == 'Nha Trang']
+        self.assertTrue(alternatives)
+        self.assertTrue(all(pid in second['candidates'] and second['sources'][pid] == 'search' for pid in alternatives))
+        self.assertIn({'name': 'search_products', 'taxonomy': 'hotel'},
+                      [{'name': call['name'], 'taxonomy': call['args'].get('taxonomy')} for call in second['tool_plan']])
+        # Similar trả cả khách sạn nơi khác: bị bỏ lặng lẽ, không thành ứng viên hay cảnh báo.
+        self.assertTrue(any(p['destination'] != 'Nha Trang' for p in similar['data']['results']))
+        self.assertTrue(all(p['destination'] == 'Nha Trang' for p in second['candidates'].values()))
+        self.assertNotIn('PRODUCT_DROPPED_DESTINATION', [w['code'] for w in second['warnings']])
+
+    async def test_swap_turn_keeps_a_stay_when_similar_has_no_alternative(self):
+        from src.backend.app.infrastructure.clients.itinerary_fixture_clients import FixtureItineraryClients
+
+        class NotIndexed(FixtureItineraryClients):
+            async def get_similar_products(self, product_id, limit):
+                raise ToolError('PRODUCT_NOT_INDEXED', http_status=409)
+
+        # Plan chỉ search loại khác (attraction): lưới an toàn phải thêm search chỗ ở cho loại đang đổi.
+        _, _, first, _, second = await self.swap_turns(NotIndexed())
+        old = first['response']['itinerary']['stay']['product']['productId']
+        self.assertEqual(second['response']['status'], 'COMPLETED')
+        self.assertEqual(second['attempt'], 0)
+        self.assertIn({'name': 'search_products', 'taxonomy': 'hotel'},
+                      [{'name': call['name'], 'taxonomy': call['args'].get('taxonomy')} for call in second['tool_plan']])
+        stay = second['response']['itinerary']['stay']
+        self.assertIsNotNone(stay)
+        self.assertNotEqual(stay['product']['productId'], old)
+        self.assertEqual(stay['source'], 'SEARCH')
+
+    async def test_unavailable_similar_is_not_retried_when_search_returned_data(self):
+        class SimilarClients(Clients):
+            supports_similar = True
+            failure = None
+
+            async def get_similar_products(self, product_id, limit):
+                self.calls.append('similar')
+                if self.failure == 'timeout':
+                    await asyncio.sleep(1)
+                raise ToolError('SEARCH_UNAVAILABLE', retryable=True, http_status=503)
+
+        shown = [{'productId': 'a', 'name': 'Catalog a', 'taxonomy': 'attraction'}]
+        plan = [{'name': 'get_similar_products', 'args': {'productId': 'a'}},
+                {'name': 'search_products', 'args': {'query': 'tham quan'}}]
+        for failure in ('unavailable', 'timeout'):
+            with self.subTest(failure=failure):
+                clients = SimilarClients(products=[product('a'), product('b')])
+                clients.failure = failure
+                result = await self.run_graph(ScriptedLlm(plan=plan), clients, state={'previous_selection': shown},
+                                              tool_timeout_seconds=0.1)
+                self.assertEqual(result['response']['status'], 'COMPLETED')
+                self.assertEqual(result['attempt'], 0)
+                self.assertEqual(clients.calls.count('similar'), 1)
+                self.assertNotIn('retry', [event['node'] for event in result['events']])
 
     async def test_memory_checkpoint_resumes_after_classification(self):
         clients, llm = Clients(), ScriptedLlm()

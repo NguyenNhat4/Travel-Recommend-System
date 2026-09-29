@@ -43,7 +43,7 @@
 
 **Team Agent:**
 
-- Chỉ gọi Search và Recommendation qua HTTP; không truy cập trực tiếp bảng dữ liệu.
+- Chỉ gọi Search, Recommendation và Similar (Similar chỉ ở lượt đổi món, `hop-dong-tich-hop-itinerary-assistant.md` §2.5) qua port của tầng application; không truy cập trực tiếp bảng dữ liệu. Với dữ liệu thật, tool gọi engine trong cùng tiến trình (`ITINERARY_DATA_MODE=inprocess`); gọi HTTP (`=http`) chỉ còn là mode tuỳ chọn. Output của tool khớp response của route (`hop-dong-tich-hop-itinerary-assistant.md` §2).
 - Sao chép nguyên `productId`, `name` và `unitPrice` từ response; không tự tạo sản phẩm.
 - Không tạo booking trong MVP v1; bàn giao sang Web bằng `productId`.
 
@@ -361,7 +361,7 @@ Cam kết:
 3. Trả mảng rỗng khi không đủ ứng viên; client ẩn hẳn section, không báo lỗi.
 4. Id của tầng con được resolve lên cha: `productId` là cha, `resolvedFrom` là id đã gửi.
 
-Lỗi: id không có trong catalog → `404 PRODUCT_NOT_FOUND`; có trong catalog nhưng chưa có vector → `409 PRODUCT_NOT_INDEXED`; RecSys chưa khởi động được → `503 SEARCH_UNAVAILABLE` (`retryable: true`).
+Lỗi: `limit` ngoài 1–20 → `400 VALIDATION_ERROR`; id không có trong catalog → `404 PRODUCT_NOT_FOUND`; có trong catalog nhưng chưa có vector → `409 PRODUCT_NOT_INDEXED`; RecSys chưa khởi động được → `503 SEARCH_UNAVAILABLE` (`retryable: true`). OpenAPI 1.8.0 khai báo đủ các mã này.
 
 ### 4.4. Danh sách điểm đến
 
@@ -396,9 +396,9 @@ Authorization: Bearer <jwt>    # tùy chọn
 
 Dùng `GET` theo endpoint RecSys hiện hành. Tham số `q` là truy vấn tự do; client phải URL-encode tiếng Việt. Route frontend `/search?q=…` và endpoint API có cùng tên tham số nhưng là hai bề mặt khác nhau.
 
-`POST /api/v1/search` với body `SearchRequest` vẫn được giữ trong OpenAPI v1 để không phá client hiện có. GET là compatibility endpoint mà Agent dùng trong giai đoạn nối RecSys hiện tại.
+`POST /api/v1/search` với body `SearchRequest` vẫn được giữ trong OpenAPI v1 để không phá client hiện có. GET là compatibility endpoint; Agent chỉ gọi nó ở mode `http` (tuỳ chọn), còn mode `inprocess` gọi thẳng engine Search trong tiến trình.
 
-**Ghi hành vi:** request có JWT và `offset = 0` thì Backend ghi event `search` (`searchQuery` lấy từ `q` hoặc `query`) sang CDP ở nền. Đổi trang, không JWT, hoặc CDP lỗi đều không ảnh hưởng response. Team Agent gọi endpoint này **không kèm JWT**, để lượt tìm của Agent không bị tính là hành vi người dùng (`hop-dong-tich-hop-cdp.md` §1.4).
+**Ghi hành vi:** request có JWT và `offset = 0` thì Backend ghi event `search` (`searchQuery` lấy từ `q` hoặc `query`) sang CDP ở nền. Đổi trang, không JWT, hoặc CDP lỗi đều không ảnh hưởng response. Agent không gắn danh tính khi tìm kiếm: mode `http` gọi endpoint này **không kèm JWT**, mode `inprocess` gọi engine không qua route nên không ghi event. Nhờ vậy lượt tìm của Agent không bị tính là hành vi người dùng (`hop-dong-tich-hop-cdp.md` §1.4).
 
 #### Query parameters
 
@@ -410,7 +410,7 @@ Dùng `GET` theo endpoint RecSys hiện hành. Tham số `q` là truy vấn tự
 | `limit` | Không | `20` | 1–50 |
 | `offset` | Không | `0` | — |
 
-Agent vẫn có schema tool giàu hơn (`priceMin`, `priceMax`, `starRatingMin`, `availableOnly`, `sort`) và hậu kiểm các ràng buộc đó sau retrieval; adapter chỉ gửi các query parameter endpoint GET hỗ trợ.
+Agent vẫn có schema tool giàu hơn (`priceMin`, `priceMax`, `starRatingMin`, `availableOnly`, `sort`) và hậu kiểm các ràng buộc đó sau retrieval; cả adapter `http` lẫn `inprocess` chỉ chuyển các tham số endpoint GET hỗ trợ: `query` (adapter `http` đổi thành `q`), `taxonomy`, `destination`, `limit`, `offset`.
 
 ### 5.2. `SearchResponse`
 
@@ -535,7 +535,11 @@ cross_vertical     Người dùng đã đặt một danh mục trong chuyến, h
 recent_activity    Có event gần đây nhưng chưa thành chuyến rõ ràng
 dormant            Event gần nhất cách đây trên 90 ngày
 popular            Không đủ dữ liệu cá nhân hóa, hoặc khách ẩn danh
+long_term          Có lịch sử, không có chuyến đang mở, chưa quá ngưỡng dormant của engine
+cold_start_content Có chuyến đang mở, tổng dưới 3 event dùng được, chưa mua gì trong chuyến
 ```
+
+`long_term` và `cold_start_content` bổ sung ngày 2026-09-28 (OpenAPI 1.8.0): engine đã trả hai giá trị này nhưng contract thiếu. Điều kiện chính xác, và chỗ các dòng cũ lệch với engine (đang chờ quyết định), ở `hop-dong-tich-hop-search-recommendation.md` §4.4.
 
 Quy tắc bắt buộc:
 
@@ -583,7 +587,7 @@ Cam kết:
 | Tình huống | Hành vi |
 |---|---|
 | Không có JWT | `200` với `cdpUserId: null`, `strategy: "popular"`, mọi `because` rỗng, `diagnostics.coldStart: true`, `eventsUsed: 0` |
-| Có JWT, dưới 3 event | `200` với `cdpUserId` thật, `strategy: "popular"` hoặc `"recent_activity"` tùy có `because` hay không, `coldStart: true` |
+| Có JWT, dưới 3 event | `200` với `cdpUserId` thật, `strategy: "popular"` hoặc `"recent_activity"` tùy có `because` hay không, `coldStart: true`. Engine hiện chạy khác dòng này, xem ghi chú lệch ở `hop-dong-tich-hop-search-recommendation.md` §4.4 |
 | JWT sai hoặc hết hạn | `401` `INVALID_TOKEN`. Không âm thầm hạ xuống chế độ ẩn danh — client cần biết để mở modal đăng nhập lại |
 | Có JWT, CDP clone lỗi hoặc timeout | `200` với `cdpUserId` thật, `strategy: "popular"`, mọi `because` rỗng, `coldStart: true`, `eventsUsed: 0`. Không trả `500` vì lỗi CDP (`hop-dong-tich-hop-cdp.md` §6) |
 
@@ -931,7 +935,7 @@ Log **không được** chứa: mật khẩu ở bất kỳ dạng nào, JWT, AP
 | `attributes: ["family-friendly"]` | `attributes: { familyFriendly: true }` | CDP lưu object; từ vựng ở §2.5 |
 | `semanticScore` | `score` | Đồng bộ với `/recommendations` và `/similar` |
 | `recommendationScore` | `score` | Như trên |
-| `strategy: PERSONALISED` \| `POPULAR_IN_DESTINATION` | `cross_vertical` \| `recent_activity` \| `dormant` \| `popular` | Bốn giá trị này là thứ UI cần để sinh tiêu đề section |
+| `strategy: PERSONALISED` \| `POPULAR_IN_DESTINATION` | `cross_vertical` \| `recent_activity` \| `dormant` \| `popular`; bổ sung `long_term` \| `cold_start_content` (2026-09-28) | Các giá trị này là thứ UI cần để sinh tiêu đề section |
 | `userId` trong response recommendation | `cdpUserId` | Phân biệt rõ với `userId` của bảng `users` |
 | `bookingUrl: "/products/{productId}"` | Bỏ khỏi payload; client dựng `/product/{productId}` | Route thật là số ít, và URL frontend không thuộc trách nhiệm backend |
 | `reason` (chuỗi lý do) | `because[]` (§6.3) | Chuỗi tự do không render được popover "Vì sao?" |
@@ -944,7 +948,7 @@ Tài liệu này **không tự sửa** file hợp đồng Agent. Việc cập nh
 
 | # | Câu hỏi | Trả lời |
 |---|---|---|
-| D1 | Giá trị `strategy` ngoài `cross_vertical` | **Chốt.** `cross_vertical`, `recent_activity`, `dormant`, `popular` — §6.2 |
+| D1 | Giá trị `strategy` ngoài `cross_vertical` | **Chốt.** `cross_vertical`, `recent_activity`, `dormant`, `popular`; bổ sung `long_term`, `cold_start_content` 2026-09-28 — §6.2 |
 | D2 | `because[]` có `productId` / `imageUrl` không | **Chốt: có cả hai**, `productId` nhận `null` khi sản phẩm đã bị xóa — §6.3 |
 | D3 | Ai ghi event `product_view` | **Chốt: Web gọi `POST /api/v1/events`**, Backend ghi sang CDP clone — §7.5. `GET /products/{id}` không ghi event. `search` và `add_to_cart` do Backend tự ghi. Web không gọi CDP clone |
 | D4 | `/search` hỗ trợ lọc và ngưỡng điểm không | **Chốt.** Lọc `taxonomy`, `destination`, `priceMin`/`priceMax`, `starRatingMin`; trả `topScore` và `facets` — §5.1, §5.2 |

@@ -14,12 +14,10 @@ grep -q 'docker-compose.backend-vm.yml' "$workflow"
 grep -q 'install -D -m 0644' "$workflow"
 grep -q 'GCE_COMPOSE_FILE' "$workflow"
 grep -q '\$GITHUB_WORKSPACE/scripts' "$workflow"
-grep -q '\$GITHUB_WORKSPACE/src/data_collection' "$workflow"
 grep -q '\$GITHUB_WORKSPACE/ops' "$workflow"
 
 tar -czf - \
-  -C "$repo_root/scripts" deploy-backend-vm.sh install-vota-cron.sh check-db-tunnel.sh \
-  -C "$repo_root/src/data_collection" run_daily_docker.sh \
+  -C "$repo_root/scripts" deploy-backend-vm.sh check-db-tunnel.sh \
   -C "$repo_root/ops" docker-compose.backend-vm.yml \
   | tar -tzf - >/dev/null
 
@@ -36,13 +34,9 @@ grep -q 'JWT_PRIVATE_KEY_PATH' "$deploy"
 grep -q 'AUTH_REDIS_URL' "$deploy"
 grep -q '/app/secrets' "$deploy"
 grep -q -- '--no-deps' "$deploy"
-grep -q 'Restart crawler monitor with published image' "$workflow"
-grep -q 'docker rm -f vota-daily-monitor' "$workflow"
-grep -q 'CONTAINER_NAME=vota-daily' "$workflow"
-grep -q 'PULL=0' "$workflow"
-grep -q 'docker inspect --format' "$workflow"
-grep -q 'Start crawler run after deploy' "$workflow"
-grep -q 'run >.*daily-cd.log' "$workflow"
-grep -q 'docker ps --filter name=vota-daily' "$workflow"
+if grep -Eq 'crawler|CRAWLER|Dockerfile.daily|run_daily_docker' "$workflow"; then
+  echo 'backend workflow must not deploy the crawler' >&2
+  exit 1
+fi
 
 echo 'backend VM CD sync checks passed'

@@ -848,3 +848,30 @@
         httpStatus: 200
         status: [NEEDS_CLARIFICATION]
         toolCalled: false
+
+# ---------------------------------------------------------------------------------------------------
+# G-076: thêm ngày 2026-09-29 cùng tool get_similar_products (đề xuất đã chốt
+# docs/prd/update-archive/2026-09-28-tool-similar-cho-agent.md). Đổi món như G-041 nhưng xin chỗ ở
+# "tương tự" cái đã xem, không nêu tên: planner được mời Similar với anchor lấy từ lịch trình lượt 1.
+
+- id: G-076
+  category: multi_turn
+  fr: [FR-AGT-02, FR-AGT-04, FR-AGT-05]
+  turns:
+    - message: Nha Trang 3 ngày, cần khách sạn
+      expect:
+        httpStatus: 200
+        status: [COMPLETED, FALLBACK]
+        intent: {destination: Nha Trang, days: 3}
+    # Similar tìm cùng taxonomy trên cả catalog, không theo điểm đến: khách sạn nơi khác phải bị bỏ lặng
+    # lẽ (không có warning PRODUCT_DROPPED_DESTINATION), và lịch vẫn có chỗ ở mới ở Nha Trang.
+    # toolsInclude đo việc planner thật sự dùng Similar (anchor hợp lệ còn lại sau validated_plan).
+    - message: đổi sang khách sạn khác tương tự khách sạn này
+      expect:
+        httpStatus: 200
+        status: [COMPLETED]
+        intent: {destination: Nha Trang, days: 3}
+        hasStay: true
+        excludeProductsFromTurn: {turn: 1, role: stay}
+        warningsExclude: [PRODUCT_DROPPED_DESTINATION]
+        toolsInclude: [get_similar_products]

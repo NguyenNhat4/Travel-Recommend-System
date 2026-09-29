@@ -2135,17 +2135,27 @@ def main(argv=None) -> int:
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--allow-public-host", action="store_true",
                     help="chấp nhận Host public; chỉ bật tạm thời vì UI có POST endpoint điều khiển job")
-    ap.add_argument("--state-dir", type=Path,
-                    default=Path(os.environ.get("CATALOG_STATE_DIR", ROOT / "data" / "state")))
-    ap.add_argument("--run-root", type=Path,
-                    default=Path(os.environ.get("CATALOG_RUN_ROOT", ROOT / "data" / "fresh_runs")))
-    ap.add_argument("--log-dir", type=Path, default=Path(os.environ["CATALOG_LOG_DIR"]) if os.environ.get("CATALOG_LOG_DIR") else None,
-                    help="thư mục log của runner (fresh-catalog-*.log) để xem lỗi xảy ra trước khi lượt tạo thư mục riêng")
+    ap.add_argument("--data-dir", type=Path, default=None,
+                    help="thư mục dữ liệu chung chứa state/, fresh_runs/, logs/ (mặc định VOTA_DATA_DIR nếu có)")
+    ap.add_argument("--state-dir", type=Path, default=None, help="mặc định CATALOG_STATE_DIR, rồi <data-dir>/state")
+    ap.add_argument("--run-root", type=Path, default=None, help="mặc định CATALOG_RUN_ROOT, rồi <data-dir>/fresh_runs")
+    ap.add_argument("--log-dir", type=Path, default=None,
+                    help="thư mục log của runner (fresh-catalog-*.log) để xem lỗi xảy ra trước khi lượt tạo thư mục riêng; "
+                         "mặc định CATALOG_LOG_DIR, rồi <data-dir>/logs nếu có")
     a = ap.parse_args(argv)
-    Handler.monitor = FreshMonitor(a.state_dir.resolve(), a.run_root.resolve(), a.log_dir.resolve() if a.log_dir else None)
+    # Thư mục: tham số > CATALOG_* > --data-dir / VOTA_DATA_DIR (<dữ liệu>/state, /fresh_runs, /logs — cách CD của
+    # release-mvp-v2 gọi monitor trong image daily) > data/ cạnh file này.
+    data_dir = a.data_dir or (Path(os.environ["VOTA_DATA_DIR"]) if os.environ.get("VOTA_DATA_DIR") else None)
+    state_dir = a.state_dir or (Path(os.environ["CATALOG_STATE_DIR"]) if os.environ.get("CATALOG_STATE_DIR")
+                                else data_dir / "state" if data_dir else ROOT / "data" / "state")
+    run_root = a.run_root or (Path(os.environ["CATALOG_RUN_ROOT"]) if os.environ.get("CATALOG_RUN_ROOT")
+                              else data_dir / "fresh_runs" if data_dir else ROOT / "data" / "fresh_runs")
+    log_dir = a.log_dir or (Path(os.environ["CATALOG_LOG_DIR"]) if os.environ.get("CATALOG_LOG_DIR")
+                            else data_dir / "logs" if data_dir and (data_dir / "logs").is_dir() else None)
+    Handler.monitor = FreshMonitor(state_dir.resolve(), run_root.resolve(), log_dir.resolve() if log_dir else None)
     Handler.allow_public_host = a.allow_public_host
     server = ThreadingHTTPServer((a.host, a.port), Handler)
-    print(f"Monitor job cào: http://{a.host}:{a.port}  (state: {a.state_dir.resolve()}, lượt: {a.run_root.resolve()})"
+    print(f"Monitor job cào: http://{a.host}:{a.port}  (state: {state_dir.resolve()}, lượt: {run_root.resolve()})"
           " — Ctrl+C để dừng", flush=True)
     try:
         server.serve_forever()

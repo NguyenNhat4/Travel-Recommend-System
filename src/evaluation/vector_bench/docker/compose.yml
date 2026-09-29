@@ -1,0 +1,53 @@
+# vbench — compose project RIÊNG (network, volume riêng), port lệch khỏi app (5432 vẫn là DB `vota`).
+# Mỗi lần chỉ bật MỘT profile để các engine không tranh tài nguyên (spec.md Part 0 P0.1).
+# Fast-track (spec-fasttrack §4): chỉ 3 profile pgvector, pgvectorscale, qdrant. Milvus/Weaviate/OpenSearch thêm ở Part 8b–8d.
+# Dọn CHỈ bằng `vb engine down <engine> --volumes` — không `docker system prune` / `docker volume prune`.
+name: vbench
+x-limits: &limits
+  cpus: ${ENGINE_CPUS:-4}
+  mem_limit: ${ENGINE_MEM:-8g}
+
+services:
+  pgvector:
+    profiles: [pgvector]
+    image: ${PGVECTOR_IMAGE:-pgvector/pgvector:0.8.6-pg16}
+    <<: *limits
+    shm_size: ${PG_SHM_SIZE:-2g}   # build HNSW song song cần /dev/shm lớn hơn 64 MB mặc định của Docker
+    environment: {POSTGRES_PASSWORD: vbench, POSTGRES_DB: vbench}
+    command: >
+      postgres -c shared_buffers=${PG_SHARED_BUFFERS:-2GB}
+               -c maintenance_work_mem=${PG_MAINT_MEM:-1GB}
+               -c max_parallel_maintenance_workers=${PG_PAR_MAINT:-2}
+               -c work_mem=64MB -c jit=off
+    ports: ["${PGVECTOR_PORT:-55432}:5432"]
+    volumes: [pgvector_data:/var/lib/postgresql/data, "${VBENCH_HOME}/backups/pgvector:/backup"]
+
+  pgvectorscale:
+    profiles: [pgvectorscale]
+    # pg16 là tag trôi → ghim pg16.15-ts2.30.1 (cùng digest với pg16 ngày 17/09/2026; vectorscale 0.9.1 + vector 0.8.6)
+    image: ${PGVS_IMAGE:-timescale/timescaledb-ha:pg16.15-ts2.30.1}
+    <<: *limits
+    shm_size: ${PG_SHM_SIZE:-2g}
+    environment:
+      POSTGRES_PASSWORD: vbench
+      POSTGRES_DB: vbench
+      # timescaledb-tune lúc init tự đổi random_page_cost, effective_cache_size, parallel workers… — container pgvector
+      # không có → tắt để hai engine Postgres cùng cấu hình planner (so sánh công bằng)
+      NO_TS_TUNE: "true"
+      TIMESCALEDB_TELEMETRY: "off"
+    command: >
+      postgres -c shared_buffers=${PG_SHARED_BUFFERS:-2GB}
+               -c maintenance_work_mem=${PG_MAINT_MEM:-1GB}
+               -c max_parallel_maintenance_workers=${PG_PAR_MAINT:-2}
+               -c work_mem=64MB -c jit=off
+    ports: ["${PGVS_PORT:-55433}:5432"]
+    volumes: [pgvs_data:/home/postgres/pgdata, "${VBENCH_HOME}/backups/pgvectorscale:/backup"]
+
+  qdrant:
+    profiles: [qdrant]
+    image: qdrant/qdrant:${QDRANT_TAG:-v1.19.1}
+    <<: *limits
+    ports: ["${QDRANT_HTTP_PORT:-56333}:6333", "${QDRANT_GRPC_PORT:-56334}:6334"]
+    volumes: [qdrant_data:/qdrant/storage, "${VBENCH_HOME}/backups/qdrant:/qdrant/snapshots"]
+
+volumes: {pgvector_data: {}, pgvs_data: {}, qdrant_data: {}}

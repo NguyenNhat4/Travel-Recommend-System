@@ -39,10 +39,17 @@ Chạy ở một terminal riêng:
 
 | Biến | Giá trị |
 |---|---|
-| `ITINERARY_DATA_MODE` | `http` |
-| `ITINERARY_SERVICE_BASE_URL` | `http://127.0.0.1:8000` |
+| `ITINERARY_DATA_MODE` | `inprocess` (nên dùng) hoặc `http`; không để `fixture` |
+| `ITINERARY_SERVICE_BASE_URL` | `http://127.0.0.1:8000`, chỉ cần khi `ITINERARY_DATA_MODE=http` |
 | `DATABASE_URL` | đọc được `cdp.products` (runner dùng để đối chiếu sản phẩm) |
 | Key LLM | `OPENAI_API_KEY`, `GEMINI_API_KEY` hoặc `ANTHROPIC_API_KEY` |
+
+Runner dựng graph trong tiến trình của nó và luôn gọi Search/Recommendation/destinations của backend qua HTTP
+(`ItineraryHttpClients` tới `--api-base-url`), nên biên bản ghi `dataMode: http` bất kể mode của backend. Mode của
+backend chỉ quyết định `productCount` trong biên bản, vì runner đọc số này từ `/assistant/status`: `inprocess` trả số
+sản phẩm trong index, `http` trả `null`, còn `fixture` trả 50 của bộ mẫu nên không dùng. Staging/production chạy
+`ITINERARY_DATA_MODE=inprocess` (agent gọi engine trong cùng tiến trình, không qua HTTP); golden không đo đường đó.
+Output của hai đường được đối chiếu bằng test parity trong `src/backend/tests`, không phải bằng golden.
 
 Đợi log in ra `startup.recsys.index.load.ready`, thường mất 1–2 phút. Chạy runner trước lúc đó thì mọi case
 đều ra sai. Kiểm tra backend đã sẵn sàng:
@@ -51,7 +58,7 @@ Chạy ở một terminal riêng:
 curl -s localhost:8000/api/v1/assistant/status
 ```
 
-Response phải có `"status":"ready"`, `"dataMode":"http"`, `"llmMode":"live"`.
+Response phải có `"status":"ready"`, `"llmMode":"live"` và `"dataMode"` là `"inprocess"` hoặc `"http"`.
 
 ### Bước 3: chạy runner
 
@@ -59,7 +66,7 @@ Response phải có `"status":"ready"`, `"dataMode":"http"`, `"llmMode":"live"`.
 .venv/bin/python -m src.evaluation.agent.golden
 ```
 
-Lệnh trên chạy 14 case (23 lượt). Chưa đo thời gian; bộ 75 case cũ (89 lượt) mất khoảng 6 phút, nên bộ này ước chừng dưới 2 phút.
+Lệnh trên chạy 75 case (89 lượt), mất khoảng 6 phút.
 
 | Cờ | Tác dụng | Ví dụ |
 |---|---|---|

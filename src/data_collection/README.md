@@ -237,7 +237,8 @@ Phục vụ FR-CAT-01/03 và NFR-SEC-01. Dùng cùng **image/tag, env file và v
 
 ```bash
 FRESH_IMAGE=<AR>/vota-fresh-catalog:<tag> /opt/vota/bin/run_daily_docker.sh fresh-monitor
-# `monitor` là alias của `fresh-monitor`. Chạy ở terminal/tmux riêng để giữ server sống.
+# Chạy ở terminal/tmux riêng để giữ server sống. `monitor` (không có `fresh-`) chạy cùng UI trong image daily và đọc
+# <DATA_DIR>/state, <DATA_DIR>/fresh_runs — đây là lệnh bước "Restart crawler monitor" của CD gọi.
 # Trên máy cá nhân:
 ssh -L 8765:127.0.0.1:8765 <user>@<vm>
 # Mở http://127.0.0.1:8765/ ; /daily và /pipeline tự chuyển về đây.

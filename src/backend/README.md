@@ -20,7 +20,7 @@ Không dùng URL từ máy host (`localhost`) bên trong container. Nếu cần 
 RecSys cố định Cohere `embed-multilingual-v3.0` (1024 chiều). Job index dùng `search_document`; request tìm kiếm dùng `search_query`. `WEAVIATE_URL`, `WEAVIATE_COLLECTION`, `COHERE_API_KEY` và `SEARCH_CUTOFF` (`0.62`, còn phải benchmark lại) được đọc qua `core/config.py`. Job index (`python -m src.backend.jobs.embed_products`) gọi Cohere song song `COHERE_EMBED_CONCURRENCY` lô (mặc định 4; 1 = tuần tự) dưới trần `COHERE_CALLS_PER_MINUTE` lượt/phút cho cả job (mặc định 90, hợp key Trial 100 lượt/phút; 0 = không giới hạn); gặp 429 thì mọi lô cùng chờ. Chỉ luồng chính ghi Weaviate, lô nào xong ghi ngay, lỗi giữa chừng vẫn giữ phần đã ghi. `--force` nhúng lại toàn bộ (chỉ để đo, tốn quota). Search lúc chạy API không bị giới hạn này. Weaviate chỉ giữ vector + `productId`/`modelVersion`/`textHash`; tên, giá, ảnh và availability luôn hydrate từ PostgreSQL. Metadata nạp lúc khởi động rồi nạp lại mỗi `CATALOG_REFRESH_SECONDS` (mặc định 900 giây); lần nạp lại lỗi thì giữ bản đang phục vụ. Search unit chưa có vector (job index chưa chạy xong) vẫn có giá mới nhưng chưa tìm được qua vector. Chưa nạp được lần nào — thiếu PostgreSQL, Weaviate, khóa Cohere, hoặc dưới một nửa search unit có vector đúng model — thì RecSys tắt và thử lại sau 30 giây, các route còn lại vẫn chạy.
 
 Endpoint hiện có (prefix `/api/v1`): `GET|POST /search` (`q`/`query`, `taxonomy`, `destination`, `limit`, `offset`;
-Agent tool `query` được adapter đổi thành `q`) · `GET /similar/{productId}?k=` · `GET /recommendations?k=&destination=`
+ở `ITINERARY_DATA_MODE=http`, adapter đổi tham số tool `query` thành `q`) · `GET /similar/{productId}?k=` · `GET /recommendations?k=&destination=`
 (JWT tùy chọn, `cdp_user_id` lấy từ token; token hỏng → 401, không hạ thành khách) · `GET /destinations` ·
 `POST /assistant/itineraries` · `POST /assistant/itineraries/stream` · `GET /assistant/status` ·
 `GET /assistant/conversations` · `GET /assistant/conversations/{conversationId}` (JWT bắt buộc) ·
@@ -73,11 +73,11 @@ pytest -q src/backend/tests/integration/test_booking_postgres.py` (dùng user te
 |---|---|---|
 | domain | `domain/<domain>/` | Business rule thuần: vai trò sản phẩm + text builder (`catalog`), FILTER → SCORE → CUTOFF (`search`), hồ sơ người dùng + MMR + phổ biến (`recommendation`), chuẩn hoá intent + ghép lịch trình (`itinerary`), mật khẩu + phiên (`auth`), máy trạng thái đơn/thanh toán + giữ chỗ + chính sách huỷ (`booking`) |
 | application | `application/ports/` | Mỗi port một file: `cdp_client.py` (`CdpClient` ghi, `CdpHistoryReader` đọc), `embedder.py`, `vector_store.py`, `unit_index.py`, `llm.py`, `itinerary_planner.py`, `itinerary_tools.py`, `auth.py`, `payment_gateway.py`, `booking_store.py`, `cart_repository.py`, `product_catalog.py`, `product_query.py` (GET /products) |
-| application | `application/<domain>/` | Use case: `SearchProducts`, `SimilarProducts`, `RecommendForUser`, `BuildPopularity`, `PlanItinerary`, auth, booking, tracking |
-| agents | `agents/` | LangGraph 10 node; `runtime_dependencies.py` hiện thực port `ItineraryPlanner`; `tools/itinerary_gateway.py` gọi Search/Recommendation qua port |
+| application | `application/<domain>/` | Use case: `SearchProducts`, `SimilarProducts`, `RecommendForUser`, `BuildPopularity`, `PlanItinerary`, auth, booking, tracking; `itinerary/engine_tools.py` (`InProcessItineraryTools`, tool itinerary gọi engine trong tiến trình); `auth/bearer.py` (resolver Bearer dùng chung cho `api/deps.py` và tool) |
+| agents | `agents/` | LangGraph 10 node; `runtime_dependencies.py` hiện thực port `ItineraryPlanner`; `tools/itinerary_gateway.py` gọi Search/Recommendation (và Similar ở lượt đổi món) qua port |
 | infrastructure | `cdp/` | `LocalCdpClient` (ghi), `PostgresCdpReader` (đọc), `CdpHttpClient`, `BackgroundCdpEventRecorder` — mọi SQL vào schema `cdp` nằm ở đây |
 | infrastructure | `persistence/` | `PostgresProductLookup`, Redis conversation store, Postgres conversation archive, LangGraph checkpointer, giỏ/đơn/thanh toán (`postgres_booking.py`) |
-| infrastructure | `clients/` | HTTP client itinerary; fixture 50 sản phẩm cho `ITINERARY_DATA_MODE=fixture` |
+| infrastructure | `clients/` | HTTP client itinerary (`ITINERARY_DATA_MODE=http`, tuỳ chọn); fixture 50 sản phẩm cho `ITINERARY_DATA_MODE=fixture` |
 | infrastructure | `llm/`, `embeddings/`, `vectors/`, `auth/`, `payments/` | Provider LLM (`LazyChatModel`), `CohereEmbedder`, `WeaviateVectorStore`, hash mật khẩu + JWT, `StripePaymentGateway` (REST qua httpx, kiểm chữ ký webhook) + `FakeGateway` (`PAYMENT_PROVIDER=fake`) |
 | api | `api/` | `deps.py` (Depends lấy use case), `middleware.py` (X-Request-ID, CORS), `errors.py` (Error Envelope), `v1/router.py`, `v1/schemas/` (DTO), `v1/routes/` |
 | core | `core/` | `config.py` (một `Settings` duy nhất), `request_context.py` (ContextVar, không import FastAPI) |
@@ -144,19 +144,35 @@ không làm hỏng lượt chat. Khách không được lưu lâu dài. Web đ�
 Với `disabled` và `unavailable`, app vẫn khởi động và các route khác vẫn phục vụ; riêng request itinerary
 trả 503 `LLM_UNAVAILABLE` có kiểm soát.
 
-Để Agent dùng Search/Recommendation của chính Backend thay cho fixture:
+Nguồn dữ liệu cho tool của Agent chọn bằng `ITINERARY_DATA_MODE`; `/assistant/status` trả lại giá trị này trong `dataMode`:
+
+| Giá trị | Adapter | Khi dùng |
+|---|---|---|
+| `fixture` | `infrastructure/clients/itinerary_fixture_clients.py` (50 sản phẩm) | Mặc định development/test; máy chưa seed PostgreSQL vẫn chạy được |
+| `inprocess` | `application/itinerary/engine_tools.py` | Dữ liệu thật: gọi thẳng engine Search/Recommendation/Similar/catalog trên `app.state`, không qua HTTP. `make chat`/`make web` mặc định dùng mode này |
+| `http` | `infrastructure/clients/itinerary_http_clients.py` | Tuỳ chọn: gọi `/search`, `/recommendations`, `/destinations`, `/products/{id}`, `/products/{id}/similar` qua `ITINERARY_SERVICE_BASE_URL` (bắt buộc ở mode này). Dùng để hoàn tác hoặc khi tách Agent thành service riêng |
+| `disabled` | — | Mặc định ngoài development/test: status `not_configured`, request itinerary trả 503 `SEARCH_UNAVAILABLE` |
+
+Chạy Agent với dữ liệu thật (cần PostgreSQL đã seed, Weaviate đã index và `COHERE_API_KEY`):
 
 ```env
-ITINERARY_DATA_MODE=http
-ITINERARY_SERVICE_BASE_URL=http://127.0.0.1:8000
-JWT_SECRET=<secret HS256 giống service Auth>
-JWT_ALGORITHM=HS256
+ITINERARY_DATA_MODE=inprocess
+ITINERARY_TOOL_TIMEOUT_SECONDS=1   # hạn mỗi lời gọi tool, áp mọi mode
 ```
 
-Tool `search_products` gọi GET `/api/v1/search` nhưng luôn bỏ Authorization. Tool
-`get_recommendations` forward Bearer token; Backend chỉ lấy `cdp_user_id` từ JWT đã xác minh. Hai
-response RecSys chứa đủ trường catalog để Agent hậu kiểm và không cần gọi Product Detail. Fixture vẫn
-là mặc định của development/test để máy chưa seed PostgreSQL vẫn chạy được.
+Chờ log `startup.recsys.ready`; trước đó tool trả 503 `SEARCH_UNAVAILABLE` retryable. Tool `search_products` không
+bao giờ mang danh tính người dùng. Tool `get_recommendations` xác minh Bearer của request ngay trong tiến trình qua
+`application/auth/bearer.py` (cùng resolver với route): token hỏng → 401, không hạ thành khách; không có header → khách.
+Tool thứ ba `get_similar_products` (`/products/{id}/similar`, `same_taxonomy`, không mang danh tính) chỉ được mời ở
+lượt đổi món, với sản phẩm gốc lấy từ lịch trình lượt trước; quy tắc ở
+`docs/spec/hop-dong-tich-hop-itinerary-assistant.md` §2.5.
+Engine đồng bộ chạy trên pool riêng 40 thread (`itinerary-tool`) và giữ request ID; mỗi lời gọi kết thúc trong hạn
+ghi một dòng log `itinerary.tool`, lời gọi quá hạn chỉ ghi `itinerary.tool.timeout`; engine chưa sẵn sàng hoặc lỗi ghi
+`itinerary.tool.unavailable` (lỗi thì kèm tên kiểu lỗi và frame traceback, không kèm thông điệp). Không dòng nào ghi
+tham số hay token. Kết quả có đúng hình dạng
+response của route và đủ trường catalog để Agent hậu kiểm mà không cần gọi Product Detail. Quay về cách gọi cũ:
+`ITINERARY_DATA_MODE=http` và `ITINERARY_SERVICE_BASE_URL=http://127.0.0.1:8000`. Runner golden
+(`src/evaluation/agent/golden.py`) luôn gọi backend qua HTTP.
 
 CLI chạy kịch bản đánh giá agent đã chuyển sang `src/evaluation/agent/cli.py`
 (`python -m src.evaluation.agent.cli --help`).

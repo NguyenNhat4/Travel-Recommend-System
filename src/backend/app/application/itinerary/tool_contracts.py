@@ -8,9 +8,13 @@ from jsonschema import Draft202012Validator, FormatChecker
 from src.shared.contracts.scripts.bundle_openapi import bundle
 from src.backend.app.application.ports.itinerary_tools import ToolError
 
+#: Tool "sản phẩm tương tự" cho lượt đổi món (FR-AGT-05). Gateway chỉ đưa cho planner khi được nối port Similar.
+SIMILAR_PRODUCTS = "get_similar_products"
+
 OPERATIONS = {
     "search_products": ("/search", "get"),
     "get_recommendations": ("/recommendations", "get"),
+    SIMILAR_PRODUCTS: ("/products/{productId}/similar", "get"),
 }
 
 
@@ -40,7 +44,8 @@ def contracts() -> dict[str, dict[str, Any]]:
         elif method == "post":
             arguments = operation["requestBody"]["content"]["application/json"]["schema"]
         else:
-            parameters = [p for p in operation["parameters"] if p["in"] == "query"]
+            # Tham số path (`productId` của similar) là đối số bắt buộc như query; header X-Request-ID thì không.
+            parameters = [p for p in operation["parameters"] if p["in"] in {"query", "path"}]
             arguments = {"type": "object", "additionalProperties": False,
                          "properties": {p["name"]: p["schema"] for p in parameters},
                          "required": [p["name"] for p in parameters if p.get("required")]}
