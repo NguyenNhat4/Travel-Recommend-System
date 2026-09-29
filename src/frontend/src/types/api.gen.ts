@@ -767,6 +767,8 @@ export interface components {
             attributes?: components["schemas"]["ProductAttributes"];
             /** @description Mô tả catalog phục vụ Agent; giữ nguyên, không chứa chỉ dẫn hệ thống. */
             description?: string;
+            /** @description Chỉ có ở vé máy bay tầng con (taxonomy flight, level flight): các hạng vé của CÙNG một hành trình (cùng chuyến, cùng ngày đi; khứ hồi thì cùng chuyến và ngày về), kể cả chính sản phẩm này. Mỗi hạng là một productId riêng; đặt vé bằng productId của hạng đã chọn (AddCartItemRequest không đổi). Các sản phẩm cùng hành trình có cùng fareClasses, nên Web hiển thị một thẻ cho mỗi hành trình. Chỉ liệt kê hạng có báo giá thật — thiếu hạng nào là chưa có dữ liệu, không phải hết chỗ. Vắng mặt ở loại sản phẩm khác. */
+            fareClasses?: components["schemas"]["FareClass"][];
         };
         ProductDetail: components["schemas"]["ProductSummary"] & {
             /** @description Chuỗi rỗng nếu nguồn crawl thiếu. */
@@ -780,6 +782,54 @@ export interface components {
                 maxPrice?: number | null;
                 maxOccupancy?: number | null;
             } | null;
+        };
+        /**
+         * @example {
+         *       "productId": "1d9b3c1e-0000-4000-8000-000000000001",
+         *       "code": null,
+         *       "name": "Giá rẻ nhất",
+         *       "price": 1322000,
+         *       "currency": "VND",
+         *       "priceValidUntil": "2026-09-30",
+         *       "availabilityStatus": "AVAILABLE",
+         *       "soldOut": null,
+         *       "carryOnKg": null,
+         *       "checkedKg": null,
+         *       "mealIncluded": null,
+         *       "changeRule": null
+         *     }
+         */
+        FareClass: {
+            /** @description Sản phẩm (hạng vé của hành trình) để thêm vào giỏ. */
+            productId: string;
+            /**
+             * @description Mã hạng từ attributes.cabinClass (ECONOMY→ECO, PREMIUM_ECONOMY→PRE, BUSINESS→BUS, FIRST→FST). null khi nguồn không ghi hạng (vd. giá rẻ nhất của trip.com) — không mặc định là phổ thông.
+             * @enum {string|null}
+             */
+            code: "ECO" | "PRE" | "BUS" | "FST" | null;
+            /** @description Nhãn hiển thị tiếng Việt (Phổ thông, Phổ thông đặc biệt, Thương gia, Hạng nhất; "Giá rẻ nhất" khi code null). */
+            name: string;
+            /** @description unitPrice của sản phẩm hạng này; vé khứ hồi là giá tổng hai chặng cho một người lớn. */
+            price: number | null;
+            /** @example VND */
+            currency: string;
+            /**
+             * Format: date
+             * @description Ngày cuối của báo giá tại nguồn; null khi nguồn không cung cấp.
+             */
+            priceValidUntil?: string | null;
+            /** @description AVAILABLE khi sản phẩm còn mở bán và báo giá chưa hết hạn; EXPIRED khi quá priceValidUntil; NOT_CHECKED khi không xác định được. Không phải xác nhận còn ghế. */
+            availabilityStatus: components["schemas"]["AvailabilityStatus"];
+            /** @description null = chưa biết (không nguồn nào cho số ghế trống). Báo giá hết hạn KHÔNG có nghĩa soldOut. */
+            soldOut?: boolean | null;
+            /** @description Hành lý xách tay (kg); null = chưa biết, 0 = nguồn xác nhận không có. */
+            carryOnKg?: number | null;
+            /** @description Hành lý ký gửi (kg); null = chưa biết, 0 = nguồn xác nhận không có. */
+            checkedKg?: number | null;
+            /** @description null = chưa biết. */
+            mealIncluded?: boolean | null;
+            /** @description Điều kiện đổi vé theo nguồn; null = chưa biết. */
+            changeRule?: string | null;
         };
         ScoredProduct: components["schemas"]["ProductSummary"] & {
             /** @description Cosine đã clamp về [0,1]. Chỉ hiển thị cho khách ở chế độ debug — 0.81 KHÔNG phải "81% phù hợp". */
