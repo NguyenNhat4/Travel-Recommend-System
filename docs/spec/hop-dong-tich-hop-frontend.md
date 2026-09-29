@@ -228,6 +228,8 @@ Web gọi route BFF `/api/auth/*`, không gọi thẳng `/api/v1/auth/*` (docs/s
 
 ### 4.8. Assistant `/assistant`
 
+**Trạng thái mở đầu của widget nổi (FR-AGT-01, hỗ trợ AC-AGT-01):** Khi mở icon AI trong cuộc trò chuyện chưa có request, hiển thị lời chào ngắn và một ô nhập yêu cầu tự nhiên dạng search box. Chip Nghỉ dưỡng/Gia đình/Khám phá chỉ điền bản nháp, không tự gửi. Form chọn nhanh nằm trong phần “Thêm thông tin chuyến đi”; danh sách điểm đến chỉ tải qua service `GET /destinations` khi mở phần này. Khi gửi câu đầu, chuyển sang transcript với một ô nhập ở đáy. Enter gửi, Shift+Enter xuống dòng; đang xử lý thì khóa gửi và cho dừng. Đóng/mở hoặc mở rộng giữ bản nháp; tạo cuộc mới xóa bản nháp và trở về màn mở đầu. Component của widget nằm trong `src/frontend/src/features/itinerary/widget/`; `components/assistant/AiFloatingWidget.tsx` giữ entry point tương thích.
+
 | Hành động | Endpoint | Auth | Trường Web đọc | Ghi chú |
 |---|---|---|---|---|
 | Gửi tin nhắn | `POST /assistant/itineraries` | tùy | theo `status`, xem §9.3 | Nút "Dừng" hủy request bằng `AbortController` |
