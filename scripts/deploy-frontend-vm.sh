@@ -7,7 +7,7 @@ compose_file=''
 frontend_service='frontend'
 frontend_health_url='http://127.0.0.1:3000/'
 bff_health_url='http://127.0.0.1:3000/api/v1/auth/me'
-backend_health_url='http://127.0.0.1:8000/health'
+backend_health_url='http://127.0.0.1:8000/health/ready'
 backend_env_file='/etc/vota/backend.env'
 health_timeout_seconds='300'
 health_interval_seconds='5'
@@ -16,11 +16,11 @@ dry_run=0
 usage() {
   cat <<'EOF'
 Usage:
-  deploy-frontend-vm.sh --frontend-image IMAGE:latest --compose-file /absolute/path/compose.yml
+  deploy-frontend-vm.sh --frontend-image IMAGE@sha256:DIGEST --compose-file /absolute/path/compose.yml
                         [--frontend-service frontend]
                         [--frontend-health-url http://127.0.0.1:3000/]
                         [--bff-health-url http://127.0.0.1:3000/api/v1/auth/me]
-                        [--backend-health-url http://127.0.0.1:8000/health]
+                        [--backend-health-url http://127.0.0.1:8000/health/ready]
                         [--backend-env-file /etc/vota/backend.env]
                         [--health-timeout SECONDS] [--health-interval SECONDS]
                         [--dry-run]
@@ -51,7 +51,7 @@ done
 
 [ -n "$frontend_image" ] || die '--frontend-image is required'
 [ -n "$compose_file" ] || die '--compose-file is required'
-[[ "$frontend_image" =~ ^asia-southeast1-docker\.pkg\.dev/[a-z0-9][a-z0-9._/-]*:latest$ ]] || die 'Frontend image must be an Artifact Registry :latest reference'
+[[ "$frontend_image" =~ ^asia-southeast1-docker\.pkg\.dev/[a-z0-9][a-z0-9._/-]*@sha256:[a-f0-9]{64}$ ]] || die 'Frontend image must be pinned by Artifact Registry digest'
 [[ "$compose_file" == /* ]] || die '--compose-file must be an absolute path'
 [[ "$backend_env_file" == /* ]] || die '--backend-env-file must be an absolute path'
 [[ "$frontend_service" =~ ^[a-zA-Z0-9_.-]+$ ]] || die 'invalid Frontend service name'
