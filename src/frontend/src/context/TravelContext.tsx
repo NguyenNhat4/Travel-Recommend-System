@@ -14,6 +14,7 @@ import * as authApi from '../services/auth';
 import * as bookingApi from '../services/booking';
 import type { BookingResponse, CartResponse, GuestCounts, UpdateCartItemRequest } from '../services/booking';
 import { ApiError, SESSION_EXPIRED_EVENT } from '../services/http';
+import { clearSectionCache } from '../hooks/useLazySection';
 
 interface ToastState {
   id: string;
@@ -220,6 +221,7 @@ export const TravelProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   /** Đổi tài khoản/đăng xuất: xoá MỌI state phía client của người trước (§4.2 điều 6). */
   const resetClientState = useCallback(() => {
     cartSeq.current.applied = ++cartSeq.current.issued;   // bỏ mọi response giỏ của người trước đang bay
+    clearSectionCache();
     setCartState(null);
     setActiveEvents([]);
     setBookings([]);

@@ -24,6 +24,9 @@ for (const width of [320, 768, 1024, 1440]) {
       await route.fulfill({ json: { destinations: [{ destination: 'Hội An', productCount: 15 }] } });
     });
     await page.goto('/');
+    // Home tự tải điểm đến khi khối "Bạn muốn đi đâu?" tới gần vùng nhìn; điều cần kiểm là việc mở widget không tải thêm.
+    await page.waitForLoadState('networkidle');
+    destinationRequests = 0;
     await page.getByRole('button', { name: 'Mở trợ lý du lịch AI' }).click();
     const dialog = page.getByRole('dialog', { name: 'Trợ lý du lịch AI' });
     const input = dialog.getByPlaceholder(openingPlaceholder);

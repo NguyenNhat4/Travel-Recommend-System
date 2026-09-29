@@ -78,3 +78,60 @@ body {
   animation: subtlePulse 3s ease-in-out infinite;
 }
 
+
+/* Kính mờ: header nổi trên hero và tấm tìm kiếm của trang danh mục (docs/plan/2026-09-29-ui-trang-danh-muc-va-header.md §7) */
+.glass-pill {
+  background-color: rgba(15, 23, 42, 0.28);
+  backdrop-filter: blur(20px) saturate(120%);
+  -webkit-backdrop-filter: blur(20px) saturate(120%);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25), inset 0 0 0 0.5px rgba(255, 255, 255, 0.35);
+}
+
+.glass-sheet {
+  background-color: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(36px) saturate(160%);
+  -webkit-backdrop-filter: blur(36px) saturate(160%);
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.16);
+}
+
+.glass-panel {
+  background-color: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+}
+
+/* Skeleton đúng khung thẻ, có sóng chạy ngang */
+.skeleton-wave {
+  position: relative;
+  overflow: hidden;
+  background-color: #e2e8f0;
+}
+.skeleton-wave::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  animation: skeletonWave 1.4s ease-in-out infinite;
+}
+@keyframes skeletonWave {
+  100% { transform: translateX(100%); }
+}
+
+/* Hàng cuộn ngang có điểm dừng để lộ một phần thẻ kế tiếp (product.md §7.1) */
+.snap-row {
+  scroll-snap-type: x proximity;
+}
+.snap-row > * {
+  scroll-snap-align: start;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-wave::after,
+  .animate-float {
+    animation: none;
+  }
+  .snap-row {
+    scroll-behavior: auto;
+  }
+}

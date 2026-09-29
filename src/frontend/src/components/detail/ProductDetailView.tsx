@@ -18,7 +18,8 @@ import type { CartState } from '../checkout/allocation';
 import { estimateFares } from '../checkout/fareEstimate';
 import { FareLines } from '../checkout/FareLines';
 import { GuestCounters } from '../checkout/GuestCounters';
-import { cartPayload, guestModeOf, initialCounts, isValidCounts, maxOccupancyFromAttributes } from '../checkout/guestCounts';
+import { cartPayload, guestModeOf, initialCounts, isValidCounts, maxOccupancyFromAttributes, normalizeCounts } from '../checkout/guestCounts';
+import { parseTripContext } from '../../features/search/tripContext';
 import { MapPin, Star, ShieldCheck, Users, BedDouble, Plane, Loader2 } from 'lucide-react';
 
 /**
@@ -189,10 +190,31 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
   const [counts, setCounts] = useState<CartState>(initialCounts);
   useEffect(() => {
     if (!unit) return;
-    const start = defaultStart(unit);
+    const maxOut = unit.availableTo ? addDays(unit.availableTo, 1) : undefined;
+    let start = defaultStart(unit);
+    let out = clamp(addDays(start, 1), addDays(start, 1), maxOut);
+    let counts = initialCounts();
+
+    // Ngữ cảnh chuyến đi từ tấm tìm kiếm (?checkIn&checkOut&adults&children&rooms): chỉ điền sẵn khi hợp lệ với mục đang chọn;
+    // sai hoặc ngoài cửa sổ mở bán thì giữ mặc định. Backend vẫn là nơi quyết định (DATE_OUT_OF_RANGE, VALIDATION_ERROR).
+    const trip = parseTripContext(new URLSearchParams(window.location.search));
+    if (trip.checkIn && (!unit.availableFrom || trip.checkIn >= unit.availableFrom) && (!unit.availableTo || trip.checkIn <= unit.availableTo)) {
+      start = trip.checkIn;
+      out = trip.checkOut && (!maxOut || trip.checkOut <= maxOut) ? trip.checkOut : clamp(addDays(start, 1), addDays(start, 1), maxOut);
+    }
+    if (trip.adults) {
+      const candidate: CartState = {
+        quantity: unit.taxonomy === 'hotel' ? trip.rooms ?? counts.quantity : counts.quantity,
+        guests: { adults: trip.adults, children: trip.children ?? 0 },
+      };
+      const wanted = guestModeOf(unit.taxonomy);
+      if (isValidCounts(wanted, normalizeCounts(wanted, candidate), maxOccupancyFromAttributes(unit.attributes as Record<string, unknown>))) {
+        counts = normalizeCounts(wanted, candidate);
+      }
+    }
     setCheckIn(start);
-    setCheckOut(clamp(addDays(start, 1), addDays(start, 1), unit.availableTo ? addDays(unit.availableTo, 1) : undefined));
-    setCounts(initialCounts());
+    setCheckOut(out);
+    setCounts(counts);
   }, [unit?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isHotel = unit?.taxonomy === 'hotel';

@@ -3,10 +3,11 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useTravel } from '../../context/TravelContext';
-import { EMPTY_SEARCH_RESPONSE, searchProductsApi, SortOption, SearchResponse } from '../../services/search';
+import { DEFAULT_QUERY, EMPTY_SEARCH_RESPONSE, searchProductsApi, SortOption, SearchResponse } from '../../services/search';
 import { ApiError } from '../../services/http';
 import { Destination, Taxonomy } from '../../types/travel';
 import { ProductCard } from '../common/ProductCard';
+import { describeTripContext, parseTripContext, serializeTripContext } from '../../features/search/tripContext';
 import { SearchBox } from '../common/SearchBox';
 import { Search, Filter, Sparkles, HelpCircle, X, ArrowUpDown, ChevronDown, Loader2 } from 'lucide-react';
 
@@ -27,6 +28,14 @@ export const SearchView: React.FC = () => {
       destinationParam: dest,
     };
   }, [searchParams]);
+
+  // Ngữ cảnh chuyến đi từ tấm tìm kiếm ở trang danh mục: đi tiếp tới trang chi tiết để điền sẵn hộp đặt, không lọc kết quả.
+  const tripQuery = useMemo(() => serializeTripContext(parseTripContext(searchParams)), [searchParams]);
+  const tripSummary = useMemo(() => describeTripContext(parseTripContext(searchParams)), [searchParams]);
+  const withTrip = (url: URL) => {
+    new URLSearchParams(tripQuery).forEach((value, key) => url.searchParams.set(key, value));
+    return url;
+  };
 
   const [searchInput, setSearchInput] = useState(queryParam);
   const [selectedDestinations, setSelectedDestinations] = useState<Destination[]>(() => {
@@ -99,6 +108,7 @@ export const SearchView: React.FC = () => {
       url.searchParams.delete('type');
       url.searchParams.delete('taxonomy');
     }
+    withTrip(url);
     navigate(url.pathname + url.search);
   };
 
@@ -113,6 +123,7 @@ export const SearchView: React.FC = () => {
       if (selectedTaxonomy) {
         url.searchParams.set('type', selectedTaxonomy);
       }
+      withTrip(url);
       navigate(url.pathname + url.search);
     } catch {
       // fallback
@@ -139,7 +150,8 @@ export const SearchView: React.FC = () => {
 
   // Compute readable heading based on search query or active category
   const headerTitle = useMemo(() => {
-    if (queryParam) {
+    const isDefaultQuery = Object.values(DEFAULT_QUERY).includes(queryParam.trim().toLowerCase());
+    if (queryParam && !(isDefaultQuery && selectedTaxonomy)) {
       return `Kết quả cho “${queryParam}”`;
     }
     switch (selectedTaxonomy) {
@@ -173,6 +185,7 @@ export const SearchView: React.FC = () => {
           if (selectedTaxonomy) {
             url.searchParams.set('type', selectedTaxonomy);
           }
+          withTrip(url);
           navigate(url.pathname + url.search);
         }}
         placeholder="Nhập truy vấn tự do: nghỉ dưỡng 5 sao, vé vui chơi, vé máy bay..."
@@ -192,6 +205,11 @@ export const SearchView: React.FC = () => {
           <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
             {headerTitle}
           </h1>
+          {tripSummary && (
+            <span className="text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-100 rounded-full px-3 py-1" title="Ngày và số khách sẽ được điền sẵn khi bạn chọn dịch vụ">
+              Chuyến đi: {tripSummary}
+            </span>
+          )}
           <span className="text-xs font-semibold text-slate-500 flex items-center gap-1.5">
             {isLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />}
             <span>Tìm thấy {searchResponse.total}{searchResponse.totalExact === false ? '+' : ''} dịch vụ phù hợp</span>
@@ -428,6 +446,7 @@ export const SearchView: React.FC = () => {
                   <ProductCard
                     product={item.product}
                     variant="row"
+                    tripQuery={tripQuery}
                     score={item.relevanceScore}
                     rank={index + 1}
                   />

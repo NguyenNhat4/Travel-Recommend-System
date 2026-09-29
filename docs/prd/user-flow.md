@@ -31,6 +31,10 @@ Hệ thống được tối ưu hóa cho 4 luồng trải nghiệm chính tươn
 | Tuyến đường (Route) | Tên màn hình | Mục đích chính | Thành phần cốt lõi |
 |---|---|---|---|
 | `/` | **Trang chủ (Home)** | Khám phá ban đầu, tìm kiếm nhanh, khối gợi ý cá nhân hóa | Hero Search Bar, Category Nav, Personalized Carousels, Trending Destinations |
+| `/hotels` | **Khách sạn & resort** | Duyệt và bắt đầu tìm khách sạn theo điểm đến, ngày, số phòng và số khách | Hero, Search Sheet, Product Shelves (phổ biến, giá tốt), Destination Tiles |
+| `/flights` | **Vé máy bay** | Duyệt chặng bay và bắt đầu tìm vé theo điểm đi, điểm đến, ngày, hành khách | Hero, Search Sheet, Product Shelves, Destination Tiles |
+| `/experiences` | **Tour và trải nghiệm** | Duyệt vé tham quan, vui chơi và sân golf (`?type=attraction\|golf`) | Hero, Search Sheet, Tab loại, Product Shelves, Destination Tiles |
+| `/combos` | **Combo du lịch** | Duyệt gói kết hợp | Hero, Search Sheet, Product Shelves, Destination Tiles |
 | `/search` | **Kết quả tìm kiếm** | Hiển thị kết quả tìm kiếm ngữ nghĩa và bộ lọc đa chiều | Query Header, Filter Sidebar, Sort Controls, Product Grid Cards, Pagination |
 | `/products/:id` | **Chi tiết sản phẩm** | Thông tin đầy đủ về phòng, vé, tour; trạng thái khả dụng | Image Gallery, Attribute Badges, Availability Calendar, Pricing, Add-to-Cart CTA |
 | `/assistant` | **Trợ lý Lịch trình** | Tương tác trò chuyện với AI Agent để tạo và tùy chỉnh kế hoạch | Chat Stream, Intent Chips, Day-by-Day Timeline, Grounded Product Cards |
@@ -114,7 +118,7 @@ flowchart TD
 ### 4.1. Màn hình Trang Chủ (`/`)
 ```
 +-------------------------------------------------------------------------------+
-| [LOGO] V-OTA       Khách sạn   Vé máy bay   Tour   Trợ lý AI   [Tài khoản v]   |
+| [LOGO] V-OTA  Di chuyển v  Lưu trú v  Tour và trải nghiệm v  Tiện ích khác v  [Trợ lý AI] [VN] [Tài khoản v] |
 +-------------------------------------------------------------------------------+
 |                                                                               |
 |   KHÁM PHÁ KỲ NGHỈ TIẾP THEO BẰNG NGÔN NGỮ CỦA BẠN                           |

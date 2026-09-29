@@ -62,6 +62,17 @@ describe('search service searchProductsApi', () => {
     expect(response.categoryCounts.hotel).toBe(1);
   });
 
+  it('searches the category name, not hotels, when the query is empty (e.g. /search?type=flight)', async () => {
+    global.fetch = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ results: [], total: 0 }), { status: 200 }));
+
+    await searchProductsApi('  ', { taxonomy: 'flight' });
+    await searchProductsApi('', { taxonomy: 'golf' });
+    await searchProductsApi('');
+
+    const queries = vi.mocked(global.fetch).mock.calls.map(([, init]) => JSON.parse((init as RequestInit).body as string).query);
+    expect(queries).toEqual(['vé máy bay', 'sân golf', 'khách sạn']);
+  });
+
   it('throws instead of returning local results when the backend fails', async () => {
     global.fetch = vi.fn().mockRejectedValue(new Error('Network error (backend down)'));
     await expect(searchProductsApi('VinWonders')).rejects.toMatchObject({ code: 'NETWORK_ERROR', retryable: true });

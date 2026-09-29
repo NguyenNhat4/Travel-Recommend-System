@@ -18,6 +18,18 @@ export interface SearchFilters {
 
 export type SortOption = 'relevance' | 'price_asc' | 'price_desc';
 
+/**
+ * Câu truy vấn thay cho ô trống theo danh mục: `/search?type=flight` không có `q` phải tìm "vé máy bay",
+ * không phải "khách sạn" rồi mới lọc theo danh mục. Không lọc danh mục thì giữ 'khách sạn' như trước.
+ */
+export const DEFAULT_QUERY: Record<Taxonomy, string> = {
+  hotel: 'khách sạn',
+  flight: 'vé máy bay',
+  attraction: 'vé tham quan',
+  golf: 'sân golf',
+  combo: 'combo du lịch',
+};
+
 export interface SearchResultItem {
   product: Product;
   relevanceScore: number;
@@ -60,7 +72,7 @@ export async function searchProductsApi(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      query: cleanQ || 'khách sạn',
+      query: cleanQ || DEFAULT_QUERY[filters.taxonomy ?? 'hotel'],
       taxonomy: filters.taxonomy || null,
       destination: destination || null,
       limit,

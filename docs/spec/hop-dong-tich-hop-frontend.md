@@ -102,8 +102,10 @@ type ProductSummary = components["schemas"]["ProductSummary"];
 | Route | Màn hình | Cần đăng nhập | Query param chính thức |
 |---|---|---:|---|
 | `/` | Home | Không | `debug` |
-| `/search` | Kết quả tìm kiếm | Không | `q` (bắt buộc), `taxonomy`, `destination`, `priceMin`, `priceMax`, `starRatingMin`, `sort` (`relevance` \| `price_asc` \| `price_desc`) |
-| `/product/{productId}` | Chi tiết sản phẩm | Không | — |
+| `/hotels`, `/flights`, `/combos` | Trang danh mục: khách sạn & resort, vé máy bay, combo (đề xuất PRD `update-archive/2026-09-29-route-trang-danh-muc-dich-vu.md`) | Không | `destination` |
+| `/experiences` | Trang danh mục: tour và trải nghiệm | Không | `destination`, `type` (`attraction` mặc định \| `golf`) |
+| `/search` | Kết quả tìm kiếm | Không | `q` (bắt buộc), `taxonomy` (hoặc `type`), `destination`, `priceMin`, `priceMax`, `starRatingMin`, `sort` (`relevance` \| `price_asc` \| `price_desc`); ngữ cảnh chuyến đi `checkIn`, `checkOut`, `adults`, `children`, `rooms` (§4.1a) |
+| `/product/{productId}` | Chi tiết sản phẩm | Không | ngữ cảnh chuyến đi tùy chọn `checkIn`, `checkOut`, `adults`, `children`, `rooms` (điền sẵn hộp đặt, §4.1a) |
 | `/assistant` | Trợ lý lịch trình | Không | `q` (prompt điền sẵn, không tự gửi), `destination` |
 | `/cart` | Giỏ hàng | Có | — |
 | `/checkout` | Checkout | Có | — |
@@ -133,8 +135,26 @@ Ký hiệu auth: **—** không gửi JWT · **tùy** gửi nếu có · **bắt
 | ① Gợi ý cá nhân hóa | `GET /recommendations?k=5` | tùy | `strategy`, `nextVertical`, `destination`, `recommendations[]` (`rank`, `productId`, `name`, `taxonomy`, `destination`, `unitPrice`, `currency`, `available`, `imageUrl`, `attributes`, `score`, `because[]`), `diagnostics.excludedVerticals`, `diagnostics.coldStart` | 5xx / timeout > 3 giây → ẩn ①, hiện dòng "Chưa tải được gợi ý · Thử lại". Khách vãng lai → không gọi, hiện banner đăng nhập |
 | ② Đã xem gần đây | — | — | — | **Bỏ section** (D13) |
 | ③ Thẻ trợ lý | dùng lại response ① | — | `destination` | Không có → câu chung |
-| ④ Phổ biến | `GET /products?sort=popular&taxonomy=<tab>&limit=10` | — | `results[]` (`ProductSummary`) | **Luôn render**. Lỗi → `ErrorState` cục bộ. Hiện là hai carousel: "Khách sạn và resort" (`taxonomy=hotel`) và "Phổ biến tại các điểm đến Việt Nam" (mọi taxonomy) |
-| Chip điểm đến | `GET /destinations` | — | `destinations[].destination` | Lỗi → ẩn chip |
+| ④ Phổ biến | `GET /products?sort=popular&availableOnly=true&limit=8` (thêm `taxonomy=<tab>` khi chọn tab) | — | `results[]` (`ProductSummary`) | **Luôn render**. Một carousel có tab Tất cả · Khách sạn · Vé máy bay · Vé tham quan · Combo; **chỉ tab đang chọn gọi API**. Lỗi → "Chưa tải được · Thử lại" cục bộ |
+| Điểm đến ("Bạn muốn đi đâu?") | `GET /destinations` | — | `destinations[].destination`, `productCount` | Chỉ gọi khi khối tới gần vùng nhìn (≤ 300 px), bộ đệm 5 phút dùng chung với menu header. Lỗi hoặc rỗng → ẩn khối |
+| Lối vào danh mục | — | — | — | Bốn ô tĩnh từ `navConfig.ts` → `/flights`, `/hotels`, `/experiences`, `/combos` |
+
+**Ngân sách request của Home:** khách ≤ 1 request khi tải (khối ④ nếu trong vùng nhìn), đã đăng nhập ≤ 2 (thêm ①); các khối dưới màn hình chỉ tải khi cuộn tới (`useInView` + `useLazySection`). ① quá 3 giây (`RECOMMENDATION_TIMEOUT_MS`) thì ẩn khối và hiện dòng "Thử lại".
+
+### 4.1a. Trang danh mục `/hotels`, `/flights`, `/experiences`, `/combos`
+
+Một template (`features/catalog/landing`), cấu hình ở `verticals.ts`. Hero + tấm tìm kiếm, rồi các khối:
+
+| Khu vực | Endpoint | Auth | Trường Web đọc | Khi lỗi / rỗng |
+|---|---|---|---|---|
+| Khối 1 "… phổ biến" (tải ngay) | `GET /products?taxonomy=<t>&sort=popular&availableOnly=true&limit=8` (+ `destination` khi có `?destination=`) | — | `results[]` (`ProductSummary`) | Lỗi → "Chưa tải được · Thử lại" tại khối. Rỗng → "Chưa có {loại} tại {điểm đến}" + liên kết `/search` |
+| Khối 2 "… giá tốt nhất" (tải khi vào vùng nhìn) | như trên với `sort=price_asc` (sản phẩm chưa có giá xếp cuối) | — | như trên | Dưới 3 thẻ hoặc lỗi rỗng → ẩn khối |
+| Điểm đến (tải khi vào vùng nhìn) | `GET /destinations` | — | `destination`, `productCount` | Lỗi hoặc rỗng → ẩn khối |
+| Gợi ý điểm đến trong tấm tìm kiếm và menu header | `GET /destinations` | — | như trên | Lỗi → vẫn gõ tự do được |
+
+`/experiences` có hai tab (`?type=attraction|golf`); các trang khác một tab. Tấm tìm kiếm gửi bằng điều hướng sang `/search?q&type[&destination]&checkIn&checkOut&adults&children&rooms`: điểm đến chọn từ gợi ý (hoặc gõ đúng nhãn) thành `destination`, còn lại vào `q` (rỗng thì dùng câu mặc định theo danh mục, `services/search.ts` `DEFAULT_QUERY`).
+
+**Ngữ cảnh chuyến đi** (`features/search/tripContext.ts`) là dữ liệu điền sẵn, **không phải bộ lọc phòng trống** (Backend chưa lọc theo ngày; không gửi `travelContext`). `/search` hiện chip "Chuyến đi: 15/10 – 17/10 · 1 phòng, 2 người lớn" và nối query vào liên kết sản phẩm; hộp đặt ở `/product/{id}` điền sẵn ngày, số khách, số phòng nếu hợp lệ với hạng phòng đang chọn (ngày nằm trong `availableFrom`–`availableTo`, sức chứa đúng). Giá trị sai bị bỏ im lặng; Backend vẫn quyết định (`DATE_OUT_OF_RANGE`, `VALIDATION_ERROR`). Luật đoàn theo FR-BKG-08: tối đa 9 khách, mỗi phòng ít nhất 1 người lớn. Không đưa họ tên hay token vào URL.
 
 Sau checkout (cờ `justBooked`): gọi lại ① bỏ qua cache. Chỉ hiện toast "Trang chủ đã cập nhật" khi `strategy` **hoặc** `nextVertical` khác lần gọi trước.
 

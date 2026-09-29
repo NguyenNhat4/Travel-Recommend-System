@@ -90,6 +90,7 @@ Tài khoản seed đăng nhập qua `/login` như mọi user (email seed + mật
 |---|---|---|---|
 | `/` | Home | Không (khi đã đăng nhập mới có phần cá nhân hóa) | |
 | `/search?q=&taxonomy=&destination=&sort=` | Kết quả tìm kiếm | Không | Route hiện hiển thị trạng thái API chưa khả dụng; page chưa gọi `searchProducts`, xem §1.5 |
+| `/hotels`, `/flights`, `/experiences`, `/combos` | Trang danh mục dịch vụ (hero, tấm tìm kiếm, carousel phổ biến và giá tốt, điểm đến) | Không | Nhận `?destination=`; `/experiences` nhận thêm `?type=attraction\|golf`. Xem frontend §4.1a |
 | `/product/:productId` | Chi tiết sản phẩm | Không | |
 | `/assistant` | Trợ lý lịch trình | Không | Gửi itinerary qua OpenAPI client; xem §1.5 và §6 |
 | `/cart` | Giỏ hàng | **Có** | Có thể bị cắt (handbook §2, mục 4) |
@@ -131,7 +132,7 @@ Tài khoản seed đăng nhập qua `/login` như mọi user (email seed + mật
 
 ### 3.3 Điều hướng toàn cục
 
-- **Desktop:** header dính trên cùng gồm logo, ô tìm kiếm ngôn ngữ tự nhiên ở giữa (luôn hiện, trừ trang Checkout), nút "Trợ lý", biểu tượng giỏ kèm số lượng, menu tài khoản. Pattern: `[R01]` Klook web (ô tìm kiếm + "Cart" + avatar trên cùng một hàng) và `[R06]` Airbnb web.
+- **Desktop (≥ 1024 px):** header kính mờ nổi trên hero ở Home và bốn trang danh mục, chuyển nền trắng khi cuộn qua hero; ở route khác là header nền trắng thường. Từ trái sang phải: logo, bốn nhóm dịch vụ **Di chuyển · Lưu trú · Tour và trải nghiệm · Tiện ích khác** (mỗi nhóm mở menu con kèm chip "Điểm đến phổ biến"), nút lưới "Tất cả dịch vụ", viên **Trợ lý AI**, ngôn ngữ, "Đặt chỗ của tôi" (kèm huy hiệu giỏ), tài khoản. Không còn ô tìm kiếm giữa header (theo wireframe `docs/prd/user-flow.md` §4.1): tìm kiếm nằm ở hero của Home và các trang danh mục, và ở đầu `/search`. Menu là mẫu disclosure (`aria-expanded`, Esc đóng và trả focus, mở bằng rê chuột chỉ trên thiết bị có hover). Cấu hình ở `components/layout/nav/navConfig.ts`. Không còn chuông thông báo và điểm thưởng cứng.
 - **Checkout** dùng header rút gọn (logo + "Quay lại giỏ hàng") để giảm rơi rụng. Pattern: `[R70]` KAYAK web checkout (header chỉ còn logo).
 - **Mobile:** thanh tab dưới cùng, xem §7.2.
 - **Menu tài khoản:** tên + persona, "Đăng xuất". Không có trang hồ sơ, vì handbook không yêu cầu.
@@ -238,7 +239,7 @@ Khi người dùng quay về Home từ Confirmation (bấm "Xem gợi ý mới t
 
 #### 4.2.1 Ô tìm kiếm (header + Home)
 
-- Chỉ có **một ô nhập tự do**, không tách thành Điểm đến / Ngày / Khách như form OTA truyền thống, vì engine nhận `q` tự do. Placeholder xoay vòng giữa các câu mẫu: "nghỉ dưỡng biển cho gia đình", "vé tham quan cho trẻ nhỏ ở Phú Quốc", "khách sạn 5 sao gần biển Đà Nẵng".
+- Ở Home, `/search` và header trang chi tiết chỉ có **một ô nhập tự do**, không tách thành Điểm đến / Ngày / Khách, vì engine nhận `q` tự do. Ngoại lệ: **tấm tìm kiếm ở hero trang danh mục** (`/hotels`, `/flights`, `/experiences`, `/combos`) tách Địa điểm / Ngày / Số khách theo FR-SRC-03; ngày và số khách là ngữ cảnh chuyến đi điền sẵn hộp đặt, không lọc phòng trống (frontend §4.1a). Placeholder xoay vòng giữa các câu mẫu: "nghỉ dưỡng biển cho gia đình", "vé tham quan cho trẻ nhỏ ở Phú Quốc", "khách sạn 5 sao gần biển Đà Nẵng".
   Pattern: `[R35]` Booking.com iOS (tab "AI search": "Search in your own words ⓘ" + thẻ ví dụ "Try these out"). `[R37]` cho thấy chính Booking.com đặt tab "AI search" song song tab "Destination".
 - **Khi focus (ô rỗng):** dropdown gồm "Tìm kiếm gần đây" (lưu `localStorage`, tối đa 5, có nút xóa) và "Thử tìm" (4 câu mẫu). Pattern: `[R38]` Skyscanner iOS ("Recent searches" + "Popular destinations").
 - **Khi đang gõ:** autocomplete theo tên (ví dụ "VinWonders") chỉ có nếu làm hybrid search (handbook §2: có thể cắt). MVP: không autocomplete, Enter là tìm.
@@ -916,7 +917,7 @@ Quy tắc chung: vùng chạm ≥ 44 × 44 px, lề ngang 16 px, không cuộn n
 
 - **Tab bar dưới 5 mục:** Trang chủ · Tìm kiếm · Trợ lý · Giỏ hàng (badge) · Tài khoản. Pattern: `[R123]` Airbnb iOS (Explore · Wishlists · Trips · Messages · Profile); `[R10]` Agoda iOS (Home · My Trips · Deals · Saved · More).
 - Tab bar **ẩn** trong: Checkout, màn hình chat đang gõ (bàn phím mở), sheet toàn màn hình.
-- Header mobile: logo + icon tài khoản. Trên Search/Detail thì thay bằng nút ← + **ô tìm kiếm dạng viên thuốc** chứa truy vấn/tên. Pattern: `[R117]` Agoda iOS (viên "SOCIAL on Outram · Jul 14 – Jul 15" trên đầu trang chi tiết).
+- Header mobile: logo + ngôn ngữ + đăng nhập/tài khoản (nhóm dịch vụ bị ẩn). Lối vào danh mục là hàng chip cuộn ngang (`VerticalChips`, cao 44 px) ở đầu Home và trang danh mục; tab bar dưới vẫn 5 mục. Trên Search/Detail thì thay bằng nút ← + **ô tìm kiếm dạng viên thuốc** chứa truy vấn/tên. Pattern: `[R117]` Agoda iOS (viên "SOCIAL on Outram · Jul 14 – Jul 15" trên đầu trang chi tiết).
 
 ### 7.3 Từng màn hình trên mobile
 
