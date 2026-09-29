@@ -2,6 +2,11 @@ name: Staging Monitoring Terraform
 
 on:
   pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - closed
     branches:
       - main
       - release-mvp-v1
@@ -38,6 +43,7 @@ env:
 jobs:
   validate:
     name: Validate monitoring Terraform
+    if: ${{ github.event_name == 'push' || github.event.action == 'opened' || github.event.action == 'synchronize' || github.event.action == 'reopened' || (github.event.action == 'closed' && github.event.pull_request.merged == true) || (github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3')) }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -62,7 +68,7 @@ jobs:
 
   apply_staging:
     name: Apply staging monitoring
-    if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3') }}
+    if: ${{ (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true) || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3') }}
     needs: validate
     runs-on: ubuntu-latest
     environment: staging
@@ -82,12 +88,6 @@ jobs:
       TF_VAR_notification_email: ${{ secrets.MONITORING_NOTIFICATION_EMAIL }}
       TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
     steps:
-      - name: Refuse dispatch from another ref
-        if: ${{ github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/release-mvp-v1' && github.ref != 'refs/heads/release-mvp-v2' && github.ref != 'refs/heads/release-mvp-v3' }}
-        run: |
-          echo 'This workflow_dispatch must run from an approved release ref.' >&2
-          exit 1
-
       - name: Checkout
         uses: actions/checkout@v4
 

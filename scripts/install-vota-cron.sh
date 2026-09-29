@@ -128,10 +128,11 @@ filtered_crontab="$(awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" '
   !inside { print }
 ' <<< "$existing_crontab")"
 
+cron_line="$schedule IMAGE='$image' DATA_DIR='$data_dir' ENV_FILE='$env_file' PULL=0 $runner run"
 if [ "$job" = fresh ]; then
-  cron_line="$schedule FRESH_IMAGE='$image' FRESH_DATA_DIR='$data_dir' CATALOG_ENV_FILE='$env_file' CATALOG_LOG_DIR='$log_dir' PULL=1 $runner fresh-run tick"
+  cron_line="$schedule FRESH_IMAGE='$image' FRESH_DATA_DIR='$data_dir' CATALOG_ENV_FILE='$env_file' CATALOG_LOG_DIR='$log_dir' PULL=0 $runner fresh-run tick"
 else
-  cron_line="$schedule IMAGE='$image' DATA_DIR='$data_dir' ENV_FILE='$env_file' PULL=1 $runner run"
+  cron_line="$schedule IMAGE='$image' DATA_DIR='$data_dir' ENV_FILE='$env_file' PULL=0 $runner run"
 fi
 updated_crontab="$(printf '%s\n%s\n%s\n%s\n' "$filtered_crontab" "$BEGIN_MARKER" "$cron_line" "$END_MARKER")"
 

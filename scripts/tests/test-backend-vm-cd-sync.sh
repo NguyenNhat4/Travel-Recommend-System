@@ -5,8 +5,11 @@ repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 workflow="$repo_root/.github/workflows/backend-ci-cd.yml"
 compose="$repo_root/ops/docker-compose.backend-vm.yml"
 deploy="$repo_root/scripts/deploy-backend-vm.sh"
+frontend_deploy="$repo_root/scripts/deploy-frontend-vm.sh"
+frontend_workflow="$repo_root/.github/workflows/frontend-ci-cd.yml"
+crawler_workflow="$repo_root/.github/workflows/crawler-ci-cd.yml"
 
-for file in "$workflow" "$compose" "$deploy"; do
+for file in "$workflow" "$frontend_workflow" "$crawler_workflow" "$compose" "$deploy" "$frontend_deploy"; do
   test -f "$file" || { echo "missing required file: $file" >&2; exit 1; }
 done
 
@@ -25,6 +28,16 @@ grep -q 'network_mode: host' "$compose"
 grep -q '/etc/vota/backend.env' "$compose"
 grep -q '/etc/vota/backend-secrets:/app/secrets:ro' "$compose"
 grep -q 'v-ota-data-pipeline-crawler/vota-backend:latest' "$compose"
+grep -q 'BACKEND_DIGEST: \${{ needs.publish.outputs.backend_digest }}' "$workflow"
+grep -Fq 'backend_ref="$BACKEND_IMAGE@$BACKEND_DIGEST"' "$workflow"
+grep -Fq 'docker pull '\''$crawler_ref'\''' "$crawler_workflow"
+grep -Fq 'PULL=0' "$crawler_workflow"
+grep -Fq -- '--image '\''$CRAWLER_IMAGE@$CRAWLER_DIGEST'\''' "$crawler_workflow"
+grep -Fq 'PULL=0 $runner run' "$repo_root/scripts/install-vota-cron.sh"
+grep -Fq 'PULL=0 $runner fresh-run tick' "$repo_root/scripts/install-vota-cron.sh"
+grep -Fq -- '--frontend-image '\''$FRONTEND_IMAGE@$FRONTEND_DIGEST'\''' "$frontend_workflow"
+grep -Fq 'FRONTEND_DIGEST: ${{ needs.publish_vm.outputs.frontend_digest }}' "$frontend_workflow"
+grep -Fq "backend_health_url='http://127.0.0.1:8000/health/ready'" "$frontend_deploy"
 if grep -Eq '^  (postgres|redis|weaviate):' "$compose"; then
   echo 'application VM Compose must not manage database or dependency services' >&2
   exit 1
@@ -34,6 +47,7 @@ grep -q 'JWT_PRIVATE_KEY_PATH' "$deploy"
 grep -q 'AUTH_REDIS_URL' "$deploy"
 grep -q '/app/secrets' "$deploy"
 grep -q -- '--no-deps' "$deploy"
+grep -Fq 'IMAGE@sha256:DIGEST' "$deploy"
 if grep -Eq 'crawler|CRAWLER|Dockerfile.daily|run_daily_docker' "$workflow"; then
   echo 'backend workflow must not deploy the crawler' >&2
   exit 1

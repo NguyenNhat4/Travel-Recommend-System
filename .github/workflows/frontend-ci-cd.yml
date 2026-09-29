@@ -2,6 +2,11 @@ name: Frontend CI
 
 on:
   pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - closed
     branches:
       - main
       - release-mvp-v1
@@ -15,6 +20,11 @@ on:
       - 'src/frontend/**'
       - 'src/shared/contracts/**'
   push:
+    branches:
+      - main
+      - release-mvp-v1
+      - release-mvp-v2
+      - release-mvp-v3
     paths:
       - '.github/workflows/frontend-ci-cd.yml'
       - 'ops/docker-compose.backend-vm.yml'
@@ -37,6 +47,7 @@ env:
 jobs:
   quality:
     name: Frontend quality checks
+    if: ${{ github.event_name == 'push' || github.event.action == 'opened' || github.event.action == 'synchronize' || github.event.action == 'reopened' || (github.event.action == 'closed' && github.event.pull_request.merged == true) || (github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -115,7 +126,7 @@ jobs:
 
   build_vm:
     name: Build Frontend VM image
-    if: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+    if: ${{ (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true) || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3') }}
     needs: e2e
     runs-on: ubuntu-latest
     steps:
@@ -137,7 +148,7 @@ jobs:
 
   publish_vm:
     name: Publish Frontend SHA and latest images
-    if: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+    if: ${{ (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true) || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3') }}
     needs: build_vm
     runs-on: ubuntu-latest
     environment: staging
@@ -146,6 +157,7 @@ jobs:
       id-token: write
     outputs:
       frontend_image: ${{ steps.image.outputs.ref }}
+      frontend_digest: ${{ steps.publish.outputs.digest }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -189,6 +201,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Publish Frontend image
+        id: publish
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -202,7 +215,7 @@ jobs:
 
   deploy_vm:
     name: Deploy Frontend to Backend VM
-    if: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+    if: ${{ (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true) || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3') }}
     needs: publish_vm
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -224,10 +237,11 @@ jobs:
           GCE_ZONE: ${{ secrets.GCE_ZONE }}
           GCE_COMPOSE_FILE: ${{ vars.GCE_COMPOSE_FILE }}
           FRONTEND_IMAGE: ${{ needs.publish_vm.outputs.frontend_image }}
+          FRONTEND_DIGEST: ${{ needs.publish_vm.outputs.frontend_digest }}
           GCP_WIF_PROVIDER: ${{ secrets.GCP_WIF_PROVIDER }}
           GCP_CI_SERVICE_ACCOUNT: ${{ secrets.GCP_CI_SERVICE_ACCOUNT }}
         run: |
-          for name in GCP_PROJECT_ID GCE_INSTANCE GCE_ZONE GCE_COMPOSE_FILE FRONTEND_IMAGE GCP_WIF_PROVIDER GCP_CI_SERVICE_ACCOUNT; do
+          for name in GCP_PROJECT_ID GCE_INSTANCE GCE_ZONE GCE_COMPOSE_FILE FRONTEND_IMAGE FRONTEND_DIGEST GCP_WIF_PROVIDER GCP_CI_SERVICE_ACCOUNT; do
             if [ -z "${!name:-}" ]; then
               echo "Missing staging configuration: $name" >&2
               exit 1
@@ -237,15 +251,33 @@ jobs:
             echo 'GCE_COMPOSE_FILE must be an absolute path without shell metacharacters.' >&2
             exit 1
           fi
+          if [[ ! "$FRONTEND_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo 'Publish did not return a valid Frontend digest.' >&2
+            exit 1
+          fi
 
       - name: Authenticate to Google Cloud
+        id: auth
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_CI_SERVICE_ACCOUNT }}
+          token_format: access_token
 
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v2
+
+      - name: Authenticate VM Docker to Artifact Registry
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCE_INSTANCE: ${{ secrets.GCE_INSTANCE }}
+          GCE_ZONE: ${{ secrets.GCE_ZONE }}
+          ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+        run: |
+          printf '%s' "$ACCESS_TOKEN" \
+            | gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" \
+                --tunnel-through-iap --quiet \
+                --command 'docker login --username oauth2accesstoken --password-stdin https://asia-southeast1-docker.pkg.dev'
 
       - name: Initialize non-interactive SSH access
         env:
@@ -277,7 +309,8 @@ jobs:
           GCE_ZONE: ${{ secrets.GCE_ZONE }}
           GCE_COMPOSE_FILE: ${{ vars.GCE_COMPOSE_FILE }}
           FRONTEND_IMAGE: ${{ needs.publish_vm.outputs.frontend_image }}
+          FRONTEND_DIGEST: ${{ needs.publish_vm.outputs.frontend_digest }}
         run: |
           remote_dir="/tmp/vota-frontend-cd-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          remote_command="'$remote_dir/deploy-frontend-vm.sh' --frontend-image '$FRONTEND_IMAGE:latest' --compose-file '$GCE_COMPOSE_FILE'"
+          remote_command="'$remote_dir/deploy-frontend-vm.sh' --frontend-image '$FRONTEND_IMAGE@$FRONTEND_DIGEST' --compose-file '$GCE_COMPOSE_FILE'"
           gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --quiet --command "$remote_command"
