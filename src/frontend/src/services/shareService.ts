@@ -53,7 +53,7 @@ export function decodePlanFromUrl(encoded: string): GroundedPlan | null {
       missing: compact.m,
       stay: compact.s,
       days: compact.d,
-      totalEstimatedPrice: compact.p || 0,
+      totalEstimatedPrice: compact.p ?? null,
       bookableProductsCount: compact.c || 0
     };
   } catch (err) {

@@ -374,6 +374,40 @@ Nếu `estimatedTotal=null`, `budgetStatus` bắt buộc là `UNKNOWN` và cần
 
 Payload tối thiểu chỉ bắt buộc `status`, `conversationId`, `question`. Thông tin bắt buộc tối thiểu để lập lịch gồm điểm đến và số ngày từ 1 đến 7. Mỗi lượt chỉ hỏi một câu rõ ràng; các trường còn lại có thể để trống.
 
+**Hai lượt hỏi rồi chuyển sang form gợi ý (AGENTS.md §8, đề xuất `docs/prd/update-archive/2026-09-29-form-goi-y-thong-tin-chuyen-di.md`, đã áp dụng).**
+Backend đếm `clarification_rounds` theo hội thoại (0, 1, 2…), chỉ tăng khi `missingFields` còn `destination` hoặc `days`:
+
+- Vòng 1 (`clarification_rounds` từ 0 lên 1): hỏi bằng câu chữ như trên, `clarification_reason` = `null`.
+- Vòng ≥ 2 mà vẫn thiếu `destination`/`days`: `clarification_reason = "suggest_form"`, câu `question` mời tinh chỉnh (không hỏi lại y hệt),
+  và response có thêm field tuỳ chọn `clarificationForm`:
+
+  ```json
+  {
+    "status": "NEEDS_CLARIFICATION",
+    "conversationId": "conv-01JXYZ",
+    "question": "Mình đã điền sẵn một vài gợi ý cho chuyến đi bên dưới. Bạn chỉnh lại theo nhu cầu rồi bấm xác nhận giúp mình nhé.",
+    "missingFields": ["days"],
+    "clarificationForm": {
+      "fields": ["destination", "days", "startDate", "party", "budget"],
+      "defaults": {
+        "destination": "Hà Nội", "startDate": "2026-09-29", "days": 1,
+        "party": {"type": null, "adults": 2, "children": 0}, "budget": null,
+        "interests": [], "pace": null
+      },
+      "startDateMin": "2026-09-29"
+    }
+  }
+  ```
+
+  `clarificationForm.fields` liệt kê mọi trường bắt buộc của chuyến đi (không chỉ trường còn thiếu), để người dùng sửa lại cả
+  những gì đã nói nếu muốn. `defaults` ưu tiên giá trị người dùng đã cung cấp; trường còn lại dùng gợi ý: `days` = 1,
+  `startDate` = hôm nay theo giờ Việt Nam (không được sớm hơn `startDateMin`), `party` = 2 người lớn, `budget` = `null`
+  (không giới hạn), `destination` = điểm đến đầu tiên trong `supported_destinations` nếu hội thoại đã từng gọi tool.
+  Frontend tự nạp danh sách điểm đến cho ô chọn (`GET /destinations`, chỉ hiện vài điểm đến tiêu biểu, không đổ hết catalog)
+  và chặn tại chỗ: số ngày trong 1–7, `startDate ≥ startDateMin`. Bấm xác nhận dựng một câu yêu cầu hoàn chỉnh và **đặt vào ô
+  nhập tin nhắn, không tự gửi**; người dùng đọc lại, sửa nếu muốn rồi gửi như một lượt chat bình thường (không dùng
+  `intentOverride`). `suggestedValues` giữ nguyên hành vi cũ, không đổi.
+
 ### 4.4. Response không có kết quả
 
 ```json

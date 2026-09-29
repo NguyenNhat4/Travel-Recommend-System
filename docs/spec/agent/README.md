@@ -10,11 +10,10 @@ chỉ dẫn thứ tự đọc tối thiểu và chọn thêm tài liệu/source 
 | [working-context.md](working-context.md) | Context tối thiểu, bản đồ module và nhánh đọc riêng cho tune/eval/debug |
 | [langgraph-nodes.md](langgraph-nodes.md) | Vì sao graph chia thành mười node, vì sao mọi nhánh qua `finalize`, cách đọc bảng trace |
 | [state-fields.md](state-fields.md) | Tra theo từng field của `AgentState`: node nào ghi, node nào đọc, dùng để làm gì |
-| [field-review.md](field-review.md) | Review field của request/response và `AgentState`: đề xuất giữ, bỏ, gộp; chờ quyết định |
+| [field-review.md](field-review.md) | Review field của request/response và `AgentState`: đề xuất giữ, bỏ, gộp — đã chốt và áp dụng 2026-09-28 |
 | [response-and-errors.md](response-and-errors.md) | `status` so với `error.code`, luồng sau `UNSUPPORTED_DESTINATION` |
-| [golden-run.md](golden-run.md) | Chạy bộ golden: chuẩn bị Postgres/backend, các cờ của runner, đọc kết quả, lỗi thường gặp |
-| [golden-dataset.md](golden-dataset.md) | Cấu trúc bộ golden 14 case (mỗi category một case khó nhất), các khoá `expect`, cách thêm case và xử lý khi case fail |
-| [evaluation-plan.md](evaluation-plan.md) | Bộ 12 case chạy tay qua Streamlit (fixture 50 sản phẩm) và bộ 14 case (mỗi category một case) chạy tự động trên catalog thật (`src/evaluation/agent/golden.py`) — cách chấm, mẫu biên bản, giới hạn đã biết |
+| [golden-run.md](golden-run.md) | Chạy bộ golden: chuẩn bị Postgres/backend, các cờ của runner, đọc kết quả, luật chấm, ngưỡng kết luận, lỗi thường gặp |
+| [golden-dataset-how-to-add-more-case.md](golden-dataset-how-to-add-more-case.md) | Cấu trúc bộ golden 14 case (mỗi category một case khó nhất), các khoá `expect`, cách thêm case và xử lý khi case fail |
 | [presentation-slides.html](presentation-slides.html) | Bộ 14 slide giới thiệu agent (mở bằng trình duyệt, phím ←/→); số liệu golden ngày 2026-09-24 |
 | [presentation-script.md](presentation-script.md) | Kịch bản nói theo từng slide, phần demo trực tiếp và câu hỏi dễ gặp |
 
@@ -36,9 +35,8 @@ Timeout LLM của graph lấy từ `ITINERARY_LLM_TIMEOUT_SECONDS`, áp dụng c
 
 ## Chạy đánh giá tự động (golden dataset)
 
-Hướng dẫn đầy đủ: [golden-run.md](golden-run.md). Bộ 75 case cố định, chấm tự động theo `docs/prd/test-plan.md` §2.4 (Grounding Rate, Structured Output
-Integrity, Tool Calling Accuracy). Chi tiết luật chấm: [evaluation-plan.md](evaluation-plan.md) mục
-"Golden dataset tự động". Cần Postgres đã seed và backend đã nạp RecSys, chạy `ITINERARY_DATA_MODE=inprocess`
+Hướng dẫn đầy đủ: [golden-run.md](golden-run.md). Bộ 76 case cố định, chấm tự động theo `docs/prd/test-plan.md` §2.4 (Grounding Rate, Structured Output
+Integrity, Tool Calling Accuracy). Chi tiết luật chấm: [golden-run.md](golden-run.md) mục 4. Cần Postgres đã seed và backend đã nạp RecSys, chạy `ITINERARY_DATA_MODE=inprocess`
 (hoặc `http`, không để `fixture`):
 
 ```bash

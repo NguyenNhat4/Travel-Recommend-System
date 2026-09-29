@@ -18,7 +18,8 @@ WARNINGS = {
                          "trẻ em trước khi đặt.",
     "UNKNOWN_TOTAL": "Chưa đủ đơn vị giá, số lượng hoặc điều kiện để tính tổng chi phí; không coi giá thiếu là 0.",
     "PRODUCT_COST_ONLY": "Tổng chỉ gồm các sản phẩm được chọn; chưa bao gồm chi phí phát sinh ngoài lịch trình.",
-    "UNKNOWN_BUDGET": "Chưa đủ dữ liệu toàn chuyến để xác nhận ngân sách.",
+    "BUDGET_ON_PRODUCT_COST": "Đối chiếu ngân sách chỉ dựa trên chi phí các sản phẩm trong lịch trình; "
+                              "chưa gồm ăn uống, đi lại và phát sinh ngoài lịch trình.",
 }
 
 
@@ -42,27 +43,51 @@ def fallback(state: dict) -> dict:
                          "searchResults": grouped(state)}}
 
 
+def _no_results_suggestions(state: dict) -> list[str]:
+    """Gợi ý điều chỉnh dựa trên ràng buộc đang bật (docs/spec/agent/field-review.md §2.2); tối đa ba mục."""
+    constraints = state.get("constraints", {})
+    suggestions = []
+    if constraints.get("require_hotel") or constraints.get("specific_hotel"):
+        suggestions.append(messages.message(state, "suggestion_hotel"))
+    if constraints.get("hotel_price_max") is not None:
+        suggestions.append(messages.message(state, "suggestion_price"))
+    if constraints.get("star_rating_min") is not None:
+        suggestions.append(messages.message(state, "suggestion_star_rating"))
+    if constraints.get("specific_activity"):
+        suggestions.append(messages.message(state, "suggestion_activity"))
+    if constraints.get("exclude_taxonomies"):
+        suggestions.append(messages.message(state, "suggestion_taxonomy"))
+    if not suggestions:
+        suggestions.append(messages.message(state, "suggestion_generic"))
+    return suggestions[:3]
+
+
 def retrieval_outcome(state: dict) -> dict | None:
     """The replies that retrieval itself settles; None means there is an itinerary to build."""
     decision = state.get("decision")
     if decision == "no_results":
         return {"response": {"status": "NO_RESULTS", "conversationId": state["conversation_id"],
-                             "intent": state["intent"], "message": messages.NO_RESULTS}}
+                             "intent": state["intent"], "message": messages.NO_RESULTS,
+                             "suggestions": _no_results_suggestions(state)}}
     if decision == "fallback":
         return fallback(state)
     return None
 
 
 def _budget_warnings(plan: dict, intent: dict, warnings: list) -> None:
-    """Cảnh báo về tổng tiền; tổng của phần sản phẩm không được dùng để xác nhận ngân sách cả chuyến."""
+    """Cảnh báo kèm tổng tiền. Tổng là dữ kiện và luôn được giữ; cảnh báo nói rõ nó chỉ gồm sản phẩm.
+
+    Tổng của phần sản phẩm không phải chi phí cả chuyến, nên nó đi kèm `PRODUCT_COST_ONLY`. Trước đây chỗ
+    này xoá luôn `estimatedTotal` khi người dùng có nêu ngân sách — huỷ dữ kiện để khỏi phải kết luận. Điều
+    đó trái `architecture.md` §3 ("giá thiếu thì tổng là null" — chỉ khi thiếu giá) và FR-AGT-02, đồng thời
+    làm thanh ngân sách ở frontend không bao giờ hiện được vì nó cần cả `budget` lẫn `estimatedTotal`.
+    """
     if plan["estimatedTotal"] is None:
         warnings.append({"code": "UNKNOWN_TOTAL", "message": WARNINGS["UNKNOWN_TOTAL"]})
         return
     warnings.append({"code": "PRODUCT_COST_ONLY", "message": WARNINGS["PRODUCT_COST_ONLY"]})
-    # A known subtotal cannot certify a whole-trip budget.
     if intent.get("budget") is not None:
-        plan.update(estimatedTotal=None, budgetStatus="UNKNOWN")
-        warnings.append({"code": "UNKNOWN_TOTAL", "message": WARNINGS["UNKNOWN_BUDGET"]})
+        warnings.append({"code": "BUDGET_ON_PRODUCT_COST", "message": WARNINGS["BUDGET_ON_PRODUCT_COST"]})
 
 
 def composed(state: dict) -> dict:

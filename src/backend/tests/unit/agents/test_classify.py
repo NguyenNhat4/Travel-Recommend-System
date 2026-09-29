@@ -11,19 +11,19 @@ class RouteTests(unittest.TestCase):
     def test_travel_goes_to_extract_without_touching_intent(self):
         state = intake_node({'query': 'request'})
         result = route_result(state, TurnRoute(route='travel'))
-        self.assertEqual(result['route'], 'travel')
+        self.assertEqual(result['decision'], 'travel')
         self.assertFalse(result['refusal'])
         self.assertNotIn('intent', result)
 
     def test_out_of_scope_is_a_refusal_through_converse(self):
         result = route_result(intake_node({'query': 'request'}), TurnRoute(route='out_of_scope'))
-        self.assertEqual(result['route'], 'simple')
+        self.assertEqual(result['decision'], 'simple')
         self.assertTrue(result['refusal'])
 
     def test_conversation_is_not_a_refusal_and_knows_what_the_trip_lacks(self):
         state = {**intake_node({'query': 'cảm ơn'}), 'intent': {'destination': 'Huế', 'days': None}}
         result = route_result(state, TurnRoute(route='conversation'))
-        self.assertEqual(result['route'], 'simple')
+        self.assertEqual(result['decision'], 'simple')
         self.assertFalse(result['refusal'])
         self.assertEqual(result['missing_fields'], ['days'])
 
@@ -44,13 +44,29 @@ class ClassifyRouteTests(unittest.TestCase):
     def test_missing_information_precedes_product_retrieval(self):
         state = intake_node({'query': 'request'})
         result = extract_result(state, Extraction(start_date_undecided=True, patch={'budget': 5000000, 'party': {'type': 'SOLO', 'adults': 1, 'children': 0}} | {'days': 3}))
-        self.assertEqual(result['route'], 'missing_info')
+        self.assertEqual(result['decision'], 'missing_info')
         self.assertEqual(result['missing_fields'], ['destination'])
+
+    def test_first_round_missing_field_asks_by_text_without_form_reason(self):
+        """Lượt 1 thiếu điểm đến/số ngày: hỏi bằng câu chữ, chưa gợi ý form (clarification_reason=None)."""
+        state = intake_node({'query': 'request'})
+        result = extract_result(state, Extraction(start_date_undecided=True, patch={'days': 3}))
+        self.assertEqual(result['decision'], 'missing_info')
+        self.assertIsNone(result['clarification_reason'])
+        self.assertEqual(result['clarification_rounds'], 1)
+
+    def test_second_round_still_missing_switches_to_suggest_form(self):
+        """Đã hỏi một lượt mà vẫn thiếu điểm đến/số ngày: chuyển sang gợi ý form thay vì hỏi lại y hệt."""
+        state = {**intake_node({'query': 'bao nhiêu ngày cũng được'}), 'clarification_rounds': 1}
+        result = extract_result(state, Extraction(start_date_undecided=True, patch={}))
+        self.assertEqual(result['decision'], 'missing_info')
+        self.assertEqual(result['clarification_reason'], 'suggest_form')
+        self.assertEqual(result['clarification_rounds'], 2)
 
     def test_complete_intent_uses_tools_without_keyword_override(self):
         state = intake_node({'query': 'timeout search status'})
         result = extract_result(state, Extraction(start_date_undecided=True, patch={'budget': 5000000, 'party': {'type': 'SOLO', 'adults': 1, 'children': 0}} | {'destination': 'Nha Trang', 'days': 3}))
-        self.assertEqual(result['route'], 'tool')
+        self.assertEqual(result['decision'], 'tool')
 
     def test_clear_constraints_and_explicit_false_are_preserved(self):
         state = intake_node({'query': 'request', 'constraints': {'specific_hotel': 'old', 'hotel_attributes': {'oceanView': True}}})
@@ -63,7 +79,7 @@ class ClassifyRouteTests(unittest.TestCase):
         result = extract_result(intake_node({'query': 'request'}), Extraction(start_date_undecided=True,
                   patch={'destination': 'Nha Trang', 'days': 2, 'budget': 5000000,
                          'party': {'type': None, 'adults': 4, 'children': 0}}))
-        self.assertEqual(result['route'], 'tool')
+        self.assertEqual(result['decision'], 'tool')
         self.assertIsNone(result['intent']['party']['type'])
 
     def test_exclude_products_keeps_only_ids_from_previous_selection(self):
@@ -94,7 +110,7 @@ class StartDateQuestionTests(unittest.TestCase):
 
     def test_asks_every_missing_detail_in_one_question(self):
         result = self.classify()
-        self.assertEqual(result['route'], 'missing_info')
+        self.assertEqual(result['decision'], 'missing_info')
         self.assertEqual(result['missing_fields'], ['startDate', 'party', 'budget'])
         self.assertTrue(result['start_date_asked'])
 
@@ -105,29 +121,29 @@ class StartDateQuestionTests(unittest.TestCase):
     def test_does_not_ask_again_after_it_has_asked(self):
         state = intake_node({'query': 'request', 'start_date_asked': True})
         result = self.classify(state)
-        self.assertEqual(result['route'], 'tool')
+        self.assertEqual(result['decision'], 'tool')
         self.assertIsNone(result['intent']['startDate'])
         self.assertIsNone(result['intent']['budget'])
 
     def test_complete_details_need_no_question_and_close_the_question_for_later_turns(self):
         result = self.classify(patch=self.complete)
-        self.assertEqual(result['route'], 'tool')
+        self.assertEqual(result['decision'], 'tool')
         self.assertTrue(result['start_date_asked'])
 
     def test_an_undecided_date_is_not_counted_as_missing(self):
         result = self.classify(start_date_undecided=True, patch={'budget': 5_000_000, 'party': self.complete['party']})
-        self.assertEqual(result['route'], 'tool')
+        self.assertEqual(result['decision'], 'tool')
 
     def test_missing_destination_or_days_come_before_the_details(self):
         result = self.classify(patch={'destination': None})
-        self.assertEqual(result['route'], 'missing_info')
+        self.assertEqual(result['decision'], 'missing_info')
         self.assertEqual(result['missing_fields'], ['destination'])
         self.assertFalse(result['start_date_asked'])
 
     def test_a_chip_override_is_not_asked_for_details(self):
         state = {**intake_node({'query': ''}), 'intent_override': {'days': 3}}
         result = self.classify(state)
-        self.assertEqual(result['route'], 'tool')
+        self.assertEqual(result['decision'], 'tool')
 
 
 class VietnamTodayTests(unittest.TestCase):
@@ -167,7 +183,7 @@ class DefaultYearTests(unittest.TestCase):
         for stale, fixed in (('2023-09-20', '2026-09-20'), ('2023-10-05', '2026-10-05'), ('2025-12-31', '2026-12-31')):
             with self.subTest(stale=stale):
                 result = self.extract(stale)
-                self.assertEqual(result['route'], 'tool')
+                self.assertEqual(result['decision'], 'tool')
                 self.assertEqual(result['intent']['startDate'], fixed)
 
     def test_current_and_future_years_are_kept(self):

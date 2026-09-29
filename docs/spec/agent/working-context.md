@@ -7,7 +7,7 @@ mở source được chỉ ra trong mục 3.
 ## 1. Context tối thiểu — đọc trước mọi task Agent
 
 1. `docs/spec/agent/working-context.md` — file này.
-2. `docs/prd/architecture.md` §2, §3 — phân lớp/quy tắc phụ thuộc và grounding; quality gate ở `evaluation-plan.md`.
+2. `docs/prd/architecture.md` §2, §3 — phân lớp/quy tắc phụ thuộc và grounding; quality gate ở `golden-run.md` mục 5.
 3. `src/shared/contracts/openapi.yaml`, sau đó chỉ mở fragment liên quan:
    - Assistant: `paths/itinerary-agent.yaml`, `schemas/itinerary-agent.yaml`.
    - Tool Search: `paths/search.yaml`, `schemas/search.yaml`, `schemas/catalog.yaml`.
@@ -31,7 +31,7 @@ Chỉ đọc hàng khớp với task hiện tại. Không cần nạp các nhán
 | Tune Search ranking | handbook §12 và spec Backend mục Search | `application/search/use_cases.py`, `domain/search/`, `infrastructure/vectors/` |
 | Tune Recommendation | handbook §8, §12 và spec Backend mục Recommendation | `application/recommendation/use_cases.py`, `domain/recommendation/` |
 | Đổi API/request/response | `src/shared/contracts/README.md`, `MVP.md`, baseline contract | fragment OpenAPI trước, rồi `api/v1/routes/assistant.py` |
-| Eval hành vi Agent | `evaluation-plan.md` | `src/evaluation/agent/streamlit_app.py`, tests Agent |
+| Eval hành vi Agent | `golden-run.md` | `src/evaluation/agent/streamlit_app.py`, tests Agent |
 | Debug runtime/trace | `README.md` mục LangSmith, `response-and-errors.md` | `api/v1/routes/assistant.py`, `agents/report.py` |
 
 Đường dẫn source trong bảng đều tương đối với `src/backend/app/`, trừ khi ghi đầy đủ.

@@ -56,22 +56,22 @@ def _relaxed_constraints(state: dict) -> dict:
     return constraints
 
 
-def _decision(errors: list[dict], candidates: dict, constraints: dict) -> tuple[str, str]:
-    """(`evaluation_result`, `decision`) — xem `routing.route_after_evaluate` để biết nhánh tương ứng."""
+def _decision(errors: list[dict], candidates: dict, constraints: dict) -> str:
+    """`decision` cho `routing.route_after_evaluate`: compose/no_results/fallback/constraint_clarification/
+    needs_retry/failed."""
     # Authentication failures must never be hidden by a successful Search call.
     permanent = any(not e["retryable"] for e in errors)
     auth_error = any(e.get("httpStatus") == 401 or e.get("code") in {"INVALID_TOKEN", "TOKEN_EXPIRED"} for e in errors)
     if auth_error:
-        return "failed", "error"
+        return "failed"
     if errors and not permanent:
-        return "needs_retry", ""
+        return "needs_retry"
     if errors:
-        return ("success", "fallback") if candidates else ("failed", "error")
+        return "fallback" if candidates else "failed"
     if not candidates:
-        decision = "no_results"
         if any(constraints.get(key) for key in ("require_hotel", "specific_hotel", "specific_activity")):
-            decision = "constraint_clarification"
-        return "success", decision
+            return "constraint_clarification"
+        return "no_results"
     decision = "compose"
     # Ba kiểm tra dưới đây chạy tuần tự: không còn sản phẩm xếp được lịch thì `fallback` thắng, vì
     # hỏi lại người dùng về một điều kiện cũng không dựng nổi lịch trình.
@@ -81,19 +81,20 @@ def _decision(errors: list[dict], candidates: dict, constraints: dict) -> tuple[
         decision = "constraint_clarification"
     if not any(p["taxonomy"] in SCHEDULABLE_TAXONOMIES for p in candidates.values()):
         decision = "fallback"
-    return "success", decision
+    return decision
 
 
 def evaluate_retrieval(state: dict) -> dict:
     """Update của `evaluate` (chưa gồm `events`): candidate, nguồn grounding, cảnh báo và quyết định."""
     errors = tool_errors(state)
     if not state.get("intent", {}).get("destination"):
-        evaluation = "failed" if any(not e["retryable"] for e in errors) else "needs_retry" if errors else "success"
-        return {"evaluation_result": evaluation}
+        decision = "failed" if any(not e["retryable"] for e in errors) else "needs_retry" if errors else "compose"
+        return {"decision": decision}
     constraints = _relaxed_constraints(state)
     candidates, sources, dropped = collect(state.get("tool_results", []), state.get("details", {}),
                                            state["intent"], constraints)
     warnings = [{"code": reason, "message": DROPPED_MESSAGE, "productId": pid} for pid, reason in dropped.items()]
-    evaluation, decision = _decision(errors, candidates, constraints)
+    decision = _decision(errors, candidates, constraints)
+    # `details` đã được `collect()` tiêu thụ ở trên; không giữ lại payload ProductDetail nặng trong state/trace.
     return {"candidates": candidates, "sources": sources, "warnings": warnings,
-            "decision": decision, "evaluation_result": evaluation}
+            "decision": decision, "details": {}}
