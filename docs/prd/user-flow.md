@@ -19,7 +19,7 @@ Hệ thống được tối ưu hóa cho 4 luồng trải nghiệm chính tươn
 4. **Hậu mãi tức thì:** Màn hình xác nhận ngay lập tức hiển thị gợi ý vé máy bay khứ hồi và vé tham quan công viên giải trí tại điểm đến vừa đặt.
 
 ### 1.2. Hành trình Khách du lịch tự túc / Trải nghiệm (Persona P3)
-1. **Tiếp cận:** Vào mục Trợ lý Lịch trình (AI Assistant), yêu cầu *"Lập lịch trình 3 ngày khám phá ẩm thực và văn hóa Hội An - Đà Nẵng ngân sách tiết kiệm"*.
+1. **Tiếp cận:** Mở widget Trợ lý AI, yêu cầu *"Lập lịch trình 3 ngày khám phá ẩm thực và văn hóa Hội An - Đà Nẵng ngân sách tiết kiệm"*.
 2. **Tương tác AI:** Trợ lý AI phân tích ý định, gửi lại lịch trình chia theo buổi với các địa điểm nổi tiếng kèm thẻ sản phẩm homestay và tour trải nghiệm thực tế.
 3. **Điều chỉnh:** Bấm vào thẻ sản phẩm để xem chi tiết đánh giá và ảnh, yêu cầu AI đổi một điểm tham quan buổi chiều.
 4. **Thêm vào giỏ & Đặt:** Lưu toàn bộ các sản phẩm đã chọn trong lịch trình vào giỏ hàng và tiến hành thanh toán một lần.
@@ -37,7 +37,6 @@ Hệ thống được tối ưu hóa cho 4 luồng trải nghiệm chính tươn
 | `/combos` | **Combo du lịch** | Duyệt gói kết hợp | Hero, Search Sheet, Product Shelves, Destination Tiles |
 | `/search` | **Kết quả tìm kiếm** | Hiển thị kết quả tìm kiếm ngữ nghĩa và bộ lọc đa chiều | Query Header, Filter Sidebar, Sort Controls, Product Grid Cards, Pagination |
 | `/products/:id` | **Chi tiết sản phẩm** | Thông tin đầy đủ về phòng, vé, tour; trạng thái khả dụng | Image Gallery, Attribute Badges, Availability Calendar, Pricing, Add-to-Cart CTA |
-| `/assistant` | **Trợ lý Lịch trình** | Tương tác trò chuyện với AI Agent để tạo và tùy chỉnh kế hoạch | Chat Stream, Intent Chips, Day-by-Day Timeline, Grounded Product Cards |
 | `/checkout` | **Thanh toán / Đặt chỗ** | Ba bước: khai đoàn khách và người liên hệ; chọn ai dùng từng dịch vụ (khách sạn xếp phòng); xem lại, chọn phương thức, bấm Thanh toán để chuyển sang trang Stripe | Stepper, Party Counter, Traveler Forms, Service Allocation Cards, Order Summary (sticky; bottom bar trên mobile), Payment Method Selector, Pay CTA |
 | `/booking/:referenceCode` | **Xác nhận đơn hàng** | Hiển thị đơn theo trạng thái: đang giữ chỗ (đồng hồ đếm ngược, tiếp tục thanh toán), đã xác nhận (mã đặt chỗ, gợi ý chặng tiếp), thanh toán thất bại, hết hạn, đã huỷ; huỷ đơn | Booking Status Card, Next Best Action Recommendations (Flight, Tours) |
 | `/profile` | **Hồ sơ & Lịch sử** | Quản lý thông tin cá nhân, lịch sử đơn hàng và chuyến đi | User Preferences, Booking History, Saved Items |
@@ -67,7 +66,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[Mở màn hình /assistant] --> H{Đã đăng nhập?}
+    A[Mở widget trợ lý] --> H{Đã đăng nhập?}
     H -->|Có| L[Xem danh sách hội thoại của chính mình]
     L --> M[Chọn hội thoại cũ hoặc tạo hội thoại mới]
     H -->|Không| B[Nhập yêu cầu lịch trình hoặc chọn gợi ý]
@@ -118,7 +117,7 @@ flowchart TD
 ### 4.1. Màn hình Trang Chủ (`/`)
 ```
 +-------------------------------------------------------------------------------+
-| [LOGO] V-OTA  Di chuyển v  Lưu trú v  Tour và trải nghiệm v  Tiện ích khác v  [Trợ lý AI] [VN] [Tài khoản v] |
+| [LOGO] V-OTA  Di chuyển v  Lưu trú v  Tour và trải nghiệm v  Tiện ích khác v  [VN] [Tài khoản v] |
 +-------------------------------------------------------------------------------+
 |                                                                               |
 |   KHÁM PHÁ KỲ NGHỈ TIẾP THEO BẰNG NGÔN NGỮ CỦA BẠN                           |
@@ -142,36 +141,24 @@ flowchart TD
 +-------------------------------------------------------------------------------+
 ```
 
-### 4.2. Màn hình Trợ Lý Lịch Trình AI (`/assistant`)
+### 4.2. Widget Trợ Lý Lịch Trình AI
+
+Trợ lý là **một giao diện duy nhất**: widget nổi (linh vật ở góc dưới phải) có ở mọi trang trừ `/checkout`. Các nút "Hỏi trợ lý", "Lên kế hoạch cùng trợ lý", tab "Trợ lý" của thanh tab dưới trên mobile đều mở widget, có thể kèm câu điền sẵn. Không có route riêng cho trợ lý.
+
 ```
-+-------------------------------------------------------------------------------+
-| [LOGO] V-OTA  >  Trợ lý Lịch trình Thông minh   [Lịch sử] [Lịch trình mới] |
-+-------------------------------------------------------------------------------+
-|                                    | BẢN XEM TRƯỚC LỊCH TRÌNH                 |
-| [AI]: Chào bạn! Mình có thể giúp gì| Nha Trang 3 Ngày 2 Đêm - Gia đình        |
-| cho chuyến đi sắp tới?             | --------------------------------------- |
-|                                    | NGÀY 1: Nhận phòng & Tắm biển           |
-| [User]: Lên giúp mình lịch trình   | 14:00 - Nhận phòng Vinpearl Resort      |
-| Nha Trang 3N2Đ cho 2 người lớn,    | +-------------------------------------+ |
-| 1 bé 5 tuổi, ngân sách 10 triệu.   | | [Img] Vinpearl Resort & Spa         | |
-|                                    | | Giá: 3.200.000 đ - Deluxe Ocean     | |
-| [AI]: Dưới đây là kế hoạch chi tiết| | [Xem phòng] [Thêm vào đơn hàng]     | |
-| đã được thiết kế phù hợp với lịch  | +-------------------------------------+ |
-| sinh hoạt của bé:                  | 18:00 - Ăn tối hải sản Tháp Bà        |
-| - Ngày 1: Nhận phòng & nghỉ ngơi   | --------------------------------------- |
-| - Ngày 2: Vui chơi tại VinWonders  | NGÀY 2: Khám phá VinWonders             |
-| - Ngày 3: Mua sắm & về TP.HCM      | 08:30 - Vé vui chơi trọn gói            |
-|                                    | +-------------------------------------+ |
-| Bạn có muốn đổi giờ bay hay khách  | | [Img] Vé VinWonders Nha Trang       | |
-| sạn khác không?                    | | Giá: 850.000 đ/người                | |
-|                                    | | [Đặt vé ngay]                       | |
-| +--------------------------------+ | +-------------------------------------+ |
-| | Nhập yêu cầu tùy chỉnh...      | | TỔNG CHI PHÍ TẠM TÍNH: 8.900.000 đ      |
-| +--------------------------------+ | [ TIẾN HÀNH ĐẶT TRỌN LỊCH TRÌNH ]       |
-+-------------------------------------------------------------------------------+
+Thu gọn: hộp chat ở góc dưới phải.
+Toàn màn hình (nút mở rộng):
++----------------------------------+--------------------------------------------+
+| [Lịch sử]  Trợ lý du lịch AI     |  LỊCH TRÌNH THEO NGÀY (Ngày 1 | 2 | 3)         |
+|                                  |  [Thẻ khách sạn / hoạt động thật, có giá]  |
+| [AI]: Bạn muốn đi đâu tiếp theo? |  Tổng chi phí tạm tính                     |
+| [User]: Nha Trang 3N2Đ ...       |  [Thêm vào giỏ]  [Thanh toán]              |
+|                                  |  BẢN ĐỒ LỘ TRÌNH                           |
+| [ Mô tả chuyến đi...        [↑] ]|                                            |
++----------------------------------+--------------------------------------------+
 ```
 
-> **Form gợi ý thông tin chuyến đi:** khi trợ lý đã hỏi một lượt mà vẫn chưa biết điểm đến hoặc số ngày, khung chat hiển thị ngay dưới câu trả lời một form đã điền sẵn giá trị gợi ý (điểm đến — chỉ vài lựa chọn tiêu biểu, số ngày 1–7, ngày khởi hành không trước hôm nay, số người, ngân sách) kèm nút **Xác nhận**. Bấm xác nhận đặt câu yêu cầu hoàn chỉnh vào ô nhập tin nhắn để người dùng sửa hoặc gửi. Form xuất hiện ở cả màn `/assistant` lẫn widget trợ lý nổi.
+> **Form gợi ý thông tin chuyến đi:** khi trợ lý đã hỏi một lượt mà vẫn chưa biết điểm đến hoặc số ngày, khung chat hiển thị ngay dưới câu trả lời một form đã điền sẵn giá trị gợi ý (điểm đến — chỉ vài lựa chọn tiêu biểu, số ngày 1–7, ngày khởi hành không trước hôm nay, số người, ngân sách) kèm nút **Xác nhận**. Bấm xác nhận đặt câu yêu cầu hoàn chỉnh vào ô nhập tin nhắn để người dùng sửa hoặc gửi. Form xuất hiện trong widget trợ lý.
 
 ### 4.3. Màn hình Xác Nhận Đơn Hàng & Vòng Lặp Gợi Ý Tiếp Theo (`/booking/:referenceCode`)
 ```
@@ -236,35 +223,6 @@ Bước ① Hành khách (bước ② Dịch vụ: mỗi dịch vụ một thẻ
 Bước ③ có khối "Phương thức thanh toán" như cũ: (o) Stripe - Thẻ thanh toán (test); ( ) Ví điện tử [Sắp có]; ( ) Chuyển khoản [Sắp có].
 
 Thẻ vé máy bay khứ hồi ]    [ Thẻ vé công viên giải trí ]                   |
-+-------------------------------------------------------------------------------+
-```
-
-### 4.2. Màn hình Trợ Lý Lịch Trình AI (`/assistant`)
-```
-+-------------------------------------------------------------------------------+
-| [LOGO] V-OTA  >  Trợ lý Lịch trình Thông minh   [Lịch sử] [Lịch trình mới] |
-+-------------------------------------------------------------------------------+
-|                                    | BẢN XEM TRƯỚC LỊCH TRÌNH                 |
-| [AI]: Chào bạn! Mình có thể giúp gì| Nha Trang 3 Ngày 2 Đêm - Gia đình        |
-| cho chuyến đi sắp tới?             | --------------------------------------- |
-|                                    | NGÀY 1: Nhận phòng & Tắm biển           |
-| [User]: Lên giúp mình lịch trình   | 14:00 - Nhận phòng Vinpearl Resort      |
-| Nha Trang 3N2Đ cho 2 người lớn,    | +-------------------------------------+ |
-| 1 bé 5 tuổi, ngân sách 10 triệu.   | | [Img] Vinpearl Resort & Spa         | |
-|                                    | | Giá: 3.200.000 đ - Deluxe Ocean     | |
-| [AI]: Dưới đây là kế hoạch chi tiết| | [Xem phòng] [Thêm vào đơn hàng]     | |
-| đã được thiết kế phù hợp với lịch  | +-------------------------------------+ |
-| sinh hoạt của bé:                  | 18:00 - Ăn tối hải sản Tháp Bà        |
-| - Ngày 1: Nhận phòng & nghỉ ngơi   | --------------------------------------- |
-| - Ngày 2: Vui chơi tại VinWonders  | NGÀY 2: Khám phá VinWonders             |
-| - Ngày 3: Mua sắm & về TP.HCM      | 08:30 - Vé vui chơi trọn gói            |
-|                                    | +-------------------------------------+ |
-| Bạn có muốn đổi giờ bay hay khách  | | [Img] Vé VinWonders Nha Trang       | |
-| sạn khác không?                    | | Giá: 850.000 đ/người                | |
-|                                    | | [Đặt vé ngay]                       | |
-| +--------------------------------+ | +-------------------------------------+ |
-| | Nhập yêu cầu tùy chỉnh...      | | TỔNG CHI PHÍ TẠM TÍNH: 8.900.000 đ      |
-| +--------------------------------+ | [ TIẾN HÀNH ĐẶT TRỌN LỊCH TRÌNH ]       |
 +-------------------------------------------------------------------------------+
 ```
 

@@ -154,10 +154,10 @@ export const HomeView: React.FC = () => {
         <div className="relative z-10 mx-auto flex w-full max-w-5xl flex-col items-center gap-6 text-center">
           <VerticalChips activeGroup={null} />
           <div>
-            <h1 className="text-4xl font-extrabold tracking-tight text-white drop-shadow-md sm:text-5xl lg:text-6xl">
+            <h1 className="type-hero text-white drop-shadow-md">
               Khám phá kỳ nghỉ tiếp theo
             </h1>
-            <p className="mx-auto mt-3 max-w-xl text-base font-light text-slate-100 drop-shadow sm:text-lg">
+            <p className="type-hero-sub mx-auto mt-3 max-w-2xl text-white/90 drop-shadow">
               Mô tả chuyến đi bằng lời của bạn, V-OTA tìm dịch vụ phù hợp
             </p>
           </div>
@@ -174,7 +174,7 @@ export const HomeView: React.FC = () => {
                 onChange={(e) => setAiQuery(e.target.value)}
                 aria-label="Mô tả chuyến đi bạn muốn"
                 placeholder={placeholder || 'Hỏi AI: Tìm resort V-OTA view biển cho gia đình 4 người...'}
-                className="min-w-0 flex-1 truncate bg-transparent pl-3.5 text-xs font-semibold text-slate-800 outline-none placeholder:text-slate-500 sm:pl-4 sm:text-sm md:text-base"
+                className="min-w-0 flex-1 truncate bg-transparent pl-3.5 text-base font-medium text-slate-800 outline-none placeholder:text-slate-500 sm:pl-4"
               />
               <button
                 type="submit"
@@ -185,13 +185,13 @@ export const HomeView: React.FC = () => {
               </button>
             </form>
 
-            <div className="flex flex-wrap items-center justify-center gap-1.5 text-[11px] sm:gap-2 sm:text-xs">
+            <div className="flex flex-wrap items-center justify-center gap-2 text-[13px]">
               <span className="font-medium text-white/80 drop-shadow">Gợi ý câu hỏi:</span>
               {AI_CHIPS.map((chip) => (
                 <Link
                   key={chip}
                   href={`/search?q=${encodeURIComponent(chip)}`}
-                  className="rounded-full border border-white/25 bg-white/20 px-3 py-1.5 font-medium text-white backdrop-blur-md transition hover:bg-white/35 focus-visible:outline-2 focus-visible:outline-white"
+                  className="inline-flex min-h-10 items-center rounded-full border border-white/25 bg-white/20 px-4 font-medium text-white backdrop-blur-md transition-colors duration-200 hover:bg-white/35 focus-visible:outline-2 focus-visible:outline-white"
                 >
                   {chip}
                 </Link>
@@ -211,12 +211,12 @@ export const HomeView: React.FC = () => {
                   href={shortcut.href}
                   className="flex h-full items-center gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
                 >
-                  <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600">
                     <NavIcon name={shortcut.icon} className="h-5 w-5" />
                   </span>
                   <span className="min-w-0">
-                    <span className="block text-sm font-bold text-slate-900">{shortcut.label}</span>
-                    <span className="block truncate text-xs text-slate-500">{shortcut.summary}</span>
+                    <span className="block font-display text-[15px] leading-5 text-slate-900">{shortcut.label}</span>
+                    <span className="block truncate text-[13px] leading-[18px] text-slate-500">{shortcut.summary}</span>
                   </span>
                 </Link>
               </li>
@@ -239,7 +239,7 @@ export const HomeView: React.FC = () => {
           <section aria-label="Gợi ý cho bạn" className="mx-auto max-w-7xl px-4 pb-4 pt-8 sm:px-6 lg:px-8">
             <div className="rounded-3xl border border-slate-200/80 bg-white p-6 shadow-sm">
               <div className="flex flex-col items-start justify-between gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-center">
-                <h2 className="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">Gợi ý</h2>
+                <h2 className="type-title text-slate-900">Gợi ý</h2>
                 <button
                   onClick={() => setShowSectionWhy(true)}
                   className="inline-flex cursor-pointer items-center gap-1 rounded-xl border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition-colors hover:bg-blue-100"
@@ -325,7 +325,7 @@ export const HomeView: React.FC = () => {
           </div>
 
           <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight mb-8">
+            <h2 className="type-title mb-8 text-slate-900">
               Người bạn đồng hành đáng tin cậy
             </h2>
 

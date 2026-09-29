@@ -106,7 +106,6 @@ type ProductSummary = components["schemas"]["ProductSummary"];
 | `/experiences` | Trang danh mục: tour và trải nghiệm | Không | `destination`, `type` (`attraction` mặc định \| `golf`) |
 | `/search` | Kết quả tìm kiếm | Không | `q` (bắt buộc), `taxonomy` (hoặc `type`), `destination`, `priceMin`, `priceMax`, `starRatingMin`, `sort` (`relevance` \| `price_asc` \| `price_desc`); ngữ cảnh chuyến đi `checkIn`, `checkOut`, `adults`, `children`, `rooms` (§4.1a) |
 | `/product/{productId}` | Chi tiết sản phẩm | Không | ngữ cảnh chuyến đi tùy chọn `checkIn`, `checkOut`, `adults`, `children`, `rooms` (điền sẵn hộp đặt, §4.1a) |
-| `/assistant` | Trợ lý lịch trình | Không | `q` (prompt điền sẵn, không tự gửi), `destination` |
 | `/cart` | Giỏ hàng | Có | — |
 | `/checkout` | Checkout | Có | — |
 | `/booking/{referenceCode}` | Trạng thái đơn / xác nhận đặt chỗ | Có | `payment` (`return` \| `cancelled`) — do Backend đặt vào `success_url`/`cancel_url` của phiên Stripe |
@@ -136,7 +135,7 @@ Ký hiệu auth: **—** không gửi JWT · **tùy** gửi nếu có · **bắt
 | ② Đã xem gần đây | — | — | — | **Bỏ section** (D13) |
 | ③ Thẻ trợ lý | dùng lại response ① | — | `destination` | Không có → câu chung |
 | ④ Phổ biến | `GET /products?sort=popular&availableOnly=true&limit=8` (thêm `taxonomy=<tab>` khi chọn tab) | — | `results[]` (`ProductSummary`) | **Luôn render**. Một carousel có tab Tất cả · Khách sạn · Vé máy bay · Vé tham quan · Combo; **chỉ tab đang chọn gọi API**. Lỗi → "Chưa tải được · Thử lại" cục bộ |
-| Điểm đến ("Bạn muốn đi đâu?") | `GET /destinations` | — | `destinations[].destination`, `productCount` | Chỉ gọi khi khối tới gần vùng nhìn (≤ 300 px), bộ đệm 5 phút dùng chung với menu header. Lỗi hoặc rỗng → ẩn khối |
+| Điểm đến ("Bạn muốn đi đâu?") | `GET /destinations` | — | `destinations[].destination`, `productCount` | Chỉ gọi khi khối tới gần vùng nhìn (≤ 300 px), bộ đệm 5 phút dùng chung với tấm tìm kiếm. Lỗi hoặc rỗng → ẩn khối |
 | Lối vào danh mục | — | — | — | Bốn ô tĩnh từ `navConfig.ts` → `/flights`, `/hotels`, `/experiences`, `/combos` |
 
 **Ngân sách request của Home:** khách ≤ 1 request khi tải (khối ④ nếu trong vùng nhìn), đã đăng nhập ≤ 2 (thêm ①); các khối dưới màn hình chỉ tải khi cuộn tới (`useInView` + `useLazySection`). ① quá 3 giây (`RECOMMENDATION_TIMEOUT_MS`) thì ẩn khối và hiện dòng "Thử lại".
@@ -150,7 +149,7 @@ Một template (`features/catalog/landing`), cấu hình ở `verticals.ts`. Her
 | Khối 1 "… phổ biến" (tải ngay) | `GET /products?taxonomy=<t>&sort=popular&availableOnly=true&limit=8` (+ `destination` khi có `?destination=`) | — | `results[]` (`ProductSummary`) | Lỗi → "Chưa tải được · Thử lại" tại khối. Rỗng → "Chưa có {loại} tại {điểm đến}" + liên kết `/search` |
 | Khối 2 "… giá tốt nhất" (tải khi vào vùng nhìn) | như trên với `sort=price_asc` (sản phẩm chưa có giá xếp cuối) | — | như trên | Dưới 3 thẻ hoặc lỗi rỗng → ẩn khối |
 | Điểm đến (tải khi vào vùng nhìn) | `GET /destinations` | — | `destination`, `productCount` | Lỗi hoặc rỗng → ẩn khối |
-| Gợi ý điểm đến trong tấm tìm kiếm và menu header | `GET /destinations` | — | như trên | Lỗi → vẫn gõ tự do được |
+| Gợi ý điểm đến trong tấm tìm kiếm | `GET /destinations` | — | như trên | Lỗi → vẫn gõ tự do được |
 
 `/experiences` có hai tab (`?type=attraction|golf`); các trang khác một tab. Tấm tìm kiếm gửi bằng điều hướng sang `/search?q&type[&destination]&checkIn&checkOut&adults&children&rooms`: điểm đến chọn từ gợi ý (hoặc gõ đúng nhãn) thành `destination`, còn lại vào `q` (rỗng thì dùng câu mặc định theo danh mục, `services/search.ts` `DEFAULT_QUERY`).
 
@@ -252,7 +251,7 @@ Web gọi route BFF `/api/auth/*`, không gọi thẳng `/api/v1/auth/*` (docs/s
 | Khôi phục phiên | `GET /api/auth/session` | — | `state`, `user?`, `csrfToken` | Không bao giờ 401: khách nhận `state: anonymous` |
 | Đăng xuất | `POST /api/auth/logout` | — | `204` | Cookie luôn bị xoá, kể cả khi backend lỗi |
 
-### 4.8. Assistant `/assistant`
+### 4.8. Trợ lý (widget nổi, không có route riêng)
 
 **Trạng thái mở đầu của widget nổi (FR-AGT-01, hỗ trợ AC-AGT-01):** Khi mở icon AI trong cuộc trò chuyện chưa có request, hiển thị lời chào ngắn và một ô nhập yêu cầu tự nhiên dạng search box. Chip Nghỉ dưỡng/Gia đình/Khám phá chỉ điền bản nháp, không tự gửi. Form chọn nhanh nằm trong phần “Thêm thông tin chuyến đi”; danh sách điểm đến chỉ tải qua service `GET /destinations` khi mở phần này. Khi gửi câu đầu, chuyển sang transcript với một ô nhập ở đáy. Enter gửi, Shift+Enter xuống dòng; đang xử lý thì khóa gửi và cho dừng. Đóng/mở hoặc mở rộng giữ bản nháp; tạo cuộc mới xóa bản nháp và trở về màn mở đầu. Component của widget nằm trong `src/frontend/src/features/itinerary/widget/`; `components/assistant/AiFloatingWidget.tsx` giữ entry point tương thích.
 

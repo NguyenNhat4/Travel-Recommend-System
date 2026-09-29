@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import popularFixture from '../../../shared/mocks/catalog/listProducts.200-popular.json';
 
 const api = vi.hoisted(() => ({ listProducts: vi.fn(), listDestinations: vi.fn() }));
+vi.mock('../../src/context/AssistantProvider', () => ({ useAssistant: () => ({ openFloatingWidget: vi.fn() }) }));
 vi.mock('../../src/services/catalog', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/services/catalog')>()),
   listProducts: api.listProducts,
@@ -68,7 +69,7 @@ describe('VerticalLanding', () => {
     expect(screen.getByRole('form', { name: 'Tìm khách sạn' })).toBeTruthy();
     const first = popularFixture.results[0].name;
     expect((await screen.findAllByText(first)).length).toBeGreaterThan(0);
-    expect(screen.getByRole('link', { name: 'Lên lịch trình với trợ lý AI' }).getAttribute('href')).toMatch(/^\/assistant\?q=/);
+    expect(screen.getByRole('button', { name: 'Lên lịch trình với trợ lý AI' })).toBeTruthy();
   });
 
   it('adds ?destination= to the requests and the titles, and links "Xem thêm" to /search with it', async () => {

@@ -32,7 +32,7 @@ export function DestinationTiles({ title = 'Bạn muốn đi đâu?', route, que
 
   return (
     <section ref={ref} aria-labelledby={headingId} className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      <h2 id={headingId} className="mb-6 text-2xl font-extrabold tracking-tight text-slate-900 sm:text-[32px] sm:leading-10">{title}</h2>
+      <h2 id={headingId} className="type-title mb-6 text-slate-900">{title}</h2>
       <div className="no-scrollbar snap-row -mx-4 flex gap-4 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0">
         {tiles.length === 0
           ? [0, 1, 2, 3, 4].map((i) => (
@@ -58,7 +58,7 @@ export function DestinationTiles({ title = 'Bạn muốn đi đâu?', route, que
                 )}
                 <div className="absolute inset-0 bg-gradient-to-t from-slate-950/85 via-slate-950/15 to-transparent" />
                 <div className="absolute inset-x-0 bottom-4 px-3 text-center">
-                  <h3 className="text-xl font-bold tracking-tight text-white drop-shadow-md">{d.destination}</h3>
+                  <h3 className="text-xl font-bold text-white drop-shadow-md">{d.destination}</h3>
                   <p className="mt-0.5 text-xs font-medium text-slate-200">{d.productCount.toLocaleString('vi-VN')} dịch vụ</p>
                 </div>
               </Link>

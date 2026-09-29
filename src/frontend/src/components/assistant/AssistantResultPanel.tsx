@@ -139,7 +139,7 @@ function SearchResults({ results, onAddToCart }: { results: Record<string, Produ
   if (!groups.length) return <p className="mt-4 rounded-xl bg-white p-4 text-sm text-slate-500">Chưa có sản phẩm phù hợp.</p>;
   return <div className="mt-4 space-y-5">{groups.map(([taxonomy, products]) => (
     <section key={taxonomy} className="space-y-2.5">
-      <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-500">{taxonomyLabel(taxonomy)} · {products.length}</h4>
+      <h4 className="font-sans text-xs font-extrabold uppercase tracking-wider text-slate-500">{taxonomyLabel(taxonomy)} · {products.length}</h4>
       {products.map((product) => <ProductCard key={product.productId} product={product} onAddToCart={onAddToCart && (() => onAddToCart([{ product }]))} />)}
     </section>
   ))}</div>;
@@ -365,7 +365,7 @@ export function AssistantResultPanel({
         ))}
       </section>
 
-      {response.warnings.length > 0 && <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4"><h3 className="text-xs font-extrabold text-amber-900">Lưu ý</h3><ul className="mt-2 space-y-1.5 text-xs leading-relaxed text-amber-800">{response.warnings.map((warning, index) => <li key={`${warning.code}-${index}`}>• {warning.message}</li>)}</ul></section>}
+      {response.warnings.length > 0 && <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4"><h3 className="font-sans text-xs font-extrabold text-amber-900">Lưu ý</h3><ul className="mt-2 space-y-1.5 text-xs leading-relaxed text-amber-800">{response.warnings.map((warning, index) => <li key={`${warning.code}-${index}`}>• {warning.message}</li>)}</ul></section>}
       {showMap && <AssistantMapPanel />}
       {response.searchResults && <section><h3 className="text-sm font-extrabold text-slate-800">Kết quả tìm kiếm liên quan</h3><SearchResults results={response.searchResults} onAddToCart={onAddToCart} /></section>}
     </div>

@@ -24,17 +24,11 @@ function Harness({ group = stay, pathname = '/', query = '' }: { group?: typeof 
   );
 }
 
-const DESTINATIONS = [
-  { destination: 'Phú Quốc', productCount: 90 },
-  { destination: 'Nha Trang', productCount: 120 },
-  { destination: 'Sa Pa', productCount: 0 },
-];
-
 describe('NavMenu', () => {
   beforeEach(() => {
     clearSectionCache();
     api.listDestinations.mockReset();
-    api.listDestinations.mockResolvedValue(DESTINATIONS);
+    api.listDestinations.mockResolvedValue([{ destination: 'Nha Trang', productCount: 120 }]);
     vi.stubGlobal('matchMedia', () => ({ matches: false }));
   });
   afterEach(() => {
@@ -50,36 +44,36 @@ describe('NavMenu', () => {
     expect(api.listDestinations).not.toHaveBeenCalled();
   });
 
-  it('opens on click with the group items as links and fetches destinations once', async () => {
+  it('opens on click with the group items as links and nothing else', () => {
     render(<Harness />);
     fireEvent.click(screen.getByRole('button', { name: /Lưu trú/ }));
 
     const panel = screen.getByRole('group', { name: 'Lưu trú' });
     expect(screen.getByRole('button', { name: /Lưu trú/ }).getAttribute('aria-expanded')).toBe('true');
-    expect(within(panel).getByRole('link', { name: /Khách sạn & resort/ }).getAttribute('href')).toBe('/hotels');
-
-    await waitFor(() => expect(within(panel).getByRole('link', { name: 'Nha Trang' })).toBeTruthy());
-    expect(api.listDestinations).toHaveBeenCalledTimes(1);
-  });
-
-  it('lists destination chips most-populated first, skipping empty ones, linking to the group route', async () => {
-    render(<Harness />);
-    fireEvent.click(screen.getByRole('button', { name: /Lưu trú/ }));
-    const panel = screen.getByRole('group', { name: 'Lưu trú' });
-    await waitFor(() => expect(within(panel).getAllByRole('link', { name: /Nha Trang|Phú Quốc|Sa Pa/ })).toHaveLength(2));
-
-    const chips = within(panel).getAllByRole('link', { name: /Nha Trang|Phú Quốc/ });
-    expect(chips.map((c) => c.textContent)).toEqual(['Nha Trang', 'Phú Quốc']);
-    expect(chips[0].getAttribute('href')).toBe('/hotels?destination=Nha%20Trang');
-  });
-
-  it('hides the destination column when the request fails, and keeps the items usable', async () => {
-    api.listDestinations.mockRejectedValue(new Error('down'));
-    render(<Harness />);
-    fireEvent.click(screen.getByRole('button', { name: /Lưu trú/ }));
-    const panel = screen.getByRole('group', { name: 'Lưu trú' });
-    await waitFor(() => expect(within(panel).queryByText('Điểm đến phổ biến')).toBeNull());
+    const links = within(panel).getAllByRole('link');
+    expect(links.map((l) => l.getAttribute('href'))).toEqual(['/hotels']);
     expect(within(panel).getByRole('link', { name: /Khách sạn & resort/ })).toBeTruthy();
+  });
+
+  it('lists services only: no popular-destinations column and no destinations request, however often it opens', async () => {
+    render(<Harness />);
+    const button = screen.getByRole('button', { name: /Lưu trú/ });
+    for (let i = 0; i < 3; i += 1) fireEvent.click(button); // mở, đóng, mở lại
+    const panel = screen.getByRole('group', { name: 'Lưu trú' });
+    await act(async () => { await Promise.resolve(); });
+
+    expect(within(panel).queryByText('Điểm đến phổ biến')).toBeNull();
+    expect(within(panel).queryByRole('link', { name: 'Nha Trang' })).toBeNull();
+    expect(api.listDestinations).not.toHaveBeenCalled();
+  });
+
+  it('shows every service of a group with its description', () => {
+    render(<Harness group={experience} pathname="/" />);
+    fireEvent.click(screen.getByRole('button', { name: /Tour và trải nghiệm/ }));
+    const panel = screen.getByRole('group', { name: 'Tour và trải nghiệm' });
+    expect(within(panel).getAllByRole('link').map((l) => l.getAttribute('href'))).toEqual(['/experiences', '/experiences?type=golf']);
+    expect(within(panel).getByText('Khu vui chơi, điểm tham quan')).toBeTruthy();
+    expect(within(panel).getByText('Sân golf nghỉ dưỡng')).toBeTruthy();
   });
 
   it('closes on Escape and returns focus to the button', () => {
@@ -101,17 +95,6 @@ describe('NavMenu', () => {
     expect(screen.queryByRole('group', { name: 'Lưu trú' })).toBeNull();
   });
 
-  it('reopening reuses the cached destinations instead of calling the API again', async () => {
-    render(<Harness />);
-    const button = screen.getByRole('button', { name: /Lưu trú/ });
-    fireEvent.click(button);
-    await waitFor(() => expect(screen.getByRole('link', { name: 'Nha Trang' })).toBeTruthy());
-    fireEvent.click(button);
-    fireEvent.click(button);
-    await waitFor(() => expect(screen.getByRole('link', { name: 'Nha Trang' })).toBeTruthy());
-    expect(api.listDestinations).toHaveBeenCalledTimes(1);
-  });
-
   it('marks the current item with aria-current, telling golf from attractions by ?type', () => {
     render(<Harness group={experience} pathname="/experiences" query="type=golf" />);
     fireEvent.click(screen.getByRole('button', { name: /Tour và trải nghiệm/ }));
@@ -130,16 +113,29 @@ describe('NavMenu', () => {
 describe('AllServicesMenu', () => {
   afterEach(() => cleanup());
 
-  it('lists every service and the assistant', () => {
-    function Wrapper() {
-      const [open, setOpen] = useState(false);
-      return <AllServicesMenu tone="solid" open={open} onOpenChange={setOpen} pathname="/assistant" params={new URLSearchParams()} />;
-    }
+  function Wrapper({ pathname = '/', query = '' }: { pathname?: string; query?: string }) {
+    const [open, setOpen] = useState(false);
+    return <AllServicesMenu tone="solid" open={open} onOpenChange={setOpen} pathname={pathname} params={new URLSearchParams(query)} />;
+  }
+
+  it('lists every service, grouped under the four header groups, and nothing else', () => {
     render(<Wrapper />);
     fireEvent.click(screen.getByRole('button', { name: 'Tất cả dịch vụ' }));
     const panel = screen.getByRole('group', { name: 'Tất cả dịch vụ' });
     expect(within(panel).getAllByRole('link')).toHaveLength(NAV_ITEMS.length);
-    expect(within(panel).getByRole('link', { name: /Trợ lý lịch trình AI/ }).getAttribute('aria-current')).toBe('page');
+    expect(within(panel).queryByRole('link', { name: /Trợ lý/ })).toBeNull();
+    for (const group of NAV_GROUPS) {
+      const list = within(panel).getByRole('list', { name: group.label });
+      expect(within(list).getAllByRole('link')).toHaveLength(group.itemIds.length);
+    }
+  });
+
+  it('marks the current service with aria-current', () => {
+    render(<Wrapper pathname="/experiences" query="type=golf" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Tất cả dịch vụ' }));
+    const panel = screen.getByRole('group', { name: 'Tất cả dịch vụ' });
+    expect(within(panel).getByRole('link', { name: /Sân golf/ }).getAttribute('aria-current')).toBe('page');
+    expect(within(panel).getByRole('link', { name: /Vé máy bay/ }).getAttribute('aria-current')).toBeNull();
   });
 });
 

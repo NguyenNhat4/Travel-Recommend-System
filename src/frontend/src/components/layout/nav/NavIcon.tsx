@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
-import { Building2, Flag, Package, Plane, Sparkles, Ticket } from 'lucide-react';
+import { Building2, Flag, Package, Plane, Ticket } from 'lucide-react';
 import type { NavIcon as NavIconName } from './navConfig';
 
 const ICONS: Record<NavIconName, LucideIcon> = {
@@ -8,7 +8,6 @@ const ICONS: Record<NavIconName, LucideIcon> = {
   ticket: Ticket,
   flag: Flag,
   package: Package,
-  sparkles: Sparkles,
 };
 
 export function NavIcon({ name, className = 'w-4 h-4' }: { name: NavIconName; className?: string }) {

@@ -67,7 +67,7 @@ export const Footer: React.FC = () => {
 
           {/* Links Column 1: Dịch vụ (route thật, cùng nguồn với header: navConfig) */}
           <div>
-            <h4 className="text-xs font-bold uppercase tracking-wider text-blue-300 mb-4">DỊCH VỤ</h4>
+            <h4 className="font-sans text-xs font-bold uppercase tracking-wider text-blue-300 mb-4">DỊCH VỤ</h4>
             <ul className="space-y-2.5 text-xs text-blue-100/80">
               {NAV_ITEMS.map((item) => (
                 <li key={item.id}>
@@ -82,7 +82,7 @@ export const Footer: React.FC = () => {
 
           {/* Links Column 2: Điều khoản & Quy định */}
           <div>
-            <h4 className="text-xs font-bold uppercase tracking-wider text-blue-300 mb-4">ĐIỀU KHOẢN & QUY ĐỊNH</h4>
+            <h4 className="font-sans text-xs font-bold uppercase tracking-wider text-blue-300 mb-4">ĐIỀU KHOẢN & QUY ĐỊNH</h4>
             <ul className="space-y-2.5 text-xs text-blue-100/80">
               <li>
                 <button onClick={() => navigate('/')} className="hover:text-white flex items-center justify-between group transition w-full text-left cursor-pointer">
@@ -113,7 +113,7 @@ export const Footer: React.FC = () => {
 
           {/* App Download */}
           <div>
-            <h4 className="text-xs font-bold uppercase tracking-wider text-blue-300 mb-4">TẢI ỨNG DỤNG</h4>
+            <h4 className="font-sans text-xs font-bold uppercase tracking-wider text-blue-300 mb-4">TẢI ỨNG DỤNG</h4>
             <p className="text-xs text-blue-100/70 mb-3">Tận hưởng ưu đãi độc quyền trên ứng dụng V-OTA Booking</p>
             <div className="flex flex-col space-y-2">
               <button 

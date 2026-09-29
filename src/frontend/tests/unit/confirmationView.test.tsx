@@ -28,6 +28,7 @@ const travel = vi.hoisted(() => ({
   activeEvents: [],
 }));
 
+vi.mock('../../src/context/AssistantProvider', () => ({ useAssistant: () => ({ openFloatingWidget: vi.fn() }) }));
 vi.mock('../../src/services/booking', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/services/booking')>()),
   getBooking: api.getBooking,

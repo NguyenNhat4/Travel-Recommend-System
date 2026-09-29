@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTravel } from '../../context/TravelContext';
+import { useAssistant } from '../../context/AssistantProvider';
 import * as bookingApi from '../../services/booking';
 import type { ApiBookingItem, BookingResponse, BookingTraveler } from '../../services/booking';
 import { fetchRecommendations } from '../../services/recsys';
@@ -29,6 +30,7 @@ export const ConfirmationView: React.FC<ConfirmationViewProps> = ({ referenceCod
   const {
     getBookingByCode, rememberBooking, refreshCart, markJustBooked, currentPersona, activeEvents, navigate, showToast,
   } = useTravel();
+  const { openFloatingWidget } = useAssistant();
   const [booking, setBooking] = useState<BookingResponse | null>(() => getBookingByCode(referenceCode) ?? null);
   const [load, setLoad] = useState<LoadState>({ kind: 'loading' });
   const [polls, setPolls] = useState(0);
@@ -159,7 +161,7 @@ export const ConfirmationView: React.FC<ConfirmationViewProps> = ({ referenceCod
         onContinue={() => booking.payment?.checkoutUrl && bookingApi.redirectToCheckout(booking.payment.checkoutUrl)}
         onBackToCart={() => navigate('/cart')}
         onHome={() => navigate('/')}
-        onAssistant={() => navigate(`/assistant?destination=${encodeURIComponent(booking.groups[0]?.destination ?? '')}`)}
+        onAssistant={() => openFloatingWidget(`Gợi ý lịch trình 3 ngày ở ${booking.groups[0]?.destination ?? 'điểm đến của tôi'}`)}
       />
 
       <BookingSummary booking={booking} />
@@ -449,7 +451,7 @@ const NextForTrip: React.FC<{
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-black text-slate-900 tracking-tight">TIẾP THEO CHO CHUYẾN {destination.toUpperCase()}</h2>
+          <h2 className="text-lg font-black text-slate-900">TIẾP THEO CHO CHUYẾN {destination.toUpperCase()}</h2>
           <p className="text-xs text-slate-600">Vì bạn vừa đặt dịch vụ tại {destination} — đây là các đề xuất bổ trợ cho hành trình.</p>
         </div>
         <button onClick={() => setShowWhy(true)} className="text-xs font-semibold text-blue-700 hover:text-blue-800 flex items-center gap-1">
@@ -484,7 +486,7 @@ const NextForTrip: React.FC<{
 const CenteredCard: React.FC<{ icon: React.ReactNode; title: string; children?: React.ReactNode }> = ({ icon, title, children }) => (
   <div className="p-8 bg-white rounded-3xl border border-slate-200 shadow-xl text-center space-y-4">
     <div className="w-16 h-16 rounded-full bg-slate-50 flex items-center justify-center mx-auto">{icon}</div>
-    <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">{title}</h1>
+    <h1 className="text-2xl sm:text-3xl font-black text-slate-900">{title}</h1>
     {children}
   </div>
 );

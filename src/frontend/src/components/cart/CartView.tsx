@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTravel } from '../../context/TravelContext';
+import { useAssistant } from '../../context/AssistantProvider';
 import { getProduct } from '../../services/catalog';
 import { fetchRecommendations } from '../../services/recsys';
 import type { ApiCartItem } from '../../services/booking';
@@ -80,6 +81,7 @@ const GuestEditor: React.FC<{ item: ApiCartItem; onClose: () => void }> = ({ ite
 };
 
 export const CartView: React.FC = () => {
+  const { openFloatingWidget } = useAssistant();
   const {
     cart, removeFromCart, navigate, currentPersona, authReady, activeEvents, addToCart, openLoginModal,
   } = useTravel();
@@ -149,7 +151,7 @@ export const CartView: React.FC = () => {
             Khám phá gợi ý trang chủ
           </button>
           <button
-            onClick={() => navigate('/assistant')}
+            onClick={() => openFloatingWidget()}
             className="px-5 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold text-xs rounded-xl transition-colors flex items-center gap-1.5"
           >
             <Sparkles className="w-3.5 h-3.5" />
@@ -163,7 +165,7 @@ export const CartView: React.FC = () => {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-10">
       <div className="flex items-baseline justify-between border-b border-slate-200 pb-4">
-        <h1 className="text-2xl font-black text-slate-900 tracking-tight">
+        <h1 className="text-2xl font-black text-slate-900">
           Giỏ hàng của bạn ({cart.itemCount})
         </h1>
         <span className="text-xs text-slate-500">
@@ -177,7 +179,7 @@ export const CartView: React.FC = () => {
           {Object.entries(itemsByDestination).map(([dest, group]) => (
             <div key={dest} className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
               <div className="px-5 py-3.5 bg-slate-50 border-b border-slate-200/80 flex items-center justify-between">
-                <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                <h3 className="font-sans text-xs font-bold text-slate-700 uppercase tracking-wider">
                   CHUYẾN {dest.toUpperCase()}
                 </h3>
                 <span className="text-xs text-slate-500 font-medium">
@@ -207,7 +209,7 @@ export const CartView: React.FC = () => {
                               {item.product.destination}
                             </span>
                           </div>
-                          <h4 className="text-xs sm:text-sm font-bold text-slate-900 truncate">
+                          <h4 className="font-sans text-xs sm:text-sm font-bold text-slate-900 truncate">
                             {item.product.name}
                           </h4>
                           <FlightSummary product={item.product} />
@@ -258,7 +260,7 @@ export const CartView: React.FC = () => {
           {/* Thường được đặt cùng (§4.4) */}
           {recs && recs.recommendations.length > 0 && (
             <div className="pt-4 space-y-3">
-              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+              <h3 className="font-sans text-xs font-bold text-slate-700 uppercase tracking-wider">
                 Thường được đặt cùng chuyến {primaryDestination}
               </h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

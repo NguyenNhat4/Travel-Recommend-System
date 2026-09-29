@@ -18,7 +18,7 @@ export function WidgetHistory({ widget }: { widget: FloatingWidgetController }) 
           </button>
         </div>
         <div className="flex-1 space-y-1 overflow-y-auto p-3">
-          <h2 className="px-2 py-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Lịch sử trò chuyện</h2>
+          <h2 className="font-sans px-2 py-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Lịch sử trò chuyện</h2>
           {conversations.length === 0 ? <p className="py-8 text-center text-sm text-slate-500">Chưa có lịch sử hội thoại nào</p> : conversations.map((session) => (
             <div key={session.id} className={`flex items-center gap-2 rounded-xl ${activeSessionId === session.id ? 'bg-blue-50 text-blue-900' : 'text-slate-700 hover:bg-slate-50'}`}>
               <button type="button" aria-label={`Mở hội thoại ${session.title}`} onClick={() => void handleSelectConversation(session)} className="flex min-h-11 min-w-0 flex-1 items-center gap-2 p-2.5 text-left text-sm">

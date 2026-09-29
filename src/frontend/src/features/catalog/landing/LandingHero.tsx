@@ -35,8 +35,8 @@ export function LandingHero({ config, tab, activeGroup, destination }: LandingHe
       <div className="relative z-30 mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 sm:px-6 lg:px-8">
         <VerticalChips activeGroup={activeGroup} />
         <div>
-          <h1 className="text-4xl font-extrabold leading-tight tracking-tight text-white drop-shadow sm:text-5xl lg:text-[54px]">{config.title}</h1>
-          <p className="mt-1 text-base font-medium text-white/95 drop-shadow">{config.subtitle}</p>
+          <h1 className="type-hero text-white drop-shadow">{config.title}</h1>
+          <p className="type-hero-sub mt-3 max-w-2xl text-white/90 drop-shadow">{config.subtitle}</p>
         </div>
 
         {config.tabs.length > 1 && (
@@ -49,7 +49,7 @@ export function LandingHero({ config, tab, activeGroup, destination }: LandingHe
                     <Link
                       href={tabHref(item.taxonomy)}
                       aria-current={active ? 'page' : undefined}
-                      className={`inline-flex h-11 items-center rounded-full border px-5 text-sm font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${
+                      className={`inline-flex h-11 items-center rounded-full border px-5 font-display text-sm tracking-[0.01em] transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${
                         active ? 'border-white bg-white text-slate-900' : 'border-white/40 bg-white/15 text-white backdrop-blur hover:bg-white/25'
                       }`}
                     >

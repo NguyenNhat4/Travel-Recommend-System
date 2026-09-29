@@ -92,7 +92,6 @@ Tài khoản seed đăng nhập qua `/login` như mọi user (email seed + mật
 | `/search?q=&taxonomy=&destination=&sort=` | Kết quả tìm kiếm | Không | Route hiện hiển thị trạng thái API chưa khả dụng; page chưa gọi `searchProducts`, xem §1.5 |
 | `/hotels`, `/flights`, `/experiences`, `/combos` | Trang danh mục dịch vụ (hero, tấm tìm kiếm, carousel phổ biến và giá tốt, điểm đến) | Không | Nhận `?destination=`; `/experiences` nhận thêm `?type=attraction\|golf`. Xem frontend §4.1a |
 | `/product/:productId` | Chi tiết sản phẩm | Không | |
-| `/assistant` | Trợ lý lịch trình | Không | Gửi itinerary qua OpenAPI client; xem §1.5 và §6 |
 | `/cart` | Giỏ hàng | **Có** | Có thể bị cắt (handbook §2, mục 4) |
 | `/checkout` | Checkout | **Có** | |
 | `/booking/:referenceCode` | Xác nhận đặt chỗ | **Có** | |
@@ -132,7 +131,7 @@ Tài khoản seed đăng nhập qua `/login` như mọi user (email seed + mật
 
 ### 3.3 Điều hướng toàn cục
 
-- **Desktop (≥ 1024 px):** header kính mờ nổi trên hero ở Home và bốn trang danh mục, chuyển nền trắng khi cuộn qua hero; ở route khác là header nền trắng thường. Từ trái sang phải: logo, bốn nhóm dịch vụ **Di chuyển · Lưu trú · Tour và trải nghiệm · Tiện ích khác** (mỗi nhóm mở menu con kèm chip "Điểm đến phổ biến"), nút lưới "Tất cả dịch vụ", viên **Trợ lý AI**, ngôn ngữ, "Đặt chỗ của tôi" (kèm huy hiệu giỏ), tài khoản. Không còn ô tìm kiếm giữa header (theo wireframe `docs/prd/user-flow.md` §4.1): tìm kiếm nằm ở hero của Home và các trang danh mục, và ở đầu `/search`. Menu là mẫu disclosure (`aria-expanded`, Esc đóng và trả focus, mở bằng rê chuột chỉ trên thiết bị có hover). Cấu hình ở `components/layout/nav/navConfig.ts`. Không còn chuông thông báo và điểm thưởng cứng.
+- **Desktop (≥ 1024 px):** header kính mờ nổi trên hero ở Home và bốn trang danh mục, chuyển nền trắng khi cuộn qua hero; ở route khác là header nền trắng thường. Từ trái sang phải: logo, bốn nhóm dịch vụ **Di chuyển · Lưu trú · Tour và trải nghiệm · Tiện ích khác** (mỗi nhóm mở menu con chỉ liệt kê dịch vụ, không có điểm đến), nút lưới "Tất cả dịch vụ" (từ 1280 px), ngôn ngữ, "Đặt chỗ của tôi" (kèm huy hiệu giỏ), tài khoản. Không còn ô tìm kiếm giữa header (theo wireframe `docs/prd/user-flow.md` §4.1): tìm kiếm nằm ở hero của Home và các trang danh mục, và ở đầu `/search`. Menu là mẫu disclosure (`aria-expanded`, Esc đóng và trả focus, mở bằng rê chuột chỉ trên thiết bị có hover). Cấu hình ở `components/layout/nav/navConfig.ts`. Không có Trợ lý AI trên header (đề xuất `update-archive/2026-09-29-bo-nut-tro-ly-ai-tren-header.md`); trợ lý là widget nổi duy nhất (`update-archive/2026-09-29-gop-giao-dien-tro-ly-ve-widget.md`, không còn route `/assistant`). Điều khiển header cùng cao 40 px, bo tròn; chữ tiêu đề và điều hướng là Cal Sans, nội dung là Inter (`globals.css`). Không còn chuông thông báo và điểm thưởng cứng.
 - **Checkout** dùng header rút gọn (logo + "Quay lại giỏ hàng") để giảm rơi rụng. Pattern: `[R70]` KAYAK web checkout (header chỉ còn logo).
 - **Mobile:** thanh tab dưới cùng, xem §7.2.
 - **Menu tài khoản:** tên + persona, "Đăng xuất". Không có trang hồ sơ, vì handbook không yêu cầu.
@@ -613,7 +612,7 @@ Bố cục dưới đây là UX mục tiêu. Frontend hiện render form và k�
 
 | Từ | Nội dung điền sẵn |
 |---|---|
-| Header "Trợ lý" | Rỗng (hiện câu mẫu) |
+| Nút "Trợ lý" của tab bar mobile | Rỗng (hiện câu mẫu) |
 | Home, thẻ ③ | "Gợi ý lịch trình 3 ngày ở {destination}" |
 | Search, thẻ trong danh sách | "{q}", ví dụ "nghỉ dưỡng biển cho gia đình" |
 | Product detail | "Gợi ý lịch trình 3 ngày ở {destination}, tôi ở {tên khách sạn}" |

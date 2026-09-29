@@ -5,7 +5,7 @@
  */
 import type { Taxonomy } from '../../../types/travel';
 
-export type NavIcon = 'plane' | 'hotel' | 'ticket' | 'flag' | 'package' | 'sparkles';
+export type NavIcon = 'plane' | 'hotel' | 'ticket' | 'flag' | 'package';
 export type NavGroupId = 'travel' | 'stay' | 'experience' | 'more';
 
 export interface NavItem {
@@ -15,8 +15,8 @@ export interface NavItem {
   description: string;
   href: string;
   icon: NavIcon;
-  /** Có ở mọi mục là danh mục dữ liệu; vắng ở mục không phải danh mục (trợ lý). */
-  taxonomy?: Taxonomy;
+  /** Danh mục dữ liệu mà mục dẫn tới; dùng để suy ra mục và nhóm đang chọn từ route. */
+  taxonomy: Taxonomy;
 }
 
 export interface NavGroup {
@@ -24,25 +24,23 @@ export interface NavGroup {
   label: string;
   summary: string;
   itemIds: string[];
-  /** Route nhận `?destination=` cho chip "Điểm đến phổ biến" trong menu. */
-  destinationRoute: string;
 }
 
+/** Chỉ có dịch vụ. Trợ lý AI không nằm trên header (đề xuất `update-archive/2026-09-29-bo-nut-tro-ly-ai-tren-header.md`). */
 export const NAV_ITEMS: readonly NavItem[] = [
   { id: 'flights', label: 'Vé máy bay', description: 'Vé một chiều và khứ hồi', href: '/flights', icon: 'plane', taxonomy: 'flight' },
   { id: 'hotels', label: 'Khách sạn & resort', description: 'Nơi lưu trú cho chuyến đi', href: '/hotels', icon: 'hotel', taxonomy: 'hotel' },
   { id: 'attractions', label: 'Vé tham quan & vui chơi', description: 'Khu vui chơi, điểm tham quan', href: '/experiences', icon: 'ticket', taxonomy: 'attraction' },
   { id: 'golf', label: 'Sân golf', description: 'Sân golf nghỉ dưỡng', href: '/experiences?type=golf', icon: 'flag', taxonomy: 'golf' },
   { id: 'combos', label: 'Combo du lịch', description: 'Gói kết hợp lưu trú, vé và vui chơi', href: '/combos', icon: 'package', taxonomy: 'combo' },
-  { id: 'assistant', label: 'Trợ lý lịch trình AI', description: 'Lập lịch từng ngày bằng sản phẩm có thật', href: '/assistant', icon: 'sparkles' },
 ];
 
 /** Thứ tự hiển thị trên header, theo mẫu. */
 export const NAV_GROUPS: readonly NavGroup[] = [
-  { id: 'travel', label: 'Di chuyển', summary: 'Vé máy bay', itemIds: ['flights'], destinationRoute: '/flights' },
-  { id: 'stay', label: 'Lưu trú', summary: 'Khách sạn và resort', itemIds: ['hotels'], destinationRoute: '/hotels' },
-  { id: 'experience', label: 'Tour và trải nghiệm', summary: 'Vé tham quan, vui chơi, sân golf', itemIds: ['attractions', 'golf'], destinationRoute: '/experiences' },
-  { id: 'more', label: 'Tiện ích khác', summary: 'Combo du lịch và trợ lý AI', itemIds: ['combos', 'assistant'], destinationRoute: '/combos' },
+  { id: 'travel', label: 'Di chuyển', summary: 'Vé máy bay', itemIds: ['flights'] },
+  { id: 'stay', label: 'Lưu trú', summary: 'Khách sạn và resort', itemIds: ['hotels'] },
+  { id: 'experience', label: 'Tour và trải nghiệm', summary: 'Vé tham quan, vui chơi, sân golf', itemIds: ['attractions', 'golf'] },
+  { id: 'more', label: 'Tiện ích khác', summary: 'Combo du lịch', itemIds: ['combos'] },
 ];
 
 /** Route có hero: header nổi trên ảnh nền rồi chuyển nền trắng khi cuộn (Header.tsx). */
@@ -101,7 +99,6 @@ export function resolveActiveGroup(pathname: string, params?: ParamSource): NavG
 }
 
 export function isItemActive(item: NavItem, pathname: string, params?: ParamSource): boolean {
-  if (!item.taxonomy) return under(pathname.replace(/\/+$/, '') || '/', item.href);
   return activeTaxonomy(pathname, params) === item.taxonomy;
 }
 

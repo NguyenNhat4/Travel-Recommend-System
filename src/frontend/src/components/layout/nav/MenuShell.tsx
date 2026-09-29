@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useId, useRef } from 'react';
+import { PANEL_CLASS } from './headerStyles';
 
 interface MenuShellProps {
   open: boolean;
@@ -10,14 +11,20 @@ interface MenuShellProps {
   /** aria-label của nút khi nút chỉ có icon. */
   buttonLabel?: string;
   buttonClassName: string;
-  /** Panel neo theo mép trái hay mép phải của nút; nhóm cuối header neo phải để không tràn màn hình. */
-  align?: 'left' | 'right';
+  /** Panel neo theo mép trái, mép phải hoặc giữa nút; menu ở cuối thanh neo phải để không tràn màn hình. */
+  align?: 'left' | 'center' | 'right';
+  /** Chiều rộng của panel: menu một nhóm hẹp (một cột), menu "tất cả dịch vụ" rộng hai cột. */
+  panelWidthClass?: string;
+  /** Lớp bổ sung cho khung ngoài (ví dụ ẩn ở một số độ rộng). */
+  wrapperClassName?: string;
   button: React.ReactNode;
   children: React.ReactNode;
 }
 
 const OPEN_DELAY_MS = 120;
 const CLOSE_DELAY_MS = 160;
+
+const ALIGN = { left: 'left-0', center: 'left-1/2 -translate-x-1/2', right: 'right-0' } as const;
 
 function canHover(): boolean {
   return typeof window !== 'undefined' && Boolean(window.matchMedia?.('(hover: hover)').matches);
@@ -28,7 +35,7 @@ function canHover(): boolean {
  * bấm mở/đóng, Esc đóng và trả focus về nút, Tab ra ngoài thì đóng. Việc đóng khi bấm ra ngoài và khi đổi route do Header lo.
  */
 export function MenuShell({
-  open, onOpenChange, panelLabel, buttonLabel, buttonClassName, align = 'left', button, children,
+  open, onOpenChange, panelLabel, buttonLabel, buttonClassName, align = 'left', panelWidthClass = 'w-[21rem]', wrapperClassName = '', button, children,
 }: MenuShellProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -45,7 +52,7 @@ export function MenuShell({
   return (
     <div
       ref={wrapRef}
-      className="relative"
+      className={`relative ${wrapperClassName}`}
       onMouseEnter={() => { if (canHover()) schedule(true, OPEN_DELAY_MS); }}
       onMouseLeave={() => { if (canHover()) schedule(false, CLOSE_DELAY_MS); }}
       onKeyDown={(event) => {
@@ -81,9 +88,9 @@ export function MenuShell({
           id={panelId}
           role="group"
           aria-label={panelLabel}
-          className={`absolute top-full z-50 pt-3 ${align === 'right' ? 'right-0' : 'left-0'}`}
+          className={`absolute top-full z-50 pt-3 ${ALIGN[align]}`}
         >
-          <div className="glass-panel w-[min(calc(100vw-2rem),34rem)] rounded-3xl border border-white/60 p-3 text-slate-800 shadow-2xl ring-1 ring-slate-900/5 sm:p-4">
+          <div className={`${PANEL_CLASS} ${panelWidthClass}`}>
             {children}
           </div>
         </div>

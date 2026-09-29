@@ -3,6 +3,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useTravel } from '../../context/TravelContext';
+import { useAssistant } from '../../context/AssistantProvider';
 import { DEFAULT_QUERY, EMPTY_SEARCH_RESPONSE, searchProductsApi, SortOption, SearchResponse } from '../../services/search';
 import { ApiError } from '../../services/http';
 import { Destination, Taxonomy } from '../../types/travel';
@@ -13,6 +14,7 @@ import { Search, Filter, Sparkles, HelpCircle, X, ArrowUpDown, ChevronDown, Load
 
 export const SearchView: React.FC = () => {
   const { navigate } = useTravel();
+  const { openFloatingWidget } = useAssistant();
   const searchParams = useSearchParams();
 
   // Extract parameters from URL (?q=..., ?type=... / ?taxonomy=..., ?destination=...)
@@ -202,7 +204,7 @@ export const SearchView: React.FC = () => {
       {/* Query Header & Category Tabs */}
       <div className="space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2">
-          <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+          <h1 className="text-xl sm:text-2xl font-black text-slate-900">
             {headerTitle}
           </h1>
           {tripSummary && (
@@ -258,7 +260,7 @@ export const SearchView: React.FC = () => {
 
           {/* Destination Filter */}
           <div className="space-y-2.5">
-            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+            <h4 className="font-sans text-xs font-bold text-slate-800 uppercase tracking-wider">
               Điểm đến
             </h4>
             {(['Nha Trang', 'Phú Quốc', 'Đà Nẵng', 'Hội An', 'Hạ Long'] as Destination[]).map(dest => (
@@ -276,7 +278,7 @@ export const SearchView: React.FC = () => {
 
           {/* Star Rating Filter */}
           <div className="space-y-2.5 pt-4 border-t border-slate-100">
-            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+            <h4 className="font-sans text-xs font-bold text-slate-800 uppercase tracking-wider">
               Hạng sao khách sạn
             </h4>
             <div className="space-y-1.5">
@@ -301,7 +303,7 @@ export const SearchView: React.FC = () => {
 
           {/* Price Range Filter */}
           <div className="space-y-2.5 pt-4 border-t border-slate-100">
-            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+            <h4 className="font-sans text-xs font-bold text-slate-800 uppercase tracking-wider">
               Mức giá tối đa
             </h4>
             <div className="space-y-2">
@@ -412,7 +414,7 @@ export const SearchView: React.FC = () => {
             <div className="p-3 bg-amber-50 text-amber-900 border border-amber-200 rounded-xl text-xs flex items-center justify-between">
               <span>Chưa tìm thấy kết quả khớp tuyệt đối với &ldquo;{queryParam}&rdquo;. Đây là những lựa chọn gần nghĩa nhất.</span>
               <button 
-                onClick={() => navigate('/assistant')}
+                onClick={() => openFloatingWidget(queryParam || undefined)}
                 className="font-bold underline text-amber-950 ml-2 shrink-0"
               >
                 Hỏi Trợ lý AI →
@@ -459,7 +461,7 @@ export const SearchView: React.FC = () => {
                           <Sparkles className="w-5 h-5" />
                         </div>
                         <div>
-                          <h4 className="text-xs font-bold text-white">
+                          <h4 className="font-sans text-xs font-bold text-white">
                             Muốn ghép các dịch vụ này thành lịch trình trọn gói?
                           </h4>
                           <p className="text-[11px] text-slate-300">
@@ -468,7 +470,7 @@ export const SearchView: React.FC = () => {
                         </div>
                       </div>
                       <button
-                        onClick={() => navigate('/assistant')}
+                        onClick={() => openFloatingWidget(queryParam || undefined)}
                         className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-lg shadow-xs transition-colors shrink-0 whitespace-nowrap"
                       >
                         Hỏi trợ lý với truy vấn này →
@@ -500,7 +502,7 @@ export const SearchView: React.FC = () => {
                   Xóa bộ lọc
                 </button>
                 <button
-                  onClick={() => navigate('/assistant')}
+                  onClick={() => openFloatingWidget(queryParam || undefined)}
                   className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-lg transition-colors"
                 >
                   Nhờ Trợ lý AI gợi ý

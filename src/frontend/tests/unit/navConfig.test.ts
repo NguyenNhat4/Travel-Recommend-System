@@ -40,9 +40,8 @@ describe('isItemActive', () => {
     expect(isItemActive(item('attractions'), '/experiences', params('type=golf'))).toBe(false);
   });
 
-  it('marks the assistant item only on /assistant', () => {
-    expect(isItemActive(item('assistant'), '/assistant', params(''))).toBe(true);
-    expect(isItemActive(item('assistant'), '/hotels', params(''))).toBe(false);
+  it('marks no service on /assistant', () => {
+    for (const i of NAV_ITEMS) expect(isItemActive(i, '/assistant', params(''))).toBe(false);
   });
 });
 
@@ -64,7 +63,13 @@ describe('nav data', () => {
       expect(items.length).toBe(group.itemIds.length);
       expect(items.length).toBeGreaterThan(0);
     }
-    expect(itemsOf(NAV_GROUPS[3]).map((i) => i.id)).toEqual(['combos', 'assistant']);
+    expect(itemsOf(NAV_GROUPS[3]).map((i) => i.id)).toEqual(['combos']);
+  });
+
+  it('lists services only: no assistant entry, so no header link to the old /assistant page', () => {
+    expect(NAV_ITEMS.map((i) => i.id)).toEqual(['flights', 'hotels', 'attractions', 'golf', 'combos']);
+    expect(NAV_ITEMS.map((i) => i.href)).not.toContain('/assistant');
+    for (const i of NAV_ITEMS) expect(i.taxonomy).toBeTruthy();
   });
 
   it('builds one shortcut per group pointing at its first item', () => {

@@ -335,7 +335,7 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
             {product.address || product.destination}
           </span>
         </div>
-        <h1 className="text-xl sm:text-3xl font-black text-slate-900 tracking-tight">{product.name}</h1>
+        <h1 className="text-xl sm:text-3xl font-black text-slate-900">{product.name}</h1>
         {product.aggregateRating && (
           <p className="text-xs text-slate-500">
             ⭐ <strong className="text-slate-800 font-semibold">{product.aggregateRating.score}/5</strong>
@@ -493,7 +493,7 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
 
       {similar.length > 0 && (
         <div className="pt-8 border-t border-slate-200 space-y-4">
-          <h2 className="text-lg font-black text-slate-900 tracking-tight">Tương tự {product.name}</h2>
+          <h2 className="text-lg font-black text-slate-900">Tương tự {product.name}</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {similar.slice(0, 8).map((sim) => <ProductCard key={sim.id} product={sim} variant="grid" />)}
           </div>
@@ -502,7 +502,7 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
 
       {tripRecs.length > 0 && (
         <div className="pt-8 border-t border-slate-200 space-y-4">
-          <h2 className="text-lg font-black text-slate-900 tracking-tight">Hoàn thiện chuyến {product.destination}</h2>
+          <h2 className="text-lg font-black text-slate-900">Hoàn thiện chuyến {product.destination}</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {tripRecs.map((rec) => (
               <ProductCard key={rec.product.id} product={rec.product} variant="grid" because={rec.because}

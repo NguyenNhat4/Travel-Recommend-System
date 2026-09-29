@@ -67,7 +67,7 @@ export function ProductShelf({
   return (
     <section aria-labelledby={headingId} className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
       <div className="mb-6 flex items-center justify-between gap-4">
-        <h2 id={headingId} className="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-[32px] sm:leading-10">{title}</h2>
+        <h2 id={headingId} className="type-title text-slate-900">{title}</h2>
         <div className="flex items-center gap-3">
           {moreHref && items.length > 0 && (
             <Link href={moreHref} className="inline-flex items-center gap-1 text-sm font-semibold text-blue-600 hover:text-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">

@@ -59,6 +59,44 @@ test('header groups open by keyboard and lead to the category pages', async ({ p
   }
 });
 
+test('a header menu lists services only: no popular destinations, no API call, five services under "Tất cả dịch vụ"', async ({ page }) => {
+  const requests = await mockApi(page);
+  await page.goto('/');
+  await page.waitForLoadState('networkidle');
+  const destinationCalls = () => requests.filter((p) => p.endsWith('/destinations')).length;
+  const before = destinationCalls();
+
+  await page.getByRole('button', { name: 'Lưu trú' }).click();
+  const panel = page.getByRole('group', { name: 'Lưu trú' });
+  await expect(panel.getByRole('link')).toHaveCount(1);
+  await expect(panel.getByText('Điểm đến phổ biến')).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Tất cả dịch vụ' }).click();
+  await expect(page.getByRole('group', { name: 'Tất cả dịch vụ' }).getByRole('link')).toHaveCount(5);
+  expect(destinationCalls()).toBe(before);
+});
+
+test('header controls share one 40px height and the header has no assistant entry', async ({ page }) => {
+  await mockApi(page);
+  await page.goto('/hotels');
+  const header = page.locator('header');
+  const controls = [
+    ...(await header.getByRole('navigation', { name: 'Dịch vụ' }).getByRole('button').all()),
+    header.getByTitle('Thay đổi ngôn ngữ và tiền tệ'),
+    header.getByRole('button', { name: 'Đặt chỗ của tôi' }),
+    header.getByRole('button', { name: 'Đăng nhập' }),
+    header.getByRole('button', { name: 'Đăng ký' }),
+  ];
+  expect(controls).toHaveLength(9);
+  for (const control of controls) {
+    const box = await control.boundingBox();
+    expect(box?.height).toBeGreaterThanOrEqual(39.5);
+    expect(box?.height).toBeLessThanOrEqual(40.5);
+  }
+  await expect(header.getByRole('link', { name: /Trợ lý/ })).toHaveCount(0);
+  await expect(header.getByText('Trợ lý AI')).toHaveCount(0);
+});
+
 test('the hotels search sheet goes to /search with the chosen destination and trip context', async ({ page }) => {
   await mockApi(page);
   await page.goto('/hotels');

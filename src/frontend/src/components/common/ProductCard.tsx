@@ -152,7 +152,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                 </span>
               )}
             </div>
-            <h4 className="text-xs font-semibold text-slate-900 line-clamp-1">
+            <h4 className="font-sans text-xs font-semibold text-slate-900 line-clamp-1">
               {product.name}
             </h4>
             <div className="flex items-center gap-2 mt-0.5">

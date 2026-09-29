@@ -13,7 +13,7 @@ interface VerticalChipsProps {
 /** Lối vào danh mục ở dưới 1024 px, nơi thanh nhóm của header bị ẩn (product.md §7.2 giữ tab bar dưới 5 mục). */
 export function VerticalChips({ activeGroup, tone = 'overlay' }: VerticalChipsProps) {
   const chipClass = (active: boolean) => {
-    const base = 'inline-flex h-11 items-center gap-1.5 rounded-full border px-4 text-sm font-semibold whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-offset-2';
+    const base = 'inline-flex h-11 items-center gap-2 rounded-full border px-4 font-display text-sm tracking-[0.01em] whitespace-nowrap transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2';
     if (tone === 'overlay') {
       return `${base} focus-visible:outline-white ${active ? 'border-white bg-white text-slate-900' : 'border-white/40 bg-white/15 text-white backdrop-blur'}`;
     }
@@ -21,7 +21,7 @@ export function VerticalChips({ activeGroup, tone = 'overlay' }: VerticalChipsPr
   };
 
   return (
-    <nav aria-label="Danh mục dịch vụ" className="no-scrollbar snap-row -mx-4 overflow-x-auto px-4 lg:hidden">
+    <nav aria-label="Danh mục dịch vụ" className="no-scrollbar snap-row -mx-4 max-w-none scroll-px-4 self-stretch overflow-x-auto px-4 lg:hidden">
       <ul className="flex w-max gap-2">
         {categoryShortcuts().map((shortcut) => (
           <li key={shortcut.id}>

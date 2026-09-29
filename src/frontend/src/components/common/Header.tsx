@@ -5,10 +5,13 @@ import { useTravel } from '../../context/TravelContext';
 import { bookingItems } from '../../services/booking';
 import { BOOKING_STATUS_BADGE } from '../confirmation/bookingLabels';
 import { SUPPORTED_LOCALES } from '../../types/locale';
-import { AllServicesMenu, NavMenu, type NavTone } from '../layout/nav/NavMenu';
+import { AllServicesMenu, NavMenu } from '../layout/nav/NavMenu';
 import { NAV_GROUPS, isOverlayRoute, resolveActiveGroup } from '../layout/nav/navConfig';
 import {
-  Sparkles,
+  PANEL_CLASS, PANEL_LABEL_CLASS, chipClass, controlClass, primaryClass, rowClass, type NavTone,
+} from '../layout/nav/headerStyles';
+import {
+  Clipboard,
   Luggage,
   User,
   ChevronDown,
@@ -36,7 +39,7 @@ function NavGroupsView({ pathname, tone, openId, setOpenId, params }: NavGroupsP
 
   return (
     <nav aria-label="Dịch vụ" className="flex items-center gap-1">
-      {NAV_GROUPS.map((group, index) => (
+      {NAV_GROUPS.map((group) => (
         <NavMenu
           key={group.id}
           group={group}
@@ -44,12 +47,19 @@ function NavGroupsView({ pathname, tone, openId, setOpenId, params }: NavGroupsP
           tone={tone}
           open={openId === group.id}
           onOpenChange={setOpen(group.id)}
-          align={index >= 2 ? 'right' : 'left'}
+          align="center"
           pathname={pathname}
           params={params}
         />
       ))}
-      <AllServicesMenu tone={tone} open={openId === 'all'} onOpenChange={setOpen('all')} pathname={pathname} params={params} />
+      <AllServicesMenu
+        tone={tone}
+        open={openId === 'all'}
+        onOpenChange={setOpen('all')}
+        pathname={pathname}
+        params={params}
+        className="hidden xl:block"
+      />
     </nav>
   );
 }
@@ -90,6 +100,9 @@ function usePastHero(enabled: boolean) {
 
   return [ref, past] as const;
 }
+
+/** Panel thả xuống của ngôn ngữ, đặt chỗ và tài khoản: cách viên header 12 px, cùng vỏ với menu dịch vụ. */
+const DROPDOWN_CLASS = `${PANEL_CLASS} absolute right-0 top-full z-50 mt-3`;
 
 export const Header: React.FC<HeaderProps> = ({ isCheckout = false }) => {
   const {
@@ -162,11 +175,11 @@ export const Header: React.FC<HeaderProps> = ({ isCheckout = false }) => {
             onClick={() => navigate('/')}
             className="flex items-center gap-2 cursor-pointer group"
           >
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white font-black text-lg shadow-xs group-hover:opacity-90 transition-opacity">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white font-display text-lg shadow-xs group-hover:opacity-90 transition-opacity">
               V
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="font-black text-xl tracking-tight text-slate-900">V-OTA</span>
+              <span className="font-display text-xl tracking-wide text-slate-900">V-OTA</span>
               <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-blue-50 text-blue-700 border border-blue-200">
                 Thanh toán an toàn
               </span>
@@ -187,85 +200,75 @@ export const Header: React.FC<HeaderProps> = ({ isCheckout = false }) => {
   }
 
   const onHero = tone === 'overlay';
-  const iconButtonClass = onHero
-    ? 'text-white hover:bg-white/15 focus-visible:outline-white'
-    : 'text-slate-700 hover:bg-slate-100 focus-visible:outline-blue-600';
+  const chevron = (open: boolean) => (
+    <ChevronDown className={`h-4 w-4 opacity-70 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
+  );
 
   return (
     <>
       {overlayRoute && (
         <div ref={heroSentinelRef} aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-[360px]" />
       )}
+      {/*
+        Viên header cao 64 px (56 px mobile). Điều khiển bên trong cao 40 px nên cách mép đều 12 px (8 px mobile). Ở route có hero,
+        viên rộng hơn cột nội dung đúng 12 px mỗi bên để logo và nút tài khoản thẳng hàng với tiêu đề và tấm tìm kiếm bên dưới.
+      */}
       <header
         className={overlayRoute
-          ? 'fixed inset-x-0 top-0 z-40 px-3 pt-3 sm:px-6'
+          ? 'fixed inset-x-0 top-0 z-40 px-2 pt-3 sm:px-3 lg:px-5'
           : 'w-full bg-white border-b border-slate-200/80 shadow-xs'}
       >
         <div
           className={overlayRoute
-            ? `mx-auto max-w-7xl rounded-[38px] px-4 transition-colors duration-200 sm:px-5 ${
+            ? `mx-auto max-w-[77.5rem] rounded-full px-2 transition-colors duration-200 sm:px-3 ${
               onHero ? 'glass-pill text-white' : 'bg-white/95 text-slate-900 shadow-lg ring-1 ring-slate-900/5 backdrop-blur'
             }`
             : 'max-w-7xl mx-auto px-3 sm:px-6 lg:px-8'}
         >
-          <div className="flex items-center justify-between h-14 sm:h-16 py-2 gap-2 sm:gap-4 relative">
+          <div className="flex h-14 items-center gap-2 sm:h-16 lg:gap-4">
 
-            {/* Brand Logo & Primary Category Navigator */}
-            <div className="flex items-center gap-3 sm:gap-5 shrink-0 z-20">
-              <Link
-                href="/"
-                aria-label="V-OTA, về trang chủ"
-                className="flex items-center gap-2.5 group text-left cursor-pointer shrink-0 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-600"
-              >
-                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-300 flex items-center justify-center text-white font-extrabold text-xl sm:text-2xl shadow-md shadow-amber-500/20 group-hover:scale-105 transition-transform">
-                  V
-                </div>
-                <div className="hidden sm:flex flex-col">
-                  <span className={`text-base sm:text-lg font-black tracking-widest leading-none uppercase ${onHero ? 'text-white' : 'text-slate-900'}`}>V-OTA</span>
-                  <span className={`text-[9px] tracking-wider uppercase font-bold ${onHero ? 'text-white/80' : 'text-slate-500'}`}>Resorts & Hotels</span>
-                </div>
-              </Link>
+            {/* Thương hiệu */}
+            <Link
+              href="/"
+              aria-label="V-OTA, về trang chủ"
+              className={`group flex shrink-0 items-center gap-3 rounded-full focus-visible:outline-2 focus-visible:outline-offset-4 ${
+                onHero ? 'focus-visible:outline-white' : 'focus-visible:outline-blue-600'
+              }`}
+            >
+              <span className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-tr from-amber-500 to-amber-300 font-display text-2xl leading-none text-white shadow-md shadow-amber-500/20 transition-transform duration-200 group-hover:scale-105">
+                V
+              </span>
+              <span className="hidden flex-col sm:flex lg:hidden xl:flex">
+                <span className={`font-display text-xl uppercase leading-none tracking-wide ${onHero ? 'text-white' : 'text-slate-900'}`}>V-OTA</span>
+                <span className={`mt-1 text-[10px] font-medium uppercase leading-none tracking-[0.14em] ${onHero ? 'text-white/80' : 'text-slate-500'}`}>Resorts & Hotels</span>
+              </span>
+            </Link>
 
-              {/* Nhóm dịch vụ: mỗi nhóm một menu con, ẩn dưới 1024 px (lối vào mobile là VerticalChips) */}
-              <div ref={navRef} className="hidden lg:flex items-center">
-                <NavGroups pathname={currentRoute} tone={tone} openId={openNavId} setOpenId={setOpenNavId} />
-              </div>
+            {/* Nhóm dịch vụ: nằm giữa hai cụm, ẩn dưới 1024 px (lối vào mobile là VerticalChips) */}
+            <div ref={navRef} className="hidden min-w-0 flex-1 justify-center lg:flex">
+              <NavGroups pathname={currentRoute} tone={tone} openId={openNavId} setOpenId={setOpenNavId} />
             </div>
 
-            {/* Right Action Utilities (AI Assistant, Language, Trips, Account) */}
-            <div className="flex items-center gap-1.5 sm:gap-3 shrink-0 z-20 ml-auto">
-
-              <Link
-                href="/assistant"
-                className={`hidden lg:inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 ${
-                  onHero
-                    ? 'border-white/40 bg-white/15 text-white hover:bg-white/25 focus-visible:outline-white'
-                    : 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 focus-visible:outline-blue-600'
-                }`}
-              >
-                <Sparkles className="w-4 h-4" aria-hidden="true" />
-                Trợ lý AI
-              </Link>
+            {/* Tiện ích: ngôn ngữ, đặt chỗ, tài khoản */}
+            <div className="ml-auto flex items-center gap-2 lg:ml-0">
 
               {/* Language & Currency Selector */}
               <div className="relative" ref={langDropdownRef}>
                 <button
                   onClick={() => setIsLangDropdownOpen(!isLangDropdownOpen)}
                   aria-expanded={isLangDropdownOpen}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 ${iconButtonClass}`}
+                  className={controlClass(tone, { active: isLangDropdownOpen, compact: true })}
                   title="Thay đổi ngôn ngữ và tiền tệ"
                 >
-                  <span className="text-base">{currentLocaleInfo.flag}</span>
-                  <span className="hidden sm:inline">{currentLocaleInfo.currencyCode}</span>
-                  <svg className={`w-3.5 h-3.5 opacity-70 transition-transform ${isLangDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                  <span className="text-base leading-none">{currentLocaleInfo.flag}</span>
+                  <span className="hidden sm:inline lg:hidden xl:inline">{currentLocaleInfo.currencyCode}</span>
+                  {chevron(isLangDropdownOpen)}
                 </button>
 
                 {isLangDropdownOpen && (
-                  <div className="absolute right-0 mt-2 w-64 bg-white text-slate-800 rounded-2xl shadow-xl border border-slate-200/90 p-2.5 z-50">
-                    <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-2 py-1">
-                      Chọn ngôn ngữ & tiền tệ
-                    </div>
-                    <div className="max-h-60 overflow-y-auto space-y-0.5 mt-1">
+                  <div className={`${DROPDOWN_CLASS} w-72`}>
+                    <p className={PANEL_LABEL_CLASS}>Chọn ngôn ngữ & tiền tệ</p>
+                    <div className="max-h-72 space-y-0.5 overflow-y-auto">
                       {SUPPORTED_LOCALES.map((loc) => (
                         <button
                           key={loc.code}
@@ -274,19 +277,13 @@ export const Header: React.FC<HeaderProps> = ({ isCheckout = false }) => {
                             setIsLangDropdownOpen(false);
                             showToast(`Đã chuyển ngôn ngữ sang ${loc.nativeName}`);
                           }}
-                          className={`w-full px-2.5 py-2 text-left rounded-lg text-xs flex items-center justify-between transition-colors cursor-pointer ${
-                            currentLocale === loc.code
-                              ? 'bg-blue-50 text-blue-800 font-bold'
-                              : 'text-slate-700 hover:bg-slate-50'
-                          }`}
+                          className={`${rowClass(currentLocale === loc.code ? 'selected' : 'default')} justify-between`}
                         >
-                          <span className="flex items-center gap-2">
-                            <span className="text-base">{loc.flag}</span>
+                          <span className="flex items-center gap-3">
+                            <span className="text-lg leading-none">{loc.flag}</span>
                             <span>{loc.nativeName}</span>
                           </span>
-                          <span className="text-[10px] font-mono text-slate-400 uppercase">
-                            {loc.currencyCode}
-                          </span>
+                          <span className="font-mono text-xs uppercase text-slate-400">{loc.currencyCode}</span>
                         </button>
                       ))}
                     </div>
@@ -295,62 +292,63 @@ export const Header: React.FC<HeaderProps> = ({ isCheckout = false }) => {
               </div>
 
               {/* Booking Management */}
-              <div className="relative" ref={tripsDropdownRef}>
+              <div className="relative hidden md:block" ref={tripsDropdownRef}>
                 <button
                   onClick={() => setIsTripsDropdownOpen(!isTripsDropdownOpen)}
                   aria-expanded={isTripsDropdownOpen}
-                  className={`hidden md:flex items-center p-2 rounded-lg relative transition cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 ${iconButtonClass}`}
+                  className={`relative ${controlClass(tone, { active: isTripsDropdownOpen, iconOnly: true })}`}
                   title="Đặt chỗ của tôi"
                   aria-label="Đặt chỗ của tôi"
                 >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
+                  <Clipboard className="h-5 w-5" aria-hidden="true" />
                   {activeTripsBadge > 0 && (
-                    <span className="absolute top-1 right-1 min-w-[16px] h-4 px-1 rounded-full bg-blue-600 text-white text-[9px] font-extrabold flex items-center justify-center shadow-xs">
+                    <span className="absolute right-0 top-0 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-blue-600 px-1 text-[10px] font-bold leading-none text-white shadow-xs">
                       {activeTripsBadge}
                     </span>
                   )}
                 </button>
 
                 {isTripsDropdownOpen && (
-                  <div className="absolute right-0 mt-2 w-72 bg-white text-slate-800 rounded-2xl shadow-xl border border-slate-200/90 p-3 z-50">
-                    <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                      <span className="text-xs font-bold text-slate-800">Đặt chỗ của tôi</span>
+                  <div className={`${DROPDOWN_CLASS} w-80`}>
+                    <div className="flex items-center justify-between px-3 pb-1 pt-2">
+                      <span className="font-display text-[15px] text-slate-900">Đặt chỗ của tôi</span>
                       <button
                         onClick={() => {
                           setIsTripsDropdownOpen(false);
                           navigate('/cart');
                         }}
-                        className="text-[11px] text-blue-600 hover:underline font-semibold cursor-pointer"
+                        className="cursor-pointer rounded-full px-2.5 py-1 text-[13px] font-semibold text-blue-600 transition-colors duration-200 hover:bg-blue-50"
                       >
                         Giỏ hàng ({cartCount})
                       </button>
                     </div>
 
-                    <div className="py-2.5 space-y-2">
+                    <div className="space-y-1 py-1">
                       {bookings.length > 0 ? (
                         bookings.slice(0, 3).map((b, idx) => (
-                          <div
+                          <button
                             key={idx}
+                            type="button"
                             onClick={() => {
                               setIsTripsDropdownOpen(false);
                               navigate(`/booking/${b.referenceCode}`);
                             }}
-                            className="p-2 rounded-lg bg-slate-50 hover:bg-blue-50/60 border border-slate-200/60 cursor-pointer transition-colors"
+                            className={rowClass('default', { stacked: true })}
                           >
-                            <div className="text-[11px] font-bold text-slate-900 flex items-center justify-between">
+                            <span className="flex items-center justify-between gap-3 text-sm font-semibold text-slate-900">
                               <span>Đơn #{b.referenceCode}</span>
-                              <span className={`text-[10px] ${BOOKING_STATUS_BADGE[b.status].className}`}>
+                              <span className={`text-xs font-semibold ${BOOKING_STATUS_BADGE[b.status].className}`}>
                                 {BOOKING_STATUS_BADGE[b.status].label}
                               </span>
-                            </div>
-                            <div className="text-[10px] text-slate-500 mt-0.5">
+                            </span>
+                            <span className="text-[13px] text-slate-500">
                               {bookingItems(b).length} dịch vụ · {new Intl.NumberFormat('vi-VN').format(b.total)} ₫
-                            </div>
-                          </div>
+                            </span>
+                          </button>
                         ))
                       ) : (
-                        <div className="text-center py-4 text-xs text-slate-400">
-                          <Luggage className="w-6 h-6 mx-auto text-slate-300 mb-1" />
+                        <div className="py-5 text-center text-[13px] text-slate-500">
+                          <Luggage className="mx-auto mb-1.5 h-6 w-6 text-slate-300" aria-hidden="true" />
                           <p>Bạn chưa có chuyến đi nào sắp tới</p>
                         </div>
                       )}
@@ -361,13 +359,15 @@ export const Header: React.FC<HeaderProps> = ({ isCheckout = false }) => {
                         setIsTripsDropdownOpen(false);
                         navigate('/cart');
                       }}
-                      className="w-full py-1.5 text-center text-xs font-bold text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                      className={`${rowClass('accent')} justify-center`}
                     >
                       Xem tất cả dịch vụ trong giỏ →
                     </button>
                   </div>
                 )}
               </div>
+
+              <span aria-hidden="true" className={`mx-1 hidden h-5 w-px md:block ${onHero ? 'bg-white/30' : 'bg-slate-200'}`} />
 
               {/* Auth Buttons */}
               {currentPersona ? (
@@ -376,44 +376,34 @@ export const Header: React.FC<HeaderProps> = ({ isCheckout = false }) => {
                     onClick={() => setIsAccountDropdownOpen(!isAccountDropdownOpen)}
                     aria-expanded={isAccountDropdownOpen}
                     aria-label={`Tài khoản ${currentPersona.name}`}
-                    className={`flex items-center gap-2 p-1.5 pl-2 pr-2.5 rounded-full transition-colors border cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 ${
-                      onHero
-                        ? 'border-white/40 bg-white/10 text-white hover:bg-white/20'
-                        : isAccountDropdownOpen
-                          ? 'bg-slate-100 border-slate-300'
-                          : 'bg-white hover:bg-slate-50 border-slate-200'
-                    }`}
+                    className={chipClass(tone)}
                   >
-                    <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-blue-700 via-blue-600 to-indigo-500 text-white font-bold text-xs flex items-center justify-center shadow-2xs">
+                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-gradient-to-tr from-blue-700 via-blue-600 to-indigo-500 font-display text-sm leading-none text-white shadow-2xs">
                       {currentPersona.name.split(' ').pop()?.charAt(0) || 'M'}
-                    </div>
-                    <div className="text-left hidden xl:block leading-tight">
-                      <div className={`text-xs font-bold truncate max-w-[110px] ${onHero ? 'text-white' : 'text-slate-900'}`}>
-                        {currentPersona.name}
-                      </div>
-                      <div className={`text-[10px] font-semibold ${onHero ? 'text-white/80' : 'text-blue-600'}`}>
-                        Thành viên
-                      </div>
-                    </div>
-                    <ChevronDown className="w-3.5 h-3.5 opacity-70" />
+                    </span>
+                    <span className="hidden text-left xl:block">
+                      <span className="block max-w-[9rem] truncate font-display text-sm leading-4">{currentPersona.name}</span>
+                      <span className={`block font-sans text-xs leading-4 ${onHero ? 'text-white/80' : 'text-blue-600'}`}>Thành viên</span>
+                    </span>
+                    {chevron(isAccountDropdownOpen)}
                   </button>
 
                   {isAccountDropdownOpen && (
-                    <div className="absolute right-0 mt-2 w-72 bg-white text-slate-800 rounded-2xl shadow-2xl border border-slate-200/90 p-3 z-50">
-                      <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/60 mb-2">
-                        <div className="font-bold text-xs text-slate-900">{currentPersona.name}</div>
-                        <div className="text-[11px] text-slate-500">{currentPersona.email}</div>
+                    <div className={`${DROPDOWN_CLASS} w-72`}>
+                      <div className="mb-1 rounded-2xl bg-slate-50 px-3 py-2.5">
+                        <div className="font-display text-[15px] text-slate-900">{currentPersona.name}</div>
+                        <div className="text-[13px] text-slate-500">{currentPersona.email}</div>
                       </div>
 
-                      <div className="py-1 space-y-0.5 text-xs font-medium text-slate-700">
+                      <div className="space-y-0.5">
                         <button
                           onClick={() => {
                             setIsAccountDropdownOpen(false);
                             showToast('Chức năng Hồ sơ cá nhân');
                           }}
-                          className="w-full px-2.5 py-2 text-left hover:bg-slate-50 rounded-lg flex items-center gap-2 transition-colors cursor-pointer"
+                          className={rowClass()}
                         >
-                          <User className="w-3.5 h-3.5 text-slate-400" />
+                          <User className="h-4 w-4 text-slate-400" aria-hidden="true" />
                           <span>Hồ sơ cá nhân</span>
                         </button>
                         <button
@@ -421,9 +411,9 @@ export const Header: React.FC<HeaderProps> = ({ isCheckout = false }) => {
                             setIsAccountDropdownOpen(false);
                             navigate('/cart');
                           }}
-                          className="w-full px-2.5 py-2 text-left hover:bg-slate-50 rounded-lg flex items-center gap-2 transition-colors cursor-pointer"
+                          className={rowClass()}
                         >
-                          <Luggage className="w-3.5 h-3.5 text-slate-400" />
+                          <Luggage className="h-4 w-4 text-slate-400" aria-hidden="true" />
                           <span>Chuyến đi & Đặt phòng của tôi</span>
                         </button>
                         <button
@@ -431,22 +421,22 @@ export const Header: React.FC<HeaderProps> = ({ isCheckout = false }) => {
                             setIsAccountDropdownOpen(false);
                             showToast('Cài đặt tài khoản');
                           }}
-                          className="w-full px-2.5 py-2 text-left hover:bg-slate-50 rounded-lg flex items-center gap-2 transition-colors cursor-pointer"
+                          className={rowClass()}
                         >
-                          <Settings className="w-3.5 h-3.5 text-slate-400" />
+                          <Settings className="h-4 w-4 text-slate-400" aria-hidden="true" />
                           <span>Cài đặt</span>
                         </button>
                       </div>
 
-                      <div className="pt-2 border-t border-slate-100 mt-1">
+                      <div className="mt-1 border-t border-slate-100 pt-1">
                         <button
                           onClick={() => {
                             setIsAccountDropdownOpen(false);
                             void signOut();
                           }}
-                          className="w-full px-2.5 py-1.5 text-left text-xs font-semibold text-rose-600 hover:bg-rose-50 rounded-lg flex items-center gap-2 transition-colors cursor-pointer"
+                          className={rowClass('danger')}
                         >
-                          <LogOut className="w-3.5 h-3.5" />
+                          <LogOut className="h-4 w-4" aria-hidden="true" />
                           <span>Đăng xuất</span>
                         </button>
                       </div>
@@ -455,18 +445,10 @@ export const Header: React.FC<HeaderProps> = ({ isCheckout = false }) => {
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => openLoginModal()}
-                    className={`px-2 sm:px-3.5 py-1.5 text-xs sm:text-sm font-semibold transition cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 ${
-                      onHero ? 'text-white hover:text-white/80 focus-visible:outline-white' : 'text-slate-700 hover:text-blue-600 focus-visible:outline-blue-600'
-                    }`}
-                  >
+                  <button onClick={() => openLoginModal()} className={controlClass(tone)}>
                     Đăng nhập
                   </button>
-                  <button
-                    onClick={() => navigate('/register')}
-                    className="px-3 sm:px-4 py-1.5 text-xs sm:text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 active:scale-95 transition rounded-full shadow-sm cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-                  >
+                  <button onClick={() => navigate('/register')} className={primaryClass()}>
                     Đăng ký
                   </button>
                 </div>
