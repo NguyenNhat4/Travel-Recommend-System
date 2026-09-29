@@ -26,6 +26,7 @@ from jsonschema import Draft202012Validator, FormatChecker
 
 from src.backend.app.agents.models import ConversationalAnswer, DestinationChoice, Extraction
 from src.backend.app.application.itinerary.contracts import schema
+from src.backend.app.application.itinerary.engine_tools import InProcessItineraryTools
 from src.backend.app.core.config import get_settings
 from src.backend.app.main import app
 from src.shared.contracts.scripts.bundle_openapi import bundle
@@ -254,6 +255,25 @@ class AssistantContractTests(unittest.TestCase):
                     response = client.get("/api/v1/assistant/status")
                 body = response.json()
                 self.assertEqual(body["llmMode"], mode)
+                errors = [e.message for e in validator("AssistantStatus").iter_errors(body)]
+                self.assertEqual(errors, [])
+
+    def test_status_reports_every_data_mode(self):
+        """dataMode `inprocess` là giá trị additive; status của cả bốn mode phải hợp lệ với AssistantStatus."""
+        units = SimpleNamespace(units=[1, 2, 3])
+        inprocess = InProcessItineraryTools(
+            search=lambda: None, recommend=lambda: None, index=lambda: units, product_detail=lambda: None,
+            similar_products=lambda: None, token_verifier=lambda: None, revoked_tokens=lambda: None)
+        for mode, clients, count in (("fixture", Clients(), None), ("inprocess", inprocess, 3),
+                                     ("http", Clients(), None), ("disabled", None, None)):
+            with self.subTest(mode=mode):
+                with TestClient(app) as client:
+                    app.state.itinerary_http_clients = clients
+                    app.state.itinerary_data_mode = mode
+                    body = client.get("/api/v1/assistant/status").json()
+                self.assertEqual(body["dataMode"], mode)
+                self.assertEqual(body["status"], "not_configured" if clients is None else "ready")
+                self.assertEqual(body["productCount"], count)
                 errors = [e.message for e in validator("AssistantStatus").iter_errors(body)]
                 self.assertEqual(errors, [])
 

@@ -354,8 +354,8 @@ SimilarProductsResponse:
       default: same_taxonomy
       description: >-
         same_taxonomy là mặc định — xem khách sạn thì gợi ý khách sạn.
-        cross_taxonomy là biến thể cross-sell mà Agent dùng khi lịch trình đã có
-        chỗ ở và cần bổ sung hoạt động.
+        cross_taxonomy có trong schema nhưng route chưa hiện thực (luôn trả
+        same_taxonomy); Agent chỉ dùng same_taxonomy ở lượt đổi món.
     results:
       type: array
       items:

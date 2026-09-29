@@ -2,7 +2,7 @@
 
 Hai cách chấm agent, dùng cho hai mục đích khác nhau:
 
-- **§0 Golden dataset tự động** — 75 case, chạy bằng `python -m src.evaluation.agent.golden` trên
+- **§0 Golden dataset tự động** — 76 case, chạy bằng `python -m src.evaluation.agent.golden` trên
   **catalog Postgres thật**. Đo trực tiếp ba chỉ số PRD `docs/prd/test-plan.md` §2.4 (Grounding Rate,
   Structured Output Integrity, Tool Calling Accuracy). Không cần thao tác tay, chạy được trong CI cá nhân.
 - **§1–9 Bộ 12 case chạy tay qua Streamlit** — trên **fixture 50 sản phẩm** cố định
@@ -14,7 +14,7 @@ Người dùng: team Agent và Evaluation, người chạy đánh giá trước 
 
 ## 0. Golden dataset tự động (catalog thật)
 
-Dataset: `src/evaluation/datasets/itinerary_agent_golden.yaml` — 75 case, một số đa lượt (FR-AGT-01,
+Dataset: `src/evaluation/datasets/itinerary_agent_golden.yaml` — 76 case, một số đa lượt (FR-AGT-01,
 FR-AGT-05). Runner: `src/evaluation/agent/golden.py`. Cách chạy: [README.md](README.md) mục "Chạy đánh
 giá tự động". Cấu trúc case và cách bổ sung: [golden-dataset.md](golden-dataset.md).
 

@@ -1,13 +1,17 @@
 import asyncio
 import os
+import threading
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from src.backend.app.core.config import Settings, get_settings
 from src.backend.app.infrastructure.cdp.local_cdp_client import LocalCdpClient
+from src.backend.app.infrastructure.clients.itinerary_fixture_clients import FixtureItineraryClients
 from src.backend.app.infrastructure.persistence.postgres_catalog import PostgresProductLookup
+from src.backend.app.application.itinerary.engine_tools import InProcessItineraryTools
 from src.backend.app.application.itinerary.use_cases import PlanItinerary
+from src.backend.app.application.ports.itinerary_tools import ToolError
 from src.backend.app.main import _forward_langsmith_env, _itinerary_runtime, app, health, lifespan
 
 
@@ -73,6 +77,75 @@ class ItineraryLlmWiringTests(unittest.TestCase):
         second = _itinerary_runtime(fake_app, settings, "Bearer x")
         self.assertIs(first.llm, llm)
         self.assertIs(second.llm, llm)
+
+
+class ItineraryInProcessWiringTests(unittest.TestCase):
+    """ITINERARY_DATA_MODE=inprocess: tool đọc engine từ app.state mỗi lời gọi, chạy trên pool riêng."""
+
+    def test_inprocess_mode_reads_engines_from_app_state_on_every_call(self):
+        settings = get_settings().model_copy(update={"itinerary_data_mode": "inprocess"})
+        seen = []
+
+        def search(q, **kwargs):
+            seen.append(threading.current_thread().name)
+            return {"results": [], "total": 0}
+
+        async def scenario():
+            async with lifespan(app):
+                tools = app.state.itinerary_http_clients
+                self.assertIsInstance(tools, InProcessItineraryTools)
+                self.assertEqual(app.state.itinerary_data_mode, "inprocess")
+                gateway = _itinerary_runtime(app, settings, None).tools
+                self.assertTrue(gateway.supports_catalog)
+                # Adapter trong tiến trình khai báo supports_similar nên planner được nhìn thấy tool similar.
+                self.assertIn("get_similar_products", {d["name"] for d in gateway.definitions()})
+                # Use case similar cũng đọc lại app.state mỗi lời gọi (catalog dựng lại sau mỗi lần RecSys nạp).
+                published = app.state.get_similar_products
+
+                async def fake_similar(product_id, limit=8):
+                    return {"productId": product_id, "strategy": "same_taxonomy", "results": []}
+
+                app.state.get_similar_products = fake_similar
+                try:
+                    self.assertEqual((await tools.get_similar_products("H1", 8))["results"], [])
+                finally:
+                    app.state.get_similar_products = published
+                # Recsys có thể đã nạp hoặc chưa trên máy chạy test; gán tay để thấy tool đọc lại app.state.
+                app.state.index = SimpleNamespace(units=[1, 2, 3])
+                self.assertEqual(tools.product_count, 3)
+                app.state.index = None
+                self.assertIsNone(tools.product_count)
+                app.state.search = search
+                await tools.search_products({"query": "biển"})
+                app.state.search = None
+                with self.assertRaises(ToolError) as caught:
+                    await tools.search_products({"query": "biển"})
+                self.assertEqual(caught.exception.code, "SEARCH_UNAVAILABLE")
+            # Lifespan đóng thì pool cũng đóng: có engine mà lời gọi lạc vẫn ra 503, engine không chạy.
+            app.state.search = search
+            try:
+                with self.assertRaises(ToolError) as caught:
+                    await tools.search_products({"query": "biển"})
+                self.assertEqual(caught.exception.code, "SEARCH_UNAVAILABLE")
+            finally:
+                app.state.search = None
+
+        with patch("src.backend.app.main.get_settings", return_value=settings):
+            asyncio.run(scenario())
+        self.assertEqual(len(seen), 1)
+        self.assertTrue(seen[0].startswith("itinerary-tool"))
+
+    def test_similar_tool_is_offered_only_when_clients_declare_support(self):
+        """Nối similar theo cờ `supports_similar` tường minh, không theo hasattr."""
+        def tool_names(clients):
+            fake_app = SimpleNamespace(state=SimpleNamespace(
+                itinerary_http_clients=clients, itinerary_conversation_store=SimpleNamespace(), itinerary_llm=None))
+            return {d["name"] for d in _itinerary_runtime(fake_app, Settings(), None).tools.definitions()}
+
+        base = {"search_products", "get_recommendations"}
+        self.assertEqual(tool_names(FixtureItineraryClients()), base | {"get_similar_products"})
+        # Có hàm cùng tên nhưng không khai báo cờ: tool vẫn bị ẩn.
+        self.assertEqual(tool_names(SimpleNamespace(get_similar_products=lambda *a: None)), base)
 
 
 class LangSmithForwardingTests(unittest.TestCase):

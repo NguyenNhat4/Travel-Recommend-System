@@ -1,6 +1,6 @@
 # AgentState: từng trường, node nào dùng để làm gì
 
-Phục vụ FR-AGT-01 (hội thoại đa lượt), FR-AGT-02 (tool calling), FR-AGT-03 (lịch trình có cấu trúc), FR-AGT-04 (grounding 100%) ở `docs/prd/requirements.md` §1.4 — tài liệu này chỉ mô tả lại field-level cách mười node hiện thực các FR đó qua `AgentState`, không thêm hành vi mới.
+Phục vụ FR-AGT-01 (hội thoại đa lượt), FR-AGT-02 (tool calling), FR-AGT-03 (lịch trình có cấu trúc), FR-AGT-04 (grounding 100%), FR-AGT-05 (đổi món qua hội thoại) ở `docs/prd/requirements.md` §1.4 — tài liệu này chỉ mô tả lại field-level cách mười node hiện thực các FR đó qua `AgentState`, không thêm hành vi mới.
 
 Bảng ở [langgraph-nodes.md](langgraph-nodes.md) mục 6.1 tổ chức theo **node** (mỗi node đọc/ghi field nào). Bảng dưới đây tổ chức theo **field** (mỗi field được node nào ghi, node nào đọc, để làm gì) — dùng khi cần tra một field cụ thể thay vì đọc lại toàn bộ một node.
 
@@ -14,7 +14,7 @@ Nguồn field: `src/backend/app/agents/state.py` (định nghĩa `AgentState`). 
 | `intent` | `intake` (khởi tạo/khôi phục), `classify` (merge patch+override), `tool` (chuẩn hóa destination) | `classify`, `tool`, `evaluate`, `compose`, `converse`, `clarify`, `finalize` | Trục dữ liệu chính: destination, days, budget, party... |
 | `intent_override` | *(set từ API request, ngoài graph)* | `classify` | Chip edit của UI, ghi đè patch LLM trích xuất |
 | `constraints` | `intake` (khởi tạo), `classify` (merge), `tool` (chuẩn hóa) | `classify`, `tool`, `evaluate`, `compose`, `finalize` | Ràng buộc thêm: `require_hotel`, `specific_hotel/activity`, `exclude_taxonomies`, `exclude_products` (loại đúng productId đã cho xem trước đó khi user xin đổi mà không nêu tên thay thế — FR-AGT-05), giá hotel... |
-| `previous_selection` | `intake` (khôi phục từ store), `finalize` (lưu snapshot itinerary vừa `COMPLETED`) | `classify` (đưa vào prompt LLM để khớp câu nói mơ hồ ra đúng productId), `classify` (`_classify_result` dùng làm whitelist validate `exclude_products`, chặn LLM bịa id) | Danh sách gọn `{productId, name, taxonomy}` các sản phẩm đã cho user xem ở lượt trước, phục vụ loại trừ chính xác khi đổi món mà không nêu tên |
+| `previous_selection` | `intake` (khôi phục từ store), `finalize` (lưu snapshot itinerary vừa `COMPLETED`) | `classify` (đưa vào prompt LLM để khớp câu nói mơ hồ ra đúng productId), `classify` (`_classify_result` dùng làm whitelist validate `exclude_products`, chặn LLM bịa id), `tool` (khác rỗng thì mới mời tool `get_similar_products`: đưa vào payload lập plan và làm whitelist sản phẩm gốc của lời gọi Similar, id lạ bị bỏ) | Danh sách gọn `{productId, name, taxonomy}` các sản phẩm đã cho user xem ở lượt trước, phục vụ loại trừ chính xác và tìm sản phẩm tương tự khi đổi món mà không nêu tên |
 | `missing_fields` | `classify` | `converse`, `clarify` | Field còn thiếu (destination/days) để hỏi lại |
 | `clarification_reason` | `classify` | `converse`, `clarify` | Lý do cần hỏi thêm: `conflict`/`unverified`/`None` |
 | `refusal` | `classify` | `converse`, `clarify` (qua `_conversational_update`) | Đánh dấu yêu cầu ngoài phạm vi/side-effect → trả `VALIDATION_ERROR` 400 |
@@ -32,10 +32,10 @@ Nguồn field: `src/backend/app/agents/state.py` (định nghĩa `AgentState`). 
 | `detail_errors` | `intake` (init {}), `tool` | `evaluate`, `dead_letter` | Lỗi riêng khi lấy chi tiết sản phẩm |
 | `supported_destinations` | `intake` (init `None`), `tool` | `tool` (cache tránh gọi lại `list_destinations`) | Danh sách điểm đến catalog hỗ trợ, để khớp/báo `UNSUPPORTED_DESTINATION` |
 | `candidates` | `intake` (init {}), `evaluate` (`collect()`) | `compose`, `retry` (fallback check), `finalize`, `route_after_retry` | Sản phẩm đã qua grounding, nguồn dựng lịch trình/`FALLBACK` |
-| `sources` | `intake` (init {}), `evaluate` | `compose`, `finalize` | Nguồn gốc (tool nào trả) của từng candidate, dùng cho `validate_plan` |
+| `sources` | `intake` (init {}), `evaluate` | `compose`, `finalize` | Nguồn gốc (tool nào trả) của từng candidate, dùng cho `validate_plan`. Kết quả Similar mang nguồn `search` (`ItemSource.SEARCH`) |
 | `warnings` | `intake` (init []), `evaluate`, `compose` (append thêm) | `compose` (đọc warnings cũ từ evaluate) | Cảnh báo phi lỗi kèm response (sản phẩm bị loại, giá snapshot...) |
-| `tool_plan` | `tool` | `tool` (đọc lại khi vào từ `retry`, tránh lập kế hoạch lại) | Danh sách lời gọi tool đã lập (tên + args) |
-| `tool_results` | `intake` (init []), `tool` | `tool` (khớp `tool_call_id` cũ khi retry), `evaluate`, `dead_letter` | Kết quả thực thi từng tool call (data hoặc error) |
+| `tool_plan` | `tool` | `tool` (đọc lại khi vào từ `retry`, tránh lập kế hoạch lại) | Danh sách lời gọi tool đã lập (tên + args), sau `validated_plan`: tối đa 5 lời gọi, tối đa 2 lời gọi Similar (plan có Similar luôn kèm `search_products`, và kèm search cho mỗi loại đang đổi khi còn chỗ; quá 5 lời gọi thì bỏ Similar trước), id đánh số lại `call-0`, `call-1`… sau khi lọc |
+| `tool_results` | `intake` (init []), `tool` | `tool` (khớp `tool_call_id` cũ khi retry), `evaluate`, `dead_letter` | Kết quả thực thi từng tool call (data hoặc error). `evaluate` bỏ qua lỗi mềm của Similar: 404/409 luôn mềm; 503/timeout (mode `http`: mọi 5xx và lỗi kết nối) mềm khi có `search_products` trả dữ liệu |
 | `errors` (append-only) | `retry` (`TRANSIENT_TOOL_FAILURE`) | *(không đọc lại)* | Audit trail lỗi tạm thời tích lũy qua các lần retry |
 | `events` (append-only) | **mọi node** | *(không đọc lại trong graph, chỉ tầng SSE/trace ngoài dùng)* | Trace từng bước cho Streamlit/debug |
 | `messages` | chỉ `initial_state()` (harness Scenario) | *(không dùng trong `nodes.py`)* | Field append-only cũ của bộ đánh giá kịch bản, không phải lịch sử chat của luồng API; lịch sử thật nằm ở `conversation_history` |
