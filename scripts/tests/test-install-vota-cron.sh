@@ -50,4 +50,10 @@ if bash "$installer" --job fresh --image r/x:latest --runner "$runner" --log-dir
   fail "relative --log-dir accepted"
 fi
 
+# 5. Immutable digest references are accepted for deployed jobs.
+digest_image='asia-southeast1-docker.pkg.dev/project/repo/vota-fresh-catalog@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+bash "$installer" --job fresh --image "$digest_image" --runner "$runner" --crontab-file "$tab" >/dev/null
+grep -qxF "*/15 * * * * FRESH_IMAGE='$digest_image' FRESH_DATA_DIR='/srv/vota/fresh-catalog-data' CATALOG_ENV_FILE='/etc/vota/fresh-catalog.env' CATALOG_LOG_DIR='/srv/vota/fresh-catalog-logs' PULL=1 $runner fresh-run tick" "$tab" \
+  || fail "immutable digest image was rejected or not installed"
+
 echo "install-vota-cron checks passed"
