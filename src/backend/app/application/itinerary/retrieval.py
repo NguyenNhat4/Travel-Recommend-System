@@ -11,6 +11,8 @@ from src.backend.app.domain.itinerary.types import (
     Candidates, Constraints, Product, Sources, ToolErrorPayload, ToolResult, TripIntent,
 )
 
+from src.backend.app.application.itinerary.tool_contracts import SIMILAR_PRODUCTS
+
 DETAIL_FIELDS = ("description", "attributes", "availableFrom", "availableTo")
 
 
@@ -45,10 +47,14 @@ def _normalized(value: str | None) -> str:
     return " ".join((value or "").casefold().split())
 
 
+def _off_destination(product: Product, intent: TripIntent) -> bool:
+    return _normalized(product.get("destination")) != _normalized(intent.get("destination"))
+
+
 def _drop_reason(product: Product, intent: TripIntent, constraints: Constraints) -> str | None:
     if product.get("productId") in constraints.get("exclude_products", []):
         return "PRODUCT_DROPPED_EXCLUDED"
-    if _normalized(product.get("destination")) != _normalized(intent.get("destination")):
+    if _off_destination(product, intent):
         return "PRODUCT_DROPPED_DESTINATION"
     if not product.get("available"):
         return "PRODUCT_DROPPED_UNAVAILABLE"
@@ -86,6 +92,10 @@ def collect(tool_results: list[ToolResult], details: dict[str, Product], intent:
     candidates, sources, dropped = {}, {}, {}
     for result in tool_results:
         data = result.get("data", {})
+        # Similar tìm cùng taxonomy trên cả catalog, không theo điểm đến: sản phẩm ở nơi khác không phải
+        # sản phẩm "bị loại" của chuyến này, nên bỏ qua lặng lẽ thay vì thành cảnh báo. Kết quả nằm ở
+        # `results` nên mang nguồn "search" (ItemSource.SEARCH), như Search.
+        similar = result.get("name") == SIMILAR_PRODUCTS
         for source, products in (("search", data.get("results", [])),
                                  ("recommendation", data.get("recommendations", []))):
             for projection in products:
@@ -93,6 +103,8 @@ def collect(tool_results: list[ToolResult], details: dict[str, Product], intent:
                 if not product_id:
                     continue
                 product = {**deepcopy(details.get(product_id, {})), **deepcopy(projection)}
+                if similar and _off_destination(product, intent):
+                    continue
                 reason = _drop_reason(product, intent, constraints)
                 if reason:
                     dropped[product_id] = reason

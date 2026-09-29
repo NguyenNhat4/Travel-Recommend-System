@@ -2,7 +2,7 @@
 
 Phục vụ `docs/prd/test-plan.md` §2.4 và FR-AGT-01..05, NFR-REL-01, NFR-SEC-01 trong `docs/prd/requirements.md`.
 
-Hướng dẫn chạy bộ đánh giá tự động 14 case (mỗi category một case). Cấu trúc case và cách thêm case:
+Hướng dẫn chạy bộ đánh giá tự động 76 case. Cấu trúc case và cách thêm case:
 [golden-dataset-how-to-add-more-case.md](golden-dataset-how-to-add-more-case.md). Luật chấm: mục 4 bên dưới.
 
 Mọi lệnh chạy từ thư mục gốc repo.
@@ -39,10 +39,17 @@ Chạy ở một terminal riêng:
 
 | Biến | Giá trị |
 |---|---|
-| `ITINERARY_DATA_MODE` | `http` |
-| `ITINERARY_SERVICE_BASE_URL` | `http://127.0.0.1:8000` |
+| `ITINERARY_DATA_MODE` | `inprocess` (nên dùng) hoặc `http`; không để `fixture` |
+| `ITINERARY_SERVICE_BASE_URL` | `http://127.0.0.1:8000`, chỉ cần khi `ITINERARY_DATA_MODE=http` |
 | `DATABASE_URL` | đọc được `cdp.products` (runner dùng để đối chiếu sản phẩm) |
 | Key LLM | `OPENAI_API_KEY`, `GEMINI_API_KEY` hoặc `ANTHROPIC_API_KEY` |
+
+Runner dựng graph trong tiến trình của nó và luôn gọi Search/Recommendation/destinations của backend qua HTTP
+(`ItineraryHttpClients` tới `--api-base-url`), nên biên bản ghi `dataMode: http` bất kể mode của backend. Mode của
+backend chỉ quyết định `productCount` trong biên bản, vì runner đọc số này từ `/assistant/status`: `inprocess` trả số
+sản phẩm trong index, `http` trả `null`, còn `fixture` trả 50 của bộ mẫu nên không dùng. Staging/production chạy
+`ITINERARY_DATA_MODE=inprocess` (agent gọi engine trong cùng tiến trình, không qua HTTP); golden không đo đường đó.
+Output của hai đường được đối chiếu bằng test parity trong `src/backend/tests`, không phải bằng golden.
 
 Đợi log in ra `startup.recsys.index.load.ready`, thường mất 1–2 phút. Chạy runner trước lúc đó thì mọi case
 đều ra sai. Kiểm tra backend đã sẵn sàng:
@@ -51,7 +58,7 @@ Chạy ở một terminal riêng:
 curl -s localhost:8000/api/v1/assistant/status
 ```
 
-Response phải có `"status":"ready"`, `"dataMode":"http"`, `"llmMode":"live"`.
+Response phải có `"status":"ready"`, `"llmMode":"live"` và `"dataMode"` là `"inprocess"` hoặc `"http"`.
 
 ### Bước 3: chạy runner
 
@@ -59,7 +66,7 @@ Response phải có `"status":"ready"`, `"dataMode":"http"`, `"llmMode":"live"`.
 .venv/bin/python -m src.evaluation.agent.golden
 ```
 
-Lệnh trên chạy 14 case (23 lượt). Chưa đo thời gian; bộ 75 case cũ (89 lượt) mất khoảng 6 phút, nên bộ này ước chừng dưới 2 phút.
+Lệnh trên chạy 75 case (89 lượt), mất khoảng 6 phút.
 
 | Cờ | Tác dụng | Ví dụ |
 |---|---|---|
@@ -121,10 +128,13 @@ Khi có lượt FAIL, xác định là kỳ vọng sai, lỗi agent hay nhiễu 
 
 ## 4. Luật chấm
 
-Dataset: `src/evaluation/datasets/itinerary_agent_golden.yaml` — 14 case, mỗi category đúng một case (chọn case
-agent dễ fail nhất: đã fail trong biên bản 24/09, hoặc là ca khó nhất của category khi chưa từng fail), một số
-đa lượt (FR-AGT-01, FR-AGT-05). Đây là bộ smoke bắt hồi quy nhanh và rẻ, không phải bộ đo độ phủ; bản 75 case
-nằm ở lịch sử git. Runner: `src/evaluation/agent/golden.py`.
+Dataset: `src/evaluation/datasets/itinerary_agent_golden.yaml` — 76 case, một số đa lượt (FR-AGT-01,
+FR-AGT-05). Runner: `src/evaluation/agent/golden.py`.
+
+*(Ghi chú đối chiếu 2026-09-29: tài liệu này từng mô tả một bộ rút gọn 14 case — xem
+`history/2026-09-25-rut-gon-golden-14-case.md` — nhưng dataset thực tế trên nhánh này chưa bao giờ dưới 75
+case; bản rút gọn hoặc chưa từng được áp dụng vào file, hoặc đã bị một lần merge sau đó ghi đè mà không ai
+cập nhật lại tài liệu. Số liệu ở đây bám theo file `.yaml` thật, không theo mô tả cũ.)*
 
 Vì chạy trên catalog thật (dữ liệu đổi theo lần seed), case **không khoá `productId` hay tên sản phẩm cụ
 thể** — chỉ khoá bất biến. Runner tự kiểm bốn nhóm quy tắc:
@@ -197,6 +207,6 @@ Ghi lại để không lặp lại điều tra; chi tiết ở `history/2026-09-
   `normalize_party` xoá. `EXTRACT_PROMPT` nay quy định type cho số người lớn không kèm trẻ em.
 - **Đã sửa (lỗi runner) — G-042.** `conversationId` của lỗi có thể tiếp tục nằm trong `error.details`.
 - **Còn mở — nhiễu phân loại của `classify`.** G-047 (đặt phòng) thỉnh thoảng ra `NEEDS_CLARIFICATION` thay vì 400.
-  Hai case cùng loại đo được ở bộ 75 case cũ nhưng không còn trong bộ rút gọn: G-032 (Bangkok, thỉnh thoảng ra
-  `NEEDS_CLARIFICATION` thay vì 422) và G-013 (`tphcm`, khoảng 1/8 lần ra `clarification_reason=conflict` dù LLM
-  không báo conflict; nghi `_days_from_end_date`, chưa kiểm). Theo dõi bằng `--repeat`.
+  Cùng loại: G-032 (Bangkok, thỉnh thoảng ra `NEEDS_CLARIFICATION` thay vì 422) và G-013 (`tphcm`, khoảng 1/8 lần
+  ra `clarification_reason=conflict` dù LLM không báo conflict; nghi `_days_from_end_date`, chưa kiểm). Theo dõi
+  bằng `--repeat`.

@@ -54,7 +54,7 @@ describe('ProductDetailView', () => {
 
     expect(await screen.findByRole('heading', { name: 'Vinpearl Resort & Spa Nha Trang Bay' }, WAIT)).toBeTruthy();
     expect(api.getProduct).toHaveBeenCalledWith('nt-h-10', expect.anything());
-    expect(api.listVariants).toHaveBeenCalledWith('nt-h-10', expect.anything());
+    await waitFor(() => expect(api.listVariants).toHaveBeenCalledWith('nt-h-10', expect.anything()), WAIT);
 
     const rooms = await screen.findAllByRole('radio', {}, WAIT);
     expect(rooms).toHaveLength(2);

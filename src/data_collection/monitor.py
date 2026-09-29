@@ -894,8 +894,9 @@ def main(argv=None) -> int:
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--data-dir", type=Path, default=Path(os.environ.get("VOTA_DATA_DIR", ROOT / "data")))
     a = ap.parse_args(argv)
-    Handler.monitor = Monitor(a.data_dir.resolve())
-    Handler.daily = DailyApi(a.data_dir.resolve())
+    data_dir = a.data_dir.resolve()
+    Handler.monitor = FreshMonitor(data_dir / "state", data_dir / "fresh_runs", data_dir / "logs")
+    Handler.daily = Handler.monitor
     server = ThreadingHTTPServer(("127.0.0.1", a.port), Handler)
     print(f"Theo dõi cào dữ liệu: http://127.0.0.1:{a.port}  (dữ liệu: {a.data_dir.resolve()}) — Ctrl+C để dừng", flush=True)
     try:

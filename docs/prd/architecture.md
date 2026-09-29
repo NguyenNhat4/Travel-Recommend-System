@@ -109,10 +109,11 @@ src/backend/app/
 │   ├── ports/               # Giao diện trừu tượng, MỖI PORT MỘT FILE: cdp_client, insider_client, embedder,
 │   │                        #   vector_store, payment_gateway, llm, contract_validator, itinerary_tools, auth...
 │   └── <domain>/            # Use case theo domain (auth, booking, catalog, itinerary, recommendation, search, tracking)
+│                            #   itinerary/engine_tools.py: tool itinerary gọi engine search/recommendation/catalog trong tiến trình (ITINERARY_DATA_MODE=inprocess)
 ├── infrastructure/          # LỚP 3: hiện thực port
 │   ├── persistence/         # PostgreSQL qua DATABASE_URL (role vota_app); conversation store
 │   ├── cdp/                 # Mọi adapter CDP: LocalCdpClient, đọc lịch sử, HttpCdpClient, hàng đợi ghi event nền
-│   ├── clients/             # HTTP client ra service ngoài, gồm HttpInsiderClient; fixture itinerary cho ITINERARY_DATA_MODE=fixture
+│   ├── clients/             # HTTP client ra service ngoài, gồm HttpInsiderClient; tool itinerary dạng fixture (=fixture, mặc định dev/test) và HTTP tuỳ chọn (=http)
 │   ├── auth/                # Hash mật khẩu, JWT
 │   ├── llm/                 # Adapter LLM provider (agent lấy LLM qua port llm, không tự import SDK)
 │   ├── embeddings/          # CohereEmbedder (embed-multilingual-v3.0)
@@ -179,7 +180,7 @@ stateDiagram-v2
     AskUser --> [*]: Chờ phản hồi tiếp theo
     
     CheckClarification --> SearchCandidates: Đủ thông tin cơ bản
-    SearchCandidates --> ToolCatalogSearch: Gọi Tool tìm kiếm phòng & tour thật
+    SearchCandidates --> ToolCatalogSearch: Gọi Tool tìm kiếm phòng & tour thật (và Similar khi đổi món)
     ToolCatalogSearch --> ValidateAvailability: Kiểm tra lịch trống & giá
     
     SearchCandidates --> NoResults: Không có sản phẩm thật phù hợp
@@ -192,7 +193,7 @@ stateDiagram-v2
 ```
 
 ### Tiêu chuẩn Grounding (Chống Bịa Đặt):
-- **Không suy đoán dữ liệu sản phẩm:** LLM chỉ đóng vai trò phân tích ý định ngôn ngữ và sắp xếp lịch trình thời gian. Mọi thông tin về `productId`, `title`, `price`, `imageUrl` bắt buộc phải được lấy nguyên trạng từ kết quả trả về của `ToolCatalogSearch`.
+- **Không suy đoán dữ liệu sản phẩm:** LLM chỉ đóng vai trò phân tích ý định ngôn ngữ và sắp xếp lịch trình thời gian. Mọi thông tin về `productId`, `title`, `price`, `imageUrl` bắt buộc phải được lấy nguyên trạng từ kết quả trả về của công cụ truy xuất (`ToolCatalogSearch`): Search, Recommendation, hoặc Similar (`getSimilarProducts`) khi đổi một sản phẩm đã hiển thị.
 - **Response phân biệt theo `status`:** `ItineraryResponse` là `oneOf` gồm `COMPLETED`, `NEEDS_CLARIFICATION`, `NO_RESULTS`, `FALLBACK` (`src/shared/contracts/schemas/itinerary-agent.yaml`). Trường cụ thể theo contract, không theo ví dụ trong PRD.
 - **Backend tự tính tổng tiền;** giá thiếu thì tổng là `null` kèm cảnh báo, không coi thiếu giá là 0.
 - **LLM lỗi:** dùng fallback dựa trên luật hoặc trả `FALLBACK`/lỗi có kiểm soát.

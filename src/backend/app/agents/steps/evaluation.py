@@ -4,14 +4,37 @@ from __future__ import annotations
 from copy import deepcopy
 
 from src.backend.app.application.itinerary.retrieval import collect
+from src.backend.app.application.itinerary.tool_contracts import SIMILAR_PRODUCTS
 from src.backend.app.domain.itinerary.planning import SCHEDULABLE_TAXONOMIES, SLOT_TAXONOMIES, STAY_TAXONOMY
 
 DROPPED_MESSAGE = "Một sản phẩm chưa đủ căn cứ hoặc không đáp ứng yêu cầu đã được loại."
 
+# Similar là best-effort ở lượt đổi món: lỗi của nó không được đẩy lượt sang retry rồi FALLBACK.
+SIMILAR_NO_ALTERNATIVE = {"PRODUCT_NOT_FOUND", "PRODUCT_NOT_INDEXED"}  # "không có phương án": luôn mềm
+SIMILAR_UNAVAILABLE = {"SEARCH_UNAVAILABLE", "TOOL_TIMEOUT"}  # mềm khi đã có search trả dữ liệu
+
+
+def _similar_unavailable(error: dict) -> bool:
+    """Similar hỏng phía server hoặc đường truyền. In-process báo `SEARCH_UNAVAILABLE`; mode http còn gặp 5xx
+    (kể cả 500 dạng text, đọc thành `INVALID_TOOL_RESPONSE` kèm `httpStatus`) và lỗi kết nối (`TOOL_HTTP_ERROR`
+    không có `httpStatus`). Response 2xx sai hợp đồng (`httpStatus` rỗng hoặc 2xx) vẫn là lỗi vĩnh viễn."""
+    status = error.get("httpStatus")
+    return (error.get("code") in SIMILAR_UNAVAILABLE or (status is not None and status >= 500)
+            or (error.get("code") == "TOOL_HTTP_ERROR" and status is None))
+
+
+def _soft_similar_error(item: dict, search_ok: bool) -> bool:
+    if item.get("name") != SIMILAR_PRODUCTS:
+        return False
+    error = item["error"]
+    return error.get("code") in SIMILAR_NO_ALTERNATIVE or (search_ok and _similar_unavailable(error))
+
 
 def tool_errors(state: dict) -> list[dict]:
-    """Mọi lỗi của lượt truy xuất: lỗi từng tool call cộng lỗi lấy chi tiết sản phẩm."""
-    errors = [item["error"] for item in state.get("tool_results", []) if "error" in item]
+    """Mọi lỗi của lượt truy xuất: lỗi từng tool call cộng lỗi lấy chi tiết sản phẩm, trừ lỗi mềm của Similar."""
+    results = state.get("tool_results", [])
+    search_ok = any(item.get("name") == "search_products" and "data" in item for item in results)
+    errors = [item["error"] for item in results if "error" in item and not _soft_similar_error(item, search_ok)]
     errors.extend(state.get("detail_errors", {}).values())
     return errors
 

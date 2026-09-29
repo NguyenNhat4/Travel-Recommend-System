@@ -12,6 +12,8 @@ mở source được chỉ ra trong mục 3.
    - Assistant: `paths/itinerary-agent.yaml`, `schemas/itinerary-agent.yaml`.
    - Tool Search: `paths/search.yaml`, `schemas/search.yaml`, `schemas/catalog.yaml`.
    - Tool Recommendation: `paths/recommendations.yaml`, `schemas/recommendations.yaml`.
+   - Tool Similar (chỉ ở lượt đổi món): `paths/catalog.yaml` (`getSimilarProducts`), `schemas/catalog.yaml`
+     (`SimilarProductsResponse`).
 4. `history/README.md`, 10 entry mới nhất và entry từng chạm đúng file sắp sửa.
 
 Không dùng tài liệu này thay OpenAPI. Nếu nội dung lệch nhau, OpenAPI và fragment của nó thắng.
@@ -24,7 +26,7 @@ Chỉ đọc hàng khớp với task hiện tại. Không cần nạp các nhán
 |---|---|---|
 | Hiểu hoặc đổi topology/routing | `langgraph-nodes.md` | `agents/graph.py`, `agents/routing.py`, `agents/state.py` |
 | Tune classify/clarify/converse hoặc prompt | `langgraph-nodes.md`, phần hội thoại trong spec Itinerary | `agents/steps/prompts.py`, `agents/steps/classification.py`, `agents/steps/conversation.py`, `infrastructure/llm/` |
-| Tune tool planning, Search/Recommendation | spec Itinerary §2, `src/backend/README.md` | `agents/steps/tool_planning.py`, `agents/tools/itinerary_gateway.py`, `application/itinerary/tool_contracts.py` |
+| Tune tool planning, Search/Recommendation/Similar | spec Itinerary §2 (Similar: §2.5), `src/backend/README.md` | `agents/steps/tool_planning.py`, `agents/tools/itinerary_gateway.py`, `application/itinerary/tool_contracts.py`, `application/itinerary/engine_tools.py` |
 | Tune lọc candidate/grounding | `langgraph-nodes.md` §5, spec Itinerary §5 | `application/itinerary/retrieval.py`, `domain/itinerary/planning.py` |
 | Tune Search ranking | handbook §12 và spec Backend mục Search | `application/search/use_cases.py`, `domain/search/`, `infrastructure/vectors/` |
 | Tune Recommendation | handbook §8, §12 và spec Backend mục Recommendation | `application/recommendation/use_cases.py`, `domain/recommendation/` |
@@ -56,10 +58,14 @@ POST /api/v1/assistant/itineraries hoặc /stream
   -> agents/tools/itinerary_gateway.py allowlist, validate và dispatch tool
   -> application/ports/itinerary_tools.py
                                       interface Agent phụ thuộc
-  -> infrastructure/clients/
-       itinerary_fixture_clients.py   fixture local
-       itinerary_http_clients.py      gọi Search/Recommendation backend
-  -> api/v1/routes/search.py hoặc recommendations.py
+  -> adapter theo ITINERARY_DATA_MODE (main.py chọn):
+       fixture    infrastructure/clients/itinerary_fixture_clients.py
+                                      fixture local 50 sản phẩm
+       inprocess  application/itinerary/engine_tools.py
+                                      gọi engine trên app.state trong tiến trình, pool riêng
+       http       infrastructure/clients/itinerary_http_clients.py
+                                      tuỳ chọn: qua api/v1/routes/search.py, recommendations.py,
+                                      catalog.py (similar)
   -> application/*/use_cases.py       search/ranking/personalization thật
   -> infrastructure/vectors + CDP     dữ liệu catalog và hành vi
 ```
@@ -74,6 +80,7 @@ Kết quả tool quay lại `retrieval.py` để gộp, hậu kiểm và ghi ngu
 | `agents` | Khi nào gọi node/tool, state và routing | SQL, đọc DB trực tiếp, sản phẩm do LLM tạo |
 | `application/ports` | Interface ổn định mà Agent cần | HTTP/FastAPI/DB implementation |
 | `infrastructure/clients` | Fixture hoặc HTTP adapter | Quyết định nghiệp vụ của graph |
+| `application/itinerary/engine_tools.py` | Adapter `inprocess`: gọi use case có sẵn, map lỗi thành `ToolError`, xác minh JWT qua `application/auth/bearer.py` | SDK/DB/HTTP, quyết định của graph |
 | `api/v1/routes` | HTTP parsing, auth, response boundary | Ranking/personalization |
 | `application/*/use_cases` | Search/Recommendation orchestration | FastAPI hoặc prompt Agent |
 | `domain` | Rule thuần: scoring, planning, validation | Network và database driver |
@@ -113,8 +120,12 @@ minh routing/grounding vào fixture, không chứng minh dữ liệu, ranking ha
 ## 6. Các invariant cần giữ khi sửa/tune
 
 - Mọi `productId`, tên, giá và thuộc tính trong itinerary phải đến từ tool/backend.
-- JWT nằm ngoài `AgentState`; Search không nhận JWT, Recommendation chỉ dùng claim đã xác minh.
-- `ITINERARY_DATA_MODE=fixture` và `http` phải cùng hiện thực các port, nhưng bằng chứng của chúng khác nhau.
+- JWT nằm ngoài `AgentState`; Search không nhận JWT, Recommendation chỉ dùng claim đã xác minh (`inprocess` xác
+  minh qua `application/auth/bearer.py`, cùng resolver với route).
+- `ITINERARY_DATA_MODE=fixture`, `inprocess` và `http` phải cùng hiện thực các port và trả cùng hình dạng, nhưng bằng
+  chứng của chúng khác nhau. Golden runner vẫn đi `http`, còn staging/production chạy `inprocess`.
+- Tool `get_similar_products` chỉ được mời khi `previous_selection` khác rỗng; sản phẩm gốc chỉ lấy từ danh sách đó,
+  tối đa 2 lời gọi mỗi lượt, lỗi của nó là best-effort (spec Itinerary §2.5). Lượt đầu giữ nguyên bộ tool và prompt.
 - `compose` là tất định; LLM không được tự xếp hoặc thêm sản phẩm.
 - Mọi nhánh response phải đi qua `finalize`.
 - Thiếu destination/days thì chưa gọi product tool.

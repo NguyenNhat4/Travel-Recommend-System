@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import numpy as np
 
 from src.backend.app.application.ports import CdpHistoryReader, UnitIndex, VectorSearchPort
+from src.backend.app.application.ports.cdp_client import CdpUnavailableError
 from src.backend.app.application.search import hit
+from src.backend.app.core.request_context import current_request_id
 from src.backend.app.domain.recommendation import Popularity, Purchase, ResolvedEvent, build_profile, explain, mmr_select, score_candidates
+
+logger = logging.getLogger("uvicorn.error")
 
 
 def _ts(x) -> float:
@@ -79,9 +84,17 @@ class RecommendForUser:
                  events: list[dict] | None = None, destination: str | None = None) -> dict:
         now = now or datetime.now(timezone.utc)
         t0 = now.timestamp()
-        raw = events if events is not None else (self.cdp.events_for_user(cdp_user_id) if cdp_user_id else [])
-
         idx = self.index
+        base = {"generatedAt": now.isoformat(), "modelVersion": idx.model_version}
+        try:
+            raw = events if events is not None else (self.cdp.events_for_user(cdp_user_id) if cdp_user_id else [])
+        except CdpUnavailableError as exc:
+            # CDP sập/timeout vẫn trả 200 popular; chỉ lỗi CDP mới log WARNING, không log cdp_user_id
+            # (hop-dong-tich-hop-cdp.md §6, §8).
+            logger.warning("recommend.cdp_unavailable requestId=%s reason=%s; fallback popular",
+                           current_request_id() or "-", type(exc.__cause__ or exc).__name__)
+            return {**base, **self._cold_start(k, now, destination)}
+
         units = {e.get("productId") or "": idx.resolve(e.get("productId") or "") for e in raw}
         stored = self.vectors.vectors(sorted({idx.units[i].product_id for i in units.values() if i is not None}))
         space = _LocalSpace(idx, self.vectors.dimension)
@@ -94,7 +107,6 @@ class RecommendForUser:
                                           days_ago=max(0.0, (t0 - _ts(e["timestamp"])) / 86400),
                                           trip_id=e.get("eventGroupId") or f"_solo_{e['productId']}", product_id=e["productId"]))
         profile = build_profile(resolved, space.E, space.taxonomy, space.destination)
-        base = {"generatedAt": now.isoformat(), "modelVersion": idx.model_version}
 
         if not profile.trips:
             return {**base, **self._cold_start(k, now, destination)}

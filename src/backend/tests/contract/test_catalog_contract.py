@@ -100,6 +100,32 @@ def test_similar_of_unknown_product_is_404(client):
     assert response.json()["error"]["code"] == "PRODUCT_NOT_FOUND"
 
 
+@pytest.mark.parametrize("limit", [0, 21])
+def test_similar_limit_out_of_range_is_400_validation_error(client, limit):
+    response = client.get("/api/v1/products/R1/similar", params={"limit": limit})
+    body = assert_contract(response, "/products/{productId}/similar", "get")
+    assert response.status_code == 400
+    assert body["error"]["code"] == "VALIDATION_ERROR" and body["error"]["details"] == {"fields": ["limit"]}
+
+
+def test_similar_of_product_without_vector_is_409_product_not_indexed(client):
+    # X1 có trong catalog nhưng không có trong vector index của conftest.
+    response = client.get("/api/v1/products/X1/similar")
+    body = assert_contract(response, "/products/{productId}/similar", "get")
+    assert response.status_code == 409
+    assert body["error"]["code"] == "PRODUCT_NOT_INDEXED"
+    assert body["error"]["details"] == {"productId": "X1", "taxonomy": "hotel"}
+
+
+def test_similar_when_engine_is_off_is_503_search_unavailable(client, state):
+    # RecSys tắt: composition root gắn use case không có engine Similar.
+    app.state.get_similar_products = GetSimilarProducts(state["get_similar_products"].products, None)
+    response = client.get("/api/v1/products/R1/similar")
+    body = assert_contract(response, "/products/{productId}/similar", "get")
+    assert response.status_code == 503
+    assert body["error"]["code"] == "SEARCH_UNAVAILABLE" and body["error"]["retryable"] is True
+
+
 def test_product_view_is_accepted_and_recorded(client, state):
     response = client.post("/api/v1/events", json={"eventName": "product_view", "productId": "A1"})
     assert_contract(response, "/events", "post")

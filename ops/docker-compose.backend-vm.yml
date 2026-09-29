@@ -8,3 +8,17 @@ services:
       - /etc/vota/backend.env
     volumes:
       - /etc/vota/backend-secrets:/app/secrets:ro
+
+  frontend:
+    container_name: vota-frontend
+    image: asia-southeast1-docker.pkg.dev/vinpearl-508801/v-ota-data-pipeline-crawler/vota-frontend:latest
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      NODE_ENV: production
+      APP_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: 3000
+      BACKEND_BASE_URL: http://127.0.0.1:8000
+      AUTH_SERVICE_TOKEN: ${AUTH_SERVICE_TOKEN:-}
+      SESSION_REDIS_URL: ${AUTH_REDIS_URL:-}
