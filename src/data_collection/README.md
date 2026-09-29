@@ -51,17 +51,10 @@ Catalog baseline được giữ ở hai dạng:
 - `data/products.jsonl`: bản runtime 11.387 sản phẩm để chạy ngay tại máy hiện tại, không track bởi Git.
 - `snapshots/2026-09-23/products.jsonl.gz`: bản nén có manifest/checksum được track, để clone sạch có cùng catalog.
 
-Pipeline tự động có thể phát lại cache, lấy live/API, chuẩn hoá, parse combo và chuẩn bị/nạp PostgreSQL bằng code `seed/` hiện hành:
-
-```bash
-python pipeline_demo.py run --no-db
-python pipeline_demo.py run --live-vinpearl --calendar-days 30 --live-trip --no-db
-python pipeline_demo.py fetch apify-agoda --max-usd 2
-python pipeline_demo.py auto --only-api
-python monitor.py                       # monitor job mới: http://127.0.0.1:8765/
-```
-
-Muốn kiểm thử bước DB, từ repository root chạy `docker compose up -d --wait postgres`, rồi chạy `pipeline_demo.py run` (mặc định `localhost:5432/vota_demo`). Guardrail chỉ cho phép host local và tên database `vota_demo*`; job không chạm database ứng dụng `vota` hoặc `insider`. Token API chỉ đặt trong `.env` local theo `.env.example`, không commit.
+Job cào mới (`fresh_catalog.py`) cào, chuẩn hoá, nạp PostgreSQL và index; chạy thử trên máy cá nhân qua
+`./local_crawl.sh` (mục "Chạy thử job mới trên máy cá nhân") và theo dõi bằng `./local_crawl.sh monitor`
+(http://127.0.0.1:8765/). Luồng demo cũ (`pipeline_demo.py`, nguồn API/Apify) và các script chạy tay theo lô đã gỡ ngày
+29/09/2026.
 
 ## Job hằng ngày trên VPS (console, không trình duyệt)
 
@@ -143,7 +136,7 @@ sudo install -D -m 600 -o "$USER" /dev/null /etc/vota/daily.env    # ENV_FILE m�
 
 ## Job catalog mới trên VM console: Trip.com + đa nguồn → DB
 
-Image [Dockerfile.fresh-catalog](../../Dockerfile.fresh-catalog) chứa collector đa nguồn, bộ chuẩn hóa Travel, Chromium và Xvfb. Collector Trip.com dùng HTTP/SSR lấy metadata rồi Chromium trong Xvfb bắt JSON phòng/giá thật. `run_daily_docker.sh fresh-run` khởi chạy image này; `run_fresh_catalog_vm.sh` và `cron_hotels_daily.sh` chỉ là wrapper tương thích. Lệnh `run` vẫn là job `daily.py` (`Dockerfile.daily`) mà cron của CI/CD (`scripts/install-vota-cron.sh`) đang gọi; chuyển VM sang job mới = thay dòng cron đó bằng `fresh-run tick` mỗi 15 phút, không chạy song song hai job trên cùng DB. VM không cần desktop, Python, Playwright hoặc source tree.
+Image [Dockerfile.fresh-catalog](../../Dockerfile.fresh-catalog) chứa collector đa nguồn, bộ chuẩn hóa Travel, Chromium và Xvfb. Collector Trip.com dùng HTTP/SSR lấy metadata rồi Chromium trong Xvfb bắt JSON phòng/giá thật. `run_daily_docker.sh fresh-run` khởi chạy image này. Lệnh `run` vẫn là job `daily.py` (`Dockerfile.daily`) mà cron của CI/CD (`scripts/install-vota-cron.sh`) đang gọi; chuyển VM sang job mới = thay dòng cron đó bằng `fresh-run tick` mỗi 15 phút, không chạy song song hai job trên cùng DB. VM không cần desktop, Python, Playwright hoặc source tree.
 
 - Lượt đầu và mỗi 7 ngày: cào mới các nguồn, tìm ID Trip.com ở 7 thành phố có cityId trong `@deep`; lần đầu chọn tối đa 30 ID/thành phố, các lượt tuần chọn tối đa 10 ID mới/thành phố từ tối đa 300 ID đã quét/thành phố để hỏi giá tại mốc 14/30/60 ngày; chuẩn hóa 13 trường rồi upsert `cdp.products`/`catalog.combo_items`. Tăng `TRIP_DISCOVERY_SCAN_PER_CITY` khi vùng quét đã hết ID mới. Không dùng `data/products.jsonl`, interim hoặc snapshot cũ làm dữ liệu nguồn.
 - Lượt full chạy song song theo site: Vinpearl, Trip.com (vé máy bay → điểm tham quan → tìm ID khách sạn → giá phòng), Booking, Agoda; tối đa `CRAWL_PARALLEL` site cùng lúc (mặc định 2, vì Vinpearl, Booking, Agoda và giá phòng Trip đều mở Chromium trên VM 4 GB). Trong một site các bước vẫn tuần tự như trước. Một nguồn lỗi thì các nguồn độc lập vẫn tiếp tục; chỉ bước phụ thuộc nguồn lỗi bị bỏ. Nguồn lỗi chuẩn hoá hoặc không đạt ngưỡng theo nguồn bị loại khỏi bản mới; dữ liệu tốt vẫn được nạp và lượt báo `partial`. Không coi bản ghi thiếu do lỗi nguồn là hết bán. Log mỗi dòng của nguồn có tiền tố `[trip]`, `[vinpearl]`…; mốc `catalog.group.start/done` cho biết site nào đang chạy. Lượt daily chỉ cào Trip nên không đổi.
@@ -343,8 +336,6 @@ python crawl.py booking-hotels --fast --concurrency 2
 python crawl.py agoda-hotels
 python crawl.py venues              # toạ độ địa điểm vé Vinpearl (chỉ gọi mạng cho địa điểm chưa có toạ độ)
 python normalise.py
-python make_template.py             # tài liệu schema kèm ví dụ thật, sinh từ catalog vừa chuẩn hoá
-python make_sample.py               # bộ mẫu 50 sản phẩm cho người khác chạy thử
 ```
 
 Kết quả: `data/products.jsonl`, `data/products.csv`, `data/stats.md` (có bảng **đối chiếu mục tiêu handbook**),
@@ -697,8 +688,8 @@ psql "$INSIDER_DATABASE_URL" -f db/verify_insider.sql
 | | `--keep-unsellable` | giữ cả sản phẩm không có giá mà nguồn không cung cấp được; mặc định loại bỏ |
 | | `--usd-vnd 26300` | tỷ giá khi nguồn không trả VND |
 
-Chạy nhiều ngày (khi dùng `--all-vietnam`): `./run_forever.sh booking-hotels --fast --concurrency 3`. Script tự
-nghỉ và chạy tiếp khi bị chặn (mã thoát 75).
+Nguồn bị chặn (mã thoát 75) đã lưu tiến độ: chạy lại đúng lệnh sau vài giờ để cào tiếp; trong job mới dùng nút
+"Cào lại nguồn này" trên monitor hoặc `./local_crawl.sh run resume <mã lượt> crawl <nguồn>`.
 
 ## Khi có sự cố
 

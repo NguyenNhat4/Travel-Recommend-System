@@ -1,9 +1,9 @@
 # Schema catalog du lịch V-OTA
 
-Tài liệu tham chiếu cho `products.jsonl` · 11.387 sản phẩm · bản 23/09/2026 · **sinh tự động bởi `make_docs.py`, không sửa tay**
+Tài liệu tham chiếu cho `products.jsonl` · 11.387 sản phẩm · bản 23/09/2026 · ban đầu sinh bởi `make_docs.py` (đã gỡ ngày 29/09/2026), từ đó sửa tay khi thêm khoá
 
 Bản máy đọc được, liệt kê **mọi** khoá `attributes` theo từng loại kèm độ phủ: **`template.json`** cùng thư mục
-(sinh lại bằng `python make_template.py`). Tài liệu này giải thích các khoá quan trọng; `template.json` là danh
+(bản 23/09/2026; công cụ sinh lại `make_template.py` đã gỡ ngày 29/09/2026). Tài liệu này giải thích các khoá quan trọng; `template.json` là danh
 sách đầy đủ. Bản ghi thật để đọc và chạy thử: **`sample/`**.
 
 ---

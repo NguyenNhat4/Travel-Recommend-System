@@ -107,8 +107,8 @@ class RawCache:
 
     @classmethod
     def shared(cls, paths: Paths, source: str) -> "RawCache":
-        """Cache trang dùng chung giữa các job batch (danh sách sân bay, sitemap): `batch.py` đặt CRAWL_SHARED_CACHE
-        để mỗi trang chỉ tải một lần thay vì một lần cho mỗi job. Không đặt biến này thì giống cache riêng của job."""
+        """Cache trang dùng chung giữa nhiều job (danh sách sân bay, sitemap): đặt CRAWL_SHARED_CACHE để mỗi trang chỉ tải
+        một lần thay vì một lần cho mỗi job. Không đặt biến này thì giống cache riêng của job."""
         shared = os.environ.get("CRAWL_SHARED_CACHE")
         return cls(Paths(Path(shared)) if shared else paths, source)
 

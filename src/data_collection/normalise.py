@@ -2869,7 +2869,7 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--usd-vnd", type=float, default=26300.0, help="tỷ giá dùng khi trang không trả VND")
     ap.add_argument("--eur-vnd", type=float, default=30500.0)
     ap.add_argument("--report-json", type=Path, default=None,
-                    help="ghi số liệu từng bước (bản ghi thô → cụm gộp → dòng bị loại → dòng cuối) ra file JSON cho pipeline_demo.py; không đổi kết quả")
+                    help="ghi số liệu từng bước (bản ghi thô → cụm gộp → dòng bị loại → dòng cuối) ra file JSON; không đổi kết quả")
     ap.add_argument("--stage-dir", type=Path, default=None,
                     help="ghi dòng sản phẩm sau từng bước + dòng bị loại kèm lý do (cho monitor); không đổi kết quả")
     ap.add_argument("--max-error-percent", type=float, default=5.0,

@@ -50,11 +50,8 @@ orphans = [p["name"] for p in products
 assert not orphans, orphans
 ```
 
-Sinh lại mẫu (ví dụ muốn nhiều sản phẩm hơn mỗi loại):
-
-```
-python make_sample.py --per-variant 8
-```
+Bộ mẫu này sinh từ catalog 23/09/2026. Công cụ sinh mẫu (`make_sample.py`) đã gỡ ngày 29/09/2026; bộ mẫu giữ nguyên
+làm dữ liệu tham khảo.
 
 ## Đọc thêm
 
