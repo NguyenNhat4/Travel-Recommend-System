@@ -6,6 +6,7 @@
  */
 import React, { useState } from 'react';
 import { ChevronUp, PenLine, Users } from 'lucide-react';
+import { FlightSummary } from '../common/FlightSummary';
 import { TaxonomyBadge } from '../common/TaxonomyBadge';
 import { formatVnd } from '../confirmation/bookingLabels';
 import type { ApiCartItem } from '../../services/booking';
@@ -46,6 +47,7 @@ const SummaryBody: React.FC<{ ctl: CheckoutController }> = ({ ctl }) => {
             <div className="min-w-0 flex-1 space-y-0.5">
               <div className="flex items-center gap-1.5"><TaxonomyBadge taxonomy={item.product.taxonomy as Taxonomy} size="sm" /></div>
               <div className="text-xs font-bold text-slate-900 truncate">{item.product.name}</div>
+              <FlightSummary product={item.product} />
               <div className="text-[11px] text-slate-500">{itemMeta(item)}</div>
             </div>
             <span className="text-xs font-bold text-slate-800 tabular-nums whitespace-nowrap">

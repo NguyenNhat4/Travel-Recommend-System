@@ -48,7 +48,7 @@
 
 ### 1.4. Team Agent chịu trách nhiệm
 
-- Gọi `POST /api/v1/search` **không kèm JWT** (đúng như `hop-dong-tich-hop-itinerary-assistant.md` §2.1 hiện tại), để lượt tìm của Agent không bị ghi thành hành vi người dùng.
+- Tìm kiếm **không gắn danh tính** (`hop-dong-tich-hop-itinerary-assistant.md` §2.1), để lượt tìm của Agent không bị ghi thành hành vi người dùng: mode `inprocess` gọi engine Search trong tiến trình, không qua route nên không ghi event `search`; mode `http` gọi `/api/v1/search` **không kèm JWT**.
 
 ### 1.5. Team Data chịu trách nhiệm
 
@@ -246,6 +246,14 @@ Khách huỷ đơn đã CONFIRMED (trong hạn)
 | Gợi ý khi CDP sập | Đường lui `popular` (§6) |
 | `POST /api/v1/bookings` | Vẫn trong ngân sách p95 1 giây, gồm cả lời gọi CDP |
 
+**Adapter đọc tuần 1 (`PostgresCdpReader`, từ 2026-09-28).** Dòng timeout ở trên áp như sau:
+
+- Mọi lần đọc dùng `connect_timeout = max(2, ceil(CDP_TIMEOUT_SECONDS))`. libpq chỉ nhận số giây nguyên và tối thiểu 2.
+- Chỉ lần đọc lịch sử theo người dùng (`events_for_user`) thêm `statement_timeout = CDP_TIMEOUT_SECONDS`, đặt bằng `set_config('statement_timeout', …, true)` (tức `SET LOCAL`) trong transaction trước câu `SELECT`. Cách này không ghi đè `options` sẵn có trong `CDP_DATABASE_URL` và đi qua được pooler chế độ transaction (PgBouncer, Neon pooler). `purchase_events` (đọc lô lúc khởi động) không có giới hạn này.
+- Vì hai giới hạn tách nhau, một lần đọc lịch sử có thể mất tới khoảng connect + statement timeout (khoảng 4 giây ở mặc định).
+- Lỗi kết nối hoặc timeout (`OperationalError`, `InterfaceError`, `OSError`) thành `CdpUnavailableError`. `RecommendForUser` bắt lỗi này, trả đường lui §6 mục 3 và ghi WARNING `recommend.cdp_unavailable` kèm `requestId` và loại lỗi, không ghi `cdpUserId` (§8 mục 5). Message của `CdpUnavailableError` chỉ lấy dòng đầu, cắt ngắn và xoá DSN/mật khẩu nếu driver in lại.
+- Lỗi quyền hoặc SQL **lúc chạy câu lệnh** (`ProgrammingError`, ví dụ `permission denied for table events`) vẫn nổi lên. Lỗi xác thực **lúc kết nối** (sai mật khẩu, `pg_hba` từ chối, role không tồn tại) libpq báo là `OperationalError` thường, không tách được khỏi sự cố, nên cũng rơi về `popular`. Lúc khởi động lỗi này vẫn làm RecSys hỏng rõ ràng, vì bảng phổ biến đọc qua cùng đường kết nối. Nếu mật khẩu bị đổi sau khi backend đã chạy, dấu hiệu duy nhất là WARNING `recommend.cdp_unavailable reason=OperationalError` lặp lại.
+
 ---
 
 ## 8. Bảo mật
@@ -318,7 +326,7 @@ Cần người hiểu CDP V-OTA rà soát (handbook §17 câu 3). Đến khi có
 | Tên trường opt-in | `emailOptin`, `smsOptin`, `pushOptin`, `gdprOptin` |
 | Giá trị `lifecycleStage` | `new`, `active`, `dormant`, `churned` |
 | ~~Nơi lưu `products`, `users`, `bookings`, `product_vectors`~~ — **đã chốt 20/09** | `products` ở `cdp.products`; `users`, `bookings` ở `app.*`; `product_vectors` ở `catalog.*` — cùng database `vota`, tách bằng schema + role |
-| Hợp đồng Agent ghi rõ "không gửi JWT khi gọi `/search`" | Hiện đúng theo ví dụ §2.1; cần buổi thống nhất để ghi thành quy tắc (`hop-dong-tich-hop-backend.md` §9) |
+| Hợp đồng Agent ghi rõ "không gửi JWT khi gọi `/search`" | Từ 2026-09-28, hợp đồng Agent §2.1 ghi rằng tool tìm kiếm không bao giờ gắn danh tính (`inprocess` không qua route, `http` không kèm JWT). Vẫn cần Web, Backend và Agent duyệt cùng PR (`hop-dong-tich-hop-backend.md` §9) |
 
 ---
 

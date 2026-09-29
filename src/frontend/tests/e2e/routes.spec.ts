@@ -32,10 +32,10 @@ test('assistant route shows the itinerary workspace and no-coordinate map state'
 test('floating assistant widget opens and allows typing a request', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Mở trợ lý du lịch AI' }).click({ force: true });
-  await expect(page.getByPlaceholder('Nhập yêu cầu du lịch hoặc lịch trình...')).toBeVisible();
-  await page.getByPlaceholder('Nhập yêu cầu du lịch hoặc lịch trình...').fill('Gợi ý chuyến đi Nha Trang');
-  await page.getByRole('button', { name: 'Gửi yêu cầu' }).click();
-  await expect(page.getByText('AI đang lập kế hoạch và tính toán lộ trình...').or(page.getByText('Làm rõ yêu cầu chuyến đi của bạn'))).toBeVisible();
+  await expect(page.getByPlaceholder('Mô tả chuyến đi bạn mong muốn…')).toBeVisible();
+  await page.getByPlaceholder('Mô tả chuyến đi bạn mong muốn…').fill('Gợi ý chuyến đi Nha Trang');
+  await expect(page.getByRole('textbox', { name: 'Tin nhắn cho trợ lý du lịch AI' })).toHaveValue('Gợi ý chuyến đi Nha Trang');
+  await expect(page.getByRole('button', { name: 'Gửi yêu cầu' })).toBeEnabled();
 });
 
 test('floating assistant drawer streams a backend result', async ({ page }) => {
@@ -55,11 +55,11 @@ test('floating assistant drawer streams a backend result', async ({ page }) => {
 
   await page.goto('/');
   await page.getByRole('button', { name: 'Mở trợ lý du lịch AI' }).click({ force: true });
-  await expect(page.getByPlaceholder('Nhập yêu cầu du lịch hoặc lịch trình...')).toBeVisible();
-  await page.getByPlaceholder('Nhập yêu cầu du lịch hoặc lịch trình...').fill('Gợi ý chuyến đi');
+  await expect(page.getByPlaceholder('Mô tả chuyến đi bạn mong muốn…')).toBeVisible();
+  await page.getByPlaceholder('Mô tả chuyến đi bạn mong muốn…').fill('Gợi ý chuyến đi');
   await page.getByRole('button', { name: 'Gửi yêu cầu' }).click();
   await expect(page.getByText('Chưa tìm thấy kết quả phù hợp.').first()).toBeVisible();
-  await expect(page.getByText('Phiên backend đang hoạt động').first()).toBeVisible();
+  await expect(page.getByText('Đang tiếp tục cuộc trò chuyện').first()).toBeVisible();
 });
 
 test('clarification is a plain assistant message and the answer continues the same backend conversation', async ({ page }) => {

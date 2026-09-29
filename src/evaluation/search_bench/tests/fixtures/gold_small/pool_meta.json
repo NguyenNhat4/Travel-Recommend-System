@@ -1,0 +1,30 @@
+{
+  "schema_version": "1",
+  "snapshot": "2026-09-23",
+  "collection": "products__T3+R__cohere_v3",
+  "depth": 15,
+  "seed": 42,
+  "drafts_sha256": null,
+  "overlap_qids": [
+    "c9005",
+    "c9006",
+    "c9007"
+  ],
+  "files": {
+    "A": {
+      "path": "pool_A.csv",
+      "sha256": "6d32e824c5bc5c4a4c8aeaa3f8202222356c067e73b0304d433d24a9b4268244",
+      "labeler": "A",
+      "n_queries": 5,
+      "n_pairs": 19
+    },
+    "B": {
+      "path": "pool_B.csv",
+      "sha256": "40fc9e926ea3808f5f6e3af6f5889fb70ea6e426d5b35bcf8f6107e5d9905f3f",
+      "labeler": "B",
+      "n_queries": 5,
+      "n_pairs": 18
+    }
+  },
+  "created_at": "2026-09-25T17:00:00+07:00"
+}

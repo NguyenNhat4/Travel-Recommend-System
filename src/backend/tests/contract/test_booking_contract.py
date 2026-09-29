@@ -232,7 +232,7 @@ def test_cancel_too_late_reports_deadline(client, world):
                                             "cancellableUntil": "2026-10-13T17:00:00Z"}
 
 
-# --- checkout nhiều bước: đoàn khách, giá theo loại khách, mọi vi phạm trong một lần (contract 1.8.0) -------------
+# --- checkout nhiều bước: đoàn khách, giá theo loại khách, mọi vi phạm trong một lần (contract 1.10.0) -------------
 
 def _family_cart(client) -> dict:
     """Giỏ của ví dụ gia đình: khách sạn 1 phòng + vé tham quan, cho 2 người lớn và 1 trẻ em."""

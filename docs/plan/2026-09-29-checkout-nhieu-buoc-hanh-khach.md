@@ -9,7 +9,7 @@
 
 ## Phạm vi lần này
 
-**Trong phạm vi:** toàn bộ spec §1–§9 và các mục §10–§16 được viết bổ sung. Gồm contract 1.8.0, DDL và migration 0005, Backend (domain, application, adapter Postgres, DTO, route), Web (checkout ba bước, trang giỏ, hộp đặt ở trang chi tiết, thêm giỏ từ trợ lý, trang đơn), mock, bộ test dùng chung Web và Backend.
+**Trong phạm vi:** toàn bộ spec §1–§9 và các mục §10–§16 được viết bổ sung. Gồm contract 1.10.0, DDL và migration 0005, Backend (domain, application, adapter Postgres, DTO, route), Web (checkout ba bước, trang giỏ, hộp đặt ở trang chi tiết, thêm giỏ từ trợ lý, trang đơn), mock, bộ test dùng chung Web và Backend.
 
 **Ngoài phạm vi (ghi rõ để người nghiệm thu không tìm nhầm):**
 
@@ -25,7 +25,7 @@ Cập nhật lần cuối 2026-09-29, sau khi triển khai xong. Kết quả ch�
 |---|---|---|
 | 0 | Đọc tài liệu, xác nhận theo `AGENTS.md` §1.3 | Xong |
 | 1 | Bộ ca kiểm thử dùng chung (`src/shared/contracts/tests/booking-rules-cases.json`, 90 ca) | Xong |
-| 2 | Contract 1.8.0, mock, `api.gen.ts`, `validate_contract.py` | Xong |
+| 2 | Contract 1.10.0, mock, `api.gen.ts`, `validate_contract.py` | Xong |
 | 3 | DDL (`vota_schema.sql`, `init/01_vota.sql`), migration 0005, `verify.sql`, seed `line_total` | Xong |
 | 4 | Backend domain: `party`, `fares`, `party_rules`, `pricing`, `models` | Xong |
 | 5 | Backend application: `cart`, `create_hold`, `views`, `errors`, `messages`; port giỏ | Xong |

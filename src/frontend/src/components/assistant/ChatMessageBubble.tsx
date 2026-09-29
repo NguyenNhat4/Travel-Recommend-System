@@ -134,7 +134,9 @@ export const ChatMessageBubble: React.FC<ChatMessageBubbleProps> = ({
                 <span>{localizedMsgPlan.title}</span>
               </div>
               <p className="text-[11px] text-blue-700 mt-0.5">
-                {localizedMsgPlan.bookableProductsCount} {t.bookableServices} · {t.estimated} ~{formatLocalizedCurrency(localizedMsgPlan.totalEstimatedPrice, currentLocale).formatted}
+                {localizedMsgPlan.bookableProductsCount} {t.bookableServices}
+                {localizedMsgPlan.totalEstimatedPrice != null
+                  && ` · ${t.estimated} ~${formatLocalizedCurrency(localizedMsgPlan.totalEstimatedPrice, currentLocale).formatted}`}
               </p>
             </div>
 

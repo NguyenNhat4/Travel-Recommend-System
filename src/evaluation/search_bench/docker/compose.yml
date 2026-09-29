@@ -1,0 +1,33 @@
+# Weaviate cho sbench (spec Part 0). Chạy từ src/:
+#   docker compose -f evaluation/search_bench/docker/compose.yml up -d --wait weaviate
+# Project riêng `sbench` → volume sbench_weaviate_data, không đụng Weaviate 1.27 của app (docker-compose.yml gốc, 8080/50051).
+# Chỉ bind loopback (docs/prd/deployment-plan.md §2). Đổi cổng: SBENCH_WEAVIATE_HTTP_PORT / SBENCH_WEAVIATE_GRPC_PORT
+# và sửa weaviate.url / grpc_port trong config/sbench.yaml cho khớp.
+name: sbench
+
+services:
+  weaviate:
+    image: ${WEAVIATE_IMAGE:-semitechnologies/weaviate:1.37.3}
+    command: ["--host", "0.0.0.0", "--port", "8080", "--scheme", "http"]
+    ports:
+      - "127.0.0.1:${SBENCH_WEAVIATE_HTTP_PORT:-58080}:8080"
+      - "127.0.0.1:${SBENCH_WEAVIATE_GRPC_PORT:-55051}:50051"
+    environment:
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
+      PERSISTENCE_DATA_PATH: /var/lib/weaviate
+      DEFAULT_VECTORIZER_MODULE: none        # app tự cung cấp vector (Cohere gọi ở app, có cache)
+      ENABLE_MODULES: ""                     # không bật text2vec-cohere: cần kiểm soát input_type + cache
+      QUERY_DEFAULTS_LIMIT: 25
+      LIMIT_RESOURCES: "true"
+      CLUSTER_HOSTNAME: node1                # giữ metadata cluster khi container được tạo lại
+    volumes:
+      - weaviate_data:/var/lib/weaviate
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:8080/v1/.well-known/ready || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+    restart: unless-stopped
+
+volumes:
+  weaviate_data: {}

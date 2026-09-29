@@ -222,6 +222,22 @@
       "operationId": "getRecommendations",
       "method": "get",
       "path": "/recommendations",
+      "status": 200,
+      "case": "long-term",
+      "file": "recommendations/getRecommendations.200-long-term.json"
+    },
+    {
+      "operationId": "getRecommendations",
+      "method": "get",
+      "path": "/recommendations",
+      "status": 200,
+      "case": "cold-start-content",
+      "file": "recommendations/getRecommendations.200-cold-start-content.json"
+    },
+    {
+      "operationId": "getRecommendations",
+      "method": "get",
+      "path": "/recommendations",
       "status": 401,
       "case": "invalid-token",
       "file": "recommendations/getRecommendations.401-invalid-token.json"

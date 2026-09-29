@@ -33,6 +33,7 @@ def product_summary(
         "availableFrom": product.available_from.isoformat() if product.available_from else None,
         "availableTo": product.available_to.isoformat() if product.available_to else None,
         "imageUrl": product.image_url,
+        **({"attributes": product.attributes} if product.taxonomy == "flight" else {}),
     }
     # Sức chứa hạng phòng để Web hiện "Tối đa n khách/phòng" ở bước xếp phòng; không có thì không gửi trường attributes.
     if with_capacity and product.max_occupancy:

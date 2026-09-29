@@ -10,6 +10,7 @@ import { fetchRecommendations } from '../../services/recsys';
 import { ApiError } from '../../services/http';
 import type { Product, RecommendationResponse } from '../../types/travel';
 import { TaxonomyBadge } from '../common/TaxonomyBadge';
+import { FlightSummary } from '../common/FlightSummary';
 import { PriceTag } from '../common/PriceTag';
 import { ProductCard } from '../common/ProductCard';
 import { formatVnd } from '../confirmation/bookingLabels';
@@ -382,6 +383,7 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
                             {!variant.available && <span className="font-semibold text-rose-600">Hết chỗ</span>}
                           </div>
                         </div>
+                        <FlightSummary product={variant} />
                         <PriceTag price={variant.unitPrice} taxonomy={variant.taxonomy} size="sm" className="shrink-0 items-end" />
                       </button>
                     );
@@ -400,7 +402,10 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
               {unit && needsVariant ? variantTitle(unit) : 'Giá công khai từ V-OTA'}
             </div>
             {unit ? (
-              <PriceTag price={unit.unitPrice} taxonomy={unit.taxonomy} size="lg" showTaxesIncluded={unit.unitPrice != null} />
+              <>
+                <PriceTag price={unit.unitPrice} taxonomy={unit.taxonomy} size="lg" showTaxesIncluded={unit.unitPrice != null} />
+                <FlightSummary product={unit} />
+              </>
             ) : (
               <PriceTag price={variantSummary?.minPrice ?? null} taxonomy={product.taxonomy} size="lg" hasPrefixFrom />
             )}

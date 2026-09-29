@@ -1,0 +1,10 @@
+# Mẫu câu query theo variant + bảng viết tắt (spec Part 3 P3.3). Team sửa file này, không sửa code.
+# Placeholder: {loai} (attributes.propertyType, thiếu thì "khách sạn") · {sao} · {destination} · {amenity} (label) · {name}
+templates:
+  hotel_property: ["{loai} {sao} sao ở {destination}", "khách sạn {destination} có {amenity}", "resort {destination} có {amenity} cho gia đình", "{name}"]
+  attraction:     ["vé {name}", "chỗ vui chơi ở {destination} cho trẻ em", "{name}"]
+  combo:          ["combo nghỉ dưỡng {destination}", "{name}"]
+  flight_route:   ["vé máy bay đi {destination}"]
+  golf:           ["sân golf {destination}"]
+abbreviations: {"khách sạn": "ks", "khu nghỉ dưỡng": "resort", "Phú Quốc": "PQ", "Nha Trang": "NT", "Đà Nẵng": "ĐN", "VinWonders": "VW"}
+default_property_type: "khách sạn"

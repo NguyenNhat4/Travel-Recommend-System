@@ -63,7 +63,7 @@ negative.append(('ItineraryResponse', bad))
 bad = copy.deepcopy(completed)
 bad['itinerary']['days'][0]['slots'][0]['product'] = None
 negative.append(('ItineraryResponse', bad))
-# Checkout nhiều bước (1.8.0): ví dụ request của spec §7.4 hợp lệ; thiếu trường bắt buộc hoặc sai loại giá thì bị từ chối.
+# Checkout nhiều bước (1.10.0): ví dụ request của spec §7.4 hợp lệ; thiếu trường bắt buộc hoặc sai loại giá thì bị từ chối.
 validator('CheckoutRequest').validate({
     'contact': {'fullName': 'Nguyễn Minh Anh', 'email': 'minhanh@example.vn', 'phone': '0912345678'},
     'travelers': [

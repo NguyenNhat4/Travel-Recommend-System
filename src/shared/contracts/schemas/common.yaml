@@ -96,11 +96,15 @@ Strategy:
   type: string
   description: >-
     Thêm giá trị mới phải thông báo trước; client map giá trị lạ về tiêu đề chung.
+    long_term: có lịch sử nhưng không có chuyến đang mở và chưa quá ngưỡng dormant của engine.
+    cold_start_content: có chuyến đang mở, tổng dưới 3 event dùng được và chưa mua gì trong chuyến.
   enum:
   - cross_vertical
   - recent_activity
   - dormant
   - popular
+  - long_term
+  - cold_start_content
 
 BecauseEvent:
   type: string

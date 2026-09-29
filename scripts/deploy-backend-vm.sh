@@ -8,7 +8,7 @@ backend_image=''
 crawler_image=''
 compose_file=''
 backend_service='backend'
-backend_health_url='http://127.0.0.1:8000/health'
+backend_health_url='http://127.0.0.1:8000/health/ready'
 db_tunnel_host='127.0.0.1'
 db_tunnel_port='15432'
 cron_runner='/opt/vota/bin/run_daily_docker.sh'
@@ -25,10 +25,10 @@ dry_run=0
 usage() {
   cat <<'EOF'
 Usage:
-  deploy-backend-vm.sh --backend-image IMAGE:latest
+  deploy-backend-vm.sh --backend-image IMAGE@sha256:DIGEST
                        --compose-file /absolute/path/compose.yml
                        [--backend-service backend]
-                       [--backend-health-url http://127.0.0.1:8000/health]
+                       [--backend-health-url http://127.0.0.1:8000/health/ready]
                        [--db-tunnel-host 127.0.0.1] [--db-tunnel-port 15432]
                        [--cron-runner /opt/vota/bin/run_daily_docker.sh]
                        [--cron-data-dir /srv/vota/daily-data]
@@ -69,10 +69,11 @@ done
 
 [ -n "$backend_image" ] || die '--backend-image is required'
 [ -n "$compose_file" ] || die '--compose-file is required'
-[[ "$backend_image" =~ :latest$ ]] || die 'Backend image must use the :latest tag'
+[[ "$backend_image" =~ ^asia-southeast1-docker\.pkg\.dev/[a-z0-9][a-z0-9._/-]*@sha256:[a-f0-9]{64}$ ]] || die 'Backend image must be pinned by Artifact Registry digest'
 if [ -n "$crawler_image" ]; then
   [[ "$crawler_image" =~ :latest$ ]] || die 'Crawler image must use the :latest tag'
 fi
+[[ "$backend_health_url" =~ ^https?://[a-zA-Z0-9.:-]+/health/ready$ ]] || die 'Backend health URL must target /health/ready'
 [[ "$compose_file" == /* ]] || die '--compose-file must be an absolute path'
 [[ "$cron_runner" == /* ]] || die '--cron-runner must be an absolute path'
 [[ "$cron_data_dir" == /* ]] || die '--cron-data-dir must be an absolute path'

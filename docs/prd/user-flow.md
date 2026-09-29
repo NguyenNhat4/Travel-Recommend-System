@@ -167,6 +167,8 @@ flowchart TD
 +-------------------------------------------------------------------------------+
 ```
 
+> **Form gợi ý thông tin chuyến đi:** khi trợ lý đã hỏi một lượt mà vẫn chưa biết điểm đến hoặc số ngày, khung chat hiển thị ngay dưới câu trả lời một form đã điền sẵn giá trị gợi ý (điểm đến — chỉ vài lựa chọn tiêu biểu, số ngày 1–7, ngày khởi hành không trước hôm nay, số người, ngân sách) kèm nút **Xác nhận**. Bấm xác nhận đặt câu yêu cầu hoàn chỉnh vào ô nhập tin nhắn để người dùng sửa hoặc gửi. Form xuất hiện ở cả màn `/assistant` lẫn widget trợ lý nổi.
+
 ### 4.3. Màn hình Xác Nhận Đơn Hàng & Vòng Lặp Gợi Ý Tiếp Theo (`/booking/:referenceCode`)
 ```
 +-------------------------------------------------------------------------------+

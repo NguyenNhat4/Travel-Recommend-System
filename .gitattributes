@@ -6,3 +6,8 @@ src/data_collection/snapshots/** -text
 
 # DDL và script verify chạy qua `docker compose exec psql` trong container Linux.
 db/**/*.sql text eol=lf
+
+# Gold của search bench: sha256 của drafts/pool được ghi vào pool_meta.json và vào từng dòng nhãn
+# (gold_schema.py). Đổi LF -> CRLF khi checkout làm sha lệch: test bước 0 đỏ và app chặn gán nhãn.
+src/evaluation/search_bench/gold/** -text
+src/evaluation/search_bench/tests/fixtures/gold_small/** -text

@@ -546,7 +546,7 @@ Cách Web xử lý kết quả (bổ sung cho `hop-dong-tich-hop-frontend.md` §
 ### 7.1. Nguyên tắc
 
 - Chỉ thêm schema và trường mới. Mọi trường mới là tuỳ chọn, cả trong request lẫn response (`api-contract.md` §3.2). Không đổi tên, không xoá, không đổi nghĩa trường cũ: `quantity`, `lineTotal`, `guestNames` giữ nguyên nghĩa.
-- File đã sửa: `src/shared/contracts/schemas/booking.yaml`, `schemas/common.yaml`, và phần mô tả trong `paths/booking.yaml`. `openapi.yaml` lên **1.8.0**. `src/frontend/src/types/api.gen.ts` sinh lại bằng `openapi-typescript`, và `validate_contract.py` kiểm thêm các mock mới (§7.7).
+- File đã sửa: `src/shared/contracts/schemas/booking.yaml`, `schemas/common.yaml`, và phần mô tả trong `paths/booking.yaml`. `openapi.yaml` lên **1.10.0**. `src/frontend/src/types/api.gen.ts` sinh lại bằng `openapi-typescript`, và `validate_contract.py` kiểm thêm các mock mới (§7.7).
 
 ### 7.2. Schema mới
 
@@ -716,7 +716,7 @@ Theo `docs/spec/shared-assets.md`, tất cả đăng ký trong `src/shared/mocks
 
 - Mới: `getCart.200-family.json`, `createBooking.201-family.json`, `createBooking.400-party-invalid.json`, `createBooking.409-price-changed-child.json` (`details.fareType = CHILD`), `updateCartItem.200-guests.json`, `updateCartItem.400-guests-invalid.json`.
 - Sửa cho có `guests`, `fares`, `travelers`: các fixture giỏ và đơn hiện có (`addCartItem`, `getCart`, `removeCartItem`, `updateCartItem`, `createBooking`, `getBooking`).
-- `src/shared/contracts/tests/validate_contract.py` kiểm thêm: ví dụ request ở §7.4 hợp lệ theo `CheckoutRequest` và `AddCartItemRequest`; các ca sai bị từ chối (thiếu `givenNames`, `travelerRef` có khoảng trắng, không có cả `quantity` lẫn `guests`, `GuestCounts` không có người lớn hoặc 10 khách, `FareLine` loại `BAG` (chưa có ở 1.8.0), loại khách `INFANT`); mọi phần tử `details.fields[]` trong mock booking đúng `ValidationFieldError`. Việc `lineTotal` bằng tổng `fares[].amount` và `total` bằng tổng `lineTotal` do contract test của Backend kiểm (`tests/contract/test_booking_contract.py`).
+- `src/shared/contracts/tests/validate_contract.py` kiểm thêm: ví dụ request ở §7.4 hợp lệ theo `CheckoutRequest` và `AddCartItemRequest`; các ca sai bị từ chối (thiếu `givenNames`, `travelerRef` có khoảng trắng, không có cả `quantity` lẫn `guests`, `GuestCounts` không có người lớn hoặc 10 khách, `FareLine` loại `BAG` (chưa có ở 1.10.0), loại khách `INFANT`); mọi phần tử `details.fields[]` trong mock booking đúng `ValidationFieldError`. Việc `lineTotal` bằng tổng `fares[].amount` và `total` bằng tổng `lineTotal` do contract test của Backend kiểm (`tests/contract/test_booking_contract.py`).
 - Bộ ca kiểm thử luật dùng chung cho Web và Backend: `src/shared/contracts/tests/booking-rules-cases.json` (§12.2).
 
 ---
@@ -978,7 +978,7 @@ Môi trường: backend với `PAYMENT_PROVIDER=stripe` (khoá test) hoặc `fak
 | Bước | Việc | Trạng thái |
 |---|---|---|
 | 0 | **Data:** soát 200 sản phẩm có `childPrice` lệch (§4.4) và xác nhận nghĩa của `childPrice = 0`. Luật D2 chạy đúng với dữ liệu hiện có nên không chặn các bước sau | **Chưa làm** (việc của Data) |
-| 1 | Contract 1.8.0, mock mới, `validate_contract.py`, sinh lại `api.gen.ts` | Xong |
+| 1 | Contract 1.10.0, mock mới, `validate_contract.py`, sinh lại `api.gen.ts` | Xong |
 | 2 | DDL, migration 0005, `db/verify.sql`, seed; thử migration trên bản sao lược đồ cũ | Xong |
 | 3 | Backend domain (`party`, `fares`, `party_rules`, `pricing`) và bộ ca chung | Xong |
 | 4 | Backend application, adapter, API; contract test và integration test | Xong |
@@ -1045,7 +1045,7 @@ Cả bảng đã được chốt: các mã có cột "Chốt" là câu hỏi Q1�
 | D8 | Đoàn khách của đơn lưu ở bảng `app.booking_travelers`; ngày sinh chỉ lưu ở đây | Q8 | §9 |
 | D9 | `app.booking_items.line_total` bỏ biểu thức sinh, Backend ghi bằng tổng các dòng giá | Q9 | §9 |
 | D10 | Khai đoàn một lần và gán cả đoàn mặc định cho dịch vụ tính theo người; người liên hệ không bắt buộc đi cùng | — (thiết kế) | §4.1, §6.5 |
-| D11 | Thêm trường tuỳ chọn trong v1 (OpenAPI 1.8.0); request thiếu `travelers` theo đường cũ nhưng được kiểm thật; gỡ đường cũ ở v2 | Q10 | §7 |
+| D11 | Thêm trường tuỳ chọn trong v1 (OpenAPI 1.10.0); request thiếu `travelers` theo đường cũ nhưng được kiểm thật; gỡ đường cũ ở v2 | Q10 | §7 |
 
 Q1 (ba bước trên cùng route `/checkout`) không có mã D vì là quyết định cấu trúc trang (§6).
 

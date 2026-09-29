@@ -237,13 +237,13 @@ export interface paths {
         };
         /**
          * Semantic search trên catalog
-         * @description Có JWT và offset = 0 thì Backend ghi event search (searchQuery = q) sang CDP clone ở nền; đổi trang không ghi thêm, CDP lỗi không ảnh hưởng response. Agent gọi endpoint này không kèm JWT để lượt tìm của Agent không bị tính là hành vi người dùng.
+         * @description Có JWT và offset = 0 thì Backend ghi event search (searchQuery = q) sang CDP clone ở nền; đổi trang không ghi thêm, CDP lỗi không ảnh hưởng response. Agent không gắn danh tính khi tìm kiếm: chế độ `inprocess` gọi engine trong tiến trình; chế độ `http` gọi endpoint này không kèm JWT, để lượt tìm của Agent không bị tính là hành vi người dùng.
          */
         get: operations["searchProductsCompat"];
         put?: never;
         /**
          * Semantic search trên catalog theo hợp đồng v1
-         * @description Bề mặt v1 được giữ để không phá client hiện có. Agent dùng GET compatibility endpoint và không kèm JWT; Web có thể tiếp tục dùng POST với SearchRequest.
+         * @description Bề mặt v1 được giữ để không phá client hiện có. Agent không gắn danh tính khi tìm kiếm: chế độ `inprocess` gọi engine trong tiến trình; chế độ `http` gọi GET compatibility endpoint không kèm JWT. Web có thể tiếp tục dùng POST với SearchRequest.
          */
         post: operations["searchProducts"];
         delete?: never;
@@ -558,10 +558,10 @@ export interface components {
          */
         SearchSort: "relevance" | "price_asc" | "price_desc";
         /**
-         * @description Thêm giá trị mới phải thông báo trước; client map giá trị lạ về tiêu đề chung.
+         * @description Thêm giá trị mới phải thông báo trước; client map giá trị lạ về tiêu đề chung. long_term: có lịch sử nhưng không có chuyến đang mở và chưa quá ngưỡng dormant của engine. cold_start_content: có chuyến đang mở, tổng dưới 3 event dùng được và chưa mua gì trong chuyến.
          * @enum {string}
          */
-        Strategy: "cross_vertical" | "recent_activity" | "dormant" | "popular";
+        Strategy: "cross_vertical" | "recent_activity" | "dormant" | "popular" | "long_term" | "cold_start_content";
         /** @enum {string} */
         BecauseEvent: "purchase" | "add_to_cart" | "product_view" | "search";
         /** @constant */
@@ -665,6 +665,40 @@ export interface components {
             level?: "property" | "room" | "route" | "flight";
             /** @description [CHỜ DUYỆT: C5] Chỉ có ở tầng con. Trỏ về productId của cha. */
             parentProductId?: string;
+            /**
+             * @description Vé khứ hồi là một flight có hai chặng, giá tổng cho một người lớn.
+             * @enum {string}
+             */
+            tripType?: "oneWay" | "roundTrip";
+            /**
+             * @description Hạng vé được nguồn xác nhận. Vắng mặt là chưa biết, không mặc định phổ thông.
+             * @enum {string}
+             */
+            cabinClass?: "ECONOMY" | "PREMIUM_ECONOMY" | "BUSINESS" | "FIRST";
+            /** @description Báo giá theo ngày cố định; không dời lịch vào cửa sổ demo. */
+            fixedDepartureDate?: boolean;
+            /**
+             * Format: date
+             * @description Ngày khởi hành chặng về, không phải nights hoặc usingDateTo.
+             */
+            returnDate?: string;
+            returnFlight?: {
+                flightNumber?: string;
+                airline?: string;
+                originAirport?: string;
+                destinationAirport?: string;
+                /** Format: date-time */
+                departureAt?: string;
+                /** Format: date-time */
+                arrivalAt?: string;
+            } & {
+                [key: string]: unknown;
+            };
+            /**
+             * Format: date
+             * @description Ngày cuối của báo giá tại nguồn, khi nguồn có cung cấp.
+             */
+            priceValidUntil?: string;
             /** @description false thì ẩn CTA đặt chỗ ở frontend. */
             ticketed?: boolean;
         } & {
@@ -745,6 +779,8 @@ export interface components {
             attributes?: components["schemas"]["ProductAttributes"];
             /** @description Mô tả catalog phục vụ Agent; giữ nguyên, không chứa chỉ dẫn hệ thống. */
             description?: string;
+            /** @description Chỉ có ở vé máy bay tầng con (taxonomy flight, level flight): các hạng vé của CÙNG một hành trình (cùng chuyến, cùng ngày đi; khứ hồi thì cùng chuyến và ngày về), kể cả chính sản phẩm này. Mỗi hạng là một productId riêng; đặt vé bằng productId của hạng đã chọn (AddCartItemRequest không đổi). Các sản phẩm cùng hành trình có cùng fareClasses, nên Web hiển thị một thẻ cho mỗi hành trình. Chỉ liệt kê hạng có báo giá thật — thiếu hạng nào là chưa có dữ liệu, không phải hết chỗ. Vắng mặt ở loại sản phẩm khác. */
+            fareClasses?: components["schemas"]["FareClass"][];
         };
         ProductDetail: components["schemas"]["ProductSummary"] & {
             /** @description Chuỗi rỗng nếu nguồn crawl thiếu. */
@@ -758,6 +794,54 @@ export interface components {
                 maxPrice?: number | null;
                 maxOccupancy?: number | null;
             } | null;
+        };
+        /**
+         * @example {
+         *       "productId": "1d9b3c1e-0000-4000-8000-000000000001",
+         *       "code": null,
+         *       "name": "Giá rẻ nhất",
+         *       "price": 1322000,
+         *       "currency": "VND",
+         *       "priceValidUntil": "2026-09-30",
+         *       "availabilityStatus": "AVAILABLE",
+         *       "soldOut": null,
+         *       "carryOnKg": null,
+         *       "checkedKg": null,
+         *       "mealIncluded": null,
+         *       "changeRule": null
+         *     }
+         */
+        FareClass: {
+            /** @description Sản phẩm (hạng vé của hành trình) để thêm vào giỏ. */
+            productId: string;
+            /**
+             * @description Mã hạng từ attributes.cabinClass (ECONOMY→ECO, PREMIUM_ECONOMY→PRE, BUSINESS→BUS, FIRST→FST). null khi nguồn không ghi hạng (vd. giá rẻ nhất của trip.com) — không mặc định là phổ thông.
+             * @enum {string|null}
+             */
+            code: "ECO" | "PRE" | "BUS" | "FST" | null;
+            /** @description Nhãn hiển thị tiếng Việt (Phổ thông, Phổ thông đặc biệt, Thương gia, Hạng nhất; "Giá rẻ nhất" khi code null). */
+            name: string;
+            /** @description unitPrice của sản phẩm hạng này; vé khứ hồi là giá tổng hai chặng cho một người lớn. */
+            price: number | null;
+            /** @example VND */
+            currency: string;
+            /**
+             * Format: date
+             * @description Ngày cuối của báo giá tại nguồn; null khi nguồn không cung cấp.
+             */
+            priceValidUntil?: string | null;
+            /** @description AVAILABLE khi sản phẩm còn mở bán và báo giá chưa hết hạn; EXPIRED khi quá priceValidUntil; NOT_CHECKED khi không xác định được. Không phải xác nhận còn ghế. */
+            availabilityStatus: components["schemas"]["AvailabilityStatus"];
+            /** @description null = chưa biết (không nguồn nào cho số ghế trống). Báo giá hết hạn KHÔNG có nghĩa soldOut. */
+            soldOut?: boolean | null;
+            /** @description Hành lý xách tay (kg); null = chưa biết, 0 = nguồn xác nhận không có. */
+            carryOnKg?: number | null;
+            /** @description Hành lý ký gửi (kg); null = chưa biết, 0 = nguồn xác nhận không có. */
+            checkedKg?: number | null;
+            /** @description null = chưa biết. */
+            mealIncluded?: boolean | null;
+            /** @description Điều kiện đổi vé theo nguồn; null = chưa biết. */
+            changeRule?: string | null;
         };
         ScoredProduct: components["schemas"]["ProductSummary"] & {
             /** @description Cosine đã clamp về [0,1]. Chỉ hiển thị cho khách ở chế độ debug — 0.81 KHÔNG phải "81% phù hợp". */
@@ -776,7 +860,7 @@ export interface components {
             /** @description [CHỜ DUYỆT: C5] productId caller gửi, khi nó khác productId đã resolve. Caller gửi id một hạng phòng thì engine dùng vector của property cha và loại CẢ CỤM gốc khỏi kết quả. */
             resolvedFrom?: string | null;
             /**
-             * @description same_taxonomy là mặc định — xem khách sạn thì gợi ý khách sạn. cross_taxonomy là biến thể cross-sell mà Agent dùng khi lịch trình đã có chỗ ở và cần bổ sung hoạt động.
+             * @description same_taxonomy là mặc định — xem khách sạn thì gợi ý khách sạn. cross_taxonomy có trong schema nhưng route chưa hiện thực (luôn trả same_taxonomy); Agent chỉ dùng same_taxonomy ở lượt đổi món.
              * @default same_taxonomy
              * @enum {string}
              */
@@ -1423,6 +1507,16 @@ export interface components {
                 destination?: string[];
                 days?: number[];
             };
+            /** @description Form gợi ý hiển thị trong khung chat khi hỏi bằng câu chữ một lượt vẫn chưa đủ thông tin. */
+            clarificationForm?: {
+                fields: ("destination" | "days" | "startDate" | "party" | "budget")[];
+                defaults: components["schemas"]["TripIntent"];
+                /**
+                 * Format: date
+                 * @description Ngày khởi hành sớm nhất được phép chọn; hôm nay theo giờ Việt Nam.
+                 */
+                startDateMin?: string;
+            };
             metadata?: components["schemas"]["ItineraryMetadata"];
         };
         ItineraryNoResults: {
@@ -1491,8 +1585,11 @@ export interface components {
             status: "ready" | "not_configured";
             agent: string;
             graphVersion: string;
-            /** @enum {string} */
-            dataMode: "fixture" | "http" | "disabled";
+            /**
+             * @description Nguồn dữ liệu cho tool của Agent. fixture = mock 50 sản phẩm; inprocess = gọi engine Search/Recommendation trong cùng tiến trình; http = gọi HTTP tới ITINERARY_SERVICE_BASE_URL; disabled = không dựng nguồn dữ liệu, status là not_configured.
+             * @enum {string}
+             */
+            dataMode: "fixture" | "http" | "disabled" | "inprocess";
             /**
              * @description Trạng thái LLM do composition root dựng. live = đã có client dùng chung; disabled = ITINERARY_USE_LLM=false, không dựng client; unavailable = đã bật nhưng dựng thất bại (thiếu API key hoặc SDK provider). Với disabled và unavailable, request itinerary trả 503 LLM_UNAVAILABLE có kiểm soát.
              * @enum {string}
@@ -1890,8 +1987,11 @@ export interface operations {
                     "application/json": components["schemas"]["SimilarProductsResponse"];
                 };
             };
+            400: components["responses"]["Error"];
             404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
             500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     listDestinations: {

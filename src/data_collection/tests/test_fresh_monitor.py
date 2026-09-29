@@ -1,5 +1,7 @@
 """Offline regression coverage for the fresh runner and its shared-volume monitor."""
 import asyncio
+import contextlib
+import io
 import fcntl
 import gzip
 import http.client
@@ -336,6 +338,49 @@ class LoadReportTests(unittest.TestCase):
 
 
 class DockerRunnerTests(unittest.TestCase):
+    def test_monitor_command_is_the_daily_image_container_that_cd_waits_for(self):
+        """CD của release-mvp-v2 chạy `run_daily_docker.sh monitor` với IMAGE daily rồi chờ container vota-daily-monitor."""
+        with tempfile.TemporaryDirectory() as t:
+            root = Path(t)
+            (root / 'data' / 'interim').mkdir(parents=True)
+            (root / 'env').write_text('')
+            fake = root / 'docker'
+            fake.write_text('#!/usr/bin/env python3\nimport os,sys,json\nopen(os.environ["CALLS"],"a").write(json.dumps(sys.argv[1:])+"\\n")\n')
+            fake.chmod(0o755)
+            env = dict(os.environ, PATH=f'{root}:/usr/bin:/bin', CALLS=str(root / 'calls'), DATA_DIR=str(root / 'data'),
+                       ENV_FILE=str(root / 'env'), IMAGE='test:daily', CONTAINER_NAME='vota-daily', PULL='0')
+            subprocess.run(['bash', str(ROOT / 'run_daily_docker.sh'), 'monitor'], check=True, env=env, capture_output=True)
+            call = json.loads((root / 'calls').read_text().splitlines()[-1])
+            self.assertEqual(call[call.index('--name') + 1], 'vota-daily-monitor')
+            self.assertIn('test:daily', call)
+            self.assertEqual(call[-2:], ['python', 'monitor.py'])
+            self.assertIn(f'{root}/data:/data', call)
+
+    def test_monitor_main_resolves_dirs_from_args_env_then_data_dir(self):
+        seen = {}
+
+        class Server:
+            def __init__(self, address, handler):
+                seen['monitor'] = handler.monitor
+
+            def serve_forever(self):
+                raise KeyboardInterrupt
+
+            def server_close(self):
+                pass
+        with tempfile.TemporaryDirectory() as t, patch.object(monitor, 'ThreadingHTTPServer', Server), \
+                contextlib.redirect_stdout(io.StringIO()):
+            data = Path(t) / 'data'
+            (data / 'logs').mkdir(parents=True)
+            with patch.dict(os.environ, {'VOTA_DATA_DIR': str(data)}, clear=True):
+                monitor.main([])
+            m = seen['monitor']
+            self.assertEqual((m.state_dir, m.run_root), (data.resolve() / 'state', data.resolve() / 'fresh_runs'))
+            with patch.dict(os.environ, {'VOTA_DATA_DIR': str(data), 'CATALOG_STATE_DIR': str(Path(t) / 's')}, clear=True):
+                monitor.main(['--run-root', str(Path(t) / 'r')])
+            m = seen['monitor']
+            self.assertEqual((m.state_dir, m.run_root), ((Path(t) / 's').resolve(), (Path(t) / 'r').resolve()))
+
     def test_fresh_monitor_mounts_same_volume_and_image_as_fresh_runner(self):
         with tempfile.TemporaryDirectory() as t:
             root = Path(t)

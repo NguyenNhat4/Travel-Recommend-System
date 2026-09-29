@@ -1,7 +1,7 @@
-# booking.yaml — giỏ hàng, checkout, đơn đặt chỗ, đoàn khách và giá theo loại khách (contract 1.8.0)
+# booking.yaml — giỏ hàng, checkout, đơn đặt chỗ, đoàn khách và giá theo loại khách (contract 1.10.0)
 #
 # Đoàn khách và dòng giá: docs/spec/booking/checkout-nhieu-buoc-hanh-khach.md §4–§7 (FR-BKG-08).
-# Mọi trường thêm ở 1.8.0 đều tuỳ chọn trong v1 (docs/prd/api-contract.md §3.2): client cũ không thấy khác biệt.
+# Mọi trường thêm ở 1.10.0 đều tuỳ chọn trong v1 (docs/prd/api-contract.md §3.2): client cũ không thấy khác biệt.
 TravelerType:
   type: string
   enum:

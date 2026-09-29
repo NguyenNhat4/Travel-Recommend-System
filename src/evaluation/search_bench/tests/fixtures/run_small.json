@@ -1,0 +1,215 @@
+{
+ "_note": "Kết quả giả của hai arm cho test metrics/bootstrap, đi cùng gold_small.jsonl. Không phải kết quả chạy thật. B = A trừ q001 (nt_golf thay pq_golf ở hạng 8), q007 (arm lọc cứng theo filter → chỉ còn pq_fiesta), q010 (đảo hạng 1–2).",
+ "ids": {
+  "nt_bay": "bfc1d7fa-5a0b-5b49-aa07-78ad02fe5ac9",
+  "nt_beachfront": "8b60246e-cd0b-5d0f-bb10-b75e4d0dc12f",
+  "nt_vinwonders": "5febedf3-74ba-5200-a5ec-2a6ab5162acb",
+  "nt_golf": "83b5cf28-6d82-5037-9b05-f4bf2feb6edb",
+  "nt_hontam": "f0aba982-e137-5689-8991-e34d3b986695",
+  "hl_resort": "0ea20753-e3f7-5005-909e-382b704042fc",
+  "hl_vinh": "8c935f2b-2bc7-5f3c-9fa9-5a8e7438597d",
+  "pq_resort": "4afe1590-e517-5017-ac8f-608e7f9bfe95",
+  "pq_fiesta": "6a6210dd-3abf-5e51-bb89-7fa53d36a514",
+  "pq_vinwonders": "8a4c5920-55c2-5370-b2e5-01956c3e7288",
+  "pq_golf": "06fe96e5-5226-50a8-bac2-015038d8e8a6",
+  "pq_combo1": "1a49c701-4d5f-5711-a290-3b8c386a8bdd",
+  "pq_combo2": "bd1412de-faa7-543f-a10f-b040e1f08bc4",
+  "ha_golf": "a86717ae-2a66-5aa0-9def-7e42f56fc40f",
+  "ha_resort_golf": "a3967a35-37ad-5e4b-8d89-16c3bf163da4",
+  "ha_vinwonders": "c1cc2937-0cfa-5def-b18f-1d5a46c14115",
+  "ha_combo": "80a91c7d-03a8-5728-a707-b190f192bda5",
+  "dn_melia": "cd8e4033-19d2-5fb1-9dea-20e003ba61ac",
+  "ht_resort": "ba972b34-67ef-5129-a397-73c21cf90b43",
+  "hn_colo": "0d926cc0-a22c-5e58-beff-9c8874e9c392",
+  "hp_combo": "2b2d8e48-cf2f-5b82-86fc-017151456004",
+  "hcm_golf": "8ab35bd0-cd0c-5e2f-be56-e20cd628b709",
+  "fl_nt_dn": "4c898f6a-11cb-58c7-af63-aac0baffedf5",
+  "fl_nt_hn": "404ff51a-6de7-5013-b048-ac7468cfc726",
+  "fl_nt_pq": "e8151037-ee59-54b6-bbcf-a99e92b7ef78",
+  "fl_nt_hcm": "0ccbb0e7-4c4b-5c2f-a9f9-7b939cc61bdd"
+ },
+ "arms": {
+  "A": {
+   "q001": [
+    "hl_resort",
+    "nt_bay",
+    "nt_hontam",
+    "nt_vinwonders",
+    "fl_nt_hcm",
+    "nt_beachfront",
+    "ht_resort",
+    "pq_golf",
+    "pq_fiesta",
+    "dn_melia"
+   ],
+   "q002": [
+    "pq_resort",
+    "pq_fiesta",
+    "pq_vinwonders",
+    "pq_combo1",
+    "pq_golf",
+    "fl_nt_pq",
+    "pq_combo2",
+    "nt_bay",
+    "hl_resort",
+    "dn_melia"
+   ],
+   "q003": [
+    "ha_vinwonders",
+    "ha_combo",
+    "nt_golf",
+    "pq_golf",
+    "hcm_golf",
+    "hn_colo",
+    "hp_combo",
+    "fl_nt_hn",
+    "fl_nt_dn",
+    "dn_melia"
+   ],
+   "q004": [
+    "nt_hontam",
+    "nt_vinwonders",
+    "pq_combo1",
+    "pq_vinwonders",
+    "hp_combo",
+    "ha_combo",
+    "ha_vinwonders",
+    "nt_golf",
+    "hn_colo",
+    "fl_nt_pq"
+   ],
+   "q005": [
+    "nt_bay",
+    "pq_resort",
+    "hl_resort",
+    "ht_resort"
+   ],
+   "q006": [],
+   "q007": [
+    "pq_resort",
+    "pq_fiesta",
+    "pq_vinwonders",
+    "pq_combo1",
+    "fl_nt_pq"
+   ],
+   "q008": [
+    "nt_beachfront",
+    "nt_bay",
+    "nt_vinwonders",
+    "nt_golf",
+    "nt_hontam",
+    "hl_resort"
+   ],
+   "q009": [],
+   "q010": [
+    "hl_vinh",
+    "hl_resort",
+    "hn_colo",
+    "fl_nt_hn"
+   ]
+  },
+  "B": {
+   "q001": [
+    "hl_resort",
+    "nt_bay",
+    "nt_hontam",
+    "nt_vinwonders",
+    "fl_nt_hcm",
+    "nt_beachfront",
+    "ht_resort",
+    "nt_golf",
+    "pq_fiesta",
+    "dn_melia"
+   ],
+   "q002": [
+    "pq_resort",
+    "pq_fiesta",
+    "pq_vinwonders",
+    "pq_combo1",
+    "pq_golf",
+    "fl_nt_pq",
+    "pq_combo2",
+    "nt_bay",
+    "hl_resort",
+    "dn_melia"
+   ],
+   "q003": [
+    "ha_vinwonders",
+    "ha_combo",
+    "nt_golf",
+    "pq_golf",
+    "hcm_golf",
+    "hn_colo",
+    "hp_combo",
+    "fl_nt_hn",
+    "fl_nt_dn",
+    "dn_melia"
+   ],
+   "q004": [
+    "nt_hontam",
+    "nt_vinwonders",
+    "pq_combo1",
+    "pq_vinwonders",
+    "hp_combo",
+    "ha_combo",
+    "ha_vinwonders",
+    "nt_golf",
+    "hn_colo",
+    "fl_nt_pq"
+   ],
+   "q005": [
+    "nt_bay",
+    "pq_resort",
+    "hl_resort",
+    "ht_resort"
+   ],
+   "q006": [],
+   "q007": [
+    "pq_fiesta"
+   ],
+   "q008": [
+    "nt_beachfront",
+    "nt_bay",
+    "nt_vinwonders",
+    "nt_golf",
+    "nt_hontam",
+    "hl_resort"
+   ],
+   "q009": [],
+   "q010": [
+    "hl_resort",
+    "hl_vinh",
+    "hn_colo",
+    "fl_nt_hn"
+   ]
+  }
+ },
+ "applied_filter": {
+  "B": {
+   "q007": {
+    "and": [
+     {
+      "eq": [
+       "destination",
+       "Phú Quốc"
+      ]
+     },
+     {
+      "contains_all": [
+       "amenity_ids",
+       [
+        "kids_club"
+       ]
+      ]
+     },
+     {
+      "lte": [
+       "unit_price_min",
+       3000000
+      ]
+     }
+    ]
+   }
+  }
+ }
+}

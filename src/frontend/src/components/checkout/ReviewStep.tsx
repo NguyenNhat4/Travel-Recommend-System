@@ -6,6 +6,7 @@
  */
 import React from 'react';
 import { AlertTriangle, ArrowLeft, Baby, ChevronRight, CreditCard, Lock, PenLine, RefreshCw, Timer, User } from 'lucide-react';
+import { FlightSummary } from '../common/FlightSummary';
 import { TaxonomyBadge } from '../common/TaxonomyBadge';
 import { formatDateTimeVn, formatVnd } from '../confirmation/bookingLabels';
 import type { ApiCartItem } from '../../services/booking';
@@ -77,6 +78,7 @@ const ItemReview: React.FC<{ ctl: CheckoutController; item: ApiCartItem }> = ({ 
           <TaxonomyBadge taxonomy={item.product.taxonomy as Taxonomy} size="sm" />
           <span className="text-sm font-semibold text-slate-900">{item.product.name}</span>
         </div>
+        <FlightSummary product={item.product} />
         <div className="text-xs text-slate-500 tabular-nums">{formatDmy(item.usingDate)}{isHotel(item) ? ` · ${item.nights ?? 1} đêm` : ''} · {summary}</div>
         {rooms && <div className="text-xs text-slate-600">{rooms}</div>}
         <details className="text-xs">
