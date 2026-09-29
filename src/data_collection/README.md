@@ -11,7 +11,7 @@ khi catalog chưa có bằng chứng về đơn vị giá.
 
 ## Dựng database demo từ snapshot
 
-Setup và `make demo-db` / `make demo-db-reset`: xem [README gốc](../../README.md). Snapshot nén cùng 64 mapping combo đã duyệt nằm trong `snapshots/2026-09-23/`; `make demo-db` kiểm checksum rồi bung vào `data/snapshots/2026-09-23/` (chỉ ở local, không vào git).
+Setup và `make demo-db` / `make demo-db-reset`: xem [README gốc](../../README.md). Snapshot mặc định (11.708 sản phẩm, có vé máy bay khứ hồi) cùng 64 mapping combo đã duyệt nằm trong `snapshots/2026-09-29/`; `make demo-db` kiểm checksum rồi bung vào `data/snapshots/2026-09-29/` (chỉ ở local, không vào git).
 
 ---
 
@@ -49,7 +49,7 @@ playwright install chromium         # Linux thiếu thư viện hệ thống: pl
 Catalog baseline được giữ ở hai dạng:
 
 - `data/products.jsonl`: bản runtime 11.387 sản phẩm để chạy ngay tại máy hiện tại, không track bởi Git.
-- `snapshots/2026-09-23/products.jsonl.gz`: bản nén có manifest/checksum được track, để clone sạch có cùng catalog.
+- `snapshots/2026-09-29/products.jsonl.gz` (mặc định, 11.708 sản phẩm): bản nén có manifest/checksum được track, để clone sạch có cùng catalog; `snapshots/2026-09-23/` (11.387) giữ để tái lập.
 
 Job cào mới (`fresh_catalog.py`) cào, chuẩn hoá, nạp PostgreSQL và index; chạy thử trên máy cá nhân qua
 `./local_crawl.sh` (mục "Chạy thử job mới trên máy cá nhân") và theo dõi bằng `./local_crawl.sh monitor`
@@ -726,12 +726,11 @@ Nguồn bị chặn (mã thoát 75) đã lưu tiến độ: chạy lại đúng 
   lat/lng tối đa 30 ngày. Link Google Maps trong các file CSV chỉ để mở xem.
 
 <!-- seed-report:start -->
-### Snapshot seed gần nhất — `2026-09-24`
+### Snapshot seed gần nhất — `2026-09-29`
 
-- Nguồn catalog: `src/data_collection/data/snapshots/2026-09-23/products.jsonl` — SHA-256 `518a9aa7820c9ded4a02a2c9148af2ffa4103272071c84b6e0235f4ee251d862`.
-- Seed `42`: 11,387 products · 2,000 profiles · 7,145 events · 307 combo items.
+- Nguồn catalog: `src/data_collection/data/snapshots/2026-09-29/products.jsonl` — SHA-256 `f3ceb0086c03a0170417d08371234e178f19167facc4030eb0dd0f1f8451faae`.
+- Seed `42`: 11,708 products · 2,000 profiles · 7,134 events · 307 combo items.
 - Search units: 3,183; vector nằm ngoài PostgreSQL và được index sang Weaviate bằng `make index-vectors`.
-- Insider clone: 2,000 profiles · 4,167 events · 19,522 channel events.
+- Insider clone: 2,000 profiles · 4,168 events · 19,522 channel events.
 - Purchase thiếu `event_group_id` là edge case được sinh có chủ đích khoảng 3%; không xoá purchase.
-- Kiểm thử loader 2026-09-29 trên database tạm local: snapshot 11.387 sản phẩm + 1 vé khứ hồi fixture, giữ đủ 11.387 ID cũ; `db/verify.sql` 18/18 PASS. Database tạm đã xóa; đây không phải lần nạp VM và không thay snapshot seed nêu trên.
 <!-- seed-report:end -->
