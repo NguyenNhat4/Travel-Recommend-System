@@ -1,9 +1,9 @@
-from collections import Counter
 from typing import Any
 
 from fastapi import APIRouter, Depends
 
 from src.backend.app.api.deps import get_index, get_use_case
+from src.backend.app.application.catalog.views import destination_list
 from src.backend.app.core.request_context import current_request_id
 
 router = APIRouter(tags=["catalog"])
@@ -13,9 +13,7 @@ router = APIRouter(tags=["catalog"])
 def destinations(index: Any = Depends(get_index)):
     if index is None:
         return {"destinations": []}
-    counts = Counter(str(value) for value in index.destination)
-    return {"destinations": [{"destination": name, "productCount": count}
-                             for name, count in sorted(counts.items())]}
+    return destination_list(index.destination)
 
 
 # Giới hạn limit/offset/sort/taxonomy do use case kiểm để trả 400 VALIDATION_ERROR đúng contract.

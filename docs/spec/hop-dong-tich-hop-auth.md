@@ -228,10 +228,19 @@ class AuthPrincipal:
 ```
 
 ```python
-# src/backend/app/api/deps.py  (chỉ HTTP; theo docs/prd/architecture.md §2)
+# src/backend/app/application/auth/bearer.py  (application layer, không import FastAPI) — resolver duy nhất
+def bearer_token(authorization: str | None) -> str | None     # không có header → None; không phải Bearer/rỗng → TokenInvalid
+async def verified_principal(token, verifier, revoked) -> AuthPrincipal              # chữ ký/claim rồi jti thu hồi (§10.3 điểm 9)
+async def principal_from_header(authorization, verifier, revoked) -> AuthPrincipal | None
+```
+
+```python
+# src/backend/app/api/deps.py  (chỉ HTTP; theo docs/prd/architecture.md §2) — bọc các hàm trên
 async def current_principal(...) -> AuthPrincipal          # 401 nếu thiếu/hỏng
 async def optional_principal(...) -> AuthPrincipal | None  # None cho khách vãng lai
 ```
+
+Tool `get_recommendations` của Itinerary Agent ở `ITINERARY_DATA_MODE=inprocess` (`application/itinerary/engine_tools.py`) dùng cùng `principal_from_header`, và chỉ xác minh khi tool thật sự được gọi. Token hỏng, hết hạn hoặc bị thu hồi thì tool lỗi 401, không hạ thành khách (§3.11 dòng 2). Header vắng hoặc chuỗi rỗng thì là khách, giống mode `http` (adapter HTTP bỏ header rỗng). Kho thu hồi lỗi thì tool trả `SEARCH_UNAVAILABLE` 503 retryable. Token chỉ nằm trong phạm vi request, không vào graph state, log hay trace (`hop-dong-tich-hop-itinerary-assistant.md` §2.4).
 
 Quy tắc dùng, không có ngoại lệ:
 
@@ -1238,7 +1247,7 @@ Các điểm spec để ngỏ, đã chốt khi code (không lệch PRD):
 - **`session_id` phía backend** (claim `sid`, cột `app.refresh_tokens.session_id`) do FastAPI sinh lúc `POST /auth/session` (`s_` + 128 bit), vì `SessionRequest`/`RefreshRequest` không mang sid của BFF. Cookie `vota_sid` là định danh riêng của BFF và xoay theo §3.8 mà backend không cần biết. Refresh giữ nguyên `session_id` và `expires_at` của family (không kéo dài quá 12 giờ).
 - **Đăng ký qua BFF** = `POST /api/v1/auth/register` (v1) rồi `POST /api/v1/auth/session` — không thêm path mới vào contract.
 - **Tái sử dụng refresh token** thu hồi mọi refresh token còn sống của user (`reuse_detected`), không chỉ family.
-- **Điểm 9 của §10.3** kiểm ở dependency HTTP (`api/deps.py`) qua port `RevokedTokens` (Redis `jwt:revoked:{jti}`), vì cần I/O.
+- **Điểm 9 của §10.3** kiểm trong `application/auth/bearer.py` (`verified_principal`) qua port `RevokedTokens` (Redis `jwt:revoked:{jti}`), vì cần I/O. `api/deps.py` (HTTP) và tool itinerary chạy trong tiến trình cùng gọi hàm này (§3.5). Trước 2026-09-28, kiểm tra này nằm ở `api/deps.py`.
 - **Không có Redis** (`AUTH_REDIS_URL`/`SESSION_REDIS_URL` trống): rate limiter và session store chạy trong bộ nhớ một tiến trình, chỉ cho development/test; production từ chối khởi động. Thiếu file khoá RS256: development sinh khoá tạm, production từ chối khởi động.
 - **Key rate limit**: `rl:{scope}:{sha256(key)}` (sorted set, cửa sổ trượt) và `lockout:{scope}:{sha256(key)}`; key IP cũng băm.
 - `/auth/session/mfa/verify` có trong contract nhưng **không mount** (2FA ngoài phạm vi); CAPTCHA chỉ `noop`, backend không trả `details.captchaRequired`.

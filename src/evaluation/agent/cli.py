@@ -45,7 +45,8 @@ def run_itinerary(
         async with httpx.AsyncClient(base_url=(api_base_url or "http://unused.local/").rstrip("/") + "/", timeout=1) as http:
             clients = ItineraryHttpClients(http) if api_base_url else FixtureItineraryClients()
             authorization = os.getenv("ITINERARY_AUTHORIZATION")
-            gateway = ItineraryToolGateway(clients, clients, clients, recommendation_authorization=authorization)
+            gateway = ItineraryToolGateway(clients, clients, clients, recommendation_authorization=authorization,
+                                           similar=clients)
             graph = build_graph(tools=gateway, checkpointer=build_checkpointer(), llm=llm,
                                 require_recommendations=bool(authorization))
             run_id = uuid.uuid4().hex

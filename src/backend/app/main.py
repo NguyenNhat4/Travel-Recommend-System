@@ -20,6 +20,7 @@ import asyncio
 import logging
 import os
 import sys
+from concurrent.futures import Executor, ThreadPoolExecutor
 from contextlib import AsyncExitStack, asynccontextmanager
 
 import httpx
@@ -49,6 +50,7 @@ from src.backend.app.application.booking import (
 )
 from src.backend.app.application.catalog.use_cases import GetProductDetail, GetSimilarProducts, ListProducts
 from src.backend.app.application.itinerary.history import ConversationHistory
+from src.backend.app.application.itinerary.engine_tools import InProcessItineraryTools
 from src.backend.app.application.itinerary.use_cases import PlanItinerary
 from src.backend.app.application.tracking.behaviour import BehaviourTracker
 from src.backend.app.domain.booking import HoldPolicy
@@ -159,7 +161,7 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
     logger.info("startup.recsys.index.load.ready search_units=%d", len(index.units))
 
     # Lịch sử đi qua CDP_DATABASE_URL: vota_app không đọc được cdp.events.
-    cdp_reader = cdp_reader or PostgresCdpReader(settings.cdp_database_url)
+    cdp_reader = cdp_reader or PostgresCdpReader(settings.cdp_database_url, timeout_seconds=settings.cdp_timeout_seconds)
     logger.info("startup.recsys.popularity.build.start")
     popularity = BuildPopularity(index, cdp_reader)()
     logger.info("startup.recsys.popularity.build.ready")
@@ -358,6 +360,25 @@ async def _reconcile_loop(reconcile, interval_seconds: int) -> None:
             logger.exception("booking.reconcile.loop_failed")
 
 
+#: Pool riêng cho engine đồng bộ mà tool itinerary gọi trong tiến trình. Bằng số token mặc định của anyio —
+#: sức chứa route sync khi agent còn gọi qua HTTP — và không tranh thread với `RecsysRefresher`.
+ITINERARY_TOOL_WORKERS = 40
+
+
+def _inprocess_itinerary_tools(app: FastAPI, executor: Executor) -> InProcessItineraryTools:
+    """Provider đọc `app.state` mỗi lời gọi: RecsysRefresher thay engine và nạp xong sau khi nối dây."""
+    return InProcessItineraryTools(
+        search=lambda: getattr(app.state, "search", None),
+        recommend=lambda: getattr(app.state, "recommend", None),
+        index=lambda: getattr(app.state, "index", None),
+        product_detail=lambda: getattr(app.state, "get_product_detail", None),
+        similar_products=lambda: getattr(app.state, "get_similar_products", None),
+        token_verifier=lambda: getattr(app.state, "token_verifier", None),
+        revoked_tokens=lambda: getattr(app.state, "revoked_tokens", None),
+        executor=executor,
+    )
+
+
 def _itinerary_runtime(app: FastAPI, settings: Settings, authorization: str | None, owner: str | None = None):
     """Dựng dependency của agent cho một request. Đọc `app.state` lúc gọi để test thay được client/LLM."""
     clients = getattr(app.state, "itinerary_http_clients", None)
@@ -365,7 +386,10 @@ def _itinerary_runtime(app: FastAPI, settings: Settings, authorization: str | No
     if clients is None or store is None:
         return None
     catalog = clients if getattr(clients, "supports_catalog", False) else None
-    gateway = ItineraryToolGateway(clients, clients, catalog, recommendation_authorization=authorization)
+    # Cờ tường minh thay vì hasattr: client không khai báo similar thì planner không bao giờ thấy tool này.
+    similar = clients if getattr(clients, "supports_similar", False) else None
+    gateway = ItineraryToolGateway(clients, clients, catalog, recommendation_authorization=authorization,
+                                   similar=similar)
     return RuntimeAgentDependencies(
         gateway, store, getattr(app.state, "itinerary_llm", None), authorization, owner=owner,
         archive=getattr(app.state, "itinerary_conversation_archive", None),
@@ -474,6 +498,11 @@ async def lifespan(app: FastAPI):
         logger.info("startup.itinerary_clients.start mode=%s", mode)
         if mode == "fixture":
             app.state.itinerary_http_clients = FixtureItineraryClients()
+        elif mode == "inprocess":
+            pool = ThreadPoolExecutor(max_workers=ITINERARY_TOOL_WORKERS, thread_name_prefix="itinerary-tool")
+            stack.callback(pool.shutdown, wait=False, cancel_futures=True)
+            # Tên thuộc tính là lịch sử (thời chỉ có adapter HTTP); giữ nguyên vì route status và test đọc nó.
+            app.state.itinerary_http_clients = _inprocess_itinerary_tools(app, pool)
         elif mode == "http":
             if not settings.itinerary_service_base_url:
                 raise RuntimeError("ITINERARY_SERVICE_BASE_URL is required when ITINERARY_DATA_MODE=http")
@@ -533,7 +562,7 @@ settings = get_settings()
 app = FastAPI(
     title=settings.app_name,
     description="Travel recommendation and itinerary API",
-    version="1.7.0",
+    version="1.8.0",
     lifespan=lifespan,
 )
 

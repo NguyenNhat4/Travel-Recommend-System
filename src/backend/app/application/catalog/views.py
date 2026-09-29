@@ -1,6 +1,8 @@
 """Chuyển entity catalog sang payload contract (ProductSummary, ProductDetail — schemas/catalog.yaml)."""
 from __future__ import annotations
 
+from collections import Counter
+from collections.abc import Iterable
 from typing import Any
 
 from src.backend.app.domain.catalog import Product, VariantSummary
@@ -48,3 +50,13 @@ def product_detail(product: Product, variants: VariantSummary | None) -> dict[st
             "maxOccupancy": variants.max_occupancy,
         },
     }
+
+
+def destination_list(destinations: Iterable[str]) -> dict[str, Any]:
+    """DestinationListResponse: số unit theo điểm đến, sắp theo tên.
+
+    Route `/destinations` và tool itinerary chạy trong tiến trình cùng dùng.
+    """
+    counts = Counter(str(value) for value in destinations)
+    return {"destinations": [{"destination": name, "productCount": count}
+                             for name, count in sorted(counts.items())]}

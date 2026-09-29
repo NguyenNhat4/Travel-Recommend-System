@@ -14,10 +14,8 @@ Người dùng: team Agent và Evaluation, người chạy đánh giá trước 
 
 ## 0. Golden dataset tự động (catalog thật)
 
-Dataset: `src/evaluation/datasets/itinerary_agent_golden.yaml` — 14 case, mỗi category đúng một case (chọn case agent dễ
-fail nhất: đã fail trong biên bản 24/09, hoặc là ca khó nhất của category khi chưa từng fail), một số đa lượt
-(FR-AGT-01, FR-AGT-05). Đây là bộ smoke bắt hồi quy nhanh và rẻ, không phải bộ đo độ phủ; bản 75 case nằm ở lịch
-sử git. Runner: `src/evaluation/agent/golden.py`. Cách chạy: [README.md](README.md) mục "Chạy đánh
+Dataset: `src/evaluation/datasets/itinerary_agent_golden.yaml` — 75 case, một số đa lượt (FR-AGT-01,
+FR-AGT-05). Runner: `src/evaluation/agent/golden.py`. Cách chạy: [README.md](README.md) mục "Chạy đánh
 giá tự động". Cấu trúc case và cách bổ sung: [golden-dataset.md](golden-dataset.md).
 
 Vì chạy trên catalog thật (dữ liệu đổi theo lần seed), case **không khoá `productId` hay tên sản phẩm cụ

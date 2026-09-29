@@ -131,6 +131,9 @@ class CdpHistoryReader(Protocol):
 
     Trả dict theo tên trường CDP (camelCase: `cdpUserId`, `eventName`, `usingDate`...), đúng hình dạng
     `domain/recommendation` đọc và `HttpCdpClient` sẽ trả khi lên CDP thật.
+
+    Raises CdpUnavailableError khi không kết nối/đọc được kho CDP (sập, timeout); `RecommendForUser`
+    bắt lỗi này ở `events_for_user` để lui về `popular`.
     """
 
     def events_for_user(self, cdp_user_id: str) -> list[dict]: ...

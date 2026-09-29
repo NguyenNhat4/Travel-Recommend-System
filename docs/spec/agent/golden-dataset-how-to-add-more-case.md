@@ -95,6 +95,7 @@ Mọi khoá đều tuỳ chọn; runner chỉ kiểm khoá có mặt.
 | `minActivities` | Tổng số slot có sản phẩm trong lịch ít nhất bằng số này. Chỉ dùng cho điểm đến catalog có nhiều điểm tham quan | `3` |
 | `hasStay` | Lịch có hoặc không có chỗ ở | `false` |
 | `warningsExclude` | Các `warnings[].code` này không được xuất hiện | `[PRODUCT_DROPPED_EXCLUDED]` |
+| `toolsInclude` | Các tool này phải có trong `tool_plan` cuối của lượt (sau `validated_plan`; lời gọi bị server bỏ không tính) | `[get_similar_products]` |
 
 Giá trị hợp lệ:
 

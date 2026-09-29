@@ -19,6 +19,7 @@ LOCAL_INSIDER_DATABASE_URL = postgresql://postgres:postgres@localhost:$(POSTGRES
 .PHONY: chat web demo-db demo-db-reset verify-db index-vectors db-migrate db-migrate-status update backend backend-logs backend-stop backend-local jwt-keys
 
 # Chạy trọn bộ FastAPI + Streamlit; Ctrl+C sẽ dừng cả hai.
+# Agent mặc định gọi engine trong tiến trình (inprocess); ITINERARY_DATA_MODE=http để gọi qua ITINERARY_SERVICE_BASE_URL.
 chat:
 	@PROJECT_DIR="$$(pwd)"
 	PYTHON_BIN="$${PROJECT_DIR}/.venv/bin/python"
@@ -38,7 +39,7 @@ chat:
 		fi
 	}
 	trap cleanup EXIT INT TERM
-	export ITINERARY_DATA_MODE="$${ITINERARY_DATA_MODE:-http}"
+	export ITINERARY_DATA_MODE="$${ITINERARY_DATA_MODE:-inprocess}"
 	export ITINERARY_SERVICE_BASE_URL="$${ITINERARY_SERVICE_BASE_URL:-http://127.0.0.1:$${BACKEND_PORT}}"
 	export ITINERARY_LLM_TIMEOUT_SECONDS="$${ITINERARY_LLM_TIMEOUT_SECONDS:-30}"
 	export ITINERARY_REQUEST_TIMEOUT_SECONDS="$${ITINERARY_REQUEST_TIMEOUT_SECONDS:-90}"
@@ -78,7 +79,7 @@ chat:
 # Chạy web chính (Next :3000 + BFF :3001) cùng FastAPI :8000; Ctrl+C dừng cả hai.
 # Lưu ý: chat trong web hiện gọi /api/assistant/chat của BFF (Gemini), CHƯA gọi
 # /api/v1/assistant/itineraries của FastAPI. FastAPI ở đây phục vụ các API khác
-# và để sẵn cho lúc Web nối vào agent.
+# và để sẵn cho lúc Web nối vào agent. Data mode của agent như target chat (mặc định inprocess).
 web:
 	@PROJECT_DIR="$$(pwd)"
 	PYTHON_BIN="$${PROJECT_DIR}/.venv/bin/python"
@@ -111,7 +112,7 @@ web:
 		fi
 	}
 	trap cleanup EXIT INT TERM
-	export ITINERARY_DATA_MODE="$${ITINERARY_DATA_MODE:-http}"
+	export ITINERARY_DATA_MODE="$${ITINERARY_DATA_MODE:-inprocess}"
 	export ITINERARY_SERVICE_BASE_URL="$${ITINERARY_SERVICE_BASE_URL:-http://127.0.0.1:$${BACKEND_PORT}}"
 	export ITINERARY_LLM_TIMEOUT_SECONDS="$${ITINERARY_LLM_TIMEOUT_SECONDS:-30}"
 	export ITINERARY_REQUEST_TIMEOUT_SECONDS="$${ITINERARY_REQUEST_TIMEOUT_SECONDS:-90}"
