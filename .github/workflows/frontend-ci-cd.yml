@@ -28,7 +28,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: frontend-ci-${{ github.event.pull_request.number || github.ref }}
+  group: frontend-ci-${{ github.event_name == 'pull_request' && github.ref || 'staging' }}
   cancel-in-progress: false
 
 env:
