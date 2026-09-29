@@ -31,7 +31,6 @@ on:
       - 'src/data_collection/**'
       - 'scripts/install-vota-cron.sh'
       - 'scripts/check-db-tunnel.sh'
-      - 'src/data_collection/**'
   workflow_dispatch:
 
 permissions:
@@ -165,6 +164,7 @@ jobs:
           GCE_CRON_DATA_DIR: ${{ secrets.GCE_CRON_DATA_DIR || '/srv/vota/daily-data' }}
           GCE_CRON_ENV_FILE: ${{ secrets.GCE_CRON_ENV_FILE || '/etc/vota/daily.env' }}
           CRAWLER_IMAGE: ${{ secrets.GAR_DAILY_IMAGE }}
+          CRAWLER_DIGEST: ${{ needs.publish.outputs.crawler_digest }}
         run: |
           for name in GCP_PROJECT_ID GCE_INSTANCE GCE_ZONE; do
             if [ -z "${!name:-}" ]; then
@@ -178,6 +178,10 @@ jobs:
               exit 1
             fi
           done
+          if [[ ! "$CRAWLER_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo 'Publish did not return a valid Crawler digest.' >&2
+            exit 1
+          fi
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
@@ -214,9 +218,10 @@ jobs:
           GCE_CRON_DATA_DIR: ${{ secrets.GCE_CRON_DATA_DIR || '/srv/vota/daily-data' }}
           GCE_CRON_ENV_FILE: ${{ secrets.GCE_CRON_ENV_FILE || '/etc/vota/daily.env' }}
           CRAWLER_IMAGE: ${{ secrets.GAR_DAILY_IMAGE }}
+          CRAWLER_DIGEST: ${{ needs.publish.outputs.crawler_digest }}
         run: |
           remote_dir="/tmp/vota-crawler-cd-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          remote_command="'$remote_dir/install-vota-cron.sh' --image '$CRAWLER_IMAGE:latest' --runner '$GCE_CRON_RUNNER' --data-dir '$GCE_CRON_DATA_DIR' --env-file '$GCE_CRON_ENV_FILE'"
+          remote_command="'$remote_dir/install-vota-cron.sh' --image '$CRAWLER_IMAGE@$CRAWLER_DIGEST' --runner '$GCE_CRON_RUNNER' --data-dir '$GCE_CRON_DATA_DIR' --env-file '$GCE_CRON_ENV_FILE'"
           gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --quiet --command "$remote_command"
 
       - name: Restart crawler monitor and start run
@@ -228,7 +233,8 @@ jobs:
           GCE_CRON_DATA_DIR: ${{ secrets.GCE_CRON_DATA_DIR || '/srv/vota/daily-data' }}
           GCE_CRON_ENV_FILE: ${{ secrets.GCE_CRON_ENV_FILE || '/etc/vota/daily.env' }}
           CRAWLER_IMAGE: ${{ secrets.GAR_DAILY_IMAGE }}
+          CRAWLER_DIGEST: ${{ needs.publish.outputs.crawler_digest }}
         run: |
-          crawler_ref="$CRAWLER_IMAGE:latest"
+          crawler_ref="$CRAWLER_IMAGE@$CRAWLER_DIGEST"
           remote_command="set -eu; docker pull '$crawler_ref'; mkdir -p '$GCE_CRON_DATA_DIR/logs'; nohup env IMAGE='$crawler_ref' DATA_DIR='$GCE_CRON_DATA_DIR' ENV_FILE='$GCE_CRON_ENV_FILE' PULL=0 CONTAINER_NAME=vota-daily '$GCE_CRON_RUNNER' monitor > '$GCE_CRON_DATA_DIR/logs/monitor-cd.log' 2>&1 < /dev/null & for attempt in \$(seq 1 30); do status=\$(docker inspect --format '{{.State.Status}}' vota-daily-monitor 2>/dev/null || true); if [ \"\$status\" = running ]; then exit 0; fi; sleep 1; done; tail -n 100 '$GCE_CRON_DATA_DIR/logs/monitor-cd.log' || true; exit 1"
           gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --quiet --command "$remote_command"

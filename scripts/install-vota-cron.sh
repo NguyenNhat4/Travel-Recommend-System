@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Install or replace the managed data-collection cron entry without touching
-# unrelated crontab entries. The managed entry follows the published :latest image.
+# unrelated crontab entries. The managed entry pins the published image digest.
 set -euo pipefail
 
 BEGIN_MARKER='# BEGIN VOTA CRAWLER'
@@ -16,7 +16,7 @@ dry_run=0
 usage() {
   cat <<'EOF'
 Usage:
-  install-vota-cron.sh --image IMAGE:latest --runner /absolute/path/run_daily_docker.sh
+  install-vota-cron.sh --image IMAGE@sha256:DIGEST --runner /absolute/path/run_daily_docker.sh
                        [--data-dir PATH] [--env-file PATH] [--schedule '0 2 * * *']
                        [--crontab-file PATH] [--dry-run]
 
@@ -77,7 +77,7 @@ done
 
 [ -n "$image" ] || die '--image is required'
 [ -n "$runner" ] || die '--runner is required'
-[[ "$image" =~ :latest$ ]] || die '--image must use the :latest tag'
+[[ "$image" =~ ^asia-southeast1-docker\.pkg\.dev/[a-z0-9][a-z0-9._/-]*@sha256:[a-f0-9]{64}$ ]] || die '--image must use an Artifact Registry digest'
 [[ "$runner" == /* ]] || die '--runner must be an absolute path'
 if [[ "$runner" == *" "* || "$runner" == *$'\t'* || "$runner" == *"'"* ]]; then
   die '--runner cannot contain whitespace or single quotes'
@@ -101,7 +101,7 @@ filtered_crontab="$(awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" '
   !inside { print }
 ' <<< "$existing_crontab")"
 
-cron_line="$schedule IMAGE='$image' DATA_DIR='$data_dir' ENV_FILE='$env_file' PULL=1 $runner run"
+cron_line="$schedule IMAGE='$image' DATA_DIR='$data_dir' ENV_FILE='$env_file' PULL=0 $runner run"
 updated_crontab="$(printf '%s\n%s\n%s\n%s\n' "$filtered_crontab" "$BEGIN_MARKER" "$cron_line" "$END_MARKER")"
 
 if [ "$dry_run" -eq 1 ]; then
