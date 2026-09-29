@@ -237,13 +237,13 @@ export interface paths {
         };
         /**
          * Semantic search trên catalog
-         * @description Có JWT và offset = 0 thì Backend ghi event search (searchQuery = q) sang CDP clone ở nền; đổi trang không ghi thêm, CDP lỗi không ảnh hưởng response. Agent gọi endpoint này không kèm JWT để lượt tìm của Agent không bị tính là hành vi người dùng.
+         * @description Có JWT và offset = 0 thì Backend ghi event search (searchQuery = q) sang CDP clone ở nền; đổi trang không ghi thêm, CDP lỗi không ảnh hưởng response. Agent không gắn danh tính khi tìm kiếm: chế độ `inprocess` gọi engine trong tiến trình; chế độ `http` gọi endpoint này không kèm JWT, để lượt tìm của Agent không bị tính là hành vi người dùng.
          */
         get: operations["searchProductsCompat"];
         put?: never;
         /**
          * Semantic search trên catalog theo hợp đồng v1
-         * @description Bề mặt v1 được giữ để không phá client hiện có. Agent dùng GET compatibility endpoint và không kèm JWT; Web có thể tiếp tục dùng POST với SearchRequest.
+         * @description Bề mặt v1 được giữ để không phá client hiện có. Agent không gắn danh tính khi tìm kiếm: chế độ `inprocess` gọi engine trong tiến trình; chế độ `http` gọi GET compatibility endpoint không kèm JWT. Web có thể tiếp tục dùng POST với SearchRequest.
          */
         post: operations["searchProducts"];
         delete?: never;
@@ -555,10 +555,10 @@ export interface components {
          */
         SearchSort: "relevance" | "price_asc" | "price_desc";
         /**
-         * @description Thêm giá trị mới phải thông báo trước; client map giá trị lạ về tiêu đề chung.
+         * @description Thêm giá trị mới phải thông báo trước; client map giá trị lạ về tiêu đề chung. long_term: có lịch sử nhưng không có chuyến đang mở và chưa quá ngưỡng dormant của engine. cold_start_content: có chuyến đang mở, tổng dưới 3 event dùng được và chưa mua gì trong chuyến.
          * @enum {string}
          */
-        Strategy: "cross_vertical" | "recent_activity" | "dormant" | "popular";
+        Strategy: "cross_vertical" | "recent_activity" | "dormant" | "popular" | "long_term" | "cold_start_content";
         /** @enum {string} */
         BecauseEvent: "purchase" | "add_to_cart" | "product_view" | "search";
         /** @constant */
@@ -764,7 +764,7 @@ export interface components {
             /** @description [CHỜ DUYỆT: C5] productId caller gửi, khi nó khác productId đã resolve. Caller gửi id một hạng phòng thì engine dùng vector của property cha và loại CẢ CỤM gốc khỏi kết quả. */
             resolvedFrom?: string | null;
             /**
-             * @description same_taxonomy là mặc định — xem khách sạn thì gợi ý khách sạn. cross_taxonomy là biến thể cross-sell mà Agent dùng khi lịch trình đã có chỗ ở và cần bổ sung hoạt động.
+             * @description same_taxonomy là mặc định — xem khách sạn thì gợi ý khách sạn. cross_taxonomy có trong schema nhưng route chưa hiện thực (luôn trả same_taxonomy); Agent chỉ dùng same_taxonomy ở lượt đổi món.
              * @default same_taxonomy
              * @enum {string}
              */
@@ -1335,6 +1335,16 @@ export interface components {
                 destination?: string[];
                 days?: number[];
             };
+            /** @description Form gợi ý hiển thị trong khung chat khi hỏi bằng câu chữ một lượt vẫn chưa đủ thông tin. */
+            clarificationForm?: {
+                fields: ("destination" | "days" | "startDate" | "party" | "budget")[];
+                defaults: components["schemas"]["TripIntent"];
+                /**
+                 * Format: date
+                 * @description Ngày khởi hành sớm nhất được phép chọn; hôm nay theo giờ Việt Nam.
+                 */
+                startDateMin?: string;
+            };
             metadata?: components["schemas"]["ItineraryMetadata"];
         };
         ItineraryNoResults: {
@@ -1403,8 +1413,11 @@ export interface components {
             status: "ready" | "not_configured";
             agent: string;
             graphVersion: string;
-            /** @enum {string} */
-            dataMode: "fixture" | "http" | "disabled";
+            /**
+             * @description Nguồn dữ liệu cho tool của Agent. fixture = mock 50 sản phẩm; inprocess = gọi engine Search/Recommendation trong cùng tiến trình; http = gọi HTTP tới ITINERARY_SERVICE_BASE_URL; disabled = không dựng nguồn dữ liệu, status là not_configured.
+             * @enum {string}
+             */
+            dataMode: "fixture" | "http" | "disabled" | "inprocess";
             /**
              * @description Trạng thái LLM do composition root dựng. live = đã có client dùng chung; disabled = ITINERARY_USE_LLM=false, không dựng client; unavailable = đã bật nhưng dựng thất bại (thiếu API key hoặc SDK provider). Với disabled và unavailable, request itinerary trả 503 LLM_UNAVAILABLE có kiểm soát.
              * @enum {string}
@@ -1802,8 +1815,11 @@ export interface operations {
                     "application/json": components["schemas"]["SimilarProductsResponse"];
                 };
             };
+            400: components["responses"]["Error"];
             404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
             500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     listDestinations: {

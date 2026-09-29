@@ -9,6 +9,7 @@ import { useSpeechRecognition } from '../../hooks/useSpeechRecognition';
 import { useAssistantCart } from '../../hooks/useAssistantCart';
 import { AssistantResultPanel } from './AssistantResultPanel';
 import { AssistantTripStarter, tripStarterMessage } from './AssistantTripStarter';
+import { TripDetailsForm } from './TripDetailsForm';
 import { nodeLabel } from './assistantLabels';
 
 export function AssistantConversation({
@@ -82,15 +83,22 @@ export function AssistantConversation({
           </div>
         )}
 
-        {state.transcript.map((message) => {
+        {state.transcript.map((message, index) => {
           const showStructuredResponse = message.response
             && message.response.status !== 'NEEDS_CLARIFICATION'
             && message.response.status !== 'NO_RESULTS';
+          const isLast = index === state.transcript.length - 1;
+          const clarificationForm = message.response?.status === 'NEEDS_CLARIFICATION'
+            ? message.response.clarificationForm : undefined;
 
           return <div key={message.id} className={`flex items-start gap-2.5 ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
             {message.sender === 'assistant' && <Image src="/mascot_welcome.webp" alt="" width={34} height={34} className="mt-1 h-8 w-8 shrink-0 object-contain" />}
             <div className={`min-w-0 max-w-[92%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${message.sender === 'user' ? 'rounded-tr-sm bg-blue-600 text-white shadow-sm' : 'rounded-tl-sm border border-slate-100 bg-white text-slate-800 shadow-sm'}`}>
               <p className="whitespace-pre-line">{message.text}</p>
+              {/* Chỉ hiện form ở tin nhắn mới nhất: người dùng xác nhận thì lượt sau đã có câu trả lời khác. */}
+              {clarificationForm && isLast && (
+                <TripDetailsForm form={clarificationForm} onConfirm={setInput} disabled={isRunning} />
+              )}
               {showStructuredResponse && showResponseInline && (
                 <div className="mt-4 border-t border-slate-100 pt-4">
                   <AssistantResultPanel

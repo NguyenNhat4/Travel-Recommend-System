@@ -10,6 +10,7 @@ from src.backend.app.application.ports.itinerary_tools import ToolError
 
 class FixtureItineraryClients:
     supports_catalog = True
+    supports_similar = True
 
     def __init__(self) -> None:
         fixture = Path(__file__).resolve().parents[4] / "shared/mocks/itinerary-agent/products.json"
@@ -50,6 +51,22 @@ class FixtureItineraryClients:
             products = [p for p in products if p["destination"].casefold() == destination.casefold()]
         return {"strategy": "popular", "destination": destination,
                 "recommendations": [{**p, "because": []} for p in products[:request.get("k", 5)]]}
+
+    async def get_similar_products(self, product_id: str, limit: int) -> dict[str, Any]:
+        anchor = next((p for p in self._products if p["productId"] == product_id), None)
+        if anchor is None:
+            raise ToolError("PRODUCT_NOT_FOUND", http_status=404)
+        # Như engine same_taxonomy: cùng taxonomy, còn chỗ, loại cả cụm của anchor (sản phẩm cha và mọi hạng
+        # phòng/chuyến con của nó). Fixture không có vector nên chưa có "độ gần": cùng điểm đến xếp trước,
+        # phần còn lại giữ thứ tự fixture.
+        root = anchor.get("attributes", {}).get("parentProductId") or product_id
+        cluster = {product_id, root}
+        results = [p for p in deepcopy(self._products)
+                   if p["taxonomy"] == anchor["taxonomy"] and p["available"] and p["productId"] not in cluster
+                   and p.get("attributes", {}).get("parentProductId") != root]
+        results.sort(key=lambda p: p["destination"] != anchor["destination"])
+        return {"productId": product_id, "strategy": "same_taxonomy",
+                "results": [{**p, "score": 1.0} for p in results[:limit]], "requestId": "fixture-similar"}
 
     async def get_product_detail(self, product_id: str) -> dict[str, Any]:
         product = next((p for p in self._products if p["productId"] == product_id), None)

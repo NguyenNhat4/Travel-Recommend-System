@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     # structured output hoặc tool calling, cần quyết định ổn định.
     itinerary_llm_temperature: float = Field(default=0.0, ge=0.0, le=2.0)
     itinerary_service_base_url: str | None = Field(default=None, pattern=r"^https?://")
-    itinerary_data_mode: Literal["fixture", "http", "disabled"] | None = None
+    itinerary_data_mode: Literal["fixture", "inprocess", "http", "disabled"] | None = None
     itinerary_tool_timeout_seconds: float = Field(default=10.0, gt=0)
     itinerary_llm_timeout_seconds: float = Field(default=10.0, gt=0)
     itinerary_request_timeout_seconds: float = Field(default=10.0, gt=0)

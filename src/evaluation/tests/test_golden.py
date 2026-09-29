@@ -321,6 +321,20 @@ class NewExpectKeyTests(unittest.TestCase):
         self.assertTrue(dataset_findings(response, 200, [], {"warningsExclude": ["PRODUCT_DROPPED_EXCLUDED"]}, {}))
         self.assertEqual(dataset_findings(response, 200, [], {"warningsExclude": ["PRODUCT_DROPPED_DATE"]}, {}), [])
 
+    def test_tools_include_checks_the_final_tool_plan(self):
+        expect = {"toolsInclude": ["get_similar_products"]}
+        response = _itinerary_response(1)
+        findings = dataset_findings(response, 200, [], expect, {}, {"search_products"})
+        self.assertEqual(len(findings), 1)
+        self.assertIn("get_similar_products", findings[0])
+        self.assertTrue(dataset_findings(response, 200, [], expect, {}))  # lượt không có tool plan
+        self.assertEqual(dataset_findings(response, 200, [], expect, {},
+                                          {"get_similar_products", "search_products"}), [])
+
+    def test_swap_case_expects_the_similar_tool(self):
+        case = next(c for c in load_dataset(DATASET_PATH) if c.id == "G-076")
+        self.assertEqual(case.turns[1].expect["toolsInclude"], ["get_similar_products"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -8,7 +8,7 @@ Nhánh: `feat/agent`. Trạng thái: **đã xong và đã commit** trên `feat/a
 1. `AGENTS.md` (quy tắc repo — bắt buộc).
 2. File này.
 3. `history/2026-09-23-golden-dataset-itinerary-agent.md` — danh sách file, quyết định, bằng chứng.
-4. `docs/spec/agent/evaluation-plan.md` §0 — luật chấm; `docs/spec/agent/golden-dataset.md` — cấu trúc
+4. `docs/spec/agent/golden-run.md` mục 4 — luật chấm; `docs/spec/agent/golden-dataset-how-to-add-more-case.md` — cấu trúc
    case và cách bổ sung.
 5. `src/evaluation/reports/eval-2026-09-23-golden.md` — biên bản lần chạy cuối.
 
@@ -24,7 +24,7 @@ Nhánh: `feat/agent`. Trạng thái: **đã xong và đã commit** trên `feat/a
 | Sửa lỗi agent #1: planner bịa tham số `excludeProducts` → 503 ở lượt đa turn | `agents/steps/tool_planning.py`, `application/itinerary/tool_contracts.py`, test hồi quy trong `tests/unit/agents/test_itinerary_tools.py` |
 | Sửa lỗi agent #2: mất `party` khi nói "N người lớn" | `agents/steps/prompts.py` (`EXTRACT_PROMPT`) |
 | Sửa lỗi runner: `conversationId` của lỗi 422 nằm trong `error.details` | `src/evaluation/agent/golden.py` (`conversation_of`) |
-| Tài liệu | `docs/spec/agent/evaluation-plan.md` §0, `docs/spec/agent/golden-dataset.md`, `docs/spec/agent/README.md` |
+| Tài liệu | `docs/spec/agent/golden-run.md` mục 4, `docs/spec/agent/golden-dataset-how-to-add-more-case.md`, `docs/spec/agent/README.md` |
 
 ## 2. Kết quả lần chạy cuối
 
