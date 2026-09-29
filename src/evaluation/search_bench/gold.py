@@ -558,8 +558,11 @@ PHRASING_REASONS = ("duplicate", "unnatural")   # lỗi của cách nói, không
 
 
 def select_drafts(cases: list[dict], decisions: dict[str, dict], quota: dict[str, int], *,
-                  fill: bool = False, fill_guard=None) -> tuple[list[dict], dict]:
+                  fill: bool = False, fill_guard=None, cap: bool = True) -> tuple[list[dict], dict]:
     """Chọn bộ draft cuối: giữ 1 cách nói cho mỗi ý định, cắt theo quota từng slice.
+
+    `cap=False` (luật từ 28/09): lấy **mọi** ý định người soát đã chọn, không cắt theo quota — quota chỉ là mục tiêu
+    tham khảo; `fill` (nếu bật) chỉ lấp slice còn dưới mục tiêu.
 
     Trả về (rows, report). `rows` giữ thứ tự case_id; mỗi row có query đã áp NEEDS_EDIT.
     """
@@ -598,7 +601,7 @@ def select_drafts(cases: list[dict], decisions: dict[str, dict], quota: dict[str
     per_slice: dict[str, dict] = {}
     for sl, q in quota.items():
         avail = sorted((r for r in kept_by_intent.values() if r["slice"] == sl), key=lambda r: r["case_id"])
-        take, rest = avail[:q], avail[q:]
+        take, rest = (avail[:q], avail[q:]) if cap else (list(avail), [])
         if fill and len(take) < q:
             covered = {(r.get("review_note") or "").strip() for r in take} if sl in NOTE_IS_INTENT_KEY else set()
             # Ở slice mà note là khoá ý định, lỗi thật trên MỘT dòng (vd. out_of_catalog: điểm đến có sản phẩm trùng tên)
@@ -675,8 +678,37 @@ def select_drafts(cases: list[dict], decisions: dict[str, dict], quota: dict[str
     return selected, report
 
 
+def make_fill_guard(items):
+    """Hàng rào grounding của `--fill` (items.parquet của dataset): bỏ ý định mà mọi `source_refs` đã biến mất khỏi
+    catalog, hoặc `filter_json` khớp 0 sản phẩm. Dùng chung cho CLI `gold drafts` và app Streamlit."""
+    alive = set(items["product_id"])
+
+    def guard(row: dict) -> Optional[str]:
+        refs = [r for r in (row.get("source_refs") or "").split("|") if r.strip()]
+        if refs and not any(r.strip() in alive for r in refs):
+            return "mọi source_refs đã biến mất khỏi catalog"
+        flt = (row.get("filter_json") or "").strip()
+        if flt:
+            try:
+                n = int(F.mask(json.loads(flt), items).sum())
+            except Exception as e:                                  # filter hỏng → để người soát xử lý
+                return f"filter không đánh giá được ({e})"
+            if n == 0:
+                return "filter khớp 0 sản phẩm trong catalog hiện hành"
+        return None
+
+    return guard
+
+
 def write_drafts(path: Path, rows: list[dict]) -> None:
     """Ghi `query \t slice [\t filter_json] [\t expected_no_result]` — đúng định dạng parse_drafts đọc."""
+    out = drafts_lines(rows)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(("\n".join(out) + "\n").encode("utf-8"))      # LF cả trên Windows (write_text sẽ ghi CRLF)
+
+
+def drafts_lines(rows: list[dict]) -> list[str]:
+    """Các dòng drafts.txt của bộ câu đã chọn (không ghi file) — app dùng để so với drafts.txt hiện tại."""
     out: list[str] = []
     for r in rows:
         flt = (r.get("filter_json") or "").strip()
@@ -689,11 +721,22 @@ def write_drafts(path: Path, rows: list[dict]) -> None:
         if any("\t" in p for p in parts):
             raise GoldError(f"{r['case_id']}: giá trị chứa TAB, không ghi được")
         out.append("\t".join(parts))
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(out) + "\n", encoding="utf-8")
+    return out
 
 
-def render_drafts_report(report: dict) -> str:
+def render_drafts_report(report: dict, min_per_slice: int | None = None) -> str:
+    """Bảng theo slice. Có `min_per_slice` (luật 28/09): thêm cột tối thiểu và "đạt"; quota là mục tiêu tham khảo."""
+    if min_per_slice is not None:
+        lines = [f"| {'slice':22} | {'chọn':>5} | {'tối thiểu':>9} | {'đạt':>4} | {'mục tiêu':>8} | {'ý định có':>9} | "
+                 f"{'chưa gán':>8} |",
+                 f"|{'-' * 24}|{'-' * 7}|{'-' * 11}|{'-' * 6}|{'-' * 10}|{'-' * 11}|{'-' * 10}|"]
+        for sl, s in report["per_slice"].items():
+            ok = "✔" if s["selected"] >= min_per_slice else "✖"
+            lines.append(f"| {sl:22} | {s['selected']:>5} | {min_per_slice:>9} | {ok:>4} | {s['quota']:>8} | "
+                         f"{s['available_intents']:>9} | {s['ungraded_rows']:>8} |")
+        lines.append(f"| {'TỔNG':22} | {report['selected']:>5} | {'':>9} | {'':>4} | {report['target']:>8} | {'':>9} | "
+                     f"{report['ungraded_total']:>8} |")
+        return "\n".join(lines)
     lines = [f"| {'slice':22} | {'chọn':>5} | {'quota':>5} | {'ý định có':>9} | {'thiếu':>5} | {'chưa gán':>8} |",
              f"|{'-' * 24}|{'-' * 7}|{'-' * 7}|{'-' * 11}|{'-' * 7}|{'-' * 10}|"]
     for sl, s in report["per_slice"].items():
@@ -702,6 +745,11 @@ def render_drafts_report(report: dict) -> str:
     lines.append(f"| {'TỔNG':22} | {report['selected']:>5} | {report['target']:>5} | {'':>9} | "
                  f"{report['target'] - report['selected']:>5} | {report['ungraded_total']:>8} |")
     return "\n".join(lines)
+
+
+def slices_below_min(report: dict, min_per_slice: int) -> list[str]:
+    """Slice có ít hơn `min_per_slice` câu được chọn (kể cả slice 0 câu)."""
+    return [sl for sl, s in report["per_slice"].items() if s["selected"] < min_per_slice]
 
 
 OVERRIDE_COLUMNS = ("case_id", "verdict", "edited_query", "reason", "note")

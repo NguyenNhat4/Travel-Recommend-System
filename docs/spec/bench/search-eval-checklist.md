@@ -31,7 +31,7 @@ Ký hiệu lệnh: `sb` = `python -m evaluation.search_bench` chạy từ `src/`
 - [x] Viết prompt sinh draft (`docs/spec/bench/gold-draft-prompt.md` — AGENTS.md §7 không cho `.md` trong `src/`): ràng buộc destination / tên / amenity vào danh sách vừa xuất; mỗi dòng `query \t slice`
 - [x] Sinh ~600 draft, đủ 13 slice (quota ở config `gold.slices`) → lưu `gold/drafts_raw.tsv`
 - [x] Bổ sung ứng viên cho slice đã cạn ý định: append vào `gold/drafts_raw.tsv`, không đánh số lại dòng cũ, mỗi ý định 3 cách nói (`docs/spec/bench/gold-draft-prompt.md` rule 10) — *24/09: `c0601`–`c0672` (72 dòng / 24 ý định) trên snapshot 2026-09-23; luật chọn ở `drafts_manifest.json → supplements`*
-- [ ] Người dùng soát tay, chọn 200 → `gold/drafts.txt` bằng app `streamlit_app.py` rồi `sb gold drafts --fill` (giữ log số draft bị loại theo lý do: bịa tên / trùng / không tự nhiên) — *24/09: **200/200, 13/13 slice đúng quota**. 158 dòng từ quyết định của người soát (kể cả 29 dòng ghi đè có bằng chứng trong `gold/overrides.tsv`), **42 dòng do `--fill` lấp tự động** — đã qua một vòng phản biện máy trên catalog 2026-09-23 nhưng **chưa có người rà**; tick ô này sau khi rà xong 42 dòng đó*
+- [ ] Người dùng soát tay, chọn 200 → `gold/drafts.txt` bằng app `streamlit_app.py` rồi `sb gold drafts --fill` (giữ log số draft bị loại theo lý do: bịa tên / trùng / không tự nhiên) — *24/09: **200/200, 13/13 slice đúng quota**. 158 dòng từ quyết định của người soát (kể cả 29 dòng ghi đè có bằng chứng trong `gold/overrides.tsv`), **42 dòng do `--fill` lấp tự động** — đã qua một vòng phản biện máy trên catalog 2026-09-23 nhưng **chưa có người rà**; tick ô này sau khi rà xong 42 dòng đó* — *28/09 (người dùng chốt): drafts.txt = mọi câu người soát chọn, không cần đủ 200, không tự lấp; mỗi slice ≥ 3 câu*
 - [x] Với slice `multi_constraint`: điền cột `filter` mong đợi (AST JSON; amenity ghi **khoá** như `kids_club`, không ghi id — xem `filter_fields` trong `vocab.json`); slice `out_of_catalog`: cột `expected_no_result=true`
 
 ### B
@@ -47,7 +47,7 @@ Ký hiệu lệnh: `sb` = `python -m evaluation.search_bench` chạy từ `src/`
 
 ### Sync cuối ngày
 - [x] B demo cho A: import 26 search unit mẫu, `sb --dataset sample query "resort Nha Trang" --arm B0` ra kết quả — *23/09: top-1 Vinpearl Resort & Spa Nha Trang Bay, top-2 Vinpearl Beachfront Nha Trang*
-- [ ] A đưa B `gold/drafts.txt` (200 dòng)
+- [ ] A đưa B `gold/drafts.txt` (200 dòng) — *28/09 (người dùng chốt): drafts.txt = mọi câu người soát chọn, không cần đủ 200, không tự lấp; mỗi slice ≥ 3 câu*
 
 ---
 
@@ -91,7 +91,7 @@ Ký hiệu lệnh: `sb` = `python -m evaluation.search_bench` chạy từ `src/`
 ## Ngày 4 — Khoá gold · B0 · SAN · E1a
 
 ### A
-- [ ] `sb gold import gold/labels/merged.csv` → `gold/gold.jsonl`; `sb gold check` xanh (mỗi query ≥ 1 nhãn 2 trừ out_of_catalog, không slice < `gold.min_per_slice` = 10 query) — *25/09: hai lệnh đã có (thêm luật: out_of_catalog có `expected_no_result`, parent_child nhãn 2 có `expected_children`; import kiểm id với catalog snapshot); lệnh cũ ghi `gold/pool_labeled.csv`*
+- [ ] `sb gold import gold/labels/merged.csv` → `gold/gold.jsonl`; `sb gold check` xanh (mỗi query ≥ 1 nhãn 2 trừ out_of_catalog, không slice < `gold.min_per_slice` = 3 query — 28/09: trước là 10) — *25/09: hai lệnh đã có (thêm luật: out_of_catalog có `expected_no_result`, parent_child nhãn 2 có `expected_children`; import kiểm id với catalog snapshot); lệnh cũ ghi `gold/pool_labeled.csv`*
 - [ ] `git tag gold_v1`; từ đây gold chỉ **thêm** (spec Part 11)
 - [ ] `sb arms check` xanh (arms.md ↔ `arms/*.yaml` ↔ `stages.yaml`)
 - [ ] `sb run --stage B0 --until SAN` → đọc `sb compare --stage SAN`

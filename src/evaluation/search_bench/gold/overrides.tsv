@@ -28,3 +28,12 @@ c0301	NEEDS_EDIT	khách sạn Hội An có phòng deluxe có ban công		phản b
 c0403	NEEDS_EDIT	khach san o phu quoc co dua don san bay		phản biện 24/09 trên snapshot 2026-09-23: ý định "lễ tân 24 giờ" thứ hai trong no_diacritics; đổi sang airport_shuttle (57% Phú Quốc), ref fa5d4cd4 có khoá này
 c0409	NEEDS_EDIT	khach san o ha long co quay bar		phản biện 24/09 trên snapshot 2026-09-23: ý định "không hút thuốc" thứ ba trong no_diacritics; đổi sang bar (34% Hạ Long). Ref 79a1b4b4 là du thuyền — người gán pool nên dựa vào khách sạn thật
 c0517	NEEDS_EDIT	khách sạn 3 sao ở Nha Trang dưới 500 nghìn		phản biện 24/09 trên snapshot 2026-09-23: "0.5 triệu" không phải cách người thật gõ; filter giữ nguyên lte 500000
+c0241	NEEDS_EDIT	khách sạn Côn Đảo không có hồ bơi view đẹp		sửa 28/09 theo chốt người dùng: "không ghi nhận" là giọng dữ liệu, người thật gõ "không có" (cùng cách QAnh sửa c0247)
+c0503	NEEDS_EDIT	tìm KS 3 sao tại Điện Biên, ngân sách tối đa 500 nghìn		sửa 28/09 theo chốt người dùng: "0.5 triệu" không phải cách người thật gõ (như c0517); filter giữ nguyên lte 500000
+c0531	NEEDS_EDIT	KS 3 sao tại Phan Thiết, ngân sách tối đa 500 nghìn, còn lựa chọn nào?		sửa 28/09 theo chốt người dùng: "0.5 triệu" không phải cách người thật gõ (như c0517); filter giữ nguyên lte 500000
+c0001	REJECT		other	loại khỏi bộ 2026-09-28 qua app (QAnh)
+c0011	REJECT		other	loại khỏi bộ 2026-09-28 qua app (QAnh)
+c0018	REJECT		other	loại khỏi bộ 2026-09-28 qua app (QAnh)
+c0007	REJECT		other	loại khỏi bộ 2026-09-28 qua app (QAnh)
+c0042	REJECT		other	loại khỏi bộ 2026-09-28 qua app (QAnh)
+c0046	REJECT		other	loại khỏi bộ 2026-09-28 qua app (QAnh)

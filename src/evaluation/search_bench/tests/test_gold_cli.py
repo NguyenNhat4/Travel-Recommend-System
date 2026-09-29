@@ -181,7 +181,8 @@ def test_import_rule_violations(fx, tmp_path, edit, catalog_drop, msg):
 # ------------------------------------------------------------------ check
 def test_check_expected():
     assert_exit(run("check", FX / "gold_expected.jsonl", "--min-per-slice", "1"), 0, "git tag gold_v1")
-    assert_exit(run("check", FX / "gold_expected.jsonl"), 1, "1 câu < 10")
+    assert_exit(run("check", FX / "gold_expected.jsonl", "--min-per-slice", "10"), 1, "1 câu < 10")  # expected.json
+    assert_exit(run("check", FX / "gold_expected.jsonl"), 1, "1 câu < 3")          # mặc định config: 3 (28/09)
 
 
 @pytest.mark.parametrize("edit, msg", [

@@ -2,6 +2,8 @@
 
 Phục vụ: **FR-SRC-01..04**, **AC-SRC-01** (`docs/prd/requirements.md`) và test-plan §2.5 (`docs/prd/test-plan.md`).
 
+> **28/09: đã làm trên `bench/embed-search`** — `src/evaluation/search_bench/labeling_core.py` + chế độ "Gán nhãn 0/1/2" của `streamlit_app.py`; test `tests/test_labeling_core.py` (6 test bắt buộc) và AppTest trong `tests/test_streamlit_app.py`. Còn mốc tích hợp (gán fixture bằng tay → `gold kappa` / `merge` ra đúng đáp án) và gán thật (chờ pool thật).
+
 Nhánh: `feat/label-app`, tách từ main sau commit "gold: schema + fixtures (bước 0)". *25/09: chưa chia máy — khi làm thì tách từ `bench/embed-search` (main chưa có `src/evaluation/search_bench/`).*
 
 ## Mục tiêu

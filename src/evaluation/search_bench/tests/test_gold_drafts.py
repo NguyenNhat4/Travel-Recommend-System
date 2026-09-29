@@ -263,3 +263,14 @@ def test_fill_out_of_catalog_chan_ca_diem_den_khi_mot_dong_bi_loai_vi_loi_that(t
     rows, report = select_drafts(cases, decisions, {"out_of_catalog": 3}, fill=True)
     assert [r["case_id"] for r in rows] == ["c0004"]
     assert any(s["case_id"] == "c0002" and "Hà Giang" in s["why"] for s in report["skipped_fill"])
+
+
+def test_write_drafts_uses_lf(tmp_path):
+    """drafts.txt được .gitattributes giữ nguyên byte (-text) và băm sha vào pool_meta — không được ghi CRLF."""
+    from evaluation.search_bench.gold import write_drafts
+    p = tmp_path / "drafts.txt"
+    write_drafts(p,[{"case_id": "c0001", "query": "resort ở Huế", "slice": "dest_type", "filter_json": "",
+                           "expected_no_result": ""},
+                          {"case_id": "c0002", "query": "resort ở Sapa", "slice": "out_of_catalog", "filter_json": "",
+                           "expected_no_result": "true"}])
+    assert p.read_bytes() == "resort ở Huế\tdest_type\nresort ở Sapa\tout_of_catalog\t\ttrue\n".encode("utf-8")

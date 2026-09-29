@@ -47,8 +47,8 @@ Mở file pool bằng Excel rồi lưu lại cũng làm đổi sha. App sẽ ch�
 
 ## Còn phải làm tay trước khi gán thật
 
-- [ ] Soát 42 câu do `--fill` tự lấp; sửa 3 góp ý (`c0241` còn chữ "không ghi nhận"; `c0503`, `c0531` ghi "0.5 triệu").
-- [ ] Thêm 2 câu dự phòng cho mỗi slice đang đúng bằng 10 câu: `amenity_multi`, `amenity_negation`, `amenity_offtaxonomy`, `cross_vertical`, `out_of_catalog`. Không có dư thì chỉ một câu thiếu nhãn 2 là `gold check` báo đỏ.
+- [ ] Soát 42 câu do `--fill` tự lấp; sửa 3 góp ý (`c0241` còn chữ "không ghi nhận"; `c0503`, `c0531` ghi "0.5 triệu"). — *28/09: đã sửa 3 góp ý (NEEDS_EDIT trong `gold/overrides.tsv`, `drafts.txt` sửa theo); còn soát 42 câu `--fill` — cần `bench_out/search/labels/labels.jsonl` của máy đã chạy app soát để `gold drafts --fill --dry-run` in danh sách* — *28/09 chiều: luật mới không tự lấp nữa — 42 câu này chỉ còn là gợi ý ⭐ trong app (Bộ câu đã chọn → Thêm câu chưa chọn); chỉ vào bộ nếu người soát chọn*
+- [ ] Thêm 2 câu dự phòng cho mỗi slice đang đúng bằng 10 câu: `amenity_multi`, `amenity_negation`, `amenity_offtaxonomy`, `cross_vertical`, `out_of_catalog`. Không có dư thì chỉ một câu thiếu nhãn 2 là `gold check` báo đỏ. — *28/09: app có chế độ "Bổ sung câu hỏi" (mỗi slice một box, kiểm grounding) và "Tra cứu catalog"; 4 slice đầu hết ý định dự phòng trong `drafts_raw.tsv`, cần soạn mới; câu dự phòng chỉ vào `drafts.txt` khi nâng quota `gold.slices` (chờ chốt 210 hay giữ 200)* — *28/09 chiều: không còn cần — mỗi slice chỉ cần ≥ 3 câu; hiện chỉ `out_of_catalog` (2 câu) còn thiếu*
 - [ ] Đóng băng `drafts.txt`, rồi chạy pool thật trên máy có Weaviate (việc 0 và mục "Sau khi xong" trong prompt máy 1).
 - [ ] Mốc 1: guide xong, hai người đọc và thống nhất các ví dụ khó.
 - [ ] Mốc 2: app xuất nhãn trên fixture → `kappa` / `merge` của máy 1 chạy ra đúng đáp án.

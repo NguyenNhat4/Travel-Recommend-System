@@ -23,7 +23,7 @@ def test_gold_slice_quota_matches_target_and_min(cfg):
     """spec §1.2 + Part 5 `sb gold check`: tổng quota = target, mỗi slice ≥ min_per_slice."""
     q = cfg.gold.slices
     assert sum(q.values()) == cfg.gold.target                            # 200
-    assert min(q.values()) >= cfg.gold.min_per_slice                     # không slice < 10
+    assert min(q.values()) >= cfg.gold.min_per_slice                     # mục tiêu mỗi slice ≥ tối thiểu (3)
     assert len(q) * cfg.gold.min_per_slice <= cfg.gold.minimum <= cfg.gold.target
 
 
@@ -82,7 +82,7 @@ def test_relative_sbench_home_resolves_against_repo(monkeypatch):
 
 def test_test_config_overrides_only_what_it_lists(cfg, test_cfg):
     """Config riêng cho test chỉ thu nhỏ khoá được liệt kê; mọi khoá khác giống config thật; file thật giữ số của spec."""
-    assert cfg.gold.min_per_slice == 10 and test_cfg.gold.min_per_slice == 1
+    assert cfg.gold.min_per_slice == 3 and test_cfg.gold.min_per_slice == 1        # 28/09: 10 → 3
     assert test_cfg.gold.slices == cfg.gold.slices and test_cfg.gold.target == cfg.gold.target
     assert test_cfg.model_dump(exclude={"gold"}) == cfg.model_dump(exclude={"gold"})
 
@@ -104,7 +104,7 @@ def test_overrides_are_validated(tmp_path):
 
 
 def test_gold_small_needs_the_test_config(cfg, test_cfg):
-    """gold_small.jsonl (10 query / 9 slice) đạt min_per_slice của config test nhưng không đạt config thật (10) — lý do
+    """gold_small.jsonl (10 query / 9 slice) đạt min_per_slice của config test nhưng không đạt config thật (3) — lý do
     `gold check` trên fixture phải dùng config riêng cho test."""
     import json
     from collections import Counter

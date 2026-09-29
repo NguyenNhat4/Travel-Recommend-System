@@ -58,15 +58,15 @@ doctor:                           # (đề xuất) Part 0
   min_weaviate_version: "1.37"
 
 gold:                             # Part 5
-  target: 200
-  minimum: 150
+  target: 200                     # mục tiêu tham khảo (= tổng slices) — 28/09: KHÔNG bắt buộc đủ, lấy mọi câu người soát chọn
+  minimum: 39                     # 28/09: 13 slice × min_per_slice (trước: 150)
   pool_depth: 15
   overlap_queries: 25
   kappa_min: 0.6
   judged_at_10_min: 0.80
   judged_at_10_slice_min: 0.70     # cổng Part 12 chặn nếu slice nào thấp hơn
-  min_per_slice: 10
-  slices:                         # quota — tổng = target, mỗi mục ≥ min_per_slice
+  min_per_slice: 3                # 28/09 (người dùng chốt): mỗi slice ≥ 3 câu; trước đây 10
+  slices:                         # mục tiêu tham khảo mỗi slice (tổng = target, mỗi mục ≥ min_per_slice) — không cắt, không bắt đủ
     dest_type: 25
     audience_style: 20
     amenity_single: 15
