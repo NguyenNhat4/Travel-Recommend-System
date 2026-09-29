@@ -50,7 +50,8 @@ workflow trước (mục dưới), không cài tay.
    - bước "Install crawler cron": thêm `--job fresh --image "$FRESH_IMAGE:latest"`, bỏ `--data-dir` / `--env-file`
      của job cũ (mặc định của `--job fresh` đã đúng đường dẫn ở bảng trên);
    - bước "Restart crawler monitor":
-     - chạy `FRESH_IMAGE="$FRESH_IMAGE:latest" run_daily_docker.sh fresh-monitor`;
+     - chạy `MONITOR_HOST=0.0.0.0 MONITOR_PUBLIC=1 FRESH_IMAGE="$FRESH_IMAGE:latest" run_daily_docker.sh fresh-monitor`
+       (link công khai, xem mục "Monitor: link để xem và bấm chạy"; bỏ hai biến `MONITOR_*` nếu chỉ muốn xem qua SSH);
      - chờ container `vota-fresh-catalog-monitor` thay cho `vota-daily-monitor`.
    - Có thể bỏ build `Dockerfile.daily` khi không còn cần quay lại job cũ.
 2. **Một lần trên VM, trước lần deploy đầu tiên:**
@@ -63,8 +64,28 @@ workflow trước (mục dưới), không cài tay.
    - `run_daily_docker.sh fresh-run status`: lịch kế tiếp, không có lượt treo;
    - chạy thử một lượt (`fresh-run full`, hoặc chờ lịch) rồi:
      - `run_daily_docker.sh report 3`: kết quả, số dòng mới / làm mới, embed;
-     - monitor (`ssh -L 8765:127.0.0.1:8765 <vm>` rồi mở http://127.0.0.1:8765): sơ đồ luồng không có ô đỏ.
+     - monitor (http://<IP ngoài của VM>:8765, hoặc qua SSH: `ssh -L 8765:127.0.0.1:8765 <vm>` rồi http://127.0.0.1:8765):
+       sơ đồ luồng không có ô đỏ.
 4. **Quay lại job cũ** (nếu cần): `install-vota-cron.sh --job legacy …` và dùng lại `monitor`.
+
+## Monitor: link để xem và bấm chạy
+
+Monitor là trang web của job: sơ đồ các bước, log, báo cáo từng lượt, nút chạy lượt cào / chạy lại bước / cào lại một nguồn,
+trang cấu hình (nguồn, giờ chạy, chạy liên tục). Như bản deploy trước (25/09), mở bằng link không cần SSH:
+
+1. Chạy monitor với `MONITOR_HOST=0.0.0.0 MONITOR_PUBLIC=1` (bước "Restart crawler monitor" ở trên). Lệnh `monitor` của job cũ
+   nhận cùng hai biến.
+2. Firewall GCP cho phép TCP `8765` vào VM (một lần, bỏ qua nếu bản deploy 25/09 đã mở):
+
+   ```bash
+   gcloud compute firewall-rules create vota-crawler-monitor --allow tcp:8765 --target-tags <tag của VM> --project <project>
+   ```
+
+3. Mở `http://<IP ngoài của VM>:8765`.
+
+**Chưa có đăng nhập.** Ai có link đều bấm chạy / đổi cấu hình job được, và các thao tác ghi thẳng vào DB thật. Tạm chấp nhận
+theo yêu cầu, bảo mật làm sau: giới hạn IP nguồn trong rule firewall (`--source-ranges`), hoặc đặt sau proxy có đăng nhập.
+Tắt link: chạy lại monitor không có hai biến `MONITOR_*` (chỉ còn `127.0.0.1`, xem qua SSH), hoặc xoá rule firewall.
 
 ## Nạp catalog snapshot lên DB staging một lần (tuỳ chọn)
 
