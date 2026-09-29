@@ -158,6 +158,8 @@ Vé mới có ngày cố định/hạng vé/khứ hồi giữ ngày và giá ngu
 
 ### Đóng gói và bàn giao cho đội deploy
 
+> Đọc trước: [Triển khai job cào dữ liệu trên VM](../../docs/guide/trien-khai-job-cao-du-lieu.md) — job cũ và job mới, chỉ một lịch cào, việc cần sửa ở CI/CD.
+
 Bộ bàn giao có checklist, hai file env và mẫu systemd: [Bàn giao fresh catalog trên VM](../../docs/plan/2026-09-25-ban-giao-fresh-catalog-vm.md).
 
 Trên máy build/CI có checkout nhánh `test/newcrawl`, build và push image riêng. Image không chứa snapshot, `data/`, `.env` hay secret; Chromium/Xvfb nằm **trong image**:
@@ -229,7 +231,7 @@ Theo dõi trên console của VM (chỉ cần Docker, `curl` cho lệnh backend)
 
 `backend` gọi `BACKEND_URL` (mặc định `http://127.0.0.1:8000`) và tìm container có nhãn compose `service=backend`; tên khác thì đặt `BACKEND_CONTAINER`. Cột RESULT của `report`: `ok`, `partial:3` (còn ngày chưa có giá hoặc nguồn bị chặn), `fail:3` (lượt dừng, xem cột NOTE), `running`.
 
-`fresh-run` mount `/srv/vota/fresh-catalog-data` vào `/data`: state ở `/data/state`, dữ liệu từng lượt ở `/data/fresh_runs/<runId>/`. Log runner được giữ 30 ngày ở `/srv/vota/fresh-catalog-logs/` (đổi bằng `CATALOG_LOG_DIR`). Chỉ đặt **một** lịch cào cho cùng DB; thay cron `run`/`legacy-run`/`cron_daily.sh` cũ trước khi bật lịch mới. CI/CD hiện vẫn cài `run`: đội deploy phải đồng bộ cấu hình cron để lần deploy tiếp theo không bật lại job cũ.
+`fresh-run` mount `/srv/vota/fresh-catalog-data` vào `/data`: state ở `/data/state`, dữ liệu từng lượt ở `/data/fresh_runs/<runId>/`. Log runner được giữ 30 ngày ở `/srv/vota/fresh-catalog-logs/` (đổi bằng `CATALOG_LOG_DIR`). Chỉ đặt **một** lịch cào cho cùng DB: cài bằng `scripts/install-vota-cron.sh --job fresh` (thay lịch job cũ trong cùng khối cron). CI/CD hiện vẫn cài job cũ: đội deploy xem **[hướng dẫn triển khai job cào](../../docs/guide/trien-khai-job-cao-du-lieu.md)** trước khi đổi, để lần deploy tiếp theo không bật lại job cũ.
 
 ### Monitor của cron mới
 
