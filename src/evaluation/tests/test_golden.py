@@ -1,14 +1,16 @@
 """Unit test cho bộ chấm golden (src/evaluation/agent/golden.py). Không cần LLM/Postgres/backend:
 chỉ nạp dataset thật và chạy từng hàm chấm với state/response giả lập."""
 
+import json
 import unittest
+from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
 
 from src.backend.app.application.itinerary.contracts import enum_values
 from src.evaluation.agent.golden import (
     conversation_of, dataset_findings, expected_tool_call, gate_no_booking_claim, gate_no_tool_before_info,
-    gate_schema, gate_secrets, load_dataset, schedule_findings,
+    gate_schema, gate_secrets, load_dataset, resolve_dates, schedule_findings,
 )
 
 DATASET_PATH = Path(__file__).resolve().parents[1] / "datasets" / "itinerary_agent_golden.yaml"
@@ -22,9 +24,43 @@ class DatasetTests(unittest.TestCase):
     def setUp(self):
         self.cases = load_dataset(DATASET_PATH)
 
-    def test_has_seventy_six_cases_with_unique_ids(self):
-        self.assertEqual(len(self.cases), 76)
-        self.assertEqual(len({c.id for c in self.cases}), 76)
+    def test_has_exactly_one_case_per_category_with_unique_ids(self):
+        """Bộ rút gọn: mỗi category một case (case agent dễ fail nhất); thêm case thứ hai vào cùng category là phá quy ước."""
+        self.assertEqual(len({c.id for c in self.cases}), len(self.cases))
+        categories = [c.category for c in self.cases]
+        self.assertEqual(len(categories), len(set(categories)), "category có hơn một case")
+        self.assertEqual(len(self.cases), 14)
+
+    def test_a_start_date_question_is_answered_before_the_expected_result(self):
+        """AC-AGT-01: lượt hỏi ngày đi không có sản phẩm; kỳ vọng kết quả nằm ở lượt trả lời sau nó."""
+        asks = 0
+        for case in self.cases:
+            for index, turn in enumerate(case.turns):
+                if "startDate" in turn.expect.get("missingFieldsInclude", []):
+                    asks += 1
+                    self.assertEqual(turn.expect.get("toolCalled"), False, f"{case.id}: lượt hỏi ngày không được gọi tool")
+                    self.assertNotIn("minActivities", turn.expect)
+        self.assertGreaterEqual(asks, 5)
+
+    def test_clear_requests_state_their_start_date_with_a_placeholder_and_check_the_extraction(self):
+        """Yêu cầu đầy đủ nêu ngày đi tường minh (không cũ theo thời gian) và kiểm `intent.startDate` chính xác."""
+        checked = 0
+        for case in self.cases:
+            if case.category != "clear_request":
+                continue
+            checked += 1
+            turn = case.turns[0]
+            self.assertRegex(turn.message, r"\{today\+\d+\}", f"{case.id}: câu chưa có ngày đi")
+            self.assertRegex(turn.expect["intent"]["startDate"], r"^\{today\+\d+:iso\}$", f"{case.id}: chưa kiểm startDate")
+        self.assertGreaterEqual(checked, 1)
+
+    def test_every_date_placeholder_in_the_dataset_resolves(self):
+        today = date(2026, 9, 25)
+        for case in self.cases:
+            for turn in case.turns:
+                resolved = json.dumps([resolve_dates(turn.message, today), resolve_dates(turn.expect, today)],
+                                      ensure_ascii=False)
+                self.assertNotIn("{today", resolved, f"{case.id}: placeholder ngày không được thay")
 
     def test_every_case_has_fr_codes_and_turns(self):
         for case in self.cases:
@@ -302,3 +338,28 @@ class NewExpectKeyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ResolveDatesTests(unittest.TestCase):
+    today = date(2026, 9, 25)
+
+    def test_message_uses_vietnamese_date_and_expect_uses_iso(self):
+        self.assertEqual(resolve_dates("đi Huế, khởi hành {today+7}", self.today), "đi Huế, khởi hành 02/10/2026")
+        self.assertEqual(resolve_dates("{today+7:iso}", self.today), "2026-10-02")
+
+    def test_offset_is_optional_and_may_be_negative(self):
+        self.assertEqual(resolve_dates("{today}", self.today), "25/09/2026")
+        self.assertEqual(resolve_dates("{today-1:iso}", self.today), "2026-09-24")
+
+    def test_rolls_over_month_and_year(self):
+        self.assertEqual(resolve_dates("{today+10}", date(2026, 12, 25)), "04/01/2027")
+
+    def test_nested_expect_values_are_resolved_and_other_values_are_untouched(self):
+        expect = {"intent": {"destination": "Huế", "days": 3, "startDate": "{today+1:iso}"},
+                  "status": ["COMPLETED"], "toolCalled": True}
+        self.assertEqual(resolve_dates(expect, self.today), {
+            "intent": {"destination": "Huế", "days": 3, "startDate": "2026-09-26"},
+            "status": ["COMPLETED"], "toolCalled": True})
+
+    def test_text_that_is_not_a_placeholder_is_left_alone(self):
+        self.assertEqual(resolve_dates("giá {100} và {today+x}", self.today), "giá {100} và {today+x}")

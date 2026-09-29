@@ -743,7 +743,7 @@ class GraphToolTests(unittest.TestCase):
         http = httpx.AsyncClient(base_url='https://service.test/api/v1/', transport=httpx.MockTransport(handler))
         clients = ItineraryHttpClients(http)
         gateway = ItineraryToolGateway(clients, clients)
-        state = {'query': 'search hotel', 'attempt': 0, 'max_attempts': 3,
+        state = {'query': 'search hotel', 'attempt': 0, 'max_attempts': 3, 'start_date_asked': True,
                  'tool_plan': [{'name': 'search_products', 'args': {'query': 'hotel'}},
                                {'name': 'get_recommendations', 'args': {}}]}
         try:

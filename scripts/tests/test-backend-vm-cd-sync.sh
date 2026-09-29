@@ -13,6 +13,13 @@ done
 grep -q 'docker-compose.backend-vm.yml' "$workflow"
 grep -q 'install -D -m 0644' "$workflow"
 grep -q 'GCE_COMPOSE_FILE' "$workflow"
+grep -q '\$GITHUB_WORKSPACE/scripts' "$workflow"
+grep -q '\$GITHUB_WORKSPACE/ops' "$workflow"
+
+tar -czf - \
+  -C "$repo_root/scripts" deploy-backend-vm.sh check-db-tunnel.sh \
+  -C "$repo_root/ops" docker-compose.backend-vm.yml \
+  | tar -tzf - >/dev/null
 
 grep -q 'network_mode: host' "$compose"
 grep -q '/etc/vota/backend.env' "$compose"
@@ -27,5 +34,9 @@ grep -q 'JWT_PRIVATE_KEY_PATH' "$deploy"
 grep -q 'AUTH_REDIS_URL' "$deploy"
 grep -q '/app/secrets' "$deploy"
 grep -q -- '--no-deps' "$deploy"
+if grep -Eq 'crawler|CRAWLER|Dockerfile.daily|run_daily_docker' "$workflow"; then
+  echo 'backend workflow must not deploy the crawler' >&2
+  exit 1
+fi
 
 echo 'backend VM CD sync checks passed'

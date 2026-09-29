@@ -6,7 +6,8 @@ import type { AssistantCartItem } from '../components/assistant/AssistantResultP
 /**
  * Thêm một hoặc nhiều mục của lịch trình vào giỏ, tuần tự, gom kết quả vào một toast
  * (docs/spec/hop-dong-tich-hop-frontend.md §4.8). Khách chưa đăng nhập thì mở LoginModal
- * một lần rồi thêm cả nhóm sau khi đăng nhập.
+ * một lần rồi thêm cả nhóm sau khi đăng nhập. `onAdded` chạy sau khi mọi request đã xong và có ít nhất
+ * một mục vào giỏ — ví dụ để chuyển sang `/checkout` khi giỏ đã đủ.
  */
 export function useAssistantCart() {
   const { addToCart, currentPersona, openLoginModal, showToast, navigate } = useTravel();
@@ -16,11 +17,11 @@ export function useAssistantCart() {
     latest.current = { addToCart, currentPersona };
   }, [addToCart, currentPersona]);
 
-  const addItems = useCallback(async (items: AssistantCartItem[]) => {
+  const addItems = useCallback(async (items: AssistantCartItem[]): Promise<number> => {
     if (items.length === 1) {
       const [item] = items;
-      await latest.current.addToCart(mapProductSummaryToProduct(item.product), 1, item.usingDate, item.checkOutDate);
-      return; // addToCart đã tự báo toast cho một mục.
+      // addToCart đã tự báo toast cho một mục.
+      return await latest.current.addToCart(mapProductSummaryToProduct(item.product), 1, item.usingDate, item.checkOutDate) ? 1 : 0;
     }
     // Tuần tự, mỗi mục một request; một mục lỗi không chặn mục còn lại.
     let added = 0;
@@ -35,14 +36,19 @@ export function useAssistantCart() {
       ? `Đã thêm ${added}/${items.length} mục vào giỏ. Chưa thêm được: ${failed.join(', ')}.`
       : `Đã thêm ${added} mục của lịch trình vào giỏ. Giá chính thức hiển thị ở giỏ hàng.`;
     showToast(summary, 'Xem giỏ', () => navigate('/cart'));
+    return added;
   }, [navigate, showToast]);
 
-  return useCallback((items: AssistantCartItem[]) => {
+  return useCallback(async (items: AssistantCartItem[], onAdded?: (added: number) => void): Promise<void> => {
     if (!items.length) return;
+    const run = async () => {
+      const added = await addItems(items);
+      if (added > 0) onAdded?.(added);
+    };
     if (!currentPersona) {
-      openLoginModal(() => { void addItems(items); });
+      openLoginModal(() => { void run(); });
       return;
     }
-    void addItems(items);
+    await run();
   }, [addItems, currentPersona, openLoginModal]);
 }

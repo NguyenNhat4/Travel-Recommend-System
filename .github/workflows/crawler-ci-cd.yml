@@ -1,0 +1,234 @@
+name: Crawler CI/CD
+
+on:
+  pull_request:
+    branches:
+      - main
+      - release-mvp-v1
+      - release-mvp-v2
+      - release-mvp-v3
+    paths:
+      - '.github/workflows/crawler-ci-cd.yml'
+      - 'Dockerfile.daily'
+      - 'src/data_collection/**'
+      - 'scripts/install-vota-cron.sh'
+      - 'scripts/check-db-tunnel.sh'
+      - 'src/data_collection/**'
+  push:
+    branches:
+      - main
+      - release-mvp-v1
+      - release-mvp-v2
+      - release-mvp-v3
+    paths:
+      - '.github/workflows/crawler-ci-cd.yml'
+      - 'Dockerfile.daily'
+      - 'src/data_collection/**'
+      - 'scripts/install-vota-cron.sh'
+      - 'scripts/check-db-tunnel.sh'
+      - 'src/data_collection/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: crawler-ci-cd-${{ github.event_name == 'pull_request' && github.ref || 'staging' }}
+  cancel-in-progress: false
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  quality:
+    name: Crawler quality checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refuse dispatch from another ref
+        if: ${{ github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/release-mvp-v1' && github.ref != 'refs/heads/release-mvp-v2' && github.ref != 'refs/heads/release-mvp-v3' }}
+        run: |
+          echo 'This workflow_dispatch must run from main or release-mvp-v1/release-mvp-v2/release-mvp-v3.' >&2
+          exit 1
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compile Python
+        run: PYTHONDONTWRITEBYTECODE=1 python3 -m compileall -q src/data_collection
+
+      - name: Validate crawler scripts
+        run: |
+          bash -n scripts/check-db-tunnel.sh scripts/install-vota-cron.sh src/data_collection/run_daily_docker.sh
+
+  build:
+    name: Build crawler image
+    needs: quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.daily
+          push: false
+          tags: vota-daily-ci:${{ github.sha }}
+          cache-from: type=gha,scope=crawler
+          cache-to: type=gha,mode=max,scope=crawler
+
+  publish:
+    name: Publish crawler SHA and latest image
+    if: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+    needs: build
+    runs-on: ubuntu-latest
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      CRAWLER_IMAGE: ${{ secrets.GAR_DAILY_IMAGE }}
+    outputs:
+      crawler_digest: ${{ steps.crawler.outputs.digest }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate publishing configuration
+        env:
+          GCP_WIF_PROVIDER: ${{ secrets.GCP_WIF_PROVIDER }}
+          GCP_CI_SERVICE_ACCOUNT: ${{ secrets.GCP_CI_SERVICE_ACCOUNT }}
+          CRAWLER_IMAGE: ${{ secrets.GAR_DAILY_IMAGE }}
+        run: |
+          for name in GCP_WIF_PROVIDER GCP_CI_SERVICE_ACCOUNT CRAWLER_IMAGE; do
+            if [ -z "${!name:-}" ]; then
+              echo "Missing staging secret: $name" >&2
+              exit 1
+            fi
+          done
+          if [[ ! "$CRAWLER_IMAGE" =~ ^[a-z0-9][a-z0-9._/-]*$ ]]; then echo "CRAWLER_IMAGE must be an untagged Artifact Registry image path." >&2; exit 1; fi
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_CI_SERVICE_ACCOUNT }}
+          token_format: access_token
+
+      - name: Log in to Artifact Registry
+        uses: docker/login-action@v3
+        with:
+          registry: asia-southeast1-docker.pkg.dev
+          username: oauth2accesstoken
+          password: ${{ steps.auth.outputs.access_token }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Publish crawler image
+        id: crawler
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.daily
+          push: true
+          tags: |
+            ${{ env.CRAWLER_IMAGE }}:${{ github.sha }}
+            ${{ env.CRAWLER_IMAGE }}:latest
+          cache-from: type=gha,scope=crawler-publish
+          cache-to: type=gha,mode=max,scope=crawler-publish
+
+  deploy:
+    name: Deploy crawler on application VM
+    if: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+    needs: publish
+    runs-on: ubuntu-latest
+    # Two 15-minute health windows (deploy and rollback) plus image pull and SSH.
+    timeout-minutes: 45
+    concurrency:
+      group: vota-application-vm-deploy
+      cancel-in-progress: false
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate VM configuration
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCE_INSTANCE: ${{ secrets.GCE_INSTANCE }}
+          GCE_ZONE: ${{ secrets.GCE_ZONE }}
+          GCE_CRON_RUNNER: ${{ secrets.GCE_CRON_RUNNER || '/opt/vota/bin/run_daily_docker.sh' }}
+          GCE_CRON_DATA_DIR: ${{ secrets.GCE_CRON_DATA_DIR || '/srv/vota/daily-data' }}
+          GCE_CRON_ENV_FILE: ${{ secrets.GCE_CRON_ENV_FILE || '/etc/vota/daily.env' }}
+          CRAWLER_IMAGE: ${{ secrets.GAR_DAILY_IMAGE }}
+        run: |
+          for name in GCP_PROJECT_ID GCE_INSTANCE GCE_ZONE; do
+            if [ -z "${!name:-}" ]; then
+              echo "Missing staging environment variable: $name" >&2
+              exit 1
+            fi
+          done
+          for name in GCE_CRON_RUNNER GCE_CRON_DATA_DIR GCE_CRON_ENV_FILE; do
+            if [[ ! "${!name}" =~ ^/[a-zA-Z0-9._/-]+$ ]]; then
+              echo "$name must be an absolute path without shell metacharacters." >&2
+              exit 1
+            fi
+          done
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_CI_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Authenticate VM Docker to Artifact Registry
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCE_INSTANCE: ${{ secrets.GCE_INSTANCE }}
+          GCE_ZONE: ${{ secrets.GCE_ZONE }}
+        run: |
+          access_token="$(gcloud auth print-access-token)"
+          printf '%s' "$access_token" | gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --quiet --command 'docker login --username oauth2accesstoken --password-stdin https://asia-southeast1-docker.pkg.dev'
+
+      - name: Copy crawler runner to VM
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCE_INSTANCE: ${{ secrets.GCE_INSTANCE }}
+          GCE_ZONE: ${{ secrets.GCE_ZONE }}
+        run: |
+          remote_dir="/tmp/vota-crawler-cd-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          tar -czf - -C "$GITHUB_WORKSPACE/scripts" install-vota-cron.sh check-db-tunnel.sh -C "$GITHUB_WORKSPACE/src/data_collection" run_daily_docker.sh | gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --quiet --command "umask 077; mkdir -m 700 '$remote_dir' && tar -xzf - -C '$remote_dir' && sudo -n install -D -m 0755 '$remote_dir/run_daily_docker.sh' /opt/vota/bin/run_daily_docker.sh"
+
+      - name: Install crawler cron
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCE_INSTANCE: ${{ secrets.GCE_INSTANCE }}
+          GCE_ZONE: ${{ secrets.GCE_ZONE }}
+          GCE_CRON_RUNNER: ${{ secrets.GCE_CRON_RUNNER || '/opt/vota/bin/run_daily_docker.sh' }}
+          GCE_CRON_DATA_DIR: ${{ secrets.GCE_CRON_DATA_DIR || '/srv/vota/daily-data' }}
+          GCE_CRON_ENV_FILE: ${{ secrets.GCE_CRON_ENV_FILE || '/etc/vota/daily.env' }}
+          CRAWLER_IMAGE: ${{ secrets.GAR_DAILY_IMAGE }}
+        run: |
+          remote_dir="/tmp/vota-crawler-cd-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          remote_command="'$remote_dir/install-vota-cron.sh' --image '$CRAWLER_IMAGE:latest' --runner '$GCE_CRON_RUNNER' --data-dir '$GCE_CRON_DATA_DIR' --env-file '$GCE_CRON_ENV_FILE'"
+          gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --quiet --command "$remote_command"
+
+      - name: Restart crawler monitor and start run
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCE_INSTANCE: ${{ secrets.GCE_INSTANCE }}
+          GCE_ZONE: ${{ secrets.GCE_ZONE }}
+          GCE_CRON_RUNNER: ${{ secrets.GCE_CRON_RUNNER || '/opt/vota/bin/run_daily_docker.sh' }}
+          GCE_CRON_DATA_DIR: ${{ secrets.GCE_CRON_DATA_DIR || '/srv/vota/daily-data' }}
+          GCE_CRON_ENV_FILE: ${{ secrets.GCE_CRON_ENV_FILE || '/etc/vota/daily.env' }}
+          CRAWLER_IMAGE: ${{ secrets.GAR_DAILY_IMAGE }}
+        run: |
+          crawler_ref="$CRAWLER_IMAGE:latest"
+          remote_command="set -eu; mkdir -p '$GCE_CRON_DATA_DIR/logs'; nohup env IMAGE='$crawler_ref' DATA_DIR='$GCE_CRON_DATA_DIR' ENV_FILE='$GCE_CRON_ENV_FILE' PULL=0 CONTAINER_NAME=vota-daily '$GCE_CRON_RUNNER' monitor > '$GCE_CRON_DATA_DIR/logs/monitor-cd.log' 2>&1 < /dev/null & for attempt in \$(seq 1 30); do status=\$(docker inspect --format '{{.State.Status}}' vota-daily-monitor 2>/dev/null || true); if [ \"$status\" = running ]; then exit 0; fi; sleep 1; done; tail -n 100 '$GCE_CRON_DATA_DIR/logs/monitor-cd.log' || true; exit 1"
+          gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --quiet --command "$remote_command"

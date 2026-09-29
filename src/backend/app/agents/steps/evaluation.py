@@ -40,7 +40,12 @@ def tool_errors(state: dict) -> list[dict]:
 
 
 def _relaxed_constraints(state: dict) -> dict:
-    """Recommendation tự bỏ vertical nào thì ghi lại, trừ khi người dùng bắt buộc có khách sạn."""
+    """Ràng buộc chỉ dùng để chấm lượt này: thêm vertical Recommendation đã bỏ, trừ khi bắt buộc có khách sạn.
+
+    `excludedVerticals` là thứ user đã mua trong chuyến thật trên CDP, không phải điều user yêu cầu.
+    Không được ghi vào `constraints` của state: `finalize` sẽ lưu nó sang lượt sau, và `tool` sẽ cấm
+    tìm hẳn vertical đó ở mọi lượt tiếp theo.
+    """
     constraints = deepcopy(state.get("constraints", {}))
     for item in state.get("tool_results", []):
         data = item.get("data", {})
@@ -90,5 +95,5 @@ def evaluate_retrieval(state: dict) -> dict:
                                            state["intent"], constraints)
     warnings = [{"code": reason, "message": DROPPED_MESSAGE, "productId": pid} for pid, reason in dropped.items()]
     evaluation, decision = _decision(errors, candidates, constraints)
-    return {"candidates": candidates, "sources": sources, "constraints": constraints, "warnings": warnings,
+    return {"candidates": candidates, "sources": sources, "warnings": warnings,
             "decision": decision, "evaluation_result": evaluation}

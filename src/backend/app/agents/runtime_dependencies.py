@@ -4,6 +4,7 @@ from hashlib import sha256
 from typing import Any
 
 from src.backend.app.application.ports.itinerary_tools import ConversationStorePort, ToolExecutorPort
+from src.backend.app.application.ports.conversation_archive import ConversationArchivePort
 from src.backend.app.application.ports.llm import ChatModelPort
 from .graph import build_graph
 
@@ -34,12 +35,20 @@ class LangGraphItineraryPlanner:
 class RuntimeAgentDependencies:
     def __init__(self, tools: ToolExecutorPort, store: ConversationStorePort,
                  llm: ChatModelPort | None = None, authorization: str | None = None,
-                 *, tool_timeout_seconds: float = 1.0,
+                 *, owner: str | None = None, archive: ConversationArchivePort | None = None,
+                 tool_timeout_seconds: float = 1.0,
                  llm_timeout_seconds: float = 2.0):
         self.tools = tools
         self.store = store
         self.llm = llm
-        self.owner = sha256(authorization.encode()).hexdigest() if authorization else "anonymous"
+        self.archive = archive
+        self.cdp_user_id = owner
+        # Chủ là user đã xác thực, không phải token: BFF làm mới access token mỗi ~9 phút và hội thoại
+        # phải sống qua lần làm mới đó. Bearer không xác thực được thì cô lập theo hash của chính nó.
+        if owner:
+            self.owner = f"user:{owner}"
+        else:
+            self.owner = f"token:{sha256(authorization.encode()).hexdigest()}" if authorization else "anonymous"
         self.require_recommendations = authorization is not None
         self.tool_timeout_seconds = tool_timeout_seconds
         self.llm_timeout_seconds = llm_timeout_seconds
@@ -47,6 +56,7 @@ class RuntimeAgentDependencies:
     def graph(self, checkpointer=None):
         return build_graph(checkpointer=checkpointer, tools=self.tools, llm=self.llm,
                            store=self.store, owner=self.owner,
+                           archive=self.archive, cdp_user_id=self.cdp_user_id,
                            require_recommendations=self.require_recommendations,
                            tool_timeout_seconds=self.tool_timeout_seconds,
                            llm_timeout_seconds=self.llm_timeout_seconds)

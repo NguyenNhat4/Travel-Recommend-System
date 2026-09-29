@@ -24,8 +24,8 @@ Image được publish với cả tag SHA và `latest`; Backend trên VM chạy 
 - Không restart, recreate hoặc thay đổi PostgreSQL, Weaviate, Redis và các service khác trên VM.
 - Không pull, build, run hoặc recreate image/container PostgreSQL trên VM ứng dụng; không chạy Compose có service `postgres` trong deployment Backend.
 - SSH tunnel DB chạy độc lập dưới một supervisor bền vững, chỉ bind local vào `127.0.0.1`; CI/CD không mở cổng PostgreSQL ra Internet và không tạo tunnel từ GitHub-hosted runner.
-- Deploy chỉ pull image mới và restart đúng service/container Backend sau khi image đã sẵn sàng. Nếu Backend hiện được quản lý bằng Compose, lệnh phải tương đương `docker compose up -d --no-deps backend`, không dựng lại dependency.
-- Lịch crawler hiện hữu là nguồn sự thật; CI/CD không thêm một lịch thứ hai. Nếu cần bootstrap trên VM mới, script cài cron phải idempotent và có marker riêng để không tạo dòng trùng.
+- Deploy pull image mới, restart đúng service/container Backend và refresh container monitor crawler sau khi image đã sẵn sàng. Nếu Backend hiện được quản lý bằng Compose, lệnh phải tương đương `docker compose up -d --no-deps backend`, không dựng lại dependency; crawler batch vẫn chỉ chạy theo cron.
+- Lịch crawler hiện hữu vẫn là nguồn sự thật; CD có thể khởi động một lượt crawler nền sau deploy theo yêu cầu vận hành, nhưng không thêm một lịch cron thứ hai. Nếu cần bootstrap trên VM mới, script cài cron phải idempotent và có marker riêng để không tạo dòng trùng.
 
 ## Luồng CI/CD
 
@@ -47,8 +47,8 @@ Khi push vào nhánh staging hoặc chạy manual:
 1. Build Backend và crawler với tag commit SHA.
 2. Push tag SHA và `latest` vào Artifact Registry đã cấu hình qua biến workflow.
 3. Gọi deploy script trên VM với hai image reference `:latest`.
-5. VM ứng dụng kiểm tra SSH tunnel tới VM DB, pull image trước, cập nhật service environment với DSN `127.0.0.1:<local-port>`, chỉ restart Backend, kiểm tra health endpoint; các service khác và VM DB vẫn giữ nguyên.
-6. Giữ nguyên cron crawler hiện có; nếu VM mới chưa có lịch, cài một dòng cron idempotent cho đúng runner đã chọn. Không tự chạy crawler ngay trong bước deploy.
+5. VM ứng dụng kiểm tra SSH tunnel tới VM DB, pull image trước, cập nhật service environment với DSN `127.0.0.1:<local-port>`, restart Backend và container monitor crawler từ image mới, kiểm tra health endpoint; Redis, tunnel, VM DB và các dependency khác vẫn giữ nguyên.
+6. Giữ nguyên cron crawler hiện có; nếu VM mới chưa có lịch, cài một dòng cron idempotent cho đúng runner đã chọn. Sau deploy, CD khởi động một lượt crawler nền và chỉ kiểm tra container đã bắt đầu; không chờ toàn bộ crawl hoàn tất.
 7. Nếu Backend không healthy, deploy script khôi phục image digest trước đó và báo lỗi.
 
 ## Lệnh crawler và cron khác nhau thế nào?

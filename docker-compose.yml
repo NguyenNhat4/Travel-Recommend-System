@@ -56,6 +56,7 @@ services:
       ITINERARY_LLM_TIMEOUT_SECONDS: ${ITINERARY_LLM_TIMEOUT_SECONDS:-30}
       ITINERARY_REQUEST_TIMEOUT_SECONDS: ${ITINERARY_REQUEST_TIMEOUT_SECONDS:-90}
       ITINERARY_CONVERSATION_TTL_SECONDS: ${ITINERARY_CONVERSATION_TTL_SECONDS:-86400}
+      ITINERARY_REDIS_URL: ${BACKEND_ITINERARY_REDIS_URL:-redis://:devpass@redis:6379/2}
       ITINERARY_SERVICE_BASE_URL: ${BACKEND_ITINERARY_SERVICE_BASE_URL:-}
       DATABASE_URL: ${BACKEND_DATABASE_URL:-postgresql://vota_app_login:vota@postgres:5432/vota}
       CDP_DATABASE_URL: ${BACKEND_CDP_DATABASE_URL:-postgresql://cdp_client_login:cdp@postgres:5432/vota}
@@ -90,6 +91,30 @@ services:
       - ./secrets:/app/secrets:ro
     ports:
       - "${BACKEND_PORT:-8000}:8000"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: src/frontend/Dockerfile.web
+    environment:
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: 3000
+      BACKEND_BASE_URL: http://backend:8000
+      AUTH_SERVICE_TOKEN: ${AUTH_SERVICE_TOKEN:-}
+      SESSION_REDIS_URL: redis://:devpass@redis:6379/1
+      SESSION_COOKIE_NAME: ${SESSION_COOKIE_NAME:-vota_sid}
+      CSRF_COOKIE_NAME: ${CSRF_COOKIE_NAME:-vota_csrf}
+      ALLOWED_ORIGINS: "http://localhost:${FRONTEND_HOST_PORT:-3000},http://127.0.0.1:${FRONTEND_HOST_PORT:-3000}"
+      SESSION_IDLE_TTL_SECONDS: ${SESSION_IDLE_TTL_SECONDS:-1800}
+      SESSION_ABSOLUTE_TTL_SECONDS: ${SESSION_ABSOLUTE_TTL_SECONDS:-43200}
+    depends_on:
+      backend:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${FRONTEND_HOST_PORT:-3000}:3000"
     
   # Redis — session, rate-limit counter, OAuth state (auth §16.1). Chỉ phần PHÙ DU:
   # mất khi restart thì người dùng chỉ phải đăng nhập lại. Refresh token và login attempts nằm ở Postgres.

@@ -1,16 +1,16 @@
-# LangGraph: mười node và vì sao chia như vậy
+# LangGraph: mười một node và vì sao chia như vậy
 
-Agent lập lịch trình là một LangGraph gồm mười node. Tài liệu này giải thích **ý đồ** của cách chia đó — đọc xong bạn nói lại được cho người khác mà không cần mở code. Xem [README](README.md) để chạy demo.
+Agent lập lịch trình là một LangGraph gồm mười một node. Tài liệu này giải thích **ý đồ** của cách chia đó — đọc xong bạn nói lại được cho người khác mà không cần mở code. Xem [README](README.md) để chạy demo.
 
 Một lượt gọi API đi qua ba việc: **hiểu người dùng muốn gì**, **lấy sản phẩm thật từ catalog**, và **soạn câu trả lời**. Mỗi node lo một mẩu của ba việc đó, và tất cả cùng đọc/ghi vào một state chung.
 
 ## 1. Bốn giai đoạn
 
-Đừng nhớ mười node rời rạc. Nhớ bốn giai đoạn, mỗi giai đoạn trả lời một câu hỏi:
+Đừng nhớ mười một node rời rạc. Nhớ bốn giai đoạn, mỗi giai đoạn trả lời một câu hỏi:
 
 | Giai đoạn | Node | Câu hỏi nó trả lời |
 |---|---|---|
-| Hiểu người dùng | `intake`, `classify` | Người dùng muốn gì, và đã đủ thông tin chưa? |
+| Hiểu người dùng | `intake`, `classify`, `extract` | Đây có phải yêu cầu du lịch không (`classify`), muốn gì và đã đủ thông tin chưa (`extract`)? |
 | Lấy dữ liệu thật | `tool`, `evaluate`, `retry` | Có sản phẩm thật nào dùng được không? |
 | Soạn câu trả lời | `converse`, `compose`, `clarify`, `dead_letter` | Nói gì với người dùng? |
 | Cửa ra chung | `finalize` | Câu trả lời này có an toàn để gửi đi không? |
@@ -20,10 +20,12 @@ Giai đoạn 3 có bốn node vì có đúng bốn tình huống cần nói vớ
 - `converse` — **trò chuyện**: chào hỏi, cảm ơn, hoặc từ chối yêu cầu ngoài phạm vi. Chưa đụng tới sản phẩm.
   Xin lên lịch trình mà chưa nói điểm đến hay số ngày **không** thuộc nhóm này — đó vẫn là yêu cầu du lịch, đi `clarify`.
 - `compose` — **dựng kết quả**: đã có sản phẩm thật, xếp thành lịch trình.
-- `clarify` — **hỏi thêm**: thiếu điểm đến hoặc số ngày, thông tin mâu thuẫn, hoặc điều kiện bắt buộc không có sản phẩm nào đáp ứng.
+- `clarify` — **hỏi thêm**: thiếu điểm đến hoặc số ngày; chưa hỏi ngày đi, số người, ngân sách (hỏi gộp một câu, một lần, trước lần lập lịch đầu tiên); thông tin mâu thuẫn; hoặc điều kiện bắt buộc không có sản phẩm nào đáp ứng.
 - `dead_letter` — **hỏng có kiểm soát**: lỗi auth, điểm đến ngoài catalog, tool hỏng vĩnh viễn. Trả lỗi đúng chuẩn thay vì che thành thành công.
 
-**Node nào gọi LLM:** chỉ `classify`, `tool` (bước chọn tên điểm đến theo catalog), `converse` và `clarify`. Đây là chỗ hay bị hiểu sai — **`compose` không gọi LLM**, nó xếp lịch bằng quy tắc cố định (mục 5).
+**`classify` chỉ phân luồng**, prompt ngắn, output đúng một nhãn: `travel` → `extract`; `conversation` và `out_of_scope` → `converse` (đặt chỗ, thanh toán, chèn lệnh, đòi secret đều là `out_of_scope`, trả 400); LLM lỗi → `dead_letter`. Yêu cầu chỉ có `intentOverride` (chip) bỏ qua LLM của `classify`. Việc trích intent nằm ở `extract`.
+
+**Node nào gọi LLM:** chỉ `classify`, `extract`, `tool` (bước chọn tên điểm đến theo catalog và lập tool plan), `converse` và `clarify`. Mọi lượt gọi LLM nhận cùng ngữ cảnh hội thoại qua `steps/history.llm_context`: lịch sử gần nhất (giới hạn 20 message, 8.000 ký tự), chuyến đi đã chốt (`known_intent`, `known_constraints`), sản phẩm đã cho xem và câu hỏi gần nhất của trợ lý. Đây là chỗ hay bị hiểu sai — **`compose` không gọi LLM**, nó xếp lịch bằng quy tắc cố định (mục 5).
 
 ## 2. Vì sao mọi nhánh đều đi qua `finalize`
 
@@ -40,7 +42,7 @@ Những việc phải xảy ra **đúng một lần cho mọi response, bất k�
 | Kiểm schema OpenAPI | Client sinh từ OpenAPI sẽ vỡ nếu bất kỳ nhánh nào trả sai hình dạng |
 | Kiểm grounding (`validate_plan`) | Mọi sản phẩm phải có trong `candidates`. Đây là cam kết grounding 100% — không được có một nhánh nào lách qua |
 | Đo `latency_ms` | Chỉ đo được ở điểm cuối cùng |
-| Lưu hội thoại | Lượt sau còn nhớ intent, bất kể lượt này kết thúc thế nào |
+| Lưu hội thoại | Redis giữ working memory 24 giờ; với user đăng nhập, Postgres archive lượt chat để Web mở lại. Archive lỗi không làm hỏng response |
 | Sinh `final_answer` | Một chỗ duy nhất quyết định text hiển thị cho người dùng |
 
 Cách để nhớ: **giống cổng an ninh sân bay.** Khách đến từ nhiều quầy check-in khác nhau, nhưng mọi người đều phải qua đúng một cổng soi chiếu. Lắp máy soi ở từng quầy thì vừa tốn, vừa chắc chắn có quầy quên lắp.
@@ -65,10 +67,11 @@ Một response `COMPLETED` không qua được `validate_plan` sẽ bị nó tha
 | Người dùng gõ | Đường đi | Ý được minh họa |
 |---|---|---|
 | "chào bạn" | `intake → classify → converse → finalize` | Trò chuyện, chưa đụng tới sản phẩm |
-| "đi 3 ngày" (thiếu điểm đến) | `intake → classify → clarify → finalize` | Thiếu thông tin thì hỏi, không đoán |
-| "gợi ý cho tôi một chuyến đi" | `intake → classify → clarify → finalize` | Chưa nói gì vẫn là yêu cầu du lịch, không phải trò chuyện |
-| "Nha Trang 2 ngày" | `intake → classify → tool → evaluate → compose → finalize` | Luồng đầy đủ |
-| "Paris 2 ngày" | `intake → classify → tool → evaluate → dead_letter → finalize` | Ngoài catalog, dừng trước khi gọi Search |
+| "đi 3 ngày" (thiếu điểm đến) | `intake → classify → extract → clarify → finalize` | Thiếu thông tin thì hỏi, không đoán |
+| "gợi ý cho tôi một chuyến đi" | `intake → classify → extract → clarify → finalize` | Chưa nói gì vẫn là yêu cầu du lịch, không phải trò chuyện |
+| "Nha Trang 2 ngày" (chưa nêu ngày đi, số người, ngân sách) | `intake → classify → extract → clarify → finalize` | Đủ điểm đến và số ngày: hỏi gộp một câu những gì còn thiếu trong ngày đi, số người, ngân sách; hỏi một lần, chưa gọi tool |
+| "Nha Trang 2 ngày" rồi trả lời bất kỳ (hoặc câu đầu đã đủ chi tiết) | `intake → classify → extract → tool → evaluate → compose → finalize` | Luồng đầy đủ |
+| "Paris 2 ngày" | `intake → classify → extract → tool → evaluate → dead_letter → finalize` | Ngoài catalog, dừng trước khi gọi Search |
 | "Nha Trang 2 ngày, khách sạn 5 sao" (không có) | `… → evaluate → clarify → finalize` | Điều kiện bắt buộc không đạt thì hỏi, không tự bỏ |
 | Search lỗi mạng | `… → evaluate → retry → tool → evaluate → …` | Thử lại, tối đa một lần |
 
@@ -77,12 +80,12 @@ Một response `COMPLETED` không qua được `validate_plan` sẽ bị nó tha
 Sơ đồ đầy đủ — mỗi luồng một đường thẳng, không rẽ nhánh, điều kiện ghi ở cuối dòng:
 
 ```text
-START → intake → classify → tool → evaluate → compose    → finalize → END   (có candidate hợp lệ)
-START → intake → classify → tool → evaluate → compose    → finalize → END   (không có kết quả, NO_RESULTS)
-START → intake → classify → tool → evaluate → clarify    → finalize → END   (vi phạm điều kiện bắt buộc)
-START → intake → classify → tool → evaluate → retry → tool → evaluate → …  → finalize → END   (lỗi tạm thời, thử lại tối đa một lần)
-START → intake → classify → tool → evaluate → dead_letter → finalize → END  (lỗi vĩnh viễn/auth)
-START → intake → classify → clarify                       → finalize → END  (thiếu destination/days, mâu thuẫn, hoặc điều kiện không xác minh được)
+START → intake → classify → extract → tool → evaluate → compose    → finalize → END   (có candidate hợp lệ)
+START → intake → classify → extract → tool → evaluate → compose    → finalize → END   (không có kết quả, NO_RESULTS)
+START → intake → classify → extract → tool → evaluate → clarify    → finalize → END   (vi phạm điều kiện bắt buộc)
+START → intake → classify → extract → tool → evaluate → retry → tool → evaluate → …  → finalize → END   (lỗi tạm thời, thử lại tối đa một lần)
+START → intake → classify → extract → tool → evaluate → dead_letter → finalize → END  (lỗi vĩnh viễn/auth)
+START → intake → classify → extract → clarify             → finalize → END  (thiếu destination/days, mâu thuẫn, hoặc điều kiện không xác minh được)
 START → intake → classify → converse                      → finalize → END  (chào hỏi, cảm ơn, hoặc yêu cầu ngoài phạm vi — không gồm yêu cầu du lịch thiếu chi tiết)
 START → intake → classify → dead_letter                    → finalize → END  (request lỗi hoặc LLM classify lỗi)
 ```
@@ -97,7 +100,7 @@ Dòng thứ tư (`retry`) tự nó rẽ tiếp thành ba luồng thẳng, theo `
 
 ### 3.1. Sơ đồ mermaid
 
-Cùng nội dung sơ đồ trên, vẽ bằng mermaid theo đúng cạnh trong `agents/graph.py` và điều kiện trong `agents/routing.py`. Node có viền đậm là node **có gọi LLM** (`classify`, `tool` khi cần khớp destination, `converse`, `clarify`); các node còn lại thuần rule-based.
+Cùng nội dung sơ đồ trên, vẽ bằng mermaid theo đúng cạnh trong `agents/graph.py` và điều kiện trong `agents/routing.py`. Node có viền đậm là node **có gọi LLM** (`classify`, `extract`, `tool` khi cần khớp destination hoặc lập plan, `converse`, `clarify`); các node còn lại thuần rule-based.
 
 ```mermaid
 flowchart TD
@@ -105,9 +108,12 @@ flowchart TD
     intake --> classify
 
     classify --> converse
-    classify --> tool
-    classify --> clarify
+    classify --> extract
     classify --> dead_letter
+
+    extract --> tool
+    extract --> clarify
+    extract --> dead_letter
 
     tool --> evaluate
 
@@ -128,6 +134,7 @@ flowchart TD
     finalize --> END([END])
 
     classify:::llm
+    extract:::llm
     tool:::llm
     converse:::llm
     clarify:::llm
@@ -177,14 +184,15 @@ xác định, không có LLM. Cùng một tập candidate luôn cho cùng một 
 `render_proposal` và `validate_plan` vẫn là tiếng nói cuối cùng: nếu đề xuất tự sinh mà không qua được
 hai hàm này thì đó là lỗi backend, `compose` trả `FALLBACK` và ghi log `itinerary.composition_failed`.
 
-## 6. Bảng tra cứu mười node
+## 6. Bảng tra cứu mười một node
 
 Dùng khi đã nắm bức tranh chung ở trên và cần tra chi tiết một node. Tóm tắt hành vi trước, bảng field-level ở dưới cùng cho tên field thật trong `AgentState` (`agents/state.py`) — khớp `agents/nodes.py` (hàm node) và `agents/steps/` (luật chi tiết) tại thời điểm viết, `git blame`/`git log -p` mới là nguồn xác thực khi code đã đổi.
 
 | Node | Nhận vào | Trả ra | Đi tiếp |
 |---|---|---|---|
 | `intake` | Message của người dùng, `conversationId` (nếu có). | State khởi tạo: message đã chuẩn hóa, `conversationId`, intent và lịch sử chat đã lưu của hội thoại. | `classify` |
-| `classify` | Message mới, lịch sử chat và intent đã lưu. **Gọi LLM.** | Intent/constraints (`destination`, `days`...), các trường còn thiếu, cờ trò chuyện hoặc yêu cầu bị từ chối. | `tool` nếu đủ `destination` + `days`; `clarify` nếu thiếu thông tin, mâu thuẫn hoặc có điều kiện không xác minh được; `converse` nếu chào hỏi hoặc bị từ chối; `dead_letter` nếu lỗi. |
+| `classify` | Message mới và ngữ cảnh hội thoại chung. **Gọi LLM** (prompt ngắn, một nhãn). | `route`, `interaction_type` (`travel`/`conversation`/`out_of_scope`), `refusal`; với nhánh trò chuyện thêm `missing_fields` của chuyến đi đã lưu. | `extract` nếu du lịch; `converse` nếu trò chuyện hoặc ngoài phạm vi; `dead_letter` nếu LLM lỗi |
+| `extract` | Message mới, ngữ cảnh hội thoại chung, `intentOverride`, `start_date_asked`. **Gọi LLM.** | Intent/constraints (`destination`, `days`, `startDate`, `party`, `budget`...), các trường còn thiếu, `start_date_asked`. | `tool` nếu đủ `destination` + `days` và đã xử lý chi tiết chuyến đi; `clarify` nếu thiếu, chưa hỏi chi tiết, mâu thuẫn hoặc có điều kiện không xác minh được; `dead_letter` nếu số ngày ngoài 1–7, intent không hợp lệ hoặc LLM lỗi |
 | `tool` | Intent/constraints và lịch sử chat; ở lượt đổi món thêm `previous_selection`. **Có thể gọi LLM** để khớp tên điểm đến với catalog hoặc lập tool plan. | Tên điểm đến đã chuẩn hóa, kết quả Search/Recommendation/ProductDetail (hoặc lỗi) trong `tool_results`; chỉ ở lượt đổi món (có `previous_selection`) mới có thêm kết quả Similar. Điểm đến ngoài catalog trả `UNSUPPORTED_DESTINATION` (422) kèm danh sách điểm đến hỗ trợ. | `evaluate` |
 | `evaluate` | `tool_results` và intent. | Danh sách candidate hợp lệ có nguồn grounding, hoặc phân loại: `compose`, `no_results`, `fallback`, `constraint_clarification`, lỗi tạm thời/vĩnh viễn. Lỗi mềm của Similar không tính vào phân loại này: 404/409 luôn mềm; 503/timeout (mode `http`: mọi 5xx và lỗi kết nối) mềm khi có `search_products` trả dữ liệu (spec Itinerary §2.5). | `compose`, `clarify` (khi `constraint_clarification`), `retry` hoặc `dead_letter` |
 | `retry` | Lỗi tool tạm thời và số lần đã thử. | Quyết định thử lại (tối đa một lần), dùng fallback hoặc báo lỗi. | `tool`, `compose` hoặc `dead_letter` |
@@ -196,14 +204,14 @@ Dùng khi đã nắm bức tranh chung ở trên và cần tra chi tiết một 
 
 ### 6.1. Field-level: từng node đọc field nào, ghi field nào
 
-`state.X` là field đọc từ `AgentState` khi vào node; `ghi X` là key trong dict node trả về (LangGraph merge vào state chung — `messages`/`errors`/`events` là append-only, còn lại bị ghi đè). Route lấy từ `routing.py`; ba node router (`route_after_classify/evaluate/retry`) không phải node, chỉ đọc field đã liệt kê ở node đứng trước nó.
+`state.X` là field đọc từ `AgentState` khi vào node; `ghi X` là key trong dict node trả về (LangGraph merge vào state chung — `messages`/`errors`/`events` là append-only, còn lại bị ghi đè). Route lấy từ `routing.py`; bốn node router (`route_after_classify/extract/evaluate/retry`) không phải node, chỉ đọc field đã liệt kê ở node đứng trước nó.
 
 | Node | Đọc (`state.*`) | Gọi LLM | Ghi | Routing tiếp theo |
 |---|---|---|---|---|
 | `intake` | `query`/`message`, `conversation_id`, `conversation_history`, `intent`, `constraints`, `previous_selection`, `max_attempts`, `language`; async thêm: tra `conversation_id` qua `store` | Không | `query`, `conversation_id`, `conversation_history` đã làm sạch/giới hạn, `intent`, `constraints`, `previous_selection`, `attempt=0`, `max_attempts` (≤2), `tool_plan=[]`, `tool_results=[]`, `details={}`, `detail_errors={}`, `supported_destinations=None`, `candidates={}`, `sources={}`, `response={}`, `warnings=[]`, `missing_fields=[]`, `interaction_type=""`, `refusal=False`, `pending_question=None`, `final_answer=None`, `http_status=200`, `decision=""`, `validation_issues=[]`, `started_at`, `llm_used=False`, `language`, `events`. Async: không thấy `conversation_id` trong store → `decision="error"` (`CONVERSATION_NOT_FOUND`, 404); thấy → ghi đè `intent`/`constraints`/`language`/`previous_selection`/`conversation_history` từ bản lưu | → `classify` (cạnh cố định) |
 | `classify` | `decision` (bỏ qua LLM nếu đã `"error"`), `query`, `conversation_history`, `intent`, `constraints`, `intent_override`, `previous_selection`, `language`, `request_id` | **Có** — `Extraction` (`EXTRACT_PROMPT`) | `intent` (merge patch + `intent_override`), `constraints` (merge, xử lý `clear_fields`/`hotel_attributes`/`require_hotel`/`exclude_products` — LLM chỉ được chọn `productId` có trong `previous_selection`, ID lạ bị lọc bỏ), `llm_used=True`, `interaction_type` (domain), `refusal`, `missing_fields`, `clarification_reason` (`conflict`/`unverified`/`None`), `route`, `events`. Lỗi: `response`, `http_status`, `decision="error"` (`LLM_UNAVAILABLE`/`INVALID_TRIP_DURATION`/`VALIDATION_ERROR`) | `route="simple"→converse`; `"tool"→tool`; `"missing_info"→clarify`; `"error"` hoặc khác→`dead_letter` |
-| `tool` | `intent`, `constraints`, `conversation_history`, `supported_destinations`, `previous_selection` (chỉ khi mời Similar), `tool_plan`/`tool_results` (nếu đến từ `retry`), `query`, `request_id` | **Có thể** — chọn điểm đến khớp catalog (`DestinationChoice`) khi rule-based `match_destination` thất bại; lập `tool_plan` (`bind_tools`) nếu chưa có sẵn. Tool `get_similar_products`, gợi ý prompt đi kèm và khoá `previous_selection` (`productId`, `name`, `taxonomy`) trong payload chỉ có khi `previous_selection` khác rỗng và gateway có port Similar; lượt đầu giữ nguyên bộ tool và prompt. Plan lưu sẵn (vào từ `retry`) chạy lại, không gọi LLM hay `definitions()` | `tool_plan` (sau `validated_plan`: lời gọi Similar có sản phẩm gốc ngoài `previous_selection`, trùng, quá 2 lời gọi hoặc làm plan vượt 5 lời gọi bị bỏ, `limit` cố định; plan có đề xuất Similar thì mỗi loại đang đổi phải có `search_products` cùng loại hoặc không lọc loại, thiếu thì thêm search tất định theo điểm đến và loại đó (Similar nhường chỗ; hết chỗ thì bỏ qua), anchor bịa mà plan không còn search thì thêm search theo điểm đến; id đánh số lại `call-0`, `call-1`… sau khi lọc), `tool_results`, `details`, `detail_errors`, `intent` (destination đã chuẩn hóa), `constraints` (chuẩn hóa), `supported_destinations`, `events`. Lỗi: `response`, `http_status`, `decision="error"` (`LLM_UNAVAILABLE` hoặc `UNSUPPORTED_DESTINATION` 422), `tool_plan=[]`, `tool_results=[]` | → `evaluate` (cạnh cố định) |
-| `evaluate` | `decision`, `tool_results`, `detail_errors`, `intent`, `constraints`, `request_id` | Không | `candidates` (kết quả Similar vào cùng tập, nguồn `search`; kết quả Similar lệch điểm đến bị bỏ lặng lẽ, không sinh warning), `sources`, `constraints` (thêm `exclude_taxonomies` từ diagnostics recommendation cross-vertical), `warnings`, `decision` (`compose`/`no_results`/`fallback`/`constraint_clarification`/`error`/`""`), `evaluation_result` (`success`/`needs_retry`/`failed`; lỗi mềm của Similar không tính — 404/409 luôn mềm; 503/timeout (mode `http`: mọi 5xx và lỗi kết nối) mềm khi có `search_products` trả dữ liệu), `events` | `decision="constraint_clarification"→clarify`; `evaluation_result="needs_retry"→retry`; `"failed"→dead_letter`; còn lại→`compose` |
+| `tool` | `intent`, `constraints`, `conversation_history`, `supported_destinations`, `tool_plan`/`tool_results` (nếu đến từ `retry`), `query`, `request_id` | **Có thể** — chọn điểm đến khớp catalog (`DestinationChoice`) khi rule-based `match_destination` thất bại; lập `tool_plan` (`bind_tools`) nếu chưa có sẵn | `tool_plan`, `tool_results`, `details`, `detail_errors`, `intent` (destination đã chuẩn hóa), `constraints` (chuẩn hóa), `supported_destinations`, `events`. Lỗi: `response`, `http_status`, `decision="error"` (`LLM_UNAVAILABLE` hoặc `UNSUPPORTED_DESTINATION` 422), `tool_plan=[]`, `tool_results=[]` | → `evaluate` (cạnh cố định) |
+| `evaluate` | `decision`, `tool_results`, `detail_errors`, `intent`, `constraints`, `request_id` | Không | `candidates`, `sources`, `constraints` (thêm `exclude_taxonomies` từ diagnostics recommendation cross-vertical), `warnings`, `decision` (`compose`/`no_results`/`fallback`/`constraint_clarification`/`error`/`""`), `evaluation_result` (`success`/`needs_retry`/`failed`), `events` | `decision="constraint_clarification"→clarify`; `evaluation_result="needs_retry"→retry`; `"failed"→dead_letter`; còn lại→`compose` |
 | `retry` | `attempt`, `max_attempts`, `candidates` | Không | `attempt` (+1 nếu còn lượt), `decision` (`""`/`fallback`/`error`), `errors` (append `TRANSIENT_TOOL_FAILURE`), `events` | `decision="fallback"` và có `candidates`→`compose`; `"error"→dead_letter`; `attempt < max(≤2)`→`tool`; hết lượt→`dead_letter` |
 | `converse` | `query`, `conversation_history`, `interaction_type`, `intent`, `missing_fields`, `clarification_reason`, `refusal`, `language`, `request_id` | **Có** — `ConversationalAnswer` (`CONVERSATION_PROMPT`) | `response` (`NEEDS_CLARIFICATION`, hoặc `VALIDATION_ERROR` 400 nếu `refusal`), `pending_question`, `llm_used`, `events`. LLM lỗi → câu cố định | → `finalize` (cạnh cố định) |
 | `compose` | `decision` (`no_results`/`fallback` từ `evaluate`), `candidates`, `intent`, `sources`, `constraints`, `warnings`, `conversation_id`, `request_id` | Không | `response` (`COMPLETED` qua `compose_plan`/`render_proposal`/`validate_plan`, hoặc `NO_RESULTS`/`FALLBACK` khi rule tự bác đề xuất), `events` | → `finalize` (cạnh cố định) |

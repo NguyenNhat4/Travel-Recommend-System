@@ -1,5 +1,6 @@
 import type { components } from '../types/api.gen';
 import type { AssistantRequest, AssistantResponse } from '../services/assistantStream';
+import type { AssistantConversationDetail } from '../services/assistantHistory';
 
 export type AssistantPhase =
   | 'idle'
@@ -13,6 +14,8 @@ export type AssistantPhase =
   | 'aborted';
 
 export type AssistantRequestSnapshot = AssistantRequest;
+
+export const CONVERSATION_RESTARTED_TEXT = 'Đã bắt đầu cuộc trò chuyện mới.';
 
 export interface AssistantProgress {
   sequence?: number;
@@ -62,6 +65,8 @@ type Action =
   | { type: 'node-completed'; progress: AssistantProgress }
   | { type: 'response-received'; response: AssistantResponse }
   | { type: 'request-failed'; error: AssistantError }
+  | { type: 'conversation-restarted' }
+  | { type: 'conversation-loaded'; detail: AssistantConversationDetail }
   | { type: 'request-aborted' }
   | { type: 'slow-state'; isSlow: boolean }
   | { type: 'reset' }
@@ -160,6 +165,40 @@ export function assistantReducer(state: AssistantState, action: Action): Assista
           ? details.conversationId
           : state.conversationId;
       return { ...state, phase: 'failed', conversationId, error: action.error, isSlow: false };
+    }
+    case 'conversation-restarted':
+      // Hợp đồng Frontend §8: hội thoại hết hạn thì bỏ conversationId và báo đã bắt đầu hội thoại mới.
+      return {
+        ...state,
+        conversationId: null,
+        transcript: [...state.transcript, {
+          id: `assistant-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          sender: 'assistant',
+          text: CONVERSATION_RESTARTED_TEXT,
+          createdAt: Date.now(),
+        }],
+      };
+    case 'conversation-loaded': {
+      const transcript = action.detail.messages.map((message) => ({
+        id: `archive-${message.messageId}`,
+        sender: message.role,
+        text: message.content,
+        response: message.response,
+        createdAt: new Date(message.createdAt).getTime(),
+      }));
+      const response = [...action.detail.messages].reverse().find((message) => message.response)?.response ?? null;
+      return {
+        ...state,
+        phase: response ? responsePhase(response) : 'idle',
+        transcript,
+        response,
+        conversationId: action.detail.conversation.conversationId,
+        topology: null,
+        progress: [],
+        error: null,
+        lastRequest: null,
+        isSlow: false,
+      };
     }
     case 'request-aborted':
       return { ...state, phase: 'aborted', error: null, isSlow: false };

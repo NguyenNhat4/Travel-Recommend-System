@@ -1,12 +1,18 @@
 import unittest
-from src.backend.app.agents.routing import route_after_classify, route_after_evaluate, route_after_retry
+from src.backend.app.agents.routing import route_after_classify, route_after_evaluate, route_after_extract, route_after_retry
 
 
 class RoutingTests(unittest.TestCase):
     def test_classification_branches_and_fail_closed_default(self):
-        for route, node in [('simple', 'converse'), ('missing_info', 'clarify'), ('tool', 'tool'), ('error', 'dead_letter')]:
+        for route, node in [('simple', 'converse'), ('travel', 'extract'), ('error', 'dead_letter')]:
             self.assertEqual(route_after_classify({'route': route}), node)
         self.assertEqual(route_after_classify({}), 'dead_letter')
+
+    def test_extraction_branches_and_fail_closed_default(self):
+        for route, node in [('missing_info', 'clarify'), ('tool', 'tool'), ('error', 'dead_letter')]:
+            self.assertEqual(route_after_extract({'route': route}), node)
+        self.assertEqual(route_after_extract({}), 'dead_letter')
+        self.assertEqual(route_after_extract({'route': 'simple'}), 'dead_letter')
 
     def test_evaluation_error_and_retry(self):
         self.assertEqual(route_after_evaluate({'evaluation_result': 'success'}), 'compose')

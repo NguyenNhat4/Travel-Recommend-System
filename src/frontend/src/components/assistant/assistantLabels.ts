@@ -59,7 +59,8 @@ export function priceUnitSuffix(priceUnit: Schemas['PriceUnit']) {
 // Node ID theo src/backend/app/agents/graph.py.
 const NODE_LABEL: Record<string, string> = {
   intake: 'Nhận yêu cầu',
-  classify: 'Hiểu ý định',
+  classify: 'Phân loại yêu cầu',
+  extract: 'Hiểu ý định',
   converse: 'Trò chuyện',
   clarify: 'Hỏi thêm thông tin',
   tool: 'Tìm sản phẩm',

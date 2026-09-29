@@ -23,5 +23,6 @@ class ItineraryPlanner(Protocol):
         ...
 
 
-#: Dựng planner cho một request từ header Authorization; None khi agent chưa được cấu hình dữ liệu.
-ItineraryPlannerFactory = Callable[[str | None], ItineraryPlanner | None]
+#: Dựng planner cho một request từ header Authorization và chủ hội thoại (cdp_user_id đã xác thực, None khi
+#: là khách); None khi agent chưa được cấu hình dữ liệu.
+ItineraryPlannerFactory = Callable[[str | None, str | None], ItineraryPlanner | None]

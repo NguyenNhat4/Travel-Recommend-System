@@ -20,10 +20,10 @@ class LabCopyTests(unittest.TestCase):
         self.assertFalse(hasattr(nodes, 'risky_action_node'))
         self.assertFalse(hasattr(routing, 'route_after_approval'))
 
-    def test_ten_node_topology(self):
+    def test_eleven_node_topology(self):
         graph = build_graph()
         self.assertEqual(set(graph.get_graph().nodes) - {'__start__', '__end__'},
-                         {'intake', 'classify', 'tool', 'evaluate', 'converse', 'compose', 'clarify',
+                         {'intake', 'classify', 'extract', 'tool', 'evaluate', 'converse', 'compose', 'clarify',
                           'retry', 'dead_letter', 'finalize'})
 
     def test_every_node_is_named_for_the_trace(self):
@@ -36,7 +36,7 @@ class LabCopyTests(unittest.TestCase):
 
     def test_nodes_do_not_mutate_the_input_state(self):
         state = nodes.intake_node({'query': '  request  ', 'request_id': 'test'})
-        classified = classification.classify_result(state, Extraction(domain='travel', patch={'days': 3}))
+        classified = classification.extract_result(state, Extraction(patch={'days': 3}))
         state.update(classified)
         state['response'] = error_response('INTERNAL_ERROR', 'safe error', 'test')
         state['http_status'] = 500

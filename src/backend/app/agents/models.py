@@ -69,11 +69,19 @@ class ConstraintUpdate(StrictModel):
                                "exclude_products"]] = Field(default_factory=list)
 
 
+class TurnRoute(StrictModel):
+    """Nhãn của `classify`: chỉ phân luồng, không trích gì khác."""
+    route: Literal["travel", "conversation", "out_of_scope"]
+
+
 class Extraction(StrictModel):
-    domain: Literal["travel", "conversation", "out_of_domain", "side_effect"]
+    """Output của `extract`: chỉ chạy khi `classify` đã xếp lượt này là `travel`."""
     patch: IntentUpdate = Field(default_factory=IntentUpdate)
     constraints: ConstraintUpdate = Field(default_factory=ConstraintUpdate)
     end_date: date | None = None
+    start_date_undecided: bool = Field(
+        default=False,
+        description="true khi người dùng nói rõ chưa chốt hoặc linh hoạt về ngày đi; không có ngày cũng không có lời này thì false.")
     conflict: bool = False
 
 

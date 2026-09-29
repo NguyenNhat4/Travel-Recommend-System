@@ -466,6 +466,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/assistant/conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Liệt kê lịch sử hội thoại của người dùng hiện tại */
+        get: operations["listAssistantConversations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/assistant/conversations/{conversationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Đọc transcript một hội thoại của người dùng hiện tại */
+        get: operations["getAssistantConversation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/assistant/status": {
         parameters: {
             query?: never;
@@ -1295,7 +1329,7 @@ export interface components {
             status: "NEEDS_CLARIFICATION";
             conversationId: string;
             question: string;
-            missingFields?: ("destination" | "days")[];
+            missingFields?: ("destination" | "days" | "startDate" | "party" | "budget")[];
             knownIntent?: components["schemas"]["TripIntent"];
             suggestedValues?: {
                 destination?: string[];
@@ -1329,6 +1363,41 @@ export interface components {
         };
         /** @description Baseline tích hợp 1.1.0. Phân biệt theo status. */
         ItineraryResponse: components["schemas"]["ItineraryCompleted"] | components["schemas"]["ItineraryNeedsClarification"] | components["schemas"]["ItineraryNoResults"] | components["schemas"]["ItineraryFallback"];
+        AssistantConversationSummary: {
+            /** Format: uuid */
+            conversationId: string;
+            title: string;
+            /** @enum {string} */
+            status: "open" | "planned" | "expired";
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            messageCount: number;
+        };
+        AssistantConversationMessage: {
+            messageId: number;
+            /** @enum {string} */
+            role: "user" | "assistant";
+            content: string;
+            response?: components["schemas"]["ItineraryResponse"];
+            /** Format: date-time */
+            createdAt: string;
+        };
+        AssistantConversationList: {
+            data: components["schemas"]["AssistantConversationSummary"][];
+            pagination: components["schemas"]["AssistantConversationPagination"];
+        };
+        AssistantConversationDetail: {
+            conversation: components["schemas"]["AssistantConversationSummary"];
+            messages: components["schemas"]["AssistantConversationMessage"][];
+        };
+        AssistantConversationPagination: {
+            page: number;
+            pageSize: number;
+            totalItems: number;
+            totalPages: number;
+        };
         AssistantStatus: {
             /** @enum {string} */
             status: "ready" | "not_configured";
@@ -2163,6 +2232,54 @@ export interface operations {
             };
             422: components["responses"]["Error"];
             503: components["responses"]["Error"];
+        };
+    };
+    listAssistantConversations: {
+        parameters: {
+            query?: {
+                page?: number;
+                pageSize?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Danh sách hội thoại mới nhất trước, chỉ của user hiện tại */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantConversationList"];
+                };
+            };
+            401: components["responses"]["Error"];
+        };
+    };
+    getAssistantConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Transcript và response có cấu trúc đã lưu */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantConversationDetail"];
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
         };
     };
     getAssistantStatus: {

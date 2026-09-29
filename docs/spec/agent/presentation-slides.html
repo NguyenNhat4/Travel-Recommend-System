@@ -213,10 +213,10 @@ pre.cmd{margin:0;background:var(--ink);color:var(--paper);border-radius:6px;padd
 <section class="slide" data-label="Mở đầu">
   <div class="title-wrap">
     <div class="head" style="gap:22px">
-      <span class="eyebrow">V-OTA · Demo nội bộ · 24/09/2026</span>
+      <span class="eyebrow">V-OTA · Demo nội bộ · 25/09/2026</span>
       <h1>Trợ lý lập lịch trình</h1>
       <p class="lead">Itinerary Agent: từ một câu chat tới lịch trình theo ngày, mỗi thẻ sản phẩm đều có <code>productId</code> thật trong catalog.</p>
-      <div class="tags"><span class="tag">LangGraph · 10 node</span><span class="tag">FastAPI + SSE</span><span class="tag">Grounding 100%</span><span class="tag">FR-AGT-01…05</span></div>
+      <div class="tags"><span class="tag">LangGraph · 11 node</span><span class="tag">FastAPI + SSE</span><span class="tag">Grounding 100%</span><span class="tag">FR-AGT-01…05</span></div>
     </div>
     <div class="chat">
       <div class="bubble">Lập lịch trình 3 ngày 2 đêm tại Nha Trang ngân sách 5 triệu</div>
@@ -248,7 +248,7 @@ pre.cmd{margin:0;background:var(--ink);color:var(--paper);border-radius:6px;padd
     <div class="panel fill">
       <span class="eyebrow">Tiêu chí nghiệm thu · AC-AGT-01</span>
       <p class="lead" style="font-size:19px;color:var(--ink)">“Lập lịch trình 3 ngày 2 đêm tại Nha Trang ngân sách 5 triệu”</p>
-      <p class="body">→ Lịch trình 3 ngày có cấu trúc; chỗ ở và hoạt động đều là thẻ sản phẩm thật, giá rõ ràng, có nút xem chi tiết.</p>
+      <p class="body">→ Câu chưa có ngày đi và số người, nên trợ lý hỏi gộp một lần hai thông tin đó. Người dùng trả lời hoặc bỏ qua → lịch trình 3 ngày có cấu trúc; chỗ ở và hoạt động đều là thẻ sản phẩm thật, giá rõ ràng, có nút xem chi tiết.</p>
       <p class="small" style="margin-top:auto">Ràng buộc chung: NFR-REL-01 (grounding 100%), mục tiêu p95 toàn luồng dưới 5 giây (spec §7.2).</p>
     </div>
   </div>
@@ -262,10 +262,11 @@ pre.cmd{margin:0;background:var(--ink);color:var(--paper);border-radius:6px;padd
     <div class="panel llm">
       <span class="tag llm" style="align-self:flex-start">LLM được làm</span>
       <ul class="list">
-        <li>Trích intent: điểm đến, số ngày, ngân sách, số người, điều kiện (<code>classify</code>)</li>
-        <li>Khớp tên điểm đến với catalog khi luật không khớp được (<code>tool</code>)</li>
+        <li>Phân luồng lượt chat (<code>classify</code>), rồi trích intent: điểm đến, số ngày, ngày đi, số người, ngân sách, điều kiện (<code>extract</code>)</li>
+        <li>Khớp tên điểm đến với catalog khi luật không khớp được, và lập kế hoạch gọi tool (<code>tool</code>)</li>
         <li>Viết câu hỏi làm rõ khi thiếu hoặc mâu thuẫn (<code>clarify</code>)</li>
         <li>Chào hỏi, cảm ơn, từ chối yêu cầu ngoài phạm vi (<code>converse</code>)</li>
+        <li><i>Lần gọi nào cũng nhận cùng ngữ cảnh hội thoại: lịch sử gần nhất, chuyến đi đã chốt, câu hỏi gần nhất</i></li>
       </ul>
     </div>
     <div class="panel">
@@ -295,16 +296,16 @@ pre.cmd{margin:0;background:var(--ink);color:var(--paper);border-radius:6px;padd
   <div class="grid3">
     <div class="panel"><h3>Một LLM client</h3><p class="body">Dựng một lần trong <code>lifespan</code>, tiêm qua <code>app.state.itinerary_llm</code>. Provider chọn theo key có mặt: Gemini → OpenAI → Anthropic.</p></div>
     <div class="panel"><h3>Tắt được LLM</h3><p class="body"><code>ITINERARY_USE_LLM=false</code>: app vẫn chạy, <code>/status</code> báo <code>llmMode=disabled</code>, itinerary trả 503 <code>LLM_UNAVAILABLE</code>.</p></div>
-    <div class="panel"><h3>Hội thoại</h3><p class="body">Lưu intent và lịch sử chat gần đây theo <code>conversationId</code> (TTL 24 giờ). Giá và availability luôn tải lại, không lấy từ bản lưu.</p></div>
+    <div class="panel"><h3>Hội thoại</h3><p class="body">Redis giữ trí nhớ làm việc 24 giờ theo <code>conversationId</code>; Postgres lưu lâu dài lịch sử của người đã đăng nhập. Giá và availability luôn tải lại, không lấy từ bản lưu.</p></div>
   </div>
   <div class="foot"><span>Itinerary Agent</span><span>04</span></div>
 </section>
 
 <!-- 5 -->
 <section class="slide" data-label="Graph">
-  <div class="head" style="gap:8px"><span class="eyebrow">LangGraph</span><h2>Mười node, bốn giai đoạn, một cửa ra</h2></div>
+  <div class="head" style="gap:8px"><span class="eyebrow">LangGraph</span><h2>Mười một node, bốn giai đoạn, một cửa ra</h2></div>
   <div class="graph">
-    <svg viewBox="0 0 1136 470" role="img" aria-label="Sơ đồ mười node của Itinerary Agent">
+    <svg viewBox="0 0 1136 470" role="img" aria-label="Sơ đồ mười một node của Itinerary Agent">
       <defs>
         <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="g-arrow"/></marker>
         <marker id="ahm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="g-arrow-main"/></marker>
@@ -321,11 +322,13 @@ pre.cmd{margin:0;background:var(--ink);color:var(--paper);border-radius:6px;padd
 
       <!-- edges -->
       <path class="g-edge main" d="M44 220 H70" marker-end="url(#ahm)"/>
-      <path class="g-edge main" d="M190 220 H230" marker-end="url(#ahm)"/>
-      <path class="g-edge" d="M290 200 V60 H760" marker-end="url(#ah)"/>
-      <path class="g-edge" d="M350 218 C 560 218, 560 160, 760 160" marker-end="url(#ah)"/>
-      <path class="g-edge main" d="M350 228 C 380 228, 370 300, 400 300" marker-end="url(#ahm)"/>
-      <path class="g-edge" d="M290 240 V455 H820 V382" marker-end="url(#ah)"/>
+      <path class="g-edge main" d="M190 214 C 212 214, 208 150, 230 150" marker-end="url(#ahm)"/>
+      <path class="g-edge" d="M290 130 V60 H760" marker-end="url(#ah)"/>
+      <path class="g-edge main" d="M290 170 V270" marker-end="url(#ahm)"/>
+      <path class="g-edge" d="M350 162 H374 V455 H832 V382" marker-end="url(#ah)"/>
+      <path class="g-edge" d="M340 270 C 360 200, 600 166, 760 166" marker-end="url(#ah)"/>
+      <path class="g-edge main" d="M350 300 H400" marker-end="url(#ahm)"/>
+      <path class="g-edge" d="M290 310 V440 H808 V382" marker-end="url(#ah)"/>
       <path class="g-edge main" d="M520 300 H570" marker-end="url(#ahm)"/>
       <path class="g-edge main" d="M690 294 C 725 294, 725 262, 760 262" marker-end="url(#ahm)"/>
       <path class="g-edge" d="M680 280 C 720 230, 720 168, 760 166" marker-end="url(#ah)"/>
@@ -346,7 +349,8 @@ pre.cmd{margin:0;background:var(--ink);color:var(--paper);border-radius:6px;padd
 
       <!-- nodes -->
       <g class="g-node"><rect x="70" y="200" width="120" height="40" rx="5"/><text x="130" y="220">intake</text></g>
-      <g class="g-node llm"><rect x="230" y="200" width="120" height="40" rx="5"/><text x="290" y="220">classify</text></g>
+      <g class="g-node llm"><rect x="230" y="130" width="120" height="40" rx="5"/><text x="290" y="150">classify</text></g>
+      <g class="g-node llm"><rect x="230" y="270" width="120" height="40" rx="5"/><text x="290" y="290">extract</text></g>
       <g class="g-node maybe"><rect x="400" y="280" width="120" height="40" rx="5"/><text x="460" y="300">tool</text></g>
       <g class="g-node"><rect x="570" y="280" width="120" height="40" rx="5"/><text x="630" y="300">evaluate</text></g>
       <g class="g-node"><rect x="570" y="380" width="120" height="40" rx="5"/><text x="630" y="400">retry</text></g>
@@ -359,9 +363,9 @@ pre.cmd{margin:0;background:var(--ink);color:var(--paper);border-radius:6px;padd
   </div>
   <div class="legend">
     <span><span class="sw" style="background:var(--llm-soft);border:2px solid var(--llm)"></span>Gọi LLM</span>
-    <span><span class="sw" style="border:2px dashed var(--llm)"></span>Gọi LLM khi cần khớp điểm đến</span>
+    <span><span class="sw" style="border:2px dashed var(--llm)"></span>Gọi LLM khi cần khớp điểm đến, lập plan</span>
     <span><span class="sw" style="background:var(--accent)"></span>Luồng đầy đủ “Nha Trang 2 ngày”</span>
-    <span class="small">Retry tối đa một lần. <code>compose</code> không gọi LLM.</span>
+    <span class="small"><code>classify</code> chỉ phân luồng; <code>extract</code> trích intent. Retry tối đa một lần. <code>compose</code> không gọi LLM.</span>
   </div>
   <div class="foot"><span>Itinerary Agent</span><span>05</span></div>
 </section>
@@ -395,10 +399,10 @@ pre.cmd{margin:0;background:var(--ink);color:var(--paper);border-radius:6px;padd
   <table>
     <thead><tr><th style="width:22%">Người dùng gõ</th><th style="width:48%">Đường đi</th><th>Khi nào</th></tr></thead>
     <tbody>
-      <tr><td>“chào bạn”</td><td class="path">intake → classify → <b>converse</b> → finalize</td><td>Chào hỏi, cảm ơn, từ chối yêu cầu ngoài phạm vi. Không đụng sản phẩm</td></tr>
-      <tr><td>“đi 3 ngày”</td><td class="path">intake → classify → <b>clarify</b> → finalize</td><td>Thiếu điểm đến hoặc số ngày, thông tin mâu thuẫn: hỏi lại, không đoán</td></tr>
-      <tr><td>“Nha Trang 2 ngày”</td><td class="path">intake → classify → tool → evaluate → <b>compose</b> → finalize</td><td>Có sản phẩm thật: dựng lịch trình</td></tr>
-      <tr><td>“Paris 2 ngày”</td><td class="path">intake → classify → tool → evaluate → <i>dead_letter</i> → finalize</td><td>Lỗi có kiểm soát: ngoài catalog (422), tool hỏng, lỗi xác thực</td></tr>
+      <tr><td>“chào bạn” · “đặt phòng giúp tôi”</td><td class="path">intake → classify → <b>converse</b> → finalize</td><td>Chào hỏi; từ chối đặt chỗ, thanh toán, chèn lệnh (400). Không trích intent, không đụng sản phẩm</td></tr>
+      <tr><td>“Nha Trang 2 ngày”</td><td class="path">intake → classify → extract → <b>clarify</b> → finalize</td><td>Thiếu điểm đến/số ngày, hoặc hỏi gộp một lần ngày đi, số người, ngân sách; mâu thuẫn: hỏi lại, không đoán</td></tr>
+      <tr><td>… rồi “2 người, 5 triệu, đi 10/10”</td><td class="path">intake → classify → extract → tool → evaluate → <b>compose</b> → finalize</td><td>Có sản phẩm thật: dựng lịch trình</td></tr>
+      <tr><td>“Paris 2 ngày” (đã trả lời câu hỏi)</td><td class="path">intake → classify → extract → tool → evaluate → <i>dead_letter</i> → finalize</td><td>Lỗi có kiểm soát: ngoài catalog (422), tool hỏng, lỗi xác thực</td></tr>
     </tbody>
   </table>
   </div>
@@ -445,12 +449,14 @@ pre.cmd{margin:0;background:var(--ink);color:var(--paper);border-radius:6px;padd
     <thead><tr><th>Mã lỗi</th><th>HTTP</th><th>Khi nào</th></tr></thead>
     <tbody>
       <tr><td class="mono">VALIDATION_ERROR</td><td class="mono">400</td><td>Yêu cầu bị từ chối vì ngoài phạm vi (qua <code>converse</code>)</td></tr>
+      <tr><td class="mono">CONVERSATION_NOT_FOUND</td><td class="mono">404</td><td>Hội thoại hết hạn hoặc thuộc người khác; Web tự gửi lại tin nhắn như hội thoại mới</td></tr>
       <tr><td class="mono">UNSUPPORTED_DESTINATION</td><td class="mono">422</td><td>Điểm đến ngoài catalog, kèm danh sách điểm đến hỗ trợ; hội thoại vẫn tiếp được</td></tr>
-      <tr><td class="mono">LLM_UNAVAILABLE</td><td class="mono">503</td><td>LLM tắt hoặc <code>classify</code> lỗi</td></tr>
+      <tr><td class="mono">LLM_UNAVAILABLE</td><td class="mono">503</td><td>LLM tắt hoặc <code>classify</code>/<code>extract</code> lỗi</td></tr>
       <tr><td class="mono">ITINERARY_VALIDATION_FAILED</td><td class="mono">500</td><td><code>finalize</code> bác response vi phạm schema hoặc grounding</td></tr>
     </tbody>
   </table>
   </div>
+  <p class="small">Qua SSE: response hợp lệ nằm trong <code>run.completed</code>, mọi lỗi (kể cả lỗi sinh trong graph) nằm trong <code>run.failed</code> kèm <code>httpStatus</code>.</p>
   <div class="foot"><span>Itinerary Agent</span><span>09</span></div>
 </section>
 
@@ -458,18 +464,19 @@ pre.cmd{margin:0;background:var(--ink);color:var(--paper);border-radius:6px;padd
 <section class="slide" data-label="Đa lượt">
   <div class="head"><span class="eyebrow">Hội thoại đa lượt · FR-AGT-01, FR-AGT-05</span><h2>Mỗi lượt chỉ vá phần người dùng đổi</h2></div>
   <div class="turns">
-    <div class="turn"><span class="no">LƯỢT 1</span><span class="say">“đi 3 ngày”</span><span class="eff"><code>NEEDS_CLARIFICATION</code>, lưu <code>days=3</code> theo <code>conversationId</code>, hỏi điểm đến.</span></div>
-    <div class="turn"><span class="no">LƯỢT 2</span><span class="say">“Nha Trang nhé”</span><span class="eff">Ghép với intent đã lưu → đủ <code>destination</code> + <code>days</code> → gọi Search → <code>COMPLETED</code>. Lưu <code>previous_selection</code>.</span></div>
-    <div class="turn"><span class="no">LƯỢT 3</span><span class="say">“đổi thành Đà Nẵng”</span><span class="eff">Chỉ thay <code>destination</code>, giữ số ngày, ngân sách. Tìm lại từ đầu.</span></div>
-    <div class="turn"><span class="no">LƯỢT 4</span><span class="say">“bỏ khách sạn này đi”</span><span class="eff">LLM chỉ được chọn <code>productId</code> có trong <code>previous_selection</code> để loại; ID lạ bị lọc.</span></div>
+    <div class="turn"><span class="no">LƯỢT 1</span><span class="say">“đi 3 ngày”</span><span class="eff"><code>classify</code>: du lịch → <code>extract</code>: lưu <code>days=3</code>, thiếu điểm đến → <code>clarify</code> hỏi điểm đến.</span></div>
+    <div class="turn"><span class="no">LƯỢT 2</span><span class="say">“Nha Trang nhé”</span><span class="eff">Ghép với intent đã lưu → đủ <code>destination</code> + <code>days</code> → hỏi gộp <b>một lần</b> ngày đi, số người, ngân sách. Chưa gọi tool.</span></div>
+    <div class="turn"><span class="no">LƯỢT 3</span><span class="say">“2 người, chưa chốt ngày”</span><span class="eff"><code>classify</code> hiểu đây là trả lời câu hỏi trước → gọi Search → <code>COMPLETED</code>. Lưu <code>previous_selection</code>.</span></div>
+    <div class="turn"><span class="no">LƯỢT 4</span><span class="say">“đổi thành Đà Nẵng”</span><span class="eff">Chỉ thay <code>destination</code>, giữ số ngày, số người. Không hỏi lại chi tiết, tìm lại từ đầu.</span></div>
+    <div class="turn"><span class="no">LƯỢT 5</span><span class="say">“bỏ khách sạn này đi”</span><span class="eff">LLM chỉ được chọn <code>productId</code> có trong <code>previous_selection</code> để loại; ID lạ bị lọc.</span></div>
   </div>
-  <p class="small">Intent lưu 24 giờ. Giá và availability luôn tải lại mỗi lượt. <code>context.language</code> hỗ trợ <code>vi</code>/<code>en</code>, mặc định tiếng Việt.</p>
+  <p class="small">Mọi lượt gọi LLM nhận cùng ngữ cảnh hội thoại. Hội thoại lưu 24 giờ ở Redis, gắn với user đã xác thực (<code>cdp_user_id</code>) nên sống qua lần làm mới token và backend restart. Giá và availability luôn tải lại mỗi lượt. <code>context.language</code> hỗ trợ <code>vi</code>/<code>en</code>, mặc định tiếng Việt.</p>
   <div class="foot"><span>Itinerary Agent</span><span>10</span></div>
 </section>
 
 <!-- 11 -->
 <section class="slide" data-label="Đánh giá">
-  <div class="head"><span class="eyebrow">Golden dataset · 24/09/2026 · commit 601f112</span><h2>Ba chỉ số PRD đều đạt ngưỡng</h2>
+  <div class="head"><span class="eyebrow">Golden dataset · 24/09/2026 · commit 601f112 · trước khi tách classify/extract</span><h2>Ba chỉ số PRD đều đạt ngưỡng</h2>
     <p class="body">75 case + sweep điểm đến = 124 lượt trên catalog thật, model <code>gpt-4o-mini</code>, <code>dataMode=http</code>. Chấm theo test-plan §2.4.</p></div>
   <div class="grid4">
     <div class="stat"><span class="n">100%</span><span class="l">Grounding Rate</span><span class="s">ngưỡng 100%</span></div>
@@ -492,7 +499,7 @@ pre.cmd{margin:0;background:var(--ink);color:var(--paper);border-radius:6px;padd
 
 <!-- 12 -->
 <section class="slide" data-label="Lượt FAIL">
-  <div class="head"><span class="eyebrow">11 lượt FAIL · nhóm theo nguyên nhân</span><h2>Grounding không hỏng; lỗi nằm ở hiểu ý và độ phủ</h2></div>
+  <div class="head"><span class="eyebrow">11 lượt FAIL ngày 24/09 · nhóm theo nguyên nhân</span><h2>Grounding không hỏng; lỗi nằm ở hiểu ý và độ phủ</h2></div>
   <div class="fails">
     <div class="fail"><span class="ids">G-013 · G-072</span><h3>Chuẩn hóa điểm đến</h3><p>“tphcm” không thành “TP. Hồ Chí Minh”; “Mũi Né” bị trả 422 thay vì khớp “Phan Thiết”.</p></div>
     <div class="fail"><span class="ids">G-051 · G-052 · G-055 · G-059</span><h3>Thiếu hoạt động</h3><p>Chuyến gia đình có trẻ nhỏ hoặc Hà Nội theo khoảng ngày: lịch có 0–1 hoạt động, kỳ vọng ≥ 3.</p></div>
@@ -514,7 +521,7 @@ pre.cmd{margin:0;background:var(--ink);color:var(--paper);border-radius:6px;padd
   </div>
   <pre class="cmd">uvicorn src.backend.app.main:app --reload --port 8000
 ASSISTANT_API_BASE_URL=http://127.0.0.1:8000/api/v1 streamlit run src/evaluation/agent/streamlit_app.py --server.port 8502
-python -m src.evaluation.agent.golden --only G-001,G-002   # --sweep · --repeat N · --trace-project &lt;tên&gt;</pre>
+python -m src.evaluation.agent.golden --only G-051,G-062   # --sweep · --repeat N · --trace-project &lt;tên&gt;</pre>
   <div class="foot"><span>Itinerary Agent</span><span>13</span></div>
 </section>
 
@@ -527,9 +534,9 @@ python -m src.evaluation.agent.golden --only G-001,G-002   # --sweep · --repeat
       <ul class="list">
         <li>Bảng alias điểm đến (TPHCM, Mũi Né → Phan Thiết) trước khi trả 422</li>
         <li>Bảo đảm đủ hoạt động cho chuyến gia đình có trẻ nhỏ</li>
-        <li>Từ chối rõ yêu cầu đặt chỗ / thanh toán thay người dùng</li>
-        <li>Không tự suy <code>startDate</code> khi người dùng không nói</li>
-        <li>Đo lại latency với ngân sách timeout của spec, hướng tới p95 &lt; 5 giây</li>
+        <li>Chạy lại golden rút gọn 14 case (mỗi category một case khó nhất) sau khi tách <code>classify</code>/<code>extract</code></li>
+        <li>Đo lại latency: mỗi lượt du lịch thêm một lần gọi LLM; cân nhắc model nhẹ cho <code>classify</code></li>
+        <li>Cửa sổ mở bán khách sạn quá hẹp (Hà Nội chỉ 15–16/10): báo team Data</li>
         <li>Cân nhắc đưa <code>pace</code> vào bước xếp lịch</li>
       </ul>
     </div>

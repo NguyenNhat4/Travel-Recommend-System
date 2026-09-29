@@ -75,6 +75,10 @@ paths:
     $ref: ./paths/itinerary-agent.yaml#/~1assistant~1itineraries
   /assistant/itineraries/stream:
     $ref: ./paths/itinerary-agent.yaml#/~1assistant~1itineraries~1stream
+  /assistant/conversations:
+    $ref: ./paths/itinerary-agent.yaml#/~1assistant~1conversations
+  /assistant/conversations/{conversationId}:
+    $ref: ./paths/itinerary-agent.yaml#/~1assistant~1conversations~1{conversationId}
   /assistant/status:
     $ref: ./paths/itinerary-agent.yaml#/~1assistant~1status
   /events:
@@ -302,6 +306,16 @@ components:
       $ref: ./schemas/itinerary-agent.yaml#/ItineraryFallback
     ItineraryResponse:
       $ref: ./schemas/itinerary-agent.yaml#/ItineraryResponse
+    AssistantConversationSummary:
+      $ref: ./schemas/itinerary-agent.yaml#/AssistantConversationSummary
+    AssistantConversationMessage:
+      $ref: ./schemas/itinerary-agent.yaml#/AssistantConversationMessage
+    AssistantConversationList:
+      $ref: ./schemas/itinerary-agent.yaml#/AssistantConversationList
+    AssistantConversationDetail:
+      $ref: ./schemas/itinerary-agent.yaml#/AssistantConversationDetail
+    AssistantConversationPagination:
+      $ref: ./schemas/itinerary-agent.yaml#/AssistantConversationPagination
     AssistantStatus:
       $ref: ./schemas/itinerary-agent.yaml#/AssistantStatus
     AssistantStreamEvent:

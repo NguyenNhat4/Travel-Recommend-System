@@ -12,7 +12,7 @@
 
 ## File thay đổi
 
-- `.github/workflows/backend-ci-cd.yml` — sửa: theo dõi template Compose, chép template lên VM và validate bằng Docker Compose trước deploy.
+- `.github/workflows/backend-ci-cd.yml` — sửa: theo dõi template Compose, chép template lên VM bằng đường dẫn tuyệt đối, validate bằng Docker Compose trước deploy và recreate `vota-daily-monitor` từ crawler image mới.
 - `ops/docker-compose.backend-vm.yml` — thêm: Compose app-only dùng host network, env file trên VM và mount khóa RS256 read-only; không quản lý PostgreSQL, Redis hoặc Weaviate.
 - `scripts/deploy-backend-vm.sh` — sửa: preflight env/key/runtime Compose và giữ deploy Backend ở `--no-deps`; hỗ trợ file có quyền đọc giới hạn qua `sudo`.
 - `scripts/tests/test-backend-vm-cd-sync.sh` — thêm: kiểm tra workflow, template Compose và các guard bắt buộc của deploy script.
@@ -21,7 +21,7 @@
 
 ## Quyết định
 
-- Compose trên application VM chỉ có Backend. PostgreSQL vẫn ở DB VM qua SSH tunnel loopback; Redis auth và monitor không bị workflow dựng lại.
+- Compose trên application VM chỉ có Backend. PostgreSQL vẫn ở DB VM qua SSH tunnel loopback; Redis auth không bị workflow dựng lại, còn monitor được recreate riêng từ crawler image mới.
 - Workflow chép template từ repo mỗi lần deploy nên file Compose cũ trên VM không còn là nguồn cấu hình độc lập.
 - Template dùng image Backend `asia-southeast1-docker.pkg.dev/vinpearl-508801/v-ota-data-pipeline-crawler/vota-backend:latest`, khớp image hiện có trên VM; giá trị secret `GAR_BACKEND_IMAGE` trong GitHub Environment vẫn phải trỏ cùng repository image.
 - Deploy dừng sớm nếu thiếu `DATABASE_URL`, `CDP_DATABASE_URL`, `JWT_PRIVATE_KEY_PATH`, `JWT_PUBLIC_KEY_PATH`, `AUTH_REDIS_URL` hoặc hai file khóa trên VM.
@@ -33,8 +33,10 @@
 - `bash scripts/tests/test-backend-vm-cd-sync.sh` — PASS.
 - `bash -n scripts/deploy-backend-vm.sh scripts/check-db-tunnel.sh scripts/install-vota-cron.sh scripts/tests/test-backend-vm-cd-sync.sh` — PASS.
 - PyYAML parse `.github/workflows/backend-ci-cd.yml` và `ops/docker-compose.backend-vm.yml` — PASS.
+- Đóng gói đúng các file deploy bằng `tar` với ba thư mục nguồn tuyệt đối — PASS; cách dùng `-C` tương đối cũ tái hiện lỗi `could not chdir to '../ops'` và đã được loại bỏ.
 - `git diff --check` — PASS.
 - Compose local chưa resolve được vì `/etc/vota/backend.env` chỉ tồn tại trên VM; sẽ validate lại bằng Compose trên VM trong bước áp dụng template.
+- Monitor được restart sau Backend deploy; CD cũng khởi động một lượt crawler nền bằng image mới và kiểm tra container đã bắt đầu. Cron vẫn giữ lịch 02:00, không tạo lịch thứ hai.
 
 ## Còn lại / rủi ro
 

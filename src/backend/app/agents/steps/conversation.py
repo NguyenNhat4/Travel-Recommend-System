@@ -5,7 +5,7 @@ import json
 
 from ..models import ConversationalAnswer
 from . import messages
-from .history import sanitize_conversation_history
+from .history import llm_context
 from .messages import event, failure, message
 from .prompts import CONVERSATION_PROMPT
 
@@ -13,10 +13,8 @@ from .prompts import CONVERSATION_PROMPT
 def conversation_input(state: dict) -> list:
     """Chỉ gửi ngữ cảnh đã chốt cho LLM; nó viết câu chữ, không được tự quyết luồng."""
     language = "Vietnamese" if state.get("language", "vi") == "vi" else "English"
-    payload = {"message": state.get("query", ""),
-               "conversation_history": sanitize_conversation_history(state.get("conversation_history", [])),
+    payload = {"message": state.get("query", ""), **llm_context(state),
                "interaction_type": state.get("interaction_type", ""),
-               "known_intent": state.get("intent", {}),
                "missing_fields": state.get("missing_fields", []),
                "clarification_reason": state.get("clarification_reason"),
                "refusal": bool(state.get("refusal"))}
@@ -48,6 +46,9 @@ def clarification_fallback(state: dict) -> dict:
         question = messages.CLARIFY_CONFLICT
     elif reason == "unverified":
         question = messages.CLARIFY_UNVERIFIED
+    elif missing and set(missing) <= {"startDate", "party", "budget"}:
+        details = message(state, "detail_joiner").join(message(state, f"detail_{key}") for key in missing)
+        question = message(state, "missing_trip_details", details=details)
     elif len(missing) == 2:
         question = message(state, "missing_both")
     elif "destination" in missing:
