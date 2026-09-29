@@ -16,6 +16,7 @@
 - `.github/workflows/backend-ci-cd.yml` — sửa: serialize deploy VM giữa workflow Backend và Frontend.
 - `ops/docker-compose.backend-vm.yml` — sửa: thêm service Frontend trên host network, gọi Backend qua loopback và dùng Redis/session token đã cấu hình cho Backend.
 - `scripts/deploy-frontend-vm.sh` — thêm: cập nhật riêng service Frontend, kiểm tra Backend/Frontend/BFF và rollback về image digest trước nếu health check lỗi.
+- `src/frontend/tests/unit/productDetailView.test.tsx` — sửa: chờ effect tải variants hoàn tất trước assertion để tránh race khi Vitest chạy nhiều worker.
 - `history/2026-09-28-frontend-vm-deploy.md` — thêm: ghi quyết định, kiểm tra và phần chưa xác minh.
 
 ## Quyết định
@@ -33,7 +34,8 @@
 - PyYAML parse `.github/workflows/frontend-ci-cd.yml`, `.github/workflows/backend-ci-cd.yml` và `ops/docker-compose.backend-vm.yml` — PASS.
 - `git diff --check` — PASS.
 - `actionlint` — không có trong môi trường.
-- Chưa chạy test ứng dụng, Docker image build, GitHub Actions hoặc deploy/runtime trên VM.
+- `npm --prefix src/frontend test` — PASS, 22 file / 126 test.
+- Chưa chạy Docker image build, GitHub Actions hoặc deploy/runtime trên VM.
 
 ## Còn lại / rủi ro
 
