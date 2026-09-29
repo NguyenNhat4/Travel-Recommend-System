@@ -266,16 +266,11 @@ async def build_plan(state: dict, intent: dict, constraints: dict, *, tools: Too
     try:
         if tools is None:
             raise ToolError("ITINERARY_TOOLS_NOT_CONFIGURED")
-        plan = state.get("tool_plan")
-        if not plan:
-            response = await asyncio.wait_for(chat_model(llm).bind_tools(tools.definitions()).ainvoke([
-                ("system", TOOL_PLAN_PROMPT),
-                ("human", json.dumps({"message": state.get("query", ""),
-                                      **llm_context(state, intent=intent, constraints=constraints),
-                                      # Tên khoá cũ mà TOOL_PLAN_PROMPT nhắc tới: intent đã chuẩn hóa là nguồn chính.
-                                      "intent": intent,
-                                      "constraints": constraints}, ensure_ascii=False))]),
-                llm_timeout_seconds)
+        plan, offered = state.get("tool_plan"), None
+        if not plan:  # plan đã lưu (lần retry) chạy lại nguyên trạng, không hỏi LLM và không đọc definitions()
+            definitions, prompt, offered = _planner_input(state, intent, tools.definitions())
+            response = await asyncio.wait_for(chat_model(llm).bind_tools(definitions).ainvoke(prompt),
+                                              llm_timeout_seconds)
             plan = response.tool_calls
         plan = validated_plan({**state, "intent": intent, "constraints": constraints}, plan,
                               require_recommendations=require_recommendations, offered=offered)

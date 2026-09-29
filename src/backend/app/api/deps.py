@@ -90,8 +90,8 @@ async def conversation_owner(request: Request, authorization: str | None = Heade
     if verifier is None:
         return None
     try:
-        token = _bearer(authorization)
-        return (await _verified(token, verifier, get_revoked_tokens(request))).cdp_user_id if token else None
+        principal = await principal_from_header(authorization, verifier, get_revoked_tokens(request))
+        return principal.cdp_user_id if principal else None
     except AuthError:
         return None
 
