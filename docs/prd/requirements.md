@@ -7,13 +7,14 @@ Tài liệu này đặc tả chi tiết toàn bộ các yêu cầu chức năng 
 ## 1. Yêu Cầu Chức Năng (Functional Requirements)
 
 ### 1.1. Phân Hệ Danh Mục Sản Phẩm (Catalog Management)
-- **FR-CAT-01 (Mô hình hóa đa dạng sản phẩm):** Hệ thống phải hỗ trợ các loại hình du lịch cốt lõi: Khách sạn / Resort (`hotel_property`, `hotel_room`), Chuyến bay (`flight_route`, `flight_instance`), Hoạt động / Vé tham quan (`experience`), và Gói dịch vụ (`combo`).
+- **FR-CAT-01 (Mô hình hóa đa dạng sản phẩm):** Hệ thống phải hỗ trợ các loại hình du lịch cốt lõi: Khách sạn / Resort (`hotel_property`, `hotel_room`), Chuyến bay (`flight_route`, `flight_instance`; gồm một chiều và khứ hồi có hai chặng, ngày cố định và giá tổng), Hoạt động / Vé tham quan (`experience`), và Gói dịch vụ (`combo`).
 - **FR-CAT-02 (Cấu trúc phân cấp và đơn vị đặt chỗ):**
   - Chỉ các đơn vị cụ thể (`hotel_room`, `flight_instance`, `experience`, `combo`) mới có trạng thái đặt chỗ được (`is_bookable = true`).
   - Điểm lưu trú tổng quan (`hotel_property`) chỉ mang tính hiển thị thông tin và là đơn vị tìm kiếm (`is_search_unit = true`), không đặt chỗ trực tiếp trên property mà đặt qua phòng con.
 - **FR-CAT-03 (Lịch khả dụng & Định giá):**
   - Quản lý cửa sổ mở bán (`available_from`, `available_to`) và trạng thái phòng/vé trống theo từng ngày (`attributes.availability`).
   - Hỗ trợ cơ sở định giá đa dạng (`per_night`, `per_person`, `per_package`).
+  - Vé khứ hồi là `flight_instance` (`level: flight`, `tripType: roundTrip`), ngày sử dụng là ngày đi, ngày về nằm trong sản phẩm. Hạng vé có bằng chứng (`cabinClass`, gồm phổ thông/thương gia) tạo biến thể đặt được riêng theo hành trình và ngày; không đổi ID vé cũ, không suy hạng hoặc tự tạo giá. Giá là tổng hành trình cho một người lớn.
 - **FR-CAT-04 (Gói kết hợp - Combo Handling):** Hỗ trợ tách bóc và truy xuất chi tiết các thành phần trong combo (phòng ở, vé máy bay, vé vui chơi) với tỷ lệ tin cậy và căn cứ trích xuất rõ ràng.
 
 ### 1.2. Phân Hệ Tìm Kiếm Ngữ Nghĩa (Semantic Search Engine)

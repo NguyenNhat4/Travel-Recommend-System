@@ -29,6 +29,7 @@ def product_summary(product: Product, *, unit_price: int | None = None, name: st
         "availableFrom": product.available_from.isoformat() if product.available_from else None,
         "availableTo": product.available_to.isoformat() if product.available_to else None,
         "imageUrl": product.image_url,
+        **({"attributes": product.attributes} if product.taxonomy == "flight" else {}),
     }
 
 

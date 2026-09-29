@@ -47,7 +47,7 @@ log = logging.getLogger("crawler")
 BROWSER_SOURCES = ("booking-hotels", "agoda-hotels", "booking-attractions")
 TRIP_SOURCES = ("trip-flights", "trip-attractions", "trip-experiences")
 SOURCES = ("vinpearl",) + TRIP_SOURCES + BROWSER_SOURCES + ("booking-flights", "trip-hotels", "trip-combos")
-EXIT_BLOCKED = 75  # bị chặn liên tiếp nên tự dừng: nghỉ vài giờ rồi chạy lại (xem run_forever.sh)
+EXIT_BLOCKED = 75  # bị chặn liên tiếp nên tự dừng (đã lưu tiến độ): nghỉ vài giờ rồi chạy lại
 
 
 def _name(cmd: str) -> str:

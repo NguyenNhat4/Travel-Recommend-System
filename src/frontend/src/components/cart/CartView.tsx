@@ -6,6 +6,7 @@ import { fetchRecommendations } from '../../services/recsys';
 import type { ApiCartItem } from '../../services/booking';
 import type { RecommendationResponse, Taxonomy } from '../../types/travel';
 import { TaxonomyBadge } from '../common/TaxonomyBadge';
+import { FlightSummary } from '../common/FlightSummary';
 import { ProductCard } from '../common/ProductCard';
 import { Trash2, ShoppingBag, ArrowRight, ShieldCheck, Sparkles, Loader2, AlertTriangle } from 'lucide-react';
 import { formatVnd } from '../confirmation/bookingLabels';
@@ -153,6 +154,7 @@ export const CartView: React.FC = () => {
                         <h4 className="text-xs sm:text-sm font-bold text-slate-900 truncate">
                           {item.product.name}
                         </h4>
+                        <FlightSummary product={item.product} />
                         <div className="text-[11px] text-slate-500 mt-0.5">{itemSummary(item)}</div>
                         {!item.product.available && (
                           <div className="text-[11px] text-rose-600 font-semibold mt-0.5">

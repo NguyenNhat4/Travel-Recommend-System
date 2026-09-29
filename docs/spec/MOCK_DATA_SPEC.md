@@ -48,7 +48,7 @@ Diễn giải cho chỗ spec mơ hồ hoặc tự mâu thuẫn:
 | Khách new | 0 hoặc 1 chuyến chỉ có product_view (không search), 1–90 ngày trước as_of |
 | Persona | Khuôn cố định: không search, 1 view mỗi chuyến, không add_to_cart ở chuyến cũ (P1 = 12 event, P3 = 6, dưới cap 15 mà `verify.sql` tính cả persona). Persona luôn opt-in, gdpr true, không bị cạnh lộn xộn. P1 lấy phòng Vinpearl Nha Trang phổ biến nhất còn trống đêm as_of + 12 |
 | Lịch phòng | Sinh trực tiếp cho cửa sổ 30 ngày theo `(product_id, as_of)`: số đêm kín mục tiêu rồi xếp cụm 1–4 đêm, giữa hai cụm có ≥ 1 đêm trống. "T6/T7 ×1,5" hiểu là theo từng đêm: cụm chứa T6/T7 được chọn với trọng số ×2 (`ROOM_WEEKEND_CLUSTER_WEIGHT`), đo trên snapshot cho ×1,48–1,49 mỗi đêm. Trạng thái một đêm có thể đổi khi cuộn cửa sổ |
-| Ngày bay | Ngày trip.com đã liệt kê (`datesSeen`) sớm nhất trong cửa sổ — trùng `sourceAvailableFrom` khi nó nằm trong cửa sổ; không có thì `as_of + crc32(product_id) % 30` |
+| Ngày bay | Ngày trip.com đã liệt kê (`datesSeen`) sớm nhất trong cửa sổ — trùng `sourceAvailableFrom` khi nó nằm trong cửa sổ; không có thì `as_of + crc32(product_id) % 30`. Vé báo giá ngày cố định (`fixedDepartureDate`, gồm khứ hồi): giữ ngày đi thật khi nằm trong cửa sổ, không thì dời như trên (xem §2.1) |
 | Phễu "open 35% → click 8%" | click 8% tính trên delivered, như open |
 | Email Insider | Luôn `<cdp_user_id viết thường>@example.com`, kể cả persona (hợp đồng Insider chỉ yêu cầu khớp `cdpUserId`) |
 | gdpr opt-out | `max(as_of − U(0, 180) ngày, created_at + 1 ngày)`, lưu ở `insider_profiles.updated_at` (mốc `verify_insider.sql` dùng) |
@@ -64,7 +64,7 @@ Số đo trên snapshot hiện hành 11.387 dòng, `--seed 42`: 7.145 event (pur
 src/data_collection/
 ├── data/products.jsonl         # runtime artifact từ crawler, 13 trường CDP; bị gitignore
 ├── data/products.synthetic.jsonl # fallback do gen_products.py sinh; sourceRef bắt đầu bằng 'synthetic:'
-├── snapshots/2026-09-23/       # snapshot catalog nén + manifest/checksum + mapping combo đã duyệt; có trong Git
+├── snapshots/2026-09-29/       # snapshot catalog mặc định nén + manifest/checksum + mapping combo đã duyệt; có trong Git
 ├── seed/
 │   ├── __main__.py             # CLI: python -m data_collection.seed --as-of YYYY-MM-DD --seed 42 [--reset] [--users 2000]
 │   ├── config.py               # mọi tỷ lệ, phân bố, danh sách từ khoá — KHÔNG hard-code trong logic
@@ -103,6 +103,7 @@ Tổng ≈ 450 dòng. `destination` lấy từ danh sách Vinpearl: Nha Trang, P
 1. **Cửa sổ 30 ngày.** Lưu giá trị gốc: `attributes.sourceAvailableFrom/To` = `availableFrom/To` của file (nếu có). Rồi:
    `available_from = max(sourceFrom, as_of)`, `available_to = min(sourceTo, as_of + 29)`; nguồn không có → `[as_of, as_of + 29]`.
    Chuyến bay (`taxonomy = flight`, `level = flight`): `available_from = available_to = ngày bay`; ngày bay = `sourceAvailableFrom` nếu nằm trong cửa sổ, nếu không thì **dời** vào cửa sổ: `as_of + (hash(product_id) % 30)`. Tuyến (`level = route`): min/max của các chuyến con.
+   Vé báo giá ngày cố định (`fixedDepartureDate: true`, gồm khứ hồi; `docs/prd/data-model.md` §3): giữ ngày đi thật khi nằm trong cửa sổ, kể cả khi `priceValidUntil` đã qua; ngày đi ngoài cửa sổ thì dời như trên, dùng `product_id` nhỏ nhất của hành trình (các hạng vé của cùng hành trình dời cùng ngày), ngày đã có hành trình khác cùng chuyến thì lùi sang ngày kế tiếp. Hai chặng dời cùng số ngày, giữ giờ và `stayDays`; `returnDate` và ngày trong `name`/`description` đổi theo; giá và `priceValidUntil` giữ nguyên, không thêm khoá. Chỉ seed làm vậy: job cào (`fresh_catalog_db.apply_window`) giữ ngày thật và khoá vé hết hạn báo giá.
    Sau khi cắt mà `available_from > available_to` → đặt `available = false`, `available_from = available_to = NULL`.
 2. **Lịch 30 ngày** `attributes.availability = {from: as_of, days: 30, calendar: "…30 ký tự…"}` chỉ cho `level = room` và `taxonomy ∈ {attraction, golf}`:
    - room: nếu Vinpearl có `pricesByDateQueried` phủ ≥ 85% cửa sổ (ít nhất 26/30 ngày), dùng lịch thật từ `pricesByDate`; ngày đã hỏi có giá = `1`, đã hỏi không có giá = `0`. Dữ liệu hỏi thưa không được coi ngày chưa hỏi là hết phòng mà fallback sang lịch mô phỏng: kín theo cụm 1–4 đêm, tổng 25–40% đêm; thứ Sáu/Bảy xác suất kín ×1.5; `brand = Vinpearl` ×1.3. Ký tự i = ngày `as_of + i`; `1` trống, `0` kín.
