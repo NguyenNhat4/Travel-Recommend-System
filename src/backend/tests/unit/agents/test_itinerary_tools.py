@@ -10,6 +10,7 @@ import httpx
 
 from src.backend.app.agents import nodes, routing
 from src.backend.app.agents.steps import tool_planning
+from src.backend.app.agents.steps.history import llm_context
 from src.backend.app.agents.steps.prompts import SIMILAR_HINT, TOOL_PLAN_PROMPT
 from src.backend.app.agents.tools.itinerary_gateway import ItineraryToolGateway
 from src.backend.app.application.itinerary.tool_contracts import contracts, definitions, normalize_arguments, validate
@@ -647,7 +648,9 @@ class SimilarPlanTests(unittest.IsolatedAsyncioTestCase):
                     # Đúng bộ tool và prompt như trước khi có Similar; lời gọi Similar LLM tự bịa bị bỏ.
                     self.assertEqual(bound, [list(every[:2])])
                     self.assertEqual((system_role, system), ('system', TOOL_PLAN_PROMPT))
-                    self.assertEqual(set(payload), {'message', 'conversation_history', 'intent', 'constraints'})
+                    # Payload vẫn mang ngữ cảnh chung của mọi lượt gọi LLM (architecture §3), không thêm khoá nào.
+                    self.assertEqual(set(payload), {'message', 'intent', 'constraints', *llm_context(state)})
+                    self.assertEqual(payload['previous_selection'], state['previous_selection'])
                     self.assertEqual(names(plan), ['search_products'])
 
 

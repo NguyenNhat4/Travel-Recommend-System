@@ -238,20 +238,23 @@ def validated_plan(state: dict, plan: list, *, require_recommendations: bool = F
     return [{"id": f"call-{index}", **call} for index, call in enumerate(validated)]
 
 
-def _planner_input(state: dict, intent: dict, definitions: list) -> tuple[list, list, frozenset[str]]:
+def _planner_input(state: dict, intent: dict, constraints: dict,
+                   definitions: list) -> tuple[list, list, frozenset[str]]:
     """(definitions đưa cho LLM, messages, tên tool được mời).
 
-    Similar chỉ được mời khi lượt có `previous_selection` và gateway có port Similar; khi đó mới thêm gợi ý
-    prompt và `previous_selection` vào payload. Lượt còn lại thấy đúng bộ tool và prompt như trước khi có Similar.
+    Payload luôn mang ngữ cảnh chung của mọi lượt gọi LLM (`llm_context`). Similar chỉ được mời khi lượt có
+    `previous_selection` và gateway có port Similar; khi đó mới thêm gợi ý prompt và `previous_selection` chỉ còn
+    `productId`/`name`/`taxonomy`. Lượt còn lại thấy đúng bộ tool và prompt như trước khi có Similar.
     """
     selection = state.get("previous_selection") or []
     offer_similar = bool(selection) and any(d["name"] == SIMILAR_PRODUCTS for d in definitions)
     if not offer_similar:
         definitions = [d for d in definitions if d["name"] != SIMILAR_PRODUCTS]
     payload = {"message": state.get("query", ""),
-               "conversation_history": sanitize_conversation_history(state.get("conversation_history", [])),
+               **llm_context(state, intent=intent, constraints=constraints),
+               # Tên khoá cũ mà TOOL_PLAN_PROMPT nhắc tới: intent đã chuẩn hóa là nguồn chính.
                "intent": intent,
-               "constraints": state.get("constraints", {})}
+               "constraints": constraints}
     if offer_similar:
         payload["previous_selection"] = [{key: item[key] for key in ("productId", "name", "taxonomy") if key in item}
                                          for item in selection]
@@ -268,7 +271,7 @@ async def build_plan(state: dict, intent: dict, constraints: dict, *, tools: Too
             raise ToolError("ITINERARY_TOOLS_NOT_CONFIGURED")
         plan, offered = state.get("tool_plan"), None
         if not plan:  # plan đã lưu (lần retry) chạy lại nguyên trạng, không hỏi LLM và không đọc definitions()
-            definitions, prompt, offered = _planner_input(state, intent, tools.definitions())
+            definitions, prompt, offered = _planner_input(state, intent, constraints, tools.definitions())
             response = await asyncio.wait_for(chat_model(llm).bind_tools(definitions).ainvoke(prompt),
                                               llm_timeout_seconds)
             plan = response.tool_calls

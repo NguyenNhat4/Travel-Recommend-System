@@ -608,7 +608,7 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         stay = first['response']['itinerary']['stay']['product']['productId']
         # Như LLM ở lượt đổi món: loại chỗ ở cũ, tìm chỗ ở tương tự nó và vẫn search loại còn lại.
         second_llm = ScriptedLlm(
-            extraction=Extraction(domain='travel', constraints={'exclude_products': [stay]}),
+            extraction=Extraction(start_date_undecided=True, constraints={'exclude_products': [stay]}),
             plan=[{'name': 'get_similar_products', 'args': {'productId': stay}},
                   {'name': 'search_products', 'args': {'query': 'tham quan', 'taxonomy': 'attraction'}}])
         second = await self.run_graph(second_llm, clients, state={'conversation_id': first['conversation_id']},
@@ -622,7 +622,7 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(first_llm.bound_tools, [['search_products', 'get_recommendations']])
         (_, system), (_, human) = first_llm.planner_messages[0]
         self.assertEqual(system, TOOL_PLAN_PROMPT)
-        self.assertNotIn('previous_selection', json.loads(human))
+        self.assertEqual(json.loads(human)['previous_selection'], [])    # ngữ cảnh chung: chưa hiển thị gì
         # Lượt đổi món: tool, gợi ý prompt và danh sách anchor lưu phía server cùng xuất hiện.
         self.assertIn('get_similar_products', second_llm.bound_tools[0])
         (_, system), (_, human) = second_llm.planner_messages[0]

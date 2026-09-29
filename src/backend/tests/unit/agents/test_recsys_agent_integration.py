@@ -113,7 +113,9 @@ def inprocess_tools(services=None, *, recommend=..., verifier=None, calls=None):
 def run_graph(tools, *, authorization=None, **kwargs):
     gateway = ItineraryToolGateway(tools, tools, tools, recommendation_authorization=authorization)
     graph = build_graph(tools=gateway, llm=ScriptedLlm(plan=PLAN), **kwargs)
-    result = asyncio.run(graph.ainvoke({"query": "2 ngày Nha Trang", "request_id": "inprocess-test"}))
+    # Như run_graph của test_itinerary_runtime: coi như đã hỏi ngày đi/số người/ngân sách để tới được bước tool.
+    result = asyncio.run(graph.ainvoke({"query": "2 ngày Nha Trang", "request_id": "inprocess-test",
+                                        "start_date_asked": True}))
     assert result["events"][-1]["node"] == "finalize"
     assert valid("ItineraryResponse" if result["http_status"] == 200 else "ErrorResponse", result["response"])
     return result

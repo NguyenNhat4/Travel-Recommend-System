@@ -91,9 +91,9 @@ async def conversation_owner(request: Request, authorization: str | None = Heade
         return None
     try:
         principal = await principal_from_header(authorization, verifier, get_revoked_tokens(request))
-        return principal.cdp_user_id if principal else None
     except AuthError:
         return None
+    return principal.cdp_user_id if principal else None
 
 
 async def current_principal(
