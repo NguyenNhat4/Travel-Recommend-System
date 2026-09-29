@@ -4,7 +4,9 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Mapping
 
-from src.backend.app.domain.booking import Booking, Cart, cancellable_until, line_total
+from src.backend.app.domain.booking import (
+    Booking, BookingItem, Cart, FareLine, Traveler, cancellable_until, fare_lines, lines_total,
+)
 from src.backend.app.domain.booking.status import BookingStatus, PaymentStatus
 from src.backend.app.domain.catalog.models import Product
 
@@ -15,8 +17,10 @@ def iso(value: datetime | None) -> str | None:
     return value.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") if value else None
 
 
-def product_summary(product: Product, *, unit_price: int | None = None, name: str | None = None) -> dict:
-    return {
+def product_summary(
+    product: Product, *, unit_price: int | None = None, name: str | None = None, with_capacity: bool = False,
+) -> dict:
+    summary = {
         "productId": product.product_id,
         "name": name or product.name,
         "taxonomy": product.taxonomy,
@@ -30,6 +34,14 @@ def product_summary(product: Product, *, unit_price: int | None = None, name: st
         "availableTo": product.available_to.isoformat() if product.available_to else None,
         "imageUrl": product.image_url,
     }
+    # Sức chứa hạng phòng để Web hiện "Tối đa n khách/phòng" ở bước xếp phòng; không có thì không gửi trường attributes.
+    if with_capacity and product.max_occupancy:
+        summary["attributes"] = {"maxOccupancy": product.max_occupancy}
+    return summary
+
+
+def _fares(fares: list[FareLine]) -> list[dict]:
+    return [fare.to_json() for fare in fares]
 
 
 def cart_response(cart: Cart, products: Mapping[str, Product]) -> dict:
@@ -39,13 +51,17 @@ def cart_response(cart: Cart, products: Mapping[str, Product]) -> dict:
         if product is None:
             continue
         price = int(product.unit_price) if product.unit_price is not None else 0
+        fares = fare_lines(product.taxonomy, price, product.attributes, quantity=line.quantity, nights=line.nights,
+                           adults=line.adults, children=line.children)
         items.append({
             "cartItemId": line.cart_item_id,
-            "product": product_summary(product),
+            "product": product_summary(product, with_capacity=True),
             "usingDate": line.using_date.isoformat(),
             "quantity": line.quantity,
             "nights": line.nights if product.taxonomy == "hotel" else None,
-            "lineTotal": line_total(product.taxonomy, price, line.quantity, line.nights),
+            "guests": {"adults": line.adults, "children": line.children},
+            "fares": _fares(fares),
+            "lineTotal": lines_total(fares),
         })
     total = sum(item["lineTotal"] for item in items)
     return {
@@ -100,8 +116,34 @@ def _cancellation(booking: Booking) -> dict | None:
     }
 
 
+def _item_fares(item: BookingItem) -> list[FareLine]:
+    """Dòng giá của mục; đơn tạo trước khi có dòng giá thì dựng lại theo công thức không có trẻ em."""
+    if item.fares:
+        return item.fares
+    return fare_lines(item.taxonomy, item.unit_price, {}, quantity=item.quantity, nights=item.nights,
+                      adults=item.quantity, children=0)
+
+
+def _item_travelers(item: BookingItem, party: Mapping[str, Traveler]) -> list[dict]:
+    """Hành khách của một mục, không có ngày sinh (NFR-SEC-01, spec §8.6). Khách sạn kèm số phòng và người đại diện."""
+    out: list[dict] = []
+    if item.rooms:
+        for room_no, room in enumerate(item.rooms, start=1):
+            for ref in room.traveler_refs:
+                if ref in party:
+                    out.append({"fullName": party[ref].full_name, "type": party[ref].type.value.upper(),
+                                "roomNo": room_no, "isLead": ref == room.lead_traveler_ref})
+    else:
+        for ref in item.traveler_refs:
+            if ref in party:
+                out.append({"fullName": party[ref].full_name, "type": party[ref].type.value.upper(),
+                            "roomNo": None, "isLead": False})
+    return out
+
+
 def booking_response(booking: Booking, products: Mapping[str, Product]) -> dict:
     groups: dict[str, list[dict]] = {}
+    party = {traveler.ref: traveler for traveler in booking.travelers}
     for item in booking.items:
         product = products.get(item.product_id)
         destination = product.destination if product else _UNKNOWN_DESTINATION
@@ -116,6 +158,8 @@ def booking_response(booking: Booking, products: Mapping[str, Product]) -> dict:
             "quantity": item.quantity,
             "nights": item.nights if item.taxonomy == "hotel" else None,
             "lineTotal": item.line_total,
+            "fares": _fares(_item_fares(item)),
+            "travelers": _item_travelers(item, party),
             "guestNames": list(item.guest_names),
             "specialRequest": item.special_request,
         })

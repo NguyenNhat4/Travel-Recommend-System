@@ -199,6 +199,7 @@ erDiagram
         string given_names "Tên đệm và tên"
         string full_name "Nối từ surname và given_names"
         date birth_date "Bắt buộc với trẻ em; không trả qua API, không gửi CDP/Insider/Stripe"
+        jsonb documents "FR-BKG-13: {title, nationality, docType, docNumber, docExpiry}. Chỉ khi giỏ có flight; docNumber không trả nguyên qua API (chỉ 4 số cuối), không gửi CDP/Insider/Stripe"
     }
 
     APP_PAYMENTS {

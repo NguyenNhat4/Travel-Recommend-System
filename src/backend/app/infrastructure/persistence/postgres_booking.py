@@ -11,10 +11,13 @@ from typing import AsyncIterator, Sequence
 
 import psycopg
 from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
 
 from src.backend.app.application.booking.errors import ValidationFailed
 from src.backend.app.application.ports.booking_store import PendingBookingExists, ReferenceCodeTaken
-from src.backend.app.domain.booking import Booking, BookingItem, Cart, CartLine, Payment
+from src.backend.app.domain.booking import (
+    Booking, BookingItem, Cart, CartLine, FareLine, Payment, RoomAllocation, Traveler, TravelerType,
+)
 from src.backend.app.domain.booking.status import BookingStatus, PaymentStatus
 from src.backend.app.domain.catalog.models import Product
 
@@ -73,40 +76,49 @@ class PostgresCartRepository:
             rows = await (await conn.execute(
                 """
                 SELECT cart_item_id::text AS cart_item_id, product_id::text AS product_id, quantity, using_date,
-                       using_date_to, unit_price_snapshot, added_at
+                       using_date_to, unit_price_snapshot, added_at, adults, children, child_unit_price_snapshot
                   FROM app.cart_items WHERE cart_id = %s::uuid ORDER BY added_at, cart_item_id
                 """, (cart["cart_id"],))).fetchall()
         lines = [
             CartLine(
                 cart_item_id=r["cart_item_id"], product_id=r["product_id"], quantity=r["quantity"],
                 using_date=r["using_date"], nights=_nights(r["using_date"], r["using_date_to"]),
-                unit_price_snapshot=int(r["unit_price_snapshot"]), added_at=r["added_at"])
+                unit_price_snapshot=int(r["unit_price_snapshot"]), added_at=r["added_at"], adults=r["adults"],
+                children=r["children"],
+                child_unit_price_snapshot=(int(r["child_unit_price_snapshot"])
+                                           if r["child_unit_price_snapshot"] is not None else None))
             for r in rows
         ]
         return Cart(cart_id=cart["cart_id"], cdp_user_id=cdp_user_id, lines=lines, updated_at=cart["updated_at"])
 
-    async def add(
+    async def upsert(
         self, cdp_user_id: str, *, product_id: str, using_date: date, quantity: int, nights: int | None,
-        unit_price: int,
+        unit_price: int, adults: int, children: int, child_unit_price: int | None,
     ) -> None:
         end = using_date + timedelta(days=nights) if nights else None
         async with await psycopg.AsyncConnection.connect(self._database_url, row_factory=dict_row) as conn:
             cart = await self._cart_row(conn, cdp_user_id)
             await conn.execute(
                 """
-                INSERT INTO app.cart_items (cart_id, product_id, quantity, using_date, using_date_to, unit_price_snapshot)
-                VALUES (%s::uuid, %s::uuid, %s, %s, %s, %s)
+                INSERT INTO app.cart_items
+                    (cart_id, product_id, quantity, using_date, using_date_to, unit_price_snapshot, adults, children,
+                     child_unit_price_snapshot)
+                VALUES (%s::uuid, %s::uuid, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (cart_id, product_id, using_date) DO UPDATE
-                   SET quantity = app.cart_items.quantity + EXCLUDED.quantity,
+                   SET quantity = EXCLUDED.quantity,
                        using_date_to = EXCLUDED.using_date_to,
-                       unit_price_snapshot = EXCLUDED.unit_price_snapshot
-                """, (cart["cart_id"], product_id, quantity, using_date, end, unit_price))
+                       unit_price_snapshot = EXCLUDED.unit_price_snapshot,
+                       adults = EXCLUDED.adults,
+                       children = EXCLUDED.children,
+                       child_unit_price_snapshot = EXCLUDED.child_unit_price_snapshot
+                """, (cart["cart_id"], product_id, quantity, using_date, end, unit_price, adults, children,
+                      child_unit_price))
             await conn.execute("UPDATE app.carts SET updated_at = now() WHERE cart_id = %s::uuid", (cart["cart_id"],))
             await conn.commit()
 
     async def update(
-        self, cdp_user_id: str, cart_item_id: str, *, using_date: date | None, quantity: int | None,
-        nights: int | None, nights_given: bool, unit_price: int,
+        self, cdp_user_id: str, cart_item_id: str, *, using_date: date | None, quantity: int, nights: int | None,
+        nights_given: bool, unit_price: int, adults: int, children: int, child_unit_price: int | None,
     ) -> bool:
         item_id = _uuid_or_none(cart_item_id)
         if item_id is None:
@@ -118,13 +130,17 @@ class PostgresCartRepository:
                     """
                     UPDATE app.cart_items
                        SET using_date = COALESCE(%s::date, using_date),
-                           quantity = COALESCE(%s::int, quantity),
+                           quantity = %s::int,
                            using_date_to = CASE WHEN %s::int IS NULL THEN NULL
                                                 ELSE COALESCE(%s::date, using_date) + %s::int END,
-                           unit_price_snapshot = %s
+                           unit_price_snapshot = %s,
+                           adults = %s,
+                           children = %s,
+                           child_unit_price_snapshot = %s
                      WHERE cart_item_id = %s::uuid AND cart_id = %s::uuid
                  RETURNING cart_item_id
-                    """, (using_date, quantity, nights, using_date, nights, unit_price, item_id, cart["cart_id"])
+                    """, (using_date, quantity, nights, using_date, nights, unit_price, adults, children,
+                          child_unit_price, item_id, cart["cart_id"])
                 )).fetchone()
                 if row:
                     await conn.execute(
@@ -160,6 +176,24 @@ _BOOKING_SELECT = """
 """
 
 
+def _metadata_of(item: BookingItem) -> dict:
+    return {
+        "fares": [fare.to_json() for fare in item.fares],
+        "travelerRefs": list(item.traveler_refs),
+        "rooms": [{"travelerRefs": list(r.traveler_refs), "leadTravelerRef": r.lead_traveler_ref} for r in item.rooms],
+    }
+
+
+def _item_metadata(metadata: dict | None) -> dict:
+    """`booking_items.metadata` → các trường của BookingItem. Đơn tạo trước khi có dòng giá thì metadata rỗng."""
+    meta = metadata or {}
+    return {
+        "fares": [FareLine.from_json(f) for f in meta.get("fares", [])],
+        "traveler_refs": list(meta.get("travelerRefs", [])),
+        "rooms": [RoomAllocation(tuple(r["travelerRefs"]), r["leadTravelerRef"]) for r in meta.get("rooms", [])],
+    }
+
+
 class _Tx:
     def __init__(self, conn: psycopg.AsyncConnection):
         self._conn = conn
@@ -172,8 +206,13 @@ class _Tx:
         items = await (await self._conn.execute(
             """
             SELECT booking_item_id::text AS booking_item_id, product_id::text AS product_id, taxonomy, product_name,
-                   unit_price, quantity, using_date, using_date_to, guest_names, special_request
+                   unit_price, quantity, using_date, using_date_to, guest_names, special_request, metadata
               FROM app.booking_items WHERE booking_id = %s::uuid ORDER BY using_date, booking_item_id
+            """, (row["booking_id"],))).fetchall()
+        travelers = await (await self._conn.execute(
+            """
+            SELECT traveler_ref, traveler_type, surname, given_names, birth_date
+              FROM app.booking_travelers WHERE booking_id = %s::uuid ORDER BY position
             """, (row["booking_id"],))).fetchall()
         payment = None
         if row["payment_id"]:
@@ -196,8 +235,14 @@ class _Tx:
                     booking_item_id=i["booking_item_id"], product_id=i["product_id"], taxonomy=i["taxonomy"],
                     product_name=i["product_name"], unit_price=int(i["unit_price"]), quantity=i["quantity"],
                     using_date=i["using_date"], nights=_nights(i["using_date"], i["using_date_to"]),
-                    guest_names=list(i["guest_names"] or []), special_request=i["special_request"])
+                    guest_names=list(i["guest_names"] or []), special_request=i["special_request"],
+                    **_item_metadata(i["metadata"]))
                 for i in items
+            ],
+            travelers=[
+                Traveler(t["traveler_ref"], TravelerType(t["traveler_type"]), t["surname"], t["given_names"],
+                         t["birth_date"])
+                for t in travelers
             ])
 
     async def get_by_id(self, booking_id: str, *, lock: bool = False) -> Booking | None:
@@ -240,11 +285,22 @@ class _Tx:
                 """
                 INSERT INTO app.booking_items
                     (booking_item_id, booking_id, product_id, taxonomy, product_name, unit_price, quantity,
-                     using_date, using_date_to, guest_names, special_request)
-                VALUES (%s::uuid, %s::uuid, %s::uuid, %s, %s, %s, %s, %s, %s, %s, %s)
+                     using_date, using_date_to, guest_names, special_request, line_total, metadata)
+                VALUES (%s::uuid, %s::uuid, %s::uuid, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (item.booking_item_id, booking.booking_id, item.product_id, item.taxonomy, item.product_name,
-                 item.unit_price, item.quantity, item.using_date, end, item.guest_names or None, item.special_request))
+                 item.unit_price, item.quantity, item.using_date, end, item.guest_names or None, item.special_request,
+                 item.line_total, Jsonb(_metadata_of(item))))
+        # Đoàn khách: ngày sinh chỉ nằm ở đây, không ra khỏi database (không API, không CDP, Insider hay Stripe).
+        for position, traveler in enumerate(booking.travelers, start=1):
+            await self._conn.execute(
+                """
+                INSERT INTO app.booking_travelers
+                    (booking_id, traveler_ref, position, traveler_type, surname, given_names, full_name, birth_date)
+                VALUES (%s::uuid, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (booking.booking_id, traveler.ref, position, traveler.type.value, traveler.surname,
+                 traveler.given_names, traveler.full_name, traveler.birth_date))
         payment = booking.payment
         if payment is not None:
             await self._conn.execute(

@@ -176,11 +176,13 @@ Thêm key mới là thay đổi tương thích ngược, được phép trong v1
 
 | `taxonomy` | Hậu tố hiển thị | Công thức thành tiền |
 |---|---|---|
-| `hotel` | `/ đêm` | `unitPrice × nights × quantity` |
-| `flight` | `/ khách` | `unitPrice × quantity` |
-| `attraction` | `/ khách` | `unitPrice × quantity` |
+| `hotel` | `/ đêm` | `unitPrice × nights × quantity` (`quantity` là số phòng; số khách không đổi giá) |
+| `flight` | `/ khách` | `unitPrice × quantity` (mọi hành khách trả `unitPrice`, kể cả trẻ em) |
+| `attraction` | `/ khách` | `unitPrice × người lớn + giá vé trẻ em × trẻ em`; không có trẻ em thì `unitPrice × quantity` |
 | `combo` | `/ gói` | `unitPrice × quantity` |
-| `golf` | `/ lượt` | `unitPrice × quantity` |
+| `golf` | `/ lượt` | như `attraction` |
+
+Từ OpenAPI 1.8.0, thành tiền của một mục là **tổng các dòng giá** `fares[].amount` (`ADULT`, `CHILD`, `ROOM`, `PACKAGE`); các công thức trên là kết quả của dòng giá theo từng `taxonomy`. Giá vé trẻ em là `attributes.childPrice` khi `0 < childPrice ≤ unitPrice`, còn lại trẻ em trả `unitPrice`. Chi tiết và ví dụ: `docs/spec/booking/checkout-nhieu-buoc-hanh-khach.md` §4.3, §4.4.
 
 **Điểm đến** là chuỗi tiếng Việt có dấu, đã chuẩn hóa theo danh sách thống nhất giữa các team. Lấy danh sách hiện hành qua `GET /api/v1/destinations` (§4.4), không hardcode phía client.
 
@@ -612,7 +614,8 @@ Authorization: Bearer <jwt>    # bắt buộc
   "productId": "nt-h-01",
   "usingDate": "2026-10-15",
   "quantity": 1,
-  "nights": 3
+  "nights": 3,
+  "guests": { "adults": 2, "children": 1 }
 }
 ```
 
@@ -620,8 +623,11 @@ Authorization: Bearer <jwt>    # bắt buộc
 |---|---:|---|
 | `productId` | Có | Phải tồn tại và `available: true` |
 | `usingDate` | Có | Ngày sử dụng, phải nằm trong `availableFrom`–`availableTo` |
-| `quantity` | Có | Số phòng hoặc số khách, ≥ 1 |
+| `quantity` | Có, trừ khi gửi `guests` cho dịch vụ tính theo người | Số phòng, số gói hoặc số khách, ≥ 1. Vé máy bay, vé tham quan, golf: gửi `guests` thì được bỏ `quantity` (Backend tính `adults + children`); gửi cả hai mà lệch thì `GUEST_COUNT_MISMATCH` |
+| `guests` | Không | `{adults, children}`: `adults` ≥ 1, tổng ≤ 9. Không gửi (client cũ): khách sạn và dịch vụ tính theo người mặc định `adults = quantity`, `children = 0`; combo mặc định `adults = 1` |
 | `nights` | Chỉ với `hotel` | Số đêm, ≥ 1. Các `taxonomy` khác gửi `nights` thì bị bỏ qua |
+
+Khách sạn: mỗi phòng cần ít nhất 1 người lớn (`adults ≥ quantity`) và `adults + children ≤ maxOccupancy × quantity` khi hạng phòng có `maxOccupancy`. Vi phạm thì `400 VALIDATION_ERROR` với `details.fields[].reason` (`ADULT_REQUIRED`, `PARTY_TOO_LARGE`, `OCCUPANCY_EXCEEDED`, `GUEST_COUNT_MISMATCH`). Bộ luật R-CRT-01…05: `docs/spec/booking/checkout-nhieu-buoc-hanh-khach.md` §5.5. `PATCH` nhận cùng các trường (ít nhất một trường).
 
 Thêm thành công thì Backend ghi event `add_to_cart` sang CDP ở nền, với `taxonomy` và `unitPrice` lấy từ catalog. Thêm thất bại không ghi event; `PATCH`/`DELETE` không ghi event; CDP lỗi không ảnh hưởng response.
 
@@ -638,6 +644,10 @@ Thêm thành công thì Backend ghi event `add_to_cart` sang CDP ở nền, vớ
       "usingDate": "2026-10-15",
       "quantity": 1,
       "nights": 3,
+      "guests": { "adults": 2, "children": 1 },
+      "fares": [
+        { "fareType": "ROOM", "unitPrice": 3400000, "count": 1, "nights": 3, "amount": 10200000 }
+      ],
       "lineTotal": 10200000
     }
   ],
@@ -653,10 +663,10 @@ Cam kết:
 
 1. Mọi thao tác giỏ trả về **toàn bộ** `CartResponse`, không trả delta. Client không tự tính lại tổng tiền.
 2. `product` là snapshot **tại thời điểm đọc**, không phải lúc thêm vào giỏ. `available` và `unitPrice` luôn được tải lại, nên sản phẩm hết chỗ sẽ tự lộ ra ở `GET /cart`.
-3. `lineTotal` do backend tính theo công thức §2.6.
+3. `lineTotal` do backend tính, bằng tổng `fares[].amount` (§2.6). `guests` là số người lớn và trẻ em theo loại giá tại `usingDate` của mục; `product.attributes.maxOccupancy` có với hạng phòng để client kiểm sức chứa mà không gọi thêm.
 4. `subtotal` bằng `total` trong MVP — không có thuế, phí hay mã giảm giá.
 5. Không gom nhóm theo điểm đến ở tầng API. Client tự gom theo `product.destination` để hiện "Chuyến {destination}"; backend chỉ chốt nhóm ở bước checkout (§7.2).
-6. Thêm một `productId` đã có trong giỏ với cùng `usingDate` thì **cộng dồn** `quantity`, không tạo mục mới.
+6. Thêm một `productId` đã có trong giỏ với cùng `usingDate` thì **cộng dồn** `quantity` và `guests`, không tạo mục mới; kết quả sau khi cộng vẫn phải đạt luật (tối đa 9 khách, sức chứa). Riêng combo: `quantity` cộng dồn, `guests` lấy giá trị lớn hơn theo từng loại.
 
 ### 7.2. Checkout
 
@@ -675,17 +685,21 @@ Content-Type: application/json
     "email": "minhanh@example.vn",
     "phone": "0912345678"
   },
+  "travelers": [
+    { "travelerRef": "t1", "type": "ADULT", "surname": "Nguyễn", "givenNames": "Minh Anh" },
+    { "travelerRef": "t2", "type": "CHILD", "surname": "Nguyễn", "givenNames": "Gia Bảo", "birthDate": "2019-05-12" }
+  ],
   "itemDetails": [
     {
       "cartItemId": "ci-8k3f2a",
-      "guestNames": ["Nguyễn Minh Anh"],
+      "rooms": [ { "travelerRefs": ["t1", "t2"], "leadTravelerRef": "t1" } ],
       "specialRequest": "Phòng tầng cao nếu còn"
     }
   ]
 }
 ```
 
-Checkout luôn đặt **toàn bộ giỏ hiện tại**. `itemDetails` chỉ bổ sung thông tin theo từng mục và không được thay đổi thành phần giỏ; `cartItemId` lạ thì trả `VALIDATION_ERROR`. Body không có trường tiền nào: số tiền do Backend tính từ catalog.
+Checkout luôn đặt **toàn bộ giỏ hiện tại**. `travelers` là đoàn khách (1–9 người, ít nhất 1 người lớn; trẻ em có `birthDate`); mỗi mục giỏ có đúng một `itemDetails` cho biết ai dùng: `travelerRefs` với dịch vụ tính theo người và combo, `rooms[]` (mỗi phòng có `travelerRefs` và `leadTravelerRef`) với khách sạn. `itemDetails` không được thay đổi thành phần giỏ; `cartItemId` lạ thì trả `VALIDATION_ERROR`. Body không có trường tiền nào: số tiền do Backend tính từ catalog. Request cũ không có `travelers` (chỉ `guestNames`) vẫn được nhận khi giỏ không có trẻ em (`TRAVELERS_REQUIRED` nếu có), và cũng được kiểm thật. Họ tên và ngày sinh chỉ lưu ở `app.booking_travelers`, không trả trong response, không gửi sang CDP, Insider, Stripe (NFR-SEC-01).
 
 `201` nghĩa là **đã giữ chỗ, chờ thanh toán** (FR-BKG-05, FR-BKG-06), không phải đã đặt xong. Backend kiểm giỏ, gọi Stripe tạo Checkout Session (`expires_at` = `holdExpiresAt`, 30 phút), rồi mới ghi đơn `PENDING_PAYMENT` + dòng `app.payments`. Web chuyển trình duyệt tới `payment.checkoutUrl`. Luồng đầy đủ và sơ đồ: `docs/spec/booking/so-do-luong-dat-cho-thanh-toan.md`.
 
@@ -725,7 +739,14 @@ Checkout luôn đặt **toàn bộ giỏ hiện tại**. `itemDetails` chỉ b�
           "quantity": 1,
           "nights": 3,
           "lineTotal": 10200000,
-          "guestNames": ["Nguyễn Minh Anh"],
+          "fares": [
+            { "fareType": "ROOM", "unitPrice": 3400000, "count": 1, "nights": 3, "amount": 10200000 }
+          ],
+          "travelers": [
+            { "fullName": "Nguyễn Minh Anh", "type": "ADULT", "roomNo": 1, "isLead": true },
+            { "fullName": "Nguyễn Gia Bảo", "type": "CHILD", "roomNo": 1, "isLead": false }
+          ],
+          "guestNames": ["Nguyễn Minh Anh", "Nguyễn Gia Bảo"],
           "specialRequest": "Phòng tầng cao nếu còn"
         }
       ],
@@ -748,17 +769,20 @@ Checkout luôn đặt **toàn bộ giỏ hiện tại**. `itemDetails` chỉ b�
 | `groups[]` | **Gom theo `destination`**. Triển khai hiện tại dùng **một** `eventGroupId` cho cả đơn (DDL: `app.bookings.event_group_id` UNIQUE), nên mọi nhóm của một đơn mang cùng giá trị |
 | `total` | Tổng toàn đơn, bằng tổng các `groupTotal`, bằng `payment.amount` |
 
-Kiểm tra bắt buộc trước khi tạo booking (hợp đồng Agent §3.3):
+Kiểm tra bắt buộc trước khi tạo booking (hợp đồng Agent §3.3), theo thứ tự (chi tiết: `docs/spec/booking/checkout-nhieu-buoc-hanh-khach.md` §8.3):
 
-1. Mọi sản phẩm trong giỏ còn tồn tại.
-2. `available` vẫn là `true` → nếu không, `409` `PRODUCT_UNAVAILABLE` kèm `productId`.
-3. `unitPrice` hiện tại khớp với lúc thêm vào giỏ → nếu lệch, `409` `PRICE_CHANGED` kèm giá cũ và giá mới. Giá trong giỏ và trong lịch trình của Agent chỉ là ước tính; **giá tại checkout là dữ liệu chính thức**.
-4. `usingDate` vẫn nằm trong `availableFrom`–`availableTo`.
-5. Giỏ không rỗng → nếu rỗng, `400` `CART_EMPTY`.
+1. Giỏ không rỗng → nếu rỗng, `400` `CART_EMPTY`.
+2. Mọi sản phẩm trong giỏ còn tồn tại.
+3. **Luật dữ liệu đoàn khách và phân bổ** (họ tên, ngày sinh, tuổi, mỗi mục có người dùng, khớp `guests` của giỏ, sức chứa và người lớn mỗi phòng, người đại diện): gom **mọi** vi phạm vào một `400 VALIDATION_ERROR` với `details.fields[]` (`field`, `reason`, `message`, `cartItemId?`). Có vi phạm thì không gọi Stripe và không ghi gì. Sai kiểu dữ liệu (ví dụ ngày sinh không phải ngày) vẫn là `422`.
+4. `available` vẫn là `true` → nếu không, `409` `PRODUCT_UNAVAILABLE` kèm `productId`.
+5. `unitPrice` hiện tại khớp với lúc thêm vào giỏ → nếu lệch, `409` `PRICE_CHANGED` kèm giá cũ và giá mới. Mục có trẻ em còn so giá vé trẻ em hiệu lực với snapshot: lệch thì `PRICE_CHANGED` kèm `details.fareType = CHILD`. Giá trong giỏ và trong lịch trình của Agent chỉ là ước tính; **giá tại checkout là dữ liệu chính thức**.
+6. `usingDate` vẫn nằm trong `availableFrom`–`availableTo`.
 
 Kiểm thêm trước khi tạo đơn: người dùng không có đơn `PENDING_PAYMENT` còn hạn → nếu có, `409 BOOKING_PENDING_PAYMENT` kèm `{ referenceCode, holdExpiresAt }` của đơn đó. Đơn cũ đã quá hạn mà webhook hết hạn chưa tới thì Backend hỏi lại Stripe để đóng nó ngay trong request rồi tạo đơn mới. Stripe timeout/5xx khi tạo phiên → không tạo đơn, `503 PAYMENT_PROVIDER_UNAVAILABLE` (`retryable: true`, header `Retry-After`).
 
-`PRICE_CHANGED` so giá hiện tại với giá snapshot lúc thêm giỏ. `PATCH /cart/items/{cartItemId}` ghi lại snapshot bằng giá hiện tại (khách đã thấy giá mới), nên Web xác nhận giá mới bằng một `PATCH` rồi cho khách bấm Thanh toán lần nữa.
+`PRICE_CHANGED` so giá hiện tại với giá snapshot lúc thêm giỏ (người lớn, và trẻ em khi mục có trẻ em). `PATCH /cart/items/{cartItemId}` ghi lại cả hai snapshot bằng giá hiện tại (khách đã thấy giá mới), nên Web xác nhận giá mới bằng một `PATCH` rồi cho khách bấm Thanh toán lần nữa.
+
+Stripe nhận mỗi dòng giá của mỗi mục một line item (tên "{sản phẩm} · Người lớn", "· Trẻ em", "· {n} đêm", "· Gói"), nên tổng trang Stripe bằng `payment.amount` và khớp tóm tắt đơn. Sự kiện `purchase` gửi CDP vẫn một event mỗi mục (`quantity` của mục, `unitPrice` giá người lớn).
 
 **Giỏ giữ nguyên** trong lúc giữ chỗ; chỉ các mục đã đặt (khoá theo `productId` + `usingDate`) bị xoá khỏi giỏ khi đơn chuyển `CONFIRMED`. Hết hạn hay thanh toán thất bại thì khách đặt lại ngay từ giỏ. Mỗi người dùng chỉ có một đơn giữ chỗ (unique index `bookings_one_pending_per_user`), đây là cơ chế chống bấm hai lần ở phía server; client vẫn phải khóa nút khi đang gửi (`docs/product.md` §4.5.3).
 
@@ -859,7 +883,7 @@ Mã lỗi riêng của auth (`UNAUTHENTICATED`, `SESSION_EXPIRED`, `CSRF_FAILED`
 
 | HTTP | Mã lỗi | Ý nghĩa | `details` |
 |---:|---|---|---|
-| 400 | `VALIDATION_ERROR` | Request sai định dạng hoặc thiếu trường bắt buộc | `{ fields: [...] }` |
+| 400 | `VALIDATION_ERROR` | Request vi phạm luật nghiệp vụ (đoàn khách, phân bổ, số khách của mục giỏ) hoặc `POST /events` sai | `{ fields: [{ field, reason, message, cartItemId? }] }`; mọi vi phạm trong một lần. Sai kiểu dữ liệu ở request khác vẫn là `422` |
 | 400 | `CART_EMPTY` | Checkout khi giỏ rỗng | — |
 | 401 | `INVALID_CREDENTIALS` | Sai email hoặc mật khẩu | — |
 | 401 | `INVALID_TOKEN` | JWT không hợp lệ | — |
@@ -869,7 +893,7 @@ Mã lỗi riêng của auth (`UNAUTHENTICATED`, `SESSION_EXPIRED`, `CSRF_FAILED`
 | 404 | `BOOKING_NOT_FOUND` | Không tìm thấy đơn, hoặc đơn không thuộc người dùng | — |
 | 409 | `EMAIL_ALREADY_EXISTS` | Email đã được đăng ký | — |
 | 409 | `PRODUCT_UNAVAILABLE` | Sản phẩm hết chỗ tại thời điểm thêm giỏ hoặc checkout | `{ productId }` |
-| 409 | `PRICE_CHANGED` | Giá đã đổi kể từ lúc thêm vào giỏ | `{ productId, oldPrice, newPrice }` |
+| 409 | `PRICE_CHANGED` | Giá đã đổi kể từ lúc thêm vào giỏ | `{ productId, oldPrice, newPrice, fareType? }`; `fareType = CHILD` khi giá vé trẻ em đổi |
 | 422 | `DATE_OUT_OF_RANGE` | `usingDate` ngoài `availableFrom`–`availableTo` | `{ productId, availableFrom, availableTo }` |
 | 409 | `BOOKING_PENDING_PAYMENT` | Đã có đơn giữ chỗ còn hạn | `{ referenceCode, holdExpiresAt }` |
 | 409 | `BOOKING_ALREADY_PAID` | Huỷ đơn chưa trả nhưng Stripe vừa thu tiền | `{ referenceCode }` |

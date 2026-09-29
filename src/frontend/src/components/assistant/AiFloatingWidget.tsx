@@ -329,7 +329,7 @@ function convertItineraryCompletedToGroundedPlan(
     days,
     totalEstimatedPrice: response.itinerary.estimatedTotal ?? 0,
     bookableProductsCount: response.itinerary.bookableCount ?? days.reduce((acc, cur) => acc + cur.slots.filter(s => !!s.product).length, 0),
-    cartItems: itineraryCartItems(response.itinerary),
+    cartItems: itineraryCartItems(response.itinerary, response.intent?.party),
   };
 }
 

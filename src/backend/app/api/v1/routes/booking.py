@@ -14,10 +14,15 @@ from src.backend.app.api.v1.schemas.booking import (
     UpdateCartItemRequest,
 )
 from src.backend.app.application.auth.principal import AuthPrincipal
-from src.backend.app.application.booking import Contact, ItemDetail
+from src.backend.app.application.booking import Contact, ItemDetail, RoomInput, TravelerInput
 from src.backend.app.application.booking.errors import ValidationFailed
+from src.backend.app.domain.booking import Guests
 
 router = APIRouter(tags=["booking"])
+
+
+def _guests(body) -> Guests | None:
+    return Guests(body.adults, body.children) if body is not None else None
 
 
 @router.get("/cart")
@@ -31,7 +36,8 @@ async def add_cart_item(
     cart=Depends(get_use_case("cart_service")),
 ):
     return await cart.add(
-        principal, product_id=body.productId, using_date=body.usingDate, quantity=body.quantity, nights=body.nights)
+        principal, product_id=body.productId, using_date=body.usingDate, quantity=body.quantity, nights=body.nights,
+        guests=_guests(body.guests))
 
 
 @router.patch("/cart/items/{cart_item_id}")
@@ -43,7 +49,7 @@ async def update_cart_item(
         raise ValidationFailed("cần ít nhất một trường")
     return await cart.update(
         principal, cart_item_id, using_date=body.usingDate, quantity=body.quantity, nights=body.nights,
-        nights_given="nights" in body.model_fields_set)
+        nights_given="nights" in body.model_fields_set, guests=_guests(body.guests))
 
 
 @router.delete("/cart/items/{cart_item_id}")
@@ -60,8 +66,16 @@ async def create_booking(
     create=Depends(get_use_case("create_booking_hold")),
 ):
     contact = Contact(body.contact.fullName, body.contact.email, body.contact.phone)
-    details = [ItemDetail(d.cartItemId, list(d.guestNames), d.specialRequest) for d in body.itemDetails]
-    return await create(principal, contact, details)
+    details = [
+        ItemDetail(
+            d.cartItemId, list(d.guestNames), d.specialRequest,
+            list(d.travelerRefs) if d.travelerRefs is not None else None,
+            [RoomInput(tuple(r.travelerRefs), r.leadTravelerRef) for r in d.rooms] if d.rooms is not None else None)
+        for d in body.itemDetails
+    ]
+    travelers = ([TravelerInput(t.travelerRef, t.type, t.surname, t.givenNames, t.birthDate) for t in body.travelers]
+                 if body.travelers is not None else None)
+    return await create(principal, contact, details, travelers)
 
 
 @router.get("/bookings/{reference_code}")

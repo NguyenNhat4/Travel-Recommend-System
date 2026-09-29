@@ -4,6 +4,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
+from .fares import FareLine, lines_total
+from .party import Guests, RoomAllocation, Traveler
 from .pricing import line_total
 from .status import BookingStatus, InvalidTransition, PaymentStatus
 
@@ -17,6 +19,14 @@ class CartLine:
     nights: int | None
     unit_price_snapshot: int | None
     added_at: datetime | None = None
+    adults: int = 1
+    children: int = 0
+    # None = sản phẩm không có giá trẻ em hợp lệ lúc thêm hoặc sửa (trẻ em trả giá người lớn); xem `fares.child_unit_price`.
+    child_unit_price_snapshot: int | None = None
+
+    @property
+    def guests(self) -> Guests:
+        return Guests(self.adults, self.children)
 
 
 @dataclass(frozen=True)
@@ -39,9 +49,15 @@ class BookingItem:
     nights: int | None = None
     guest_names: list[str] = field(default_factory=list)
     special_request: str | None = None
+    fares: list[FareLine] = field(default_factory=list)          # rỗng với đơn tạo trước khi có dòng giá
+    traveler_refs: list[str] = field(default_factory=list)       # dịch vụ tính theo người, combo
+    rooms: list[RoomAllocation] = field(default_factory=list)    # khách sạn
 
     @property
     def line_total(self) -> int:
+        """Tổng các dòng giá; đơn cũ chưa có dòng giá thì dùng công thức không có trẻ em."""
+        if self.fares:
+            return lines_total(self.fares)
         return line_total(self.taxonomy, self.unit_price, self.quantity, self.nights)
 
 
@@ -80,6 +96,7 @@ class Booking:
     cancel_reason: str | None = None
     purchase_events_cancelled_at: datetime | None = None
     payment: Payment | None = None
+    travelers: list[Traveler] = field(default_factory=list)  # đoàn khách của đơn, theo thứ tự khai báo
 
     @property
     def total_amount(self) -> int:

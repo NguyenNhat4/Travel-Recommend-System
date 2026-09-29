@@ -1,0 +1,371 @@
+{
+  "_comment": "Bộ ca kiểm thử DÙNG CHUNG cho Web (src/frontend/tests/unit/checkoutRules.test.ts) và Backend (src/backend/tests/unit/domain/booking/test_party_rules.py). Mô tả và bảng ca: docs/spec/booking/checkout-nhieu-buoc-hanh-khach.md §12. Sửa file này là sửa luật của cả hai phía: chạy test của cả hai.",
+  "age": [
+    {"name": "7 tuổi", "birth": "2019-05-12", "day": "2026-10-17", "age": 7, "infant": false},
+    {"name": "còn 1 ngày nữa đủ 12 tuổi", "birth": "2014-10-18", "day": "2026-10-17", "age": 11, "infant": false},
+    {"name": "đúng sinh nhật 12 tuổi", "birth": "2014-10-17", "day": "2026-10-17", "age": 12, "infant": false},
+    {"name": "đã qua sinh nhật 12 tuổi 1 ngày", "birth": "2014-10-16", "day": "2026-10-17", "age": 12, "infant": false},
+    {"name": "đủ 2 tuổi đúng ngày: không còn là em bé", "birth": "2024-10-17", "day": "2026-10-17", "age": 2, "infant": false},
+    {"name": "thiếu 1 ngày nữa đủ 2 tuổi: em bé", "birth": "2024-10-18", "day": "2026-10-17", "age": 1, "infant": true},
+    {"name": "sinh 29/02, năm không nhuận, trước 01/03", "birth": "2024-02-29", "day": "2026-02-28", "age": 1, "infant": true},
+    {"name": "sinh 29/02, năm không nhuận, đúng 01/03", "birth": "2024-02-29", "day": "2026-03-01", "age": 2, "infant": false},
+    {"name": "sinh 29/02, năm nhuận, đúng 29/02", "birth": "2024-02-29", "day": "2028-02-29", "age": 4, "infant": false},
+    {"name": "sinh 29/02/2012, trước sinh nhật thứ 12", "birth": "2012-02-29", "day": "2024-02-28", "age": 11, "infant": false},
+    {"name": "sinh 29/02/2012, đúng sinh nhật thứ 12", "birth": "2012-02-29", "day": "2024-02-29", "age": 12, "infant": false},
+    {"name": "sinh 29/02/2012, sinh nhật thứ 13 rơi vào 01/03", "birth": "2012-02-29", "day": "2025-03-01", "age": 13, "infant": false},
+    {"name": "sinh 29/02/2012, 28/02/2025 vẫn 12 tuổi", "birth": "2012-02-29", "day": "2025-02-28", "age": 12, "infant": false},
+    {"name": "trẻ sơ sinh", "birth": "2026-09-01", "day": "2026-10-17", "age": 0, "infant": true}
+  ],
+  "turnsAdult": [
+    {"name": "ngày đủ 12 tuổi thường", "birth": "2014-10-18", "on": "2026-10-18"},
+    {"name": "sinh 29/02/2012: sinh nhật thứ 12 là 29/02/2024 (năm nhuận)", "birth": "2012-02-29", "on": "2024-02-29"},
+    {"name": "sinh 29/02/2016: sinh nhật thứ 12 là 29/02/2028 (năm nhuận)", "birth": "2016-02-29", "on": "2028-02-29"}
+  ],
+  "base": {
+    "today": "2026-09-29",
+    "contact": {"fullName": "Nguyễn Minh Anh", "email": "minhanh@example.vn", "phone": "0912345678"},
+    "travelers": [
+      {"travelerRef": "t1", "type": "ADULT", "surname": "Nguyễn", "givenNames": "Minh Anh", "birthDate": null},
+      {"travelerRef": "t2", "type": "ADULT", "surname": "Trần", "givenNames": "Thu Hà", "birthDate": null},
+      {"travelerRef": "t3", "type": "CHILD", "surname": "Nguyễn", "givenNames": "Gia Bảo", "birthDate": "2019-05-12"}
+    ],
+    "cart": [
+      {"cartItemId": "ci-hotel", "name": "Lucky Sun Hotel Nha Trang Beach – Phòng Deluxe 3 Người", "taxonomy": "hotel", "usingDate": "2026-10-17", "quantity": 1, "guests": {"adults": 2, "children": 1}, "maxOccupancy": 3},
+      {"cartItemId": "ci-vinwonders", "name": "[Wonder Ngon] Vé VinWonders Nha Trang + Buggy + Fastpass", "taxonomy": "attraction", "usingDate": "2026-10-18", "quantity": 3, "guests": {"adults": 2, "children": 1}, "maxOccupancy": null},
+      {"cartItemId": "ci-vj601", "name": "VietJet Air VJ601 Nha Trang → TP. Hồ Chí Minh", "taxonomy": "flight", "usingDate": "2026-10-19", "quantity": 3, "guests": {"adults": 2, "children": 1}, "maxOccupancy": null}
+    ],
+    "itemDetails": [
+      {"cartItemId": "ci-hotel", "rooms": [{"travelerRefs": ["t1", "t2", "t3"], "leadTravelerRef": "t1"}]},
+      {"cartItemId": "ci-vinwonders", "travelerRefs": ["t1", "t2", "t3"]},
+      {"cartItemId": "ci-vj601", "travelerRefs": ["t1", "t2", "t3"]}
+    ]
+  },
+  "checkout": [
+    {"name": "gia đình 2 người lớn + 1 trẻ em 7 tuổi (spec §4.5) hợp lệ", "scope": "all", "override": {}, "expect": []},
+
+    {"name": "R-TRV-01: đoàn chỉ có trẻ em", "scope": "party",
+     "override": {"travelers": [{"travelerRef": "t3", "type": "CHILD", "surname": "Nguyễn", "givenNames": "Gia Bảo", "birthDate": "2019-05-12"}]},
+     "expect": [{"field": "travelers", "reason": "ADULT_REQUIRED"}]},
+    {"name": "R-TRV-01: đoàn rỗng", "scope": "party", "override": {"travelers": []},
+     "expect": [{"field": "travelers", "reason": "ADULT_REQUIRED"}]},
+    {"name": "R-TRV-02: 10 người lớn", "scope": "party",
+     "override": {"travelers": [
+       {"travelerRef": "a1", "type": "ADULT", "surname": "Lê", "givenNames": "Văn A"}, {"travelerRef": "a2", "type": "ADULT", "surname": "Lê", "givenNames": "Văn B"},
+       {"travelerRef": "a3", "type": "ADULT", "surname": "Lê", "givenNames": "Văn C"}, {"travelerRef": "a4", "type": "ADULT", "surname": "Lê", "givenNames": "Văn D"},
+       {"travelerRef": "a5", "type": "ADULT", "surname": "Lê", "givenNames": "Văn E"}, {"travelerRef": "a6", "type": "ADULT", "surname": "Lê", "givenNames": "Văn F"},
+       {"travelerRef": "a7", "type": "ADULT", "surname": "Lê", "givenNames": "Văn G"}, {"travelerRef": "a8", "type": "ADULT", "surname": "Lê", "givenNames": "Văn H"},
+       {"travelerRef": "a9", "type": "ADULT", "surname": "Lê", "givenNames": "Văn I"}, {"travelerRef": "a10", "type": "ADULT", "surname": "Lê", "givenNames": "Văn K"}]},
+     "expect": [{"field": "travelers", "reason": "PARTY_TOO_LARGE"}]},
+    {"name": "R-TRV-02: đúng 9 người lớn là hợp lệ", "scope": "party",
+     "override": {"travelers": [
+       {"travelerRef": "a1", "type": "ADULT", "surname": "Lê", "givenNames": "Văn A"}, {"travelerRef": "a2", "type": "ADULT", "surname": "Lê", "givenNames": "Văn B"},
+       {"travelerRef": "a3", "type": "ADULT", "surname": "Lê", "givenNames": "Văn C"}, {"travelerRef": "a4", "type": "ADULT", "surname": "Lê", "givenNames": "Văn D"},
+       {"travelerRef": "a5", "type": "ADULT", "surname": "Lê", "givenNames": "Văn E"}, {"travelerRef": "a6", "type": "ADULT", "surname": "Lê", "givenNames": "Văn F"},
+       {"travelerRef": "a7", "type": "ADULT", "surname": "Lê", "givenNames": "Văn G"}, {"travelerRef": "a8", "type": "ADULT", "surname": "Lê", "givenNames": "Văn H"},
+       {"travelerRef": "a9", "type": "ADULT", "surname": "Lê", "givenNames": "Văn I"}]},
+     "expect": []},
+
+    {"name": "R-TRV-03: thiếu họ và tên đệm và tên", "scope": "party",
+     "override": {"travelers": [
+       {"travelerRef": "t1", "type": "ADULT", "surname": "Nguyễn", "givenNames": "Minh Anh"},
+       {"travelerRef": "t2", "type": "ADULT", "surname": "", "givenNames": "   "}]},
+     "expect": [{"field": "travelers[1].surname", "reason": "REQUIRED"}, {"field": "travelers[1].givenNames", "reason": "REQUIRED"}]},
+    {"name": "R-TRV-03: ký tự không phải chữ cái", "scope": "party",
+     "override": {"travelers": [
+       {"travelerRef": "t1", "type": "ADULT", "surname": "Nguyen2", "givenNames": "Minh_Anh"},
+       {"travelerRef": "t2", "type": "ADULT", "surname": "O'Neil", "givenNames": "Anh-Thư"}]},
+     "expect": [{"field": "travelers[0].surname", "reason": "NAME_INVALID"}, {"field": "travelers[0].givenNames", "reason": "NAME_INVALID"}]},
+    {"name": "R-TRV-03: khoảng trắng thừa được bỏ, tên tiếng Việt có dấu hợp lệ", "scope": "party",
+     "override": {"travelers": [
+       {"travelerRef": "t1", "type": "ADULT", "surname": "  Nguyễn  ", "givenNames": "  Minh   Anh "}]},
+     "expect": []},
+    {"name": "R-TRV-03: mỗi ô dài tối đa 50 ký tự", "scope": "party",
+     "override": {"travelers": [
+       {"travelerRef": "t1", "type": "ADULT", "surname": "Nguyễn", "givenNames": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}]},
+     "expect": [{"field": "travelers[0].givenNames", "reason": "NAME_INVALID"}]},
+
+    {"name": "R-TRV-04: trẻ em thiếu ngày sinh", "scope": "party",
+     "override": {"travelers": [
+       {"travelerRef": "t1", "type": "ADULT", "surname": "Nguyễn", "givenNames": "Minh Anh"},
+       {"travelerRef": "t3", "type": "CHILD", "surname": "Nguyễn", "givenNames": "Gia Bảo", "birthDate": null}]},
+     "expect": [{"field": "travelers[1].birthDate", "reason": "REQUIRED"}]},
+    {"name": "R-TRV-04: ngày sinh không đọc được hoặc không tồn tại", "scope": "party",
+     "override": {"travelers": [
+       {"travelerRef": "t1", "type": "ADULT", "surname": "Nguyễn", "givenNames": "Minh Anh"},
+       {"travelerRef": "t3", "type": "CHILD", "surname": "Nguyễn", "givenNames": "Gia Bảo", "birthDate": "12/05/2019"},
+       {"travelerRef": "t4", "type": "CHILD", "surname": "Nguyễn", "givenNames": "Bảo Ngọc", "birthDate": "2019-02-30"}]},
+     "expect": [{"field": "travelers[1].birthDate", "reason": "BIRTH_DATE_INVALID"}, {"field": "travelers[2].birthDate", "reason": "BIRTH_DATE_INVALID"}]},
+    {"name": "R-TRV-04: ngày sinh ở tương lai", "scope": "party",
+     "override": {"travelers": [
+       {"travelerRef": "t1", "type": "ADULT", "surname": "Nguyễn", "givenNames": "Minh Anh"},
+       {"travelerRef": "t3", "type": "CHILD", "surname": "Nguyễn", "givenNames": "Gia Bảo", "birthDate": "2026-09-30"}]},
+     "expect": [{"field": "travelers[1].birthDate", "reason": "BIRTH_DATE_INVALID"}]},
+    {"name": "R-TRV-05: trẻ em đã đủ 12 tuổi đúng ngày sử dụng sớm nhất (17/10/2026)", "scope": "party",
+     "override": {"travelers": [
+       {"travelerRef": "t1", "type": "ADULT", "surname": "Nguyễn", "givenNames": "Minh Anh"},
+       {"travelerRef": "t3", "type": "CHILD", "surname": "Nguyễn", "givenNames": "Gia Bảo", "birthDate": "2014-10-17"}]},
+     "expect": [{"field": "travelers[1].birthDate", "reason": "CHILD_AGE_INVALID"}]},
+    {"name": "R-TRV-05: còn 1 ngày nữa đủ 12 tuổi vẫn là trẻ em", "scope": "party",
+     "override": {"travelers": [
+       {"travelerRef": "t1", "type": "ADULT", "surname": "Nguyễn", "givenNames": "Minh Anh"},
+       {"travelerRef": "t3", "type": "CHILD", "surname": "Nguyễn", "givenNames": "Gia Bảo", "birthDate": "2014-10-18"}]},
+     "expect": []},
+    {"name": "R-TRV-04: người lớn không cần ngày sinh, giá trị gửi kèm bị bỏ qua", "scope": "party",
+     "override": {"travelers": [
+       {"travelerRef": "t1", "type": "ADULT", "surname": "Nguyễn", "givenNames": "Minh Anh", "birthDate": "không-phải-ngày"}]},
+     "expect": []},
+    {"name": "R-TRV-06: travelerRef trùng nhau", "scope": "party",
+     "override": {"travelers": [
+       {"travelerRef": "t1", "type": "ADULT", "surname": "Nguyễn", "givenNames": "Minh Anh"},
+       {"travelerRef": "t1", "type": "ADULT", "surname": "Trần", "givenNames": "Thu Hà"}]},
+     "expect": [{"field": "travelers[1].travelerRef", "reason": "TRAVELER_DUPLICATED"}]},
+
+    {"name": "R-CON-01: người liên hệ để trống", "scope": "party",
+     "override": {"contact": {"fullName": "  ", "email": "", "phone": ""}},
+     "expect": [{"field": "contact.fullName", "reason": "REQUIRED"}, {"field": "contact.email", "reason": "REQUIRED"}, {"field": "contact.phone", "reason": "REQUIRED"}]},
+    {"name": "R-CON-01: số điện thoại và email sai định dạng", "scope": "party",
+     "override": {"contact": {"fullName": "Nguyễn Minh Anh", "email": "abc", "phone": "912345678"}},
+     "expect": [{"field": "contact.email", "reason": "EMAIL_INVALID"}, {"field": "contact.phone", "reason": "PHONE_INVALID"}]},
+    {"name": "R-CON-01: họ tên người liên hệ dài quá 100 ký tự", "scope": "party",
+     "override": {"contact": {"fullName": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "email": "minhanh@example.vn", "phone": "0912345678"}},
+     "expect": [{"field": "contact.fullName", "reason": "NAME_INVALID"}]},
+
+    {"name": "R-ITM-01: thiếu itemDetails của một mục giỏ", "scope": "items",
+     "override": {"itemDetails": [
+       {"cartItemId": "ci-hotel", "rooms": [{"travelerRefs": ["t1", "t2", "t3"], "leadTravelerRef": "t1"}]},
+       {"cartItemId": "ci-vinwonders", "travelerRefs": ["t1", "t2", "t3"]}]},
+     "expect": [{"field": "itemDetails", "reason": "ITEM_DETAIL_MISSING", "cartItemId": "ci-vj601"}]},
+    {"name": "R-ITM-01: cartItemId không thuộc giỏ", "scope": "items",
+     "override": {"itemDetails": [
+       {"cartItemId": "ci-hotel", "rooms": [{"travelerRefs": ["t1", "t2", "t3"], "leadTravelerRef": "t1"}]},
+       {"cartItemId": "ci-vinwonders", "travelerRefs": ["t1", "t2", "t3"]},
+       {"cartItemId": "ci-vj601", "travelerRefs": ["t1", "t2", "t3"]},
+       {"cartItemId": "ci-lạ", "travelerRefs": ["t1"]}]},
+     "expect": [{"field": "itemDetails[3]", "reason": "ITEM_DETAIL_UNKNOWN"}]},
+    {"name": "R-ITM-01: itemDetails lặp", "scope": "items",
+     "override": {"itemDetails": [
+       {"cartItemId": "ci-hotel", "rooms": [{"travelerRefs": ["t1", "t2", "t3"], "leadTravelerRef": "t1"}]},
+       {"cartItemId": "ci-vinwonders", "travelerRefs": ["t1", "t2", "t3"]},
+       {"cartItemId": "ci-vj601", "travelerRefs": ["t1", "t2", "t3"]},
+       {"cartItemId": "ci-vinwonders", "travelerRefs": ["t1", "t2", "t3"]}]},
+     "expect": [{"field": "itemDetails[3]", "reason": "ITEM_DETAIL_DUPLICATED", "cartItemId": "ci-vinwonders"}]},
+    {"name": "R-ITM-02: mục không có hành khách", "scope": "items",
+     "override": {"itemDetails": [
+       {"cartItemId": "ci-hotel", "rooms": [{"travelerRefs": ["t1", "t2", "t3"], "leadTravelerRef": "t1"}]},
+       {"cartItemId": "ci-vinwonders", "travelerRefs": []},
+       {"cartItemId": "ci-vj601", "travelerRefs": ["t1", "t2", "t3"]}]},
+     "expect": [{"field": "itemDetails[1].travelerRefs", "reason": "ITEM_WITHOUT_TRAVELER", "cartItemId": "ci-vinwonders"}]},
+    {"name": "R-ITM-02: travelerRef không có trong đoàn", "scope": "items",
+     "override": {"itemDetails": [
+       {"cartItemId": "ci-hotel", "rooms": [{"travelerRefs": ["t1", "t2", "t3"], "leadTravelerRef": "t1"}]},
+       {"cartItemId": "ci-vinwonders", "travelerRefs": ["t1", "t2", "t3"]},
+       {"cartItemId": "ci-vj601", "travelerRefs": ["t1", "t2", "t9"]}]},
+     "expect": [{"field": "itemDetails[2].travelerRefs", "reason": "TRAVELER_UNKNOWN", "cartItemId": "ci-vj601"}]},
+    {"name": "R-ITM-02: một người xuất hiện hai lần trong cùng mục", "scope": "items",
+     "override": {"itemDetails": [
+       {"cartItemId": "ci-hotel", "rooms": [{"travelerRefs": ["t1", "t2", "t3"], "leadTravelerRef": "t1"}]},
+       {"cartItemId": "ci-vinwonders", "travelerRefs": ["t1", "t2", "t3"]},
+       {"cartItemId": "ci-vj601", "travelerRefs": ["t1", "t1", "t2", "t3"]}]},
+     "expect": [{"field": "itemDetails[2].travelerRefs", "reason": "TRAVELER_DUPLICATED", "cartItemId": "ci-vj601"}]},
+    {"name": "R-ITM-03: trẻ em đi một mình trong một mục", "scope": "items",
+     "override": {"itemDetails": [
+       {"cartItemId": "ci-hotel", "rooms": [{"travelerRefs": ["t1", "t2", "t3"], "leadTravelerRef": "t1"}]},
+       {"cartItemId": "ci-vinwonders", "travelerRefs": ["t3"]},
+       {"cartItemId": "ci-vj601", "travelerRefs": ["t1", "t2", "t3"]}]},
+     "expect": [{"field": "itemDetails[1].travelerRefs", "reason": "ADULT_REQUIRED", "cartItemId": "ci-vinwonders"}, {"field": "itemDetails[1]", "reason": "GUEST_COUNT_MISMATCH", "cartItemId": "ci-vinwonders"}]},
+    {"name": "R-ITM-04: số người phân bổ không khớp guests của giỏ", "scope": "items",
+     "override": {"itemDetails": [
+       {"cartItemId": "ci-hotel", "rooms": [{"travelerRefs": ["t1", "t2", "t3"], "leadTravelerRef": "t1"}]},
+       {"cartItemId": "ci-vinwonders", "travelerRefs": ["t1", "t2"]},
+       {"cartItemId": "ci-vj601", "travelerRefs": ["t1", "t2", "t3"]}]},
+     "expect": [{"field": "itemDetails[1]", "reason": "GUEST_COUNT_MISMATCH", "cartItemId": "ci-vinwonders"}]},
+
+    {"name": "R-FLT-01: hai em bé đi với một người lớn", "scope": "items",
+     "override": {
+       "travelers": [
+         {"travelerRef": "t1", "type": "ADULT", "surname": "Nguyễn", "givenNames": "Minh Anh"},
+         {"travelerRef": "t3", "type": "CHILD", "surname": "Nguyễn", "givenNames": "Bảo An", "birthDate": "2025-03-03"},
+         {"travelerRef": "t4", "type": "CHILD", "surname": "Nguyễn", "givenNames": "Bảo Ngọc", "birthDate": "2025-06-01"}],
+       "cart": [{"cartItemId": "ci-vj601", "name": "VietJet Air VJ601", "taxonomy": "flight", "usingDate": "2026-10-19", "quantity": 3, "guests": {"adults": 1, "children": 2}, "maxOccupancy": null}],
+       "itemDetails": [{"cartItemId": "ci-vj601", "travelerRefs": ["t1", "t3", "t4"]}]},
+     "expect": [{"field": "itemDetails[0].travelerRefs", "reason": "INFANTS_EXCEED_ADULTS", "cartItemId": "ci-vj601"}]},
+    {"name": "R-FLT-01: một em bé đi với một người lớn là hợp lệ", "scope": "items",
+     "override": {
+       "travelers": [
+         {"travelerRef": "t1", "type": "ADULT", "surname": "Nguyễn", "givenNames": "Minh Anh"},
+         {"travelerRef": "t3", "type": "CHILD", "surname": "Nguyễn", "givenNames": "Bảo An", "birthDate": "2025-03-03"}],
+       "cart": [{"cartItemId": "ci-vj601", "name": "VietJet Air VJ601", "taxonomy": "flight", "usingDate": "2026-10-19", "quantity": 2, "guests": {"adults": 1, "children": 1}, "maxOccupancy": null}],
+       "itemDetails": [{"cartItemId": "ci-vj601", "travelerRefs": ["t1", "t3"]}]},
+     "expect": []},
+
+    {"name": "R-HTL-01: số phòng xếp khác số phòng đặt", "scope": "items",
+     "override": {
+       "cart": [{"cartItemId": "ci-hotel", "name": "Lucky Sun", "taxonomy": "hotel", "usingDate": "2026-10-17", "quantity": 2, "guests": {"adults": 2, "children": 1}, "maxOccupancy": 3}],
+       "itemDetails": [{"cartItemId": "ci-hotel", "rooms": [{"travelerRefs": ["t1", "t2", "t3"], "leadTravelerRef": "t1"}]}]},
+     "expect": [{"field": "itemDetails[0].rooms", "reason": "ROOM_COUNT_MISMATCH", "cartItemId": "ci-hotel"}]},
+    {"name": "R-HTL-02: một phòng không có người lớn", "scope": "items",
+     "override": {
+       "cart": [{"cartItemId": "ci-hotel", "name": "Lucky Sun", "taxonomy": "hotel", "usingDate": "2026-10-17", "quantity": 2, "guests": {"adults": 2, "children": 1}, "maxOccupancy": 3}],
+       "itemDetails": [{"cartItemId": "ci-hotel", "rooms": [
+         {"travelerRefs": ["t1", "t2"], "leadTravelerRef": "t1"}, {"travelerRefs": ["t3"], "leadTravelerRef": "t3"}]}]},
+     "expect": [{"field": "itemDetails[0].rooms[1]", "reason": "ADULT_REQUIRED", "cartItemId": "ci-hotel"}]},
+    {"name": "R-HTL-03: phòng sức chứa 3 xếp 4 khách", "scope": "items",
+     "override": {
+       "travelers": [
+         {"travelerRef": "t1", "type": "ADULT", "surname": "Nguyễn", "givenNames": "Minh Anh"}, {"travelerRef": "t2", "type": "ADULT", "surname": "Trần", "givenNames": "Thu Hà"},
+         {"travelerRef": "t3", "type": "CHILD", "surname": "Nguyễn", "givenNames": "Gia Bảo", "birthDate": "2019-05-12"}, {"travelerRef": "t4", "type": "ADULT", "surname": "Lê", "givenNames": "Văn Hùng"}],
+       "cart": [{"cartItemId": "ci-hotel", "name": "Lucky Sun", "taxonomy": "hotel", "usingDate": "2026-10-17", "quantity": 1, "guests": {"adults": 3, "children": 1}, "maxOccupancy": 3}],
+       "itemDetails": [{"cartItemId": "ci-hotel", "rooms": [{"travelerRefs": ["t1", "t2", "t3", "t4"], "leadTravelerRef": "t1"}]}]},
+     "expect": [{"field": "itemDetails[0].rooms[0]", "reason": "OCCUPANCY_EXCEEDED", "cartItemId": "ci-hotel"}]},
+    {"name": "R-HTL-03: hạng phòng không công bố sức chứa thì không kiểm", "scope": "items",
+     "override": {
+       "travelers": [
+         {"travelerRef": "t1", "type": "ADULT", "surname": "Nguyễn", "givenNames": "Minh Anh"}, {"travelerRef": "t2", "type": "ADULT", "surname": "Trần", "givenNames": "Thu Hà"},
+         {"travelerRef": "t3", "type": "CHILD", "surname": "Nguyễn", "givenNames": "Gia Bảo", "birthDate": "2019-05-12"}, {"travelerRef": "t4", "type": "ADULT", "surname": "Lê", "givenNames": "Văn Hùng"}],
+       "cart": [{"cartItemId": "ci-hotel", "name": "Lucky Sun", "taxonomy": "hotel", "usingDate": "2026-10-17", "quantity": 1, "guests": {"adults": 3, "children": 1}, "maxOccupancy": null}],
+       "itemDetails": [{"cartItemId": "ci-hotel", "rooms": [{"travelerRefs": ["t1", "t2", "t3", "t4"], "leadTravelerRef": "t1"}]}]},
+     "expect": []},
+    {"name": "R-HTL-04: một người ở hai phòng", "scope": "items",
+     "override": {
+       "cart": [{"cartItemId": "ci-hotel", "name": "Lucky Sun", "taxonomy": "hotel", "usingDate": "2026-10-17", "quantity": 2, "guests": {"adults": 2, "children": 1}, "maxOccupancy": 3}],
+       "itemDetails": [{"cartItemId": "ci-hotel", "rooms": [
+         {"travelerRefs": ["t1", "t2", "t3"], "leadTravelerRef": "t1"}, {"travelerRefs": ["t1"], "leadTravelerRef": "t1"}]}]},
+     "expect": [{"field": "itemDetails[0].rooms[1].travelerRefs", "reason": "TRAVELER_DUPLICATED", "cartItemId": "ci-hotel"}]},
+    {"name": "R-HTL-05: người đại diện là trẻ em", "scope": "items",
+     "override": {"itemDetails": [
+       {"cartItemId": "ci-hotel", "rooms": [{"travelerRefs": ["t1", "t2", "t3"], "leadTravelerRef": "t3"}]},
+       {"cartItemId": "ci-vinwonders", "travelerRefs": ["t1", "t2", "t3"]},
+       {"cartItemId": "ci-vj601", "travelerRefs": ["t1", "t2", "t3"]}]},
+     "expect": [{"field": "itemDetails[0].rooms[0].leadTravelerRef", "reason": "LEAD_GUEST_INVALID", "cartItemId": "ci-hotel"}]},
+    {"name": "R-HTL-05: người đại diện không ở trong phòng", "scope": "items",
+     "override": {"itemDetails": [
+       {"cartItemId": "ci-hotel", "rooms": [{"travelerRefs": ["t1", "t3"], "leadTravelerRef": "t2"}]},
+       {"cartItemId": "ci-vinwonders", "travelerRefs": ["t1", "t2", "t3"]},
+       {"cartItemId": "ci-vj601", "travelerRefs": ["t1", "t2", "t3"]}]},
+     "expect": [{"field": "itemDetails[0].rooms[0].leadTravelerRef", "reason": "LEAD_GUEST_INVALID", "cartItemId": "ci-hotel"}]},
+    {"name": "combo: chỉ cần chọn ai dùng, không kiểm số lượng; trẻ em vẫn cần người lớn", "scope": "items",
+     "override": {
+       "cart": [{"cartItemId": "ci-combo", "name": "Combo 3N2Đ", "taxonomy": "combo", "usingDate": "2026-10-17", "quantity": 2, "guests": {"adults": 1, "children": 0}, "maxOccupancy": null}],
+       "itemDetails": [{"cartItemId": "ci-combo", "travelerRefs": ["t3"]}]},
+     "expect": [{"field": "itemDetails[0].travelerRefs", "reason": "ADULT_REQUIRED", "cartItemId": "ci-combo"}]},
+    {"name": "combo: hai người lớn dùng một gói là hợp lệ dù guests của giỏ là 1", "scope": "items",
+     "override": {
+       "cart": [{"cartItemId": "ci-combo", "name": "Combo 3N2Đ", "taxonomy": "combo", "usingDate": "2026-10-17", "quantity": 1, "guests": {"adults": 1, "children": 0}, "maxOccupancy": null}],
+       "itemDetails": [{"cartItemId": "ci-combo", "travelerRefs": ["t1", "t2"]}]},
+     "expect": []},
+
+    {"name": "trẻ tròn 12 tuổi giữa chuyến: tính giá người lớn từ ngày đó, guests khớp", "scope": "all",
+     "override": {
+       "travelers": [
+         {"travelerRef": "t1", "type": "ADULT", "surname": "Nguyễn", "givenNames": "Minh Anh"}, {"travelerRef": "t2", "type": "ADULT", "surname": "Trần", "givenNames": "Thu Hà"},
+         {"travelerRef": "t3", "type": "CHILD", "surname": "Trần", "givenNames": "Bảo Châu", "birthDate": "2014-10-18"}],
+       "cart": [
+         {"cartItemId": "ci-hotel", "name": "Lucky Sun", "taxonomy": "hotel", "usingDate": "2026-10-17", "quantity": 1, "guests": {"adults": 2, "children": 1}, "maxOccupancy": 3},
+         {"cartItemId": "ci-vinwonders", "name": "VinWonders", "taxonomy": "attraction", "usingDate": "2026-10-18", "quantity": 3, "guests": {"adults": 3, "children": 0}, "maxOccupancy": null},
+         {"cartItemId": "ci-vj601", "name": "VJ601", "taxonomy": "flight", "usingDate": "2026-10-19", "quantity": 3, "guests": {"adults": 3, "children": 0}, "maxOccupancy": null}]},
+     "expect": []},
+    {"name": "trẻ tròn 12 tuổi giữa chuyến: guests của giỏ còn tính là trẻ em thì lệch", "scope": "all",
+     "override": {
+       "travelers": [
+         {"travelerRef": "t1", "type": "ADULT", "surname": "Nguyễn", "givenNames": "Minh Anh"}, {"travelerRef": "t2", "type": "ADULT", "surname": "Trần", "givenNames": "Thu Hà"},
+         {"travelerRef": "t3", "type": "CHILD", "surname": "Trần", "givenNames": "Bảo Châu", "birthDate": "2014-10-18"}]},
+     "expect": [{"field": "itemDetails[1]", "reason": "GUEST_COUNT_MISMATCH", "cartItemId": "ci-vinwonders"}, {"field": "itemDetails[2]", "reason": "GUEST_COUNT_MISMATCH", "cartItemId": "ci-vj601"}]},
+
+    {"name": "AC-BKG-06: gọi thẳng API với dữ liệu sai — mọi vi phạm trong một lần", "scope": "all",
+     "override": {
+       "travelers": [
+         {"travelerRef": "t1", "type": "ADULT", "surname": "", "givenNames": ""}, {"travelerRef": "t2", "type": "ADULT", "surname": "", "givenNames": ""},
+         {"travelerRef": "t3", "type": "ADULT", "surname": "", "givenNames": ""},
+         {"travelerRef": "t4", "type": "CHILD", "surname": "Nguyễn", "givenNames": "Bảo Vy", "birthDate": "2014-10-01"}],
+       "cart": [
+         {"cartItemId": "ci-hotel", "name": "Lucky Sun", "taxonomy": "hotel", "usingDate": "2026-10-17", "quantity": 1, "guests": {"adults": 4, "children": 0}, "maxOccupancy": 3},
+         {"cartItemId": "ci-vj601", "name": "VJ601", "taxonomy": "flight", "usingDate": "2026-10-19", "quantity": 3, "guests": {"adults": 3, "children": 0}, "maxOccupancy": null}],
+       "itemDetails": [
+         {"cartItemId": "ci-hotel", "rooms": [{"travelerRefs": ["t1", "t2", "t3", "t4"], "leadTravelerRef": "t1"}]},
+         {"cartItemId": "ci-vj601", "travelerRefs": ["t1", "t2", "t3"]}]},
+     "expect": [
+       {"field": "travelers[0].surname", "reason": "REQUIRED"}, {"field": "travelers[0].givenNames", "reason": "REQUIRED"},
+       {"field": "travelers[1].surname", "reason": "REQUIRED"}, {"field": "travelers[1].givenNames", "reason": "REQUIRED"},
+       {"field": "travelers[2].surname", "reason": "REQUIRED"}, {"field": "travelers[2].givenNames", "reason": "REQUIRED"},
+       {"field": "travelers[3].birthDate", "reason": "CHILD_AGE_INVALID"},
+       {"field": "itemDetails[0].rooms[0]", "reason": "OCCUPANCY_EXCEEDED", "cartItemId": "ci-hotel"}]}
+  ],
+  "cart": [
+    {"name": "thêm khách sạn không gửi guests (client cũ): mỗi phòng một người lớn", "mode": "add", "taxonomy": "hotel", "maxOccupancy": 3, "existing": null,
+     "request": {"quantity": 2, "guests": null}, "expect": {"quantity": 2, "guests": {"adults": 2, "children": 0}}},
+    {"name": "thêm vé không gửi guests: quantity người lớn", "mode": "add", "taxonomy": "attraction", "maxOccupancy": null, "existing": null,
+     "request": {"quantity": 3, "guests": null}, "expect": {"quantity": 3, "guests": {"adults": 3, "children": 0}}},
+    {"name": "thêm combo không gửi guests: 1 người lớn, quantity là số gói", "mode": "add", "taxonomy": "combo", "maxOccupancy": null, "existing": null,
+     "request": {"quantity": 3, "guests": null}, "expect": {"quantity": 3, "guests": {"adults": 1, "children": 0}}},
+    {"name": "vé chỉ gửi guests: quantity = người lớn + trẻ em", "mode": "add", "taxonomy": "attraction", "maxOccupancy": null, "existing": null,
+     "request": {"quantity": null, "guests": {"adults": 2, "children": 1}}, "expect": {"quantity": 3, "guests": {"adults": 2, "children": 1}}},
+    {"name": "R-CRT-02: quantity lệch guests bị từ chối", "mode": "add", "taxonomy": "flight", "maxOccupancy": null, "existing": null,
+     "request": {"quantity": 4, "guests": {"adults": 2, "children": 1}}, "violations": [{"field": "quantity", "reason": "GUEST_COUNT_MISMATCH"}]},
+    {"name": "R-CRT-01: không có người lớn", "mode": "add", "taxonomy": "attraction", "maxOccupancy": null, "existing": null,
+     "request": {"quantity": null, "guests": {"adults": 0, "children": 2}}, "violations": [{"field": "guests.adults", "reason": "ADULT_REQUIRED"}]},
+    {"name": "R-CRT-01: quá 9 khách", "mode": "add", "taxonomy": "attraction", "maxOccupancy": null, "existing": null,
+     "request": {"quantity": null, "guests": {"adults": 9, "children": 1}}, "violations": [{"field": "guests", "reason": "PARTY_TOO_LARGE"}]},
+    {"name": "R-CRT-01: client cũ gửi quantity 10 cho vé bị từ chối", "mode": "add", "taxonomy": "attraction", "maxOccupancy": null, "existing": null,
+     "request": {"quantity": 10, "guests": null}, "violations": [{"field": "guests", "reason": "PARTY_TOO_LARGE"}]},
+    {"name": "R-CRT-03: khách sạn có 2 phòng nhưng chỉ 1 người lớn", "mode": "add", "taxonomy": "hotel", "maxOccupancy": 3, "existing": null,
+     "request": {"quantity": 2, "guests": {"adults": 1, "children": 2}}, "violations": [{"field": "guests.adults", "reason": "ADULT_REQUIRED"}]},
+    {"name": "R-CRT-03: phòng sức chứa 3 không nhận 4 khách", "mode": "add", "taxonomy": "hotel", "maxOccupancy": 3, "existing": null,
+     "request": {"quantity": 1, "guests": {"adults": 2, "children": 2}}, "violations": [{"field": "guests", "reason": "OCCUPANCY_EXCEEDED"}]},
+    {"name": "R-CRT-03: hai phòng sức chứa 3 nhận 5 khách", "mode": "add", "taxonomy": "hotel", "maxOccupancy": 3, "existing": null,
+     "request": {"quantity": 2, "guests": {"adults": 3, "children": 2}}, "expect": {"quantity": 2, "guests": {"adults": 3, "children": 2}}},
+    {"name": "R-CRT-03: hạng phòng không công bố sức chứa", "mode": "add", "taxonomy": "hotel", "maxOccupancy": null, "existing": null,
+     "request": {"quantity": 1, "guests": {"adults": 5, "children": 4}}, "expect": {"quantity": 1, "guests": {"adults": 5, "children": 4}}},
+    {"name": "R-CRT-04: thêm trùng vé cộng dồn quantity và guests", "mode": "add", "taxonomy": "attraction", "maxOccupancy": null,
+     "existing": {"quantity": 3, "guests": {"adults": 2, "children": 1}},
+     "request": {"quantity": null, "guests": {"adults": 1, "children": 0}}, "expect": {"quantity": 4, "guests": {"adults": 3, "children": 1}}},
+    {"name": "R-CRT-04: cộng dồn vượt 9 khách bị từ chối", "mode": "add", "taxonomy": "attraction", "maxOccupancy": null,
+     "existing": {"quantity": 8, "guests": {"adults": 6, "children": 2}},
+     "request": {"quantity": null, "guests": {"adults": 2, "children": 0}}, "violations": [{"field": "guests", "reason": "PARTY_TOO_LARGE"}]},
+    {"name": "R-CRT-04: thêm trùng combo giữ guests lớn hơn, cộng dồn số gói", "mode": "add", "taxonomy": "combo", "maxOccupancy": null,
+     "existing": {"quantity": 1, "guests": {"adults": 2, "children": 1}},
+     "request": {"quantity": 1, "guests": {"adults": 2, "children": 1}}, "expect": {"quantity": 2, "guests": {"adults": 2, "children": 1}}},
+    {"name": "R-CRT-05: sửa quantity của vé đang có trẻ em: giữ children, adults = quantity − children", "mode": "update", "taxonomy": "attraction", "maxOccupancy": null,
+     "existing": {"quantity": 3, "guests": {"adults": 2, "children": 1}},
+     "request": {"quantity": 4, "guests": null}, "expect": {"quantity": 4, "guests": {"adults": 3, "children": 1}}},
+    {"name": "R-CRT-05: sửa quantity xuống làm không còn người lớn thì từ chối", "mode": "update", "taxonomy": "attraction", "maxOccupancy": null,
+     "existing": {"quantity": 3, "guests": {"adults": 2, "children": 1}},
+     "request": {"quantity": 1, "guests": null}, "violations": [{"field": "guests.adults", "reason": "ADULT_REQUIRED"}]},
+    {"name": "PATCH chỉ gửi quantity bằng giá trị hiện tại (xác nhận giá mới) không đổi guests", "mode": "update", "taxonomy": "attraction", "maxOccupancy": null,
+     "existing": {"quantity": 3, "guests": {"adults": 2, "children": 1}},
+     "request": {"quantity": 3, "guests": null}, "expect": {"quantity": 3, "guests": {"adults": 2, "children": 1}}},
+    {"name": "PATCH chỉ gửi guests: quantity tự tính lại", "mode": "update", "taxonomy": "flight", "maxOccupancy": null,
+     "existing": {"quantity": 3, "guests": {"adults": 2, "children": 1}},
+     "request": {"quantity": null, "guests": {"adults": 2, "children": 2}}, "expect": {"quantity": 4, "guests": {"adults": 2, "children": 2}}},
+    {"name": "PATCH khách sạn đổi số phòng và guests cùng lúc", "mode": "update", "taxonomy": "hotel", "maxOccupancy": 3,
+     "existing": {"quantity": 1, "guests": {"adults": 2, "children": 1}},
+     "request": {"quantity": 2, "guests": {"adults": 3, "children": 2}}, "expect": {"quantity": 2, "guests": {"adults": 3, "children": 2}}},
+    {"name": "PATCH khách sạn chỉ tăng số phòng: adults nâng lên bằng số phòng", "mode": "update", "taxonomy": "hotel", "maxOccupancy": 3,
+     "existing": {"quantity": 1, "guests": {"adults": 1, "children": 0}},
+     "request": {"quantity": 2, "guests": null}, "expect": {"quantity": 2, "guests": {"adults": 2, "children": 0}}},
+    {"name": "PATCH combo đổi số gói không đổi guests", "mode": "update", "taxonomy": "combo", "maxOccupancy": null,
+     "existing": {"quantity": 1, "guests": {"adults": 2, "children": 1}},
+     "request": {"quantity": 3, "guests": null}, "expect": {"quantity": 3, "guests": {"adults": 2, "children": 1}}}
+  ],
+  "fares": [
+    {"name": "spec §4.5: khách sạn 777.192 ₫ × 2 đêm × 1 phòng", "taxonomy": "hotel", "unitPrice": 777192, "attributes": {}, "quantity": 1, "nights": 2, "guests": {"adults": 2, "children": 1},
+     "expect": {"lines": [{"fareType": "ROOM", "unitPrice": 777192, "count": 1, "nights": 2, "amount": 1554384}], "total": 1554384}},
+    {"name": "spec §4.5: vé VinWonders người lớn 1.500.000, trẻ em 504.000", "taxonomy": "attraction", "unitPrice": 1500000, "attributes": {"childPrice": 504000.0}, "quantity": 3, "nights": null, "guests": {"adults": 2, "children": 1},
+     "expect": {"lines": [{"fareType": "ADULT", "unitPrice": 1500000, "count": 2, "nights": null, "amount": 3000000}, {"fareType": "CHILD", "unitPrice": 504000, "count": 1, "nights": null, "amount": 504000}], "total": 3504000}},
+    {"name": "spec §4.5: vé máy bay mọi khách trả unitPrice (D3), kể cả khi có childPrice", "taxonomy": "flight", "unitPrice": 634000, "attributes": {"childPrice": 100000}, "quantity": 3, "nights": null, "guests": {"adults": 2, "children": 1},
+     "expect": {"lines": [{"fareType": "ADULT", "unitPrice": 634000, "count": 2, "nights": null, "amount": 1268000}, {"fareType": "CHILD", "unitPrice": 634000, "count": 1, "nights": null, "amount": 634000}], "total": 1902000}},
+    {"name": "D2: childPrice = 0 nghĩa là nguồn không có giá riêng, trẻ em trả giá người lớn", "taxonomy": "attraction", "unitPrice": 300000, "attributes": {"childPrice": 0}, "quantity": 2, "nights": null, "guests": {"adults": 1, "children": 1},
+     "expect": {"lines": [{"fareType": "ADULT", "unitPrice": 300000, "count": 1, "nights": null, "amount": 300000}, {"fareType": "CHILD", "unitPrice": 300000, "count": 1, "nights": null, "amount": 300000}], "total": 600000}},
+    {"name": "D2: childPrice cao hơn giá người lớn bị bỏ qua", "taxonomy": "attraction", "unitPrice": 100000, "attributes": {"childPrice": 450000}, "quantity": 2, "nights": null, "guests": {"adults": 1, "children": 1},
+     "expect": {"lines": [{"fareType": "ADULT", "unitPrice": 100000, "count": 1, "nights": null, "amount": 100000}, {"fareType": "CHILD", "unitPrice": 100000, "count": 1, "nights": null, "amount": 100000}], "total": 200000}},
+    {"name": "D2: childPrice bằng giá người lớn hợp lệ", "taxonomy": "golf", "unitPrice": 800000, "attributes": {"childPrice": 800000}, "quantity": 2, "nights": null, "guests": {"adults": 1, "children": 1},
+     "expect": {"lines": [{"fareType": "ADULT", "unitPrice": 800000, "count": 1, "nights": null, "amount": 800000}, {"fareType": "CHILD", "unitPrice": 800000, "count": 1, "nights": null, "amount": 800000}], "total": 1600000}},
+    {"name": "D2: childPrice không phải số bị bỏ qua", "taxonomy": "attraction", "unitPrice": 300000, "attributes": {"childPrice": "200000"}, "quantity": 2, "nights": null, "guests": {"adults": 1, "children": 1},
+     "expect": {"lines": [{"fareType": "ADULT", "unitPrice": 300000, "count": 1, "nights": null, "amount": 300000}, {"fareType": "CHILD", "unitPrice": 300000, "count": 1, "nights": null, "amount": 300000}], "total": 600000}},
+    {"name": "không có trẻ em: chỉ một dòng người lớn", "taxonomy": "attraction", "unitPrice": 880000, "attributes": {"childPrice": 300000}, "quantity": 2, "nights": null, "guests": {"adults": 2, "children": 0},
+     "expect": {"lines": [{"fareType": "ADULT", "unitPrice": 880000, "count": 2, "nights": null, "amount": 1760000}], "total": 1760000}},
+    {"name": "D4: combo tính theo gói, số khách không đổi giá", "taxonomy": "combo", "unitPrice": 2000000, "attributes": {"childPrice": 900000}, "quantity": 2, "nights": null, "guests": {"adults": 2, "children": 1},
+     "expect": {"lines": [{"fareType": "PACKAGE", "unitPrice": 2000000, "count": 2, "nights": null, "amount": 4000000}], "total": 4000000}},
+    {"name": "khách sạn 3 phòng × 4 đêm, số khách không đổi giá", "taxonomy": "hotel", "unitPrice": 1000000, "attributes": {}, "quantity": 3, "nights": 4, "guests": {"adults": 3, "children": 3},
+     "expect": {"lines": [{"fareType": "ROOM", "unitPrice": 1000000, "count": 3, "nights": 4, "amount": 12000000}], "total": 12000000}}
+  ]
+}

@@ -203,7 +203,15 @@ CREATE TABLE app.cart_items (
     using_date_to        date,                                         -- trả phòng (hotel); NULL với vé, chuyến
     unit_price_snapshot  numeric(14,2) NOT NULL,                       -- giá lúc thêm; checkout so lại với products
     added_at             timestamptz NOT NULL DEFAULT now(),
+    -- Đoàn khách của mục (FR-BKG-08). Khách sạn: quantity là số phòng, adults + children là khách ở các phòng.
+    -- Dịch vụ tính theo người: quantity = adults + children. Combo: chỉ để ghi nhận.
+    adults               integer NOT NULL DEFAULT 1,
+    children             integer NOT NULL DEFAULT 0,
+    child_unit_price_snapshot numeric(14,2),                           -- giá vé trẻ em hợp lệ lúc thêm/sửa; NULL = trẻ em trả giá người lớn
     CONSTRAINT cart_items_dates CHECK (using_date_to IS NULL OR using_date_to > using_date),
+    CONSTRAINT cart_items_adults_min CHECK (adults >= 1),
+    CONSTRAINT cart_items_children_min CHECK (children >= 0),
+    CONSTRAINT cart_items_party_size CHECK (adults + children <= 9),
     CONSTRAINT cart_items_uq UNIQUE (cart_id, product_id, using_date)
 );
 
@@ -248,15 +256,36 @@ CREATE TABLE app.booking_items (
     quantity         integer NOT NULL CHECK (quantity > 0),
     using_date       date NOT NULL,
     using_date_to    date,
-    guest_names      text[],                                               -- tên khách nhận phòng / hành khách
+    guest_names      text[],                                               -- họ tên các khách của mục, theo thứ tự trong đoàn
     special_request  text,                                                 -- yêu cầu riêng của từng dòng (contract BookingItem.specialRequest)
-    line_total       numeric(14,2) GENERATED ALWAYS AS (unit_price * quantity) STORED,
+    -- Backend ghi = tổng các dòng giá của mục (metadata.fares). Không còn là cột sinh `unit_price * quantity`: cột sinh sai với
+    -- khách sạn nhiều đêm và với giá trẻ em (docs/spec/booking/checkout-nhieu-buoc-hanh-khach.md §2.2 L8, §9.1).
+    line_total       numeric(14,2) NOT NULL,
+    -- {"fares": [{fareType, unitPrice, count, nights, amount}], "travelerRefs": [...], "rooms": [{travelerRefs, leadTravelerRef}]}
+    metadata         jsonb NOT NULL DEFAULT '{}',
     -- event purchase tương ứng: cdp.events WHERE event_group_id = bookings.event_group_id
     --                                          AND product_id = booking_items.product_id AND using_date = booking_items.using_date
     CONSTRAINT booking_items_dates CHECK (using_date_to IS NULL OR using_date_to > using_date),
     CONSTRAINT booking_items_uq UNIQUE (booking_id, product_id, using_date)   -- khớp 1:1 với event purchase
 );
 CREATE INDEX booking_items_booking_idx ON app.booking_items (booking_id);
+
+-- app.booking_travelers — đoàn khách của đơn (FR-BKG-08). Ngày sinh chỉ lưu ở đây: không trả qua API, không gửi sang CDP,
+-- Insider hay Stripe. Xoá theo đơn. Họ tên khai ở hai ô; full_name do Backend nối từ hai ô.
+CREATE TABLE app.booking_travelers (
+    traveler_id    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    booking_id     uuid NOT NULL REFERENCES app.bookings (booking_id) ON DELETE CASCADE,
+    traveler_ref   text NOT NULL,                                          -- mã tạm do Web sinh; booking_items.metadata tham chiếu bằng mã này
+    position       integer NOT NULL CHECK (position BETWEEN 1 AND 9),      -- thứ tự khai báo; đoàn tối đa 9 người
+    traveler_type  text NOT NULL CHECK (traveler_type IN ('adult','child')),
+    surname        text NOT NULL,                                          -- Họ
+    given_names    text NOT NULL,                                          -- Tên đệm và tên
+    full_name      text NOT NULL,                                          -- surname + ' ' + given_names
+    birth_date     date,                                                   -- bắt buộc với trẻ em
+    CONSTRAINT booking_travelers_ref_uq UNIQUE (booking_id, traveler_ref),
+    CONSTRAINT booking_travelers_position_uq UNIQUE (booking_id, position),
+    CONSTRAINT booking_travelers_child_birth CHECK (traveler_type = 'adult' OR birth_date IS NOT NULL)
+);
 
 -- app.payments — một đơn một phiên thanh toán Stripe Checkout (FR-BKG-06). Trạng thái thanh toán tách khỏi trạng thái đơn:
 --   'đã nhận tiền' và 'đơn đã xác nhận' là hai việc khác nhau (Stripe đã thu nhưng CDP lỗi → payment succeeded, đơn vẫn pending_payment).

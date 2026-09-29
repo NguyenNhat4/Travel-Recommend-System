@@ -1,9 +1,154 @@
+# booking.yaml — giỏ hàng, checkout, đơn đặt chỗ, đoàn khách và giá theo loại khách (contract 1.8.0)
+#
+# Đoàn khách và dòng giá: docs/spec/booking/checkout-nhieu-buoc-hanh-khach.md §4–§7 (FR-BKG-08).
+# Mọi trường thêm ở 1.8.0 đều tuỳ chọn trong v1 (docs/prd/api-contract.md §3.2): client cũ không thấy khác biệt.
+TravelerType:
+  type: string
+  enum:
+  - ADULT
+  - CHILD
+  description: ADULT từ 12 tuổi; CHILD dưới 12 tuổi tại ngày sử dụng sớm nhất của đơn (bắt buộc có ngày sinh).
+FareType:
+  type: string
+  enum:
+  - ADULT
+  - CHILD
+  - ROOM
+  - PACKAGE
+  description: >-
+    Loại giá của một dòng giá. ADULT, CHILD cho dịch vụ tính theo người (vé máy bay, vé tham quan, golf); ROOM cho khách
+    sạn (giá phòng-đêm); PACKAGE cho combo (giá theo gói).
+GuestCounts:
+  type: object
+  description: >-
+    Số người lớn và số trẻ em của một mục giỏ, tính theo loại giá tại ngày sử dụng của mục (trẻ em đã tròn 12 tuổi tính là
+    người lớn). Không chứa tên. Tối đa 9 khách mỗi mục.
+  required:
+  - adults
+  - children
+  properties:
+    adults:
+      type: integer
+      minimum: 1
+      maximum: 9
+    children:
+      type: integer
+      minimum: 0
+      maximum: 8
+FareLine:
+  type: object
+  description: Một loại giá trong một dịch vụ. Thành tiền của mục bằng tổng amount các dòng giá của mục.
+  required:
+  - fareType
+  - unitPrice
+  - count
+  - nights
+  - amount
+  properties:
+    fareType:
+      $ref: ../openapi.yaml#/components/schemas/FareType
+    unitPrice:
+      type: integer
+      minimum: 0
+      description: VND cho 1 khách, 1 phòng-đêm hoặc 1 gói.
+    count:
+      type: integer
+      minimum: 1
+    nights:
+      type:
+      - integer
+      - 'null'
+      minimum: 1
+      description: Chỉ khác null khi fareType là ROOM.
+    amount:
+      type: integer
+      minimum: 0
+      description: unitPrice × count × (nights hoặc 1).
+CheckoutTraveler:
+  type: object
+  description: >-
+    Một người trong đoàn khách, khai một lần ở bước Hành khách. Họ tên nhập ở hai ô; Backend nối thành họ tên đầy đủ.
+    Ngày sinh chỉ lưu ở Backend, không bao giờ có trong response và không gửi sang CDP, Insider, Stripe.
+  required:
+  - travelerRef
+  - type
+  - surname
+  - givenNames
+  properties:
+    travelerRef:
+      type: string
+      pattern: ^[A-Za-z0-9_-]{1,36}$
+      description: Mã tạm do Web sinh, duy nhất trong request; các dịch vụ tham chiếu người này bằng mã này.
+    type:
+      $ref: ../openapi.yaml#/components/schemas/TravelerType
+    surname:
+      type: string
+      minLength: 1
+      maxLength: 50
+      description: Họ. Chỉ gồm chữ cái (kể cả tiếng Việt có dấu), khoảng trắng, dấu nháy đơn và gạch nối.
+    givenNames:
+      type: string
+      minLength: 1
+      maxLength: 50
+      description: Tên đệm và tên. Cùng quy tắc ký tự với surname.
+    birthDate:
+      type:
+      - string
+      - 'null'
+      format: date
+      description: Bắt buộc khi type là CHILD (Backend kiểm, lỗi REQUIRED). Người lớn không cần ngày sinh.
+CheckoutRoom:
+  type: object
+  description: Ai ở một phòng của mục khách sạn.
+  required:
+  - travelerRefs
+  - leadTravelerRef
+  properties:
+    travelerRefs:
+      type: array
+      minItems: 1
+      maxItems: 9
+      items:
+        type: string
+    leadTravelerRef:
+      type: string
+      description: Người lớn đại diện nhận phòng; phải là người lớn ở trong phòng này.
+BookingTraveler:
+  type: object
+  description: Một hành khách của một mục đơn. Không có ngày sinh để response trả ít dữ liệu cá nhân nhất có thể.
+  required:
+  - fullName
+  - type
+  - roomNo
+  - isLead
+  properties:
+    fullName:
+      type: string
+    type:
+      $ref: ../openapi.yaml#/components/schemas/TravelerType
+    roomNo:
+      type:
+      - integer
+      - 'null'
+      minimum: 1
+      description: Chỉ khác null với khách sạn.
+    isLead:
+      type: boolean
+      description: Người đại diện nhận phòng. Luôn false với loại dịch vụ khác.
 AddCartItemRequest:
   type: object
+  description: >-
+    Thêm trùng productId và usingDate thì cộng dồn quantity và guests; kết quả sau khi cộng vẫn phải đạt luật (tối đa 9 khách,
+    mỗi phòng một người lớn, không vượt maxOccupancy). Không gửi guests (client cũ): khách sạn và dịch vụ tính theo người mặc
+    định mỗi phòng/vé một người lớn; combo mặc định 1 người lớn.
   required:
   - productId
   - usingDate
-  - quantity
+  anyOf:
+  - required:
+    - quantity
+  - required:
+    - guests
   properties:
     productId:
       type: string
@@ -13,15 +158,23 @@ AddCartItemRequest:
     quantity:
       type: integer
       minimum: 1
+      description: >-
+        Số phòng (khách sạn), số gói (combo) hoặc số vé. Dịch vụ tính theo người (vé máy bay, tham quan, golf) gửi guests
+        thì được bỏ quantity; gửi cả hai mà lệch adults + children thì bị từ chối (GUEST_COUNT_MISMATCH).
     nights:
       type:
       - integer
       - 'null'
       minimum: 1
       description: Chỉ dùng với taxonomy hotel; loại khác bị bỏ qua.
+    guests:
+      $ref: ../openapi.yaml#/components/schemas/GuestCounts
 UpdateCartItemRequest:
   type: object
   minProperties: 1
+  description: >-
+    Sửa một mục giỏ và ghi lại giá snapshot bằng giá hiện tại (khách đã thấy giá mới). Chỉ đổi quantity của mục đang có trẻ
+    em thì giữ nguyên children và đặt adults = quantity − children.
   properties:
     usingDate:
       type: string
@@ -34,6 +187,8 @@ UpdateCartItemRequest:
       - integer
       - 'null'
       minimum: 1
+    guests:
+      $ref: ../openapi.yaml#/components/schemas/GuestCounts
 CartItem:
   type: object
   required:
@@ -59,6 +214,13 @@ CartItem:
       - integer
       - 'null'
       minimum: 1
+    guests:
+      $ref: ../openapi.yaml#/components/schemas/GuestCounts
+    fares:
+      type: array
+      description: Các dòng giá của mục theo giá catalog hiện tại. lineTotal bằng tổng fares[].amount.
+      items:
+        $ref: ../openapi.yaml#/components/schemas/FareLine
     lineTotal:
       type: integer
       minimum: 0
@@ -122,9 +284,20 @@ CheckoutItemDetail:
       type: string
     guestNames:
       type: array
+      description: Chỉ dùng khi request không có travelers (client cũ); bị bỏ qua khi có travelers.
       items:
         type: string
         minLength: 1
+    travelerRefs:
+      type: array
+      description: Ai dùng dịch vụ (dịch vụ tính theo người, combo). Mọi phần tử phải có trong travelers.
+      items:
+        type: string
+    rooms:
+      type: array
+      description: Khách sạn. Số phòng phải bằng quantity của mục giỏ; mỗi phòng có ít nhất 1 người lớn và không vượt maxOccupancy.
+      items:
+        $ref: ../openapi.yaml#/components/schemas/CheckoutRoom
     specialRequest:
       type:
       - string
@@ -138,6 +311,15 @@ CheckoutRequest:
   properties:
     contact:
       $ref: ../openapi.yaml#/components/schemas/Contact
+    travelers:
+      type: array
+      minItems: 1
+      maxItems: 9
+      description: >-
+        Đoàn khách (1–9 người, ít nhất 1 người lớn). Có travelers thì áp luật đoàn khách; không có thì Backend coi guestNames
+        là tên người lớn và chỉ nhận khi mọi mục giỏ không có trẻ em.
+      items:
+        $ref: ../openapi.yaml#/components/schemas/CheckoutTraveler
     itemDetails:
       type: array
       items:
@@ -172,8 +354,19 @@ BookingItem:
     lineTotal:
       type: integer
       minimum: 0
+    fares:
+      type: array
+      description: Các dòng giá của mục; lineTotal bằng tổng fares[].amount và mỗi dòng là một line item trên trang Stripe.
+      items:
+        $ref: ../openapi.yaml#/components/schemas/FareLine
+    travelers:
+      type: array
+      description: Hành khách của mục (không có ngày sinh). Rỗng với đơn tạo trước khi có đoàn khách; khi đó dùng guestNames.
+      items:
+        $ref: ../openapi.yaml#/components/schemas/BookingTraveler
     guestNames:
       type: array
+      description: Họ tên các khách của mục, theo thứ tự trong đoàn.
       items:
         type: string
     specialRequest:

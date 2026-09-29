@@ -8,6 +8,7 @@ import failedFixture from '../../../shared/mocks/booking/getBooking.200-payment-
 import expiredFixture from '../../../shared/mocks/booking/getBooking.200-expired.json';
 import cancelledFixture from '../../../shared/mocks/booking/getBooking.200-cancelled-refunded.json';
 import tooLateFixture from '../../../shared/mocks/booking/cancelBooking.409-too-late.json';
+import familyFixture from '../../../shared/mocks/booking/createBooking.201-family.json';
 import type { BookingResponse } from '../../src/services/booking';
 
 const api = vi.hoisted(() => ({
@@ -146,3 +147,60 @@ describe('ConfirmationView — trạng thái đơn', () => {
     expect((await screen.findByRole('alert')).textContent).toMatch(/Đã quá hạn huỷ trực tuyến \(hạn: .*14\/10\/2026\)/);
   });
 });
+
+describe('ConfirmationView — hành khách và dòng giá của từng dịch vụ', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    travel.getBookingByCode.mockReturnValue(undefined);
+    api.fetchRecommendations.mockResolvedValue({
+      strategy: 'cross_vertical', destination: 'Nha Trang', recommendations: [],
+      diagnostics: { eventsUsed: 1, coldStart: false, excludedVerticals: [], modelVersion: 't' }, generatedAt: '',
+    });
+  });
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+  });
+
+  const item = (name: string) => screen.getAllByTestId('booking-item').find((el) => el.textContent?.includes(name))!;
+
+  it('khách sạn hiện khách theo phòng và đánh dấu người đại diện; vé hiện đủ tên kèm nhãn trẻ em; không có ngày sinh', async () => {
+    api.getBooking.mockResolvedValue({ ...clone(familyFixture), status: 'CONFIRMED' });
+    render(<ConfirmationView referenceCode="VOTA-20260929-7Q2M" />);
+    await screen.findByText('Đặt chỗ thành công!');
+    const hotel = item('Lucky Sun');
+    expect(hotel.textContent).toContain('1 phòng · 3 khách');
+    const rooms = hotel.querySelector('[data-testid="item-travelers"]')!;
+    expect(rooms.textContent).toContain('Phòng 1:');
+    expect(rooms.textContent).toContain('Nguyễn Minh Anh');
+    expect(rooms.textContent).toContain('Đại diện nhận phòng');
+    expect(rooms.textContent).toContain('Nguyễn Gia Bảo (trẻ em)');
+    const ticket = item('VinWonders');
+    expect(ticket.textContent).toContain('3 khách');
+    expect(ticket.querySelector('[data-testid="item-travelers"]')!.textContent).toBe('Nguyễn Minh Anh, Trần Thu Hà, Nguyễn Gia Bảo (trẻ em)');
+    expect(ticket.textContent).not.toContain('Đại diện nhận phòng');
+    expect(document.body.textContent).not.toMatch(/\d{2}\/\d{2}\/\d{4}|birth|ngày sinh/i);
+  });
+
+  it('hiện các dòng giá theo loại khách của Backend', async () => {
+    api.getBooking.mockResolvedValue({ ...clone(familyFixture), status: 'CONFIRMED' });
+    render(<ConfirmationView referenceCode="VOTA-20260929-7Q2M" />);
+    await screen.findByText('Đặt chỗ thành công!');
+    const lines = item('VinWonders').querySelector('[data-testid="fare-lines"]')!;
+    expect(lines.textContent).toContain('2 × 1.500.000');
+    expect(lines.textContent).toContain('1 × 504.000');
+    expect(item('Lucky Sun').querySelector('[data-testid="fare-lines"]')!.textContent).toContain('× 2 đêm × 1 phòng');
+  });
+
+  it('đơn tạo trước thay đổi (không có travelers) vẫn hiện tên khách như trước', async () => {
+    api.getBooking.mockResolvedValue(confirmed());
+    render(<ConfirmationView referenceCode="VOTA-20260916-8K3F" />);
+    await screen.findByText('Đặt chỗ thành công!');
+    const hotel = item('Vinpearl Resort');
+    expect(hotel.querySelector('[data-testid="item-travelers"]')!.textContent).toBe('Nguyễn Minh Anh');
+    expect(hotel.textContent).toContain('1 phòng');
+    expect(hotel.textContent).not.toContain('Đại diện nhận phòng');
+  });
+});
+

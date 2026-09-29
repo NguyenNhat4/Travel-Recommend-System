@@ -157,44 +157,48 @@ Sau checkout (cờ `justBooked`): gọi lại ① bỏ qua cache. Chỉ hiện t
 | Chọn hạng phòng / chuyến bay | `GET /products?parentProductId={productId}&sort=price_asc` | — | `results[]` (`ProductSummary` của tầng con) | Chỉ gọi khi `attributes.level` là `property` hoặc `route`. Rỗng → "chưa có hạng phòng/chuyến bay đặt được", khoá nút đặt. Lỗi → dòng thông báo, khoá nút đặt |
 | Tương tự | `GET /products/{productId}/similar?limit=8` | — | `results[]` + `score` | Lỗi hoặc rỗng → ẩn section |
 | Hoàn thiện chuyến | `GET /recommendations?k=4&destination=<product.destination>` | bắt buộc | như Home ① | Chỉ render khi `destination` response trùng sản phẩm |
-| Thêm vào giỏ | `POST /cart/items` | bắt buộc | `CartResponse.itemCount` (badge header) | Xem §8 |
+| Thêm vào giỏ | `POST /cart/items` | bắt buộc | gửi `productId`, `usingDate`, `nights` (khách sạn), `guests` (số người lớn và trẻ em) và `quantity` (khách sạn, combo); đọc `CartResponse.itemCount` (badge header) | Xem §8. `400 VALIDATION_ERROR` (ví dụ vượt sức chứa) → toast `message` |
 | Ghi lượt xem | `POST /events` `{ eventName: "product_view", productId }` | bắt buộc | — (`202` không body) | Không JWT thì không gọi. Mọi lỗi bỏ qua im lặng, không hiện gì cho người dùng |
 
 Gọi `POST /events` **một lần** khi trang chi tiết đã hiển thị trên trình duyệt với người dùng đã đăng nhập; không gọi trong Server Component, khi prefetch link hay khi render lại cùng sản phẩm. Web không gửi event `search` hay `add_to_cart`: Backend tự ghi khi xử lý `/search` và `/cart/items`.
 
 Khách sạn (`property`) và tuyến bay (`route`) không đặt trực tiếp: hộp đặt dùng mục tầng con khách đã chọn (mặc định mục rẻ nhất còn đặt được), và `POST /cart/items` gửi `productId` của **tầng con**. Sản phẩm không phân tầng đặt trực tiếp. Chuyến bay có một ngày cố định (`availableFrom = availableTo`) nên ngày hiện ở dạng chỉ đọc.
 
-Hộp đặt gửi `nights` chỉ khi `taxonomy = hotel`. Tổng tiền trong hộp đặt là **ước tính hiển thị**, tính theo công thức `hop-dong-tich-hop-backend.md` §2.6; giá chính thức là `lineTotal` do backend trả.
+Hộp đặt gửi `nights` chỉ khi `taxonomy = hotel`. Bộ đếm khách theo loại dịch vụ (spec `booking/checkout-nhieu-buoc-hanh-khach.md` §6.9): vé tham quan, golf, chuyến bay có Người lớn (≥ 1) và Trẻ em (≥ 0) kèm đơn giá từng loại, và gửi `guests` (không gửi `quantity`, Backend tự tính bằng `adults + children`); khách sạn có số phòng, người lớn, trẻ em, gợi ý "Tối đa {maxOccupancy} khách/phòng" và gửi cả `quantity` (số phòng) lẫn `guests`; combo chỉ có số gói và chỉ gửi `quantity`. Tối đa 9 khách mỗi mục, mỗi phòng ít nhất 1 người lớn; nút thêm khoá khi lựa chọn chưa hợp lệ. Tổng tiền trong hộp đặt là **ước tính hiển thị** theo các dòng giá của spec đó (§4.3, §4.4); giá chính thức là `lineTotal` và `fares` do backend trả.
 
 ### 4.4. Cart `/cart`
 
 | Khu vực | Endpoint | Auth | Trường Web đọc | Khi lỗi / rỗng |
 |---|---|---|---|---|
-| Danh sách, tóm tắt | `GET /cart` | bắt buộc | `items[]` (`cartItemId`, `product`, `usingDate`, `quantity`, `nights`, `lineTotal`), `itemCount`, `subtotal`, `total`, `currency` | `items: []` → EmptyState. Mục có `product.available: false` → viền đỏ, khóa CTA checkout |
-| Sửa / xóa | `PATCH` / `DELETE /cart/items/{cartItemId}` | bắt buộc | toàn bộ `CartResponse` thay thế state | `404 CART_ITEM_NOT_FOUND` → tải lại `GET /cart` |
+| Danh sách, tóm tắt | `GET /cart` | bắt buộc | `items[]` (`cartItemId`, `product` (kèm `attributes.maxOccupancy` của hạng phòng), `usingDate`, `quantity`, `nights`, `guests`, `fares`, `lineTotal`), `itemCount`, `subtotal`, `total`, `currency` | `items: []` → EmptyState. Mục có `product.available: false` → viền đỏ, khóa CTA checkout |
+| Sửa / xóa | `PATCH` / `DELETE /cart/items/{cartItemId}` | bắt buộc | gửi `guests` (và `quantity` với khách sạn, combo); toàn bộ `CartResponse` thay thế state | `404 CART_ITEM_NOT_FOUND` → tải lại `GET /cart`. `400 VALIDATION_ERROR` → toast `message`, giữ bộ đếm để sửa tiếp |
 | Gom nhóm "Chuyến {destination}" | — | — | `items[].product.destination` | Client tự gom |
 | Thường được đặt cùng | `GET /recommendations?k=4&destination=<điểm đến đầu tiên>` | bắt buộc | như Home ① | Lỗi → ẩn |
+
+Mỗi mục hiện "2 người lớn · 1 trẻ em" (từ `guests`) và các dòng giá (`fares`); nút [Sửa] mở cùng bộ đếm với trang chi tiết và gọi `PATCH` khi bấm Cập nhật. Đơn giá vé trẻ em (`attributes.childPrice`) không nằm trong `CartResponse`, nên Web tải `GET /products/{productId}` khi mở [Sửa]. Mục hết chỗ không có [Sửa].
 
 Web **không** tự cộng tiền. Mọi con số tiền trên trang giỏ lấy từ `CartResponse`.
 
 ### 4.5. Checkout `/checkout`
 
-| Khu vực | Endpoint | Auth | Trường Web đọc / gửi | Khi lỗi |
+Ba bước trên cùng một route, bước hiện tại ở `?step=travelers|services|review`, mỗi lần chuyển bước là một mục trong lịch sử trình duyệt (spec `booking/checkout-nhieu-buoc-hanh-khach.md` §6). Chỉ sửa giỏ ở hai bước đầu; không giữ chỗ, không tạo đơn, không gọi Stripe cho tới khi bấm Thanh toán.
+
+| Bước | Endpoint | Auth | Trường Web đọc / gửi | Khi lỗi |
 |---|---|---|---|---|
-| Tóm tắt | `GET /cart` | bắt buộc | như §4.4 | `items: []` → chuyển `/cart`. Mục `product.available: false` → khoá nút Thanh toán |
-| Điền sẵn | phiên hiện tại | — | `user.fullName`, `user.email` (email khoá theo tài khoản) | — |
-| Phương thức thanh toán | — | — | — | Chỉ Stripe (chọn sẵn); ví điện tử, chuyển khoản hiển thị vô hiệu hoá, nhãn "Sắp có" (`user-flow.md` §3.3) |
-| Thanh toán | `POST /bookings` | bắt buộc | gửi `contact`, `itemDetails[]`; đọc `referenceCode`, `payment.checkoutUrl` | Xem §8. `201` → `window.location.assign(payment.checkoutUrl)` sang trang Stripe |
+| Tóm tắt (cả ba bước) | `GET /cart` (mỗi lần chuyển bước) | bắt buộc | như §4.4 | `items: []` → chuyển `/cart`. Mục `product.available: false` → khoá nút Thanh toán |
+| ① Hành khách | — (không gọi Backend) | — | Đoàn 1–9 người, ít nhất 1 người lớn; mỗi người có họ và tên đệm và tên (hai ô), trẻ em có ngày sinh; người liên hệ (`fullName`, `phone`; email khoá theo tài khoản). Điền sẵn: số người lớn, trẻ em từ `guests` lớn nhất của giỏ; họ tên Người lớn 1 từ tài khoản nếu dùng được | Kiểm ở Web theo cùng bộ luật với Backend (spec §5.2). Bấm Tiếp tục khi còn lỗi: ở lại bước, hộp "Còn n thông tin cần sửa", con trỏ về ô lỗi đầu tiên |
+| ② Dịch vụ | `PATCH /cart/items/{cartItemId}` cho mỗi mục có `guests` hoặc số phòng khác phân bổ (chờ 400 ms, các lần của cùng mục chạy lần lượt) | bắt buộc | Chọn ai dùng từng dịch vụ; khách sạn xếp người vào phòng và chọn người đại diện. Đọc `fares`, `lineTotal` mới sau mỗi `PATCH` | `PATCH` lỗi → gắn lỗi vào thẻ dịch vụ. Bấm Tiếp tục kiểm luật dịch vụ (spec §5.3) |
+| ③ Xem lại và thanh toán | `POST /bookings` | bắt buộc | gửi `contact`, `travelers[]` (`travelerRef`, `type`, `surname`, `givenNames`, `birthDate` của trẻ em), `itemDetails[]` (`cartItemId`, `travelerRefs` hoặc `rooms[]` với `leadTravelerRef`, `specialRequest`); đọc `referenceCode`, `payment.checkoutUrl` | Xem §8. `201` → `window.location.assign(payment.checkoutUrl)` sang trang Stripe |
 
-Nút **Thanh toán** bị khoá tới khi họ tên hợp lệ, `phone` khớp `^0[0-9]{9}$`, đủ tên khách theo quy tắc dưới, đã đồng ý điều khoản và đã chọn phương thức; khi đang gửi thì hiện trạng thái xử lý và chặn bấm lặp. Web không gửi số tiền; tổng hiển thị lấy từ `CartResponse.total`.
+Phương thức thanh toán: chỉ Stripe (chọn sẵn); ví điện tử, chuyển khoản hiển thị vô hiệu hoá, nhãn "Sắp có" (`user-flow.md` §3.3). Nút **Thanh toán** ở bước ③ bị khoá tới khi đã đồng ý điều khoản (gộp việc xác nhận họ tên) và đã chọn phương thức, hoặc khi giỏ còn mục hết chỗ; khi đang gửi thì hiện trạng thái xử lý và chặn bấm lặp. Web không gửi số tiền; mọi số tiền hiển thị lấy từ `CartResponse` (`fares`, `lineTotal`, `total`).
 
-Quy tắc form → `itemDetails[]`: `hotel` gửi `guestNames` 1 phần tử; `flight` gửi `guestNames` đủ `quantity` phần tử; loại khác không gửi `guestNames`. `specialRequest` tùy chọn, theo từng mục.
+Họ tên và ngày sinh chỉ nằm trong bộ nhớ của trang, không ghi `localStorage`, `sessionStorage`, URL hay cookie; tải lại trang thì mất và Web nói rõ điều đó. Web không gửi `guestNames` (chỉ client cũ gửi, spec §7.6). Hạn hoàn tiền hiển thị ở bước ③ tính theo FR-BKG-07 nhưng chỉ để hiển thị; Backend quyết định `cancellableUntil`.
 
 ### 4.6. Trạng thái đơn `/booking/{referenceCode}`
 
 | Khu vực | Endpoint | Auth | Trường Web đọc | Khi lỗi / rỗng |
 |---|---|---|---|---|
-| Đơn đặt | `GET /bookings/{referenceCode}` (dùng bản trong state nếu có để hiện ngay) | bắt buộc | `status`, `holdExpiresAt`, `cancellableUntil`, `payment` (`status`, `amount`, `checkoutUrl`, `failedAttempts`, `failureReason`, `refundedAmount`), `cancellation`, `contact`, `groups[]`, `total` | `404 BOOKING_NOT_FOUND` → "Không tìm thấy đơn đặt chỗ này" |
+| Đơn đặt | `GET /bookings/{referenceCode}` (dùng bản trong state nếu có để hiện ngay) | bắt buộc | `status`, `holdExpiresAt`, `cancellableUntil`, `payment` (`status`, `amount`, `checkoutUrl`, `failedAttempts`, `failureReason`, `refundedAmount`), `cancellation`, `contact`, `groups[]` (mỗi mục: `fares`, `travelers`, `guestNames`), `total` | `404 BOOKING_NOT_FOUND` → "Không tìm thấy đơn đặt chỗ này" |
 | Chờ xác nhận | `GET /bookings/{referenceCode}` lặp lại | bắt buộc | `status`, `payment.status` | `?payment=return`, `payment.status = SUCCEEDED` hoặc đồng hồ giữ chỗ về 0: hỏi lại 2 giây/lần, tối đa 15 lần, dừng khi `status` khác `PENDING_PAYMENT`. Quay về từ Stripe **không** phải bằng chứng đã trả |
 | Huỷ đơn | `POST /bookings/{referenceCode}/cancel` | bắt buộc | `BookingResponse` thay thế state | Xem §8 |
 | Tiếp theo cho chuyến | `GET /recommendations?k=4&destination=<groups[0].destination>` — **chỉ khi `CONFIRMED`**, gọi sau khi đơn đã hiển thị | bắt buộc | như Home ① | Lỗi hoặc rỗng → ẩn section, giữ CTA |
@@ -210,6 +214,8 @@ Hiển thị theo trạng thái (spec booking §5.1):
 | `PAYMENT_FAILED` | Lý do theo `failureReason` (spec booking §10.2) + "Đặt lại từ giỏ" |
 | `EXPIRED` | "Hết thời gian giữ chỗ" + "Đặt lại từ giỏ" |
 | `CANCELLED` | "Đã huỷ đơn" + trạng thái hoàn tiền theo `payment.status` (`REFUND_PENDING`, `REFUNDED`, `REFUND_FAILED`, hoặc `EXPIRED` = chưa thanh toán nên không hoàn) |
+
+Mỗi mục của đơn hiện hành khách và dòng giá (spec `booking/checkout-nhieu-buoc-hanh-khach.md` §6.8): khách sạn hiện khách theo phòng ("Phòng 1: …") và đánh dấu người đại diện nhận phòng (`isLead`); dịch vụ khác hiện một dòng tên, trẻ em có nhãn "(trẻ em)"; các dòng giá từ `fares`. Response không có ngày sinh nên trang không hiện. Đơn tạo trước thay đổi có `travelers` rỗng: hiện `guestNames` như trước.
 
 Hộp thoại huỷ: đơn `CONFIRMED` hiện số tiền hoàn (`payment.amount`), `cancellableUntil` và "không thể hoàn tác"; đơn chưa thanh toán ghi rõ không phát sinh tiền, giỏ còn nguyên.
 
@@ -331,7 +337,7 @@ Mọi response không phải 2xx có envelope `ErrorResponse` (`hop-dong-tich-ho
 
 | Mã lỗi | Nơi gặp | Web hiển thị |
 |---|---|---|
-| `VALIDATION_ERROR` | form bất kỳ | Gắn `details.fields[]` vào trường tương ứng; không có `fields` → `message` phía trên nút |
+| `VALIDATION_ERROR` | form bất kỳ | Gắn `details.fields[]` vào trường tương ứng; không có `fields` → `message` phía trên nút. Checkout: `field` bắt đầu bằng `travelers[`, `contact.` → về bước ①; `itemDetails[` (kèm `cartItemId`) → về bước ②; lỗi ở cả hai thì về bước ①, và hộp "Còn n thông tin cần sửa" chỉ liệt kê lỗi của bước đó. `reason = GUEST_COUNT_MISMATCH` → tải lại giỏ, tính lại phân bổ, về bước ② (spec `booking/checkout-nhieu-buoc-hanh-khach.md` §6.7, §10.4) |
 | `CART_EMPTY` | Checkout | Chuyển `/cart` |
 | `BOOKING_PENDING_PAYMENT` | Checkout | Hộp thoại "Bạn đang có một đơn chờ thanh toán" với `details.referenceCode`, `details.holdExpiresAt`: "Tiếp tục thanh toán đơn đó" (đọc lại đơn, mở `checkoutUrl`) hoặc "Huỷ đơn đó và đặt lại từ giỏ" |
 | `BOOKING_ALREADY_PAID` | Huỷ đơn | Tải lại đơn, báo "Đơn vừa được thanh toán" |
@@ -344,7 +350,7 @@ Mọi response không phải 2xx có envelope `ErrorResponse` (`hop-dong-tich-ho
 | `BOOKING_NOT_FOUND` | Confirmation | "Không tìm thấy đơn đặt chỗ này" + Về trang chủ |
 | `EMAIL_ALREADY_EXISTS` | Register | Dưới trường email + link Đăng nhập |
 | `PRODUCT_UNAVAILABLE` | Thêm giỏ; Checkout | Banner "{tên} vừa hết chỗ" dùng `details.productId` để tìm tên trong giỏ; giữ form; link Quay lại giỏ |
-| `PRICE_CHANGED` | Checkout | Banner "Giá {tên} đã đổi từ {oldPrice} thành {newPrice}" + nút "Cập nhật và tiếp tục": gọi `PATCH /cart/items/{cartItemId}` với `quantity` hiện tại để Backend ghi lại giá snapshot (khách đã thấy giá mới), rồi người dùng bấm Thanh toán lần nữa. Chỉ `GET /cart` thì lần bấm sau vẫn nhận `PRICE_CHANGED` |
+| `PRICE_CHANGED` | Checkout | Banner "Giá {tên} đã đổi từ {oldPrice} thành {newPrice}" (có `details.fareType = CHILD` thì "Giá vé trẻ em của {tên} …") + nút "Cập nhật và tiếp tục": gọi `PATCH /cart/items/{cartItemId}` với `quantity` hiện tại để Backend ghi lại giá snapshot (khách đã thấy giá mới), rồi người dùng bấm Thanh toán lần nữa. Chỉ `GET /cart` thì lần bấm sau vẫn nhận `PRICE_CHANGED` |
 | `DATE_OUT_OF_RANGE` | Thêm giỏ; Checkout | Lỗi dưới ô ngày, dùng `details.availableFrom/To` để giới hạn lịch |
 | `SEARCH_UNAVAILABLE` | Search; Assistant | `ErrorState` + Thử lại |
 | `INVALID_TRIP_DURATION` | Assistant | Tin nhắn trợ lý với `message`, mở stepper số ngày |
@@ -619,6 +625,11 @@ Ca biên bắt buộc để dựng đủ 8 màn hình:
 | Lịch trình chứa slot hết chỗ và slot sai điểm đến (lưới an toàn §9.5) | `assistant/createItinerary.200-completed-invalid-slots` |
 | Search kết quả yếu (`topScore < 0.35`), Search `503` | `search/searchProducts.200-weak`, `search/searchProducts.503-unavailable` |
 | Giỏ có mục hết chỗ | `booking/getCart.200-item-unavailable` |
+| Giỏ gia đình 2 người lớn + 1 trẻ em (hạng phòng, vé có giá trẻ em, chuyến bay); đơn tương ứng | `booking/getCart.200-family`, `booking/createBooking.201-family` |
+| Checkout `400 VALIDATION_ERROR` nhiều vi phạm ở cả bước ① và ② | `booking/createBooking.400-party-invalid` |
+| Checkout `409 PRICE_CHANGED` của giá vé trẻ em (`details.fareType = CHILD`) | `booking/createBooking.409-price-changed-child` |
+| Sửa số khách của mục giỏ: thành công / bị từ chối | `booking/updateCartItem.200-guests`, `booking/updateCartItem.400-guests-invalid` |
+| Bộ ca kiểm thử luật đoàn khách dùng chung với Backend | `src/shared/contracts/tests/booking-rules-cases.json` |
 | Đăng nhập sai | `auth/login.401-invalid-credentials` |
 
 ---

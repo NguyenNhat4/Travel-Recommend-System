@@ -8,7 +8,8 @@ from datetime import date, datetime, timedelta, timezone
 
 from src.backend.app.application.auth.principal import AuthPrincipal
 from src.backend.app.application.booking import (
-    CancelBooking, CartService, CreateBookingHold, GetBooking, PaymentEventHandler, ReconcileBookings, Settlement,
+    CancelBooking, CartService, CreateBookingHold, GetBooking, ItemDetail, PaymentEventHandler, ReconcileBookings,
+    Settlement,
 )
 from src.backend.app.application.ports.booking_store import PendingBookingExists
 from src.backend.app.application.ports.cdp_client import CdpUnavailableError
@@ -59,20 +60,25 @@ class InMemoryCarts:
     async def get(self, user):
         return Cart(f"cart-{user}", user, list(self.lines.get(user, [])), NOW)
 
-    async def add(self, user, *, product_id, using_date, quantity, nights, unit_price):
+    async def upsert(self, user, *, product_id, using_date, quantity, nights, unit_price, adults, children,
+                     child_unit_price):
         lines = self.lines.setdefault(user, [])
         for i, line in enumerate(lines):
             if line.product_id == product_id and line.using_date == using_date:
-                lines[i] = CartLine(line.cart_item_id, product_id, line.quantity + quantity, using_date, nights, unit_price)
+                lines[i] = CartLine(line.cart_item_id, product_id, quantity, using_date, nights, unit_price,
+                                    adults=adults, children=children, child_unit_price_snapshot=child_unit_price)
                 return
-        lines.append(CartLine(str(uuid.uuid4()), product_id, quantity, using_date, nights, unit_price))
+        lines.append(CartLine(str(uuid.uuid4()), product_id, quantity, using_date, nights, unit_price,
+                              adults=adults, children=children, child_unit_price_snapshot=child_unit_price))
 
-    async def update(self, user, cart_item_id, *, using_date, quantity, nights, nights_given, unit_price):
+    async def update(self, user, cart_item_id, *, using_date, quantity, nights, nights_given, unit_price, adults,
+                     children, child_unit_price):
         lines = self.lines.get(user, [])
         for i, l in enumerate(lines):
             if l.cart_item_id == cart_item_id:
-                lines[i] = CartLine(l.cart_item_id, l.product_id, quantity or l.quantity, using_date or l.using_date,
-                                    nights, unit_price)
+                lines[i] = CartLine(l.cart_item_id, l.product_id, quantity, using_date or l.using_date, nights,
+                                    unit_price, adults=adults, children=children,
+                                    child_unit_price_snapshot=child_unit_price)
                 return True
         return False
 
@@ -191,6 +197,15 @@ class World:
     async def fill_cart(self, using=date(2026, 10, 15), nights=3):
         await self.cart.add(PRINCIPAL, product_id=HOTEL, using_date=using, quantity=1, nights=nights)
         await self.cart.add(PRINCIPAL, product_id=TICKET, using_date=using, quantity=2, nights=None)
+
+    async def details(self) -> list[ItemDetail]:
+        """`itemDetails` kiểu cũ (không có `travelers`) đủ để qua luật kiểm của request cũ (spec checkout §7.6)."""
+        out = []
+        for line in (await self.carts.get(USER)).lines:
+            taxonomy = self.catalog.products[line.product_id].taxonomy
+            names = ["Nguyễn Minh Anh"] * (line.quantity if taxonomy == "flight" else 1 if taxonomy == "hotel" else 0)
+            out.append(ItemDetail(line.cart_item_id, names))
+        return out
 
 
 class _Lookup:

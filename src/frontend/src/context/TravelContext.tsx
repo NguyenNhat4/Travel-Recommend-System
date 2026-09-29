@@ -12,7 +12,7 @@ import { SupportedLocale, DEFAULT_LOCALE } from '../types/locale';
 import { PERSONA_LOGIN, SEED_PERSONAS } from '../data/personas';
 import * as authApi from '../services/auth';
 import * as bookingApi from '../services/booking';
-import type { BookingResponse, CartResponse, UpdateCartItemRequest } from '../services/booking';
+import type { BookingResponse, CartResponse, GuestCounts, UpdateCartItemRequest } from '../services/booking';
 import { ApiError, SESSION_EXPIRED_EVENT } from '../services/http';
 
 interface ToastState {
@@ -38,12 +38,20 @@ interface TravelContextType {
   cart: CartResponse | null;
   cartCount: number;
   refreshCart: () => Promise<CartResponse | null>;
-  /** true nếu Backend đã nhận mục. `silent` bỏ toast từng mục (thêm nhiều mục thì caller tự tổng kết). */
+  /**
+   * true nếu Backend đã nhận mục. `silent` bỏ toast từng mục (thêm nhiều mục thì caller tự tổng kết). `guests` là số người lớn
+   * và trẻ em của mục (FR-BKG-08): dịch vụ tính theo người được bỏ `quantity` khi gửi `guests`.
+   */
   addToCart: (
-    product: Product, quantity?: number, usingDate?: string, checkOutDate?: string, options?: { silent?: boolean },
+    product: Product, quantity?: number, usingDate?: string, checkOutDate?: string,
+    options?: { silent?: boolean; guests?: GuestCounts },
   ) => Promise<boolean>;
   removeFromCart: (cartItemId: string) => Promise<void>;
-  updateCartItem: (cartItemId: string, updates: UpdateCartItemRequest) => Promise<void>;
+  /**
+   * Sửa một mục giỏ và cập nhật `cart` bằng response. Trả về lỗi API (null nếu thành công) để checkout gắn lỗi vào thẻ dịch vụ;
+   * `silent` bỏ toast lỗi.
+   */
+  updateCartItem: (cartItemId: string, updates: UpdateCartItemRequest, options?: { silent?: boolean }) => Promise<ApiError | null>;
   activeEvents: UserEvent[];
   recordEvent: (eventType: EventType, product: Product) => void;
   /** Đơn đã tạo hoặc đã xem trong phiên này (contract không có API liệt kê đơn). */
@@ -314,7 +322,7 @@ export const TravelProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     quantity: number = 1,
     usingDate?: string,
     checkOutDate?: string,
-    options: { silent?: boolean } = {},
+    options: { silent?: boolean; guests?: GuestCounts } = {},
   ): Promise<boolean> => {
     // Khách phải đăng nhập trước hành động ghi (§3.1). Đọc qua ref: callback sau đăng nhập chạy ở render sau.
     if (!personaRef.current) {
@@ -324,7 +332,12 @@ export const TravelProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     const start = usingDate || defaultUsingDate(product);
     const nights = product.taxonomy === 'hotel' ? nightsBetween(start, checkOutDate) : undefined;
     try {
-      await trackCart(() => bookingApi.addCartItem({ productId: product.id, usingDate: start, quantity, nights }));
+      // Dịch vụ tính theo người gửi `guests` thì Backend tự tính quantity = người lớn + trẻ em; khách sạn và combo gửi cả hai.
+      const perPerson = product.taxonomy === 'flight' || product.taxonomy === 'attraction' || product.taxonomy === 'golf';
+      await trackCart(() => bookingApi.addCartItem({
+        productId: product.id, usingDate: start, nights, ...(options.guests ? { guests: options.guests } : {}),
+        ...(options.guests && perPerson ? {} : { quantity }),
+      }));
     } catch (error) {
       if (!options.silent) showToast(cartErrorMessage(error, product.name));
       return false;
@@ -359,15 +372,20 @@ export const TravelProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }
   }, [cart, trackCart, refreshCart, showToast]);
 
-  const updateCartItem = useCallback(async (cartItemId: string, updates: UpdateCartItemRequest) => {
+  const updateCartItem = useCallback(async (
+    cartItemId: string, updates: UpdateCartItemRequest, options: { silent?: boolean } = {},
+  ): Promise<ApiError | null> => {
     try {
       await trackCart(() => bookingApi.updateCartItem(cartItemId, updates));
+      return null;
     } catch (error) {
-      if (error instanceof ApiError && error.code === 'CART_ITEM_NOT_FOUND') {
+      const apiError = error instanceof ApiError ? error : new ApiError('Không cập nhật được giỏ hàng.', 'INTERNAL_ERROR', 0, true);
+      if (apiError.code === 'CART_ITEM_NOT_FOUND') {
         await refreshCart();
-        return;
+        return apiError;
       }
-      showToast(cartErrorMessage(error));
+      if (!options.silent) showToast(cartErrorMessage(error));
+      return apiError;
     }
   }, [trackCart, refreshCart, showToast]);
 

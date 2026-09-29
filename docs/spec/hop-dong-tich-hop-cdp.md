@@ -123,6 +123,8 @@ Trường bắt buộc theo `eventName`:
 | `add_to_cart` | `productId`, `taxonomy`, `quantity` |
 | `purchase` | `eventId`, `productId`, `taxonomy`, `eventGroupId`, `quantity`, `unitPrice`, `usingDate` |
 
+Event `purchase` vẫn **một event cho mỗi mục** của đơn (khớp 1:1 với `app.booking_items`); `quantity` là `quantity` của mục và `unitPrice` là giá catalog **người lớn**. Checkout ba bước (FR-BKG-08, `docs/spec/booking/checkout-nhieu-buoc-hanh-khach.md` §8.5) không thêm event, không đổi trường của event và không gửi họ tên, ngày sinh hay loại khách sang CDP. Hệ quả: khi đơn có vé trẻ em (giá thấp hơn giá người lớn), tổng `quantity × unitPrice` tính từ CDP (ví dụ tổng chi tiêu ở FR-CDP-03) có thể **cao hơn** số tiền thu thật. Doanh thu chính xác đọc từ `app.bookings.total_amount` và `app.booking_items.line_total`.
+
 ### 3.2. Quy ước `eventId` của Backend
 
 | Event | `eventId` |

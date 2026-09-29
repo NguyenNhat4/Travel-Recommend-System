@@ -63,6 +63,27 @@ negative.append(('ItineraryResponse', bad))
 bad = copy.deepcopy(completed)
 bad['itinerary']['days'][0]['slots'][0]['product'] = None
 negative.append(('ItineraryResponse', bad))
+# Checkout nhiều bước (1.8.0): ví dụ request của spec §7.4 hợp lệ; thiếu trường bắt buộc hoặc sai loại giá thì bị từ chối.
+validator('CheckoutRequest').validate({
+    'contact': {'fullName': 'Nguyễn Minh Anh', 'email': 'minhanh@example.vn', 'phone': '0912345678'},
+    'travelers': [
+        {'travelerRef': 't1', 'type': 'ADULT', 'surname': 'Nguyễn', 'givenNames': 'Minh Anh'},
+        {'travelerRef': 't3', 'type': 'CHILD', 'surname': 'Nguyễn', 'givenNames': 'Gia Bảo', 'birthDate': '2019-05-12'}],
+    'itemDetails': [
+        {'cartItemId': 'ci-hotel', 'rooms': [{'travelerRefs': ['t1', 't3'], 'leadTravelerRef': 't1'}]},
+        {'cartItemId': 'ci-vinwonders', 'travelerRefs': ['t1', 't3']}]})
+validator('AddCartItemRequest').validate({'productId': 'p', 'usingDate': '2026-10-15', 'guests': {'adults': 2, 'children': 1}})
+validator('AddCartItemRequest').validate({'productId': 'p', 'usingDate': '2026-10-15', 'quantity': 2})
+negative += [
+    ('ValidationFieldError', {'field': 'travelers[0]', 'message': 'x'}),
+    ('CheckoutTraveler', {'travelerRef': 't1', 'type': 'ADULT', 'surname': 'Nguyễn'}),
+    ('CheckoutTraveler', {'travelerRef': 't 1', 'type': 'ADULT', 'surname': 'Nguyễn', 'givenNames': 'An'}),
+    ('AddCartItemRequest', {'productId': 'p', 'usingDate': '2026-10-15'}),
+    ('GuestCounts', {'adults': 0, 'children': 0}),
+    ('GuestCounts', {'adults': 1, 'children': 9}),
+    ('FareLine', {'fareType': 'BAG', 'unitPrice': 1, 'count': 1, 'nights': None, 'amount': 1}),
+    ('BookingTraveler', {'fullName': 'A', 'type': 'INFANT', 'roomNo': None, 'isLead': False}),
+]
 for schema, payload in negative:
     assert not validator(schema).is_valid(payload), (schema, payload)
 minimal = json.loads((FIXTURES / 'recommendations-minimal.json').read_text())
@@ -86,6 +107,12 @@ for f in index['fixtures']:
     if errors:
         legacy_failures.append((f['file'], [e.message[:150] for e in errors]))
 assert not legacy_failures, legacy_failures
+# details.fields[] của VALIDATION_ERROR ở booking đúng ValidationFieldError (docs/spec/booking/checkout-nhieu-buoc-hanh-khach.md §7.5).
+for f in index['fixtures']:
+    if f['file'].startswith('booking/'):
+        error = json.loads((SHARED / 'mocks' / f['file']).read_text()).get('error') or {}
+        for field_error in (error.get('details') or {}).get('fields', []):
+            validator('ValidationFieldError').validate(field_error)
 validator('TrackEventRequest').validate({'eventName': 'product_view', 'productId': products[0]['productId']})
 for payload in [{'eventName': 'purchase', 'productId': 'x'}, {'eventName': 'product_view'},
                 {'eventName': 'product_view', 'productId': 'x', 'taxonomy': 'hotel'}]:

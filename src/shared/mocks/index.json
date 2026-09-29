@@ -497,6 +497,54 @@
       "status": 200,
       "case": "cancelled-refunded",
       "file": "booking/getBooking.200-cancelled-refunded.json"
+    },
+    {
+      "operationId": "getCart",
+      "method": "get",
+      "path": "/cart",
+      "status": 200,
+      "case": "family",
+      "file": "booking/getCart.200-family.json"
+    },
+    {
+      "operationId": "createBooking",
+      "method": "post",
+      "path": "/bookings",
+      "status": 201,
+      "case": "family",
+      "file": "booking/createBooking.201-family.json"
+    },
+    {
+      "operationId": "createBooking",
+      "method": "post",
+      "path": "/bookings",
+      "status": 400,
+      "case": "party-invalid",
+      "file": "booking/createBooking.400-party-invalid.json"
+    },
+    {
+      "operationId": "createBooking",
+      "method": "post",
+      "path": "/bookings",
+      "status": 409,
+      "case": "price-changed-child",
+      "file": "booking/createBooking.409-price-changed-child.json"
+    },
+    {
+      "operationId": "updateCartItem",
+      "method": "patch",
+      "path": "/cart/items/{cartItemId}",
+      "status": 400,
+      "case": "guests-invalid",
+      "file": "booking/updateCartItem.400-guests-invalid.json"
+    },
+    {
+      "operationId": "updateCartItem",
+      "method": "patch",
+      "path": "/cart/items/{cartItemId}",
+      "status": 200,
+      "case": "guests",
+      "file": "booking/updateCartItem.200-guests.json"
     }
   ]
 }
