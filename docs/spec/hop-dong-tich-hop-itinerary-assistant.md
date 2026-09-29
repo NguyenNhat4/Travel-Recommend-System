@@ -414,12 +414,24 @@ Backend đếm `clarification_rounds` theo hội thoại (0, 1, 2…), chỉ tă
 {
   "status": "NO_RESULTS",
   "conversationId": "conv-01JXYZ",
-  "message": "Hiện chưa có sản phẩm phù hợp tại Quy Nhơn trong khoảng giá này.",
-  "suggestions": ["Tăng ngân sách", "Chọn điểm đến khác", "Bỏ điều kiện gần biển"]
+  "message": "Hiện chưa có sản phẩm ở Hà Nội mở bán cho ngày 01/12/2026. Bạn có thể chọn một trong các gợi ý bên dưới.",
+  "suggestions": ["Đi Hà Nội 3 ngày từ ngày 24/10/2026", "Đi Phú Quốc 3 ngày", "Đi Nha Trang 3 ngày"]
 }
 ```
 
-Agent không lấp kết quả rỗng bằng sản phẩm do LLM tự tạo.
+Agent không lấp kết quả rỗng bằng sản phẩm do LLM tự tạo, và không tự đổi ràng buộc hay điểm đến thay người dùng
+(điều kiện bắt buộc chưa đáp ứng vẫn đi nhánh `NEEDS_CLARIFICATION`). Để người dùng không gặp ngõ cụt, `message` và
+`suggestions` do backend dựng tất định từ dữ liệu thật của lượt đó, không do LLM viết:
+
+- `message` nêu ngày đi khi lý do phổ biến nhất khiến sản phẩm bị loại là ngày nằm ngoài cửa sổ mở bán
+  (`PRODUCT_DROPPED_DATE`); các lý do khác dùng câu chung.
+- `suggestions` tối đa 3 mục, mỗi mục là một câu yêu cầu **gửi được nguyên văn** làm lượt chat tiếp theo, theo thứ tự:
+  1. ngày khởi hành gần `startDate` nhất mà có sản phẩm thật đang mở bán (không sớm hơn hôm nay, không muộn hơn
+     `availableTo`), dạng `Đi <điểm đến> <n> ngày từ ngày dd/mm/yyyy`;
+  2. gợi ý bỏ ràng buộc đang bật (khách sạn cụ thể, giá, số sao, hoạt động cụ thể, loại dịch vụ đã loại trừ);
+  3. tối đa hai điểm đến khác trong catalog, nhiều sản phẩm nhất trước, dạng `Đi <điểm đến> <n> ngày`.
+  Không có mục nào thì trả một câu gợi ý chung.
+- Frontend hiện `suggestions` thành chip dưới bong bóng trả lời ở tin nhắn mới nhất; bấm chip gửi ngay câu đó.
 
 ### 4.5. Response suy giảm
 

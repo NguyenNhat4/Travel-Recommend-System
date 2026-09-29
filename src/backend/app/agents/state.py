@@ -53,6 +53,7 @@ class AgentState(TypedDict, total=False):
     candidates: Candidates
     sources: Sources
     warnings: list[PlanWarning]
+    nearest_open_date: str | None
     response: dict[str, Any]  # `ItineraryResponse` envelope; contract-owned, see domain/itinerary/types.py
     http_status: int
     decision: str

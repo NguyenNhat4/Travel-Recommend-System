@@ -24,14 +24,15 @@ MAX_SIMILAR_CALLS = 2  # mỗi lượt, mỗi anchor một lần; vẫn nằm tr
 
 
 async def catalog_destinations(tools: ToolExecutorPort, timeout_seconds: float) -> list[str] | None:
-    """Danh sách điểm đến có trong catalog; None khi không lấy được."""
+    """Danh sách điểm đến có trong catalog, nhiều sản phẩm nhất trước (cùng số thì theo tên); None khi không lấy được."""
     try:
         listing = await asyncio.wait_for(tools.list_destinations(), timeout_seconds)
     except Exception:
         # Listing failure cannot prove a destination unsupported. Search may still succeed.
         return None
     if valid("DestinationListResponse", listing):
-        return [item["destination"] for item in listing["destinations"]]
+        ranked = sorted(listing["destinations"], key=lambda item: (-item["productCount"], item["destination"]))
+        return [item["destination"] for item in ranked]
     return None
 
 

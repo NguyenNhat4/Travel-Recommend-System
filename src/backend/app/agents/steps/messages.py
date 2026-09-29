@@ -32,6 +32,12 @@ MESSAGES = {
         "suggestion_activity": "Thử bỏ yêu cầu hoạt động cụ thể",
         "suggestion_taxonomy": "Thử bỏ bớt loại dịch vụ đã loại trừ",
         "suggestion_generic": "Thử đổi điểm đến hoặc điều chỉnh thời gian chuyến đi",
+        "no_results": "Chưa tìm thấy sản phẩm phù hợp trong dữ liệu hiện có. Bạn có thể điều chỉnh yêu cầu.",
+        "no_results_date": "Hiện chưa có sản phẩm ở {destination} mở bán cho ngày {date}. "
+                           "Bạn có thể chọn một trong các gợi ý bên dưới.",
+        # Các câu dưới đây được gửi lại làm lượt chat kế tiếp khi người dùng bấm gợi ý: phải là câu yêu cầu đủ ý.
+        "suggestion_trip": "Đi {destination} {days} ngày",
+        "suggestion_trip_date": "Đi {destination} {days} ngày từ ngày {date}",
     },
     "en": {
         "conversation_not_found": "The conversation does not exist or has expired.",
@@ -58,6 +64,11 @@ MESSAGES = {
         "suggestion_activity": "Try dropping the specific activity requirement",
         "suggestion_taxonomy": "Try removing some of the excluded service types",
         "suggestion_generic": "Try a different destination or adjust the trip dates",
+        "no_results": "I could not find matching products in the current data. You can adjust your request.",
+        "no_results_date": "There are no products in {destination} on sale for {date} yet. "
+                           "You can pick one of the suggestions below.",
+        "suggestion_trip": "A {days}-day trip to {destination}",
+        "suggestion_trip_date": "A {days}-day trip to {destination} starting on {date}",
     },
 }
 
@@ -69,7 +80,6 @@ CLARIFY_UNVERIFIED = ("Điều kiện bắt buộc bạn yêu cầu chưa có d�
 CLARIFY_CONSTRAINT = ("Không tìm thấy sản phẩm đáp ứng điều kiện bắt buộc trong dữ liệu hiện có. "
                       "Bạn có muốn điều chỉnh điều kiện hoặc chọn phương án thay thế không?")
 REFUSAL = "Tôi hỗ trợ tư vấn lịch trình du lịch. Bạn muốn lên kế hoạch chuyến đi nào?"
-NO_RESULTS = "Chưa tìm thấy sản phẩm phù hợp trong dữ liệu hiện có. Bạn có thể điều chỉnh yêu cầu."
 FALLBACK = ("Chưa thể dựng lịch trình đã kiểm tra. Các sản phẩm dưới đây là ứng viên tham khảo; "
             "cần kiểm tra lại giá, điều kiện và ngày sử dụng.")
 COMPOSE_UNAVAILABLE = "Chưa thể dựng lịch trình lúc này. Vui lòng thử lại."

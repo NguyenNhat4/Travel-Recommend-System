@@ -438,6 +438,37 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['response']['status'], 'NO_RESULTS')
         self.assertNotIn('trong nước', result['response']['message'])
 
+    async def test_start_date_outside_the_sale_window_offers_the_nearest_open_date_and_other_destinations(self):
+        window = {'availableFrom': '2026-10-01', 'availableTo': '2026-10-24'}
+        clients = Clients(products=[product('a', **window), product('b', taxonomy='hotel', **window)],
+                          destinations=['Nha Trang', 'Huế', 'Đà Nẵng'])
+        llm = ScriptedLlm(extraction=extracted(destination='Nha Trang', days=3, startDate='2026-12-01'))
+        result = await self.run_graph(llm, clients)
+        response = result['response']
+        self.assertEqual(response['status'], 'NO_RESULTS')
+        self.assertIn('01/12/2026', response['message'])
+        self.assertEqual(response['suggestions'],
+                         ['Đi Nha Trang 3 ngày từ ngày 24/10/2026', 'Đi Huế 3 ngày', 'Đi Đà Nẵng 3 ngày'])
+
+    async def test_catalog_destinations_are_listed_by_product_count_then_name(self):
+        from src.backend.app.agents.steps.tool_planning import catalog_destinations
+
+        class Listing:
+            async def list_destinations(self):
+                return {'destinations': [{'destination': 'An Giang', 'productCount': 3},
+                                         {'destination': 'Nha Trang', 'productCount': 90},
+                                         {'destination': 'Huế', 'productCount': 90}]}
+
+        self.assertEqual(await catalog_destinations(Listing(), 1), ['Huế', 'Nha Trang', 'An Giang'])
+
+    async def test_start_date_before_the_sale_window_suggests_the_first_open_day(self):
+        window = {'availableFrom': '2999-10-01', 'availableTo': '2999-10-24'}
+        clients = Clients(products=[product('a', **window)], destinations=['Nha Trang'])
+        llm = ScriptedLlm(extraction=extracted(destination='Nha Trang', days=2, startDate='2999-09-01'))
+        response = (await self.run_graph(llm, clients))['response']
+        self.assertEqual(response['status'], 'NO_RESULTS')
+        self.assertEqual(response['suggestions'], ['Đi Nha Trang 2 ngày từ ngày 01/10/2999'])
+
     async def test_an_unschedulable_taxonomy_is_retrieved_but_never_scheduled(self):
         # Regression: "đi Nha Trang 2 ngày từ ngày mai" returned FALLBACK because the model put the
         # one combo of the catalog into a slot, and that single slot discarded the whole itinerary.

@@ -114,4 +114,15 @@ describe('AssistantConversation initial trip starter', () => {
     expect(screen.getAllByText(text)).toHaveLength(1);
     expect(screen.queryByRole('region', { name: cardLabel })).toBeNull();
   });
+
+  it('renders no-results suggestions as chips under the last message and sends the tapped one', () => {
+    const response = { status: 'NO_RESULTS' as const, conversationId: 'conversation-1',
+      message: 'Hiện chưa có sản phẩm.', suggestions: ['Đi Huế 3 ngày'] };
+    mocks.state = { ...mocks.state, phase: 'no_results', response, transcript: [
+      { id: 'assistant-1', sender: 'assistant', text: response.message, response, createdAt: Date.now() },
+    ] };
+    render(<AssistantConversation inputId="assistant-test-input" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Đi Huế 3 ngày' }));
+    expect(mocks.sendMessage).toHaveBeenCalledWith('Đi Huế 3 ngày');
+  });
 });

@@ -539,7 +539,7 @@ gửi như một lượt chat bình thường; không dùng `intentOverride`. Co
 }
 ```
 
-`suggestions` là câu gửi được nguyên văn khi người dùng bấm chip.
+`suggestions` là câu gửi được nguyên văn khi người dùng bấm chip. Chip hiện ngay dưới bong bóng trả lời của trợ lý, chỉ ở tin nhắn mới nhất (widget nổi: `WidgetChat.tsx`; trang `/assistant`: `AssistantConversation.tsx`; cùng dùng `SuggestionChips.tsx`); không dựng thêm card kết quả riêng cho `NO_RESULTS`.
 
 #### `FALLBACK`
 

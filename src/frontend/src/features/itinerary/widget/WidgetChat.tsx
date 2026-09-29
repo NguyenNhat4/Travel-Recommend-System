@@ -2,6 +2,7 @@ import React from 'react';
 import Image from 'next/image';
 import { AlertCircle, Loader2, Maximize2, RotateCcw, Sparkles } from 'lucide-react';
 import { nodeLabel } from '../../../components/assistant/assistantLabels';
+import { SuggestionChips } from '../../../components/assistant/SuggestionChips';
 import { TripDetailsForm } from '../../../components/assistant/TripDetailsForm';
 import { WidgetOpening } from './WidgetOpening';
 import { WidgetComposer } from './WidgetComposer';
@@ -31,6 +32,9 @@ export function WidgetChat({ widget }: { widget: FloatingWidgetController }) {
                 {/* Chỉ hiện form ở tin nhắn mới nhất: người dùng xác nhận thì lượt sau đã có câu trả lời khác. */}
                 {message.clarificationForm && message.id === lastMessageId && (
                   <TripDetailsForm form={message.clarificationForm} onConfirm={handleConfirmTripDetails} disabled={isRunning} />
+                )}
+                {message.suggestions && message.id === lastMessageId && (
+                  <SuggestionChips suggestions={message.suggestions} onSelect={handleSendMessage} disabled={isRunning} />
                 )}
               </div>
             </div>

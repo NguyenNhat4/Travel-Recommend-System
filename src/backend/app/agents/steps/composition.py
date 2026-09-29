@@ -1,6 +1,7 @@
 """Dựng lịch trình từ candidate bằng luật tất định; không có lượt gọi LLM nào ở đây."""
 from __future__ import annotations
 
+from collections import Counter
 from copy import deepcopy
 import logging
 
@@ -43,10 +44,42 @@ def fallback(state: dict) -> dict:
                          "searchResults": grouped(state)}}
 
 
+MAX_SUGGESTIONS = 3
+MAX_ALTERNATIVE_DESTINATIONS = 2
+
+
+def _display_date(iso: str) -> str:
+    year, month, day = iso.split("-")
+    return f"{day}/{month}/{year}"
+
+
+def _date_is_the_reason(state: dict) -> bool:
+    """Lý do phổ biến nhất khiến sản phẩm bị loại là ngày đi nằm ngoài cửa sổ mở bán."""
+    reasons = Counter(warning["code"] for warning in state.get("warnings", []))
+    return bool(reasons) and reasons.most_common(1)[0][0] == "PRODUCT_DROPPED_DATE"
+
+
+def _no_results_message(state: dict) -> str:
+    intent = state.get("intent", {})
+    if intent.get("startDate") and intent.get("destination") and _date_is_the_reason(state):
+        return messages.message(state, "no_results_date", destination=intent["destination"],
+                                date=_display_date(intent["startDate"]))
+    return messages.message(state, "no_results")
+
+
 def _no_results_suggestions(state: dict) -> list[str]:
-    """Gợi ý điều chỉnh dựa trên ràng buộc đang bật (docs/spec/agent/field-review.md §2.2); tối đa ba mục."""
+    """Gợi ý bấm được cho NO_RESULTS, tối đa ba mục, mọi giá trị lấy từ dữ liệu thật của lượt này.
+
+    Thứ tự: ngày gần nhất còn bán (docs/spec/hop-dong-tich-hop-itinerary-assistant.md §4.4), rồi gợi ý
+    bỏ ràng buộc đang bật (field-review.md §2.2), rồi điểm đến khác trong catalog. Không tự đổi điểm đến
+    thay người dùng: chỉ đưa ra để họ chọn.
+    """
     constraints = state.get("constraints", {})
+    intent = state.get("intent", {})
     suggestions = []
+    if state.get("nearest_open_date") and intent.get("destination"):
+        suggestions.append(messages.message(state, "suggestion_trip_date", destination=intent["destination"],
+                                            days=intent.get("days") or 1, date=_display_date(state["nearest_open_date"])))
     if constraints.get("require_hotel") or constraints.get("specific_hotel"):
         suggestions.append(messages.message(state, "suggestion_hotel"))
     if constraints.get("hotel_price_max") is not None:
@@ -57,9 +90,15 @@ def _no_results_suggestions(state: dict) -> list[str]:
         suggestions.append(messages.message(state, "suggestion_activity"))
     if constraints.get("exclude_taxonomies"):
         suggestions.append(messages.message(state, "suggestion_taxonomy"))
+    if intent.get("destination"):
+        current = intent["destination"].casefold()
+        alternatives = [name for name in state.get("supported_destinations") or [] if name.casefold() != current]
+        suggestions.extend(
+            messages.message(state, "suggestion_trip", destination=name, days=intent.get("days") or 1)
+            for name in alternatives[:MAX_ALTERNATIVE_DESTINATIONS])
     if not suggestions:
         suggestions.append(messages.message(state, "suggestion_generic"))
-    return suggestions[:3]
+    return suggestions[:MAX_SUGGESTIONS]
 
 
 def retrieval_outcome(state: dict) -> dict | None:
@@ -67,7 +106,7 @@ def retrieval_outcome(state: dict) -> dict | None:
     decision = state.get("decision")
     if decision == "no_results":
         return {"response": {"status": "NO_RESULTS", "conversationId": state["conversation_id"],
-                             "intent": state["intent"], "message": messages.NO_RESULTS,
+                             "intent": state["intent"], "message": _no_results_message(state),
                              "suggestions": _no_results_suggestions(state)}}
     if decision == "fallback":
         return fallback(state)

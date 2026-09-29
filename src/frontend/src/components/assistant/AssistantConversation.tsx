@@ -10,6 +10,7 @@ import { useAssistantCart } from '../../hooks/useAssistantCart';
 import { AssistantResultPanel } from './AssistantResultPanel';
 import { AssistantTripStarter, tripStarterMessage } from './AssistantTripStarter';
 import { TripDetailsForm } from './TripDetailsForm';
+import { SuggestionChips } from './SuggestionChips';
 import { nodeLabel } from './assistantLabels';
 
 export function AssistantConversation({
@@ -90,6 +91,7 @@ export function AssistantConversation({
           const isLast = index === state.transcript.length - 1;
           const clarificationForm = message.response?.status === 'NEEDS_CLARIFICATION'
             ? message.response.clarificationForm : undefined;
+          const noResultsSuggestions = message.response?.status === 'NO_RESULTS' ? message.response.suggestions : undefined;
 
           return <div key={message.id} className={`flex items-start gap-2.5 ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
             {message.sender === 'assistant' && <Image src="/mascot_welcome.webp" alt="" width={34} height={34} className="mt-1 h-8 w-8 shrink-0 object-contain" />}
@@ -98,6 +100,9 @@ export function AssistantConversation({
               {/* Chỉ hiện form ở tin nhắn mới nhất: người dùng xác nhận thì lượt sau đã có câu trả lời khác. */}
               {clarificationForm && isLast && (
                 <TripDetailsForm form={clarificationForm} onConfirm={setInput} disabled={isRunning} />
+              )}
+              {noResultsSuggestions && isLast && (
+                <SuggestionChips suggestions={noResultsSuggestions} onSelect={sendMessage} disabled={isRunning} />
               )}
               {showStructuredResponse && showResponseInline && (
                 <div className="mt-4 border-t border-slate-100 pt-4">
