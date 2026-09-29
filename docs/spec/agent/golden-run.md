@@ -2,7 +2,7 @@
 
 Phục vụ `docs/prd/test-plan.md` §2.4 và FR-AGT-01..05, NFR-REL-01, NFR-SEC-01 trong `docs/prd/requirements.md`.
 
-Hướng dẫn chạy bộ đánh giá tự động 75 case. Cấu trúc case và cách thêm case: [golden-dataset.md](golden-dataset.md).
+Hướng dẫn chạy bộ đánh giá tự động 76 case. Cấu trúc case và cách thêm case: [golden-dataset.md](golden-dataset.md).
 Luật chấm: [evaluation-plan.md](evaluation-plan.md) §0.
 
 Mọi lệnh chạy từ thư mục gốc repo.
@@ -39,10 +39,17 @@ Chạy ở một terminal riêng:
 
 | Biến | Giá trị |
 |---|---|
-| `ITINERARY_DATA_MODE` | `http` |
-| `ITINERARY_SERVICE_BASE_URL` | `http://127.0.0.1:8000` |
+| `ITINERARY_DATA_MODE` | `inprocess` (nên dùng) hoặc `http`; không để `fixture` |
+| `ITINERARY_SERVICE_BASE_URL` | `http://127.0.0.1:8000`, chỉ cần khi `ITINERARY_DATA_MODE=http` |
 | `DATABASE_URL` | đọc được `cdp.products` (runner dùng để đối chiếu sản phẩm) |
 | Key LLM | `OPENAI_API_KEY`, `GEMINI_API_KEY` hoặc `ANTHROPIC_API_KEY` |
+
+Runner dựng graph trong tiến trình của nó và luôn gọi Search/Recommendation/destinations của backend qua HTTP
+(`ItineraryHttpClients` tới `--api-base-url`), nên biên bản ghi `dataMode: http` bất kể mode của backend. Mode của
+backend chỉ quyết định `productCount` trong biên bản, vì runner đọc số này từ `/assistant/status`: `inprocess` trả số
+sản phẩm trong index, `http` trả `null`, còn `fixture` trả 50 của bộ mẫu nên không dùng. Staging/production chạy
+`ITINERARY_DATA_MODE=inprocess` (agent gọi engine trong cùng tiến trình, không qua HTTP); golden không đo đường đó.
+Output của hai đường được đối chiếu bằng test parity trong `src/backend/tests`, không phải bằng golden.
 
 Đợi log in ra `startup.recsys.index.load.ready`, thường mất 1–2 phút. Chạy runner trước lúc đó thì mọi case
 đều ra sai. Kiểm tra backend đã sẵn sàng:
@@ -51,7 +58,7 @@ Chạy ở một terminal riêng:
 curl -s localhost:8000/api/v1/assistant/status
 ```
 
-Response phải có `"status":"ready"`, `"dataMode":"http"`, `"llmMode":"live"`.
+Response phải có `"status":"ready"`, `"llmMode":"live"` và `"dataMode"` là `"inprocess"` hoặc `"http"`.
 
 ### Bước 3: chạy runner
 
@@ -59,7 +66,7 @@ Response phải có `"status":"ready"`, `"dataMode":"http"`, `"llmMode":"live"`.
 .venv/bin/python -m src.evaluation.agent.golden
 ```
 
-Lệnh trên chạy 75 case (89 lượt), mất khoảng 6 phút.
+Lệnh trên chạy 76 case (91 lượt), mất khoảng 6 phút.
 
 | Cờ | Tác dụng | Ví dụ |
 |---|---|---|

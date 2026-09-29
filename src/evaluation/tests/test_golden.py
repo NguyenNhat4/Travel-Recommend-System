@@ -22,9 +22,9 @@ class DatasetTests(unittest.TestCase):
     def setUp(self):
         self.cases = load_dataset(DATASET_PATH)
 
-    def test_has_seventy_five_cases_with_unique_ids(self):
-        self.assertEqual(len(self.cases), 75)
-        self.assertEqual(len({c.id for c in self.cases}), 75)
+    def test_has_seventy_six_cases_with_unique_ids(self):
+        self.assertEqual(len(self.cases), 76)
+        self.assertEqual(len({c.id for c in self.cases}), 76)
 
     def test_every_case_has_fr_codes_and_turns(self):
         for case in self.cases:
@@ -284,6 +284,20 @@ class NewExpectKeyTests(unittest.TestCase):
         response = _itinerary_response(1, warnings=["SNAPSHOT_ONLY", "PRODUCT_DROPPED_EXCLUDED"])
         self.assertTrue(dataset_findings(response, 200, [], {"warningsExclude": ["PRODUCT_DROPPED_EXCLUDED"]}, {}))
         self.assertEqual(dataset_findings(response, 200, [], {"warningsExclude": ["PRODUCT_DROPPED_DATE"]}, {}), [])
+
+    def test_tools_include_checks_the_final_tool_plan(self):
+        expect = {"toolsInclude": ["get_similar_products"]}
+        response = _itinerary_response(1)
+        findings = dataset_findings(response, 200, [], expect, {}, {"search_products"})
+        self.assertEqual(len(findings), 1)
+        self.assertIn("get_similar_products", findings[0])
+        self.assertTrue(dataset_findings(response, 200, [], expect, {}))  # lượt không có tool plan
+        self.assertEqual(dataset_findings(response, 200, [], expect, {},
+                                          {"get_similar_products", "search_products"}), [])
+
+    def test_swap_case_expects_the_similar_tool(self):
+        case = next(c for c in load_dataset(DATASET_PATH) if c.id == "G-076")
+        self.assertEqual(case.turns[1].expect["toolsInclude"], ["get_similar_products"])
 
 
 if __name__ == "__main__":

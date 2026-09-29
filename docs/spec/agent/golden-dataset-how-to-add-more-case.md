@@ -95,6 +95,7 @@ Mọi khoá đều tuỳ chọn; runner chỉ kiểm khoá có mặt.
 | `minActivities` | Tổng số slot có sản phẩm trong lịch ít nhất bằng số này. Chỉ dùng cho điểm đến catalog có nhiều điểm tham quan | `3` |
 | `hasStay` | Lịch có hoặc không có chỗ ở | `false` |
 | `warningsExclude` | Các `warnings[].code` này không được xuất hiện | `[PRODUCT_DROPPED_EXCLUDED]` |
+| `toolsInclude` | Các tool này phải có trong `tool_plan` cuối của lượt (sau `validated_plan`; lời gọi bị server bỏ không tính) | `[get_similar_products]` |
 
 Giá trị hợp lệ:
 
@@ -119,7 +120,7 @@ Runner từ chối khoá lạ khi nạp dataset: gõ nhầm `missingField` thay 
 | `ambiguous` | 7 | Thiếu điểm đến hoặc số ngày → `NEEDS_CLARIFICATION`, không gọi tool |
 | `unsupported_destination` | 5 | Điểm đến ngoài catalog → 422 `UNSUPPORTED_DESTINATION` |
 | `fake_product_name` | 5 | Tên khách sạn hoặc điểm vui chơi không có thật → không xuất hiện trong response |
-| `multi_turn` | 11 | Bổ sung thông tin, đổi điểm đến, đổi số ngày, đổi món (FR-AGT-05); chỉ đổi ngân sách hoặc số người thì không được loại sản phẩm cũ |
+| `multi_turn` | 12 | Bổ sung thông tin, đổi điểm đến, đổi số ngày, đổi món (FR-AGT-05); chỉ đổi ngân sách hoặc số người thì không được loại sản phẩm cũ. G-076 đổi sang chỗ ở "tương tự" mà không nêu tên, kiểm planner dùng tool Similar |
 | `language_en` | 2 | `context.language=en` → câu trả lời, note và warning tiếng Anh |
 | `invalid_duration` | 2 | Số ngày ngoài 1–7 → 400 `INVALID_TRIP_DURATION` |
 | `invalid_request` | 1 | `conversationId` không tồn tại → 404 `CONVERSATION_NOT_FOUND` |
