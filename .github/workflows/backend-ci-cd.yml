@@ -10,9 +10,8 @@ on:
     paths:
       - '.github/workflows/backend-ci-cd.yml'
       - 'Dockerfile.backend'
-      - 'Dockerfile.daily'
       - 'src/backend/**'
-      - 'src/data_collection/**'
+      - 'scripts/**'
       - 'src/shared/contracts/**'
       - 'scripts/**'
       - 'ops/docker-compose.backend-vm.yml'
@@ -25,9 +24,8 @@ on:
     paths:
       - '.github/workflows/backend-ci-cd.yml'
       - 'Dockerfile.backend'
-      - 'Dockerfile.daily'
       - 'src/backend/**'
-      - 'src/data_collection/**'
+      - 'scripts/**'
       - 'src/shared/contracts/**'
       - 'scripts/**'
       - 'ops/docker-compose.backend-vm.yml'
@@ -106,16 +104,6 @@ jobs:
           cache-from: type=gha,scope=backend
           cache-to: type=gha,mode=max,scope=backend
 
-      - name: Build crawler image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile.daily
-          push: false
-          tags: vota-daily-ci:${{ github.sha }}
-          cache-from: type=gha,scope=crawler
-          cache-to: type=gha,mode=max,scope=crawler
-
   publish:
     name: Publish SHA and latest images
     if: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
@@ -127,10 +115,8 @@ jobs:
       id-token: write
     env:
       BACKEND_IMAGE: ${{ secrets.GAR_BACKEND_IMAGE }}
-      CRAWLER_IMAGE: ${{ secrets.GAR_DAILY_IMAGE }}
     outputs:
       backend_digest: ${{ steps.backend.outputs.digest }}
-      crawler_digest: ${{ steps.crawler.outputs.digest }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -140,15 +126,14 @@ jobs:
           GCP_WIF_PROVIDER: ${{ secrets.GCP_WIF_PROVIDER }}
           GCP_CI_SERVICE_ACCOUNT: ${{ secrets.GCP_CI_SERVICE_ACCOUNT }}
           BACKEND_IMAGE: ${{ secrets.GAR_BACKEND_IMAGE }}
-          CRAWLER_IMAGE: ${{ secrets.GAR_DAILY_IMAGE }}
         run: |
-          for name in GCP_WIF_PROVIDER GCP_CI_SERVICE_ACCOUNT BACKEND_IMAGE CRAWLER_IMAGE; do
+          for name in GCP_WIF_PROVIDER GCP_CI_SERVICE_ACCOUNT BACKEND_IMAGE; do
             if [ -z "${!name:-}" ]; then
               echo "Missing staging secret: $name" >&2
               exit 1
             fi
           done
-          for name in BACKEND_IMAGE CRAWLER_IMAGE; do
+          for name in BACKEND_IMAGE; do
             if [[ ! "${!name}" =~ ^[a-z0-9][a-z0-9._/-]*$ ]]; then
               echo "$name must be an untagged Artifact Registry image path." >&2
               exit 1
@@ -186,18 +171,6 @@ jobs:
           cache-from: type=gha,scope=backend-publish
           cache-to: type=gha,mode=max,scope=backend-publish
 
-      - name: Publish crawler image
-        id: crawler
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile.daily
-          push: true
-          tags: |
-            ${{ env.CRAWLER_IMAGE }}:${{ github.sha }}
-            ${{ env.CRAWLER_IMAGE }}:latest
-          cache-from: type=gha,scope=crawler-publish
-          cache-to: type=gha,mode=max,scope=crawler-publish
 
   deploy:
     name: Deploy application VM in place
@@ -225,21 +198,11 @@ jobs:
           GCE_COMPOSE_FILE: ${{ vars.GCE_COMPOSE_FILE }}
           GCE_BACKEND_HEALTH_URL: ${{ vars.GCE_BACKEND_HEALTH_URL }}
           GCE_DB_TUNNEL_PORT: ${{ secrets.GCE_DB_TUNNEL_PORT || '15432' }}
-          GCE_CRON_RUNNER: ${{ secrets.GCE_CRON_RUNNER || '/opt/vota/bin/run_daily_docker.sh' }}
-          GCE_CRON_DATA_DIR: ${{ secrets.GCE_CRON_DATA_DIR || '/srv/vota/daily-data' }}
-          GCE_CRON_ENV_FILE: ${{ secrets.GCE_CRON_ENV_FILE || '/etc/vota/daily.env' }}
           BACKEND_IMAGE: ${{ secrets.GAR_BACKEND_IMAGE }}
-          CRAWLER_IMAGE: ${{ secrets.GAR_DAILY_IMAGE }}
         run: |
           for name in GCP_PROJECT_ID GCE_INSTANCE GCE_ZONE GCE_COMPOSE_FILE GCE_BACKEND_HEALTH_URL; do
             if [ -z "${!name:-}" ]; then
               echo "Missing staging environment variable: $name" >&2
-              exit 1
-            fi
-          done
-          for name in GCE_COMPOSE_FILE GCE_CRON_RUNNER GCE_CRON_DATA_DIR GCE_CRON_ENV_FILE; do
-            if [[ ! "${!name}" =~ ^/[a-zA-Z0-9._/-]+$ ]]; then
-              echo "$name must be an absolute path without shell metacharacters." >&2
               exit 1
             fi
           done
@@ -251,7 +214,7 @@ jobs:
             echo 'GCE_BACKEND_HEALTH_URL must be a URL without shell metacharacters.' >&2
             exit 1
           fi
-          for name in BACKEND_IMAGE CRAWLER_IMAGE; do
+          for name in BACKEND_IMAGE; do
             if [[ ! "${!name}" =~ ^[a-z0-9][a-z0-9._/-]*$ ]]; then
               echo "$name must be an untagged Artifact Registry image path." >&2
               exit 1
@@ -298,12 +261,11 @@ jobs:
           remote_dir="/tmp/vota-cicd-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           tar -czf - \
             -C "$GITHUB_WORKSPACE/scripts" deploy-backend-vm.sh install-vota-cron.sh check-db-tunnel.sh \
-            -C "$GITHUB_WORKSPACE/src/data_collection" run_daily_docker.sh \
             -C "$GITHUB_WORKSPACE/ops" docker-compose.backend-vm.yml \
             | gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --quiet \
-                --command "umask 077; mkdir -m 700 '$remote_dir' && tar -xzf - -C '$remote_dir' && sudo -n install -D -m 0755 '$remote_dir/run_daily_docker.sh' /opt/vota/bin/run_daily_docker.sh && sudo -n install -D -m 0644 '$remote_dir/docker-compose.backend-vm.yml' '$GCE_COMPOSE_FILE' && sudo -n test -x /opt/vota/bin/run_daily_docker.sh && sudo -n docker compose -f '$GCE_COMPOSE_FILE' config >/dev/null"
+                --command "umask 077; mkdir -m 700 '$remote_dir' && tar -xzf - -C '$remote_dir' && sudo -n install -D -m 0644 '$remote_dir/docker-compose.backend-vm.yml' '$GCE_COMPOSE_FILE' && sudo -n docker compose -f '$GCE_COMPOSE_FILE' config >/dev/null"
 
-      - name: Deploy latest images and update existing cron
+      - name: Deploy latest Backend image
         env:
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
           GCE_INSTANCE: ${{ secrets.GCE_INSTANCE }}
@@ -311,42 +273,9 @@ jobs:
           GCE_COMPOSE_FILE: ${{ vars.GCE_COMPOSE_FILE }}
           GCE_BACKEND_HEALTH_URL: ${{ vars.GCE_BACKEND_HEALTH_URL }}
           GCE_DB_TUNNEL_PORT: ${{ secrets.GCE_DB_TUNNEL_PORT || '15432' }}
-          GCE_CRON_RUNNER: ${{ secrets.GCE_CRON_RUNNER || '/opt/vota/bin/run_daily_docker.sh' }}
-          GCE_CRON_DATA_DIR: ${{ secrets.GCE_CRON_DATA_DIR || '/srv/vota/daily-data' }}
-          GCE_CRON_ENV_FILE: ${{ secrets.GCE_CRON_ENV_FILE || '/etc/vota/daily.env' }}
           BACKEND_IMAGE: ${{ secrets.GAR_BACKEND_IMAGE }}
-          CRAWLER_IMAGE: ${{ secrets.GAR_DAILY_IMAGE }}
         run: |
           remote_dir="/tmp/vota-cicd-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           backend_ref="$BACKEND_IMAGE:latest"
-          crawler_ref="$CRAWLER_IMAGE:latest"
-          remote_command="chmod +x '$remote_dir'/*.sh && '$remote_dir/deploy-backend-vm.sh' --backend-image '$backend_ref' --crawler-image '$crawler_ref' --compose-file '$GCE_COMPOSE_FILE' --backend-health-url '$GCE_BACKEND_HEALTH_URL' --db-tunnel-port '$GCE_DB_TUNNEL_PORT' --cron-runner '$GCE_CRON_RUNNER' --cron-data-dir '$GCE_CRON_DATA_DIR' --cron-env-file '$GCE_CRON_ENV_FILE'"
-          gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --quiet --command "$remote_command"
-
-      - name: Restart crawler monitor with published image
-        env:
-          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-          GCE_INSTANCE: ${{ secrets.GCE_INSTANCE }}
-          GCE_ZONE: ${{ secrets.GCE_ZONE }}
-          GCE_CRON_RUNNER: ${{ secrets.GCE_CRON_RUNNER || '/opt/vota/bin/run_daily_docker.sh' }}
-          GCE_CRON_DATA_DIR: ${{ secrets.GCE_CRON_DATA_DIR || '/srv/vota/daily-data' }}
-          GCE_CRON_ENV_FILE: ${{ secrets.GCE_CRON_ENV_FILE || '/etc/vota/daily.env' }}
-          CRAWLER_IMAGE: ${{ secrets.GAR_DAILY_IMAGE }}
-        run: |
-          crawler_ref="$CRAWLER_IMAGE:latest"
-          remote_command="set -eu; docker rm -f vota-daily-monitor >/dev/null 2>&1 || true; mkdir -p '$GCE_CRON_DATA_DIR/logs'; nohup env IMAGE='$crawler_ref' DATA_DIR='$GCE_CRON_DATA_DIR' ENV_FILE='$GCE_CRON_ENV_FILE' PULL=0 CONTAINER_NAME=vota-daily '$GCE_CRON_RUNNER' monitor > '$GCE_CRON_DATA_DIR/logs/monitor-cd.log' 2>&1 < /dev/null & for attempt in \$(seq 1 30); do status=\$(docker inspect --format '{{.State.Status}}' vota-daily-monitor 2>/dev/null || true); if [ \"\$status\" = running ]; then exit 0; fi; sleep 1; done; docker logs --tail=100 vota-daily-monitor || true; exit 1"
-          gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --quiet --command "$remote_command"
-
-      - name: Start crawler run after deploy
-        env:
-          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-          GCE_INSTANCE: ${{ secrets.GCE_INSTANCE }}
-          GCE_ZONE: ${{ secrets.GCE_ZONE }}
-          GCE_CRON_RUNNER: ${{ secrets.GCE_CRON_RUNNER || '/opt/vota/bin/run_daily_docker.sh' }}
-          GCE_CRON_DATA_DIR: ${{ secrets.GCE_CRON_DATA_DIR || '/srv/vota/daily-data' }}
-          GCE_CRON_ENV_FILE: ${{ secrets.GCE_CRON_ENV_FILE || '/etc/vota/daily.env' }}
-          CRAWLER_IMAGE: ${{ secrets.GAR_DAILY_IMAGE }}
-        run: |
-          crawler_ref="$CRAWLER_IMAGE:latest"
-          remote_command="set -eu; mkdir -p '$GCE_CRON_DATA_DIR/logs'; nohup env IMAGE='$crawler_ref' DATA_DIR='$GCE_CRON_DATA_DIR' ENV_FILE='$GCE_CRON_ENV_FILE' PULL=0 CONTAINER_NAME=vota-daily '$GCE_CRON_RUNNER' run > '$GCE_CRON_DATA_DIR/logs/daily-cd.log' 2>&1 < /dev/null & runner_pid=\$!; sleep 3; started=\$(docker ps --filter name=vota-daily --format '{{.Names}}' | grep -Fx vota-daily || true); if [ -n \"\$started\" ]; then echo 'vota-daily started by CD'; else echo 'vota-daily did not start; see daily-cd.log' >&2; tail -n 100 '$GCE_CRON_DATA_DIR/logs/daily-cd.log' || true; exit 1; fi"
+          remote_command="chmod +x '$remote_dir'/*.sh && '$remote_dir/deploy-backend-vm.sh' --backend-image '$backend_ref' --compose-file '$GCE_COMPOSE_FILE' --backend-health-url '$GCE_BACKEND_HEALTH_URL' --db-tunnel-port '$GCE_DB_TUNNEL_PORT'"
           gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --quiet --command "$remote_command"
