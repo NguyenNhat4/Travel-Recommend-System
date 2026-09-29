@@ -146,12 +146,22 @@ sudo install -D -m 600 -o "$USER" /dev/null /etc/vota/daily.env    # ENV_FILE m�
 Image [Dockerfile.fresh-catalog](../../Dockerfile.fresh-catalog) chứa collector đa nguồn, bộ chuẩn hóa Travel, Chromium và Xvfb. Collector Trip.com dùng HTTP/SSR lấy metadata rồi Chromium trong Xvfb bắt JSON phòng/giá thật. `run_daily_docker.sh fresh-run` khởi chạy image này; `run_fresh_catalog_vm.sh` và `cron_hotels_daily.sh` chỉ là wrapper tương thích. Lệnh `run` vẫn là job `daily.py` (`Dockerfile.daily`) mà cron của CI/CD (`scripts/install-vota-cron.sh`) đang gọi; chuyển VM sang job mới = thay dòng cron đó bằng `fresh-run tick` mỗi 15 phút, không chạy song song hai job trên cùng DB. VM không cần desktop, Python, Playwright hoặc source tree.
 
 - Lượt đầu và mỗi 7 ngày: cào mới các nguồn, tìm ID Trip.com ở 7 thành phố có cityId trong `@deep`; lần đầu chọn tối đa 30 ID/thành phố, các lượt tuần chọn tối đa 10 ID mới/thành phố từ tối đa 300 ID đã quét/thành phố để hỏi giá tại mốc 14/30/60 ngày; chuẩn hóa 13 trường rồi upsert `cdp.products`/`catalog.combo_items`. Tăng `TRIP_DISCOVERY_SCAN_PER_CITY` khi vùng quét đã hết ID mới. Không dùng `data/products.jsonl`, interim hoặc snapshot cũ làm dữ liệu nguồn.
-- Lượt full chạy song song theo site: Vinpearl, Trip.com (tìm ID khách sạn → vé máy bay → điểm tham quan → giá phòng), Booking, Agoda; tối đa `CRAWL_PARALLEL` site cùng lúc (mặc định 2, vì Vinpearl, Booking, Agoda và giá phòng Trip đều mở Chromium trên VM 4 GB). Trong một site các bước vẫn tuần tự như trước. Một nguồn lỗi thì các site chưa bắt đầu bị bỏ và lượt dừng trước khi nạp DB. Log mỗi dòng của nguồn có tiền tố `[trip]`, `[vinpearl]`…; mốc `catalog.group.start/done` cho biết site nào đang chạy. Lượt daily chỉ cào Trip nên không đổi.
+- Lượt full chạy song song theo site: Vinpearl, Trip.com (vé máy bay → điểm tham quan → tìm ID khách sạn → giá phòng), Booking, Agoda; tối đa `CRAWL_PARALLEL` site cùng lúc (mặc định 2, vì Vinpearl, Booking, Agoda và giá phòng Trip đều mở Chromium trên VM 4 GB). Trong một site các bước vẫn tuần tự như trước. Một nguồn lỗi thì các nguồn độc lập vẫn tiếp tục; chỉ bước phụ thuộc nguồn lỗi bị bỏ. Nguồn lỗi chuẩn hoá hoặc không đạt ngưỡng theo nguồn bị loại khỏi bản mới; dữ liệu tốt vẫn được nạp và lượt báo `partial`. Không coi bản ghi thiếu do lỗi nguồn là hết bán. Log mỗi dòng của nguồn có tiền tố `[trip]`, `[vinpearl]`…; mốc `catalog.group.start/done` cho biết site nào đang chạy. Lượt daily chỉ cào Trip nên không đổi.
 - Hằng ngày còn lại: xoay vòng tối đa 180 ID đã biết, ưu tiên ID chưa thử/lâu chưa thử, hỏi JSON phòng/giá mới cho cả phòng cũ và phòng mới. Chỉ file ID/thành phố và thời điểm thử/thành công được giữ cho lịch chạy; marker full chỉ ghi sau khi nạp DB thành công. Giá Trip.com gốc quá 7 ngày chưa làm mới sẽ được đặt chưa khả dụng để không quảng bá giá cũ.
 - DB giữ các trường mô tả đã có, cập nhật giá/trạng thái, thêm phòng mới, đánh dấu phòng Trip.com không còn xuất hiện trong phản hồi hợp lệ là hết bán. Một phản hồi lỗi/chặn **không** được coi là hết phòng. Không xóa `cdp.products` đã được đơn hàng tham chiếu.
 - Đầu mỗi lượt (kể cả khi mọi nguồn lỗi sau đó) job chạy một transaction riêng: đặt chưa khả dụng các giá Trip.com quá 7 ngày, và cuộn cửa sổ đặt chỗ 30 ngày cho toàn catalog đúng như seed (`docs/spec/DATABASE_SCHEMA.md` #13): `available_from/to` = khoảng nguồn `attributes.sourceAvailableFrom/To` cắt vào `[hôm nay, +29]`, thiếu thì lấy cả cửa sổ; chuyến bay `from = to` = ngày bay; giao rỗng → `available = false`. Dòng mới/làm mới trong lượt ghi lại khoảng nguồn của lượt đó. Lịch `attributes.availability` của hạng phòng, điểm tham quan, golf được sinh lại theo cửa sổ mới như seed (`docs/spec/MOCK_DATA_SPEC.md` §2 bước 2); ngày Trip.com đã hỏi ghi theo kết quả thật, dòng chưa khả dụng có lịch toàn `0`.
 - Sau khi nạp DB (và cả khi lượt cào lỗi), job gọi bước index `embed_products` vào Weaviate của **cùng đích**: chỉ embed search unit mới hoặc đổi text, xoá vector mồ côi. Index lỗi sau khi DB đã nạp thì lượt trả mã 3; chạy lại riêng bước này bằng `fresh-run index`. Backend tự nạp lại giá/trạng thái mỗi `CATALOG_REFRESH_SECONDS` (mặc định 15 phút), không cần restart.
 - Raw/JSON đã bỏ review/tên người, interim, `products.jsonl`, log và báo cáo giữ theo từng lượt; mặc định giữ 7 lượt (`runs.keep` trong monitor). Tóm tắt lịch sử, ID và lịch xoay vòng được giữ lâu dài. Giá/input vẫn chỉ lấy từ phản hồi mới của lượt hiện tại. `KEEP_FAILED_RUNS` cũ không còn dùng; browser profile Trip được dọn sau bước hỏi giá.
+
+### Hạn giờ và phục hồi khi nghẽn
+
+CLI `fresh_catalog.py` giám sát tiến trình chạy: `run.maxHours` mặc định 18 giờ cho toàn lượt; `timeout.processing` mặc định 30 phút cho mỗi bước xử lý (chuẩn hoá, kiểm tra, DB, index và lô streaming). Hạn giờ từng nguồn vẫn theo Cấu hình. Retry dùng chung hạn giờ của nguồn. Khi tiến trình không tự dừng, supervisor kết thúc tiến trình con, ghi trạng thái lỗi trước khi thả khóa để lượt sau chạy được. Gọi trực tiếp `run_job()` từ Python không có lớp supervisor; dùng CLI/wrapper khi vận hành.
+
+Kết nối DB giới hạn 10 giây; chờ khóa PostgreSQL 5 giây, câu lệnh 5 phút, transaction rỗi 1 phút. Thiếu cấu hình index không chặn cào/nạp; lỗi index vẫn được báo, dữ liệu đã commit giữ lại. Sau khi khắc phục, chạy lại từ `index`; nguồn lỗi thì chạy lại riêng bằng `resume <runId> --from crawl --source <nguồn>`. Khi chỉ cào lại một nguồn, lỗi của nguồn khác vẫn giữ trạng thái `partial`.
+
+Lượt full vẫn chờ các nguồn hoàn tất hoặc hết hạn trước lần gộp cuối. Để nguồn nhanh vào DB trong lúc nguồn chậm còn chạy, bật cả `stream.enabled` và `stream.db` trên môi trường đã kiểm thử. Hai cờ này hiện mặc định tắt; thay đổi này không tự bật trên VM. Chế độ daily chỉ có nguồn giá khách sạn Trip, nên không có nguồn độc lập để thay thế khi Trip thất bại.
+
+Vé mới có ngày cố định/hạng vé/khứ hồi giữ ngày và giá nguồn. Không cần cào lại toàn bộ 11k catalog: bổ sung báo giá mới đúng tuyến, ngày và hạng cần demo rồi upsert. Dữ liệu Trip cũ có thể dùng kiểm tra cấu trúc khứ hồi, nhưng báo giá hết hạn không được coi là giá mới. Chi tiết và phần còn lại: [kế hoạch kiểm chứng](../../docs/plan/2026-09-29-on-dinh-pipeline-va-ve-may-bay.md).
 
 ### Đóng gói và bàn giao cho đội deploy
 
@@ -242,15 +252,72 @@ ssh -L 8765:127.0.0.1:8765 <user>@<vm>
 
 Server chỉ nghe loopback trên mạng host của VM; URL DB trong env phải phân giải được từ mạng host (IP nội bộ/loopback, không chỉ tên service Docker). Không mở cổng monitor ra internet. Nếu cổng 8765 còn bị monitor cũ chiếm, dừng **đúng tiến trình/container monitor cũ** trước khi khởi động bản mới; không dừng backend/DB. Monitor không mount Docker socket.
 
-- **Tổng quan:** lượt hiện tại, bước đang chạy, lịch kế, log runner và trạng thái cấu hình kết nối. Secret chỉ báo đã đặt/chưa đặt.
-- **Lịch sử lượt:** step/timing/status, raw JSON/HTML đã làm sạch, interim, catalog 13 trường, truy vết sản phẩm, báo cáo DB trước/sau và báo cáo index. Lượt bị kill được đánh dấu mất tiến trình qua khoá file; heartbeat cũ được báo riêng.
+- **Tổng quan:** lượt hiện tại, bước đang chạy, lịch kế, log runner, trạng thái cấu hình kết nối và nơi lượt kế tiếp ghi (host/database/collection, không có tài khoản). Secret chỉ báo đã đặt/chưa đặt.
+- **Một lượt** (bấm mã lượt), các tab:
+  - *Luồng & nguồn*: bước của lượt và bảng từng nguồn: trạng thái, tiến độ x/y, số file raw, bản ghi interim so với lượt cùng chế độ trước đó, cảnh báo/lỗi/bị chặn/mã HTTP lỗi, dòng log gần nhất. “Mất nguồn” khi nguồn lỗi, bị chặn (mã 75), bị bỏ vì nguồn khác lỗi, không chạy tới, hoặc chạy xong mà 0 bản ghi. Khi lượt đang chạy: chỉnh delay từng nguồn, tạm dừng/chạy tiếp (có hiệu lực ở request kế tiếp, mức tối thiểu như trang Cấu hình, chỉ cho lượt đó); số tab/worker lưu cho lượt sau.
+  - *Theo thành phố*: catalog đã chuẩn hoá (bản nháp hoặc chính thức) theo thành phố × loại (khách sạn, hạng phòng, điểm tham quan/vé, tuyến bay, chuyến bay, combo) × nguồn; và bản ghi interim theo thành phố × nguồn khi đang cào (đọc tăng dần, tự cập nhật 5 giây). Khách sạn Vinpearl chưa có thành phố cho tới bước chuẩn hoá nên nằm ở dòng "chưa rõ" của bảng interim.
+  - *Log trực tiếp*: `job.log` qua server-sent events, lọc theo nguồn, mức, chữ.
+  - *Raw / interim*: JSON/HTML gốc đã làm sạch (xem JSON, văn bản hiển thị, JSON-LD, `__NEXT_DATA__`) và bản ghi đã parse.
+  - *Chuẩn hoá*: số dòng và từng dòng sau mỗi bước của `normalise.py` (ánh xạ nguồn → gộp trùng → lọc → làm giàu → kiểm vị trí/giá), dòng bị loại kèm lý do, cặp gộp trùng, truy vết một sản phẩm qua các bước với trường đã đổi.
+  - *Chuẩn hoá theo nguồn và bản nháp* (lượt cào lớn, cấu hình "Chuẩn hoá từng nguồn ngay khi nguồn cào xong", mặc định bật): bước cào nào xong thì `normalise.py --only-source` ánh xạ ngay file interim của bước đó, không đợi các bước khác cùng site (vd. vé máy bay Trip không đợi điểm tham quan); file còn lại của site được ánh xạ khi cả site xong (tối đa 2 tiến trình) thành checkpoint `<lượt>/normalised/<nguồn>.jsonl`; sau đó gộp nháp từ các checkpoint vào `<lượt>/preview/` để xem ở tab Chuẩn hoá / Catalog cuối (công tắc Nháp / Chính thức). Bước normalize chính thức (`--reuse-checkpoints`) chỉ ánh xạ lại nguồn còn thiếu, cũ hoặc lỗi rồi gộp. Không validate, không nạp DB, không index ở bản nháp; lượt lỗi giữ bản nháp cuối.
+  - *Ổn định*: bảng "Thời gian từng bước normalize" (giây, vào → ra, RAM, traceback khi lỗi), "Bản ghi lỗi khi ánh xạ" (bản ghi hỏng bị bỏ, quá ngưỡng thì dừng), cột "Lỗi / thử lại" ở bảng bước (lỗi tạm thời/hạ tầng tự thử lại, nguồn bị chặn bị bỏ qua, lỗi code dừng ngay, catalog tụt mạnh thì không nạp DB). Chạy lại riêng: `normalise.py --only-source <nguồn>`, `normalise.py --merge-only`.
+  - *Catalog cuối*, *Nạp DB* (trước/sau), *Báo cáo*.
+  - *Embedding*: text đúng như gửi Cohere cho từng search unit, hash, nhúng mới/giữ nguyên/xoá và lý do, 8 chiều đầu + độ dài vector, đọc vector đang lưu trong Weaviate; ô thử truy vấn (Cohere `search_query`, xếp hạng cosine trên collection đích).
+- Lượt bị kill được đánh dấu mất tiến trình qua khoá file; heartbeat cũ được báo riêng.
 - **Cấu hình:** file `/data/state/settings.json` ưu tiên hơn env, rồi mới tới mặc định. Chỉ gửi thay đổi; nút “Về env/mặc định” xoá override của trường đó. Lượt đang chạy giữ cấu hình ban đầu.
 - **Trip nhiều khách sạn:** bấm “Áp ngân sách Trip 30 / 10 / 180” rồi Lưu, kể cả env cũ vẫn đặt 10/3/60. Có thể tăng thêm: tối đa 500 ID/thành phố, quét 2.000 ID/thành phố, 2.000 ID/daily. Đây là ngân sách, không bảo đảm nguồn trả đủ. Giữ 2 tab giá + 4 worker HTTP trên VM 2 CPU/4 GB; mức này chưa được benchmark với ngân sách mới trên VM.
 - Collector dùng lại HTTP session và kết thúc chờ khi có JSON phòng hợp lệ; lượt khám phá đầu dừng ở ngân sách chọn, thay vì quét đủ 300 rồi bỏ phần dư. Không rút ngắn giới hạn chờ tối đa hoặc bỏ kiểm coverage ba mốc ngày.
 - **Chạy/dừng:** chạy tay bỏ qua lịch; cron `tick` kiểm lịch dưới khoá và chỉ bắt đầu một lượt/ngày theo giờ Việt Nam. Lượt đã bắt đầu nhưng lỗi không tự retry mỗi 15 phút; xem log rồi chạy tay. `fresh-run auto` vẫn chạy ngay theo chu kỳ, không chịu công tắc giờ lịch của monitor. `fresh-run due` chỉ in mode đang tới lịch, không chạy job.
 - Dừng qua file dùng chung nên có hiệu lực cả khi cron/monitor ở hai container. Tác vụ cào bị huỷ tại điểm kiểm tra; bước DB đã bắt đầu có thể hoàn tất và dữ liệu đã commit được giữ. Bước bảo trì DB ở đầu lượt không bị hoàn tác khi dừng.
 
+- **Giao diện (28/09/2026):** thanh trên Tổng quan · Lịch sử · Hệ thống · Cấu hình, nút chạy/dừng lượt luôn ở thanh trên.
+  Mở một lượt là **sơ đồ luồng** (chuẩn bị → cào → chuẩn hoá → gộp → kiểm tra → nạp DB → index); bấm một ô để xem bước đó
+  (bước con bên trong, log đã lọc, dữ liệu, lỗi). Ô lỗi được chọn sẵn; URL `#run=…&node=…&view=…` mở lại đúng chỗ.
+  Lịch sử có dải ô trạng thái từng bước để so các lượt. Plan: `docs/plan/2026-09-28-monitor-so-do-luong.md`.
+- **Chạy lại từ bước lỗi (không cào lại):** nút “Chạy lại từ bước này” trên ô Gộp / Kiểm tra / Nạp DB / Index của lượt đã
+  kết thúc, hoặc `./local_crawl.sh run resume <mã lượt> normalise|merge|validate|db|index`
+  (`fresh_catalog.py resume <mã lượt> --from <bước>`). Không cập nhật trạng thái xoay vòng khách sạn Trip.
+- **Hạn giờ và cào lại một nguồn (29/09/2026):** mỗi bước cào có hạn giờ riêng và cả phần cào có `crawl.maxHours`
+  (Cấu hình → Thử lại và kiểm chất lượng; 0 = không giới hạn). Quá hạn thì dừng riêng nguồn đó (cả Chromium), giữ phần đã
+  cào, các nguồn khác và các bước sau cào chạy tiếp; lượt kết thúc "chưa đủ dữ liệu" và có cảnh báo `timeout`. Ô cào bị
+  chặn / lỗi / quá giờ có nút “Cào lại nguồn này”, hoặc `./local_crawl.sh run resume <mã lượt> crawl <nguồn>`
+  (`fresh_catalog.py resume <mã lượt> --from crawl --source <nguồn>`): chỉ cào lại nguồn đó rồi chuẩn hoá, nạp DB, index.
+  Nguồn, bước và quan hệ giữa chúng khai báo ở `pipeline_graph.py`. Plan: `docs/plan/2026-09-29-bo-cho-doi-giua-cac-buoc.md`.
+- **Chạy liên tục** (Cấu hình → Chiến thuật, mặc định **tắt**): chuẩn hoá từng phần trong lúc cào, gộp theo chu kỳ, và nếu bật
+  thêm thì nạp DB / index theo phần vào đích `DB_TARGET` của lượt. Dòng đã nạp giữa lượt ở lại dù cuối lượt lỗi. Khi lượt
+  đang chạy, chỉnh chu kỳ / tạm dừng / chạy ngay ở tab “Chạy liên tục” của lượt. Plan: `docs/plan/2026-09-28-pipeline-chay-lien-tuc.md`.
+- **Cảnh báo và SLA** (Cấu hình → Cảnh báo và SLA): lượt lỗi, bị chặn chất lượng, nguồn bị chặn, trễ SLA được ghi vào
+  `<state>/alerts.jsonl` và hiện ở Tổng quan; chưa gửi ra ngoài. SLA được kiểm ở mỗi cron tick.
+
 Job cũ không sinh `run.json` mới nên lịch sử cũ không được chuyển sang giao diện này. Log runner của job mới trước lần nâng cấp vẫn có thể xem khi thư mục log được mount. Runner thêm group của thư mục log cho monitor để đọc được thư mục mode `750`; các file log phải cho group đọc (ví dụ `640` hoặc `644`).
+
+### Chạy thử job mới trên máy cá nhân
+
+Cần Docker, Python ≥ 3.10 có `requirements.txt` (vd. `conda activate vsf`), Chromium của Playwright, `xvfb-run` và
+`COHERE_API_KEY` trong `.env` ở gốc repo. [local_crawl.sh](local_crawl.sh) ghi vào Postgres + Weaviate Docker local, vào
+database `vota_crawl` và collection `ProductCrawl` riêng; không đụng `vota`/`Product` của backend local. Lượt chạy ở chế độ
+local (`CATALOG_LOCAL_ONLY=1`) nên `fresh_catalog.py` dừng ngay nếu đích DB/Weaviate không phải localhost, kể cả khi `.env`
+gốc đang trỏ `WEAVIATE_URL` tới Weaviate Cloud.
+
+```bash
+cd src/data_collection
+export LOCAL_CRAWL_NAME=demo  # tuỳ chọn: bộ riêng vota_crawl_demo / ProductCrawlDemo / data/local_crawl_demo
+./local_crawl.sh setup      # docker compose up postgres weaviate; tạo database từ db/vota_schema.sql + migration; cấu hình đa luồng
+./local_crawl.sh small      # tuỳ chọn: phạm vi nhỏ (Nha Trang + Hà Nội, 3 khách sạn/nguồn, Vinpearl 1 ngày giá)
+./local_crawl.sh monitor    # http://127.0.0.1:8765 → "Cào lớn"; theo dõi ở tab Luồng & nguồn / Log trực tiếp
+./local_crawl.sh run full   # hoặc chạy từ terminal; `run status` in lịch kế tiếp
+./local_crawl.sh run resume <mã lượt> db   # chạy lại lượt đã kết thúc từ một bước sau cào, không cào lại
+./local_crawl.sh run resume <mã lượt> crawl booking   # cào lại riêng một nguồn rồi chạy tiếp tới index
+./local_crawl.sh reset      # xoá database, collection và thư mục của bộ hiện tại (hỏi xác nhận)
+```
+
+`setup` của một bộ mới ghi sẵn cấu hình đa luồng: 4 site (trip vé máy bay/điểm tham quan, vinpearl, booking, agoda) bắt
+đầu cùng lúc nên một site lỗi không làm site khác bị bỏ (lượt vẫn dừng trước khi nạp DB), booking/agoda 2 tab, lịch tắt,
+khách sạn Trip tắt vì trang danh sách Trip đang trả "Tìm thấy 0 nơi lưu trú" cho trình duyệt tự động (25/09/2026).
+
+Trình duyệt chạy trong Xvfb; `SHOW_BROWSER=1 ./local_crawl.sh monitor` để thấy cửa sổ Chromium (tự bấm xác minh nếu nguồn hỏi).
+Dữ liệu các lượt ở `data/local_crawl/` (Git ignore). Bước index gọi Cohere cho search unit mới hoặc đổi text; ô thử truy
+vấn gọi Cohere một lần mỗi lần bấm.
 
 ## Chạy
 
@@ -672,4 +739,5 @@ nghỉ và chạy tiếp khi bị chặn (mã thoát 75).
 - Search units: 3,183; vector nằm ngoài PostgreSQL và được index sang Weaviate bằng `make index-vectors`.
 - Insider clone: 2,000 profiles · 4,167 events · 19,522 channel events.
 - Purchase thiếu `event_group_id` là edge case được sinh có chủ đích khoảng 3%; không xoá purchase.
+- Kiểm thử loader 2026-09-29 trên database tạm local: snapshot 11.387 sản phẩm + 1 vé khứ hồi fixture, giữ đủ 11.387 ID cũ; `db/verify.sql` 18/18 PASS. Database tạm đã xóa; đây không phải lần nạp VM và không thay snapshot seed nêu trên.
 <!-- seed-report:end -->

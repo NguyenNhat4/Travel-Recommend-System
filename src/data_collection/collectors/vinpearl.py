@@ -194,7 +194,7 @@ class VinpearlCollector:
         for _ in range(3):
             await self.limiter.wait(url)
             try:
-                status, data = await session.fetch_json(page, url, API_HEADERS)
+                status, data = await session.fetch_json(page, url, headers=API_HEADERS)
             except Exception as e:  # trang bị điều hướng/đóng
                 log.warning("Lỗi gọi API %s: %s", url, e)
                 self._api_page = None

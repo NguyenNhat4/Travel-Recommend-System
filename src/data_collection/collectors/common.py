@@ -22,6 +22,8 @@ from urllib.parse import urlsplit
 import httpx
 from protego import Protego
 
+from . import live_control
+
 log = logging.getLogger("crawler")
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -247,8 +249,20 @@ class StateDB:
     """Hàng đợi URL bền vững (SQLite). Dừng bằng Ctrl+C rồi chạy lại là tiếp tục."""
 
     def __init__(self, paths: Paths):
-        self.conn = sqlite3.connect(paths.state / "crawl_state.sqlite")
-        self.conn.execute("PRAGMA journal_mode=WAL")
+        # Lượt cào lớn mở nhiều site (tiến trình crawl.py) cùng lúc trên cùng file: chờ khoá tới 60 giây, và thử lại lệnh
+        # bật WAL vì SQLite có thể trả "database is locked" ngay (không qua busy timeout) khi hai tiến trình cùng đổi
+        # journal mode của một file mới.
+        self.conn = sqlite3.connect(paths.state / "crawl_state.sqlite", timeout=60)
+        for attempt in range(40):
+            try:
+                self.conn.execute("PRAGMA journal_mode=WAL")
+                break
+            except sqlite3.OperationalError as exc:
+                if "locked" not in str(exc) or attempt == 39:
+                    raise
+                time.sleep(0.05 * (attempt + 1))
+        # Tạo/nâng cấp schema trong một transaction giữ khoá ghi: tiến trình khác chờ tới lượt thay vì cùng ALTER TABLE.
+        self.conn.execute("BEGIN IMMEDIATE")
         self.conn.execute(
             """CREATE TABLE IF NOT EXISTS items (
                 source TEXT NOT NULL,
@@ -379,7 +393,9 @@ class HostRateLimiter:
         self.min_interval = min_interval
         self.jitter = jitter
         self.per_host = per_host or {}
-        self._next: dict[str, float] = {}
+        self._next: dict[str, float] = {}      # mốc sớm nhất do bị phạt (penalise)
+        self._last: dict[str, float] = {}      # lúc request gần nhất tới host
+        self._factor: dict[str, float] = {}    # jitter của khoảng chờ kế tiếp
         self._locks: dict[str, asyncio.Lock] = {}
         self.shared_db = os.environ.get("CRAWL_RATE_DB")
         if self.shared_db:
@@ -404,16 +420,29 @@ class HostRateLimiter:
         host = urlsplit(url_or_host).netloc or url_or_host
         lock = self._locks.setdefault(host, asyncio.Lock())
         async with lock:
-            interval = max(self.min_interval, self.per_host.get(host, 0.0))
             if self.shared_db:
+                control = await live_control.hold_while_paused()
+                base = control["delay"] if control.get("delay") is not None else self.min_interval
+                interval = max(base, self.per_host.get(host, 0.0))
                 ready = self.reserve_shared(host, interval * (1 + random.uniform(0, self.jitter)))
                 await asyncio.sleep(max(0, ready - time.time()))
                 return
-            now = time.monotonic()
-            ready = self._next.get(host, 0.0)
-            if ready > now:
-                await asyncio.sleep(ready - now)
-            self._next[host] = time.monotonic() + interval * (1 + random.uniform(0, self.jitter))
+            # Monitor có thể tạm dừng nguồn hoặc đổi delay khi lượt đang chạy (collectors/live_control.py): tính lại mốc
+            # chờ mỗi giây để thay đổi có hiệu lực ngay cả giữa một khoảng chờ dài.
+            while True:
+                control = await live_control.hold_while_paused()
+                base = control["delay"] if control.get("delay") is not None else self.min_interval
+                interval = max(base, self.per_host.get(host, 0.0))
+                last = self._last.get(host)
+                ready = self._next.get(host, 0.0)
+                if last is not None:
+                    ready = max(ready, last + interval * self._factor.get(host, 1.0))
+                now = time.monotonic()
+                if ready <= now:
+                    break
+                await asyncio.sleep(min(ready - now, 1.0))
+            self._last[host] = time.monotonic()
+            self._factor[host] = 1 + random.uniform(0, self.jitter)
 
     def penalise(self, url_or_host: str, seconds: float) -> None:
         host = urlsplit(url_or_host).netloc or url_or_host

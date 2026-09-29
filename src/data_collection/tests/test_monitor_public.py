@@ -3,12 +3,17 @@ import types
 import unittest
 
 # Host policy tests do not need the collector dependencies. Keep this test runnable
-# in a minimal checkout where the full data-collection requirements are not installed.
-if "protego" not in sys.modules:
+# in a minimal checkout where the full data-collection requirements are not installed;
+# stub only a package that is really missing so other tests in the same run keep the real one.
+try:
+    import protego  # noqa: F401
+except ImportError:
     protego = types.ModuleType("protego")
     protego.Protego = object
     sys.modules["protego"] = protego
-if "rapidfuzz" not in sys.modules:
+try:
+    import rapidfuzz  # noqa: F401
+except ImportError:
     rapidfuzz = types.ModuleType("rapidfuzz")
     rapidfuzz.fuzz = types.SimpleNamespace()
     rapidfuzz.process = types.SimpleNamespace()
