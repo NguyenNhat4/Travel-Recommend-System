@@ -155,7 +155,7 @@ products = [json.loads(line) for line in open("products.jsonl", encoding="utf-8"
 | `roundTripFrom` | number | <1% | Tuyến: giá khứ hồi rẻ nhất |
 | `tripType` | string | Vé mới | `oneWay` hoặc `roundTrip`; khứ hồi vẫn là `level: flight` |
 | `cabinClass` | string | Khi nguồn xác nhận | `ECONOMY`, `PREMIUM_ECONOMY`, `BUSINESS`, `FIRST`; thiếu thì chưa biết |
-| `fixedDepartureDate` | boolean | Báo giá có ngày | `true`: loader giữ nguyên ngày hai chặng, không dời vào cửa sổ demo |
+| `fixedDepartureDate` | boolean | Báo giá có ngày | `true`: job cào giữ nguyên ngày hai chặng; seed demo dời vào cửa sổ khi ngày đi nằm ngoài cửa sổ (`docs/prd/data-model.md` §3, `docs/spec/MOCK_DATA_SPEC.md` §2.1) |
 | `returnFlight` | object | Khứ hồi | Số hiệu, hãng, sân bay đi/đến, `departureAt`, `arrivalAt` của chặng về |
 | `returnDate`, `stayDays` | date, integer | Khứ hồi | Ngày về và khoảng ngày; không dùng để nhân giá hoặc ghi `using_date_to` |
 | `priceValidUntil`, `priceObservedAt` | date, datetime | Khi nguồn cung cấp | Hạn báo giá và thời điểm quan sát; hết hạn không đồng nghĩa hết chỗ |

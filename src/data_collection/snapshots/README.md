@@ -12,8 +12,10 @@ Snapshot mặc định `2026-09-29` (`make demo-db`, `seed/config.py`) chứa:
 - 64 dòng mapping combo đã duyệt tay (giống `2026-09-23`).
 - Không chứa profile, event, booking, secret hoặc Docker volume; các dữ liệu demo đó được seed tất định khi chạy.
 
-Vé khứ hồi mang `attributes.priceValidUntil = 2026-09-30` (hạn báo giá của trip.com, không phải ngày bay): từ 01/10/2026
-`fareClasses` của các vé này trả `availabilityStatus: EXPIRED`. Giá mới đến từ job cào trên VM, không từ snapshot.
+Vé khứ hồi mang `attributes.priceValidUntil = 2026-09-30` (hạn báo giá của trip.com, không phải ngày bay). Seed ngày nào cũng
+có đủ 290 vé khứ hồi đặt được: vé có ngày đi ngoài cửa sổ được dời vào cửa sổ cả hai chặng (`docs/spec/MOCK_DATA_SPEC.md` §2
+bước 1), giá giữ nguyên nên chỉ là giá tham khảo. Từ 01/10/2026 `fareClasses` của các vé này trả `availabilityStatus: EXPIRED`.
+Giá mới đến từ job cào trên VM, không từ snapshot.
 
 Snapshot `2026-09-23` (11.387 sản phẩm) giữ lại để tái lập (bộ đánh giá search dùng nó); `2026-09-21` giữ để tái lập các
 phép đo seed cũ.
