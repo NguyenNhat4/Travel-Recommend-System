@@ -18,12 +18,13 @@ Ngừng job deploy Frontend lên Vercel trong GitHub Actions; giữ quality chec
 ## Quyết định
 
 - Không xóa cấu hình Vercel khác ngoài workflow job; Frontend VM là đường deploy của workflow này.
-- Job `build_vm`, `publish_vm` và `deploy_vm` vẫn giữ điều kiện chạy trên `release-mvp-v1`; PR checks vẫn chạy trên `release-mvp-v2`.
+- Job build/publish/deploy của Backend và Frontend chạy khi push hoặc dispatch từ `main`, `release-mvp-v1`, `release-mvp-v2` hoặc `release-mvp-v3`.
 
 ## Kiểm tra
 
 - PyYAML parse workflow — PASS.
 - `git diff --check` — PASS.
+- Đã kiểm tra các điều kiện deploy chứa đủ bốn nhánh mục tiêu — PASS.
 - GitHub Actions — chưa chạy.
 
 ## Còn lại / rủi ro

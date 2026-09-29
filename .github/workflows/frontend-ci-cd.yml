@@ -6,6 +6,7 @@ on:
       - main
       - release-mvp-v1
       - release-mvp-v2
+      - release-mvp-v3
     paths:
       - '.github/workflows/frontend-ci-cd.yml'
       - 'ops/docker-compose.backend-vm.yml'
@@ -114,7 +115,7 @@ jobs:
 
   build_vm:
     name: Build Frontend VM image
-    if: ${{ github.ref == 'refs/heads/release-mvp-v1' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+    if: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
     needs: e2e
     runs-on: ubuntu-latest
     steps:
@@ -136,7 +137,7 @@ jobs:
 
   publish_vm:
     name: Publish Frontend SHA and latest images
-    if: ${{ github.ref == 'refs/heads/release-mvp-v1' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+    if: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
     needs: build_vm
     runs-on: ubuntu-latest
     environment: staging
@@ -201,7 +202,7 @@ jobs:
 
   deploy_vm:
     name: Deploy Frontend to Backend VM
-    if: ${{ github.ref == 'refs/heads/release-mvp-v1' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+    if: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
     needs: publish_vm
     runs-on: ubuntu-latest
     timeout-minutes: 20
