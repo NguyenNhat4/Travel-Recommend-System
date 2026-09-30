@@ -1,4 +1,5 @@
 import React from 'react';
+import Link from 'next/link';
 import { Product, BecauseItem, Strategy, Taxonomy } from '../../types/travel';
 import { TaxonomyBadge } from './TaxonomyBadge';
 import { PriceTag } from './PriceTag';
@@ -7,7 +8,8 @@ import { MapPin, Star, Plus, ArrowRight, ExternalLink } from 'lucide-react';
 
 interface ProductCardProps {
   product: Product;
-  variant?: 'grid' | 'row' | 'compact';
+  /** tile: thẻ vuông của carousel ở trang danh mục và Home; là liên kết thật để mở tab mới và điều hướng bằng bàn phím. */
+  variant?: 'grid' | 'row' | 'compact' | 'tile';
   because?: BecauseItem[];
   strategy?: Strategy;
   excludedVerticals?: Taxonomy[];
@@ -19,6 +21,8 @@ interface ProductCardProps {
   isPersonalizedMatch?: boolean;
   openInNewTab?: boolean;
   hideTaxonomyBadge?: boolean;
+  /** Query string ngữ cảnh chuyến đi (ngày, số khách) nối vào `/product/{id}` để điền sẵn hộp đặt. */
+  tripQuery?: string;
 }
 
 export const ProductCard: React.FC<ProductCardProps> = ({
@@ -34,9 +38,12 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   assistantNote,
   isPersonalizedMatch = false,
   openInNewTab = false,
-  hideTaxonomyBadge = false
+  hideTaxonomyBadge = false,
+  tripQuery,
 }) => {
   const { navigate, debugMode, recordEvent } = useTravel();
+
+  const href = `/product/${product.id}${tripQuery ? `?${tripQuery}` : ''}`;
 
   const handleCardClick = (e?: React.MouseEvent) => {
     recordEvent('product_view', product);
@@ -44,11 +51,70 @@ export const ProductCard: React.FC<ProductCardProps> = ({
       if (e) {
         e.preventDefault();
       }
-      window.open(`/product/${product.id}`, '_blank', 'noopener,noreferrer');
+      window.open(href, '_blank', 'noopener,noreferrer');
       return;
     }
-    navigate(`/product/${product.id}`);
+    navigate(href);
   };
+
+  // ==================== TILE VARIANT (LANDING / HOME CAROUSEL) ====================
+  if (variant === 'tile') {
+    return (
+      <Link
+        href={href}
+        target={openInNewTab ? '_blank' : undefined}
+        rel={openInNewTab ? 'noopener noreferrer' : undefined}
+        onClick={() => recordEvent('product_view', product)}
+        className={`group flex min-w-0 flex-col gap-3 rounded-3xl focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-600 ${className}`}
+      >
+        <div className="relative aspect-square w-full overflow-hidden rounded-3xl bg-slate-100">
+          <img
+            src={product.imageUrl}
+            alt={product.name}
+            loading="lazy"
+            decoding="async"
+            referrerPolicy="no-referrer"
+            className={`h-full w-full object-cover transition-transform duration-500 group-hover:scale-105 ${!product.available ? 'grayscale' : ''}`}
+          />
+          {!hideTaxonomyBadge && (
+            <div className="absolute left-3 top-3">
+              <TaxonomyBadge taxonomy={product.taxonomy} />
+            </div>
+          )}
+          {product.attributes.starRating && (
+            <div className="absolute right-3 top-3 flex items-center gap-0.5 rounded-full bg-slate-900/70 px-2 py-0.5 text-[11px] font-semibold text-amber-300 backdrop-blur-xs">
+              <Star className="h-3 w-3 fill-amber-300 text-amber-300" aria-hidden="true" />
+              {product.attributes.starRating}
+              <span className="sr-only"> sao</span>
+            </div>
+          )}
+          {!product.available && (
+            <div className="absolute inset-0 flex items-center justify-center bg-slate-900/55 text-xs font-bold uppercase tracking-wider text-white">
+              Tạm hết chỗ
+            </div>
+          )}
+        </div>
+        <div className="flex min-w-0 flex-col gap-1 px-1">
+          <h3 className="line-clamp-2 text-base font-bold leading-snug text-slate-900 transition-colors group-hover:text-blue-600">
+            {product.name}
+          </h3>
+          <p className="flex items-center gap-1 text-sm text-slate-500">
+            <MapPin className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden="true" />
+            <span className="truncate">{product.destination}</span>
+          </p>
+          {product.aggregateRating && (
+            <p className="text-xs text-slate-600">
+              <span className="font-bold text-slate-800">★ {product.aggregateRating.score}</span>
+              {product.aggregateRating.count > 0 && (
+                <span className="text-slate-400"> · {product.aggregateRating.count.toLocaleString('vi-VN')} đánh giá</span>
+              )}
+            </p>
+          )}
+          <PriceTag price={product.unitPrice} taxonomy={product.taxonomy} hasPrefixFrom size="md" />
+        </div>
+      </Link>
+    );
+  }
 
   // ==================== COMPACT VARIANT ====================
   if (variant === 'compact') {
@@ -86,7 +152,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                 </span>
               )}
             </div>
-            <h4 className="text-xs font-semibold text-slate-900 line-clamp-1">
+            <h4 className="font-sans text-xs font-semibold text-slate-900 line-clamp-1">
               {product.name}
             </h4>
             <div className="flex items-center gap-2 mt-0.5">

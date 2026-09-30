@@ -30,7 +30,7 @@ export function WidgetPlanPanel({ widget }: { widget: FloatingWidgetController }
     <div className="p-4 bg-white border-b border-slate-100 space-y-3 shrink-0 shadow-2xs">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div>
-          <h2 className="text-base font-bold text-slate-900 tracking-tight">
+          <h2 className="text-base font-bold text-slate-900">
             {activePlan.title}
           </h2>
           <div className="flex items-center gap-3 text-sm text-slate-500 mt-1">

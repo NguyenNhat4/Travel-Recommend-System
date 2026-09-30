@@ -319,8 +319,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Thêm mục vào giỏ (cộng dồn nếu trùng productId và usingDate)
-         * @description Thêm thành công thì Backend ghi event add_to_cart sang CDP clone ở nền, với taxonomy và unitPrice lấy từ catalog. Thêm thất bại không ghi event. CDP lỗi không ảnh hưởng response.
+         * Thêm mục vào giỏ (cộng dồn quantity và guests nếu trùng productId và usingDate)
+         * @description Thêm thành công thì Backend ghi event add_to_cart sang CDP clone ở nền, với taxonomy và unitPrice lấy từ catalog. Thêm thất bại không ghi event. CDP lỗi không ảnh hưởng response. guests là số người lớn và trẻ em của mục (tối đa 9 khách, mỗi phòng một người lớn, không vượt maxOccupancy của hạng phòng); vi phạm trả 400 VALIDATION_ERROR kèm details.fields[]. Response trả thêm guests và fares (dòng giá theo loại khách) cho từng mục.
          */
         post: operations["addCartItem"];
         delete?: never;
@@ -345,7 +345,10 @@ export interface paths {
         delete: operations["removeCartItem"];
         options?: never;
         head?: never;
-        /** Sửa ngày, số lượng hoặc số đêm của một mục giỏ */
+        /**
+         * Sửa ngày, số lượng, số đêm hoặc số khách của một mục giỏ
+         * @description Ghi lại giá snapshot (người lớn và trẻ em) bằng giá hiện tại. Cùng luật số khách như POST /cart/items. Chỉ gửi quantity cho mục đang có trẻ em thì giữ nguyên children và đặt adults = quantity − children.
+         */
         patch: operations["updateCartItem"];
         trace?: never;
     };
@@ -360,7 +363,7 @@ export interface paths {
         put?: never;
         /**
          * Checkout giỏ hiện tại — giữ chỗ và tạo phiên thanh toán Stripe
-         * @description Backend kiểm giỏ, tạo đơn PENDING_PAYMENT (giữ giá và thành phần 30 phút) rồi tạo phiên Stripe Checkout. 201 nghĩa là đã giữ chỗ và chờ thanh toán, KHÔNG phải đã đặt xong: Web chuyển trình duyệt tới payment.checkoutUrl. Đơn chỉ thành CONFIRMED sau khi Stripe xác nhận thu tiền (webhook có chữ ký hoặc Backend tự hỏi lại Stripe); event purchase chỉ ghi sang CDP lúc đó. Người dùng đang có đơn giữ chỗ thì trả 409 BOOKING_PENDING_PAYMENT kèm referenceCode đơn đó. Stripe không phản hồi thì không tạo đơn, trả 503 PAYMENT_PROVIDER_UNAVAILABLE. Số tiền do Backend tính từ catalog, không nhận từ client.
+         * @description Backend kiểm giỏ, tạo đơn PENDING_PAYMENT (giữ giá và thành phần 30 phút) rồi tạo phiên Stripe Checkout. 201 nghĩa là đã giữ chỗ và chờ thanh toán, KHÔNG phải đã đặt xong: Web chuyển trình duyệt tới payment.checkoutUrl. Đơn chỉ thành CONFIRMED sau khi Stripe xác nhận thu tiền (webhook có chữ ký hoặc Backend tự hỏi lại Stripe); event purchase chỉ ghi sang CDP lúc đó. Người dùng đang có đơn giữ chỗ thì trả 409 BOOKING_PENDING_PAYMENT kèm referenceCode đơn đó. Stripe không phản hồi thì không tạo đơn, trả 503 PAYMENT_PROVIDER_UNAVAILABLE. Số tiền do Backend tính từ catalog, không nhận từ client. Có travelers thì Backend kiểm toàn bộ luật đoàn khách và phân bổ (người lớn từ 12 tuổi, trẻ em dưới 12 tuổi có ngày sinh, mỗi phòng có người lớn và không vượt sức chứa, số khách khớp giá đã thấy) và trả MỌI vi phạm trong một lần: 400 VALIDATION_ERROR với details.fields[]; khi đó chưa tạo phiên Stripe và chưa ghi gì. Mỗi dòng giá của mỗi mục là một line item trên trang Stripe; Backend không gửi họ tên hay ngày sinh sang Stripe. Không có travelers (client cũ): guestNames được coi là tên người lớn và chỉ nhận khi giỏ không có trẻ em.
          */
         post: operations["createBooking"];
         delete?: never;
@@ -574,11 +577,20 @@ export interface components {
                 /** @description true chỉ với SEARCH_UNAVAILABLE, INTERNAL_ERROR, LLM_UNAVAILABLE, TOO_MANY_ATTEMPTS, CDP_UNAVAILABLE và PAYMENT_PROVIDER_UNAVAILABLE. Mọi mã còn lại là false — thử lại nguyên request cho cùng kết quả. */
                 retryable: boolean;
                 requestId: string;
-                /** @description Tùy mã lỗi. VALIDATION_ERROR {fields}; PRODUCT_NOT_FOUND và PRODUCT_UNAVAILABLE {productId}; CART_ITEM_NOT_FOUND {cartItemId}; PRICE_CHANGED {productId, oldPrice, newPrice}; DATE_OUT_OF_RANGE {productId, availableFrom, availableTo}; UNSUPPORTED_DESTINATION {destination, supportedDestinations, conversationId} — conversationId là hội thoại đã lưu phần chuyến đi còn lại, gửi lại cùng điểm đến hợp lệ để tiếp tục; MIN_STAY_NOT_MET {productId, minStay}; PRODUCT_NOT_INDEXED {productId, taxonomy}; TOO_MANY_ATTEMPTS {retryAfterSeconds}; MFA_INVALID {attemptsLeft}; EMAIL_NOT_VERIFIED {email}; WEAK_PASSWORD {reasons}; INVALID_VERIFICATION_TOKEN {purpose}; OAUTH_EMAIL_UNVERIFIED và OAUTH_ALREADY_LINKED {provider}; BOOKING_PENDING_PAYMENT {referenceCode, holdExpiresAt} — đơn đang giữ chỗ để tiếp tục hoặc huỷ; BOOKING_NOT_CANCELLABLE {referenceCode, reason, cancellableUntil}; BOOKING_ALREADY_PAID {referenceCode}. */
+                /** @description Tùy mã lỗi. VALIDATION_ERROR {fields: ValidationFieldError[]}; PRODUCT_NOT_FOUND và PRODUCT_UNAVAILABLE {productId}; CART_ITEM_NOT_FOUND {cartItemId}; PRICE_CHANGED {productId, oldPrice, newPrice, fareType?} — fareType là CHILD khi giá vé trẻ em đổi; DATE_OUT_OF_RANGE {productId, availableFrom, availableTo}; UNSUPPORTED_DESTINATION {destination, supportedDestinations, conversationId} — conversationId là hội thoại đã lưu phần chuyến đi còn lại, gửi lại cùng điểm đến hợp lệ để tiếp tục; MIN_STAY_NOT_MET {productId, minStay}; PRODUCT_NOT_INDEXED {productId, taxonomy}; TOO_MANY_ATTEMPTS {retryAfterSeconds}; MFA_INVALID {attemptsLeft}; EMAIL_NOT_VERIFIED {email}; WEAK_PASSWORD {reasons}; INVALID_VERIFICATION_TOKEN {purpose}; OAUTH_EMAIL_UNVERIFIED và OAUTH_ALREADY_LINKED {provider}; BOOKING_PENDING_PAYMENT {referenceCode, holdExpiresAt} — đơn đang giữ chỗ để tiếp tục hoặc huỷ; BOOKING_NOT_CANCELLABLE {referenceCode, reason, cancellableUntil}; BOOKING_ALREADY_PAID {referenceCode}. */
                 details?: {
                     [key: string]: unknown;
                 };
             };
+        };
+        /** @description Một vi phạm trong details.fields[] của VALIDATION_ERROR. Backend trả mọi vi phạm trong một lần; message là tiếng Việt hiển thị được trực tiếp. reason là mã luật dùng chung giữa Web và Backend (docs/spec/booking/checkout-nhieu-buoc-hanh-khach.md §5.6): REQUIRED, NAME_INVALID, PHONE_INVALID, EMAIL_INVALID, BIRTH_DATE_INVALID, CHILD_AGE_INVALID, ADULT_REQUIRED, PARTY_TOO_LARGE, TRAVELER_UNKNOWN, TRAVELER_DUPLICATED, ITEM_DETAIL_MISSING, ITEM_DETAIL_UNKNOWN, ITEM_DETAIL_DUPLICATED, ITEM_WITHOUT_TRAVELER, GUEST_COUNT_MISMATCH, INFANTS_EXCEED_ADULTS, ROOM_COUNT_MISMATCH, OCCUPANCY_EXCEEDED, LEAD_GUEST_INVALID, TRAVELERS_REQUIRED. Client gặp reason lạ thì hiển thị message. */
+        ValidationFieldError: {
+            /** @description Đường dẫn trong request, ví dụ travelers[2].birthDate hoặc itemDetails[0].rooms[1]. */
+            field: string;
+            reason: string;
+            message: string;
+            /** @description Có khi vi phạm thuộc một mục giỏ, để Web gắn lỗi vào đúng thẻ dịch vụ. */
+            cartItemId?: string;
         };
         /**
          * @description Đơn vị của unitPrice. UNKNOWN là van an toàn của schema; không taxonomy nào trong catalog hiện tại mang giá trị đó. nights chỉ được đưa vào phép nhân khi giá trị là PER_NIGHT — mọi đơn vị khác bỏ qua nights kể cả khi client gửi.
@@ -1154,19 +1166,80 @@ export interface components {
             diagnostics?: components["schemas"]["RecommendationDiagnostics"];
             requestId?: string;
         };
+        /**
+         * @description ADULT từ 12 tuổi; CHILD dưới 12 tuổi tại ngày sử dụng sớm nhất của đơn (bắt buộc có ngày sinh).
+         * @enum {string}
+         */
+        TravelerType: "ADULT" | "CHILD";
+        /**
+         * @description Loại giá của một dòng giá. ADULT, CHILD cho dịch vụ tính theo người (vé máy bay, vé tham quan, golf); ROOM cho khách sạn (giá phòng-đêm); PACKAGE cho combo (giá theo gói).
+         * @enum {string}
+         */
+        FareType: "ADULT" | "CHILD" | "ROOM" | "PACKAGE";
+        /** @description Số người lớn và số trẻ em của một mục giỏ, tính theo loại giá tại ngày sử dụng của mục (trẻ em đã tròn 12 tuổi tính là người lớn). Không chứa tên. Tối đa 9 khách mỗi mục. */
+        GuestCounts: {
+            adults: number;
+            children: number;
+        };
+        /** @description Một loại giá trong một dịch vụ. Thành tiền của mục bằng tổng amount các dòng giá của mục. */
+        FareLine: {
+            fareType: components["schemas"]["FareType"];
+            /** @description VND cho 1 khách, 1 phòng-đêm hoặc 1 gói. */
+            unitPrice: number;
+            count: number;
+            /** @description Chỉ khác null khi fareType là ROOM. */
+            nights: number | null;
+            /** @description unitPrice × count × (nights hoặc 1). */
+            amount: number;
+        };
+        /** @description Một người trong đoàn khách, khai một lần ở bước Hành khách. Họ tên nhập ở hai ô; Backend nối thành họ tên đầy đủ. Ngày sinh chỉ lưu ở Backend, không bao giờ có trong response và không gửi sang CDP, Insider, Stripe. */
+        CheckoutTraveler: {
+            /** @description Mã tạm do Web sinh, duy nhất trong request; các dịch vụ tham chiếu người này bằng mã này. */
+            travelerRef: string;
+            type: components["schemas"]["TravelerType"];
+            /** @description Họ. Chỉ gồm chữ cái (kể cả tiếng Việt có dấu), khoảng trắng, dấu nháy đơn và gạch nối. */
+            surname: string;
+            /** @description Tên đệm và tên. Cùng quy tắc ký tự với surname. */
+            givenNames: string;
+            /**
+             * Format: date
+             * @description Bắt buộc khi type là CHILD (Backend kiểm, lỗi REQUIRED). Người lớn không cần ngày sinh.
+             */
+            birthDate?: string | null;
+        };
+        /** @description Ai ở một phòng của mục khách sạn. */
+        CheckoutRoom: {
+            travelerRefs: string[];
+            /** @description Người lớn đại diện nhận phòng; phải là người lớn ở trong phòng này. */
+            leadTravelerRef: string;
+        };
+        /** @description Một hành khách của một mục đơn. Không có ngày sinh để response trả ít dữ liệu cá nhân nhất có thể. */
+        BookingTraveler: {
+            fullName: string;
+            type: components["schemas"]["TravelerType"];
+            /** @description Chỉ khác null với khách sạn. */
+            roomNo: number | null;
+            /** @description Người đại diện nhận phòng. Luôn false với loại dịch vụ khác. */
+            isLead: boolean;
+        };
+        /** @description Thêm trùng productId và usingDate thì cộng dồn quantity và guests; kết quả sau khi cộng vẫn phải đạt luật (tối đa 9 khách, mỗi phòng một người lớn, không vượt maxOccupancy). Không gửi guests (client cũ): khách sạn và dịch vụ tính theo người mặc định mỗi phòng/vé một người lớn; combo mặc định 1 người lớn. */
         AddCartItemRequest: {
             productId: string;
             /** Format: date */
             usingDate: string;
-            quantity: number;
+            /** @description Số phòng (khách sạn), số gói (combo) hoặc số vé. Dịch vụ tính theo người (vé máy bay, tham quan, golf) gửi guests thì được bỏ quantity; gửi cả hai mà lệch adults + children thì bị từ chối (GUEST_COUNT_MISMATCH). */
+            quantity?: number;
             /** @description Chỉ dùng với taxonomy hotel; loại khác bị bỏ qua. */
             nights?: number | null;
-        };
+            guests?: components["schemas"]["GuestCounts"];
+        } | unknown | unknown;
+        /** @description Sửa một mục giỏ và ghi lại giá snapshot bằng giá hiện tại (khách đã thấy giá mới). Chỉ đổi quantity của mục đang có trẻ em thì giữ nguyên children và đặt adults = quantity − children. */
         UpdateCartItemRequest: {
             /** Format: date */
             usingDate?: string;
             quantity?: number;
             nights?: number | null;
+            guests?: components["schemas"]["GuestCounts"];
         };
         CartItem: {
             cartItemId: string;
@@ -1175,6 +1248,9 @@ export interface components {
             usingDate: string;
             quantity: number;
             nights: number | null;
+            guests?: components["schemas"]["GuestCounts"];
+            /** @description Các dòng giá của mục theo giá catalog hiện tại. lineTotal bằng tổng fares[].amount. */
+            fares?: components["schemas"]["FareLine"][];
             lineTotal: number;
         };
         CartResponse: {
@@ -1196,11 +1272,18 @@ export interface components {
         };
         CheckoutItemDetail: {
             cartItemId: string;
+            /** @description Chỉ dùng khi request không có travelers (client cũ); bị bỏ qua khi có travelers. */
             guestNames?: string[];
+            /** @description Ai dùng dịch vụ (dịch vụ tính theo người, combo). Mọi phần tử phải có trong travelers. */
+            travelerRefs?: string[];
+            /** @description Khách sạn. Số phòng phải bằng quantity của mục giỏ; mỗi phòng có ít nhất 1 người lớn và không vượt maxOccupancy. */
+            rooms?: components["schemas"]["CheckoutRoom"][];
             specialRequest?: string | null;
         };
         CheckoutRequest: {
             contact: components["schemas"]["Contact"];
+            /** @description Đoàn khách (1–9 người, ít nhất 1 người lớn). Có travelers thì áp luật đoàn khách; không có thì Backend coi guestNames là tên người lớn và chỉ nhận khi mọi mục giỏ không có trẻ em. */
+            travelers?: components["schemas"]["CheckoutTraveler"][];
             itemDetails: components["schemas"]["CheckoutItemDetail"][];
         };
         BookingItem: {
@@ -1211,6 +1294,11 @@ export interface components {
             quantity: number;
             nights: number | null;
             lineTotal: number;
+            /** @description Các dòng giá của mục; lineTotal bằng tổng fares[].amount và mỗi dòng là một line item trên trang Stripe. */
+            fares?: components["schemas"]["FareLine"][];
+            /** @description Hành khách của mục (không có ngày sinh). Rỗng với đơn tạo trước khi có đoàn khách; khi đó dùng guestNames. */
+            travelers?: components["schemas"]["BookingTraveler"][];
+            /** @description Họ tên các khách của mục, theo thứ tự trong đoàn. */
             guestNames: string[];
             specialRequest: string | null;
         };

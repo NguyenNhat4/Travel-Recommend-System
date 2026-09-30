@@ -22,6 +22,8 @@ export interface AssistantCartItem {
   product: Product;
   usingDate?: string;
   checkOutDate?: string;
+  /** Đoàn của lịch trình (`intent.party`): có thì thêm vào giỏ kèm `guests` (spec checkout-nhieu-buoc-hanh-khach.md §6.9). */
+  party?: { adults: number; children: number };
 }
 
 const MIN_TRIP_DAYS = 1;
@@ -40,20 +42,22 @@ function addDays(isoDate: string, days: number) {
 }
 
 /** Gom mọi sản phẩm đặt được của lịch trình, mỗi productId một lần, kèm ngày dùng theo ngày của lịch trình. */
-export function itineraryCartItems(itinerary: Itinerary): AssistantCartItem[] {
+export function itineraryCartItems(itinerary: Itinerary, party?: { adults: number; children: number } | null): AssistantCartItem[] {
   const items = new Map<string, AssistantCartItem>();
+  const guests = party ? { party: { adults: party.adults, children: party.children } } : {};
   if (itinerary.stay && isCartEligible(itinerary.stay.product)) {
     const checkIn = itinerary.days[0]?.date ?? undefined;
     items.set(itinerary.stay.product.productId, {
       product: itinerary.stay.product,
       usingDate: checkIn,
       checkOutDate: checkIn ? addDays(checkIn, itinerary.stay.nights) : undefined,
+      ...guests,
     });
   }
   for (const day of itinerary.days) {
     for (const slot of day.slots) {
       if (!slot.product || !isCartEligible(slot.product) || items.has(slot.product.productId)) continue;
-      items.set(slot.product.productId, { product: slot.product, usingDate: day.date ?? undefined });
+      items.set(slot.product.productId, { product: slot.product, usingDate: day.date ?? undefined, ...guests });
     }
   }
   return [...items.values()];
@@ -136,7 +140,7 @@ function SearchResults({ results, onAddToCart }: { results: Record<string, Produ
   if (!groups.length) return <p className="mt-4 rounded-xl bg-white p-4 text-sm text-slate-500">Chưa có sản phẩm phù hợp.</p>;
   return <div className="mt-4 space-y-5">{groups.map(([taxonomy, products]) => (
     <section key={taxonomy} className="space-y-2.5">
-      <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-500">{taxonomyLabel(taxonomy)} · {products.length}</h4>
+      <h4 className="font-sans text-xs font-extrabold uppercase tracking-wider text-slate-500">{taxonomyLabel(taxonomy)} · {products.length}</h4>
       {products.map((product) => <ProductCard key={product.productId} product={product} onAddToCart={onAddToCart && (() => onAddToCart([{ product }]))} />)}
     </section>
   ))}</div>;
@@ -270,7 +274,8 @@ export function AssistantResultPanel({
   const intent = response.intent;
   const products = [itinerary.stay?.product, ...itinerary.days.flatMap((day) => day.slots.map((slot) => slot.product))].filter((value): value is Product => Boolean(value));
   const distinctProducts = new Map(products.map((product) => [product.productId, product]));
-  const cartItems = itineraryCartItems(itinerary);
+  const party = intent?.party ? { adults: intent.party.adults, children: intent.party.children } : undefined;
+  const cartItems = itineraryCartItems(itinerary, party);
   const canEdit = !readOnly && Boolean(onSuggestion);
   const currentDays = intent?.days ?? itinerary.days.length;
   const addOne = (item: AssistantCartItem) => onAddToCart && (() => onAddToCart([item]));
@@ -329,7 +334,7 @@ export function AssistantResultPanel({
         />
       )}
 
-      {itinerary.stay && <section className="space-y-2.5"><div className="flex items-center justify-between"><h3 className="text-sm font-extrabold text-slate-800">Nơi lưu trú</h3><span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-bold text-indigo-700">{itinerary.stay.nights} đêm</span></div><ProductCard product={itinerary.stay.product} note={itinerary.stay.note} onAddToCart={addOne({ product: itinerary.stay.product, usingDate: stayCheckIn, checkOutDate: stayCheckIn ? addDays(stayCheckIn, itinerary.stay.nights) : undefined })} /></section>}
+      {itinerary.stay && <section className="space-y-2.5"><div className="flex items-center justify-between"><h3 className="text-sm font-extrabold text-slate-800">Nơi lưu trú</h3><span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-bold text-indigo-700">{itinerary.stay.nights} đêm</span></div><ProductCard product={itinerary.stay.product} note={itinerary.stay.note} onAddToCart={addOne({ product: itinerary.stay.product, usingDate: stayCheckIn, checkOutDate: stayCheckIn ? addDays(stayCheckIn, itinerary.stay.nights) : undefined, party })} /></section>}
 
       <section className="space-y-3">
         <div className="flex items-center justify-between"><h3 className="text-sm font-extrabold text-slate-800">Lịch trình từng ngày</h3><span className="text-xs text-slate-400">{itinerary.days.length} ngày</span></div>
@@ -353,7 +358,7 @@ export function AssistantResultPanel({
                         ? <ProductCard
                             product={product}
                             note={slot.note}
-                            onAddToCart={addOne({ product, usingDate: day.date ?? undefined })}
+                            onAddToCart={addOne({ product, usingDate: day.date ?? undefined, party })}
                             onReplace={canEdit ? () => onSuggestion?.(`Đổi ${product.name} (ngày ${day.day}, buổi ${timeLabel.toLowerCase()}) sang lựa chọn khác`) : undefined}
                             replaceDisabled={busy}
                           />
@@ -367,7 +372,7 @@ export function AssistantResultPanel({
         ))}
       </section>
 
-      {response.warnings.length > 0 && <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4"><h3 className="text-xs font-extrabold text-amber-900">Lưu ý</h3><ul className="mt-2 space-y-1.5 text-xs leading-relaxed text-amber-800">{response.warnings.map((warning, index) => <li key={`${warning.code}-${index}`}>• {warning.message}</li>)}</ul></section>}
+      {response.warnings.length > 0 && <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4"><h3 className="font-sans text-xs font-extrabold text-amber-900">Lưu ý</h3><ul className="mt-2 space-y-1.5 text-xs leading-relaxed text-amber-800">{response.warnings.map((warning, index) => <li key={`${warning.code}-${index}`}>• {warning.message}</li>)}</ul></section>}
       {showMap && <AssistantMapPanel />}
       {response.searchResults && <section><h3 className="text-sm font-extrabold text-slate-800">Kết quả tìm kiếm liên quan</h3><SearchResults results={response.searchResults} onAddToCart={onAddToCart} /></section>}
     </div>

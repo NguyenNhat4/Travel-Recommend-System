@@ -223,15 +223,15 @@ sequenceDiagram
     participant S as Stripe
     participant C as CDP (CdpClient)
 
-    U->>W: Điền liên hệ, bấm "Thanh toán"
-    W->>B: POST /api/bookings (contact, itemDetails), cookie + CSRF
+    U->>W: Khai hành khách, chọn ai dùng từng dịch vụ (ba bước), bấm "Thanh toán"
+    W->>B: POST /api/bookings (contact, travelers, itemDetails), cookie + CSRF
     B->>F: POST /api/v1/bookings, Bearer JWT
     F->>P: Đọc giỏ, đơn PENDING_PAYMENT của user (app.*)<br/>và sản phẩm (cdp.products, chỉ đọc)
-    F->>F: Kiểm giỏ không rỗng, còn chỗ, giá không đổi, ngày trong cửa sổ bán
-    F->>F: Sinh bookingId, referenceCode, eventGroupId<br/>holdExpiresAt = now + 30 phút, tính tổng từ catalog
-    F->>S: POST /v1/checkout/sessions, Idempotency-Key = booking:{bookingId}<br/>mode payment, currency vnd, line_items, expires_at = holdExpiresAt<br/>metadata.bookingId, payment_intent_data.metadata.bookingId<br/>success_url, cancel_url, customer_email, locale vi, submit_type book
+    F->>F: Kiểm giỏ không rỗng, đoàn khách và phân bổ đạt luật (spec checkout-nhieu-buoc-hanh-khach.md §5),<br/>còn chỗ, giá người lớn và giá trẻ em không đổi, ngày trong cửa sổ bán
+    F->>F: Sinh bookingId, referenceCode, eventGroupId<br/>holdExpiresAt = now + 30 phút, tính các dòng giá và tổng từ catalog
+    F->>S: POST /v1/checkout/sessions, Idempotency-Key = booking:{bookingId}<br/>mode payment, currency vnd, line_items (mỗi dòng giá một line item), expires_at = holdExpiresAt<br/>metadata.bookingId, payment_intent_data.metadata.bookingId<br/>success_url, cancel_url, customer_email, locale vi, submit_type book
     S-->>F: 200 session id, url, status open
-    F->>P: BEGIN, INSERT bookings (pending_payment), booking_items,<br/>payments (open, session id, checkout_url), COMMIT
+    F->>P: BEGIN, INSERT bookings (pending_payment), booking_items, booking_travelers,<br/>payments (open, session id, checkout_url), COMMIT
     F-->>B: 201 BookingResponse: status PENDING_PAYMENT,<br/>holdExpiresAt, payment.checkoutUrl
     B-->>W: 201
     W->>S: Chuyển trang tới payment.checkoutUrl
@@ -267,7 +267,7 @@ sequenceDiagram
 
 - **Gọi Stripe trước, ghi database sau.** Stripe lỗi thì chưa có gì trong database để dọn. Database lỗi sau khi Stripe đã tạo phiên thì Backend đóng phiên đó (mục 7.2).
 - **`Idempotency-Key`**: nếu mạng chập và thư viện Stripe tự gửi lại yêu cầu, Stripe trả lại đúng phiên đã tạo thay vì tạo phiên thứ hai.
-- **Số tiền do Backend tính.** Stripe coi VND là tiền tệ không có số lẻ, nên `amount` gửi sang Stripe chính là số đồng, không nhân 100.
+- **Số tiền do Backend tính.** Stripe coi VND là tiền tệ không có số lẻ, nên `amount` gửi sang Stripe chính là số đồng, không nhân 100. Mỗi dòng giá của mỗi mục (người lớn, trẻ em, phòng-đêm, gói) là một line item, và tổng các line item phải bằng tổng đơn trước khi gọi Stripe (spec `checkout-nhieu-buoc-hanh-khach.md` §8.4).
 - **`expires_at` của phiên Stripe bằng hạn giữ chỗ.** Hết hạn thì Stripe tự đóng trang thanh toán, khách không trả được nữa. Stripe chỉ cho đặt hạn từ 30 phút đến 24 giờ, vì vậy giữ chỗ tối thiểu 30 phút.
 - **Hai luồng song song (`par`)**: webhook và trình duyệt quay về có thể đến theo bất kỳ thứ tự nào. Web vì vậy hỏi lại trạng thái (polling) chứ không tin URL quay về.
 - **Ghi `purchase` trước khi xác nhận đơn**, giữ cam kết "đơn thành công mà thiếu event là trạng thái không được phép" (`hop-dong-tich-hop-backend.md` §7.4). Web chỉ gọi `/recommendations` sau khi thấy `CONFIRMED`, nên gợi ý đã đổi ngay (AC-REC-02).
@@ -279,7 +279,7 @@ sequenceDiagram
 flowchart TB
     subgraph LU["👤 Khách hàng"]
         S(("Bắt đầu"))
-        U1["Điền liên hệ,<br/>bấm Thanh toán"]
+        U1["Khai hành khách, chọn dịch vụ,<br/>bấm Thanh toán"]
         U2{"Chọn gì trong<br/>hộp thoại?"}
         EOK((("Kết thúc:<br/>đang ở trang Stripe")))
         ECART((("Kết thúc:<br/>quay lại giỏ")))
@@ -291,27 +291,30 @@ flowchart TB
         W3["Hiện hộp thoại: đang có đơn chờ thanh toán"]
         WX1["Hiện lỗi theo code,<br/>mở lại nút"]:::err
         WX2["Hiện: cổng thanh toán tạm thời<br/>không phản hồi, nút Thử lại"]:::err
+        WX3["Về bước Hành khách hoặc Dịch vụ,<br/>gắn lỗi vào trường"]:::err
     end
 
     subgraph LF["⚙️ Backend"]
         F1{"JWT hợp lệ?"}
         F2{"Có đơn PENDING_PAYMENT<br/>còn hạn?"}
         F3{"Giỏ có ít nhất 1 mục?"}
+        F3b{"Đoàn khách và phân bổ<br/>đạt luật (spec checkout-nhieu-buoc §5)?"}
         F4{"Mọi sản phẩm còn bán<br/>và available = true?"}
-        F5{"Giá hiện tại =<br/>giá lúc thêm giỏ?"}
+        F5{"Giá hiện tại (người lớn, trẻ em) =<br/>giá lúc thêm giỏ?"}
         F6{"usingDate trong<br/>availableFrom–availableTo?"}
-        F7["Tính tổng từ catalog, sinh mã,<br/>hạn giữ = now + 30 phút"]
-        F8["Tạo Checkout Session<br/>với Idempotency-Key"]
+        F7["Tính các dòng giá và tổng từ catalog,<br/>sinh mã, hạn giữ = now + 30 phút"]
+        F8["Tạo Checkout Session với Idempotency-Key,<br/>mỗi dòng giá một line item"]
         F9{"Stripe trả phiên<br/>trong 10 giây?"}
-        F10["Ghi đơn, dòng hàng, payment<br/>trong một transaction"]
+        F10["Ghi đơn, dòng hàng, hành khách, payment<br/>trong một transaction"]
         F11{"Commit thành công?"}
         F12["Đóng phiên Stripe vừa tạo<br/>để bù trừ"]
         F13["Trả 201 PENDING_PAYMENT<br/>kèm checkoutUrl"]
         FX0["401 INVALID_TOKEN<br/>mở modal đăng nhập lại"]:::err
         FX1["409 BOOKING_PENDING_PAYMENT<br/>kèm referenceCode, holdExpiresAt"]:::err
         FX2["400 CART_EMPTY"]:::err
+        FX2b["400 VALIDATION_ERROR<br/>details.fields[], mọi vi phạm một lần"]:::err
         FX3["409 PRODUCT_UNAVAILABLE"]:::err
-        FX4["409 PRICE_CHANGED"]:::err
+        FX4["409 PRICE_CHANGED<br/>fareType ADULT hoặc CHILD"]:::err
         FX5["422 DATE_OUT_OF_RANGE"]:::err
         FX6["503 PAYMENT_PROVIDER_UNAVAILABLE<br/>retryable = true"]:::err
         FX7["500 INTERNAL_ERROR<br/>retryable = true"]:::err
@@ -325,7 +328,7 @@ flowchart TB
     subgraph LD["🗄️ Dữ liệu"]
         D1[("app.carts, cart_items")]
         D2[("cdp.products<br/>chỉ đọc")]
-        D3[("app.bookings, booking_items")]
+        D3[("app.bookings, booking_items,<br/>booking_travelers")]
         D4[("app.payments")]
     end
 
@@ -337,7 +340,10 @@ flowchart TB
     U2 -- "Huỷ đơn cũ, mục 9, rồi đặt lại" --> W1
     F2 -- "Không" --> F3
     F3 -- "Không" --> FX2 --> ECART
-    F3 -- "Có" --> F4
+    F3 -- "Có" --> F3b
+    F3b -- "Không" --> FX2b --> WX3
+    WX3 -- "Sửa xong, bấm lại" --> W1
+    F3b -- "Có" --> F4
     F4 -- "Không" --> FX3 --> WX1
     F4 -- "Có" --> F5
     F5 -- "Không" --> FX4 --> WX1
@@ -354,6 +360,8 @@ flowchart TB
 
     F2 -.-> D3
     F3 -.-> D1
+    F3b -.-> D1
+    F3b -.-> D2
     F4 -.-> D2
     F5 -.-> D1
     F5 -.-> D2
@@ -364,6 +372,8 @@ flowchart TB
 
     classDef err fill:#fde2e2,stroke:#c0392b,color:#7b1d1d
 ```
+
+**Thứ tự kiểm khi bấm Thanh toán** (spec `checkout-nhieu-buoc-hanh-khach.md` §8.3): đơn đang giữ chỗ (`409`), giỏ rỗng (`400`), sản phẩm tồn tại (`404`), luật dữ liệu đoàn khách và phân bổ (`400 VALIDATION_ERROR`, mọi vi phạm một lần), rồi từng mục còn bán, giá và ngày (`409`, `409`, `422`), sau cùng mới tới Stripe. Luật dữ liệu được kiểm trước giá để lỗi nhập liệu không bị che bởi lỗi giá, còn thay đổi giá vẫn hiện ngay trước khi khách trả tiền. Vi phạm luật dữ liệu thì không gọi Stripe và không ghi gì.
 
 **Vì sao chặn đơn thứ hai khi đang giữ chỗ:** chống bấm hai lần tạo hai đơn và hai phiên thanh toán, và không để một người khoá nhiều mức giá cùng lúc. Database ép quy tắc này bằng unique index một phần trên `(cdp_user_id) WHERE status = 'pending_payment'`. Nếu đơn cũ đã quá `holdExpiresAt` nhưng webhook hết hạn chưa tới, Backend hỏi lại Stripe để đóng đơn cũ ngay trong request (mục 8.3) rồi mới tạo đơn mới.
 
@@ -541,7 +551,7 @@ sequenceDiagram
     W->>F: POST /bookings
     F->>S: POST /v1/checkout/sessions
     S-->>F: session id, url
-    F->>P: BEGIN, INSERT bookings, booking_items, payments, COMMIT
+    F->>P: BEGIN, INSERT bookings, booking_items, booking_travelers, payments, COMMIT
     P--xF: Lỗi commit
     F->>S: POST /v1/checkout/sessions/{id}/expire, để bù trừ
     alt Đóng phiên thành công

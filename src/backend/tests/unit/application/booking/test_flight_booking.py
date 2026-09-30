@@ -27,7 +27,7 @@ def test_roundtrip_cabins_remain_distinct_through_cart_payment_and_purchase():
         assert cart['itemCount'] == 2
         assert cart['total'] == 2400000 * 2 + 5200000  # no multiplication by stayDays/nights
         assert all(line['nights'] is None for line in cart['items'])
-        held = await w.create(PRINCIPAL, Contact('Test Guest', 'test@example.vn', '0901234567'), [])
+        held = await w.create(PRINCIPAL, Contact('Test Guest', 'test@example.vn', '0901234567'), await w.details())
         assert held['payment']['amount'] == cart['total']
         ref = held['referenceCode']
         await w.handler(w.gateway.pay(w.booking(ref).payment.checkout_session_id))

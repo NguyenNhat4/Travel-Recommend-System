@@ -90,8 +90,8 @@ Tài khoản seed đăng nhập qua `/login` như mọi user (email seed + mật
 |---|---|---|---|
 | `/` | Home | Không (khi đã đăng nhập mới có phần cá nhân hóa) | |
 | `/search?q=&taxonomy=&destination=&sort=` | Kết quả tìm kiếm | Không | Route hiện hiển thị trạng thái API chưa khả dụng; page chưa gọi `searchProducts`, xem §1.5 |
+| `/hotels`, `/flights`, `/experiences`, `/combos` | Trang danh mục dịch vụ (hero, tấm tìm kiếm, carousel phổ biến và giá tốt, điểm đến) | Không | Nhận `?destination=`; `/experiences` nhận thêm `?type=attraction\|golf`. Xem frontend §4.1a |
 | `/product/:productId` | Chi tiết sản phẩm | Không | |
-| `/assistant` | Trợ lý lịch trình | Không | Gửi itinerary qua OpenAPI client; xem §1.5 và §6 |
 | `/cart` | Giỏ hàng | **Có** | Có thể bị cắt (handbook §2, mục 4) |
 | `/checkout` | Checkout | **Có** | |
 | `/booking/:referenceCode` | Xác nhận đặt chỗ | **Có** | |
@@ -131,7 +131,7 @@ Tài khoản seed đăng nhập qua `/login` như mọi user (email seed + mật
 
 ### 3.3 Điều hướng toàn cục
 
-- **Desktop:** header dính trên cùng gồm logo, ô tìm kiếm ngôn ngữ tự nhiên ở giữa (luôn hiện, trừ trang Checkout), nút "Trợ lý", biểu tượng giỏ kèm số lượng, menu tài khoản. Pattern: `[R01]` Klook web (ô tìm kiếm + "Cart" + avatar trên cùng một hàng) và `[R06]` Airbnb web.
+- **Desktop (≥ 1024 px):** header kính mờ nổi trên hero ở Home và bốn trang danh mục, chuyển nền trắng khi cuộn qua hero; ở route khác là header nền trắng thường. Từ trái sang phải: logo, bốn nhóm dịch vụ **Di chuyển · Lưu trú · Tour và trải nghiệm · Tiện ích khác** (mỗi nhóm mở menu con chỉ liệt kê dịch vụ, không có điểm đến), nút lưới "Tất cả dịch vụ" (từ 1280 px), ngôn ngữ, "Đặt chỗ của tôi" (kèm huy hiệu giỏ), tài khoản. Không còn ô tìm kiếm giữa header (theo wireframe `docs/prd/user-flow.md` §4.1): tìm kiếm nằm ở hero của Home và các trang danh mục, và ở đầu `/search`. Menu là mẫu disclosure (`aria-expanded`, Esc đóng và trả focus, mở bằng rê chuột chỉ trên thiết bị có hover). Cấu hình ở `components/layout/nav/navConfig.ts`. Không có Trợ lý AI trên header (đề xuất `update-archive/2026-09-29-bo-nut-tro-ly-ai-tren-header.md`); trợ lý là widget nổi duy nhất (`update-archive/2026-09-29-gop-giao-dien-tro-ly-ve-widget.md`, không còn route `/assistant`). Điều khiển header cùng cao 40 px, bo tròn; chữ tiêu đề và điều hướng là Cal Sans, nội dung là Inter (`globals.css`). Không còn chuông thông báo và điểm thưởng cứng.
 - **Checkout** dùng header rút gọn (logo + "Quay lại giỏ hàng") để giảm rơi rụng. Pattern: `[R70]` KAYAK web checkout (header chỉ còn logo).
 - **Mobile:** thanh tab dưới cùng, xem §7.2.
 - **Menu tài khoản:** tên + persona, "Đăng xuất". Không có trang hồ sơ, vì handbook không yêu cầu.
@@ -238,7 +238,7 @@ Khi người dùng quay về Home từ Confirmation (bấm "Xem gợi ý mới t
 
 #### 4.2.1 Ô tìm kiếm (header + Home)
 
-- Chỉ có **một ô nhập tự do**, không tách thành Điểm đến / Ngày / Khách như form OTA truyền thống, vì engine nhận `q` tự do. Placeholder xoay vòng giữa các câu mẫu: "nghỉ dưỡng biển cho gia đình", "vé tham quan cho trẻ nhỏ ở Phú Quốc", "khách sạn 5 sao gần biển Đà Nẵng".
+- Ở Home, `/search` và header trang chi tiết chỉ có **một ô nhập tự do**, không tách thành Điểm đến / Ngày / Khách, vì engine nhận `q` tự do. Ngoại lệ: **tấm tìm kiếm ở hero trang danh mục** (`/hotels`, `/flights`, `/experiences`, `/combos`) tách Địa điểm / Ngày / Số khách theo FR-SRC-03; ngày và số khách là ngữ cảnh chuyến đi điền sẵn hộp đặt, không lọc phòng trống (frontend §4.1a). Placeholder xoay vòng giữa các câu mẫu: "nghỉ dưỡng biển cho gia đình", "vé tham quan cho trẻ nhỏ ở Phú Quốc", "khách sạn 5 sao gần biển Đà Nẵng".
   Pattern: `[R35]` Booking.com iOS (tab "AI search": "Search in your own words ⓘ" + thẻ ví dụ "Try these out"). `[R37]` cho thấy chính Booking.com đặt tab "AI search" song song tab "Destination".
 - **Khi focus (ô rỗng):** dropdown gồm "Tìm kiếm gần đây" (lưu `localStorage`, tối đa 5, có nút xóa) và "Thử tìm" (4 câu mẫu). Pattern: `[R38]` Skyscanner iOS ("Recent searches" + "Popular destinations").
 - **Khi đang gõ:** autocomplete theo tên (ví dụ "VinWonders") chỉ có nếu làm hybrid search (handbook §2: có thể cắt). MVP: không autocomplete, Enter là tìm.
@@ -425,26 +425,20 @@ Có thể bị cắt (handbook §2, mục 4). Nếu cắt: bỏ route `/cart`, n
 
 #### 4.5.1 Bố cục desktop
 
+Checkout gồm **ba bước** trên cùng route `/checkout` (`?step=travelers|services|review`), thay cho một trang ba khối. Wireframe, hành vi và luật kiểm từng bước nằm ở `docs/spec/booking/checkout-nhieu-buoc-hanh-khach.md` (FR-BKG-08): §6.4 (bước ① Hành khách), §6.6 (bước ② Dịch vụ), §6.7 (bước ③ Xem lại và thanh toán). Khung chung:
+
 ```
 ┌ Header rút gọn: Logo · ← Quay lại giỏ hàng ────────────────────────────────────┐
-│ ⓘ Thanh toán qua Stripe (chế độ test). Bấm "Thanh toán" sẽ giữ chỗ 30 phút và   │
-│   chuyển sang trang nhập thẻ của Stripe.                                        │
+│  ① Hành khách ──── ② Dịch vụ ──── ③ Xem lại và thanh toán                       │
 ├──────────────────────────────────────────────────┬────────────────────────────┤
-│ 1 · THÔNG TIN LIÊN HỆ                  [✓]       │ ĐƠN ĐẶT CỦA BẠN            │
-│   Họ và tên *        [Nguyễn Minh Anh      ] ✓   │ [ảnh] Vinpearl Resort ...  │
-│   Email *            [minhanh@...  (khóa)  ]     │  15/10–18/10 · 1 phòng     │
-│   Số điện thoại *    [+84 | 912 345 678    ] ✓   │               10.200.000 ₫ │
-│   Chúng tôi dùng thông tin này để hiển thị      │ [ảnh] Hà Nội – Cam Ranh    │
-│   trên xác nhận (bản demo không gửi email).      │  15/10 · 2 khách            │
-│ 2 · THÔNG TIN TỪNG DỊCH VỤ                       │                3.780.000 ₫ │
-│   Vinpearl Resort: Tên khách nhận phòng [    ]   │ ─────────────────────────  │
-│   Vé máy bay: Họ tên hành khách 1 [   ] 2 [   ]  │ Tổng          14.180.000 ₫ │
-│   Yêu cầu đặc biệt (không bắt buộc) [       ]    │ [Sửa giỏ hàng]             │
-│ 3 · PHƯƠNG THỨC THANH TOÁN                       │                            │
-│   (●) Stripe — Thẻ thanh toán (test)             │                            │
-│   ( ) Ví điện tử [Sắp có]  ( ) Chuyển khoản [Sắp có]                            │
-│   ☐ Đồng ý điều khoản và chính sách huỷ          │                            │
-│   [        Thanh toán 14.180.000 ₫            ]  │                            │
+│ Nội dung của bước hiện tại                       │ ĐƠN CỦA BẠN (dính khi cuộn) │
+│  ① Số người lớn, trẻ em; họ, tên đệm và tên,     │ 2 người lớn · 1 trẻ em      │
+│    ngày sinh trẻ em; người liên hệ               │ Từng dịch vụ: ngày + thành  │
+│  ② Chọn ai dùng từng dịch vụ; khách sạn xếp      │ tiền (theo dòng giá của      │
+│    khách vào phòng; giá cập nhật theo loại khách │ Backend)                    │
+│  ③ Hành khách, dịch vụ, phương thức Stripe,      │ ─────────────────────────── │
+│    điều khoản, [Thanh toán {tổng}]               │ Tổng   [Sửa giỏ hàng]       │
+│ [← Quay lại]                        [Tiếp tục →] │                            │
 └──────────────────────────────────────────────────┴────────────────────────────┘
 ```
 
@@ -452,13 +446,14 @@ Có thể bị cắt (handbook §2, mục 4). Nếu cắt: bỏ route `/cart`, n
 
 | Quy tắc | Chi tiết | Pattern |
 |---|---|---|
-| Một trang, 3 khối đánh số | Không chia nhiều trang, vì số trường ít. Khối đã hợp lệ có dấu ✓ ở tiêu đề | `[R68]` Airbnb web ("Confirm and pay": 1 Choose when to pay · 2 Add a payment method · 3 Review your reservation) |
-| Điền sẵn | Họ tên + email lấy từ tài khoản. Email khóa (đổi email ngoài phạm vi) | `[R67]` Tripadvisor web (email khóa, trường hợp lệ có ✓ xanh) |
-| Kiểm tra hợp lệ | Kiểm tra khi rời trường (blur), không kiểm tra theo từng phím. Lỗi hiện ngay dưới trường: "Vui lòng nhập số điện thoại hợp lệ". Khi bấm Xác nhận mà còn lỗi thì cuộn tới lỗi đầu tiên | `[R67]` Tripadvisor web |
-| Thông tin theo dịch vụ | Mỗi mục giỏ có trường tối thiểu: khách sạn → tên khách nhận phòng; vé máy bay → họ tên từng hành khách (theo `quantity`); vé tham quan → không thêm gì | `[R119]` Agoda iOS (khối "Special requests" dạng không bắt buộc) |
-| **Khối phương thức thanh toán** | Chỉ Stripe (chọn sẵn); ví điện tử, chuyển khoản hiển thị vô hiệu hoá, nhãn "Sắp có" (`docs/prd/user-flow.md` §3.3). Không vẽ form thẻ: khách nhập thẻ trên trang do Stripe host | `[R68]` Airbnb web ("Add a payment method") |
-| Tóm tắt dính phải | Ảnh thu nhỏ + tên + ngày + số lượng + thành tiền từng mục, tổng, link "Sửa giỏ hàng" | `[R66]` Klook web; `[R57]` Navan web ("In this booking") |
-| CTA | "Thanh toán ({tổng})". Disabled cho tới khi thông tin hợp lệ, đã chọn phương thức và tick điều khoản (gồm chính sách huỷ). Dưới nút: "Giữ chỗ 30 phút sau khi bấm Thanh toán. Bạn sẽ được chuyển sang Stripe." | `[R70]` KAYAK web (nút "Confirm booking" disabled + đoạn điều khoản ngay trên) |
+| Ba bước | ① Hành khách → ② Dịch vụ → ③ Xem lại và thanh toán. Thanh bước có ✓ ở bước đã xong, bấm được để quay lại; nút Back của trình duyệt về bước trước mà không mất dữ liệu. Chỉ sửa giỏ ở hai bước đầu, chưa giữ chỗ, chưa tạo đơn | Spec checkout-nhieu-buoc §6.2 |
+| Điền sẵn | Họ tên Người lớn 1 và người liên hệ lấy từ tài khoản (bỏ trống nếu tên tài khoản không dùng được làm họ tên trên giấy tờ). Email khóa (đổi email ngoài phạm vi). Số người lớn, trẻ em lấy từ giỏ | `[R67]` Tripadvisor web (email khóa, trường hợp lệ có ✓ xanh) |
+| Kiểm tra hợp lệ | Kiểm tra khi rời trường (blur), không kiểm tra theo từng phím. Lỗi hiện ngay dưới trường. Nút **Tiếp tục** luôn bấm được: còn lỗi thì ở lại bước, hiện hộp "Còn n thông tin cần sửa" (mỗi dòng là link tới trường) và đưa con trỏ về trường lỗi đầu tiên. Backend kiểm lại toàn bộ; lỗi từ Backend đưa về đúng bước chứa trường lỗi | `[R67]` Tripadvisor web; spec checkout-nhieu-buoc §5, §6.7 |
+| Đoàn khách và phân bổ | Khai đoàn một lần (người lớn từ 12 tuổi, trẻ em dưới 12 tuổi kèm ngày sinh, mỗi người họ và tên đệm và tên). Ở từng dịch vụ chọn ai dùng; khách sạn xếp người vào phòng (mỗi phòng ≥ 1 người lớn, không vượt sức chứa, có người đại diện). Vé máy bay, vé tham quan, golf, combo mặc định gán cả đoàn | Spec checkout-nhieu-buoc §6.5, §6.6 |
+| Giá theo loại khách | Vé có giá trẻ em hợp lệ thì trẻ em trả giá đó; còn lại trả giá người lớn. Mọi số tiền hiển thị lấy từ `CartResponse` (`fares`, `lineTotal`, `total`); Web không tự cộng | Spec checkout-nhieu-buoc §4 |
+| **Khối phương thức thanh toán** | Ở bước ③. Chỉ Stripe (chọn sẵn); ví điện tử, chuyển khoản hiển thị vô hiệu hoá, nhãn "Sắp có" (`docs/prd/user-flow.md` §3.3). Không vẽ form thẻ: khách nhập thẻ trên trang do Stripe host | `[R68]` Airbnb web ("Add a payment method") |
+| Tóm tắt dính phải | Đoàn khách ("2 người lớn · 1 trẻ em"), tên + ngày + số lượng + thành tiền từng mục, tổng, link "Sửa giỏ hàng". Khi một `PATCH` giỏ đang chạy, thành tiền của mục và tổng hiện khung chờ. Trên mobile là thanh cố định ở đáy kèm bottom sheet | `[R66]` Klook web; `[R57]` Navan web ("In this booking") |
+| CTA | Bước ①, ②: "Tiếp tục". Bước ③: "Thanh toán ({tổng})", disabled cho tới khi đã chọn phương thức và tick điều khoản (gồm xác nhận họ tên và chính sách huỷ). Dưới nút: "Giữ chỗ 30 phút sau khi bấm Thanh toán. Bạn sẽ được chuyển sang Stripe." | `[R70]` KAYAK web (nút "Confirm booking" disabled + đoạn điều khoản ngay trên) |
 
 #### 4.5.3 Trạng thái
 
@@ -467,7 +462,8 @@ Có thể bị cắt (handbook §2, mục 4). Nếu cắt: bỏ route `/cart`, n
 | Đang gửi | Nút đổi thành spinner + "Đang giữ chỗ và mở trang thanh toán…", disabled để **chống bấm hai lần** (Backend cũng chỉ cho một đơn giữ chỗ mỗi người). Pattern: `[R86]` Uvodo web (spinner nằm trong nút chính) |
 | Thành công (`201 PENDING_PAYMENT`) | Chuyển trình duyệt sang `payment.checkoutUrl` (trang Stripe). Stripe đưa về `/booking/:referenceCode?payment=return` hoặc `?payment=cancelled` |
 | Đang có đơn giữ chỗ (`409 BOOKING_PENDING_PAYMENT`) | Hộp thoại: "Tiếp tục thanh toán đơn đó" hoặc "Huỷ đơn đó và đặt lại từ giỏ" |
-| Giá đổi (`409 PRICE_CHANGED`) | Banner giá cũ → giá mới + [Cập nhật và tiếp tục] (xác nhận giá mới vào giỏ), khách bấm Thanh toán lần nữa |
+| Dữ liệu chưa hợp lệ (`400 VALIDATION_ERROR`) | Về bước chứa trường lỗi (① hoặc ②), gắn lỗi vào từng trường và hiện hộp "Còn n thông tin cần sửa"; dữ liệu đã nhập giữ nguyên |
+| Giá đổi (`409 PRICE_CHANGED`) | Banner giá cũ → giá mới (giá vé trẻ em đổi thì ghi "Giá vé trẻ em của …") + [Cập nhật và tiếp tục] (xác nhận giá mới vào giỏ), khách bấm Thanh toán lần nữa |
 | Một mục hết chỗ (4xx) | Banner trên cùng: "{tên} vừa hết chỗ." + [Quay lại giỏ]. Dữ liệu đã nhập được giữ nguyên |
 | Stripe không phản hồi (`503`) / lỗi mạng / 5xx | Banner "Cổng thanh toán tạm thời không phản hồi" (hoặc thông điệp lỗi) + [Thử lại]. Không xóa form, không tạo đơn |
 | 401 giữa chừng | Modal đăng nhập lại, giữ dữ liệu form trong bộ nhớ, sau đó gửi lại |
@@ -616,7 +612,7 @@ Bố cục dưới đây là UX mục tiêu. Frontend hiện render form và k�
 
 | Từ | Nội dung điền sẵn |
 |---|---|
-| Header "Trợ lý" | Rỗng (hiện câu mẫu) |
+| Nút "Trợ lý" của tab bar mobile | Rỗng (hiện câu mẫu) |
 | Home, thẻ ③ | "Gợi ý lịch trình 3 ngày ở {destination}" |
 | Search, thẻ trong danh sách | "{q}", ví dụ "nghỉ dưỡng biển cho gia đình" |
 | Product detail | "Gợi ý lịch trình 3 ngày ở {destination}, tôi ở {tên khách sạn}" |
@@ -920,7 +916,7 @@ Quy tắc chung: vùng chạm ≥ 44 × 44 px, lề ngang 16 px, không cuộn n
 
 - **Tab bar dưới 5 mục:** Trang chủ · Tìm kiếm · Trợ lý · Giỏ hàng (badge) · Tài khoản. Pattern: `[R123]` Airbnb iOS (Explore · Wishlists · Trips · Messages · Profile); `[R10]` Agoda iOS (Home · My Trips · Deals · Saved · More).
 - Tab bar **ẩn** trong: Checkout, màn hình chat đang gõ (bàn phím mở), sheet toàn màn hình.
-- Header mobile: logo + icon tài khoản. Trên Search/Detail thì thay bằng nút ← + **ô tìm kiếm dạng viên thuốc** chứa truy vấn/tên. Pattern: `[R117]` Agoda iOS (viên "SOCIAL on Outram · Jul 14 – Jul 15" trên đầu trang chi tiết).
+- Header mobile: logo + ngôn ngữ + đăng nhập/tài khoản (nhóm dịch vụ bị ẩn). Lối vào danh mục là hàng chip cuộn ngang (`VerticalChips`, cao 44 px) ở đầu Home và trang danh mục; tab bar dưới vẫn 5 mục. Trên Search/Detail thì thay bằng nút ← + **ô tìm kiếm dạng viên thuốc** chứa truy vấn/tên. Pattern: `[R117]` Agoda iOS (viên "SOCIAL on Outram · Jul 14 – Jul 15" trên đầu trang chi tiết).
 
 ### 7.3 Từng màn hình trên mobile
 
@@ -931,7 +927,7 @@ Quy tắc chung: vùng chạm ≥ 44 × 44 px, lề ngang 16 px, không cuộn n
 | **Search (kết quả)** | Thẻ dọc (ảnh trên, nội dung dưới). Hàng chip dính dưới header: [Bộ lọc (n)] [Khách sạn] [Vé tham quan] [Sắp xếp ▾]. "Bộ lọc" mở bottom sheet toàn phần, nút dính đáy "Xem {n} kết quả" | `[R120]` Agoda iOS (chip "Filters 6" + khoảng giá + "Sort" dính trên cùng); `[R36]` Booking.com iOS (sheet lọc với nút dính đáy "925 matching properties · Show results"); `[R121]` Skyscanner iOS (nút nổi "Sort and filters") |
 | **Product detail** | Ảnh full-width trên cùng. Tabs anchor thành hàng cuộn ngang dính. Hộp đặt chuyển thành **thanh dính đáy**: "Từ 3.400.000 ₫ / đêm" + [Chọn ngày] → mở bottom sheet chọn ngày/số lượng → [Thêm vào giỏ] [Đặt ngay]. Section Tương tự thành carousel | `[R117]` Agoda iOS (thanh đáy "Start at S$64 · Choose my room"); `[R118]` Agoda iOS (vé tham quan: thẻ ngày cuộn ngang + thanh đáy "Starts from · See options") |
 | **Cart** | Danh sách 1 cột. Tóm tắt thành **thanh dính đáy**: "Tổng 14.180.000 ₫ ▴" (bấm để mở chi tiết) + [Đặt chỗ]. "Thường được đặt cùng" carousel dưới danh sách | `[R58]` Klook web (bản desktop; cấu trúc tương đương) |
-| **Checkout** | 1 cột, 3 khối xếp dọc, khối tóm tắt đơn gập được ở đầu trang ("Đơn của bạn · 2 dịch vụ ▾"). CTA dính đáy "Xác nhận đặt chỗ" + dòng "Bản demo — không thu tiền" dưới nút. Bàn phím: email `type=email`, điện thoại `type=tel` | `[R119]` Agoda iOS (CTA dính đáy "NEXT: FINAL STEP" + dòng "You will pay SGD0 today") |
+| **Checkout** | 1 cột, ba bước. Thanh cố định ở đáy: "2 người lớn · 1 trẻ em", tổng tiền ⌃ (bấm mở bottom sheet tóm tắt đơn) và nút chính của bước (Tiếp tục / Thanh toán {tổng}). Bàn phím: email `type=email`, điện thoại `type=tel`, ngày sinh `inputMode=numeric`. Dòng "Giữ chỗ 30 phút sau khi bấm Thanh toán" dưới nút ở bước ③ | `[R119]` Agoda iOS (CTA dính đáy "NEXT: FINAL STEP") |
 | **Confirmation** | Mã tham chiếu + nút sao chép trên cùng. Hai CTA xếp dọc full-width. Gợi ý thành carousel | — |
 | **Login / Register** | Trang toàn màn hình (không dùng modal) | `[R82]` Skyscanner iOS (màn hình đăng nhập toàn phần) |
 | **Popover "Vì sao?"** | Bottom sheet cao ≤ 70% màn hình, kéo xuống để đóng | `[R24]` Vinted iOS |

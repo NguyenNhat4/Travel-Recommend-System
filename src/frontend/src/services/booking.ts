@@ -13,6 +13,13 @@ export type AddCartItemRequest = components['schemas']['AddCartItemRequest'];
 export type UpdateCartItemRequest = components['schemas']['UpdateCartItemRequest'];
 export type CheckoutRequest = components['schemas']['CheckoutRequest'];
 export type CheckoutItemDetail = components['schemas']['CheckoutItemDetail'];
+export type CheckoutTraveler = components['schemas']['CheckoutTraveler'];
+export type CheckoutRoom = components['schemas']['CheckoutRoom'];
+export type GuestCounts = components['schemas']['GuestCounts'];
+export type FareLine = components['schemas']['FareLine'];
+export type BookingTraveler = components['schemas']['BookingTraveler'];
+export type ValidationFieldError = components['schemas']['ValidationFieldError'];
+export type ApiBookingItem = components['schemas']['BookingItem'];
 export type BookingResponse = components['schemas']['BookingResponse'];
 export type BookingStatus = components['schemas']['BookingStatus'];
 export type PaymentFailureReason = components['schemas']['PaymentFailureReason'];
@@ -61,6 +68,6 @@ export function redirectToCheckout(url: string): void {
 export const PAYMENT_POLL_INTERVAL_MS = 2000;
 export const PAYMENT_POLL_MAX_ATTEMPTS = 15;
 
-export function bookingItems(booking: BookingResponse) {
+export function bookingItems(booking: BookingResponse): ApiBookingItem[] {
   return booking.groups.flatMap((group) => group.items);
 }

@@ -3,15 +3,18 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useTravel } from '../../context/TravelContext';
-import { EMPTY_SEARCH_RESPONSE, searchProductsApi, SortOption, SearchResponse } from '../../services/search';
+import { useAssistant } from '../../context/AssistantProvider';
+import { DEFAULT_QUERY, EMPTY_SEARCH_RESPONSE, searchProductsApi, SortOption, SearchResponse } from '../../services/search';
 import { ApiError } from '../../services/http';
 import { Destination, Taxonomy } from '../../types/travel';
 import { ProductCard } from '../common/ProductCard';
+import { describeTripContext, parseTripContext, serializeTripContext } from '../../features/search/tripContext';
 import { SearchBox } from '../common/SearchBox';
 import { Search, Filter, Sparkles, HelpCircle, X, ArrowUpDown, ChevronDown, Loader2 } from 'lucide-react';
 
 export const SearchView: React.FC = () => {
   const { navigate } = useTravel();
+  const { openFloatingWidget } = useAssistant();
   const searchParams = useSearchParams();
 
   // Extract parameters from URL (?q=..., ?type=... / ?taxonomy=..., ?destination=...)
@@ -27,6 +30,14 @@ export const SearchView: React.FC = () => {
       destinationParam: dest,
     };
   }, [searchParams]);
+
+  // Ngữ cảnh chuyến đi từ tấm tìm kiếm ở trang danh mục: đi tiếp tới trang chi tiết để điền sẵn hộp đặt, không lọc kết quả.
+  const tripQuery = useMemo(() => serializeTripContext(parseTripContext(searchParams)), [searchParams]);
+  const tripSummary = useMemo(() => describeTripContext(parseTripContext(searchParams)), [searchParams]);
+  const withTrip = (url: URL) => {
+    new URLSearchParams(tripQuery).forEach((value, key) => url.searchParams.set(key, value));
+    return url;
+  };
 
   const [searchInput, setSearchInput] = useState(queryParam);
   const [selectedDestinations, setSelectedDestinations] = useState<Destination[]>(() => {
@@ -99,6 +110,7 @@ export const SearchView: React.FC = () => {
       url.searchParams.delete('type');
       url.searchParams.delete('taxonomy');
     }
+    withTrip(url);
     navigate(url.pathname + url.search);
   };
 
@@ -113,6 +125,7 @@ export const SearchView: React.FC = () => {
       if (selectedTaxonomy) {
         url.searchParams.set('type', selectedTaxonomy);
       }
+      withTrip(url);
       navigate(url.pathname + url.search);
     } catch {
       // fallback
@@ -139,7 +152,8 @@ export const SearchView: React.FC = () => {
 
   // Compute readable heading based on search query or active category
   const headerTitle = useMemo(() => {
-    if (queryParam) {
+    const isDefaultQuery = Object.values(DEFAULT_QUERY).includes(queryParam.trim().toLowerCase());
+    if (queryParam && !(isDefaultQuery && selectedTaxonomy)) {
       return `Kết quả cho “${queryParam}”`;
     }
     switch (selectedTaxonomy) {
@@ -173,6 +187,7 @@ export const SearchView: React.FC = () => {
           if (selectedTaxonomy) {
             url.searchParams.set('type', selectedTaxonomy);
           }
+          withTrip(url);
           navigate(url.pathname + url.search);
         }}
         placeholder="Nhập truy vấn tự do: nghỉ dưỡng 5 sao, vé vui chơi, vé máy bay..."
@@ -189,9 +204,14 @@ export const SearchView: React.FC = () => {
       {/* Query Header & Category Tabs */}
       <div className="space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2">
-          <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+          <h1 className="text-xl sm:text-2xl font-black text-slate-900">
             {headerTitle}
           </h1>
+          {tripSummary && (
+            <span className="text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-100 rounded-full px-3 py-1" title="Ngày và số khách sẽ được điền sẵn khi bạn chọn dịch vụ">
+              Chuyến đi: {tripSummary}
+            </span>
+          )}
           <span className="text-xs font-semibold text-slate-500 flex items-center gap-1.5">
             {isLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />}
             <span>Tìm thấy {searchResponse.total}{searchResponse.totalExact === false ? '+' : ''} dịch vụ phù hợp</span>
@@ -240,7 +260,7 @@ export const SearchView: React.FC = () => {
 
           {/* Destination Filter */}
           <div className="space-y-2.5">
-            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+            <h4 className="font-sans text-xs font-bold text-slate-800 uppercase tracking-wider">
               Điểm đến
             </h4>
             {(['Nha Trang', 'Phú Quốc', 'Đà Nẵng', 'Hội An', 'Hạ Long'] as Destination[]).map(dest => (
@@ -258,7 +278,7 @@ export const SearchView: React.FC = () => {
 
           {/* Star Rating Filter */}
           <div className="space-y-2.5 pt-4 border-t border-slate-100">
-            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+            <h4 className="font-sans text-xs font-bold text-slate-800 uppercase tracking-wider">
               Hạng sao khách sạn
             </h4>
             <div className="space-y-1.5">
@@ -283,7 +303,7 @@ export const SearchView: React.FC = () => {
 
           {/* Price Range Filter */}
           <div className="space-y-2.5 pt-4 border-t border-slate-100">
-            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+            <h4 className="font-sans text-xs font-bold text-slate-800 uppercase tracking-wider">
               Mức giá tối đa
             </h4>
             <div className="space-y-2">
@@ -394,7 +414,7 @@ export const SearchView: React.FC = () => {
             <div className="p-3 bg-amber-50 text-amber-900 border border-amber-200 rounded-xl text-xs flex items-center justify-between">
               <span>Chưa tìm thấy kết quả khớp tuyệt đối với &ldquo;{queryParam}&rdquo;. Đây là những lựa chọn gần nghĩa nhất.</span>
               <button 
-                onClick={() => navigate('/assistant')}
+                onClick={() => openFloatingWidget(queryParam || undefined)}
                 className="font-bold underline text-amber-950 ml-2 shrink-0"
               >
                 Hỏi Trợ lý AI →
@@ -428,6 +448,7 @@ export const SearchView: React.FC = () => {
                   <ProductCard
                     product={item.product}
                     variant="row"
+                    tripQuery={tripQuery}
                     score={item.relevanceScore}
                     rank={index + 1}
                   />
@@ -440,7 +461,7 @@ export const SearchView: React.FC = () => {
                           <Sparkles className="w-5 h-5" />
                         </div>
                         <div>
-                          <h4 className="text-xs font-bold text-white">
+                          <h4 className="font-sans text-xs font-bold text-white">
                             Muốn ghép các dịch vụ này thành lịch trình trọn gói?
                           </h4>
                           <p className="text-[11px] text-slate-300">
@@ -449,7 +470,7 @@ export const SearchView: React.FC = () => {
                         </div>
                       </div>
                       <button
-                        onClick={() => navigate('/assistant')}
+                        onClick={() => openFloatingWidget(queryParam || undefined)}
                         className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-lg shadow-xs transition-colors shrink-0 whitespace-nowrap"
                       >
                         Hỏi trợ lý với truy vấn này →
@@ -481,7 +502,7 @@ export const SearchView: React.FC = () => {
                   Xóa bộ lọc
                 </button>
                 <button
-                  onClick={() => navigate('/assistant')}
+                  onClick={() => openFloatingWidget(queryParam || undefined)}
                   className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-lg transition-colors"
                 >
                   Nhờ Trợ lý AI gợi ý

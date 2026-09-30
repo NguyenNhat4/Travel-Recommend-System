@@ -45,7 +45,9 @@ RUN_REDIS_INTEGRATION=1 python -m pytest -q src/backend/tests/integration`.
 
 Luồng và sơ đồ: `docs/spec/booking/so-do-luong-dat-cho-thanh-toan.md`. `POST /bookings` giữ chỗ 30 phút và trả
 `payment.checkoutUrl` (trang Stripe Checkout); đơn chỉ `CONFIRMED` khi webhook có chữ ký báo đã thu tiền (hoặc job
-đối soát tự hỏi Stripe). Database cần migration `0003`, `0004` (`make db-migrate`).
+đối soát tự hỏi Stripe). Database cần migration `0003`, `0004`, `0005` (`make db-migrate`).
+
+Checkout ba bước (FR-BKG-08, `docs/spec/booking/checkout-nhieu-buoc-hanh-khach.md`): giỏ lưu `guests` (người lớn, trẻ em) và trả `fares`; `POST /bookings` nhận `travelers` và `itemDetails` theo từng mục, kiểm mọi luật trước khi gọi Stripe và trả `400 VALIDATION_ERROR` liệt kê hết vi phạm. Luật nằm ở `domain/booking/party_rules.py`, giá theo loại khách ở `domain/booking/fares.py`; Web chạy cùng bộ ca `src/shared/contracts/tests/booking-rules-cases.json`. Migration `0005` cần chạy trước khi khởi động Backend mới (thêm cột vào `app.cart_items`, bảng `app.booking_travelers`); chạy `python db/migrations/run.py --status` để xem đã áp chưa.
 
 ```env
 STRIPE_SECRET_KEY=sk_test_...      # chỉ khoá test; sk_live_ bị từ chối khi khởi động
@@ -71,7 +73,7 @@ pytest -q src/backend/tests/integration/test_booking_postgres.py` (dùng user te
 
 | Lớp | Thư mục | Nội dung |
 |---|---|---|
-| domain | `domain/<domain>/` | Business rule thuần: vai trò sản phẩm + text builder (`catalog`), FILTER → SCORE → CUTOFF (`search`), hồ sơ người dùng + MMR + phổ biến (`recommendation`), chuẩn hoá intent + ghép lịch trình (`itinerary`), mật khẩu + phiên (`auth`), máy trạng thái đơn/thanh toán + giữ chỗ + chính sách huỷ (`booking`) |
+| domain | `domain/<domain>/` | Business rule thuần: vai trò sản phẩm + text builder (`catalog`), FILTER → SCORE → CUTOFF (`search`), hồ sơ người dùng + MMR + phổ biến (`recommendation`), chuẩn hoá intent + ghép lịch trình (`itinerary`), mật khẩu + phiên (`auth`), máy trạng thái đơn/thanh toán + giữ chỗ + chính sách huỷ + đoàn khách, dòng giá theo loại khách và luật kiểm (`booking`: `party`, `fares`, `party_rules`) |
 | application | `application/ports/` | Mỗi port một file: `cdp_client.py` (`CdpClient` ghi, `CdpHistoryReader` đọc), `embedder.py`, `vector_store.py`, `unit_index.py`, `llm.py`, `itinerary_planner.py`, `itinerary_tools.py`, `auth.py`, `payment_gateway.py`, `booking_store.py`, `cart_repository.py`, `product_catalog.py`, `product_query.py` (GET /products) |
 | application | `application/<domain>/` | Use case: `SearchProducts`, `SimilarProducts`, `RecommendForUser`, `BuildPopularity`, `PlanItinerary`, auth, booking, tracking; `itinerary/engine_tools.py` (`InProcessItineraryTools`, tool itinerary gọi engine trong tiến trình); `auth/bearer.py` (resolver Bearer dùng chung cho `api/deps.py` và tool) |
 | agents | `agents/` | LangGraph 10 node; `runtime_dependencies.py` hiện thực port `ItineraryPlanner`; `tools/itinerary_gateway.py` gọi Search/Recommendation (và Similar ở lượt đổi món) qua port |
