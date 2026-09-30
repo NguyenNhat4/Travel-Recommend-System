@@ -130,7 +130,7 @@ Các dòng dưới đây thay chỗ tương ứng trong các mục sau; nội du
 | **tổng** | | |
 
 - [ ] Thiết kế cache embedding query: key = query **sau** `domain/search/normalize.py`; value = vector; TTL dài (embedding không đổi theo thời gian); LRU in-process (+ Redis nếu đã có trong stack); danh sách prewarm = 200 câu gold + head query từ `app.search_logs`. PR khung; code chính Day 3. *(2h)*
-- [ ] Đo p95 `/recommendations` **trên cloud** với 60 user đã dùng cho brute-force check (local: p50 127 / p95 143 ms). Cloud: p50 ____ / p95 ____. *(1h)*
+- [x] Đo p95 `/recommendations` **trên cloud** với 60 user đã dùng cho brute-force check (local: p50 127 / p95 143 ms). Cloud (01/10, **guest path** — không cookie → `popular`, không phải 60 khách vì `/internal/recommendations` cần IAP + `X-Service-Token`; `recsys_bench http-latency`, 3 lượt × 5 GET, bỏ lượt 1): server `latencyMs` p50 **9** / p95 **10** ms · client qua BFF p50 141 / p95 391 ms. Run `bench_out/recsys/runs/20261001-cloud-guest/`. *(1h)*
 
 ### Checkpoint Day 2
 - [ ] pilot κ đạt · ≥ 2.000 cặp có nhãn · bảng sanity + baseline v0 với thứ tự đúng · cloud parity + latency breakdown · p95 recsys cloud

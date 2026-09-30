@@ -176,6 +176,24 @@ python -m src.evaluation.recsys_bench run --arm random --arm most_popular --arm 
 --arm engine_prod --split llbo|temporal --vectors weaviate --run-id <id>`; số thô ở
 `bench_out/recsys/runs/2026-09-30-{llbo,temporal}-v2/` (v1 = trước khi có mode eval, engine = engine_prod).
 
+### 4.5. Ngày 01/10 — p95 `/recommendations` trên Cloud (guest path)
+
+`python -m src.evaluation.recsys_bench http-latency --base-url https://v-ota.duckdns.org --runs 3 --k 5` (01/10 ~01:30 UTC+7,
+qua BFF công khai, không cookie → `strategy = popular`; 3 lượt × 5 GET, bỏ lượt 1 khỏi p50/p95):
+
+| Đường | n | `latencyMs` p50 | p95 | client p50 | p95 | strategy |
+|---|---:|---:|---:|---:|---:|---|
+| guest | 10 | **9 ms** | **10 ms** | 141 ms | 391 ms | popular ×15 |
+
+- Số server (engine) xa dưới ngân sách 300 ms (spec search-recommendation §7.1, "cache hit"); phần còn lại của wall phía
+  client là RTT + BFF + TLS, không phải engine.
+- **Không phải số của 60 khách**: đường có JWT / `/internal/recommendations` (cần IAP + `X-Service-Token`) chưa đo được từ
+  ngoài; khi ops mở IAP chạy lại với `--users frozen/users60.json --token-env AUTH_SERVICE_TOKEN`. Local 24/09 với 60 khách:
+  p50 127 / p95 143 ms (lịch 10 ngày Day 2 C).
+- Cùng lúc đó `/api/v1/search` công khai treo rồi 500 sau ~64 s (chuỗi backoff Cohere 2+4+8+16+32 s) trong khi `/similar`
+  (chỉ Weaviate) 1,5 s và `/recommendations` bình thường → lỗi ở bước embed Cohere trên VM (khoá / egress), không phải Weaviate;
+  chờ ops kiểm log container. Run: `bench_out/recsys/runs/20261001-cloud-guest/http_latency.json`.
+
 ## 5. Kiểm nhanh P1 `VP0000001` (Day 1 C)
 
 Lệnh `user --id VP0000001 --k 5`, `as_of` 2026-09-24, 12 event lịch sử, cùng engine production (không HTTP).
