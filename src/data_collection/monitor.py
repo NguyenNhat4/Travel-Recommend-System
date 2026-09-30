@@ -142,6 +142,11 @@ STEP_SOURCE = {"vinpearl": "vinpearl", "trip-flights": "trip_flights", "trip-att
 # ---------------------------------------------------------------------------------------------------- tiện ích
 
 
+def prefixed(params: dict, prefix: str) -> dict:
+    """`f.cột=giá trị` → {cột: giá trị}; giá trị `\\N` = NULL (bộ lọc / khoá của tab DB)."""
+    return {k[len(prefix):]: (None if v == "\\N" else v) for k, v in params.items() if k.startswith(prefix)}
+
+
 def read_json(path: Path, default=None):
     try:
         return json.loads(Path(path).read_text(encoding="utf-8"))
@@ -670,6 +675,33 @@ class FreshMonitor:
             return run_alerts.sla_status(self.state_dir, self.run_root, values)
         except Exception as exc:  # cấu hình lỗi, file hỏng: vẫn hiện phần còn lại của trang
             return {"enabled": False, "error": f"{type(exc).__name__}: {exc}"[:300], "rules": []}
+
+    def dbx(self):
+        """Tab "DB": xem toàn bộ database đích (chỉ đọc; docs/prd/deployment-plan.md §5)."""
+        from db_browser import DbBrowser
+        db_target = os.environ.get("DB_TARGET", "local")
+        url = os.environ.get("SEED_DATABASE_URL" if db_target == "local" else "CLOUD_SEED_DATABASE_URL") or ""
+        if not url:
+            raise ValueError("Monitor chưa có kết nối DB (SEED_DATABASE_URL / CLOUD_SEED_DATABASE_URL)")
+        if getattr(self, "_dbx", None) is None or self._dbx.url != url:
+            self._dbx = DbBrowser(url)
+        return self._dbx
+
+    def backend_calls(self, after: int = 0, limit: int = 200) -> dict:
+        """Lần gọi web / agent gần nhất từ backend (`GET /internal/calls`, docs/prd/deployment-plan.md §5)."""
+        import urllib.error
+        import urllib.parse
+        import urllib.request
+        base = os.environ.get("BACKEND_URL", "http://127.0.0.1:8000").rstrip("/")
+        query = urllib.parse.urlencode({"after": max(0, int(after)), "limit": max(1, min(int(limit), 1000))})
+        try:
+            with urllib.request.urlopen(f"{base}/internal/calls?{query}", timeout=5) as response:
+                data = json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            raise ValueError(f"Backend trả HTTP {exc.code} cho /internal/calls (bản backend chưa có đo lần gọi?)") from None
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            raise ValueError(f"Không gọi được backend {base}: {getattr(exc, 'reason', exc)}") from None
+        return {**data, "backend": base}
 
     def targets(self) -> dict:
         """Nơi lượt kế tiếp sẽ ghi (host/database/collection, không có tài khoản hay mật khẩu)."""
@@ -2038,6 +2070,14 @@ class Handler(BaseHTTPRequestHandler):
                                               q.get("q", ""), num("offset", 0), num("limit", 100)),
                 "/api/embed/row": lambda: m.embed_row(q.get("run", ""), q.get("id", "")),
                 "/api/embed/vector": lambda: m.embed_vector(q.get("id", "")),
+                "/api/calls": lambda: m.backend_calls(num("after", 0), num("limit", 200)),
+                "/api/dbx/tables": lambda: m.dbx().tables(),
+                "/api/dbx/graph": lambda: m.dbx().graph(),
+                "/api/dbx/rows": lambda: m.dbx().rows(q.get("table", ""), prefixed(q, "f."), q.get("q", ""),
+                                                      q.get("sort", ""), q.get("desc") == "1", num("offset", 0),
+                                                      num("limit", 50)),
+                "/api/dbx/row": lambda: m.dbx().row(q.get("table", ""), prefixed(q, "k.")),
+                "/api/dbx/children": lambda: m.dbx().children(q.get("id", ""), num("offset", 0), num("limit", 50)),
             }
             if url.path in routes:
                 return self._json(routes[url.path]())

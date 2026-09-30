@@ -123,7 +123,7 @@ src/backend/app/
 ├── agents/                  # LangGraph: state, graph, node, steps/ (luật của từng bước) và tools/; hiện thực port planner itinerary
 ├── api/                     # LỚP 4: chỉ xử lý HTTP
 │   ├── deps.py              # FastAPI Depends: lấy use case đã nối sẵn, route không tự lắp ráp
-│   ├── middleware.py        # Request ID, CORS...
+│   ├── middleware.py        # Request ID, CORS, đo thời gian / trạng thái request cho /metrics...
 │   ├── errors.py            # Error Envelope + exception handler
 │   └── v1/
 │       ├── router.py        # Router v1 duy nhất; route không tự khai prefix /api/v1
@@ -153,6 +153,7 @@ Mỗi domain có namespace riêng trong `domain/` và `application/` để các 
 8. **`api`** chỉ gọi use case trong `application`, không import `agents` hay `infrastructure`. Use case itinerary gọi agent qua port; `main.py` nối LangGraph vào port đó.
 9. **`core`** không import FastAPI. Phần dính framework (middleware, exception handler) nằm trong `api/`.
 10. Bản giả dùng cho test đặt ở `tests/fakes/`, không đặt trong `infrastructure/`.
+    Đo lần gọi (web / agent) đi qua port `call_telemetry` trong `application/ports/`; bộ nhớ đệm sự kiện hiện thực ở `infrastructure/`, endpoint ở `api/` (`docs/prd/deployment-plan.md` §5).
 11. Quy tắc 1–9 được kiểm tự động bằng test trong `tests/architecture/`; test này chạy trong CI như unit test.
 
 ```text

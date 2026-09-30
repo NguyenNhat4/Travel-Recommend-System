@@ -20,6 +20,30 @@ resource "google_logging_metric" "staging_error_logs" {
   }
 }
 
+resource "google_logging_metric" "staging_http_requests_total" {
+  name        = "${var.name_prefix}_http_requests_total"
+  description = "Backend HTTP access requests observed in Uvicorn access logs."
+  filter      = "resource.type=\"gce_instance\" AND resource.labels.instance_id=\"${data.google_compute_instance.app.instance_id}\" AND jsonPayload.log=~\"HTTP/1.1.* [0-9][0-9][0-9]\""
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "INT64"
+    unit        = "1"
+  }
+}
+
+resource "google_logging_metric" "staging_http_requests_5xx" {
+  name        = "${var.name_prefix}_http_requests_5xx"
+  description = "Backend HTTP 5xx responses observed in Uvicorn access logs."
+  filter      = "resource.type=\"gce_instance\" AND resource.labels.instance_id=\"${data.google_compute_instance.app.instance_id}\" AND jsonPayload.log=~\"HTTP/1.1.* 5[0-9][0-9]\""
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "INT64"
+    unit        = "1"
+  }
+}
+
 resource "google_logging_metric" "staging_crawler_warning" {
   name        = "${var.name_prefix}_crawler_warning"
   description = "Crawler runs that completed with the known partial-result exit code 3."
@@ -45,7 +69,7 @@ resource "google_logging_metric" "staging_crawler_failure" {
 }
 
 resource "google_logging_metric" "staging_container_stop" {
-  name        = "${var.name_prefix}_container_stop"
+  name        = "${var.name_prefix}_container_stop_by_name"
   description = "Unexpected lifecycle stop events for service containers."
   filter      = "resource.type=\"gce_instance\" AND jsonPayload.container_class=\"service\" AND jsonPayload.event=\"die\""
 
@@ -53,6 +77,20 @@ resource "google_logging_metric" "staging_container_stop" {
     metric_kind = "DELTA"
     value_type  = "INT64"
     unit        = "1"
+
+    labels {
+      key         = "container_name"
+      value_type  = "STRING"
+      description = "Docker container name that emitted the lifecycle event."
+    }
+  }
+
+  label_extractors = {
+    container_name = "EXTRACT(jsonPayload.container_name)"
+  }
+
+  lifecycle {
+    create_before_destroy = true
   }
 }
 
@@ -105,6 +143,61 @@ resource "google_monitoring_uptime_check_config" "staging_health" {
     "EUROPE",
     "ASIA_PACIFIC",
   ]
+}
+
+resource "google_monitoring_custom_service" "staging_api" {
+  service_id   = "vota-staging-api"
+  display_name = "${var.name_prefix} API"
+  user_labels  = local.common_labels
+}
+
+resource "google_monitoring_slo" "staging_availability" {
+  service             = google_monitoring_custom_service.staging_api.service_id
+  slo_id              = "vota-staging-availability"
+  display_name        = "${var.name_prefix} availability"
+  goal                = 0.995
+  rolling_period_days = 30
+  user_labels         = local.common_labels
+
+  windows_based_sli {
+    window_period          = "60s"
+    good_bad_metric_filter = "metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\" AND resource.type=\"uptime_url\" AND metric.labels.check_id=\"${google_monitoring_uptime_check_config.staging_health.uptime_check_id}\""
+  }
+}
+
+resource "google_monitoring_slo" "staging_error_rate" {
+  service             = google_monitoring_custom_service.staging_api.service_id
+  slo_id              = "vota-staging-error-rate"
+  display_name        = "${var.name_prefix} error rate"
+  goal                = 0.995
+  rolling_period_days = 30
+  user_labels         = local.common_labels
+
+  request_based_sli {
+    good_total_ratio {
+      total_service_filter = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.staging_http_requests_total.name}\" AND resource.type=\"gce_instance\""
+      bad_service_filter   = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.staging_http_requests_5xx.name}\" AND resource.type=\"gce_instance\""
+    }
+  }
+}
+
+resource "google_monitoring_slo" "staging_latency" {
+  service             = google_monitoring_custom_service.staging_api.service_id
+  slo_id              = "vota-staging-latency"
+  display_name        = "${var.name_prefix} latency under 1s"
+  goal                = 0.95
+  rolling_period_days = 30
+  user_labels         = local.common_labels
+
+  windows_based_sli {
+    window_period = "60s"
+    metric_mean_in_range {
+      time_series = "metric.type=\"monitoring.googleapis.com/uptime_check/request_latency\" AND resource.type=\"uptime_url\" AND metric.labels.check_id=\"${google_monitoring_uptime_check_config.staging_health.uptime_check_id}\""
+      range {
+        max = 1000
+      }
+    }
+  }
 }
 
 resource "google_monitoring_alert_policy" "staging_uptime" {
@@ -582,6 +675,41 @@ resource "google_monitoring_dashboard" "staging" {
           }
         },
         {
+          title = "Backend container logs"
+          logsPanel = {
+            filter        = "resource.type=\"gce_instance\" AND resource.labels.instance_id=\"${data.google_compute_instance.app.instance_id}\" AND jsonPayload.container_name=\"vota-backend\""
+            resourceNames = ["projects/${var.project_id}"]
+          }
+        },
+        {
+          title = "Frontend container logs"
+          logsPanel = {
+            filter        = "resource.type=\"gce_instance\" AND resource.labels.instance_id=\"${data.google_compute_instance.app.instance_id}\" AND jsonPayload.container_name=\"vota-frontend\""
+            resourceNames = ["projects/${var.project_id}"]
+          }
+        },
+        {
+          title = "Crawler container logs"
+          logsPanel = {
+            filter        = "resource.type=\"gce_instance\" AND resource.labels.instance_id=\"${data.google_compute_instance.app.instance_id}\" AND (jsonPayload.container_name=\"vota-fresh-catalog\" OR jsonPayload.message:\"fresh-catalog.\")"
+            resourceNames = ["projects/${var.project_id}"]
+          }
+        },
+        {
+          title = "Redis container logs"
+          logsPanel = {
+            filter        = "resource.type=\"gce_instance\" AND resource.labels.instance_id=\"${data.google_compute_instance.app.instance_id}\" AND jsonPayload.container_name=\"vota-redis\""
+            resourceNames = ["projects/${var.project_id}"]
+          }
+        },
+        {
+          title = "Weaviate container logs"
+          logsPanel = {
+            filter        = "resource.type=\"gce_instance\" AND resource.labels.instance_id=\"${data.google_compute_instance.app.instance_id}\" AND jsonPayload.container_name=\"vota-weaviate\""
+            resourceNames = ["projects/${var.project_id}"]
+          }
+        },
+        {
           title = "Readiness check"
           scorecard = {
             timeSeriesQuery = {
@@ -595,6 +723,90 @@ resource "google_monitoring_dashboard" "staging" {
               }
             }
             gaugeView = {
+              upperBound = 1
+            }
+          }
+        },
+        {
+          title = "Availability SLO compliance"
+          scorecard = {
+            timeSeriesQuery = {
+              timeSeriesFilter = {
+                filter = "select_slo_compliance(\"${google_monitoring_slo.staging_availability.name}\")"
+              }
+            }
+            gaugeView = {
+              lowerBound = 0
+              upperBound = 1
+            }
+          }
+        },
+        {
+          title = "Availability SLO error budget"
+          scorecard = {
+            timeSeriesQuery = {
+              timeSeriesFilter = {
+                filter = "select_slo_budget(\"${google_monitoring_slo.staging_availability.name}\")"
+              }
+            }
+            gaugeView = {
+              lowerBound = 0
+              upperBound = 1
+            }
+          }
+        },
+        {
+          title = "Error-rate SLO compliance"
+          scorecard = {
+            timeSeriesQuery = {
+              timeSeriesFilter = {
+                filter = "select_slo_compliance(\"${google_monitoring_slo.staging_error_rate.name}\")"
+              }
+            }
+            gaugeView = {
+              lowerBound = 0
+              upperBound = 1
+            }
+          }
+        },
+        {
+          title = "Error-rate SLO error budget"
+          scorecard = {
+            timeSeriesQuery = {
+              timeSeriesFilter = {
+                filter = "select_slo_budget(\"${google_monitoring_slo.staging_error_rate.name}\")"
+              }
+            }
+            gaugeView = {
+              lowerBound = 0
+              upperBound = 1
+            }
+          }
+        },
+        {
+          title = "Latency SLO compliance"
+          scorecard = {
+            timeSeriesQuery = {
+              timeSeriesFilter = {
+                filter = "select_slo_compliance(\"${google_monitoring_slo.staging_latency.name}\")"
+              }
+            }
+            gaugeView = {
+              lowerBound = 0
+              upperBound = 1
+            }
+          }
+        },
+        {
+          title = "Latency SLO error budget"
+          scorecard = {
+            timeSeriesQuery = {
+              timeSeriesFilter = {
+                filter = "select_slo_budget(\"${google_monitoring_slo.staging_latency.name}\")"
+              }
+            }
+            gaugeView = {
+              lowerBound = 0
               upperBound = 1
             }
           }

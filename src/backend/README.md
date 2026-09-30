@@ -30,7 +30,8 @@ auth v1 `POST /auth/register|login`, `GET /auth/me` · chỉ BFF (`X-Service-Tok
 `GET /cart`, `POST /cart/items`, `PATCH|DELETE /cart/items/{cartItemId}`, `POST /bookings`,
 `GET /bookings/{referenceCode}`, `POST /bookings/{referenceCode}/cancel` · Stripe gọi thẳng (chữ ký, không JWT)
 `POST /payments/stripe/webhook`. Ngoài prefix: `GET /health`,
-`GET /.well-known/jwks.json`.
+`GET /.well-known/jwks.json`, `GET /metrics` (Prometheus), `GET /internal/calls` (lần gọi web / agent gần nhất cho monitor;
+`docs/spec/hop-dong-tich-hop-backend.md` §8.6a).
 
 ## Auth
 
