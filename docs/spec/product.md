@@ -90,7 +90,7 @@ Tài khoản seed đăng nhập qua `/login` như mọi user (email seed + mật
 |---|---|---|---|
 | `/` | Home | Không (khi đã đăng nhập mới có phần cá nhân hóa) | |
 | `/search?q=&taxonomy=&destination=&sort=` | Kết quả tìm kiếm | Không | Route hiện hiển thị trạng thái API chưa khả dụng; page chưa gọi `searchProducts`, xem §1.5 |
-| `/hotels`, `/flights`, `/experiences`, `/combos` | Trang danh mục dịch vụ (hero, tấm tìm kiếm, carousel phổ biến và giá tốt, điểm đến) | Không | Nhận `?destination=`; `/experiences` nhận thêm `?type=attraction\|golf`. Xem frontend §4.1a |
+| `/hotels`, `/flights`, `/experiences`, `/combos` | Trang danh mục dịch vụ (hero, tấm tìm kiếm, carousel phổ biến và giá tốt, điểm đến) | Không | Nhận `?destination=`; `/experiences` nhận thêm `?type=attraction\|golf`; `/flights` không có khối phổ biến và giá tốt: tìm tại chỗ, chuyến bay hiện dưới tấm tìm kiếm, chưa tìm thì nhắc nhập. Xem frontend §4.1a, §4.1b |
 | `/product/:productId` | Chi tiết sản phẩm | Không | |
 | `/cart` | Giỏ hàng | **Có** | Có thể bị cắt (handbook §2, mục 4) |
 | `/checkout` | Checkout | **Có** | |
@@ -235,6 +235,10 @@ Khi người dùng quay về Home từ Confirmation (bấm "Xem gợi ý mới t
 ### 4.2 Search / kết quả tìm kiếm
 
 **Mục đích:** phô diễn semantic search ("nghỉ dưỡng biển cho gia đình" vẫn ra kết quả dù không trùng từ, handbook §1 và §11 Tuần 2).
+
+#### 4.2.0 Kết quả vé máy bay (`/flights?origin&destination`)
+
+Bố cục theo bản mẫu đã duyệt, ngay trên `/flights` (tìm không chuyển trang; chưa nhập thì bên dưới chỉ có lời nhắc nhập): hero và tấm tìm kiếm ở trên, bên dưới là ba cột. Trái: **Bộ lọc** (thời gian khởi hành theo buổi Sáng · Trưa · Chiều · Tối · Khuya, hãng hàng không, điểm dừng, "Đặt lại"). Giữa: tiêu đề "Chọn vé chiều đi" / "Chọn vé chiều về", popup sắp xếp, **dải ngày có chuyến kèm giá thấp nhất mỗi ngày**, danh sách thẻ chuyến bay (giờ đi, giờ đến, hãng, thời lượng, hạng vé, giá "/ khách", nút Chọn, mũi tên mở hành trình và hạng vé). Phải: **Vé của tôi** (chiều đi, chiều về, tổng ước tính, nút Đặt vé). Dưới 1280 px cột phải lên trên cùng; dưới 768 px bộ lọc gập lại. Chi tiết dữ liệu và quy tắc: frontend §4.1b.
 
 #### 4.2.1 Ô tìm kiếm (header + Home)
 

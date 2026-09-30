@@ -3,9 +3,10 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Calendar, MapPin, PlaneTakeoff, Search, Users } from 'lucide-react';
 import { useTravel } from '../../../context/TravelContext';
-import { addDaysIso, todayVN } from '../../search/tripContext';
+import { addDaysIso, todayVN, type TripContext } from '../../search/tripContext';
 import { DateRangePicker, formatDisplayDate } from './DateRangePicker';
 import { GuestsPopover, describeGuests, type GuestsValue } from './GuestsPopover';
+import type { FlightSearchInput } from '../../flights/results/flightHref';
 import { buildSearchHref, filterDestinations, matchDestination } from './searchHref';
 import { topDestinations, useDestinations } from './useDestinations';
 import type { VerticalConfig, VerticalTab } from './verticals';
@@ -17,6 +18,10 @@ interface LandingSearchSheetProps {
   tab: VerticalTab;
   /** Điểm đến đang lọc ở URL (`?destination=`), điền sẵn vào ô địa điểm. */
   initialDestination?: string;
+  /** Lần tìm vé máy bay đang xem ở `/flights?origin&destination…`: điền sẵn điểm đi, ngày, khứ hồi và số khách. */
+  initialSearch?: { origin: string; trip: TripContext };
+  /** Vé máy bay: nhận giá trị tấm tìm kiếm và tìm ngay tại chỗ (trang `/flights`); không có thì điều hướng sang `/search`. */
+  onFlightSearch?: (input: FlightSearchInput) => void;
 }
 
 const PILL = 'flex h-[70px] w-full min-w-0 items-center gap-3 rounded-[22px] bg-white px-5 text-left transition hover:bg-white/90 focus-within:ring-2 focus-within:ring-blue-500/60 lg:px-6';
@@ -27,21 +32,25 @@ const POPOVER = 'absolute top-full z-40 mt-2 rounded-3xl bg-white p-4 text-slate
 /**
  * Tấm tìm kiếm kính mờ ở hero trang danh mục. Gửi đi là điều hướng sang `/search` kèm ngữ cảnh chuyến đi:
  * ngày và số khách điền sẵn hộp đặt ở trang chi tiết, không lọc phòng trống (Backend chưa lọc theo ngày).
+ * Ngoại lệ: vé máy bay ở `/flights` gọi `onFlightSearch` và tìm ngay tại chỗ (features/flights/FlightsPage).
  */
-export function LandingSearchSheet({ config, tab, initialDestination }: LandingSearchSheetProps) {
+export function LandingSearchSheet({ config, tab, initialDestination, initialSearch, onFlightSearch }: LandingSearchSheetProps) {
   const { navigate } = useTravel();
   const { sheet } = config;
   const tomorrow = addDaysIso(todayVN(), 1);
   const listId = useId();
   const formRef = useRef<HTMLFormElement>(null);
 
-  const [origin, setOrigin] = useState('');
+  const seed = initialSearch?.trip;
+  const [origin, setOrigin] = useState(initialSearch?.origin ?? '');
   const [location, setLocation] = useState(initialDestination ?? '');
   const [destination, setDestination] = useState<string | null>(initialDestination ?? null);
-  const [checkIn, setCheckIn] = useState(tomorrow);
-  const [checkOut, setCheckOut] = useState<string | null>(sheet.dates.mode === 'range' ? addDaysIso(tomorrow, 1) : null);
-  const [roundTrip, setRoundTrip] = useState(false);
-  const [guests, setGuests] = useState<GuestsValue>({ adults: 2, children: 0, rooms: 1 });
+  const [checkIn, setCheckIn] = useState(seed?.checkIn ?? tomorrow);
+  const [checkOut, setCheckOut] = useState<string | null>(
+    sheet.dates.mode === 'range' ? addDaysIso(tomorrow, 1) : sheet.dates.mode === 'single-or-return' ? seed?.checkOut ?? null : null,
+  );
+  const [roundTrip, setRoundTrip] = useState(sheet.dates.mode === 'single-or-return' && Boolean(seed?.checkOut));
+  const [guests, setGuests] = useState<GuestsValue>({ adults: seed?.adults ?? 2, children: seed?.children ?? 0, rooms: 1 });
   const [panel, setPanel] = useState<Panel>(null);
   const [activeOption, setActiveOption] = useState(-1);
 
@@ -90,19 +99,20 @@ export function LandingSearchSheet({ config, tab, initialDestination }: LandingS
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
     setPanel(null);
-    navigate(buildSearchHref({
-      taxonomy: tab.taxonomy,
-      origin,
-      location,
-      destination: destination ?? matchDestination(location, destinations.data),
-      trip: {
-        checkIn,
-        checkOut: dateMode === 'range' ? checkOut ?? undefined : undefined,
-        adults: guests.adults,
-        children: guests.children,
-        rooms: sheet.rooms ? guests.rooms : undefined,
-      },
-    }));
+    const resolved = destination ?? matchDestination(location, destinations.data);
+    const trip = {
+      checkIn,
+      checkOut: dateMode === 'range' ? checkOut ?? undefined : undefined,
+      adults: guests.adults,
+      children: guests.children,
+      rooms: sheet.rooms ? guests.rooms : undefined,
+    };
+    // Vé máy bay ở `/flights`: kết quả hiện ngay dưới tấm này, kể cả khi còn thiếu điểm đi hay điểm đến (trang nhắc người dùng nhập).
+    if (tab.taxonomy === 'flight' && onFlightSearch) {
+      onFlightSearch({ origin, location, destination: resolved, trip: { checkIn: trip.checkIn, checkOut: trip.checkOut, adults: trip.adults, children: trip.children } });
+      return;
+    }
+    navigate(buildSearchHref({ taxonomy: tab.taxonomy, origin, location, destination: resolved, trip }));
   };
 
   const togglePanel = (next: Exclude<Panel, null>) => setPanel((prev) => (prev === next ? null : next));

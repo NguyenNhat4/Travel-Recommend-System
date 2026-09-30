@@ -235,7 +235,7 @@ export const GroupResults: React.FC<GroupResultsProps> = ({ group, query, destin
             )}
           </div>
           <div className="self-end sm:self-auto">
-            <SortMenu value={sort} onChange={setSort} />
+            <SortMenu<SortOption> value={sort} onChange={setSort} />
           </div>
         </div>
         {body}

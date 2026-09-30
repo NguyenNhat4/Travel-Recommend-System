@@ -3,6 +3,8 @@ import Link from 'next/link';
 import { VerticalChips } from '../../../components/layout/nav/VerticalChips';
 import type { NavGroupId } from '../../../components/layout/nav/navConfig';
 import { LandingSearchSheet } from './LandingSearchSheet';
+import type { FlightSearchInput } from '../../flights/results/flightHref';
+import type { TripContext } from '../../search/tripContext';
 import type { VerticalConfig, VerticalTab } from './verticals';
 
 interface LandingHeroProps {
@@ -10,13 +12,19 @@ interface LandingHeroProps {
   tab: VerticalTab;
   activeGroup: NavGroupId | null;
   destination?: string;
+  /** Lần tìm vé máy bay của URL: điền sẵn tấm tìm kiếm. */
+  search?: { origin: string; trip: TripContext };
+  /** Hero thấp hơn để kết quả bên dưới lên gần hơn. */
+  compact?: boolean;
+  /** Vé máy bay: tìm ngay trên trang này thay vì điều hướng đi nơi khác. */
+  onFlightSearch?: (input: FlightSearchInput) => void;
 }
 
 /**
  * Hero ~500 px: ảnh nền + lớp phủ tối 36%, tiêu đề, (tab loại dịch vụ), tấm tìm kiếm. Header nổi (fixed) đè lên phần đầu
  * nên hero chừa `pt-28`. Khối nội dung `z-30` để popover của tấm tìm kiếm nằm trên tờ nền trắng bên dưới.
  */
-export function LandingHero({ config, tab, activeGroup, destination }: LandingHeroProps) {
+export function LandingHero({ config, tab, activeGroup, destination, search, compact, onFlightSearch }: LandingHeroProps) {
   const tabHref = (taxonomy: string) => {
     const params = new URLSearchParams();
     if (taxonomy !== config.tabs[0].taxonomy) params.set('type', taxonomy);
@@ -26,7 +34,7 @@ export function LandingHero({ config, tab, activeGroup, destination }: LandingHe
   };
 
   return (
-    <section className="relative flex min-h-[520px] items-end pb-14 pt-28 lg:min-h-[500px] lg:pb-16">
+    <section className={`relative flex items-end pb-14 pt-28 ${compact ? 'min-h-[400px] lg:min-h-[380px] lg:pb-14' : 'min-h-[520px] lg:min-h-[500px] lg:pb-16'}`}>
       <div className="absolute inset-0 overflow-hidden bg-slate-800">
         <img src={config.heroImage} alt="" fetchPriority="high" loading="eager" decoding="async" className="h-full w-full object-cover object-center" />
         <div className="absolute inset-0 bg-black/36" />
@@ -62,7 +70,7 @@ export function LandingHero({ config, tab, activeGroup, destination }: LandingHe
           </nav>
         )}
 
-        <LandingSearchSheet config={config} tab={tab} initialDestination={destination} />
+        <LandingSearchSheet config={config} tab={tab} initialDestination={destination} initialSearch={search} onFlightSearch={onFlightSearch} />
       </div>
     </section>
   );

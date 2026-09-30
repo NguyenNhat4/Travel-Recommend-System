@@ -132,6 +132,46 @@ describe('LandingSearchSheet', () => {
     expect(url.searchParams.get('checkOut')).toBe(addDaysIso(tomorrow(), 2));
   });
 
+  it('flights: with a page handler, Tìm hands the values over instead of navigating', async () => {
+    const onFlightSearch = vi.fn();
+    renderSheet('flights', { onFlightSearch });
+    fireEvent.change(screen.getByLabelText('Điểm đi'), { target: { value: ' Hà Nội ' } });
+    fireEvent.focus(screen.getByRole('combobox'));
+    fireEvent.click(await screen.findByRole('option', { name: 'Đà Nẵng' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Tìm kiếm' }));
+    expect(travel.navigate).not.toHaveBeenCalled();
+    expect(onFlightSearch).toHaveBeenCalledWith({
+      origin: ' Hà Nội ', location: 'Đà Nẵng', destination: 'Đà Nẵng',
+      trip: { checkIn: tomorrow(), checkOut: undefined, adults: 2, children: 0 },
+    });
+  });
+
+  it('flights: hands over incomplete input too, so the page can say what is missing', () => {
+    const onFlightSearch = vi.fn();
+    renderSheet('flights', { onFlightSearch });
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'xứ sở thần tiên' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Tìm kiếm' }));
+    expect(travel.navigate).not.toHaveBeenCalled();
+    expect(onFlightSearch).toHaveBeenCalledWith(expect.objectContaining({ origin: '', location: 'xứ sở thần tiên', destination: null }));
+  });
+
+  it('flights: shows the search in the URL (origin, dates, round trip, party) so it can be edited in place', () => {
+    const onFlightSearch = vi.fn();
+    renderSheet('flights', {
+      onFlightSearch,
+      initialDestination: 'Đà Nẵng',
+      initialSearch: { origin: 'Hà Nội', trip: { checkIn: '2026-10-20', checkOut: '2026-10-25', adults: 3, children: 1 } },
+    });
+    expect((screen.getByLabelText('Điểm đi') as HTMLInputElement).value).toBe('Hà Nội');
+    expect((screen.getByRole('combobox') as HTMLInputElement).value).toBe('Đà Nẵng');
+    expect(screen.getByText('3 người lớn, 1 trẻ em')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Tìm kiếm' }));
+    expect(onFlightSearch).toHaveBeenCalledWith({
+      origin: 'Hà Nội', location: 'Đà Nẵng', destination: 'Đà Nẵng',
+      trip: { checkIn: '2026-10-20', checkOut: '2026-10-25', adults: 3, children: 1 },
+    });
+  });
+
   it('closes an open panel on Escape', () => {
     renderSheet('hotels');
     fireEvent.click(screen.getByRole('button', { name: /Số lượng/ }));
