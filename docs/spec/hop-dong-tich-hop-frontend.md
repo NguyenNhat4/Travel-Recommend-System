@@ -149,7 +149,7 @@ Một template (`features/catalog/landing`), cấu hình ở `verticals.ts`. Her
 | Khối 1 "… phổ biến" (tải ngay) | `GET /products?taxonomy=<t>&sort=popular&availableOnly=true&limit=8` (+ `destination` khi có `?destination=`) | — | `results[]` (`ProductSummary`) | Lỗi → "Chưa tải được · Thử lại" tại khối. Rỗng → "Chưa có {loại} tại {điểm đến}" + liên kết `/search` |
 | Khối 2 "… giá tốt nhất" (tải khi vào vùng nhìn) | như trên với `sort=price_asc` (sản phẩm chưa có giá xếp cuối) | — | như trên | Dưới 3 thẻ hoặc lỗi rỗng → ẩn khối |
 | Điểm đến (tải khi vào vùng nhìn) | `GET /destinations` | — | `destination`, `productCount` | Lỗi hoặc rỗng → ẩn khối |
-| Gợi ý điểm đến trong tấm tìm kiếm | `GET /destinations` | — | như trên | Lỗi → vẫn gõ tự do được |
+| Gợi ý điểm đến trong tấm tìm kiếm (vé máy bay: cả ô Điểm đi) | `GET /destinations` | — | như trên | Lỗi → vẫn gõ tự do được |
 
 `/experiences` có hai tab (`?type=attraction|golf`); các trang khác một tab. Tấm tìm kiếm gửi bằng điều hướng sang `/search?q&type[&destination]&checkIn&checkOut&adults&children&rooms` (riêng vé máy bay **không** rời trang: tìm ngay tại `/flights`, §4.1b): điểm đến chọn từ gợi ý (hoặc gõ đúng nhãn) thành `destination`, còn lại vào `q` (rỗng thì dùng câu mặc định theo danh mục, `services/search.ts` `DEFAULT_QUERY`).
 
@@ -169,6 +169,8 @@ Chưa có lần tìm (vào `/flights` trơn, hoặc `/flights?destination=X` ch�
 | Chuyến của tuyến | `GET /products?parentProductId=<tuyến>&sort=price_asc&limit=50` (mọi trang) | — | `ProductSummary` tầng con: `unitPrice`, `available`, `availableFrom`, `attributes` (`airline`, `airlineCode`, `flightNumber`, `originAirport`, `destinationAirport`, `departureAt`, `arrivalAt`, `durationMinutes`, `nonstop`, `tripType`, `priceObservedAt`), `fareClasses` | Tuyến không có chuyến → "Chưa có chuyến bay đặt được" |
 | Chiều về (chỉ khi khứ hồi) | như hai dòng trên với tuyến ngược (điểm đến = thành phố đi của chặng đi) | — | như trên | Không có tuyến ngược → báo và vẫn đặt được vé một chiều |
 | Đặt vé | `POST /cart/items` cho từng chặng (qua `addToCart`) | bắt buộc | gửi `productId` của hạng đã chọn, `usingDate` = ngày bay, `guests` | Chưa đăng nhập → mở modal đăng nhập rồi chạy lại. Thêm lỗi → toast, ở lại trang. Xong → `/checkout` |
+
+**Ô Điểm đi và Điểm đến** (`LandingSearchSheet`, `PlacePanel`, `recentPlaces.ts`) cùng là ô gõ có gợi ý, lấy từ `GET /destinations` (nhiều sản phẩm nhất trước, lọc theo chữ gõ không phân biệt dấu). Điểm đi vẫn gõ tự do được (gợi ý chỉ để chọn nhanh; tuyến khớp theo `matchRoute`). Chọn điểm đi xong thì con trỏ sang ô Điểm đến; điểm đã chọn ở ô này không được gợi ý ở ô kia. Mỗi ô có nhóm **"Tìm gần đây"** khi ô còn trống: tối đa 5 nhãn, mới nhất trước, có nút "Xóa", lưu ở `localStorage` của trình duyệt (`vota_flight_recent_origins`, `vota_flight_recent_destinations`; chỉ nhãn địa điểm, không token hay dữ liệu cá nhân, không gửi lên Backend). Ghi khi bấm Tìm với đủ điểm đi và điểm đến; nhãn được đổi về nhãn chuẩn của `/destinations`, và nhãn không còn trong `/destinations` thì không được gợi ý lại. Chỉ vé máy bay có lịch sử; các danh mục khác không đổi.
 
 Quy tắc:
 - **Mỗi hành trình một thẻ.** Các sản phẩm cùng hành trình có chung `fareClasses` nên được gom (`flightOptionsFromVariants`); chọn hạng nằm trong thẻ, giá và nút Chọn theo hạng đó. Bỏ vé khứ hồi (`tripType: roundTrip`), vé hết chỗ, không giá, `ticketed: false`, thiếu giờ bay. Khứ hồi đóng gói vẫn xem và đặt ở `/product/{id}`.
