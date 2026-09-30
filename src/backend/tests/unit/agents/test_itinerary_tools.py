@@ -3,6 +3,8 @@ import asyncio
 import copy
 import importlib.util
 import json
+
+import yaml
 import unittest
 from types import SimpleNamespace
 
@@ -658,7 +660,7 @@ class SimilarPlanTests(unittest.IsolatedAsyncioTestCase):
                     llm_timeout_seconds=1, require_recommendations=False)
                 self.assertIsNone(error)
                 (system_role, system), (_, human) = prompts[0]
-                payload = json.loads(human)
+                payload = yaml.safe_load(human)
                 if offered:
                     self.assertEqual(bound, [list(every)])
                     self.assertEqual(system, f'{TOOL_PLAN_PROMPT} {SIMILAR_HINT}')

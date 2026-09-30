@@ -3,19 +3,20 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import date, datetime, timedelta, timezone
-import json
 
 from src.backend.app.application.itinerary.contracts import bounds, valid
 from src.backend.app.domain.itinerary.planning import merge_intent
 
 from ..models import Extraction, TurnRoute
-from .history import llm_context
+from .history import llm_context, prompt_yaml
 from .messages import event, failure, message
 from .prompts import CLASSIFY_PROMPT, EXTRACT_PROMPT
 
 
 # Việt Nam không có giờ mùa hè, nên lệch cố định UTC+7 là đủ và không cần gói dữ liệu múi giờ (tzdata).
 VIETNAM = timezone(timedelta(hours=7))
+TRIP_FIELDS = ("destination", "days", "startDate", "party", "budget")
+SWAP_CONSTRAINTS = ("exclude_products", "specific_hotel", "specific_activity", "require_hotel")
 
 
 def vietnam_today(now: datetime | None = None) -> date:
@@ -30,7 +31,7 @@ def vietnam_today(now: datetime | None = None) -> date:
 def route_input(state: dict) -> list:
     """Message hiện tại cộng ngữ cảnh hội thoại chung; `classify` chỉ trả một nhãn."""
     payload = {"message": state.get("query", ""), **llm_context(state)}
-    return [("system", CLASSIFY_PROMPT), ("human", json.dumps(payload, ensure_ascii=False))]
+    return [("system", CLASSIFY_PROMPT), ("human", prompt_yaml(payload))]
 
 
 def route_result(state: dict, result: TurnRoute) -> dict:
@@ -50,7 +51,7 @@ def extraction_input(state: dict) -> list:
     language = "Vietnamese" if state.get("language", "vi") == "vi" else "English"
     payload = {"message": state.get("query", ""), **llm_context(state), "today": vietnam_today().isoformat()}
     return [("system", EXTRACT_PROMPT + f"\nUse {language} for any natural-language content."),
-            ("human", json.dumps(payload, ensure_ascii=False))]
+            ("human", prompt_yaml(payload))]
 
 
 def _merged_intent(state: dict, patch: dict) -> tuple[dict, dict | None]:
@@ -93,6 +94,19 @@ def _merged_constraints(state: dict, result: Extraction, patch: dict, intent: di
     if constraints.get("require_hotel"):
         constraints["exclude_taxonomies"] = [x for x in constraints.get("exclude_taxonomies", []) if x != "hotel"]
     return constraints
+
+
+def _supplies_a_change(state: dict, intent: dict, constraints: dict) -> bool:
+    """Lưới an toàn cho LLM tự mâu thuẫn khi nó báo `change_without_value`: lượt này có thật sự đổi gì không.
+
+    LLM hay chép lại cả intent đang có vào `patch`, nên "có giá trị trong patch" không đủ: chỉ giá trị KHÁC intent
+    đã lưu mới tính ('đổi sang 5/10'). Đổi món (thay khách sạn, loại một sản phẩm đã xem) đổi ràng buộc chứ không
+    đổi intent, nên cũng tính. Các ràng buộc khác (`party_type_hint`...) hay bị LLM đặt lung tung, không tính.
+    """
+    before, before_constraints = state.get("intent", {}), state.get("constraints", {})
+    # Giá trị rỗng (`[]`, `False`) coi như chưa có: LLM hay trả `exclude_products: []` khi chẳng loại gì.
+    return (any(intent.get(field) != before.get(field) for field in TRIP_FIELDS)
+            or any((constraints.get(key) or None) != (before_constraints.get(key) or None) for key in SWAP_CONSTRAINTS))
 
 
 def _this_year(value: date, today: date) -> date:
@@ -221,6 +235,12 @@ def extract_result(state: dict, result: Extraction) -> dict:
         return {**update, "decision": "missing_info",
                 "clarification_reason": "suggest_form" if asked_once else None,
                 "clarification_rounds": rounds + 1}
+    # LLM báo người dùng muốn đổi mà chưa nói đổi thành gì ('đổi ngày'): hỏi lại, giữ intent cũ, không gọi tool.
+    if result.change_without_value and not _supplies_a_change(state, intent, constraints) \
+            and not state.get("intent_override"):
+        return {**update, "decision": "missing_info",
+                "missing_fields": list(dict.fromkeys(result.change_without_value)),
+                "clarification_reason": "change_without_value"}
     details = trip_details_missing(intent, result)
     # Chip sửa tay là chỉnh có chủ ý trên hội thoại đã có, không hỏi thêm ở đó.
     if details and not asked and not state.get("intent_override"):

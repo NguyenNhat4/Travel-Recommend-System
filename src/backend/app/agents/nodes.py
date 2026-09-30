@@ -182,7 +182,8 @@ def extract_node(state: AgentState, *, llm=None) -> dict:
     Đọc: `query`, ngữ cảnh hội thoại chung, `intent_override`, `start_date_asked`.
     Ghi: `intent`, `constraints`, `missing_fields`, `start_date_asked`, `clarification_reason`, `invalid_inputs`,
     `decision` (`tool`/`missing_info`/`error`). Ngày đi đã qua, số ngày/số người/ngân sách ngoài giới hạn bị xoá
-    khỏi intent và hỏi lại (`clarification_reason = "invalid_input"`). Trên đường async, điểm đến ngoài catalog
+    khỏi intent và hỏi lại (`clarification_reason = "invalid_input"`). Người dùng muốn đổi một trường mà chưa nói giá trị mới
+    ('đổi ngày') thì LLM điền `change_without_value`: hỏi lại trường đó (`clarification_reason = "change_without_value"`), giữ intent cũ. Trên đường async, điểm đến ngoài catalog
     (ngoài Việt Nam) cũng bị xoá và hỏi lại ngay, kể cả khi còn thiếu số ngày; `supported_destinations` ghi sẵn cho `tool`.
     Đi tiếp (`routing.route_after_extract`): `tool` khi đủ điểm đến, số ngày và đã xử lý ngày đi ·
     `clarify` khi thiếu, mâu thuẫn hoặc có điều kiện không xác minh được · `dead_letter` khi lỗi.

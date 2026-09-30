@@ -82,6 +82,10 @@ class Extraction(StrictModel):
         default=False,
         description="true khi người dùng nói rõ chưa chốt hoặc linh hoạt về ngày đi; không có ngày cũng không có lời này thì false.")
     conflict: bool = False
+    change_without_value: list[Literal["destination", "days", "startDate", "party", "budget"]] = Field(
+        default_factory=list,
+        description="Trường người dùng muốn đổi nhưng chưa nói giá trị mới ('đổi ngày', 'đổi địa điểm'). "
+                    "Đã có giá trị mới thì điền patch, không liệt kê ở đây.")
 
 
 class DestinationChoice(StrictModel):

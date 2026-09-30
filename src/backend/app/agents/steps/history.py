@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import yaml
+
 from .messages import strip_title
 
 MAX_HISTORY_MESSAGES = 20
@@ -65,3 +67,25 @@ def llm_context(state: dict[str, Any], *, intent: dict[str, Any] | None = None,
             "known_intent": intent if intent is not None else state.get("intent", {}),
             "known_constraints": constraints if constraints is not None else state.get("constraints", {}),
             "previous_selection": state.get("previous_selection", [])}
+
+
+class _PromptDumper(yaml.SafeDumper):
+    """SafeDumper giữ nguyên thứ tự khoá và in chuỗi nhiều dòng dạng khối `|` cho dễ đọc."""
+
+
+def _represent_str(dumper: yaml.SafeDumper, value: str) -> yaml.ScalarNode:
+    style = "|" if "\n" in value else None
+    return dumper.represent_scalar("tag:yaml.org,2002:str", value, style=style)
+
+
+_PromptDumper.add_representer(str, _represent_str)
+
+
+def prompt_yaml(payload: dict[str, Any]) -> str:
+    """Payload của message `human` gửi LLM dưới dạng YAML dễ đọc (tiếng Việt giữ nguyên, không escape).
+
+    `SafeDumper` tự quote/thụt lề nội dung người dùng, nên một câu chat chứa `key:` hay xuống dòng
+    không phá được cấu trúc payload.
+    """
+    return yaml.dump(payload, Dumper=_PromptDumper, allow_unicode=True, sort_keys=False,
+                     default_flow_style=False, width=1_000_000)

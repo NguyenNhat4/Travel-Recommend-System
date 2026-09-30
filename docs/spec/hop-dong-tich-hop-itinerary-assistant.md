@@ -456,6 +456,7 @@ câu**, các dòng sau là phần chi tiết. Không có field mới: tiêu đ�
 | Điều kiện bắt buộc không xác minh được | Chưa xác minh được yêu cầu của bạn | LLM (dự phòng cố định) |
 | Điều kiện bắt buộc không có sản phẩm nào | Chưa có sản phẩm đáp ứng yêu cầu bắt buộc | Cố định |
 | Giá trị không hợp lệ | theo trường (ở trên) | LLM (dự phòng cố định) |
+| Muốn đổi mà chưa nói đổi thành gì ("đổi ngày", "đổi địa điểm") | Bạn muốn đổi thành gì? (LLM đặt tiêu đề theo trường đang hỏi) | LLM (dự phòng cố định) |
 | Ngoài phạm vi (`error.message`, 400) | Ngoài phạm vi hỗ trợ | LLM (dự phòng cố định) |
 | Đầu vào bị guardrail chặn (`error.message`, 400) | Mình chưa thể hỗ trợ yêu cầu này | Cố định |
 | `NO_RESULTS` không khớp sản phẩm | Chưa tìm thấy sản phẩm phù hợp | Cố định |

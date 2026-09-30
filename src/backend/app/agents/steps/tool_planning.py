@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 
 from src.backend.app.application.itinerary.contracts import valid
@@ -14,7 +13,7 @@ from src.backend.app.domain.itinerary.normalization import match_destination
 from src.backend.app.domain.itinerary.planning import SCHEDULABLE_TAXONOMIES
 
 from ..models import DestinationChoice
-from .history import llm_context
+from .history import llm_context, prompt_yaml
 from .messages import chat_model, event, failure, message
 from .prompts import DESTINATION_PROMPT, SIMILAR_HINT, TOOL_PLAN_PROMPT
 
@@ -46,7 +45,7 @@ async def _choose_destination(state: dict, value: str, supported: list[str], llm
     """Let the model pick from the catalog's own destination names; the answer is verified against them."""
     payload = {"user_destination": value, "catalog_destinations": supported, **llm_context(state)}
     result = await asyncio.wait_for(chat_model(llm).with_structured_output(DestinationChoice).ainvoke([
-        ("system", DESTINATION_PROMPT), ("human", json.dumps(payload, ensure_ascii=False))]),
+        ("system", DESTINATION_PROMPT), ("human", prompt_yaml(payload))]),
         timeout_seconds)
     chosen = DestinationChoice.model_validate(result).destination
     return chosen if chosen in supported else None
@@ -319,7 +318,7 @@ def _planner_input(state: dict, intent: dict, constraints: dict,
         payload["previous_selection"] = [{key: item[key] for key in ("productId", "name", "taxonomy") if key in item}
                                          for item in selection]
     system = f"{TOOL_PLAN_PROMPT} {SIMILAR_HINT}" if offer_similar else TOOL_PLAN_PROMPT
-    messages = [("system", system), ("human", json.dumps(payload, ensure_ascii=False))]
+    messages = [("system", system), ("human", prompt_yaml(payload))]
     return definitions, messages, frozenset(d["name"] for d in definitions)
 
 

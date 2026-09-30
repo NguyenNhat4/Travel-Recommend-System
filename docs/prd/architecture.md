@@ -177,6 +177,7 @@ stateDiagram-v2
     AnalyzeIntent --> CheckClarification: Trích xuất thông tin (Điểm đến, Ngày, Số người, Ngân sách)
     
     CheckClarification --> AskUser: Lượt đầu thiếu thông tin, hoặc chưa hỏi ngày đi–số người–ngân sách
+    CheckClarification --> AskUser: Người dùng muốn đổi thông tin chuyến đi mà chưa nói đổi thành gì
     AskUser --> SuggestForm: Đã hỏi một lượt mà vẫn thiếu điểm đến/số ngày
     SuggestForm --> [*]: Form đã điền sẵn gợi ý; xác nhận đổ câu yêu cầu vào ô nhập
     AskUser --> [*]: Chờ phản hồi tiếp theo

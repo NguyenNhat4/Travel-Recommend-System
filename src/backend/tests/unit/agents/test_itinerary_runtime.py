@@ -2,6 +2,8 @@
 import asyncio
 from copy import deepcopy
 import json
+
+import yaml
 from types import SimpleNamespace
 import unittest
 
@@ -474,7 +476,27 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response['missingFields'][:2], ['destination', 'days'])
         self.assertIn('startDate', response['missingFields'])
         self.assertEqual(response['clarificationForm']['defaults']['startDate'], today.isoformat())
-        self.assertIn('"form_shown": true', llm.prompts['ConversationalAnswer'])
+        self.assertIn('form_shown: true', llm.prompts['ConversationalAnswer'])
+        self.assertFalse(clients.calls)
+
+    async def test_change_without_a_value_asks_again_instead_of_planning_the_same_trip(self):
+        # "đổi ngày" sau khi đã có lịch: LLM trích change_without_value, không patch gì → hỏi ngày mới, không gọi tool.
+        extraction = Extraction(change_without_value=['startDate'])
+        llm = ScriptedLlm(extraction=extraction, conversational_title='Đổi ngày khởi hành',
+                          conversational_message='Bạn muốn đổi ngày khởi hành từ 10/10/2999 sang ngày nào?')
+        clients = Clients()
+        intent = {**empty_intent(), 'destination': 'Nha Trang', 'days': 2, 'startDate': '2999-10-10',
+                  'party': {'type': 'SOLO', 'adults': 1, 'children': 0}}
+        result = await self.run_graph(llm, clients, state={
+            'query': 'đổi ngày', 'intent': intent,
+            'previous_selection': [{'productId': 'a', 'name': 'Catalog a', 'taxonomy': 'hotel'}]})
+        response = result['response']
+        self.assertEqual(response['status'], 'NEEDS_CLARIFICATION')
+        self.assertEqual(response['missingFields'], ['startDate'])
+        self.assertEqual(response['knownIntent']['startDate'], '2999-10-10')
+        self.assertTrue(response['question'].startswith('**Đổi ngày khởi hành**\n'))
+        self.assertIn('clarification_reason: change_without_value', llm.prompts['ConversationalAnswer'])
+        self.assertNotIn('tool', [event['node'] for event in result['events']])
         self.assertFalse(clients.calls)
 
     async def test_the_bold_title_falls_back_to_a_fixed_one_when_the_model_gives_none(self):
@@ -773,12 +795,12 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(first_llm.bound_tools, [['search_products', 'get_recommendations']])
         (_, system), (_, human) = first_llm.planner_messages[0]
         self.assertEqual(system, TOOL_PLAN_PROMPT)
-        self.assertEqual(json.loads(human)['previous_selection'], [])    # ngữ cảnh chung: chưa hiển thị gì
+        self.assertEqual(yaml.safe_load(human)['previous_selection'], [])    # ngữ cảnh chung: chưa hiển thị gì
         # Lượt đổi món: tool, gợi ý prompt và danh sách anchor lưu phía server cùng xuất hiện.
         self.assertIn('get_similar_products', second_llm.bound_tools[0])
         (_, system), (_, human) = second_llm.planner_messages[0]
         self.assertEqual(system, f'{TOOL_PLAN_PROMPT} {SIMILAR_HINT}')
-        self.assertEqual(json.loads(human)['previous_selection'], selection_snapshot(first['response']))
+        self.assertEqual(yaml.safe_load(human)['previous_selection'], selection_snapshot(first['response']))
 
     async def test_swap_turn_gets_a_grounded_similar_stay_labelled_search(self):
         clients, _, first, _, second = await self.swap_turns()
