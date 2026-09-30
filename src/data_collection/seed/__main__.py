@@ -39,6 +39,9 @@ def _arguments(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--catalog-only", action="store_true",
                         help="only upsert cdp.products and replace catalog.combo_items of the catalog's combos; never deletes, "
                              "never touches cdp.profiles/events, app.* or insider (for a database already in use, e.g. staging)")
+    parser.add_argument("--real-flight-dates", action="store_true",
+                        help="with --catalog-only: real crawl data (daily.py) — keep fixed-date flight quotes on their real date and "
+                             "block expired quotes instead of shifting them into the demo window")
     parser.add_argument("--retire-missing", action="store_true",
                         help="with --catalog-only: set available=false on database rows absent from this catalog (switching data version)")
     return parser.parse_args(argv)
@@ -80,7 +83,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[1/3] Parse {products_path}")
         parse_combos.main(["--data-dir", str(data_dir)])
         print("[2/3] Build cdp.products rows")
-        load_products.main(["--data-dir", str(data_dir), "--out-dir", str(loader_dir), "--as-of", args.as_of.isoformat()])
+        load_products.main(["--data-dir", str(data_dir), "--out-dir", str(loader_dir), "--as-of", args.as_of.isoformat()]
+                           + (["--real-flight-dates"] if args.real_flight_dates else []))
         if args.generate_only:
             print(f"Generated catalog artifacts under {loader_dir}; PostgreSQL was not changed.")
             return 0

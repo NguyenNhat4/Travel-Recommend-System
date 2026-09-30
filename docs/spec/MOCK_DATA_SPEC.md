@@ -64,7 +64,7 @@ Số đo trên snapshot hiện hành 11.387 dòng, `--seed 42`: 7.145 event (pur
 src/data_collection/
 ├── data/products.jsonl         # runtime artifact từ crawler, 13 trường CDP; bị gitignore
 ├── data/products.synthetic.jsonl # fallback do gen_products.py sinh; sourceRef bắt đầu bằng 'synthetic:'
-├── snapshots/2026-09-29/       # snapshot catalog mặc định nén + manifest/checksum + mapping combo đã duyệt; có trong Git
+├── snapshots/2026-09-30/       # snapshot catalog mặc định nén + manifest/checksum + mapping combo đã duyệt; có trong Git
 ├── seed/
 │   ├── __main__.py             # CLI: python -m data_collection.seed --as-of YYYY-MM-DD --seed 42 [--reset] [--users 2000]
 │   ├── config.py               # mọi tỷ lệ, phân bố, danh sách từ khoá — KHÔNG hard-code trong logic
@@ -112,6 +112,8 @@ Tổng ≈ 450 dòng. `destination` lấy từ danh sách Vinpearl: Nha Trang, P
    - Job cào mới (`src/data_collection/fresh_catalog_db.py`) áp đúng bước 1–2 cho toàn catalog mỗi lượt, với `as_of` = ngày chạy, thêm hai điểm: phòng có dữ liệu hỏi thưa (ví dụ Trip.com 3 ngày mẫu) dùng lịch mô phỏng nhưng các ngày đã hỏi nằm trong cửa sổ ghi theo kết quả thật (có giá = `1`, hết phòng = `0`); dòng `available = false` (hết bán, giá quá hạn, ngoài cửa sổ) có lịch toàn `0`.
 3. **Combo:** `attributes.nights` từ regex `(\d+)\s*[Nn]\s*(\d+)\s*[ĐđD]` hoặc "(\d+) ngày (\d+) đêm" trên `name + description`; `attributes.minPax` từ "cho (\d+) (người|khách)"; `attributes.priceBasis = per_person` nếu text khớp `/khách|/người|giá cho 1 người|mỗi khách|per person`, ngược lại `per_package`.
 4. **Giờ cố định** (khi parse được, không thì bỏ qua): flight `departureAt`, `arrivalAt` (ISO 8601 +07:00) từ attributes crawl nếu có; hotel `checkInTime = "14:00"`, `checkOutTime = "12:00"` mặc định cho property.
+
+5. **Vé Thương gia mô phỏng** (`seed/simulated_business.py`, `docs/prd/data-model.md` §3): sau khi nạp, mỗi vé `level = flight` có số hiệu chuyến, hạng khác `BUSINESS`/`FIRST`, sinh một dòng `sourceRef = demo:business:<sourceRef gốc>`, `cabinClass = BUSINESS`, giá = giá gốc × 2,65 làm tròn nghìn, `attributes.simulated = true`, `fieldSources.unitPrice = "mô phỏng"`, tên "(giá minh hoạ)"; ngày, cửa sổ, `available`, `priceValidUntil` chép từ vé gốc. Vé Thương gia thật cùng hành trình và ngày thắng (vé mô phỏng `available = false`). Seed đầy đủ luôn bật; `--catalog-only` và job fresh mặc định bật, `SIMULATED_BUSINESS_FARES=0` thì khoá (không xoá) vé mô phỏng đã có. Snapshot 2026-09-30 → 797 vé (290 khứ hồi, 507 một chiều / vé cũ).
 
 Idempotent: `INSERT … ON CONFLICT (product_id) DO UPDATE` toàn bộ cột.
 

@@ -119,17 +119,27 @@ def trip_route_history(records: list[dict]) -> list[dict]:
     """
     routes = {}
     services = defaultdict(dict)
+    business = defaultdict(dict)
+    round_trips = defaultdict(dict)
     for record in sorted(records, key=lambda r: r.get("crawledAt") or ""):
         key = record.get("key")
         if not key:
             continue
         routes[key] = copy.deepcopy(record)
+        for quote in record.get("businessQuotes", []):
+            key_quote = quote.get("url")
+            if key_quote and quote.get("observedAt", "") >= business[key].get(key_quote, {}).get("observedAt", ""):
+                business[key][key_quote] = quote
+        for capture in record.get("roundTripQuotes", []):
+            round_trips[key][(capture.get("url"), capture.get("observedAt"))] = capture
         by_number = defaultdict(list)
         for flight in record.get("flights", []):
             if flight.get("flightNumber"):
                 by_number[flight["flightNumber"]].append({**flight, "observedAt": record.get("crawledAt")})
         services[key].update(by_number)
     for key, route in routes.items():
+        route["businessQuotes"] = list(business[key].values())
+        route["roundTripQuotes"] = list(round_trips[key].values())
         current = {f.get("flightNumber") for f in route.get("flights", [])}
         route["flights"] = [{**flight, "notInLatestSnapshot": number not in current}
                             for number, flights in services[key].items() for flight in flights]
@@ -1454,8 +1464,103 @@ def trip_route_products(r: dict, flights_per_route: int) -> list[dict]:
                 sourceRef=f"trip:flight:{cheapest.get('from')}-{cheapest.get('to')}:{number}",
             )
         )
-    out.extend(trip_roundtrip_products(r, route))
+    out.extend(trip_business_products(r, route))
+    searched = trip_roundtrip_search_products(r, route)
+    refs = {p["sourceRef"] for p in searched}
+    out.extend(searched)  # a verified search quote wins over the SEO card of the same itinerary and cabin
+    out.extend(p for p in trip_roundtrip_products(r, route) if p["sourceRef"] not in refs)
     return out
+
+
+def trip_roundtrip_search_products(record: dict, route: dict) -> list[dict]:
+    """Round-trip totals read from Trip's fare modal (collectors/trip_roundtrip_search), newest per itinerary+cabin.
+
+    Same sourceRef as trip_roundtrip_products so the SEO card and the search update one ticket.
+    No priceValidUntil: the search shows none, so none is invented (a stale SEO value is cleared).
+    """
+    from collectors.trip_roundtrip_search import parse_roundtrip
+    origin = (record.get("fromAirports") or [None])[0]
+    destination = (record.get("toAirports") or [None])[0]
+    if not origin or not destination:
+        return []
+    latest: dict[str, dict] = {}
+    for capture in record.get("roundTripQuotes", []):
+        for q in parse_roundtrip(capture, origin, destination):
+            go, back = q["outbound"], q["inbound"]
+            day, return_day = go["departureAt"][:10], back["departureAt"][:10]
+            ref = (f"trip:roundtrip:{origin}-{destination}:{go['flightNumber']}:{day}:"
+                   f"{back['flightNumber']}:{return_day}:{q['cabinClass']}")
+            if ref not in latest or q["observedAt"] >= latest[ref]["observedAt"]:
+                latest[ref] = {**q, "ref": ref}
+    out = []
+    for ref, q in latest.items():
+        go, back = q["outbound"], q["inbound"]
+        day, return_day = go["departureAt"][:10], back["departureAt"][:10]
+        def leg_attrs(leg, frm, to):
+            return {"flightNumber": leg["flightNumber"], "airline": leg["airline"], "originAirport": frm,
+                    "destinationAirport": to, "departureAt": leg["departureAt"], "arrivalAt": leg["arrivalAt"]}
+        cabin_name = {"ECONOMY": "Phổ thông", "PREMIUM_ECONOMY": "Phổ thông đặc biệt", "BUSINESS": "Thương gia",
+                      "FIRST": "Hạng nhất"}[q["cabinClass"]]
+        attrs = {**leg_attrs(go, origin, destination), "level": "flight", "parentProductId": route["productId"],
+                 "tripType": "roundTrip", "fixedDepartureDate": True, "cabinClass": q["cabinClass"],
+                 "returnFlight": leg_attrs(back, destination, origin), "returnDate": return_day,
+                 "stayDays": (date.fromisoformat(return_day) - date.fromisoformat(day)).days,
+                 "priceBasis": "per_person", "priceValidUntil": None, "priceObservedAt": q["observedAt"],
+                 "originCity": route["attributes"].get("originCity"), "destinationCity": route["destination"],
+                 "url": q["url"], "descriptionLang": "vi",
+                 "fieldSources": {"unitPrice": "trip.com", "cabinClass": "trip.com"},
+                 **airport_location(destination, origin)}
+        tickets = " Hành trình xuất thành nhiều vé riêng." if q["separateTickets"] else ""
+        out.append(make_product(meta={"src": "trip_flight", "plan": record.get("plan") or {}},
+                   name=f"Khứ hồi {go['flightNumber']} / {back['flightNumber']}: {origin} - {destination} "
+                        f"— {cabin_name} ({day} – {return_day})",
+                   taxonomy="flight", destination=route["destination"],
+                   description=f"Vé khứ hồi {origin} - {destination}, đi {day} ({go['airline']} {go['flightNumber']}), "
+                               f"về {return_day} ({back['airline']} {back['flightNumber']}). Hạng vé: {q['cabinLabel']}. "
+                               f"Giá tổng hai chặng cho một người lớn {_fmt_vnd(q['price'])}; hình thức thanh toán tại "
+                               f"nguồn: {q.get('payment') or 'không ghi rõ'}.{tickets} Ghi nhận {q['observedAt']}; "
+                               f"giá có thể thay đổi tại nguồn.",
+                   attributes=attrs, unitPrice=q["price"], currency="VND", available=True,
+                   availableFrom=day, availableTo=day, sourceRef=ref, imageUrl=None))
+    return out
+
+
+def trip_business_products(record: dict, route: dict) -> list[dict]:
+    from collectors.trip_business import parse_quote
+    products = []
+    for raw in record.get('businessQuotes', []):
+        q = parse_quote(raw)
+        if not q:
+            continue
+        origin = (record.get('fromAirports') or [None])[0]
+        destination = (record.get('toAirports') or [None])[0]
+        if origin != q['originAirport'] or destination != q['destinationAirport']:
+            continue
+        day = q['departureAt'][:10]
+        number = q['flightNumber']
+        ref = f"trip:flight:{origin.lower()}-{destination.lower()}:{number}:{day}:BUSINESS"
+        attrs = {k: v for k, v in route['attributes'].items() if k in (
+            'originCity', 'destinationCity', 'originDestination', 'latitude', 'longitude',
+            'originLatitude', 'originLongitude', 'locationSource', 'locationPrecision', 'destinationAirportName')}
+        attrs.update(level='flight', tripType='oneWay', parentProductId=route['productId'],
+                     airline=q['airline'], airlineCode=number[:2], flightNumber=number,
+                     originAirport=origin, destinationAirport=destination,
+                     departureAt=q['departureAt'], arrivalAt=q['arrivalAt'],
+                     departureTimeLocal=q['departureAt'][11:16], arrivalTimeLocal=q['arrivalAt'][11:16],
+                     durationMinutes=q['durationMinutes'], nonstop=True, cabinClass='BUSINESS',
+                     fixedDepartureDate=True, datesSeen=[day], priceObservedAt=q['observedAt'], url=q['url'],
+                     descriptionSource='derived: dữ liệu chuyến bay trip.com', descriptionLang='vi',
+                     fieldSources={'unitPrice': 'trip.com', 'cabinClass': 'trip.com',
+                                  'departureAt': 'trip.com', 'arrivalAt': 'trip.com'})
+        products.append(make_product(
+            name=f"{q['airline']} {number}: {origin} - {destination} — Thương gia ({day})",
+            taxonomy='flight', destination=route['destination'],
+            description=f"{q['flight']}. Hạng vé: {q['cabin']}. Giá tham khảo một chiều cho 1 người lớn: "
+                        f"{q['price']} VND; hình thức thanh toán tại nguồn: {q.get('payment') or 'không ghi rõ'}. "
+                        f"Ghi nhận {q['observedAt']}; giá có thể thay đổi tại nguồn.",
+            attributes=attrs, unitPrice=q['price'], currency='VND', available=True,
+            availableFrom=day, availableTo=day, imageUrl=None, sourceRef=ref))
+    return products
 
 
 # ---------------------------------------------------------------------- gộp khách sạn
@@ -2913,7 +3018,7 @@ def main(argv: list[str] | None = None) -> int:
 # Thứ tự nguồn khi dựng lại danh sách khách sạn/vé/điểm tham quan ở bước gộp: giữ đúng thứ tự xử lý cũ để output không đổi.
 HOTEL_SOURCES = ("vinpearl", "booking_hotels", "agoda_api", "agoda_hotels", "trip_hotels")
 CHECKPOINT_DIR = "normalised"
-MAPPER_VERSION = 2
+MAPPER_VERSION = 4
 
 
 def read_source(path: Path) -> list[dict]:

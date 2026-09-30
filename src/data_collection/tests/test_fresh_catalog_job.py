@@ -13,7 +13,7 @@ import zlib
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import fresh_catalog
 import normalise
@@ -198,11 +198,14 @@ class MaintainCatalogTests(unittest.TestCase):
         seeded = row('seeded', start=date(2026, 9, 20), end=date(2026, 10, 19))
         current = row('current', start=AS_OF, end=HI)
         conn = _Conn([stale, seeded, current])
-        with patch('psycopg.connect', return_value=conn):
+        sync = Mock(return_value={'simulatedBusiness': 0})
+        with patch('psycopg.connect', return_value=conn), \
+                patch('data_collection.seed.simulated_business.sync', sync):
             counts = maintain_catalog('postgresql://unused', today=AS_OF,
                                       now=datetime(2026, 9, 24, tzinfo=timezone.utc))
         updates = {params[-1]: params for params in conn.updates}
-        self.assertEqual(counts, {'staleTrip': 1, 'windowRows': 1})
+        self.assertEqual(counts, {'staleTrip': 1, 'windowRows': 1, 'simulatedBusiness': 0})
+        sync.assert_called_once_with(conn)  # simulated business fares follow the rolled window (data-model.md §3)
         self.assertEqual(set(updates), {'stale', 'seeded'})
         self.assertEqual(updates['stale'][1:3], (None, False))  # unit_price, available
         self.assertEqual(updates['seeded'][3:5], (AS_OF, HI))  # available_from, available_to
@@ -268,12 +271,33 @@ class RunJobTests(unittest.TestCase):
         self.assertEqual(self.calls, ['settings', 'maintain', 'index'])
         crawl.assert_not_called()
 
-    def test_index_failure_after_a_successful_load_fails_the_run(self):
+    def test_index_quota_after_successful_load_defers_without_fatal_exit(self):
         def broken_index(*args, **kwargs):
             raise RuntimeError('Cohere 429')
-        with self.assertRaisesRegex(RuntimeError, 'Index thất bại'):
-            self.run_job('daily', index_catalog=broken_index)
+        self.assertEqual(self.run_job('daily', index_catalog=broken_index), 0)
         self.assertIn('load', self.calls)
+        state = Path(self.env['CATALOG_STATE_DIR']) / 'index_pending.json'
+        self.assertTrue(json.loads(state.read_text())['pending'])
+        run_dir = next(Path(self.env['CATALOG_RUN_ROOT']).iterdir())
+        data = json.loads((run_dir / 'run.json').read_text())
+        self.assertEqual(data['status'], 'partial')
+        self.assertTrue(data['counts']['index']['deferred'])
+
+    def test_due_entrypoint_and_tick_retry_only_index_after_cooldown(self):
+        state = Path(self.env['CATALOG_STATE_DIR'])
+        (state / 'index_pending.json').write_text(json.dumps({
+            'pending': True, 'retryAfter': '2000-01-01T00:00:00+00:00'}))
+        with patch.dict(os.environ, self.env, clear=True), \
+                patch.object(fresh_catalog.fresh_settings, 'scheduled_mode', return_value=(None, 'already ran')):
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                self.assertEqual(fresh_catalog.run_job('due'), 0)
+            self.assertEqual(output.getvalue().strip(), 'index')
+            crawl = AsyncMock()
+            self.assertEqual(self.run_job('tick', crawl=crawl), 0)
+            crawl.assert_not_called()
+        self.assertEqual(self.calls, ['settings', 'maintain', 'index'])
+        self.assertFalse((state / 'index_pending.json').exists())
 
     def test_failed_run_writes_an_alert_for_the_monitor(self):
         """CP7: lượt lỗi → cảnh báo trong <state>/alerts.jsonl và <lượt>/alerts.jsonl (chưa gửi ra ngoài)."""

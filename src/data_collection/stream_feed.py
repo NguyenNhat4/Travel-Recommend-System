@@ -280,8 +280,9 @@ class IndexFeeder:
             append_jsonl(self.run_dir / "index_batches.jsonl", entry)
             raise
         self.batches += 1
-        self.indexed_at_written = written
-        entry.update(report={k: report.get(k) for k in ("embedded", "unchanged", "searchUnits", "deletedOrphans")},
+        if not report.get('deferred'):
+            self.indexed_at_written = written
+        entry.update(report={k: report.get(k) for k in ("embedded", "unchanged", "searchUnits", "deletedOrphans", "deferred", "reason", "retryAfter")},
                      seconds=round(time.monotonic() - started, 2))
         append_jsonl(self.run_dir / "index_batches.jsonl", entry)
         self.log(f"[stream-index] stream.index.batch n={entry['n']} embedded={report.get('embedded')}")

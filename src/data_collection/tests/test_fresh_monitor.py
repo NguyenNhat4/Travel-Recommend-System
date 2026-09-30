@@ -353,8 +353,13 @@ class DockerRunnerTests(unittest.TestCase):
             call = json.loads((root / 'calls').read_text().splitlines()[-1])
             self.assertEqual(call[call.index('--name') + 1], 'vota-daily-monitor')
             self.assertIn('test:daily', call)
-            self.assertEqual(call[-2:], ['python', 'monitor.py'])
+            self.assertEqual(call[-4:], ['python', 'monitor.py', '--host', '127.0.0.1'])  # mặc định chỉ loopback
             self.assertIn(f'{root}/data:/data', call)
+            # Link công khai tạm thời (như bản deploy 25/09): MONITOR_HOST=0.0.0.0 MONITOR_PUBLIC=1.
+            env.update(MONITOR_HOST='0.0.0.0', MONITOR_PUBLIC='1')
+            subprocess.run(['bash', str(ROOT / 'run_daily_docker.sh'), 'monitor'], check=True, env=env, capture_output=True)
+            call = json.loads((root / 'calls').read_text().splitlines()[-1])
+            self.assertEqual(call[-5:], ['python', 'monitor.py', '--host', '0.0.0.0', '--allow-public-host'])
 
     def test_monitor_main_resolves_dirs_from_args_env_then_data_dir(self):
         seen = {}
