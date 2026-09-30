@@ -76,6 +76,8 @@ export async function proxyToBackend(request: Request, context: RouteContext) {
       method: request.method, headers, body, cache: 'no-store', signal: request.signal,
     });
   } catch (error) {
+    // Trình duyệt tự huỷ (đổi trang, effect chạy lại, Strict Mode ở dev): không phải lỗi backend, không ghi log.
+    if (request.signal.aborted) return new Response(null, { status: 499 });
     console.error('Backend proxy error', error);
     return errorResponse(502, 'INTERNAL_ERROR', 'Backend service unavailable', requestId);
   }

@@ -87,12 +87,18 @@ export const HomeView: React.FC = () => {
   const [isLoadingRecs, setIsLoadingRecs] = useState(false);
   const [showSectionWhy, setShowSectionWhy] = useState(false);
 
+  // Chỉ phụ thuộc vào giá trị thật sự đổi kết quả. Đưa cả `currentPersona`/`activeEvents` vào deps thì mỗi lần
+  // đối tượng/mảng đổi tham chiếu (nạp lại phiên, `resetClientState` gán `[]` mới) effect huỷ request đang bay.
+  const personaId = currentPersona?.id;
+  const personaDestination = currentPersona?.activeDestination;
+  const eventCount = activeEvents.length;
+
   useEffect(() => {
     const controller = new AbortController();
     let timedOut = false;
 
     // Danh tính do BFF gắn từ cookie phiên; đổi tài khoản = đổi phiên nên effect chạy lại. Khách không gọi.
-    if (!currentPersona) {
+    if (!personaId) {
       setRecResponse(null);
       setRecsFailed(false);
       return () => controller.abort();
@@ -100,7 +106,7 @@ export const HomeView: React.FC = () => {
     const timer = setTimeout(() => { timedOut = true; controller.abort(); }, RECOMMENDATION_TIMEOUT_MS);
     setIsLoadingRecs(true);
     setRecsFailed(false);
-    fetchRecommendations({ k: 4, destination: currentPersona.activeDestination, signal: controller.signal })
+    fetchRecommendations({ k: 4, destination: personaDestination, signal: controller.signal })
       .then((data) => setRecResponse(data))
       .catch(() => {
         if (!controller.signal.aborted || timedOut) {
@@ -117,7 +123,7 @@ export const HomeView: React.FC = () => {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [currentPersona, activeEvents, recsRetry]);
+  }, [personaId, personaDestination, eventCount, recsRetry]);
 
   const strategy = recResponse?.strategy ?? 'popular';
   const destination = recResponse?.destination ?? '';
