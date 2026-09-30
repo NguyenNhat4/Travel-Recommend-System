@@ -1500,6 +1500,7 @@ export interface components {
              */
             status: "NEEDS_CLARIFICATION";
             conversationId: string;
+            /** @description Câu hỏi hiển thị cho người dùng. Dòng đầu có dạng `**Tiêu đề**` (markdown in đậm) tóm tắt cả câu, các dòng sau là phần chi tiết: lý do và gợi ý khi một giá trị không hợp lệ (ngày đi đã qua, điểm đến ngoài catalog, số ngày, số người hoặc ngân sách ngoài giới hạn), hoặc câu hỏi cụ thể khi còn thiếu thông tin. Câu trả lời chào hỏi, cảm ơn không có tiêu đề. */
             question: string;
             missingFields?: ("destination" | "days" | "startDate" | "party" | "budget")[];
             knownIntent?: components["schemas"]["TripIntent"];
@@ -1527,6 +1528,7 @@ export interface components {
             status: "NO_RESULTS";
             conversationId: string;
             intent?: components["schemas"]["TripIntent"];
+            /** @description Dòng đầu có dạng `**Tiêu đề**` (markdown in đậm) tóm tắt cả câu, các dòng sau là phần chi tiết. */
             message: string;
             suggestions?: string[];
             metadata?: components["schemas"]["ItineraryMetadata"];
@@ -1539,6 +1541,7 @@ export interface components {
             status: "FALLBACK";
             conversationId: string;
             intent?: components["schemas"]["TripIntent"] | null;
+            /** @description Dòng đầu có dạng `**Tiêu đề**` (markdown in đậm) tóm tắt cả câu, các dòng sau là phần chi tiết. */
             message: string;
             searchResults: components["schemas"]["SearchResultsByTaxonomy"];
             metadata?: components["schemas"]["ItineraryMetadata"];

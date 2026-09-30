@@ -3,6 +3,7 @@
 import React from 'react';
 import { AlertCircle, CalendarDays, Check, CloudSun, Compass, ExternalLink, MapPin, PackageOpen, Repeat, ShoppingCart, Sparkles, Users } from 'lucide-react';
 import type { components } from '../../types/api.gen';
+import { splitBoldTitle } from './inlineBold';
 import {
   ACTIVITY_TYPE_LABEL,
   BUDGET_STATUS_LABEL,
@@ -231,11 +232,13 @@ export function AssistantResultPanel({
     const missing = response.missingFields ?? [];
     const destinations = response.suggestedValues?.destination ?? [];
     const days = response.suggestedValues?.days ?? [];
+    const { title, body } = splitBoldTitle(response.question);
     return (
       <section aria-label="Cần làm rõ yêu cầu" className="rounded-3xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-5 shadow-sm sm:p-7">
         <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-100 text-amber-700"><AlertCircle className="h-5 w-5" /></div>
         <p className="mt-4 text-xs font-extrabold uppercase tracking-[0.16em] text-amber-700">Cần thêm thông tin</p>
-        <h2 className="mt-2 text-xl font-extrabold leading-snug text-slate-900">{response.question}</h2>
+        <h2 className="mt-2 text-xl font-extrabold leading-snug text-slate-900">{title ?? response.question}</h2>
+        {title && body && <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-slate-700">{body}</p>}
         {missing.includes('destination') && destinations.length > 0 && <div className="mt-5"><p className="mb-2 text-xs font-semibold text-slate-500">Điểm đến gợi ý</p><div className="flex flex-wrap gap-2">{destinations.map((destination) => <button key={destination} onClick={() => onIntentOverride?.({ destination })} className="rounded-full border border-amber-200 bg-white px-3.5 py-2 text-xs font-bold text-amber-900 transition hover:border-amber-400 hover:bg-amber-100">{destination}</button>)}</div></div>}
         {missing.includes('days') && days.length > 0 && <div className="mt-5"><p className="mb-2 text-xs font-semibold text-slate-500">Số ngày gợi ý</p><div className="flex flex-wrap gap-2">{days.map((value) => <button key={value} onClick={() => onIntentOverride?.({ days: value })} className="rounded-full border border-amber-200 bg-white px-3.5 py-2 text-xs font-bold text-amber-900 transition hover:border-amber-400 hover:bg-amber-100">{value} ngày</button>)}</div></div>}
         {missing.length === 0 && <p className="mt-4 text-sm text-slate-500">Bạn có thể bổ sung thông tin trực tiếp trong khung trò chuyện.</p>}
@@ -244,20 +247,24 @@ export function AssistantResultPanel({
   }
 
   if (response.status === 'NO_RESULTS') {
+    const { title, body } = splitBoldTitle(response.message);
     return (
       <section aria-label="Không tìm thấy kết quả" className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
         <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-100 text-slate-600"><PackageOpen className="h-5 w-5" /></div>
         <p className="mt-4 text-xs font-extrabold uppercase tracking-[0.16em] text-slate-500">Chưa có kết quả</p>
-        <h2 className="mt-2 text-xl font-extrabold leading-snug text-slate-900">{response.message}</h2>
+        <h2 className="mt-2 text-xl font-extrabold leading-snug text-slate-900">{title ?? response.message}</h2>
+        {title && body && <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-slate-700">{body}</p>}
         {response.suggestions?.length ? <div className="mt-5 space-y-2">{response.suggestions.map((suggestion) => <button key={suggestion} onClick={() => onSuggestion?.(suggestion)} className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm font-semibold text-indigo-700 transition hover:border-indigo-200 hover:bg-indigo-50">{suggestion}<span aria-hidden="true">→</span></button>)}</div> : <p className="mt-3 text-sm text-slate-500">Bạn có thể thử điều chỉnh điểm đến hoặc thời gian chuyến đi.</p>}
       </section>
     );
   }
 
   if (response.status === 'FALLBACK') {
+    const { title, body } = splitBoldTitle(response.message);
     return (
       <section aria-label="Kết quả tìm kiếm gần nhất" className="rounded-3xl border border-indigo-200 bg-gradient-to-br from-indigo-50/70 to-white p-5 shadow-sm sm:p-7">
-        <div className="flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-700"><Compass className="h-5 w-5" /></span><div><p className="text-xs font-extrabold uppercase tracking-[0.16em] text-indigo-700">Lựa chọn gần nhất</p><h2 className="mt-1 text-lg font-extrabold text-slate-900">{response.message}</h2></div></div>
+        <div className="flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-700"><Compass className="h-5 w-5" /></span><div><p className="text-xs font-extrabold uppercase tracking-[0.16em] text-indigo-700">Lựa chọn gần nhất</p><h2 className="mt-1 text-lg font-extrabold text-slate-900">{title ?? response.message}</h2></div></div>
+        {title && body && <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-slate-700">{body}</p>}
         <SearchResults results={response.searchResults} onAddToCart={onAddToCart} />
       </section>
     );

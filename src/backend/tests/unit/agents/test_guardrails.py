@@ -96,7 +96,8 @@ class ConverseGuardrailTests(unittest.TestCase):
         llm = CountingLlm()
         result = nodes.converse_node(state, llm=llm)
         self.assertEqual(result["response"]["error"]["code"], "VALIDATION_ERROR")
-        self.assertEqual(result["response"]["error"]["message"], messages.REFUSAL)
+        self.assertEqual(result["response"]["error"]["message"], messages.REFUSAL_BLOCKED)
+        self.assertTrue(messages.REFUSAL_BLOCKED.startswith("**Mình chưa thể hỗ trợ yêu cầu này**\n"))
         self.assertEqual(result["http_status"], 400)
         self.assertEqual(llm.calls, [])
 

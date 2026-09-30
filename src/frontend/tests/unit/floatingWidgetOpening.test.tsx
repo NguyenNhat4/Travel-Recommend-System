@@ -126,4 +126,28 @@ describe('floating assistant opening', () => {
     expect(mocks.retry).toHaveBeenCalledOnce();
     expect(mocks.sendMessage).not.toHaveBeenCalled();
   });
+
+  it('shows no-results suggestions as chips on the latest message and sends the tapped one', () => {
+    const response = { status: 'NO_RESULTS' as const, conversationId: 'c1', message: 'Hiện chưa có sản phẩm.',
+      suggestions: ['Đi Hà Nội 3 ngày từ ngày 24/10/2026', 'Đi Huế 3 ngày'] };
+    mocks.state = { ...mocks.state, phase: 'no_results', response, transcript: [
+      { id: 'user-1', sender: 'user', text: 'Hà Nội 3 ngày', createdAt: 1 },
+      { id: 'assistant-1', sender: 'assistant', text: response.message, response, createdAt: 2 },
+    ] };
+    open();
+    expect(screen.getAllByText('Hiện chưa có sản phẩm.')).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Đi Hà Nội 3 ngày từ ngày 24/10/2026' }));
+    expect(mocks.sendMessage).toHaveBeenCalledWith('Đi Hà Nội 3 ngày từ ngày 24/10/2026');
+  });
+
+  it('drops the chips once a later message exists', () => {
+    const response = { status: 'NO_RESULTS' as const, conversationId: 'c1', message: 'Hiện chưa có sản phẩm.',
+      suggestions: ['Đi Huế 3 ngày'] };
+    mocks.state = { ...mocks.state, transcript: [
+      { id: 'assistant-1', sender: 'assistant', text: response.message, response, createdAt: 1 },
+      { id: 'user-2', sender: 'user', text: 'Đi Huế 3 ngày', createdAt: 2 },
+    ] };
+    open();
+    expect(screen.queryByRole('button', { name: 'Đi Huế 3 ngày' })).toBeNull();
+  });
 });

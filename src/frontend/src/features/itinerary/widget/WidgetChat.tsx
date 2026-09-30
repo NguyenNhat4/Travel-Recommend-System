@@ -2,6 +2,8 @@ import React from 'react';
 import Image from 'next/image';
 import { AlertCircle, Loader2, Maximize2, RotateCcw, Sparkles } from 'lucide-react';
 import { nodeLabel } from '../../../components/assistant/assistantLabels';
+import { InlineBold } from '../../../components/assistant/inlineBold';
+import { SuggestionChips } from '../../../components/assistant/SuggestionChips';
 import { TripDetailsForm } from '../../../components/assistant/TripDetailsForm';
 import { WidgetOpening } from './WidgetOpening';
 import { WidgetComposer } from './WidgetComposer';
@@ -22,7 +24,7 @@ export function WidgetChat({ widget }: { widget: FloatingWidgetController }) {
             <div key={message.id} className={`flex items-start gap-3 ${message.sender === 'user' ? 'justify-end' : ''}`}>
               {message.sender === 'assistant' && <Image src="/mascot_welcome.webp" alt="" width={36} height={36} className="mt-1 h-9 w-9 shrink-0 object-contain" />}
               <div className={`min-w-0 max-w-[88%] whitespace-pre-wrap break-words rounded-2xl p-4 text-base leading-relaxed ${message.sender === 'user' ? 'rounded-tr-none bg-blue-600 text-white' : 'rounded-tl-none bg-slate-100 text-slate-800'}`}>
-                {message.text}
+                {message.sender === 'assistant' ? <InlineBold text={message.text} /> : message.text}
                 {message.plan && !isExpanded && (
                   <button onClick={() => setIsExpanded(true)} className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-blue-600 hover:bg-blue-50">
                     <Sparkles className="h-4 w-4" aria-hidden="true" />Xem lộ trình & Bản đồ song song<Maximize2 className="h-4 w-4" aria-hidden="true" />
@@ -31,6 +33,9 @@ export function WidgetChat({ widget }: { widget: FloatingWidgetController }) {
                 {/* Chỉ hiện form ở tin nhắn mới nhất: người dùng xác nhận thì lượt sau đã có câu trả lời khác. */}
                 {message.clarificationForm && message.id === lastMessageId && (
                   <TripDetailsForm form={message.clarificationForm} onConfirm={handleConfirmTripDetails} disabled={isRunning} />
+                )}
+                {message.suggestions && message.id === lastMessageId && (
+                  <SuggestionChips suggestions={message.suggestions} onSelect={handleSendMessage} disabled={isRunning} />
                 )}
               </div>
             </div>
@@ -47,7 +52,7 @@ export function WidgetChat({ widget }: { widget: FloatingWidgetController }) {
         {assistantState.error && (
           <div role="alert" className={`flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-sm text-rose-800 ${isInitial ? 'mx-4 mb-4' : ''}`}>
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-            <div className="min-w-0"><p>{assistantState.error.message}</p>
+            <div className="min-w-0"><p className="whitespace-pre-line"><InlineBold text={assistantState.error.message} /></p>
               {assistantState.error.retryable && <button onClick={retry} className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-lg px-2 font-semibold underline"><RotateCcw className="h-4 w-4" aria-hidden="true" />Thử lại</button>}
             </div>
           </div>

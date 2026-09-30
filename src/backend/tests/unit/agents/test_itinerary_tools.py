@@ -315,7 +315,7 @@ class NodeTests(unittest.IsolatedAsyncioTestCase):
             return SimpleNamespace(tool_calls=[{'name': 'get_recommendations', 'args': {'destination': 'Da Nang'}}])
         llm = SimpleNamespace(bind_tools=lambda schemas: SimpleNamespace(ainvoke=plan))
         result = await nodes.tool_node({'query': 'recommend Da Nang'}, tools=Executor(), llm=llm)
-        self.assertEqual(result['tool_plan'][0]['args'], {'destination': 'Da Nang', 'k': 5})
+        self.assertEqual(result['tool_plan'][0]['args'], {'destination': 'Da Nang', 'k': tool_planning.RECOMMENDATION_K})
 
     async def test_planner_wording_of_the_destination_does_not_fail_the_plan(self):
         """Planner viết "Hồ Chí Minh", intent giữ tên catalog "TP. Hồ Chí Minh" — cùng một chuyến đi."""
@@ -439,7 +439,8 @@ class SimilarPlanTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('INVENTED-9', '\n'.join(logs.output))
 
     def test_plan_with_only_invented_anchors_becomes_a_deterministic_destination_search(self):
-        expected = normalize_arguments('search_products', {'query': 'Nha Trang', 'destination': 'Nha Trang'})
+        expected = normalize_arguments('search_products', {'query': 'Nha Trang', 'destination': 'Nha Trang',
+                                                           'limit': tool_planning.SEARCH_LIMIT})
         plan = tool_planning.validated_plan(swap_state(), [similar('X1'), similar('X2')])
         self.assertEqual(plan, [{'id': 'call-0', 'name': 'search_products', 'args': expected}])
         with_rec = tool_planning.validated_plan(swap_state(), [similar('X1')], require_recommendations=True)
@@ -464,6 +465,15 @@ class SimilarPlanTests(unittest.IsolatedAsyncioTestCase):
         plan = tool_planning.validated_plan(swap_state(), [similar('H1', limit=99, destination='Đà Nẵng'), search()])
         self.assertEqual(plan[0]['args'], {'productId': 'H1', 'limit': maximum})
         self.assertEqual(plan[1]['args']['destination'], 'Nha Trang')
+
+    def test_search_limit_and_recommendation_k_are_fixed_by_the_server(self):
+        # Số do planner chọn bị thay, kể cả lời gọi recommendations server tự chèn.
+        plan = tool_planning.validated_plan(swap_state(), [search(limit=5)], require_recommendations=True)
+        self.assertEqual(plan[0]['args']['limit'], tool_planning.SEARCH_LIMIT)
+        self.assertEqual(plan[1]['args'], {'destination': 'Nha Trang', 'k': tool_planning.RECOMMENDATION_K})
+        properties = {name: contracts()[name]['arguments']['properties'] for name in ('search_products', 'get_recommendations')}
+        self.assertLessEqual(tool_planning.SEARCH_LIMIT, properties['search_products']['limit']['maximum'])
+        self.assertLessEqual(tool_planning.RECOMMENDATION_K, properties['get_recommendations']['k']['maximum'])
 
     def test_at_most_two_similar_calls_and_one_per_anchor(self):
         selection = SELECTION + [{'productId': 'G1', 'name': 'Sân golf đã xem', 'taxonomy': 'golf'}]

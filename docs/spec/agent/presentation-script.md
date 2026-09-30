@@ -145,7 +145,7 @@ Chuẩn bị trước buổi thuyết trình theo [README.md](README.md) mục "
 | `đi 3 ngày` rồi `Nha Trang nhé` | Hỏi điểm đến, rồi ghép intent và hỏi gộp ngày đi, số người, ngân sách |
 | `2 người, chưa chốt ngày` | Câu trả lời ngắn vẫn được hiểu; luồng đầy đủ, thẻ sản phẩm có `productId` |
 | `đổi thành Đà Nẵng` | Chỉ điểm đến đổi, không hỏi lại, tìm lại từ đầu |
-| `Paris 2 ngày` rồi trả lời câu hỏi | 422 `UNSUPPORTED_DESTINATION` kèm danh sách điểm đến |
+| `Paris 2 ngày` rồi trả lời câu hỏi | Hỏi lại: dòng đầu in đậm "Điểm đến chưa được hỗ trợ", lý do và danh sách điểm đến |
 
 Demo gọi LLM thật và phát sinh chi phí. Không bật LangSmith khi chia sẻ màn hình trước người ngoài dự án.
 

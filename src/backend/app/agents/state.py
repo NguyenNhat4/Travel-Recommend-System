@@ -48,11 +48,13 @@ class AgentState(TypedDict, total=False):
     start_date_asked: bool
     clarification_rounds: int
     clarification_reason: str | None
+    invalid_inputs: list[dict[str, Any]]
     refusal: bool
     blocked_by_guardrail: str | None
     candidates: Candidates
     sources: Sources
     warnings: list[PlanWarning]
+    nearest_open_date: str | None
     response: dict[str, Any]  # `ItineraryResponse` envelope; contract-owned, see domain/itinerary/types.py
     http_status: int
     decision: str

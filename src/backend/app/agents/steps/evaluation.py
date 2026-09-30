@@ -3,9 +3,11 @@ from __future__ import annotations
 
 from copy import deepcopy
 
-from src.backend.app.application.itinerary.retrieval import collect
+from src.backend.app.application.itinerary.retrieval import collect, nearest_open_date
 from src.backend.app.application.itinerary.tool_contracts import SIMILAR_PRODUCTS
 from src.backend.app.domain.itinerary.planning import SCHEDULABLE_TAXONOMIES, SLOT_TAXONOMIES, STAY_TAXONOMY
+
+from .classification import vietnam_today
 
 DROPPED_MESSAGE = "Một sản phẩm chưa đủ căn cứ hoặc không đáp ứng yêu cầu đã được loại."
 
@@ -95,6 +97,10 @@ def evaluate_retrieval(state: dict) -> dict:
                                            state["intent"], constraints)
     warnings = [{"code": reason, "message": DROPPED_MESSAGE, "productId": pid} for pid, reason in dropped.items()]
     decision = _decision(errors, candidates, constraints)
+    update = {"candidates": candidates, "sources": sources, "warnings": warnings, "decision": decision}
+    if decision == "no_results":
+        # Cần `details` (chứa ngày mở bán) trước khi xoá bên dưới; `compose` dùng ngày này để gợi ý đặt lại chuyến.
+        update["nearest_open_date"] = nearest_open_date(state.get("tool_results", []), state.get("details", {}),
+                                                        state["intent"], constraints, vietnam_today())
     # `details` đã được `collect()` tiêu thụ ở trên; không giữ lại payload ProductDetail nặng trong state/trace.
-    return {"candidates": candidates, "sources": sources, "warnings": warnings,
-            "decision": decision, "details": {}}
+    return {**update, "details": {}}
