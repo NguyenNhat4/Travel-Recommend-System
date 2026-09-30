@@ -142,6 +142,11 @@ STEP_SOURCE = {"vinpearl": "vinpearl", "trip-flights": "trip_flights", "trip-att
 # ---------------------------------------------------------------------------------------------------- tiện ích
 
 
+def prefixed(params: dict, prefix: str) -> dict:
+    """`f.cột=giá trị` → {cột: giá trị}; giá trị `\\N` = NULL (bộ lọc / khoá của tab DB)."""
+    return {k[len(prefix):]: (None if v == "\\N" else v) for k, v in params.items() if k.startswith(prefix)}
+
+
 def read_json(path: Path, default=None):
     try:
         return json.loads(Path(path).read_text(encoding="utf-8"))
@@ -670,6 +675,17 @@ class FreshMonitor:
             return run_alerts.sla_status(self.state_dir, self.run_root, values)
         except Exception as exc:  # cấu hình lỗi, file hỏng: vẫn hiện phần còn lại của trang
             return {"enabled": False, "error": f"{type(exc).__name__}: {exc}"[:300], "rules": []}
+
+    def dbx(self):
+        """Tab "DB": xem toàn bộ database đích (chỉ đọc; docs/prd/deployment-plan.md §5)."""
+        from db_browser import DbBrowser
+        db_target = os.environ.get("DB_TARGET", "local")
+        url = os.environ.get("SEED_DATABASE_URL" if db_target == "local" else "CLOUD_SEED_DATABASE_URL") or ""
+        if not url:
+            raise ValueError("Monitor chưa có kết nối DB (SEED_DATABASE_URL / CLOUD_SEED_DATABASE_URL)")
+        if getattr(self, "_dbx", None) is None or self._dbx.url != url:
+            self._dbx = DbBrowser(url)
+        return self._dbx
 
     def targets(self) -> dict:
         """Nơi lượt kế tiếp sẽ ghi (host/database/collection, không có tài khoản hay mật khẩu)."""
@@ -2038,6 +2054,12 @@ class Handler(BaseHTTPRequestHandler):
                                               q.get("q", ""), num("offset", 0), num("limit", 100)),
                 "/api/embed/row": lambda: m.embed_row(q.get("run", ""), q.get("id", "")),
                 "/api/embed/vector": lambda: m.embed_vector(q.get("id", "")),
+                "/api/dbx/tables": lambda: m.dbx().tables(),
+                "/api/dbx/rows": lambda: m.dbx().rows(q.get("table", ""), prefixed(q, "f."), q.get("q", ""),
+                                                      q.get("sort", ""), q.get("desc") == "1", num("offset", 0),
+                                                      num("limit", 50)),
+                "/api/dbx/row": lambda: m.dbx().row(q.get("table", ""), prefixed(q, "k.")),
+                "/api/dbx/children": lambda: m.dbx().children(q.get("id", ""), num("offset", 0), num("limit", 50)),
             }
             if url.path in routes:
                 return self._json(routes[url.path]())

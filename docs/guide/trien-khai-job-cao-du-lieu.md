@@ -74,7 +74,10 @@ Quay lại legacy cần chủ động cài `install-vota-cron.sh --job legacy` v
 ## Monitor: link để xem và bấm chạy
 
 Monitor là trang web của job: sơ đồ các bước, log, báo cáo từng lượt, nút chạy lượt cào / chạy lại bước / cào lại một nguồn,
-trang cấu hình (nguồn, giờ chạy, chạy liên tục). Như bản deploy trước (25/09), mở bằng link không cần SSH:
+trang cấu hình (nguồn, giờ chạy, chạy liên tục), và tab **DB** xem toàn bộ database đích (`cdp`, `catalog`, `app`): số dòng
+mỗi bảng, lọc / tìm / sắp xếp, bấm ô khoá để xem một dòng và các bảng trỏ tới / được trỏ tới (khoá ngoại và quan hệ quy ước
+sản phẩm cha–con, vé mô phỏng–vé gốc). Tab DB chỉ đọc, không có SQL tự do; cột `password_hash`, `token_hash` hiện "(ẩn)"
+(`docs/prd/deployment-plan.md` §5). Link thẳng tới một bảng: `http://<IP>:8765/#page=db&table=cdp.products`. Như bản deploy trước (25/09), mở bằng link không cần SSH:
 
 1. Chạy monitor với `MONITOR_HOST=0.0.0.0 MONITOR_PUBLIC=1` (thao tác riêng khi được phép khởi động/cập nhật monitor). Lệnh `monitor` của job cũ
    nhận cùng hai biến.

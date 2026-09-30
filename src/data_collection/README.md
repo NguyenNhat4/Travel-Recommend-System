@@ -238,6 +238,7 @@ Phục vụ FR-CAT-01/03 và NFR-SEC-01. Dùng cùng **image/tag, env file và v
 
 ```bash
 FRESH_IMAGE=<AR>/vota-fresh-catalog:<tag> /opt/vota/bin/run_daily_docker.sh fresh-monitor
+# Tab DB của monitor đọc DB đích bằng SEED_DATABASE_URL (DB_TARGET=local) hoặc CLOUD_SEED_DATABASE_URL, chỉ đọc.
 # Chạy ở terminal/tmux riêng để giữ server sống. `monitor` (không có `fresh-`) chạy cùng UI trong image daily và đọc
 # <DATA_DIR>/state, <DATA_DIR>/fresh_runs — đây là lệnh bước "Restart crawler monitor" của CD gọi.
 # Trên máy cá nhân:
