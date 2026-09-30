@@ -21,8 +21,15 @@ python -m src.evaluation.recsys_bench load                 # bảng lọc (mục
 python -m src.evaluation.recsys_bench split --kind llbo    # hoặc --kind temporal [--T 2026-07-10]
 python -m src.evaluation.recsys_bench run --arm random --arm engine --split llbo --vectors weaviate
 python -m src.evaluation.recsys_bench user --id VP0000001  # một khách, như production, kiểm contract
+python -m src.evaluation.recsys_bench http-latency --base-url https://v-ota.duckdns.org --runs 3 --k 5   # p95 qua HTTP (Day 2 C)
 python -m pytest -q src/evaluation/recsys_bench/tests      # không cần DB
 ```
+
+- `http-latency` (30/09): p50/p95 `/recommendations` qua HTTP, mặc định **guest path** (không cookie → `popular`) — đường
+  duy nhất đo được từ ngoài trên Cloud hôm nay vì `/internal/recommendations` cần `X-Service-Token` + `INTERNAL_API_ENABLED`
+  và BFF không chuyển header; `--users frozen/users60.json --token-env AUTH_SERVICE_TOKEN` đi `/internal` khi có tunnel IAP
+  hoặc backend local. Số đầu bảng là `diagnostics.latencyMs` (server), `client_ms` (gồm mạng) báo riêng; `--drop-first` bỏ
+  lượt 1. Ghi `bench_out/recsys/runs/<run_id>/http_latency.json`.
 
 - `--vectors weaviate`: giống `main.build_recsys`, mỗi request truy vấn top-K ở Weaviate. `--vectors numpy`: kéo toàn
   bộ vector một lần (REST) và quét chính xác trong RAM, dùng cho grid-search. `none`: chỉ catalog, cho arm random.
@@ -207,3 +214,5 @@ Lệnh `user --id VP0000001 --k 5`, `as_of` 2026-09-24, 12 event lịch sử, c�
 - Temporal hiện chỉ giữ một target mỗi khách (purchase đầu tiên ≥ T). Muốn đo nhiều target thì cần đổi metric.
 - Availability đo theo trạng thái catalog hôm nay, không theo `as_of`.
 - p95/p99 là thời gian xếp hạng offline (Weaviate local, không HTTP, không đọc CDP) — không thay số đo trên cloud.
+  Số trên cloud đo bằng `http-latency` (§1), nhưng chỉ **guest path** cho tới khi ops mở IAP: một khách `popular` lặp
+  lại, không phải 60 khách của brute-force check — ghi rõ khi trích dẫn.

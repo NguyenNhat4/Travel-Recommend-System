@@ -700,6 +700,178 @@ def compare(c: typer.Context, arm_a: str = typer.Argument(..., help="arm mốc (
 
 
 # ------------------------------------------------------------------ Part 5 (ngày 2: pool, split)
+# ------------------------------------------------------------------ Part 9 (30/09): latency http, parity
+latency_app = typer.Typer(no_args_is_help=True, help="Part 9: latency đường nóng — `http` đo /search thật qua HTTP "
+                                                     "(embed / e2e / load chưa làm)")
+app.add_typer(latency_app, name="latency")
+
+
+def _open_section(section, key: str) -> dict:
+    d = section.model_dump() if hasattr(section, "model_dump") else dict(section)
+    if not d.get(key):
+        _fail(f"config sbench.yaml thiếu latency.{key} (spec Part 9)", 2)
+    return dict(d[key])
+
+
+def _dsn_label(url: str) -> str:
+    """host:port/db của một DSN — không bao giờ in user / mật khẩu."""
+    from urllib.parse import urlparse
+    u = urlparse(url)
+    return f"{u.hostname or '?'}:{u.port or '?'}{u.path or ''}"
+
+
+def _p(v):
+    return "-" if v is None else f"{v:.0f}"
+
+
+@latency_app.command("http")
+def latency_http(c: typer.Context,
+                 base_url: Optional[str] = typer.Option(None, "--base-url", envvar="SBENCH_CLOUD_BASE_URL",
+                                                        help="gốc URL, vd https://v-ota.duckdns.org hoặc http://127.0.0.1:8000"),
+                 queries: Optional[Path] = typer.Option(None, "--queries", help="mặc định config/latency_queries.yaml"),
+                 runs: Optional[int] = typer.Option(None, "--runs", help="số lượt qua hết mọi câu (config latency.http.runs)"),
+                 drop_first: Optional[bool] = typer.Option(None, "--drop-first/--keep-first",
+                                                           help="bỏ lượt 1 khỏi p50/p95 (lượt 1 vẫn là nguồn mẫu miss)"),
+                 limit: Optional[int] = typer.Option(None, "--limit"),
+                 label: Optional[str] = typer.Option(None, "--label", help="vd cache-off / cache-on → latency-<label>.json")):
+    """Đo `/search` thật qua HTTP (spec Part 9, 30/09): 25 câu prewarmed + 25 câu cold × runs lượt, tuần tự. Bảng p50/p95
+    theo nhóm và theo stage (`diagnostics.stageMs`, contract 1.11.0), tách hit/miss theo `embedCache` (1.12.0); ghi
+    runs/<run_id>/latency[-label].json. Mã thoát 1 khi không có mẫu 200 nào."""
+    from rich.table import Table
+    from . import latency as L, paths, runner as R
+    ctx = _ctx(c)
+    cfg = ctx.cfg()
+    hc = _open_section(cfg.latency, "http")
+    if not base_url:
+        _fail("thiếu --base-url (hoặc SBENCH_CLOUD_BASE_URL trong .env)", 2)
+    qp = queries or paths.PKG_DIR / str(hc["queries"])
+    n_runs, lim = int(runs or hc["runs"]), int(limit or hc["limit"])
+    df = bool(hc["drop_first"]) if drop_first is None else drop_first
+    try:
+        groups = L.load_queries(qp)
+    except (L.LatencyError, OSError) as e:
+        _fail(str(e), 2)
+    run_id = ctx.run_id or R.new_run_id()
+    con = _console()
+    con.print(f"latency http · {base_url} · {len(groups['prewarmed'])} prewarmed + {len(groups['cold'])} cold · {n_runs} lượt · "
+              f"limit {lim} · drop_first {df} · run {run_id}", highlight=False)
+    samples = L.measure(base_url, groups, runs=n_runs, limit=lim, timeout_s=float(hc["timeout_s"]),
+                        progress=lambda s: con.print(f"  [red]lỗi[/] lượt {s.run} «{s.text}»: {s.error}") if s.error else None)
+    summary = L.summarize(samples, drop_first=df, percentiles=tuple(int(x) for x in hc.get("percentiles", [50, 95])))
+    t = Table(title=f"/search · {base_url} · ms server (latencyMs, stageMs) · lượt {'≥ 2' if df and n_runs > 1 else 'mọi'}")
+    for col in ("nhóm", "n", "latencyMs p50", "p95", "client p50", "p95", *(f"{st} p50/p95" for st in L.STAGES)):
+        t.add_column(col, justify="left" if col == "nhóm" else "right")
+    for g, d in summary["by_group"].items():
+        st = d["stage_ms"]
+        t.add_row(g, str(d["latency_ms"]["n"]), _p(d["latency_ms"]["p50"]), _p(d["latency_ms"]["p95"]),
+                  _p(d["client_ms"]["p50"]), _p(d["client_ms"]["p95"]),
+                  *(f"{_p(st[x]['p50'])}/{_p(st[x]['p95'])}" if x in st else "-" for x in L.STAGES))
+    con.print(t)
+    if summary["by_cache"]:
+        t2 = Table(title="theo embedCache (miss = lần gặp đầu của câu, mọi lượt)")
+        for col in ("cache", "n", "latencyMs p50", "p95", "embed p50", "p95", "client p50", "p95"):
+            t2.add_column(col, justify="left" if col == "cache" else "right")
+        for name, d in summary["by_cache"].items():
+            t2.add_row(name, str(d["latency_ms"]["n"]), _p(d["latency_ms"]["p50"]), _p(d["latency_ms"]["p95"]),
+                       _p(d["embed_ms"]["p50"]), _p(d["embed_ms"]["p95"]), _p(d["client_ms"]["p50"]), _p(d["client_ms"]["p95"]))
+        con.print(t2)
+    con.print(f"  mẫu {summary['n_ok']}/{summary['n_samples']} OK · searchMode {summary['search_modes'] or '-'} · embedCache "
+              f"{summary['embed_cache_seen'] or 'không có (contract < 1.12.0)'} · top-10 giống nhau ở mọi lượt "
+              f"{summary['top10_stable']}/{summary['top10_total']}", highlight=False)
+    p = L.write_latency(run_id, base_url=base_url, queries_path=qp, samples=samples, summary=summary, label=label,
+                        meta={"runs": n_runs, "limit": lim, "drop_first": df})
+    con.print(f"  → {p}", style="dim", highlight=False)
+    if summary["n_ok"] == 0:
+        raise typer.Exit(1)
+
+
+@app.command()
+def parity(c: typer.Context,
+           mode: str = typer.Option("http", "--mode", help="http (A = /search Cloud, B = /search local) | weaviate "
+                                                            "(cùng SearchProducts trên catalog VM: A = Product@Cloud, B = ProductVM@bench)"),
+           base_a: Optional[str] = typer.Option(None, "--base-url-a", envvar="SBENCH_CLOUD_BASE_URL"),
+           base_b: Optional[str] = typer.Option(None, "--base-url-b", envvar="SBENCH_LOCAL_BASE_URL"),
+           queries: Optional[Path] = typer.Option(None, "--queries", help="mặc định config/parity_queries.yaml"),
+           k: Optional[int] = typer.Option(None, "--k"),
+           cloud_url: Optional[str] = typer.Option(None, "--cloud-weaviate-url", envvar="SBENCH_CLOUD_WEAVIATE_URL"),
+           cloud_key: Optional[str] = typer.Option(None, "--cloud-weaviate-api-key", envvar="SBENCH_CLOUD_WEAVIATE_API_KEY",
+                                                   show_default=False),
+           database_url: Optional[str] = typer.Option(None, "--database-url", envvar="SBENCH_VM_DATABASE_URL", show_default=False,
+                                                      help="DSN catalog VM (qua tunnel SSH); chỉ in host:port/db"),
+           cloud_collection: str = typer.Option("Product", "--collection", help="collection trên Weaviate Cloud"),
+           arm: str = typer.Option("APP.hybrid_norm", "--arm", help="arm APP quyết định tham số SearchProducts (mode weaviate)"),
+           recreate: bool = typer.Option(False, "--recreate", help="mode weaviate: nạp lại ProductVM dù đã đủ")):
+    """Parity Cloud vs local trên 20 câu cố định (spec Part 9, 30/09; lịch 10 ngày Day 2 C): top-1 trùng ≥ 18/20 và
+    overlap@10 ≥ 8/10 ở mọi câu (config latency.parity). Ghi runs/<run_id>/parity-<mode>.json; mã thoát 1 khi không đạt."""
+    from rich.table import Table
+    from . import parity as P, paths, runner as R
+    ctx = _ctx(c)
+    cfg = ctx.cfg()
+    pc = _open_section(cfg.latency, "parity")
+    kk = int(k or pc["k"])
+    try:
+        qs = P.load_parity_queries(queries or paths.PKG_DIR / str(pc["queries"]))
+    except (P.ParityError, OSError) as e:
+        _fail(str(e), 2)
+    run_id = ctx.run_id or R.new_run_id()
+    con = _console()
+    if mode == "http":
+        if not base_a or not base_b:
+            _fail("mode http cần --base-url-a và --base-url-b (SBENCH_CLOUD_BASE_URL / SBENCH_LOCAL_BASE_URL)", 2)
+        con.print(f"parity http · A {base_a} · B {base_b} · {len(qs)} câu · k={kk}", highlight=False)
+        rows = P.parity_http(base_a, base_b, qs, k=kk, timeout_s=float(_open_section(cfg.latency, "http")["timeout_s"]))
+        meta = {"a": base_a, "b": base_b, "arm": None}
+    elif mode == "weaviate":
+        if not (cloud_url and cloud_key and database_url):
+            _fail("mode weaviate cần --cloud-weaviate-url, --cloud-weaviate-api-key và --database-url "
+                  "(SBENCH_CLOUD_WEAVIATE_URL / SBENCH_CLOUD_WEAVIATE_API_KEY / SBENCH_VM_DATABASE_URL)", 2)
+        from .app_adapter import AppAdapterError, build_vm_catalog, parity_contexts
+        from .arms import ArmError, load_arm
+        from .embed import EmbedderUnavailable, make_embedder
+        try:
+            arm_o = load_arm(arm)
+            if arm_o.engine != "app":
+                _fail(f"{arm}: mode weaviate cần arm `engine: app`", 2)
+            con.print(f"parity weaviate · catalog VM {_dsn_label(database_url)} · A {cloud_collection}@{_dsn_label(cloud_url)} · "
+                      f"B {pc['vm_collection']}@{_dsn_label(cfg.weaviate.url)} · arm {arm} · {len(qs)} câu · k={kk}", highlight=False)
+            cat = build_vm_catalog(database_url)
+            a_ctx, b_ctx, stats = parity_contexts(cfg, cat, cloud_url=cloud_url, cloud_api_key=cloud_key,
+                                                  cloud_collection=cloud_collection, vm_collection=str(pc["vm_collection"]),
+                                                  recreate=recreate)
+            con.print(f"  catalog VM {stats['vm_units']} unit · Cloud {stats['cloud_objects']} object · có vector {stats['with_vector']} · "
+                      f"không vector {stats['without_vector']} · mồ côi {stats['orphans']} · thiếu BM25 {stats['missing_lexical']} · "
+                      f"text cũ {stats['stale_text']} · nạp ProductVM {stats['vm_loaded']}", highlight=False)
+            emb = make_embedder(cfg, arm_o.model, embedding_type=arm_o.embedding_types, preflight=False)
+            try:
+                sa, sb_ = a_ctx.make_search(arm_o.app, emb), b_ctx.make_search(arm_o.app, emb)
+                rows = P.parity_engines(lambda q: sa.search(q, limit=kk), lambda q: sb_.search(q, limit=kk), qs)
+            finally:
+                emb.close()
+                a_ctx.close()
+                b_ctx.close()
+        except (ArmError, AppAdapterError, EmbedderUnavailable, *_weaviate_errors()) as e:
+            _fail(f"parity weaviate: {e}", 2)
+        meta = {"a": f"{cloud_collection}@{_dsn_label(cloud_url)}", "b": f"{pc['vm_collection']}@bench", "arm": arm,
+                "catalog": _dsn_label(database_url), "stats": stats}
+    else:
+        _fail("--mode phải là http hoặc weaviate", 2)
+    res = P.verdict(rows, k=kk, top1_min=int(pc["top1_min"]), overlap_min=int(pc["overlap_min"]))
+    t = Table(title=f"parity {mode} · top-1 trùng {res['top1_same']}/{res['n']} (cần ≥ {res['top1_min']}) · overlap@{kk} min "
+                    f"{res['overlap_min_seen']} (cần ≥ {res['overlap_min']})")
+    for col in ("slice", "câu", "top-1", f"overlap@{kk}", "A top-1", "B top-1", "ghi chú"):
+        t.add_column(col, justify="right" if col in ("top-1", f"overlap@{kk}") else "left")
+    for r in rows:
+        note = r.error or (f"A {r.a_diag.get('searchMode', '')} / B {r.b_diag.get('searchMode', '')}".strip() if mode == "http" else "")
+        t.add_row(r.slice, r.text, "✓" if r.top1_same else "[red]✗[/]", str(r.overlap(kk)) if not r.error else "-",
+                  (r.a_ids or ["-"])[0], (r.b_ids or ["-"])[0], note)
+    con.print(t)
+    con.print(f"  {'[green]PASS[/]' if res['pass'] else '[red]FAIL[/]'} · lỗi {res['n_error']}", highlight=False)
+    p = P.write_parity(run_id, mode=mode, rows=rows, result=res, meta=meta)
+    con.print(f"  → {p}", style="dim", highlight=False)
+    if not res["pass"]:
+        raise typer.Exit(1)
+
+
 gold_app = typer.Typer(no_args_is_help=True, help="Part 5: gold — drafts, pool, split, kappa, merge, import, check. "
                         "Mã thoát: 0 đạt · 1 dữ liệu vi phạm luật · 2 lỗi đầu vào (file thiếu, sai định dạng, sai sha)")
 app.add_typer(gold_app, name="gold")

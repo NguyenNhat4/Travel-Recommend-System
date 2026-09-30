@@ -6,6 +6,7 @@
     python -m src.evaluation.recsys_bench run --arm random --split llbo
     python -m src.evaluation.recsys_bench run --arm random --arm engine --split llbo --vectors weaviate
     python -m src.evaluation.recsys_bench user --id VP0000001
+    python -m src.evaluation.recsys_bench http-latency --base-url https://v-ota.duckdns.org   # p95 guest path (Day 2 C)
 
 Mã thoát: 0 ok · 1 lỗi môi trường/dữ liệu. Số đo và giới hạn: `docs/spec/bench/recsys-offline-eval.md`.
 """
@@ -251,6 +252,54 @@ def user(cdp_user_id: str = typer.Option(..., "--id"),
             "nextVertical ∈ {flight, attraction}": response.get("nextVertical") in {"flight", "attraction"},
         }
     typer.echo(json.dumps(out, ensure_ascii=False, indent=2))
+
+
+@app.command("http-latency")
+def http_latency(base_url: str = typer.Option(..., "--base-url", help="vd https://v-ota.duckdns.org hoặc http://127.0.0.1:8000"),
+                 runs: int = typer.Option(3, "--runs"),
+                 drop_first: bool = typer.Option(True, "--drop-first/--keep-first", help="bỏ lượt 1 khỏi p50/p95"),
+                 k: int = typer.Option(5, "--k", help="k của /recommendations; guest path lặp k GET mỗi lượt"),
+                 timeout_s: float = typer.Option(30.0, "--timeout"),
+                 users: Optional[str] = typer.Option(None, "--users", help="JSON {\"users\": [{\"cdpUserId\": …}]} → "
+                                                                          "/internal/recommendations với X-Service-Token"),
+                 token_env: str = typer.Option("AUTH_SERVICE_TOKEN", "--token-env", help="tên biến môi trường chứa token (không in)"),
+                 run_id: Optional[str] = typer.Option(None, "--run-id")):
+    """p50/p95 `/recommendations` qua HTTP (Day 2 C). Mặc định **guest path** (không cookie → popular) — đường duy nhất đo
+    được từ ngoài trên Cloud; `--users` đi `/internal/recommendations` khi có tunnel IAP / backend local. Ghi
+    bench_out/recsys/runs/<run_id>/http_latency.json. Mã thoát 1 khi không có mẫu 200."""
+    from pathlib import Path
+
+    from . import http_latency as H
+    from .paths import run_dir
+
+    try:
+        user_ids = H.load_users(Path(users)) if users else None
+    except (H.HttpLatencyError, OSError, ValueError) as e:
+        _fail(str(e))
+    run_id = run_id or f"{datetime.now():%Y%m%d-%H%M%S}-http-{'users' if user_ids else 'guest'}"
+    typer.echo(f"http-latency · {base_url} · {'users ' + str(len(user_ids)) if user_ids else 'guest path (popular)'} · "
+               f"{runs} lượt · k={k} · drop_first {drop_first}")
+    try:
+        samples = H.measure(base_url, runs=runs, k=k, timeout_s=timeout_s, users=user_ids, token_env=token_env,
+                            progress=lambda s: typer.echo(f"  lỗi lượt {s.run} {s.user or 'guest'}: {s.error}") if s.error else None)
+    except H.HttpLatencyError as e:
+        _fail(str(e))
+    summary = H.summarize(samples, drop_first=drop_first)
+    lat, cli = summary["latency_ms"], summary["client_ms"]
+
+    def _p(v):
+        return "-" if v is None else f"{v:.0f}"
+    typer.echo(f"| đường | n | latencyMs p50 | p95 | client p50 | p95 | strategy |")
+    typer.echo(f"|---|---:|---:|---:|---:|---:|---|")
+    typer.echo(f"| {summary['path']} | {lat['n']} | {_p(lat['p50'])} | {_p(lat['p95'])} | {_p(cli['p50'])} | {_p(cli['p95'])} | "
+               f"{summary['strategies']} |")
+    typer.echo(f"mẫu {summary['n_ok']}/{summary['n_samples']} OK · items tối thiểu {summary['n_items_min']} · "
+               f"{'guest path: một khách popular, không phải 60 khách' if not user_ids else 'users: /internal'}")
+    p = H.write(run_dir(run_id), base_url=base_url, samples=samples, summary=summary,
+                meta={"runId": run_id, "runs": runs, "k": k, "users": len(user_ids) if user_ids else 0})
+    typer.echo(f"→ {p}")
+    if summary["n_ok"] == 0:
+        raise typer.Exit(1)
 
 
 if __name__ == "__main__":

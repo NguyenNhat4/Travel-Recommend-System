@@ -127,9 +127,22 @@ def load_product_bench(cfg: SBenchConfig, dataset: str, cat: AppCatalog, *, coll
     if vmeta.get("text_sha256") and vmeta.get("text_sha256") != vectors.texts_digest([
             hashlib.sha1(cat.texts[p].encode("utf-8")).hexdigest() for p in ids]):
         pass   # digest của bench dùng text_hash riêng (textbuild.text_hash) — kiểm theo textHash từng object bên dưới
+    n = load_collection(cfg, cat, ids, vecs, collection=collection,
+                        drop_first=status["exists"] and (recreate or status["stale"] or status["n"] != status["matching"]))
+    return {**product_bench_status(cfg, cat, collection=collection), "loaded": n}
+
+
+def load_collection(cfg: SBenchConfig, cat: AppCatalog, ids: list[str], vecs: Any, *, collection: str,
+                    drop_first: bool) -> int:
+    """Nạp `collection` trên Weaviate bench bằng `WeaviateClient` của backend từ (ids, vectors) cho trước — hình dạng như
+    `Product` production (property BM25 fold ở app, uuid5). Trả số object đã nạp; sai số lượng sau nạp → lỗi."""
+    _, _, _, _, W = _backend()
+    unknown = [pid for pid in ids if pid not in cat.index.idx]
+    if unknown:
+        raise AppAdapterError(f"{len(unknown)} vector không có unit trong catalog, ví dụ {unknown[:3]}")
     client = W.WeaviateClient(cfg.weaviate.url, collection=collection, vector_index_type="hnsw")
     try:
-        if status["exists"] and (recreate or status["stale"] or status["n"] != status["matching"]):
+        if drop_first:
             r = client._client.delete(f"/v1/schema/{collection}")           # dựng lại từ đầu, không nạp dở
             if r.status_code not in (200, 204, 404):
                 r.raise_for_status()
@@ -147,7 +160,57 @@ def load_product_bench(cfg: SBenchConfig, dataset: str, cat: AppCatalog, *, coll
         client.close()
     if len(meta) != len(ids):
         raise AppAdapterError(f"{collection}: {len(meta)} object sau khi nạp, cần {len(ids)}")
-    return {**product_bench_status(cfg, cat, collection=collection), "loaded": len(objects)}
+    return len(objects)
+
+
+# ------------------------------------------------------------------ catalog VM + vector Cloud (sb parity --mode weaviate)
+def build_vm_catalog(database_url: str) -> AppCatalog:
+    """`UnitIndex` + text từ Postgres qua chính `PostgresCatalogReader` của backend (catalog VM qua tunnel SSH) — đúng
+    như `main.build_recsys`; text = `catalog-text-v2`, textHash như job `embed_products`."""
+    _backend()
+    try:
+        from src.backend.app.infrastructure.vectors.postgres_store import PostgresCatalogReader
+    except Exception as e:  # noqa: BLE001
+        raise AppAdapterError(f"không import được PostgresCatalogReader: {type(e).__name__}: {e}") from None
+    cu = PostgresCatalogReader(database_url).load()
+    ids = [u.product_id for u in cu.units]
+    texts = dict(zip(ids, cu.texts, strict=True))
+    return AppCatalog(index=cu.to_index(MODEL_VERSION), texts=texts,
+                      text_hash={pid: hashlib.sha256(texts[pid].encode("utf-8")).hexdigest() for pid in ids})
+
+
+def fetch_cloud_vectors(url: str, api_key: str, *, collection: str, timeout_s: float = 60.0) -> tuple[dict, dict]:
+    """(metadata, vectors) của mọi object trong `collection` — REST cursor của `WeaviateClient.fetch`, 0 Cohere."""
+    _, _, _, _, W = _backend()
+    client = W.WeaviateClient(url, collection=collection, api_key=api_key, timeout_seconds=timeout_s)
+    try:
+        return client.fetch(include_vectors=True)
+    finally:
+        client.close()
+
+
+def parity_contexts(cfg: SBenchConfig, cat: AppCatalog, *, cloud_url: str, cloud_api_key: str, cloud_collection: str,
+                    vm_collection: str, recreate: bool = False) -> tuple["AppContext", "AppContext", dict]:
+    """Hai `AppContext` trên cùng catalog VM: A = `cloud_collection` trên Weaviate Cloud (đọc trực tiếp), B = `vm_collection`
+    trên Weaviate bench nạp từ vector kéo về từ A. Trả thêm thống kê: object Cloud, unit VM có / không có vector Cloud,
+    object Cloud không còn trong catalog VM (mồ côi), object thiếu property BM25."""
+    meta, vecs = fetch_cloud_vectors(cloud_url, cloud_api_key, collection=cloud_collection)
+    ids = [pid for pid in cat.index.idx if pid in vecs and vecs[pid].size]
+    stats = {"cloud_objects": len(meta), "vm_units": len(cat.index.idx), "with_vector": len(ids),
+             "without_vector": len(cat.index.idx) - len(ids), "orphans": len(set(meta) - set(cat.index.idx)),
+             "missing_lexical": sum(1 for m in meta.values() if not m.lexical),
+             "stale_text": sum(1 for pid in ids if meta[pid].text_hash != cat.text_hash[pid]),
+             "model_versions": sorted({m.model_version for m in meta.values()})}
+    if not ids:
+        raise AppAdapterError(f"{cloud_collection}@Cloud không có vector nào cho catalog VM ({len(meta)} object)")
+    status = product_bench_status(cfg, cat, collection=vm_collection)
+    need = recreate or not status["exists"] or status["n"] != len(ids) or status["stale"] or status["n"] != status["matching"]
+    stats["vm_loaded"] = load_collection(cfg, cat, ids, [vecs[p] for p in ids], collection=vm_collection,
+                                         drop_first=status["exists"]) if need else 0
+    a = AppContext(cfg=cfg, dataset="vm", cat=cat, collection=cloud_collection, weaviate_url=cloud_url, api_key=cloud_api_key,
+                   grpc_port=443)
+    b = AppContext(cfg=cfg, dataset="vm", cat=cat, collection=vm_collection)
+    return a, b, stats
 
 
 # ------------------------------------------------------------------ SearchProducts như production
@@ -204,6 +267,9 @@ class AppContext:
     dataset: str
     cat: AppCatalog
     collection: str = PRODUCT_BENCH
+    weaviate_url: str | None = None      # None → Weaviate của bench (cfg.weaviate); Cloud → URL + api_key (sb parity)
+    api_key: str = ""
+    grpc_port: int | None = None
     _client: Any = None
     _vs: Any = None
 
@@ -217,7 +283,8 @@ class AppContext:
     def vector_search(self):
         if self._vs is None:
             _, _, _, _, W = _backend()
-            self._client = W.connect_weaviate(self.cfg.weaviate.url, grpc_port=self.cfg.weaviate.grpc_port,
+            self._client = W.connect_weaviate(self.weaviate_url or self.cfg.weaviate.url, api_key=self.api_key,
+                                              grpc_port=self.grpc_port or self.cfg.weaviate.grpc_port,
                                               timeout_seconds=self.cfg.weaviate.query_timeout_s)
             self._vs = W.WeaviateVectorSearch(self._client, collection=self.collection, dimension=1024)
         return self._vs

@@ -113,6 +113,19 @@ latency:                          # Part 9
   load_qps: 50
   load_seconds: 60
   embed_timeout_ms: 150
+  http:                           # sb latency http (30/09): /search thật qua HTTP — Cloud hoặc local
+    queries: config/latency_queries.yaml   # tương đối theo thư mục gói search_bench
+    runs: 3
+    drop_first: true              # bỏ lượt 1 khỏi p50/p95 (làm nóng kết nối); lượt 1 vẫn là nguồn mẫu miss
+    limit: 10
+    timeout_s: 30
+    percentiles: [50, 95]
+  parity:                         # sb parity (30/09): cổng M4 — lịch 10 ngày Day 2 C
+    queries: config/parity_queries.yaml
+    k: 10
+    top1_min: 18                  # top-1 trùng ≥ 18/20 câu
+    overlap_min: 8                # overlap@10 ≥ 8/10 ở mọi câu
+    vm_collection: ProductVM      # collection trên Weaviate bench dựng từ vector kéo về từ Cloud (mode weaviate)
 
 holes:                            # Part 11
   k: 10                           # quét top-k của per_query
