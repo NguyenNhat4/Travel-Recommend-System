@@ -118,32 +118,44 @@ def _price_key(product: Product) -> tuple[int, float]:
     return (1, 0.0) if price is None else (0, float(price))
 
 
-def _stay_order(product: Product) -> tuple[Any, ...]:
+def _source_rank(sources: Sources, product: Product) -> int:
+    # Search (and Similar, which also carries source "search") is preferred over Recommendation:
+    # a recommended item only fills a slot/stay when no searched candidate is available for it.
+    return 0 if sources.get(product["productId"]) != "recommendation" else 1
+
+
+def _stay_order(sources: Sources, product: Product) -> tuple[Any, ...]:
     star = product.get("attributes", {}).get("starRating")
-    return (*_price_key(product), -(star if isinstance(star, (int, float)) else -1), product["productId"])
+    return (_source_rank(sources, product), *_price_key(product),
+            -(star if isinstance(star, (int, float)) else -1), product["productId"])
 
 
-def _activity_order(product: Product) -> tuple[Any, ...]:
+def _activity_order(sources: Sources, product: Product) -> tuple[Any, ...]:
     # A full-day item needs a day to itself, so it is placed before anything that can share one.
-    return (0 if allowed_times(product) == ["MORNING"] else 1, *_price_key(product), product["productId"])
+    return (_source_rank(sources, product), 0 if allowed_times(product) == ["MORNING"] else 1,
+            *_price_key(product), product["productId"])
 
 
-def compose_plan(candidates: Candidates, intent: TripIntent) -> Proposal:
+def compose_plan(candidates: Candidates, sources: Sources, intent: TripIntent) -> Proposal:
     """Choose products and lay them out on days with fixed rules. No model is involved.
 
-    Ordering is total and depends only on product data, so the same candidates always produce the
-    same proposal. The result is fed to `render_proposal`, which still enforces every rule; this
-    function only has to avoid proposing something the renderer would reject.
+    Ordering is total and depends only on product data and source, so the same candidates always
+    produce the same proposal. Search-sourced candidates are always chosen over Recommendation-sourced
+    ones for the same slot; a recommendation only fills a slot/stay left empty by Search. The result is
+    fed to `render_proposal`, which still enforces every rule; this function only has to avoid
+    proposing something the renderer would reject.
     """
     days_count = intent.get("days")
     if not isinstance(days_count, int) or days_count < 1:  # upper bound is enforced by TripIntent
         raise ValueError("invalid trip duration")
     usable = [product for product in candidates.values() if product.get("available")]
-    stays = sorted((p for p in usable if p.get("taxonomy") == STAY_TAXONOMY), key=_stay_order)
+    stays = sorted((p for p in usable if p.get("taxonomy") == STAY_TAXONOMY),
+                   key=lambda product: _stay_order(sources, product))
     stay = stays[0] if stays else None
     taken = {_parent_key(stay), stay["productId"]} if stay else set()
     activities: list[Product] = []
-    for product in sorted((p for p in usable if p.get("taxonomy") in SLOT_TAXONOMIES), key=_activity_order):
+    for product in sorted((p for p in usable if p.get("taxonomy") in SLOT_TAXONOMIES),
+                          key=lambda product: _activity_order(sources, product)):
         key = _parent_key(product)
         if key in taken or product["productId"] in taken:
             continue

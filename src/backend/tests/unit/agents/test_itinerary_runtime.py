@@ -80,16 +80,20 @@ class ScriptedLlm:
 
 
 class Clients:
-    def __init__(self, products=None, rec_error=None, rec=None, incomplete=False, destinations=None):
+    def __init__(self, products=None, rec_error=None, rec=None, incomplete=False, destinations=None,
+                 search_error=None):
         self.destinations = destinations
         self.products = products if products is not None else [product()]
         self.calls = []
         self.rec_error = rec_error
         self.rec = rec
         self.incomplete = incomplete
+        self.search_error = search_error
 
     async def search_products(self, args):
         self.calls.append('search')
+        if self.search_error:
+            raise self.search_error
         values = deepcopy(self.products)
         if self.incomplete:
             for p in values:
@@ -672,10 +676,14 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len([call for call in clients.calls if call.startswith('detail:')]), 10)
 
     async def test_all_transient_failures_terminate_without_fake_results(self):
-        clients = Clients(rec_error=ToolError('TOOL_TIMEOUT', retryable=True))
+        # Kể cả get_recommendations là lời gọi duy nhất của planner, lưới an toàn category mặc định (§2.6) vẫn
+        # thêm search hotel/attraction/golf; search cũng phải lỗi tạm thời để lượt này thực sự không còn ứng
+        # viên nào, nếu không kết quả search thật sẽ hợp lệ thành FALLBACK thay vì lỗi.
+        error = ToolError('TOOL_TIMEOUT', retryable=True)
+        clients = Clients(rec_error=error, search_error=error)
         llm = ScriptedLlm(plan=[{'name': 'get_recommendations', 'args': {}}])
         result = await self.run_graph(llm, clients)
-        self.assertEqual(clients.calls, ['rec', 'rec'])
+        self.assertEqual(clients.calls, ['rec', 'search', 'search', 'search'] * 2)
         self.assertEqual(result['http_status'], 503)
         self.assertEqual(result['response']['error']['code'], 'SEARCH_UNAVAILABLE')
 

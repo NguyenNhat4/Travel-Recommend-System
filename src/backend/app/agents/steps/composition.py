@@ -21,6 +21,9 @@ WARNINGS = {
     "PRODUCT_COST_ONLY": "Tổng chỉ gồm các sản phẩm được chọn; chưa bao gồm chi phí phát sinh ngoài lịch trình.",
     "BUDGET_ON_PRODUCT_COST": "Đối chiếu ngân sách chỉ dựa trên chi phí các sản phẩm trong lịch trình; "
                               "chưa gồm ăn uống, đi lại và phát sinh ngoài lịch trình.",
+    "RECOMMENDATION_FALLBACK": "Một số mục trong lịch trình là gợi ý (Recommendation), không phải kết quả "
+                               "tìm kiếm, vì không có sản phẩm tìm kiếm phù hợp cho mục đó; xem `because` ở "
+                               "từng mục để biết lý do gợi ý.",
 }
 
 
@@ -124,15 +127,23 @@ def _budget_warnings(plan: dict, intent: dict, warnings: list) -> None:
         warnings.append({"code": "BUDGET_ON_PRODUCT_COST", "message": WARNINGS["BUDGET_ON_PRODUCT_COST"]})
 
 
+def _uses_recommendation(plan: dict) -> bool:
+    if plan.get("stay", {}).get("source") == "RECOMMENDATION":
+        return True
+    return any(slot.get("source") == "RECOMMENDATION" for day in plan.get("days", []) for slot in day.get("slots", []))
+
+
 def composed(state: dict) -> dict:
     """Build the itinerary from the retrieved candidates with fixed rules; no model is consulted."""
-    proposal = compose_plan(state["candidates"], state["intent"])
+    proposal = compose_plan(state["candidates"], state["sources"], state["intent"])
     plan = render_proposal(proposal, state["candidates"], state["sources"], state["intent"])
     if validate_plan(plan, state["candidates"], state["sources"], state["intent"], state.get("constraints", {})):
         raise ValueError("invalid composition")
     warnings = deepcopy(state.get("warnings", []))
     warnings.append({"code": "SNAPSHOT_ONLY", "message": WARNINGS["SNAPSHOT_ONLY"]})
     warnings.append({"code": "SCHEDULE_ESTIMATE", "message": WARNINGS["SCHEDULE_ESTIMATE"]})
+    if _uses_recommendation(plan):
+        warnings.append({"code": "RECOMMENDATION_FALLBACK", "message": WARNINGS["RECOMMENDATION_FALLBACK"]})
     _budget_warnings(plan, state["intent"], warnings)
     for day in plan["days"]:
         if not any(slot["product"] for slot in day["slots"]):

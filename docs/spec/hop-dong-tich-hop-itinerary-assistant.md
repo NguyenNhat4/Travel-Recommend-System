@@ -203,6 +203,14 @@ Quy tắc:
 
 Similar không mang danh tính người dùng ở mọi mode: endpoint trả giống nhau cho mọi người dùng (`hop-dong-tich-hop-backend.md` §4.3).
 
+### 2.6. Phạm vi search mặc định theo category
+
+Phục vụ FR-AGT-02, FR-AGT-03.
+
+`TOOL_PLAN_PROMPT` yêu cầu planner mặc định tìm cả ba category chuyến đi có thể dùng — `hotel`, `attraction` (tour/tham quan) và `golf` — mỗi loại một lời gọi `search_products` cho điểm đến, thay vì chỉ tìm `hotel`. Planner chỉ bỏ một loại khi người dùng chủ động yêu cầu loại trừ (`constraints.exclude_taxonomies`).
+
+Server không chỉ dựa vào prompt: `validated_plan` có lưới an toàn tất định chạy sau lưới an toàn Similar (§2.5) — với mỗi category trong `{hotel, attraction, golf}` không nằm trong `exclude_taxonomies` mà plan chưa có `search_products` cùng loại (hoặc một `search_products` không lọc `taxonomy`, vì search không lọc loại đã trả kết quả hỗn hợp mọi loại), server thêm `search_products(query=<điểm đến đã chuẩn hóa>, taxonomy=<loại đó>)` tất định. Best-effort như mọi lưới an toàn khác: hết trần 5 lời gọi mỗi lượt (§2.5) thì bỏ qua phần category còn thiếu, không huỷ lượt và không lỗi. Không có điểm đến chuẩn hóa (`intent.destination` trống) thì bỏ qua lưới này.
+
 ---
 
 ## 3. Team Agent cần từ Team Web/Backend
@@ -550,6 +558,7 @@ Lỗi thực sự không nằm trong `ItineraryResponse` và không dùng `statu
 9. Nếu LLM lỗi, Agent trả lịch trình dựng bằng rule, `FALLBACK`, hoặc lỗi HTTP có kiểm soát theo OpenAPI.
 10. Mục tiêu grounding là 100%.
 11. Mục tiêu độ trễ p95 toàn luồng dưới 5 giây.
+12. `compose` ưu tiên sản phẩm nguồn Search (gồm cả Similar, cùng nhãn `SEARCH`) hơn Recommendation cho cùng một chỗ trong lịch trình (stay hoặc slot hoạt động): một sản phẩm Recommendation chỉ được chọn khi không còn ứng viên Search nào khả dụng cho chỗ đó, kể cả khi ứng viên Search đắt hơn. Khi lịch trình có ít nhất một mục nguồn `RECOMMENDATION`, response kèm warning `RECOMMENDATION_FALLBACK` để acknowledge rõ với người dùng đây là gợi ý, không phải kết quả tìm kiếm; `source`/`because` của từng mục (§4.2, `ItemSource`) vẫn là căn cứ cá nhân hóa hay phổ biến theo `strategy` của `get_recommendations` (§2.4).
 
 ---
 

@@ -11,6 +11,7 @@ from src.backend.app.application.itinerary.tool_contracts import (
 )
 from src.backend.app.application.ports.itinerary_tools import ToolError, ToolExecutorPort
 from src.backend.app.domain.itinerary.normalization import match_destination
+from src.backend.app.domain.itinerary.planning import SCHEDULABLE_TAXONOMIES
 
 from ..models import DestinationChoice
 from .history import llm_context
@@ -283,6 +284,16 @@ def validated_plan(state: dict, plan: list, *, require_recommendations: bool = F
             if not _has_room(state, validated):
                 raise ToolError("INVALID_TOOL_PLAN")
             _append_search(state, validated, None)
+    # Mặc định tìm cả hotel/attraction/golf, trừ loại người dùng đã loại trừ; một search không lọc taxonomy
+    # (None) coi như đã phủ mọi loại vì nó trả kết quả hỗn hợp. Best-effort giống Similar: hết trần MAX_CALLS
+    # thì bỏ qua phần còn thiếu, không huỷ lượt — planner có thể đã tự phủ đủ qua TOOL_PLAN_PROMPT.
+    exclude_taxonomies = state.get("constraints", {}).get("exclude_taxonomies", [])
+    covered = {call["args"].get("taxonomy") for call in validated if call["name"] == "search_products"}
+    if state.get("intent", {}).get("destination") and None not in covered:
+        for taxonomy in sorted(SCHEDULABLE_TAXONOMIES - set(exclude_taxonomies)):
+            if taxonomy not in covered and _has_room(state, validated):
+                _append_search(state, validated, taxonomy)
+                covered.add(taxonomy)
     # Đánh số sau cùng để id liên tục dù đã bỏ lời gọi Similar.
     return [{"id": f"call-{index}", **call} for index, call in enumerate(validated)]
 
