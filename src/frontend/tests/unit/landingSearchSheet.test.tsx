@@ -23,6 +23,8 @@ function renderSheet(id: keyof typeof VERTICALS, extra: Partial<React.ComponentP
 
 describe('LandingSearchSheet', () => {
   beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-15T10:00:00+07:00'));
     clearSectionCache();
     travel.navigate.mockReset();
     api.listDestinations.mockReset();
@@ -30,7 +32,10 @@ describe('LandingSearchSheet', () => {
       { destination: 'Nha Trang', productCount: 120 }, { destination: 'Đà Nẵng', productCount: 75 },
     ]);
   });
-  afterEach(() => cleanup());
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+  });
 
   it('hotels: defaults to tomorrow + 1 night, 1 room, 2 adults and searches hotels with trip context', () => {
     renderSheet('hotels');
