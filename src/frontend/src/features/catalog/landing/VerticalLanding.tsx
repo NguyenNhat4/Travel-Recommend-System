@@ -43,7 +43,6 @@ export function VerticalLanding({ vertical, destination, type }: VerticalLanding
           title={titleWithDestination(tab.popularTitle, tab, destination)}
           params={{ ...base, sort: 'popular' }}
           moreHref={allHref}
-          hideTaxonomyBadge
           empty={destination
             ? { text: `Chưa có ${tab.noun} ${tab.atWord} ${destination}.`, href: everywhereHref, hrefLabel: `Xem tất cả ${tab.noun}` }
             : { text: `Chưa có ${tab.noun} để hiển thị lúc này.` }}
@@ -53,7 +52,6 @@ export function VerticalLanding({ vertical, destination, type }: VerticalLanding
           params={{ ...base, sort: 'price_asc' }}
           moreHref={allHref}
           hideBelow={3}
-          hideTaxonomyBadge
         />
         <DestinationTiles route={config.route} query={tab.taxonomy === config.tabs[0].taxonomy ? undefined : { type: tab.taxonomy }} />
         <PromoBanner promo={config.promo} destination={destination} />

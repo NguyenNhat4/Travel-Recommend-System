@@ -32,7 +32,6 @@ export interface ProductShelfProps {
   hideBelow?: number;
   /** Query string ngữ cảnh chuyến đi nối vào liên kết sản phẩm. */
   tripQuery?: string;
-  hideTaxonomyBadge?: boolean;
 }
 
 function SkeletonCard() {
@@ -49,7 +48,7 @@ function SkeletonCard() {
 }
 
 export function ProductShelf({
-  title, state, onRetry, moreHref, empty, hideBelow = 0, tripQuery, hideTaxonomyBadge = false,
+  title, state, onRetry, moreHref, empty, hideBelow = 0, tripQuery,
 }: ProductShelfProps) {
   const headingId = useId();
   const trackRef = useRef<HTMLDivElement>(null);
@@ -108,7 +107,7 @@ export function ProductShelf({
         <div ref={trackRef} className="no-scrollbar snap-row -mx-4 flex gap-6 overflow-x-auto scroll-smooth px-4 pb-4 sm:mx-0 sm:px-0">
           {items.map((product) => (
             <div key={product.id} className={CARD_WIDTH}>
-              <ProductCard product={product} variant="tile" tripQuery={tripQuery} hideTaxonomyBadge={hideTaxonomyBadge} />
+              <ProductCard product={product} variant="tile" tripQuery={tripQuery} />
             </div>
           ))}
         </div>

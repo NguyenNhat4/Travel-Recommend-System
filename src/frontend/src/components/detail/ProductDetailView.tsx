@@ -9,7 +9,6 @@ import {
 import { fetchRecommendations } from '../../services/recsys';
 import { ApiError } from '../../services/http';
 import type { Product, RecommendationResponse } from '../../types/travel';
-import { TaxonomyBadge } from '../common/TaxonomyBadge';
 import { FlightSummary } from '../common/FlightSummary';
 import { PriceTag } from '../common/PriceTag';
 import { ProductCard } from '../common/ProductCard';
@@ -318,12 +317,9 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
             onClick={() => navigate(`/search?q=${encodeURIComponent(product.destination)}&destination=${encodeURIComponent(product.destination)}`)}>
             {product.destination}
           </span>
-          <span>›</span>
-          <TaxonomyBadge taxonomy={product.taxonomy} size="sm" />
         </div>
 
         <div className="flex items-center gap-2 flex-wrap mb-1.5">
-          <TaxonomyBadge taxonomy={product.taxonomy} size="md" />
           {stars > 0 && (
             <div className="flex items-center text-amber-500 text-xs font-bold">
               {Array.from({ length: stars }).map((_, i) => <Star key={i} className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />)}
