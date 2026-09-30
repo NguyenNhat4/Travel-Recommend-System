@@ -675,6 +675,41 @@ resource "google_monitoring_dashboard" "staging" {
           }
         },
         {
+          title = "Backend container logs"
+          logsPanel = {
+            filter        = "resource.type=\"gce_instance\" AND resource.labels.instance_id=\"${data.google_compute_instance.app.instance_id}\" AND jsonPayload.container_name=\"vota-backend\""
+            resourceNames = ["projects/${var.project_id}"]
+          }
+        },
+        {
+          title = "Frontend container logs"
+          logsPanel = {
+            filter        = "resource.type=\"gce_instance\" AND resource.labels.instance_id=\"${data.google_compute_instance.app.instance_id}\" AND jsonPayload.container_name=\"vota-frontend\""
+            resourceNames = ["projects/${var.project_id}"]
+          }
+        },
+        {
+          title = "Crawler container logs"
+          logsPanel = {
+            filter        = "resource.type=\"gce_instance\" AND resource.labels.instance_id=\"${data.google_compute_instance.app.instance_id}\" AND (jsonPayload.container_name=\"vota-fresh-catalog\" OR jsonPayload.message:\"fresh-catalog.\")"
+            resourceNames = ["projects/${var.project_id}"]
+          }
+        },
+        {
+          title = "Redis container logs"
+          logsPanel = {
+            filter        = "resource.type=\"gce_instance\" AND resource.labels.instance_id=\"${data.google_compute_instance.app.instance_id}\" AND jsonPayload.container_name=\"vota-redis\""
+            resourceNames = ["projects/${var.project_id}"]
+          }
+        },
+        {
+          title = "Weaviate container logs"
+          logsPanel = {
+            filter        = "resource.type=\"gce_instance\" AND resource.labels.instance_id=\"${data.google_compute_instance.app.instance_id}\" AND jsonPayload.container_name=\"vota-weaviate\""
+            resourceNames = ["projects/${var.project_id}"]
+          }
+        },
+        {
           title = "Readiness check"
           scorecard = {
             timeSeriesQuery = {
