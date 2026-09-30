@@ -12,13 +12,23 @@ nguồn dữ liệu để engine không nhìn thấy gì từ `as_of` trở đi:
 from __future__ import annotations
 
 import bisect
+import hashlib
+import inspect
+import json
 from datetime import datetime, timedelta
 
-from src.backend.app.application.ports import UnitIndex, VectorSearchPort
+from src.backend.app.application.ports import CdpHistoryReader, UnitIndex, VectorSearchPort
 from src.backend.app.application.recommendation import BuildPopularity, RecommendForUser
 from src.backend.app.domain.recommendation import Popularity
 
 from .events import parse_ts
+
+
+#: Cửa sổ đếm purchase của thành phần pop trong engine và của hai baseline popularity = mặc định
+#: `Popularity.unit_scores(window_days=…)` — đọc từ chữ ký production để `configHash` đổi khi production đổi, không chép số.
+POPULARITY_WINDOW_DAYS: int = inspect.signature(Popularity.unit_scores).parameters["window_days"].default
+#: Cửa sổ purchase dựng bảng phổ biến = mặc định `CdpHistoryReader.purchase_events(since_days=…)` của port backend.
+PURCHASE_LOOKBACK_DAYS: int = inspect.signature(CdpHistoryReader.purchase_events).parameters["since_days"].default
 
 
 class LeakageError(AssertionError):
@@ -31,7 +41,7 @@ class OfflineCdpReader:
     def __init__(self, purchases_before: list[dict], as_of: datetime):
         self._rows, self.as_of = purchases_before, as_of
 
-    def purchase_events(self, since_days: int = 730) -> list[dict]:
+    def purchase_events(self, since_days: int = PURCHASE_LOOKBACK_DAYS) -> list[dict]:
         lo = self.as_of - timedelta(days=since_days)   # cửa sổ tính từ as_of, không theo giờ thật
         return [dict(e) for e in self._rows if parse_ts(e["timestamp"]) >= lo]
 
@@ -78,3 +88,22 @@ class OfflineEngine:
                                   candidate_k=self.candidate_k, popular_k=self.popular_k,
                                   max_per_vertical=None if self.mode == "eval" else MAX_PER_VERTICAL)
         return engine(cdp_user_id, k=k, now=as_of, events=[dict(e) for e in events])
+
+
+def engine_config(engine: OfflineEngine) -> dict:
+    """Ảnh chụp mọi hằng số quyết định xếp hạng (B3, 01/10): mọi hằng viết hoa của `domain/recommendation/profile.py`
+    (trọng số loại event, cửa sổ ngắn/dài, tuổi trip mở, dormant, cap lặp, λ MMR, cap taxonomy…) + tham số của harness.
+    `summary.json` ghi cùng `configHash` để hai run chỉ so được khi cùng hash (quy ước tuning:
+    `docs/spec/bench/recsys-offline-eval.md` §3.1)."""
+    from src.backend.app.domain.recommendation import profile
+    consts = {name: value for name, value in sorted(vars(profile).items())
+              if name.isupper() and isinstance(value, (int, float, str, dict, tuple, list)) and not isinstance(value, bool)}
+    return {"mode": engine.mode, "candidateK": engine.candidate_k, "popularK": engine.popular_k,
+            "maxPerVertical": None if engine.mode == "eval" else profile.MAX_PER_VERTICAL,
+            "popularityWindowDays": POPULARITY_WINDOW_DAYS, "purchaseLookbackDays": PURCHASE_LOOKBACK_DAYS,
+            "profile": consts}
+
+
+def config_hash(config: dict) -> str:
+    """sha256 của JSON chuẩn hoá (khoá sắp xếp), 8 ký tự đầu."""
+    return hashlib.sha256(json.dumps(config, sort_keys=True, ensure_ascii=False, default=str).encode("utf-8")).hexdigest()[:8]

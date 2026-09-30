@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 
 PKG_DIR = Path(__file__).resolve().parent
+FROZEN_DIR = PKG_DIR / "frozen"       # split đóng băng (B2, 01/10) — commit; bench_out/ thì không
 
 
 def repo_root() -> Path:

@@ -3,7 +3,7 @@
 - Phục vụ: **FR-REC-01..04**, **NFR-PERF-01** (`docs/prd/requirements.md`); `docs/prd/test-plan.md` §2.5; handbook §11–§12.
 - Code: `src/evaluation/recsys_bench/` (nhánh `bench/recsys-harness`). Số thô: `bench_out/recsys/runs/<run_id>/` (không commit).
 - Thay cho `eval/report.md` của lịch 10 ngày (`docs/plan/2026-09-28-lich-10-ngay-3-engine.md` §0.1).
-- Cập nhật lần cuối: 2026-09-30 (§4.4: đủ 4 arm trên seed 2026-09-21). Mọi số dưới đây phải sinh lại được bằng lệnh ở mục 1 / §4.4.
+- Cập nhật lần cuối: 2026-10-01 (§3.1 split đóng băng, §4.5 guest path Cloud, §4.6 v3 NDCG@5)
 
 > **Caveat bắt buộc (handbook §12):** lịch sử khách hàng là dữ liệu sinh. Các số này cho biết pipeline chạy đúng,
 > không cho biết engine sẽ chạy thế nào trên khách thật.
@@ -18,8 +18,9 @@ Postgres compose local thì truyền DSN local (role dev trong `db/init/03_roles
 docker compose up -d --wait postgres weaviate            # DB đã seed: make demo-db AS_OF=2026-09-24 SEED=42
 python -m src.evaluation.recsys_bench doctor               # kết nối, số event, as_of suy ra
 python -m src.evaluation.recsys_bench load                 # bảng lọc (mục 2)
-python -m src.evaluation.recsys_bench split --kind llbo    # hoặc --kind temporal [--T 2026-07-10]
-python -m src.evaluation.recsys_bench run --arm random --arm engine --split llbo --vectors weaviate
+python -m src.evaluation.recsys_bench split --kind llbo --freeze   # hoặc --kind temporal [--T …]; --freeze ghi frozen/split-<kind>-asof<YYYYMMDD>.json
+python -m src.evaluation.recsys_bench run --arm random --arm most_popular --arm most_popular_in_destination --arm engine --arm engine_prod \
+    --split llbo --vectors weaviate --split-file src/evaluation/recsys_bench/frozen/split-llbo-asof20260922.json --run-id 2026-10-01-llbo-v3
 python -m src.evaluation.recsys_bench user --id VP0000001  # một khách, như production, kiểm contract
 python -m src.evaluation.recsys_bench http-latency --base-url https://v-ota.duckdns.org --runs 3 --k 5   # p95 qua HTTP (Day 2 C)
 python -m pytest -q src/evaluation/recsys_bench/tests      # không cần DB
@@ -36,6 +37,20 @@ python -m pytest -q src/evaluation/recsys_bench/tests      # không cần DB
 - `as_of` mặc định là 00:00 UTC ngày sau event cuối. `--as-of` cắt ngay ở kho (`all_events(until=…)`).
 - Event được cache ở `bench_out/recsys/cache/` theo DB (host:port/db) và `as_of`. **Seed lại DB thì chạy kèm
   `--refresh`** (hoặc `doctor`, lệnh này luôn đọc lại), nếu không `load`/`split`/`run` dùng bản cũ.
+- **Split đóng băng (01/10, B2):** `split --freeze` ghi `src/evaluation/recsys_bench/frozen/split-<kind>-asof<YYYYMMDD>.json`
+  (commit; không đè file có sha khác trừ `--force`) gồm `sha256` của phần quyết định kết quả: loại split, tham số, sha256
+  của tập event đầu vào đã lọc, và từng target (unit, productId gốc, trip, as_of, số event/purchase train). `run --split-file
+  <file>` **luôn đọc lại CDP (bỏ cache event)**, tính lại split rồi đối chiếu; lệch (DB seed lại, tham số khác) thì dừng với
+  mã 1 và nêu khác ở đâu; khớp thì `summary.split.frozenSha256` ghi sha. Bản đóng băng chỉ phủ **event**: catalog / vector
+  lấy trực tiếp (theo dõi qua `modelVersion`, `searchUnits`, `recommendable`, `vectorsMissing` trong `summary.json`).
+  `--limit-users` ghi `limitUsers` / `usersEvaluated` và header in `SUBSET n/N`. Mọi bảng từ 01/10 phải cùng `frozenSha256`
+  và cùng `configHash` mới so được với nhau.
+- **`summary.json` (01/10, B3):** `modelVersion`, `engineConfig` (ảnh chụp mọi hằng viết hoa của
+  `domain/recommendation/profile.py` + `mode`, `candidateK`, `popularK`, `maxPerVertical`, `popularityWindowDays` 90,
+  `purchaseLookbackDays` 730), `configHash` (sha256 8 ký tự; `configHashProd` cho arm `engine_prod`), `vectorsMissing` (unit
+  không có vector đúng model — engine bỏ qua). `per_user.jsonl` (B7) mỗi khách: `ids` top-k đúng thứ tự, `targetProductId`
+  (purchase gốc, có thể là phòng/chuyến con), `targetIsChild`, `rank` (lenient, unit cha — metric chính) và `rankStrict`
+  (đúng productId gốc; engine chỉ trả search unit nên với con luôn None).
 
 ## 2. Dữ liệu (Day 1)
 
@@ -69,6 +84,20 @@ khoảng 2024-09-26 → 2026-09-23.
   là ca `cross_vertical`, nên LLBO thuận lợi cho engine; temporal khó hơn nhiều.
 - Baseline "Recall@20 = 59,9 %" trong `seed_report.md` **không so trực tiếp được** với bảng dưới. Nó biết trước điểm
   đến của món bị giấu, đếm độ phổ biến trên toàn bộ thời gian kể cả sau target, và so ở cấp sản phẩm (phòng).
+
+### 3.1. Bản đóng băng (01/10)
+
+| File (`src/evaluation/recsys_bench/frozen/`) | sha256 | Event đầu vào (sau lọc) | Khách test |
+|---|---|---|---|
+| `split-llbo-asof20260922.json` | `29033b34f8eb…4fb803` | 6.979 event, sha `17db0bd2…3363` | 1.007 |
+| `split-temporal-asof20260922.json` | `a7735af1581a…962fff` | 6.979 event (T = 2026-07-07T15:23Z, phân vị 0,8) | 102 |
+
+DB nguồn: Postgres local seed 2026-09-21 (`as_of` suy ra 2026-09-22), 2.897 search unit. Seed lại hoặc đổi `--min-purchases`
+/ `--min-trips` / `--T` thì `run --split-file` từ chối — muốn đo trên DB khác thì `split --freeze` bản mới và ghi bảng riêng.
+
+**Quy ước tuning (B10, chốt 01/10):** grid-search tham số engine chỉ chạy trên **temporal** đóng băng (train < T, kiểm ≥ T);
+bảng báo cáo cuối dùng **LLBO** đóng băng; không chọn tham số theo LLBO. Mọi run ghi `configHash` (eval) / `configHashProd`;
+hai bảng chỉ so được khi cùng `frozenSha256` **và** cùng `configHash`, cùng `modelVersion`.
 
 ## 4. Kết quả
 
@@ -194,6 +223,36 @@ qua BFF công khai, không cookie → `strategy = popular`; 3 lượt × 5 GET, 
   (chỉ Weaviate) 1,5 s và `/recommendations` bình thường → lỗi ở bước embed Cohere trên VM (khoá / egress), không phải Weaviate;
   chờ ops kiểm log container. Run: `bench_out/recsys/runs/20261001-cloud-guest/http_latency.json`.
 
+### 4.6. Ngày 01/10 — v3: split đóng băng, NDCG@5, `ids` theo khách (B Phase 0)
+
+Run `2026-10-01-llbo-v3` và `2026-10-01-temporal-v3` (`--split-file` khớp §3.1; `configHash` eval / prod ghi trong
+`summary.json`; `vectors weaviate` local, `vectorsMissing 0`). **Mọi số Recall/NDCG@10/Coverage tái tạo đúng v2 (§4.4)** —
+bảng dưới thêm cột NDCG@5 (list production 5 món).
+
+LLBO — 1.007 khách:
+
+| Arm | Recall@5 | NDCG@5 | Recall@10 | Recall@20 | NDCG@10 | Coverage | Trả về (TB) | p95 ms |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| random (3 seed) | 0,0023 | 0,0012 | 0,0040 | 0,0083 | 0,0017 | 0,999 | 20,0 | 0,1 |
+| most_popular | 0,0993 | 0,0611 | 0,1867 | 0,2929 | 0,0891 | 0,068 | 20,0 | 21,0 |
+| most_popular_in_destination | 0,4965 | 0,3624 | 0,5780 | 0,6346 | 0,3890 | 0,416 | 20,0 | 21,4 |
+| engine (eval, bỏ cap) | **0,6693** | **0,4973** | **0,7527** | **0,8510** | **0,5244** | 0,583 | 15,2 | 190,4 |
+| engine_prod (cap 2/taxonomy) | 0,5720 | 0,4536 | 0,5909 | 0,5909 | 0,4602 | 0,205 | 4,8 | 138,0 |
+
+Temporal — 102 khách (T = 2026-07-07T15:23Z):
+
+| Arm | Recall@5 | NDCG@5 | Recall@10 | Recall@20 | NDCG@10 | Coverage | Trả về (TB) | p95 ms |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| random (3 seed) | 0,0033 | 0,0013 | 0,0065 | 0,0065 | 0,0024 | 0,619 | 20,0 | 0,2 |
+| most_popular | 0,0000 | 0,0000 | 0,0196 | 0,0588 | 0,0060 | 0,009 | 20,0 | 1,0 |
+| most_popular_in_destination | 0,0294 | 0,0149 | 0,0784 | 0,0980 | 0,0312 | 0,140 | 20,0 | 1,3 |
+| engine (eval) | **0,1667** | **0,1348** | **0,1961** | **0,1961** | **0,1438** | 0,379 | 18,9 | 250,5 |
+| engine_prod | 0,1176 | 0,1127 | 0,1176 | 0,1176 | 0,1127 | 0,091 | 6,1 | 168,6 |
+
+- NDCG@5 của `engine_prod` (0,4536) sát NDCG@10 của nó (0,4602): list 5 món production giữ gần trọn thứ hạng; chênh eval −
+  prod ở Recall@5 (0,669 → 0,572) là do cap 2 món/taxonomy đẩy target ra khỏi top-5 (I-5), không phải do xếp hạng.
+- Strategy của engine trên LLBO/temporal ghi trong `summary.json` (`rows[].strategies`); phân khúc theo strategy làm ở B6.
+
 ## 5. Kiểm nhanh P1 `VP0000001` (Day 1 C)
 
 Lệnh `user --id VP0000001 --k 5`, `as_of` 2026-09-24, 12 event lịch sử, cùng engine production (không HTTP).
@@ -223,7 +282,9 @@ Lệnh `user --id VP0000001 --k 5`, `as_of` 2026-09-24, 12 event lịch sử, c�
 ## 7. Giới hạn và việc tiếp theo
 
 - Day 2 (B): `sanity.py` (lifecycle 25/45/20/10, ≥ 2 vertical 64 %, top-10 % sản phẩm 39 % purchase, Zipf 0,8) — chưa
-  làm; hai baseline most-popular / most-popular-in-destination và kiểm thứ tự đã làm 30/09 (§4.4).
+  làm; hai baseline most-popular / most-popular-in-destination và kiểm thứ tự đã làm 30/09 (§4.4). Phase 0 (01/10): split
+  đóng băng §3.1, NDCG@5, `ids` / `rankStrict` theo khách, `configHash` — §4.6; ceiling, phân khúc, 20 case, strict/lenient
+  theo taxonomy (Phase 1) chưa làm.
 - **I-5** đã xử lý ở harness (30/09): `engine` = mode eval bỏ cap để đo đủ k = 20; `engine_prod` báo list production.
   Spec §4.7 nói giới hạn 2 món mỗi `parentProductId`, code giới hạn 2 mỗi taxonomy — lệch spec/code này vẫn còn, là việc
   của C (M6), production chưa đổi.

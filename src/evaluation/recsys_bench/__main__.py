@@ -2,8 +2,8 @@
 
     python -m src.evaluation.recsys_bench doctor
     python -m src.evaluation.recsys_bench load
-    python -m src.evaluation.recsys_bench split --kind llbo
-    python -m src.evaluation.recsys_bench run --arm random --split llbo
+    python -m src.evaluation.recsys_bench split --kind llbo --freeze          # đóng băng vào frozen/ (B2)
+    python -m src.evaluation.recsys_bench run --arm random --split llbo --split-file src/evaluation/recsys_bench/frozen/split-llbo-asof20260922.json
     python -m src.evaluation.recsys_bench run --arm random --arm engine --split llbo --vectors weaviate
     python -m src.evaluation.recsys_bench user --id VP0000001
     python -m src.evaluation.recsys_bench http-latency --base-url https://v-ota.duckdns.org   # p95 guest path (Day 2 C)
@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from pathlib import Path
 from time import perf_counter
 from typing import List, Optional
 
@@ -117,10 +118,15 @@ def split(kind: str = typer.Option("llbo", "--kind", help="llbo | temporal"),
           min_purchases: int = typer.Option(2, "--min-purchases"),
           min_trips: int = typer.Option(1, "--min-trips", help="2 = chọn khách như baseline trong seed"),
           as_of: Optional[str] = typer.Option(None, "--as-of", help=AS_OF_HELP),
-          refresh: bool = typer.Option(False, "--refresh")):
-    """Chia train/test và in số khách, target, cờ giải thích."""
-    from .paths import recsys_home
-    with _prepared(as_of, refresh, "none") as (index, _, kept, _, _, _):
+          refresh: bool = typer.Option(False, "--refresh"),
+          freeze: bool = typer.Option(False, "--freeze", help="đóng băng split vào frozen/split-<kind>-asof<YYYYMMDD>.json (commit)"),
+          freeze_path: Optional[str] = typer.Option(None, "--freeze-path", help="đường dẫn khác cho --freeze"),
+          force: bool = typer.Option(False, "--force", help="cho phép --freeze đè file đã có với sha khác")):
+    """Chia train/test và in số khách, target, cờ giải thích. `--freeze` ghi bản đóng băng (sha256 của event đầu vào +
+    từng target) để `run --split-file` từ chối khi DB hoặc tham số đổi."""
+    from . import data_source
+    from .paths import FROZEN_DIR, recsys_home
+    with _prepared(as_of, refresh, "none") as (index, _, kept, _, snapshot, _):
         result = _make_split(kind, kept, index, cutoff, min_purchases, min_trips)
     summary = result.summary()
     path = recsys_home() / f"split-{kind}.json"
@@ -128,6 +134,18 @@ def split(kind: str = typer.Option("llbo", "--kind", help="llbo | temporal"),
     path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
     typer.echo(json.dumps({k: v for k, v in summary.items() if k != "targets"}, ensure_ascii=False, indent=2))
     typer.echo(f"→ {path}")
+    if freeze or freeze_path:
+        target = Path(freeze_path) if freeze_path else FROZEN_DIR / f"split-{kind}-asof{snapshot:%Y%m%d}.json"
+        if target.exists() and not force:
+            try:
+                old = json.loads(target.read_text(encoding="utf-8")).get("sha256")
+            except (OSError, ValueError, AttributeError):
+                old = None
+            if old != result.frozen_sha256():
+                _fail(f"{target} đã có với sha {str(old)[:12]} ≠ {result.frozen_sha256()[:12]} — bản đóng băng là mốc đã commit; "
+                      "muốn thay thì --force (và ghi bảng mới trong spec)")
+        sha = result.freeze(target, db_as_of=snapshot.isoformat(), dsn_label=data_source.dsn_label(data_source.eval_cdp_url()))
+        typer.echo(f"đóng băng sha256 {sha} → {target}")
 
 
 @app.command()
@@ -143,14 +161,18 @@ def run(arms: List[str] = typer.Option(["random"], "--arm", help="random | most_
         limit_users: Optional[int] = typer.Option(None, "--limit-users", help="chỉ N khách đầu (chạy thử)"),
         as_of: Optional[str] = typer.Option(None, "--as-of", help=AS_OF_HELP),
         refresh: bool = typer.Option(False, "--refresh"),
-        run_id: Optional[str] = typer.Option(None, "--run-id")):
-    """Chạy các arm trên cùng split, in bảng markdown, ghi bench_out/recsys/runs/<run_id>/."""
+        run_id: Optional[str] = typer.Option(None, "--run-id"),
+        split_file: Optional[str] = typer.Option(None, "--split-file", help="bản đóng băng (split --freeze); luôn đọc lại CDP "
+                                                                          "(bỏ cache event) rồi đối chiếu; lệch → dừng, mã 1")):
+    """Chạy các arm trên cùng split, in bảng markdown, ghi bench_out/recsys/runs/<run_id>/ (summary.json có modelVersion,
+    engineConfig, configHash, vectorsMissing; per_user.jsonl có ids top-k, targetProductId, rankStrict)."""
     from . import data_source
     from .arms import EngineArm, MostPopularArm, MostPopularInDestinationArm, RandomArm
     from .bench import aggregate, evaluate
-    from .engine import OfflineEngine
+    from .engine import OfflineEngine, config_hash, engine_config
     from .paths import run_dir
-    from .report import markdown_table, write_run
+    from .report import header, markdown_table, write_run
+    from .splits import SplitMismatch
 
     unknown = set(arms) - {"random", "most_popular", "most_popular_in_destination", "engine", "engine_prod"}
     if unknown:
@@ -160,8 +182,16 @@ def run(arms: List[str] = typer.Option(["random"], "--arm", help="random | most_
     if need_vec and mode == "none":
         _fail("arm engine / engine_prod cần --vectors weaviate hoặc numpy")
     run_id = run_id or f"{datetime.now():%Y%m%d-%H%M%S}-{kind}"
+    refresh = refresh or bool(split_file)   # bản đóng băng phải đối chiếu với DB thật, không với cache JSONL (review 01/10)
     with _prepared(as_of, refresh, mode) as (index, vector_search, kept, report, snapshot, _):
         result = _make_split(kind, kept, index, cutoff, min_purchases, min_trips)
+        frozen_sha = None
+        if split_file:
+            try:
+                frozen_sha = result.verify(split_file)
+            except (SplitMismatch, OSError, KeyError, ValueError, TypeError) as exc:
+                _fail(f"--split-file: {exc}")
+            typer.echo(f"split khớp bản đóng băng {split_file} (sha {frozen_sha[:12]})")
         users = sorted(result.targets)[:limit_users] if limit_users else None
         rows, raw_rows, per_user = [], [], []
         # popularity của baseline và engine cùng nguồn: purchase < as_of của từng khách (OfflineEngine.popularity_at)
@@ -193,12 +223,21 @@ def run(arms: List[str] = typer.Option(["random"], "--arm", help="random | most_
             raw_rows.append(row)
             rows.append(row)
             per_user += users_rows
-        summary = {"runId": run_id, "asOf": snapshot.isoformat(), "k": k, "vectors": mode,
-                   "modelVersion": index.model_version, "searchUnits": len(index.units),
-                   "recommendable": int(index.recommendable.sum()),
-                   "filter": report.as_dict(), "split": {kw: v for kw, v in result.summary().items() if kw != "targets"},
+        cfg = engine_config(engine)
+        summary = {"runId": run_id, "modelVersion": index.model_version, "engineConfig": cfg, "configHash": config_hash(cfg),
+                   "asOf": snapshot.isoformat(), "k": k, "vectors": mode,
+                   "searchUnits": len(index.units), "recommendable": int(index.recommendable.sum()),
+                   "vectorsMissing": _vectors_missing(index, vector_search),
+                   "limitUsers": limit_users, "usersEvaluated": len(users) if users is not None else len(result.targets),
+                   "filter": report.as_dict(),
+                   "split": {**{kw: v for kw, v in result.summary().items() if kw != "targets"},
+                             "frozenSha256": frozen_sha, "splitFile": split_file},
                    "rows": rows, "rawRows": raw_rows}
+        if "engine_prod" in arms:
+            cfg_prod = engine_config(prod)
+            summary["engineConfigProd"], summary["configHashProd"] = cfg_prod, config_hash(cfg_prod)
     directory = write_run(run_dir(run_id), summary, per_user)
+    typer.echo(header(summary))
     for line in report.lines():
         typer.echo(line)
     typer.echo(json.dumps(summary["split"], ensure_ascii=False))
@@ -207,6 +246,19 @@ def run(arms: List[str] = typer.Option(["random"], "--arm", help="random | most_
         if row.get("strategies"):
             typer.echo(f"{row['arm']} strategy: {row['strategies']}")
     typer.echo(f"→ {directory}")
+
+
+def _vectors_missing(index, vector_search) -> Optional[int]:
+    """Số search unit không có vector đúng model trong kho (engine bỏ qua chúng) — None khi kho không khai metadata."""
+    metadata = getattr(vector_search, "metadata", None)
+    if metadata is None:
+        ids = getattr(vector_search, "ids", None)          # NumpyVectorSearch: ids = unit có vector đúng model
+        return None if ids is None else len(index.units) - len({p.product_id for p in index.units} & set(ids))
+    try:
+        have = metadata([p.product_id for p in index.units])
+    except Exception:  # noqa: BLE001 — chỉ là số phụ trong summary
+        return None
+    return sum(1 for p in index.units if p.product_id not in have or have[p.product_id].model_version != index.model_version)
 
 
 @app.command()

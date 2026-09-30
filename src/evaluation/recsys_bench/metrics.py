@@ -2,7 +2,8 @@
 
 Phần lõi port từ `origin/khoa/recsys-research@6b9b0af` (`src/evaluation/benchmark.py`: `score_recommendations`,
 `_purchased_taxonomies`), giữ nguyên tên khoá. Bổ sung: `recall@5` (test-plan §2.5), `vertical_diversity@10`,
-`returned_mean` (engine có thể trả ít hơn k vì MMR giới hạn 2 món mỗi taxonomy), `users`, `p50_runtime_ms`.
+`returned_mean` (engine có thể trả ít hơn k vì MMR giới hạn 2 món mỗi taxonomy), `users`, `p50_runtime_ms`;
+`ndcg@5` (01/10, B4) vì list production chỉ 5 món — NDCG@10 không phản ánh thứ hạng khách thật sự thấy.
 Không có MRR: một target mỗi khách thì NDCG@10 đã phản ánh thứ hạng.
 """
 from __future__ import annotations
@@ -37,11 +38,11 @@ def score(recommendations: dict[str, list[str]], targets: dict[str, str], bought
     latencies = np.asarray(latencies_ms or [], dtype=np.float64)
     runtime = {f"p{q}_runtime_ms": float(np.percentile(latencies, q)) if latencies.size else 0.0 for q in (50, 95, 99)}
     if not users:
-        return {"users": 0, "recall@5": 0.0, "recall@10": 0.0, "recall@20": 0.0, "ndcg@10": 0.0,
+        return {"users": 0, "recall@5": 0.0, "recall@10": 0.0, "recall@20": 0.0, "ndcg@5": 0.0, "ndcg@10": 0.0,
                 "cross_category_rate": 0.0, "availability_precision": 0.0, "catalog_coverage": 0.0,
                 "vertical_diversity@10": 0.0, "returned_mean": 0.0, **runtime}
     n_taxonomies = max(1, len(set(map(str, index.taxonomy[np.asarray(index.recommendable, dtype=bool)]))))
-    r5, r10, r20, ndcg, diversity, returned = [], [], [], [], [], []
+    r5, r10, r20, ndcg5, ndcg, diversity, returned = [], [], [], [], [], [], []
     cross = items = available = 0
     seen: set[str] = set()
     for user in users:
@@ -50,6 +51,7 @@ def score(recommendations: dict[str, list[str]], targets: dict[str, str], bought
         r5.append(float(target in ids[:5]))
         r10.append(float(target in ids[:10]))
         r20.append(float(target in ids[:20]))
+        ndcg5.append(1.0 / np.log2(ids[:5].index(target) + 2) if target in ids[:5] else 0.0)
         ndcg.append(1.0 / np.log2(ids[:10].index(target) + 2) if target in ids[:10] else 0.0)
         top10 = [str(index.taxonomy[index.idx[p]]) for p in ids[:10] if p in index.idx]
         diversity.append(len(set(top10)) / min(len(top10), n_taxonomies) if top10 else 0.0)
@@ -65,7 +67,7 @@ def score(recommendations: dict[str, list[str]], targets: dict[str, str], bought
     return {
         "users": len(users),
         "recall@5": float(np.mean(r5)), "recall@10": float(np.mean(r10)), "recall@20": float(np.mean(r20)),
-        "ndcg@10": float(np.mean(ndcg)),
+        "ndcg@5": float(np.mean(ndcg5)), "ndcg@10": float(np.mean(ndcg)),
         "cross_category_rate": cross / items if items else 0.0,
         "availability_precision": available / items if items else 0.0,
         "catalog_coverage": len(seen) / recommendable,

@@ -18,12 +18,8 @@ import numpy as np
 from src.backend.app.application.ports import UnitIndex
 from src.backend.app.domain.recommendation.profile import ACTIVE_TRIP_MAX_AGE_DAYS
 
-from .engine import OfflineEngine
+from .engine import POPULARITY_WINDOW_DAYS, OfflineEngine   # cửa sổ 90 ngày khai một chỗ, vào configHash (B3)
 from .events import parse_ts
-
-#: Cửa sổ đếm purchase của hai baseline popularity = mặc định `Popularity.unit_scores(window_days=90)` mà engine
-#: production dùng cho thành phần pop (`domain/recommendation/popularity.py`). Không phải tham số tune.
-POPULARITY_WINDOW_DAYS = 90
 
 
 @dataclass
