@@ -11,7 +11,6 @@
 
 ## File thay đổi
 
-- `docs/prd/update/2026-09-30-crawler-container-monitoring-alerts.md`
 - `docs/plan/2026-09-30-crawler-container-monitoring-alerts.md`
 - `infra/monitoring/main.tf`
 - `infra/monitoring/ops-agent-staging.yaml`
@@ -22,6 +21,7 @@
 - `infra/monitoring/vota-docker-event-watcher.service`
 - `infra/monitoring/install-vota-docker-event-watcher.sh`
 - `.github/workflows/monitoring-agent-cd-staging.yml`
+- `infra/monitoring/vota-monitoring-logrotate.conf`
 - file này
 
 ## Kiểm tra
@@ -30,6 +30,7 @@
 - Đã chạy kiểm tra cú pháp Python và Bash qua test layout/validation cục bộ.
 - Chưa chạy Terraform apply, chưa SSH/cài trên VM, chưa có Cloud Monitoring runtime evidence.
 - Đã tách đường triển khai watcher/Ops Agent thành workflow CD riêng; workflow crawler không sở hữu việc restart Ops Agent.
+- Đã thêm logrotate hằng ngày, giữ 14 bản nén và giới hạn 100 MB/file cho các log watcher/crawler/daily job.
 
 ## Việc còn lại
 

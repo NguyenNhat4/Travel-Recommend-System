@@ -13,6 +13,7 @@ test -f "$root_dir/ops-agent-staging.yaml"
 test -f "$root_dir/vota-docker-event-watcher.py"
 test -f "$root_dir/vota-docker-event-watcher.service"
 test -f "$root_dir/install-vota-docker-event-watcher.sh"
+test -f "$root_dir/vota-monitoring-logrotate.conf"
 
 test -d "$root_dir/modules"
 test -f "$root_dir/main.tf"
@@ -54,6 +55,8 @@ done
 
 grep -q -F '/srv/vota/fresh-catalog-logs/*.log' "$root_dir/ops-agent-staging.yaml"
 grep -q -F '/var/log/vota/docker-events.jsonl' "$root_dir/ops-agent-staging.yaml"
+grep -q -F 'rotate 14' "$root_dir/vota-monitoring-logrotate.conf"
+grep -q -F 'maxsize 100M' "$root_dir/vota-monitoring-logrotate.conf"
 python3 -m py_compile "$root_dir/vota-docker-event-watcher.py"
 
 echo 'staging monitoring layout: PASS'
