@@ -52,3 +52,30 @@ Mở file pool bằng Excel rồi lưu lại cũng làm đổi sha. App sẽ ch�
 - [x] Đóng băng `drafts.txt`, rồi chạy pool thật trên máy có Weaviate (việc 0 và mục "Sau khi xong" trong prompt máy 1). — *29/09: `drafts.txt` đã chốt 132 câu (mọi slice ≥ 3); `c0276` chép sang `overrides.tsv` để map được `case_id`; split viết lại cho 132 câu. Còn chạy `sb gold pool` + `sb gold split` khi có khoá Cohere còn lượt (11 câu cần embed truy vấn)* — *29/09: đã chạy — `gold/pool.csv` (132 câu / 3.359 dòng), `pool_A.csv` (78 câu / 1.999 cặp), `pool_B.csv` (79 câu / 2.000 cặp), `pool_meta.json`; hai người mở app, chế độ "Gán nhãn 0/1/2"*
 - [ ] Mốc 1: guide xong, hai người đọc và thống nhất các ví dụ khó.
 - [ ] Mốc 2: app xuất nhãn trên fixture → `kappa` / `merge` của máy 1 chạy ra đúng đáp án.
+
+## Gán nhãn chung qua một link (29/09)
+
+Hai người ở hai mạng khác nhau gán trên **một app chạy ở máy giữ `gold/`**. Nhãn ghi thẳng vào `gold/labels/labels_A.csv` và `labels_B.csv` của máy đó, rồi chỉ máy đó commit.
+
+- **Chế độ dùng chung** (`LABELING_SHARED=1`):
+  - mỗi người một mã truy cập riêng (`LABELING_CODE_A`, `LABELING_CODE_B`, ≥ 12 ký tự, khác nhau); nhập mã nào thì bị khoá vào đúng pool / file nhãn của người đó;
+  - chỉ còn chế độ gán nhãn: không chọn được người kia, không nhập đường dẫn, không có nút fixture, không có các chế độ sửa `gold/`, không hiện đường dẫn máy chạy app;
+  - thiếu mã hoặc mã yếu thì app không mở gì.
+- **Chạy app dùng chung:** từ `src/`, chạy `..\.venv-sbench\Scripts\python -m evaluation.search_bench gold share` (thêm `$env:PYTHONUTF8="1"` trên PowerShell). Lệnh này:
+  - lần đầu tạo mã truy cập ở `bench_out/search/label_share/codes.env` (thư mục đã gitignore; mỗi mã 22 ký tự ngẫu nhiên, không in ra màn hình); gửi mã riêng cho từng người, không dán vào git hay kênh chung;
+  - ghi launcher ra `<ổ đĩa của repo>\vota-label-share\app.py`, **ngoài repo git**. Chạy thẳng trong repo thì Streamlit gửi cho mọi trình duyệt mở link, kể cả trước khi nhập mã, tên repo GitHub, nhánh, danh sách file chưa commit và đường dẫn script;
+  - chạy Streamlit chỉ trên `127.0.0.1:8502`, ẩn traceback (`client.showErrorDetails=type`) và thanh công cụ dev; tiến trình không mang biến môi trường bí mật (`*KEY*`, `*TOKEN*`, `*SECRET*`, `*PASSWORD*`).
+
+  App đầy đủ ở cổng 8501 vẫn chỉ dùng trên máy này.
+- **Tạo link công khai** bằng Cloudflare quick tunnel (không cần tài khoản):
+  1. Cài `cloudflared`: `winget install --id Cloudflare.cloudflared`, hoặc tải bản Windows ở trang releases của cloudflare/cloudflared trên GitHub.
+  2. Chạy `cloudflared tunnel --url http://127.0.0.1:8502`.
+  3. Gửi link `https://….trycloudflare.com` nó in ra.
+
+  Link đổi mỗi lần chạy lại tunnel. Tắt tunnel (Ctrl+C) khi không gán nữa.
+- **Lưu nhãn:** mỗi lần lưu có khoá theo file (`labeling_core._file_lock`), nên hai người cùng lúc, hoặc một người hai tab, không mất nhãn. Vẫn nên mỗi người chỉ mở một tab. Ghi chú tối đa 1.000 ký tự.
+- **Nhãn máy:** `sb gold machine-import <file.json …> --model <tên>` ghi nhãn máy vào `labels_<X>.csv` + `provenance_<X>.csv`.
+  - Chỉ ghi cặp còn trống; cặp người đã gán giữ nguyên; từ chối câu chung.
+  - Lệnh từ chối chạy khi app dùng chung còn nghe ở cổng 8502, vì hai tiến trình không dùng chung khoá ghi file.
+  - Duyệt trong app theo `gold-guide.md` mục "Nhãn máy và duyệt".
+- **Giới hạn còn lại:** endpoint `/_stcore/metrics` của Streamlit (không tắt được) cho người có link biết số phiên đang mở, không lộ nội dung.

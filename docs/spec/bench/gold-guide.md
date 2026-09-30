@@ -60,6 +60,22 @@ Phục vụ: **FR-SRC-01..04**, **AC-SRC-01** (`docs/prd/requirements.md`) và t
 - `sb gold split` mặc định không in qid câu chung; chỉ người không gán nhãn mới dùng `--show-shared`.
 - Sau khi có κ, không sửa nhãn của mình chỉ để khớp người kia; chỗ lệch đi qua `sb gold merge` như dưới.
 
+## Nhãn máy và duyệt (29/09)
+
+Theo quyết định của người dùng ngày 29/09: phần còn trống của các **câu riêng** được máy gán (Claude, theo đúng file này), người duyệt lại trong app.
+
+- **Câu chung không bao giờ có nhãn máy.** Chúng dành cho người gán, để κ vẫn đo độ đồng thuận giữa hai người.
+- Nguồn từng nhãn lưu ở `gold/labels/provenance_<X>.csv`, cạnh file nhãn: nhãn và lý do gốc của máy, model, người duyệt, thời điểm, và kiểu duyệt (`accepted` = tick đồng ý, `edited` = đã sửa). File nhãn giữ nguyên định dạng, nên `kappa` / `merge` / `import` không đổi.
+- **Cách duyệt trong app:**
+  1. Nhập **tên người duyệt** ở sidebar.
+  2. **Lọc câu → "Có nhãn máy chưa duyệt"**; câu có nhãn máy chưa duyệt có dấu 🤖.
+  3. Trong bảng: **Hiện dòng → "Máy gán"**, rồi xem cột *lý do máy*.
+  4. Đồng ý thì **tick cột "duyệt"**; không đồng ý thì **sửa nhãn** (ghi nhận là đã sửa, không cần tick).
+  5. Bấm **Lưu**, hoặc chuyển câu để tự lưu.
+- **Duyệt tất cả nhãn máy của câu** (nút cạnh Lưu): chấp nhận mọi nhãn máy chưa duyệt của câu đang mở, sau khi lưu các sửa còn dở (nhãn vừa sửa vẫn ghi là đã sửa). Chỉ bấm sau khi đã xem hết các dòng máy gán của câu.
+- Bỏ tick = về chưa duyệt. Cột *nguồn* cho biết: `máy · chưa duyệt`, `máy · duyệt: <tên>`, `máy → sửa: <tên>`, `người`.
+- Khi duyệt nhãn máy trong file của người kia, chỉ mở các câu có 🤖 (câu riêng), không mở câu chung của họ trước khi có κ.
+
 ## Hoà nhãn (`sb gold merge`)
 
 - Cặp chung lệch 1 bậc thì merge tự lấy nhãn thấp hơn.
