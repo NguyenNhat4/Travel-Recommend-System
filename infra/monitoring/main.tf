@@ -45,7 +45,7 @@ resource "google_logging_metric" "staging_crawler_failure" {
 }
 
 resource "google_logging_metric" "staging_container_stop" {
-  name        = "${var.name_prefix}_container_stop"
+  name        = "${var.name_prefix}_container_stop_by_name"
   description = "Unexpected lifecycle stop events for service containers."
   filter      = "resource.type=\"gce_instance\" AND jsonPayload.container_class=\"service\" AND jsonPayload.event=\"die\""
 
@@ -53,6 +53,20 @@ resource "google_logging_metric" "staging_container_stop" {
     metric_kind = "DELTA"
     value_type  = "INT64"
     unit        = "1"
+
+    labels {
+      key         = "container_name"
+      value_type  = "STRING"
+      description = "Docker container name that emitted the lifecycle event."
+    }
+  }
+
+  label_extractors = {
+    container_name = "EXTRACT(jsonPayload.container_name)"
+  }
+
+  lifecycle {
+    create_before_destroy = true
   }
 }
 
