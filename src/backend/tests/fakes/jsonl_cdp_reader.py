@@ -25,6 +25,14 @@ class JsonlCdpReader:
         cut = (datetime.now(timezone.utc) - timedelta(days=since_days)).isoformat()
         return [e for e in self._all if e.get("eventName") == "purchase" and str(e["timestamp"]) >= cut]
 
+    def all_events(self, until: datetime | None = None) -> list[dict]:
+        """Như `PostgresCdpReader.all_events`: lọc `timestamp < until`, xếp theo khách rồi thời điểm."""
+        def ts(e: dict) -> datetime:
+            return datetime.fromisoformat(str(e["timestamp"]).replace("Z", "+00:00"))
+
+        rows = [dict(e) for e in self._all if until is None or ts(e) < until]
+        return sorted(rows, key=lambda e: (str(e.get("cdpUserId")), ts(e)))
+
     # ghi purchase khi checkout (feedback loop) — bản mock chỉ giữ trong bộ nhớ
     def record_events(self, events: list[dict]) -> None:
         for e in events:

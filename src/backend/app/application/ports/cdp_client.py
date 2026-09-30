@@ -138,3 +138,10 @@ class CdpHistoryReader(Protocol):
 
     def events_for_user(self, cdp_user_id: str) -> list[dict]: ...
     def purchase_events(self, since_days: int = 730) -> list[dict]: ...
+
+    def all_events(self, until: datetime | None = None) -> list[dict]:
+        """Toàn bộ event (mọi khách), chỉ cho đánh giá offline (`src/evaluation/recsys_bench`); không gọi trong request.
+
+        `until` cắt ở kho: chỉ trả event có `timestamp < until`. Thứ tự tất định theo khách, thời điểm, id nội bộ.
+        """
+        ...
