@@ -23,6 +23,22 @@ describe('mapValidationFields — đưa 400 VALIDATION_ERROR về đúng bước
       ['dob-t3', 'Trẻ em 1 · Ngày sinh'], ['sn-t2', 'Người lớn 2 · Họ'], ['c-phone', 'Người liên hệ · Số điện thoại']]);
   });
 
+  it('FR-BKG-13: lỗi ở travelers[i].documents.* gắn vào đúng ô thông tin bay của hành khách và về bước ①', () => {
+    const mapped = mapValidationFields([
+      { field: 'travelers[0].documents.title', reason: 'REQUIRED', message: 'Chọn danh xưng.' },
+      { field: 'travelers[0].documents.docNumber', reason: 'DOC_NUMBER_INVALID', message: 'Số CCCD gồm 12 chữ số.' },
+      { field: 'travelers[1].documents.docExpiry', reason: 'DOC_EXPIRED', message: 'Hộ chiếu hết hạn trước ngày bay cuối cùng (19/10/2026).' },
+      { field: 'travelers[2].documents.escortTravelerRef', reason: 'REQUIRED', message: 'Chọn người lớn đi kèm em bé.' },
+      { field: 'travelers[1].birthDate', reason: 'ADULT_AGE_INVALID', message: 'Người lớn phải từ 12 tuổi tại ngày bay 19/10/2026.' },
+    ], ctx);
+    expect(mapped.step).toBe('travelers');
+    expect(mapped.fieldErrors).toMatchObject({
+      'x-title-t1': 'Chọn danh xưng.', 'x-docNo-t1': 'Số CCCD gồm 12 chữ số.', 'x-exp-t2': expect.stringContaining('Hộ chiếu hết hạn'),
+      'x-with-t3': 'Chọn người lớn đi kèm em bé.', 'dob-t2': expect.stringContaining('từ 12 tuổi') });
+    expect(mapped.summary.map((e) => e.where)).toEqual([
+      'Người lớn 1 · Danh xưng', 'Người lớn 1 · Số giấy tờ', 'Người lớn 2 · Ngày hết hạn hộ chiếu', 'Trẻ em 1 · Người lớn đi kèm em bé', 'Người lớn 2 · Ngày sinh']);
+  });
+
   it('lỗi ở itemDetails[j] gắn vào thẻ (hoặc phòng) của đúng dịch vụ và về bước ②', () => {
     const mapped = mapValidationFields([
       { field: 'itemDetails[0].rooms[1]', reason: 'OCCUPANCY_EXCEEDED', message: 'Phòng 2 chứa tối đa 3 khách.', cartItemId: 'ci-hotel' },

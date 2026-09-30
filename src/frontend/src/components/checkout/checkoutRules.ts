@@ -17,8 +17,14 @@ const PHONE_PATTERN = /^0[0-9]{9}$/;
 const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const ISO_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const LETTERS_ONLY = /^[\p{L}\p{M} '-]+$/u;
+const CCCD_PATTERN = /^[0-9]{12}$/;
+const PASSPORT_PATTERN = /^[A-Za-z0-9]{6,9}$/;
+export const TITLES: Record<TravelerKind, readonly string[]> = { ADULT: ['MR', 'MRS', 'MS'], CHILD: ['MSTR', 'MISS'] };
+export const NATIONALITIES = ['VN', 'KR', 'CN', 'JP', 'US', 'AU', 'FR', 'OTHER'] as const;
+export const DOC_TYPES = ['CCCD', 'PASSPORT'] as const;
 
 export type TravelerKind = 'ADULT' | 'CHILD';
+export type DocType = (typeof DOC_TYPES)[number];
 export type FareKind = 'ADULT' | 'CHILD';
 
 export interface Violation {
@@ -35,6 +41,18 @@ export interface ContactInput {
   phone: string;
 }
 
+/** `travelers[i].documents` (FR-BKG-13): chuỗi thô, giá trị sai là vi phạm chứ không phải lỗi kiểu dữ liệu. */
+export interface DocumentsInput {
+  title?: string | null;
+  nationality?: string | null;
+  docType?: string | null;
+  docNumber?: string | null;
+  /** `YYYY-MM-DD`; chỉ hộ chiếu. */
+  docExpiry?: string | null;
+  /** Chỉ em bé: `travelerRef` của người lớn đi kèm. */
+  escortTravelerRef?: string | null;
+}
+
 export interface TravelerInput {
   travelerRef: string;
   type: TravelerKind;
@@ -42,6 +60,8 @@ export interface TravelerInput {
   givenNames: string;
   /** `YYYY-MM-DD`; chuỗi khác (người dùng gõ dở) là BIRTH_DATE_INVALID. Người lớn không cần. */
   birthDate?: string | null;
+  /** Bắt buộc khi giỏ có vé máy bay. */
+  documents?: DocumentsInput | null;
 }
 
 export interface Traveler {
@@ -49,9 +69,11 @@ export interface Traveler {
   type: TravelerKind;
   surname: string;
   givenNames: string;
-  /** Ngày sinh hợp lệ của trẻ em, hoặc null. */
+  /** Ngày sinh hợp lệ (trẻ em; người lớn khi giỏ có vé bay), hoặc null. */
   birth: string | null;
   fullName: string;
+  /** `travelerRef` của người lớn đi kèm em bé (FR-BKG-13), hoặc null. */
+  escortRef: string | null;
 }
 
 export interface RoomInput {
@@ -189,10 +211,14 @@ export function checkContact(contact: ContactInput): Violation[] {
   return out;
 }
 
-/** R-TRV-01…06. Trả về đoàn đã chuẩn hoá (để luật theo dịch vụ dùng tiếp) cùng danh sách vi phạm. */
+/**
+ * R-TRV-01…06, R-DOC-01…08. Trả về đoàn đã chuẩn hoá (để luật theo dịch vụ dùng tiếp) cùng danh sách vi phạm.
+ * `flightDates` là ngày bay của các mục vé máy bay trong giỏ; rỗng thì không áp luật giấy tờ (FR-BKG-13).
+ */
 export function checkParty(
-  inputs: TravelerInput[], opts: { earliest: string | null; today: string },
+  inputs: TravelerInput[], opts: { earliest: string | null; today: string; flightDates?: string[] },
 ): { travelers: Traveler[]; violations: Violation[] } {
+  const flightDates = opts.flightDates ?? [];
   const out: Violation[] = [];
   const travelers: Traveler[] = [];
   if (inputs.length > MAX_PARTY) out.push({ field: 'travelers', reason: 'PARTY_TOO_LARGE' });
@@ -220,10 +246,80 @@ export function checkParty(
           out.push({ field: `${base}.birthDate`, reason: 'CHILD_AGE_INVALID', params: { turned12On: adultFrom(raw) } });
         }
       }
+    } else if (flightDates.length) {
+      birth = checkAdultBirth(item, base, [...flightDates].sort()[0], opts.today, out);
     }
-    travelers.push({ ref: item.travelerRef, type: item.type, surname, givenNames, birth, fullName: `${surname} ${givenNames}`.trim() });
+    const documents = flightDates.length ? checkDocuments(item, base, flightDates, out) : null;
+    travelers.push({
+      ref: item.travelerRef, type: item.type, surname, givenNames, birth, fullName: `${surname} ${givenNames}`.trim(),
+      escortRef: documents?.escortRef ?? null,
+    });
   });
+  if (flightDates.length) checkEscorts(travelers, flightDates, out);
   return { travelers, violations: out };
+}
+
+// --- giấy tờ hành khách cho vé máy bay (FR-BKG-13) ------------------------------------------------------
+
+/** R-DOC-01: người lớn có vé bay phải có ngày sinh hợp lệ và từ 12 tuổi tại ngày bay đầu tiên. */
+function checkAdultBirth(item: TravelerInput, base: string, firstFlight: string, today: string, out: Violation[]): string | null {
+  const raw = (item.birthDate ?? '').trim();
+  if (!raw) {
+    out.push({ field: `${base}.birthDate`, reason: 'REQUIRED', params: { part: 'birthDate' } });
+    return null;
+  }
+  if (!isValidIso(raw) || raw > today) {
+    out.push({ field: `${base}.birthDate`, reason: 'BIRTH_DATE_INVALID' });
+    return null;
+  }
+  if (ageOn(raw, firstFlight) < ADULT_MIN_AGE) out.push({ field: `${base}.birthDate`, reason: 'ADULT_AGE_INVALID', params: { flightDate: firstFlight } });
+  return raw;
+}
+
+/** R-DOC-02…07: danh xưng, quốc tịch, loại và số giấy tờ, hạn hộ chiếu. Trẻ em, em bé không có giấy tờ. */
+function checkDocuments(item: TravelerInput, base: string, flightDates: string[], out: Violation[]): { escortRef: string | null } {
+  const raw = item.documents ?? {};
+  const path = `${base}.documents`;
+  const title = (raw.title ?? '').trim();
+  if (!title) out.push({ field: `${path}.title`, reason: 'REQUIRED', params: { part: 'title' } });
+  else if (!TITLES[item.type].includes(title)) out.push({ field: `${path}.title`, reason: 'TITLE_INVALID' });
+  const nationality = (raw.nationality ?? '').trim();
+  if (!nationality) out.push({ field: `${path}.nationality`, reason: 'REQUIRED', params: { part: 'nationality' } });
+  else if (!(NATIONALITIES as readonly string[]).includes(nationality)) out.push({ field: `${path}.nationality`, reason: 'NATIONALITY_INVALID' });
+  if (item.type === 'CHILD') return { escortRef: (raw.escortTravelerRef ?? '').trim() || null };
+  const docType = (raw.docType ?? '').trim();
+  const number = (raw.docNumber ?? '').replace(/\s+/g, '').toUpperCase();
+  if (!docType) out.push({ field: `${path}.docType`, reason: 'REQUIRED', params: { part: 'docType' } });
+  else {
+    if (!(DOC_TYPES as readonly string[]).includes(docType) || (docType === 'CCCD' && nationality !== 'VN')) {
+      out.push({ field: `${path}.docType`, reason: 'DOC_TYPE_INVALID' });
+    }
+    if ((DOC_TYPES as readonly string[]).includes(docType)) {
+      if (!number) out.push({ field: `${path}.docNumber`, reason: 'REQUIRED', params: { part: 'docNumber' } });
+      else if (!(docType === 'CCCD' ? CCCD_PATTERN : PASSPORT_PATTERN).test(number)) {
+        out.push({ field: `${path}.docNumber`, reason: 'DOC_NUMBER_INVALID', params: { docType } });
+      }
+    }
+  }
+  if (docType === 'PASSPORT') {
+    const expiry = (raw.docExpiry ?? '').trim();
+    const lastFlight = [...flightDates].sort().at(-1)!;
+    if (!expiry) out.push({ field: `${path}.docExpiry`, reason: 'REQUIRED', params: { part: 'docExpiry' } });
+    else if (!isValidIso(expiry)) out.push({ field: `${path}.docExpiry`, reason: 'DOC_EXPIRY_INVALID' });
+    else if (expiry <= lastFlight) out.push({ field: `${path}.docExpiry`, reason: 'DOC_EXPIRED', params: { flightDate: lastFlight } });
+  }
+  return { escortRef: null };
+}
+
+/** R-DOC-08: mỗi em bé (dưới 2 tuổi tại một ngày bay bất kỳ) chọn một người lớn đi kèm có trong đoàn. */
+function checkEscorts(travelers: Traveler[], flightDates: string[], out: Violation[]): void {
+  const adults = new Set(travelers.filter((t) => t.type === 'ADULT').map((t) => t.ref));
+  travelers.forEach((t, index) => {
+    if (!flightDates.some((day) => isInfantOn(t, day))) return;
+    const field = `travelers[${index}].documents.escortTravelerRef`;
+    if (!t.escortRef) out.push({ field, reason: 'REQUIRED', params: { part: 'escortTravelerRef' } });
+    else if (!adults.has(t.escortRef)) out.push({ field, reason: 'ESCORT_INVALID' });
+  });
 }
 
 // --- bước ②: phân bổ theo dịch vụ --------------------------------------------------------------------
@@ -293,7 +389,22 @@ function checkPerPerson(index: number, detail: ItemInput, facts: CartFacts, byRe
   if (facts.taxonomy === 'flight') {
     const infants = refs.filter((ref) => isInfantOn(byRef.get(ref)!, facts.usingDate)).length;
     if (infants > adults) out.push({ field: path, reason: 'INFANTS_EXCEED_ADULTS', cartItemId: cid });
+    out.push(...checkFlightEscorts(path, index, refs, byRef, facts));
   }
+  return out;
+}
+
+/** R-DOC-09, R-DOC-10: người lớn đi kèm em bé phải bay chặng này; mỗi người lớn đi kèm tối đa 1 em bé. */
+function checkFlightEscorts(path: string, index: number, refs: string[], byRef: Map<string, Traveler>, facts: CartFacts): Violation[] {
+  const out: Violation[] = [];
+  const load = new Map<string, number>();
+  for (const ref of refs) {
+    const t = byRef.get(ref)!;
+    if (!t.escortRef || !isInfantOn(t, facts.usingDate) || !byRef.has(t.escortRef)) continue;
+    load.set(t.escortRef, (load.get(t.escortRef) ?? 0) + 1);
+    if (!refs.includes(t.escortRef)) out.push({ field: path, reason: 'ESCORT_NOT_ON_FLIGHT', cartItemId: facts.cartItemId, params: { travelerName: t.fullName } });
+  }
+  if ([...load.values()].some((n) => n > 1)) out.push({ field: `itemDetails[${index}]`, reason: 'ESCORT_OVERLOADED', cartItemId: facts.cartItemId });
   return out;
 }
 
@@ -329,12 +440,17 @@ function checkHotel(index: number, detail: ItemInput, facts: CartFacts, byRef: M
   return out;
 }
 
+/** Ngày bay của các mục vé máy bay; có ngày bay thì áp luật giấy tờ hành khách (FR-BKG-13). */
+export function flightDatesOf(cart: CartFacts[]): string[] {
+  return cart.filter((c) => c.taxonomy === 'flight').map((c) => c.usingDate);
+}
+
 /** Toàn bộ luật của `POST /bookings` khi request có `travelers` (§8.3 bước 5). */
 export function checkCheckout(
   contact: ContactInput, inputs: TravelerInput[], details: ItemInput[], cart: CartFacts[], today: string,
 ): { travelers: Traveler[]; violations: Violation[] } {
   const earliest = cart.reduce<string | null>((min, c) => (min === null || c.usingDate < min ? c.usingDate : min), null);
-  const party = checkParty(inputs, { earliest, today });
+  const party = checkParty(inputs, { earliest, today, flightDates: flightDatesOf(cart) });
   return {
     travelers: party.travelers,
     violations: [...checkContact(contact), ...party.violations, ...checkItems(party.travelers, details, cart)],
@@ -347,6 +463,12 @@ function requiredMessage(field: string, params: Violation['params']): string {
   if (field.endsWith('.surname')) return 'Vui lòng nhập họ.';
   if (field.endsWith('.givenNames')) return 'Vui lòng nhập tên đệm và tên.';
   if (field.endsWith('.birthDate')) return 'Vui lòng nhập ngày sinh.';
+  if (field.endsWith('.documents.title')) return 'Chọn danh xưng.';
+  if (field.endsWith('.documents.nationality')) return 'Chọn quốc tịch.';
+  if (field.endsWith('.documents.docType')) return 'Chọn loại giấy tờ.';
+  if (field.endsWith('.documents.docNumber')) return 'Nhập số giấy tờ.';
+  if (field.endsWith('.documents.docExpiry')) return 'Nhập ngày hết hạn hộ chiếu.';
+  if (field.endsWith('.documents.escortTravelerRef')) return 'Chọn người lớn đi kèm em bé.';
   if (field === 'contact.fullName') return 'Vui lòng nhập họ và tên người liên hệ.';
   if (field === 'contact.email') return 'Vui lòng nhập email.';
   if (field === 'contact.phone') return 'Vui lòng nhập số điện thoại.';
@@ -365,6 +487,16 @@ export function messageFor(v: Violation): string {
     case 'EMAIL_INVALID': return 'Email không hợp lệ.';
     case 'BIRTH_DATE_INVALID': return 'Ngày sinh không hợp lệ.';
     case 'CHILD_AGE_INVALID': return `Bé đã đủ 12 tuổi vào ${formatDmy(String(p.turned12On))}. Vui lòng chọn loại Người lớn.`;
+    case 'ADULT_AGE_INVALID': return `Người lớn phải từ 12 tuổi tại ngày bay ${formatDmy(String(p.flightDate))}.`;
+    case 'TITLE_INVALID': return 'Danh xưng không hợp lệ.';
+    case 'NATIONALITY_INVALID': return 'Quốc tịch không hợp lệ.';
+    case 'DOC_TYPE_INVALID': return 'Khách quốc tịch nước ngoài dùng hộ chiếu.';
+    case 'DOC_NUMBER_INVALID': return p.docType === 'CCCD' ? 'Số CCCD gồm 12 chữ số.' : 'Số hộ chiếu gồm 6–9 chữ và số.';
+    case 'DOC_EXPIRY_INVALID': return 'Ngày hết hạn không hợp lệ.';
+    case 'DOC_EXPIRED': return `Hộ chiếu hết hạn trước ngày bay cuối cùng (${formatDmy(String(p.flightDate))}).`;
+    case 'ESCORT_INVALID': return 'Người lớn đi kèm phải là người lớn trong đoàn.';
+    case 'ESCORT_NOT_ON_FLIGHT': return `Người lớn đi kèm ${p.travelerName || 'em bé'} không bay chuyến này.`;
+    case 'ESCORT_OVERLOADED': return 'Mỗi người lớn chỉ đi kèm 1 em bé.';
     case 'ADULT_REQUIRED':
       if (p.scope === 'item') return 'Trẻ em cần đi cùng ít nhất 1 người lớn trong dịch vụ này.';
       if (p.scope === 'room') return 'Mỗi phòng cần ít nhất 1 người lớn.';

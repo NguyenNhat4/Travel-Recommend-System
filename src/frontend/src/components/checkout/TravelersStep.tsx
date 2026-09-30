@@ -2,11 +2,132 @@
 
 /** Bước ① Hành khách (spec checkout-nhieu-buoc-hanh-khach.md §6.4): đoàn khách, họ tên, ngày sinh trẻ em, người liên hệ. */
 import React from 'react';
-import { ArrowRight, Baby, Info, User } from 'lucide-react';
+import { ArrowRight, Baby, FileText, Info, Plane, User } from 'lucide-react';
 import { MAX_PARTY, ageOn, formatDmy, normalizeName } from './checkoutRules';
-import { partyCounts, travelerLabel, type TravelerDraft } from './allocation';
+import { displayName, partyCounts, ticketName, travelerLabel, type TravelerDraft } from './allocation';
 import { CounterRow, ErrorSummaryBox, Field, Notice, PrimaryButton, SectionTitle, cardClass, inputClass } from './CheckoutParts';
 import type { CheckoutController } from './useCheckout';
+
+const TITLES_ADULT: Array<[string, string]> = [['MR', 'Ông'], ['MRS', 'Bà'], ['MS', 'Cô']];
+const TITLES_CHILD: Array<[string, string]> = [['MSTR', 'Bé trai'], ['MISS', 'Bé gái']];
+const NATIONALITIES: Array<[string, string]> = [
+  ['VN', 'Việt Nam'], ['KR', 'Hàn Quốc'], ['CN', 'Trung Quốc'], ['JP', 'Nhật Bản'], ['US', 'Hoa Kỳ'], ['AU', 'Úc'], ['FR', 'Pháp'],
+  ['OTHER', 'Quốc tịch khác'],
+];
+
+/** Nhóm nút chọn một (radio ẩn, nhãn là nút) cho danh xưng và loại giấy tờ; lỗi và nhãn nối qua aria. */
+const SegRadio: React.FC<{
+  id: string; labelId: string; options: Array<[string, string, boolean?]>; value: string; invalid: boolean; onChange: (value: string) => void;
+}> = ({ id, labelId, options, value, invalid, onChange }) => (
+  <div id={id} role="radiogroup" tabIndex={-1} aria-labelledby={labelId} aria-describedby={`e-${id}`} className="flex flex-wrap gap-2 outline-hidden">
+    {options.map(([v, text, disabled]) => (
+      <label key={v} htmlFor={`${id}-${v}`}
+        className={`rounded-lg border px-3.5 h-9 inline-flex items-center text-sm font-semibold has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-blue-500 ${
+          disabled ? 'opacity-40 cursor-not-allowed border-slate-300 bg-white text-slate-700'
+            : `cursor-pointer ${value === v ? 'border-blue-600 bg-blue-50 text-blue-800' : invalid ? 'border-rose-300 bg-white text-slate-700' : 'border-slate-300 bg-white text-slate-700 hover:border-blue-400'}`}`}>
+        <input type="radio" className="sr-only" id={`${id}-${v}`} name={id} value={v} checked={value === v} disabled={disabled} onChange={() => onChange(v)} />
+        {text}
+      </label>
+    ))}
+  </div>
+);
+
+const ErrorLine: React.FC<{ id: string; error?: string }> = ({ id, error }) => (
+  <p id={`e-${id}`} aria-live="polite" className="text-xs text-rose-600 font-medium" hidden={!error}>{error}</p>
+);
+
+/** Khối "Thông tin cho vé máy bay" của một hành khách (FR-BKG-13): nhập một lần, dùng cho mọi chặng. */
+const FlightFields: React.FC<{ ctl: CheckoutController; draft: TravelerDraft }> = ({ ctl, draft }) => {
+  const f = draft.flight;
+  const adult = draft.type === 'ADULT';
+  const infant = !adult && ctl.isInfant(draft);
+  const id = (key: string) => `${key}-${draft.ref}`;
+  const titleId = id('x-title'), docId = id('x-doc'), dobId = id('dob');
+  const escorts = ctl.drafts.filter((d) => d.type === 'ADULT');
+  return (
+    <div className="rounded-lg border border-indigo-100 bg-white p-3.5 space-y-3" data-testid="flight-fields">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <span className="text-xs font-bold text-indigo-800 flex items-center gap-1.5"><Plane className="w-3.5 h-3.5" aria-hidden="true" />Thông tin cho vé máy bay</span>
+        <span className="text-[11px] text-slate-500">Hãng bay yêu cầu · dùng cho mọi chặng</span>
+      </div>
+      <div className="space-y-1.5">
+        <span id={`lb-${titleId}`} className="block text-xs font-semibold text-slate-700">Danh xưng *</span>
+        <SegRadio id={titleId} labelId={`lb-${titleId}`} options={adult ? TITLES_ADULT : TITLES_CHILD} value={f.title} invalid={Boolean(ctl.errors[titleId])}
+          onChange={(v) => ctl.updateFlight(draft.ref, { title: v }, titleId)} />
+        <ErrorLine id={titleId} error={ctl.errors[titleId]} />
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {adult && (
+          <Field id={dobId} label="Ngày sinh (dd/mm/yyyy) *" error={ctl.errors[dobId]}>
+            {(aria) => (
+              <input {...aria} type="text" inputMode="numeric" autoComplete="off" maxLength={10} placeholder="dd/mm/yyyy" value={draft.birthText}
+                aria-label={`Ngày sinh (${travelerLabel(draft, ctl.drafts)})`} className={`${inputClass(aria['aria-invalid'])} tabular-nums`}
+                onChange={(e) => ctl.setBirthText(draft.ref, e.target.value)} onBlur={() => ctl.validateField(dobId)} />
+            )}
+          </Field>
+        )}
+        <Field id={id('x-nat')} label="Quốc tịch *" error={ctl.errors[id('x-nat')]}>
+          {(aria) => (
+            <select {...aria} value={f.nationality} className={inputClass(aria['aria-invalid'])}
+              onChange={(e) => ctl.updateFlight(draft.ref, { nationality: e.target.value }, id('x-nat'))}>
+              {NATIONALITIES.map(([v, text]) => <option key={v} value={v}>{text}</option>)}
+            </select>
+          )}
+        </Field>
+      </div>
+      {adult && (
+        <>
+          <div className="space-y-1.5">
+            <span id={`lb-${docId}`} className="block text-xs font-semibold text-slate-700">Giấy tờ tuỳ thân *</span>
+            <SegRadio id={docId} labelId={`lb-${docId}`} value={f.docType} invalid={Boolean(ctl.errors[docId])}
+              options={[['CCCD', 'CCCD', f.nationality !== 'VN'], ['PASSPORT', 'Hộ chiếu']]}
+              onChange={(v) => ctl.updateFlight(draft.ref, { docType: v as 'CCCD' | 'PASSPORT' }, docId)} />
+            <ErrorLine id={docId} error={ctl.errors[docId]} />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Field id={id('x-docNo')} label={f.docType === 'CCCD' ? 'Số CCCD *' : 'Số hộ chiếu *'} error={ctl.errors[id('x-docNo')]}>
+              {(aria) => (
+                <input {...aria} type="text" autoComplete="off" value={f.docNumber} aria-label={`Số giấy tờ (${travelerLabel(draft, ctl.drafts)})`}
+                  inputMode={f.docType === 'CCCD' ? 'numeric' : 'text'} maxLength={f.docType === 'CCCD' ? 12 : 9}
+                  placeholder={f.docType === 'CCCD' ? '12 chữ số' : 'Ví dụ: C1234567'} className={`${inputClass(aria['aria-invalid'])} tabular-nums uppercase`}
+                  onChange={(e) => ctl.updateFlight(draft.ref, { docNumber: e.target.value }, id('x-docNo'))} onBlur={() => ctl.validateField(id('x-docNo'))} />
+              )}
+            </Field>
+            {f.docType === 'PASSPORT' && (
+              <Field id={id('x-exp')} label="Ngày hết hạn (dd/mm/yyyy) *" error={ctl.errors[id('x-exp')]}>
+                {(aria) => (
+                  <input {...aria} type="text" inputMode="numeric" autoComplete="off" maxLength={10} placeholder="dd/mm/yyyy" value={f.docExpiryText}
+                    aria-label={`Ngày hết hạn hộ chiếu (${travelerLabel(draft, ctl.drafts)})`} className={`${inputClass(aria['aria-invalid'])} tabular-nums`}
+                    onChange={(e) => ctl.setFlightDate(draft.ref, 'docExpiryText', e.target.value, id('x-exp'))} onBlur={() => ctl.validateField(id('x-exp'))} />
+                )}
+              </Field>
+            )}
+          </div>
+        </>
+      )}
+      {!adult && (
+        <p className="text-xs text-slate-500 flex items-start gap-1.5">
+          <FileText className="w-3.5 h-3.5 shrink-0 mt-0.5" aria-hidden="true" />
+          Trẻ em, em bé dùng giấy khai sinh khi làm thủ tục, không cần nhập số giấy tờ. Ngày sinh lấy từ ô phía trên.
+        </p>
+      )}
+      {infant && (
+        <Field id={id('x-with')} label="Người lớn đi kèm em bé *" error={ctl.errors[id('x-with')]} hint="Bé dưới 2 tuổi tại ngày bay. Mỗi người lớn đi kèm tối đa 1 em bé.">
+          {(aria) => (
+            <select {...aria} value={f.escortRef} className={inputClass(aria['aria-invalid'])}
+              onChange={(e) => ctl.updateFlight(draft.ref, { escortRef: e.target.value }, id('x-with'))}>
+              <option value="">Chọn người lớn</option>
+              {escorts.map((a) => <option key={a.ref} value={a.ref}>{displayName(a, ctl.drafts)}</option>)}
+            </select>
+          )}
+        </Field>
+      )}
+      <div className="text-xs text-slate-600 rounded-lg border border-dashed border-slate-300 px-3 py-2">
+        Tên in trên vé: <b className="font-mono tracking-wide text-slate-900">{ticketName(draft)}</b>
+      </div>
+    </div>
+  );
+};
 
 const TravelerCard: React.FC<{ ctl: CheckoutController; draft: TravelerDraft }> = ({ ctl, draft }) => {
   const label = travelerLabel(draft, ctl.drafts);
@@ -51,6 +172,7 @@ const TravelerCard: React.FC<{ ctl: CheckoutController; draft: TravelerDraft }> 
           </Field>
         )}
       </div>
+      {ctl.hasFlight && <FlightFields ctl={ctl} draft={draft} />}
     </div>
   );
 };
@@ -98,7 +220,10 @@ export const TravelersStep: React.FC<{ ctl: CheckoutController }> = ({ ctl }) =>
         <SectionTitle title="Thông tin hành khách" />
         <div className="flex items-start gap-2 rounded-xl bg-blue-50 border border-blue-100 px-3.5 py-3 text-xs text-blue-900">
           <Info className="w-4 h-4 shrink-0 mt-0.5" aria-hidden="true" />
-          <span>Nhập đúng họ tên như trên CCCD, hộ chiếu hoặc giấy khai sinh. Hãng bay, khách sạn có thể từ chối nếu tên sai.</span>
+          <span>
+            Nhập đúng họ tên như trên CCCD, hộ chiếu hoặc giấy khai sinh. Hãng bay, khách sạn có thể từ chối nếu tên sai.
+            {ctl.hasFlight && ' Đơn có vé máy bay nên mỗi khách cần thêm vài thông tin cho hãng bay; bạn chỉ nhập một lần ở đây.'}
+          </span>
         </div>
         <div className="space-y-3">
           {adults.map((d) => <TravelerCard key={d.ref} ctl={ctl} draft={d} />)}

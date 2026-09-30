@@ -26,6 +26,18 @@ class TravelerType(str, Enum):
 
 
 @dataclass(frozen=True)
+class TravelerDocuments:
+    """Thông tin hãng bay yêu cầu (FR-BKG-13). Số giấy tờ chỉ ở Backend: response trả 4 số cuối, không gửi CDP, Insider, Stripe."""
+
+    title: str
+    nationality: str
+    doc_type: str | None = None  # "CCCD" | "PASSPORT"; chỉ người lớn
+    doc_number: str | None = None
+    doc_expiry: date | None = None  # chỉ hộ chiếu
+    escort_ref: str | None = None  # chỉ em bé: travelerRef của người lớn đi kèm
+
+
+@dataclass(frozen=True)
 class Traveler:
     """Một người trong đoàn. `ref` là mã tạm do Web sinh, duy nhất trong một đơn; họ tên đã chuẩn hoá khoảng trắng."""
 
@@ -33,7 +45,8 @@ class Traveler:
     type: TravelerType
     surname: str
     given_names: str
-    birth_date: date | None = None  # chỉ trẻ em; ngày sinh không bao giờ ra khỏi Backend
+    birth_date: date | None = None  # trẻ em; người lớn khi đơn có vé bay; ngày sinh không bao giờ ra khỏi Backend
+    documents: TravelerDocuments | None = None  # chỉ khi đơn có vé bay (FR-BKG-13)
 
     @property
     def full_name(self) -> str:

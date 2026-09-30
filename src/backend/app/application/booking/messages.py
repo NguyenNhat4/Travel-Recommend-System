@@ -26,6 +26,18 @@ def _required(field: str, params: dict) -> str:
         return "Vui lòng nhập tên đệm và tên."
     if field.endswith(".birthDate"):
         return "Vui lòng nhập ngày sinh."
+    if field.endswith(".documents.title"):
+        return "Chọn danh xưng."
+    if field.endswith(".documents.nationality"):
+        return "Chọn quốc tịch."
+    if field.endswith(".documents.docType"):
+        return "Chọn loại giấy tờ."
+    if field.endswith(".documents.docNumber"):
+        return "Nhập số giấy tờ."
+    if field.endswith(".documents.docExpiry"):
+        return "Nhập ngày hết hạn hộ chiếu."
+    if field.endswith(".documents.escortTravelerRef"):
+        return "Chọn người lớn đi kèm em bé."
     if field == "contact.fullName":
         return "Vui lòng nhập họ và tên người liên hệ."
     if field == "contact.email":
@@ -65,6 +77,28 @@ def message_for(violation: Violation) -> str:
             return "Ngày sinh không hợp lệ."
         case "CHILD_AGE_INVALID":
             return f"Bé đã đủ 12 tuổi vào {_dmy(params['turned_12_on'])}. Vui lòng chọn loại Người lớn."
+        case "ADULT_AGE_INVALID":
+            return f"Người lớn phải từ 12 tuổi tại ngày bay {_dmy(params['flight_date'])}."
+        case "TITLE_INVALID":
+            return "Danh xưng không hợp lệ."
+        case "NATIONALITY_INVALID":
+            return "Quốc tịch không hợp lệ."
+        case "DOC_TYPE_INVALID":
+            return "Khách quốc tịch nước ngoài dùng hộ chiếu."
+        case "DOC_NUMBER_INVALID":
+            return ("Số CCCD gồm 12 chữ số." if params.get("doc_type") == "CCCD"
+                    else "Số hộ chiếu gồm 6–9 chữ và số.")
+        case "DOC_EXPIRY_INVALID":
+            return "Ngày hết hạn không hợp lệ."
+        case "DOC_EXPIRED":
+            return f"Hộ chiếu hết hạn trước ngày bay cuối cùng ({_dmy(params['flight_date'])})."
+        case "ESCORT_INVALID":
+            return "Người lớn đi kèm phải là người lớn trong đoàn."
+        case "ESCORT_NOT_ON_FLIGHT":
+            who = params.get("traveler_name") or "em bé"
+            return f"Người lớn đi kèm {who} không bay chuyến này."
+        case "ESCORT_OVERLOADED":
+            return "Mỗi người lớn chỉ đi kèm 1 em bé."
         case "ADULT_REQUIRED":
             return _adult_required(params)
         case "PARTY_TOO_LARGE":

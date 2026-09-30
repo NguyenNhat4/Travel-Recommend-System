@@ -125,6 +125,16 @@ def _item_fares(item: BookingItem) -> list[FareLine]:
                       adults=item.quantity, children=0)
 
 
+def _traveler_entry(traveler: Traveler, *, room_no: int | None, is_lead: bool) -> dict:
+    entry = {"fullName": traveler.full_name, "type": traveler.type.value.upper(), "roomNo": room_no, "isLead": is_lead}
+    docs = traveler.documents
+    if docs is not None:
+        # Số giấy tờ đầy đủ và ngày hết hạn không ra khỏi Backend (FR-BKG-13, NFR-SEC-01).
+        entry["documents"] = {"title": docs.title, "nationality": docs.nationality, "docType": docs.doc_type,
+                              "docNumberLast4": docs.doc_number[-4:] if docs.doc_number else None}
+    return entry
+
+
 def _item_travelers(item: BookingItem, party: Mapping[str, Traveler]) -> list[dict]:
     """Hành khách của một mục, không có ngày sinh (NFR-SEC-01, spec §8.6). Khách sạn kèm số phòng và người đại diện."""
     out: list[dict] = []
@@ -132,13 +142,11 @@ def _item_travelers(item: BookingItem, party: Mapping[str, Traveler]) -> list[di
         for room_no, room in enumerate(item.rooms, start=1):
             for ref in room.traveler_refs:
                 if ref in party:
-                    out.append({"fullName": party[ref].full_name, "type": party[ref].type.value.upper(),
-                                "roomNo": room_no, "isLead": ref == room.lead_traveler_ref})
+                    out.append(_traveler_entry(party[ref], room_no=room_no, is_lead=ref == room.lead_traveler_ref))
     else:
         for ref in item.traveler_refs:
             if ref in party:
-                out.append({"fullName": party[ref].full_name, "type": party[ref].type.value.upper(),
-                            "roomNo": None, "isLead": False})
+                out.append(_traveler_entry(party[ref], room_no=None, is_lead=False))
     return out
 
 

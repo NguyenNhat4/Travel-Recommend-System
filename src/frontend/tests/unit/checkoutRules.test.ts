@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import cases from '../../../shared/contracts/tests/booking-rules-cases.json';
 import {
-  adultFrom, ageOn, checkCheckout, checkContact, checkItems, checkParty, fareTypeOn, formatDmy, isInfantOn, isValidIso,
+  adultFrom, ageOn, checkCheckout, checkContact, checkItems, checkParty, fareTypeOn, flightDatesOf, formatDmy, isInfantOn, isValidIso,
   isValidNamePart, maskDmy, messageFor, parseDmy, splitFullName,
   type CartFacts, type ContactInput, type ItemInput, type TravelerInput, type Violation,
 } from '../../src/components/checkout/checkoutRules';
@@ -31,9 +31,9 @@ describe('checkout rules match the shared cases', () => {
       const earliest = cart.map((x) => x.usingDate).sort()[0];
       let got: Violation[];
       if (c.scope === 'party') {
-        got = [...checkContact(contact), ...checkParty(travelers, { earliest, today }).violations];
+        got = [...checkContact(contact), ...checkParty(travelers, { earliest, today, flightDates: flightDatesOf(cart) }).violations];
       } else if (c.scope === 'items') {
-        got = checkItems(checkParty(travelers, { earliest, today }).travelers, details, cart);
+        got = checkItems(checkParty(travelers, { earliest, today, flightDates: flightDatesOf(cart) }).travelers, details, cart);
       } else {
         got = checkCheckout(contact, travelers, details, cart, today).violations;
       }

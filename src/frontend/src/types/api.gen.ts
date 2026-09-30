@@ -1192,6 +1192,45 @@ export interface components {
             /** @description unitPrice × count × (nights hoặc 1). */
             amount: number;
         };
+        /**
+         * @description Danh xưng in trên vé. MR, MRS, MS (Ông, Bà, Cô) cho người lớn; MSTR, MISS (Bé trai, Bé gái) cho trẻ em và em bé.
+         * @enum {string}
+         */
+        TravelerTitle: "MR" | "MRS" | "MS" | "MSTR" | "MISS";
+        /**
+         * @description Quốc tịch hành khách. OTHER là quốc tịch khác các nước liệt kê.
+         * @enum {string}
+         */
+        TravelerNationality: "VN" | "KR" | "CN" | "JP" | "US" | "AU" | "FR" | "OTHER";
+        /**
+         * @description Loại giấy tờ của người lớn. CCCD chỉ dành cho quốc tịch VN; quốc tịch khác dùng PASSPORT.
+         * @enum {string}
+         */
+        TravelerDocType: "CCCD" | "PASSPORT";
+        /** @description Thông tin hãng bay yêu cầu (FR-BKG-13), khai một lần ở bước Hành khách và dùng cho mọi chặng. Bắt buộc theo luật khi giỏ có vé máy bay (Backend kiểm, lỗi REQUIRED). Chỉ mô phỏng, không dùng để xuất vé thật. Số giấy tờ chỉ lưu ở Backend, response trả 4 số cuối; không gửi sang CDP, Insider, Stripe. */
+        TravelerDocuments: {
+            title?: components["schemas"]["TravelerTitle"];
+            nationality?: components["schemas"]["TravelerNationality"];
+            /** @description Chỉ người lớn. Trẻ em và em bé dùng giấy khai sinh nên không gửi. */
+            docType?: components["schemas"]["TravelerDocType"] | null;
+            /** @description Chỉ người lớn. CCCD gồm 12 chữ số; hộ chiếu gồm 6–9 chữ và số. */
+            docNumber?: string | null;
+            /**
+             * Format: date
+             * @description Chỉ khi docType là PASSPORT; phải sau ngày bay cuối cùng của đơn.
+             */
+            docExpiry?: string | null;
+            /** @description Chỉ em bé (dưới 2 tuổi tại ngày bay). travelerRef của người lớn đi kèm; mỗi người lớn đi kèm tối đa 1 em bé. */
+            escortTravelerRef?: string | null;
+        };
+        /** @description Giấy tờ của hành khách trong response. Không có số giấy tờ đầy đủ và không có ngày hết hạn. */
+        BookingTravelerDocuments: {
+            title: components["schemas"]["TravelerTitle"];
+            nationality: components["schemas"]["TravelerNationality"];
+            docType?: components["schemas"]["TravelerDocType"] | null;
+            /** @description 4 ký tự cuối của số giấy tờ. */
+            docNumberLast4?: string | null;
+        };
         /** @description Một người trong đoàn khách, khai một lần ở bước Hành khách. Họ tên nhập ở hai ô; Backend nối thành họ tên đầy đủ. Ngày sinh chỉ lưu ở Backend, không bao giờ có trong response và không gửi sang CDP, Insider, Stripe. */
         CheckoutTraveler: {
             /** @description Mã tạm do Web sinh, duy nhất trong request; các dịch vụ tham chiếu người này bằng mã này. */
@@ -1203,9 +1242,10 @@ export interface components {
             givenNames: string;
             /**
              * Format: date
-             * @description Bắt buộc khi type là CHILD (Backend kiểm, lỗi REQUIRED). Người lớn không cần ngày sinh.
+             * @description Bắt buộc khi type là CHILD, và khi type là ADULT mà giỏ có vé máy bay (Backend kiểm, lỗi REQUIRED). Giỏ không có vé bay thì người lớn không cần ngày sinh.
              */
             birthDate?: string | null;
+            documents?: components["schemas"]["TravelerDocuments"];
         };
         /** @description Ai ở một phòng của mục khách sạn. */
         CheckoutRoom: {
@@ -1221,6 +1261,7 @@ export interface components {
             roomNo: number | null;
             /** @description Người đại diện nhận phòng. Luôn false với loại dịch vụ khác. */
             isLead: boolean;
+            documents?: components["schemas"]["BookingTravelerDocuments"];
         };
         /** @description Thêm trùng productId và usingDate thì cộng dồn quantity và guests; kết quả sau khi cộng vẫn phải đạt luật (tối đa 9 khách, mỗi phòng một người lớn, không vượt maxOccupancy). Không gửi guests (client cũ): khách sạn và dịch vụ tính theo người mặc định mỗi phòng/vé một người lớn; combo mặc định 1 người lớn. */
         AddCartItemRequest: {

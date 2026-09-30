@@ -1,6 +1,7 @@
-# booking.yaml — giỏ hàng, checkout, đơn đặt chỗ, đoàn khách và giá theo loại khách (contract 1.10.0)
+# booking.yaml — giỏ hàng, checkout, đơn đặt chỗ, đoàn khách và giá theo loại khách (contract 1.11.0)
 #
 # Đoàn khách và dòng giá: docs/spec/booking/checkout-nhieu-buoc-hanh-khach.md §4–§7 (FR-BKG-08).
+# 1.11.0 thêm giấy tờ hành khách cho vé máy bay (FR-BKG-13): `documents` tuỳ chọn trong schema, bắt buộc theo luật khi giỏ có vé bay.
 # Mọi trường thêm ở 1.10.0 đều tuỳ chọn trong v1 (docs/prd/api-contract.md §3.2): client cũ không thấy khác biệt.
 TravelerType:
   type: string
@@ -64,6 +65,87 @@ FareLine:
       type: integer
       minimum: 0
       description: unitPrice × count × (nights hoặc 1).
+TravelerTitle:
+  type: string
+  enum:
+  - MR
+  - MRS
+  - MS
+  - MSTR
+  - MISS
+  description: Danh xưng in trên vé. MR, MRS, MS (Ông, Bà, Cô) cho người lớn; MSTR, MISS (Bé trai, Bé gái) cho trẻ em và em bé.
+TravelerNationality:
+  type: string
+  enum:
+  - VN
+  - KR
+  - CN
+  - JP
+  - US
+  - AU
+  - FR
+  - OTHER
+  description: Quốc tịch hành khách. OTHER là quốc tịch khác các nước liệt kê.
+TravelerDocType:
+  type: string
+  enum:
+  - CCCD
+  - PASSPORT
+  description: Loại giấy tờ của người lớn. CCCD chỉ dành cho quốc tịch VN; quốc tịch khác dùng PASSPORT.
+TravelerDocuments:
+  type: object
+  description: >-
+    Thông tin hãng bay yêu cầu (FR-BKG-13), khai một lần ở bước Hành khách và dùng cho mọi chặng. Bắt buộc theo luật khi giỏ
+    có vé máy bay (Backend kiểm, lỗi REQUIRED). Chỉ mô phỏng, không dùng để xuất vé thật. Số giấy tờ chỉ lưu ở Backend, response
+    trả 4 số cuối; không gửi sang CDP, Insider, Stripe.
+  properties:
+    title:
+      $ref: ../openapi.yaml#/components/schemas/TravelerTitle
+    nationality:
+      $ref: ../openapi.yaml#/components/schemas/TravelerNationality
+    docType:
+      anyOf:
+      - $ref: ../openapi.yaml#/components/schemas/TravelerDocType
+      - type: 'null'
+      description: Chỉ người lớn. Trẻ em và em bé dùng giấy khai sinh nên không gửi.
+    docNumber:
+      type:
+      - string
+      - 'null'
+      maxLength: 20
+      description: Chỉ người lớn. CCCD gồm 12 chữ số; hộ chiếu gồm 6–9 chữ và số.
+    docExpiry:
+      type:
+      - string
+      - 'null'
+      format: date
+      description: Chỉ khi docType là PASSPORT; phải sau ngày bay cuối cùng của đơn.
+    escortTravelerRef:
+      type:
+      - string
+      - 'null'
+      maxLength: 64
+      description: Chỉ em bé (dưới 2 tuổi tại ngày bay). travelerRef của người lớn đi kèm; mỗi người lớn đi kèm tối đa 1 em bé.
+BookingTravelerDocuments:
+  type: object
+  description: Giấy tờ của hành khách trong response. Không có số giấy tờ đầy đủ và không có ngày hết hạn.
+  required:
+  - title
+  - nationality
+  properties:
+    title:
+      $ref: ../openapi.yaml#/components/schemas/TravelerTitle
+    nationality:
+      $ref: ../openapi.yaml#/components/schemas/TravelerNationality
+    docType:
+      anyOf:
+      - $ref: ../openapi.yaml#/components/schemas/TravelerDocType
+      - type: 'null'
+    docNumberLast4:
+      type:
+      - string
+      - 'null'
+      description: 4 ký tự cuối của số giấy tờ.
 CheckoutTraveler:
   type: object
   description: >-
@@ -96,7 +178,9 @@ CheckoutTraveler:
       - string
       - 'null'
       format: date
-      description: Bắt buộc khi type là CHILD (Backend kiểm, lỗi REQUIRED). Người lớn không cần ngày sinh.
+      description: Bắt buộc khi type là CHILD, và khi type là ADULT mà giỏ có vé máy bay (Backend kiểm, lỗi REQUIRED). Giỏ không có vé bay thì người lớn không cần ngày sinh.
+    documents:
+      $ref: ../openapi.yaml#/components/schemas/TravelerDocuments
 CheckoutRoom:
   type: object
   description: Ai ở một phòng của mục khách sạn.
@@ -135,6 +219,8 @@ BookingTraveler:
     isLead:
       type: boolean
       description: Người đại diện nhận phòng. Luôn false với loại dịch vụ khác.
+    documents:
+      $ref: ../openapi.yaml#/components/schemas/BookingTravelerDocuments
 AddCartItemRequest:
   type: object
   description: >-

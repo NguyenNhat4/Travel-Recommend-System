@@ -18,6 +18,7 @@ from src.backend.app.application.ports.booking_store import PendingBookingExists
 from src.backend.app.domain.booking import (
     Booking, BookingItem, Cart, CartLine, FareLine, Payment, RoomAllocation, Traveler, TravelerType,
 )
+from src.backend.app.domain.booking.party import TravelerDocuments
 from src.backend.app.domain.booking.status import BookingStatus, PaymentStatus
 from src.backend.app.domain.catalog.models import Product
 
@@ -176,6 +177,19 @@ _BOOKING_SELECT = """
 """
 
 
+def _documents_to_json(docs: TravelerDocuments) -> dict:
+    return {"title": docs.title, "nationality": docs.nationality, "docType": docs.doc_type, "docNumber": docs.doc_number,
+            "docExpiry": docs.doc_expiry.isoformat() if docs.doc_expiry else None, "escortTravelerRef": docs.escort_ref}
+
+
+def _documents_from_json(raw: dict | None) -> TravelerDocuments | None:
+    if not raw:
+        return None
+    expiry = raw.get("docExpiry")
+    return TravelerDocuments(raw["title"], raw["nationality"], raw.get("docType"), raw.get("docNumber"),
+                             date.fromisoformat(expiry) if expiry else None, raw.get("escortTravelerRef"))
+
+
 def _metadata_of(item: BookingItem) -> dict:
     return {
         "fares": [fare.to_json() for fare in item.fares],
@@ -211,7 +225,7 @@ class _Tx:
             """, (row["booking_id"],))).fetchall()
         travelers = await (await self._conn.execute(
             """
-            SELECT traveler_ref, traveler_type, surname, given_names, birth_date
+            SELECT traveler_ref, traveler_type, surname, given_names, birth_date, documents
               FROM app.booking_travelers WHERE booking_id = %s::uuid ORDER BY position
             """, (row["booking_id"],))).fetchall()
         payment = None
@@ -241,7 +255,7 @@ class _Tx:
             ],
             travelers=[
                 Traveler(t["traveler_ref"], TravelerType(t["traveler_type"]), t["surname"], t["given_names"],
-                         t["birth_date"])
+                         t["birth_date"], _documents_from_json(t["documents"]))
                 for t in travelers
             ])
 
@@ -296,11 +310,13 @@ class _Tx:
             await self._conn.execute(
                 """
                 INSERT INTO app.booking_travelers
-                    (booking_id, traveler_ref, position, traveler_type, surname, given_names, full_name, birth_date)
-                VALUES (%s::uuid, %s, %s, %s, %s, %s, %s, %s)
+                    (booking_id, traveler_ref, position, traveler_type, surname, given_names, full_name, birth_date,
+                     documents)
+                VALUES (%s::uuid, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (booking.booking_id, traveler.ref, position, traveler.type.value, traveler.surname,
-                 traveler.given_names, traveler.full_name, traveler.birth_date))
+                 traveler.given_names, traveler.full_name, traveler.birth_date,
+                 Jsonb(_documents_to_json(traveler.documents)) if traveler.documents else None))
         payment = booking.payment
         if payment is not None:
             await self._conn.execute(

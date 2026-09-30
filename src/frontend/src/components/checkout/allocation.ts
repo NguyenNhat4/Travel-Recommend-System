@@ -7,7 +7,7 @@
 import type { ApiCartItem } from '../../services/booking';
 import {
   MAX_PARTY, fareTypeOn, isInfantOn, isValidNamePart, normalizeName, parseDmy, splitFullName,
-  type CartFacts, type ContactInput, type ItemInput, type Traveler, type TravelerInput, type TravelerKind,
+  type CartFacts, type ContactInput, type DocType, type ItemInput, type Traveler, type TravelerInput, type TravelerKind,
 } from './checkoutRules';
 import { maxOccupancyFromAttributes } from './guestCounts';
 
@@ -16,9 +16,24 @@ export interface TravelerDraft {
   type: TravelerKind;
   surname: string;
   givenNames: string;
-  /** Ô ngày sinh người dùng gõ (`dd/mm/yyyy`); chỉ trẻ em. */
+  /** Ô ngày sinh người dùng gõ (`dd/mm/yyyy`); trẻ em, và người lớn khi giỏ có vé máy bay. */
   birthText: string;
+  /** Thông tin hãng bay yêu cầu (FR-BKG-13); chỉ gửi khi giỏ có vé máy bay. */
+  flight: FlightDraft;
 }
+
+/** Các ô của khối "Thông tin cho vé máy bay". Ô ngày gõ dạng `dd/mm/yyyy`. */
+export interface FlightDraft {
+  title: string;
+  nationality: string;
+  docType: DocType;
+  docNumber: string;
+  docExpiryText: string;
+  /** `travelerRef` của người lớn đi kèm em bé. */
+  escortRef: string;
+}
+
+export const blankFlight = (): FlightDraft => ({ title: '', nationality: 'VN', docType: 'CCCD', docNumber: '', docExpiryText: '', escortRef: '' });
 
 export interface RoomDraft {
   refs: string[];
@@ -60,15 +75,47 @@ export function draftToTraveler(d: TravelerDraft): Traveler {
   return {
     ref: d.ref, type: d.type, surname, givenNames, fullName: `${surname} ${givenNames}`.trim(),
     birth: d.type === 'CHILD' ? parseDmy(d.birthText) : null,
+    escortRef: d.type === 'CHILD' ? (d.flight.escortRef || null) : null,
   };
 }
 
-/** Ngày sinh hợp lệ theo lịch thì gửi dạng ISO; người dùng gõ dở thì giữ chuỗi thô để luật báo BIRTH_DATE_INVALID. */
-export function toTravelerInputs(drafts: TravelerDraft[]): TravelerInput[] {
-  return drafts.map((d) => ({
-    travelerRef: d.ref, type: d.type, surname: d.surname, givenNames: d.givenNames,
-    birthDate: d.type === 'CHILD' ? (parseDmy(d.birthText) ?? (d.birthText.trim() || null)) : null,
-  }));
+/** Ngày hợp lệ theo lịch thì gửi dạng ISO; người dùng gõ dở thì giữ chuỗi thô để luật báo lỗi của đúng trường. */
+const isoOrRaw = (text: string): string | null => parseDmy(text) ?? (text.trim() || null);
+
+/**
+ * Đoàn khách dạng request. `withFlight` (giỏ có vé máy bay) thì thêm ngày sinh người lớn và khối `documents` (FR-BKG-13);
+ * không có vé bay thì không gửi giấy tờ, dù khách đã nhập trước đó.
+ */
+export function toTravelerInputs(drafts: TravelerDraft[], withFlight = false): TravelerInput[] {
+  return drafts.map((d) => {
+    const base: TravelerInput = {
+      travelerRef: d.ref, type: d.type, surname: d.surname, givenNames: d.givenNames,
+      birthDate: d.type === 'CHILD' || withFlight ? isoOrRaw(d.birthText) : null,
+    };
+    if (!withFlight) return base;
+    const f = d.flight;
+    const adult = d.type === 'ADULT';
+    return {
+      ...base,
+      // Trường trống thì bỏ khỏi request: Backend báo REQUIRED đúng trường, không gửi `null` cho kiểu enum của contract.
+      documents: {
+        ...(f.title ? { title: f.title } : {}),
+        ...(f.nationality ? { nationality: f.nationality } : {}),
+        ...(adult ? {
+          docType: f.docType,
+          ...(f.docNumber.trim() ? { docNumber: f.docNumber.trim() } : {}),
+          ...(f.docType === 'PASSPORT' && f.docExpiryText.trim() ? { docExpiry: isoOrRaw(f.docExpiryText) } : {}),
+        } : {}),
+        ...(!adult && f.escortRef ? { escortTravelerRef: f.escortRef } : {}),
+      },
+    };
+  });
+}
+
+/** Tên in trên vé: họ / tên đệm và tên, không dấu, viết hoa (ví dụ `NGUYEN / MINH ANH`). */
+export function ticketName(d: Pick<TravelerDraft, 'surname' | 'givenNames'>): string {
+  const ascii = (v: string) => normalizeName(v).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toUpperCase();
+  return `${ascii(d.surname) || '—'} / ${ascii(d.givenNames) || '—'}`;
 }
 
 /** Tên hiển thị: họ và tên đã nối; chưa nhập thì nhãn "Người lớn 1". */
@@ -123,11 +170,11 @@ export function newDrafts(party: { adults: number; children: number }, accountNa
   let seq = 0;
   for (let i = 0; i < party.adults; i += 1) {
     seq += 1;
-    drafts.push({ ref: `t${seq}`, type: 'ADULT', surname: i === 0 ? surname : '', givenNames: i === 0 ? givenNames : '', birthText: '' });
+    drafts.push({ ref: `t${seq}`, type: 'ADULT', surname: i === 0 ? surname : '', givenNames: i === 0 ? givenNames : '', birthText: '', flight: blankFlight() });
   }
   for (let i = 0; i < party.children; i += 1) {
     seq += 1;
-    drafts.push({ ref: `t${seq}`, type: 'CHILD', surname: '', givenNames: '', birthText: '' });
+    drafts.push({ ref: `t${seq}`, type: 'CHILD', surname: '', givenNames: '', birthText: '', flight: blankFlight() });
   }
   return { drafts, seq };
 }

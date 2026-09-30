@@ -43,12 +43,24 @@ class ContactBody(BaseModel):
     phone: str = Field(max_length=50)
 
 
+class TravelerDocumentsBody(BaseModel):
+    """FR-BKG-13. Giá trị kiểu chuỗi để giá trị sai đi qua bộ luật và nhận lỗi theo trường thay vì `422`."""
+
+    title: str | None = Field(default=None, max_length=16)
+    nationality: str | None = Field(default=None, max_length=16)
+    docType: str | None = Field(default=None, max_length=16)
+    docNumber: str | None = Field(default=None, max_length=40)
+    docExpiry: str | None = Field(default=None, max_length=32)
+    escortTravelerRef: str | None = Field(default=None, max_length=64)
+
+
 class CheckoutTravelerBody(BaseModel):
     travelerRef: str = Field(pattern=r"^[A-Za-z0-9_-]{1,36}$")
     type: Literal["ADULT", "CHILD"]
     surname: str = Field(max_length=200)
     givenNames: str = Field(max_length=200)
     birthDate: str | None = Field(default=None, max_length=32)
+    documents: TravelerDocumentsBody | None = None
 
 
 class CheckoutRoomBody(BaseModel):
