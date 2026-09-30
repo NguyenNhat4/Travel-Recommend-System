@@ -153,7 +153,7 @@ trong 4,9% tên, "trang" 5,0% — DF không tách được thương hiệu với
 Nhánh BM25 lỗi (collection chưa có property) → engine chạy dense-only nhưng vẫn khai `HYBRID_CANDIDATE_SCORE`
 với `diagnostics.lexicalCandidates = 0`, không trả 500.
 
-Thời gian từng bước khai ở `diagnostics.stageMs` (từ 2026-09-29, contract 1.9.0; phục vụ NFR-PERF-01/03): ms nguyên
+Thời gian từng bước khai ở `diagnostics.stageMs` (từ 2026-09-29, contract 1.11.0; phục vụ NFR-PERF-01/03): ms nguyên
 của `normalize` (chỉ khi bước chuẩn hoá bật), `embed`, `dense` (gồm dựng bộ lọc cấu trúc), `lexical` (chỉ ở hybrid,
 kể cả khi nhánh BM25 lỗi), `fuse` (RRF + cutoff + facets) và `hydrate`. Đo trong engine nên tổng các bước ≤
 `latencyMs` của route. Chỉ `/search` có trường này.
