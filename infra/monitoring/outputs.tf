@@ -8,6 +8,15 @@ output "uptime_check_id" {
   value       = google_monitoring_uptime_check_config.staging_health.id
 }
 
+output "slo_ids" {
+  description = "Staging Service Monitoring SLO resource names."
+  value = {
+    availability = google_monitoring_slo.staging_availability.id
+    error_rate   = google_monitoring_slo.staging_error_rate.id
+    latency      = google_monitoring_slo.staging_latency.id
+  }
+}
+
 output "alert_policy_ids" {
   description = "Staging alert policy resource names."
   value = {
