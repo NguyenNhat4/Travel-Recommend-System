@@ -101,9 +101,10 @@ Tài liệu này đặc tả chi tiết toàn bộ các yêu cầu chức năng 
 - **NFR-REL-02 (Tính toàn vẹn dữ liệu giao dịch):** Quy trình tạo đơn và đồng bộ dữ liệu sự kiện phải tuân thủ tính nhất quán cuối cùng (Eventual Consistency), có cơ chế bù trừ khi phát sinh lỗi hệ thống.
 
 ### 2.3. Bảo Mật & Ranh Giới Dữ Liệu (Security & Data Isolation)
-- **NFR-SEC-01 (Không để lộ thông tin nhạy cảm):** Tuyệt đối không lưu trữ hoặc phản hồi qua API các thông tin bí mật (mật khẩu dạng rõ, API key, token nội bộ).
+- **NFR-SEC-01 (Không để lộ thông tin nhạy cảm):** Tuyệt đối không lưu trữ hoặc phản hồi qua API các thông tin bí mật (mật khẩu dạng rõ, API key, token nội bộ). Công cụ xem DB luôn che các cột bí mật: tên cột chứa `password`, `token`, `secret` hoặc `hash` (hiện có `app.users.password_hash`, `app.refresh_tokens.token_hash`) hiện "(ẩn)".
 - **NFR-SEC-02 (Cô lập ranh giới cơ sở dữ liệu):**
   - Các phân hệ nghiệp vụ không được phép cấp quyền truy cập trực tiếp vào vùng dữ liệu nhạy cảm của CDP qua SQL. Mọi thao tác bắt buộc qua cổng dịch vụ (Port/Adapter pattern).
+  - Ngoại lệ duy nhất: công cụ vận hành "xem DB" trên monitor job cào được **đọc** mọi bảng của database `vota` (`cdp`, `catalog`, `app`) bằng SQL, chỉ trong transaction chỉ đọc; không ghi, không có ô nhập SQL tự do. Code nghiệp vụ vẫn chỉ đi qua `CdpClient`.
   - Sử dụng cơ chế Role-Based Access Control (RBAC) nghiêm ngặt trong PostgreSQL cho từng role kết nối (`vota_app`, `cdp_writer`, `cdp_reader`).
 - **NFR-SEC-03 (Dữ liệu thanh toán):** V-OTA không nhận, lưu hay ghi log dữ liệu thẻ; trang nhập thẻ do Stripe host. Khoá Stripe chỉ nằm ở Backend. Webhook phải được kiểm chữ ký `Stripe-Signature` trước khi xử lý, và xử lý phải idempotent vì Stripe có thể gửi trùng hoặc sai thứ tự.
 

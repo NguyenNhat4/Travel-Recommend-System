@@ -6,16 +6,37 @@ import os
 import select
 import subprocess
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
 EVENT_LOG = Path(os.environ.get("VOTA_DOCKER_EVENT_LOG", "/var/log/vota/docker-events.jsonl"))
 HEARTBEAT_SECONDS = int(os.environ.get("VOTA_DOCKER_EVENT_HEARTBEAT_SECONDS", "60"))
+VIETNAM_TZ = timezone(timedelta(hours=7))
 
 
 def now():
     return datetime.now(timezone.utc).isoformat()
+
+
+def local_datetime():
+    return datetime.now(VIETNAM_TZ).isoformat()
+
+
+def event_datetime(event):
+    """Convert Docker's Unix event time to an ISO-8601 UTC+7 string."""
+    raw_time_nano = event.get("timeNano")
+    raw_time = event.get("time")
+    try:
+        if raw_time_nano not in (None, ""):
+            event_time = datetime.fromtimestamp(int(raw_time_nano) / 1_000_000_000, timezone.utc)
+        elif raw_time not in (None, ""):
+            event_time = datetime.fromtimestamp(float(raw_time), timezone.utc)
+        else:
+            return local_datetime()
+    except (TypeError, ValueError, OSError, OverflowError):
+        return local_datetime()
+    return event_time.astimezone(VIETNAM_TZ).isoformat()
 
 
 def container_class(name, image):
@@ -49,6 +70,7 @@ def normalise_event(event):
         "exit_code": exit_code,
         "oom_killed": oom_killed,
         "timestamp": event.get("timeNano") or event.get("time") or now(),
+        "datetime": event_datetime(event),
     }
 
 
@@ -84,9 +106,25 @@ def run():
                                 write_record(output, normalise_event(event))
                     current = time.monotonic()
                     if current - last_heartbeat >= HEARTBEAT_SECONDS:
-                        write_record(output, {"event": "heartbeat", "watcher": "docker-events", "timestamp": now()})
+                        write_record(
+                            output,
+                            {
+                                "event": "heartbeat",
+                                "watcher": "docker-events",
+                                "timestamp": now(),
+                                "datetime": local_datetime(),
+                            },
+                        )
                         last_heartbeat = current
-                write_record(output, {"event": "docker_events_disconnected", "watcher": "docker-events", "timestamp": now()})
+                write_record(
+                    output,
+                    {
+                        "event": "docker_events_disconnected",
+                        "watcher": "docker-events",
+                        "timestamp": now(),
+                        "datetime": local_datetime(),
+                    },
+                )
             finally:
                 if process.poll() is None:
                     process.terminate()

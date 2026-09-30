@@ -90,11 +90,18 @@ details{margin:10px 0}summary{cursor:pointer}
 .facts{display:flex;gap:6px 18px;flex-wrap:wrap;margin:8px 0}.facts span small{margin-right:4px}
 @media(max-width:700px){header{padding:14px 16px}main{padding:0 12px}.field,.live-row{grid-template-columns:1fr}th,td{padding:6px}.card{padding:13px}
  .graph{display:flex;flex-direction:column;align-items:stretch;min-width:0;gap:6px}.graph svg{display:none}.ghead{margin-top:10px}}
+.dbgrid{display:grid;gap:16px;grid-template-columns:minmax(0,1fr) minmax(0,4fr);align-items:start}.dbgrid>.card{min-width:0}@media (max-width:900px){.dbgrid{grid-template-columns:minmax(0,1fr)}}
+.rt td{white-space:nowrap}
+#dbDiagram svg{display:block;font:12px system-ui,sans-serif}#dbDiagram .tbl{cursor:pointer}#dbDiagram .tbl rect.box{fill:var(--panel);stroke:var(--line);stroke-width:1.2}
+#dbDiagram .tbl.view rect.box{stroke-dasharray:4 3}#dbDiagram .tbl:hover rect.box,#dbDiagram .tbl.on rect.box{stroke:var(--brand);stroke-width:2}
+#dbDiagram rect.head{fill:var(--soft)}#dbDiagram .edge{fill:none;stroke:var(--muted);stroke-width:1.2;opacity:.45}#dbDiagram .edge.conv{stroke-dasharray:5 4}
+#dbDiagram .edge.on{stroke:var(--brand);stroke-width:2.2;opacity:1}#dbDiagram .edge.dim{opacity:.1}#dbDiagram text.pk{fill:var(--warn);font-weight:700}#dbDiagram text.fk{fill:var(--brand)}
+#dbDiagram text.sec{fill:var(--muted);font-style:italic}#dbDiagram .schema{fill:var(--muted);font-weight:700;font-size:13px;letter-spacing:.06em}
 </style>
 </head>
 <body>
 <header><h1>V-OTA <span class="muted">/ Fresh catalog</span></h1><p>Theo dõi cào → chuẩn hoá → nạp Postgres → embed/index Weaviate</p><div id="connection" aria-live="polite">Đang kết nối…</div>
-<nav aria-label="Điều hướng"><button data-view="overview" aria-current="true">Tổng quan</button><button data-view="runs">Lịch sử</button><button data-view="system">Hệ thống</button><button data-view="settings">Cấu hình</button></nav>
+<nav aria-label="Điều hướng"><button data-view="overview" aria-current="true">Tổng quan</button><button data-view="runs">Lịch sử</button><button data-view="system">Hệ thống</button><button data-view="settings">Cấu hình</button><button data-view="db">DB</button><button data-view="realtime">Realtime</button></nav>
 <div id="controls" class="actions" aria-label="Điều khiển lượt"><button type="button" class="primary" data-action="start" data-args='{"mode":"auto"}' title="full hoặc daily theo chu kỳ trong Cấu hình">Chạy theo chu kỳ</button><button type="button" data-action="start" data-args='{"mode":"full"}'>Cào lớn</button><button type="button" data-action="start" data-args='{"mode":"daily"}'>Làm mới Trip</button><button type="button" data-action="start" data-args='{"mode":"index"}'>Bảo trì và index</button><button type="button" class="danger" data-action="stop" data-args='{}'>Dừng lượt đang chạy</button><span id="controlState"></span></div>
 </header>
 <div id="notice" role="alert"></div><main id="main" aria-live="polite"></main>
@@ -228,11 +235,12 @@ function panelHead(){const n=currentNode(),views=nodeViews(n),st=n&&stepOf(n.id)
   `<div class="tabs" role="tablist">${views.map(v=>`<button type="button" data-tab="${v}" aria-current="${v===S.tab}">${esc(VIEW_LABELS[v])}</button>`).join('')}</div></section>`}
 async function loadLive(){S.live=S.runData?.status==='running'?await api('/api/live').catch(()=>null):null}
 // UI3: URL giữ trạng thái (#run=…&node=…&view=… hoặc #page=…): tải lại trang hay gửi link mở đúng chỗ
-function stateHash(){const p=new URLSearchParams();if(S.view==='run'&&S.run){p.set('run',S.run);if(S.node)p.set('node',S.node);if(S.tab)p.set('view',S.tab)}else if(S.view&&S.view!=='overview')p.set('page',S.view);return p.toString()}
+function stateHash(){const p=new URLSearchParams();if(S.view==='run'&&S.run){p.set('run',S.run);if(S.node)p.set('node',S.node);if(S.tab)p.set('view',S.tab)}else if(S.view&&S.view!=='overview'){p.set('page',S.view);if(S.view==='db'&&S.db?.mode==='diagram')p.set('mode','diagram');else if(S.view==='db'&&S.db?.table)p.set('table',S.db.table)}return p.toString()}
 function writeHash(){const h=stateHash();if(location.hash.slice(1)!==h)history.pushState(null,'',h?'#'+h:location.pathname)}
 async function applyHash(){const p=new URLSearchParams(location.hash.slice(1));
  if(p.get('run'))return openRun(p.get('run'),p.get('view'),null,p.get('node')).catch(async e=>{await navigate('overview');fail(e)});  // link cũ: lượt đã bị xoá
- return navigate(['overview','runs','hotels','settings','system'].includes(p.get('page'))?p.get('page'):'overview',false)}
+ if(p.get('page')==='db')S.db={table:p.get('table')||null,filters:{},offset:0,mode:p.get('mode')==='diagram'?'diagram':'list'};
+ return navigate(['overview','runs','hotels','settings','system','db','realtime'].includes(p.get('page'))?p.get('page'):'overview',false)}
 addEventListener('popstate',()=>{if(location.hash.slice(1)!==stateHash())applyHash().catch(fail)});
 async function renderPanel(){const p=$('#panel');if(!p)return;stopLive();await loadLive();writeHash();
  if(!S.node&&!S.tab){p.innerHTML=card('Chi tiết','<p class="muted">Bấm một ô trên sơ đồ để xem tiến độ, log, dữ liệu và lỗi của bước đó.</p>');return}
@@ -433,7 +441,87 @@ async function settings(){S.settings=await api('/api/settings');const values=Obj
   groups.map(g=>`<section class="card" data-group="${esc(g.id)}" ${g.id===active?'':'hidden'}><h2>${esc(g.label)}</h2>${g.id==='strategy'?button('Áp ngân sách Trip 30 / 10 / 180','tripBudget')+' ':''}${S.settings.fields.filter(f=>f.group===g.id).map(fieldHtml).join('')}</section>`).join('')+
   `<div class="actions"><button class="primary" type="submit">Lưu thay đổi (mọi tab)</button></div></form>`}
 
-async function navigate(name,push=true){stopLive();clearInterval(S.gtimer);S.gtimer=null;S.view=name;S.run=null;S.list=null;notice('');if(push)writeHash();document.querySelectorAll('nav button').forEach(b=>b.setAttribute('aria-current',b.dataset.view===name));main.innerHTML='<p class="muted">Đang tải…</p>';if(name==='overview')await overview();if(name==='runs')await historyPage();if(name==='system'||name==='hotels')await system();if(name==='settings')await settings()}
+async function navigate(name,push=true){stopLive();clearInterval(S.gtimer);S.gtimer=null;clearInterval(S.rtTimer);S.rtTimer=null;S.view=name;S.run=null;S.list=null;notice('');if(push)writeHash();document.querySelectorAll('nav button').forEach(b=>b.setAttribute('aria-current',b.dataset.view===name));main.innerHTML='<p class="muted">Đang tải…</p>';if(name==='overview')await overview();if(name==='runs')await historyPage();if(name==='system'||name==='hotels')await system();if(name==='settings')await settings();if(name==='db')await dbPage();if(name==='realtime')await realtimePage()}
+
+// ------------------------------------------------------------------ tab DB: xem toàn bộ database (chỉ đọc)
+const dbKey=(d,r)=>d.pk?.length?Object.fromEntries(d.pk.map(c=>[c,r[c]])):null;
+const dbShort=v=>{if(v===null||v===undefined)return '<span class="muted">NULL</span>';const t=typeof v==='object'?JSON.stringify(v):String(v);return esc(t.length>90?t.slice(0,90)+'…':t)};
+function dbCell(d,r,c){const v=r[c];if(d.secret?.includes(c))return `<span class="muted">${esc(v??'NULL')}</span>`;
+ const fk=(d.fks||[]).find(f=>f.columns.length===1&&f.columns[0]===c);
+ if(fk&&v!==null&&v!==undefined)return button(String(v).slice(0,40),'dbRow',{table:fk.target,key:{[fk.targetColumns[0]]:v}},'link');
+ if(d.pk?.length===1&&d.pk[0]===c&&v!==null)return button(String(v).slice(0,40),'dbRow',{table:d.table,key:{[c]:v}},'link');
+ return dbShort(v)}
+async function dbPage(){const D=S.db=S.db||{table:null,filters:{},offset:0};writeHash();
+ const modes=`<div class="tabs" role="tablist">${[['list','Bảng dữ liệu'],['diagram','Sơ đồ quan hệ']].map(([m,l])=>`<button type="button" data-action="dbMode" data-args='{"mode":"${m}"}' aria-current="${(D.mode||'list')===m}">${l}</button>`).join('')}</div>`;
+ if(D.mode==='diagram'){const g=await api('/api/dbx/graph');if(S.view!=='db')return;main.innerHTML=modes+card('Sơ đồ quan hệ giữa các bảng',dbDiagram(g));dbDiagramHover();return}const list=await api('/api/dbx/tables');if(S.view!=='db')return;
+ const groups={};for(const t of list.tables)(groups[t.schema]=groups[t.schema]||[]).push(t);
+ const side=Object.entries(groups).map(([sc,ts])=>`<h3>${esc(sc)}</h3>`+ts.map(t=>button(`${t.table}${t.view?' (view)':''} · ${num(t.rows)}`,'dbTable',{table:t.name},t.name===D.table?'primary':'')).join(' ')).join('');
+ let body='<p class="muted">Chọn một bảng. Chỉ đọc; cột bí mật (password / token / secret / hash) hiện "(ẩn)". Bấm ô khoá (id) để xem dòng và các bảng liên kết.</p>';
+ if(D.table){const d=D.children?await api('/api/dbx/children',{id:D.children,offset:D.offset}):await api('/api/dbx/rows',{table:D.table,q:D.q,sort:D.sort,desc:D.desc?'1':'',offset:D.offset,limit:50,...Object.fromEntries(Object.entries(D.filters||{}).map(([k,v])=>['f.'+k,v===null?'\\N':v]))});
+  const chips=[...Object.entries(D.filters||{}).map(([k,v])=>`${k} = ${v===null?'NULL':v}`),...(D.children?[`attributes.parentProductId = ${D.children}`]:[])];
+  body=`<form id="dbForm" class="actions"><input name="q" value="${esc(D.q||'')}" placeholder="Tìm trong mọi cột (không gồm cột bí mật)" style="min-width:320px"><button class="primary">Tìm</button>${chips.length?`<span class="muted">Lọc: ${esc(chips.join(' · '))}</span> `+button('Bỏ lọc','dbClear',{}):''}</form>
+   <p class="muted">${esc(d.table)} · ${num(d.total)} dòng · hiển thị ${num(d.total?d.offset+1:0)}–${num(Math.min(d.offset+d.rows.length,d.total))}${d.fks?.length?` · khoá ngoại: ${esc(d.fks.map(f=>f.columns.join('+')+' → '+f.target).join(', '))}`:''}</p>`+
+   `<div class="scroll"><table><thead><tr>${d.columns.map(c=>`<th>${button(c+(D.sort===c?(D.desc?' ↓':' ↑'):''),'dbSort',{col:c},'link')}</th>`).join('')}</tr></thead><tbody>${d.rows.map(r=>`<tr>${d.columns.map(c=>`<td>${dbCell(d,r,c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`+
+   `<div class="actions">${d.offset>0?button('← Trước','dbOffset',{offset:Math.max(0,d.offset-d.limit)}):''}${d.offset+d.rows.length<d.total?button('Sau →','dbOffset',{offset:d.offset+d.limit}):''}</div>`}
+ main.innerHTML=modes+`<div class="dbgrid">${card('Bảng',side)}${card(D.table||'Database',body)}</div>`}
+// Sơ đồ: mỗi bảng một ô (đủ cột, khoá chính / ngoại, số dòng), cột theo schema; cạnh khoá ngoại nét liền, quy ước nét đứt.
+function dbDiagram(g){const W=270,RH=17,HH=34,GAP=26,CG=110,TOP=30;const by={};for(const t of g.tables)(by[t.schema]=by[t.schema]||[]).push(t);
+ const order=['cdp','catalog','app'].filter(k=>by[k]).concat(Object.keys(by).filter(k=>!['cdp','catalog','app'].includes(k)));
+ const cols=[];for(const sc of order){const ts=by[sc];const h=t=>HH+t.columns.length*RH+10;const total=ts.reduce((a,t)=>a+h(t)+GAP,0);
+  const parts=total>2200?2:1;const lanes=Array.from({length:parts},()=>({schema:sc,items:[],h:0}));
+  for(const t of ts.slice().sort((a,b)=>h(b)-h(a))){const l=lanes.reduce((m,x)=>x.h<m.h?x:m);l.items.push(t);l.h+=h(t)+GAP}cols.push(...lanes)}
+ const pos={};cols.forEach((c,i)=>{let y=TOP;c.items.sort((a,b)=>a.table.localeCompare(b.table)).forEach(t=>{pos[t.name]={x:20+i*(W+CG),y,t};y+=HH+t.columns.length*RH+10+GAP})});
+ const width=20+cols.length*(W+CG),height=Math.max(...Object.values(pos).map(p=>p.y+HH+p.t.columns.length*RH+10))+30;
+ const rowY=(p,c)=>{const i=p.t.columns.findIndex(x=>x.name===c);return p.y+HH+(i<0?0:i)*RH+RH/2+3};
+ const edges=g.edges.map(e=>{const a=pos[e.from],b=pos[e.to];if(!a||!b)return'';const y1=rowY(a,e.columns[0]),y2=rowY(b,e.targetColumns[0]);let d;
+  if(e.from===e.to){const x=a.x+W,off=e.columns[0].startsWith('source_ref')?70:40;d=`M${x} ${y1} C${x+off} ${y1},${x+off} ${y2},${x} ${y2}`}
+  else{const right=b.x>a.x;const x1=right?a.x+W:a.x,x2=right?b.x:b.x+W;const dx=Math.max(40,Math.abs(x2-x1)/2)*(right?1:-1);
+   if(a.x===b.x){const x=a.x+W;d=`M${x} ${y1} C${x+60} ${y1},${x+60} ${y2},${x} ${y2}`}else d=`M${x1} ${y1} C${x1+dx} ${y1},${x2-dx} ${y2},${x2} ${y2}`}
+  return `<path class="edge${e.kind==='convention'?' conv':''}" data-from="${esc(e.from)}" data-to="${esc(e.to)}" d="${d}" marker-end="url(#arrow)"><title>${esc(e.from+'.'+e.columns.join('+')+' → '+e.to+'.'+e.targetColumns.join('+')+(e.label?' ('+e.label+')':'')+(e.kind==='convention'?' · quy ước':' · khoá ngoại'))}</title></path>`}).join('');
+ const heads=cols.map((c,i)=>cols.findIndex(x=>x.schema===c.schema)===i?`<text class="schema" x="${20+i*(W+CG)}" y="18">${esc(c.schema.toUpperCase())}</text>`:'').join('');
+ const boxes=Object.values(pos).map(({x,y,t})=>{const h=HH+t.columns.length*RH+6;
+  const rows=t.columns.map((c,i)=>{const cy=y+HH+i*RH+RH/2+4;const cls=c.pk?'pk':c.fk?'fk':c.secret?'sec':'';const tag=c.pk?'PK':c.fk?'FK':'';
+   return `<text class="${cls}" x="${x+8}" y="${cy}">${esc(tag)}</text><text class="${cls}" x="${x+30}" y="${cy}">${esc(c.name.length>24?c.name.slice(0,23)+'…':c.name)}${c.secret?' (ẩn)':''}</text><text x="${x+W-8}" y="${cy}" text-anchor="end" fill="var(--muted)">${esc(c.type.replace('timestamp with time zone','timestamptz').replace('character varying','varchar').replace('USER-DEFINED','enum').slice(0,14))}</text>`}).join('');
+  return `<g class="tbl${t.view?' view':''}" data-tbl="${esc(t.name)}" data-action="dbTable" data-args="${esc(JSON.stringify({table:t.name}))}"><title>${esc(t.name)} — bấm để xem dữ liệu</title><rect class="box" x="${x}" y="${y}" width="${W}" height="${h}" rx="8"/><rect class="head" x="${x+1}" y="${y+1}" width="${W-2}" height="${HH-6}" rx="7"/>
+   <text x="${x+10}" y="${y+21}" font-weight="700" fill="var(--ink)">${esc(t.table)}${t.view?' (view)':''}</text><text x="${x+W-10}" y="${y+21}" text-anchor="end" fill="var(--muted)">${num(t.rows)} dòng</text>${rows}</g>`}).join('');
+ return `<p class="muted">${num(g.tables.length)} bảng / view · ${num(g.edges.length)} quan hệ. Nét liền: khoá ngoại; nét đứt: quan hệ quy ước (không có khoá ngoại). <b>PK</b> khoá chính, <b>FK</b> khoá ngoại. Rê chuột vào một bảng để tô các quan hệ của nó; bấm để mở dữ liệu bảng.</p>
+  <div class="actions">${button(S.db?.fit?'Cỡ thật (đọc rõ cột)':'Xem toàn cảnh (vừa khung)','dbZoom',{})}</div><div id="dbDiagram" class="scroll"><svg width="${width}" height="${height}" style="${S.db?.fit?'width:100%;height:auto':''}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Sơ đồ quan hệ database"><defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--muted)"/></marker></defs>${heads}${edges}${boxes}</svg></div>`}
+function dbDiagramHover(){const root=$('#dbDiagram');if(!root)return;
+ root.addEventListener('mouseover',e=>{const g=e.target.closest('[data-tbl]');if(!g)return;const n=g.dataset.tbl;
+  root.querySelectorAll('.edge').forEach(p=>{const on=p.dataset.from===n||p.dataset.to===n;p.classList.toggle('on',on);p.classList.toggle('dim',!on)});
+  root.querySelectorAll('[data-tbl]').forEach(t=>t.classList.toggle('on',t===g))});
+ root.addEventListener('mouseleave',()=>{root.querySelectorAll('.edge').forEach(p=>p.classList.remove('on','dim'));root.querySelectorAll('[data-tbl]').forEach(t=>t.classList.remove('on'))})}
+async function dbRow(tname,key){const d=await api('/api/dbx/row',{table:tname,...Object.fromEntries(Object.entries(key).map(([k,v])=>['k.'+k,v===null?'\\N':v]))});
+ const fields=Object.entries(d.row).map(([k,v])=>[esc(k),d.secret.includes(k)?`<span class="muted">${esc(v??'NULL')}</span>`:(v!==null&&typeof v==='object'?pretty(v):dbShort(v))]);
+ const out=d.outgoing.map(o=>button(`${o.via.join('+')} → ${o.table}${o.kind==='convention'?' (quy ước)':''}`,'dbRow',{table:o.table,key:o.key})).join(' ');
+ const inc=d.incoming.map(i=>button(`${i.table} (${num(i.count)}) qua ${i.via.join('+')}${i.kind==='convention'?' (quy ước)':''}`,i.via[0]==='attributes.parentProductId'?'dbChildren':'dbList',{table:i.table,filters:i.filters,id:i.filters['attributes.parentProductId']})).join(' ');
+ modal(`${tname} · ${Object.values(key).join(' / ')}`,`<h3>Trỏ tới</h3><div class="actions">${out||'<span class="muted">Không có</span>'}</div><h3>Được trỏ tới bởi</h3><div class="actions">${inc||'<span class="muted">Không có</span>'}</div><h3>Dữ liệu</h3>`+table(['Cột','Giá trị'],fields))}
+
+// ------------------------------------------------------------------ Realtime: từng lần gọi của web / agent (backend /internal/calls)
+const srcBadge=v=>`<span class="status ${v==='agent'?'running':'ok'}">${esc(v)}</span>`;
+const callStatus=v=>typeof v==='number'?`<span class="status ${v>=500?'failed':v>=400?'partial':'ok'}">${v}</span>`:`<span class="status ${v==='ok'?'ok':'failed'}">${esc(v)}</span>`;
+function rtRows(){const R=S.rt;const ev=R.events.filter(e=>!R.source||e.source===R.source);
+ return table(['Giờ','Nguồn','Lần gọi','Kết quả','ms','Use case','Số KQ','Thời gian từng bước (stageMs)','productId'],ev.slice().reverse().slice(0,100).map(e=>[
+  esc(new Date(e.at).toLocaleTimeString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh'})),srcBadge(e.source),esc(e.name),callStatus(e.status),num(e.ms),esc(e.useCase),num(e.resultCount),
+  e.stageMs?esc(Object.entries(e.stageMs).map(([k,v])=>`${k} ${v}`).join(' · ')):'—',
+  (e.productIds||[]).slice(0,3).map(id=>button(id.slice(0,8)+'…','dbRow',{table:'cdp.products',key:{product_id:id}},'link')).join(' ')+((e.productIds||[]).length>3?` <span class="muted">+${e.productIds.length-3}</span>`:'')]))}
+function rtRender(d){const R=S.rt;const c=d.catalog||{};
+ const head=`Backend ${esc(d.backend)} · đo từ ${esc(when(d.startedAt))} (mất khi backend restart) · tự làm mới 2 giây. Catalog / recsys trong bộ nhớ backend: <b>${num(c.products)}</b> sản phẩm, nạp lúc ${esc(when(c.loadedAt))} (${num(c.reloads)} lần). Web xem / lọc sản phẩm đọc thẳng Postgres; tìm kiếm, gợi ý, "tương tự" dùng bản trong bộ nhớ + Weaviate. Không ghi câu tìm kiếm hay dữ liệu cá nhân.`;
+ const sum=table(['Nguồn','Loại','Tên','Số lần','Lỗi','p50 ms','p95 ms','TB ms','Gần nhất'],(d.summary||[]).filter(r=>!R.source||r.source===R.source).map(r=>[srcBadge(r.source),esc(r.kind),esc(r.name),num(r.count),r.errors?`<span class="minus">${num(r.errors)}</span>`:'0',num(r.p50Ms),num(r.p95Ms),num(r.avgMs),esc(when(r.lastAt))]));
+ if(!$('#rtRows')){  // lần đầu: dựng khung; các lần sau chỉ thay nội dung để không mất vị trí cuộn
+  main.innerHTML=card('Web và agent đang lấy dữ liệu',`<p class="muted" id="rtHead"></p><div class="actions"><select id="rtSource" aria-label="Nguồn"><option value="">Mọi nguồn</option><option value="web">web</option><option value="agent">agent</option></select></div>`)+
+   card('Tổng hợp theo lần gọi','<div id="rtSummary"></div>')+`<section class="card"><h2 id="rtTitle"></h2><div id="rtRows" class="rt"></div></section>`;
+  $('#rtSource').value=R.source||''}
+ $('#rtHead').innerHTML=head;$('#rtSummary').innerHTML=sum;$('#rtTitle').textContent=`Lần gọi gần nhất (hiện 100 / ${num(R.events.length)})`;$('#rtRows').innerHTML=rtRows()}
+async function realtimePage(){S.rt=S.rt||{lastSeq:0,events:[],source:''};const R=S.rt;
+ const tick=async()=>{if(S.view!=='realtime')return;const d=await api('/api/calls',{after:R.lastSeq,limit:500});
+  if(d.lastSeq<R.lastSeq){R.events=[];R.lastSeq=0;return tick()}  // backend restart: đếm lại từ đầu
+  const fresh=(d.events||[]).length>0||!$('#rtRows');
+  R.events=R.events.concat(d.events||[]).slice(-500);R.lastSeq=d.lastSeq;R.last=d;
+  if(fresh&&S.view==='realtime'&&!$('#detail').open)rtRender(d)};  // không có lần gọi mới: không vẽ lại
+ try{await tick()}catch(e){main.innerHTML=card('Web và agent đang lấy dữ liệu',`<p class="minus">${esc(e.message)}</p><p class="muted">Monitor gọi backend qua BACKEND_URL (mặc định http://127.0.0.1:8000). Backend cần bản có /internal/calls.</p>`)}
+ clearInterval(S.rtTimer);S.rtTimer=setInterval(()=>tick().catch(()=>{}),2000)}
+document.addEventListener('change',e=>{if(e.target.id==='rtSource'){S.rt.source=e.target.value;if(S.rt.last)rtRender(S.rt.last)}});
 
 // ------------------------------------------------------------------ hành động
 async function liveSend(key,changes){await api('/api/live',{},{key,changes});notice('Đã áp dụng cho lượt đang chạy.',true);await refreshFlow(true)}
@@ -472,6 +560,15 @@ async function action(name,args){notice('');
   case 'livePause':return liveSend(args.key,{paused:args.paused});
   case 'nextSave':{const input=document.querySelector(`[data-next="${args.key}"]`);await api('/api/settings',{},{values:{[args.key]:Number(input.value)}});notice('Đã lưu vào Cấu hình, áp từ lượt sau.',true);return refreshFlow(true)}
   case 'tripBudget':for(const [key,value] of Object.entries({'tripHotels.initialPerCity':30,'tripHotels.newPerCity':10,'tripHotels.dailyHotels':180}))main.querySelector(`[data-key="${key}"]`).value=value;return notice('Đã điền ngân sách Trip. Bấm Lưu thay đổi để áp dụng.',true);
+  case 'dbTable':S.db={table:args.table,filters:{},offset:0,mode:'list'};return dbPage();
+  case 'dbMode':S.db={...S.db,mode:args.mode};return dbPage();
+  case 'dbZoom':S.db.fit=!S.db.fit;return dbPage();
+  case 'dbOffset':S.db.offset=args.offset;return dbPage();
+  case 'dbSort':S.db.desc=S.db.sort===args.col?!S.db.desc:false;S.db.sort=args.col;S.db.offset=0;return dbPage();
+  case 'dbClear':S.db={table:S.db.table,filters:{},offset:0};return dbPage();
+  case 'dbRow':return dbRow(args.table,args.key);
+  case 'dbList':$('#detail').close();S.db={table:args.table,filters:args.filters,offset:0};await navigate('db');return;
+  case 'dbChildren':$('#detail').close();S.db={table:'cdp.products',filters:{},children:args.id,offset:0};await navigate('db');return;
   case 'resetSetting':await api('/api/settings',{},{values:{[args.key]:null}});return settings();
  }}
 document.addEventListener('click',e=>{const sg=e.target.closest('[data-setgroup]');if(sg){S.settingsGroup=sg.dataset.setgroup;document.querySelectorAll('[data-setgroup]').forEach(b=>b.setAttribute('aria-current',b===sg));document.querySelectorAll('#settingsForm [data-group]').forEach(x=>x.hidden=x.dataset.group!==S.settingsGroup);return}
@@ -487,6 +584,7 @@ document.addEventListener('submit',async e=>{e.preventDefault();const f=new Form
  try{
   if(e.target.id==='searchForm'){const extra={};for(const k of ['taxonomy','level','src','destination','flag','step','action'])if(f.has(k))extra[k]=f.get(k);return await showList({...S.list,...extra,q:f.get('q'),offset:0})}
   if(e.target.id==='traceForm')return await trace(f.get('id'));
+  if(e.target.id==='dbForm'){S.db.q=f.get('q');S.db.offset=0;return await dbPage()}
   if(e.target.id==='queryForm'){const out=$('#queryOut');out.innerHTML='<p class="muted">Đang gọi Cohere và xếp hạng…</p>';out.innerHTML=queryHtml(await api('/api/embed/query',{},{run:S.run,q:f.get('q'),k:Number(f.get('k')),refresh:f.get('refresh')==='on'}));return}
   if(e.target.id==='settingsForm'){const values={};for(const fl of S.settings.fields){const input=main.querySelector(`[data-key="${fl.key}"]`);const value=fl.kind==='bool'?input.checked:['int','float'].includes(fl.kind)?Number(input.value):input.value;const old=Array.isArray(fl.value)?fl.value.join(','):fl.value??'';if(value!==old)values[fl.key]=value}await api('/api/settings',{},{values});await settings();notice('Đã lưu. Cấu hình áp dụng từ lượt kế tiếp.',true)}
  }catch(err){fail(err);if(e.target.id==='queryForm')$('#queryOut').innerHTML=''}});

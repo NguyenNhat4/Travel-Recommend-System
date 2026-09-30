@@ -5,6 +5,7 @@ This root configures only the staging monitoring environment. It does not contai
 ## Resources
 
 - Cloud Monitoring dashboard for VM CPU, memory, disk, readiness, watcher heartbeat, crawler outcomes and container lifecycle events.
+- Dashboard log panels for backend, frontend, crawler, Redis and Weaviate containers, filtered by container name where the emitted log entry provides it.
 - Alert policies for uptime, CPU, memory, disk and error-level VM logs.
 - Cloud Monitoring HTTPS uptime check for the staging readiness endpoint.
 - Cloud Logging user metric for error-level Compute Engine logs.
@@ -13,6 +14,8 @@ This root configures only the staging monitoring environment. It does not contai
 - Optional email notification channel, supplied as a sensitive variable.
 
 The crawler monitor UI is not part of this package. This package monitors the crawler and container lifecycle only.
+
+The named container log panels depend on `jsonPayload.container_name` being present in the Cloud Logging entry. Docker `json-file` logs are parsed by the Ops Agent but are not automatically enriched with a Compose service name; verify the live entry shape in Logs Explorer before treating an empty named panel as an ingestion failure.
 
 ## Local validation
 
