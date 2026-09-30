@@ -104,3 +104,16 @@ class PostgresCdpReader:
             f'WHERE event_name = %s AND "timestamp" >= %s ORDER BY "timestamp" DESC',
             ("purchase", cutoff),
         )
+
+    def all_events(self, until: datetime | None = None) -> list[dict]:
+        """Toàn bộ event, chỉ cho đánh giá offline (`src/evaluation/recsys_bench`); không gọi trong request.
+
+        `until` cắt ở kho (`timestamp < until`) để harness không nhận event sau mốc đánh giá. Thứ tự tất định
+        (khách, thời điểm, `event_id`) như bản của `origin/khoa/recsys-research@6b9b0af`. Đọc lô nên không
+        đặt `statement_timeout`, giống `purchase_events`.
+        """
+        where, params = ('WHERE "timestamp" < %s ', (until,)) if until is not None else ("", ())
+        return self._query(
+            f'SELECT {_COLUMNS} FROM cdp.events {where}ORDER BY cdp_user_id, "timestamp", event_id',
+            params,
+        )
