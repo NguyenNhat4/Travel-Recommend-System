@@ -95,9 +95,13 @@ async def check_destination(state: dict, update: dict, *, tools: ToolExecutorPor
     if supported is None:
         return update
     checked = dict(intent)
-    rejected = await canonical_destination(state, checked, [], supported, llm, llm_timeout_seconds)
+    changed: list[str] = []
+    rejected = await canonical_destination(state, checked, changed, supported, llm, llm_timeout_seconds)
     if rejected is None:
-        return {**update, "intent": checked, "supported_destinations": supported}
+        events = [*update.get("events", []), event("extract", "normalized destination", changed=changed)] if changed \
+            else update.get("events")
+        return {**update, "intent": checked, "supported_destinations": supported,
+                **({"events": events} if events is not None else {})}
     if rejected.get("decision") == "error":
         return {**rejected, "supported_destinations": supported}
     missing = ["destination", *(key for key in update.get("missing_fields", []) if key != "destination")]

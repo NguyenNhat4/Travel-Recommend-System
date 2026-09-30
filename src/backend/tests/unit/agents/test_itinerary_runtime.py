@@ -168,7 +168,7 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['intent']['destination'], 'TP. Hồ Chí Minh')
         self.assertEqual(result['response']['status'], 'COMPLETED')
         self.assertEqual(llm.calls.count('DestinationChoice'), 1)
-        self.assertIn('normalized destination', [e['message'] for e in result['events'] if e['node'] == 'tool'][0])
+        self.assertIn('normalized destination', [e['message'] for e in result['events'] if e['node'] == 'extract'])
 
     async def test_accent_and_case_variants_match_without_calling_the_llm(self):
         llm = ScriptedLlm(extraction=extracted(destination='NHA  trang', days=2))
