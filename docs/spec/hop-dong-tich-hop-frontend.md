@@ -104,7 +104,7 @@ type ProductSummary = components["schemas"]["ProductSummary"];
 | `/` | Home | Không | `debug` |
 | `/hotels`, `/flights`, `/combos` | Trang danh mục: khách sạn & resort, vé máy bay, combo (đề xuất PRD `update-archive/2026-09-29-route-trang-danh-muc-dich-vu.md`) | Không | `destination` |
 | `/experiences` | Trang danh mục: tour và trải nghiệm | Không | `destination`, `type` (`attraction` mặc định \| `golf`) |
-| `/search` | Kết quả tìm kiếm | Không | `q` (bắt buộc), `taxonomy` (hoặc `type`), `destination`, `priceMin`, `priceMax`, `starRatingMin`, `sort` (`relevance` \| `price_asc` \| `price_desc`); ngữ cảnh chuyến đi `checkIn`, `checkOut`, `adults`, `children`, `rooms` (§4.1a) |
+| `/search` | Kết quả tìm kiếm | Không | `q` (bắt buộc), `type` (hoặc `taxonomy`): `stay` \| `exp` \| `more` — nhận cả taxonomy cũ `hotel`, `attraction`, `golf`, `combo`; không có thì là tab Tất cả; `flight` chỉ khi mở từ `/flights` (danh sách phẳng, không tab), `destination` (chip ✕ ở "Đang lọc", không có checkbox); ngữ cảnh chuyến đi `checkIn`, `checkOut`, `adults`, `children`, `rooms` (§4.1a) |
 | `/product/{productId}` | Chi tiết sản phẩm | Không | ngữ cảnh chuyến đi tùy chọn `checkIn`, `checkOut`, `adults`, `children`, `rooms` (điền sẵn hộp đặt, §4.1a) |
 | `/cart` | Giỏ hàng | Có | — |
 | `/checkout` | Checkout | Có | — |
@@ -153,18 +153,27 @@ Một template (`features/catalog/landing`), cấu hình ở `verticals.ts`. Her
 
 `/experiences` có hai tab (`?type=attraction|golf`); các trang khác một tab. Tấm tìm kiếm gửi bằng điều hướng sang `/search?q&type[&destination]&checkIn&checkOut&adults&children&rooms`: điểm đến chọn từ gợi ý (hoặc gõ đúng nhãn) thành `destination`, còn lại vào `q` (rỗng thì dùng câu mặc định theo danh mục, `services/search.ts` `DEFAULT_QUERY`).
 
-**Ngữ cảnh chuyến đi** (`features/search/tripContext.ts`) là dữ liệu điền sẵn, **không phải bộ lọc phòng trống** (Backend chưa lọc theo ngày; không gửi `travelContext`). `/search` hiện chip "Chuyến đi: 15/10 – 17/10 · 1 phòng, 2 người lớn" và nối query vào liên kết sản phẩm; hộp đặt ở `/product/{id}` điền sẵn ngày, số khách, số phòng nếu hợp lệ với hạng phòng đang chọn (ngày nằm trong `availableFrom`–`availableTo`, sức chứa đúng). Giá trị sai bị bỏ im lặng; Backend vẫn quyết định (`DATE_OUT_OF_RANGE`, `VALIDATION_ERROR`). Luật đoàn theo FR-BKG-08: tối đa 9 khách, mỗi phòng ít nhất 1 người lớn. Không đưa họ tên hay token vào URL.
+**Ngữ cảnh chuyến đi** (`features/search/tripContext.ts`) là dữ liệu điền sẵn, **không phải bộ lọc phòng trống** (Backend chưa lọc theo ngày; không gửi `travelContext`). `/search` không hiển thị ngữ cảnh này (không chip ngày/số khách, vì hộp đặt ở trang chi tiết đã có chỗ chọn) mà chỉ nối query vào liên kết sản phẩm; hộp đặt ở `/product/{id}` điền sẵn ngày, số khách, số phòng nếu hợp lệ với hạng phòng đang chọn (ngày nằm trong `availableFrom`–`availableTo`, sức chứa đúng). Giá trị sai bị bỏ im lặng; Backend vẫn quyết định (`DATE_OUT_OF_RANGE`, `VALIDATION_ERROR`). Luật đoàn theo FR-BKG-08: tối đa 9 khách, mỗi phòng ít nhất 1 người lớn. Không đưa họ tên hay token vào URL.
 
 Sau checkout (cờ `justBooked`): gọi lại ① bỏ qua cache. Chỉ hiện toast "Trang chủ đã cập nhật" khi `strategy` **hoặc** `nextVertical` khác lần gọi trước.
 
 ### 4.2. Search `/search`
 
+Đề xuất PRD `update-archive/2026-09-30-trang-search-bo-diem-den-ve-may-bay-va-tab-theo-nhom.md`. Tab theo nhóm header: **Tất cả · Lưu trú (`hotel`) · Tour và trải nghiệm (`attraction` + `golf`) · Tiện ích khác (`combo`)**. Vé máy bay không nằm trong tìm kiếm ngữ nghĩa; `?type=flight` (từ `/flights`) là ngoại lệ, một danh sách phẳng không tab. Không có bộ lọc điểm đến; `?destination=` từ tấm tìm kiếm ở trang danh mục vẫn truyền cho API và hiện thành chip có ✕.
+
 | Khu vực | Endpoint | Auth | Trường Web đọc | Khi lỗi / rỗng |
 |---|---|---|---|---|
-| Danh sách | `POST /search` | tùy | `results[]` (`ProductSummary` + `score`), `total`, `limit`, `offset` | `results: []` với bộ lọc → EmptyState "bỏ bộ lọc"; không bộ lọc → EmptyState + carousel `GET /products?sort=popular` |
-| Tab danh mục, bộ đếm lọc | cùng response | — | `facets.taxonomy`, `facets.destination` | Giá trị 0 → ẩn tab |
-| Băng "kết quả yếu" | cùng response | — | `topScore` | `topScore < 0.35` → hiện băng; `null` → không hiện |
-| Xem thêm | `POST /search` với `offset += limit` | tùy | như trên | Lỗi → nút "Thử lại" dưới danh sách |
+| Số kết quả các tab | `POST /search` không `taxonomy`, `limit: 1` | tùy | `facets.taxonomy` (Lưu trú = hotel, Tour và trải nghiệm = attraction + golf, Tiện ích khác = combo; bỏ `flight`), `topScore` | Lỗi → tab không hiện số; tab 0 kết quả vẫn hiện |
+| Tab **Tất cả**: hàng theo nhóm | `POST /search` một lần cho mỗi taxonomy của nhóm, `limit: 6` | tùy | `results[]`, `total` | Lỗi → "Chưa tải được nhóm này · Thử lại" ngay hàng; nhóm 0 kết quả bị ẩn; tất cả 0 → EmptyState |
+| Tab nhóm: danh sách đầy đủ | như trên, `limit: 20`, `offset += 20` | tùy | `results[]` (`ProductSummary` + `score`), `total` | Lỗi → "Thử lại"; rỗng do lọc → "Xóa bộ lọc" |
+| Băng "kết quả yếu" | response của số kết quả các tab | — | `topScore` | `topScore < 0.35` → hiện băng; `null` → không hiện |
+
+Quy tắc:
+- **Tất cả** chỉ lấy vài mục đầu mỗi nhóm (`PREVIEW_LIMIT` = 6) để tải nhanh. Hàng đầu tải ngay, các hàng dưới tải khi gần vào vùng nhìn (`useInView`). Cuối hàng có thẻ "Còn N kết quả · Xem tất cả"; "Xem tất cả" chuyển sang tab của nhóm, lúc đó mới tải trang đầy đủ (`GROUP_PAGE_SIZE` = 20, "Xem thêm" nối trang kế).
+- Mọi lần gọi qua bộ đệm 60 giây của `hooks/useLazySection` (`useLazySection`, `loadSection`), khóa theo (truy vấn, điểm đến, nhóm, limit, offset); quay lại tab hoặc "Xem thêm" không tải lại trang đã có. Đổi tài khoản thì xóa bộ đệm (§7 điều 7). Hệ quả: cùng truy vấn tìm lại trong 60 giây có thể không sinh thêm event `search` phía Backend.
+- Hàng cuộn ngang có nút trái/phải ở giữa chiều cao hàng, sát hai bên: nút trái ẩn ở đầu hàng, nút phải ẩn ở cuối hàng hoặc khi hàng không tràn; dưới `md` chỉ vuốt (`components/search/HScroller.tsx`).
+- **Sắp xếp** là popup ("Sắp xếp: Phù hợp nhất ▾": Phù hợp nhất · Giá thấp → cao · Giá cao → thấp) ở mọi tab trừ Tất cả. Hạng sao và giá tối đa chỉ ở tab Lưu trú. Backend chưa nhận `sort`, giá, sao nên sắp xếp và lọc chạy trên các mục đã tải (`viewItems`); mục chưa có giá luôn xếp cuối.
+- Nhóm Tour và trải nghiệm là hai request (attraction, golf) trộn theo `score`.
 
 `503 SEARCH_UNAVAILABLE` → `ErrorState` có "Thử lại", giữ nguyên truy vấn trong ô.
 

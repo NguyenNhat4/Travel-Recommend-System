@@ -250,30 +250,31 @@ Khi người dùng quay về Home từ Confirmation (bấm "Xem gợi ý mới t
 ┌ Header (ô tìm kiếm chứa truy vấn hiện tại) ───────────────────────────────────┐
 ├───────────────────────────────────────────────────────────────────────────────┤
 │ Kết quả cho "nghỉ dưỡng biển cho gia đình"                     48 sản phẩm   │
-│ Tabs: [Tất cả 48] [Khách sạn 21] [Vé tham quan 12] [Combo 9] [Vé máy bay 6]  │
+│ Tabs: [Tất cả 188] [Lưu trú 128] [Tour và trải nghiệm 49] [Tiện ích khác 11] │
 ├──────────────┬────────────────────────────────────────────────────────────────┤
-│ BỘ LỌC       │ Sắp xếp: [Phù hợp nhất ⓘ] [Giá thấp → cao] [Giá cao → thấp]    │
-│ Điểm đến     │ Đang lọc: (Nha Trang ×) (4★+ ×)   Xóa tất cả                   │
-│ ☐ Nha Trang  │ ┌ row card ────────────────────────────────────────────────┐   │
-│ ☐ Phú Quốc   │ │ [ảnh]  Badge · ★★★★★                          3.400.000 ₫│   │
-│ Khoảng giá   │ │        Vinpearl Resort Nha Trang - Deluxe Ocean  / đêm   │   │
-│ [──●────●─]  │ │        📍 Nha Trang                                      │   │
-│ Hạng sao     │ │        [Hướng biển] [Phù hợp gia đình] [Hồ bơi]  [Xem →] │   │
-│ ☐ 5★ ☐ 4★    │ └──────────────────────────────────────────────────────────┘   │
+│ (chỉ tab     │ Đang lọc: (Lưu trú) (Nha Trang ×) (4★+ ×)   [Sắp xếp: Phù hợp ▾]│
+│  Lưu trú)    │ ┌ row card ────────────────────────────────────────────────┐   │
+│ BỘ LỌC       │ │ [ảnh]  Badge · ★★★★★                          3.400.000 ₫│   │
+│ Hạng sao     │ │        Vinpearl Resort Nha Trang - Deluxe Ocean  / đêm   │   │
+│ ☐ 5★ ☐ 4★    │ │        📍 Nha Trang                                      │   │
+│ Khoảng giá   │ │        [Hướng biển] [Phù hợp gia đình] [Hồ bơi]  [Xem →] │   │
+│ [──●────●─]  │ └──────────────────────────────────────────────────────────┘   │
 │              │ … 20 kết quả / trang · [Xem thêm]                              │
 │              │ ┌ Thẻ trợ lý ─────────────────────────────────────────────┐    │
 │              │ │ Muốn ghép thành lịch trình? [Hỏi trợ lý với truy vấn này]│    │
 └──────────────┴────────────────────────────────────────────────────────────────┘
 ```
 
+Tab **Tất cả** không có thanh bên và không có sắp xếp: ba hàng theo nhóm (Lưu trú, Tour và trải nghiệm, Tiện ích khác), mỗi hàng cuộn ngang 6 mục đầu, nút trái/phải ở giữa hai bên hàng (ẩn ở đầu/cuối), thẻ cuối hàng "Còn N kết quả · Xem tất cả". Xem frontend §4.2.
+
 #### 4.2.3 Thành phần và dữ liệu
 
 | Thành phần | Chi tiết | Nguồn | Pattern |
 |---|---|---|---|
 | Dòng truy vấn | "Kết quả cho "{q}"" + tổng số | `GET /search?q=` | `[R29]` Tripadvisor web ("8,423 properties in Rome") |
-| Tab danh mục | Đếm theo `taxonomy`. Tab rỗng thì ẩn | lọc client-side trên kết quả, hoặc tham số (**phụ thuộc**) | `[R31]` Klook web (bộ lọc dạng chip + tab sắp xếp) |
-| Bộ lọc | Điểm đến (checkbox), Khoảng giá (slider), Hạng sao. **Không** có bộ lọc ngày trong MVP | **Phụ thuộc:** biến thể search theo điểm đến/ngân sách (handbook §11 Tuần 4). Trước khi có thì lọc client-side | `[R33]` KAYAK web (panel lọc trái: hạng sao, điểm review); `[R31]` Klook web (chip bộ lọc đang áp dụng có × và "Clear") |
-| Sắp xếp | Mặc định "Phù hợp nhất" + icon ⓘ. Hover/bấm hiện: "Kết quả được xếp theo mức độ **gần nghĩa** với câu bạn gõ, không chỉ trùng từ khóa. Vì vậy bạn có thể mô tả chuyến đi bằng lời thường." | — | `[R30]` Kiwi.com web ("Best match" + link "Why results appear this way ⓘ"); `[R34]` TravelPerk web ("Relevance ⓘ"); `[R24]` Vinted iOS (sheet "How do search results work?" liệt kê tiêu chí) |
+| Tab nhóm | Tất cả · Lưu trú · Tour và trải nghiệm · Tiện ích khác, đếm theo `facets.taxonomy` (không tính vé máy bay). Tab 0 kết quả vẫn hiện | một request `limit: 1` không lọc taxonomy | `[R31]` Klook web (bộ lọc dạng chip + tab sắp xếp) |
+| Bộ lọc | Chỉ ở tab Lưu trú: Khoảng giá (slider), Hạng sao. **Không** có bộ lọc điểm đến (điểm đến do câu truy vấn quyết định) và không có bộ lọc ngày trong MVP | **Phụ thuộc:** biến thể search theo điểm đến/ngân sách (handbook §11 Tuần 4). Trước khi có thì lọc client-side | `[R33]` KAYAK web (panel lọc trái: hạng sao, điểm review); `[R31]` Klook web (chip bộ lọc đang áp dụng có × và "Clear") |
+| Sắp xếp | Popup "Sắp xếp: Phù hợp nhất ▾" (Phù hợp nhất · Giá thấp → cao · Giá cao → thấp) ở mọi tab trừ Tất cả. Mặc định "Phù hợp nhất", có giải thích khi hover/bấm: "Kết quả được xếp theo mức độ **gần nghĩa** với câu bạn gõ, không chỉ trùng từ khóa. Vì vậy bạn có thể mô tả chuyến đi bằng lời thường." | — | `[R30]` Kiwi.com web ("Best match" + link "Why results appear this way ⓘ"); `[R34]` TravelPerk web ("Relevance ⓘ"); `[R24]` Vinted iOS (sheet "How do search results work?" liệt kê tiêu chí) |
 | Thẻ kết quả `row` | Ảnh, `TaxonomyBadge`, hạng sao, tên, điểm đến, tối đa 3 tag từ `attributes` (key boolean true → nhãn tiếng Việt), `PriceTag`, nút "Xem" | `/search` | `[R31]` Klook web (tag "Pet friendly · In downtown · Close to subway"); `[R29]` Tripadvisor web (dòng "Mentions: Classic · Quaint · Family" có dấu ✓) |
 | Thẻ Trợ lý trong danh sách | Chèn sau kết quả thứ 6: "Muốn ghép thành lịch trình? Hỏi trợ lý với "{q}"" | — | `[R29]` Tripadvisor web (khối "Powered by AI — Get a personalized itinerary in Rome — Build your trip" đặt ngay trên trang kết quả) |
 | Phân trang | "Xem thêm" (20/lần), không phân trang số | — | — |
