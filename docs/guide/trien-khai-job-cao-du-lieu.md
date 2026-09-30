@@ -32,30 +32,43 @@ scripts/install-vota-cron.sh --job fresh --image <AR>/vota-fresh-catalog:latest 
 Không có `--job` thì script vẫn cài job cũ để tương thích; CI/CD mới truyền rõ `--job fresh`. Test:
 `bash scripts/tests/test-install-vota-cron.sh`.
 
-## Push và deploy tự động cào (cập nhật 30/09/2026)
+## Push và deploy (CD của `release-mvp-v2`, cập nhật 30/09/2026)
 
-Workflow `crawler-ci-cd.yml` chạy trên main/release-mvp-v1/v2/v3. Nhánh `test/newcrawl` cần merge/PR vào một nhánh này; push riêng nhánh test không deploy. Các bước:
+Workflow `crawler-ci-cd.yml` deploy khi push/merge PR vào main/release-mvp-v1/v2/v3 và có thay đổi trong `src/data_collection/**`,
+`Dockerfile.fresh-catalog` hoặc script cron. Nhánh `test/newcrawl` phải mở PR vào một nhánh này; push riêng nhánh test chỉ chạy CI.
+Các bước:
 
-1. Kiểm shell, chạy test cron/deploy giả lập và build cả `Dockerfile.daily`, `Dockerfile.fresh-catalog`.
-2. Publish image daily như trước và image fresh tại `${GAR_DAILY_IMAGE}-fresh:<sha>` / `:latest`, cùng Artifact Registry đã cấu hình. Không cần thêm secret tên image.
-3. Chép runner mới rồi gọi `scripts/deploy-crawler-vm.sh` trên VM. Helper pull image SHA, import bổ sung gói 43 vé thương gia (insert-only) và thay khối cron quản lý thành **fresh**, mỗi 15 phút gọi `fresh-run tick`.
-4. Ghi `deploy-pending` trong thư mục log, chứa image SHA, rồi gọi `fresh-run full` ở nền. Lượt full gồm vé Trip SEO/khứ hồi và collector thương gia, rồi normalize → DB → index.
-5. Nếu fresh hoặc legacy batch còn chạy, giữ nó và giữ request. Tick tiếp theo thử full khi máy rảnh. Request chỉ được xóa sau exit 0; deploy mới thay request trong lúc lượt cũ chạy thì lượt cũ không xóa request mới. Khóa file bảo vệ cập nhật request. Không restart monitor/container đang chạy.
+1. Kiểm shell, chạy `scripts/tests/test-install-vota-cron.sh`, build `Dockerfile.fresh-catalog`.
+2. Publish image fresh tại secret `GAR_FRESH_IMAGE` (tag SHA và `latest`), lấy digest bất biến.
+3. Chép `run_daily_docker.sh` lên VM, cài khối cron **fresh** duy nhất (`fresh-run tick` mỗi 15 phút) với image ghim digest.
+4. Xoá và khởi động lại monitor fresh (public cổng 8765). Chỉ container monitor bị thay; lượt cào đang chạy giữ nguyên và tự kết thúc.
 
-CD thành công ở bước này nghĩa là **đã gửi yêu cầu**, không phải crawl nhiều giờ đã hoàn tất. Xem `deploy-*.log`, `fresh-catalog-*.log`, `run.json` và monitor để biết tiến độ. Lỗi pull/import không thay cron hay request hiện tại. Nguồn incomplete/quota deferred vẫn giữ report partial theo hướng dẫn quota.
+CD **không** tự chạy lượt cào ngay. Code mới có hiệu lực ở lượt kế tiếp theo giờ trong monitor. Muốn cào ngay: mở monitor, bấm chạy
+lượt `full` (gồm vé Trip SEO/khứ hồi và collector thương gia, rồi normalize → DB → index).
+
+Nguồn quá giờ có dữ liệu hợp lệ hoặc Cohere 429 không còn làm lượt trả `exit=3`: report ghi `partial`, index chờ đến hạn rồi tick tự
+thử lại (xem [vé thương gia và index chờ](ve-thuong-gia-va-index-cho.md)).
 
 ## Điều kiện VM và kiểm sau deploy
 
 VM hiện có job fresh cần giữ nguyên:
 
 - `/srv/vota/fresh-catalog-data` (app UID/GID 10001 ghi được), `/etc/vota/fresh-catalog.env` (deploy account đọc được), `/srv/vota/fresh-catalog-logs` (deploy account ghi được).
-- Env có `DB_TARGET`, kết nối DB, Cohere và Weaviate của đúng đích; tunnel DB và Docker đã hoạt động. Helper không tự tạo env hay sửa secret.
-- Đổi đường dẫn nếu cần bằng các secret tùy chọn `GCE_FRESH_DATA_DIR`, `GCE_FRESH_ENV_FILE`, `GCE_FRESH_LOG_DIR`; runner dùng `GCE_CRON_RUNNER` như trước. Các `GCE_CRON_DATA_DIR/ENV_FILE` của job legacy không áp cho fresh.
-- VM mới chưa có thư mục/env phải provision theo README trước; helper báo thiếu rõ ràng, không tự tạo DB hay volume mới.
+- Env có `DB_TARGET`, kết nối DB, Cohere và Weaviate của đúng đích; tunnel DB và Docker đã hoạt động. CD không tự tạo env hay sửa secret:
+  **đổi key Cohere phải sửa tay `/etc/vota/fresh-catalog.env` trên VM**.
+- Đổi đường dẫn bằng các secret tùy chọn `GCE_CRON_DATA_DIR`, `GCE_CRON_ENV_FILE`, `GCE_CRON_LOG_DIR`, `GCE_CRON_RUNNER` (mặc định là
+  các đường dẫn fresh ở trên).
 
-Sau deploy, `crontab -l` chỉ có một khối `VOTA CRAWLER`, cuối dòng là `fresh-run tick`. `run_daily_docker.sh report 3` và log cho biết số dòng DB/index. Monitor hiện có đọc chung volume nên xem được lượt mới, nhưng bản code của monitor vẫn là bản cũ cho tới lần cập nhật riêng được cho phép. Không tuyên bố monitor đã nâng cấp khi chỉ thay image batch.
+Sau deploy, `crontab -l` chỉ có một khối `VOTA CRAWLER`, cuối dòng là `fresh-run tick`. `run_daily_docker.sh report 3` và log cho biết
+số dòng DB/index.
 
-Quay lại legacy cần chủ động cài `install-vota-cron.sh --job legacy` và dùng image daily. Workflow này sẽ chọn lại fresh ở lần deploy tiếp; chỉ quay lại khi đã quyết định kế hoạch rollback tương ứng.
+Import lại 43 vé thương gia đóng gói trong image (insert-only, giữ ID đã có) khi DB mới chưa có:
+
+```bash
+IMAGE=<AR>/vota-fresh-catalog:latest ENV_FILE=/etc/vota/fresh-catalog.env /opt/vota/bin/run_daily_docker.sh import-flights
+```
+
+Quay lại legacy cần chủ động cài `install-vota-cron.sh --job legacy` và dùng image daily. Workflow này sẽ chọn lại fresh ở lần deploy tiếp.
 
 ## Monitor: link để xem và bấm chạy
 

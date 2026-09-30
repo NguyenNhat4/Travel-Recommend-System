@@ -12,6 +12,7 @@ from src.backend.app.application.itinerary.tool_contracts import (
 )
 from src.backend.app.application.itinerary.contracts import valid
 from src.backend.app.core.request_context import current_request_id
+from src.backend.app.domain.itinerary.types import ToolCall, ToolDefinition, ToolResult
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -36,7 +37,7 @@ class ItineraryToolGateway:
             self._handlers[SIMILAR_PRODUCTS] = lambda args: similar.get_similar_products(
                 args["productId"], args["limit"])
 
-    def definitions(self) -> list[dict[str, Any]]:
+    def definitions(self) -> list[ToolDefinition]:
         return [definition for definition in definitions() if definition["name"] in self._handlers]
 
     async def get_product_detail(self, product_id: str) -> dict[str, Any]:
@@ -73,11 +74,11 @@ class ItineraryToolGateway:
         validate(name, data, "response")
         return data
 
-    async def execute(self, call: dict[str, Any]) -> dict[str, Any]:
+    async def execute(self, call: ToolCall) -> ToolResult:
         started = monotonic()
         # Validate before recording arguments; invalid values cannot leak credentials.
         name = call.get("name")
-        result = {"tool_call_id": call.get("id"), "name": name, "arguments": {}}
+        result: ToolResult = {"tool_call_id": call.get("id"), "name": name, "arguments": {}}
         try:
             if not isinstance(name, str) or name not in self._handlers:  # tool lạ/chưa nối port: không ghi arguments
                 raise ToolError("TOOL_NOT_ALLOWED")

@@ -228,6 +228,8 @@ Web gọi route BFF `/api/auth/*`, không gọi thẳng `/api/v1/auth/*` (docs/s
 
 ### 4.8. Assistant `/assistant`
 
+**Trạng thái mở đầu của widget nổi (FR-AGT-01, hỗ trợ AC-AGT-01):** Khi mở icon AI trong cuộc trò chuyện chưa có request, hiển thị lời chào ngắn và một ô nhập yêu cầu tự nhiên dạng search box. Chip Nghỉ dưỡng/Gia đình/Khám phá chỉ điền bản nháp, không tự gửi. Form chọn nhanh nằm trong phần “Thêm thông tin chuyến đi”; danh sách điểm đến chỉ tải qua service `GET /destinations` khi mở phần này. Khi gửi câu đầu, chuyển sang transcript với một ô nhập ở đáy. Enter gửi, Shift+Enter xuống dòng; đang xử lý thì khóa gửi và cho dừng. Đóng/mở hoặc mở rộng giữ bản nháp; tạo cuộc mới xóa bản nháp và trở về màn mở đầu. Component của widget nằm trong `src/frontend/src/features/itinerary/widget/`; `components/assistant/AiFloatingWidget.tsx` giữ entry point tương thích.
+
 | Hành động | Endpoint | Auth | Trường Web đọc | Ghi chú |
 |---|---|---|---|---|
 | Gửi tin nhắn | `POST /assistant/itineraries` | tùy | theo `status`, xem §9.3 | Nút "Dừng" hủy request bằng `AbortController` |
@@ -433,7 +435,7 @@ Ví dụ sửa chip "3 ngày → 2 ngày":
 | `status` | Khi nào | Web render |
 |---|---|---|
 | `COMPLETED` | Có kế hoạch | Panel kế hoạch + thẻ tóm tắt trong chat |
-| `NEEDS_CLARIFICATION` | Thiếu `destination`, `days`, hoặc chưa hỏi `startDate`/`party`/`budget` | Thẻ hỏi lại có lựa chọn |
+| `NEEDS_CLARIFICATION` | Thiếu `destination`, `days`, hoặc chưa hỏi `startDate`/`party`/`budget` | Thẻ hỏi lại có lựa chọn; có `clarificationForm` (từ lượt hỏi thứ hai) thì hiện form đã điền sẵn thay cho chip |
 | `NO_RESULTS` | Search không có sản phẩm phù hợp | Tin nhắn + chip `suggestions` |
 | `FALLBACK` | LLM lỗi nhưng Search chạy được | Tin nhắn fallback + panel "Dịch vụ gợi ý ở {destination}" |
 
@@ -494,11 +496,11 @@ Trường chung mọi `status`: `status`, `conversationId`, `metadata`.
 | `slots[].source` | `SEARCH` \| `RECOMMENDATION` khi có `product`; `null` khi không |
 | `slots[].because` | Schema `BecauseItem` của `/recommendations`. Chỉ khác rỗng khi `source = RECOMMENDATION` |
 | `bookableCount` | Số mục có `product.available = true`, gồm cả `stay` |
-| `estimatedTotal` | Integer VND do backend tính (không phải LLM), theo `intent.party` và công thức §2.6 hợp đồng Backend |
-| `budgetStatus` | `WITHIN_BUDGET` \| `OVER_BUDGET` \| `NO_BUDGET` |
+| `estimatedTotal` | Integer VND do backend tính (không phải LLM), theo `intent.party` và công thức §2.6 hợp đồng Backend. Chỉ gồm chi phí các sản phẩm trong lịch trình. `null` khi có mục thiếu giá hoặc thiếu `priceUnit` — nghĩa là **chưa tính được**, Web không được hiển thị thành `0`. Người dùng có nêu `budget` không làm trường này thành `null` |
+| `budgetStatus` | `WITHIN_BUDGET` \| `OVER_BUDGET` \| `NO_BUDGET` \| `UNKNOWN`. `NO_BUDGET` khi `intent.budget = null`; `UNKNOWN` chỉ khi `estimatedTotal = null`. So sánh đặt trên chi phí sản phẩm, không phải chi phí cả chuyến |
 | `priceAsOf` | Thời điểm lấy giá; Web ghi "giá tại thời điểm tạo kế hoạch" |
 | `searchResults` | Object key `taxonomy` → `ProductSummary[]`, tối đa 6 mỗi nhóm. Có mặt kể cả khi `COMPLETED`, phục vụ "Tìm lựa chọn khác" |
-| `warnings[]` | `{ code, message, productId }` — ví dụ `PRODUCT_DROPPED_UNAVAILABLE`, `DAY_WITHOUT_PRODUCTS`, `OVER_BUDGET` |
+| `warnings[]` | `{ code, message, productId }` — ví dụ `PRODUCT_DROPPED_UNAVAILABLE`, `DAY_WITHOUT_PRODUCTS`. Về tiền: `PRODUCT_COST_ONLY` (tổng chỉ gồm sản phẩm) luôn đi kèm `estimatedTotal` khác `null`; `BUDGET_ON_PRODUCT_COST` thêm vào khi người dùng có nêu ngân sách; `UNKNOWN_TOTAL` thay cho cả hai khi `estimatedTotal = null` |
 
 #### `NEEDS_CLARIFICATION`
 
@@ -515,6 +517,14 @@ Trường chung mọi `status`: `status`, `conversationId`, `metadata`.
 ```
 
 `missingFields` chỉ nhận `destination` \| `days` \| `startDate` \| `party` \| `budget`. Ba giá trị sau đi cùng nhau trong một câu hỏi gộp và không có chip gợi ý: câu hỏi hiện như tin nhắn của trợ lý và người dùng trả lời bằng cách gõ.
+
+**Field tuỳ chọn `clarificationForm`** (đề xuất `docs/prd/update-archive/2026-09-29-form-goi-y-thong-tin-chuyen-di.md`, đã áp dụng):
+xuất hiện từ lượt hỏi thứ hai trở đi khi vẫn còn thiếu `destination`/`days`. Web hiển thị một form đã điền sẵn giá trị gợi ý
+(`clarificationForm.defaults`) ngay dưới câu trả lời của trợ lý, cho từng `clarificationForm.fields`. Ô điểm đến chỉ liệt kê vài
+lựa chọn tiêu biểu (gọi `GET /destinations`, sắp theo `productCount`, lấy top 8 — không đổ hết catalog). Form chặn tại chỗ: số
+ngày trong khoảng 1–7 (`TripIntent.days`), `startDate` không sớm hơn `clarificationForm.startDateMin`. Bấm **Xác nhận** dựng một
+câu yêu cầu hoàn chỉnh từ giá trị trên form và **đặt vào ô nhập tin nhắn (không tự gửi)** — người dùng đọc lại, sửa nếu muốn rồi
+gửi như một lượt chat bình thường; không dùng `intentOverride`. Component: `src/frontend/src/components/assistant/TripDetailsForm.tsx`.
 
 #### `NO_RESULTS`
 

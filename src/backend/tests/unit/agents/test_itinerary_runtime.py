@@ -526,7 +526,9 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         result = await self.run_graph(clients=clients)
         self.assertEqual(result['response']['status'], 'COMPLETED')
         self.assertEqual(clients.maximum, 5)
-        self.assertEqual(len(result['details']), 10)
+        # `details` bị `evaluate` xoá sau khi dùng (docs/spec/agent/field-review.md §3.2); đếm qua
+        # số lời gọi get_product_detail thay vì đọc lại state.
+        self.assertEqual(len([call for call in clients.calls if call.startswith('detail:')]), 10)
 
     async def test_all_transient_failures_terminate_without_fake_results(self):
         clients = Clients(rec_error=ToolError('TOOL_TIMEOUT', retryable=True))
@@ -732,11 +734,17 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         bad['response'] = {'status': 'COMPLETED'}
         self.assertEqual(nodes.finalize_node(bad)['http_status'], 500)
 
-    async def test_total_budget_is_not_certified_from_a_product_subtotal(self):
+    async def test_a_stated_budget_keeps_the_total_and_says_what_it_covers(self):
+        # A budget is the reason to show the number, not to hide it; the warning carries the caveat.
         result = await self.run_graph(ScriptedLlm(extraction=extracted(destination='Nha Trang', days=2,
                         budget=1000000, party={'type': 'SOLO', 'adults': 1, 'children': 0})))
-        self.assertIsNone(result['response']['itinerary']['estimatedTotal'])
-        self.assertEqual(result['response']['itinerary']['budgetStatus'], 'UNKNOWN')
+        itinerary = result['response']['itinerary']
+        self.assertIsNotNone(itinerary['estimatedTotal'])
+        self.assertIn(itinerary['budgetStatus'], ('WITHIN_BUDGET', 'OVER_BUDGET'))
+        codes = [w['code'] for w in result['response']['warnings']]
+        self.assertIn('PRODUCT_COST_ONLY', codes)
+        self.assertIn('BUDGET_ON_PRODUCT_COST', codes)
+        self.assertNotIn('UNKNOWN_TOTAL', codes)
 
     async def test_a_full_day_visit_gets_a_day_to_itself(self):
         clients = Clients(products=[product('a', attributes={'openingHours': '09:00–18:00', 'durationMinutes': 480}), product('b')])

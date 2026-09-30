@@ -7,7 +7,7 @@
 
 ## Cập nhật crawler ngày 30/09/2026
 
-Theo yêu cầu người dùng tự cào ngay sau deploy, workflow crawler riêng hiện build/publish cả daily và fresh. Fresh dùng image `${GAR_DAILY_IMAGE}-fresh`, tag SHA và latest; helper `scripts/deploy-crawler-vm.sh` import gói thương gia insert-only, cài khối cron duy nhất với `--job fresh` và ghi yêu cầu full trong `deploy-pending`. Runner khởi chạy ngay khi rảnh, giữ yêu cầu cho cron nếu fresh/legacy batch đang bận; chỉ xóa sau exit 0 và không xóa yêu cầu của image mới hơn. CD không đợi toàn lượt hoàn tất và không restart monitor/batch hiện tại. Phần mô tả cron legacy bên dưới là thiết kế nền trước cập nhật này; vận hành hiện tại theo `docs/guide/trien-khai-job-cao-du-lieu.md`. Backend CD giữ riêng, không bị sửa trong thay đổi này.
+Cập nhật 30/09/2026: workflow crawler theo bản của `release-mvp-v2` (PR #47): build/publish `Dockerfile.fresh-catalog` tại secret `GAR_FRESH_IMAGE`, ghim digest, cài khối cron duy nhất `--job fresh` và khởi động lại monitor fresh. CD không tự chạy lượt cào và không dừng lượt đang chạy. Phần mô tả cron legacy bên dưới là thiết kế nền trước cập nhật này; vận hành hiện tại theo `docs/guide/trien-khai-job-cao-du-lieu.md`. Backend CD giữ riêng, không bị sửa trong thay đổi này.
 
 ## Mục tiêu
 

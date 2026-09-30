@@ -2,6 +2,11 @@ name: Crawler CI/CD
 
 on:
   pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - closed
     branches:
       - main
       - release-mvp-v1
@@ -10,15 +15,10 @@ on:
     paths:
       - '.github/workflows/crawler-ci-cd.yml'
       - 'Dockerfile.daily'
-      - 'Dockerfile.daily.dockerignore'
       - 'Dockerfile.fresh-catalog'
-      - 'Dockerfile.fresh-catalog.dockerignore'
-      - 'scripts/deploy-crawler-vm.sh'
-      - 'scripts/tests/**'
       - 'src/data_collection/**'
       - 'scripts/install-vota-cron.sh'
       - 'scripts/check-db-tunnel.sh'
-      - 'src/data_collection/**'
   push:
     branches:
       - main
@@ -28,15 +28,10 @@ on:
     paths:
       - '.github/workflows/crawler-ci-cd.yml'
       - 'Dockerfile.daily'
-      - 'Dockerfile.daily.dockerignore'
       - 'Dockerfile.fresh-catalog'
-      - 'Dockerfile.fresh-catalog.dockerignore'
-      - 'scripts/deploy-crawler-vm.sh'
-      - 'scripts/tests/**'
       - 'src/data_collection/**'
       - 'scripts/install-vota-cron.sh'
       - 'scripts/check-db-tunnel.sh'
-      - 'src/data_collection/**'
   workflow_dispatch:
 
 permissions:
@@ -52,14 +47,9 @@ env:
 jobs:
   quality:
     name: Crawler quality checks
+    if: ${{ github.event_name == 'push' || github.event.action == 'opened' || github.event.action == 'synchronize' || github.event.action == 'reopened' || (github.event.action == 'closed' && github.event.pull_request.merged == true) || (github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3')) }}
     runs-on: ubuntu-latest
     steps:
-      - name: Refuse dispatch from another ref
-        if: ${{ github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/release-mvp-v1' && github.ref != 'refs/heads/release-mvp-v2' && github.ref != 'refs/heads/release-mvp-v3' }}
-        run: |
-          echo 'This workflow_dispatch must run from main or release-mvp-v1/release-mvp-v2/release-mvp-v3.' >&2
-          exit 1
-
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -68,35 +58,27 @@ jobs:
 
       - name: Validate crawler scripts
         run: |
-          bash -n scripts/check-db-tunnel.sh scripts/install-vota-cron.sh scripts/deploy-crawler-vm.sh src/data_collection/run_daily_docker.sh
+          bash -n scripts/check-db-tunnel.sh scripts/install-vota-cron.sh src/data_collection/run_daily_docker.sh
           bash scripts/tests/test-install-vota-cron.sh
-          bash scripts/tests/test-crawler-deploy.sh
 
   build:
-    name: Build crawler image (${{ matrix.kind }})
+    name: Build crawler image
     needs: quality
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        kind: [daily, fresh-catalog]
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./Dockerfile.${{ matrix.kind }}
+          file: ./Dockerfile.fresh-catalog
           push: false
-          load: true
-          tags: vota-${{ matrix.kind }}-ci:${{ github.sha }}
-          cache-from: type=gha,scope=crawler-${{ matrix.kind }}
-          cache-to: type=gha,mode=max,scope=crawler-${{ matrix.kind }}
-
-      - name: Validate release fares inside the built image
-        run: docker run --rm --network none --entrypoint python vota-${{ matrix.kind }}-ci:${{ github.sha }} -m src.data_collection.seed.release_flights --validate-only
+          tags: vota-fresh-catalog-ci:${{ github.sha }}
+          cache-from: type=gha,scope=crawler
+          cache-to: type=gha,mode=max,scope=crawler
 
   publish:
-    name: Publish crawler SHA and latest image
+    name: Publish fresh crawler SHA and latest image
     if: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
     needs: build
     runs-on: ubuntu-latest
@@ -105,7 +87,7 @@ jobs:
       contents: read
       id-token: write
     env:
-      CRAWLER_IMAGE: ${{ secrets.GAR_DAILY_IMAGE }}
+      CRAWLER_IMAGE: ${{ secrets.GAR_FRESH_IMAGE }}
     outputs:
       crawler_digest: ${{ steps.crawler.outputs.digest }}
     steps:
@@ -116,7 +98,7 @@ jobs:
         env:
           GCP_WIF_PROVIDER: ${{ secrets.GCP_WIF_PROVIDER }}
           GCP_CI_SERVICE_ACCOUNT: ${{ secrets.GCP_CI_SERVICE_ACCOUNT }}
-          CRAWLER_IMAGE: ${{ secrets.GAR_DAILY_IMAGE }}
+          CRAWLER_IMAGE: ${{ secrets.GAR_FRESH_IMAGE }}
         run: |
           for name in GCP_WIF_PROVIDER GCP_CI_SERVICE_ACCOUNT CRAWLER_IMAGE; do
             if [ -z "${!name:-}" ]; then
@@ -149,7 +131,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./Dockerfile.daily
+          file: ./Dockerfile.fresh-catalog
           push: true
           tags: |
             ${{ env.CRAWLER_IMAGE }}:${{ github.sha }}
@@ -157,24 +139,12 @@ jobs:
           cache-from: type=gha,scope=crawler-publish
           cache-to: type=gha,mode=max,scope=crawler-publish
 
-      - name: Publish fresh crawler image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile.fresh-catalog
-          push: true
-          tags: |
-            ${{ env.CRAWLER_IMAGE }}-fresh:${{ github.sha }}
-            ${{ env.CRAWLER_IMAGE }}-fresh:latest
-          cache-from: type=gha,scope=crawler-fresh-publish
-          cache-to: type=gha,mode=max,scope=crawler-fresh-publish
-
   deploy:
     name: Deploy crawler on application VM
-    if: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+    if: ${{ (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true) || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3') }}
     needs: publish
     runs-on: ubuntu-latest
-    # Publish configuration and dispatch; the crawl continues asynchronously on the VM.
+    # Two 15-minute health windows (deploy and rollback) plus image pull and SSH.
     timeout-minutes: 45
     concurrency:
       group: vota-application-vm-deploy
@@ -193,10 +163,11 @@ jobs:
           GCE_INSTANCE: ${{ secrets.GCE_INSTANCE }}
           GCE_ZONE: ${{ secrets.GCE_ZONE }}
           GCE_CRON_RUNNER: ${{ secrets.GCE_CRON_RUNNER || '/opt/vota/bin/run_daily_docker.sh' }}
-          GCE_CRON_DATA_DIR: ${{ secrets.GCE_FRESH_DATA_DIR || '/srv/vota/fresh-catalog-data' }}
-          GCE_CRON_ENV_FILE: ${{ secrets.GCE_FRESH_ENV_FILE || '/etc/vota/fresh-catalog.env' }}
-          GCE_FRESH_LOG_DIR: ${{ secrets.GCE_FRESH_LOG_DIR || '/srv/vota/fresh-catalog-logs' }}
-          CRAWLER_IMAGE: ${{ secrets.GAR_DAILY_IMAGE }}
+          GCE_CRON_DATA_DIR: ${{ secrets.GCE_CRON_DATA_DIR || '/srv/vota/fresh-catalog-data' }}
+          GCE_CRON_ENV_FILE: ${{ secrets.GCE_CRON_ENV_FILE || '/etc/vota/fresh-catalog.env' }}
+          GCE_CRON_LOG_DIR: ${{ secrets.GCE_CRON_LOG_DIR || '/srv/vota/fresh-catalog-logs' }}
+          CRAWLER_IMAGE: ${{ secrets.GAR_FRESH_IMAGE }}
+          CRAWLER_DIGEST: ${{ needs.publish.outputs.crawler_digest }}
         run: |
           for name in GCP_PROJECT_ID GCE_INSTANCE GCE_ZONE; do
             if [ -z "${!name:-}" ]; then
@@ -204,12 +175,20 @@ jobs:
               exit 1
             fi
           done
-          for name in GCE_CRON_RUNNER GCE_CRON_DATA_DIR GCE_CRON_ENV_FILE GCE_FRESH_LOG_DIR; do
+          for name in GCE_CRON_RUNNER GCE_CRON_DATA_DIR GCE_CRON_ENV_FILE; do
             if [[ ! "${!name}" =~ ^/[a-zA-Z0-9._/-]+$ ]]; then
               echo "$name must be an absolute path without shell metacharacters." >&2
               exit 1
             fi
           done
+          if [[ ! "$GCE_CRON_LOG_DIR" =~ ^/[a-zA-Z0-9._/-]+$ ]]; then
+            echo 'GCE_CRON_LOG_DIR must be an absolute path without shell metacharacters.' >&2
+            exit 1
+          fi
+          if [[ ! "$CRAWLER_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo 'Publish did not return a valid immutable crawler digest.' >&2
+            exit 1
+          fi
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
@@ -233,22 +212,39 @@ jobs:
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
           GCE_INSTANCE: ${{ secrets.GCE_INSTANCE }}
           GCE_ZONE: ${{ secrets.GCE_ZONE }}
-          GCE_CRON_RUNNER: ${{ secrets.GCE_CRON_RUNNER || '/opt/vota/bin/run_daily_docker.sh' }}
         run: |
           remote_dir="/tmp/vota-crawler-cd-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          tar -czf - -C "$GITHUB_WORKSPACE/scripts" install-vota-cron.sh check-db-tunnel.sh deploy-crawler-vm.sh -C "$GITHUB_WORKSPACE/src/data_collection" run_daily_docker.sh | gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --quiet --command "umask 077; mkdir -m 700 '$remote_dir' && tar -xzf - -C '$remote_dir' && sudo -n install -D -m 0755 '$remote_dir/run_daily_docker.sh' '$GCE_CRON_RUNNER'"
+          tar -czf - -C "$GITHUB_WORKSPACE/scripts" install-vota-cron.sh check-db-tunnel.sh -C "$GITHUB_WORKSPACE/src/data_collection" run_daily_docker.sh | gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --quiet --command "umask 077; mkdir -m 700 '$remote_dir' && tar -xzf - -C '$remote_dir' && sudo -n install -D -m 0755 '$remote_dir/run_daily_docker.sh' /opt/vota/bin/run_daily_docker.sh"
 
-      - name: Deploy fresh cron and request a full crawl
+      - name: Install crawler cron
         env:
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
           GCE_INSTANCE: ${{ secrets.GCE_INSTANCE }}
           GCE_ZONE: ${{ secrets.GCE_ZONE }}
           GCE_CRON_RUNNER: ${{ secrets.GCE_CRON_RUNNER || '/opt/vota/bin/run_daily_docker.sh' }}
-          GCE_FRESH_DATA_DIR: ${{ secrets.GCE_FRESH_DATA_DIR || '/srv/vota/fresh-catalog-data' }}
-          GCE_FRESH_ENV_FILE: ${{ secrets.GCE_FRESH_ENV_FILE || '/etc/vota/fresh-catalog.env' }}
-          GCE_FRESH_LOG_DIR: ${{ secrets.GCE_FRESH_LOG_DIR || '/srv/vota/fresh-catalog-logs' }}
-          CRAWLER_IMAGE: ${{ secrets.GAR_DAILY_IMAGE }}
+          GCE_CRON_DATA_DIR: ${{ secrets.GCE_CRON_DATA_DIR || '/srv/vota/fresh-catalog-data' }}
+          GCE_CRON_ENV_FILE: ${{ secrets.GCE_CRON_ENV_FILE || '/etc/vota/fresh-catalog.env' }}
+          GCE_CRON_LOG_DIR: ${{ secrets.GCE_CRON_LOG_DIR || '/srv/vota/fresh-catalog-logs' }}
+          CRAWLER_IMAGE: ${{ secrets.GAR_FRESH_IMAGE }}
+          CRAWLER_DIGEST: ${{ needs.publish.outputs.crawler_digest }}
         run: |
           remote_dir="/tmp/vota-crawler-cd-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          remote_command="env FRESH_IMAGE='$CRAWLER_IMAGE-fresh:${{ github.sha }}' FRESH_CRON_IMAGE='$CRAWLER_IMAGE-fresh:latest' RUNNER='$GCE_CRON_RUNNER' FRESH_DATA_DIR='$GCE_FRESH_DATA_DIR' CATALOG_ENV_FILE='$GCE_FRESH_ENV_FILE' CATALOG_LOG_DIR='$GCE_FRESH_LOG_DIR' bash '$remote_dir/deploy-crawler-vm.sh'"
+          crawler_ref="$CRAWLER_IMAGE@$CRAWLER_DIGEST"
+          remote_command="'$remote_dir/install-vota-cron.sh' --job fresh --image '$crawler_ref' --runner '$GCE_CRON_RUNNER' --data-dir '$GCE_CRON_DATA_DIR' --env-file '$GCE_CRON_ENV_FILE' --log-dir '$GCE_CRON_LOG_DIR'"
+          gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --quiet --command "$remote_command"
+
+      - name: Restart fresh crawler monitor
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCE_INSTANCE: ${{ secrets.GCE_INSTANCE }}
+          GCE_ZONE: ${{ secrets.GCE_ZONE }}
+          GCE_CRON_RUNNER: ${{ secrets.GCE_CRON_RUNNER || '/opt/vota/bin/run_daily_docker.sh' }}
+          GCE_CRON_DATA_DIR: ${{ secrets.GCE_CRON_DATA_DIR || '/srv/vota/fresh-catalog-data' }}
+          GCE_CRON_ENV_FILE: ${{ secrets.GCE_CRON_ENV_FILE || '/etc/vota/fresh-catalog.env' }}
+          GCE_CRON_LOG_DIR: ${{ secrets.GCE_CRON_LOG_DIR || '/srv/vota/fresh-catalog-logs' }}
+          CRAWLER_IMAGE: ${{ secrets.GAR_FRESH_IMAGE }}
+          CRAWLER_DIGEST: ${{ needs.publish.outputs.crawler_digest }}
+        run: |
+          crawler_ref="$CRAWLER_IMAGE@$CRAWLER_DIGEST"
+          remote_command="set -eu; docker rm -f vota-daily-monitor vota-fresh-catalog-monitor 2>/dev/null || true; docker pull '$crawler_ref'; mkdir -p '$GCE_CRON_DATA_DIR' '$GCE_CRON_LOG_DIR'; nohup env FRESH_IMAGE='$crawler_ref' FRESH_DATA_DIR='$GCE_CRON_DATA_DIR' CATALOG_ENV_FILE='$GCE_CRON_ENV_FILE' CATALOG_LOG_DIR='$GCE_CRON_LOG_DIR' PULL=0 MONITOR_HOST=0.0.0.0 MONITOR_PUBLIC=1 '$GCE_CRON_RUNNER' fresh-monitor > '$GCE_CRON_LOG_DIR/monitor-cd.log' 2>&1 < /dev/null & for attempt in \$(seq 1 30); do status=\$(docker inspect --format '{{.State.Status}}' vota-fresh-catalog-monitor 2>/dev/null || true); if [ \"\$status\" = running ]; then exit 0; fi; sleep 1; done; tail -n 100 '$GCE_CRON_LOG_DIR/monitor-cd.log' || true; exit 1"
           gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --quiet --command "$remote_command"

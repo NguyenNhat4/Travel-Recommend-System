@@ -157,7 +157,7 @@ Vé mới có ngày cố định/hạng vé/khứ hồi giữ ngày và giá ngu
 
 ### Đóng gói và bàn giao cho đội deploy
 
-> Đọc trước: [Triển khai job cào dữ liệu trên VM](../../docs/guide/trien-khai-job-cao-du-lieu.md) — job cũ và job mới, chỉ một lịch cào, luồng CI/CD tự cào sau deploy.
+> Đọc trước: [Triển khai job cào dữ liệu trên VM](../../docs/guide/trien-khai-job-cao-du-lieu.md) — job cũ và job mới, chỉ một lịch cào, luồng CI/CD deploy job mới.
 
 Bộ bàn giao có checklist, hai file env và mẫu systemd: [Bàn giao fresh catalog trên VM](../../docs/plan/2026-09-25-ban-giao-fresh-catalog-vm.md).
 
@@ -230,7 +230,7 @@ Theo dõi trên console của VM (chỉ cần Docker, `curl` cho lệnh backend)
 
 `backend` gọi `BACKEND_URL` (mặc định `http://127.0.0.1:8000`) và tìm container có nhãn compose `service=backend`; tên khác thì đặt `BACKEND_CONTAINER`. Cột RESULT của `report`: `ok`, `partial:0` (đã nạp dữ liệu hợp lệ, còn nguồn/ngày chưa hoàn tất hoặc index đang chờ quota), `fail:3` (lượt dừng, xem cột NOTE), `running`.
 
-`fresh-run` mount `/srv/vota/fresh-catalog-data` vào `/data`: state ở `/data/state`, dữ liệu từng lượt ở `/data/fresh_runs/<runId>/`. Log runner được giữ 30 ngày ở `/srv/vota/fresh-catalog-logs/` (đổi bằng `CATALOG_LOG_DIR`). Chỉ đặt **một** lịch cào cho cùng DB: cài bằng `scripts/install-vota-cron.sh --job fresh` (thay lịch job cũ trong cùng khối cron). CI/CD cài rõ `--job fresh`, dùng image `${GAR_DAILY_IMAGE}-fresh`; request full sau deploy lưu ở thư mục log trong `deploy-pending` và được runner tiêu thụ sau khi chạy thành công. Xem **[hướng dẫn triển khai job cào](../../docs/guide/trien-khai-job-cao-du-lieu.md)** về nhánh CD và env VM.
+`fresh-run` mount `/srv/vota/fresh-catalog-data` vào `/data`: state ở `/data/state`, dữ liệu từng lượt ở `/data/fresh_runs/<runId>/`. Log runner được giữ 30 ngày ở `/srv/vota/fresh-catalog-logs/` (đổi bằng `CATALOG_LOG_DIR`). Chỉ đặt **một** lịch cào cho cùng DB: cài bằng `scripts/install-vota-cron.sh --job fresh` (thay lịch job cũ trong cùng khối cron). CI/CD cài rõ `--job fresh`, dùng image `GAR_FRESH_IMAGE` ghim digest và khởi động lại monitor; không tự chạy lượt cào. Xem **[hướng dẫn triển khai job cào](../../docs/guide/trien-khai-job-cao-du-lieu.md)** về nhánh CD và env VM.
 
 ### Monitor của cron mới
 

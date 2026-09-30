@@ -112,7 +112,7 @@ class HttpTests(unittest.IsolatedAsyncioTestCase):
             result = await ItineraryToolGateway(clients, clients).execute(
                 {'id': 'a', 'name': 'get_recommendations', 'args': {}})
             self.assertEqual(result['data'], body)
-            self.assertEqual(nodes.evaluate_node({'tool_results': [result]})['evaluation_result'], 'success')
+            self.assertEqual(nodes.evaluate_node({'tool_results': [result]})['decision'], 'compose')
             product['because'] = [{'productName': 'Hotel', 'event': 'product_view', 'daysAgo': 1}]
             invalid = await ItineraryToolGateway(clients, clients).execute(
                 {'id': 'b', 'name': 'get_recommendations', 'args': {}})
@@ -300,10 +300,10 @@ class NodeTests(unittest.IsolatedAsyncioTestCase):
         before = copy.deepcopy(state)
         first = await nodes.tool_node(state, tools=tools)
         self.assertEqual(state, before)
-        self.assertEqual(nodes.evaluate_node(first)['evaluation_result'], 'needs_retry')
+        self.assertEqual(nodes.evaluate_node(first)['decision'], 'needs_retry')
         second = await nodes.tool_node({**state, **first, 'attempt': 1}, tools=tools)
         self.assertEqual(tools.calls, ['search_products', 'get_recommendations', 'get_recommendations'])
-        self.assertEqual(nodes.evaluate_node(second)['evaluation_result'], 'success')
+        self.assertEqual(nodes.evaluate_node(second)['decision'], 'compose')
         self.assertEqual(routing.route_after_retry({'attempt': 2, 'max_attempts': 100}), 'dead_letter')
 
     async def test_planner_uses_tool_definitions(self):
@@ -377,7 +377,7 @@ class NodeTests(unittest.IsolatedAsyncioTestCase):
         result = await nodes.tool_node({'query': 'hotel'})
         evaluated = nodes.evaluate_node(result)
         self.assertEqual(routing.route_after_evaluate(evaluated), 'dead_letter')
-        self.assertEqual(nodes.evaluate_node({'tool_results': [{'error': ToolError('TOOL_HTTP_ERROR', http_status=401).as_dict()}]})['evaluation_result'], 'failed')
+        self.assertEqual(nodes.evaluate_node({'tool_results': [{'error': ToolError('TOOL_HTTP_ERROR', http_status=401).as_dict()}]})['decision'], 'failed')
 
     async def test_deadline_is_bounded(self):
         class Slow:
@@ -681,7 +681,7 @@ class SimilarEvaluationTests(unittest.TestCase):
                       ToolError('TOOL_HTTP_ERROR', retryable=True)):
             with self.subTest(code=error.code):
                 evaluated = self.evaluate(error)
-                self.assertEqual((evaluated['evaluation_result'], evaluated['decision']), ('success', 'compose'))
+                self.assertEqual(evaluated['decision'], 'compose')
                 self.assertEqual(routing.route_after_evaluate(evaluated), 'compose')
                 self.assertEqual(evaluated['warnings'], [])
 
@@ -698,23 +698,23 @@ class SimilarEvaluationTests(unittest.TestCase):
             with self.subTest(status=response.status_code):
                 error = asyncio.run(similar_error(response))
                 evaluated = self.evaluate(error)
-                self.assertEqual((evaluated['evaluation_result'], evaluated['decision']), ('success', 'compose'))
+                self.assertEqual(evaluated['decision'], 'compose')
 
     def test_unavailable_similar_without_search_data_still_retries(self):
         error = ToolError('SEARCH_UNAVAILABLE', retryable=True, http_status=503)
         for search_result in (None, 'error'):  # không gọi search, hoặc search cũng lỗi: chưa có lưới an toàn
             with self.subTest(search=search_result):
                 evaluated = self.evaluate(error, search_result=search_result)
-                self.assertEqual(evaluated['evaluation_result'], 'needs_retry')
+                self.assertEqual(evaluated['decision'], 'needs_retry')
                 self.assertEqual(routing.route_after_evaluate(evaluated), 'retry')
 
     def test_no_alternative_from_similar_is_always_soft(self):
         for error in (ToolError('PRODUCT_NOT_INDEXED', http_status=409), ToolError('PRODUCT_NOT_FOUND', http_status=404)):
             with self.subTest(code=error.code):
                 evaluated = self.evaluate(error)
-                self.assertEqual((evaluated['evaluation_result'], evaluated['decision']), ('success', 'compose'))
+                self.assertEqual(evaluated['decision'], 'compose')
                 alone = self.evaluate(error, search_result=None)
-                self.assertEqual((alone['evaluation_result'], alone['decision']), ('success', 'no_results'))
+                self.assertEqual(alone['decision'], 'no_results')
 
     def test_other_errors_keep_their_meaning(self):
         # Similar trả sai hợp đồng không phải "không có phương án": vẫn là lỗi vĩnh viễn → FALLBACK như trước.
@@ -722,13 +722,13 @@ class SimilarEvaluationTests(unittest.TestCase):
                       ToolError('TOOL_HTTP_ERROR', http_status=418)):
             with self.subTest(error=error.as_dict()):
                 broken = self.evaluate(error)
-                self.assertEqual((broken['evaluation_result'], broken['decision']), ('success', 'fallback'))
+                self.assertEqual(broken['decision'], 'fallback')
         # 5xx của Similar mà chưa có search trả dữ liệu thì chưa có lưới an toàn: giữ nghĩa cũ.
         alone = self.evaluate(ToolError('INVALID_TOOL_RESPONSE', http_status=500), search_result=None)
-        self.assertEqual((alone['evaluation_result'], alone['decision']), ('failed', 'error'))
+        self.assertEqual(alone['decision'], 'failed')
         # Quy tắc mềm chỉ dành cho Similar: search/recommendation timeout vẫn thử lại.
         rec = self.evaluate(ToolError('TOOL_TIMEOUT', retryable=True), tool='get_recommendations')
-        self.assertEqual(rec['evaluation_result'], 'needs_retry')
+        self.assertEqual(rec['decision'], 'needs_retry')
 
 
 @unittest.skipUnless(importlib.util.find_spec("langgraph"), "LangGraph is not installed")
@@ -755,7 +755,7 @@ class GraphToolTests(unittest.TestCase):
             result = asyncio.run(build_graph(tools=gateway, llm=llm).ainvoke(state))
             self.assertEqual(calls, ['/api/v1/search', '/api/v1/recommendations', '/api/v1/recommendations'])
             self.assertEqual(result['attempt'], 1)
-            self.assertEqual(result['evaluation_result'], 'success')
+            self.assertEqual(result['decision'], 'no_results')
             self.assertEqual(len(result['tool_results']), 2)
             self.assertEqual(result['events'][-1]['node'], 'finalize')
         finally:

@@ -176,7 +176,9 @@ stateDiagram-v2
     ClassifyTurn --> AnalyzeIntent: Yêu cầu du lịch
     AnalyzeIntent --> CheckClarification: Trích xuất thông tin (Điểm đến, Ngày, Số người, Ngân sách)
     
-    CheckClarification --> AskUser: Thiếu điểm đến/số ngày, hoặc chưa hỏi ngày đi–số người–ngân sách
+    CheckClarification --> AskUser: Lượt đầu thiếu thông tin, hoặc chưa hỏi ngày đi–số người–ngân sách
+    AskUser --> SuggestForm: Đã hỏi một lượt mà vẫn thiếu điểm đến/số ngày
+    SuggestForm --> [*]: Form đã điền sẵn gợi ý; xác nhận đổ câu yêu cầu vào ô nhập
     AskUser --> [*]: Chờ phản hồi tiếp theo
     
     CheckClarification --> SearchCandidates: Đủ thông tin cơ bản

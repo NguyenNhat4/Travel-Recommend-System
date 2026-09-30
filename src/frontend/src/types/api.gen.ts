@@ -1419,6 +1419,16 @@ export interface components {
                 destination?: string[];
                 days?: number[];
             };
+            /** @description Form gợi ý hiển thị trong khung chat khi hỏi bằng câu chữ một lượt vẫn chưa đủ thông tin. */
+            clarificationForm?: {
+                fields: ("destination" | "days" | "startDate" | "party" | "budget")[];
+                defaults: components["schemas"]["TripIntent"];
+                /**
+                 * Format: date
+                 * @description Ngày khởi hành sớm nhất được phép chọn; hôm nay theo giờ Việt Nam.
+                 */
+                startDateMin?: string;
+            };
             metadata?: components["schemas"]["ItineraryMetadata"];
         };
         ItineraryNoResults: {

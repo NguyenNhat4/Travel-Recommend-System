@@ -5,14 +5,18 @@ from __future__ import annotations
 import asyncio
 from copy import deepcopy
 from datetime import date
-from typing import Any
+
+from src.backend.app.application.ports.itinerary_tools import CatalogPort
+from src.backend.app.domain.itinerary.types import (
+    Candidates, Constraints, Product, Sources, ToolErrorPayload, ToolResult, TripIntent,
+)
 
 from src.backend.app.application.itinerary.tool_contracts import SIMILAR_PRODUCTS
 
 DETAIL_FIELDS = ("description", "attributes", "availableFrom", "availableTo")
 
 
-def _products(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _products(results: list[ToolResult]) -> list[Product]:
     values = []
     for result in results:
         data = result.get("data", {})
@@ -21,8 +25,8 @@ def _products(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return values
 
 
-async def hydrate(results: list[dict[str, Any]], tools: Any, existing_details: dict[str, Any],
-                  timeout_seconds: float) -> tuple[dict[str, Any], dict[str, Any]]:
+async def hydrate(results: list[ToolResult], tools: CatalogPort, existing_details: dict[str, Product],
+                  timeout_seconds: float) -> tuple[dict[str, Product], dict[str, ToolErrorPayload]]:
     details, errors = deepcopy(existing_details), {}
     missing = {p["productId"] for p in _products(results) if p.get("productId") and
                any(field not in p for field in DETAIL_FIELDS)} - details.keys()
@@ -43,11 +47,11 @@ def _normalized(value: str | None) -> str:
     return " ".join((value or "").casefold().split())
 
 
-def _off_destination(product: dict[str, Any], intent: dict[str, Any]) -> bool:
+def _off_destination(product: Product, intent: TripIntent) -> bool:
     return _normalized(product.get("destination")) != _normalized(intent.get("destination"))
 
 
-def _drop_reason(product: dict[str, Any], intent: dict[str, Any], constraints: dict[str, Any]) -> str | None:
+def _drop_reason(product: Product, intent: TripIntent, constraints: Constraints) -> str | None:
     if product.get("productId") in constraints.get("exclude_products", []):
         return "PRODUCT_DROPPED_EXCLUDED"
     if _off_destination(product, intent):
@@ -83,8 +87,8 @@ def _drop_reason(product: dict[str, Any], intent: dict[str, Any], constraints: d
     return None
 
 
-def collect(tool_results: list[dict[str, Any]], details: dict[str, Any], intent: dict[str, Any],
-            constraints: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], dict[str, str], dict[str, str]]:
+def collect(tool_results: list[ToolResult], details: dict[str, Product], intent: TripIntent,
+            constraints: Constraints) -> tuple[Candidates, Sources, dict[str, str]]:
     candidates, sources, dropped = {}, {}, {}
     for result in tool_results:
         data = result.get("data", {})

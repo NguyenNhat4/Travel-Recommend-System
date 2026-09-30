@@ -34,10 +34,10 @@ PYTHONPATH=src python -m data_collection.seed.release_flights --validate-only
 # URL VM lấy từ file ignored; chỉ thêm ID mới, không reset/ghi đè giá đã có
 PYTHONPATH=src python -m data_collection.seed.release_flights --env-file src/data_collection/.env
 # Với image daily trên VM có env sẵn
-IMAGE=<image>:<sha> ENV_FILE=/etc/vota/daily.env /opt/vota/bin/run_daily_docker.sh import-flights
+IMAGE=<AR>/vota-fresh-catalog:latest ENV_FILE=/etc/vota/fresh-catalog.env /opt/vota/bin/run_daily_docker.sh import-flights
 ```
 
-Import đòi 6 tuyến cha đã tồn tại; thiếu cha hoặc lỗi constraint thì rollback toàn bộ. Workflow crawler import gói từ image fresh SHA rồi tự yêu cầu cào full khi deploy nhánh main/release-mvp-v1/v2/v3. Nhánh `test/newcrawl` không tự deploy; CI chạy khi mở PR vào các nhánh nêu trên. Workflow build/publish `Dockerfile.fresh-catalog` tại `${GAR_DAILY_IMAGE}-fresh`, cài cron fresh duy nhất và lưu request nếu lượt cũ đang bận. Không restart container/monitor hiện tại; xem [hướng dẫn deploy](trien-khai-job-cao-du-lieu.md).
+Import đòi 6 tuyến cha đã tồn tại; thiếu cha hoặc lỗi constraint thì rollback toàn bộ. CD không tự import: DB VM đã có 43 vé (30/09), chỉ chạy lệnh trên khi DB mới chưa có. CD của main/release-mvp-v1/v2/v3 build image `Dockerfile.fresh-catalog` (secret `GAR_FRESH_IMAGE`), cài cron fresh và khởi động lại monitor; không tự chạy lượt cào — bấm `full` trên monitor nếu cần cào ngay. Xem [hướng dẫn deploy](trien-khai-job-cao-du-lieu.md).
 
 Task ngày 30/09 không restart VM. Key mới đã được đặt vào `.env` ở gốc repo và `src/data_collection/.env`, đều ignored và quyền 600. Người dùng chỉ có quyền DB: chưa thay `/etc/vota/fresh-catalog.env` hoặc `/etc/vota/daily.env` trên VM. Người có quyền VM cần cập nhật `COHERE_API_KEY` trong đúng env file; container hiện chạy giữ environment cũ, lần tạo job/container kế tiếp mới nhận giá trị mới.
 

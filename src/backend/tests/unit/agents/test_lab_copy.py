@@ -6,16 +6,18 @@ from types import SimpleNamespace
 from src.backend.app.agents import nodes, routing
 from src.backend.app.agents.steps import classification
 from src.backend.app.agents.graph import build_graph
-from src.backend.app.agents.state import AgentState, Route, Scenario
+from src.backend.app.agents.state import AgentState
 from src.backend.app.agents.models import Extraction
 from src.backend.app.application.itinerary.contracts import error_response
 
 
 class LabCopyTests(unittest.TestCase):
     def test_removed_routes_and_state_fields(self):
-        self.assertEqual({route.value for route in Route}, {'simple', 'tool', 'missing_info', 'error', 'dead_letter', 'done'})
-        self.assertFalse({'risk_level', 'approval', 'proposed_action'} & AgentState.__annotations__.keys())
-        self.assertNotIn('requires_approval', Scenario.model_fields)
+        # `route`/`evaluation_result` gộp vào `decision`; `thread_id`/`scenario_id`/`messages`/`errors`/
+        # `pending_question`/`llm_used` bỏ vì không node nào đọc lại (docs/spec/agent/field-review.md §3).
+        self.assertFalse({'risk_level', 'approval', 'proposed_action', 'route', 'evaluation_result',
+                          'thread_id', 'scenario_id', 'messages', 'errors', 'pending_question',
+                          'llm_used'} & AgentState.__annotations__.keys())
         self.assertFalse(hasattr(nodes, 'approval_node'))
         self.assertFalse(hasattr(nodes, 'risky_action_node'))
         self.assertFalse(hasattr(routing, 'route_after_approval'))

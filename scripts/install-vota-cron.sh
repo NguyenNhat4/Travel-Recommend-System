@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Install or replace the managed data-collection cron entry without touching
-# unrelated crontab entries. The managed entry follows the published :latest image.
+# unrelated crontab entries. Deployments should use an immutable digest reference;
+# :latest remains accepted for manual compatibility and rollback preparation.
 # Exactly ONE crawler job may write to the catalog DB: --job legacy (daily.py, `run`; the default, so the current
 # CD keeps its behaviour) or --job fresh (fresh_catalog.py, `fresh-run tick` every 15 minutes). Both use the same
 # managed block, so installing one replaces the other (docs/guide/trien-khai-job-cao-du-lieu.md).
@@ -21,7 +22,7 @@ dry_run=0
 usage() {
   cat <<'EOF'
 Usage:
-  install-vota-cron.sh --image IMAGE:latest --runner /absolute/path/run_daily_docker.sh
+  install-vota-cron.sh --image IMAGE:latest|IMAGE@sha256:DIGEST --runner /absolute/path/run_daily_docker.sh
                        [--job legacy|fresh] [--data-dir PATH] [--env-file PATH] [--log-dir PATH]
                        [--schedule CRON] [--crontab-file PATH] [--dry-run]
 
@@ -102,7 +103,7 @@ case "$job" in
 esac
 [ -n "$image" ] || die '--image is required'
 [ -n "$runner" ] || die '--runner is required'
-[[ "$image" =~ :latest$ ]] || die '--image must use the :latest tag'
+[[ "$image" =~ :latest$ || "$image" =~ @sha256:[a-f0-9]{64}$ ]] || die '--image must use :latest or an immutable sha256 digest'
 [[ "$runner" == /* ]] || die '--runner must be an absolute path'
 if [[ "$runner" == *" "* || "$runner" == *$'\t'* || "$runner" == *"'"* ]]; then
   die '--runner cannot contain whitespace or single quotes'
@@ -127,10 +128,11 @@ filtered_crontab="$(awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" '
   !inside { print }
 ' <<< "$existing_crontab")"
 
+cron_line="$schedule IMAGE='$image' DATA_DIR='$data_dir' ENV_FILE='$env_file' PULL=0 $runner run"
 if [ "$job" = fresh ]; then
-  cron_line="$schedule FRESH_IMAGE='$image' FRESH_DATA_DIR='$data_dir' CATALOG_ENV_FILE='$env_file' CATALOG_LOG_DIR='$log_dir' PULL=1 $runner fresh-run tick"
+  cron_line="$schedule FRESH_IMAGE='$image' FRESH_DATA_DIR='$data_dir' CATALOG_ENV_FILE='$env_file' CATALOG_LOG_DIR='$log_dir' PULL=0 $runner fresh-run tick"
 else
-  cron_line="$schedule IMAGE='$image' DATA_DIR='$data_dir' ENV_FILE='$env_file' PULL=1 $runner run"
+  cron_line="$schedule IMAGE='$image' DATA_DIR='$data_dir' ENV_FILE='$env_file' PULL=0 $runner run"
 fi
 updated_crontab="$(printf '%s\n%s\n%s\n%s\n' "$filtered_crontab" "$BEGIN_MARKER" "$cron_line" "$END_MARKER")"
 
