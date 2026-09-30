@@ -128,7 +128,7 @@ def test_cli_freeze_and_split_file_gate(world, events, tmp_path, monkeypatch):
     assert r.exit_code == 0, r.output
     assert "split khớp bản đóng băng" in r.output and f"frozen {saved['sha256'][:12]}" in r.output and "SUBSET 2/4" in r.output
     summary = _json.loads((tmp_path / "home" / "runs" / "t" / "summary.json").read_text(encoding="utf-8"))
-    assert summary["split"]["frozenSha256"] == saved["sha256"] and summary["configHash"] and summary["limitUsers"] == 2
+    assert summary["split"]["frozenSha256"] == saved["sha256"] == summary["split"]["splitSha256"] and summary["configHash"] and summary["limitUsers"] == 2
     assert list(summary)[:4] == ["runId", "modelVersion", "engineConfig", "configHash"]
     assert (tmp_path / "home" / "runs" / "t" / "per_user.jsonl").exists()
     # lệch tham số → mã 1, không chạy arm
@@ -139,6 +139,80 @@ def test_cli_freeze_and_split_file_gate(world, events, tmp_path, monkeypatch):
     bad.write_text("[1, 2]", encoding="utf-8")
     r = runner.invoke(cli.app, ["run", "--arm", "random", "--split", "llbo", "--split-file", str(bad), "--run-id", "t3"])
     assert r.exit_code == 1 and "không phải file đóng băng" in r.output
+    # analyze: cần engine + baseline; ghi ceiling / segments / strict / cases vào thư mục run; temporal theo phân vị cũng khớp
+    for kind in ("llbo", "temporal"):
+        fz = tmp_path / f"split-{kind}.json"
+        assert runner.invoke(cli.app, ["split", "--kind", kind, "--freeze-path", str(fz)]).exit_code == 0
+        r = runner.invoke(cli.app, ["run", "--arm", "engine", "--arm", "engine_nommr", "--arm", "most_popular_in_destination",
+                                   "--split", kind, "--vectors", "numpy", "--split-file", str(fz), "--run-id", f"a-{kind}"])
+        assert r.exit_code == 0, r.output
+        r = runner.invoke(cli.app, ["analyze", "--run-id", f"a-{kind}"])
+        assert r.exit_code == 0, r.output
+        d = tmp_path / "home" / "runs" / f"a-{kind}"
+        assert all((d / f).exists() for f in ("ceiling.json", "ceiling.md", "segments.json", "segments.md", "cases.json", "cases.md", "strict.md"))
+        assert "## Ceiling" in r.output and "## 20 ca" in r.output and "mmr_demoted" in r.output or "pool_miss" in r.output or "nCandidates" in (d / "cases.json").read_text(encoding="utf-8")
+    assert runner.invoke(cli.app, ["analyze", "--run-id", "t"]).exit_code == 1          # run t chỉ có random → thiếu engine
+
+
+def test_engine_nommr_returns_score_ordered_pool_containing_engine_top_k(world, events):
+    """`engine_nommr`: pool ứng viên xếp theo score (không MMR, không cap), k = pool_k; top-k của engine eval ⊂ pool."""
+    from src.evaluation.recsys_bench.arms import EngineNoMmrArm
+    index = world["index"]
+    kept, _ = filter_events(events, index, AS_OF)
+    split = leave_last_booking_out(kept, index)
+    engine = OfflineEngine(index, world["vectors"], split.train_purchases)
+    nommr = EngineNoMmrArm(engine, pool_k=50)
+    assert nommr.key == nommr.family == "engine_nommr"
+    for u in split.targets:
+        pool = nommr.recommend(u, split.as_of_by_user[u], 20, split.train_by_user[u])
+        top = EngineArm(engine).recommend(u, split.as_of_by_user[u], 20, split.train_by_user[u])
+        assert pool.meta["poolK"] == 50 and pool.meta["strategy"] == top.meta["strategy"]
+        assert set(top.product_ids) <= set(pool.product_ids) and len(set(pool.product_ids)) == len(pool.product_ids)
+        if top.meta["strategy"] != "popular":
+            assert pool.product_ids[0] == top.product_ids[0]           # món điểm cao nhất luôn được MMR chọn trước
+    # patch không rò rỉ: engine thường vẫn qua mmr_select thật
+    from src.backend.app.application.recommendation import use_cases
+    from src.backend.app.domain.recommendation import mmr_select
+    assert use_cases.mmr_select is mmr_select
+    row, per_user = evaluate(nommr, split, index, k=20)
+    assert row["arm"] == "engine_nommr" and all(r["returned"] <= 50 and r["poolK"] == 50 for r in per_user)
+
+
+def test_write_run_merges_new_arms_into_existing_run(tmp_path):
+    from src.evaluation.recsys_bench.report import RunConflict, merge_run, read_run, write_run
+    d = tmp_path / "run"
+    base = {"runId": "r", "modelVersion": "m", "configHash": "h1", "asOf": "t", "split": {"kind": "llbo", "frozenSha256": "s1"},
+            "rows": [{"arm": "engine", "recall@20": 0.5}], "rawRows": [{"arm": "engine", "recall@20": 0.5}]}
+    write_run(d, base, [{"arm": "engine", "user": "u1", "ids": ["a"]}])
+    extra = {**base, "rows": [{"arm": "engine_nommr", "recall@20": 0.7}], "rawRows": [{"arm": "engine_nommr", "recall@20": 0.7}]}
+    write_run(d, extra, [{"arm": "engine_nommr", "user": "u1", "ids": ["a", "b"]}], merge=True)
+    summary, rows = read_run(d)
+    assert [r["arm"] for r in summary["rows"]] == ["engine", "engine_nommr"] and {r["arm"] for r in rows} == {"engine", "engine_nommr"}
+    # chạy lại arm đã có → thay, không nhân đôi
+    write_run(d, {**base, "rows": [{"arm": "engine", "recall@20": 0.6}], "rawRows": []}, [{"arm": "engine", "user": "u1", "ids": ["z"]}], merge=True)
+    summary, rows = read_run(d)
+    assert [(r["arm"], r["recall@20"]) for r in summary["rows"]] == [("engine_nommr", 0.7), ("engine", 0.6)]
+    assert [r["ids"] for r in rows if r["arm"] == "engine"] == [["z"]] and len(rows) == 2
+    # khác configHash / split / k / limitUsers / vectors → từ chối; thêm arm vào run đã đóng băng mà không --split-file → từ chối
+    import pytest
+    with pytest.raises(RunConflict, match="configHash"):
+        merge_run(summary, rows, {**base, "configHash": "h2"}, [])
+    with pytest.raises(RunConflict, match="đóng băng"):
+        merge_run(summary, rows, {**base, "split": {"kind": "llbo", "frozenSha256": "s2"}}, [])
+    with pytest.raises(RunConflict, match="split-file"):
+        merge_run(summary, rows, {**base, "split": {"kind": "llbo"}}, [])
+    with pytest.raises(RunConflict, match="split.kind"):
+        merge_run(summary, rows, {**base, "split": {"kind": "temporal", "frozenSha256": "s1"}}, [])
+    with pytest.raises(RunConflict, match="k="):
+        merge_run({**summary, "k": 20}, rows, {**base, "k": 10}, [])
+    with pytest.raises(RunConflict, match="limitUsers"):
+        merge_run({**summary, "limitUsers": None}, rows, {**base, "limitUsers": 5}, [])
+    with pytest.raises(RunConflict, match="vectors="):
+        merge_run({**summary, "vectors": "weaviate"}, rows, {**base, "vectors": "numpy"}, [])
+    # arm không cần vector (random) gộp vào run engine: giữ vectors / vectorsMissing của run cũ
+    merged, _ = merge_run({**summary, "vectors": "weaviate", "vectorsMissing": 0}, rows, {**base, "vectors": "none", "vectorsMissing": None}, [])
+    assert (merged["vectors"], merged["vectorsMissing"]) == ("weaviate", 0) and merged["split"]["frozenSha256"] == "s1"
+    assert read_run(tmp_path / "missing") == (None, [])
 
 
 def test_write_run_emits_per_user_jsonl_with_ids(tmp_path):

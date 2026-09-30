@@ -51,8 +51,57 @@ def header(summary: dict) -> str:
     return " · ".join(parts)
 
 
-def write_run(directory: Path, summary: dict, per_user: list[dict]) -> Path:
+class RunConflict(ValueError):
+    """Run đã có nhưng cấu hình / split khác — không gộp arm mới vào."""
+
+
+def read_run(directory: Path) -> tuple[dict | None, list[dict]]:
+    """(summary.json, per_user.jsonl) của một run đã ghi; (None, []) khi chưa có."""
+    p = directory / "summary.json"
+    if not p.exists():
+        return None, []
+    summary = json.loads(p.read_text(encoding="utf-8"))
+    q = directory / "per_user.jsonl"
+    rows = [json.loads(line) for line in q.read_text(encoding="utf-8").splitlines() if line.strip()] if q.exists() else []
+    return summary, rows
+
+
+def merge_run(old: dict, old_rows: list[dict], summary: dict, per_user: list[dict]) -> tuple[dict, list[dict]]:
+    """Gộp arm mới vào run cũ (`run --run-id` chạy thêm arm): arm trùng tên thì thay; khác `configHash` / `frozenSha256` /
+    `modelVersion` / `asOf` thì `RunConflict`."""
+    for key in ("configHash", "modelVersion", "asOf", "k", "limitUsers"):
+        if old.get(key) != summary.get(key):
+            raise RunConflict(f"run đã có {key}={old.get(key)!r}, lần này {summary.get(key)!r} — dùng --run-id khác")
+    old_split, new_split = old.get("split") or {}, summary.get("split") or {}
+    for key in ("kind", "eventsSha256", "usersTest", "minPurchases", "minTrips", "T"):
+        if old_split.get(key) != new_split.get(key):
+            raise RunConflict(f"run đã có split.{key}={old_split.get(key)!r}, lần này {new_split.get(key)!r} — dùng --run-id khác")
+    a, b = old_split.get("frozenSha256"), new_split.get("frozenSha256")
+    if a and not b:
+        raise RunConflict(f"run đã đóng băng split {a[:12]} — chạy thêm arm phải kèm --split-file")
+    if a and b and a != b:
+        raise RunConflict(f"run đã có split đóng băng {a[:12]}, lần này {b[:12]} — dùng --run-id khác")
+    old_vec, new_vec = old.get("vectors"), summary.get("vectors")
+    if old_vec not in (None, "none") and new_vec not in (None, "none") and old_vec != new_vec:
+        raise RunConflict(f"run đã có vectors={old_vec!r}, lần này {new_vec!r} — dùng --run-id khác")
+    new_arms = {r["arm"] for r in summary.get("rows", [])} | {r["arm"] for r in summary.get("rawRows", [])}
+    new_keys = {r["arm"] for r in per_user}
+    merged = {**old, **summary,
+              "rows": [r for r in old.get("rows", []) if r["arm"] not in new_arms] + summary.get("rows", []),
+              "rawRows": [r for r in old.get("rawRows", []) if r["arm"] not in new_arms] + summary.get("rawRows", [])}
+    if new_vec in (None, "none") and old_vec not in (None, "none"):    # arm không cần vector không được hạ cấp run engine
+        merged["vectors"], merged["vectorsMissing"] = old_vec, old.get("vectorsMissing")
+    if not b and a:
+        merged["split"] = {**new_split, "frozenSha256": a, "splitFile": old_split.get("splitFile")}
+    return merged, [r for r in old_rows if r["arm"] not in new_keys] + per_user
+
+
+def write_run(directory: Path, summary: dict, per_user: list[dict], *, merge: bool = False) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
+    if merge:
+        old, old_rows = read_run(directory)
+        if old is not None:
+            summary, per_user = merge_run(old, old_rows, summary, per_user)
     (directory / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2, default=str),
                                             encoding="utf-8")
     if per_user:

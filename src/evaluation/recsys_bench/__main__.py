@@ -7,6 +7,8 @@
     python -m src.evaluation.recsys_bench run --arm random --arm engine --split llbo --vectors weaviate
     python -m src.evaluation.recsys_bench user --id VP0000001
     python -m src.evaluation.recsys_bench http-latency --base-url https://v-ota.duckdns.org   # p95 guest path (Day 2 C)
+    python -m src.evaluation.recsys_bench run --arm engine_nommr --split llbo --vectors weaviate --run-id <run>   # thêm arm vào run đã có
+    python -m src.evaluation.recsys_bench analyze --run-id <run>   # ceiling, phân khúc, strict/lenient, 20 ca (B5–B8), không cần Weaviate
 
 Mã thoát: 0 ok · 1 lỗi môi trường/dữ liệu. Số đo và giới hạn: `docs/spec/bench/recsys-offline-eval.md`.
 """
@@ -150,7 +152,8 @@ def split(kind: str = typer.Option("llbo", "--kind", help="llbo | temporal"),
 
 @app.command()
 def run(arms: List[str] = typer.Option(["random"], "--arm", help="random | most_popular | most_popular_in_destination | "
-                                                                   "engine (mode eval, đủ k món) | engine_prod (cap 2 / taxonomy)"),
+                                                                   "engine (mode eval, đủ k món) | engine_prod (cap 2 / taxonomy) | "
+                                                                   "engine_nommr (pool 200 theo score, không MMR — chẩn đoán)"),
         kind: str = typer.Option("llbo", "--split", help="llbo | temporal"),
         k: int = typer.Option(20, "--k"),
         seeds: str = typer.Option("42,43,44", "--seeds", help="seed cho arm random"),
@@ -167,17 +170,17 @@ def run(arms: List[str] = typer.Option(["random"], "--arm", help="random | most_
     """Chạy các arm trên cùng split, in bảng markdown, ghi bench_out/recsys/runs/<run_id>/ (summary.json có modelVersion,
     engineConfig, configHash, vectorsMissing; per_user.jsonl có ids top-k, targetProductId, rankStrict)."""
     from . import data_source
-    from .arms import EngineArm, MostPopularArm, MostPopularInDestinationArm, RandomArm
+    from .arms import EngineArm, EngineNoMmrArm, MostPopularArm, MostPopularInDestinationArm, RandomArm
     from .bench import aggregate, evaluate
     from .engine import OfflineEngine, config_hash, engine_config
     from .paths import run_dir
-    from .report import header, markdown_table, write_run
+    from .report import RunConflict, header, markdown_table, write_run
     from .splits import SplitMismatch
 
-    unknown = set(arms) - {"random", "most_popular", "most_popular_in_destination", "engine", "engine_prod"}
+    unknown = set(arms) - {"random", "most_popular", "most_popular_in_destination", "engine", "engine_prod", "engine_nommr"}
     if unknown:
         _fail(f"arm không hỗ trợ: {sorted(unknown)}")
-    need_vec = {"engine", "engine_prod"} & set(arms)
+    need_vec = {"engine", "engine_prod", "engine_nommr"} & set(arms)
     mode = vectors or ("weaviate" if need_vec else "none")
     if need_vec and mode == "none":
         _fail("arm engine / engine_prod cần --vectors weaviate hoặc numpy")
@@ -223,6 +226,11 @@ def run(arms: List[str] = typer.Option(["random"], "--arm", help="random | most_
             raw_rows.append(row)
             rows.append(row)
             per_user += users_rows
+        if "engine_nommr" in arms:                # pool ứng viên xếp theo score, không MMR: chẩn đoán pool_miss / mmr_demoted
+            row, users_rows = evaluate(EngineNoMmrArm(engine), result, index, k, users)
+            raw_rows.append(row)
+            rows.append(row)
+            per_user += users_rows
         cfg = engine_config(engine)
         summary = {"runId": run_id, "modelVersion": index.model_version, "engineConfig": cfg, "configHash": config_hash(cfg),
                    "asOf": snapshot.isoformat(), "k": k, "vectors": mode,
@@ -231,12 +239,15 @@ def run(arms: List[str] = typer.Option(["random"], "--arm", help="random | most_
                    "limitUsers": limit_users, "usersEvaluated": len(users) if users is not None else len(result.targets),
                    "filter": report.as_dict(),
                    "split": {**{kw: v for kw, v in result.summary().items() if kw != "targets"},
-                             "frozenSha256": frozen_sha, "splitFile": split_file},
+                             "splitSha256": result.frozen_sha256(), "frozenSha256": frozen_sha, "splitFile": split_file},
                    "rows": rows, "rawRows": raw_rows}
         if "engine_prod" in arms:
             cfg_prod = engine_config(prod)
             summary["engineConfigProd"], summary["configHashProd"] = cfg_prod, config_hash(cfg_prod)
-    directory = write_run(run_dir(run_id), summary, per_user)
+    try:
+        directory = write_run(run_dir(run_id), summary, per_user, merge=True)   # --run-id đã có → gộp arm mới vào
+    except RunConflict as exc:
+        _fail(str(exc))
     typer.echo(header(summary))
     for line in report.lines():
         typer.echo(line)
@@ -245,6 +256,84 @@ def run(arms: List[str] = typer.Option(["random"], "--arm", help="random | most_
     for row in rows:
         if row.get("strategies"):
             typer.echo(f"{row['arm']} strategy: {row['strategies']}")
+    typer.echo(f"→ {directory}")
+
+
+@app.command()
+def analyze(run_id: str = typer.Option(..., "--run-id", help="run đã có engine + baseline (per_user.jsonl)"),
+            split_file: Optional[str] = typer.Option(None, "--split-file", help="mặc định lấy từ summary.json"),
+            base: str = typer.Option("engine", "--base", help="arm bị xét: engine | engine_prod"),
+            ref: str = typer.Option("most_popular_in_destination", "--ref", help="baseline đối chiếu"),
+            n_cases: int = typer.Option(20, "--cases"),
+            refresh: bool = typer.Option(False, "--refresh")):
+    """B5–B8: ceiling (trần recall theo bộ lọc engine), phân khúc, strict/lenient theo taxonomy, 20 ca engine trượt mà baseline
+    trúng. Đọc `per_user.jsonl` của run + split tính lại từ CDP (đối chiếu bản đóng băng của run); không cần Weaviate.
+    Ghi ceiling.json, segments.json/.md, cases.json/.md, strict.md vào thư mục run."""
+    from collections import defaultdict
+
+    from .analysis import cases, cases_markdown, segments, segments_markdown, strict_lenient, strict_markdown, user_labels
+    from .ceiling import ceiling, ceiling_markdown, engine_view
+    from .paths import run_dir
+    from .report import read_run
+    from .splits import SplitMismatch
+
+    directory = run_dir(run_id)
+    summary, rows = read_run(directory)
+    if summary is None or not rows:
+        _fail(f"{directory}: chưa có summary.json / per_user.jsonl — chạy `run --run-id {run_id}` trước")
+    rows_by_arm: dict = defaultdict(dict)
+    for r in rows:
+        rows_by_arm[r["arm"]][r["user"]] = r
+    for arm in (base, ref):
+        if arm not in rows_by_arm:
+            _fail(f"run {run_id} không có arm {arm} (có: {sorted(rows_by_arm)}) — chạy thêm `run --arm {arm} --run-id {run_id}`")
+    sp = summary.get("split") or {}
+    kind, k = sp.get("kind", "llbo"), int(summary.get("k") or 20)
+    missing = summary.get("vectorsMissing")
+    if missing != 0:   # engine bỏ event và không thể trả unit không có vector; ceiling/engine_view coi mọi unit đều có
+        _fail(f"run {run_id} có vectorsMissing={missing!r} — ceiling/engine_view giả định mọi unit có vector; chạy index (Weaviate) "
+              "rồi chạy lại run, hoặc chạy run với --vectors weaviate để summary có vectorsMissing")
+    split_file = split_file or sp.get("splitFile")
+    # temporal: run chọn T theo phân vị (quantile != None) thì tính lại theo phân vị để params khớp bản đóng băng;
+    # chỉ truyền --T khi run đã dùng T tường minh.
+    cutoff = sp.get("T") if kind == "temporal" and sp.get("quantile") is None else None
+    with _prepared(summary.get("asOf"), refresh or bool(split_file), "none") as (index, _, kept, _, _, _):
+        result = _make_split(kind, kept, index, cutoff, int(sp.get("minPurchases") or 2), int(sp.get("minTrips") or 1))
+    if split_file:
+        try:
+            sha = result.verify(split_file)
+        except (SplitMismatch, OSError, KeyError, ValueError, TypeError) as exc:
+            _fail(f"--split-file: {exc}")
+        if sp.get("frozenSha256") and sha != sp["frozenSha256"]:
+            _fail(f"split của run ({sp['frozenSha256'][:12]}) ≠ bản đóng băng {split_file} ({sha[:12]})")
+    else:
+        typer.echo("cảnh báo: run không có bản đóng băng — split tính lại có thể khác lúc chạy run")
+    views = {u: engine_view(result.train_by_user[u], index, result.as_of_by_user[u]) for u in result.targets}
+    engine_rows = rows_by_arm.get("engine") or rows_by_arm[base]
+    ceil = ceiling(rows_by_arm[base], result, index, views, k=k)
+    mpd_row = next((r for r in summary.get("rows", []) if r.get("arm") == ref), None)
+    labels = user_labels(result, index, engine_rows, views)
+    arms_order = [a for a in ("engine", "engine_prod", "engine_nommr", ref, "most_popular") if a in rows_by_arm and a != ref] + [ref]
+    seg = segments({a: rows_by_arm[a] for a in arms_order}, labels, k=k)
+    sl = strict_lenient({a: rows_by_arm[a] for a in arms_order if a != "engine_nommr"}, result, index, k=k)
+    cs = cases(rows_by_arm, ceil["perUser"], views, result, index, base=base, ref=ref, n=n_cases, k=k)
+    (directory / "ceiling.json").write_text(json.dumps({**ceil, "base": base, "vectorsMissing": missing, "assumesAllVectors": True,
+                                                        "note": "cold_start = engine đi _cold_start (popular theo điểm đến / mùa), "
+                                                                "không mô phỏng — recall của nhóm này có thể vượt ceiling"},
+                                                       ensure_ascii=False, indent=1, default=str), encoding="utf-8")
+    (directory / "segments.json").write_text(json.dumps({"labels": labels, "segments": seg}, ensure_ascii=False, indent=1), encoding="utf-8")
+    (directory / "cases.json").write_text(json.dumps(cs, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
+    md_ceiling = ceiling_markdown(ceil, mpd_recall=(mpd_row or {}).get(f"recall@{k}"))
+    md_seg, md_sl, md_cases = segments_markdown(seg, arms_order, k=k), strict_markdown(sl, [a for a in arms_order if a != "engine_nommr"], k=k), cases_markdown(cs)
+    (directory / "segments.md").write_text(md_seg, encoding="utf-8")
+    (directory / "strict.md").write_text(md_sl, encoding="utf-8")
+    (directory / "cases.md").write_text(md_cases, encoding="utf-8")
+    (directory / "ceiling.md").write_text(md_ceiling, encoding="utf-8")
+    typer.echo(f"run {run_id} · split {kind} · {len(result.targets)} khách · base {base} · ref {ref}")
+    typer.echo("\n## Ceiling\n" + md_ceiling)
+    typer.echo("\n## Strict / lenient\n" + md_sl)
+    typer.echo("\n## Phân khúc\n" + md_seg)
+    typer.echo("\n## 20 ca\n" + md_cases)
     typer.echo(f"→ {directory}")
 
 

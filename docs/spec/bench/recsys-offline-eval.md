@@ -3,7 +3,7 @@
 - Phục vụ: **FR-REC-01..04**, **NFR-PERF-01** (`docs/prd/requirements.md`); `docs/prd/test-plan.md` §2.5; handbook §11–§12.
 - Code: `src/evaluation/recsys_bench/` (nhánh `bench/recsys-harness`). Số thô: `bench_out/recsys/runs/<run_id>/` (không commit).
 - Thay cho `eval/report.md` của lịch 10 ngày (`docs/plan/2026-09-28-lich-10-ngay-3-engine.md` §0.1).
-- Cập nhật lần cuối: 2026-10-01 (§3.1 split đóng băng, §4.5 guest path Cloud, §4.6 v3 NDCG@5)
+- Cập nhật lần cuối: 2026-10-01 (§3.1 split đóng băng, §4.5 guest path Cloud, §4.6 v3 NDCG@5, §4.7–4.11 ceiling / phân khúc / strict / 20 ca / findings)
 
 > **Caveat bắt buộc (handbook §12):** lịch sử khách hàng là dữ liệu sinh. Các số này cho biết pipeline chạy đúng,
 > không cho biết engine sẽ chạy thế nào trên khách thật.
@@ -23,6 +23,8 @@ python -m src.evaluation.recsys_bench run --arm random --arm most_popular --arm 
     --split llbo --vectors weaviate --split-file src/evaluation/recsys_bench/frozen/split-llbo-asof20260922.json --run-id 2026-10-01-llbo-v3
 python -m src.evaluation.recsys_bench user --id VP0000001  # một khách, như production, kiểm contract
 python -m src.evaluation.recsys_bench http-latency --base-url https://v-ota.duckdns.org --runs 3 --k 5   # p95 qua HTTP (Day 2 C)
+python -m src.evaluation.recsys_bench run --arm engine_nommr --split llbo --vectors weaviate --split-file … --run-id 2026-10-01-llbo-v3   # thêm arm vào run đã có
+python -m src.evaluation.recsys_bench analyze --run-id 2026-10-01-llbo-v3   # B5–B8: ceiling, phân khúc, strict/lenient, 20 ca (không cần Weaviate)
 python -m pytest -q src/evaluation/recsys_bench/tests      # không cần DB
 ```
 
@@ -45,6 +47,13 @@ python -m pytest -q src/evaluation/recsys_bench/tests      # không cần DB
   lấy trực tiếp (theo dõi qua `modelVersion`, `searchUnits`, `recommendable`, `vectorsMissing` trong `summary.json`).
   `--limit-users` ghi `limitUsers` / `usersEvaluated` và header in `SUBSET n/N`. Mọi bảng từ 01/10 phải cùng `frozenSha256`
   và cùng `configHash` mới so được với nhau.
+- **`run --run-id <run đã có>`** gộp arm mới vào run cũ (thay arm trùng tên; từ chối khi khác `configHash` / `frozenSha256` /
+  `modelVersion` / `asOf`). Arm `engine_nommr` (01/10): cùng engine eval nhưng thay `mmr_select` bằng "lấy theo score" và
+  k = 200 → list = toàn bộ pool ứng viên; `rank` của target trong list này (poolRank) tách "không vào pool" khỏi "MMR đẩy
+  xuống". Chỉ để chẩn đoán (B8) và ablation MMR (M7), không phải số báo cáo.
+- **`analyze --run-id R [--base engine|engine_prod] [--ref most_popular_in_destination]`** (01/10, B5–B8): đọc `per_user.jsonl`,
+  tính lại split (đối chiếu bản đóng băng của run), ghi `ceiling.{json,md}`, `segments.{json,md}`, `strict.md`, `cases.{json,md}`
+  vào thư mục run; không cần Weaviate.
 - **`summary.json` (01/10, B3):** `modelVersion`, `engineConfig` (ảnh chụp mọi hằng viết hoa của
   `domain/recommendation/profile.py` + `mode`, `candidateK`, `popularK`, `maxPerVertical`, `popularityWindowDays` 90,
   `purchaseLookbackDays` 730), `configHash` (sha256 8 ký tự; `configHashProd` cho arm `engine_prod`), `vectorsMissing` (unit
@@ -254,6 +263,99 @@ Temporal — 102 khách (T = 2026-07-07T15:23Z):
   prod ở Recall@5 (0,669 → 0,572) là do cap 2 món/taxonomy đẩy target ra khỏi top-5 (I-5), không phải do xếp hạng.
 - Strategy của engine trên LLBO/temporal ghi trong `summary.json` (`rows[].strategies`); phân khúc theo strategy làm ở B6.
 
+### 4.7. Ceiling — trần recall theo bộ lọc cứng của engine (B5, 01/10)
+
+`ceiling.py` mô phỏng profile + mask ứng viên của `RecommendForUser` (cap lặp, trip mở ≤ 60 ngày, `bought_units`, điểm đến và
+taxonomy bị loại của trip mở, fallback khi mask theo điểm đến rỗng; không có trip → `cold_start`). Bản "chính xác" dùng
+`strategy` / `destination` / `excludedVerticals` engine trả về; bản xấp xỉ chỉ từ event — **đồng thuận 100 %** trên cả hai split.
+
+| Split | Khách | Ceiling (target tới được mask) | Recall@20 engine | Recall@20 trên khách tới được | mpd Recall@20 | Lý do không tới được (đa nhãn) |
+|---|---:|---:|---:|---:|---:|---|
+| LLBO | 1.007 | **0,990** (997) | 0,851 | 0,860 | 0,635 | `already_bought` 10 |
+| Temporal | 102 | **0,784** (80) | 0,196 | 0,250 | 0,098 | `taxonomy_excluded` 15 · `destination_mismatch` 18 · `already_bought` 1 (lý do đầu: 14 / 7 / 1) |
+
+Luật đọc (plan Day 3): ceiling ≥ Recall@20 của mpd ở cả hai split → filter **không** phải nút thắt; nhưng trên temporal 22 %
+target bị chính filter chặn — xem findings.
+
+### 4.8. Phân khúc (B6, 01/10) — hit@20 / NDCG@10, nhãn tính một lần từ train
+
+LLBO (1.007) — engine (eval) · engine_prod · mpd:
+
+| Nhãn | Giá trị | n | engine | engine_prod | mpd |
+|---|---|---:|---:|---:|---:|
+| strategy | cross_vertical | 911 | 0,844 / 0,497 | 0,565 / 0,429 | 0,668 / 0,415 |
+| | recent_activity | 96 | 0,917 / 0,788 | 0,833 / 0,758 | 0,312 / 0,142 |
+| coldStart (< 3 event) | False / True | 664 / 343 | 0,860 / 0,834 | 0,623 / 0,528 | 0,625 / 0,653 |
+| lifecycleAtAsOf | active / dormant | 969 / 38 | 0,847 / 0,947 | 0,581 / 0,842 | 0,642 / 0,447 |
+| targetTaxonomy | flight | 437 | 0,838 / 0,559 | 0,677 / 0,538 | 0,778 / 0,549 |
+| | attraction | 379 | 0,871 / 0,460 | 0,420 / 0,316 | 0,588 / 0,331 |
+| | hotel | 81 | 0,938 / 0,825 | 0,840 / 0,784 | 0,222 / 0,065 |
+| | combo | 66 | 0,621 / 0,198 | 0,424 / 0,233 | 0,348 / 0,127 |
+| | golf | 44 | 1,000 / 0,673 | 1,000 / 0,681 | 0,795 / 0,289 |
+| targetTrip | open / new | 911 / 96 | 0,844 / 0,917 | 0,565 / 0,833 | 0,668 / 0,312 |
+| activeTripIsSolo (I-3) | False / True | 911 / 96 | 0,844 / 0,917 | 0,565 / 0,833 | 0,668 / 0,312 |
+| persona | True *(ồn)* | 2 | 0,000 | 0,000 | 0,500 |
+
+Temporal (102):
+
+| Nhãn | Giá trị | n | engine | engine_prod | mpd |
+|---|---|---:|---:|---:|---:|
+| strategy | long_term | 45 | 0,089 / 0,044 | 0,022 / 0,022 | 0,089 / 0,022 |
+| | cross_vertical | 22 | **0,000** | 0,000 | 0,045 / 0,023 |
+| | dormant *(ồn)* | 19 | 0,053 | 0,000 | 0,053 |
+| | cold_start_content *(ồn)* | 13 | 0,923 / 0,751 | 0,615 / 0,615 | 0,154 / 0,054 |
+| coldStart | False / True | 72 / 30 | 0,111 / 0,400 | 0,056 / 0,267 | 0,097 / 0,100 |
+| lifecycleAtAsOf | active / dormant / new *(ồn)* | 68 / 21 / 13 | 0,088 / 0,095 / 0,923 | 0,044 / 0,048 / 0,615 | 0,088 / 0,095 / 0,154 |
+| targetTaxonomy | hotel | 94 | 0,191 / 0,146 | 0,117 / 0,117 | 0,085 / 0,023 |
+| activeTripIsSolo | False / True *(ồn)* | 86 / 16 | 0,058 / 0,938 | 0,012 / 0,688 | 0,070 / 0,250 |
+
+Bảng đầy đủ (kể cả `engine_nommr`, `most_popular`): `bench_out/recsys/runs/2026-10-01-*-v3/segments.md`.
+
+### 4.9. Strict vs lenient theo taxonomy (B7, 01/10)
+
+`rank` (unit cha, metric chính) vs `rankStrict` (đúng productId đã mua). Seed mua phòng (`hotel_room`) và chuyến bay (con) còn
+engine chỉ trả search unit nên với hai loại này strict = 0 **theo cấu trúc**; attraction / combo / golf target đã là unit → strict = lenient.
+
+| Split | Taxonomy | n | target là con | engine lenient / strict | engine_prod | mpd |
+|---|---|---:|---:|---:|---:|---:|
+| LLBO | flight | 437 | 437 | 0,838 / 0,000 | 0,677 / 0,000 | 0,778 / 0,000 |
+| | attraction | 379 | 0 | 0,871 / 0,871 | 0,420 / 0,420 | 0,588 / 0,588 |
+| | hotel | 81 | 81 | 0,938 / 0,000 | 0,840 / 0,000 | 0,222 / 0,000 |
+| | combo | 66 | 0 | 0,621 / 0,621 | 0,424 / 0,424 | 0,348 / 0,348 |
+| | golf | 44 | 0 | 1,000 / 1,000 | 1,000 / 1,000 | 0,795 / 0,795 |
+| Temporal | hotel | 94 | 94 | 0,191 / 0,000 | 0,117 / 0,000 | 0,085 / 0,000 |
+
+Kết luận: 518/1.007 target LLBO (51 %) và 95/102 temporal không đo được strict với engine v0; muốn đo "đúng hạng phòng /
+chuyến" cần engine trả cấp con — ngoài phạm vi v0, không đổi metric chính.
+
+### 4.10. Engine trượt mà baseline trúng — 20 ca và đếm toàn tập (B8, 01/10)
+
+Arm chẩn đoán `engine_nommr` (pool 200 theo score, không MMR): LLBO Recall@20 **0,863** / NDCG@10 **0,548** (engine có MMR
+0,851 / 0,524); temporal 0,196 / 0,136 (= engine).
+
+| Split | engine trượt top-20 & mpd trúng | Nguyên nhân (toàn tập) |
+|---|---:|---|
+| LLBO | 21 / 1.007 | `filtered` 9 (`already_bought`) · `mmr_demoted` 6 (target ở pool hạng 3–17, tức trong top-20 theo score nhưng MMR đẩy ra) · `ranked_low` 6 (pool hạng 22–33: trượt kể cả không MMR) |
+| Temporal | 4 / 102 | `filtered` 1 (VP0000001: đã mua + hotel bị loại) · `mmr_demoted` 1 (pool 13) · `ranked_low` 1 (pool 76) · `wrong_active_trip` 1 (trip mở là view lẻ, target thuộc trip khác) |
+
+Không có ca `pool_miss`, `out_of_candidates`, `destination_mismatch` riêng: khi target tới được mask, nó **luôn** vào pool 200 theo
+score; trượt chia đôi giữa MMR (λ 0,7) đẩy ra và xếp hạng theo score chưa đủ (hạng 22–33). 20 ca LLBO và 4 ca temporal:
+`bench_out/recsys/runs/2026-10-01-*-v3/cases.md` (mỗi ca: khách, target, loại · điểm đến, strategy · điểm đến engine, hạng
+engine / mpd, số event train).
+
+### 4.11. Engine v0 — findings (01/10)
+
+1. LLBO: bộ lọc cứng không phải nút thắt — ceiling 0,990, chỉ 10 target là món đã mua (engine loại có chủ đích); Recall@20 0,851 = 86 % số tới được.
+2. MMR làm giảm nhẹ: bỏ MMR → Recall@20 0,863 / NDCG@10 0,548 (+0,012 / +0,024); 6/21 ca engine trượt-mpd trúng là `mmr_demoted` (target trong top-20 theo score, hạng 3–17) và 6 ca là `ranked_low` (hạng 22–33, score chưa đủ). Ứng viên tune M7: λ MMR 0,7 → 0,85 hoặc chỉ MMR sau top-5 — chạy trên temporal đóng băng (§3.1); phần `ranked_low` cần trọng số W_SHORT/W_POP, không phải MMR.
+3. Cap 2 món / taxonomy (production) đắt nhất ở attraction (0,871 → 0,420) và combo (0,621 → 0,424); hotel, golf gần như không đổi (I-5).
+4. Temporal (đoán chuyến kế): 22 % target bị chính filter chặn — `taxonomy_excluded` (khách vừa mua hotel trong trip mở, chuyến kế lại mua hotel) và `destination_mismatch` (chuyến kế ở điểm đến khác); strategy `cross_vertical` **0/22**.
+5. Giả định cross-vertical đúng **trong** chuyến (LLBO 0,844) nhưng sai **giữa** hai chuyến: category exclusion và khoá điểm đến chỉ nên áp khi trip mở còn diễn ra (theo `usingDate`), không áp cho chuyến kế — đề xuất cho M6, đi qua `docs/prd/update/` vì đổi hành vi engine.
+6. `activeTripIsSolo` (I-3) là phân khúc mạnh nhất: trip mở là view lẻ ngay trước purchase → engine gợi đúng món vừa xem (LLBO 0,917, temporal 0,938). Đây là hành vi xem-rồi-mua seed tạo ra; số này phản ánh cấu trúc seed hơn là chất lượng xếp hạng — ghi chú khi trích dẫn.
+7. `long_term` / `dormant` trên temporal ≈ mpd (0,089 vs 0,089): vector dài hạn không hơn popular theo điểm đến cho chuyến kế; target hotel 94/102 hit 0,191.
+8. Strict = 0 theo cấu trúc cho 51 % target LLBO (flight, hotel con); không phải lỗi engine, là độ mịn của catalog search unit.
+9. mpd là baseline mạnh ở flight (0,778) và golf (0,795), yếu ở hotel (0,222); engine hơn hẳn ở hotel (0,938) và attraction (0,871).
+10. Hai persona trong test LLBO đều trượt (VP0000001 đặt lại KS đã mua → `already_bought`): kịch bản demo P1 cần món khác loại, không phải mua lại.
+
 ## 5. Kiểm nhanh P1 `VP0000001` (Day 1 C)
 
 Lệnh `user --id VP0000001 --k 5`, `as_of` 2026-09-24, 12 event lịch sử, cùng engine production (không HTTP).
@@ -284,8 +386,8 @@ Lệnh `user --id VP0000001 --k 5`, `as_of` 2026-09-24, 12 event lịch sử, c�
 
 - Day 2 (B): `sanity.py` (lifecycle 25/45/20/10, ≥ 2 vertical 64 %, top-10 % sản phẩm 39 % purchase, Zipf 0,8) — chưa
   làm; hai baseline most-popular / most-popular-in-destination và kiểm thứ tự đã làm 30/09 (§4.4). Phase 0 (01/10): split
-  đóng băng §3.1, NDCG@5, `ids` / `rankStrict` theo khách, `configHash` — §4.6; ceiling, phân khúc, 20 case, strict/lenient
-  theo taxonomy (Phase 1) chưa làm.
+  đóng băng §3.1, NDCG@5, `ids` / `rankStrict` theo khách, `configHash` — §4.6. Phase 1 (01/10): ceiling §4.7, phân khúc §4.8,
+  strict/lenient §4.9, 20 ca + `engine_nommr` §4.10, findings §4.11. Còn: `sanity.py` (Phase 2), offline = HTTP 60 khách (Phase 3).
 - **I-5** đã xử lý ở harness (30/09): `engine` = mode eval bỏ cap để đo đủ k = 20; `engine_prod` báo list production.
   Spec §4.7 nói giới hạn 2 món mỗi `parentProductId`, code giới hạn 2 mỗi taxonomy — lệch spec/code này vẫn còn, là việc
   của C (M6), production chưa đổi.
