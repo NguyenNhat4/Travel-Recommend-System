@@ -71,3 +71,31 @@ def test_same_input_same_output(world):
     first = engine.recommend("u1", AS_OF, 5, HISTORY)
     second = engine.recommend("u1", AS_OF, 5, HISTORY)
     assert [r["productId"] for r in first["recommendations"]] == [r["productId"] for r in second["recommendations"]]
+
+
+def test_eval_mode_drops_vertical_cap_and_prod_mode_keeps_it(world, events):
+    """mode eval (mặc định): không cap 2 món / taxonomy nên có thể trả > 2 cùng loại; mode prod: đúng production."""
+    from datetime import datetime, timezone
+
+    from src.backend.app.domain.recommendation.profile import MAX_PER_VERTICAL
+    from src.evaluation.recsys_bench.arms import EngineArm
+    from src.evaluation.recsys_bench.engine import OfflineEngine
+    from src.evaluation.recsys_bench.events import filter_events
+    from src.evaluation.recsys_bench.splits import leave_last_booking_out
+    index = world["index"]
+    as_of = datetime(2026, 9, 24, tzinfo=timezone.utc)
+    kept, _ = filter_events(events, index, as_of)
+    split = leave_last_booking_out(kept, index)
+    ev = OfflineEngine(index, world["vectors"], split.train_purchases)
+    pr = OfflineEngine(index, world["vectors"], split.train_purchases, mode="prod")
+    assert ev.mode == "eval" and EngineArm(ev).key == "engine" and EngineArm(pr).key == "engine_prod"
+    for user in split.targets:
+        a = ev.recommend(user, split.as_of_by_user[user], 20, split.train_by_user[user])
+        b = pr.recommend(user, split.as_of_by_user[user], 20, split.train_by_user[user])
+        from collections import Counter
+        per_tax_prod = Counter(r["taxonomy"] for r in b["recommendations"])
+        assert all(n <= MAX_PER_VERTICAL for n in per_tax_prod.values())
+        assert len(a["recommendations"]) >= len(b["recommendations"])
+    import pytest
+    with pytest.raises(ValueError):
+        OfflineEngine(index, world["vectors"], split.train_purchases, mode="x")

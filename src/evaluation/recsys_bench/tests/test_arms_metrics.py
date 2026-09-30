@@ -81,3 +81,33 @@ def test_cli_parses_as_of_and_lists_commands():
     assert result.exit_code == 0
     for command in ("doctor", "load", "split", "run", "user"):
         assert command in result.output
+
+
+def test_popularity_baselines_use_window_before_as_of_and_destination(world, events):
+    from src.evaluation.recsys_bench.arms import MostPopularArm, MostPopularInDestinationArm, trip_destination
+    index = world["index"]
+    kept, _ = filter_events(events, index, AS_OF)
+    split = leave_last_booking_out(kept, index)
+    engine = OfflineEngine(index, None, split.train_purchases)          # popularity không cần vector
+    allowed = {index.units[i].product_id for i in np.flatnonzero(index.mask(only_recommendable=True))}
+    mp = MostPopularArm(index, engine)
+    a = mp.recommend("u1", split.as_of_by_user["u1"], 3, split.train_by_user["u1"])
+    b = mp.recommend("u1", split.as_of_by_user["u1"], 3, split.train_by_user["u1"])
+    assert a.product_ids == b.product_ids and set(a.product_ids) <= allowed and len(set(a.product_ids)) == len(a.product_ids)
+    assert a.meta == {"strategy": "most_popular"}
+    # cửa sổ 90 ngày trước as_of của u1 (2026-06-03): purchase R1 (01/06), A1 của u2 (01/05), G1 ×2 (04–05) — không có
+    # FL1 (target, = as_of) và không có gì sau đó; unit được mua nhiều nhất (G1) đứng đầu nếu recommendable
+    pop = engine.popularity_at(split.as_of_by_user["u1"]).unit_scores(window_days=90)
+    assert all(u < len(index.units) for u in pop) and max(pop.values()) == 1.0
+    # destination: chuyến đang mở T1 của u1 → điểm đến của H1
+    d = trip_destination(index, split.train_by_user["u1"], split.as_of_by_user["u1"])
+    assert d == str(index.destination[index.resolve("R1")])
+    mpd = MostPopularInDestinationArm(index, engine)
+    r = mpd.recommend("u1", split.as_of_by_user["u1"], 3, split.train_by_user["u1"])
+    assert r.meta["destination"] == d and set(r.product_ids) <= allowed and len(r.product_ids) == min(3, len(allowed))
+    assert r.meta["strategy"] in ("most_popular_in_destination", "most_popular_fallback")
+    # khách không có event quy được → lùi về toàn cục, không lỗi
+    r0 = mpd.recommend("ghost", AS_OF, 3, [])
+    assert r0.meta["destination"] is None and r0.meta["strategy"] == "most_popular_fallback" and r0.product_ids == mp.recommend("ghost", AS_OF, 3, []).product_ids
+    row, per_user = evaluate(mpd, split, index, k=20)
+    assert row["arm"] == "most_popular_in_destination" and row["users"] == 4 and all(r["returned"] <= 20 for r in per_user)

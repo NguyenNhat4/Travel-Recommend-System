@@ -130,7 +130,8 @@ def split(kind: str = typer.Option("llbo", "--kind", help="llbo | temporal"),
 
 
 @app.command()
-def run(arms: List[str] = typer.Option(["random"], "--arm", help="random | engine (lặp lại để chạy nhiều arm)"),
+def run(arms: List[str] = typer.Option(["random"], "--arm", help="random | most_popular | most_popular_in_destination | "
+                                                                   "engine (mode eval, đủ k món) | engine_prod (cap 2 / taxonomy)"),
         kind: str = typer.Option("llbo", "--split", help="llbo | temporal"),
         k: int = typer.Option(20, "--k"),
         seeds: str = typer.Option("42,43,44", "--seeds", help="seed cho arm random"),
@@ -144,23 +145,27 @@ def run(arms: List[str] = typer.Option(["random"], "--arm", help="random | engin
         run_id: Optional[str] = typer.Option(None, "--run-id")):
     """Chạy các arm trên cùng split, in bảng markdown, ghi bench_out/recsys/runs/<run_id>/."""
     from . import data_source
-    from .arms import EngineArm, RandomArm
+    from .arms import EngineArm, MostPopularArm, MostPopularInDestinationArm, RandomArm
     from .bench import aggregate, evaluate
     from .engine import OfflineEngine
     from .paths import run_dir
     from .report import markdown_table, write_run
 
-    unknown = set(arms) - {"random", "engine"}
+    unknown = set(arms) - {"random", "most_popular", "most_popular_in_destination", "engine", "engine_prod"}
     if unknown:
         _fail(f"arm không hỗ trợ: {sorted(unknown)}")
-    mode = vectors or ("weaviate" if "engine" in arms else "none")
-    if "engine" in arms and mode == "none":
-        _fail("arm engine cần --vectors weaviate hoặc numpy")
+    need_vec = {"engine", "engine_prod"} & set(arms)
+    mode = vectors or ("weaviate" if need_vec else "none")
+    if need_vec and mode == "none":
+        _fail("arm engine / engine_prod cần --vectors weaviate hoặc numpy")
     run_id = run_id or f"{datetime.now():%Y%m%d-%H%M%S}-{kind}"
     with _prepared(as_of, refresh, mode) as (index, vector_search, kept, report, snapshot, _):
         result = _make_split(kind, kept, index, cutoff, min_purchases, min_trips)
         users = sorted(result.targets)[:limit_users] if limit_users else None
         rows, raw_rows, per_user = [], [], []
+        # popularity của baseline và engine cùng nguồn: purchase < as_of của từng khách (OfflineEngine.popularity_at)
+        engine = OfflineEngine(index, vector_search, result.train_purchases,
+                               candidate_k=data_source.settings().recommend_candidate_k)
         if "random" in arms:
             seed_rows = []
             for seed in (int(x) for x in seeds.split(",") if x.strip()):
@@ -169,10 +174,21 @@ def run(arms: List[str] = typer.Option(["random"], "--arm", help="random | engin
                 per_user += users_rows
             raw_rows += seed_rows
             rows.append(aggregate(seed_rows))
-        if "engine" in arms:
-            engine = OfflineEngine(index, vector_search, result.train_purchases,
-                                   candidate_k=data_source.settings().recommend_candidate_k)
+        for name, cls in (("most_popular", MostPopularArm), ("most_popular_in_destination", MostPopularInDestinationArm)):
+            if name in arms:
+                row, users_rows = evaluate(cls(index, engine), result, index, k, users)
+                raw_rows.append(row)
+                rows.append(row)
+                per_user += users_rows
+        if "engine" in arms:                      # mode eval: bỏ cap 2 món / taxonomy để đủ k món (quyết định 30/09)
             row, users_rows = evaluate(EngineArm(engine), result, index, k, users)
+            raw_rows.append(row)
+            rows.append(row)
+            per_user += users_rows
+        if "engine_prod" in arms:                 # đúng list production (cap MAX_PER_VERTICAL): khách thật sự thấy gì
+            prod = OfflineEngine(index, vector_search, result.train_purchases,
+                                 candidate_k=data_source.settings().recommend_candidate_k, mode="prod")
+            row, users_rows = evaluate(EngineArm(prod), result, index, k, users)
             raw_rows.append(row)
             rows.append(row)
             per_user += users_rows
@@ -211,7 +227,7 @@ def user(cdp_user_id: str = typer.Option(..., "--id"),
         history = [e for e in events if e.get("cdpUserId") == cdp_user_id and parse_ts(e["timestamp"]) < snapshot]
         purchases = [e for e in events if e.get("eventName") == "purchase"]
         engine = OfflineEngine(index, vector_search, purchases,
-                               candidate_k=data_source.settings().recommend_candidate_k)
+                               candidate_k=data_source.settings().recommend_candidate_k, mode="prod")   # như production
         started = perf_counter()
         response = engine.recommend(cdp_user_id, snapshot, k, history)
         response["cdpUserId"] = cdp_user_id

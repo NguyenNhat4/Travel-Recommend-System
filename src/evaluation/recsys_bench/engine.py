@@ -43,11 +43,17 @@ class OfflineCdpReader:
 
 
 class OfflineEngine:
+    """`mode="eval"` (mặc định, kế hoạch Day 3 B / quyết định 30/09): bỏ cap `MAX_PER_VERTICAL` để k = 20 có đủ 20 món —
+    5 taxonomy × 2 chỉ được ≤ 10, thực tế 4,8 món, nên Recall@20 = Recall@10. `mode="prod"`: đúng list production
+    (cap 2 mỗi taxonomy) — dùng cho arm `engine_prod` và lệnh `user`."""
+
     def __init__(self, index: UnitIndex, vectors: VectorSearchPort, purchases: list[dict], *,
-                 candidate_k: int = 200, popular_k: int = 50, popularity_cache: int = 8):
+                 candidate_k: int = 200, popular_k: int = 50, popularity_cache: int = 8, mode: str = "eval"):
+        if mode not in ("eval", "prod"):
+            raise ValueError(f"mode phải là eval | prod, gặp {mode!r}")
         rows = sorted((e for e in purchases if e.get("eventName") == "purchase"), key=lambda e: parse_ts(e["timestamp"]))
         self.index, self.vectors = index, vectors
-        self.candidate_k, self.popular_k = candidate_k, popular_k
+        self.candidate_k, self.popular_k, self.mode = candidate_k, popular_k, mode
         self._rows, self._stamps = rows, [parse_ts(e["timestamp"]) for e in rows]
         self._popularity: dict[datetime, Popularity] = {}
         self._cache_size = popularity_cache
@@ -67,6 +73,8 @@ class OfflineEngine:
         if late:
             raise LeakageError(f"{len(late)} event của {cdp_user_id} ở hoặc sau as_of {as_of.isoformat()} "
                                f"(đầu tiên {late[0].get('eventName')} {late[0]['timestamp']})")
+        from src.backend.app.domain.recommendation.profile import MAX_PER_VERTICAL
         engine = RecommendForUser(self.index, self.vectors, self.reader_at(as_of), self.popularity_at(as_of),
-                                  candidate_k=self.candidate_k, popular_k=self.popular_k)
+                                  candidate_k=self.candidate_k, popular_k=self.popular_k,
+                                  max_per_vertical=None if self.mode == "eval" else MAX_PER_VERTICAL)
         return engine(cdp_user_id, k=k, now=as_of, events=[dict(e) for e in events])
