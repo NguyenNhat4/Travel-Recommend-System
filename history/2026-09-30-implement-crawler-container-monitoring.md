@@ -31,6 +31,7 @@
 - Chưa chạy Terraform apply, chưa SSH/cài trên VM, chưa có Cloud Monitoring runtime evidence.
 - Đã tách đường triển khai watcher/Ops Agent thành workflow CD riêng; workflow crawler không sở hữu việc restart Ops Agent.
 - Đã thêm logrotate hằng ngày, giữ 14 bản nén và giới hạn 100 MB/file cho các log watcher/crawler/daily job.
+- Đã xác minh Ops Agent ghi crawler file logs vào `jsonPayload.message`; sửa crawler warning metric filter theo field thực tế.
 
 ## Việc còn lại
 

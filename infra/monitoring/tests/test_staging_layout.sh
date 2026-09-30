@@ -57,6 +57,7 @@ grep -q -F '/srv/vota/fresh-catalog-logs/*.log' "$root_dir/ops-agent-staging.yam
 grep -q -F '/var/log/vota/docker-events.jsonl' "$root_dir/ops-agent-staging.yaml"
 grep -q -F 'rotate 14' "$root_dir/vota-monitoring-logrotate.conf"
 grep -q -F 'maxsize 100M' "$root_dir/vota-monitoring-logrotate.conf"
+grep -q -F 'jsonPayload.message:\"fresh-catalog.exit=3\"' "$root_dir/main.tf"
 python3 -m py_compile "$root_dir/vota-docker-event-watcher.py"
 
 echo 'staging monitoring layout: PASS'

@@ -23,7 +23,7 @@ resource "google_logging_metric" "staging_error_logs" {
 resource "google_logging_metric" "staging_crawler_warning" {
   name        = "${var.name_prefix}_crawler_warning"
   description = "Crawler runs that completed with the known partial-result exit code 3."
-  filter      = "resource.type=\"gce_instance\" AND textPayload:\"fresh-catalog.exit=3\""
+  filter      = "resource.type=\"gce_instance\" AND jsonPayload.message:\"fresh-catalog.exit=3\""
 
   metric_descriptor {
     metric_kind = "DELTA"
