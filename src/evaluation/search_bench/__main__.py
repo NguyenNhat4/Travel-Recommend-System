@@ -784,6 +784,137 @@ def gold_check(c: typer.Context,
                 "(lần thêm sau: gold_vN+1, spec Part 11)", fg=typer.colors.GREEN)
 
 
+# ------------------------------------------------------------------ nhãn máy (máy gán phần còn lại, người duyệt trong app)
+@gold_app.command("machine-import")
+def gold_machine_import(files: list[Path] = typer.Argument(..., help="JSON: list {labeler, qid, product_id, label, "
+                                                                       "children_ok, note}"),
+                        model: str = typer.Option(..., "--model", help="ghi vào provenance, vd. claude-opus-5-5 (phiên)"),
+                        meta: Optional[Path] = typer.Option(None, "--meta", help="mặc định gold/pool_meta.json"),
+                        port: int = typer.Option(8502, "--port", help="cổng app dùng chung phải đang TẮT"),
+                        dry_run: bool = typer.Option(False, "--dry-run", help="chỉ kiểm, không ghi")):
+    """Nhãn máy → gold/labels/labels_<X>.csv + provenance_<X>.csv (source=machine, chưa duyệt). Chỉ ghi cặp còn trống
+    (cặp người đã gán giữ nguyên), từ chối câu chung (dành cho người — κ). Chạy khi app dùng chung đã dừng: app và lệnh
+    này là hai tiến trình, khoá ghi file của app không che được lệnh này. Mã thoát: 0 · 1 có dòng bị từ chối · 2 lỗi đầu vào."""
+    import json
+    import socket
+
+    from . import labeling_core as L
+    from . import paths
+    meta_p = meta or paths.GOLD_DIR / "pool_meta.json"
+    with socket.socket() as sock:
+        sock.settimeout(0.5)
+        if sock.connect_ex(("127.0.0.1", port)) == 0 and not dry_run:
+            _fail(f"app đang nghe ở 127.0.0.1:{port} — dừng app dùng chung trước rồi chạy lại (tránh hai tiến trình cùng "
+                  "ghi file nhãn)", 2)
+    rows: list[dict] = []
+    for f in files:
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as e:
+            _fail(f"{f}: {e}", 2)
+        if not isinstance(data, list):
+            _fail(f"{f}: cần một list", 2)
+        rows += data
+    keys = [(r.get("labeler"), r.get("qid"), r.get("product_id")) for r in rows]
+    if len(keys) != len(set(keys)):
+        _fail("trùng cặp (labeler, qid, product_id) giữa các file", 2)
+    bad = [r for r in rows if r.get("labeler") not in ("A", "B") or r.get("label") not in (0, 1, 2)]
+    if bad:
+        _fail(f"{len(bad)} dòng sai labeler / label, vd. {bad[0]}", 2)
+    rejected = 0
+    for x in ("A", "B"):
+        mine = [r for r in rows if r["labeler"] == x]
+        if not mine:
+            continue
+        try:
+            s = L.open_session(meta_p, x)
+        except L.SessionError as e:
+            _fail(str(e), 2)
+        if dry_run:
+            labels = L.load_labels(s)
+            free = [r for r in mine if (r["qid"], r["product_id"]) not in labels]
+            typer.echo(f"{x}: {len(mine)} dòng · {len(free)} cặp còn trống sẽ ghi · {len(mine) - len(free)} đã có nhãn người")
+            continue
+        res = L.import_machine_labels(s, mine, model=model)
+        rejected += len(res["rejected"])
+        typer.echo(f"{x}: ghi {len(res['written'])} nhãn máy · bỏ qua {len(res['skipped_labeled'])} cặp đã có nhãn người · "
+                   f"từ chối {len(res['rejected'])}")
+        for e in res["rejected"][:20]:
+            typer.echo(f"   - {e}")
+    if rejected:
+        raise typer.Exit(1)
+
+
+# ------------------------------------------------------------------ gán nhãn chung qua một link
+SHARE_LAUNCHER = '''"""Launcher app gán nhãn dùng chung (sinh bởi `sb gold share`) — đặt NGOÀI repo git: Streamlit gửi thông tin git
+(repo, nhánh, file chưa commit) và đường dẫn script cho mọi trình duyệt mở link, kể cả trước khi nhập mã."""
+import os
+import runpy
+import sys
+
+APP = os.environ["SBENCH_SHARE_APP"]
+if os.path.dirname(APP) not in sys.path:
+    sys.path.insert(0, os.path.dirname(APP))
+runpy.run_path(APP, run_name="__main__")
+'''
+SHARE_SECRET_ENV = ("KEY", "TOKEN", "SECRET", "PASSWORD")
+
+
+def _inside_git(p: Path) -> bool:
+    return any((d / ".git").exists() for d in (p, *p.parents))
+
+
+@gold_app.command("share")
+def gold_share(port: int = typer.Option(8502, "--port", help="cổng trên 127.0.0.1 (cloudflared trỏ vào đây)"),
+               launcher_dir: Optional[Path] = typer.Option(None, "--launcher-dir",
+                                                           help="thư mục ngoài repo git; mặc định <ổ đĩa của repo>/vota-label-share"),
+               codes: Optional[Path] = typer.Option(None, "--codes", help="mặc định bench_out/search/label_share/codes.env"),
+               dry_run: bool = typer.Option(False, "--dry-run", help="chỉ chuẩn bị launcher + mã, in lệnh, không chạy")):
+    """App gán nhãn dùng chung qua một link: mỗi người gán một mã truy cập (tạo lần đầu, lưu ở `codes.env` — gitignore),
+    chỉ chế độ gán nhãn, nhãn ghi vào gold/labels/ của máy này. Chỉ nghe ở 127.0.0.1 — link công khai do
+    `cloudflared tunnel --url http://127.0.0.1:<port>` tạo. Launcher đặt ngoài repo git để Streamlit không lộ repo /
+    nhánh / file chưa commit; tiến trình không mang biến môi trường bí mật (*KEY*, *TOKEN*, *SECRET*, *PASSWORD*)."""
+    import os
+    import secrets
+    import subprocess
+    import sys
+
+    from . import paths
+    codes_p = codes or paths.sbench_home() / "label_share" / "codes.env"
+    if not codes_p.exists():
+        codes_p.parent.mkdir(parents=True, exist_ok=True)
+        codes_p.write_text(f"LABELING_CODE_A={secrets.token_urlsafe(16)}\nLABELING_CODE_B={secrets.token_urlsafe(16)}\n",
+                           encoding="utf-8")
+        typer.echo(f"đã tạo mã truy cập mới: {codes_p}")
+    kv = dict(ln.split("=", 1) for ln in codes_p.read_text(encoding="utf-8").split() if "=" in ln)
+    if any(len(kv.get(f"LABELING_CODE_{x}", "")) < 12 for x in "AB") or kv.get("LABELING_CODE_A") == kv.get("LABELING_CODE_B"):
+        _fail(f"{codes_p}: cần LABELING_CODE_A và LABELING_CODE_B khác nhau, mỗi mã ≥ 12 ký tự", 2)
+    if not (paths.GOLD_DIR / "pool_meta.json").exists():
+        _fail("chưa có gold/pool_meta.json — chạy `sb gold pool` và `sb gold split` trước", 2)
+    ldir = (launcher_dir or Path(paths.repo_root().anchor) / "vota-label-share").resolve()
+    if _inside_git(ldir):
+        _fail(f"{ldir} nằm trong một repo git — chọn thư mục khác bằng --launcher-dir", 2)
+    ldir.mkdir(parents=True, exist_ok=True)
+    launcher = ldir / "app.py"
+    launcher.write_text(SHARE_LAUNCHER, encoding="utf-8")
+    env = {k: v for k, v in os.environ.items() if not any(t in k.upper() for t in SHARE_SECRET_ENV)}
+    env.update(LABELING_SHARED="1", LABELING_CODE_A=kv["LABELING_CODE_A"], LABELING_CODE_B=kv["LABELING_CODE_B"],
+               SBENCH_SHARE_APP=str(paths.PKG_DIR / "streamlit_app.py"), SBENCH_GOLD_DIR=str(paths.GOLD_DIR),
+               PYTHONUTF8="1")
+    cmd = [sys.executable, "-m", "streamlit", "run", str(launcher), "--server.address", "127.0.0.1",
+           "--server.port", str(port), "--server.headless", "true", "--browser.gatherUsageStats", "false",
+           "--client.showErrorDetails", "type", "--client.toolbarMode", "viewer", "--server.fileWatcherType", "none",
+           "--server.runOnSave", "false",
+           # app không có ô tải file: tắt hẳn /_stcore/upload_file (mở thì khách chưa có mã cũng đẩy được file vào RAM)
+           "--server.maxUploadSize", "0"]
+    typer.echo(f"launcher: {launcher} (ngoài repo git) · mã truy cập: {codes_p} · nhãn ghi vào: {paths.GOLD_DIR / 'labels'}")
+    typer.echo(f"app dùng chung: http://127.0.0.1:{port} — link công khai: cloudflared tunnel --url http://127.0.0.1:{port}")
+    if dry_run:
+        typer.echo("--dry-run: " + " ".join(cmd[1:]))
+        return
+    raise typer.Exit(subprocess.call(cmd, cwd=str(ldir), env=env))
+
+
 # ------------------------------------------------------------------ chi phí API
 @app.command()
 def cost():

@@ -252,3 +252,51 @@ def test_split_cli_hides_shared_qids_by_default(tmp_path):
     write_pool_csv(one, pool)
     gold.write_pool_build(_build(pool), gold.pool_build_path(pool))
     assert_exit(run("split", "--pool", pool, "--overlap", 2, "--out-dir", out), 0, "không lệch nhau được nửa vòng")
+
+
+def test_share_dry_run_writes_launcher_outside_git_and_codes(tmp_path, monkeypatch):
+    """`sb gold share`: launcher ngoài repo git (Streamlit không gửi được thông tin git), mã truy cập tạo một lần, đủ mạnh;
+    thư mục launcher nằm trong repo git thì từ chối."""
+    from evaluation.search_bench import paths
+    g = tmp_path / "gold"
+    g.mkdir()
+    (g / "pool_meta.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(paths, "GOLD_DIR", g)
+    codes, ldir = tmp_path / "share" / "codes.env", tmp_path / "launcher"
+    res = run("share", "--dry-run", "--codes", codes, "--launcher-dir", ldir)
+    assert_exit(res, 0, "cloudflared tunnel --url http://127.0.0.1:8502")
+    kv = dict(ln.split("=", 1) for ln in codes.read_text(encoding="utf-8").split())
+    assert set(kv) == {"LABELING_CODE_A", "LABELING_CODE_B"} and kv["LABELING_CODE_A"] != kv["LABELING_CODE_B"]
+    assert all(len(v) >= 20 for v in kv.values()) and not any(v in res.output for v in kv.values())   # không in mã
+    assert (ldir / "app.py").exists() and "--server.address 127.0.0.1" in res.output
+    assert_exit(run("share", "--dry-run", "--codes", codes), 0, "vota-label-share")                  # dùng lại mã cũ
+    assert dict(ln.split("=", 1) for ln in codes.read_text(encoding="utf-8").split()) == kv
+    assert_exit(run("share", "--dry-run", "--codes", codes, "--launcher-dir", paths.PKG_DIR / "x"), 2, "repo git")
+    codes.write_text("LABELING_CODE_A=ngan\nLABELING_CODE_B=ngan\n", encoding="utf-8")
+    assert_exit(run("share", "--dry-run", "--codes", codes, "--launcher-dir", ldir), 2, "≥ 12 ký tự")
+
+
+def test_machine_import_cli_refuses_while_app_listens_and_writes_when_stopped(tmp_path):
+    import json
+    import socket
+    import shutil
+    from evaluation.search_bench import labeling_core as L
+    g = tmp_path / "gold"
+    g.mkdir()
+    for f in ("pool_A.csv", "pool_B.csv", "pool_meta.json"):
+        shutil.copyfile(FX / f, g / f)
+    s = L.open_session(g / "pool_meta.json", "A")
+    free = next(r for q in s.qids for r in s.by_qid[q] if not r.is_overlap and r.slice != "parent_child")
+    src = tmp_path / "m.json"
+    src.write_text(json.dumps([{"labeler": "A", "qid": free.qid, "product_id": free.product_id, "label": 1,
+                                "children_ok": [], "note": "một phần"}], ensure_ascii=False), encoding="utf-8")
+    with socket.socket() as srv:                                   # giả app đang chạy
+        srv.bind(("127.0.0.1", 0))
+        srv.listen(1)
+        port = srv.getsockname()[1]
+        assert_exit(run("machine-import", src, "--model", "t", "--meta", g / "pool_meta.json", "--port", port), 2,
+                    "dừng app dùng chung")
+    assert not (g / "labels").exists()
+    res = run("machine-import", src, "--model", "t", "--meta", g / "pool_meta.json", "--port", port)
+    assert_exit(res, 0, "ghi 1 nhãn máy")
+    assert L.load_labels(s)[free.key].label == 1 and L.load_provenance(s)[free.key]["source"] == "machine"

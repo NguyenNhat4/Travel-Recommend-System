@@ -1,6 +1,7 @@
 """Smoke test app Streamlit (3 chế độ) bằng AppTest — trên bản sao gold/ trong tmp và catalog sample."""
 from __future__ import annotations
 
+import os
 import shutil
 from pathlib import Path
 
@@ -11,7 +12,8 @@ from streamlit.testing.v1 import AppTest  # noqa: E402
 
 from evaluation.search_bench import gold, paths  # noqa: E402
 
-APP = Path(__file__).resolve().parents[1] / "streamlit_app.py"
+# SBENCH_TEST_APP: chạy cùng bộ test trên bản nháp (vd. streamlit_app_next.py) khi app dùng chung đang phục vụ
+APP = Path(__file__).resolve().parents[1] / os.getenv("SBENCH_TEST_APP", "streamlit_app.py")
 
 
 @pytest.fixture()
@@ -164,11 +166,40 @@ def test_label_mode_resume_progress_and_children(env):
     assert {m.label: m.value for m in at2.metric}["Câu đã xong"] == "2/5"
     ms = at2.multiselect(key="lbl-ch-c9005-P003-0")
     assert ms.value == ["R0033"]
+    save = next(b for b in at2.button if b.key == "lbl_save")
+    assert save.disabled and save.label == "💾 Lưu"                     # chưa có thay đổi → nút khoá
     ms.set_value(["R0033", "R0032"])
     _run(at2)
-    got = L.load_labels(s)
-    assert got[("c9005", "P003")].children_ok == ["R0032", "R0033"]    # lưu ngay, theo thứ tự pool
-    assert not (paths.GOLD_DIR / "labels").exists()                     # không ghi vào gold/ thật
+    assert L.load_labels(s)[("c9005", "P003")].children_ok == ["R0033"]    # sửa chưa ghi file cho tới khi bấm Lưu
+    save = next(b for b in at2.button if b.key == "lbl_save")
+    assert not save.disabled and save.label == "💾 Lưu (1)"
+    assert any("1 thay đổi chưa lưu" in c.value for c in at2.caption)
+    save.click()
+    _run(at2)
+    assert L.load_labels(s)[("c9005", "P003")].children_ok == ["R0032", "R0033"]    # bấm Lưu → ghi, theo thứ tự pool
+    assert any("Đã lưu 1 thay đổi" in x.value for x in at2.success)
+    # rời câu (Sau →) có thay đổi chưa lưu → tự lưu trước khi chuyển
+    at2.multiselect(key="lbl-ch-c9005-P003-1").set_value(["R0033"])
+    _run(at2)
+    next(b for b in at2.button if b.label == "Sau →").click()
+    _run(at2)
+    assert L.load_labels(s)[("c9005", "P003")].children_ok == ["R0033"]
+    assert at2.selectbox(key="lbl_qid").value != "c9005"
+    # nhãn 2 mà bỏ hết hạng phòng → không lưu được, không cho rời câu, báo lỗi
+    at2.selectbox(key="lbl_qid").set_value("c9005")
+    _run(at2)
+    ver = at2.session_state["lbl-ver-c9005"]
+    at2.multiselect(key=f"lbl-ch-c9005-P003-{ver}").set_value([])
+    _run(at2)
+    next(b for b in at2.button if b.label == "Sau →").click()
+    _run(at2)
+    assert at2.selectbox(key="lbl_qid").value == "c9005"
+    assert any("hạng phòng" in e.value for e in at2.error)
+    assert L.load_labels(s)[("c9005", "P003")].children_ok == ["R0033"]
+    # không ghi nhãn fixture (qid c9…) vào gold/ thật — gold/labels/ có thể đang có nhãn thật của người gán
+    from evaluation.search_bench.gold_schema import read_labels_csv
+    real = sorted((paths.GOLD_DIR / "labels").glob("labels_*.csv"))
+    assert not any(r.qid.startswith("c9") for p in real for r in read_labels_csv(p))
 
 
 def test_label_mode_blocks_tampered_pool(env):
@@ -230,3 +261,129 @@ def test_selection_copies_local_only_edit_to_overrides(env, tmp_path):
     assert f"\n{case['case_id']}\tNEEDS_EDIT\t{edited}\t" in ov and "tester" in ov and "qanh" in ov
     assert not any("chỉ có trong kho nhãn local" in w.value for w in at.warning)
     assert any("Đã chép 1 câu" in s.value for s in at.success)
+
+
+CODE_A, CODE_B = "ma-thu-A-1234567", "ma-thu-B-7654321"
+
+
+@pytest.fixture()
+def shared_env(tmp_path, monkeypatch, home):
+    """App dùng chung trên pool của fixture gold_small, chép vào một gold/ tạm."""
+    g = tmp_path / "gold"
+    g.mkdir()
+    src = APP.parent / "tests" / "fixtures" / "gold_small"
+    for f in ("pool_A.csv", "pool_B.csv", "pool_meta.json"):
+        shutil.copyfile(src / f, g / f)
+    monkeypatch.setenv("SBENCH_GOLD_DIR", str(g))
+    monkeypatch.setenv("LABELING_SHARED", "1")
+    monkeypatch.setenv("LABELING_CODE_A", CODE_A)
+    monkeypatch.setenv("LABELING_CODE_B", CODE_B)
+    monkeypatch.delenv("LABELING_APP_PASSWORD", raising=False)
+    return g
+
+
+def _login(at: AppTest, code: str) -> AppTest:
+    at.text_input(key="shared_code").set_value(code)
+    at.button[0].click()
+    return _run(at)
+
+
+def test_shared_mode_needs_strong_distinct_codes(shared_env, monkeypatch):
+    monkeypatch.setenv("LABELING_CODE_B", "ngan")
+    at = _run(AppTest.from_file(str(APP), default_timeout=60))
+    assert any("chưa cấu hình mã truy cập" in e.value for e in at.error) and not at.text_input
+    monkeypatch.setenv("LABELING_CODE_B", CODE_A)
+    at = _run(AppTest.from_file(str(APP), default_timeout=60))
+    assert any("chưa cấu hình mã truy cập" in e.value for e in at.error)
+
+
+def test_shared_mode_locks_labeler_and_hides_everything_else(shared_env):
+    from evaluation.search_bench import labeling_core as L
+    at = _run(AppTest.from_file(str(APP), default_timeout=90))
+    assert not at.sidebar.radio and not at.metric                       # chưa có mã: không thấy chế độ nào, không có pool
+    _login(at, "sai-ma-roi-123456")
+    assert any("không đúng" in e.value for e in at.error) and not at.metric
+    _login(at, CODE_A)
+    assert at.title[0].value == "Gán nhãn relevance 0/1/2"
+    assert {m.label: m.value for m in at.metric}["Người gán"] == "A"
+    assert not at.sidebar.radio                                          # không có ô chọn chế độ / người gán
+    assert not any(t.key in ("lbl_meta", "lbl_pool", "lbl_labels") for t in at.text_input)
+    assert not any(b.label.startswith("Dùng bản thử fixture") for b in at.button)
+    assert str(shared_env) not in " ".join(c.value for c in at.caption)  # không lộ đường dẫn máy chạy app
+    s = L.open_session(shared_env / "pool_meta.json", "A")
+    qid, pid = s.qids[0], s.by_qid[s.qids[0]][0].product_id
+    assert L.save_label(s, qid, pid, 0) == []
+    assert (shared_env / "labels" / "labels_A.csv").exists() and not (shared_env / "labels" / "labels_B.csv").exists()
+    next(b for b in at.sidebar.button if b.label == "Thoát").click()
+    _run(at)
+    assert not at.metric
+    _login(at, CODE_B)
+    assert {m.label: m.value for m in at.metric}["Người gán"] == "B"
+
+
+def test_shared_logout_drops_pending_state_of_previous_labeler(shared_env):
+    """Review bảo mật 29/09: khoá state theo câu hỏi (nhãn chờ hạng phòng, ghi chú chờ) còn lại sau “Thoát” thì B thấy và
+    ghi luôn ghi chú của A vào labels_B.csv. Đổi người phải xoá hết state gán nhãn."""
+    at = _run(AppTest.from_file(str(APP), default_timeout=90))
+    _login(at, CODE_A)
+    at.session_state["lbl-pend-c9005"] = {"P003"}
+    at.session_state["lbl-pendnote-c9005-P003"] = "A-PRIVATE-NOTE"
+    at.session_state["lbl-err-c9005"] = ["lỗi của A"]
+    _run(at)
+    next(b for b in at.sidebar.button if b.label == "Thoát").click()
+    _run(at)
+    _login(at, CODE_B)
+    assert {m.label: m.value for m in at.metric}["Người gán"] == "B"
+    for k in ("lbl-pend-c9005", "lbl-pendnote-c9005-P003", "lbl-err-c9005"):
+        assert k not in at.session_state
+
+
+def test_label_mode_shows_machine_labels_filters_and_reviewer(env):
+    """Nhãn máy (provenance) hiện trong app: số liệu nguồn, lọc câu có nhãn máy chưa duyệt, ô tên người duyệt, đánh dấu 🤖."""
+    from evaluation.search_bench import labeling_core as L
+    from evaluation.search_bench import paths
+    at = _open_label_mode(_run(AppTest.from_file(str(APP), default_timeout=120)))
+    meta = paths.sbench_home() / "label_try" / "pool_meta.json"
+    s = L.open_session(meta, "A")
+    private = [q for q in s.qids if not s.by_qid[q][0].is_overlap]
+    q = private[-1]
+    res = L.import_machine_labels(s, [{"labeler": "A", "qid": q, "product_id": r.product_id, "label": 0, "note": "sai nơi"}
+                                      for r in s.by_qid[q]], model="test")
+    assert len(res["written"]) == len(s.by_qid[q])
+    next(b for b in at.sidebar.button if b.label == "Tải lại file").click()
+    _run(at)
+    assert any(t.key == "lbl_reviewer" for t in at.sidebar.text_input)
+    assert any(f"máy {len(s.by_qid[q])} (chưa duyệt {len(s.by_qid[q])}" in c.value for c in at.caption)
+    at.selectbox(key="lbl_qfilter").set_value("Có nhãn máy chưa duyệt")
+    _run(at)
+    opts = at.selectbox(key="lbl_qid").options
+    assert any(o.startswith(q) and "🤖" in o for o in opts)
+    assert all(o.startswith(q) or o.startswith(at.selectbox(key="lbl_qid").value) for o in opts)
+    at.selectbox(key="lbl_qid").set_value(q)
+    _run(at)
+    assert at.radio(key="lbl_rfilter").options[:3] == ["Tất cả", "Máy gán", "Người gán"]
+
+
+def test_label_mode_accept_all_machine_labels_of_question(env):
+    from evaluation.search_bench import labeling_core as L
+    from evaluation.search_bench import paths
+    at = _open_label_mode(_run(AppTest.from_file(str(APP), default_timeout=120)))
+    s = L.open_session(paths.sbench_home() / "label_try" / "pool_meta.json", "A")
+    q = next(q for q in s.qids if not s.by_qid[q][0].is_overlap)
+    L.import_machine_labels(s, [{"labeler": "A", "qid": q, "product_id": r.product_id, "label": 0}
+                                for r in s.by_qid[q]], model="t")
+    next(b for b in at.sidebar.button if b.label == "Tải lại file").click()
+    _run(at)
+    at.selectbox(key="lbl_qid").set_value(q)
+    _run(at)
+    btn = next(b for b in at.button if b.key == "lbl_accept_all")
+    assert btn.disabled and btn.label == f"✓ Duyệt tất cả nhãn máy ({len(s.by_qid[q])})"   # chưa có tên người duyệt
+    at.sidebar.text_input(key="lbl_reviewer").set_value("QAnh")
+    _run(at)
+    next(b for b in at.button if b.key == "lbl_accept_all").click()
+    _run(at)
+    prov = L.load_provenance(s)
+    assert all(prov[r.key]["review"] == L.REVIEW_ACCEPTED and prov[r.key]["reviewed_by"] == "QAnh" for r in s.by_qid[q])
+    assert any(f"Đã duyệt {len(s.by_qid[q])} nhãn máy" in x.value for x in at.success)
+    btn = next(b for b in at.button if b.key == "lbl_accept_all")
+    assert btn.disabled and btn.label.endswith("(0)")
