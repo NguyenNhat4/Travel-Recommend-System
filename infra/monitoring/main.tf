@@ -670,6 +670,95 @@ resource "google_monitoring_dashboard" "staging" {
               }
             }
           }
+        },
+        {
+          title = "Docker watcher heartbeat"
+          xyChart = {
+            dataSets = [{
+              plotType   = "LINE"
+              targetAxis = "Y1"
+              timeSeriesQuery = {
+                timeSeriesFilter = {
+                  filter = "resource.type=\"gce_instance\" metric.type=\"logging.googleapis.com/user/${google_logging_metric.staging_docker_watcher_heartbeat.name}\""
+                  aggregation = {
+                    alignmentPeriod    = "60s"
+                    perSeriesAligner   = "ALIGN_RATE"
+                    crossSeriesReducer = "REDUCE_SUM"
+                  }
+                }
+              }
+            }]
+          }
+        },
+        {
+          title = "Crawler warnings and failures"
+          xyChart = {
+            dataSets = [
+              {
+                plotType   = "LINE"
+                targetAxis = "Y1"
+                timeSeriesQuery = {
+                  timeSeriesFilter = {
+                    filter = "resource.type=\"gce_instance\" metric.type=\"logging.googleapis.com/user/${google_logging_metric.staging_crawler_warning.name}\""
+                    aggregation = {
+                      alignmentPeriod    = "60s"
+                      perSeriesAligner   = "ALIGN_RATE"
+                      crossSeriesReducer = "REDUCE_SUM"
+                    }
+                  }
+                }
+              },
+              {
+                plotType   = "LINE"
+                targetAxis = "Y1"
+                timeSeriesQuery = {
+                  timeSeriesFilter = {
+                    filter = "resource.type=\"gce_instance\" metric.type=\"logging.googleapis.com/user/${google_logging_metric.staging_crawler_failure.name}\""
+                    aggregation = {
+                      alignmentPeriod    = "60s"
+                      perSeriesAligner   = "ALIGN_RATE"
+                      crossSeriesReducer = "REDUCE_SUM"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          title = "Container stops and OOM"
+          xyChart = {
+            dataSets = [
+              {
+                plotType   = "LINE"
+                targetAxis = "Y1"
+                timeSeriesQuery = {
+                  timeSeriesFilter = {
+                    filter = "resource.type=\"gce_instance\" metric.type=\"logging.googleapis.com/user/${google_logging_metric.staging_container_stop.name}\""
+                    aggregation = {
+                      alignmentPeriod    = "60s"
+                      perSeriesAligner   = "ALIGN_RATE"
+                      crossSeriesReducer = "REDUCE_SUM"
+                    }
+                  }
+                }
+              },
+              {
+                plotType   = "LINE"
+                targetAxis = "Y1"
+                timeSeriesQuery = {
+                  timeSeriesFilter = {
+                    filter = "resource.type=\"gce_instance\" metric.type=\"logging.googleapis.com/user/${google_logging_metric.staging_container_oom.name}\""
+                    aggregation = {
+                      alignmentPeriod    = "60s"
+                      perSeriesAligner   = "ALIGN_RATE"
+                      crossSeriesReducer = "REDUCE_SUM"
+                    }
+                  }
+                }
+              }
+            ]
+          }
         }
       ]
     }
