@@ -127,6 +127,78 @@ def test_detail_file_records_text_action_reason_and_vector_preview(monkeypatch, 
     assert rows["GONE"] == {"productId": "GONE", "action": "deleted"}
 
 
+# ---------------------------------------------------------------- --lexical-only (30/09): chỉ PATCH BM25, từ chối khi index lệch catalog
+def _base_settings():
+    return SimpleNamespace(
+        database_url="postgresql://unused", embed_model="embed-multilingual-v3.0", weaviate_url="http://weaviate.test",
+        weaviate_collection="Product", weaviate_vector_index_type="hnsw", weaviate_api_key="",
+        weaviate_timeout_seconds=5.0, cohere_api_key="k", cohere_base_url="http://cohere.test",
+        embed_dimension=1024, cohere_timeout_seconds=5.0, search_bm25_k1=1.2, search_bm25_b=0.75,
+        cohere_embed_concurrency=1, cohere_calls_per_minute=0,
+    )
+
+
+class _NoCohere:
+    def __init__(self, *args, **kwargs):
+        raise AssertionError("--lexical-only không được gọi Cohere")
+
+
+class _LexicalWeaviate(_Weaviate):
+    """Index khớp catalog (P1, P2 ở uuid tất định, text hiện tại) nhưng object cũ chưa có property BM25."""
+
+    def __init__(self, url, **kwargs):
+        super().__init__(url, **kwargs)
+        self.patched = []
+
+    def fetch(self, *, include_vectors):
+        model = embed_products.model_version("embed-multilingual-v3.0")
+        return {pid: VectorMetadata(WeaviateClient.object_uuid(pid), pid, model, _digest(pid), lexical=(pid == "P2"))
+                for pid in ("P1", "P2")}, {}
+
+    def patch_properties(self, object_id, properties):
+        self.patched.append((object_id, sorted(properties)))
+
+
+def test_lexical_only_refuses_when_index_differs_from_catalog(monkeypatch):
+    monkeypatch.setattr(embed_products, "PostgresCatalogReader",
+                        lambda url: SimpleNamespace(load=lambda: _catalog(["P1", "P2"])))
+    monkeypatch.setattr(embed_products, "WeaviateClient", _Weaviate)          # P1 ở uuid cũ (embed lại) + GONE mồ côi
+    monkeypatch.setattr(embed_products, "CohereEmbedder", _NoCohere)
+    _Weaviate.instances.clear()
+
+    report = embed_products.run(settings=_base_settings(), lexical_only=True)
+
+    assert report["lexicalOnly"] is True and "embedded 1" in report["refused"] and "deletedOrphans 1" in report["refused"]
+    client = _Weaviate.instances[0]
+    assert client.deleted == [] and client.inserted == []
+    assert (report["embedded"], report["deletedOrphans"], report["missingLexical"]) == (1, 1, 1)
+
+
+def test_lexical_only_patches_missing_bm25_without_cohere_or_deletes(monkeypatch):
+    monkeypatch.setattr(embed_products, "PostgresCatalogReader",
+                        lambda url: SimpleNamespace(load=lambda: _catalog(["P1", "P2"])))
+    monkeypatch.setattr(embed_products, "WeaviateClient", _LexicalWeaviate)
+    monkeypatch.setattr(embed_products, "CohereEmbedder", _NoCohere)
+    _Weaviate.instances.clear()
+
+    dry = embed_products.run(settings=_base_settings(), lexical_only=True, dry_run=True)
+    assert dry["missingLexical"] == 1 and "refused" not in dry and _Weaviate.instances[-1].patched == []
+    report = embed_products.run(settings=_base_settings(), lexical_only=True)
+
+    client = _Weaviate.instances[-1]
+    assert client.patched == [(WeaviateClient.object_uuid("P1"), ["nameAscii", "searchTextAscii"])]
+    assert client.deleted == [] and client.inserted == []
+    assert (report["embedded"], report["deletedOrphans"], report["backfilledLexical"]) == (0, 0, 1)
+
+
+def test_main_exits_2_when_lexical_only_is_refused(monkeypatch, capsys):
+    monkeypatch.setattr(embed_products, "run", lambda **kw: {"refused": "lệch", "lexicalOnly": kw["lexical_only"]})
+    assert embed_products.main(["--lexical-only"]) == 2
+    assert json.loads(capsys.readouterr().out)["lexicalOnly"] is True
+    monkeypatch.setattr(embed_products, "run", lambda **kw: {"embedded": 0})
+    assert embed_products.main(["--dry-run"]) == 0
+
+
 # ---------------------------------------------------------------- P5.2: nhúng song song (docs/plan/2026-09-29-index-cohere-song-song.md)
 def _settings(concurrency, calls_per_minute=0):
     return SimpleNamespace(

@@ -173,11 +173,16 @@ def check_catalog(cfg: SBenchConfig) -> list[Check]:
 
 
 def check_bge_m3() -> Check:
-    if importlib.util.find_spec("sentence_transformers") is None:
-        return Check("bge-m3", WARN, "sentence-transformers chưa cài (chỉ cần cho E2/P5)",
+    """Model local (E2: e5-base, bge-m3, gte): cần transformers + torch (embed/local_hf.py — không dùng sentence-transformers
+    vì scipy bị Application Control chặn trên máy dev 30/09); model trong cache HF thì embed offline được."""
+    missing = [lib for lib in ("transformers", "torch") if importlib.util.find_spec(lib) is None]
+    if missing:
+        return Check("local models", WARN, f"thiếu {', '.join(missing)} (chỉ cần cho E2/P5)",
                      "pip install -r src/evaluation/search_bench/requirements-extra.txt")
-    hf = Path(os.environ.get("HF_HOME", Path.home() / ".cache" / "huggingface")) / "hub" / "models--BAAI--bge-m3"
-    return Check("bge-m3", OK if hf.exists() else WARN, "đã có trong cache HF" if hf.exists() else "chưa tải (tải khi chạy E2)")
+    hub = Path(os.environ.get("HF_HOME", Path.home() / ".cache" / "huggingface")) / "hub"
+    cached = [m for m in ("intfloat/multilingual-e5-base", "BAAI/bge-m3") if (hub / ("models--" + m.replace("/", "--"))).exists()]
+    return Check("local models", OK if cached else WARN,
+                 f"trong cache HF: {', '.join(cached)}" if cached else "chưa tải e5-base / bge-m3 (tải khi chạy E2)")
 
 
 def check_disk(cfg: SBenchConfig) -> Check:

@@ -94,14 +94,17 @@ def score_candidates(profile: Profile, E: np.ndarray, pop: np.ndarray) -> tuple[
     return W_SHORT * s_short + W_POP * pop + W_LONG * s_long, u
 
 
-def mmr_select(score: np.ndarray, E: np.ndarray, candidates: list[int], taxonomy: np.ndarray, k: int) -> list[int]:
+def mmr_select(score: np.ndarray, E: np.ndarray, candidates: list[int], taxonomy: np.ndarray, k: int,
+               max_per_vertical: int | None = MAX_PER_VERTICAL) -> list[int]:
+    """MMR (λ = MMR_LAMBDA) + giới hạn cứng `max_per_vertical` món mỗi taxonomy; `None` = không giới hạn (chỉ cho đánh giá
+    offline với k = 20 — 5 taxonomy × 2 không thể đủ 20; production giữ MAX_PER_VERTICAL)."""
     chosen: list[int] = []
     per_vertical: Counter = Counter()
     cand = list(candidates)
     while cand and len(chosen) < k:
         best, best_val = None, -1e9
         for i in cand:
-            if per_vertical[str(taxonomy[i])] >= MAX_PER_VERTICAL:
+            if max_per_vertical is not None and per_vertical[str(taxonomy[i])] >= max_per_vertical:
                 continue
             div = max((float(E[i] @ E[j]) for j in chosen), default=0.0)
             val = MMR_LAMBDA * float(score[i]) - (1 - MMR_LAMBDA) * div

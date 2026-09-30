@@ -1,0 +1,120 @@
+name: Staging Infra Terraform
+
+# Validates the VM infrastructure root on every change. Plan/apply is manual:
+# run the workflow from main with apply=false to review a plan, apply=true to create it.
+on:
+  pull_request:
+    branches:
+      - main
+      - release-mvp-v1
+      - release-mvp-v2
+      - release-mvp-v3
+    paths:
+      - '.github/workflows/infra-terraform-staging.yml'
+      - 'infra/terraform/**'
+      - 'ops/tests/test_replica_scripts.sh'
+  push:
+    branches:
+      - main
+      - release-mvp-v1
+      - release-mvp-v2
+      - release-mvp-v3
+    paths:
+      - '.github/workflows/infra-terraform-staging.yml'
+      - 'infra/terraform/**'
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: 'Apply the plan (false = plan only)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: infra-terraform-staging
+  cancel-in-progress: false
+
+env:
+  TF_ROOT: infra/terraform/environments/staging
+  TF_IN_AUTOMATION: true
+  TF_INPUT: false
+
+jobs:
+  validate:
+    name: Validate infra Terraform
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '~1.6'
+
+      - name: Check replica scripts and layout
+        run: bash ops/tests/test_replica_scripts.sh
+
+      - name: Check Terraform formatting
+        run: terraform -chdir="$TF_ROOT" fmt -check -recursive
+
+      - name: Initialize without remote backend
+        run: terraform -chdir="$TF_ROOT" init -backend=false -input=false
+
+      - name: Validate Terraform
+        run: terraform -chdir="$TF_ROOT" validate -no-color
+
+  plan_apply_staging:
+    name: Plan (and optionally apply) staging infra
+    if: ${{ github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3') }}
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
+      TF_VAR_region: ${{ vars.GCP_REGION || 'asia-southeast1' }}
+      TF_VAR_zone: ${{ secrets.GCE_ZONE }}
+      TF_VAR_db_primary_vm_name: ${{ vars.GCE_DB_INSTANCE }}
+      TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '~1.6'
+
+      - name: Validate required staging configuration
+        run: |
+          for name in TF_VAR_project_id TF_VAR_zone TF_VAR_db_primary_vm_name TF_STATE_BUCKET; do
+            if [ -z "${!name:-}" ]; then
+              echo "Missing staging configuration: $name" >&2
+              exit 1
+            fi
+          done
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_CI_SERVICE_ACCOUNT }}
+
+      - name: Initialize staging remote state
+        run: |
+          terraform -chdir="$TF_ROOT" init -input=false \
+            -backend-config="bucket=$TF_STATE_BUCKET" \
+            -backend-config='prefix=infra/staging'
+
+      - name: Plan staging infra
+        run: terraform -chdir="$TF_ROOT" plan -input=false -lock-timeout=5m -out=staging.tfplan -no-color
+
+      - name: Apply staging infra
+        if: ${{ inputs.apply }}
+        run: terraform -chdir="$TF_ROOT" apply -input=false -auto-approve staging.tfplan

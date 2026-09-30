@@ -105,10 +105,13 @@ def embed_batches(embedder, batches: list[list[str]], texts: dict[str, str], con
 
 
 def run(*, dry_run: bool = False, backfill_lexical: bool = False, force: bool = False, settings=None,
-        detail_path: Path | str | None = None) -> dict[str, int | str]:
+        detail_path: Path | str | None = None, lexical_only: bool = False) -> dict[str, int | str | bool]:
     """`detail_path`: nếu có, ghi chi tiết từng sản phẩm (xem `write_detail`) kể cả khi job lỗi giữa chừng.
-    `force`: nhúng lại mọi search unit dù text không đổi (chỉ để đo tốc độ, tốn quota Cohere)."""
+    `force`: nhúng lại mọi search unit dù text không đổi (chỉ để đo tốc độ, tốn quota Cohere).
+    `lexical_only`: chỉ PATCH property BM25 còn thiếu; **từ chối** (không ghi gì, `report["refused"]`) khi catalog lệch
+    index — có unit phải embed hoặc object mồ côi phải xoá — để một `DATABASE_URL` trỏ nhầm không xoá vector production."""
     started = time.monotonic()
+    backfill_lexical = backfill_lexical or lexical_only
     settings = settings or get_settings()
     catalog = PostgresCatalogReader(settings.database_url).load()
     version = model_version(settings.embed_model)
@@ -162,6 +165,15 @@ def run(*, dry_run: bool = False, backfill_lexical: bool = False, force: bool = 
             "missingLexical": len(stale_lexical),
             "backfilledLexical": len(stale_lexical) if backfill_lexical else 0,
         }
+        if lexical_only:
+            report["lexicalOnly"] = True
+            if changed or orphans:
+                report["refused"] = (f"--lexical-only: index lệch catalog (embedded {len(changed)}, deletedOrphans {len(orphans)}) "
+                                     "— không ghi gì. Kiểm DATABASE_URL; muốn re-index thì chạy job đầy đủ có chủ đích.")
+                return report
+            if not dry_run:
+                _patch_lexical(client, existing, desired, stale_lexical)
+            return report
         if dry_run or (not changed and not orphans and not (backfill_lexical and stale_lexical)):
             return report
 
@@ -212,11 +224,7 @@ def run(*, dry_run: bool = False, backfill_lexical: bool = False, force: bool = 
                           seconds=round(time.monotonic() - started, 1))
 
         if backfill_lexical:
-            for done, product_id in enumerate(stale_lexical, 1):
-                text, _digest, name = desired[product_id]
-                client.patch_properties(existing[product_id].uuid, lexical_properties(name, text))
-                if done % 200 == 0 or done == len(stale_lexical):
-                    print(f"backfilled lexical {done}/{len(stale_lexical)}", flush=True)
+            _patch_lexical(client, existing, desired, stale_lexical)
 
         client.delete([existing[product_id].uuid for product_id in orphans])
         orphans_deleted = True
@@ -227,6 +235,15 @@ def run(*, dry_run: bool = False, backfill_lexical: bool = False, force: bool = 
             write_detail(Path(detail_path), catalog, desired, reasons, previews, orphans, orphans_deleted)
 
 
+def _patch_lexical(client, existing: dict, desired: dict, stale_lexical: list[str]) -> None:
+    """Ghi property BM25 cho object đã index mà còn thiếu — giữ nguyên vector, không gọi Cohere."""
+    for done, product_id in enumerate(stale_lexical, 1):
+        text, _digest, name = desired[product_id]
+        client.patch_properties(existing[product_id].uuid, lexical_properties(name, text))
+        if done % 200 == 0 or done == len(stale_lexical):
+            print(f"backfilled lexical {done}/{len(stale_lexical)}", flush=True)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true", help="chỉ đếm phần cần cập nhật, không gọi Cohere hoặc ghi Weaviate")
@@ -234,10 +251,12 @@ def main(argv: list[str] | None = None) -> int:
                         help="ghi property BM25 (nameAscii/searchTextAscii) cho object đã index mà còn thiếu; không gọi Cohere")
     parser.add_argument("--force", action="store_true",
                         help="nhúng lại mọi search unit dù text không đổi (đo tốc độ; tốn quota Cohere)")
+    parser.add_argument("--lexical-only", action="store_true",
+                        help="chỉ PATCH property BM25 còn thiếu; từ chối (mã thoát 2) khi catalog lệch index — không embed, không xoá")
     args = parser.parse_args(argv)
-    print(json.dumps(run(dry_run=args.dry_run, backfill_lexical=args.backfill_lexical, force=args.force),
-                     ensure_ascii=False, indent=2))
-    return 0
+    report = run(dry_run=args.dry_run, backfill_lexical=args.backfill_lexical, force=args.force, lexical_only=args.lexical_only)
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+    return 2 if report.get("refused") else 0
 
 
 if __name__ == "__main__":

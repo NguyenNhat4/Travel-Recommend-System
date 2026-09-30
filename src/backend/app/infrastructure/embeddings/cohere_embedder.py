@@ -146,3 +146,8 @@ class CohereEmbedder:
 
     def embed_query(self, q: str) -> np.ndarray:
         return self._request([q], "search_query")[0]
+
+    def embed_queries(self, texts: list[str]) -> np.ndarray:
+        """Cả lô câu truy vấn (prewarm cache): `search_query`, chunk 96 — không được dùng cho text catalog."""
+        chunks = [self._request(texts[i : i + self.batch_size], "search_query") for i in range(0, len(texts), self.batch_size)]
+        return np.concatenate(chunks) if chunks else np.empty((0, self.dimension), dtype=np.float32)

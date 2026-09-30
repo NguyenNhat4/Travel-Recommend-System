@@ -131,6 +131,47 @@ def test_dsn_is_passed_unchanged_without_a_startup_options_parameter(monkeypatch
     assert "options" not in calls[0]["kwargs"]
 
 
+def test_all_events_is_a_deterministic_bulk_read_without_statement_timeout(monkeypatch):
+    calls = fake_connect(monkeypatch)
+    PostgresCdpReader(DSN).all_events()
+    (sql, params), = calls[0]["executed"]  # chỉ một câu SELECT, không set_config
+    assert "WHERE" not in sql and params == ()
+    assert sql.rstrip().endswith('ORDER BY cdp_user_id, "timestamp", event_id')
+
+
+def test_all_events_until_cuts_at_the_store(monkeypatch):
+    calls = fake_connect(monkeypatch)
+    until = datetime(2026, 9, 24, tzinfo=timezone.utc)
+    PostgresCdpReader(DSN).all_events(until=until)
+    (sql, params), = calls[0]["executed"]
+    assert 'WHERE "timestamp" < %s' in sql and params == (until,)
+
+
+def test_all_profiles_is_a_deterministic_bulk_read_in_camel_case(monkeypatch):
+    rows = [("VP0000002", "new", None, 0, "Member", [], "Hà Nội", None),
+            ("VP0000001", "active", 3, 4, "Gold", ["hotel", "flight"], "TP. Hồ Chí Minh", "Nha Trang")]
+    calls = fake_connect(monkeypatch, rows=rows)
+    got = PostgresCdpReader(DSN).all_profiles()
+    (sql, params), = calls[0]["executed"]          # một câu SELECT, không set_config (đọc lô)
+    assert "FROM cdp.profiles" in sql and "ORDER BY cdp_user_id" in sql and params == ()
+    assert got[1] == {"cdpUserId": "VP0000001", "lifecycleStage": "active", "daysSinceLastBooking": 3, "lifetimeOrderCount": 4,
+                      "vinclubTier": "Gold", "purchasedVerticals": ["hotel", "flight"], "homeCity": "TP. Hồ Chí Minh",
+                      "lastDestination": "Nha Trang"}
+    assert got[0]["daysSinceLastBooking"] is None and got[0]["purchasedVerticals"] == []
+
+
+def test_all_profiles_outage_becomes_cdp_unavailable(monkeypatch):
+    fake_connect(monkeypatch, error=psycopg.OperationalError("connection refused"))
+    with pytest.raises(CdpUnavailableError):
+        PostgresCdpReader(DSN).all_profiles()
+
+
+def test_all_events_outage_becomes_cdp_unavailable(monkeypatch):
+    fake_connect(monkeypatch, error=psycopg.OperationalError("connection refused"))
+    with pytest.raises(CdpUnavailableError):
+        PostgresCdpReader(DSN).all_events()
+
+
 def test_rows_keep_cdp_field_names(monkeypatch):
     row = ("VP0000001", "purchase", datetime(2026, 9, 18, 10, tzinfo=timezone.utc), "R1", "hotel",
            "T1", 1, 3400000, date(2026, 10, 5))

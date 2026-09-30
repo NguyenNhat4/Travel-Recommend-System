@@ -233,6 +233,11 @@ def aggregate(rows: list[dict], cfg: MetricsConfig, *, hub_score_max: float | No
     for s in sorted({r["slice"] for r in rows}):
         rs = [r for r in rows if r["slice"] == s]
         by_slice[s] = {mname: _mean(r[mname] for r in rs)[0] for mname in rank_metrics}
+        # zero-result và constraint precision theo slice (M2 cần zero-result theo slice; slice out_of_catalog thì
+        # zero_result cao là đúng thiết kế — đọc cùng expected_no_result)
+        by_slice[s]["zero_result"] = sum(r["zero_result"] for r in rs) / len(rs)
+        cn = sum(r["constraint_n"] for r in rs)
+        by_slice[s]["constraint_precision"] = (sum(r["constraint_ok"] for r in rs) / cn) if cn else None
         by_slice[s]["n"] = len(rs)
     return {"overall": overall, "by_slice": by_slice, "n_queries": len(rows), "n_defined": n_defined}
 

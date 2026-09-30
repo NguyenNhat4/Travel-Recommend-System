@@ -1,0 +1,34 @@
+- version: gold_v1
+  at: '2026-09-30T18:01:55+07:00'
+  action: import
+  n_queries_active: 132
+  n_queries_retired: 0
+  n_labels: 3359
+  source: pool@gold_v1
+  merged: merged.csv
+  snapshot: '2026-09-23'
+- version: gold_v1
+  at: '2026-09-30T18:02:03+07:00'
+  action: retire
+  n_queries_active: 131
+  n_queries_retired: 1
+  n_labels: 3359
+  retired:
+  - qid: c0463
+    reason: 'pool_miss: 5d210e58 (ve HCM-Da Nang) ngoai pool depth 15'
+- version: gold_v2
+  at: '2026-10-01T09:59:20+07:00'
+  action: holes_import
+  n_queries_active: 131
+  n_queries_retired: 1
+  n_labels: 3971
+  tag: D4a
+  new_labels_by_source:
+    human: 597
+    auto_ooc: 15
+    queries: 121
+  holes_dir: gold_v1__D4a
+  run_id: 20261001-0623-ec5fbd2
+  arms:
+  - B0
+  - E2.e5

@@ -59,6 +59,9 @@ DATASET = os.getenv("SBENCH_DATASET", "jsonl")
 MODE_REVIEW, MODE_SELECTED, MODE_AUTHOR, MODE_LABEL, MODE_CATALOG = (
     "Soát câu hỏi", "Bộ câu đã chọn", "Bổ sung câu hỏi", "Gán nhãn 0/1/2", "Tra cứu catalog")
 MODES = (MODE_REVIEW, MODE_SELECTED, MODE_AUTHOR, MODE_LABEL, MODE_CATALOG)
+# App dùng chung qua link (vd. Cloudflare Tunnel): chỉ chế độ gán nhãn, mỗi người một mã truy cập, khoá theo người gán.
+SHARED = os.getenv("LABELING_SHARED", "").strip() == "1"
+SHARED_CODE_MIN = 12
 KEEP_AS_IS = "(giữ nguyên)"
 OOC = "out_of_catalog"
 MULTI = "multi_constraint"
@@ -131,6 +134,70 @@ def require_password() -> None:
     if not hmac.compare_digest(supplied, expected):
         st.info("Nhập mật khẩu nhóm ở sidebar để bắt đầu gán nhãn.")
         st.stop()
+
+
+def _public(msg: str) -> str:
+    """Chế độ dùng chung: bỏ đường dẫn tuyệt đối của máy chạy app khỏi thông báo gửi tới trình duyệt."""
+    if not SHARED:
+        return msg
+    for prefix in {str(GOLD_DIR.resolve()), str(GOLD_DIR), str(ROOT.resolve()), str(ROOT)}:
+        msg = msg.replace(prefix, "…")
+    return msg
+
+
+def _shared_codes() -> dict[str, str]:
+    return {x: os.getenv(f"LABELING_CODE_{x}", "") for x in ("A", "B")}
+
+
+def _clear_label_state() -> None:
+    """Bỏ mọi state của chế độ gán nhãn (nhãn đang chờ hạng phòng, ghi chú chờ, lỗi, ô hạng phòng…). Các khoá này đặt theo
+    câu hỏi, không theo người gán — giữ lại qua lần đổi người thì nhãn chờ / ghi chú của A lọt sang file của B."""
+    for k in list(st.session_state):
+        if k.startswith(("lbl", "shared_who")):
+            del st.session_state[k]
+
+
+def _shared_logout() -> None:
+    """Thoát: lưu thay đổi còn dở của câu đang mở (lưu được dòng nào thì ghi dòng đó), rồi xoá hết state gán nhãn."""
+    try:
+        _lbl_save(st.session_state.get("lbl_qid"))
+    except Exception as exc:                                    # không chặn thoát vì lỗi lưu
+        print(f"[label-share] lưu khi thoát lỗi: {type(exc).__name__}", file=sys.stderr)
+    _clear_label_state()
+
+
+def require_shared_access() -> str:
+    """App dùng chung: mỗi người gán nhập mã riêng (LABELING_CODE_A / LABELING_CODE_B) và bị khoá vào đúng pool / file nhãn
+    của mình — không chọn được người kia, không vào được chế độ khác, không nhập đường dẫn. Thiếu mã hoặc mã yếu thì
+    không mở gì cả."""
+    import time
+
+    codes = _shared_codes()
+    if any(len(c) < SHARED_CODE_MIN for c in codes.values()) or codes["A"] == codes["B"]:
+        st.error(f"App dùng chung chưa cấu hình mã truy cập: cần LABELING_CODE_A và LABELING_CODE_B khác nhau, mỗi mã "
+                 f"≥ {SHARED_CODE_MIN} ký tự.")
+        st.stop()
+    ss = st.session_state
+    if ss.get("shared_who") in codes:
+        return ss["shared_who"]
+    st.title("Gán nhãn relevance 0/1/2")
+    with st.form("shared_login"):
+        supplied = st.text_input("Mã truy cập của bạn", type="password", key="shared_code")
+        submitted = st.form_submit_button("Vào", type="primary")
+    if submitted:
+        got = (supplied or "").strip().encode("utf-8")
+        match = [x for x, c in codes.items() if hmac.compare_digest(got, c.encode("utf-8"))]   # so cả hai mã, không dừng sớm
+        if match:
+            _clear_label_state()
+            ss["shared_who"] = match[0]
+            st.rerun()
+        time.sleep(1)                                           # làm chậm việc đoán mã
+        st.error("Mã truy cập không đúng.")
+    st.stop()
+
+
+# chế độ dùng chung: kiểm mã ngay ở đây — khách chưa có mã dừng trước khi phần lớn script (≈ 1.100 dòng) chạy
+SHARED_WHO = require_shared_access() if SHARED else None
 
 
 def next_case_id(visible_ids: list[str], current_id: str, direction: int = 1) -> str:
@@ -805,100 +872,183 @@ def _use_label_fixture() -> None:
     ss.pop("lbl_qid", None)
 
 
+def _lbl_editor_key(who: str, qid: str, ver: int) -> str:
+    return f"lbl-ed-{who}-{qid}-{ver}"
+
+
+def _lbl_pending(s, qid: str, labels: dict, prov: dict | None = None) -> dict[str, dict]:
+    """Thay đổi CHƯA LƯU của câu đang mở: bảng (nhãn / ghi chú / ô duyệt) và ô hạng phòng → product_id → {label, note,
+    children?, tick?}. Chỉnh bảng không ghi file — chỉ nút Lưu hoặc lúc rời câu mới ghi. Chỉ số dòng của bảng ứng với
+    danh sách dòng đang hiện (`lbl_editor`, có thể đã lọc)."""
+    ss = st.session_state
+    ver = ss.get(f"lbl-ver-{qid}", 0)
+    prov = prov or {}
+    out: dict[str, dict] = {}
+    ed = ss.get("lbl_editor") or {}
+    if ed.get("qid") == qid and ed.get("labeler") == s.labeler:
+        pids = ed.get("pids") or []
+        for idx, change in (ss.get(ed.get("key")) or {}).get("edited_rows", {}).items():
+            try:
+                pid = pids[int(idx)]
+            except (ValueError, IndexError, TypeError):            # client gửi chỉ số lạ → bỏ qua dòng đó
+                continue
+            cur = labels.get((qid, pid))
+            base = ((str(cur.label) if cur else None), (cur.note if cur else ""))
+            d = {"label": change["nhãn"] if "nhãn" in change else base[0],
+                 "note": change["ghi chú"] if "ghi chú" in change else base[1]}
+            if (d["label"], d["note"] or "") != (base[0], base[1] or ""):
+                out[pid] = d
+            if "duyệt" in change:
+                was = bool((prov.get((qid, pid)) or {}).get("review"))
+                if bool(change["duyệt"]) != was:
+                    out.setdefault(pid, {"label": base[0], "note": base[1]})["tick"] = bool(change["duyệt"])
+    for r in s.by_qid[qid]:
+        k = f"lbl-ch-{qid}-{r.product_id}-{ver}"
+        if k not in ss:
+            continue
+        cur = labels.get(r.key)
+        saved_children = list(cur.children_ok) if cur and cur.label == 2 else []
+        if sorted(ss[k] or []) != sorted(saved_children):
+            d = out.setdefault(r.product_id, {"label": str(cur.label) if cur else None, "note": cur.note if cur else ""})
+            d["children"] = list(ss[k] or [])
+    return out
+
+
+def _lbl_save(qid: str | None) -> bool:
+    """Ghi mọi thay đổi chưa lưu của câu `qid` (nhãn + duyệt). True = không còn gì chưa lưu.
+    Duyệt: tick = chấp nhận nhãn hiện có; sửa nhãn của cặp máy gán = đã duyệt kiểu sửa; bỏ tick = về chưa duyệt — cần tên
+    người duyệt. Có dòng lỗi (vd. nhãn 2 chưa tick hạng phòng) → giữ nguyên bảng để sửa; dòng hợp lệ vẫn đã ghi."""
+    from evaluation.search_bench import labeling_core as L
+    ss = st.session_state
+    if not qid:
+        return True
+    s = _label_session()
+    if qid not in s.by_qid:
+        return True
+    labels, prov = L.load_labels(s), L.load_provenance(s)
+    pending = _lbl_pending(s, qid, labels, prov)
+    if not pending:
+        ss[f"lbl-err-{qid}"] = []
+        return True
+    reviewer = (ss.get("lbl_reviewer") or "").strip()
+    plan = L.plan_save(qid, pending, labels, prov)
+    if plan["needs_reviewer"] and not reviewer:
+        ss[f"lbl-err-{qid}"] = ["Nhập **tên người duyệt** ở sidebar để lưu việc duyệt (tick, bỏ tick, hoặc sửa nhãn máy)."]
+        ss[f"lbl-msg-{qid}"] = "Chưa lưu gì."
+        return False
+    errors, saved = L.apply_changes(s, qid, plan["label_changes"]) if plan["label_changes"] else ([], [])
+    now_labeled = L.load_labels(s)
+    unlabeled = [pid for pid in plan["tick_on"] if (qid, pid) not in now_labeled]
+    errors += [f"{s.by_key[(qid, pid)].name}: chưa có nhãn — gán nhãn trước rồi mới duyệt" for pid in unlabeled]
+    accepted = [(qid, pid) for pid in plan["tick_on"] if pid not in unlabeled
+                and not (pid in plan["machine"] and pid in saved)]
+    edited = [(qid, pid) for pid in saved if pid in plan["machine"]]
+    unticked = [(qid, pid) for pid in plan["tick_off"]]
+    L.record_review(s, accepted, edited, unticked, reviewer)
+    n = len(saved) + len(accepted) + len(unticked)
+    ss[f"lbl-err-{qid}"] = errors
+    if errors:
+        ss[f"lbl-msg-{qid}"] = f"Đã lưu {n} thay đổi — sửa các dòng báo lỗi rồi bấm Lưu lại."
+        return False
+    ss[f"lbl-msg-{qid}"] = f"Đã lưu {n} thay đổi."
+    ss[f"lbl-ver-{qid}"] = ss.get(f"lbl-ver-{qid}", 0) + 1                  # bảng mới dựng từ file vừa ghi
+    return True
+
+
+def _lbl_accept_all(qid: str) -> None:
+    """Nút “Duyệt tất cả nhãn máy” của câu đang mở: lưu thay đổi còn dở trước (nhãn máy vừa sửa → “đã sửa”), rồi chấp
+    nhận mọi nhãn máy chưa duyệt còn lại của câu. Cần tên người duyệt."""
+    from evaluation.search_bench import labeling_core as L
+    ss = st.session_state
+    reviewer = (ss.get("lbl_reviewer") or "").strip()
+    if not reviewer:
+        ss[f"lbl-err-{qid}"] = ["Nhập **tên người duyệt** ở sidebar trước khi duyệt."]
+        return
+    if not _lbl_save(qid):
+        return
+    keys = L.accept_all_machine(_label_session(), qid, reviewer)
+    ss[f"lbl-msg-{qid}"] = f"Đã duyệt {len(keys)} nhãn máy của câu này ({reviewer})."
+    ss[f"lbl-ver-{qid}"] = ss.get(f"lbl-ver-{qid}", 0) + 1                  # bảng mới: cột duyệt đã tick
+
+
+def _lbl_filter_change() -> None:
+    """Đổi bộ lọc câu / dòng: lưu câu đang mở trước (bảng sắp dựng lại theo bộ lọc mới)."""
+    _lbl_save(st.session_state.get("lbl_open"))
+
+
+def _lbl_save_click(qid: str) -> None:
+    _lbl_save(qid)
+
+
 def _lbl_step(qids: list[str], d: int) -> None:
+    """Trước / Sau: lưu câu đang mở trước khi chuyển; lưu lỗi thì ở lại."""
     ss = st.session_state
     cur = ss.get("lbl_qid")
+    if not _lbl_save(cur):
+        return
     i = qids.index(cur) if cur in qids else 0
     ss["lbl_qid"] = qids[(i + d) % len(qids)]
+
+
+def _lbl_select() -> None:
+    """Chọn câu khác ở ô chọn: lưu câu vừa rời (`lbl_open`); lưu lỗi thì quay lại câu đó."""
+    ss = st.session_state
+    old = ss.get("lbl_open")
+    if old and old != ss.get("lbl_qid") and not _lbl_save(old):
+        ss["lbl_qid"] = old
 
 
 def _lbl_next_unfinished() -> None:
     from evaluation.search_bench import labeling_core as L
     ss = st.session_state
+    cur = ss.get("lbl_qid")
+    if not _lbl_save(cur):
+        return
     s = _label_session()
-    nxt = L.next_unfinished(s, L.load_labels(s), ss.get("lbl_qid"))
+    nxt = L.next_unfinished(s, L.load_labels(s), cur)
     if nxt:
         ss["lbl_qid"] = nxt
     else:
-        ss[f"lbl-err-{ss.get('lbl_qid')}"] = ["Đã gán xong mọi câu của pool này."]
+        ss[f"lbl-msg-{cur}"] = "Đã gán xong mọi câu của pool này."
 
 
-def _lbl_edit(key: str, qid: str, pids: list[str]) -> None:
-    """Callback của bảng: lưu ngay mọi dòng vừa sửa (nhãn / ghi chú); nhãn 2 ở parent_child chờ chọn hạng phòng."""
-    from evaluation.search_bench import labeling_core as L
-    ss = st.session_state
-    s = _label_session()
-    labels = L.load_labels(s)
-    pend = set(ss.get(f"lbl-pend-{qid}") or set())
-    errors: list[str] = []
-    for idx, change in (ss.get(key) or {}).get("edited_rows", {}).items():
-        pid = pids[int(idx)]
-        row = s.by_key[(qid, pid)]
-        cur = labels.get((qid, pid))
-        lab = change["nhãn"] if "nhãn" in change else (str(cur.label) if cur else None)
-        note = change.get("ghi chú", cur.note if cur else "") or ""
-        if lab in (None, ""):
-            pend.discard(pid)
-            errors += L.clear_label(s, qid, pid) if cur else []
-            if note.strip() and not cur:
-                errors.append(f"{row.name}: chọn nhãn trước rồi mới ghi chú")
-            continue
-        children = cur.children_ok if cur and cur.label == 2 else []
-        errs = L.save_label(s, qid, pid, int(lab), children, note)
-        if errs and int(lab) == 2 and row.children and not children:
-            pend.add(pid)
-            ss[f"lbl-pendnote-{qid}-{pid}"] = note
-            errors.append(f"{row.name}: nhãn 2 — tick hạng phòng đúng loại ở bên dưới để lưu")
-        elif errs:
-            errors += [f"{row.name}: {e}" for e in errs]
-        else:
-            pend.discard(pid)
-    ss[f"lbl-pend-{qid}"] = pend
-    ss[f"lbl-err-{qid}"] = errors
-    ss[f"lbl-ver-{qid}"] = ss.get(f"lbl-ver-{qid}", 0) + 1                 # bảng mới dựng từ file nhãn vừa ghi
-
-
-def _lbl_children(qid: str, pid: str, key: str) -> None:
-    """Callback ô hạng phòng: lưu nhãn 2 kèm hạng phòng đã tick (thứ tự theo pool)."""
-    from evaluation.search_bench import labeling_core as L
-    ss = st.session_state
-    s = _label_session()
-    cur = L.load_labels(s).get((qid, pid))
-    ids = list(ss.get(key) or [])
-    note = cur.note if cur else ss.get(f"lbl-pendnote-{qid}-{pid}", "")
-    if not ids:
-        ss[f"lbl-err-{qid}"] = [f"{s.by_key[(qid, pid)].name}: nhãn 2 cần ít nhất một hạng phòng — không có hạng đúng "
-                                "loại thì đổi nhãn thành 0 (gần đúng thì 1)"]
-        ss[f"lbl-ver-{qid}"] = ss.get(f"lbl-ver-{qid}", 0) + 1
-        return
-    errs = L.save_label(s, qid, pid, 2, ids, note)
-    ss[f"lbl-err-{qid}"] = [f"{s.by_key[(qid, pid)].name}: {e}" for e in errs]
-    if not errs:
-        pend = set(ss.get(f"lbl-pend-{qid}") or set())
-        pend.discard(pid)
-        ss[f"lbl-pend-{qid}"] = pend
-    ss[f"lbl-ver-{qid}"] = ss.get(f"lbl-ver-{qid}", 0) + 1
-
-
-def render_labeling() -> None:
+def render_labeling(shared_who: str | None = None) -> None:
+    """`shared_who` (app dùng chung): người gán đã khoá theo mã truy cập — không có ô chọn người, ô đường dẫn, nút
+    fixture; pool / nhãn luôn là của `gold/` trên máy chạy app."""
     import pandas as pd
 
     from evaluation.search_bench import labeling_core as L
     ss = st.session_state
     st.title("Gán nhãn relevance 0/1/2")
+    if shared_who:
+        ss["lbl_who"] = shared_who
+        ss["lbl_meta"] = str(GOLD_DIR / "pool_meta.json")
+        ss["lbl_pool"] = ""
+        ss["lbl_labels"] = ""
     ss.setdefault("lbl_meta", str(GOLD_DIR / "pool_meta.json"))
     with st.sidebar:
         st.header("Người gán")
-        st.radio("Bạn là người gán", ["A", "B"], index=None, key="lbl_who", horizontal=True,
-                 help="Cố định trong phiên: app chỉ mở pool_X.csv và labels/labels_X.csv của bạn, không bao giờ đọc "
-                      "nhãn của người kia (25 câu chung phải gán độc lập).")
-        st.text_input("pool_meta.json", key="lbl_meta")
-        with st.expander("Đường dẫn khác / thử với fixture"):
-            st.text_input("pool_X.csv (trống = theo meta)", key="lbl_pool")
-            st.text_input("labels_X.csv (trống = labels/ cạnh meta)", key="lbl_labels")
-            st.button("Dùng bản thử fixture gold_small", on_click=_use_label_fixture,
-                      help="Chép pool của fixture vào bench_out/search/label_try/ rồi mở — nhãn ghi ở đó, không đụng gold/.")
-        st.button("Tải lại file", on_click=_label_session_cached.clear)
+        if shared_who:
+            st.markdown(f"Bạn là người gán **{shared_who}**. Nhãn ghi trên máy chạy app khi bấm **Lưu** hoặc khi "
+                        "chuyển sang câu khác.")
+            st.text_input("Tên người duyệt", key="lbl_reviewer",
+                          help="Ghi vào file nguồn nhãn khi tick duyệt, bỏ tick, hoặc sửa nhãn do máy gán.")
+            st.button("Tải lại file", on_click=_label_session_cached.clear)
+            st.button("Thoát", on_click=_shared_logout)
+        else:
+            st.radio("Bạn là người gán", ["A", "B"], index=None, key="lbl_who", horizontal=True,
+                     help="Cố định trong phiên: app chỉ mở pool_X.csv và labels/labels_X.csv của bạn, không bao giờ đọc "
+                          "nhãn của người kia (25 câu chung phải gán độc lập).")
+            st.text_input("pool_meta.json", key="lbl_meta")
+            with st.expander("Đường dẫn khác / thử với fixture"):
+                st.text_input("pool_X.csv (trống = theo meta)", key="lbl_pool")
+                st.text_input("labels_X.csv (trống = labels/ cạnh meta)", key="lbl_labels")
+                st.button("Dùng bản thử fixture gold_small", on_click=_use_label_fixture,
+                          help="Chép pool của fixture vào bench_out/search/label_try/ rồi mở — nhãn ghi ở đó, không "
+                               "đụng gold/.")
+            st.text_input("Tên người duyệt", key="lbl_reviewer",
+                          help="Ghi vào file nguồn nhãn khi tick duyệt, bỏ tick, hoặc sửa nhãn do máy gán.")
+            st.button("Tải lại file", on_click=_label_session_cached.clear)
     with st.expander("Luật gán nhãn (tóm tắt gold-guide.md)"):
         st.markdown(GUIDE_SHORT)
     who = ss.get("lbl_who")
@@ -907,14 +1057,22 @@ def render_labeling() -> None:
         return
     meta = Path(ss["lbl_meta"].strip())
     if not meta.exists():
+        if shared_who:
+            st.info("Máy chạy app chưa có pool gán nhãn — báo người chạy app.")
+            return
         st.info(f"Chưa có `{meta}`. Pool thật có sau khi chốt drafts.txt rồi chạy `gold pool` và `gold split`. Muốn thử "
                 "app: sidebar → “Dùng bản thử fixture gold_small”.")
         return
     try:
         s = _label_session()
         labels = L.load_labels(s)
+        prov = L.load_provenance(s)
     except (L.SessionError, ValueError, KeyError) as exc:
-        st.error(str(exc))
+        if shared_who:
+            print(f"[label-share] không mở được phiên {who}: {exc}", file=sys.stderr)
+            st.error("Không mở được pool / file nhãn trên máy chạy app — báo người chạy app.")
+        else:
+            st.error(str(exc))
         return
 
     p = L.progress(s, labels)
@@ -923,24 +1081,47 @@ def render_labeling() -> None:
     m[1].metric("Cặp đã gán", f"{p['done_pairs']}/{p['total_pairs']}")
     m[2].metric("Nhãn 2 · 1 · 0", f"{p['dist'][2]} · {p['dist'][1]} · {p['dist'][0]}")
     m[3].metric("Người gán", who)
-    st.caption(f"Pool: `{s.pool_path}` · nhãn ghi vào: `{s.labels_path}` (lưu ngay sau mỗi lần sửa).")
+    rv = L.review_stats(s, labels, prov)
+    st.caption(f"Nguồn nhãn: người {rv['human']} · máy {rv['machine']} (chưa duyệt {rv['machine_unreviewed']}, đã duyệt "
+               f"{rv['machine_accepted']}, đã sửa {rv['machine_edited']}).")
+    if shared_who:                                      # không lộ đường dẫn trên máy chạy app
+        st.caption(f"Pool: `{s.pool_path.name}` · nhãn ghi vào: `labels/{s.labels_path.name}` trên máy chạy app khi "
+                   "bấm Lưu hoặc chuyển câu. Mỗi người chỉ mở app ở một tab.")
+    else:
+        st.caption(f"Pool: `{s.pool_path}` · nhãn ghi vào: `{s.labels_path}` khi bấm Lưu hoặc chuyển câu.")
 
     if ss.get("lbl_qid") not in s.qids:
         ss["lbl_qid"] = L.resume_qid(s, labels) or s.qids[0]
-    only = st.toggle("Chỉ câu chưa xong", key="lbl_only")
-    shown = [q for q in s.qids if not only or q == ss["lbl_qid"] or not L.question_done(s, labels, q)]
+    def machine_rows(q: str) -> list:
+        return [r for r in s.by_qid[q] if r.key in labels and (prov.get(r.key) or {}).get("source") == L.SOURCE_MACHINE]
+
+    def unreviewed(q: str) -> int:
+        return sum(not (prov.get(r.key) or {}).get("review") for r in machine_rows(q))
+
+    qfilters = {"Tất cả câu": lambda q: True,
+                "Có nhãn máy chưa duyệt": lambda q: unreviewed(q) > 0,
+                "Có nhãn máy": lambda q: bool(machine_rows(q)),
+                "Chỉ nhãn người": lambda q: not machine_rows(q)}
+    fc = st.columns([3, 2])
+    qf = fc[0].selectbox("Lọc câu", list(qfilters), key="lbl_qfilter", on_change=_lbl_filter_change)
+    only = fc[1].toggle("Chỉ câu chưa xong", key="lbl_only")
+    shown = [q for q in s.qids if q == ss["lbl_qid"] or
+             (qfilters[qf](q) and (not only or not L.question_done(s, labels, q)))]
 
     def fmt(q: str) -> str:
         n = sum(r.key in labels for r in s.by_qid[q])
-        return f"{q} · {s.by_qid[q][0].query} — {n}/{len(s.by_qid[q])}{' ✔' if n == len(s.by_qid[q]) else ''}"
+        u = unreviewed(q)
+        return (f"{q} · {s.by_qid[q][0].query} — {n}/{len(s.by_qid[q])}{' ✔' if n == len(s.by_qid[q]) else ''}"
+                f"{f' · 🤖 {u} chưa duyệt' if u else ''}")
 
     c = st.columns([1, 6, 1, 2])
     c[0].button("← Trước", on_click=_lbl_step, args=(s.qids, -1), width="stretch")
-    c[1].selectbox("Câu", shown, key="lbl_qid", format_func=fmt, label_visibility="collapsed")
+    c[1].selectbox("Câu", shown, key="lbl_qid", format_func=fmt, label_visibility="collapsed", on_change=_lbl_select)
     c[2].button("Sau →", on_click=_lbl_step, args=(s.qids, 1), width="stretch")
     c[3].button("Câu chưa xong tiếp theo", on_click=_lbl_next_unfinished, type="primary", width="stretch")
 
     qid = ss["lbl_qid"]
+    ss["lbl_open"] = qid                                    # câu đang mở — để lưu khi rời câu bằng ô chọn
     h = L.header(s, qid)
     st.html(f'<div class="query-card"><div class="case-meta">{escape(qid)} · {escape(h["slice"])}</div>'
             f'<h2>{escape(h["query"])}</h2><div class="case-meta">{escape(h["filter_text"] or "không có điều kiện lọc")}'
@@ -949,38 +1130,75 @@ def render_labeling() -> None:
         st.warning("Câu ngoài catalog — ứng viên thường là 0. Gặp sản phẩm đúng thật thì gán theo luật chung, ghi chú "
                    "và báo lại (câu có thể không còn ngoài catalog).")
 
-    pids = [r.product_id for r in s.by_qid[qid]]
     ver = ss.get(f"lbl-ver-{qid}", 0)
-    key = f"lbl-ed-{who}-{qid}-{ver}"
-    df = pd.DataFrame(L.candidate_rows(s, qid, labels))
-    st.data_editor(
-        df, key=key, hide_index=True, width="stretch", num_rows="fixed", on_change=_lbl_edit, args=(key, qid, pids),
-        disabled=[col for col in df.columns if col not in ("nhãn", "ghi chú")],
+    rfilters = {"Tất cả": lambda r: True,
+                "Máy gán": lambda r: (prov.get(r.key) or {}).get("source") == L.SOURCE_MACHINE,
+                "Người gán": lambda r: r.key in labels and (prov.get(r.key) or {}).get("source") != L.SOURCE_MACHINE,
+                "Chưa duyệt": lambda r: r.key in labels and not (prov.get(r.key) or {}).get("review"),
+                "Đã duyệt": lambda r: bool((prov.get(r.key) or {}).get("review"))}
+    rf = st.radio("Hiện dòng", list(rfilters), key="lbl_rfilter", horizontal=True, on_change=_lbl_filter_change)
+    rows_all = L.candidate_rows(s, qid, labels)
+    keep = [i for i, r in enumerate(s.by_qid[qid]) if rfilters[rf](r)]
+    for i, r in enumerate(s.by_qid[qid]):
+        p = prov.get(r.key)
+        rows_all[i] = {"duyệt": bool((p or {}).get("review")), **rows_all[i],
+                       "nguồn": L.source_of(p) if r.key in labels else "",
+                       "lý do máy": (p or {}).get("machine_note", "") if (p or {}).get("source") == L.SOURCE_MACHINE else ""}
+    key = f"{_lbl_editor_key(who, qid, ver)}-{list(rfilters).index(rf)}"
+    ss["lbl_editor"] = {"qid": qid, "labeler": who, "key": key, "pids": [s.by_qid[qid][i].product_id for i in keep]}
+    df = pd.DataFrame([rows_all[i] for i in keep], columns=list(rows_all[0]) if rows_all else None)
+    if not keep:
+        st.info(f"Câu này không có dòng nào khớp bộ lọc “{rf}”.")
+    st.data_editor(                                   # không on_change: chỉnh bảng không ghi file, bấm Lưu mới ghi
+        df, key=key, hide_index=True, width="stretch", num_rows="fixed",
+        disabled=[col for col in df.columns if col not in ("nhãn", "ghi chú", "duyệt")],
         column_config={
+            "duyệt": st.column_config.CheckboxColumn("duyệt", width="small",
+                                                     help="Tick = đã xem và đồng ý nhãn hiện có (cần tên người duyệt)"),
+            "nguồn": st.column_config.TextColumn("nguồn", width="small"),
+            "lý do máy": st.column_config.TextColumn("lý do máy", width="medium"),
             "nhãn": st.column_config.SelectboxColumn("nhãn", options=LABEL_OPTIONS, width="small",
                                                      help="2 đúng · 1 một phần · 0 không liên quan · trống = chưa gán"),
-            "ghi chú": st.column_config.TextColumn("ghi chú", width="medium"),
+            "ghi chú": st.column_config.TextColumn("ghi chú", width="medium", max_chars=L.NOTE_MAX),
             "name": st.column_config.TextColumn("tên", width="medium"),
             "taxonomy": "loại", "destination": "điểm đến",
             "star_rating": st.column_config.NumberColumn("sao", format="%.1f", width="small"),
             "amenities": st.column_config.TextColumn("tiện ích", width="medium"),
             "snippet": st.column_config.TextColumn("mô tả", width="large"),
         })
-    for e in ss.get(f"lbl-err-{qid}", []):
-        st.error(e)
+    pending = _lbl_pending(s, qid, labels, prov)
     if h["children_visible"]:
-        pend = ss.get(f"lbl-pend-{qid}") or set()
-        need = [r for r in s.by_qid[qid] if (labels.get(r.key) and labels[r.key].label == 2) or r.product_id in pend]
+        def label_now(r) -> str | None:
+            if r.product_id in pending:
+                return pending[r.product_id]["label"]
+            return str(labels[r.key].label) if r.key in labels else None
+        need = [r for r in s.by_qid[qid] if label_now(r) == "2" and r.children]
         if need:
             st.markdown("**Hạng phòng đúng loại** — bắt buộc tick ít nhất một hạng với nhãn 2.")
         for r in need:
             k = f"lbl-ch-{qid}-{r.product_id}-{ver}"
             cur = labels.get(r.key)
             if k not in ss:
-                ss[k] = list(cur.children_ok) if cur else []
+                ss[k] = list(cur.children_ok) if cur and cur.label == 2 else []
             names = {ch.id: ch.name for ch in r.children}
-            st.multiselect(r.name, list(names), key=k, format_func=lambda i, n=names: n.get(i, i),
-                           on_change=_lbl_children, args=(qid, r.product_id, k))
+            st.multiselect(r.name, list(names), key=k, format_func=lambda i, n=names: n.get(i, i))
+        pending = _lbl_pending(s, qid, labels, prov)
+    n_machine = len(L.unreviewed_machine(s, qid, labels, prov))
+    has_reviewer = bool((ss.get("lbl_reviewer") or "").strip())
+    c = st.columns([2, 3, 4])
+    c[0].button(f"💾 Lưu ({len(pending)})" if pending else "💾 Lưu", type="primary", on_click=_lbl_save_click,
+                args=(qid,), disabled=not pending, width="stretch", key="lbl_save")
+    c[1].button(f"✓ Duyệt tất cả nhãn máy ({n_machine})", on_click=_lbl_accept_all, args=(qid,),
+                disabled=not n_machine or not has_reviewer, width="stretch", key="lbl_accept_all",
+                help="Chấp nhận mọi nhãn máy chưa duyệt của câu này (lưu thay đổi còn dở trước). Cần tên người duyệt.")
+    c[2].caption((f"{len(pending)} thay đổi chưa lưu — bấm Lưu, hoặc chuyển sang câu khác (tự lưu)." if pending
+                  else "Không có thay đổi chưa lưu.")
+                 + (" Nhập tên người duyệt ở sidebar để duyệt." if n_machine and not has_reviewer else ""))
+    msg = ss.pop(f"lbl-msg-{qid}", None)
+    if msg:
+        (st.warning if ss.get(f"lbl-err-{qid}") else st.success)(msg)
+    for e in ss.get(f"lbl-err-{qid}", []):
+        st.error(_public(e))
 
 
 # ------------------------------------------------------------------ chế độ 2: bổ sung câu hỏi theo ý định
@@ -1202,6 +1420,9 @@ def render_catalog() -> None:
 
 
 # ------------------------------------------------------------------ main
+if SHARED:
+    render_labeling(SHARED_WHO)
+    st.stop()
 require_password()
 with st.sidebar:
     mode = st.radio("Chế độ", MODES, key="mode")

@@ -32,7 +32,7 @@ So với plan ngày 23/09 (chiều 1 T0–T7 / E, chiều 2 R0–R6) và plan We
 | `attribute_vector` riêng (R6 plan cũ) | S10 | **Giai đoạn 3**, không chạy tuần này |
 | E4.w60 trùng T4 (T4 đã dùng 60 từ) | E4 thành w30 / w150 / full, w60 = arm E1 thắng | — |
 
-Tổng: **43 arm** — 39 bắt buộc, 3 tuỳ chọn (E2.gte, S1.k1b, S9), 1 giai đoạn 3 (S10). *(Bản trước ghi nhầm 36 / 6 / 1.)* Hai arm bắt buộc có điều kiện: E6 chỉ chạy khi model chốt là Cohere; E4.* bị bỏ qua nếu E1a chọn T1 (không có description).
+Tổng: **50 arm** — 46 bắt buộc (30/09 thêm E2.e5 theo lịch 10 ngày M2 "≥ 1 arm E so Cohere vs `multilingual-e5-base`", và 6 arm cổng **APP** đi đúng `SearchProducts` của backend cho ba dòng dense-only / hybrid / hybrid + normalize của M2 — xem mục "Cổng APP" ở §2), 3 tuỳ chọn (E2.gte, S1.k1b, S9), 1 giai đoạn 3 (S10). *(Bản trước ghi nhầm 36 / 6 / 1.)* Hai arm bắt buộc có điều kiện: E6 chỉ chạy khi model chốt là Cohere; E4.* bị bỏ qua nếu E1a chọn T1 (không có description).
 
 Collection Weaviate: 14–16 collection chính (8–9 text variant, 0–3 độ dài, 3 model, 1 int8) + 2 collection vector phụ (doc, qry) + collection phụ cho P4/P5 nếu luồng dùng vector phụ. Chi phí Cohere cho toàn bộ ước **$0,5–2** tuỳ số search unit thật (1.125–5.000) và độ dài `embed_text`, cộng ~$0,8 cho rerank ở S8 và P6.
 
@@ -60,6 +60,7 @@ Collection Weaviate: 14–16 collection chính (8–9 text variant, 0–3 độ 
 | **E2.v4** | E2 | `@E4` | model `embed-v4.0` 1024-d | có | nDCG × latency | ✔ |
 | **E2.bge** | E2 | `@E4` | model `bge-m3` local | có | no_diacritics, audience | ✔ |
 | **E2.gte** | E2 | `@E4` | model `gte-multilingual-base` local | có | như trên | tuỳ chọn |
+| **E2.e5** | E2 | B0 (= `@E4` khi bỏ qua E1a–E4, 30/09) | model `intfloat/multilingual-e5-base` local, 768-d, prefix `query:` / `passage:` | có | no_diacritics, audience, abbrev — M2: Cohere vs e5 | ✔ (30/09) |
 | **E3** | SAN | B0 | query embed bằng `search_document` (sai cố ý) | không | phải **giảm** | ✔ |
 | **E4.w30** | E4 | `@E1b` | description ≤ 30 từ | có | audience, hub | ✔ |
 | **E4.w150** | E4 | `@E1b` | description ≤ 150 từ | có | như trên | ✔ |
@@ -91,6 +92,12 @@ Collection Weaviate: 14–16 collection chính (8–9 text variant, 0–3 độ 
 | **P4** | Pb | `@Pa` | luồng: `@Pa` với cohere-v4, cutoff sweep lại | — | bảng cuối | ✔ |
 | **P5** | Pb | `@Pa` | luồng: `@Pa` với bge-m3, cutoff sweep lại | — | bảng cuối | ✔ |
 | **P6** | Pc | `@best(Pa, Pb)` | luồng tốt nhất của Pa/Pb + `rerank-v3.5` | — | bảng cuối | ✔ |
+| **APP.dense** | APP | B0 | `SearchProducts` production, dense-only (top-200 → cosine ≥ 0,62 → sắp theo cosine), câu gốc | `ProductBench` (vector B0, hnsw) | mọi metric — dòng "dense-only" của M2 | ✔ (30/09) |
+| **APP.dense_nocut** | APP | APP.dense | như trên, không cutoff (≈ B0; tách hiệu ứng ngưỡng) | không | như trên | ✔ (30/09) |
+| **APP.hybrid** | APP | APP.dense | + BM25 top-50, luật vớt (lexicalK 10 / cutoff 0,50 / phủ tên 0,6), RRF k=60 — đúng `/search` hybrid | không | dòng "hybrid" của M2; contract S9 | ✔ (30/09) |
+| **APP.hybrid_nocut** | APP | APP.hybrid | như trên, không cutoff (chỉ hiệu ứng xếp hạng) | không | như trên | ✔ (30/09) |
+| **APP.hybrid_norm** | APP | APP.hybrid | + `QueryNormalizer` của backend (cấu hình production hiện nay) | không | dòng "hybrid + normalize" của M2; contract S10 (abbrev_typo, audience_style) | ✔ (30/09) |
+| **APP.hybrid_norm_nocut** | APP | APP.hybrid_norm | như trên, không cutoff | không | như trên | ✔ (30/09) |
 
 `@<cổng>` = arm được promote ở cổng đó (ví dụ `@E1a` = text base thắng E1a; `@S4` = cách xử lý amenity thắng S4). `arms/*.yaml` ghi đúng tham chiếu này; giá trị thật giải lúc chạy từ `state/promotions.yaml` (spec Part 12) — `sb list-arms --resolved` in ra. Cột **Cổng** là cổng mà arm thuộc về; thứ tự cổng ở §3.
 
@@ -166,6 +173,8 @@ Ví dụ câu bị loại: *"Khách sạn cung cấp dịch vụ lễ tân 24 gi
 **E2.bge — `bge-m3` local, không prefix.** Đối chứng model mở có số VN-MTEB. Đây là arm trả lời "Cohere có tốt cho tiếng Việt của mình không". **q1** (không dấu) và slice audience là chỗ hai model có thể khác nhau nhiều nhất.
 
 **E2.gte — `gte-multilingual-base` (tuỳ chọn).** 305M, rẻ hơn bge-m3; chỉ chạy nếu còn thời gian máy.
+
+**E2.e5 — `intfloat/multilingual-e5-base` local (thêm 30/09).** 278M, 768-d, CPU vài phút cho 3.183 text. Đây là arm E bắt buộc của lịch 10 ngày (M2: Cohere vs e5-base, quyết định model M3 chậm nhất Day 5). e5 **bắt buộc prefix** `query: ` cho câu và `passage: ` cho document (config `e5-base.query_prefix` / `passage_prefix`, `embed/local_hf.py` — chạy bằng `transformers` + `torch`, mean pooling theo model card; không dùng sentence-transformers vì scipy bị Application Control chặn trên máy dev) — thiếu prefix là arm không công bằng. Text vượt `max_seq_length` 512 bị từ chối, không cắt ngầm (`sb tokens --model e5-base` kiểm trước). Vì chuỗi E1a → E1b → E4 được bỏ qua tuần này (luật cắt §7.2 lịch 10 ngày), `arms/E2.e5.yaml` viết giải sẵn với text `T3+R` của B0 và `parent: B0`; khi chuỗi E chạy đủ thì đổi về `@E4` như E2.v4 / E2.bge.
 
 ---
 
@@ -267,6 +276,20 @@ Mỗi P là một YAML `composite: true`, gộp các arm thắng. Chạy lại t
 Cutoff (`max_vector_distance`) phụ thuộc phân bố cosine của từng model, nên P4/P5 **không** dùng lại cutoff đã chọn cho Cohere v3 mà sweep lại theo đúng quy tắc S7. Nếu `@Pa` đã dùng đúng model của P4 hoặc P5 (ví dụ cổng E2 đã đổi sang v4), arm đó bị bỏ qua vì trùng.
 
 Ví dụ một dòng bảng cuối (minh hoạ định dạng, không phải số): `P2 | 0,74 | 0,61 | 0,66 | no_diacritics (−4,1) | 0,97 | 0,3 | 0,01 / 1,00 | 240 ms | 95 ms | $0,11 | 5`.
+
+---
+
+### Cổng APP — `/search` production trên gold (thêm 30/09, cổng `info`)
+
+Lịch 10 ngày M2 cần số cho **dense-only / hybrid / hybrid + normalize** đúng như production đang chạy, còn các arm S2.* ở trên dùng `hybrid()` của Weaviate (RANKED / RELATIVE_SCORE) mà production **không** dùng (production: hai truy vấn dense top-200 + BM25 top-50, RRF k=60 ở app, luật vớt hit BM25 — `history/2026-09-25-search-hybrid-bm25-rrf.md`). Cổng APP vì thế gọi thẳng `application/search/use_cases.SearchProducts` của backend (`src/evaluation/search_bench/app_adapter.py`), chỉ thay ba adapter: `UnitIndex` dựng từ catalog snapshot (text = T3+R của bench, đã kiểm trùng production), kho vector = collection `ProductBench` trên Weaviate của bench dựng bằng chính `WeaviateClient` của backend (hình dạng như `Product`: `productId` / `modelVersion` / `textHash` / `nameAscii` / `searchTextAscii`, uuid5 `vota:product:<id>`, **hnsw** vì backend không nhận flat) và nạp vector B0 đã embed (0 Cohere), embedder truy vấn = cache Cohere v3 của bench. Mọi arm APP là `composite: true`, tham số ở khối `app` của YAML (`cutoff`, `candidate_k`, `hybrid`, `normalize`, `rrf_k`, `lexical_k`, `lexical_cutoff`, `min_coverage`, `lexical_candidate_k` — không có mặc định ngầm trong code).
+
+| Arm | Tham số | Trả lời |
+|---|---|---|
+| APP.dense / APP.dense_nocut | `hybrid: false`, `normalize: false`; cutoff 0,62 / −1 | Dense-only production; bản không cutoff ≈ B0 (khác chỉ do hnsw) → tách hiệu ứng ngưỡng khỏi xếp hạng |
+| APP.hybrid / APP.hybrid_nocut | `hybrid: true`, `normalize: false` | Hybrid production có / không cutoff — đầu vào cho contract S9 (lexicalK / lexicalCutoff / minCoverage) |
+| APP.hybrid_norm / APP.hybrid_norm_nocut | `hybrid: true`, `normalize: true` | Cấu hình production hiện nay; Δ so với APP.hybrid trên `abbrev_typo`, `audience_style` = số cho contract S10. **Caveat:** 15 câu gold `abbrev_typo` đã được dùng để viết và test `QueryNormalizer` (`history/2026-09-25-search-chuan-hoa-truy-van.md`) → số slice này là số đo trong mẫu |
+
+Cutoff mốc 0,62 theo contract §2.4 và `.env` (`SEARCH_CUTOFF=0.62`); mặc định trong code là 0,52 (`core/config.py`, đổi ở commit `dbc22c1` không có history) — bench không sửa config production, chỉ báo. `multi_constraint` trên cổng APP báo riêng: `/search` không có filter sao / giá nên arm APP không thể thoả các câu này như pool có filter. Lệnh: `sb app-load` (dựng / kiểm ProductBench), `sb run --arm APP.dense --arm APP.hybrid --arm APP.hybrid_norm …`; `sb run` tự gọi `app-load` khi có arm APP.
 
 ---
 
