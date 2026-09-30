@@ -50,7 +50,7 @@ def _normalization_diagnostics(q: str, nq: NormalizedQuery) -> dict:
 
 
 class StageTimer:
-    """Thời gian từng bước của /search, khai ở `diagnostics.stageMs` (ms nguyên, contract 1.9.0).
+    """Thời gian từng bước của /search, khai ở `diagnostics.stageMs` (ms nguyên, contract 1.11.0).
 
     `lap(name)` ghi thời gian từ lần `lap` trước (hoặc từ lúc tạo) cho bước `name`. Bước không chạy thì không
     có khoá, nên `normalize` vắng khi tắt chuẩn hoá và `lexical` vắng ở chế độ dense-only. Cộng dồn bằng số thực,
