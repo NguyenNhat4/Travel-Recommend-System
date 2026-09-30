@@ -14,6 +14,7 @@ import type { GroundedPlan } from '../../types/travel';
 import { AssistantConversation } from './AssistantConversation';
 import { AssistantMapPanel, AssistantResultPanel } from './AssistantResultPanel';
 import { WeatherForecastCard } from './WeatherForecastCard';
+import { splitBoldTitle } from './inlineBold';
 import { listAssistantConversations } from '../../services/assistantHistory';
 
 const ItineraryMap = dynamic(
@@ -45,8 +46,9 @@ function isResponse(value: unknown): value is Response {
 
 function titleOf(response: Response) {
   if (response.status === 'COMPLETED') return response.itinerary.title || `Lịch trình ${response.intent?.destination ?? ''}`.trim();
-  if (response.status === 'NEEDS_CLARIFICATION') return response.question;
-  return response.message;
+  // Dòng đầu `**Tiêu đề**` đã là bản tóm tắt: dùng làm tên khi chia sẻ/lưu, không lấy cả đoạn.
+  const text = response.status === 'NEEDS_CLARIFICATION' ? response.question : response.message;
+  return splitBoldTitle(text).title ?? text;
 }
 
 function destinationOf(response: Response) {

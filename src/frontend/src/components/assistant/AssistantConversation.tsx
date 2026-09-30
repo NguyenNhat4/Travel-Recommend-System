@@ -12,6 +12,7 @@ import { AssistantTripStarter, tripStarterMessage } from './AssistantTripStarter
 import { TripDetailsForm } from './TripDetailsForm';
 import { SuggestionChips } from './SuggestionChips';
 import { nodeLabel } from './assistantLabels';
+import { InlineBold } from './inlineBold';
 
 export function AssistantConversation({
   inputId,
@@ -96,7 +97,7 @@ export function AssistantConversation({
           return <div key={message.id} className={`flex items-start gap-2.5 ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
             {message.sender === 'assistant' && <Image src="/mascot_welcome.webp" alt="" width={34} height={34} className="mt-1 h-8 w-8 shrink-0 object-contain" />}
             <div className={`min-w-0 max-w-[92%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${message.sender === 'user' ? 'rounded-tr-sm bg-blue-600 text-white shadow-sm' : 'rounded-tl-sm border border-slate-100 bg-white text-slate-800 shadow-sm'}`}>
-              <p className="whitespace-pre-line">{message.text}</p>
+              <p className="whitespace-pre-line">{message.sender === 'assistant' ? <InlineBold text={message.text} /> : message.text}</p>
               {/* Chỉ hiện form ở tin nhắn mới nhất: người dùng xác nhận thì lượt sau đã có câu trả lời khác. */}
               {clarificationForm && isLast && (
                 <TripDetailsForm form={clarificationForm} onConfirm={setInput} disabled={isRunning} />
@@ -127,7 +128,7 @@ export function AssistantConversation({
         </div>}
 
         {state.error && <div role="alert" className="ml-10 rounded-2xl border border-rose-200 bg-rose-50 p-3.5 text-xs text-rose-800">
-          <p className="font-semibold">{state.error.message}</p>
+          <p className="whitespace-pre-line font-semibold"><InlineBold text={state.error.message} /></p>
           {(state.error.retryable || state.error.code === 'CONVERSATION_NOT_FOUND') && <button onClick={retry} className="mt-2 inline-flex items-center gap-1 font-bold"><RotateCcw className="h-3.5 w-3.5" /> Thử lại</button>}
         </div>}
         {state.phase === 'aborted' && <p className="ml-10 text-xs text-slate-500">Đã dừng yêu cầu.</p>}

@@ -349,9 +349,7 @@ Mọi response không phải 2xx có envelope `ErrorResponse` (`hop-dong-tich-ho
 | `PRICE_CHANGED` | Checkout | Banner "Giá {tên} đã đổi từ {oldPrice} thành {newPrice}" + nút "Cập nhật và tiếp tục": gọi `PATCH /cart/items/{cartItemId}` với `quantity` hiện tại để Backend ghi lại giá snapshot (khách đã thấy giá mới), rồi người dùng bấm Thanh toán lần nữa. Chỉ `GET /cart` thì lần bấm sau vẫn nhận `PRICE_CHANGED` |
 | `DATE_OUT_OF_RANGE` | Thêm giỏ; Checkout | Lỗi dưới ô ngày, dùng `details.availableFrom/To` để giới hạn lịch |
 | `SEARCH_UNAVAILABLE` | Search; Assistant | `ErrorState` + Thử lại |
-| `INVALID_TRIP_DURATION` | Assistant | Tin nhắn trợ lý với `message`, mở stepper số ngày |
 | `CONVERSATION_NOT_FOUND` | Assistant | Xóa `conversationId`, gửi lại tin nhắn như cuộc hội thoại mới, thêm dòng hệ thống "Đã bắt đầu cuộc trò chuyện mới" |
-| `UNSUPPORTED_DESTINATION` | Assistant | "V-OTA chưa có dịch vụ ở {details.destination}" + chip từ `details.supportedDestinations`; lưu `details.conversationId` để lượt sau tiếp tục |
 | `LLM_UNAVAILABLE` | Assistant | Chạy `POST /search` với tin nhắn gốc, hiển thị như `FALLBACK` |
 | `ITINERARY_VALIDATION_FAILED` | Assistant | `ErrorState` + Thử lại |
 | `INTERNAL_ERROR` | mọi nơi | `ErrorState` cục bộ + Thử lại |
@@ -435,7 +433,7 @@ Ví dụ sửa chip "3 ngày → 2 ngày":
 | `status` | Khi nào | Web render |
 |---|---|---|
 | `COMPLETED` | Có kế hoạch | Panel kế hoạch + thẻ tóm tắt trong chat |
-| `NEEDS_CLARIFICATION` | Thiếu `destination`, `days`, hoặc chưa hỏi `startDate`/`party`/`budget` | Thẻ hỏi lại có lựa chọn; có `clarificationForm` (từ lượt hỏi thứ hai) thì hiện form đã điền sẵn thay cho chip |
+| `NEEDS_CLARIFICATION` | Thiếu `destination`, `days`, hoặc chưa hỏi `startDate`/`party`/`budget`; hoặc có giá trị không hợp lệ (ngày đã qua, điểm đến ngoài catalog, số ngày/số người/ngân sách ngoài giới hạn) | Thẻ hỏi lại có lựa chọn; có `clarificationForm` (từ lượt hỏi thứ hai) thì hiện form đã điền sẵn thay cho chip. Dòng đầu `question` dạng `**Tiêu đề**` hiển thị **chữ đậm** (bong bóng chat, widget nổi và thẻ hỏi lại tách tiêu đề khỏi phần thân). Cùng dạng cho `message` của `NO_RESULTS`/`FALLBACK` (thẻ kết quả tách tiêu đề thành tiêu đề thẻ) và `error.message` của lỗi `VALIDATION_ERROR` 400 (khung lỗi in đậm dòng đầu); tên khi chia sẻ/lưu lấy từ tiêu đề |
 | `NO_RESULTS` | Search không có sản phẩm phù hợp | Tin nhắn + chip `suggestions` |
 | `FALLBACK` | LLM lỗi nhưng Search chạy được | Tin nhắn fallback + panel "Dịch vụ gợi ý ở {destination}" |
 
@@ -558,7 +556,7 @@ gửi như một lượt chat bình thường; không dùng `intentOverride`. Co
 
 ### 9.4. Lỗi
 
-HTTP status và `ErrorResponse` như §8. Mã riêng của trợ lý: `INVALID_TRIP_DURATION` (400), `CONVERSATION_NOT_FOUND` (404), `UNSUPPORTED_DESTINATION` (422, `details: { destination, supportedDestinations, conversationId }`; Web gửi `conversationId` này cùng điểm đến người dùng chọn lại để giữ số ngày, ngày đi và số khách đã nói), `LLM_UNAVAILABLE` (503, chỉ khi Search cũng không dùng được), `ITINERARY_VALIDATION_FAILED` (500). Request sai định dạng dùng `VALIDATION_ERROR`; Search lỗi dùng `SEARCH_UNAVAILABLE`.
+HTTP status và `ErrorResponse` như §8. Mã riêng của trợ lý: `CONVERSATION_NOT_FOUND` (404), `LLM_UNAVAILABLE` (503, chỉ khi Search cũng không dùng được), `ITINERARY_VALIDATION_FAILED` (500). Request sai định dạng dùng `VALIDATION_ERROR`; Search lỗi dùng `SEARCH_UNAVAILABLE`. Điểm đến ngoài catalog và số ngày ngoài 1–7 **không còn là lỗi**: là `NEEDS_CLARIFICATION` (200) kèm `suggestedValues` (Web dùng chip điểm đến/số ngày như mọi lần hỏi lại; `conversationId` lấy từ response) — `UNSUPPORTED_DESTINATION`/`INVALID_TRIP_DURATION` vẫn ở enum nhưng trợ lý không trả nữa.
 
 ### 9.5. Quy tắc render grounding Web cam kết
 
