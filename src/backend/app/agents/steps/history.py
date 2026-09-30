@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from .messages import strip_title
+
 MAX_HISTORY_MESSAGES = 20
 MAX_HISTORY_MESSAGE_CHARS = 1_000
 MAX_HISTORY_TOTAL_CHARS = 8_000
@@ -55,7 +57,8 @@ def llm_context(state: dict[str, Any], *, intent: dict[str, Any] | None = None,
     `last_assistant_message` giúp hiểu câu trả lời ngắn ("1 ngày thôi", "chưa chốt ngày") là trả lời cho câu hỏi nào.
     Node truyền `intent`/`constraints` khi đã có bản mới hơn state (ví dụ điểm đến đã chuẩn hóa ở `tool`).
     """
-    history = sanitize_conversation_history(state.get("conversation_history", []))
+    history = [{**item, "content": strip_title(item["content"])} if item["role"] == "assistant" else item
+               for item in sanitize_conversation_history(state.get("conversation_history", []))]
     last_assistant = next((item["content"] for item in reversed(history) if item["role"] == "assistant"), None)
     return {"conversation_history": history,
             "last_assistant_message": last_assistant,

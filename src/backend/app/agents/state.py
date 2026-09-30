@@ -48,6 +48,7 @@ class AgentState(TypedDict, total=False):
     start_date_asked: bool
     clarification_rounds: int
     clarification_reason: str | None
+    invalid_inputs: list[dict[str, Any]]
     refusal: bool
     blocked_by_guardrail: str | None
     candidates: Candidates

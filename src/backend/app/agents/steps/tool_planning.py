@@ -60,17 +60,47 @@ async def canonical_destination(state: dict, intent: dict, changed: list, suppor
             return {**failure(state, "LLM_UNAVAILABLE", message(state, "llm_understand"), retryable=True),
                     "tool_plan": [], "tool_results": [], "events": [event("tool", "LLM_UNAVAILABLE")]}
     if canonical is None:
-        text = message(state, "unsupported", destination=intent["destination"], destinations=", ".join(supported))
-        update = failure(state, "UNSUPPORTED_DESTINATION", text, 422)
-        update["response"]["error"]["details"] = {"destination": intent["destination"],
-                                                  "supportedDestinations": supported,
-                                                  "conversationId": state["conversation_id"]}
-        return {**update, "tool_plan": [], "tool_results": [],
-                "events": [event("tool", "UNSUPPORTED_DESTINATION")]}
+        # Hỏi lại (200) thay vì lỗi 422: giữ nguyên phần còn lại của chuyến đi, chỉ xoá điểm đến.
+        rejected = {"field": "destination", "value": intent["destination"], "reason": "unsupported_destination"}
+        return {"intent": {**intent, "destination": None}, "invalid_inputs": [rejected],
+                "missing_fields": ["destination"], "clarification_reason": "invalid_input",
+                "decision": "invalid_input", "tool_plan": [], "tool_results": [],
+                "events": [event("tool", "unsupported destination", retrieval=False)]}
     if canonical != intent["destination"]:
         changed.insert(0, "destination")
     intent["destination"] = canonical
     return None
+
+
+async def check_destination(state: dict, update: dict, *, tools: ToolExecutorPort | None, timeout_seconds: float,
+                            llm, llm_timeout_seconds: float) -> dict:
+    """Kiểm điểm đến với catalog ngay ở `extract`, để "đi Trung Quốc" bị từ chối trước khi hỏi số ngày.
+
+    Trả lại `update` của `extract`: điểm đến hợp lệ thì ghi tên chuẩn và `supported_destinations` (node `tool` dùng
+    lại, không hỏi catalog lần nữa); ngoài catalog thì xoá điểm đến, ghi `invalid_inputs` và chuyển sang `clarify`.
+    Không lấy được catalog thì giữ nguyên: `tool` vẫn kiểm lần nữa.
+    """
+    intent = update.get("intent") or {}
+    if update.get("decision") == "error" or not intent.get("destination"):
+        return update
+    if not getattr(tools, "supports_catalog", False):
+        return update
+    supported = state.get("supported_destinations")
+    if supported is None:
+        supported = await catalog_destinations(tools, timeout_seconds)
+    if supported is None:
+        return update
+    checked = dict(intent)
+    rejected = await canonical_destination(state, checked, [], supported, llm, llm_timeout_seconds)
+    if rejected is None:
+        return {**update, "intent": checked, "supported_destinations": supported}
+    if rejected.get("decision") == "error":
+        return {**rejected, "supported_destinations": supported}
+    missing = ["destination", *(key for key in update.get("missing_fields", []) if key != "destination")]
+    return {**update, "intent": rejected["intent"], "supported_destinations": supported,
+            "invalid_inputs": [*update.get("invalid_inputs", []), *rejected["invalid_inputs"]],
+            "missing_fields": missing, "clarification_reason": "invalid_input", "decision": "missing_info",
+            "events": [*update.get("events", []), event("extract", "unsupported destination", retrieval=False)]}
 
 
 def _similar_limit() -> int:

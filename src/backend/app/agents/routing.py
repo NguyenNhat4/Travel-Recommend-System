@@ -12,7 +12,7 @@ def route_after_extract(state: AgentState) -> str:
 
 def route_after_evaluate(state: AgentState) -> str:
     decision = state.get("decision")
-    if decision == "constraint_clarification":
+    if decision in {"constraint_clarification", "invalid_input"}:
         return "clarify"
     return {"needs_retry": "retry", "failed": "dead_letter", "error": "dead_letter"}.get(decision, "compose")
 

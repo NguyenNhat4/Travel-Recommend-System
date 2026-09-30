@@ -36,6 +36,7 @@ class NoResultsSuggestionsTests(unittest.TestCase):
         dropped = [{'code': 'PRODUCT_DROPPED_DATE'}] * 2 + [{'code': 'PRODUCT_DROPPED_UNAVAILABLE'}]
         state = {'warnings': dropped, 'intent': {'destination': 'Hà Nội', 'days': 3, 'startDate': '2026-12-01'}}
         self.assertEqual(composition._no_results_message(state),
+                         '**Chưa có sản phẩm mở bán cho ngày này**\n'
                          'Hiện chưa có sản phẩm ở Hà Nội mở bán cho ngày 01/12/2026. '
                          'Bạn có thể chọn một trong các gợi ý bên dưới.')
 

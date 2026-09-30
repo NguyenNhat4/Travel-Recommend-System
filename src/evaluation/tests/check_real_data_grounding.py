@@ -53,7 +53,8 @@ def main() -> int:
         destination = (body.get("intent") or {}).get("destination")
 
         if expected is None:
-            ok = response.status_code == 422 and status == "UNSUPPORTED_DESTINATION"
+            ok = (response.status_code == 200 and status == "NEEDS_CLARIFICATION"
+                  and "destination" in (body.get("missingFields") or []))
             failures += not ok
             print(f"\n{'ok  ' if ok else 'FAIL'} {message!r} → {response.status_code} {status}")
             continue

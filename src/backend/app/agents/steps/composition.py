@@ -8,7 +8,7 @@ import logging
 from src.backend.app.domain.itinerary.planning import compose_plan, render_proposal, summary, validate_plan
 
 from . import messages
-from .messages import failure
+from .messages import display_date, failure
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -48,11 +48,6 @@ MAX_SUGGESTIONS = 3
 MAX_ALTERNATIVE_DESTINATIONS = 2
 
 
-def _display_date(iso: str) -> str:
-    year, month, day = iso.split("-")
-    return f"{day}/{month}/{year}"
-
-
 def _date_is_the_reason(state: dict) -> bool:
     """Lý do phổ biến nhất khiến sản phẩm bị loại là ngày đi nằm ngoài cửa sổ mở bán."""
     reasons = Counter(warning["code"] for warning in state.get("warnings", []))
@@ -63,7 +58,7 @@ def _no_results_message(state: dict) -> str:
     intent = state.get("intent", {})
     if intent.get("startDate") and intent.get("destination") and _date_is_the_reason(state):
         return messages.message(state, "no_results_date", destination=intent["destination"],
-                                date=_display_date(intent["startDate"]))
+                                date=display_date(intent["startDate"]))
     return messages.message(state, "no_results")
 
 
@@ -79,7 +74,7 @@ def _no_results_suggestions(state: dict) -> list[str]:
     suggestions = []
     if state.get("nearest_open_date") and intent.get("destination"):
         suggestions.append(messages.message(state, "suggestion_trip_date", destination=intent["destination"],
-                                            days=intent.get("days") or 1, date=_display_date(state["nearest_open_date"])))
+                                            days=intent.get("days") or 1, date=display_date(state["nearest_open_date"])))
     if constraints.get("require_hotel") or constraints.get("specific_hotel"):
         suggestions.append(messages.message(state, "suggestion_hotel"))
     if constraints.get("hotel_price_max") is not None:
