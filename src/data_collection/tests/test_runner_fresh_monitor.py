@@ -1,4 +1,5 @@
-"""`run_daily_docker.sh fresh-monitor`: chạy nền, tự bật lại, giới hạn RAM (monitor VM 2 CPU / 4 GB bị tắt khi hết RAM)."""
+"""`run_daily_docker.sh fresh-monitor`: chạy nền, tự bật lại; RAM không giới hạn mặc định (lượt bấm trên monitor chạy trong
+container này — giới hạn 1 GB đã giết lượt full 30/09 bằng SIGKILL), đặt được bằng MONITOR_MEMORY."""
 import os
 import subprocess
 import tempfile
@@ -40,13 +41,14 @@ class FreshMonitorRunnerTests(unittest.TestCase):
     def calls(self):
         return self.log.read_text().splitlines()
 
-    def test_default_runs_detached_with_restart_policy_and_memory_limit(self):
+    def test_default_runs_detached_with_restart_policy_and_no_memory_limit(self):
         result = self.run_monitor()
         self.assertEqual(result.returncode, 0, result.stderr)
         rm, run = self.calls()
         self.assertEqual(rm, "rm -f vota-fresh-catalog-monitor")  # thay container cũ cùng tên
         self.assertTrue(run.startswith("run -d --restart unless-stopped --log-opt max-size=10m --log-opt max-file=3 "))
-        for part in ("--name vota-fresh-catalog-monitor", "--memory 1g", "--network host",
+        self.assertNotIn("--memory", run)  # lượt Cào lớn chạy trong container monitor: không bóp RAM
+        for part in ("--name vota-fresh-catalog-monitor", "--network host",
                      "registry/fresh@sha256:abc /app/src/data_collection/monitor.py", "--host 0.0.0.0"):
             self.assertIn(part, run)
         self.assertNotIn("--rm", run)  # Docker không cho --restart đi cùng --rm

@@ -240,9 +240,10 @@ Phục vụ FR-CAT-01/03 và NFR-SEC-01. Dùng cùng **image/tag, env file và v
 FRESH_IMAGE=<AR>/vota-fresh-catalog:<tag> /opt/vota/bin/run_daily_docker.sh fresh-monitor
 # Tab DB của monitor đọc DB đích bằng SEED_DATABASE_URL (DB_TARGET=local) hoặc CLOUD_SEED_DATABASE_URL, chỉ đọc.
 # Tab Realtime đọc GET $BACKEND_URL/internal/calls (mặc định http://127.0.0.1:8000).
-# `fresh-monitor` chạy nền với --restart unless-stopped và --memory 1g (Docker tự bật lại khi bị tắt vì hết RAM hay VM
-# khởi động lại; log: docker logs -f vota-fresh-catalog-monitor). MONITOR_RESTART=no chạy tiền cảnh như trước,
-# MONITOR_MEMORY đổi giới hạn. `monitor` (không có `fresh-`) chạy cùng UI trong image daily, đọc <DATA_DIR>/state, /fresh_runs.
+# `fresh-monitor` chạy nền với --restart unless-stopped (Docker tự bật lại khi bị tắt vì hết RAM hay VM khởi động lại;
+# log: docker logs -f vota-fresh-catalog-monitor). MONITOR_RESTART=no chạy tiền cảnh như trước. Không giới hạn RAM mặc
+# định vì lượt bấm trên monitor chạy trong container này; MONITOR_MEMORY đặt giới hạn nếu cần.
+# `monitor` (không có `fresh-`) chạy cùng UI trong image daily, đọc <DATA_DIR>/state, /fresh_runs.
 # Trên máy cá nhân:
 ssh -L 8765:127.0.0.1:8765 <user>@<vm>
 # Mở http://127.0.0.1:8765/ ; /daily và /pipeline tự chuyển về đây.
