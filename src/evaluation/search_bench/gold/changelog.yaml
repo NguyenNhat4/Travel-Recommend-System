@@ -1,0 +1,18 @@
+- version: gold_v1
+  at: '2026-09-30T18:01:55+07:00'
+  action: import
+  n_queries_active: 132
+  n_queries_retired: 0
+  n_labels: 3359
+  source: pool@gold_v1
+  merged: merged.csv
+  snapshot: '2026-09-23'
+- version: gold_v1
+  at: '2026-09-30T18:02:03+07:00'
+  action: retire
+  n_queries_active: 131
+  n_queries_retired: 1
+  n_labels: 3359
+  retired:
+  - qid: c0463
+    reason: 'pool_miss: 5d210e58 (ve HCM-Da Nang) ngoai pool depth 15'
