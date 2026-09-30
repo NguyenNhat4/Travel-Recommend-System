@@ -1,5 +1,6 @@
 """Nạp lại engine recsys theo chu kỳ: lỗi thì giữ bản đang phục vụ, không tắt recsys (history 2026-09-24)."""
 import asyncio
+import threading
 from types import SimpleNamespace
 
 from src.backend.app.core.config import Settings
@@ -57,9 +58,12 @@ def test_prewarm_runs_once_in_background_after_the_first_publish_and_shutdown_wa
     first = _services(3)
     build = _Build(first, _services(4))
     calls = []
+    started = threading.Event()
 
     def fake_prewarm(settings, services, stop):
-        calls.append((services, stop.is_set()))
+        seen_stop = stop.is_set()          # đọc trước khi báo "đã vào" để stop() của test không thể chen vào giữa
+        started.set()
+        calls.append((services, seen_stop))
         return PrewarmReport(queries=131, unique=131, embedded=131, skipped=0, batches=2, seconds=0.5)
 
     async def scenario():
@@ -67,6 +71,7 @@ def test_prewarm_runs_once_in_background_after_the_first_publish_and_shutdown_wa
                                     build=build, prewarm=fake_prewarm)
         assert await refresher.reload() is True
         assert refresher._prewarm_task is not None
+        assert await asyncio.to_thread(started.wait, 5)   # prewarm đã chạy trong thread trước khi shutdown (CI từng chen stop() vào trước)
         assert await refresher.reload() is True          # lần nạp lại không prewarm lần nữa
         refresher.stop()
         await refresher.wait_prewarm(5.0)
