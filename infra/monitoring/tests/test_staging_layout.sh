@@ -46,7 +46,14 @@ for required in \
   'staging_crawler_warning' \
   'staging_crawler_failure' \
   'staging_container_stop' \
-  'staging_docker_watcher_absent'; do
+  'staging_docker_watcher_absent' \
+  'staging_http_requests_total' \
+  'staging_http_requests_5xx' \
+  'google_monitoring_custom_service' \
+  'google_monitoring_slo' \
+  'vota-staging-availability' \
+  'vota-staging-error-rate' \
+  'vota-staging-latency'; do
   grep -R -q -F "$required" "$root_dir" || {
     echo "missing crawler monitoring component: $required" >&2
     exit 1
@@ -62,6 +69,19 @@ grep -q -F 'Docker watcher heartbeat' "$root_dir/main.tf"
 grep -q -F 'Crawler warnings and failures' "$root_dir/main.tf"
 grep -q -F 'Container stops and OOM' "$root_dir/main.tf"
 grep -q -F 'container_name = "EXTRACT(jsonPayload.container_name)"' "$root_dir/main.tf"
+grep -q -F 'Availability SLO compliance' "$root_dir/main.tf"
+grep -q -F 'Error-rate SLO compliance' "$root_dir/main.tf"
+grep -q -F 'Latency SLO compliance' "$root_dir/main.tf"
+grep -q -F 'Backend container logs' "$root_dir/main.tf"
+grep -q -F 'Frontend container logs' "$root_dir/main.tf"
+grep -q -F 'Crawler container logs' "$root_dir/main.tf"
+grep -q -F 'Redis container logs' "$root_dir/main.tf"
+grep -q -F 'Weaviate container logs' "$root_dir/main.tf"
+grep -q -F 'jsonPayload.container_name=\"vota-backend\"' "$root_dir/main.tf"
+grep -q -F 'jsonPayload.container_name=\"vota-frontend\"' "$root_dir/main.tf"
+grep -q -F 'jsonPayload.container_name=\"vota-fresh-catalog\"' "$root_dir/main.tf"
+grep -q -F 'jsonPayload.container_name=\"vota-redis\"' "$root_dir/main.tf"
+grep -q -F 'jsonPayload.container_name=\"vota-weaviate\"' "$root_dir/main.tf"
 python3 -m py_compile "$root_dir/vota-docker-event-watcher.py"
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest -q "$root_dir/tests/test_watcher_datetime.py"
 
