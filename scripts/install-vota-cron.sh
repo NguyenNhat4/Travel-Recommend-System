@@ -1,26 +1,37 @@
 #!/usr/bin/env bash
 # Install or replace the managed data-collection cron entry without touching
-# unrelated crontab entries. The managed entry follows the published :latest image.
+# unrelated crontab entries. Deployments should use an immutable digest reference;
+# :latest remains accepted for manual compatibility and rollback preparation.
+# Exactly ONE crawler job may write to the catalog DB: --job legacy (daily.py, `run`; the default, so the current
+# CD keeps its behaviour) or --job fresh (fresh_catalog.py, `fresh-run tick` every 15 minutes). Both use the same
+# managed block, so installing one replaces the other (docs/guide/trien-khai-job-cao-du-lieu.md).
 set -euo pipefail
 
 BEGIN_MARKER='# BEGIN VOTA CRAWLER'
 END_MARKER='# END VOTA CRAWLER'
-schedule='0 2 * * *'
+job='legacy'
+schedule=''
 image=''
 runner=''
-data_dir='/srv/vota/daily-data'
-env_file='/etc/vota/daily.env'
+data_dir=''
+env_file=''
+log_dir='/srv/vota/fresh-catalog-logs'
 crontab_file=''
 dry_run=0
 
 usage() {
   cat <<'EOF'
 Usage:
-  install-vota-cron.sh --image IMAGE:latest --runner /absolute/path/run_daily_docker.sh
-                       [--data-dir PATH] [--env-file PATH] [--schedule '0 2 * * *']
-                       [--crontab-file PATH] [--dry-run]
+  install-vota-cron.sh --image IMAGE:latest|IMAGE@sha256:DIGEST --runner /absolute/path/run_daily_docker.sh
+                       [--job legacy|fresh] [--data-dir PATH] [--env-file PATH] [--log-dir PATH]
+                       [--schedule CRON] [--crontab-file PATH] [--dry-run]
 
-The managed block is replaced atomically. Unrelated crontab lines are preserved.
+  --job legacy  daily.py (`run`) at 02:00; defaults /srv/vota/daily-data, /etc/vota/daily.env
+  --job fresh   fresh_catalog.py (`fresh-run tick`) every 15 minutes (run time is set in the monitor);
+                defaults /srv/vota/fresh-catalog-data, /etc/vota/fresh-catalog.env, --log-dir /srv/vota/fresh-catalog-logs
+
+The managed block is replaced atomically, so only one crawler job is ever scheduled. Unrelated crontab lines are
+preserved.
 EOF
 }
 
@@ -31,6 +42,16 @@ die() {
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    --job)
+      [ "$#" -ge 2 ] || die '--job requires a value'
+      job="$2"
+      shift 2
+      ;;
+    --log-dir)
+      [ "$#" -ge 2 ] || die '--log-dir requires a value'
+      log_dir="$2"
+      shift 2
+      ;;
     --image)
       [ "$#" -ge 2 ] || die '--image requires a value'
       image="$2"
@@ -75,15 +96,21 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
+case "$job" in
+  legacy) : "${schedule:=0 2 * * *}" "${data_dir:=/srv/vota/daily-data}" "${env_file:=/etc/vota/daily.env}" ;;
+  fresh) : "${schedule:=*/15 * * * *}" "${data_dir:=/srv/vota/fresh-catalog-data}" "${env_file:=/etc/vota/fresh-catalog.env}" ;;
+  *) die '--job must be legacy or fresh' ;;
+esac
 [ -n "$image" ] || die '--image is required'
 [ -n "$runner" ] || die '--runner is required'
-[[ "$image" =~ :latest$ ]] || die '--image must use the :latest tag'
+[[ "$image" =~ :latest$ || "$image" =~ @sha256:[a-f0-9]{64}$ ]] || die '--image must use :latest or an immutable sha256 digest'
 [[ "$runner" == /* ]] || die '--runner must be an absolute path'
 if [[ "$runner" == *" "* || "$runner" == *$'\t'* || "$runner" == *"'"* ]]; then
   die '--runner cannot contain whitespace or single quotes'
 fi
 [[ "$data_dir" == /* ]] || die '--data-dir must be an absolute path'
 [[ "$env_file" == /* ]] || die '--env-file must be an absolute path'
+[[ "$log_dir" == /* ]] || die '--log-dir must be an absolute path'
 [ "$(wc -w <<< "$schedule")" -eq 5 ] || die '--schedule must contain five cron fields'
 
 read_crontab() {
@@ -101,7 +128,12 @@ filtered_crontab="$(awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" '
   !inside { print }
 ' <<< "$existing_crontab")"
 
-cron_line="$schedule IMAGE='$image' DATA_DIR='$data_dir' ENV_FILE='$env_file' PULL=1 $runner run"
+cron_line="$schedule IMAGE='$image' DATA_DIR='$data_dir' ENV_FILE='$env_file' PULL=0 $runner run"
+if [ "$job" = fresh ]; then
+  cron_line="$schedule FRESH_IMAGE='$image' FRESH_DATA_DIR='$data_dir' CATALOG_ENV_FILE='$env_file' CATALOG_LOG_DIR='$log_dir' PULL=0 $runner fresh-run tick"
+else
+  cron_line="$schedule IMAGE='$image' DATA_DIR='$data_dir' ENV_FILE='$env_file' PULL=0 $runner run"
+fi
 updated_crontab="$(printf '%s\n%s\n%s\n%s\n' "$filtered_crontab" "$BEGIN_MARKER" "$cron_line" "$END_MARKER")"
 
 if [ "$dry_run" -eq 1 ]; then
@@ -123,4 +155,4 @@ else
   crontab "$temp_file"
 fi
 
-printf 'Installed managed VOTA crawler cron at %s.\n' "${schedule}"
+printf 'Installed managed VOTA crawler cron (%s job) at %s.\n' "$job" "${schedule}"

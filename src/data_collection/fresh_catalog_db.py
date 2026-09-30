@@ -86,6 +86,16 @@ def price_attributes(fresh: dict, previous: dict | None, seen_at: str) -> dict:
     attrs.pop("priceFreshness", None)
     if incoming.get("sameAs"):
         attrs["sameAs"] = list(dict.fromkeys((attrs.get("sameAs") or []) + incoming["sameAs"]))
+    if fresh.get("taxonomy") == "flight":
+        # Legacy IDs only gain tripType; fixed-date variants carry a distinct sourceRef.
+        keys = ("tripType",) if not incoming.get("fixedDepartureDate") else (
+            "tripType", "cabinClass", "fixedDepartureDate", "returnFlight", "returnDate", "stayDays",
+            "departureAt", "arrivalAt", "priceBasis", "priceValidUntil", "priceObservedAt", "priceContext")
+        for key in keys:
+            if key in incoming:
+                attrs[key] = copy.deepcopy(incoming[key])
+        if incoming.get("fixedDepartureDate") and "priceValidUntil" not in incoming:
+            attrs.pop("priceValidUntil", None)  # a newer quote without a validity must not inherit the old expiry
     for key in PRICE_KEYS:
         if key in incoming:
             attrs[key] = copy.deepcopy(incoming[key])
@@ -138,20 +148,36 @@ def prepare_rows(fresh: list[dict], existing: list[dict], checked_hotels: set[st
     old = {str(row["product_id"]): row for row in existing}
     by_ref = {}
     for previous in existing:
+        if (previous["attributes"] or {}).get("mergedInto"):  # đã gộp vào dòng khác: ref của nó thuộc dòng kia
+            continue
         for ref in [previous["source_ref"], *((previous["attributes"] or {}).get("sameAs") or [])]:
             if ref in by_ref and by_ref[ref]["product_id"] != previous["product_id"]:
                 raise ValueError(f"sourceRef/sameAs conflict: {ref}")
             by_ref[ref] = previous
     # The full catalog may have merged a Trip hotel/room into a Booking row.
     # Resolve by sameAs, then reparent new Trip rooms to the retained DB ID.
-    mapped_ids = {item["productId"]: str(by_ref[item["sourceRef"]]["product_id"])
-                  for item in fresh if item["sourceRef"] in by_ref}
+    # Tra bằng MỌI ref của dòng mới (sourceRef rồi sameAs), không chỉ sourceRef: dòng được giữ khi gộp trùng có thể đổi
+    # theo thứ tự nguồn về (nạp theo phần, L4 docs/plan/2026-09-28-pipeline-chay-lien-tuc.md). Nhiều dòng cũ cùng khớp thì
+    # giữ dòng khớp trước (ưu tiên sourceRef của chính nó), các dòng kia được đánh dấu đã gộp (mergedInto) và ẩn đi.
+    matches: dict[str, list[dict]] = {}
+    for item in fresh:
+        hits: list[dict] = []
+        for ref in [item["sourceRef"], *((item.get("attributes") or {}).get("sameAs") or [])]:
+            row = by_ref.get(ref)
+            if row is not None and all(row["product_id"] != hit["product_id"] for hit in hits):
+                hits.append(row)
+        matches[item["productId"]] = hits
+    mapped_ids = {pid: str(hits[0]["product_id"]) for pid, hits in matches.items() if hits}
     canonical_refs = set()
     result = []
-    counts = {"new": 0, "newRooms": 0, "refreshed": 0, "missingRooms": 0, "missingProperties": 0, "staleTrip": 0}
+    counts = {"new": 0, "newRooms": 0, "refreshed": 0, "missingRooms": 0, "missingProperties": 0, "staleTrip": 0,
+              "mergedAway": 0}
+    merged_away: list[tuple[dict, str]] = []
     for item in fresh:
         original_ref = item["sourceRef"]
-        previous = by_ref.get(original_ref)
+        hits = matches[item["productId"]]
+        previous = hits[0] if hits else None
+        merged_away += [(row, mapped_ids[item["productId"]]) for row in hits[1:]]
         pid = mapped_ids.get(item["productId"], item["productId"])
         if pid in old and not previous:
             raise ValueError(f"ID conflict for {pid}: sourceRef changed")
@@ -165,6 +191,10 @@ def prepare_rows(fresh: list[dict], existing: list[dict], checked_hotels: set[st
         parent = attrs.get("parentProductId")
         if parent in mapped_ids:
             attrs["parentProductId"] = mapped_ids[parent]
+        if previous and previous["source_ref"] != original_ref:
+            # dòng giữ trong DB mang sourceRef cũ (cột tĩnh): ref của nguồn thắng lần này vào sameAs để lần sau vẫn khớp
+            same = [ref for ref in attrs.get("sameAs") or [] if ref != previous["source_ref"]]
+            attrs["sameAs"] = same + ([original_ref] if original_ref not in same else [])
         row = {snake: item[camel] for snake, camel in zip(COLUMNS, FIELDS)}
         row["product_id"] = pid
         row["source_ref"] = previous["source_ref"] if previous else original_ref
@@ -180,6 +210,16 @@ def prepare_rows(fresh: list[dict], existing: list[dict], checked_hotels: set[st
             counts["newRooms"] += item["taxonomy"] == "hotel" and item["attributes"].get("level") == "room"
         result.append(row)
     represented = {str(row["product_id"]) for row in result}
+    for previous, keeper in merged_away:
+        pid = str(previous["product_id"])
+        if pid in represented:
+            continue
+        attrs = copy.deepcopy(previous["attributes"] or {})
+        attrs["mergedInto"] = keeper
+        attrs.pop("availability", None)
+        result.append(dict(previous, attributes=attrs, available=False))
+        counts["mergedAway"] += 1
+        represented.add(pid)
     for previous in existing:
         room_match, property_match = trip_price_reference(previous)
         match = room_match or property_match
@@ -292,7 +332,11 @@ def apply_window(rows: list[dict], as_of: date) -> dict[str, dict]:
         kinds[pid] = meta.variant({"taxonomy": row["taxonomy"], "attributes": attrs})
         start, end = (date.fromisoformat(day) for day in
                       loader.clip(attrs.get("sourceAvailableFrom"), attrs.get("sourceAvailableTo"), lo, hi))
-        if kinds[pid] == "flight":
+        if kinds[pid] == "flight" and attrs.get("fixedDepartureDate"):
+            start, end = loader.fixed_flight_window(attrs, lo, hi)
+            if start <= end:
+                flight_days[attrs.get("parentProductId") or ""].append(start)
+        elif kinds[pid] == "flight":
             start, _ = loader.pick_flight_date({"productId": pid, "availableFrom": attrs.get("sourceAvailableFrom"),
                                                 "attributes": attrs}, lo, hi)
             end = start
@@ -318,12 +362,20 @@ def apply_window(rows: list[dict], as_of: date) -> dict[str, dict]:
     return changed
 
 
+def pipeline_connection(url: str, **kwargs):
+    """Finite connection, statement and lock waits, confined to this loader connection."""
+    import psycopg
+    return psycopg.connect(url, connect_timeout=10,
+                           options='-c lock_timeout=5000 -c statement_timeout=300000 '
+                                   '-c idle_in_transaction_session_timeout=60000', **kwargs)
+
+
 def maintain_catalog(url: str, *, today: date | None = None, now: datetime | None = None) -> dict[str, int]:
     """Transaction riêng ở đầu mỗi lượt, chạy cả khi mọi nguồn lỗi: hết hạn giá Trip quá hạn và cuộn cửa sổ 30 ngày."""
     import psycopg
     from psycopg.types.json import Jsonb
     today = today or date.today()
-    with psycopg.connect(url, row_factory=psycopg.rows.dict_row) as conn:
+    with pipeline_connection(url, row_factory=psycopg.rows.dict_row) as conn:
         conn.execute("SELECT pg_advisory_xact_lock(7791024)")
         existing = conn.execute("SELECT * FROM cdp.products").fetchall()
         expired, counts = prepare_rows([], existing, set(), today.isoformat(), now=now)
@@ -339,7 +391,9 @@ def maintain_catalog(url: str, *, today: date | None = None, now: datetime | Non
                    WHERE product_id = %s""",
                 [(Jsonb(row["attributes"]), row["unit_price"], row["available"], row["available_from"],
                   row["available_to"], row["product_id"]) for row in writes.values()])
-    return {"staleTrip": counts["staleTrip"], "windowRows": len(windowed)}
+        from data_collection.seed import simulated_business  # _seed_rules() đã đưa src/ vào sys.path
+        simulated = simulated_business.sync(conn)
+    return {"staleTrip": counts["staleTrip"], "windowRows": len(windowed), **simulated}
 
 
 def row_action(row: dict, previous: dict | None, fresh_ids: set[str]) -> str:
@@ -407,7 +461,7 @@ def load_into_db(products_path: Path, coverage_path: Path | None, url: str,
             item["attributes"].update(combo_attrs[item["productId"]]["attributes"])
     combos = list(read_jsonl(products_path.parent / "combo_items.jsonl"))
     seen_at = date.today().isoformat()
-    with psycopg.connect(url) as conn:
+    with pipeline_connection(url) as conn:
         conn.execute("SELECT pg_advisory_xact_lock(7791024)")
         with conn.cursor(row_factory=psycopg.rows.dict_row) as cursor:
             cursor.execute("SELECT * FROM cdp.products")
@@ -452,6 +506,8 @@ def load_into_db(products_path: Path, coverage_path: Path | None, url: str,
             copy_rows(conn, "catalog.combo_items", COMBO, combos)
         counts["dbRowsWritten"] = len(written)
         counts["comboItemsWritten"] = len(combos)
+        from data_collection.seed import simulated_business
+        counts.update(simulated_business.sync(conn))  # sau upsert + cửa sổ, cùng transaction (data-model.md §3)
     # Publish the report only after the connection context has committed successfully.
     if report_path is not None:
         temporary = report_path.with_suffix(".jsonl.tmp")

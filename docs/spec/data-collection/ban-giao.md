@@ -1,7 +1,7 @@
 # Bàn giao catalog du lịch V-OTA — 23/09/2026
 
 Dữ liệu sản phẩm du lịch thật, thu thập theo §3 handbook RecSys internship v3. Người thu thập: mảng Data.
-**Sinh tự động bởi `make_docs.py`, không sửa tay.** Giá quan sát 15/09–22/09/2026.
+**Tài liệu bàn giao 23/09/2026, giữ để tra cứu.** Giá quan sát 15/09–22/09/2026. Công cụ sinh gói bàn giao (`make_docs.py`, `finalize_catalog.sh`, `make_handover.py`) đã gỡ ngày 29/09/2026; catalog giờ do job `fresh_catalog.py` tạo.
 
 ## 1. Đọc gì trước
 

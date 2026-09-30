@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
+from datetime import date, datetime
 from typing import Mapping, Sequence
+from zoneinfo import ZoneInfo
 
 from src.backend.app.application.catalog.errors import (
     CatalogUnavailable,
@@ -18,10 +20,17 @@ from src.backend.app.domain.catalog import (
     PRODUCT_SORTS,
     TAXONOMIES,
     ListingItem,
+    fare_classes_by_product,
     filter_items,
+    is_fare_variant,
     sort_items,
     summarize_variants,
 )
+
+
+def _today() -> date:
+    """Ngày Việt Nam: báo giá vé hết hạn theo ngày của nguồn (priceValidUntil)."""
+    return datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).date()
 
 
 def _not_found(product_id: str) -> ProductNotFound:
@@ -37,7 +46,12 @@ class GetProductDetail:
         if product is None:
             raise _not_found(product_id)
         variants = summarize_variants(await self.products.variants(product.product_id)) if product.has_variants else None
-        return product_detail(product, variants)
+        fares = None
+        if is_fare_variant(product) and product.parent_id:  # hạng vé của cùng hành trình nằm trong các chuyến anh em
+            siblings = {p.product_id: p for p in await self.products.variants(product.parent_id)}
+            siblings[product.product_id] = product
+            fares = fare_classes_by_product(siblings.values(), _today()).get(product.product_id)
+        return product_detail(product, variants, fares)
 
 
 @dataclass
@@ -63,16 +77,19 @@ class ListProducts:
         ) if bad]
         if invalid:
             raise InvalidCatalogRequest("tham số không hợp lệ", {"fields": invalid})
+        fares: Mapping[str, list] = {}
         if parent_product_id:
-            items: Sequence[ListingItem] = [
-                ListingItem(p, p.is_bookable) for p in await self.products.variants(parent_product_id)]
+            children = await self.products.variants(parent_product_id)
+            items: Sequence[ListingItem] = [ListingItem(p, p.is_bookable) for p in children]
+            fares = fare_classes_by_product(children, _today())  # gom trên mọi chuyến của tuyến, trước khi phân trang
         else:
             items = self.units if self.units is not None else await self.products.search_units()
         ordered = sort_items(
             filter_items(items, destination=destination, taxonomy=taxonomy, available_only=available_only),
             sort, self.popularity, variants=bool(parent_product_id))
         return {
-            "results": [product_summary(i.product) for i in ordered[offset: offset + limit]],
+            "results": [product_summary(i.product, fares.get(i.product.product_id))
+                        for i in ordered[offset: offset + limit]],
             "total": len(ordered), "limit": limit, "offset": offset,
         }
 

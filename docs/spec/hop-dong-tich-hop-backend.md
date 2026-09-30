@@ -108,6 +108,27 @@ Payload dùng cho mọi danh sách: kết quả tìm kiếm, carousel gợi ý, 
 | `rating` | number \| null | Không | Điểm đánh giá tổng hợp 0–5, một chữ số thập phân. `null` khi nguồn crawl không có |
 | `reviewCount` | integer \| null | Không | Số lượt đánh giá. `null` đi kèm `rating: null` |
 | `attributes` | object | Có | Object thuộc tính, xem §2.5. Có thể là object rỗng `{}` |
+| `fareClasses` | array \| vắng | Không | Chỉ vé máy bay tầng con (`level: flight`): các hạng vé của cùng hành trình, xem §2.2.1 (contract 1.9.0) |
+
+#### 2.2.1. `fareClasses` — hạng vé của một hành trình bay
+
+Mỗi hạng vé là một sản phẩm `level: flight` riêng (đề xuất đã chốt `docs/prd/update-archive/2026-09-29-ve-khu-hoi-dat-duoc.md`).
+Backend gom các sản phẩm cùng tuyến có **cùng hành trình** (cùng loại vé, cùng số hiệu chuyến và giờ đi; khứ hồi thêm chuyến
+và giờ về) thành mảng `fareClasses`, trả ở `GET /products?parentProductId=<tuyến>` (gom trên mọi chuyến của tuyến, trước
+khi phân trang) và `GET /products/{id}`. Các sản phẩm cùng hành trình có cùng mảng; Web hiển thị một thẻ cho mỗi hành trình
+và thêm giỏ bằng `productId` của hạng đã chọn (`AddCartItemRequest` không đổi).
+
+| Trường | Ý nghĩa |
+|---|---|
+| `productId` | Sản phẩm của hạng này |
+| `code`, `name` | `ECO`/`PRE`/`BUS`/`FST` từ `attributes.cabinClass`; `null` + "Giá rẻ nhất" khi nguồn không ghi hạng (trip.com). Không mặc định phổ thông |
+| `price`, `currency` | `unitPrice` của sản phẩm; khứ hồi là giá tổng cho một người lớn |
+| `priceValidUntil` | Hạn báo giá tại nguồn, `null` khi nguồn không có |
+| `availabilityStatus` | `AVAILABLE` (còn mở bán, báo giá còn hạn) · `EXPIRED` (quá `priceValidUntil`, ngày Việt Nam) · `NOT_CHECKED` |
+| `soldOut`, `carryOnKg`, `checkedKg`, `mealIncluded`, `changeRule` | `null` = chưa biết: chưa nguồn nào cung cấp. Báo giá hết hạn không có nghĩa `soldOut` |
+
+Chỉ liệt kê hạng có báo giá thật; thiếu hạng nào (vd. thương gia) là chưa có dữ liệu, không phải hết chỗ. Không tạo giá
+thay thế cho hạng thiếu (grounding).
 
 ### 2.3. `ProductDetail`
 

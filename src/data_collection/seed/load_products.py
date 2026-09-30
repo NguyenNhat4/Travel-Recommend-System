@@ -11,6 +11,9 @@ Quy tắc (--as-of mặc định là hôm nay; chạy lại trước demo để 
   * vé máy bay: from = to = ngày bay. Ngày bay = ngày trip.com đã liệt kê (attributes.datesSeen) sớm nhất trong cửa sổ — trùng
     sourceAvailableFrom khi nó nằm trong cửa sổ; không có thì dời vào cửa sổ: as_of + crc32(productId) % 30.
     attributes.departureAt / arrivalAt đổi sang ngày đó, giữ giờ và thời lượng. Tuyến bay: from / to = ngày nhỏ nhất / lớn nhất của các chuyến con.
+    Vé có báo giá ngày cố định (fixedDepartureDate, gồm khứ hồi): giữ ngày đi thật nếu trong cửa sổ, không thì dời như trên; hai chặng
+    dời cùng số ngày, returnDate và ngày trong tên/mô tả đổi theo; ngày đã có cùng hành trình thì lùi sang ngày kế tiếp
+    (PRD data-model §3, chỉ seed demo — job cào giữ ngày thật).
   * attributes.availability = {"from": as_of, "days": 30, "calendar": <30 ký tự 1/0>} chỉ cho hạng phòng, điểm tham quan, golf:
     hạng phòng Vinpearl dùng lịch thật khi `pricesByDateQueried` phủ ít nhất 85% cửa sổ; dữ liệu thưa fallback sang lịch mô phỏng kín
     25–40% theo cụm 1–4 đêm (T6/T7 ×1,5, Vinpearl ×1,3 tối đa 40%). Điểm tham quan / golf toàn trống trừ 15% sản phẩm
@@ -43,6 +46,15 @@ def clip(src_from: str | None, src_to: str | None, lo: date, hi: date) -> tuple[
     return f.isoformat(), t.isoformat()
 
 
+def fixed_flight_window(attrs: dict, lo: date, hi: date) -> tuple[date, date]:
+    try:
+        departure = date.fromisoformat(str(attrs['departureAt'])[:10])
+        expires = date.fromisoformat(attrs['priceValidUntil']) if attrs.get('priceValidUntil') else hi
+    except (ValueError, KeyError):
+        return lo, lo - timedelta(days=1)
+    return max(lo, departure), min(hi, departure, expires if expires < lo else hi)
+
+
 def pick_flight_date(product: dict, lo: date, hi: date) -> tuple[date, bool]:
     """(ngày bay, là ngày thật?). Ngày thật = ngày trip.com đã liệt kê nằm trong cửa sổ (sớm nhất; trùng sourceAvailableFrom khi nó nằm
     trong cửa sổ); không có thì dời vào cửa sổ: as_of + crc32(productId) % 30 (MOCK_DATA_SPEC §2.1)."""
@@ -65,6 +77,63 @@ def move_flight(attrs: dict, day: date) -> None:
     attrs["departureAt"] = d1.isoformat(timespec="seconds")
     if arr:
         attrs["arrivalAt"] = (d1 + (datetime.fromisoformat(arr) - d0)).isoformat(timespec="seconds")
+
+
+def _departure_day(attrs: dict) -> date | None:
+    try:
+        return date.fromisoformat(str(attrs['departureAt'])[:10])
+    except (ValueError, KeyError):
+        return None
+
+
+def itinerary(attrs: dict) -> tuple:
+    """Hành trình cố định (tuyến, số hiệu và giờ hai chặng, số ngày lưu trú, ngày đi gốc), không gồm hạng vé: các hạng của cùng
+    hành trình dời cùng một ngày để fareClasses vẫn gom được."""
+    back = attrs.get('returnFlight') if isinstance(attrs.get('returnFlight'), dict) else {}
+    return (attrs.get('parentProductId'), attrs.get('tripType'), attrs.get('flightNumber'), back.get('flightNumber'),
+            str(attrs.get('departureAt'))[11:16], attrs.get('stayDays'), str(attrs.get('departureAt'))[:10])
+
+
+def seed_fixed_flight_date(product_id: str, attrs: dict, lo: date, hi: date,
+                           taken: dict | None = None) -> tuple[date | None, bool | None]:
+    """Seed demo (PRD data-model §3): vé có báo giá ngày cố định giữ ngày đi thật nếu nằm trong cửa sổ, không thì dời vào cửa sổ
+    như vé không cố định ngày (as_of + crc32(productId) % 30; `product_id` là ID đại diện của hành trình). Ô (hành trình, ngày)
+    đã có hành trình khác cùng chuyến thì lùi sang ngày kế tiếp. Không xét priceValidUntil: vé seed vẫn đặt được, fareClasses báo
+    EXPIRED. Job cào không dùng hàm này (fresh_catalog_db.apply_window giữ ngày thật và khoá vé hết hạn báo giá)."""
+    departure = _departure_day(attrs)
+    if departure is None:
+        return None, None
+    if lo <= departure <= hi:
+        return departure, True
+    trip = itinerary(attrs)
+    taken = taken if taken is not None else {}
+    offset = stable_order_key(product_id) % WINDOW_DAYS
+    for step in range(WINDOW_DAYS):
+        day = lo + timedelta(days=(offset + step) % WINDOW_DAYS)
+        if taken.get(trip[:-1] + (day,), trip) == trip:
+            break
+    taken[trip[:-1] + (day,)] = trip
+    return day, False
+
+
+def shift_fixed_flight(attrs: dict, day: date, name: str, description: str) -> tuple[str, str]:
+    """Dời hai chặng cùng số ngày (giữ giờ bay và stayDays); returnDate và ngày ghi trong tên/mô tả đổi theo."""
+    old_out = str(attrs['departureAt'])[:10]
+    delta = day - date.fromisoformat(old_out)
+    move_flight(attrs, day)
+    renamed = {old_out: day.isoformat()}
+    back = attrs.get('returnFlight')
+    if isinstance(back, dict) and back.get('departureAt'):
+        move_flight(back, date.fromisoformat(str(back['departureAt'])[:10]) + delta)
+    if attrs.get('returnDate'):
+        new_return = (date.fromisoformat(attrs['returnDate']) + delta).isoformat()
+        renamed[attrs['returnDate']] = new_return
+        attrs['returnDate'] = new_return
+    for i, old in enumerate(renamed):  # hai bước qua chuỗi tạm: ngày mới của chặng này có thể trùng ngày cũ của chặng kia
+        name, description = name.replace(old, f"\0{i}\0"), description.replace(old, f"\0{i}\0")
+    for i, new in enumerate(renamed.values()):
+        name, description = name.replace(f"\0{i}\0", new), description.replace(f"\0{i}\0", new)
+    return name, description
 
 
 def zero_outside(calendar: str, as_of: date, f: str, t: str) -> str:
@@ -90,7 +159,10 @@ def real_room_calendar(prices_by_date: dict | None, dates_queried: list | None, 
     return "".join("1" if (as_of + timedelta(days=i)).isoformat() in priced else "0" for i in range(WINDOW_DAYS))
 
 
-def convert(rows: list[dict], combo_attrs: dict[str, dict], as_of: date) -> tuple[list[dict], dict]:
+def convert(rows: list[dict], combo_attrs: dict[str, dict], as_of: date,
+            real_flight_dates: bool = False) -> tuple[list[dict], dict]:
+    """`real_flight_dates`: job cào nạp dữ liệu thật (daily.py) — vé báo giá ngày cố định giữ ngày thật, ngoài cửa sổ hoặc hết hạn
+    báo giá thì không đặt được, như fresh_catalog_db.apply_window. Mặc định (seed demo): dời vào cửa sổ (PRD data-model §3)."""
     lo, hi = window(as_of)
     stats: Counter = Counter()
     out: dict[str, dict] = {}
@@ -98,6 +170,14 @@ def convert(rows: list[dict], combo_attrs: dict[str, dict], as_of: date) -> tupl
     closed_frac: list[float] = []
     meta = build_meta(rows)
     by_id = {r["productId"]: r for r in rows}
+    fixed = [r for r in rows if variant(r) == "flight" and r["attributes"].get("fixedDepartureDate")]
+    # Vé ngày cố định giữ ngày thật được giữ chỗ trước; các hạng của cùng hành trình dời theo ID nhỏ nhất của nhóm.
+    taken = {itinerary(r["attributes"])[:-1] + (d,): itinerary(r["attributes"]) for r in fixed
+             for d in [_departure_day(r["attributes"])] if d is not None and lo <= d <= hi}
+    trip_ids: dict[tuple, str] = {}
+    for r in fixed:
+        trip = itinerary(r["attributes"])
+        trip_ids[trip] = min(trip_ids.get(trip, r["productId"]), r["productId"])
     for r in rows:
         v = variant(r)
         attrs = json.loads(json.dumps(r["attributes"], ensure_ascii=False))
@@ -107,7 +187,25 @@ def convert(rows: list[dict], combo_attrs: dict[str, dict], as_of: date) -> tupl
             attrs["sourceAvailableTo"] = r["availableTo"]
         f, t = clip(r["availableFrom"], r["availableTo"], lo, hi)
         available = bool(r["available"])
-        if v == "flight":
+        name, description = r["name"], r["description"]
+        if v == "flight" and attrs.get('fixedDepartureDate') and real_flight_dates:
+            start, end = fixed_flight_window(attrs, lo, hi)
+            f, t = start.isoformat(), end.isoformat()
+            if start <= end:
+                flight_dates.setdefault(attrs.get('parentProductId') or '', []).append(f)
+            stats['chuyến bay: báo giá ngày cố định (ngày thật, job cào)'] += 1
+        elif v == "flight" and attrs.get('fixedDepartureDate'):
+            day, real = seed_fixed_flight_date(trip_ids.get(itinerary(attrs), r["productId"]), attrs, lo, hi, taken)
+            if day is None:  # thiếu/sai departureAt: không đặt được như trước
+                f, t = lo.isoformat(), (lo - timedelta(days=1)).isoformat()
+            else:
+                if not real:
+                    name, description = shift_fixed_flight(attrs, day, name, description)
+                f = t = day.isoformat()
+                flight_dates.setdefault(attrs.get('parentProductId') or '', []).append(f)
+            stats['chuyến bay: báo giá ngày cố định (ngày thật)'] += bool(real)
+            stats['chuyến bay: báo giá ngày cố định (dời vào cửa sổ)'] += real is False
+        elif v == "flight":
             day, real = pick_flight_date(r, lo, hi)
             f = t = day.isoformat()
             move_flight(attrs, day)
@@ -130,8 +228,8 @@ def convert(rows: list[dict], combo_attrs: dict[str, dict], as_of: date) -> tupl
         if v == "combo" and r["productId"] in combo_attrs:
             attrs.update(combo_attrs[r["productId"]]["attributes"])
             stats["combo gán priceBasis/nights/minPax"] += 1
-        out[r["productId"]] = {"product_id": r["productId"], "name": r["name"], "taxonomy": r["taxonomy"], "destination": r["destination"],
-                               "description": r["description"], "attributes": attrs, "unit_price": r["unitPrice"], "currency": r["currency"],
+        out[r["productId"]] = {"product_id": r["productId"], "name": name, "taxonomy": r["taxonomy"], "destination": r["destination"],
+                               "description": description, "attributes": attrs, "unit_price": r["unitPrice"], "currency": r["currency"],
                                "available": available, "available_from": f, "available_to": t, "image_url": r["imageUrl"],
                                "source_ref": r["sourceRef"], "_variant": v}
     for pid, p in out.items():  # tuyến bay: khoảng của các chuyến con
@@ -165,6 +263,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--data-dir", type=Path, default=Path("data"))
     ap.add_argument("--out-dir", type=Path, default=None)
     ap.add_argument("--as-of", type=date.fromisoformat, default=date.today())
+    ap.add_argument("--real-flight-dates", action="store_true",
+                    help="job cào (dữ liệu thật): không dời vé báo giá ngày cố định, khoá vé hết hạn báo giá")
     a = ap.parse_args(argv)
     d, out_dir = a.data_dir, a.out_dir or a.data_dir / "loader"
     stats_examples.clear()
@@ -173,7 +273,7 @@ def main(argv: list[str] | None = None) -> int:
     combo_attrs = {}
     if (d / "combo_attributes.json").exists():
         combo_attrs = json.loads((d / "combo_attributes.json").read_text(encoding="utf-8"))
-    products, stats = convert(rows, combo_attrs, a.as_of)
+    products, stats = convert(rows, combo_attrs, a.as_of, real_flight_dates=a.real_flight_dates)
     out_dir.mkdir(parents=True, exist_ok=True)
     with open(out_dir / "cdp_products.jsonl", "w", encoding="utf-8") as f:
         for p in products:

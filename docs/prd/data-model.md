@@ -261,6 +261,18 @@ Mọi thông tin động theo loại sản phẩm được chuẩn hóa trong tr
   }
   ```
 
+Vé có báo giá theo ngày cố định giữ `level: flight`, `fixedDepartureDate: true`, `tripType: oneWay | roundTrip` và `cabinClass` khi nguồn xác nhận. Định danh mới bao gồm hành trình, ngày và hạng vé, không thay ID cũ. `available_from = available_to` là ngày đi. Job cào (dữ liệu thật) không dời ngày của vé này; ngoài cửa sổ hoặc hết hạn báo giá thì không đặt được. Riêng seed demo (`make demo-db`, snapshot có version): vé có ngày đi ngoài cửa sổ được dời vào cửa sổ như vé không cố định ngày (`as_of + crc32(productId) % 30`), hai chặng dời cùng số ngày, giữ giờ bay và `stayDays`, `returnDate` cùng ngày ghi trong tên/mô tả đổi theo; vé có ngày đi trong cửa sổ giữ ngày thật. Giá giữ nguyên từ nguồn (gắn với ngày gốc, chỉ là giá tham khảo) và `priceValidUntil` giữ nguyên, nên `fareClasses` báo `EXPIRED` khi báo giá hết hạn nhưng vé seed vẫn đặt được. Vé khứ hồi có `returnFlight` (số hiệu, hãng, sân bay đi/đến, giờ đi/đến), `returnDate`, `stayDays`, `priceValidUntil` nếu có. `unitPrice` là tổng hai chặng cho một người lớn (`priceBasis: per_person`); `quantity` là số khách. Ngày về không ghi vào `using_date_to`, không nhân số đêm. Thiếu hạng vé thì giữ chưa biết. Giá lịch sử giữ thời điểm nguồn, không được coi là báo giá mới.
+
+**Vé Thương gia mô phỏng (demo).**
+
+- Mặc định bật ở mọi bước nạp catalog: seed demo local (`make demo-db`, luôn bật), `seed --catalog-only` / `daily.py` và job fresh. Tắt bằng `SIMULATED_BUSINESS_FARES=0` trong env của job (seed demo đầy đủ không tắt được).
+- Sau mỗi lần nạp catalog: mỗi vé máy bay thật `level: flight` có số hiệu chuyến (một chiều và khứ hồi), hạng khác `BUSINESS`/`FIRST`, sinh một vé cùng hành trình, `cabinClass: BUSINESS`. Không sinh khi đã có vé Thương gia thật cùng hành trình và ngày: giá thật luôn thắng.
+- Giá = giá vé gốc × 2,65, làm tròn nghìn đồng. 2,65 là tỉ lệ Thương gia / Phổ thông trên bảng "Giá vé tham khảo" công khai của Vietnam Airlines, chặng Hà Nội – TP.HCM (3.957.000 / 1.494.000 một chiều; 7.914.000 / 2.988.000 khứ hồi).
+- `sourceRef` là `demo:business:<sourceRef vé gốc>`; `productId` sinh cố định từ `sourceRef` này.
+- Đánh dấu: `attributes.simulated = true`; `attributes.fieldSources.unitPrice = "mô phỏng"`; tên có hậu tố "(giá minh hoạ)"; mô tả ghi rõ giá minh hoạ, không phải giá nguồn báo.
+- Ngày, giờ, chiều về, `available`, cửa sổ đặt chỗ và `priceValidUntil` chép từ vé gốc, cập nhật lại mỗi lần nạp.
+- Vé gốc hết đặt được, có vé Thương gia thật thay thế, hoặc tắt cấu hình → vé mô phỏng chuyển `available = false`. Không xoá dòng, vì đơn cũ có thể trỏ tới.
+
 ### 3.2. Cấu trúc `app.messages.structured_data` (Grounded Itinerary)
 Dữ liệu lịch trình do AI Assistant trả về phải tuân thủ cấu trúc định dạng chuẩn:
 ```json

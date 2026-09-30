@@ -13,7 +13,7 @@ import zlib
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import fresh_catalog
 import normalise
@@ -198,11 +198,14 @@ class MaintainCatalogTests(unittest.TestCase):
         seeded = row('seeded', start=date(2026, 9, 20), end=date(2026, 10, 19))
         current = row('current', start=AS_OF, end=HI)
         conn = _Conn([stale, seeded, current])
-        with patch('psycopg.connect', return_value=conn):
+        sync = Mock(return_value={'simulatedBusiness': 0})
+        with patch('psycopg.connect', return_value=conn), \
+                patch('data_collection.seed.simulated_business.sync', sync):
             counts = maintain_catalog('postgresql://unused', today=AS_OF,
                                       now=datetime(2026, 9, 24, tzinfo=timezone.utc))
         updates = {params[-1]: params for params in conn.updates}
-        self.assertEqual(counts, {'staleTrip': 1, 'windowRows': 1})
+        self.assertEqual(counts, {'staleTrip': 1, 'windowRows': 1, 'simulatedBusiness': 0})
+        sync.assert_called_once_with(conn)  # simulated business fares follow the rolled window (data-model.md §3)
         self.assertEqual(set(updates), {'stale', 'seeded'})
         self.assertEqual(updates['stale'][1:3], (None, False))  # unit_price, available
         self.assertEqual(updates['seeded'][3:5], (AS_OF, HI))  # available_from, available_to
@@ -268,18 +271,157 @@ class RunJobTests(unittest.TestCase):
         self.assertEqual(self.calls, ['settings', 'maintain', 'index'])
         crawl.assert_not_called()
 
-    def test_index_failure_after_a_successful_load_fails_the_run(self):
+    def test_index_quota_after_successful_load_defers_without_fatal_exit(self):
         def broken_index(*args, **kwargs):
             raise RuntimeError('Cohere 429')
+        self.assertEqual(self.run_job('daily', index_catalog=broken_index), 0)
+        self.assertIn('load', self.calls)
+        state = Path(self.env['CATALOG_STATE_DIR']) / 'index_pending.json'
+        self.assertTrue(json.loads(state.read_text())['pending'])
+        run_dir = next(Path(self.env['CATALOG_RUN_ROOT']).iterdir())
+        data = json.loads((run_dir / 'run.json').read_text())
+        self.assertEqual(data['status'], 'partial')
+        self.assertTrue(data['counts']['index']['deferred'])
+
+    def test_due_entrypoint_and_tick_retry_only_index_after_cooldown(self):
+        state = Path(self.env['CATALOG_STATE_DIR'])
+        (state / 'index_pending.json').write_text(json.dumps({
+            'pending': True, 'retryAfter': '2000-01-01T00:00:00+00:00'}))
+        with patch.dict(os.environ, self.env, clear=True), \
+                patch.object(fresh_catalog.fresh_settings, 'scheduled_mode', return_value=(None, 'already ran')):
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                self.assertEqual(fresh_catalog.run_job('due'), 0)
+            self.assertEqual(output.getvalue().strip(), 'index')
+            crawl = AsyncMock()
+            self.assertEqual(self.run_job('tick', crawl=crawl), 0)
+            crawl.assert_not_called()
+        self.assertEqual(self.calls, ['settings', 'maintain', 'index'])
+        self.assertFalse((state / 'index_pending.json').exists())
+
+    def test_failed_run_writes_an_alert_for_the_monitor(self):
+        """CP7: lượt lỗi → cảnh báo trong <state>/alerts.jsonl và <lượt>/alerts.jsonl (chưa gửi ra ngoài)."""
+        failed = {'stays': [{'checkin': '2026-10-08'}], 'requestedHotels': 1, 'partialAllowed': True,
+                  'results': [{'hotelId': '1', 'checkin': '2026-10-08', 'status': 'missing'}],
+                  'completedHotels': [], 'unpricedHotelDates': ['1@2026-10-08']}
+        with self.assertRaises(RuntimeError), contextlib.redirect_stdout(io.StringIO()):
+            self.run_job('daily', crawl=AsyncMock(return_value=([], failed)))
+        feed = [json.loads(line) for line in (Path(self.env['CATALOG_STATE_DIR']) / 'alerts.jsonl').read_text(
+            encoding='utf-8').splitlines()]
+        self.assertEqual((feed[0]['level'], feed[0]['run'].split('-')[0]), ('error', 'daily'))
+        self.assertIn('Không có khách sạn Trip', feed[0]['message'])
+        run_dir = next(Path(self.env['CATALOG_RUN_ROOT']).iterdir())
+        self.assertTrue((run_dir / 'alerts.jsonl').is_file())
+
+    def test_idle_tick_checks_sla_without_database_settings(self):
+        """CP8: tick rảnh (lịch tắt) vẫn kiểm SLA và không cần biến kết nối DB."""
+        checked = []
+        env = {k: v for k, v in self.env.items() if k.startswith('CATALOG_')}
+        (Path(env['CATALOG_STATE_DIR']) / 'settings.json').write_text(json.dumps({'values': {'schedule.enabled': False}}),
+                                                                       encoding='utf-8')
+        with patch.dict(os.environ, env, clear=True), \
+                patch.object(fresh_catalog.alerts, 'check_sla', lambda *a: checked.append(a)):
+            self.assertEqual(fresh_catalog.run_job('tick'), 0)
+        self.assertEqual(len(checked), 1)
+
+    def test_missing_index_configuration_keeps_crawl_and_load_then_reports_index_failure(self):
+        del self.env['CLOUD_WEAVIATE_URL']
         with self.assertRaisesRegex(RuntimeError, 'Index thất bại'):
-            self.run_job('daily', index_catalog=broken_index)
+            self.run_job('daily', index_settings=fresh_catalog.index_settings)
+        self.assertIn('maintain', self.calls)
         self.assertIn('load', self.calls)
 
-    def test_missing_index_configuration_stops_before_touching_the_database(self):
-        del self.env['CLOUD_WEAVIATE_URL']
-        with self.assertRaisesRegex(ValueError, 'CLOUD_WEAVIATE_URL'):
-            self.run_job('daily', index_settings=fresh_catalog.index_settings)
-        self.assertNotIn('maintain', self.calls)
+
+class ResumeTests(RunJobTests):
+    """CP6 (docs/plan/2026-09-28-normalize-on-dinh-theo-buoc.md): chạy lại lượt đã kết thúc từ một bước, không cào lại."""
+    RUN = 'full-20260928T010000Z-77'
+
+    def failed_run(self, status='failed', products=True):
+        run = Path(self.env['CATALOG_RUN_ROOT']) / self.RUN
+        run.mkdir(parents=True)
+        (run / 'run.json').write_text(json.dumps({
+            'id': self.RUN, 'mode': 'full', 'trigger': 'monitor', 'status': status, 'startedAt': '2026-09-28T01:00:00+00:00',
+            'seconds': 100, 'error': 'InfraError: Postgres không kết nối được', 'settings': {'scope.destinations': 'Nha Trang'},
+            'steps': [{'name': 'vinpearl', 'status': 'ok'}, {'name': 'db', 'status': 'error'}], 'counts': {}}),
+            encoding='utf-8')
+        if products:
+            (run / 'products.jsonl').write_text('{}\n', encoding='utf-8')
+        return run
+
+    def resume(self, from_step, **overrides):
+        crawl = AsyncMock()
+        self.calls.clear()
+        with patch.dict(os.environ, self.env, clear=True), patch.object(fresh_catalog, 'crawl', crawl):
+            stack = self.patches(**overrides)
+            for item in stack:
+                item.start()
+            try:
+                return fresh_catalog.run_job('resume', run_id=self.RUN, from_step=from_step)
+            finally:
+                for item in stack:
+                    item.stop()
+                crawl.assert_not_called()
+
+    def test_resume_from_each_step_runs_only_the_steps_after_it(self):
+        run = self.failed_run()
+        for from_step, expected in (('db', ['settings', 'load', 'index']),
+                                    ('validate', ['settings', 'validate', 'load', 'index']),
+                                    ('normalise', ['settings', 'normalize', 'validate', 'load', 'index']),
+                                    ('index', ['settings', 'index'])):
+            with self.subTest(from_step=from_step):
+                self.assertEqual(self.resume(from_step), 0)
+                self.assertEqual(self.calls, expected)  # không bảo trì DB, không cào lại
+        data = json.loads((run / 'run.json').read_text(encoding='utf-8'))
+        self.assertEqual(data['status'], 'ok')
+        self.assertEqual([r['from'] for r in data['resumes']], ['db', 'validate', 'normalise', 'index'])
+        self.assertEqual(data['resumes'][0]['previousStatus'], 'failed')
+        self.assertIn('Postgres', data['resumes'][0]['previousError'])
+        self.assertEqual(data['steps'][:2], [{'name': 'vinpearl', 'status': 'ok'}, {'name': 'db', 'status': 'error'}])
+        self.assertEqual([s['name'] for s in data['steps'][2:5]], ['db', 'index', 'validate'])
+        self.assertGreaterEqual(data['seconds'], 100)  # cộng dồn thời gian lượt gốc
+
+    def test_merge_only_uses_checkpoints(self):
+        self.failed_run()
+        seen = []
+        self.assertEqual(self.resume('merge', normalize=lambda run_dir, dest, merge_only=False: seen.append((dest, merge_only))
+                                     or Path('products.jsonl')), 0)
+        self.assertEqual(seen, [('Nha Trang', True)])
+
+    def test_db_without_catalog_asks_for_normalise_but_still_indexes(self):
+        self.failed_run(products=False)
+        with self.assertRaisesRegex(ValueError, 'chạy lại từ normalise'):
+            self.resume('db')
+        self.assertEqual(self.calls, ['settings', 'index'])
+
+    def test_running_run_or_second_resume_is_refused(self):
+        self.failed_run(status='running')
+        with self.assertRaisesRegex(ValueError, 'đang chạy'):
+            self.resume('db')
+        state = Path(self.env['CATALOG_STATE_DIR'])
+        (Path(self.env['CATALOG_RUN_ROOT']) / self.RUN / 'run.json').unlink()
+        run = Path(self.env['CATALOG_RUN_ROOT']) / self.RUN
+        (run / 'run.json').write_text(json.dumps({'id': self.RUN, 'mode': 'full', 'status': 'failed', 'steps': []}),
+                                      encoding='utf-8')
+        import fcntl
+        with (state / 'fresh_catalog.lock').open('w') as lock:  # một lượt / lần chạy lại khác đang giữ khoá
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            with self.assertRaisesRegex(RuntimeError, 'job catalog khác'):
+                self.resume('db')
+
+    def test_unknown_run_is_refused(self):
+        with self.assertRaisesRegex(ValueError, 'Không có lượt'):
+            self.resume('db')
+
+    def test_cli_requires_run_and_step(self):
+        with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+            fresh_catalog.main(['resume'])
+        with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+            fresh_catalog.main(['resume', self.RUN, '--from', 'crawl'])
+
+
+
+for _name in [n for n in vars(RunJobTests) if n.startswith('test_')]:  # ResumeTests chỉ dùng lại khung, không chạy lại test cũ
+    setattr(ResumeTests, _name, None)
 
 
 class CrawlSitesTests(unittest.TestCase):
@@ -304,7 +446,7 @@ class CrawlSitesTests(unittest.TestCase):
 
     def run_sites(self, groups, parallel, codes=None):
         codes = codes or {}
-        def fake_source(run_dir, source, destinations, group):
+        def fake_source(run_dir, source, destinations, group, deadline=None):
             return self.step(source, codes.get(source, 0))()
         with patch.object(fresh_catalog, 'run_source', fake_source), \
                 contextlib.redirect_stdout(io.StringIO()) as out:
@@ -329,14 +471,11 @@ class CrawlSitesTests(unittest.TestCase):
         self.run_sites(groups, 1)
         self.assertEqual((self.peak, self.order), (1, ['vinpearl', 'booking-hotels']))
 
-    def test_blocked_source_is_accepted_but_a_failure_stops_sites_not_yet_started(self):
+    def test_blocked_and_failed_sources_do_not_skip_queued_sites(self):
         groups = [('vinpearl', ('vinpearl',)), ('booking', ('booking-hotels',)), ('agoda', ('agoda-hotels',))]
-        error, log = self.run_sites(groups, 1, codes={'vinpearl': 75, 'booking-hotels': 2})
-        self.assertIsInstance(error, RuntimeError)
-        self.assertIn('booking-hotels dừng với mã 2', str(error))
-        self.assertNotIn('agoda-hotels', self.order)
-        self.assertIn('catalog.group.skip name=agoda', log)
-        self.assertIn('catalog.group.done name=vinpearl status=ok', log)
+        statuses, log = self.run_sites(groups, 1, codes={'vinpearl': 75, 'booking-hotels': 2})
+        self.assertEqual(statuses, {'vinpearl': 75, 'booking-hotels': 2, 'agoda-hotels': 0})
+        self.assertIn('agoda-hotels', self.order)
 
     def test_full_run_crawls_trip_inside_its_site_group(self):
         target = {'trip_hotel_id': '1', 'city_id': '1777', 'destination': 'Nha Trang'}
@@ -353,7 +492,7 @@ class CrawlSitesTests(unittest.TestCase):
                     patch.object(fresh_catalog, 'maintain_catalog', fake('maintain', {})), \
                     patch.object(fresh_catalog, 'discover', AsyncMock(return_value=([target], []))), \
                     patch.object(fresh_catalog, 'crawl', AsyncMock(return_value=([{'hotelId': '1'}], coverage))), \
-                    patch.object(fresh_catalog, 'run_source', lambda *args: calls.append(args[1]) or 0), \
+                    patch.object(fresh_catalog, 'run_source', lambda *args, **kwargs: calls.append(args[1]) or 0), \
                     patch.object(fresh_catalog, 'normalize', fake('normalize', Path('products.jsonl'))), \
                     patch.object(fresh_catalog, 'validate_run', fake('validate', {})), \
                     patch.object(fresh_catalog, 'load_into_db', fake('load', {})), \
