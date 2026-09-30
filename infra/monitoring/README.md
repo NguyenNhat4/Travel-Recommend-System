@@ -9,6 +9,7 @@ This root configures only the staging monitoring environment. It does not contai
 - Cloud Monitoring HTTPS uptime check for the staging readiness endpoint.
 - Cloud Logging user metric for error-level Compute Engine logs.
 - Docker lifecycle event watcher and crawler log metrics for container stop, OOM, partial crawler runs and watcher heartbeat absence.
+- Daily log rotation for watcher, crawler and daily-job logs: 14 compressed rotations with a 100 MB per-file cap.
 - Optional email notification channel, supplied as a sensitive variable.
 
 The crawler monitor UI is not part of this package. This package monitors the crawler and container lifecycle only.
