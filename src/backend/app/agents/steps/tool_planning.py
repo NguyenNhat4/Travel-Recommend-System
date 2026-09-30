@@ -21,6 +21,10 @@ logger = logging.getLogger("uvicorn.error")
 
 MAX_CALLS = 5
 MAX_SIMILAR_CALLS = 2  # mỗi lượt, mỗi anchor một lần; vẫn nằm trong MAX_CALLS
+# Số sản phẩm mỗi lời gọi do server cố định, không lấy từ LLM, để mọi mode (inprocess/http/fixture) nhận cùng số
+# ứng viên. Phải nằm trong `maximum` của contract (search ≤ 50, recommendations ≤ 20).
+SEARCH_LIMIT = 10
+RECOMMENDATION_K = 10
 
 
 async def catalog_destinations(tools: ToolExecutorPort, timeout_seconds: float) -> list[str] | None:
@@ -107,6 +111,17 @@ def _similar_limit() -> int:
     """`limit` của Similar do server cố định ở mức tối đa hợp đồng: engine không lọc điểm đến, kết quả lệch
     điểm đến bị bỏ sau truy xuất, nên lấy nhiều nhất có thể để còn phương án cùng điểm đến."""
     return contracts()[SIMILAR_PRODUCTS]["arguments"]["properties"]["limit"]["maximum"]
+
+
+def _result_size(name: str) -> dict:
+    """Tham số số lượng kết quả server ép cho tool `name`; tool không có tham số này thì rỗng."""
+    if name == SIMILAR_PRODUCTS:
+        return {"limit": _similar_limit()}
+    if name == "search_products":
+        return {"limit": SEARCH_LIMIT}
+    if name == "get_recommendations":
+        return {"k": RECOMMENDATION_K}
+    return {}
 
 
 def _similar_dropped(state: dict, reason: str) -> None:
@@ -205,8 +220,7 @@ def _validated_args(state: dict, call: dict) -> dict:
     # truy xuất ở `retrieval.collect`, nên không mất hành vi nào.
     known = argument_names(call["name"])
     args = {key: value for key, value in args.items() if key in known}
-    if call["name"] == SIMILAR_PRODUCTS:
-        args["limit"] = _similar_limit()
+    args.update(_result_size(call["name"]))
     args = normalize_arguments(call["name"], args)
     if intent.get("destination") and "destination" in known:
         # Tên catalog đã chuẩn hóa mới là nguồn sự thật; planner viết "Hồ Chí Minh" thay vì
@@ -248,9 +262,9 @@ def validated_plan(state: dict, plan: list, *, require_recommendations: bool = F
     if require_recommendations and not any(call["name"] == "get_recommendations" for call in validated):
         if not _has_room(state, validated):
             raise ToolError("INVALID_TOOL_PLAN")
-        destination = state["intent"]["destination"]
-        validated.append({"name": "get_recommendations",
-                          "args": normalize_arguments("get_recommendations", {"destination": destination})})
+        # Cùng đường ép args với lời gọi của planner: `_validated_args` điền điểm đến chuẩn và `k`.
+        recommendations = {"name": "get_recommendations", "args": {}}
+        validated.append({**recommendations, "args": _validated_args(state, recommendations)})
     if any(call["name"] == SIMILAR_PRODUCTS for call in plan):
         # Lưới an toàn: Similar là best-effort (lỗi mềm, kết quả lệch điểm đến bị bỏ), nên plan có Similar (kể cả
         # lời gọi vừa bị bỏ) giữ một search cho mỗi loại đang đổi; search không lọc loại cũng tính, và Similar

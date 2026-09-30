@@ -92,7 +92,7 @@ GET /api/v1/search?q=khu%20nghỉ%20dưỡng&destination=Nha%20Trang&taxonomy=ho
 
 #### Query parameters
 
-`q` là bắt buộc; `destination`, `taxonomy`, `limit`, `offset` là tùy chọn. Tool planner vẫn dùng tên `query`; chỉ adapter HTTP đổi sang `q`, adapter `inprocess` truyền thẳng vào engine. Cả hai chỉ chuyển `taxonomy`, `destination`, `limit`, `offset`, bỏ `cutoff` và `diagnostics` khỏi kết quả, và không bao giờ gắn danh tính người dùng (không JWT, không `cdpUserId`). Search MVP không nhận ngày, party hoặc bộ lọc giá/sao; Agent giữ và hậu kiểm các ràng buộc đó sau retrieval.
+`q` là bắt buộc; `destination`, `taxonomy`, `limit`, `offset` là tùy chọn. Agent không lấy `limit` từ LLM: server cố định `limit=10` cho mọi lời gọi search và `k=10` cho `get_recommendations` (§2.4), ở hằng `SEARCH_LIMIT`/`RECOMMENDATION_K` trong `agents/steps/tool_planning.py`, nên mọi mode nhận cùng số ứng viên. Tool planner vẫn dùng tên `query`; chỉ adapter HTTP đổi sang `q`, adapter `inprocess` truyền thẳng vào engine. Cả hai chỉ chuyển `taxonomy`, `destination`, `limit`, `offset`, bỏ `cutoff` và `diagnostics` khỏi kết quả, và không bao giờ gắn danh tính người dùng (không JWT, không `cdpUserId`). Search MVP không nhận ngày, party hoặc bộ lọc giá/sao; Agent giữ và hậu kiểm các ràng buộc đó sau retrieval.
 
 #### Response
 
