@@ -4,7 +4,7 @@ This root configures only the staging monitoring environment. It does not contai
 
 ## Resources
 
-- Cloud Monitoring dashboard for VM CPU, memory, disk and readiness.
+- Cloud Monitoring dashboard for VM CPU, memory, disk, readiness, watcher heartbeat, crawler outcomes and container lifecycle events.
 - Alert policies for uptime, CPU, memory, disk and error-level VM logs.
 - Cloud Monitoring HTTPS uptime check for the staging readiness endpoint.
 - Cloud Logging user metric for error-level Compute Engine logs.
