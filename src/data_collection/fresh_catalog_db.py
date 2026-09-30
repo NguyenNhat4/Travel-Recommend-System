@@ -94,6 +94,8 @@ def price_attributes(fresh: dict, previous: dict | None, seen_at: str) -> dict:
         for key in keys:
             if key in incoming:
                 attrs[key] = copy.deepcopy(incoming[key])
+        if incoming.get("fixedDepartureDate") and "priceValidUntil" not in incoming:
+            attrs.pop("priceValidUntil", None)  # a newer quote without a validity must not inherit the old expiry
     for key in PRICE_KEYS:
         if key in incoming:
             attrs[key] = copy.deepcopy(incoming[key])
@@ -389,7 +391,9 @@ def maintain_catalog(url: str, *, today: date | None = None, now: datetime | Non
                    WHERE product_id = %s""",
                 [(Jsonb(row["attributes"]), row["unit_price"], row["available"], row["available_from"],
                   row["available_to"], row["product_id"]) for row in writes.values()])
-    return {"staleTrip": counts["staleTrip"], "windowRows": len(windowed)}
+        from data_collection.seed import simulated_business  # _seed_rules() đã đưa src/ vào sys.path
+        simulated = simulated_business.sync(conn)
+    return {"staleTrip": counts["staleTrip"], "windowRows": len(windowed), **simulated}
 
 
 def row_action(row: dict, previous: dict | None, fresh_ids: set[str]) -> str:
@@ -502,6 +506,8 @@ def load_into_db(products_path: Path, coverage_path: Path | None, url: str,
             copy_rows(conn, "catalog.combo_items", COMBO, combos)
         counts["dbRowsWritten"] = len(written)
         counts["comboItemsWritten"] = len(combos)
+        from data_collection.seed import simulated_business
+        counts.update(simulated_business.sync(conn))  # sau upsert + cửa sổ, cùng transaction (data-model.md §3)
     # Publish the report only after the connection context has committed successfully.
     if report_path is not None:
         temporary = report_path.with_suffix(".jsonl.tmp")

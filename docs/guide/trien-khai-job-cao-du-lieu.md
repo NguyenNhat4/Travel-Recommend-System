@@ -15,7 +15,7 @@ Repo có hai job. Hai job cùng ghi `cdp.products` nên không được chạy s
 | Lịch cron | `0 2 * * *` | `*/15 * * * *` (tick rảnh không làm gì, không cần DB) |
 | Dữ liệu / env | `/srv/vota/daily-data`, `/etc/vota/daily.env` | `/srv/vota/fresh-catalog-data` (UID 10001), `/etc/vota/fresh-catalog.env`, log `/srv/vota/fresh-catalog-logs` |
 | Monitor | `run_daily_docker.sh monitor` (container `vota-daily-monitor`) | `run_daily_docker.sh fresh-monitor` (container `vota-fresh-catalog-monitor`) |
-| CI/CD hiện tại | Build/publish để giữ khả năng quay lại | **Mặc định deploy**: build/publish, cron và yêu cầu cào full ngay; giữ monitor đang chạy |
+| CI/CD hiện tại | Không deploy (quay lại bằng tay) | **Mặc định deploy**: build/publish, cron ghim digest, khởi động lại monitor; không tự chạy lượt cào |
 
 Cả hai lịch được cài bằng **một** script `scripts/install-vota-cron.sh`, trong **cùng một khối** crontab
 (`# BEGIN VOTA CRAWLER` … `# END VOTA CRAWLER`). Cài job này là **thay** job kia, nên không thể vô tình chạy cả hai:
@@ -55,7 +55,8 @@ VM hiện có job fresh cần giữ nguyên:
 
 - `/srv/vota/fresh-catalog-data` (app UID/GID 10001 ghi được), `/etc/vota/fresh-catalog.env` (deploy account đọc được), `/srv/vota/fresh-catalog-logs` (deploy account ghi được).
 - Env có `DB_TARGET`, kết nối DB, Cohere và Weaviate của đúng đích; tunnel DB và Docker đã hoạt động. CD không tự tạo env hay sửa secret:
-  **đổi key Cohere phải sửa tay `/etc/vota/fresh-catalog.env` trên VM**.
+  **đổi key Cohere hoặc tắt vé Thương gia mô phỏng (`SIMULATED_BUSINESS_FARES=0`) phải sửa tay `/etc/vota/fresh-catalog.env`
+  trên VM** (xem [mục dưới](#vé-thương-gia-mô-phỏng-trên-vm)).
 - Đổi đường dẫn bằng các secret tùy chọn `GCE_CRON_DATA_DIR`, `GCE_CRON_ENV_FILE`, `GCE_CRON_LOG_DIR`, `GCE_CRON_RUNNER` (mặc định là
   các đường dẫn fresh ở trên).
 
@@ -129,8 +130,51 @@ Lưu ý:
 - Chạy liên tục (`stream.enabled`, `stream.db`) mặc định **tắt**. Bật trên monitor sau khi lượt đầu trên VM ổn
   (`docs/plan/2026-09-29-bo-cho-doi-giua-cac-buoc.md`, P2).
 
-## Vé thương gia và quota Cohere (30/09/2026)
+## Vé thương gia, khứ hồi 3/5/7 ngày và quota Cohere (30/09/2026)
 
-`trip-flights` nay lấy thêm báo giá Thương Gia từ UI Trip.com; image daily đã có Chromium. Gói 43 vé ngày 15/10/2026 được import insert-only từ image SHA trong CD. Xem [hướng dẫn chi tiết](ve-thuong-gia-va-index-cho.md) về giới hạn tuyến/ngày, import và kiểm chứng.
+- **Collector thương gia / khứ hồi** (`trip-flights`, chỉ lượt `full`): sau trang SEO, tìm thêm giá Thương gia một chiều và
+  khứ hồi về sau 3, 5, 7 ngày cho 6 tuyến, xoay vòng theo ngày bay +1..+29. Mỗi lượt dùng tối đa `tripFlights.fareMinutes`
+  phút (monitor, mặc định 30; `0` = tắt), trạng thái xoay vòng ở `/srv/vota/fresh-catalog-data/state/trip_fares_rotation.json`.
+- **Giới hạn đã biết:** Trip cấm các trang tìm vé này trong `robots.txt` và trả `HTTP 432` ("whaleguard block") cho Chromium
+  headless. Collector chờ 45 giây, thử lại một lần, rồi báo bị chặn; 3 lần liên tiếp thì dừng phần này (khoảng 2,5 phút mỗi
+  lượt). Lượt `full` vẫn nạp phần SEO, report ghi nguồn `trip-flights` chưa hoàn tất. Muốn bỏ hẳn thời gian này: đặt
+  `tripFlights.fareMinutes = 0` trên monitor. Không lách chống bot.
+- **43 vé Thương gia thật** (bay 15/10/2026) đã có trên DB VM. CD không import; DB mới thì chạy lệnh `import-flights` ở mục
+  trên.
+- **Cohere 429 / nguồn quá giờ:** report `partial` nhưng trả 0 khi dữ liệu hợp lệ đã nạp; 429 được hoãn vào
+  `state/index_pending.json`, cron thử lại riêng index khi tới `retryAfter`. Lỗi DB / schema / quality gate và lỗi index khác
+  vẫn báo lỗi. Chi tiết: [vé thương gia và index chờ](ve-thuong-gia-va-index-cho.md).
 
-Job fresh giữ report `partial` nhưng trả 0 khi nguồn timeout mà dữ liệu hợp lệ đã nạp, hoặc Cohere 429 được hoãn vào `state/index_pending.json`. Cron thử lại riêng index khi đến `retryAfter`. Lỗi DB/schema/quality gate và lỗi index khác vẫn báo lỗi. Workflow hiện build/publish cả daily và fresh, rồi yêu cầu cào full bằng image fresh mới. Task này không restart VM hoặc monitor.
+## Vé Thương gia mô phỏng trên VM
+
+Cho web có hạng Thương gia ở mọi ngày có vé (quy tắc: `docs/prd/data-model.md` §3). Mỗi vé máy bay có số hiệu chuyến sinh
+thêm một vé Thương gia: giá vé gốc × 2,65, tên "(giá minh hoạ)", `attributes.simulated = true`, `sourceRef`
+`demo:business:<sourceRef gốc>`. Vé Thương gia thật cùng hành trình và ngày luôn thắng.
+
+**Mặc định bật**, không cần sửa env hay thao tác trên VM: sau khi bản này được deploy, mọi lượt nạp của job (kể cả tick bảo
+trì đầu lượt) tự sinh / cập nhật vé mô phỏng theo giá và cửa sổ 30 ngày.
+
+Muốn có ngay, không chờ lượt nạp: chạy một lần (chỉ ghi các dòng `demo:business:*`, dùng chung khoá ghi catalog với job; có
+lượt đang ghi DB thì chờ tới khi xong):
+
+```bash
+docker run --rm --network host --env-file /etc/vota/fresh-catalog.env --entrypoint python <AR>/vota-fresh-catalog:latest -m src.data_collection.seed.simulated_business --database-url-env CLOUD_SEED_DATABASE_URL
+```
+
+Hoặc từ máy có tunnel DB: `cd src && python -m data_collection.seed.simulated_business --database-url-env
+CLOUD_SEED_DATABASE_URL`. Kết quả in dạng `simulatedBusiness=<số vé mở> · simulatedBusinessClosed=… ·
+simulatedBusinessWritten=…`; chạy lại lần hai ghi `0`.
+
+**Kiểm** (SQL chỉ đọc):
+
+```sql
+SELECT available, count(*) FROM cdp.products WHERE source_ref LIKE 'demo:business:%' GROUP BY 1;
+```
+
+Monitor / report của lượt nạp DB có thêm `simulatedBusiness`, `simulatedBusinessClosed`, `simulatedBusinessWritten`.
+
+**Tắt:** thêm `SIMULATED_BUSINESS_FARES=0` vào `/etc/vota/fresh-catalog.env` (cần quyền VM); lần nạp sau chuyển mọi vé mô
+phỏng sang `available = false`. Muốn tắt ngay: thêm `--disable` vào lệnh chạy một lần ở trên. Chỉ `--disable` mà env chưa đặt
+`0` thì lượt nạp sau bật lại. Không xoá dòng vì đơn cũ có thể trỏ tới.
+
+`daily.py` (job legacy) và `seed --catalog-only` (nạp snapshot lên staging ở mục trên) theo cùng biến và cùng mặc định bật.

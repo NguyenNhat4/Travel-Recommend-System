@@ -728,7 +728,7 @@ Nguồn bị chặn (mã thoát 75) đã lưu tiến độ: chạy lại đúng 
 ### Snapshot seed gần nhất — `2026-09-30`
 
 - Nguồn catalog: `src/data_collection/data/snapshots/2026-09-30/products.jsonl` — SHA-256 `07134fc2c5e50c28f63fefdcb02fef5699e75ee19a7e2364c29e05d336918235`.
-- Seed `42`: 11,718 products · 2,000 profiles · 7,130 events · 307 combo items.
+- Seed `42`: 12,515 products · 2,000 profiles · 7,130 events · 307 combo items.
 - Search units: 3,183; vector nằm ngoài PostgreSQL và được index sang Weaviate bằng `make index-vectors`.
 - Insider clone: 2,000 profiles · 4,169 events · 19,522 channel events.
 - Purchase thiếu `event_group_id` là edge case được sinh có chủ đích khoảng 3%; không xoá purchase.

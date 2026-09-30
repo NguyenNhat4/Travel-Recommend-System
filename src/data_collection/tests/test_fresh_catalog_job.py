@@ -13,7 +13,7 @@ import zlib
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import fresh_catalog
 import normalise
@@ -198,11 +198,14 @@ class MaintainCatalogTests(unittest.TestCase):
         seeded = row('seeded', start=date(2026, 9, 20), end=date(2026, 10, 19))
         current = row('current', start=AS_OF, end=HI)
         conn = _Conn([stale, seeded, current])
-        with patch('psycopg.connect', return_value=conn):
+        sync = Mock(return_value={'simulatedBusiness': 0})
+        with patch('psycopg.connect', return_value=conn), \
+                patch('data_collection.seed.simulated_business.sync', sync):
             counts = maintain_catalog('postgresql://unused', today=AS_OF,
                                       now=datetime(2026, 9, 24, tzinfo=timezone.utc))
         updates = {params[-1]: params for params in conn.updates}
-        self.assertEqual(counts, {'staleTrip': 1, 'windowRows': 1})
+        self.assertEqual(counts, {'staleTrip': 1, 'windowRows': 1, 'simulatedBusiness': 0})
+        sync.assert_called_once_with(conn)  # simulated business fares follow the rolled window (data-model.md §3)
         self.assertEqual(set(updates), {'stale', 'seeded'})
         self.assertEqual(updates['stale'][1:3], (None, False))  # unit_price, available
         self.assertEqual(updates['seeded'][3:5], (AS_OF, HI))  # available_from, available_to

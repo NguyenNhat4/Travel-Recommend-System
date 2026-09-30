@@ -4,15 +4,52 @@ Phục vụ FR-CAT-01, FR-CAT-03, FR-SRC-02 và NFR-REL-01. Giữ Cohere `embed-
 
 ## Cào cùng luồng hiện có
 
-`crawl.py trip-flights` thực hiện SEO rồi mở tìm kiếm Thương gia trên UI Trip.com bằng Chromium. Mặc định lấy HAN–SGN, SGN–HAN, HAN–DAD, SGN–DAD, SGN–PQC, HAN–CXR nếu tuyến nằm trong interim đã discovery; ngày hiện tại +14 ngày theo giờ Việt Nam; tối đa 8 thẻ/tuyến. Worker Trip của `daily.py` và nguồn Trip Flights của `fresh_catalog full` tự gọi bước này. `fresh_catalog daily` vẫn chỉ làm mới giá khách sạn; lịch full sẽ cập nhật vé.
+`crawl.py trip-flights` thực hiện SEO rồi mở tìm kiếm trên UI Trip.com bằng Chromium cho hai loại giá:
+
+- Thương gia một chiều theo ngày bay (tối đa 4 thẻ/tuyến/ngày).
+- Khứ hồi, ngày về sau 3, 5 hoặc 7 ngày: mỗi lần tìm lấy 2 chuyến đi, mỗi chuyến kèm chuyến về đề xuất. Modal giá trọn
+  hành trình liệt kê mọi hạng, nên một lần tìm cho cả giá Phổ thông lẫn Thương gia khứ hồi.
+
+Mặc định 6 tuyến HAN–SGN, SGN–HAN, HAN–DAD, SGN–DAD, SGN–PQC, HAN–CXR (nếu có trong interim đã discovery), ngày bay +1..+29
+theo giờ Việt Nam. **Xoay vòng:** mỗi lượt chỉ tìm tới khi hết `--fares-minutes` (mặc định 30; job fresh lấy từ cấu hình
+monitor `tripFlights.fareMinutes`, 0 = tắt) và luôn dừng trước hạn giờ nguồn 3 phút. Việc chưa tìm, ngày gần nhất được làm
+trước; sau đó là việc tìm lâu nhất. Trạng thái ở `<CATALOG_STATE_DIR>/trip_fares_rotation.json` (không có biến này thì
+`data/state/`), nên các lượt fresh nối tiếp nhau phủ dần 30 ngày. Worker Trip của `daily.py` và nguồn Trip Flights của
+`fresh_catalog full` tự gọi bước này; `fresh_catalog daily` chỉ làm mới giá khách sạn.
 
 ```bash
 cd src/data_collection
-python crawl.py trip-flights --refresh --routes HAN-SGN,SGN-HAN --business-offsets 7,14,21 --business-max-flights 8
+python crawl.py trip-flights --refresh --routes HAN-SGN,SGN-HAN --business-offsets 7,14,21 --roundtrip-stays 3,5,7 --fares-minutes 20
 python normalise.py
 ```
 
-`--no-business` tắt phần browser. Các offset phải nằm trong 0..29. Collector chỉ nhận giá VND của một người lớn, chuyến thẳng, cabin Thương Gia được hiển thị trên cùng thẻ giá; ngày/chuyến/tuyến phải khớp URL chi tiết. Lưu raw proof và `businessQuotes` trong interim; normalizer xuất đủ 13 trường, cabin `BUSINESS`, ngày bay cố định và `priceObservedAt`. Không dùng giá economy nhân hệ số. Giá có điều kiện thanh toán được ghi trong description (gói hiện tại dùng MoMo). Browser bị chặn/timeout hoặc không có quote kiểm chứng thì báo chưa hoàn tất; không coi là hết bán. Không đăng nhập, checkout hoặc giải challenge.
+`--no-business` tắt cả phần browser; `--roundtrip-stays ""` chỉ tắt khứ hồi. Ngày bay nằm trong 0..29 (`1-29` hoặc
+`7,14,21`). Collector chỉ nhận giá VND một người lớn, chuyến thẳng cả hai chiều, hạng và giá trên cùng thẻ; thẻ khứ hồi phải ghi
+"Khứ hồi", ngày/chuyến/tuyến phải khớp URL chi tiết. Nhãn hạng lẫn (vd. "Thương Gia (chiều đi)") bị bỏ. Lưu raw proof,
+`businessQuotes` và `roundTripQuotes` trong interim. Vé khứ hồi dùng cùng `sourceRef` với thẻ khứ hồi của trang SEO
+(`trip:roundtrip:…:<hạng>`), giá tìm kiếm thắng thẻ SEO cùng mã; không có `priceValidUntil` (không bịa) và hạn cũ bị xoá khi
+cập nhật. Không dùng giá economy nhân hệ số. Hình thức thanh toán và "xuất thành nhiều vé riêng" ghi trong description.
+
+**Giới hạn đã biết (30/09/2026):** `robots.txt` của Trip cấm `/flights/showfarefirst*` và `/flights/ShowFareNext*`; Chromium
+headless nhận `HTTP 432` ("whaleguard block"). Gặp 432 collector chờ 45 giây rồi thử lại một lần; vẫn 432, hoặc 403/429, thì coi là bị chặn, dừng sau 3 lần lỗi liên tiếp và báo nguồn
+chưa hoàn tất; không coi là hết bán, không đăng nhập, checkout, giải challenge hay lách chống bot. Vì vậy trên VM phần này
+thường không lấy được vé; 43 vé thương gia hiện có được lấy thủ công qua trình duyệt.
+
+## Vé Thương gia mô phỏng (demo)
+
+Không cào được thêm vé thương gia thật nên demo dùng vé mô phỏng (`docs/prd/data-model.md` §3): giá vé gốc × 2,65, tên
+"(giá minh hoạ)", `attributes.simulated = true`, `sourceRef` `demo:business:<sourceRef gốc>`. Sinh sau mỗi lần nạp catalog:
+seed demo luôn bật; `seed --catalog-only` (`daily.py`) và job fresh (nạp DB và bảo trì đầu lượt) **mặc định bật**. Vé Thương
+gia thật cùng hành trình và ngày thắng. `SIMULATED_BUSINESS_FARES=0` → lần nạp sau khoá toàn bộ vé mô phỏng (không xoá dòng).
+
+Trên VM: deploy bản này là đủ, không cần sửa env. Muốn có ngay, không chờ lượt cào, chạy một lần qua tunnel DB (chỉ ghi
+dòng `demo:business:*`, cùng khoá ghi catalog với job):
+
+```bash
+cd src && CLOUD_SEED_DATABASE_URL=<dsn> python -m data_collection.seed.simulated_business --database-url-env CLOUD_SEED_DATABASE_URL --enable
+```
+
+Tắt hẳn: `SIMULATED_BUSINESS_FARES=0` trong env của job. Chỉ chạy `--disable` mà env chưa tắt thì lượt nạp sau bật lại.
 
 ## Khi Agoda timeout hoặc Cohere 429
 

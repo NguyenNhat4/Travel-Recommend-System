@@ -135,6 +135,10 @@ def source_command(run_dir: Path, source: str, destinations: str, values: dict) 
         command += ['--delay', _num(values['trip.delay'])]
         if source == 'trip-attractions':
             command += ['--budget', f"trip_attractions={values['tripAttractions.perDestination']}"]
+        if source == 'trip-flights':
+            command += ['--fares-minutes', str(values['tripFlights.fareMinutes'])]
+            if values['timeout.tripFlights']:
+                command += ['--source-deadline-minutes', str(values['timeout.tripFlights'])]
     elif source == 'booking-hotels':
         command += ['--delay', _num(values['booking.delay']), '--concurrency', str(values['booking.tabs']),
                     '--checkin-offset-days', str(values['booking.checkinOffsetDays']),

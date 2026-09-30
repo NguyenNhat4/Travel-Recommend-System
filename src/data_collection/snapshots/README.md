@@ -10,7 +10,8 @@ Snapshot mặc định `2026-09-30` (`make demo-db`, `seed/config.py`) chứa:
   cào lại ngày 30/09/2026 (29 tuyến trong phạm vi `@deep`: 110 dòng tuyến / vé một chiều làm mới, 331 vé mới gồm 290 vé
   khứ hồi). `productId` sinh cố định theo `sourceRef` nên dòng làm mới giữ nguyên ID.
 - Hạng vé: 268/290 vé khứ hồi có `cabinClass: ECONOMY`, đọc từ thẻ khứ hồi trên trang tuyến trip.com ("Economy class").
-  22 vé khứ hồi (thẻ trống hạng / lẫn hạng) và mọi vé một chiều: chưa biết hạng. Chưa có hạng thương gia.
+  22 vé khứ hồi (thẻ trống hạng / lẫn hạng) và mọi vé một chiều: chưa biết hạng. Snapshot không có hạng thương gia; seed
+  sinh thêm 797 vé Thương gia mô phỏng "(giá minh hoạ)" khi nạp (`docs/spec/MOCK_DATA_SPEC.md` §2 bước 1, mục 5).
 - 64 dòng mapping combo đã duyệt tay (giống `2026-09-23`).
 - Không chứa profile, event, booking, secret hoặc Docker volume; các dữ liệu demo đó được seed tất định khi chạy.
 

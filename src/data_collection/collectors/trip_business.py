@@ -9,12 +9,16 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import re
+import time
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from urllib.parse import urlencode, urlsplit, parse_qs
 from zoneinfo import ZoneInfo
 
 from .common import JsonlWriter, Paths, RawCache, now_iso
+from .trip_roundtrip_search import open_search
 
 log = logging.getLogger('crawler')
 DEFAULT_ROUTES = {('HAN', 'SGN'), ('SGN', 'HAN'), ('HAN', 'DAD'), ('SGN', 'DAD'), ('SGN', 'PQC'), ('HAN', 'CXR')}
@@ -80,9 +84,7 @@ async def collect_route(page, route: dict, day: date, limit: int, delay: float, 
     url = 'https://vn.trip.com/flights/showfarefirst?' + urlencode(dict(
         dcity=origin.lower(), acity=destination.lower(), ddate=day.isoformat(), triptype='ow',
         **{'class': 'c'}, quantity=1, sort='recommended'))
-    response = await page.goto(url, wait_until='domcontentloaded', timeout=60000)
-    if response is not None and response.status in (403, 429):
-        raise RuntimeError(f'business search denied: HTTP {response.status}')
+    await open_search(page, url, 'business search')
     buttons = page.get_by_role('button', name='Chọn giá này', exact=True)
     await buttons.first.wait_for(state='visible', timeout=45000)
     quotes = []
@@ -103,50 +105,139 @@ async def collect_route(page, route: dict, day: date, limit: int, delay: float, 
     return quotes
 
 
-async def enrich(paths: Paths, *, offsets=(14,), max_flights=8, delay=2.5, routes=()) -> dict:
+def parse_days(spec: str) -> tuple[int, ...]:
+    """'1-29' or '7,14,21' → relative departure days (0..29)."""
+    days = set()
+    for part in str(spec).split(','):
+        part = part.strip()
+        if not part:
+            continue
+        lo, _, hi = part.partition('-')
+        days.update(range(int(lo), int(hi or lo) + 1))
+    if not days or min(days) < 0 or max(days) > 29:
+        raise ValueError('fare days must be within 0..29')
+    return tuple(sorted(days))
+
+
+def state_path(paths: Paths) -> Path:
+    """Fresh runs get a new data dir each time; the rotation must survive them (CATALOG_STATE_DIR)."""
+    root = os.environ.get('CATALOG_STATE_DIR')
+    return (Path(root) if root else paths.state) / 'trip_fares_rotation.json'
+
+
+def plan_tasks(routes: list[dict], today: date, days, stays, state: dict, business: bool = True) -> list[dict]:
+    """Every (route, day) business search and (route, day, stay) round-trip search, least recently tried first.
+
+    Untried tasks come first, nearest departure first, so a budget-limited run fills the window over several runs.
+    """
+    tasks = []
+    for offset in days:
+        day = today + timedelta(days=offset)
+        for order, route in enumerate(routes):
+            pair = f"{route['fromAirports'][0]}-{route['toAirports'][0]}"
+            if business:
+                tasks.append({'key': f'ow-business:{pair}:{day}', 'kind': 'business', 'route': route, 'day': day,
+                              'order': order})
+            for stay in stays:
+                tasks.append({'key': f'rt:{pair}:{day}:{stay}', 'kind': 'roundtrip', 'route': route, 'day': day,
+                              'stay': stay, 'order': order})
+    return sorted(tasks, key=lambda t: ((state.get(t['key']) or {}).get('lastAttemptAt') or '', t['day'], t['order'],
+                                        t.get('stay', 0)))
+
+
+def _save_state(path: Path, state: dict, today: date) -> None:
+    keep = {k: v for k, v in state.items() if k.split(':')[2] >= today.isoformat()}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_suffix('.tmp')
+    temp.write_text(json.dumps(keep, ensure_ascii=False, indent=1) + '\n')
+    temp.replace(path)
+
+
+async def enrich(paths: Paths, *, offsets=tuple(range(1, 30)), max_flights=4, delay=2.5, routes=(),
+                 stays=(3, 5, 7), pairs=2, minutes=30.0, deadline=None, max_failures=3) -> dict:
+    """Business one-way and round-trip fares, rotated across runs within a time budget.
+
+    `deadline` (time.monotonic) is the source's hard stop; work ends 3 minutes before it so the
+    source can still flush interim files. Only exceptions count as failures; an empty search does not.
+    """
     from playwright.async_api import async_playwright
-    if not offsets or any(n < 0 or n > 29 for n in offsets) or not 1 <= max_flights <= 50:
-        raise ValueError('business offsets must be 0..29; max_flights must be 1..50')
+    from . import trip_roundtrip_search
+    if (not offsets or any(n < 0 or n > 29 for n in offsets) or not 1 <= max_flights <= 50
+            or any(n < 1 or n > 29 for n in stays) or not 1 <= pairs <= 10 or minutes < 0):
+        raise ValueError('fare days must be 0..29, stays 1..29, max_flights 1..50, pairs 1..10')
+    report = {'searches': 0, 'quotes': 0, 'roundTripQuotes': 0, 'failed': 0, 'empty': 0, 'planned': 0, 'left': 0}
     interim = paths.interim / 'trip_flights.jsonl'
-    if not interim.exists():
-        return {'quotes': 0, 'searches': 0, 'failed': 0}
+    if not interim.exists() or minutes == 0:
+        return report
     latest = {}
     for line in interim.read_text().splitlines():
         row = json.loads(line)
         if row.get('key'):
             latest[row['key']] = row
     selected = set(routes) if routes else DEFAULT_ROUTES
-    plans = [r for r in latest.values() if r.get('fromAirports') and r.get('toAirports')
-             and (r['fromAirports'][0], r['toAirports'][0]) in selected]
-    report = {'quotes': 0, 'searches': 0, 'failed': 0}
+    plans = sorted((r for r in latest.values() if r.get('fromAirports') and r.get('toAirports')
+                    and (r['fromAirports'][0], r['toAirports'][0]) in selected),
+                   key=lambda r: (r['fromAirports'][0], r['toAirports'][0]))
     if not plans:
         return report
+    today = datetime.now(ZoneInfo('Asia/Ho_Chi_Minh')).date()
+    store = state_path(paths)
+    try:
+        state = json.loads(store.read_text())
+    except (FileNotFoundError, ValueError):
+        state = {}
+    tasks = plan_tasks(plans, today, offsets, stays, state)
+    report['planned'] = len(tasks)
+    stop = time.monotonic() + minutes * 60
+    if deadline is not None:
+        stop = min(stop, deadline - 180)
     cache = RawCache(paths, 'trip_business')
+    streak = 0
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(headless=True)
         try:
             context = await browser.new_context(locale='vi-VN', timezone_id='Asia/Ho_Chi_Minh')
             page = await context.new_page()
             with JsonlWriter(interim, 'a') as writer:
-                for route in plans:
-                    for offset in offsets:
-                        day = datetime.now(ZoneInfo('Asia/Ho_Chi_Minh')).date() + timedelta(days=offset)
-                        report['searches'] += 1
-                        try:
+                for done, task in enumerate(tasks):
+                    if time.monotonic() >= stop or streak >= max_failures:
+                        report['left'] = len(tasks) - done
+                        if streak >= max_failures:
+                            report['stopped'] = 'failures'  # likely blocked: stop instead of hammering the site
+                        break
+                    route, day = task['route'], task['day']
+                    entry = state.setdefault(task['key'], {})
+                    entry['lastAttemptAt'] = now_iso()
+                    report['searches'] += 1
+                    try:
+                        if task['kind'] == 'business':
                             quotes = await collect_route(page, route, day, max_flights, delay, cache)
-                        except Exception as exc:
-                            report['failed'] += 1
-                            log.warning('trip.business.failed route=%s day=%s kind=%s', route['key'], day, type(exc).__name__)
-                            continue
-                        if quotes:
-                            # Keep SEO observation time intact; each business quote owns its timestamp.
-                            writer.write({**route, 'businessQuotes': quotes})
-                            report['quotes'] += len(quotes)
+                            field, counter = 'businessQuotes', 'quotes'
                         else:
-                            report['failed'] += 1
-                            log.warning('trip.business.no_verified_quotes route=%s day=%s', route['key'], day)
-                        await asyncio.sleep(max(2.0, delay))
+                            quotes = await trip_roundtrip_search.collect(
+                                page, route['fromAirports'][0], route['toAirports'][0], day, task['stay'],
+                                pairs, delay, cache)
+                            field, counter = 'roundTripQuotes', 'roundTripQuotes'
+                    except Exception as exc:
+                        report['failed'] += 1
+                        streak += 1
+                        entry['lastError'] = type(exc).__name__
+                        log.warning('trip.fares.failed task=%s kind=%s', task['key'], type(exc).__name__)
+                        _save_state(store, state, today)
+                        continue
+                    streak = 0
+                    entry.pop('lastError', None)
+                    if quotes:
+                        # Keep SEO observation time intact; each quote owns its timestamp.
+                        writer.write({**route, field: quotes})
+                        report[counter] += len(quotes)
+                        entry['lastSuccessAt'] = entry['lastAttemptAt']
+                    else:
+                        report['empty'] += 1
+                        log.info('trip.fares.no_verified_quotes task=%s', task['key'])
+                    _save_state(store, state, today)
+                    await asyncio.sleep(max(2.0, delay))
         finally:
             await browser.close()
-    log.info('trip.business.complete %s', report)
+    log.info('trip.fares.complete %s', report)
     return report

@@ -14,7 +14,7 @@ Tài liệu này đặc tả chi tiết toàn bộ các yêu cầu chức năng 
 - **FR-CAT-03 (Lịch khả dụng & Định giá):**
   - Quản lý cửa sổ mở bán (`available_from`, `available_to`) và trạng thái phòng/vé trống theo từng ngày (`attributes.availability`).
   - Hỗ trợ cơ sở định giá đa dạng (`per_night`, `per_person`, `per_package`).
-  - Vé khứ hồi là `flight_instance` (`level: flight`, `tripType: roundTrip`), ngày sử dụng là ngày đi, ngày về nằm trong sản phẩm. Hạng vé có bằng chứng (`cabinClass`, gồm phổ thông/thương gia) tạo biến thể đặt được riêng theo hành trình và ngày; không đổi ID vé cũ, không suy hạng hoặc tự tạo giá. Giá là tổng hành trình cho một người lớn.
+  - Vé khứ hồi là `flight_instance` (`level: flight`, `tripType: roundTrip`), ngày sử dụng là ngày đi, ngày về nằm trong sản phẩm. Hạng vé có bằng chứng (`cabinClass`, gồm phổ thông/thương gia) tạo biến thể đặt được riêng theo hành trình và ngày; không đổi ID vé cũ, không suy hạng hoặc tự tạo giá. Ngoại lệ duy nhất: vé Thương gia mô phỏng cho demo UI chọn hạng, sinh từ vé thật, luôn gắn nhãn "giá minh hoạ" và `simulated: true` (xem `data-model.md` §3); mặc định bật, tắt bằng cấu hình; tắt thì các vé này không đặt được nữa. Giá là tổng hành trình cho một người lớn.
 - **FR-CAT-04 (Gói kết hợp - Combo Handling):** Hỗ trợ tách bóc và truy xuất chi tiết các thành phần trong combo (phòng ở, vé máy bay, vé vui chơi) với tỷ lệ tin cậy và căn cứ trích xuất rõ ràng.
 
 ### 1.2. Phân Hệ Tìm Kiếm Ngữ Nghĩa (Semantic Search Engine)
