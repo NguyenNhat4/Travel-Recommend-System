@@ -121,6 +121,27 @@ class DatabaseTests(unittest.TestCase):
         meta = self.db.row('catalog.product_meta', {'product_id': sim['product_id']})
         self.assertIn('cdp.products', {o['table'] for o in meta['outgoing']})
 
+    def test_graph_has_every_table_with_full_columns_and_both_edge_kinds(self):
+        g = self.db.graph()
+        tables = {t['name']: t for t in g['tables']}
+        self.assertEqual(set(tables), {t['name'] for t in self.db.tables()['tables']})
+        products = {c['name']: c for c in tables['cdp.products']['columns']}
+        self.assertEqual(len(products), 13)  # đủ 13 cột, không tóm tắt
+        self.assertTrue(products['product_id']['pk'])
+        users = {c['name']: c for c in tables['app.users']['columns']}
+        self.assertTrue(users['password_hash']['secret'])
+        self.assertEqual(users['cdp_user_id']['fk'], 'cdp.profiles')
+        edges = {(e['from'], e['to'], tuple(e['columns']), e['kind']) for e in g['edges']}
+        self.assertIn(('app.booking_items', 'cdp.products', ('product_id',), 'fk'), edges)
+        self.assertIn(('catalog.combo_items', 'cdp.products', ('combo_product_id', 'combo_taxonomy'), 'fk'), edges)
+        self.assertIn(('catalog.product_meta', 'cdp.products', ('product_id',), 'convention'), edges)
+        self.assertIn(('cdp.products', 'cdp.products', ('attributes.parentProductId',), 'convention'), edges)
+        for e in g['edges']:  # mọi cạnh trỏ tới bảng / cột có thật (để vẽ được)
+            self.assertIn(e['to'], tables)
+            if e['kind'] == 'fk':
+                cols = {c['name'] for c in tables[e['from']]['columns']}
+                self.assertTrue(set(e['columns']) <= cols, e)
+
     def test_row_key_must_identify_one_row(self):
         with self.assertRaises(ValueError):
             self.db.row('cdp.products', {})

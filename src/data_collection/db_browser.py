@@ -175,6 +175,34 @@ class DbBrowser:
                             "rows": counts.get(name), "columns": len(e["columns"]), "pk": e["pk"],
                             "links": len(e["fks"]) + len(self._incoming(name))} for name, e in meta.items()]}
 
+    def graph(self) -> dict:
+        """Sơ đồ quan hệ: mọi bảng / view kèm đủ cột (kiểu, khoá chính, khoá ngoại), số dòng, và các cạnh.
+
+        Cạnh `fk` lấy từ khoá ngoại trong PostgreSQL; cạnh `convention` là quan hệ quy ước không có khoá ngoại (cùng quy
+        ước với `row()`): sản phẩm cha–con, vé mô phỏng–vé gốc, cột `product_id` của view → `cdp.products`.
+        """
+        meta = self.metadata()
+        counts = {t["name"]: t["rows"] for t in self.tables()["tables"]}
+        tables, edges = [], []
+        for name, e in meta.items():
+            fk_of = {c: fk["target"] for fk in e["fks"] for c in fk["columns"]}
+            tables.append({"name": name, "schema": e["schema"], "table": e["table"], "view": e["view"],
+                           "rows": counts.get(name),
+                           "columns": [{"name": c, "type": e["types"][c], "pk": c in e["pk"], "fk": fk_of.get(c),
+                                        "secret": is_secret(c)} for c in e["columns"]]})
+            for fk in e["fks"]:
+                edges.append({"from": name, "to": fk["target"], "columns": fk["columns"],
+                              "targetColumns": fk["targetColumns"], "kind": "fk"})
+            if e["view"] and "product_id" in e["columns"] and "cdp.products" in meta:
+                edges.append({"from": name, "to": "cdp.products", "columns": ["product_id"],
+                              "targetColumns": ["product_id"], "kind": "convention"})
+        if "cdp.products" in meta:
+            edges.append({"from": "cdp.products", "to": "cdp.products", "columns": ["attributes.parentProductId"],
+                          "targetColumns": ["product_id"], "kind": "convention", "label": "sản phẩm con → cha"})
+            edges.append({"from": "cdp.products", "to": "cdp.products", "columns": ["source_ref (demo:business:…)"],
+                          "targetColumns": ["source_ref"], "kind": "convention", "label": "vé mô phỏng → vé gốc"})
+        return {"tables": tables, "edges": edges}
+
     def rows(self, name: str, filters: dict | None = None, q: str = "", sort: str = "", desc: bool = False,
              offset: int = 0, limit: int = 50) -> dict:
         from psycopg import sql

@@ -2072,6 +2072,7 @@ class Handler(BaseHTTPRequestHandler):
                 "/api/embed/vector": lambda: m.embed_vector(q.get("id", "")),
                 "/api/calls": lambda: m.backend_calls(num("after", 0), num("limit", 200)),
                 "/api/dbx/tables": lambda: m.dbx().tables(),
+                "/api/dbx/graph": lambda: m.dbx().graph(),
                 "/api/dbx/rows": lambda: m.dbx().rows(q.get("table", ""), prefixed(q, "f."), q.get("q", ""),
                                                       q.get("sort", ""), q.get("desc") == "1", num("offset", 0),
                                                       num("limit", 50)),
