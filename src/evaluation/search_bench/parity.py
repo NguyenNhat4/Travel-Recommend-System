@@ -59,19 +59,31 @@ class ParityRow:
     def overlap(self, k: int) -> int:
         return len(set(self.a_ids[:k]) & set(self.b_ids[:k]))
 
+    def overlap_need(self, k: int, overlap_min: int) -> int:
+        """Ngưỡng overlap của câu này: `overlap_min` khi cả hai bên có ≥ overlap_min kết quả; câu ngắn hơn (out_of_catalog,
+        tên riêng hiếm) thì hai bên phải trùng hết phần ngắn — 0 kết quả cả hai bên là trùng."""
+        return min(overlap_min, len(self.a_ids[:k]), len(self.b_ids[:k]))
+
+    def overlap_ok(self, k: int, overlap_min: int) -> bool:
+        return self.overlap(k) >= self.overlap_need(k, overlap_min) and (
+            min(len(self.a_ids[:k]), len(self.b_ids[:k])) >= overlap_min or len(self.a_ids[:k]) == len(self.b_ids[:k]))
+
 
 def verdict(rows: list[ParityRow], *, k: int, top1_min: int, overlap_min: int) -> dict:
-    """Cổng: top-1 trùng ≥ top1_min câu và overlap@k ≥ overlap_min ở mọi câu; câu lỗi tính là lệch."""
+    """Cổng: top-1 trùng ≥ top1_min câu và overlap@k ≥ overlap_min ở mọi câu đủ dài (câu ngắn hơn: hai bên cùng số kết quả
+    và trùng hết — xem `overlap_need`); câu lỗi tính là lệch."""
     good = [r for r in rows if r.error is None]
     top1 = sum(1 for r in good if r.top1_same)
     overlaps = [r.overlap(k) for r in good]
-    worst = sorted(good, key=lambda r: (r.overlap(k), r.top1_same))[:5]
-    ok = top1 >= top1_min and all(o >= overlap_min for o in overlaps) and len(good) == len(rows)
+    full = [r.overlap(k) for r in good if min(len(r.a_ids[:k]), len(r.b_ids[:k])) >= overlap_min]
+    worst = sorted(good, key=lambda r: (r.overlap(k) - r.overlap_need(k, overlap_min), r.top1_same))[:5]
+    ok = top1 >= top1_min and all(r.overlap_ok(k, overlap_min) for r in good) and len(good) == len(rows)
     return {"n": len(rows), "n_error": len(rows) - len(good), "top1_same": top1, "top1_min": top1_min,
-            "overlap_min_seen": min(overlaps) if overlaps else None, "overlap_min": overlap_min, "k": k, "pass": ok,
+            "overlap_min_seen": min(overlaps) if overlaps else None,
+            "overlap_min_full": min(full) if full else None, "n_full": len(full), "overlap_min": overlap_min, "k": k, "pass": ok,
             "mismatch": [{"text": r.text, "slice": r.slice, "top1_same": r.top1_same, "overlap": r.overlap(k),
-                          "a_top3": r.a_ids[:3], "b_top3": r.b_ids[:3]} for r in worst
-                         if not r.top1_same or r.overlap(k) < overlap_min]
+                          "need": r.overlap_need(k, overlap_min), "a_top3": r.a_ids[:3], "b_top3": r.b_ids[:3]} for r in worst
+                         if not r.top1_same or not r.overlap_ok(k, overlap_min)]
                         + [{"text": r.text, "slice": r.slice, "error": r.error} for r in rows if r.error]}
 
 

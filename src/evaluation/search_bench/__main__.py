@@ -857,12 +857,16 @@ def parity(c: typer.Context,
         _fail("--mode phải là http hoặc weaviate", 2)
     res = P.verdict(rows, k=kk, top1_min=int(pc["top1_min"]), overlap_min=int(pc["overlap_min"]))
     t = Table(title=f"parity {mode} · top-1 trùng {res['top1_same']}/{res['n']} (cần ≥ {res['top1_min']}) · overlap@{kk} min "
-                    f"{res['overlap_min_seen']} (cần ≥ {res['overlap_min']})")
-    for col in ("slice", "câu", "top-1", f"overlap@{kk}", "A top-1", "B top-1", "ghi chú"):
-        t.add_column(col, justify="right" if col in ("top-1", f"overlap@{kk}") else "left")
+                    f"{res['overlap_min_full']} trên {res['n_full']} câu đủ {res['overlap_min']} kết quả (cần ≥ {res['overlap_min']}); "
+                    f"câu ngắn hơn phải trùng hết")
+    for col in ("slice", "câu", "top-1", f"overlap@{kk}", "cần", "A top-1", "B top-1", "ghi chú"):
+        t.add_column(col, justify="right" if col in ("top-1", f"overlap@{kk}", "cần") else "left")
     for r in rows:
         note = r.error or (f"A {r.a_diag.get('searchMode', '')} / B {r.b_diag.get('searchMode', '')}".strip() if mode == "http" else "")
-        t.add_row(r.slice, r.text, "✓" if r.top1_same else "[red]✗[/]", str(r.overlap(kk)) if not r.error else "-",
+        ok = r.error is None and r.overlap_ok(kk, int(pc["overlap_min"]))
+        t.add_row(r.slice, r.text, "✓" if r.top1_same else "[red]✗[/]",
+                  (str(r.overlap(kk)) if ok else f"[red]{r.overlap(kk)}[/]") if not r.error else "-",
+                  str(r.overlap_need(kk, int(pc["overlap_min"]))) if not r.error else "-",
                   (r.a_ids or ["-"])[0], (r.b_ids or ["-"])[0], note)
     con.print(t)
     con.print(f"  {'[green]PASS[/]' if res['pass'] else '[red]FAIL[/]'} · lỗi {res['n_error']}", highlight=False)

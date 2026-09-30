@@ -155,8 +155,45 @@ def test_parity_row_top1_semantics():
     assert P.ParityRow("q", "s", ["a", "b"], ["a", "c"]).overlap(10) == 1
 
 
+def test_parity_gate_scales_overlap_for_short_result_lists():
+    """Câu ít kết quả (out_of_catalog, tên riêng hiếm) không thể có overlap 8/10: ngưỡng = min(8, độ dài), hai bên cùng độ dài."""
+    full = [P.ParityRow(f"q{i}", "s", [f"{i}-{j}" for j in range(10)], [f"{i}-{j}" for j in range(10)]) for i in range(17)]
+    short = [P.ParityRow("rỗng", "ooc", [], []), P.ParityRow("một", "ne", ["x"], ["x"]), P.ParityRow("hai", "ooc", ["a", "b"], ["b", "a"])]
+    res = P.verdict(full + short, k=10, top1_min=18, overlap_min=8)
+    assert res["pass"] is True and res["overlap_min_seen"] == 0 and res["overlap_min_full"] == 10 and res["n_full"] == 17
+    # câu ngắn nhưng hai bên khác nhau → lệch
+    bad = P.verdict(full + [P.ParityRow("lệch", "ooc", ["a", "b"], ["a", "c"]), *short[:2]], k=10, top1_min=18, overlap_min=8)
+    assert bad["pass"] is False and bad["mismatch"][0]["text"] == "lệch" and bad["mismatch"][0]["need"] == 2
+    # một bên rỗng, một bên có → lệch dù overlap_need = 0
+    assert P.verdict(full + [P.ParityRow("một bên", "ooc", ["a"], [])], k=10, top1_min=17, overlap_min=8)["pass"] is False
+    # câu đủ dài chỉ trùng 7/10 → lệch
+    seven = P.ParityRow("bảy", "s", [f"a{j}" for j in range(10)], [f"a{j}" for j in range(7)] + ["z1", "z2", "z3"])
+    assert P.verdict(full + [seven], k=10, top1_min=18, overlap_min=8)["pass"] is False
+
+
 def test_app_adapter_context_defaults_to_bench_weaviate(cfg):
     from evaluation.search_bench import app_adapter as A
     ctx = A.AppContext(cfg=cfg, dataset="sample", cat=None)
     assert ctx.weaviate_url is None and ctx.api_key == "" and ctx.collection == A.PRODUCT_BENCH
     assert hasattr(A, "build_vm_catalog") and hasattr(A, "parity_contexts") and hasattr(A, "load_collection")
+
+
+def test_wait_index_ready_polls_until_shard_ready_and_times_out():
+    from evaluation.search_bench import app_adapter as A
+
+    class _Http:
+        def __init__(self, states):
+            self.states, self.calls = list(states), 0
+
+        def get(self, path, params=None):
+            self.calls += 1
+            st = self.states.pop(0) if len(self.states) > 1 else self.states[0]
+            body = {"nodes": [{"shards": [{"class": "ProductVM", "vectorIndexingStatus": st[0], "vectorQueueLength": st[1]},
+                                          {"class": "Other", "vectorIndexingStatus": "READY", "vectorQueueLength": 0}]}]}
+            return httpx.Response(200, json=body, request=httpx.Request("GET", "http://x" + path))
+    slept = []
+    http = _Http([("INDEXING", 120), ("INDEXING", 5), ("READY", 0)])
+    assert A.wait_index_ready(http, "ProductVM", sleep=slept.append) == ("READY", 0) and http.calls == 3 and slept == [1.0, 1.0]
+    assert A.index_status(_Http([("READY", 0)]), "Missing") == (None, None)       # collection không có → không chờ
+    with pytest.raises(A.AppAdapterError, match="chưa sẵn sàng"):
+        A.wait_index_ready(_Http([("INDEXING", 9)]), "ProductVM", timeout_s=0.0, sleep=slept.append)

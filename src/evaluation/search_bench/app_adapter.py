@@ -156,11 +156,40 @@ def load_collection(cfg: SBenchConfig, cat: AppCatalog, ids: list[str], vecs: An
                             "vector": np.asarray(vec, dtype=np.float32).tolist()})
         client.insert(objects)
         meta, _ = client.fetch(include_vectors=False)
+        # Truy vấn ngay sau khi nạp lô lớn (3k object) từng cho thứ tự sai (01/10: dense có filter trả đúng tập nhưng theo
+        # uuid trong lúc HNSW còn đang dựng) → chờ shard báo READY và hàng đợi index rỗng rồi mới trả về.
+        wait_index_ready(client._client, collection)
     finally:
         client.close()
     if len(meta) != len(ids):
         raise AppAdapterError(f"{collection}: {len(meta)} object sau khi nạp, cần {len(ids)}")
     return len(objects)
+
+
+def index_status(http: Any, collection: str) -> tuple[str | None, int | None]:
+    """(vectorIndexingStatus, vectorQueueLength) của shard `collection` theo `GET /v1/nodes?output=verbose`; None khi không thấy."""
+    r = http.get("/v1/nodes", params={"output": "verbose"})
+    r.raise_for_status()
+    for node in r.json().get("nodes") or []:
+        for shard in node.get("shards") or []:
+            if shard.get("class") == collection:
+                return shard.get("vectorIndexingStatus"), shard.get("vectorQueueLength")
+    return None, None
+
+
+def wait_index_ready(http: Any, collection: str, *, timeout_s: float = 300.0, poll_s: float = 1.0,
+                     sleep: Any = None) -> tuple[str | None, int | None]:
+    """Chờ tới khi shard READY và `vectorQueueLength == 0`; quá `timeout_s` thì AppAdapterError (không đo trên index dở)."""
+    import time
+    sleep = sleep or time.sleep
+    deadline = time.monotonic() + timeout_s
+    while True:
+        status, queue = index_status(http, collection)
+        if status is None or (status == "READY" and not queue):
+            return status, queue
+        if time.monotonic() >= deadline:
+            raise AppAdapterError(f"{collection}: index chưa sẵn sàng sau {timeout_s:.0f} s (status {status}, queue {queue})")
+        sleep(poll_s)
 
 
 # ------------------------------------------------------------------ catalog VM + vector Cloud (sb parity --mode weaviate)

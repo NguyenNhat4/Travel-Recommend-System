@@ -117,7 +117,7 @@ Các dòng dưới đây thay chỗ tương ứng trong các mục sau; nội du
 | most-popular-in-destination | | | | | |
 
 ### C — parity, latency, cache
-- [ ] Parity test cloud vs local: 20 query cố định trải 13 slice (gồm "VinWonders", "KS biển tại NT", "Vinpeal"). So top-10: overlap ≥ 8/10 và top-1 trùng ≥ 18/20. Lệch → kiểm backfill hoặc version Weaviate (bench local 1.37.3). Kết quả: overlap ____ / top-1 ____. *(2h)*
+- [x] Parity test cloud vs local: 20 query cố định trải 13 slice (gồm "VinWonders", "KS biển tại NT", "Vinpeal"). So top-10: overlap ≥ 8/10 và top-1 trùng ≥ 18/20. Lệch → kiểm backfill hoặc version Weaviate (bench local 1.37.3). Kết quả (01/10, `sb parity --mode weaviate`, cùng `SearchProducts` trên catalog VM, `ProductVM` nạp từ vector Cloud): overlap **min 8/10 trên 16 câu đủ dài (13 câu 10/10)**, 4 câu ngắn trùng hết / top-1 **20/20** → PASS. Chi tiết `docs/spec/bench/search-eval-results.md` §1. *(2h)*
 - [ ] Latency breakdown `/search` trên cloud: 50 query × 3 lần, bỏ lần đầu (warm-up); p50/p95 từng stage. *(2h)*
 
 | Stage | p50 (ms) | p95 (ms) |

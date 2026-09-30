@@ -233,22 +233,23 @@ LLBO — 1.007 khách:
 
 | Arm | Recall@5 | NDCG@5 | Recall@10 | Recall@20 | NDCG@10 | Coverage | Trả về (TB) | p95 ms |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| random (3 seed) | 0,0023 | 0,0012 | 0,0040 | 0,0083 | 0,0017 | 0,999 | 20,0 | 0,1 |
-| most_popular | 0,0993 | 0,0611 | 0,1867 | 0,2929 | 0,0891 | 0,068 | 20,0 | 21,0 |
-| most_popular_in_destination | 0,4965 | 0,3624 | 0,5780 | 0,6346 | 0,3890 | 0,416 | 20,0 | 21,4 |
-| engine (eval, bỏ cap) | **0,6693** | **0,4973** | **0,7527** | **0,8510** | **0,5244** | 0,583 | 15,2 | 190,4 |
-| engine_prod (cap 2/taxonomy) | 0,5720 | 0,4536 | 0,5909 | 0,5909 | 0,4602 | 0,205 | 4,8 | 138,0 |
+| random (3 seed) | 0,0023 | 0,0012 | 0,0040 | 0,0083 | 0,0017 | 0,999 | 20,0 | 0,3 |
+| most_popular | 0,0993 | 0,0611 | 0,1867 | 0,2929 | 0,0891 | 0,068 | 20,0 | 42,5 |
+| most_popular_in_destination | 0,4965 | 0,3624 | 0,5780 | 0,6346 | 0,3890 | 0,416 | 20,0 | 40,2 |
+| engine (eval, bỏ cap) | **0,6693** | **0,4973** | **0,7527** | **0,8510** | **0,5244** | 0,583 | 15,2 | 300,5 |
+| engine_prod (cap 2/taxonomy) | 0,5720 | 0,4536 | 0,5909 | 0,5909 | 0,4602 | 0,205 | 4,8 | 233,5 |
 
 Temporal — 102 khách (T = 2026-07-07T15:23Z):
 
 | Arm | Recall@5 | NDCG@5 | Recall@10 | Recall@20 | NDCG@10 | Coverage | Trả về (TB) | p95 ms |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
 | random (3 seed) | 0,0033 | 0,0013 | 0,0065 | 0,0065 | 0,0024 | 0,619 | 20,0 | 0,2 |
-| most_popular | 0,0000 | 0,0000 | 0,0196 | 0,0588 | 0,0060 | 0,009 | 20,0 | 1,0 |
-| most_popular_in_destination | 0,0294 | 0,0149 | 0,0784 | 0,0980 | 0,0312 | 0,140 | 20,0 | 1,3 |
-| engine (eval) | **0,1667** | **0,1348** | **0,1961** | **0,1961** | **0,1438** | 0,379 | 18,9 | 250,5 |
-| engine_prod | 0,1176 | 0,1127 | 0,1176 | 0,1176 | 0,1127 | 0,091 | 6,1 | 168,6 |
+| most_popular | 0,0000 | 0,0000 | 0,0196 | 0,0588 | 0,0060 | 0,009 | 20,0 | 1,8 |
+| most_popular_in_destination | 0,0294 | 0,0149 | 0,0784 | 0,0980 | 0,0312 | 0,140 | 20,0 | 2,0 |
+| engine (eval) | **0,1667** | **0,1348** | **0,1961** | **0,1961** | **0,1438** | 0,379 | 18,9 | 420,5 |
+| engine_prod | 0,1176 | 0,1127 | 0,1176 | 0,1176 | 0,1127 | 0,091 | 6,1 | 229,4 |
 
+- p95 ms là thời gian xếp hạng offline trên máy dev **đang chạy song song** tác vụ khác (lần chạy đầu 01/10 rảnh máy: engine 190 / prod 138 ms LLBO); chỉ so thứ tự, không dùng làm số latency.
 - NDCG@5 của `engine_prod` (0,4536) sát NDCG@10 của nó (0,4602): list 5 món production giữ gần trọn thứ hạng; chênh eval −
   prod ở Recall@5 (0,669 → 0,572) là do cap 2 món/taxonomy đẩy target ra khỏi top-5 (I-5), không phải do xếp hạng.
 - Strategy của engine trên LLBO/temporal ghi trong `summary.json` (`rows[].strategies`); phân khúc theo strategy làm ở B6.
