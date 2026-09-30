@@ -72,8 +72,8 @@ Case chỉ cần khai phần riêng của nó.
 - Mỗi lượt có thể thêm `language: en` (gửi `context.language`) và `conversationId` (ép id cho lượt đó,
   ví dụ id không tồn tại để kiểm `CONVERSATION_NOT_FOUND`).
 - `turns`: một case có thể có nhiều lượt. Runner tự lấy `conversationId` từ response của lượt trước rồi
-  gửi kèm lượt sau, giống frontend. Với lỗi có thể tiếp tục (ví dụ 422 `UNSUPPORTED_DESTINATION`),
-  `conversationId` nằm trong `error.details` và runner cũng tự lấy.
+  gửi kèm lượt sau, giống frontend. Với lỗi có thể tiếp tục (nếu có), `conversationId` nằm trong
+  `error.details` và runner cũng tự lấy; câu hỏi lại `NEEDS_CLARIFICATION` (kể cả giá trị không hợp lệ) có sẵn ở `conversationId`.
 - Lượt trước fail thì runner vẫn chạy tiếp các lượt sau, để biên bản có đủ bằng chứng.
 
 ## 4. Các khoá của `expect`
@@ -91,6 +91,7 @@ Mọi khoá đều tuỳ chọn; runner chỉ kiểm khoá có mặt.
 | `nodesInclude` | Node bắt buộc có trong trace | `[clarify]` |
 | `nodesExclude` | Node không được có trong trace | `[tool]` |
 | `forbiddenText` | Chuỗi không được xuất hiện ở đâu trong response; không phân biệt hoa thường | `["Ritz Carlton"]` |
+| `titleFirstLine` | `true`: dòng đầu câu trả lời (`question`/`message`/`error.message`) là `**Tiêu đề**` kèm phần chi tiết; `false`: không có (chào hỏi, cảm ơn). Không đặt cho case mà nhánh trả lời phụ thuộc LLM (ví dụ G-046) | `true` |
 | `excludeProductsFromTurn` | `productId` của lượt `turn` (đếm từ 1) không xuất hiện lại ở lượt này; `role: stay` chỉ so chỗ ở, `role: any` so cả chỗ ở lẫn hoạt động | `{turn: 1, role: stay}` |
 | `minActivities` | Tổng số slot có sản phẩm trong lịch ít nhất bằng số này. Chỉ dùng cho điểm đến catalog có nhiều điểm tham quan | `3` |
 | `hasStay` | Lịch có hoặc không có chỗ ở | `false` |
@@ -127,7 +128,7 @@ commit rút gọn; id case không được dùng lại.
 | `fake_product_name` | G-071 | Đổi sang khách sạn không có thật ở lượt sau → không bịa | Chưa từng fail; đa lượt, có `specific_hotel` |
 | `multi_turn` | G-059 | Thêm một bé ở lượt sau → vẫn `COMPLETED`, đủ hoạt động | Fail 24/09: lượt sau ra `NO_RESULTS` |
 | `language_en` | G-062 | `context.language=en` → note và warning tiếng Anh | Fail 24/09: còn câu tiếng Việt cố định |
-| `invalid_duration` | G-064 | "Huế 0 ngày" → 400 `INVALID_TRIP_DURATION` | Chưa từng fail; giá trị biên 0 |
+| `invalid_duration` | G-064 | "Huế 0 ngày" → 200 `NEEDS_CLARIFICATION` hỏi lại số ngày | Chưa từng fail; giá trị biên 0 |
 | `invalid_request` | G-066 | `conversationId` không tồn tại → 404 `CONVERSATION_NOT_FOUND` | Category chỉ có một case |
 | `greeting` | G-045 | "xin chào" → `NEEDS_CLARIFICATION`, không gọi tool | Chưa từng fail; khoá `status` chặt hơn G-074 |
 | `out_of_domain` | G-046 | Câu hỏi ngoài du lịch → không gọi tool | Category chỉ có một case |

@@ -64,6 +64,7 @@ def intake_node(state: AgentState) -> dict:
             "candidates": {}, "sources": {}, "response": {}, "warnings": [],
             "missing_fields": [], "start_date_asked": bool(state.get("start_date_asked", False)),
             "clarification_rounds": int(state.get("clarification_rounds", 0) or 0),
+            "invalid_inputs": [],
             "interaction_type": "", "refusal": False, "blocked_by_guardrail": None,
             "final_answer": None, "http_status": 200, "decision": "", "validation_issues": [],
             "started_at": time(), "language": state.get("language") or "vi",
@@ -179,7 +180,10 @@ def extract_node(state: AgentState, *, llm=None) -> dict:
     """Trích intent của lượt du lịch và quyết định còn thiếu gì. **Gọi LLM.**
 
     Đọc: `query`, ngữ cảnh hội thoại chung, `intent_override`, `start_date_asked`.
-    Ghi: `intent`, `constraints`, `missing_fields`, `start_date_asked`, `clarification_reason`, `decision` (`tool`/`missing_info`/`error`).
+    Ghi: `intent`, `constraints`, `missing_fields`, `start_date_asked`, `clarification_reason`, `invalid_inputs`,
+    `decision` (`tool`/`missing_info`/`error`). Ngày đi đã qua, số ngày/số người/ngân sách ngoài giới hạn bị xoá
+    khỏi intent và hỏi lại (`clarification_reason = "invalid_input"`). Trên đường async, điểm đến ngoài catalog
+    (ngoài Việt Nam) cũng bị xoá và hỏi lại ngay, kể cả khi còn thiếu số ngày; `supported_destinations` ghi sẵn cho `tool`.
     Đi tiếp (`routing.route_after_extract`): `tool` khi đủ điểm đến, số ngày và đã xử lý ngày đi ·
     `clarify` khi thiếu, mâu thuẫn hoặc có điều kiện không xác minh được · `dead_letter` khi lỗi.
     """
@@ -190,14 +194,20 @@ def extract_node(state: AgentState, *, llm=None) -> dict:
         return _llm_failed(state, "extract", "sync")
 
 
-async def extract_node_async(state: AgentState, *, llm=None, timeout_seconds: float = 2) -> dict:
-    """`extract` trên đường async: LLM quá `timeout_seconds` thì coi như provider lỗi (`LLM_UNAVAILABLE`)."""
+async def extract_node_async(state: AgentState, *, llm=None, timeout_seconds: float = 2,
+                             tools: ToolExecutorPort | None = None, tool_timeout_seconds: float = 1) -> dict:
+    """`extract` trên đường async: LLM quá `timeout_seconds` thì coi như provider lỗi (`LLM_UNAVAILABLE`).
+
+    Có `tools` thì kiểm điểm đến với catalog ngay sau khi trích (chỉ phục vụ Việt Nam, xem `check_destination`).
+    """
     try:
         result = await asyncio.wait_for(
             chat_model(llm).with_structured_output(Extraction).ainvoke(extraction_input(state)), timeout_seconds)
-        return extract_result(state, result)
+        update = extract_result(state, result)
     except Exception:
         return _llm_failed(state, "extract", "async", timeout_seconds)
+    return await tool_planning.check_destination(state, update, tools=tools, timeout_seconds=tool_timeout_seconds,
+                                                 llm=llm, llm_timeout_seconds=timeout_seconds)
 
 
 async def tool_node(state: AgentState, *, tools: ToolExecutorPort | None = None,
@@ -208,7 +218,8 @@ async def tool_node(state: AgentState, *, tools: ToolExecutorPort | None = None,
     Đọc: `intent`, `constraints`, `conversation_history`, `tool_plan` (lần retry), `tool_results`
     và `details` của lần trước.
     Ghi: `intent`/`constraints` đã chuẩn hóa, `supported_destinations`, `tool_plan`, `tool_results`,
-    `details`, `detail_errors`; điểm đến ngoài catalog thành `UNSUPPORTED_DESTINATION` (422).
+    `details`, `detail_errors`; điểm đến ngoài catalog thì xoá điểm đến khỏi intent, ghi `invalid_inputs` và
+    `decision = "invalid_input"` (hỏi lại qua `clarify`).
     Đi tiếp: `evaluate` — kể cả khi mọi lời gọi đều lỗi, vì `evaluate` mới phân loại tạm thời/vĩnh viễn.
     """
     intent, constraints, changed = normalize_intent(state.get("intent", {}), state.get("constraints", {}))
@@ -245,6 +256,8 @@ def evaluate_node(state: AgentState) -> dict:
     """
     if state.get("decision") == "error":
         return {"events": [event("evaluate", "request rejected")]}
+    if state.get("decision") == "invalid_input":  # `tool` đã từ chối điểm đến: chưa có gì để chấm
+        return {"events": [event("evaluate", "invalid input")]}
     update = evaluation.evaluate_retrieval(state)
     if "candidates" not in update:  # chưa có điểm đến thì chưa có gì để chấm
         return {**update, "events": [event("evaluate", update["decision"])]}
@@ -254,7 +267,7 @@ def evaluate_node(state: AgentState) -> dict:
 def ask_clarification_node(state: AgentState, *, llm=None) -> dict:
     """Ask for what a trip still lacks; the model words the question, fixed text is the fallback.
 
-    Đọc: `conversation_history`, `missing_fields`, `clarification_reason`, `decision`, `intent`.
+    Đọc: `conversation_history`, `missing_fields`, `clarification_reason`, `invalid_inputs`, `decision`, `intent`.
     Ghi: `response` `NEEDS_CLARIFICATION` kèm `knownIntent` (và `missingFields` nếu có).
     Đi tiếp: `finalize`. Riêng `decision = constraint_clarification` dùng câu cố định, không hỏi LLM.
     """
@@ -411,13 +424,12 @@ async def finalize_node_async(state: AgentState, *, store: ConversationStorePort
 
     Ghi thêm (qua `ConversationStorePort`): intent, constraints, lịch sử user/assistant đã giới hạn,
     ngôn ngữ và các sản phẩm đã hiển thị.
-    `UNSUPPORTED_DESTINATION` vẫn được lưu (bỏ riêng điểm đến) để người dùng đổi điểm đến mà giữ phần còn lại.
+    Điểm đến ngoài catalog là câu hỏi lại (200) với `intent.destination = None`, nên phần còn lại của chuyến đi
+    được lưu như mọi lượt hỏi lại khác.
     """
     update = finalize_node(state)
-    # The user can answer an unsupported destination with a new one, so keep the rest of the trip.
-    resumable = update["response"].get("error", {}).get("code") == "UNSUPPORTED_DESTINATION"
-    if store is not None and (update["http_status"] == 200 or resumable):
-        intent = {**state["intent"], "destination": None} if resumable else state["intent"]
+    if store is not None and update["http_status"] == 200:
+        intent = state["intent"]
         response = update["response"]
         selection = (validation.selection_snapshot(response) if response.get("status") == "COMPLETED"
                      else state.get("previous_selection", []))

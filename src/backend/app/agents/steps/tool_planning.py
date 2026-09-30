@@ -21,17 +21,22 @@ logger = logging.getLogger("uvicorn.error")
 
 MAX_CALLS = 5
 MAX_SIMILAR_CALLS = 2  # mỗi lượt, mỗi anchor một lần; vẫn nằm trong MAX_CALLS
+# Số sản phẩm mỗi lời gọi do server cố định, không lấy từ LLM, để mọi mode (inprocess/http/fixture) nhận cùng số
+# ứng viên. Phải nằm trong `maximum` của contract (search ≤ 50, recommendations ≤ 20).
+SEARCH_LIMIT = 10
+RECOMMENDATION_K = 10
 
 
 async def catalog_destinations(tools: ToolExecutorPort, timeout_seconds: float) -> list[str] | None:
-    """Danh sách điểm đến có trong catalog; None khi không lấy được."""
+    """Danh sách điểm đến có trong catalog, nhiều sản phẩm nhất trước (cùng số thì theo tên); None khi không lấy được."""
     try:
         listing = await asyncio.wait_for(tools.list_destinations(), timeout_seconds)
     except Exception:
         # Listing failure cannot prove a destination unsupported. Search may still succeed.
         return None
     if valid("DestinationListResponse", listing):
-        return [item["destination"] for item in listing["destinations"]]
+        ranked = sorted(listing["destinations"], key=lambda item: (-item["productCount"], item["destination"]))
+        return [item["destination"] for item in ranked]
     return None
 
 
@@ -59,23 +64,68 @@ async def canonical_destination(state: dict, intent: dict, changed: list, suppor
             return {**failure(state, "LLM_UNAVAILABLE", message(state, "llm_understand"), retryable=True),
                     "tool_plan": [], "tool_results": [], "events": [event("tool", "LLM_UNAVAILABLE")]}
     if canonical is None:
-        text = message(state, "unsupported", destination=intent["destination"], destinations=", ".join(supported))
-        update = failure(state, "UNSUPPORTED_DESTINATION", text, 422)
-        update["response"]["error"]["details"] = {"destination": intent["destination"],
-                                                  "supportedDestinations": supported,
-                                                  "conversationId": state["conversation_id"]}
-        return {**update, "tool_plan": [], "tool_results": [],
-                "events": [event("tool", "UNSUPPORTED_DESTINATION")]}
+        # Hỏi lại (200) thay vì lỗi 422: giữ nguyên phần còn lại của chuyến đi, chỉ xoá điểm đến.
+        rejected = {"field": "destination", "value": intent["destination"], "reason": "unsupported_destination"}
+        return {"intent": {**intent, "destination": None}, "invalid_inputs": [rejected],
+                "missing_fields": ["destination"], "clarification_reason": "invalid_input",
+                "decision": "invalid_input", "tool_plan": [], "tool_results": [],
+                "events": [event("tool", "unsupported destination", retrieval=False)]}
     if canonical != intent["destination"]:
         changed.insert(0, "destination")
     intent["destination"] = canonical
     return None
 
 
+async def check_destination(state: dict, update: dict, *, tools: ToolExecutorPort | None, timeout_seconds: float,
+                            llm, llm_timeout_seconds: float) -> dict:
+    """Kiểm điểm đến với catalog ngay ở `extract`, để "đi Trung Quốc" bị từ chối trước khi hỏi số ngày.
+
+    Trả lại `update` của `extract`: điểm đến hợp lệ thì ghi tên chuẩn và `supported_destinations` (node `tool` dùng
+    lại, không hỏi catalog lần nữa); ngoài catalog thì xoá điểm đến, ghi `invalid_inputs` và chuyển sang `clarify`.
+    Không lấy được catalog thì giữ nguyên: `tool` vẫn kiểm lần nữa.
+    """
+    intent = update.get("intent") or {}
+    if update.get("decision") == "error" or not intent.get("destination"):
+        return update
+    if not getattr(tools, "supports_catalog", False):
+        return update
+    supported = state.get("supported_destinations")
+    if supported is None:
+        supported = await catalog_destinations(tools, timeout_seconds)
+    if supported is None:
+        return update
+    checked = dict(intent)
+    changed: list[str] = []
+    rejected = await canonical_destination(state, checked, changed, supported, llm, llm_timeout_seconds)
+    if rejected is None:
+        events = [*update.get("events", []), event("extract", "normalized destination", changed=changed)] if changed \
+            else update.get("events")
+        return {**update, "intent": checked, "supported_destinations": supported,
+                **({"events": events} if events is not None else {})}
+    if rejected.get("decision") == "error":
+        return {**rejected, "supported_destinations": supported}
+    missing = ["destination", *(key for key in update.get("missing_fields", []) if key != "destination")]
+    return {**update, "intent": rejected["intent"], "supported_destinations": supported,
+            "invalid_inputs": [*update.get("invalid_inputs", []), *rejected["invalid_inputs"]],
+            "missing_fields": missing, "clarification_reason": "invalid_input", "decision": "missing_info",
+            "events": [*update.get("events", []), event("extract", "unsupported destination", retrieval=False)]}
+
+
 def _similar_limit() -> int:
     """`limit` của Similar do server cố định ở mức tối đa hợp đồng: engine không lọc điểm đến, kết quả lệch
     điểm đến bị bỏ sau truy xuất, nên lấy nhiều nhất có thể để còn phương án cùng điểm đến."""
     return contracts()[SIMILAR_PRODUCTS]["arguments"]["properties"]["limit"]["maximum"]
+
+
+def _result_size(name: str) -> dict:
+    """Tham số số lượng kết quả server ép cho tool `name`; tool không có tham số này thì rỗng."""
+    if name == SIMILAR_PRODUCTS:
+        return {"limit": _similar_limit()}
+    if name == "search_products":
+        return {"limit": SEARCH_LIMIT}
+    if name == "get_recommendations":
+        return {"k": RECOMMENDATION_K}
+    return {}
 
 
 def _similar_dropped(state: dict, reason: str) -> None:
@@ -174,8 +224,7 @@ def _validated_args(state: dict, call: dict) -> dict:
     # truy xuất ở `retrieval.collect`, nên không mất hành vi nào.
     known = argument_names(call["name"])
     args = {key: value for key, value in args.items() if key in known}
-    if call["name"] == SIMILAR_PRODUCTS:
-        args["limit"] = _similar_limit()
+    args.update(_result_size(call["name"]))
     args = normalize_arguments(call["name"], args)
     if intent.get("destination") and "destination" in known:
         # Tên catalog đã chuẩn hóa mới là nguồn sự thật; planner viết "Hồ Chí Minh" thay vì
@@ -217,9 +266,9 @@ def validated_plan(state: dict, plan: list, *, require_recommendations: bool = F
     if require_recommendations and not any(call["name"] == "get_recommendations" for call in validated):
         if not _has_room(state, validated):
             raise ToolError("INVALID_TOOL_PLAN")
-        destination = state["intent"]["destination"]
-        validated.append({"name": "get_recommendations",
-                          "args": normalize_arguments("get_recommendations", {"destination": destination})})
+        # Cùng đường ép args với lời gọi của planner: `_validated_args` điền điểm đến chuẩn và `k`.
+        recommendations = {"name": "get_recommendations", "args": {}}
+        validated.append({**recommendations, "args": _validated_args(state, recommendations)})
     if any(call["name"] == SIMILAR_PRODUCTS for call in plan):
         # Lưới an toàn: Similar là best-effort (lỗi mềm, kết quả lệch điểm đến bị bỏ), nên plan có Similar (kể cả
         # lời gọi vừa bị bỏ) giữ một search cho mỗi loại đang đổi; search không lọc loại cũng tính, và Similar

@@ -129,6 +129,32 @@ def _days_from_end_date(result: Extraction, intent: dict, patch: dict, override:
     return False
 
 
+def _invalid_inputs(intent: dict, today: date) -> list[dict]:
+    """Giá trị ngoài giới hạn: ngày đi đã qua, số ngày, số người, ngân sách. Xoá từng trường sai khỏi `intent`.
+
+    Giới hạn số lấy từ contract (`bounds`), ngày đi so với hôm nay theo giờ Việt Nam. Điểm đến ngoài catalog
+    không kiểm ở đây vì cần danh sách điểm đến của catalog (node `tool`).
+    """
+    found = []
+
+    def reject(field: str, reason: str) -> None:
+        found.append({"field": field, "value": intent[field], "reason": reason})
+        intent[field] = None
+
+    if intent.get("startDate") and date.fromisoformat(intent["startDate"]) < today:
+        reject("startDate", "past_date")
+    min_days, max_days = bounds("TripIntent", "days")
+    if intent.get("days") is not None and not min_days <= intent["days"] <= max_days:
+        reject("days", "days_out_of_range")
+    party = intent.get("party")
+    if party is not None and (party["adults"] < bounds("Party", "adults")[0]
+                              or party["children"] < bounds("Party", "children")[0]):
+        reject("party", "party_out_of_range")
+    if intent.get("budget") is not None and intent["budget"] < bounds("TripIntent", "budget")[0]:
+        reject("budget", "budget_out_of_range")
+    return found
+
+
 #: Chi tiết chuyến đi được hỏi một lần sau điểm đến và số ngày (AC-AGT-01); trả lời bỏ qua vẫn lập lịch.
 TRIP_DETAILS = ("startDate", "party", "budget")
 
@@ -141,6 +167,24 @@ def trip_details_missing(intent: dict, result: Extraction) -> list[str]:
     return missing
 
 
+def _ask_invalid(state: dict, result: Extraction, intent: dict, invalid: list[dict], missing: list[str],
+                 asked: bool, rounds: int) -> dict:
+    """Hỏi lại vì có giá trị không hợp lệ (câu chat, chip hay giá trị lưu từ lượt trước), không gọi tool.
+
+    `missing_fields` gồm điểm đến/số ngày còn thiếu, các trường vừa bị xoá và, nếu chưa từng hỏi, chi tiết
+    ngày đi/số người/ngân sách còn trống. Vẫn thiếu điểm đến/số ngày thì đếm vòng để `clarify` gửi form đúng lúc.
+    """
+    fields = [*missing, *(item["field"] for item in invalid if item["field"] not in missing)]
+    asks_details = not missing and not asked and not state.get("intent_override")
+    if asks_details:
+        fields += [key for key in trip_details_missing(intent, result) if key not in fields]
+    update = {"decision": "missing_info", "missing_fields": fields, "clarification_reason": "invalid_input",
+              "start_date_asked": asked or asks_details or any(item["field"] == "startDate" for item in invalid)}
+    if missing:
+        update["clarification_rounds"] = rounds + 1
+    return update
+
+
 def extract_result(state: dict, result: Extraction) -> dict:
     """Update của `extract`, gồm `route` quyết định nhánh đi tiếp (`routing.route_after_extract`)."""
     result = Extraction.model_validate(result)
@@ -151,20 +195,21 @@ def extract_result(state: dict, result: Extraction) -> dict:
     if invalid_override is not None:
         return invalid_override
     constraints = _merged_constraints(state, result, patch, intent)
-    result = _default_year(result, intent, patch, vietnam_today())
+    today = vietnam_today()
+    result = _default_year(result, intent, patch, today)
     conflicting_days = _days_from_end_date(result, intent, patch, state.get("intent_override", {}))
     conflict = result.conflict or conflicting_days
+    invalid = _invalid_inputs(intent, today)
     missing = [key for key in ("destination", "days") if not intent.get(key)]
     # Ngày đi, số người, ngân sách: hỏi gộp một câu, một lần mỗi hội thoại và chỉ trước lần lập lịch đầu tiên.
     asked = bool(state.get("start_date_asked"))
     rounds = int(state.get("clarification_rounds", 0) or 0)
     update = {"intent": intent, "constraints": constraints,
               "missing_fields": missing, "start_date_asked": asked,
-              "clarification_rounds": rounds,
+              "clarification_rounds": rounds, "invalid_inputs": invalid,
               "events": [event("extract", "intent extracted")]}
-    min_days, max_days = bounds("TripIntent", "days")
-    if intent.get("days") is not None and not min_days <= intent["days"] <= max_days:
-        return {**update, **failure(state, "INVALID_TRIP_DURATION", message(state, "invalid_duration"), 400)}
+    if invalid:
+        return {**update, **_ask_invalid(state, result, intent, invalid, missing, asked, rounds)}
     if not valid("TripIntent", intent):
         return {**update, **failure(state, "VALIDATION_ERROR", message(state, "invalid_intent"), 422)}
     if conflict or constraints.get("unverified_requirements"):

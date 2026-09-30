@@ -32,8 +32,10 @@ class ScriptedLlm:
     """Script model decisions rather than matching scenario IDs or query keywords."""
     def __init__(self, extraction=None, plan=None, route='travel',
                  conversational_message='Bạn muốn đi đâu và trong bao nhiêu ngày?',
-                 destination_choice=None, fail_destination=False, fail_conversation=False, plan_delay=0):
+                 destination_choice=None, fail_destination=False, fail_conversation=False, plan_delay=0,
+                 conversational_title=None):
         self.fail_conversation = fail_conversation
+        self.conversational_title = conversational_title
         self.route = route
         self.destination_choice = destination_choice
         self.fail_destination = fail_destination
@@ -61,7 +63,7 @@ class ScriptedLlm:
             if schema is ConversationalAnswer:
                 if self.fail_conversation:
                     raise RuntimeError('provider error')
-                return ConversationalAnswer(message=self.conversational_message)
+                return ConversationalAnswer(title=self.conversational_title, message=self.conversational_message)
             raise AssertionError(f'the itinerary path must not call the model for {schema.__name__}')
         return SimpleNamespace(ainvoke=invoke)
 
@@ -166,7 +168,7 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['intent']['destination'], 'TP. Hồ Chí Minh')
         self.assertEqual(result['response']['status'], 'COMPLETED')
         self.assertEqual(llm.calls.count('DestinationChoice'), 1)
-        self.assertIn('normalized destination', [e['message'] for e in result['events'] if e['node'] == 'tool'][0])
+        self.assertIn('normalized destination', [e['message'] for e in result['events'] if e['node'] == 'extract'])
 
     async def test_accent_and_case_variants_match_without_calling_the_llm(self):
         llm = ScriptedLlm(extraction=extracted(destination='NHA  trang', days=2))
@@ -174,25 +176,50 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['intent']['destination'], 'Nha Trang')
         self.assertEqual(llm.calls.count('DestinationChoice'), 0)
 
-    async def test_destination_without_catalog_match_is_rejected_before_search(self):
+    async def test_destination_without_catalog_match_is_asked_again_before_search(self):
         for choice in (None, 'Atlantis'):  # model says none, or names something the catalog does not list
             with self.subTest(choice=choice):
                 clients = Clients()
-                llm = ScriptedLlm(extraction=extracted(destination='Paris', days=2), destination_choice=choice)
+                llm = ScriptedLlm(extraction=extracted(destination='Paris', days=2), destination_choice=choice,
+                                  conversational_title='Điểm đến chưa được hỗ trợ',
+                                  conversational_message='Mình chưa có dịch vụ ở Paris, bạn chọn điểm đến khác nhé.')
                 result = await self.run_graph(llm, clients)
-                self.assertEqual(result['http_status'], 422)
-                self.assertEqual(result['response']['error']['code'], 'UNSUPPORTED_DESTINATION')
-                self.assertEqual(result['response']['error']['details']['supportedDestinations'], ['Nha Trang'])
+                self.assertEqual(result['http_status'], 200)
+                response = result['response']
+                self.assertEqual(response['status'], 'NEEDS_CLARIFICATION')
+                self.assertEqual(response['question'], '**Điểm đến chưa được hỗ trợ**\nMình chưa có dịch vụ ở Paris, bạn chọn điểm đến khác nhé.')
+                self.assertEqual(response['missingFields'], ['destination'])
+                self.assertEqual(response['suggestedValues']['destination'], ['Nha Trang'])
+                self.assertIsNone(response['knownIntent']['destination'])
+                self.assertEqual(response['knownIntent']['days'], 2)
                 self.assertEqual(clients.calls, [])
+                payload = llm.prompts['ConversationalAnswer']
+                self.assertIn('unsupported_destination', payload)
+                self.assertIn('Paris', payload)
+
+    async def test_destination_outside_the_catalog_is_rejected_even_when_days_are_still_missing(self):
+        clients = Clients()
+        llm = ScriptedLlm(extraction=extracted(destination='Trung Quốc'), destination_choice=None,
+                          conversational_title='Điểm đến chưa được hỗ trợ',
+                          conversational_message='Mình chỉ lên kế hoạch trong Việt Nam.')
+        result = await self.run_graph(llm, clients)
+        response = result['response']
+        self.assertEqual(response['status'], 'NEEDS_CLARIFICATION')
+        self.assertEqual(response['missingFields'], ['destination', 'days'])
+        self.assertIsNone(response['knownIntent'].get('destination'))
+        self.assertEqual(response['suggestedValues']['destination'], ['Nha Trang'])
+        self.assertIn('unsupported_destination', llm.prompts['ConversationalAnswer'])
+        self.assertIn('Trung Quốc', llm.prompts['ConversationalAnswer'])
+        self.assertEqual(clients.calls, [])
 
     async def test_unsupported_destination_keeps_trip_so_a_valid_destination_completes_it(self):
         store = InMemoryConversationStore()
         clients = Clients()
         first = await self.run_graph(
-            ScriptedLlm(extraction=extracted(destination='Tokyo', days=4, startDate='2026-09-21'), destination_choice=None),
+            ScriptedLlm(extraction=extracted(destination='Tokyo', days=4, startDate='2999-09-21'), destination_choice=None),
             clients, store=store)
-        self.assertEqual(first['response']['error']['code'], 'UNSUPPORTED_DESTINATION')
-        cid = first['response']['error']['details']['conversationId']
+        self.assertEqual(first['response']['status'], 'NEEDS_CLARIFICATION')
+        cid = first['response']['conversationId']
         self.assertEqual(cid, first['conversation_id'])
         self.assertEqual(clients.calls, [])
         second = await self.run_graph(ScriptedLlm(extraction=extracted(destination='Nha Trang')), clients,
@@ -200,7 +227,7 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(second['http_status'], 200)
         self.assertEqual(second['response']['status'], 'COMPLETED')
         self.assertEqual((second['intent']['destination'], second['intent']['days'], second['intent']['startDate']),
-                         ('Nha Trang', 4, '2026-09-21'))
+                         ('Nha Trang', 4, '2999-09-21'))
 
     async def test_unsupported_destination_is_not_kept_when_the_user_gives_only_days(self):
         store = InMemoryConversationStore()
@@ -211,14 +238,16 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(second['response']['status'], 'NEEDS_CLARIFICATION')
         self.assertEqual(second['response']['missingFields'], ['destination'])
 
-    async def test_unsupported_destination_message_names_the_request_and_lists_catalog_destinations(self):
+    async def test_unsupported_destination_fixed_question_names_the_request_and_lists_catalog_destinations(self):
         for language, expected in (('vi', 'chưa có dịch vụ tại Paris'), ('en', 'services in Paris')):
             with self.subTest(language=language):
-                llm = ScriptedLlm(extraction=extracted(destination='Paris', days=2), destination_choice=None)
+                llm = ScriptedLlm(extraction=extracted(destination='Paris', days=2), destination_choice=None,
+                                  fail_conversation=True)
                 result = await self.run_graph(llm, Clients(), state={'language': language})
-                message = result['response']['error']['message']
-                self.assertIn(expected, message)
-                self.assertIn('Nha Trang', message)
+                question = result['response']['question']
+                self.assertTrue(question.startswith('**'))
+                self.assertIn(expected, question)
+                self.assertIn('Nha Trang', question)
 
     async def test_destination_resolution_failure_is_a_controlled_llm_error(self):
         clients = Clients()
@@ -282,11 +311,11 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_trip_details_given_in_the_first_message_are_not_asked(self):
         llm = ScriptedLlm(extraction=Extraction(
-                          patch={'destination': 'Nha Trang', 'days': 2, 'startDate': '2026-10-10', 'budget': 5_000_000,
+                          patch={'destination': 'Nha Trang', 'days': 2, 'startDate': '2999-10-10', 'budget': 5_000_000,
                                  'party': {'type': 'COUPLE', 'adults': 2, 'children': 0}}))
         result = await self.run_graph(llm, state={'start_date_asked': False})
         self.assertEqual(result['response']['status'], 'COMPLETED')
-        self.assertEqual(result['intent']['startDate'], '2026-10-10')
+        self.assertEqual(result['intent']['startDate'], '2999-10-10')
 
     async def test_cross_sell_exclusion_is_not_saved_for_the_next_turn(self):
         # excludedVerticals là thứ user đã mua trên CDP, không phải yêu cầu của user. Lưu nó vào
@@ -357,7 +386,8 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         result = await self.run_graph(llm, clients, state={'query': 'Gợi ý cho tôi một chuyến đi'})
         self.assertEqual([event['node'] for event in result['events']], ['intake', 'classify', 'extract', 'clarify', 'finalize'])
         self.assertEqual(result['response']['status'], 'NEEDS_CLARIFICATION')
-        self.assertEqual(result['response']['question'], llm.conversational_message)
+        # Không có `title` từ LLM thì dòng đầu in đậm là tiêu đề cố định của trường hợp thiếu cả điểm đến và số ngày.
+        self.assertEqual(result['response']['question'], f'**Cần biết điểm đến và số ngày**\n{llm.conversational_message}')
         self.assertEqual(result['response']['missingFields'], ['destination', 'days'])
         self.assertEqual(llm.calls, ['TurnRoute', 'Extraction', 'ConversationalAnswer'])
         self.assertFalse(clients.calls)
@@ -385,20 +415,85 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         result = await self.run_graph(llm)
         nodes = [event['node'] for event in result['events']]
         self.assertEqual(nodes, ['intake', 'classify', 'extract', 'clarify', 'finalize'])
-        self.assertEqual(result['response']['question'], 'Bạn muốn đi thành phố nào?')
-        self.assertEqual(result['final_answer'], 'Bạn muốn đi thành phố nào?')
+        self.assertEqual(result['response']['question'], '**Bạn muốn đi đâu?**\nBạn muốn đi thành phố nào?')
+        self.assertEqual(result['final_answer'], '**Bạn muốn đi đâu?**\nBạn muốn đi thành phố nào?')
         greeting = await self.run_graph(ScriptedLlm(route='conversation'))
+        self.assertFalse(greeting['response']['question'].startswith('**'))  # chào hỏi, cảm ơn: không có tiêu đề
         self.assertEqual([event['node'] for event in greeting['events']], ['intake', 'classify', 'converse', 'finalize'])
 
     async def test_clarify_falls_back_to_the_reason_specific_fixed_question_when_the_model_fails(self):
         clients = Clients()
-        conflict = Extraction(start_date_undecided=True, patch={'destination': 'Nha Trang', 'startDate': '2026-10-10', 'days': 2}, end_date='2026-10-12')
+        conflict = Extraction(start_date_undecided=True, patch={'destination': 'Nha Trang', 'startDate': '2999-10-10', 'days': 2}, end_date='2999-10-12')
         result = await self.run_graph(ScriptedLlm(extraction=conflict, fail_conversation=True), clients)
         self.assertEqual(result['response']['status'], 'NEEDS_CLARIFICATION')
         self.assertIn('mâu thuẫn', result['response']['question'])
+        self.assertTrue(result['response']['question'].startswith('**Thông tin chuyến đi chưa khớp nhau**\n'))
         missing = await self.run_graph(ScriptedLlm(extraction=extracted(days=3), fail_conversation=True), clients)
-        self.assertEqual(missing['response']['question'], 'Bạn muốn đi du lịch ở tỉnh hoặc thành phố nào?')
+        self.assertEqual(missing['response']['question'],
+                         '**Bạn muốn đi đâu?**\nBạn muốn đi du lịch ở tỉnh hoặc thành phố nào?')
         self.assertFalse(clients.calls)
+
+    async def test_a_past_start_date_is_asked_again_by_the_model_without_searching(self):
+        from datetime import timedelta
+        from src.backend.app.agents.steps.classification import vietnam_today
+        today = vietnam_today()
+        yesterday = today - timedelta(days=1)
+        clients = Clients()
+        llm = ScriptedLlm(extraction=extracted(destination='Nha Trang', days=3, startDate=yesterday.isoformat()),
+                          conversational_title='Ngày khởi hành không hợp lệ',
+                          conversational_message='Ngày đó đã qua, bạn chọn ngày khác nhé.')
+        result = await self.run_graph(llm, clients)
+        response = result['response']
+        self.assertEqual(response['status'], 'NEEDS_CLARIFICATION')
+        self.assertEqual(response['question'], '**Ngày khởi hành không hợp lệ**\nNgày đó đã qua, bạn chọn ngày khác nhé.')
+        self.assertIn('startDate', response['missingFields'])
+        self.assertIsNone(response['knownIntent']['startDate'])
+        self.assertFalse(clients.calls)
+        # Câu hỏi do LLM viết; payload đưa sẵn hai ngày dd/mm/yyyy để nó chép lại.
+        self.assertIn('ConversationalAnswer', llm.calls)
+        prompt = llm.prompts['ConversationalAnswer']
+        self.assertIn('past_date', prompt)
+        self.assertIn(yesterday.strftime('%d/%m/%Y'), prompt)
+        self.assertIn(today.strftime('%d/%m/%Y'), prompt)
+
+    async def test_a_past_date_is_named_on_the_form_round_even_without_destination_and_days(self):
+        # "di ngay 28 thang9" khi hôm nay là sau ngày đó: câu phải nêu ngày đã qua, form vẫn hiện và điền hôm nay.
+        from datetime import timedelta
+        from src.backend.app.agents.steps.classification import vietnam_today
+        today = vietnam_today()
+        past = today - timedelta(days=2)
+        llm = ScriptedLlm(extraction=extracted(startDate=past.isoformat()), conversational_title='Ngày khởi hành không hợp lệ')
+        clients = Clients()
+        response = (await self.run_graph(llm, clients, state={'clarification_rounds': 1}))['response']
+        self.assertEqual(response['status'], 'NEEDS_CLARIFICATION')
+        self.assertTrue(response['question'].startswith('**Ngày khởi hành không hợp lệ**\n'))
+        self.assertEqual(response['missingFields'][:2], ['destination', 'days'])
+        self.assertIn('startDate', response['missingFields'])
+        self.assertEqual(response['clarificationForm']['defaults']['startDate'], today.isoformat())
+        self.assertIn('"form_shown": true', llm.prompts['ConversationalAnswer'])
+        self.assertFalse(clients.calls)
+
+    async def test_the_bold_title_falls_back_to_a_fixed_one_when_the_model_gives_none(self):
+        from datetime import timedelta
+        from src.backend.app.agents.steps.classification import vietnam_today
+        yesterday = vietnam_today() - timedelta(days=1)
+        llm = ScriptedLlm(extraction=extracted(destination='Nha Trang', days=3, startDate=yesterday.isoformat()))
+        question = (await self.run_graph(llm))['response']['question']
+        self.assertTrue(question.startswith('**Ngày khởi hành không hợp lệ**\n'))
+
+    async def test_a_past_start_date_falls_back_to_a_fixed_question_naming_both_dates(self):
+        from datetime import timedelta
+        from src.backend.app.agents.steps.classification import vietnam_today
+        today = vietnam_today()
+        yesterday = today - timedelta(days=1)
+        llm = ScriptedLlm(extraction=extracted(destination='Nha Trang', days=3, startDate=yesterday.isoformat()),
+                          fail_conversation=True)
+        response = (await self.run_graph(llm, state={'start_date_asked': True}))['response']
+        self.assertEqual(response['status'], 'NEEDS_CLARIFICATION')
+        self.assertTrue(response['question'].startswith('**Ngày khởi hành không hợp lệ**\n'))
+        self.assertIn(yesterday.strftime('%d/%m/%Y'), response['question'])
+        self.assertIn(today.strftime('%d/%m/%Y'), response['question'])
+        self.assertEqual(response['missingFields'], ['startDate'])
 
     async def test_unmet_required_condition_is_asked_by_clarify_without_calling_the_model(self):
         clients = Clients(products=[product(taxonomy='hotel', unitPrice=1100000, priceUnit='UNKNOWN')])
@@ -410,33 +505,79 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('ConversationalAnswer', llm.calls)
 
     async def test_dates_derive_duration_and_conflicts_do_not_search(self):
-        llm = ScriptedLlm(extraction=Extraction(start_date_undecided=True, patch={'destination': 'Nha Trang', 'startDate': '2026-10-10'}, end_date='2026-10-12'))
+        llm = ScriptedLlm(extraction=Extraction(start_date_undecided=True, patch={'destination': 'Nha Trang', 'startDate': '2999-10-10'}, end_date='2999-10-12'))
         result = await self.run_graph(llm)
         self.assertEqual(result['intent']['days'], 3)
-        self.assertEqual(result['response']['itinerary']['days'][-1]['date'], '2026-10-12')
+        self.assertEqual(result['response']['itinerary']['days'][-1]['date'], '2999-10-12')
         clients = Clients()
-        llm.extraction = Extraction(start_date_undecided=True, patch={'destination': 'Nha Trang', 'startDate': '2026-10-10', 'days': 2}, end_date='2026-10-12')
+        llm.extraction = Extraction(start_date_undecided=True, patch={'destination': 'Nha Trang', 'startDate': '2999-10-10', 'days': 2}, end_date='2999-10-12')
         result = await self.run_graph(llm, clients)
         self.assertEqual(result['response']['status'], 'NEEDS_CLARIFICATION')
         self.assertFalse(clients.calls)
 
-    async def test_duration_outside_contract_is_error(self):
-        result = await self.run_graph(ScriptedLlm(extraction=extracted(destination='Nha Trang', days=8)))
-        self.assertEqual(result['http_status'], 400)
-        self.assertEqual(result['response']['error']['code'], 'INVALID_TRIP_DURATION')
+    async def test_duration_outside_contract_is_asked_again_without_searching(self):
+        clients = Clients()
+        llm = ScriptedLlm(extraction=extracted(destination='Nha Trang', days=8), conversational_title='Số ngày không hợp lệ',
+                          conversational_message='Mình lên lịch được từ 1 đến 7 ngày, bạn chọn lại giúp mình nhé.')
+        result = await self.run_graph(llm, clients)
+        self.assertEqual(result['http_status'], 200)
+        response = result['response']
+        self.assertEqual(response['status'], 'NEEDS_CLARIFICATION')
+        self.assertTrue(response['question'].startswith('**Số ngày không hợp lệ**\n'))
+        self.assertEqual(response['missingFields'], ['days'])
+        self.assertEqual(response['suggestedValues']['days'], list(range(1, 8)))
+        self.assertFalse(clients.calls)
+
+    async def test_out_of_range_party_is_asked_again_instead_of_failing_as_llm_unavailable(self):
+        party = {'type': 'SOLO', 'adults': 0, 'children': 0}
+        result = await self.run_graph(ScriptedLlm(extraction=extracted(destination='Nha Trang', days=2, party=party)))
+        self.assertEqual(result['http_status'], 200)
+        self.assertEqual(result['response']['status'], 'NEEDS_CLARIFICATION')
+        self.assertIn('party', result['response']['missingFields'])
 
     async def test_unsupported_destination_requires_catalog_evidence(self):
         clients = Clients(products=[])
         result = await self.run_graph(ScriptedLlm(extraction=extracted(destination='Tokyo', days=3)), clients)
-        self.assertEqual(result['http_status'], 422)
-        self.assertEqual(result['response']['error']['code'], 'UNSUPPORTED_DESTINATION')
-        self.assertEqual(result['response']['error']['details']['supportedDestinations'], ['Nha Trang'])
+        self.assertEqual(result['http_status'], 200)
+        self.assertEqual(result['response']['status'], 'NEEDS_CLARIFICATION')
+        self.assertEqual(result['response']['suggestedValues']['destination'], ['Nha Trang'])
         self.assertFalse(clients.calls)
 
     async def test_empty_search_is_not_a_provider_failure_or_an_unsupported_country_claim(self):
         result = await self.run_graph(clients=Clients(products=[]))
         self.assertEqual(result['response']['status'], 'NO_RESULTS')
         self.assertNotIn('trong nước', result['response']['message'])
+
+    async def test_start_date_outside_the_sale_window_offers_the_nearest_open_date_and_other_destinations(self):
+        window = {'availableFrom': '2999-10-01', 'availableTo': '2999-10-24'}
+        clients = Clients(products=[product('a', **window), product('b', taxonomy='hotel', **window)],
+                          destinations=['Nha Trang', 'Huế', 'Đà Nẵng'])
+        llm = ScriptedLlm(extraction=extracted(destination='Nha Trang', days=3, startDate='2999-12-01'))
+        result = await self.run_graph(llm, clients)
+        response = result['response']
+        self.assertEqual(response['status'], 'NO_RESULTS')
+        self.assertIn('01/12/2999', response['message'])
+        self.assertEqual(response['suggestions'],
+                         ['Đi Nha Trang 3 ngày từ ngày 24/10/2999', 'Đi Huế 3 ngày', 'Đi Đà Nẵng 3 ngày'])
+
+    async def test_catalog_destinations_are_listed_by_product_count_then_name(self):
+        from src.backend.app.agents.steps.tool_planning import catalog_destinations
+
+        class Listing:
+            async def list_destinations(self):
+                return {'destinations': [{'destination': 'An Giang', 'productCount': 3},
+                                         {'destination': 'Nha Trang', 'productCount': 90},
+                                         {'destination': 'Huế', 'productCount': 90}]}
+
+        self.assertEqual(await catalog_destinations(Listing(), 1), ['Huế', 'Nha Trang', 'An Giang'])
+
+    async def test_start_date_before_the_sale_window_suggests_the_first_open_day(self):
+        window = {'availableFrom': '2999-10-01', 'availableTo': '2999-10-24'}
+        clients = Clients(products=[product('a', **window)], destinations=['Nha Trang'])
+        llm = ScriptedLlm(extraction=extracted(destination='Nha Trang', days=2, startDate='2999-09-01'))
+        response = (await self.run_graph(llm, clients))['response']
+        self.assertEqual(response['status'], 'NO_RESULTS')
+        self.assertEqual(response['suggestions'], ['Đi Nha Trang 2 ngày từ ngày 01/10/2999'])
 
     async def test_an_unschedulable_taxonomy_is_retrieved_but_never_scheduled(self):
         # Regression: "đi Nha Trang 2 ngày từ ngày mai" returned FALLBACK because the model put the

@@ -147,8 +147,8 @@ thể** — chỉ khoá bất biến. Runner tự kiểm bốn nhóm quy tắc:
 | D — case tự khai báo | `status`/`errorCode`/`intent`/`missingFields`/node bắt buộc có-không/`forbiddenText`/loại trừ sản phẩm lượt trước | dataset YAML, mỗi case ghi `fr` tương ứng |
 
 Tool Calling Accuracy được tính tự động từ chính response (không cần case khai báo): `NEEDS_CLARIFICATION`
-do thiếu field → không được gọi tool; `COMPLETED`/`FALLBACK`/`NO_RESULTS`/`UNSUPPORTED_DESTINATION` → phải
-gọi tool; `VALIDATION_ERROR` (side-effect/out-of-domain) → không được gọi tool. Đây là cách vận hành hoá
+do thiếu field → không được gọi tool; `COMPLETED`/`FALLBACK`/`NO_RESULTS` → phải gọi tool. Điểm đến ngoài catalog đi qua node `tool` nhưng chưa
+gọi Search (event `retrieval=false`), nên không tính là gọi tool; `VALIDATION_ERROR` (side-effect/out-of-domain) → không được gọi tool. Đây là cách vận hành hoá
 "gọi đúng công cụ" của test-plan §2.4 — đo quyết định gọi/không gọi, không đo độ khớp tham số chi tiết.
 
 `--sweep` chạy thêm nhóm A/B/C cho **mọi điểm đến hiện có** trong catalog (qua `GET /api/v1/destinations`),

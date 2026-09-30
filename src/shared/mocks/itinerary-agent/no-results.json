@@ -3,16 +3,18 @@
   "conversationId": "sample-conv",
   "intent": {
     "destination": "Phú Quốc",
-    "startDate": null,
-    "days": 1,
+    "startDate": "2026-12-01",
+    "days": 3,
     "party": null,
     "budget": null,
     "interests": [],
     "pace": null
   },
-  "message": "Không có sản phẩm phù hợp bộ lọc.",
+  "message": "Hiện chưa có sản phẩm ở Phú Quốc mở bán cho ngày 01/12/2026. Bạn có thể chọn một trong các gợi ý bên dưới.",
   "suggestions": [
-    "Bỏ bớt bộ lọc"
+    "Đi Phú Quốc 3 ngày từ ngày 24/10/2026",
+    "Đi Nha Trang 3 ngày",
+    "Đi Đà Nẵng 3 ngày"
   ],
   "metadata": {
     "personalised": false,

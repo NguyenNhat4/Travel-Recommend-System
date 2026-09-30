@@ -24,7 +24,6 @@ export function useFloatingWidget() {
   const [inputVal, setInputVal] = useState<string>('');
   const [activePlan, setActivePlan] = useState<WidgetPlan | null>(null);
   const [activeDayTab, setActiveDayTab] = useState<number>(1);
-  const [isSavedPlan, setIsSavedPlan] = useState<boolean>(false);
   const [isCheckingOut, setIsCheckingOut] = useState<boolean>(false);
   const [isChatCollapsed, setIsChatCollapsed] = useState<boolean>(false);
   const [hoveredCoordinate, setHoveredCoordinate] = useState<{ lat: number; lng: number } | null>(null);
@@ -60,7 +59,6 @@ export function useFloatingWidget() {
       const plan = convertItineraryCompletedToGroundedPlan(assistantState.response);
       setActivePlan(plan);
       setActiveDayTab(1);
-      setIsSavedPlan(false);
     }
   }, [assistantState.response]);
 
@@ -82,6 +80,7 @@ export function useFloatingWidget() {
         text: item.text,
         plan,
         clarificationForm: item.response?.status === 'NEEDS_CLARIFICATION' ? item.response.clarificationForm : undefined,
+        suggestions: item.response?.status === 'NO_RESULTS' ? item.response.suggestions : undefined,
       };
     });
   }, [assistantState.transcript]);
@@ -151,19 +150,6 @@ export function useFloatingWidget() {
   };
 
 
-  const handleToggleSavePlan = (e?: React.MouseEvent) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-    if (!activePlan) return;
-    setIsSavedPlan(prev => {
-      const next = !prev;
-      showToast(next ? 'Đã lưu hành trình vào danh sách yêu thích!' : 'Đã bỏ lưu hành trình!');
-      return next;
-    });
-  };
-
   const handleCheckoutPlan = (e?: React.MouseEvent) => {
     if (e) {
       e.preventDefault();
@@ -202,7 +188,6 @@ export function useFloatingWidget() {
     setInputVal('');
     setIsChatCollapsed(false);
     setActiveDayTab(1);
-    setIsSavedPlan(false);
     setIsHistoryOpen(false);
     showToast('Đã bắt đầu cuộc trò chuyện mới!');
   };
@@ -217,7 +202,6 @@ export function useFloatingWidget() {
     setActiveSessionId(session.id);
     setActivePlan(session.plan);
     setActiveDayTab(1);
-    setIsSavedPlan(false);
     setIsHistoryOpen(false);
   };
 
@@ -227,10 +211,10 @@ export function useFloatingWidget() {
   };
 
   return { isOpen, setIsOpen, isExpanded, setIsExpanded, activePlan, activeDayTab, setActiveDayTab,
-    isSavedPlan, isCheckingOut, isChatCollapsed, setIsChatCollapsed, hoveredCoordinate, hoveredPointId,
+    isCheckingOut, isChatCollapsed, setIsChatCollapsed, hoveredCoordinate, hoveredPointId,
     setHoveredCoordinate, setHoveredPointId, isHistoryOpen, setIsHistoryOpen, conversations, activeSessionId,
     assistantState, isRunning, messages, inputVal, setInputVal, chatScrollRef, addToCart, retry, abort,
-    handleSendMessage, handleQuickPrompt, handleConfirmTripDetails, handleToggleSavePlan, handleCheckoutPlan,
+    handleSendMessage, handleQuickPrompt, handleConfirmTripDetails, handleCheckoutPlan,
     handleStartNewChat, handleSelectConversation, handleDeleteConversation };
 }
 
