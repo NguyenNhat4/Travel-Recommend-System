@@ -4,7 +4,8 @@
 #   trong hai job được lên lịch cho cùng DB. Theo dõi job mới: `logs [-f] [-n SỐ_DÒNG] [LƯỢT]` · `report [SỐ_LƯỢT]` ·
 #   `fresh-run status`; backend compose cùng VM: `backend [logs [-f] [-n SỐ_DÒNG]]`.
 # `fresh-monitor`: UI của job cào mới ở 127.0.0.1:8765 (image FRESH_IMAGE). `monitor`: cùng UI chạy trong image daily
-#   (IMAGE), đọc <DATA_DIR>/state, /fresh_runs. CD khởi động lại `fresh-monitor` sau mỗi lần deploy.
+#   (IMAGE), đọc <DATA_DIR>/state, /fresh_runs. CD khởi động lại `fresh-monitor` sau mỗi lần deploy. `fresh-monitor` chạy nền
+#   với --restart unless-stopped, --memory 1g (MONITOR_RESTART=no: tiền cảnh như cũ; MONITOR_MEMORY đổi giới hạn).
 # Cả hai mở public tạm thời (IP ngoài của VM) bằng MONITOR_HOST=0.0.0.0 MONITOR_PUBLIC=1; chưa có đăng nhập.
 # Only this runner script, Docker, an env file and a data volume are needed on the VM.
 set -euo pipefail
@@ -146,17 +147,28 @@ monitor_flags() {
 cmd_fresh_monitor() {
   [ -d "$FRESH_DATA_DIR" ] || die "chưa có $FRESH_DATA_DIR (UID/GID 10001)"
   [ -r "$FRESH_ENV_FILE" ] || die "không đọc được $FRESH_ENV_FILE"
-  local args=(--rm --init --name "$FRESH_NAME-monitor" --network host
+  local name="$FRESH_NAME-monitor" restart="${MONITOR_RESTART:-unless-stopped}"
+  case "$restart" in no|on-failure|always|unless-stopped) ;; *) die "MONITOR_RESTART phải là no, on-failure, always hoặc unless-stopped" ;; esac
+  # Chạy nền, Docker tự bật lại khi bị tắt (hết RAM, VM khởi động lại, phiên SSH của CD đóng). Giới hạn RAM để nếu hết RAM
+  # thì monitor bị tắt trước backend. MONITOR_RESTART=no: chạy tiền cảnh như cũ (máy dev, Ctrl+C để dừng).
+  local args=(--init --name "$name" --network host --memory "${MONITOR_MEMORY:-1g}"
               --shm-size "${FRESH_SHM_SIZE:-512m}" -v "$FRESH_DATA_DIR:/data"
               --env-file "$FRESH_ENV_FILE" -e CATALOG_STATE_DIR=/data/state
-              -e CATALOG_RUN_ROOT=/data/fresh_runs --entrypoint python)
+              -e CATALOG_RUN_ROOT=/data/fresh_runs -e "BACKEND_URL=$BACKEND_URL" --entrypoint python)
   if [ -d "$FRESH_LOG_DIR" ]; then
     args+=(--group-add "$(stat -c %g "$FRESH_LOG_DIR")"
            -v "$FRESH_LOG_DIR:/runner-logs:ro" -e CATALOG_LOG_DIR=/runner-logs)
   fi
   local monitor_args
   monitor_flags
-  docker run "${args[@]}" "$FRESH_IMAGE" /app/src/data_collection/monitor.py "${monitor_args[@]}" "$@"
+  if [ "$restart" = no ]; then
+    docker run --rm "${args[@]}" "$FRESH_IMAGE" /app/src/data_collection/monitor.py "${monitor_args[@]}" "$@"
+    return
+  fi
+  docker rm -f "$name" >/dev/null 2>&1 || true  # --restart không đi cùng --rm: thay container cũ cùng tên
+  docker run -d --restart "$restart" --log-opt max-size=10m --log-opt max-file=3 "${args[@]}" \
+    "$FRESH_IMAGE" /app/src/data_collection/monitor.py "${monitor_args[@]}" "$@" >/dev/null
+  echo "$(date -Is) monitor $name chạy nền (restart=$restart, memory=${MONITOR_MEMORY:-1g}); log: docker logs -f $name"
 }
 
 # ---------------------------------------------------------------------- theo dõi trên console

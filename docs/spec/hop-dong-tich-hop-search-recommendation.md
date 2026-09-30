@@ -153,6 +153,11 @@ trong 4,9% tên, "trang" 5,0% — DF không tách được thương hiệu với
 Nhánh BM25 lỗi (collection chưa có property) → engine chạy dense-only nhưng vẫn khai `HYBRID_CANDIDATE_SCORE`
 với `diagnostics.lexicalCandidates = 0`, không trả 500.
 
+Thời gian từng bước khai ở `diagnostics.stageMs` (từ 2026-09-29, contract 1.9.0; phục vụ NFR-PERF-01/03): ms nguyên
+của `normalize` (chỉ khi bước chuẩn hoá bật), `embed`, `dense` (gồm dựng bộ lọc cấu trúc), `lexical` (chỉ ở hybrid,
+kể cả khi nhánh BM25 lỗi), `fuse` (RRF + cutoff + facets) và `hydrate`. Đo trong engine nên tổng các bước ≤
+`latencyMs` của route. Chỉ `/search` có trường này.
+
 Bước chuẩn hoá khai ở `diagnostics.normalizedQuery` / `appliedAliases` / `corrections` / `party`, chỉ khi có
 nhận ra hoặc đổi gì; `SEARCH_NORMALIZE=false` tắt cả bước. Sửa chính tả chỉ đụng token không phải âm tiết tiếng
 Việt, dài ≥ 5, cách ≤ 1 ký tự (≤ 2 khi ≥ 8) so với token có mặt ở ≥ 3 tên sản phẩm — "Vinpeal" → "Vinpearl",
@@ -672,6 +677,8 @@ Team Search cung cấp:
     `search("khach san co ban cong")` → không có `corrections`; `search("chỗ nghỉ Đà Lạt đi cùng bạn gái")` →
     `party: COUPLE`, `normalizedQuery` chứa "cặp đôi".
 11. p95 dưới 300 ms trên catalog đầy đủ, đo với Weaviate cùng mạng nội bộ (local hoặc cùng region).
+    *(Bổ sung 2026-09-29: PRD NFR-PERF-01 đặt ngưỡng chặt hơn, ≤ 250 ms; báo p95 tổng kèm p95 từng bước theo
+    `diagnostics.stageMs` để thấy phần nào là Cohere, phần nào là Weaviate.)*
 
 ### Similar
 

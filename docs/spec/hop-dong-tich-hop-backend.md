@@ -934,6 +934,25 @@ Log **được phép** chứa: `requestId`, `cdpUserId` đã pseudonymize, truy 
 
 Log **không được** chứa: mật khẩu ở bất kỳ dạng nào, JWT, API key, email và số điện thoại đầy đủ của khách.
 
+### 8.6a. Đo lần gọi web / agent (`/metrics`, `/internal/calls`)
+
+Theo `docs/prd/deployment-plan.md` §5. Hai endpoint vận hành nằm ngoài `/api/v1`, cùng nhóm với `/health`, không thuộc
+contract public (`include_in_schema=False`):
+
+- `GET /metrics` — text Prometheus: `vota_calls_total`, `vota_call_errors_total`, `vota_call_duration_ms` (p50 / p95 trên
+  500 lần gần nhất) theo nhãn `source` (`web` | `agent`), `kind` (`http` | `tool`), `name`; `vota_catalog_products`,
+  `vota_catalog_reloads_total` của bản recsys / catalog đang trong bộ nhớ.
+- `GET /internal/calls?after=<seq>&limit=<≤1000>` — JSON `{lastSeq, startedAt, catalog, summary[], events[]}`; mỗi sự
+  kiện: `seq`, `at`, `source`, `kind`, `name` (web: `METHOD /api/v1/route/{tham số}` — tên tham số, không phải giá trị;
+  agent: tên công cụ), `status` (HTTP hoặc `ok` / `error:<mã>` / `cancelled`), `ms`, và nếu có `useCase`, `useCaseMs`,
+  `resultCount`, `productIds` (≤ 20), `stageMs` (của `/search`, `StageTimer`). Không có query string, câu tìm kiếm, body
+  hay dữ liệu cá nhân. Monitor job cào đọc endpoint này (tab "Realtime").
+
+Nguồn `web` = request dưới `/api/v1` (middleware `api/middleware.py`); nguồn `agent` = công cụ itinerary gọi engine trong
+tiến trình (`application/itinerary/engine_tools.py`). Engine search / similar / recommend và use case catalog được bọc ở
+composition root (`application/telemetry.py`), nên hai nguồn đo cùng một cách. Bộ đệm trong bộ nhớ
+(`infrastructure/telemetry/memory.py`, 2.000 sự kiện) mất khi restart.
+
 ### 8.7. Versioning
 
 - Mọi endpoint bắt đầu bằng `/api/v1`.

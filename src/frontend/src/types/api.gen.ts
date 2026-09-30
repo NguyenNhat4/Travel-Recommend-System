@@ -1058,6 +1058,21 @@ export interface components {
             lexicalCandidates?: number;
             /** @description Số phần tử của R chỉ vào nhờ nhánh BM25 (score trong [lexicalCutoff, cutoff)). */
             lexicalCount?: number;
+            /** @description Thời gian từng bước của /search, mili giây nguyên làm tròn xuống, đo trong engine (không gồm HTTP, nên tổng các bước <= latencyMs). Chỉ có ở /search. normalize chỉ có khi bước chuẩn hoá bật (SEARCH_NORMALIZE); lexical chỉ có ở HYBRID_CANDIDATE_SCORE và vẫn có khi nhánh BM25 lỗi. fuse là RRF + lọc cutoff (hybrid) hoặc lọc cutoff (ANN). dense gồm cả dựng bộ lọc cấu trúc. */
+            stageMs?: {
+                /** @description Chuẩn hoá truy vấn: viết tắt, chính tả tên riêng, tên điểm đến. */
+                normalize?: number;
+                /** @description Embed truy vấn qua Cohere (input_type search_query). */
+                embed?: number;
+                /** @description Dựng bộ lọc cấu trúc và truy vấn top-K theo vector ở Weaviate. */
+                dense?: number;
+                /** @description Truy vấn BM25 top-K ở Weaviate. */
+                lexical?: number;
+                /** @description Hợp nhất RRF, lọc cutoff và dựng facets. */
+                fuse?: number;
+                /** @description Dựng các ProductSummary của trang trả về. */
+                hydrate?: number;
+            };
             /** @description Chuỗi thực sự đưa vào embed và BM25. Vắng mặt khi không khác `query`. Event `search` ghi sang CDP (§3.2) vẫn dùng `query` gốc. */
             normalizedQuery?: string;
             /** @description Cụm đã thay theo thứ tự xuất hiện: viết tắt (KS → khách sạn, PQ → Phú Quốc), tên điểm đến về giá trị catalog (da nang → Đà Nẵng), kiểu đi về nhãn catalog (bạn gái → cặp đôi). */

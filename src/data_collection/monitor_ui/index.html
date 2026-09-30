@@ -91,11 +91,12 @@ details{margin:10px 0}summary{cursor:pointer}
 @media(max-width:700px){header{padding:14px 16px}main{padding:0 12px}.field,.live-row{grid-template-columns:1fr}th,td{padding:6px}.card{padding:13px}
  .graph{display:flex;flex-direction:column;align-items:stretch;min-width:0;gap:6px}.graph svg{display:none}.ghead{margin-top:10px}}
 .dbgrid{display:grid;gap:16px;grid-template-columns:minmax(0,1fr) minmax(0,4fr);align-items:start}.dbgrid>.card{min-width:0}@media (max-width:900px){.dbgrid{grid-template-columns:minmax(0,1fr)}}
+.rt td{white-space:nowrap}
 </style>
 </head>
 <body>
 <header><h1>V-OTA <span class="muted">/ Fresh catalog</span></h1><p>Theo dõi cào → chuẩn hoá → nạp Postgres → embed/index Weaviate</p><div id="connection" aria-live="polite">Đang kết nối…</div>
-<nav aria-label="Điều hướng"><button data-view="overview" aria-current="true">Tổng quan</button><button data-view="runs">Lịch sử</button><button data-view="system">Hệ thống</button><button data-view="settings">Cấu hình</button><button data-view="db">DB</button></nav>
+<nav aria-label="Điều hướng"><button data-view="overview" aria-current="true">Tổng quan</button><button data-view="runs">Lịch sử</button><button data-view="system">Hệ thống</button><button data-view="settings">Cấu hình</button><button data-view="db">DB</button><button data-view="realtime">Realtime</button></nav>
 <div id="controls" class="actions" aria-label="Điều khiển lượt"><button type="button" class="primary" data-action="start" data-args='{"mode":"auto"}' title="full hoặc daily theo chu kỳ trong Cấu hình">Chạy theo chu kỳ</button><button type="button" data-action="start" data-args='{"mode":"full"}'>Cào lớn</button><button type="button" data-action="start" data-args='{"mode":"daily"}'>Làm mới Trip</button><button type="button" data-action="start" data-args='{"mode":"index"}'>Bảo trì và index</button><button type="button" class="danger" data-action="stop" data-args='{}'>Dừng lượt đang chạy</button><span id="controlState"></span></div>
 </header>
 <div id="notice" role="alert"></div><main id="main" aria-live="polite"></main>
@@ -234,7 +235,7 @@ function writeHash(){const h=stateHash();if(location.hash.slice(1)!==h)history.p
 async function applyHash(){const p=new URLSearchParams(location.hash.slice(1));
  if(p.get('run'))return openRun(p.get('run'),p.get('view'),null,p.get('node')).catch(async e=>{await navigate('overview');fail(e)});  // link cũ: lượt đã bị xoá
  if(p.get('page')==='db')S.db={table:p.get('table')||null,filters:{},offset:0};
- return navigate(['overview','runs','hotels','settings','system','db'].includes(p.get('page'))?p.get('page'):'overview',false)}
+ return navigate(['overview','runs','hotels','settings','system','db','realtime'].includes(p.get('page'))?p.get('page'):'overview',false)}
 addEventListener('popstate',()=>{if(location.hash.slice(1)!==stateHash())applyHash().catch(fail)});
 async function renderPanel(){const p=$('#panel');if(!p)return;stopLive();await loadLive();writeHash();
  if(!S.node&&!S.tab){p.innerHTML=card('Chi tiết','<p class="muted">Bấm một ô trên sơ đồ để xem tiến độ, log, dữ liệu và lỗi của bước đó.</p>');return}
@@ -435,7 +436,7 @@ async function settings(){S.settings=await api('/api/settings');const values=Obj
   groups.map(g=>`<section class="card" data-group="${esc(g.id)}" ${g.id===active?'':'hidden'}><h2>${esc(g.label)}</h2>${g.id==='strategy'?button('Áp ngân sách Trip 30 / 10 / 180','tripBudget')+' ':''}${S.settings.fields.filter(f=>f.group===g.id).map(fieldHtml).join('')}</section>`).join('')+
   `<div class="actions"><button class="primary" type="submit">Lưu thay đổi (mọi tab)</button></div></form>`}
 
-async function navigate(name,push=true){stopLive();clearInterval(S.gtimer);S.gtimer=null;S.view=name;S.run=null;S.list=null;notice('');if(push)writeHash();document.querySelectorAll('nav button').forEach(b=>b.setAttribute('aria-current',b.dataset.view===name));main.innerHTML='<p class="muted">Đang tải…</p>';if(name==='overview')await overview();if(name==='runs')await historyPage();if(name==='system'||name==='hotels')await system();if(name==='settings')await settings();if(name==='db')await dbPage()}
+async function navigate(name,push=true){stopLive();clearInterval(S.gtimer);S.gtimer=null;clearInterval(S.rtTimer);S.rtTimer=null;S.view=name;S.run=null;S.list=null;notice('');if(push)writeHash();document.querySelectorAll('nav button').forEach(b=>b.setAttribute('aria-current',b.dataset.view===name));main.innerHTML='<p class="muted">Đang tải…</p>';if(name==='overview')await overview();if(name==='runs')await historyPage();if(name==='system'||name==='hotels')await system();if(name==='settings')await settings();if(name==='db')await dbPage();if(name==='realtime')await realtimePage()}
 
 // ------------------------------------------------------------------ tab DB: xem toàn bộ database (chỉ đọc)
 const dbKey=(d,r)=>d.pk?.length?Object.fromEntries(d.pk.map(c=>[c,r[c]])):null;
@@ -461,6 +462,32 @@ async function dbRow(tname,key){const d=await api('/api/dbx/row',{table:tname,..
  const out=d.outgoing.map(o=>button(`${o.via.join('+')} → ${o.table}${o.kind==='convention'?' (quy ước)':''}`,'dbRow',{table:o.table,key:o.key})).join(' ');
  const inc=d.incoming.map(i=>button(`${i.table} (${num(i.count)}) qua ${i.via.join('+')}${i.kind==='convention'?' (quy ước)':''}`,i.via[0]==='attributes.parentProductId'?'dbChildren':'dbList',{table:i.table,filters:i.filters,id:i.filters['attributes.parentProductId']})).join(' ');
  modal(`${tname} · ${Object.values(key).join(' / ')}`,`<h3>Trỏ tới</h3><div class="actions">${out||'<span class="muted">Không có</span>'}</div><h3>Được trỏ tới bởi</h3><div class="actions">${inc||'<span class="muted">Không có</span>'}</div><h3>Dữ liệu</h3>`+table(['Cột','Giá trị'],fields))}
+
+// ------------------------------------------------------------------ Realtime: từng lần gọi của web / agent (backend /internal/calls)
+const srcBadge=v=>`<span class="status ${v==='agent'?'running':'ok'}">${esc(v)}</span>`;
+const callStatus=v=>typeof v==='number'?`<span class="status ${v>=500?'failed':v>=400?'partial':'ok'}">${v}</span>`:`<span class="status ${v==='ok'?'ok':'failed'}">${esc(v)}</span>`;
+function rtRows(){const R=S.rt;const ev=R.events.filter(e=>!R.source||e.source===R.source);
+ return table(['Giờ','Nguồn','Lần gọi','Kết quả','ms','Use case','Số KQ','Thời gian từng bước (stageMs)','productId'],ev.slice().reverse().slice(0,100).map(e=>[
+  esc(new Date(e.at).toLocaleTimeString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh'})),srcBadge(e.source),esc(e.name),callStatus(e.status),num(e.ms),esc(e.useCase),num(e.resultCount),
+  e.stageMs?esc(Object.entries(e.stageMs).map(([k,v])=>`${k} ${v}`).join(' · ')):'—',
+  (e.productIds||[]).slice(0,3).map(id=>button(id.slice(0,8)+'…','dbRow',{table:'cdp.products',key:{product_id:id}},'link')).join(' ')+((e.productIds||[]).length>3?` <span class="muted">+${e.productIds.length-3}</span>`:'')]))}
+function rtRender(d){const R=S.rt;const c=d.catalog||{};
+ const head=`Backend ${esc(d.backend)} · đo từ ${esc(when(d.startedAt))} (mất khi backend restart) · tự làm mới 2 giây. Catalog / recsys trong bộ nhớ backend: <b>${num(c.products)}</b> sản phẩm, nạp lúc ${esc(when(c.loadedAt))} (${num(c.reloads)} lần). Web xem / lọc sản phẩm đọc thẳng Postgres; tìm kiếm, gợi ý, "tương tự" dùng bản trong bộ nhớ + Weaviate. Không ghi câu tìm kiếm hay dữ liệu cá nhân.`;
+ const sum=table(['Nguồn','Loại','Tên','Số lần','Lỗi','p50 ms','p95 ms','TB ms','Gần nhất'],(d.summary||[]).filter(r=>!R.source||r.source===R.source).map(r=>[srcBadge(r.source),esc(r.kind),esc(r.name),num(r.count),r.errors?`<span class="minus">${num(r.errors)}</span>`:'0',num(r.p50Ms),num(r.p95Ms),num(r.avgMs),esc(when(r.lastAt))]));
+ if(!$('#rtRows')){  // lần đầu: dựng khung; các lần sau chỉ thay nội dung để không mất vị trí cuộn
+  main.innerHTML=card('Web và agent đang lấy dữ liệu',`<p class="muted" id="rtHead"></p><div class="actions"><select id="rtSource" aria-label="Nguồn"><option value="">Mọi nguồn</option><option value="web">web</option><option value="agent">agent</option></select></div>`)+
+   card('Tổng hợp theo lần gọi','<div id="rtSummary"></div>')+`<section class="card"><h2 id="rtTitle"></h2><div id="rtRows" class="rt"></div></section>`;
+  $('#rtSource').value=R.source||''}
+ $('#rtHead').innerHTML=head;$('#rtSummary').innerHTML=sum;$('#rtTitle').textContent=`Lần gọi gần nhất (hiện 100 / ${num(R.events.length)})`;$('#rtRows').innerHTML=rtRows()}
+async function realtimePage(){S.rt=S.rt||{lastSeq:0,events:[],source:''};const R=S.rt;
+ const tick=async()=>{if(S.view!=='realtime')return;const d=await api('/api/calls',{after:R.lastSeq,limit:500});
+  if(d.lastSeq<R.lastSeq){R.events=[];R.lastSeq=0;return tick()}  // backend restart: đếm lại từ đầu
+  const fresh=(d.events||[]).length>0||!$('#rtRows');
+  R.events=R.events.concat(d.events||[]).slice(-500);R.lastSeq=d.lastSeq;R.last=d;
+  if(fresh&&S.view==='realtime'&&!$('#detail').open)rtRender(d)};  // không có lần gọi mới: không vẽ lại
+ try{await tick()}catch(e){main.innerHTML=card('Web và agent đang lấy dữ liệu',`<p class="minus">${esc(e.message)}</p><p class="muted">Monitor gọi backend qua BACKEND_URL (mặc định http://127.0.0.1:8000). Backend cần bản có /internal/calls.</p>`)}
+ clearInterval(S.rtTimer);S.rtTimer=setInterval(()=>tick().catch(()=>{}),2000)}
+document.addEventListener('change',e=>{if(e.target.id==='rtSource'){S.rt.source=e.target.value;if(S.rt.last)rtRender(S.rt.last)}});
 
 // ------------------------------------------------------------------ hành động
 async function liveSend(key,changes){await api('/api/live',{},{key,changes});notice('Đã áp dụng cho lượt đang chạy.',true);await refreshFlow(true)}
