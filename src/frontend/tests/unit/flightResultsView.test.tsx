@@ -1,0 +1,214 @@
+// @vitest-environment jsdom
+import React from 'react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const api = vi.hoisted(() => ({ listRoutesTo: vi.fn(), listRouteFlights: vi.fn() }));
+const travel = vi.hoisted(() => ({
+  addToCart: vi.fn(), navigate: vi.fn(), showToast: vi.fn(), openLoginModal: vi.fn(), currentPersona: { id: 'u1' } as { id: string } | null,
+}));
+vi.mock('../../src/services/flights', () => api);
+vi.mock('../../src/context/TravelContext', () => ({ useTravel: () => travel }));
+vi.mock('next/link', () => ({ default: ({ href, children, ...rest }: any) => <a href={href} {...rest}>{children}</a> }));
+
+import { FlightResultsView } from '../../src/features/flights/results/FlightResultsView';
+import type { FlightSearch } from '../../src/features/flights/results/flightHref';
+import { clearSectionCache } from '../../src/hooks/useLazySection';
+
+const route = (productId: string, originCity: string, originAirport: string, destination: string, destinationAirport: string) => ({
+  productId, name: `Vé máy bay ${originCity} - ${destination}`, taxonomy: 'flight', destination, unitPrice: 600000, currency: 'VND', priceUnit: 'PER_PERSON', available: true,
+  attributes: { level: 'route', originCity, originAirports: [originAirport], destinationAirports: [destinationAirport] },
+});
+
+let n = 0;
+function flight(flightNumber: string, date: string, dep: string, arr: string, price: number, over: Record<string, unknown> = {}, from = 'HAN', to = 'SGN', attrs: Record<string, unknown> = {}) {
+  n += 1;
+  return {
+    productId: `id-${flightNumber}`, name: `VietJet Air ${flightNumber}`, taxonomy: 'flight', destination: to === 'SGN' ? 'TP. Hồ Chí Minh' : 'Hà Nội',
+    unitPrice: price, currency: 'VND', priceUnit: 'PER_PERSON', available: true, availableFrom: date, availableTo: date,
+    attributes: {
+      level: 'flight', airline: 'VietJet Air', airlineCode: 'VJ', flightNumber, originAirport: from, destinationAirport: to,
+      originCity: to === 'SGN' ? 'Hà Nội' : 'TP. Hồ Chí Minh', destinationCity: to === 'SGN' ? 'TP. Hồ Chí Minh' : 'Hà Nội',
+      departureAt: `${date}T${dep}:00+07:00`, arrivalAt: `${date}T${arr}:00+07:00`, durationMinutes: 130, nonstop: true, tripType: 'oneWay', ...attrs,
+    },
+    fareClasses: [{ productId: `id-${flightNumber}`, code: null, name: 'Giá rẻ nhất', price, currency: 'VND', availabilityStatus: 'AVAILABLE', carryOnKg: null, checkedKg: null }],
+    ...over,
+  };
+}
+
+const OUT_ROUTE = route('r-out', 'Hà Nội', 'HAN', 'TP. Hồ Chí Minh', 'SGN');
+const BACK_ROUTE = route('r-back', 'TP. Hồ Chí Minh', 'SGN', 'Hà Nội', 'HAN');
+const FLIGHTS: Record<string, unknown[]> = {
+  'r-out': [
+    flight('VJ100', '2999-10-05', '10:00', '12:10', 700000),
+    flight('VN200', '2999-10-05', '19:00', '21:10', 900000, { fareClasses: undefined }, 'HAN', 'SGN', { airline: 'Vietnam Airlines', airlineCode: 'VN' }),
+    flight('VJ300', '2999-10-08', '06:00', '08:10', 650000),
+  ],
+  'r-back': [
+    flight('VJ900', '2999-10-12', '05:05', '07:15', 632000, {}, 'SGN', 'HAN'),
+    flight('VJ901', '2999-10-04', '05:05', '07:15', 500000, {}, 'SGN', 'HAN'), // trước chiều đi: không nối được
+  ],
+};
+
+const SEARCH: FlightSearch = { origin: 'Hà Nội', destination: 'TP. Hồ Chí Minh', trip: { checkIn: '2999-10-05', checkOut: '2999-10-12', adults: 2, children: 1 } };
+
+function renderView(search: FlightSearch = SEARCH) {
+  return render(<FlightResultsView search={search} />);
+}
+const cards = () => screen.getAllByRole('article');
+const cardOf = (card: HTMLElement) => card.querySelector('[aria-label^="Chi tiết chuyến"]')!.getAttribute('aria-label')!.replace('Chi tiết chuyến ', '');
+const cardNumbers = () => cards().map((card) => card.querySelector('[aria-label^="Chi tiết chuyến"]')!.getAttribute('aria-label')!.replace('Chi tiết chuyến ', ''));
+async function ready() {
+  await waitFor(() => expect(screen.queryAllByRole('article').length).toBeGreaterThan(0));
+}
+
+describe('FlightResultsView', () => {
+  beforeEach(() => {
+    clearSectionCache();
+    Object.values(travel).forEach((fn) => typeof fn === 'function' && (fn as ReturnType<typeof vi.fn>).mockReset());
+    travel.currentPersona = { id: 'u1' };
+    travel.addToCart.mockResolvedValue(true);
+    api.listRoutesTo.mockReset();
+    api.listRouteFlights.mockReset();
+    api.listRoutesTo.mockImplementation(async (destination: string) => (destination === 'Hà Nội' ? [BACK_ROUTE] : [OUT_ROUTE]));
+    api.listRouteFlights.mockImplementation(async (routeId: string) => FLIGHTS[routeId] ?? []);
+  });
+  afterEach(cleanup);
+
+  it('loads the route by origin and destination, then its flights, and lists the day cheapest first', async () => {
+    renderView();
+    await ready();
+    expect(api.listRoutesTo).toHaveBeenCalledWith('TP. Hồ Chí Minh', expect.anything());
+    expect(api.listRouteFlights).toHaveBeenCalledWith('r-out', expect.anything());
+    expect(cardNumbers()).toEqual(['VJ100', 'VN200']);
+    expect(screen.getByRole('heading', { name: 'Chọn vé chiều đi' })).toBeTruthy();
+    // Dải ngày chỉ có ngày có chuyến, kèm giá thấp nhất.
+    expect(screen.getByRole('button', { name: /05\/10.*2 chuyến.*700\.000/ }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', { name: /08\/10.*1 chuyến.*650\.000/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /06\/10/ })).toBeNull();
+  });
+
+  it('shows only what the data says: no baggage, no fare label for a flight without fare classes', async () => {
+    renderView();
+    await ready();
+    const vn = cards().find((c) => cardOf(c) === 'VN200')!;
+    expect(within(vn).queryByText(/kg/)).toBeNull();
+    expect(within(vn).queryByText(/Giá rẻ nhất/)).toBeNull();
+    expect(within(cards().find((c) => cardOf(c) === 'VJ100')!).getByText('Giá rẻ nhất')).toBeTruthy();
+  });
+
+  it('opens on the nearest day with flights and says so when the wanted day has none', async () => {
+    renderView({ ...SEARCH, trip: { ...SEARCH.trip, checkIn: '2999-10-06' } });
+    await ready();
+    expect(cardNumbers()).toEqual(['VJ300']);
+    expect(screen.getByText(/Không có chuyến ngày 06\/10/)).toBeTruthy();
+  });
+
+  it('filters by time of day and by airline, and resets', async () => {
+    renderView();
+    await ready();
+    fireEvent.click(screen.getByRole('button', { name: /^Tối/ }));
+    expect(cardNumbers()).toEqual(['VN200']);
+    fireEvent.click(screen.getByRole('button', { name: /Đặt lại/ }));
+    expect(cardNumbers()).toEqual(['VJ100', 'VN200']);
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /VietJet Air/ }));
+    expect(cardNumbers()).toEqual(['VN200']);
+    fireEvent.click(screen.getByRole('checkbox', { name: /VietJet Air/ }));
+    expect(cardNumbers()).toEqual(['VJ100', 'VN200']);
+  });
+
+  it('picks the outbound flight, moves to the return step and offers only flights that can follow', async () => {
+    renderView();
+    await ready();
+    fireEvent.click(screen.getByRole('button', { name: 'Chọn chuyến VJ100' }));
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Chọn vé chiều về' })).toBeTruthy());
+    await waitFor(() => expect(cardNumbers()).toEqual(['VJ900']));
+    expect(api.listRoutesTo).toHaveBeenCalledWith('Hà Nội', expect.anything());
+    expect(screen.getByText('Chọn vé chiều về để tiếp tục.')).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Đặt vé' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('totals both legs for the whole party as an estimate and books each leg into the cart', async () => {
+    renderView();
+    await ready();
+    fireEvent.click(screen.getByRole('button', { name: 'Chọn chuyến VJ100' }));
+    await waitFor(() => expect(cardNumbers()).toEqual(['VJ900']));
+    fireEvent.click(screen.getByRole('button', { name: 'Chọn chuyến VJ900' }));
+
+    // (700.000 + 632.000) × 3 khách
+    expect(screen.getByTestId('ticket-total').textContent).toMatch(/3\.996\.000/);
+    const pay = screen.getByRole('button', { name: 'Đặt vé' }) as HTMLButtonElement;
+    expect(pay.disabled).toBe(false);
+    fireEvent.click(pay);
+
+    await waitFor(() => expect(travel.navigate).toHaveBeenCalledWith('/checkout'));
+    expect(travel.addToCart).toHaveBeenCalledTimes(2);
+    const [out, back] = travel.addToCart.mock.calls;
+    expect(out[0]).toMatchObject({ id: 'id-VJ100', taxonomy: 'flight', unitPrice: 700000 });
+    expect(out.slice(1)).toEqual([3, '2999-10-05', undefined, { silent: true, guests: { adults: 2, children: 1 } }]);
+    expect(back[0]).toMatchObject({ id: 'id-VJ900' });
+    expect(back[2]).toBe('2999-10-12');
+  });
+
+  it('asks a signed-out visitor to log in instead of adding to the cart', async () => {
+    travel.currentPersona = null;
+    renderView();
+    await ready();
+    fireEvent.click(screen.getByRole('button', { name: /Một chiều/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Chọn chuyến VJ100' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Đặt vé' }));
+    await waitFor(() => expect(travel.openLoginModal).toHaveBeenCalled());
+    expect(travel.addToCart).not.toHaveBeenCalled();
+  });
+
+  it('a one-way ticket needs no return leg and books a single item', async () => {
+    renderView({ ...SEARCH, trip: { checkIn: '2999-10-05', adults: 1 } });
+    await ready();
+    expect(screen.queryByText('Chiều về')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Chọn chuyến VJ100' }));
+    expect(screen.getByRole('heading', { name: 'Chọn vé chiều đi' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Đặt vé' }));
+    await waitFor(() => expect(travel.navigate).toHaveBeenCalledWith('/checkout'));
+    expect(travel.addToCart).toHaveBeenCalledTimes(1);
+    expect(api.listRoutesTo).not.toHaveBeenCalledWith('Hà Nội', expect.anything());
+  });
+
+  it('still books one-way when the catalog has no return route, and says so', async () => {
+    api.listRoutesTo.mockImplementation(async (destination: string) => (destination === 'Hà Nội' ? [] : [OUT_ROUTE]));
+    renderView();
+    await ready();
+    await waitFor(() => expect(screen.getByText(/Chưa có chuyến chiều về/)).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: 'Chọn chuyến VJ100' }));
+    expect((screen.getByRole('button', { name: 'Đặt vé' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('a failed cart add keeps the visitor on the page with a message', async () => {
+    travel.addToCart.mockResolvedValue(false);
+    renderView({ ...SEARCH, trip: { checkIn: '2999-10-05', adults: 1 } });
+    await ready();
+    fireEvent.click(screen.getByRole('button', { name: 'Chọn chuyến VJ100' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Đặt vé' }));
+    await waitFor(() => expect(travel.showToast).toHaveBeenCalledWith(expect.stringContaining('VJ100')));
+    expect(travel.navigate).not.toHaveBeenCalled();
+  });
+
+  it('offers the origins that do fly to the destination when the typed origin has no route', async () => {
+    renderView({ ...SEARCH, origin: 'Huế' });
+    await waitFor(() => expect(screen.getByText(/Chưa có chặng Huế → TP\. Hồ Chí Minh/)).toBeTruthy());
+    const link = screen.getByRole('link', { name: /Hà Nội/ });
+    const url = new URL(link.getAttribute('href')!, 'http://x');
+    expect(url.pathname).toBe('/flights');
+    expect(url.searchParams.get('origin')).toBe('Hà Nội');
+    expect(url.searchParams.get('destination')).toBe('TP. Hồ Chí Minh');
+  });
+
+  it('shows a retryable error when the catalog cannot be read', async () => {
+    api.listRoutesTo.mockRejectedValueOnce(new Error('boom'));
+    renderView();
+    await waitFor(() => expect(screen.getByText(/Chưa tải được chuyến bay/)).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: 'Thử lại' }));
+    await ready();
+    expect(cardNumbers()).toEqual(['VJ100', 'VN200']);
+  });
+});

@@ -250,6 +250,7 @@ erDiagram
         text given_names
         text full_name
         date birth_date "bắt buộc với trẻ em; không qua API"
+        jsonb documents "FR-BKG-13: title, nationality, docType, docNumber, docExpiry, escortTravelerRef; API chỉ trả 4 số cuối"
     }
     conversations {
         uuid conversation_id PK
@@ -419,7 +420,7 @@ erDiagram
 | `combo_items` | catalog | Thành phần combo, parse từ description | parse_combos | 93 combo → ~250 dòng |
 | `users` | app | Credential + persona demo, 1:1 profile | seed + register | 4 persona + 50 test |
 | `carts`, `cart_items` | app | Giỏ phía server, một giỏ / user | backend | 0 |
-| `booking_travelers` | app | Đoàn khách của đơn (FR-BKG-08): họ, tên đệm và tên, loại khách, ngày sinh của trẻ em. Ngày sinh chỉ lưu ở đây, không trả qua API, không gửi CDP, Insider, Stripe. Xoá theo đơn | backend | chỉ persona |
+| `booking_travelers` | app | Đoàn khách của đơn (FR-BKG-08): họ, tên đệm và tên, loại khách, ngày sinh (trẻ em; người lớn khi có vé bay), giấy tờ cho vé bay `documents` (FR-BKG-13, migration `0006_traveler_documents`). Ngày sinh và số giấy tờ chỉ lưu ở đây, không trả qua API (chỉ 4 số cuối số giấy tờ), không gửi CDP, Insider, Stripe. Xoá theo đơn | backend | chỉ persona |
 | `bookings`, `booking_items` | app | Đơn đặt chỗ: giữ chỗ `pending_payment` 30 phút → `confirmed` khi Stripe thu tiền (hoặc `payment_failed` · `expired` · `cancelled`); tối đa một đơn `pending_payment` mỗi user (unique index một phần). 1 checkout = 1 event_group_id; nối sang event purchase bằng event_group_id + product_id + using_date | backend · seed persona | chỉ persona |
 | `payments` | app | Một phiên Stripe Checkout mỗi đơn; trạng thái thanh toán tách khỏi trạng thái đơn (spec booking §5.2). Không lưu dữ liệu thẻ, chỉ id của Stripe (NFR-SEC-03) | backend · seed (`provider = 'seed'` cho booking của P1) | booking của P1 |
 | `conversations`, `conversation_messages`, `itineraries` | app | Archive agent của user đăng nhập; working memory Redis TTL 24h, archive không tự xoá | backend | 0 |
@@ -789,6 +790,7 @@ CREATE TABLE app.booking_travelers (
     given_names    text NOT NULL,                                          -- Tên đệm và tên
     full_name      text NOT NULL,                                          -- surname + ' ' + given_names
     birth_date     date,                                                   -- bắt buộc với trẻ em
+    documents      jsonb,                                                  -- FR-BKG-13, chỉ khi đơn có vé bay: {title, nationality, docType, docNumber, docExpiry, escortTravelerRef}; API chỉ trả 4 số cuối docNumber
     CONSTRAINT booking_travelers_ref_uq UNIQUE (booking_id, traveler_ref),
     CONSTRAINT booking_travelers_position_uq UNIQUE (booking_id, position),
     CONSTRAINT booking_travelers_child_birth CHECK (traveler_type = 'adult' OR birth_date IS NOT NULL)

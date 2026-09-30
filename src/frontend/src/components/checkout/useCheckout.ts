@@ -15,13 +15,13 @@ import type { ApiCartItem, BookingResponse, CheckoutRequest } from '../../servic
 import { ApiError } from '../../services/http';
 import { formatVnd } from '../confirmation/bookingLabels';
 import {
-  contactInputOf, defaultAllocation, defaultParty, desiredCartState, draftToTraveler, guestsFromAllocation, isHotel,
+  blankFlight, contactInputOf, defaultAllocation, defaultParty, desiredCartState, draftToTraveler, guestsFromAllocation, isHotel,
   itemInputsOf, newDrafts, partyCounts, cartFactsOf, cartStateOf, reconcileAllocation, refsOf, sameCartState, toTravelerInputs,
-  travelerLabel, displayName, fixLead, type Allocation, type CartState, type RoomDraft, type TravelerDraft,
+  travelerLabel, displayName, fixLead, type Allocation, type CartState, type FlightDraft, type RoomDraft, type TravelerDraft,
 } from './allocation';
 import {
-  MAX_PARTY, checkContact, checkItems, checkParty, fareTypeOn, formatDmy, maskDmy, messageFor, normalizeName, parseDmy,
-  splitFullName, type Violation,
+  MAX_PARTY, checkContact, checkItems, checkParty, fareTypeOn, formatDmy, isInfantOn, maskDmy, messageFor, normalizeName,
+  parseDmy, splitFullName, type Violation,
 } from './checkoutRules';
 import { createPatchQueue } from './patchQueue';
 import { mapValidationFields, type Step, type SummaryEntry } from './serverErrors';
@@ -203,11 +203,19 @@ export function useCheckout() {
   const anyPending = Object.values(pending).some(Boolean);
   const hasUnavailable = items.some((i) => !i.product.available);
 
+  // Giỏ có vé máy bay thì mỗi hành khách khai thêm thông tin cho hãng bay (FR-BKG-13).
+  const flightDates = useMemo(() => items.filter((i) => i.product.taxonomy === 'flight').map((i) => i.usingDate), [items]);
+  const hasFlight = flightDates.length > 0;
+  const isInfant = useCallback((d: TravelerDraft) => {
+    const t = draftToTraveler(d);
+    return flightDates.some((day) => isInfantOn(t, day));
+  }, [flightDates]);
+
   const partyViolations = useCallback((): Violation[] => {
-    const party = checkParty(toTravelerInputs(latest.current.drafts), { earliest, today: todayVn() });
+    const party = checkParty(toTravelerInputs(latest.current.drafts, hasFlight), { earliest, today: todayVn(), flightDates });
     // Thứ tự hiển thị trên màn hình (thẻ hành khách rồi tới người liên hệ) quyết định lỗi nào được đưa con trỏ tới trước.
     return [...party.violations, ...checkContact(contactInputOf(contactFullName, phone, email))];
-  }, [earliest, contactFullName, phone, email]);
+  }, [earliest, flightDates, hasFlight, contactFullName, phone, email]);
 
   /**
    * Lỗi từng thẻ dịch vụ, tính trực tiếp từ phân bổ hiện tại (bước ②). Trong lúc PATCH của một mục còn chờ hoặc đang chạy thì
@@ -264,7 +272,7 @@ export function useCheckout() {
     if (counts.adults + counts.children >= MAX_PARTY) return;
     const ref = `t${seq + 1}`;
     setSeq(seq + 1);
-    const draft: TravelerDraft = { ref, type, surname: '', givenNames: '', birthText: '' };
+    const draft: TravelerDraft = { ref, type, surname: '', givenNames: '', birthText: '', flight: blankFlight() };
     const lastAdult = drafts.map((d) => d.type).lastIndexOf('ADULT');
     const next = type === 'ADULT' ? [...drafts.slice(0, lastAdult + 1), draft, ...drafts.slice(lastAdult + 1)] : [...drafts, draft];
     setDrafts(next);
@@ -275,9 +283,10 @@ export function useCheckout() {
     const group = drafts.filter((d) => d.type === type);
     if ((type === 'ADULT' && group.length <= 1) || group.length === 0) return;
     const last = group[group.length - 1];
-    const hasData = Boolean(last.surname.trim() || last.givenNames.trim() || last.birthText.trim());
+    const hasData = Boolean(last.surname.trim() || last.givenNames.trim() || last.birthText.trim() || last.flight.docNumber.trim());
     if (hasData && !confirmed) { setConfirmRemove(last.ref); return; }
-    const next = drafts.filter((d) => d.ref !== last.ref);
+    // Em bé đang chọn người vừa bỏ làm người đi kèm thì xoá lựa chọn đó.
+    const next = drafts.filter((d) => d.ref !== last.ref).map((d) => (d.flight.escortRef === last.ref ? { ...d, flight: { ...d.flight, escortRef: '' } } : d));
     setConfirmRemove(null);
     setDrafts(next);
     updateAllocsForParty(next);
@@ -286,6 +295,31 @@ export function useCheckout() {
   const updateDraft = (ref: string, patch: Partial<TravelerDraft>, fieldId?: string) => {
     if (fieldId) clearError(fieldId);
     setDrafts((prev) => prev.map((d) => (d.ref === ref ? { ...d, ...patch } : d)));
+  };
+
+  /**
+   * Sửa khối thông tin bay của một người. Đổi quốc tịch sang khác Việt Nam khi đang chọn CCCD thì tự chuyển sang hộ chiếu và
+   * xoá số giấy tờ, ngày hết hạn (AC-BKG-12); đổi loại giấy tờ cũng xoá số và ngày hết hạn cũ.
+   */
+  const updateFlight = (ref: string, patch: Partial<FlightDraft>, fieldId?: string) => {
+    if (fieldId) clearError(fieldId);
+    setDrafts((prev) => prev.map((d) => {
+      if (d.ref !== ref) return d;
+      let flight = { ...d.flight, ...patch };
+      if (patch.nationality !== undefined && flight.nationality !== 'VN' && flight.docType === 'CCCD') {
+        flight = { ...flight, docType: 'PASSPORT', docNumber: '', docExpiryText: '' };
+        clearError(`x-doc-${ref}`); clearError(`x-docNo-${ref}`); clearError(`x-exp-${ref}`);
+      } else if (patch.docType !== undefined && patch.docType !== d.flight.docType) {
+        flight = { ...flight, docNumber: '', docExpiryText: '' };
+        clearError(`x-docNo-${ref}`); clearError(`x-exp-${ref}`);
+      }
+      return { ...d, flight };
+    }));
+  };
+
+  const setFlightDate = (ref: string, key: 'docExpiryText', value: string, fieldId: string) => {
+    const previous = drafts.find((d) => d.ref === ref)?.flight[key] ?? '';
+    updateFlight(ref, { [key]: maskDmy(previous, value) }, fieldId);
   };
 
   const setBirthText = (ref: string, value: string) => {
@@ -505,10 +539,11 @@ export function useCheckout() {
     });
     return {
       contact: { fullName: normalizeName(contactFullName), email, phone: phone.trim() },
-      travelers: toTravelerInputs(nowDrafts).map((t) => ({
+      travelers: toTravelerInputs(nowDrafts, hasFlight).map((t) => ({
         travelerRef: t.travelerRef, type: t.type, surname: normalizeName(t.surname), givenNames: normalizeName(t.givenNames),
-        ...(t.type === 'CHILD' && t.birthDate ? { birthDate: t.birthDate } : {}),
-      })),
+        ...(t.birthDate ? { birthDate: t.birthDate } : {}),
+        ...(t.documents ? { documents: t.documents } : {}),
+      })) as CheckoutRequest['travelers'],
       itemDetails: details,
     };
   };
@@ -641,11 +676,11 @@ export function useCheckout() {
   return {
     // dữ liệu
     cart, items, email, currentPersona, authReady, earliest, facts,
-    drafts, travelers, contactFullName, phone, syncContact, allocs, special, confirmRemove,
+    drafts, travelers, hasFlight, flightDates, isInfant, contactFullName, phone, syncContact, allocs, special, confirmRemove,
     step, done, errors, summary, serverItemErrors, serverRoomErrors, itemViolations, patchErrors, busy, pending, anyPending,
     notice, cartChanged, banner, pendingHold, termsAgreed, method, submitting, hasUnavailable, labels,
     // hành động
-    goto, focusId, addTraveler, removeTraveler, setConfirmRemove, updateDraft, setBirthText, setContactFullName, setPhone: (v: string) => { clearError('c-phone'); setPhone(v.replace(/\s+/g, '')); },
+    goto, focusId, addTraveler, removeTraveler, setConfirmRemove, updateDraft, updateFlight, setFlightDate, setBirthText, setContactFullName, setPhone: (v: string) => { clearError('c-phone'); setPhone(v.replace(/\s+/g, '')); },
     setSyncContact, validateField, toggleTraveler, moveToRoom, removeFromRoom, setLead, addRoom, removeRoom, setSpecialRequest,
     removeItem, continueFromTravelers, continueFromServices, setTermsAgreed, setMethod, pay, acceptNewPrice, continuePending,
     cancelPendingAndRetry, setPendingHold, setBanner, dismissCartChanged: () => setCartChanged(false), navigate, refreshCart,

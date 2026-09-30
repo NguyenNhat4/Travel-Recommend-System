@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from src.backend.app.application.booking import Contact, ItemDetail, RoomInput, TravelerInput
+from src.backend.app.application.booking import Contact, DocumentsInput, ItemDetail, RoomInput, TravelerInput
 from src.backend.app.application.booking.errors import LineRejected, ValidationFailed
 from src.backend.app.application.booking.messages import message_for
 from src.backend.app.domain.booking import Guests
@@ -20,9 +20,12 @@ FLIGHT = "44444444-4444-4444-4444-444444444444"
 CONTACT = Contact("Nguyễn Minh Anh", "minhanh@example.vn", "0912345678")
 run = asyncio.run
 
-A1 = TravelerInput("t1", "ADULT", "Nguyễn", "Minh Anh")
-A2 = TravelerInput("t2", "ADULT", "Trần", "Thu Hà")
-KID = TravelerInput("t3", "CHILD", "Nguyễn", "Gia Bảo", "2019-05-12")
+# Giỏ có vé máy bay nên mỗi hành khách khai giấy tờ (FR-BKG-13).
+A1 = TravelerInput("t1", "ADULT", "Nguyễn", "Minh Anh", "1988-03-14",
+                   DocumentsInput("MS", "VN", "CCCD", "079188001234"))
+A2 = TravelerInput("t2", "ADULT", "Trần", "Thu Hà", "1990-09-02",
+                   DocumentsInput("MRS", "VN", "PASSPORT", "C1234567", "2031-01-01"))
+KID = TravelerInput("t3", "CHILD", "Nguyễn", "Gia Bảo", "2019-05-12", DocumentsInput("MSTR", "VN"))
 
 
 def family_world() -> World:
@@ -83,17 +86,23 @@ def test_response_lists_travelers_per_item_without_birth_dates_and_stores_them()
         lines = await fill_family(w)
         res = await w.create(PRINCIPAL, CONTACT, family_details(lines), [A1, A2, KID])
         items = {i["product"]["taxonomy"]: i for i in res["groups"][0]["items"]}
+        docs = [{"title": "MS", "nationality": "VN", "docType": "CCCD", "docNumberLast4": "1234"},
+                {"title": "MRS", "nationality": "VN", "docType": "PASSPORT", "docNumberLast4": "4567"},
+                {"title": "MSTR", "nationality": "VN", "docType": None, "docNumberLast4": None}]
         assert items["hotel"]["travelers"] == [
-            {"fullName": "Nguyễn Minh Anh", "type": "ADULT", "roomNo": 1, "isLead": True},
-            {"fullName": "Trần Thu Hà", "type": "ADULT", "roomNo": 1, "isLead": False},
-            {"fullName": "Nguyễn Gia Bảo", "type": "CHILD", "roomNo": 1, "isLead": False}]
+            {"fullName": "Nguyễn Minh Anh", "type": "ADULT", "roomNo": 1, "isLead": True, "documents": docs[0]},
+            {"fullName": "Trần Thu Hà", "type": "ADULT", "roomNo": 1, "isLead": False, "documents": docs[1]},
+            {"fullName": "Nguyễn Gia Bảo", "type": "CHILD", "roomNo": 1, "isLead": False, "documents": docs[2]}]
         assert items["attraction"]["travelers"][2] == {"fullName": "Nguyễn Gia Bảo", "type": "CHILD", "roomNo": None,
-                                                       "isLead": False}
+                                                       "isLead": False, "documents": docs[2]}
         assert items["flight"]["guestNames"] == ["Nguyễn Minh Anh", "Trần Thu Hà", "Nguyễn Gia Bảo"]
         assert items["hotel"]["specialRequest"] == "Phòng tầng cao"
         assert "2019-05-12" not in repr(res) and "birth" not in repr(res).lower()   # ngày sinh không ra khỏi Backend
+        assert "079188001234" not in repr(res) and "C1234567" not in repr(res) and "2031-01-01" not in repr(res)
         stored = w.booking(res["referenceCode"])
         assert [t.ref for t in stored.travelers] == ["t1", "t2", "t3"] and str(stored.travelers[2].birth_date) == "2019-05-12"
+        assert stored.travelers[0].documents.doc_number == "079188001234"         # số giấy tờ đầy đủ chỉ nằm ở Backend
+        assert str(stored.travelers[1].documents.doc_expiry) == "2031-01-01"
         again = await w.get(PRINCIPAL, res["referenceCode"])
         assert again["groups"][0]["items"] == res["groups"][0]["items"]
     run(go())
@@ -355,3 +364,33 @@ def test_personal_data_is_never_logged_and_never_sent_to_stripe_or_cdp(caplog):
     assert (hotel.quantity, hotel.unit_price) == (1, 777_192)         # purchase vẫn 1 event/mục, đơn giá người lớn
     ticket = next(p for p in purchases if p.taxonomy == "attraction")
     assert (ticket.quantity, ticket.unit_price) == (3, 1_500_000)
+
+
+# --- FR-BKG-13: giấy tờ hành khách cho vé máy bay ----------------------------------------------
+
+def test_flight_in_cart_requires_documents_and_reports_every_missing_field_in_one_response():
+    async def go():
+        w = family_world()
+        lines = await fill_family(w)
+        bare = [TravelerInput("t1", "ADULT", "Nguyễn", "Minh Anh"), TravelerInput("t2", "ADULT", "Trần", "Thu Hà"),
+                TravelerInput("t3", "CHILD", "Nguyễn", "Gia Bảo", "2019-05-12")]
+        with pytest.raises(ValidationFailed) as caught:
+            await w.create(PRINCIPAL, CONTACT, family_details(lines), bare)
+        fields = {(f["field"], f["reason"]) for f in caught.value.details["fields"]}
+        assert ("travelers[0].birthDate", "REQUIRED") in fields
+        assert ("travelers[0].documents.docNumber", "REQUIRED") not in fields  # chưa chọn loại giấy tờ thì chỉ báo docType
+        assert ("travelers[0].documents.docType", "REQUIRED") in fields
+        assert ("travelers[2].documents.title", "REQUIRED") in fields
+        assert not w.gateway.sessions                                          # chưa gọi Stripe, chưa ghi gì
+    run(go())
+
+
+def test_documents_are_not_required_without_a_flight_in_the_cart():
+    async def go():
+        w = World(products=[product(HOTEL, "hotel", 777_192, attributes={"level": "room", "maxOccupancy": 3})])
+        await w.cart.add(PRINCIPAL, product_id=HOTEL, using_date=date(2026, 10, 17), quantity=1, nights=2, guests=Guests(1, 0))
+        line = (await w.carts.get(USER)).lines[0]
+        res = await w.create(PRINCIPAL, CONTACT, [ItemDetail(line.cart_item_id, rooms=[RoomInput(("t1",), "t1")])],
+                             [TravelerInput("t1", "ADULT", "Nguyễn", "Minh Anh")])
+        assert "documents" not in res["groups"][0]["items"][0]["travelers"][0]
+    run(go())

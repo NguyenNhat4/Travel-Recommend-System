@@ -98,6 +98,19 @@ function fillTravelers() {
   fireEvent.change(screen.getByLabelText('Tên đệm và tên (Trẻ em 1)'), { target: { value: 'Gia Bảo' } });
   fireEvent.change(screen.getByLabelText('Ngày sinh (Trẻ em 1)'), { target: { value: '12052019' } });
   fireEvent.change(screen.getByLabelText('Số điện thoại'), { target: { value: '0912345678' } });
+  fillFlightInfo();
+}
+
+/** Giỏ gia đình có vé máy bay nên mỗi hành khách khai thêm thông tin cho hãng bay (FR-BKG-13). */
+function fillFlightInfo() {
+  const pick = (id: string) => fireEvent.click(document.getElementById(id) as HTMLElement);
+  pick('x-title-t1-MS');
+  fireEvent.change(screen.getByLabelText('Ngày sinh (Người lớn 1)'), { target: { value: '14031988' } });
+  fireEvent.change(screen.getByLabelText('Số giấy tờ (Người lớn 1)'), { target: { value: '079188001234' } });
+  pick('x-title-t2-MRS');
+  fireEvent.change(screen.getByLabelText('Ngày sinh (Người lớn 2)'), { target: { value: '02091990' } });
+  fireEvent.change(screen.getByLabelText('Số giấy tờ (Người lớn 2)'), { target: { value: '079190004567' } });
+  pick('x-title-t3-MSTR');
 }
 
 async function goToServices() {
@@ -153,7 +166,10 @@ describe('CheckoutView — ba bước', () => {
     expect(box.textContent).toContain('Trẻ em 1 · Ngày sinh: Vui lòng nhập ngày sinh.');
     expect(step()).toBeNull();                                                 // không chuyển bước
     expect(shared.updateCartItem).not.toHaveBeenCalled();                      // chưa sửa giỏ
-    await waitFor(() => expect(document.activeElement?.id).toBe('sn-t2'));
+    // Lỗi đầu tiên theo thứ tự trên màn hình: khối thông tin bay của Người lớn 1 nằm trước ô Họ của Người lớn 2.
+    await waitFor(() => expect(document.activeElement?.id).toBe('dob-t1'));
+    expect(box.textContent).toContain('Người lớn 1 · Danh xưng: Chọn danh xưng.');
+    expect(box.textContent).toContain('Người lớn 1 · Số giấy tờ: Nhập số giấy tờ.');
     expect(screen.getByLabelText('Họ (Người lớn 2)').getAttribute('aria-invalid')).toBe('true');
     expect(document.getElementById('e-sn-t2')?.textContent).toBe('Vui lòng nhập họ.');
   });
@@ -330,6 +346,47 @@ describe('CheckoutView — ba bước', () => {
     expect(terms.textContent).not.toContain('hoàn 100%');
   });
 
+  it('FR-BKG-13: giỏ có vé máy bay thì mỗi thẻ hành khách có khối thông tin bay; giỏ không có vé bay thì không có', () => {
+    const { unmount } = render(<Harness initial={clone(familyCart)} />);
+    expect(screen.getAllByTestId('flight-fields')).toHaveLength(3);
+    expect(screen.getByText(/Đơn có vé máy bay nên mỗi khách cần thêm vài thông tin/)).toBeTruthy();
+    unmount();
+    const hotelOnly = clone(familyCart);
+    hotelOnly.items = hotelOnly.items.filter((i: any) => i.product.taxonomy !== 'flight');
+    render(<Harness initial={hotelOnly} />);
+    expect(screen.queryAllByTestId('flight-fields')).toHaveLength(0);
+  });
+
+  it('AC-BKG-12: đổi quốc tịch khác Việt Nam khi đang chọn CCCD thì tự chuyển sang hộ chiếu và xoá số giấy tờ', () => {
+    render(<Harness initial={clone(familyCart)} />);
+    fireEvent.change(screen.getByLabelText('Số giấy tờ (Người lớn 1)'), { target: { value: '079188001234' } });
+    expect((document.getElementById('x-doc-t1-CCCD') as HTMLInputElement).checked).toBe(true);
+    fireEvent.change(document.getElementById('x-nat-t1') as HTMLElement, { target: { value: 'KR' } });
+    expect((document.getElementById('x-doc-t1-PASSPORT') as HTMLInputElement).checked).toBe(true);
+    expect((document.getElementById('x-doc-t1-CCCD') as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByLabelText('Số giấy tờ (Người lớn 1)') as HTMLInputElement).value).toBe('');
+    expect(screen.getByLabelText('Ngày hết hạn hộ chiếu (Người lớn 1)')).toBeTruthy();
+  });
+
+  it('AC-BKG-11: hộ chiếu hết hạn không sau ngày bay cuối cùng bị chặn tại ô ngày hết hạn', async () => {
+    render(<Harness initial={clone(familyCart)} />);
+    fillTravelers();
+    fireEvent.change(document.getElementById('x-nat-t1') as HTMLElement, { target: { value: 'KR' } });
+    fireEvent.change(screen.getByLabelText('Số giấy tờ (Người lớn 1)'), { target: { value: 'C1234567' } });
+    fireEvent.change(screen.getByLabelText('Ngày hết hạn hộ chiếu (Người lớn 1)'), { target: { value: '19102026' } });
+    fireEvent.click(continueButton());
+    expect((await screen.findByRole('alert')).textContent).toContain('Hộ chiếu hết hạn trước ngày bay cuối cùng (19/10/2026).');
+    expect(step()).toBeNull();
+    fireEvent.change(screen.getByLabelText('Ngày hết hạn hộ chiếu (Người lớn 1)'), { target: { value: '20102026' } });
+    fireEvent.click(continueButton());
+    await waitFor(() => expect(step()).toBe('services'));
+  });
+
+  it('ô Tên in trên vé hiện họ / tên không dấu viết hoa', () => {
+    render(<Harness initial={clone(familyCart)} />);
+    expect(screen.getAllByText('NGUYEN / MINH ANH').length).toBeGreaterThan(0);
+  });
+
   it('AC-BKG-05: gửi đoàn khách, họ và tên hai ô, ngày sinh ISO và phân bổ từng mục; không gửi số tiền; rồi chuyển sang Stripe', async () => {
     api.createBooking.mockResolvedValue(createdFamily);
     render(<Harness initial={clone(familyCart)} />);
@@ -339,10 +396,14 @@ describe('CheckoutView — ba bước', () => {
     await waitFor(() => expect(api.redirectToCheckout).toHaveBeenCalledWith(createdFamily.payment.checkoutUrl));
     const body = api.createBooking.mock.calls[0][0];
     expect(body.contact).toEqual({ fullName: 'Nguyễn Minh Anh', email: 'minhanh@example.vn', phone: '0912345678' });
+    // Giỏ có vé máy bay: thêm ngày sinh người lớn và khối `documents` (FR-BKG-13); trẻ em không có số giấy tờ.
     expect(body.travelers).toEqual([
-      { travelerRef: 't1', type: 'ADULT', surname: 'Nguyễn', givenNames: 'Minh Anh' },
-      { travelerRef: 't2', type: 'ADULT', surname: 'Trần', givenNames: 'Thu Hà' },
-      { travelerRef: 't3', type: 'CHILD', surname: 'Nguyễn', givenNames: 'Gia Bảo', birthDate: '2019-05-12' }]);
+      { travelerRef: 't1', type: 'ADULT', surname: 'Nguyễn', givenNames: 'Minh Anh', birthDate: '1988-03-14',
+        documents: { title: 'MS', nationality: 'VN', docType: 'CCCD', docNumber: '079188001234' } },
+      { travelerRef: 't2', type: 'ADULT', surname: 'Trần', givenNames: 'Thu Hà', birthDate: '1990-09-02',
+        documents: { title: 'MRS', nationality: 'VN', docType: 'CCCD', docNumber: '079190004567' } },
+      { travelerRef: 't3', type: 'CHILD', surname: 'Nguyễn', givenNames: 'Gia Bảo', birthDate: '2019-05-12',
+        documents: { title: 'MSTR', nationality: 'VN' } }]);
     expect(body.itemDetails).toEqual([
       { cartItemId: 'ci-hotel', rooms: [{ travelerRefs: ['t1', 't2', 't3'], leadTravelerRef: 't1' }] },
       { cartItemId: 'ci-vinwonders', travelerRefs: ['t1', 't2', 't3'] },

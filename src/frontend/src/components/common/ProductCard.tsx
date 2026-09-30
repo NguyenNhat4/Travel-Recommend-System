@@ -81,7 +81,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
               <TaxonomyBadge taxonomy={product.taxonomy} />
             </div>
           )}
-          {product.attributes.starRating && (
+          {product.attributes.starRating && !product.aggregateRating && (
             <div className="absolute right-3 top-3 flex items-center gap-0.5 rounded-full bg-slate-900/70 px-2 py-0.5 text-[11px] font-semibold text-amber-300 backdrop-blur-xs">
               <Star className="h-3 w-3 fill-amber-300 text-amber-300" aria-hidden="true" />
               {product.attributes.starRating}
@@ -309,7 +309,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             <TaxonomyBadge taxonomy={product.taxonomy} />
           </div>
         )}
-        {product.attributes.starRating && (
+        {product.attributes.starRating && !product.aggregateRating && (
           <div className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded bg-slate-900/70 text-amber-300 text-[11px] font-semibold backdrop-blur-xs flex items-center gap-0.5">
             <Star className="w-3 h-3 fill-amber-300 text-amber-300" />
             {product.attributes.starRating}★

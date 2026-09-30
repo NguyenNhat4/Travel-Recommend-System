@@ -28,6 +28,7 @@
 16. Tham khảo UX (Mobbin)
 
 Phụ lục A. Dịch vụ thêm của vé máy bay (FR-BKG-11)
+Phụ lục B. Thông tin giấy tờ hành khách cho vé máy bay (FR-BKG-13)
 
 ---
 
@@ -102,7 +103,7 @@ Các mục tiêu được đo bằng test (§12), không cần số liệu ngư�
 ### 3.3. Ngoài phạm vi
 
 - Sổ hành khách lưu trong hồ sơ để chọn lại lần sau. Đây là hướng mở rộng của FR-USR-02, cần đề xuất riêng.
-- Giấy tờ tuỳ thân, quốc tịch, giới tính, số hộ chiếu. Catalog chỉ có chuyến bay nội địa và hệ thống không xuất vé thật.
+- Giới tính (ngoài danh xưng), giấy tờ của trẻ em và em bé ngoài giấy khai sinh, hành lý và mã khách hàng thường xuyên. Giấy tờ tuỳ thân, quốc tịch và danh xưng của hành khách đi máy bay thuộc phạm vi qua Phụ lục B (FR-BKG-13); dữ liệu chỉ mô phỏng, hệ thống không xuất vé thật.
 - Bảo hiểm, suất ăn, mã giảm giá. Hành lý ký gửi và chọn ghế của vé máy bay thuộc phạm vi qua Phụ lục A (FR-BKG-11).
 - Giá trẻ em/em bé riêng của chuyến bay; phụ thu trẻ em hoặc giường phụ của khách sạn; vé người cao tuổi. Catalog chưa có dữ liệu có cấu trúc cho các loại giá này.
 - Kiểm chiều cao trẻ em khi mua vé khu vui chơi. Nhân viên kiểm tại cổng.
@@ -1141,4 +1142,77 @@ Phục vụ FR-BKG-11, AC-BKG-10, FR-BKG-02 (`docs/prd/requirements.md`). Căn c
 ### A.5. Kiểm thử
 
 AC-BKG-10: ghế 12A cho trẻ em bị từ chối kèm lý do; ghế 6A cho người lớn và 20 kg ký gửi chiều đi được tính; tổng đơn và số tiền Stripe khớp. Thêm unit test cho R-EXT-02…04 và contract test cho `extras`.
+
+---
+
+## Phụ lục B. Thông tin giấy tờ hành khách cho vé máy bay (FR-BKG-13)
+
+**Trạng thái: đã triển khai** ở bước ① Hành khách (contract 1.11.0, migration `0006_traveler_documents`). Chưa làm: thẻ chuyến bay "Đủ thông tin" ở bước ② (hạng vé, ghế, hành lý, suất ăn, bảo hiểm), xem §B.7.
+
+Phục vụ FR-BKG-13, FR-BKG-08, AC-BKG-11, AC-BKG-12, NFR-SEC-01 (`docs/prd/requirements.md`). Căn cứ đề xuất đã áp dụng `docs/prd/update-archive/2026-09-29-ve-may-bay-giay-to-tuy-than.md`. Dữ liệu chỉ mô phỏng, không dùng để xuất vé thật (`project-brief.md` §4.2).
+
+### B.1. Khi nào áp dụng
+
+Giỏ có ít nhất một mục `flight`. Khi đó mỗi hành khách khai một lần ở bước ①, dùng cho mọi chặng. Giỏ không có vé bay thì không hiện khối này, Backend không đòi và bỏ qua `documents` nếu client gửi.
+
+### B.2. Trường theo loại khách
+
+| Trường | Người lớn | Trẻ em, em bé |
+|---|---|---|
+| Danh xưng `documents.title` | `MR`, `MRS`, `MS` (Ông, Bà, Cô) | `MSTR`, `MISS` (Bé trai, Bé gái) |
+| Quốc tịch `documents.nationality` | `VN`, `KR`, `CN`, `JP`, `US`, `AU`, `FR`, `OTHER` | như người lớn |
+| Ngày sinh `birthDate` | bắt buộc khi có vé bay | bắt buộc (như §5.2) |
+| Giấy tờ `documents.docType` | `CCCD` hoặc `PASSPORT` | không có (dùng giấy khai sinh) |
+| Số giấy tờ `documents.docNumber` | CCCD 12 chữ số; hộ chiếu 6–9 chữ và số | không có |
+| Hạn hộ chiếu `documents.docExpiry` | chỉ khi `PASSPORT` | không có |
+| Người đi kèm `documents.escortTravelerRef` | không có | chỉ em bé (dưới 2 tuổi tại một ngày bay bất kỳ của đơn) |
+
+Ngày sinh người lớn là bổ sung so với chữ của FR-BKG-13 (chỉ liệt kê danh xưng, quốc tịch, giấy tờ), lấy theo mock đã duyệt; `data-model.md` §2.2 chỉ ghi ngày sinh "bắt buộc với trẻ em" nên cột `birth_date` nhận null/ngày cho cả người lớn, không cần đổi DDL.
+
+### B.3. Bộ luật (mã dùng chung Web và Backend)
+
+| Mã | Quy tắc | Trường | `reason` |
+|---|---|---|---|
+| R-DOC-01 | Người lớn có ngày sinh hợp lệ, không ở tương lai, từ 12 tuổi tại ngày bay đầu tiên | `travelers[i].birthDate` | `REQUIRED`, `BIRTH_DATE_INVALID`, `ADULT_AGE_INVALID` |
+| R-DOC-02 | Danh xưng bắt buộc và đúng nhóm tuổi | `travelers[i].documents.title` | `REQUIRED`, `TITLE_INVALID` |
+| R-DOC-03 | Quốc tịch bắt buộc và thuộc danh sách | `travelers[i].documents.nationality` | `REQUIRED`, `NATIONALITY_INVALID` |
+| R-DOC-04 | Người lớn chọn loại giấy tờ; `CCCD` chỉ cho quốc tịch `VN` | `…documents.docType` | `REQUIRED`, `DOC_TYPE_INVALID` |
+| R-DOC-05 | Số giấy tờ đúng định dạng của loại đã chọn; khoảng trắng bỏ đi, chữ thường đổi thành hoa | `…documents.docNumber` | `REQUIRED`, `DOC_NUMBER_INVALID` |
+| R-DOC-06 | Hộ chiếu có ngày hết hạn hợp lệ, **sau** ngày bay cuối cùng của đơn | `…documents.docExpiry` | `REQUIRED`, `DOC_EXPIRY_INVALID`, `DOC_EXPIRED` |
+| R-DOC-07 | Em bé chọn một người lớn trong đoàn đi kèm | `…documents.escortTravelerRef` | `REQUIRED`, `ESCORT_INVALID` |
+| R-DOC-08 | Người lớn đi kèm phải bay cùng chặng với em bé (bước ②) | `itemDetails[j].travelerRefs` | `ESCORT_NOT_ON_FLIGHT` |
+| R-DOC-09 | Mỗi người lớn đi kèm tối đa 1 em bé trên một chặng (bước ②) | `itemDetails[j]` | `ESCORT_OVERLOADED` |
+
+Vi phạm trả hết trong một lần như §5.1. Giỏ không có vé bay thì R-DOC-01…09 không chạy. Request cũ (client chưa biết `documents`) mà giỏ có vé bay bị từ chối với các lỗi `REQUIRED` ở trên.
+
+Câu thông báo: `application/booking/messages.py` và `messageFor` trong `checkoutRules.ts` dùng cùng câu (ví dụ `DOC_EXPIRED`: "Hộ chiếu hết hạn trước ngày bay cuối cùng (19/10/2026).").
+
+### B.4. Hợp đồng API (contract 1.11.0)
+
+- `CheckoutTraveler.documents` (`TravelerDocuments`) tuỳ chọn trong schema, bắt buộc theo luật B.3 khi giỏ có vé bay. Enum mới: `TravelerTitle`, `TravelerNationality`, `TravelerDocType`.
+- `BookingTraveler.documents` (`BookingTravelerDocuments`): `title`, `nationality`, `docType`, `docNumberLast4`. **Không** trả số giấy tờ đầy đủ, ngày hết hạn, ngày sinh.
+- Mã `reason` mới ở §5.6: `ADULT_AGE_INVALID`, `TITLE_INVALID`, `NATIONALITY_INVALID`, `DOC_TYPE_INVALID`, `DOC_NUMBER_INVALID`, `DOC_EXPIRY_INVALID`, `DOC_EXPIRED`, `ESCORT_INVALID`, `ESCORT_NOT_ON_FLIGHT`, `ESCORT_OVERLOADED`.
+
+### B.5. Backend và database
+
+- Domain: `TravelerDocuments` (`domain/booking/party.py`); luật `_check_adult_birth`, `_check_documents`, `_check_escorts`, `_check_flight_escorts` trong `party_rules.py`; `flight_dates_of(cart)` quyết định có áp luật hay không.
+- Lưu: cột `app.booking_travelers.documents jsonb` `{title, nationality, docType, docNumber, docExpiry, escortTravelerRef}`; migration `0006_traveler_documents.sql`, đồng bộ `db/init/01_vota.sql` và `db/vota_schema.sql`.
+- Bảo mật: số giấy tờ và ngày sinh chỉ ở database; không vào response, log, CDP, Insider, Stripe (NFR-SEC-01). Log chỉ ghi số lượng.
+
+### B.6. Frontend
+
+- `TravelersStep.tsx`: khối "Thông tin cho vé máy bay" trong mỗi thẻ hành khách khi `ctl.hasFlight`; ô "Tên in trên vé" (`NGUYEN / MINH ANH`, không dấu, viết hoa).
+- Đổi quốc tịch khác Việt Nam khi đang chọn CCCD thì tự chuyển sang hộ chiếu và xoá số giấy tờ, ngày hết hạn (AC-BKG-12); đổi loại giấy tờ cũng xoá số và hạn cũ.
+- Ô "Người lớn đi kèm em bé" chỉ hiện với trẻ dưới 2 tuổi tại một ngày bay; bỏ người lớn khỏi đoàn thì xoá lựa chọn đi kèm trỏ tới người đó.
+- `serverErrors.ts` đưa lỗi `travelers[i].documents.*` về đúng ô (`x-title-`, `x-nat-`, `x-doc-`, `x-docNo-`, `x-exp-`, `x-with-`) ở bước ①.
+- Trường trống bị bỏ khỏi request để Backend báo `REQUIRED` đúng trường thay vì nhận `null` cho kiểu enum.
+
+### B.7. Chưa làm
+
+- Thẻ chuyến bay ở bước ② theo mock (hạng vé, danh sách hành khách 3/3 đủ thông tin, chỗ ngồi, bảo hiểm, hành lý và suất ăn, thành tiền từng chặng): thuộc FR-BKG-10/11, cần việc riêng.
+- Hiển thị giấy tờ (danh xưng, loại giấy tờ, 4 số cuối) ở trang đơn: API đã trả, `ConfirmationView` chưa dùng.
+
+### B.8. Kiểm thử
+
+Bộ ca dùng chung `src/shared/contracts/tests/booking-rules-cases.json` thêm các ca R-DOC-01…09; `test_party_rules.py` và `checkoutRules.test.ts` chạy cùng bộ. Thêm: use case (`test_checkout_travelers.py`), Postgres (`test_booking_postgres.py`, cần `RUN_POSTGRES_INTEGRATION=1`), `toTravelerInputs`, `mapValidationFields` và `CheckoutView` (AC-BKG-11, AC-BKG-12).
 

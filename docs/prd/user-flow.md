@@ -32,10 +32,10 @@ Hệ thống được tối ưu hóa cho 4 luồng trải nghiệm chính tươn
 |---|---|---|---|
 | `/` | **Trang chủ (Home)** | Khám phá ban đầu, tìm kiếm nhanh, khối gợi ý cá nhân hóa | Hero Search Bar, Category Nav, Personalized Carousels, Trending Destinations |
 | `/hotels` | **Khách sạn & resort** | Duyệt và bắt đầu tìm khách sạn theo điểm đến, ngày, số phòng và số khách | Hero, Search Sheet, Product Shelves (phổ biến, giá tốt), Destination Tiles |
-| `/flights` | **Vé máy bay** | Duyệt chặng bay và bắt đầu tìm vé theo điểm đi, điểm đến, ngày, hành khách | Hero, Search Sheet, Product Shelves, Destination Tiles |
+| `/flights` | **Vé máy bay** | Tìm vé theo điểm đi, điểm đến, ngày, hành khách và chọn chuyến bay ngay tại trang; chưa nhập đủ thì trang nhắc nhập | Hero, Search Sheet, Kết quả chuyến bay (Filter Sidebar, Date Strip, Sort popup, Flight Cards, Vé của tôi) hoặc lời nhắc nhập, Destination Tiles |
 | `/experiences` | **Tour và trải nghiệm** | Duyệt vé tham quan, vui chơi và sân golf (`?type=attraction\|golf`) | Hero, Search Sheet, Tab loại, Product Shelves, Destination Tiles |
 | `/combos` | **Combo du lịch** | Duyệt gói kết hợp | Hero, Search Sheet, Product Shelves, Destination Tiles |
-| `/search` | **Kết quả tìm kiếm** | Hiển thị kết quả tìm kiếm ngữ nghĩa và bộ lọc đa chiều | Query Header, Filter Sidebar, Sort Controls, Product Grid Cards, Pagination |
+| `/search` | **Kết quả tìm kiếm** | Hiển thị kết quả tìm kiếm ngữ nghĩa và bộ lọc đa chiều | Query Header, Tab nhóm (Tất cả · Lưu trú · Tour và trải nghiệm · Tiện ích khác), Hàng cuộn ngang theo nhóm (tab Tất cả), Filter Sidebar (chỉ Lưu trú), Sort popup (mọi tab trừ Tất cả), Product Row Cards, Xem thêm |
 | `/products/:id` | **Chi tiết sản phẩm** | Thông tin đầy đủ về phòng, vé, tour; trạng thái khả dụng | Image Gallery, Attribute Badges, Availability Calendar, Pricing, Add-to-Cart CTA |
 | `/checkout` | **Thanh toán / Đặt chỗ** | Ba bước: khai đoàn khách và người liên hệ; chọn ai dùng từng dịch vụ (khách sạn xếp phòng); xem lại, chọn phương thức, bấm Thanh toán để chuyển sang trang Stripe | Stepper, Party Counter, Traveler Forms, Service Allocation Cards, Order Summary (sticky; bottom bar trên mobile), Payment Method Selector, Pay CTA |
 | `/booking/:referenceCode` | **Xác nhận đơn hàng** | Hiển thị đơn theo trạng thái: đang giữ chỗ (đồng hồ đếm ngược, tiếp tục thanh toán), đã xác nhận (mã đặt chỗ, gợi ý chặng tiếp), thanh toán thất bại, hết hạn, đã huỷ; huỷ đơn | Booking Status Card, Next Best Action Recommendations (Flight, Tours) |

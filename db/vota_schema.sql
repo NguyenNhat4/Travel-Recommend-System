@@ -282,6 +282,7 @@ CREATE TABLE app.booking_travelers (
     given_names    text NOT NULL,                                          -- Tên đệm và tên
     full_name      text NOT NULL,                                          -- surname + ' ' + given_names
     birth_date     date,                                                   -- bắt buộc với trẻ em
+    documents      jsonb,                                                  -- FR-BKG-13, chỉ khi đơn có vé bay: {title, nationality, docType, docNumber, docExpiry, escortTravelerRef}; API chỉ trả 4 số cuối docNumber
     CONSTRAINT booking_travelers_ref_uq UNIQUE (booking_id, traveler_ref),
     CONSTRAINT booking_travelers_position_uq UNIQUE (booking_id, position),
     CONSTRAINT booking_travelers_child_birth CHECK (traveler_type = 'adult' OR birth_date IS NOT NULL)

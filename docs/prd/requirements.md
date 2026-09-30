@@ -21,7 +21,7 @@ Tài liệu này đặc tả chi tiết toàn bộ các yêu cầu chức năng 
 - **FR-SRC-01 (Tìm kiếm đa phương thức):** Hỗ trợ cả tìm kiếm từ khóa truyền thống và tìm kiếm ngữ nghĩa (Semantic Search) bằng ngôn ngữ tự nhiên tiếng Việt.
 - **FR-SRC-02 (Vector Embedding):** Hệ thống phải tự động vector hóa mô tả sản phẩm, tiện ích, đặc điểm nổi bật bằng Cohere `embed-multilingual-v3.0` (1024 chiều) và lưu trong collection `Product` của Weaviate. Chỉ vector hóa sản phẩm có `is_search_unit = true`; truy vấn phải dùng `input_type=search_query`, nạp dùng `input_type=search_document`.
 - **FR-SRC-03 (Bộ lọc đa chiều - Faceted Filtering):** Cho phép kết hợp tìm kiếm ngữ nghĩa với các bộ lọc có cấu trúc:
-  - Địa điểm (Điểm đến, thành phố, khu vực).
+  - Địa điểm (Điểm đến, thành phố, khu vực): áp dụng ở API `/search` và ở tấm tìm kiếm của trang danh mục. Trang `/search` không có bộ lọc điểm đến; điểm đến do câu truy vấn ngữ nghĩa quyết định. Vé máy bay không nằm trong kết quả `/search` (chỉ duyệt và tìm ở `/flights`).
   - Khoảng ngân sách (Giá tối thiểu, giá tối đa).
   - Đánh giá sao, phân loại dịch vụ.
   - Ngày khởi hành / Thời gian nhận phòng.
