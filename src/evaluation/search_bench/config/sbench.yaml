@@ -31,8 +31,10 @@ embedding:                        # Part 3
   models:
     cohere-v3: {api_model: embed-multilingual-v3.0, dim: 1024, max_batch: 96, truncate: NONE}
     cohere-v4: {api_model: embed-v4.0, dim: 1024, max_batch: 96, output_dimension: 1024, truncate: NONE}
-    bge-m3:    {hf_model: BAAI/bge-m3, dim: 1024, max_seq_length: 512, device: cpu, batch_size: 16}
-    gte-mb:    {hf_model: Alibaba-NLP/gte-multilingual-base, dim: 768, max_seq_length: 512, device: cpu, batch_size: 32, trust_remote_code: true}   # E2.gte, tuỳ chọn
+    bge-m3:    {hf_model: BAAI/bge-m3, dim: 1024, max_seq_length: 512, device: cpu, batch_size: 16, pooling: cls}
+    e5-base:   {hf_model: intfloat/multilingual-e5-base, dim: 768, max_seq_length: 512, device: cpu, batch_size: 32, pooling: mean,
+                query_prefix: "query: ", passage_prefix: "passage: "}   # E2.e5 (lịch 10 ngày M2: Cohere vs e5-base); sai prefix = arm không công bằng
+    gte-mb:    {hf_model: Alibaba-NLP/gte-multilingual-base, dim: 768, max_seq_length: 512, device: cpu, batch_size: 32, trust_remote_code: true, pooling: cls}   # E2.gte, tuỳ chọn
     fake:      {dim: 1024}
   input_type: {document: search_document, query: search_query}
   bedrock: {model_id: cohere.embed-multilingual-v3, region: ap-southeast-1}

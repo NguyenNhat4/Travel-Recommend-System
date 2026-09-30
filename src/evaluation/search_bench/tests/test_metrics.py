@@ -132,6 +132,14 @@ def test_aggregate_arm_a(ctx_data, cfg):
     ds = agg["by_slice"]["dest_type"]                                        # q001 + q003
     assert ds["n"] == 2 and ds["recall@10"] == pytest.approx(0.375, **APPROX)
     assert ds["ndcg@10"] == pytest.approx(0.5824860118811416 / 2, **APPROX)
+    # zero-result / constraint precision theo slice: đối chiếu trực tiếp với các dòng per_query của slice đó
+    rows = rows_of(ctx_data, "A")
+    for s, v in agg["by_slice"].items():
+        rs = [r for r in rows if r["slice"] == s]
+        assert v["zero_result"] == pytest.approx(sum(r["zero_result"] for r in rs) / len(rs), **APPROX)
+        cn = sum(r["constraint_n"] for r in rs)
+        assert v["constraint_precision"] == (pytest.approx(sum(r["constraint_ok"] for r in rs) / cn, **APPROX) if cn else None)
+    assert ds["zero_result"] == 0.0 and ds["constraint_precision"] is None      # q001, q003 không filter, có kết quả
 
 
 def test_retired_queries_are_skipped(tmp_path):

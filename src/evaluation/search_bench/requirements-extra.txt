@@ -1,3 +1,6 @@
-# Tuỳ chọn — chỉ khi chạy bge-m3 / gte-multilingual-base local (E2, P5) hoặc embed qua Bedrock.
-sentence-transformers>=3
+# Tuỳ chọn — chỉ khi chạy model local (E2.e5 multilingual-e5-base, E2.bge bge-m3, E2.gte, P5) hoặc embed qua Bedrock.
+# Model local chạy bằng transformers + torch (embed/local_hf.py: mean / cls pooling theo model card), KHÔNG cần
+# sentence-transformers — gói đó kéo scipy, mà DLL scipy (_moduleTNC) bị Application Control chặn trên máy dev (30/09).
+torch>=2.2
+transformers>=4.40
 boto3>=1.34
