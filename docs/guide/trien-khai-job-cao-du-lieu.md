@@ -74,10 +74,18 @@ Quay lại legacy cần chủ động cài `install-vota-cron.sh --job legacy` v
 ## Monitor: link để xem và bấm chạy
 
 Monitor là trang web của job: sơ đồ các bước, log, báo cáo từng lượt, nút chạy lượt cào / chạy lại bước / cào lại một nguồn,
-trang cấu hình (nguồn, giờ chạy, chạy liên tục). Như bản deploy trước (25/09), mở bằng link không cần SSH:
+trang cấu hình (nguồn, giờ chạy, chạy liên tục), và tab **DB** xem toàn bộ database đích (`cdp`, `catalog`, `app`): số dòng
+mỗi bảng, lọc / tìm / sắp xếp, bấm ô khoá để xem một dòng và các bảng trỏ tới / được trỏ tới (khoá ngoại và quan hệ quy ước
+sản phẩm cha–con, vé mô phỏng–vé gốc). Tab DB chỉ đọc, không có SQL tự do; cột `password_hash`, `token_hash` hiện "(ẩn)"
+(`docs/prd/deployment-plan.md` §5). Link thẳng tới một bảng: `http://<IP>:8765/#page=db&table=cdp.products`. Tab **Realtime** hiện từng lần web / agent gọi
+backend (route hoặc công cụ, kết quả, ms, `stageMs` của tìm kiếm, `productId` trả về) và tổng hợp p50 / p95, làm mới 2 giây;
+monitor đọc `GET /internal/calls` của backend qua `BACKEND_URL` (mặc định `http://127.0.0.1:8000`, runner truyền vào
+container monitor). Cần bản backend có endpoint này; dữ liệu mất khi backend restart. Như bản deploy trước (25/09), mở bằng link không cần SSH:
 
 1. Chạy monitor với `MONITOR_HOST=0.0.0.0 MONITOR_PUBLIC=1` (thao tác riêng khi được phép khởi động/cập nhật monitor). Lệnh `monitor` của job cũ
-   nhận cùng hai biến.
+   nhận cùng hai biến. `fresh-monitor` (CD gọi lệnh này) chạy nền với `--restart unless-stopped` và `--memory 1g`: bị tắt vì
+   hết RAM hay VM khởi động lại thì Docker tự bật lại, không phải chờ lần deploy sau. `MONITOR_RESTART=no` chạy tiền cảnh
+   như trước; `MONITOR_MEMORY` đổi giới hạn RAM.
 2. Firewall GCP cho phép TCP `8765` vào VM (một lần, bỏ qua nếu bản deploy 25/09 đã mở):
 
    ```bash
@@ -85,6 +93,18 @@ trang cấu hình (nguồn, giờ chạy, chạy liên tục). Như bản deploy
    ```
 
 3. Mở `http://<IP ngoài của VM>:8765`.
+
+**Monitor không vào được (cổng 8765 từ chối kết nối):** VM 2 CPU / 4 GB chạy chung backend, frontend, lượt cào và monitor;
+khi hết RAM Linux tắt bớt tiến trình. Kiểm trên VM:
+
+```bash
+docker ps -a --filter name=vota-fresh-catalog-monitor
+docker logs --tail 50 vota-fresh-catalog-monitor
+free -h && dmesg -T | grep -iE "killed process|out of memory" | tail -5
+```
+
+Nên thêm swap 2–4 GB một lần (`sudo fallocate -l 4G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile`, thêm
+vào `/etc/fstab`) hoặc nâng VM lên 8 GB. Bật lại ngay: GitHub Actions → "Crawler CI/CD" → Run workflow trên nhánh CD.
 
 **Chưa có đăng nhập.** Ai có link đều bấm chạy / đổi cấu hình job được, và các thao tác ghi thẳng vào DB thật. Tạm chấp nhận
 theo yêu cầu, bảo mật làm sau: giới hạn IP nguồn trong rule firewall (`--source-ranges`), hoặc đặt sau proxy có đăng nhập.

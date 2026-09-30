@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from time import perf_counter
 
 import numpy as np
 
@@ -48,6 +49,28 @@ def _normalization_diagnostics(q: str, nq: NormalizedQuery) -> dict:
     return out
 
 
+class StageTimer:
+    """Thời gian từng bước của /search, khai ở `diagnostics.stageMs` (ms nguyên, contract 1.9.0).
+
+    `lap(name)` ghi thời gian từ lần `lap` trước (hoặc từ lúc tạo) cho bước `name`. Bước không chạy thì không
+    có khoá, nên `normalize` vắng khi tắt chuẩn hoá và `lexical` vắng ở chế độ dense-only. Cộng dồn bằng số thực,
+    chỉ làm tròn **xuống** khi xuất, để tổng các bước luôn ≤ `latencyMs` mà route làm tròn trên tổng thời gian.
+    """
+
+    def __init__(self) -> None:
+        self._seconds: dict[str, float] = {}
+        self._last = perf_counter()
+
+    def lap(self, name: str) -> None:
+        now = perf_counter()
+        self._seconds[name] = self._seconds.get(name, 0.0) + max(0.0, now - self._last)
+        self._last = now
+
+    @property
+    def ms(self) -> dict[str, int]:
+        return {name: int(seconds * 1000) for name, seconds in self._seconds.items()}
+
+
 def hit(index: UnitIndex, i: int, score: float, **extra) -> dict:
     p = index.units[i]
     normalized_score = round(max(0.0, min(1.0, float(score))), 4)
@@ -90,24 +113,34 @@ class SearchProducts:
     def __call__(self, q: str, *, taxonomy: str | None = None, destination: str | None = None,
                  limit: int = 20, offset: int = 0) -> dict:
         limit = min(limit, self.max_limit)
+        stages = StageTimer()
         nq = self._normalizer(q) if self._normalizer else None
         text = nq.text if nq else q   # embed, BM25 và độ phủ đều dùng câu đã chuẩn hoá; `q` gốc chỉ còn để đối chiếu
+        if nq:
+            stages.lap("normalize")
         qvec = self.embedder.embed_query(text)
+        stages.lap("embed")
         mask = self.index.mask(taxonomy, destination)
         allowed = self.index.allowed_ids(mask)
         facet_fields = {"taxonomy": self.index.taxonomy, "destination": self.index.destination}
         dense = [h for h in self.vectors.near_vector(qvec, allowed, self.candidate_k) if h.product_id in self.index.idx]
+        stages.lap("dense")
         if self.hybrid_on:
-            out, diagnostics = self._hybrid(text, qvec, dense, allowed, int(mask.sum()), facet_fields)
+            out, diagnostics = self._hybrid(text, qvec, dense, allowed, int(mask.sum()), facet_fields, stages)
         else:
             out = candidate_filter_score([self.index.idx[h.product_id] for h in dense], [h.score for h in dense],
                                          self.cutoff, int(mask.sum()), facet_fields)
+            stages.lap("fuse")
             diagnostics = dict(ANN_DIAGNOSTICS)
         if nq:
             diagnostics.update(_normalization_diagnostics(q, nq))
         page = out.order[offset: offset + limit]
+        results = [hit(self.index, i, out.scores[i]) for i in page]
+        stages.lap("hydrate")
+        stage_ms = stages.ms
+        logger.debug("search.stage_ms %s", stage_ms)
         return {
-            "results": [hit(self.index, i, out.scores[i]) for i in page],
+            "results": results,
             "total": out.total, "limit": limit, "offset": offset,
             # Cosine cao nhất trong R: ở hybrid phần tử đầu là theo RRF, chưa chắc là cosine cao nhất.
             "topScore": round(max(0.0, min(1.0, max(float(out.scores[i]) for i in out.order))), 4) if out.order else None,
@@ -115,17 +148,20 @@ class SearchProducts:
             "facets": out.facets,
             "diagnostics": {**diagnostics,
                             "filteredCount": out.filtered_count, "relevantCount": out.total,
-                            "modelVersion": self.index.model_version},
+                            "modelVersion": self.index.model_version,
+                            "stageMs": stage_ms},
         }
 
     def _hybrid(self, q: str, qvec: np.ndarray, dense: list[VectorHit], allowed, filtered_count: int,
-                facet_fields: dict) -> tuple[SearchOutcome, dict]:
+                facet_fields: dict, stages: StageTimer | None = None) -> tuple[SearchOutcome, dict]:
         try:
             lex: list[LexicalHit] = [h for h in self.lexical.bm25(q, allowed, self.lexical_candidate_k, with_vectors=True)
                                      if h.product_id in self.index.idx]
         except Exception as exc:  # nhánh lexical hỏng (collection chưa có property BM25…) → dense-only, không 500
             logger.warning("search.lexical.failed %s", exc)
             lex = []
+        if stages is not None:
+            stages.lap("lexical")
         qv = np.asarray(qvec, dtype=np.float32)
         qn = float(np.linalg.norm(qv)) or 1.0
         cosines = {self.index.idx[h.product_id]: float(h.score) for h in dense}
@@ -143,6 +179,8 @@ class SearchProducts:
             lambda u: coverage(q_tokens, self._name_tokens[u]) >= cfg.min_coverage,
             self.cutoff, cfg, filtered_count, facet_fields,
         )
+        if stages is not None:
+            stages.lap("fuse")
         diagnostics = {**HYBRID_DIAGNOSTICS, "fusion": "rrf", "rrfK": cfg.rrf_k, "lexicalK": cfg.lexical_k,
                        "lexicalCutoff": cfg.lexical_cutoff, "lexicalMinCoverage": cfg.min_coverage,
                        "lexicalCandidates": len(lex), "lexicalCount": len(out.lexical_only)}

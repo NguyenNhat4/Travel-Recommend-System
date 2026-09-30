@@ -30,7 +30,8 @@ from fastapi.responses import JSONResponse
 from src.backend.app.agents.runtime_dependencies import RuntimeAgentDependencies
 from src.backend.app.agents.tools.itinerary_gateway import ItineraryToolGateway
 from src.backend.app.api.errors import install_error_handlers
-from src.backend.app.api.middleware import install_cors, install_request_id
+from src.backend.app.api.middleware import install_call_telemetry, install_cors, install_request_id
+from src.backend.app.api.ops import ops_router
 from src.backend.app.api.v1.router import api_router, root_router
 from src.backend.app.application.auth.use_cases import (
     AuthenticateUser,
@@ -52,6 +53,7 @@ from src.backend.app.application.booking import (
 from src.backend.app.application.catalog.use_cases import GetProductDetail, GetSimilarProducts, ListProducts
 from src.backend.app.application.itinerary.history import ConversationHistory
 from src.backend.app.application.itinerary.engine_tools import InProcessItineraryTools
+from src.backend.app.application.telemetry import traced
 from src.backend.app.application.itinerary.use_cases import PlanItinerary
 from src.backend.app.application.tracking.behaviour import BehaviourTracker
 from src.backend.app.domain.booking import HoldPolicy
@@ -75,6 +77,7 @@ from src.backend.app.infrastructure.cdp.postgres_cdp_reader import PostgresCdpRe
 from src.backend.app.infrastructure.clients.itinerary_fixture_clients import FixtureItineraryClients
 from src.backend.app.infrastructure.clients.itinerary_http_clients import ItineraryHttpClients
 from src.backend.app.infrastructure.llm import build_chat_model
+from src.backend.app.infrastructure.telemetry.memory import InMemoryCallTelemetry
 from src.backend.app.infrastructure.payments.fake_gateway import FakeGateway
 from src.backend.app.infrastructure.payments.stripe_gateway import StripePaymentGateway
 from src.backend.app.infrastructure.persistence.conversation_store import (
@@ -364,6 +367,8 @@ async def _reconcile_loop(reconcile, interval_seconds: int) -> None:
 #: Pool riêng cho engine đồng bộ mà tool itinerary gọi trong tiến trình. Bằng số token mặc định của anyio —
 #: sức chứa route sync khi agent còn gọi qua HTTP — và không tranh thread với `RecsysRefresher`.
 ITINERARY_TOOL_WORKERS = 40
+#: Engine / use case được bọc để đo lần gọi (application/telemetry.py).
+TRACED_SERVICES = ("search", "similar", "recommend", "get_product_detail", "list_products", "get_similar_products")
 
 
 def _inprocess_itinerary_tools(app: FastAPI, executor: Executor) -> InProcessItineraryTools:
@@ -377,6 +382,7 @@ def _inprocess_itinerary_tools(app: FastAPI, executor: Executor) -> InProcessIti
         token_verifier=lambda: getattr(app.state, "token_verifier", None),
         revoked_tokens=lambda: getattr(app.state, "revoked_tokens", None),
         executor=executor,
+        telemetry=getattr(app.state, "call_telemetry", None),
     )
 
 
@@ -541,6 +547,11 @@ async def lifespan(app: FastAPI):
         def publish_catalog() -> None:
             for name, service in build_catalog(settings, app.state).items():
                 setattr(app.state, name, service)
+            # Đo lần gọi web / agent (docs/prd/deployment-plan.md §5): bọc engine vừa nạp, ghi số sản phẩm trong bộ nhớ.
+            for name in TRACED_SERVICES:
+                setattr(app.state, name, traced(getattr(app.state, name, None), name))
+            units = getattr(getattr(app.state, "index", None), "units", None)
+            app.state.call_telemetry.set_catalog(len(units) if units is not None else None)
 
         recsys = RecsysRefresher(app, settings, on_publish=publish_catalog)
         if not await recsys.reload():
@@ -570,11 +581,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.state.call_telemetry = InMemoryCallTelemetry()
 install_cors(app, settings.cors_origins)
+install_call_telemetry(app)
 install_request_id(app)
 install_error_handlers(app)
 app.include_router(api_router, prefix="/api/v1")
 app.include_router(root_router)
+app.include_router(ops_router)
 
 
 @app.get("/health")
