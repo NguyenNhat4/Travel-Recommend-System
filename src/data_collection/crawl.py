@@ -193,6 +193,10 @@ async def cmd_trip(paths: Paths, a: argparse.Namespace, which: str) -> dict:
     state = StateDB(paths)
     try:
         result = await trip.run(paths, _name(which), opts, state)
+        if which == 'trip-flights' and not opts.discover_only and not getattr(a, 'no_business', False):
+            from collectors.trip_business import enrich
+            result['business'] = await enrich(paths, offsets=tuple(int(n) for n in getattr(a, 'business_offsets', '14').split(',')),
+                                               max_flights=getattr(a, 'business_max_flights', 8), delay=opts.delay, routes=opts.routes)
         log.info("[%s] Trạng thái: %s", _name(which), result)
         return result
     finally:
@@ -427,8 +431,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     TRIP_LABEL = {"trip-flights": "vé máy bay", "trip-attractions": "điểm tham quan", "trip-experiences": "tour/hoạt động (things-to-do)"}
     for s in TRIP_SOURCES:
-        tp = sub.add_parser(s, parents=[browser, plan, crawl], help=f"trip.com – {TRIP_LABEL[s]} (HTTP, không cần trình duyệt)")
+        tp = sub.add_parser(s, parents=[browser, plan, crawl], help=f"trip.com – {TRIP_LABEL[s]} ({'HTTP + Chromium cho thương gia' if s == 'trip-flights' else 'HTTP'})")
         if s == "trip-flights":
+            tp.add_argument("--no-business", action="store_true", help="chỉ lấy SEO, không mở tìm kiếm thương gia")
+            tp.add_argument("--business-offsets", default="14", help="ngày bay tương đối 0..29, vd. 7,14,21")
+            tp.add_argument("--business-max-flights", type=int, default=8, help="tối đa số thẻ kiểm tra mỗi tuyến/ngày")
             tp.add_argument("--routes", help="lọc tuyến có hướng, vd. SGN-HAN,HAN-CXR")
             tp.add_argument("--refresh", action="store_true", help="lấy snapshot giá mới cho các tuyến được discovery trong phạm vi điểm đến")
     bh = sub.add_parser("booking-hotels", parents=[browser, plan, crawl, dates], help="booking.com – khách sạn theo điểm đến")
@@ -549,6 +556,8 @@ def main(argv: list[str] | None = None) -> int:
         return 130
     if isinstance(result, dict) and result.get("stopped") == "blocked":
         return EXIT_BLOCKED
+    if a.cmd == "trip-flights" and result and result.get('business', {}).get('failed'):
+        return 2  # keep SEO/verified quotes; source report must show incomplete coverage
     if a.cmd == "booking-flights" and result and (result.get("failed") or result.get("skipped")
             or ("coverage" in result and not result["coverage"]["discoveredPagesComplete"])):
         return 2

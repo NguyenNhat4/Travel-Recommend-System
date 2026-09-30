@@ -33,6 +33,7 @@ from urllib.parse import urlparse
 
 import alerts
 import fresh_settings
+import index_backlog
 import pipeline_errors as perr
 import pipeline_graph as graph
 from collectors import live_control
@@ -240,6 +241,8 @@ def with_retry(name: str, fn, detail: dict | None = None):
         except perr.PipelineError:
             raise
         except Exception as exc:
+            if name == 'index' and index_backlog.rate_limit(exc)[0]:
+                raise  # persistent cooldown owns quota retries, not the outer retry loop
             kind = perr.classify_exception(exc)
             plan = perr.strategy(kind, settings_values())
             if plan['action'] != 'retry' or attempt >= plan['retries']:
@@ -349,7 +352,9 @@ class Previewer:
                 self.tickers.append(Ticker('db', self.db_feeder, values['stream.dbSeconds'],
                                            lambda: live_control.current('stream.db'), say))
                 if values['stream.index'] and index_config is not None:
-                    feeder = IndexFeeder(run_dir, self.db_feeder, lambda path: index_catalog(index_config, path), log=say)
+                    feeder = IndexFeeder(run_dir, self.db_feeder, lambda path: index_backlog.guarded_index(
+                        (REC.state_dir if REC is not None else dirs()[0]) / 'index_pending.json',
+                        lambda: index_catalog(index_config, path)), log=say)
                     self.tickers.append(Ticker('index', feeder, values['stream.indexSeconds'],
                                                lambda: live_control.current('stream.index'), say))
             for ticker in self.tickers:
@@ -849,6 +854,9 @@ def print_status(values: dict, state_dir: Path) -> None:
           f'new/city: {values["tripHotels.newPerCity"]}; '
           f'parallel sites (full): {values["crawl.parallelSites"]}')
     print('Schedule: ' + (f'{upcoming["mode"]} at {upcoming["at"]}' if upcoming else 'off'))
+    backlog = index_backlog.pending(state_dir / 'index_pending.json')
+    if backlog:
+        print('Index backlog: ' + json.dumps(backlog), flush=True)
     running = read_json(state_dir / 'running.json')
     if running and lock_busy(state_dir):
         print(f'Running: {running.get("runId")} since {running.get("startedAt")} steps={running.get("steps")}')
@@ -864,14 +872,19 @@ def run_job(mode: str, trigger: str | None = None, run_id: str | None = None, fr
     if mode == 'status':
         print_status(values, state_dir)
         return 0
+    def scheduled():
+        selected, reason = fresh_settings.scheduled_mode(values, state_dir)
+        if selected is None and values['schedule.enabled'] and index_backlog.due(state_dir / 'index_pending.json'):
+            return 'index', 'index backlog retry is due'
+        return selected, reason
+
     if mode == 'due':
-        chosen, reason = (None, 'đang có lượt chạy') if lock_busy(state_dir) else \
-            fresh_settings.scheduled_mode(values, state_dir)
+        chosen, reason = (None, 'đang có lượt chạy') if lock_busy(state_dir) else scheduled()
         print(chosen or '', flush=True)
         print(f'catalog.due {chosen or "-"}: {reason}', file=sys.stderr, flush=True)
         return 0
     # An idle cron tick needs neither DB credentials nor an index connection.
-    if mode == 'tick' and (lock_busy(state_dir) or fresh_settings.scheduled_mode(values, state_dir)[0] is None):
+    if mode == 'tick' and (lock_busy(state_dir) or scheduled()[0] is None):
         check_sla(state_dir, run_root, values)
         return 0
     trigger = trigger or os.environ.get('CATALOG_TRIGGER') or 'manual'
@@ -894,7 +907,7 @@ def run_job(mode: str, trigger: str | None = None, run_id: str | None = None, fr
                 return 0
             raise RuntimeError('Đã có job catalog khác đang chạy') from None
         if mode == 'tick':
-            selected, reason = fresh_settings.scheduled_mode(values, state_dir)
+            selected, reason = scheduled()
             if selected is None:
                 print(f'catalog.schedule.skip: {reason}', flush=True)
                 return 0
@@ -913,7 +926,7 @@ def run_job(mode: str, trigger: str | None = None, run_id: str | None = None, fr
             stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
             run_id = f'{selected}-{stamp}-{os.getpid()}'
             run_dir = run_root / run_id
-            if trigger == 'schedule':
+            if trigger == 'schedule' and selected != 'index':
                 fresh_settings.mark_scheduled(state_dir, run_id)
             recorder = RunRecorder(run_dir, state_dir, run_id=run_id, mode=selected, trigger=trigger, settings=values)
         # Monitor chỉnh tốc độ/tạm dừng qua file này; tiến trình con crawl.py nhận thêm CRAWL_LIVE_KEY của nguồn.
@@ -932,7 +945,8 @@ def run_job(mode: str, trigger: str | None = None, run_id: str | None = None, fr
                 print(f'Run {selected}: {run_dir}' + (f' (xoá lượt cũ: {", ".join(removed)})' if removed else ''), flush=True)
                 code = execute(selected, recorder, values, state_dir, run_dir, os.environ[key], index_config)
             recorder.check_stop()
-            status = 'ok' if code == 0 else 'partial'
+            incomplete = recorder.data.get('incompleteSources') or recorder.data['counts'].get('index', {}).get('deferred')
+            status = 'ok' if code == 0 and not incomplete else 'partial'
             return code
         except BaseException as exc:
             error = f'{type(exc).__name__}: {exc}'
@@ -990,7 +1004,11 @@ def run_index(rec: RunRecorder, index_config) -> None:
             index_config = index_settings(target)
             key = 'SEED_DATABASE_URL' if target == 'local' else 'CLOUD_SEED_DATABASE_URL'
             check_local_only(target, os.environ[key], index_config)
-        report = with_retry('index', lambda: index_catalog(index_config, rec.run_dir / 'index_detail.jsonl'), detail)
+        report = index_backlog.guarded_index(rec.state_dir / 'index_pending.json',
+            lambda: with_retry('index', lambda: index_catalog(index_config, rec.run_dir / 'index_detail.jsonl'), detail))
+        if report.get('deferred'):
+            detail['_status'] = 'partial'
+            say(f"catalog.index.deferred reason={report['reason']} retryAfter={report['retryAfter']}; DB retained")
         detail.update(report or {})
     rec.set_counts(index=report)
     (rec.run_dir / 'index_report.json').write_text(json.dumps(report or {}, ensure_ascii=False, indent=1),
@@ -1117,7 +1135,12 @@ def crawl_and_load(selected: str, rec: RunRecorder, values: dict, state_dir: Pat
     print(json.dumps({'mode': selected, 'discovery': trip['discovery'], 'sources': statuses,
                       'catalog': summary, 'database': counts}, ensure_ascii=False, default=str), flush=True)
     unpriced = (coverage or {}).get('unpricedHotelDates') if trip_used else None
-    return EXIT_PARTIAL if unpriced or incomplete_sources(rec, run_dir) else 0
+    # A committed partial catalog is usable. Keep warnings in run.json, not a fatal process exit.
+    rec.data['incompleteSources'] = incomplete_sources(rec, run_dir)
+    if unpriced:
+        rec.data['incompleteSources']['trip-hotels.prices'] = 'unpriced dates'
+    rec.save()
+    return 0
 
 
 def normalise_step(run_dir: Path, destinations: str | None, merge_only: bool = False) -> Path:

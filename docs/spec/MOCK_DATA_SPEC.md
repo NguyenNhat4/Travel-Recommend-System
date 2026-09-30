@@ -64,7 +64,7 @@ Số đo trên snapshot hiện hành 11.387 dòng, `--seed 42`: 7.145 event (pur
 src/data_collection/
 ├── data/products.jsonl         # runtime artifact từ crawler, 13 trường CDP; bị gitignore
 ├── data/products.synthetic.jsonl # fallback do gen_products.py sinh; sourceRef bắt đầu bằng 'synthetic:'
-├── snapshots/2026-09-29/       # snapshot catalog mặc định nén + manifest/checksum + mapping combo đã duyệt; có trong Git
+├── snapshots/2026-09-30/       # snapshot catalog mặc định nén + manifest/checksum + mapping combo đã duyệt; có trong Git
 ├── seed/
 │   ├── __main__.py             # CLI: python -m data_collection.seed --as-of YYYY-MM-DD --seed 42 [--reset] [--users 2000]
 │   ├── config.py               # mọi tỷ lệ, phân bố, danh sách từ khoá — KHÔNG hard-code trong logic

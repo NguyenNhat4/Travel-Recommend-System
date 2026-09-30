@@ -5,6 +5,10 @@
 - Nguồn yêu cầu: `docs/prd/deployment-plan.md` §3, §4, §5, §6; `src/data_collection/README.md` mục “Job hằng ngày trên VPS”
 - Trạng thái: đã duyệt — đã triển khai artifact CI/CD trong repo, chờ cấu hình target VM/Environment để chạy remote
 
+## Cập nhật crawler ngày 30/09/2026
+
+Theo yêu cầu người dùng tự cào ngay sau deploy, workflow crawler riêng hiện build/publish cả daily và fresh. Fresh dùng image `${GAR_DAILY_IMAGE}-fresh`, tag SHA và latest; helper `scripts/deploy-crawler-vm.sh` import gói thương gia insert-only, cài khối cron duy nhất với `--job fresh` và ghi yêu cầu full trong `deploy-pending`. Runner khởi chạy ngay khi rảnh, giữ yêu cầu cho cron nếu fresh/legacy batch đang bận; chỉ xóa sau exit 0 và không xóa yêu cầu của image mới hơn. CD không đợi toàn lượt hoàn tất và không restart monitor/batch hiện tại. Phần mô tả cron legacy bên dưới là thiết kế nền trước cập nhật này; vận hành hiện tại theo `docs/guide/trien-khai-job-cao-du-lieu.md`. Backend CD giữ riêng, không bị sửa trong thay đổi này.
+
 ## Mục tiêu
 
 Tạo một luồng CI/CD có thể kiểm tra, build, publish và triển khai Backend cùng image crawler lên VM/VPS có Docker. Sau mỗi lần deploy, crawler được cấu hình tự động để chạy hằng ngày mà không cần người vận hành sửa crontab bằng tay.

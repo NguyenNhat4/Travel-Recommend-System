@@ -1,4 +1,4 @@
-# Image contains code only. Runtime data, snapshots, tests and secrets stay outside.
+# Image contains code and the verified business release bundle. Runtime data, other snapshots, tests and secrets stay outside.
 *
 !src
 !src/data_collection
@@ -12,7 +12,9 @@ src/data_collection/data
 src/data_collection/cache
 src/data_collection/tests
 src/data_collection/sample
-src/data_collection/snapshots
+src/data_collection/snapshots/*
+!src/data_collection/snapshots/2026-09-30-business
+!src/data_collection/snapshots/2026-09-30-business/**
 
 # The index job imports backend code. Re-exclude caches, virtualenvs and secrets after the re-include.
 !src/backend/

@@ -42,7 +42,7 @@ Ví dụ (minh hoạ, `productId` giả; giá lấy theo khoảng của dữ li�
 
 ## Có dữ liệu trên máy
 
-Snapshot mặc định `2026-09-29` có vé khứ hồi trip.com (cào ngày 29/09/2026). Sau khi pull:
+Snapshot mặc định `2026-09-30` có vé khứ hồi trip.com kèm hạng vé (cào ngày 30/09/2026). Sau khi pull:
 
 ```bash
 make demo-db-reset
@@ -51,7 +51,8 @@ make demo-db-reset
 - Lệnh này xoá dữ liệu demo local (user thử, giỏ, đơn) rồi seed lại. Máy đã seed trước đây thì `make demo-db` dừng vì DB đã
   có dữ liệu.
 - Khởi động lại backend. Không cần `make index-vectors`: chuyến bay không được index.
-- Kết quả: 11.708 sản phẩm; **290 vé khứ hồi, tất cả đặt được** ở bất kỳ ngày seed nào; 497 vé một chiều / vé cũ. Vé khứ hồi
+- Kết quả: 11.718 sản phẩm; **290 vé khứ hồi, tất cả đặt được** ở bất kỳ ngày seed nào, trong đó **268 vé hạng Phổ thông**
+  (`code: ECO`); 507 vé một chiều / vé cũ. Vé khứ hồi
   thuộc 29 tuyến giữa 6 thành phố: Hà Nội, TP.HCM, Đà Nẵng, Nha Trang, Đà Lạt, Phú Quốc.
 - Vé có ngày đi ngoài cửa sổ 30 ngày được seed dời vào cửa sổ, cả hai chặng cùng số ngày; tên / `returnDate` đổi theo. Giá giữ
   nguyên của ngày gốc, nên chỉ là **giá tham khảo** trên máy dev. Dữ liệu thật trên VM giữ ngày thật và cào lại hằng ngày.
@@ -72,9 +73,11 @@ make demo-db-reset
 - **`null` = chưa biết.** Đừng hiện "0 kg", "không có suất ăn" hay "không đổi được". Hiện chưa nguồn nào có số liệu hành
   lý / suất ăn / đổi vé nên các trường này đang `null`.
 - `soldOut: null` = chưa biết. `EXPIRED` **không** có nghĩa hết ghế — chỉ là báo giá cũ, chờ lượt cào sau làm mới.
-  Vé khứ hồi trong snapshot có `priceValidUntil: 2026-09-30`, nên từ 01/10 trên máy dev hiện `EXPIRED` nhưng vẫn thêm giỏ và
+  Vé khứ hồi trong snapshot có `priceValidUntil: 2026-10-01`, nên từ 02/10 trên máy dev hiện `EXPIRED` nhưng vẫn thêm giỏ và
   đặt được. Nên hiện nhãn kiểu "Giá có thể đã thay đổi", không khoá nút đặt.
-- Vé trip.com: `code: null`, `name: "Giá rẻ nhất"`. Backend không đoán hạng; đừng gắn nhãn "Phổ thông".
+- Hạng lấy từ nguồn: vé khứ hồi trip.com mà trang ghi "Economy class" có `code: ECO`, `name: "Phổ thông"`. Vé một chiều và
+  22 vé khứ hồi trang không ghi hạng: `code: null`, `name: "Giá rẻ nhất"`. Backend không đoán hạng; đừng gắn nhãn "Phổ thông"
+  cho `code: null`.
 - Chưa có giá thương gia. Thiếu hạng là chưa có dữ liệu, không phải hết chỗ. Khi có, hạng mới chỉ thêm phần tử vào mảng,
   shape không đổi.
 

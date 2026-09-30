@@ -248,7 +248,8 @@ class JobTimeoutTests(unittest.TestCase):
 
     def test_source_timeout_makes_a_partial_run_that_still_loads(self):
         code, data, run, calls = self.run_job({'vinpearl': perr.EXIT_TIMEOUT})
-        self.assertEqual(code, fresh_catalog.EXIT_PARTIAL)
+        self.assertEqual(code, 0)
+        self.assertEqual(data['status'], 'partial')
         self.assertEqual(calls, ['normalize', 'validate', 'load', 'index'])
         step = next(s for s in data['steps'] if s['name'] == 'vinpearl')
         self.assertEqual((step['status'], step['detail']['errorKind']), ('timeout', 'timeout'))
@@ -261,7 +262,8 @@ class JobTimeoutTests(unittest.TestCase):
                                             prices_timeout=True)  # ~1 s cho cả phần cào
         step = next(s for s in data['steps'] if s['name'] == 'trip-hotels.prices')
         self.assertEqual(step['status'], 'timeout')
-        self.assertEqual(code, fresh_catalog.EXIT_PARTIAL)
+        self.assertEqual(code, 0)
+        self.assertEqual(data['status'], 'partial')
         self.assertEqual(calls, ['normalize', 'validate', 'load', 'index'])  # không lỗi "Không có khách sạn Trip đủ JSON giá"
 
 
