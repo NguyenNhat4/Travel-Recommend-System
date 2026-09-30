@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Job VM. `run` (= `legacy-run`), `init`, `daily`: job daily.py (Dockerfile.daily) mà cron của CI/CD đang gọi.
+# Job VM. `run` (= `legacy-run`), `init`, `daily`: job legacy daily.py (Dockerfile.daily). CI/CD hiện chọn fresh-run.
 # `fresh-run [auto|full|daily|index|status|due|tick]`: job cào mới (Dockerfile.fresh-catalog), nạp DB rồi index Weaviate. Chỉ một
 #   trong hai job được lên lịch cho cùng DB. Theo dõi job mới: `logs [-f] [-n SỐ_DÒNG] [LƯỢT]` · `report [SỐ_LƯỢT]` ·
 #   `fresh-run status`; backend compose cùng VM: `backend [logs [-f] [-n SỐ_DÒNG]]`.
 # `fresh-monitor`: UI của job cào mới ở 127.0.0.1:8765 (image FRESH_IMAGE). `monitor`: cùng UI chạy trong image daily
-#   (IMAGE), đọc <DATA_DIR>/state, /fresh_runs — CD gọi lệnh này.
+#   (IMAGE), đọc <DATA_DIR>/state, /fresh_runs. CD khởi động lại `fresh-monitor` sau mỗi lần deploy.
 # Cả hai mở public tạm thời (IP ngoài của VM) bằng MONITOR_HOST=0.0.0.0 MONITOR_PUBLIC=1; chưa có đăng nhập.
 # Only this runner script, Docker, an env file and a data volume are needed on the VM.
 set -euo pipefail
@@ -43,6 +43,13 @@ docker_run() {  # docker_run <tên container> [tuỳ chọn docker…] -- <lện
   local args=(--rm --name "$name" --user "$(owner)" -v "$DATA_DIR:/data" --env-file "$ENV_FILE")
   if [ -n "$DOCKER_NETWORK" ]; then args+=(--network "$DOCKER_NETWORK"); fi
   docker run "${args[@]}" "${opts[@]}" "$IMAGE" "$@"
+}
+
+cmd_import_flights() {
+  [ -r "$ENV_FILE" ] || die "không đọc được $ENV_FILE"
+  # Bundled release data needs no interim files or writable data volume.
+  docker run --rm --name "$NAME-import-flights-$$" --network "${DOCKER_NETWORK:-host}" \
+    --env-file "$ENV_FILE" "$IMAGE" python -m src.data_collection.seed.release_flights "$@"
 }
 
 cmd_init() {
@@ -107,7 +114,7 @@ cmd_fresh_run() {
     return
   fi
   find "$log_dir" -maxdepth 1 -name 'fresh-catalog-*.log' -mtime +30 -delete 2>/dev/null || true
-  if [ -n "$(docker ps -q --filter "name=^${FRESH_NAME}\$")" ]; then
+  if [ -n "$(docker ps -q --filter "name=^${FRESH_NAME}\$" --filter "name=^${NAME}\$")" ]; then
     echo "$(date -Is) SKIP: container $FRESH_NAME vẫn đang chạy" >> "$log_dir/fresh-catalog-errors.log"
     echo "fresh catalog: previous run still active"
     return 0
@@ -280,8 +287,9 @@ cmd_backend() {
 }
 
 case "${1:-}" in
+  import-flights) shift; cmd_import_flights "$@" ;;
   init) shift; cmd_init "$@" ;;
-  run) cmd_legacy_run ;;  # cron của CI/CD (scripts/install-vota-cron.sh) gọi `run`: giữ đúng job daily.py
+  run) cmd_legacy_run ;;  # compatibility for the legacy cron/CLI
   fresh-run) shift; cmd_fresh_run "$@" ;;
   logs) shift; cmd_logs "$@" ;;
   report) shift; cmd_report "$@" ;;

@@ -100,6 +100,10 @@ FIELDS: tuple[Field, ...] = (
           minimum=1, maximum=200),
     Field("tripFlights.flightsPerRoute", "strategy", "trip.com – số chuyến giữ lại mỗi tuyến (0 = tất cả)", "int", 0,
           minimum=0, maximum=100),
+    Field("tripFlights.fareMinutes", "strategy", "trip.com – phút cho giá thương gia + khứ hồi 3/5/7 ngày mỗi lượt (0 = tắt)",
+          "int", 30, minimum=0, maximum=600,
+          help="Xoay vòng: mỗi lượt tìm các tuyến/ngày bay chưa tìm hoặc tìm lâu nhất tới khi hết số phút này; vẫn dừng "
+               "trước hạn giờ trip.com vé máy bay 3 phút."),
     Field("normalise.roomsPerHotel", "strategy", "Chuẩn hoá – số hạng phòng OTA giữ mỗi khách sạn (0 = tất cả)", "int", 0,
           minimum=0, maximum=100),
     Field("normalise.maxErrorPercent", "reliability", "Chuẩn hoá – tỉ lệ bản ghi lỗi tối đa mỗi nguồn (%)", "float", 5.0,

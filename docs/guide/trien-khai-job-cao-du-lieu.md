@@ -15,7 +15,7 @@ Repo có hai job. Hai job cùng ghi `cdp.products` nên không được chạy s
 | Lịch cron | `0 2 * * *` | `*/15 * * * *` (tick rảnh không làm gì, không cần DB) |
 | Dữ liệu / env | `/srv/vota/daily-data`, `/etc/vota/daily.env` | `/srv/vota/fresh-catalog-data` (UID 10001), `/etc/vota/fresh-catalog.env`, log `/srv/vota/fresh-catalog-logs` |
 | Monitor | `run_daily_docker.sh monitor` (container `vota-daily-monitor`) | `run_daily_docker.sh fresh-monitor` (container `vota-fresh-catalog-monitor`) |
-| CI/CD hiện tại | **Có**: build, publish, cài cron, khởi động monitor | **Chưa**: image không được CI build |
+| CI/CD hiện tại | Không deploy (quay lại bằng tay) | **Mặc định deploy**: build/publish, cron ghim digest, khởi động lại monitor; không tự chạy lượt cào |
 
 Cả hai lịch được cài bằng **một** script `scripts/install-vota-cron.sh`, trong **cùng một khối** crontab
 (`# BEGIN VOTA CRAWLER` … `# END VOTA CRAWLER`). Cài job này là **thay** job kia, nên không thể vô tình chạy cả hai:
@@ -29,51 +29,54 @@ scripts/install-vota-cron.sh --job legacy --image <AR>/vota-daily:latest --runne
 scripts/install-vota-cron.sh --job fresh --image <AR>/vota-fresh-catalog:latest --runner /opt/vota/bin/run_daily_docker.sh --dry-run
 ```
 
-Không có `--job` thì script cài job cũ, giống hệt trước đây (CI/CD hiện tại không bị đổi). Test:
+Không có `--job` thì script vẫn cài job cũ để tương thích; CI/CD mới truyền rõ `--job fresh`. Test:
 `bash scripts/tests/test-install-vota-cron.sh`.
 
-## Hiện trạng CI/CD (nhánh `release-mvp-v2`)
+## Push và deploy (CD của `release-mvp-v2`, cập nhật 30/09/2026)
 
-`.github/workflows/crawler-ci-cd.yml`, khi push vào nhánh release:
+Workflow `crawler-ci-cd.yml` deploy khi push/merge PR vào main/release-mvp-v1/v2/v3 và có thay đổi trong `src/data_collection/**`,
+`Dockerfile.fresh-catalog` hoặc script cron. Nhánh `test/newcrawl` phải mở PR vào một nhánh này; push riêng nhánh test chỉ chạy CI.
+Các bước:
 
-1. build / publish **`Dockerfile.daily`** (secret `GAR_DAILY_IMAGE`);
-2. chép `run_daily_docker.sh` lên VM, chạy `install-vota-cron.sh` **không có `--job`** → cài **job cũ**;
-3. khởi động `run_daily_docker.sh monitor` bằng image daily, chờ container `vota-daily-monitor`.
+1. Kiểm shell, chạy `scripts/tests/test-install-vota-cron.sh`, build `Dockerfile.fresh-catalog`.
+2. Publish image fresh tại secret `GAR_FRESH_IMAGE` (tag SHA và `latest`), lấy digest bất biến.
+3. Chép `run_daily_docker.sh` lên VM, cài khối cron **fresh** duy nhất (`fresh-run tick` mỗi 15 phút) với image ghim digest.
+4. Xoá và khởi động lại monitor fresh (public cổng 8765). Chỉ container monitor bị thay; lượt cào đang chạy giữ nguyên và tự kết thúc.
 
-Hệ quả: nếu cài tay lịch job mới trên VM, **lần push tiếp theo CD sẽ cài lại job cũ** (thay mất lịch job mới). Phải sửa
-workflow trước (mục dưới), không cài tay.
+CD **không** tự chạy lượt cào ngay. Code mới có hiệu lực ở lượt kế tiếp theo giờ trong monitor. Muốn cào ngay: mở monitor, bấm chạy
+lượt `full` (gồm vé Trip SEO/khứ hồi và collector thương gia, rồi normalize → DB → index).
 
-## Chuyển sang job mới — việc của đội deploy
+Nguồn quá giờ có dữ liệu hợp lệ hoặc Cohere 429 không còn làm lượt trả `exit=3`: report ghi `partial`, index chờ đến hạn rồi tick tự
+thử lại (xem [vé thương gia và index chờ](ve-thuong-gia-va-index-cho.md)).
 
-1. **Workflow `crawler-ci-cd.yml`:**
-   - thêm build / publish `Dockerfile.fresh-catalog` với tag `:<sha>` và `:latest` (secret mới, vd. `GAR_FRESH_IMAGE`);
-   - bước "Install crawler cron": thêm `--job fresh --image "$FRESH_IMAGE:latest"`, bỏ `--data-dir` / `--env-file`
-     của job cũ (mặc định của `--job fresh` đã đúng đường dẫn ở bảng trên);
-   - bước "Restart crawler monitor":
-     - chạy `MONITOR_HOST=0.0.0.0 MONITOR_PUBLIC=1 FRESH_IMAGE="$FRESH_IMAGE:latest" run_daily_docker.sh fresh-monitor`
-       (link công khai, xem mục "Monitor: link để xem và bấm chạy"; bỏ hai biến `MONITOR_*` nếu chỉ muốn xem qua SSH);
-     - chờ container `vota-fresh-catalog-monitor` thay cho `vota-daily-monitor`.
-   - Có thể bỏ build `Dockerfile.daily` khi không còn cần quay lại job cũ.
-2. **Một lần trên VM, trước lần deploy đầu tiên:**
-   - tạo thư mục và env file theo README ("Đóng gói và bàn giao cho đội deploy");
-   - điền `/etc/vota/fresh-catalog.env`: DB đích, `COHERE_API_KEY`, Weaviate; tuỳ chọn `COHERE_EMBED_CONCURRENCY`,
-     `COHERE_CALLS_PER_MINUTE`.
-   - DB phải đã migrate. Job chỉ upsert, **không reset** catalog 11.387 sản phẩm hay giỏ / đơn.
-3. **Kiểm sau deploy:**
-   - `crontab -l`: đúng **một** khối `VOTA CRAWLER`, dòng kết thúc bằng `fresh-run tick`, không còn dòng ` run`;
-   - `run_daily_docker.sh fresh-run status`: lịch kế tiếp, không có lượt treo;
-   - chạy thử một lượt (`fresh-run full`, hoặc chờ lịch) rồi:
-     - `run_daily_docker.sh report 3`: kết quả, số dòng mới / làm mới, embed;
-     - monitor (http://<IP ngoài của VM>:8765, hoặc qua SSH: `ssh -L 8765:127.0.0.1:8765 <vm>` rồi http://127.0.0.1:8765):
-       sơ đồ luồng không có ô đỏ.
-4. **Quay lại job cũ** (nếu cần): `install-vota-cron.sh --job legacy …` và dùng lại `monitor`.
+## Điều kiện VM và kiểm sau deploy
+
+VM hiện có job fresh cần giữ nguyên:
+
+- `/srv/vota/fresh-catalog-data` (app UID/GID 10001 ghi được), `/etc/vota/fresh-catalog.env` (deploy account đọc được), `/srv/vota/fresh-catalog-logs` (deploy account ghi được).
+- Env có `DB_TARGET`, kết nối DB, Cohere và Weaviate của đúng đích; tunnel DB và Docker đã hoạt động. CD không tự tạo env hay sửa secret:
+  **đổi key Cohere hoặc tắt vé Thương gia mô phỏng (`SIMULATED_BUSINESS_FARES=0`) phải sửa tay `/etc/vota/fresh-catalog.env`
+  trên VM** (xem [mục dưới](#vé-thương-gia-mô-phỏng-trên-vm)).
+- Đổi đường dẫn bằng các secret tùy chọn `GCE_CRON_DATA_DIR`, `GCE_CRON_ENV_FILE`, `GCE_CRON_LOG_DIR`, `GCE_CRON_RUNNER` (mặc định là
+  các đường dẫn fresh ở trên).
+
+Sau deploy, `crontab -l` chỉ có một khối `VOTA CRAWLER`, cuối dòng là `fresh-run tick`. `run_daily_docker.sh report 3` và log cho biết
+số dòng DB/index.
+
+Import lại 43 vé thương gia đóng gói trong image (insert-only, giữ ID đã có) khi DB mới chưa có:
+
+```bash
+IMAGE=<AR>/vota-fresh-catalog:latest ENV_FILE=/etc/vota/fresh-catalog.env /opt/vota/bin/run_daily_docker.sh import-flights
+```
+
+Quay lại legacy cần chủ động cài `install-vota-cron.sh --job legacy` và dùng image daily. Workflow này sẽ chọn lại fresh ở lần deploy tiếp.
 
 ## Monitor: link để xem và bấm chạy
 
 Monitor là trang web của job: sơ đồ các bước, log, báo cáo từng lượt, nút chạy lượt cào / chạy lại bước / cào lại một nguồn,
 trang cấu hình (nguồn, giờ chạy, chạy liên tục). Như bản deploy trước (25/09), mở bằng link không cần SSH:
 
-1. Chạy monitor với `MONITOR_HOST=0.0.0.0 MONITOR_PUBLIC=1` (bước "Restart crawler monitor" ở trên). Lệnh `monitor` của job cũ
+1. Chạy monitor với `MONITOR_HOST=0.0.0.0 MONITOR_PUBLIC=1` (thao tác riêng khi được phép khởi động/cập nhật monitor). Lệnh `monitor` của job cũ
    nhận cùng hai biến.
 2. Firewall GCP cho phép TCP `8765` vào VM (một lần, bỏ qua nếu bản deploy 25/09 đã mở):
 
@@ -89,8 +92,9 @@ Tắt link: chạy lại monitor không có hai biến `MONITOR_*` (chỉ còn `
 
 ## Nạp catalog snapshot lên DB staging một lần (tuỳ chọn)
 
-Dùng khi FE cần vé khứ hồi trên staging **trước** khi job mới chạy trên VM. Snapshot `2026-09-29` là snapshot `2026-09-23` cộng
-vé máy bay trip.com cào ngày 29/09/2026: 11.708 sản phẩm, có 290 vé khứ hồi (`src/data_collection/snapshots/README.md`).
+Dùng khi FE cần vé khứ hồi trên staging **trước** khi job cào chạy trên VM. Snapshot `2026-09-30` là snapshot `2026-09-23` cộng
+vé máy bay trip.com cào ngày 30/09/2026: 11.718 sản phẩm, có 290 vé khứ hồi, 268 vé hạng Phổ thông
+(`src/data_collection/snapshots/README.md`).
 
 Chế độ `--catalog-only` chỉ upsert `cdp.products` và thay `catalog.combo_items` của các combo. Nó **không xoá** gì, không đụng
 `cdp.profiles` / `cdp.events`, `app.*` (user, giỏ, đơn) hay database `insider`. Không cần Weaviate / Cohere: chuyến bay không được
@@ -102,10 +106,10 @@ index, tuyến đã có vector.
 3. Chạy từ gốc repo (DSN để trong biến môi trường, không ghi vào file commit):
 
    ```bash
-   cd src && SEED_DATABASE_URL='postgresql://<user>:<mật khẩu>@127.0.0.1:15432/vota' python -m data_collection.seed --products data_collection/snapshots/2026-09-29/products.jsonl.gz --as-of "$(date +%F)" --catalog-only
+   cd src && SEED_DATABASE_URL='postgresql://<user>:<mật khẩu>@127.0.0.1:15432/vota' python -m data_collection.seed --products data_collection/snapshots/2026-09-30/products.jsonl.gz --as-of "$(date +%F)" --catalog-only
    ```
 
-   - Kết quả mong đợi trên DB đang có catalog 11.387: `inserted=321 · updated=110`.
+   - Kết quả mong đợi trên DB đang có catalog 11.387: `inserted=331 · updated=110`.
    - Đã thử trên database nháp: `app.bookings`, `cdp.events` không đổi, `db/verify.sql` 0 FAIL.
    - Muốn xem trước, không ghi DB: thêm `--generate-only`.
 
@@ -125,3 +129,52 @@ Lưu ý:
 - `make demo-db` / `make demo-db-reset`: chỉ cho máy dev (Postgres local); không chạy lên staging (có `--reset`).
 - Chạy liên tục (`stream.enabled`, `stream.db`) mặc định **tắt**. Bật trên monitor sau khi lượt đầu trên VM ổn
   (`docs/plan/2026-09-29-bo-cho-doi-giua-cac-buoc.md`, P2).
+
+## Vé thương gia, khứ hồi 3/5/7 ngày và quota Cohere (30/09/2026)
+
+- **Collector thương gia / khứ hồi** (`trip-flights`, chỉ lượt `full`): sau trang SEO, tìm thêm giá Thương gia một chiều và
+  khứ hồi về sau 3, 5, 7 ngày cho 6 tuyến, xoay vòng theo ngày bay +1..+29. Mỗi lượt dùng tối đa `tripFlights.fareMinutes`
+  phút (monitor, mặc định 30; `0` = tắt), trạng thái xoay vòng ở `/srv/vota/fresh-catalog-data/state/trip_fares_rotation.json`.
+- **Giới hạn đã biết:** Trip cấm các trang tìm vé này trong `robots.txt` và trả `HTTP 432` ("whaleguard block") cho Chromium
+  headless. Collector chờ 45 giây, thử lại một lần, rồi báo bị chặn; 3 lần liên tiếp thì dừng phần này (khoảng 2,5 phút mỗi
+  lượt). Lượt `full` vẫn nạp phần SEO, report ghi nguồn `trip-flights` chưa hoàn tất. Muốn bỏ hẳn thời gian này: đặt
+  `tripFlights.fareMinutes = 0` trên monitor. Không lách chống bot.
+- **43 vé Thương gia thật** (bay 15/10/2026) đã có trên DB VM. CD không import; DB mới thì chạy lệnh `import-flights` ở mục
+  trên.
+- **Cohere 429 / nguồn quá giờ:** report `partial` nhưng trả 0 khi dữ liệu hợp lệ đã nạp; 429 được hoãn vào
+  `state/index_pending.json`, cron thử lại riêng index khi tới `retryAfter`. Lỗi DB / schema / quality gate và lỗi index khác
+  vẫn báo lỗi. Chi tiết: [vé thương gia và index chờ](ve-thuong-gia-va-index-cho.md).
+
+## Vé Thương gia mô phỏng trên VM
+
+Cho web có hạng Thương gia ở mọi ngày có vé (quy tắc: `docs/prd/data-model.md` §3). Mỗi vé máy bay có số hiệu chuyến sinh
+thêm một vé Thương gia: giá vé gốc × 2,65, tên "(giá minh hoạ)", `attributes.simulated = true`, `sourceRef`
+`demo:business:<sourceRef gốc>`. Vé Thương gia thật cùng hành trình và ngày luôn thắng.
+
+**Mặc định bật**, không cần sửa env hay thao tác trên VM: sau khi bản này được deploy, mọi lượt nạp của job (kể cả tick bảo
+trì đầu lượt) tự sinh / cập nhật vé mô phỏng theo giá và cửa sổ 30 ngày.
+
+Muốn có ngay, không chờ lượt nạp: chạy một lần (chỉ ghi các dòng `demo:business:*`, dùng chung khoá ghi catalog với job; có
+lượt đang ghi DB thì chờ tới khi xong):
+
+```bash
+docker run --rm --network host --env-file /etc/vota/fresh-catalog.env --entrypoint python <AR>/vota-fresh-catalog:latest -m src.data_collection.seed.simulated_business --database-url-env CLOUD_SEED_DATABASE_URL
+```
+
+Hoặc từ máy có tunnel DB: `cd src && python -m data_collection.seed.simulated_business --database-url-env
+CLOUD_SEED_DATABASE_URL`. Kết quả in dạng `simulatedBusiness=<số vé mở> · simulatedBusinessClosed=… ·
+simulatedBusinessWritten=…`; chạy lại lần hai ghi `0`.
+
+**Kiểm** (SQL chỉ đọc):
+
+```sql
+SELECT available, count(*) FROM cdp.products WHERE source_ref LIKE 'demo:business:%' GROUP BY 1;
+```
+
+Monitor / report của lượt nạp DB có thêm `simulatedBusiness`, `simulatedBusinessClosed`, `simulatedBusinessWritten`.
+
+**Tắt:** thêm `SIMULATED_BUSINESS_FARES=0` vào `/etc/vota/fresh-catalog.env` (cần quyền VM); lần nạp sau chuyển mọi vé mô
+phỏng sang `available = false`. Muốn tắt ngay: thêm `--disable` vào lệnh chạy một lần ở trên. Chỉ `--disable` mà env chưa đặt
+`0` thì lượt nạp sau bật lại. Không xoá dòng vì đơn cũ có thể trỏ tới.
+
+`daily.py` (job legacy) và `seed --catalog-only` (nạp snapshot lên staging ở mục trên) theo cùng biến và cùng mặc định bật.

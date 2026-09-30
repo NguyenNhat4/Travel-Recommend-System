@@ -10,7 +10,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DATA_COLLECTION_DIR = REPO_ROOT / "src" / "data_collection"
 DEFAULT_DATA_DIR = DATA_COLLECTION_DIR / "data"
-DEFAULT_SNAPSHOT_DIR = DATA_COLLECTION_DIR / "snapshots" / "2026-09-29"
+DEFAULT_SNAPSHOT_DIR = DATA_COLLECTION_DIR / "snapshots" / "2026-09-30"
 DEFAULT_PRODUCTS_SNAPSHOT = DEFAULT_SNAPSHOT_DIR / "products.jsonl.gz"
 DEFAULT_PRODUCTS_CANDIDATES = (
     DEFAULT_DATA_DIR / "products.jsonl",

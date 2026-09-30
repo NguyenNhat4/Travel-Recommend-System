@@ -87,6 +87,46 @@ def test_seed_keeps_real_date_in_window_else_shifts_both_legs_and_ignores_quote_
     assert tuyen['available_from'] == tuyen['available_to'] == day.isoformat()
 
 
+def test_real_crawl_load_keeps_real_date_and_blocks_expired_quotes():
+    """daily.py nạp dữ liệu thật qua seed --catalog-only --real-flight-dates: không dời ngày, hết hạn báo giá thì không đặt được."""
+    route, raw = roundtrip()
+    p, = n.trip_roundtrip_products(raw, route)
+    for as_of, bookable in [(date(2026, 9, 29), True), (date(2026, 10, 1), False), (date(2026, 11, 1), False)]:
+        rows, stats = convert([route, p], {}, as_of, real_flight_dates=True)
+        loaded = next(x for x in rows if x['product_id'] == p['productId'])
+        assert loaded['available'] is bookable
+        assert loaded['attributes']['departureAt'] == p['attributes']['departureAt'] and loaded['name'] == p['name']
+        if bookable: assert loaded['available_from'] == loaded['available_to'] == '2026-10-10'
+        assert stats['chuyến bay: báo giá ngày cố định (ngày thật, job cào)'] == 1
+
+
+def test_daily_load_passes_real_flight_dates_to_seed():
+    import inspect
+    import daily
+    source = inspect.getsource(daily)
+    assert '"--catalog-only", "--real-flight-dates"' in source
+
+
+def test_seed_cli_flag_reaches_the_loader(tmp_path):
+    """seed --catalog-only --real-flight-dates (lệnh daily.py gọi) giữ ngày thật; bỏ cờ thì seed demo dời vào cửa sổ."""
+    import json, subprocess, sys
+    from pathlib import Path
+    route, raw = roundtrip()
+    p, = n.trip_roundtrip_products(raw, route)
+    (tmp_path / 'products.jsonl').write_text(''.join(json.dumps(r, ensure_ascii=False) + '\n' for r in (route, p)), encoding='utf-8')
+    src = Path(__file__).resolve().parents[2]
+    def loaded(*flags):
+        subprocess.run([sys.executable, '-m', 'data_collection.seed', '--catalog-only', '--generate-only', *flags,
+                        '--products', str(tmp_path / 'products.jsonl'), '--as-of', '2026-11-01'],
+                       cwd=src, check=True, capture_output=True)
+        rows = [json.loads(l) for l in (tmp_path / 'loader' / 'cdp_products.jsonl').read_text(encoding='utf-8').splitlines()]
+        return next(r for r in rows if r['product_id'] == p['productId'])
+    real = loaded('--real-flight-dates')
+    assert real['available'] is False and real['attributes']['departureAt'] == p['attributes']['departureAt']
+    demo = loaded()
+    assert demo['available'] is True and demo['available_from'] >= '2026-11-01'
+
+
 def test_shift_when_new_return_equals_old_departure():
     attrs = {'departureAt': '2026-10-10T08:00:00+07:00', 'arrivalAt': '2026-10-10T10:00:00+07:00', 'returnDate': '2026-10-13',
              'returnFlight': {'departureAt': '2026-10-13T08:00:00+07:00', 'arrivalAt': '2026-10-13T10:00:00+07:00'}}

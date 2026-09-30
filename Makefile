@@ -5,7 +5,7 @@ SHELL := /bin/bash
 PYTHON ?= python
 AS_OF ?= $(shell date +%F)
 SEED ?= 42
-CATALOG_SNAPSHOT ?= data_collection/snapshots/2026-09-29/products.jsonl.gz
+CATALOG_SNAPSHOT ?= data_collection/snapshots/2026-09-30/products.jsonl.gz
 # Cổng host của Postgres; đổi khi máy đã có Postgres khác giữ 5432.
 # Phải khớp POSTGRES_HOST_PORT dùng cho `docker compose up`.
 POSTGRES_HOST_PORT ?= 5432
