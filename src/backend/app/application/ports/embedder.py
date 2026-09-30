@@ -7,6 +7,9 @@ import numpy as np
 
 
 class EmbedderPort(Protocol):
+    """Tuỳ chọn (duck-typing, use case kiểm bằng `getattr`): `embed_query_status(q) -> (vector, "hit" | "miss")` của adapter
+    có cache (`application/search/query_cache.py`), `embed_queries(texts)` embed cả lô câu truy vấn (`input_type`
+    search_query) cho prewarm."""
     name: str
 
     def embed_docs(self, texts: list[str]) -> np.ndarray: ...

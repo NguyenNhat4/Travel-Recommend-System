@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 from time import perf_counter
 
@@ -27,6 +28,15 @@ from src.backend.app.domain.search import (
 )
 
 logger = logging.getLogger("uvicorn.error")
+
+_WS = re.compile(r"\s+")
+
+
+def canonical_query(text: str) -> str:
+    """Gộp khoảng trắng — chuỗi duy nhất đi vào embed / BM25 và làm khoá cache vector truy vấn (không fold hoa/thường/dấu:
+    Cohere embed hai dạng đó khác nhau, không được gộp)."""
+    return _WS.sub(" ", text).strip()
+
 
 #: Khai báo ở diagnostics khi total/facets chỉ đếm trên top-K ứng viên (contract `[C4]`).
 ANN_DIAGNOSTICS = {"searchMode": "ANN_CANDIDATE_SCORE", "approximate": True, "totalExact": False, "facetsExact": False}
@@ -115,10 +125,11 @@ class SearchProducts:
         limit = min(limit, self.max_limit)
         stages = StageTimer()
         nq = self._normalizer(q) if self._normalizer else None
-        text = nq.text if nq else q   # embed, BM25 và độ phủ đều dùng câu đã chuẩn hoá; `q` gốc chỉ còn để đối chiếu
+        # embed, BM25 và độ phủ đều dùng câu đã chuẩn hoá + gộp khoảng trắng (= khoá cache); `q` gốc chỉ còn để đối chiếu
+        text = canonical_query(nq.text if nq else q)
         if nq:
             stages.lap("normalize")
-        qvec = self.embedder.embed_query(text)
+        qvec, embed_cache = self._embed(text)
         stages.lap("embed")
         mask = self.index.mask(taxonomy, destination)
         allowed = self.index.allowed_ids(mask)
@@ -134,6 +145,8 @@ class SearchProducts:
             diagnostics = dict(ANN_DIAGNOSTICS)
         if nq:
             diagnostics.update(_normalization_diagnostics(q, nq))
+        if embed_cache:   # contract 1.12.0: chỉ khi embedder có cache (CachingQueryEmbedder)
+            diagnostics["embedCache"] = embed_cache
         page = out.order[offset: offset + limit]
         results = [hit(self.index, i, out.scores[i]) for i in page]
         stages.lap("hydrate")
@@ -151,6 +164,19 @@ class SearchProducts:
                             "modelVersion": self.index.model_version,
                             "stageMs": stage_ms},
         }
+
+    def query_text(self, q: str) -> str:
+        """Chuỗi thật sự gửi đi embed cho câu `q` (chuẩn hoá + gộp khoảng trắng) — khoá cache; prewarm dùng để nạp đúng khoá."""
+        nq = self._normalizer(q) if self._normalizer else None
+        return canonical_query(nq.text if nq else q)
+
+    def _embed(self, text: str) -> tuple[np.ndarray, str | None]:
+        """(vector, "hit" | "miss" | None): None khi embedder không có cache (bench, test, SEARCH_EMBED_CACHE=false)."""
+        with_status = getattr(self.embedder, "embed_query_status", None)
+        if with_status is None:
+            return self.embedder.embed_query(text), None
+        vec, status = with_status(text)
+        return vec, status
 
     def _hybrid(self, q: str, qvec: np.ndarray, dense: list[VectorHit], allowed, filtered_count: int,
                 facet_fields: dict, stages: StageTimer | None = None) -> tuple[SearchOutcome, dict]:

@@ -1085,6 +1085,11 @@ export interface components {
                 /** @description Dựng các ProductSummary của trang trả về. */
                 hydrate?: number;
             };
+            /**
+             * @description hit = vector của câu (sau chuẩn hoá) lấy từ cache, không gọi Cohere; miss = gọi Cohere rồi ghi cache. Không đổi kết quả hay thứ tự — chỉ stageMs.embed khác nhau. Khoá cache là chuỗi đã chuẩn hoá và gộp khoảng trắng, nên "KS ở NT" và "khách sạn ở Nha Trang" dùng chung một vector.
+             * @enum {string}
+             */
+            embedCache?: "hit" | "miss";
             /** @description Chuỗi thực sự đưa vào embed và BM25. Vắng mặt khi không khác `query`. Event `search` ghi sang CDP (§3.2) vẫn dùng `query` gốc. */
             normalizedQuery?: string;
             /** @description Cụm đã thay theo thứ tự xuất hiện: viết tắt (KS → khách sạn, PQ → Phú Quốc), tên điểm đến về giá trị catalog (da nang → Đà Nẵng), kiểu đi về nhãn catalog (bạn gái → cặp đôi). */

@@ -49,6 +49,60 @@ def _settings(seconds=900.0):
     return SimpleNamespace(catalog_refresh_seconds=seconds)
 
 
+def test_prewarm_runs_once_in_background_after_the_first_publish_and_shutdown_waits_for_it(caplog):
+    import logging
+    from src.backend.app.application.search.prewarm import PrewarmReport
+    caplog.set_level(logging.INFO, logger="uvicorn.error")
+    app = _app()
+    first = _services(3)
+    build = _Build(first, _services(4))
+    calls = []
+
+    def fake_prewarm(settings, services, stop):
+        calls.append((services, stop.is_set()))
+        return PrewarmReport(queries=131, unique=131, embedded=131, skipped=0, batches=2, seconds=0.5)
+
+    async def scenario():
+        refresher = RecsysRefresher(app, SimpleNamespace(catalog_refresh_seconds=900.0, search_prewarm=True),
+                                    build=build, prewarm=fake_prewarm)
+        assert await refresher.reload() is True
+        assert refresher._prewarm_task is not None
+        assert await refresher.reload() is True          # lần nạp lại không prewarm lần nữa
+        refresher.stop()
+        await refresher.wait_prewarm(5.0)
+        refresher.close()
+    asyncio.run(scenario())
+    assert calls == [(first, False)]
+    assert any("search.prewarm.done" in r.getMessage() and "embedded=131" in r.getMessage() for r in caplog.records)
+
+
+def test_prewarm_failure_is_logged_and_never_breaks_startup(caplog):
+    import logging
+    caplog.set_level(logging.WARNING, logger="uvicorn.error")
+    app = _app()
+    build = _Build(_services(3))
+
+    def broken(settings, services, stop):
+        raise RuntimeError("Cohere 429")
+
+    async def scenario():
+        refresher = RecsysRefresher(app, SimpleNamespace(catalog_refresh_seconds=900.0, search_prewarm=True),
+                                    build=build, prewarm=broken)
+        assert await refresher.reload() is True
+        await refresher.wait_prewarm(5.0)
+    asyncio.run(scenario())
+    assert app.state.search == "search-3"
+    assert any("search.prewarm.failed" in r.getMessage() and "Cohere 429" in r.getMessage() for r in caplog.records)
+
+
+def test_prewarm_is_off_when_settings_do_not_ask_for_it():
+    app = _app()
+    refresher = RecsysRefresher(app, _settings(), build=_Build(_services(3)))
+    asyncio.run(refresher.reload())
+    assert refresher._prewarm_task is None
+    asyncio.run(refresher.wait_prewarm(0.1))          # không có task → trả về ngay
+
+
 def test_failed_refresh_keeps_the_snapshot_being_served():
     app = _app()
     first = _services(3)

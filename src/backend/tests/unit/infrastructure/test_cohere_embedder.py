@@ -30,6 +30,22 @@ def test_cohere_uses_document_and_query_input_types_and_normalizes():
     assert all(call["model"] == "embed-multilingual-v3.0" for call in seen)
 
 
+def test_embed_queries_batches_with_search_query_input_type():
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = __import__("json").loads(request.content)
+        seen.append(payload)
+        return httpx.Response(200, json={"embeddings": {"float": [[3.0, 4.0] + [0.0] * 1022 for _ in payload["texts"]]}})
+    embedder = CohereEmbedder("test-key", client=httpx.Client(base_url="https://cohere.test", transport=httpx.MockTransport(handler)))
+
+    vectors = embedder.embed_queries([f"câu {i}" for i in range(97)])
+
+    assert vectors.shape == (97, 1024) and np.allclose(np.linalg.norm(vectors, axis=1), 1.0)
+    assert [(call["input_type"], len(call["texts"])) for call in seen] == [("search_query", 96), ("search_query", 1)]
+    assert embedder.embed_queries([]).shape == (0, 1024) and len(seen) == 2
+
+
 def test_cohere_rejects_wrong_dimension():
     client = httpx.Client(
         base_url="https://cohere.test",
