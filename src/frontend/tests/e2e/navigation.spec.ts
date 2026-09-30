@@ -80,8 +80,11 @@ test('header controls share one 40px height and the header has no assistant entr
   await mockApi(page);
   await page.goto('/hotels');
   const header = page.locator('header');
+  // `.all()` chụp DOM ngay lúc gọi và không chờ: đợi bốn nhóm cùng "Tất cả dịch vụ" có đủ, nếu không runner chậm thấy nav rỗng.
+  const serviceButtons = header.getByRole('navigation', { name: 'Dịch vụ' }).getByRole('button');
+  await expect(serviceButtons).toHaveCount(5);
   const controls = [
-    ...(await header.getByRole('navigation', { name: 'Dịch vụ' }).getByRole('button').all()),
+    ...(await serviceButtons.all()),
     header.getByTitle('Thay đổi ngôn ngữ và tiền tệ'),
     header.getByRole('button', { name: 'Đặt chỗ của tôi' }),
     header.getByRole('button', { name: 'Đăng nhập' }),
@@ -97,7 +100,7 @@ test('header controls share one 40px height and the header has no assistant entr
   await expect(header.getByText('Trợ lý AI')).toHaveCount(0);
 });
 
-test('the hotels search sheet goes to /search with the chosen destination and trip context', async ({ page }) => {
+test('the hotels search sheet goes to /search with the chosen destination, and /search shows no trip-context chip', async ({ page }) => {
   await mockApi(page);
   await page.goto('/hotels');
   await page.getByRole('combobox').click();
@@ -110,7 +113,10 @@ test('the hotels search sheet goes to /search with the chosen destination and tr
   expect(url.searchParams.get('destination')).toBe('Nha Trang');
   expect(url.searchParams.get('adults')).toBe('2');
   expect(url.searchParams.get('checkIn')).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-  await expect(page.getByText(/Chuyến đi:/)).toBeVisible();
+  // Spec frontend §4.1a/§4.2: /search chỉ nối ngữ cảnh chuyến đi vào liên kết sản phẩm, không hiện chip ngày/số khách; điểm đến là chip có ✕.
+  await expect(page.getByRole('tab', { name: /^Lưu trú/ })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('button', { name: 'Bỏ lọc Nha Trang' })).toBeVisible();
+  await expect(page.getByText(/Chuyến đi:/)).toHaveCount(0);
 });
 
 for (const path of ['/', '/hotels', '/flights', '/experiences', '/combos']) {
