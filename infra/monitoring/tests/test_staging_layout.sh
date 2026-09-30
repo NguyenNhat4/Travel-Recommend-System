@@ -61,6 +61,8 @@ grep -q -F 'jsonPayload.message:\"fresh-catalog.exit=3\"' "$root_dir/main.tf"
 grep -q -F 'Docker watcher heartbeat' "$root_dir/main.tf"
 grep -q -F 'Crawler warnings and failures' "$root_dir/main.tf"
 grep -q -F 'Container stops and OOM' "$root_dir/main.tf"
+grep -q -F 'container_name = "EXTRACT(jsonPayload.container_name)"' "$root_dir/main.tf"
 python3 -m py_compile "$root_dir/vota-docker-event-watcher.py"
+PYTHONDONTWRITEBYTECODE=1 python3 -m pytest -q "$root_dir/tests/test_watcher_datetime.py"
 
 echo 'staging monitoring layout: PASS'
