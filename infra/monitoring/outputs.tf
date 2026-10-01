@@ -24,6 +24,7 @@ output "alert_policy_ids" {
     app_cpu         = google_monitoring_alert_policy.staging_vm_cpu.id
     app_memory      = google_monitoring_alert_policy.staging_memory.id
     app_disk        = google_monitoring_alert_policy.staging_disk.id
+    container_disk  = google_monitoring_alert_policy.staging_container_disk.id
     db_uptime       = google_monitoring_alert_policy.staging_db_uptime.id
     db_cpu          = google_monitoring_alert_policy.staging_db_cpu.id
     db_memory       = google_monitoring_alert_policy.staging_db_memory.id

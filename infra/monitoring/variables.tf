@@ -94,3 +94,14 @@ variable "db_replica_vm_name" {
   type        = string
   default     = ""
 }
+
+variable "container_disk_alert_gib" {
+  description = "Alert when one container (writable layer + json logs + named volumes) exceeds this many GiB."
+  type        = number
+  default     = 5
+
+  validation {
+    condition     = var.container_disk_alert_gib > 0
+    error_message = "container_disk_alert_gib must be greater than zero."
+  }
+}
