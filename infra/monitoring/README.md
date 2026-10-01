@@ -6,12 +6,15 @@ This root configures only the staging monitoring environment. It does not contai
 
 - Cloud Monitoring dashboard for VM CPU, memory, disk, readiness, watcher heartbeat, crawler outcomes and container lifecycle events.
 - Dashboard log panels for backend, frontend, crawler, Redis and Weaviate containers, filtered by container name where the emitted log entry provides it.
-- Alert policies for uptime, CPU, memory, disk and error-level VM logs.
+- Per-container disk usage: `vota-container-disk-collector` samples every 5 minutes (writable layer, json-file logs incl. rotations, named volumes) into `/var/log/vota/container-disk.jsonl`; a log-based distribution metric feeds a dashboard chart and the `container disk usage high` alert (`container_disk_alert_gib`, default 5 GiB), and a logs panel shows the exact byte values.
+- Alert policies for uptime, CPU, memory, disk, per-container disk and error-level VM logs.
 - Cloud Monitoring HTTPS uptime check for the staging readiness endpoint.
 - Cloud Logging user metric for error-level Compute Engine logs.
 - Docker lifecycle event watcher and crawler log metrics for container stop, OOM, partial crawler runs and watcher heartbeat absence.
 - Daily log rotation for watcher, crawler and daily-job logs: 14 compressed rotations with a 100 MB per-file cap.
 - Optional email notification channel, supplied as a sensitive variable.
+
+Container disk numbers exclude shared image layers and bind mounts; a named volume mounted by several containers is counted in each. The chart reads percentiles of 10%-wide buckets (about ±5%) and shows containers under 1 MiB as 0; use the logs panel or `tail /var/log/vota/container-disk.jsonl` for exact bytes. Collection failures are logged as `event=container_disk_error`.
 
 The crawler monitor UI is not part of this package. This package monitors the crawler and container lifecycle only.
 
@@ -49,4 +52,6 @@ Install the VM-side Docker event watcher separately after reviewing the staging 
 sudo bash infra/monitoring/install-vota-docker-event-watcher.sh
 sudo systemctl is-active vota-docker-event-watcher.service
 sudo tail -n 20 /var/log/vota/docker-events.jsonl
+sudo systemctl is-active vota-container-disk-collector.service
+sudo tail -n 5 /var/log/vota/container-disk.jsonl
 ```
