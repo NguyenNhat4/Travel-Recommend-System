@@ -90,7 +90,7 @@ variable "notification_email" {
 }
 
 variable "db_replica_vm_name" {
-  description = "DB replica VM name (infra/terraform/environments/staging output replica_vm_name). Leave empty until the replica exists: all replica monitoring is skipped."
+  description = "DB replica VM name (infra/terraform/environments/staging output replica_vm_name). Replica monitoring is skipped while this is empty or while no VM with this name exists, and turns on once the VM does."
   type        = string
   default     = ""
 }
