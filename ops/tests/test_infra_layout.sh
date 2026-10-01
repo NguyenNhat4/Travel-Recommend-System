@@ -84,6 +84,8 @@ grep -q 'set +x' "$ci_repl"
 grep -q 'bootstrap-db-primary-replication.sh' "$ci_repl"
 grep -q 'bootstrap-db-replica.sh' "$ci_repl"
 grep -q 'install -m 600 /dev/stdin' "$ci_repl"
+grep -q 'retry_ssh' "$ci_repl"
+grep -q 'copy_secret' "$ci_repl"
 grep -q 'pg_stat_replication' "$ci_repl"
 if grep -Eq 'echo[^|]*(replicator_password|repl_password)|cat[^|]*replicator_password[^|]*\$' "$ci_repl"; then
   echo 'ci-db-replication.sh must not print the replicator password' >&2; exit 1
