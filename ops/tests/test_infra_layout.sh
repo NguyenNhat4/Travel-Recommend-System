@@ -7,7 +7,7 @@ replica="$repo_root/ops/bootstrap-db-replica.sh"
 probe="$repo_root/ops/db-replica-lag-probe.sh"
 tf_root="$repo_root/infra/terraform/environments/staging"
 
-for file in "$primary" "$replica" "$probe" "$tf_root/main.tf" "$tf_root/variables.tf"; do
+for file in "$primary" "$replica" "$probe" "$tf_root/main.tf" "$tf_root/variables.tf" "$tf_root/addresses.tf"; do
   test -f "$file" || { echo "missing required file: $file" >&2; exit 1; }
   case "$file" in *.sh) bash -n "$file" ;; esac
 done
@@ -43,16 +43,40 @@ for status in ok lagging broken; do grep -q "status=$status" "$probe"; done
 grep -q '"event":"pg_replica"' "$probe"
 grep -q 'jsonPayload.event=\\"pg_replica\\"' "$repo_root/infra/monitoring/replica.tf"
 
-# Terraform root must never manage the hand-made VMs, only read them.
-if grep -nE 'resource "google_compute_instance" "(db_primary|app)"' "$tf_root/main.tf"; then
-  echo 'existing VMs must stay data sources' >&2; exit 1
+# Primary and app are adopted production-like VMs: they must be protected from
+# deletion, never be stopped by Terraform, and never have metadata (ssh-keys) overwritten.
+for vm in primary app; do
+  f="$tf_root/$vm.tf"
+  test -f "$f" || { echo "missing $f" >&2; exit 1; }
+  grep -q 'prevent_destroy = true' "$f"
+  grep -q 'deletion_protection = true' "$f"
+  grep -q 'key_revocation_action_type = "NONE"' "$f"
+  grep -Eq 'ignore_changes = \[' "$f"
+  grep -q 'metadata,' "$f"
+  if grep -Eq '^[[:space:]]*allow_stopping_for_update[[:space:]]*=' "$f"; then
+    echo "$vm.tf must not set allow_stopping_for_update" >&2; exit 1
+  fi
+done
+grep -q 'resource "google_compute_instance" "db_primary"' "$tf_root/primary.tf"
+grep -q 'resource "google_compute_instance" "app"' "$tf_root/app.tf"
+grep -q 'to = google_compute_instance.db_primary' "$tf_root/imports.tf"
+grep -q 'to = google_compute_instance.app' "$tf_root/imports.tf"
+test ! -e "$tf_root/data.tf" || { echo 'data.tf is gone: primary is a resource now' >&2; exit 1; }
+
+# Static addresses: the tunnel, pg_hba and DNS depend on these never changing.
+for addr in 10.148.0.2 10.148.0.3 10.148.0.4 34.142.132.251; do grep -q "\"$addr\"" "$tf_root/addresses.tf"; done
+
+# Local-only files must not be committed.
+if git -C "$repo_root" ls-files --error-unmatch "$tf_root/staging.tfvars" "$tf_root/backend.staging.hcl" >/dev/null 2>&1; then
+  echo 'staging.tfvars and backend.staging.hcl must not be tracked' >&2; exit 1
 fi
-grep -q 'data "google_compute_instance" "db_primary"' "$tf_root/data.tf"
 grep -q 'prefix = "infra/staging"' "$tf_root/backend.staging.hcl.example"
 
 wf="$repo_root/.github/workflows/infra-terraform-staging.yml"
 grep -q 'allow_destroy' "$wf"
 grep -q 'index("delete")' "$wf"
 grep -q 'apply -input=false -auto-approve staging.tfplan' "$wf"
+grep -q 'allow_vm_update' "$wf"
+grep -q 'ALLOW_VM_UPDATE' "$wf"
 
-echo 'db replica scripts and terraform layout: PASS'
+echo 'infra layout, db replica scripts and terraform guards: PASS'
