@@ -190,6 +190,8 @@ def test_check_expected():
      if r.qid == "c9001" else r, "c9001 [dest_type]: không có nhãn 2"),
     (lambda r: r.model_copy(update={"judgments": {**r.judgments, "P001": 2}}) if r.qid == "c9002" else r,
      "c9002: out_of_catalog nhưng có nhãn 2"),
+    (lambda r: r.model_copy(update={"judgments": {}, "provenance": {}}) if r.qid == "c9002" else r,
+     "c9002: không có nhãn"),
     (lambda r: r.model_copy(update={"expected_no_result": False}) if r.qid == "c9002" else r,
      "c9002: out_of_catalog thiếu expected_no_result"),
     (lambda r: r.model_copy(update={"expected_children": {}}) if r.qid == "c9005" else r,

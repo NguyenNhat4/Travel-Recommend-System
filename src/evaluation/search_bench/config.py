@@ -71,6 +71,7 @@ class ModelConfig(_M):
     trust_remote_code: Optional[bool] = None
     query_prefix: Optional[str] = None        # e5: "query: " / "passage: " — ghép trước text theo input_type (embed/local_hf.py)
     passage_prefix: Optional[str] = None
+    input_type_mode: Literal["asymmetric", "symmetric"] = "asymmetric"  # symmetric local model dùng cùng encoder cho query/document
     pooling: Optional[Literal["mean", "cls"]] = None   # model local: mean (e5) | cls (bge-m3, gte); mặc định mean
 
 

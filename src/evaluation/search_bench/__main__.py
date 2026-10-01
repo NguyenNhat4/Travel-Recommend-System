@@ -592,7 +592,11 @@ def sanity(c: typer.Context,
             cached = make_embedder(cfg, m, preflight=False)
             fresh = make_embedder(cfg, m, no_cache=True, preflight=False)
             try:
-                checks.append(S.input_type_vectors_differ(cached, sample, min_gap=pc["input_type_min_cos_gap"], model=m))
+                model_cfg = cfg.embedding.models[m]
+                if model_cfg.input_type_mode == "symmetric":
+                    checks.append(S.input_type_vectors_match(cached, sample, max_gap=1e-5, model=m))
+                else:
+                    checks.append(S.input_type_vectors_differ(cached, sample, min_gap=pc["input_type_min_cos_gap"], model=m))
                 checks.append(S.cache_recheck(cached, fresh, texts, n=pc["cache_recheck_n"], seed=cfg.run.seed, model=m))
             finally:
                 cached.close()
@@ -650,7 +654,9 @@ def paths_gold() -> Path:
 
 
 @app.command()
-def compare(c: typer.Context, arm_a: str = typer.Argument(..., help="arm mốc (A)"), arm_b: str = typer.Argument(..., help="arm so (B)")):
+def compare(c: typer.Context, arm_a: str = typer.Argument(..., help="arm mốc (A)"), arm_b: str = typer.Argument(..., help="arm so (B)"),
+            gold_version: Optional[str] = typer.Option(None, "--gold", help="gold_vN; mặc định bản mới nhất có ở cả hai arm"),
+            condensed: bool = typer.Option(False, "--condensed", help="Bỏ kết quả chưa nhãn rồi dồn hạng; vẫn báo coverage full")):
     """So hai arm trong cùng run (--run-id; mặc định run mới nhất): paired bootstrap Δrecall / Δndcg, Δ theo slice và kết luận
     win_rule (WIN / TIE / LOSE — spec Part 8). Hai arm phải cùng gold_version. Mã thoát: 0 · 1 khác gold_version · 2 thiếu kết quả."""
     from rich.table import Table
@@ -660,43 +666,63 @@ def compare(c: typer.Context, arm_a: str = typer.Argument(..., help="arm mốc (
     k = cfg.metrics.k
     try:
         run_id = _run_id_or_latest(ctx)
-        ra, rb = R.read_results(run_id, arm_a), R.read_results(run_id, arm_b)
-        rows_a, rows_b = R.read_rows(run_id, arm_a), R.read_rows(run_id, arm_b)
+        versions_a = R.available_versions(run_id, arm_a)
+        versions_b = R.available_versions(run_id, arm_b)
+        if not versions_a or not versions_b:
+            missing = arm_a if not versions_a else arm_b
+            raise R.RunnerError(f"chưa có kết quả {missing} trong run {run_id} — chạy `sb run --arm {missing}` trước")
+        if gold_version is None:
+            common = set(versions_a) & set(versions_b)
+            if not common:
+                raise R.RunnerError(f"{arm_a} và {arm_b} không có chung gold_version — chạy sb rescore cho cả hai")
+            selected = max(common, key=R._version_key)
+        else:
+            selected = gold_version
+        ra, rows_a, _ = R.read_results_at(run_id, arm_a, selected)
+        rb, rows_b, _ = R.read_results_at(run_id, arm_b, selected)
     except R.RunnerError as e:
         _fail(str(e), 2)
-    if ra.get("gold_version") != rb.get("gold_version"):
-        _fail(f"{arm_a} chấm trên gold {ra.get('gold_version')} còn {arm_b} trên {rb.get('gold_version')} — `sb rescore` bản cũ lên "
-              "version mới trước (Part 11)", 1)
-    cmp = R.compare(rows_a, rows_b, cfg)
+    if condensed and (not ra.get("condensed") or not rb.get("condensed")):
+        _fail("artifact chưa có condensed metrics; chạy sb rescore bằng code hiện tại", 2)
+    cmp = R.compare(rows_a, rows_b, cfg, condensed=condensed)
+    aa = ra["condensed"] if condensed else ra
+    bb = rb["condensed"] if condensed else rb
     con = _console()
 
     def _f(v):
         return "-" if v is None else f"{v:.3f}"
-    t = Table(title=f"run {run_id} · gold {ra.get('gold_version')} · {arm_a} → {arm_b} (Δ = B − A, điểm %)")
+    mode = "condensed" if condensed else "full"
+    t = Table(title=f"run {run_id} · gold {ra.get('gold_version')} · {mode} · {arm_a} → {arm_b} (Δ = B − A, điểm %)")
     for col in ("metric", arm_a, arm_b, "Δ", "CI95", "p (một phía)"):
         t.add_column(col, justify="left" if col == "metric" else "right")
     for mname in (f"recall@{k}", f"ndcg@{k}"):
         b = cmp[mname]
-        t.add_row(mname, _f(ra["overall"][mname]), _f(rb["overall"][mname]), "-" if b["delta"] is None else f"{b['delta']:+.2f}",
+        t.add_row(mname, _f(aa["overall"][mname]), _f(bb["overall"][mname]), "-" if b["delta"] is None else f"{b['delta']:+.2f}",
                   "-" if b["ci95"][0] is None else f"[{b['ci95'][0]:+.2f}, {b['ci95'][1]:+.2f}]",
                   "-" if b["p_one_sided"] is None else f"{b['p_one_sided']:.3f} (n={b['n']})")
     for mname in (f"mrr@{k}", f"judged@{k}", "constraint_precision", "zero_result_in_catalog", "zero_result_out_of_catalog"):
-        t.add_row(mname, _f(ra["overall"].get(mname)), _f(rb["overall"].get(mname)), "", "", "")
+        t.add_row(mname, _f(aa["overall"].get(mname)), _f(bb["overall"].get(mname)), "", "", "")
+    if condensed:
+        t.add_row(f"full judged@{k}", _f(ra["overall"].get(f"judged@{k}")), _f(rb["overall"].get(f"judged@{k}")), "", "", "")
+        t.add_row("retained ratio", _f(aa["coverage"].get("retained_ratio")), _f(bb["coverage"].get("retained_ratio")), "", "", "")
     con.print(t)
     ts = Table(title=f"theo slice: ndcg@{k} (Δ điểm %) · judged@{k}")
     for col in ("slice", "n", f"{arm_a} ndcg", f"{arm_b} ndcg", "Δ ndcg", f"{arm_a} judged", f"{arm_b} judged"):
         ts.add_column(col, justify="left" if col == "slice" else "right")
-    for s in sorted(set(ra["by_slice"]) | set(rb["by_slice"])):
-        va, vb = ra["by_slice"].get(s, {}), rb["by_slice"].get(s, {})
+    for s in sorted(set(aa["by_slice"]) | set(bb["by_slice"])):
+        va, vb = aa["by_slice"].get(s, {}), bb["by_slice"].get(s, {})
+        full_va, full_vb = ra["by_slice"].get(s, {}), rb["by_slice"].get(s, {})
         d = cmp["slice_delta_ndcg"].get(s)
         ts.add_row(s, str(va.get("n", vb.get("n", "-"))), _f(va.get(f"ndcg@{k}")), _f(vb.get(f"ndcg@{k}")),
-                   "-" if d is None else f"{d:+.2f}", _f(va.get(f"judged@{k}")), _f(vb.get(f"judged@{k}")))
+                   "-" if d is None else f"{d:+.2f}", _f(full_va.get(f"judged@{k}")), _f(full_vb.get(f"judged@{k}")))
     con.print(ts)
     style = {"WIN": "green", "TIE": "yellow", "LOSE": "red"}[cmp["verdict"]]
     con.print(f"[{style}]{cmp['verdict']}[/]: {cmp['reason']}", highlight=False)
     low = [a for a, r in ((arm_a, ra), (arm_b, rb)) if r.get("needs_labels")]
     if low:
-        con.print(f"  cảnh báo: {', '.join(low)} chưa đạt judged@{k} (NEEDS_LABELS) — chưa nên đọc Δ, gán hole trước", style="yellow")
+        con.print(f"  cảnh báo: {', '.join(low)} chưa đạt judged@{k} (NEEDS_LABELS) — đọc condensed cùng coverage", style="yellow")
+    if condensed:
+        con.print("  condensed chỉ chấm kết quả đã có nhãn; đọc cùng full judged và retained ratio ở trên", style="yellow")
 
 
 # ------------------------------------------------------------------ Part 5 (ngày 2: pool, split)
@@ -783,6 +809,60 @@ def latency_http(c: typer.Context,
     con.print(f"  → {p}", style="dim", highlight=False)
     if summary["n_ok"] == 0:
         raise typer.Exit(1)
+
+
+@latency_app.command("embed")
+def latency_embed(c: typer.Context,
+                  models: str = typer.Option(..., "--models", help="model IDs, cách nhau bằng dấu phẩy"),
+                  gold_p: Optional[Path] = typer.Option(None, "--gold", help="mặc định gold/gold.jsonl"),
+                  warmup: int = typer.Option(20, "--warmup", min=0, help="số query làm nóng, không tính vào p50/p95"),
+                  delay_ms: float = typer.Option(0.0, "--delay-ms", min=0.0,
+                                                 help="nghỉ giữa request, không tính vào latency; dùng để tránh rate limit API")):
+    """Đo p50/p95 embed query từng model trên gold active, mỗi câu một request không qua cache."""
+    import hashlib
+    import json
+    from . import latency as L, paths, runner as R
+    from .embed import EmbedBatchError, EmbedderUnavailable, make_embedder
+    from .metrics import MetricsError, load_gold
+    from .holes import gold_version_of
+    ctx = _ctx(c)
+    cfg = ctx.cfg()
+    gp = gold_p or paths.GOLD_JSONL
+    names = list(dict.fromkeys(x.strip() for x in models.split(",") if x.strip()))
+    if not names:
+        _fail("--models cần ít nhất một model", 2)
+    try:
+        texts = [q.text for q in load_gold(gp)]
+    except (OSError, MetricsError) as e:
+        _fail(str(e), 2)
+    run_id = ctx.run_id or R.new_run_id()
+    rows = []
+    for model in names:
+        try:
+            embedder = make_embedder(cfg, model, no_cache=True, preflight=False)
+            try:
+                result = L.measure_embed_queries(embedder, texts, warmup=warmup, delay_s=delay_ms / 1000.0)
+                result.update(model=model, dim=cfg.model_cfg(model).dim, model_version=embedder.name)
+            finally:
+                embedder.close()
+        except (EmbedderUnavailable, EmbedBatchError, L.LatencyError, ValueError) as e:
+            _fail(f"{model}: {e}")
+        rows.append(result)
+        typer.echo(f"{model}: n={result['n']} warmup={result['warmup']} "
+                   f"p50={result['p50_ms']:.1f} ms p95={result['p95_ms']:.1f} ms")
+    path = paths.run_dir(run_id) / "latency-embed.json"
+    gold_sha = hashlib.sha256(gp.read_bytes()).hexdigest()
+    previous = json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
+    if previous and (previous.get("gold_sha256") != gold_sha or previous.get("warmup") != warmup):
+        _fail(f"{path}: gold/warmup khác phép đo cũ — dùng --run-id khác", 2)
+    all_rows = {r["model"]: r for r in (previous or {}).get("models", [])}
+    all_rows.update({r["model"]: r for r in rows})
+    payload = {"run_id": run_id, "gold_path": str(gp), "gold_version": gold_version_of(gp),
+               "gold_sha256": gold_sha, "warmup": warmup,
+               "method": "sequential one query per uncached request; wall clock; no concurrent benchmark; inter-request delay excluded",
+               "models": list(all_rows.values())}
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    typer.echo(f"→ {path}")
 
 
 @app.command()
@@ -1273,6 +1353,8 @@ def gold_holes(c: typer.Context,
                stage: Optional[str] = typer.Option(None, "--stage", help="cổng (Part 12) — chưa cài, dùng --arms"),
                tag: Optional[str] = typer.Option(None, "--tag", help="tên đợt, mặc định = --stage hoặc arm nối bằng +"),
                k: Optional[int] = typer.Option(None, "--k", help="mặc định holes.k"),
+               cap: Optional[int] = typer.Option(None, "--cap", min=1,
+                                                  help="giới hạn cặp người gán; round-robin theo slice/query"),
                split: bool = typer.Option(False, "--split", help="chia câu xen kẽ A/B (hai người gán, không câu chung)"),
                gold_p: Optional[Path] = typer.Option(None, "--gold", help="mặc định gold/gold.jsonl"),
                out_dir: Optional[Path] = typer.Option(None, "--out-dir", help="mặc định gold/holes/<gold_version>__<tag>/"),
@@ -1309,6 +1391,9 @@ def gold_holes(c: typer.Context,
         _fail(str(e))
     kk = k or cfg.holes.k
     to_label, auto = H.find_holes(records, rows_by_arm, kk)
+    n_uncapped = len(to_label)
+    if cap is not None:
+        to_label = H.cap_holes(to_label, records, cap, seed=cfg.run.seed)
     if not to_label and not auto:
         _fail(f"không có hole: mọi cặp top-{kk} của {', '.join(arm_ids)} đã có nhãn", 1)
     out = out_dir or paths.HOLES_DIR / f"{gv or 'untagged'}__{tag_}"
@@ -1317,6 +1402,8 @@ def gold_holes(c: typer.Context,
                           collection=collection, k=kk, run_id=run_id, arms=arm_ids, gold_version=gv, tag=tag_)
     typer.echo(f"{out}: {s['n_to_label']} cặp cần gán / {s['n_queries']} câu · {s['n_auto_ooc']} hole out_of_catalog tự gán 0 · "
                f"gold {gv} · run {run_id}")
+    if cap is not None and n_uncapped > len(to_label):
+        typer.echo(f"  cap: {n_uncapped} → {len(to_label)} cặp, round-robin theo slice/query")
     for x, f in s["files"].items():
         typer.echo(f"  pool_{x}.csv: {f['n_queries']} câu · {f['n_pairs']} cặp")
     typer.echo(f"  gán trong app (nhập {out / 'pool_meta.json'}), rồi: sb gold holes import {out}")

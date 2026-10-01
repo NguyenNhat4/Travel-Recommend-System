@@ -1,0 +1,25 @@
+# E2.e5 — model thay thế local (docs/spec/bench/arms.md §1): cùng text T3+R của B0, đổi đúng một thứ: model
+# `intfloat/multilingual-e5-base` (768-d, prefix `query: ` / `passage: ` theo input_type — config e5-base).
+# Viết dạng đã giải đầy đủ: spec ghi parent `@E4`, nhưng chuỗi E1a → E1b → E4 được bỏ qua tuần này (kế hoạch 30/09,
+# luật cắt lịch 10 ngày §7.2) nên `@E4` = B0; parent ghi B0 để `sb run` so vs_parent trong cùng run.
+id: E2.gte
+stage: E2
+parent: B0
+description: "E2.gte: T3+R · gte-multilingual-base · near_vector top-10 · cùng cấu hình B0"
+text_variant: T3+R
+model: gte-mb
+embedding_types: float
+query_input_type: query
+retrieval: dense
+query_vec: null
+fusion: null
+bm25: {tokenization: word, k1: 1.2, b: 0.75}
+filters: {qu: false, amenity_must: none}
+boost: {amenity_nice_w: 0.0, amenity_must_w: 0.0}
+dedupe_parent: false
+query_preproc: {alias: false, symspell: false}
+cutoff: {max_vector_distance: null}
+csls: null
+rerank: null
+fallback_bm25_only: false
+phase: 1

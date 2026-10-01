@@ -206,6 +206,60 @@ def evaluate_query(gq: GoldQuery, top_ids: list[str], ctx: EvalContext, *, top_s
     return row
 
 
+def add_condensed_metrics(row: dict[str, Any], gq: GoldQuery, cfg: MetricsConfig) -> dict[str, Any]:
+    """Gắn metric condensed vào một dòng nhưng giữ nguyên metric full.
+
+    Condensed evaluation bỏ các kết quả chưa có judgment rồi dồn hạng của phần còn lại. Cách này chỉ dùng để đọc
+    chất lượng sau khi pool đã chạm cap; coverage từ danh sách full luôn được báo cạnh metric condensed.
+    """
+    k = cfg.k
+    full = list(row.get("top_ids") or [])[:k]
+    judged = [p for p in full if p in gq.judgments]
+    row["condensed_top_ids"] = judged
+    row["condensed_n"] = len(judged)
+    row["full_n"] = len(full)
+    row[f"condensed_recall@{k}"] = recall_at_k(judged, gq.judgments, k, cfg.recall_relevant_min)
+    row[f"condensed_ndcg@{k}"] = ndcg_at_k(judged, gq.judgments, k)
+    row[f"condensed_mrr@{k}"] = mrr_at_k(judged, gq.judgments, k, cfg.mrr_relevant_min)
+    row[f"condensed_judged@{k}"] = judged_at_k(judged, gq.judgments, k)
+    for kk in cfg.extra_recall_k:
+        row[f"condensed_recall@{kk}"] = recall_at_k(judged, gq.judgments, kk, cfg.recall_relevant_min)
+    return row
+
+
+def condensed_view(rows: list[dict], cfg: MetricsConfig) -> list[dict]:
+    """Trả view tương thích aggregate/compare_rows, dùng metric condensed và giữ field vận hành từ full."""
+    names = [f"recall@{cfg.k}", f"ndcg@{cfg.k}", f"mrr@{cfg.k}", f"judged@{cfg.k}",
+             *(f"recall@{kk}" for kk in cfg.extra_recall_k)]
+    out = []
+    for row in rows:
+        missing = [name for name in names if f"condensed_{name}" not in row]
+        if missing:
+            raise MetricsError(f"dòng {row.get('qid', '?')} thiếu condensed metrics: {', '.join(missing)}")
+        view = dict(row)
+        condensed_ids = row.get("condensed_top_ids")
+        view["top_ids"] = [] if condensed_ids is None else list(condensed_ids)
+        for name in names:
+            view[name] = row[f"condensed_{name}"]
+        out.append(view)
+    return out
+
+
+def aggregate_condensed(rows: list[dict], cfg: MetricsConfig) -> dict:
+    """Aggregate condensed kèm coverage của danh sách full để report luôn thể hiện phần bị bỏ do chưa label."""
+    agg = aggregate(condensed_view(rows, cfg), cfg)
+    full_n = sum(int(r.get("full_n", len(r.get("top_ids") or []))) for r in rows)
+    judged_n = sum(int(r.get("condensed_n", len(r.get("condensed_top_ids") or []))) for r in rows)
+    agg["mode"] = "condensed"
+    agg["coverage"] = {
+        "full_results": full_n,
+        "judged_results": judged_n,
+        "retained_ratio": (judged_n / full_n) if full_n else None,
+        "empty_queries": sum(1 for r in rows if not (r.get("condensed_top_ids") or [])),
+    }
+    return agg
+
+
 def _mean(values: Iterable[float | None]) -> tuple[float | None, int]:
     v = [x for x in values if x is not None and not (isinstance(x, float) and math.isnan(x))]
     return (float(np.mean(v)) if v else None), len(v)

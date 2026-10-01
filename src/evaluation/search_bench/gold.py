@@ -1222,6 +1222,8 @@ def check_gold(records: list[GoldRecord], min_per_slice: int, configured_slices:
     n_q: Counter = Counter()
     for r in active:
         labels = list(r.judgments.values())
+        if not labels:
+            problems.append(f"{r.qid}: không có nhãn")
         n_q[r.slice] += 1
         per_slice.setdefault(r.slice, Counter()).update(labels)
         if r.slice not in SLICES:
