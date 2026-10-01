@@ -51,6 +51,7 @@ class AgentState(TypedDict, total=False):
     invalid_inputs: list[dict[str, Any]]
     refusal: bool
     blocked_by_guardrail: str | None
+    unclear_input: str | None
     candidates: Candidates
     sources: Sources
     warnings: list[PlanWarning]

@@ -194,6 +194,12 @@ def conversational_fallback(state: dict) -> dict:
     return clarification_fallback(state)
 
 
+def unclear_input_reply(state: dict) -> dict:
+    """Tin nhắn rác (guardrail tầng 1): hỏi lại bằng câu cố định, 200, không có `missingFields`."""
+    return {"response": {"status": "NEEDS_CLARIFICATION", "conversationId": state["conversation_id"],
+                         "question": messages.UNCLEAR_INPUT, "knownIntent": state["intent"]}}
+
+
 def constraint_clarification(state: dict) -> dict:
     """Retrieval finished but no product meets a required condition; ask before relaxing it."""
     question = messages.CLARIFY_CONSTRAINT

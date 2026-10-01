@@ -65,7 +65,7 @@ def intake_node(state: AgentState) -> dict:
             "missing_fields": [], "start_date_asked": bool(state.get("start_date_asked", False)),
             "clarification_rounds": int(state.get("clarification_rounds", 0) or 0),
             "invalid_inputs": [],
-            "interaction_type": "", "refusal": False, "blocked_by_guardrail": None,
+            "interaction_type": "", "refusal": False, "blocked_by_guardrail": None, "unclear_input": None,
             "final_answer": None, "http_status": 200, "decision": "", "validation_issues": [],
             "started_at": time(), "language": state.get("language") or "vi",
             "events": [event("intake", "request initialized")]}
@@ -128,6 +128,22 @@ def _guardrail_blocked_input(state: AgentState) -> dict | None:
             "events": [event("classify", "guardrail blocked input", pattern=reason)]}
 
 
+def _guardrail_junk_input(state: AgentState) -> dict | None:
+    """Tầng 1 (NFR-SEC-04): tin nhắn rác hiển nhiên không tốn lượt gọi LLM nào. Rác → `unclear_input`,
+    `converse` trả câu "chưa hiểu" cố định; chỉ có tục tĩu → nhánh từ chối của guardrail (`blocked_by_guardrail`).
+    Event chỉ ghi tên luật, không ghi câu người dùng."""
+    verdict = guardrails.input_quality(state.get("query", ""))
+    if verdict is None:
+        return None
+    kind, rule = verdict
+    update = {"decision": "simple", "missing_fields": [],
+              "events": [event("classify", "guardrail tier1", rule=rule)]}
+    if kind == guardrails.ABUSIVE:
+        return {**update, "interaction_type": "out_of_scope", "refusal": True,
+                "blocked_by_guardrail": f"{kind}:{rule}"}
+    return {**update, "interaction_type": "conversation", "refusal": False, "unclear_input": rule}
+
+
 def _llm_failed(state: AgentState, node: str, mode: str, timeout_seconds: float | None = None) -> dict:
     logger.exception("itinerary.llm_failed requestId=%s node=%s mode=%s timeoutSeconds=%s",
                      state.get("request_id", "unknown"), node, mode, timeout_seconds)
@@ -148,7 +164,7 @@ def classify_node(state: AgentState, *, llm=None) -> dict:
     shortcut = _travel_without_message(state)
     if shortcut is not None:
         return shortcut
-    blocked = _guardrail_blocked_input(state)
+    blocked = _guardrail_blocked_input(state) or _guardrail_junk_input(state)
     if blocked is not None:
         return blocked
     try:
@@ -165,7 +181,7 @@ async def classify_node_async(state: AgentState, *, llm=None, timeout_seconds: f
     shortcut = _travel_without_message(state)
     if shortcut is not None:
         return shortcut
-    blocked = _guardrail_blocked_input(state)
+    blocked = _guardrail_blocked_input(state) or _guardrail_junk_input(state)
     if blocked is not None:
         return blocked
     try:
@@ -305,12 +321,16 @@ def converse_node(state: AgentState, *, llm=None) -> dict:
 
     Đọc: `query`, `conversation_history`, `interaction_type`, `refusal`, `intent`, `missing_fields`.
     Ghi: `response` `NEEDS_CLARIFICATION`, hoặc `VALIDATION_ERROR` (400) khi yêu cầu ngoài phạm vi.
-    Đi tiếp: `finalize`. `blocked_by_guardrail` (từ `classify`) thì dùng câu từ chối cố định, không gọi LLM.
+    Đi tiếp: `finalize`. `blocked_by_guardrail` (từ `classify`) thì dùng câu từ chối cố định, `unclear_input`
+    (tin nhắn rác, tầng 1) thì dùng câu "chưa hiểu" cố định — cả hai không gọi LLM.
     """
     if state.get("blocked_by_guardrail"):
         update = conversation.conversational_fallback(state)
         return {**update, "events": [event("converse", "guardrail blocked input, skipped LLM",
                                             pattern=state["blocked_by_guardrail"])]}
+    if state.get("unclear_input"):
+        return {**conversation.unclear_input_reply(state),
+                "events": [event("converse", "unclear input, skipped LLM", rule=state["unclear_input"])]}
     try:
         result = chat_model(llm).with_structured_output(ConversationalAnswer).invoke(
             conversation.conversation_input(state))
@@ -328,6 +348,9 @@ async def converse_node_async(state: AgentState, *, llm=None, timeout_seconds: f
         update = conversation.conversational_fallback(state)
         return {**update, "events": [event("converse", "guardrail blocked input, skipped LLM",
                                             pattern=state["blocked_by_guardrail"])]}
+    if state.get("unclear_input"):
+        return {**conversation.unclear_input_reply(state),
+                "events": [event("converse", "unclear input, skipped LLM", rule=state["unclear_input"])]}
     try:
         result = await asyncio.wait_for(
             chat_model(llm).with_structured_output(ConversationalAnswer).ainvoke(

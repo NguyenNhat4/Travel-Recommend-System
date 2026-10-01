@@ -13,11 +13,13 @@ from fastapi import APIRouter, Depends, Header, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from src.backend.app.api.deps import (
+    client_ip,
     conversation_owner,
     current_principal,
     get_conversation_history,
     get_plan_itinerary,
 )
+from src.backend.app.application.auth.errors import RateLimited
 from src.backend.app.application.auth.principal import AuthPrincipal
 from src.backend.app.application.itinerary.history import ConversationHistory
 from src.backend.app.api.v1.schemas.itinerary import ItineraryRequestModel
@@ -31,6 +33,25 @@ logger = logging.getLogger("uvicorn.error")
 
 def _conversation_label(payload: ItineraryRequestModel) -> str:
     return (payload.conversationId or "new")[:64].replace("\n", "_").replace("\r", "_")
+
+
+async def _rate_limited(request: Request, owner: str | None, ip: str) -> JSONResponse | None:
+    """Giới hạn số tin gửi trợ lý (NFR-SEC-04): theo cdp_user_id, khách thì theo IP. App chưa dựng
+    limiter (test không chạy lifespan) thì bỏ qua."""
+    limiter = getattr(request.app.state, "rate_limiter", None)
+    if limiter is None:
+        return None
+    try:
+        await limiter.hit("assistant:sender", owner or f"ip:{ip}")
+    except RateLimited as exc:
+        body = error_response(
+            "TOO_MANY_ATTEMPTS", f"Bạn gửi tin hơi nhanh. Vui lòng thử lại sau {exc.retry_after_seconds} giây.",
+            current_request_id() or uuid.uuid4().hex, True,
+        )
+        body["error"]["details"] = exc.details
+        return JSONResponse(status_code=429, content=body,
+                            headers={"Retry-After": str(exc.retry_after_seconds)})
+    return None
 
 
 def _unavailable(request_id: str) -> JSONResponse:
@@ -88,7 +109,10 @@ def _observed_duration_ms(started_at: float, finished_at: float | None = None) -
 async def create_itinerary(payload: ItineraryRequestModel, request: Request,
                            authorization: str | None = Header(default=None),
                            owner: str | None = Depends(conversation_owner),
+                           ip: str = Depends(client_ip),
                            use_case: PlanItinerary = Depends(get_plan_itinerary)):
+    if (limited := await _rate_limited(request, owner, ip)) is not None:
+        return limited
     return await _run(payload, request, authorization, owner, use_case)
 
 
@@ -96,7 +120,10 @@ async def create_itinerary(payload: ItineraryRequestModel, request: Request,
 async def stream_itinerary(payload: ItineraryRequestModel, request: Request,
                            authorization: str | None = Header(default=None),
                            owner: str | None = Depends(conversation_owner),
+                           ip: str = Depends(client_ip),
                            use_case: PlanItinerary = Depends(get_plan_itinerary)):
+    if (limited := await _rate_limited(request, owner, ip)) is not None:
+        return limited
     request_id = current_request_id() or uuid.uuid4().hex
     if not valid("ItineraryRequest", payload.model_dump(exclude_none=True)):
         return JSONResponse(status_code=422, content=error_response(
