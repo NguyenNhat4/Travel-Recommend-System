@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { convertItineraryCompletedToGroundedPlan, locateProduct } from '../../src/features/itinerary/widget/widgetPlan';
+import { convertItineraryCompletedToGroundedPlan, isFreeToVisit, locateProduct } from '../../src/features/itinerary/widget/widgetPlan';
 import type { components } from '../../src/types/api.gen';
 
 const product = (productId: string, name: string, taxonomy: 'hotel' | 'attraction') => ({
@@ -43,5 +43,15 @@ describe('locateProduct', () => {
 
   it('returns null for a product that is not in the plan', () => {
     expect(locateProduct(plan, 'unknown')).toBeNull();
+  });
+});
+
+describe('isFreeToVisit', () => {
+  it('treats unpriced attractions/golf and ticketed=false as free, never an unpriced hotel', () => {
+    expect(isFreeToVisit({ taxonomy: 'attraction', unitPrice: null, attributes: {} })).toBe(true);
+    expect(isFreeToVisit({ taxonomy: 'golf', unitPrice: null, attributes: {} })).toBe(true);
+    expect(isFreeToVisit({ taxonomy: 'attraction', unitPrice: 50000, attributes: { ticketed: false } })).toBe(true);
+    expect(isFreeToVisit({ taxonomy: 'attraction', unitPrice: 50000, attributes: {} })).toBe(false);
+    expect(isFreeToVisit({ taxonomy: 'hotel', unitPrice: null, attributes: {} })).toBe(false);
   });
 });
