@@ -208,6 +208,46 @@ def find_holes(records: list[GoldRecord], rows_by_arm: dict[str, list[dict]], k:
     return [h for h in ordered if h.qid not in ooc], [h for h in ordered if h.qid in ooc]
 
 
+def cap_holes(holes: list[Hole], records: list[GoldRecord], cap: int, *, seed: int) -> list[Hole]:
+    """Giới hạn pool theo round-robin qua query, giữ coverage thay vì lấy các qid đầu.
+
+    Trong mỗi query ưu tiên cặp được nhiều arm cùng kéo lên, rồi hạng tốt hơn. Thứ tự query được xáo
+    xác định trong từng slice và round-robin giữa các slice, để cap không thiên về slice/qid đứng đầu file.
+    """
+    if cap < 1:
+        raise ValueError("cap phải >= 1")
+    if len(holes) <= cap:
+        return list(holes)
+    slice_by_qid = {r.qid: r.slice for r in records if r.status == "active"}
+    by_qid: dict[str, list[Hole]] = {}
+    for h in holes:
+        by_qid.setdefault(h.qid, []).append(h)
+    for qid in by_qid:
+        by_qid[qid].sort(key=lambda h: (-len(h.arms), h.best_rank, h.product_id))
+    by_slice: dict[str, list[str]] = {}
+    for qid in by_qid:
+        by_slice.setdefault(slice_by_qid.get(qid, ""), []).append(qid)
+    rng = random.Random(seed)
+    for qids in by_slice.values():
+        qids.sort()
+        rng.shuffle(qids)
+    selected: list[Hole] = []
+    level = 0
+    while len(selected) < cap:
+        added = False
+        for slice_name in sorted(by_slice):
+            for qid in by_slice[slice_name]:
+                if level < len(by_qid[qid]):
+                    selected.append(by_qid[qid][level])
+                    added = True
+                    if len(selected) == cap:
+                        return selected
+        if not added:
+            break
+        level += 1
+    return selected
+
+
 def hole_rows(holes: list[Hole], records: list[GoldRecord], view: PoolView) -> list[PoolRow]:
     """Dòng POOL_COLUMNS cho từng hole (app gán nhãn mở như pool thường). `from` / `rank_dense` = hạng tốt nhất, không ghi
     arm nào kéo lên (người gán không thiên vị; hai cột này app vẫn ẩn)."""

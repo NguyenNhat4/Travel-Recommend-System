@@ -175,11 +175,14 @@ def score_arm(env: RunEnv, retrieved: list[Retrieved], *, hub_score_max: float |
     for g in env.gold:
         r = by[g.qid]
         row = M.evaluate_query(g, r.top_ids, env.ctx, top_scores=r.top_scores, applied_filter=r.applied_filter)
+        M.add_condensed_metrics(row, g, env.cfg.metrics)
         row["applied_filter"] = json.dumps(r.applied_filter, ensure_ascii=False) if r.applied_filter is not None else None
         row["latency_ms"] = r.latency_ms
         row["extra"] = json.dumps(r.extra, ensure_ascii=False, default=str) if r.extra else None   # diagnostics của arm APP
         rows.append(row)
-    return M.aggregate(rows, env.cfg.metrics, hub_score_max=hub_score_max), rows
+    agg = M.aggregate(rows, env.cfg.metrics, hub_score_max=hub_score_max)
+    agg["condensed"] = M.aggregate_condensed(rows, env.cfg.metrics)
+    return agg, rows
 
 
 def latency_summary(rows: list[dict]) -> dict[str, float | None]:
@@ -194,11 +197,13 @@ def judged_gate(agg: dict, cfg: SBenchConfig) -> list[str]:
     k = cfg.metrics.k
     problems = []
     j = agg["overall"].get(f"judged@{k}")
-    if j is not None and j < cfg.gold.judged_at_10_min:
+    if j is not None and j < cfg.gold.judged_at_10_min and not np.isclose(
+            j, cfg.gold.judged_at_10_min, rtol=0.0, atol=1e-12):
         problems.append(f"judged@{k} {j:.3f} < {cfg.gold.judged_at_10_min}")
     for s, v in sorted(agg["by_slice"].items()):
         js = v.get(f"judged@{k}")
-        if js is not None and js < cfg.gold.judged_at_10_slice_min:
+        if js is not None and js < cfg.gold.judged_at_10_slice_min and not np.isclose(
+                js, cfg.gold.judged_at_10_slice_min, rtol=0.0, atol=1e-12):
             problems.append(f"slice {s}: judged@{k} {js:.3f} < {cfg.gold.judged_at_10_slice_min}")
     return problems
 
@@ -227,7 +232,7 @@ def build_results(env: RunEnv, arm: Arm, agg: dict, rows: list[dict], *, collect
             "collection": collection, "dataset": env.dataset, "n_items": env.n_items, "k": env.k,
             "created_at": datetime.now().astimezone().replace(microsecond=0).isoformat(),
             "overall": agg["overall"], "by_slice": agg["by_slice"], "n_queries": agg["n_queries"],
-            "n_defined": agg["n_defined"], "latency_ms": latency_summary(rows),
+            "n_defined": agg["n_defined"], "condensed": agg["condensed"], "latency_ms": latency_summary(rows),
             "cost_usd": {"embed_docs": None, "embed_queries": (embed or {}).get("usd", 0.0), "rerank": 0.0},
             "embed": embed, "vs_parent": vs_parent, "needs_labels": judged_gate(agg, env.cfg)}
 
@@ -261,7 +266,7 @@ def read_rows(run_id: str, arm_id: str) -> list[dict]:
     df = pd.read_parquet(p)
     rows = df.to_dict(orient="records")
     for r in rows:                                     # parquet trả ndarray / NaN — về list / None như lúc ghi
-        for col in ("top_ids", "top_scores", "ranks_of_relevant"):
+        for col in ("top_ids", "top_scores", "ranks_of_relevant", "condensed_top_ids"):
             v = r.get(col)
             r[col] = [x for x in v.tolist()] if isinstance(v, np.ndarray) else (list(v) if v is not None else None)
         for col, v in list(r.items()):
@@ -270,7 +275,9 @@ def read_rows(run_id: str, arm_id: str) -> list[dict]:
     return rows
 
 
-def compare(rows_a: list[dict], rows_b: list[dict], cfg: SBenchConfig) -> dict:
+def compare(rows_a: list[dict], rows_b: list[dict], cfg: SBenchConfig, *, condensed: bool = False) -> dict:
+    if condensed:
+        rows_a, rows_b = M.condensed_view(rows_a, cfg.metrics), M.condensed_view(rows_b, cfg.metrics)
     return M.compare_rows(rows_a, rows_b, cfg.metrics, seed=cfg.run.seed)
 
 
@@ -367,7 +374,7 @@ def _rows_from_parquet(p: Path) -> list[dict]:
         raise RunnerError(f"chưa có {p}")
     rows = pd.read_parquet(p).to_dict(orient="records")
     for r in rows:
-        for col in ("top_ids", "top_scores", "ranks_of_relevant"):
+        for col in ("top_ids", "top_scores", "ranks_of_relevant", "condensed_top_ids"):
             v = r.get(col)
             r[col] = [x for x in v.tolist()] if isinstance(v, np.ndarray) else (list(v) if v is not None else None)
         for col, v in list(r.items()):
@@ -390,16 +397,19 @@ def rescore_arm(env: RunEnv, run_id: str, arm_id: str) -> tuple[dict, list[dict]
             continue
         applied = json.loads(r["applied_filter"]) if r.get("applied_filter") else None
         row = M.evaluate_query(g, list(r["top_ids"] or []), env.ctx, top_scores=r.get("top_scores"), applied_filter=applied)
+        M.add_condensed_metrics(row, g, env.cfg.metrics)
         row["applied_filter"] = r.get("applied_filter")
         row["latency_ms"] = r.get("latency_ms")
         rows.append(row)
     if not rows:
         raise RunnerError(f"{arm_id}: không có câu nào chung giữa run {run_id} và gold {env.gold_version}")
     agg = M.aggregate(rows, env.cfg.metrics, hub_score_max=old["overall"].get("hub_score_max"))
+    condensed = M.aggregate_condensed(rows, env.cfg.metrics)
     results = {**old, "gold_version": env.gold_version, "gold_sha256": env.gold_sha256, "gold_path": paths_rel(env.gold_path),
                "rescored_from": old.get("gold_version"), "rescored_at": datetime.now().astimezone().replace(microsecond=0).isoformat(),
                "overall": agg["overall"], "by_slice": agg["by_slice"], "n_queries": agg["n_queries"], "n_defined": agg["n_defined"],
-               "needs_labels": judged_gate(agg, env.cfg), "vs_parent": None, "queries_missing_in_run": missing}
+               "condensed": condensed, "needs_labels": judged_gate(agg, env.cfg), "vs_parent": None,
+               "queries_missing_in_run": missing}
     from evaluation.vector_bench.results import dump_json
     d = arm_dir(run_id, arm_id)
     gv = safe_version(env.gold_version)

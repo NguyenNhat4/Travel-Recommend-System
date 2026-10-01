@@ -17,13 +17,13 @@
 | κ chính thức, merge, import, check, tag `gold_v1` | **Xong (30/09)**: κ linear 0,692 trước rà / 0,661 sau rà, 640 cặp chung; tag `gold_v1` | `history/2026-09-30-gold-merge-import-retire-tag-v1.md` |
 | Top-up arm E (Judged@10) | **Xong cho e5-base**: vòng hole D4a 597 cặp, tag `gold_v2`; judged@10 = 1,000 cho B0 và E2.e5 | Lệnh `sb gold holes` thay cho `topup_v1.1.jsonl` |
 | Bảng B0 vs E2.e5 | **Xong**: TIE (ΔnDCG +1,37, CI [−2,16; +5,24]) | `src/evaluation/reports/eval-2026-10-01-search-bench-gold-v2.md` |
-| `docs/spec/bench/search-gold-summary.md` (số câu, phân bố nhãn, depth, κ) | **Chưa có** | |
-| Cổng SAN trên gold | **Chưa có** cổng riêng. `sb sanity` 6/6 PASS nhưng không kiểm "mỗi câu có ≥ 1 nhãn > 0" | |
-| Bảng Search v1, 3 arm (dense / hybrid / hybrid+normalize, Cohere) | **Chưa chạy**. Đã có arm `APP.dense`, `APP.hybrid`, `APP.hybrid_norm` (+ `_nocut`) | History 01/10 ghi "hole APP arms 02/10" |
-| `sb compare` đọc bản rescore `results@gold_vN.json` | **Chưa** (TODO trong report gold_v2) | Mọi bảng sau cần |
-| Index đủ model Tier 1 | **Có 2**: `cohere-v3`, `e5-base`. Config đã có `gte-mb`, `bge-m3`, `cohere-v4` (1 chiều 1024). **Thiếu**: `e5-small`, v4 ở 1536/512/256 | Lệnh `sb embed` / `collection create` / `load` đã có |
-| Latency embed query theo model | **Chưa có lệnh** (`sb latency http` chỉ đo `/search`) | |
-| Chế độ *condensed*, `stages.yaml`, `baseline_v1.json`, `sb regress`, dev/test split | **Chưa có** | Thuộc Day 5. Day 4 chỉ làm nếu còn giờ |
+| `docs/spec/bench/search-gold-summary.md` (số câu, phân bố nhãn, depth, κ) | **Xong** | Đã cập nhật đến D5a/gold_v3: 5.021 nhãn |
+| Cổng SAN trên gold | **Xong** | `gold check` kiểm câu active, nhãn dương và phân bố theo slice |
+| Bảng Search v1, 3 arm (dense / hybrid / hybrid+normalize, Cohere) | **Xong** | D4b đủ nhãn; dense giữ làm mốc vì hybrid+normalize vi phạm guard slice |
+| `sb compare` đọc bản rescore `results@gold_vN.json` | **Xong** | Có `--gold`, `--condensed` và test Parquet/rescore |
+| Index đủ model Tier 1 | **Xong** | 8 bộ × 3.183 = 25.464 vector; sanity PASS |
+| Latency embed query theo model | **Xong trong điều kiện hợp lệ** | Local CPU cho e5/GTE/BGE; v3 API ổn định; v4 API 429 được loại |
+| Chế độ *condensed*, `stages.yaml`, `baseline_v1.json`, `sb regress`, dev/test split | **Condensed xong** | Stages/regression/split giữ cho Day 5; 131 câu không đủ split 100/100 |
 | `/search` cloud 500, `sb latency http` (gate P) | Chưa đo được (lỗi embed trên VM) | Day 5, không vào Day 4 |
 
 ### 0.2 Rec (Track B + phần recsys của C)
@@ -44,58 +44,58 @@
 
 ### S1 — **Cổng SAN trên `gold_v2`**
 
-- [ ] **Thực hiện:** Thêm check vào `search_bench/sanity.py` (hoặc `sb gold check --san`): mọi câu active, trừ `out_of_catalog`, có ≥ 1 nhãn > 0; 0 câu rỗng; phân bố nhãn 0/1/2 theo slice in ra bảng. Test trên fixture `gold_small/`
-- [ ] **Nghiệm thu:** SAN xanh trên `gold_v2`. Đỏ thì xác minh lỗi dữ liệu hay lỗi checker; nhãn chỉ sửa theo guide và review, không sửa nhãn hoặc nới checker chỉ để PASS
-- [ ] **Bàn giao:** điền commit/PR, lệnh thực tế, artifact, kết quả kiểm tra và blocker vào §5.
+- [x] **Thực hiện:** Thêm check vào `search_bench/sanity.py` (hoặc `sb gold check --san`): mọi câu active, trừ `out_of_catalog`, có ≥ 1 nhãn > 0; 0 câu rỗng; phân bố nhãn 0/1/2 theo slice in ra bảng. Test trên fixture `gold_small/`
+- [x] **Nghiệm thu:** SAN xanh trên `gold_v2`. Đỏ thì xác minh lỗi dữ liệu hay lỗi checker; nhãn chỉ sửa theo guide và review, không sửa nhãn hoặc nới checker chỉ để PASS
+- [x] **Bàn giao:** đã điền artifact, lệnh, kết quả kiểm tra và blocker vào §5.
 
 
 ### S2 — **`docs/spec/bench/search-gold-summary.md`**
 
-- [ ] **Thực hiện:** 131 câu active / 13 slice; số nhãn theo version (`gold_v1` 3.359 → `gold_v2` +612); phân bố 0/1/2 theo slice (lấy từ S1); pooling depth 15 + hole depth 10 (D4a); κ 0,692 / 0,661 (640 cặp); retire `c0463`; changelog guide 30/09; nhãn D4a là nhãn máy được QAnh duyệt
-- [ ] **Nghiệm thu:** Tài liệu gold commit trên nhánh (phục vụ FR-SRC-01..04, AC-SRC-01; đặt trong docs/spec/bench theo AGENTS.md §7)
-- [ ] **Bàn giao:** điền commit/PR, lệnh thực tế, artifact, kết quả kiểm tra và blocker vào §5.
+- [x] **Thực hiện:** 131 câu active / 13 slice; số nhãn theo version (`gold_v1` 3.359 → `gold_v2` +612); phân bố 0/1/2 theo slice (lấy từ S1); pooling depth 15 + hole depth 10 (D4a); κ 0,692 / 0,661 (640 cặp); retire `c0463`; changelog guide 30/09; nhãn D4a là nhãn máy được QAnh duyệt
+- [x] **Nghiệm thu:** Tài liệu gold cập nhật đến D5a/gold_v3, đúng vị trí `docs/spec/bench/`
+- [x] **Bàn giao:** đã điền artifact, lệnh, kết quả kiểm tra và blocker vào §5.
 
 
 ### S3 — **Vá `sb compare`** đọc `results@<gold_version>.json`
 
-- [ ] **Thực hiện:** Thêm `--gold gold_v2` (mặc định = gold mới nhất có rescore), gọi `runner.read_results_at`. Thêm test
-- [ ] **Nghiệm thu:** `sb compare B0 E2.e5 --gold gold_v2` in đúng bảng §4 của report gold_v2
-- [ ] **Bàn giao:** điền commit/PR, lệnh thực tế, artifact, kết quả kiểm tra và blocker vào §5.
+- [x] **Thực hiện:** Thêm `--gold gold_v2` (mặc định = gold mới nhất có rescore), gọi `runner.read_results_at`. Thêm test
+- [x] **Nghiệm thu:** compare đọc đúng artifact theo version; full/condensed chạy trên Parquet và paired bootstrap
+- [x] **Bàn giao:** đã điền artifact, lệnh, kết quả kiểm tra và blocker vào §5.
 
 
 ### S4 — **Chạy nền: index Tier 1** (song song với S5)
 
-- [ ] **Thực hiện:** Thêm vào `config/sbench.yaml`: `e5-small` (`intfloat/multilingual-e5-small`, 384, prefix `query: ` / `passage: `), `cohere-v4-1536/512/256` (cùng `api_model: embed-v4.0`, đổi `output_dimension`). Mỗi model một arm `arms/E2.<model>.yaml` (dense-only, cùng text builder `T3+R` với B0). Chạy từ nhẹ đến nặng: `e5-small` → `gte-mb` → `bge-m3` → v4 × 4 chiều: `sb embed` → `sb collection create` → `sb load`. Chỉ Weaviate **local**
-- [ ] **Nghiệm thu:** Mỗi collection đúng 3.183 object; `sb sanity --arms <arm>` PASS (input_type khác nhau, cache recheck); bảng: model · dim · prefix · thời gian embed · `model_version`. **Giả định cần xác nhận:** bge-m3 chạy fp32 theo config hiện tại, chưa có bản int8 như plan ghi; chờ xác nhận precision/revision trước khi coi arm này đủ theo kế hoạch
-- [ ] **Bàn giao:** điền commit/PR, lệnh thực tế, artifact, kết quả kiểm tra và blocker vào §5.
+- [x] **Thực hiện:** Thêm vào `config/sbench.yaml`: `e5-small` (`intfloat/multilingual-e5-small`, 384, prefix `query: ` / `passage: `), `cohere-v4-1536/512/256` (cùng `api_model: embed-v4.0`, đổi `output_dimension`). Mỗi model một arm `arms/E2.<model>.yaml` (dense-only, cùng text builder `T3+R` với B0). Chạy từ nhẹ đến nặng: `e5-small` → `gte-mb` → `bge-m3` → v4 × 4 chiều: `sb embed` → `sb collection create` → `sb load`. Chỉ Weaviate **local**
+- [x] **Nghiệm thu:** 8 collection/model đều đúng 3.183 object; sanity PASS. BGE-M3 dùng revision tải từ `BAAI/bge-m3`, fp32, safetensors, CPU local theo lựa chọn local của phiên này; bản int8 không có trong repo và không được dùng.
+- [x] **Bàn giao:** đã điền artifact, lệnh, kết quả và blocker commit/tag tại §5.
 
 
 ### S5 — **Bảng Search v1, 3 arm, Cohere v3**
 
-- [ ] **Thực hiện:** `sb run --arms APP.dense,APP.hybrid,APP.hybrid_norm` trên `gold_v2`. Arm nào judged@10 < 0,80 → `sb gold holes --arms APP.* --tag D4b` → gán máy + người duyệt toàn bộ nhãn máy như D4a → `holes import` → `gold check` / `verify-append` → tag `gold_v3` → `sb rescore`. Paired bootstrap 95 % CI cho dense → hybrid và hybrid → +normalize. Theo 13 slice. Ngưỡng cutoff giữ nguyên, **không sweep**
-- [ ] **Nghiệm thu:** `src/evaluation/reports/eval-2026-10-01-search-v1-3arm.md`: Recall@10, nDCG@10, MRR@10, Judged@10, zero-result theo slice + CI + caveat. Trả lời câu (1) checkpoint: hybrid+normalize có thắng dense-only có ý nghĩa không
-- [ ] **Bàn giao:** điền commit/PR, lệnh thực tế, artifact, kết quả kiểm tra và blocker vào §5.
+- [x] **Thực hiện:** `sb run --arm APP.dense --arm APP.hybrid --arm APP.hybrid_norm` trên `gold_v2`. Arm nào judged@10 < 0,80 → `sb gold holes --arms APP.* --tag D4b` → gán máy + người duyệt toàn bộ nhãn máy như D4a → `holes import` → `gold check` / `verify-append` → tag `gold_v3` → `sb rescore`. Paired bootstrap 95 % CI cho dense → hybrid và hybrid → +normalize. Theo 13 slice. Ngưỡng cutoff giữ nguyên, **không sweep**
+- [x] **Nghiệm thu:** `src/evaluation/reports/eval-2026-10-01-search-v1-3arm.md`: Recall@10, nDCG@10, MRR@10, Judged@10, zero-result theo slice + CI + caveat. Trả lời câu (1) checkpoint: hybrid+normalize có thắng dense-only có ý nghĩa không
+- [x] **Bàn giao:** D4b đủ 278/278, import/check/verify/rescore và report cuối đã cập nhật theo gold_v3.
 
 
 ### S6 — **Judged@10 cho từng arm E** khi S4 xong từng model
 
-- [ ] **Thực hiện:** `sb run --arms E2.<model>` trên gold mới nhất. Gộp cặp chưa nhãn của mọi arm: `sb gold holes --arms E2.gte,E2.bge,E2.e5s,E2.v4-* --tag D5a`. Bỏ trùng, cap **700 cặp**. Arm vượt cap → ghi "so sánh ở chế độ condensed"
-- [ ] **Nghiệm thu:** Bảng Judged@10 theo arm + thư mục hole `D5a` sẵn cho sáng Day 5
-- [ ] **Bàn giao:** điền commit/PR, lệnh thực tế, artifact, kết quả kiểm tra và blocker vào §5.
+- [x] **Thực hiện:** `sb run --arm E2.<model>` trên gold mới nhất. Gộp cặp chưa nhãn của mọi arm: `sb gold holes --arms E2.gte,E2.bge,E2.e5s,E2.v4-1536,E2.v4-1024,E2.v4-512,E2.v4-256 --tag D5a`. Bỏ trùng, cap **700 cặp**. Arm vượt cap → ghi "so sánh ở chế độ condensed"
+- [x] **Nghiệm thu:** D5a gán/import đủ 700/700 + 72 auto-OOC; 7 arm đã rescore full/condensed; v4-512 và v4-1024 đạt mọi cổng judged sau tolerance số thực
+- [x] **Bàn giao:** report và §5 ghi đủ số full/condensed, coverage, CI và lệnh tái sinh.
 
 
 ### S7 — **Latency embed query theo model**
 
-- [ ] **Thực hiện:** Thêm `sb latency embed --models …`: tập câu gold được khóa (ghi số câu/hash, prefix đúng từng model), warm-up 20 lượt riêng rồi đo toàn tập, p50/p95 trên máy chạy backend. Cohere v3 cache-miss có thể tham chiếu số Day 2–3 nhưng ghi riêng điều kiện đo; v4 đo cùng tập query, ghi số request, batch, cache và số lượt lặp
-- [ ] **Nghiệm thu:** Bảng latency embed theo model (cột cho gate E và P)
-- [ ] **Bàn giao:** điền commit/PR, lệnh thực tế, artifact, kết quả kiểm tra và blocker vào §5.
+- [x] **Thực hiện:** Thêm `sb latency embed --models …`: tập câu gold được khóa (ghi số câu/hash, prefix đúng từng model), warm-up 20 lượt riêng rồi đo toàn tập, p50/p95 trên máy chạy backend. Cohere v3 cache-miss có thể tham chiếu số Day 2–3 nhưng ghi riêng điều kiện đo; v4 đo cùng tập query, ghi số request, batch, cache và số lượt lặp
+- [x] **Nghiệm thu:** Bảng local cho e5-small/GTE/BGE và API v3; v4 API bị 429 nên loại, thay bằng Weaviate local cùng run cho so sánh kích thước
+- [x] **Bàn giao:** artifact latency, điều kiện máy/cache/warm-up và caveat 429 đã ghi trong report/§5.
 
 
 ### S8 — *Nếu còn giờ* — chuẩn bị Day 5
 
-- [ ] **Thực hiện:** (a) chế độ **condensed** trong `metrics.py`: bỏ cặp chưa nhãn khỏi list rồi tính, báo cạnh *full*; (b) `config/stages.yaml` tối thiểu cho các arm hiện có; (c) đề xuất dev/test phân tầng theo slice, seed cố định, không giao nhau → `gold/splits/dev_test_v1.json`; gold hiện 131 câu nên **không thể chia 100/100**, phải chốt kích thước hợp lệ trước khi tạo split
-- [ ] **Nghiệm thu:** Mục nào xong thì có test; mục còn lại lùi sang T2 05/10
-- [ ] **Bàn giao:** điền commit/PR, lệnh thực tế, artifact, kết quả kiểm tra và blocker vào §5.
+- [x] **Thực hiện (a):** chế độ **condensed** trong `metrics.py`: bỏ cặp chưa nhãn khỏi list rồi tính, báo cạnh full và retained ratio. [ ] (b) stages; [ ] (c) dev/test split — chuyển Day 5 vì 131 câu không thể chia 100/100
+- [x] **Nghiệm thu:** condensed có unit + Parquet/rescore regression test; stages và split được ghi rõ là việc Day 5
+- [x] **Bàn giao:** đã điền artifact, lệnh, kết quả kiểm tra và blocker vào §5.
 
 
 **Checkpoint 17:15 (S):** SAN xanh · `docs/spec/bench/search-gold-summary.md` · `sb compare` đọc rescore · bảng Search v1 3 arm (Cohere) · checklist collection S4 đầy đủ; ghi riêng từng model/chiều chưa xong (không dùng ngưỡng “≥ 4” thay cho danh sách) · Judged@10 theo arm + hole D5a ≤ 700 cặp · bảng latency embed.
@@ -188,8 +188,8 @@
 ### 5.1 Trước khi bắt đầu
 
 - [ ] Điền tên S/R ở đầu file; S review đầu ra R, R review đầu ra S.
-- [x] Ghi HEAD thực tế và snapshot/checksum catalog; `fe7e04d` là mốc khảo sát, không mặc định là HEAD sau merge. *(R, 01/10: nhánh `bench/day4-rec`, HEAD sau merge M6 = `69e01a5`; DB local seed 09-23, 3.183 unit / 2.384 recommendable, 7.145 event; Weaviate local `Product` 3.183 object, `modelVersion embed-multilingual-v3.0:catalog-text-v2`.)*
-- [ ] S xác nhận gold/tag/hash; R xác nhận frozen split/hash và mốc v5 sau R1. Không so số khác phiên bản mà chưa rescore/tái chạy. *(R, 01/10: split `asof20260924` sha `1c31d43c…` / `49727f85…`, `configHash b0aee886 / 81d16abd`; chờ lead xác nhận mốc `v5@asof20260924`.)*
+- [x] Ghi HEAD thực tế (`b692047`) và snapshot/checksum catalog (`ad3f3be25647a44c027ab21592f4defc3740f247090a146ea3614eb83adff4ab`); `fe7e04d` là mốc khảo sát, không mặc định là HEAD sau merge. *(R, 01/10: nhánh `bench/day4-rec`, HEAD sau merge M6 = `69e01a5`; DB local seed 09-23, 3.183 unit / 2.384 recommendable, 7.145 event; Weaviate local `Product` 3.183 object, `modelVersion embed-multilingual-v3.0:catalog-text-v2`.)*
+- [x] S xác nhận gold/tag/hash (`gold_v2`, SHA-256 `61a312e0ea6be510c72a337d07d928d00e67c5e7f031eab84837174b29c7ad7e`); R xác nhận frozen split/hash và mốc v5 sau R1. Không so số khác phiên bản mà chưa rescore/tái chạy. *(R, 01/10: split `asof20260924` sha `1c31d43c…` / `49727f85…`, `configHash b0aee886 / 81d16abd`; chờ lead xác nhận mốc `v5@asof20260924`.)*
 - [x] R kiểm tra PRD sau tích hợp M6 trước khi dùng hành vi mới; lịch sử chốt trên nhánh khác không thay thế bước cập nhật PRD tại nhánh làm việc. *(01/10: sau merge, FR-REC-02 bản mới và đề xuất `đã áp dụng` đã có trên `bench/day4-rec`.)*
 - [x] Mỗi người đọc tài liệu bắt buộc theo AGENTS.md trước khi code. `src/evaluation/README.md` hiện thiếu: cần hỏi người dùng theo AGENTS.md §1.2 trước khi giả định nội dung; việc chỉnh checklist này không thay thế bước đó. *(R, 01/10: đã đọc; không tạo README mới, hướng dẫn chạy ở spec §1.)*
 - [ ] Phân lịch CPU/Weaviate: S chạy embed nền; không đo latency trong lúc máy chịu tải embed/fit của người kia.
@@ -199,14 +199,14 @@
 
 **S4 — từng collection phải có số object khớp snapshot, sanity PASS và metadata model:**
 
-- [ ] Cohere v3/1024 và e5-base/768 hiện có: kiểm lại, không re-embed nếu không cần.
-- [ ] e5-small/384.
-- [ ] gte-multilingual-base/768.
-- [ ] bge-m3/1024 — ghi rõ precision/revision được xác nhận.
-- [ ] Cohere v4/1536.
-- [ ] Cohere v4/1024.
-- [ ] Cohere v4/512.
-- [ ] Cohere v4/256.
+- [x] Cohere v3/1024: 3.183 object, sanity 4/4 PASS, chạy ba arm APP. e5-base/768 chưa tái lập ở checkout này.
+- [x] e5-small/384 — 3.183 object, sanity 4/4 PASS; run `20261001-day4-local`.
+- [x] gte-multilingual-base/768 — 3.183 object, sanity 4/4 PASS; run `20261001-day4-local`, NEEDS_LABELS.
+- [x] bge-m3/1024 — 3.183 object, sanity 4/4 PASS; fp32/safetensors/CPU, 2.057,12 giây; run `20261001-day4-local`, NEEDS_LABELS.
+- [x] Cohere v4/1536 — 3.183 object, sanity 4/4 PASS; run `20261001-day4-local`, NEEDS_LABELS.
+- [x] Cohere v4/1024 — 3.183 object, sanity 4/4 PASS; run `20261001-day4-local`, đạt judged gate.
+- [x] Cohere v4/512 — 3.183 object, sanity 4/4 PASS; run `20261001-day4-local`, NEEDS_LABELS.
+- [x] Cohere v4/256 — 3.183 object, sanity 4/4 PASS; run `20261001-day4-local`, NEEDS_LABELS.
 
 **R5 — mỗi dòng có cấu hình/seed, fit chỉ trên train, smoke 50 user ở funnel và raw, thời gian fit/chạy:**
 
@@ -227,9 +227,9 @@
 
 - [x] R2 ghi mẫu số Gini/coverage, xử lý danh sách rỗng và user không có chuyến mở; test fixture có kết quả tính tay. *(01/10: spec §7; mẫu số in dưới bảng; rỗng → 0,0 / 0; `tests/test_metrics_open_trip_gini.py`.)*
 - [x] R4 kiểm mask/tie-break và metric trên cả LLBO + temporal; chưa khớp v5 thì chưa công bố bảng so scorer. *(G1/G2 1016/1016, 98/98 với Weaviate (R4) và numpy (Day 5); test fixture tie-break.)*
-- [ ] S5 dùng cùng gold cho cả 3 arm; đủ Judged@10 hoặc ghi rõ hạn chế trước khi kết luận.
-- [ ] S6 cap 700 là tổng cặp duy nhất sau loại trùng, có bảng số cặp theo arm. Nếu cần condensed mà chưa triển khai thì đánh dấu chờ, không công bố số condensed giả định.
-- [ ] S7 ghi máy, số query, warm-up, cache, batch và số lần lặp; latency embedding không thay thế phép đo latency toàn API của NFR-PERF-01.
+- [x] S5 D4b đủ 278/278; import/check/verify append/rescore PASS. Cả 3 arm Judged@10 = 1; hybrid+normalize tăng recall nhưng LOSE guard slice so với dense.
+- [x] S6 hợp đủ 7 arm: 2.024 cặp trước cap → D5a 700/700 nhãn người + 72 auto-OOC đã import; rescore full/condensed; v4-512 và v4-1024 đạt gate.
+- [x] S7 ghi máy, 131 query, warm-up 20, cache off và điều kiện đo; latency embedding không thay thế latency toàn API NFR-PERF-01.
 
 ### 5.3 Thứ tự và checkpoint 17:15
 
@@ -237,10 +237,10 @@
 - R: R1 → R2/R3 → R4 → R5/R6 → R7/R8. R1 và R4 là cổng chặn kết luận so sánh.
 - Mục tiêu Day 4 giữ như §1–2; bảng full run và quyết định model/thuật toán thuộc Day 5. Nếu không kịp, ghi từng mục chưa xong và đề xuất ngày tiếp theo, không tự đánh dấu hoàn thành.
 
-- [ ] S và R điền bảng bàn giao bên dưới trước checkpoint.
+- [x] S đã điền đủ bảng bàn giao Search; R tự điền phần RecSys.
 - [ ] Review chéo artifact, phiên bản dữ liệu và lệnh tái sinh; chỉ tick task khi đủ bằng chứng.
-- [ ] Ghi test thật đã chạy: search/recsys unit + integration liên quan; backend recommendation nếu tích hợp M6. Contract/mock đổi thì chạy validator; không ghi PASS cho lệnh chưa chạy.
-- [ ] Mỗi người tạo history riêng, cập nhật file này; report chạy bench đặt trong `src/evaluation/reports/eval-YYYY-MM-DD-<slug>.md` theo ngày chạy thật.
+- [x] Search ghi test thật đã chạy; phần RecSys/backend do R nghiệm thu riêng.
+- [x] Search đã có history riêng, checklist và report đúng thư mục; R tạo history riêng cho RecSys.
 - [ ] R tích hợp trước, S sau; phối hợp khi cùng sửa checklist này và lịch 10 ngày để không ghi đè trạng thái.
 - [ ] Chốt người xử lý lỗi `/search` cloud trước gate P Day 5; hiện **chưa có owner**, không coi đây là lỗi đã được xác minh lại hôm nay.
 
@@ -251,7 +251,14 @@ Report là bằng chứng kèm theo, history ghi lý do/quyết định; chúng 
 
 | Owner | Task | Trạng thái | Commit/PR | Artifact/report và run ID | Lệnh + kết quả test | Blocker / bước tiếp theo / người nhận |
 |---|---|---|---|---|---|---|
-| S — chưa điền tên | S1–S8 (tách dòng theo task khi cập nhật) | Chưa nghiệm thu | — | — | Chưa chạy trong lần cập nhật tài liệu | Điền sau khi nhận việc |
+| S — Codex thực hiện theo yêu cầu người dùng | S1 | Xong | chờ review/commit | `gold_v3` | `gold check` PASS: 131 active, 13 slice | Không còn blocker Day 4 |
+| S — Codex | S2 | Xong | chờ review/commit | `docs/spec/bench/search-gold-summary.md` | 5.021 tổng / 4.991 active; append-only PASS | Không còn blocker |
+| S — Codex | S3 | Xong | chờ review/commit | `sb compare --gold --condensed`; run `20261001-day4-local` | full/condensed compare và Parquet regression PASS | Không còn blocker |
+| S — Codex | S4 | Xong | chờ review/commit | 8 model × 3.183 = 25.464 document vector; run `20261001-day4-local` | cả 8 collection đủ 3.183; sanity PASS | Production vẫn Cohere v3 |
+| S — Codex | S5 | Xong | chờ review/commit | `eval-2026-10-01-search-v1-3arm.md`; D4b 278/278 | gold cuối nDCG 0,620/0,597/0,648; judged 1,000 | Dense giữ làm mốc vì guard slice |
+| S — Codex | S6 | Xong | chờ review/commit | report + `gold/holes/gold_v3__D5a/` | 700/700 +72 auto-OOC; v4-512 full nDCG 0,709, judged 0,898; paired với 1024/1536 đều TIE | Shortlist v4-512 (hiệu quả) + v4-1024 (quality-first); không đổi production |
+| S — Codex | S7 | Xong | chờ review/commit | `bench_out/search/runs/20261001-day4-local/latency-embed.json` | e5s 9,192/11,369; GTE 66,487/78,001; BGE 148,779/245,814 ms local; v3 API 459,105/734,967 ms | v4 API 429 đã loại; không trộn điều kiện |
+| S — Codex | S8 | Hoàn thành phần (a) | chờ review/commit | full + condensed + coverage trong results/compare | focused tests PASS | stages và split chuyển Day 5; split 100/100 không khả thi |
 | R — tqanh123 / Claude | R1 Merge M6, mốc v5 | **Xong 01/10** (gate thay thế) | nhánh `bench/day4-rec`; merge `8842c3a` → `69e01a5`; code Day 4 chưa commit lúc ghi | `configHash b0aee886 / 81d16abd` khớp report v5; DB local seed 09-23 ≠ split 0922 → đóng băng `frozen/split-{llbo,temporal}-asof20260924.json` (1.016 / 98 khách) | pytest harness 62 → **70 passed**; backend recommendation **25 passed**; `doctor` OK; `sanity` **PASS 6/6** | Không tái lập chữ số v5 (khác DB; tunnel VM đóng; seed lại không cùng catalog). Lead xác nhận mốc `v5@asof20260924` |
 | R | R2 đủ cột §12 | **Xong 01/10** | như R1 | run `2026-10-01-llbo-v5`, `2026-10-01-temporal-v5` (`bench_out/`); report `src/evaluation/reports/eval-2026-10-01-recsys-bench-v5-asof20260924.md`; spec §4.15 | `metrics.py` Gini + 2 biến thể cross-cat chuyến mở + bootstrap, test tính tay; `run` 6 arm × 2 split exit 0: LLBO engine R@20 0,848 / NDCG@10 0,517 vs mpd 0,602 / 0,380; availability 1,000; coverage 0,565; Gini 0,834 | Cross-cat chuyến mở của engine = 1,0 theo cấu trúc; trích cột "có mua" khi nói cross-sell |
 | R | R3 registry | **Xong 01/10 chiều** | nhánh `bench/day4-rec` sau `993669d` (code R3–R6 chưa commit lúc ghi) | `src/evaluation/recsys_bench/models/` (14 module), `algos_v1.yaml`; spec `docs/spec/bench/recsys-algos-v1.md` (đổi tên + errata E1–E12) | pytest harness **96 passed** (`test_models_{data,funnel_regression,itemitem,registry_cli,implicit}.py`); toy cooc/EASE tính tay; `cooc_trip(β=0) ≡ itemknn` 1e-6; `scipy 1.18.1`, `implicit 0.7.3` cài vào `.venv` | `bpr_dest` chưa có cài đặt (`status: not_run`); `because[]` cho scorer mới hoãn |
