@@ -32,7 +32,7 @@ Hạ tầng đi qua CI/CD, không chạy `terraform apply` từ máy cá nhân. 
 - Push/merge vào `main`, `release-mvp-v1`, `release-mvp-v2`, `release-mvp-v3` (đổi `infra/terraform/**`): plan, hai bước chặn, apply. Plan hiện trong Summary của run.
   - Chặn plan có xoá hoặc thay thế (trừ khi chạy tay với `allow_destroy=true`).
   - Chặn plan có cập nhật tại chỗ VM primary hoặc app (trừ khi chạy tay với `allow_vm_update=true`). Khi cho qua, CI chụp snapshot disk primary (`pre-apply-<run>`) trước khi apply.
-- Chạy tay (`workflow_dispatch`): cùng luồng với hai tuỳ chọn trên. Chỉ bật sau khi đã đọc plan.
+- Cho qua một plan bị chặn, sau khi đã đọc plan: đặt biến Environment `staging` `INFRA_ALLOW_VM_UPDATE=true` (hoặc `INFRA_ALLOW_DESTROY=true`) rồi **Re-run** run bị chặn trên GitHub (Actions → run → Re-run failed jobs); xong xoá biến. Re-run dùng file workflow của đúng nhánh. Dispatch (`workflow_dispatch`, input `allow_vm_update`/`allow_destroy`) chỉ dùng được khi file workflow đã có trên nhánh mặc định `main`.
 
 Mọi nhánh dùng chung một state (`infra/staging`), nên giữ `infra/terraform` giống nhau giữa các nhánh; nhánh có code cũ sẽ plan xoá resource và bị chặn.
 

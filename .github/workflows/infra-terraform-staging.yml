@@ -6,7 +6,9 @@ name: Staging Infra Terraform
 #   The guard refuses any plan that deletes or replaces a resource (a replaced VM
 #   loses its data disk) unless a manual dispatch sets allow_destroy=true. It also
 #   refuses any in-place update of the primary DB VM or the app VM unless a manual
-#   dispatch sets allow_vm_update=true; read the plan in the run summary first.
+#   dispatch sets allow_vm_update=true, or the Environment variable
+#   INFRA_ALLOW_VM_UPDATE=true is set and the blocked run is re-run (dispatch only works
+#   for workflows on the default branch). Unset the variable after use.
 # After a successful apply, the replication job brings the primary and the replica to the
 # replicating state through IAP SSH (ops/ci-db-replication.sh); it is idempotent.
 # All branches share one state (prefix infra/staging), so keep infra/terraform in
@@ -102,8 +104,8 @@ jobs:
       TF_VAR_db_primary_vm_name: ${{ vars.GCE_DB_INSTANCE }}
       TF_VAR_app_vm_name: ${{ vars.GCE_APP_INSTANCE }}
       TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
-      ALLOW_DESTROY: ${{ inputs.allow_destroy || 'false' }}
-      ALLOW_VM_UPDATE: ${{ inputs.allow_vm_update || 'false' }}
+      ALLOW_DESTROY: ${{ inputs.allow_destroy || vars.INFRA_ALLOW_DESTROY || 'false' }}
+      ALLOW_VM_UPDATE: ${{ inputs.allow_vm_update || vars.INFRA_ALLOW_VM_UPDATE || 'false' }}
       PRIMARY_VM_ADDRESS: google_compute_instance.db_primary
       APP_VM_ADDRESS: google_compute_instance.app
     steps:
@@ -156,7 +158,7 @@ jobs:
             echo "Plan deletes or replaces:" >&2
             echo "$destructive" >&2
             if [ "$ALLOW_DESTROY" != 'true' ]; then
-              echo '::error::Destructive plan blocked. Review it, then run this workflow manually with allow_destroy=true if intended.'
+              echo '::error::Destructive plan blocked. Review it, then set the Environment variable INFRA_ALLOW_DESTROY=true and re-run this run (or dispatch with allow_destroy=true) if intended.'
               exit 1
             fi
             echo '::warning::Destructive plan allowed by allow_destroy=true.'
@@ -169,7 +171,7 @@ jobs:
             echo "Plan updates in place:" >&2
             echo "$vm_updates" >&2
             if [ "$ALLOW_VM_UPDATE" != 'true' ]; then
-              echo '::error::Update of a production-like VM blocked. Read the plan in the run summary, then run this workflow manually with allow_vm_update=true if intended.'
+              echo '::error::Update of a production-like VM blocked. Read the plan in the run summary, then set the Environment variable INFRA_ALLOW_VM_UPDATE=true and re-run this run (or dispatch with allow_vm_update=true) if intended.'
               exit 1
             fi
             echo '::warning::VM update allowed by allow_vm_update=true.'
