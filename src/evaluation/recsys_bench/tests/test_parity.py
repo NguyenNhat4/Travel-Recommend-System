@@ -36,6 +36,9 @@ def _production_response(world, events, user, now, k=5):
 
 
 def test_offline_prod_engine_matches_production_path_for_every_fixture_user(world):
+    """Chứng minh harness **trung hoà đúng** (as_of = generatedAt, event mới nhất trước, popularity theo as_of, cap 2) khi đường
+    production là `RecommendForUser` thật với reader giả. Bằng chứng offline = HTTP thật là lượt đo 60/60 với backend local
+    (spec §4.12); test này không thay được lượt đo đó."""
     events = make_events()
     users = sorted({e["cdpUserId"] for e in events})
     purchases = [e for e in events if e["eventName"] == "purchase"]
@@ -48,6 +51,18 @@ def test_offline_prod_engine_matches_production_path_for_every_fixture_user(worl
     res = P.verdict(rows)
     assert res["pass"] is True and res["equal"] == len(users) and res["idsMismatch"] == [] and res["fieldsMismatch"] == []
     assert any(r.http_ids for r in rows) and all(len(r.http_ids) <= 5 for r in rows)
+
+
+def test_popularity_now_anchors_offline_popularity_table(world):
+    """Production neo bảng phổ biến ở lúc khởi động; harness nhận mốc đó qua `popularity_now` thay vì generatedAt."""
+    from datetime import timedelta
+    events = make_events()
+    engine = OfflineEngine(world["index"], world["vectors"], [e for e in events if e["eventName"] == "purchase"], mode="prod")
+    http_like = _production_response(world, events, "u1", AS_OF)
+    started = AS_OF - timedelta(minutes=14)
+    row = P.compare_user("u1", http_like, engine, [e for e in events if e["cdpUserId"] == "u1"], k=5, popularity_now=started)
+    assert started in engine._popularity and AS_OF not in engine._popularity and row.error is None
+    assert P.compare_user("u1", http_like, engine, [e for e in events if e["cdpUserId"] == "u1"], k=5).equal is True
 
 
 def test_compare_detects_mismatch_and_markdown(world):
@@ -80,6 +95,12 @@ def test_make_users_is_deterministic_and_stratified():
     assert P.make_users(events, as_of, seed=7)["users"][4:] != a["users"][4:]
     with pytest.raises(P.ParityError, match="churned"):
         P.make_users(events, as_of, seed=1, quota={"churned": 99})
+    # có cdp.profiles → tầng theo lifecycleStage seed ghi, gồm khách không có event (đường popular)
+    profiles = [{"cdpUserId": f"VP{i:07d}", "lifecycleStage": "new"} for i in range(100, 130)] \
+        + [{"cdpUserId": u["cdpUserId"], "lifecycleStage": u["stage"]} for u in a["users"][4:]]
+    c = P.make_users(events, as_of, seed=42, profiles=profiles, quota={"new": 10, "active": 2})
+    assert c["stageSource"] == "profiles" and c["zeroEventUsers"] >= 1 and len(c["users"]) == 16
+    assert a["stageSource"] == "events" and a["zeroEventUsers"] == 0
 
 
 def test_parity_http_uses_service_token_and_tolerates_errors(world, tmp_path):

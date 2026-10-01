@@ -7,6 +7,8 @@
   "dormant": 11,
   "churned": 6
  },
+ "stageSource": "profiles",
+ "zeroEventUsers": 14,
  "users": [
   {
    "cdpUserId": "VP0000001",
@@ -29,60 +31,80 @@
    "persona": true
   },
   {
-   "cdpUserId": "VP0001993",
+   "cdpUserId": "VP0001332",
    "stage": "new"
   },
   {
-   "cdpUserId": "VP0000331",
+   "cdpUserId": "VP0000252",
    "stage": "new"
   },
   {
-   "cdpUserId": "VP0000111",
+   "cdpUserId": "VP0000048",
    "stage": "new"
   },
   {
-   "cdpUserId": "VP0000861",
+   "cdpUserId": "VP0001511",
    "stage": "new"
   },
   {
-   "cdpUserId": "VP0000806",
+   "cdpUserId": "VP0000594",
    "stage": "new"
   },
   {
-   "cdpUserId": "VP0000687",
+   "cdpUserId": "VP0000526",
    "stage": "new"
   },
   {
-   "cdpUserId": "VP0000398",
+   "cdpUserId": "VP0000484",
    "stage": "new"
   },
   {
-   "cdpUserId": "VP0000330",
+   "cdpUserId": "VP0000292",
    "stage": "new"
   },
   {
-   "cdpUserId": "VP0001789",
+   "cdpUserId": "VP0001508",
    "stage": "new"
   },
   {
-   "cdpUserId": "VP0000295",
+   "cdpUserId": "VP0000228",
    "stage": "new"
   },
   {
-   "cdpUserId": "VP0001429",
+   "cdpUserId": "VP0001399",
    "stage": "new"
   },
   {
-   "cdpUserId": "VP0000140",
+   "cdpUserId": "VP0001823",
    "stage": "new"
   },
   {
-   "cdpUserId": "VP0001963",
+   "cdpUserId": "VP0001177",
    "stage": "new"
   },
   {
-   "cdpUserId": "VP0001798",
+   "cdpUserId": "VP0000194",
    "stage": "new"
+  },
+  {
+   "cdpUserId": "VP0001341",
+   "stage": "active"
+  },
+  {
+   "cdpUserId": "VP0000944",
+   "stage": "active"
+  },
+  {
+   "cdpUserId": "VP0000079",
+   "stage": "active"
+  },
+  {
+   "cdpUserId": "VP0000075",
+   "stage": "active"
+  },
+  {
+   "cdpUserId": "VP0000212",
+   "stage": "active"
   },
   {
    "cdpUserId": "VP0000485",
@@ -165,24 +187,20 @@
    "stage": "active"
   },
   {
-   "cdpUserId": "VP0001848",
-   "stage": "active"
+   "cdpUserId": "VP0000409",
+   "stage": "dormant"
   },
   {
-   "cdpUserId": "VP0000374",
-   "stage": "active"
+   "cdpUserId": "VP0001801",
+   "stage": "dormant"
   },
   {
-   "cdpUserId": "VP0001599",
-   "stage": "active"
+   "cdpUserId": "VP0001109",
+   "stage": "dormant"
   },
   {
-   "cdpUserId": "VP0000944",
-   "stage": "active"
-  },
-  {
-   "cdpUserId": "VP0000762",
-   "stage": "active"
+   "cdpUserId": "VP0000845",
+   "stage": "dormant"
   },
   {
    "cdpUserId": "VP0000705",
@@ -213,20 +231,20 @@
    "stage": "dormant"
   },
   {
-   "cdpUserId": "VP0000965",
-   "stage": "dormant"
+   "cdpUserId": "VP0000978",
+   "stage": "churned"
   },
   {
-   "cdpUserId": "VP0000281",
-   "stage": "dormant"
+   "cdpUserId": "VP0000197",
+   "stage": "churned"
   },
   {
-   "cdpUserId": "VP0000915",
-   "stage": "dormant"
+   "cdpUserId": "VP0000930",
+   "stage": "churned"
   },
   {
-   "cdpUserId": "VP0000871",
-   "stage": "dormant"
+   "cdpUserId": "VP0000920",
+   "stage": "churned"
   },
   {
    "cdpUserId": "VP0001465",
@@ -234,22 +252,6 @@
   },
   {
    "cdpUserId": "VP0000710",
-   "stage": "churned"
-  },
-  {
-   "cdpUserId": "VP0000081",
-   "stage": "churned"
-  },
-  {
-   "cdpUserId": "VP0001834",
-   "stage": "churned"
-  },
-  {
-   "cdpUserId": "VP0001104",
-   "stage": "churned"
-  },
-  {
-   "cdpUserId": "VP0001291",
    "stage": "churned"
   }
  ]

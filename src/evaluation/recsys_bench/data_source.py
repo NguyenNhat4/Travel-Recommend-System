@@ -104,11 +104,13 @@ def _event_cache_key(url: str) -> str:
 
 
 def clear_event_cache() -> int:
-    """Xoá mọi cache event của DB đang trỏ tới (mọi as_of) — gọi sau khi seed lại. Trả số file đã xoá."""
+    """Xoá mọi cache event **và profile** của DB đang trỏ tới (mọi as_of) — gọi sau khi seed lại. Trả số file đã xoá."""
     removed = 0
-    for path in cache_dir().glob(f"events-{_event_cache_key(eval_cdp_url())}-*.jsonl"):
-        path.unlink()
-        removed += 1
+    key = _event_cache_key(eval_cdp_url())
+    for pattern in (f"events-{key}-*.jsonl", f"profiles-{key}.jsonl"):
+        for path in cache_dir().glob(pattern):
+            path.unlink()
+            removed += 1
     return removed
 
 
