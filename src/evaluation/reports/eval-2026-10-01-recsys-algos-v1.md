@@ -431,7 +431,8 @@ toàn catalog và funnel ≈ raw (content 0,194 vs 0,184).
 
 ## 12. Danh sách cải thiện tuần sau — có thứ tự, có owner (ADR 2)
 
-Quyết định theo quy tắc của plan Day 4–5 §2.4 (chưa họp đồng thuận); nguồn: `history/2026-10-01-adr2-huong-cai-thien-recsys-tuan-sau.md`.
+Quyết định theo quy tắc của plan Day 4–5 §2.4; **đã xác nhận 02/10, giữ nguyên thứ tự** (`history/2026-10-02-xac-nhan-adr2-recsys.md`);
+nguồn: `history/2026-10-01-adr2-huong-cai-thien-recsys-tuan-sau.md`.
 Việc đổi hành vi production chỉ là **đề xuất** `docs/prd/update/` — không làm trước khi chốt.
 
 | # | Việc | Vì sao (bằng chứng) | Owner | Loại |

@@ -3,7 +3,7 @@
 - Phục vụ: **FR-REC-01..04**, **NFR-PERF-01** (`docs/prd/requirements.md`); `docs/prd/test-plan.md` §2.5; handbook §11–§12.
 - Code: `src/evaluation/recsys_bench/` (nhánh `bench/recsys-harness`). Số thô: `bench_out/recsys/runs/<run_id>/` (không commit).
 - Thay cho `eval/report.md` của lịch 10 ngày (`docs/plan/2026-09-28-lich-10-ngay-3-engine.md` §0.1).
-- Cập nhật lần cuối: 2026-10-01 tối, Day 5 (§1 regression tự động / `baseline` / `make recsys-*` / thêm scorer, §3.1 baseline_v1 + chính sách, §4.17 full run + ADR 2, §7); trước đó 01/10 chiều, Day 4 R (§1 `compare` / `report` / cột mới, §3.1 bộ split `asof20260924`, §4.15 v5 đủ cột §12, §5.1 P1/P3 sau M6, §6 I-8, §7 định nghĩa cột + đoạn "Ceiling"); trước đó 02/10 (§4.14 sau FR-REC-02; 01/10: §2.1 sanity, §3.1 split đóng băng, §4.5 guest path Cloud, §4.6 v3 NDCG@5, §4.7–4.11 ceiling / phân khúc / strict / 20 ca / findings, §4.12 parity offline = HTTP)
+- Cập nhật lần cuối: 2026-10-02 (§4.17 ADR 2 đã xác nhận); trước đó 2026-10-01 tối, Day 5 (§1 regression tự động / `baseline` / `make recsys-*` / thêm scorer, §3.1 baseline_v1 + chính sách, §4.17 full run + ADR 2, §7); trước đó 01/10 chiều, Day 4 R (§1 `compare` / `report` / cột mới, §3.1 bộ split `asof20260924`, §4.15 v5 đủ cột §12, §5.1 P1/P3 sau M6, §6 I-8, §7 định nghĩa cột + đoạn "Ceiling"); trước đó 02/10 (§4.14 sau FR-REC-02; 01/10: §2.1 sanity, §3.1 split đóng băng, §4.5 guest path Cloud, §4.6 v3 NDCG@5, §4.7–4.11 ceiling / phân khúc / strict / 20 ca / findings, §4.12 parity offline = HTTP)
 
 > **Caveat bắt buộc (handbook §12):** lịch sử khách hàng là dữ liệu sinh. Các số này cho biết pipeline chạy đúng,
 > không cho biết engine sẽ chạy thế nào trên khách thật.
@@ -647,7 +647,8 @@ hit@20 cho content ở LLBO (raw 0,433); (4) **441/1.016 khách LLBO đã `add_t
 0,977 ở nhóm này nhưng −13,2 điểm ở 575 khách còn lại; temporal chỉ 2/98 khách → mọi số LLBO cao một phần vì tín hiệu này, nhãn
 `targetInOwnHistory` cần vào `analyze`; (5) MMR −2,7 điểm LLBO, phá scorer thang nhỏ (−14 đến −15); (6) tắt decay đổi < 0,2 điểm.
 Baseline: `frozen/baseline_v1-{llbo,temporal}-asof20260924.json` (§3.1), `regress --baseline auto` và `make recsys-regress` PASS.
-**ADR 2** (quyết định theo quy tắc, chưa đồng thuận — `history/2026-10-01-adr2-huong-cai-thien-recsys-tuan-sau.md`): giữ engine v5 làm
+**ADR 2** (quyết định theo quy tắc; **đã xác nhận 02/10, giữ nguyên thứ tự** — `history/2026-10-01-adr2-huong-cai-thien-recsys-tuan-sau.md`,
+`history/2026-10-02-xac-nhan-adr2-recsys.md`): giữ engine v5 làm
 lõi; harness thêm `targetInOwnHistory` + split biến thể trước grid; đề xuất PRD cap theo `parentProductId` (I-5); grid temporal
 `W_SHORT/W_POP` rồi λ MMR; nghiên cứu tín hiệu giỏ hàng chưa mua; `star_blend` a ∈ {0,8; 0,9} ưu tiên thấp; hỏi Data về gid của cart; I-8
 dormant 90/180; bỏ grid `H_*`; không chạy kiến trúc sâu.
