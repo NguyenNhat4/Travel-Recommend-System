@@ -42,14 +42,20 @@ class ParityError(RuntimeError):
     pass
 
 
-def make_users(events: list[dict], as_of: datetime, *, seed: int = 42, quota: dict[str, int] | None = None) -> dict:
-    """4 persona + 56 khách phân tầng lifecycle (seed rule) từ event thô; `random.Random(seed)` trên danh sách đã sắp xếp."""
+def make_users(events: list[dict], as_of: datetime, *, seed: int = 42, quota: dict[str, int] | None = None,
+               profiles: list[dict] | None = None) -> dict:
+    """4 persona + 56 khách phân tầng lifecycle; `random.Random(seed)` trên danh sách đã sắp xếp. Có `profiles` (cdp.profiles)
+    thì tầng lấy theo `lifecycleStage` seed ghi — gồm cả khách **không có event** (83 % khách `new`, đường `popular`); không có
+    thì suy từ event thô (chỉ khách có event)."""
     quota = dict(quota or STAGE_QUOTA)
     by_user: dict[str, list[dict]] = defaultdict(list)
     for e in events:
         by_user[str(e.get("cdpUserId"))].append(e)
     as_of_day = as_of.astimezone(__import__("zoneinfo").ZoneInfo("Asia/Ho_Chi_Minh")).date()
-    stage_of = {u: lifecycle_seed_rule(evs, as_of_day)[0] for u, evs in by_user.items() if u not in PERSONA_IDS}
+    if profiles:
+        stage_of = {str(p["cdpUserId"]): str(p.get("lifecycleStage")) for p in profiles if str(p["cdpUserId"]) not in PERSONA_IDS}
+    else:
+        stage_of = {u: lifecycle_seed_rule(evs, as_of_day)[0] for u, evs in by_user.items() if u not in PERSONA_IDS}
     rng = random.Random(seed)
     users = []
     for stage, n in quota.items():
@@ -58,7 +64,8 @@ def make_users(events: list[dict], as_of: datetime, *, seed: int = 42, quota: di
             raise ParityError(f"chỉ có {len(pool)} khách {stage} (cần {n})")
         users += [{"cdpUserId": u, "stage": stage} for u in rng.sample(pool, n)]
     personas = [{"cdpUserId": u, "stage": stage_of_persona(by_user.get(u, []), as_of_day), "persona": True} for u in sorted(PERSONA_IDS)]
-    return {"seed": seed, "asOf": as_of.isoformat(), "quota": quota, "users": personas + users}
+    return {"seed": seed, "asOf": as_of.isoformat(), "quota": quota, "stageSource": "profiles" if profiles else "events",
+            "zeroEventUsers": sum(1 for u in users if not by_user.get(u["cdpUserId"])), "users": personas + users}
 
 
 def stage_of_persona(evs: list[dict], as_of_day) -> str:
@@ -110,16 +117,19 @@ def events_desc(events: list[dict]) -> list[dict]:
 
 
 def compare_user(user: str, http_response: dict, engine: OfflineEngine, user_events: list[dict], *, k: int,
-                 http_status: int | None = 200, client_ms: float = 0.0) -> ParityRow:
+                 http_status: int | None = 200, client_ms: float = 0.0, popularity_now: datetime | None = None) -> ParityRow:
+    """`popularity_now`: mốc backend dựng bảng phổ biến (lúc khởi động / nạp lại) — truyền để trung hoà cửa sổ 90 / 30 ngày và
+    tháng mùa vụ của đường cold start; None = dùng `generatedAt` (đúng khi backend vừa khởi động)."""
     as_of = parse_ts(http_response["generatedAt"])
-    offline = engine.recommend(user, as_of, k, events_desc([e for e in user_events if parse_ts(e["timestamp"]) < as_of]))
+    offline = engine.recommend(user, as_of, k, events_desc([e for e in user_events if parse_ts(e["timestamp"]) < as_of]),
+                               popularity_as_of=popularity_now)
     return ParityRow(user, http_status, [r["productId"] for r in http_response.get("recommendations") or []],
                      [r["productId"] for r in offline.get("recommendations") or []], _fields(http_response), _fields(offline),
                      (http_response.get("diagnostics") or {}).get("latencyMs"), round(client_ms, 1))
 
 
 def parity_http(base_url: str, users: list[str], engine: OfflineEngine, events: list[dict], *, k: int, token: str,
-                timeout_s: float = 30.0, client: Any = None) -> list[ParityRow]:
+                timeout_s: float = 30.0, client: Any = None, popularity_now: datetime | None = None) -> list[ParityRow]:
     import httpx
     if len(token) < 32:
         raise ParityError("AUTH_SERVICE_TOKEN phải ≥ 32 ký tự (backend từ chối token ngắn hơn)")
@@ -138,7 +148,8 @@ def parity_http(base_url: str, users: list[str], engine: OfflineEngine, events: 
                 if r.status_code != 200:
                     rows.append(ParityRow(u, r.status_code, [], [], client_ms=round(ms, 1), error=f"HTTP {r.status_code}"))
                     continue
-                rows.append(compare_user(u, r.json(), engine, by_user.get(u, []), k=k, http_status=r.status_code, client_ms=ms))
+                rows.append(compare_user(u, r.json(), engine, by_user.get(u, []), k=k, http_status=r.status_code, client_ms=ms,
+                                         popularity_now=popularity_now))
             except Exception as exc:  # noqa: BLE001 — một khách lỗi không chặn 59 khách còn lại
                 rows.append(ParityRow(u, None, [], [], client_ms=round((perf_counter() - t0) * 1000, 1), error=f"{type(exc).__name__}: {exc}"))
     finally:

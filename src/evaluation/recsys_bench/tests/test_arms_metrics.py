@@ -152,6 +152,18 @@ def test_cli_freeze_and_split_file_gate(world, events, tmp_path, monkeypatch):
         assert all((d / f).exists() for f in ("ceiling.json", "ceiling.md", "segments.json", "segments.md", "cases.json", "cases.md", "strict.md"))
         assert "## Ceiling" in r.output and "## 20 ca" in r.output and "mmr_demoted" in r.output or "pool_miss" in r.output or "nCandidates" in (d / "cases.json").read_text(encoding="utf-8")
     assert runner.invoke(cli.app, ["analyze", "--run-id", "t"]).exit_code == 1          # run t chỉ có random → thiếu engine
+    # --override: hằng profile.py đổi trong tiến trình → configHash khác, ghi `overrides`; trả lại nguyên trạng sau run
+    from src.backend.app.domain.recommendation import profile
+    before = (profile.MMR_LAMBDA, profile.W_SHORT)
+    r = runner.invoke(cli.app, ["run", "--arm", "engine", "--split", "llbo", "--vectors", "numpy", "--split-file", str(frozen),
+                               "--run-id", "ov", "--override", "MMR_LAMBDA=1.0", "--override", "W_SHORT=0.5"])
+    assert r.exit_code == 0, r.output
+    ov = _json.loads((tmp_path / "home" / "runs" / "ov" / "summary.json").read_text(encoding="utf-8"))
+    base_cfg = _json.loads((tmp_path / "home" / "runs" / "a-llbo" / "summary.json").read_text(encoding="utf-8"))
+    assert ov["overrides"] == {"MMR_LAMBDA": 1.0, "W_SHORT": 0.5} and ov["configHash"] != base_cfg["configHash"]
+    assert ov["engineConfig"]["profile"]["MMR_LAMBDA"] == 1.0 and (profile.MMR_LAMBDA, profile.W_SHORT) == before
+    assert runner.invoke(cli.app, ["run", "--arm", "random", "--split", "llbo", "--override", "MAX_PER_VERTICAL=3"]).exit_code == 1
+    assert runner.invoke(cli.app, ["run", "--arm", "random", "--split", "llbo", "--override", "MMR_LAMBDA=abc"]).exit_code == 1
 
 
 def test_engine_nommr_returns_score_ordered_pool_containing_engine_top_k(world, events):

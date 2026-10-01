@@ -88,7 +88,7 @@ def doctor():
         cleared = data_source.clear_event_cache()   # sau khi seed lại, mọi cache theo as_of đều cũ
         events = data_source.load_events(None, refresh=True)
         typer.echo(f"cdp      OK  {data_source.dsn_label(url)} · {len(events):,} event · "
-                   f"as_of suy ra {data_source.derive_as_of(events).date().isoformat()} · xoá {cleared} cache event")
+                   f"as_of suy ra {data_source.derive_as_of(events).date().isoformat()} · xoá {cleared} cache CDP (event + profile)")
     except Exception as exc:  # noqa: BLE001
         ok = False
         typer.echo(f"cdp      FAIL {type(exc).__name__}: {str(exc).splitlines()[0][:200]}")
@@ -168,7 +168,12 @@ def run(arms: List[str] = typer.Option(["random"], "--arm", help="random | most_
         refresh: bool = typer.Option(False, "--refresh"),
         run_id: Optional[str] = typer.Option(None, "--run-id"),
         split_file: Optional[str] = typer.Option(None, "--split-file", help="bản đóng băng (split --freeze); luôn đọc lại CDP "
-                                                                          "(bỏ cache event) rồi đối chiếu; lệch → dừng, mã 1")):
+                                                                          "(bỏ cache event) rồi đối chiếu; lệch → dừng, mã 1"),
+        override: List[str] = typer.Option([], "--override", help="KEY=VALUE hằng của domain/recommendation/profile.py đọc lúc "
+                                                                  "chạy (MMR_LAMBDA, W_SHORT, W_POP, W_LONG, H_SHORT_DAYS, "
+                                                                  "H_LONG_DAYS, ACTIVE_TRIP_MAX_AGE_DAYS, DORMANT_AFTER_DAYS, "
+                                                                  "MAX_REPEAT_PER_TRIP; W_TYPE dạng JSON) — chỉ trong tiến trình "
+                                                                  "này, vào configHash (M7, chỉ chạy trên temporal)")):
     """Chạy các arm trên cùng split, in bảng markdown, ghi bench_out/recsys/runs/<run_id>/ (summary.json có modelVersion,
     engineConfig, configHash, vectorsMissing; per_user.jsonl có ids top-k, targetProductId, rankStrict)."""
     from . import data_source
@@ -188,7 +193,11 @@ def run(arms: List[str] = typer.Option(["random"], "--arm", help="random | most_
         _fail("arm engine / engine_prod cần --vectors weaviate hoặc numpy")
     run_id = run_id or f"{datetime.now():%Y%m%d-%H%M%S}-{kind}"
     refresh = refresh or bool(split_file)   # bản đóng băng phải đối chiếu với DB thật, không với cache JSONL (review 01/10)
-    with _prepared(as_of, refresh, mode) as (index, vector_search, kept, report, snapshot, _):
+    try:
+        overrides = _parse_overrides(override)
+    except ValueError as exc:
+        _fail(str(exc))
+    with _overridden(overrides), _prepared(as_of, refresh, mode) as (index, vector_search, kept, report, snapshot, _):
         result = _make_split(kind, kept, index, cutoff, min_purchases, min_trips)
         frozen_sha = None
         if split_file:
@@ -235,6 +244,7 @@ def run(arms: List[str] = typer.Option(["random"], "--arm", help="random | most_
             per_user += users_rows
         cfg = engine_config(engine)
         summary = {"runId": run_id, "modelVersion": index.model_version, "engineConfig": cfg, "configHash": config_hash(cfg),
+                   "overrides": overrides,
                    "asOf": snapshot.isoformat(), "k": k, "vectors": mode,
                    "searchUnits": len(index.units), "recommendable": int(index.recommendable.sum()),
                    "vectorsMissing": _vectors_missing(index, vector_search),
@@ -376,6 +386,8 @@ def parity(base_url: Optional[str] = typer.Option(None, "--base-url", help="back
            seed: int = typer.Option(42, "--seed"),
            token_env: str = typer.Option("AUTH_SERVICE_TOKEN", "--token-env", help="biến môi trường chứa X-Service-Token (không in)"),
            vectors: str = typer.Option("weaviate", "--vectors", help="weaviate | numpy — phải cùng kho với backend đang chạy"),
+           popularity_now: Optional[str] = typer.Option(None, "--popularity-now", help="mốc ISO backend dựng bảng phổ biến (lúc "
+                                                                                      "khởi động / nạp lại 900 s); mặc định = generatedAt"),
            run_id: Optional[str] = typer.Option(None, "--run-id"),
            refresh: bool = typer.Option(False, "--refresh")):
     """B9: offline = HTTP. `--make-users` ghi frozen/users60.json; không có cờ đó thì gọi backend local
@@ -393,12 +405,13 @@ def parity(base_url: Optional[str] = typer.Option(None, "--base-url", help="back
         events = data_source.load_events(None, refresh=refresh)
         snapshot = data_source.derive_as_of(events)
         try:
-            payload = P.make_users(events, snapshot, seed=seed)
+            payload = P.make_users(events, snapshot, seed=seed, profiles=data_source.load_profiles(refresh=refresh))
         except P.ParityError as exc:
             _fail(str(exc))
         users_path.parent.mkdir(parents=True, exist_ok=True)
         users_path.write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
-        typer.echo(f"{len(payload['users'])} khách (4 persona + {len(payload['users']) - 4} phân tầng {payload['quota']}) → {users_path}")
+        typer.echo(f"{len(payload['users'])} khách (4 persona + {len(payload['users']) - 4} phân tầng {payload['quota']}, tầng theo "
+                   f"{payload['stageSource']}, {payload['zeroEventUsers']} khách không có event) → {users_path}")
         return
     if not base_url:
         _fail("cần --base-url (backend local) hoặc --make-users")
@@ -417,7 +430,7 @@ def parity(base_url: Optional[str] = typer.Option(None, "--base-url", help="back
         engine = OfflineEngine(index, vector_search, purchases, candidate_k=data_source.settings().recommend_candidate_k, mode="prod")
         typer.echo(f"parity · {base_url} · {len(user_ids)} khách · k={k} · {data_source.dsn_label(data_source.eval_cdp_url())} · vectors {vectors}")
         try:
-            rows = P.parity_http(base_url, user_ids, engine, events, k=k, token=token)
+            rows = P.parity_http(base_url, user_ids, engine, events, k=k, token=token, popularity_now=_parse_as_of(popularity_now))
         except P.ParityError as exc:
             _fail(str(exc))
     finally:
@@ -426,10 +439,62 @@ def parity(base_url: Optional[str] = typer.Option(None, "--base-url", help="back
     result = P.verdict(rows)
     typer.echo(P.markdown(rows, result, k=k))
     p = P.write_parity(run_dir(run_id), base_url=base_url, rows=rows, result=result,
-                       meta={"runId": run_id, "k": k, "users": str(users_path), "vectors": vectors, "modelVersion": index.model_version})
+                       meta={"runId": run_id, "k": k, "users": str(users_path), "vectors": vectors, "modelVersion": index.model_version,
+                             "candidateK": engine.candidate_k, "popularK": engine.popular_k, "popularityNow": popularity_now,
+                             "note": "bảng phổ biến production neo ở lúc backend khởi động / nạp lại (900 s), offline neo ở --popularity-now "
+                                     "(mặc định generatedAt) — khởi động lại backend ngay trước khi đo hoặc truyền mốc khởi động"})
     typer.echo(("PASS" if result["pass"] else "FAIL") + f" {result['equal']}/{result['n']} → {p}")
     if not result["pass"]:
         raise typer.Exit(1)
+
+
+#: Hằng của profile.py được đọc lúc gọi (module global) nên ghi đè được trong tiến trình; MAX_PER_VERTICAL bị bind làm mặc định
+#: tham số lúc định nghĩa class nên không nằm trong danh sách (dùng mode eval/prod).
+OVERRIDABLE = ("W_TYPE", "H_SHORT_DAYS", "H_LONG_DAYS", "ACTIVE_TRIP_MAX_AGE_DAYS", "DORMANT_AFTER_DAYS", "MAX_REPEAT_PER_TRIP",
+               "W_SHORT", "W_POP", "W_LONG", "MMR_LAMBDA")
+
+
+def _parse_overrides(items: List[str]) -> dict:
+    """`KEY=VALUE` → {KEY: value} với kiểu theo hằng gốc (int / float / dict JSON)."""
+    from src.backend.app.domain.recommendation import profile
+    out = {}
+    for item in items:
+        if "=" not in item:
+            raise ValueError(f"--override phải là KEY=VALUE, gặp {item!r}")
+        key, raw = item.split("=", 1)
+        key = key.strip()
+        if key not in OVERRIDABLE:
+            raise ValueError(f"--override {key}: chỉ nhận {', '.join(OVERRIDABLE)}")
+        current = getattr(profile, key)
+        try:
+            if isinstance(current, dict):
+                value = json.loads(raw)
+                if not isinstance(value, dict):
+                    raise ValueError
+            elif isinstance(current, bool):
+                raise ValueError
+            elif isinstance(current, int):
+                value = int(raw)
+            else:
+                value = float(raw)
+        except ValueError:
+            raise ValueError(f"--override {key}: giá trị {raw!r} không hợp kiểu {type(current).__name__}") from None
+        out[key] = value
+    return out
+
+
+@contextmanager
+def _overridden(overrides: dict):
+    """Đặt hằng của `profile.py` trong tiến trình này rồi trả lại nguyên trạng — production không đổi."""
+    from src.backend.app.domain.recommendation import profile
+    saved = {k: getattr(profile, k) for k in overrides}
+    for k, v in overrides.items():
+        setattr(profile, k, v)
+    try:
+        yield
+    finally:
+        for k, v in saved.items():
+            setattr(profile, k, v)
 
 
 def _vectors_missing(index, vector_search) -> Optional[int]:

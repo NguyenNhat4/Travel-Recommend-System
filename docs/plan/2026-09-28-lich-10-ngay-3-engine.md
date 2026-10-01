@@ -152,7 +152,7 @@ Dự phòng nếu pilot κ < 0,6 hai lần liên tiếp: hạ thang 0/1/2 xuốn
 
 ### Day 5 — T6 02/10 — checkpoint tuần
 - [ ] A: gate SAN; arm E (Cohere vs `multilingual-e5-base`); S0–S9 lần 1.
-- [ ] B: grid-search lần 1: event weight (1/0.5/0.2 vs 5/3/1), half-life, dormant 90 vs 180, công thức điểm.
+- [x] B: grid-search lần 1: event weight (1/0.5/0.2 vs 5/3/1), half-life, dormant 90 vs 180, công thức điểm. — *01/10: `run --override` (hằng engine đổi trong tiến trình, vào `configHash`), 9 run một-yếu-tố trên temporal đóng băng; Chỉ **cửa sổ trip mở** đổi kết quả: `ACTIVE_TRIP_MAX_AGE_DAYS` 60 → 30 / 14 nâng Recall@20 0,196 → 0,216 / **0,225** và NDCG@10 0,144 → 0,154 (+0,010), prod NDCG@5 +0,006 — cùng hướng với finding M6 (trip cũ còn trong 60 ngày bị coi là đang mở nên loại nhầm). `W_SHORT=0,7 / W_POP=0,15` +0,006 NDCG@10 và prod NDCG@5 +0,026; `W_SHORT=0,5 / W_POP=0,35` tệ hẳn (NDCG@10 −0,046). MMR λ 0,85 / 1,0, `H_SHORT_DAYS` 60, `DORMANT_AFTER_DAYS` 90 và `W_TYPE` 5/3/1 không đổi hoặc giảm nhẹ. Khác biệt trên 102 khách là 1–3 khách nên chỉ là hướng dò, không phải quyết định; muốn áp dụng phải qua M6 (đề xuất PRD) và chạy lại LLBO. Bảng: spec recsys §4.13.*
 - [ ] C + cả nhóm: **quyết định embedding model** (giữ Cohere + cache, hay đổi sang local). Ghi quyết định vào `docs/decisions/`.
 - [ ] Checkpoint tuần: có số v0 cho cả search lẫn recsys. Mentor đã xác nhận lệch handbook: có / chưa.
 

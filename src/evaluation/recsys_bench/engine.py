@@ -51,6 +51,9 @@ class OfflineCdpReader:
     def all_events(self, until: datetime | None = None) -> list[dict]:
         raise LeakageError("engine không được đọc toàn bộ CDP khi offline")
 
+    def all_profiles(self) -> list[dict]:
+        raise LeakageError("engine không được đọc cdp.profiles khi offline (lifecycle tính tại as_of DB, có purchase bị giấu)")
+
 
 class OfflineEngine:
     """`mode="eval"` (mặc định, kế hoạch Day 3 B / quyết định 30/09): bỏ cap `MAX_PER_VERTICAL` để k = 20 có đủ 20 món —
@@ -78,13 +81,16 @@ class OfflineEngine:
             self._popularity[as_of] = BuildPopularity(self.index, self.reader_at(as_of))(now=as_of)
         return self._popularity[as_of]
 
-    def recommend(self, cdp_user_id: str, as_of: datetime, k: int, events: list[dict]) -> dict:
+    def recommend(self, cdp_user_id: str, as_of: datetime, k: int, events: list[dict],
+                  popularity_as_of: datetime | None = None) -> dict:
+        """`popularity_as_of`: mốc dựng bảng phổ biến khi khác `as_of` — production neo bảng này ở lúc khởi động / nạp lại
+        (900 s), không ở lúc request; parity truyền mốc khởi động backend để trung hoà (mặc định = as_of)."""
         late = [e for e in events if parse_ts(e["timestamp"]) >= as_of]
         if late:
             raise LeakageError(f"{len(late)} event của {cdp_user_id} ở hoặc sau as_of {as_of.isoformat()} "
                                f"(đầu tiên {late[0].get('eventName')} {late[0]['timestamp']})")
         from src.backend.app.domain.recommendation.profile import MAX_PER_VERTICAL
-        engine = RecommendForUser(self.index, self.vectors, self.reader_at(as_of), self.popularity_at(as_of),
+        engine = RecommendForUser(self.index, self.vectors, self.reader_at(as_of), self.popularity_at(popularity_as_of or as_of),
                                   candidate_k=self.candidate_k, popular_k=self.popular_k,
                                   max_per_vertical=None if self.mode == "eval" else MAX_PER_VERTICAL)
         return engine(cdp_user_id, k=k, now=as_of, events=[dict(e) for e in events])

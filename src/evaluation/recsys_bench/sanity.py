@@ -72,25 +72,51 @@ def lifecycle_mix(profiles: list[dict], consts: dict) -> Check:
                  {"shares": shares, "drift": drift, "n": n})
 
 
-def lifecycle_recomputed(profiles: list[dict], events: list[dict], as_of: datetime) -> Check:
+def lifecycle_recomputed(profiles: list[dict], events: list[dict], as_of: datetime, index: UnitIndex | None = None) -> Check:
+    """Tính lại từ **mọi** purchase thô như seed: `lifecycleStage`, `daysSinceLastBooking`, `lifetimeOrderCount` (số
+    `eventGroupId` khác null có purchase), `purchasedVerticals` (taxonomy đã mua, sắp xếp) và — khi có `index` —
+    `lastDestination` (điểm đến của purchase gần nhất còn trong catalog). Mọi cột phải trùng cột seed đã ghi."""
     by_user: dict[str, list[dict]] = defaultdict(list)
     for e in events:
         by_user[str(e.get("cdpUserId"))].append(e)
     as_of_day = as_of.astimezone(VN).date()
-    bad_stage = bad_days = 0
+    bad = Counter()
     examples = []
     for p in profiles:
-        stage, days = lifecycle_seed_rule(by_user.get(p["cdpUserId"], []), as_of_day)
-        if stage != p.get("lifecycleStage"):
-            bad_stage += 1
-            if len(examples) < 3:
-                examples.append(f"{p['cdpUserId']} seed {p.get('lifecycleStage')} / tính lại {stage}")
-        if days != p.get("daysSinceLastBooking"):
-            bad_days += 1
-    return Check("lifecycle_recomputed", bool(profiles) and bad_stage == 0 and bad_days == 0,
-                 f"stage lệch {bad_stage}/{len(profiles)} · days_since_last_booking lệch {bad_days} · as_of (VN) {as_of_day.isoformat()}"
-                 + (f" · ví dụ {examples}" if examples else ""),
-                 {"badStage": bad_stage, "badDays": bad_days, "asOfDay": as_of_day.isoformat()})
+        evs = by_user.get(p["cdpUserId"], [])
+        stage, days = lifecycle_seed_rule(evs, as_of_day)
+        buys = sorted((e for e in evs if e.get("eventName") == "purchase"), key=lambda e: parse_ts(e["timestamp"]), reverse=True)
+        want = {"lifecycleStage": stage, "daysSinceLastBooking": days,
+                "lifetimeOrderCount": len({e.get("eventGroupId") for e in buys if e.get("eventGroupId")}),
+                "purchasedVerticals": sorted({str(e.get("taxonomy")) for e in buys if e.get("taxonomy")})}
+        if index is not None:
+            want["lastDestination"] = next((str(index.destination[index.resolve(str(e["productId"]))]) for e in buys
+                                            if e.get("productId") and index.resolve(str(e["productId"])) is not None), None)
+        for col, value in want.items():
+            got = p.get(col)
+            if col == "purchasedVerticals":
+                got = sorted(got or [])
+            if got != value:
+                bad[col] += 1
+                if len(examples) < 3:
+                    examples.append(f"{p['cdpUserId']} {col}: seed {got!r} / tính lại {value!r}")
+    ok = bool(profiles) and not bad
+    return Check("lifecycle_recomputed", ok,
+                 f"lệch so với cột seed: " + (", ".join(f"{c} {n}" for c, n in sorted(bad.items())) if bad else "0") +
+                 f" trên {len(profiles)} profile · as_of (VN) {as_of_day.isoformat()}" + (f" · ví dụ {examples}" if examples else ""),
+                 {"bad": dict(bad), "badStage": bad.get("lifecycleStage", 0), "badDays": bad.get("daysSinceLastBooking", 0),
+                  "asOfDay": as_of_day.isoformat()})
+
+
+def profiles_cover_events(profiles: list[dict], events: list[dict]) -> Check:
+    """Mọi khách có event phải có profile (FK `cdp.events.cdp_user_id → cdp.profiles`); báo số profile không có event."""
+    users_p = {p.get("cdpUserId") for p in profiles}
+    users_e = {str(e.get("cdpUserId")) for e in events if e.get("cdpUserId")}
+    missing = sorted(users_e - users_p)
+    return Check("profiles_cover_events", bool(profiles) and not missing,
+                 f"{len(profiles)} profile · {len(users_e)} khách có event · thiếu profile {len(missing)}" + (f" {missing[:3]}" if missing else "")
+                 + f" · profile không có event {len(users_p - users_e)}",
+                 {"profiles": len(profiles), "usersWithEvents": len(users_e), "missing": missing[:20], "noEvents": len(users_p - users_e)})
 
 
 def _trips(events: list[dict]) -> dict[str, list[dict]]:
@@ -197,9 +223,9 @@ def split_users(frozen_dir: Path) -> Check:
 
 def run_all(profiles: list[dict], events: list[dict], index: UnitIndex, as_of: datetime, frozen_dir: Path) -> list[Check]:
     consts = seed_constants()
-    return [lifecycle_mix(profiles, consts), lifecycle_recomputed(profiles, events, as_of), trips_multi_vertical(events, consts),
-            one_destination_per_trip(events, index), messy_edges(events, index), popularity(events, index), golf_share(events),
-            split_users(frozen_dir)]
+    return [profiles_cover_events(profiles, events), lifecycle_mix(profiles, consts), lifecycle_recomputed(profiles, events, as_of, index),
+            trips_multi_vertical(events, consts), one_destination_per_trip(events, index), messy_edges(events, index),
+            popularity(events, index), golf_share(events), split_users(frozen_dir)]
 
 
 def summary(checks: list[Check]) -> dict:

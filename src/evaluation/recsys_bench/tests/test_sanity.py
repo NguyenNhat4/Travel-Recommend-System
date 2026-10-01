@@ -35,11 +35,19 @@ def test_lifecycle_mix_and_recomputed(monkeypatch):
               + [ev(f"d{i}", "purchase", "R1", "2026-03-24T10:00:00Z", "g") for i in range(4)]
               + [ev(f"c{i}", "purchase", "R1", "2025-09-21T10:00:00Z", "g") for i in range(2)]
               + [ev("n0", "product_view", "R1", "2026-09-20T10:00:00Z")])
+    for p in profiles:          # cột seed còn lại: số trip có purchase, taxonomy đã mua
+        p["lifetimeOrderCount"] = 0 if p["lifecycleStage"] == "new" else 1
+        p["purchasedVerticals"] = [] if p["lifecycleStage"] == "new" else ["hotel"]
     rec = S.lifecycle_recomputed(profiles, events, AS_OF)
-    assert rec.ok is True and rec.values == {"badStage": 0, "badDays": 0, "asOfDay": "2026-09-22"}
+    assert rec.ok is True and rec.values["bad"] == {} and rec.values["asOfDay"] == "2026-09-22"
     profiles[5]["lifecycleStage"] = "dormant"
+    profiles[6]["lifetimeOrderCount"] = 3
+    profiles[7]["purchasedVerticals"] = ["golf"]
     bad = S.lifecycle_recomputed(profiles, events, AS_OF)
-    assert bad.ok is False and bad.values["badStage"] == 1 and "a0 seed dormant / tính lại active" in bad.detail
+    assert bad.ok is False and bad.values["bad"] == {"lifecycleStage": 1, "lifetimeOrderCount": 1, "purchasedVerticals": 1}
+    assert "a0 lifecycleStage: seed 'dormant' / tính lại 'active'" in bad.detail
+    cover = S.profiles_cover_events(profiles, events + [ev("ghost", "purchase", "R1", "2026-09-01T00:00:00Z", "g")])
+    assert cover.ok is False and cover.values["missing"] == ["ghost"] and S.profiles_cover_events(profiles, events).ok is True
 
 
 def test_trip_checks_and_messy_edges(world):
@@ -52,8 +60,7 @@ def test_trip_checks_and_messy_edges(world):
               ev("u4", "purchase", "ghost", "2026-04-02T10:00:00Z", "T5", "hotel"),          # orphan
               ev("u4", "purchase", "A1", "2026-04-03T10:00:00Z", None, "attraction")]        # thiếu gid
     mv = S.trips_multi_vertical(events, consts)
-    assert mv.ok is True and mv.values == {"share": 2 / 4, "trips": 4, "multi": 2} or mv.values["trips"] == 4
-    assert abs(mv.values["share"] - 0.5) < 1e-9 and mv.ok is False          # 50 % lệch quá 5 điểm so với 65 %
+    assert mv.values == {"share": 0.5, "trips": 4, "multi": 2} and mv.ok is False     # 2/4 chuyến: 50 % lệch quá 5 điểm so với 65 %
     od = S.one_destination_per_trip(events, index)
     assert od.values["trips"] == 3 and od.values["multiDestination"] == 0 and od.ok is True   # T5 chỉ có orphan → không tính
     events2 = events + [ev("u3", "purchase", "A1", "2026-04-02T10:00:00Z", "T3", "attraction")]   # T3: Phú Quốc + Nha Trang
@@ -64,6 +71,16 @@ def test_trip_checks_and_messy_edges(world):
     me2 = S.messy_edges(many + [ev("o", "purchase", "ghost", "2026-01-01T00:00:00Z", "go")] * 2
                         + [ev("m", "purchase", "A1", "2026-01-01T00:00:00Z", None)] * 3, index)
     assert me2.ok is True and abs(me2.values["orphanShare"] - 2 / 98) < 1e-9
+
+
+def test_lifecycle_recomputed_checks_last_destination_when_index_given(world):
+    index = world["index"]
+    events = [ev("u", "purchase", "R3", "2026-09-01T00:00:00Z", "g1", "hotel"), ev("u", "purchase", "A1", "2026-09-10T00:00:00Z", "g2", "attraction")]
+    good = {"cdpUserId": "u", "lifecycleStage": "active", "daysSinceLastBooking": 12, "lifetimeOrderCount": 2,
+            "purchasedVerticals": ["attraction", "hotel"], "lastDestination": "Nha Trang"}
+    assert S.lifecycle_recomputed([good], events, AS_OF, index).ok is True
+    assert S.lifecycle_recomputed([{**good, "lastDestination": "Phú Quốc"}], events, AS_OF, index).values["bad"] == {"lastDestination": 1}
+    assert S.lifecycle_recomputed([{**good, "lastDestination": "Phú Quốc"}], events, AS_OF).ok is True      # không có index → không kiểm
 
 
 def test_popularity_golf_split_users_are_indicators(world, tmp_path):
@@ -89,6 +106,6 @@ def test_run_all_summary_markdown_and_seed_constants(world, monkeypatch):
     assert consts["MULTI_VERTICAL_RATE"] == 0.65
     checks = S.run_all([], [], index, AS_OF, world.get("missing_dir") or __import__("pathlib").Path("does-not-exist"))
     s = S.summary(checks)
-    assert s["pass"] is False and "lifecycle_mix" in s["hardFailed"] and len(s["checks"]) == 8
+    assert s["pass"] is False and "lifecycle_mix" in s["hardFailed"] and "profiles_cover_events" in s["hardFailed"] and len(s["checks"]) == 9
     md = S.markdown(checks)
     assert "**FAIL**" in md and "chỉ báo" in md and "`popularity`" in md

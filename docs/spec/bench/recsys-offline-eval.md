@@ -26,6 +26,7 @@ python -m src.evaluation.recsys_bench http-latency --base-url https://v-ota.duck
 python -m src.evaluation.recsys_bench run --arm engine_nommr --split llbo --vectors weaviate --split-file … --run-id 2026-10-01-llbo-v3   # thêm arm vào run đã có
 python -m src.evaluation.recsys_bench analyze --run-id 2026-10-01-llbo-v3   # B5–B8: ceiling, phân khúc, strict/lenient, 20 ca (không cần Weaviate)
 python -m src.evaluation.recsys_bench sanity [--json] [--refresh]            # B1: kiểm dữ liệu seed (§2.1); mã 1 khi kiểm tra cứng hỏng
+python -m src.evaluation.recsys_bench run --arm engine --split temporal --vectors weaviate --split-file … --override MMR_LAMBDA=0.85   # M7: dò tham số trong tiến trình (§4.13)
 python -m src.evaluation.recsys_bench parity --make-users --seed 42          # frozen/users60.json (4 persona + 56 phân tầng)
 AUTH_SERVICE_TOKEN=… python -m src.evaluation.recsys_bench parity --base-url http://127.0.0.1:8000 --k 5   # B9: offline = HTTP (§4.12)
 python -m pytest -q src/evaluation/recsys_bench/tests      # không cần DB
@@ -383,17 +384,40 @@ engine / mpd, số event train).
 Engine offline của harness (`OfflineEngine(mode="prod")`, cap 2 món / taxonomy) so với `GET /api/v1/internal/recommendations?cdp_user_id=&k=5`
 của backend local chạy từ cùng checkout (Postgres 5432 seed 21/09, Weaviate 8080, `APP_ENV=development`, `INTERNAL_API_ENABLED=true`,
 `X-Service-Token` sinh ngẫu nhiên cho phiên đo). Khác biệt được trung hoà: as_of = `generatedAt` của response; event của khách mới
-nhất trước như `events_for_user`; bảng phổ biến từ purchase thô trước as_of; cùng `candidate_k`. Bộ khách `frozen/users60.json`
-(seed 42): 4 persona + 56 khách phân tầng lifecycle 14 new / 25 active / 11 dormant / 6 churned (bộ 24/09 không được lưu).
+nhất trước như `events_for_user`; bảng phổ biến từ purchase thô trước as_of (production neo ở lúc backend khởi động / nạp lại
+900 s — khởi động lại backend ngay trước khi đo); cùng `candidate_k`. Bộ khách `frozen/users60.json` (seed 42): 4 persona + 56
+khách phân tầng theo `lifecycleStage` của `cdp.profiles` 14 new / 25 active / 11 dormant / 6 churned; 14 khách `new` đều **không
+có event** (418/501 profile `new` không có event) → đi đường `popular`, kiểm cả cold start (bộ 24/09 không được lưu).
 
-| Chỉ số | Kết quả |
-|---|---|
-| Trùng hoàn toàn (strategy, destination, excludedVerticals, eventsUsed, top-5 đúng thứ tự) | **60/60** |
-| HTTP local `diagnostics.latencyMs` p50 / p95 | 250 / 321 ms (máy đang chạy song song; 24/09 đo 127 / 143 ms) |
-| Client wall p50 / p95 | 263 / 338 ms |
+| Chỉ số | Lần 1 (56 khách suy từ event, 06:30) | Lần 2 (tầng theo `cdp.profiles`, 14 khách 0 event; 08:00) |
+|---|---|---|
+| Trùng hoàn toàn (strategy, destination, excludedVerticals, eventsUsed, top-5 đúng thứ tự) | **60/60** | **60/60** |
+| HTTP local `diagnostics.latencyMs` p50 / p95 | 250 / 321 ms (máy đang chạy song song) | **93 / 134 ms** (máy rảnh; 24/09 đo 127 / 143) |
+| Client wall p50 / p95 | 263 / 338 ms | 99 / 139 ms |
 
-Run: `bench_out/recsys/runs/2026-10-01-parity-http/parity.json`. Kết luận: mọi số offline của harness (§4.4–4.11) là số của đúng
+Run: `bench_out/recsys/runs/2026-10-01-parity-http{,-v2}/parity.json`. Kết luận: mọi số offline của harness (§4.4–4.11) là số của đúng
 engine production; trên Cloud chỉ đo được guest path (§4.5) cho tới khi ops mở IAP.
+
+### 4.13. Grid-search lần 1 trên temporal đóng băng (M7, 01/10) — `run --override`
+
+`run --override KEY=VALUE` đặt hằng của `domain/recommendation/profile.py` **trong tiến trình harness** (production không đổi);
+`engineConfig`/`configHash` ghi giá trị đã đổi. Quy ước B10 (§3.1): chỉ dò trên temporal đóng băng `a7735af1…` (102 khách, k = 20),
+LLBO giữ nguyên làm bảng cuối. Một yếu tố mỗi lần, arm `engine` (eval) và `engine_prod` (cap 2):
+
+| Run | Override | configHash (eval / prod) | engine R@5 / NDCG@5 | engine R@20 / NDCG@10 | Δ R@20 / Δ NDCG@10 vs gốc | engine_prod R@5 / NDCG@5 | Δ prod NDCG@5 |
+|---|---|---|---:|---:|---:|---:|---:|
+| gốc (`2026-10-01-temporal-v3`) | — | 21577d17 / a19bf1e1 | 0.1667 / 0.1348 | 0.1961 / 0.1438 | — | 0.1176 / 0.1127 | — |
+| mmr085 | `MMR_LAMBDA=0.85` | 6af95718 / dff1afe4 | 0.1667 / 0.1341 | 0.1961 / 0.1376 | +0.0000 / -0.0062 | 0.1176 / 0.1121 | -0.0007 |
+| mmr100 | `MMR_LAMBDA=1.0` | eb6b2a49 / 533fd8d0 | 0.1569 / 0.1325 | 0.1961 / 0.1360 | +0.0000 / -0.0078 | 0.1275 / 0.1183 | +0.0055 |
+| wshort05 | `W_SHORT=0.5, W_POP=0.35` | 892db886 / c4ff7b26 | 0.1471 / 0.0886 | 0.2059 / 0.0981 | +0.0098 / -0.0457 | 0.1078 / 0.0714 | -0.0413 |
+| wshort07 | `W_SHORT=0.7, W_POP=0.15` | cef1d0fa / fa2d231f | 0.1667 / 0.1434 | 0.1961 / 0.1499 | +0.0000 / +0.0061 | 0.1569 / 0.1391 | +0.0264 |
+| hshort60 | `H_SHORT_DAYS=60.0` | 9b7294fc / e457f5cc | 0.1667 / 0.1348 | 0.1961 / 0.1438 | +0.0000 / +0.0000 | 0.1176 / 0.1127 | +0.0000 |
+| active30 | `ACTIVE_TRIP_MAX_AGE_DAYS=30` | cc3fd38d / 95f7d15d | 0.1863 / 0.1452 | 0.2157 / 0.1542 | +0.0196 / +0.0104 | 0.1275 / 0.1189 | +0.0062 |
+| active14 | `ACTIVE_TRIP_MAX_AGE_DAYS=14` | 22d1ecc4 / acf56417 | 0.1863 / 0.1452 | 0.2255 / 0.1542 | +0.0294 / +0.0104 | 0.1275 / 0.1189 | +0.0062 |
+| dormant90 | `DORMANT_AFTER_DAYS=90` | 026e08ab / c82d8692 | 0.1667 / 0.1348 | 0.1961 / 0.1438 | +0.0000 / +0.0000 | 0.1176 / 0.1127 | +0.0000 |
+| wtype531 | `W_TYPE={"purchase": 5.0, "add_to_cart": 3.0, "product_view": 1.0, "search": 0.1}` | 2fc70be5 / f3401058 | 0.1667 / 0.1348 | 0.1961 / 0.1438 | +0.0000 / +0.0000 | 0.1176 / 0.1127 | +0.0000 |
+
+Chỉ **cửa sổ trip mở** đổi kết quả: `ACTIVE_TRIP_MAX_AGE_DAYS` 60 → 30 / 14 nâng Recall@20 0,196 → 0,216 / **0,225** và NDCG@10 0,144 → 0,154 (+0,010), prod NDCG@5 +0,006 — cùng hướng với finding M6 (trip cũ còn trong 60 ngày bị coi là đang mở nên loại nhầm). `W_SHORT=0,7 / W_POP=0,15` +0,006 NDCG@10 và prod NDCG@5 +0,026; `W_SHORT=0,5 / W_POP=0,35` tệ hẳn (NDCG@10 −0,046). MMR λ 0,85 / 1,0, `H_SHORT_DAYS` 60, `DORMANT_AFTER_DAYS` 90 và `W_TYPE` 5/3/1 không đổi hoặc giảm nhẹ. Khác biệt trên 102 khách là 1–3 khách nên chỉ là hướng dò, không phải quyết định; muốn áp dụng phải qua M6 (đề xuất PRD) và chạy lại LLBO.
 
 ## 5. Kiểm nhanh P1 `VP0000001` (Day 1 C)
 
