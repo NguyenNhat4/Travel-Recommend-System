@@ -3,7 +3,7 @@
 - Phục vụ: **FR-REC-01..04**, **NFR-PERF-01** (`docs/prd/requirements.md`); `docs/prd/test-plan.md` §2.5; handbook §11–§12.
 - Code: `src/evaluation/recsys_bench/` (nhánh `bench/recsys-harness`). Số thô: `bench_out/recsys/runs/<run_id>/` (không commit).
 - Thay cho `eval/report.md` của lịch 10 ngày (`docs/plan/2026-09-28-lich-10-ngay-3-engine.md` §0.1).
-- Cập nhật lần cuối: 2026-10-01 (§2.1 sanity, §3.1 split đóng băng, §4.5 guest path Cloud, §4.6 v3 NDCG@5, §4.7–4.11 ceiling / phân khúc / strict / 20 ca / findings, §4.12 parity offline = HTTP)
+- Cập nhật lần cuối: 2026-10-02 (§4.14 sau FR-REC-02; 01/10: §2.1 sanity, §3.1 split đóng băng, §4.5 guest path Cloud, §4.6 v3 NDCG@5, §4.7–4.11 ceiling / phân khúc / strict / 20 ca / findings, §4.12 parity offline = HTTP)
 
 > **Caveat bắt buộc (handbook §12):** lịch sử khách hàng là dữ liệu sinh. Các số này cho biết pipeline chạy đúng,
 > không cho biết engine sẽ chạy thế nào trên khách thật.
@@ -371,8 +371,8 @@ engine / mpd, số event train).
 1. LLBO: bộ lọc cứng không phải nút thắt — ceiling 0,990, chỉ 10 target là món đã mua (engine loại có chủ đích); Recall@20 0,851 = 86 % số tới được.
 2. MMR làm giảm nhẹ: bỏ MMR → Recall@20 0,863 / NDCG@10 0,548 (+0,012 / +0,024); 6/21 ca engine trượt-mpd trúng là `mmr_demoted` (target trong top-20 theo score, hạng 3–17) và 6 ca là `ranked_low` (hạng 22–33, score chưa đủ). Ứng viên tune M7: λ MMR 0,7 → 0,85 hoặc chỉ MMR sau top-5 — chạy trên temporal đóng băng (§3.1); phần `ranked_low` cần trọng số W_SHORT/W_POP, không phải MMR.
 3. Cap 2 món / taxonomy (production) đắt nhất ở attraction (0,871 → 0,420) và combo (0,621 → 0,424); hotel, golf gần như không đổi (I-5).
-4. Temporal (đoán chuyến kế): 22 % target bị chính filter chặn — `taxonomy_excluded` (khách vừa mua hotel trong trip mở, chuyến kế lại mua hotel) và `destination_mismatch` (chuyến kế ở điểm đến khác); strategy `cross_vertical` **0/22**.
-5. Giả định cross-vertical đúng **trong** chuyến (LLBO 0,844) nhưng sai **giữa** hai chuyến: category exclusion và khoá điểm đến chỉ nên áp khi trip mở còn diễn ra (theo `usingDate`), không áp cho chuyến kế — đề xuất cho M6, đi qua `docs/prd/update/` vì đổi hành vi engine.
+4. Temporal (đoán chuyến kế): 22 % target bị chính filter chặn — `taxonomy_excluded` (khách vừa mua hotel trong trip mở, chuyến kế lại mua hotel) và `destination_mismatch` (chuyến kế ở điểm đến khác); strategy `cross_vertical` **0/22**. *(02/10: tách được — 11/21 là trip chỉ view bị coi là mở tới 60 ngày, 10/21 là chuyến chưa đi tại T; §4.14.)*
+5. Giả định cross-vertical đúng **trong** chuyến (LLBO 0,844) nhưng sai **giữa** hai chuyến: category exclusion và khoá điểm đến chỉ nên áp khi trip mở còn diễn ra (theo `usingDate`), không áp cho chuyến kế — **đã chốt và áp dụng 02/10** (FR-REC-02, `update-archive/2026-10-01-category-exclusion-theo-chuyen-dang-dien-ra.md`): trip mở theo `usingDate`, trip chỉ view mở ≤ 14 ngày → temporal R@20 0,196 → 0,216, LLBO không đổi (§4.14).
 6. `activeTripIsSolo` (I-3) là phân khúc mạnh nhất: trip mở là view lẻ ngay trước purchase → engine gợi đúng món vừa xem (LLBO 0,917, temporal 0,938). Đây là hành vi xem-rồi-mua seed tạo ra; số này phản ánh cấu trúc seed hơn là chất lượng xếp hạng — ghi chú khi trích dẫn.
 7. `long_term` / `dormant` trên temporal ≈ mpd (0,089 vs 0,089): vector dài hạn không hơn popular theo điểm đến cho chuyến kế; target hotel 94/102 hit 0,191.
 8. Strict = 0 theo cấu trúc cho 51 % target LLBO (flight, hotel con); không phải lỗi engine, là độ mịn của catalog search unit.
@@ -419,6 +419,30 @@ LLBO giữ nguyên làm bảng cuối. Một yếu tố mỗi lần, arm `engine
 
 Chỉ **cửa sổ trip mở** đổi kết quả: `ACTIVE_TRIP_MAX_AGE_DAYS` 60 → 30 / 14 nâng Recall@20 0,196 → 0,216 / **0,225** và NDCG@10 0,144 → 0,154 (+0,010), prod NDCG@5 +0,006 — cùng hướng với finding M6 (trip cũ còn trong 60 ngày bị coi là đang mở nên loại nhầm). `W_SHORT=0,7 / W_POP=0,15` +0,006 NDCG@10 và prod NDCG@5 +0,026; `W_SHORT=0,5 / W_POP=0,35` tệ hẳn (NDCG@10 −0,046). MMR λ 0,85 / 1,0, `H_SHORT_DAYS` 60, `DORMANT_AFTER_DAYS` 90 và `W_TYPE` 5/3/1 không đổi hoặc giảm nhẹ. Khác biệt trên 102 khách là 1–3 khách nên chỉ là hướng dò, không phải quyết định; muốn áp dụng phải qua M6 (đề xuất PRD) và chạy lại LLBO.
 
+### 4.14. Sau FR-REC-02 (M6, 02/10): trip mở theo `usingDate`, N = 14 cho trip chỉ view
+
+Người dùng chốt đề xuất `update-archive/2026-10-01-category-exclusion-theo-chuyen-dang-dien-ra.md` (02/10). Engine: trip có
+`usingDate` mở tới hết ngày sử dụng (`trip_is_open`, `ENGINE_RULES_VERSION = 2026-10-02-trip-ended`); trip không có
+`usingDate` (chỉ view / search) mở khi event gần nhất ≤ N ngày. Harness (ceiling, `excluded_taxonomies`, `trip_destination`)
+mô phỏng cùng luật. Hai bước, cùng split đóng băng (§3.1):
+
+| Bước | configHash eval / prod | Temporal engine R@20 / NDCG@10 | Temporal ceiling | LLBO engine R@20 / NDCG@10 | LLBO ceiling |
+|---|---|---:|---:|---:|---:|
+| v3 — luật cũ (tuổi event ≤ 60 ngày) | 21577d17 / a19bf1e1 | 0,1961 / 0,1438 | 0,784 (80/102) | 0,8510 / 0,5244 | 0,990 |
+| v4 — `usingDate`, N = 60 | 738cdf77 / 8aabd24c | 0,1961 / 0,1438 | 0,794 (81/102) | 0,8510 / 0,5244 | 0,990 |
+| **v5 — `usingDate`, N = 14** (code hiện tại) | b0aee886 / 81d16abd | **0,2157 / 0,1542** (prod NDCG@5 0,1127 → 0,1189) | **0,892** (91/102; 11 còn lại: 6 `taxonomy_excluded`, 9 `destination_mismatch`, 1 `already_bought` — đều là chuyến chưa đi tại T) | 0,8510 / 0,5244 (không đổi) | 0,990 (997/1007, 10 `already_bought`) |
+
+Vì sao `usingDate` một mình gần như không đổi (v4): trong 21 target temporal bị chặn ở v3, **11** đến từ trip **chỉ có view**
+(không `usingDate`) 36–58 ngày tuổi vẫn bị coi là mở và khoá điểm đến; **10** đến từ chuyến thật sự chưa đi tại T
+(`usingDate` ≥ T, 0–37 ngày sau T) — ở mốc T engine đúng khi coi đó là chuyến mở, target là purchase của chuyến kế **sau khi**
+chuyến này đi xong, nên split temporal (as_of = T) đang hỏi "đã mua gì sau T" chứ không phải "gợi gì ngay trước lúc mua".
+N = 14 xử lý nhóm đầu (grid §4.13: 14 và 30 cho cùng NDCG@10, 14 cao hơn R@20); nhóm sau cần split kiểu "next trip" (as_of =
+ngay trước purchase kế, trip trước đã kết thúc) — việc tiếp theo của harness, không phải lỗi engine.
+
+Trên LLBO (trong chuyến) cả hai bước không đổi số nào: 911 khách `cross_vertical` đều có trip có `usingDate` còn mở tại as_of.
+Run: `bench_out/recsys/runs/2026-10-02-{temporal,llbo}-v{4,5}/` (+ `-v4-n14` là lượt thử override trước khi đổi hằng).
+Sau v5, ceiling temporal còn **0,892** — 11 target không tới được đều thuộc khách có chuyến chưa đi tại T (`usingDate` ≥ T), tức giới hạn của split temporal; engine trượt-mpd trúng **4/102** (`filtered` 1, `mmr_demoted` 1, `ranked_low` 1, `wrong_active_trip` 1).
+
 ## 5. Kiểm nhanh P1 `VP0000001` (Day 1 C)
 
 Lệnh `user --id VP0000001 --k 5`, `as_of` 2026-09-24, 12 event lịch sử, cùng engine production (không HTTP).
@@ -450,8 +474,9 @@ Lệnh `user --id VP0000001 --k 5`, `as_of` 2026-09-24, 12 event lịch sử, c�
 - Day 2 (B): hai baseline most-popular / most-popular-in-destination và kiểm thứ tự đã làm 30/09 (§4.4); `sanity` 01/10 (§2.1)
   PASS 5/5 kiểm tra cứng. Phase 0 (01/10): split đóng băng §3.1, NDCG@5, `ids` / `rankStrict` theo khách, `configHash` — §4.6.
   Phase 1 (01/10): ceiling §4.7, phân khúc §4.8, strict/lenient §4.9, 20 ca + `engine_nommr` §4.10, findings §4.11. Phase 3
-  (01/10): offline = HTTP 60/60 §4.12. Track B theo plan Day 3 đã đủ; tiếp theo là M6/M7 (đề xuất đổi engine qua
-  `docs/prd/update/`, tuning trên temporal đóng băng).
+  (01/10): offline = HTTP 60/60 §4.12. M6 (02/10): FR-REC-02 chốt, engine đổi luật trip mở + N = 14 (§4.14); grid lần 1 §4.13.
+- Split temporal (as_of = T) đo "mua gì sau T", không phải "gợi gì ngay trước lúc mua chuyến kế": 10/21 target bị chặn là chuyến
+  chưa đi tại T. Việc tiếp theo: split "next trip" (as_of = ngay trước purchase kế, trip trước đã kết thúc theo `usingDate`).
 - **I-5** đã xử lý ở harness (30/09): `engine` = mode eval bỏ cap để đo đủ k = 20; `engine_prod` báo list production.
   Spec §4.7 nói giới hạn 2 món mỗi `parentProductId`, code giới hạn 2 mỗi taxonomy — lệch spec/code này vẫn còn, là việc
   của C (M6), production chưa đổi.
