@@ -42,7 +42,7 @@ def _kind(cfg: SBenchConfig, model: str) -> str:
             raise EmbedderUnavailable(f"model {model} cần provider cohere, config đang là {cfg.embedding.provider}")
         return "cohere"
     if mcfg.hf_model:
-        raise EmbedderUnavailable(f"model {model} ({mcfg.hf_model}) chạy local — cài ở ngày 5 (E2), cần requirements-extra.txt")
+        return "local"
     raise EmbedderUnavailable(f"không biết cách embed model {model}")
 
 
@@ -51,8 +51,24 @@ def embedder_name(cfg: SBenchConfig, model: str, *, embedding_type: str = "float
     if kind == "fake":
         return "fake@noit" if fake_ignore_input_type else "fake"
     mcfg = _model_cfg(cfg, model)
+    if kind == "local":
+        if embedding_type != "float":
+            raise EmbedderUnavailable(f"model local {model} chỉ có embedding_types float")
+        return mcfg.hf_model
     return mcfg.api_model + (f"@d{mcfg.output_dimension}" if mcfg.output_dimension else "") + \
         ("@int8" if embedding_type == "int8" else "")
+
+
+def _local(cfg: SBenchConfig, model: str, embedding_type: str, preflight: bool):
+    import importlib.util
+    from .local_hf import REQUIRED_LIBS, LocalHFEmbedder
+    if embedding_type != "float":
+        raise EmbedderUnavailable(f"model local {model} chỉ có embedding_types float")
+    missing = [lib for lib in REQUIRED_LIBS if importlib.util.find_spec(lib) is None]
+    if missing:
+        raise EmbedderUnavailable(f"thiếu {', '.join(missing)} — pip install -r src/evaluation/search_bench/requirements-extra.txt "
+                                  f"(cần cho model local {model})")
+    return LocalHFEmbedder(model, cfg.model_cfg(model), preflight=preflight)
 
 
 def _cohere(cfg: SBenchConfig, model: str, embedding_type: str, preflight: bool):
@@ -79,6 +95,8 @@ def make_embedder(cfg: SBenchConfig, model: str, *, no_cache: bool = False, fake
     if kind == "fake":
         from .fake import FakeEmbedder
         inner = FakeEmbedder(_model_cfg(cfg, model).dim, ignore_input_type=fake_ignore_input_type)
+    elif kind == "local":
+        inner = _local(cfg, model, embedding_type, preflight)
     else:
         inner = _cohere(cfg, model, embedding_type, preflight)
     expected = embedder_name(cfg, model, embedding_type=embedding_type, fake_ignore_input_type=fake_ignore_input_type)

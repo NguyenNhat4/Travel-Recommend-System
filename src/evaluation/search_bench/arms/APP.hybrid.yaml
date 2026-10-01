@@ -1,0 +1,27 @@
+# Cổng APP (docs/spec/bench/arms.md §1, thêm 30/09): chạy đúng SearchProducts của backend (app_adapter.py) trên
+# collection ProductBench (hình dạng production, vector B0). Arm composite: tham số ở khối `app`, các trường còn lại
+# chỉ để mô tả (retrieval / query_preproc / cutoff phản ánh khối app cho dễ đọc, runner không dùng chúng ở engine app).
+id: APP.hybrid
+stage: APP
+parent: APP.dense
+description: "hybrid production: dense top-200 ∪ BM25 top-50, luật vớt (lexicalK 10, cutoff 0,50, phủ tên 0,6), RRF k=60, cutoff 0,62"
+composite: true
+engine: app
+app: {cutoff: 0.62, candidate_k: 200, hybrid: true, normalize: false, rrf_k: 60, lexical_k: 10, lexical_cutoff: 0.50, min_coverage: 0.6, lexical_candidate_k: 50}
+text_variant: T3+R
+model: cohere-v3
+embedding_types: float
+query_input_type: query
+retrieval: hybrid
+query_vec: null
+fusion: null
+bm25: {tokenization: word, k1: 1.2, b: 0.75}
+filters: {qu: false, amenity_must: none}
+boost: {amenity_nice_w: 0.0, amenity_must_w: 0.0}
+dedupe_parent: false
+query_preproc: {alias: false, symspell: false}
+cutoff: {max_vector_distance: 0.38}
+csls: null
+rerank: null
+fallback_bm25_only: false
+phase: 1

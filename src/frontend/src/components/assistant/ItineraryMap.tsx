@@ -634,7 +634,7 @@ export const ItineraryMap: React.FC<ItineraryMapProps> = ({
             </button>
           </div>
 
-          <h4 className="text-xs sm:text-sm font-bold text-slate-900 mt-1.5 line-clamp-2">
+          <h4 className="font-sans text-xs sm:text-sm font-bold text-slate-900 mt-1.5 line-clamp-2">
             {selectedPoint.title}
           </h4>
 

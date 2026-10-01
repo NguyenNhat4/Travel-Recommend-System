@@ -94,6 +94,19 @@ jobs:
         working-directory: src/frontend
         run: npm run build
 
+      - name: Set up Buildx for Docker build test
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image (test phase in CI)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./src/frontend/Dockerfile.web
+          push: false
+          load: false
+          cache-from: type=gha,scope=frontend-vm
+          tags: vota-frontend-ci:${{ github.sha }}-test
+
   e2e:
     name: Frontend E2E smoke tests
     needs: quality

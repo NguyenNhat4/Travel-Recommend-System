@@ -44,6 +44,8 @@ class Arm(BaseModel):
     fallback_bm25_only: bool
     phase: int
     composite: bool = False
+    engine: Literal["bench", "app"] = "bench"     # app = cổng APP: chạy đúng SearchProducts của backend (app_adapter.py)
+    app: Optional[dict[str, Any]] = None          # tham số production: cutoff, candidate_k, hybrid, normalize, rrf_k, lexical_*…
 
 
 def _refs(obj: Any) -> list[str]:

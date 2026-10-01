@@ -17,6 +17,8 @@ rồi bỏ qua phần recsys — các route còn lại vẫn phục vụ đượ
 from __future__ import annotations
 
 import asyncio
+import threading
+from pathlib import Path
 import logging
 import os
 import sys
@@ -139,6 +141,15 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
                     timeout_seconds=settings.cohere_timeout_seconds,
                 )
                 owns_embedder = True
+                if settings.search_embed_cache:
+                    # Cache vector truy vấn (NFR-PERF-03, contract 1.12.0 `embedCache`) bọc quanh client Cohere dùng chung:
+                    # RecsysRefresher truyền lại object này mỗi lần nạp catalog nên cache sống qua reload.
+                    from src.backend.app.application.search.query_cache import CachingQueryEmbedder, QueryEmbeddingCache
+
+                    embedder = CachingQueryEmbedder(
+                        embedder, QueryEmbeddingCache(settings.search_embed_cache_size),
+                        log_every=settings.search_embed_cache_log_every,
+                    )
             vector_store = WeaviateVectorStore(
                 settings.database_url,
                 WeaviateVectorSearch(
@@ -207,6 +218,27 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
 
 #: Chưa nạp được lần nào (database chưa seed, Weaviate chưa index…) thì thử lại sớm, không chờ trọn chu kỳ.
 RECSYS_RETRY_SECONDS = 30.0
+#: Shutdown chờ prewarm đang chạy tối đa chừng này rồi mới đóng client Cohere (prewarm kiểm `stop` giữa hai lô).
+PREWARM_SHUTDOWN_WAIT_SECONDS = 10.0
+
+
+def prewarm_from_settings(settings, services: dict, stop: threading.Event):
+    """Nạp sẵn cache vector truy vấn: file câu gold (`SEARCH_PREWARM_FILE`, tương đối theo src/backend) + head query của
+    `app.search_logs`. Chạy trong thread (Cohere sync); `stop` cắt giữa hai lô khi shutdown."""
+    from src.backend.app.application.search.prewarm import prewarm, read_query_file
+    from src.backend.app.infrastructure.persistence.postgres_search_logs import PostgresSearchLogReader
+
+    path = Path(settings.search_prewarm_file)
+    if not path.is_absolute():
+        path = Path(__file__).resolve().parents[1] / path
+    queries = read_query_file(path)
+    if not queries:
+        logger.warning("search.prewarm.file.empty path=%s", path)
+    head = PostgresSearchLogReader(settings.database_url).head_queries(
+        days=settings.search_prewarm_head_days, limit=settings.search_prewarm_head_queries)
+    logger.info("search.prewarm.start file_queries=%d head_queries=%d", len(queries), len(head))
+    return prewarm(services["search"], services["recsys_embedder"], [*queries, *head],
+                   inputs_per_minute=settings.search_prewarm_inputs_per_minute, stop=stop)
 
 
 class RecsysRefresher:
@@ -216,13 +248,16 @@ class RecsysRefresher:
     client nào bị đóng giữa chừng. Lần nạp lại lỗi thì giữ bản đang phục vụ thay vì tắt recsys.
     """
 
-    def __init__(self, app: FastAPI, settings: Settings, build=None, on_publish=None):
+    def __init__(self, app: FastAPI, settings: Settings, build=None, on_publish=None, prewarm=None):
         self.app, self.settings = app, settings
         self._build = build  # test tiêm bản giả; mặc định là build_recsys
         self._on_publish = on_publish  # dựng lại use case đọc engine recsys (catalog) sau mỗi lần nạp
+        self._prewarm = prewarm  # test tiêm bản giả; mặc định prewarm_from_settings (chạy một lần, sau lần nạp đầu)
         self.services: dict = {}
         self._failures = 0
         self._stop = asyncio.Event()
+        self._prewarm_task: asyncio.Task | None = None
+        self._prewarm_stop = threading.Event()
 
     async def reload(self) -> bool:
         first = not self.services
@@ -250,9 +285,32 @@ class RecsysRefresher:
         if first:
             print(f"RecSys ready: {len(updated['index'].units)} search unit, model {updated['index'].model_version}")
             logger.info("startup.recsys.ready search_units=%d", len(updated["index"].units))
+            if getattr(self.settings, "search_prewarm", False) and self._prewarm_task is None:
+                # Nền, không chặn startup: request vẫn được phục vụ (miss) trong lúc cache đang nạp.
+                self._prewarm_task = asyncio.create_task(self._run_prewarm())
         else:
             logger.info("catalog.refresh.ready search_units=%d", len(updated["index"].units))
+            stats = getattr(self.services.get("recsys_embedder"), "cache", None)
+            if stats is not None and hasattr(stats, "stats"):
+                logger.info("search.embed_cache %s", " ".join(f"{k}={v}" for k, v in stats.stats().items()))
         return True
+
+    async def _run_prewarm(self) -> None:
+        try:
+            report = await asyncio.to_thread(self._prewarm or prewarm_from_settings, self.settings, self.services,
+                                             self._prewarm_stop)
+            logger.info("search.prewarm.done %s", " ".join(f"{k}={v}" for k, v in report.as_dict().items()))
+        except Exception as exc:  # noqa: BLE001 — prewarm hỏng thì cache chỉ nạp dần theo request, không ảnh hưởng phục vụ
+            logger.warning("search.prewarm.failed error=%s", exc)
+
+    async def wait_prewarm(self, timeout: float = PREWARM_SHUTDOWN_WAIT_SECONDS) -> None:
+        """Shutdown: chờ prewarm dừng (đã nhận `stop`) trước khi đóng client Cohere dùng chung."""
+        if self._prewarm_task is None:
+            return
+        try:
+            await asyncio.wait_for(asyncio.shield(self._prewarm_task), timeout)
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            logger.warning("search.prewarm.shutdown_timeout seconds=%s", timeout)
 
     async def run(self) -> None:
         while not self._stop.is_set():
@@ -266,6 +324,7 @@ class RecsysRefresher:
 
     def stop(self) -> None:
         self._stop.set()
+        self._prewarm_stop.set()
 
     def close(self) -> None:
         for name in ("recsys_embedder", "recsys_vectors"):
@@ -567,6 +626,7 @@ async def lifespan(app: FastAPI):
             app.state.ready = False
             recsys.stop()
             await refresh_task  # chờ lần nạp đang chạy xong rồi mới đóng client dùng chung
+            await recsys.wait_prewarm()
             recsys.close()
             logger.info("shutdown.browse_event_recorder.stop")
             await app.state.browse_event_recorder.stop()
@@ -577,7 +637,7 @@ settings = get_settings()
 app = FastAPI(
     title=settings.app_name,
     description="Travel recommendation and itinerary API",
-    version="1.9.0",
+    version="1.12.0",
     lifespan=lifespan,
 )
 

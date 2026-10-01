@@ -6,9 +6,10 @@ Mỗi port một file (docs/prd/architecture.md §2). Re-export các port RecSys
 
 from .cdp_client import CdpHistoryReader
 from .embedder import EmbedderPort
+from .search_logs import SearchLogReader
 from .unit_index import UnitIndex
 from .vector_search import LexicalHit, LexicalSearchPort, VectorHit, VectorSearchPort
 from .vector_store import VectorStorePort
 
-__all__ = ["CdpHistoryReader", "EmbedderPort", "LexicalHit", "LexicalSearchPort", "UnitIndex", "VectorHit",
-           "VectorSearchPort", "VectorStorePort"]
+__all__ = ["CdpHistoryReader", "EmbedderPort", "LexicalHit", "LexicalSearchPort", "SearchLogReader", "UnitIndex",
+           "VectorHit", "VectorSearchPort", "VectorStorePort"]

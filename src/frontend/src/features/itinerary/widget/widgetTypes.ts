@@ -10,6 +10,7 @@ export interface WidgetChatMessage {
   text: string;
   plan?: WidgetPlan;
   clarificationForm?: ClarificationForm;
+  suggestions?: string[];
 }
 
 export interface ConversationSession {

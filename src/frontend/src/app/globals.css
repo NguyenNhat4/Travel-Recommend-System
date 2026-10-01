@@ -1,8 +1,63 @@
 @import "tailwindcss";
 
+/*
+ * Chữ. Cal Sans là chữ tiêu đề và điều hướng: chỉ có độ đậm 400, tự nó đã đậm và khít, nên chỉ dùng cho chuỗi ngắn
+ * (tiêu đề, nhãn nhóm, nút, thẻ). Inter là chữ nội dung (mô tả, chính sách, ô nhập, chú thích ≤ 13 px), nơi Cal Sans
+ * bị đặc và khó đọc. Cả hai được nạp bằng <link> Google Fonts ở app/layout.tsx, đều có subset vietnamese.
+ * `font-sans` (gốc AppShell) trước đây ghi đè `body` nên cả app render bằng font hệ thống; đặt lại ở đây.
+ */
+@theme {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', Arial, sans-serif,
+    'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+  --font-display: 'Cal Sans', 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', Arial, sans-serif;
+}
+
+@layer base {
+  /* Cal Sans không có bản đậm: chặn trình duyệt tự làm đậm giả khi gặp `font-bold`, `font-black`... */
+  html {
+    font-synthesis-weight: none;
+  }
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+  }
+}
+
 body {
-  font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
+  font-family: var(--font-sans);
   background-color: #f6f8fb;
+}
+
+/*
+ * Thang chữ của hero và tiêu đề khối, dùng chung để trang chủ và bốn trang danh mục không lệch cỡ nhau:
+ * hero 36 → 48 → 56 px (dòng phụ 18 → 20 px), tiêu đề khối 24 → 32 px.
+ */
+@layer components {
+  .type-hero {
+    font-family: var(--font-display);
+    font-size: 2.25rem;
+    line-height: 1.1;
+    letter-spacing: -0.015em;
+    text-wrap: balance;
+  }
+  .type-hero-sub {
+    font-size: 1.125rem;
+    line-height: 1.55;
+    text-wrap: balance;
+  }
+  .type-title {
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    line-height: 2rem;
+    letter-spacing: -0.01em;
+  }
+  @media (min-width: 40rem) {
+    .type-hero { font-size: 3rem; }
+    .type-hero-sub { font-size: 1.25rem; }
+    .type-title { font-size: 2rem; line-height: 2.5rem; }
+  }
+  @media (min-width: 64rem) {
+    .type-hero { font-size: 3.5rem; }
+  }
 }
 
 /* Traditional OTA Hero Background */
@@ -78,3 +133,60 @@ body {
   animation: subtlePulse 3s ease-in-out infinite;
 }
 
+
+/* Kính mờ: header nổi trên hero và tấm tìm kiếm của trang danh mục (docs/plan/2026-09-29-ui-trang-danh-muc-va-header.md §7) */
+.glass-pill {
+  background-color: rgba(15, 23, 42, 0.28);
+  backdrop-filter: blur(20px) saturate(120%);
+  -webkit-backdrop-filter: blur(20px) saturate(120%);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25), inset 0 0 0 0.5px rgba(255, 255, 255, 0.35);
+}
+
+.glass-sheet {
+  background-color: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(36px) saturate(160%);
+  -webkit-backdrop-filter: blur(36px) saturate(160%);
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.16);
+}
+
+.glass-panel {
+  background-color: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+}
+
+/* Skeleton đúng khung thẻ, có sóng chạy ngang */
+.skeleton-wave {
+  position: relative;
+  overflow: hidden;
+  background-color: #e2e8f0;
+}
+.skeleton-wave::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  animation: skeletonWave 1.4s ease-in-out infinite;
+}
+@keyframes skeletonWave {
+  100% { transform: translateX(100%); }
+}
+
+/* Hàng cuộn ngang có điểm dừng để lộ một phần thẻ kế tiếp (product.md §7.1) */
+.snap-row {
+  scroll-snap-type: x proximity;
+}
+.snap-row > * {
+  scroll-snap-align: start;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-wave::after,
+  .animate-float {
+    animation: none;
+  }
+  .snap-row {
+    scroll-behavior: auto;
+  }
+}

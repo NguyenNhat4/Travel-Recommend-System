@@ -1,0 +1,215 @@
+{
+  "referenceCode": "VOTA-20260929-7Q2M",
+  "createdAt": "2026-09-29T03:05:00Z",
+  "status": "PENDING_PAYMENT",
+  "holdExpiresAt": "2026-09-29T03:36:00Z",
+  "cancellableUntil": null,
+  "payment": {
+    "status": "OPEN",
+    "amount": 6960384,
+    "currency": "VND",
+    "checkoutUrl": "https://checkout.stripe.com/c/pay/cs_test_family",
+    "failedAttempts": 0,
+    "failureReason": null,
+    "refundedAmount": 0
+  },
+  "cancellation": null,
+  "contact": {
+    "fullName": "Nguyễn Minh Anh",
+    "email": "minhanh@example.vn",
+    "phone": "0912345678"
+  },
+  "groups": [
+    {
+      "destination": "Nha Trang",
+      "eventGroupId": "OFF20260929A1B2C3",
+      "items": [
+        {
+          "bookingItemId": "bi-hotel",
+          "product": {
+            "productId": "nt-h-luckysun-d3",
+            "name": "Lucky Sun Hotel Nha Trang Beach – Phòng Deluxe 3 Người",
+            "taxonomy": "hotel",
+            "destination": "Nha Trang",
+            "unitPrice": 777192,
+            "currency": "VND",
+            "priceUnit": "PER_NIGHT",
+            "available": true,
+            "availableFrom": "2026-10-01",
+            "availableTo": "2026-10-30",
+            "imageUrl": "https://cdn.example.vn/nt-h-luckysun-d3.jpg",
+            "attributes": {
+              "maxOccupancy": 3
+            }
+          },
+          "usingDate": "2026-10-17",
+          "quantity": 1,
+          "nights": 2,
+          "lineTotal": 1554384,
+          "fares": [
+            {
+              "fareType": "ROOM",
+              "unitPrice": 777192,
+              "count": 1,
+              "nights": 2,
+              "amount": 1554384
+            }
+          ],
+          "travelers": [
+            {
+              "fullName": "Nguyễn Minh Anh",
+              "type": "ADULT",
+              "roomNo": 1,
+              "isLead": true
+            },
+            {
+              "fullName": "Trần Thu Hà",
+              "type": "ADULT",
+              "roomNo": 1,
+              "isLead": false
+            },
+            {
+              "fullName": "Nguyễn Gia Bảo",
+              "type": "CHILD",
+              "roomNo": 1,
+              "isLead": false
+            }
+          ],
+          "guestNames": [
+            "Nguyễn Minh Anh",
+            "Trần Thu Hà",
+            "Nguyễn Gia Bảo"
+          ],
+          "specialRequest": "Phòng tầng cao nếu còn"
+        },
+        {
+          "bookingItemId": "bi-vinwonders",
+          "product": {
+            "productId": "nt-a-vinwonders-buggy",
+            "name": "[Wonder Ngon] Vé VinWonders Nha Trang + Buggy + Fastpass 3 game hot",
+            "taxonomy": "attraction",
+            "destination": "Nha Trang",
+            "unitPrice": 1500000,
+            "currency": "VND",
+            "priceUnit": "PER_PERSON",
+            "available": true,
+            "availableFrom": "2026-10-01",
+            "availableTo": "2026-10-30",
+            "imageUrl": "https://cdn.example.vn/nt-a-vinwonders-buggy.jpg"
+          },
+          "usingDate": "2026-10-18",
+          "quantity": 3,
+          "nights": null,
+          "lineTotal": 3504000,
+          "fares": [
+            {
+              "fareType": "ADULT",
+              "unitPrice": 1500000,
+              "count": 2,
+              "nights": null,
+              "amount": 3000000
+            },
+            {
+              "fareType": "CHILD",
+              "unitPrice": 504000,
+              "count": 1,
+              "nights": null,
+              "amount": 504000
+            }
+          ],
+          "travelers": [
+            {
+              "fullName": "Nguyễn Minh Anh",
+              "type": "ADULT",
+              "roomNo": null,
+              "isLead": false
+            },
+            {
+              "fullName": "Trần Thu Hà",
+              "type": "ADULT",
+              "roomNo": null,
+              "isLead": false
+            },
+            {
+              "fullName": "Nguyễn Gia Bảo",
+              "type": "CHILD",
+              "roomNo": null,
+              "isLead": false
+            }
+          ],
+          "guestNames": [
+            "Nguyễn Minh Anh",
+            "Trần Thu Hà",
+            "Nguyễn Gia Bảo"
+          ],
+          "specialRequest": null
+        },
+        {
+          "bookingItemId": "bi-vj601",
+          "product": {
+            "productId": "nt-f-vj601",
+            "name": "VietJet Air VJ601 Nha Trang → TP. Hồ Chí Minh 16:20",
+            "taxonomy": "flight",
+            "destination": "Nha Trang",
+            "unitPrice": 634000,
+            "currency": "VND",
+            "priceUnit": "PER_PERSON",
+            "available": true,
+            "availableFrom": "2026-10-19",
+            "availableTo": "2026-10-19",
+            "imageUrl": null
+          },
+          "usingDate": "2026-10-19",
+          "quantity": 3,
+          "nights": null,
+          "lineTotal": 1902000,
+          "fares": [
+            {
+              "fareType": "ADULT",
+              "unitPrice": 634000,
+              "count": 2,
+              "nights": null,
+              "amount": 1268000
+            },
+            {
+              "fareType": "CHILD",
+              "unitPrice": 634000,
+              "count": 1,
+              "nights": null,
+              "amount": 634000
+            }
+          ],
+          "travelers": [
+            {
+              "fullName": "Nguyễn Minh Anh",
+              "type": "ADULT",
+              "roomNo": null,
+              "isLead": false
+            },
+            {
+              "fullName": "Trần Thu Hà",
+              "type": "ADULT",
+              "roomNo": null,
+              "isLead": false
+            },
+            {
+              "fullName": "Nguyễn Gia Bảo",
+              "type": "CHILD",
+              "roomNo": null,
+              "isLead": false
+            }
+          ],
+          "guestNames": [
+            "Nguyễn Minh Anh",
+            "Trần Thu Hà",
+            "Nguyễn Gia Bảo"
+          ],
+          "specialRequest": null
+        }
+      ],
+      "groupTotal": 6960384
+    }
+  ],
+  "total": 6960384,
+  "currency": "VND"
+}

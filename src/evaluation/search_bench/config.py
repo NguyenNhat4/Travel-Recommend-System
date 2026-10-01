@@ -69,6 +69,9 @@ class ModelConfig(_M):
     device: Optional[str] = None
     batch_size: Optional[int] = None
     trust_remote_code: Optional[bool] = None
+    query_prefix: Optional[str] = None        # e5: "query: " / "passage: " — ghép trước text theo input_type (embed/local_hf.py)
+    passage_prefix: Optional[str] = None
+    pooling: Optional[Literal["mean", "cls"]] = None   # model local: mean (e5) | cls (bge-m3, gte); mặc định mean
 
 
 class RetryConfig(_M):

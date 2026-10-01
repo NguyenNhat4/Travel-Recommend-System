@@ -113,3 +113,33 @@ def collect(tool_results: list[ToolResult], details: dict[str, Product], intent:
                 else:
                     candidates[product_id], sources[product_id] = product, source
     return candidates, sources, dropped
+
+
+def nearest_open_date(tool_results: list[ToolResult], details: dict[str, Product], intent: TripIntent,
+                      constraints: Constraints, today: date) -> str | None:
+    """Ngày khởi hành gần `startDate` nhất mà có sản phẩm bị loại vì `DATE` đang mở bán; None khi không có.
+
+    Chỉ xét sản phẩm mà `_drop_reason` xếp là DATE (đã đúng điểm đến, còn bán, không bị loại loại/giá), nên
+    ngày trả về đặt lại chuyến là có sản phẩm thật. Không bao giờ sớm hơn `today` hay muộn hơn `availableTo`.
+    """
+    if not intent.get("startDate"):
+        return None
+    visit = date.fromisoformat(intent["startDate"])
+    best: date | None = None
+    for result in tool_results:
+        data = result.get("data", {})
+        for projection in (*data.get("results", []), *data.get("recommendations", [])):
+            product_id = projection.get("productId")
+            if not product_id:
+                continue
+            product = {**details.get(product_id, {}), **projection}
+            if _drop_reason(product, intent, constraints) != "PRODUCT_DROPPED_DATE":
+                continue
+            opens = date.fromisoformat(product["availableFrom"]) if product.get("availableFrom") else visit
+            closes = date.fromisoformat(product["availableTo"]) if product.get("availableTo") else None
+            nearest = max(min(max(visit, opens), closes) if closes else max(visit, opens), today)
+            if closes and nearest > closes:
+                continue
+            if best is None or abs(nearest - visit) < abs(best - visit):
+                best = nearest
+    return best.isoformat() if best else None

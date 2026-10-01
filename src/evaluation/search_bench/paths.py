@@ -17,6 +17,9 @@ CONFIG_DIR = PKG_DIR / "config"
 DEFAULT_CONFIG = CONFIG_DIR / "sbench.yaml"
 ARMS_DIR = PKG_DIR / "arms"
 GOLD_DIR = PKG_DIR / "gold"          # của Người A: drafts.txt, pool*.csv, gold.jsonl — commit
+GOLD_JSONL = GOLD_DIR / "gold.jsonl"
+GOLD_CHANGELOG = GOLD_DIR / "changelog.yaml"   # Part 11: một mục mỗi lần gold đổi (import / retire / holes import)
+HOLES_DIR = GOLD_DIR / "holes"                 # Part 11: file gán hole theo version + cổng
 COMPOSE_FILE = PKG_DIR / "docker" / "compose.yml"
 
 DATASETS = ("jsonl", "sample", "fake")      # jsonl = catalog thật; sample/fake nằm thư mục riêng để không đè

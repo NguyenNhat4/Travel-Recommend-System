@@ -20,7 +20,7 @@ USER = ["user_id", "email", "password_hash", "display_name", "cdp_user_id", "per
 BOOKING = ["booking_id", "reference_code", "cdp_user_id", "event_group_id", "status", "contact_name", "contact_email", "contact_phone",
            "special_request", "total_amount", "currency", "created_at"]
 ITEM = ["booking_item_id", "booking_id", "product_id", "taxonomy", "product_name", "unit_price", "quantity", "using_date", "using_date_to",
-        "guest_names"]
+        "guest_names", "line_total"]
 PARTNER = ["partner_name", "request_token", "created_at"]
 IPROFILE = ["profile_id", "partner_name", "attributes", "gdpr_optin", "created_at", "updated_at"]
 IDENT = ["identifier_id", "profile_id", "id_type", "id_value", "valid_from", "valid_to"]

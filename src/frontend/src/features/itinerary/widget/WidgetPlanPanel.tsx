@@ -1,6 +1,6 @@
 import React from 'react';
 import dynamic from 'next/dynamic';
-import { MapPin, Calendar, Users, Bookmark, Loader2, ArrowRight } from 'lucide-react';
+import { MapPin, Calendar, Users, Loader2, ArrowRight } from 'lucide-react';
 import { WidgetDays } from './WidgetDays';
 import type { FloatingWidgetController } from './useFloatingWidget';
 
@@ -19,8 +19,8 @@ const ItineraryMap = dynamic(
 );
 
 export function WidgetPlanPanel({ widget }: { widget: FloatingWidgetController }) {
-  const { activePlan, activeDayTab, setActiveDayTab, isSavedPlan, isCheckingOut,
-    handleToggleSavePlan, handleCheckoutPlan, addToCart, hoveredCoordinate, hoveredPointId } = widget;
+  const { activePlan, activeDayTab, setActiveDayTab, isCheckingOut,
+    handleCheckoutPlan, addToCart, hoveredCoordinate, hoveredPointId } = widget;
   if (!activePlan) return null;
   return (
 <div className="grid grid-cols-1 md:grid-cols-2 w-full h-full overflow-hidden divide-x divide-slate-100">
@@ -30,7 +30,7 @@ export function WidgetPlanPanel({ widget }: { widget: FloatingWidgetController }
     <div className="p-4 bg-white border-b border-slate-100 space-y-3 shrink-0 shadow-2xs">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div>
-          <h2 className="text-base font-bold text-slate-900 tracking-tight">
+          <h2 className="text-base font-bold text-slate-900">
             {activePlan.title}
           </h2>
           <div className="flex items-center gap-3 text-sm text-slate-500 mt-1">
@@ -105,19 +105,6 @@ export function WidgetPlanPanel({ widget }: { widget: FloatingWidgetController }
         )}
       </div>
       <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={handleToggleSavePlan}
-          className={`p-2.5 rounded-xl border transition cursor-pointer flex items-center justify-center shrink-0 ${
-            isSavedPlan
-              ? 'bg-amber-50 border-amber-300 text-amber-600 hover:bg-amber-100'
-              : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 shadow-2xs'
-          }`}
-          title={isSavedPlan ? "Đã lưu hành trình" : "Lưu hành trình"}
-          aria-label="Lưu hành trình"
-        >
-          <Bookmark className={`w-4 h-4 ${isSavedPlan ? 'fill-amber-500 text-amber-500' : ''}`} />
-        </button>
         <button
           type="button"
           onClick={handleCheckoutPlan}

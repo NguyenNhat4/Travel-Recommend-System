@@ -92,7 +92,7 @@ GET /api/v1/search?q=khu%20nghỉ%20dưỡng&destination=Nha%20Trang&taxonomy=ho
 
 #### Query parameters
 
-`q` là bắt buộc; `destination`, `taxonomy`, `limit`, `offset` là tùy chọn. Tool planner vẫn dùng tên `query`; chỉ adapter HTTP đổi sang `q`, adapter `inprocess` truyền thẳng vào engine. Cả hai chỉ chuyển `taxonomy`, `destination`, `limit`, `offset`, bỏ `cutoff` và `diagnostics` khỏi kết quả, và không bao giờ gắn danh tính người dùng (không JWT, không `cdpUserId`). Search MVP không nhận ngày, party hoặc bộ lọc giá/sao; Agent giữ và hậu kiểm các ràng buộc đó sau retrieval.
+`q` là bắt buộc; `destination`, `taxonomy`, `limit`, `offset` là tùy chọn. Agent không lấy `limit` từ LLM: server cố định `limit=10` cho mọi lời gọi search và `k=10` cho `get_recommendations` (§2.4), ở hằng `SEARCH_LIMIT`/`RECOMMENDATION_K` trong `agents/steps/tool_planning.py`, nên mọi mode nhận cùng số ứng viên. Tool planner vẫn dùng tên `query`; chỉ adapter HTTP đổi sang `q`, adapter `inprocess` truyền thẳng vào engine. Cả hai chỉ chuyển `taxonomy`, `destination`, `limit`, `offset`, bỏ `cutoff` và `diagnostics` khỏi kết quả, và không bao giờ gắn danh tính người dùng (không JWT, không `cdpUserId`). Search MVP không nhận ngày, party hoặc bộ lọc giá/sao; Agent giữ và hậu kiểm các ràng buộc đó sau retrieval.
 
 #### Response
 
@@ -408,18 +408,87 @@ Backend đếm `clarification_rounds` theo hội thoại (0, 1, 2…), chỉ tă
   nhập tin nhắn, không tự gửi**; người dùng đọc lại, sửa nếu muốn rồi gửi như một lượt chat bình thường (không dùng
   `intentOverride`). `suggestedValues` giữ nguyên hành vi cũ, không đổi.
 
+**Giá trị không hợp lệ thì hỏi lại (đề xuất `docs/prd/update-archive/2026-09-30-bao-loi-dau-vao-khong-hop-le.md`, đã áp dụng; thay `2026-09-30-hoi-lai-khi-ngay-di-da-qua.md`).**
+Không hợp lệ gồm: `startDate` sớm hơn hôm nay theo giờ Việt Nam, `days` ngoài 1–7, `party.adults` < 1 hoặc `party.children` < 0,
+`budget` < 0 (giới hạn số lấy từ contract), và điểm đến không có trong catalog. Đây **không phải lỗi**: agent trả
+`NEEDS_CLARIFICATION` (HTTP 200) với `clarification_reason = "invalid_input"`, trường sai bị xoá khỏi `knownIntent` và có trong
+`missingFields`, các trường hợp lệ khác được giữ. Nguồn giá trị gồm câu chat, chip `intentOverride` và intent đã lưu từ lượt
+trước. Ngày đi quá xa (ngoài cửa sổ mở bán) không thuộc nhóm này: vẫn đi tới `NO_RESULTS` kèm gợi ý ngày gần nhất (§4.4).
+
+- **Không gọi thêm tool để kiểm hợp lệ.** Ngày, số ngày, số người, ngân sách kiểm ngay ở `extract` (không gọi Search).
+  Điểm đến kiểm ở node `tool` bằng danh sách điểm đến catalog (`list_destinations`, chưa gọi Search), rồi `evaluate` bỏ qua và
+  `route_after_evaluate` đi thẳng `clarify`.
+- **Dạng câu trả lời:** `question` có dòng đầu `**<tiêu đề>**` (in đậm) nêu cái gì sai, các dòng sau nêu lý do và một gợi ý cụ thể
+  rồi mời người dùng trả lời. Nhiều trường sai cùng lúc thì một tiêu đề chung, mỗi trường một dòng.
+- **LLM viết câu** (node `clarify`; `ConversationalAnswer.title` là tiêu đề, `message` là phần thân). Backend đưa sẵn
+  `invalid_inputs` (ngày dạng dd/mm/yyyy), `today`, `valid_ranges` (từ contract), `supported_destinations`, `form_shown` để LLM
+  chỉ chép lại, không tự nghĩ ra ngày hay điểm đến. Không có `title` thì backend dùng tiêu đề cố định ("Ngày khởi hành không
+  hợp lệ", "Số ngày không hợp lệ", "Số người không hợp lệ", "Ngân sách không hợp lệ", "Điểm đến chưa được hỗ trợ"; nhiều trường:
+  "Thông tin chuyến đi chưa hợp lệ"). LLM lỗi hoặc quá thời gian thì cả câu là câu cố định vi/en cùng dạng.
+- **Gợi ý theo trường:** ngày đi → "chọn từ hôm nay (dd/mm/yyyy) trở đi"; điểm đến → danh sách điểm đến hỗ trợ (kèm
+  `suggestedValues.destination`); số ngày → khoảng 1–7 (kèm `suggestedValues.days`); số người/ngân sách → giá trị tối thiểu hợp lệ.
+- **Còn thiếu điểm đến/số ngày:** câu vẫn nêu giá trị sai (ví dụ "di ngay 28 thang9" khi hôm nay là 30/9); `clarification_rounds`
+  vẫn tăng và từ vòng 2 vẫn kèm `clarificationForm` (điền sẵn hôm nay, không dùng ngày đã qua).
+- Số người lớn rất lớn hay ngân sách rất cao vẫn hợp lệ theo contract và vẫn lập lịch.
+- Ngày năm cũ LLM trích (ví dụ "20/9" thành 2023-09-20) vẫn sửa về năm nay trước khi kiểm, nên "20/9" nói vào ngày 30/9 là ngày
+  đã qua và bị hỏi lại, không tự đẩy sang năm sau.
+
+**Dòng tiêu đề in đậm cho mọi câu trả lời (đề xuất `docs/prd/update-archive/2026-09-30-tieu-de-cho-moi-cau-tra-loi.md`, đã áp dụng).**
+Dòng đầu của câu trợ lý nói với người dùng là `**Tiêu đề**` (khoảng 3–8 từ, không dấu chấm cuối, cùng ngôn ngữ với câu) **tóm tắt cả
+câu**, các dòng sau là phần chi tiết. Không có field mới: tiêu đề nằm trong chuỗi `question`, `message` hoặc `error.message`.
+
+| Trường hợp | Tiêu đề (vi) | Ai viết |
+|---|---|---|
+| Thiếu cả điểm đến và số ngày | Cần biết điểm đến và số ngày | LLM (dự phòng cố định) |
+| Thiếu điểm đến | Bạn muốn đi đâu? | LLM (dự phòng cố định) |
+| Thiếu số ngày | Chuyến đi kéo dài mấy ngày? | LLM (dự phòng cố định) |
+| Hỏi gộp ngày đi, số người, ngân sách | Thêm vài chi tiết cho chuyến đi | LLM (dự phòng cố định) |
+| Hỏi lại lần hai kèm `clarificationForm` | Điền nhanh thông tin chuyến đi | LLM (dự phòng cố định) |
+| Thông tin mâu thuẫn | Thông tin chuyến đi chưa khớp nhau | LLM (dự phòng cố định) |
+| Điều kiện bắt buộc không xác minh được | Chưa xác minh được yêu cầu của bạn | LLM (dự phòng cố định) |
+| Điều kiện bắt buộc không có sản phẩm nào | Chưa có sản phẩm đáp ứng yêu cầu bắt buộc | Cố định |
+| Giá trị không hợp lệ | theo trường (ở trên) | LLM (dự phòng cố định) |
+| Ngoài phạm vi (`error.message`, 400) | Ngoài phạm vi hỗ trợ | LLM (dự phòng cố định) |
+| Đầu vào bị guardrail chặn (`error.message`, 400) | Mình chưa thể hỗ trợ yêu cầu này | Cố định |
+| `NO_RESULTS` không khớp sản phẩm | Chưa tìm thấy sản phẩm phù hợp | Cố định |
+| `NO_RESULTS` do ngày đi ngoài thời gian mở bán | Chưa có sản phẩm mở bán cho ngày này | Cố định |
+| `FALLBACK` | Chưa dựng được lịch trình hoàn chỉnh | Cố định |
+| Chào hỏi, cảm ơn | Không có tiêu đề | — |
+| `COMPLETED` và các lỗi hệ thống khác | Không áp dụng (lịch trình đã có `title`; khung lỗi riêng) | — |
+
+- LLM trả `title` cùng `message`; backend ghép `**title**` + xuống dòng + `message`, trim dấu `*`/khoảng trắng thừa và cắt tối đa 80 ký tự.
+  Không có `title` hoặc LLM lỗi thì dùng tiêu đề cố định của trường hợp đó (bảng trên).
+- Backend cắt dòng tiêu đề khỏi tin nhắn trợ lý cũ khi đưa lịch sử lại cho LLM (`llm_context`), để mô hình không bắt chước hay trả
+  lời tiêu đề; bản lưu và `final_answer` giữ nguyên tiêu đề.
+
+**Giọng văn.** Mọi câu LLM viết ở `clarify` và `converse` ấm áp, 2–4 câu (từ chối và trò chuyện 1–3 câu): nói ngắn vì sao cần
+thông tin, cho ví dụ cách trả lời khi cần, không nêu tên sản phẩm. `ConversationalAnswer.message` tối đa 1.000 ký tự. Câu của
+`compose` (COMPLETED/NO_RESULTS/FALLBACK) không đổi.
+
 ### 4.4. Response không có kết quả
 
 ```json
 {
   "status": "NO_RESULTS",
   "conversationId": "conv-01JXYZ",
-  "message": "Hiện chưa có sản phẩm phù hợp tại Quy Nhơn trong khoảng giá này.",
-  "suggestions": ["Tăng ngân sách", "Chọn điểm đến khác", "Bỏ điều kiện gần biển"]
+  "message": "Hiện chưa có sản phẩm ở Hà Nội mở bán cho ngày 01/12/2026. Bạn có thể chọn một trong các gợi ý bên dưới.",
+  "suggestions": ["Đi Hà Nội 3 ngày từ ngày 24/10/2026", "Đi Phú Quốc 3 ngày", "Đi Nha Trang 3 ngày"]
 }
 ```
 
-Agent không lấp kết quả rỗng bằng sản phẩm do LLM tự tạo.
+Agent không lấp kết quả rỗng bằng sản phẩm do LLM tự tạo, và không tự đổi ràng buộc hay điểm đến thay người dùng
+(điều kiện bắt buộc chưa đáp ứng vẫn đi nhánh `NEEDS_CLARIFICATION`). Để người dùng không gặp ngõ cụt, `message` và
+`suggestions` do backend dựng tất định từ dữ liệu thật của lượt đó, không do LLM viết:
+
+- `message` nêu ngày đi khi lý do phổ biến nhất khiến sản phẩm bị loại là ngày nằm ngoài cửa sổ mở bán
+  (`PRODUCT_DROPPED_DATE`); các lý do khác dùng câu chung.
+- `suggestions` tối đa 3 mục, mỗi mục là một câu yêu cầu **gửi được nguyên văn** làm lượt chat tiếp theo, theo thứ tự:
+  1. ngày khởi hành gần `startDate` nhất mà có sản phẩm thật đang mở bán (không sớm hơn hôm nay, không muộn hơn
+     `availableTo`), dạng `Đi <điểm đến> <n> ngày từ ngày dd/mm/yyyy`;
+  2. gợi ý bỏ ràng buộc đang bật (khách sạn cụ thể, giá, số sao, hoạt động cụ thể, loại dịch vụ đã loại trừ);
+  3. tối đa hai điểm đến khác trong catalog, nhiều sản phẩm nhất trước, dạng `Đi <điểm đến> <n> ngày`.
+  Không có mục nào thì trả một câu gợi ý chung.
+- Frontend hiện `suggestions` thành chip dưới bong bóng trả lời ở tin nhắn mới nhất; bấm chip gửi ngay câu đó.
 
 ### 4.5. Response suy giảm
 
@@ -458,10 +527,8 @@ Lỗi thực sự không nằm trong `ItineraryResponse` và không dùng `statu
 | HTTP | Mã lỗi | Ý nghĩa |
 |---:|---|---|
 | 400 | `VALIDATION_ERROR` | Request rỗng hoặc không đúng schema |
-| 400 | `INVALID_TRIP_DURATION` | Số ngày ngoài phạm vi 1–7 |
 | 401 | `INVALID_TOKEN` hoặc `TOKEN_EXPIRED` | Có gửi JWT nhưng token không hợp lệ |
 | 404 | `CONVERSATION_NOT_FOUND` | Không tìm thấy cuộc hội thoại |
-| 422 | `UNSUPPORTED_DESTINATION` | Điểm đến chưa có trong catalog. `details` có `destination`, `supportedDestinations`, `conversationId`; backend lưu phần intent còn lại (bỏ điểm đến) nên gửi lại `conversationId` cùng điểm đến hợp lệ là tiếp tục chuyến đi |
 | 503 | `SEARCH_UNAVAILABLE` | Search/Recommendation không khả dụng: engine lỗi, RecSys chưa nạp hoặc đã tắt, upstream HTTP lỗi |
 | 503 | `LLM_UNAVAILABLE` | LLM lỗi và không thể trả kết quả dự phòng |
 | 500 | `ITINERARY_VALIDATION_FAILED` | Lịch trình không vượt qua grounding validation |

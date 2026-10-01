@@ -3,7 +3,7 @@
   "conversationId": "conv-01JXYZ",
   "intent": {
     "destination": "Đà Nẵng",
-    "startDate": "2026-10-15",
+    "startDate": "2026-12-15",
     "days": 3,
     "party": {
       "type": "FAMILY_WITH_KIDS",
@@ -17,11 +17,11 @@
     ],
     "pace": "RELAXED"
   },
-  "message": "Hiện chưa có sản phẩm phù hợp tại Đà Nẵng trong khoảng giá này.",
+  "message": "Hiện chưa có sản phẩm ở Đà Nẵng mở bán cho ngày 15/12/2026. Bạn có thể chọn một trong các gợi ý bên dưới.",
   "suggestions": [
-    "Tăng ngân sách lên 10 triệu",
-    "Đổi thành Nha Trang",
-    "Bỏ điều kiện gần biển"
+    "Đi Đà Nẵng 3 ngày từ ngày 24/10/2026",
+    "Đi Phú Quốc 3 ngày",
+    "Đi Nha Trang 3 ngày"
   ],
   "metadata": {
     "personalised": false,

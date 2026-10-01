@@ -1,0 +1,14 @@
+{
+  "error": {
+    "code": "PRICE_CHANGED",
+    "message": "Giá sản phẩm đã thay đổi.",
+    "retryable": false,
+    "requestId": "book-01JXYZ",
+    "details": {
+      "productId": "nt-a-vinwonders-buggy",
+      "oldPrice": 504000,
+      "newPrice": 550000,
+      "fareType": "CHILD"
+    }
+  }
+}

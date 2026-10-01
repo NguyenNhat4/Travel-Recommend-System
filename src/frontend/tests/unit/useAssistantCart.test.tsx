@@ -57,6 +57,55 @@ describe('useAssistantCart', () => {
     ]);
   });
 
+  describe('với đoàn của lịch trình (intent.party)', () => {
+    const party = { adults: 2, children: 1 };
+    const withTaxonomy = (productId: string, taxonomy: string, attributes?: Record<string, unknown>) => ({
+      product: { ...summary(productId, productId), taxonomy, ...(attributes ? { attributes } : {}) } as components['schemas']['ProductSummary'],
+      usingDate: '2026-10-01', party,
+    });
+
+    it('vé tính theo người gửi guests = đoàn và số lượng = tổng khách; khách sạn gửi số phòng theo sức chứa; combo gửi 1 gói', async () => {
+      travel.addToCart.mockResolvedValue(true);
+      const { result } = renderHook(() => useAssistantCart());
+      await result.current([
+        withTaxonomy('ticket', 'attraction'),
+        withTaxonomy('flight', 'flight'),
+        withTaxonomy('hotel-2', 'hotel', { maxOccupancy: 2 }),      // 3 khách / 2 = 2 phòng (≤ 2 người lớn)
+        withTaxonomy('hotel-4', 'hotel', { maxOccupancy: 4 }),      // 1 phòng đủ chứa 3 khách
+        withTaxonomy('hotel-nc', 'hotel'),                          // không có sức chứa: 1 phòng
+        withTaxonomy('combo', 'combo'),
+      ]);
+      expect(travel.addToCart.mock.calls.map((call) => [call[0].id, call[1], call[4]])).toEqual([
+        ['ticket', 3, { silent: true, guests: party }],
+        ['flight', 3, { silent: true, guests: party }],
+        ['hotel-2', 2, { silent: true, guests: party }],
+        ['hotel-4', 1, { silent: true, guests: party }],
+        ['hotel-nc', 1, { silent: true, guests: party }],
+        ['combo', 1, { silent: true, guests: party }],
+      ]);
+    });
+
+    it('một mục: gửi kèm guests và không thêm silent (addToCart tự báo toast)', async () => {
+      travel.addToCart.mockResolvedValue(true);
+      const { result } = renderHook(() => useAssistantCart());
+      await result.current([withTaxonomy('ticket', 'attraction')]);
+      expect(travel.addToCart).toHaveBeenCalledTimes(1);
+      const [, quantity, usingDate, checkOut, options] = travel.addToCart.mock.calls[0];
+      expect([quantity, usingDate, checkOut, options]).toEqual([3, '2026-10-01', undefined, { guests: party }]);
+    });
+
+    it('kéo đoàn về giới hạn của giỏ: ít nhất 1 người lớn, tối đa 9 khách', async () => {
+      travel.addToCart.mockResolvedValue(true);
+      const { result } = renderHook(() => useAssistantCart());
+      await result.current([{ ...withTaxonomy('ticket', 'attraction'), party: { adults: 12, children: 3 } }]);
+      await result.current([{ ...withTaxonomy('ticket', 'attraction'), party: { adults: 0, children: 2 } }]);
+      expect(travel.addToCart.mock.calls.map((call) => [call[1], call[4]])).toEqual([
+        [9, { guests: { adults: 9, children: 0 } }],
+        [3, { guests: { adults: 1, children: 2 } }],
+      ]);
+    });
+  });
+
   it('keeps going after a rejected item and names it in one toast', async () => {
     travel.addToCart.mockImplementation(async (product: { id: string }) => product.id !== 'p-2');
     const onAdded = vi.fn();
