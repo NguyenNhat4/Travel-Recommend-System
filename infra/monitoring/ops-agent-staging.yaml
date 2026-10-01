@@ -15,11 +15,19 @@ logging:
       include_paths:
         - /var/log/vota/docker-events.jsonl
       record_log_file_path: true
+    container_disk:
+      type: files
+      include_paths:
+        - /var/log/vota/container-disk.jsonl
+      record_log_file_path: true
   processors:
     parse_docker_json:
       type: parse_json
       field: message
     parse_docker_events:
+      type: parse_json
+      field: message
+    parse_container_disk:
       type: parse_json
       field: message
   service:
@@ -37,6 +45,11 @@ logging:
           - docker_events
         processors:
           - parse_docker_events
+      container_disk_pipeline:
+        receivers:
+          - container_disk
+        processors:
+          - parse_container_disk
 
 metrics:
   receivers:
