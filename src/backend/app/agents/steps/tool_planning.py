@@ -85,7 +85,9 @@ async def check_destination(state: dict, update: dict, *, tools: ToolExecutorPor
     Không lấy được catalog thì giữ nguyên: `tool` vẫn kiểm lần nữa.
     """
     intent = update.get("intent") or {}
-    if update.get("decision") == "error" or not intent.get("destination"):
+    # Hỏi chọn điểm đến theo loại ("đi biển") cần danh sách catalog để LLM gợi ý, kể cả khi chưa có điểm đến.
+    by_kind = update.get("clarification_reason") == "destination_kind"
+    if update.get("decision") == "error" or not (intent.get("destination") or by_kind):
         return update
     if not getattr(tools, "supports_catalog", False):
         return update
@@ -94,6 +96,9 @@ async def check_destination(state: dict, update: dict, *, tools: ToolExecutorPor
         supported = await catalog_destinations(tools, timeout_seconds)
     if supported is None:
         return update
+    if by_kind:
+        # Điểm đến đang có (người dùng muốn đổi sang loại khác) giữ nguyên, không đem đi khớp lại.
+        return {**update, "supported_destinations": supported}
     checked = dict(intent)
     changed: list[str] = []
     rejected = await canonical_destination(state, checked, changed, supported, llm, llm_timeout_seconds)

@@ -12,4 +12,5 @@
 - `validation` — kiểm response theo contract và grounding (`finalize`).
 - `guardrails` — mẫu tất định chặn chèn lệnh (`classify`) và lộ secret/tuyên bố đặt chỗ (`finalize`).
 - `history` — ngữ cảnh hội thoại chung cho mọi lượt gọi LLM.
+- `turn_notes` — câu ngắn mô tả chuyến đi và từng lượt trợ lý theo nghĩa, dùng trong ngữ cảnh đó (`finalize` lưu kèm).
 """

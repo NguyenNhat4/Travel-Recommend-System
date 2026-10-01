@@ -12,6 +12,7 @@ from .classification import vietnam_today
 from .history import llm_context, prompt_yaml
 from .messages import display_date, event, failure, message, titled
 from .prompts import CONVERSATION_PROMPT
+from .turn_notes import question_note
 
 #: Form gợi ý phủ mọi trường bắt buộc của chuyến đi, kể cả trường người dùng đã nói, để sửa được tại chỗ.
 FORM_FIELDS = ("destination", "days", "startDate", "party", "budget")
@@ -55,7 +56,12 @@ def _invalid_for_llm(state: dict) -> list[dict]:
 
 
 def _form_shown(state: dict) -> bool:
-    """Câu hỏi sẽ kèm `clarificationForm` (xem `_question_response`) nên LLM mời người dùng dùng form."""
+    """Câu hỏi kèm `clarificationForm`: đã hỏi một lượt mà vẫn thiếu điểm đến/số ngày.
+
+    Không kèm khi đang hỏi chọn điểm đến theo loại ("đi biển"): form điền sẵn điểm đến đầu catalog, có thể không hợp loại.
+    """
+    if state.get("clarification_reason") == "destination_kind":
+        return False
     return state.get("clarification_rounds", 0) >= 2 and bool({"destination", "days"} & set(state.get("missing_fields") or []))
 
 
@@ -78,6 +84,8 @@ def reply_title(state: dict) -> str | None:
         return invalid_title(state)
     if reason == "change_without_value":
         return message(state, "title_change_without_value")
+    if reason == "destination_kind":
+        return message(state, "title_destination_kind")
     if reason in {"suggest_form", "conflict", "unverified"}:
         return message(state, {"suggest_form": "title_form", "conflict": "title_conflict",
                                "unverified": "title_unverified"}[reason])
@@ -97,6 +105,8 @@ def conversation_input(state: dict) -> list:
     """Chỉ gửi ngữ cảnh đã chốt cho LLM; nó viết câu chữ, không được tự quyết luồng."""
     language = "Vietnamese" if state.get("language", "vi") == "vi" else "English"
     payload = {"message": state.get("query", ""), **llm_context(state),
+               # Lượt này hỏi gì và vì sao (đã chốt ở `extract`), để câu trả lời không mượn lý do cũ trong lịch sử.
+               "this_turn": question_note(state),
                "interaction_type": state.get("interaction_type", ""),
                "missing_fields": state.get("missing_fields", []),
                "clarification_reason": state.get("clarification_reason"),
@@ -104,6 +114,9 @@ def conversation_input(state: dict) -> list:
     if state.get("clarification_reason") == "invalid_input":
         payload.update(invalid_inputs=_invalid_for_llm(state), today=display_date(vietnam_today().isoformat()),
                        valid_ranges=_valid_ranges(), form_shown=_form_shown(state),
+                       supported_destinations=state.get("supported_destinations") or [])
+    elif state.get("clarification_reason") == "destination_kind":
+        payload.update(destination_kind=state.get("destination_kind"),
                        supported_destinations=state.get("supported_destinations") or [])
     elif state.get("clarification_reason") == "change_without_value":
         # Để LLM đoán năm khi hỏi xác nhận một câu trả lời chưa đọc được ("1410" → "14/10/2026?").
@@ -126,7 +139,7 @@ def _question_response(state: dict, question: str) -> dict:
     if suggested:
         response["suggestedValues"] = suggested
     # Lượt hỏi đầu dùng câu chữ; hỏi rồi mà vẫn thiếu điểm đến/số ngày thì đưa form thay vì hỏi lại y hệt.
-    if state.get("clarification_rounds", 0) >= 2 and {"destination", "days"} & set(missing or []):
+    if _form_shown(state):
         response["clarificationForm"] = clarification_form(state)
     return {"response": response}
 
@@ -174,6 +187,9 @@ def clarification_fallback(state: dict) -> dict:
     elif reason == "change_without_value":
         fields = message(state, "detail_joiner").join(message(state, f"change_field_{key}") for key in missing)
         question = message(state, "change_without_value", fields=fields)
+    elif reason == "destination_kind":
+        # Không liệt kê điểm đến: luật không biết nơi nào hợp loại ("biển"), chỉ LLM chọn được từ danh sách.
+        question = message(state, "destination_kind", kind=state.get("destination_kind") or "")
     elif reason == "suggest_form":
         question = message(state, "suggest_form")
     elif reason == "conflict":

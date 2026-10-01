@@ -47,10 +47,41 @@ MESSAGES = {
                                              "Bạn cho mình biết lại số người lớn và trẻ em đi cùng nhé.",
         "invalid_reason_budget_out_of_range": "Ngân sách không thể là số âm. Bạn nhập lại tổng ngân sách (VND), "
                                               "hoặc cứ bỏ qua nếu chưa quyết định, mình vẫn lên lịch được.",
-        "invalid_reason_unsupported_destination": "Hiện mình chỉ lên kế hoạch cho các chuyến đi trong Việt Nam nên "
-                                                  "chưa có dịch vụ tại {value}. Các điểm đến mình đang hỗ trợ: "
-                                                  "{destinations}. Bạn muốn lên kế hoạch cho điểm đến nào trong "
-                                                  "danh sách này?",
+        "invalid_reason_unsupported_destination": "Mình chưa có dịch vụ tại {value} trong danh sách điểm đến hiện có. "
+                                                  "Các điểm đến mình đang hỗ trợ: {destinations}. Bạn muốn lên kế "
+                                                  "hoạch cho điểm đến nào trong danh sách này?",
+        "title_destination_kind": "Chọn điểm đến hợp ý bạn",
+        "destination_kind": "Bạn muốn đi {kind} ở tỉnh hoặc thành phố nào? Cho mình biết tên nơi bạn thích nhé.",
+        # Ngữ cảnh cho LLM (`history.llm_context`) và ghi chú từng lượt trợ lý (`turn_notes`): câu ngắn, không có giá.
+        "trip_none": "chưa có thông tin chuyến đi",
+        "trip_days": "{days} ngày",
+        "trip_from": "khởi hành {date}",
+        "trip_budget": "ngân sách {budget}",
+        "trip_interests": "sở thích: {interests}",
+        "trip_missing": "chưa có: {fields}",
+        "stage_planned": "đã gửi lịch trình cho chuyến này",
+        "stage_collecting": "đang hỏi thông tin chuyến đi, chưa lập lịch trình",
+        "stage_start": "đầu hội thoại",
+        "note_itinerary": "gửi lịch trình {destination} {days} ngày: {products}",
+        "note_no_results": "không tìm thấy sản phẩm phù hợp ở {destination}",
+        "note_fallback": "gửi vài sản phẩm tham khảo ở {destination}, chưa dựng được lịch trình",
+        "note_unclear": "chưa hiểu tin nhắn, nhờ người dùng nói rõ hơn",
+        "note_chat": "trò chuyện",
+        "note_refusal": "từ chối: yêu cầu ngoài phạm vi lập lịch trình",
+        "note_constraint": "không có sản phẩm đáp ứng yêu cầu bắt buộc, hỏi có nới yêu cầu không",
+        "note_invalid": "không dùng được {field} \"{value}\": {reason}",
+        "note_reason_past_date": "ngày đã qua",
+        "note_reason_days_out_of_range": "ngoài khoảng {min_days}–{max_days} ngày",
+        "note_reason_party_out_of_range": "số người không hợp lệ",
+        "note_reason_budget_out_of_range": "ngân sách không hợp lệ",
+        "note_reason_unsupported_destination": "không có trong danh sách điểm đến",
+        "note_ask": "hỏi {fields}",
+        "note_change": "hỏi {field} mới",
+        "note_change_current": "hỏi {field} mới (hiện là {current})",
+        "note_kind": "hỏi chọn điểm đến kiểu \"{kind}\" trong danh sách điểm đến",
+        "note_form": "gửi form điền sẵn, còn thiếu {fields}",
+        "note_conflict": "hỏi xác nhận vì thông tin chuyến đi chưa khớp",
+        "note_unverified": "hỏi về yêu cầu chưa xác minh được",
         "detail_startDate": "ngày khởi hành",
         "detail_party": "số người lớn và trẻ em",
         "detail_budget": "ngân sách tổng",
@@ -162,9 +193,40 @@ MESSAGES = {
                                              "children. Please tell me again how many adults and children are going.",
         "invalid_reason_budget_out_of_range": "The budget cannot be negative. Please enter your total budget (VND), "
                                               "or skip it if it is not decided, and I can still plan the trip.",
-        "invalid_reason_unsupported_destination": "Sorry, I only plan trips within Vietnam, so I don't have any "
-                                                  "services in {value}. The destinations I can plan for: "
-                                                  "{destinations}. Which one would you like to plan a trip to?",
+        "invalid_reason_unsupported_destination": "Sorry, {value} is not among the destinations I can plan for yet. "
+                                                  "The destinations I can plan for: {destinations}. Which one would "
+                                                  "you like to plan a trip to?",
+        "title_destination_kind": "Pick a destination that fits",
+        "destination_kind": "Which city or province would you like to go to for {kind}? Tell me a place you like.",
+        "trip_none": "no trip details yet",
+        "trip_days": "{days} days",
+        "trip_from": "departing {date}",
+        "trip_budget": "budget {budget}",
+        "trip_interests": "interests: {interests}",
+        "trip_missing": "not given yet: {fields}",
+        "stage_planned": "an itinerary has been sent for this trip",
+        "stage_collecting": "still collecting trip details, no itinerary yet",
+        "stage_start": "start of the conversation",
+        "note_itinerary": "sent a {days}-day itinerary for {destination}: {products}",
+        "note_no_results": "found no matching products in {destination}",
+        "note_fallback": "sent a few candidate products in {destination}, no itinerary built",
+        "note_unclear": "did not understand the message, asked the user to rephrase",
+        "note_chat": "small talk",
+        "note_refusal": "declined: outside itinerary planning",
+        "note_constraint": "no product meets a required condition, asked whether to relax it",
+        "note_invalid": "could not use {field} \"{value}\": {reason}",
+        "note_reason_past_date": "the date has passed",
+        "note_reason_days_out_of_range": "outside {min_days}–{max_days} days",
+        "note_reason_party_out_of_range": "invalid number of travellers",
+        "note_reason_budget_out_of_range": "invalid budget",
+        "note_reason_unsupported_destination": "not in the destination list",
+        "note_ask": "asked for {fields}",
+        "note_change": "asked for the new value of {field}",
+        "note_change_current": "asked for the new value of {field} (currently {current})",
+        "note_kind": "asked which listed destination fits \"{kind}\"",
+        "note_form": "sent a prefilled form, still missing {fields}",
+        "note_conflict": "asked to confirm because the trip details did not match",
+        "note_unverified": "asked about a requirement that could not be verified",
         "detail_startDate": "your departure date",
         "detail_party": "how many adults and children are going",
         "detail_budget": "your total budget",
@@ -290,6 +352,18 @@ def display_date(iso: str) -> str:
     """Ngày ISO `yyyy-mm-dd` thành `dd/mm/yyyy` để hiện cho người dùng."""
     year, month, day = iso.split("-")
     return f"{day}/{month}/{year}"
+
+
+def money(value: int, language: str) -> str:
+    grouped = f"{int(value):,}"
+    return f"{grouped.replace(',', '.')} ₫" if language == "vi" else f"{grouped} VND"
+
+
+def party_text(state: dict, party: dict) -> str:
+    text = message(state, "party_adults", adults=party.get("adults", 0))
+    if party.get("children"):
+        text += ", " + message(state, "party_children", children=party["children"])
+    return text
 
 
 def event(node: str, text: str, **metadata) -> dict:

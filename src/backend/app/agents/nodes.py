@@ -30,7 +30,8 @@ from src.backend.app.application.ports.itinerary_tools import ConversationStoreP
 from src.backend.app.domain.itinerary.normalization import normalize_intent
 from src.backend.app.domain.itinerary.planning import empty_intent
 
-from .steps import composition, conversation, evaluation, guardrails, messages, narration, tool_planning, validation
+from .steps import (composition, conversation, evaluation, guardrails, messages, narration, tool_planning,
+                    turn_notes, validation)
 from .steps.classification import extract_result, extraction_input, route_input, route_result
 from .steps.failures import terminal_failure
 from .steps.history import append_conversation_turn, sanitize_conversation_history
@@ -62,7 +63,7 @@ def intake_node(state: AgentState) -> dict:
             "attempt": 0,
             "max_attempts": min(max(1, state.get("max_attempts", MAX_ATTEMPTS)), MAX_ATTEMPTS),
             "tool_plan": [], "tool_results": [], "details": {}, "detail_errors": {},
-            "supported_destinations": None,
+            "supported_destinations": None, "destination_kind": None,
             "candidates": {}, "sources": {}, "response": {}, "warnings": [],
             "missing_fields": [], "start_date_asked": bool(state.get("start_date_asked", False)),
             "clarification_rounds": int(state.get("clarification_rounds", 0) or 0),
@@ -488,7 +489,8 @@ def finalize_node(state: AgentState) -> dict:
             response = conversation.conversational_fallback(state).get("response", response)
     all_issues = issues + [f"guardrail:{reason}" for reason in guardrail_issues]
     answer = validation.answer_text(response)
-    history = append_conversation_turn(state.get("conversation_history", []), state.get("query", ""), answer)
+    note = turn_notes.turn_note(state, response, http_status)
+    history = append_conversation_turn(state.get("conversation_history", []), state.get("query", ""), answer, note)
     outcome = "validation failed" if issues else "guardrail output filtered" if guardrail_issues else "response validated"
     return {"response": response, "http_status": http_status, "validation_issues": all_issues,
             "final_answer": answer, "conversation_history": history,

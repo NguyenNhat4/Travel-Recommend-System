@@ -39,7 +39,7 @@ class RouteTests(unittest.TestCase):
                  'previous_selection': [{'productId': 'p1', 'name': 'A', 'taxonomy': 'hotel'}]}
         payload = yaml.safe_load(route_input(state)[1][1])
         self.assertEqual(payload['last_assistant_message'], 'Bạn dự định khởi hành ngày nào?')
-        self.assertEqual(payload['known_intent']['destination'], 'Huế')
+        self.assertTrue(payload['trip_so_far'].startswith('Huế, 2 ngày'))
         self.assertEqual(len(payload['conversation_history']), 2)
         self.assertEqual(payload['previous_selection'][0]['productId'], 'p1')
 
@@ -50,7 +50,7 @@ class ClassifyPromptTests(unittest.TestCase):
     def test_prompt_names_the_payload_keys_it_is_given(self):
         state = {**intake_node({'query': 'đổi ngày'}), 'previous_selection': [{'productId': 'p1', 'name': 'A', 'taxonomy': 'hotel'}]}
         payload = yaml.safe_load(route_input(state)[1][1])
-        for key in ('message', 'conversation_history', 'last_assistant_message', 'known_intent',
+        for key in ('message', 'trip_so_far', 'stage', 'conversation_history', 'last_assistant_message',
                     'known_constraints', 'previous_selection'):
             self.assertIn(key, payload)
             self.assertIn(f'`{key}`', CLASSIFY_PROMPT)
@@ -86,7 +86,7 @@ class PromptYamlTests(unittest.TestCase):
         state = {**intake_node({'query': query}), 'intent': {'destination': 'Nha Trang', 'days': 1}}
         payload = yaml.safe_load(route_input(state)[1][1])
         self.assertEqual(payload['message'], query)
-        self.assertEqual(payload['known_intent']['destination'], 'Nha Trang')
+        self.assertTrue(payload['trip_so_far'].startswith('Nha Trang'))
 
 
 class ChangeWithoutValueTests(unittest.TestCase):

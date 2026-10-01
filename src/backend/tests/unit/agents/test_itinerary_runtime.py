@@ -254,7 +254,7 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(second['response']['missingFields'], ['destination'])
 
     async def test_unsupported_destination_fixed_question_names_the_request_and_lists_catalog_destinations(self):
-        for language, expected in (('vi', 'chưa có dịch vụ tại Paris'), ('en', 'services in Paris')):
+        for language, expected in (('vi', 'chưa có dịch vụ tại Paris'), ('en', 'Paris is not among')):
             with self.subTest(language=language):
                 llm = ScriptedLlm(extraction=extracted(destination='Paris', days=2), destination_choice=None,
                                   fail_conversation=True)

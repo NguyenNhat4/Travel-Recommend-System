@@ -17,6 +17,7 @@ from ..models import ItineraryNarration
 from .classification import TRIP_FIELDS
 from .history import llm_context, prompt_yaml
 from .messages import MAX_TITLE_CHARS, PRODUCT_LINK, display_date, message, strip_title, titled
+from .messages import money as _money, party_text as _party
 from .prompts import NARRATE_PROMPT
 
 PLACEHOLDER = re.compile(r"\[\[(?:price:([^\[\]\s]{1,200})|(total)|(budget))\]\]")
@@ -25,18 +26,6 @@ RAW_MONEY = re.compile(r"\d[\d.,]*\s*(?:₫|đ\b|đồng|dong\b|vnd|vnđ|k\b|ngh
                        re.IGNORECASE)
 #: Hoạt động dài từ mức này chiếm trọn ngày (cùng ngưỡng với `planning.allowed_times`).
 FULL_DAY_MINUTES = 360
-
-
-def _money(value: int, language: str) -> str:
-    grouped = f"{int(value):,}"
-    return f"{grouped.replace(',', '.')} ₫" if language == "vi" else f"{grouped} VND"
-
-
-def _party(state: dict, party: dict) -> str:
-    text = message(state, "party_adults", adults=party.get("adults", 0))
-    if party.get("children"):
-        text += ", " + message(state, "party_children", children=party["children"])
-    return text
 
 
 def _display(state: dict, field: str, value) -> str:

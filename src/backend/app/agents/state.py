@@ -67,6 +67,7 @@ class AgentState(TypedDict, total=False):
     details: dict[str, Product]
     detail_errors: dict[str, ToolErrorPayload]
     supported_destinations: list[str] | None
+    destination_kind: str | None
     language: str
     previous_selection: list[Product]
 

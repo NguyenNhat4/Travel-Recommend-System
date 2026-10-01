@@ -86,6 +86,10 @@ class Extraction(StrictModel):
         default_factory=list,
         description="Trường người dùng muốn đổi nhưng chưa nói giá trị mới ('đổi ngày', 'đổi địa điểm'). "
                     "Đã có giá trị mới thì điền patch, không liệt kê ở đây.")
+    destination_kind: str | None = Field(
+        default=None, max_length=60,
+        description="Loại nơi người dùng muốn thay cho tên một địa danh ('biển', 'núi', 'chỗ mát'); null khi "
+                    "tin nhắn không nói loại nơi nào hoặc đã nêu một điểm đến hợp với loại đó.")
 
 
 class DestinationChoice(StrictModel):

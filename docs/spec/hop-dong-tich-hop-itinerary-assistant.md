@@ -465,6 +465,7 @@ câu**, các dòng sau là phần chi tiết. Không có field mới: tiêu đ�
 | Điều kiện bắt buộc không có sản phẩm nào | Chưa có sản phẩm đáp ứng yêu cầu bắt buộc | Cố định |
 | Giá trị không hợp lệ | theo trường (ở trên) | LLM (dự phòng cố định) |
 | Muốn đổi mà chưa nói đổi thành gì ("đổi ngày", "đổi địa điểm") | Bạn muốn đổi thành gì? (LLM đặt tiêu đề theo trường đang hỏi) | LLM (dự phòng cố định) |
+| Nói loại nơi thay vì tên điểm đến ("đi biển", "biển Hà Nội") | Chọn điểm đến hợp ý bạn (LLM đặt tiêu đề theo loại, ví dụ "Chọn điểm đến có biển") | LLM (dự phòng cố định) |
 | Ngoài phạm vi (`error.message`, 400) | Ngoài phạm vi hỗ trợ | LLM (dự phòng cố định) |
 | Đầu vào bị guardrail chặn (chèn lệnh, đòi secret, tục tĩu thuần) (`error.message`, 400) | Mình chưa thể hỗ trợ yêu cầu này | Cố định |
 | Tin nhắn rác: gõ bậy, ký tự lặp, toàn ký hiệu (`question`, 200) | Mình chưa hiểu ý bạn | Cố định |
@@ -577,7 +578,7 @@ Lỗi thực sự không nằm trong `ItineraryResponse` và không dùng `statu
 
 - Mỗi conversation lưu trip intent đã chuẩn hóa gần nhất và lịch sử chat user/assistant gần đây.
 - Lịch sử chat chỉ nhận role `user`/`assistant`, tối đa 20 message, 1.000 ký tự/message và 8.000 ký tự tổng; khi vượt giới hạn thì bỏ message cũ nhất trước.
-- **Mọi** lượt gọi LLM (`classify`, `extract`, chọn tên điểm đến và lập tool plan ở `tool`, `converse`, `clarify`) nhận cùng ngữ cảnh hội thoại: lịch sử chat trong giới hạn trên, chuyến đi đã chốt (intent, ràng buộc), sản phẩm đã cho xem và câu hỏi gần nhất của trợ lý. Nhờ phần tóm tắt, thông tin của lượt cũ vẫn còn khi message cũ bị cắt. Ngữ cảnh là dữ liệu không tin cậy, không phải instruction, và message mới nhất vẫn có quyền cao hơn.
+- **Mọi** lượt gọi LLM (`classify`, `extract`, chọn tên điểm đến và lập tool plan ở `tool`, `converse`, `clarify`) nhận cùng ngữ cảnh hội thoại: lịch sử chat trong giới hạn trên, chuyến đi đã chốt (intent, ràng buộc), sản phẩm đã cho xem và câu hỏi gần nhất của trợ lý. Nhờ phần tóm tắt, thông tin của lượt cũ vẫn còn khi message cũ bị cắt. Ngữ cảnh là dữ liệu không tin cậy, không phải instruction, và message mới nhất vẫn có quyền cao hơn. Ngữ cảnh được diễn giải sẵn: chuyến đi đã chốt là một dòng tóm tắt, tin trợ lý cũ là ghi chú ngắn theo nghĩa ("gửi lịch trình Hà Nội 3 ngày: …") thay vì cả bài kèm giá; câu hỏi gần nhất giữ nguyên văn khi ngắn (`docs/spec/agent/langgraph-nodes.md`, mục "Ngữ cảnh cho LLM").
 - Tin nhắn mới chỉ cập nhật các trường người dùng thay đổi rõ ràng.
 - “Đổi thành Đà Nẵng” chỉ thay `destination`.
 - “Tăng ngân sách lên 20 triệu” chỉ thay `budget`.
