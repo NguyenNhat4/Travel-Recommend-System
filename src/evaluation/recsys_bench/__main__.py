@@ -9,6 +9,8 @@
     python -m src.evaluation.recsys_bench http-latency --base-url https://v-ota.duckdns.org   # p95 guest path (Day 2 C)
     python -m src.evaluation.recsys_bench run --arm engine_nommr --split llbo --vectors weaviate --run-id <run>   # thêm arm vào run đã có
     python -m src.evaluation.recsys_bench analyze --run-id <run>   # ceiling, phân khúc, strict/lenient, 20 ca (B5–B8), không cần Weaviate
+    python -m src.evaluation.recsys_bench sanity [--json]           # kiểm dữ liệu seed: lifecycle, chuyến, cạnh lộn xộn, phổ biến (B1)
+    python -m src.evaluation.recsys_bench parity --make-users       # frozen/users60.json; rồi parity --base-url http://127.0.0.1:8000 (B9)
 
 Mã thoát: 0 ok · 1 lỗi môi trường/dữ liệu. Số đo và giới hạn: `docs/spec/bench/recsys-offline-eval.md`.
 """
@@ -335,6 +337,99 @@ def analyze(run_id: str = typer.Option(..., "--run-id", help="run đã có engin
     typer.echo("\n## Phân khúc\n" + md_seg)
     typer.echo("\n## 20 ca\n" + md_cases)
     typer.echo(f"→ {directory}")
+
+
+@app.command()
+def sanity(as_json: bool = typer.Option(False, "--json", help="in JSON thay vì bảng"),
+           refresh: bool = typer.Option(False, "--refresh", help="đọc lại event và profile, bỏ cache")):
+    """B1: kiểm dữ liệu seed trước khi tin số đo — lifecycle 25/45/20/10 và tính lại từ event, chuyến ≥ 2 vertical ≈ 65 %,
+    mỗi chuyến 1 điểm đến, cạnh lộn xộn 2 % / 3 %, phổ biến (chỉ báo). Ghi bench_out/recsys/sanity.json; mã 1 khi kiểm tra cứng hỏng."""
+    from . import data_source, sanity as S
+    from .paths import FROZEN_DIR, recsys_home
+
+    events = data_source.load_events(None, refresh=refresh)
+    profiles = data_source.load_profiles(refresh=refresh)
+    index, _ = data_source.load_index("none")
+    snapshot = data_source.derive_as_of(events)
+    checks = S.run_all(profiles, events, index, snapshot, FROZEN_DIR)
+    result = {"dsn": data_source.dsn_label(data_source.eval_cdp_url()), "asOf": snapshot.isoformat(), "events": len(events),
+              "profiles": len(profiles), "searchUnits": len(index.units), **S.summary(checks)}
+    out = recsys_home() / "sanity.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(result, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
+    if as_json:
+        typer.echo(json.dumps(result, ensure_ascii=False, indent=1, default=str))
+    else:
+        typer.echo(f"sanity · {result['dsn']} · as_of {snapshot.date().isoformat()} · {len(events):,} event · {len(profiles):,} profile · "
+                   f"{len(index.units):,} search unit")
+        typer.echo(S.markdown(checks))
+        typer.echo(("PASS" if result["pass"] else f"FAIL: {result['hardFailed']}") + f" → {out}")
+    if not result["pass"]:
+        raise typer.Exit(1)
+
+
+@app.command()
+def parity(base_url: Optional[str] = typer.Option(None, "--base-url", help="backend local, vd http://127.0.0.1:8000"),
+           users: Optional[str] = typer.Option(None, "--users", help="mặc định frozen/users60.json"),
+           k: int = typer.Option(5, "--k", help="list production = 5"),
+           make_users: bool = typer.Option(False, "--make-users", help="sinh frozen/users60.json (4 persona + 56 khách phân tầng)"),
+           seed: int = typer.Option(42, "--seed"),
+           token_env: str = typer.Option("AUTH_SERVICE_TOKEN", "--token-env", help="biến môi trường chứa X-Service-Token (không in)"),
+           vectors: str = typer.Option("weaviate", "--vectors", help="weaviate | numpy — phải cùng kho với backend đang chạy"),
+           run_id: Optional[str] = typer.Option(None, "--run-id"),
+           refresh: bool = typer.Option(False, "--refresh")):
+    """B9: offline = HTTP. `--make-users` ghi frozen/users60.json; không có cờ đó thì gọi backend local
+    `/api/v1/internal/recommendations` cho từng khách và so với `OfflineEngine(mode="prod")` tại đúng `generatedAt`.
+    Backend phải chạy từ cùng checkout, APP_ENV=development, INTERNAL_API_ENABLED=true, cùng Postgres / Weaviate. Mã 1 khi không 60/60."""
+    import os
+    from pathlib import Path
+
+    from . import data_source, parity as P
+    from .engine import OfflineEngine
+    from .paths import FROZEN_DIR, run_dir
+
+    users_path = Path(users) if users else FROZEN_DIR / "users60.json"
+    if make_users:
+        events = data_source.load_events(None, refresh=refresh)
+        snapshot = data_source.derive_as_of(events)
+        try:
+            payload = P.make_users(events, snapshot, seed=seed)
+        except P.ParityError as exc:
+            _fail(str(exc))
+        users_path.parent.mkdir(parents=True, exist_ok=True)
+        users_path.write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
+        typer.echo(f"{len(payload['users'])} khách (4 persona + {len(payload['users']) - 4} phân tầng {payload['quota']}) → {users_path}")
+        return
+    if not base_url:
+        _fail("cần --base-url (backend local) hoặc --make-users")
+    token = os.environ.get(token_env, "")
+    if len(token) < 32:
+        _fail(f"{token_env} phải có trong môi trường (≥ 32 ký tự) — backend từ chối token ngắn hơn")
+    try:
+        user_ids = P.load_users(users_path)
+    except (P.ParityError, OSError, ValueError) as exc:
+        _fail(str(exc))
+    run_id = run_id or f"{datetime.now():%Y%m%d-%H%M%S}-parity"
+    events = data_source.load_events(None, refresh=refresh)
+    index, vector_search = data_source.load_index(vectors)
+    try:
+        purchases = [e for e in events if e.get("eventName") == "purchase"]
+        engine = OfflineEngine(index, vector_search, purchases, candidate_k=data_source.settings().recommend_candidate_k, mode="prod")
+        typer.echo(f"parity · {base_url} · {len(user_ids)} khách · k={k} · {data_source.dsn_label(data_source.eval_cdp_url())} · vectors {vectors}")
+        try:
+            rows = P.parity_http(base_url, user_ids, engine, events, k=k, token=token)
+        except P.ParityError as exc:
+            _fail(str(exc))
+    finally:
+        if vector_search is not None and hasattr(vector_search, "close"):
+            vector_search.close()
+    result = P.verdict(rows)
+    typer.echo(P.markdown(rows, result, k=k))
+    p = P.write_parity(run_dir(run_id), base_url=base_url, rows=rows, result=result,
+                       meta={"runId": run_id, "k": k, "users": str(users_path), "vectors": vectors, "modelVersion": index.model_version})
+    typer.echo(("PASS" if result["pass"] else "FAIL") + f" {result['equal']}/{result['n']} → {p}")
+    if not result["pass"]:
+        raise typer.Exit(1)
 
 
 def _vectors_missing(index, vector_search) -> Optional[int]:

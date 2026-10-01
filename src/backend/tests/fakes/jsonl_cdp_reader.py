@@ -33,6 +33,10 @@ class JsonlCdpReader:
         rows = [dict(e) for e in self._all if until is None or ts(e) < until]
         return sorted(rows, key=lambda e: (str(e.get("cdpUserId")), ts(e)))
 
+    def all_profiles(self) -> list[dict]:
+        """Bản giả không có hồ sơ: harness sanity đọc Postgres thật; test offline chỉ cần danh sách rỗng."""
+        return []
+
     # ghi purchase khi checkout (feedback loop) — bản mock chỉ giữ trong bộ nhớ
     def record_events(self, events: list[dict]) -> None:
         for e in events:

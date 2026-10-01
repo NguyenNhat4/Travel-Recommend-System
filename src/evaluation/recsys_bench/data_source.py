@@ -129,6 +129,22 @@ def load_events(as_of: datetime | None = None, *, refresh: bool = False) -> list
     return events
 
 
+def load_profiles(*, refresh: bool = False) -> list[dict]:
+    """`cdp.profiles` qua `PostgresCdpReader.all_profiles()` (01/10, chỉ cho sanity), cache JSONL theo DB."""
+    from src.backend.app.infrastructure.cdp.postgres_cdp_reader import PostgresCdpReader
+    url = eval_cdp_url()
+    path = cache_dir() / f"profiles-{_event_cache_key(url)}.jsonl"
+    if path.exists() and not refresh:
+        with open(path, encoding="utf-8") as f:
+            return [json.loads(line) for line in f if line.strip()]
+    profiles = PostgresCdpReader(url, timeout_seconds=30).all_profiles()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        for p in profiles:
+            f.write(json.dumps(p, ensure_ascii=False) + "\n")
+    return profiles
+
+
 def derive_as_of(events: list[dict]) -> datetime:
     """Mốc snapshot = 00:00 UTC của ngày sau event cuối (seed sinh mọi event trong [as_of − 730, as_of − 1])."""
     if not events:

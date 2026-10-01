@@ -48,6 +48,27 @@ def _to_cdp(row: tuple) -> dict:
     }
 
 
+_PROFILE_COLUMNS = """
+    cdp_user_id, lifecycle_stage, days_since_last_booking, lifetime_order_count, vinclub_tier,
+    purchased_verticals, home_city, last_destination
+"""
+
+
+def _profile_to_cdp(row: tuple) -> dict:
+    """Một dòng `cdp.profiles` → dict theo tên trường CDP (camelCase), chỉ các cột đánh giá offline cần."""
+    user, stage, days, orders, tier, verticals, home, last = row
+    return {
+        "cdpUserId": user,
+        "lifecycleStage": stage,
+        "daysSinceLastBooking": days,
+        "lifetimeOrderCount": orders,
+        "vinclubTier": tier,
+        "purchasedVerticals": list(verticals or []),
+        "homeCity": home,
+        "lastDestination": last,
+    }
+
+
 def _redact(text: str, dsn: str) -> str:
     """Xoá DSN và mật khẩu khỏi thông điệp lỗi. libpq thường không in lại chúng, nhưng không dựa vào điều đó."""
     import psycopg
@@ -68,7 +89,7 @@ class PostgresCdpReader:
         self._cdp_database_url = cdp_database_url
         self._timeout_seconds = timeout_seconds  # CDP_TIMEOUT_SECONDS (hop-dong-tich-hop-cdp.md §7)
 
-    def _query(self, sql: str, params: tuple, *, statement_timeout: bool = False) -> list[dict]:
+    def _query(self, sql: str, params: tuple, *, statement_timeout: bool = False, mapper=_to_cdp) -> list[dict]:
         import psycopg
 
         try:
@@ -82,7 +103,7 @@ class PostgresCdpReader:
                         cur.execute("SELECT set_config('statement_timeout', %s, true)",
                                     (str(max(1, int(self._timeout_seconds * 1000))),))  # 0 = không giới hạn
                     cur.execute(sql, params)
-                    return [_to_cdp(row) for row in cur.fetchall()]
+                    return [mapper(row) for row in cur.fetchall()]
         except (psycopg.OperationalError, psycopg.InterfaceError, OSError) as exc:
             # Chỉ dòng đầu, cắt ngắn; DSN và mật khẩu bị xoá nếu driver có in lại (§8).
             detail = (_redact(str(exc), self._cdp_database_url).strip().splitlines() or [""])[0][:200]
@@ -116,4 +137,14 @@ class PostgresCdpReader:
         return self._query(
             f'SELECT {_COLUMNS} FROM cdp.events {where}ORDER BY cdp_user_id, "timestamp", event_id',
             params,
+        )
+
+    def all_profiles(self) -> list[dict]:
+        """Toàn bộ `cdp.profiles` (từ 2026-10-01), chỉ cho đánh giá offline (`recsys_bench sanity`): đối chiếu
+        `lifecycle_stage` / `days_since_last_booking` seed đã ghi với bản tính lại từ event. Không gọi trong request;
+        không `statement_timeout`; thứ tự tất định theo `cdp_user_id`. Trả camelCase như `all_events`."""
+        return self._query(
+            f"SELECT {_PROFILE_COLUMNS} FROM cdp.profiles ORDER BY cdp_user_id",
+            (),
+            mapper=_profile_to_cdp,
         )

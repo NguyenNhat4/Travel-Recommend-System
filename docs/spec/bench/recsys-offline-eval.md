@@ -3,7 +3,7 @@
 - Phục vụ: **FR-REC-01..04**, **NFR-PERF-01** (`docs/prd/requirements.md`); `docs/prd/test-plan.md` §2.5; handbook §11–§12.
 - Code: `src/evaluation/recsys_bench/` (nhánh `bench/recsys-harness`). Số thô: `bench_out/recsys/runs/<run_id>/` (không commit).
 - Thay cho `eval/report.md` của lịch 10 ngày (`docs/plan/2026-09-28-lich-10-ngay-3-engine.md` §0.1).
-- Cập nhật lần cuối: 2026-10-01 (§3.1 split đóng băng, §4.5 guest path Cloud, §4.6 v3 NDCG@5, §4.7–4.11 ceiling / phân khúc / strict / 20 ca / findings)
+- Cập nhật lần cuối: 2026-10-01 (§2.1 sanity, §3.1 split đóng băng, §4.5 guest path Cloud, §4.6 v3 NDCG@5, §4.7–4.11 ceiling / phân khúc / strict / 20 ca / findings, §4.12 parity offline = HTTP)
 
 > **Caveat bắt buộc (handbook §12):** lịch sử khách hàng là dữ liệu sinh. Các số này cho biết pipeline chạy đúng,
 > không cho biết engine sẽ chạy thế nào trên khách thật.
@@ -25,6 +25,9 @@ python -m src.evaluation.recsys_bench user --id VP0000001  # một khách, như 
 python -m src.evaluation.recsys_bench http-latency --base-url https://v-ota.duckdns.org --runs 3 --k 5   # p95 qua HTTP (Day 2 C)
 python -m src.evaluation.recsys_bench run --arm engine_nommr --split llbo --vectors weaviate --split-file … --run-id 2026-10-01-llbo-v3   # thêm arm vào run đã có
 python -m src.evaluation.recsys_bench analyze --run-id 2026-10-01-llbo-v3   # B5–B8: ceiling, phân khúc, strict/lenient, 20 ca (không cần Weaviate)
+python -m src.evaluation.recsys_bench sanity [--json] [--refresh]            # B1: kiểm dữ liệu seed (§2.1); mã 1 khi kiểm tra cứng hỏng
+python -m src.evaluation.recsys_bench parity --make-users --seed 42          # frozen/users60.json (4 persona + 56 phân tầng)
+AUTH_SERVICE_TOKEN=… python -m src.evaluation.recsys_bench parity --base-url http://127.0.0.1:8000 --k 5   # B9: offline = HTTP (§4.12)
 python -m pytest -q src/evaluation/recsys_bench/tests      # không cần DB
 ```
 
@@ -76,6 +79,25 @@ khoảng 2024-09-26 → 2026-09-23.
 | View/cart/search thiếu gid — **giữ** (seed chỉ gắn gid cho purchase) | 3.992 | | |
 | Event giữ lại · khách có event | 6.993 · 1.582 | | |
 | Event ở hoặc sau `as_of` | 0 | | 0 |
+
+### 2.1. Sanity dữ liệu seed (B1, 01/10) — `sanity`
+
+Chạy trước khi tin số đo; hằng tỷ lệ đọc từ `src/data_collection/seed/config.py`; lifecycle tính lại theo đúng
+`seed_histories.lifecycle` (ngày lịch VN, as_of = ngày sau event cuối, đếm **mọi** purchase kể cả orphan); profile đọc qua
+`PostgresCdpReader.all_profiles()` (01/10). DB local seed 21/09 (as_of 22/09, 7.131 event, 2.000 profile, 2.897 search unit):
+
+| Kiểm tra | Loại | Kết quả 01/10 |
+|---|---|---|
+| `lifecycle_mix` — `cdp.profiles.lifecycle_stage` vs STAGE_MIX 25/45/20/10 ± 5 điểm | cứng | **PASS** new 25,1 · active 45,0 · dormant 20,0 · churned 10,0 % |
+| `lifecycle_recomputed` — stage và `days_since_last_booking` tính lại từ event = cột seed | cứng | **PASS** lệch 0/2.000 |
+| `trips_multi_vertical` — chuyến có ≥ 2 taxonomy ≈ 65 % ± 5 | cứng | **PASS** 63,6 % (1.159/1.822) |
+| `one_destination_per_trip` — chuyến có purchase ở ≥ 2 điểm đến ≤ 1 % | cứng | **PASS** 0/1.814 |
+| `messy_edges` — orphan ≈ 2,0 %, thiếu `eventGroupId` ≈ 3,0 % (± 0,5) | cứng | **PASS** 63 (2,0 %) · 94 (3,0 %) trên 3.148 purchase |
+| `popularity` — top-10 % sản phẩm chiếm bao nhiêu purchase; Gini; Zipf | chỉ báo | 159/1.584 sản phẩm chiếm **41,1 %** (kỳ vọng ≈ 41 %) · Gini sản phẩm 0,423 · search unit 0,525 · Zipf slope −0,63 (seed ZIPF_S 0,8 — phẳng hơn vì phân bố cắt theo điểm đến) |
+| `golf_share` — tỷ lệ purchase theo taxonomy | chỉ báo | hotel 55,6 · flight 21,7 · attraction 17,8 · combo 3,0 · golf 1,9 % |
+| `split_users` — số khách test của bản đóng băng | chỉ báo | LLBO 1.007 · temporal 102 |
+
+Kết quả ghi `bench_out/recsys/sanity.json`; lệnh thoát mã 1 khi một kiểm tra cứng hỏng (số đo sau đó không được trích dẫn).
 
 ## 3. Split
 
@@ -356,6 +378,23 @@ engine / mpd, số event train).
 9. mpd là baseline mạnh ở flight (0,778) và golf (0,795), yếu ở hotel (0,222); engine hơn hẳn ở hotel (0,938) và attraction (0,871).
 10. Hai persona trong test LLBO đều trượt (VP0000001 đặt lại KS đã mua → `already_bought`): kịch bản demo P1 cần món khác loại, không phải mua lại.
 
+### 4.12. Offline = HTTP trên 60 khách (B9, 01/10) — `parity`
+
+Engine offline của harness (`OfflineEngine(mode="prod")`, cap 2 món / taxonomy) so với `GET /api/v1/internal/recommendations?cdp_user_id=&k=5`
+của backend local chạy từ cùng checkout (Postgres 5432 seed 21/09, Weaviate 8080, `APP_ENV=development`, `INTERNAL_API_ENABLED=true`,
+`X-Service-Token` sinh ngẫu nhiên cho phiên đo). Khác biệt được trung hoà: as_of = `generatedAt` của response; event của khách mới
+nhất trước như `events_for_user`; bảng phổ biến từ purchase thô trước as_of; cùng `candidate_k`. Bộ khách `frozen/users60.json`
+(seed 42): 4 persona + 56 khách phân tầng lifecycle 14 new / 25 active / 11 dormant / 6 churned (bộ 24/09 không được lưu).
+
+| Chỉ số | Kết quả |
+|---|---|
+| Trùng hoàn toàn (strategy, destination, excludedVerticals, eventsUsed, top-5 đúng thứ tự) | **60/60** |
+| HTTP local `diagnostics.latencyMs` p50 / p95 | 250 / 321 ms (máy đang chạy song song; 24/09 đo 127 / 143 ms) |
+| Client wall p50 / p95 | 263 / 338 ms |
+
+Run: `bench_out/recsys/runs/2026-10-01-parity-http/parity.json`. Kết luận: mọi số offline của harness (§4.4–4.11) là số của đúng
+engine production; trên Cloud chỉ đo được guest path (§4.5) cho tới khi ops mở IAP.
+
 ## 5. Kiểm nhanh P1 `VP0000001` (Day 1 C)
 
 Lệnh `user --id VP0000001 --k 5`, `as_of` 2026-09-24, 12 event lịch sử, cùng engine production (không HTTP).
@@ -384,10 +423,11 @@ Lệnh `user --id VP0000001 --k 5`, `as_of` 2026-09-24, 12 event lịch sử, c�
 
 ## 7. Giới hạn và việc tiếp theo
 
-- Day 2 (B): `sanity.py` (lifecycle 25/45/20/10, ≥ 2 vertical 64 %, top-10 % sản phẩm 39 % purchase, Zipf 0,8) — chưa
-  làm; hai baseline most-popular / most-popular-in-destination và kiểm thứ tự đã làm 30/09 (§4.4). Phase 0 (01/10): split
-  đóng băng §3.1, NDCG@5, `ids` / `rankStrict` theo khách, `configHash` — §4.6. Phase 1 (01/10): ceiling §4.7, phân khúc §4.8,
-  strict/lenient §4.9, 20 ca + `engine_nommr` §4.10, findings §4.11. Còn: `sanity.py` (Phase 2), offline = HTTP 60 khách (Phase 3).
+- Day 2 (B): hai baseline most-popular / most-popular-in-destination và kiểm thứ tự đã làm 30/09 (§4.4); `sanity` 01/10 (§2.1)
+  PASS 5/5 kiểm tra cứng. Phase 0 (01/10): split đóng băng §3.1, NDCG@5, `ids` / `rankStrict` theo khách, `configHash` — §4.6.
+  Phase 1 (01/10): ceiling §4.7, phân khúc §4.8, strict/lenient §4.9, 20 ca + `engine_nommr` §4.10, findings §4.11. Phase 3
+  (01/10): offline = HTTP 60/60 §4.12. Track B theo plan Day 3 đã đủ; tiếp theo là M6/M7 (đề xuất đổi engine qua
+  `docs/prd/update/`, tuning trên temporal đóng băng).
 - **I-5** đã xử lý ở harness (30/09): `engine` = mode eval bỏ cap để đo đủ k = 20; `engine_prod` báo list production.
   Spec §4.7 nói giới hạn 2 món mỗi `parentProductId`, code giới hạn 2 mỗi taxonomy — lệch spec/code này vẫn còn, là việc
   của C (M6), production chưa đổi.

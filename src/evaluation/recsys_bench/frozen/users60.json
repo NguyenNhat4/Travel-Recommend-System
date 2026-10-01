@@ -1,0 +1,256 @@
+{
+ "seed": 42,
+ "asOf": "2026-09-22T00:00:00+00:00",
+ "quota": {
+  "new": 14,
+  "active": 25,
+  "dormant": 11,
+  "churned": 6
+ },
+ "users": [
+  {
+   "cdpUserId": "VP0000001",
+   "stage": "active",
+   "persona": true
+  },
+  {
+   "cdpUserId": "VP0000002",
+   "stage": "new",
+   "persona": true
+  },
+  {
+   "cdpUserId": "VP0000003",
+   "stage": "dormant",
+   "persona": true
+  },
+  {
+   "cdpUserId": "VP0000004",
+   "stage": "new",
+   "persona": true
+  },
+  {
+   "cdpUserId": "VP0001993",
+   "stage": "new"
+  },
+  {
+   "cdpUserId": "VP0000331",
+   "stage": "new"
+  },
+  {
+   "cdpUserId": "VP0000111",
+   "stage": "new"
+  },
+  {
+   "cdpUserId": "VP0000861",
+   "stage": "new"
+  },
+  {
+   "cdpUserId": "VP0000806",
+   "stage": "new"
+  },
+  {
+   "cdpUserId": "VP0000687",
+   "stage": "new"
+  },
+  {
+   "cdpUserId": "VP0000398",
+   "stage": "new"
+  },
+  {
+   "cdpUserId": "VP0000330",
+   "stage": "new"
+  },
+  {
+   "cdpUserId": "VP0001789",
+   "stage": "new"
+  },
+  {
+   "cdpUserId": "VP0000295",
+   "stage": "new"
+  },
+  {
+   "cdpUserId": "VP0001429",
+   "stage": "new"
+  },
+  {
+   "cdpUserId": "VP0000140",
+   "stage": "new"
+  },
+  {
+   "cdpUserId": "VP0001963",
+   "stage": "new"
+  },
+  {
+   "cdpUserId": "VP0001798",
+   "stage": "new"
+  },
+  {
+   "cdpUserId": "VP0000485",
+   "stage": "active"
+  },
+  {
+   "cdpUserId": "VP0000517",
+   "stage": "active"
+  },
+  {
+   "cdpUserId": "VP0001131",
+   "stage": "active"
+  },
+  {
+   "cdpUserId": "VP0001362",
+   "stage": "active"
+  },
+  {
+   "cdpUserId": "VP0000069",
+   "stage": "active"
+  },
+  {
+   "cdpUserId": "VP0001267",
+   "stage": "active"
+  },
+  {
+   "cdpUserId": "VP0000443",
+   "stage": "active"
+  },
+  {
+   "cdpUserId": "VP0001644",
+   "stage": "active"
+  },
+  {
+   "cdpUserId": "VP0001481",
+   "stage": "active"
+  },
+  {
+   "cdpUserId": "VP0001607",
+   "stage": "active"
+  },
+  {
+   "cdpUserId": "VP0001238",
+   "stage": "active"
+  },
+  {
+   "cdpUserId": "VP0000939",
+   "stage": "active"
+  },
+  {
+   "cdpUserId": "VP0000490",
+   "stage": "active"
+  },
+  {
+   "cdpUserId": "VP0001011",
+   "stage": "active"
+  },
+  {
+   "cdpUserId": "VP0001340",
+   "stage": "active"
+  },
+  {
+   "cdpUserId": "VP0000644",
+   "stage": "active"
+  },
+  {
+   "cdpUserId": "VP0001852",
+   "stage": "active"
+  },
+  {
+   "cdpUserId": "VP0001982",
+   "stage": "active"
+  },
+  {
+   "cdpUserId": "VP0000013",
+   "stage": "active"
+  },
+  {
+   "cdpUserId": "VP0001727",
+   "stage": "active"
+  },
+  {
+   "cdpUserId": "VP0001848",
+   "stage": "active"
+  },
+  {
+   "cdpUserId": "VP0000374",
+   "stage": "active"
+  },
+  {
+   "cdpUserId": "VP0001599",
+   "stage": "active"
+  },
+  {
+   "cdpUserId": "VP0000944",
+   "stage": "active"
+  },
+  {
+   "cdpUserId": "VP0000762",
+   "stage": "active"
+  },
+  {
+   "cdpUserId": "VP0000705",
+   "stage": "dormant"
+  },
+  {
+   "cdpUserId": "VP0000401",
+   "stage": "dormant"
+  },
+  {
+   "cdpUserId": "VP0000552",
+   "stage": "dormant"
+  },
+  {
+   "cdpUserId": "VP0001972",
+   "stage": "dormant"
+  },
+  {
+   "cdpUserId": "VP0000838",
+   "stage": "dormant"
+  },
+  {
+   "cdpUserId": "VP0000290",
+   "stage": "dormant"
+  },
+  {
+   "cdpUserId": "VP0000276",
+   "stage": "dormant"
+  },
+  {
+   "cdpUserId": "VP0000965",
+   "stage": "dormant"
+  },
+  {
+   "cdpUserId": "VP0000281",
+   "stage": "dormant"
+  },
+  {
+   "cdpUserId": "VP0000915",
+   "stage": "dormant"
+  },
+  {
+   "cdpUserId": "VP0000871",
+   "stage": "dormant"
+  },
+  {
+   "cdpUserId": "VP0001465",
+   "stage": "churned"
+  },
+  {
+   "cdpUserId": "VP0000710",
+   "stage": "churned"
+  },
+  {
+   "cdpUserId": "VP0000081",
+   "stage": "churned"
+  },
+  {
+   "cdpUserId": "VP0001834",
+   "stage": "churned"
+  },
+  {
+   "cdpUserId": "VP0001104",
+   "stage": "churned"
+  },
+  {
+   "cdpUserId": "VP0001291",
+   "stage": "churned"
+  }
+ ]
+}
