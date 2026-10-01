@@ -331,8 +331,10 @@ async def build_plan(state: dict, intent: dict, constraints: dict, *, tools: Too
         plan, offered = state.get("tool_plan"), None
         if not plan:  # plan đã lưu (lần retry) chạy lại nguyên trạng, không hỏi LLM và không đọc definitions()
             definitions, prompt, offered = _planner_input(state, intent, constraints, tools.definitions())
-            response = await asyncio.wait_for(chat_model(llm).bind_tools(definitions).ainvoke(prompt),
-                                              llm_timeout_seconds)
+            # "any" bắt planner gọi ít nhất một tool: không ép thì câu như "không đổi nữa" ngay sau câu hỏi đổi
+            # điểm đến khiến LLM trả lời bằng câu chat, plan rỗng và cả lượt rơi vào dead_letter.
+            bound = chat_model(llm).bind_tools(definitions, tool_choice="any")
+            response = await asyncio.wait_for(bound.ainvoke(prompt), llm_timeout_seconds)
             plan = response.tool_calls
         plan = validated_plan({**state, "intent": intent, "constraints": constraints}, plan,
                               require_recommendations=require_recommendations, offered=offered)

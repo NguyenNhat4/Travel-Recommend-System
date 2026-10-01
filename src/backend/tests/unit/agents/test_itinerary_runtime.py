@@ -49,6 +49,7 @@ class ScriptedLlm:
         self.calls = []
         self.prompts = {}
         self.bound_tools = []  # tên tool đưa cho planner ở mỗi lần bind_tools
+        self.tool_choices = []  # tool_choice của mỗi lần bind_tools
         self.planner_messages = []  # (system, human) của mỗi lần lập plan
 
     def with_structured_output(self, schema):
@@ -72,8 +73,9 @@ class ScriptedLlm:
             raise AssertionError(f'the itinerary path must not call the model for {schema.__name__}')
         return SimpleNamespace(ainvoke=invoke)
 
-    def bind_tools(self, definitions):
+    def bind_tools(self, definitions, tool_choice=None):
         self.bound_tools.append([d['name'] for d in definitions])
+        self.tool_choices.append(tool_choice)
 
         async def invoke(prompt):
             self.calls.append('planner')
@@ -801,6 +803,8 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         _, first_llm, first, second_llm, _ = await self.swap_turns()
         # Lượt đầu chưa có sản phẩm đã hiển thị: đúng bộ tool và prompt như trước khi có Similar.
         self.assertEqual(first_llm.bound_tools, [['search_products', 'get_recommendations']])
+        # Planner luôn bị ép gọi tool: trả lời bằng câu chat thì plan rỗng và lượt rơi vào dead_letter.
+        self.assertEqual(first_llm.tool_choices, ['any'])
         (_, system), (_, human) = first_llm.planner_messages[0]
         self.assertEqual(system, TOOL_PLAN_PROMPT)
         self.assertEqual(yaml.safe_load(human)['previous_selection'], [])    # ngữ cảnh chung: chưa hiển thị gì

@@ -117,7 +117,7 @@ class ConversationHistoryLifecycleTests(unittest.IsolatedAsyncioTestCase):
         captured = {}
 
         class PlanningLlm:
-            def bind_tools(self, definitions):
+            def bind_tools(self, definitions, tool_choice=None):
                 async def invoke(prompt):
                     captured["prompt"] = prompt
                     return SimpleNamespace(tool_calls=[{

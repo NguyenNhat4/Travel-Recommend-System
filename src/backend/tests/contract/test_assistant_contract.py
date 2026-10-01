@@ -77,7 +77,7 @@ class ScriptedLlm:
             raise AssertionError(f"luồng lịch trình không được gọi model cho {target.__name__}")
         return SimpleNamespace(ainvoke=invoke)
 
-    def bind_tools(self, _definitions):
+    def bind_tools(self, _definitions, tool_choice=None):
         async def invoke(_prompt):
             return SimpleNamespace(tool_calls=[{"name": "search_products", "args": {"query": "tham quan"}}])
         return SimpleNamespace(ainvoke=invoke)
