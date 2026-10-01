@@ -21,7 +21,11 @@ class ContractDerivedModelTests(unittest.TestCase):
     def test_numeric_bounds_and_user_messages_follow_the_contract(self):
         low, high = bounds('TripIntent', 'days')
         for language in ('vi', 'en'):
-            text = message({'language': language}, 'invalid_duration')
+            text = message({'language': language}, 'invalid_reason_days_out_of_range', value=9)
             self.assertIn(str(low), text)
             self.assertIn(str(high), text)
-        self.assertEqual(models.PartyUpdate.model_fields['adults'].metadata[0].ge, bounds('Party', 'adults')[0])
+
+    def test_out_of_range_numbers_reach_extract_instead_of_failing_the_model_output(self):
+        # Giới hạn được kiểm ở `extract` theo contract, để người dùng nhận câu hỏi lại thay vì LLM_UNAVAILABLE.
+        update = models.IntentUpdate(budget=-1, party={'adults': 0, 'children': -1})
+        self.assertEqual((update.budget, update.party.adults, update.party.children), (-1, 0, -1))

@@ -100,6 +100,35 @@ ProductAttributes:
     parentProductId:
       type: string
       description: '[CHỜ DUYỆT: C5] Chỉ có ở tầng con. Trỏ về productId của cha.'
+    tripType:
+      type: string
+      enum: [oneWay, roundTrip]
+      description: Vé khứ hồi là một flight có hai chặng, giá tổng cho một người lớn.
+    cabinClass:
+      type: string
+      enum: [ECONOMY, PREMIUM_ECONOMY, BUSINESS, FIRST]
+      description: Hạng vé được nguồn xác nhận. Vắng mặt là chưa biết, không mặc định phổ thông.
+    fixedDepartureDate:
+      type: boolean
+      description: Báo giá theo ngày cố định; không dời lịch vào cửa sổ demo.
+    returnDate:
+      type: string
+      format: date
+      description: Ngày khởi hành chặng về, không phải nights hoặc usingDateTo.
+    returnFlight:
+      type: object
+      properties:
+        flightNumber: { type: string }
+        airline: { type: string }
+        originAirport: { type: string }
+        destinationAirport: { type: string }
+        departureAt: { type: string, format: date-time }
+        arrivalAt: { type: string, format: date-time }
+      additionalProperties: true
+    priceValidUntil:
+      type: string
+      format: date
+      description: Ngày cuối của báo giá tại nguồn, khi nguồn có cung cấp.
     ticketed:
       type: boolean
       description: false thì ẩn CTA đặt chỗ ở frontend.
@@ -229,6 +258,16 @@ ProductSummary:
     description:
       type: string
       description: Mô tả catalog phục vụ Agent; giữ nguyên, không chứa chỉ dẫn hệ thống.
+    fareClasses:
+      type: array
+      items:
+        $ref: ../openapi.yaml#/components/schemas/FareClass
+      description: >-
+        Chỉ có ở vé máy bay tầng con (taxonomy flight, level flight): các hạng vé của CÙNG một hành trình (cùng chuyến,
+        cùng ngày đi; khứ hồi thì cùng chuyến và ngày về), kể cả chính sản phẩm này. Mỗi hạng là một productId riêng;
+        đặt vé bằng productId của hạng đã chọn (AddCartItemRequest không đổi). Các sản phẩm cùng hành trình có cùng
+        fareClasses, nên Web hiển thị một thẻ cho mỗi hành trình. Chỉ liệt kê hạng có báo giá thật — thiếu hạng nào là
+        chưa có dữ liệu, không phải hết chỗ. Vắng mặt ở loại sản phẩm khác.
 
   example:
     productId: nt-h-01
@@ -259,6 +298,85 @@ ProductSummary:
   description: >-
     Card tối thiểu cho Web. Agent hydrate ProductDetail trước khi lập lịch nếu
     thiếu attributes, mô tả hoặc ngày. Không diễn giải trường thiếu là false/0.
+
+FareClass:
+  type: object
+  required: [productId, code, name, price, currency, availabilityStatus]
+  properties:
+    productId:
+      type: string
+      description: Sản phẩm (hạng vé của hành trình) để thêm vào giỏ.
+    code:
+      type:
+      - string
+      - 'null'
+      enum: [ECO, PRE, BUS, FST, null]
+      description: >-
+        Mã hạng từ attributes.cabinClass (ECONOMY→ECO, PREMIUM_ECONOMY→PRE, BUSINESS→BUS, FIRST→FST). null khi nguồn
+        không ghi hạng (vd. giá rẻ nhất của trip.com) — không mặc định là phổ thông.
+    name:
+      type: string
+      description: Nhãn hiển thị tiếng Việt (Phổ thông, Phổ thông đặc biệt, Thương gia, Hạng nhất; "Giá rẻ nhất" khi code null).
+    price:
+      type:
+      - number
+      - 'null'
+      minimum: 0
+      description: unitPrice của sản phẩm hạng này; vé khứ hồi là giá tổng hai chặng cho một người lớn.
+    currency:
+      type: string
+      example: VND
+    priceValidUntil:
+      type:
+      - string
+      - 'null'
+      format: date
+      description: Ngày cuối của báo giá tại nguồn; null khi nguồn không cung cấp.
+    availabilityStatus:
+      $ref: ../openapi.yaml#/components/schemas/AvailabilityStatus
+      description: >-
+        AVAILABLE khi sản phẩm còn mở bán và báo giá chưa hết hạn; EXPIRED khi quá priceValidUntil; NOT_CHECKED khi không
+        xác định được. Không phải xác nhận còn ghế.
+    soldOut:
+      type:
+      - boolean
+      - 'null'
+      description: null = chưa biết (không nguồn nào cho số ghế trống). Báo giá hết hạn KHÔNG có nghĩa soldOut.
+    carryOnKg:
+      type:
+      - number
+      - 'null'
+      minimum: 0
+      description: Hành lý xách tay (kg); null = chưa biết, 0 = nguồn xác nhận không có.
+    checkedKg:
+      type:
+      - number
+      - 'null'
+      minimum: 0
+      description: Hành lý ký gửi (kg); null = chưa biết, 0 = nguồn xác nhận không có.
+    mealIncluded:
+      type:
+      - boolean
+      - 'null'
+      description: null = chưa biết.
+    changeRule:
+      type:
+      - string
+      - 'null'
+      description: Điều kiện đổi vé theo nguồn; null = chưa biết.
+  example:
+    productId: 1d9b3c1e-0000-4000-8000-000000000001
+    code: null
+    name: Giá rẻ nhất
+    price: 1322000
+    currency: VND
+    priceValidUntil: '2026-09-30'
+    availabilityStatus: AVAILABLE
+    soldOut: null
+    carryOnKg: null
+    checkedKg: null
+    mealIncluded: null
+    changeRule: null
 
 ProductDetail:
   allOf:
@@ -354,8 +472,8 @@ SimilarProductsResponse:
       default: same_taxonomy
       description: >-
         same_taxonomy là mặc định — xem khách sạn thì gợi ý khách sạn.
-        cross_taxonomy là biến thể cross-sell mà Agent dùng khi lịch trình đã có
-        chỗ ở và cần bổ sung hoạt động.
+        cross_taxonomy có trong schema nhưng route chưa hiện thực (luôn trả
+        same_taxonomy); Agent chỉ dùng same_taxonomy ở lượt đổi món.
     results:
       type: array
       items:

@@ -1,0 +1,17 @@
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Số khách của dịch vụ này chưa hợp lệ.",
+    "retryable": false,
+    "requestId": "book-01JXYZ",
+    "details": {
+      "fields": [
+        {
+          "field": "guests",
+          "reason": "OCCUPANCY_EXCEEDED",
+          "message": "Mỗi phòng chứa tối đa 3 khách. Vui lòng thêm phòng."
+        }
+      ]
+    }
+  }
+}

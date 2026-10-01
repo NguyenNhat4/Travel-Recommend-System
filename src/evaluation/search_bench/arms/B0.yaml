@@ -1,0 +1,23 @@
+# B0 — mốc (docs/spec/bench/arms.md §1): T3+R · cohere-v3 · dense-only · không filter, không preproc.
+# Dạng đã giải đầy đủ (spec Part 8): B0 không có parent nên không dùng tham chiếu @.
+id: B0
+stage: B0
+parent: null
+description: "Mốc: T3+R (build_text production catalog-text-v2, có combo_items) · cohere-v3 · near_vector top-10 · không filter"
+text_variant: T3+R
+model: cohere-v3
+embedding_types: float
+query_input_type: query
+retrieval: dense
+query_vec: null
+fusion: null
+bm25: {tokenization: word, k1: 1.2, b: 0.75}
+filters: {qu: false, amenity_must: none}
+boost: {amenity_nice_w: 0.0, amenity_must_w: 0.0}
+dedupe_parent: false
+query_preproc: {alias: false, symspell: false}
+cutoff: {max_vector_distance: null}
+csls: null
+rerank: null
+fallback_bm25_only: false
+phase: 1

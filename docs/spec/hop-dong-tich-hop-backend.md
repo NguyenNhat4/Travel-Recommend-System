@@ -43,7 +43,7 @@
 
 **Team Agent:**
 
-- Chỉ gọi Search và Recommendation qua HTTP; không truy cập trực tiếp bảng dữ liệu.
+- Chỉ gọi Search, Recommendation và Similar (Similar chỉ ở lượt đổi món, `hop-dong-tich-hop-itinerary-assistant.md` §2.5) qua port của tầng application; không truy cập trực tiếp bảng dữ liệu. Với dữ liệu thật, tool gọi engine trong cùng tiến trình (`ITINERARY_DATA_MODE=inprocess`); gọi HTTP (`=http`) chỉ còn là mode tuỳ chọn. Output của tool khớp response của route (`hop-dong-tich-hop-itinerary-assistant.md` §2).
 - Sao chép nguyên `productId`, `name` và `unitPrice` từ response; không tự tạo sản phẩm.
 - Không tạo booking trong MVP v1; bàn giao sang Web bằng `productId`.
 
@@ -108,6 +108,27 @@ Payload dùng cho mọi danh sách: kết quả tìm kiếm, carousel gợi ý, 
 | `rating` | number \| null | Không | Điểm đánh giá tổng hợp 0–5, một chữ số thập phân. `null` khi nguồn crawl không có |
 | `reviewCount` | integer \| null | Không | Số lượt đánh giá. `null` đi kèm `rating: null` |
 | `attributes` | object | Có | Object thuộc tính, xem §2.5. Có thể là object rỗng `{}` |
+| `fareClasses` | array \| vắng | Không | Chỉ vé máy bay tầng con (`level: flight`): các hạng vé của cùng hành trình, xem §2.2.1 (contract 1.9.0) |
+
+#### 2.2.1. `fareClasses` — hạng vé của một hành trình bay
+
+Mỗi hạng vé là một sản phẩm `level: flight` riêng (đề xuất đã chốt `docs/prd/update-archive/2026-09-29-ve-khu-hoi-dat-duoc.md`).
+Backend gom các sản phẩm cùng tuyến có **cùng hành trình** (cùng loại vé, cùng số hiệu chuyến và giờ đi; khứ hồi thêm chuyến
+và giờ về) thành mảng `fareClasses`, trả ở `GET /products?parentProductId=<tuyến>` (gom trên mọi chuyến của tuyến, trước
+khi phân trang) và `GET /products/{id}`. Các sản phẩm cùng hành trình có cùng mảng; Web hiển thị một thẻ cho mỗi hành trình
+và thêm giỏ bằng `productId` của hạng đã chọn (`AddCartItemRequest` không đổi).
+
+| Trường | Ý nghĩa |
+|---|---|
+| `productId` | Sản phẩm của hạng này |
+| `code`, `name` | `ECO`/`PRE`/`BUS`/`FST` từ `attributes.cabinClass`; `null` + "Giá rẻ nhất" khi nguồn không ghi hạng (trip.com). Không mặc định phổ thông |
+| `price`, `currency` | `unitPrice` của sản phẩm; khứ hồi là giá tổng cho một người lớn |
+| `priceValidUntil` | Hạn báo giá tại nguồn, `null` khi nguồn không có |
+| `availabilityStatus` | `AVAILABLE` (còn mở bán, báo giá còn hạn) · `EXPIRED` (quá `priceValidUntil`, ngày Việt Nam) · `NOT_CHECKED` |
+| `soldOut`, `carryOnKg`, `checkedKg`, `mealIncluded`, `changeRule` | `null` = chưa biết: chưa nguồn nào cung cấp. Báo giá hết hạn không có nghĩa `soldOut` |
+
+Chỉ liệt kê hạng có báo giá thật; thiếu hạng nào (vd. thương gia) là chưa có dữ liệu, không phải hết chỗ. Không tạo giá
+thay thế cho hạng thiếu (grounding).
 
 ### 2.3. `ProductDetail`
 
@@ -176,11 +197,13 @@ Thêm key mới là thay đổi tương thích ngược, được phép trong v1
 
 | `taxonomy` | Hậu tố hiển thị | Công thức thành tiền |
 |---|---|---|
-| `hotel` | `/ đêm` | `unitPrice × nights × quantity` |
-| `flight` | `/ khách` | `unitPrice × quantity` |
-| `attraction` | `/ khách` | `unitPrice × quantity` |
+| `hotel` | `/ đêm` | `unitPrice × nights × quantity` (`quantity` là số phòng; số khách không đổi giá) |
+| `flight` | `/ khách` | `unitPrice × quantity` (mọi hành khách trả `unitPrice`, kể cả trẻ em) |
+| `attraction` | `/ khách` | `unitPrice × người lớn + giá vé trẻ em × trẻ em`; không có trẻ em thì `unitPrice × quantity` |
 | `combo` | `/ gói` | `unitPrice × quantity` |
-| `golf` | `/ lượt` | `unitPrice × quantity` |
+| `golf` | `/ lượt` | như `attraction` |
+
+Từ OpenAPI 1.10.0, thành tiền của một mục là **tổng các dòng giá** `fares[].amount` (`ADULT`, `CHILD`, `ROOM`, `PACKAGE`); các công thức trên là kết quả của dòng giá theo từng `taxonomy`. Giá vé trẻ em là `attributes.childPrice` khi `0 < childPrice ≤ unitPrice`, còn lại trẻ em trả `unitPrice`. Chi tiết và ví dụ: `docs/spec/booking/checkout-nhieu-buoc-hanh-khach.md` §4.3, §4.4.
 
 **Điểm đến** là chuỗi tiếng Việt có dấu, đã chuẩn hóa theo danh sách thống nhất giữa các team. Lấy danh sách hiện hành qua `GET /api/v1/destinations` (§4.4), không hardcode phía client.
 
@@ -361,7 +384,7 @@ Cam kết:
 3. Trả mảng rỗng khi không đủ ứng viên; client ẩn hẳn section, không báo lỗi.
 4. Id của tầng con được resolve lên cha: `productId` là cha, `resolvedFrom` là id đã gửi.
 
-Lỗi: id không có trong catalog → `404 PRODUCT_NOT_FOUND`; có trong catalog nhưng chưa có vector → `409 PRODUCT_NOT_INDEXED`; RecSys chưa khởi động được → `503 SEARCH_UNAVAILABLE` (`retryable: true`).
+Lỗi: `limit` ngoài 1–20 → `400 VALIDATION_ERROR`; id không có trong catalog → `404 PRODUCT_NOT_FOUND`; có trong catalog nhưng chưa có vector → `409 PRODUCT_NOT_INDEXED`; RecSys chưa khởi động được → `503 SEARCH_UNAVAILABLE` (`retryable: true`). OpenAPI 1.8.0 khai báo đủ các mã này.
 
 ### 4.4. Danh sách điểm đến
 
@@ -396,9 +419,9 @@ Authorization: Bearer <jwt>    # tùy chọn
 
 Dùng `GET` theo endpoint RecSys hiện hành. Tham số `q` là truy vấn tự do; client phải URL-encode tiếng Việt. Route frontend `/search?q=…` và endpoint API có cùng tên tham số nhưng là hai bề mặt khác nhau.
 
-`POST /api/v1/search` với body `SearchRequest` vẫn được giữ trong OpenAPI v1 để không phá client hiện có. GET là compatibility endpoint mà Agent dùng trong giai đoạn nối RecSys hiện tại.
+`POST /api/v1/search` với body `SearchRequest` vẫn được giữ trong OpenAPI v1 để không phá client hiện có. GET là compatibility endpoint; Agent chỉ gọi nó ở mode `http` (tuỳ chọn), còn mode `inprocess` gọi thẳng engine Search trong tiến trình.
 
-**Ghi hành vi:** request có JWT và `offset = 0` thì Backend ghi event `search` (`searchQuery` lấy từ `q` hoặc `query`) sang CDP ở nền. Đổi trang, không JWT, hoặc CDP lỗi đều không ảnh hưởng response. Team Agent gọi endpoint này **không kèm JWT**, để lượt tìm của Agent không bị tính là hành vi người dùng (`hop-dong-tich-hop-cdp.md` §1.4).
+**Ghi hành vi:** request có JWT và `offset = 0` thì Backend ghi event `search` (`searchQuery` lấy từ `q` hoặc `query`) sang CDP ở nền. Đổi trang, không JWT, hoặc CDP lỗi đều không ảnh hưởng response. Agent không gắn danh tính khi tìm kiếm: mode `http` gọi endpoint này **không kèm JWT**, mode `inprocess` gọi engine không qua route nên không ghi event. Nhờ vậy lượt tìm của Agent không bị tính là hành vi người dùng (`hop-dong-tich-hop-cdp.md` §1.4).
 
 #### Query parameters
 
@@ -410,7 +433,7 @@ Dùng `GET` theo endpoint RecSys hiện hành. Tham số `q` là truy vấn tự
 | `limit` | Không | `20` | 1–50 |
 | `offset` | Không | `0` | — |
 
-Agent vẫn có schema tool giàu hơn (`priceMin`, `priceMax`, `starRatingMin`, `availableOnly`, `sort`) và hậu kiểm các ràng buộc đó sau retrieval; adapter chỉ gửi các query parameter endpoint GET hỗ trợ.
+Agent vẫn có schema tool giàu hơn (`priceMin`, `priceMax`, `starRatingMin`, `availableOnly`, `sort`) và hậu kiểm các ràng buộc đó sau retrieval; cả adapter `http` lẫn `inprocess` chỉ chuyển các tham số endpoint GET hỗ trợ: `query` (adapter `http` đổi thành `q`), `taxonomy`, `destination`, `limit`, `offset`.
 
 ### 5.2. `SearchResponse`
 
@@ -535,7 +558,11 @@ cross_vertical     Người dùng đã đặt một danh mục trong chuyến, h
 recent_activity    Có event gần đây nhưng chưa thành chuyến rõ ràng
 dormant            Event gần nhất cách đây trên 90 ngày
 popular            Không đủ dữ liệu cá nhân hóa, hoặc khách ẩn danh
+long_term          Có lịch sử, không có chuyến đang mở, chưa quá ngưỡng dormant của engine
+cold_start_content Có chuyến đang mở, tổng dưới 3 event dùng được, chưa mua gì trong chuyến
 ```
+
+`long_term` và `cold_start_content` bổ sung ngày 2026-09-28 (OpenAPI 1.8.0): engine đã trả hai giá trị này nhưng contract thiếu. Điều kiện chính xác, và chỗ các dòng cũ lệch với engine (đang chờ quyết định), ở `hop-dong-tich-hop-search-recommendation.md` §4.4.
 
 Quy tắc bắt buộc:
 
@@ -583,7 +610,7 @@ Cam kết:
 | Tình huống | Hành vi |
 |---|---|
 | Không có JWT | `200` với `cdpUserId: null`, `strategy: "popular"`, mọi `because` rỗng, `diagnostics.coldStart: true`, `eventsUsed: 0` |
-| Có JWT, dưới 3 event | `200` với `cdpUserId` thật, `strategy: "popular"` hoặc `"recent_activity"` tùy có `because` hay không, `coldStart: true` |
+| Có JWT, dưới 3 event | `200` với `cdpUserId` thật, `strategy: "popular"` hoặc `"recent_activity"` tùy có `because` hay không, `coldStart: true`. Engine hiện chạy khác dòng này, xem ghi chú lệch ở `hop-dong-tich-hop-search-recommendation.md` §4.4 |
 | JWT sai hoặc hết hạn | `401` `INVALID_TOKEN`. Không âm thầm hạ xuống chế độ ẩn danh — client cần biết để mở modal đăng nhập lại |
 | Có JWT, CDP clone lỗi hoặc timeout | `200` với `cdpUserId` thật, `strategy: "popular"`, mọi `because` rỗng, `coldStart: true`, `eventsUsed: 0`. Không trả `500` vì lỗi CDP (`hop-dong-tich-hop-cdp.md` §6) |
 
@@ -612,7 +639,8 @@ Authorization: Bearer <jwt>    # bắt buộc
   "productId": "nt-h-01",
   "usingDate": "2026-10-15",
   "quantity": 1,
-  "nights": 3
+  "nights": 3,
+  "guests": { "adults": 2, "children": 1 }
 }
 ```
 
@@ -620,8 +648,11 @@ Authorization: Bearer <jwt>    # bắt buộc
 |---|---:|---|
 | `productId` | Có | Phải tồn tại và `available: true` |
 | `usingDate` | Có | Ngày sử dụng, phải nằm trong `availableFrom`–`availableTo` |
-| `quantity` | Có | Số phòng hoặc số khách, ≥ 1 |
+| `quantity` | Có, trừ khi gửi `guests` cho dịch vụ tính theo người | Số phòng, số gói hoặc số khách, ≥ 1. Vé máy bay, vé tham quan, golf: gửi `guests` thì được bỏ `quantity` (Backend tính `adults + children`); gửi cả hai mà lệch thì `GUEST_COUNT_MISMATCH` |
+| `guests` | Không | `{adults, children}`: `adults` ≥ 1, tổng ≤ 9. Không gửi (client cũ): khách sạn và dịch vụ tính theo người mặc định `adults = quantity`, `children = 0`; combo mặc định `adults = 1` |
 | `nights` | Chỉ với `hotel` | Số đêm, ≥ 1. Các `taxonomy` khác gửi `nights` thì bị bỏ qua |
+
+Khách sạn: mỗi phòng cần ít nhất 1 người lớn (`adults ≥ quantity`) và `adults + children ≤ maxOccupancy × quantity` khi hạng phòng có `maxOccupancy`. Vi phạm thì `400 VALIDATION_ERROR` với `details.fields[].reason` (`ADULT_REQUIRED`, `PARTY_TOO_LARGE`, `OCCUPANCY_EXCEEDED`, `GUEST_COUNT_MISMATCH`). Bộ luật R-CRT-01…05: `docs/spec/booking/checkout-nhieu-buoc-hanh-khach.md` §5.5. `PATCH` nhận cùng các trường (ít nhất một trường).
 
 Thêm thành công thì Backend ghi event `add_to_cart` sang CDP ở nền, với `taxonomy` và `unitPrice` lấy từ catalog. Thêm thất bại không ghi event; `PATCH`/`DELETE` không ghi event; CDP lỗi không ảnh hưởng response.
 
@@ -638,6 +669,10 @@ Thêm thành công thì Backend ghi event `add_to_cart` sang CDP ở nền, vớ
       "usingDate": "2026-10-15",
       "quantity": 1,
       "nights": 3,
+      "guests": { "adults": 2, "children": 1 },
+      "fares": [
+        { "fareType": "ROOM", "unitPrice": 3400000, "count": 1, "nights": 3, "amount": 10200000 }
+      ],
       "lineTotal": 10200000
     }
   ],
@@ -653,10 +688,10 @@ Cam kết:
 
 1. Mọi thao tác giỏ trả về **toàn bộ** `CartResponse`, không trả delta. Client không tự tính lại tổng tiền.
 2. `product` là snapshot **tại thời điểm đọc**, không phải lúc thêm vào giỏ. `available` và `unitPrice` luôn được tải lại, nên sản phẩm hết chỗ sẽ tự lộ ra ở `GET /cart`.
-3. `lineTotal` do backend tính theo công thức §2.6.
+3. `lineTotal` do backend tính, bằng tổng `fares[].amount` (§2.6). `guests` là số người lớn và trẻ em theo loại giá tại `usingDate` của mục; `product.attributes.maxOccupancy` có với hạng phòng để client kiểm sức chứa mà không gọi thêm.
 4. `subtotal` bằng `total` trong MVP — không có thuế, phí hay mã giảm giá.
 5. Không gom nhóm theo điểm đến ở tầng API. Client tự gom theo `product.destination` để hiện "Chuyến {destination}"; backend chỉ chốt nhóm ở bước checkout (§7.2).
-6. Thêm một `productId` đã có trong giỏ với cùng `usingDate` thì **cộng dồn** `quantity`, không tạo mục mới.
+6. Thêm một `productId` đã có trong giỏ với cùng `usingDate` thì **cộng dồn** `quantity` và `guests`, không tạo mục mới; kết quả sau khi cộng vẫn phải đạt luật (tối đa 9 khách, sức chứa). Riêng combo: `quantity` cộng dồn, `guests` lấy giá trị lớn hơn theo từng loại.
 
 ### 7.2. Checkout
 
@@ -675,17 +710,21 @@ Content-Type: application/json
     "email": "minhanh@example.vn",
     "phone": "0912345678"
   },
+  "travelers": [
+    { "travelerRef": "t1", "type": "ADULT", "surname": "Nguyễn", "givenNames": "Minh Anh" },
+    { "travelerRef": "t2", "type": "CHILD", "surname": "Nguyễn", "givenNames": "Gia Bảo", "birthDate": "2019-05-12" }
+  ],
   "itemDetails": [
     {
       "cartItemId": "ci-8k3f2a",
-      "guestNames": ["Nguyễn Minh Anh"],
+      "rooms": [ { "travelerRefs": ["t1", "t2"], "leadTravelerRef": "t1" } ],
       "specialRequest": "Phòng tầng cao nếu còn"
     }
   ]
 }
 ```
 
-Checkout luôn đặt **toàn bộ giỏ hiện tại**. `itemDetails` chỉ bổ sung thông tin theo từng mục và không được thay đổi thành phần giỏ; `cartItemId` lạ thì trả `VALIDATION_ERROR`. Body không có trường tiền nào: số tiền do Backend tính từ catalog.
+Checkout luôn đặt **toàn bộ giỏ hiện tại**. `travelers` là đoàn khách (1–9 người, ít nhất 1 người lớn; trẻ em có `birthDate`); mỗi mục giỏ có đúng một `itemDetails` cho biết ai dùng: `travelerRefs` với dịch vụ tính theo người và combo, `rooms[]` (mỗi phòng có `travelerRefs` và `leadTravelerRef`) với khách sạn. `itemDetails` không được thay đổi thành phần giỏ; `cartItemId` lạ thì trả `VALIDATION_ERROR`. Body không có trường tiền nào: số tiền do Backend tính từ catalog. Request cũ không có `travelers` (chỉ `guestNames`) vẫn được nhận khi giỏ không có trẻ em (`TRAVELERS_REQUIRED` nếu có), và cũng được kiểm thật. Họ tên và ngày sinh chỉ lưu ở `app.booking_travelers`, không trả trong response, không gửi sang CDP, Insider, Stripe (NFR-SEC-01).
 
 `201` nghĩa là **đã giữ chỗ, chờ thanh toán** (FR-BKG-05, FR-BKG-06), không phải đã đặt xong. Backend kiểm giỏ, gọi Stripe tạo Checkout Session (`expires_at` = `holdExpiresAt`, 30 phút), rồi mới ghi đơn `PENDING_PAYMENT` + dòng `app.payments`. Web chuyển trình duyệt tới `payment.checkoutUrl`. Luồng đầy đủ và sơ đồ: `docs/spec/booking/so-do-luong-dat-cho-thanh-toan.md`.
 
@@ -725,7 +764,14 @@ Checkout luôn đặt **toàn bộ giỏ hiện tại**. `itemDetails` chỉ b�
           "quantity": 1,
           "nights": 3,
           "lineTotal": 10200000,
-          "guestNames": ["Nguyễn Minh Anh"],
+          "fares": [
+            { "fareType": "ROOM", "unitPrice": 3400000, "count": 1, "nights": 3, "amount": 10200000 }
+          ],
+          "travelers": [
+            { "fullName": "Nguyễn Minh Anh", "type": "ADULT", "roomNo": 1, "isLead": true },
+            { "fullName": "Nguyễn Gia Bảo", "type": "CHILD", "roomNo": 1, "isLead": false }
+          ],
+          "guestNames": ["Nguyễn Minh Anh", "Nguyễn Gia Bảo"],
           "specialRequest": "Phòng tầng cao nếu còn"
         }
       ],
@@ -748,17 +794,20 @@ Checkout luôn đặt **toàn bộ giỏ hiện tại**. `itemDetails` chỉ b�
 | `groups[]` | **Gom theo `destination`**. Triển khai hiện tại dùng **một** `eventGroupId` cho cả đơn (DDL: `app.bookings.event_group_id` UNIQUE), nên mọi nhóm của một đơn mang cùng giá trị |
 | `total` | Tổng toàn đơn, bằng tổng các `groupTotal`, bằng `payment.amount` |
 
-Kiểm tra bắt buộc trước khi tạo booking (hợp đồng Agent §3.3):
+Kiểm tra bắt buộc trước khi tạo booking (hợp đồng Agent §3.3), theo thứ tự (chi tiết: `docs/spec/booking/checkout-nhieu-buoc-hanh-khach.md` §8.3):
 
-1. Mọi sản phẩm trong giỏ còn tồn tại.
-2. `available` vẫn là `true` → nếu không, `409` `PRODUCT_UNAVAILABLE` kèm `productId`.
-3. `unitPrice` hiện tại khớp với lúc thêm vào giỏ → nếu lệch, `409` `PRICE_CHANGED` kèm giá cũ và giá mới. Giá trong giỏ và trong lịch trình của Agent chỉ là ước tính; **giá tại checkout là dữ liệu chính thức**.
-4. `usingDate` vẫn nằm trong `availableFrom`–`availableTo`.
-5. Giỏ không rỗng → nếu rỗng, `400` `CART_EMPTY`.
+1. Giỏ không rỗng → nếu rỗng, `400` `CART_EMPTY`.
+2. Mọi sản phẩm trong giỏ còn tồn tại.
+3. **Luật dữ liệu đoàn khách và phân bổ** (họ tên, ngày sinh, tuổi, mỗi mục có người dùng, khớp `guests` của giỏ, sức chứa và người lớn mỗi phòng, người đại diện): gom **mọi** vi phạm vào một `400 VALIDATION_ERROR` với `details.fields[]` (`field`, `reason`, `message`, `cartItemId?`). Có vi phạm thì không gọi Stripe và không ghi gì. Sai kiểu dữ liệu (ví dụ ngày sinh không phải ngày) vẫn là `422`.
+4. `available` vẫn là `true` → nếu không, `409` `PRODUCT_UNAVAILABLE` kèm `productId`.
+5. `unitPrice` hiện tại khớp với lúc thêm vào giỏ → nếu lệch, `409` `PRICE_CHANGED` kèm giá cũ và giá mới. Mục có trẻ em còn so giá vé trẻ em hiệu lực với snapshot: lệch thì `PRICE_CHANGED` kèm `details.fareType = CHILD`. Giá trong giỏ và trong lịch trình của Agent chỉ là ước tính; **giá tại checkout là dữ liệu chính thức**.
+6. `usingDate` vẫn nằm trong `availableFrom`–`availableTo`.
 
 Kiểm thêm trước khi tạo đơn: người dùng không có đơn `PENDING_PAYMENT` còn hạn → nếu có, `409 BOOKING_PENDING_PAYMENT` kèm `{ referenceCode, holdExpiresAt }` của đơn đó. Đơn cũ đã quá hạn mà webhook hết hạn chưa tới thì Backend hỏi lại Stripe để đóng nó ngay trong request rồi tạo đơn mới. Stripe timeout/5xx khi tạo phiên → không tạo đơn, `503 PAYMENT_PROVIDER_UNAVAILABLE` (`retryable: true`, header `Retry-After`).
 
-`PRICE_CHANGED` so giá hiện tại với giá snapshot lúc thêm giỏ. `PATCH /cart/items/{cartItemId}` ghi lại snapshot bằng giá hiện tại (khách đã thấy giá mới), nên Web xác nhận giá mới bằng một `PATCH` rồi cho khách bấm Thanh toán lần nữa.
+`PRICE_CHANGED` so giá hiện tại với giá snapshot lúc thêm giỏ (người lớn, và trẻ em khi mục có trẻ em). `PATCH /cart/items/{cartItemId}` ghi lại cả hai snapshot bằng giá hiện tại (khách đã thấy giá mới), nên Web xác nhận giá mới bằng một `PATCH` rồi cho khách bấm Thanh toán lần nữa.
+
+Stripe nhận mỗi dòng giá của mỗi mục một line item (tên "{sản phẩm} · Người lớn", "· Trẻ em", "· {n} đêm", "· Gói"), nên tổng trang Stripe bằng `payment.amount` và khớp tóm tắt đơn. Sự kiện `purchase` gửi CDP vẫn một event mỗi mục (`quantity` của mục, `unitPrice` giá người lớn).
 
 **Giỏ giữ nguyên** trong lúc giữ chỗ; chỉ các mục đã đặt (khoá theo `productId` + `usingDate`) bị xoá khỏi giỏ khi đơn chuyển `CONFIRMED`. Hết hạn hay thanh toán thất bại thì khách đặt lại ngay từ giỏ. Mỗi người dùng chỉ có một đơn giữ chỗ (unique index `bookings_one_pending_per_user`), đây là cơ chế chống bấm hai lần ở phía server; client vẫn phải khóa nút khi đang gửi (`docs/product.md` §4.5.3).
 
@@ -859,7 +908,7 @@ Mã lỗi riêng của auth (`UNAUTHENTICATED`, `SESSION_EXPIRED`, `CSRF_FAILED`
 
 | HTTP | Mã lỗi | Ý nghĩa | `details` |
 |---:|---|---|---|
-| 400 | `VALIDATION_ERROR` | Request sai định dạng hoặc thiếu trường bắt buộc | `{ fields: [...] }` |
+| 400 | `VALIDATION_ERROR` | Request vi phạm luật nghiệp vụ (đoàn khách, phân bổ, số khách của mục giỏ) hoặc `POST /events` sai | `{ fields: [{ field, reason, message, cartItemId? }] }`; mọi vi phạm trong một lần. Sai kiểu dữ liệu ở request khác vẫn là `422` |
 | 400 | `CART_EMPTY` | Checkout khi giỏ rỗng | — |
 | 401 | `INVALID_CREDENTIALS` | Sai email hoặc mật khẩu | — |
 | 401 | `INVALID_TOKEN` | JWT không hợp lệ | — |
@@ -869,7 +918,7 @@ Mã lỗi riêng của auth (`UNAUTHENTICATED`, `SESSION_EXPIRED`, `CSRF_FAILED`
 | 404 | `BOOKING_NOT_FOUND` | Không tìm thấy đơn, hoặc đơn không thuộc người dùng | — |
 | 409 | `EMAIL_ALREADY_EXISTS` | Email đã được đăng ký | — |
 | 409 | `PRODUCT_UNAVAILABLE` | Sản phẩm hết chỗ tại thời điểm thêm giỏ hoặc checkout | `{ productId }` |
-| 409 | `PRICE_CHANGED` | Giá đã đổi kể từ lúc thêm vào giỏ | `{ productId, oldPrice, newPrice }` |
+| 409 | `PRICE_CHANGED` | Giá đã đổi kể từ lúc thêm vào giỏ | `{ productId, oldPrice, newPrice, fareType? }`; `fareType = CHILD` khi giá vé trẻ em đổi |
 | 422 | `DATE_OUT_OF_RANGE` | `usingDate` ngoài `availableFrom`–`availableTo` | `{ productId, availableFrom, availableTo }` |
 | 409 | `BOOKING_PENDING_PAYMENT` | Đã có đơn giữ chỗ còn hạn | `{ referenceCode, holdExpiresAt }` |
 | 409 | `BOOKING_ALREADY_PAID` | Huỷ đơn chưa trả nhưng Stripe vừa thu tiền | `{ referenceCode }` |
@@ -909,6 +958,25 @@ Log **được phép** chứa: `requestId`, `cdpUserId` đã pseudonymize, truy 
 
 Log **không được** chứa: mật khẩu ở bất kỳ dạng nào, JWT, API key, email và số điện thoại đầy đủ của khách.
 
+### 8.6a. Đo lần gọi web / agent (`/metrics`, `/internal/calls`)
+
+Theo `docs/prd/deployment-plan.md` §5. Hai endpoint vận hành nằm ngoài `/api/v1`, cùng nhóm với `/health`, không thuộc
+contract public (`include_in_schema=False`):
+
+- `GET /metrics` — text Prometheus: `vota_calls_total`, `vota_call_errors_total`, `vota_call_duration_ms` (p50 / p95 trên
+  500 lần gần nhất) theo nhãn `source` (`web` | `agent`), `kind` (`http` | `tool`), `name`; `vota_catalog_products`,
+  `vota_catalog_reloads_total` của bản recsys / catalog đang trong bộ nhớ.
+- `GET /internal/calls?after=<seq>&limit=<≤1000>` — JSON `{lastSeq, startedAt, catalog, summary[], events[]}`; mỗi sự
+  kiện: `seq`, `at`, `source`, `kind`, `name` (web: `METHOD /api/v1/route/{tham số}` — tên tham số, không phải giá trị;
+  agent: tên công cụ), `status` (HTTP hoặc `ok` / `error:<mã>` / `cancelled`), `ms`, và nếu có `useCase`, `useCaseMs`,
+  `resultCount`, `productIds` (≤ 20), `stageMs` (của `/search`, `StageTimer`). Không có query string, câu tìm kiếm, body
+  hay dữ liệu cá nhân. Monitor job cào đọc endpoint này (tab "Realtime").
+
+Nguồn `web` = request dưới `/api/v1` (middleware `api/middleware.py`); nguồn `agent` = công cụ itinerary gọi engine trong
+tiến trình (`application/itinerary/engine_tools.py`). Engine search / similar / recommend và use case catalog được bọc ở
+composition root (`application/telemetry.py`), nên hai nguồn đo cùng một cách. Bộ đệm trong bộ nhớ
+(`infrastructure/telemetry/memory.py`, 2.000 sự kiện) mất khi restart.
+
 ### 8.7. Versioning
 
 - Mọi endpoint bắt đầu bằng `/api/v1`.
@@ -931,7 +999,7 @@ Log **không được** chứa: mật khẩu ở bất kỳ dạng nào, JWT, AP
 | `attributes: ["family-friendly"]` | `attributes: { familyFriendly: true }` | CDP lưu object; từ vựng ở §2.5 |
 | `semanticScore` | `score` | Đồng bộ với `/recommendations` và `/similar` |
 | `recommendationScore` | `score` | Như trên |
-| `strategy: PERSONALISED` \| `POPULAR_IN_DESTINATION` | `cross_vertical` \| `recent_activity` \| `dormant` \| `popular` | Bốn giá trị này là thứ UI cần để sinh tiêu đề section |
+| `strategy: PERSONALISED` \| `POPULAR_IN_DESTINATION` | `cross_vertical` \| `recent_activity` \| `dormant` \| `popular`; bổ sung `long_term` \| `cold_start_content` (2026-09-28) | Các giá trị này là thứ UI cần để sinh tiêu đề section |
 | `userId` trong response recommendation | `cdpUserId` | Phân biệt rõ với `userId` của bảng `users` |
 | `bookingUrl: "/products/{productId}"` | Bỏ khỏi payload; client dựng `/product/{productId}` | Route thật là số ít, và URL frontend không thuộc trách nhiệm backend |
 | `reason` (chuỗi lý do) | `because[]` (§6.3) | Chuỗi tự do không render được popover "Vì sao?" |
@@ -944,7 +1012,7 @@ Tài liệu này **không tự sửa** file hợp đồng Agent. Việc cập nh
 
 | # | Câu hỏi | Trả lời |
 |---|---|---|
-| D1 | Giá trị `strategy` ngoài `cross_vertical` | **Chốt.** `cross_vertical`, `recent_activity`, `dormant`, `popular` — §6.2 |
+| D1 | Giá trị `strategy` ngoài `cross_vertical` | **Chốt.** `cross_vertical`, `recent_activity`, `dormant`, `popular`; bổ sung `long_term`, `cold_start_content` 2026-09-28 — §6.2 |
 | D2 | `because[]` có `productId` / `imageUrl` không | **Chốt: có cả hai**, `productId` nhận `null` khi sản phẩm đã bị xóa — §6.3 |
 | D3 | Ai ghi event `product_view` | **Chốt: Web gọi `POST /api/v1/events`**, Backend ghi sang CDP clone — §7.5. `GET /products/{id}` không ghi event. `search` và `add_to_cart` do Backend tự ghi. Web không gọi CDP clone |
 | D4 | `/search` hỗ trợ lọc và ngưỡng điểm không | **Chốt.** Lọc `taxonomy`, `destination`, `priceMin`/`priceMax`, `starRatingMin`; trả `topScore` và `facets` — §5.1, §5.2 |

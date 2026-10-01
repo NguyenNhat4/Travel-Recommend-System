@@ -1,4 +1,4 @@
-"""Compile the eleven-node itinerary graph with request-scoped runtime dependencies."""
+"""Compile the twelve-node itinerary graph with request-scoped runtime dependencies."""
 
 from __future__ import annotations
 
@@ -44,6 +44,8 @@ def build_graph(checkpointer: Any | None = None, *, tools: ToolExecutorPort | No
         finalize_node_async,
         intake_node,
         intake_node_async,
+        narrate_node,
+        narrate_node_async,
         retry_or_fallback_node,
         tool_node,
     )
@@ -71,9 +73,10 @@ def build_graph(checkpointer: Any | None = None, *, tools: ToolExecutorPort | No
     graph.add_node("finalize", RunnableLambda(finalize_node, afunc=partial(
         finalize_node_async, store=store, owner=owner, archive=archive, cdp_user_id=cdp_user_id)))
     graph.add_node("classify", RunnableLambda(partial(classify_node, llm=llm), afunc=partial(classify_node_async, llm=llm, timeout_seconds=llm_timeout_seconds if llm_timeout_seconds is not None else 2), name="classify_node"))
-    graph.add_node("extract", RunnableLambda(partial(extract_node, llm=llm), afunc=partial(extract_node_async, llm=llm, timeout_seconds=llm_timeout_seconds if llm_timeout_seconds is not None else 2), name="extract_node"))
+    graph.add_node("extract", RunnableLambda(partial(extract_node, llm=llm), afunc=partial(extract_node_async, llm=llm, timeout_seconds=llm_timeout_seconds if llm_timeout_seconds is not None else 2, tools=tools, tool_timeout_seconds=tool_timeout_seconds), name="extract_node"))
     graph.add_node("converse", RunnableLambda(partial(converse_node, llm=llm), afunc=partial(converse_node_async, llm=llm, timeout_seconds=llm_timeout_seconds if llm_timeout_seconds is not None else 3), name="converse_node"))
     graph.add_node("clarify", RunnableLambda(partial(ask_clarification_node, llm=llm), afunc=partial(ask_clarification_node_async, llm=llm, timeout_seconds=llm_timeout_seconds if llm_timeout_seconds is not None else 3), name="ask_clarification_node"))
+    graph.add_node("narrate", RunnableLambda(partial(narrate_node, llm=llm), afunc=partial(narrate_node_async, llm=llm, timeout_seconds=llm_timeout_seconds if llm_timeout_seconds is not None else 3), name="narrate_node"))
     graph.add_node("tool", partial(tool_node, tools=tools, timeout_seconds=tool_timeout_seconds,
                                    llm=llm, require_recommendations=require_recommendations,
                                    llm_timeout_seconds=llm_timeout_seconds if llm_timeout_seconds is not None else 2))
@@ -90,7 +93,8 @@ def build_graph(checkpointer: Any | None = None, *, tools: ToolExecutorPort | No
     graph.add_conditional_edges("retry", route_after_retry,
                                 {name: name for name in ("tool", "dead_letter", "compose")})
     graph.add_edge("converse", "finalize")
-    graph.add_edge("compose", "finalize")
+    graph.add_edge("compose", "narrate")
+    graph.add_edge("narrate", "finalize")
     graph.add_edge("clarify", "finalize")
     graph.add_edge("dead_letter", "finalize")
     graph.add_edge("finalize", END)

@@ -1,0 +1,25 @@
+# Alias amenity tối thiểu (spec Part 1 P1.3) — KHÔNG phải taxonomy chính thức; Data team sửa thoải mái.
+# alias viết ở dạng đã fold (lexical.fold: bỏ dấu, lower, ký tự ngoài [a-z0-9] → khoảng trắng)
+pool:             {label: hồ bơi,            aliases: [ho boi, be boi, swimming pool, pool, outdoor pool, indoor pool, infinity pool, ho boi vo cuc, ho boi ngoai troi]}
+private_beach:    {label: bãi biển riêng,    aliases: [bai bien rieng, private beach]}
+spa:              {label: spa,               aliases: [spa, massage, xong hoi, sauna]}
+fitness:          {label: phòng gym,         aliases: [phong gym, gym, fitness, fitness center, trung tam the duc, phong tap]}
+kids_club:        {label: câu lạc bộ trẻ em, aliases: [kids club, kid club, cau lac bo tre em, khu vui choi tre em, san choi tre em]}
+restaurant:       {label: nhà hàng,          aliases: [nha hang, restaurant]}
+bar:              {label: quầy bar,          aliases: [quay bar, bar, lounge, pool bar]}
+breakfast:        {label: bữa sáng,          aliases: [bua sang, an sang, breakfast, buffet sang]}
+wifi:             {label: wifi,              aliases: [wifi, wi fi, wifi mien phi, free wifi, internet]}
+parking:          {label: chỗ đỗ xe,         aliases: [cho do xe, bai do xe, parking, free parking]}
+airport_shuttle:  {label: đưa đón sân bay,   aliases: [dua don san bay, xe dua don san bay, airport shuttle, shuttle]}
+room_service:     {label: dịch vụ phòng,     aliases: [dich vu phong, room service]}
+front_desk_24h:   {label: lễ tân 24 giờ,     aliases: [le tan 24 gio, le tan 24 24, 24 hour front desk]}
+laundry:          {label: giặt ủi,           aliases: [giat ui, dich vu giat ui, laundry]}
+water_park:       {label: công viên nước,    aliases: [cong vien nuoc, water park]}
+golf:             {label: sân golf,          aliases: [san golf, golf course]}
+tennis:           {label: sân tennis,        aliases: [san tennis, tennis]}
+family_room:      {label: phòng gia đình,    aliases: [phong gia dinh, family room, family rooms]}
+non_smoking:      {label: không hút thuốc,   aliases: [khong hut thuoc, phong khong hut thuoc, non smoking]}
+air_conditioning: {label: điều hòa,          aliases: [dieu hoa, may lanh, air conditioning]}
+elevator:         {label: thang máy,         aliases: [thang may, elevator, lift]}
+accessible:       {label: tiện nghi người khuyết tật, aliases: [nguoi khuyet tat, xe lan, wheelchair accessible]}
+pet_friendly:     {label: cho phép thú cưng, aliases: [cho phep vat nuoi, thu cung, pets allowed, pet friendly]}

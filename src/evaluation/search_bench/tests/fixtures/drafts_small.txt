@@ -1,0 +1,11 @@
+# fixture 10 draft cho test `sb gold pool` / `split` — KHÔNG phải gold thật (gold/drafts.txt do Người A soạn)
+resort Nha Trang cho gia đình có trẻ nhỏ	audience_style
+resort nha trang cho gia dinh co tre nho	no_diacritics
+VinWonders	named_entity
+villa hồ bơi riêng Phú Quốc	parent_child
+khách sạn gần biển ở Quy Nhơn	dest_type
+KS NT gần biển	abbrev_typo
+khách sạn có spa và phòng gym ở Hà Nội	amenity_multi
+khách sạn Đà Nẵng không có hồ bơi	amenity_negation	{"and": [{"eq": ["destination", "Đà Nẵng"]}, {"not": {"contains_any": ["amenity_ids", ["pool"]]}}]}
+resort Phú Quốc có hồ bơi dưới 3 triệu	multi_constraint	{"and": [{"eq": ["destination", "Phú Quốc"]}, {"contains_all": ["amenity_ids", ["pool"]]}, {"lte": ["unit_price_min", 3000000]}]}
+khách sạn ở Cà Mau	out_of_catalog		true

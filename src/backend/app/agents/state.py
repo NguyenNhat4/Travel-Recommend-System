@@ -7,6 +7,11 @@ from typing import Annotated, Any, TypedDict
 from operator import add
 from pydantic import BaseModel, Field
 
+from src.backend.app.domain.itinerary.types import (
+    Candidates, Constraints, DropSummary, PlanWarning, Product, Sources, ToolCall, ToolErrorPayload, ToolResult,
+    TripIntent,
+)
+
 
 class LabEvent(BaseModel):
     """Append-only audit event for grading and debugging."""
@@ -31,33 +36,41 @@ class AgentState(TypedDict, total=False):
     attempt: int
     max_attempts: int
     final_answer: str | None
-    tool_plan: list[dict[str, Any]]
-    tool_results: list[dict[str, Any]]
+    tool_plan: list[ToolCall]
+    tool_results: list[ToolResult]
     events: Annotated[list[dict[str, Any]], add]
     conversation_id: str
     conversation_history: list[dict[str, str]]
-    intent: dict[str, Any]
-    intent_override: dict[str, Any]
-    constraints: dict[str, Any]
+    intent: TripIntent
+    previous_intent: TripIntent
+    intent_override: TripIntent
+    constraints: Constraints
     missing_fields: list[str]
     start_date_asked: bool
+    clarification_rounds: int
     clarification_reason: str | None
+    invalid_inputs: list[dict[str, Any]]
     refusal: bool
-    candidates: dict[str, dict[str, Any]]
-    sources: dict[str, dict[str, Any]]
-    warnings: list[dict[str, Any]]
-    response: dict[str, Any]
+    blocked_by_guardrail: str | None
+    unclear_input: str | None
+    candidates: Candidates
+    sources: Sources
+    warnings: list[PlanWarning]
+    nearest_open_date: str | None
+    drop_summary: dict[str, DropSummary]
+    response: dict[str, Any]  # `ItineraryResponse` envelope; contract-owned, see domain/itinerary/types.py
     http_status: int
     decision: str
     validation_issues: list[str]
     request_id: str
     started_at: float
     latency_ms: int
-    details: dict[str, dict[str, Any]]
-    detail_errors: dict[str, dict[str, Any]]
+    details: dict[str, Product]
+    detail_errors: dict[str, ToolErrorPayload]
     supported_destinations: list[str] | None
+    destination_kind: str | None
     language: str
-    previous_selection: list[dict[str, Any]]
+    previous_selection: list[Product]
 
 
 def make_event(node: str, event_type: str, message: str, **metadata: Any) -> dict[str, Any]:

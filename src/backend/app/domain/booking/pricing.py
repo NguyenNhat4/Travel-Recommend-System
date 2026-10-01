@@ -1,4 +1,4 @@
-"""Thành tiền và kiểm tra một dòng giỏ so với catalog (backend spec §2.6, §7.1, §7.2)."""
+"""Kiểm tra một dòng giỏ so với catalog (backend spec §2.6, §7.1, §7.2; spec checkout-nhieu-buoc-hanh-khach.md §8.1)."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -7,9 +7,15 @@ from typing import Any
 
 from src.backend.app.domain.catalog.models import Product
 
+from .fares import child_unit_price
+
 
 def line_total(taxonomy: str, unit_price: int, quantity: int, nights: int | None) -> int:
-    """Chỉ khách sạn nhân số đêm; mọi taxonomy khác bỏ qua nights kể cả khi client gửi."""
+    """Thành tiền khi KHÔNG có trẻ em: `unitPrice × quantity` (khách sạn nhân thêm số đêm).
+
+    Đây là trường hợp riêng của tổng các dòng giá (`fares.lines_total`), giữ lại để đọc đơn tạo trước khi có dòng giá
+    (`booking_items.metadata` rỗng) và cho client cũ không thấy khác biệt.
+    """
     stay = max(1, nights or 1) if taxonomy == "hotel" else 1
     return unit_price * quantity * stay
 
@@ -45,3 +51,26 @@ def check_product(
             },
         )
     return None
+
+
+def effective_child_price(product: Product) -> int:
+    """Giá một vé trẻ em thực tế: giá trẻ em hợp lệ của sản phẩm, không có thì bằng giá người lớn (D2)."""
+    unit = int(product.unit_price)
+    return child_unit_price(product.taxonomy, unit, product.attributes) or unit
+
+
+def check_child_price(
+    product: Product, *, snapshot_child: int | None, snapshot_adult: int | None
+) -> LineIssue | None:
+    """So giá vé trẻ em hiện tại với snapshot lúc thêm hoặc sửa mục giỏ; chỉ gọi khi mục có trẻ em.
+
+    `snapshot_child` là None nghĩa là lúc đó sản phẩm không có giá trẻ em hợp lệ, tức trẻ em trả `snapshot_adult`.
+    """
+    if snapshot_adult is None:
+        return None
+    old = snapshot_child if snapshot_child is not None else snapshot_adult
+    new = effective_child_price(product)
+    if old == new:
+        return None
+    return LineIssue(
+        "PRICE_CHANGED", {"productId": product.product_id, "oldPrice": old, "newPrice": new, "fareType": "CHILD"})

@@ -28,11 +28,15 @@ from __future__ import annotations
 import argparse
 import copy
 import csv
+import gzip
 import json
 import logging
 import math
 import re
+import resource
 import sys
+import time
+import traceback
 import uuid
 from collections import Counter, defaultdict
 from datetime import date, datetime, timezone, timedelta
@@ -115,17 +119,27 @@ def trip_route_history(records: list[dict]) -> list[dict]:
     """
     routes = {}
     services = defaultdict(dict)
+    business = defaultdict(dict)
+    round_trips = defaultdict(dict)
     for record in sorted(records, key=lambda r: r.get("crawledAt") or ""):
         key = record.get("key")
         if not key:
             continue
         routes[key] = copy.deepcopy(record)
+        for quote in record.get("businessQuotes", []):
+            key_quote = quote.get("url")
+            if key_quote and quote.get("observedAt", "") >= business[key].get(key_quote, {}).get("observedAt", ""):
+                business[key][key_quote] = quote
+        for capture in record.get("roundTripQuotes", []):
+            round_trips[key][(capture.get("url"), capture.get("observedAt"))] = capture
         by_number = defaultdict(list)
         for flight in record.get("flights", []):
             if flight.get("flightNumber"):
                 by_number[flight["flightNumber"]].append({**flight, "observedAt": record.get("crawledAt")})
         services[key].update(by_number)
     for key, route in routes.items():
+        route["businessQuotes"] = list(business[key].values())
+        route["roundTripQuotes"] = list(round_trips[key].values())
         current = {f.get("flightNumber") for f in route.get("flights", [])}
         route["flights"] = [{**flight, "notInLatestSnapshot": number not in current}
                             for number, flights in services[key].items() for flight in flights]
@@ -1275,6 +1289,60 @@ def airport_location(destination_code: str | None, origin_code: str | None) -> d
     return out
 
 
+def trip_roundtrip_products(record: dict, route: dict) -> list[dict]:
+    """Trip SEO lists adjacent out/in pairs; only complete, reversed and chronological pairs are usable.
+
+    The offer on the outbound node is the total round-trip price. Never add two one-way minima.
+    Cabin remains unknown unless explicitly supplied by source evidence.
+    """
+    legs = record.get("roundTripLegs") or []
+    out, seen = [], set()
+    for index, go in enumerate(legs[:-1]):
+        back = legs[index + 1]
+        if go.get("leg") != "out" or back.get("leg") != "in":
+            continue
+        dep, arr, ret, end = (_ict(go.get("departureTime")), _ict(go.get("arrivalTime")),
+                              _ict(back.get("departureTime")), _ict(back.get("arrivalTime")))
+        if (not all((dep, arr, ret, end, go.get("flightNumber"), back.get("flightNumber"), go.get("from"), go.get("to")))
+                or not dep < arr <= ret < end or go['from'] != back.get('to') or go['to'] != back.get('from')):
+            continue
+        price = go.get('price')
+        if not isinstance(price, (int, float)) or not math.isfinite(price) or price <= 0 or go.get('currency') != 'VND':
+            continue
+        if back.get('price') not in (None, price):  # unverified price semantics: don't guess
+            continue
+        cabin = go.get('cabinClass')
+        if cabin not in ('ECONOMY', 'PREMIUM_ECONOMY', 'BUSINESS', 'FIRST') or cabin != back.get('cabinClass'):
+            cabin = None
+        day, return_day = dep.date().isoformat(), ret.date().isoformat()
+        ref = (f"trip:roundtrip:{go['from']}-{go['to']}:{go['flightNumber']}:{day}:"
+               f"{back['flightNumber']}:{return_day}:{cabin or 'unknown'}")
+        if ref in seen:
+            continue
+        seen.add(ref)
+        def leg_attrs(leg):
+            return {"flightNumber": leg['flightNumber'], "airline": leg.get('airline'),
+                    "originAirport": leg['from'], "destinationAirport": leg['to'],
+                    "departureAt": _ict_iso(leg['departureTime']), "arrivalAt": _ict_iso(leg['arrivalTime'])}
+        attrs = {**leg_attrs(go), "level": "flight", "parentProductId": route['productId'],
+                 "tripType": "roundTrip", "fixedDepartureDate": True, "cabinClass": cabin,
+                 "returnFlight": leg_attrs(back), "returnDate": return_day,
+                 "stayDays": (ret.date() - dep.date()).days, "priceBasis": "per_person",
+                 "priceValidUntil": go.get('priceValidUntil'), "priceObservedAt": record.get('crawledAt'),
+                 "originCity": route['attributes'].get('originCity'),
+                 "destinationCity": route['destination'], "url": record.get('url'),
+                 "fieldSources": {"unitPrice": "trip.com"},
+                 "descriptionLang": "vi", **airport_location(go['to'], go['from'])}
+        out.append(make_product(meta={"src": "trip_flight", "plan": record.get('plan') or {}},
+                   name=f"Khứ hồi {go['flightNumber']} / {back['flightNumber']}: {go['from']} - {go['to']} ({day} – {return_day})",
+                   taxonomy='flight', destination=route['destination'],
+                   description=f"Vé khứ hồi {go['from']} - {go['to']}, đi {day}, về {return_day}. "
+                               f"Giá tổng hai chặng cho một người lớn {_fmt_vnd(price)}; ghi nhận {record.get('crawledAt') or 'chưa rõ'}.",
+                   attributes=attrs, unitPrice=price, currency='VND', available=True,
+                   availableFrom=day, availableTo=day, sourceRef=ref, imageUrl=None))
+    return out
+
+
 def trip_route_products(r: dict, flights_per_route: int) -> list[dict]:
     from_city, to_city = r.get("fromCity"), r.get("toCity")
     if not from_city or not to_city:
@@ -1362,6 +1430,7 @@ def trip_route_products(r: dict, flights_per_route: int) -> list[dict]:
                 description=desc,
                 attributes={
                     "level": "flight",
+                    "tripType": "oneWay",
                     "parentProductId": route["productId"],
                     "flightNumber": number,
                     "airline": cheapest.get("airline"),
@@ -1395,35 +1464,136 @@ def trip_route_products(r: dict, flights_per_route: int) -> list[dict]:
                 sourceRef=f"trip:flight:{cheapest.get('from')}-{cheapest.get('to')}:{number}",
             )
         )
+    out.extend(trip_business_products(r, route))
+    searched = trip_roundtrip_search_products(r, route)
+    refs = {p["sourceRef"] for p in searched}
+    out.extend(searched)  # a verified search quote wins over the SEO card of the same itinerary and cabin
+    out.extend(p for p in trip_roundtrip_products(r, route) if p["sourceRef"] not in refs)
     return out
+
+
+def trip_roundtrip_search_products(record: dict, route: dict) -> list[dict]:
+    """Round-trip totals read from Trip's fare modal (collectors/trip_roundtrip_search), newest per itinerary+cabin.
+
+    Same sourceRef as trip_roundtrip_products so the SEO card and the search update one ticket.
+    No priceValidUntil: the search shows none, so none is invented (a stale SEO value is cleared).
+    """
+    from collectors.trip_roundtrip_search import parse_roundtrip
+    origin = (record.get("fromAirports") or [None])[0]
+    destination = (record.get("toAirports") or [None])[0]
+    if not origin or not destination:
+        return []
+    latest: dict[str, dict] = {}
+    for capture in record.get("roundTripQuotes", []):
+        for q in parse_roundtrip(capture, origin, destination):
+            go, back = q["outbound"], q["inbound"]
+            day, return_day = go["departureAt"][:10], back["departureAt"][:10]
+            ref = (f"trip:roundtrip:{origin}-{destination}:{go['flightNumber']}:{day}:"
+                   f"{back['flightNumber']}:{return_day}:{q['cabinClass']}")
+            if ref not in latest or q["observedAt"] >= latest[ref]["observedAt"]:
+                latest[ref] = {**q, "ref": ref}
+    out = []
+    for ref, q in latest.items():
+        go, back = q["outbound"], q["inbound"]
+        day, return_day = go["departureAt"][:10], back["departureAt"][:10]
+        def leg_attrs(leg, frm, to):
+            return {"flightNumber": leg["flightNumber"], "airline": leg["airline"], "originAirport": frm,
+                    "destinationAirport": to, "departureAt": leg["departureAt"], "arrivalAt": leg["arrivalAt"]}
+        cabin_name = {"ECONOMY": "Phổ thông", "PREMIUM_ECONOMY": "Phổ thông đặc biệt", "BUSINESS": "Thương gia",
+                      "FIRST": "Hạng nhất"}[q["cabinClass"]]
+        attrs = {**leg_attrs(go, origin, destination), "level": "flight", "parentProductId": route["productId"],
+                 "tripType": "roundTrip", "fixedDepartureDate": True, "cabinClass": q["cabinClass"],
+                 "returnFlight": leg_attrs(back, destination, origin), "returnDate": return_day,
+                 "stayDays": (date.fromisoformat(return_day) - date.fromisoformat(day)).days,
+                 "priceBasis": "per_person", "priceValidUntil": None, "priceObservedAt": q["observedAt"],
+                 "originCity": route["attributes"].get("originCity"), "destinationCity": route["destination"],
+                 "url": q["url"], "descriptionLang": "vi",
+                 "fieldSources": {"unitPrice": "trip.com", "cabinClass": "trip.com"},
+                 **airport_location(destination, origin)}
+        tickets = " Hành trình xuất thành nhiều vé riêng." if q["separateTickets"] else ""
+        out.append(make_product(meta={"src": "trip_flight", "plan": record.get("plan") or {}},
+                   name=f"Khứ hồi {go['flightNumber']} / {back['flightNumber']}: {origin} - {destination} "
+                        f"— {cabin_name} ({day} – {return_day})",
+                   taxonomy="flight", destination=route["destination"],
+                   description=f"Vé khứ hồi {origin} - {destination}, đi {day} ({go['airline']} {go['flightNumber']}), "
+                               f"về {return_day} ({back['airline']} {back['flightNumber']}). Hạng vé: {q['cabinLabel']}. "
+                               f"Giá tổng hai chặng cho một người lớn {_fmt_vnd(q['price'])}; hình thức thanh toán tại "
+                               f"nguồn: {q.get('payment') or 'không ghi rõ'}.{tickets} Ghi nhận {q['observedAt']}; "
+                               f"giá có thể thay đổi tại nguồn.",
+                   attributes=attrs, unitPrice=q["price"], currency="VND", available=True,
+                   availableFrom=day, availableTo=day, sourceRef=ref, imageUrl=None))
+    return out
+
+
+def trip_business_products(record: dict, route: dict) -> list[dict]:
+    from collectors.trip_business import parse_quote
+    products = []
+    for raw in record.get('businessQuotes', []):
+        q = parse_quote(raw)
+        if not q:
+            continue
+        origin = (record.get('fromAirports') or [None])[0]
+        destination = (record.get('toAirports') or [None])[0]
+        if origin != q['originAirport'] or destination != q['destinationAirport']:
+            continue
+        day = q['departureAt'][:10]
+        number = q['flightNumber']
+        ref = f"trip:flight:{origin.lower()}-{destination.lower()}:{number}:{day}:BUSINESS"
+        attrs = {k: v for k, v in route['attributes'].items() if k in (
+            'originCity', 'destinationCity', 'originDestination', 'latitude', 'longitude',
+            'originLatitude', 'originLongitude', 'locationSource', 'locationPrecision', 'destinationAirportName')}
+        attrs.update(level='flight', tripType='oneWay', parentProductId=route['productId'],
+                     airline=q['airline'], airlineCode=number[:2], flightNumber=number,
+                     originAirport=origin, destinationAirport=destination,
+                     departureAt=q['departureAt'], arrivalAt=q['arrivalAt'],
+                     departureTimeLocal=q['departureAt'][11:16], arrivalTimeLocal=q['arrivalAt'][11:16],
+                     durationMinutes=q['durationMinutes'], nonstop=True, cabinClass='BUSINESS',
+                     fixedDepartureDate=True, datesSeen=[day], priceObservedAt=q['observedAt'], url=q['url'],
+                     descriptionSource='derived: dữ liệu chuyến bay trip.com', descriptionLang='vi',
+                     fieldSources={'unitPrice': 'trip.com', 'cabinClass': 'trip.com',
+                                  'departureAt': 'trip.com', 'arrivalAt': 'trip.com'})
+        products.append(make_product(
+            name=f"{q['airline']} {number}: {origin} - {destination} — Thương gia ({day})",
+            taxonomy='flight', destination=route['destination'],
+            description=f"{q['flight']}. Hạng vé: {q['cabin']}. Giá tham khảo một chiều cho 1 người lớn: "
+                        f"{q['price']} VND; hình thức thanh toán tại nguồn: {q.get('payment') or 'không ghi rõ'}. "
+                        f"Ghi nhận {q['observedAt']}; giá có thể thay đổi tại nguồn.",
+            attributes=attrs, unitPrice=q['price'], currency='VND', available=True,
+            availableFrom=day, availableTo=day, imageUrl=None, sourceRef=ref))
+    return products
 
 
 # ---------------------------------------------------------------------- gộp khách sạn
 
 
 def merge_booking_flight_products(products: list[dict], records: list[dict], now=None) -> list[dict]:
-    """Booking dated observations are primary; preserve existing Trip IDs on exact service matches.
+    """Create dated cabin variants while preserving legacy flight IDs and matching route IDs.
 
-    This does not compare Trip route/monthly prices with Booking offers. Full quotes
-    stay in booking_flight_offers.jsonl; Product is a representative display view.
+    Full source observations stay in booking_flight_offers.jsonl. Party totals are
+    never divided into per-person prices.
     """
     from collectors.booking_flights import AIRPORT_CITIES, digest
 
     now = now or datetime.now(timezone.utc)
-    route_existing, flight_existing = {}, {}
+    route_existing = {}
     for p in products:
         if p["taxonomy"] != "flight":
             continue
         a = p["attributes"]
         if a.get("level") == "route" and len(a.get("originAirports", [])) == len(a.get("destinationAirports", [])) == 1:
             route_existing[(a["originAirports"][0], a["destinationAirports"][0])] = p
-        if a.get("level") == "flight" and a.get("flightNumber"):
-            flight_existing[(a.get("originAirport"), a.get("destinationAirport"), a["flightNumber"])] = p
 
     grouped = defaultdict(list)
     for record in latest_by_key(records):
         for offer in record.get("offers", []):
-            grouped[offer["serviceKey"]].append(offer)
+            context = offer.get("context") or {}
+            if context.get("adults") != 1 or context.get("children") or context.get("tripType") != "ONEWAY":
+                continue  # party totals cannot become per-person prices by division
+            if context.get("cabinClass") not in ("ECONOMY", "PREMIUM_ECONOMY", "BUSINESS", "FIRST"):
+                continue
+            identity = digest([offer["serviceKey"], offer["departureAt"], context["cabinClass"],
+                               offer["segments"], offer.get("includedBaggage")])
+            grouped[identity].append(offer)
     by_route = defaultdict(list)
     replacements = {}
     for service, offers in grouped.items():
@@ -1448,9 +1618,7 @@ def merge_booking_flight_products(products: list[dict], records: list[dict], now
         old_route = route_existing.get(route_key)
         route_ref = old_route["sourceRef"] if old_route else f"booking:route:{origin}-{destination}"
         legs = chosen["segments"]
-        old = flight_existing.get((origin, destination, legs[0]["flightNumber"])) if len(legs) == 1 else None
-        own_ref = f"booking:flight:{service}"
-        ref = old["sourceRef"] if old else own_ref
+        ref = f"booking:fare:{service}"  # never overwrite a legacy undated service
         numbers = ", ".join(l["flightNumber"] for l in legs)
         from_city, to_city = AIRPORT_CITIES[origin], AIRPORT_CITIES[destination]
         desc = (f"Hành trình một chiều {from_city} ({origin}) đến {to_city} ({destination}), "
@@ -1464,18 +1632,19 @@ def merge_booking_flight_products(products: list[dict], records: list[dict], now
                  "departureAt": chosen["departureAt"], "arrivalAt": chosen["arrivalAt"],
                  "datesSeen": sorted({o["departureAt"][:10] for o in offers}),
                  "nonstop": chosen["nonstop"], "bookable": True,
-                 "priceContext": c, "priceUnit": "party_itinerary", "priceKind": "quote",
+                 "priceContext": c, "priceUnit": "per_person", "priceBasis": "per_person", "priceKind": "quote",
+                 "tripType": "oneWay", "cabinClass": c["cabinClass"], "fixedDepartureDate": True,
+                 "priceValidUntil": (datetime.fromisoformat(chosen["observedAt"].replace("Z", "+00:00")) + timedelta(hours=24)).date().isoformat(),
                  "selectedOfferId": chosen["offerId"], "offerIds": [o["offerId"] for o in offers],
                  "priceObservedAt": chosen["observedAt"], "availabilityStatus": "available" if fresh(chosen) else "stale",
                  "url": chosen["bookingUrl"], "bookingUrl": chosen["bookingUrl"],
                  "fieldSources": {k: "booking.com" for k in ("description", "unitPrice", "available", "bookingUrl")},
                  "descriptionSource": "derived: lịch bay thực tế Booking.com", "descriptionLang": "vi",
-                 "sameAs": [own_ref] if old else None,
                  **airport_location(destination, origin)}
         p = make_product(meta={"src": "booking_flight", "fromDestination": from_city},
                          name=f"{numbers}: {from_city} - {to_city}", taxonomy="flight", destination=to_city,
                          description=desc, attributes=attrs, unitPrice=chosen["totalPrice"], currency=chosen["currency"],
-                         available=fresh(chosen), availableFrom=None, availableTo=None, imageUrl=None, sourceRef=ref)
+                         available=fresh(chosen), availableFrom=chosen["departureAt"][:10], availableTo=chosen["departureAt"][:10], imageUrl=None, sourceRef=ref)
         replacements[p["productId"]] = p
         by_route[route_key].append(p)
     for (origin, destination), flights in by_route.items():
@@ -1484,7 +1653,7 @@ def merge_booking_flight_products(products: list[dict], records: list[dict], now
         best = min(flights, key=lambda p: (not p["available"], p["attributes"]["priceContext"]["adults"] != 1,
                                          p["attributes"]["priceContext"]["cabinClass"] != "ECONOMY", p["unitPrice"]))
         attrs = copy.deepcopy(best["attributes"])
-        for key in ("parentProductId", "flightNumber", "flightNumbers", "segments", "departureAt", "arrivalAt", "nonstop", "sameAs"):
+        for key in ("parentProductId", "flightNumber", "flightNumbers", "segments", "departureAt", "arrivalAt", "nonstop", "sameAs", "tripType", "cabinClass", "fixedDepartureDate", "priceValidUntil"):
             attrs.pop(key, None)
         attrs.update(level="route", bookable=False, priceKind="from", originAirports=[origin],
                      destinationAirports=[destination], flightCount=len(flights))
@@ -2550,10 +2719,236 @@ def _median(xs: list[int]) -> int:
     return sorted(xs)[len(xs) // 2] if xs else 0
 
 
+# ---------------------------------------------------------------------- ảnh chụp từng bước (monitor)
+
+STAGES = (
+    ("mapped", "Ánh xạ từng nguồn → dòng 13 trường", "mỗi bản ghi interim thành khách sạn + hạng phòng, vé, điểm tham quan, "
+     "tuyến bay + chuyến, combo; trước khi sửa điểm đến/toạ độ tay và trước khi gộp trùng"),
+    ("merged", "Gộp trùng giữa các nguồn", "khách sạn cùng nơi gộp thành một (vinpearl thắng tên/mô tả, OTA thắng giá), "
+     "điểm tham quan trip.com trùng vé Vinpearl gộp vào vé, thêm vé máy bay và combo"),
+    ("filtered", "Lọc", "bỏ dòng đã soát tay, không phải điểm du lịch, không bán được, ngoài kế hoạch, trùng hoặc thiếu tên"),
+    ("enriched", "Làm giàu", "chuẩn hoá thuộc tính và tỉnh, dựng mô tả tiếng Việt, gộp biến thể giá thành viên Vinpearl"),
+    ("final", "Kiểm vị trí và giá → products.jsonl", "xoá dòng cảnh báo vị trí / thiếu toạ độ / giá phòng bất thường / "
+     "dòng con mồ côi (theo cờ --keep-* của lượt)"),
+)
+
+
+class StepClock:
+    """Thời gian, số dòng vào/ra và RAM đỉnh của từng bước normalize → `<stage-dir>/steps.json` + log `normalise.step.*`.
+
+    Mỗi bước mở bằng `begin()`; bước mới tự đóng bước trước. File được ghi lại mỗi lần đổi bước: normalize chết giữa
+    chừng thì bước cuối còn "running" chính là bước lỗi. Không có `--stage-dir` thì chỉ log."""
+
+    def __init__(self, directory: Path | None):
+        self.path = Path(directory) / "steps.json" if directory else None
+        self.steps: list[dict] = []
+        self._t0 = 0.0
+
+    def begin(self, name: str, rows_in: int | None = None, done: int | None = None) -> None:
+        """Mở bước `name`; `done` = số dòng ra của bước trước (bước trước tự đóng)."""
+        self.end(done)
+        self._t0 = time.monotonic()
+        self.steps.append({"name": name, "status": "running", "rowsIn": rows_in, "rowsOut": None, "seconds": None,
+                           "peakRssMb": None, "startedAt": datetime.now(timezone.utc).isoformat(timespec="seconds")})
+        log.info("normalise.step.start name=%s in=%s", name, rows_in)
+        self._save()
+
+    def end(self, rows_out: int | None = None) -> None:
+        if not self.steps or self.steps[-1]["status"] != "running":
+            return
+        step = self.steps[-1]
+        # ru_maxrss: KB trên Linux; là RAM đỉnh của cả tiến trình tính tới hết bước này
+        step.update(status="ok", rowsOut=rows_out, seconds=round(time.monotonic() - self._t0, 3),
+                    peakRssMb=round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024))
+        log.info("normalise.step.done name=%s seconds=%s in=%s out=%s", step["name"], step["seconds"],
+                 step["rowsIn"], rows_out)
+        self._save()
+
+    def fail(self, exc: BaseException) -> None:
+        """Đánh dấu bước đang chạy là lỗi, kèm traceback rút gọn (40 dòng cuối), rồi log để job.log có tên bước."""
+        if not self.steps or self.steps[-1]["status"] != "running":
+            return
+        step = self.steps[-1]
+        step.update(status="error", seconds=round(time.monotonic() - self._t0, 3),
+                    error=f"{type(exc).__name__}: {exc}"[:1000],
+                    traceback="".join(traceback.format_exception(type(exc), exc, exc.__traceback__))[-6000:])
+        log.error("normalise.step.failed name=%s error=%s", step["name"], step["error"], exc_info=exc)
+        self._save()
+
+    def _save(self) -> None:
+        if self.path:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self.path.with_suffix(".tmp")
+            tmp.write_text(json.dumps({"steps": self.steps}, ensure_ascii=False, indent=1), encoding="utf-8")
+            tmp.replace(self.path)
+
+
+class RecordErrorRateExceeded(RuntimeError):
+    """Quá nhiều bản ghi của một nguồn lỗi khi ánh xạ: nhiều khả năng lỗi code hoặc nguồn đổi định dạng, không phải lỗi lẻ."""
+
+
+class RecordGuard:
+    """Ánh xạ từng bản ghi interim: bản ghi lỗi được ghi vào `<stage-dir>/errors.jsonl` (bước, nguồn, khoá bản ghi, lỗi,
+    traceback rút gọn) và bỏ qua, thay vì làm sập cả normalize.
+
+    Ngưỡng an toàn: một nguồn có từ `MIN_ERRORS` bản ghi lỗi trở lên và tỉ lệ lỗi vượt `max_percent`, hoặc mọi bản ghi của
+    nguồn đều lỗi, thì dừng với `RecordErrorRateExceeded`. Lỗi code làm hỏng mọi bản ghi không được lặng lẽ bỏ hết dữ liệu
+    (như Vinpearl ra 0 tour ngày 25/09/2026)."""
+
+    MIN_ERRORS = 3
+
+    def __init__(self, directory: Path | None, max_percent: float):
+        self.path = Path(directory) / "errors.jsonl" if directory else None
+        self.max_percent = max_percent
+        self.errors: list[dict] = []
+        self.total: Counter = Counter()
+        self.failed: Counter = Counter()
+
+    def call(self, source: str, record: dict, fn, *args, default=None):
+        self.total[source] += 1
+        try:
+            return fn(record, *args)
+        except Exception as exc:
+            self.failed[source] += 1
+            entry = {"step": "ánh xạ nguồn", "source": source, "function": getattr(fn, "__name__", str(fn)),
+                     "input": StageDump._input(record), "error": f"{type(exc).__name__}: {exc}"[:500],
+                     "traceback": "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))[-3000:]}
+            self.errors.append(entry)
+            log.warning("normalise.record.failed source=%s input=%s error=%s", source, entry["input"], entry["error"])
+            return default
+
+    def summary(self) -> dict:
+        return {source: {"records": self.total[source], "errors": self.failed[source]} for source in self.total}
+
+    def verdict(self, source: str) -> str | None:
+        """Thông báo lỗi nếu nguồn vượt ngưỡng, None nếu đạt."""
+        failed, total = self.failed[source], self.total[source]
+        if failed and (failed == total or (failed >= self.MIN_ERRORS and failed * 100 > self.max_percent * total)):
+            first = next(e["error"] for e in self.errors if e["source"] == source)
+            return (f"{source}: {failed}/{total} bản ghi lỗi khi ánh xạ (> {self.max_percent:g}%), xem errors.jsonl; "
+                    f"lỗi đầu: {first}")
+        return None
+
+    def check(self) -> None:
+        self.write()
+        for source in self.failed:
+            message = self.verdict(source)
+            if message:
+                raise RecordErrorRateExceeded(message)
+
+    def write(self) -> None:
+        self.write_all(self.errors)
+
+    def write_all(self, errors: list[dict]) -> None:
+        if self.path:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.path.write_text("".join(json.dumps(e, ensure_ascii=False) + "\n" for e in errors), encoding="utf-8")
+
+
+class StageDump:
+    """`--stage-dir`: ghi dòng sản phẩm sau từng bước (`<bước>.jsonl.gz`), dòng bị loại kèm lý do (`dropped.jsonl.gz`), cặp
+    gộp trùng (`merges.jsonl`) và tóm tắt (`stages.json`) để monitor xem normalize làm gì với từng dòng. Không đổi kết quả.
+
+    Ghi ngay lúc chụp vì các bước sau sửa dict tại chỗ. Không có `--stage-dir` thì mọi hàm là no-op."""
+
+    def __init__(self, directory: Path | None):
+        self.dir = Path(directory) if directory else None
+        self.counts: Counter = Counter()
+        self.by_source: dict[str, Counter] = defaultdict(Counter)
+        self.dropped: Counter = Counter()
+        self.handles: dict[str, object] = {}
+        if self.dir:
+            self.dir.mkdir(parents=True, exist_ok=True)
+            for old in self.dir.glob("*"):
+                if old.is_file():
+                    old.unlink()
+
+    def _handle(self, name: str):
+        if name not in self.handles:
+            # mức nén 1: ảnh chụp chỉ để xem, mức mặc định 9 tốn ~1/3 thời gian normalize (đo 28/09/2026)
+            self.handles[name] = gzip.open(self.dir / f"{name}.jsonl.gz", "wt", encoding="utf-8", compresslevel=1)
+        return self.handles[name]
+
+    @staticmethod
+    def _input(record: dict | None) -> dict | None:
+        if not record:
+            return None
+        ref = {k: record.get(k) for k in ("key", "hotelId", "poiId", "tourCode", "slug", "url", "recordType")
+               if record.get(k) not in (None, "")}
+        return ref or None
+
+    @staticmethod
+    def source_of(row: dict) -> str:
+        """Nhãn nguồn dùng chung cho mọi bước: `_meta.src` do bộ ánh xạ đặt (vd. trip_attraction, booking, vinpearl)."""
+        return (row.get("_meta") or {}).get("src") or (row.get("sourceRef") or "-").split(":")[0]
+
+    def add(self, stage: str, rows, interim: str, record: dict | None = None, input: dict | None = None) -> None:
+        """Dòng vừa ánh xạ từ một bản ghi của `interim/<interim>.jsonl` (`input`: khoá bản ghi đã rút gọn, nếu có sẵn)."""
+        if not self.dir:
+            return
+        rows = [r for r in (rows or []) if r]
+        handle = self._handle(stage)
+        ref = input if input is not None else self._input(record)
+        for row in rows:
+            source = self.source_of(row)
+            handle.write(json.dumps({"source": source, "interim": interim, "input": ref, "product": row},
+                                    ensure_ascii=False, default=str) + "\n")
+            self.by_source[stage][source] += 1
+        self.counts[stage] += len(rows)
+
+    def snapshot(self, stage: str, rows: list[dict]) -> None:
+        if not self.dir:
+            return
+        handle = self._handle(stage)
+        for row in rows:
+            source = self.source_of(row)
+            handle.write(json.dumps({"source": source, "product": row}, ensure_ascii=False, default=str) + "\n")
+            self.by_source[stage][source] += 1
+        self.counts[stage] += len(rows)
+
+    def drop(self, step: str, removed: list[tuple[dict, str]]) -> None:
+        if not self.dir or not removed:
+            return
+        handle = self._handle("dropped")
+        for row, reason in removed:
+            handle.write(json.dumps({"step": step, "reason": reason, "product": row}, ensure_ascii=False, default=str) + "\n")
+            self.dropped[step] += 1
+
+    def diff(self, step: str, before: list[dict], after: list[dict], reason: str) -> None:
+        """Dòng có trong `before` mà không còn trong `after` (so theo đối tượng: các bước lọc không sao chép dict)."""
+        if not self.dir:
+            return
+        kept = {id(p) for p in after}
+        self.drop(step, [(p, reason) for p in before if id(p) not in kept])
+
+    def close(self, merges: list[list], final: list[dict]) -> None:
+        """`final`: dòng cuối (products.jsonl đã ghi riêng) — chỉ đếm theo nguồn, không ghi lại."""
+        if not self.dir:
+            return
+        for row in final:
+            self.by_source["final"][self.source_of(row)] += 1
+        final_rows = len(final)
+        for handle in self.handles.values():
+            handle.close()
+        with open(self.dir / "merges.jsonl", "w", encoding="utf-8") as f:
+            keys = ("kind", "score", "distanceM", "destination", "keptName", "keptRef", "mergedName", "mergedRef")
+            for row in merges:
+                f.write(json.dumps(dict(zip(keys, row)), ensure_ascii=False) + "\n")
+        stages = []
+        for stage, label, help_text in STAGES:
+            rows = final_rows if stage == "final" else self.counts.get(stage, 0)
+            stages.append({"id": stage, "label": label, "help": help_text, "rows": rows,
+                           "file": "../products.jsonl" if stage == "final" else f"{stage}.jsonl.gz",
+                           "bySource": dict(self.by_source.get(stage) or {})})
+        summary = {"stages": stages, "dropped": dict(self.dropped), "merges": len(merges)}
+        (self.dir / "stages.json").write_text(json.dumps(summary, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
 # ---------------------------------------------------------------------- main
 
 
-def main(argv: list[str] | None = None) -> int:
+def build_parser() -> argparse.ArgumentParser:
+    """Tham số dòng lệnh; normalise_stream dùng lại để ánh xạ theo phần với đúng tham số của bản theo lô."""
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--data-dir", type=Path, default=default_data_dir())
     ap.add_argument("--destinations", default=None, help="điểm đến kế hoạch (mặc định cả 15 trong collectors/plan.py)")
@@ -2579,73 +2974,302 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--usd-vnd", type=float, default=26300.0, help="tỷ giá dùng khi trang không trả VND")
     ap.add_argument("--eur-vnd", type=float, default=30500.0)
     ap.add_argument("--report-json", type=Path, default=None,
-                    help="ghi số liệu từng bước (bản ghi thô → cụm gộp → dòng bị loại → dòng cuối) ra file JSON cho pipeline_demo.py; không đổi kết quả")
+                    help="ghi số liệu từng bước (bản ghi thô → cụm gộp → dòng bị loại → dòng cuối) ra file JSON; không đổi kết quả")
+    ap.add_argument("--stage-dir", type=Path, default=None,
+                    help="ghi dòng sản phẩm sau từng bước + dòng bị loại kèm lý do (cho monitor); không đổi kết quả")
+    ap.add_argument("--max-error-percent", type=float, default=5.0,
+                    help="tỉ lệ bản ghi lỗi khi ánh xạ (%%) của một nguồn mà vượt thì dừng normalize (tối thiểu 3 bản ghi lỗi, "
+                         "hoặc mọi bản ghi của nguồn đều lỗi); bản ghi lỗi lẻ tẻ chỉ bị bỏ và ghi vào errors.jsonl")
+    ap.add_argument("--only-source", default=None, metavar="NGUỒN",
+                    help="chỉ ánh xạ interim/<NGUỒN>.jsonl thành checkpoint (normalised/<NGUỒN>.jsonl) rồi dừng; "
+                         "chạy riêng/song song cho từng nguồn, bước gộp chạy sau bằng --merge-only")
+    ap.add_argument("--merge-only", action="store_true",
+                    help="bỏ bước ánh xạ; gộp từ các checkpoint đã có (chạy lại từ bước gộp mà không ánh xạ lại)")
+    ap.add_argument("--source-minimums", type=json.loads, default={},
+                    help="ngưỡng bản ghi theo nguồn từ lượt tương đương, dùng bởi fresh_catalog")
+    ap.add_argument("--allow-partial-sources", action="store_true",
+                    help="cách ly nguồn lỗi/không có dòng, tiếp tục nguồn hợp lệ; ghi excludedSources trong report")
+    ap.add_argument("--reuse-checkpoints", action="store_true",
+                    help="chạy mặc định nhưng không ánh xạ lại nguồn đã có checkpoint còn mới (cùng file interim, cùng ngày, "
+                         "cùng tham số ánh xạ, không vượt ngưỡng lỗi) — dùng ở cuối lượt sau khi từng nguồn đã chuẩn hoá")
+    ap.add_argument("--checkpoint-dir", type=Path, default=None,
+                    help="thư mục checkpoint theo nguồn (mặc định <data-dir>/normalised)")
+    ap.add_argument("--today", type=date.fromisoformat, default=None,
+                    help="ngày coi là hôm nay (YYYY-MM-DD) để output lặp lại được khi so/test; mặc định ngày máy")
     ap.add_argument("-v", "--verbose", action="store_true")
+    return ap
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = build_parser()
     a = ap.parse_args(argv)
     if any(v is not None and v < 0 for v in (a.rooms_per_hotel, a.flights_per_route)):
         ap.error("rooms-per-hotel và flights-per-route phải >= 0 (0 giữ tất cả)")
+    clock = StepClock(a.stage_dir)
+    try:
+        return _normalise(a, clock)
+    except Exception as exc:
+        clock.fail(exc)
+        raise
 
+
+# ---------------------------------------------------------------------- ánh xạ theo nguồn + checkpoint
+
+# Thứ tự nguồn khi dựng lại danh sách khách sạn/vé/điểm tham quan ở bước gộp: giữ đúng thứ tự xử lý cũ để output không đổi.
+HOTEL_SOURCES = ("vinpearl", "booking_hotels", "agoda_api", "agoda_hotels", "trip_hotels")
+CHECKPOINT_DIR = "normalised"
+MAPPER_VERSION = 4
+
+
+def read_source(path: Path) -> list[dict]:
+    """Bản ghi interim của một nguồn: bản mới nhất theo khoá (vé máy bay: lịch sử giá theo tuyến)."""
+    return dedupe_source(path.stem, list(read_jsonl(path)))
+
+
+def dedupe_source(stem: str, records: list[dict]) -> list[dict]:
+    """Bỏ trùng theo khoá trên MỌI bản ghi đã đọc của nguồn (dùng chung cho bản theo lô và normalise_stream)."""
+    return trip_route_history(records) if stem == "trip_flights" else latest_by_key(records)
+
+
+def map_source(stem: str, records: list[dict], *, today: date, rates: dict, budget: Budget,
+               guard: "RecordGuard") -> list[dict]:
+    """Ánh xạ bản ghi interim của MỘT nguồn → mục checkpoint. Không phụ thuộc nguồn khác nên chạy riêng/song song được.
+
+    Mục: `hotel` (prop + rooms, rooms None với agoda trình duyệt), `ticket`, `poi`, `attraction`, `routes`, `combo`,
+    `bundle`, `record` (bản ghi gốc dùng ở bước gộp: chuyến bay booking). Bản ghi mapper trả None thì bỏ, như trước."""
+    out: list[dict] = []
+
+    def add(kind: str, record: dict, **fields) -> None:
+        out.append({"kind": kind, "key": record.get("key"), "input": StageDump._input(record), **fields})
+
+    for r in records:
+        if stem == "vinpearl":
+            if r.get("recordType") == "vinpearl_hotel":
+                prop, rooms = guard.call(stem, r, vinpearl_hotel, default=(None, []))
+                if prop:
+                    add("hotel", r, prop=prop, rooms=rooms)
+            elif r.get("recordType") == "vinpearl_tour":
+                t = guard.call(stem, r, vinpearl_tour_product, today)
+                if t:
+                    add("ticket", r, row=t)
+        elif stem == "booking_hotels":
+            prop, rooms = guard.call(stem, r, booking_hotel, rates, default=(None, []))
+            if prop:
+                add("hotel", r, prop=prop, rooms=rooms)
+        elif stem == "agoda_api":
+            prop, rooms = guard.call(stem, r, agoda_api_hotel, rates, today, default=(None, []))
+            if prop:
+                add("hotel", r, prop=prop, rooms=rooms)
+        elif stem == "agoda_hotels":
+            prop = guard.call(stem, r, agoda_hotel, rates)
+            if prop:
+                add("hotel", r, prop=prop, rooms=None)
+        elif stem == "trip_hotels":
+            prop, rooms = guard.call(stem, r, trip_hotel, rates, default=(None, []))
+            if prop:
+                add("hotel", r, prop=prop, rooms=rooms)
+        elif stem == "trip_attractions":
+            poi = guard.call(stem, r, trip_attraction_product)
+            if poi:
+                add("poi", r, row=poi)
+        elif stem == "booking_attractions":
+            p = guard.call(stem, r, booking_attraction_product, rates)
+            if p:
+                add("attraction", r, row=p)
+        elif stem == "trip_flights":
+            routes = guard.call(stem, r, trip_route_products, budget.flights_per_route, default=[])
+            add("routes", r, rows=routes)
+        elif stem == "trip_combos":
+            c = guard.call(stem, r, trip_combo_product)
+            if c:
+                add("combo", r, row=c)
+        elif stem == "vinpearl_bundles":
+            c = guard.call(stem, r, vinpearl_bundle_product, today)
+            if c:
+                add("bundle", r, row=c)
+        elif stem == "booking_flights":
+            add("record", r, record=r)
+        # nguồn lạ (vd. booking_flight_offers ghi ra từ lần chạy trước): không ánh xạ, như trước
+    return out
+
+
+def entry_rows(entry: dict) -> list[dict]:
+    """Dòng sản phẩm của một mục checkpoint (cho ảnh chụp bước `mapped`)."""
+    if entry["kind"] == "hotel":
+        return [entry["prop"], *(entry["rooms"] or [])]
+    return list(entry.get("rows") or ([entry["row"]] if entry.get("row") else []))
+
+
+def write_checkpoint(directory: Path, stem: str, entries: list[dict], meta: dict, errors: list[dict]) -> None:
+    """`<dir>/<nguồn>.jsonl` (mục đã ánh xạ) + `.meta.json` (số bản ghi, lỗi, thời gian) + `.errors.jsonl`. Ghi tạm rồi đổi tên,
+    nên bước gộp không đọc phải file dở."""
+    directory.mkdir(parents=True, exist_ok=True)
+    for name, text in ((f"{stem}.jsonl", "".join(json.dumps(e, ensure_ascii=False) + "\n" for e in entries)),
+                       (f"{stem}.errors.jsonl", "".join(json.dumps(e, ensure_ascii=False) + "\n" for e in errors)),
+                       (f"{stem}.meta.json", json.dumps(meta, ensure_ascii=False, indent=1))):
+        tmp = directory / f".{name}.tmp"
+        tmp.write_text(text, encoding="utf-8")
+        tmp.replace(directory / name)
+
+
+def checkpoint_fingerprint(interim: Path, today: date, rates: dict, budget: Budget) -> dict:
+    """Những gì quyết định kết quả ánh xạ của một nguồn: file interim (mtime, cỡ) + ngày + tỷ giá + số chuyến mỗi tuyến."""
+    st = interim.stat()
+    return {"mapperVersion": MAPPER_VERSION, "interimMtimeNs": st.st_mtime_ns, "interimBytes": st.st_size, "today": today.isoformat(),
+            "rates": rates, "flightsPerRoute": budget.flights_per_route}
+
+
+def checkpoint_is_fresh(directory: Path, stem: str, fingerprint: dict) -> bool:
+    meta = directory / f"{stem}.meta.json"
+    if not meta.is_file() or not (directory / f"{stem}.jsonl").is_file():
+        return False
+    try:
+        data = json.loads(meta.read_text(encoding="utf-8"))
+    except ValueError:
+        return False
+    return data.get("status") == "ok" and all(data.get(k) == v for k, v in fingerprint.items())
+
+
+def load_checkpoints(directory: Path) -> tuple[dict[str, list[dict]], dict[str, dict], list[dict]]:
+    """(mục theo nguồn, meta theo nguồn, lỗi bản ghi) từ thư mục checkpoint."""
+    entries, metas, errors = {}, {}, []
+    for meta_path in sorted(directory.glob("*.meta.json")):
+        stem = meta_path.name[:-len(".meta.json")]
+        metas[stem] = json.loads(meta_path.read_text(encoding="utf-8"))
+        # tách theo "\n", không dùng splitlines(): mô tả có U+2028/U+0085 (JSON giữ nguyên khi ensure_ascii=False)
+        entries[stem] = [json.loads(line) for line in (directory / f"{stem}.jsonl").read_text(encoding="utf-8").split("\n")
+                         if line.strip()]
+        err = directory / f"{stem}.errors.jsonl"
+        if err.is_file():
+            errors += [json.loads(line) for line in err.read_text(encoding="utf-8").split("\n") if line.strip()]
+    return entries, metas, errors
+
+
+def _normalise(a: argparse.Namespace, clock: StepClock) -> int:
     paths = Paths(a.data_dir).ensure()
     setup_logging(paths, a.verbose)
     rates = {"USD": a.usd_vnd, "EUR": a.eur_vnd}
-    today = date.today()
+    today = a.today or date.today()
+    budget = budget_with(a.per_destination, ota_rooms_per_hotel=a.rooms_per_hotel, flights_per_route=a.flights_per_route)
+    checkpoints = a.checkpoint_dir or paths.data / CHECKPOINT_DIR
+
+    if a.only_source or not a.merge_only:
+        stems = [a.only_source] if a.only_source else [f.stem for f in sorted(paths.interim.glob("*.jsonl"))]
+        clock.begin("đọc interim")
+        read: dict[str, list[dict]] = {}
+        for stem in stems:
+            path = paths.interim / f"{stem}.jsonl"
+            if not path.is_file():
+                continue
+            try:
+                read[stem] = read_source(path)
+            except Exception as exc:
+                if not a.allow_partial_sources:
+                    raise
+                write_checkpoint(checkpoints, stem, [],
+                                 {"source": stem, "status": "failed", "records": 0, "rows": 0,
+                                  "error": f"{type(exc).__name__}: {exc}"}, [])
+                continue
+            log.info("Đọc %s: %d bản ghi", path.name, len(read[stem]))
+        if not read and not a.allow_partial_sources:
+            log.error("Không có dữ liệu trong %s. Chạy crawl.py trước.", paths.interim)
+            clock.end(0)
+            return 1
+        records_read = sum(len(v) for v in read.values())
+        clock.begin("ánh xạ nguồn", records_read, done=records_read)
+        guard = RecordGuard(a.stage_dir, a.max_error_percent)
+        mapped = 0
+        for stem, records in read.items():
+            fingerprint = checkpoint_fingerprint(paths.interim / f"{stem}.jsonl", today, rates, budget)
+            if a.reuse_checkpoints and checkpoint_is_fresh(checkpoints, stem, fingerprint):
+                log.info("normalise.source.reuse name=%s (checkpoint còn mới)", stem)
+                continue
+            started = time.monotonic()
+            try:
+                entries = map_source(stem, records, today=today, rates=rates, budget=budget, guard=guard)
+            except Exception as exc:
+                if not a.allow_partial_sources:
+                    raise
+                write_checkpoint(checkpoints, stem, [],
+                                 {"source": stem, "status": "failed", "records": len(records), "rows": 0,
+                                  "error": f"{type(exc).__name__}: {exc}", **fingerprint}, [])
+                continue
+            rows = sum(len(entry_rows(e)) for e in entries)
+            mapped += rows
+            verdict = guard.verdict(stem)
+            write_checkpoint(checkpoints, stem, entries,
+                             {"source": stem, "status": "failed" if verdict else "ok", "error": verdict,
+                              "records": len(records), "entries": len(entries), "rows": rows,
+                              "errors": guard.failed[stem], "seconds": round(time.monotonic() - started, 3),
+                              **fingerprint},
+                             [e for e in guard.errors if e["source"] == stem])
+            log.info("normalise.source.done name=%s records=%d rows=%d errors=%d", stem, len(records), rows,
+                     guard.failed[stem])
+        if not a.allow_partial_sources:
+            guard.check()  # vượt ngưỡng bản ghi lỗi của một nguồn thì dừng ở đây (sau khi đã ghi errors + meta "failed")
+        if a.only_source:
+            clock.end(mapped)
+            return 0
+        clock.begin("đọc checkpoint", mapped, done=mapped)
+    else:
+        clock.begin("đọc checkpoint")
+    entries, metas, errors = load_checkpoints(checkpoints)
+    for stem, minimum in a.source_minimums.items():
+        if stem in metas and metas[stem].get('records', 0) < minimum:
+            metas[stem].update(status='failed', error=f"Bản ghi giảm dưới ngưỡng {minimum}; giữ nguồn này để kiểm tra")
+    excluded = {stem: m.get("error") or "Nguồn không có sản phẩm hợp lệ"
+                for stem, m in metas.items() if m.get("status") == "failed" or not entries.get(stem)}
+    if a.allow_partial_sources:
+        for stem in excluded:
+            entries.pop(stem, None)
+    elif any(m.get("status") == "failed" for m in metas.values()):
+        raise ValueError("Checkpoint nguồn lỗi; cần chuẩn hoá lại hoặc --allow-partial-sources")
+    a.excluded_sources = excluded if a.allow_partial_sources else {}
+    if not entries:
+        log.error("Không có checkpoint trong %s. Chạy normalise.py --only-source trước.", checkpoints)
+        clock.end(0)
+        return 1
+    return merge_catalog(a, clock, paths, entries, metas, errors, today, budget)
+
+
+def merge_catalog(a: argparse.Namespace, clock: StepClock, paths: Paths, entries: dict[str, list[dict]],
+                  metas: dict[str, dict], errors: list[dict], today: date, budget: Budget) -> int:
+    """Phần sau ánh xạ, cần mọi nguồn: gộp trùng khách sạn/vé/chuyến bay, lọc, làm giàu, kiểm vị trí/giá, ghi output.
+    Đọc từ checkpoint của từng nguồn (map_source); thứ tự dựng lại danh sách giống hệt luồng một khối trước đây."""
     destinations = select_destinations(a.destinations)
     plan_names = {d.name for d in destinations}
-    budget = budget_with(a.per_destination, ota_rooms_per_hotel=a.rooms_per_hotel, flights_per_route=a.flights_per_route)
-
-    raw: dict[str, list[dict]] = defaultdict(list)
-    for f in sorted(paths.interim.glob("*.jsonl")):
-        records = list(read_jsonl(f))
-        recs = trip_route_history(records) if f.stem == "trip_flights" else latest_by_key(records)
-        raw[f.stem].extend(recs)
-        log.info("Đọc %s: %d bản ghi", f.name, len(recs))
-    if not raw:
-        log.error("Không có dữ liệu trong %s. Chạy crawl.py trước.", paths.interim)
-        return 1
-
     dropped: Counter = Counter()
     report_rows: list[list] = []
-    stage_report: dict = {"recordsRead": {k: len(v) for k, v in raw.items()}}  # chỉ để --report-json
+    stage_report: dict = {"excludedSources": getattr(a, "excluded_sources", {}),
+                          "recordsRead": {k: m["records"] for k, m in metas.items()}}  # chỉ để --report-json
+    stages = StageDump(a.stage_dir)
+    record_errors = {k: {"records": m["records"], "errors": m.get("errors", 0)} for k, m in metas.items()}
+    if a.stage_dir:  # lỗi bản ghi của mọi nguồn về một file cho monitor
+        RecordGuard(a.stage_dir, a.max_error_percent).write_all(errors)
 
-    # khách sạn: 3 nguồn → cụm → 1 sản phẩm + hạng phòng
+    # dựng lại danh sách theo đúng thứ tự xử lý cũ
+    agoda_api_keys = {e["key"] for e in entries.get("agoda_api", [])}
     props: list[dict] = []
     rooms_of: dict[str, list[dict]] = {}
     tickets: list[dict] = []
-    for r in raw.get("vinpearl", []):
-        if r.get("recordType") == "vinpearl_hotel":
-            prop, rooms = vinpearl_hotel(r)
-            if prop:
-                props.append(prop)
-                rooms_of[prop["productId"]] = rooms
-        elif r.get("recordType") == "vinpearl_tour":
-            t = vinpearl_tour_product(r, today)
-            if t:
-                tickets.append(t)
-    for r in raw.get("booking_hotels", []):
-        prop, rooms = booking_hotel(r, rates)
-        if prop:
-            props.append(prop)
-            rooms_of[prop["productId"]] = rooms
-    # agoda qua API (collectors/agoda_api.py) có hạng phòng + giá theo ngày; bản cũ cùng key (cào bằng trình duyệt) thì bỏ
-    agoda_api_keys = {r.get("key") for r in raw.get("agoda_api", [])}
-    for r in raw.get("agoda_api", []):
-        prop, rooms = agoda_api_hotel(r, rates, today)
-        if prop:
-            props.append(prop)
-            rooms_of[prop["productId"]] = rooms
-    for r in raw.get("agoda_hotels", []):
-        if r.get("key") in agoda_api_keys:
-            continue
-        prop = agoda_hotel(r, rates)
-        if prop:
-            props.append(prop)
-    for r in raw.get("trip_hotels", []):
-        prop, rooms = trip_hotel(r, rates)
-        if prop:
-            props.append(prop)
-            rooms_of[prop["productId"]] = rooms
-
-    pois = [p for p in (trip_attraction_product(r) for r in raw.get("trip_attractions", [])) if p]
+    for stem in HOTEL_SOURCES:
+        for e in entries.get(stem, []):
+            if e["kind"] == "ticket":
+                tickets.append(e["row"])
+                stages.add("mapped", [e["row"]], stem, input=e["input"])
+                continue
+            if stem == "agoda_hotels" and e["key"] in agoda_api_keys:
+                continue  # bản cũ cùng key (cào bằng trình duyệt) thì bỏ, agoda API có hạng phòng + giá theo ngày
+            props.append(e["prop"])
+            if e["rooms"] is not None:
+                rooms_of[e["prop"]["productId"]] = e["rooms"]
+            stages.add("mapped", entry_rows(e), stem, input=e["input"])
+    pois = [e["row"] for e in entries.get("trip_attractions", [])]
+    for stem in ("trip_attractions", "booking_attractions", "trip_flights", "trip_combos", "vinpearl_bundles"):
+        for e in entries.get(stem, []):
+            stages.add("mapped", entry_rows(e), stem, input=e["input"])
+    mapped = len(props) + sum(len(r or []) for r in rooms_of.values()) + len(tickets) + len(pois)
+    clock.begin("sửa điểm đến, toạ độ", mapped, done=mapped)
     n_destination = apply_destination_overrides(props + tickets + pois, load_destination_overrides())
     location_stats = flag_suspect_hotel_coords(props)  # trước khi sửa tay: toạ độ gốc vẫn là bằng chứng cho khách sạn kia
     if n_destination:
@@ -2654,6 +3278,7 @@ def main(argv: list[str] | None = None) -> int:
     if n_override:
         location_stats["toạ độ sửa tay (location_overrides.csv)"] = n_override
 
+    clock.begin("gộp trùng khách sạn", len(props), done=mapped)
     clusters, pairs = cluster_hotels(props, a.match_threshold)
     products: list[dict] = []
     for members in clusters:
@@ -2666,6 +3291,7 @@ def main(argv: list[str] | None = None) -> int:
     log.info("Khách sạn: %d bản ghi → %d sau khi gộp", len(props), len(clusters))
     stage_report.update(hotelRecords=len(props), hotelClusters=len(clusters))
 
+    clock.begin("vé và điểm tham quan", len(tickets) + len(pois), done=len(products))
     # vé / điểm tham quan
     venues = load_venues()
     location_stats.update(assign_venue_locations(tickets, venues))
@@ -2676,36 +3302,38 @@ def main(argv: list[str] | None = None) -> int:
         report_rows.append(["attraction", f"{score:.1f}", "", t["destination"], t["name"], t["sourceRef"], poi["name"], poi["sourceRef"]])
     products.extend(tickets)
     products.extend(pois)
-    for r in raw.get("booking_attractions", []):
-        p = booking_attraction_product(r, rates)
-        if p:
-            products.append(p)
+    for e in entries.get("booking_attractions", []):
+        products.append(e["row"])
 
+    clock.begin("vé máy bay, combo", len(products), done=len(products))
     # vé máy bay
-    for r in raw.get("trip_flights", []):
-        products.extend(trip_route_products(r, budget.flights_per_route))
-    products = merge_booking_flight_products(products, raw.get("booking_flights", []))
+    for e in entries.get("trip_flights", []):
+        products.extend(e["rows"])
+    booking_flights = [e["record"] for e in entries.get("booking_flights", [])]
+    products = merge_booking_flight_products(
+        products, booking_flights,
+        now=datetime.combine(a.today, datetime.min.time(), timezone.utc) if a.today else None)
 
     # combo bay+ở thật (trip.com/packages, nguồn mới 23/09/2026 — khác combo Vinpearl ở trên, không qua vinpearl_taxonomy())
-    for r in raw.get("trip_combos", []):
-        c = trip_combo_product(r)
-        if c:
-            products.append(c)
+    for e in entries.get("trip_combos", []):
+        products.append(e["row"])
     # combo vé máy bay khứ hồi + khách sạn từ API bundle Vinpearl (HTTP, không cần trình duyệt)
-    for r in raw.get("vinpearl_bundles", []):
-        c = vinpearl_bundle_product(r, today)
-        if c:
-            products.append(c)
-    if raw.get("booking_flights"):
+    for e in entries.get("vinpearl_bundles", []):
+        products.append(e["row"])
+    if booking_flights:
         with open(paths.data / "booking_flight_offers.jsonl", "w", encoding="utf-8") as f:
-            for r in raw["booking_flights"]:
+            for r in booking_flights:
                 for offer in r.get("offers", []):
                     f.write(json.dumps(offer, ensure_ascii=False) + "\n")
 
+    stage_report["recordErrors"] = record_errors
     stage_report["rowsBuilt"] = len(products)
+    stages.snapshot("merged", products)
+    clock.begin("lọc", len(products), done=len(products))
     excluded = load_excluded_products()
     if excluded:
         before = len(products)
+        stages.drop("excluded", [(p, excluded[p["sourceRef"]]) for p in products if p["sourceRef"] in excluded])
         products = [p for p in products if p["sourceRef"] not in excluded]
         if before - len(products):
             dropped["đã soát tay và loại (collectors/excluded_products.csv)"] += before - len(products)
@@ -2715,6 +3343,7 @@ def main(argv: list[str] | None = None) -> int:
     auto_excluded = [(p, reason) for p, reason in auto_excluded if reason]
     if auto_excluded:
         drop_refs = {p["sourceRef"] for p, _ in auto_excluded}
+        stages.drop("notTourism", [(p, f"không phải điểm du lịch: {reason}") for p, reason in auto_excluded])
         products = [p for p in products if p["sourceRef"] not in drop_refs]
         for _p, reason in auto_excluded:
             dropped[f"không phải điểm du lịch theo quy tắc: {reason}"] += 1
@@ -2726,33 +3355,43 @@ def main(argv: list[str] | None = None) -> int:
 
     stage_report["rowsAfterExclusions"] = len(products)
     if not a.keep_unsellable:
+        before_rows = products
         products, unsellable = drop_unsellable(products)
+        stages.diff("unsellable", before_rows, products, "không có giá và nguồn không cung cấp được")
         if unsellable:
             dropped["không có giá và nguồn không cung cấp được (không đặt được)"] += unsellable
 
     stage_report["rowsAfterUnsellable"] = len(products)
     if not a.no_plan:
+        before_rows = products
         products = apply_plan(products, plan_names, budget, dropped)
+        stages.diff("plan", before_rows, products, "ngoài điểm đến/ngân sách kế hoạch, hoặc thuộc sản phẩm bị loại")
 
     final: list[dict] = []
     seen: set[str] = set()
     for p in products:
         if p["productId"] in seen:
             dropped["trùng sourceRef"] += 1
+            stages.drop("validation", [(p, "trùng sourceRef")])
             continue
         if not p["name"] or p["taxonomy"] not in TAXONOMIES:
             dropped["thiếu tên / loại lạ"] += 1
+            stages.drop("validation", [(p, "thiếu tên / loại lạ")])
             continue
         if a.min_description and len(p.get("description") or "") < a.min_description:
             dropped[f"mô tả < {a.min_description} ký tự"] += 1
+            stages.drop("validation", [(p, f"mô tả < {a.min_description} ký tự")])
             continue
         if a.vietnamese_only and p["attributes"].get("descriptionLang") != "vi":
             dropped["mô tả không phải tiếng Việt"] += 1
+            stages.drop("validation", [(p, "mô tả không phải tiếng Việt")])
             continue
         seen.add(p["productId"])
         final.append(p)
 
     stage_report["rowsAfterValidation"] = len(final)
+    stages.snapshot("filtered", final)
+    clock.begin("làm giàu", len(final), done=len(final))
     tidy = tidy_attributes(final)
     if tidy:
         log.info("Chuẩn hoá thuộc tính: %s", dict(tidy))
@@ -2762,13 +3401,17 @@ def main(argv: list[str] | None = None) -> int:
         log.info("Dựng mô tả tiếng Việt từ thuộc tính cho %d sản phẩm (bản gốc giữ ở descriptionOriginal)", localised)
 
     if not a.keep_member_variants:
+        before_rows = final
         final, merged_variants = merge_member_variants(final)
+        stages.diff("memberVariants", before_rows, final, "biến thể giá thành viên, đã gộp vào memberPrices của vé gốc")
         if merged_variants:
             dropped["biến thể giá thành viên Vinpearl (đã gộp, giá từng hạng giữ trong memberPrices)"] += merged_variants
 
     stage_report["rowsAfterMemberMerge"] = len(final)
+    stages.snapshot("enriched", final)
     if a.annotate_hotel_granularity:  # mặc định TẮT: không thêm khoá nào vào attributes (giữ nguyên form catalog)
         annotate_hotel_granularity(final)
+    clock.begin("kiểm vị trí, giá", len(final), done=len(final))
     finalize_locations(final)
     # Mặc định xoá dòng lỗi dữ liệu theo yêu cầu (19/09/2026: không phải soát tay rồi thêm lại). Mỗi bước có cờ giữ lại.
     removed_all: list[tuple[dict, str]] = []
@@ -2783,12 +3426,16 @@ def main(argv: list[str] | None = None) -> int:
         removed_all += removed
     final, removed = drop_orphans(final)
     removed_all += removed
+    stages.drop("location", removed_all)
     if removed_all:
         for _p, reason in removed_all:
             dropped[f"{reason} (đã xoá, xem data/excluded_location.csv)"] += 1
         write_location_exclusions(removed_all, paths.data / "excluded_location.csv")
         log.info("Đã xoá %d dòng lỗi dữ liệu (danh sách: data/excluded_location.csv)", len(removed_all))
+    clock.begin("ghi output", len(final), done=len(final))
     write_outputs(final, paths.data, report_rows, dropped, plan_names, location_stats, venues)
+    stages.close(report_rows, final)
+    clock.end(len(final))
     if a.report_json:
         stage_report.update(rowsFinal=len(final), dropped=dict(dropped), locationStats=dict(location_stats))
         a.report_json.write_text(json.dumps(stage_report, ensure_ascii=False, indent=1), encoding="utf-8")

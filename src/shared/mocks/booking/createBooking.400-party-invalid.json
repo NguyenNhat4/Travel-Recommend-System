@@ -1,0 +1,29 @@
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Thông tin đặt chỗ chưa hợp lệ.",
+    "retryable": false,
+    "requestId": "book-01JXYZ",
+    "details": {
+      "fields": [
+        {
+          "field": "travelers[2].birthDate",
+          "reason": "CHILD_AGE_INVALID",
+          "message": "Bé đã đủ 12 tuổi vào 17/10/2026. Vui lòng chọn loại Người lớn."
+        },
+        {
+          "field": "itemDetails[0].rooms[0]",
+          "reason": "OCCUPANCY_EXCEEDED",
+          "message": "Phòng 1 chứa tối đa 3 khách.",
+          "cartItemId": "ci-hotel"
+        },
+        {
+          "field": "itemDetails[2]",
+          "reason": "GUEST_COUNT_MISMATCH",
+          "message": "Số khách của VietJet Air VJ601 Nha Trang → TP. Hồ Chí Minh 16:20 vừa thay đổi. Vui lòng xem lại giá.",
+          "cartItemId": "ci-vj601"
+        }
+      ]
+    }
+  }
+}

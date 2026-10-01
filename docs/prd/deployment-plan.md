@@ -37,6 +37,9 @@ Hệ thống phân tách ranh giới bảo mật bằng các chuỗi kết nối
 | `INSIDER_BASE_URL` | URL kết nối dịch vụ Insider Clone | Tất cả | Giao tiếp qua HTTP REST |
 | `INSIDER_REQUEST_TOKEN`| Token xác thực gọi sang Insider | Staging / Prod | Bí mật, không commit vào repository |
 | `LLM_API_KEY` | Khóa xác thực mô hình AI (OpenAI / Claude) | Tất cả | Bí mật, quản lý qua Vault hoặc Secret Manager |
+| `ITINERARY_DATA_MODE` | Nguồn dữ liệu cho tool của trợ lý: `fixture` (dữ liệu mẫu, mặc định dev/test), `inprocess` (gọi engine trong cùng tiến trình; dùng khi chạy dữ liệu thật), `http` (gọi qua HTTP tới `ITINERARY_SERVICE_BASE_URL`; tuỳ chọn, để hoàn tác hoặc khi tách agent thành service riêng), `disabled` | Tất cả | Không bí mật. Không đặt thì ngoài dev/test là `disabled`, nên staging/production phải đặt tường minh |
+| `ITINERARY_SERVICE_BASE_URL` | Gốc URL backend mà adapter HTTP gọi tới | Chỉ khi `ITINERARY_DATA_MODE=http` | Không bí mật. Bắt buộc ở mode `http`, bỏ qua ở mode khác |
+| `ITINERARY_TOOL_TIMEOUT_SECONDS` | Thời hạn (giây) cho mỗi lời gọi tool của trợ lý, áp dụng mọi mode | Tất cả | Không bí mật |
 | `COHERE_API_KEY` | Khóa gọi Cohere Embed API | Tất cả | Bí mật, không commit. Chỉ backend và job embed giữ — Weaviate **không** nhận khóa này |
 | `EMBEDDING_MODEL_NAME`| Tên mô hình vector — mặc định `embed-multilingual-v3.0` | Tất cả | Đổi giá trị này là đổi chiều vector → phải tạo lại collection và chạy lại job embed |
 | `WEAVIATE_URL` | Endpoint Weaviate (local: `http://localhost:8080`) | Tất cả | Không mở ra mạng ngoài ở local |
@@ -122,6 +125,12 @@ Hệ thống cung cấp các endpoint kiểm tra trạng thái sức khỏe đ�
   - Kết nối tới Weaviate (`WEAVIATE_URL`) và sự tồn tại của collection `Product`.
   - Kiểm tra trạng thái sẵn sàng của Cohere Embed API.
 - **Metrics Endpoint (`GET /metrics`):** Xuất các chỉ số độ trễ API, tỷ lệ lỗi HTTP 5xx và thời gian xử lý của Trợ lý AI.
+- **Xem DB trên monitor job cào (tab "DB"):** danh sách schema / bảng kèm số dòng; xem từng bảng có phân trang, lọc, sắp xếp; xem một dòng kèm **liên kết** theo khoá ngoại: bấm sang dòng được trỏ tới (vd. `booking_items.product_id` → sản phẩm) và xem các dòng trỏ về nó (vd. sản phẩm → `booking_items`, `cart_items`, `combo_items`; hồ sơ CDP → `events`, `users`, `bookings`). Quan hệ lấy từ khoá ngoại khai báo trong PostgreSQL (tự theo migration mới), cộng hai quan hệ theo quy ước không có khoá ngoại: `attributes.parentProductId` (vé / phòng → tuyến / khách sạn) và `demo:business:<sourceRef>` (vé mô phỏng → vé gốc). Dùng kết nối DB sẵn có của job, mỗi yêu cầu trong transaction chỉ đọc, `statement_timeout` 5 giây. Chỉ database `vota`; database `insider` không có (monitor không có kết nối tới nó). Monitor chưa có đăng nhập: trong lúc chờ, nên giới hạn IP nguồn cổng 8765.
+- **Sơ đồ và hoạt động DB realtime trên monitor (tab "DB"):**
+  - *Sơ đồ quan hệ:* mỗi bảng / view của `cdp`, `catalog`, `app` là một ô (nhóm theo schema) kèm số dòng; đường nối là khoá ngoại (nét liền) và quan hệ quy ước (nét đứt: sản phẩm cha–con, vé mô phỏng–vé gốc); bấm ô mở bảng.
+  - *Luồng dữ liệu:* ai đọc / ghi bảng nào — job cào → `cdp.products`, `catalog.combo_items`; backend nạp catalog vào bộ nhớ (chu kỳ `CATALOG_REFRESH_SECONDS`) → web / agent; agent → công cụ backend → catalog trong bộ nhớ + Weaviate; web / agent → giỏ, đơn, thanh toán, đăng nhập, hội thoại (`app.*`); sự kiện hành vi qua `CdpClient` → `cdp.events`, `cdp.profiles`. Bảng ánh xạ đọc / ghi giữ trong một file khai báo của monitor, đối chiếu code backend.
+  - *Realtime (làm mới 2 giây):* số dòng đọc / thêm / sửa / xoá mỗi giây của từng bảng (chênh lệch `pg_stat_user_tables`), tô lên sơ đồ; kết nối đang mở theo role (`pg_stat_activity`) và câu SQL đang chạy (cắt 200 ký tự, tham số dạng `$1`); dòng mới nhất của các bảng ghi nhiều, che cột bí mật như tab DB.
+- **Đo lần gọi của web / agent (backend):** `GET /metrics` theo mục trên (độ trễ, lỗi 5xx, thời gian trợ lý theo route) và luồng sự kiện gọi nội bộ để monitor hiện **từng lần gọi** realtime. Đo ở tầng use case (search, recommendation, catalog) qua một port, gắn nguồn `web` (qua HTTP) hoặc `agent` (công cụ itinerary gọi trong tiến trình); thời gian từng bước dùng chung cách đo `stageMs` của `/search` (`StageTimer`). Sự kiện gồm route / use case, nguồn, trạng thái, thời gian, `stageMs`, số kết quả và `productId` trả về; không có câu tìm kiếm, dữ liệu cá nhân hay bí mật. Kèm thời điểm và số sản phẩm của lần nạp catalog vào bộ nhớ gần nhất.
 
 ---
 

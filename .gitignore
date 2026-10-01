@@ -34,3 +34,22 @@ src/shared/mocks/itinerary-agent/completed-minimal-clarified.json
 
 # Khóa ký JWT sinh tại máy (auth §19). Không bao giờ commit.
 secrets/
+
+# Terraform local state, provider cache and generated plans.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+!**/*.tfvars.example
+crash.log
+
+# Search benchmark runtime artifacts
+bench_out/
+
+# Streamlit secrets (mật khẩu nhóm của app soát draft gold). Không bao giờ commit.
+.streamlit/secrets.toml
+**/.streamlit/secrets.toml
+
+# File tạm của gold_schema.atomic_write_text khi app/CLI chết giữa chừng
+src/evaluation/search_bench/gold/**/.*.tmp

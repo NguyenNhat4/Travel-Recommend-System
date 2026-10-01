@@ -1,0 +1,17 @@
+[Unit]
+Description=V-OTA Docker lifecycle event watcher
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/libexec/vota-docker-event-watcher.py
+Restart=always
+RestartSec=5s
+Environment=VOTA_DOCKER_EVENT_LOG=/var/log/vota/docker-events.jsonl
+Environment=VOTA_DOCKER_EVENT_HEARTBEAT_SECONDS=60
+User=root
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

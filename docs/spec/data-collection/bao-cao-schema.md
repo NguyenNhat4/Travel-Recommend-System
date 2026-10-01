@@ -608,7 +608,8 @@ Bước 2–7 nằm trong `session_scope`: commit khi xong, rollback nếu lỗi
 
 ### 8.6 Itinerary Agent
 
-Agent không có bảng nào và không đọc CDP. Nó gọi `POST /search` và `GET /recommendations` qua HTTP, dùng
+Agent không có bảng nào và không đọc CDP. Nó gọi engine Search và Recommendation qua port (trong tiến trình ở
+`ITINERARY_DATA_MODE=inprocess`, qua HTTP ở mode tuỳ chọn `http`; cập nhật 2026-09-28), dùng
 `ProductSummary` cho `ItineraryStay.product` và `ItinerarySlot.product`, giữ `because[]`, rồi bàn giao cho Web bằng
 `productId` → `/product/{productId}` → giỏ. `bookableCount` loại sản phẩm `available = false`, giá `null`,
 `ticketed = false` và bản ghi cha khi đã chọn con. Trạng thái hội thoại chưa có nơi lưu (X22).
@@ -853,7 +854,7 @@ của Agent dùng CHỮ HOA. Không trộn hai kiểu trong cùng một enum.
 | `event_name` = `because[].event` | `purchase` · `add_to_cart` · `product_view` · `search` | CHECK `events`; OpenAPI `BecauseEvent` |
 | `lifecycle_stage` | `new` · `active` · `dormant` · `churned` | CHECK `profiles` |
 | `vinclub_tier` | `Gold` · `Platinum` · `Diamond`; `null` = không hạng | chỉ ghi chú trong `models.py` (X13) |
-| `strategy` | `cross_vertical` · `recent_activity` · `dormant` · `popular` | OpenAPI `Strategy` |
+| `strategy` | `cross_vertical` · `recent_activity` · `dormant` · `popular` · `long_term` · `cold_start_content` (hai giá trị cuối từ OpenAPI 1.8.0) | OpenAPI `Strategy` |
 | `bookings.status` | `CONFIRMED` | CHECK `bookings`; OpenAPI `const` |
 | `currency` | `VND` | mặc định DB; OpenAPI `const` |
 | `priceUnit` | `PER_NIGHT` · `PER_PERSON` · `PER_PACKAGE` · `UNKNOWN` | chỉ OpenAPI (X3) |

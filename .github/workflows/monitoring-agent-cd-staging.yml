@@ -1,0 +1,130 @@
+name: Staging Monitoring Agent CD
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches: [main, release-mvp-v1, release-mvp-v2, release-mvp-v3]
+    paths:
+      - '.github/workflows/monitoring-agent-cd-staging.yml'
+      - 'infra/monitoring/ops-agent-staging.yaml'
+      - 'infra/monitoring/vota-docker-event-watcher.py'
+      - 'infra/monitoring/vota-docker-event-watcher.service'
+      - 'infra/monitoring/vota-container-disk-collector.py'
+      - 'infra/monitoring/vota-container-disk-collector.service'
+      - 'infra/monitoring/install-vota-docker-event-watcher.sh'
+      - 'infra/monitoring/vota-monitoring-logrotate.conf'
+  push:
+    branches: [main, release-mvp-v1, release-mvp-v2, release-mvp-v3]
+    paths:
+      - '.github/workflows/monitoring-agent-cd-staging.yml'
+      - 'infra/monitoring/ops-agent-staging.yaml'
+      - 'infra/monitoring/vota-docker-event-watcher.py'
+      - 'infra/monitoring/vota-docker-event-watcher.service'
+      - 'infra/monitoring/vota-container-disk-collector.py'
+      - 'infra/monitoring/vota-container-disk-collector.service'
+      - 'infra/monitoring/install-vota-docker-event-watcher.sh'
+      - 'infra/monitoring/vota-monitoring-logrotate.conf'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: monitoring-agent-cd-staging
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate monitoring agent artifacts
+    if: ${{ github.event_name == 'push' || github.event.action == 'opened' || github.event.action == 'synchronize' || github.event.action == 'reopened' || (github.event.action == 'closed' && github.event.pull_request.merged == true) || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate artifacts
+        run: |
+          bash infra/monitoring/tests/test_staging_layout.sh
+          bash -n infra/monitoring/install-vota-docker-event-watcher.sh
+          python3 -m py_compile infra/monitoring/vota-docker-event-watcher.py infra/monitoring/vota-container-disk-collector.py
+
+  deploy_staging:
+    name: Install watcher and restart Ops Agent on staging VM
+    if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true)) && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3') }}
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      GCE_INSTANCE: ${{ secrets.GCE_INSTANCE }}
+      GCE_ZONE: ${{ secrets.GCE_ZONE }}
+      GCP_WIF_PROVIDER: ${{ secrets.GCP_WIF_PROVIDER }}
+      GCP_CI_SERVICE_ACCOUNT: ${{ secrets.GCP_CI_SERVICE_ACCOUNT }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate required VM configuration
+        run: |
+          for name in GCP_PROJECT_ID GCE_INSTANCE GCE_ZONE GCP_WIF_PROVIDER GCP_CI_SERVICE_ACCOUNT; do
+            if [ -z "${!name:-}" ]; then
+              echo "Missing staging configuration: $name" >&2
+              exit 1
+            fi
+          done
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_CI_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Copy monitoring agent artifacts to VM
+        run: |
+          remote_dir="/tmp/vota-monitoring-agent-cd-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          tar -czf - \
+            -C "$GITHUB_WORKSPACE/infra/monitoring" \
+            vota-docker-event-watcher.py vota-docker-event-watcher.service vota-container-disk-collector.py vota-container-disk-collector.service vota-monitoring-logrotate.conf ops-agent-staging.yaml \
+            | gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" \
+                --tunnel-through-iap --quiet \
+                --command "umask 077; mkdir -m 700 '$remote_dir' && tar -xzf - -C '$remote_dir'"
+
+      - name: Install watcher and restart Ops Agent
+        run: |
+          remote_dir="/tmp/vota-monitoring-agent-cd-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          remote_command="set -eu
+          python3 -m py_compile '$remote_dir/vota-docker-event-watcher.py' '$remote_dir/vota-container-disk-collector.py'
+          if sudo -n test -f /etc/google-cloud-ops-agent/config.yaml; then
+            sudo -n cp -a /etc/google-cloud-ops-agent/config.yaml /etc/google-cloud-ops-agent/config.yaml.bak.$GITHUB_RUN_ID
+          fi
+          sudo -n install -D -m 0750 '$remote_dir/vota-docker-event-watcher.py' /usr/local/libexec/vota-docker-event-watcher.py
+          sudo -n install -D -m 0644 '$remote_dir/vota-docker-event-watcher.service' /etc/systemd/system/vota-docker-event-watcher.service
+          sudo -n install -D -m 0750 '$remote_dir/vota-container-disk-collector.py' /usr/local/libexec/vota-container-disk-collector.py
+          sudo -n install -D -m 0644 '$remote_dir/vota-container-disk-collector.service' /etc/systemd/system/vota-container-disk-collector.service
+          sudo -n install -D -m 0644 '$remote_dir/vota-monitoring-logrotate.conf' /etc/logrotate.d/vota-monitoring
+          sudo -n install -D -m 0644 '$remote_dir/ops-agent-staging.yaml' /etc/google-cloud-ops-agent/config.yaml
+          sudo -n install -d -m 0750 /var/log/vota
+          sudo -n touch /var/log/vota/docker-events.jsonl
+          sudo -n chmod 0640 /var/log/vota/docker-events.jsonl
+          sudo -n touch /var/log/vota/container-disk.jsonl
+          sudo -n chmod 0640 /var/log/vota/container-disk.jsonl
+          sudo -n systemctl daemon-reload
+          sudo -n systemctl enable --now vota-docker-event-watcher.service vota-container-disk-collector.service
+          sudo -n systemctl restart google-cloud-ops-agent.service
+          sudo -n systemctl restart google-cloud-ops-agent-fluent-bit.service google-cloud-ops-agent-opentelemetry-collector.service
+          sudo -n systemctl is-active --quiet vota-docker-event-watcher.service
+          sudo -n systemctl is-active --quiet vota-container-disk-collector.service
+          sudo -n systemctl is-active --quiet google-cloud-ops-agent-fluent-bit.service
+          sudo -n systemctl is-active --quiet google-cloud-ops-agent-opentelemetry-collector.service
+          sudo -n logrotate -d /etc/logrotate.d/vota-monitoring >/dev/null
+          sudo -n tail -n 5 /var/log/vota/docker-events.jsonl || true
+          sudo -n tail -n 3 /var/log/vota/container-disk.jsonl || true"
+          gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" \
+            --tunnel-through-iap --quiet --command "$remote_command"

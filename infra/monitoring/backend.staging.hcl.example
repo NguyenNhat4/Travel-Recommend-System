@@ -1,0 +1,4 @@
+# Copy to backend.staging.hcl locally or pass equivalent -backend-config flags.
+# The bucket must be created and protected before terraform init.
+bucket = "replace-with-staging-terraform-state-bucket"
+prefix = "monitoring/staging"

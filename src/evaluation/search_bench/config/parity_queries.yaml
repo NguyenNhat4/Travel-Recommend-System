@@ -1,0 +1,24 @@
+# `sb parity` (spec Part 9, 30/09; lịch 10 ngày Day 2 C): 20 câu cố định — ≥ 1 câu mỗi slice trong 13 slice gold
+# + ba câu bắt buộc "VinWonders", "KS biển tại NT", "Vinpeal Resort Nha Trang giá tốt". qid null = câu ngoài gold.
+# Cổng: top-1 trùng ≥ 18/20, overlap@10 ≥ 8/10 ở mọi câu (config/sbench.yaml latency.parity).
+queries:
+  - {qid: c0005, slice: dest_type, text: "tìm khách sạn nghỉ dưỡng tại Hạ Long"}
+  - {qid: c0070, slice: dest_type, text: "vé máy bay đến Hà Nội"}
+  - {qid: c0097, slice: audience_style, text: "chỗ nghỉ Côn Đảo cho gia đình có trẻ nhỏ"}
+  - {qid: c0196, slice: amenity_single, text: "tìm chỗ nghỉ Hạ Long có phòng nhìn ra biển"}
+  - {qid: c0226, slice: amenity_multi, text: "chỗ nghỉ Huế có WiFi miễn phí và nhà hàng"}
+  - {qid: c0247, slice: amenity_negation, text: "Khách sạn Hạ Long không có ban công"}
+  - {qid: c0256, slice: amenity_offtaxonomy, text: "chỗ nghỉ ở Ninh Bình có view địa danh"}
+  - {qid: c0295, slice: parent_child, text: "Căn Hộ Nhìn Ra Biển tại Hạ Long"}
+  - {qid: c0332, slice: named_entity, text: "tìm Vinpearl Resort & Golf Nam Hội An"}
+  - {qid: c0361, slice: named_entity, text: "Chợ nổi Cái Răng"}
+  - {qid: c0373, slice: named_entity, text: "Vé máy bay Buôn Ma Thuột - Hà Nội"}
+  - {qid: c0388, slice: no_diacritics, text: "khach san o ha long co ho boi co tam nhin"}
+  - {qid: c0383, slice: no_diacritics, text: "tim khach san o da lat co nha hang"}
+  - {qid: c0456, slice: abbrev_typo, text: "Vinpeal Resort Nha Trang giá tốt"}
+  - {qid: c0439, slice: abbrev_typo, text: "KDL NT cho gia đình"}
+  - {qid: c0517, slice: multi_constraint, text: "khách sạn 3 sao ở Nha Trang dưới 500 nghìn"}
+  - {qid: c0541, slice: cross_vertical, text: "khách sạn, vé máy bay và vé tham quan ở Buôn Ma Thuột"}
+  - {qid: c0574, slice: out_of_catalog, text: "resort ở Mộc Châu"}
+  - {qid: null, slice: named_entity, text: "VinWonders"}
+  - {qid: null, slice: abbrev_typo, text: "KS biển tại NT"}

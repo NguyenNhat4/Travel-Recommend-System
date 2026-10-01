@@ -109,10 +109,11 @@ src/backend/app/
 │   ├── ports/               # Giao diện trừu tượng, MỖI PORT MỘT FILE: cdp_client, insider_client, embedder,
 │   │                        #   vector_store, payment_gateway, llm, contract_validator, itinerary_tools, auth...
 │   └── <domain>/            # Use case theo domain (auth, booking, catalog, itinerary, recommendation, search, tracking)
+│                            #   itinerary/engine_tools.py: tool itinerary gọi engine search/recommendation/catalog trong tiến trình (ITINERARY_DATA_MODE=inprocess)
 ├── infrastructure/          # LỚP 3: hiện thực port
 │   ├── persistence/         # PostgreSQL qua DATABASE_URL (role vota_app); conversation store
 │   ├── cdp/                 # Mọi adapter CDP: LocalCdpClient, đọc lịch sử, HttpCdpClient, hàng đợi ghi event nền
-│   ├── clients/             # HTTP client ra service ngoài, gồm HttpInsiderClient; fixture itinerary cho ITINERARY_DATA_MODE=fixture
+│   ├── clients/             # HTTP client ra service ngoài, gồm HttpInsiderClient; tool itinerary dạng fixture (=fixture, mặc định dev/test) và HTTP tuỳ chọn (=http)
 │   ├── auth/                # Hash mật khẩu, JWT
 │   ├── llm/                 # Adapter LLM provider (agent lấy LLM qua port llm, không tự import SDK)
 │   ├── embeddings/          # CohereEmbedder (embed-multilingual-v3.0)
@@ -122,7 +123,7 @@ src/backend/app/
 ├── agents/                  # LangGraph: state, graph, node, steps/ (luật của từng bước) và tools/; hiện thực port planner itinerary
 ├── api/                     # LỚP 4: chỉ xử lý HTTP
 │   ├── deps.py              # FastAPI Depends: lấy use case đã nối sẵn, route không tự lắp ráp
-│   ├── middleware.py        # Request ID, CORS...
+│   ├── middleware.py        # Request ID, CORS, đo thời gian / trạng thái request cho /metrics...
 │   ├── errors.py            # Error Envelope + exception handler
 │   └── v1/
 │       ├── router.py        # Router v1 duy nhất; route không tự khai prefix /api/v1
@@ -152,6 +153,7 @@ Mỗi domain có namespace riêng trong `domain/` và `application/` để các 
 8. **`api`** chỉ gọi use case trong `application`, không import `agents` hay `infrastructure`. Use case itinerary gọi agent qua port; `main.py` nối LangGraph vào port đó.
 9. **`core`** không import FastAPI. Phần dính framework (middleware, exception handler) nằm trong `api/`.
 10. Bản giả dùng cho test đặt ở `tests/fakes/`, không đặt trong `infrastructure/`.
+    Đo lần gọi (web / agent) đi qua port `call_telemetry` trong `application/ports/`; bộ nhớ đệm sự kiện hiện thực ở `infrastructure/`, endpoint ở `api/` (`docs/prd/deployment-plan.md` §5).
 11. Quy tắc 1–9 được kiểm tự động bằng test trong `tests/architecture/`; test này chạy trong CI như unit test.
 
 ```text
@@ -170,16 +172,19 @@ Trợ lý lập lịch trình không phải là một chuỗi prompt đơn giả
 ```mermaid
 stateDiagram-v2
     [*] --> ClassifyTurn: Người dùng gửi yêu cầu
-    ClassifyTurn --> Converse: Trò chuyện / ngoài phạm vi (đặt chỗ, chèn lệnh)
+    ClassifyTurn --> Converse: Trò chuyện / ngoài phạm vi (đặt chỗ, chèn lệnh) / tin nhắn rác, tục tĩu (luật tất định, không gọi LLM)
     Converse --> [*]: Trả lời hoặc từ chối, không gọi tool
     ClassifyTurn --> AnalyzeIntent: Yêu cầu du lịch
     AnalyzeIntent --> CheckClarification: Trích xuất thông tin (Điểm đến, Ngày, Số người, Ngân sách)
     
-    CheckClarification --> AskUser: Thiếu điểm đến/số ngày, hoặc chưa hỏi ngày đi–số người–ngân sách
+    CheckClarification --> AskUser: Lượt đầu thiếu thông tin, hoặc chưa hỏi ngày đi–số người–ngân sách
+    CheckClarification --> AskUser: Người dùng muốn đổi thông tin chuyến đi mà chưa nói đổi thành gì
+    AskUser --> SuggestForm: Đã hỏi một lượt mà vẫn thiếu điểm đến/số ngày
+    SuggestForm --> [*]: Form đã điền sẵn gợi ý; xác nhận đổ câu yêu cầu vào ô nhập
     AskUser --> [*]: Chờ phản hồi tiếp theo
     
     CheckClarification --> SearchCandidates: Đủ thông tin cơ bản
-    SearchCandidates --> ToolCatalogSearch: Gọi Tool tìm kiếm phòng & tour thật
+    SearchCandidates --> ToolCatalogSearch: Gọi Tool tìm kiếm phòng & tour thật (và Similar khi đổi món)
     ToolCatalogSearch --> ValidateAvailability: Kiểm tra lịch trống & giá
     
     SearchCandidates --> NoResults: Không có sản phẩm thật phù hợp
@@ -192,10 +197,11 @@ stateDiagram-v2
 ```
 
 ### Tiêu chuẩn Grounding (Chống Bịa Đặt):
-- **Không suy đoán dữ liệu sản phẩm:** LLM chỉ đóng vai trò phân tích ý định ngôn ngữ và sắp xếp lịch trình thời gian. Mọi thông tin về `productId`, `title`, `price`, `imageUrl` bắt buộc phải được lấy nguyên trạng từ kết quả trả về của `ToolCatalogSearch`.
+- **Không suy đoán dữ liệu sản phẩm:** LLM chỉ đóng vai trò phân tích ý định ngôn ngữ và sắp xếp lịch trình thời gian. Mọi thông tin về `productId`, `title`, `price`, `imageUrl` bắt buộc phải được lấy nguyên trạng từ kết quả trả về của công cụ truy xuất (`ToolCatalogSearch`): Search, Recommendation, hoặc Similar (`getSimilarProducts`) khi đổi một sản phẩm đã hiển thị.
 - **Response phân biệt theo `status`:** `ItineraryResponse` là `oneOf` gồm `COMPLETED`, `NEEDS_CLARIFICATION`, `NO_RESULTS`, `FALLBACK` (`src/shared/contracts/schemas/itinerary-agent.yaml`). Trường cụ thể theo contract, không theo ví dụ trong PRD.
-- **Backend tự tính tổng tiền;** giá thiếu thì tổng là `null` kèm cảnh báo, không coi thiếu giá là 0.
+- **Backend tự tính tổng tiền.** Điểm tham quan tự do — điểm tham quan hoặc golf có `ticketed = false`, hoặc không có giá — tính 0 đ vào tổng và hiển thị là "tham quan tự do", không hiển thị là có giá 0 đ. Mục khác thiếu giá (khách sạn, vé máy bay, combo...) thì tổng là `null` kèm cảnh báo, không coi thiếu giá là 0.
 - **LLM lỗi:** dùng fallback dựa trên luật hoặc trả `FALLBACK`/lỗi có kiểm soát.
+- **Lọc đầu vào trước LLM (NFR-SEC-04):** `ClassifyTurn` chạy luật tất định trước khi gọi LLM: mẫu chèn lệnh/đòi secret, rồi lọc tin nhắn rác (rỗng, ký tự lặp, tỉ lệ chữ thấp, gõ bậy, tục tĩu). Khớp thì trả câu cố định, không gọi LLM nào. Giới hạn tần suất gửi tin nằm ở route API, trước khi graph chạy.
 - **Ngữ cảnh cho LLM:** mọi lượt gọi LLM (phân luồng, trích intent, chọn điểm đến, lập tool plan, viết câu trả lời) nhận cùng ngữ cảnh hội thoại: lịch sử gần nhất có giới hạn, chuyến đi đã chốt, sản phẩm đã cho xem và câu hỏi gần nhất của trợ lý. Ngữ cảnh là dữ liệu không tin cậy, không phải chỉ dẫn.
 - **Hội thoại** có hai tầng lưu: Redis giữ working memory 24 giờ (intent, ràng buộc, lịch sử gần nhất và sản phẩm vừa hiển thị); Postgres giữ lâu dài các lượt `user`/`assistant` của người dùng đã đăng nhập trong `app.conversations` và `app.conversation_messages`. Web cho phép user đã đăng nhập liệt kê, mở lại và tiếp tục hội thoại của chính mình. Ghi archive lỗi không làm hỏng lượt chat. Giá và tình trạng còn chỗ luôn được tải lại, không dùng bản lưu trong hội thoại.
 

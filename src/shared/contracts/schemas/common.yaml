@@ -96,11 +96,15 @@ Strategy:
   type: string
   description: >-
     Thêm giá trị mới phải thông báo trước; client map giá trị lạ về tiêu đề chung.
+    long_term: có lịch sử nhưng không có chuyến đang mở và chưa quá ngưỡng dormant của engine.
+    cold_start_content: có chuyến đang mở, tổng dưới 3 event dùng được và chưa mua gì trong chuyến.
   enum:
   - cross_vertical
   - recent_activity
   - dormant
   - popular
+  - long_term
+  - cold_start_content
 
 BecauseEvent:
   type: string
@@ -174,6 +178,31 @@ ErrorCode:
   - PAYMENT_PROVIDER_UNAVAILABLE
   - INVALID_WEBHOOK_SIGNATURE
 
+ValidationFieldError:
+  type: object
+  description: >-
+    Một vi phạm trong details.fields[] của VALIDATION_ERROR. Backend trả mọi vi phạm trong một lần; message là tiếng Việt hiển thị
+    được trực tiếp. reason là mã luật dùng chung giữa Web và Backend (docs/spec/booking/checkout-nhieu-buoc-hanh-khach.md §5.6):
+    REQUIRED, NAME_INVALID, PHONE_INVALID, EMAIL_INVALID, BIRTH_DATE_INVALID, CHILD_AGE_INVALID, ADULT_REQUIRED,
+    PARTY_TOO_LARGE, TRAVELER_UNKNOWN, TRAVELER_DUPLICATED, ITEM_DETAIL_MISSING, ITEM_DETAIL_UNKNOWN, ITEM_DETAIL_DUPLICATED,
+    ITEM_WITHOUT_TRAVELER, GUEST_COUNT_MISMATCH, INFANTS_EXCEED_ADULTS, ROOM_COUNT_MISMATCH, OCCUPANCY_EXCEEDED,
+    LEAD_GUEST_INVALID, TRAVELERS_REQUIRED. Client gặp reason lạ thì hiển thị message.
+  required:
+  - field
+  - reason
+  - message
+  properties:
+    field:
+      type: string
+      description: Đường dẫn trong request, ví dụ travelers[2].birthDate hoặc itemDetails[0].rooms[1].
+    reason:
+      type: string
+    message:
+      type: string
+    cartItemId:
+      type: string
+      description: Có khi vi phạm thuộc một mục giỏ, để Web gắn lỗi vào đúng thẻ dịch vụ.
+
 ErrorResponse:
   type: object
   required:
@@ -204,9 +233,9 @@ ErrorResponse:
           type: object
           additionalProperties: true
           description: >-
-            Tùy mã lỗi. VALIDATION_ERROR {fields}; PRODUCT_NOT_FOUND và
+            Tùy mã lỗi. VALIDATION_ERROR {fields: ValidationFieldError[]}; PRODUCT_NOT_FOUND và
             PRODUCT_UNAVAILABLE {productId}; CART_ITEM_NOT_FOUND {cartItemId};
-            PRICE_CHANGED {productId, oldPrice, newPrice}; DATE_OUT_OF_RANGE
+            PRICE_CHANGED {productId, oldPrice, newPrice, fareType?} — fareType là CHILD khi giá vé trẻ em đổi; DATE_OUT_OF_RANGE
             {productId, availableFrom, availableTo}; UNSUPPORTED_DESTINATION
             {destination, supportedDestinations, conversationId} — conversationId
             là hội thoại đã lưu phần chuyến đi còn lại, gửi lại cùng điểm đến

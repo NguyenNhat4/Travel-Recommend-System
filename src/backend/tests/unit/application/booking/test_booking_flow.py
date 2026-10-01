@@ -18,7 +18,7 @@ run = asyncio.run
 
 async def hold(w: World, **kw):
     await w.fill_cart(**kw)
-    return await w.create(PRINCIPAL, CONTACT, [])
+    return await w.create(PRINCIPAL, CONTACT, await w.details())
 
 
 def session_of(w: World, ref: str) -> str:
@@ -149,15 +149,17 @@ def test_create_rejects_empty_cart_price_change_unavailable_and_unknown_item():
         with pytest.raises(CartEmpty):
             await w.create(PRINCIPAL, CONTACT, [])
         await w.fill_cart()
-        with pytest.raises(ValidationFailed):
+        with pytest.raises(ValidationFailed) as unknown:
             await w.create(PRINCIPAL, CONTACT, [ItemDetail("lạ")])
+        assert {f["reason"] for f in unknown.value.details["fields"]} == {"ITEM_DETAIL_UNKNOWN", "ITEM_DETAIL_MISSING"}
+        details = await w.details()
         w.catalog.products[HOTEL].unit_price = 3_900_000
         with pytest.raises(LineRejected) as e:
-            await w.create(PRINCIPAL, CONTACT, [])
+            await w.create(PRINCIPAL, CONTACT, details)
         assert e.value.code == "PRICE_CHANGED" and e.value.details["newPrice"] == 3_900_000
         w.catalog.products[HOTEL].available = False
         with pytest.raises(LineRejected) as e:
-            await w.create(PRINCIPAL, CONTACT, [])
+            await w.create(PRINCIPAL, CONTACT, details)
         assert e.value.code == "PRODUCT_UNAVAILABLE"
         assert w.store.bookings == {} and w.gateway.sessions == {}   # không tạo phiên Stripe khi kiểm giỏ hỏng
     run(go())
@@ -168,7 +170,8 @@ def test_item_details_are_stored_per_item():
         w = World()
         await w.fill_cart()
         line = (await w.carts.get(USER)).lines[0]
-        res = await w.create(PRINCIPAL, CONTACT, [ItemDetail(line.cart_item_id, ["An"], "Tầng cao")])
+        details = [ItemDetail(line.cart_item_id, ["An"], "Tầng cao"), *(await w.details())[1:]]
+        res = await w.create(PRINCIPAL, CONTACT, details)
         first = res["groups"][0]["items"][0]
         assert first["guestNames"] == ["An"] and first["specialRequest"] == "Tầng cao"
     run(go())
@@ -180,7 +183,7 @@ def test_stripe_timeout_creates_no_booking_and_keeps_cart():
         await w.fill_cart()
         w.gateway.mode = "timeout"
         with pytest.raises(PaymentUnavailable) as e:
-            await w.create(PRINCIPAL, CONTACT, [])
+            await w.create(PRINCIPAL, CONTACT, await w.details())
         assert e.value.http_status == 503 and e.value.retryable
         assert w.store.bookings == {} and len((await w.carts.get(USER)).lines) == 2
     run(go())
@@ -192,7 +195,7 @@ def test_db_failure_after_session_created_closes_the_stripe_session():
         await w.fill_cart()
         w.store.fail_insert = True
         with pytest.raises(RuntimeError):
-            await w.create(PRINCIPAL, CONTACT, [])
+            await w.create(PRINCIPAL, CONTACT, await w.details())
         (session,) = w.gateway.sessions.values()
         assert session["status"] == "expired"
     run(go())
@@ -241,7 +244,7 @@ def test_second_hold_while_pending_is_rejected_with_reference_code():
         w = World()
         first = await hold(w)
         with pytest.raises(PendingPaymentExists) as e:
-            await w.create(PRINCIPAL, CONTACT, [])
+            await w.create(PRINCIPAL, CONTACT, await w.details())
         assert e.value.http_status == 409 and e.value.details["referenceCode"] == first["referenceCode"]
         assert len(w.gateway.sessions) == 1
     run(go())
@@ -252,7 +255,7 @@ def test_expired_hold_is_released_on_next_attempt_without_waiting_for_webhook():
         w = World()
         first = (await hold(w))["referenceCode"]
         w.clock.advance(minutes=32)
-        second = await w.create(PRINCIPAL, CONTACT, [])
+        second = await w.create(PRINCIPAL, CONTACT, await w.details())
         assert w.booking(first).status is BookingStatus.EXPIRED and second["status"] == "PENDING_PAYMENT"
     run(go())
 
@@ -265,7 +268,7 @@ def test_expired_webhook_and_reconcile_expire_the_booking_and_keep_cart():
         b = w.booking(ref)
         assert (b.status, b.payment.status) == (BookingStatus.EXPIRED, PaymentStatus.EXPIRED)
         assert len((await w.carts.get(USER)).lines) == 2
-        ref2 = (await w.create(PRINCIPAL, CONTACT, []))["referenceCode"]   # bấm lại được sau khi hết hạn
+        ref2 = (await w.create(PRINCIPAL, CONTACT, await w.details()))["referenceCode"]   # bấm lại được sau khi hết hạn
         w.clock.advance(minutes=45)                                          # webhook lỡ
         assert await w.reconciler() == 1 and w.booking(ref2).status is BookingStatus.EXPIRED
     run(go())

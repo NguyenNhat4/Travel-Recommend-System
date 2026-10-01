@@ -3,15 +3,42 @@ from __future__ import annotations
 
 from copy import deepcopy
 
-from src.backend.app.application.itinerary.retrieval import collect
+from src.backend.app.application.itinerary.retrieval import collect, drop_summary, nearest_open_date
+from src.backend.app.application.itinerary.tool_contracts import SIMILAR_PRODUCTS
 from src.backend.app.domain.itinerary.planning import SCHEDULABLE_TAXONOMIES, SLOT_TAXONOMIES, STAY_TAXONOMY
+
+from . import messages
+from .classification import vietnam_today
+from .messages import display_date
 
 DROPPED_MESSAGE = "Một sản phẩm chưa đủ căn cứ hoặc không đáp ứng yêu cầu đã được loại."
 
+# Similar là best-effort ở lượt đổi món: lỗi của nó không được đẩy lượt sang retry rồi FALLBACK.
+SIMILAR_NO_ALTERNATIVE = {"PRODUCT_NOT_FOUND", "PRODUCT_NOT_INDEXED"}  # "không có phương án": luôn mềm
+SIMILAR_UNAVAILABLE = {"SEARCH_UNAVAILABLE", "TOOL_TIMEOUT"}  # mềm khi đã có search trả dữ liệu
+
+
+def _similar_unavailable(error: dict) -> bool:
+    """Similar hỏng phía server hoặc đường truyền. In-process báo `SEARCH_UNAVAILABLE`; mode http còn gặp 5xx
+    (kể cả 500 dạng text, đọc thành `INVALID_TOOL_RESPONSE` kèm `httpStatus`) và lỗi kết nối (`TOOL_HTTP_ERROR`
+    không có `httpStatus`). Response 2xx sai hợp đồng (`httpStatus` rỗng hoặc 2xx) vẫn là lỗi vĩnh viễn."""
+    status = error.get("httpStatus")
+    return (error.get("code") in SIMILAR_UNAVAILABLE or (status is not None and status >= 500)
+            or (error.get("code") == "TOOL_HTTP_ERROR" and status is None))
+
+
+def _soft_similar_error(item: dict, search_ok: bool) -> bool:
+    if item.get("name") != SIMILAR_PRODUCTS:
+        return False
+    error = item["error"]
+    return error.get("code") in SIMILAR_NO_ALTERNATIVE or (search_ok and _similar_unavailable(error))
+
 
 def tool_errors(state: dict) -> list[dict]:
-    """Mọi lỗi của lượt truy xuất: lỗi từng tool call cộng lỗi lấy chi tiết sản phẩm."""
-    errors = [item["error"] for item in state.get("tool_results", []) if "error" in item]
+    """Mọi lỗi của lượt truy xuất: lỗi từng tool call cộng lỗi lấy chi tiết sản phẩm, trừ lỗi mềm của Similar."""
+    results = state.get("tool_results", [])
+    search_ok = any(item.get("name") == "search_products" and "data" in item for item in results)
+    errors = [item["error"] for item in results if "error" in item and not _soft_similar_error(item, search_ok)]
     errors.extend(state.get("detail_errors", {}).values())
     return errors
 
@@ -61,6 +88,26 @@ def _decision(errors: list[dict], candidates: dict, constraints: dict) -> str:
     return decision
 
 
+def _retrieved(state: dict) -> dict:
+    """productId → sản phẩm (projection của tool, bổ sung chi tiết đã nạp) để cảnh báo nêu được ngày mở bán."""
+    products = {}
+    for result in state.get("tool_results", []):
+        data = result.get("data", {})
+        for projection in (*data.get("results", []), *data.get("recommendations", [])):
+            if projection.get("productId"):
+                products[projection["productId"]] = {**state.get("details", {}).get(projection["productId"], {}),
+                                                     **projection}
+    return products
+
+
+def _dropped_message(state: dict, reason: str, product: dict) -> str:
+    """Bị loại vì ngày thì nêu cửa sổ mở bán thật của sản phẩm; lý do khác giữ câu chung."""
+    if reason == "PRODUCT_DROPPED_DATE" and product.get("availableFrom") and product.get("availableTo"):
+        return messages.message(state, "dropped_date", start=display_date(product["availableFrom"]),
+                                end=display_date(product["availableTo"]))
+    return DROPPED_MESSAGE
+
+
 def evaluate_retrieval(state: dict) -> dict:
     """Update của `evaluate` (chưa gồm `events`): candidate, nguồn grounding, cảnh báo và quyết định."""
     errors = tool_errors(state)
@@ -70,8 +117,18 @@ def evaluate_retrieval(state: dict) -> dict:
     constraints = _relaxed_constraints(state)
     candidates, sources, dropped = collect(state.get("tool_results", []), state.get("details", {}),
                                            state["intent"], constraints)
-    warnings = [{"code": reason, "message": DROPPED_MESSAGE, "productId": pid} for pid, reason in dropped.items()]
+    products = _retrieved(state)
+    warnings = [{"code": reason, "message": _dropped_message(state, reason, products.get(pid, {})), "productId": pid}
+                for pid, reason in dropped.items()]
     decision = _decision(errors, candidates, constraints)
+    update = {"candidates": candidates, "sources": sources, "warnings": warnings, "decision": decision}
+    # Cần `details` (chứa ngày mở bán) trước khi xoá bên dưới; `compose`/`clarify` dùng các ngày này để nói lý do
+    # và gợi ý đặt lại chuyến.
+    if decision == "no_results":
+        update["nearest_open_date"] = nearest_open_date(state.get("tool_results", []), state.get("details", {}),
+                                                        state["intent"], constraints, vietnam_today())
+    if decision in {"compose", "constraint_clarification"}:
+        update["drop_summary"] = drop_summary(state.get("tool_results", []), state.get("details", {}),
+                                              state["intent"], constraints, vietnam_today())
     # `details` đã được `collect()` tiêu thụ ở trên; không giữ lại payload ProductDetail nặng trong state/trace.
-    return {"candidates": candidates, "sources": sources, "warnings": warnings,
-            "decision": decision, "details": {}}
+    return {**update, "details": {}}

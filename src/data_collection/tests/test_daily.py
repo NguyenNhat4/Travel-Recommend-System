@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from datetime import date
 from pathlib import Path
+from unittest.mock import patch
 
 import daily
 from seed.snapshot import materialize_snapshot
@@ -194,3 +195,20 @@ class UpsertCatalogIntegrationTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class IndexQuotaTest(unittest.TestCase):
+    def test_quota_pending_keeps_load_success_and_continues_next_target(self):
+        with tempfile.TemporaryDirectory() as d:
+            run = daily.Run(Path(d), 'quota-test')
+            (run.data / 'state').mkdir(exist_ok=True)
+            (run.data / 'state/index_pending-cloud.json').write_text(json.dumps({'pending': True}))
+            env = {'WEAVIATE_URL': 'https://example.com', 'COHERE_API_KEY': 'test'}
+            with patch.object(daily, 'target_env', return_value=(env, [])), \
+                    patch.object(daily.subprocess, 'call', return_value=0) as call, \
+                    patch.object(daily, 'record_loaded') as recorded:
+                self.assertTrue(daily.load_targets(run, ['cloud', 'local'], True, date(2026, 9, 30)))
+            self.assertEqual(call.call_count, 4)
+            self.assertEqual(recorded.call_count, 2)
+            self.assertEqual(run.state['load']['cloud']['status'], 'partial')
+            self.assertEqual(run.state['load']['local']['status'], 'ok')

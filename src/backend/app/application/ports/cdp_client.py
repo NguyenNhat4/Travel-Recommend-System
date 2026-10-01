@@ -131,7 +131,23 @@ class CdpHistoryReader(Protocol):
 
     Trả dict theo tên trường CDP (camelCase: `cdpUserId`, `eventName`, `usingDate`...), đúng hình dạng
     `domain/recommendation` đọc và `HttpCdpClient` sẽ trả khi lên CDP thật.
+
+    Raises CdpUnavailableError khi không kết nối/đọc được kho CDP (sập, timeout); `RecommendForUser`
+    bắt lỗi này ở `events_for_user` để lui về `popular`.
     """
 
     def events_for_user(self, cdp_user_id: str) -> list[dict]: ...
     def purchase_events(self, since_days: int = 730) -> list[dict]: ...
+
+    def all_events(self, until: datetime | None = None) -> list[dict]:
+        """Toàn bộ event (mọi khách), chỉ cho đánh giá offline (`src/evaluation/recsys_bench`); không gọi trong request.
+
+        `until` cắt ở kho: chỉ trả event có `timestamp < until`. Thứ tự tất định theo khách, thời điểm, id nội bộ.
+        """
+        ...
+
+    def all_profiles(self) -> list[dict]:
+        """Toàn bộ `cdp.profiles` (camelCase: `cdpUserId`, `lifecycleStage`, `daysSinceLastBooking`, `lifetimeOrderCount`,
+        `vinclubTier`, `purchasedVerticals`, `homeCity`, `lastDestination`), chỉ cho đánh giá offline (sanity của harness);
+        không gọi trong request. Thứ tự tất định theo `cdpUserId`."""
+        ...

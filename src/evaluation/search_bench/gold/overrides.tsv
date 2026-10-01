@@ -1,0 +1,71 @@
+case_id	verdict	edited_query	reason	note
+c0340	KEEP			mở lại 24/09 theo chốt người dùng: thực thể có thật — search unit 6f8afb28 'Công Viên 30/4' (attraction, Biên Hòa), ref còn sống; REJECT cũ mang mã fabricated_entity/other trong khi selectbox mặc định là fabricated_entity
+c0349	KEEP			mở lại 24/09 theo chốt người dùng: thực thể có thật — search unit fea7ce28 'Sông Bằng' (attraction, Cao Bằng), ref còn sống; REJECT cũ mang mã fabricated_entity/other trong khi selectbox mặc định là fabricated_entity
+c0352	KEEP			mở lại 24/09 theo chốt người dùng: thực thể có thật — search unit 7d7a2dd6 'Núi Sam' (attraction, Châu Đốc), ref còn sống; REJECT cũ mang mã fabricated_entity/other trong khi selectbox mặc định là fabricated_entity
+c0358	KEEP			mở lại 24/09 theo chốt người dùng: thực thể có thật — search unit c9005b53 'tiNiWorld' (attraction, Cần Thơ), ref còn sống; REJECT cũ mang mã fabricated_entity/other trong khi selectbox mặc định là fabricated_entity
+c0361	KEEP			mở lại 24/09 theo chốt người dùng: thực thể có thật — search unit 6864d508 'Chợ nổi Cái Răng' (attraction, Cần Thơ), ref còn sống; REJECT cũ mang mã fabricated_entity/other trong khi selectbox mặc định là fabricated_entity
+c0173	KEEP			bất đồng khoi vs QAnh — lấy nhãn cuối cùng theo chốt của người dùng 24/09: QAnh KEEP lúc 09:07:39Z, sau nhãn của khoi
+c0187	KEEP			bất đồng khoi vs QAnh — lấy nhãn cuối cùng theo chốt của người dùng 24/09: QAnh KEEP lúc 09:07:28Z, sau nhãn của khoi
+c0247	NEEDS_EDIT	Khách sạn Hạ Long không có ban công		bất đồng khoi vs QAnh — lấy nhãn cuối cùng theo chốt của người dùng 24/09: QAnh NEEDS_EDIT lúc 09:11:30Z, sau nhãn của khoi
+c0257	NEEDS_EDIT	Chỗ nghỉ ở Ninh Bình có thể xem được các địa danh địa phương		bất đồng khoi vs QAnh — lấy nhãn cuối cùng theo chốt của người dùng 24/09: QAnh NEEDS_EDIT lúc 09:16:25Z, sau nhãn của khoi
+c0259	KEEP			bất đồng khoi vs QAnh — lấy nhãn cuối cùng theo chốt của người dùng 24/09: QAnh KEEP lúc 09:15:01Z, sau nhãn của khoi
+c0261	KEEP			bất đồng khoi vs QAnh — lấy nhãn cuối cùng theo chốt của người dùng 24/09: QAnh KEEP lúc 09:16:59Z, sau nhãn của khoi
+c0571	REJECT		bad_grounding	phản biện 24/09 trên snapshot 2026-09-23: lật KEEP của QAnh — SU dc84e117 "Lotuz Hanoi Hostel - Ha Giang Loop Office" (Hà Nội) chứa "Ha Giang" trong name; hit BM25 tên riêng sống qua cutoff S7
+c0572	REJECT		bad_grounding	phản biện 24/09 trên snapshot 2026-09-23: lật KEEP của QAnh — cùng hit tên riêng như c0571 (SU dc84e117)
+c0581	REJECT		bad_grounding	phản biện 24/09 trên snapshot 2026-09-23: lật KEEP của QAnh — 60 SU Côn Đảo có province "Bà Rịa - Vũng Tàu" trong embed_text; SU c3b98361 "Velar Hotel Con Dao - Vung Tau"
+c0589	REJECT		bad_grounding	phản biện 24/09 trên snapshot 2026-09-23: --fill chọn nhầm — attraction 3401cc29 "[VinWonders Phú Quốc] - Workshop Nhà Hải Dương Học Nhí" khớp tên
+c0430	REJECT		other	phản biện 24/09 trên snapshot 2026-09-23: wifi có ở 145/159 = 91% property Đà Nẵng → ràng buộc vô hiệu (cùng lý do đã thay c0397)
+c0199	REJECT		duplicate	phản biện 24/09 trên snapshot 2026-09-23: "hồ bơi view đẹp" map về khoá pool — trùng khoá với c0631 trong amenity_single; phần "view đẹp" không lọc được
+c0412	REJECT		duplicate	phản biện 24/09 trên snapshot 2026-09-23: ý định "sân hiên" thứ ba trong no_diacritics (đã có Hà Nội, Sa Pa)
+c0532	REJECT		duplicate	phản biện 24/09 trên snapshot 2026-09-23: 22 kết quả của filter là tập con của c0499 và c0514 (cùng Đà Nẵng)
+c0520	REJECT		duplicate	phản biện 24/09 trên snapshot 2026-09-23: filter khớp 55, chứa trọn c0531 và giao 32/40 với c0508 (cùng Phan Thiết)
+c0484	REJECT		other	phản biện 24/09 trên snapshot 2026-09-23: filter quá rộng — khớp 65/133 hotel_property Sa Pa (lý tưởng 5–40)
+c0511	REJECT		other	phản biện 24/09 trên snapshot 2026-09-23: filter quá rộng — khớp 52/132 hotel_property Hải Phòng
+c0205	NEEDS_EDIT	chỗ nghỉ Phan Thiết có spa		phản biện 24/09 trên snapshot 2026-09-23: "bồn tắm" là khoá raw:bon-tam → sai slice amenity_single; spa là khoá seed, 32% property Phan Thiết, ref c2dc6824 có spa
+c0208	NEEDS_EDIT	Đà Lạt có nơi lưu trú nào có dịch vụ giặt ủi		phản biện 24/09 trên snapshot 2026-09-23: "sân hiên" là khoá raw:san-hien → sai slice; laundry là khoá seed, 25% property Đà Lạt, ref 3d5cbfc5 có laundry
+c0202	NEEDS_EDIT	khách sạn ở Phú Quốc có thang máy		phản biện 24/09 trên snapshot 2026-09-23: non_smoking phủ 79% property Phú Quốc → ràng buộc yếu; elevator 42%, ref 20c08a1d có elevator
+c0301	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0403	NEEDS_EDIT	khach san o phu quoc co dua don san bay		phản biện 24/09 trên snapshot 2026-09-23: ý định "lễ tân 24 giờ" thứ hai trong no_diacritics; đổi sang airport_shuttle (57% Phú Quốc), ref fa5d4cd4 có khoá này
+c0409	NEEDS_EDIT	khach san o ha long co quay bar		phản biện 24/09 trên snapshot 2026-09-23: ý định "không hút thuốc" thứ ba trong no_diacritics; đổi sang bar (34% Hạ Long). Ref 79a1b4b4 là du thuyền — người gán pool nên dựa vào khách sạn thật
+c0517	NEEDS_EDIT	khách sạn 3 sao ở Nha Trang dưới 500 nghìn		phản biện 24/09 trên snapshot 2026-09-23: "0.5 triệu" không phải cách người thật gõ; filter giữ nguyên lte 500000
+c0241	NEEDS_EDIT	khách sạn Côn Đảo không có hồ bơi view đẹp		sửa 28/09 theo chốt người dùng: "không ghi nhận" là giọng dữ liệu, người thật gõ "không có" (cùng cách QAnh sửa c0247)
+c0503	NEEDS_EDIT	tìm KS 3 sao tại Điện Biên, ngân sách tối đa 500 nghìn		sửa 28/09 theo chốt người dùng: "0.5 triệu" không phải cách người thật gõ (như c0517); filter giữ nguyên lte 500000
+c0531	NEEDS_EDIT	KS 3 sao tại Phan Thiết, ngân sách tối đa 500 nghìn, còn lựa chọn nào?		sửa 28/09 theo chốt người dùng: "0.5 triệu" không phải cách người thật gõ (như c0517); filter giữ nguyên lte 500000
+c0001	REJECT		other	loại khỏi bộ 2026-09-28 qua app (QAnh)
+c0011	REJECT		other	loại khỏi bộ 2026-09-28 qua app (QAnh)
+c0018	REJECT		other	loại khỏi bộ 2026-09-28 qua app (QAnh)
+c0007	REJECT		other	loại khỏi bộ 2026-09-28 qua app (QAnh)
+c0042	REJECT		other	loại khỏi bộ 2026-09-28 qua app (QAnh)
+c0046	REJECT		other	loại khỏi bộ 2026-09-28 qua app (QAnh)
+c0093	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0044	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0095	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0101	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0106	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0115	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0113	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0123	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0160	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0159	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0148	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0127	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0139	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0161	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0142	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0132	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0293	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0274	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0298	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0313	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0280	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0282	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0327	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0378	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0416	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0391	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0418	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0454	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0442	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0478	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0436	REJECT		other	loại khỏi bộ 2026-09-29 qua app (QAnh)
+c0276	NEEDS_EDIT	khách sạn Bắc Ninh có lựa chọn nào có double room		chép nguyên NEEDS_EDIT của QAnh (app soát câu, 2026-09-24T03:43Z) từ kho nhãn local để drafts.txt map được sang case_id từ file commit (sb gold pool --qid case), 2026-09-29

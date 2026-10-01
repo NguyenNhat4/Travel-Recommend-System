@@ -4,7 +4,7 @@ Phục vụ `docs/prd/test-plan.md` §2.4 (Tool Calling Accuracy ≥ 95%, Ground
 Output Integrity 100%) và FR-AGT-01..05, NFR-REL-01, NFR-SEC-01 trong `docs/prd/requirements.md`.
 
 Dành cho người thêm hoặc sửa case trong bộ golden. Luật chấm tổng quát và lý do chọn cách chấm nằm ở
-[evaluation-plan.md](evaluation-plan.md) §0; cách chạy và đọc kết quả ở [golden-run.md](golden-run.md).
+[golden-run.md](golden-run.md) mục 4; cách chạy và đọc kết quả ở [golden-run.md](golden-run.md).
 
 | Thành phần | Đường dẫn |
 |---|---|
@@ -72,8 +72,8 @@ Case chỉ cần khai phần riêng của nó.
 - Mỗi lượt có thể thêm `language: en` (gửi `context.language`) và `conversationId` (ép id cho lượt đó,
   ví dụ id không tồn tại để kiểm `CONVERSATION_NOT_FOUND`).
 - `turns`: một case có thể có nhiều lượt. Runner tự lấy `conversationId` từ response của lượt trước rồi
-  gửi kèm lượt sau, giống frontend. Với lỗi có thể tiếp tục (ví dụ 422 `UNSUPPORTED_DESTINATION`),
-  `conversationId` nằm trong `error.details` và runner cũng tự lấy.
+  gửi kèm lượt sau, giống frontend. Với lỗi có thể tiếp tục (nếu có), `conversationId` nằm trong
+  `error.details` và runner cũng tự lấy; câu hỏi lại `NEEDS_CLARIFICATION` (kể cả giá trị không hợp lệ) có sẵn ở `conversationId`.
 - Lượt trước fail thì runner vẫn chạy tiếp các lượt sau, để biên bản có đủ bằng chứng.
 
 ## 4. Các khoá của `expect`
@@ -91,10 +91,12 @@ Mọi khoá đều tuỳ chọn; runner chỉ kiểm khoá có mặt.
 | `nodesInclude` | Node bắt buộc có trong trace | `[clarify]` |
 | `nodesExclude` | Node không được có trong trace | `[tool]` |
 | `forbiddenText` | Chuỗi không được xuất hiện ở đâu trong response; không phân biệt hoa thường | `["Ritz Carlton"]` |
+| `titleFirstLine` | `true`: dòng đầu câu trả lời (`question`/`message`/`error.message`) là `**Tiêu đề**` kèm phần chi tiết; `false`: không có (chào hỏi, cảm ơn). Không đặt cho case mà nhánh trả lời phụ thuộc LLM (ví dụ G-046) | `true` |
 | `excludeProductsFromTurn` | `productId` của lượt `turn` (đếm từ 1) không xuất hiện lại ở lượt này; `role: stay` chỉ so chỗ ở, `role: any` so cả chỗ ở lẫn hoạt động | `{turn: 1, role: stay}` |
 | `minActivities` | Tổng số slot có sản phẩm trong lịch ít nhất bằng số này. Chỉ dùng cho điểm đến catalog có nhiều điểm tham quan | `3` |
 | `hasStay` | Lịch có hoặc không có chỗ ở | `false` |
 | `warningsExclude` | Các `warnings[].code` này không được xuất hiện | `[PRODUCT_DROPPED_EXCLUDED]` |
+| `toolsInclude` | Các tool này phải có trong `tool_plan` cuối của lượt (sau `validated_plan`; lời gọi bị server bỏ không tính) | `[get_similar_products]` |
 
 Giá trị hợp lệ:
 
@@ -126,7 +128,7 @@ commit rút gọn; id case không được dùng lại.
 | `fake_product_name` | G-071 | Đổi sang khách sạn không có thật ở lượt sau → không bịa | Chưa từng fail; đa lượt, có `specific_hotel` |
 | `multi_turn` | G-059 | Thêm một bé ở lượt sau → vẫn `COMPLETED`, đủ hoạt động | Fail 24/09: lượt sau ra `NO_RESULTS` |
 | `language_en` | G-062 | `context.language=en` → note và warning tiếng Anh | Fail 24/09: còn câu tiếng Việt cố định |
-| `invalid_duration` | G-064 | "Huế 0 ngày" → 400 `INVALID_TRIP_DURATION` | Chưa từng fail; giá trị biên 0 |
+| `invalid_duration` | G-064 | "Huế 0 ngày" → 200 `NEEDS_CLARIFICATION` hỏi lại số ngày | Chưa từng fail; giá trị biên 0 |
 | `invalid_request` | G-066 | `conversationId` không tồn tại → 404 `CONVERSATION_NOT_FOUND` | Category chỉ có một case |
 | `greeting` | G-045 | "xin chào" → `NEEDS_CLARIFICATION`, không gọi tool | Chưa từng fail; khoá `status` chặt hơn G-074 |
 | `out_of_domain` | G-046 | Câu hỏi ngoài du lịch → không gọi tool | Category chỉ có một case |
@@ -141,6 +143,15 @@ bắt đầu bằng câu như vậy có hai lượt liền nhau: lượt hỏi (
 `missingFieldsInclude: [startDate]`, `toolCalled: false`) rồi lượt trả lời `chưa chốt ngày đi`; kỳ vọng kết quả nằm ở
 lượt trả lời. Số lượt trong `excludeProductsFromTurn` tính cả lượt hỏi. Case mới cần tới bước truy xuất thì làm
 theo cách này, hoặc nêu ngày đi ngay trong câu đầu (như nhóm `clear_request`).
+
+**Lượt hỏi thiếu điểm đến/số ngày, không chốt được sau hai lượt.** Không giới hạn số lần hỏi lại từng làm hội thoại
+kẹt vòng khi người dùng trả lời kiểu "bao nhiêu ngày cũng được" (LLM không trích được số). Từ đề xuất
+`docs/prd/update-archive/2026-09-29-form-goi-y-thong-tin-chuyen-di.md` (đã áp dụng): lượt 1 hỏi bằng câu chữ như
+bình thường; lượt 2 vẫn thiếu thì response có thêm `clarificationForm` thay vì hỏi lại y hệt. Runner chưa có khoá
+`expect` kiểm trực tiếp `clarificationForm` — case kiểm gián tiếp bằng `missingFieldsInclude` giữ nguyên ở cả hai lượt
+và `toolCalled: false` ở cả hai, để chứng minh agent không lặp vô hạn cũng không gọi tool khi thiếu thông tin
+(xem G-077 — đánh số lại từ G-076 vì trùng id với case Similar-tool khi merge hai nhánh). Lượt thứ ba mô
+phỏng người dùng gửi câu hoàn chỉnh (frontend dựng từ form) như một câu chat bình thường.
 
 **Ngày trong câu dùng placeholder.** Ngày cứng như "20/10" sẽ cũ đi theo thời gian và có thể rơi ra ngoài cửa sổ đặt chỗ 30 ngày
 của catalog; cách nói tương đối như "tuần sau" thì LLM tự diễn giải nên không kiểm được ngày chính xác. Vì vậy dùng
@@ -181,7 +192,7 @@ không phải với điều mình đoán.
 
 ## 7. Quy trình thêm case
 
-1. Thêm khối YAML vào cuối file dataset, với `id` tiếp theo (lớn hơn mọi id từng dùng, kể cả id đã xoá khỏi bộ rút gọn: hiện là G-076), `category` và `fr`. Mỗi category chỉ một case; case mới cho category đã có thì thay case cũ hoặc đổi quy ước (xem mục 5).
+1. Thêm khối YAML vào cuối file dataset, với `id` tiếp theo (lớn hơn mọi id từng dùng, kể cả id đã xoá khỏi bộ rút gọn: hiện là G-077), `category` và `fr`. Mỗi category chỉ một case; case mới cho category đã có thì thay case cũ hoặc đổi quy ước (xem mục 5).
 2. Chạy test của dataset:
 
    ```bash

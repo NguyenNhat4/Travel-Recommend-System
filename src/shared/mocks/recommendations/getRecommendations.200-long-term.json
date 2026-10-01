@@ -1,0 +1,106 @@
+{
+  "cdpUserId": "VP0061472",
+  "generatedAt": "2026-09-16T10:14:22Z",
+  "modelVersion": "multilingual-e5-base-v1.2",
+  "strategy": "long_term",
+  "nextVertical": null,
+  "destination": null,
+  "recommendations": [
+    {
+      "rank": 1,
+      "productId": "nt-a-01",
+      "name": "VinWonders Nha Trang",
+      "taxonomy": "attraction",
+      "destination": "Nha Trang",
+      "unitPrice": 880000,
+      "currency": "VND",
+      "available": true,
+      "imageUrl": "https://cdn.example.vn/nt-a-01.jpg",
+      "attributes": {
+        "outdoor": true,
+        "waterPark": true,
+        "familyFriendly": true
+      },
+      "score": 0.68,
+      "because": [
+        {
+          "productId": "nt-h-01",
+          "productName": "Vinpearl Resort Nha Trang - Deluxe Ocean View",
+          "imageUrl": "https://cdn.example.vn/nt-h-01.jpg",
+          "event": "purchase",
+          "daysAgo": 75,
+          "contribution": 0.58
+        },
+        {
+          "productId": "pq-h-01",
+          "productName": "Vinpearl Resort & Spa Phú Quốc",
+          "imageUrl": "https://cdn.example.vn/pq-h-01.jpg",
+          "event": "product_view",
+          "daysAgo": 142,
+          "contribution": 0.21
+        }
+      ],
+      "priceUnit": "PER_PERSON"
+    },
+    {
+      "rank": 2,
+      "productId": "pq-g-01",
+      "name": "Vinpearl Golf Phú Quốc - 18 hố",
+      "taxonomy": "golf",
+      "destination": "Phú Quốc",
+      "unitPrice": 2600000,
+      "currency": "VND",
+      "available": true,
+      "imageUrl": "https://cdn.example.vn/pq-g-01.jpg",
+      "attributes": {
+        "caddie": true,
+        "outdoor": true
+      },
+      "score": 0.61,
+      "because": [
+        {
+          "productId": "pq-h-01",
+          "productName": "Vinpearl Resort & Spa Phú Quốc",
+          "imageUrl": "https://cdn.example.vn/pq-h-01.jpg",
+          "event": "product_view",
+          "daysAgo": 142,
+          "contribution": 0.47
+        }
+      ],
+      "priceUnit": "PER_PERSON"
+    },
+    {
+      "rank": 3,
+      "productId": "dn-a-01",
+      "name": "Vé cáp treo Bà Nà Hills",
+      "taxonomy": "attraction",
+      "destination": "Đà Nẵng",
+      "unitPrice": 900000,
+      "currency": "VND",
+      "available": true,
+      "imageUrl": "https://cdn.example.vn/dn-a-01.jpg",
+      "attributes": {
+        "outdoor": true,
+        "familyFriendly": true
+      },
+      "score": 0.55,
+      "because": [
+        {
+          "productId": "nt-h-01",
+          "productName": "Vinpearl Resort Nha Trang - Deluxe Ocean View",
+          "imageUrl": "https://cdn.example.vn/nt-h-01.jpg",
+          "event": "purchase",
+          "daysAgo": 75,
+          "contribution": 0.44
+        }
+      ],
+      "priceUnit": "PER_PERSON"
+    }
+  ],
+  "diagnostics": {
+    "eventsUsed": 11,
+    "coldStart": false,
+    "excludedVerticals": [],
+    "latencyMs": 44
+  }
+}

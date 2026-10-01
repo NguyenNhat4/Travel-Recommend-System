@@ -1,4 +1,4 @@
-import asyncio, json, sys, pathlib
+import asyncio, json, os, sys, pathlib
 import numpy as np, pytest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
 
@@ -7,6 +7,12 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
 # nếu không LocalCdpClient trả InterfaceError trên mọi máy Windows.
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+# Test dựng app (TestClient) đọc `.env` của dev; `.env` bật LANGSMITH_TRACING thì `main._enable_langsmith` đẩy cờ
+# vào os.environ và mọi lượt graph với LLM giả sau đó bị gửi lên project LangSmith thật (trace < 1 s, tên
+# "lên lịch giúp mình", "conv-khong-co"...). Biến môi trường thật thắng `.env`, nên tắt ở đây trước khi app nào được dựng.
+os.environ["LANGSMITH_TRACING"] = "false"
+os.environ["LANGCHAIN_TRACING_V2"] = "false"
 
 
 class FakeEmbedder:

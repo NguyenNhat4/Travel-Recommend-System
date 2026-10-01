@@ -6,6 +6,8 @@ class BookingError(Exception):
     code = "INTERNAL_ERROR"
     http_status = 500
     retryable = False
+    # Thông điệp tiếng Việt riêng cho người dùng; None thì tầng API dùng câu mặc định theo mã lỗi.
+    user_message: str | None = None
 
     def __init__(self, message: str = "", details: dict | None = None):
         super().__init__(message or self.code)
@@ -21,6 +23,8 @@ class CartEmpty(BookingError):
 
 
 class ValidationFailed(BookingError):
+    """Vi phạm luật dữ liệu. `details.fields[]` có `{field, reason, message}` cho mọi vi phạm (spec checkout §7.5)."""
+
     code, http_status = "VALIDATION_ERROR", 400
 
 
