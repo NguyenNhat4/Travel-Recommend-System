@@ -2,7 +2,7 @@ import React from 'react';
 import Image from 'next/image';
 import { AlertCircle, Loader2, Maximize2, RotateCcw, Sparkles } from 'lucide-react';
 import { nodeLabel } from '../../../components/assistant/assistantLabels';
-import { InlineBold } from '../../../components/assistant/inlineBold';
+import { AssistantText, InlineBold } from '../../../components/assistant/inlineBold';
 import { SuggestionChips } from '../../../components/assistant/SuggestionChips';
 import { TripDetailsForm } from '../../../components/assistant/TripDetailsForm';
 import { WidgetOpening } from './WidgetOpening';
@@ -11,7 +11,7 @@ import type { FloatingWidgetController } from './useFloatingWidget';
 
 export function WidgetChat({ widget }: { widget: FloatingWidgetController }) {
   const { messages, assistantState, isRunning, isExpanded, setIsExpanded, chatScrollRef,
-    inputVal, setInputVal, handleSendMessage, handleConfirmTripDetails, retry, abort } = widget;
+    inputVal, setInputVal, handleSendMessage, handleConfirmTripDetails, retry, abort, focusProduct } = widget;
   const isInitial = messages.length === 0 && !isRunning;
   const lastMessageId = messages.length > 0 ? messages[messages.length - 1].id : null;
 
@@ -24,7 +24,9 @@ export function WidgetChat({ widget }: { widget: FloatingWidgetController }) {
             <div key={message.id} className={`flex items-start gap-3 ${message.sender === 'user' ? 'justify-end' : ''}`}>
               {message.sender === 'assistant' && <Image src="/mascot_welcome.webp" alt="" width={36} height={36} className="mt-1 h-9 w-9 shrink-0 object-contain" />}
               <div className={`min-w-0 max-w-[88%] whitespace-pre-wrap break-words rounded-2xl p-4 text-base leading-relaxed ${message.sender === 'user' ? 'rounded-tr-none bg-blue-600 text-white' : 'rounded-tl-none bg-slate-100 text-slate-800'}`}>
-                {message.sender === 'assistant' ? <InlineBold text={message.text} /> : message.text}
+                {message.sender === 'assistant'
+                  ? <AssistantText text={message.text} onProduct={message.plan ? (productId) => focusProduct(message.plan!, productId) : undefined} />
+                  : message.text}
                 {message.plan && !isExpanded && (
                   <button onClick={() => setIsExpanded(true)} className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-blue-600 hover:bg-blue-50">
                     <Sparkles className="h-4 w-4" aria-hidden="true" />Xem lộ trình & Bản đồ song song<Maximize2 className="h-4 w-4" aria-hidden="true" />

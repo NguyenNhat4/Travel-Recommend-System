@@ -9,7 +9,7 @@ import unittest
 
 from src.backend.app.agents import nodes, routing
 from src.backend.app.agents.graph import build_graph
-from src.backend.app.agents.models import ConversationalAnswer, DestinationChoice, Extraction, TurnRoute
+from src.backend.app.agents.models import ConversationalAnswer, DestinationChoice, Extraction, ItineraryNarration, TurnRoute
 from src.backend.app.agents.steps.prompts import SIMILAR_HINT, TOOL_PLAN_PROMPT
 from src.backend.app.infrastructure.persistence.langgraph_checkpointer import build_checkpointer
 from src.backend.app.agents.tools.itinerary_gateway import ItineraryToolGateway
@@ -35,8 +35,9 @@ class ScriptedLlm:
     def __init__(self, extraction=None, plan=None, route='travel',
                  conversational_message='Bạn muốn đi đâu và trong bao nhiêu ngày?',
                  destination_choice=None, fail_destination=False, fail_conversation=False, plan_delay=0,
-                 conversational_title=None):
+                 conversational_title=None, narration=None):
         self.fail_conversation = fail_conversation
+        self.narration = narration or ItineraryNarration(title='Chuyến đi Nha Trang', message='Lịch trình gợi ý.')
         self.conversational_title = conversational_title
         self.route = route
         self.destination_choice = destination_choice
@@ -66,6 +67,8 @@ class ScriptedLlm:
                 if self.fail_conversation:
                     raise RuntimeError('provider error')
                 return ConversationalAnswer(title=self.conversational_title, message=self.conversational_message)
+            if schema is ItineraryNarration:
+                return self.narration
             raise AssertionError(f'the itinerary path must not call the model for {schema.__name__}')
         return SimpleNamespace(ainvoke=invoke)
 
@@ -145,7 +148,11 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['validation_issues'], [])
         # The itinerary is built by `compose`; `converse` only handles chit-chat and never sees products.
         self.assertEqual([event['node'] for event in result['events']],
-                         ['intake', 'classify', 'extract', 'tool', 'evaluate', 'compose', 'finalize'])
+                         ['intake', 'classify', 'extract', 'tool', 'evaluate', 'compose', 'narrate', 'finalize'])
+        # `narrate` adds the chat text; it survives `finalize` and links only scheduled products.
+        self.assertTrue(result['response']['message'].startswith('**Chuyến đi Nha Trang**\n'))
+        self.assertIn('[Catalog a](product:a)', result['response']['message'])
+        self.assertEqual(result['final_answer'], result['response']['message'])
 
     async def test_checked_in_catalog_fixture_runs_through_the_graph(self):
         from src.backend.app.infrastructure.clients.itinerary_fixture_clients import FixtureItineraryClients
@@ -622,8 +629,9 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         llm = ScriptedLlm()
         result = await self.run_graph(llm)
         self.assertEqual(result['response']['status'], 'COMPLETED')
-        # Intent extraction and the tool planner remain; nothing else may consult the model.
-        self.assertEqual(llm.calls, ['TurnRoute', 'Extraction', 'planner'])
+        # Intent extraction, the tool planner and the narration remain; nothing else may consult the model,
+        # and the narration only words an itinerary that `compose` already built.
+        self.assertEqual(llm.calls, ['TurnRoute', 'Extraction', 'planner', 'ItineraryNarration'])
 
     async def test_only_retrieved_products_can_reach_a_slot(self):
         clients = Clients(products=[product('a'), product('b'), product('c')])

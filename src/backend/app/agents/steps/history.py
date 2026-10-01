@@ -6,7 +6,7 @@ from typing import Any
 
 import yaml
 
-from .messages import strip_title
+from .messages import plain_links, strip_title
 
 MAX_HISTORY_MESSAGES = 20
 MAX_HISTORY_MESSAGE_CHARS = 1_000
@@ -57,9 +57,10 @@ def llm_context(state: dict[str, Any], *, intent: dict[str, Any] | None = None,
     Lịch sử bị giới hạn (20 message, 8.000 ký tự), nên kèm bản tóm tắt chuyến đi đã chốt (`known_intent`,
     `known_constraints`) và sản phẩm đã cho xem: thông tin của lượt cũ vẫn còn dù message cũ bị cắt.
     `last_assistant_message` giúp hiểu câu trả lời ngắn ("1 ngày thôi", "chưa chốt ngày") là trả lời cho câu hỏi nào.
+    Tin nhắn trợ lý cũ bỏ dòng tiêu đề và đổi link sản phẩm `[Tên](product:id)` thành `Tên`.
     Node truyền `intent`/`constraints` khi đã có bản mới hơn state (ví dụ điểm đến đã chuẩn hóa ở `tool`).
     """
-    history = [{**item, "content": strip_title(item["content"])} if item["role"] == "assistant" else item
+    history = [{**item, "content": plain_links(strip_title(item["content"]))} if item["role"] == "assistant" else item
                for item in sanitize_conversation_history(state.get("conversation_history", []))]
     last_assistant = next((item["content"] for item in reversed(history) if item["role"] == "assistant"), None)
     return {"conversation_history": history,

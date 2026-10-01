@@ -5,7 +5,8 @@ from collections import Counter
 from copy import deepcopy
 import logging
 
-from src.backend.app.domain.itinerary.planning import compose_plan, render_proposal, summary, validate_plan
+from src.backend.app.domain.itinerary.planning import (compose_plan, multi_day_offers, render_proposal, summary,
+                                                        validate_plan)
 
 from . import messages
 from .messages import display_date, failure
@@ -48,6 +49,8 @@ def fallback(state: dict) -> dict:
 
 
 MAX_SUGGESTIONS = 3
+#: Số gói nhiều ngày tối đa đưa kèm lịch trình mỗi loại; đủ để chọn mà không làm dài lời diễn giải.
+MAX_MULTI_DAY_OFFERS = 2
 MAX_ALTERNATIVE_DESTINATIONS = 2
 
 
@@ -150,8 +153,22 @@ def composed(state: dict) -> dict:
             warnings.append({"code": "DAY_WITHOUT_PRODUCTS",
                              "message": f"Ngày {day['day']} dành cho nghỉ ngơi hoặc hoạt động chung, "
                                         "chưa có sản phẩm được chọn."})
-    return {"response": {"status": "COMPLETED", "conversationId": state["conversation_id"],
-                         "intent": state["intent"], "itinerary": plan, "warnings": warnings}}
+    response = {"status": "COMPLETED", "conversationId": state["conversation_id"],
+                "intent": state["intent"], "itinerary": plan, "warnings": warnings}
+    offers = _multi_day_offers(state)
+    if offers:
+        response["searchResults"] = offers
+    return {"response": response}
+
+
+def _multi_day_offers(state: dict) -> dict:
+    """Gói/tour nhiều ngày không xếp vào một buổi: trả kèm trong `searchResults` để người dùng cân nhắc riêng."""
+    groups: dict = {}
+    for product in multi_day_offers(state["candidates"], state["sources"]):
+        items = groups.setdefault(product["taxonomy"], [])
+        if len(items) < MAX_MULTI_DAY_OFFERS:
+            items.append(summary(product))
+    return groups
 
 
 def compose_or_fallback(state: dict) -> dict:

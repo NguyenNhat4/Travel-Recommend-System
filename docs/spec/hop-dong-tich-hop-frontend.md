@@ -457,7 +457,7 @@ Ví dụ sửa chip "3 ngày → 2 ngày":
 
 | `status` | Khi nào | Web render |
 |---|---|---|
-| `COMPLETED` | Có kế hoạch | Panel kế hoạch + thẻ tóm tắt trong chat |
+| `COMPLETED` | Có kế hoạch | Panel kế hoạch + lời diễn giải `message` trong chat: dòng đầu `**Tiêu đề**` và các mục in đậm; link `[Tên](product:<productId>)` hiện thành nút, bấm thì mở rộng widget, chọn tab ngày chứa sản phẩm, cuộn và tô viền thẻ đó ở panel và focus điểm trên bản đồ (`WidgetChat.tsx`, `useFloatingWidget.focusProduct`, `widgetPlan.locateProduct`). Không có `message` thì hiện `itinerary.title`, rồi câu cố định. Chỉ `**đậm**` và link sản phẩm được render, mọi markdown/HTML khác hiện nguyên chữ (`inlineBold.parseAssistantText`) |
 | `NEEDS_CLARIFICATION` | Thiếu `destination`, `days`, hoặc chưa hỏi `startDate`/`party`/`budget`; hoặc có giá trị không hợp lệ (ngày đã qua, điểm đến ngoài catalog, số ngày/số người/ngân sách ngoài giới hạn) | Thẻ hỏi lại có lựa chọn; có `clarificationForm` (từ lượt hỏi thứ hai) thì hiện form đã điền sẵn thay cho chip. Dòng đầu `question` dạng `**Tiêu đề**` hiển thị **chữ đậm** (bong bóng chat, widget nổi và thẻ hỏi lại tách tiêu đề khỏi phần thân). Cùng dạng cho `message` của `NO_RESULTS`/`FALLBACK` (thẻ kết quả tách tiêu đề thành tiêu đề thẻ) và `error.message` của lỗi `VALIDATION_ERROR` 400 (khung lỗi in đậm dòng đầu); tên khi chia sẻ/lưu lấy từ tiêu đề |
 | `NO_RESULTS` | Search không có sản phẩm phù hợp | Tin nhắn + chip `suggestions` |
 | `FALLBACK` | LLM lỗi nhưng Search chạy được | Tin nhắn fallback + panel "Dịch vụ gợi ý ở {destination}" |

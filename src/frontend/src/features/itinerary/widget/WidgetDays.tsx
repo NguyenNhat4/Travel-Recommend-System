@@ -4,10 +4,19 @@ import { getHotelVisuals, getSlotVisualUrl } from './widgetVisuals';
 import type { FloatingWidgetController } from './useFloatingWidget';
 
 export function WidgetDays({ widget }: { widget: FloatingWidgetController }) {
-  const { activePlan, activeDayTab, setHoveredCoordinate, setHoveredPointId } = widget;
+  const { activePlan, activeDayTab, setHoveredCoordinate, setHoveredPointId, focusedProductId } = widget;
+  const listRef = React.useRef<HTMLDivElement>(null);
+  // Bấm tên sản phẩm trong chat: sau khi tab ngày đã đổi, cuộn thẻ vào giữa khung.
+  React.useEffect(() => {
+    if (!focusedProductId) return;
+    const card = Array.from(listRef.current?.querySelectorAll<HTMLElement>('[data-product-id]') ?? [])
+      .find((element) => element.dataset.productId === focusedProductId);
+    card?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [focusedProductId, activeDayTab, activePlan]);
   if (!activePlan) return null;
+  const focusRing = (productId?: string) => (productId && productId === focusedProductId ? ' ring-2 ring-blue-500' : '');
   return (
-<div className="flex-1 overflow-y-auto p-4 space-y-4 bg-white">
+<div ref={listRef} className="flex-1 overflow-y-auto p-4 space-y-4 bg-white">
   {/* Render Days (Tất cả các ngày hoặc ngày đang chọn) */}
   {activePlan.days
     .filter((d) => activeDayTab === 0 || d.day === activeDayTab)
@@ -43,6 +52,7 @@ export function WidgetDays({ widget }: { widget: FloatingWidgetController }) {
 
                 {/* Hotel Card trong Lộ trình - Layout ưu tiên VISUAL TO RÕ (Ít nhất 2 ảnh: Biệt Thự & Hồ Bơi) */}
                 <div
+                  data-product-id={stayForThisDay.product.id}
                   onClick={() => {
                     if (stayForThisDay.product) {
                       window.open(`/product/${stayForThisDay.product.id}`, '_blank', 'noopener,noreferrer');
@@ -58,7 +68,7 @@ export function WidgetDays({ widget }: { widget: FloatingWidgetController }) {
                     setHoveredCoordinate(null);
                     setHoveredPointId(null);
                   }}
-                  className="p-3.5 sm:p-4 rounded-2xl bg-white border border-slate-100 cursor-pointer space-y-3"
+                  className={`p-3.5 sm:p-4 rounded-2xl bg-white border border-slate-100 cursor-pointer space-y-3${focusRing(stayForThisDay.product.id)}`}
                 >
                   {/* Row 1: Header / Giá phòng */}
                   <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-100">
@@ -140,6 +150,7 @@ export function WidgetDays({ widget }: { widget: FloatingWidgetController }) {
 
                   {/* Stop Card - Layout ưu tiên VISUAL TO RÕ - KHÔNG HOVER ANIMATIONS */}
                   <div
+                    data-product-id={slot.product?.id}
                     onClick={() => {
                       if (slot.product) {
                         window.open(`/product/${slot.product.id}`, '_blank', 'noopener,noreferrer');
@@ -156,7 +167,7 @@ export function WidgetDays({ widget }: { widget: FloatingWidgetController }) {
                       setHoveredCoordinate(null);
                       setHoveredPointId(null);
                     }}
-                    className={`p-3.5 sm:p-4 rounded-2xl bg-white border border-slate-100 space-y-3 ${slot.product ? 'cursor-pointer' : ''}`}
+                    className={`p-3.5 sm:p-4 rounded-2xl bg-white border border-slate-100 space-y-3 ${slot.product ? 'cursor-pointer' : ''}${focusRing(slot.product?.id)}`}
                   >
                     {/* Row 1: Khung giờ + Phân loại dịch vụ + Địa điểm */}
                     <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-100 flex-wrap">

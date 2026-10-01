@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import date, timedelta
+import re
 from typing import Any
 
 from .normalization import strip_accents
@@ -31,6 +32,14 @@ SLOT_TAXONOMIES = frozenset({"attraction", "golf"})
 SCHEDULABLE_TAXONOMIES = frozenset({STAY_TAXONOMY, *SLOT_TAXONOMIES})
 # Pace is not a scheduling input yet; this is the cap the itinerary has always been held to.
 MAX_ACTIVITIES_PER_DAY = 2
+# Multi-day passes and tours ("[03 ngày không giới hạn] - VinWonders + Safari", "4D3N", "Thẻ Hội Viên 90 ngày")
+# cannot fit one slot of one day; they are offered next to the itinerary for the user to consider separately.
+MULTI_DAY_MINUTES = 2 * 24 * 60
+_SPAN_PATTERNS = (
+    re.compile(r"(\d{1,3})[\s-]*(?:ngày|ngay|days?)\b", re.IGNORECASE),
+    re.compile(r"(\d{1,2})\s*D\s*\d{1,2}\s*N\b"),
+    re.compile(r"(\d{1,2})\s*N\s*\d{1,2}\s*Đ\b", re.IGNORECASE),
+)
 
 
 def normalized(value: str | None) -> str:
@@ -71,6 +80,27 @@ def parse_day(value: str | None) -> date | None:
 def allowed_times(product: Product) -> list[str]:
     duration = product.get("attributes", {}).get("durationMinutes")
     return ["MORNING"] if isinstance(duration, (int, float)) and duration >= 360 else ["MORNING", "NOON", "AFTERNOON", "EVENING"]
+
+
+def multi_day_span(product: Product) -> int | None:
+    """Number of days a pass or tour covers when it is two or more, else None.
+
+    Read from `durationMinutes` (two days or more) or from the name ("03 ngày", "2 Day", "4D3N", "3N2Đ").
+    "[01 ngày]" and a full-day tour are single-day and stay schedulable.
+    """
+    duration = product.get("attributes", {}).get("durationMinutes")
+    spans = [int(duration // (24 * 60))] if isinstance(duration, (int, float)) and duration >= MULTI_DAY_MINUTES else []
+    for pattern in _SPAN_PATTERNS:
+        spans.extend(int(match.group(1)) for match in pattern.finditer(product.get("name") or ""))
+    longest = max(spans, default=0)
+    return longest if longest >= 2 else None
+
+
+def multi_day_offers(candidates: Candidates, sources: Sources) -> list[Product]:
+    """Available multi-day passes/tours, never put in a slot: shown for the user to consider separately."""
+    offers = [product for product in candidates.values()
+              if product.get("available") and product.get("taxonomy") in SLOT_TAXONOMIES and multi_day_span(product)]
+    return sorted(offers, key=lambda product: (_source_rank(sources, product), *_price_key(product), product["productId"]))
 
 
 def _source(value: str | None) -> str:
@@ -154,7 +184,7 @@ def compose_plan(candidates: Candidates, sources: Sources, intent: TripIntent) -
     stay = stays[0] if stays else None
     taken = {_parent_key(stay), stay["productId"]} if stay else set()
     activities: list[Product] = []
-    for product in sorted((p for p in usable if p.get("taxonomy") in SLOT_TAXONOMIES),
+    for product in sorted((p for p in usable if p.get("taxonomy") in SLOT_TAXONOMIES and not multi_day_span(p)),
                           key=lambda product: _activity_order(sources, product)):
         key = _parent_key(product)
         if key in taken or product["productId"] in taken:

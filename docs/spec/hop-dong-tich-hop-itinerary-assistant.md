@@ -311,7 +311,15 @@ Request giống `POST /assistant/itineraries`. Stream phát lần lượt `run.s
 
 ### 4.2. Response hoàn chỉnh
 
-Payload MVP chỉ bắt buộc `status`, `conversationId`, `itinerary` và `warnings`. Các trường `intent`, `searchResults` và `metadata` là tùy chọn.
+Payload MVP chỉ bắt buộc `status`, `conversationId`, `itinerary` và `warnings`. Các trường `intent`, `message`, `searchResults` và `metadata` là tùy chọn.
+
+`message` là lời diễn giải lịch trình hiển thị trong khung chat, do node `narrate` viết (LLM; dự phòng bằng luật). Dạng: dòng đầu `**Tiêu đề**`, khi lượt này đổi thông tin chuyến đi thì câu ngay sau đó ghi nhận thay đổi ("Mình ghi nhận đổi ngày đi thành 15/10/2026. Lịch trình mình gợi ý như sau:"; backend tự chèn nên luôn đúng), rồi các mục in đậm: nơi nghỉ, từng ngày, chi phí dự kiến, lưu ý. Quy tắc grounding: sản phẩm chỉ được nhắc bằng link `[Tên](product:<productId>)` với `productId` có trong `itinerary` (backend thay nhãn bằng tên canonical và chặn id lạ); mọi số tiền đến từ dữ liệu sản phẩm (`unitPrice`, `priceUnit`) hoặc `estimatedTotal` qua placeholder, LLM không được tự viết số tiền; cách ghi giá khi không có giá xem đoạn dưới. `itinerary.title` bằng tiêu đề này.
+
+Điểm tham quan hoặc golf không có giá được diễn giải là "tham quan tự do" (người dùng chốt ngày 01/10/2026). Khách sạn
+không có giá vẫn ghi "giá đang cập nhật". Tổng tiền vẫn là `null` khi thiếu giá (`docs/prd/architecture.md` §3).
+Gói hoặc tour nhiều ngày không xếp vào slot. Chúng được trả trong `searchResults` của `COMPLETED` (tối đa 2 gói mỗi
+loại, đối chiếu grounding như `FALLBACK`), và `message` có mục cố định "Gói nhiều ngày để bạn cân nhắc riêng" hỏi
+người dùng có muốn thêm không. Bấm link của gói thì mở trang chi tiết sản phẩm.
 
 ```json
 {
@@ -463,7 +471,8 @@ câu**, các dòng sau là phần chi tiết. Không có field mới: tiêu đ�
 | `NO_RESULTS` do ngày đi ngoài thời gian mở bán | Chưa có sản phẩm mở bán cho ngày này | Cố định |
 | `FALLBACK` | Chưa dựng được lịch trình hoàn chỉnh | Cố định |
 | Chào hỏi, cảm ơn | Không có tiêu đề | — |
-| `COMPLETED` và các lỗi hệ thống khác | Không áp dụng (lịch trình đã có `title`; khung lỗi riêng) | — |
+| `COMPLETED` | Do LLM đặt theo chuyến đi (dự phòng: "Lịch trình {days} ngày ở {destination}"); nằm ở dòng đầu `message` và ở `itinerary.title` | LLM (dự phòng cố định) |
+| Các lỗi hệ thống khác | Không áp dụng (khung lỗi riêng) | — |
 
 - LLM trả `title` cùng `message`; backend ghép `**title**` + xuống dòng + `message`, trim dấu `*`/khoảng trắng thừa và cắt tối đa 80 ký tự.
   Không có `title` hoặc LLM lỗi thì dùng tiêu đề cố định của trường hợp đó (bảng trên).
@@ -472,7 +481,7 @@ câu**, các dòng sau là phần chi tiết. Không có field mới: tiêu đ�
 
 **Giọng văn.** Mọi câu LLM viết ở `clarify` và `converse` ấm áp, 2–4 câu (từ chối và trò chuyện 1–3 câu): nói ngắn vì sao cần
 thông tin, cho ví dụ cách trả lời khi cần, không nêu tên sản phẩm. `ConversationalAnswer.message` tối đa 1.000 ký tự. Câu của
-`compose` (COMPLETED/NO_RESULTS/FALLBACK) không đổi.
+`compose` (COMPLETED/NO_RESULTS/FALLBACK) không đổi; lời diễn giải của `COMPLETED` do `narrate` viết (xem §4.2), giọng ấm áp như một người lập kế hoạch du lịch, mỗi lựa chọn có lý do cụ thể.
 
 ### 4.4. Response không có kết quả
 
@@ -600,7 +609,7 @@ Nếu caller chưa gửi, service đầu tiên sẽ tạo ID.
 | Một request Search | 1 giây |
 | Một request Recommendation | 1 giây |
 | LLM trích xuất intent | 2 giây |
-| LLM trình bày lịch trình | 3 giây |
+| LLM trình bày lịch trình (`narrate`; quá hạn thì dùng bản dựng bằng luật) | 3 giây |
 | Toàn bộ request Agent | Mục tiêu dưới 5 giây |
 
 Hạn mỗi lời gọi tool lấy từ `ITINERARY_TOOL_TIMEOUT_SECONDS`, áp như nhau ở mọi data mode. Ở `inprocess`, engine đồng bộ chạy trên pool riêng 40 thread (`itinerary-tool`) và giữ request ID của lượt. Thread đã bắt đầu không dừng được khi quá hạn, giống thread của route sync ở mode `http`. Riêng Similar đi qua use case `GetSimilarProducts` như route, nên chạy trên executor mặc định chứ không qua pool này: nó không embed, chỉ chờ Weaviate, và mỗi lượt đổi món có tối đa 2 lời gọi.

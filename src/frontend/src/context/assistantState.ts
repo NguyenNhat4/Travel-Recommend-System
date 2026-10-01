@@ -97,7 +97,7 @@ export function createInitialAssistantState(conversationId: string | null = null
 
 function responseText(response: AssistantResponse): string {
   switch (response.status) {
-    case 'COMPLETED': return response.itinerary.title || 'Lịch trình đã được hoàn tất.';
+    case 'COMPLETED': return response.message || response.itinerary.title || 'Lịch trình đã được hoàn tất.';
     case 'NEEDS_CLARIFICATION': return response.question;
     case 'NO_RESULTS':
     case 'FALLBACK': return response.message;

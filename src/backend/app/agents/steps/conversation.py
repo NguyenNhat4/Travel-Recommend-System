@@ -105,6 +105,9 @@ def conversation_input(state: dict) -> list:
         payload.update(invalid_inputs=_invalid_for_llm(state), today=display_date(vietnam_today().isoformat()),
                        valid_ranges=_valid_ranges(), form_shown=_form_shown(state),
                        supported_destinations=state.get("supported_destinations") or [])
+    elif state.get("clarification_reason") == "change_without_value":
+        # Để LLM đoán năm khi hỏi xác nhận một câu trả lời chưa đọc được ("1410" → "14/10/2026?").
+        payload["today"] = display_date(vietnam_today().isoformat())
     return [("system", CONVERSATION_PROMPT + f"\nReply in {language}."),
             ("human", prompt_yaml(payload))]
 

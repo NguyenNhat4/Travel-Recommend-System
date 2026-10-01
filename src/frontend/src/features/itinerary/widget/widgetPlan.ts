@@ -97,3 +97,34 @@ export function convertItineraryCompletedToGroundedPlan(
     cartItems: itineraryCartItems(response.itinerary, response.intent?.party),
   };
 }
+
+export interface ProductFocus {
+  day: number;
+  pointId: string;
+  coordinate: { lat: number; lng: number } | null;
+}
+
+/**
+ * Vị trí của một sản phẩm trong lịch trình để khung bên phải focus: ngày chứa nó, id điểm trên bản đồ
+ * (cùng quy ước với `WidgetDays`) và toạ độ. Khách sạn lưu trú thuộc ngày đầu; không có thì `null`.
+ */
+export function locateProduct(plan: WidgetPlan, productId: string): ProductFocus | null {
+  let step = 0;
+  for (const day of plan.days) {
+    const index = day.slots.findIndex((slot) => slot.productId === productId);
+    if (index >= 0) {
+      const slot = day.slots[index];
+      return {
+        day: day.day,
+        pointId: `day-${day.day}-slot-${slot.time}-${step + index + 1}`,
+        coordinate: slot.coordinates || slot.product?.coordinates || null,
+      };
+    }
+    step += day.slots.length;
+  }
+  const stay = plan.stay;
+  if (stay?.productId === productId) {
+    return { day: plan.days[0]?.day ?? 1, pointId: `stay-${productId}`, coordinate: stay.product?.coordinates || null };
+  }
+  return null;
+}

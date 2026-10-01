@@ -5,6 +5,7 @@ from copy import deepcopy
 from datetime import date, datetime, timedelta, timezone
 
 from src.backend.app.application.itinerary.contracts import bounds, valid
+from src.backend.app.domain.itinerary.dates import explicit_dates, this_year
 from src.backend.app.domain.itinerary.planning import merge_intent
 
 from ..models import Extraction, TurnRoute
@@ -109,14 +110,23 @@ def _supplies_a_change(state: dict, intent: dict, constraints: dict) -> bool:
             or any((constraints.get(key) or None) != (before_constraints.get(key) or None) for key in SWAP_CONSTRAINTS))
 
 
-def _this_year(value: date, today: date) -> date:
-    """LLM hay gán năm theo dữ liệu huấn luyện ("20/9" → 2023-09-20); năm cũ hơn hiện tại coi là năm nay."""
-    if value.year >= today.year:
-        return value
-    try:
-        return value.replace(year=today.year)
-    except ValueError:  # 29/02 của năm không nhuận
-        return value.replace(year=today.year, day=28)
+def _date_from_message(state: dict, result: Extraction, patch: dict, today: date) -> Extraction:
+    """Lưới an toàn khi LLM bỏ sót hoặc chép lại ngày cũ dù câu chat viết rõ một ngày mới.
+
+    Trace thật (gpt-4o-mini, "à nhầm Ngày 15 tháng 10" khi chuyến đang đi 14/10): `patch` chép nguyên intent đã lưu,
+    `startDate` vẫn là 14/10 và `change_without_value = ["startDate"]`, nên lượt này bị hỏi lại. Câu có đúng một ngày
+    tường minh (không phải ngày kết thúc) mà `patch.startDate` trống hoặc bằng ngày đã lưu thì dùng ngày đọc được.
+    Ghi thẳng vào `patch` (đổi tại chỗ), trả lại `result` đã bỏ `startDate` khỏi `change_without_value`.
+    """
+    dates = explicit_dates(state.get("query", ""), today)
+    if len(dates) != 1 or dates[0] == result.end_date or state.get("intent_override", {}).get("startDate"):
+        return result
+    stated, saved = dates[0].isoformat(), state.get("intent", {}).get("startDate")
+    if patch.get("startDate") not in (None, saved) or stated == saved:
+        return result
+    patch["startDate"] = stated
+    remaining = [field for field in result.change_without_value if field != "startDate"]
+    return result.model_copy(update={"change_without_value": remaining, "start_date_undecided": False})
 
 
 def _default_year(result: Extraction, intent: dict, patch: dict, today: date) -> Extraction:
@@ -125,9 +135,9 @@ def _default_year(result: Extraction, intent: dict, patch: dict, today: date) ->
     Chỉ xét ngày có trong patch lượt này; ngày đã lưu từ lượt trước thì người dùng đã chốt rồi.
     """
     if "startDate" in patch and intent.get("startDate"):
-        intent["startDate"] = _this_year(date.fromisoformat(intent["startDate"]), today).isoformat()
+        intent["startDate"] = this_year(date.fromisoformat(intent["startDate"]), today).isoformat()
     if result.end_date is not None:
-        result = result.model_copy(update={"end_date": _this_year(result.end_date, today)})
+        result = result.model_copy(update={"end_date": this_year(result.end_date, today)})
     return result
 
 
@@ -205,6 +215,7 @@ def extract_result(state: dict, result: Extraction) -> dict:
     patch = result.patch.model_dump(mode="json", exclude_none=True)
     if result.patch.party is not None:
         patch["party"] = result.patch.party.model_dump(mode="json")
+    result = _date_from_message(state, result, patch, vietnam_today())
     intent, invalid_override = _merged_intent(state, patch)
     if invalid_override is not None:
         return invalid_override

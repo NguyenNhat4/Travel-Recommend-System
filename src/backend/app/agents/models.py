@@ -97,3 +97,9 @@ class ConversationalAnswer(StrictModel):
     #: Cho phép dài hơn mức hiển thị một chút: `titled()` cắt, không để tiêu đề dài làm hỏng cả câu.
     title: str | None = Field(default=None, max_length=200)
     message: str = Field(min_length=1, max_length=1000)
+
+
+class ItineraryNarration(StrictModel):
+    """Output của `narrate`: lời diễn giải lịch trình đã dựng; tên sản phẩm và giá do backend điền từ dữ liệu."""
+    title: str | None = Field(default=None, max_length=200)
+    message: str = Field(min_length=1, max_length=3000)

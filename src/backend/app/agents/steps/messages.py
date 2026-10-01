@@ -1,6 +1,8 @@
 """Câu chữ trả về người dùng, và ba helper mọi node dùng chung: message, event, failure."""
 from __future__ import annotations
 
+import re
+
 from src.backend.app.application.itinerary.contracts import bounds, error_response
 from src.backend.app.application.ports.llm import ChatModelPort
 
@@ -74,6 +76,48 @@ MESSAGES = {
         # Các câu dưới đây được gửi lại làm lượt chat kế tiếp khi người dùng bấm gợi ý: phải là câu yêu cầu đủ ý.
         "suggestion_trip": "Đi {destination} {days} ngày",
         "suggestion_trip_date": "Đi {destination} {days} ngày từ ngày {date}",
+        # Lời diễn giải lịch trình (`narrate`): câu ghi nhận thay đổi và bản dựng bằng luật khi LLM không dùng được.
+        "narrate_title": "Lịch trình {days} ngày ở {destination}",
+        "narrate_changes": "Mình ghi nhận đổi {changes}. Lịch trình mình gợi ý như sau:",
+        "narrate_intro": "Mình gợi ý lịch trình như sau:",
+        "change_to_startDate": "ngày đi thành {value}",
+        "change_to_destination": "điểm đến thành {value}",
+        "change_to_days": "số ngày thành {value} ngày",
+        "change_to_party": "số người thành {value}",
+        "change_to_budget": "ngân sách thành {value}",
+        "party_adults": "{adults} người lớn",
+        "party_children": "{children} trẻ em",
+        "section_stay": "Nơi nghỉ",
+        "section_day": "Ngày {day}",
+        "section_cost": "Chi phí dự kiến",
+        "section_notes": "Lưu ý",
+        "section_more": "Ngoài ra trong lịch trình",
+        "section_offers": "Gói nhiều ngày để bạn cân nhắc riêng",
+        "offer_days": "dùng trong {days} ngày",
+        "offers_question": "Các gói này kéo dài nhiều ngày nên mình chưa xếp vào lịch. Bạn muốn thêm gói nào thì nhắn "
+                           "mình, mình sẽ sắp lại các ngày cho vừa nhé.",
+        "time_MORNING": "Buổi sáng",
+        "time_NOON": "Buổi trưa",
+        "time_AFTERNOON": "Buổi chiều",
+        "time_EVENING": "Buổi tối",
+        "time_FULL_DAY": "Cả ngày",
+        "stay_nights": "{nights} đêm",
+        "free_day": "Ngày này để bạn tự do nghỉ ngơi hoặc khám phá theo ý thích.",
+        "unit_PER_NIGHT": "/đêm",
+        "unit_PER_PERSON": "/người",
+        "unit_PER_PACKAGE": "/gói",
+        "no_price": "giá đang cập nhật",
+        "free_entry": "tham quan tự do",
+        "no_total": "chưa cộng được tổng",
+        "no_budget": "chưa có ngân sách",
+        "cost_WITHIN_BUDGET": "Khoảng {total} cho các sản phẩm trong lịch trình, nằm trong ngân sách {budget}.",
+        "cost_OVER_BUDGET": "Khoảng {total} cho các sản phẩm trong lịch trình, vượt ngân sách {budget}.",
+        "cost_NO_BUDGET": "Khoảng {total} cho các sản phẩm trong lịch trình.",
+        "cost_UNKNOWN": "Mình chưa cộng thành một con số tổng vì lịch có điểm tham quan tự do hoặc mục chưa có giá; "
+                        "giá từng mục có vé bạn xem ở khung lịch trình bên phải nhé.",
+        "narrate_notes": "Giá là giá tham khảo, chưa gồm ăn uống và đi lại; cần kiểm tra lại khi đặt.",
+        "narrate_outro": "Bấm vào tên sản phẩm để xem chi tiết ở khung lịch trình bên phải, hoặc nhắn mình nếu muốn "
+                         "đổi ngày, khách sạn hay hoạt động.",
     },
     "en": {
         "conversation_not_found": "The conversation does not exist or has expired.",
@@ -137,6 +181,47 @@ MESSAGES = {
                            "for {date} yet. You can pick one of the suggestions below.",
         "suggestion_trip": "A {days}-day trip to {destination}",
         "suggestion_trip_date": "A {days}-day trip to {destination} starting on {date}",
+        "narrate_title": "{days}-day itinerary in {destination}",
+        "narrate_changes": "Noted: {changes}. Here is the itinerary I suggest:",
+        "narrate_intro": "Here is the itinerary I suggest:",
+        "change_to_startDate": "departure date changed to {value}",
+        "change_to_destination": "destination changed to {value}",
+        "change_to_days": "trip length changed to {value} days",
+        "change_to_party": "travellers changed to {value}",
+        "change_to_budget": "budget changed to {value}",
+        "party_adults": "{adults} adult(s)",
+        "party_children": "{children} child(ren)",
+        "section_stay": "Where to stay",
+        "section_day": "Day {day}",
+        "section_cost": "Estimated cost",
+        "section_notes": "Good to know",
+        "section_more": "Also in the itinerary",
+        "section_offers": "Multi-day passes to consider separately",
+        "offer_days": "valid for {days} days",
+        "offers_question": "These cover several days, so I have not put them in the plan. Tell me if you want one and "
+                           "I will rearrange the days around it.",
+        "time_MORNING": "Morning",
+        "time_NOON": "Midday",
+        "time_AFTERNOON": "Afternoon",
+        "time_EVENING": "Evening",
+        "time_FULL_DAY": "Full day",
+        "stay_nights": "{nights} night(s)",
+        "free_day": "This day is free for you to rest or explore at your own pace.",
+        "unit_PER_NIGHT": " per night",
+        "unit_PER_PERSON": " per person",
+        "unit_PER_PACKAGE": " per package",
+        "no_price": "price being updated",
+        "free_entry": "visit at your own pace",
+        "no_total": "total not yet available",
+        "no_budget": "no budget given",
+        "cost_WITHIN_BUDGET": "About {total} for the products in the itinerary, within your budget of {budget}.",
+        "cost_OVER_BUDGET": "About {total} for the products in the itinerary, over your budget of {budget}.",
+        "cost_NO_BUDGET": "About {total} for the products in the itinerary.",
+        "cost_UNKNOWN": "I haven't added a single total because the plan includes places you visit at your own pace "
+                        "or items without a price; check the price of each ticketed item in the panel on the right.",
+        "narrate_notes": "Prices are for reference only and exclude meals and transport; check them again when booking.",
+        "narrate_outro": "Tap a product name to see its details in the itinerary panel on the right, or tell me if you "
+                         "want to change the date, hotel or activities.",
     },
 }
 
@@ -187,6 +272,15 @@ def strip_title(text: str) -> str:
     if sep and first.startswith("**") and first.rstrip().endswith("**") and len(first.strip()) > 4:
         return rest.lstrip("\n")
     return text
+
+
+#: Link sản phẩm trong lời diễn giải lịch trình: `[Tên](product:<productId>)`; frontend biến nó thành nút focus panel.
+PRODUCT_LINK = re.compile(r"\[([^\[\]\n]{1,200})\]\(product:([^()\s]{1,200})\)")
+
+
+def plain_links(text: str) -> str:
+    """`[Tên](product:id)` thành `Tên`; dùng khi đưa lịch sử lại cho LLM để tiết kiệm giới hạn ký tự."""
+    return PRODUCT_LINK.sub(lambda match: match.group(1), text)
 
 
 def display_date(iso: str) -> str:

@@ -43,10 +43,12 @@ def input_violation(query: str) -> str | None:
 
 
 def _llm_authored_text(response: dict) -> str:
-    """Chỉ hai trường LLM tự viết chữ: `question` (`clarify`/`converse`) và `error.message` (từ chối
-    của `converse`). Các trường `message` khác (`NO_RESULTS`, `FALLBACK`, …) là câu cố định, không quét.
+    """Ba trường LLM tự viết chữ: `question` (`clarify`/`converse`), `error.message` (từ chối của `converse`) và
+    `message` của `COMPLETED` (`narrate`). `message` của `NO_RESULTS`/`FALLBACK` là câu cố định, không quét.
     """
     parts = [response.get("question")]
+    if response.get("status") == "COMPLETED":
+        parts.append(response.get("message"))
     error = response.get("error")
     if isinstance(error, dict):
         parts.append(error.get("message"))

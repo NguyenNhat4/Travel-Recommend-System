@@ -85,4 +85,17 @@ describe('assistant reducer', () => {
     expect(state.conversationId).toBe('backend-id');
     expect(state.response?.status).toBe(status);
   });
+  it.each([
+    [{ message: '**Một ngày ở Hà Nội**\nMình ghi nhận đổi ngày đi thành 15/10/2026.', itinerary: { title: 'Tiêu đề lịch' } }, '**Một ngày ở Hà Nội**\nMình ghi nhận đổi ngày đi thành 15/10/2026.'],
+    [{ itinerary: { title: 'Tiêu đề lịch' } }, 'Tiêu đề lịch'],
+    [{ itinerary: {} }, 'Lịch trình đã được hoàn tất.'],
+  ])('shows the narration of a COMPLETED itinerary in the chat, then its title, then the fixed sentence (%#)', (extra, expected) => {
+    const response = {
+      status: 'COMPLETED', conversationId: 'backend-id', warnings: [],
+      ...extra,
+      itinerary: { days: [], estimatedTotal: null, currency: 'VND', budgetStatus: 'UNKNOWN', ...extra.itinerary },
+    } as unknown as AssistantResponse;
+    const state = assistantReducer(createInitialAssistantState(), { type: 'response-received', response });
+    expect(state.transcript.at(-1)?.text).toBe(expected);
+  });
 });
