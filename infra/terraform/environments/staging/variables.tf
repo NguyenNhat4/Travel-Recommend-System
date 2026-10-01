@@ -28,9 +28,21 @@ variable "environment" {
 }
 
 variable "db_primary_vm_name" {
-  description = "Existing (hand-made) DB VM running the primary PostgreSQL. Read-only here: Terraform never changes it."
+  description = "Primary PostgreSQL VM, adopted into state from the hand-made instance (see primary.tf for the safety rules)."
   type        = string
   nullable    = false
+}
+
+variable "app_vm_name" {
+  description = "Docker host VM for backend, frontend, crawler, Redis and Weaviate, adopted into state (see app.tf)."
+  type        = string
+  nullable    = false
+}
+
+variable "app_service_account_email" {
+  description = "Service account of the app VM (the project's default Compute Engine account). The 8000 and 8765 firewall rules target it."
+  type        = string
+  default     = "365721936833-compute@developer.gserviceaccount.com"
 }
 
 variable "db_replica_vm_name" {

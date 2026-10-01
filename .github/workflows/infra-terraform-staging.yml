@@ -4,7 +4,9 @@ name: Staging Infra Terraform
 # - Pull request: validate only (fmt, validate, layout test). Nothing touches GCP.
 # - Push / merge to a release branch, or manual dispatch: plan, guard, then apply.
 #   The guard refuses any plan that deletes or replaces a resource (a replaced VM
-#   loses its data disk) unless a manual dispatch sets allow_destroy=true.
+#   loses its data disk) unless a manual dispatch sets allow_destroy=true. It also
+#   refuses any in-place update of the primary DB VM or the app VM unless a manual
+#   dispatch sets allow_vm_update=true; read the plan in the run summary first.
 # All branches share one state (prefix infra/staging), so keep infra/terraform in
 # step across branches; a branch with older code plans a delete and is blocked.
 on:
@@ -17,7 +19,7 @@ on:
     paths:
       - '.github/workflows/infra-terraform-staging.yml'
       - 'infra/terraform/**'
-      - 'ops/tests/test_replica_scripts.sh'
+      - 'ops/tests/test_infra_layout.sh'
   push:
     branches:
       - main
@@ -31,6 +33,10 @@ on:
     inputs:
       allow_destroy:
         description: 'Allow a plan that deletes or replaces resources (data loss risk)'
+        type: boolean
+        default: false
+      allow_vm_update:
+        description: 'Allow in-place updates of the primary DB VM and the app VM (a snapshot of the primary disk is taken first)'
         type: boolean
         default: false
 
@@ -57,10 +63,10 @@ jobs:
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: '~1.6'
+          terraform_version: '~1.9'
 
       - name: Check replica scripts and layout
-        run: bash ops/tests/test_replica_scripts.sh
+        run: bash ops/tests/test_infra_layout.sh
 
       - name: Check Terraform formatting
         run: terraform -chdir="$TF_ROOT" fmt -check -recursive
@@ -86,8 +92,12 @@ jobs:
       TF_VAR_region: ${{ vars.GCP_REGION || 'asia-southeast1' }}
       TF_VAR_zone: ${{ secrets.GCE_ZONE }}
       TF_VAR_db_primary_vm_name: ${{ vars.GCE_DB_INSTANCE }}
+      TF_VAR_app_vm_name: ${{ vars.GCE_APP_INSTANCE }}
       TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
       ALLOW_DESTROY: ${{ inputs.allow_destroy || 'false' }}
+      ALLOW_VM_UPDATE: ${{ inputs.allow_vm_update || 'false' }}
+      PRIMARY_VM_ADDRESS: google_compute_instance.db_primary
+      APP_VM_ADDRESS: google_compute_instance.app
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -95,11 +105,11 @@ jobs:
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: '~1.6'
+          terraform_version: '~1.9'
 
       - name: Validate required staging configuration
         run: |
-          for name in TF_VAR_project_id TF_VAR_zone TF_VAR_db_primary_vm_name TF_STATE_BUCKET; do
+          for name in TF_VAR_project_id TF_VAR_zone TF_VAR_db_primary_vm_name TF_VAR_app_vm_name TF_STATE_BUCKET; do
             if [ -z "${!name:-}" ]; then
               echo "Missing staging configuration: $name" >&2
               exit 1
@@ -143,6 +153,35 @@ jobs:
             fi
             echo '::warning::Destructive plan allowed by allow_destroy=true.'
           fi
+
+      - name: Block in-place updates of the DB and app VMs
+        run: |
+          vm_updates=$(jq -r --arg p "$PRIMARY_VM_ADDRESS" --arg a "$APP_VM_ADDRESS" '.resource_changes[]? | select(.address == $p or .address == $a) | select(.change.actions | index("update")) | .address' plan.json)
+          if [ -n "$vm_updates" ]; then
+            echo "Plan updates in place:" >&2
+            echo "$vm_updates" >&2
+            if [ "$ALLOW_VM_UPDATE" != 'true' ]; then
+              echo '::error::Update of a production-like VM blocked. Read the plan in the run summary, then run this workflow manually with allow_vm_update=true if intended.'
+              exit 1
+            fi
+            echo '::warning::VM update allowed by allow_vm_update=true.'
+            echo 'VM_UPDATE=true' >> "$GITHUB_ENV"
+          fi
+
+      - name: Set up gcloud
+        if: ${{ env.VM_UPDATE == 'true' }}
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Snapshot the primary disk before updating VMs
+        if: ${{ env.VM_UPDATE == 'true' }}
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCE_ZONE: ${{ secrets.GCE_ZONE }}
+        run: |
+          gcloud compute disks snapshot "$TF_VAR_db_primary_vm_name" \
+            --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" \
+            --snapshot-names "pre-apply-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --labels "created-by=infra-terraform-staging"
 
       - name: Apply staging infra
         run: terraform -chdir="$TF_ROOT" apply -input=false -auto-approve staging.tfplan
