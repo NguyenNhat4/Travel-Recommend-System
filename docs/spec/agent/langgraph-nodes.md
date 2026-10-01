@@ -45,6 +45,51 @@ khớp mẫu chèn lệnh/đòi secret rõ ràng (`ignore ... instructions`, `b�
 đã đặt/đã thanh toán thì bị thay bằng câu cố định (với `COMPLETED` là bản dựng bằng luật), giữ nguyên `status`/HTTP. Mẫu cố ý hẹp để không chặn nhầm
 câu du lịch hợp lệ.
 
+**Guardrail tầng 1 — lọc rác rule-based (`guardrails.input_quality`, NFR-SEC-04).** Chặn tin nhắn rác hiển nhiên
+trước mọi lượt gọi LLM, chi phí ~0, < 1 ms (đề xuất `docs/prd/update-archive/2026-10-01-guardrail-tang-1-rule-based.md`,
+đã áp dụng). Không thay thế guardrail chèn lệnh ở trên mà chạy ngay sau nó.
+
+Thứ tự trong `classify`: `_travel_without_message` (chip) → `input_violation` (chèn lệnh) → **`input_quality` (tầng 1)** → LLM.
+Rate limit không nằm trong graph mà ở route `/assistant/itineraries*`, trước khi graph chạy.
+
+| Luật (tên trong event) | Cách kiểm | Không coi là rác | Kết quả |
+|---|---|---|---|
+| `no_content` | Không còn chữ hoặc số (toàn ký hiệu, emoji: "?????", "😀😀") | — | `unclear` |
+| `repeated_char` | Bỏ khoảng trắng, dài ≥ 4 và chỉ một ký tự ("aaaaaaa") | Lặp trong từ thật: "okkkkk", "đẹppppp" — gộp chuỗi lặp ≥ 3 về 1 ký tự trước khi xét token | `unclear` |
+| `low_alnum_ratio` | Chữ + số < 30% ký tự không phải khoảng trắng ("!!!!!! a") | — | `unclear` |
+| `gibberish` | Token hợp lệ < 50% số token chữ ("asdfjkl", "qwerty", "sdfgh jkl qwe") | Câu chỉ có số: "2", "15/10", "10.000.000" | `unclear` |
+| `profanity` | Có token trong blacklist và phần còn lại (bỏ từ tục và lời gọi "you/mày/tao/bot…") không còn nội dung hợp lệ | Tục tĩu lẫn trong yêu cầu hợp lệ ("Đà Nẵng 3 ngày đm", "đẹp vl") → cho qua LLM | `abusive` |
+
+Không chặn theo độ dài: "2", "ok", "ừ" là câu trả lời hợp lệ cho `clarify`; độ dài tối đa đã là `maxLength: 1000` trong contract (422).
+Blacklist so trên chữ thường giữ dấu; bản không dấu chỉ gồm từ không trùng từ thường ("cac" trùng "các", "buoi" trùng "buổi" nên không có).
+
+**Token hợp lệ** (xét trên chữ thường đã gộp chuỗi lặp; token một chữ cái luôn hợp lệ — "a", "ừ", "n" trong "3n2đ"):
+
+- Âm tiết tiếng Việt kiểm **theo cấu trúc** `phụ âm đầu + vần` trên chữ đã bỏ dấu, không nạp danh sách ~7.000 âm tiết —
+  nên câu không dấu ("di da nang 3 ngay") hợp lệ sẵn.
+- Viết tắt/teencode (`ko`, `dc`, `j`, `ns`, `ks`, `hcm`, `tr`…) và tiếng cười (`haha`, `kkk`).
+- Từ tiếng Anh thông dụng và từ du lịch (contract nhận cả `language=en`).
+- Token Latin "đọc được": có nguyên âm, không dồn ≥ 5 phụ âm liền, không phải gõ dọc một hàng phím ("qwerty", "lkjh") hay
+  dồn hàng giữa ("ajsdhakjsd") — để tên riêng/thương hiệu ("VinWonders", "Thác Đray Nur", "Bangkok") và tiếng Anh ngoài
+  từ điển đi qua.
+- Chữ không phải Latin (Hán, Thái…): không xét.
+
+**Hành vi khi chặn** (không gọi LLM nào, như guardrail chèn lệnh):
+
+- `unclear` → state `unclear_input = <tên luật>`, `converse` trả câu cố định `messages.UNCLEAR_INPUT` ("**Mình chưa hiểu ý bạn**…"),
+  `NEEDS_CLARIFICATION` HTTP 200, không có `missingFields`. Không trả 400 vì gõ nhầm không phải vi phạm.
+- `abusive` → `blocked_by_guardrail = "abusive:profanity"`, đi nhánh từ chối sẵn có (`REFUSAL_BLOCKED`, 400 `VALIDATION_ERROR`).
+- Event `classify` / `guardrail tier1` chỉ ghi tên luật, không ghi câu người dùng.
+
+**Rate limit** (`api/v1/routes/assistant.py`): dùng chung limiter của auth (`RedisRateLimiter`, dev/test `InMemoryRateLimiter`,
+gắn vào `app.state.rate_limiter`), scope `assistant:sender` = **10 tin / 60 giây** (`domain/auth/rate_limits.py`). Key là
+`cdp_user_id` của Bearer hợp lệ, khách thì `ip:<client_ip>` (`X-Forwarded-For` chỉ được tin khi peer thuộc `TRUSTED_PROXIES`).
+Vượt ngưỡng → 429 `TOO_MANY_ATTEMPTS`, `retryable: true`, `details.retryAfterSeconds` và header `Retry-After`; stream trả
+429 JSON trước khi mở SSE. Một lượt trợ lý chạy vài giây nên 10 tin/phút chỉ chặn gửi dồn.
+
+Kiểm thử: `tests/unit/agents/test_guardrails.py` (bảng dương/âm, không gọi LLM, và **không câu nào trong
+`evaluation/datasets/itinerary_agent_golden.yaml` bị chặn nhầm**), `tests/contract/test_assistant_rate_limit.py` (429 đã khai báo, đúng ngưỡng).
+
 **Node nào gọi LLM:** chỉ `classify`, `extract`, `tool` (bước chọn tên điểm đến theo catalog và lập tool plan), `converse`, `clarify` và `narrate`. Mọi lượt gọi LLM nhận cùng ngữ cảnh hội thoại qua `steps/history.llm_context`: lịch sử gần nhất (giới hạn 20 message, 8.000 ký tự), chuyến đi đã chốt (`known_intent`, `known_constraints`), sản phẩm đã cho xem và câu hỏi gần nhất của trợ lý. Message `human` gửi LLM là YAML đọc được (`history.prompt_yaml`: giữ nguyên tiếng Việt, chuỗi nhiều dòng dạng khối `|`, nội dung người dùng được quote nên không phá được cấu trúc), không phải chuỗi JSON. Đây là chỗ hay bị hiểu sai — **`compose` không gọi LLM**, nó xếp lịch bằng quy tắc cố định (mục 5); LLM của `narrate` chỉ viết lời về lịch đã dựng, không chọn hay đổi sản phẩm.
 
 ## 2. Vì sao mọi nhánh đều đi qua `finalize`

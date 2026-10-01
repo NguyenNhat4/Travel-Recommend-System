@@ -28,6 +28,9 @@ fi
 # Replica: same image/volume layout as the primary, base backup with -R and a slot, hot standby.
 grep -q 'pg_basebackup' "$replica"
 grep -q -- '-R -X stream -S' "$replica"
+grep -q 'pg_basebackup -w' "$replica"
+grep -q 'gosu postgres' "$replica"
+if grep -q 'PGPASSWORD=\\$(cat' "$replica"; then echo 'replica script must read the password in its own statement so a failure aborts' >&2; exit 1; fi
 grep -q 'hot_standby=on' "$replica"
 grep -q 'pg_is_in_recovery' "$replica"
 grep -q 'IMAGE:?' "$replica"
@@ -81,6 +84,8 @@ grep -q 'set +x' "$ci_repl"
 grep -q 'bootstrap-db-primary-replication.sh' "$ci_repl"
 grep -q 'bootstrap-db-replica.sh' "$ci_repl"
 grep -q 'install -m 600 /dev/stdin' "$ci_repl"
+grep -q 'retry_ssh' "$ci_repl"
+grep -q 'copy_secret' "$ci_repl"
 grep -q 'pg_stat_replication' "$ci_repl"
 if grep -Eq 'echo[^|]*(replicator_password|repl_password)|cat[^|]*replicator_password[^|]*\$' "$ci_repl"; then
   echo 'ci-db-replication.sh must not print the replicator password' >&2; exit 1

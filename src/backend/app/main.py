@@ -368,6 +368,8 @@ def build_auth(settings: Settings, cdp_client, redis_client=None) -> dict:
     return {
         "token_verifier": issuer,
         "revoked_tokens": revoked,
+        # Dùng chung với route trợ lý (giới hạn tin gửi, NFR-SEC-04).
+        "rate_limiter": limiter,
         "register_user": RegisterUser(
             users=users, hasher=hasher, cdp=cdp_client, tokens=issuer, refresh=refresh, limiter=limiter
         ),
