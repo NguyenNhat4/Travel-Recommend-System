@@ -138,6 +138,9 @@ REFUSAL = ("**Ngoài phạm vi hỗ trợ**\n"
 #: Đầu vào bị guardrail chặn (chèn lệnh, đòi lộ khoá bí mật...): tiêu đề khác với câu hỏi ngoài phạm vi.
 REFUSAL_BLOCKED = ("**Mình chưa thể hỗ trợ yêu cầu này**\n"
                    "Tôi hỗ trợ tư vấn lịch trình du lịch. Bạn muốn lên kế hoạch chuyến đi nào?")
+#: Tin nhắn rác (gõ bậy, ký tự lặp, toàn ký hiệu) bị guardrail tầng 1 chặn trước LLM; hỏi lại, không từ chối.
+UNCLEAR_INPUT = ("**Mình chưa hiểu ý bạn**\n"
+                 "Bạn nói rõ hơn giúp mình nhé, ví dụ: \"Đi Đà Nẵng 3 ngày, 2 người, ngân sách 10 triệu\".")
 FALLBACK = ("**Chưa dựng được lịch trình hoàn chỉnh**\n"
             "Chưa thể dựng lịch trình đã kiểm tra. Các sản phẩm dưới đây là ứng viên tham khảo; "
             "cần kiểm tra lại giá, điều kiện và ngày sử dụng.")
