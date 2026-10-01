@@ -20,7 +20,7 @@ VM app (tạo tay)   ──ssh tunnel 15432──►  VM db-primary (tạo tay) 
 |---|---|---|
 | app | giữ nguyên | tay và script cũ |
 | db-primary | giữ nguyên (v-ota-db-dev, e2-small, disk 50 GB, Postgres 18, image `pgvector/pgvector:0.8.6-pg18-bookworm`) | tay và script cũ |
-| db-replica | e2-small (2 vCPU chia sẻ, 2 GB), disk 50 GB bằng primary, cùng zone (`asia-southeast1-a`), VPC `default`, cùng service account và scope với primary, chạy đúng image của primary | Terraform |
+| db-replica | e2-small (2 vCPU chia sẻ, 2 GB), disk 20 GB (primary chỉ có ~156 MB dữ liệu, slot WAL giới hạn 2 GB), cùng zone (`asia-southeast1-a`), VPC `default`, cùng service account và scope với primary, chạy đúng image của primary | Terraform |
 
 Backend vẫn dùng một `DATABASE_URL` trỏ primary. Replica phục vụ tab DB của monitor, `db/verify.sql`, truy vấn báo cáo. Việc cho backend đọc từ replica (`REPLICA_DATABASE_URL`) là bước sau, đổi code app.
 
@@ -35,7 +35,7 @@ Backend vẫn dùng một `DATABASE_URL` trỏ primary. Replica phục vụ tab 
 
 ## Chi phí ước tính thêm
 
-Khoảng 18-22 USD/tháng (VM e2-small, disk 50 GB, IP ngoài tạm thời). Cần đối chiếu bảng giá GCP.
+Khoảng 18-22 USD/tháng (VM e2-small, disk 20 GB, IP ngoài tạm thời). Cần đối chiếu bảng giá GCP.
 
 ## Ngoài phạm vi
 

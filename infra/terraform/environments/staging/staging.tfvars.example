@@ -6,5 +6,5 @@ db_primary_vm_name = "replace-with-existing-db-vm"
 # Optional overrides (defaults shown).
 # db_replica_vm_name = "vota-staging-db-replica"
 # machine_type       = "e2-small"
-# disk_size_gb       = 50
+# disk_size_gb       = 20
 # assign_external_ip = true

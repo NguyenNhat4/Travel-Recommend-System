@@ -51,9 +51,9 @@ variable "machine_type" {
 }
 
 variable "disk_size_gb" {
-  description = "Replica boot/data disk size. The primary disk is 50 GB; keep the replica at least as large."
+  description = "Replica boot/data disk size. The primary holds about 156 MB of data and the slot WAL is capped at 2 GB, so 20 GB leaves ample room (primary: 6.4 GB used of 49 GB)."
   type        = number
-  default     = 50
+  default     = 20
 
   validation {
     condition     = var.disk_size_gb >= 20
