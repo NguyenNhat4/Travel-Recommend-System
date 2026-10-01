@@ -119,38 +119,38 @@
 
 ### R3 — **Registry thuật toán**
 
-> *01/10 — chưa làm:* người dùng chốt phạm vi Day 4 R = report đủ metric cho engine v5 + baseline (R1, R2, R6-markdown, R7, R8); R3–R5 sang ngày kế. Blocker đặc tả `cooc_trip` / `star_blend` (§4.1) vẫn mở. Môi trường: `implicit 0.7.3` có wheel cp313 win_amd64, `scipy` chỉ có ở `.venv-sbench`.
+> *01/10 chiều — xong:* người dùng bổ sung đặc tả `docs/spec/bench/recsys-algos-v1.md` (gỡ blocker §4.1); registry `models/` + `algos_v1.yaml` + funnel chung + CLI `run --algos`/`regress` đã có, gate G1/G2 đạt 1016/1016 và 98/98 (xem §5.4).
 
-- [ ] **Thực hiện:** `src/evaluation/recsys_bench/models/`: `base.py` (`fit(train_events, catalog, vectors)`, `score(user_ctx, candidate_ids) → scores`; `UserCtx` = event < `as_of`, chuyến mở, destination, vertical đã mua). Đăng ký theo tên trong `src/evaluation/recsys_bench/algos_v1.yaml`, tham số **mặc định**, không tune. Port logic (không chép file ra gốc `src/evaluation/`) từ `recommender_prototypes.py` của nhánh research. Thêm `implicit`, `scipy` vào `src/evaluation/requirements.txt`
-- [ ] **Nghiệm thu:** Chạy end-to-end trên split với 2 scorer rẻ nhất: `cooc_trip` (cosine + shrinkage theo trip, top-50/item) và `ease` (nghiệm đóng, λ mặc định)
-- [ ] **Bàn giao:** điền commit/PR, lệnh thực tế, artifact, kết quả kiểm tra và blocker vào §5.
+- [x] **Thực hiện (01/10 chiều):** `src/evaluation/recsys_bench/models/`: `base.py` (`fit(train_events, catalog, vectors)`, `score(user_ctx, candidate_ids) → scores`; `UserCtx` = event < `as_of`, chuyến mở, destination, vertical đã mua). Đăng ký theo tên trong `src/evaluation/recsys_bench/algos_v1.yaml`, tham số **mặc định**, không tune. Port logic (không chép file ra gốc `src/evaluation/`) từ `recommender_prototypes.py` của nhánh research. Thêm `implicit`, `scipy` vào `src/evaluation/requirements.txt`
+- [x] **Nghiệm thu (01/10 chiều):** Chạy end-to-end trên split với 2 scorer rẻ nhất: `cooc_trip` (cosine + shrinkage theo trip, top-50/item) và `ease` (nghiệm đóng, λ mặc định)
+- [x] **Bàn giao (01/10 chiều):** đã điền §5.4. *`models/{base,data,seeds,funnel,itemitem,content,cooc,star,ease,rp3beta,knn_implicit,mf_implicit,registry,regress}.py`, `algos_v1.yaml`; `scipy`/`implicit`/`threadpoolctl` vào `src/evaluation/requirements.txt` và `.venv`; end-to-end `cooc_trip` + `ease` chạy trên split thật (smoke 50 khách).*
 
 
 ### R4 — **Funnel chung + chế độ `raw`**
 
-> *01/10 — chưa làm:* người dùng chốt phạm vi Day 4 R = report đủ metric cho engine v5 + baseline (R1, R2, R6-markdown, R7, R8); R3–R5 sang ngày kế. Blocker đặc tả `cooc_trip` / `star_blend` (§4.1) vẫn mở. Môi trường: `implicit 0.7.3` có wheel cp313 win_amd64, `scipy` chỉ có ở `.venv-sbench`.
+> *01/10 chiều — xong:* người dùng bổ sung đặc tả `docs/spec/bench/recsys-algos-v1.md` (gỡ blocker §4.1); registry `models/` + `algos_v1.yaml` + funnel chung + CLI `run --algos`/`regress` đã có, gate G1/G2 đạt 1016/1016 và 98/98 (xem §5.4).
 
-- [ ] **Thực hiện:** `funnel.py`: `candidates = filter(destination chuyến mở ∥ 2 destination lịch sử, taxonomy ∉ vertical đã mua, is_recommendable, available)` → `score` → top-20; điểm 0 / không có tín hiệu thì phá hoà bằng `pop_D`. **Dùng lại `ceiling.engine_view`** làm bộ lọc để mask trùng engine. `raw` = không lọc, xếp toàn catalog. Bọc engine production thành scorer `content_profile`
-- [ ] **Nghiệm thu:** Test regression: `content_profile` qua funnel = **đúng số v5** (LLBO + temporal). Chưa bằng thì không chạy scorer khác
-- [ ] **Bàn giao:** điền commit/PR, lệnh thực tế, artifact, kết quả kiểm tra và blocker vào §5.
+- [x] **Thực hiện (01/10 chiều):** `funnel.py`: `candidates = filter(destination chuyến mở ∥ 2 destination lịch sử, taxonomy ∉ vertical đã mua, is_recommendable, available)` → `score` → top-20; điểm 0 / không có tín hiệu thì phá hoà bằng `pop_D`. **Dùng lại `ceiling.engine_view`** làm bộ lọc để mask trùng engine. `raw` = không lọc, xếp toàn catalog. Bọc engine production thành scorer `content_profile`
+- [x] **Nghiệm thu (01/10 chiều):** Test regression: `content_profile` qua funnel = **đúng số v5** (LLBO + temporal). Chưa bằng thì không chạy scorer khác
+- [x] **Bàn giao (01/10 chiều):** đã điền §5.4. *Funnel = mask engine (quyết định người dùng), knob `pool ∈ {engine, mask}` × `rerank ∈ {none, mmr}`; `content_profile` qua funnel (pool engine, mmr) ≡ `engine` v5 **1016/1016 và 98/98**, ≡ `engine_nommr[:20]` 1016/1016 và 98/98 — `regress`.*
 
 
 ### R5 — **Đủ scorer Tier 1 + `algos_v1.yaml`**
 
-> *01/10 — chưa làm:* người dùng chốt phạm vi Day 4 R = report đủ metric cho engine v5 + baseline (R1, R2, R6-markdown, R7, R8); R3–R5 sang ngày kế. Blocker đặc tả `cooc_trip` / `star_blend` (§4.1) vẫn mở. Môi trường: `implicit 0.7.3` có wheel cp313 win_amd64, `scipy` chỉ có ở `.venv-sbench`.
+> *01/10 chiều — xong:* người dùng bổ sung đặc tả `docs/spec/bench/recsys-algos-v1.md` (gỡ blocker §4.1); registry `models/` + `algos_v1.yaml` + funnel chung + CLI `run --algos`/`regress` đã có, gate G1/G2 đạt 1016/1016 và 98/98 (xem §5.4).
 
-- [ ] **Thực hiện:** Baseline: `random` (3 seed), `mostpop_window` (90 ngày = `most_popular` hiện có), `mostpop_in_dest`. Content: `content_profile`, `content_no_decay`, `content_no_mmr` (= `engine_nommr`). Co-occurrence: `cooc_trip`, `star_blend` (a = 0,5). CF: `ease`, `itemknn` (`implicit` cosine). MF: `ials` (64 factor, α = 40), `bpr` (64 factor, negative toàn cục nếu research chưa có negative theo destination; ghi rõ). Tier 2 `rp3beta` chỉ khi còn giờ. Chạy thử mỗi scorer `--limit-users 50` cả hai chế độ
-- [ ] **Nghiệm thu:** Mọi scorer Tier 1 chạy không lỗi; yaml có tier · tham số · cần train? · thời gian fit + thời gian ước cho full run
-- [ ] **Bàn giao:** điền commit/PR, lệnh thực tế, artifact, kết quả kiểm tra và blocker vào §5.
+- [x] **Thực hiện (01/10 chiều):** Baseline: `random` (3 seed), `mostpop_window` (90 ngày = `most_popular` hiện có), `mostpop_in_dest`. Content: `content_profile`, `content_no_decay`, `content_no_mmr` (= `engine_nommr`). Co-occurrence: `cooc_trip`, `star_blend` (a = 0,5). CF: `ease`, `itemknn` (`implicit` cosine). MF: `ials` (64 factor, α = 40), `bpr` (64 factor, negative toàn cục nếu research chưa có negative theo destination; ghi rõ). Tier 2 `rp3beta` chỉ khi còn giờ. Chạy thử mỗi scorer `--limit-users 50` cả hai chế độ
+- [x] **Nghiệm thu (01/10 chiều):** Mọi scorer Tier 1 chạy không lỗi; yaml có tier · tham số · cần train? · thời gian fit + thời gian ước cho full run
+- [x] **Bàn giao (01/10 chiều):** đã điền §5.4. *Mọi Tier 1 (+ `rp3beta` Tier 2) chạy không lỗi ở `funnel` và `raw`, 50 khách, hai split; fit log có tier · tham số · rows · thời gian fit. `cooc_trip`/`star_blend` theo spec mới; `bpr_dest` `status: not_run`; `content_no_decay` = run `--override H_SHORT_DAYS/H_LONG_DAYS`, `content_no_mmr` = `content_profile` (rerank none).*
 
 
 ### R6 — **CLI chạy lại được**
 
-> *01/10 — một phần:* xong `report --run-id … [--out]` (markdown gộp bảng + ceiling / phân khúc / so cặp; `gitDescribe` + `configHash` + split sha đầu khối; `summary.json` có `history[]`) và `compare` (CI95 bootstrap); **chưa** có `run --algos <yaml> --mode funnel|raw` vì phụ thuộc R3–R5.
+> *01/10 chiều — xong:* `report`, `compare` (sáng) và `run --algos <yaml> --mode funnel|raw` + `regress` (chiều); `run_id` mặc định có đuôi `algosHash`; bảng markdown sinh tự động với cột `Collab cov.` / `Pool cắt` / `Fit s` và khối Fit log.
 
-- [ ] **Thực hiện:** `python -m src.evaluation.recsys_bench run --algos algos_v1.yaml --split-file <file> --mode funnel\|raw` → `bench_out/recsys/runs/<hash config>/`; bảng markdown sinh tự động; đầu file ghi `git describe` + `modelVersion` + `configHash`
-- [ ] **Nghiệm thu:** Chạy `content_profile` bằng CLI mới ra đúng số v5
-- [ ] **Bàn giao:** điền commit/PR, lệnh thực tế, artifact, kết quả kiểm tra và blocker vào §5.
+- [x] **Thực hiện (01/10 chiều):** `python -m src.evaluation.recsys_bench run --algos algos_v1.yaml --split-file <file> --mode funnel\|raw` → `bench_out/recsys/runs/<hash config>/`; bảng markdown sinh tự động; đầu file ghi `git describe` + `modelVersion` + `configHash`
+- [x] **Nghiệm thu (01/10 chiều):** Chạy `content_profile` bằng CLI mới ra đúng số v5
+- [x] **Bàn giao (01/10 chiều):** đã điền §5.4. *`run --algos … --split-file … --mode funnel|raw` → `bench_out/recsys/runs/<run-id|…-algosHash>/`, bảng + fit log tự động, đầu khối `git describe` + `modelVersion` + `configHash` + `algosHash`; `content_profile` qua CLI mới ra đúng số v5.*
 
 
 ### R7 — **Kiểm exclusion/diagnostics sau M6** (phần C)
@@ -178,7 +178,7 @@
 
 ## 4. Chưa rõ — cần lead xác nhận
 
-1. `TRAINING_FREE_RECSYS.md`, `RECSYS_METHODS_BY_SCALE.md`, `serve_bench.py` (plan Day 4–5 dẫn cho `cooc_trip` / `star_blend`) **không có trong repo**. R cần file gốc hoặc đặc tả công thức/tham số được xác nhận; **không tự cài theo mô tả một dòng**. Ghi blocker cho scorer liên quan, vẫn làm registry/funnel và các scorer đủ đặc tả.
+1. ~~`TRAINING_FREE_RECSYS.md`, `RECSYS_METHODS_BY_SCALE.md`, `serve_bench.py` (plan Day 4–5 dẫn cho `cooc_trip` / `star_blend`) **không có trong repo**.~~ **Đã gỡ 01/10 chiều:** người dùng viết đặc tả `docs/spec/bench/recsys-algos-v1.md` (công thức chốt tại đó, hai file gốc vẫn không có trong repo); R cài theo spec này.
 2. `bge-m3` bản int8 cộng đồng như plan ghi, hay fp32 theo `sbench.yaml` hiện tại? (S4)
 3. Gold mới nhất là `gold_v2`, sau S5 có thể là `gold_v3`. Plan Day 5 ghi `gold_v1.1` → hiểu là "gold mới nhất sau top-up", không đổi tên tag cũ.
 4. `/search` cloud 500 (lỗi embed Cohere trên VM) vẫn chưa ai xử lý; gate P Day 5 cần nó. Không giao cho S hay R hôm nay.
@@ -254,10 +254,10 @@ Report là bằng chứng kèm theo, history ghi lý do/quyết định; chúng 
 | S — chưa điền tên | S1–S8 (tách dòng theo task khi cập nhật) | Chưa nghiệm thu | — | — | Chưa chạy trong lần cập nhật tài liệu | Điền sau khi nhận việc |
 | R — tqanh123 / Claude | R1 Merge M6, mốc v5 | **Xong 01/10** (gate thay thế) | nhánh `bench/day4-rec`; merge `8842c3a` → `69e01a5`; code Day 4 chưa commit lúc ghi | `configHash b0aee886 / 81d16abd` khớp report v5; DB local seed 09-23 ≠ split 0922 → đóng băng `frozen/split-{llbo,temporal}-asof20260924.json` (1.016 / 98 khách) | pytest harness 62 → **70 passed**; backend recommendation **25 passed**; `doctor` OK; `sanity` **PASS 6/6** | Không tái lập chữ số v5 (khác DB; tunnel VM đóng; seed lại không cùng catalog). Lead xác nhận mốc `v5@asof20260924` |
 | R | R2 đủ cột §12 | **Xong 01/10** | như R1 | run `2026-10-01-llbo-v5`, `2026-10-01-temporal-v5` (`bench_out/`); report `src/evaluation/reports/eval-2026-10-01-recsys-bench-v5-asof20260924.md`; spec §4.15 | `metrics.py` Gini + 2 biến thể cross-cat chuyến mở + bootstrap, test tính tay; `run` 6 arm × 2 split exit 0: LLBO engine R@20 0,848 / NDCG@10 0,517 vs mpd 0,602 / 0,380; availability 1,000; coverage 0,565; Gini 0,834 | Cross-cat chuyến mở của engine = 1,0 theo cấu trúc; trích cột "có mua" khi nói cross-sell |
-| R | R3 registry | **Chưa làm** | — | — | — | Người dùng chốt phạm vi A 01/10 → ngày kế; blocker đặc tả `cooc_trip`/`star_blend` vẫn mở; `implicit 0.7.3` có wheel cp313 win, `scipy` chỉ ở `.venv-sbench` |
-| R | R4 funnel + `raw` | **Chưa làm** | — | — | — | như R3; dùng `ceiling.engine_view` làm bộ lọc như plan |
-| R | R5 scorer Tier 1 | **Chưa làm** | — | — | — | như R3 |
-| R | R6 CLI | **Một phần 01/10** | như R1 | `report`, `compare`; `summary.history` / `gitDescribe`; `bench_out/…/report.md`, `compare-*.md` | test CLI (CliRunner) trong `test_metrics_open_trip_gini.py`; `compare` LLBO engine − mpd hit@20 +24,6 [+21,8; +27,6] | `run --algos --mode` chờ R3–R5 |
+| R | R3 registry | **Xong 01/10 chiều** | nhánh `bench/day4-rec` sau `993669d` (code R3–R6 chưa commit lúc ghi) | `src/evaluation/recsys_bench/models/` (14 module), `algos_v1.yaml`; spec `docs/spec/bench/recsys-algos-v1.md` (đổi tên + errata E1–E12) | pytest harness **96 passed** (`test_models_{data,funnel_regression,itemitem,registry_cli,implicit}.py`); toy cooc/EASE tính tay; `cooc_trip(β=0) ≡ itemknn` 1e-6; `scipy 1.18.1`, `implicit 0.7.3` cài vào `.venv` | `bpr_dest` chưa có cài đặt (`status: not_run`); `because[]` cho scorer mới hoãn |
+| R | R4 funnel + `raw` | **Xong 01/10 chiều** | như R3 | run gate `2026-10-01-{llbo,temporal}-gate` (pool engine, vectors weaviate, `algosHash d0d38a58`); `regress-*.json` trong thư mục run | G1 `content_profile+mmr` ≡ `engine` v5: **1016/1016**, **98/98**; G2 `content_profile` ≡ `engine_nommr[:20]`: 1016/1016, 98/98 (khớp cả thứ tự); `star_blend_a1` ≡ `content_profile` 1016/1016, 98/98 | Funnel = mask engine theo quyết định người dùng (bỏ "2 destination lịch sử", "anh em cùng cha" khỏi spec); bảng so scorer dùng pool mask, khác engine ở 76/98 khách temporal → đọc cột `Pool cắt`/`regress` |
+| R | R5 scorer Tier 1 | **Xong 01/10 chiều** (smoke) | như R3 | run `2026-10-01-{llbo,temporal}-smoke-{funnel,raw}` (50 khách, pool mask, rerank none + mmr, `--max-tier 2`); report `src/evaluation/reports/eval-2026-10-01-recsys-algos-v1-smoke.md` | Mọi scorer exit 0; fit: cooc 0,4 s · star 0,4 s · itemknn < 0,1 s · ease 1,0 s · rp3beta 0,3 s · ials 0,1 s/seed · bpr 0,1 s/seed; `fitLog` đủ 6 khoản | Full run Day 5 (mọi Tier 1 × 2 rerank × 2 split) chưa chạy; smoke 50 khách chỉ để kiểm chạy được, không kết luận |
+| R | R6 CLI | **Xong 01/10 chiều** | như R3 | `run --algos … --mode`, `regress`, `report` (sáng), `compare` (sáng) | test CLI CliRunner: lỗi cấu hình thoát trước DB, `expect_equal_to` thất bại → mã 1 và bỏ hàng, `merge_run` từ chối khác `algosHash`, `analyze` có scorer mới trong phân khúc | `--help` không cần `implicit`; `--algos` bắt buộc `--vectors` |
 | R | R7 P1/P3 sau M6 | **Xong 01/10** | như R1 | spec §5.1 | `user --id VP0000001` 4/4; `user --id VP0000003` 4/4 (`p3Check` mới); 0 lỗi contract; dư `sections` (I-4) | Contract 1.12.0 không thiếu field → không mở PR; dormant 90 (contract) vs 180 (code) → I-8 |
 | R | R8 Ceiling | **Xong 01/10** | như R1 | spec §7 "Ceiling", §4.15; `bench_out/…/ceiling.{json,md}` | `analyze` hai run: ceiling 0,988 (1004/1016) / 0,918 (90/98) ≥ mpd 0,602 / 0,102; đa nhãn 12 > 8 (4 khách 2 nhãn) | Hướng tuần sau: split "next trip"; cap theo `parentProductId` (I-5) qua đề xuất PRD; λ MMR vào grid |
 
@@ -266,7 +266,7 @@ Mỗi report phải có commit + run ID + gold/split version/hash + cấu hình 
 ### 5.5 Điểm còn cần xác nhận
 
 - [ ] Tên hai người tương ứng S/R. *(R = tqanh123 / Claude, 01/10; S chưa.)*
-- [ ] Nguồn đặc tả `cooc_trip`/`star_blend` và tham số còn thiếu của thuật toán; không suy đoán để bỏ blocker.
+- [x] Nguồn đặc tả `cooc_trip`/`star_blend` và tham số còn thiếu của thuật toán; không suy đoán để bỏ blocker. *(01/10 chiều: người dùng bổ sung `docs/spec/bench/recsys-algos-v1.md`; errata E1–E12 đối chiếu code sau M6 ghi trong spec.)*
 - [ ] bge-m3 dùng int8 hay fp32, model revision cụ thể.
 - [ ] Kích thước split dev/test hợp lệ nếu làm S8 (131 câu không đủ 100/100).
 - [ ] Owner xử lý `/search` cloud và thời điểm bàn giao cho người đo gate P.

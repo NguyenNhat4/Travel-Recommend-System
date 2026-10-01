@@ -1,0 +1,24 @@
+# Registry thuật toán cho bảng so sánh recsys — spec docs/spec/bench/recsys-algos-v1.md §8 (Day 4–5 R3–R5).
+# Chạy: python -m src.evaluation.recsys_bench run --algos src/evaluation/recsys_bench/algos_v1.yaml --mode funnel|raw --split-file … --vectors numpy
+# Không lặp hằng engine (W_TYPE, H_*, N, W_SHORT/W_POP/W_LONG, MMR_LAMBDA): chúng nằm trong profile.py và configHash.
+version: 1
+common:
+  matrix: {cell: binary, events: [purchase, add_to_cart], include_views: false}
+  funnel: {k: 20, pool: mask, rerank: [none, mmr], pool_k: 200, popular_k: 50, tiebreak: [score, pop_D, item_id]}
+
+algos:
+  content_profile: {scorer: content, tier: 1}
+  cooc_trip:       {scorer: cooc_trip, tier: 1, beta: 5, top_k: 50}
+  star_blend:      {scorer: star_blend, tier: 1, beta: 5, top_k: 50, a: 0.5, blend_scope: inner}
+  star_blend_a1:   {inherit: star_blend, a: 1.0, expect_equal_to: content_profile}   # regression bắt buộc (spec §2.2)
+  itemknn:         {scorer: itemknn, tier: 1, k: 50, requires: implicit}
+  ease:            {scorer: ease, tier: 1, lam: 200}
+  rp3beta:         {scorer: rp3beta, tier: 2, alpha: 1.0, beta: 0.6, top_k: 50}
+  ials:            {scorer: ials, tier: 1, factors: 64, regularization: 0.01, iterations: 15, alpha: 40,
+                    seeds: [42, 43, 44], requires: implicit}
+  bpr:             {scorer: bpr, tier: 1, factors: 64, learning_rate: 0.01, regularization: 0.01, iterations: 100,
+                    negatives: global, seeds: [42, 43, 44], requires: implicit}
+  bpr_dest:        {inherit: bpr, negatives: same_destination, min_dest_items: 20, tier: 2, status: not_run}
+# estimate — smoke 01/10 (50 khách, LLBO, 3.183 unit, 1.016 trip × item, numpy): fit cooc_trip 0,4 s · star_blend 0,4 s · itemknn < 0,1 s ·
+# ease 1,0 s · rp3beta 0,3 s · ials 0,1 s/seed · bpr 0,1 s/seed; chấm ≈ 0,2–0,5 ms/khách (rerank none), ≈ 20 ms/khách (mmr: top-200 × E 1024-d)
+# → full run LLBO 1.016 khách × 19 arm ≈ 5–7 phút; temporal 98 khách < 1 phút.

@@ -28,6 +28,9 @@ COLUMNS = [
     ("returned_mean", "Trả về (TB)", "{:.1f}"),
     ("p95_runtime_ms", "p95 ms", "{:.1f}"),
     ("p99_runtime_ms", "p99 ms", "{:.1f}"),
+    ("collab_coverage", "Collab cov.", "{:.3f}"),        # registry (R5): tỉ lệ item top-20 có vế co-occurrence > 0
+    ("pool_truncated", "Pool cắt", "{:.2f}"),            # tỉ lệ khách có pool engine bị cắt ở pool_k (chỉ pool = engine)
+    ("fit_seconds", "Fit s", "{:.1f}"),
 ]
 
 
@@ -70,7 +73,45 @@ def header(summary: dict) -> str:
              f"vectors {summary.get('vectors')}" + (f" (thiếu {summary['vectorsMissing']})" if summary.get("vectorsMissing") is not None else "")]
     if summary.get("gitDescribe"):
         parts.append(f"git {summary['gitDescribe']}")
+    if summary.get("algosHash"):
+        funnel = summary.get("funnel") or {}
+        parts.append(f"algos {summary['algosHash']} mode {summary.get('algoMode')} pool {funnel.get('pool')} "
+                     f"rerank {','.join(funnel.get('reranks') or [])}")
     return " · ".join(parts)
+
+
+def fit_log_markdown(summary: dict) -> str:
+    """Khối "Fit log" của run có `--algos` (spec recsys-algos-v1 §9): mỗi scorer/seed một dòng + thống kê ma trận + kết quả expect_equal_to."""
+    logs = summary.get("fitLog") or {}
+    if not logs:
+        return ""
+    skip = {"params", "rows", "nRows", "nnzB", "nnzU", "itemsWithNeighbour", "fitSeconds", "seed", "valuePercentiles", "note"}
+    lines = [f"Fit log · algos `{summary.get('algosHash')}` · mode {summary.get('algoMode')} · funnel {json.dumps(summary.get('funnel'), ensure_ascii=False)} "
+             f"· libs {json.dumps(summary.get('libs'), ensure_ascii=False)}", "",
+             "| Algo | seed | rows | n hàng | nnz | item có láng giềng | tham số | khác | fit s |", "|---|---|---|---:|---:|---:|---|---|---:|"]
+    for name, entries in logs.items():
+        for log in entries:
+            extra = {k: v for k, v in log.items() if k not in skip}
+            cov = log.get("itemsWithNeighbour")
+            lines.append(f"| {name} | {log.get('seed') if log.get('seed') is not None else ''} | {log.get('rows', '')} | {log.get('nRows', '')} | "
+                         f"{log.get('nnzB', log.get('nnzU', ''))} | {f'{cov:.3f}' if isinstance(cov, (int, float)) else ''} | "
+                         f"{json.dumps(log.get('params'), ensure_ascii=False)} | {json.dumps(extra, ensure_ascii=False)} | {log.get('fitSeconds', '')} |")
+    stats = summary.get("matrixStats") or {}
+    if stats:
+        lines += ["", f"X_train: {stats.get('nEventsXTrain')} event · B {stats.get('nTrips')} trip × {len(summary.get('rows', [])) and ''}"
+                  f"nnz {stats.get('nnzB')} · U {stats.get('nUsers')} user, nnz {stats.get('nnzU')} · ô theo event {json.dumps(stats.get('cellsByEvent'))} · "
+                  f"bỏ orphan {stats.get('droppedOrphan')}, thiếu gid {stats.get('droppedNoGid')}, thiếu vector {stats.get('droppedNoVector')} · "
+                  f"leak check {json.dumps(summary.get('leakCheck'))}"]
+    expectations = summary.get("expectations") or {}
+    if expectations:
+        lines += ["", "expect_equal_to: " + "; ".join(
+            f"`{arm}` vs `{e.get('ref')}` " + (e["skipped"] if e.get("skipped") else f"{e.get('equal')}/{e.get('n')} {'PASS' if e.get('pass') else 'FAIL'}")
+            for arm, e in expectations.items())]
+    if (summary.get("split") or {}).get("kind") == "llbo":
+        lines += ["", "Caveat LLBO: ma trận item-item / MF fit **một lần toàn cục** trên X_train (khách test cắt < as_of riêng), nên chứa event của "
+                  "khách khác xảy ra sau as_of của một khách; `pop_D` của engine thì cắt tại as_of — không rò rỉ target nhưng hai nguồn không đối "
+                  "xứng về thời gian. Kết luận so scorer ưu tiên temporal (B10)."]
+    return "\n".join(lines)
 
 
 def run_markdown(summary: dict, extras: dict[str, str] | None = None) -> str:
@@ -93,6 +134,9 @@ def run_markdown(summary: dict, extras: dict[str, str] | None = None) -> str:
         lines += ["", note]
     if summary.get("openTripAssumesAllVectors"):
         lines += ["", "Chuyến mở tính với giả định mọi unit đều có vector (kho vector không khai metadata)."]
+    fit_log = fit_log_markdown(summary)
+    if fit_log:
+        lines += ["", "#### Fit log", "", fit_log]
     for title, body in (extras or {}).items():
         lines += ["", f"#### {title}", "", body.strip()]
     return "\n".join(lines)
@@ -119,6 +163,8 @@ def merge_run(old: dict, old_rows: list[dict], summary: dict, per_user: list[dic
     for key in ("configHash", "modelVersion", "asOf", "k", "limitUsers"):
         if old.get(key) != summary.get(key):
             raise RunConflict(f"run đã có {key}={old.get(key)!r}, lần này {summary.get(key)!r} — dùng --run-id khác")
+    if old.get("algosHash") and summary.get("algosHash") and old["algosHash"] != summary["algosHash"]:
+        raise RunConflict(f"run đã có algosHash={old['algosHash']}, lần này {summary['algosHash']} (khác yaml / mode / funnel / lib) — dùng --run-id khác")
     old_split, new_split = old.get("split") or {}, summary.get("split") or {}
     for key in ("kind", "eventsSha256", "usersTest", "minPurchases", "minTrips", "T"):
         if old_split.get(key) != new_split.get(key):
@@ -138,6 +184,9 @@ def merge_run(old: dict, old_rows: list[dict], summary: dict, per_user: list[dic
               "rawRows": [r for r in old.get("rawRows", []) if r["arm"] not in new_arms] + summary.get("rawRows", [])}
     if old.get("history") or summary.get("history"):
         merged["history"] = list(old.get("history") or []) + list(summary.get("history") or [])
+    for key in ("fitLog", "expectations"):                 # run --algos gộp thêm algo: gộp theo tên, không đè
+        if old.get(key) or summary.get(key):
+            merged[key] = {**(old.get(key) or {}), **(summary.get(key) or {})}
     if new_vec in (None, "none") and old_vec not in (None, "none"):    # arm không cần vector không được hạ cấp run engine
         merged["vectors"], merged["vectorsMissing"] = old_vec, old.get("vectorsMissing")
     if not b and a:

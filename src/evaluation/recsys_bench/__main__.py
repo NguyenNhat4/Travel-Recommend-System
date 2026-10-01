@@ -13,6 +13,8 @@
     python -m src.evaluation.recsys_bench parity --make-users       # frozen/users60.json; rồi parity --base-url http://127.0.0.1:8000 (B9)
     python -m src.evaluation.recsys_bench compare --run-id <run> --base engine --ref most_popular_in_destination   # Δ hit@k / NDCG + CI95 bootstrap (Day 4 R6)
     python -m src.evaluation.recsys_bench report --run-id <run> [--run-id <run2>] [--out <file.md>]   # markdown gộp bảng + ceiling / phân khúc / so cặp (Day 4 R6)
+    python -m src.evaluation.recsys_bench run --algos src/evaluation/recsys_bench/algos_v1.yaml --mode funnel --split llbo --vectors numpy --split-file …   # R3–R5: registry scorer qua funnel chung
+    python -m src.evaluation.recsys_bench regress --run-id <run> [--ref-run-id 2026-10-01-llbo-v5] --base content_profile+mmr --ref engine   # R4 gate: ids theo khách 100 %
 
 Mã thoát: 0 ok · 1 lỗi môi trường/dữ liệu. Số đo và giới hạn: `docs/spec/bench/recsys-offline-eval.md`.
 """
@@ -155,9 +157,17 @@ def split(kind: str = typer.Option("llbo", "--kind", help="llbo | temporal"),
 
 
 @app.command()
-def run(arms: List[str] = typer.Option(["random"], "--arm", help="random | most_popular | most_popular_in_destination | "
-                                                                   "engine (mode eval, đủ k món) | engine_prod (cap 2 / taxonomy) | "
-                                                                   "engine_nommr (pool 200 theo score, không MMR — chẩn đoán)"),
+def run(arms: List[str] = typer.Option([], "--arm", help="random | most_popular | most_popular_in_destination | "
+                                                           "engine (mode eval, đủ k món) | engine_prod (cap 2 / taxonomy) | "
+                                                           "engine_nommr (pool 200 theo score, không MMR — chẩn đoán); mặc định random "
+                                                           "khi không có --algos"),
+        algos: Optional[str] = typer.Option(None, "--algos", help="algos_v1.yaml — registry scorer (R3–R5, spec recsys-algos-v1); "
+                                                                   "bắt buộc --vectors numpy|weaviate"),
+        algo_mode: str = typer.Option("funnel", "--mode", help="funnel (mask engine) | raw (recommendable trừ đã mua) — chỉ với --algos"),
+        only: List[str] = typer.Option([], "--only", help="chỉ chạy các algo này (lặp cờ); không có → mọi algo tier ≤ --max-tier, status run"),
+        max_tier: int = typer.Option(1, "--max-tier"),
+        funnel_pool: Optional[str] = typer.Option(None, "--funnel-pool", help="engine | mask — ghi đè common.funnel.pool (gate dùng engine)"),
+        funnel_rerank: List[str] = typer.Option([], "--funnel-rerank", help="none | mmr (lặp cờ) — ghi đè common.funnel.rerank"),
         kind: str = typer.Option("llbo", "--split", help="llbo | temporal"),
         k: int = typer.Option(20, "--k"),
         seeds: str = typer.Option("42,43,44", "--seeds", help="seed cho arm random"),
@@ -187,13 +197,40 @@ def run(arms: List[str] = typer.Option(["random"], "--arm", help="random | most_
     from .report import RunConflict, footnote, header, markdown_table, read_run, write_run
     from .splits import SplitMismatch
 
+    if not arms and not algos:
+        arms = ["random"]
     unknown = set(arms) - {"random", "most_popular", "most_popular_in_destination", "engine", "engine_prod", "engine_nommr"}
     if unknown:
         _fail(f"arm không hỗ trợ: {sorted(unknown)}")
-    need_vec = {"engine", "engine_prod", "engine_nommr"} & set(arms)
+    # --algos: nạp + validate YAML, kiểm thư viện TRƯỚC khi chạm DB (lỗi cấu hình → mã 1 ngay)
+    algos_cfg = specs = None
+    reranks: List[str] = []
+    if algos:
+        from .models.funnel import MODES, POOLS, RERANKS
+        from .models.registry import AlgosError, load_algos, missing_libs, rerank_list, select
+        try:
+            algos_cfg = load_algos(algos)
+            if algo_mode not in MODES:
+                raise AlgosError(f"--mode {algo_mode!r}: chỉ {MODES}")
+            if funnel_pool and funnel_pool not in POOLS:
+                raise AlgosError(f"--funnel-pool {funnel_pool!r}: chỉ {POOLS}")
+            reranks = list(dict.fromkeys(funnel_rerank or rerank_list(algos_cfg.common.funnel)))
+            bad = [r for r in reranks if r not in RERANKS]
+            if bad:
+                raise AlgosError(f"--funnel-rerank {bad}: chỉ {RERANKS}")
+            specs = select(algos_cfg, only or None, max_tier)
+            if not specs:
+                raise AlgosError("--algos: không có algo nào được chọn (kiểm --only / --max-tier / status)")
+            missing = missing_libs(specs)
+            if missing:
+                raise AlgosError(f"thiếu thư viện cho {missing} — pip install -r src/evaluation/requirements.txt, hoặc --only bỏ các algo này")
+        except AlgosError as exc:
+            _fail(str(exc))
+    need_vec = bool({"engine", "engine_prod", "engine_nommr"} & set(arms)) or algos is not None
     mode = vectors or ("weaviate" if need_vec else "none")
     if need_vec and mode == "none":
-        _fail("arm engine / engine_prod cần --vectors weaviate hoặc numpy")
+        _fail("arm engine / engine_prod / --algos cần --vectors weaviate hoặc numpy")
+    run_id_given = run_id
     run_id = run_id or f"{datetime.now():%Y%m%d-%H%M%S}-{kind}"
     refresh = refresh or bool(split_file)   # bản đóng băng phải đối chiếu với DB thật, không với cache JSONL (review 01/10)
     try:
@@ -250,6 +287,77 @@ def run(arms: List[str] = typer.Option(["random"], "--arm", help="random | most_
             rows.append(row)
             per_user += users_rows
         cfg = engine_config(engine)
+        algo_summary: dict = {}
+        expect_failed: list[dict] = []
+        if algos_cfg is not None:                 # R3–R5: registry scorer qua funnel chung (models/)
+            from .engine import LeakageError
+            from .models.data import assert_no_leak, build
+            from .models.funnel import CtxCache
+            from .models.registry import algos_hash, build_arms, lib_versions
+            from .models.regress import compare_ids, ids_by_arm
+            libs = lib_versions()
+            ah = algos_hash(algos_cfg, specs, cfg, mode=algo_mode, reranks=reranks, pool=funnel_pool, k=k, libs=libs)
+            if not run_id_given:
+                run_id = f"{run_id}-{ah}"
+            data = build(kept, result, index, vector_search, algos_cfg.common.matrix)
+            try:
+                leak = assert_no_leak(data, result)
+            except LeakageError as exc:
+                _fail(str(exc))
+            ctx_cache = CtxCache(data, engine)
+            try:
+                built = build_arms(algos_cfg, specs, mode=algo_mode, reranks=reranks, pool=funnel_pool, k=k, ctx=ctx_cache,
+                                   vector_search=vector_search)
+            except Exception as exc:  # noqa: BLE001 — AlgosError / ValueError của scorer
+                _fail(str(exc))
+            fit_log: dict = {}
+            family_rows: dict[str, list[dict]] = {}
+            for spec, scorer, algo_arms in built:
+                t0 = perf_counter()
+                try:
+                    log = scorer.fit(data)
+                except RuntimeError as exc:
+                    _fail(f"algos.{spec.name}: {exc}")
+                fit_seconds = perf_counter() - t0
+                fit_log.setdefault(spec.name, []).append({**log, "fitSeconds": round(fit_seconds, 3), "seed": getattr(scorer, "seed", None)})
+                typer.echo(f"fit {spec.name}{f' seed {scorer.seed}' if getattr(scorer, 'seed', None) is not None else ''}: {fit_seconds:.1f} s", err=True)
+                for arm in algo_arms:
+                    row, users_rows = evaluate(arm, result, index, k, users, views=views)
+                    row.update({"fit_seconds": fit_seconds, "params": spec.params, "tier": spec.tier, "algo": spec.name,
+                                "funnel": arm.cfg.as_dict()})
+                    family_rows.setdefault(arm.family, []).append(row)
+                    per_user += users_rows
+            by_arm = ids_by_arm(per_user)
+            expectations = {}
+            for spec in specs:
+                if not spec.expect_equal_to:
+                    continue
+                for r in reranks:
+                    suffix = "+mmr" if r == "mmr" else ""
+                    target = spec.expect_equal_to
+                    ref_arm = (target + suffix) if target in algos_cfg.algos else ("engine" if r == "mmr" else "engine_nommr")
+                    base_arm = spec.name + suffix
+                    if base_arm not in by_arm or ref_arm not in by_arm:
+                        expectations[base_arm] = {"ref": ref_arm, "skipped": "arm tham chiếu không có trong run"}
+                        continue
+                    res = compare_ids(by_arm[base_arm], by_arm[ref_arm], k=k)
+                    expectations[base_arm] = {"ref": ref_arm, **{kw: v for kw, v in res.items() if kw != "mismatches"},
+                                              "examples": res["mismatches"][:5]}
+                    if not res["pass"]:
+                        expect_failed.append({"arm": base_arm, "ref": ref_arm, "equal": res["equal"], "n": res["n"], "examples": res["mismatches"][:5]})
+            dropped = {f["arm"].split("+")[0] for f in expect_failed}
+            for family, frows in family_rows.items():
+                if family.split("+")[0] in dropped:
+                    continue
+                raw_rows += frows
+                rows.append(aggregate(frows) if len(frows) > 1 else frows[0])
+            if dropped:
+                per_user = [r for r in per_user if r["arm"].split("+")[0].split("-s")[0] not in dropped]
+            algo_summary = {"algosFile": algos_cfg.source, "algosHash": ah, "algoMode": algo_mode,
+                            "funnel": {"pool": funnel_pool or algos_cfg.common.funnel.get("pool", "mask"), "reranks": reranks},
+                            "algosConfig": {**algos_cfg.resolved(), "selected": [s.name for s in specs]},
+                            "fitLog": fit_log, "matrixStats": data.stats, "leakCheck": leak, "libs": libs,
+                            "expectations": expectations, "expectFailed": expect_failed}
         summary = {"runId": run_id, "modelVersion": index.model_version, "engineConfig": cfg, "configHash": config_hash(cfg),
                    "overrides": overrides,
                    "asOf": snapshot.isoformat(), "k": k, "vectors": mode,
@@ -268,13 +376,19 @@ def run(arms: List[str] = typer.Option(["random"], "--arm", help="random | most_
         summary["openTripAssumesAllVectors"] = vector_ids is None
         summary["gitDescribe"] = git_describe
         summary["history"] = [{"at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "gitDescribe": git_describe,
-                               "arms": list(arms),
+                               "arms": list(arms) + ([f"algos:{s.name}" for s in specs] if specs else []),
                                "params": {"split": kind, "k": k, "seeds": seeds, "vectors": mode, "splitFile": split_file,
-                                          "overrides": overrides, "limitUsers": limit_users, "asOf": as_of}}]
+                                          "overrides": overrides, "limitUsers": limit_users, "asOf": as_of,
+                                          "algos": algos, "algoMode": algo_mode if algos else None, "only": list(only),
+                                          "funnelPool": funnel_pool, "funnelRerank": reranks}}]
+        summary.update(algo_summary)
     try:
         directory = write_run(run_dir(run_id), summary, per_user, merge=True)   # --run-id đã có → gộp arm mới vào
     except RunConflict as exc:
         _fail(str(exc))
+    for failed in expect_failed:
+        typer.secho(f"expect_equal_to THẤT BẠI: {failed['arm']} ≠ {failed['ref']} ({failed['equal']}/{failed['n']} khách khớp) — "
+                    f"bỏ mọi hàng của {failed['arm'].split('+')[0]} khỏi bảng; ví dụ: {failed['examples'][:2]}", fg=typer.colors.RED, err=True)
     written, _ = read_run(directory)
     describes = {str(h.get("gitDescribe")) for h in (written or {}).get("history", [])}
     if len(describes) > 1:
@@ -291,6 +405,48 @@ def run(arms: List[str] = typer.Option(["random"], "--arm", help="random | most_
         if row.get("strategies"):
             typer.echo(f"{row['arm']} strategy: {row['strategies']}")
     typer.echo(f"→ {directory}")
+    if expect_failed:
+        raise typer.Exit(1)
+
+
+@app.command()
+def regress(run_id: str = typer.Option(..., "--run-id", help="run có arm --base"),
+            ref_run_id: Optional[str] = typer.Option(None, "--ref-run-id", help="run có arm --ref; mặc định cùng run"),
+            base: str = typer.Option("content_profile+mmr", "--base", help="arm bị xét (vd content_profile+mmr, star_blend_a1)"),
+            ref: str = typer.Option("engine", "--ref", help="arm tham chiếu (vd engine, engine_nommr, content_profile)"),
+            k: int = typer.Option(20, "--k"),
+            tie_tolerant: bool = typer.Option(False, "--tie-tolerant", help="khớp theo tập (bỏ qua hoà điểm) thay vì theo thứ tự")):
+    """R4 gate G1/G2: so `ids[:k]` theo khách của hai arm (cùng run hoặc hai run — vd với run v5 `2026-10-01-llbo-v5`). Cảnh báo khi
+    hai run khác configHash / frozenSha256 / vectors. 100 % khớp → mã 0, khác → mã 1. Không cần DB / Weaviate."""
+    from .models.regress import compare_ids, ids_by_arm, markdown
+    from .paths import run_dir
+    from .report import read_run
+
+    summary_a, rows_a = read_run(run_dir(run_id))
+    if summary_a is None or not rows_a:
+        _fail(f"{run_dir(run_id)}: chưa có summary.json / per_user.jsonl")
+    if ref_run_id and ref_run_id != run_id:
+        summary_b, rows_b = read_run(run_dir(ref_run_id))
+        if summary_b is None or not rows_b:
+            _fail(f"{run_dir(ref_run_id)}: chưa có summary.json / per_user.jsonl")
+        for key, get in (("configHash", lambda s: s.get("configHash")), ("frozenSha256", lambda s: (s.get("split") or {}).get("frozenSha256")),
+                         ("vectors", lambda s: s.get("vectors")), ("k", lambda s: s.get("k"))):
+            if get(summary_a) != get(summary_b):
+                typer.secho(f"cảnh báo: hai run khác {key}: {get(summary_a)!r} vs {get(summary_b)!r}", fg=typer.colors.YELLOW, err=True)
+    else:
+        rows_b = rows_a
+    a, b = ids_by_arm(rows_a), ids_by_arm(rows_b)
+    for name, src in ((base, a), (ref, b)):
+        if name not in src:
+            _fail(f"không có arm {name!r} (có: {sorted(src)})")
+    result = compare_ids(a[base], b[ref], k=k, tie_tolerant=tie_tolerant)
+    typer.echo(markdown(result, base, ref))
+    out = run_dir(run_id) / f"regress-{base}-vs-{ref}{'@' + ref_run_id if ref_run_id and ref_run_id != run_id else ''}.json"
+    out.write_text(json.dumps({"runId": run_id, "refRunId": ref_run_id, "base": base, "ref": ref, **result}, ensure_ascii=False, indent=1),
+                   encoding="utf-8")
+    typer.echo(f"→ {out}", err=True)
+    if not result["pass"]:
+        raise typer.Exit(1)
 
 
 @app.command()
@@ -347,7 +503,9 @@ def analyze(run_id: str = typer.Option(..., "--run-id", help="run đã có engin
     ceil = ceiling(rows_by_arm[base], result, index, views, k=k)
     mpd_row = next((r for r in summary.get("rows", []) if r.get("arm") == ref), None)
     labels = user_labels(result, index, engine_rows, views)
-    arms_order = [a for a in ("engine", "engine_prod", "engine_nommr", ref, "most_popular") if a in rows_by_arm and a != ref] + [ref]
+    arms_order = [a for a in ("engine", "engine_prod", "engine_nommr", ref, "most_popular") if a in rows_by_arm and a != ref]
+    arms_order += sorted(a for a in rows_by_arm if a not in arms_order and a != ref and not a.startswith("random"))   # scorer registry
+    arms_order += [ref]
     seg = segments({a: rows_by_arm[a] for a in arms_order}, labels, k=k)
     sl = strict_lenient({a: rows_by_arm[a] for a in arms_order if a != "engine_nommr"}, result, index, k=k)
     cs = cases(rows_by_arm, ceil["perUser"], views, result, index, base=base, ref=ref, n=n_cases, k=k)

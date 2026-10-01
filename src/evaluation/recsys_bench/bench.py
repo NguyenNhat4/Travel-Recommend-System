@@ -59,7 +59,15 @@ def evaluate(arm, split: Split, index: UnitIndex, k: int = 20,
                    open_trip=open_trip_taxonomies({u: views[u] for u in chosen}))}
     if strategies:
         row["strategies"] = dict(strategies.most_common())
+    for key in getattr(arm, "mean_meta", ()):             # arm registry (models/funnel.AlgoArm): trung bình meta số theo khách
+        values = [r[key] for r in per_user if isinstance(r.get(key), (int, float)) and not isinstance(r.get(key), bool)]
+        if values:
+            row[_snake(key)] = float(np.mean(values))
     return row, per_user
+
+
+def _snake(name: str) -> str:
+    return "".join(f"_{c.lower()}" if c.isupper() else c for c in name)
 
 
 def aggregate(rows: list[dict]) -> dict:

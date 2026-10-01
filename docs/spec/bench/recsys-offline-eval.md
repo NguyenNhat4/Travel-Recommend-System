@@ -31,8 +31,28 @@ python -m src.evaluation.recsys_bench parity --make-users --seed 42          # f
 AUTH_SERVICE_TOKEN=… python -m src.evaluation.recsys_bench parity --base-url http://127.0.0.1:8000 --k 5   # B9: offline = HTTP (§4.12)
 python -m src.evaluation.recsys_bench compare --run-id 2026-10-01-llbo-v5 --base engine --ref most_popular_in_destination   # Day 4 R6: Δ hit@k / NDCG@k + CI95 paired bootstrap (§4.15)
 python -m src.evaluation.recsys_bench report --run-id 2026-10-01-llbo-v5 --run-id 2026-10-01-temporal-v5 --out <file.md>   # Day 4 R6: markdown gộp bảng + ceiling / phân khúc / so cặp → report.md
+python -m src.evaluation.recsys_bench run --algos src/evaluation/recsys_bench/algos_v1.yaml --mode funnel --split llbo --vectors numpy \
+    --split-file src/evaluation/recsys_bench/frozen/split-llbo-asof20260924.json [--only cooc_trip --only ease] [--max-tier 2] [--funnel-pool engine] [--funnel-rerank none --funnel-rerank mmr]   # R3–R5: registry scorer qua funnel chung (spec recsys-algos-v1)
+python -m src.evaluation.recsys_bench regress --run-id <run> --ref-run-id 2026-10-01-llbo-v5 --base content_profile+mmr --ref engine   # R4 gate G1: ids[:20] theo khách 100 %
 python -m pytest -q src/evaluation/recsys_bench/tests      # không cần DB
 ```
+
+- **`run --algos <yaml> --mode funnel|raw`** (01/10, R3–R6; đặc tả `docs/spec/bench/recsys-algos-v1.md`): nạp registry `algos_v1.yaml`
+  (scorer `content`, `cooc_trip`, `star_blend`, `ease`, `rp3beta`, `itemknn`, `ials`, `bpr`; `inherit`, `tier`, `requires`, `status`,
+  `expect_equal_to`, `seeds`), dựng **X_train** từ `kept` (khách test cắt `< as_of_u`, khách khác lấy hết; temporal `< T`) → ma trận
+  trip × item / user × item nhị phân → `assert_no_leak` → fit mỗi scorer một lần → chấm qua **funnel chung** (`models/funnel.py`):
+  `mode funnel` = mask engine (mirror `use_cases.py:131-142`), `mode raw` = recommendable/available trừ đã mua; knob `pool ∈ {engine, mask}`
+  (`engine` = ANN top-200 ∪ 50 popular như engine, dùng cho gate; `mask` = chấm toàn mask bằng vector numpy, dùng cho bảng) và
+  `rerank ∈ {none, mmr}` (chạy cả hai → arm `name` và `name+mmr`). Bắt buộc `--vectors numpy|weaviate`. Lỗi cấu hình / thiếu
+  `implicit` thoát mã 1 **trước** khi chạm DB. `summary.json` thêm `algosHash` (yaml đã giải inherit + mode + funnel + k + phiên bản lib),
+  `algoMode`, `funnel`, `fitLog`, `matrixStats`, `leakCheck`, `libs`, `expectations`; `run_id` mặc định có đuôi `-<algosHash>`;
+  `merge_run` từ chối gộp khác `algosHash`. `expect_equal_to` thất bại → bỏ mọi hàng của algo đó, vẫn ghi run, mã 1. Arm nhiều seed
+  (`ials`, `bpr`) gộp như `random`. Cột thêm: `Collab cov.` (tỉ lệ item top-20 có vế co-occurrence > 0), `Pool cắt` (tỉ lệ khách pool
+  engine bị cắt), `Fit s`; khối "Fit log" trong `report`.
+- **`regress --run-id A [--ref-run-id B] --base X --ref Y [--k 20] [--tie-tolerant]`** (01/10, R4): so `ids[:k]` theo khách của hai arm
+  (cùng run hay hai run — cảnh báo khi khác `configHash` / `frozenSha256` / `vectors`); khớp thứ tự 100 % → mã 0; `--tie-tolerant`
+  so theo tập. Gate G1: `content_profile+mmr` (pool engine) ≡ `engine`; G2: `content_profile` ≡ `engine_nommr[:20]`. Ghi
+  `regress-X-vs-Y[@B].json` vào thư mục run.
 
 - `http-latency` (30/09): p50/p95 `/recommendations` qua HTTP, mặc định **guest path** (không cookie → `popular`) — đường
   duy nhất đo được từ ngoài trên Cloud hôm nay vì `/internal/recommendations` cần `X-Service-Token` + `INTERNAL_API_ENABLED`
@@ -503,6 +523,43 @@ mpd 0,819 dù coverage cao hơn — chạm nhiều unit nhưng exposure vẫn d�
 0,035) và `dormant`; hit từ `cold_start_content` 10/10 và `recent_activity`. (6) Phân khúc đầy đủ (coldStart, lifecycle,
 targetTaxonomy) và strict/lenient ở report §5.
 
+### 4.16. Day 4–5 R3–R6 (01/10 chiều): registry thuật toán, funnel chung, gate G1/G2 trên dữ liệu thật, smoke Tier 1
+
+Code `src/evaluation/recsys_bench/models/` + `algos_v1.yaml`; lệnh `run --algos`, `regress` (§1); đặc tả và errata đối chiếu code sau M6:
+`docs/spec/bench/recsys-algos-v1.md`. Quyết định người dùng 01/10: funnel = mask engine; bảng so scorer chấm toàn mask (`pool mask`),
+gate dùng `pool engine`; chạy cả hai `rerank` (`none`, `mmr`) cho mọi scorer.
+
+**Gate (R4)** — run `2026-10-01-{llbo,temporal}-gate`: `--only content_profile --only star_blend_a1 --funnel-pool engine --funnel-rerank
+none --funnel-rerank mmr --vectors weaviate` (cùng lời gọi `near_vector` với v5), `configHash b0aee886`, `algosHash d0d38a58`; so với
+run v5 `2026-10-01-{llbo,temporal}-v5` bằng `regress` (`ids[:20]` theo khách):
+
+| Phép so | LLBO (1.016) | Temporal (98) |
+|---|---:|---:|
+| G1 `content_profile+mmr` ≡ `engine` (v5) — khớp **thứ tự** | **1016/1016** | **98/98** |
+| G2 `content_profile` ≡ `engine_nommr[:20]` (v5) — khớp thứ tự (không cần bỏ qua hoà) | 1016/1016 | 98/98 |
+| `star_blend_a1+mmr` ≡ `content_profile+mmr` (trong-run, `expect_equal_to`) | 1016/1016 | 98/98 |
+
+Số của `content_profile+mmr` trùng đúng arm `engine` v5 (LLBO R@20 0,8484 / NDCG@10 0,5169; temporal 0,1939 / 0,1505) và
+`content_profile` (không MMR) trùng `engine_nommr` (0,8750 / 0,5462) → funnel mirror đúng engine kể cả khi pool ANN bị cắt (temporal
+76/98 khách) và MMR; sai số ulp float32 không xuất hiện; mọi scorer khác chạy trên **cùng** funnel đó. Cổng R4 qua → được chạy scorer khác.
+
+**Smoke (R5)** — run `2026-10-01-{llbo,temporal}-smoke-{funnel,raw}` (50 khách đầu, `--max-tier 2`, `pool mask`, rerank none + mmr,
+`--vectors numpy`, kèm `most_popular_in_destination` và `engine` để đối chiếu): mọi scorer `content_profile`, `cooc_trip`, `star_blend`,
+`star_blend_a1`, `itemknn`, `ease`, `rp3beta`, `ials` ×3 seed, `bpr` ×3 seed chạy exit 0 ở cả bốn run; fit cooc 0,4 s · star 0,4 s ·
+itemknn < 0,1 s · ease 1,0 s (`maxDiagG`/`medianDiagG` trong fit log) · rp3beta 0,3 s · ials 0,1 s/seed · bpr 0,1 s/seed. Bảng nguyên văn,
+fit log và caveat: `src/evaluation/reports/eval-2026-10-01-recsys-algos-v1-smoke.md`. **50 khách chỉ để kiểm chạy được** — không kết luận
+chất lượng; bảng full run (mọi Tier 1 × 2 rerank × 2 split, phân khúc, CI) là việc Day 5.
+
+Điểm đã thấy ở smoke, cần nhớ khi đọc full run: (1) `cooc_trip`, `itemknn`, `rp3beta` ra **cùng** top-20 ở `rerank none` — ở 7k event
+chỉ ≈ 5 % item top-20 có vế co-occurrence > 0 (`Collab cov.` 0,048), phần còn lại xếp theo `pop_D` → ba arm này ≈ "co-occurrence rồi tới
+popular"; (2) `ease` dày (`Collab cov.` ≈ 0,10) nhưng λ = 200 ≫ diag G nên ≈ co-occurrence thô / λ; (3) **`+mmr` phá scorer thang điểm
+nhỏ**: cooc/ease/knn/rp3beta có điểm ∈ [0; 0,1] nên `mmr_select` với λ = 0,7 (chỉnh cho điểm content ≈ 0,3–0,8) để term đa dạng
+`0,3·cos` lấn át → R@20 0,76 → 0,54 trên 50 khách LLBO; 200 ứng viên vào MMR lấy theo khoá `(score, pop_D, item_id)` (sửa 01/10 sau lần
+smoke đầu — lấy theo chỉ số unit còn tệ hơn) nhưng không cứu được vì bản thân MMR không chuẩn hoá thang điểm. Đọc hàng `none` cho các
+scorer này; `+mmr` chỉ có nghĩa với `content_profile` / `star_blend` (cùng thang với engine) — ứng viên grid tuần sau: λ theo thang
+điểm hoặc chuẩn hoá điểm trước MMR (đổi hành vi engine → đề xuất PRD); (4) `star_blend` a = 0,5 có `Collab cov.` ≈ 0,04 nên vế
+semantic bị chia đôi so với `pop_D` (spec §2.2 đã cảnh báo) — R@20 bằng content nhưng NDCG@10 thấp hơn (0,489 vs 0,546).
+
 ## 5. Kiểm nhanh P1 `VP0000001` (Day 1 C)
 
 Lệnh `user --id VP0000001 --k 5`, `as_of` 2026-09-24, 12 event lịch sử, cùng engine production (không HTTP).
@@ -548,10 +605,11 @@ dài hạn và mức phổ biến"). Lệch còn lại ghi I-8.
   Phase 1 (01/10): ceiling §4.7, phân khúc §4.8, strict/lenient §4.9, 20 ca + `engine_nommr` §4.10, findings §4.11. Phase 3
   (01/10): offline = HTTP 60/60 §4.12. M6 (02/10): FR-REC-02 chốt, engine đổi luật trip mở + N = 14 (§4.14); grid lần 1 §4.13.
   Day 4 R (01/10): v5 trên bộ split `asof20260924` đủ cột §12 (Gini, cross-cat chuyến mở hai biến thể, CI bootstrap), P1/P3
-  sau M6 §5.1, lệnh `compare` / `report` §1 — §4.15 và report `eval-2026-10-01-recsys-bench-v5-asof20260924.md`. Chưa làm
-  (chốt phạm vi 01/10, ngày kế): registry thuật toán `models/` + `algos_v1.yaml`, funnel chung / chế độ `raw`, scorer Tier 1,
-  `run --algos … --mode` (R3–R5 của `docs/plan/2026-10-01-chia-task-day4-search-rec.md`); `cooc_trip` / `star_blend` vẫn thiếu
-  đặc tả gốc.
+  sau M6 §5.1, lệnh `compare` / `report` §1 — §4.15 và report `eval-2026-10-01-recsys-bench-v5-asof20260924.md`. Day 4 R chiều
+  (01/10): R3–R6 — registry `models/` + `algos_v1.yaml` theo spec `recsys-algos-v1.md` (người dùng bổ sung, gỡ blocker `cooc_trip` /
+  `star_blend`), funnel chung (mask engine, knob `pool` / `rerank`) + `raw`, mọi scorer Tier 1 (+ `rp3beta`), CLI `run --algos` /
+  `regress`; gate G1/G2 1016/1016 và 98/98 — §4.16. Chưa làm: full run bảng thuật toán Day 5 (mọi Tier 1 × 2 rerank × 2 split, phân
+  khúc, CI), `bpr_dest` (không có cài đặt), `because[]` cho scorer mới, `baseline_v1.json` + `regress` tự động trong CI.
 - Split temporal (as_of = T) đo "mua gì sau T", không phải "gợi gì ngay trước lúc mua chuyến kế": 10/21 target bị chặn là chuyến
   chưa đi tại T. Việc tiếp theo: split "next trip" (as_of = ngay trước purchase kế, trip trước đã kết thúc theo `usingDate`).
 - **Ceiling (Day 4 R8, 01/10):** trên cả hai bộ split, ceiling ≥ Recall@20 của mpd — bộ 0922: LLBO 0,990 / temporal 0,892 vs
