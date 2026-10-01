@@ -28,6 +28,9 @@ fi
 # Replica: same image/volume layout as the primary, base backup with -R and a slot, hot standby.
 grep -q 'pg_basebackup' "$replica"
 grep -q -- '-R -X stream -S' "$replica"
+grep -q 'pg_basebackup -w' "$replica"
+grep -q 'gosu postgres' "$replica"
+if grep -q 'PGPASSWORD=\\$(cat' "$replica"; then echo 'replica script must read the password in its own statement so a failure aborts' >&2; exit 1; fi
 grep -q 'hot_standby=on' "$replica"
 grep -q 'pg_is_in_recovery' "$replica"
 grep -q 'IMAGE:?' "$replica"

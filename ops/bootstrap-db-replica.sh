@@ -64,15 +64,19 @@ if ! "${SUDO[@]}" docker container inspect "$CONTAINER_NAME" >/dev/null 2>&1; th
   if [[ "$has_data" == no ]]; then
     echo "Taking base backup from $PRIMARY_HOST (slot $SLOT_NAME)"
     # -R writes standby.signal and primary_conninfo; -X stream keeps WAL consistent.
-    # Run as the postgres user so file ownership matches the server process.
-    "${SUDO[@]}" docker run --rm --user postgres --entrypoint sh \
+    # The password file is root-only (mode 600), so read it as root, then drop to the postgres
+    # user (gosu ships in the postgres image) so file ownership matches the server process.
+    # -w never prompts: a wrong or empty password fails fast instead of waiting on a tty.
+    "${SUDO[@]}" docker run --rm --entrypoint sh \
       --mount source="$VOLUME_NAME",target=/var/lib/postgresql \
       --mount type=bind,src="$REPL_PASSWORD_FILE",dst=/run/secrets/replicator_password,readonly \
       "$IMAGE" -c "
         set -eu
-        mkdir -p $PGDATA_DIR && chmod 700 $PGDATA_DIR
-        PGPASSWORD=\$(cat /run/secrets/replicator_password) \
-          pg_basebackup -h '$PRIMARY_HOST' -U replicator -D $PGDATA_DIR -R -X stream -S '$SLOT_NAME' -P"
+        repl_password=\$(cat /run/secrets/replicator_password)
+        [ -n \"\$repl_password\" ] || { echo 'replicator password file is empty' >&2; exit 1; }
+        gosu postgres sh -c 'mkdir -p $PGDATA_DIR && chmod 700 $PGDATA_DIR'
+        PGPASSWORD=\"\$repl_password\" gosu postgres \
+          pg_basebackup -w -h '$PRIMARY_HOST' -U replicator -D $PGDATA_DIR -R -X stream -S '$SLOT_NAME' -P"
   else
     echo 'Volume already holds a data directory; skipping base backup'
   fi
