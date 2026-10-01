@@ -50,4 +50,9 @@ fi
 grep -q 'data "google_compute_instance" "db_primary"' "$tf_root/data.tf"
 grep -q 'prefix = "infra/staging"' "$tf_root/backend.staging.hcl.example"
 
+wf="$repo_root/.github/workflows/infra-terraform-staging.yml"
+grep -q 'allow_destroy' "$wf"
+grep -q 'index("delete")' "$wf"
+grep -q 'apply -input=false -auto-approve staging.tfplan' "$wf"
+
 echo 'db replica scripts and terraform layout: PASS'

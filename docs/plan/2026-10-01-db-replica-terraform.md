@@ -31,7 +31,7 @@ Backend vẫn dùng một `DATABASE_URL` trỏ primary. Replica phục vụ tab 
 - `ops/bootstrap-db-replica.sh`: `pg_basebackup -R` rồi chạy hot standby; bắt buộc truyền `IMAGE` đúng image của primary, PGDATA mặc định `/var/lib/postgresql/18/docker`.
 - `ops/db-replica-lag-probe.sh`: mỗi phút ghi một dòng JSON, trạng thái `ok | lagging | broken`.
 - `infra/monitoring/`: `replica.tf` (alert VM mất, memory, disk, replication lỗi, probe im), `ops-agent-db-replica.yaml`, `install-db-replica-monitoring.sh`. Biến `db_replica_vm_name` mặc định rỗng nên chưa có replica thì không tạo gì.
-- `.github/workflows/infra-terraform-staging.yml`: validate khi PR/push, plan/apply chỉ chạy tay (`workflow_dispatch`, `apply=false` mặc định).
+- `.github/workflows/infra-terraform-staging.yml`: PR chỉ validate; push/merge vào nhánh release (hoặc dispatch tay) tự plan, chặn plan có xoá/thay thế (trừ khi dispatch với `allow_destroy=true`), rồi apply. Toàn bộ hạ tầng đi qua CI/CD, không chạy Terraform tay.
 
 ## Chi phí ước tính thêm
 

@@ -1,7 +1,12 @@
 name: Staging Infra Terraform
 
-# Validates the VM infrastructure root on every change. Plan/apply is manual:
-# run the workflow from main with apply=false to review a plan, apply=true to create it.
+# Infrastructure as code for the staging VMs.
+# - Pull request: validate only (fmt, validate, layout test). Nothing touches GCP.
+# - Push / merge to a release branch, or manual dispatch: plan, guard, then apply.
+#   The guard refuses any plan that deletes or replaces a resource (a replaced VM
+#   loses its data disk) unless a manual dispatch sets allow_destroy=true.
+# All branches share one state (prefix infra/staging), so keep infra/terraform in
+# step across branches; a branch with older code plans a delete and is blocked.
 on:
   pull_request:
     branches:
@@ -24,8 +29,8 @@ on:
       - 'infra/terraform/**'
   workflow_dispatch:
     inputs:
-      apply:
-        description: 'Apply the plan (false = plan only)'
+      allow_destroy:
+        description: 'Allow a plan that deletes or replaces resources (data loss risk)'
         type: boolean
         default: false
 
@@ -67,8 +72,8 @@ jobs:
         run: terraform -chdir="$TF_ROOT" validate -no-color
 
   plan_apply_staging:
-    name: Plan (and optionally apply) staging infra
-    if: ${{ github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3') }}
+    name: Plan and apply staging infra
+    if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-mvp-v1' || github.ref == 'refs/heads/release-mvp-v2' || github.ref == 'refs/heads/release-mvp-v3') }}
     needs: validate
     runs-on: ubuntu-latest
     environment: staging
@@ -82,6 +87,7 @@ jobs:
       TF_VAR_zone: ${{ secrets.GCE_ZONE }}
       TF_VAR_db_primary_vm_name: ${{ vars.GCE_DB_INSTANCE }}
       TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+      ALLOW_DESTROY: ${{ inputs.allow_destroy || 'false' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -115,6 +121,28 @@ jobs:
       - name: Plan staging infra
         run: terraform -chdir="$TF_ROOT" plan -input=false -lock-timeout=5m -out=staging.tfplan -no-color
 
+      - name: Show plan in the run summary
+        run: |
+          {
+            echo '### Terraform plan (staging infra)'
+            echo '```'
+            terraform -chdir="$TF_ROOT" show -no-color staging.tfplan | head -c 60000
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Block destructive plans
+        run: |
+          terraform -chdir="$TF_ROOT" show -json staging.tfplan > plan.json
+          destructive=$(jq -r '.resource_changes[]? | select(.change.actions | index("delete")) | "\(.address) \(.change.actions | join(","))"' plan.json)
+          if [ -n "$destructive" ]; then
+            echo "Plan deletes or replaces:" >&2
+            echo "$destructive" >&2
+            if [ "$ALLOW_DESTROY" != 'true' ]; then
+              echo '::error::Destructive plan blocked. Review it, then run this workflow manually with allow_destroy=true if intended.'
+              exit 1
+            fi
+            echo '::warning::Destructive plan allowed by allow_destroy=true.'
+          fi
+
       - name: Apply staging infra
-        if: ${{ inputs.apply }}
         run: terraform -chdir="$TF_ROOT" apply -input=false -auto-approve staging.tfplan
