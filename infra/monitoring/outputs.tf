@@ -36,3 +36,13 @@ output "alert_policy_ids" {
     watcher_absent  = google_monitoring_alert_policy.staging_docker_watcher_absent.id
   }
 }
+
+output "db_replica_alert_policy_ids" {
+  description = "DB replica alert policy resource names; empty until db_replica_vm_name is set."
+  value = local.replica_enabled ? {
+    uptime      = google_monitoring_alert_policy.replica_uptime[0].id
+    replication = google_monitoring_alert_policy.replica_replication[0].id
+    probe       = google_monitoring_alert_policy.replica_probe_absent[0].id
+    vm          = { for k, v in google_monitoring_alert_policy.replica_vm : k => v.id }
+  } : {}
+}

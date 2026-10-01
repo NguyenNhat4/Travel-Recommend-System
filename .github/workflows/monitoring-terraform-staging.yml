@@ -83,6 +83,7 @@ jobs:
       TF_VAR_name_prefix: vota-staging
       TF_VAR_app_vm_name: ${{ vars.GCE_APP_INSTANCE }}
       TF_VAR_db_vm_name: ${{ vars.GCE_DB_INSTANCE }}
+      TF_VAR_db_replica_vm_name: ${{ vars.GCE_DB_REPLICA_INSTANCE }}
       TF_VAR_uptime_host: ${{ vars.STAGING_UPTIME_HOST }}
       TF_VAR_uptime_path: ${{ vars.STAGING_UPTIME_PATH || '/health/ready' }}
       TF_VAR_notification_email: ${{ secrets.MONITORING_NOTIFICATION_EMAIL }}
