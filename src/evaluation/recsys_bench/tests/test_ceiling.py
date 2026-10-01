@@ -54,7 +54,7 @@ def test_unreachable_reasons_on_fixture(world, events):
 
 def test_engine_view_caps_repeats_and_ignores_unresolvable(world):
     index = world["index"]
-    rows = [{"cdpUserId": "z", "eventName": "purchase", "productId": "R1", "timestamp": f"2026-09-{d:02d}T00:00:00Z", "eventGroupId": "g"}
+    rows = [{"cdpUserId": "z", "eventName": "purchase", "productId": "R1", "timestamp": f"2026-09-{d:02d}T00:00:00Z", "eventGroupId": "g", "usingDate": "2026-09-30"}
             for d in range(1, 8)] + [{"cdpUserId": "z", "eventName": "product_view", "productId": "ghost", "timestamp": "2026-09-10T00:00:00Z"}]
     view = engine_view(rows, index, AS_OF)
     assert view.trips["g"].n_events == 3 and view.n_events == 3 and "ghost" not in str(view.trips)
@@ -75,3 +75,51 @@ def test_ceiling_aggregates_and_markdown(world, events):
     md = ceiling_markdown(c, mpd_recall=0.6)
     assert "ceiling < Recall@20 mpd" in md and "`already_bought` | 2 | 2" in md
     assert "không phải nút thắt" in ceiling_markdown(c, mpd_recall=0.4)
+
+
+def test_engine_view_closes_trips_by_using_date_like_the_engine(world):
+    """FR-REC-02 (02/10): trip có usingDate đã qua không còn mở; trip mua từ lâu nhưng usingDate ở tương lai vẫn mở — view
+    phải trùng diagnostics engine."""
+    from src.evaluation.recsys_bench.engine import OfflineEngine
+    index = world["index"]
+    as_of = datetime(2026, 9, 24, tzinfo=timezone.utc)
+    rows = [{"cdpUserId": "z", "eventName": "purchase", "productId": "R1", "timestamp": "2026-09-19T00:00:00Z", "eventGroupId": "done",
+             "usingDate": "2026-09-21"},
+            {"cdpUserId": "z", "eventName": "purchase", "productId": "A1", "timestamp": "2026-05-01T00:00:00Z", "eventGroupId": "soon",
+             "usingDate": "2026-10-10"}]
+    view = engine_view(rows, index, as_of)
+    assert view.trips["done"].ends_on.isoformat() == "2026-09-21" and view.active_trip == "soon"
+    assert view.excluded == {"attraction"} and view.strategy == "cross_vertical"
+    engine = OfflineEngine(index, world["vectors"], [e for e in rows], candidate_k=50)
+    r = engine.recommend("z", as_of, 5, rows)
+    assert r["strategy"] == "cross_vertical" and r["diagnostics"]["excludedVerticals"] == ["attraction"]
+    # cả hai đã qua ngày sử dụng → không trip mở, long_term
+    rows2 = [{**rows[1], "usingDate": "2026-05-20"}, rows[0]]
+    assert engine_view(rows2, index, as_of).active_trip is None and engine.recommend("z", as_of, 5, rows2)["strategy"] == "long_term"
+
+
+def test_engine_view_mirrors_cap_rule_and_local_today(world):
+    """Review PR M6 (01/10): event bị cap lặp vẫn quyết định tuổi / ngày kết thúc / món đã mua; "hôm nay" theo giờ VN.
+    engine_view, excluded_taxonomies và trip_destination phải cho cùng kết quả với diagnostics engine."""
+    from src.evaluation.recsys_bench.arms import trip_destination
+    from src.evaluation.recsys_bench.engine import OfflineEngine
+    from src.evaluation.recsys_bench.splits import excluded_taxonomies
+    index = world["index"]
+    as_of = datetime(2026, 9, 23, 18, 30, tzinfo=timezone.utc)       # = 01:30 giờ VN 24/09 → hôm nay 24/09
+    # 3 view R1 rồi purchase R1 (bị cap) với usingDate 24/09: chuyến còn mở đúng ngày cuối theo giờ VN
+    rows = [{"cdpUserId": "z", "eventName": "product_view", "productId": "R1", "timestamp": f"2026-09-{d:02d}T00:00:00Z", "eventGroupId": "g"}
+            for d in (10, 11, 12)] + \
+           [{"cdpUserId": "z", "eventName": "purchase", "productId": "R1", "timestamp": "2026-09-13T00:00:00Z", "eventGroupId": "g",
+             "usingDate": "2026-09-24"}]
+    view = engine_view(rows, index, as_of)
+    assert view.trips["g"].n_events == 3 and view.trips["g"].ends_on.isoformat() == "2026-09-24"
+    assert view.active_trip == "g" and view.excluded == {"hotel"} and index.resolve("R1") in view.bought_units
+    assert excluded_taxonomies(rows, index, as_of) == {"hotel"} and trip_destination(index, rows, as_of) == view.destination
+    engine = OfflineEngine(index, world["vectors"], [rows[-1]], candidate_k=50)
+    r = engine.recommend("z", as_of, 5, rows)
+    assert r["strategy"] == "cross_vertical" and r["diagnostics"]["excludedVerticals"] == ["hotel"]
+    # Cùng dữ liệu nhưng as_of 23/09 18:30 giờ VN (11:30Z) → hôm nay 23/09 vẫn mở; 24/09 17:00Z (00:00 VN 25/09) → đã xong
+    assert engine_view(rows, index, datetime(2026, 9, 23, 11, 30, tzinfo=timezone.utc)).active_trip == "g"
+    late = datetime(2026, 9, 24, 17, 0, tzinfo=timezone.utc)
+    assert engine_view(rows, index, late).active_trip is None and excluded_taxonomies(rows, index, late) == set()
+    assert engine.recommend("z", late, 5, rows)["strategy"] == "long_term"

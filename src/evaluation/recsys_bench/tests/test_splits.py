@@ -69,20 +69,23 @@ def test_temporal_split_uses_one_cutoff(world, events):
     assert all(parse_ts(e["timestamp"]) < T for rows in split.train_by_user.values() for e in rows)
 
 
-def test_excluded_taxonomies_caps_repeats_like_the_engine(world):
+def test_excluded_taxonomies_counts_capped_events_for_trip_age_like_the_engine(world):
     from src.evaluation.recsys_bench.tests.conftest import ev
     from src.evaluation.recsys_bench.splits import excluded_taxonomies
 
     as_of = parse_ts("2026-06-30T00:00:00Z")
-    # Trip hotel mua 30 ngày trước; view A1 (không gid → `_solo_A1`) 4 lần, lần thứ 4 mới là 5 ngày trước.
+    # Trip hotel mua 30 ngày trước (usingDate +45 → còn mở); view A1 (không gid → `_solo_A1`) 4 lần, lần thứ 4 mới là 5 ngày trước.
     train = [ev("u", "purchase", "R1", "2026-05-31T00:00:00Z", "G"),
              *[ev("u", "product_view", "A1", ts) for ts in
                ("2026-05-21T00:00:00Z", "2026-05-26T00:00:00Z", "2026-05-27T00:00:00Z", "2026-06-25T00:00:00Z")]]
-    # Engine bỏ lần xem thứ 4 → `_solo_A1` có tuổi 34 ngày, trip hotel (30 ngày) mới là trip đang mở.
-    assert excluded_taxonomies(train, world["index"], as_of) == {"hotel"}
+    # Lần xem thứ 4 bị cap khỏi vector nhưng vẫn tính tuổi trip (review PR M6, 01/10): `_solo_A1` 5 ngày → trip mở trẻ nhất,
+    # chưa mua gì → không loại taxonomy. Bỏ lần xem đó đi thì `_solo_A1` 34 ngày (> 14) và trip hotel mới là trip mở.
+    assert excluded_taxonomies(train, world["index"], as_of) == set()
+    assert excluded_taxonomies(train[:-1], world["index"], as_of) == {"hotel"}
     from src.evaluation.recsys_bench.engine import OfflineEngine
     engine = OfflineEngine(world["index"], world["vectors"], [])
-    assert engine.recommend("u", as_of, 5, train)["diagnostics"]["excludedVerticals"] == ["hotel"]
+    assert engine.recommend("u", as_of, 5, train)["diagnostics"]["excludedVerticals"] == []
+    assert engine.recommend("u", as_of, 5, train[:-1])["diagnostics"]["excludedVerticals"] == ["hotel"]
 
 
 def test_events_sha_is_order_independent_and_content_sensitive(world, events):
