@@ -629,6 +629,7 @@ Không đạt → không render thẻ; hiển thị dòng mờ "Mục này hiệ
 ### 9.6. Hội thoại
 
 - Web giữ `conversationId` trong state của route `/assistant` và `sessionStorage` (khóa `vota.assistant.conversationId`), xóa khi đổi tài khoản.
+- Khi tải lại trang, Web chờ phiên đăng nhập được khôi phục rồi nạp transcript và response gần nhất qua `GET /assistant/conversations/{conversationId}` cho người dùng đã đăng nhập. Chỉ ID được giữ trong browser storage; khách không nạp archive lâu dài. Response lịch sử đến muộn sau khi tạo cuộc mới, gửi tin, đổi tài khoản hoặc rời trang bị bỏ qua. Lỗi tạm thời giữ ID và cho thử tải lại; hội thoại không còn tồn tại thì xóa ID.
 - Khi đã đăng nhập, Web hiển thị nút **Lịch sử**, tải danh sách từ backend và cho chọn một hội thoại để nạp transcript. Khách không thấy lịch sử lâu dài.
 - Kế hoạch không tự cập nhật giá. Giỏ và Checkout luôn dùng giá mới nhất.
 - Không stream trong v1: Web hiện danh sách 3 bước với một spinner chung, không đánh ✓ giả (`docs/product.md` §6.1).
