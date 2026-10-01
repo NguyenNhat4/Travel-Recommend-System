@@ -52,3 +52,7 @@ Toàn bộ hạ tầng staging nằm trong code. Trước đó Terraform chỉ t
 - Bước 2: workflow nối replication primary/replica (`db-replication-staging.yml`).
 - Dọn rule firewall trùng `vota-public-backend-8000` và `default-allow-rdp` để sau.
 - `vota-db-tunnel.service` và `/etc/vota/backend.env` trên VM app vẫn dựng tay.
+
+## Bổ sung (cùng ngày)
+
+- `workflow_dispatch` (và `gh workflow run`) trả 404 vì file workflow chưa có trên nhánh mặc định `main`. Thêm cách thứ hai để cho qua plan bị chặn: biến Environment `INFRA_ALLOW_VM_UPDATE` / `INFRA_ALLOW_DESTROY`, rồi Re-run run bị chặn (Re-run dùng workflow của nhánh). Sửa `.github/workflows/infra-terraform-staging.yml` và README staging.
