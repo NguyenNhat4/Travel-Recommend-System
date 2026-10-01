@@ -11,6 +11,8 @@
     python -m src.evaluation.recsys_bench analyze --run-id <run>   # ceiling, phân khúc, strict/lenient, 20 ca (B5–B8), không cần Weaviate
     python -m src.evaluation.recsys_bench sanity [--json]           # kiểm dữ liệu seed: lifecycle, chuyến, cạnh lộn xộn, phổ biến (B1)
     python -m src.evaluation.recsys_bench parity --make-users       # frozen/users60.json; rồi parity --base-url http://127.0.0.1:8000 (B9)
+    python -m src.evaluation.recsys_bench compare --run-id <run> --base engine --ref most_popular_in_destination   # Δ hit@k / NDCG + CI95 bootstrap (Day 4 R6)
+    python -m src.evaluation.recsys_bench report --run-id <run> [--run-id <run2>] [--out <file.md>]   # markdown gộp bảng + ceiling / phân khúc / so cặp (Day 4 R6)
 
 Mã thoát: 0 ok · 1 lỗi môi trường/dữ liệu. Số đo và giới hạn: `docs/spec/bench/recsys-offline-eval.md`.
 """
@@ -179,9 +181,10 @@ def run(arms: List[str] = typer.Option(["random"], "--arm", help="random | most_
     from . import data_source
     from .arms import EngineArm, EngineNoMmrArm, MostPopularArm, MostPopularInDestinationArm, RandomArm
     from .bench import aggregate, evaluate
+    from .ceiling import engine_view
     from .engine import OfflineEngine, config_hash, engine_config
     from .paths import run_dir
-    from .report import RunConflict, header, markdown_table, write_run
+    from .report import RunConflict, footnote, header, markdown_table, read_run, write_run
     from .splits import SplitMismatch
 
     unknown = set(arms) - {"random", "most_popular", "most_popular_in_destination", "engine", "engine_prod", "engine_nommr"}
@@ -208,37 +211,41 @@ def run(arms: List[str] = typer.Option(["random"], "--arm", help="random | most_
             typer.echo(f"split khớp bản đóng băng {split_file} (sha {frozen_sha[:12]})")
         users = sorted(result.targets)[:limit_users] if limit_users else None
         rows, raw_rows, per_user = [], [], []
+        # chuyến mở tại as_of của từng khách (cùng luật engine; bỏ unit chưa có vector như engine) → hai cột cross-cat chuyến mở (R2)
+        vector_ids = _vector_ids(index, vector_search)
+        views = {u: engine_view(result.train_by_user[u], index, result.as_of_by_user[u], has_vector=vector_ids)
+                 for u in (users if users is not None else sorted(result.targets))}
         # popularity của baseline và engine cùng nguồn: purchase < as_of của từng khách (OfflineEngine.popularity_at)
         engine = OfflineEngine(index, vector_search, result.train_purchases,
                                candidate_k=data_source.settings().recommend_candidate_k)
         if "random" in arms:
             seed_rows = []
             for seed in (int(x) for x in seeds.split(",") if x.strip()):
-                row, users_rows = evaluate(RandomArm(index, seed), result, index, k, users)
+                row, users_rows = evaluate(RandomArm(index, seed), result, index, k, users, views=views)
                 seed_rows.append(row)
                 per_user += users_rows
             raw_rows += seed_rows
             rows.append(aggregate(seed_rows))
         for name, cls in (("most_popular", MostPopularArm), ("most_popular_in_destination", MostPopularInDestinationArm)):
             if name in arms:
-                row, users_rows = evaluate(cls(index, engine), result, index, k, users)
+                row, users_rows = evaluate(cls(index, engine), result, index, k, users, views=views)
                 raw_rows.append(row)
                 rows.append(row)
                 per_user += users_rows
         if "engine" in arms:                      # mode eval: bỏ cap 2 món / taxonomy để đủ k món (quyết định 30/09)
-            row, users_rows = evaluate(EngineArm(engine), result, index, k, users)
+            row, users_rows = evaluate(EngineArm(engine), result, index, k, users, views=views)
             raw_rows.append(row)
             rows.append(row)
             per_user += users_rows
         if "engine_prod" in arms:                 # đúng list production (cap MAX_PER_VERTICAL): khách thật sự thấy gì
             prod = OfflineEngine(index, vector_search, result.train_purchases,
                                  candidate_k=data_source.settings().recommend_candidate_k, mode="prod")
-            row, users_rows = evaluate(EngineArm(prod), result, index, k, users)
+            row, users_rows = evaluate(EngineArm(prod), result, index, k, users, views=views)
             raw_rows.append(row)
             rows.append(row)
             per_user += users_rows
         if "engine_nommr" in arms:                # pool ứng viên xếp theo score, không MMR: chẩn đoán pool_miss / mmr_demoted
-            row, users_rows = evaluate(EngineNoMmrArm(engine), result, index, k, users)
+            row, users_rows = evaluate(EngineNoMmrArm(engine), result, index, k, users, views=views)
             raw_rows.append(row)
             rows.append(row)
             per_user += users_rows
@@ -247,7 +254,7 @@ def run(arms: List[str] = typer.Option(["random"], "--arm", help="random | most_
                    "overrides": overrides,
                    "asOf": snapshot.isoformat(), "k": k, "vectors": mode,
                    "searchUnits": len(index.units), "recommendable": int(index.recommendable.sum()),
-                   "vectorsMissing": _vectors_missing(index, vector_search),
+                   "vectorsMissing": None if vector_ids is None else len(index.units) - len(vector_ids),
                    "limitUsers": limit_users, "usersEvaluated": len(users) if users is not None else len(result.targets),
                    "filter": report.as_dict(),
                    "split": {**{kw: v for kw, v in result.summary().items() if kw != "targets"},
@@ -256,15 +263,30 @@ def run(arms: List[str] = typer.Option(["random"], "--arm", help="random | most_
         if "engine_prod" in arms:
             cfg_prod = engine_config(prod)
             summary["engineConfigProd"], summary["configHashProd"] = cfg_prod, config_hash(cfg_prod)
+        # provenance (Day 4 R6): commit + tham số của lượt này; `merge_run` nối `history`, `gitDescribe` là của lượt mới nhất
+        git_describe = _git_describe()
+        summary["openTripAssumesAllVectors"] = vector_ids is None
+        summary["gitDescribe"] = git_describe
+        summary["history"] = [{"at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "gitDescribe": git_describe,
+                               "arms": list(arms),
+                               "params": {"split": kind, "k": k, "seeds": seeds, "vectors": mode, "splitFile": split_file,
+                                          "overrides": overrides, "limitUsers": limit_users, "asOf": as_of}}]
     try:
         directory = write_run(run_dir(run_id), summary, per_user, merge=True)   # --run-id đã có → gộp arm mới vào
     except RunConflict as exc:
         _fail(str(exc))
+    written, _ = read_run(directory)
+    describes = {str(h.get("gitDescribe")) for h in (written or {}).get("history", [])}
+    if len(describes) > 1:
+        typer.secho(f"cảnh báo: run {run_id} gộp arm từ nhiều commit {sorted(describes)} — cùng configHash nên vẫn so được, "
+                    "nhưng ghi rõ khi trích", fg=typer.colors.YELLOW, err=True)
     typer.echo(header(summary))
     for line in report.lines():
         typer.echo(line)
     typer.echo(json.dumps(summary["split"], ensure_ascii=False))
     typer.echo(markdown_table(rows))
+    if footnote(rows):
+        typer.echo(footnote(rows))
     for row in rows:
         if row.get("strategies"):
             typer.echo(f"{row['arm']} strategy: {row['strategies']}")
@@ -497,17 +519,38 @@ def _overridden(overrides: dict):
             setattr(profile, k, v)
 
 
-def _vectors_missing(index, vector_search) -> Optional[int]:
-    """Số search unit không có vector đúng model trong kho (engine bỏ qua chúng) — None khi kho không khai metadata."""
+def _vector_ids(index, vector_search) -> Optional[set]:
+    """productId của search unit có vector đúng model trong kho (engine bỏ event của unit khác) — None khi kho không khai
+    metadata (coi mọi unit đều có, như `analyze`). Dùng cho `vectorsMissing` và `has_vector` của `engine_view` (R2)."""
+    unit_ids = {p.product_id for p in index.units}
     metadata = getattr(vector_search, "metadata", None)
     if metadata is None:
         ids = getattr(vector_search, "ids", None)          # NumpyVectorSearch: ids = unit có vector đúng model
-        return None if ids is None else len(index.units) - len({p.product_id for p in index.units} & set(ids))
+        return None if ids is None else unit_ids & set(ids)
     try:
         have = metadata([p.product_id for p in index.units])
     except Exception:  # noqa: BLE001 — chỉ là số phụ trong summary
         return None
-    return sum(1 for p in index.units if p.product_id not in have or have[p.product_id].model_version != index.model_version)
+    return {pid for pid in unit_ids if pid in have and have[pid].model_version == index.model_version}
+
+
+def _vectors_missing(index, vector_search) -> Optional[int]:
+    """Số search unit không có vector đúng model trong kho — None khi kho không khai metadata."""
+    ids = _vector_ids(index, vector_search)
+    return None if ids is None else len(index.units) - len(ids)
+
+
+def _git_describe() -> Optional[str]:
+    """`git describe --tags --always --dirty` của checkout đang chạy (provenance trong summary.json); không có git → None."""
+    import subprocess
+
+    from .paths import repo_root
+    try:
+        r = subprocess.run(["git", "describe", "--tags", "--always", "--dirty"], cwd=repo_root(), capture_output=True,
+                           text=True, timeout=5, check=False)
+    except Exception:  # noqa: BLE001 — máy không có git / không phải repo: run vẫn phải chạy
+        return None
+    return (r.stdout.strip() or None) if r.returncode == 0 else None
 
 
 @app.command()
@@ -536,7 +579,8 @@ def user(cdp_user_id: str = typer.Option(..., "--id"),
         response.setdefault("diagnostics", {})["latencyMs"] = max(0, round((perf_counter() - started) * 1000))
     errors = [e.message for e in Draft202012Validator(contracts()["get_recommendations"]["response"]).iter_errors(response)]
     items = [{"rank": r.get("rank"), "productId": r["productId"], "name": r["name"], "taxonomy": r["taxonomy"],
-              "destination": r["destination"], "because": len(r.get("because") or [])}
+              "destination": r["destination"], "because": len(r.get("because") or []),
+              "becauseDaysAgo": [b.get("daysAgo") for b in (r.get("because") or [])]}
              for r in response.get("recommendations", [])]
     out = {"asOf": snapshot.isoformat(), "user": cdp_user_id, "historyEvents": len(history),
            "strategy": response.get("strategy"), "destination": response.get("destination"),
@@ -552,7 +596,88 @@ def user(cdp_user_id: str = typer.Option(..., "--id"),
             "không có item hotel": "hotel" not in taxonomies,
             "nextVertical ∈ {flight, attraction}": response.get("nextVertical") in {"flight", "attraction"},
         }
+    if cdp_user_id == "VP0000003":   # P3 dormant (MOCK_DATA_SPEC: chuyến cuối as_of − 190) — kiểm sau M6 (Day 4 R7)
+        from src.backend.app.domain.recommendation import profile
+        diagnostics = response.get("diagnostics") or {}
+        days = [d for i in items for d in i["becauseDaysAgo"] if d is not None]
+        out["p3Check"] = {
+            "strategy == dormant": response.get("strategy") == "dormant",
+            "excludedVerticals == []": diagnostics.get("excludedVerticals") == [],
+            "coldStart == False": diagnostics.get("coldStart") is False,
+            f"because có và mọi daysAgo > DORMANT_AFTER_DAYS ({profile.DORMANT_AFTER_DAYS})":
+                bool(days) and all(d > profile.DORMANT_AFTER_DAYS for d in days),
+        }
     typer.echo(json.dumps(out, ensure_ascii=False, indent=2))
+
+
+@app.command()
+def compare(run_id: str = typer.Option(..., "--run-id", help="run đã có per_user.jsonl của cả hai arm"),
+            base: str = typer.Option("engine", "--base", help="arm bị xét (Δ = base − ref)"),
+            ref: str = typer.Option("most_popular_in_destination", "--ref", help="baseline đối chiếu; random là random-s<seed>"),
+            n_boot: int = typer.Option(10_000, "--n-boot"),
+            seed: int = typer.Option(42, "--seed")):
+    """Day 4 R6: so cặp arm trên cùng run — Δ hit@5/10/20 và NDCG@5/10 theo khách (điểm phần trăm), CI95 paired bootstrap,
+    p một phía. Ghi compare-<base>-vs-<ref>.json/.md vào thư mục run; không cần DB / Weaviate."""
+    from collections import defaultdict
+
+    from . import compare as C
+    from .paths import run_dir
+    from .report import read_run
+
+    directory = run_dir(run_id)
+    summary, rows = read_run(directory)
+    if summary is None or not rows:
+        _fail(f"{directory}: chưa có summary.json / per_user.jsonl — chạy `run --run-id {run_id}` trước")
+    rows_by_arm: dict = defaultdict(dict)
+    for r in rows:
+        rows_by_arm[r["arm"]][r["user"]] = r
+    try:
+        result = C.compare_arms(rows_by_arm, base, ref, n_boot=n_boot, seed=seed)
+    except C.CompareError as exc:
+        _fail(str(exc))
+    result = {"runId": run_id, "configHash": summary.get("configHash"), "split": (summary.get("split") or {}).get("kind"),
+              "frozenSha256": (summary.get("split") or {}).get("frozenSha256"), **result}
+    stem = f"compare-{base}-vs-{ref}"
+    (directory / f"{stem}.json").write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
+    md = C.compare_markdown(result)
+    (directory / f"{stem}.md").write_text(md + "\n", encoding="utf-8")
+    if result["usersOnlyOneArm"]:
+        typer.secho(f"cảnh báo: {result['usersOnlyOneArm']} khách chỉ có ở một arm — hai arm không cùng tập khách?", fg=typer.colors.YELLOW, err=True)
+    typer.echo(f"run {run_id} · {base} vs {ref} · n {result['n']}")
+    typer.echo(md)
+    typer.echo(f"→ {directory / (stem + '.md')}")
+
+
+@app.command()
+def report(run_ids: List[str] = typer.Option(..., "--run-id", help="một hoặc nhiều run đã có summary.json (lặp cờ)"),
+           out: Optional[str] = typer.Option(None, "--out", help="ghi thêm bản gộp mọi run ra file này (bản nháp report)")):
+    """Day 4 R6: sinh markdown của run từ summary.json + ceiling.md / segments.md / strict.md / compare-*.md nếu đã có (sau
+    `analyze` / `compare`); ghi report.md vào từng thư mục run và in ra; không tính lại gì, không cần DB / Weaviate."""
+    from . import report as R
+    from .paths import run_dir
+
+    blocks = []
+    for rid in run_ids:
+        d = run_dir(rid)
+        summary, _ = R.read_run(d)
+        if summary is None:
+            _fail(f"{d}: chưa có summary.json — chạy `run --run-id {rid}` trước")
+        extras = {}
+        for title, name in (("Ceiling", "ceiling.md"), ("Phân khúc", "segments.md"), ("Strict / lenient", "strict.md")):
+            if (d / name).exists():
+                extras[title] = (d / name).read_text(encoding="utf-8")
+        for p in sorted(d.glob("compare-*.md")):
+            extras[f"So cặp {p.stem[len('compare-'):]}"] = p.read_text(encoding="utf-8")
+        md = R.run_markdown(summary, extras)
+        (d / "report.md").write_text(md + "\n", encoding="utf-8")
+        blocks.append(md)
+        typer.echo(f"→ {d / 'report.md'}", err=True)
+    text = "\n\n".join(blocks) + "\n"
+    if out:
+        Path(out).parent.mkdir(parents=True, exist_ok=True)
+        Path(out).write_text(text, encoding="utf-8")
+        typer.echo(f"→ {out}", err=True)
+    typer.echo(text)
 
 
 @app.command("http-latency")

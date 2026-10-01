@@ -1,4 +1,10 @@
-"""Ghi kết quả một lượt chạy ra `bench_out/recsys/runs/<run_id>/` và dựng bảng markdown để dán vào spec."""
+"""Ghi kết quả một lượt chạy ra `bench_out/recsys/runs/<run_id>/` và dựng bảng markdown để dán vào spec / report.
+
+Day 4 R6 (01/10): thêm ba cột handbook §12 (`Cross-cat chuyến mở`, `… có mua`, `Gini`), `footnote` (mẫu số của hai cột đó),
+`header` in `git describe` của lượt chạy, `run_markdown` gộp mọi khối của một run (bảng + ceiling / phân khúc / so cặp) —
+chỉ lệnh `report` ghi file `report.md`, `run` không ghi để file không cũ sau `analyze` / `compare`. `summary.json` có
+`history[]` (mỗi lượt `run --run-id`: thời điểm, commit, tham số, arm) và `merge_run` **nối** `history` thay vì đè.
+"""
 from __future__ import annotations
 
 import csv
@@ -15,6 +21,9 @@ COLUMNS = [
     ("catalog_coverage", "Coverage", "{:.3f}"),
     ("availability_precision", "Availability", "{:.3f}"),
     ("cross_category_rate", "Cross-category", "{:.3f}"),
+    ("cross_category_open_trip", "Cross-cat chuyến mở", "{:.3f}"),
+    ("cross_category_open_trip_bought", "Cross-cat chuyến mở, có mua", "{:.3f}"),
+    ("exposure_gini", "Gini", "{:.3f}"),
     ("vertical_diversity@10", "Diversity@10", "{:.3f}"),
     ("returned_mean", "Trả về (TB)", "{:.1f}"),
     ("p95_runtime_ms", "p95 ms", "{:.1f}"),
@@ -40,15 +49,53 @@ def markdown_table(rows: list[dict]) -> str:
     return "\n".join([head, sep, *body])
 
 
+def footnote(rows: list[dict]) -> str:
+    """Mẫu số của hai cột cross-category theo chuyến mở (giống nhau ở mọi arm vì cùng split): số khách có chuyến mở tại as_of
+    và số khách đã mua ≥ 1 món trong chuyến đó. Rỗng khi hàng chưa có khoá (run trước 01/10)."""
+    row = next((r for r in rows if "users_open_trip" in r), None)
+    if row is None:
+        return ""
+    return (f"Khách có chuyến mở tại as_of: {row['users_open_trip']:.0f} (trong đó đã mua ≥ 1 món trong chuyến: "
+            f"{row.get('users_open_trip_bought', 0):.0f}) — mẫu số hai cột *Cross-cat chuyến mở*; chuyến chỉ có view thì mọi "
+            f"item đều tính là cross. Gini và Coverage tính trên mọi unit recommendable.")
+
+
 def header(summary: dict) -> str:
-    """Dòng đầu report (B3): run, mốc, model, configHash, split đóng băng — để hai bảng chỉ được so khi cùng các số này."""
+    """Dòng đầu report (B3): run, mốc, model, configHash, split đóng băng, commit — để hai bảng chỉ được so khi cùng các số này."""
     split = summary.get("split") or {}
     parts = [f"run {summary.get('runId')}", f"as_of {summary.get('asOf')}", f"model {summary.get('modelVersion')}",
              f"configHash {summary.get('configHash')}" + (f" / prod {summary['configHashProd']}" if summary.get("configHashProd") else ""),
              f"split {split.get('kind')} " + (f"frozen {split['frozenSha256'][:12]}" if split.get("frozenSha256") else "KHÔNG đóng băng")
              + (f" · SUBSET {summary.get('usersEvaluated')}/{split.get('usersTest')} khách" if summary.get("limitUsers") else ""),
              f"vectors {summary.get('vectors')}" + (f" (thiếu {summary['vectorsMissing']})" if summary.get("vectorsMissing") is not None else "")]
+    if summary.get("gitDescribe"):
+        parts.append(f"git {summary['gitDescribe']}")
     return " · ".join(parts)
+
+
+def run_markdown(summary: dict, extras: dict[str, str] | None = None) -> str:
+    """Khối markdown đầy đủ của một run (lệnh `report`): header, split, bảng, strategy, footnote, rồi các khối thêm (ceiling /
+    phân khúc / so cặp) đã có trong thư mục run. Chỉ trả chuỗi; không tính lại gì."""
+    rows = summary.get("rows", [])
+    split = summary.get("split") or {}
+    frozen = split.get("frozenSha256")
+    split_line = (f"Split `{split.get('kind')}` · {split.get('usersTest', '?')} khách test · event sha "
+                  f"{str(split.get('eventsSha256') or '?')[:12]} · "
+                  + (f"đóng băng `{split.get('splitFile')}` ({frozen[:12]})" if frozen else "KHÔNG đóng băng")
+                  + (f" · T = {split['T']}" if split.get("T") else "")
+                  + f" · k = {summary.get('k')} · {summary.get('searchUnits')} search unit / {summary.get('recommendable')} recommendable")
+    lines = [f"### Run `{summary.get('runId')}`", "", header(summary), "", split_line, "", markdown_table(rows)]
+    strategies = [f"- `{r['arm']}` strategy: {r['strategies']}" for r in rows if r.get("strategies")]
+    if strategies:
+        lines += ["", *strategies]
+    note = footnote(rows)
+    if note:
+        lines += ["", note]
+    if summary.get("openTripAssumesAllVectors"):
+        lines += ["", "Chuyến mở tính với giả định mọi unit đều có vector (kho vector không khai metadata)."]
+    for title, body in (extras or {}).items():
+        lines += ["", f"#### {title}", "", body.strip()]
+    return "\n".join(lines)
 
 
 class RunConflict(ValueError):
@@ -68,7 +115,7 @@ def read_run(directory: Path) -> tuple[dict | None, list[dict]]:
 
 def merge_run(old: dict, old_rows: list[dict], summary: dict, per_user: list[dict]) -> tuple[dict, list[dict]]:
     """Gộp arm mới vào run cũ (`run --run-id` chạy thêm arm): arm trùng tên thì thay; khác `configHash` / `frozenSha256` /
-    `modelVersion` / `asOf` thì `RunConflict`."""
+    `modelVersion` / `asOf` thì `RunConflict`. `history` nối thêm (provenance của mọi lượt), `gitDescribe` là của lượt mới."""
     for key in ("configHash", "modelVersion", "asOf", "k", "limitUsers"):
         if old.get(key) != summary.get(key):
             raise RunConflict(f"run đã có {key}={old.get(key)!r}, lần này {summary.get(key)!r} — dùng --run-id khác")
@@ -89,6 +136,8 @@ def merge_run(old: dict, old_rows: list[dict], summary: dict, per_user: list[dic
     merged = {**old, **summary,
               "rows": [r for r in old.get("rows", []) if r["arm"] not in new_arms] + summary.get("rows", []),
               "rawRows": [r for r in old.get("rawRows", []) if r["arm"] not in new_arms] + summary.get("rawRows", [])}
+    if old.get("history") or summary.get("history"):
+        merged["history"] = list(old.get("history") or []) + list(summary.get("history") or [])
     if new_vec in (None, "none") and old_vec not in (None, "none"):    # arm không cần vector không được hạ cấp run engine
         merged["vectors"], merged["vectorsMissing"] = old_vec, old.get("vectorsMissing")
     if not b and a:

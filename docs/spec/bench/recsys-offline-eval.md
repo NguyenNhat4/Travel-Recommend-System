@@ -3,7 +3,7 @@
 - Phục vụ: **FR-REC-01..04**, **NFR-PERF-01** (`docs/prd/requirements.md`); `docs/prd/test-plan.md` §2.5; handbook §11–§12.
 - Code: `src/evaluation/recsys_bench/` (nhánh `bench/recsys-harness`). Số thô: `bench_out/recsys/runs/<run_id>/` (không commit).
 - Thay cho `eval/report.md` của lịch 10 ngày (`docs/plan/2026-09-28-lich-10-ngay-3-engine.md` §0.1).
-- Cập nhật lần cuối: 2026-10-02 (§4.14 sau FR-REC-02; 01/10: §2.1 sanity, §3.1 split đóng băng, §4.5 guest path Cloud, §4.6 v3 NDCG@5, §4.7–4.11 ceiling / phân khúc / strict / 20 ca / findings, §4.12 parity offline = HTTP)
+- Cập nhật lần cuối: 2026-10-01 chiều, Day 4 R (§1 `compare` / `report` / cột mới, §3.1 bộ split `asof20260924`, §4.15 v5 đủ cột §12, §5.1 P1/P3 sau M6, §6 I-8, §7 định nghĩa cột + đoạn "Ceiling"); trước đó 02/10 (§4.14 sau FR-REC-02; 01/10: §2.1 sanity, §3.1 split đóng băng, §4.5 guest path Cloud, §4.6 v3 NDCG@5, §4.7–4.11 ceiling / phân khúc / strict / 20 ca / findings, §4.12 parity offline = HTTP)
 
 > **Caveat bắt buộc (handbook §12):** lịch sử khách hàng là dữ liệu sinh. Các số này cho biết pipeline chạy đúng,
 > không cho biết engine sẽ chạy thế nào trên khách thật.
@@ -29,6 +29,8 @@ python -m src.evaluation.recsys_bench sanity [--json] [--refresh]            # B
 python -m src.evaluation.recsys_bench run --arm engine --split temporal --vectors weaviate --split-file … --override MMR_LAMBDA=0.85   # M7: dò tham số trong tiến trình (§4.13)
 python -m src.evaluation.recsys_bench parity --make-users --seed 42          # frozen/users60.json (4 persona + 56 phân tầng)
 AUTH_SERVICE_TOKEN=… python -m src.evaluation.recsys_bench parity --base-url http://127.0.0.1:8000 --k 5   # B9: offline = HTTP (§4.12)
+python -m src.evaluation.recsys_bench compare --run-id 2026-10-01-llbo-v5 --base engine --ref most_popular_in_destination   # Day 4 R6: Δ hit@k / NDCG@k + CI95 paired bootstrap (§4.15)
+python -m src.evaluation.recsys_bench report --run-id 2026-10-01-llbo-v5 --run-id 2026-10-01-temporal-v5 --out <file.md>   # Day 4 R6: markdown gộp bảng + ceiling / phân khúc / so cặp → report.md
 python -m pytest -q src/evaluation/recsys_bench/tests      # không cần DB
 ```
 
@@ -63,7 +65,21 @@ python -m pytest -q src/evaluation/recsys_bench/tests      # không cần DB
   `purchaseLookbackDays` 730), `configHash` (sha256 8 ký tự; `configHashProd` cho arm `engine_prod`), `vectorsMissing` (unit
   không có vector đúng model — engine bỏ qua). `per_user.jsonl` (B7) mỗi khách: `ids` top-k đúng thứ tự, `targetProductId`
   (purchase gốc, có thể là phòng/chuyến con), `targetIsChild`, `rank` (lenient, unit cha — metric chính) và `rankStrict`
-  (đúng productId gốc; engine chỉ trả search unit nên với con luôn None).
+  (đúng productId gốc; engine chỉ trả search unit nên với con luôn None). **01/10 (Day 4 R6):** thêm `gitDescribe` (`git describe
+  --tags --always --dirty` của checkout chạy), `history[]` (mỗi lượt `run --run-id`: thời điểm, commit, arm, tham số —
+  `run --run-id` gộp arm thì **nối** `history`, không đè), `openTripAssumesAllVectors` (true khi kho vector không khai metadata).
+- **Cột thêm 01/10 (Day 4 R2, đủ bảng handbook §12):** `Cross-cat chuyến mở` (`cross_category_open_trip`), `Cross-cat chuyến mở,
+  có mua` (`cross_category_open_trip_bought`) và `Gini` (`exposure_gini`); mẫu số hai cột cross-cat (`users_open_trip` /
+  `users_open_trip_bought`) in thành dòng chú thích dưới bảng. Định nghĩa và caveat ở §7. Cột `Cross-category` cũ giữ nguyên nghĩa
+  (taxonomy của trip purchase gần nhất, mọi khách). Hàng của run trước 01/10 không có khoá mới → in `—`.
+- **`compare --run-id R --base A --ref B [--n-boot 10000 --seed 42]`** (01/10, Day 4 R6): từ `per_user.jsonl` của **cùng run**
+  (cùng split / `configHash` / `modelVersion`), Δ = A − B của hit@5/10/20 và NDCG@5/10 theo khách tính bằng điểm phần trăm, CI95
+  paired bootstrap percentile, p một phía (H1: A > B) — cùng công thức `sb compare` của search_bench. Ghi `compare-A-vs-B.{json,md}`
+  vào thư mục run. Arm random có khoá theo seed (`random-s42`). Không cần DB / Weaviate.
+- **`report --run-id R [--run-id R2 …] [--out <file.md>]`** (01/10, Day 4 R6): gộp `summary.json` (header có `configHash`, split, git),
+  bảng, strategy, chú thích mẫu số, rồi `ceiling.md` / `segments.md` / `strict.md` / `compare-*.md` nếu đã có → `report.md` trong
+  từng thư mục run (chạy lại sau `analyze` / `compare` để cập nhật) và tuỳ chọn một file gộp làm bản nháp report
+  `src/evaluation/reports/`. Không tính lại gì.
 
 ## 2. Dữ liệu (Day 1)
 
@@ -123,9 +139,15 @@ Kết quả ghi `bench_out/recsys/sanity.json`; lệnh thoát mã 1 khi một ki
 |---|---|---|---|
 | `split-llbo-asof20260922.json` | `29033b34f8eb…4fb803` | 6.979 event, sha `17db0bd2…3363` | 1.007 |
 | `split-temporal-asof20260922.json` | `a7735af1581a…962fff` | 6.979 event (T = 2026-07-07T15:23Z, phân vị 0,8) | 102 |
+| `split-llbo-asof20260924.json` (01/10, Day 4 R) | `1c31d43cfc28…fd1dda` | 6.993 event, sha `cccdf9d01c84…57d57` | 1.016 (có VP0000001, VP0000003) |
+| `split-temporal-asof20260924.json` (01/10, Day 4 R) | `49727f856865…07cf5` | 6.993 event (T = 2026-07-10T09:13Z, phân vị 0,8) | 98 (có VP0000001) |
 
-DB nguồn: Postgres local seed 2026-09-21 (`as_of` suy ra 2026-09-22), 2.897 search unit. Seed lại hoặc đổi `--min-purchases`
-/ `--min-trips` / `--T` thì `run --split-file` từ chối — muốn đo trên DB khác thì `split --freeze` bản mới và ghi bảng riêng.
+DB nguồn bộ `asof20260922`: Postgres local seed 2026-09-21 (`as_of` suy ra 2026-09-22), 2.897 search unit (máy A). Bộ
+`asof20260924` (Day 4 R, 01/10): Postgres local seed 2026-09-23 (`as_of` 2026-09-24), 3.183 search unit / 2.384 recommendable,
+7.145 event thô → 6.993 sau lọc (máy B; sanity §2.1 PASS 6/6 kiểm tra cứng trên DB này ngày 01/10). Seed lại hoặc đổi
+`--min-purchases` / `--min-trips` / `--T` thì `run --split-file` từ chối — muốn đo trên DB khác thì `split --freeze` bản mới và ghi
+bảng riêng. **Hai bộ split không so số với nhau** (khác tập khách / target / catalog): bảng §4.14 (bộ 0922) và §4.15 (bộ 0924) mỗi
+bảng chỉ so các arm **trong cùng run**; `configHash` giống nhau chỉ chứng minh cùng code engine, không cho phép so chéo.
 
 **Quy ước tuning (B10, chốt 01/10):** grid-search tham số engine chỉ chạy trên **temporal** đóng băng (train < T, kiểm ≥ T);
 bảng báo cáo cuối dùng **LLBO** đóng băng; không chọn tham số theo LLBO. Mọi run ghi `configHash` (eval) / `configHashProd`;
@@ -443,6 +465,44 @@ Trên LLBO (trong chuyến) cả hai bước không đổi số nào: 911 khách
 Run: `bench_out/recsys/runs/2026-10-02-{temporal,llbo}-v{4,5}/` (+ `-v4-n14` là lượt thử override trước khi đổi hằng).
 Sau v5, ceiling temporal còn **0,892** — 11 target không tới được đều thuộc khách có chuyến chưa đi tại T (`usingDate` ≥ T), tức giới hạn của split temporal; engine trượt-mpd trúng **4/102** (`filtered` 1, `mmr_demoted` 1, `ranked_low` 1, `wrong_active_trip` 1).
 
+### 4.15. Day 4 R (01/10): v5 trên bộ split `asof20260924` — đủ cột handbook §12 (Gini, cross-cat theo chuyến mở, CI)
+
+Report đầy đủ (bảng nguyên văn `run`, so cặp, ceiling, phân khúc, P1/P3, lệnh tái sinh):
+`src/evaluation/reports/eval-2026-10-01-recsys-bench-v5-asof20260924.md`. Cùng code v5 (`configHash b0aee886 / 81d16abd` khớp
+§4.14) nhưng **DB khác** (seed 09-23, `as_of` 2026-09-24, 3.183 unit; sanity §2.1 PASS 6/6 ngày 01/10) và bộ split mới (§3.1) →
+**không so chữ số với §4.14**; chỉ so arm trong cùng run. Run `2026-10-01-{llbo,temporal}-v5`, 6 arm, k = 20, `vectorsMissing 0`.
+
+| Arm | LLBO (1.016) R@20 / NDCG@10 | Coverage / Gini | Cross-cat chuyến mở, có mua | Temporal (98) R@20 / NDCG@10 | Coverage / Gini |
+|---|---:|---:|---:|---:|---:|
+| random (3 seed) | 0,0066 / 0,0018 | 0,999 / 0,191 | 0,233 | 0,0034 / 0,0034 | 0,563 / 0,562 |
+| most_popular | 0,2530 / 0,0769 | 0,069 / 0,982 | 0,782 | 0,0408 / 0,0031 | 0,008 / 0,992 |
+| most_popular_in_destination | 0,6024 / 0,3803 | 0,400 / 0,819 | 0,400 | 0,1020 / 0,0376 | 0,133 / 0,921 |
+| engine (eval) | **0,8484 / 0,5169** | 0,565 / 0,834 | 1,000 | **0,1939 / 0,1505** | 0,315 / 0,854 |
+| engine_prod (cap 2/taxonomy) | 0,6191 / 0,4718 | 0,207 / 0,930 | 1,000 | 0,1327 / 0,1327 | 0,083 / 0,970 |
+| engine_nommr (chẩn đoán) | 0,8750 / 0,5462 | 0,563 / 0,823 | 1,000 | 0,1939 / 0,1581 | 0,342 / 0,820 |
+
+Availability 1,000 ở mọi arm. Mẫu số cross-cat chuyến mở: LLBO 1.016 khách có chuyến mở / 923 đã mua (= 923 `cross_vertical`,
+93 `recent_activity`); temporal 25 / 9 (strategy: `long_term` 57, `dormant` 16, `cold_start_content` 10, `cross_vertical` 9,
+`recent_activity` 6).
+
+**CI (paired bootstrap 10.000 lượt, `compare`, Δ điểm phần trăm):** LLBO engine − mpd hit@20 **+24,6** [+21,8; +27,6], NDCG@10
+**+13,7** [+11,7; +15,6] (p < 10⁻⁴); engine_prod − mpd hit@20 +1,7 [−1,1; +4,4] (p 0,12 — **không khác**), NDCG@10 +9,2 [+7,2;
++11,2]; engine − engine_nommr hit@20 −2,7 [−4,3; −1,0], NDCG@10 −2,9 [−3,8; −2,1] (MMR trả giá ~3 điểm). Temporal engine − mpd
+hit@20 +9,2 [+3,1; +16,3] (p 0,0015), NDCG@10 +11,3 [+5,4; +17,8]; engine_prod − mpd hit@20 +3,1 [−3,1; +9,2] (không khác).
+
+**Ceiling:** LLBO **0,988** (1004/1016; `already_bought` 10, `destination_mismatch` 2), temporal **0,918** (90/98;
+`taxonomy_excluded` 4, `destination_mismatch` 7, `already_bought` 1 — 4 khách `cross_vertical` mang cả hai nhãn đầu) — cả hai
+≥ Recall@20 mpd (§7 "Ceiling"). Engine trượt-mpd trúng: LLBO 20/1.016 (`mmr_demoted` 10, `filtered` 6, `ranked_low` 3,
+`wrong_active_trip` 1); temporal 1/98 (`filtered`, target đã mua).
+
+**Đọc nhanh (hướng cho ADR 2 tuần sau, không phải quyết định):** (1) cap 2/taxonomy (I-5) vẫn là nút thắt lớn nhất của list
+production: hit@20 0,848 → 0,619, coverage 0,565 → 0,207, temporal prod ≈ mpd ở hit@20; mất ở attraction / combo. (2) MMR λ 0,7
+đổi ~3 điểm lấy Diversity@10 0,560 vs 0,532 — ứng viên grid (temporal, B10). (3) Cross-cat chuyến mở của engine = 1,000 theo cấu
+trúc (hard filter FR-REC-02): cột kiểm luật, không phải chất lượng; mpd gợi lại vertical đã mua ~60 %. (4) Gini engine 0,834 ≈
+mpd 0,819 dù coverage cao hơn — chạm nhiều unit nhưng exposure vẫn dồn. (5) Temporal: engine ≈ mpd ở `long_term` (57 khách,
+0,035) và `dormant`; hit từ `cold_start_content` 10/10 và `recent_activity`. (6) Phân khúc đầy đủ (coldStart, lifecycle,
+targetTaxonomy) và strict/lenient ở report §5.
+
 ## 5. Kiểm nhanh P1 `VP0000001` (Day 1 C)
 
 Lệnh `user --id VP0000001 --k 5`, `as_of` 2026-09-24, 12 event lịch sử, cùng engine production (không HTTP).
@@ -457,6 +517,17 @@ Lệnh `user --id VP0000001 --k 5`, `as_of` 2026-09-24, 12 event lịch sử, c�
 
 `latencyMs` 47, `eventsUsed` 12, `trips` 8. Chưa kiểm trên cloud (cần backfill và backend VM).
 
+### 5.1. Kiểm lại sau M6 (Day 4 R7, 01/10) — P1 và P3, DB seed 09-23, `as_of` 2026-09-24, engine mode prod
+
+| Khách | Kỳ vọng (FR-REC-01/02 bản mới, contract §4.4) | Kết quả |
+|---|---|---|
+| P1 `VP0000001` — 12 event, 8 trip; chuyến mở Nha Trang có `usingDate` = as_of + 12, đã mua hotel | `cross_vertical` · `excludedVerticals ["hotel"]` · không hotel · `nextVertical ∈ {flight, attraction}` | **4/4 đạt** (`day1Check`): flight, golf, attraction, flight, attraction — đều Nha Trang, mỗi món 1 `because` (`daysAgo` 2); `nextVertical flight`; `latencyMs` 42; 0 lỗi contract; dư `sections` (I-4); rank 2 là golf (I-1 còn) |
+| P3 `VP0000003` — 6 event, 4 trip; chuyến cuối as_of − 190 (dormant) | `dormant` · `excludedVerticals []` (không khoá điểm đến, không loại vertical — chuyến đã xong) · `coldStart false` · `because` có và mọi `daysAgo` > `DORMANT_AFTER_DAYS` 180 | **4/4 đạt** (`p3Check`, lệnh `user` 01/10): hotel Phú Quốc, attraction Phan Thiết, flight Phú Quốc, hotel Phú Quốc, golf Phú Quốc — mỗi món 2 `because` (`daysAgo` 189); `nextVertical hotel`, `destination null`; `latencyMs` 74; 0 lỗi contract; dư `sections` |
+
+Contract 1.12.0 đủ field (`nextVertical`, `excludedVerticals`, `modelVersion`, `diagnostics`) → không mở PR contract. Hành vi P3
+đúng FR-REC-02 bản mới ("sau khi chuyến đã diễn ra xong … không loại loại sản phẩm đã mua, không khoá điểm đến X; dùng lịch sử
+dài hạn và mức phổ biến"). Lệch còn lại ghi I-8.
+
 ## 6. Issue Day 1 (ghi nhận, chưa sửa)
 
 | # | Vấn đề | Chỗ | Việc của |
@@ -468,6 +539,7 @@ Lệnh `user --id VP0000001 --k 5`, `as_of` 2026-09-24, 12 event lịch sử, c�
 | I-5 | `MAX_PER_VERTICAL = 2` cộng category exclusion → `k = 20` chỉ trả 1–9 món (TB 5,3), nên Recall@20 = Recall@10. Spec §4.7 nói giới hạn 2 món mỗi `parentProductId`, không phải mỗi taxonomy | `domain/recommendation/profile.py` | M6 (Day 5–6) |
 | I-6 | `main.build_recsys` dựng popularity không truyền `now`, nên production dùng giờ thật; `PostgresCdpReader.purchase_events` không có cận trên | `main.py`, `postgres_cdp_reader.py` | ghi nhận; harness đã tự cắt |
 | I-7 | Engine không loại event sau `now` mà kẹp `days_ago` về 0 (test `test_engine_itself_does_not_drop_future_events`) | `use_cases.py` | ghi nhận; harness chặn từ đầu vào |
+| I-8 (01/10) | Ngưỡng dormant: contract `hop-dong-tich-hop-search-recommendation.md` §4.4 và handbook ghi **90 ngày** (`dormant` ⟹ `because.daysAgo > 90`), engine dùng `DORMANT_AFTER_DAYS = 180` (contract §4.4 đã ghi là lệch code). P3 (190 ngày) đạt theo cả hai ngưỡng nên chưa lộ; `p3Check` của lệnh `user` kiểm theo 180 (code) | `domain/recommendation/profile.py`, contract §4.4 | RecSys — chốt một số khi `DORMANT_AFTER_DAYS` vào grid (§4.13 thử 90 không đổi kết quả) |
 
 ## 7. Giới hạn và việc tiếp theo
 
@@ -475,14 +547,42 @@ Lệnh `user --id VP0000001 --k 5`, `as_of` 2026-09-24, 12 event lịch sử, c�
   PASS 5/5 kiểm tra cứng. Phase 0 (01/10): split đóng băng §3.1, NDCG@5, `ids` / `rankStrict` theo khách, `configHash` — §4.6.
   Phase 1 (01/10): ceiling §4.7, phân khúc §4.8, strict/lenient §4.9, 20 ca + `engine_nommr` §4.10, findings §4.11. Phase 3
   (01/10): offline = HTTP 60/60 §4.12. M6 (02/10): FR-REC-02 chốt, engine đổi luật trip mở + N = 14 (§4.14); grid lần 1 §4.13.
+  Day 4 R (01/10): v5 trên bộ split `asof20260924` đủ cột §12 (Gini, cross-cat chuyến mở hai biến thể, CI bootstrap), P1/P3
+  sau M6 §5.1, lệnh `compare` / `report` §1 — §4.15 và report `eval-2026-10-01-recsys-bench-v5-asof20260924.md`. Chưa làm
+  (chốt phạm vi 01/10, ngày kế): registry thuật toán `models/` + `algos_v1.yaml`, funnel chung / chế độ `raw`, scorer Tier 1,
+  `run --algos … --mode` (R3–R5 của `docs/plan/2026-10-01-chia-task-day4-search-rec.md`); `cooc_trip` / `star_blend` vẫn thiếu
+  đặc tả gốc.
 - Split temporal (as_of = T) đo "mua gì sau T", không phải "gợi gì ngay trước lúc mua chuyến kế": 10/21 target bị chặn là chuyến
   chưa đi tại T. Việc tiếp theo: split "next trip" (as_of = ngay trước purchase kế, trip trước đã kết thúc theo `usingDate`).
+- **Ceiling (Day 4 R8, 01/10):** trên cả hai bộ split, ceiling ≥ Recall@20 của mpd — bộ 0922: LLBO 0,990 / temporal 0,892 vs
+  mpd 0,635 / 0,098 (§4.14); bộ 0924: 0,988 / 0,918 vs 0,602 / 0,102 (§4.15) → **không** kích hoạt nhánh "ceiling < mpd → lỗi
+  thiết kế filter" của plan Day 3; bộ lọc cứng không phải nút thắt, không sửa filter trước khi grid. Lý do không tới được là
+  **đa nhãn**: `ceiling.json.reasonsMulti` đếm mọi lý do của một khách, `firstReason` chỉ lý do đầu theo thứ tự `REASONS`, nên
+  tổng `reasonsMulti` lớn hơn số khách không tới được (bộ 0922 temporal 16 > 11; bộ 0924 temporal 12 > 8: 4 khách `cross_vertical`
+  mang cả `taxonomy_excluded` và `destination_mismatch` — chuyến mở tại T chưa đi, target là chuyến kế ở điểm đến khác và cùng
+  loại hotel; `approxAgree` 1,000 ở cả hai bộ). `already_bought` (10/1.016 LLBO) là loại có chủ đích (mua lại cùng unit), giữ.
+  Phần mất lớn hơn ceiling nằm sau filter: MMR (~3 điểm, §4.15) và cap 2/taxonomy (I-5, ~23 điểm hit@20 LLBO). Hướng tuần sau,
+  theo thứ tự: (1) split "next trip" để tách giới hạn split khỏi engine trước khi kết luận về `cross_vertical` giữa hai chuyến;
+  (2) cap theo `parentProductId` thay vì taxonomy (I-5, cần đề xuất PRD nếu đổi hành vi production); (3) λ MMR và
+  `DORMANT_AFTER_DAYS` vào grid trên temporal (B10).
 - **I-5** đã xử lý ở harness (30/09): `engine` = mode eval bỏ cap để đo đủ k = 20; `engine_prod` báo list production.
   Spec §4.7 nói giới hạn 2 món mỗi `parentProductId`, code giới hạn 2 mỗi taxonomy — lệch spec/code này vẫn còn, là việc
   của C (M6), production chưa đổi.
 - Số 30/09 đo trên seed 2026-09-21 (máy A); Day 1 trên seed 2026-09-23 (máy B). Muốn một bộ số thống nhất thì seed lại
   cùng snapshot (`make demo-db AS_OF=2026-09-24 SEED=42`) rồi chạy lại hai lệnh ở §4.4.
 - Temporal hiện chỉ giữ một target mỗi khách (purchase đầu tiên ≥ T). Muốn đo nhiều target thì cần đổi metric.
+- **Định nghĩa ba cột thêm 01/10 (Day 4 R2, `metrics.py`):**
+  - `Gini` (`exposure_gini`): Gini của số lần mỗi unit **recommendable** xuất hiện trong top-20 của mọi khách test — unit không
+    được gợi lần nào đếm 0, nên cùng mẫu số với Coverage. 0 = mọi unit được hiển thị đều nhau; gần 1 = vài unit chiếm hết
+    (random ≈ 0, most_popular ≈ 1). Đọc cùng Coverage: coverage cao mà Gini cũng cao nghĩa là "chạm nhiều unit nhưng vẫn dồn".
+  - `Cross-cat chuyến mở` (`cross_category_open_trip`): handbook §12 "danh mục chưa được đặt **trong chuyến đi này**" — chỉ khách
+    có chuyến mở tại `as_of` theo đúng luật engine (`ceiling.engine_view` → `trip_is_open`, FR-REC-02; bỏ unit chưa có vector
+    như engine), tỉ lệ item top-20 có taxonomy ∉ taxonomy đã mua trong chuyến mở đó. Chuyến mở chỉ có view (I-3, `_solo_`) có
+    tập đã mua rỗng → mọi item đều "cross" (1,0 tầm thường) và **kéo cột này lên**.
+  - `Cross-cat chuyến mở, có mua` (`cross_category_open_trip_bought`): như trên nhưng chỉ khách có chuyến mở **đã mua ≥ 1 món**
+    (đúng tình huống FR-REC-02 / AC-REC-02: vừa đặt phòng → gợi vertical khác). Đây là cột nên trích khi nói về cross-sell.
+  - Mẫu số (số khách) của hai cột in dưới bảng; không có khách phù hợp → 0,0 / 0 (không null). `Cross-category` cũ giữ nghĩa
+    30/09: taxonomy của trip purchase **gần nhất** trong train (mở hay đã đóng), trên mọi khách — không đổi để so với bảng cũ.
 - Availability đo theo trạng thái catalog hôm nay, không theo `as_of`.
 - p95/p99 là thời gian xếp hạng offline (Weaviate local, không HTTP, không đọc CDP) — không thay số đo trên cloud.
   Số trên cloud đo bằng `http-latency` (§1), nhưng chỉ **guest path** cho tới khi ops mở IAP: một khách `popular` lặp

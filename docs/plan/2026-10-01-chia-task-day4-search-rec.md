@@ -4,7 +4,7 @@
 - Bản chi tiết của §1 `docs/plan/2026-10-01-plan-day4-5.md`. Plan đó chia cho 4 vai (A1, A2, B, C). File này gộp lại cho **2 người**: **S** nhận Track A + phần search của Track C, **R** nhận Track B + phần recsys của Track C.
 - Nhánh làm việc: `bench_search_recomSys` (= `fe7e04d`, PR #68). Mỗi người tách nhánh con từ đây (`bench/day4-search`, `bench/day4-rec`) và merge lại cuối ngày.
 - **Mốc engine recsys = v5 (theo quyết định ghi ở history phân công 01/10):** merge M6 (`origin/bench/m6-trip-ended`, đề xuất `2026-10-01-category-exclusion-theo-chuyen-dang-dien-ra.md` đã áp dụng) **trước** mọi số đo Day 4. Trong plan Day 4–5, mọi chỗ ghi "v0" (engine qua funnel = v0, `baseline_v1.json`) đều hiểu là **v5**.
-- Người phụ trách: **S (Search): chưa điền tên**; **R (RecSys): chưa điền tên**. Giữ đầy đủ phạm vi Day 4; việc chưa xong phải ghi blocker và bàn giao, không tự coi là đã được duyệt giảm phạm vi.
+- Người phụ trách: **S (Search): chưa điền tên**; **R (RecSys): tqanh123 / Claude (agent), nhận 01/10**. Giữ đầy đủ phạm vi Day 4; việc chưa xong phải ghi blocker và bàn giao, không tự coi là đã được duyệt giảm phạm vi.
 - Đây là **file phân công và bàn giao chính**. Checklist là việc cần nghiệm thu, không phải xác nhận đã chạy benchmark trong lần cập nhật tài liệu này.
 - Ưu tiên theo số thứ tự. Đọc file muộn thì làm theo số, không theo giờ. Checkpoint 17:15.
 
@@ -105,19 +105,21 @@
 
 ### R1 — **Merge M6, chốt mốc v5**
 
-- [ ] **Thực hiện:** `git merge origin/bench/m6-trip-ended` vào nhánh con. **Không** merge thêm `feat/recsys-trip-ended`: nếu engine của hai nhánh khác nhau (diff `profile.py`, `use_cases.py`), báo lead. Chạy `pytest src/evaluation/recsys_bench/tests` + test recommendation của backend (env `vsf2`). Chạy lại `run … --split-file frozen/split-{llbo,temporal}-asof20260922.json --run-id 2026-10-01-{llbo,temporal}-v5-check`
-- [ ] **Nghiệm thu:** Metric chất lượng tái lập khớp report v5 với cùng dữ liệu, split, seed và config; latency đo lại, không yêu cầu trùng từng chữ số. Đối chiếu report v5 (`eval-2026-10-02-recsys-bench-v5.md`); `configHash` eval/prod = `b0aee886` / `81d16abd`. Lệch → dừng, tìm nguyên nhân trước khi làm R2
-- [ ] **Bàn giao:** điền commit/PR, lệnh thực tế, artifact, kết quả kiểm tra và blocker vào §5.
+- [x] **Thực hiện (01/10):** `git merge origin/bench/m6-trip-ended` vào nhánh con. **Không** merge thêm `feat/recsys-trip-ended`: nếu engine của hai nhánh khác nhau (diff `profile.py`, `use_cases.py`), báo lead. Chạy `pytest src/evaluation/recsys_bench/tests` + test recommendation của backend (env `vsf2`). Chạy lại `run … --split-file frozen/split-{llbo,temporal}-asof20260922.json --run-id 2026-10-01-{llbo,temporal}-v5-check`
+- [x] **Nghiệm thu (01/10):** Metric chất lượng tái lập khớp report v5 với cùng dữ liệu, split, seed và config; latency đo lại, không yêu cầu trùng từng chữ số. Đối chiếu report v5 (`eval-2026-10-02-recsys-bench-v5.md`); `configHash` eval/prod = `b0aee886` / `81d16abd`. Lệch → dừng, tìm nguyên nhân trước khi làm R2
+- [x] **Bàn giao (01/10):** đã điền §5.4. *Gate thay thế vì DB local (seed 09-23) ≠ split 0922: `configHash b0aee886 / 81d16abd` khớp, test xanh, thứ tự baseline đúng, ceiling ≥ mpd; bộ split mới `asof20260924` (người dùng chốt 01/10).*
 
 
 ### R2 — **Đủ cột §12 cho 4 arm trên v5**
 
-- [ ] **Thực hiện:** Trong `metrics.score`: thêm **Gini** độ phủ (exposure top-20 trên mọi khách test); thêm `cross_category_open_trip`: chỉ khách có chuyến mở tại `as_of`, tỉ lệ item top-20 thuộc vertical **chưa mua trong chuyến đó** (lấy chuyến mở từ `ceiling.engine_view`). Giữ cột cũ. Ghi caveat: availability đo theo `attributes.availability` hiện tại, không tái dựng lịch sử. Thêm test
-- [ ] **Nghiệm thu:** Bảng v5 (random 3 seed, most_popular, mpd, engine, engine_prod): Recall@10/20, NDCG@10, cross-category (2 kiểu), availability, coverage, Gini, p95/p99 offline
-- [ ] **Bàn giao:** điền commit/PR, lệnh thực tế, artifact, kết quả kiểm tra và blocker vào §5.
+- [x] **Thực hiện (01/10):** Trong `metrics.score`: thêm **Gini** độ phủ (exposure top-20 trên mọi khách test); thêm `cross_category_open_trip`: chỉ khách có chuyến mở tại `as_of`, tỉ lệ item top-20 thuộc vertical **chưa mua trong chuyến đó** (lấy chuyến mở từ `ceiling.engine_view`). Giữ cột cũ. Ghi caveat: availability đo theo `attributes.availability` hiện tại, không tái dựng lịch sử. Thêm test
+- [x] **Nghiệm thu (01/10):** Bảng v5 (random 3 seed, most_popular, mpd, engine, engine_prod): Recall@10/20, NDCG@10, cross-category (2 kiểu), availability, coverage, Gini, p95/p99 offline
+- [x] **Bàn giao (01/10):** đã điền §5.4. *Gini + 2 biến thể cross-cat chuyến mở (người dùng chốt báo cả hai), test tính tay; bảng 6 arm × 2 split trong report `eval-2026-10-01-recsys-bench-v5-asof20260924.md`.*
 
 
 ### R3 — **Registry thuật toán**
+
+> *01/10 — chưa làm:* người dùng chốt phạm vi Day 4 R = report đủ metric cho engine v5 + baseline (R1, R2, R6-markdown, R7, R8); R3–R5 sang ngày kế. Blocker đặc tả `cooc_trip` / `star_blend` (§4.1) vẫn mở. Môi trường: `implicit 0.7.3` có wheel cp313 win_amd64, `scipy` chỉ có ở `.venv-sbench`.
 
 - [ ] **Thực hiện:** `src/evaluation/recsys_bench/models/`: `base.py` (`fit(train_events, catalog, vectors)`, `score(user_ctx, candidate_ids) → scores`; `UserCtx` = event < `as_of`, chuyến mở, destination, vertical đã mua). Đăng ký theo tên trong `src/evaluation/recsys_bench/algos_v1.yaml`, tham số **mặc định**, không tune. Port logic (không chép file ra gốc `src/evaluation/`) từ `recommender_prototypes.py` của nhánh research. Thêm `implicit`, `scipy` vào `src/evaluation/requirements.txt`
 - [ ] **Nghiệm thu:** Chạy end-to-end trên split với 2 scorer rẻ nhất: `cooc_trip` (cosine + shrinkage theo trip, top-50/item) và `ease` (nghiệm đóng, λ mặc định)
@@ -126,12 +128,16 @@
 
 ### R4 — **Funnel chung + chế độ `raw`**
 
+> *01/10 — chưa làm:* người dùng chốt phạm vi Day 4 R = report đủ metric cho engine v5 + baseline (R1, R2, R6-markdown, R7, R8); R3–R5 sang ngày kế. Blocker đặc tả `cooc_trip` / `star_blend` (§4.1) vẫn mở. Môi trường: `implicit 0.7.3` có wheel cp313 win_amd64, `scipy` chỉ có ở `.venv-sbench`.
+
 - [ ] **Thực hiện:** `funnel.py`: `candidates = filter(destination chuyến mở ∥ 2 destination lịch sử, taxonomy ∉ vertical đã mua, is_recommendable, available)` → `score` → top-20; điểm 0 / không có tín hiệu thì phá hoà bằng `pop_D`. **Dùng lại `ceiling.engine_view`** làm bộ lọc để mask trùng engine. `raw` = không lọc, xếp toàn catalog. Bọc engine production thành scorer `content_profile`
 - [ ] **Nghiệm thu:** Test regression: `content_profile` qua funnel = **đúng số v5** (LLBO + temporal). Chưa bằng thì không chạy scorer khác
 - [ ] **Bàn giao:** điền commit/PR, lệnh thực tế, artifact, kết quả kiểm tra và blocker vào §5.
 
 
 ### R5 — **Đủ scorer Tier 1 + `algos_v1.yaml`**
+
+> *01/10 — chưa làm:* người dùng chốt phạm vi Day 4 R = report đủ metric cho engine v5 + baseline (R1, R2, R6-markdown, R7, R8); R3–R5 sang ngày kế. Blocker đặc tả `cooc_trip` / `star_blend` (§4.1) vẫn mở. Môi trường: `implicit 0.7.3` có wheel cp313 win_amd64, `scipy` chỉ có ở `.venv-sbench`.
 
 - [ ] **Thực hiện:** Baseline: `random` (3 seed), `mostpop_window` (90 ngày = `most_popular` hiện có), `mostpop_in_dest`. Content: `content_profile`, `content_no_decay`, `content_no_mmr` (= `engine_nommr`). Co-occurrence: `cooc_trip`, `star_blend` (a = 0,5). CF: `ease`, `itemknn` (`implicit` cosine). MF: `ials` (64 factor, α = 40), `bpr` (64 factor, negative toàn cục nếu research chưa có negative theo destination; ghi rõ). Tier 2 `rp3beta` chỉ khi còn giờ. Chạy thử mỗi scorer `--limit-users 50` cả hai chế độ
 - [ ] **Nghiệm thu:** Mọi scorer Tier 1 chạy không lỗi; yaml có tier · tham số · cần train? · thời gian fit + thời gian ước cho full run
@@ -140,6 +146,8 @@
 
 ### R6 — **CLI chạy lại được**
 
+> *01/10 — một phần:* xong `report --run-id … [--out]` (markdown gộp bảng + ceiling / phân khúc / so cặp; `gitDescribe` + `configHash` + split sha đầu khối; `summary.json` có `history[]`) và `compare` (CI95 bootstrap); **chưa** có `run --algos <yaml> --mode funnel|raw` vì phụ thuộc R3–R5.
+
 - [ ] **Thực hiện:** `python -m src.evaluation.recsys_bench run --algos algos_v1.yaml --split-file <file> --mode funnel\|raw` → `bench_out/recsys/runs/<hash config>/`; bảng markdown sinh tự động; đầu file ghi `git describe` + `modelVersion` + `configHash`
 - [ ] **Nghiệm thu:** Chạy `content_profile` bằng CLI mới ra đúng số v5
 - [ ] **Bàn giao:** điền commit/PR, lệnh thực tế, artifact, kết quả kiểm tra và blocker vào §5.
@@ -147,16 +155,16 @@
 
 ### R7 — **Kiểm exclusion/diagnostics sau M6** (phần C)
 
-- [ ] **Thực hiện:** `recsys_bench user --id VP0000001` (P1: chuyến mở, đã mua hotel) và một khách P3 dormant: `strategy`, `excludedVerticals`, `nextVertical`, `coldStart` đúng FR-REC-02 bản mới. Đối chiếu field `/recommendations` trong contract 1.12.0 với plan §1.3 #5
-- [ ] **Nghiệm thu:** Ghi kết quả vào spec recsys §5. Sai logic → mở issue / fix và báo lại R1. Contract thiếu field → báo lead (không tự mở PR contract nếu không thiếu)
-- [ ] **Bàn giao:** điền commit/PR, lệnh thực tế, artifact, kết quả kiểm tra và blocker vào §5.
+- [x] **Thực hiện (01/10):** `recsys_bench user --id VP0000001` (P1: chuyến mở, đã mua hotel) và một khách P3 dormant: `strategy`, `excludedVerticals`, `nextVertical`, `coldStart` đúng FR-REC-02 bản mới. Đối chiếu field `/recommendations` trong contract 1.12.0 với plan §1.3 #5
+- [x] **Nghiệm thu (01/10):** Ghi kết quả vào spec recsys §5. Sai logic → mở issue / fix và báo lại R1. Contract thiếu field → báo lead (không tự mở PR contract nếu không thiếu)
+- [x] **Bàn giao (01/10):** đã điền §5.4. *P1 4/4, P3 4/4 (`user … p3Check`), ghi spec §5.1; contract đủ field, không mở PR; lệch dormant 90/180 → I-8.*
 
 
 ### R8 — **Mục "Ceiling" trong report**
 
-- [ ] **Thực hiện:** v5: LLBO 0,990, temporal 0,892 > Recall@20 của mpd (0,098) → **không** kích hoạt nhánh "ceiling < mpd" của plan. Viết 1 đoạn: 11/102 ca temporal chưa tới được mask; report v5 ghi lý do 6 `taxonomy_excluded`, 9 `destination_mismatch`, 1 `already_bought` (tổng 16 > 11, nên một ca có thể mang nhiều lý do; kiểm lại trong `ceiling.json`); kèm hướng cho tuần sau
-- [ ] **Nghiệm thu:** Đoạn trong `docs/spec/bench/recsys-offline-eval.md` §7
-- [ ] **Bàn giao:** điền commit/PR, lệnh thực tế, artifact, kết quả kiểm tra và blocker vào §5.
+- [x] **Thực hiện (01/10):** v5: LLBO 0,990, temporal 0,892 > Recall@20 của mpd (0,098) → **không** kích hoạt nhánh "ceiling < mpd" của plan. Viết 1 đoạn: 11/102 ca temporal chưa tới được mask; report v5 ghi lý do 6 `taxonomy_excluded`, 9 `destination_mismatch`, 1 `already_bought` (tổng 16 > 11, nên một ca có thể mang nhiều lý do; kiểm lại trong `ceiling.json`); kèm hướng cho tuần sau
+- [x] **Nghiệm thu (01/10):** Đoạn trong `docs/spec/bench/recsys-offline-eval.md` §7
+- [x] **Bàn giao (01/10):** đã điền §5.4. *Spec §7 đoạn "Ceiling": bộ 0924 ceiling 0,988 / 0,918 ≥ mpd 0,602 / 0,102; lý do đa nhãn (4 khách temporal mang 2 nhãn) kiểm trong `ceiling.json`.*
 
 
 **Checkpoint 17:15 (R):** v5 tái lập đúng số · bảng v5 đủ cột §12 (có Gini, cross-category theo chuyến) · registry + funnel + `raw` · `content_profile` qua funnel = v5 · `algos_v1.yaml` · mọi Tier-1 scorer chạy thử 50 user · CLI `run --algos` · P1/P3 đã kiểm sau M6.
@@ -180,10 +188,10 @@
 ### 5.1 Trước khi bắt đầu
 
 - [ ] Điền tên S/R ở đầu file; S review đầu ra R, R review đầu ra S.
-- [ ] Ghi HEAD thực tế và snapshot/checksum catalog; `fe7e04d` là mốc khảo sát, không mặc định là HEAD sau merge.
-- [ ] S xác nhận gold/tag/hash; R xác nhận frozen split/hash và mốc v5 sau R1. Không so số khác phiên bản mà chưa rescore/tái chạy.
-- [ ] R kiểm tra PRD sau tích hợp M6 trước khi dùng hành vi mới; lịch sử chốt trên nhánh khác không thay thế bước cập nhật PRD tại nhánh làm việc.
-- [ ] Mỗi người đọc tài liệu bắt buộc theo AGENTS.md trước khi code. `src/evaluation/README.md` hiện thiếu: cần hỏi người dùng theo AGENTS.md §1.2 trước khi giả định nội dung; việc chỉnh checklist này không thay thế bước đó.
+- [x] Ghi HEAD thực tế và snapshot/checksum catalog; `fe7e04d` là mốc khảo sát, không mặc định là HEAD sau merge. *(R, 01/10: nhánh `bench/day4-rec`, HEAD sau merge M6 = `69e01a5`; DB local seed 09-23, 3.183 unit / 2.384 recommendable, 7.145 event; Weaviate local `Product` 3.183 object, `modelVersion embed-multilingual-v3.0:catalog-text-v2`.)*
+- [ ] S xác nhận gold/tag/hash; R xác nhận frozen split/hash và mốc v5 sau R1. Không so số khác phiên bản mà chưa rescore/tái chạy. *(R, 01/10: split `asof20260924` sha `1c31d43c…` / `49727f85…`, `configHash b0aee886 / 81d16abd`; chờ lead xác nhận mốc `v5@asof20260924`.)*
+- [x] R kiểm tra PRD sau tích hợp M6 trước khi dùng hành vi mới; lịch sử chốt trên nhánh khác không thay thế bước cập nhật PRD tại nhánh làm việc. *(01/10: sau merge, FR-REC-02 bản mới và đề xuất `đã áp dụng` đã có trên `bench/day4-rec`.)*
+- [x] Mỗi người đọc tài liệu bắt buộc theo AGENTS.md trước khi code. `src/evaluation/README.md` hiện thiếu: cần hỏi người dùng theo AGENTS.md §1.2 trước khi giả định nội dung; việc chỉnh checklist này không thay thế bước đó. *(R, 01/10: đã đọc; không tạo README mới, hướng dẫn chạy ở spec §1.)*
 - [ ] Phân lịch CPU/Weaviate: S chạy embed nền; không đo latency trong lúc máy chịu tải embed/fit của người kia.
 - [ ] Giữ model production Cohere v3/1024; các model/scorer khác chỉ là benchmark local. Đổi production hoặc PRD phải qua đề xuất được chốt.
 
@@ -217,7 +225,7 @@
 
 **Bổ sung điều kiện nghiệm thu:**
 
-- [ ] R2 ghi mẫu số Gini/coverage, xử lý danh sách rỗng và user không có chuyến mở; test fixture có kết quả tính tay.
+- [x] R2 ghi mẫu số Gini/coverage, xử lý danh sách rỗng và user không có chuyến mở; test fixture có kết quả tính tay. *(01/10: spec §7; mẫu số in dưới bảng; rỗng → 0,0 / 0; `tests/test_metrics_open_trip_gini.py`.)*
 - [ ] R4 kiểm mask/tie-break và metric trên cả LLBO + temporal; chưa khớp v5 thì chưa công bố bảng so scorer.
 - [ ] S5 dùng cùng gold cho cả 3 arm; đủ Judged@10 hoặc ghi rõ hạn chế trước khi kết luận.
 - [ ] S6 cap 700 là tổng cặp duy nhất sau loại trùng, có bảng số cặp theo arm. Nếu cần condensed mà chưa triển khai thì đánh dấu chờ, không công bố số condensed giả định.
@@ -244,13 +252,20 @@ Report là bằng chứng kèm theo, history ghi lý do/quyết định; chúng 
 | Owner | Task | Trạng thái | Commit/PR | Artifact/report và run ID | Lệnh + kết quả test | Blocker / bước tiếp theo / người nhận |
 |---|---|---|---|---|---|---|
 | S — chưa điền tên | S1–S8 (tách dòng theo task khi cập nhật) | Chưa nghiệm thu | — | — | Chưa chạy trong lần cập nhật tài liệu | Điền sau khi nhận việc |
-| R — chưa điền tên | R1–R8 (tách dòng theo task khi cập nhật) | Chưa nghiệm thu | — | — | Chưa chạy trong lần cập nhật tài liệu | Điền sau khi nhận việc |
+| R — tqanh123 / Claude | R1 Merge M6, mốc v5 | **Xong 01/10** (gate thay thế) | nhánh `bench/day4-rec`; merge `8842c3a` → `69e01a5`; code Day 4 chưa commit lúc ghi | `configHash b0aee886 / 81d16abd` khớp report v5; DB local seed 09-23 ≠ split 0922 → đóng băng `frozen/split-{llbo,temporal}-asof20260924.json` (1.016 / 98 khách) | pytest harness 62 → **70 passed**; backend recommendation **25 passed**; `doctor` OK; `sanity` **PASS 6/6** | Không tái lập chữ số v5 (khác DB; tunnel VM đóng; seed lại không cùng catalog). Lead xác nhận mốc `v5@asof20260924` |
+| R | R2 đủ cột §12 | **Xong 01/10** | như R1 | run `2026-10-01-llbo-v5`, `2026-10-01-temporal-v5` (`bench_out/`); report `src/evaluation/reports/eval-2026-10-01-recsys-bench-v5-asof20260924.md`; spec §4.15 | `metrics.py` Gini + 2 biến thể cross-cat chuyến mở + bootstrap, test tính tay; `run` 6 arm × 2 split exit 0: LLBO engine R@20 0,848 / NDCG@10 0,517 vs mpd 0,602 / 0,380; availability 1,000; coverage 0,565; Gini 0,834 | Cross-cat chuyến mở của engine = 1,0 theo cấu trúc; trích cột "có mua" khi nói cross-sell |
+| R | R3 registry | **Chưa làm** | — | — | — | Người dùng chốt phạm vi A 01/10 → ngày kế; blocker đặc tả `cooc_trip`/`star_blend` vẫn mở; `implicit 0.7.3` có wheel cp313 win, `scipy` chỉ ở `.venv-sbench` |
+| R | R4 funnel + `raw` | **Chưa làm** | — | — | — | như R3; dùng `ceiling.engine_view` làm bộ lọc như plan |
+| R | R5 scorer Tier 1 | **Chưa làm** | — | — | — | như R3 |
+| R | R6 CLI | **Một phần 01/10** | như R1 | `report`, `compare`; `summary.history` / `gitDescribe`; `bench_out/…/report.md`, `compare-*.md` | test CLI (CliRunner) trong `test_metrics_open_trip_gini.py`; `compare` LLBO engine − mpd hit@20 +24,6 [+21,8; +27,6] | `run --algos --mode` chờ R3–R5 |
+| R | R7 P1/P3 sau M6 | **Xong 01/10** | như R1 | spec §5.1 | `user --id VP0000001` 4/4; `user --id VP0000003` 4/4 (`p3Check` mới); 0 lỗi contract; dư `sections` (I-4) | Contract 1.12.0 không thiếu field → không mở PR; dormant 90 (contract) vs 180 (code) → I-8 |
+| R | R8 Ceiling | **Xong 01/10** | như R1 | spec §7 "Ceiling", §4.15; `bench_out/…/ceiling.{json,md}` | `analyze` hai run: ceiling 0,988 (1004/1016) / 0,918 (90/98) ≥ mpd 0,602 / 0,102; đa nhãn 12 > 8 (4 khách 2 nhãn) | Hướng tuần sau: split "next trip"; cap theo `parentProductId` (I-5) qua đề xuất PRD; λ MMR vào grid |
 
 Mỗi report phải có commit + run ID + gold/split version/hash + cấu hình arm, bảng số nguyên văn từ output, caveat và lệnh tái sinh. Không ghi DSN/secret vào lệnh bàn giao.
 
 ### 5.5 Điểm còn cần xác nhận
 
-- [ ] Tên hai người tương ứng S/R.
+- [ ] Tên hai người tương ứng S/R. *(R = tqanh123 / Claude, 01/10; S chưa.)*
 - [ ] Nguồn đặc tả `cooc_trip`/`star_blend` và tham số còn thiếu của thuật toán; không suy đoán để bỏ blocker.
 - [ ] bge-m3 dùng int8 hay fp32, model revision cụ thể.
 - [ ] Kích thước split dev/test hợp lệ nếu làm S8 (131 câu không đủ 100/100).
