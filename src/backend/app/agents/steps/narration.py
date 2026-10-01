@@ -230,6 +230,24 @@ def _repair_links(body: str, products: dict[str, dict]) -> str:
     return STRAY_PRODUCT.sub(lambda match: "" if match.group(1) in products else match.group(0), body)
 
 
+def _link_plain_mention(body: str, product: dict) -> str | None:
+    """Gắn link vào lần đầu tên sản phẩm được nhắc bằng chữ thường (ngoài mọi link có sẵn); không thấy thì `None`.
+
+    Trace thật: LLM viết "ghé thăm Cầu Hôn Phú Quốc" không kèm link; trước đây sản phẩm bị dồn xuống mục "Ngoài ra"
+    ở cuối, trông như câu trả lời bị cắt dở.
+    """
+    for name in sorted({product["name"], _label(product)}, key=len, reverse=True):
+        start = 0
+        for match in [*PRODUCT_LINK.finditer(body), None]:
+            end = match.start() if match else len(body)
+            position = body.find(name, start, end)
+            if position >= 0:
+                return body[:position] + _link(product) + body[position + len(name):]
+            if match:
+                start = match.end()
+    return None
+
+
 def render(state: dict, response: dict, narration: ItineraryNarration) -> tuple[str | None, str | None, str]:
     """(title, message, lý do) từ câu LLM; `message` là `None` khi câu không dùng được (lý do nói vì sao)."""
     narration = ItineraryNarration.model_validate(narration)
@@ -261,7 +279,15 @@ def render(state: dict, response: dict, narration: ItineraryNarration) -> tuple[
     body = "\n".join(line.rstrip() for line in body.splitlines())
     body = PRODUCT_LINK.sub(lambda match: _link(products[match.group(2)]), body)
     body = PLACEHOLDER.sub(fill, body)
-    missing = [product for product_id, product in scheduled.items() if product_id not in linked]
+    missing = []
+    for product_id, product in scheduled.items():
+        if product_id in linked:
+            continue
+        linked_inline = _link_plain_mention(body, product)
+        if linked_inline is None:
+            missing.append(product)
+        else:
+            body = linked_inline
     if missing:
         # Mọi sản phẩm đã xếp đều phải bấm được từ khung chat, kể cả khi LLM quên nhắc.
         body += f"\n\n**{message(state, 'section_more')}**\n" + "\n".join(f"• {_link(product)}" for product in missing)

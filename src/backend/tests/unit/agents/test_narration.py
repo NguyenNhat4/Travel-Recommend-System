@@ -130,6 +130,21 @@ class RenderTests(unittest.TestCase):
                 self.assertIn(f'Sáng đi [{label}](product:b1).', update['response']['message'])
                 self.assertNotIn('[[', update['response']['message'])
 
+    def test_a_product_named_in_plain_text_is_linked_where_it_is_mentioned(self):
+        # Trace thật: "Buổi chiều, chúng ta sẽ ghé thăm Cầu Hôn Phú Quốc" không có link, sản phẩm bị dồn xuống cuối.
+        bridge = {**TOUR, 'productId': 'c1', 'name': 'Cầu Hôn Phú Quốc', 'attributes': {}}
+        slots = [{'time': 'MORNING', 'activityType': None, 'product': deepcopy(TOUR), 'note': None, 'source': 'SEARCH',
+                  'because': []},
+                 {'time': 'AFTERNOON', 'activityType': None, 'product': bridge, 'note': None, 'source': 'SEARCH',
+                  'because': []}]
+        update, reason = narrated(state(slots=slots), 'Sáng đi [Cầu Hôn Phú Quốc tour](product:t1). '
+                                                      'Chiều ghé thăm Cầu Hôn Phú Quốc, rất đẹp.')
+        text = update['response']['message']
+        self.assertEqual(reason, 'llm')
+        self.assertIn('Chiều ghé thăm [Cầu Hôn Phú Quốc](product:c1), rất đẹp.', text)
+        self.assertIn('[Full-Day Ninh Binh Tour](product:t1)', text)
+        self.assertNotIn('Ngoài ra trong lịch trình', text)
+
     def test_a_stray_id_of_a_scheduled_product_is_dropped_but_the_product_stays_clickable(self):
         update, reason = narrated(state(), 'Đi tour Ninh Bình (product:t1) cả ngày.')
         self.assertEqual(reason, 'llm')
