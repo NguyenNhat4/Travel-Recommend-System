@@ -191,6 +191,33 @@ class FallbackTests(unittest.TestCase):
         self.assertIn('tự do nghỉ ngơi', narration.fallback_message(current, current['response']))
 
 
+NO_STAY = {'code': 'NO_STAY_AVAILABLE', 'message': 'Khách sạn ở Hà Nội trong dữ liệu hiện chỉ nhận đặt từ 15/10/2026.'}
+
+
+class NoStayTests(unittest.TestCase):
+    """`compose` thêm `NO_STAY_AVAILABLE`; lời diễn giải nêu lý do ở mục riêng ngay trước mục chi phí."""
+
+    def test_the_reason_sits_before_the_cost_section_in_the_llm_reply(self):
+        current = state()
+        current['response']['warnings'].append(NO_STAY)
+        text = narrated(current, 'Một ngày ở Hà Nội.\n\n**Ngày 1 · 15/10/2026**\n'
+                                 '• Cả ngày — [Tour](product:t1) ([[price:t1]]): đi sớm.\n\n'
+                                 '**Chi phí dự kiến**\n• [[total]]')[0]['response']['message']
+        self.assertIn(f"**Chưa có khách sạn**\n{NO_STAY['message']}\n\n**Chi phí dự kiến**", text)
+
+    def test_the_rule_based_reply_has_the_reason_too(self):
+        current = state()
+        current['response']['warnings'].append(NO_STAY)
+        text = narration.fallback_message(current, current['response'])
+        self.assertIn(f"**Chưa có khách sạn**\n{NO_STAY['message']}\n\n**Chi phí dự kiến**", text)
+
+    def test_the_llm_is_told_the_system_explains_the_missing_stay(self):
+        current = state()
+        self.assertIn('no_stay_explained: false', narration.narration_input(current)[1][1])
+        current['response']['warnings'].append(NO_STAY)
+        self.assertIn('no_stay_explained: true', narration.narration_input(current)[1][1])
+
+
 class NodeTests(unittest.TestCase):
     def llm(self, result=None, error=None):
         def with_structured_output(schema):

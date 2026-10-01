@@ -315,7 +315,7 @@ class NodeTests(unittest.IsolatedAsyncioTestCase):
                 return {'tool_call_id': call['id'], 'data': {'strategy': 'popular', 'recommendations': []}}
         async def plan(prompt):
             return SimpleNamespace(tool_calls=[{'name': 'get_recommendations', 'args': {'destination': 'Da Nang'}}])
-        llm = SimpleNamespace(bind_tools=lambda schemas: SimpleNamespace(ainvoke=plan))
+        llm = SimpleNamespace(bind_tools=lambda schemas, tool_choice=None: SimpleNamespace(ainvoke=plan))
         result = await nodes.tool_node({'query': 'recommend Da Nang'}, tools=Executor(), llm=llm)
         self.assertEqual(result['tool_plan'][0]['args'], {'destination': 'Da Nang', 'k': tool_planning.RECOMMENDATION_K})
 
@@ -327,7 +327,7 @@ class NodeTests(unittest.IsolatedAsyncioTestCase):
                 return {'tool_call_id': call['id'], 'data': {'strategy': 'popular', 'recommendations': []}}
         async def plan(prompt):
             return SimpleNamespace(tool_calls=[{'name': 'get_recommendations', 'args': {'destination': 'Hồ Chí Minh'}}])
-        llm = SimpleNamespace(bind_tools=lambda schemas: SimpleNamespace(ainvoke=plan))
+        llm = SimpleNamespace(bind_tools=lambda schemas, tool_choice=None: SimpleNamespace(ainvoke=plan))
         state = {'query': '2 ngày', 'intent': {'destination': 'TP. Hồ Chí Minh', 'days': 2}}
         result = await nodes.tool_node(state, tools=Executor(), llm=llm)
         self.assertEqual(result['tool_plan'][0]['args']['destination'], 'TP. Hồ Chí Minh')
@@ -345,7 +345,7 @@ class NodeTests(unittest.IsolatedAsyncioTestCase):
         async def plan(prompt):
             return SimpleNamespace(tool_calls=[
                 {'name': 'search_products', 'args': {'destination': 'Hạ Long', 'taxonomy': 'attraction', 'limit': 5}}])
-        llm = SimpleNamespace(bind_tools=lambda schemas: SimpleNamespace(ainvoke=plan))
+        llm = SimpleNamespace(bind_tools=lambda schemas, tool_choice=None: SimpleNamespace(ainvoke=plan))
         tools = Executor()
         state = {'query': '2 ngày', 'intent': {'destination': 'Hạ Long', 'days': 2}}
         result = await nodes.tool_node(state, tools=tools, llm=llm)
@@ -365,7 +365,7 @@ class NodeTests(unittest.IsolatedAsyncioTestCase):
         async def plan(prompt):
             return SimpleNamespace(tool_calls=[{'name': 'search_products', 'args': {
                 'query': 'Đà Lạt', 'taxonomy': 'attraction', 'limit': 5, 'excludeProducts': ['p-1']}}])
-        llm = SimpleNamespace(bind_tools=lambda schemas: SimpleNamespace(ainvoke=plan))
+        llm = SimpleNamespace(bind_tools=lambda schemas, tool_choice=None: SimpleNamespace(ainvoke=plan))
         tools = Executor()
         state = {'query': 'rút ngắn còn 2 ngày', 'intent': {'destination': 'Đà Lạt', 'days': 2},
                  'constraints': {'exclude_products': ['p-1']}}
@@ -646,7 +646,7 @@ class SimilarPlanTests(unittest.IsolatedAsyncioTestCase):
                                         (swap_state(), every, True)):
             bound, prompts = [], []
 
-            def bind_tools(schemas):
+            def bind_tools(schemas, tool_choice=None):
                 bound.append([d['name'] for d in schemas])
 
                 async def invoke(messages):

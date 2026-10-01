@@ -82,7 +82,9 @@ export function useFloatingWidget() {
         text: item.text,
         plan,
         clarificationForm: item.response?.status === 'NEEDS_CLARIFICATION' ? item.response.clarificationForm : undefined,
-        suggestions: item.response?.status === 'NO_RESULTS' ? item.response.suggestions : undefined,
+        suggestions: item.response?.status === 'NO_RESULTS' || item.response?.status === 'NEEDS_CLARIFICATION'
+          ? item.response.suggestions
+          : undefined,
       };
     });
   }, [assistantState.transcript]);

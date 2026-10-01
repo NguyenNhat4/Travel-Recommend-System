@@ -98,7 +98,7 @@ export function WidgetPlanPanel({ widget }: { widget: FloatingWidgetController }
         ) : (
           <span
             className="text-sm font-bold text-slate-500"
-            title="Một số mục trong lịch trình chưa có giá nên không cộng được tổng; giá thiếu không được coi là 0."
+            title="Một số mục có vé trong lịch trình chưa có giá nên không cộng được tổng; giá thiếu không được coi là 0."
           >
             Chưa tính được
           </span>

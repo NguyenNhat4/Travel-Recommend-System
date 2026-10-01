@@ -85,7 +85,9 @@ async def check_destination(state: dict, update: dict, *, tools: ToolExecutorPor
     Không lấy được catalog thì giữ nguyên: `tool` vẫn kiểm lần nữa.
     """
     intent = update.get("intent") or {}
-    if update.get("decision") == "error" or not intent.get("destination"):
+    # Hỏi chọn điểm đến theo loại ("đi biển") cần danh sách catalog để LLM gợi ý, kể cả khi chưa có điểm đến.
+    by_kind = update.get("clarification_reason") == "destination_kind"
+    if update.get("decision") == "error" or not (intent.get("destination") or by_kind):
         return update
     if not getattr(tools, "supports_catalog", False):
         return update
@@ -94,6 +96,9 @@ async def check_destination(state: dict, update: dict, *, tools: ToolExecutorPor
         supported = await catalog_destinations(tools, timeout_seconds)
     if supported is None:
         return update
+    if by_kind:
+        # Điểm đến đang có (người dùng muốn đổi sang loại khác) giữ nguyên, không đem đi khớp lại.
+        return {**update, "supported_destinations": supported}
     checked = dict(intent)
     changed: list[str] = []
     rejected = await canonical_destination(state, checked, changed, supported, llm, llm_timeout_seconds)
@@ -331,8 +336,10 @@ async def build_plan(state: dict, intent: dict, constraints: dict, *, tools: Too
         plan, offered = state.get("tool_plan"), None
         if not plan:  # plan đã lưu (lần retry) chạy lại nguyên trạng, không hỏi LLM và không đọc definitions()
             definitions, prompt, offered = _planner_input(state, intent, constraints, tools.definitions())
-            response = await asyncio.wait_for(chat_model(llm).bind_tools(definitions).ainvoke(prompt),
-                                              llm_timeout_seconds)
+            # "any" bắt planner gọi ít nhất một tool: không ép thì câu như "không đổi nữa" ngay sau câu hỏi đổi
+            # điểm đến khiến LLM trả lời bằng câu chat, plan rỗng và cả lượt rơi vào dead_letter.
+            bound = chat_model(llm).bind_tools(definitions, tool_choice="any")
+            response = await asyncio.wait_for(bound.ainvoke(prompt), llm_timeout_seconds)
             plan = response.tool_calls
         plan = validated_plan({**state, "intent": intent, "constraints": constraints}, plan,
                               require_recommendations=require_recommendations, offered=offered)

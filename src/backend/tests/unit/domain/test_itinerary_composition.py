@@ -1,7 +1,8 @@
 """The itinerary layout is decided by rules alone, so the rules themselves need coverage."""
 import unittest
 
-from src.backend.app.domain.itinerary.planning import compose_plan, render_proposal, summary, validate_plan
+from src.backend.app.domain.itinerary.planning import (compose_plan, free_to_visit, render_proposal, summary, totals,
+                                                       validate_plan)
 
 
 def product(pid, **updates):
@@ -145,6 +146,41 @@ class SummaryTests(unittest.TestCase):
 
     def test_a_non_dict_product_summarizes_to_an_empty_dict(self):
         self.assertEqual(summary(None), {})
+
+
+class TotalsTests(unittest.TestCase):
+    """Điểm tham quan tự do tính 0 đ vào tổng; mục khác thiếu giá vẫn làm tổng null (`architecture.md` §3)."""
+
+    def plan_of(self, *products, days=2, **intent_updates):
+        candidates = catalog(*products)
+        sources = sources_for(candidates)
+        trip = intent(days=days, **intent_updates)
+        return render_proposal(compose_plan(candidates, sources, trip), candidates, sources, trip), trip
+
+    def test_an_unpriced_beach_counts_as_free_and_the_total_is_kept(self):
+        plan, trip = self.plan_of(product('show', unitPrice=700_000),
+                                  product('beach', unitPrice=None, priceUnit='UNKNOWN'),
+                                  party={'type': 'COUPLE', 'adults': 2, 'children': 0}, budget=5_000_000)
+        self.assertEqual(plan['estimatedTotal'], 1_400_000)
+        self.assertEqual(plan['budgetStatus'], 'WITHIN_BUDGET')
+        self.assertEqual(totals(plan, trip), (1_400_000, 'WITHIN_BUDGET'))
+
+    def test_a_ticketed_false_place_counts_as_free_even_with_a_source_price(self):
+        plan, _ = self.plan_of(product('park', unitPrice=50_000, attributes={'ticketed': False}))
+        self.assertEqual(plan['estimatedTotal'], 0)
+
+    def test_an_unpriced_stay_still_makes_the_total_unknown(self):
+        plan, _ = self.plan_of(product('hotel', taxonomy='hotel', unitPrice=None, priceUnit='UNKNOWN'),
+                               product('beach', unitPrice=None, priceUnit='UNKNOWN'))
+        self.assertIsNone(plan['estimatedTotal'])
+        self.assertEqual(plan['budgetStatus'], 'UNKNOWN')
+
+    def test_free_to_visit_covers_only_attractions_and_golf(self):
+        self.assertTrue(free_to_visit(product('a', unitPrice=None)))
+        self.assertTrue(free_to_visit(product('g', taxonomy='golf', unitPrice=None)))
+        self.assertFalse(free_to_visit(product('h', taxonomy='hotel', unitPrice=None)))
+        self.assertFalse(free_to_visit(product('c', taxonomy='combo', unitPrice=None)))
+        self.assertFalse(free_to_visit(product('priced')))
 
 
 if __name__ == '__main__':

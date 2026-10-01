@@ -1,6 +1,7 @@
 import React from 'react';
 import { Hotel, ExternalLink, MapPin, Clock } from 'lucide-react';
 import { getHotelVisuals, getSlotVisualUrl } from './widgetVisuals';
+import { isFreeToVisit } from './widgetPlan';
 import type { FloatingWidgetController } from './useFloatingWidget';
 import type { ItinerarySlot } from '../../../types/travel';
 
@@ -199,7 +200,9 @@ export function WidgetDays({ widget }: { widget: FloatingWidgetController }) {
                         {stopTitle}
                       </h4>
                       <div className="flex items-center gap-2 shrink-0">
-                        {slot.product && slot.product.unitPrice != null && (
+                        {slot.product && isFreeToVisit(slot.product) ? (
+                          <span className="text-xs font-bold text-emerald-700">Tham quan tự do</span>
+                        ) : slot.product && slot.product.unitPrice != null && (
                           <span className="text-sm font-black font-mono text-indigo-950">
                             {slot.product.unitPrice.toLocaleString('vi-VN')} ₫
                           </span>

@@ -15,6 +15,15 @@ const DESTINATION_COORDINATES: Record<string, { lat: number; lng: number }> = {
   'Hà Nội': { lat: 21.0285, lng: 105.8542 },
 };
 
+/**
+ * Điểm tham quan tự do: điểm tham quan/golf có `ticketed=false` hoặc chưa có giá. Backend tính 0 đ vào tổng
+ * (`docs/prd/architecture.md` §3), nên Web ghi "Tham quan tự do" thay vì để trống hay ghi 0 ₫.
+ */
+export function isFreeToVisit(product: Pick<Product, 'taxonomy' | 'unitPrice' | 'attributes'>): boolean {
+  if (product.attributes?.ticketed === false) return true;
+  return product.unitPrice == null && (product.taxonomy === 'attraction' || product.taxonomy === 'golf');
+}
+
 function adaptProductSummaryToProduct(summary: components['schemas']['ProductSummary']): Product {
   const product = productFromApi(summary);
   const defaultCoords = DESTINATION_COORDINATES[product.destination] || { lat: 12.2388, lng: 109.1967 };

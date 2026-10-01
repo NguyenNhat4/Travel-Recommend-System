@@ -101,7 +101,7 @@ class ConversationHistoryLifecycleTests(unittest.IsolatedAsyncioTestCase):
         finalized = await nodes.finalize_node_async(first_state, store=store, owner="one")
         self.assertEqual(finalized["conversation_history"], [
             {"role": "user", "content": "Tôi muốn đi 3 ngày"},
-            {"role": "assistant", "content": "Bạn muốn đi đâu?"},
+            {"role": "assistant", "content": "Bạn muốn đi đâu?", "note": "hỏi điểm đến"},
         ])
 
         loaded = await nodes.intake_node_async(
@@ -117,7 +117,7 @@ class ConversationHistoryLifecycleTests(unittest.IsolatedAsyncioTestCase):
         captured = {}
 
         class PlanningLlm:
-            def bind_tools(self, definitions):
+            def bind_tools(self, definitions, tool_choice=None):
                 async def invoke(prompt):
                     captured["prompt"] = prompt
                     return SimpleNamespace(tool_calls=[{

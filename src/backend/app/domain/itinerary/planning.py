@@ -111,7 +111,20 @@ def _because(product: Product, source: str | None) -> list[dict[str, Any]]:
     return deepcopy(product.get("because", [])) if source == "recommendation" else []
 
 
+def free_to_visit(product: Product) -> bool:
+    """Điểm tham quan tự do: nguồn ghi `ticketed=false`, hoặc điểm tham quan/golf không có giá.
+
+    Người dùng chốt 01/10/2026: điểm không có giá là nơi vào chơi tự do (bãi biển, thắng cảnh), nên tính 0 đ vào tổng
+    và hiển thị "tham quan tự do" (`docs/prd/architecture.md` §3). Khách sạn, vé máy bay, combo thiếu giá vẫn là chưa biết.
+    """
+    if (product.get("attributes") or {}).get("ticketed") is False:
+        return True
+    return product.get("unitPrice") is None and product.get("taxonomy") in SLOT_TAXONOMIES
+
+
 def _known_cost(product: Product, *, nights: int, party: Party | None) -> int | None:
+    if free_to_visit(product):
+        return 0
     price, unit = product.get("unitPrice"), product.get("priceUnit", "UNKNOWN")
     if price is None or unit == "UNKNOWN":
         return None

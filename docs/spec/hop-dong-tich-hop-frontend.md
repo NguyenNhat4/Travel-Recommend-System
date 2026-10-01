@@ -550,11 +550,11 @@ Trường chung mọi `status`: `status`, `conversationId`, `metadata`.
 | `slots[].source` | `SEARCH` \| `RECOMMENDATION` khi có `product`; `null` khi không |
 | `slots[].because` | Schema `BecauseItem` của `/recommendations`. Chỉ khác rỗng khi `source = RECOMMENDATION` |
 | `bookableCount` | Số mục có `product.available = true`, gồm cả `stay` |
-| `estimatedTotal` | Integer VND do backend tính (không phải LLM), theo `intent.party` và công thức §2.6 hợp đồng Backend. Chỉ gồm chi phí các sản phẩm trong lịch trình. `null` khi có mục thiếu giá hoặc thiếu `priceUnit` — nghĩa là **chưa tính được**, Web không được hiển thị thành `0`. Người dùng có nêu `budget` không làm trường này thành `null` |
+| `estimatedTotal` | Integer VND do backend tính (không phải LLM), theo `intent.party` và công thức §2.6 hợp đồng Backend. Chỉ gồm chi phí các sản phẩm trong lịch trình. `null` khi có mục thiếu giá hoặc thiếu `priceUnit` — nghĩa là **chưa tính được**, Web không được hiển thị thành `0`. Ngoại lệ: điểm tham quan/golf không có giá hoặc `ticketed=false` là "tham quan tự do", backend tính 0 đ vào tổng và Web ghi "Tham quan tự do" ở mục đó, không ghi 0 ₫. Người dùng có nêu `budget` không làm trường này thành `null` |
 | `budgetStatus` | `WITHIN_BUDGET` \| `OVER_BUDGET` \| `NO_BUDGET` \| `UNKNOWN`. `NO_BUDGET` khi `intent.budget = null`; `UNKNOWN` chỉ khi `estimatedTotal = null`. So sánh đặt trên chi phí sản phẩm, không phải chi phí cả chuyến |
 | `priceAsOf` | Thời điểm lấy giá; Web ghi "giá tại thời điểm tạo kế hoạch" |
 | `searchResults` | Object key `taxonomy` → `ProductSummary[]`, tối đa 6 mỗi nhóm. Có mặt kể cả khi `COMPLETED`, phục vụ "Tìm lựa chọn khác" |
-| `warnings[]` | `{ code, message, productId }` — ví dụ `PRODUCT_DROPPED_UNAVAILABLE`, `DAY_WITHOUT_PRODUCTS`. Về tiền: `PRODUCT_COST_ONLY` (tổng chỉ gồm sản phẩm) luôn đi kèm `estimatedTotal` khác `null`; `BUDGET_ON_PRODUCT_COST` thêm vào khi người dùng có nêu ngân sách; `UNKNOWN_TOTAL` thay cho cả hai khi `estimatedTotal = null` |
+| `warnings[]` | `{ code, message, productId }` — ví dụ `PRODUCT_DROPPED_UNAVAILABLE`, `DAY_WITHOUT_PRODUCTS`. Về tiền: `PRODUCT_COST_ONLY` (tổng chỉ gồm sản phẩm) luôn đi kèm `estimatedTotal` khác `null`; `BUDGET_ON_PRODUCT_COST` thêm vào khi người dùng có nêu ngân sách; `FREE_ENTRY_ASSUMED` thêm vào khi tổng có điểm tham quan tự do (tính 0 đ); `UNKNOWN_TOTAL` thay cho cả ba khi `estimatedTotal = null`. `NO_STAY_AVAILABLE`: lịch không có chỗ ở, `message` nêu lý do (lời diễn giải đã có mục "Chưa có khách sạn") |
 
 #### `NEEDS_CLARIFICATION`
 
@@ -569,6 +569,8 @@ Trường chung mọi `status`: `status`, `conversationId`, `metadata`.
   "metadata": { "personalised": false, "searchRequestIds": [], "generatedAt": "2026-09-16T08:00:00Z", "requestId": "agent-01JXYZ" }
 }
 ```
+
+**Field tuỳ chọn `suggestions`** (OpenAPI 1.13.0): khi điều kiện bắt buộc (khách sạn, khách sạn/hoạt động cụ thể) không có sản phẩm nào, `question` nêu lý do thật và `suggestions` là câu gửi được nguyên văn (ví dụ `Đổi ngày khởi hành sang 15/10/2026`, `Đi Hà Nội 3 ngày, không cần khách sạn`). Widget hiện thành chip như `NO_RESULTS` (`useFloatingWidget.ts`, `SuggestionChips.tsx`).
 
 `missingFields` chỉ nhận `destination` \| `days` \| `startDate` \| `party` \| `budget`. Ba giá trị sau đi cùng nhau trong một câu hỏi gộp và không có chip gợi ý: câu hỏi hiện như tin nhắn của trợ lý và người dùng trả lời bằng cách gõ.
 
