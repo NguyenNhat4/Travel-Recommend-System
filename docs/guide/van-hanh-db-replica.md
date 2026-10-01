@@ -4,7 +4,7 @@ Hướng dẫn dựng, kiểm tra và xử lý sự cố cho PostgreSQL replica.
 
 ## 1. Dựng lần đầu
 
-1. **Tạo VM và firewall bằng Terraform** (từ máy có quyền, hoặc workflow `Staging Infra Terraform` với `apply=true`):
+1. **Tạo VM bằng Terraform** (từ máy có quyền, hoặc workflow `Staging Infra Terraform` với `apply=true`):
 
    ```bash
    cd infra/terraform/environments/staging
