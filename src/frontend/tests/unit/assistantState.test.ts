@@ -48,6 +48,18 @@ describe('assistant reducer', () => {
     expect(state.phase).toBe('failed');
   });
 
+  it('shows an out-of-scope refusal as an assistant message, not as an error', () => {
+    let state = createInitialAssistantState('conversation');
+    state = assistantReducer(state, { type: 'request-started', request, userText: 'xin 50k', appendUser: true });
+    state = assistantReducer(state, { type: 'request-refused', text: '**Ngoài phạm vi hỗ trợ**\nBạn muốn đi đâu?' });
+
+    expect(state.error).toBeNull();
+    expect(state.phase).toBe('idle');
+    expect(state.conversationId).toBe('conversation');
+    expect(state.transcript.map((message) => message.sender)).toEqual(['user', 'assistant']);
+    expect(state.transcript[1].text).toContain('Ngoài phạm vi hỗ trợ');
+  });
+
   it('reset clears runtime state and conversation', () => {
     let state = createInitialAssistantState('conversation');
     state = assistantReducer(state, { type: 'request-started', request, userText: 'Plan trip', appendUser: true });

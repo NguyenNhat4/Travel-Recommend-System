@@ -20,7 +20,7 @@ _INPUT_PATTERNS = [
     re.compile(r"quên\s+(mọi\s+|các\s+|những\s+|hết\s+)?(hướng dẫn|chỉ dẫn|chỉ thị)\s+(trước|trên|đã)",
               re.IGNORECASE),
     re.compile(r"system\s*prompt|prompt\s*hệ thống|chỉ dẫn\s*hệ thống", re.IGNORECASE),
-    re.compile(r"(in ra|hiện ra|hiển thị|show|reveal|print|tiết lộ|cho (tôi|mình) xem)\s+.{0,30}"
+    re.compile(r"(in ra|hiện ra|hiển thị|show|reveal|print|tiết lộ|cho\s+(tôi\s+|mình\s+)?(xem|coi))\s+.{0,30}"
               r"(api[\s_-]?key|secret\s*key|secret|token|mật khẩu)", re.IGNORECASE),
 ]
 

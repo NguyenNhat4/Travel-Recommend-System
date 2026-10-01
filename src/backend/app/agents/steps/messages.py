@@ -143,17 +143,17 @@ MESSAGES = {
 # Câu cố định dùng khi LLM không khả dụng hoặc khi luật không được để LLM tự diễn đạt. Câu nào có tiêu đề
 # thì dòng đầu là `**Tiêu đề**`; câu hỏi lại dự phòng (xung đột, không xác minh được) thêm tiêu đề ở `titled()`.
 CLARIFY_CONFLICT = ("Thông tin chuyến đi đang chưa rõ hoặc mâu thuẫn. "
-                    "Bạn xác nhận lại điểm đến và thời gian giúp tôi nhé?")
+                    "Bạn xác nhận lại điểm đến và thời gian giúp mình nhé?")
 CLARIFY_UNVERIFIED = ("Điều kiện bắt buộc bạn yêu cầu chưa có dữ liệu để xác minh. "
                       "Bạn có muốn bỏ điều kiện đó hoặc cung cấp thêm thông tin không?")
 CLARIFY_CONSTRAINT = ("**Chưa có sản phẩm đáp ứng yêu cầu bắt buộc**\n"
                       "Không tìm thấy sản phẩm đáp ứng điều kiện bắt buộc trong dữ liệu hiện có. "
                       "Bạn có muốn điều chỉnh điều kiện hoặc chọn phương án thay thế không?")
 REFUSAL = ("**Ngoài phạm vi hỗ trợ**\n"
-           "Tôi hỗ trợ tư vấn lịch trình du lịch. Bạn muốn lên kế hoạch chuyến đi nào?")
+           "Mình hỗ trợ tư vấn lịch trình du lịch. Bạn muốn lên kế hoạch chuyến đi nào?")
 #: Đầu vào bị guardrail chặn (chèn lệnh, đòi lộ khoá bí mật...): tiêu đề khác với câu hỏi ngoài phạm vi.
 REFUSAL_BLOCKED = ("**Mình chưa thể hỗ trợ yêu cầu này**\n"
-                   "Tôi hỗ trợ tư vấn lịch trình du lịch. Bạn muốn lên kế hoạch chuyến đi nào?")
+                   "Mình hỗ trợ tư vấn lịch trình du lịch. Bạn muốn lên kế hoạch chuyến đi nào?")
 FALLBACK = ("**Chưa dựng được lịch trình hoàn chỉnh**\n"
             "Chưa thể dựng lịch trình đã kiểm tra. Các sản phẩm dưới đây là ứng viên tham khảo; "
             "cần kiểm tra lại giá, điều kiện và ngày sử dụng.")

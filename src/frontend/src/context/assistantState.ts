@@ -65,6 +65,7 @@ type Action =
   | { type: 'node-completed'; progress: AssistantProgress }
   | { type: 'response-received'; response: AssistantResponse }
   | { type: 'request-failed'; error: AssistantError }
+  | { type: 'request-refused'; text: string }
   | { type: 'conversation-restarted' }
   | { type: 'conversation-loaded'; detail: AssistantConversationDetail }
   | { type: 'request-aborted' }
@@ -166,6 +167,21 @@ export function assistantReducer(state: AssistantState, action: Action): Assista
           : state.conversationId;
       return { ...state, phase: 'failed', conversationId, error: action.error, isSlow: false };
     }
+    case 'request-refused':
+      // Backend từ chối yêu cầu ngoài phạm vi (run.failed VALIDATION_ERROR): đó là lời đáp của trợ lý, không phải
+      // sự cố, nên vào transcript như một tin nhắn thường chứ không hiện khung lỗi.
+      return {
+        ...state,
+        phase: 'idle',
+        error: null,
+        isSlow: false,
+        transcript: [...state.transcript, {
+          id: `assistant-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          sender: 'assistant',
+          text: action.text,
+          createdAt: Date.now(),
+        }],
+      };
     case 'conversation-restarted':
       // Hợp đồng Frontend §8: hội thoại hết hạn thì bỏ conversationId và báo đã bắt đầu hội thoại mới.
       return {
