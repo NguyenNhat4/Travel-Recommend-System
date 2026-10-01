@@ -3,8 +3,27 @@ import { Hotel, ExternalLink, MapPin, Clock } from 'lucide-react';
 import { getHotelVisuals, getSlotVisualUrl } from './widgetVisuals';
 import type { FloatingWidgetController } from './useFloatingWidget';
 
+function ItemActions({ actions }: { actions: ReturnType<FloatingWidgetController['itemActions']> }) {
+  if (!actions) return null;
+  const stop = (run: () => void) => (e: React.MouseEvent) => { e.stopPropagation(); run(); };
+  return (
+    <div className="flex items-center justify-end gap-2 pt-1" data-testid="itinerary-item-actions">
+      {actions.canAddToCart && (
+        <button type="button" onClick={stop(actions.addToCart)}
+          className="min-h-11 px-3 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 text-xs font-bold hover:bg-blue-100 transition-colors">
+          Thêm vào giỏ
+        </button>
+      )}
+      <button type="button" onClick={stop(actions.bookNow)}
+        className="min-h-11 px-4 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition-colors">
+        Đặt ngay
+      </button>
+    </div>
+  );
+}
+
 export function WidgetDays({ widget }: { widget: FloatingWidgetController }) {
-  const { activePlan, activeDayTab, setHoveredCoordinate, setHoveredPointId } = widget;
+  const { activePlan, activeDayTab, setHoveredCoordinate, setHoveredPointId, itemActions } = widget;
   if (!activePlan) return null;
   return (
 <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-white">
@@ -114,6 +133,7 @@ export function WidgetDays({ widget }: { widget: FloatingWidgetController }) {
                   <p className="text-xs sm:text-sm text-slate-600 leading-relaxed pt-0.5">
                     {stayForThisDay.note || 'Khách sạn lưu trú tiêu chuẩn cao cấp, điểm xuất phát và nghỉ ngơi thuận tiện cho cả ngày.'}
                   </p>
+                  {stayForThisDay.product && <ItemActions actions={itemActions(stayForThisDay.product.id)} />}
                 </div>
               </div>
             )}
@@ -210,6 +230,7 @@ export function WidgetDays({ widget }: { widget: FloatingWidgetController }) {
                     <p className="text-xs sm:text-sm text-slate-600 leading-relaxed pt-0.5">
                       {slot.note}
                     </p>
+                    {slot.product && <ItemActions actions={itemActions(slot.product.id)} />}
                   </div>
                 </div>
               );

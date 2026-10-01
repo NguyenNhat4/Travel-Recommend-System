@@ -25,7 +25,9 @@ const PAYMENT_METHODS = [
 
 const FARE_LABEL = { ADULT: 'Người lớn', CHILD: 'Trẻ em', ROOM: 'Giá phòng', PACKAGE: 'Gói' } as const;
 
-function BannerView({ banner, onAcceptPrice, onRetry, onBack }: { banner: Banner; onAcceptPrice: () => void; onRetry: () => void; onBack: () => void }) {
+function BannerView({ banner, onAcceptPrice, onRetry, onBack, backLabel }: {
+  banner: Banner; onAcceptPrice: () => void; onRetry: () => void; onBack: () => void; backLabel: string;
+}) {
   return (
     <div role="alert" className="flex items-start gap-2 p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800">
       <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" aria-hidden="true" />
@@ -41,7 +43,7 @@ function BannerView({ banner, onAcceptPrice, onRetry, onBack }: { banner: Banner
         {(banner.kind === 'unavailable' || banner.kind === 'date') && (
           <>
             <p>{banner.text}</p>
-            <button type="button" onClick={onBack} className="font-bold underline">Quay lại giỏ</button>
+            <button type="button" onClick={onBack} className="font-bold underline">{backLabel}</button>
           </>
         )}
         {banner.kind === 'error' && (
@@ -185,7 +187,7 @@ export const ReviewStep: React.FC<{ ctl: CheckoutController }> = ({ ctl }) => {
           </span>
         </label>
         {ctl.banner && (
-          <BannerView banner={ctl.banner} onAcceptPrice={() => void ctl.acceptNewPrice()} onRetry={() => void ctl.pay()} onBack={() => ctl.navigate('/cart')} />
+          <BannerView banner={ctl.banner} onAcceptPrice={() => void ctl.acceptNewPrice()} onRetry={() => void ctl.pay()} onBack={ctl.leave} backLabel={ctl.sourceKind === 'cart' ? 'Quay lại giỏ' : 'Quay lại'} />
         )}
         <div className="hidden lg:block">
           <PrimaryButton full onClick={() => void ctl.pay()} disabled={!canPay} busy={ctl.submitting ? 'Đang giữ chỗ và mở trang thanh toán…' : null}>
@@ -215,7 +217,7 @@ export const ReviewStep: React.FC<{ ctl: CheckoutController }> = ({ ctl }) => {
             </p>
             <div className="flex flex-col gap-2">
               <button type="button" onClick={() => void ctl.continuePending()} className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl">Tiếp tục thanh toán đơn đó</button>
-              <button type="button" onClick={() => void ctl.cancelPendingAndRetry()} className="w-full py-2.5 bg-white border border-rose-300 text-rose-700 hover:bg-rose-50 text-xs font-bold rounded-xl">Huỷ đơn đó và đặt lại từ giỏ</button>
+              <button type="button" onClick={() => void ctl.cancelPendingAndRetry()} className="w-full py-2.5 bg-white border border-rose-300 text-rose-700 hover:bg-rose-50 text-xs font-bold rounded-xl">{ctl.sourceKind === 'cart' ? 'Huỷ đơn đó và đặt lại từ giỏ' : 'Huỷ đơn đó và đặt lại'}</button>
               <button type="button" onClick={() => ctl.setPendingHold(null)} className="w-full py-2 text-xs text-slate-500 hover:underline">Đóng</button>
             </div>
           </div>

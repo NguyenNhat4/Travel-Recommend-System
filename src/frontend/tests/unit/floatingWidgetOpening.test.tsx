@@ -19,7 +19,7 @@ vi.mock('../../src/context/AssistantProvider', () => ({
 vi.mock('../../src/context/TravelContext', () => ({
   useTravel: () => ({ currentRoute: '/', showToast: mocks.showToast, navigate: vi.fn(), addToCart: vi.fn() }),
 }));
-vi.mock('../../src/hooks/useAssistantCart', () => ({ useAssistantCart: () => vi.fn() }));
+vi.mock('../../src/hooks/useAssistantCart', () => ({ useAssistantCart: () => vi.fn(), useBookItinerary: () => vi.fn() }));
 
 describe('floating assistant opening', () => {
   beforeEach(() => {

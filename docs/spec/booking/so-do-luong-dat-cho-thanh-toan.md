@@ -28,10 +28,10 @@
 
 | | |
 |---|---|
-| **Bắt đầu** | Người dùng đã đăng nhập, giỏ có ít nhất một mục, bấm **"Thanh toán"** ở `/checkout` |
+| **Bắt đầu** | Người dùng đã đăng nhập bấm **"Thanh toán"** ở trang thanh toán, với một trong hai nguồn mục: giỏ có ít nhất một mục (`/checkout`), hoặc một đơn nháp còn hạn của Đặt ngay (`/checkout?draft=<draftId>`). Khách chưa đăng nhập điền được cả ba bước, bấm Thanh toán thì đăng nhập tại chỗ trước |
 | **Kết thúc thành công** | Đơn `CONFIRMED`, event `purchase` đã ghi vào CDP, trang `/booking/{referenceCode}` hiện mã đặt chỗ và gợi ý chặng tiếp |
 | **Kết thúc khác** | `PAYMENT_FAILED` (thanh toán thất bại), `EXPIRED` (hết giờ giữ chỗ), `CANCELLED` (khách huỷ, có hoặc không hoàn tiền) |
-| **Không bao gồm** | Thêm/sửa giỏ (`hop-dong-tich-hop-backend.md` §7.1) · email xác nhận · trả tiền cho nhà cung cấp · tự động xử lý tranh chấp (chỉ ghi log) · Stripe live mode · trạng thái `COMPLETED` sau ngày sử dụng |
+| **Không bao gồm** | Thêm/sửa giỏ (`hop-dong-tich-hop-backend.md` §7.1), tạo và sửa đơn nháp, gộp giỏ của khách khi đăng nhập (`docs/spec/booking/dat-truc-tiep-theo-don-nhap.md`) · email xác nhận · trả tiền cho nhà cung cấp · tự động xử lý tranh chấp (chỉ ghi log) · Stripe live mode · trạng thái `COMPLETED` sau ngày sử dụng |
 
 | Case người dùng yêu cầu | Mục | Trạng thái cuối |
 |---|---|---|
@@ -166,8 +166,8 @@ stateDiagram-v2
 |---|---|---|---|---|---|
 | `PENDING_PAYMENT` | Đã giữ giá và thành phần đơn, chờ trả tiền đến `holdExpiresAt` | Có | Chưa thu (hoặc vừa thu, đang xác nhận) | Chưa có | Đồng hồ đếm ngược, nút "Tiếp tục thanh toán", "Huỷ đơn" |
 | `CONFIRMED` | Đã thu tiền, đơn có hiệu lực | — | Đã thu | Đã ghi | Mã đặt chỗ, tóm tắt chuyến, gợi ý chặng tiếp, nút "Huỷ đơn" nếu còn hạn |
-| `PAYMENT_FAILED` | Thanh toán không thành công, đơn đóng | Không | Không thu (hoặc đã hoàn nếu lệch tiền) | Không có | "Thanh toán không thành công", nút "Đặt lại từ giỏ" |
-| `EXPIRED` | Hết giờ giữ chỗ, đơn đóng | Không | Không thu | Không có | "Hết thời gian giữ chỗ", nút "Đặt lại từ giỏ" |
+| `PAYMENT_FAILED` | Thanh toán không thành công, đơn đóng | Không | Không thu (hoặc đã hoàn nếu lệch tiền) | Không có | "Thanh toán không thành công", nút "Đặt lại" (đơn nháp mới từ các mục của đơn, giá hiện tại) |
+| `EXPIRED` | Hết giờ giữ chỗ, đơn đóng | Không | Không thu | Không có | "Hết thời gian giữ chỗ", nút "Đặt lại" (đơn nháp mới từ các mục của đơn, giá hiện tại) |
 | `CANCELLED` | Khách đã huỷ | Không | Không thu, hoặc đã/đang hoàn | Đã huỷ (nếu từng ghi) | "Đã huỷ đơn" và trạng thái hoàn tiền |
 
 ### 5.2. Thanh toán — `app.payments.status`
@@ -274,6 +274,8 @@ sequenceDiagram
 - Hết 15 lần hỏi (30 giây) mà đơn vẫn `PENDING_PAYMENT`: nếu `payment.status` là `SUCCEEDED` thì Web hiện "Đã nhận thanh toán, đang xác nhận đơn" (mục 7.2c); nếu vẫn `OPEN` thì hiện trang giữ chỗ (mục 8).
 
 ### 6.2. Activity — tạo đơn giữ chỗ
+
+> **Hai nguồn mục (2026-10-01, FR-BKG-01).** Sơ đồ dưới vẽ nguồn giỏ. Khi request có `draftId`, mọi chỗ ghi "giỏ" là "đơn nháp": Backend đọc `app.booking_drafts` + `booking_draft_items` thay cho `app.carts` + `cart_items`; đơn nháp không tồn tại hoặc không thuộc người gọi thì `404 BOOKING_DRAFT_NOT_FOUND`, quá 30 phút thì `410 BOOKING_DRAFT_EXPIRED` (kiểm sau bước "đang có đơn giữ chỗ", trước các bước kiểm mục); đơn nháp bị xoá trong cùng transaction ghi đơn `PENDING_PAYMENT`, giỏ không bị đụng tới. Khách sạn và vé máy bay chỉ đi qua nguồn đơn nháp vì chúng không vào giỏ. Bộ luật: `docs/spec/booking/dat-truc-tiep-theo-don-nhap.md` §6.
 
 ```mermaid
 flowchart TB
@@ -501,7 +503,7 @@ sequenceDiagram
                 F-->>S: 200
                 S-->>U: Trang Stripe báo phiên đã hết hạn
                 U->>W: Quay về /booking/{ref}
-                W-->>U: "Thanh toán không thành công sau 3 lần.<br/>Giỏ hàng vẫn còn, bạn có thể đặt lại."
+                W-->>U: "Thanh toán không thành công sau 3 lần.<br/>Bạn có thể đặt lại các dịch vụ của đơn này theo giá hiện tại."
             else Phiên đã complete vì một lần khác vừa trả thành công
                 S-->>F: 400, phiên không còn open
                 F-->>S: 200, không đổi gì
@@ -637,7 +639,7 @@ flowchart TB
     end
 
     subgraph LW["🖥️ Web"]
-        W1["Hiện lý do theo failureReason<br/>và nút Đặt lại từ giỏ"]
+        W1["Hiện lý do theo failureReason<br/>và nút Đặt lại"]
     end
 
     subgraph LD["🗄️ Dữ liệu"]
@@ -678,7 +680,8 @@ flowchart TB
 | Giữ những gì | Giá và thành phần đơn tại lúc tạo. Phiên Stripe hết hạn cùng lúc với đơn | Khách trả đúng số tiền đã thấy |
 | Không giữ gì | **Không trừ tồn kho.** Hệ thống không có bảng tồn kho, lịch trống chỉ là `attributes.availability` đọc-only | Tồn kho thời gian thực ngoài phạm vi (`project-brief.md` §4.2) |
 | Số đơn giữ cùng lúc | Tối đa **1** đơn `PENDING_PAYMENT` mỗi người dùng | Chống bấm hai lần; không để một người khoá nhiều mức giá |
-| Giỏ hàng | Giữ nguyên trong lúc giữ chỗ. Chỉ xoá các mục đã đặt khi đơn `CONFIRMED` | Hết hạn hay thất bại thì khách đặt lại ngay từ giỏ |
+| Giỏ hàng | Giữ nguyên trong lúc giữ chỗ. Chỉ xoá các mục đã đặt khi đơn `CONFIRMED` (kể cả bản chép của tour và tiện ích khi đơn tạo từ đơn nháp) | Hết hạn hay thất bại thì tour, trải nghiệm và tiện ích vẫn còn trong giỏ; khách sạn và vé máy bay không được giữ, khách bấm "Đặt lại" ở trang đơn để có đơn nháp mới theo giá hiện tại |
+| Đơn nháp của Đặt ngay | Sống 30 phút (`BOOKING_DRAFT_TTL_MINUTES`), tính từ lúc bấm Đặt ngay; bị xoá khi tạo đơn giữ chỗ | Đồng hồ này tách khỏi đồng hồ giữ chỗ: 30 phút để điền thông tin, rồi 30 phút nữa để trả tiền trên Stripe |
 | Đồng hồ đếm ngược | Web đếm theo `holdExpiresAt` do server trả, không theo giờ máy người dùng | Giờ máy người dùng có thể sai |
 | Nguồn sự thật về hết hạn | Stripe: `expires_at` của phiên và webhook `checkout.session.expired`. Job đối soát hỏi lại Stripe trước khi đổi trạng thái | Tránh đóng nhầm một đơn khách vừa trả ở giây cuối |
 
@@ -710,7 +713,7 @@ sequenceDiagram
     else Đồng hồ về 0 khi khách vẫn ở trang
         W->>F: GET /bookings/{ref}
         F-->>W: EXPIRED, hoặc vẫn PENDING_PAYMENT trong vài giây đầu
-        W-->>U: "Hết thời gian giữ chỗ" + nút Đặt lại từ giỏ
+        W-->>U: "Hết thời gian giữ chỗ" + nút Đặt lại
     end
 ```
 
@@ -771,7 +774,7 @@ flowchart TB
         W1["Hiện đồng hồ đếm ngược<br/>theo holdExpiresAt từ server"]
         W2{"Việc gì xảy ra trước?"}
         W3["Hỏi lại GET /bookings/{ref}"]
-        W4["Hiện Hết thời gian giữ chỗ,<br/>nút Đặt lại từ giỏ"]
+        W4["Hiện Hết thời gian giữ chỗ,<br/>nút Đặt lại"]
         EPAY((("Sang mục 6.3")))
         EFAIL((("Sang mục 7.3")))
         ECAN((("Sang mục 9")))
@@ -868,7 +871,7 @@ sequenceDiagram
         S-->>F: 200 expired
         F->>P: bookings SET cancelled, cancelled_at, cancel_reason<br/>payments SET expired, COMMIT
         F-->>W: 200 BookingResponse, status CANCELLED
-        W-->>U: "Đã huỷ đơn. Giỏ hàng vẫn còn."
+        W-->>U: "Đã huỷ đơn. Đơn chưa thanh toán nên không phát sinh tiền."
     else Phiên đã complete vì khách vừa trả xong ở tab khác
         S-->>F: 400, phiên không còn open
         F-->>W: 409 BOOKING_ALREADY_PAID
@@ -939,7 +942,7 @@ sequenceDiagram
 - **Ghi `CANCELLED` + `REFUND_PENDING` trước khi gọi Stripe.** Database lúc này là bản ghi bền của ý định "phải hoàn tiền". Backend có chết giữa chừng thì job đối soát vẫn thấy `REFUND_PENDING` chưa có `refund_id` và gọi hoàn tiếp.
 - **Không hoàn hai lần:** cùng `Idempotency-Key` thì Stripe trả lại lệnh hoàn cũ. `Idempotency-Key` chỉ có hiệu lực 24 giờ, nhưng đây là hoàn toàn bộ, nên lần hoàn thứ hai sau 24 giờ cũng bị Stripe từ chối vì khoản thanh toán đã được hoàn hết. Trước khi gọi lại, job vẫn liệt kê refund của `payment_intent` để chắc chắn.
 - **Huỷ event `purchase`** để Recommendation không còn coi chuyến này là chuyến sắp đi (`hop-dong-tich-hop-cdp.md` §3.3 mục 3). CDP không xoá event, chỉ đánh dấu huỷ.
-- **Không khôi phục giỏ hàng** sau khi huỷ; khách muốn đặt lại thì thêm vào giỏ như bình thường.
+- **Không khôi phục giỏ hàng** sau khi huỷ đơn đã thanh toán; khách muốn đặt lại thì thêm vào giỏ hoặc Đặt ngay như bình thường. Huỷ đơn **chưa** thanh toán: tour và tiện ích của đơn vẫn nằm trong giỏ (chúng chỉ bị gỡ khi đơn `CONFIRMED`), khách sạn và vé máy bay thì không.
 
 ### 9.3. Activity — khách huỷ
 
@@ -1034,6 +1037,8 @@ Mã có ghi **(mới)** là năm mã thêm vào `schemas/common.yaml` cùng đ�
 | HTTP | Mã | Loại | Khi nào | `retryable` | Web hiển thị |
 |---:|---|---|---|---|---|
 | 400 | `CART_EMPTY` | Nghiệp vụ | Tạo đơn khi giỏ rỗng | false | Chuyển `/cart` |
+| 404 | `BOOKING_DRAFT_NOT_FOUND` | Nghiệp vụ | `draftId` không tồn tại, đã dùng, hoặc của người khác | false | "Không tìm thấy phiên thanh toán này" |
+| 410 | `BOOKING_DRAFT_EXPIRED` | Nghiệp vụ | Đơn nháp quá 30 phút | false | Màn hình "Phiên thanh toán đã hết hạn" |
 | 400 | `VALIDATION_ERROR` | Dữ liệu sai | Thiếu `contact`, `cartItemId` lạ | false | Gắn lỗi vào trường tương ứng |
 | 401 | `INVALID_TOKEN`, `TOKEN_EXPIRED` | Không đủ quyền | Phiên hết hạn | false | Modal đăng nhập lại, giữ nguyên form (`hop-dong-tich-hop-frontend.md` §7) |
 | 404 | `BOOKING_NOT_FOUND` | Không đủ quyền | Đơn không tồn tại hoặc của người khác | false | "Không tìm thấy đơn đặt chỗ này" |
@@ -1060,7 +1065,7 @@ Stripe tự hiện lỗi trên trang của Stripe. Trường này để trang `/
 | `INCORRECT_CVC` | `incorrect_cvc` | Dữ liệu sai | "Mã CVC không đúng." |
 | `AUTHENTICATION_FAILED` | `payment_intent_authentication_failure` (3DS) | Nghiệp vụ | "Xác thực với ngân hàng không thành công." |
 | `PROCESSING_ERROR` | `processing_error` | Kỹ thuật | "Ngân hàng xử lý lỗi. Thử lại sau ít phút." |
-| `TOO_MANY_ATTEMPTS` | Backend đếm đủ 3 lần | Nghiệp vụ | "Thanh toán không thành công sau 3 lần. Giỏ hàng vẫn còn, bạn có thể đặt lại." |
+| `TOO_MANY_ATTEMPTS` | Backend đếm đủ 3 lần | Nghiệp vụ | "Thanh toán không thành công sau 3 lần. Bạn có thể đặt lại các dịch vụ của đơn này theo giá hiện tại." |
 | `AMOUNT_MISMATCH` | Backend kiểm ở webhook | Kỹ thuật | "Có lỗi khi xác nhận thanh toán. Tiền đã được hoàn tự động." |
 
 ### 10.3. Ghi log

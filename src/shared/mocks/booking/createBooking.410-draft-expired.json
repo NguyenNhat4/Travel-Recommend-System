@@ -1,0 +1,12 @@
+{
+  "error": {
+    "code": "BOOKING_DRAFT_EXPIRED",
+    "message": "Phiên thanh toán đã hết hạn.",
+    "retryable": false,
+    "requestId": "book-01JXYZ",
+    "details": {
+      "draftId": "5f0c1c2e-6b1f-4a57-9d0a-2f4d6c1a9b02",
+      "items": []
+    }
+  }
+}

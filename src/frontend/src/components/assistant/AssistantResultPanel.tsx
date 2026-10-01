@@ -3,6 +3,7 @@
 import React from 'react';
 import { AlertCircle, CalendarDays, Check, CloudSun, Compass, ExternalLink, MapPin, PackageOpen, Repeat, ShoppingCart, Sparkles, Users } from 'lucide-react';
 import type { components } from '../../types/api.gen';
+import { isCartEligible } from '../../services/booking';
 import { splitBoldTitle } from './inlineBold';
 import {
   ACTIVITY_TYPE_LABEL,
@@ -29,8 +30,11 @@ export interface AssistantCartItem {
 const MIN_TRIP_DAYS = 1;
 const MAX_TRIP_DAYS = 7;
 
-/** Cùng tiêu chí với `bookableCount`: còn trong dữ liệu nguồn, có giá, không bị đánh dấu không đặt được hay không bán vé. */
-export function isCartEligible(product: Product) {
+/**
+ * Cùng tiêu chí với `bookableCount`: còn trong dữ liệu nguồn, có giá, không bị đánh dấu không đặt được hay không bán vé.
+ * Đặt được chưa có nghĩa là vào giỏ được: khách sạn và vé máy bay chỉ đặt trực tiếp (`isCartEligible` của services/booking).
+ */
+export function isBookable(product: Product) {
   return product.available && product.unitPrice != null && product.bookable !== false && product.attributes?.ticketed !== false;
 }
 
@@ -45,7 +49,7 @@ function addDays(isoDate: string, days: number) {
 export function itineraryCartItems(itinerary: Itinerary, party?: { adults: number; children: number } | null): AssistantCartItem[] {
   const items = new Map<string, AssistantCartItem>();
   const guests = party ? { party: { adults: party.adults, children: party.children } } : {};
-  if (itinerary.stay && isCartEligible(itinerary.stay.product)) {
+  if (itinerary.stay && isBookable(itinerary.stay.product)) {
     const checkIn = itinerary.days[0]?.date ?? undefined;
     items.set(itinerary.stay.product.productId, {
       product: itinerary.stay.product,
@@ -56,7 +60,7 @@ export function itineraryCartItems(itinerary: Itinerary, party?: { adults: numbe
   }
   for (const day of itinerary.days) {
     for (const slot of day.slots) {
-      if (!slot.product || !isCartEligible(slot.product) || items.has(slot.product.productId)) continue;
+      if (!slot.product || !isBookable(slot.product) || items.has(slot.product.productId)) continue;
       items.set(slot.product.productId, { product: slot.product, usingDate: day.date ?? undefined, ...guests });
     }
   }
@@ -76,12 +80,14 @@ function ProductCard({
   product,
   note,
   onAddToCart,
+  onBookNow,
   onReplace,
   replaceDisabled = false,
 }: {
   product: Product;
   note?: string | null;
   onAddToCart?: () => void;
+  onBookNow?: () => void;
   onReplace?: () => void;
   replaceDisabled?: boolean;
 }) {
@@ -118,9 +124,14 @@ function ProductCard({
             <a href={detailHref} target="_blank" rel="noopener noreferrer" className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 px-2.5 text-[11px] font-bold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50">
               <ExternalLink className="h-3.5 w-3.5" /> Xem chi tiết
             </a>
-            {onAddToCart && isCartEligible(product) && (
-              <button type="button" onClick={onAddToCart} className="inline-flex h-8 items-center gap-1 rounded-lg bg-blue-600 px-2.5 text-[11px] font-bold text-white transition hover:bg-blue-700">
+            {onAddToCart && isBookable(product) && isCartEligible(product.taxonomy) && (
+              <button type="button" onClick={onAddToCart} className="inline-flex h-8 items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2.5 text-[11px] font-bold text-blue-700 transition hover:bg-blue-100">
                 <ShoppingCart className="h-3.5 w-3.5" /> Thêm vào giỏ
+              </button>
+            )}
+            {onBookNow && isBookable(product) && (
+              <button type="button" onClick={onBookNow} className="inline-flex h-8 items-center gap-1 rounded-lg bg-blue-600 px-2.5 text-[11px] font-bold text-white transition hover:bg-blue-700">
+                Đặt ngay
               </button>
             )}
             {onReplace && (
@@ -135,13 +146,15 @@ function ProductCard({
   );
 }
 
-function SearchResults({ results, onAddToCart }: { results: Record<string, Product[]>; onAddToCart?: (items: AssistantCartItem[]) => void }) {
+type ItemsHandler = (items: AssistantCartItem[]) => void;
+
+function SearchResults({ results, onAddToCart, onBookNow }: { results: Record<string, Product[]>; onAddToCart?: ItemsHandler; onBookNow?: ItemsHandler }) {
   const groups = Object.entries(results).filter(([, products]) => products.length > 0);
   if (!groups.length) return <p className="mt-4 rounded-xl bg-white p-4 text-sm text-slate-500">Chưa có sản phẩm phù hợp.</p>;
   return <div className="mt-4 space-y-5">{groups.map(([taxonomy, products]) => (
     <section key={taxonomy} className="space-y-2.5">
       <h4 className="font-sans text-xs font-extrabold uppercase tracking-wider text-slate-500">{taxonomyLabel(taxonomy)} · {products.length}</h4>
-      {products.map((product) => <ProductCard key={product.productId} product={product} onAddToCart={onAddToCart && (() => onAddToCart([{ product }]))} />)}
+      {products.map((product) => <ProductCard key={product.productId} product={product} onAddToCart={onAddToCart && (() => onAddToCart([{ product }]))} onBookNow={onBookNow && (() => onBookNow([{ product }]))} />)}
     </section>
   ))}</div>;
 }
@@ -202,6 +215,7 @@ export function AssistantResultPanel({
   onIntentOverride,
   onSuggestion,
   onAddToCart,
+  onBookNow,
   showMap = true,
   busy = false,
   readOnly = false,
@@ -209,8 +223,10 @@ export function AssistantResultPanel({
   response: Response | null;
   onIntentOverride?: (intent: IntentPatch) => void;
   onSuggestion?: (suggestion: string) => void;
-  /** Nhận một hoặc nhiều mục; nơi gọi tự xử lý đăng nhập và toast. */
-  onAddToCart?: (items: AssistantCartItem[]) => void;
+  /** Thêm vào giỏ: chỉ hiện ở tour, trải nghiệm và tiện ích khác. Nơi gọi tự xử lý toast. */
+  onAddToCart?: ItemsHandler;
+  /** Đặt ngay một mục, hoặc "Thanh toán tất cả" cho mọi mục đặt được của lịch trình: một đơn nháp rồi sang trang thanh toán. */
+  onBookNow?: ItemsHandler;
   showMap?: boolean;
   /** Agent đang chạy: khoá các nút chỉnh lịch trình. */
   busy?: boolean;
@@ -265,7 +281,7 @@ export function AssistantResultPanel({
       <section aria-label="Kết quả tìm kiếm gần nhất" className="rounded-3xl border border-indigo-200 bg-gradient-to-br from-indigo-50/70 to-white p-5 shadow-sm sm:p-7">
         <div className="flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-700"><Compass className="h-5 w-5" /></span><div><p className="text-xs font-extrabold uppercase tracking-[0.16em] text-indigo-700">Lựa chọn gần nhất</p><h2 className="mt-1 text-lg font-extrabold text-slate-900">{title ?? response.message}</h2></div></div>
         {title && body && <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-slate-700">{body}</p>}
-        <SearchResults results={response.searchResults} onAddToCart={onAddToCart} />
+        <SearchResults results={response.searchResults} onAddToCart={onAddToCart} onBookNow={onBookNow} />
       </section>
     );
   }
@@ -279,6 +295,7 @@ export function AssistantResultPanel({
   const canEdit = !readOnly && Boolean(onSuggestion);
   const currentDays = intent?.days ?? itinerary.days.length;
   const addOne = (item: AssistantCartItem) => onAddToCart && (() => onAddToCart([item]));
+  const bookOne = (item: AssistantCartItem) => onBookNow && (() => onBookNow([item]));
   const stayCheckIn = itinerary.days[0]?.date ?? undefined;
 
   return (
@@ -300,9 +317,9 @@ export function AssistantResultPanel({
               <p className="text-[10px] font-bold uppercase tracking-wider text-blue-100">Tổng dự kiến</p>
               <p className="mt-1 text-base font-extrabold">{formatMoney(itinerary.estimatedTotal, itinerary.currency)}</p>
               <p className="mt-1 text-[10px] text-blue-100">{itinerary.bookableCount ?? 0} mục · {BUDGET_STATUS_LABEL[itinerary.budgetStatus]}</p>
-              {onAddToCart && cartItems.length > 0 && (
-                <button type="button" onClick={() => onAddToCart(cartItems)} className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-white px-3 py-2 text-xs font-extrabold text-indigo-700 shadow-sm transition hover:bg-indigo-50">
-                  <ShoppingCart className="h-3.5 w-3.5" /> Thêm cả lịch trình vào giỏ ({cartItems.length})
+              {onBookNow && cartItems.length > 0 && (
+                <button type="button" onClick={() => onBookNow(cartItems)} className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-white px-3 py-2 text-xs font-extrabold text-indigo-700 shadow-sm transition hover:bg-indigo-50">
+                  Thanh toán tất cả ({cartItems.length})
                 </button>
               )}
             </div>
@@ -334,7 +351,7 @@ export function AssistantResultPanel({
         />
       )}
 
-      {itinerary.stay && <section className="space-y-2.5"><div className="flex items-center justify-between"><h3 className="text-sm font-extrabold text-slate-800">Nơi lưu trú</h3><span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-bold text-indigo-700">{itinerary.stay.nights} đêm</span></div><ProductCard product={itinerary.stay.product} note={itinerary.stay.note} onAddToCart={addOne({ product: itinerary.stay.product, usingDate: stayCheckIn, checkOutDate: stayCheckIn ? addDays(stayCheckIn, itinerary.stay.nights) : undefined, party })} /></section>}
+      {itinerary.stay && <section className="space-y-2.5"><div className="flex items-center justify-between"><h3 className="text-sm font-extrabold text-slate-800">Nơi lưu trú</h3><span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-bold text-indigo-700">{itinerary.stay.nights} đêm</span></div><ProductCard product={itinerary.stay.product} note={itinerary.stay.note} onAddToCart={addOne({ product: itinerary.stay.product, usingDate: stayCheckIn, checkOutDate: stayCheckIn ? addDays(stayCheckIn, itinerary.stay.nights) : undefined, party })} onBookNow={bookOne({ product: itinerary.stay.product, usingDate: stayCheckIn, checkOutDate: stayCheckIn ? addDays(stayCheckIn, itinerary.stay.nights) : undefined, party })} /></section>}
 
       <section className="space-y-3">
         <div className="flex items-center justify-between"><h3 className="text-sm font-extrabold text-slate-800">Lịch trình từng ngày</h3><span className="text-xs text-slate-400">{itinerary.days.length} ngày</span></div>
@@ -359,6 +376,7 @@ export function AssistantResultPanel({
                             product={product}
                             note={slot.note}
                             onAddToCart={addOne({ product, usingDate: day.date ?? undefined, party })}
+                            onBookNow={bookOne({ product, usingDate: day.date ?? undefined, party })}
                             onReplace={canEdit ? () => onSuggestion?.(`Đổi ${product.name} (ngày ${day.day}, buổi ${timeLabel.toLowerCase()}) sang lựa chọn khác`) : undefined}
                             replaceDisabled={busy}
                           />
@@ -374,7 +392,7 @@ export function AssistantResultPanel({
 
       {response.warnings.length > 0 && <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4"><h3 className="font-sans text-xs font-extrabold text-amber-900">Lưu ý</h3><ul className="mt-2 space-y-1.5 text-xs leading-relaxed text-amber-800">{response.warnings.map((warning, index) => <li key={`${warning.code}-${index}`}>• {warning.message}</li>)}</ul></section>}
       {showMap && <AssistantMapPanel />}
-      {response.searchResults && <section><h3 className="text-sm font-extrabold text-slate-800">Kết quả tìm kiếm liên quan</h3><SearchResults results={response.searchResults} onAddToCart={onAddToCart} /></section>}
+      {response.searchResults && <section><h3 className="text-sm font-extrabold text-slate-800">Kết quả tìm kiếm liên quan</h3><SearchResults results={response.searchResults} onAddToCart={onAddToCart} onBookNow={onBookNow} /></section>}
     </div>
   );
 }

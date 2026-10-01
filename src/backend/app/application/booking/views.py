@@ -2,10 +2,10 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Mapping
+from typing import Mapping, Sequence
 
 from src.backend.app.domain.booking import (
-    Booking, BookingItem, Cart, FareLine, Traveler, cancellable_until, fare_lines, lines_total,
+    Booking, BookingDraft, BookingItem, Cart, CartLine, FareLine, Traveler, cancellable_until, fare_lines, lines_total,
 )
 from src.backend.app.domain.booking.status import BookingStatus, PaymentStatus
 from src.backend.app.domain.catalog.models import Product
@@ -45,9 +45,13 @@ def _fares(fares: list[FareLine]) -> list[dict]:
     return [fare.to_json() for fare in fares]
 
 
-def cart_response(cart: Cart, products: Mapping[str, Product]) -> dict:
+_KEEP = object()
+
+
+def _line_items(lines: Sequence[CartLine], products: Mapping[str, Product]) -> list[dict]:
+    """Mục của giỏ hoặc của đơn nháp theo schema `CartItem`; giá và dòng giá tính theo catalog tại lúc đọc."""
     items = []
-    for line in cart.lines:
+    for line in lines:
         product = products.get(line.product_id)
         if product is None:
             continue
@@ -64,10 +68,16 @@ def cart_response(cart: Cart, products: Mapping[str, Product]) -> dict:
             "fares": _fares(fares),
             "lineTotal": lines_total(fares),
         })
+    return items
+
+
+def cart_response(cart: Cart, products: Mapping[str, Product], *, cdp_user_id: object = _KEEP) -> dict:
+    """`cdp_user_id=None` cho giỏ của khách chưa đăng nhập (R-GST-13); mặc định lấy theo giỏ."""
+    items = _line_items(cart.lines, products)
     total = sum(item["lineTotal"] for item in items)
     return {
         "cartId": cart.cart_id,
-        "cdpUserId": cart.cdp_user_id,
+        "cdpUserId": cart.cdp_user_id if cdp_user_id is _KEEP else cdp_user_id,
         "items": items,
         "itemCount": len(items),
         "subtotal": total,
@@ -75,6 +85,28 @@ def cart_response(cart: Cart, products: Mapping[str, Product]) -> dict:
         "currency": "VND",
         "updatedAt": iso(cart.updated_at),
     }
+
+
+def draft_response(
+    draft: BookingDraft, products: Mapping[str, Product], *, cdp_user_id: str | None,
+    rejected: Sequence[dict] | None = None,
+) -> dict:
+    """`BookingDraft` của contract: mục dùng chung schema với mục giỏ (`cartItemId` là mã mục của đơn nháp)."""
+    items = _line_items(draft.lines, products)
+    total = sum(item["lineTotal"] for item in items)
+    body = {
+        "draftId": draft.draft_id,
+        "cdpUserId": cdp_user_id,
+        "expiresAt": iso(draft.expires_at),
+        "items": items,
+        "itemCount": len(items),
+        "subtotal": total,
+        "total": total,
+        "currency": "VND",
+    }
+    if rejected:
+        body["rejectedItems"] = list(rejected)
+    return body
 
 
 _MISMATCH_REASONS = {"AMOUNT_MISMATCH"}

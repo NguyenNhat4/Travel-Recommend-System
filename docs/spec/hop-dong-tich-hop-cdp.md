@@ -43,7 +43,7 @@
 ### 1.3. Web chịu trách nhiệm
 
 - Gọi `POST /api/v1/events` với `product_view` khi người dùng **thật sự mở** trang chi tiết. Không gọi khi prefetch, SSR hay render phía server.
-- Không gửi event `search`, `add_to_cart`, `purchase`: Backend tự ghi khi xử lý `/search`, `/cart/items`, `/bookings`.
+- Không gửi event `search`, `add_to_cart`, `purchase`: Backend tự ghi khi xử lý `/search`, `/cart/items`, `/booking-drafts`, `/guest-bookings/merge`, `/bookings`.
 - Không biết URL hay token của CDP clone.
 
 ### 1.4. Team Agent chịu trách nhiệm
@@ -78,10 +78,14 @@ Seed / job ── X-Service-Token ───────────────�
 |---|---|---|---|---|
 | `product_view` | `POST /api/v1/events` | `productId` có trong catalog | Nền | Bỏ event, ghi log; Web vẫn nhận `202` |
 | `search` | `POST /api/v1/search` | Có JWT, `offset = 0`, `query` không rỗng | Nền | Bỏ event, ghi log; response search không đổi |
-| `add_to_cart` | `POST /api/v1/cart/items` | Sau khi thêm giỏ thành công | Nền | Bỏ event, ghi log; response giỏ không đổi |
+| `add_to_cart` | `POST /api/v1/cart/items` | Sau khi thêm giỏ thành công (người đã đăng nhập) | Nền | Bỏ event, ghi log; response giỏ không đổi |
+| `add_to_cart` | `POST /api/v1/booking-drafts` (Đặt ngay, "Thanh toán tất cả", đặt lại đơn) | Một event cho mỗi mục được nhận vào đơn nháp, kể cả khách sạn và vé máy bay (người đã đăng nhập) | Nền | Như trên |
+| `add_to_cart` | `POST /api/v1/guest-bookings/merge` | Khi gộp giỏ và đơn nháp của khách vào tài khoản: chỉ mục **thực sự được chép sang**; mục trùng với giỏ tài khoản không ghi | Nền | Như trên |
 | `purchase` | `POST /api/v1/bookings` | Trước khi commit booking | Đồng bộ | Không tạo booking, trả `500 INTERNAL_ERROR` `retryable: true` |
 
-Thêm giỏ thất bại (`404`, `409`, `422`) không ghi `add_to_cart`. `PATCH`/`DELETE /cart/items` không ghi event.
+Thêm giỏ thất bại (`404`, `409`, `422`) không ghi `add_to_cart`. `PATCH`/`DELETE /cart/items` và `PATCH`/`DELETE` mục của đơn nháp không ghi event. Mục bị bỏ (`rejectedItems`) không ghi event.
+
+Khách chưa đăng nhập không có `cdp_user_id` nên **không sinh event nào** khi thêm giỏ hay Đặt ngay; mã khách (`guestId`) không bao giờ được gửi sang CDP. Với Recommendation, `add_to_cart` nghĩa là "đã chọn để đặt": khách sạn và vé máy bay không vào giỏ nhưng vẫn sinh event này khi Đặt ngay (FR-CDP-01, `docs/spec/booking/dat-truc-tiep-theo-don-nhap.md` §10).
 
 ---
 
@@ -338,7 +342,7 @@ Cần người hiểu CDP V-OTA rà soát (handbook §17 câu 3). Đến khi có
 2. Gọi CDP clone không có hoặc sai `X-Service-Token` trả `401` ở mọi endpoint.
 3. Mở trang chi tiết (không phải prefetch) sinh đúng một `product_view`; `productId` lạ trả `404` và không sinh event.
 4. `/search` có JWT, `offset = 0` sinh một `search`; trang 2, không JWT, hoặc Agent gọi không sinh event.
-5. Thêm giỏ thành công sinh `add_to_cart` với `taxonomy` và `unitPrice` của catalog; thêm giỏ thất bại không sinh event.
+5. Thêm giỏ thành công và tạo đơn nháp Đặt ngay (người đã đăng nhập) sinh `add_to_cart` với `taxonomy` và `unitPrice` của catalog; thất bại không sinh event; khách chưa đăng nhập không sinh event cho tới khi gộp vào tài khoản.
 6. Tắt CDP clone: search, giỏ, xem sản phẩm vẫn chạy; `/recommendations` trả `200` `strategy: "popular"`; checkout trả `500` `retryable: true` và giỏ còn nguyên.
 7. Commit booking lỗi sau khi ghi `purchase`: event có `cancelledAt` và không xuất hiện trong lịch sử mặc định.
 8. Gửi lại cùng `purchase:{bookingItemId}` không sinh event thứ hai.

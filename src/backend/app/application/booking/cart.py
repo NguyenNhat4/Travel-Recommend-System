@@ -1,107 +1,126 @@
-"""Giỏ hàng server-side (backend spec §7.1, FR-BKG-01; spec checkout-nhieu-buoc-hanh-khach.md §5.5)."""
+"""Giỏ hàng server-side (backend spec §7.1, FR-BKG-01; spec checkout-nhieu-buoc-hanh-khach.md §5.5).
+
+Giỏ chỉ nhận tour, trải nghiệm và tiện ích khác; khách sạn và vé máy bay đặt trực tiếp qua đơn nháp. Chủ giỏ là người đã
+đăng nhập (PostgreSQL) hoặc khách chưa đăng nhập (Redis, không sinh event CDP) — spec dat-truc-tiep-theo-don-nhap.md §3, §8.
+"""
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
 from typing import Callable
 
 from src.backend.app.application.auth.principal import AuthPrincipal
-from src.backend.app.application.booking.errors import CartItemNotFound, LineRejected, ProductNotFound
-from src.backend.app.application.booking.messages import CART_MESSAGE, validation_failed
+from src.backend.app.application.booking.errors import (
+    CartItemNotFound, DirectBookingOnly, GuestStoreUnavailable, ProductNotFound, ValidationFailed,
+)
+from src.backend.app.application.booking.lines import resolve_line, stay_nights
+from src.backend.app.application.booking.owner import CartOwner, owner_of
 from src.backend.app.application.booking.views import cart_response
 from src.backend.app.application.ports.cart_repository import CartRepository
 from src.backend.app.application.ports.product_catalog import ProductCatalog
 from src.backend.app.application.tracking.behaviour import BehaviourTracker, CatalogProduct
-from src.backend.app.domain.booking import check_product, child_unit_price
+from src.backend.app.domain.booking import GUEST_CART_MAX_ITEMS, is_cart_eligible
 from src.backend.app.domain.booking.party import Guests
-from src.backend.app.domain.booking.party_rules import resolve_cart_guests
-from src.backend.app.domain.catalog.models import Product
+
+DIRECT_BOOKING_MESSAGE = "Khách sạn và vé máy bay được đặt trực tiếp, không thêm vào giỏ hàng."
+CART_FULL_MESSAGE = f"Giỏ hàng chỉ chứa tối đa {GUEST_CART_MAX_ITEMS} mục. Vui lòng đăng nhập hoặc bỏ bớt mục."
 
 
-def _stay(product: Product, nights: int | None) -> int | None:
-    """Chỉ khách sạn có số đêm; loại khác bỏ qua kể cả khi client gửi."""
-    return max(1, nights or 1) if product.taxonomy == "hotel" else None
-
-
-def _child_snapshot(product: Product) -> int | None:
-    """Giá vé trẻ em hợp lệ hiện tại; None nghĩa là trẻ em trả giá người lớn (spec §4.4)."""
-    return child_unit_price(product.taxonomy, int(product.unit_price), product.attributes)
+def cart_full_error() -> ValidationFailed:
+    error = ValidationFailed(CART_FULL_MESSAGE, {"fields": [
+        {"field": "productId", "reason": "CART_FULL", "message": CART_FULL_MESSAGE}]})
+    error.user_message = CART_FULL_MESSAGE
+    return error
 
 
 class CartService:
     def __init__(
         self, carts: CartRepository, catalog: ProductCatalog, tracker: BehaviourTracker,
-        *, clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
+        *, guest_carts: CartRepository | None = None,
+        clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
     ):
-        self._carts, self._catalog, self._tracker, self._clock = carts, catalog, tracker, clock
+        self._carts, self._guest_carts, self._catalog, self._tracker, self._clock = (
+            carts, guest_carts, catalog, tracker, clock)
 
-    async def get(self, principal: AuthPrincipal) -> dict:
-        cart = await self._carts.get(principal.cdp_user_id)
+    def _repo(self, owner: CartOwner) -> CartRepository:
+        if not owner.is_guest:
+            return self._carts
+        if self._guest_carts is None:
+            raise GuestStoreUnavailable("kho giỏ của khách chưa được cấu hình")
+        return self._guest_carts
+
+    async def get(self, who: CartOwner | AuthPrincipal) -> dict:
+        owner = owner_of(who)
+        cart = await self._repo(owner).get(owner.key)
         products = await self._catalog.get_products([line.product_id for line in cart.lines])
-        return cart_response(cart, products)
+        return cart_response(cart, products, cdp_user_id=owner.cdp_user_id)
 
     async def add(
-        self, principal: AuthPrincipal, *, product_id: str, using_date: date, quantity: int | None, nights: int | None,
-        guests: Guests | None = None,
+        self, who: CartOwner | AuthPrincipal, *, product_id: str, using_date: date, quantity: int | None,
+        nights: int | None, guests: Guests | None = None,
     ) -> dict:
+        owner = owner_of(who)
         product = (await self._catalog.get_products([product_id])).get(product_id)
         if product is None:
             raise ProductNotFound("sản phẩm không tồn tại", {"productId": product_id})
-        issue = check_product(product, using_date)
-        if issue:
-            raise LineRejected(issue.code, issue.details)
-        cart = await self._carts.get(principal.cdp_user_id)
+        if not is_cart_eligible(product.taxonomy):
+            error = DirectBookingOnly(
+                "sản phẩm chỉ đặt trực tiếp", {"productId": product.product_id, "taxonomy": product.taxonomy})
+            error.user_message = DIRECT_BOOKING_MESSAGE
+            raise error
+        carts = self._repo(owner)
+        cart = await carts.get(owner.key)
         existing = next((l for l in cart.lines if l.product_id == product.product_id and l.using_date == using_date), None)
-        result = resolve_cart_guests(
-            product.taxonomy, mode="add", request_quantity=quantity, request_guests=guests,
+        if owner.is_guest and existing is None and len(cart.lines) >= GUEST_CART_MAX_ITEMS:
+            raise cart_full_error()
+        # Thêm trùng sản phẩm và ngày thì cộng dồn; luật sức chứa và số khách tối đa kiểm trên kết quả đã cộng (R-CRT-04).
+        line = resolve_line(
+            product, using_date=using_date, quantity=quantity, nights=nights, guests=guests,
             existing_quantity=existing.quantity if existing else None,
-            existing_guests=existing.guests if existing else None, max_occupancy=product.max_occupancy)
-        if result.violations:
-            raise validation_failed(result.violations, user_message=CART_MESSAGE)
-        await self._carts.upsert(
-            principal.cdp_user_id, product_id=product.product_id, using_date=using_date, quantity=result.quantity,
-            nights=_stay(product, nights), unit_price=int(product.unit_price), adults=result.guests.adults,
-            children=result.guests.children, child_unit_price=_child_snapshot(product),
+            existing_guests=existing.guests if existing else None)
+        await carts.upsert(
+            owner.key, product_id=line.product_id, using_date=line.using_date, quantity=line.quantity,
+            nights=line.nights, unit_price=line.unit_price, adults=line.adults, children=line.children,
+            child_unit_price=line.child_unit_price,
         )
-        # Chỉ ghi event sau khi ghi giỏ thành công; recorder không bao giờ chặn request.
-        added = quantity if quantity is not None else (guests.total if guests else 1)
-        self._tracker.track_add_to_cart(
-            principal.cdp_user_id,
-            CatalogProduct(product.product_id, product.taxonomy, float(product.unit_price)),
-            added, using_date,
-        )
-        return await self.get(principal)
+        # Chỉ ghi event sau khi ghi giỏ thành công; recorder không bao giờ chặn request. Khách chưa đăng nhập không có
+        # danh tính CDP nên không sinh event (FR-CDP-02).
+        if owner.cdp_user_id is not None:
+            added = quantity if quantity is not None else (guests.total if guests else 1)
+            self._tracker.track_add_to_cart(
+                owner.cdp_user_id,
+                CatalogProduct(product.product_id, product.taxonomy, float(product.unit_price)),
+                added, using_date,
+            )
+        return await self.get(owner)
 
     async def update(
-        self, principal: AuthPrincipal, cart_item_id: str, *, using_date: date | None, quantity: int | None,
+        self, who: CartOwner | AuthPrincipal, cart_item_id: str, *, using_date: date | None, quantity: int | None,
         nights: int | None, nights_given: bool, guests: Guests | None = None,
     ) -> dict:
-        cart = await self._carts.get(principal.cdp_user_id)
+        owner = owner_of(who)
+        carts = self._repo(owner)
+        cart = await carts.get(owner.key)
         line = next((l for l in cart.lines if l.cart_item_id == cart_item_id), None)
         if line is None:
             raise CartItemNotFound("mục giỏ không tồn tại", {"cartItemId": cart_item_id})
         product = (await self._catalog.get_products([line.product_id])).get(line.product_id)
         if product is None:
             raise ProductNotFound("sản phẩm không tồn tại", {"productId": line.product_id})
-        new_date = using_date or line.using_date
-        issue = check_product(product, new_date)
-        if issue:
-            raise LineRejected(issue.code, issue.details)
-        result = resolve_cart_guests(
-            product.taxonomy, mode="update", request_quantity=quantity, request_guests=guests,
-            existing_quantity=line.quantity, existing_guests=line.guests, max_occupancy=product.max_occupancy)
-        if result.violations:
-            raise validation_failed(result.violations, user_message=CART_MESSAGE)
+        resolved = resolve_line(
+            product, using_date=using_date or line.using_date, quantity=quantity, nights=nights, guests=guests,
+            mode="update", existing_quantity=line.quantity, existing_guests=line.guests)
         # Sửa mục giỏ nghĩa là khách đã thấy giá hiện tại: ghi lại giá snapshot (người lớn và trẻ em) để checkout
         # không báo PRICE_CHANGED nữa.
-        await self._carts.update(
-            principal.cdp_user_id, cart_item_id, using_date=using_date, quantity=result.quantity,
-            nights=_stay(product, nights) if nights_given else line.nights, nights_given=True,
-            unit_price=int(product.unit_price), adults=result.guests.adults, children=result.guests.children,
-            child_unit_price=_child_snapshot(product),
+        await carts.update(
+            owner.key, cart_item_id, using_date=using_date, quantity=resolved.quantity,
+            nights=stay_nights(product, nights) if nights_given else line.nights, nights_given=True,
+            unit_price=resolved.unit_price, adults=resolved.adults, children=resolved.children,
+            child_unit_price=resolved.child_unit_price,
         )
-        return await self.get(principal)
+        return await self.get(owner)
 
-    async def remove(self, principal: AuthPrincipal, cart_item_id: str) -> dict:
-        if not await self._carts.remove(principal.cdp_user_id, cart_item_id):
+    async def remove(self, who: CartOwner | AuthPrincipal, cart_item_id: str) -> dict:
+        owner = owner_of(who)
+        if not await self._repo(owner).remove(owner.key, cart_item_id):
             raise CartItemNotFound("mục giỏ không tồn tại", {"cartItemId": cart_item_id})
-        return await self.get(principal)
+        return await self.get(owner)

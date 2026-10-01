@@ -188,7 +188,7 @@ CREATE TABLE app.users (
     last_login_at  timestamptz
 );
 
--- app.carts / app.cart_items — giỏ phía server, một giỏ đang mở / user (UX spec D6)
+-- app.carts / app.cart_items — giỏ phía server, một giỏ đang mở / user (UX spec D6). Chỉ chứa attraction, golf, combo (FR-BKG-01).
 CREATE TABLE app.carts (
     cart_id      uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     cdp_user_id  text NOT NULL UNIQUE REFERENCES cdp.profiles (cdp_user_id),
@@ -213,6 +213,38 @@ CREATE TABLE app.cart_items (
     CONSTRAINT cart_items_children_min CHECK (children >= 0),
     CONSTRAINT cart_items_party_size CHECK (adults + children <= 9),
     CONSTRAINT cart_items_uq UNIQUE (cart_id, product_id, using_date)
+);
+
+-- app.booking_drafts / app.booking_draft_items — đơn nháp của một lần "Đặt ngay" (FR-BKG-01,
+--   docs/spec/booking/dat-truc-tiep-theo-don-nhap.md §4). Chỉ chứa các mục của lần đặt đó, hết hiệu lực tại expires_at
+--   (30 phút), không giữ chỗ. Bị xoá khi đơn giữ chỗ được tạo hoặc khi dọn bản ghi hết hạn. draft_id do Backend cấp
+--   (khi gộp đơn nháp của khách chưa đăng nhập phải giữ nguyên mã). Giỏ và đơn nháp của khách chưa đăng nhập nằm ở Redis,
+--   không có bảng. app.cart_items từ nay chỉ chứa attraction, golf, combo; khách sạn và vé máy bay đi qua đơn nháp.
+CREATE TABLE app.booking_drafts (
+    draft_id     uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    cdp_user_id  text NOT NULL REFERENCES cdp.profiles (cdp_user_id),
+    created_at   timestamptz NOT NULL DEFAULT now(),
+    expires_at   timestamptz NOT NULL
+);
+CREATE INDEX booking_drafts_user_idx    ON app.booking_drafts (cdp_user_id);
+CREATE INDEX booking_drafts_expires_idx ON app.booking_drafts (expires_at);
+CREATE TABLE app.booking_draft_items (
+    draft_item_id        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    draft_id             uuid NOT NULL REFERENCES app.booking_drafts (draft_id) ON DELETE CASCADE,
+    product_id           uuid NOT NULL REFERENCES cdp.products (product_id),
+    quantity             integer NOT NULL CHECK (quantity > 0),
+    using_date           date NOT NULL,
+    using_date_to        date,                                         -- trả phòng (hotel); NULL với vé, chuyến
+    unit_price_snapshot  numeric(14,2) NOT NULL,                       -- giá khách thấy gần nhất; thanh toán so lại với products
+    added_at             timestamptz NOT NULL DEFAULT now(),
+    adults               integer NOT NULL DEFAULT 1,
+    children             integer NOT NULL DEFAULT 0,
+    child_unit_price_snapshot numeric(14,2),                           -- NULL = trẻ em trả giá người lớn
+    CONSTRAINT booking_draft_items_dates CHECK (using_date_to IS NULL OR using_date_to > using_date),
+    CONSTRAINT booking_draft_items_adults_min CHECK (adults >= 1),
+    CONSTRAINT booking_draft_items_children_min CHECK (children >= 0),
+    CONSTRAINT booking_draft_items_party_size CHECK (adults + children <= 9),
+    CONSTRAINT booking_draft_items_uq UNIQUE (draft_id, product_id, using_date)
 );
 
 -- app.bookings / app.booking_items — demo only (handbook §6, §10). Một checkout = một booking = một event_group_id.
@@ -429,7 +461,7 @@ CREATE INDEX login_attempts_ip_idx    ON app.login_attempts (ip_prefix, attempte
 --                 đọc cdp.*, ghi events (INSERT; DELETE chỉ để bù trừ theo event_group_id khi commit booking lỗi),
 --                 cập nhật profiles. KHÔNG có USAGE trên catalog/app → không JOIN được sang bảng riêng của V-OTA.
 --    vota_app   : backend/agent qua DATABASE_URL — toàn quyền catalog + app; trên cdp CHỈ SELECT cdp.products
---                 (catalog.* dựng từ nó, FK của booking_items/cart_items trỏ tới nó). Không ghi cdp.*, không đọc events/profiles.
+--                 (catalog.* dựng từ nó, FK của booking_items/cart_items/booking_draft_items trỏ tới nó). Không ghi cdp.*, không đọc events/profiles.
 --    Loader/seed chạy bằng superuser (postgres) — ngoài các role này.
 --  Lên production: HttpCdpClient thay LocalCdpClient; cdp.products vẫn là bảng local do job sync ghi qua CdpClient;
 --  cdp.events/profiles không còn dùng — code ngoài CdpClient chưa bao giờ chạm chúng nên không phải sửa.

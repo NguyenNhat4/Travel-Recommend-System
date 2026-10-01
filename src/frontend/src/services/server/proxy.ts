@@ -3,16 +3,25 @@
  *
  * Ba việc trước khi chuyển tiếp: đọc phiên, kiểm CSRF cho method ghi, gắn `Authorization` từ phiên.
  * FastAPI không bao giờ thấy cookie của trình duyệt, và client không tự đặt được `Authorization`.
+ *
+ * Giỏ và đơn nháp của khách chưa đăng nhập (docs/spec/booking/dat-truc-tiep-theo-don-nhap.md §8): phiên chưa đăng nhập gọi
+ * `/cart*`, `/booking-drafts*` thì proxy gửi kèm `X-Service-Token` + `X-Guest-Id` lấy từ cookie `vota_guest` (phát nếu chưa
+ * có). Phiên đã đăng nhập mà còn cookie đó thì proxy gộp dữ liệu khách vào tài khoản trước, rồi xoá cookie.
  */
 import {
   backendBase,
+  callBackend,
   clearedCookies,
+  clearedGuestCookie,
   csrfFailure,
   destroySession,
   ensureFreshAccessToken,
   errorResponse,
+  guestCookie,
   loadSession,
   logAuth,
+  newGuestId,
+  readGuestId,
   requestIdOf,
   rotateAfterPasswordChange,
   sessionCookies,
@@ -22,8 +31,34 @@ import {
 type RouteContext = { params: Promise<{ path: string[] }> };
 
 // Header client không được tự đặt, hoặc không được lọt sang FastAPI.
-const STRIPPED_REQUEST_HEADERS = ['host', 'content-length', 'cookie', 'authorization', 'x-service-token', 'x-csrf-token'];
+const STRIPPED_REQUEST_HEADERS = ['host', 'content-length', 'cookie', 'authorization', 'x-service-token', 'x-csrf-token', 'x-guest-id'];
+// Khách chưa đăng nhập dùng được giỏ và đơn nháp; gộp vào tài khoản trước mọi request đặt chỗ đầu tiên sau khi đăng nhập.
+const GUEST_PATHS = /^v1\/(cart|booking-drafts)(\/|$)/;
+const BOOKING_PATHS = /^v1\/(cart|booking-drafts|bookings)(\/|$)/;
+// Chỉ BFF gọi (X-Service-Token); trình duyệt không được chạm.
+const INTERNAL_PATHS = /^v1\/guest-bookings(\/|$)/;
+const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 const FORWARDED_RESPONSE_HEADERS = ['content-type', 'cache-control', 'location', 'retry-after'];
+
+/**
+ * R-BFF-01/02: gộp giỏ và đơn nháp của khách vào tài khoản. True = đã xong (kể cả khi không còn gì để gộp hoặc mã khách bị
+ * từ chối), xoá cookie được; false = Backend không phản hồi, giữ cookie để request sau thử lại.
+ */
+async function mergeGuest(guestId: string, accessToken: string, requestId: string): Promise<boolean> {
+  try {
+    const response = await callBackend('guest-bookings/merge', {
+      method: 'POST', service: true, bearer: accessToken, requestId, body: { guestId },
+    });
+    if (response.status >= 500) {
+      logAuth('booking.guest_merge.failed', { status: response.status, guest: guestId.slice(0, 8) });
+      return false;
+    }
+    return true;
+  } catch {
+    logAuth('booking.guest_merge.failed', { status: 0, guest: guestId.slice(0, 8) });
+    return false;
+  }
+}
 
 function sessionExpired(requestId: string) {
   return withCookies(errorResponse(401, 'SESSION_EXPIRED', 'Phiên đăng nhập đã hết hạn.', requestId), clearedCookies());
@@ -34,7 +69,9 @@ export async function proxyToBackend(request: Request, context: RouteContext) {
   const requestId = requestIdOf(request);
   const base = backendBase();
   if (!base) return errorResponse(503, 'INTERNAL_ERROR', 'Backend service is not configured', requestId);
-  const target = new URL(`api/${path.join('/')}`, base);
+  const joined = path.join('/');
+  if (INTERNAL_PATHS.test(joined)) return errorResponse(404, 'NOT_FOUND', 'Không tìm thấy.', requestId);
+  const target = new URL(`api/${joined}`, base);
   target.search = new URL(request.url).search;
 
   let loaded;
@@ -57,6 +94,7 @@ export async function proxyToBackend(request: Request, context: RouteContext) {
   const headers = new Headers(request.headers);
   for (const header of STRIPPED_REQUEST_HEADERS) headers.delete(header);
   headers.set('x-request-id', requestId);
+  const extraCookies: string[] = [];
 
   if (current?.record.state === 'authenticated') {
     const record = await ensureFreshAccessToken(current.sid, current.record, requestId).catch(() => null);
@@ -66,6 +104,18 @@ export async function proxyToBackend(request: Request, context: RouteContext) {
     }
     current = { ...current, record };
     headers.set('authorization', `Bearer ${record.accessToken}`);
+    const guestId = readGuestId(request);
+    if (guestId && BOOKING_PATHS.test(joined) && await mergeGuest(guestId, record.accessToken, requestId)) {
+      extraCookies.push(clearedGuestCookie());
+    }
+  } else if (GUEST_PATHS.test(joined)) {
+    // Backend chỉ tin X-Guest-Id khi đi kèm X-Service-Token, tức khi request đến từ BFF (R-GST-02, R-GST-03).
+    const existing = readGuestId(request);
+    const guestId = existing ?? newGuestId();
+    headers.set('x-service-token', process.env.AUTH_SERVICE_TOKEN || '');
+    headers.set('x-guest-id', guestId);
+    // Phát cookie lần đầu; request ghi đặt lại hạn 3 ngày, khớp TTL của Redis (R-GST-01).
+    if (!existing || MUTATING.has(request.method.toUpperCase())) extraCookies.push(guestCookie(guestId));
   }
 
   const body = ['GET', 'HEAD'].includes(request.method) ? undefined : await request.arrayBuffer();
@@ -94,9 +144,9 @@ export async function proxyToBackend(request: Request, context: RouteContext) {
   });
 
   // §3.8 dòng J: đổi mật khẩu thành công → huỷ phiên khác, xoay sid của phiên hiện tại.
-  if (current && request.method === 'PUT' && path.join('/') === 'v1/auth/password' && response.status === 204) {
+  if (current && request.method === 'PUT' && joined === 'v1/auth/password' && response.status === 204) {
     const rotated = await rotateAfterPasswordChange(request, current);
-    return withCookies(proxied, sessionCookies(rotated.sid, rotated.record));
+    return withCookies(proxied, [...sessionCookies(rotated.sid, rotated.record), ...extraCookies]);
   }
-  return proxied;
+  return withCookies(proxied, extraCookies);
 }

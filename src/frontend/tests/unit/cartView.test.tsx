@@ -6,6 +6,7 @@ import familyCart from '../../../shared/mocks/booking/getCart.200-family.json';
 import unavailableCart from '../../../shared/mocks/booking/getCart.200-item-unavailable.json';
 
 const api = vi.hoisted(() => ({ getProduct: vi.fn(), fetchRecommendations: vi.fn() }));
+const http = vi.hoisted(() => ({ fetch: vi.fn() }));
 const travel = vi.hoisted(() => ({
   cart: null as unknown,
   currentPersona: { id: 'VP0000001', name: 'Nguyễn Minh Anh' } as unknown,
@@ -39,11 +40,12 @@ describe('CartView — khách và dòng giá theo loại khách', () => {
     vi.clearAllMocks();
     travel.cart = clone(familyCart);
     travel.currentPersona = { id: 'VP0000001', name: 'Nguyễn Minh Anh' };
-    api.fetchRecommendations.mockRejectedValue(new Error('không cần trong test'));
+    api.fetchRecommendations.mockResolvedValue({ destination: 'Nha Trang', recommendations: [] });
+    vi.stubGlobal('fetch', http.fetch);
     api.getProduct.mockResolvedValue({ productId: 'nt-a-vinwonders-buggy', attributes: { childPrice: 504000 } });
     travel.updateCartItem.mockResolvedValue(null);
   });
-  afterEach(() => cleanup());
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
   it('mỗi mục hiện đoàn khách ("2 người lớn · 1 trẻ em") và các dòng giá của Backend', () => {
     render(<CartView />);
@@ -51,10 +53,7 @@ describe('CartView — khách và dòng giá theo loại khách', () => {
     expect(within(ticket).getByTestId('cart-item-summary').textContent).toBe('Ngày dùng: 2026-10-18 · 2 người lớn · 1 trẻ em');
     expect(within(ticket).getByTestId('fare-lines').textContent).toContain('2 × 1.500.000');
     expect(within(ticket).getByTestId('fare-lines').textContent).toContain('1 × 504.000');
-    const hotel = rowOf('Lucky Sun');
-    expect(within(hotel).getByTestId('cart-item-summary').textContent).toContain('2 đêm · 1 phòng · 2 người lớn · 1 trẻ em');
-    expect(within(hotel).getByTestId('fare-lines').textContent).toContain('× 2 đêm × 1 phòng');
-    expect(screen.getAllByText('6.960.384 ₫').length).toBeGreaterThan(0);          // tổng lấy từ CartResponse
+    expect(screen.getAllByText('3.504.000 ₫').length).toBeGreaterThan(0);          // tổng lấy từ CartResponse
   });
 
   it('[Sửa] mở bộ đếm với số khách hiện tại; giá vé trẻ em hiện sau khi tải thuộc tính sản phẩm', async () => {
@@ -81,18 +80,22 @@ describe('CartView — khách và dòng giá theo loại khách', () => {
     await waitFor(() => expect(within(ticket).queryByTestId('guest-editor')).toBeNull());
   });
 
-  it('khách sạn: vượt sức chứa thì báo cần thêm phòng và khoá nút Cập nhật; thêm phòng thì gửi số phòng và số khách', async () => {
+  it('giỏ chỉ giữ tour, trải nghiệm, tiện ích: có ghi chú khách sạn và vé máy bay đặt trực tiếp; không còn khối "Thường được đặt cùng chuyến"', () => {
     render(<CartView />);
-    const hotel = rowOf('Lucky Sun');                                              // phòng tối đa 3 khách, đang 2 người lớn + 1 trẻ em
-    fireEvent.click(within(hotel).getByRole('button', { name: /^Sửa số khách của/ }));
-    const editor = within(hotel).getByTestId('guest-editor');
-    expect(editor.textContent).toContain('Tối đa 3 khách/phòng');
-    fireEvent.click(within(editor).getByLabelText('Thêm trẻ em'));
-    expect(within(editor).getByTestId('capacity-issue').textContent).toContain('4 khách vượt sức chứa 3 khách của 1 phòng. Cần ít nhất 2 phòng.');
-    expect((within(editor).getByRole('button', { name: 'Cập nhật' }) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(within(editor).getByRole('button', { name: 'Thêm 1 phòng' }));
-    fireEvent.click(within(editor).getByRole('button', { name: 'Cập nhật' }));
-    await waitFor(() => expect(travel.updateCartItem).toHaveBeenCalledWith('ci-hotel', { quantity: 2, guests: { adults: 2, children: 2 } }));
+    expect(screen.getByTestId('cart-direct-note').textContent).toContain('Khách sạn và vé máy bay không nằm trong giỏ');
+    expect(screen.queryByText(/Thường được đặt cùng chuyến/)).toBeNull();
+    expect(api.fetchRecommendations).not.toHaveBeenCalled();
+    expect(http.fetch).not.toHaveBeenCalled();
+  });
+
+  it('khách chưa đăng nhập vẫn xem và sửa được giỏ của mình, không bị yêu cầu đăng nhập', () => {
+    travel.currentPersona = null;
+    render(<CartView />);
+    expect(screen.queryByText('Đăng nhập để xem giỏ hàng')).toBeNull();
+    expect(rowOf('VinWonders')).toBeTruthy();
+    expect(within(rowOf('VinWonders')).getByRole('button', { name: /^Sửa số khách của/ })).toBeTruthy();
+    expect((screen.getByRole('button', { name: /Tiến hành đặt chỗ/ }) as HTMLButtonElement).disabled).toBe(false);
+    expect(travel.openLoginModal).not.toHaveBeenCalled();
   });
 
   it('Backend từ chối: bộ đếm giữ nguyên để khách sửa tiếp (context đã báo lỗi bằng toast)', async () => {

@@ -223,7 +223,9 @@ Khách sạn và combo không kiểm R-ITM-04, vì số khách không làm đổ
 
 ### 5.5. Luật khi thêm hoặc sửa mục giỏ
 
-Áp dụng cho `POST /cart/items` và `PATCH /cart/items/{cartItemId}`. Lỗi trả `400 VALIDATION_ERROR` với `reason` như bảng.
+Áp dụng cho `POST /cart/items` và `PATCH /cart/items/{cartItemId}`, và **cùng bộ luật** cho từng mục của đơn nháp Đặt ngay (`POST /booking-drafts`, `PATCH /booking-drafts/{draftId}/items/{cartItemId}`). Lỗi trả `400 VALIDATION_ERROR` với `reason` như bảng.
+
+Từ 2026-10-01, giỏ chỉ nhận `attraction`, `golf`, `combo`; `hotel` và `flight` chỉ đi qua đơn nháp (`POST /cart/items` trả `422 DIRECT_BOOKING_ONLY`), nên các dòng nói về `hotel` và `flight` dưới đây áp dụng ở đơn nháp. R-CRT-04 (cộng dồn) chỉ có ở giỏ: đơn nháp có hai mục trùng `productId` + `usingDate` thì bị từ chối (`DUPLICATE_ITEM`). Chi tiết: `docs/spec/booking/dat-truc-tiep-theo-don-nhap.md` §4, §5.
 
 | Mã | Luật | `reason` |
 |---|---|---|
@@ -501,6 +503,8 @@ Cách Web xử lý kết quả (bổ sung cho `hop-dong-tich-hop-frontend.md` §
 Ở `/booking/{referenceCode}`, khối thông tin chuyến hiện hành khách của từng dịch vụ (`BookingItem.travelers`) và các dòng giá (`fares`). Khách sạn hiện khách theo phòng và đánh dấu người đại diện. Trang không hiện ngày sinh. Đơn tạo trước thay đổi này vẫn hiện `guestNames` như hiện nay.
 
 ### 6.9. Trang giỏ, trang chi tiết, trợ lý (P1)
+
+> **Cập nhật 2026-10-01 (FR-BKG-01).** Giỏ chỉ còn tour, trải nghiệm và tiện ích khác. Khách sạn và vé máy bay chỉ có nút "Đặt ngay": cùng bộ đếm, cùng cách tính số lượng và `guests` dưới đây, nhưng gửi vào `POST /booking-drafts` thay cho `POST /cart/items`, rồi mở trang thanh toán của đơn nháp. Trợ lý: `useBookItinerary` (Đặt ngay một mục, "Thanh toán tất cả") dùng cùng `partyCartRequest`; `useAssistantCart` chỉ thêm giỏ các mục `attraction`, `golf`, `combo`. Bộ luật: `docs/spec/booking/dat-truc-tiep-theo-don-nhap.md` §13.
 
 - **Trang giỏ `/cart`:** mỗi mục hiện "2 người lớn · 1 trẻ em" và các dòng giá. Nút [Sửa] mở cùng bộ đếm như ở trang chi tiết (`GuestCounters`) và gọi `PATCH` với `guests` khi bấm Cập nhật. Đơn giá vé trẻ em nằm ở `attributes` của sản phẩm mà `CartResponse` không mang, nên Web tải `GET /products/{id}` khi mở [Sửa]; chưa tải xong hoặc lỗi thì bộ đếm chỉ hiện giới hạn tuổi, không nói "cùng giá người lớn". Mục hết chỗ không có nút [Sửa].
 - **Trang chi tiết, hộp đặt:**
@@ -845,6 +849,8 @@ Sửa thêm: `services/booking.ts` (kiểu `GuestCounts`, `FareLine`, `CheckoutT
 
 ### 10.3. Đồng bộ giỏ (`patchQueue.ts`)
 
+> Trang thanh toán có hai nguồn mục (`checkoutSource.ts`): giỏ, hoặc một đơn nháp của Đặt ngay (`?draft=<draftId>`). Hàng đợi dưới đây không đổi; với đơn nháp, "giỏ" là đơn nháp, `PATCH /cart/items/…` là `PATCH /booking-drafts/{draftId}/items/…` và `GET /cart` là `GET /booking-drafts/{draftId}`.
+
 Mỗi thay đổi phân bổ làm đổi `guests` hoặc số phòng của một mục phải ghi vào giỏ để Backend tính lại giá (§6.6). Có ba điểm dễ sai, và hàng đợi xử lý cả ba:
 
 - **Đợi 400 ms không có thao tác mới rồi mới gọi.** Khách bấm liên tục chỉ tốn một request.
@@ -864,9 +870,9 @@ Trạng thái "đang cập nhật giá" của một mục đúng cả lúc chờ
 ### 10.5. Trang giỏ, trang chi tiết, trợ lý, trang đơn
 
 - **Bộ đếm dùng chung `GuestCounters`:** vé tham quan, golf, chuyến bay có Người lớn (≥ 1) và Trẻ em (≥ 0) kèm đơn giá từng loại; khách sạn có Số phòng, Người lớn, Trẻ em, gợi ý sức chứa và nút "Thêm 1 phòng" khi vượt sức chứa; combo chỉ có số gói (1–20). Luật ở `guestCounts.ts` và có test riêng.
-- **Trang chi tiết:** hộp đặt dùng `GuestCounters` và `estimateFares` để hiện các dòng giá ước tính; gửi `guests` khi thêm vào giỏ (combo chỉ gửi `quantity`).
-- **Trang giỏ:** hiện đoàn và dòng giá; [Sửa] mở `GuestCounters` trong một khung, bấm Cập nhật thì `PATCH`.
-- **Trợ lý:** `itineraryCartItems(itinerary, party)` gắn `intent.party` vào từng mục; `useAssistantCart` đổi ra số lượng và `guests` bằng `partyCartRequest` (§6.9).
+- **Trang chi tiết:** hộp đặt dùng `GuestCounters` và `estimateFares` để hiện các dòng giá ước tính; gửi `guests` khi thêm vào giỏ hoặc Đặt ngay (combo chỉ gửi `quantity`). Khách sạn và vé máy bay chỉ có "Đặt ngay" (`startBooking`); tour, golf, combo có cả "Thêm vào giỏ hàng".
+- **Trang giỏ:** hiện đoàn và dòng giá; [Sửa] mở `GuestCounters` trong một khung, bấm Cập nhật thì `PATCH`. Không còn khối "Thường được đặt cùng chuyến"; khách chưa đăng nhập cũng dùng được.
+- **Trợ lý:** `itineraryCartItems(itinerary, party)` gắn `intent.party` vào từng mục; `useAssistantCart` (thêm giỏ) và `useBookItinerary` (Đặt ngay, "Thanh toán tất cả") đổi ra số lượng và `guests` bằng `partyCartRequest` (§6.9).
 - **Trang đơn:** `ItemTravelers` hiện hành khách theo phòng (đánh dấu người đại diện) hoặc một dòng; `FareLines` hiện dòng giá. Đơn tạo trước thay đổi (`travelers` rỗng) hiện `guestNames`.
 
 ### 10.6. Khả năng truy cập

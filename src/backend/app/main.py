@@ -44,10 +44,12 @@ from src.backend.app.application.auth.use_cases import (
     RotateSession,
 )
 from src.backend.app.application.booking import (
+    BookingDraftService,
     CancelBooking,
     CartService,
     CreateBookingHold,
     GetBooking,
+    MergeGuestBooking,
     PaymentEventHandler,
     ReconcileBookings,
     Settlement,
@@ -58,7 +60,7 @@ from src.backend.app.application.itinerary.engine_tools import InProcessItinerar
 from src.backend.app.application.telemetry import traced
 from src.backend.app.application.itinerary.use_cases import PlanItinerary
 from src.backend.app.application.tracking.behaviour import BehaviourTracker
-from src.backend.app.domain.booking import HoldPolicy
+from src.backend.app.domain.booking import DraftPolicy, HoldPolicy
 from src.backend.app.domain.catalog import ListingItem
 from src.backend.app.application.recommendation import BuildPopularity, RecommendForUser
 from src.backend.app.application.search import SearchProducts, SimilarProducts
@@ -87,7 +89,14 @@ from src.backend.app.infrastructure.persistence.conversation_store import (
     RedisConversationStore,
 )
 from src.backend.app.infrastructure.persistence.postgres_conversation_archive import PostgresConversationArchive
+from src.backend.app.infrastructure.persistence.guest_booking_store import (
+    GuestBookingRedisStore,
+    GuestDraftRepository,
+    InMemoryKeyValue,
+    RedisKeyValue,
+)
 from src.backend.app.infrastructure.persistence.postgres_booking import (
+    PostgresBookingDraftRepository,
     PostgresBookingStore,
     PostgresCartRepository,
     PostgresProductCatalog,
@@ -382,11 +391,18 @@ def build_auth(settings: Settings, cdp_client, redis_client=None) -> dict:
     }
 
 
-def build_booking(settings: Settings, cdp_client, recorder, product_lookup, *, clock=None) -> dict:
-    """Dựng giỏ hàng, giữ chỗ, thanh toán Stripe, huỷ và đối soát (spec booking)."""
+def build_booking(settings: Settings, cdp_client, recorder, product_lookup, *, clock=None, booking_redis=None) -> dict:
+    """Dựng giỏ hàng, đơn nháp của Đặt ngay, giữ chỗ, thanh toán Stripe, huỷ và đối soát (spec booking)."""
     from datetime import datetime, timezone
 
     clock = clock or (lambda: datetime.now(timezone.utc))
+    # Giỏ và đơn nháp của khách chưa đăng nhập nằm ở Redis; thiếu Redis thì chỉ dev/test được dùng bộ nhớ tiến trình.
+    if booking_redis is None and settings.app_env == "production":
+        raise RuntimeError("BOOKING_REDIS_URL là bắt buộc ở production (giỏ và đơn nháp của khách chưa đăng nhập)")
+    guest_store = GuestBookingRedisStore(
+        RedisKeyValue(booking_redis) if booking_redis is not None else InMemoryKeyValue(),
+        ttl_seconds=settings.guest_booking_ttl_days * 86_400, clock=clock)
+    guest_drafts = GuestDraftRepository(guest_store)
     if settings.payment_provider == "fake":
         if settings.app_env == "production":
             raise RuntimeError("PAYMENT_PROVIDER=fake không được dùng ở production")
@@ -395,17 +411,23 @@ def build_booking(settings: Settings, cdp_client, recorder, product_lookup, *, c
         gateway = StripePaymentGateway(settings.stripe_secret_key, settings.stripe_webhook_secret)
     store = PostgresBookingStore(settings.database_url)
     carts = PostgresCartRepository(settings.database_url)
+    drafts = PostgresBookingDraftRepository(settings.database_url)
     catalog = PostgresProductCatalog(settings.database_url)
+    tracker = BehaviourTracker(recorder, product_lookup)
     settlement = Settlement(store, gateway, cdp_client, clock)
     handler = PaymentEventHandler(
         store, gateway, settlement, max_failed_attempts=settings.payment_max_failed_attempts, clock=clock)
     reconciler = ReconcileBookings(store, gateway, settlement, handler, clock)
     return {
         "payment_gateway": gateway,
-        "cart_service": CartService(carts, catalog, BehaviourTracker(recorder, product_lookup), clock=clock),
+        "cart_service": CartService(carts, catalog, tracker, guest_carts=guest_store, clock=clock),
+        "booking_draft_service": BookingDraftService(
+            drafts, carts, catalog, tracker, store, DraftPolicy(settings.booking_draft_ttl_minutes),
+            guest_drafts=guest_drafts, guest_carts=guest_store, reconciler=reconciler, clock=clock),
+        "merge_guest_booking": MergeGuestBooking(guest_store, carts, drafts, catalog, tracker, clock=clock),
         "create_booking_hold": CreateBookingHold(
             store, carts, catalog, gateway, reconciler, HoldPolicy(settings.booking_hold_minutes),
-            public_web_url=settings.public_web_url, provider=settings.payment_provider, clock=clock),
+            public_web_url=settings.public_web_url, provider=settings.payment_provider, clock=clock, drafts=drafts),
         "get_booking": GetBooking(store, catalog),
         "cancel_booking": CancelBooking(store, gateway, settlement, catalog, clock),
         "payment_event_handler": handler,
@@ -527,8 +549,15 @@ async def lifespan(app: FastAPI):
         logger.info("startup.browse_event_recorder.start")
         app.state.browse_event_recorder.start()
         logger.info("startup.browse_event_recorder.ready")
+        booking_redis = None
+        if settings.booking_redis_url:
+            import redis.asyncio as redis_asyncio
+
+            booking_redis = redis_asyncio.from_url(settings.booking_redis_url)
+            stack.push_async_callback(booking_redis.aclose)
         for name, service in build_booking(
-            settings, cdp_client, app.state.browse_event_recorder, app.state.product_lookup
+            settings, cdp_client, app.state.browse_event_recorder, app.state.product_lookup,
+            booking_redis=booking_redis,
         ).items():
             setattr(app.state, name, service)
         if settings.booking_reconcile_interval_seconds:
@@ -538,7 +567,8 @@ async def lifespan(app: FastAPI):
         gateway_close = getattr(app.state.payment_gateway, "aclose", None)
         if gateway_close is not None:
             stack.push_async_callback(gateway_close)
-        logger.info("startup.booking.ready payment_provider=%s", settings.payment_provider)
+        logger.info("startup.booking.ready payment_provider=%s guest_store=%s", settings.payment_provider,
+                    "redis" if booking_redis else "memory")
         archive = PostgresConversationArchive(settings.database_url)
         app.state.itinerary_conversation_archive = archive
         app.state.conversation_history = ConversationHistory(archive)

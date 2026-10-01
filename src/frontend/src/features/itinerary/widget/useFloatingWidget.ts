@@ -1,12 +1,13 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useTravel } from '../../../context/TravelContext';
 import { useAssistant } from '../../../context/AssistantProvider';
-import { useAssistantCart } from '../../../hooks/useAssistantCart';
+import { useAssistantCart, useBookItinerary } from '../../../hooks/useAssistantCart';
+import { isCartEligible } from '../../../services/booking';
 import { convertItineraryCompletedToGroundedPlan } from './widgetPlan';
 import type { WidgetPlan, WidgetChatMessage, ConversationSession } from './widgetTypes';
 
 export function useFloatingWidget() {
-  const { addToCart, showToast, navigate, currentRoute } = useTravel();
+  const { showToast, currentRoute } = useTravel();
   const {
     state: assistantState,
     sendMessage,
@@ -17,6 +18,7 @@ export function useFloatingWidget() {
     loadConversation,
   } = useAssistant();
   const addItineraryToCart = useAssistantCart();
+  const bookItinerary = useBookItinerary();
 
   // Widget States
   const [isOpen, setIsOpen] = useState<boolean>(false);
@@ -160,10 +162,24 @@ export function useFloatingWidget() {
       showToast('Lịch trình chưa có dịch vụ nào đặt được.');
       return;
     }
-    // Thêm tuần tự rồi mới sang /checkout: checkout đọc GET /cart ngay khi mở, nên phải chờ mọi mục vào giỏ.
+    // Thanh toán tất cả: một đơn nháp gồm mọi mục đặt được của lịch trình (lưu trú và hoạt động), thanh toán một lần.
     setIsCheckingOut(true);
-    void addItineraryToCart(activePlan.cartItems, () => navigate('/checkout'))
-      .finally(() => setIsCheckingOut(false));
+    void bookItinerary(activePlan.cartItems).finally(() => setIsCheckingOut(false));
+  };
+
+  /**
+   * Nút riêng của từng sản phẩm trong lịch trình (thẻ và ghim bản đồ): khách sạn, vé máy bay chỉ có Đặt ngay; tour, golf,
+   * combo có thêm Thêm vào giỏ. Sản phẩm chưa đặt được (ví dụ khách sạn chưa có hạng phòng) không có nút nào: thẻ vẫn mở
+   * trang chi tiết như trước (spec dat-truc-tiep-theo-don-nhap.md §16, ghi chú Q11c).
+   */
+  const itemActions = (productId: string) => {
+    const item = activePlan?.cartItems?.find((i) => i.product.productId === productId);
+    if (!item) return null;
+    return {
+      canAddToCart: isCartEligible(item.product.taxonomy),
+      bookNow: () => { void bookItinerary([item]); },
+      addToCart: () => { void addItineraryToCart([item]); },
+    };
   };
 
   const handleStartNewChat = () => {
@@ -213,8 +229,8 @@ export function useFloatingWidget() {
   return { isOpen, setIsOpen, isExpanded, setIsExpanded, activePlan, activeDayTab, setActiveDayTab,
     isCheckingOut, isChatCollapsed, setIsChatCollapsed, hoveredCoordinate, hoveredPointId,
     setHoveredCoordinate, setHoveredPointId, isHistoryOpen, setIsHistoryOpen, conversations, activeSessionId,
-    assistantState, isRunning, messages, inputVal, setInputVal, chatScrollRef, addToCart, retry, abort,
-    handleSendMessage, handleQuickPrompt, handleConfirmTripDetails, handleCheckoutPlan,
+    assistantState, isRunning, messages, inputVal, setInputVal, chatScrollRef, retry, abort,
+    handleSendMessage, handleQuickPrompt, handleConfirmTripDetails, handleCheckoutPlan, itemActions,
     handleStartNewChat, handleSelectConversation, handleDeleteConversation };
 }
 

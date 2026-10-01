@@ -6,6 +6,7 @@ import {
   getProduct, getSimilarProducts, hasVariants, listProducts, listVariants, productFromApi, trackProductView,
   type VariantSummary,
 } from '../../services/catalog';
+import { isCartEligible } from '../../services/booking';
 import { fetchRecommendations } from '../../services/recsys';
 import { ApiError } from '../../services/http';
 import type { Product, RecommendationResponse } from '../../types/travel';
@@ -128,7 +129,7 @@ const NotFound: React.FC<{ onHome: () => void }> = ({ onHome }) => {
 };
 
 export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }) => {
-  const { addToCart, navigate, currentPersona } = useTravel();
+  const { addToCart, startBooking, navigate, currentPersona } = useTravel();
   const [state, setState] = useState<LoadState>({ status: 'loading' });
   const [retry, setRetry] = useState(0);
 
@@ -261,13 +262,16 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
     const { quantity, guests } = cartPayload(mode, counts);
     void addToCart(unit, quantity, checkIn, isHotel ? checkOut : undefined, guests ? { guests } : undefined);
   };
+  // Đặt ngay: đơn nháp chỉ có sản phẩm này rồi mở trang thanh toán; không kèm mục nào trong giỏ (FR-BKG-01).
   const handleBookNow = async () => {
     if (!bookable || !validCounts) return;
     const { quantity, guests } = cartPayload(mode, counts);
-    if (await addToCart(unit, quantity, checkIn, isHotel ? checkOut : undefined, { silent: true, ...(guests ? { guests } : {}) })) {
-      navigate('/checkout');
-    }
+    await startBooking([{ product: unit, quantity, usingDate: checkIn, checkOutDate: isHotel ? checkOut : undefined, guests }]);
   };
+  // Khách sạn và vé máy bay không vào giỏ: chỉ có nút Đặt ngay (AC-BKG-15). `unit` còn null khi sản phẩm đang tải hoặc khi
+  // chưa chọn hạng phòng/chuyến bay: lúc đó xét theo loại của sản phẩm cha.
+  const bookingTaxonomy = (unit ?? product)?.taxonomy;
+  const cartEligible = bookingTaxonomy ? isCartEligible(bookingTaxonomy) : false;
 
   if (state.status === 'loading') {
     return (
@@ -470,14 +474,23 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
           )}
 
           <div className="space-y-2">
-            <button onClick={handleAddToCart} disabled={!bookable || !validCounts}
-              className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-bold text-sm rounded-xl shadow-xs transition-colors">
-              Thêm vào giỏ hàng
-            </button>
+            {cartEligible && (
+              <button onClick={handleAddToCart} disabled={!bookable || !validCounts}
+                className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-bold text-sm rounded-xl shadow-xs transition-colors">
+                Thêm vào giỏ hàng
+              </button>
+            )}
             <button onClick={() => void handleBookNow()} disabled={!bookable || !validCounts}
-              className="w-full py-2.5 bg-blue-50 hover:bg-blue-100 disabled:bg-slate-100 disabled:text-slate-400 text-blue-700 font-bold text-xs rounded-xl border border-blue-200 transition-colors">
+              className={cartEligible
+                ? 'w-full py-2.5 bg-blue-50 hover:bg-blue-100 disabled:bg-slate-100 disabled:text-slate-400 text-blue-700 font-bold text-xs rounded-xl border border-blue-200 transition-colors'
+                : 'w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-bold text-sm rounded-xl shadow-xs transition-colors'}>
               Đặt ngay
             </button>
+            {!cartEligible && (
+              <p className="text-[11px] text-slate-500 text-center" data-testid="direct-booking-note">
+                {isHotel ? 'Khách sạn' : 'Vé máy bay'} được đặt trực tiếp, không thêm vào giỏ hàng.
+              </p>
+            )}
           </div>
 
           <div className="flex items-center gap-1.5 text-[11px] text-slate-500 justify-center">

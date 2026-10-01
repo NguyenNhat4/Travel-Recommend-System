@@ -13,7 +13,7 @@ Thêm:
 
 | Trường | Vì sao |
 |---|---|
-| `productId` | Mỗi hạng / mỗi hành trình là một sản phẩm riêng; thêm giỏ bằng id này |
+| `productId` | Mỗi hạng / mỗi hành trình là một sản phẩm riêng; đặt vé bằng id này |
 | `currency` | Như mọi giá khác trong contract |
 | `priceValidUntil` | `YYYY-MM-DD`, hạn báo giá tại nguồn; `null` khi nguồn không có |
 | `availabilityStatus` | `AVAILABLE` \| `EXPIRED` \| `NOT_CHECKED` — dùng lại enum sẵn có, cùng nghĩa với `ProductSummary.availabilityStatus` |
@@ -92,7 +92,7 @@ make demo-db-reset
 - **`null` = chưa biết.** Đừng hiện "0 kg", "không có suất ăn" hay "không đổi được". Hiện chưa nguồn nào có số liệu hành
   lý / suất ăn / đổi vé nên các trường này đang `null`.
 - `soldOut: null` = chưa biết. `EXPIRED` **không** có nghĩa hết ghế — chỉ là báo giá cũ, chờ lượt cào sau làm mới.
-  Vé khứ hồi trong snapshot có `priceValidUntil: 2026-10-01`, nên từ 02/10 trên máy dev hiện `EXPIRED` nhưng vẫn thêm giỏ và
+  Vé khứ hồi trong snapshot có `priceValidUntil: 2026-10-01`, nên từ 02/10 trên máy dev hiện `EXPIRED` nhưng vẫn
   đặt được. Nên hiện nhãn kiểu "Giá có thể đã thay đổi", không khoá nút đặt.
 - Hạng lấy từ nguồn: vé khứ hồi trip.com mà trang ghi "Economy class" có `code: ECO`, `name: "Phổ thông"`. Vé một chiều và
   22 vé khứ hồi trang không ghi hạng: `code: null`, `name: "Giá rẻ nhất"`. Backend không đoán hạng; đừng gắn nhãn "Phổ thông"
@@ -119,7 +119,7 @@ Có hai loại, cùng `code: BUS`, `name: "Thương gia"`; shape `fareClasses` k
 - Vé mô phỏng chép ngày, giờ, chiều về, `available`, cửa sổ đặt chỗ và `priceValidUntil` của vé gốc, nên cùng
   `availabilityStatus` với hạng Phổ thông cạnh nó (vé gốc `EXPIRED` thì vé mô phỏng cũng `EXPIRED`).
 - Có vé Thương gia thật cùng hành trình và ngày thì vé mô phỏng bị khoá (`available: false`), chỉ vé thật được bán.
-- Thêm giỏ và đặt như mọi hạng khác (`productId` của phần tử `BUS`). Thanh toán trên staging là Stripe test.
+- Đặt như mọi hạng khác (`productId` của phần tử `BUS`). Thanh toán trên staging là Stripe test.
 - **Trên DB VM (web staging):** mặc định có, từ lượt nạp đầu tiên của job sau khi bản này được deploy
   ([guide deploy](trien-khai-job-cao-du-lieu.md#vé-thương-gia-mô-phỏng-trên-vm)). Trước đó staging chỉ có 43 vé thật ngày
   15/10. Đội deploy tắt (`SIMULATED_BUSINESS_FARES=0`) thì vé mô phỏng chuyển `available: false`, không biến mất khỏi đơn cũ.
@@ -130,10 +130,12 @@ Có hai loại, cùng `code: BUS`, `name: "Thương gia"`; shape `fareClasses` k
 - `price` của vé khứ hồi là **giá tổng cả hai chiều cho một người lớn** (`priceBasis: per_person`).
 - Chiều về: `attributes.returnFlight` và `attributes.returnDate`.
 
-## Giỏ hàng — không đổi
+## Đặt vé — không qua giỏ hàng
 
-Chọn hạng xong thì `POST /cart/items` với `productId` của hạng đó, `usingDate` là ngày bay chiều đi, `quantity` là số
-khách. `AddCartItemRequest`, giỏ và đơn không đổi.
+Vé máy bay không vào giỏ (từ 2026-10-01, `docs/spec/booking/dat-truc-tiep-theo-don-nhap.md`): `POST /cart/items` với vé
+máy bay trả `422 DIRECT_BOOKING_ONLY`. Chọn hạng xong thì `POST /booking-drafts` với `items[]`, mỗi chặng một phần tử có
+`productId` của hạng đó, `usingDate` là ngày bay và `guests` (hoặc `quantity` là số khách), rồi mở
+`/checkout?draft=<draftId>`. Hình dạng một phần tử vẫn là `AddCartItemRequest`; đơn không đổi.
 
 ## Việc của FE
 

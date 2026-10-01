@@ -14,7 +14,9 @@ Hệ sinh thái lưu trữ của V-OTA gồm hai cơ sở dữ liệu PostgreSQL
 |                                                                         |
 |  [Schema: cdp]           [Schema: catalog]           [Schema: app]      |
 |  - products              - product_meta (view)       - users            |
-|  - profiles              - combo_items               - bookings         |
+|  - profiles              - combo_items               - carts, cart_items|
+|                                                      - booking_drafts   |
+|                                                      - bookings         |
 |  - events                                            - booking_items    |
 |                                                      - payments         |
 |                                                      - conversations    |
@@ -39,6 +41,8 @@ Hệ sinh thái lưu trữ của V-OTA gồm hai cơ sở dữ liệu PostgreSQL
 |  vectorizer: none — backend tự sinh vector và tự ghi                    |
 +-------------------------------------------------------------------------+
 ```
+
+**Redis cho khách chưa đăng nhập:** giỏ hàng và đơn nháp của khách chưa đăng nhập không nằm trong PostgreSQL mà nằm trong Redis, khoá theo mã phiên khách. Dữ liệu được giữ 3 ngày rồi tự xoá; đơn nháp vẫn chỉ thanh toán được trong 30 phút. Khi khách đăng nhập, dữ liệu được chuyển vào `app.carts` và `app.booking_drafts` rồi xoá khỏi Redis. Mã phiên khách không được ghi xuống PostgreSQL.
 
 **Vì sao vector không nằm trong Postgres:** vòng seed `make demo-db` dựng lại database `vota` từ đầu, nên nếu vector nằm chung thì mỗi lần seed đều phải embed lại toàn bộ catalog. Tách sang Weaviate với volume riêng giúp vector sống độc lập với vòng đời seed quan hệ. Hệ quả: `catalog.product_vectors` và extension `pgvector` **đã được gỡ khỏi schema**.
 
@@ -122,6 +126,7 @@ erDiagram
     APP_BOOKINGS ||--o{ APP_BOOKING_ITEMS : "chứa các dịch vụ"
     APP_BOOKINGS ||--o{ APP_BOOKING_TRAVELERS : "đoàn khách"
     APP_BOOKINGS ||--o| APP_PAYMENTS : "thanh toán"
+    APP_BOOKING_DRAFTS ||--o{ APP_BOOKING_DRAFT_ITEMS : "các mục của một lần Đặt ngay"
     APP_CONVERSATIONS ||--o{ APP_MESSAGES : "lưu các tin nhắn"
     APP_USERS ||--o{ APP_REFRESH_TOKENS : "chuỗi rotation"
     APP_USERS |o--o{ APP_LOGIN_ATTEMPTS : "nhật ký đăng nhập"
@@ -202,6 +207,26 @@ erDiagram
         jsonb documents "FR-BKG-13: {title, nationality, docType, docNumber, docExpiry}. Chỉ khi giỏ có flight; docNumber không trả nguyên qua API (chỉ 4 số cuối), không gửi CDP/Insider/Stripe"
     }
 
+    APP_BOOKING_DRAFTS {
+        uuid draft_id PK
+        string cdp_user_id "Chủ đơn nháp"
+        timestamp created_at
+        timestamp expires_at "created_at + 30 phút"
+    }
+
+    APP_BOOKING_DRAFT_ITEMS {
+        uuid draft_item_id PK
+        uuid draft_id FK
+        string product_id
+        int quantity
+        date using_date
+        date using_date_to "Trả phòng (khách sạn)"
+        numeric unit_price_snapshot "Giá khách thấy gần nhất"
+        int adults
+        int children
+        numeric child_unit_price_snapshot
+    }
+
     APP_PAYMENTS {
         uuid payment_id PK
         uuid booking_id FK "UNIQUE — một đơn một phiên thanh toán"
@@ -239,6 +264,8 @@ erDiagram
 ```
 
 Giỏ hàng (FR-BKG-08): mỗi mục lưu thêm số người lớn, số trẻ em và snapshot giá trẻ em của sản phẩm tại thời điểm thêm. Ngày sinh chỉ lưu ở `app.booking_travelers`.
+
+Giỏ hàng chỉ chứa tour, trải nghiệm và tiện ích khác (`attraction`, `golf`, `combo`). Đơn nháp (FR-BKG-01): tạo khi khách bấm Đặt ngay; mỗi mục lưu cùng các trường như mục giỏ. Khi tạo đơn nháp, mục `attraction`, `golf`, `combo` được chép vào giỏ nếu giỏ chưa có mục cùng sản phẩm và ngày. Đơn nháp bị xoá khi tạo đơn giữ chỗ hoặc khi quá hạn.
 
 `expires_at` của `app.conversations` là hạn của working memory 24 giờ, không phải hạn xoá archive. Hội thoại và tin nhắn của user đã đăng nhập được giữ lâu dài; API lịch sử luôn lọc theo `cdp_user_id`. Khách chưa đăng nhập không được ghi vào hai bảng này.
 
@@ -356,7 +383,7 @@ Trạng thái xuất vé máy bay (FR-BKG-12) thuộc từng mục đơn (`booki
 
 ### 4.2. Vòng đời Sản phẩm & Khả năng phục vụ
 - **is_search_unit = true:** Sản phẩm đại diện cho một thực thể tìm kiếm (Ví dụ: Một resort/khách sạn tổng quan). Xuất hiện trong kết quả tìm kiếm và danh mục gợi ý.
-- **is_bookable = true:** Đơn vị có thể thêm vào giỏ và đặt chỗ (Ví dụ: Từng loại phòng cụ thể, từng chuyến bay trong ngày).
+- **is_bookable = true:** Đơn vị có thể đặt chỗ. Khách sạn và vé máy bay chỉ đặt trực tiếp; các loại khác thêm được vào giỏ (Ví dụ: Từng loại phòng cụ thể, từng chuyến bay trong ngày).
 - **is_recommendable = true:** Đủ tiêu chuẩn chất lượng và tính khả dụng để đưa vào các thuật toán gợi ý tự động.
 
 ---

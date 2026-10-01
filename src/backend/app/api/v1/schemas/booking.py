@@ -37,6 +37,18 @@ class UpdateCartItemRequest(BaseModel):
         return bool(self.model_fields_set & {"usingDate", "quantity", "nights", "guests"})
 
 
+class CreateBookingDraftBody(BaseModel):
+    """Đúng một trong `items` hoặc `fromBooking`; kiểm ở route để trả `400 VALIDATION_ERROR` theo trường."""
+
+    items: list[AddCartItemRequest] | None = Field(default=None, max_length=100)
+    allowPartial: bool = False
+    fromBooking: str | None = Field(default=None, max_length=32)
+
+
+class GuestMergeBody(BaseModel):
+    guestId: str = Field(min_length=1, max_length=64)
+
+
 class ContactBody(BaseModel):
     fullName: str = Field(max_length=500)
     email: str = Field(max_length=500)
@@ -77,6 +89,8 @@ class CheckoutItemDetailBody(BaseModel):
 
 
 class CheckoutRequestBody(BaseModel):
+    # Có thì thanh toán đúng đơn nháp này (Đặt ngay); không có thì thanh toán toàn bộ giỏ.
+    draftId: str | None = Field(default=None, min_length=1, max_length=64)
     contact: ContactBody
     # Có `travelers` thì áp luật đoàn khách mới; không có thì theo quy tắc tên cũ, nay được kiểm thật (spec §7.6).
     travelers: list[CheckoutTravelerBody] | None = Field(default=None, max_length=50)

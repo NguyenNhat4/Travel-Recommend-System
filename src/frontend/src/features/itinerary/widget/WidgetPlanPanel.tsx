@@ -20,7 +20,7 @@ const ItineraryMap = dynamic(
 
 export function WidgetPlanPanel({ widget }: { widget: FloatingWidgetController }) {
   const { activePlan, activeDayTab, setActiveDayTab, isCheckingOut,
-    handleCheckoutPlan, addToCart, hoveredCoordinate, hoveredPointId } = widget;
+    handleCheckoutPlan, itemActions, hoveredCoordinate, hoveredPointId } = widget;
   if (!activePlan) return null;
   return (
 <div className="grid grid-cols-1 md:grid-cols-2 w-full h-full overflow-hidden divide-x divide-slate-100">
@@ -112,7 +112,7 @@ export function WidgetPlanPanel({ widget }: { widget: FloatingWidgetController }
           aria-busy={isCheckingOut}
           className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-60 disabled:cursor-wait text-white text-sm font-bold rounded-xl shadow-xs transition flex items-center gap-2 cursor-pointer"
         >
-          <span>{isCheckingOut ? 'Đang thêm vào giỏ…' : 'Thanh toán'}</span>
+          <span>{isCheckingOut ? 'Đang mở trang thanh toán…' : 'Thanh toán tất cả'}</span>
           {isCheckingOut ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
         </button>
       </div>
@@ -125,7 +125,7 @@ export function WidgetPlanPanel({ widget }: { widget: FloatingWidgetController }
       plan={activePlan}
       activeDay={activeDayTab}
       onSelectDay={setActiveDayTab}
-      onAddToCart={(p) => addToCart(p, 2)}
+      itemActions={(p) => itemActions(p.id)}
       focusedCoordinate={hoveredCoordinate}
       focusedPointId={hoveredPointId}
       className="w-full h-full flex-1"
