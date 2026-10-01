@@ -54,7 +54,7 @@ def test_unreachable_reasons_on_fixture(world, events):
 
 def test_engine_view_caps_repeats_and_ignores_unresolvable(world):
     index = world["index"]
-    rows = [{"cdpUserId": "z", "eventName": "purchase", "productId": "R1", "timestamp": f"2026-09-{d:02d}T00:00:00Z", "eventGroupId": "g"}
+    rows = [{"cdpUserId": "z", "eventName": "purchase", "productId": "R1", "timestamp": f"2026-09-{d:02d}T00:00:00Z", "eventGroupId": "g", "usingDate": "2026-09-30"}
             for d in range(1, 8)] + [{"cdpUserId": "z", "eventName": "product_view", "productId": "ghost", "timestamp": "2026-09-10T00:00:00Z"}]
     view = engine_view(rows, index, AS_OF)
     assert view.trips["g"].n_events == 3 and view.n_events == 3 and "ghost" not in str(view.trips)
@@ -75,3 +75,24 @@ def test_ceiling_aggregates_and_markdown(world, events):
     md = ceiling_markdown(c, mpd_recall=0.6)
     assert "ceiling < Recall@20 mpd" in md and "`already_bought` | 2 | 2" in md
     assert "không phải nút thắt" in ceiling_markdown(c, mpd_recall=0.4)
+
+
+def test_engine_view_closes_trips_by_using_date_like_the_engine(world):
+    """FR-REC-02 (02/10): trip có usingDate đã qua không còn mở; trip mua từ lâu nhưng usingDate ở tương lai vẫn mở — view
+    phải trùng diagnostics engine."""
+    from src.evaluation.recsys_bench.engine import OfflineEngine
+    index = world["index"]
+    as_of = datetime(2026, 9, 24, tzinfo=timezone.utc)
+    rows = [{"cdpUserId": "z", "eventName": "purchase", "productId": "R1", "timestamp": "2026-09-19T00:00:00Z", "eventGroupId": "done",
+             "usingDate": "2026-09-21"},
+            {"cdpUserId": "z", "eventName": "purchase", "productId": "A1", "timestamp": "2026-05-01T00:00:00Z", "eventGroupId": "soon",
+             "usingDate": "2026-10-10"}]
+    view = engine_view(rows, index, as_of)
+    assert view.trips["done"].ends_on.isoformat() == "2026-09-21" and view.active_trip == "soon"
+    assert view.excluded == {"attraction"} and view.strategy == "cross_vertical"
+    engine = OfflineEngine(index, world["vectors"], [e for e in rows], candidate_k=50)
+    r = engine.recommend("z", as_of, 5, rows)
+    assert r["strategy"] == "cross_vertical" and r["diagnostics"]["excludedVerticals"] == ["attraction"]
+    # cả hai đã qua ngày sử dụng → không trip mở, long_term
+    rows2 = [{**rows[1], "usingDate": "2026-05-20"}, rows[0]]
+    assert engine_view(rows2, index, as_of).active_trip is None and engine.recommend("z", as_of, 5, rows2)["strategy"] == "long_term"
