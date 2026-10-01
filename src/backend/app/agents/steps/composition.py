@@ -5,10 +5,11 @@ from collections import Counter
 from copy import deepcopy
 import logging
 
-from src.backend.app.domain.itinerary.planning import (compose_plan, multi_day_offers, render_proposal, summary,
-                                                        validate_plan)
+from src.backend.app.domain.itinerary.planning import (compose_plan, free_to_visit, multi_day_offers, render_proposal,
+                                                        summary, validate_plan)
 
 from . import messages
+from .explanations import missing_stay_note
 from .messages import display_date, failure
 
 logger = logging.getLogger("uvicorn.error")
@@ -19,6 +20,7 @@ WARNINGS = {
     "SCHEDULE_ESTIMATE": "Khung buổi là dự kiến; cần kiểm tra giờ mở cửa, thời gian di chuyển và điều kiện "
                          "trẻ em trước khi đặt.",
     "UNKNOWN_TOTAL": "Chưa đủ đơn vị giá, số lượng hoặc điều kiện để tính tổng chi phí; không coi giá thiếu là 0.",
+    "FREE_ENTRY_ASSUMED": "Tổng coi các điểm tham quan tự do là không mất vé; một số nơi có thể thu phí tại chỗ.",
     "PRODUCT_COST_ONLY": "Tổng chỉ gồm các sản phẩm được chọn; chưa bao gồm chi phí phát sinh ngoài lịch trình.",
     "BUDGET_ON_PRODUCT_COST": "Đối chiếu ngân sách chỉ dựa trên chi phí các sản phẩm trong lịch trình; "
                               "chưa gồm ăn uống, đi lại và phát sinh ngoài lịch trình.",
@@ -126,6 +128,9 @@ def _budget_warnings(plan: dict, intent: dict, warnings: list) -> None:
         warnings.append({"code": "UNKNOWN_TOTAL", "message": WARNINGS["UNKNOWN_TOTAL"]})
         return
     warnings.append({"code": "PRODUCT_COST_ONLY", "message": WARNINGS["PRODUCT_COST_ONLY"]})
+    if any(free_to_visit(slot["product"]) for day in plan.get("days", []) for slot in day.get("slots", [])
+           if slot.get("product") is not None):
+        warnings.append({"code": "FREE_ENTRY_ASSUMED", "message": WARNINGS["FREE_ENTRY_ASSUMED"]})
     if intent.get("budget") is not None:
         warnings.append({"code": "BUDGET_ON_PRODUCT_COST", "message": WARNINGS["BUDGET_ON_PRODUCT_COST"]})
 
@@ -148,6 +153,9 @@ def composed(state: dict) -> dict:
     if _uses_recommendation(plan):
         warnings.append({"code": "RECOMMENDATION_FALLBACK", "message": WARNINGS["RECOMMENDATION_FALLBACK"]})
     _budget_warnings(plan, state["intent"], warnings)
+    no_stay = missing_stay_note(state, plan)
+    if no_stay:
+        warnings.append({"code": "NO_STAY_AVAILABLE", "message": no_stay})
     for day in plan["days"]:
         if not any(slot["product"] for slot in day["slots"]):
             warnings.append({"code": "DAY_WITHOUT_PRODUCTS",

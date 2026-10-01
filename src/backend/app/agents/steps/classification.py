@@ -256,9 +256,11 @@ def extract_result(state: dict, result: Extraction) -> dict:
     # LLM báo người dùng muốn đổi mà chưa nói đổi thành gì ('đổi ngày'): hỏi lại, giữ intent cũ, không gọi tool.
     asks_change = bool(result.change_without_value) and not _supplies_a_change(state, intent, constraints) \
         and not state.get("intent_override")
-    # Xin đổi mà chưa có giá trị không phải mâu thuẫn: trace thật "doi diem di" ra cả `conflict` lẫn
-    # `change_without_value`, và hỏi "xác nhận lại điểm đến và số ngày" thay vì "đổi sang đâu".
-    conflict = (result.conflict and not asks_change) or conflicting_days
+    # Xin đổi không phải mâu thuẫn: trace thật "doi diem di" ra cả `conflict` lẫn `change_without_value`, và hỏi
+    # "xác nhận lại điểm đến và số ngày" thay vì "đổi sang đâu". Câu đã có giá trị mới cũng vậy: chip "Đi Hà Nội 3 ngày
+    # từ ngày 15/10/2026" ra `conflict` + `change_without_value=['startDate']` vì ngày mới khác ngày cũ. LLM đã tự xếp
+    # lượt này là đổi nên bỏ cờ `conflict`; mâu thuẫn ngay trong câu (ngày đi/về lệch số ngày) vẫn do `conflicting_days`.
+    conflict = (result.conflict and not result.change_without_value) or conflicting_days
     invalid = _invalid_inputs(intent, today)
     missing = [key for key in ("destination", "days") if not intent.get(key)]
     # Ngày đi, số người, ngân sách: hỏi gộp một câu, một lần mỗi hội thoại và chỉ trước lần lập lịch đầu tiên.

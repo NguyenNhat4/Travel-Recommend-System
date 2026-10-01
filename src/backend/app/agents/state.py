@@ -8,7 +8,7 @@ from operator import add
 from pydantic import BaseModel, Field
 
 from src.backend.app.domain.itinerary.types import (
-    Candidates, Constraints, PlanWarning, Product, Sources, ToolCall, ToolErrorPayload, ToolResult,
+    Candidates, Constraints, DropSummary, PlanWarning, Product, Sources, ToolCall, ToolErrorPayload, ToolResult,
     TripIntent,
 )
 
@@ -57,6 +57,7 @@ class AgentState(TypedDict, total=False):
     sources: Sources
     warnings: list[PlanWarning]
     nearest_open_date: str | None
+    drop_summary: dict[str, DropSummary]
     response: dict[str, Any]  # `ItineraryResponse` envelope; contract-owned, see domain/itinerary/types.py
     http_status: int
     decision: str

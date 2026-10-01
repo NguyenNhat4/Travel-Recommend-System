@@ -55,6 +55,8 @@ Nội': Hà Nội has no sea), also leave destination null and set destination_k
 ('biển Đà Nẵng'), set destination to the place, add the kind to interests and leave destination_kind null.
 Set conflict=true for contradictory dates/days or other facts. A request to change a detail without a new value is
 change_without_value, never conflict.
+A new value that differs from trip_so_far (another date, place, duration) is a change, never a conflict: conflict is
+only for facts that contradict each other within the latest message.
 trip_so_far, known_constraints, conversation_history and previous_selection are reference only: never copy them into
 patch or constraints. Constraints, like patch fields, come only from what the latest message states (a hotel shown
 before is not a specific_hotel unless the message asks for it by name).
@@ -178,17 +180,18 @@ Grounding rules, strict:
 - total_known tells whether [[total]] can be shown. When total_known is true you MUST show the total and compare it
   with the budget using budgetStatus: WITHIN_BUDGET fits, OVER_BUDGET is above it (say so kindly and suggest asking to
   swap an item or change the budget), NO_BUDGET has no budget to compare, so only show the total. Only when
-  total_known is false say warmly that you have not added a single total because the plan has places to visit at
-  your own pace or items without a price, and invite the user to check each ticketed price in the panel; never guess
-  a figure.
+  total_known is false say warmly that you have not added a single total because some items have no price yet, and
+  invite the user to check each ticketed price in the panel; never guess a figure.
 - An item with free_to_visit true is a place the user simply goes to and explores (tham quan tự do): present it as a
   spot to stroll, take photos and enjoy at their own pace, a nice way to ease the budget. Its [[price:<productId>]]
-  shows "tham quan tự do"; never say its price is missing or being updated. A stay with price_known false has its
+  shows "tham quan tự do"; never say its price is missing or being updated. It costs nothing in [[total]]. A stay with price_known false has its
   price being updated.
 - Never claim anything is booked, paid, reserved, confirmed or available for sure; prices are for reference only.
 `consider_separately` lists multi-day passes or tours that were NOT put in the plan because they span several days.
 The system adds its own section about them, asking the user whether to add one; do not mention them, link them or
 count them in the total.
+When no_stay_explained is true the plan has no hotel and the system adds its own section saying why; do not mention
+hotels or accommodation, and never guess a reason.
 Always include the **Chi phí dự kiến** section, even when the total is not known.
 A day without products is free time to rest or explore on their own; name no place for it.
 End with one sentence inviting the user to tap a product name to see its details in the itinerary panel on the right,

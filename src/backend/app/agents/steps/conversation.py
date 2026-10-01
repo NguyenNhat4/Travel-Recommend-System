@@ -9,6 +9,7 @@ from src.backend.app.domain.itinerary.planning import empty_intent
 from ..models import ConversationalAnswer
 from . import messages
 from .classification import vietnam_today
+from .explanations import constraint_question
 from .history import llm_context, prompt_yaml
 from .messages import display_date, event, failure, message, titled
 from .prompts import CONVERSATION_PROMPT
@@ -224,10 +225,18 @@ def unclear_input_reply(state: dict) -> dict:
 
 
 def constraint_clarification(state: dict) -> dict:
-    """Retrieval finished but no product meets a required condition; ask before relaxing it."""
-    question = messages.CLARIFY_CONSTRAINT
-    return {"response": {"status": "NEEDS_CLARIFICATION", "conversationId": state["conversation_id"],
-                         "knownIntent": state["intent"], "question": question}}
+    """Retrieval finished but no product meets a required condition; ask before relaxing it.
+
+    Câu cố định nêu lý do thật lấy từ `drop_summary` (sai ngày, vượt giá, không có tên đó...) kèm chip gợi ý;
+    không biết lý do thì dùng câu chung `CLARIFY_CONSTRAINT`.
+    """
+    explained = constraint_question(state)
+    question, suggestions = explained if explained else (messages.CLARIFY_CONSTRAINT, [])
+    response = {"status": "NEEDS_CLARIFICATION", "conversationId": state["conversation_id"],
+                "knownIntent": state["intent"], "question": question}
+    if suggestions:
+        response["suggestions"] = suggestions
+    return {"response": response}
 
 
 def clarify_result(update: dict) -> dict:

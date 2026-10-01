@@ -11,7 +11,7 @@ from __future__ import annotations
 from copy import deepcopy
 import re
 
-from src.backend.app.domain.itinerary.planning import multi_day_span
+from src.backend.app.domain.itinerary.planning import free_to_visit, multi_day_span
 
 from ..models import ItineraryNarration
 from .classification import TRIP_FIELDS
@@ -75,20 +75,8 @@ def _offers(response: dict) -> dict[str, dict]:
             for product in products}
 
 
-def _free_to_visit(product: dict) -> bool:
-    """Điểm đến để tham quan tự do: nguồn ghi `ticketed=false`, hoặc điểm tham quan/golf không có giá (người dùng chốt
-    01/10: hoạt động không có giá là nơi đến chơi được, ví dụ "Thị trấn Hoàng Hôn - Sunset Town").
-
-    Chỉ là cách nói trong lời diễn giải: tổng tiền vẫn là `null` khi thiếu giá (PRD `architecture.md` §3), và khách
-    sạn không có giá vẫn là "giá đang cập nhật".
-    """
-    if (product.get("attributes") or {}).get("ticketed") is False:
-        return True
-    return product.get("unitPrice") is None and product.get("taxonomy") != "hotel"
-
-
 def _price(state: dict, product: dict) -> str:
-    if _free_to_visit(product):
+    if free_to_visit(product):
         return message(state, "free_entry")
     if product.get("unitPrice") is None:
         return message(state, "no_price")
@@ -134,7 +122,7 @@ def narration_input(state: dict) -> list:
             "items": [{"time": _time_label(state, slot), "productId": slot["product"]["productId"],
                        "name": _label(slot["product"]), "taxonomy": slot["product"].get("taxonomy"),
                        "durationMinutes": slot["product"].get("attributes", {}).get("durationMinutes"),
-                       "free_to_visit": _free_to_visit(slot["product"]),
+                       "free_to_visit": free_to_visit(slot["product"]),
                        "note": slot.get("note"), "because": slot.get("because") or []}
                       if slot.get("product") else
                       {"time": _time_label(state, slot), "activityType": slot.get("activityType"), "note": slot.get("note")}
@@ -145,6 +133,7 @@ def narration_input(state: dict) -> list:
     payload = {"message": state.get("query", ""), **llm_context(state),
                "itinerary": view, "consider_separately": offers, "changes": trip_changes(state),
                "budgetStatus": itinerary.get("budgetStatus"), "total_known": itinerary.get("estimatedTotal") is not None,
+               "no_stay_explained": _no_stay_block(state, response) is not None,
                "has_budget": state["intent"].get("budget") is not None}
     return [("system", NARRATE_PROMPT + f"\nReply in {language}."), ("human", prompt_yaml(payload))]
 
@@ -170,13 +159,24 @@ def _offers_block(state: dict, offers) -> str:
     return f"**{message(state, 'section_offers')}**\n" + "\n".join(lines) + f"\n{message(state, 'offers_question')}"
 
 
-def _with_offers(state: dict, body: str, offers) -> str:
-    block = _offers_block(state, offers)
+def _before_cost(state: dict, body: str, block: str) -> str:
+    """Chèn một mục do hệ thống viết ngay trước mục chi phí; không có mục chi phí thì nối vào cuối."""
     heading = f"**{message(state, 'section_cost')}"
     position = body.find(heading)
     if position < 0:
         return f"{body}\n\n{block}"
     return f"{body[:position]}{block}\n\n{body[position:]}"
+
+
+def _with_offers(state: dict, body: str, offers) -> str:
+    return _before_cost(state, body, _offers_block(state, offers))
+
+
+def _no_stay_block(state: dict, response: dict) -> str | None:
+    """Mục "Chưa có khách sạn" nêu lý do thật (cảnh báo `NO_STAY_AVAILABLE` của `compose`); None khi đã có chỗ ở."""
+    note = next((warning["message"] for warning in response.get("warnings", [])
+                 if warning.get("code") == "NO_STAY_AVAILABLE"), None)
+    return f"**{message(state, 'section_no_stay')}**\n{note}" if note else None
 
 
 def fallback_message(state: dict, response: dict) -> str:
@@ -194,6 +194,9 @@ def fallback_message(state: dict, response: dict) -> str:
     offers = _offers(response)
     if offers:
         blocks.append(_offers_block(state, offers.values()))
+    no_stay = _no_stay_block(state, response)
+    if no_stay:
+        blocks.append(no_stay)
     blocks.append(f"**{message(state, 'section_cost')}**\n{_cost_line(state, itinerary)}")
     blocks.append(f"**{message(state, 'section_notes')}**\n{message(state, 'narrate_notes')}\n"
                   f"{message(state, 'narrate_outro')}")
@@ -283,6 +286,10 @@ def render(state: dict, response: dict, narration: ItineraryNarration) -> tuple[
     if offers:
         # Gói nhiều ngày luôn được hỏi riêng bằng câu cố định (LLM hay quên câu hỏi): chèn trước mục chi phí.
         body = _with_offers(state, body, offers.values())
+    no_stay = _no_stay_block(state, response)
+    if no_stay:
+        # Lý do không có chỗ ở lấy từ dữ liệu tool, không để LLM tự diễn đạt: chèn trước mục chi phí.
+        body = _before_cost(state, body, no_stay)
     changes = changes_sentence(state)
     if changes:
         body = f"{changes}\n\n{body}"

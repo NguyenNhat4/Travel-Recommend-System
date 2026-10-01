@@ -107,6 +107,40 @@ MESSAGES = {
         # Các câu dưới đây được gửi lại làm lượt chat kế tiếp khi người dùng bấm gợi ý: phải là câu yêu cầu đủ ý.
         "suggestion_trip": "Đi {destination} {days} ngày",
         "suggestion_trip_date": "Đi {destination} {days} ngày từ ngày {date}",
+        # Câu đổi rõ ràng: "Đi … từ ngày …" sau một chuyến đã có ngày bị LLM đọc thành mâu thuẫn (trace nhat-10-1).
+        "suggestion_change_date": "Đổi ngày khởi hành sang {date}",
+        "suggestion_no_stay": "Đi {destination} {days} ngày, không cần khách sạn",
+        # Điều kiện bắt buộc không có sản phẩm (`explanations`): nêu lý do thật lấy từ kết quả tool của lượt này.
+        "noun_hotel": "khách sạn",
+        "noun_activity": "điểm tham quan",
+        "unmet_title_none": "Chưa có {noun} ở {destination}",
+        "unmet_title_DATE": "{noun_cap} ở {destination} chưa mở bán cho ngày đi",
+        "unmet_title_PRICE": "Chưa có {noun} trong mức giá bạn đặt",
+        "unmet_title_ATTRIBUTES": "Chưa có {noun} đáp ứng tiêu chí của bạn",
+        "unmet_title_NAMED_REQUIREMENT": "Chưa tìm thấy \"{name}\"",
+        "unmet_title_UNAVAILABLE": "{noun_cap} ở {destination} đang tạm ngừng bán",
+        "unmet_none": "Mình chưa tìm thấy {noun} nào ở {destination} trong dữ liệu hiện có.",
+        "unmet_DATE": "Mình tìm thấy {count} {noun} ở {destination}, nhưng dữ liệu hiện chỉ nhận đặt trong khoảng "
+                      "{open_from}–{open_to}, không khớp chuyến của bạn từ {start} đến {end}.",
+        "unmet_DATE_no_window": "Mình tìm thấy {count} {noun} ở {destination}, nhưng chưa có {noun} nào mở bán cho "
+                                "ngày {start}.",
+        "unmet_PRICE": "Mình tìm thấy {count} {noun} ở {destination}, nhưng không {noun} nào có giá phù hợp mức tối đa "
+                       "{price} bạn đặt.",
+        "unmet_ATTRIBUTES": "Mình tìm thấy {count} {noun} ở {destination}, nhưng không {noun} nào đáp ứng tiêu chí bạn "
+                            "yêu cầu (số sao hoặc tiện ích).",
+        "unmet_NAMED_REQUIREMENT": "Mình tìm thấy {count} {noun} ở {destination}, nhưng không có \"{name}\" trong dữ "
+                                   "liệu hiện có.",
+        "unmet_UNAVAILABLE": "Mình tìm thấy {count} {noun} ở {destination}, nhưng tất cả đang tạm ngừng bán.",
+        "unmet_ask_date": "Bạn muốn dời ngày khởi hành sang {nearest}, hay giữ ngày và lập lịch không kèm {noun}?",
+        "unmet_ask_relax": "Bạn muốn nới yêu cầu này, hay lập lịch không kèm {noun}?",
+        "unmet_ask_other": "Bạn muốn lập lịch không kèm {noun}, hay chọn điểm đến khác?",
+        "dropped_date": "Chỉ mở bán từ {start} đến {end}, không khớp ngày khởi hành.",
+        "section_no_stay": "Chưa có khách sạn",
+        "no_stay_DATE": "Khách sạn ở {destination} trong dữ liệu hiện chỉ nhận đặt từ {open_from} đến {open_to}, nên "
+                        "lịch này chưa kèm chỗ ở cho chuyến từ {start}.",
+        "no_stay_other": "Chưa có khách sạn ở {destination} phù hợp với chuyến này, nên lịch chưa kèm chỗ ở.",
+        "no_stay_none": "Mình chưa tìm thấy khách sạn ở {destination} trong dữ liệu hiện có, nên lịch chưa kèm chỗ ở.",
+        "no_stay_nearest": "Muốn có khách sạn, bạn có thể dời ngày khởi hành sang {nearest}.",
         # Lời diễn giải lịch trình (`narrate`): câu ghi nhận thay đổi và bản dựng bằng luật khi LLM không dùng được.
         "narrate_title": "Lịch trình {days} ngày ở {destination}",
         "narrate_changes": "Mình ghi nhận đổi {changes}. Lịch trình mình gợi ý như sau:",
@@ -144,7 +178,7 @@ MESSAGES = {
         "cost_WITHIN_BUDGET": "Khoảng {total} cho các sản phẩm trong lịch trình, nằm trong ngân sách {budget}.",
         "cost_OVER_BUDGET": "Khoảng {total} cho các sản phẩm trong lịch trình, vượt ngân sách {budget}.",
         "cost_NO_BUDGET": "Khoảng {total} cho các sản phẩm trong lịch trình.",
-        "cost_UNKNOWN": "Mình chưa cộng thành một con số tổng vì lịch có điểm tham quan tự do hoặc mục chưa có giá; "
+        "cost_UNKNOWN": "Mình chưa cộng thành một con số tổng vì lịch có mục chưa có giá; "
                         "giá từng mục có vé bạn xem ở khung lịch trình bên phải nhé.",
         "narrate_notes": "Giá là giá tham khảo, chưa gồm ăn uống và đi lại; cần kiểm tra lại khi đặt.",
         "narrate_outro": "Bấm vào tên sản phẩm để xem chi tiết ở khung lịch trình bên phải, hoặc nhắn mình nếu muốn "
@@ -243,6 +277,37 @@ MESSAGES = {
                            "for {date} yet. You can pick one of the suggestions below.",
         "suggestion_trip": "A {days}-day trip to {destination}",
         "suggestion_trip_date": "A {days}-day trip to {destination} starting on {date}",
+        "suggestion_change_date": "Change the departure date to {date}",
+        "suggestion_no_stay": "A {days}-day trip to {destination} without a hotel",
+        "noun_hotel": "hotel",
+        "noun_activity": "attraction",
+        "unmet_title_none": "No {noun} in {destination} yet",
+        "unmet_title_DATE": "{noun_cap}s in {destination} are not on sale for your dates",
+        "unmet_title_PRICE": "No {noun} within your price limit",
+        "unmet_title_ATTRIBUTES": "No {noun} meets your criteria",
+        "unmet_title_NAMED_REQUIREMENT": "\"{name}\" not found",
+        "unmet_title_UNAVAILABLE": "{noun_cap}s in {destination} are not on sale",
+        "unmet_none": "I could not find any {noun} in {destination} in the current data.",
+        "unmet_DATE": "I found {count} {noun}(s) in {destination}, but the data only allows booking between {open_from} "
+                      "and {open_to}, which does not match your trip from {start} to {end}.",
+        "unmet_DATE_no_window": "I found {count} {noun}(s) in {destination}, but none is on sale for {start}.",
+        "unmet_PRICE": "I found {count} {noun}(s) in {destination}, but none fits your maximum price of {price}.",
+        "unmet_ATTRIBUTES": "I found {count} {noun}(s) in {destination}, but none meets your criteria (stars or "
+                            "amenities).",
+        "unmet_NAMED_REQUIREMENT": "I found {count} {noun}(s) in {destination}, but \"{name}\" is not in the current "
+                                   "data.",
+        "unmet_UNAVAILABLE": "I found {count} {noun}(s) in {destination}, but they are all off sale for now.",
+        "unmet_ask_date": "Would you like to move the departure to {nearest}, or keep the dates and plan without a "
+                          "{noun}?",
+        "unmet_ask_relax": "Would you like to relax this requirement, or plan without a {noun}?",
+        "unmet_ask_other": "Would you like to plan without a {noun}, or pick another destination?",
+        "dropped_date": "Only on sale from {start} to {end}, which does not match the departure date.",
+        "section_no_stay": "No hotel yet",
+        "no_stay_DATE": "Hotels in {destination} can currently only be booked from {open_from} to {open_to}, so this "
+                        "plan has no stay for a trip starting {start}.",
+        "no_stay_other": "No hotel in {destination} fits this trip yet, so the plan has no stay.",
+        "no_stay_none": "I could not find a hotel in {destination} in the current data, so the plan has no stay.",
+        "no_stay_nearest": "To get a hotel, you could move the departure to {nearest}.",
         "narrate_title": "{days}-day itinerary in {destination}",
         "narrate_changes": "Noted: {changes}. Here is the itinerary I suggest:",
         "narrate_intro": "Here is the itinerary I suggest:",
@@ -279,8 +344,8 @@ MESSAGES = {
         "cost_WITHIN_BUDGET": "About {total} for the products in the itinerary, within your budget of {budget}.",
         "cost_OVER_BUDGET": "About {total} for the products in the itinerary, over your budget of {budget}.",
         "cost_NO_BUDGET": "About {total} for the products in the itinerary.",
-        "cost_UNKNOWN": "I haven't added a single total because the plan includes places you visit at your own pace "
-                        "or items without a price; check the price of each ticketed item in the panel on the right.",
+        "cost_UNKNOWN": "I haven't added a single total because the plan includes items without a price yet; "
+                        "check the price of each ticketed item in the panel on the right.",
         "narrate_notes": "Prices are for reference only and exclude meals and transport; check them again when booking.",
         "narrate_outro": "Tap a product name to see its details in the itinerary panel on the right, or tell me if you "
                          "want to change the date, hotel or activities.",

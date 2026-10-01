@@ -1512,7 +1512,7 @@ export interface components {
             days: components["schemas"]["ItineraryDay"][];
             /** @description Số mục ứng viên checkout demo có available=true và giá khác null, loại ticketed=false và bản ghi cha khi đã chọn con; không xác nhận tồn kho. */
             bookableCount?: number;
-            /** @description Backend tính tổng khi đủ đơn vị/số lượng; thiếu thì null, budgetStatus UNKNOWN và warning. Không bỏ qua khoản chưa biết. */
+            /** @description Backend tính tổng khi đủ đơn vị/số lượng; thiếu thì null, budgetStatus UNKNOWN và warning. Không bỏ qua khoản chưa biết. Điểm tham quan tự do (attraction/golf có ticketed=false hoặc unitPrice null) tính 0 vào tổng, kèm warning FREE_ENTRY_ASSUMED. */
             estimatedTotal: number | null;
             currency: components["schemas"]["Currency"];
             budgetStatus: components["schemas"]["BudgetStatus"];
@@ -1582,6 +1582,8 @@ export interface components {
                  */
                 startDateMin?: string;
             };
+            /** @description Tuỳ chọn (1.13.0). Câu yêu cầu gửi được nguyên văn làm lượt chat kế tiếp, cùng ngữ nghĩa với `ItineraryNoResults.suggestions`. Có khi điều kiện bắt buộc (khách sạn, khách sạn hoặc hoạt động cụ thể) không có sản phẩm nào đáp ứng, ví dụ ngày khởi hành gần nhất còn bán hoặc lập lịch không cần khách sạn. */
+            suggestions?: string[];
             metadata?: components["schemas"]["ItineraryMetadata"];
         };
         ItineraryNoResults: {

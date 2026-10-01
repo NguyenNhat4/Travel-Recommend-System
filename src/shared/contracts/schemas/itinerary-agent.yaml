@@ -314,7 +314,8 @@ ItineraryPlan:
       - 'null'
       minimum: 0
       description: Backend tính tổng khi đủ đơn vị/số lượng; thiếu thì null, budgetStatus UNKNOWN và warning.
-        Không bỏ qua khoản chưa biết.
+        Không bỏ qua khoản chưa biết. Điểm tham quan tự do (attraction/golf có ticketed=false hoặc unitPrice null)
+        tính 0 vào tổng, kèm warning FREE_ENTRY_ASSUMED.
     currency:
       $ref: ../openapi.yaml#/components/schemas/Currency
     budgetStatus:
@@ -496,6 +497,15 @@ ItineraryNeedsClarification:
           type: string
           format: date
           description: Ngày khởi hành sớm nhất được phép chọn; hôm nay theo giờ Việt Nam.
+    suggestions:
+      type: array
+      maxItems: 3
+      description: >-
+        Tuỳ chọn (1.13.0). Câu yêu cầu gửi được nguyên văn làm lượt chat kế tiếp, cùng ngữ nghĩa với
+        `ItineraryNoResults.suggestions`. Có khi điều kiện bắt buộc (khách sạn, khách sạn hoặc hoạt động cụ thể)
+        không có sản phẩm nào đáp ứng, ví dụ ngày khởi hành gần nhất còn bán hoặc lập lịch không cần khách sạn.
+      items:
+        type: string
     metadata:
       $ref: ../openapi.yaml#/components/schemas/ItineraryMetadata
 ItineraryNoResults:

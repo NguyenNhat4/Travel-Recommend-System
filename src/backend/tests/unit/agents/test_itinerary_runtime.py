@@ -539,6 +539,36 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['response']['status'], 'NEEDS_CLARIFICATION')
         self.assertNotIn('ConversationalAnswer', llm.calls)
 
+    async def test_required_hotel_outside_the_trip_dates_explains_why_and_offers_chips(self):
+        # Trace nhat-10-1 "không có hotel à": khách sạn chỉ mở bán sau ngày đi, trước đây chỉ nhận câu chung.
+        window = {'availableFrom': '2999-10-15', 'availableTo': '2999-10-16'}
+        clients = Clients(products=[product('h1', taxonomy='hotel', priceUnit='PER_NIGHT', **window),
+                                    product('h2', taxonomy='hotel', priceUnit='PER_NIGHT', **window)])
+        llm = ScriptedLlm(extraction=Extraction(start_date_undecided=True, constraints={'require_hotel': True},
+                patch={'destination': 'Nha Trang', 'days': 3, 'startDate': '2999-10-02'}))
+        result = await self.run_graph(llm, clients)
+        response = result['response']
+        self.assertEqual(response['status'], 'NEEDS_CLARIFICATION')
+        self.assertTrue(response['question'].startswith('**Khách sạn ở Nha Trang chưa mở bán cho ngày đi**\n'))
+        self.assertIn('15/10/2999–16/10/2999', response['question'])
+        self.assertEqual(response['suggestions'], ['Đổi ngày khởi hành sang 15/10/2999',
+                                                   'Đi Nha Trang 3 ngày, không cần khách sạn'])
+        self.assertNotIn('ConversationalAnswer', llm.calls)
+
+    async def test_itinerary_without_a_stay_says_why_in_the_reply(self):
+        clients = Clients(products=[product('a'), product('h1', taxonomy='hotel', priceUnit='PER_NIGHT',
+                                                          availableFrom='2999-10-15', availableTo='2999-10-16')])
+        llm = ScriptedLlm(extraction=extracted(destination='Nha Trang', days=2, startDate='2999-10-02'))
+        response = (await self.run_graph(llm, clients))['response']
+        self.assertEqual(response['status'], 'COMPLETED')
+        self.assertNotIn('stay', response['itinerary'])
+        codes = {warning['code']: warning['message'] for warning in response['warnings']}
+        self.assertIn('15/10/2999 đến 16/10/2999', codes['NO_STAY_AVAILABLE'])
+        dropped = next(w for w in response['warnings'] if w.get('productId') == 'h1')
+        self.assertEqual(dropped['message'], 'Chỉ mở bán từ 15/10/2999 đến 16/10/2999, không khớp ngày khởi hành.')
+        # Câu LLM giả không có mục chi phí nên mục do hệ thống viết được nối vào cuối.
+        self.assertTrue(response['message'].endswith(f"**Chưa có khách sạn**\n{codes['NO_STAY_AVAILABLE']}"))
+
     async def test_dates_derive_duration_and_conflicts_do_not_search(self):
         llm = ScriptedLlm(extraction=Extraction(start_date_undecided=True, patch={'destination': 'Nha Trang', 'startDate': '2999-10-10'}, end_date='2999-10-12'))
         result = await self.run_graph(llm)
@@ -927,6 +957,18 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         codes = [w['code'] for w in result['response']['warnings']]
         self.assertIn('PRODUCT_COST_ONLY', codes)
         self.assertIn('BUDGET_ON_PRODUCT_COST', codes)
+        self.assertNotIn('UNKNOWN_TOTAL', codes)
+
+    async def test_an_unpriced_attraction_is_free_and_the_total_says_so(self):
+        # Trace thật "2 người lớn, 5 triệu": bãi biển không có giá từng làm tổng thành null.
+        clients = Clients(products=[product('show'), product('beach', unitPrice=None, priceUnit='UNKNOWN')])
+        result = await self.run_graph(ScriptedLlm(extraction=extracted(destination='Nha Trang', days=2,
+                        budget=5000000, party={'type': 'COUPLE', 'adults': 2, 'children': 0})), clients)
+        itinerary = result['response']['itinerary']
+        self.assertEqual(itinerary['estimatedTotal'], 200000)
+        self.assertEqual(itinerary['budgetStatus'], 'WITHIN_BUDGET')
+        codes = [w['code'] for w in result['response']['warnings']]
+        self.assertIn('FREE_ENTRY_ASSUMED', codes)
         self.assertNotIn('UNKNOWN_TOTAL', codes)
 
     async def test_a_full_day_visit_gets_a_day_to_itself(self):

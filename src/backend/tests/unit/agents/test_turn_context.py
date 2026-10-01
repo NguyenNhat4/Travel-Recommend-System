@@ -114,6 +114,17 @@ class ExtractionTests(unittest.TestCase):
         self.assertEqual(result['clarification_reason'], 'change_without_value')
         self.assertEqual(result['missing_fields'], ['destination'])
 
+    def test_a_new_date_that_differs_from_the_trip_is_a_change_not_a_conflict(self):
+        # Trace nhat-10-1: chip "Đi Hà Nội 3 ngày từ ngày 15/10/2026" sau lịch đi 02/10 ra conflict=true kèm
+        # change_without_value=['startDate'] dù patch đã có ngày mới; trước đây bị hỏi "Xác nhận ngày khởi hành".
+        current = planned_state('Đi Hà Nội 3 ngày từ ngày 15/10/2099')
+        current['intent'] = {**current['intent'], 'startDate': '2099-10-02'}
+        result = extract_result(current, Extraction(conflict=True, change_without_value=['startDate'],
+                                                    patch={'startDate': '2099-10-15', 'days': 3}))
+        self.assertNotIn('clarification_reason', {k: v for k, v in result.items() if v})
+        self.assertEqual(result['intent']['startDate'], '2099-10-15')
+        self.assertEqual(result['decision'], 'tool')
+
     def test_a_real_conflict_is_still_asked(self):
         result = extract_result(planned_state('đi 3 ngày từ 10/10 đến 20/10'), Extraction(conflict=True))
         self.assertEqual(result['clarification_reason'], 'conflict')

@@ -64,7 +64,7 @@ def intake_node(state: AgentState) -> dict:
             "max_attempts": min(max(1, state.get("max_attempts", MAX_ATTEMPTS)), MAX_ATTEMPTS),
             "tool_plan": [], "tool_results": [], "details": {}, "detail_errors": {},
             "supported_destinations": None, "destination_kind": None,
-            "candidates": {}, "sources": {}, "response": {}, "warnings": [],
+            "candidates": {}, "sources": {}, "response": {}, "warnings": [], "drop_summary": {},
             "missing_fields": [], "start_date_asked": bool(state.get("start_date_asked", False)),
             "clarification_rounds": int(state.get("clarification_rounds", 0) or 0),
             "invalid_inputs": [],
