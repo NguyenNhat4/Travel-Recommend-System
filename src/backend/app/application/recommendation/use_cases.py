@@ -11,6 +11,7 @@ from src.backend.app.application.ports.cdp_client import CdpUnavailableError
 from src.backend.app.application.search import hit
 from src.backend.app.core.request_context import current_request_id
 from src.backend.app.domain.recommendation import Popularity, Purchase, ResolvedEvent, build_profile, explain, mmr_select, score_candidates
+from src.backend.app.domain.recommendation.profile import MAX_PER_VERTICAL
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -79,6 +80,9 @@ class RecommendForUser:
     popularity: Popularity | None = None
     candidate_k: int = 200
     popular_k: int = 50   # ứng viên thêm theo popularity: W_POP đủ lớn để món phổ biến xa profile vẫn lọt top
+    # Giới hạn món mỗi taxonomy sau MMR (spec §4.7, production = MAX_PER_VERTICAL). `None` chỉ dành cho harness đánh giá
+    # offline (`src/evaluation/recsys_bench`, mode eval: k = 20 cần đủ 20 món); main.py không đổi giá trị này.
+    max_per_vertical: int | None = MAX_PER_VERTICAL
 
     def __call__(self, cdp_user_id: str | None, k: int = 5, now: datetime | None = None,
                  events: list[dict] | None = None, destination: str | None = None) -> dict:
@@ -149,7 +153,7 @@ class RecommendForUser:
         E = space.E
         score, _ = score_candidates(profile, E, pop)
         cand = sorted(cand, key=lambda j: -score[j])[: self.candidate_k]
-        chosen = mmr_select(score, E, cand, space.taxonomy, k)
+        chosen = mmr_select(score, E, cand, space.taxonomy, k, max_per_vertical=self.max_per_vertical)
         if not chosen:
             return {**base, **self._cold_start(k, now, destination)}
 

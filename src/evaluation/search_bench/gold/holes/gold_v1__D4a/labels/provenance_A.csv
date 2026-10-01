@@ -1,0 +1,598 @@
+﻿qid,product_id,source,machine_label,machine_children,machine_note,model,created_at,reviewed_by,reviewed_at,review
+c0481,2b42b7ff-6ad8-5a24-ab0c-3c76969af752,machine,1,,"dung noi dung loai, sao 4 < 5 yeu cau",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:00:02+07:00,accepted
+c0481,adbe6b4b-5055-52b1-8425-c80fa172b05b,machine,1,,"dung noi dung loai, sao 3 < 5 yeu cau",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:00:02+07:00,accepted
+c0481,6210192c-d1f9-5879-958a-8735ec554d17,machine,1,,"dung noi dung loai, sao 1 < 5 yeu cau",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:00:02+07:00,accepted
+c0481,11ef773a-c932-53ab-a7e1-cb6f353cca95,machine,1,,"dung noi dung loai, sao 3 < 5 yeu cau",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:00:02+07:00,accepted
+c0481,cb474f32-2953-54b8-9916-08d6a2f40898,machine,1,,"dung noi dung loai, sao 3 < 5 yeu cau",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:00:02+07:00,accepted
+c0481,b8289d9e-0619-5512-bfc7-4476c63ec351,machine,1,,"dung noi dung loai, sao 3 < 5 yeu cau",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:00:02+07:00,accepted
+c0481,a54e6440-6477-5ce3-b65c-2e693b5ee70e,machine,1,,"dung noi dung loai, sao 2 < 5 yeu cau",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:00:02+07:00,accepted
+c0481,26737df3-407c-5f73-b735-e69d25b33b76,machine,1,,"dung noi dung loai, sao 3 < 5 yeu cau",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:00:02+07:00,accepted
+c0481,a037968f-a826-5a5d-9a4a-0ccdb3078a59,machine,1,,"dung noi dung loai, sao 3 < 5 yeu cau",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:00:02+07:00,accepted
+c0489,e60c9487-be0a-51ca-8120-7e523651da4c,machine,1,,"dung noi dung loai, sao 1 < 4 yeu cau",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:01:29+07:00,accepted
+c0489,1135ceee-0da1-590c-bbf0-a9f51e5a7134,machine,2,,"dung noi, hotel_property, sao 4 dat >= 4; gia kiem o cap room",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:01:29+07:00,accepted
+c0489,60aa9ec8-94ef-5281-8fd5-108e8d7fd269,machine,2,,"dung noi, hotel_property, sao 5 dat >= 4; gia kiem o cap room",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:01:29+07:00,accepted
+c0489,3a520b46-82f5-5fc6-a25f-af37c3306a24,machine,1,,"dung noi dung loai, sao 1 < 4 yeu cau",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:01:29+07:00,accepted
+c0489,64f5917f-6ab9-57ed-b52d-2e4f88e1e438,machine,1,,"dung noi dung loai, sao 3 < 4 yeu cau",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:01:29+07:00,accepted
+c0489,cb85e7eb-67f9-57b1-bb4a-5b693a04e755,machine,1,,"dung noi dung loai, khong ghi sao - khong kiem duoc >= 4",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:01:29+07:00,accepted
+c0489,2c19ada4-a3c0-52fe-a55a-eee9fc0d0c0e,machine,1,,"dung noi dung loai, sao 2 < 4 yeu cau",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:01:29+07:00,accepted
+c0489,466a7638-af11-522d-9bbc-23025720fd42,machine,2,,"dung noi, hotel_property, sao 5 dat >= 4",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:01:29+07:00,accepted
+c0489,72d07a8a-f10f-51b9-99a0-5fc96168535b,machine,2,,"dung noi, hotel_property, sao 4 dat >= 4",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:01:29+07:00,accepted
+c0489,ec5b4a31-a1b1-51a7-be37-23101c15b650,machine,1,,"dung noi dung loai, sao 2 < 4 yeu cau",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:01:29+07:00,accepted
+c0495,eb4dcf14-4bc7-5bf1-8ca4-4887ecaffe3f,machine,1,,"dung noi, KS = moi hotel_property (can ho), sao 3 < 4 yeu cau",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:50:09+07:00,accepted
+c0495,283b4727-6db0-50a5-8bb1-5f41968513da,machine,2,,"dung noi, can ho = hotel_property (quy uoc #6), sao 4 dat >= 4",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:50:09+07:00,accepted
+c0495,88627123-7734-5a5b-bbf9-86e47fb6ef3e,machine,2,,"dung noi, du thuyen = hotel_property (quy uoc #6), sao 5 dat >= 4",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:50:09+07:00,accepted
+c0495,5d0ce773-3c16-57a3-8bdd-ff9256b5c37a,machine,1,,"dung noi dung loai, khong ghi sao - khong kiem duoc >= 4",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:50:09+07:00,accepted
+c0495,5c9c143d-7e63-5400-a5dd-fc7ade06802d,machine,1,,"dung noi dung loai, khong ghi sao - khong kiem duoc >= 4",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:50:09+07:00,accepted
+c0495,957dbd7e-d450-5899-a69f-c039b45f21a6,machine,2,,"dung noi, du thuyen = hotel_property, sao 5 dat >= 4",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:50:09+07:00,accepted
+c0495,d813601b-53cb-551e-8751-b50041a116e6,machine,1,,"dung noi dung loai, khong ghi sao - khong kiem duoc >= 4",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:50:09+07:00,accepted
+c0495,9764a9fa-a837-5426-89a8-28917eb55041,machine,2,,"dung noi, du thuyen = hotel_property, sao 5 dat >= 4",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:50:09+07:00,accepted
+c0495,bd8fff75-f82f-5ed7-b519-ea90484702db,machine,2,,"dung noi, du thuyen = hotel_property, sao 5 dat >= 4",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:50:09+07:00,accepted
+c0497,5eee045e-ee2d-5af9-8492-568d20325d30,machine,1,,"dung noi dung loai, sao 3.5 < 5 yeu cau",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:50:48+07:00,accepted
+c0497,b1e7651b-bf8d-5123-aac6-0a755cc0c049,machine,1,,"dung noi dung loai, sao 3 < 5 yeu cau",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:50:48+07:00,accepted
+c0497,eed59795-f2ff-50c6-af0a-99dd9a6474c6,machine,2,,"dung noi, hotel_property, sao 5 dat >= 5; gia kiem o cap room",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:50:48+07:00,accepted
+c0497,3f62a951-ff47-58b3-acbc-9c8cabd560eb,machine,2,,"dung noi, hotel_property, sao 5 dat >= 5",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:50:48+07:00,accepted
+c0497,b8ec20b5-dbae-553e-836e-69bffcd38a3c,machine,1,,"dung noi dung loai, sao 3.5 < 5 yeu cau",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:50:48+07:00,accepted
+c0497,4c7c5374-0e67-50d6-973f-e7b9a29c2e07,machine,1,,"dung noi dung loai, sao 3.5 < 5 yeu cau",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:50:48+07:00,accepted
+c0497,f609fb99-cca7-5c85-98c3-12210f50760d,machine,1,,"dung noi dung loai, sao 3 < 5 yeu cau",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:50:48+07:00,accepted
+c0497,66fc07ea-4f77-5196-838e-14b89ced2632,machine,2,,"dung noi, hotel_property, sao 5 dat >= 5",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:50:48+07:00,accepted
+c0497,6af5e023-9fba-50ce-aa5a-d11c037cd129,machine,1,,"dung noi dung loai, sao 3 < 5 yeu cau",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:50:48+07:00,accepted
+c0497,f11e5f64-2fde-542d-9fd4-395def200b3c,machine,1,,"dung noi dung loai, sao 3 < 5 yeu cau",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:50:48+07:00,accepted
+c0497,3485d234-bef7-5477-9a3f-1d7aee847f7b,machine,2,,"dung noi, hotel_property, sao 5 dat >= 5",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:50:48+07:00,accepted
+c0503,0efb97ba-223a-5040-8191-abdaa2a8b44f,machine,2,,"dung noi, hotel_property, sao 5 dat >= 3; gia kiem o cap room",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:50:58+07:00,accepted
+c0503,59e97ed8-3686-55d7-ae6a-d9331569561f,machine,1,,"dung noi dung loai, sao 2 < 3 yeu cau",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:50:58+07:00,accepted
+c0503,50728d44-53ca-5aae-bbd4-a264b7fcf488,machine,2,,"dung noi, hotel_property, sao 3 dat >= 3",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:50:58+07:00,accepted
+c0503,c980197f-64c5-5479-8c9c-21a3b07e4d17,machine,1,,"dung noi dung loai, khong ghi sao - khong kiem duoc >= 3",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:50:58+07:00,accepted
+c0503,f4d8a35a-a9d5-57a3-959f-d61b5aa4a7c9,machine,1,,"dung noi dung loai, sao 1 < 3 yeu cau",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:50:58+07:00,accepted
+c0503,362bb67e-9841-5f91-a049-daf42f8490a7,machine,1,,"dung noi dung loai, khong ghi sao - khong kiem duoc >= 3",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:50:58+07:00,accepted
+c0503,a88ff7df-2288-50a8-896e-1e4a378c8b19,machine,1,,"dung noi dung loai, khong ghi sao - khong kiem duoc >= 3",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:50:58+07:00,accepted
+c0517,f9a0e4a6-8bcd-5b71-bd8f-4613d4b956c6,machine,2,,"dung noi, hotel_property, sao 3 dat >= 3 (filter); gia kiem o cap room",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:51:15+07:00,accepted
+c0517,080a7f5e-57d5-5381-9f1d-5ca4efeb61c6,machine,2,,"dung noi, hotel_property, sao 3 dat >= 3",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:51:15+07:00,accepted
+c0517,4b8f3c43-8c80-5b14-a418-968ba627a9ed,machine,2,,"dung noi, hotel_property, sao 4.5 dat >= 3 theo filter (cau noi '3 sao' - theo filter >= 3)",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:51:15+07:00,accepted
+c0517,0485bf57-c4ce-5c39-8058-fc205a935f91,machine,2,,"dung noi, hotel_property, sao 3 dat >= 3",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:51:15+07:00,accepted
+c0517,22af565d-b9cb-57a5-9044-9cf97f453a66,machine,2,,"dung noi, hotel_property, sao 3.5 dat >= 3",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:51:15+07:00,accepted
+c0531,c34b9982-c5b7-5772-919a-b16c5627ba94,machine,2,,"dung noi, homestay = hotel_property (quy uoc #6), sao 3 dat >= 3",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:52:05+07:00,accepted
+c0531,5cc9eb10-74a1-57c3-9f7d-199cf2eba641,machine,2,,"dung noi, hotel_property, sao 3 dat >= 3",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:52:05+07:00,accepted
+c0531,d4967b27-ccc8-50ec-b48e-5ca836741da0,machine,2,,"dung noi, hotel_property, sao 3 dat >= 3",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:52:05+07:00,accepted
+c0531,e52ac2e3-0282-5340-83f9-c3af5ea26b24,machine,1,,"dung noi dung loai, khong ghi sao - khong kiem duoc >= 3",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:52:05+07:00,accepted
+c0531,db5744ab-5e58-5ffc-af5b-1ddf09e25750,machine,2,,"dung noi, hotel_property, sao 4.5 dat >= 3",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:52:05+07:00,accepted
+c0531,6b260409-444b-5407-bf12-ce7527a5083c,machine,2,,"dung noi, hotel_property, sao 3 dat >= 3",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:52:05+07:00,accepted
+c0531,f40bdedc-9138-5f29-93cc-01e9757f6d2e,machine,2,,"dung noi, hotel_property, sao 5 dat >= 3",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:52:05+07:00,accepted
+c0531,f99ca673-b821-5afc-a599-0941082ddbbe,machine,2,,"dung noi (Mui Ne thuoc Phan Thiet), hotel_property, sao 5 dat >= 3",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:52:05+07:00,accepted
+c0531,28633865-e364-5c66-b556-4ef95dd6dbb8,machine,2,,"dung noi, hotel_property, sao 3 dat >= 3",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:52:05+07:00,accepted
+c0531,015c7da7-1700-5555-9a9c-88dcee52a82c,machine,2,,"dung noi, can ho dich vu = hotel_property, sao 4 dat >= 3",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:52:05+07:00,accepted
+c0531,db8a77fb-17fb-59cc-a71c-8c55bff936f3,machine,2,,"dung noi, hotel_property, sao 4.5 dat >= 3",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:52:05+07:00,accepted
+c0531,2649696d-badf-5fef-a25d-11ee7b138b36,machine,2,,"dung noi, hotel_property, sao 4 dat >= 3",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:52:05+07:00,accepted
+c0531,e09314fa-f726-5a85-a24c-0a0aad80f5c2,machine,2,,"dung noi (Mui Ne thuoc Phan Thiet), hotel_property, sao 5 dat >= 3",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:52:05+07:00,accepted
+c0531,cec41962-61c0-5a75-ba0e-c029ff4961f2,machine,2,,"dung noi, hotel_property, sao 4 dat >= 3",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:52:05+07:00,accepted
+c0531,1355ff69-308d-5bfd-89e8-39c76a61d935,machine,2,,"dung noi (Mui Ne thuoc Phan Thiet), hotel_property, sao 5 dat >= 3",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:52:05+07:00,accepted
+c0538,9764a9fa-a837-5426-89a8-28917eb55041,machine,2,,"dung noi, du thuyen = hotel_property, sao 5 dat >= 5; gia kiem o cap room",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:51:25+07:00,accepted
+c0538,b507cdfd-ee0e-59c3-8175-ad7aab648b16,machine,2,,"dung noi, thuyen = hotel_property, sao 5 dat >= 5",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:51:25+07:00,accepted
+c0538,be2cb696-824c-59e8-a785-af5a64e469a1,machine,2,,"dung noi, thuyen = hotel_property, sao 5 dat >= 5",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:51:25+07:00,accepted
+c0538,d813601b-53cb-551e-8751-b50041a116e6,machine,1,,"dung noi dung loai, khong ghi sao - khong kiem duoc >= 5",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:51:25+07:00,accepted
+c0538,957dbd7e-d450-5899-a69f-c039b45f21a6,machine,2,,"dung noi, hotel_property, sao 5 dat >= 5",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:51:25+07:00,accepted
+c0538,88627123-7734-5a5b-bbf9-86e47fb6ef3e,machine,2,,"dung noi, hotel_property, sao 5 dat >= 5",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:51:25+07:00,accepted
+c0538,d7d11e65-59c3-515f-b447-ffc41825d7fb,machine,1,,"dung noi dung loai, sao 4.5 < 5 yeu cau",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:51:25+07:00,accepted
+c0005,7c8b32b2-2d0e-532c-bf93-5a33704d5fcd,machine,1,,"dung noi; 'khach san nghi duong' ~ resort (quy uoc #6), day la khach san thuong 2 sao -> sai loai con",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:52:11+07:00,accepted
+c0005,79ed65d2-0461-5cf8-a0a4-1e5b46aa3512,machine,1,,"dung noi; loai ghi 'khach san', khong phai resort/khu nghi duong (quy uoc #6)",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:52:11+07:00,accepted
+c0005,9ef459fd-7c79-556e-9c17-0f7c71b6133b,machine,1,,"dung noi; khach san thuong 2 sao, khong phai resort/nghi duong",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:52:11+07:00,accepted
+c0020,a037968f-a826-5a5d-9a4a-0ccdb3078a59,machine,2,,"dung noi, 'cho nghi' = moi hotel_property",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0030,197f17a9-a273-58d5-825e-793c11d9d8c0,machine,1,,"dung noi; loai ghi 'khach san' boutique, khong phai resort/khu nghi duong (quy uoc #6)",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0030,cd934f20-0867-55a8-98e3-79dedf0839d1,machine,2,,"dung noi, resort (khu nghi duong) dung loai",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0030,d3679aff-6a8b-519b-b937-f65b4b87e234,machine,2,,"dung noi, resort dung loai",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0030,126a3eb8-8855-5c8b-8052-5fb66f965b0e,machine,1,,"dung noi; khach san boutique, khong phai resort/nghi duong",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0030,12aa9335-d8e7-5c71-8d91-5d8230df859e,machine,1,,"dung noi; homestay/nha nghi b&b, khong phai khach san nghi duong",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0030,8b6e8730-e6a8-5e57-ba77-a58d7710a088,machine,1,,"dung noi; homestay, khong phai khach san nghi duong",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0037,4ab922b0-7947-506a-85e6-a246d46bb83c,machine,2,,"dung noi, attraction (bai bien) = diem vui choi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0037,4d74e680-5a04-52ae-82e8-e161d3c2bcf6,machine,2,,"dung noi, attraction (Safari) = diem vui choi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0037,9bf17d41-1aa5-5348-9719-535cec3da5e1,machine,2,,"dung noi, attraction (vuon quoc gia) = diem vui choi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0037,4ed33d30-3074-5738-8683-97c11413ce87,machine,2,,"dung noi, attraction (Sunset Town) = diem vui choi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0037,99aba470-37b0-579c-9c56-7c67572dab6f,machine,1,,"dung noi sai loai: resort, khong phai diem vui choi (quy uoc #2)",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0037,08649e74-253a-5a3e-be91-f402ef656873,machine,2,,"dung noi, attraction (tour Grand World) = diem vui choi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0052,b65c9185-8ca1-56bd-99cc-30acb3b008cb,machine,2,,"dung noi, attraction - hoat dong/diem trai nghiem",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0052,801fe400-3760-5a3e-987c-cccb4e2bfde6,machine,2,,"dung noi, attraction (rap phim) - trai nghiem giai tri",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0056,f28101ca-56ea-5681-910d-2943cfbc9cb3,machine,1,,"dung noi sai loai: attraction, cau hoi combo (quy uoc #2)",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0056,72d07a8a-f10f-51b9-99a0-5fc96168535b,machine,1,,"dung noi sai loai: resort, cau hoi combo",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0056,00f1a4f5-31bf-557f-a767-ec0145095c3c,machine,1,,"dung noi sai loai: khach san, cau hoi combo",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0056,ff8e0172-3401-5f35-8600-f7f5f4f49ff8,machine,1,,"dung noi sai loai: resort, cau hoi combo",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0056,1135ceee-0da1-590c-bbf0-a9f51e5a7134,machine,1,,"dung noi sai loai: resort, cau hoi combo",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0059,38e0d7b8-4746-578d-b5d9-a4b9f9327372,machine,1,,"dung noi sai loai: resort, cau hoi goi vui choi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0059,653b0b42-a0f9-5edd-97fe-3398e6c68582,machine,1,,"dung noi sai loai: khach san, cau hoi goi vui choi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0059,95961038-d59c-563b-ad60-c485a1341134,machine,1,,"dung noi sai loai: homestay, cau hoi goi vui choi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0059,997ce437-42e9-542b-ab6b-47f6f9e50471,machine,1,,"dung noi sai loai: khach san, cau hoi goi vui choi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0059,06f7903d-7eb7-5118-afe0-3092a9f20872,machine,1,,"dung noi sai loai: khach san, cau hoi goi vui choi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0059,cedfe1be-ebbb-5ffe-9b58-082b93369058,machine,1,,"dung noi; ve trai nghiem le (attraction), cau hoi 'goi' - khac don vi ban (nhu vi du combo/ve trong guide)",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0059,5124e59a-6a35-5e82-afc5-4771f37e7d97,machine,1,,"dung noi sai loai: hostel, cau hoi goi vui choi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0059,fe3735a0-827c-5815-9eb9-2aa1ea2e5c4a,machine,1,,"dung noi sai loai: khach san, cau hoi goi vui choi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0061,8eee8919-f852-5675-ac0c-073b4e26b310,machine,2,,"dung noi, combo trai nghiem (VIP tour VinWonders) dung loai",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0061,9eed5b86-c7de-5d6a-b507-55106a15d1ec,machine,2,,"dung noi, combo (Grand World 3 khu) dung loai",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0070,1df5080e-c179-5c0f-aced-fe0f6f5f5843,machine,2,,"flight_route den Ha Noi, cau chi neu diem den -> moi tuyen den Ha Noi la dung (quy uoc #7b)",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0078,63b2437a-a8c1-5a29-9861-693a2ba007a2,machine,1,,"dung noi sai loai: homestay, cau hoi duong bay (quy uoc #2)",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0078,6093deb4-db1b-50bb-b8be-93091f888eb5,machine,1,,"dung noi sai loai: co so luu tru, cau hoi duong bay",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0085,43259d03-fbc7-541b-ad68-ec7256cf3327,machine,1,,"dung noi sai loai: resort, cau hoi san golf (quy uoc #2)",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0085,ad1f858b-c504-547f-bf48-5583ffaf692e,machine,1,,"dung noi sai loai: khach san, cau hoi san golf",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0085,8b60246e-cd0b-5d0f-bb10-b75e4d0dc12f,machine,1,,"dung noi sai loai: co so luu tru, cau hoi san golf",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0085,69d898b5-4e79-5d0e-a4bf-43c71246df6f,machine,1,,"dung noi sai loai: resort, cau hoi san golf",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0085,818ae3fe-9a2a-5f08-9bcd-87667cf93823,machine,1,,"dung noi sai loai: khach san, cau hoi san golf",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0085,569684af-0d49-5883-93e0-266794874e80,machine,1,,"dung noi sai loai: khach san, cau hoi san golf",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0088,e9c731c6-667a-59ab-88b6-d3f774224479,machine,1,,"dung noi sai loai: resort, cau hoi voucher golf (quy uoc #2)",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0088,d35b7ec5-f20e-5644-85c4-9825bf1d9e01,machine,1,,"dung noi sai loai: ve vao cua cong vien, khong phai voucher golf",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0088,faf5627c-5f01-542a-b516-68c320d0f79e,machine,1,,"dung noi sai loai: combo ve vui choi, khong phai voucher golf",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0088,b6c22e82-b0dc-54de-99cd-3e8369624f1f,machine,1,,"dung noi sai loai: biet thu/khach san, cau hoi voucher golf",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0097,6f76442a-2917-5f42-bdde-249ba086cc86,machine,2,,"dung noi, cho nghi; khong ghi audience nhung co phong 3-4 nguoi - khong ghi van co the 2 (luat chung)",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0097,f97f7a9d-0e71-59b0-8995-1e607749390d,machine,2,,"dung noi, cho nghi, ghi 'phu hop gia dinh co tre nho' + phong gia dinh",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0097,1d66b3f2-9d66-5a13-8b7b-7f2f9d51f931,machine,2,,"dung noi, cho nghi; khong ghi audience, co phong 3-4 nguoi - khong ghi van co the 2",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0105,ebecc829-dc6a-570b-9137-ab389c108cab,machine,2,,"dung noi, ghi 'phu hop gia dinh' + phong gia dinh; 'danh gia tot' la dieu kien mem",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0105,e23eea61-9117-546a-8ef8-187fcfcd20c8,machine,2,,"dung noi, ghi 'phu hop gia dinh' + phong gia dinh",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0105,02159514-e992-5d7c-b8c7-079e18764fe8,machine,2,,"dung noi, ghi 'phu hop gia dinh' + phong gia dinh",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0105,f3146d8b-da47-53a6-acd4-631b244f2fbe,machine,2,,"dung noi, ghi 'phu hop gia dinh' + khu vui choi tre em",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0109,b3a269ee-3782-551b-9a03-4117f57ba0dc,machine,2,,KS = moi hotel_property (#6); wifi co ghi; ban lam viec khong ghi - khong ghi van co the 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0109,8761732b-ed3e-5413-b98e-5b902460871a,machine,2,,dung noi dung loai; wifi co ghi; ban lam viec khong ghi,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0109,685b5f51-874e-5602-8e43-e2358768ce41,machine,2,,dung noi dung loai; wifi + ban lam viec deu co ghi,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0109,4ff91324-619c-51d9-8dec-d4ffb0859bbb,machine,2,,dung noi dung loai; wifi + ban lam viec deu co ghi,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0118,1ace96ec-6893-53b8-b71b-4b070195793d,machine,2,,dung noi dung loai; wifi co ghi; ban lam viec khong ghi - van co the 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0118,d62bc5a4-8cef-56ed-80ef-d0198b07dcba,machine,2,,dung noi dung loai; wifi co ghi; ban lam viec khong ghi,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0118,69cabf58-80c0-59cc-99cd-c1df607977fd,machine,2,,dung noi dung loai; wifi co ghi; ban lam viec khong ghi,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0118,e3a847f3-3d99-5f45-bc7d-ccdc21762080,machine,2,,"dung noi, quan tro = hotel_property; wifi co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0118,5e986b7d-56c3-5be7-b091-157e87d04d49,machine,2,,"dung noi, nha khach = hotel_property; wifi co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0126,bb4b826f-5e0f-58ed-82ce-6916d1971208,machine,2,,"dung noi dung loai; 'yen tinh/cap doi/danh gia tot' la dieu kien mem, khong cham",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0126,dcc680bf-d4e1-5bcd-a8db-22cc19471388,machine,2,,dung noi dung loai; dieu kien mem khong cham,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0126,90cbb5c5-c82e-5b8b-ac31-c027696a6e78,machine,2,,dung noi dung loai; dieu kien mem khong cham,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0126,b0aad65c-7478-53e4-8897-930d23359719,machine,2,,dung noi dung loai; dieu kien mem khong cham,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0126,3cc78870-f3ba-5b4f-a68f-130755cfbee1,machine,2,,dung noi dung loai; co ghi 'cach am' hop y yen tinh,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0126,d2c22933-d4e8-5d6d-b206-a3c8a420c6ca,machine,2,,dung noi dung loai; dieu kien mem khong cham,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0135,442f10e5-27ff-58b4-95ee-3ebc8a9d7a66,machine,2,,"dung noi dung loai; dieu kien mem (yen tinh, cap doi) khong cham",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0135,9a69aa56-c386-5de0-a948-170471cc0bb2,machine,2,,"dung noi, can ho = hotel_property; dieu kien mem khong cham",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0135,fdaa8b40-1600-5ff8-ad3b-4cd611f20641,machine,2,,dung noi dung loai; dieu kien mem khong cham,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0135,bdbdf23c-2f92-58a3-90e9-65e1458816fc,machine,2,,"dung noi, can ho dich vu = hotel_property; dieu kien mem khong cham",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0165,fcfc5836-5273-57bd-a675-3eae0e1bde3f,machine,1,,"dung noi sai loai: homestay, cau hoi resort (quy uoc #6); co spa",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0165,057196df-ac2a-598e-a4bc-39ff2c5b01bd,machine,1,,"dung noi sai loai: hostel, cau hoi resort",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0165,52774401-d332-5588-a9bf-6e805dfb6141,machine,1,,"dung noi sai loai: nha nghi, cau hoi resort",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0165,0a77086d-bb5d-51f1-85a8-25e6da827ecd,machine,1,,"dung noi sai loai: nha nghi, cau hoi resort",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0166,137ae0db-9d55-5cad-aeb3-9a15b398282d,machine,2,,"dung noi dung loai, wifi co ghi ('mien phi' khong cham duoc)",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0166,9a69aa56-c386-5de0-a948-170471cc0bb2,machine,2,,"dung noi, can ho = KS (#6), wifi co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0166,33b0b029-2bd6-5d51-9d23-ed600b35fba6,machine,2,,"dung noi, can ho = KS (#6), wifi co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0169,e15c9bed-d741-5c07-b295-555ce03346c6,machine,2,,"dung noi dung loai, dieu hoa co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0169,99c2b639-bc6b-5bb1-bfb4-99e754f8570f,machine,2,,"dung noi dung loai, dieu hoa co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0169,27e5c910-aabf-57b4-b26d-644c8992d039,machine,2,,"dung noi dung loai, dieu hoa co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0169,57682ed1-0091-5380-a7cc-6004d7964298,machine,2,,"dung noi dung loai, dieu hoa co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0169,5938fdfe-8b94-5f20-914e-f5a9a4e1dada,machine,2,,"dung noi dung loai, dieu hoa co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0172,2ccfc4e6-01fd-5930-9b3e-34fc682c515e,machine,2,,"dung noi dung loai, ban cong co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0172,42dd69a1-a42e-5834-a808-fdc4f13a87af,machine,2,,"dung noi dung loai, ban cong co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0172,cfc5781f-7eba-525f-8d03-b2ee6bca5c63,machine,2,,"dung noi dung loai, ban cong co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0172,c718393d-9f55-5566-b78a-6599fcdc7769,machine,2,,"dung noi dung loai, ban cong co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0172,6f409dfc-a79b-5dad-ad58-2bdbcfd4678d,machine,2,,"dung noi dung loai, ban cong co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0175,126a3eb8-8855-5c8b-8052-5fb66f965b0e,machine,2,,dung noi dung loai; ban lam viec khong ghi - khong ghi van co the 2 (luat chung),claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0175,e9fcdbae-88c1-5191-86fa-c0a9bf7a5d61,machine,2,,dung noi dung loai; ban lam viec khong ghi,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0175,fb58c711-10f3-5dbd-8304-be81527060a1,machine,2,,dung noi dung loai; ban lam viec khong ghi,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0178,023fe38a-6228-5211-9ca0-695204d7551c,machine,2,,dung noi dung loai; co Phong Gia Dinh / Suite Gia Dinh trong hang phong,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0178,a93a9bf6-06dc-5741-bf35-1b6edabf061b,machine,2,,dung noi dung loai; phong gia dinh khong ghi - khong ghi van co the 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0178,d6c9f797-85bb-53ca-be2b-f53365665a3d,machine,2,,dung noi dung loai; phong gia dinh co ghi,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0178,6a6210dd-3abf-5e51-bb89-7fa53d36a514,machine,2,,dung noi dung loai; co Family Room trong hang phong,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0178,fb76084d-41a9-5439-acb5-5be1cfcbaea2,machine,2,,dung noi dung loai; phong gia dinh co ghi,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0181,e37b1460-75c7-5bdb-af85-25ea6152a04a,machine,2,,"dung noi dung loai, cho do xe co ghi ('mien phi' khong cham duoc)",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0181,8b60246e-cd0b-5d0f-bb10-b75e4d0dc12f,machine,2,,dung noi dung loai; cho do xe khong ghi trong 12 muc dau nhung snippet khong phu nhan - khong ghi van co the 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0181,7f3fbcfd-2461-563b-8ce9-dff2a6ce9759,machine,2,,dung noi dung loai; cho do xe khong ghi nhan - khong ghi van co the 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0181,720e362a-66e8-5dbf-bd6b-265628d1c56f,machine,2,,"dung noi dung loai, cho do xe co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0181,d374e4b3-6595-5603-afed-f16db62c90cf,machine,2,,dung noi dung loai; cho do xe khong ghi nhan - khong ghi van co the 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0181,2c577085-d6d5-551b-96ca-5597a79adf55,machine,2,,dung noi dung loai; cho do xe khong ghi nhan - khong ghi van co the 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0185,15e8b700-f313-51c2-90d5-ffd8f323b4bf,machine,2,,"dung noi dung loai, nha hang co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0185,8761732b-ed3e-5413-b98e-5b902460871a,machine,2,,dung noi dung loai; nha hang khong ghi nhan - khong ghi van co the 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0185,03980aea-7015-536f-b032-9d44295bf2b5,machine,2,,"dung noi dung loai, nha hang co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0185,7e1a7ceb-5f73-5f51-b7d4-aa91e70d29c5,machine,2,,"dung noi dung loai, nha hang co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0185,ceac2733-bf34-54d2-a460-6ab84af3cfb1,machine,2,,"dung noi, hostel = KS (#6); nha hang khong ghi nhan - van co the 2",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0185,7226d18e-5a21-5156-b6ba-279ef6ca528e,machine,2,,"dung noi, homestay = KS (#6), nha hang co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0187,9dcd5a97-7112-5ef4-904e-96c59581470c,machine,2,,"dung noi dung loai, le tan 24 gio co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0187,878ea6e5-ebc7-56b2-9464-064a8cadb5df,machine,2,,"dung noi dung loai, le tan 24 gio co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0187,4c04fab0-0688-535c-bf4e-7abc0503a7b8,machine,2,,dung noi dung loai; le tan 24 gio khong ghi nhan - khong ghi van co the 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0187,c08270bd-d3e6-578f-a710-99e7a0287ddc,machine,2,,dung noi dung loai; le tan 24 gio khong ghi nhan - khong ghi van co the 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0190,2c577085-d6d5-551b-96ca-5597a79adf55,machine,2,,dung noi dung loai; dua don san bay khong ghi nhan - khong ghi van co the 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0190,8b60246e-cd0b-5d0f-bb10-b75e4d0dc12f,machine,2,,"dung noi dung loai, xe dua don san bay co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0190,d374e4b3-6595-5603-afed-f16db62c90cf,machine,2,,dung noi dung loai; dua don san bay khong ghi nhan - van co the 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0190,7f3fbcfd-2461-563b-8ce9-dff2a6ce9759,machine,2,,dung noi dung loai; dua don san bay khong ghi nhan - van co the 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0190,2e81e3c3-99a2-5ee2-9b19-665fb889d629,machine,2,,"dung noi dung loai, xe dua don san bay co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0190,e009260b-017a-55f8-8c24-d4e362610cd8,machine,2,,"dung noi dung loai, xe dua don san bay co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0190,5d034913-a6c3-5635-ad65-676d52098391,machine,2,,dung noi dung loai; dua don san bay khong ghi nhan - van co the 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0196,9ef459fd-7c79-556e-9c17-0f7c71b6133b,machine,2,,"dung noi dung loai, 'Nhin ra bien' + 'Giap bien' co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0202,def96ade-eae2-5e15-920e-160f04d20925,machine,2,,"dung noi, nha nghi b&b = KS (#6); thang may khong ghi nhan - khong ghi van co the 2",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0202,b1e7651b-bf8d-5123-aac6-0a755cc0c049,machine,2,,"dung noi dung loai, thang may co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0202,14af5d95-2b31-59b2-8e4e-704a1fc3f26d,machine,2,,dung noi dung loai; thang may khong ghi nhan - van co the 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0202,3f62a951-ff47-58b3-acbc-9c8cabd560eb,machine,2,,"dung noi dung loai, thang may co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0202,ed9a6d92-b5bb-534e-a3c5-b0ec3cca2c77,machine,2,,dung noi dung loai; thang may khong ghi nhan - van co the 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:04+07:00,accepted
+c0205,bc3e15e6-26fe-55a7-813a-1bf57c31d573,machine,2,,dung noi dung loai; spa khong ghi nhan - khong ghi van co the 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0208,fac2ffc7-5242-54ce-b5e4-1433c5d03fcf,machine,2,,dung noi dung loai; giat ui khong ghi nhan - khong ghi van co the 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0208,84b24d70-3935-5e9c-a89e-04c736e67479,machine,2,,dung noi dung loai; giat ui khong ghi nhan - van co the 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0208,72e476a4-417d-57b7-9e91-993a1fc7f736,machine,2,,dung noi dung loai; giat ui khong ghi nhan - van co the 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0208,4e59f8a3-231f-5ce4-9df6-8d13dd7e1056,machine,2,,dung noi dung loai; giat ui khong ghi nhan - van co the 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0208,16c38365-9282-522a-b099-788b870244e3,machine,2,,"dung noi dung loai, giat ui co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0211,d8cd7f46-aeed-533d-84e8-93091a3acd28,machine,2,,"dung noi dung loai, wifi + cho do xe deu co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0211,25916a07-84ea-593a-af73-847212a63708,machine,2,,"dung noi dung loai, wifi + cho do xe deu co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0214,1dc45d98-faf1-5c6d-892d-5c5af6e3a58d,machine,0,,"sai noi: Ha Long, cau hoi Bac Ninh (luat destination)",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0214,0afa465a-93e7-5a23-8fd4-c5a80775f159,machine,0,,"sai noi: Quang Binh, cau hoi Bac Ninh",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0214,0a0d65b2-c625-5bab-8610-a2761e9d36a1,machine,0,,"sai noi: Ninh Binh, cau hoi Bac Ninh",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0214,77a6fc00-430f-5575-85d3-5ff8c35d1eb5,machine,0,,"sai noi: Tay Ninh, cau hoi Bac Ninh",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0214,e15c9bed-d741-5c07-b295-555ce03346c6,machine,0,,"sai noi: Ninh Binh, cau hoi Bac Ninh",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0217,59d573a0-a6a0-520c-8567-518d1a6a237b,machine,2,,"dung noi (Cat Ba, quy uoc #1), wifi + phong gia dinh deu co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0220,6f76442a-2917-5f42-bdde-249ba086cc86,machine,2,,"dung noi dung loai, wifi + khong hut thuoc deu co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0220,cadf6f56-e360-5f3b-858c-87e32d251ea8,machine,2,,"dung noi dung loai; wifi co ghi, khong hut thuoc khong ghi nhan - van co the 2",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0220,7f95e1d1-12de-573a-be34-57c35a40b33e,machine,2,,"dung noi dung loai, wifi + khong hut thuoc deu co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0223,338d0cea-4c66-5b83-9a0a-9044108e9be5,machine,2,,"dung noi dung loai, wifi + le tan 24 gio deu co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0223,fb060cb7-1dec-559c-be8b-d7d5096ac2c1,machine,2,,"dung noi dung loai, wifi + le tan 24 gio deu co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0223,ac670d3d-43f5-58bf-9cbc-177d5143528c,machine,2,,"dung noi dung loai, wifi + le tan 24 gio deu co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0226,fa035541-bde4-5299-aee5-73d670d7b869,machine,2,,"dung noi dung loai; wifi co ghi, nha hang khong ghi nhan - van co the 2",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0226,628d74cc-f143-5a88-b239-810edbf65a6c,machine,2,,"dung noi dung loai, wifi + nha hang deu co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0226,3c66729f-a2d5-5047-a0fc-84f40804cd9c,machine,2,,"dung noi dung loai; wifi co ghi, nha hang khong ghi nhan - van co the 2",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0226,01c2c157-4786-557e-a401-a6e6caa73466,machine,2,,"dung noi dung loai, wifi + nha hang deu co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0226,b618e69a-335b-54e2-b935-b6ef1a11d07a,machine,2,,"dung noi dung loai; wifi co ghi, nha hang khong ghi nhan - van co the 2",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0226,1e038cd7-2eed-5903-b740-032c348e82e5,machine,2,,"dung noi dung loai; wifi co ghi, nha hang khong ghi nhan - van co the 2",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0229,731d340f-6d95-547b-9913-7a4987d8d746,machine,2,,"dung noi dung loai; wifi co ghi, dua don san bay khong ghi nhan - van co the 2",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0229,05f63f51-5e41-5bce-9c10-60ff61257848,machine,2,,"dung noi dung loai; wifi co ghi, dua don san bay khong ghi nhan - van co the 2",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0229,0efbdf8c-90bf-57da-8111-657f5d0bc214,machine,2,,"dung noi dung loai; wifi co ghi, dua don san bay khong ghi nhan - van co the 2",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0229,0751b100-b7bb-566c-beb4-53bf4ff897a7,machine,2,,"dung noi dung loai, wifi + xe dua don san bay deu co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0232,3cc8b3ae-e0ee-52f9-b97e-ce1ea820dcab,machine,2,,"dung noi dung loai; wifi co ghi, san hien khong ghi nhan - van co the 2",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0235,5c9c143d-7e63-5400-a5dd-fc7ade06802d,machine,2,,dung noi dung loai; phong gia dinh + nha hang deu khong ghi nhan - khong ghi van co the 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0235,957dbd7e-d450-5899-a69f-c039b45f21a6,machine,2,,"dung noi dung loai; nha hang co ghi, co Suite Gia Dinh trong hang phong",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0235,c92a5806-f701-53a3-86a1-aa02e73f1257,machine,2,,"dung noi dung loai; phong gia dinh co ghi, nha hang khong ghi nhan - van co the 2",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0235,7a8e49fa-c265-53f7-9352-a0ac67441f5c,machine,2,,dung noi dung loai; khong co du lieu tien ich - khong ghi van co the 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0238,0a87ff6e-c27f-5086-bb47-778d1eeefb03,machine,2,,"dung noi dung loai, cho do xe + phong gia dinh deu co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0238,033d2aa4-058d-5e20-840d-28133a4ae4bc,machine,2,,"dung noi dung loai, phong gia dinh + cho dau xe rieng co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0238,1c7f6625-36a9-5ade-9bd2-783844f67dc8,machine,2,,"dung noi dung loai, cho do xe co ghi + co Phong Gia Dinh trong hang phong",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0238,614d8233-0752-5183-a580-35f72b2c91ff,machine,2,,"dung noi dung loai; cho do xe co ghi, phong gia dinh khong ghi nhan - van co the 2",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0238,e332a0c5-ade3-5006-862e-72f248ed8662,machine,2,,"dung noi dung loai; cho do xe co ghi, phong gia dinh khong ghi nhan - van co the 2",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0244,8d6ecd59-4779-5d5d-be3a-17780dbd0896,machine,2,,"phu dinh (#3/#7): bep rieng khong ghi nhan -> 2, phan con lai dung",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0244,ec609267-080e-5f93-bbeb-5f5e49609220,machine,2,,phu dinh: bep rieng khong ghi nhan -> 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0244,9568f56a-6bf5-548b-896c-678af023ae64,machine,0,,phu dinh (#7a): co ghi 'Bep nho rieng' (bien the bep rieng) -> 0,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0244,52630144-3c73-5766-882b-0a24b6c8fd82,machine,0,,phu dinh (#7a): co ghi 'Bep rieng' -> 0,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0244,3c5c3dd6-47e8-5373-8bb8-59e5c60d13c2,machine,2,,phu dinh: bep rieng khong ghi nhan -> 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0247,7bae243a-a34a-5009-bd4a-7ac3eceecd2d,machine,2,,phu dinh (#3/#7): ban cong khong ghi nhan -> 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0247,a05627eb-1ec8-5677-8407-a42e25d50634,machine,2,,phu dinh: ban cong khong ghi nhan -> 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0247,79ed65d2-0461-5cf8-a0a4-1e5b46aa3512,machine,0,,phu dinh (#7a): co ghi 'Ban cong' -> 0,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0250,54c865f9-021d-51df-8815-b73130f2dc21,machine,2,,phu dinh: nha hang khong ghi nhan -> 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0250,2bc05ff2-98ec-50fe-9029-6a25e3f35218,machine,0,,phu dinh (#7a): co ghi 'nha hang' -> 0,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0250,57d898ce-b93e-5b7c-83e3-61be45885f2e,machine,2,,phu dinh: nha hang khong ghi nhan -> 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0250,1f72b26e-1c62-5e53-8de2-2bdcd382e768,machine,0,,phu dinh (#7a): co ghi 'nha hang' -> 0,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0253,5456c39d-4425-5fda-8ea2-7cea05a21611,machine,2,,phu dinh: xe dua don san bay khong ghi nhan -> 2; can ho dv = KS (#6),claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0253,09b0ca32-3143-534d-b1b9-d2da4a020aa2,machine,2,,phu dinh: xe dua don san bay khong ghi nhan -> 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0253,6f1d5b0f-c5f9-5d50-8e39-c7e1deb076e6,machine,1,,"dung noi sai loai: combo (ve may bay + phong), cau hoi khach san (quy uoc #2)",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0256,ec9e8b61-1abb-5461-baba-68b9e016eabc,machine,1,,offtaxonomy (#4): 'view dia danh' khong ghi ro (chi Nhin ra vuon) -> 1,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0256,c231b12b-a05b-5656-a7d4-c63bd293e5aa,machine,1,,offtaxonomy (#4): chi ghi 'Nhin ra nui' - chua ro rang la view dia danh -> 1,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0256,99c2b639-bc6b-5bb1-bfb4-99e754f8570f,machine,1,,offtaxonomy (#4): view dia danh khong ghi -> 1,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0259,07e1c081-b903-5cd6-ac7b-08f15eaf1b61,machine,1,,"offtaxonomy (#4): chi ghi 'dieu hoa' chung, khong ket luan duoc 'doc lap tung phong' -> 1",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0259,e776971e-2bb0-5aea-a7b3-a4cfaf6189f6,machine,1,,offtaxonomy (#4): chi ghi 'dieu hoa' chung -> 1,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0259,6093deb4-db1b-50bb-b8be-93091f888eb5,machine,1,,offtaxonomy (#4): chi ghi 'dieu hoa' chung -> 1,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0259,b2b3e67b-674f-517b-8d47-08454d6284e7,machine,1,,offtaxonomy (#4): chi ghi 'dieu hoa' chung -> 1,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0259,1e038cd7-2eed-5903-b740-032c348e82e5,machine,1,,offtaxonomy (#4): chi ghi 'dieu hoa' chung -> 1,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0259,3c66729f-a2d5-5047-a0fc-84f40804cd9c,machine,1,,offtaxonomy (#4): chi ghi 'dieu hoa' chung -> 1,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0259,9dd80562-297f-51bb-9f15-550978a742b9,machine,1,,offtaxonomy (#4): chi ghi 'dieu hoa' chung -> 1,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0262,fdaa8b40-1600-5ff8-ad3b-4cd611f20641,machine,2,,offtaxonomy (#4): 'Voi xit/chau rua ve sinh' co ghi ro -> 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0262,3e46a86d-3929-5570-a1b8-77c81b76303b,machine,2,,offtaxonomy (#4): co ghi ro -> 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0262,03e10234-94bf-5518-bf91-389d9fb720ab,machine,1,,"dung noi sai loai: combo, cau hoi cho nghi (quy uoc #2)",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0262,193b2536-9022-567d-9cc3-8183d1f8ac81,machine,2,,offtaxonomy (#4): co ghi ro -> 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0262,f6c2dda4-9917-5cda-8ff4-cd3c5aa29952,machine,2,,offtaxonomy (#4): co ghi ro -> 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0262,be65b93a-1f71-5fbb-81a2-4ba3619740b3,machine,1,,offtaxonomy (#4): voi xit khong ghi -> 1,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0262,33b0b029-2bd6-5d51-9d23-ed600b35fba6,machine,2,,offtaxonomy (#4): co ghi ro -> 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0262,463219c4-028f-55a4-a784-3594de9e892c,machine,1,,offtaxonomy (#4): voi xit khong ghi (chi giay ve sinh/nha ve sinh) -> 1,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0265,e9c731c6-667a-59ab-88b6-d3f774224479,machine,1,,"offtaxonomy (#4): chi ghi 'Khan tam', khong phai 'Khan tam/ga trai giuong (phu phi)' - chua ro -> 1",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0265,95961038-d59c-563b-ad60-c485a1341134,machine,1,,offtaxonomy (#4): khong ghi -> 1,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0265,65cc26f7-23b5-5fb2-9b19-8e79730f0cb2,machine,1,,offtaxonomy (#4): khong ghi -> 1,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0265,5e0a6f9c-f15d-576c-a79e-b4aec9e7fd00,machine,2,,offtaxonomy (#4): co ghi ro 'Khan tam/ga trai giuong (phu phi)' -> 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0265,27e0e68d-0d33-55cc-b6fa-9dbdd0c595c0,machine,1,,offtaxonomy (#4): chi ghi 'Khan tam' - chua ro -> 1,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0265,dbafe368-7067-5884-b32c-b88eb8719118,machine,1,,offtaxonomy (#4): khong ghi -> 1,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0268,2014c069-5577-58c2-b1c1-e8bde00785ee,machine,1,,offtaxonomy (#4): 'vat dung khong gay di ung' khong ghi -> 1,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:52:21+07:00,accepted
+c0268,9cde8b86-e824-5f1c-8de2-4de27eb6b392,machine,1,,offtaxonomy (#4): khong ghi -> 1,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:52:21+07:00,accepted
+c0268,5433c892-0a9a-56ff-ad52-dddd35ded857,machine,1,,offtaxonomy (#4): khong ghi -> 1,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:52:21+07:00,accepted
+c0268,54c865f9-021d-51df-8815-b73130f2dc21,machine,1,,offtaxonomy (#4): khong ghi -> 1,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:52:21+07:00,accepted
+c0268,955ebe12-a764-5db9-a577-273746c10db1,machine,1,,offtaxonomy (#4): khong ghi -> 1,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:52:21+07:00,accepted
+c0268,706571fc-d7e1-5d31-8945-efaa6b038b5d,machine,1,,offtaxonomy (#4): khong ghi -> 1,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:52:21+07:00,accepted
+c0268,57d898ce-b93e-5b7c-83e3-61be45885f2e,machine,1,,offtaxonomy (#4): khong ghi -> 1,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:52:21+07:00,accepted
+c0272,1846213c-070e-54fe-9245-8b0f1ac6edb6,machine,0,,"sai noi: Da Nang, cau hoi Buon Ma Thuot",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0272,d8269209-eca5-5882-8888-c132de13f033,machine,0,,"sai noi: Da Lat, cau hoi Buon Ma Thuot",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0272,4c1348d2-2936-5eb5-ac48-86d834482d0b,machine,1,,"dung noi; co Phong Deluxe Giuong Doi nhung khong co 'Day nha A' - gan dung, khong tick",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0276,77a6fc00-430f-5575-85d3-5ff8c35d1eb5,machine,0,,"sai noi: Tay Ninh, cau hoi Bac Ninh",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0276,67d89043-c085-57ec-b8e0-4843cc9e90d3,machine,0,,"sai noi: Ha Long, cau hoi Bac Ninh",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0276,27e5c910-aabf-57b4-b26d-644c8992d039,machine,0,,"sai noi: Ninh Binh, cau hoi Bac Ninh",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0276,8010975d-c170-5219-a729-14bdc2683fad,machine,0,,"sai noi: Ha Long, cau hoi Bac Ninh",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0277,4c1e42c4-a93e-5761-95d2-b6da955acb8b,machine,1,,"dung noi (Cat Ba); chi co Phong Gia Dinh Co Ban Cong / deluxe doi khong ban cong - gan dung, khong tick",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0277,c2672f99-a797-5096-978a-0a85065b9d27,machine,1,,"dung noi; co Phong Giuong Doi nhung ban cong chi ghi cap khach san - gan dung, khong tick",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0284,cd45be7f-07a2-56d4-ac5f-460283d947f2,machine,1,,dung noi; co phong 4 nguoi (Superior/Tieu Chuan) nhung khong co ban cong - gan dung,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0284,bfe8a647-e4aa-57bf-af1b-09796b7eb648,machine,0,,dung noi nhung khong co hang phong 4 nguoi nao - khong co phong dung loai -> 0,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0284,c08c088e-9093-5a57-8203-a6acf5309cf9,machine,0,,dung noi nhung khong co hang phong 4 nguoi nao -> 0,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0286,e776971e-2bb0-5aea-a7b3-a4cfaf6189f6,machine,1,,"dung noi; co phong giuong doi nhung khong ghi 'phong tam chung' - gan dung, khong tick",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0286,de23bb6d-306e-5c46-a4cb-a3eb64999501,machine,1,,"dung noi; co Phong Tieu Chuan Giuong Doi, khong ghi tam chung - gan dung",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0286,4386547f-39d4-5466-9119-a75e3b4254a2,machine,1,,"dung noi; co phong giuong doi (ban cong/ho nuoc), khong ghi tam chung - gan dung",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0286,6c97b660-59cd-522a-8e3b-7cef32d7b396,machine,1,,"dung noi; co Phong Giuong Doi, khong ghi tam chung - gan dung",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0290,52d85365-945e-5ca1-8661-e910146ffbf9,machine,1,,"dung noi; co Phong Deluxe Giuong Doi nhung khong co ban cong - gan dung, khong tick",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0290,c107ab4e-6405-5586-a959-68ea8d66a5a0,machine,2,f3e9cfce-8803-5baa-8a7c-23d4c4797460,dung noi; co dung 'Phong Deluxe Giuong Doi Co Ban Cong' - tick,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0290,07c9add7-c4ac-5b3d-b1c6-af691821a3e5,machine,0,,"sai noi: TP.HCM, cau hoi Ha Noi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0290,53de6467-a0bb-51ec-a8a0-767cd1001569,machine,1,,"dung noi; chi co Phong Giuong Doi thuong (khong deluxe, khong ban cong) - gan dung",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0299,3bd7cdb4-e644-54a1-9f49-f07e1c2b00e1,machine,2,3b4f56dc-add5-5e21-b955-175abe6589f6;3f2bf1ad-8172-5edf-bb48-bfc2f2cc6a2c,"dung noi; co Phong Deluxe/Superior Giuong Doi - dung loai phong giuong doi, tick",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0299,13ca4c8b-9cba-5b64-9072-5426f1eba334,machine,2,c0c12c3f-79fa-577a-bbf8-694ebe508b7c,dung noi; co Phong Deluxe Giuong Doi - tick,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0304,068b82ab-c8f5-5824-92f3-da10ef1d050b,machine,1,,"dung noi; nha nguyen can 200m2 nhung khong ghi ho boi rieng - gan dung, khong tick",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0304,178b524b-7db6-527e-8955-963f0e03c6c7,machine,0,,"sai noi: Hoi An, cau hoi Nghe An",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0307,8b60246e-cd0b-5d0f-bb10-b75e4d0dc12f,machine,1,,dung noi; co studio 2 giuong don nhung khong phai 'hang binh dan' - gan dung,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0307,2e81e3c3-99a2-5ee2-9b19-665fb889d629,machine,1,,"dung noi; co phong twin deluxe, khong phai hang binh dan - gan dung",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0307,95c2a2da-8ca0-5681-96e3-4a8c2ccdb9c0,machine,1,,"dung noi; co Phong Deluxe 2 Giuong Don, khong phai hang binh dan - gan dung",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0316,ba972b34-67ef-5129-a397-73c21cf90b43,machine,0,,"sai noi: Ha Tinh, cau hoi Vinpearl Bac Ninh (luat destination)",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0316,3cc8b3ae-e0ee-52f9-b97e-ce1ea820dcab,machine,0,,"sai noi: Ha Tinh, cau hoi Bac Ninh",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0316,b5fc5fa8-5076-5c0f-90b9-fc9b8d012b1f,machine,0,,"sai noi: Nha Trang, cau hoi Bac Ninh",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0332,7e74c08e-0c31-5cb4-a6b3-bfe23c392a4d,machine,0,,"sai noi: Phu Quoc, entity o Nam Hoi An",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0332,8b60246e-cd0b-5d0f-bb10-b75e4d0dc12f,machine,0,,"sai noi: Nha Trang, entity o Nam Hoi An",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0336,3cc8b3ae-e0ee-52f9-b97e-ce1ea820dcab,machine,0,,"sai noi: Ha Tinh, entity o Nam Hoi An",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0336,7e74c08e-0c31-5cb4-a6b3-bfe23c392a4d,machine,0,,"sai noi: Phu Quoc, entity o Nam Hoi An",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0336,8b60246e-cd0b-5d0f-bb10-b75e4d0dc12f,machine,0,,"sai noi: Nha Trang, entity o Nam Hoi An",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0338,7e74c08e-0c31-5cb4-a6b3-bfe23c392a4d,machine,0,,"sai noi: Phu Quoc, entity o Nam Hoi An",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0338,3cc8b3ae-e0ee-52f9-b97e-ce1ea820dcab,machine,0,,"sai noi: Ha Tinh, entity o Nam Hoi An",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0338,178b524b-7db6-527e-8955-963f0e03c6c7,machine,1,,"dung noi (Hoi An) nhung sai thuc the: homestay khac, khong phai Vinpearl Nam Hoi An",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0338,8b60246e-cd0b-5d0f-bb10-b75e4d0dc12f,machine,0,,"sai noi: Nha Trang, entity o Nam Hoi An",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0340,0588513f-055f-5189-a30b-9057fa9dff62,machine,0,,"sai thuc the, cong vien o Kon Tum - entity Cong Vien 30/4 o noi khac, khong thay the duoc",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0340,eb4dcf14-4bc7-5bf1-8ca4-4887ecaffe3f,machine,0,,"khong lien quan: can ho, cau hoi Cong Vien 30/4 (khop lexical '40')",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0340,6c91055c-fa62-5618-816a-c4b85ee79cc2,machine,0,,khong lien quan: can ho ICON40,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0340,145c49f8-724c-52c9-a466-f05bab7c31b0,machine,0,,khong lien quan: can ho condotel,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0340,7b0ebc43-5bb0-5939-841f-bfc8268b021b,machine,0,,khong lien quan: can ho ICON40,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0340,283b4727-6db0-50a5-8bb1-5f41968513da,machine,0,,khong lien quan: can ho ICON40,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0340,1da0117c-4977-5d3a-9992-9c21f4b74747,machine,0,,khong lien quan: can ho ICON40,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0343,365b2726-d746-5bb7-a266-64a99907b9b9,machine,0,,"khong lien quan: nha khach Da Lat, entity thac Dray Nur (Dak Lak)",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0343,fe9e681e-95fd-57f1-9b8d-1c12fef7e370,machine,0,,khong lien quan: du thuyen Ha Long,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0343,ac19b539-cdf9-5e1c-a7de-2aa833c79fd1,machine,0,,khong lien quan: khach san Tuy Hoa,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0343,1ae7536d-eaef-569a-ab4b-d375eb355e14,machine,0,,khong lien quan: khach san Da Lat,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0343,b1329d05-f873-58e9-97af-95ee1dceeb8f,machine,0,,khong lien quan: nha khach Sa Pa,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0343,823df944-b568-5748-a375-f13a58e07686,machine,0,,"sai thuc the: dam o Hue, entity thac o Dak Lak - khong thay the duoc",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0348,b87310b1-8956-5e44-84ee-6c5066496b5e,machine,0,,"khong lien quan: combo Nghe An, entity lo keo dua",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0348,a6505ff6-ab65-5578-8d1f-ec6313c7cb14,machine,0,,khong lien quan: lodge Hue,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0348,f327e7b3-0f29-53b3-b932-024c480da358,machine,0,,khong lien quan: lodge Sa Pa,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0348,fbebad66-877c-525f-b695-9012364276ae,machine,0,,khong lien quan: khach san Con Dao,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0348,76dd731c-1a40-59f3-b856-a5f92a8d555e,machine,0,,khong lien quan: khach san Phu Quoc,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0348,4f1f165c-04e2-575e-92cf-62d569569071,machine,0,,khong lien quan: resort Con Dao,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0348,014df0f7-516e-5b85-8f93-79668152b34d,machine,0,,khong lien quan: lodge Cat Ba,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0348,945d9465-ed79-5a98-b302-6af9c908b4cf,machine,0,,khong lien quan: khach san Con Dao,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0348,9f06aaa1-a687-521b-a871-3d4656947ff0,machine,0,,khong lien quan: khach san Phu Quoc,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0349,d43f2900-9b71-52ea-9b2f-bf1e1d62686d,machine,0,,"sai noi: suoi nuoc nong Dien Bien, entity Song Bang o Cao Bang",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0349,e3a8a769-7a7a-5be5-875f-54985cf270ec,machine,1,,dung tinh (Cao Bang) nhung sai thuc the - lien quan mot phan,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0349,8cb881b7-0a75-5ca8-beb0-67201eb67e7c,machine,1,,"dung tinh (Cao Bang), attraction khac (Pac Bo) - lien quan mot phan",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0352,55c5117b-dfbb-588e-8797-008e0d980ae3,machine,0,,"sai thuc the: Nha tho Nui o Nha Trang, entity Nui Sam o An Giang (chi trung chu Nui)",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0352,23483cd5-afaa-5899-a05c-345e3331e9c6,machine,0,,khong lien quan: resort Phan Thiet,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:05+07:00,accepted
+c0355,014df0f7-516e-5b85-8f93-79668152b34d,machine,1,,"dung noi den (Cat Ba) nhung sai loai: luu tru, cau hoi xe bus - lien quan mot phan",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0355,578e624f-20f1-5c9a-8c45-b5b721a34b34,machine,0,,"khong lien quan: can ho tai noi di (Ha Noi), khong phai phuong tien",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0358,7fd697a1-0959-501c-84ae-b3e3e9642b48,machine,0,,"khong lien quan: khach san, entity tiNiWorld (khu vui choi tre em)",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0358,c21bdb73-f5c1-560e-ac83-f0844e481d51,machine,0,,khong lien quan: khach san Da Nang,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0358,6b63be99-90de-5672-8030-bed85dd33d35,machine,0,,khong lien quan: can ho Ha Noi,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0358,1b4cabe8-364e-57e5-a51c-dedfd49b7c08,machine,0,,khong lien quan: can ho Quy Nhon,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0358,2014c069-5577-58c2-b1c1-e8bde00785ee,machine,0,,khong lien quan: homestay Da Nang,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0358,ac19b539-cdf9-5e1c-a7de-2aa833c79fd1,machine,0,,khong lien quan: khach san Tuy Hoa,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0358,834b4781-c9dd-529f-8f8c-a371ee6dcc1c,machine,0,,khong lien quan: can ho Quy Nhon,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0361,fbb57a55-ea1b-5772-ae45-6269e53cf95d,machine,0,,"sai noi: Rach Gia, entity Cho noi Cai Rang o Can Tho",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0361,5c86dacd-4df1-5727-a75b-5d895346c9da,machine,0,,sai noi: Rach Gia,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0361,c90edfeb-ddb2-546b-8e59-29efc22b341d,machine,0,,sai noi: Rach Gia,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0361,82b8b2e6-1bc4-567e-9cc0-913363d4646e,machine,0,,sai noi: Rach Gia,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0361,54ffccbc-a918-5d34-91d4-516d1f0f3c92,machine,0,,sai noi: Rach Gia,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0361,6b295989-c92c-5ce7-aa9d-deb062b8e32c,machine,0,,sai noi: Rach Gia,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0361,b7412d94-de29-5d6b-8c39-e47fd8027de7,machine,0,,sai noi: Rach Gia,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0366,4442367f-cbe3-519f-bd34-bc881ac63950,machine,0,,"khong lien quan: homestay Quy Nhon, entity Nha co Binh Thuy (Can Tho)",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0366,78b85e93-05f4-5b50-a072-876606eb6b06,machine,0,,khong lien quan: resort Hue,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0366,47676288-4463-5140-bbc8-c2b3e9b21dac,machine,0,,"sai noi: thanh co o Quang Binh, entity o Can Tho",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0366,d94ff0f9-1a2a-545a-b584-1d56a2e00f07,machine,0,,"sai noi: nha co o Nghe An, entity o Can Tho",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0366,62499f37-25eb-560f-80ba-fb2a23ff9e24,machine,0,,khong lien quan: can ho Con Dao (trung chu Binh),claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0366,3f829079-8fc9-55b8-be91-586a346c7f9b,machine,0,,khong lien quan: nha khach Phan Thiet,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0367,ff118208-0309-54d7-9bea-b7ddacb0b088,machine,0,,"khong lien quan: khach san Ha Long, entity san golf Mui Ne",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0367,abc0800a-7967-58a7-b80e-d1ad17e16950,machine,0,,khong lien quan: can ho Ha Long,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0367,6b2061a4-d2d5-53b1-a0ca-3404d8f17a88,machine,0,,khong lien quan: can ho Nha Trang,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0367,563838ba-c35f-5107-8f8a-9cf862cd77bd,machine,0,,khong lien quan: khach san Cat Ba,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0372,b45ec185-90be-534e-8ffb-2d039eadebc4,machine,1,,"dung noi; ve le vao cua, cau hoi goi VIP tour - khac don vi ban, lien quan mot phan",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0372,7395941b-c54e-507c-8e0f-dac519fe9bcc,machine,1,,"dung noi; ve + buffet, khong phai goi VIP tour - lien quan mot phan",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0372,50c7dd3a-b960-50e6-8f08-2c68c2a56129,machine,1,,"dung noi; ve + fastpass + buggy, khong phai goi VIP tour - lien quan mot phan",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0379,14cab469-ee24-5b77-b391-81a365be9286,machine,2,,"dung noi (Quy Nhon), KS = moi hotel_property, cho do xe co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0379,9ccad87f-d336-52de-b728-328d3f184685,machine,2,,"dung noi dung loai, cho do xe co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0379,dcaec223-b075-5533-a929-d0490583f450,machine,2,,"dung noi dung loai, cho do xe co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0379,b696d2b1-2d71-58e0-8f57-188c7f88f76c,machine,0,,"sai noi: Rach Gia, cau hoi Quy Nhon",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0379,7a6145db-8ccd-5ff3-abc7-9ce5397e67f4,machine,2,,"dung noi dung loai, cho do xe co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0379,c718393d-9f55-5566-b78a-6599fcdc7769,machine,2,,dung noi dung loai; cho do xe khong ghi nhan - khong ghi van co the 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0379,106a4895-a37f-5725-9c5a-52c20f84b06c,machine,2,,"dung noi dung loai, cho do xe co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0379,389b8210-4e8e-5c12-b87e-cd581af2eb44,machine,2,,"dung noi dung loai, cho do xe co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0379,594075f5-c1d8-5a18-adc3-01bc1b09e220,machine,2,,"dung noi dung loai, cho do xe co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0383,014df0f7-516e-5b85-8f93-79668152b34d,machine,0,,"sai noi: Hai Phong, cau hoi Da Lat",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:52:52+07:00,accepted
+c0383,578e624f-20f1-5c9a-8c45-b5b721a34b34,machine,0,,"sai noi: Ha Noi, cau hoi Da Lat",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:52:52+07:00,accepted
+c0383,8fb41cfd-a46b-5744-ae9c-21c2813fa42a,machine,0,,"sai noi: Ninh Binh, cau hoi Da Lat",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:52:52+07:00,accepted
+c0383,ac19b539-cdf9-5e1c-a7de-2aa833c79fd1,machine,0,,"sai noi: Tuy Hoa, cau hoi Da Lat",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:52:52+07:00,accepted
+c0383,e32c1e3e-b2b7-5920-906e-5fc1517c1d52,machine,0,,"sai noi: Ha Long, cau hoi Da Lat",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:52:52+07:00,accepted
+c0383,ff118208-0309-54d7-9bea-b7ddacb0b088,machine,0,,"sai noi: Ha Long, cau hoi Da Lat",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:52:52+07:00,accepted
+c0383,2e5bd417-98da-561c-b1c0-185004a62b4e,machine,0,,"sai noi + sai loai: tour Ninh Binh, cau hoi KS Da Lat",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:52:52+07:00,accepted
+c0383,b696d2b1-2d71-58e0-8f57-188c7f88f76c,machine,0,,"sai noi: Rach Gia, cau hoi Da Lat",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:52:52+07:00,accepted
+c0383,99f6dc7f-30ff-5ee5-977b-13a534ec304f,machine,0,,sai noi + sai loai: dich vu dua don Da Nang/Hoi An,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:52:52+07:00,accepted
+c0383,7eba2bd3-8a4b-5315-bb5e-be5c3ece9a9a,machine,0,,"sai noi: Ninh Binh, cau hoi Da Lat",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:52:52+07:00,accepted
+c0385,b696d2b1-2d71-58e0-8f57-188c7f88f76c,machine,0,,"sai noi: Rach Gia, cau hoi Da Lat",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0385,7eba2bd3-8a4b-5315-bb5e-be5c3ece9a9a,machine,0,,"sai noi: Ninh Binh, cau hoi Da Lat",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0385,014df0f7-516e-5b85-8f93-79668152b34d,machine,0,,"sai noi: Hai Phong, cau hoi Da Lat",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0385,ff118208-0309-54d7-9bea-b7ddacb0b088,machine,0,,"sai noi: Ha Long, cau hoi Da Lat",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0385,fe3735a0-827c-5815-9eb9-2aa1ea2e5c4a,machine,0,,"sai noi: Hoi An, cau hoi Da Lat",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0385,1f72b26e-1c62-5e53-8de2-2bdcd382e768,machine,0,,"sai noi: Da Nang, cau hoi Da Lat",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0388,26203245-65ba-50f2-a534-4e20dafbd88b,machine,0,,"sai loai + destination ghi Ha Noi: tour, cau hoi KS Ha Long",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0388,dd763a5e-6931-5c11-823b-8610dc0750e0,machine,2,,"dung noi, can ho = KS (#6), ho boi co ghi; 'co tam nhin' la dieu kien mem",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0388,61b399d9-7d21-5637-a0c8-85b3e90dd7b7,machine,2,,"dung noi, thuyen = KS (#6), ho boi co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0388,b696d2b1-2d71-58e0-8f57-188c7f88f76c,machine,0,,"sai noi: Rach Gia, cau hoi Ha Long",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0388,01aa142c-50d3-577e-9f7e-fb2b359478f3,machine,0,,sai noi + sai loai: tour Ninh Binh tu Ha Noi,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0388,abc0800a-7967-58a7-b80e-d1ad17e16950,machine,2,,dung noi dung loai; ho boi khong ghi nhan - khong ghi van co the 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0388,e32c1e3e-b2b7-5920-906e-5fc1517c1d52,machine,2,,"dung noi dung loai, ho boi co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0388,ff118208-0309-54d7-9bea-b7ddacb0b088,machine,2,,"dung noi dung loai, ho boi co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0388,ecb55dfa-3b38-5d21-9979-1922628f740d,machine,0,,"sai noi: Thanh Hoa, cau hoi Ha Long",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0394,249e03b6-e2e1-5d80-a8a5-95aa28f145a0,machine,0,,"sai noi: Nha Trang, cau hoi Ha Noi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0394,3931606d-432c-5ef8-972a-01feaaf3c013,machine,0,,"sai noi: Nha Trang, cau hoi Ha Noi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0394,7c140505-630a-5103-a259-f6dce50a967d,machine,2,,dung noi dung loai; san hien khong ghi nhan - khong ghi van co the 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0394,73a1a079-4d92-56c4-806b-e6f5745337eb,machine,2,,dung noi dung loai; san hien khong ghi nhan - van co the 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0394,594075f5-c1d8-5a18-adc3-01bc1b09e220,machine,0,,"sai noi: Quy Nhon, cau hoi Ha Noi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0394,dd763a5e-6931-5c11-823b-8610dc0750e0,machine,0,,"sai noi: Ha Long, cau hoi Ha Noi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0394,dcaec223-b075-5533-a929-d0490583f450,machine,0,,"sai noi: Quy Nhon, cau hoi Ha Noi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0394,14cab469-ee24-5b77-b391-81a365be9286,machine,0,,"sai noi: Quy Nhon, cau hoi Ha Noi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0400,ff118208-0309-54d7-9bea-b7ddacb0b088,machine,0,,"sai noi: Ha Long, cau hoi Phan Thiet",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0400,578e624f-20f1-5c9a-8c45-b5b721a34b34,machine,0,,"sai noi: Ha Noi, cau hoi Phan Thiet",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0400,7eba2bd3-8a4b-5315-bb5e-be5c3ece9a9a,machine,0,,"sai noi: Ninh Binh, cau hoi Phan Thiet",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0400,b972baf3-11c5-5469-99ec-44e6f5ce9469,machine,0,,"sai noi: Da Nang, cau hoi Phan Thiet",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0400,99f6dc7f-30ff-5ee5-977b-13a534ec304f,machine,0,,sai noi + sai loai: dich vu dua don,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0400,e24a1396-0255-59fb-9891-dc55e51af4ba,machine,2,,"dung noi (Mui Ne thuoc Phan Thiet), can ho = KS (#6), nha hang co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0400,249e03b6-e2e1-5d80-a8a5-95aa28f145a0,machine,0,,"sai noi: Nha Trang, cau hoi Phan Thiet",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0403,389b8210-4e8e-5c12-b87e-cd581af2eb44,machine,0,,"sai noi: Quy Nhon, cau hoi Phu Quoc",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0403,8761732b-ed3e-5413-b98e-5b902460871a,machine,0,,"sai noi: Sa Pa, cau hoi Phu Quoc",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0403,7a6145db-8ccd-5ff3-abc7-9ce5397e67f4,machine,0,,"sai noi: Quy Nhon, cau hoi Phu Quoc",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0403,14cab469-ee24-5b77-b391-81a365be9286,machine,0,,"sai noi: Quy Nhon, cau hoi Phu Quoc",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0403,8fb41cfd-a46b-5744-ae9c-21c2813fa42a,machine,0,,"sai noi: Ninh Binh, cau hoi Phu Quoc",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0403,61b399d9-7d21-5637-a0c8-85b3e90dd7b7,machine,0,,"sai noi: Ha Long, cau hoi Phu Quoc",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0403,3931606d-432c-5ef8-972a-01feaaf3c013,machine,0,,"sai noi: Nha Trang, cau hoi Phu Quoc",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0403,b696d2b1-2d71-58e0-8f57-188c7f88f76c,machine,0,,"sai noi: Rach Gia (khong phai Phu Quoc), cau hoi Phu Quoc",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0403,ff118208-0309-54d7-9bea-b7ddacb0b088,machine,0,,"sai noi: Ha Long, cau hoi Phu Quoc",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0408,e3a8a769-7a7a-5be5-875f-54985cf270ec,machine,0,,"sai noi + sai loai: attraction Cao Bang, cau hoi KS Phan Thiet",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0408,7eba2bd3-8a4b-5315-bb5e-be5c3ece9a9a,machine,0,,"sai noi: Ninh Binh, cau hoi Phan Thiet",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0408,249e03b6-e2e1-5d80-a8a5-95aa28f145a0,machine,0,,"sai noi: Nha Trang, cau hoi Phan Thiet",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0408,01aa142c-50d3-577e-9f7e-fb2b359478f3,machine,0,,sai noi + sai loai: tour Ninh Binh,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0408,b696d2b1-2d71-58e0-8f57-188c7f88f76c,machine,0,,"sai noi: Rach Gia, cau hoi Phan Thiet",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0408,d2ca4ece-05a2-5baa-9054-67edae38e00a,machine,0,,"sai noi: Nghe An, cau hoi Phan Thiet",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0408,c2696ef4-c706-5a44-8ba2-7b3ef6a7dddd,machine,0,,"sai noi: Dien Bien, cau hoi Phan Thiet",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0408,e32c1e3e-b2b7-5920-906e-5fc1517c1d52,machine,0,,"sai noi: Ha Long, cau hoi Phan Thiet",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0408,ff118208-0309-54d7-9bea-b7ddacb0b088,machine,0,,"sai noi: Ha Long, cau hoi Phan Thiet",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0409,84fd742a-3643-54e0-8cf0-4ae377de4318,machine,0,,"sai noi: Cat Ba (Hai Phong), cau hoi Ha Long",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0409,a3bec1f8-53c4-5675-bf6a-b9f0d702d667,machine,1,,"dung noi sai loai: tour du thuyen, cau hoi khach san (quy uoc #2)",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0409,e32c1e3e-b2b7-5920-906e-5fc1517c1d52,machine,2,,dung noi dung loai; quay bar khong ghi nhan - khong ghi van co the 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0409,eff948d9-08d9-5ad2-bc08-4a9b45722fd9,machine,2,,dung noi dung loai; quay bar khong ghi nhan - van co the 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0409,12c8adcb-d3ee-5939-adfe-739617529327,machine,0,,"sai noi: Phu Quoc, cau hoi Ha Long",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0426,594075f5-c1d8-5a18-adc3-01bc1b09e220,machine,0,,"sai noi: Quy Nhon, cau hoi Hai Phong",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0426,2b3b4941-967f-53a3-924e-065efbe6ddd1,machine,0,,"sai noi: Ninh Binh, cau hoi Hai Phong",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0426,7cf05b2e-efd9-5085-933b-be433c4a4188,machine,0,,sai noi + sai loai: attraction My Tho,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0426,e3a8a769-7a7a-5be5-875f-54985cf270ec,machine,0,,sai noi + sai loai: attraction Cao Bang,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0426,cfc5781f-7eba-525f-8d03-b2ee6bca5c63,machine,0,,"sai noi: Quy Nhon, cau hoi Hai Phong",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0426,249e03b6-e2e1-5d80-a8a5-95aa28f145a0,machine,0,,"sai noi: Nha Trang, cau hoi Hai Phong",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0426,88593dbd-2888-509a-b875-4a8d5f8fba36,machine,0,,"sai noi: Tuy Hoa, cau hoi Hai Phong",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0426,389b8210-4e8e-5c12-b87e-cd581af2eb44,machine,0,,"sai noi: Quy Nhon, cau hoi Hai Phong",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0426,49a4084b-6653-5570-94c1-7adf619656b7,machine,0,,"sai noi: TP.HCM, cau hoi Hai Phong",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0428,bafd5122-4660-51d6-ada8-b1e2cc7843c6,machine,0,,"sai noi: Hoi An, cau hoi Sa Pa",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0428,ac19b539-cdf9-5e1c-a7de-2aa833c79fd1,machine,0,,"sai noi: Tuy Hoa, cau hoi Sa Pa",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0428,6d714aff-4856-5d8c-bbc5-7fe4b0d6e572,machine,0,,"sai noi: Ninh Binh, cau hoi Sa Pa",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0428,3bb8e70f-bf29-5059-b7f7-d077873cabdc,machine,0,,"sai noi: Tuy Hoa, cau hoi Sa Pa",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0428,05590188-ab49-573a-9d17-166e851e19f3,machine,2,,"dung noi (Sa Pa), san hien co ghi + phong Co San Hien",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0428,b696d2b1-2d71-58e0-8f57-188c7f88f76c,machine,0,,"sai noi: Rach Gia, cau hoi Sa Pa",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0428,1dcf5cb3-dc78-5f22-ab7c-e52dfc67a5c3,machine,0,,"sai noi: Hai Phong, cau hoi Sa Pa",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0428,8761732b-ed3e-5413-b98e-5b902460871a,machine,2,,"dung noi (Sa Pa), can ho dv = KS (#6); san hien khong ghi nhan - khong ghi van co the 2",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0428,723ff604-3a57-5735-b9ac-b88a7c94a0ec,machine,0,,"sai noi: Ninh Binh, cau hoi Sa Pa",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0428,8fb41cfd-a46b-5744-ae9c-21c2813fa42a,machine,0,,"sai noi: Ninh Binh, cau hoi Sa Pa",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0433,956fcfb1-91ec-5dd2-80a3-fab64eb05d1c,machine,1,,"dung noi (Pleiku) sai loai: attraction, cau hoi khach san (quy uoc #2)",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0433,69f695bd-bccc-5baa-8a35-a3fbeaa34930,machine,0,,"sai noi: TP.HCM, cau hoi Pleiku",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0433,a7ab2a29-406c-57c1-96ac-f56a906ee350,machine,0,,"sai noi: Hue, cau hoi Pleiku",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0433,b696d2b1-2d71-58e0-8f57-188c7f88f76c,machine,0,,"sai noi: Rach Gia, cau hoi Pleiku",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0433,3e9b3c70-eb17-55f7-a709-aba676f4996e,machine,1,,"dung noi (Pleiku) sai loai: attraction chua, cau hoi khach san (quy uoc #2)",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0433,d7c348ed-ea0a-512a-a243-8d170e581e50,machine,0,,"sai noi: Tuy Hoa, cau hoi Pleiku",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0433,9f1f4d09-67cc-5260-81d5-b15475191971,machine,0,,"sai noi: Hai Phong, cau hoi Pleiku",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0433,9e3ecf4d-af5f-57a3-86cb-136756559bd2,machine,1,,"dung noi (Pleiku) sai loai: attraction, cau hoi khach san (quy uoc #2)",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0433,5560b45d-b3c7-5a15-8fc9-3ff13fde568d,machine,0,,"sai noi: Phu Quoc, cau hoi Pleiku",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0439,76dd731c-1a40-59f3-b856-a5f92a8d555e,machine,0,,"sai noi: Phu Quoc, cau hoi KDL Nha Trang",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0439,20130a1a-4b25-573e-9e20-85a41670c404,machine,0,,"sai noi: Can Tho, cau hoi Nha Trang",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0439,9f06aaa1-a687-521b-a871-3d4656947ff0,machine,0,,"sai noi: Phu Quoc, cau hoi Nha Trang",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0439,1ae7536d-eaef-569a-ab4b-d375eb355e14,machine,0,,"sai noi: Da Lat, cau hoi Nha Trang",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0439,d809ea12-ac96-5b17-808a-a08d9c66fb26,machine,0,,"sai noi: Phu Quoc, cau hoi Nha Trang",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0439,72a07c9e-8c68-5692-bb5f-90fc9920e8bf,machine,0,,"sai noi: Cat Ba, cau hoi Nha Trang",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0439,e1b57ca8-ca63-5ce9-a9e0-cb460620954d,machine,0,,"sai noi: Da Lat, cau hoi Nha Trang",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0439,6570706e-0684-552d-8123-3bfff6d2f85a,machine,0,,"sai noi: Da Lat, cau hoi Nha Trang",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0446,a34b24eb-8d44-53d1-9a98-1d1c543e0623,machine,2,,"dung noi, ve vao cua VinWonders Nha Trang (VW = VinWonders)",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0446,a25c2ff6-f8e3-5697-9dc9-d1e56df1a68b,machine,1,,"dung noi; goi combo VIP tour, cau hoi ve - khac don vi ban (nhu vi du guide)",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0446,967c480c-2195-5219-9278-ef91d58715bb,machine,2,,"dung noi, ve trai nghiem trong VinWonders Nha Trang - van la ve VW",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0446,ac726c3e-b439-52e9-88f7-8a21e04d8bdf,machine,2,,"dung noi, ve vao cua VinWonders Nha Trang",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0450,e3b80ac4-861e-5ef6-a55d-6d75b029f885,machine,2,,"resort Phu Quoc, huong bien + bungalow nhin ra bai bien; gia tot la dieu kien mem",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0450,121deed2-12a9-56ee-adb1-e365f6ccc7f5,machine,2,,resort Phu Quoc; gan bien khong ghi nhan - khong ghi van co the 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0450,e2538316-77a6-537f-8132-cba65566e073,machine,2,,resort Phu Quoc; gan bien khong ghi nhan - van co the 2,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0451,8be30bca-2395-5cc3-9f31-8d377b421bd9,machine,0,,"sai noi + sai loai: attraction Chau Doc, cau hoi KS Nha Trang",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0451,df2256c9-f70b-52f7-966c-097d0f2ad7ea,machine,0,,sai noi: Kon Tum,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0451,2a636cf0-196e-571a-aeec-f7e7f67ac3e4,machine,0,,sai noi + sai loai: tour Ninh Binh,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0451,578ce900-1ac4-5fa1-8763-e4fb9a422f56,machine,0,,sai noi: Kon Tum,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0451,e3a8a769-7a7a-5be5-875f-54985cf270ec,machine,0,,sai noi: Cao Bang,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0451,8fb41cfd-a46b-5744-ae9c-21c2813fa42a,machine,0,,"sai noi: Ninh Binh, cau hoi Nha Trang",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0451,2b3b4941-967f-53a3-924e-065efbe6ddd1,machine,0,,"sai noi: Ninh Binh, cau hoi Nha Trang",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0451,99f6dc7f-30ff-5ee5-977b-13a534ec304f,machine,0,,sai noi + sai loai: dich vu dua don Hoi An,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0456,3db61b76-2aea-5c50-8827-69ac5e08e311,machine,1,,"dung noi (Nha Trang) sai loai: ve cong vien VinWonders, cau hoi Vinpearl resort (quy uoc #2)",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0457,5e0a6f9c-f15d-576c-a79e-b4aec9e7fd00,machine,0,,"sai noi: Hoi An, cau hoi Ha Noi (KS HN)",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0457,e4c0df32-5695-5888-9d79-5a20e487fe9a,machine,0,,"sai noi: Nha Trang, cau hoi Ha Noi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0457,b3a7810c-31fe-5d7d-a603-325ebf72e587,machine,0,,"sai noi: Phu Quoc, cau hoi Ha Noi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0457,05ccf6ab-882e-519c-b3f8-055a900c4d72,machine,0,,"sai noi: Nha Trang, cau hoi Ha Noi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0457,da21a255-05e6-5c24-ad09-b97b7f140cc2,machine,0,,"sai noi: TP.HCM, cau hoi Ha Noi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0457,47767761-2e0b-5a5d-b995-30590cf63760,machine,0,,"sai noi: Hai Phong (Cat Ba), cau hoi Ha Noi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0457,f9a2ee8a-8ea4-5164-a71f-d60b0deec95e,machine,0,,"sai noi: TP.HCM, cau hoi Ha Noi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0457,9fb6db1c-975b-58d7-82a8-22cabdc40575,machine,0,,"sai noi: Nha Trang, cau hoi Ha Noi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0457,1f806f19-af54-57e1-9b7d-78f34dc3fe56,machine,0,,"sai noi: TP.HCM, cau hoi Ha Noi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0460,9eed5b86-c7de-5d6a-b507-55106a15d1ec,machine,2,,"dung noi (PQ = Phu Quoc), combo vui choi dung loai; gia kiem khong duoc - bo qua",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0460,6c5ec0c5-88b2-5a18-8a1e-fde1d9bc7243,machine,0,,"sai noi: Nha Trang, cau hoi Phu Quoc",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0466,e32c1e3e-b2b7-5920-906e-5fc1517c1d52,machine,0,,"sai noi: Ha Long, cau hoi Da Lat",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0466,7eba2bd3-8a4b-5315-bb5e-be5c3ece9a9a,machine,0,,"sai noi: Ninh Binh, cau hoi Da Lat",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0466,61b399d9-7d21-5637-a0c8-85b3e90dd7b7,machine,0,,"sai noi: Ha Long, cau hoi Da Lat",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0466,ff118208-0309-54d7-9bea-b7ddacb0b088,machine,0,,"sai noi: Ha Long, cau hoi Da Lat",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0469,b3a7810c-31fe-5d7d-a603-325ebf72e587,machine,0,,"sai noi: Phu Quoc, cau hoi Hoi An",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0469,41907ca0-c565-5be6-93a0-2b1cbe0e1da1,machine,2,,"resort 5 sao Hoi An, ghi 'phu hop gia dinh co tre nho'",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0469,365b2726-d746-5bb7-a266-64a99907b9b9,machine,0,,"sai noi: Da Lat, cau hoi Hoi An",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0469,b65c2c60-bd65-5884-bc07-7742cf3211d6,machine,1,,"dung noi sai loai: hostel, cau hoi resort (quy uoc #6)",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0469,e9c731c6-667a-59ab-88b6-d3f774224479,machine,2,,"resort 4 sao Hoi An, ghi 'phu hop gia dinh co tre nho'",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0469,4fed7e26-fab8-52af-88b4-af3776d97f45,machine,0,,"sai noi: Nha Trang, cau hoi Hoi An",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0472,6d746211-66ff-5b75-b8bf-94f98e1f54cc,machine,1,,"dung noi; combo kem ve Safari, cau hoi ve - khac don vi ban (vi du guide)",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0472,cffa47c2-d7e6-5c82-8e32-012f8530e2d4,machine,1,,"dung noi; combo kem ve Safari, cau hoi ve - khac don vi ban",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0475,fefc0b6c-b8f4-5142-8f1d-8a5dc17efb3d,machine,0,,"sai noi: Da Lat, cau hoi Ha Long (HL)",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0475,5d0ce773-3c16-57a3-8bdd-ff9256b5c37a,machine,2,,"dung noi (Ha Long), 'Nhin ra bien' co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0475,88627123-7734-5a5b-bbf9-86e47fb6ef3e,machine,2,,"dung noi, 'Nhin ra bien' co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0475,e32c1e3e-b2b7-5920-906e-5fc1517c1d52,machine,2,,"dung noi, 'Nhin ra bien' co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0475,ff118208-0309-54d7-9bea-b7ddacb0b088,machine,2,,"dung noi, 'Nhin ra bien' co ghi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0480,9b4f2345-9d58-5b04-9695-134b4113899d,machine,1,,"dung noi; condotel/can ho, khong phai resort/KDL (quy uoc #6) - sai loai con",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0480,1ace96ec-6893-53b8-b71b-4b070195793d,machine,1,,"dung noi; khach san thuong, cau hoi KDL nghi duong - sai loai con",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0480,3bb8e70f-bf29-5059-b7f7-d077873cabdc,machine,0,,"sai noi: Tuy Hoa, cau hoi Phan Thiet",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0480,e24a1396-0255-59fb-9891-dc55e51af4ba,machine,1,,"dung noi; can ho, cau hoi KDL nghi duong - sai loai con",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0480,83ab1f05-b0a7-5b18-bd29-794a3a5dbdf1,machine,2,,"dung noi, resort (KDL) dung loai; gia tot la dieu kien mem",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0514,2bc05ff2-98ec-50fe-9029-6a25e3f35218,machine,2,,"dung noi, hotel_property, sao 4 dat >= 3; gia kiem o cap room",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0514,57d898ce-b93e-5b7c-83e3-61be45885f2e,machine,2,,"dung noi, hotel_property, sao 3 dat >= 3",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0514,6ac0453c-b83d-583d-9772-c3f1e5b958ee,machine,1,,"dung noi dung loai, sao 2 < 3 yeu cau",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0541,2f48e6d2-0bf9-5be3-877b-c2f0a7981521,machine,2,,cross_vertical (#5): khach san thuoc vertical duoc hoi + dung noi BMT,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0541,d8cd7f46-aeed-533d-84e8-93091a3acd28,machine,2,,cross_vertical (#5): khach san + dung noi BMT,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0541,07453c68-768d-5118-8439-58ae10f3e96d,machine,2,,cross_vertical (#5): khach san + dung noi BMT,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0541,393512cc-bd07-5ae8-907f-96442054b6a2,machine,2,,cross_vertical (#5): khach san + dung noi BMT,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0546,a3d6489e-22f0-5722-a96c-99724291e689,machine,2,,cross_vertical (#5): hotel_property + dung noi Can Tho,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0546,c08c088e-9093-5a57-8203-a6acf5309cf9,machine,2,,cross_vertical (#5): hotel_property + dung noi Can Tho,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0546,0bbf036f-7cf6-50e4-ac96-192d49dab84d,machine,2,,cross_vertical (#5): nha khach = hotel_property + dung noi Can Tho,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0546,7a2951e8-e7cf-50d3-9dad-ebee8068177d,machine,2,,cross_vertical (#5): resort + dung noi Can Tho,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0547,228a3f3c-633c-555f-bfba-48fc86de32c3,machine,2,,cross_vertical (#5): khach san + dung noi Hue,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0547,b4cef5ec-c414-563e-bbd5-7685ea3353e6,machine,2,,cross_vertical (#5): khach san + dung noi Hue,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0547,e776971e-2bb0-5aea-a7b3-a4cfaf6189f6,machine,2,,cross_vertical (#5): nha nghi b&b = hotel_property + dung noi Hue,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0547,6093deb4-db1b-50bb-b8be-93091f888eb5,machine,2,,cross_vertical (#5): co so luu tru + dung noi Hue,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0547,fa035541-bde4-5299-aee5-73d670d7b869,machine,2,,cross_vertical (#5): khach san + dung noi Hue,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0547,07e1c081-b903-5cd6-ac7b-08f15eaf1b61,machine,2,,cross_vertical (#5): khach san + dung noi Hue,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0547,f2da0f67-373e-57a3-aeae-ebbd0194768c,machine,2,,cross_vertical (#5): khach san + dung noi Hue,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0547,c6061b6f-6384-5be3-8044-1f2fa1d26fa6,machine,2,,cross_vertical (#5): biet thu = hotel_property + dung noi Hue,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0551,b8bc7bb1-1a3b-5bbe-a4d9-cfba48511230,machine,2,,cross_vertical (#5): ve tham quan (attraction) + dung noi Ha Noi,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0551,c9cea61d-c058-538c-b816-41c7e8bf2cce,machine,2,,cross_vertical (#5): hostel = hotel_property + dung noi Ha Noi,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0551,5bd522c1-5eb9-5d17-80c8-913bd96c621d,machine,2,,cross_vertical (#5): co so luu tru + dung noi Ha Noi,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0551,f9718902-b703-5e4c-884e-c25f717ebfab,machine,2,,cross_vertical (#5): khach san + dung noi Ha Noi,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0551,93dbb7bc-c4df-5aab-baec-bf7090bb387a,machine,2,,cross_vertical (#5): combo + dung noi Ha Noi,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0551,c977393b-63d7-5115-8c79-7d7b45ff142a,machine,0,,"sai noi: combo o Can Tho (bay tu HN di Can Tho), cau hoi o Ha Noi",claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0555,10671599-c49f-5603-8c36-f57aec2f451a,machine,2,,cross_vertical (#5): combo + dung noi Ha Tinh,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0555,f751a108-420a-5322-923f-f4925c4c915d,machine,2,,cross_vertical (#5): combo + dung noi Ha Tinh,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0555,345aed84-eb70-5de5-80aa-51eb228c953f,machine,2,,cross_vertical (#5): khach san + dung noi Ha Tinh,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0555,3cc8b3ae-e0ee-52f9-b97e-ce1ea820dcab,machine,2,,cross_vertical (#5): hotel_property + dung noi Ha Tinh,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0556,79ed65d2-0461-5cf8-a0a4-1e5b46aa3512,machine,2,,cross_vertical (#5): khach san + dung noi Ha Long,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0556,091aac77-e92e-5451-9637-f4fdf5991853,machine,2,,cross_vertical (#5): khach san + dung noi Ha Long,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0556,7ce51e36-c2ff-5dd6-ab36-ffdc31cba423,machine,2,,cross_vertical (#5): khach san + dung noi Ha Long,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0556,dc90e016-a588-5eac-a618-406093912231,machine,2,,cross_vertical (#5): khach san + dung noi Ha Long,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0556,a05627eb-1ec8-5677-8407-a42e25d50634,machine,2,,cross_vertical (#5): khach san + dung noi Ha Long,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0560,c5fbdb37-6af9-558c-a957-99411f2e77b5,machine,2,,cross_vertical (#5): hotel_property + dung noi Hai Phong,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0560,736a506f-ed0d-541f-8080-986fe6f114d4,machine,2,,cross_vertical (#5): hotel_property + dung noi Hai Phong,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0560,90cbb5c5-c82e-5b8b-ac31-c027696a6e78,machine,2,,cross_vertical (#5): hotel_property + dung noi Hai Phong,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0560,2ecfea7c-a5df-57c4-9996-49e7413dd4c5,machine,2,,cross_vertical (#5): khach san + dung noi Hai Phong,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0560,26d6015d-e0e3-520f-a6ee-f79cf7015459,machine,2,,cross_vertical (#5): khach san/can ho + dung noi Hai Phong,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:06+07:00,accepted
+c0564,95961038-d59c-563b-ad60-c485a1341134,machine,2,,cross_vertical (#5): homestay = hotel_property + dung noi Hoi An,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:07+07:00,accepted
+c0564,14ac16ab-b026-505d-9c4e-29f651c827d5,machine,2,,cross_vertical (#5): khach san + dung noi Hoi An,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:07+07:00,accepted
+c0564,126a3eb8-8855-5c8b-8052-5fb66f965b0e,machine,2,,cross_vertical (#5): khach san + dung noi Hoi An,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:07+07:00,accepted
+c0564,8b6e8730-e6a8-5e57-ba77-a58d7710a088,machine,2,,cross_vertical (#5): homestay = hotel_property + dung noi Hoi An,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:07+07:00,accepted
+c0564,06f7903d-7eb7-5118-afe0-3092a9f20872,machine,2,,cross_vertical (#5): khach san + dung noi Hoi An,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:07+07:00,accepted
+c0564,41544202-6282-5842-b762-03fe965f381d,machine,2,,cross_vertical (#5): khach san + dung noi Hoi An,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:07+07:00,accepted
+c0564,ec9432a9-a8e6-57d3-acc4-e658b1ff2666,machine,2,,cross_vertical (#5): co so luu tru + dung noi Hoi An,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:07+07:00,accepted
+c0565,03e10234-94bf-5518-bf91-389d9fb720ab,machine,2,,cross_vertical (#5): combo + dung noi Nghe An,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:07+07:00,accepted
+c0565,156b0d8c-3875-5c58-8492-8ba44bb7f362,machine,2,,cross_vertical (#5): khach san + dung noi Nghe An,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:07+07:00,accepted
+c0565,889e78c7-a593-5f1a-8a8a-2df79d8e9a1a,machine,2,,cross_vertical (#5): khach san + dung noi Nghe An,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:07+07:00,accepted
+c0565,be65b93a-1f71-5fbb-81a2-4ba3619740b3,machine,2,,cross_vertical (#5): resort = hotel_property + dung noi Nghe An,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:07+07:00,accepted
+c0565,504123c9-d3c9-55f5-9bc9-171d5d1b6579,machine,2,,cross_vertical (#5): khach san + dung noi Nghe An,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:07+07:00,accepted
+c0565,a4dd45a6-54ec-55b8-be02-88c630984961,machine,2,,cross_vertical (#5): khach san + dung noi Nghe An,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:07+07:00,accepted
+c0565,255d6a1f-ed9e-5168-b412-d93cd4a4b3ab,machine,2,,cross_vertical (#5): khach san + dung noi Nghe An,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:07+07:00,accepted
+c0569,f8023677-d542-5ab1-991e-00daa79767a5,machine,2,,cross_vertical (#5): khach san + dung noi Nha Trang,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:07+07:00,accepted
+c0569,95c2a2da-8ca0-5681-96e3-4a8c2ccdb9c0,machine,2,,cross_vertical (#5): can ho = hotel_property + dung noi Nha Trang,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:07+07:00,accepted
+c0569,610de64e-a222-5ca6-8484-8f564287cc7a,machine,2,,cross_vertical (#5): khach san/can ho + dung noi Nha Trang,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:07+07:00,accepted
+c0569,38120312-8c9f-5bfb-b877-42a6a4854c8b,machine,2,,cross_vertical (#5): khach san + dung noi Nha Trang,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:07+07:00,accepted
+c0569,4722c371-1636-5eb5-ad32-de08c251edb1,machine,2,,cross_vertical (#5): khach san + dung noi Nha Trang,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:07+07:00,accepted
+c0569,818ae3fe-9a2a-5f08-9bcd-87667cf93823,machine,2,,cross_vertical (#5): khach san + dung noi Nha Trang,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:07+07:00,accepted
+c0569,569684af-0d49-5883-93e0-266794874e80,machine,2,,cross_vertical (#5): khach san + dung noi Nha Trang,claude-fable-5,2026-10-01T07:35:58+07:00,QAnh,2026-10-01T09:59:07+07:00,accepted

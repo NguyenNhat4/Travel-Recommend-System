@@ -19,7 +19,7 @@ Ký hiệu lệnh: `sb` = `python -m evaluation.search_bench` chạy từ `src/`
 - [x] Có `COHERE_API_KEY` (trial đủ: ~105 lượt gọi / lần re-embed 5.000 search unit) — *23/09: trong `.env` gốc repo, `sb doctor` xác nhận hợp lệ*
 - [x] Có `products.jsonl` bản mới nhất (contract `docs/spec/data-collection/schema.md`), đường dẫn ghi vào config — mặc định snapshot `src/data_collection/snapshots/2026-09-23/products.jsonl.gz`, `sb catalog build` tự bung — *23/09: snapshot 2026-09-21, 10.320 dòng → 2.897 search unit* — ⚠ *24/09: sau merge `release-mvp-v1` (80c3611), snapshot `2026-09-23` (11.387 dòng) là mặc định của repo; `config/sbench.yaml` vẫn trỏ 2026-09-21 — chốt giữ hay đổi trước khi embed lại B0* — *24/09 chiều: chốt chuyển sang 2026-09-23 — 11.387 dòng → 3.183 search unit (hotel_property 2.321, attraction 610, combo 133, flight_route 113, golf 6)*
 - [x] Docker Desktop chạy được; máy ≥ 16 GB RAM nếu chạy bge-m3 local làm đối chứng — *23/09: Docker 29.7.2, RAM 31,5 GB*
-- [ ] Mentor xác nhận bằng văn bản việc lệch handbook ở 3 mục (backend, vector store, embedding)
+- [ ] Mentor xác nhận bằng văn bản việc lệch handbook ở 3 mục (backend, vector store, embedding) — *29/09: note soạn tại `docs/spec/bench/note-mentor-lech-handbook.md`, chưa gửi; tick khi mentor trả lời*
 - [x] Tạo nhánh `bench/embed-search` (đã có), thư mục `src/evaluation/search_bench/` theo spec
 
 ---
@@ -80,7 +80,7 @@ Ký hiệu lệnh: `sb` = `python -m evaluation.search_bench` chạy từ `src/`
 - [ ] Gán hết `pool_B.csv` theo thứ tự app — như A (câu chung không lộ; không trao đổi từng câu tới khi có κ)
 
 ### Sync cuối ngày
-- [ ] `sb gold kappa gold/labels/labels_A.csv gold/labels/labels_B.csv` → Cohen κ (linear) trên 25 chung — *25/09: lệnh đã có, đúng đáp án fixture (κ linear 0,731343); lệnh cũ ghi `pool_A.csv pool_B.csv`, nay nhãn ở file riêng do app xuất*
+- [x] `sb gold kappa gold/labels/labels_A.csv gold/labels/labels_B.csv` → Cohen κ (linear) trên 25 chung — *25/09: lệnh đã có, đúng đáp án fixture (κ linear 0,731343); lệnh cũ ghi `pool_A.csv pool_B.csv`, nay nhãn ở file riêng do app xuất* — *30/09 (nhãn thật, cả hai đủ 100 %, nhãn máy đã duyệt hết): 640 cặp chung / 25 câu; **κ linear 0,692** (ngưỡng 0,6), không trọng số 0,614, quadratic 0,769; 12 cặp lệch 2 bậc (c0136, c0178, c0208, c0217×2, c0229, c0433×3, c0450×3) → `needs_discussion` khi merge. Kế hoạch tiếp: `docs/plan/2026-09-30-bench-search-recsys-3-ngay.md`*
 - [ ] κ ≥ 0,6 → tiếp. κ < 0,6 → ghi lại chỗ lệch, sửa `gold-guide.md`, **gán lại 25 chung** sáng ngày 4 (lịch lùi ½ ngày, chấp nhận)
 - [ ] Hoà nhãn 25 chung: lệch 1 bậc lấy nhãn thấp hơn; lệch 2 bậc thảo luận — *25/09: `sb gold merge gold/labels/labels_A.csv gold/labels/labels_B.csv` → `gold/labels/merged.csv`; sửa dòng `needs_discussion` ngay trong file (`gold-guide.md`)*
 

@@ -54,7 +54,7 @@ App hiện chỉ có chế độ soát câu hỏi (KEEP / REJECT / NEEDS_EDIT). 
    - Mỗi ứng viên chọn 2 / 1 / 0; mặc định là chưa gán, không tự điền 0.
    - Slice parent_child: khi chọn 2, hiện ô chọn hạng phòng đúng loại, bắt buộc chọn ít nhất một.
    - Có ô `note` cho mỗi cặp.
-6. **Lưu ngay sau mỗi thay đổi.**
+6. **Lưu ngay sau mỗi thay đổi.** *(29/09, theo yêu cầu người dùng: đổi thành lưu theo lượt — chỉnh bảng không ghi file; nút **Lưu** ghi mọi thay đổi của câu đang mở, và chuyển câu thì tự lưu trước; câu có dòng lỗi thì không cho rời. Mỗi lượt lưu vẫn đi qua `save_label` → `upsert_label` như dưới.)*
    - Mỗi lần chọn là một lần gọi `upsert_label`, với `labeled_at` = giờ hiện tại và `pool_sha` lấy từ meta.
    - Lỗi từ `validate_label_against_pool` hiện ngay tại dòng đó, không lưu.
 7. **Tiếp tục đúng chỗ.**

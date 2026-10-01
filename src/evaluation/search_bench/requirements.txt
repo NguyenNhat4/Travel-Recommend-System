@@ -22,3 +22,4 @@ unidecode>=1.3
 beautifulsoup4>=4.12        # data_collection.collectors.textutil — parse_combos dựng combo_items như production
 pytest>=8
 streamlit>=1.64,<2         # app soát draft gold (streamlit_app.py), local + Streamlit Community Cloud
+psycopg[binary]>=3.2,<4   # chỉ cho sb parity --mode weaviate: catalog VM qua PostgresCatalogReader của backend (30/09)

@@ -1,0 +1,57 @@
+# `sb latency http` (spec Part 9, 30/09). Hai nhóm, mỗi nhóm 25 câu:
+# - prewarmed: câu gold active (gold_v1) — nằm trong danh sách prewarm của backend (src/backend/data/search_prewarm_queries.txt),
+#   trải 13 slice. Sau PR cache, lượt 1 đã là hit nếu prewarm chạy xong.
+# - cold: câu KHÔNG có trong gold (test kiểm ∩ = ∅ sau khi gộp khoảng trắng) → lượt 1 là miss, lượt 2+ là hit.
+# Không sửa câu prewarmed thành câu ngoài gold; muốn thêm câu thì thêm vào cold.
+prewarmed:
+  - tìm khách sạn nghỉ dưỡng tại Hạ Long                       # c0005 dest_type
+  - điểm vui chơi ở Phú Quốc                                    # c0037 dest_type
+  - chỗ nghỉ Côn Đảo cho gia đình có trẻ nhỏ                    # c0097 audience_style
+  - khách sạn Sa Pa có wifi và bàn làm việc cho chuyến công tác  # c0109 audience_style
+  - khách sạn ở Nghệ An có wifi miễn phí                        # c0166 amenity_single
+  - tìm chỗ nghỉ Hạ Long có phòng nhìn ra biển                  # c0196 amenity_single
+  - chỗ nghỉ Buôn Ma Thuột có WiFi miễn phí và chỗ đỗ xe miễn phí   # c0211 amenity_multi
+  - chỗ nghỉ Hạ Long có Phòng gia đình và nhà hàng              # c0235 amenity_multi
+  - Khách sạn Hạ Long không có ban công                         # c0247 amenity_negation
+  - chỗ nghỉ ở Ninh Bình có view địa danh                       # c0256 amenity_offtaxonomy
+  - tìm Phòng Deluxe - Dãy nhà A ở Buôn Ma Thuột                # c0272 parent_child
+  - Căn Hộ Nhìn Ra Biển tại Hạ Long                             # c0295 parent_child
+  - Vinpearl Hotel Bắc Ninh                                     # c0316 named_entity
+  - thông tin Gói dịch vụ VIP Tour VinWonders Phú Quốc (3 tiếng)   # c0372 named_entity
+  - Vé máy bay Buôn Ma Thuột - Hà Nội                           # c0373 named_entity
+  - khach san o quy nhon co cho do xe mien phi                  # c0379 no_diacritics
+  - khach san o ha long co ho boi co tam nhin                   # c0388 no_diacritics
+  - KDL NT cho gia đình                                         # c0439 abbrev_typo
+  - Vinpeal Resort Nha Trang giá tốt                            # c0456 abbrev_typo
+  - KS HL nhin ra bien                                          # c0475 abbrev_typo
+  - khách sạn 5 sao ở Hà Tĩnh dưới 2 triệu                      # c0481 multi_constraint
+  - khách sạn 3 sao ở Nha Trang dưới 500 nghìn                  # c0517 multi_constraint
+  - khách sạn, vé máy bay và vé tham quan ở Buôn Ma Thuột       # c0541 cross_vertical
+  - tìm khách sạn, vé máy bay, vé tham quan, sân golf và combo du lịch ở Nha Trang   # c0569 cross_vertical
+  - resort ở Mộc Châu                                           # c0574 out_of_catalog
+cold:
+  - khách sạn gần biển ở Đà Nẵng
+  - resort có hồ bơi vô cực ở Phú Quốc
+  - vé máy bay Hà Nội đi Đà Lạt
+  - combo nghỉ dưỡng Vũng Tàu 2 ngày 1 đêm
+  - homestay Đà Lạt cho cặp đôi
+  - khách sạn Hội An có xe đạp miễn phí
+  - vé VinWonders Nam Hội An
+  - sân golf gần Hà Nội
+  - chỗ nghỉ Sa Pa view ruộng bậc thang
+  - khách sạn 4 sao Cần Thơ có hồ bơi
+  - khu vui chơi cho trẻ em ở Hà Nội
+  - khach san hue gan song huong
+  - resort Ninh Bình gần Tràng An
+  - KS PQ có bãi biển riêng
+  - tour tham quan vịnh Hạ Long trong ngày
+  - khách sạn Nha Trang có bữa sáng miễn phí
+  - chỗ nghỉ Mũi Né gần đồi cát
+  - vé máy bay đi Côn Đảo
+  - Vinpearl Safari Phú Quốc
+  - khách sạn Buôn Ma Thuột gần trung tâm
+  - nhà nghỉ giá rẻ ở Quy Nhơn
+  - combo Đà Nẵng có vé Bà Nà
+  - khách sạn Hạ Long có bến du thuyền
+  - resort ở Cà Mau
+  - villa có bếp ở Đà Lạt cho nhóm 6 người
