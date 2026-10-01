@@ -2,34 +2,26 @@
 
 Hướng dẫn dựng, kiểm tra và xử lý sự cố cho PostgreSQL replica. Kế hoạch: `docs/plan/2026-10-01-db-replica-terraform.md`. Nếu lệch PRD, contract hoặc `AGENTS.md` thì các nguồn đó thắng.
 
-## 1. Dựng lần đầu
+## 1. Dựng lần đầu (tự động qua CI/CD)
 
-1. **Tạo VM bằng CI/CD** (không chạy Terraform tay). Merge thay đổi vào `infra/terraform/**` trên nhánh release: workflow `Staging Infra Terraform` tự plan, chặn plan có xoá/thay thế, rồi apply. Xem plan trong phần Summary của run. Output (IP) hiện trong log bước apply, hoặc tra bằng `gcloud compute instances describe <vm> --zone <zone> --format='value(networkInterfaces[0].networkIP)'`. Cần xoá/thay thế VM có chủ đích thì chạy workflow tay với `allow_destroy=true` sau khi đã xem plan.
+Không chạy lệnh tay. Workflow `Staging Infra Terraform` (`.github/workflows/infra-terraform-staging.yml`) làm toàn bộ khi có thay đổi được merge vào nhánh release:
 
-2. **Chuẩn bị primary** (SSH vào VM db-primary, trong checkout repo). `REPLICA_IP` lấy từ `terraform output replica_private_ip`:
+1. **Job `plan_apply_staging`**: plan, chặn plan có xoá/thay thế, chặn cập nhật tại chỗ VM primary/app, rồi apply. Xem plan trong Summary của run. Cần xoá/thay thế có chủ đích thì chạy workflow tay với `allow_destroy=true`; cần cập nhật VM primary/app thì chạy tay với `allow_vm_update=true` (CI chụp snapshot disk primary trước).
+2. **Job `replication_staging`** (chạy sau khi apply thành công) chạy `ops/ci-db-replication.sh` qua IAP SSH, theo thứ tự:
+   - kiểm tra SSH tới hai VM;
+   - nếu replica đã `streaming` thì bỏ qua các bước bootstrap;
+   - primary: `ops/bootstrap-db-primary-replication.sh` tạo role `replicator`, slot `vota_replica`, một dòng `pg_hba` cho IP replica rồi `pg_reload_conf()` (không restart);
+   - chuyển mật khẩu replicator từ primary sang replica qua pipe của runner (file mode 600, không in ra log);
+   - replica: `ops/bootstrap-db-replica.sh` chạy `pg_basebackup` rồi khởi động standby;
+   - cài Ops Agent và probe lag trên replica;
+   - kiểm tra: primary thấy đúng 1 kết nối `streaming`, replica `pg_is_in_recovery()=t`, slot `active`, lag dưới 60 giây. Kết quả nằm trong Summary của run.
+3. **Bật alert**: đặt biến GitHub `GCE_DB_REPLICA_INSTANCE` = tên VM replica rồi chạy lại workflow monitoring. Workflow tự kiểm VM có tồn tại trước khi bật alert replica.
 
-   ```bash
-   REPLICA_IP=<replica_private_ip> sudo -E bash ops/bootstrap-db-primary-replication.sh
-   ```
+Image Postgres lấy từ biến GitHub `DB_IMAGE` (mặc định `pgvector/pgvector:0.8.6-pg18-bookworm`); phải đúng image primary đang chạy (`sudo docker inspect vota-postgres --format '{{.Config.Image}}'`). Image lấy từ Docker Hub nên replica cần ra Internet (IP ngoài).
 
-3. **Chuyển mật khẩu replicator** từ primary sang replica (file mode 600, không dán vào chat/log):
+Service account của CI cần `roles/compute.instanceAdmin.v1`, `roles/iap.tunnelResourceAccessor` và `roles/iam.serviceAccountUser` trên service account của hai VM. Primary không bật OS Login (tunnel app→DB phụ thuộc SSH hiện tại), nên `gcloud compute ssh` thêm khoá vào metadata; Terraform bỏ qua metadata nên không xoá khoá đó.
 
-   ```bash
-   gcloud compute scp --tunnel-through-iap --zone <zone> <primary>:/etc/vota/secrets/replicator_password /tmp/replicator_password
-   gcloud compute scp --tunnel-through-iap --zone <zone> /tmp/replicator_password <replica>:/tmp/replicator_password && rm /tmp/replicator_password
-   # trên replica:
-   sudo install -D -m 600 /tmp/replicator_password /etc/vota/secrets/replicator_password && rm /tmp/replicator_password
-   ```
-
-4. **Dựng replica** (SSH vào VM replica, trong checkout repo). `PRIMARY_HOST` lấy từ `terraform output primary_private_ip`:
-
-   ```bash
-   IMAGE=pgvector/pgvector:0.8.6-pg18-bookworm PRIMARY_HOST=<primary_private_ip> sudo -E bash ops/bootstrap-db-replica.sh
-   ```
-
-   `IMAGE` phải đúng image của primary (`sudo docker inspect vota-postgres --format '{{.Config.Image}}'`). Image từ Docker Hub nên VM replica cần ra Internet (IP ngoài tạm thời).
-
-5. **Bật giám sát**: trên replica chạy `sudo bash infra/monitoring/install-db-replica-monitoring.sh`; đặt biến GitHub `GCE_DB_REPLICA_INSTANCE` = tên VM replica rồi chạy lại workflow monitoring. Workflow tự kiểm VM có tồn tại (`gcloud compute instances describe`) trước khi bật alert replica; đặt biến sớm chỉ gây cảnh báo, không làm hỏng plan.
+Chạy lại workflow bất cứ lúc nào là an toàn: khi replica đã streaming, chỉ phần giám sát được làm mới.
 
 ## 2. Kiểm tra
 

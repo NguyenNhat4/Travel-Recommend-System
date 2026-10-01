@@ -7,6 +7,8 @@ name: Staging Infra Terraform
 #   loses its data disk) unless a manual dispatch sets allow_destroy=true. It also
 #   refuses any in-place update of the primary DB VM or the app VM unless a manual
 #   dispatch sets allow_vm_update=true; read the plan in the run summary first.
+# After a successful apply, the replication job brings the primary and the replica to the
+# replicating state through IAP SSH (ops/ci-db-replication.sh); it is idempotent.
 # All branches share one state (prefix infra/staging), so keep infra/terraform in
 # step across branches; a branch with older code plans a delete and is blocked.
 on:
@@ -29,6 +31,12 @@ on:
     paths:
       - '.github/workflows/infra-terraform-staging.yml'
       - 'infra/terraform/**'
+      - 'ops/ci-db-replication.sh'
+      - 'ops/bootstrap-db-primary-replication.sh'
+      - 'ops/bootstrap-db-replica.sh'
+      - 'ops/db-replica-lag-probe.sh'
+      - 'infra/monitoring/install-db-replica-monitoring.sh'
+      - 'infra/monitoring/ops-agent-db-replica.yaml'
   workflow_dispatch:
     inputs:
       allow_destroy:
@@ -185,3 +193,43 @@ jobs:
 
       - name: Apply staging infra
         run: terraform -chdir="$TF_ROOT" apply -input=false -auto-approve staging.tfplan
+
+  replication_staging:
+    name: Connect DB primary and replica
+    needs: plan_apply_staging
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      GCE_ZONE: ${{ secrets.GCE_ZONE }}
+      PRIMARY_VM: ${{ vars.GCE_DB_INSTANCE }}
+      REPLICA_VM: ${{ vars.GCE_DB_REPLICA_INSTANCE }}
+      DB_IMAGE: ${{ vars.DB_IMAGE || 'pgvector/pgvector:0.8.6-pg18-bookworm' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate required staging configuration
+        run: |
+          for name in GCP_PROJECT_ID GCE_ZONE PRIMARY_VM REPLICA_VM; do
+            if [ -z "${!name:-}" ]; then
+              echo "Missing staging configuration: $name" >&2
+              exit 1
+            fi
+          done
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_CI_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Bring primary and replica to the replicating state
+        run: bash ops/ci-db-replication.sh

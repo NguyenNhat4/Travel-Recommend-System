@@ -7,7 +7,8 @@ replica="$repo_root/ops/bootstrap-db-replica.sh"
 probe="$repo_root/ops/db-replica-lag-probe.sh"
 tf_root="$repo_root/infra/terraform/environments/staging"
 
-for file in "$primary" "$replica" "$probe" "$tf_root/main.tf" "$tf_root/variables.tf" "$tf_root/addresses.tf"; do
+ci_repl="$repo_root/ops/ci-db-replication.sh"
+for file in "$primary" "$replica" "$probe" "$ci_repl" "$tf_root/main.tf" "$tf_root/variables.tf" "$tf_root/addresses.tf"; do
   test -f "$file" || { echo "missing required file: $file" >&2; exit 1; }
   case "$file" in *.sh) bash -n "$file" ;; esac
 done
@@ -72,11 +73,26 @@ if git -C "$repo_root" ls-files --error-unmatch "$tf_root/staging.tfvars" "$tf_r
 fi
 grep -q 'prefix = "infra/staging"' "$tf_root/backend.staging.hcl.example"
 
+# CI replication driver: password never printed, primary never restarted, exit status kept.
+if grep -Eq 'docker (restart|stop|rm)' "$ci_repl"; then
+  echo 'ci-db-replication.sh must not restart or remove containers' >&2; exit 1
+fi
+grep -q 'set +x' "$ci_repl"
+grep -q 'bootstrap-db-primary-replication.sh' "$ci_repl"
+grep -q 'bootstrap-db-replica.sh' "$ci_repl"
+grep -q 'install -m 600 /dev/stdin' "$ci_repl"
+grep -q 'pg_stat_replication' "$ci_repl"
+if grep -Eq 'echo[^|]*(replicator_password|repl_password)|cat[^|]*replicator_password[^|]*\$' "$ci_repl"; then
+  echo 'ci-db-replication.sh must not print the replicator password' >&2; exit 1
+fi
+
 wf="$repo_root/.github/workflows/infra-terraform-staging.yml"
 grep -q 'allow_destroy' "$wf"
 grep -q 'index("delete")' "$wf"
 grep -q 'apply -input=false -auto-approve staging.tfplan' "$wf"
 grep -q 'allow_vm_update' "$wf"
 grep -q 'ALLOW_VM_UPDATE' "$wf"
+grep -q 'replication_staging' "$wf"
+grep -q 'ops/ci-db-replication.sh' "$wf"
 
 echo 'infra layout, db replica scripts and terraform guards: PASS'
