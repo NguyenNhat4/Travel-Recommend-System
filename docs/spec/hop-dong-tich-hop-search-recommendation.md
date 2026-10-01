@@ -609,6 +609,11 @@ khác hẳn nhau.
 | `GET /recommendations`, cache miss (đọc 500 event từ CDP) | 800 ms |
 | Embed một truy vấn | 60 ms |
 
+Đo thật 01/10/2026 trên VM (`release-mvp-v2`, contract 1.12.0; Weaviate Cloud ở `eu-central-1`, VM ở `asia-southeast1`):
+`/search` p95 **4,0 s** = dense 1,8 s + BM25 2,1 s nối tiếp (mỗi lượt gửi mask 3.146 id); embed cache hit 0 ms, miss p95 437 ms.
+Ngân sách 300 ms ở bảng trên chỉ đạt được khi kho vector cùng vùng với backend — số và nguyên nhân ở
+`docs/spec/bench/search-eval-results.md` §2–3, report `src/evaluation/reports/eval-2026-10-01-search-cloud-latency.md`.
+
 Dòng "cache miss" là thừa nhận thẳng: đường đó phải gọi HTTP sang CDP clone rồi
 tra tối đa 500 vector. Nó chỉ xảy ra sau `purchase` hoặc khi cache trống.
 Tỉ lệ cache miss cao là dấu hiệu quy tắc vô hiệu hóa đang sai, không phải engine chậm.
