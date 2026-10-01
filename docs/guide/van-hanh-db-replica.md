@@ -4,15 +4,7 @@ Hướng dẫn dựng, kiểm tra và xử lý sự cố cho PostgreSQL replica.
 
 ## 1. Dựng lần đầu
 
-1. **Tạo VM bằng Terraform** (từ máy có quyền, hoặc workflow `Staging Infra Terraform` với `apply=true`):
-
-   ```bash
-   cd infra/terraform/environments/staging
-   terraform init -backend-config=backend.staging.hcl
-   terraform plan -var-file=staging.tfvars -out=staging.tfplan   # chỉ được thấy đúng 1 VM mới
-   terraform apply staging.tfplan
-   terraform output
-   ```
+1. **Tạo VM bằng CI/CD** (không chạy Terraform tay). Merge thay đổi vào `infra/terraform/**` trên nhánh release: workflow `Staging Infra Terraform` tự plan, chặn plan có xoá/thay thế, rồi apply. Xem plan trong phần Summary của run. Output (IP) hiện trong log bước apply, hoặc tra bằng `gcloud compute instances describe <vm> --zone <zone> --format='value(networkInterfaces[0].networkIP)'`. Cần xoá/thay thế VM có chủ đích thì chạy workflow tay với `allow_destroy=true` sau khi đã xem plan.
 
 2. **Chuẩn bị primary** (SSH vào VM db-primary, trong checkout repo). `REPLICA_IP` lấy từ `terraform output replica_private_ip`:
 
