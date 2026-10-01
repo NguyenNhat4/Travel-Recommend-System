@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from copy import deepcopy
-import json
 
 from src.backend.app.application.itinerary.contracts import bounds
 from src.backend.app.domain.itinerary.planning import empty_intent
@@ -10,7 +9,7 @@ from src.backend.app.domain.itinerary.planning import empty_intent
 from ..models import ConversationalAnswer
 from . import messages
 from .classification import vietnam_today
-from .history import llm_context
+from .history import llm_context, prompt_yaml
 from .messages import display_date, event, failure, message, titled
 from .prompts import CONVERSATION_PROMPT
 
@@ -77,6 +76,8 @@ def reply_title(state: dict) -> str | None:
     reason = state.get("clarification_reason")
     if reason == "invalid_input":
         return invalid_title(state)
+    if reason == "change_without_value":
+        return message(state, "title_change_without_value")
     if reason in {"suggest_form", "conflict", "unverified"}:
         return message(state, {"suggest_form": "title_form", "conflict": "title_conflict",
                                "unverified": "title_unverified"}[reason])
@@ -104,8 +105,11 @@ def conversation_input(state: dict) -> list:
         payload.update(invalid_inputs=_invalid_for_llm(state), today=display_date(vietnam_today().isoformat()),
                        valid_ranges=_valid_ranges(), form_shown=_form_shown(state),
                        supported_destinations=state.get("supported_destinations") or [])
+    elif state.get("clarification_reason") == "change_without_value":
+        # Để LLM đoán năm khi hỏi xác nhận một câu trả lời chưa đọc được ("1410" → "14/10/2026?").
+        payload["today"] = display_date(vietnam_today().isoformat())
     return [("system", CONVERSATION_PROMPT + f"\nReply in {language}."),
-            ("human", json.dumps(payload, ensure_ascii=False))]
+            ("human", prompt_yaml(payload))]
 
 
 def _question_response(state: dict, question: str) -> dict:
@@ -167,6 +171,9 @@ def clarification_fallback(state: dict) -> dict:
     reason = state.get("clarification_reason")
     if reason == "invalid_input":
         question = _invalid_input_question(state)
+    elif reason == "change_without_value":
+        fields = message(state, "detail_joiner").join(message(state, f"change_field_{key}") for key in missing)
+        question = message(state, "change_without_value", fields=fields)
     elif reason == "suggest_form":
         question = message(state, "suggest_form")
     elif reason == "conflict":

@@ -5,7 +5,8 @@ from collections import Counter
 from copy import deepcopy
 import logging
 
-from src.backend.app.domain.itinerary.planning import compose_plan, render_proposal, summary, validate_plan
+from src.backend.app.domain.itinerary.planning import (compose_plan, multi_day_offers, render_proposal, summary,
+                                                        validate_plan)
 
 from . import messages
 from .messages import display_date, failure
@@ -21,6 +22,9 @@ WARNINGS = {
     "PRODUCT_COST_ONLY": "Tổng chỉ gồm các sản phẩm được chọn; chưa bao gồm chi phí phát sinh ngoài lịch trình.",
     "BUDGET_ON_PRODUCT_COST": "Đối chiếu ngân sách chỉ dựa trên chi phí các sản phẩm trong lịch trình; "
                               "chưa gồm ăn uống, đi lại và phát sinh ngoài lịch trình.",
+    "RECOMMENDATION_FALLBACK": "Một số mục trong lịch trình là gợi ý (Recommendation), không phải kết quả "
+                               "tìm kiếm, vì không có sản phẩm tìm kiếm phù hợp cho mục đó; xem `because` ở "
+                               "từng mục để biết lý do gợi ý.",
 }
 
 
@@ -45,6 +49,8 @@ def fallback(state: dict) -> dict:
 
 
 MAX_SUGGESTIONS = 3
+#: Số gói nhiều ngày tối đa đưa kèm lịch trình mỗi loại; đủ để chọn mà không làm dài lời diễn giải.
+MAX_MULTI_DAY_OFFERS = 2
 MAX_ALTERNATIVE_DESTINATIONS = 2
 
 
@@ -124,23 +130,45 @@ def _budget_warnings(plan: dict, intent: dict, warnings: list) -> None:
         warnings.append({"code": "BUDGET_ON_PRODUCT_COST", "message": WARNINGS["BUDGET_ON_PRODUCT_COST"]})
 
 
+def _uses_recommendation(plan: dict) -> bool:
+    if plan.get("stay", {}).get("source") == "RECOMMENDATION":
+        return True
+    return any(slot.get("source") == "RECOMMENDATION" for day in plan.get("days", []) for slot in day.get("slots", []))
+
+
 def composed(state: dict) -> dict:
     """Build the itinerary from the retrieved candidates with fixed rules; no model is consulted."""
-    proposal = compose_plan(state["candidates"], state["intent"])
+    proposal = compose_plan(state["candidates"], state["sources"], state["intent"])
     plan = render_proposal(proposal, state["candidates"], state["sources"], state["intent"])
     if validate_plan(plan, state["candidates"], state["sources"], state["intent"], state.get("constraints", {})):
         raise ValueError("invalid composition")
     warnings = deepcopy(state.get("warnings", []))
     warnings.append({"code": "SNAPSHOT_ONLY", "message": WARNINGS["SNAPSHOT_ONLY"]})
     warnings.append({"code": "SCHEDULE_ESTIMATE", "message": WARNINGS["SCHEDULE_ESTIMATE"]})
+    if _uses_recommendation(plan):
+        warnings.append({"code": "RECOMMENDATION_FALLBACK", "message": WARNINGS["RECOMMENDATION_FALLBACK"]})
     _budget_warnings(plan, state["intent"], warnings)
     for day in plan["days"]:
         if not any(slot["product"] for slot in day["slots"]):
             warnings.append({"code": "DAY_WITHOUT_PRODUCTS",
                              "message": f"Ngày {day['day']} dành cho nghỉ ngơi hoặc hoạt động chung, "
                                         "chưa có sản phẩm được chọn."})
-    return {"response": {"status": "COMPLETED", "conversationId": state["conversation_id"],
-                         "intent": state["intent"], "itinerary": plan, "warnings": warnings}}
+    response = {"status": "COMPLETED", "conversationId": state["conversation_id"],
+                "intent": state["intent"], "itinerary": plan, "warnings": warnings}
+    offers = _multi_day_offers(state)
+    if offers:
+        response["searchResults"] = offers
+    return {"response": response}
+
+
+def _multi_day_offers(state: dict) -> dict:
+    """Gói/tour nhiều ngày không xếp vào một buổi: trả kèm trong `searchResults` để người dùng cân nhắc riêng."""
+    groups: dict = {}
+    for product in multi_day_offers(state["candidates"], state["sources"]):
+        items = groups.setdefault(product["taxonomy"], [])
+        if len(items) < MAX_MULTI_DAY_OFFERS:
+            items.append(summary(product))
+    return groups
 
 
 def compose_or_fallback(state: dict) -> dict:

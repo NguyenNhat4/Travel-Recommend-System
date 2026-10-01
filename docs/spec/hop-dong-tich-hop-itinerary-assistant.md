@@ -203,6 +203,14 @@ Quy tắc:
 
 Similar không mang danh tính người dùng ở mọi mode: endpoint trả giống nhau cho mọi người dùng (`hop-dong-tich-hop-backend.md` §4.3).
 
+### 2.6. Phạm vi search mặc định theo category
+
+Phục vụ FR-AGT-02, FR-AGT-03.
+
+`TOOL_PLAN_PROMPT` yêu cầu planner mặc định tìm cả ba category chuyến đi có thể dùng — `hotel`, `attraction` (tour/tham quan) và `golf` — mỗi loại một lời gọi `search_products` cho điểm đến, thay vì chỉ tìm `hotel`. Planner chỉ bỏ một loại khi người dùng chủ động yêu cầu loại trừ (`constraints.exclude_taxonomies`).
+
+Server không chỉ dựa vào prompt: `validated_plan` có lưới an toàn tất định chạy sau lưới an toàn Similar (§2.5) — với mỗi category trong `{hotel, attraction, golf}` không nằm trong `exclude_taxonomies` mà plan chưa có `search_products` cùng loại (hoặc một `search_products` không lọc `taxonomy`, vì search không lọc loại đã trả kết quả hỗn hợp mọi loại), server thêm `search_products(query=<điểm đến đã chuẩn hóa>, taxonomy=<loại đó>)` tất định. Best-effort như mọi lưới an toàn khác: hết trần 5 lời gọi mỗi lượt (§2.5) thì bỏ qua phần category còn thiếu, không huỷ lượt và không lỗi. Không có điểm đến chuẩn hóa (`intent.destination` trống) thì bỏ qua lưới này.
+
 ---
 
 ## 3. Team Agent cần từ Team Web/Backend
@@ -303,7 +311,15 @@ Request giống `POST /assistant/itineraries`. Stream phát lần lượt `run.s
 
 ### 4.2. Response hoàn chỉnh
 
-Payload MVP chỉ bắt buộc `status`, `conversationId`, `itinerary` và `warnings`. Các trường `intent`, `searchResults` và `metadata` là tùy chọn.
+Payload MVP chỉ bắt buộc `status`, `conversationId`, `itinerary` và `warnings`. Các trường `intent`, `message`, `searchResults` và `metadata` là tùy chọn.
+
+`message` là lời diễn giải lịch trình hiển thị trong khung chat, do node `narrate` viết (LLM; dự phòng bằng luật). Dạng: dòng đầu `**Tiêu đề**`, khi lượt này đổi thông tin chuyến đi thì câu ngay sau đó ghi nhận thay đổi ("Mình ghi nhận đổi ngày đi thành 15/10/2026. Lịch trình mình gợi ý như sau:"; backend tự chèn nên luôn đúng), rồi các mục in đậm: nơi nghỉ, từng ngày, chi phí dự kiến, lưu ý. Quy tắc grounding: sản phẩm chỉ được nhắc bằng link `[Tên](product:<productId>)` với `productId` có trong `itinerary` (backend thay nhãn bằng tên canonical và chặn id lạ); mọi số tiền đến từ dữ liệu sản phẩm (`unitPrice`, `priceUnit`) hoặc `estimatedTotal` qua placeholder, LLM không được tự viết số tiền; cách ghi giá khi không có giá xem đoạn dưới. `itinerary.title` bằng tiêu đề này.
+
+Điểm tham quan hoặc golf không có giá được diễn giải là "tham quan tự do" (người dùng chốt ngày 01/10/2026). Khách sạn
+không có giá vẫn ghi "giá đang cập nhật". Tổng tiền vẫn là `null` khi thiếu giá (`docs/prd/architecture.md` §3).
+Gói hoặc tour nhiều ngày không xếp vào slot. Chúng được trả trong `searchResults` của `COMPLETED` (tối đa 2 gói mỗi
+loại, đối chiếu grounding như `FALLBACK`), và `message` có mục cố định "Gói nhiều ngày để bạn cân nhắc riêng" hỏi
+người dùng có muốn thêm không. Bấm link của gói thì mở trang chi tiết sản phẩm.
 
 ```json
 {
@@ -448,6 +464,7 @@ câu**, các dòng sau là phần chi tiết. Không có field mới: tiêu đ�
 | Điều kiện bắt buộc không xác minh được | Chưa xác minh được yêu cầu của bạn | LLM (dự phòng cố định) |
 | Điều kiện bắt buộc không có sản phẩm nào | Chưa có sản phẩm đáp ứng yêu cầu bắt buộc | Cố định |
 | Giá trị không hợp lệ | theo trường (ở trên) | LLM (dự phòng cố định) |
+| Muốn đổi mà chưa nói đổi thành gì ("đổi ngày", "đổi địa điểm") | Bạn muốn đổi thành gì? (LLM đặt tiêu đề theo trường đang hỏi) | LLM (dự phòng cố định) |
 | Ngoài phạm vi (`error.message`, 400) | Ngoài phạm vi hỗ trợ | LLM (dự phòng cố định) |
 | Đầu vào bị guardrail chặn (chèn lệnh, đòi secret, tục tĩu thuần) (`error.message`, 400) | Mình chưa thể hỗ trợ yêu cầu này | Cố định |
 | Tin nhắn rác: gõ bậy, ký tự lặp, toàn ký hiệu (`question`, 200) | Mình chưa hiểu ý bạn | Cố định |
@@ -455,7 +472,8 @@ câu**, các dòng sau là phần chi tiết. Không có field mới: tiêu đ�
 | `NO_RESULTS` do ngày đi ngoài thời gian mở bán | Chưa có sản phẩm mở bán cho ngày này | Cố định |
 | `FALLBACK` | Chưa dựng được lịch trình hoàn chỉnh | Cố định |
 | Chào hỏi, cảm ơn | Không có tiêu đề | — |
-| `COMPLETED` và các lỗi hệ thống khác | Không áp dụng (lịch trình đã có `title`; khung lỗi riêng) | — |
+| `COMPLETED` | Do LLM đặt theo chuyến đi (dự phòng: "Lịch trình {days} ngày ở {destination}"); nằm ở dòng đầu `message` và ở `itinerary.title` | LLM (dự phòng cố định) |
+| Các lỗi hệ thống khác | Không áp dụng (khung lỗi riêng) | — |
 
 - LLM trả `title` cùng `message`; backend ghép `**title**` + xuống dòng + `message`, trim dấu `*`/khoảng trắng thừa và cắt tối đa 80 ký tự.
   Không có `title` hoặc LLM lỗi thì dùng tiêu đề cố định của trường hợp đó (bảng trên).
@@ -464,7 +482,7 @@ câu**, các dòng sau là phần chi tiết. Không có field mới: tiêu đ�
 
 **Giọng văn.** Mọi câu LLM viết ở `clarify` và `converse` ấm áp, 2–4 câu (từ chối và trò chuyện 1–3 câu): nói ngắn vì sao cần
 thông tin, cho ví dụ cách trả lời khi cần, không nêu tên sản phẩm. `ConversationalAnswer.message` tối đa 1.000 ký tự. Câu của
-`compose` (COMPLETED/NO_RESULTS/FALLBACK) không đổi.
+`compose` (COMPLETED/NO_RESULTS/FALLBACK) không đổi; lời diễn giải của `COMPLETED` do `narrate` viết (xem §4.2), giọng ấm áp như một người lập kế hoạch du lịch, mỗi lựa chọn có lý do cụ thể.
 
 ### 4.4. Response không có kết quả
 
@@ -551,6 +569,7 @@ Lỗi thực sự không nằm trong `ItineraryResponse` và không dùng `statu
 9. Nếu LLM lỗi, Agent trả lịch trình dựng bằng rule, `FALLBACK`, hoặc lỗi HTTP có kiểm soát theo OpenAPI.
 10. Mục tiêu grounding là 100%.
 11. Mục tiêu độ trễ p95 toàn luồng dưới 5 giây.
+12. `compose` ưu tiên sản phẩm nguồn Search (gồm cả Similar, cùng nhãn `SEARCH`) hơn Recommendation cho cùng một chỗ trong lịch trình (stay hoặc slot hoạt động): một sản phẩm Recommendation chỉ được chọn khi không còn ứng viên Search nào khả dụng cho chỗ đó, kể cả khi ứng viên Search đắt hơn. Khi lịch trình có ít nhất một mục nguồn `RECOMMENDATION`, response kèm warning `RECOMMENDATION_FALLBACK` để acknowledge rõ với người dùng đây là gợi ý, không phải kết quả tìm kiếm; `source`/`because` của từng mục (§4.2, `ItemSource`) vẫn là căn cứ cá nhân hóa hay phổ biến theo `strategy` của `get_recommendations` (§2.4).
 
 ---
 
@@ -591,7 +610,7 @@ Nếu caller chưa gửi, service đầu tiên sẽ tạo ID.
 | Một request Search | 1 giây |
 | Một request Recommendation | 1 giây |
 | LLM trích xuất intent | 2 giây |
-| LLM trình bày lịch trình | 3 giây |
+| LLM trình bày lịch trình (`narrate`; quá hạn thì dùng bản dựng bằng luật) | 3 giây |
 | Toàn bộ request Agent | Mục tiêu dưới 5 giây |
 
 Hạn mỗi lời gọi tool lấy từ `ITINERARY_TOOL_TIMEOUT_SECONDS`, áp như nhau ở mọi data mode. Ở `inprocess`, engine đồng bộ chạy trên pool riêng 40 thread (`itinerary-tool`) và giữ request ID của lượt. Thread đã bắt đầu không dừng được khi quá hạn, giống thread của route sync ở mode `http`. Riêng Similar đi qua use case `GetSimilarProducts` như route, nên chạy trên executor mặc định chứ không qua pool này: nó không embed, chỉ chờ Weaviate, và mỗi lượt đổi món có tối đa 2 lời gọi.

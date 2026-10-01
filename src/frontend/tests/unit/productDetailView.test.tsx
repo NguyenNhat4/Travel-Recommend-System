@@ -75,6 +75,8 @@ describe('ProductDetailView', () => {
     api.getProduct.mockResolvedValue(hotelProperty());
     render(<ProductDetailView productId="nt-h-10" />);
     await screen.findAllByRole('radio', {}, WAIT);                                    // phòng rẻ nhất (nt-h-10-r1, tối đa 2 khách) được chọn sẵn
+    // Phòng hiện ra trước khi effect đặt lại ngày/số khách theo phòng chạy; bấm sớm thì effect đó ghi đè lựa chọn.
+    await waitFor(() => expect(document.querySelector<HTMLInputElement>('input[type="date"]')?.value).toBeTruthy(), WAIT);
     expect(screen.getByText('Tối đa 2 khách/phòng')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Thêm người lớn' }));
     fireEvent.click(screen.getByRole('button', { name: 'Thêm trẻ em' }));

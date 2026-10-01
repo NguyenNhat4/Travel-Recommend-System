@@ -2,12 +2,14 @@
 import asyncio
 from copy import deepcopy
 import json
+
+import yaml
 from types import SimpleNamespace
 import unittest
 
 from src.backend.app.agents import nodes, routing
 from src.backend.app.agents.graph import build_graph
-from src.backend.app.agents.models import ConversationalAnswer, DestinationChoice, Extraction, TurnRoute
+from src.backend.app.agents.models import ConversationalAnswer, DestinationChoice, Extraction, ItineraryNarration, TurnRoute
 from src.backend.app.agents.steps.prompts import SIMILAR_HINT, TOOL_PLAN_PROMPT
 from src.backend.app.infrastructure.persistence.langgraph_checkpointer import build_checkpointer
 from src.backend.app.agents.tools.itinerary_gateway import ItineraryToolGateway
@@ -33,8 +35,9 @@ class ScriptedLlm:
     def __init__(self, extraction=None, plan=None, route='travel',
                  conversational_message='Bạn muốn đi đâu và trong bao nhiêu ngày?',
                  destination_choice=None, fail_destination=False, fail_conversation=False, plan_delay=0,
-                 conversational_title=None):
+                 conversational_title=None, narration=None):
         self.fail_conversation = fail_conversation
+        self.narration = narration or ItineraryNarration(title='Chuyến đi Nha Trang', message='Lịch trình gợi ý.')
         self.conversational_title = conversational_title
         self.route = route
         self.destination_choice = destination_choice
@@ -64,6 +67,8 @@ class ScriptedLlm:
                 if self.fail_conversation:
                     raise RuntimeError('provider error')
                 return ConversationalAnswer(title=self.conversational_title, message=self.conversational_message)
+            if schema is ItineraryNarration:
+                return self.narration
             raise AssertionError(f'the itinerary path must not call the model for {schema.__name__}')
         return SimpleNamespace(ainvoke=invoke)
 
@@ -80,16 +85,20 @@ class ScriptedLlm:
 
 
 class Clients:
-    def __init__(self, products=None, rec_error=None, rec=None, incomplete=False, destinations=None):
+    def __init__(self, products=None, rec_error=None, rec=None, incomplete=False, destinations=None,
+                 search_error=None):
         self.destinations = destinations
         self.products = products if products is not None else [product()]
         self.calls = []
         self.rec_error = rec_error
         self.rec = rec
         self.incomplete = incomplete
+        self.search_error = search_error
 
     async def search_products(self, args):
         self.calls.append('search')
+        if self.search_error:
+            raise self.search_error
         values = deepcopy(self.products)
         if self.incomplete:
             for p in values:
@@ -139,7 +148,11 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['validation_issues'], [])
         # The itinerary is built by `compose`; `converse` only handles chit-chat and never sees products.
         self.assertEqual([event['node'] for event in result['events']],
-                         ['intake', 'classify', 'extract', 'tool', 'evaluate', 'compose', 'finalize'])
+                         ['intake', 'classify', 'extract', 'tool', 'evaluate', 'compose', 'narrate', 'finalize'])
+        # `narrate` adds the chat text; it survives `finalize` and links only scheduled products.
+        self.assertTrue(result['response']['message'].startswith('**Chuyến đi Nha Trang**\n'))
+        self.assertIn('[Catalog a](product:a)', result['response']['message'])
+        self.assertEqual(result['final_answer'], result['response']['message'])
 
     async def test_checked_in_catalog_fixture_runs_through_the_graph(self):
         from src.backend.app.infrastructure.clients.itinerary_fixture_clients import FixtureItineraryClients
@@ -470,7 +483,27 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response['missingFields'][:2], ['destination', 'days'])
         self.assertIn('startDate', response['missingFields'])
         self.assertEqual(response['clarificationForm']['defaults']['startDate'], today.isoformat())
-        self.assertIn('"form_shown": true', llm.prompts['ConversationalAnswer'])
+        self.assertIn('form_shown: true', llm.prompts['ConversationalAnswer'])
+        self.assertFalse(clients.calls)
+
+    async def test_change_without_a_value_asks_again_instead_of_planning_the_same_trip(self):
+        # "đổi ngày" sau khi đã có lịch: LLM trích change_without_value, không patch gì → hỏi ngày mới, không gọi tool.
+        extraction = Extraction(change_without_value=['startDate'])
+        llm = ScriptedLlm(extraction=extraction, conversational_title='Đổi ngày khởi hành',
+                          conversational_message='Bạn muốn đổi ngày khởi hành từ 10/10/2999 sang ngày nào?')
+        clients = Clients()
+        intent = {**empty_intent(), 'destination': 'Nha Trang', 'days': 2, 'startDate': '2999-10-10',
+                  'party': {'type': 'SOLO', 'adults': 1, 'children': 0}}
+        result = await self.run_graph(llm, clients, state={
+            'query': 'đổi ngày', 'intent': intent,
+            'previous_selection': [{'productId': 'a', 'name': 'Catalog a', 'taxonomy': 'hotel'}]})
+        response = result['response']
+        self.assertEqual(response['status'], 'NEEDS_CLARIFICATION')
+        self.assertEqual(response['missingFields'], ['startDate'])
+        self.assertEqual(response['knownIntent']['startDate'], '2999-10-10')
+        self.assertTrue(response['question'].startswith('**Đổi ngày khởi hành**\n'))
+        self.assertIn('clarification_reason: change_without_value', llm.prompts['ConversationalAnswer'])
+        self.assertNotIn('tool', [event['node'] for event in result['events']])
         self.assertFalse(clients.calls)
 
     async def test_the_bold_title_falls_back_to_a_fixed_one_when_the_model_gives_none(self):
@@ -596,8 +629,9 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         llm = ScriptedLlm()
         result = await self.run_graph(llm)
         self.assertEqual(result['response']['status'], 'COMPLETED')
-        # Intent extraction and the tool planner remain; nothing else may consult the model.
-        self.assertEqual(llm.calls, ['TurnRoute', 'Extraction', 'planner'])
+        # Intent extraction, the tool planner and the narration remain; nothing else may consult the model,
+        # and the narration only words an itinerary that `compose` already built.
+        self.assertEqual(llm.calls, ['TurnRoute', 'Extraction', 'planner', 'ItineraryNarration'])
 
     async def test_only_retrieved_products_can_reach_a_slot(self):
         clients = Clients(products=[product('a'), product('b'), product('c')])
@@ -672,10 +706,14 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len([call for call in clients.calls if call.startswith('detail:')]), 10)
 
     async def test_all_transient_failures_terminate_without_fake_results(self):
-        clients = Clients(rec_error=ToolError('TOOL_TIMEOUT', retryable=True))
+        # Kể cả get_recommendations là lời gọi duy nhất của planner, lưới an toàn category mặc định (§2.6) vẫn
+        # thêm search hotel/attraction/golf; search cũng phải lỗi tạm thời để lượt này thực sự không còn ứng
+        # viên nào, nếu không kết quả search thật sẽ hợp lệ thành FALLBACK thay vì lỗi.
+        error = ToolError('TOOL_TIMEOUT', retryable=True)
+        clients = Clients(rec_error=error, search_error=error)
         llm = ScriptedLlm(plan=[{'name': 'get_recommendations', 'args': {}}])
         result = await self.run_graph(llm, clients)
-        self.assertEqual(clients.calls, ['rec', 'rec'])
+        self.assertEqual(clients.calls, ['rec', 'search', 'search', 'search'] * 2)
         self.assertEqual(result['http_status'], 503)
         self.assertEqual(result['response']['error']['code'], 'SEARCH_UNAVAILABLE')
 
@@ -765,12 +803,12 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(first_llm.bound_tools, [['search_products', 'get_recommendations']])
         (_, system), (_, human) = first_llm.planner_messages[0]
         self.assertEqual(system, TOOL_PLAN_PROMPT)
-        self.assertEqual(json.loads(human)['previous_selection'], [])    # ngữ cảnh chung: chưa hiển thị gì
+        self.assertEqual(yaml.safe_load(human)['previous_selection'], [])    # ngữ cảnh chung: chưa hiển thị gì
         # Lượt đổi món: tool, gợi ý prompt và danh sách anchor lưu phía server cùng xuất hiện.
         self.assertIn('get_similar_products', second_llm.bound_tools[0])
         (_, system), (_, human) = second_llm.planner_messages[0]
         self.assertEqual(system, f'{TOOL_PLAN_PROMPT} {SIMILAR_HINT}')
-        self.assertEqual(json.loads(human)['previous_selection'], selection_snapshot(first['response']))
+        self.assertEqual(yaml.safe_load(human)['previous_selection'], selection_snapshot(first['response']))
 
     async def test_swap_turn_gets_a_grounded_similar_stay_labelled_search(self):
         clients, _, first, _, second = await self.swap_turns()

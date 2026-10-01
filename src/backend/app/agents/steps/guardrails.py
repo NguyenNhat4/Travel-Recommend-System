@@ -25,7 +25,7 @@ _INPUT_PATTERNS = [
     re.compile(r"quên\s+(mọi\s+|các\s+|những\s+|hết\s+)?(hướng dẫn|chỉ dẫn|chỉ thị)\s+(trước|trên|đã)",
               re.IGNORECASE),
     re.compile(r"system\s*prompt|prompt\s*hệ thống|chỉ dẫn\s*hệ thống", re.IGNORECASE),
-    re.compile(r"(in ra|hiện ra|hiển thị|show|reveal|print|tiết lộ|cho (tôi|mình) xem)\s+.{0,30}"
+    re.compile(r"(in ra|hiện ra|hiển thị|show|reveal|print|tiết lộ|cho\s+(tôi\s+|mình\s+)?(xem|coi))\s+.{0,30}"
               r"(api[\s_-]?key|secret\s*key|secret|token|mật khẩu)", re.IGNORECASE),
 ]
 
@@ -48,10 +48,12 @@ def input_violation(query: str) -> str | None:
 
 
 def _llm_authored_text(response: dict) -> str:
-    """Chỉ hai trường LLM tự viết chữ: `question` (`clarify`/`converse`) và `error.message` (từ chối
-    của `converse`). Các trường `message` khác (`NO_RESULTS`, `FALLBACK`, …) là câu cố định, không quét.
+    """Ba trường LLM tự viết chữ: `question` (`clarify`/`converse`), `error.message` (từ chối của `converse`) và
+    `message` của `COMPLETED` (`narrate`). `message` của `NO_RESULTS`/`FALLBACK` là câu cố định, không quét.
     """
     parts = [response.get("question")]
+    if response.get("status") == "COMPLETED":
+        parts.append(response.get("message"))
     error = response.get("error")
     if isinstance(error, dict):
         parts.append(error.get("message"))

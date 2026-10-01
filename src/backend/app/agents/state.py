@@ -42,6 +42,7 @@ class AgentState(TypedDict, total=False):
     conversation_id: str
     conversation_history: list[dict[str, str]]
     intent: TripIntent
+    previous_intent: TripIntent
     intent_override: TripIntent
     constraints: Constraints
     missing_fields: list[str]

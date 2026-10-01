@@ -196,7 +196,11 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
             executeRequestRef.current?.({ ...request, conversationId: null }, userText, false);
             return;
           }
-          dispatch({ type: 'request-failed', error });
+          // Ngoài phạm vi (đặt chỗ, chèn lệnh, chuyện ngoài du lịch): backend trả VALIDATION_ERROR kèm câu từ chối
+          // của trợ lý — hiện như tin nhắn thường, không phải khung lỗi.
+          dispatch(error.code === 'VALIDATION_ERROR'
+            ? { type: 'request-refused', text: error.message }
+            : { type: 'request-failed', error });
           activeRunIdRef.current = null;
         }
       },

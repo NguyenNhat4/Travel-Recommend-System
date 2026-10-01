@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from .messages import strip_title
+import yaml
+
+from .messages import plain_links, strip_title
 
 MAX_HISTORY_MESSAGES = 20
 MAX_HISTORY_MESSAGE_CHARS = 1_000
@@ -55,9 +57,10 @@ def llm_context(state: dict[str, Any], *, intent: dict[str, Any] | None = None,
     Lịch sử bị giới hạn (20 message, 8.000 ký tự), nên kèm bản tóm tắt chuyến đi đã chốt (`known_intent`,
     `known_constraints`) và sản phẩm đã cho xem: thông tin của lượt cũ vẫn còn dù message cũ bị cắt.
     `last_assistant_message` giúp hiểu câu trả lời ngắn ("1 ngày thôi", "chưa chốt ngày") là trả lời cho câu hỏi nào.
+    Tin nhắn trợ lý cũ bỏ dòng tiêu đề và đổi link sản phẩm `[Tên](product:id)` thành `Tên`.
     Node truyền `intent`/`constraints` khi đã có bản mới hơn state (ví dụ điểm đến đã chuẩn hóa ở `tool`).
     """
-    history = [{**item, "content": strip_title(item["content"])} if item["role"] == "assistant" else item
+    history = [{**item, "content": plain_links(strip_title(item["content"]))} if item["role"] == "assistant" else item
                for item in sanitize_conversation_history(state.get("conversation_history", []))]
     last_assistant = next((item["content"] for item in reversed(history) if item["role"] == "assistant"), None)
     return {"conversation_history": history,
@@ -65,3 +68,25 @@ def llm_context(state: dict[str, Any], *, intent: dict[str, Any] | None = None,
             "known_intent": intent if intent is not None else state.get("intent", {}),
             "known_constraints": constraints if constraints is not None else state.get("constraints", {}),
             "previous_selection": state.get("previous_selection", [])}
+
+
+class _PromptDumper(yaml.SafeDumper):
+    """SafeDumper giữ nguyên thứ tự khoá và in chuỗi nhiều dòng dạng khối `|` cho dễ đọc."""
+
+
+def _represent_str(dumper: yaml.SafeDumper, value: str) -> yaml.ScalarNode:
+    style = "|" if "\n" in value else None
+    return dumper.represent_scalar("tag:yaml.org,2002:str", value, style=style)
+
+
+_PromptDumper.add_representer(str, _represent_str)
+
+
+def prompt_yaml(payload: dict[str, Any]) -> str:
+    """Payload của message `human` gửi LLM dưới dạng YAML dễ đọc (tiếng Việt giữ nguyên, không escape).
+
+    `SafeDumper` tự quote/thụt lề nội dung người dùng, nên một câu chat chứa `key:` hay xuống dòng
+    không phá được cấu trúc payload.
+    """
+    return yaml.dump(payload, Dumper=_PromptDumper, allow_unicode=True, sort_keys=False,
+                     default_flow_style=False, width=1_000_000)

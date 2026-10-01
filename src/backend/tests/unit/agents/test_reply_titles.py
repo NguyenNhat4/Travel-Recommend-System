@@ -45,6 +45,7 @@ class ReplyTitleTests(unittest.TestCase):
             (state(clarification_reason='conflict'), 'Thông tin chuyến đi chưa khớp nhau'),
             (state(clarification_reason='unverified'), 'Chưa xác minh được yêu cầu của bạn'),
             (state(refusal=True), 'Ngoài phạm vi hỗ trợ'),
+            (state(missing_fields=['startDate'], clarification_reason='change_without_value'), 'Bạn muốn đổi thành gì?'),
         ]
         for case, expected in cases:
             with self.subTest(expected=expected):
@@ -52,7 +53,8 @@ class ReplyTitleTests(unittest.TestCase):
 
     def test_english_titles_exist_for_every_case(self):
         for key in ('title_missing_both', 'title_missing_destination', 'title_missing_days', 'title_trip_details',
-                    'title_form', 'title_conflict', 'title_unverified', 'title_out_of_scope'):
+                    'title_form', 'title_conflict', 'title_unverified', 'title_out_of_scope',
+                    'title_change_without_value'):
             with self.subTest(key=key):
                 self.assertNotEqual(messages.message({'language': 'en'}, key), messages.message({'language': 'vi'}, key))
 
@@ -92,6 +94,17 @@ class FixedTextTests(unittest.TestCase):
                 question = conversation.clarification_fallback(
                     state(language=language, missing_fields=['destination', 'days']))['response']['question']
                 self.assertTrue(question.startswith(f'**{title}**\n'))
+
+    def test_change_without_value_fallback_names_the_fields_in_both_languages(self):
+        cases = (('vi', 'Bạn muốn đổi thành gì?', 'ngày khởi hành, ngân sách'),
+                 ('en', 'What would you like to change it to?', 'the departure date, the budget'))
+        for language, title, fields in cases:
+            with self.subTest(language=language):
+                question = conversation.clarification_fallback(
+                    state(language=language, missing_fields=['startDate', 'budget'],
+                          clarification_reason='change_without_value'))['response']['question']
+                self.assertTrue(question.startswith(f'**{title}**\n'))
+                self.assertIn(fields, question)
 
     def test_a_greeting_fallback_has_no_title(self):
         question = conversation.clarification_fallback(

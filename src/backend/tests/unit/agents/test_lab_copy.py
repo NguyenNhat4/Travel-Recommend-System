@@ -22,11 +22,11 @@ class LabCopyTests(unittest.TestCase):
         self.assertFalse(hasattr(nodes, 'risky_action_node'))
         self.assertFalse(hasattr(routing, 'route_after_approval'))
 
-    def test_eleven_node_topology(self):
+    def test_twelve_node_topology(self):
         graph = build_graph()
         self.assertEqual(set(graph.get_graph().nodes) - {'__start__', '__end__'},
-                         {'intake', 'classify', 'extract', 'tool', 'evaluate', 'converse', 'compose', 'clarify',
-                          'retry', 'dead_letter', 'finalize'})
+                         {'intake', 'classify', 'extract', 'tool', 'evaluate', 'converse', 'compose', 'narrate',
+                          'clarify', 'retry', 'dead_letter', 'finalize'})
 
     def test_every_node_is_named_for_the_trace(self):
         """`partial` mất __name__, nên node dựng từ nó sẽ hiện là "RunnableLambda" trong LangSmith."""
