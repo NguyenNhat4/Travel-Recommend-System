@@ -31,7 +31,7 @@ Tài liệu này đặc tả chi tiết toàn bộ các yêu cầu chức năng 
   - Người dùng ẩn danh / Chưa đăng nhập: Gợi ý các sản phẩm thịnh hành (`trending`), phổ biến theo điểm đến hoặc ưu đãi mùa lễ hội.
   - Người dùng có hồ sơ: Gợi ý dựa trên vector lịch sử tương tác, phân khúc hành vi và mức chi tiêu trung bình.
 - **FR-REC-02 (Khép kín vòng lặp sau mua - Trip-based Next Best Action):**
-  - Khi người dùng vừa đặt phòng khách sạn tại điểm đến X, hệ thống phải ưu tiên gợi ý vé máy bay đến X và các hoạt động trải nghiệm tại X.
+  - Khi người dùng vừa đặt phòng khách sạn tại điểm đến X **và chuyến đó chưa diễn ra xong** (ngày sử dụng `usingDate` của các sản phẩm trong chuyến chưa qua, hoặc chưa có ngày sử dụng và đặt trong vòng N ngày), hệ thống phải ưu tiên gợi ý vé máy bay đến X và các hoạt động trải nghiệm tại X (loại các loại sản phẩm đã mua trong chuyến). **Sau khi chuyến đã diễn ra xong**, hệ thống gợi ý cho chuyến kế tiếp: không loại loại sản phẩm đã mua, không khoá điểm đến X; dùng lịch sử dài hạn và mức phổ biến. *(Chốt 2026-10-02, đề xuất `update-archive/2026-10-01-category-exclusion-theo-chuyen-dang-dien-ra.md`; N là tham số engine.)*
 - **FR-REC-03 (Khả năng giải thích minh bạch - Explainable Recs):** Mọi đề xuất cá nhân hóa trên giao diện phải đi kèm lý do rõ ràng trong trường `because` (Ví dụ: *"Dành cho bạn vì bạn vừa xem các resort tại Phú Quốc"*, *"Phù hợp với chuyến du lịch gia đình"*).
 - **FR-REC-04 (Tái sắp xếp - Reranking):** Sắp xếp thứ tự danh sách sản phẩm dựa trên trọng số kết hợp giữa độ liên quan ngữ nghĩa, mức độ ưa chuộng của cộng đồng và tính khả dụng của sản phẩm.
 

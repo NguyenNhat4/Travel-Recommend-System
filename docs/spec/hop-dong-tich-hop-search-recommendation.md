@@ -464,6 +464,14 @@ engine và chưa sửa**, đang chờ Team Recommendation/Search cùng Web quy�
   `because` khác rỗng. Mock `getRecommendations.200-cold-start-content.json`
   theo ràng buộc 4 (`because: []`).
 
+**Bổ sung 2026-10-02 (FR-REC-02 sửa theo đề xuất `category-exclusion-theo-chuyen-dang-dien-ra`, đã chốt).** "Trip đang
+mở" trong bảng trên là trip **chưa kết thúc** theo đúng định nghĩa `tripFactor` §4.3: `max(usingDate)` của các event trong
+trip ≥ hôm nay; trip không có `usingDate` nào (chỉ view / search) thì mở khi event gần nhất cách ≤ `ACTIVE_TRIP_MAX_AGE_DAYS`
+(tham số N của PRD: **14 ngày** từ 02/10, trước là 60 — grid trên split temporal đóng băng: Recall@20 0,196 → 0,216, LLBO không
+đổi; `docs/spec/bench/recsys-offline-eval.md` §4.14). Trip đã kết thúc không còn là trip mở dù mới 5 ngày trước → khách rơi về `long_term` / `dormant`,
+engine gợi cho chuyến kế tiếp. Trip mua từ lâu nhưng `usingDate` còn ở tương lai vẫn là trip mở (chuyến sắp đi).
+Engine ghi `ENGINE_RULES_VERSION` vào cấu hình để bench phân biệt hai luật.
+
 **Ràng buộc bắt buộc:**
 
 1. `cross_vertical` ⟹ `nextVertical` **và** `destination` khác `null`
@@ -483,6 +491,11 @@ excluded       = bookedThisTrip, mở rộng: combo kéo theo hotel
 
 Áp làm **hard filter trong câu truy vấn**, không phải phép trừ vector. Ngoài ra
 loại mọi `productId` khách đã từng mua.
+
+**Chỉ áp cho trip đang mở** theo định nghĩa §4.4 (bổ sung 2026-10-02): chuyến đã kết thúc (`usingDate` đã qua) thì không
+loại taxonomy đã mua và không khoá điểm đến — đó là gợi ý cho chuyến kế tiếp (PRD FR-REC-02). Lý do: trên split temporal
+của bench, 22 % target bị chính exclusion / khoá điểm đến của chuyến đã đi xong chặn (`docs/spec/bench/recsys-offline-eval.md`
+§4.7, §4.11).
 
 **Nếu loại hết mọi taxonomy** (khách đã đặt đủ 5 nhóm trong một chuyến): bỏ
 exclusion, trả theo similarity thuần, đặt `diagnostics.exclusionRelaxed: true`.
@@ -685,7 +698,8 @@ Team Search cung cấp:
 
 16. Đăng nhập lần lượt 4 tài khoản demo → 4 `strategy` khác nhau.
 17. P1 vừa đặt hotel Nha Trang → `strategy: cross_vertical`, không có item
-    `taxonomy: hotel`, `nextVertical` khác `null`.
+    `taxonomy: hotel`, `nextVertical` khác `null`. *(Từ 02/10 "vừa đặt" = chuyến chưa diễn ra xong: seed gắn `usingDate`
+    cho P1 ~2 tuần sau `--as-of`, nên seed lại trước demo; quá ngày sử dụng P1 rơi về `long_term`.)*
 18. P4 (0 event) → `coldStart: true` và **mọi** `because` rỗng.
 19. Mọi `because[].productId` khác `null` đều mở được `GET /products/{id}` → `200`.
 20. Hai event giống hệt cách nhau đúng 30 ngày → trọng số sau decay chênh **hệ
