@@ -2,6 +2,7 @@ import { productFromApi } from '../../../services/catalog';
 import type { components } from '../../../types/api.gen';
 import type { Product, ItineraryDay, ItinerarySlot } from '../../../types/travel';
 import { itineraryCartItems } from '../../../components/assistant/AssistantResultPanel';
+import { SLOT_TIME_FROM_API } from '../../../services/assistant';
 import type { WidgetPlan } from './widgetTypes';
 
 const DESTINATION_COORDINATES: Record<string, { lat: number; lng: number }> = {
@@ -41,24 +42,15 @@ export function convertItineraryCompletedToGroundedPlan(
     because: response.itinerary.stay.because as any,
   } : undefined;
 
-  const timeRanges: Record<string, string> = {
-    morning: '08:00 - 11:30',
-    noon: '11:45 - 13:30',
-    afternoon: '14:30 - 17:30',
-    evening: '18:00 - 21:00',
-  };
-
   const days: ItineraryDay[] = response.itinerary.days.map((d) => {
     const slots: ItinerarySlot[] = d.slots.map((s) => {
       const product = s.product ? adaptProductSummaryToProduct(s.product) : undefined;
       const title = s.product?.name || s.activityType || s.note || 'Hoạt động trải nghiệm';
       const locName = s.product?.name || s.product?.destination || dest;
-      const timeRange = (s.startTime && s.endTime) ? `${s.startTime} - ${s.endTime}` : (timeRanges[s.time] || '08:00 - 11:30');
       const coords = product?.coordinates || defaultCoords;
 
       return {
-        time: s.time as any,
-        timeRange,
+        time: SLOT_TIME_FROM_API[s.time],
         activityTitle: title,
         locationName: locName,
         productId: s.product?.productId,

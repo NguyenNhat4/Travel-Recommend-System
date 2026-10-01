@@ -22,12 +22,19 @@ const response = {
   },
 } as unknown as components['schemas']['ItineraryCompleted'];
 
+describe('convertItineraryCompletedToGroundedPlan', () => {
+  it('maps the API slot time to the lowercase buổi used by the widget and the map', () => {
+    const plan = convertItineraryCompletedToGroundedPlan(response);
+    expect(plan.days[1].slots.map((slot) => slot.time)).toEqual(['morning', 'afternoon']);
+  });
+});
+
 describe('locateProduct', () => {
   const plan = convertItineraryCompletedToGroundedPlan(response);
 
   it('finds the day and the map point of a scheduled product, numbering stops across days', () => {
-    expect(locateProduct(plan, 't1')).toMatchObject({ day: 1, pointId: 'day-1-slot-MORNING-1' });
-    expect(locateProduct(plan, 't3')).toMatchObject({ day: 2, pointId: 'day-2-slot-AFTERNOON-3' });
+    expect(locateProduct(plan, 't1')).toMatchObject({ day: 1, pointId: 'day-1-slot-morning-1' });
+    expect(locateProduct(plan, 't3')).toMatchObject({ day: 2, pointId: 'day-2-slot-afternoon-3' });
   });
 
   it('puts the stay on the first day with the stay point id', () => {

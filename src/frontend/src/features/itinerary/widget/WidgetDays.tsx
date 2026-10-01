@@ -2,6 +2,14 @@ import React from 'react';
 import { Hotel, ExternalLink, MapPin, Clock } from 'lucide-react';
 import { getHotelVisuals, getSlotVisualUrl } from './widgetVisuals';
 import type { FloatingWidgetController } from './useFloatingWidget';
+import type { ItinerarySlot } from '../../../types/travel';
+
+const SLOT_PERIOD_LABEL: Record<ItinerarySlot['time'], string> = {
+  morning: 'Buổi sáng',
+  noon: 'Buổi trưa',
+  afternoon: 'Buổi chiều',
+  evening: 'Buổi tối',
+};
 
 export function WidgetDays({ widget }: { widget: FloatingWidgetController }) {
   const { activePlan, activeDayTab, setHoveredCoordinate, setHoveredPointId, focusedProductId } = widget;
@@ -131,11 +139,7 @@ export function WidgetDays({ widget }: { widget: FloatingWidgetController }) {
             {/* Các chặng hoạt động trong ngày - ƯU TIÊN VISUAL TO RÕ */}
             {dayItem.slots.map((slot, sIdx) => {
               const stepNumber = dayStartOrder + sIdx + 1;
-              const formattedTimeRange = slot.timeRange || (
-                slot.time === 'morning' ? '08:30 - 11:30' :
-                slot.time === 'noon' ? '11:45 - 13:30' :
-                slot.time === 'afternoon' ? '14:30 - 17:30' : '18:00 - 21:00'
-              );
+              const slotPeriod = SLOT_PERIOD_LABEL[slot.time];
 
               const stopTitle = slot.activityTitle || (slot.product ? slot.product.name : 'Hoạt động trải nghiệm');
               const locationTitle = slot.locationName || (slot.product ? slot.product.name : slot.address ? slot.address.split(',')[0] : 'Khu vực trung tâm');
@@ -169,12 +173,12 @@ export function WidgetDays({ widget }: { widget: FloatingWidgetController }) {
                     }}
                     className={`p-3.5 sm:p-4 rounded-2xl bg-white border border-slate-100 space-y-3 ${slot.product ? 'cursor-pointer' : ''}${focusRing(slot.product?.id)}`}
                   >
-                    {/* Row 1: Khung giờ + Phân loại dịch vụ + Địa điểm */}
+                    {/* Row 1: Buổi + Phân loại dịch vụ + Địa điểm */}
                     <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-100 flex-wrap">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-blue-50 text-blue-700 text-xs font-black font-mono tracking-wide">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-blue-50 text-blue-700 text-xs font-bold">
                           <Clock className="w-3.5 h-3.5 text-blue-600" />
-                          {formattedTimeRange}
+                          {slotPeriod}
                         </span>
                         {slot.product && (
                           <span className="px-2.5 py-0.5 rounded-lg bg-slate-100 text-slate-700 text-xs font-semibold">
