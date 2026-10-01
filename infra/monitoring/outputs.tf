@@ -40,10 +40,10 @@ output "alert_policy_ids" {
 
 output "db_replica_alert_policy_ids" {
   description = "DB replica alert policy resource names; empty until db_replica_vm_name is set."
-  value = local.replica_enabled ? {
-    uptime      = google_monitoring_alert_policy.replica_uptime[0].id
-    replication = google_monitoring_alert_policy.replica_replication[0].id
-    probe       = google_monitoring_alert_policy.replica_probe_absent[0].id
-    vm          = { for k, v in google_monitoring_alert_policy.replica_vm : k => v.id }
-  } : {}
+  value = merge(
+    { for p in google_monitoring_alert_policy.replica_uptime : "uptime" => p.id },
+    { for p in google_monitoring_alert_policy.replica_replication : "replication" => p.id },
+    { for p in google_monitoring_alert_policy.replica_probe_absent : "probe" => p.id },
+    { for k, p in google_monitoring_alert_policy.replica_vm : "vm_${k}" => p.id },
+  )
 }
