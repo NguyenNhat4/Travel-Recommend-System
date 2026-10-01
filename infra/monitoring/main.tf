@@ -131,7 +131,7 @@ resource "google_logging_metric" "staging_container_disk_bytes" {
 
   bucket_options {
     exponential_buckets {
-      num_finite_buckets = 240
+      num_finite_buckets = 200
       growth_factor      = 1.1
       scale              = 1048576
     }
@@ -563,7 +563,17 @@ resource "google_monitoring_alert_policy" "staging_crawler_failure" {
   }
 }
 
+# A new log-based metric takes a few minutes to become usable by alert policies (404 otherwise).
+resource "terraform_data" "container_disk_metric_ready" {
+  triggers_replace = [google_logging_metric.staging_container_disk_bytes.id]
+
+  provisioner "local-exec" {
+    command = "sleep 180"
+  }
+}
+
 resource "google_monitoring_alert_policy" "staging_container_disk" {
+  depends_on            = [terraform_data.container_disk_metric_ready]
   display_name          = "${var.name_prefix} container disk usage high"
   combiner              = "OR"
   notification_channels = local.notification_channels
