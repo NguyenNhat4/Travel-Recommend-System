@@ -81,7 +81,6 @@ jobs:
       TF_VAR_region: ${{ vars.GCP_REGION || 'asia-southeast1' }}
       TF_VAR_zone: ${{ secrets.GCE_ZONE }}
       TF_VAR_db_primary_vm_name: ${{ vars.GCE_DB_INSTANCE }}
-      TF_VAR_app_vm_name: ${{ vars.GCE_APP_INSTANCE }}
       TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
     steps:
       - name: Checkout
@@ -94,7 +93,7 @@ jobs:
 
       - name: Validate required staging configuration
         run: |
-          for name in TF_VAR_project_id TF_VAR_zone TF_VAR_db_primary_vm_name TF_VAR_app_vm_name TF_STATE_BUCKET; do
+          for name in TF_VAR_project_id TF_VAR_zone TF_VAR_db_primary_vm_name TF_STATE_BUCKET; do
             if [ -z "${!name:-}" ]; then
               echo "Missing staging configuration: $name" >&2
               exit 1

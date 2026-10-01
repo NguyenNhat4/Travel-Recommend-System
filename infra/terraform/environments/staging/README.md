@@ -1,6 +1,6 @@
 # Staging infra (DB replica VM)
 
-Terraform root cho phần hạ tầng VM do Terraform quản lý. Hiện chỉ tạo VM `db-replica` và 2 firewall rule. Hai VM tạo tay (app, db-primary) chỉ được đọc bằng `data`, Terraform không sửa chúng. Chi tiết vận hành: `docs/guide/van-hanh-db-replica.md`.
+Terraform root cho phần hạ tầng VM do Terraform quản lý. Hiện chỉ tạo VM `db-replica`; mạng dùng các firewall rule sẵn có của VPC `default` (`default-allow-internal`, `default-allow-ssh`). Hai VM tạo tay (app, db-primary) chỉ được đọc bằng `data`, Terraform không sửa chúng. Chi tiết vận hành: `docs/guide/van-hanh-db-replica.md`.
 
 ```bash
 cp staging.tfvars.example staging.tfvars            # điền project, tên VM

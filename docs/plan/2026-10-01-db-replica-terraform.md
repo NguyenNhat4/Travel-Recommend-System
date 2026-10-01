@@ -11,31 +11,31 @@ Thêm một PostgreSQL replica chỉ đọc cho nhu cầu đọc/báo cáo và d
 ## Thiết kế
 
 ```text
-VM app (tạo tay)   ──ssh tunnel 15432──►  VM db-primary (tạo tay)  Postgres 16, Docker
+VM app (tạo tay)   ──ssh tunnel 15432──►  VM db-primary (tạo tay)  Postgres 18, Docker
    (frontend, backend, crawler, redis,                │ streaming replication, slot vota_replica
-    weaviate)      ──ssh tunnel 15433──►  VM db-replica (Terraform) Postgres 16 standby, Docker
+    weaviate)      ──ssh tunnel 15433──►  VM db-replica (Terraform) Postgres 18 standby, Docker
 ```
 
 | VM | Cấu hình | Quản lý |
 |---|---|---|
 | app | giữ nguyên | tay và script cũ |
-| db-primary | giữ nguyên | tay và script cũ |
-| db-replica | e2-small (2 vCPU chia sẻ, 2 GB), disk 30 GB (đổi theo primary), cùng zone, cùng VPC, cùng service account và scope với primary | Terraform |
+| db-primary | giữ nguyên (v-ota-db-dev, e2-small, disk 50 GB, Postgres 18, image `pgvector/pgvector:0.8.6-pg18-bookworm`) | tay và script cũ |
+| db-replica | e2-small (2 vCPU chia sẻ, 2 GB), disk 50 GB bằng primary, cùng zone (`asia-southeast1-a`), VPC `default`, cùng service account và scope với primary, chạy đúng image của primary | Terraform |
 
 Backend vẫn dùng một `DATABASE_URL` trỏ primary. Replica phục vụ tab DB của monitor, `db/verify.sql`, truy vấn báo cáo. Việc cho backend đọc từ replica (`REPLICA_DATABASE_URL`) là bước sau, đổi code app.
 
 ## Thành phần
 
-- `infra/terraform/environments/staging/`: root Terraform mới, state riêng (`prefix = infra/staging`). Hai VM cũ chỉ là `data`; Terraform chỉ tạo VM replica và 2 firewall rule (primary nhận 5432 từ IP replica; SSH tới replica từ IAP và VM app).
+- `infra/terraform/environments/staging/`: root Terraform mới, state riêng (`prefix = infra/staging`). Hai VM cũ chỉ là `data`; Terraform chỉ tạo VM replica. Không tạo firewall: VPC `default` đã có `default-allow-internal` (replica tới primary cổng 5432) và `default-allow-ssh`.
 - `ops/bootstrap-db-primary-replication.sh`: chuẩn bị primary (role `replicator`, slot, `pg_hba` /32, giới hạn WAL giữ cho slot). Idempotent, không restart.
-- `ops/bootstrap-db-replica.sh`: theo khuôn `bootstrap-db-vm.sh`, `pg_basebackup -R` rồi chạy hot standby.
+- `ops/bootstrap-db-replica.sh`: `pg_basebackup -R` rồi chạy hot standby; bắt buộc truyền `IMAGE` đúng image của primary, PGDATA mặc định `/var/lib/postgresql/18/docker`.
 - `ops/db-replica-lag-probe.sh`: mỗi phút ghi một dòng JSON, trạng thái `ok | lagging | broken`.
 - `infra/monitoring/`: `replica.tf` (alert VM mất, memory, disk, replication lỗi, probe im), `ops-agent-db-replica.yaml`, `install-db-replica-monitoring.sh`. Biến `db_replica_vm_name` mặc định rỗng nên chưa có replica thì không tạo gì.
 - `.github/workflows/infra-terraform-staging.yml`: validate khi PR/push, plan/apply chỉ chạy tay (`workflow_dispatch`, `apply=false` mặc định).
 
 ## Chi phí ước tính thêm
 
-Khoảng 17-20 USD/tháng (VM e2-small, disk, IP ngoài tạm thời). Cần đối chiếu bảng giá GCP.
+Khoảng 18-22 USD/tháng (VM e2-small, disk 50 GB, IP ngoài tạm thời). Cần đối chiếu bảng giá GCP.
 
 ## Ngoài phạm vi
 
@@ -43,6 +43,6 @@ Import hai VM cũ vào Terraform, failover tự động, pgBouncer, Cloud NAT, �
 
 ## Preflight bên ngoài repo
 
-- Biết disk đang dùng của primary (`df -h`) để đặt `disk_size_gb`.
-- GitHub Environment `staging` có `GCE_DB_INSTANCE`, `GCE_APP_INSTANCE`, `GCE_ZONE`, `TF_STATE_BUCKET`; thêm `GCE_DB_REPLICA_INSTANCE` (tên VM) sau khi tạo replica để bật monitoring.
-- Primary đã có `wal_level=replica` (mặc định PG16) và `max_wal_senders` > 0 (mặc định 10).
+- Primary hiện: Postgres 18, `PGDATA=/var/lib/postgresql/18/docker`, local peer auth, disk 50 GB.
+- GitHub Environment `staging` có `GCE_DB_INSTANCE`, `GCE_ZONE`, `TF_STATE_BUCKET`; thêm `GCE_DB_REPLICA_INSTANCE` (tên VM) sau khi tạo replica để bật monitoring.
+- Primary cần `wal_level=replica` và `max_wal_senders` > 0 (mặc định PG18 là replica và 10); script in ra giá trị để đối chiếu.

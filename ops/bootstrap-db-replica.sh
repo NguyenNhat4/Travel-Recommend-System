@@ -7,16 +7,18 @@
 set -Eeuo pipefail
 
 PRIMARY_HOST=${PRIMARY_HOST:?set PRIMARY_HOST to the primary DB VM private IP}
-PROJECT_ID=${PROJECT_ID:-vinpearl-508801}
+# The replica must run the same image (same major version and extensions) as the primary.
+# Read it from the primary: sudo docker inspect vota-postgres --format '{{.Config.Image}}'
+IMAGE=${IMAGE:?set IMAGE to the exact image the primary runs}
 REGISTRY_HOST=${REGISTRY_HOST:-asia-southeast1-docker.pkg.dev}
-IMAGE=${IMAGE:-$REGISTRY_HOST/$PROJECT_ID/v-ota/vota-db:pg16}
 CONTAINER_NAME=${CONTAINER_NAME:-vota-postgres}
 NETWORK_NAME=${NETWORK_NAME:-app-private}
-VOLUME_NAME=${VOLUME_NAME:-vota-pg16}
+VOLUME_NAME=${VOLUME_NAME:-vota-pg18}
 SLOT_NAME=${SLOT_NAME:-vota_replica}
 SECRETS_DIR=${SECRETS_DIR:-/etc/vota/secrets}
 REPL_PASSWORD_FILE=${REPL_PASSWORD_FILE:-$SECRETS_DIR/replicator_password}
-PGDATA_DIR=/var/lib/postgresql/data
+# Must match the primary PGDATA (sudo docker exec vota-postgres printenv PGDATA); the volume mounts its parent.
+PGDATA_DIR=${PGDATA_DIR:-/var/lib/postgresql/18/docker}
 
 [[ "$PRIMARY_HOST" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'PRIMARY_HOST must be an IPv4 address' >&2; exit 2; }
 
@@ -43,9 +45,11 @@ metadata_get() {
     "http://metadata.google.internal/computeMetadata/v1/$1"
 }
 
-access_token=$(metadata_get instance/service-accounts/default/token | jq -er .access_token)
-printf '%s' "$access_token" | "${SUDO[@]}" docker login \
-  --username oauth2accesstoken --password-stdin "https://$REGISTRY_HOST"
+if [[ "$IMAGE" == "$REGISTRY_HOST"/* ]]; then
+  access_token=$(metadata_get instance/service-accounts/default/token | jq -er .access_token)
+  printf '%s' "$access_token" | "${SUDO[@]}" docker login \
+    --username oauth2accesstoken --password-stdin "https://$REGISTRY_HOST"
+fi
 "${SUDO[@]}" docker pull "$IMAGE"
 
 replica_ip=${DB_PRIVATE_IP:-$(metadata_get instance/network-interfaces/0/ip)}
@@ -109,7 +113,7 @@ for attempt in $(seq 1 60); do
   fi
 done
 
-in_recovery=$("${SUDO[@]}" docker exec "$CONTAINER_NAME" psql -X -U postgres -Atqc 'SELECT pg_is_in_recovery()')
+in_recovery=$("${SUDO[@]}" docker exec -u postgres "$CONTAINER_NAME" psql -X -U postgres -Atqc 'SELECT pg_is_in_recovery()')
 [[ "$in_recovery" == t ]] || { echo 'Replica is not in recovery mode' >&2; exit 1; }
 echo 'DB replica bootstrap complete (hot standby streaming from the primary)'
 echo "Read-only PostgreSQL is reachable privately at ${replica_ip}:5432"

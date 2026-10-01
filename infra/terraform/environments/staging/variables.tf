@@ -33,12 +33,6 @@ variable "db_primary_vm_name" {
   nullable    = false
 }
 
-variable "app_vm_name" {
-  description = "Existing (hand-made) app VM. Read-only here: only its private IP is used for the SSH firewall rule."
-  type        = string
-  nullable    = false
-}
-
 variable "db_replica_vm_name" {
   description = "Name of the new replica VM."
   type        = string
@@ -57,9 +51,9 @@ variable "machine_type" {
 }
 
 variable "disk_size_gb" {
-  description = "Replica boot/data disk size. Must be at least as large as the primary data set; check the primary with df -h."
+  description = "Replica boot/data disk size. The primary disk is 50 GB; keep the replica at least as large."
   type        = number
-  default     = 30
+  default     = 50
 
   validation {
     condition     = var.disk_size_gb >= 20
@@ -80,13 +74,7 @@ variable "image" {
 }
 
 variable "assign_external_ip" {
-  description = "Give the replica an ephemeral external IP for apt, Docker and Artifact Registry egress. Set false only if the subnet has Cloud NAT. Ingress stays closed either way: see the firewall rules in main.tf."
+  description = "Give the replica an ephemeral external IP for apt, Docker and Artifact Registry egress. Set false only if the subnet has Cloud NAT. Inbound access is governed by the existing VPC firewall rules (default-allow-ssh is open to the Internet, as for the other VMs)."
   type        = bool
   default     = true
-}
-
-variable "iap_ssh_source_range" {
-  description = "Google IAP TCP forwarding range, used by gcloud compute ssh --tunnel-through-iap (CI and operators)."
-  type        = string
-  default     = "35.235.240.0/20"
 }

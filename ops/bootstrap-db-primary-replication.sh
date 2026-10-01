@@ -19,7 +19,7 @@ MAX_SLOT_WAL_KEEP_SIZE=${MAX_SLOT_WAL_KEEP_SIZE:-2GB}
 if [[ ${EUID:-$(id -u)} -eq 0 ]]; then SUDO=(); else SUDO=(sudo); fi
 
 psql_exec() {
-  "${SUDO[@]}" docker exec -i "$CONTAINER_NAME" psql -X -U postgres -v ON_ERROR_STOP=1 "$@"
+  "${SUDO[@]}" docker exec -i -u postgres "$CONTAINER_NAME" psql -X -U postgres -v ON_ERROR_STOP=1 "$@"
 }
 
 "${SUDO[@]}" install -d -m 700 "$SECRETS_DIR"

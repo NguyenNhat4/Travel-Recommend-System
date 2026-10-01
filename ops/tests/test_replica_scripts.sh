@@ -18,6 +18,8 @@ grep -q 'max_slot_wal_keep_size' "$primary"
 grep -q 'host replication replicator \${REPLICA_IP}/32 scram-sha-256' "$primary"
 grep -q 'pg_reload_conf' "$primary"
 grep -q 'REPL_PASSWORD_FILE' "$primary"
+grep -q 'exec -i -u postgres' "$primary"
+grep -q 'exec -u postgres' "$probe"
 if grep -Eq 'docker (restart|stop)' "$primary"; then
   echo 'primary preparation must not restart PostgreSQL' >&2; exit 1
 fi
@@ -27,7 +29,8 @@ grep -q 'pg_basebackup' "$replica"
 grep -q -- '-R -X stream -S' "$replica"
 grep -q 'hot_standby=on' "$replica"
 grep -q 'pg_is_in_recovery' "$replica"
-grep -q 'vota-pg16' "$replica"
+grep -q 'IMAGE:?' "$replica"
+grep -q '18/docker' "$replica"
 grep -q -- '--publish="${replica_ip}:5432:5432"' "$replica"
 
 # No password literal embedded anywhere in the new scripts.

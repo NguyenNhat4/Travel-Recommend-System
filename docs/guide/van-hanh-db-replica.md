@@ -9,7 +9,7 @@ Hướng dẫn dựng, kiểm tra và xử lý sự cố cho PostgreSQL replica.
    ```bash
    cd infra/terraform/environments/staging
    terraform init -backend-config=backend.staging.hcl
-   terraform plan -var-file=staging.tfvars -out=staging.tfplan   # chỉ được thấy 1 VM + 2 firewall mới
+   terraform plan -var-file=staging.tfvars -out=staging.tfplan   # chỉ được thấy đúng 1 VM mới
    terraform apply staging.tfplan
    terraform output
    ```
@@ -32,8 +32,10 @@ Hướng dẫn dựng, kiểm tra và xử lý sự cố cho PostgreSQL replica.
 4. **Dựng replica** (SSH vào VM replica, trong checkout repo). `PRIMARY_HOST` lấy từ `terraform output primary_private_ip`:
 
    ```bash
-   PRIMARY_HOST=<primary_private_ip> sudo -E bash ops/bootstrap-db-replica.sh
+   IMAGE=pgvector/pgvector:0.8.6-pg18-bookworm PRIMARY_HOST=<primary_private_ip> sudo -E bash ops/bootstrap-db-replica.sh
    ```
+
+   `IMAGE` phải đúng image của primary (`sudo docker inspect vota-postgres --format '{{.Config.Image}}'`). Image từ Docker Hub nên VM replica cần ra Internet (IP ngoài tạm thời).
 
 5. **Bật giám sát**: trên replica chạy `sudo bash infra/monitoring/install-db-replica-monitoring.sh`; đặt biến GitHub `GCE_DB_REPLICA_INSTANCE` = tên VM replica rồi chạy lại workflow monitoring.
 
@@ -42,8 +44,8 @@ Hướng dẫn dựng, kiểm tra và xử lý sự cố cho PostgreSQL replica.
 Trên primary:
 
 ```bash
-sudo docker exec vota-postgres psql -U postgres -c "SELECT client_addr, state, sync_state, replay_lag FROM pg_stat_replication"
-sudo docker exec vota-postgres psql -U postgres -c "SELECT slot_name, active, wal_status FROM pg_replication_slots"
+sudo docker exec -u postgres vota-postgres psql -U postgres -c "SELECT client_addr, state, sync_state, replay_lag FROM pg_stat_replication"
+sudo docker exec -u postgres vota-postgres psql -U postgres -c "SELECT slot_name, active, wal_status FROM pg_replication_slots"
 ```
 
 Trên replica: `pg_is_in_recovery()` phải là `t`, và `tail -n 3 /var/log/vota/pg-replica.jsonl` phải có `"status":"ok"`.
@@ -65,7 +67,7 @@ Backend và crawler không đổi: chúng vẫn dùng primary.
 
 | Triệu chứng | Nguyên nhân thường gặp | Xử lý |
 |---|---|---|
-| Alert replication `broken` | Replica không streaming: primary đổi IP, mật khẩu sai, firewall, container chết | Xem `docker logs vota-postgres` trên replica; kiểm `pg_hba` và firewall `*-to-primary-5432` |
+| Alert replication `broken` | Replica không streaming: primary đổi IP, mật khẩu sai, firewall, container chết | Xem `docker logs vota-postgres` trên replica; kiểm `pg_hba` và firewall nội bộ (`default-allow-internal`) |
 | Alert `lagging` | Replica quá tải hoặc query đọc nặng giữ replay | Xem `pg_stat_activity` trên replica; giảm tải đọc. `max_standby_streaming_delay=60s` sẽ huỷ query dài |
 | Slot `wal_status = lost` | Replica offline lâu hơn `max_slot_wal_keep_size` (mặc định 2 GB) | Dựng lại replica (mục 5) |
 | Disk primary đầy do WAL | Replica offline, slot giữ WAL | `max_slot_wal_keep_size` đã chặn; vẫn kiểm `df -h`. Cần thì xoá slot rồi dựng lại replica |
@@ -77,8 +79,8 @@ Backend và crawler không đổi: chúng vẫn dùng primary.
 Chỉ làm khi replica hỏng hoặc slot `lost`. Trên VM replica:
 
 ```bash
-sudo docker rm -f vota-postgres && sudo docker volume rm vota-pg16
-PRIMARY_HOST=<primary_private_ip> sudo -E bash ops/bootstrap-db-replica.sh
+sudo docker rm -f vota-postgres && sudo docker volume rm vota-pg18
+IMAGE=<image của primary> PRIMARY_HOST=<primary_private_ip> sudo -E bash ops/bootstrap-db-replica.sh
 ```
 
 ## 6. Nâng replica thành primary (sự cố primary)
@@ -86,7 +88,7 @@ PRIMARY_HOST=<primary_private_ip> sudo -E bash ops/bootstrap-db-replica.sh
 Làm tay, có người quyết định; không có failover tự động.
 
 1. Xác nhận primary thật sự mất và tắt nó hẳn (tránh hai primary cùng ghi): `gcloud compute instances stop <primary>`.
-2. Trên replica: `sudo docker exec vota-postgres psql -U postgres -Atc "SELECT pg_promote()"`; kiểm `pg_is_in_recovery()` = `f`.
+2. Trên replica: `sudo docker exec -u postgres vota-postgres psql -U postgres -Atc "SELECT pg_promote()"`; kiểm `pg_is_in_recovery()` = `f`.
 3. Đổi tunnel của backend và `DATABASE_URL`/`CDP_DATABASE_URL` sang replica (đã thành primary); chạy `scripts/deploy-backend-vm.sh` với `--db-tunnel-port` tương ứng.
 4. Primary cũ không được bật lại vào cụm. Khi cần replica mới, dựng VM/volume mới và chạy lại mục 1 với primary mới.
 
@@ -94,4 +96,4 @@ Làm tay, có người quyết định; không có failover tự động.
 
 - Replica đọc có thể trễ vài giây. Đừng đọc-sau-ghi trên replica trong luồng booking/thanh toán.
 - Lag được đo bằng probe mỗi phút; dưới ngưỡng 60 giây coi là `ok`.
-- VM replica có IP ngoài tạm thời chỉ để apt/Docker/Artifact Registry ra được; firewall không mở cổng vào từ Internet. Có Cloud NAT thì đặt `assign_external_ip = false`.
+- VM replica có IP ngoài tạm thời để apt/Docker ra được. VPC `default` có `default-allow-ssh` mở cho `0.0.0.0/0` (như hai VM kia) nên SSH tới replica cũng mở theo; Postgres 5432 không mở ra ngoài vì không có rule công khai cho cổng này. Có Cloud NAT thì đặt `assign_external_ip = false`.

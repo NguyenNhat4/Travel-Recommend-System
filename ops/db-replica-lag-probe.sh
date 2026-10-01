@@ -12,7 +12,7 @@ OUT=${OUT:-/var/log/vota/pg-replica.jsonl}
 [[ "$LAG_THRESHOLD_SECONDS" =~ ^[0-9]+$ ]] || { echo 'LAG_THRESHOLD_SECONDS must be numeric' >&2; exit 2; }
 
 # lag is 0 when everything received is already replayed, so an idle primary is not reported as lag.
-row=$(docker exec "$CONTAINER_NAME" psql -X -U postgres -Atqc "
+row=$(docker exec -u postgres "$CONTAINER_NAME" psql -X -U postgres -Atqc "
   SELECT pg_is_in_recovery()::text || '|' ||
          (SELECT count(*) FROM pg_stat_wal_receiver WHERE status = 'streaming')::text || '|' ||
          CASE WHEN pg_last_wal_receive_lsn() IS NOT DISTINCT FROM pg_last_wal_replay_lsn() THEN 0
