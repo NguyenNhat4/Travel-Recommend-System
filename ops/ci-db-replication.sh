@@ -17,12 +17,27 @@ summary=${GITHUB_STEP_SUMMARY:-/dev/null}
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 
-ssh_vm_in() { # ssh_vm_in <vm> <command>; forwards stdin to the remote command
+# Exit status 255 means ssh could not connect or authenticate. With OS Login, a key imported a
+# moment ago can be rejected for a few seconds, so retry that status (and only that one) a few
+# times with growing waits. Anything else (the remote command failing) is returned as is.
+retry_ssh() {
+  local attempt=1 rc
+  while true; do
+    if "$@"; then return 0; else rc=$?; fi
+    if [[ $rc -ne 255 || $attempt -ge 4 ]]; then return "$rc"; fi
+    echo "SSH failed with 255 (attempt $attempt of 4); retrying in $((attempt * 15))s" >&2
+    sleep $((attempt * 15))
+    attempt=$((attempt + 1))
+  done
+}
+
+ssh_vm_in() { # ssh_vm_in <vm> <command>; forwards stdin to the remote command (no retry here)
   gcloud compute ssh "$1" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" \
     --tunnel-through-iap --quiet --command "$2"
 }
 
-ssh_vm() { ssh_vm_in "$@" </dev/null; } # no stdin, so ssh never swallows the script's input
+# No stdin, so ssh never swallows the script's input; safe to retry.
+ssh_vm() { retry_ssh ssh_vm_in "$@" </dev/null; }
 
 # Run a script on a VM, remove its upload dir, and keep the script's exit status.
 run_remote() { # run_remote <vm> <dir> <env assignments + command>
@@ -42,11 +57,23 @@ psql_replica() {
   ssh_vm "$REPLICA_VM" "sudo docker exec -u postgres $CONTAINER_NAME psql -X -U postgres -Atqc \"$1\" 2>/dev/null || echo none"
 }
 
-push_files() { # push_files <vm> <remote_dir> <files...>
+push_files_once() {
   local vm=$1 dir=$2
   shift 2
   tar -C "$repo_root" -czf - "$@" |
     ssh_vm_in "$vm" "umask 077; rm -rf '$dir'; mkdir -m 700 '$dir' && tar -xzf - -C '$dir'"
+}
+
+push_files() { retry_ssh push_files_once "$@"; } # push_files <vm> <remote_dir> <files...>
+
+# Read the secret on the primary first, then write it to the replica, so two gcloud ssh
+# processes never run at once. It only lives in a shell variable (set +x, never echoed).
+copy_secret() {
+  local secret
+  secret=$(ssh_vm "$PRIMARY_VM" "sudo cat '$SECRET_PATH'") || return $?
+  [[ -n $secret ]] || { echo "::error::Replicator password file on the primary is empty" >&2; return 1; }
+  printf '%s' "$secret" |
+    ssh_vm_in "$REPLICA_VM" "sudo install -d -m 700 /etc/vota/secrets && sudo install -m 600 /dev/stdin '$SECRET_PATH'"
 }
 
 echo "== Preflight: SSH to both VMs through IAP"
@@ -76,8 +103,7 @@ else
   run_remote "$PRIMARY_VM" "$remote_dir" "REPLICA_IP='$replica_ip' CONTAINER_NAME='$CONTAINER_NAME' sudo -E bash '$remote_dir/ops/bootstrap-db-primary-replication.sh'"
 
   echo "== Copy replicator password primary -> replica (through the runner pipe, never printed)"
-  ssh_vm "$PRIMARY_VM" "sudo cat '$SECRET_PATH'" |
-    ssh_vm_in "$REPLICA_VM" "sudo install -d -m 700 /etc/vota/secrets && sudo install -m 600 /dev/stdin '$SECRET_PATH'"
+  retry_ssh copy_secret
 
   echo "== Replica: base backup and hot standby"
   push_files "$REPLICA_VM" "$remote_dir" ops/bootstrap-db-replica.sh
