@@ -3,7 +3,7 @@
 - Phục vụ: **FR-REC-01..04**, **NFR-PERF-01** (`docs/prd/requirements.md`); `docs/prd/test-plan.md` §2.5; handbook §11–§12.
 - Code: `src/evaluation/recsys_bench/` (nhánh `bench/recsys-harness`). Số thô: `bench_out/recsys/runs/<run_id>/` (không commit).
 - Thay cho `eval/report.md` của lịch 10 ngày (`docs/plan/2026-09-28-lich-10-ngay-3-engine.md` §0.1).
-- Cập nhật lần cuối: 2026-10-01 chiều, Day 4 R (§1 `compare` / `report` / cột mới, §3.1 bộ split `asof20260924`, §4.15 v5 đủ cột §12, §5.1 P1/P3 sau M6, §6 I-8, §7 định nghĩa cột + đoạn "Ceiling"); trước đó 02/10 (§4.14 sau FR-REC-02; 01/10: §2.1 sanity, §3.1 split đóng băng, §4.5 guest path Cloud, §4.6 v3 NDCG@5, §4.7–4.11 ceiling / phân khúc / strict / 20 ca / findings, §4.12 parity offline = HTTP)
+- Cập nhật lần cuối: 2026-10-01 tối, Day 5 (§1 regression tự động / `baseline` / `make recsys-*` / thêm scorer, §3.1 baseline_v1 + chính sách, §4.17 full run + ADR 2, §7); trước đó 01/10 chiều, Day 4 R (§1 `compare` / `report` / cột mới, §3.1 bộ split `asof20260924`, §4.15 v5 đủ cột §12, §5.1 P1/P3 sau M6, §6 I-8, §7 định nghĩa cột + đoạn "Ceiling"); trước đó 02/10 (§4.14 sau FR-REC-02; 01/10: §2.1 sanity, §3.1 split đóng băng, §4.5 guest path Cloud, §4.6 v3 NDCG@5, §4.7–4.11 ceiling / phân khúc / strict / 20 ca / findings, §4.12 parity offline = HTTP)
 
 > **Caveat bắt buộc (handbook §12):** lịch sử khách hàng là dữ liệu sinh. Các số này cho biết pipeline chạy đúng,
 > không cho biết engine sẽ chạy thế nào trên khách thật.
@@ -34,8 +34,50 @@ python -m src.evaluation.recsys_bench report --run-id 2026-10-01-llbo-v5 --run-i
 python -m src.evaluation.recsys_bench run --algos src/evaluation/recsys_bench/algos_v1.yaml --mode funnel --split llbo --vectors numpy \
     --split-file src/evaluation/recsys_bench/frozen/split-llbo-asof20260924.json [--only cooc_trip --only ease] [--max-tier 2] [--funnel-pool engine] [--funnel-rerank none --funnel-rerank mmr]   # R3–R5: registry scorer qua funnel chung (spec recsys-algos-v1)
 python -m src.evaluation.recsys_bench regress --run-id <run> --ref-run-id 2026-10-01-llbo-v5 --base content_profile+mmr --ref engine   # R4 gate G1: ids[:20] theo khách 100 %
+python -m src.evaluation.recsys_bench baseline --run-id 2026-10-01-llbo-gate-numpy --note "…; history/<entry>.md"   # Day 5: ghi frozen/baseline_v1-<split>-asof<YYYYMMDD>.json
+python -m src.evaluation.recsys_bench regress --run-id <run gate mới> --baseline auto     # Day 5: so cả run với baseline_v1 → mã 0 / 1 / 2 / 3
 python -m pytest -q src/evaluation/recsys_bench/tests      # không cần DB
+make recsys-test                                           # = dòng trên
+make recsys-regress RECSYS_SPLIT=llbo RECSYS_ENV=<file export DSN local>      # run gate (pool engine, numpy) rồi regress --baseline auto
+make recsys-baseline RECSYS_SPLIT=llbo RECSYS_ENV=… NOTE="lý do; history/<entry>.md" [FORCE=1]   # ghi lại baseline (chính sách §3.1)
 ```
+
+**Regression tự động (Day 5, 01/10).** `baseline_v1` là ảnh chụp đóng băng của run gate (`pool engine`, `--vectors numpy`, arm `engine`,
+`engine_nommr`, `most_popular_in_destination`, `content_profile[+mmr]`, `star_blend_a1[+mmr]`) trên bộ split đóng băng; file và
+chính sách cập nhật ở §3.1. `regress --run-id R --baseline auto|PATH` so run R với baseline:
+
+| Mã thoát | Nghĩa | Khi nào |
+|---:|---|---|
+| 0 | PASS / WARN | mọi arm `primary` trùng `ids[:20]` từng khách; arm `scorer` không tụt đủ ngưỡng; WARN = chỉ cảnh báo (khác `algosHash` / lib / commit, tụt chưa đủ số khách, `--allow-subset`) |
+| 1 | FAIL | arm `primary` đổi ids ở ≥ 1 khách; cặp phải trùng trong run (G1 / G2 / `star_blend_a1`) hết trùng; arm `scorer` tụt ≥ 1,0 điểm hit@10 / hit@20 / NDCG@10 **và** ≥ 3 khách tụt ròng **và** p(tụt) < 0,05; phân khúc n ≥ 20 tụt hit@20 ≥ 3,0 điểm và ≥ 2 khách ròng |
+| 2 | Không so được | khác `configHash` / `engineRulesVersion` / `modelVersion` / split đóng băng / `k` / `vectors` / catalog / `algoMode` / `funnel.pool` / cấu hình algo (`specHash`), có `--override`, thiếu arm, run subset (trừ `--allow-subset`), không có file baseline |
+| 3 | INCONCLUSIVE | arm `canary` (`most_popular*`, `random-s*`) đổi ids — môi trường đổi (catalog / vector / popularity), không kết luận được về engine |
+
+Vai trò mặc định: `primary` = `engine`, `engine_prod`, `engine_nommr`, `content_profile[+mmr]`, `star_blend_a1[+mmr]`; `canary` = popular /
+random; còn lại `scorer`. Ghi đè bằng `baseline --role ARM=scorer` (vd khi một thay đổi engine **đã chốt** muốn so theo metric thay vì
+ids). Ngưỡng nằm trong file baseline (`thresholds`) và ghi đè được bằng `--max-drop`, `--min-users-drop`, `--p-max`,
+`--max-slice-drop`, `--min-slice-n`. Kết quả ghi `regress-baseline.{json,md}` vào thư mục run. `make recsys-*` cần môi trường của
+harness (`DATABASE_URL`, `EVAL_DATABASE_URL`, `WEAVIATE_URL` — khoá cache vector numpy); `.env` gốc có thể trỏ VM / cloud nên truyền
+`RECSYS_ENV=<file export …>`; Makefile không ghi DSN. Trên Windows với GnuWin32 make, truyền thêm `RECSYS_PYTHON=.venv/Scripts/python.exe`.
+CI hiện chỉ chạy test backend (`backend-ci-cd.yml`) và không có Postgres seed → regress thật chạy tay / máy dev; `make recsys-test` không
+cần DB.
+
+**Khi nào phải chạy `make recsys-regress`** — sau mọi thay đổi chạm: `src/backend/app/domain/recommendation/**`,
+`src/backend/app/application/recommendation/**`, `src/evaluation/recsys_bench/{engine,arms,bench,metrics,splits,ceiling}.py`,
+`src/evaluation/recsys_bench/models/{funnel,seeds,data,content,star}.py`, `algos_v1.yaml` (entry `content_profile` / `star_blend*` /
+`common`). FAIL ở arm `primary` nghĩa là engine trả list khác v5: hoặc là bug, hoặc là thay đổi có chủ đích — khi đó phải qua đề xuất
+`docs/prd/update/` đã chốt rồi mới ghi baseline mới (§3.1).
+
+**Thêm một scorer mới** (thay README của registry):
+
+1. Viết lớp trong `src/evaluation/recsys_bench/models/<tên>.py` theo giao thức `models/base.py`: `fit(data: TrainData) -> dict` (fit log
+   JSON), `score(ctx: UserCtx, cand) -> float32[len(cand)]`, `collab_part(ctx, cand)` (vế cộng tác cho cột `Collab cov.` hoặc None),
+   tuỳ chọn `explain(ctx, items) -> list[list[dict]]` (because, xem `models/because.py`). Không đọc DB, không lọc mask — funnel làm.
+2. Đăng ký tên trong `SCORER_MODULES` (`models/__init__.py`).
+3. Thêm entry vào `algos_v1.yaml` (`scorer`, `tier`, tham số; `requires` nếu cần lib ngoài; `seeds` nếu ngẫu nhiên; `funnel: {rerank:
+   none}` nếu MMR vô nghĩa với thang điểm của nó; `expect_equal_to` nếu có biến thể phải trùng một arm khác).
+4. Test toy không DB (mẫu `tests/test_models_itemitem.py`, `tests/synthetic_world.py`), rồi smoke `run --algos … --only <tên>
+   --limit-users 50`, rồi full run có `--run-id`.
 
 - **`run --algos <yaml> --mode funnel|raw`** (01/10, R3–R6; đặc tả `docs/spec/bench/recsys-algos-v1.md`): nạp registry `algos_v1.yaml`
   (scorer `content`, `cooc_trip`, `star_blend`, `ease`, `rp3beta`, `itemknn`, `ials`, `bpr`; `inherit`, `tier`, `requires`, `status`,
@@ -168,6 +210,26 @@ DB nguồn bộ `asof20260922`: Postgres local seed 2026-09-21 (`as_of` suy ra 2
 `--min-purchases` / `--min-trips` / `--T` thì `run --split-file` từ chối — muốn đo trên DB khác thì `split --freeze` bản mới và ghi
 bảng riêng. **Hai bộ split không so số với nhau** (khác tập khách / target / catalog): bảng §4.14 (bộ 0922) và §4.15 (bộ 0924) mỗi
 bảng chỉ so các arm **trong cùng run**; `configHash` giống nhau chỉ chứng minh cùng code engine, không cho phép so chéo.
+
+**Regression baseline `baseline_v1` (Day 5, 01/10)** — `regress --baseline auto` chọn file theo split + `asOf` của run (§1):
+
+| File (`src/evaluation/recsys_bench/frozen/`) | sha256 file | fingerprint | Run nguồn | Arm (vai trò) | engine R@20 / NDCG@10 |
+|---|---|---|---|---|---|
+| `baseline_v1-llbo-asof20260924.json` | `f0920877…5bc6203` | `cbc76becd0ec…` | `2026-10-01-llbo-gate-numpy` | `engine`, `engine_nommr`, `content_profile[+mmr]`, `star_blend_a1[+mmr]` (primary) · `most_popular_in_destination` (canary) | 0,8484 / 0,5169 |
+| `baseline_v1-temporal-asof20260924.json` | `433bd3c3…2a6922fded59` | `555695c49d41…` | `2026-10-01-temporal-gate-numpy` | như trên | 0,1939 / 0,1505 |
+
+Neo: `configHash b0aee886` (`ENGINE_RULES_VERSION 2026-10-02-trip-ended`), `modelVersion embed-multilingual-v3.0:catalog-text-v2`,
+3.183 search unit / 2.384 recommendable, `vectorsMissing 0`, **pool engine + `--vectors numpy`** (quét chính xác; arm `engine` qua
+Weaviate HNSW lệch 6/1016 LLBO và 4/98 temporal khách so với numpy — §4.17), k = 20. File gồm meta, metric từng arm, `idsSha256`
+(sha256 của `{khách: ids[:20]}`), `rank` + vân tay `ids16` theo khách, nhãn phân khúc của `analyze`, bốn cặp phải trùng trong run
+(G1, G2, `star_blend_a1` ≡ `content_profile` hai rerank — đều 1016/1016 và 98/98) và ngưỡng. Commit của run nguồn:
+`gold_v2-119-g8fffd4b-dirty` (code baseline / `pop_funnel` chưa commit lúc chạy; engine không đổi).
+
+**Chính sách cập nhật baseline:** chỉ ghi tay (`baseline --note …` / `make recsys-baseline NOTE=…`), không đè file có fingerprint khác
+trừ `--force`; ghi lại cùng run là no-op. Ghi baseline mới **chỉ khi**: (1) engine đổi hành vi qua đề xuất `docs/prd/update/` **đã chốt**
+(đổi `configHash` / `ENGINE_RULES_VERSION`); (2) `modelVersion` hoặc catalog đổi; (3) bộ split mới (file mới theo tên `asof…`, giữ
+file cũ); (4) ADR chọn scorer mới vào production (thêm arm vai trò `primary`). Mỗi lần kèm entry `history/` + report
+`src/evaluation/reports/`. Không ghi lại chỉ vì metric tụt "chấp nhận được" mà chưa có quyết định.
 
 **Quy ước tuning (B10, chốt 01/10):** grid-search tham số engine chỉ chạy trên **temporal** đóng băng (train < T, kiểm ≥ T);
 bảng báo cáo cuối dùng **LLBO** đóng băng; không chọn tham số theo LLBO. Mọi run ghi `configHash` (eval) / `configHashProd`;
@@ -560,6 +622,41 @@ scorer này; `+mmr` chỉ có nghĩa với `content_profile` / `star_blend` (cù
 điểm hoặc chuẩn hoá điểm trước MMR (đổi hành vi engine → đề xuất PRD); (4) `star_blend` a = 0,5 có `Collab cov.` ≈ 0,04 nên vế
 semantic bị chia đôi so với `pop_D` (spec §2.2 đã cảnh báo) — R@20 bằng content nhưng NDCG@10 thấp hơn (0,489 vs 0,546).
 
+### 4.17. Day 5 (01/10 tối): full run bảng thuật toán hai chế độ, CI, phân khúc, baseline_v1, ADR 2
+
+Report: `src/evaluation/reports/eval-2026-10-01-recsys-algos-v1.md` (bảng nguyên văn, CI, phân khúc, ceiling, E1–E7, phụ lục because và
+BPR Tier 2). Run (`--vectors numpy`, split `asof20260924`, `configHash b0aee886`): `2026-10-01-{llbo,temporal}-gate-numpy` (pool engine —
+nguồn baseline), `…-algos-funnel` / `…-algos-raw` (pool mask, rerank none + mmr, `--max-tier 2`, `algosHash dfec345e` / `96746541`),
+`…-content-nodecay` (`configHash c557f49b`), `…-because-k{5,10,15,20}`, `…-bpr-tier2`. Gate trong-run numpy: G1 / G2 / `star_blend_a1`
+1016/1016 và 98/98; `expectFailed []`; leak 0; random 0,0066 / 0,0034; availability 1,000.
+
+| LLBO funnel (rerank none) | hit@20 | NDCG@10 | Δhit@20 vs content [CI95] | Temporal funnel hit@20 | Δ vs content [CI95] |
+|---|---:|---:|---|---:|---|
+| `content_profile` (= `engine_nommr`) | 0,8750 | 0,5462 | — | 0,1939 | — |
+| `content_profile+mmr` (= `engine`) | 0,8484 | 0,5169 | −2,7 [−4,3; −1,0] | 0,1939 | +0,0 [−3,1; +3,1] |
+| `pop_funnel` | 0,8199 | 0,4823 | −5,5 [−7,7; −3,4] | 0,1020 | −9,2 [−16,3; −3,1] |
+| `star_blend` (a = 0,5) | 0,8957 | 0,5344 | +2,1 [+1,3; +3,0] | 0,1939 | +0,0 [+0,0; +0,0] |
+| `cooc_trip` = `itemknn` = `rp3beta` | 0,8199 | 0,464–0,466 | −5,5 [−7,7; −3,3] | 0,1122 | −8,2 [−14,3; −2,0] |
+| `ease` | 0,8110 | 0,4657 | −6,4 [−8,7; −4,1] | 0,1020 | −9,2 [−16,3; −3,1] |
+| `ials` (3 seed) | 0,8346 | 0,6053 | −3,0 [−5,6; −0,3] (s42) | 0,0884 | −10,2 [−17,3; −4,1] |
+| `bpr` (3 seed) | 0,7169 | 0,3333 | −19,8 [−22,8; −16,6] | 0,0850 | −10,2 [−18,4; −2,0] |
+| `most_popular_in_destination` | 0,6024 | 0,3803 | −27,3 | 0,1020 | −9,2 |
+
+Đọc: (1) engine giữ lõi — không scorer nào thắng trên temporal; (2) CF thuần ≈ `pop_funnel` (CI chứa 0) ở cả hai split; (3) funnel +44 điểm
+hit@20 cho content ở LLBO (raw 0,433); (4) **441/1.016 khách LLBO đã `add_to_cart` (không gid) đúng unit target trước khi mua** — `ials`
+0,977 ở nhóm này nhưng −13,2 điểm ở 575 khách còn lại; temporal chỉ 2/98 khách → mọi số LLBO cao một phần vì tín hiệu này, nhãn
+`targetInOwnHistory` cần vào `analyze`; (5) MMR −2,7 điểm LLBO, phá scorer thang nhỏ (−14 đến −15); (6) tắt decay đổi < 0,2 điểm.
+Baseline: `frozen/baseline_v1-{llbo,temporal}-asof20260924.json` (§3.1), `regress --baseline auto` và `make recsys-regress` PASS.
+**ADR 2** (quyết định theo quy tắc, chưa đồng thuận — `history/2026-10-01-adr2-huong-cai-thien-recsys-tuan-sau.md`): giữ engine v5 làm
+lõi; harness thêm `targetInOwnHistory` + split biến thể trước grid; đề xuất PRD cap theo `parentProductId` (I-5); grid temporal
+`W_SHORT/W_POP` rồi λ MMR; nghiên cứu tín hiệu giỏ hàng chưa mua; `star_blend` a ∈ {0,8; 0,9} ưu tiên thấp; hỏi Data về gid của cart; I-8
+dormant 90/180; bỏ grid `H_*`; không chạy kiến trúc sâu.
+
+Phụ lục (run `…-because-k{5,10,15,20}`, `…-bpr-tier2`): because[] — content / `star_blend` `Because@K` 1,000 ở mọi K, vi phạm contract đúng
+bằng nhóm `coldStart` (338/1.016 LLBO, 24/98 temporal — lệch "ràng buộc 4" đã ghi ở hợp đồng tích hợp search–rec), cooc 0,11 / ease 0,19
+(LLBO K = 5), `ials` 0,94 → 0,62 (K 5 → 20), `bpr` 0. BPR: `bpr_numpy` ≈ `bpr` implicit trong ±1 sd; `bpr_dest` LLBO hit@20 0,899 (> content,
+nhưng +6,8 ở nhóm có giỏ, −1,2 [−4,3; +1,9] ở nhóm còn lại), temporal 0,085 (−10,2 vs content) → không vào grid tuần này.
+
 ## 5. Kiểm nhanh P1 `VP0000001` (Day 1 C)
 
 Lệnh `user --id VP0000001 --k 5`, `as_of` 2026-09-24, 12 event lịch sử, cùng engine production (không HTTP).
@@ -608,8 +705,10 @@ dài hạn và mức phổ biến"). Lệch còn lại ghi I-8.
   sau M6 §5.1, lệnh `compare` / `report` §1 — §4.15 và report `eval-2026-10-01-recsys-bench-v5-asof20260924.md`. Day 4 R chiều
   (01/10): R3–R6 — registry `models/` + `algos_v1.yaml` theo spec `recsys-algos-v1.md` (người dùng bổ sung, gỡ blocker `cooc_trip` /
   `star_blend`), funnel chung (mask engine, knob `pool` / `rerank`) + `raw`, mọi scorer Tier 1 (+ `rp3beta`), CLI `run --algos` /
-  `regress`; gate G1/G2 1016/1016 và 98/98 — §4.16. Chưa làm: full run bảng thuật toán Day 5 (mọi Tier 1 × 2 rerank × 2 split, phân
-  khúc, CI), `bpr_dest` (không có cài đặt), `because[]` cho scorer mới, `baseline_v1.json` + `regress` tự động trong CI.
+  `regress`; gate G1/G2 1016/1016 và 98/98 — §4.16. Day 5 (01/10 tối): full run bảng thuật toán hai chế độ × hai rerank + CI + phân
+  khúc + ceiling, `pop_funnel`, `baseline_v1` + `regress --baseline` + `make recsys-*`, because[] với K tuỳ chọn, `bpr_numpy` / `bpr_dest`,
+  ADR 2 — §4.17. Chưa làm: regress trong CI (CI không có Postgres seed; cần workflow riêng được duyệt), `compare --ref-run-id` (so hai
+  run khác nhau), nhãn `targetInOwnHistory` trong `analyze` (ADR 2 #2).
 - Split temporal (as_of = T) đo "mua gì sau T", không phải "gợi gì ngay trước lúc mua chuyến kế": 10/21 target bị chặn là chuyến
   chưa đi tại T. Việc tiếp theo: split "next trip" (as_of = ngay trước purchase kế, trip trước đã kết thúc theo `usingDate`).
 - **Ceiling (Day 4 R8, 01/10):** trên cả hai bộ split, ceiling ≥ Recall@20 của mpd — bộ 0922: LLBO 0,990 / temporal 0,892 vs

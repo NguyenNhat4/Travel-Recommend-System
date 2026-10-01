@@ -34,7 +34,7 @@ file nếu còn mâu thuẫn:
 | E9 | Seed có `add_to_cart` thiếu gid vào ma trận user; purchase thiếu gid "giữ trong ma trận user × item" | `filter_events` đã **bỏ** 94 purchase thiếu gid khỏi `kept` (`events.py`); chỉ purchase mới có gid trên seed hiện tại → B (trip × item) **thực tế chỉ có purchase** | §0.1, §0.2, §6 |
 | E10 | `CosineRecommender(K=50)` rồi `.similarity` | `.similarity` chứa chính item → dùng `K = k + 1` rồi bỏ đường chéo | §3 |
 | E11 | iALS `c = 1 + α·r` | `implicit` nhân dữ liệu với α: `c = α·r = 40` | §6.1 |
-| E12 | BPR negative "đều trên toàn bộ item" | `implicit` lấy negative theo phân bố popularity (nnz); `bpr_dest` không có cài đặt ở nhánh research → `status: not_run` | §6.2 |
+| E12 | BPR negative "đều trên toàn bộ item" | `implicit` lấy negative theo phân bố popularity (nnz) và không có hook negative → `bpr_dest` cài bằng numpy (`bpr_numpy`, Day 5 Phase C) | §6.2, §6.3 |
 
 ## 0. Quy ước chung cho mọi scorer
 
@@ -153,8 +153,11 @@ score_cooc(x) = collab(x)
   §2. `T[s,x] = 0` khi x không nằm trong top-50 của s. S rỗng → collab = 0.
 - Ứng viên có `collab = 0` (đa số ở 7k event) xếp sau theo khoá §0.4 → ở `rerank none`, `cooc_trip` ≈ "đồng xuất hiện rồi tới
   popularity"; ghi rõ khi đọc bảng. Cột **`collab_coverage`** = tỉ lệ item top-20 có `collab > 0`.
-- `because[]`: `contribution_s(x) = w_s · T[s,x] / Σ w`; câu mẫu "Khách đặt {name_s} thường đặt thêm {name_x}" — **hoãn** trong harness
-  (không vào metric), chỉ đặc tả.
+- `because[]` (**đã cài Day 5, Phase B** — `models/because.py`, bật bằng `run --because-k K`): `contribution_e(x) = c_e · T[e,x] / Z`
+  theo **event** e (không theo unit), `c_e` và `Z = Σ c` lấy bằng đúng vòng lặp của `profile.explain` (float64, cùng thứ tự trip /
+  event; dạng cộng của `w_s` khi một unit có nhiều event), rồi bước cuối y hệt engine (giữ dương, chia tổng dương, round 2, ≥ 0,15, ≤ 3);
+  `kind = cooc`. Áp chung cho `itemknn`, `rp3beta` và `ease` (hàng `B_ease` có âm → phần âm bị loại). Câu mẫu "Khách đặt {name_s}
+  thường đặt thêm {name_x}" là việc của FE, không ở harness.
 
 ### 1.3 Test bắt buộc trước khi vào bảng
 
@@ -200,15 +203,29 @@ a = 0,5 ;  W_SHORT / W_POP / W_LONG = 0,6 / 0,25 / 0,15 đọc từ profile.py:1
   `star_blend` vào report**).
 - MMR λ = 0,7: theo knob `rerank` §0.4 (cả hai); cap ≤ 2/vertical chỉ ở list production.
 
-### 2.3 `because[]` (đặc tả, hoãn cài)
+### 2.3 `because[]` (đã cài Day 5, Phase B)
 
 ```
-contribution_s(x) = W_SHORT · [ a · w_s (v_s·v_x) / Z  +  (1 − a) · w_s T[s,x] / Σ w ]
+contribution_e(x) = W_SHORT · [ a · c_e (v_e·v_x) / Z  +  (1 − a) · c_e T[e,x] / Z ]        Z = Σ_e c_e
 ```
 
 Engine (`profile.py:143-160`) phân rã **theo event**, chỉ giữ phần dương, chuẩn hoá về tổng phần dương, làm tròn 2 chữ số, ngưỡng
-hiển thị **0,15 áp lên tỉ phần đã chuẩn hoá**, tối đa 3 — hệ số `W_SHORT` triệt tiêu khi chia tỉ phần nên câu hỏi "trước/sau 0,6"
-không còn. Phần `pop_D` và `u_long` không phân rã theo event, như engine.
+hiển thị **0,15 áp lên tỉ phần đã chuẩn hoá**, tối đa 3 — hệ số `W_SHORT` triệt tiêu khi chia tỉ phần nên cài đặt bỏ nó. Phần `pop_D`
+và `u_long` không phân rã theo event, như engine. `Z = Σc` cho vế semantic là **xấp xỉ** (phân rã chính xác của `v_x·u` cần chuẩn
+`‖Σ c_e v_e‖` và, ở nhánh long, chuẩn hoá từng trip `profile.py:103-104`) — giữ như engine để a = 1 **trùng bit** với `content_profile`
+(test `test_models_because.py`); dạng chính xác để grid tuần sau. `kind` của một dòng = `semantic` khi vế a ≥ vế (1 − a), ngược lại
+`cooc`.
+
+**Các scorer khác (Phase B):** `content_profile` = `profile.explain` nguyên văn (`kind semantic`); `ials` = `implicit`
+`AlternatingLeastSquares.explain` (Cholesky của W_u, đủ nnz của hàng user — tổng đóng góp = điểm `recalculate_user`), mỗi item j đã
+tương tác map về event gần nhất cùng unit trên **mọi** trip của khách, `kind latent`, đếm `because_unmapped`; `bpr`, `bpr_numpy`,
+`bpr_dest`, `pop_funnel` → `[]` (u·v không phân rã theo event — **không đạt FR-REC-03 nếu đưa vào production**). Trong harness mỗi dòng
+có thêm khoá `kind` ngoài contract `BecauseItem`; đưa vào contract là thay đổi additive phải qua `docs/prd/update/`.
+
+**Metric (cột chỉ in khi bật `--because-k K`, K ∈ {5, 10, 15, 20, …} ≤ k; không vào `algosHash`, ghi `summary.because` và
+`history[].params.becauseK`):** `Because@K` = tỉ lệ item trong top-K có ≥ 1 lý do, trung bình trên khách **không** đi nhánh popular;
+`Vi phạm because` = tỉ lệ khách vi phạm ≥ 1 luật contract (`hop-dong-tich-hop-search-recommendation.md` §4.4): popular ⟹ [],
+coldStart (`n_events < 3`) ⟹ [], dormant ⟹ có `daysAgo > 90` (90 của contract, không phải `DORMANT_AFTER_DAYS` 180 — I-8).
 
 ## 3. `itemknn` — cosine láng giềng, không shrinkage
 
@@ -259,7 +276,7 @@ phiên bản `implicit` vào `summary.libs`. `requires: implicit`.
   là đếm — ở đây không áp.
 - Chấm: user factor **tính lại tại lúc chấm** từ hàng train của user (`model.recalculate_user(uid, row_u)` — một nửa bước ALS, tất
   định khi cố định item factors), `score(x) = u_f · v_x`. User không có hàng train → `score = 0` → phá hoà §0.4.
-- `because[]`: `implicit.explain()` — tuỳ chọn, không bắt buộc tuần này.
+- `because[]`: `implicit.explain()` — **đã cài Day 5** (Phase B, §2.3): `kind latent`, map item → event gần nhất cùng unit.
 
 ### 6.2 `bpr` — `implicit.bpr.BayesianPersonalizedRanking`
 
@@ -267,9 +284,30 @@ phiên bản `implicit` vào `summary.libs`. `requires: implicit`.
 - **Negative: toàn cục**, lấy theo phân bố popularity của `implicit` (E12), không có tuỳ chọn theo destination; arm `bpr` ghi rõ
   "negative toàn cục". Negative **trong cùng destination** là arm riêng **`bpr_dest`** (Tier 2): đặc tả để đối chiếu — với mỗi positive
   (u, i⁺), lấy i⁻ đều trong tập item cùng destination với i⁺ mà u chưa tương tác; destination có < 20 item → lùi về toàn cục; cùng
-  `factors`, `lr`, `reg`, `iterations`, seed. Nhánh `khoa/recsys-research` **không có** cài đặt → `status: not_run`, tuần sau.
+  `factors`, `lr`, `reg`, `iterations`, seed. `implicit` không có hook negative → cài bằng numpy ở §6.3 (Day 5, Phase C).
 - Chấm: `score(x) = u_f · v_x` với `u_f` lấy từ `model.user_factors` (có cột bias → `factors + 1` = 65 cột, nhân đủ); user không có
   trong train → 0 → phá hoà. Trong LLBO mọi khách test đều có hàng train nên không cold.
+
+### 6.3 `bpr_numpy` / `bpr_dest` — BPR numpy, sampler negative cắm được (Day 5, Phase C)
+
+`models/bpr_numpy.py`, `rows = user`, không cần `implicit`. Cùng công thức `implicit` để `bpr_numpy` (negative toàn cục) làm **đối
+chứng** của `bpr` và `bpr_dest` chỉ khác ở sampler:
+
+- Khởi tạo như `implicit/gpu/bpr.py`: `Y` (item) rồi `X` (user) = `(rand − 0,5)/F`, F + 1 cột (cột cuối: bias item, user giữ 1), hàng
+  không tương tác = 0.
+- Mỗi epoch rút `nnz` mẫu có hoàn lại `(u, i⁺)` = ô nnz đều; cập nhật tuần tự theo `implicit/gpu/bpr.cu:45-63`, mọi vế dùng giá trị cũ:
+  `x̂ = X_u·(Y_i − Y_j)`, `z = σ(−x̂)`, `Y_i += lr(z·X_u − reg·Y_i)`, `Y_j += lr(−z·X_u − reg·Y_j)`, `X_u[:F] += lr(z·(Y_i − Y_j)[:F] −
+  reg·X_u[:F])`; `z < 0,5` = mẫu xếp đúng → `trainAucLastEpoch` trong fit log.
+- `negatives: global`: `i⁻ = itemids[U{nnz}]` (theo popularity, như `implicit`); trúng item đã thích → bỏ mẫu (`skippedShare`).
+- `negatives: same_destination` (`bpr_dest`): `i⁻` rút trong destination của `i⁺` — `dest_distribution: uniform` đều trên mọi search
+  unit cùng destination, `pop` theo tần suất nnz trong destination; trúng item đã thích → rút lại ≤ `max_resample` (10) lần rồi bỏ;
+  destination có < `min_dest_items` (20) ứng viên → lùi `global` (`destStats.sharePositivesFallback`).
+- Bốn khác biệt so với `implicit` (ghi khi đọc bảng): (1) luồng RNG khác (`numpy.default_rng` vs mt19937) → không bit-identical;
+  (2) thứ tự cập nhật theo bản GPU có nguồn (bản CPU `.pyx` không có trong wheel); (3) ở `same_destination` unit **chưa ai tương tác**
+  có thể bị rút làm negative → bias âm (ở `implicit` chúng giữ 0) — tác dụng phụ có chủ đích của "cùng destination"; (4) va chạm item
+  đã thích: `global` bỏ mẫu như `implicit`, `same_destination` rút lại trước khi bỏ.
+- `because[]` = `[]` (u·v không phân rã theo event). Tốc độ: ≈ 6 µs/bước (vòng Python, rút mẫu theo vector) → vài giây/seed trên
+  ma trận thật (nnz ≈ 2,5k × 100 epoch).
 
 ## 7. Tổng hợp tham số mặc định tuần này và grid tuần sau
 
@@ -282,7 +320,9 @@ phiên bản `implicit` vào `summary.libs`. `requires: implicit`.
 | `ease` | trip | λ = 200, float64, giữ âm | λ ∈ {20, 50, 100, 200, 500} (chọn theo `diag G` đã log) |
 | `rp3beta` | trip | α = 1,0, β = 0,6, K = 50 | β ∈ {0,3; 0,6; 0,9} |
 | `ials` | user | 64 factor, reg 0,01, 15 iter, α = 40, 3 seed, `recalculate_user` | α ∈ {10, 40}; factor ∈ {32, 64} |
-| `bpr` | user | 64 factor, lr 0,01, reg 0,01, 100 iter, negative toàn cục, 3 seed, 1 luồng | `bpr_dest` nếu có cài đặt |
+| `bpr` | user | 64 factor, lr 0,01, reg 0,01, 100 iter, negative toàn cục, 3 seed, 1 luồng | lr ∈ {0,01; 0,05}; iter ∈ {100, 300} |
+| `pop_funnel` | — | điểm 0 → funnel xếp `(pop_D↓, item_id↑)`; chỉ `rerank none` (Day 5) | — (baseline "CF ≈ popularity") |
+| `bpr_numpy` / `bpr_dest` (Tier 2) | user | như `bpr`; `bpr_dest`: negative đều trong destination, ≥ 20 unit, rút lại ≤ 10 | `dest_distribution ∈ {uniform, pop}` |
 
 Mọi arm: cùng S, w_e (§0.3), cùng funnel / pool / rerank (§0.4), cùng split, k = 20; `configHash` (engine) và `algosHash` (yaml đã giải
 `inherit` + knob funnel + mode + phiên bản lib) in đầu file kết quả. Biến thể `content_no_decay` của plan R5 **không** là scorer riêng:
@@ -299,6 +339,7 @@ common:
 
 algos:
   content_profile: {scorer: content, tier: 1}
+  pop_funnel:      {scorer: pop_funnel, tier: 1, funnel: {rerank: none}}   # mpd qua funnel chung (Day 5)
   cooc_trip:       {scorer: cooc_trip, tier: 1, beta: 5, top_k: 50}
   star_blend:      {scorer: star_blend, tier: 1, beta: 5, top_k: 50, a: 0.5, blend_scope: inner}
   star_blend_a1:   {inherit: star_blend, a: 1.0, expect_equal_to: content_profile}   # regression (§2.2)
@@ -309,8 +350,11 @@ algos:
                     seeds: [42, 43, 44], requires: implicit}
   bpr:             {scorer: bpr, tier: 1, factors: 64, learning_rate: 0.01, regularization: 0.01, iterations: 100,
                     negatives: global, seeds: [42, 43, 44], requires: implicit}
-  bpr_dest:        {inherit: bpr, negatives: same_destination, min_dest_items: 20, tier: 2, status: not_run}
-# estimate (giây fit / giây full run) điền sau smoke --limit-users 50.
+  bpr_numpy:       {scorer: bpr_numpy, tier: 2, factors: 64, learning_rate: 0.01, regularization: 0.01, iterations: 100,
+                    negatives: global, seeds: [42, 43, 44]}                    # Day 5 Phase C (§6.3)
+  bpr_dest:        {inherit: bpr_numpy, negatives: same_destination, min_dest_items: 20, dest_distribution: uniform,
+                    max_resample: 10}
+# estimate (giây fit / giây full run) ghi trong file yaml thật sau smoke / full run.
 ```
 
 ## 9. Checklist nghiệm thu trước khi bảng Day 5 được tin
@@ -330,3 +374,12 @@ algos:
 - [x] Bảng có cột `Collab cov.` (cooc/star/itemknn/ease/rp3beta), `Fit s`, `Pool cắt` (tỉ lệ khách pool engine bị cắt). `eqEngineTop20`
       đọc bằng `regress` (so `content_profile` pool mask với `engine` cùng run) thay vì cột riêng.
 - [x] `algosHash` vào `summary.json`, `merge_run` và header report; không gộp hai run khác `algosHash`.
+- [x] **Full run Day 5** (01/10 tối): `2026-10-01-{llbo,temporal}-algos-{funnel,raw}` (pool mask, rerank none + mmr, `--max-tier 2`,
+      `--vectors numpy`) exit 0, `expectFailed []`, `leakCheck.targetCellInTripRow 0`; gate numpy trong-run G1 / G2 1016/1016, 98/98 —
+      report `src/evaluation/reports/eval-2026-10-01-recsys-algos-v1.md`.
+- [x] `pop_funnel` (điểm 0) ≡ xếp mask engine theo `(pop_D↓, item_id↑)` — `tests/test_models_funnel_regression.py`.
+- [x] `baseline_v1` + `regress --baseline auto` mã 0 trên run nguồn và trên run gate chạy lại (`make recsys-regress`, cả hai split) —
+      `recsys-offline-eval.md` §1, §3.1.
+- [x] because[] (§1.2, §2.3, §6.1): `star_blend_a1.explain` trùng bit `content_profile.explain`; ials cộng đúng điểm (1e-3); `Because@K` với
+      K = 5 / 10 / 15 / 20 — phụ lục A của report.
+- [x] `bpr_numpy` (§6.3) tái lập `bpr` implicit trong ±1 sd 3 seed; `bpr_dest` chạy 3 seed × 2 split, fit log `destStats` — phụ lục B.

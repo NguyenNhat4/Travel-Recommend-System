@@ -10,6 +10,7 @@ import numpy as np
 
 from src.backend.app.domain.recommendation import profile as P
 
+from . import because
 from .base import TrainData, UserCtx
 from .cooc import CoocTrip
 
@@ -47,3 +48,7 @@ class StarBlend:
 
     def collab_part(self, ctx: UserCtx, cand: np.ndarray) -> np.ndarray | None:
         return self.cooc.score(ctx, cand)
+
+    def explain(self, ctx: UserCtx, items: np.ndarray) -> list[list[dict]]:
+        """because[]: `a·c_e·(E_e·E_x)/Z + (1−a)·c_e·T[e, x]/Z` (spec §2.3, Z = Σc — xấp xỉ); a = 1 trùng bit `content_profile`."""
+        return because.star(ctx.profile, items, self.E, self.cooc.row, self.a)

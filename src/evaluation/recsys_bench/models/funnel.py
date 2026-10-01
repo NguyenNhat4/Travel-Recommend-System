@@ -28,6 +28,7 @@ from src.backend.app.domain.recommendation.profile import Profile
 
 from ..arms import Ranked
 from ..engine import OfflineEngine
+from . import because as BC
 from .base import Scorer, TrainData, UserCtx
 from .seeds import profile_for, resolved_events, seeds_for
 
@@ -140,12 +141,17 @@ class CtxCache:
 class AlgoArm:
     """Bọc một scorer thành arm của `bench.evaluate` (key, family, recommend → Ranked). `key = name` hoặc `name+mmr`."""
 
-    mean_meta = ("collabCoverage", "poolTruncated", "maskSize", "poolSize")
+    mean_meta = ("collabCoverage", "poolTruncated", "maskSize", "poolSize", "becauseCoverage", "becauseViolations")
 
     def __init__(self, name: str, scorer: Scorer, cfg: FunnelCfg, ctx_cache: CtxCache, vector_search: VectorSearchPort | None,
-                 *, seed: int | None = None):
-        """`seed` (ials/bpr nhiều seed): key `name-s<seed>[+mmr]`, family `name[+mmr]` → `bench.aggregate` gộp như arm random."""
+                 *, seed: int | None = None, because_k: int = 0):
+        """`seed` (ials/bpr nhiều seed): key `name-s<seed>[+mmr]`, family `name[+mmr]` → `bench.aggregate` gộp như arm random.
+        `because_k` > 0: ghi because[] (dạng contract + `kind`) cho `ids[:because_k]` vào meta, cùng `becauseCoverage` (tỉ lệ item có
+        ≥ 1 lý do; chỉ khách không phải popular) và `becauseViolations` (0/1 theo luật contract) — không đổi ids / metric chính."""
+        if because_k < 0:
+            raise ValueError(f"because_k={because_k}: phải ≥ 0")
         self.name, self.scorer, self.cfg, self.ctx, self.vector_search, self.seed = name, scorer, cfg, ctx_cache, vector_search, seed
+        self.because_k = int(because_k)
         suffix = "+mmr" if cfg.rerank == "mmr" else ""
         self.family = name + suffix
         self.key = (f"{name}-s{seed}" if seed is not None else name) + suffix
@@ -171,7 +177,10 @@ class AlgoArm:
         meta = {"strategy": ctx.strategy, "destination": dest, "excludedVerticals": sorted(done), "seedBranch": ctx.seeds.branch,
                 "maskSize": int(mask.sum()), "poolSize": int(len(cand)), "pool": cfg.pool, "rerank": cfg.rerank, "mode": cfg.mode}
         if len(cand) == 0:
-            return Ranked([], (perf_counter() - started) * 1000, {**meta, "poolTruncated": 0})
+            meta["poolTruncated"] = 0
+            if self.because_k:
+                self._because(ctx, [], meta)
+            return Ranked([], (perf_counter() - started) * 1000, meta)
         scores = np.asarray(self.scorer.score(ctx, cand), dtype=np.float32)
         score_full = np.full(data.n_items, -np.inf, dtype=np.float32)
         score_full[cand] = scores
@@ -193,4 +202,19 @@ class AlgoArm:
         collab = self.scorer.collab_part(ctx, np.asarray(chosen, dtype=np.int64)) if chosen else None
         if collab is not None:
             meta["collabCoverage"] = float(np.mean(np.asarray(collab) > 0)) if len(collab) else 0.0
+        if self.because_k:
+            self._because(ctx, chosen[: self.because_k], meta)
         return Ranked([index.units[g].product_id for g in chosen], (perf_counter() - started) * 1000, meta)
+
+    def _because(self, ctx: UserCtx, top: list[int], meta: dict) -> None:
+        """because[] cho top-K (FR-REC-03): `scorer.explain` nếu có, không thì rỗng; luật contract tính trên đúng top-K đó."""
+        explain = getattr(self.scorer, "explain", None)
+        items = np.asarray(top, dtype=np.int64)
+        raw = explain(ctx, items) if (explain is not None and len(items)) else [[] for _ in top]
+        bec = [BC.contract_items(self.index, b) for b in raw]
+        cold = int(getattr(ctx.profile, "n_events", 0)) < 3
+        meta["because"], meta["coldStart"] = bec, cold
+        if ctx.strategy != "popular" and bec:
+            meta["becauseCoverage"] = float(np.mean([bool(b) for b in bec]))
+        rules = BC.violations(ctx.strategy, cold, bec)
+        meta["becauseViolations"], meta["becauseViolationRules"] = int(bool(rules)), rules

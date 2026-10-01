@@ -31,7 +31,11 @@ COLUMNS = [
     ("collab_coverage", "Collab cov.", "{:.3f}"),        # registry (R5): tỉ lệ item top-20 có vế co-occurrence > 0
     ("pool_truncated", "Pool cắt", "{:.2f}"),            # tỉ lệ khách có pool engine bị cắt ở pool_k (chỉ pool = engine)
     ("fit_seconds", "Fit s", "{:.1f}"),
+    ("because_coverage", "Because@k", "{:.3f}"),          # Phase B: tỉ lệ item top-K có ≥ 1 because (khách không phải popular)
+    ("because_violations", "Vi phạm because", "{:.3f}"),  # tỉ lệ khách vi phạm luật contract của because
 ]
+#: cột chỉ in khi ít nhất một hàng có khoá (run không bật --because-k giữ bảng như cũ)
+OPTIONAL_COLUMNS = {"because_coverage", "because_violations"}
 
 
 def _cell(row: dict, key: str, fmt: str) -> str:
@@ -42,13 +46,24 @@ def _cell(row: dict, key: str, fmt: str) -> str:
     return f"{text} ± {fmt.format(std)}" if std else text
 
 
+def _columns(rows: list[dict]) -> list[tuple[str, str, str]]:
+    k = next((int(r["because_k"]) for r in rows if r.get("because_k")), None)
+    cols = []
+    for key, label, fmt in COLUMNS:
+        if key in OPTIONAL_COLUMNS and not any(key in r for r in rows):
+            continue
+        cols.append((key, f"Because@{k}" if key == "because_coverage" and k else label, fmt))
+    return cols
+
+
 def markdown_table(rows: list[dict]) -> str:
-    head = "| Arm | " + " | ".join(label for _, label, _ in COLUMNS) + " |"
-    sep = "|---|" + "---|" * len(COLUMNS)
+    cols = _columns(rows)
+    head = "| Arm | " + " | ".join(label for _, label, _ in cols) + " |"
+    sep = "|---|" + "---|" * len(cols)
     body = []
     for row in rows:
         name = row["arm"] + (f" ({row['seeds']} seed)" if row.get("seeds") else "")
-        body.append(f"| {name} | " + " | ".join(_cell(row, key, fmt) for key, _, fmt in COLUMNS) + " |")
+        body.append(f"| {name} | " + " | ".join(_cell(row, key, fmt) for key, _, fmt in cols) + " |")
     return "\n".join([head, sep, *body])
 
 

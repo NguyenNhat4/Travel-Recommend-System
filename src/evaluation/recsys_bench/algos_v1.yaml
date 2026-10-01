@@ -8,6 +8,7 @@ common:
 
 algos:
   content_profile: {scorer: content, tier: 1}
+  pop_funnel:      {scorer: pop_funnel, tier: 1, funnel: {rerank: none}}   # mpd qua funnel chung — đối chứng "CF ≈ popularity"
   cooc_trip:       {scorer: cooc_trip, tier: 1, beta: 5, top_k: 50}
   star_blend:      {scorer: star_blend, tier: 1, beta: 5, top_k: 50, a: 0.5, blend_scope: inner}
   star_blend_a1:   {inherit: star_blend, a: 1.0, expect_equal_to: content_profile}   # regression bắt buộc (spec §2.2)
@@ -18,7 +19,11 @@ algos:
                     seeds: [42, 43, 44], requires: implicit}
   bpr:             {scorer: bpr, tier: 1, factors: 64, learning_rate: 0.01, regularization: 0.01, iterations: 100,
                     negatives: global, seeds: [42, 43, 44], requires: implicit}
-  bpr_dest:        {inherit: bpr, negatives: same_destination, min_dest_items: 20, tier: 2, status: not_run}
+  # Phase C (Day 5): BPR numpy cùng công thức implicit (gpu/bpr.cu) nhưng sampler negative cắm được — spec §6.3
+  bpr_numpy:       {scorer: bpr_numpy, tier: 2, factors: 64, learning_rate: 0.01, regularization: 0.01, iterations: 100,
+                    negatives: global, seeds: [42, 43, 44]}                      # đối chứng của `bpr` implicit (sampler popularity)
+  bpr_dest:        {inherit: bpr_numpy, negatives: same_destination, min_dest_items: 20, dest_distribution: uniform,
+                    max_resample: 10}                                            # negative đều trong destination của i⁺
 # estimate — smoke 01/10 (50 khách, LLBO, 3.183 unit, 1.016 trip × item, numpy): fit cooc_trip 0,4 s · star_blend 0,4 s · itemknn < 0,1 s ·
 # ease 1,0 s · rp3beta 0,3 s · ials 0,1 s/seed · bpr 0,1 s/seed; chấm ≈ 0,2–0,5 ms/khách (rerank none), ≈ 20 ms/khách (mmr: top-200 × E 1024-d)
 # → full run LLBO 1.016 khách × 19 arm ≈ 5–7 phút; temporal 98 khách < 1 phút.

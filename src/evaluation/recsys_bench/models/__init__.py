@@ -16,6 +16,8 @@ SCORER_MODULES: dict[str, tuple[str, str]] = {
     "itemknn": ("knn_implicit", "ItemKnn"),
     "ials": ("mf_implicit", "Ials"),
     "bpr": ("mf_implicit", "Bpr"),
+    "pop_funnel": ("popular", "PopFunnel"),
+    "bpr_numpy": ("bpr_numpy", "BprNumpy"),
 }
 
 

@@ -9,7 +9,8 @@ from types import SimpleNamespace
 import pytest
 import yaml
 
-from src.evaluation.recsys_bench.models.registry import AlgosError, algos_hash, lib_versions, load_algos, missing_libs, select
+from src.evaluation.recsys_bench.models.registry import (AlgosError, algos_hash, entry_reranks, lib_versions, load_algos, missing_libs,
+                                                         select)
 
 ALGOS_OK = {
     "version": 1,
@@ -17,6 +18,7 @@ ALGOS_OK = {
                "funnel": {"k": 20, "pool": "mask", "rerank": ["none", "mmr"], "pool_k": 200, "popular_k": 50}},
     "algos": {
         "content_profile": {"scorer": "content", "tier": 1},
+        "pop_funnel": {"scorer": "pop_funnel", "tier": 1, "funnel": {"rerank": "none"}},
         "cooc_trip": {"scorer": "cooc_trip", "tier": 1, "beta": 5, "top_k": 50},
         "star_blend": {"scorer": "star_blend", "tier": 1, "beta": 5, "top_k": 50, "a": 0.5},
         "star_blend_a1": {"inherit": "star_blend", "a": 1.0, "expect_equal_to": "content_profile"},
@@ -38,7 +40,9 @@ def test_load_algos_inherit_select_requires_and_hash(tmp_path):
     a1 = cfg.algos["star_blend_a1"]
     assert a1.scorer == "star_blend" and a1.params == {"beta": 5, "top_k": 50, "a": 1.0} and a1.expect_equal_to == "content_profile" and a1.tier == 1
     assert cfg.algos["cooc_trip"].params == {"beta": 5, "top_k": 50} and cfg.algos["content_profile"].params == {}
-    assert [s.name for s in select(cfg, None, 1)] == ["content_profile", "cooc_trip", "star_blend", "star_blend_a1", "ease"]
+    assert [s.name for s in select(cfg, None, 1)] == ["content_profile", "pop_funnel", "cooc_trip", "star_blend", "star_blend_a1", "ease"]
+    assert entry_reranks(cfg.algos["pop_funnel"], ["none", "mmr"]) == ["none"] and entry_reranks(cfg.algos["pop_funnel"], ["mmr"]) == []
+    assert entry_reranks(cfg.algos["ease"], ["mmr", "none"]) == ["mmr", "none"]
     assert "rp3beta" in [s.name for s in select(cfg, None, 2)] and "needs_lib" not in [s.name for s in select(cfg, None, 2)]
     assert [s.name for s in select(cfg, ["ease", "cooc_trip"])] == ["cooc_trip", "ease"]        # thứ tự yaml
     with pytest.raises(AlgosError, match="nope"):
@@ -69,6 +73,8 @@ def test_load_algos_rejects_bad_configs(tmp_path):
         load_algos(_write(tmp_path, "b4.yaml", {"version": 1, "common": {"funnel": {"pool": "all"}}, "algos": {"a": {"scorer": "ease"}}}))
     with pytest.raises(AlgosError, match="expect_equal_to"):
         load_algos(_write(tmp_path, "b5.yaml", {"version": 1, "algos": {"a": {"scorer": "ease", "expect_equal_to": "ghost"}}}))
+    with pytest.raises(AlgosError, match="funnel.rerank"):
+        load_algos(_write(tmp_path, "b6.yaml", {"version": 1, "algos": {"a": {"scorer": "ease", "funnel": {"rerank": "both"}}}}))
     with pytest.raises(AlgosError, match="không tìm thấy"):
         load_algos(tmp_path / "missing.yaml")
 
@@ -126,7 +132,8 @@ def test_cli_run_algos_gate_regress_report_analyze(cli_env):
     assert s["algosHash"] and s["algoMode"] == "funnel" and s["funnel"] == {"pool": "engine", "reranks": ["none", "mmr"]}
     arms = {row["arm"] for row in s["rows"]}
     assert {"engine", "engine_nommr", "most_popular_in_destination", "content_profile", "content_profile+mmr", "cooc_trip", "cooc_trip+mmr",
-            "star_blend", "star_blend+mmr", "star_blend_a1", "star_blend_a1+mmr", "ease", "ease+mmr"} <= arms and "rp3beta" not in arms
+            "star_blend", "star_blend+mmr", "star_blend_a1", "star_blend_a1+mmr", "ease", "ease+mmr", "pop_funnel"} <= arms and "rp3beta" not in arms
+    assert "pop_funnel+mmr" not in arms                                   # entry chỉ rerank none
     cooc = next(row for row in s["rows"] if row["arm"] == "cooc_trip")
     assert "collab_coverage" in cooc and cooc["fit_seconds"] >= 0 and cooc["funnel"]["pool"] == "engine" and cooc["algo"] == "cooc_trip"
     assert s["expectations"]["star_blend_a1"]["pass"] and s["expectations"]["star_blend_a1+mmr"]["pass"] and s["expectFailed"] == []

@@ -210,23 +210,23 @@
 
 **R5 — mỗi dòng có cấu hình/seed, fit chỉ trên train, smoke 50 user ở funnel và raw, thời gian fit/chạy:**
 
-- [ ] random — 3 seed.
-- [ ] mostpop_window — 90 ngày.
-- [ ] mostpop_in_dest.
-- [ ] content_profile — regression khớp v5.
-- [ ] content_no_decay.
-- [ ] content_no_mmr.
-- [ ] cooc_trip — chỉ triển khai khi đủ đặc tả.
-- [ ] star_blend — a = 0,5, chỉ triển khai khi đủ đặc tả.
-- [ ] ease — ghi λ cụ thể từ nguồn đã xác nhận, không để “mặc định” mơ hồ.
-- [ ] itemknn — ghi k và cách chuẩn hóa.
-- [ ] ials — 64 factor, α = 40; ghi seed/iterations.
-- [ ] bpr — 64 factor; ghi seed/iterations và cách lấy negative.
+- [x] random — 3 seed. *(Day 5: seed 42/43/44, run `2026-10-01-{llbo,temporal}-algos-{funnel,raw}`; LLBO hit@20 0,0066 ± 0,0023.)*
+- [x] mostpop_window — 90 ngày. *(arm `most_popular`, `popularityWindowDays` 90 trong `engineConfig`; LLBO 0,253.)*
+- [x] mostpop_in_dest. *(arm `most_popular_in_destination` + `pop_funnel` = cùng xếp hạng qua funnel chung; LLBO 0,602 / 0,820.)*
+- [x] content_profile — regression khớp v5. *(gate numpy trong-run 1016/1016, 98/98; `baseline_v1` ghi từ run `…-gate-numpy`.)*
+- [x] content_no_decay. *(run `2026-10-01-{llbo,temporal}-content-nodecay`, `--override H_SHORT_DAYS=H_LONG_DAYS=1000000`, `configHash c557f49b`; Δhit@20 +0,1 / 0,0.)*
+- [x] content_no_mmr. *(= hàng `content_profile` rerank none; MMR −2,7 [−4,3; −1,0] hit@20 LLBO.)*
+- [x] cooc_trip — chỉ triển khai khi đủ đặc tả. *(β 5, top-K 50; run `2026-10-01-{llbo,temporal}-algos-{funnel,raw}`; fit 0,8 s LLBO.)*
+- [x] star_blend — a = 0,5, chỉ triển khai khi đủ đặc tả. *(inner; kèm `star_blend_a1` ≡ content; run `2026-10-01-{llbo,temporal}-algos-{funnel,raw}`.)*
+- [x] ease — ghi λ cụ thể từ nguồn đã xác nhận, không để “mặc định” mơ hồ. *(λ = 200 theo spec algos §4; `maxDiagG` 19 / 38, `medianDiagG` 0 trong fit log.)*
+- [x] itemknn — ghi k và cách chuẩn hóa. *(implicit `CosineRecommender`, K = k + 1 = 51, cosine không shrink.)*
+- [x] ials — 64 factor, α = 40; ghi seed/iterations. *(reg 0,01, 15 iter, seed 42/43/44, `recalculate_user`.)*
+- [x] bpr — 64 factor; ghi seed/iterations và cách lấy negative. *(lr 0,01, reg 0,01, 100 iter, seed 42/43/44, negative toàn cục theo popularity của implicit; đối chứng `bpr_numpy` + `bpr_dest` ở run `…-bpr-tier2`.)*
 
 **Bổ sung điều kiện nghiệm thu:**
 
 - [x] R2 ghi mẫu số Gini/coverage, xử lý danh sách rỗng và user không có chuyến mở; test fixture có kết quả tính tay. *(01/10: spec §7; mẫu số in dưới bảng; rỗng → 0,0 / 0; `tests/test_metrics_open_trip_gini.py`.)*
-- [ ] R4 kiểm mask/tie-break và metric trên cả LLBO + temporal; chưa khớp v5 thì chưa công bố bảng so scorer.
+- [x] R4 kiểm mask/tie-break và metric trên cả LLBO + temporal; chưa khớp v5 thì chưa công bố bảng so scorer. *(G1/G2 1016/1016, 98/98 với Weaviate (R4) và numpy (Day 5); test fixture tie-break.)*
 - [ ] S5 dùng cùng gold cho cả 3 arm; đủ Judged@10 hoặc ghi rõ hạn chế trước khi kết luận.
 - [ ] S6 cap 700 là tổng cặp duy nhất sau loại trùng, có bảng số cặp theo arm. Nếu cần condensed mà chưa triển khai thì đánh dấu chờ, không công bố số condensed giả định.
 - [ ] S7 ghi máy, số query, warm-up, cache, batch và số lần lặp; latency embedding không thay thế phép đo latency toàn API của NFR-PERF-01.
@@ -260,6 +260,11 @@ Report là bằng chứng kèm theo, history ghi lý do/quyết định; chúng 
 | R | R6 CLI | **Xong 01/10 chiều** | như R3 | `run --algos … --mode`, `regress`, `report` (sáng), `compare` (sáng) | test CLI CliRunner: lỗi cấu hình thoát trước DB, `expect_equal_to` thất bại → mã 1 và bỏ hàng, `merge_run` từ chối khác `algosHash`, `analyze` có scorer mới trong phân khúc | `--help` không cần `implicit`; `--algos` bắt buộc `--vectors` |
 | R | R7 P1/P3 sau M6 | **Xong 01/10** | như R1 | spec §5.1 | `user --id VP0000001` 4/4; `user --id VP0000003` 4/4 (`p3Check` mới); 0 lỗi contract; dư `sections` (I-4) | Contract 1.12.0 không thiếu field → không mở PR; dormant 90 (contract) vs 180 (code) → I-8 |
 | R | R8 Ceiling | **Xong 01/10** | như R1 | spec §7 "Ceiling", §4.15; `bench_out/…/ceiling.{json,md}` | `analyze` hai run: ceiling 0,988 (1004/1016) / 0,918 (90/98) ≥ mpd 0,602 / 0,102; đa nhãn 12 > 8 (4 khách 2 nhãn) | Hướng tuần sau: split "next trip"; cap theo `parentProductId` (I-5) qua đề xuất PRD; λ MMR vào grid |
+| R | R9 Full run bảng thuật toán (Day 5) | **Xong 01/10 tối** | nhánh `bench/day4-rec` sau `8fffd4b` (code Day 5 chưa commit lúc chạy) | run `2026-10-01-{llbo,temporal}-algos-{funnel,raw}`, `…-content-nodecay`, `…-gate-numpy`; report `src/evaluation/reports/eval-2026-10-01-recsys-algos-v1.md`; spec §4.17 | 6 run + 2 gate exit 0; `expectFailed []`; leak 0; 102 `compare` có CI | 441/1.016 khách LLBO có target trong giỏ trước khi mua → harness thêm nhãn trước grid (ADR 2 #2) |
+| R | R10 `baseline_v1` + `regress --baseline` | **Xong 01/10 tối** | như R9 | `frozen/baseline_v1-{llbo,temporal}-asof20260924.json`; `models/baseline.py`; lệnh `baseline`; `make recsys-{test,gate-run,regress,baseline}` | pytest 7 test baseline; `regress --baseline auto` PASS mã 0 trên run nguồn; `make recsys-regress` PASS (run `2026-10-01-{llbo,temporal}-make-regress`) | Regress chưa vào CI (CI không có Postgres seed) |
+| R | R11 ADR 2 hướng recsys | **Xong 01/10 tối** (theo quy tắc, chưa đồng thuận) | — | `history/2026-10-01-adr2-huong-cai-thien-recsys-tuan-sau.md`; report mục 12; spec §4.17 | — | Lead xác nhận thứ tự; 3 đề xuất PRD chưa soạn (I-5, giỏ hàng, I-8) |
+| R | R12 because[] cho scorer mới | **Xong 01/10 tối** | như R9 | `models/because.py`; `run --because-k K` (K = 5/10/15/20); run `2026-10-01-{llbo,temporal}-because-k{5,10,15,20}`; report phụ lục A | pytest 7 test because (star a = 1 trùng bit engine, ials cộng đúng điểm) | `content_profile` vi phạm luật contract ở coldStart / dormant — finding, không sửa engine; khoá `kind` ngoài contract |
+| R | R13 `bpr_numpy` / `bpr_dest` | **Xong 01/10 tối** | như R9 | `models/bpr_numpy.py`; yaml Tier 2; run `2026-10-01-{llbo,temporal}-bpr-tier2`; report phụ lục B; spec algos §6.3 | pytest 6 test (bước SGD tính tay, sampler, tất định, đối chứng implicit) | Không bit-identical với implicit (RNG khác) — so theo CI |
 
 Mỗi report phải có commit + run ID + gold/split version/hash + cấu hình arm, bảng số nguyên văn từ output, caveat và lệnh tái sinh. Không ghi DSN/secret vào lệnh bàn giao.
 

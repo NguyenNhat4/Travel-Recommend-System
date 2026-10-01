@@ -15,6 +15,7 @@ from src.evaluation.recsys_bench.events import filter_events
 from src.evaluation.recsys_bench.models.content import ContentProfile
 from src.evaluation.recsys_bench.models.data import assert_no_leak, build
 from src.evaluation.recsys_bench.models.funnel import AlgoArm, CtxCache, FunnelCfg, engine_mask, rank_none, raw_mask
+from src.evaluation.recsys_bench.models.popular import PopFunnel
 from src.evaluation.recsys_bench.splits import leave_last_booking_out, temporal_split
 from src.evaluation.recsys_bench.tests import synthetic_world as SW
 from src.evaluation.recsys_bench.tests.test_arms_metrics import AS_OF
@@ -165,3 +166,32 @@ def test_algo_arm_requires_vectors_for_engine_pool(world, events):
     r = arm.recommend("u1", split.as_of_by_user["u1"], 20, split.train_by_user["u1"])
     assert r.meta["mode"] == "raw" and r.meta["pool"] == "mask" and len(r.product_ids) <= 20 and arm.key == "content_profile"
     assert AlgoArm("x", content, FunnelCfg(rerank="mmr"), ctx, None).key == "x+mmr"
+
+
+def _pop_order_ok(index, vs, kept, split, **kw):
+    """`pop_funnel` (điểm 0) qua funnel pool mask / rerank none = mask engine xếp (pop_D↓, item_id↑)."""
+    _, data, ctx, _, _ = _setup(index, vs, kept, split, **kw)
+    scorer = PopFunnel()
+    scorer.fit(data)
+    arm = AlgoArm("pop_funnel", scorer, FunnelCfg(pool="mask", rerank="none"), ctx, vs)
+    checked = 0
+    for u in sorted(split.targets):
+        as_of, ev = split.as_of_by_user[u], split.train_by_user[u]
+        c = ctx.get(u, as_of, ev)
+        mask, _, _ = engine_mask(index, c.profile)
+        expect = sorted(np.flatnonzero(mask).tolist(), key=lambda g: (-float(c.pop[g]), str(data.product_ids[g])))[:20]
+        got = arm.recommend(u, as_of, 20, ev)
+        assert got.product_ids == [index.units[g].product_id for g in expect], u
+        assert "collabCoverage" not in got.meta
+        checked += 1
+    return checked
+
+
+def test_pop_funnel_ranks_engine_mask_by_pop_then_id(world, events):
+    kept, _ = filter_events(events, world["index"], AS_OF)
+    assert _pop_order_ok(world["index"], world["vectors"], kept, leave_last_booking_out(kept, world["index"])) >= 4
+    index, vs = SW.build_world()
+    kept, _ = filter_events(SW.build_events(index), index, SW.AS_OF)
+    assert _pop_order_ok(index, vs, kept, leave_last_booking_out(kept, index), candidate_k=10, popular_k=3) >= 8
+    with pytest.raises(ValueError, match="tham số"):
+        PopFunnel(a=1)

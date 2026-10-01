@@ -10,6 +10,7 @@ import numpy as np
 
 from src.backend.app.domain.recommendation import profile as P
 
+from . import because
 from .base import TrainData, UserCtx
 
 
@@ -39,3 +40,7 @@ class ContentProfile:
 
     def collab_part(self, ctx: UserCtx, cand: np.ndarray) -> np.ndarray | None:
         return None
+
+    def explain(self, ctx: UserCtx, items: np.ndarray) -> list[list[dict]]:
+        """because[] của engine nguyên văn (`profile.explain`), kind semantic."""
+        return because.content(ctx.profile, items, self.E)

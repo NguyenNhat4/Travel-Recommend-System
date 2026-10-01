@@ -5,6 +5,7 @@ from time import perf_counter
 
 import numpy as np
 
+from . import because
 from .base import TrainData, UserCtx
 from .seeds import weighted_mean_rows
 
@@ -45,3 +46,7 @@ class Ease:
 
     def collab_part(self, ctx: UserCtx, cand: np.ndarray) -> np.ndarray | None:
         return self.score(ctx, cand)
+
+    def explain(self, ctx: UserCtx, items: np.ndarray) -> list[list[dict]]:
+        """because[]: `c_e·T[e, x]/Z` theo event (spec §1.2), kind cooc; phần âm bị loại."""
+        return because.from_rows(self.row, ctx.profile, items, kind="cooc")

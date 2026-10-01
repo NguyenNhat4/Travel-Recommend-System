@@ -113,6 +113,9 @@ def load_algos(path: str | Path) -> AlgosConfig:
             algos[name] = AlgoSpec(name=name, params=params, **meta)
         except Exception as exc:  # noqa: BLE001
             raise AlgosError(f"algos.{name}: {exc}") from exc
+        for r in (rerank_list(algos[name].funnel) if "rerank" in algos[name].funnel else []):
+            if r not in RERANKS:
+                raise AlgosError(f"algos.{name}.funnel.rerank={r!r}: chỉ {RERANKS}")
         if algos[name].expect_equal_to and algos[name].expect_equal_to not in set(parsed.algos) | {"engine", "engine_nommr"}:
             raise AlgosError(f"algos.{name}.expect_equal_to={algos[name].expect_equal_to!r} không phải arm trong file hay engine/engine_nommr")
     return AlgosConfig(version=parsed.version, common=parsed.common, algos=algos, source=str(p))
@@ -121,6 +124,14 @@ def load_algos(path: str | Path) -> AlgosConfig:
 def rerank_list(funnel: dict[str, Any]) -> list[str]:
     r = funnel.get("rerank", "none")
     return [str(x) for x in (r if isinstance(r, (list, tuple)) else [r])]
+
+
+def entry_reranks(spec: AlgoSpec, reranks: list[str]) -> list[str]:
+    """Rerank của run ∩ `funnel.rerank` của entry (nếu entry khai báo) — giữ thứ tự của run."""
+    if "rerank" not in spec.funnel:
+        return list(reranks)
+    allowed = set(rerank_list(spec.funnel))
+    return [r for r in reranks if r in allowed]
 
 
 def select(cfg: AlgosConfig, only: list[str] | None = None, max_tier: int | None = None) -> list[AlgoSpec]:
@@ -165,13 +176,16 @@ def funnel_cfg(cfg: AlgosConfig, spec: AlgoSpec, *, mode: str, rerank: str, pool
 
 
 def build_arms(cfg: AlgosConfig, specs: list[AlgoSpec], *, mode: str, reranks: list[str], pool: str | None, k: int,
-               ctx: CtxCache, vector_search) -> list[tuple[AlgoSpec, object, list[AlgoArm]]]:
+               ctx: CtxCache, vector_search, because_k: int = 0) -> list[tuple[AlgoSpec, object, list[AlgoArm]]]:
     """Mỗi spec → (spec, scorer đã khởi tạo [một per seed], các AlgoArm theo rerank). Scorer của cùng seed dùng chung cho mọi rerank
-    (fit một lần)."""
+    (fit một lần). Rerank của entry = rerank của run ∩ `funnel.rerank` của entry; rỗng → bỏ entry."""
     if mode not in MODES:
         raise AlgosError(f"--mode {mode!r}: chỉ {MODES}")
     out = []
     for spec in specs:
+        rr = entry_reranks(spec, reranks)
+        if not rr:                                  # entry chỉ hợp rerank mà run không chạy (vd pop_funnel với --funnel-rerank mmr)
+            continue
         cls = get_scorer_class(spec.scorer)
         seeds = spec.seeds or [None]
         for seed in seeds:
@@ -182,8 +196,8 @@ def build_arms(cfg: AlgosConfig, specs: list[AlgoSpec], *, mode: str, reranks: l
                 scorer = cls(**params)
             except TypeError as exc:
                 raise AlgosError(f"algos.{spec.name}: tham số không hợp với {cls.__name__}: {exc}") from exc
-            arms = [AlgoArm(spec.name, scorer, funnel_cfg(cfg, spec, mode=mode, rerank=r, pool=pool, k=k), ctx, vector_search, seed=seed)
-                    for r in reranks]
+            arms = [AlgoArm(spec.name, scorer, funnel_cfg(cfg, spec, mode=mode, rerank=r, pool=pool, k=k), ctx, vector_search, seed=seed,
+                            because_k=because_k) for r in rr]
             out.append((spec, scorer, arms))
     return out
 

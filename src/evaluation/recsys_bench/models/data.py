@@ -103,7 +103,7 @@ def build(kept: list[dict], split: Split, index: UnitIndex, vector_search: Vecto
     if u_cells:
         r, c = zip(*u_cells)
         U[list(r), list(c)] = 1
-    stats = {"nEventsXTrain": len(events), "nTrips": len(trip_rows), "nUsers": len(user_rows), "nnzB": len(b_cells), "nnzU": len(u_cells),
+    stats = {"events": sorted(in_matrix), "nEventsXTrain": len(events), "nTrips": len(trip_rows), "nUsers": len(user_rows), "nnzB": len(b_cells), "nnzU": len(u_cells),
              "droppedOrphan": dropped_orphan, "droppedNoVector": dropped_no_vec, "droppedNoGid": dropped_no_gid,
              "cellsByEvent": dict(by_event), "unitsWithVector": int(has_vec.sum()), "matrix": cfg}
     return TrainData(index=index, x_train=events, B=B, trip_rows=trip_rows, U=U, user_rows=user_rows, E=E, has_vec=has_vec,
