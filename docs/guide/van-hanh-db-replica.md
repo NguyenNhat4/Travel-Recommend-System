@@ -37,7 +37,7 @@ Hướng dẫn dựng, kiểm tra và xử lý sự cố cho PostgreSQL replica.
 
    `IMAGE` phải đúng image của primary (`sudo docker inspect vota-postgres --format '{{.Config.Image}}'`). Image từ Docker Hub nên VM replica cần ra Internet (IP ngoài tạm thời).
 
-5. **Bật giám sát**: trên replica chạy `sudo bash infra/monitoring/install-db-replica-monitoring.sh`; đặt biến GitHub `GCE_DB_REPLICA_INSTANCE` = tên VM replica rồi chạy lại workflow monitoring.
+5. **Bật giám sát**: trên replica chạy `sudo bash infra/monitoring/install-db-replica-monitoring.sh`; đặt biến GitHub `GCE_DB_REPLICA_INSTANCE` = tên VM replica rồi chạy lại workflow monitoring. Workflow tự kiểm VM có tồn tại (`gcloud compute instances describe`) trước khi bật alert replica; đặt biến sớm chỉ gây cảnh báo, không làm hỏng plan.
 
 ## 2. Kiểm tra
 
