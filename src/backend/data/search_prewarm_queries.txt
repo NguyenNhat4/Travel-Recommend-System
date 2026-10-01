@@ -1,0 +1,134 @@
+# gold_v1 e47b0d6ac3339c85ded509f0d0e0da6c27cf58ee34bd733d3b6df007103874af 2026-09-30 — 131 câu gold active của search bench (src/evaluation/search_bench/gold/gold.jsonl);
+# nạp sẵn vector truy vấn lúc khởi động (SEARCH_PREWARM). Mỗi dòng một câu; '#' là chú thích. Không sửa tay:
+# sinh lại khi gold đổi tag; test phía evaluation (search_bench/tests/test_prewarm_list.py) đối chiếu.
+tìm khách sạn nghỉ dưỡng tại Hạ Long
+tìm chỗ nghỉ tại Hà Tĩnh
+khách sạn nghỉ dưỡng tại Hội An, có lựa chọn nào?
+điểm vui chơi ở Phú Quốc
+hoạt động trải nghiệm ở Nghệ An
+tìm combo du lịch Quy Nhơn
+tìm gói vui chơi ở Hội An
+combo trải nghiệm tại Phú Quốc
+vé máy bay đến Hà Nội
+đường bay tới Huế, có lựa chọn nào?
+sân golf ở Nha Trang
+voucher golf tại Hội An
+chỗ nghỉ Côn Đảo cho gia đình có trẻ nhỏ
+chỗ nghỉ Hà Nội cho gia đình có trẻ nhỏ, ưu tiên nơi được đánh giá tốt
+khách sạn Sa Pa có wifi và bàn làm việc cho chuyến công tác
+khách sạn Phan Thiết có wifi và bàn làm việc cho chuyến công tác
+chỗ nghỉ yên tĩnh ở Hải Phòng cho cặp đôi, ưu tiên nơi được đánh giá tốt
+chỗ nghỉ yên tĩnh ở Nghệ An cho cặp đôi, ưu tiên nơi được đánh giá tốt
+nơi ở Pleiku cho nhóm 4 người
+nơi ở Phong Nha cho nhóm 4 người, ưu tiên nơi được đánh giá tốt
+resort Cát Bà có spa để nghỉ dưỡng cuối tuần, ưu tiên nơi được đánh giá tốt
+resort Ninh Bình có spa để nghỉ dưỡng cuối tuần
+resort Điện Biên có spa để nghỉ dưỡng cuối tuần, ưu tiên nơi được đánh giá tốt
+khách sạn ở Nghệ An có wifi miễn phí
+tìm chỗ nghỉ Ninh Bình với máy điều hòa
+Quy Nhơn có nơi lưu trú nào có ban công
+khách sạn ở Hội An có bàn làm việc
+tìm chỗ nghỉ Phú Quốc với phòng gia đình
+Nha Trang có nơi lưu trú nào có chỗ đỗ xe miễn phí
+tìm khách sạn ở Sa Pa có nhà hàng
+tìm chỗ nghỉ Côn Đảo với lễ tân 24 giờ
+Nha Trang có nơi lưu trú nào có xe đưa đón sân bay
+tìm chỗ nghỉ Hạ Long có phòng nhìn ra biển
+khách sạn ở Phú Quốc có thang máy
+chỗ nghỉ Phan Thiết có spa
+Đà Lạt có nơi lưu trú nào có dịch vụ giặt ủi
+chỗ nghỉ Buôn Ma Thuột có WiFi miễn phí và chỗ đỗ xe miễn phí
+chỗ nghỉ Bắc Ninh có Nhà hàng và phòng không hút thuốc
+chỗ nghỉ Cát Bà có WiFi miễn phí và phòng gia đình
+chỗ nghỉ Côn Đảo có WiFi miễn phí và phòng không hút thuốc
+chỗ nghỉ Cần Thơ có WiFi miễn phí và lễ tân 24 giờ
+chỗ nghỉ Huế có WiFi miễn phí và nhà hàng
+chỗ nghỉ Hà Nội có WiFi miễn phí và xe đưa đón sân bay
+chỗ nghỉ Hà Tĩnh có WiFi miễn phí và sân hiên
+chỗ nghỉ Hạ Long có Phòng gia đình và nhà hàng
+chỗ nghỉ Hải Phòng có Phòng gia đình và chỗ đỗ xe miễn phí
+khách sạn Côn Đảo không có hồ bơi view đẹp
+chỗ nghỉ tại TP. Hồ Chí Minh không ghi nhận bếp riêng
+Khách sạn Hạ Long không có ban công
+chỗ nghỉ tại Đà Nẵng không ghi nhận nhà hàng
+khách sạn Hạ Long không ghi nhận xe đưa đón sân bay
+chỗ nghỉ ở Ninh Bình có view địa danh
+chỗ nghỉ ở Huế có máy điều hòa độc lập cho từng phòng
+chỗ nghỉ ở Nghệ An có vòi xịt/chậu rửa vệ sinh
+chỗ nghỉ ở Hội An có khăn tắm/ga trải giường (phụ phí)
+chỗ nghỉ ở Đà Nẵng có vật dụng không gây dị ứng
+tìm Phòng Deluxe - Dãy nhà A ở Buôn Ma Thuột
+khách sạn Bắc Ninh có lựa chọn nào có double room
+Phòng Giường Đôi Có Ban Công tại Cát Bà
+tìm khách sạn Cần Thơ có Phòng 4 Người Có Ban Công
+Phòng Giường Đôi Với Phòng Tắm Chung tại Huế
+tìm Phòng Deluxe Giường Đôi Có Ban Công ở Hà Nội
+Căn Hộ Nhìn Ra Biển tại Hạ Long
+tìm Phòng Giường Đôi ở Hải Phòng
+Biệt Thự Có Hồ Bơi Riêng tại Nghệ An
+Phòng 2 Giường Đơn Hạng Bình Dân ở Nha Trang
+khách sạn Ninh Bình có Phòng Có Giường Cỡ King Nhìn Ra Vườn
+Vinpearl Hotel Bắc Ninh
+thông tin Meliá Vinpearl Hue
+thông tin Vinpearl Ha Tinh, Affiliated by Meliá
+tìm Vinpearl Resort & Golf Nam Hội An
+thông tin Vinpearl Resort & Golf Nam Hội An - Deluxe Giường Đôi
+tìm Vinpearl Resort & Golf Nam Hội An - Deluxe 2 Giường Đơn
+Công Viên 30/4
+Thác Đray Nur
+thông tin Lò Kẹo Dừa Thiên Ái
+Sông Bằng
+Núi Sam
+Bus Ha Noi to Cat Ba
+tiNiWorld
+Chợ nổi Cái Răng
+thông tin Nhà cổ Bình Thủy
+Sea Links Golf & Country Club
+thông tin Gói dịch vụ VIP Tour VinWonders Phú Quốc (3 tiếng)
+Vé máy bay Buôn Ma Thuột - Hà Nội
+khach san o quy nhon co cho do xe mien phi
+tim khach san o da lat co nha hang
+khach san o da lat co le tan 24 gio
+khach san o ha long co ho boi co tam nhin
+khach san o ha noi co san hien
+khach san o phan thiet co nha hang
+khach san o phu quoc co dua don san bay
+khach san o phan thiet co nhin ra bien gia tot
+khach san o ha long co quay bar
+khach san o hai phong co phong khong hut thuoc gia tot
+tim khach san o sa pa co san hien
+khach san o pleiku co may dieu hoa
+KDL NT cho gia đình
+tìm vé VW Nha Trang
+resort Phu Quoc gan bien giá tốt
+khach san Nha Trnag co ban cong
+Vinpeal Resort Nha Trang giá tốt
+KS HN gần điểm vui chơi
+combo vui chơi PQ dưới 2tr
+khach san Da Lat co bep rieng
+resort Hoi An cho gd co tre nho
+ve Safari PQ
+KS HL nhin ra bien
+KDL Phan Thiet nghi duong giá tốt
+khách sạn 5 sao ở Hà Tĩnh dưới 2 triệu
+chỗ nghỉ Quy Nhơn từ 4 sao, giá không quá 1 triệu, còn lựa chọn nào?
+KS 4 sao tại Hạ Long, ngân sách tối đa 1.5 triệu, còn lựa chọn nào?
+tìm chỗ nghỉ Phú Quốc từ 5 sao, giá không quá 3 triệu
+tìm KS 3 sao tại Điện Biên, ngân sách tối đa 500 nghìn
+chỗ nghỉ Đà Nẵng từ 3 sao, giá không quá 1 triệu
+khách sạn 3 sao ở Nha Trang dưới 500 nghìn
+KS 3 sao tại Phan Thiết, ngân sách tối đa 500 nghìn, còn lựa chọn nào?
+KS 5 sao tại Hạ Long, ngân sách tối đa 9.5 triệu
+khách sạn, vé máy bay và vé tham quan ở Buôn Ma Thuột
+mình cần khách sạn, vé máy bay, vé tham quan và combo du lịch ở Cần Thơ
+khách sạn, vé máy bay, vé tham quan và combo du lịch ở Huế
+tìm khách sạn, vé máy bay, vé tham quan và combo du lịch ở Hà Nội
+mình cần khách sạn, vé tham quan và combo du lịch ở Hà Tĩnh
+khách sạn, vé tham quan và combo du lịch ở Hạ Long
+tìm khách sạn, vé máy bay, vé tham quan, sân golf và combo du lịch ở Hải Phòng
+mình cần khách sạn, vé tham quan, sân golf và combo du lịch ở Hội An
+khách sạn, vé máy bay, vé tham quan và combo du lịch ở Nghệ An
+tìm khách sạn, vé máy bay, vé tham quan, sân golf và combo du lịch ở Nha Trang
+resort ở Mộc Châu
+combo du lịch Cà Mau
+combo du lịch Bắc Kạn

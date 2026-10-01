@@ -16,7 +16,8 @@ from typing import Any, Mapping, Sequence
 
 from .fares import PER_PERSON_TAXONOMIES, FareType
 from .party import (
-    ADULT_MIN_AGE, MAX_PARTY, Guests, Traveler, TravelerType, adult_from, age_on, fare_type_on, is_infant_on,
+    ADULT_MIN_AGE, MAX_PARTY, Guests, Traveler, TravelerDocuments, TravelerType, adult_from, age_on,
+    fare_type_on, is_infant_on,
 )
 
 NAME_PART_MAX = 50
@@ -24,6 +25,11 @@ CONTACT_NAME_MAX = 100
 PHONE_PATTERN = re.compile(r"0[0-9]{9}")
 EMAIL_PATTERN = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
 ISO_DATE_PATTERN = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+CCCD_PATTERN = re.compile(r"[0-9]{12}")
+PASSPORT_PATTERN = re.compile(r"[A-Za-z0-9]{6,9}")
+TITLES = {"ADULT": ("MR", "MRS", "MS"), "CHILD": ("MSTR", "MISS")}
+NATIONALITIES = ("VN", "KR", "CN", "JP", "US", "AU", "FR", "OTHER")
+DOC_TYPES = ("CCCD", "PASSPORT")
 
 
 @dataclass(frozen=True)
@@ -46,12 +52,25 @@ class ContactInput:
 
 
 @dataclass(frozen=True)
+class DocumentsInput:
+    """Chuỗi thô của `travelers[i].documents`; giá trị sai là vi phạm chứ không phải lỗi kiểu dữ liệu."""
+
+    title: str | None = None
+    nationality: str | None = None
+    doc_type: str | None = None
+    doc_number: str | None = None
+    doc_expiry: str | None = None
+    escort_ref: str | None = None
+
+
+@dataclass(frozen=True)
 class TravelerInput:
     ref: str
     type: str  # "ADULT" | "CHILD" như trong API
     surname: str
     given_names: str
     birth_date: str | None = None  # chuỗi thô: ngày sinh sai định dạng là vi phạm chứ không phải lỗi kiểu dữ liệu
+    documents: DocumentsInput | None = None  # bắt buộc khi giỏ có vé máy bay (FR-BKG-13)
 
 
 @dataclass(frozen=True)
@@ -127,11 +146,12 @@ def check_contact(contact: ContactInput) -> list[Violation]:
 
 
 def check_party(
-    inputs: Sequence[TravelerInput], *, earliest: date | None, today: date
+    inputs: Sequence[TravelerInput], *, earliest: date | None, today: date, flight_dates: Sequence[date] = (),
 ) -> tuple[list[Traveler], list[Violation]]:
-    """R-TRV-01…06. Trả về đoàn đã chuẩn hoá (để luật theo dịch vụ dùng tiếp) cùng danh sách vi phạm.
+    """R-TRV-01…06, R-DOC-01…08. Trả về đoàn đã chuẩn hoá (để luật theo dịch vụ dùng tiếp) cùng danh sách vi phạm.
 
-    `earliest` là ngày sử dụng sớm nhất của đơn; `today` là ngày hôm nay theo giờ Việt Nam.
+    `earliest` là ngày sử dụng sớm nhất của đơn; `today` là ngày hôm nay theo giờ Việt Nam; `flight_dates` là ngày bay của
+    các mục vé máy bay trong giỏ (rỗng thì không áp luật giấy tờ, FR-BKG-13).
     """
     out: list[Violation] = []
     travelers: list[Traveler] = []
@@ -165,8 +185,92 @@ def check_party(
                     if earliest is not None and age_on(parsed, earliest) >= ADULT_MIN_AGE:
                         out.append(Violation(f"{base}.birthDate", "CHILD_AGE_INVALID",
                                              {"turned_12_on": adult_from(parsed).isoformat()}))
-        travelers.append(Traveler(item.ref, TravelerType(item.type.lower()), surname, given_names, birth))
+        elif flight_dates:
+            birth = _check_adult_birth(item, base, min(flight_dates), today, out)
+        documents = _check_documents(item, base, flight_dates, out) if flight_dates else None
+        travelers.append(Traveler(item.ref, TravelerType(item.type.lower()), surname, given_names, birth, documents))
+    if flight_dates:
+        _check_escorts(inputs, travelers, flight_dates, out)
     return travelers, out
+
+
+# --- giấy tờ hành khách cho vé máy bay (FR-BKG-13) ----------------------------------------------------
+
+def _check_adult_birth(item: TravelerInput, base: str, first_flight: date, today: date, out: list[Violation]) -> date | None:
+    """R-DOC-01: người lớn có vé bay phải có ngày sinh hợp lệ và từ 12 tuổi tại ngày bay đầu tiên."""
+    raw = (item.birth_date or "").strip()
+    if not raw:
+        out.append(Violation(f"{base}.birthDate", "REQUIRED", {"part": "birthDate"}))
+        return None
+    parsed = parse_iso_date(raw)
+    if parsed is None or parsed > today:
+        out.append(Violation(f"{base}.birthDate", "BIRTH_DATE_INVALID"))
+        return None
+    if age_on(parsed, first_flight) < ADULT_MIN_AGE:
+        out.append(Violation(f"{base}.birthDate", "ADULT_AGE_INVALID", {"flight_date": first_flight.isoformat()}))
+    return parsed
+
+
+def _check_documents(
+    item: TravelerInput, base: str, flight_dates: Sequence[date], out: list[Violation]
+) -> TravelerDocuments | None:
+    """R-DOC-02…07: danh xưng, quốc tịch, loại và số giấy tờ, hạn hộ chiếu. Trẻ em, em bé không có giấy tờ."""
+    raw = item.documents or DocumentsInput()
+    path = f"{base}.documents"
+    kind = "ADULT" if item.type == "ADULT" else "CHILD"
+    title = (raw.title or "").strip()
+    if not title:
+        out.append(Violation(f"{path}.title", "REQUIRED", {"part": "title"}))
+    elif title not in TITLES[kind]:
+        out.append(Violation(f"{path}.title", "TITLE_INVALID"))
+    nationality = (raw.nationality or "").strip()
+    if not nationality:
+        out.append(Violation(f"{path}.nationality", "REQUIRED", {"part": "nationality"}))
+    elif nationality not in NATIONALITIES:
+        out.append(Violation(f"{path}.nationality", "NATIONALITY_INVALID"))
+    if kind == "CHILD":
+        return TravelerDocuments(title, nationality, escort_ref=(raw.escort_ref or "").strip() or None)
+    doc_type = (raw.doc_type or "").strip()
+    number = re.sub(r"\s+", "", raw.doc_number or "").upper()
+    expiry: date | None = None
+    if not doc_type:
+        out.append(Violation(f"{path}.docType", "REQUIRED", {"part": "docType"}))
+    else:
+        if doc_type not in DOC_TYPES or (doc_type == "CCCD" and nationality != "VN"):
+            out.append(Violation(f"{path}.docType", "DOC_TYPE_INVALID"))
+        if doc_type in DOC_TYPES:
+            if not number:
+                out.append(Violation(f"{path}.docNumber", "REQUIRED", {"part": "docNumber"}))
+            elif not (CCCD_PATTERN if doc_type == "CCCD" else PASSPORT_PATTERN).fullmatch(number):
+                out.append(Violation(f"{path}.docNumber", "DOC_NUMBER_INVALID", {"doc_type": doc_type}))
+    if doc_type == "PASSPORT":
+        expiry_raw = (raw.doc_expiry or "").strip()
+        last_flight = max(flight_dates)
+        if not expiry_raw:
+            out.append(Violation(f"{path}.docExpiry", "REQUIRED", {"part": "docExpiry"}))
+        else:
+            expiry = parse_iso_date(expiry_raw)
+            if expiry is None:
+                out.append(Violation(f"{path}.docExpiry", "DOC_EXPIRY_INVALID"))
+            elif expiry <= last_flight:
+                out.append(Violation(f"{path}.docExpiry", "DOC_EXPIRED", {"flight_date": last_flight.isoformat()}))
+    return TravelerDocuments(title, nationality, doc_type or None, number or None, expiry)
+
+
+def _check_escorts(
+    inputs: Sequence[TravelerInput], travelers: Sequence[Traveler], flight_dates: Sequence[date], out: list[Violation]
+) -> None:
+    """R-DOC-08: mỗi em bé (dưới 2 tuổi tại một ngày bay bất kỳ) chọn một người lớn đi kèm có trong đoàn."""
+    adults = {t.ref for t in travelers if t.type is TravelerType.ADULT}
+    for index, traveler in enumerate(travelers):
+        if not any(is_infant_on(traveler, day) for day in flight_dates):
+            continue
+        escort = traveler.documents.escort_ref if traveler.documents else None
+        field_path = f"travelers[{index}].documents.escortTravelerRef"
+        if not escort:
+            out.append(Violation(field_path, "REQUIRED", {"part": "escortTravelerRef"}))
+        elif escort not in adults:
+            out.append(Violation(field_path, "ESCORT_INVALID"))
 
 
 # --- bước ②: phân bổ theo dịch vụ -------------------------------------------------------------------
@@ -236,6 +340,27 @@ def _check_per_person(index: int, detail: ItemInput, facts: CartFacts, by_ref: M
         infants = sum(is_infant_on(by_ref[ref], facts.using_date) for ref in refs)
         if infants > adults:
             out.append(Violation(field_path, "INFANTS_EXCEED_ADULTS", {}, cid))
+        out.extend(_check_flight_escorts(field_path, index, refs, by_ref, facts))
+    return out
+
+
+def _check_flight_escorts(
+    field_path: str, index: int, refs: Sequence[str], by_ref: Mapping[str, Traveler], facts: CartFacts
+) -> list[Violation]:
+    """R-DOC-09, R-DOC-10: người lớn đi kèm em bé phải bay chặng này; mỗi người lớn đi kèm tối đa 1 em bé."""
+    out: list[Violation] = []
+    load: dict[str, int] = {}
+    for ref in refs:
+        traveler = by_ref[ref]
+        escort = traveler.documents.escort_ref if traveler.documents else None
+        if not escort or not is_infant_on(traveler, facts.using_date) or escort not in by_ref:
+            continue
+        load[escort] = load.get(escort, 0) + 1
+        if escort not in refs:
+            out.append(Violation(field_path, "ESCORT_NOT_ON_FLIGHT", {"traveler_name": traveler.full_name},
+                                 facts.cart_item_id))
+    if any(count > 1 for count in load.values()):
+        out.append(Violation(f"itemDetails[{index}]", "ESCORT_OVERLOADED", {}, facts.cart_item_id))
     return out
 
 
@@ -274,13 +399,18 @@ def _check_hotel(index: int, detail: ItemInput, facts: CartFacts, by_ref: Mappin
     return out
 
 
+def flight_dates_of(cart: Sequence[CartFacts]) -> list[date]:
+    """Ngày bay của các mục vé máy bay; có ngày bay thì áp luật giấy tờ hành khách (FR-BKG-13)."""
+    return [c.using_date for c in cart if c.taxonomy == "flight"]
+
+
 def check_checkout(
     contact: ContactInput, inputs: Sequence[TravelerInput], details: Sequence[ItemInput], cart: Sequence[CartFacts],
     *, today: date,
 ) -> tuple[list[Traveler], list[Violation]]:
     """Toàn bộ luật của `POST /bookings` khi request có `travelers` (§8.3 bước 5)."""
     earliest = min((c.using_date for c in cart), default=None)
-    travelers, violations = check_party(inputs, earliest=earliest, today=today)
+    travelers, violations = check_party(inputs, earliest=earliest, today=today, flight_dates=flight_dates_of(cart))
     return travelers, [*check_contact(contact), *violations, *check_items(travelers, details, cart)]
 
 

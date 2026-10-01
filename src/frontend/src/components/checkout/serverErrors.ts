@@ -46,13 +46,27 @@ export const TRAVELER_FIELD_IDS = { surname: 'sn', givenNames: 'gn', birthDate: 
 
 const PARTY_ID = 'party-counters';
 
+/** Trường `documents.*` (FR-BKG-13) → id phần tử DOM và nhãn hiển thị. */
+const DOCUMENT_TARGETS: Record<string, { idPrefix: string; label: string }> = {
+  title: { idPrefix: 'x-title', label: 'Danh xưng' },
+  nationality: { idPrefix: 'x-nat', label: 'Quốc tịch' },
+  docType: { idPrefix: 'x-doc', label: 'Giấy tờ tuỳ thân' },
+  docNumber: { idPrefix: 'x-docNo', label: 'Số giấy tờ' },
+  docExpiry: { idPrefix: 'x-exp', label: 'Ngày hết hạn hộ chiếu' },
+  escortTravelerRef: { idPrefix: 'x-with', label: 'Người lớn đi kèm em bé' },
+};
+
 function travelerTarget(path: string, ctx: ErrorContext): { id: string; where: string } | null {
-  const m = /^travelers\[(\d+)\]\.(surname|givenNames|birthDate|travelerRef)$/.exec(path);
+  const m = /^travelers\[(\d+)\]\.(surname|givenNames|birthDate|travelerRef|documents\.(?:title|nationality|docType|docNumber|docExpiry|escortTravelerRef))$/.exec(path);
   if (!m) return null;
   const ref = ctx.travelerRefs[Number(m[1])];
   if (!ref) return null;
   const label = ctx.travelerLabels[ref] ?? 'Hành khách';
   if (m[2] === 'travelerRef') return { id: PARTY_ID, where: label };
+  if (m[2].startsWith('documents.')) {
+    const doc = DOCUMENT_TARGETS[m[2].slice('documents.'.length)];
+    return { id: `${doc.idPrefix}-${ref}`, where: `${label} · ${doc.label}` };
+  }
   const part = { surname: 'Họ', givenNames: 'Tên đệm và tên', birthDate: 'Ngày sinh' }[m[2] as 'surname' | 'givenNames' | 'birthDate'];
   return { id: `${TRAVELER_FIELD_IDS[m[2] as keyof typeof TRAVELER_FIELD_IDS]}-${ref}`, where: `${label} · ${part}` };
 }

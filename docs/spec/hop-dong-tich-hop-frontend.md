@@ -102,9 +102,9 @@ type ProductSummary = components["schemas"]["ProductSummary"];
 | Route | Màn hình | Cần đăng nhập | Query param chính thức |
 |---|---|---:|---|
 | `/` | Home | Không | `debug` |
-| `/hotels`, `/flights`, `/combos` | Trang danh mục: khách sạn & resort, vé máy bay, combo (đề xuất PRD `update-archive/2026-09-29-route-trang-danh-muc-dich-vu.md`) | Không | `destination` |
+| `/hotels`, `/flights`, `/combos` | Trang danh mục: khách sạn & resort, vé máy bay, combo (đề xuất PRD `update-archive/2026-09-29-route-trang-danh-muc-dich-vu.md`) | Không | `destination`. `/flights` có `origin` **và** `destination` thì hiện chuyến bay của lần tìm dưới tấm tìm kiếm (§4.1b), kèm ngữ cảnh chuyến đi `checkIn`, `checkOut`, `adults`, `children`; không có thì hiện lời nhắc nhập |
 | `/experiences` | Trang danh mục: tour và trải nghiệm | Không | `destination`, `type` (`attraction` mặc định \| `golf`) |
-| `/search` | Kết quả tìm kiếm | Không | `q` (bắt buộc), `taxonomy` (hoặc `type`), `destination`, `priceMin`, `priceMax`, `starRatingMin`, `sort` (`relevance` \| `price_asc` \| `price_desc`); ngữ cảnh chuyến đi `checkIn`, `checkOut`, `adults`, `children`, `rooms` (§4.1a) |
+| `/search` | Kết quả tìm kiếm | Không | `q` (bắt buộc), `type` (hoặc `taxonomy`): `stay` \| `exp` \| `more` — nhận cả taxonomy cũ `hotel`, `attraction`, `golf`, `combo`; không có thì là tab Tất cả; `flight` chỉ khi mở từ `/flights` (danh sách phẳng, không tab), `destination` (chip ✕ ở "Đang lọc", không có checkbox); ngữ cảnh chuyến đi `checkIn`, `checkOut`, `adults`, `children`, `rooms` (§4.1a) |
 | `/product/{productId}` | Chi tiết sản phẩm | Không | ngữ cảnh chuyến đi tùy chọn `checkIn`, `checkOut`, `adults`, `children`, `rooms` (điền sẵn hộp đặt, §4.1a) |
 | `/cart` | Giỏ hàng | Có | — |
 | `/checkout` | Checkout | Có | — |
@@ -142,7 +142,7 @@ Ký hiệu auth: **—** không gửi JWT · **tùy** gửi nếu có · **bắt
 
 ### 4.1a. Trang danh mục `/hotels`, `/flights`, `/experiences`, `/combos`
 
-Một template (`features/catalog/landing`), cấu hình ở `verticals.ts`. Hero + tấm tìm kiếm, rồi các khối:
+Một template (`features/catalog/landing`), cấu hình ở `verticals.ts`. Hero + tấm tìm kiếm, rồi các khối. **`/flights` là ngoại lệ** (đề xuất PRD `update-archive/2026-09-30-trang-ve-may-bay-tim-tai-cho-bo-khoi-pho-bien-va-gia-tot.md`): không có hai khối 1 và 2 dưới đây; bên dưới tấm tìm kiếm là kết quả chuyến bay hoặc lời nhắc nhập (§4.1b), rồi điểm đến và banner trợ lý.
 
 | Khu vực | Endpoint | Auth | Trường Web đọc | Khi lỗi / rỗng |
 |---|---|---|---|---|
@@ -151,20 +151,51 @@ Một template (`features/catalog/landing`), cấu hình ở `verticals.ts`. Her
 | Điểm đến (tải khi vào vùng nhìn) | `GET /destinations` | — | `destination`, `productCount` | Lỗi hoặc rỗng → ẩn khối |
 | Gợi ý điểm đến trong tấm tìm kiếm | `GET /destinations` | — | như trên | Lỗi → vẫn gõ tự do được |
 
-`/experiences` có hai tab (`?type=attraction|golf`); các trang khác một tab. Tấm tìm kiếm gửi bằng điều hướng sang `/search?q&type[&destination]&checkIn&checkOut&adults&children&rooms`: điểm đến chọn từ gợi ý (hoặc gõ đúng nhãn) thành `destination`, còn lại vào `q` (rỗng thì dùng câu mặc định theo danh mục, `services/search.ts` `DEFAULT_QUERY`).
+`/experiences` có hai tab (`?type=attraction|golf`); các trang khác một tab. Tấm tìm kiếm gửi bằng điều hướng sang `/search?q&type[&destination]&checkIn&checkOut&adults&children&rooms` (riêng vé máy bay **không** rời trang: tìm ngay tại `/flights`, §4.1b): điểm đến chọn từ gợi ý (hoặc gõ đúng nhãn) thành `destination`, còn lại vào `q` (rỗng thì dùng câu mặc định theo danh mục, `services/search.ts` `DEFAULT_QUERY`).
 
-**Ngữ cảnh chuyến đi** (`features/search/tripContext.ts`) là dữ liệu điền sẵn, **không phải bộ lọc phòng trống** (Backend chưa lọc theo ngày; không gửi `travelContext`). `/search` hiện chip "Chuyến đi: 15/10 – 17/10 · 1 phòng, 2 người lớn" và nối query vào liên kết sản phẩm; hộp đặt ở `/product/{id}` điền sẵn ngày, số khách, số phòng nếu hợp lệ với hạng phòng đang chọn (ngày nằm trong `availableFrom`–`availableTo`, sức chứa đúng). Giá trị sai bị bỏ im lặng; Backend vẫn quyết định (`DATE_OUT_OF_RANGE`, `VALIDATION_ERROR`). Luật đoàn theo FR-BKG-08: tối đa 9 khách, mỗi phòng ít nhất 1 người lớn. Không đưa họ tên hay token vào URL.
+**Ngữ cảnh chuyến đi** (`features/search/tripContext.ts`) là dữ liệu điền sẵn, **không phải bộ lọc phòng trống** (Backend chưa lọc theo ngày; không gửi `travelContext`). `/search` không hiển thị ngữ cảnh này (không chip ngày/số khách, vì hộp đặt ở trang chi tiết đã có chỗ chọn) mà chỉ nối query vào liên kết sản phẩm; hộp đặt ở `/product/{id}` điền sẵn ngày, số khách, số phòng nếu hợp lệ với hạng phòng đang chọn (ngày nằm trong `availableFrom`–`availableTo`, sức chứa đúng). Giá trị sai bị bỏ im lặng; Backend vẫn quyết định (`DATE_OUT_OF_RANGE`, `VALIDATION_ERROR`). Luật đoàn theo FR-BKG-08: tối đa 9 khách, mỗi phòng ít nhất 1 người lớn. Không đưa họ tên hay token vào URL.
 
 Sau checkout (cờ `justBooked`): gọi lại ① bỏ qua cache. Chỉ hiện toast "Trang chủ đã cập nhật" khi `strategy` **hoặc** `nextVertical` khác lần gọi trước.
 
-### 4.2. Search `/search`
+### 4.1b. Chuyến bay ngay trên `/flights`
+
+Phục vụ FR-SRC-03 (vé máy bay chỉ duyệt và tìm ở `/flights`), FR-CAT-02, FR-CAT-03, FR-BKG-10. Không đổi contract, không thêm route. **Tìm ngay tại trang, không chuyển trang:** bấm Tìm thì chuyến bay hiện luôn dưới tấm tìm kiếm, hero và tấm tìm kiếm giữ nguyên để sửa tiếp; URL được cập nhật tại chỗ (`history.replaceState`) thành `/flights?origin&destination[&checkIn&checkOut&adults&children]` để chia sẻ, và vào thẳng URL đó cũng ra kết quả.
+
+Chưa có lần tìm (vào `/flights` trơn, hoặc `/flights?destination=X` chỉ điền sẵn điểm đến) thì bên dưới chỉ có lời nhắc "Nhập chuyến đi để xem chuyến bay", rồi điểm đến và banner trợ lý. Bấm Tìm khi còn thiếu thì lời nhắc nói rõ thiếu gì: chưa nhập điểm đi, chưa chọn điểm đến, hoặc điểm đến gõ tay không khớp nhãn nào của `/destinations` (phải chọn từ gợi ý). Đã có kết quả mà lần Tìm sau thiếu thông tin thì kết quả cũ ở lại kèm lời báo. Tấm tìm kiếm của vé máy bay không dẫn sang `/search?type=flight` nữa (URL đó vẫn mở được trực tiếp). Code: `features/flights/` (`FlightsPage.tsx`, `results/`), dữ liệu qua `services/flights.ts`.
 
 | Khu vực | Endpoint | Auth | Trường Web đọc | Khi lỗi / rỗng |
 |---|---|---|---|---|
-| Danh sách | `POST /search` | tùy | `results[]` (`ProductSummary` + `score`), `total`, `limit`, `offset` | `results: []` với bộ lọc → EmptyState "bỏ bộ lọc"; không bộ lọc → EmptyState + carousel `GET /products?sort=popular` |
-| Tab danh mục, bộ đếm lọc | cùng response | — | `facets.taxonomy`, `facets.destination` | Giá trị 0 → ẩn tab |
-| Băng "kết quả yếu" | cùng response | — | `topScore` | `topScore < 0.35` → hiện băng; `null` → không hiện |
-| Xem thêm | `POST /search` với `offset += limit` | tùy | như trên | Lỗi → nút "Thử lại" dưới danh sách |
+| Tuyến | `GET /products?taxonomy=flight&destination=<điểm đến>&limit=50` (mọi trang) | — | `attributes.level = route`, `originCity`, `originAirports`, `destinationAirports` | Không tuyến khớp điểm đi → "Chưa có chặng A → B" kèm các điểm đi có chuyến tới B. Lỗi → "Thử lại" |
+| Chuyến của tuyến | `GET /products?parentProductId=<tuyến>&sort=price_asc&limit=50` (mọi trang) | — | `ProductSummary` tầng con: `unitPrice`, `available`, `availableFrom`, `attributes` (`airline`, `airlineCode`, `flightNumber`, `originAirport`, `destinationAirport`, `departureAt`, `arrivalAt`, `durationMinutes`, `nonstop`, `tripType`, `priceObservedAt`), `fareClasses` | Tuyến không có chuyến → "Chưa có chuyến bay đặt được" |
+| Chiều về (chỉ khi khứ hồi) | như hai dòng trên với tuyến ngược (điểm đến = thành phố đi của chặng đi) | — | như trên | Không có tuyến ngược → báo và vẫn đặt được vé một chiều |
+| Đặt vé | `POST /cart/items` cho từng chặng (qua `addToCart`) | bắt buộc | gửi `productId` của hạng đã chọn, `usingDate` = ngày bay, `guests` | Chưa đăng nhập → mở modal đăng nhập rồi chạy lại. Thêm lỗi → toast, ở lại trang. Xong → `/checkout` |
+
+Quy tắc:
+- **Mỗi hành trình một thẻ.** Các sản phẩm cùng hành trình có chung `fareClasses` nên được gom (`flightOptionsFromVariants`); chọn hạng nằm trong thẻ, giá và nút Chọn theo hạng đó. Bỏ vé khứ hồi (`tripType: roundTrip`), vé hết chỗ, không giá, `ticketed: false`, thiếu giờ bay. Khứ hồi đóng gói vẫn xem và đặt ở `/product/{id}`.
+- **Chọn từng chặng** (FR-BKG-10): chiều đi rồi chiều về. Chiều về chỉ có chuyến cất cánh sau khi chiều đi hạ cánh (`canFollow`). Mỗi chặng là một mục giỏ; giỏ hiển thị hai chặng ngược chiều là một chuyến khứ hồi.
+- **Chỉ hiện điều nguồn có.** `null` hoặc vắng mặt là chưa biết: không hiện hành lý ("0 kg"), suất ăn, điều kiện đổi khi `fareClasses` là `null`; hạng vẫn là "Giá rẻ nhất" khi `code` là `null`; `nonstop` vắng mặt thì không nhãn "Bay thẳng" và không lọt bộ lọc điểm dừng. Vé mô phỏng (`attributes.simulated` hoặc tên kết thúc "(giá minh hoạ)") có nhãn "Giá minh hoạ". `EXPIRED` hiện "Giá có thể đã thay đổi" và không khoá nút đặt (`docs/guide/hien-thi-hang-ve-may-bay.md`).
+- **Dải ngày** chỉ có ngày còn chuyến (dữ liệu catalog thưa), kèm giá thấp nhất mỗi ngày và số chuyến. Mở ở ngày `checkIn` nếu có chuyến, không thì ngày gần nhất sau đó kèm câu báo; không có nữa thì ngày cuối. Ngày đã qua (giờ Việt Nam) bị bỏ.
+- **Bộ lọc** chạy client trên các chuyến của ngày đang xem vì Backend chưa lọc ngày, giờ, hãng: khung giờ theo buổi (Sáng 05–11, Trưa 11–14, Chiều 14–18, Tối 18–22, Khuya 22–05, tính theo giờ đi, đầu khung tính, cuối khung không tính; chọn nhiều), hãng (mặc định chọn hết), điểm dừng (Bay thẳng / Có điểm dừng). Giá trị không có chuyến nào ở ngày đang xem thì mờ và tự bỏ khỏi bộ lọc. Sắp xếp: giá thấp nhất (mặc định), giờ đi sớm nhất, giờ đi muộn nhất, bay nhanh nhất.
+- **"Vé của tôi"** hiện các chặng đã chọn và **Tổng ước tính** = `estimateFares` của từng chặng theo số khách (`adults`, `children` từ URL, mặc định 1 người lớn), cùng công thức và cùng lời rào với hộp đặt (§4.3): Web không gửi số tiền, giá chính thức là `fares`/`lineTotal` của `CartResponse`. Nút Đặt vé bật khi đủ các chặng cần thiết.
+- Bộ đệm 60 giây của `loadSection` cho hai lời gọi trên; mỗi lần tìm khác dựng lại kết quả từ đầu (`key` theo URL), nên chuyến đã chọn, ngày và bộ lọc của lần trước không được giữ.
+
+### 4.2. Search `/search`
+
+Đề xuất PRD `update-archive/2026-09-30-trang-search-bo-diem-den-ve-may-bay-va-tab-theo-nhom.md`. Tab theo nhóm header: **Tất cả · Lưu trú (`hotel`) · Tour và trải nghiệm (`attraction` + `golf`) · Tiện ích khác (`combo`)**. Vé máy bay không nằm trong tìm kiếm ngữ nghĩa; `?type=flight` (từ `/flights`) là ngoại lệ, một danh sách phẳng không tab. Không có bộ lọc điểm đến; `?destination=` từ tấm tìm kiếm ở trang danh mục vẫn truyền cho API và hiện thành chip có ✕.
+
+| Khu vực | Endpoint | Auth | Trường Web đọc | Khi lỗi / rỗng |
+|---|---|---|---|---|
+| Số kết quả các tab | `POST /search` không `taxonomy`, `limit: 1` | tùy | `facets.taxonomy` (Lưu trú = hotel, Tour và trải nghiệm = attraction + golf, Tiện ích khác = combo; bỏ `flight`), `topScore` | Lỗi → tab không hiện số; tab 0 kết quả vẫn hiện |
+| Tab **Tất cả**: hàng theo nhóm | `POST /search` một lần cho mỗi taxonomy của nhóm, `limit: 6` | tùy | `results[]`, `total` | Lỗi → "Chưa tải được nhóm này · Thử lại" ngay hàng; nhóm 0 kết quả bị ẩn; tất cả 0 → EmptyState |
+| Tab nhóm: danh sách đầy đủ | như trên, `limit: 20`, `offset += 20` | tùy | `results[]` (`ProductSummary` + `score`), `total` | Lỗi → "Thử lại"; rỗng do lọc → "Xóa bộ lọc" |
+| Băng "kết quả yếu" | response của số kết quả các tab | — | `topScore` | `topScore < 0.35` → hiện băng; `null` → không hiện |
+
+Quy tắc:
+- **Tất cả** chỉ lấy vài mục đầu mỗi nhóm (`PREVIEW_LIMIT` = 6) để tải nhanh. Hàng đầu tải ngay, các hàng dưới tải khi gần vào vùng nhìn (`useInView`). Cuối hàng có thẻ "Còn N kết quả · Xem tất cả"; "Xem tất cả" chuyển sang tab của nhóm, lúc đó mới tải trang đầy đủ (`GROUP_PAGE_SIZE` = 20, "Xem thêm" nối trang kế).
+- Mọi lần gọi qua bộ đệm 60 giây của `hooks/useLazySection` (`useLazySection`, `loadSection`), khóa theo (truy vấn, điểm đến, nhóm, limit, offset); quay lại tab hoặc "Xem thêm" không tải lại trang đã có. Đổi tài khoản thì xóa bộ đệm (§7 điều 7). Hệ quả: cùng truy vấn tìm lại trong 60 giây có thể không sinh thêm event `search` phía Backend.
+- Hàng cuộn ngang có nút trái/phải ở giữa chiều cao hàng, sát hai bên: nút trái ẩn ở đầu hàng, nút phải ẩn ở cuối hàng hoặc khi hàng không tràn; dưới `md` chỉ vuốt (`components/search/HScroller.tsx`).
+- **Sắp xếp** là popup ("Sắp xếp: Phù hợp nhất ▾": Phù hợp nhất · Giá thấp → cao · Giá cao → thấp) ở mọi tab trừ Tất cả. Hạng sao và giá tối đa chỉ ở tab Lưu trú. Backend chưa nhận `sort`, giá, sao nên sắp xếp và lọc chạy trên các mục đã tải (`viewItems`); mục chưa có giá luôn xếp cuối.
+- Nhóm Tour và trải nghiệm là hai request (attraction, golf) trộn theo `score`.
 
 `503 SEARCH_UNAVAILABLE` → `ErrorState` có "Thử lại", giữ nguyên truy vấn trong ô.
 

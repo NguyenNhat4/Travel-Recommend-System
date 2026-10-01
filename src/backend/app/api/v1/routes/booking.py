@@ -14,11 +14,17 @@ from src.backend.app.api.v1.schemas.booking import (
     UpdateCartItemRequest,
 )
 from src.backend.app.application.auth.principal import AuthPrincipal
-from src.backend.app.application.booking import Contact, ItemDetail, RoomInput, TravelerInput
+from src.backend.app.application.booking import Contact, DocumentsInput, ItemDetail, RoomInput, TravelerInput
 from src.backend.app.application.booking.errors import ValidationFailed
 from src.backend.app.domain.booking import Guests
 
 router = APIRouter(tags=["booking"])
+
+
+def _documents(body) -> DocumentsInput | None:
+    if body is None:
+        return None
+    return DocumentsInput(body.title, body.nationality, body.docType, body.docNumber, body.docExpiry, body.escortTravelerRef)
 
 
 def _guests(body) -> Guests | None:
@@ -73,8 +79,8 @@ async def create_booking(
             [RoomInput(tuple(r.travelerRefs), r.leadTravelerRef) for r in d.rooms] if d.rooms is not None else None)
         for d in body.itemDetails
     ]
-    travelers = ([TravelerInput(t.travelerRef, t.type, t.surname, t.givenNames, t.birthDate) for t in body.travelers]
-                 if body.travelers is not None else None)
+    travelers = ([TravelerInput(t.travelerRef, t.type, t.surname, t.givenNames, t.birthDate, _documents(t.documents))
+                  for t in body.travelers] if body.travelers is not None else None)
     return await create(principal, contact, details, travelers)
 
 

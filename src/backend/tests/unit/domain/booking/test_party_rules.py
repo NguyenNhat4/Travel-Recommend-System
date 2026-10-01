@@ -16,8 +16,8 @@ from src.backend.app.domain.booking.party import (
     Guests, Traveler, TravelerType, adult_from, age_on, fare_type_on, is_infant_on,
 )
 from src.backend.app.domain.booking.party_rules import (
-    CartFacts, ContactInput, ItemInput, RoomInput, TravelerInput, check_checkout, check_contact, check_items,
-    check_legacy, check_party, resolve_cart_guests,
+    CartFacts, ContactInput, DocumentsInput, ItemInput, RoomInput, TravelerInput, check_checkout, check_contact,
+    check_items, check_legacy, check_party, flight_dates_of, resolve_cart_guests,
 )
 
 CASES = json.loads((Path(__file__).resolve().parents[5] / "shared/contracts/tests/booking-rules-cases.json")
@@ -25,11 +25,18 @@ CASES = json.loads((Path(__file__).resolve().parents[5] / "shared/contracts/test
 TODAY = date.fromisoformat(CASES["base"]["today"])
 
 
+def _documents(raw: dict | None) -> DocumentsInput | None:
+    if raw is None:
+        return None
+    return DocumentsInput(raw.get("title"), raw.get("nationality"), raw.get("docType"), raw.get("docNumber"),
+                          raw.get("docExpiry"), raw.get("escortTravelerRef"))
+
+
 def _build(case: dict):
     data = {**CASES["base"], **case["override"]}
     contact = ContactInput(data["contact"]["fullName"], data["contact"]["email"], data["contact"]["phone"])
-    travelers = [TravelerInput(t["travelerRef"], t["type"], t["surname"], t["givenNames"], t.get("birthDate"))
-                 for t in data["travelers"]]
+    travelers = [TravelerInput(t["travelerRef"], t["type"], t["surname"], t["givenNames"], t.get("birthDate"),
+                               _documents(t.get("documents"))) for t in data["travelers"]]
     cart = [CartFacts(c["cartItemId"], c["name"], c["taxonomy"], date.fromisoformat(c["usingDate"]), c["quantity"],
                       c["guests"]["adults"], c["guests"]["children"], c["maxOccupancy"]) for c in data["cart"]]
     details = [ItemInput(
@@ -50,10 +57,10 @@ def test_checkout_rules_match_shared_cases(case):
     contact, inputs, cart, details = _build(case)
     earliest = min(c.using_date for c in cart)
     if case["scope"] == "party":
-        travelers, party = check_party(inputs, earliest=earliest, today=TODAY)
+        travelers, party = check_party(inputs, earliest=earliest, today=TODAY, flight_dates=flight_dates_of(cart))
         got = [*check_contact(contact), *party]
     elif case["scope"] == "items":
-        travelers, _ = check_party(inputs, earliest=earliest, today=TODAY)
+        travelers, _ = check_party(inputs, earliest=earliest, today=TODAY, flight_dates=flight_dates_of(cart))
         got = check_items(travelers, details, cart)
     else:
         got = check_checkout(contact, inputs, details, cart, today=TODAY)[1]

@@ -64,6 +64,19 @@ function load<T>(key: string, fetcher: (signal: AbortSignal) => Promise<T>, time
   return request;
 }
 
+/**
+ * Như `useLazySection` nhưng không phải hook: trả dữ liệu từ bộ đệm nếu còn hạn, không thì tải (gộp request
+ * cùng `key`). Dùng khi một danh sách nối nhiều trang, mỗi trang một `key` (Search: "Xem thêm").
+ */
+export function loadSection<T>(
+  key: string,
+  fetcher: (signal: AbortSignal) => Promise<T>,
+  { ttlMs = DEFAULT_TTL_MS, timeoutMs }: Pick<LazySectionOptions, 'ttlMs' | 'timeoutMs'> = {},
+): Promise<T> {
+  const cached = readCache<T>(key, ttlMs);
+  return cached !== null ? Promise.resolve(cached) : load<T>(key, fetcher, timeoutMs);
+}
+
 function toError(error: unknown): Error {
   return error instanceof Error ? error : new Error('Chưa tải được dữ liệu.');
 }

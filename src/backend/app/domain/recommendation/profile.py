@@ -4,16 +4,24 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
+from datetime import date, datetime, timedelta, timezone
 
 import numpy as np
 
 W_TYPE = {"purchase": 1.0, "add_to_cart": 0.5, "product_view": 0.2, "search": 0.1}
 H_SHORT_DAYS, H_LONG_DAYS = 30.0, 365.0
-ACTIVE_TRIP_MAX_AGE_DAYS = 60
+#: Tham số N của FR-REC-02 (chốt 01/10): trip KHÔNG có `usingDate` (chỉ view / search) còn mở khi event gần nhất ≤ N ngày.
+#: 60 → 14 đo trên temporal đóng băng (docs/spec/bench/recsys-offline-eval.md §4.14 v5: Recall@20 0,196 → 0,216, LLBO không
+#: đổi; grid §4.13 với luật tuổi đơn thuần N = 14 cho 0,225); trip có `usingDate` không dùng N (xem `trip_is_open`).
+ACTIVE_TRIP_MAX_AGE_DAYS = 14
 DORMANT_AFTER_DAYS = 180
 MAX_REPEAT_PER_TRIP = 3
 W_SHORT, W_POP, W_LONG = 0.6, 0.25, 0.15
 MMR_LAMBDA, MAX_PER_VERTICAL = 0.7, 2
+#: Phiên bản luật của engine (không phải tham số): đổi khi hành vi đổi mà không có hằng nào đổi, để bench tách hai bộ số.
+#: Từ 01/10/2026 (nhãn giữ "2026-10-02" để khớp configHash của bench): trip đang mở = chưa kết thúc theo `usingDate`
+#: (FR-REC-02, spec §4.4–4.5); trước đó chỉ theo tuổi event.
+ENGINE_RULES_VERSION = "2026-10-02-trip-ended"
 
 
 @dataclass
@@ -23,6 +31,7 @@ class ResolvedEvent:
     days_ago: float
     trip_id: str
     product_id: str           # id gốc trong event (có thể là phòng/chuyến)
+    using_date: date | None = None   # ngày sử dụng (purchase / add_to_cart); None với view / search
 
 
 @dataclass
@@ -33,6 +42,42 @@ class Trip:
     age_days: float
     purchased_taxonomies: set[str]
     destination: str
+    ends_on: date | None = None      # max(usingDate) của trip; None khi không event nào có ngày sử dụng
+    ended: bool = False              # chuyến đã diễn ra xong (spec §4.3 tripFactor): ends_on < hôm nay
+
+
+#: Múi giờ của `usingDate` (ngày địa phương Việt Nam, như seed và `domain/booking`); không phải tham số xếp hạng
+#: (`engine_config` của bench chỉ chụp hằng số/chuỗi nên không vào configHash).
+CATALOG_TZ = timezone(timedelta(hours=7))
+
+
+def local_today(now: datetime) -> date:
+    """Ngày "hôm nay" để xét trip kết thúc: `now` đổi sang giờ Việt Nam rồi lấy ngày, khớp `usingDate` là ngày địa phương
+    (lấy ngày UTC thì từ 00:00 tới 06:59 giờ VN chuyến hôm qua vẫn bị coi là mở). `now` thiếu múi giờ → coi là UTC."""
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    return now.astimezone(CATALOG_TZ).date()
+
+
+def parse_using_date(value) -> date | None:
+    """`usingDate` của event CDP (ISO date hoặc datetime) → `date`; thiếu / hỏng → None (không chặn request).
+    Dùng chung cho tầng application và harness bench để hai bên đọc ngày giống hệt nhau."""
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except (TypeError, ValueError):
+        return None
+
+
+def trip_is_open(age_days: float, ends_on: date | None, today: date | None) -> bool:
+    """Trip đang mở (FR-REC-02, spec §4.4 bổ sung 01/10/2026): có `usingDate` → mở khi `max(usingDate) >= hôm nay`
+    (chuyến chưa tới ngày sử dụng cuối, kể cả mua từ lâu); không có → mở khi event gần nhất cách ≤ ACTIVE_TRIP_MAX_AGE_DAYS.
+    `usingDate` của event CDP là ngày bắt đầu sử dụng (check-in / ngày bay); CDP không có ngày trả phòng nên kỳ nghỉ nhiều
+    đêm được coi là xong từ ngày sau check-in — muốn giữ trip mở suốt kỳ nghỉ cần thêm số đêm vào event (đề xuất PRD riêng)."""
+    if ends_on is not None and today is not None:
+        return ends_on >= today
+    return age_days <= ACTIVE_TRIP_MAX_AGE_DAYS
 
 
 @dataclass
@@ -54,10 +99,14 @@ class Profile:
         return "dormant" if min(t.age_days for t in self.trips.values()) > DORMANT_AFTER_DAYS else "long_term"
 
 
-def build_profile(events: list[ResolvedEvent], E: np.ndarray, taxonomy: np.ndarray, destination: np.ndarray) -> Profile:
-    by_trip: dict[str, list[ResolvedEvent]] = defaultdict(list)
+def build_profile(events: list[ResolvedEvent], E: np.ndarray, taxonomy: np.ndarray, destination: np.ndarray,
+                  today: date | None = None) -> Profile:
+    """`today`: ngày của `now` để xét trip đã kết thúc theo `usingDate`; None → chỉ theo tuổi event (luật cũ)."""
+    by_trip: dict[str, list[ResolvedEvent]] = defaultdict(list)       # sau cap lặp: trọng số vector, n_events, điểm đến
+    every: dict[str, list[ResolvedEvent]] = defaultdict(list)         # mọi event: tuổi, ngày kết thúc, món đã mua
     seen: Counter = Counter()
     for e in sorted(events, key=lambda x: -x.days_ago):
+        every[e.trip_id].append(e)
         seen[(e.trip_id, e.unit)] += 1
         if seen[(e.trip_id, e.unit)] > MAX_REPEAT_PER_TRIP:
             continue
@@ -69,10 +118,15 @@ def build_profile(events: list[ResolvedEvent], E: np.ndarray, taxonomy: np.ndarr
         for e in evs:
             v += W_TYPE.get(e.event_name, 0.1) * 2 ** (-e.days_ago / H_SHORT_DAYS) * E[e.unit]
         n = np.linalg.norm(v)
+        # Cap lặp chỉ giới hạn trọng số vector; event bị cap vẫn quyết định tuổi trip, ngày kết thúc và món đã mua
+        # (một purchase thứ 4 cùng unit mang usingDate muộn nhất không được làm chuyến "kết thúc sớm").
+        all_evs = every[tid]
+        ends_on = max((e.using_date for e in all_evs if e.using_date is not None), default=None)
         trips[tid] = Trip(
-            trip_id=tid, events=evs, vec=v / n if n else v, age_days=min(e.days_ago for e in evs),
-            purchased_taxonomies={str(taxonomy[e.unit]) for e in evs if e.event_name == "purchase"},
+            trip_id=tid, events=evs, vec=v / n if n else v, age_days=min(e.days_ago for e in all_evs),
+            purchased_taxonomies={str(taxonomy[e.unit]) for e in all_evs if e.event_name == "purchase"},
             destination=str(Counter(destination[e.unit] for e in evs).most_common(1)[0][0]),
+            ends_on=ends_on, ended=ends_on is not None and today is not None and ends_on < today,
         )
 
     if not trips:
@@ -80,9 +134,9 @@ def build_profile(events: list[ResolvedEvent], E: np.ndarray, taxonomy: np.ndarr
 
     u_long = sum(2 ** (-t.age_days / H_LONG_DAYS) * t.vec for t in trips.values())
     u_long = u_long / (np.linalg.norm(u_long) or 1)
-    active = [t for t in trips.values() if t.age_days <= ACTIVE_TRIP_MAX_AGE_DAYS]
+    active = [t for t in trips.values() if trip_is_open(t.age_days, t.ends_on, today)]
     active_trip = min(active, key=lambda t: t.age_days) if active else None
-    bought = {e.unit for t in trips.values() for e in t.events if e.event_name == "purchase"}
+    bought = {e.unit for evs in every.values() for e in evs if e.event_name == "purchase"}
     return Profile(trips=trips, u_long=u_long, active_trip=active_trip,
                    n_events=sum(len(t.events) for t in trips.values()), bought_units=bought)
 
@@ -94,14 +148,17 @@ def score_candidates(profile: Profile, E: np.ndarray, pop: np.ndarray) -> tuple[
     return W_SHORT * s_short + W_POP * pop + W_LONG * s_long, u
 
 
-def mmr_select(score: np.ndarray, E: np.ndarray, candidates: list[int], taxonomy: np.ndarray, k: int) -> list[int]:
+def mmr_select(score: np.ndarray, E: np.ndarray, candidates: list[int], taxonomy: np.ndarray, k: int,
+               max_per_vertical: int | None = MAX_PER_VERTICAL) -> list[int]:
+    """MMR (λ = MMR_LAMBDA) + giới hạn cứng `max_per_vertical` món mỗi taxonomy; `None` = không giới hạn (chỉ cho đánh giá
+    offline với k = 20 — 5 taxonomy × 2 không thể đủ 20; production giữ MAX_PER_VERTICAL)."""
     chosen: list[int] = []
     per_vertical: Counter = Counter()
     cand = list(candidates)
     while cand and len(chosen) < k:
         best, best_val = None, -1e9
         for i in cand:
-            if per_vertical[str(taxonomy[i])] >= MAX_PER_VERTICAL:
+            if max_per_vertical is not None and per_vertical[str(taxonomy[i])] >= max_per_vertical:
                 continue
             div = max((float(E[i] @ E[j]) for j in chosen), default=0.0)
             val = MMR_LAMBDA * float(score[i]) - (1 - MMR_LAMBDA) * div

@@ -1,4 +1,4 @@
-"""`diagnostics.stageMs` của /search (contract 1.9.0): thời gian từng bước, đo trong engine, ms nguyên."""
+"""`diagnostics.stageMs` của /search (contract 1.11.0): thời gian từng bước, đo trong engine, ms nguyên."""
 import time
 
 from jsonschema import Draft202012Validator

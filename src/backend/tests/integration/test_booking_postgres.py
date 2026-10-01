@@ -14,6 +14,7 @@ from src.backend.app.application.ports.booking_store import PendingBookingExists
 from src.backend.app.domain.booking import (
     Booking, BookingItem, FareLine, FareType, Payment, RoomAllocation, Traveler, TravelerType,
 )
+from src.backend.app.domain.booking.party import TravelerDocuments
 from src.backend.app.domain.booking.status import BookingStatus, PaymentStatus
 from src.backend.app.infrastructure.persistence.postgres_booking import (
     PostgresBookingStore,
@@ -60,9 +61,11 @@ def _booking(product, using: date, *, status=BookingStatus.PENDING_PAYMENT, part
                        using, nights=2, guest_names=["Test"], special_request="Tầng cao")
     travelers: list[Traveler] = []
     if party:  # một phòng, 2 người lớn + 1 trẻ em; dòng giá ROOM 1 phòng × 2 đêm
-        travelers = [Traveler("t1", TravelerType.ADULT, "Nguyễn", "Minh Anh"),
+        travelers = [Traveler("t1", TravelerType.ADULT, "Nguyễn", "Minh Anh", None,
+                              TravelerDocuments("MS", "KR", "PASSPORT", "C1234567", date(2031, 1, 1))),
                      Traveler("t2", TravelerType.ADULT, "Trần", "Thu Hà"),
-                     Traveler("t3", TravelerType.CHILD, "Nguyễn", "Gia Bảo", date(2019, 5, 12))]
+                     Traveler("t3", TravelerType.CHILD, "Nguyễn", "Gia Bảo", date(2019, 5, 12),
+                              TravelerDocuments("MSTR", "VN", escort_ref="t1"))]
         item.fares = [FareLine(FareType.ROOM, int(product.unit_price), 1, 2)]
         item.traveler_refs = ["t1", "t2", "t3"]
         item.rooms = [RoomAllocation(("t1", "t2", "t3"), "t1")]
@@ -164,6 +167,9 @@ def test_booking_store_persists_travelers_fares_and_rooms_and_keeps_birth_date_p
         assert [(t.ref, t.type, t.full_name, t.birth_date) for t in loaded.travelers] == [
             ("t1", TravelerType.ADULT, "Nguyễn Minh Anh", None), ("t2", TravelerType.ADULT, "Trần Thu Hà", None),
             ("t3", TravelerType.CHILD, "Nguyễn Gia Bảo", date(2019, 5, 12))]
+        assert loaded.travelers[0].documents == TravelerDocuments("MS", "KR", "PASSPORT", "C1234567", date(2031, 1, 1))
+        assert loaded.travelers[1].documents is None
+        assert loaded.travelers[2].documents == TravelerDocuments("MSTR", "VN", escort_ref="t1")
         item = loaded.items[0]
         assert item.fares == [FareLine(FareType.ROOM, int(product.unit_price), 1, 2)]
         assert item.traveler_refs == ["t1", "t2", "t3"] and item.rooms == [RoomAllocation(("t1", "t2", "t3"), "t1")]

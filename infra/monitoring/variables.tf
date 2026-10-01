@@ -88,3 +88,9 @@ variable "notification_email" {
     error_message = "notification_email must be empty or a valid email address."
   }
 }
+
+variable "db_replica_vm_name" {
+  description = "DB replica VM name (infra/terraform/environments/staging output replica_vm_name). Replica monitoring is skipped while this is empty or while no VM with this name exists, and turns on once the VM does."
+  type        = string
+  default     = ""
+}

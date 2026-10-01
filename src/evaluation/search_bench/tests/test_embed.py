@@ -75,8 +75,9 @@ def test_make_embedder_routes(cfg, home, monkeypatch):
     e = sembed.make_embedder(cfg, "fake")
     assert e.name == "fake" and e.dim == 1024
     e.close()
-    with pytest.raises(sembed.EmbedderUnavailable, match="ngày 5"):
-        sembed.make_embedder(cfg, "bge-m3")
+    local = sembed.make_embedder(cfg, "bge-m3")                 # model local: tạo lười, chưa nạp torch model
+    assert local.name == "BAAI/bge-m3" and local.dim == 1024
+    local.close()
     monkeypatch.delenv("COHERE_API_KEY", raising=False)
     with pytest.raises(sembed.EmbedderUnavailable, match="COHERE_API_KEY"):
         sembed.make_embedder(cfg, "cohere-v3")

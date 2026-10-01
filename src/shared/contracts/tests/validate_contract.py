@@ -72,12 +72,21 @@ validator('CheckoutRequest').validate({
     'itemDetails': [
         {'cartItemId': 'ci-hotel', 'rooms': [{'travelerRefs': ['t1', 't3'], 'leadTravelerRef': 't1'}]},
         {'cartItemId': 'ci-vinwonders', 'travelerRefs': ['t1', 't3']}]})
+validator('CheckoutTraveler').validate({'travelerRef': 't1', 'type': 'ADULT', 'surname': 'Nguyễn', 'givenNames': 'Minh Anh',
+    'birthDate': '1988-03-14', 'documents': {'title': 'MS', 'nationality': 'VN', 'docType': 'CCCD', 'docNumber': '079188001234', 'docExpiry': None}})
+validator('CheckoutTraveler').validate({'travelerRef': 't3', 'type': 'CHILD', 'surname': 'Nguyễn', 'givenNames': 'Gia Bảo',
+    'birthDate': '2025-03-03', 'documents': {'title': 'MISS', 'nationality': 'VN', 'escortTravelerRef': 't1'}})
+validator('BookingTraveler').validate({'fullName': 'A', 'type': 'ADULT', 'roomNo': None, 'isLead': False,
+    'documents': {'title': 'MS', 'nationality': 'VN', 'docType': 'CCCD', 'docNumberLast4': '1234'}})
 validator('AddCartItemRequest').validate({'productId': 'p', 'usingDate': '2026-10-15', 'guests': {'adults': 2, 'children': 1}})
 validator('AddCartItemRequest').validate({'productId': 'p', 'usingDate': '2026-10-15', 'quantity': 2})
 negative += [
     ('ValidationFieldError', {'field': 'travelers[0]', 'message': 'x'}),
     ('CheckoutTraveler', {'travelerRef': 't1', 'type': 'ADULT', 'surname': 'Nguyễn'}),
     ('CheckoutTraveler', {'travelerRef': 't 1', 'type': 'ADULT', 'surname': 'Nguyễn', 'givenNames': 'An'}),
+    ('CheckoutTraveler', {'travelerRef': 't1', 'type': 'ADULT', 'surname': 'N', 'givenNames': 'A', 'documents': {'title': 'DR'}}),
+    ('CheckoutTraveler', {'travelerRef': 't1', 'type': 'ADULT', 'surname': 'N', 'givenNames': 'A', 'documents': {'docType': 'DRIVING'}}),
+    ('BookingTravelerDocuments', {'title': 'MS', 'nationality': 'VN', 'docNumber': '079188001234'} | {'title': 'XX'}),
     ('AddCartItemRequest', {'productId': 'p', 'usingDate': '2026-10-15'}),
     ('GuestCounts', {'adults': 0, 'children': 0}),
     ('GuestCounts', {'adults': 1, 'children': 9}),
