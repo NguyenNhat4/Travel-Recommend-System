@@ -1,7 +1,11 @@
+import json
 from datetime import datetime, timezone
 
+import pytest
+
 from src.evaluation.recsys_bench.events import filter_events, parse_ts
-from src.evaluation.recsys_bench.splits import default_cutoff, leave_last_booking_out, temporal_split
+from src.evaluation.recsys_bench.splits import (SplitMismatch, default_cutoff, events_sha256, leave_last_booking_out,
+                                                temporal_split)
 
 AS_OF = datetime(2026, 9, 24, tzinfo=timezone.utc)
 
@@ -79,6 +83,49 @@ def test_excluded_taxonomies_caps_repeats_like_the_engine(world):
     from src.evaluation.recsys_bench.engine import OfflineEngine
     engine = OfflineEngine(world["index"], world["vectors"], [])
     assert engine.recommend("u", as_of, 5, train)["diagnostics"]["excludedVerticals"] == ["hotel"]
+
+
+def test_events_sha_is_order_independent_and_content_sensitive(world, events):
+    kept = kept_events(world, events)
+    assert events_sha256(kept) == events_sha256(list(reversed(kept))) and len(events_sha256(kept)) == 64
+    changed = [dict(e) for e in kept]
+    changed[0] = {**changed[0], "timestamp": "2026-01-01T00:00:00Z"}
+    assert events_sha256(changed) != events_sha256(kept)
+    split = leave_last_booking_out(kept, world["index"])
+    assert split.meta["eventsSha256"] == events_sha256(kept) and split.meta["eventsCount"] == len(kept)
+
+
+def test_canonical_freeze_verify_roundtrip_and_mismatch(world, events, tmp_path):
+    kept = kept_events(world, events)
+    split = leave_last_booking_out(kept, world["index"])
+    canon = split.canonical()
+    assert canon["kind"] == "llbo" and canon["params"] == {"minPurchases": 2, "minTrips": 1}
+    assert canon["targets"]["u1"] == {"target": "F1", "targetProductId": "FL1", "eventGroupId": "T1",
+                                      "asOf": "2026-06-03T10:00:00+00:00", "trainEvents": 3, "trainPurchases": 1}
+    assert list(canon["targets"]) == sorted(canon["targets"])
+    # cùng event, khác thứ tự đầu vào → cùng sha
+    again = leave_last_booking_out(list(reversed(kept)), world["index"])
+    assert again.frozen_sha256() == split.frozen_sha256()
+    path = tmp_path / "frozen" / "split-llbo.json"
+    sha = split.freeze(path, db_as_of="2026-09-24T00:00:00+00:00", dsn_label="localhost:5432/vota")
+    saved = json.loads(path.read_text(encoding="utf-8"))
+    assert saved["sha256"] == sha == split.frozen_sha256() and saved["dsnLabel"] == "localhost:5432/vota"
+    assert split.verify(path) == sha and again.verify(path) == sha
+    # tham số khác → lệch, thông báo nêu params và targets
+    other = leave_last_booking_out(kept, world["index"], min_trips=2)
+    with pytest.raises(SplitMismatch, match="params") as e:
+        other.verify(path)
+    assert "targets" in str(e.value) and "chỉ ở bản đóng băng 1" in str(e.value)
+    # event đầu vào khác (thêm một purchase) → lệch dù target không đổi
+    extra = kept + [{"cdpUserId": "u7", "eventName": "purchase", "productId": "A1", "timestamp": "2026-02-02T00:00:00Z",
+                     "eventGroupId": "T9", "usingDate": None}]
+    with pytest.raises(SplitMismatch, match="eventsSha256"):
+        leave_last_booking_out(extra, world["index"]).verify(path)
+    # temporal cũng đóng băng được với tham số T
+    T = parse_ts("2026-05-01T00:00:00Z")
+    t_split = temporal_split(kept, world["index"], cutoff=T)
+    t_sha = t_split.freeze(tmp_path / "t.json")
+    assert t_split.canonical()["params"] == {"T": T.isoformat(), "quantile": None} and t_split.verify(tmp_path / "t.json") == t_sha
 
 
 def test_default_cutoff_is_purchase_quantile(world, events):

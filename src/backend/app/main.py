@@ -17,6 +17,8 @@ rồi bỏ qua phần recsys — các route còn lại vẫn phục vụ đượ
 from __future__ import annotations
 
 import asyncio
+import threading
+from pathlib import Path
 import logging
 import os
 import sys
@@ -25,11 +27,13 @@ from contextlib import AsyncExitStack, asynccontextmanager
 
 import httpx
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 
 from src.backend.app.agents.runtime_dependencies import RuntimeAgentDependencies
 from src.backend.app.agents.tools.itinerary_gateway import ItineraryToolGateway
 from src.backend.app.api.errors import install_error_handlers
-from src.backend.app.api.middleware import install_cors, install_request_id
+from src.backend.app.api.middleware import install_call_telemetry, install_cors, install_request_id
+from src.backend.app.api.ops import ops_router
 from src.backend.app.api.v1.router import api_router, root_router
 from src.backend.app.application.auth.use_cases import (
     AuthenticateUser,
@@ -51,6 +55,7 @@ from src.backend.app.application.booking import (
 from src.backend.app.application.catalog.use_cases import GetProductDetail, GetSimilarProducts, ListProducts
 from src.backend.app.application.itinerary.history import ConversationHistory
 from src.backend.app.application.itinerary.engine_tools import InProcessItineraryTools
+from src.backend.app.application.telemetry import traced
 from src.backend.app.application.itinerary.use_cases import PlanItinerary
 from src.backend.app.application.tracking.behaviour import BehaviourTracker
 from src.backend.app.domain.booking import HoldPolicy
@@ -74,6 +79,7 @@ from src.backend.app.infrastructure.cdp.postgres_cdp_reader import PostgresCdpRe
 from src.backend.app.infrastructure.clients.itinerary_fixture_clients import FixtureItineraryClients
 from src.backend.app.infrastructure.clients.itinerary_http_clients import ItineraryHttpClients
 from src.backend.app.infrastructure.llm import build_chat_model
+from src.backend.app.infrastructure.telemetry.memory import InMemoryCallTelemetry
 from src.backend.app.infrastructure.payments.fake_gateway import FakeGateway
 from src.backend.app.infrastructure.payments.stripe_gateway import StripePaymentGateway
 from src.backend.app.infrastructure.persistence.conversation_store import (
@@ -135,6 +141,15 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
                     timeout_seconds=settings.cohere_timeout_seconds,
                 )
                 owns_embedder = True
+                if settings.search_embed_cache:
+                    # Cache vector truy vấn (NFR-PERF-03, contract 1.12.0 `embedCache`) bọc quanh client Cohere dùng chung:
+                    # RecsysRefresher truyền lại object này mỗi lần nạp catalog nên cache sống qua reload.
+                    from src.backend.app.application.search.query_cache import CachingQueryEmbedder, QueryEmbeddingCache
+
+                    embedder = CachingQueryEmbedder(
+                        embedder, QueryEmbeddingCache(settings.search_embed_cache_size),
+                        log_every=settings.search_embed_cache_log_every,
+                    )
             vector_store = WeaviateVectorStore(
                 settings.database_url,
                 WeaviateVectorSearch(
@@ -203,6 +218,27 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
 
 #: Chưa nạp được lần nào (database chưa seed, Weaviate chưa index…) thì thử lại sớm, không chờ trọn chu kỳ.
 RECSYS_RETRY_SECONDS = 30.0
+#: Shutdown chờ prewarm đang chạy tối đa chừng này rồi mới đóng client Cohere (prewarm kiểm `stop` giữa hai lô).
+PREWARM_SHUTDOWN_WAIT_SECONDS = 10.0
+
+
+def prewarm_from_settings(settings, services: dict, stop: threading.Event):
+    """Nạp sẵn cache vector truy vấn: file câu gold (`SEARCH_PREWARM_FILE`, tương đối theo src/backend) + head query của
+    `app.search_logs`. Chạy trong thread (Cohere sync); `stop` cắt giữa hai lô khi shutdown."""
+    from src.backend.app.application.search.prewarm import prewarm, read_query_file
+    from src.backend.app.infrastructure.persistence.postgres_search_logs import PostgresSearchLogReader
+
+    path = Path(settings.search_prewarm_file)
+    if not path.is_absolute():
+        path = Path(__file__).resolve().parents[1] / path
+    queries = read_query_file(path)
+    if not queries:
+        logger.warning("search.prewarm.file.empty path=%s", path)
+    head = PostgresSearchLogReader(settings.database_url).head_queries(
+        days=settings.search_prewarm_head_days, limit=settings.search_prewarm_head_queries)
+    logger.info("search.prewarm.start file_queries=%d head_queries=%d", len(queries), len(head))
+    return prewarm(services["search"], services["recsys_embedder"], [*queries, *head],
+                   inputs_per_minute=settings.search_prewarm_inputs_per_minute, stop=stop)
 
 
 class RecsysRefresher:
@@ -212,13 +248,16 @@ class RecsysRefresher:
     client nào bị đóng giữa chừng. Lần nạp lại lỗi thì giữ bản đang phục vụ thay vì tắt recsys.
     """
 
-    def __init__(self, app: FastAPI, settings: Settings, build=None, on_publish=None):
+    def __init__(self, app: FastAPI, settings: Settings, build=None, on_publish=None, prewarm=None):
         self.app, self.settings = app, settings
         self._build = build  # test tiêm bản giả; mặc định là build_recsys
         self._on_publish = on_publish  # dựng lại use case đọc engine recsys (catalog) sau mỗi lần nạp
+        self._prewarm = prewarm  # test tiêm bản giả; mặc định prewarm_from_settings (chạy một lần, sau lần nạp đầu)
         self.services: dict = {}
         self._failures = 0
         self._stop = asyncio.Event()
+        self._prewarm_task: asyncio.Task | None = None
+        self._prewarm_stop = threading.Event()
 
     async def reload(self) -> bool:
         first = not self.services
@@ -246,9 +285,32 @@ class RecsysRefresher:
         if first:
             print(f"RecSys ready: {len(updated['index'].units)} search unit, model {updated['index'].model_version}")
             logger.info("startup.recsys.ready search_units=%d", len(updated["index"].units))
+            if getattr(self.settings, "search_prewarm", False) and self._prewarm_task is None:
+                # Nền, không chặn startup: request vẫn được phục vụ (miss) trong lúc cache đang nạp.
+                self._prewarm_task = asyncio.create_task(self._run_prewarm())
         else:
             logger.info("catalog.refresh.ready search_units=%d", len(updated["index"].units))
+            stats = getattr(self.services.get("recsys_embedder"), "cache", None)
+            if stats is not None and hasattr(stats, "stats"):
+                logger.info("search.embed_cache %s", " ".join(f"{k}={v}" for k, v in stats.stats().items()))
         return True
+
+    async def _run_prewarm(self) -> None:
+        try:
+            report = await asyncio.to_thread(self._prewarm or prewarm_from_settings, self.settings, self.services,
+                                             self._prewarm_stop)
+            logger.info("search.prewarm.done %s", " ".join(f"{k}={v}" for k, v in report.as_dict().items()))
+        except Exception as exc:  # noqa: BLE001 — prewarm hỏng thì cache chỉ nạp dần theo request, không ảnh hưởng phục vụ
+            logger.warning("search.prewarm.failed error=%s", exc)
+
+    async def wait_prewarm(self, timeout: float = PREWARM_SHUTDOWN_WAIT_SECONDS) -> None:
+        """Shutdown: chờ prewarm dừng (đã nhận `stop`) trước khi đóng client Cohere dùng chung."""
+        if self._prewarm_task is None:
+            return
+        try:
+            await asyncio.wait_for(asyncio.shield(self._prewarm_task), timeout)
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            logger.warning("search.prewarm.shutdown_timeout seconds=%s", timeout)
 
     async def run(self) -> None:
         while not self._stop.is_set():
@@ -262,6 +324,7 @@ class RecsysRefresher:
 
     def stop(self) -> None:
         self._stop.set()
+        self._prewarm_stop.set()
 
     def close(self) -> None:
         for name in ("recsys_embedder", "recsys_vectors"):
@@ -363,6 +426,8 @@ async def _reconcile_loop(reconcile, interval_seconds: int) -> None:
 #: Pool riêng cho engine đồng bộ mà tool itinerary gọi trong tiến trình. Bằng số token mặc định của anyio —
 #: sức chứa route sync khi agent còn gọi qua HTTP — và không tranh thread với `RecsysRefresher`.
 ITINERARY_TOOL_WORKERS = 40
+#: Engine / use case được bọc để đo lần gọi (application/telemetry.py).
+TRACED_SERVICES = ("search", "similar", "recommend", "get_product_detail", "list_products", "get_similar_products")
 
 
 def _inprocess_itinerary_tools(app: FastAPI, executor: Executor) -> InProcessItineraryTools:
@@ -376,6 +441,7 @@ def _inprocess_itinerary_tools(app: FastAPI, executor: Executor) -> InProcessIti
         token_verifier=lambda: getattr(app.state, "token_verifier", None),
         revoked_tokens=lambda: getattr(app.state, "revoked_tokens", None),
         executor=executor,
+        telemetry=getattr(app.state, "call_telemetry", None),
     )
 
 
@@ -428,6 +494,7 @@ def _forward_langsmith_env(settings) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
+    app.state.ready = False
     print(f"Starting {settings.app_name} in {settings.app_env} mode")
     _forward_langsmith_env(settings)
     logger.info("startup.begin app=%s env=%s", settings.app_name, settings.app_env)
@@ -539,6 +606,11 @@ async def lifespan(app: FastAPI):
         def publish_catalog() -> None:
             for name, service in build_catalog(settings, app.state).items():
                 setattr(app.state, name, service)
+            # Đo lần gọi web / agent (docs/prd/deployment-plan.md §5): bọc engine vừa nạp, ghi số sản phẩm trong bộ nhớ.
+            for name in TRACED_SERVICES:
+                setattr(app.state, name, traced(getattr(app.state, name, None), name))
+            units = getattr(getattr(app.state, "index", None), "units", None)
+            app.state.call_telemetry.set_catalog(len(units) if units is not None else None)
 
         recsys = RecsysRefresher(app, settings, on_publish=publish_catalog)
         if not await recsys.reload():
@@ -547,11 +619,14 @@ async def lifespan(app: FastAPI):
         refresh_task = asyncio.create_task(recsys.run())
 
         logger.info("startup.ready")
+        app.state.ready = True
         try:
             yield
         finally:
+            app.state.ready = False
             recsys.stop()
             await refresh_task  # chờ lần nạp đang chạy xong rồi mới đóng client dùng chung
+            await recsys.wait_prewarm()
             recsys.close()
             logger.info("shutdown.browse_event_recorder.stop")
             await app.state.browse_event_recorder.stop()
@@ -562,17 +637,29 @@ settings = get_settings()
 app = FastAPI(
     title=settings.app_name,
     description="Travel recommendation and itinerary API",
-    version="1.8.0",
+    version="1.12.0",
     lifespan=lifespan,
 )
 
+app.state.call_telemetry = InMemoryCallTelemetry()
 install_cors(app, settings.cors_origins)
+install_call_telemetry(app)
 install_request_id(app)
 install_error_handlers(app)
 app.include_router(api_router, prefix="/api/v1")
 app.include_router(root_router)
+app.include_router(ops_router)
 
 
 @app.get("/health")
 async def health():
     return {"status": "ok", "env": settings.app_env}
+
+
+@app.get("/health/ready")
+async def health_ready():
+    ready = bool(getattr(app.state, "ready", False))
+    return JSONResponse(
+        status_code=200 if ready else 503,
+        content={"status": "ok" if ready else "starting", "ready": ready, "env": settings.app_env},
+    )

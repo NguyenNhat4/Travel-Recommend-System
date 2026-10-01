@@ -10,9 +10,6 @@ PartyType = Literal[enum_values("PartyType")]
 Pace = Literal[enum_values("Pace")]
 Taxonomy = Literal[enum_values("Taxonomy")]
 PriceUnit = Literal[enum_values("ProductSummary", "priceUnit")]
-ADULTS_MIN, ADULTS_MAX = bounds("Party", "adults")
-CHILDREN_MIN, CHILDREN_MAX = bounds("Party", "children")
-BUDGET_MIN, BUDGET_MAX = bounds("TripIntent", "budget")
 STAR_MIN, STAR_MAX = bounds("SearchRequest", "starRatingMin")
 
 
@@ -22,8 +19,10 @@ class StrictModel(BaseModel):
 
 class PartyUpdate(StrictModel):
     type: PartyType | None = None
-    adults: int = Field(ge=ADULTS_MIN, le=ADULTS_MAX)
-    children: int = Field(ge=CHILDREN_MIN, le=CHILDREN_MAX)
+    # Không chặn giới hạn ở đây: giá trị ngoài giới hạn contract được `extract` báo lại cho người dùng
+    # (`invalid_inputs`) thay vì làm hỏng cả lượt trích xuất thành `LLM_UNAVAILABLE`.
+    adults: int
+    children: int
 
 
 class IntentUpdate(StrictModel):
@@ -31,7 +30,7 @@ class IntentUpdate(StrictModel):
     startDate: date | None = None
     days: int | None = None
     party: PartyUpdate | None = None
-    budget: int | None = Field(default=None, ge=BUDGET_MIN, le=BUDGET_MAX)
+    budget: int | None = None
     interests: list[str] | None = Field(default=None, max_length=20)
     pace: Pace | None = None
 
@@ -90,4 +89,7 @@ class DestinationChoice(StrictModel):
 
 
 class ConversationalAnswer(StrictModel):
-    message: str = Field(min_length=1, max_length=500)
+    #: Bản tóm tắt một dòng của `message` (in đậm ở dòng đầu); để trống với chào hỏi, cảm ơn.
+    #: Cho phép dài hơn mức hiển thị một chút: `titled()` cắt, không để tiêu đề dài làm hỏng cả câu.
+    title: str | None = Field(default=None, max_length=200)
+    message: str = Field(min_length=1, max_length=1000)

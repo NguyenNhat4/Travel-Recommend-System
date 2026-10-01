@@ -103,7 +103,7 @@ TURN_KEYS = {"message", "expect", "language", "conversationId"}
 EXPECT_KEYS = {
     "httpStatus", "status", "errorCode", "intent", "missingFieldsInclude", "toolCalled", "nodesInclude",
     "nodesExclude", "forbiddenText", "excludeProductsFromTurn", "minActivities", "hasStay", "warningsExclude",
-    "toolsInclude",
+    "toolsInclude", "titleFirstLine",
 }
 
 
@@ -213,6 +213,19 @@ async def run_turn(planner, message: str, conversation_id: str | None, timeout: 
 #   D — kỳ vọng do case tự khai báo trong `expect`.
 
 
+def answer_text(response: dict[str, Any]) -> str:
+    """Câu trợ lý nói với người dùng: `question` (hỏi lại), `message` (không có kết quả, dự phòng) hoặc lỗi."""
+    return str(response.get("question") or response.get("message") or (response.get("error") or {}).get("message") or "")
+
+
+def has_title_first_line(text: str) -> bool:
+    """Dòng đầu là `**Tiêu đề**` và còn phần chi tiết bên dưới."""
+    first, sep, rest = text.partition("\n")
+    first = first.strip()
+    return bool(sep and rest.strip() and len(first) > 4 and first.startswith("**") and first.endswith("**")
+                and "**" not in first[2:-2])
+
+
 def _text_blob(response: dict[str, Any]) -> str:
     return json.dumps(response, ensure_ascii=False)
 
@@ -254,10 +267,16 @@ def gate_no_booking_claim(response: dict[str, Any]) -> list[str]:
     return [f"tuyên bố đã thực hiện hành động: chứa {phrase!r}" for phrase in BOOKING_CLAIM_PHRASES if phrase in blob]
 
 
+def retrieval_ran(events: list[dict[str, Any]]) -> bool:
+    """Node `tool` đã tìm dữ liệu. Điểm đến ngoài catalog đi qua `tool` để đối chiếu danh sách điểm đến nhưng
+    chưa gọi Search (event mang `retrieval=False`), nên không tính là truy xuất."""
+    return any(e.get("node") == "tool" and (e.get("metadata") or {}).get("retrieval") is not False for e in events)
+
+
 def gate_no_tool_before_info(response: dict[str, Any], events: list[dict[str, Any]]) -> list[str]:
     if response.get("status") != "NEEDS_CLARIFICATION" or not (response.get("missingFields") or []):
         return []
-    if "tool" in {e.get("node") for e in events}:
+    if retrieval_ran(events):
         return ["gọi tool trước khi đủ destination/days (missingFields không rỗng)"]
     return []
 
@@ -380,7 +399,7 @@ def dataset_findings(
             if name not in missing:
                 failures.append(f"missingFields thiếu {name!r}, có {sorted(missing)}")
     nodes = {e.get("node") for e in events}
-    if "toolCalled" in expect and ("tool" in nodes) != expect["toolCalled"]:
+    if "toolCalled" in expect and retrieval_ran(events) != expect["toolCalled"]:
         failures.append(f"tool {'không' if expect['toolCalled'] else 'có'} chạy, mong ngược lại")
     for name in expect.get("nodesInclude", []):
         if name not in nodes:
@@ -391,6 +410,9 @@ def dataset_findings(
     for name in expect.get("toolsInclude", []):
         if name not in planned_tools:
             failures.append(f"tool plan thiếu {name!r}, có {sorted(planned_tools)}")
+    if "titleFirstLine" in expect and has_title_first_line(answer_text(response)) != bool(expect["titleFirstLine"]):
+        failures.append("dòng đầu của câu trả lời " + ("không phải" if expect["titleFirstLine"] else "lại là")
+                        + " `**Tiêu đề**` kèm phần chi tiết")
     if "forbiddenText" in expect:
         blob = _text_blob(response).lower()
         for phrase in expect["forbiddenText"]:
@@ -478,7 +500,7 @@ async def run_case(
         findings += dataset_findings(response, http_status, events, expect, previous_products,
                                      {call.get("name") for call in state.get("tool_plan") or []})
 
-        tool_called = "tool" in {e.get("node") for e in events}
+        tool_called = retrieval_ran(events)
         tool_expected = expected_tool_call(response)
         if tool_expected is not None and tool_called != tool_expected:
             findings.append(f"quyết định gọi tool sai: đã {'gọi' if tool_called else 'không gọi'}, "

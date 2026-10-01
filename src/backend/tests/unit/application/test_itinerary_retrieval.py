@@ -1,7 +1,8 @@
 """retrieval.hydrate/collect với kết quả Similar ở lượt đổi món (FR-AGT-05, itinerary spec §2.5)."""
 import asyncio
+from datetime import date
 
-from src.backend.app.application.itinerary.retrieval import DETAIL_FIELDS, collect, hydrate
+from src.backend.app.application.itinerary.retrieval import DETAIL_FIELDS, collect, hydrate, nearest_open_date
 
 INTENT = {"destination": "Nha Trang", "days": 2}
 
@@ -72,3 +73,41 @@ def test_similar_projection_without_detail_fields_is_hydrated_then_collected():
     candidates, sources, _ = collect(results, details, INTENT, {})
     assert candidates["H5"]["description"] == "Source text"
     assert sources == {"H5": "search", "H6": "search"}
+
+
+TODAY = date(2026, 9, 29)
+
+
+def dated_intent(start):
+    return {**INTENT, "startDate": start}
+
+
+def test_nearest_open_date_is_the_first_open_day_when_the_trip_starts_too_early():
+    results = [search_result(product("H1", availableFrom="2026-10-10", availableTo="2026-10-24"))]
+    assert nearest_open_date(results, {}, dated_intent("2026-10-01"), {}, TODAY) == "2026-10-10"
+
+
+def test_nearest_open_date_is_the_last_open_day_when_the_trip_starts_too_late():
+    results = [search_result(product("H1", availableFrom="2026-09-24", availableTo="2026-10-24"))]
+    assert nearest_open_date(results, {}, dated_intent("2026-12-01"), {}, TODAY) == "2026-10-24"
+
+
+def test_nearest_open_date_never_suggests_a_past_day_or_a_closed_window():
+    open_window = search_result(product("H1", availableFrom="2026-09-01", availableTo="2026-10-24"))
+    assert nearest_open_date([open_window], {}, dated_intent("2026-08-01"), {}, TODAY) == "2026-09-29"
+    closed_window = search_result(product("H2", availableFrom="2026-08-01", availableTo="2026-09-10"))
+    assert nearest_open_date([closed_window], {}, dated_intent("2026-12-01"), {}, TODAY) is None
+
+
+def test_nearest_open_date_picks_the_window_closest_to_the_requested_day():
+    results = [search_result(product("H1", availableFrom="2026-10-01", availableTo="2026-10-05"),
+                             product("H2", availableFrom="2026-10-20", availableTo="2026-10-24"))]
+    assert nearest_open_date(results, {}, dated_intent("2026-10-15"), {}, TODAY) == "2026-10-20"
+
+
+def test_nearest_open_date_ignores_products_dropped_for_other_reasons_and_needs_a_start_date():
+    window = {"availableFrom": "2026-10-10", "availableTo": "2026-10-24"}
+    results = [search_result(product("H1", destination="Đà Nẵng", **window), product("H2", available=False, **window))]
+    assert nearest_open_date(results, {}, dated_intent("2026-10-01"), {}, TODAY) is None
+    results = [search_result(product("H3", **window))]
+    assert nearest_open_date(results, {}, INTENT, {}, TODAY) is None

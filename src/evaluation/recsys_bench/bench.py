@@ -25,10 +25,16 @@ def evaluate(arm, split: Split, index: UnitIndex, k: int = 20,
         if ranked.meta.get("strategy"):
             strategies[ranked.meta["strategy"]] += 1
         target = split.targets[user]
+        original = str(split.target_events[user].get("productId") or "")     # purchase gốc: phòng / chuyến (con) hay unit
         per_user.append({"arm": arm.key, "user": user, "persona": user in PERSONA_IDS,
                          "asOf": split.as_of_by_user[user].isoformat(), "target": target,
+                         "targetProductId": original, "targetIsChild": original != target,
                          "targetTaxonomy": str(index.taxonomy[index.idx[target]]),
-                         "rank": rank_of(target, ranked.product_ids), "returned": len(ranked.product_ids),
+                         "rank": rank_of(target, ranked.product_ids),            # lenient: unit cha (metric chính)
+                         # strict: đúng productId đã mua (B7). Mọi arm chỉ trả search unit → targetIsChild=True (phòng /
+                         # chuyến) luôn None; ngược lại == rank. Bảng strict/lenient chỉ có nghĩa ở độ mịn unit.
+                         "rankStrict": rank_of(original, ranked.product_ids),
+                         "returned": len(ranked.product_ids), "ids": list(ranked.product_ids),
                          "latencyMs": round(ranked.latency_ms, 2), **ranked.meta})
     bought = {u: purchased_taxonomies(split.train_by_user[u], index) for u in chosen}
     targets = {u: split.targets[u] for u in chosen}

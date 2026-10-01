@@ -29,6 +29,19 @@
       "usingDate": "2026-10-15",
       "quantity": 1,
       "nights": 3,
+      "guests": {
+        "adults": 1,
+        "children": 0
+      },
+      "fares": [
+        {
+          "fareType": "ROOM",
+          "unitPrice": 3400000,
+          "count": 1,
+          "nights": 3,
+          "amount": 10200000
+        }
+      ],
       "lineTotal": 10200000
     },
     {
@@ -56,6 +69,19 @@
       "usingDate": "2026-10-16",
       "quantity": 3,
       "nights": null,
+      "guests": {
+        "adults": 3,
+        "children": 0
+      },
+      "fares": [
+        {
+          "fareType": "ADULT",
+          "unitPrice": 880000,
+          "count": 3,
+          "nights": null,
+          "amount": 2640000
+        }
+      ],
       "lineTotal": 2640000
     },
     {
@@ -82,6 +108,19 @@
       "usingDate": "2026-11-02",
       "quantity": 2,
       "nights": null,
+      "guests": {
+        "adults": 2,
+        "children": 0
+      },
+      "fares": [
+        {
+          "fareType": "ADULT",
+          "unitPrice": 2600000,
+          "count": 2,
+          "nights": null,
+          "amount": 5200000
+        }
+      ],
       "lineTotal": 5200000
     }
   ],

@@ -80,7 +80,7 @@ Ký hiệu lệnh: `sb` = `python -m evaluation.search_bench` chạy từ `src/`
 - [ ] Gán hết `pool_B.csv` theo thứ tự app — như A (câu chung không lộ; không trao đổi từng câu tới khi có κ)
 
 ### Sync cuối ngày
-- [ ] `sb gold kappa gold/labels/labels_A.csv gold/labels/labels_B.csv` → Cohen κ (linear) trên 25 chung — *25/09: lệnh đã có, đúng đáp án fixture (κ linear 0,731343); lệnh cũ ghi `pool_A.csv pool_B.csv`, nay nhãn ở file riêng do app xuất*
+- [x] `sb gold kappa gold/labels/labels_A.csv gold/labels/labels_B.csv` → Cohen κ (linear) trên 25 chung — *25/09: lệnh đã có, đúng đáp án fixture (κ linear 0,731343); lệnh cũ ghi `pool_A.csv pool_B.csv`, nay nhãn ở file riêng do app xuất* — *30/09 (nhãn thật, cả hai đủ 100 %, nhãn máy đã duyệt hết): 640 cặp chung / 25 câu; **κ linear 0,692** (ngưỡng 0,6), không trọng số 0,614, quadratic 0,769; 12 cặp lệch 2 bậc (c0136, c0178, c0208, c0217×2, c0229, c0433×3, c0450×3) → `needs_discussion` khi merge. Kế hoạch tiếp: `docs/plan/2026-09-30-bench-search-recsys-3-ngay.md`*
 - [ ] κ ≥ 0,6 → tiếp. κ < 0,6 → ghi lại chỗ lệch, sửa `gold-guide.md`, **gán lại 25 chung** sáng ngày 4 (lịch lùi ½ ngày, chấp nhận)
 - [ ] Hoà nhãn 25 chung: lệch 1 bậc lấy nhãn thấp hơn; lệch 2 bậc thảo luận — *25/09: `sb gold merge gold/labels/labels_A.csv gold/labels/labels_B.csv` → `gold/labels/merged.csv`; sửa dòng `needs_discussion` ngay trong file (`gold-guide.md`)*
 

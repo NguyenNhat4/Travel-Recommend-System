@@ -5,14 +5,18 @@ from __future__ import annotations
 import asyncio
 from copy import deepcopy
 from datetime import date
-from typing import Any
+
+from src.backend.app.application.ports.itinerary_tools import CatalogPort
+from src.backend.app.domain.itinerary.types import (
+    Candidates, Constraints, Product, Sources, ToolErrorPayload, ToolResult, TripIntent,
+)
 
 from src.backend.app.application.itinerary.tool_contracts import SIMILAR_PRODUCTS
 
 DETAIL_FIELDS = ("description", "attributes", "availableFrom", "availableTo")
 
 
-def _products(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _products(results: list[ToolResult]) -> list[Product]:
     values = []
     for result in results:
         data = result.get("data", {})
@@ -21,8 +25,8 @@ def _products(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return values
 
 
-async def hydrate(results: list[dict[str, Any]], tools: Any, existing_details: dict[str, Any],
-                  timeout_seconds: float) -> tuple[dict[str, Any], dict[str, Any]]:
+async def hydrate(results: list[ToolResult], tools: CatalogPort, existing_details: dict[str, Product],
+                  timeout_seconds: float) -> tuple[dict[str, Product], dict[str, ToolErrorPayload]]:
     details, errors = deepcopy(existing_details), {}
     missing = {p["productId"] for p in _products(results) if p.get("productId") and
                any(field not in p for field in DETAIL_FIELDS)} - details.keys()
@@ -43,11 +47,11 @@ def _normalized(value: str | None) -> str:
     return " ".join((value or "").casefold().split())
 
 
-def _off_destination(product: dict[str, Any], intent: dict[str, Any]) -> bool:
+def _off_destination(product: Product, intent: TripIntent) -> bool:
     return _normalized(product.get("destination")) != _normalized(intent.get("destination"))
 
 
-def _drop_reason(product: dict[str, Any], intent: dict[str, Any], constraints: dict[str, Any]) -> str | None:
+def _drop_reason(product: Product, intent: TripIntent, constraints: Constraints) -> str | None:
     if product.get("productId") in constraints.get("exclude_products", []):
         return "PRODUCT_DROPPED_EXCLUDED"
     if _off_destination(product, intent):
@@ -83,8 +87,8 @@ def _drop_reason(product: dict[str, Any], intent: dict[str, Any], constraints: d
     return None
 
 
-def collect(tool_results: list[dict[str, Any]], details: dict[str, Any], intent: dict[str, Any],
-            constraints: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], dict[str, str], dict[str, str]]:
+def collect(tool_results: list[ToolResult], details: dict[str, Product], intent: TripIntent,
+            constraints: Constraints) -> tuple[Candidates, Sources, dict[str, str]]:
     candidates, sources, dropped = {}, {}, {}
     for result in tool_results:
         data = result.get("data", {})
@@ -109,3 +113,33 @@ def collect(tool_results: list[dict[str, Any]], details: dict[str, Any], intent:
                 else:
                     candidates[product_id], sources[product_id] = product, source
     return candidates, sources, dropped
+
+
+def nearest_open_date(tool_results: list[ToolResult], details: dict[str, Product], intent: TripIntent,
+                      constraints: Constraints, today: date) -> str | None:
+    """Ngày khởi hành gần `startDate` nhất mà có sản phẩm bị loại vì `DATE` đang mở bán; None khi không có.
+
+    Chỉ xét sản phẩm mà `_drop_reason` xếp là DATE (đã đúng điểm đến, còn bán, không bị loại loại/giá), nên
+    ngày trả về đặt lại chuyến là có sản phẩm thật. Không bao giờ sớm hơn `today` hay muộn hơn `availableTo`.
+    """
+    if not intent.get("startDate"):
+        return None
+    visit = date.fromisoformat(intent["startDate"])
+    best: date | None = None
+    for result in tool_results:
+        data = result.get("data", {})
+        for projection in (*data.get("results", []), *data.get("recommendations", [])):
+            product_id = projection.get("productId")
+            if not product_id:
+                continue
+            product = {**details.get(product_id, {}), **projection}
+            if _drop_reason(product, intent, constraints) != "PRODUCT_DROPPED_DATE":
+                continue
+            opens = date.fromisoformat(product["availableFrom"]) if product.get("availableFrom") else visit
+            closes = date.fromisoformat(product["availableTo"]) if product.get("availableTo") else None
+            nearest = max(min(max(visit, opens), closes) if closes else max(visit, opens), today)
+            if closes and nearest > closes:
+                continue
+            if best is None or abs(nearest - visit) < abs(best - visit):
+                best = nearest
+    return best.isoformat() if best else None

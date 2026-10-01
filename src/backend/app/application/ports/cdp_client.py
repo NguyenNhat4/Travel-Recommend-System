@@ -145,3 +145,9 @@ class CdpHistoryReader(Protocol):
         `until` cắt ở kho: chỉ trả event có `timestamp < until`. Thứ tự tất định theo khách, thời điểm, id nội bộ.
         """
         ...
+
+    def all_profiles(self) -> list[dict]:
+        """Toàn bộ `cdp.profiles` (camelCase: `cdpUserId`, `lifecycleStage`, `daysSinceLastBooking`, `lifetimeOrderCount`,
+        `vinclubTier`, `purchasedVerticals`, `homeCity`, `lastDestination`), chỉ cho đánh giá offline (sanity của harness);
+        không gọi trong request. Thứ tự tất định theo `cdpUserId`."""
+        ...

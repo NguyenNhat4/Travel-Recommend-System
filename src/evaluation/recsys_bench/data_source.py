@@ -104,11 +104,13 @@ def _event_cache_key(url: str) -> str:
 
 
 def clear_event_cache() -> int:
-    """Xoá mọi cache event của DB đang trỏ tới (mọi as_of) — gọi sau khi seed lại. Trả số file đã xoá."""
+    """Xoá mọi cache event **và profile** của DB đang trỏ tới (mọi as_of) — gọi sau khi seed lại. Trả số file đã xoá."""
     removed = 0
-    for path in cache_dir().glob(f"events-{_event_cache_key(eval_cdp_url())}-*.jsonl"):
-        path.unlink()
-        removed += 1
+    key = _event_cache_key(eval_cdp_url())
+    for pattern in (f"events-{key}-*.jsonl", f"profiles-{key}.jsonl"):
+        for path in cache_dir().glob(pattern):
+            path.unlink()
+            removed += 1
     return removed
 
 
@@ -127,6 +129,22 @@ def load_events(as_of: datetime | None = None, *, refresh: bool = False) -> list
         for e in events:
             f.write(json.dumps(e, ensure_ascii=False) + "\n")
     return events
+
+
+def load_profiles(*, refresh: bool = False) -> list[dict]:
+    """`cdp.profiles` qua `PostgresCdpReader.all_profiles()` (01/10, chỉ cho sanity), cache JSONL theo DB."""
+    from src.backend.app.infrastructure.cdp.postgres_cdp_reader import PostgresCdpReader
+    url = eval_cdp_url()
+    path = cache_dir() / f"profiles-{_event_cache_key(url)}.jsonl"
+    if path.exists() and not refresh:
+        with open(path, encoding="utf-8") as f:
+            return [json.loads(line) for line in f if line.strip()]
+    profiles = PostgresCdpReader(url, timeout_seconds=30).all_profiles()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        for p in profiles:
+            f.write(json.dumps(p, ensure_ascii=False) + "\n")
+    return profiles
 
 
 def derive_as_of(events: list[dict]) -> datetime:

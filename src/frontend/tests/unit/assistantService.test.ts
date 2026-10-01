@@ -43,6 +43,17 @@ describe('convertItineraryResponseToGroundedPlan', () => {
     expect(plan.days[0].slots[0].coordinates).toBeUndefined();
     expect(planLocationCoverage(plan)).toEqual({ located: 0, missing: 1 });
   });
+
+  it('keeps an unknown total as null instead of showing it as free', () => {
+    // estimatedTotal null means "chưa tính được", never 0 đ.
+    const plan = convertItineraryResponseToGroundedPlan(response)!;
+    expect(plan.totalEstimatedPrice).toBeNull();
+  });
+
+  it('carries a known total through unchanged', () => {
+    const priced = { ...response, itinerary: { ...response.itinerary!, estimatedTotal: 358_808, budgetStatus: 'WITHIN_BUDGET' as const } };
+    expect(convertItineraryResponseToGroundedPlan(priced)!.totalEstimatedPrice).toBe(358_808);
+  });
 });
 
 describe('mapProductSummaryToProduct', () => {

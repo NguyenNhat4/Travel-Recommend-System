@@ -12,14 +12,31 @@ Target luôn quy về **search unit cha** (phòng → khách sạn, chuyến →
 """
 from __future__ import annotations
 
+import hashlib
+import json
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
+from pathlib import Path
 
 from src.backend.app.application.ports import UnitIndex
 from src.backend.app.domain.recommendation.profile import ACTIVE_TRIP_MAX_AGE_DAYS, MAX_REPEAT_PER_TRIP
 
 from .events import PERSONA_IDS, parse_ts
+
+
+EVENT_KEYS = ("cdpUserId", "eventName", "productId", "timestamp", "eventGroupId", "usingDate")
+PARAM_KEYS = ("minPurchases", "minTrips", "T", "quantile")
+
+
+class SplitMismatch(AssertionError):
+    """Split tính lại từ DB hiện tại khác bản đã đóng băng — số đo không so được với run cũ."""
+
+
+def events_sha256(events: list[dict]) -> str:
+    """sha256 của tập event đầu vào (đã lọc), không phụ thuộc thứ tự: mỗi event một dòng JSON chuẩn hoá, sắp xếp."""
+    rows = sorted(json.dumps({k: e.get(k) for k in EVENT_KEYS}, sort_keys=True, ensure_ascii=False, default=str) for e in events)
+    return hashlib.sha256("\n".join(rows).encode("utf-8")).hexdigest()
 
 
 @dataclass
@@ -36,6 +53,53 @@ class Split:
         return {"kind": self.kind, **self.meta,
                 "targets": {u: {"target": self.targets[u], "asOf": self.as_of_by_user[u].isoformat(),
                                 "trainEvents": len(self.train_by_user[u])} for u in sorted(self.targets)}}
+
+    # ---- đóng băng (B2, 01/10): cùng DB, cùng tham số → cùng sha; khác thì `run --split-file` từ chối
+    def canonical(self) -> dict:
+        """Phần quyết định kết quả: loại split, tham số, sha của event đầu vào, và từng target (unit + productId gốc +
+        trip + as_of + số event/purchase train). Không có thời gian chạy hay DSN nên tất định."""
+        return {"kind": self.kind, "params": {k: self.meta.get(k) for k in PARAM_KEYS if k in self.meta},
+                "eventsSha256": self.meta.get("eventsSha256"), "eventsCount": self.meta.get("eventsCount"),
+                "targets": {u: {"target": self.targets[u],
+                                "targetProductId": str(self.target_events[u].get("productId") or ""),
+                                "eventGroupId": self.target_events[u].get("eventGroupId"),
+                                "asOf": self.as_of_by_user[u].isoformat(), "trainEvents": len(self.train_by_user[u]),
+                                "trainPurchases": sum(1 for e in self.train_by_user[u] if e.get("eventName") == "purchase")}
+                            for u in sorted(self.targets)}}
+
+    def frozen_sha256(self) -> str:
+        return hashlib.sha256(json.dumps(self.canonical(), sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+
+    def freeze(self, path: Path | str, *, db_as_of: str | None = None, dsn_label: str | None = None) -> str:
+        """Ghi `{sha256, frozenAt, dbAsOf, dsnLabel, canonical}`; `dbAsOf`/`dsnLabel` chỉ để đọc, không vào sha."""
+        p = Path(path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        sha = self.frozen_sha256()
+        p.write_text(json.dumps({"sha256": sha, "frozenAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                                 "dbAsOf": db_as_of, "dsnLabel": dsn_label, "canonical": self.canonical()},
+                                ensure_ascii=False, indent=1), encoding="utf-8")
+        return sha
+
+    def verify(self, path: Path | str) -> str:
+        """So split này với file đóng băng; khớp thì trả sha, lệch thì `SplitMismatch` nêu khác ở đâu."""
+        frozen = json.loads(Path(path).read_text(encoding="utf-8"))
+        if not isinstance(frozen, dict) or not isinstance(frozen.get("sha256"), str) or not isinstance(frozen.get("canonical"), dict):
+            raise SplitMismatch(f"{path}: không phải file đóng băng của `split --freeze` (thiếu sha256 / canonical)")
+        want, mine = frozen["sha256"], self.frozen_sha256()
+        if want == mine:
+            return mine
+        a, b = frozen["canonical"], self.canonical()
+        why = []
+        for key in ("kind", "params", "eventsSha256", "eventsCount"):
+            if a.get(key) != b.get(key):
+                why.append(f"{key}: đóng băng {a.get(key)!r} ≠ hiện tại {b.get(key)!r}")
+        ta, tb = a.get("targets") or {}, b.get("targets") or {}
+        only_a, only_b = sorted(set(ta) - set(tb)), sorted(set(tb) - set(ta))
+        changed = sorted(u for u in set(ta) & set(tb) if ta[u] != tb[u])
+        if only_a or only_b or changed:
+            why.append(f"targets: {len(ta)} đóng băng vs {len(tb)} hiện tại · chỉ ở bản đóng băng {len(only_a)} {only_a[:3]} · "
+                       f"chỉ ở hiện tại {len(only_b)} {only_b[:3]} · khác {len(changed)} {changed[:3]}")
+        raise SplitMismatch(f"split {self.kind} lệch bản đóng băng {path} (sha {want[:12]} ≠ {mine[:12]}): " + "; ".join(why))
 
 
 def _order_key(event: dict, position: int) -> tuple[datetime, str, int]:
@@ -125,7 +189,7 @@ def leave_last_booking_out(events: list[dict], index: UnitIndex, *, min_purchase
         target_events[user], as_of_by_user[user], train_by_user[user] = target, as_of, train
     train_purchases = [e for e in events if _is_valid_purchase(e, index)]
     meta = {"minPurchases": min_purchases, "minTrips": min_trips, "usersTotal": len(_by_user(events)),
-            "sameInstantDropped": same_instant_dropped,
+            "sameInstantDropped": same_instant_dropped, "eventsSha256": events_sha256(events), "eventsCount": len(events),
             **_meta_for_targets(targets, train_by_user, as_of_by_user, index)}
     return Split("llbo", targets, target_events, as_of_by_user, train_by_user, train_purchases, meta)
 
@@ -159,5 +223,6 @@ def temporal_split(events: list[dict], index: UnitIndex, *, cutoff: datetime | N
     train_purchases = [e for e in events if _is_valid_purchase(e, index)]
     meta = {"T": T.isoformat(), "quantile": None if cutoff else quantile, "usersTotal": len(_by_user(events)),
             "coldUsersExcluded": cold, "testPurchasesTotal": test_purchases,
+            "eventsSha256": events_sha256(events), "eventsCount": len(events),
             **_meta_for_targets(targets, train_by_user, as_of_by_user, index)}
     return Split("temporal", targets, target_events, as_of_by_user, train_by_user, train_purchases, meta)

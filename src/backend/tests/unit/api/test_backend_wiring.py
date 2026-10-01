@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import threading
 import unittest
@@ -11,8 +12,25 @@ from src.backend.app.infrastructure.clients.itinerary_fixture_clients import Fix
 from src.backend.app.infrastructure.persistence.postgres_catalog import PostgresProductLookup
 from src.backend.app.application.itinerary.engine_tools import InProcessItineraryTools
 from src.backend.app.application.itinerary.use_cases import PlanItinerary
+from src.backend.app.main import _forward_langsmith_env, _itinerary_runtime, app, health, health_ready, lifespan
+
+
+def test_readiness_is_503_before_lifespan_and_200_after_startup() -> None:
+    async def scenario() -> None:
+        app.state.ready = False
+        before = await health_ready()
+        assert before.status_code == 503
+
+        async with lifespan(app):
+            after = await health_ready()
+            payload = json.loads(after.body)
+            assert payload["status"] == "ok"
+            assert payload["ready"] is True
+
+        assert (await health_ready()).status_code == 503
+
+    asyncio.run(scenario())
 from src.backend.app.application.ports.itinerary_tools import ToolError
-from src.backend.app.main import _forward_langsmith_env, _itinerary_runtime, app, health, lifespan
 
 
 def test_default_composition_root_uses_local_postgres_adapters() -> None:

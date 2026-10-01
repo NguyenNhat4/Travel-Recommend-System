@@ -79,7 +79,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ initialMode = 'login' }) =
           <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center mx-auto mb-2 shadow-xs">
             <Lock className="w-6 h-6" />
           </div>
-          <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+          <h1 className="text-xl sm:text-2xl font-black text-slate-900">
             {isRegisterMode ? 'Đăng ký tài khoản V-OTA' : 'Đăng nhập V-OTA'}
           </h1>
           <p className="text-xs text-slate-500">

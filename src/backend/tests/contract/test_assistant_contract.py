@@ -195,12 +195,8 @@ class AssistantContractTests(unittest.TestCase):
             ("tool chưa cấu hình", 503, "SEARCH_UNAVAILABLE", message, ScriptedLlm(), None),
             # Sinh trong graph.
             ("yêu cầu ngoài phạm vi", 400, "VALIDATION_ERROR", message, refusal, Clients()),
-            ("số ngày ngoài 1–7", 400, "INVALID_TRIP_DURATION", message,
-             ScriptedLlm(extraction(destination="Nha Trang", days=20)), Clients()),
             ("hội thoại không tồn tại", 404, "CONVERSATION_NOT_FOUND",
              {"conversationId": "conv-khong-co", **message}, ScriptedLlm(), Clients()),
-            ("điểm đến chưa hỗ trợ", 422, "UNSUPPORTED_DESTINATION", message,
-             ScriptedLlm(extraction(destination="Sao Hỏa", days=2)), Clients()),
             ("model lỗi", 503, "LLM_UNAVAILABLE", message, ScriptedLlm(fail=True), Clients()),
             ("search lỗi", 503, "SEARCH_UNAVAILABLE", message, ScriptedLlm(), Clients(fail=True)),
         ]
@@ -218,14 +214,21 @@ class AssistantContractTests(unittest.TestCase):
         response = self.post({"message": "lên lịch"}, clients=None)
         self.assertIn(response.json()["error"]["code"], allowed)
 
-    def test_unsupported_destination_carries_the_details_web_needs(self):
-        """§9.4 hợp đồng Frontend: Web dựng lại chip điểm đến và tiếp tục hội thoại từ details."""
-        response = self.post({"message": "lên lịch"},
-                             llm=ScriptedLlm(extraction(destination="Sao Hỏa", days=2)))
-        details = response.json()["error"]["details"]
-        self.assertEqual(response.status_code, 422)
-        self.assertEqual(set(details), {"destination", "supportedDestinations", "conversationId"})
-        self.assertEqual(details["supportedDestinations"], ["Nha Trang"])
+    def test_invalid_input_is_a_clarification_with_what_web_needs_to_continue(self):
+        """§9.4 hợp đồng Frontend: Web dựng lại chip điểm đến/số ngày và tiếp tục hội thoại từ response 200."""
+        cases = (("điểm đến chưa hỗ trợ", extraction(destination="Sao Hỏa", days=2), "destination", "destination"),
+                 ("số ngày ngoài 1–7", extraction(destination="Nha Trang", days=20), "days", "days"))
+        for label, extracted, missing, suggested in cases:
+            with self.subTest(case=label):
+                response = self.post({"message": "lên lịch"}, llm=ScriptedLlm(extracted))
+                body = response.json()
+                self.assertEqual(response.status_code, 200, body)
+                self.assertEqual(body["status"], "NEEDS_CLARIFICATION")
+                self.assertTrue(body["question"].startswith("**"), body["question"])
+                self.assertEqual(body["missingFields"], [missing])
+                self.assertIn(suggested, body["suggestedValues"])
+                self.assertTrue(body["conversationId"])
+                self.assert_conforms(ITINERARIES, 200, body, label)
 
     # ---------------------------------------------------------------- SSE
 

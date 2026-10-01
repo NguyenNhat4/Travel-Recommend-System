@@ -16,6 +16,7 @@ from src.backend.app.application.booking.errors import (
     ProductNotFound,
     ValidationFailed,
 )
+from src.backend.app.application.booking.messages import validation_failed
 from src.backend.app.application.booking.reconcile import ReconcileBookings
 from src.backend.app.application.booking.views import booking_response, iso
 from src.backend.app.application.ports.booking_store import BookingStore, PendingBookingExists, ReferenceCodeTaken
@@ -31,10 +32,29 @@ from src.backend.app.core.request_context import current_request_id
 from src.backend.app.domain.booking import (
     Booking,
     BookingItem,
+    FareLine,
+    FareType,
     HoldPolicy,
     Payment,
+    RoomAllocation,
+    Traveler,
+    check_child_price,
     check_product,
+    fare_lines,
     new_reference_code,
+)
+from src.backend.app.domain.booking.cancellation import VN_TZ
+from src.backend.app.domain.booking.fares import CHILD_PRICED_TAXONOMIES
+from src.backend.app.domain.booking.party_rules import (
+    CartFacts,
+    ContactInput,
+    ItemInput,
+    RoomInput,
+    TravelerInput,
+    check_checkout,
+    check_contact,
+    check_legacy,
+    normalize_name,
 )
 from src.backend.app.domain.booking.status import BookingStatus
 
@@ -45,8 +65,10 @@ _REFERENCE_RETRIES = 5
 @dataclass(frozen=True)
 class ItemDetail:
     cart_item_id: str
-    guest_names: list[str] = field(default_factory=list)
+    guest_names: list[str] = field(default_factory=list)  # chỉ request cũ không có `travelers` (spec §7.6)
     special_request: str | None = None
+    traveler_refs: list[str] | None = None  # dịch vụ tính theo người, combo
+    rooms: list[RoomInput] | None = None    # khách sạn
 
 
 @dataclass(frozen=True)
@@ -56,9 +78,24 @@ class Contact:
     phone: str
 
 
-def _unit_amount(item: BookingItem) -> int:
-    """Số tiền một đơn vị gửi sang Stripe: khách sạn nhân số đêm để tổng dòng khớp lineTotal."""
-    return item.unit_price * (max(1, item.nights or 1) if item.taxonomy == "hotel" else 1)
+_STRIPE_NAME_MAX = 180  # Stripe giới hạn độ dài tên dòng; cắt phần tên sản phẩm, giữ nhãn loại giá
+
+
+def _fare_label(fare: FareLine) -> str:
+    return {FareType.ADULT: "Người lớn", FareType.CHILD: "Trẻ em", FareType.PACKAGE: "Gói"}.get(
+        fare.fare_type, f"{fare.nights} đêm")
+
+
+def _checkout_lines(items: list[BookingItem]) -> list[CheckoutLine]:
+    """Mỗi dòng giá một line item Stripe (spec §8.4). Không gửi họ tên, ngày sinh hay bất kỳ dữ liệu hành khách nào."""
+    lines: list[CheckoutLine] = []
+    for item in items:
+        name = item.product_name if len(item.product_name) <= _STRIPE_NAME_MAX else item.product_name[:_STRIPE_NAME_MAX - 1] + "…"
+        for fare in item.fares:
+            # Khách sạn: nhân số đêm vào đơn giá để tổng dòng khớp thành tiền của dòng giá.
+            lines.append(CheckoutLine(name=f"{name} · {_fare_label(fare)}", unit_amount=fare.unit_price * (fare.nights or 1),
+                                      quantity=fare.count))
+    return lines
 
 
 class CreateBookingHold:
@@ -71,54 +108,65 @@ class CreateBookingHold:
         self._reconciler, self._hold, self._web, self._provider, self._clock = (
             reconciler, hold, public_web_url.rstrip("/"), provider, clock)
 
-    async def __call__(self, principal: AuthPrincipal, contact: Contact, details: list[ItemDetail]) -> dict:
+    async def __call__(
+        self, principal: AuthPrincipal, contact: Contact, details: list[ItemDetail],
+        travelers: list[TravelerInput] | None = None,
+    ) -> dict:
+        """Trình tự kiểm theo spec checkout-nhieu-buoc-hanh-khach.md §8.3. `travelers=None` là request cũ (§7.6)."""
         user = principal.cdp_user_id
         await self._release_stale_hold(user)
 
         cart = await self._carts.get(user)
         if not cart.lines:
             raise CartEmpty("giỏ hàng trống")
-        lines_by_id = {line.cart_item_id: line for line in cart.lines}
-        unknown = [d.cart_item_id for d in details if d.cart_item_id not in lines_by_id]
-        if unknown:
-            raise ValidationFailed("cartItemId không thuộc giỏ", {"fields": [{"field": "itemDetails", "cartItemIds": unknown}]})
-        detail_by_id = {d.cart_item_id: d for d in details}
-
         products = await self._catalog.get_products([line.product_id for line in cart.lines])
-        items: list[BookingItem] = []
         for line in cart.lines:
-            product = products.get(line.product_id)
-            if product is None:
+            if products.get(line.product_id) is None:
                 raise ProductNotFound("sản phẩm không tồn tại", {"productId": line.product_id})
-            issue = check_product(product, line.using_date, snapshot_price=line.unit_price_snapshot)
-            if issue:
-                raise LineRejected(issue.code, issue.details)
-            detail = detail_by_id.get(line.cart_item_id)
-            items.append(BookingItem(
-                booking_item_id=str(uuid.uuid4()), product_id=product.product_id, taxonomy=product.taxonomy,
-                product_name=product.name, unit_price=int(product.unit_price), quantity=line.quantity,
-                using_date=line.using_date, nights=line.nights if product.taxonomy == "hotel" else None,
-                guest_names=list(detail.guest_names) if detail else [],
-                special_request=detail.special_request if detail else None,
-            ))
 
         now = self._clock()
+        party, violations = self._check_rules(contact, details, travelers, cart.lines, products, now)
+        if violations:
+            # Mọi vi phạm trong một lần; chưa gọi Stripe, chưa ghi gì.
+            raise validation_failed(violations)
+
+        detail_by_id = {d.cart_item_id: d for d in details}
+        items: list[BookingItem] = []
+        for line in cart.lines:
+            product = products[line.product_id]
+            issue = check_product(product, line.using_date, snapshot_price=line.unit_price_snapshot)
+            if issue is None and line.children and product.taxonomy in CHILD_PRICED_TAXONOMIES:
+                issue = check_child_price(
+                    product, snapshot_child=line.child_unit_price_snapshot, snapshot_adult=line.unit_price_snapshot)
+            if issue:
+                raise LineRejected(issue.code, issue.details)
+            items.append(self._build_item(line, product, detail_by_id[line.cart_item_id], party))
+
         booking_id = str(uuid.uuid4())
         booking = Booking(
             booking_id=booking_id, reference_code=new_reference_code(now.date()), cdp_user_id=user,
-            event_group_id=f"OFF{now:%Y%m%d}{uuid.uuid4().hex[:6].upper()}", contact_name=contact.full_name,
-            contact_email=contact.email, contact_phone=contact.phone, created_at=now, items=items,
-            hold_expires_at=self._hold.expires_at(now),
+            event_group_id=f"OFF{now:%Y%m%d}{uuid.uuid4().hex[:6].upper()}",
+            contact_name=normalize_name(contact.full_name), contact_email=contact.email.strip(),
+            contact_phone=contact.phone.strip(), created_at=now, items=items, hold_expires_at=self._hold.expires_at(now),
+            travelers=party,
         )
         booking.payment = Payment(payment_id=str(uuid.uuid4()), provider=self._provider, amount=booking.total_amount)
+        stripe_lines = _checkout_lines(items)
+        if sum(l.unit_amount * l.quantity for l in stripe_lines) != booking.total_amount:
+            # Chỉ xảy ra khi code sai: không gửi số tiền lệch sang Stripe.
+            logger.error("booking.create.total_mismatch requestId=%s", current_request_id())
+            raise RuntimeError("tổng các dòng thanh toán lệch tổng đơn")
+        # Chỉ ghi số lượng, không ghi họ tên, ngày sinh hay số điện thoại (NFR-SEC-01, spec §8.6).
+        logger.info("booking.create adults=%d children=%d items=%d requestId=%s",
+                    sum(1 for t in party if t.type.value == "adult"), sum(1 for t in party if t.type.value == "child"),
+                    len(items), current_request_id())
 
         # Gọi Stripe TRƯỚC khi ghi database: Stripe lỗi thì chưa có gì để dọn (spec booking §6.1).
         try:
             session = await self._gateway.create_checkout_session(
                 booking_id=booking_id, reference_code=booking.reference_code, cdp_user_id=user,
-                customer_email=contact.email,
-                lines=[CheckoutLine(name=item.product_name, unit_amount=_unit_amount(item), quantity=item.quantity)
-                       for item in items],
+                customer_email=booking.contact_email,
+                lines=stripe_lines,
                 expires_at=booking.hold_expires_at,
                 success_url=f"{self._web}/booking/{booking.reference_code}?payment=return",
                 cancel_url=f"{self._web}/booking/{booking.reference_code}?payment=cancelled",
@@ -143,6 +191,43 @@ class CreateBookingHold:
             await self._close_session(session.session_id)
             raise
         return booking_response(booking, products)
+
+    def _check_rules(self, contact, details, travelers, lines, products, now):
+        """Luật dữ liệu của §5: trả đoàn khách đã chuẩn hoá và mọi vi phạm (không dừng ở vi phạm đầu tiên)."""
+        facts = [
+            CartFacts(line.cart_item_id, products[line.product_id].name, products[line.product_id].taxonomy,
+                      line.using_date, line.quantity, line.adults, line.children,
+                      products[line.product_id].max_occupancy)
+            for line in lines
+        ]
+        contact_input = ContactInput(contact.full_name, contact.email, contact.phone)
+        inputs = [ItemInput(d.cart_item_id, d.traveler_refs, d.rooms, d.guest_names) for d in details]
+        if travelers is None:
+            return [], [*check_contact(contact_input), *check_legacy(inputs, facts)]
+        return check_checkout(contact_input, travelers, inputs, facts, today=now.astimezone(VN_TZ).date())
+
+    @staticmethod
+    def _build_item(line, product, detail: ItemDetail, party: list[Traveler]) -> BookingItem:
+        unit = int(product.unit_price)
+        nights = line.nights if product.taxonomy == "hotel" else None
+        fares = fare_lines(product.taxonomy, unit, product.attributes, quantity=line.quantity, nights=nights,
+                           adults=line.adults, children=line.children)
+        rooms: list[RoomAllocation] = []
+        if product.taxonomy == "hotel" and detail.rooms:
+            rooms = [RoomAllocation(tuple(r.traveler_refs), r.lead_traveler_ref or "") for r in detail.rooms]
+            wanted = {ref for room in rooms for ref in room.traveler_refs}
+        else:
+            wanted = set(detail.traveler_refs or [])
+        by_party_order = [t for t in party if t.ref in wanted]
+        # Request có `travelers`: họ tên lấy từ đoàn khách, `guestNames` của client bị bỏ qua (spec §7.3).
+        guest_names = ([t.full_name for t in by_party_order] if party
+                       else [n for n in (normalize_name(n) for n in detail.guest_names) if n])
+        return BookingItem(
+            booking_item_id=str(uuid.uuid4()), product_id=product.product_id, taxonomy=product.taxonomy,
+            product_name=product.name, unit_price=unit, quantity=line.quantity, using_date=line.using_date,
+            nights=nights, guest_names=guest_names, special_request=detail.special_request, fares=fares,
+            traveler_refs=[t.ref for t in by_party_order], rooms=rooms,
+        )
 
     async def _insert(self, booking: Booking) -> None:
         for attempt in range(_REFERENCE_RETRIES):

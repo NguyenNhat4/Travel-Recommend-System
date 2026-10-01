@@ -1,4 +1,4 @@
-# Job hằng ngày của data collection (src/data_collection/daily.py) cho VPS: console, không trình duyệt.
+# Job daily.py cho VPS; Chromium phục vụ báo giá thương gia từ UI Trip.com.
 # Build từ repository root:  docker build -f Dockerfile.daily -t vota-daily .
 # Chạy qua src/data_collection/run_daily_docker.sh; dữ liệu làm việc (interim, cache, sqlite tiến độ, catalog, version)
 # nằm trên ổ VPS, mount vào /data. Image không chứa data/, .env hay secret — kết nối DB/Weaviate/Cohere đến từ --env-file.
@@ -8,7 +8,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app \
     VOTA_DATA_DIR=/data \
-    TZ=Asia/Ho_Chi_Minh
+    TZ=Asia/Ho_Chi_Minh \
+    PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
 
 # tzdata: "hôm nay" của daily.py (giữ dòng 7 ngày, --as-of của loader, tên version) theo giờ Việt Nam, không theo UTC.
 RUN apt-get update \
@@ -18,14 +19,18 @@ RUN apt-get update \
     && mkdir -p /data \
     && chown app:app /data
 
-# Bỏ playwright: chỉ collector cần trình duyệt mới import, job hằng ngày không chạy các nguồn đó.
+# Playwright/Chromium: collector thương gia chạy headless; không đăng nhập/checkout.
 # Bước embed chạy `python -m src.backend.jobs.embed_products`; chuỗi import của nó chỉ cần pydantic, pydantic-settings, numpy
 # (httpx, psycopg đã có ở trên) nên không cài cả requirements backend (langgraph, openai…). Ràng buộc phiên bản lấy từ file backend.
+# Bước nạp DB chạy `python -m data_collection.seed --catalog-only`: seed/__main__ import seed_histories, file này băm mật khẩu demo
+# bằng argon2 ngay khi import — thiếu argon2-cffi thì bước nạp thoát lỗi dù --catalog-only không dùng tới.
 COPY src/data_collection/requirements.txt /tmp/data-collection-requirements.txt
 COPY src/backend/requirements.txt /tmp/backend-requirements.txt
-RUN grep -iv '^playwright' /tmp/data-collection-requirements.txt > /tmp/job-requirements.txt \
-    && grep -E '^(pydantic|pydantic-settings|numpy)[<>=]' /tmp/backend-requirements.txt | sed 's/[[:space:]]*#.*//' >> /tmp/job-requirements.txt \
-    && python -m pip install --no-cache-dir -r /tmp/job-requirements.txt
+RUN cp /tmp/data-collection-requirements.txt /tmp/job-requirements.txt \
+    && grep -E '^(pydantic|pydantic-settings|numpy|argon2-cffi)[<>=]' /tmp/backend-requirements.txt | sed 's/[[:space:]]*#.*//' >> /tmp/job-requirements.txt \
+    && python -m pip install --no-cache-dir -r /tmp/job-requirements.txt \
+    && python -m playwright install --with-deps chromium \
+    && chmod -R a+rX /opt/playwright
 
 COPY src/__init__.py /app/src/__init__.py
 COPY src/backend /app/src/backend

@@ -100,6 +100,12 @@ class Settings(BaseSettings):
     cohere_api_key: str = ""
     cohere_base_url: str = "https://api.cohere.com"
     cohere_timeout_seconds: float = Field(default=30.0, gt=0)
+    # Chỉ job index (jobs/embed_products.py, P5 docs/plan/2026-09-29-index-cohere-song-song.md): số lô 96 text gọi
+    # Cohere cùng lúc (1 = tuần tự) và trần lượt gọi mỗi phút của job (0 = không giới hạn). Mặc định cho key Trial
+    # (100 lượt/phút), chừa chỗ cho Search dùng chung key; key Production thì nâng, vd. 8 và 1500. Search lúc chạy API
+    # không bị giới hạn này.
+    cohere_embed_concurrency: int = Field(default=4, ge=1, le=16)
+    cohere_calls_per_minute: int = Field(default=90, ge=0)
     weaviate_url: str = "http://localhost:8080"
     weaviate_api_key: str = ""
     weaviate_collection: str = "Product"
@@ -120,6 +126,18 @@ class Settings(BaseSettings):
     search_lexical_k: int = Field(default=10, ge=0)  # chỉ vớt hit BM25 có rank ≤ giá trị này
     search_lexical_cutoff: float = 0.50  # cosine tối thiểu của hit được vớt; luôn ≤ search_cutoff
     search_lexical_min_coverage: float = Field(default=0.6, ge=0, le=1)  # tên phải chứa ≥ 60% token của truy vấn
+    # Cache vector truy vấn /search (NFR-PERF-03; contract 1.12.0 `diagnostics.embedCache`): LRU trong tiến trình, khoá =
+    # câu sau chuẩn hoá + gộp khoảng trắng; sống qua các lần nạp lại catalog vì bọc quanh client Cohere dùng chung.
+    search_embed_cache: bool = True
+    search_embed_cache_size: int = Field(default=10000, ge=1)  # 10k vector float32 1024 chiều ≈ 41 MB
+    search_embed_cache_log_every: int = Field(default=500, ge=1)  # log hits/misses mỗi N lượt tra
+    # Nạp sẵn cache lúc khởi động (sau lần nạp catalog đầu tiên, không chặn startup): file câu gold + head query của
+    # app.search_logs; pacing theo số câu / phút để không đụng trần Cohere (Trial 100 lượt/phút, mỗi lượt ≤ 96 câu).
+    search_prewarm: bool = True
+    search_prewarm_file: str = "data/search_prewarm_queries.txt"  # tương đối theo src/backend
+    search_prewarm_head_queries: int = Field(default=200, ge=0)
+    search_prewarm_head_days: int = Field(default=30, ge=1)
+    search_prewarm_inputs_per_minute: int = Field(default=2000, ge=0)  # 0 = không ngủ giữa các lô
     search_bm25_k1: float = 1.2  # chỉ job index dùng (invertedIndexConfig của collection)
     search_bm25_b: float = 0.75
     # Chu kỳ nạp lại metadata catalog (giá, trạng thái, cửa sổ ngày) từ Postgres. Job cào chạy mỗi ngày

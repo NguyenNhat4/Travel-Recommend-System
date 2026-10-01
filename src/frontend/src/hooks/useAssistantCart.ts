@@ -2,6 +2,13 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useTravel } from '../context/TravelContext';
 import { mapProductSummaryToProduct } from '../services/assistant';
 import type { AssistantCartItem } from '../components/assistant/AssistantResultPanel';
+import { maxOccupancyFromAttributes, partyCartRequest } from '../components/checkout/guestCounts';
+
+/** Số lượng và `guests` khi thêm một mục của lịch trình: theo đoàn `intent.party` nếu có, không thì 1 như trước (§6.9). */
+function cartArgs(item: AssistantCartItem): { quantity: number; guests?: { adults: number; children: number } } {
+  if (!item.party) return { quantity: 1 };
+  return partyCartRequest(item.product.taxonomy, item.party, maxOccupancyFromAttributes(item.product.attributes as Record<string, unknown> | undefined));
+}
 
 /**
  * Thêm một hoặc nhiều mục của lịch trình vào giỏ, tuần tự, gom kết quả vào một toast
@@ -20,15 +27,18 @@ export function useAssistantCart() {
   const addItems = useCallback(async (items: AssistantCartItem[]): Promise<number> => {
     if (items.length === 1) {
       const [item] = items;
+      const { quantity, guests } = cartArgs(item);
       // addToCart đã tự báo toast cho một mục.
-      return await latest.current.addToCart(mapProductSummaryToProduct(item.product), 1, item.usingDate, item.checkOutDate) ? 1 : 0;
+      return await latest.current.addToCart(
+        mapProductSummaryToProduct(item.product), quantity, item.usingDate, item.checkOutDate, guests ? { guests } : undefined) ? 1 : 0;
     }
     // Tuần tự, mỗi mục một request; một mục lỗi không chặn mục còn lại.
     let added = 0;
     const failed: string[] = [];
     for (const item of items) {
+      const { quantity, guests } = cartArgs(item);
       const ok = await latest.current.addToCart(
-        mapProductSummaryToProduct(item.product), 1, item.usingDate, item.checkOutDate, { silent: true });
+        mapProductSummaryToProduct(item.product), quantity, item.usingDate, item.checkOutDate, { silent: true, ...(guests ? { guests } : {}) });
       if (ok) added += 1;
       else failed.push(item.product.name);
     }
