@@ -3,7 +3,7 @@
 - Phục vụ: **FR-REC-01..04**, **NFR-PERF-01** (`docs/prd/requirements.md`); `docs/prd/test-plan.md` §2.5; handbook §11–§12.
 - Code: `src/evaluation/recsys_bench/` (nhánh `bench/recsys-harness`). Số thô: `bench_out/recsys/runs/<run_id>/` (không commit).
 - Thay cho `eval/report.md` của lịch 10 ngày (`docs/plan/2026-09-28-lich-10-ngay-3-engine.md` §0.1).
-- Cập nhật lần cuối: 2026-10-02 (§4.14 sau FR-REC-02; 01/10: §2.1 sanity, §3.1 split đóng băng, §4.5 guest path Cloud, §4.6 v3 NDCG@5, §4.7–4.11 ceiling / phân khúc / strict / 20 ca / findings, §4.12 parity offline = HTTP)
+- Cập nhật lần cuối: 2026-10-01 (§4.14 sau FR-REC-02; 01/10: §2.1 sanity, §3.1 split đóng băng, §4.5 guest path Cloud, §4.6 v3 NDCG@5, §4.7–4.11 ceiling / phân khúc / strict / 20 ca / findings, §4.12 parity offline = HTTP)
 
 > **Caveat bắt buộc (handbook §12):** lịch sử khách hàng là dữ liệu sinh. Các số này cho biết pipeline chạy đúng,
 > không cho biết engine sẽ chạy thế nào trên khách thật.
@@ -181,7 +181,8 @@ Chạy trên máy A (kế hoạch `docs/plan/2026-09-30-bench-search-recsys-3-ng
 ghi đè `http://127.0.0.1:8080` vì `.env` đang trỏ Cloud). Lọc: purchase orphan 63 (2,0 %), thiếu gid 94 (3,0 %), loại
 152; giữ 6.979 event / 1.582 khách. Hai baseline mới (`recsys_bench/arms.py`): `most_popular` = `Popularity.unit_scores`
 cửa sổ 90 ngày trước `as_of` của từng khách (đúng thành phần pop của engine, chỉ purchase < `as_of`);
-`most_popular_in_destination` = cùng điểm nhưng lọc theo điểm đến của chuyến đang mở (≤ 60 ngày) hoặc chuyến gần nhất,
+`most_popular_in_destination` = cùng điểm nhưng lọc theo điểm đến của chuyến đang mở (luật `trip_is_open` của engine; tới
+01/10 là ≤ 60 ngày) hoặc chuyến gần nhất,
 thiếu thì bù most_popular toàn cục (`strategy = most_popular_fallback`, 0/1.007 khách LLBO cần bù). Cả hai chỉ chọn
 unit `recommendable` + còn chỗ như engine.
 
@@ -288,7 +289,8 @@ Temporal — 102 khách (T = 2026-07-07T15:23Z):
 
 ### 4.7. Ceiling — trần recall theo bộ lọc cứng của engine (B5, 01/10)
 
-`ceiling.py` mô phỏng profile + mask ứng viên của `RecommendForUser` (cap lặp, trip mở ≤ 60 ngày, `bought_units`, điểm đến và
+`ceiling.py` mô phỏng profile + mask ứng viên của `RecommendForUser` (cap lặp, trip mở theo `trip_is_open` — lúc đo B5 là
+tuổi ≤ 60 ngày, từ 01/10 theo `usingDate` + N = 14, §4.14 —, `bought_units`, điểm đến và
 taxonomy bị loại của trip mở, fallback khi mask theo điểm đến rỗng; không có trip → `cold_start`). Bản "chính xác" dùng
 `strategy` / `destination` / `excludedVerticals` engine trả về; bản xấp xỉ chỉ từ event — **đồng thuận 100 %** trên cả hai split.
 
@@ -419,9 +421,10 @@ LLBO giữ nguyên làm bảng cuối. Một yếu tố mỗi lần, arm `engine
 
 Chỉ **cửa sổ trip mở** đổi kết quả: `ACTIVE_TRIP_MAX_AGE_DAYS` 60 → 30 / 14 nâng Recall@20 0,196 → 0,216 / **0,225** và NDCG@10 0,144 → 0,154 (+0,010), prod NDCG@5 +0,006 — cùng hướng với finding M6 (trip cũ còn trong 60 ngày bị coi là đang mở nên loại nhầm). `W_SHORT=0,7 / W_POP=0,15` +0,006 NDCG@10 và prod NDCG@5 +0,026; `W_SHORT=0,5 / W_POP=0,35` tệ hẳn (NDCG@10 −0,046). MMR λ 0,85 / 1,0, `H_SHORT_DAYS` 60, `DORMANT_AFTER_DAYS` 90 và `W_TYPE` 5/3/1 không đổi hoặc giảm nhẹ. Khác biệt trên 102 khách là 1–3 khách nên chỉ là hướng dò, không phải quyết định; muốn áp dụng phải qua M6 (đề xuất PRD) và chạy lại LLBO.
 
-### 4.14. Sau FR-REC-02 (M6, 02/10): trip mở theo `usingDate`, N = 14 cho trip chỉ view
+### 4.14. Sau FR-REC-02 (M6, 01/10): trip mở theo `usingDate`, N = 14 cho trip chỉ view
 
-Người dùng chốt đề xuất `update-archive/2026-10-01-category-exclusion-theo-chuyen-dang-dien-ra.md` (02/10). Engine: trip có
+Người dùng chốt đề xuất `update-archive/2026-10-01-category-exclusion-theo-chuyen-dang-dien-ra.md` (01/10; run id và nhãn
+`ENGINE_RULES_VERSION` ghi 2026-10-02 do nhầm ngày, giữ nguyên để khớp `bench_out/` và configHash). Engine: trip có
 `usingDate` mở tới hết ngày sử dụng (`trip_is_open`, `ENGINE_RULES_VERSION = 2026-10-02-trip-ended`); trip không có
 `usingDate` (chỉ view / search) mở khi event gần nhất ≤ N ngày. Harness (ceiling, `excluded_taxonomies`, `trip_destination`)
 mô phỏng cùng luật. Hai bước, cùng split đóng băng (§3.1):
@@ -437,7 +440,9 @@ Vì sao `usingDate` một mình gần như không đổi (v4): trong 21 target t
 (`usingDate` ≥ T, 0–37 ngày sau T) — ở mốc T engine đúng khi coi đó là chuyến mở, target là purchase của chuyến kế **sau khi**
 chuyến này đi xong, nên split temporal (as_of = T) đang hỏi "đã mua gì sau T" chứ không phải "gợi gì ngay trước lúc mua".
 N = 14 xử lý nhóm đầu (grid §4.13: 14 và 30 cho cùng NDCG@10, 14 cao hơn R@20); nhóm sau cần split kiểu "next trip" (as_of =
-ngay trước purchase kế, trip trước đã kết thúc) — việc tiếp theo của harness, không phải lỗi engine.
+ngay trước purchase kế, trip trước đã kết thúc) — việc tiếp theo của harness, không phải lỗi engine. Vì vậy v5 (0,2157) thấp
+hơn điểm grid N = 14 **đơn thuần** của §4.13 (0,225) đúng 1 khách: luật tuổi đơn thuần đóng luôn các chuyến chưa đi tại T
+(`usingDate` ≥ T) nên mở đường cho target của chuyến kế, còn v5 giữ chúng mở đúng thiết kế.
 
 Trên LLBO (trong chuyến) cả hai bước không đổi số nào: 911 khách `cross_vertical` đều có trip có `usingDate` còn mở tại as_of.
 Run: `bench_out/recsys/runs/2026-10-02-{temporal,llbo}-v{4,5}/` (+ `-v4-n14` là lượt thử override trước khi đổi hằng).
@@ -474,7 +479,7 @@ Lệnh `user --id VP0000001 --k 5`, `as_of` 2026-09-24, 12 event lịch sử, c�
 - Day 2 (B): hai baseline most-popular / most-popular-in-destination và kiểm thứ tự đã làm 30/09 (§4.4); `sanity` 01/10 (§2.1)
   PASS 5/5 kiểm tra cứng. Phase 0 (01/10): split đóng băng §3.1, NDCG@5, `ids` / `rankStrict` theo khách, `configHash` — §4.6.
   Phase 1 (01/10): ceiling §4.7, phân khúc §4.8, strict/lenient §4.9, 20 ca + `engine_nommr` §4.10, findings §4.11. Phase 3
-  (01/10): offline = HTTP 60/60 §4.12. M6 (02/10): FR-REC-02 chốt, engine đổi luật trip mở + N = 14 (§4.14); grid lần 1 §4.13.
+  (01/10): offline = HTTP 60/60 §4.12. M6 (01/10): FR-REC-02 chốt, engine đổi luật trip mở + N = 14 (§4.14); grid lần 1 §4.13.
 - Split temporal (as_of = T) đo "mua gì sau T", không phải "gợi gì ngay trước lúc mua chuyến kế": 10/21 target bị chặn là chuyến
   chưa đi tại T. Việc tiếp theo: split "next trip" (as_of = ngay trước purchase kế, trip trước đã kết thúc theo `usingDate`).
 - **I-5** đã xử lý ở harness (30/09): `engine` = mode eval bỏ cap để đo đủ k = 20; `engine_prod` báo list production.

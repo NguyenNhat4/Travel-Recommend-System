@@ -3,7 +3,7 @@
 - Ngày: 2026-10-01
 - Người đề xuất: tqanh123 / Claude Code (từ số đo harness RecSys offline)
 - Trạng thái: đã áp dụng
-- Chốt bởi / ngày: tqanh123, 2026-10-02 ("đồng ý sửa PRD theo phương án này")
+- Chốt bởi / ngày: tqanh123, 2026-10-01 ("đồng ý sửa PRD theo phương án này"; bản đầu ghi nhầm 2026-10-02, sửa cùng ngày)
 - PRD bị ảnh hưởng: `docs/prd/requirements.md` §1.3 FR-REC-02 (và sau khi chốt: `docs/spec/hop-dong-tich-hop-search-recommendation.md` §4.3–4.5)
 - Mã FR/NFR: FR-REC-02, FR-REC-01
 
@@ -52,4 +52,4 @@ grid-search trên split temporal đóng băng (B10), không ghi trong PRD.
   → ≈ 1,0 và `cross_vertical` temporal > 0; LLBO không giảm (trong chuyến vẫn giữ exclusion).
 - Contract không đổi (`strategy`, `excludedVerticals`, `destination` giữ nguyên ý nghĩa); chỉ hành vi chọn trip mở đổi.
 
-**Kết quả áp dụng (02/10):** xem `history/2026-10-02-recsys-fr-rec-02-trip-ended.md` — N giữ là hằng `ACTIVE_TRIP_MAX_AGE_DAYS` trong `profile.py` (60 → 14, chỉ áp cho trip không `usingDate`), không đưa vào `core/config.py`; temporal Recall@20 0,196 → 0,216, ceiling 0,784 → 0,892, LLBO không đổi (spec bench §4.14).
+**Kết quả áp dụng (01/10; tên history ghi 02/10 do nhầm ngày):** xem `history/2026-10-02-recsys-fr-rec-02-trip-ended.md` — N giữ là hằng `ACTIVE_TRIP_MAX_AGE_DAYS` trong `profile.py` (60 → 14, chỉ áp cho trip không `usingDate`), không đưa vào `core/config.py`; temporal Recall@20 0,196 → 0,216, ceiling 0,784 → 0,892, LLBO không đổi (spec bench §4.14).

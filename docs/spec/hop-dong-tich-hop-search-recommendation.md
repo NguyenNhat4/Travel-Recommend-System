@@ -453,7 +453,8 @@ engine và chưa sửa**, đang chờ Team Recommendation/Search cùng Web quy�
 
 - `recent_activity`: bảng ghi "không có trip đang mở", nhưng engine chỉ trả giá
   trị này khi **có** trip đang mở, trip đó chưa purchase và tổng ≥ 3 event dùng được. Engine
-  coi trip đang mở là trip có event gần nhất trong 60 ngày (`ACTIVE_TRIP_MAX_AGE_DAYS`).
+  coi trip đang mở là trip có event gần nhất trong 60 ngày (`ACTIVE_TRIP_MAX_AGE_DAYS`) — *luật tới 01/10/2026; từ đó theo
+  bổ sung bên dưới (`usingDate`, N = 14).*
 - `dormant`: bảng này và `hop-dong-tich-hop-backend.md` §6.2 ghi 90 ngày; engine
   dùng 180 ngày (`DORMANT_AFTER_DAYS`).
 - `< 3 event → popular`: engine trả `popular` khi không còn event nào dùng
@@ -464,12 +465,17 @@ engine và chưa sửa**, đang chờ Team Recommendation/Search cùng Web quy�
   `because` khác rỗng. Mock `getRecommendations.200-cold-start-content.json`
   theo ràng buộc 4 (`because: []`).
 
-**Bổ sung 2026-10-02 (FR-REC-02 sửa theo đề xuất `category-exclusion-theo-chuyen-dang-dien-ra`, đã chốt).** "Trip đang
+**Bổ sung 2026-10-01 (FR-REC-02 sửa theo đề xuất `category-exclusion-theo-chuyen-dang-dien-ra`, đã chốt).** "Trip đang
 mở" trong bảng trên là trip **chưa kết thúc** theo đúng định nghĩa `tripFactor` §4.3: `max(usingDate)` của các event trong
 trip ≥ hôm nay; trip không có `usingDate` nào (chỉ view / search) thì mở khi event gần nhất cách ≤ `ACTIVE_TRIP_MAX_AGE_DAYS`
-(tham số N của PRD: **14 ngày** từ 02/10, trước là 60 — grid trên split temporal đóng băng: Recall@20 0,196 → 0,216, LLBO không
-đổi; `docs/spec/bench/recsys-offline-eval.md` §4.14). Trip đã kết thúc không còn là trip mở dù mới 5 ngày trước → khách rơi về `long_term` / `dormant`,
-engine gợi cho chuyến kế tiếp. Trip mua từ lâu nhưng `usingDate` còn ở tương lai vẫn là trip mở (chuyến sắp đi).
+(tham số N của PRD: **14 ngày** từ 01/10, trước là 60 — đo trên split temporal đóng băng, `docs/spec/bench/recsys-offline-eval.md`
+§4.14 v5 (`usingDate` + N = 14): Recall@20 0,196 → 0,216, LLBO không đổi; grid §4.13 với luật tuổi đơn thuần N = 14 cho 0,225
+vì luật đó đóng luôn chuyến chưa đi tại T). Trip đã kết thúc không còn là trip mở dù mới 5 ngày trước → khách rơi về `long_term` /
+`dormant`, engine gợi cho chuyến kế tiếp. Trip mua từ lâu nhưng `usingDate` còn ở tương lai vẫn là trip mở (chuyến sắp đi).
+`usingDate` của event CDP là **ngày bắt đầu sử dụng** (check-in / ngày bay) và CDP không có ngày kết thúc, nên kỳ nghỉ nhiều
+đêm được coi là xong từ ngày sau check-in; muốn giữ trip mở suốt kỳ nghỉ cần thêm số đêm / ngày kết thúc vào event (đề xuất PRD
+riêng, chưa có). Tuổi trip, ngày kết thúc và món đã mua xét trên **mọi** event của trip; cap `MAX_REPEAT_PER_TRIP` chỉ giới hạn
+trọng số vector. "Hôm nay" lấy theo giờ Việt Nam (UTC+7, `profile.local_today`) để khớp `usingDate` là ngày địa phương.
 Engine ghi `ENGINE_RULES_VERSION` vào cấu hình để bench phân biệt hai luật.
 
 **Ràng buộc bắt buộc:**
@@ -492,7 +498,7 @@ excluded       = bookedThisTrip, mở rộng: combo kéo theo hotel
 Áp làm **hard filter trong câu truy vấn**, không phải phép trừ vector. Ngoài ra
 loại mọi `productId` khách đã từng mua.
 
-**Chỉ áp cho trip đang mở** theo định nghĩa §4.4 (bổ sung 2026-10-02): chuyến đã kết thúc (`usingDate` đã qua) thì không
+**Chỉ áp cho trip đang mở** theo định nghĩa §4.4 (bổ sung 2026-10-01): chuyến đã kết thúc (`usingDate` đã qua) thì không
 loại taxonomy đã mua và không khoá điểm đến — đó là gợi ý cho chuyến kế tiếp (PRD FR-REC-02). Lý do: trên split temporal
 của bench, 22 % target bị chính exclusion / khoá điểm đến của chuyến đã đi xong chặn (`docs/spec/bench/recsys-offline-eval.md`
 §4.7, §4.11).
@@ -703,7 +709,7 @@ Team Search cung cấp:
 
 16. Đăng nhập lần lượt 4 tài khoản demo → 4 `strategy` khác nhau.
 17. P1 vừa đặt hotel Nha Trang → `strategy: cross_vertical`, không có item
-    `taxonomy: hotel`, `nextVertical` khác `null`. *(Từ 02/10 "vừa đặt" = chuyến chưa diễn ra xong: seed gắn `usingDate`
+    `taxonomy: hotel`, `nextVertical` khác `null`. *(Từ 01/10 "vừa đặt" = chuyến chưa diễn ra xong: seed gắn `usingDate`
     cho P1 ~2 tuần sau `--as-of`, nên seed lại trước demo; quá ngày sử dụng P1 rơi về `long_term`.)*
 18. P4 (0 event) → `coldStart: true` và **mọi** `because` rỗng.
 19. Mọi `because[].productId` khác `null` đều mở được `GET /products/{id}` → `200`.

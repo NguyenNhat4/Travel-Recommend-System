@@ -44,7 +44,8 @@ def lifecycle_at(train: list[dict], as_of: datetime) -> str:
 
 def target_trip_kind(split: Split, user: str, view: EngineView) -> str:
     """open = trip của purchase bị giấu chính là trip mở engine chọn; closed = có trong train nhưng không phải trip mở (đã
-    quá 60 ngày, hoặc bị một view lẻ trẻ hơn che — xem `activeTripIsSolo`); new = chưa có event nào trong train."""
+    kết thúc theo `usingDate`, không `usingDate` mà quá 14 ngày, hoặc bị một view lẻ trẻ hơn che — xem `activeTripIsSolo`);
+    new = chưa có event nào trong train."""
     gid = split.target_events[user].get("eventGroupId")
     if not gid or gid not in view.trips:
         return "new"

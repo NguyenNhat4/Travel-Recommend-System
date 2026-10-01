@@ -2,7 +2,9 @@
 
 Mô phỏng đúng các bộ lọc **cứng** của engine (`application/recommendation/use_cases.py`, `domain/recommendation/profile.py`):
 - profile: event quy về search unit, mỗi (trip, unit) giữ `MAX_REPEAT_PER_TRIP` event cũ nhất, trip = `eventGroupId` hoặc
-  `_solo_<productId>`; trip mở = trẻ nhất có tuổi ≤ `ACTIVE_TRIP_MAX_AGE_DAYS`; `bought_units` = mọi unit đã mua;
+  `_solo_<productId>`; trip mở = trẻ nhất trong các trip `trip_is_open` (chưa kết thúc theo `usingDate`, hoặc không có
+  `usingDate` và tuổi ≤ `ACTIVE_TRIP_MAX_AGE_DAYS` = 14; tuổi / ngày kết thúc / món đã mua xét trên mọi event, cap chỉ giới hạn
+  trọng số vector); `bought_units` = mọi unit đã mua;
 - mask: `recommendable` ∧ còn chỗ ∧ không phải unit đã mua; có trip mở thì thêm cùng điểm đến trip mở ∧ taxonomy chưa mua
   trong trip mở (mask theo điểm đến rỗng → bỏ điều kiện điểm đến, như engine);
 - không có trip nào → engine đi `_cold_start` (popular theo điểm đến / mùa): tính là `cold_start`, không mô phỏng.
@@ -21,9 +23,9 @@ from datetime import datetime
 import numpy as np
 
 from src.backend.app.application.ports import UnitIndex
-from src.backend.app.domain.recommendation.profile import DORMANT_AFTER_DAYS, MAX_REPEAT_PER_TRIP, trip_is_open
+from src.backend.app.domain.recommendation.profile import DORMANT_AFTER_DAYS, MAX_REPEAT_PER_TRIP, local_today, trip_is_open
 
-from .events import parse_ts
+from .events import parse_ts, trip_ends_on
 from .splits import Split
 
 REASONS = ("cold_start", "not_recommendable", "not_available", "already_bought", "taxonomy_excluded", "destination_mismatch",
@@ -39,7 +41,7 @@ class TripView:
     destination: str
     units: set[int]
     solo: bool
-    ends_on: object = None           # max(usingDate) — trip đang mở xét theo đây (FR-REC-02, 2026-10-02)
+    ends_on: object = None           # max(usingDate) trên mọi event của trip — trip đang mở xét theo đây (FR-REC-02, 01/10/2026)
 
 
 @dataclass
@@ -73,22 +75,6 @@ class EngineView:
         return "dormant" if min(t.age_days for t in self.trips.values()) > DORMANT_AFTER_DAYS else "long_term"
 
 
-def ends_on(events) -> object:
-    """max(usingDate) của một trip như `build_profile` (chuỗi ISO → date); không có → None."""
-    from datetime import date
-    out = None
-    for e in events:
-        v = e.get("usingDate")
-        if not v:
-            continue
-        try:
-            d = date.fromisoformat(str(v)[:10])
-        except ValueError:
-            continue
-        out = d if out is None or d > out else out
-    return out
-
-
 def engine_view(train: list[dict], index: UnitIndex, as_of: datetime, has_vector: set[str] | None = None) -> EngineView:
     """`has_vector`: productId của unit có vector; None = coi mọi unit đều có (run `vectorsMissing 0`)."""
     rows = []
@@ -100,8 +86,10 @@ def engine_view(train: list[dict], index: UnitIndex, as_of: datetime, has_vector
         days = max(0.0, (as_of - parse_ts(e["timestamp"])).total_seconds() / 86400)
         rows.append((days, e, unit, e.get("eventGroupId") or f"_solo_{pid}"))
     seen: Counter = Counter()
-    by_trip: dict[str, list] = defaultdict(list)
+    by_trip: dict[str, list] = defaultdict(list)      # sau cap lặp: n_events, điểm đến, units — như build_profile
+    every: dict[str, list] = defaultdict(list)        # mọi event: tuổi, ngày kết thúc, món đã mua
     for days, e, unit, tid in sorted(rows, key=lambda r: -r[0]):      # cũ trước, như build_profile
+        every[tid].append((days, e, unit))
         seen[(tid, unit)] += 1
         if seen[(tid, unit)] > MAX_REPEAT_PER_TRIP:
             continue
@@ -109,14 +97,15 @@ def engine_view(train: list[dict], index: UnitIndex, as_of: datetime, has_vector
     trips: dict[str, TripView] = {}
     bought: set[int] = set()
     for tid, evs in by_trip.items():
-        purchased = {str(index.taxonomy[u]) for _, e, u in evs if e.get("eventName") == "purchase"}
-        bought |= {u for _, e, u in evs if e.get("eventName") == "purchase"}
-        trips[tid] = TripView(tid, min(d for d, _, _ in evs), len(evs), purchased,
+        all_evs = every[tid]
+        purchased = {str(index.taxonomy[u]) for _, e, u in all_evs if e.get("eventName") == "purchase"}
+        bought |= {u for _, e, u in all_evs if e.get("eventName") == "purchase"}
+        trips[tid] = TripView(tid, min(d for d, _, _ in all_evs), len(evs), purchased,
                               str(Counter(str(index.destination[u]) for _, _, u in evs).most_common(1)[0][0]),
-                              {u for _, _, u in evs}, tid.startswith("_solo_"), ends_on(e for _, e, _ in evs))
+                              {u for _, _, u in evs}, tid.startswith("_solo_"), trip_ends_on(e for _, e, _ in all_evs))
     if not trips:
         return EngineView(0, {}, None)
-    today = as_of.date()
+    today = local_today(as_of)
     active = [t for t, v in trips.items() if trip_is_open(v.age_days, v.ends_on, today)]
     return EngineView(sum(v.n_events for v in trips.values()), trips,
                       min(active, key=lambda t: trips[t].age_days) if active else None, bought)

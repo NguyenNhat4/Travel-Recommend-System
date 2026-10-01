@@ -52,7 +52,7 @@ def _events(now: datetime, *rows: tuple) -> list[dict]:
 
 
 @pytest.mark.parametrize("expected, rows", [
-    # Chuyến đã đóng (> 60 ngày) nhưng chưa quá ngưỡng dormant.
+    # Chuyến đã đóng (không `usingDate`, quá ACTIVE_TRIP_MAX_AGE_DAYS = 14 ngày) nhưng chưa quá ngưỡng dormant.
     ("long_term", [("product_view", "A1", 100, "T9"), ("product_view", "G1", 100, "T9"),
                    ("purchase", "C1", 99, "T9")]),
     # Chuyến đang mở, mới một event, chưa mua.
