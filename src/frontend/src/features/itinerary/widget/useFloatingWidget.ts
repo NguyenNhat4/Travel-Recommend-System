@@ -3,7 +3,7 @@ import { useTravel } from '../../../context/TravelContext';
 import { useAssistant } from '../../../context/AssistantProvider';
 import { useAssistantCart, useBookItinerary } from '../../../hooks/useAssistantCart';
 import { isCartEligible } from '../../../services/booking';
-import { convertItineraryCompletedToGroundedPlan } from './widgetPlan';
+import { convertItineraryCompletedToGroundedPlan, locateProduct } from './widgetPlan';
 import type { WidgetPlan, WidgetChatMessage, ConversationSession } from './widgetTypes';
 
 export function useFloatingWidget() {
@@ -30,6 +30,8 @@ export function useFloatingWidget() {
   const [isChatCollapsed, setIsChatCollapsed] = useState<boolean>(false);
   const [hoveredCoordinate, setHoveredCoordinate] = useState<{ lat: number; lng: number } | null>(null);
   const [hoveredPointId, setHoveredPointId] = useState<string | null>(null);
+  // Sản phẩm vừa được bấm từ lời diễn giải trong chat: khung lịch trình cuộn tới và tô viền thẻ này.
+  const [focusedProductId, setFocusedProductId] = useState<string | null>(null);
   // History Conversation & Drawer States
   const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
   const [conversations, setConversations] = useState<ConversationSession[]>([]);
@@ -82,7 +84,9 @@ export function useFloatingWidget() {
         text: item.text,
         plan,
         clarificationForm: item.response?.status === 'NEEDS_CLARIFICATION' ? item.response.clarificationForm : undefined,
-        suggestions: item.response?.status === 'NO_RESULTS' ? item.response.suggestions : undefined,
+        suggestions: item.response?.status === 'NO_RESULTS' || item.response?.status === 'NEEDS_CLARIFICATION'
+          ? item.response.suggestions
+          : undefined,
       };
     });
   }, [assistantState.transcript]);
@@ -152,6 +156,22 @@ export function useFloatingWidget() {
   };
 
 
+  /** Bấm tên sản phẩm trong chat: mở khung lịch trình của đúng tin nhắn đó, chọn ngày chứa sản phẩm và focus thẻ + bản đồ. */
+  const focusProduct = (plan: WidgetPlan, productId: string) => {
+    const target = locateProduct(plan, productId);
+    if (!target) {
+      // Gói nhiều ngày để cân nhắc riêng không nằm trong lịch: mở trang chi tiết như thẻ sản phẩm ở panel.
+      window.open(`/product/${productId}`, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    setActivePlan(plan);
+    setIsExpanded(true);
+    setActiveDayTab(target.day);
+    setHoveredCoordinate(target.coordinate);
+    setHoveredPointId(target.pointId);
+    setFocusedProductId(productId);
+  };
+
   const handleCheckoutPlan = (e?: React.MouseEvent) => {
     if (e) {
       e.preventDefault();
@@ -201,6 +221,7 @@ export function useFloatingWidget() {
     resetConversation();
     setActiveSessionId('conv-' + Date.now());
     setActivePlan(null);
+    setFocusedProductId(null);
     setInputVal('');
     setIsChatCollapsed(false);
     setActiveDayTab(1);
@@ -228,7 +249,7 @@ export function useFloatingWidget() {
 
   return { isOpen, setIsOpen, isExpanded, setIsExpanded, activePlan, activeDayTab, setActiveDayTab,
     isCheckingOut, isChatCollapsed, setIsChatCollapsed, hoveredCoordinate, hoveredPointId,
-    setHoveredCoordinate, setHoveredPointId, isHistoryOpen, setIsHistoryOpen, conversations, activeSessionId,
+    setHoveredCoordinate, setHoveredPointId, focusedProductId, focusProduct, isHistoryOpen, setIsHistoryOpen, conversations, activeSessionId,
     assistantState, isRunning, messages, inputVal, setInputVal, chatScrollRef, retry, abort,
     handleSendMessage, handleQuickPrompt, handleConfirmTripDetails, handleCheckoutPlan, itemActions,
     handleStartNewChat, handleSelectConversation, handleDeleteConversation };

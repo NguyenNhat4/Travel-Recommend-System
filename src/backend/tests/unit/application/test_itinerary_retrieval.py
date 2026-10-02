@@ -2,7 +2,9 @@
 import asyncio
 from datetime import date
 
-from src.backend.app.application.itinerary.retrieval import DETAIL_FIELDS, collect, hydrate, nearest_open_date
+from src.backend.app.application.itinerary.retrieval import (
+    DETAIL_FIELDS, collect, drop_summary, hydrate, nearest_open_date,
+)
 
 INTENT = {"destination": "Nha Trang", "days": 2}
 
@@ -111,3 +113,46 @@ def test_nearest_open_date_ignores_products_dropped_for_other_reasons_and_needs_
     assert nearest_open_date(results, {}, dated_intent("2026-10-01"), {}, TODAY) is None
     results = [search_result(product("H3", **window))]
     assert nearest_open_date(results, {}, INTENT, {}, TODAY) is None
+
+
+def searched(taxonomy, *products):
+    return {"tool_call_id": f"call-{taxonomy}", "name": "search_products", "arguments": {"taxonomy": taxonomy},
+            "data": {"results": list(products), "total": len(products)}}
+
+
+def test_nearest_open_date_can_be_limited_to_one_taxonomy():
+    results = [search_result(product("H1", availableFrom="2026-10-15", availableTo="2026-10-16"),
+                             product("A1", taxonomy="attraction", availableFrom="2026-10-03", availableTo="2026-10-20"))]
+    intent = dated_intent("2026-10-02")
+    assert nearest_open_date(results, {}, intent, {}, TODAY) == "2026-10-03"
+    assert nearest_open_date(results, {}, intent, {}, TODAY, taxonomy="hotel") == "2026-10-15"
+
+
+def test_drop_summary_explains_a_taxonomy_dropped_entirely_for_its_dates():
+    # Trace nhat-10-1: mọi khách sạn Hà Nội chỉ mở bán 15–16/10, chuyến đi từ 02/10.
+    results = [searched("hotel", product("H1", availableFrom="2026-10-15", availableTo="2026-10-16"),
+                        product("H2", availableFrom="2026-10-15", availableTo="2026-10-17"))]
+    summary = drop_summary(results, {}, dated_intent("2026-10-02"), {}, TODAY)
+    assert summary == {"hotel": {"count": 2, "reason": "PRODUCT_DROPPED_DATE", "openFrom": "2026-10-15",
+                                 "openTo": "2026-10-17", "nearestOpenDate": "2026-10-15"}}
+
+
+def test_drop_summary_skips_taxonomies_that_still_have_a_candidate():
+    results = [search_result(product("H1", availableFrom="2026-10-15", availableTo="2026-10-16"),
+                             product("H2", availableFrom="2026-10-01", availableTo="2026-10-30"))]
+    assert drop_summary(results, {}, dated_intent("2026-10-02"), {}, TODAY) == {}
+
+
+def test_drop_summary_reports_the_most_common_reason_and_ignores_other_destinations():
+    results = [search_result(product("H1", unitPrice=3000000), product("H2", unitPrice=2500000),
+                             product("H3", available=False), product("H4", destination="Đà Nẵng"))]
+    constraints = {"hotel_price_max": 1000000}
+    summary = drop_summary(results, {}, INTENT, constraints, TODAY)["hotel"]
+    assert (summary["count"], summary["reason"]) == (3, "PRODUCT_DROPPED_PRICE")
+    assert (summary["openFrom"], summary["nearestOpenDate"]) == (None, None)
+
+
+def test_drop_summary_marks_a_searched_taxonomy_that_returned_nothing():
+    results = [searched("hotel"), searched("attraction", product("A1", taxonomy="attraction"))]
+    assert drop_summary(results, {}, INTENT, {}, TODAY) == {
+        "hotel": {"count": 0, "reason": None, "openFrom": None, "openTo": None, "nearestOpenDate": None}}

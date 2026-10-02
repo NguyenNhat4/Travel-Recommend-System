@@ -949,3 +949,43 @@
 # khoá `titleFirstLine` kiểm dòng đầu của câu trả lời là `**Tiêu đề**` kèm phần chi tiết. Đặt ở các case
 # hỏi lại xác định (G-063, G-064, G-065, G-073, G-075, G-077, G-078); G-074 (cảm ơn) kỳ vọng không có tiêu đề.
 # Không đặt ở G-046 (LLM có thể xếp vào chào hỏi hoặc ngoài phạm vi) và các case NO_RESULTS (kết quả phụ thuộc dữ liệu).
+
+# ---------------------------------------------------------------------------------------------------
+# G-079: thêm ngày 2026-09-30 (đề xuất đã chốt
+# docs/prd/update-archive/2026-09-30-hoi-lai-khi-doi-ma-chua-noi-cu-the.md). Sau khi đã có lịch, câu muốn đổi mà chưa nói
+# đổi thành gì ("đổi ngày", "đổi địa điểm") thì hỏi lại đúng thông tin đó, không gọi tool; nêu giá trị mới thì lập lịch.
+# "không đi nữa" chỉ kiểm phân luồng (`classify` ra travel, không bị chặn là ngoài phạm vi); cách trả lời chưa cố định.
+
+- id: G-079
+  category: multi_turn
+  fr: [FR-AGT-01, FR-AGT-05]
+  turns:
+    - message: đi Nha Trang 1 ngày, khởi hành {today+3}
+      expect:
+        httpStatus: 200
+        status: [COMPLETED, FALLBACK, NO_RESULTS]
+    - message: đổi ngày
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        missingFieldsInclude: [startDate]
+        toolCalled: false
+        titleFirstLine: true
+    - message: đổi sang ngày {today+5}
+      expect:
+        httpStatus: 200
+        status: [COMPLETED, FALLBACK, NO_RESULTS]
+        intent: {destination: Nha Trang, startDate: "{today+5:iso}"}
+        toolCalled: true
+    - message: đổi địa điểm
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        missingFieldsInclude: [destination]
+        toolCalled: false
+        titleFirstLine: true
+    - message: không đi nữa
+      expect:
+        httpStatus: 200
+        nodesInclude: [extract]
+        nodesExclude: [converse]

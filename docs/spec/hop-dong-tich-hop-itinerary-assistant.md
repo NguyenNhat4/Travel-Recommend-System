@@ -203,6 +203,14 @@ Quy tắc:
 
 Similar không mang danh tính người dùng ở mọi mode: endpoint trả giống nhau cho mọi người dùng (`hop-dong-tich-hop-backend.md` §4.3).
 
+### 2.6. Phạm vi search mặc định theo category
+
+Phục vụ FR-AGT-02, FR-AGT-03.
+
+`TOOL_PLAN_PROMPT` yêu cầu planner mặc định tìm cả ba category chuyến đi có thể dùng — `hotel`, `attraction` (tour/tham quan) và `golf` — mỗi loại một lời gọi `search_products` cho điểm đến, thay vì chỉ tìm `hotel`. Planner chỉ bỏ một loại khi người dùng chủ động yêu cầu loại trừ (`constraints.exclude_taxonomies`).
+
+Server không chỉ dựa vào prompt: `validated_plan` có lưới an toàn tất định chạy sau lưới an toàn Similar (§2.5) — với mỗi category trong `{hotel, attraction, golf}` không nằm trong `exclude_taxonomies` mà plan chưa có `search_products` cùng loại (hoặc một `search_products` không lọc `taxonomy`, vì search không lọc loại đã trả kết quả hỗn hợp mọi loại), server thêm `search_products(query=<điểm đến đã chuẩn hóa>, taxonomy=<loại đó>)` tất định. Best-effort như mọi lưới an toàn khác: hết trần 5 lời gọi mỗi lượt (§2.5) thì bỏ qua phần category còn thiếu, không huỷ lượt và không lỗi. Không có điểm đến chuẩn hóa (`intent.destination` trống) thì bỏ qua lưới này.
+
 ---
 
 ## 3. Team Agent cần từ Team Web/Backend
@@ -282,7 +290,7 @@ JWT là tùy chọn.
 
 Request hợp lệ khi có `message`, hoặc có đồng thời `conversationId` và `intentOverride`. `message` có tối đa 1.000 ký tự.
 
-`destination` và `days` là dữ liệu nghiệp vụ bắt buộc để bắt đầu retrieval và lập kế hoạch, nhưng không bắt buộc có sẵn trong request đầu tiên. Khi thiếu một hoặc cả hai, Agent trả `NEEDS_CLARIFICATION`, lưu phần intent đã biết cùng lịch sử chat gần đây theo `conversationId` và không gọi Search, Recommendation hoặc Catalog. Khi đã đủ điểm đến và số ngày, Agent hỏi **gộp một câu, một lần** những gì còn thiếu trong ngày đi (`startDate`), số người (`party`) và ngân sách (`budget`): trả `NEEDS_CLARIFICATION` với `missingFields` là tập con của `["startDate", "party", "budget"]` và chưa gọi tool (AC-AGT-01). Người dùng trả lời đủ, một phần hay nói chưa chốt thì lượt sau vẫn lập lịch với phần đã biết (trường còn thiếu để `null`), không hỏi lại. Chỉ hỏi trước lần lập lịch đầu tiên của hội thoại; câu đầu đã nói chưa chốt ngày thì ngày đi không tính là thiếu. Agent không tự điền `startDate` khi người dùng không nói ngày. Ngày không nêu năm dùng năm hiện tại theo giờ Việt Nam: nếu LLM trích ra năm cũ hơn (ví dụ `2023-09-20` cho "20/9") thì backend sửa về năm nay (`2026-09-20`); ngày không bị từ chối dù đã qua. Yêu cầu chỉ gồm `intentOverride` (chip sửa tay) không bị hỏi thêm. Trước bước này, `classify` phân luồng lượt chat: đặt chỗ, thanh toán, chèn lệnh hoặc đòi secret là ngoài phạm vi và bị từ chối (400 `VALIDATION_ERROR`) mà không trích intent. MVP không tự phát hiện ngôn ngữ để tránh kết quả không ổn định; thứ tự ưu tiên là `context.language` tường minh, ngôn ngữ đã lưu của conversation, rồi `vi`.
+`destination` và `days` là dữ liệu nghiệp vụ bắt buộc để bắt đầu retrieval và lập kế hoạch, nhưng không bắt buộc có sẵn trong request đầu tiên. Khi thiếu một hoặc cả hai, Agent trả `NEEDS_CLARIFICATION`, lưu phần intent đã biết cùng lịch sử chat gần đây theo `conversationId` và không gọi Search, Recommendation hoặc Catalog. Khi đã đủ điểm đến và số ngày, Agent hỏi **gộp một câu, một lần** những gì còn thiếu trong ngày đi (`startDate`), số người (`party`) và ngân sách (`budget`): trả `NEEDS_CLARIFICATION` với `missingFields` là tập con của `["startDate", "party", "budget"]` và chưa gọi tool (AC-AGT-01). Người dùng trả lời đủ, một phần hay nói chưa chốt thì lượt sau vẫn lập lịch với phần đã biết (trường còn thiếu để `null`), không hỏi lại. Chỉ hỏi trước lần lập lịch đầu tiên của hội thoại; câu đầu đã nói chưa chốt ngày thì ngày đi không tính là thiếu. Agent không tự điền `startDate` khi người dùng không nói ngày. Ngày không nêu năm dùng năm hiện tại theo giờ Việt Nam: nếu LLM trích ra năm cũ hơn (ví dụ `2023-09-20` cho "20/9") thì backend sửa về năm nay (`2026-09-20`); ngày không bị từ chối dù đã qua. Yêu cầu chỉ gồm `intentOverride` (chip sửa tay) không bị hỏi thêm. Trước bước này, `classify` phân luồng lượt chat: đặt chỗ, thanh toán, chèn lệnh hoặc đòi secret là ngoài phạm vi và bị từ chối (400 `VALIDATION_ERROR`) mà không trích intent. Trước cả LLM của `classify`, luật tất định lọc tin nhắn rác (NFR-SEC-04): gõ bậy, ký tự lặp, toàn ký hiệu trả `NEEDS_CLARIFICATION` 200 với câu cố định "Mình chưa hiểu ý bạn"; tục tĩu không kèm yêu cầu hợp lệ bị từ chối như chèn lệnh; cả hai không gọi LLM. Mỗi người gửi (user đăng nhập theo `cdp_user_id`, khách theo IP) gửi tối đa 10 tin/60 giây, vượt ngưỡng trả 429 `TOO_MANY_ATTEMPTS` kèm `Retry-After` (chi tiết: `docs/spec/agent/langgraph-nodes.md` mục "Guardrail tầng 1"). MVP không tự phát hiện ngôn ngữ để tránh kết quả không ổn định; thứ tự ưu tiên là `context.language` tường minh, ngôn ngữ đã lưu của conversation, rồi `vi`.
 
 #### API stream cho UI demo
 
@@ -303,7 +311,17 @@ Request giống `POST /assistant/itineraries`. Stream phát lần lượt `run.s
 
 ### 4.2. Response hoàn chỉnh
 
-Payload MVP chỉ bắt buộc `status`, `conversationId`, `itinerary` và `warnings`. Các trường `intent`, `searchResults` và `metadata` là tùy chọn.
+Payload MVP chỉ bắt buộc `status`, `conversationId`, `itinerary` và `warnings`. Các trường `intent`, `message`, `searchResults` và `metadata` là tùy chọn.
+
+`message` là lời diễn giải lịch trình hiển thị trong khung chat, do node `narrate` viết (LLM; dự phòng bằng luật). Dạng: dòng đầu `**Tiêu đề**`, khi lượt này đổi thông tin chuyến đi thì câu ngay sau đó ghi nhận thay đổi ("Mình ghi nhận đổi ngày đi thành 15/10/2026. Lịch trình mình gợi ý như sau:"; backend tự chèn nên luôn đúng), rồi các mục in đậm: nơi nghỉ, từng ngày, chi phí dự kiến, lưu ý. Quy tắc grounding: sản phẩm chỉ được nhắc bằng link `[Tên](product:<productId>)` với `productId` có trong `itinerary` (backend thay nhãn bằng tên canonical và chặn id lạ); mọi số tiền đến từ dữ liệu sản phẩm (`unitPrice`, `priceUnit`) hoặc `estimatedTotal` qua placeholder, LLM không được tự viết số tiền; cách ghi giá khi không có giá xem đoạn dưới. `itinerary.title` bằng tiêu đề này.
+
+Điểm tham quan hoặc golf không có giá (hoặc `ticketed=false`) được diễn giải là "tham quan tự do" (người dùng chốt ngày
+01/10/2026) và tính 0 đ vào `estimatedTotal`, kèm warning `FREE_ENTRY_ASSUMED` (`docs/prd/architecture.md` §3, đề xuất
+`docs/prd/update-archive/2026-10-01-diem-tham-quan-tu-do-tinh-0-vao-tong.md`). Khách sạn không có giá vẫn ghi "giá đang
+cập nhật" và làm tổng tiền thành `null`.
+Gói hoặc tour nhiều ngày không xếp vào slot. Chúng được trả trong `searchResults` của `COMPLETED` (tối đa 2 gói mỗi
+loại, đối chiếu grounding như `FALLBACK`), và `message` có mục cố định "Gói nhiều ngày để bạn cân nhắc riêng" hỏi
+người dùng có muốn thêm không. Bấm link của gói thì mở trang chi tiết sản phẩm.
 
 ```json
 {
@@ -350,7 +368,7 @@ Payload MVP chỉ bắt buộc `status`, `conversationId`, `itinerary` và `warn
 }
 ```
 
-Nếu `estimatedTotal=null`, `budgetStatus` bắt buộc là `UNKNOWN` và cần warning. Backend tính tổng khi đủ căn cứ; LLM không tính hoặc sửa giá.
+Nếu `estimatedTotal=null`, `budgetStatus` bắt buộc là `UNKNOWN` và cần warning. Backend tính tổng khi đủ căn cứ; LLM không tính hoặc sửa giá. Điểm tham quan tự do tính 0 đ, không phải "thiếu căn cứ".
 
 ### 4.3. Response cần hỏi thêm
 
@@ -446,15 +464,19 @@ câu**, các dòng sau là phần chi tiết. Không có field mới: tiêu đ�
 | Hỏi lại lần hai kèm `clarificationForm` | Điền nhanh thông tin chuyến đi | LLM (dự phòng cố định) |
 | Thông tin mâu thuẫn | Thông tin chuyến đi chưa khớp nhau | LLM (dự phòng cố định) |
 | Điều kiện bắt buộc không xác minh được | Chưa xác minh được yêu cầu của bạn | LLM (dự phòng cố định) |
-| Điều kiện bắt buộc không có sản phẩm nào | Chưa có sản phẩm đáp ứng yêu cầu bắt buộc | Cố định |
+| Điều kiện bắt buộc không có sản phẩm nào | Theo lý do (ví dụ "Khách sạn ở Hà Nội chưa mở bán cho ngày đi"); dự phòng: Chưa có sản phẩm đáp ứng yêu cầu bắt buộc | Cố định, có tham số |
 | Giá trị không hợp lệ | theo trường (ở trên) | LLM (dự phòng cố định) |
+| Muốn đổi mà chưa nói đổi thành gì ("đổi ngày", "đổi địa điểm") | Bạn muốn đổi thành gì? (LLM đặt tiêu đề theo trường đang hỏi) | LLM (dự phòng cố định) |
+| Nói loại nơi thay vì tên điểm đến ("đi biển", "biển Hà Nội") | Chọn điểm đến hợp ý bạn (LLM đặt tiêu đề theo loại, ví dụ "Chọn điểm đến có biển") | LLM (dự phòng cố định) |
 | Ngoài phạm vi (`error.message`, 400) | Ngoài phạm vi hỗ trợ | LLM (dự phòng cố định) |
-| Đầu vào bị guardrail chặn (`error.message`, 400) | Mình chưa thể hỗ trợ yêu cầu này | Cố định |
+| Đầu vào bị guardrail chặn (chèn lệnh, đòi secret, tục tĩu thuần) (`error.message`, 400) | Mình chưa thể hỗ trợ yêu cầu này | Cố định |
+| Tin nhắn rác: gõ bậy, ký tự lặp, toàn ký hiệu (`question`, 200) | Mình chưa hiểu ý bạn | Cố định |
 | `NO_RESULTS` không khớp sản phẩm | Chưa tìm thấy sản phẩm phù hợp | Cố định |
 | `NO_RESULTS` do ngày đi ngoài thời gian mở bán | Chưa có sản phẩm mở bán cho ngày này | Cố định |
 | `FALLBACK` | Chưa dựng được lịch trình hoàn chỉnh | Cố định |
 | Chào hỏi, cảm ơn | Không có tiêu đề | — |
-| `COMPLETED` và các lỗi hệ thống khác | Không áp dụng (lịch trình đã có `title`; khung lỗi riêng) | — |
+| `COMPLETED` | Do LLM đặt theo chuyến đi (dự phòng: "Lịch trình {days} ngày ở {destination}"); nằm ở dòng đầu `message` và ở `itinerary.title` | LLM (dự phòng cố định) |
+| Các lỗi hệ thống khác | Không áp dụng (khung lỗi riêng) | — |
 
 - LLM trả `title` cùng `message`; backend ghép `**title**` + xuống dòng + `message`, trim dấu `*`/khoảng trắng thừa và cắt tối đa 80 ký tự.
   Không có `title` hoặc LLM lỗi thì dùng tiêu đề cố định của trường hợp đó (bảng trên).
@@ -463,7 +485,7 @@ câu**, các dòng sau là phần chi tiết. Không có field mới: tiêu đ�
 
 **Giọng văn.** Mọi câu LLM viết ở `clarify` và `converse` ấm áp, 2–4 câu (từ chối và trò chuyện 1–3 câu): nói ngắn vì sao cần
 thông tin, cho ví dụ cách trả lời khi cần, không nêu tên sản phẩm. `ConversationalAnswer.message` tối đa 1.000 ký tự. Câu của
-`compose` (COMPLETED/NO_RESULTS/FALLBACK) không đổi.
+`compose` (COMPLETED/NO_RESULTS/FALLBACK) không đổi; lời diễn giải của `COMPLETED` do `narrate` viết (xem §4.2), giọng ấm áp như một người lập kế hoạch du lịch, mỗi lựa chọn có lý do cụ thể.
 
 ### 4.4. Response không có kết quả
 
@@ -477,7 +499,7 @@ thông tin, cho ví dụ cách trả lời khi cần, không nêu tên sản ph�
 ```
 
 Agent không lấp kết quả rỗng bằng sản phẩm do LLM tự tạo, và không tự đổi ràng buộc hay điểm đến thay người dùng
-(điều kiện bắt buộc chưa đáp ứng vẫn đi nhánh `NEEDS_CLARIFICATION`). Để người dùng không gặp ngõ cụt, `message` và
+(điều kiện bắt buộc chưa đáp ứng vẫn đi nhánh `NEEDS_CLARIFICATION`, xem §4.4.1). Để người dùng không gặp ngõ cụt, `message` và
 `suggestions` do backend dựng tất định từ dữ liệu thật của lượt đó, không do LLM viết:
 
 - `message` nêu ngày đi khi lý do phổ biến nhất khiến sản phẩm bị loại là ngày nằm ngoài cửa sổ mở bán
@@ -489,6 +511,29 @@ Agent không lấp kết quả rỗng bằng sản phẩm do LLM tự tạo, và
   3. tối đa hai điểm đến khác trong catalog, nhiều sản phẩm nhất trước, dạng `Đi <điểm đến> <n> ngày`.
   Không có mục nào thì trả một câu gợi ý chung.
 - Frontend hiện `suggestions` thành chip dưới bong bóng trả lời ở tin nhắn mới nhất; bấm chip gửi ngay câu đó.
+
+#### 4.4.1. Vì sao không có sản phẩm (điều kiện bắt buộc, lịch trình thiếu chỗ ở)
+
+Người dùng hỏi "không có hotel à", "sao không có khách sạn" thì lượt đó đi đường thường (`extract` đặt
+`require_hotel`, `tool` tìm lại); câu trả lời phải nêu **lý do thật** chứ không phải câu chung. `evaluate` tóm tắt
+lý do theo từng taxonomy không còn candidate (`drop_summary`, `retrieval.drop_summary`, cùng luật loại với
+`collect`): số sản phẩm đúng điểm đến đã tìm thấy rồi bị loại, lý do phổ biến nhất, cửa sổ mở bán (khi loại vì
+ngày), ngày khởi hành gần nhất còn bán; hoặc `count = 0` khi tìm riêng loại đó mà không ra gì.
+
+- **Điều kiện bắt buộc không có sản phẩm** (`NEEDS_CLARIFICATION`): `question` là câu cố định có tham số theo lý do,
+  không gọi LLM. Ví dụ ngày: "**Khách sạn ở Hà Nội chưa mở bán cho ngày đi** Mình tìm thấy 10 khách sạn ở Hà Nội,
+  nhưng dữ liệu hiện chỉ nhận đặt trong khoảng 15/10/2026–16/10/2026, không khớp chuyến của bạn từ 02/10/2026 đến
+  04/10/2026. Bạn muốn dời ngày khởi hành sang 15/10/2026, hay giữ ngày và lập lịch không kèm khách sạn?". Lý do khác:
+  vượt giá tối đa, không đạt tiêu chí (sao/tiện ích), không có tên đã nêu, tạm ngừng bán, không có sản phẩm nào.
+  Không biết lý do thì giữ câu chung "Chưa có sản phẩm đáp ứng yêu cầu bắt buộc". Field tuỳ chọn `suggestions`
+  (OpenAPI 1.13.0, tối đa 3) cùng ngữ nghĩa với `NO_RESULTS`: ngày gần nhất `Đổi ngày khởi hành sang dd/mm/yyyy` (câu đổi rõ ràng: "Đi … từ ngày …" sau một chuyến đã có ngày bị LLM đọc thành mâu thuẫn),
+  gợi ý nới đúng yêu cầu bị vướng, và với khách sạn `Đi <điểm đến> <n> ngày, không cần khách sạn`. Agent vẫn không
+  tự nới điều kiện thay người dùng.
+- **Lịch trình dựng được nhưng không có chỗ ở** (`COMPLETED`, chuyến ≥ 2 ngày, có tìm khách sạn): `warnings` có
+  `NO_STAY_AVAILABLE` với `message` nêu lý do (cửa sổ mở bán và ngày gần nhất khi loại vì ngày). Lời diễn giải có mục
+  "**Chưa có khách sạn**" do backend chèn trước mục chi phí; LLM được báo `no_stay_explained` để không tự nói lý do.
+- Cảnh báo `PRODUCT_DROPPED_DATE` của từng sản phẩm ghi cửa sổ mở bán thật ("Chỉ mở bán từ 15/10/2026 đến
+  16/10/2026, không khớp ngày khởi hành."); lý do loại khác giữ câu chung.
 
 ### 4.5. Response suy giảm
 
@@ -550,6 +595,7 @@ Lỗi thực sự không nằm trong `ItineraryResponse` và không dùng `statu
 9. Nếu LLM lỗi, Agent trả lịch trình dựng bằng rule, `FALLBACK`, hoặc lỗi HTTP có kiểm soát theo OpenAPI.
 10. Mục tiêu grounding là 100%.
 11. Mục tiêu độ trễ p95 toàn luồng dưới 5 giây.
+12. `compose` ưu tiên sản phẩm nguồn Search (gồm cả Similar, cùng nhãn `SEARCH`) hơn Recommendation cho cùng một chỗ trong lịch trình (stay hoặc slot hoạt động): một sản phẩm Recommendation chỉ được chọn khi không còn ứng viên Search nào khả dụng cho chỗ đó, kể cả khi ứng viên Search đắt hơn. Khi lịch trình có ít nhất một mục nguồn `RECOMMENDATION`, response kèm warning `RECOMMENDATION_FALLBACK` để acknowledge rõ với người dùng đây là gợi ý, không phải kết quả tìm kiếm; `source`/`because` của từng mục (§4.2, `ItemSource`) vẫn là căn cứ cá nhân hóa hay phổ biến theo `strategy` của `get_recommendations` (§2.4).
 
 ---
 
@@ -557,7 +603,7 @@ Lỗi thực sự không nằm trong `ItineraryResponse` và không dùng `statu
 
 - Mỗi conversation lưu trip intent đã chuẩn hóa gần nhất và lịch sử chat user/assistant gần đây.
 - Lịch sử chat chỉ nhận role `user`/`assistant`, tối đa 20 message, 1.000 ký tự/message và 8.000 ký tự tổng; khi vượt giới hạn thì bỏ message cũ nhất trước.
-- **Mọi** lượt gọi LLM (`classify`, `extract`, chọn tên điểm đến và lập tool plan ở `tool`, `converse`, `clarify`) nhận cùng ngữ cảnh hội thoại: lịch sử chat trong giới hạn trên, chuyến đi đã chốt (intent, ràng buộc), sản phẩm đã cho xem và câu hỏi gần nhất của trợ lý. Nhờ phần tóm tắt, thông tin của lượt cũ vẫn còn khi message cũ bị cắt. Ngữ cảnh là dữ liệu không tin cậy, không phải instruction, và message mới nhất vẫn có quyền cao hơn.
+- **Mọi** lượt gọi LLM (`classify`, `extract`, chọn tên điểm đến và lập tool plan ở `tool`, `converse`, `clarify`) nhận cùng ngữ cảnh hội thoại: lịch sử chat trong giới hạn trên, chuyến đi đã chốt (intent, ràng buộc), sản phẩm đã cho xem và câu hỏi gần nhất của trợ lý. Nhờ phần tóm tắt, thông tin của lượt cũ vẫn còn khi message cũ bị cắt. Ngữ cảnh là dữ liệu không tin cậy, không phải instruction, và message mới nhất vẫn có quyền cao hơn. Ngữ cảnh được diễn giải sẵn: chuyến đi đã chốt là một dòng tóm tắt, tin trợ lý cũ là ghi chú ngắn theo nghĩa ("gửi lịch trình Hà Nội 3 ngày: …") thay vì cả bài kèm giá; câu hỏi gần nhất giữ nguyên văn khi ngắn (`docs/spec/agent/langgraph-nodes.md`, mục "Ngữ cảnh cho LLM").
 - Tin nhắn mới chỉ cập nhật các trường người dùng thay đổi rõ ràng.
 - “Đổi thành Đà Nẵng” chỉ thay `destination`.
 - “Tăng ngân sách lên 20 triệu” chỉ thay `budget`.
@@ -590,7 +636,7 @@ Nếu caller chưa gửi, service đầu tiên sẽ tạo ID.
 | Một request Search | 1 giây |
 | Một request Recommendation | 1 giây |
 | LLM trích xuất intent | 2 giây |
-| LLM trình bày lịch trình | 3 giây |
+| LLM trình bày lịch trình (`narrate`; quá hạn thì dùng bản dựng bằng luật) | 3 giây |
 | Toàn bộ request Agent | Mục tiêu dưới 5 giây |
 
 Hạn mỗi lời gọi tool lấy từ `ITINERARY_TOOL_TIMEOUT_SECONDS`, áp như nhau ở mọi data mode. Ở `inprocess`, engine đồng bộ chạy trên pool riêng 40 thread (`itinerary-tool`) và giữ request ID của lượt. Thread đã bắt đầu không dừng được khi quá hạn, giống thread của route sync ở mode `http`. Riêng Similar đi qua use case `GetSimilarProducts` như route, nên chạy trên executor mặc định chứ không qua pool này: nó không embed, chỉ chờ Weaviate, và mỗi lượt đổi món có tối đa 2 lời gọi.

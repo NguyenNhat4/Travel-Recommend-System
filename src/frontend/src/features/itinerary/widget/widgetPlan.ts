@@ -2,6 +2,7 @@ import { productFromApi } from '../../../services/catalog';
 import type { components } from '../../../types/api.gen';
 import type { Product, ItineraryDay, ItinerarySlot } from '../../../types/travel';
 import { itineraryCartItems } from '../../../components/assistant/AssistantResultPanel';
+import { SLOT_TIME_FROM_API } from '../../../services/assistant';
 import type { WidgetPlan } from './widgetTypes';
 
 const DESTINATION_COORDINATES: Record<string, { lat: number; lng: number }> = {
@@ -13,6 +14,15 @@ const DESTINATION_COORDINATES: Record<string, { lat: number; lng: number }> = {
   'Hạ Long': { lat: 20.9501, lng: 107.0734 },
   'Hà Nội': { lat: 21.0285, lng: 105.8542 },
 };
+
+/**
+ * Điểm tham quan tự do: điểm tham quan/golf có `ticketed=false` hoặc chưa có giá. Backend tính 0 đ vào tổng
+ * (`docs/prd/architecture.md` §3), nên Web ghi "Tham quan tự do" thay vì để trống hay ghi 0 ₫.
+ */
+export function isFreeToVisit(product: Pick<Product, 'taxonomy' | 'unitPrice' | 'attributes'>): boolean {
+  if (product.attributes?.ticketed === false) return true;
+  return product.unitPrice == null && (product.taxonomy === 'attraction' || product.taxonomy === 'golf');
+}
 
 function adaptProductSummaryToProduct(summary: components['schemas']['ProductSummary']): Product {
   const product = productFromApi(summary);
@@ -41,24 +51,15 @@ export function convertItineraryCompletedToGroundedPlan(
     because: response.itinerary.stay.because as any,
   } : undefined;
 
-  const timeRanges: Record<string, string> = {
-    morning: '08:00 - 11:30',
-    noon: '11:45 - 13:30',
-    afternoon: '14:30 - 17:30',
-    evening: '18:00 - 21:00',
-  };
-
   const days: ItineraryDay[] = response.itinerary.days.map((d) => {
     const slots: ItinerarySlot[] = d.slots.map((s) => {
       const product = s.product ? adaptProductSummaryToProduct(s.product) : undefined;
       const title = s.product?.name || s.activityType || s.note || 'Hoạt động trải nghiệm';
       const locName = s.product?.name || s.product?.destination || dest;
-      const timeRange = (s.startTime && s.endTime) ? `${s.startTime} - ${s.endTime}` : (timeRanges[s.time] || '08:00 - 11:30');
       const coords = product?.coordinates || defaultCoords;
 
       return {
-        time: s.time as any,
-        timeRange,
+        time: SLOT_TIME_FROM_API[s.time],
         activityTitle: title,
         locationName: locName,
         productId: s.product?.productId,
@@ -96,4 +97,35 @@ export function convertItineraryCompletedToGroundedPlan(
     bookableProductsCount: response.itinerary.bookableCount ?? days.reduce((acc, cur) => acc + cur.slots.filter(s => !!s.product).length, 0),
     cartItems: itineraryCartItems(response.itinerary, response.intent?.party),
   };
+}
+
+export interface ProductFocus {
+  day: number;
+  pointId: string;
+  coordinate: { lat: number; lng: number } | null;
+}
+
+/**
+ * Vị trí của một sản phẩm trong lịch trình để khung bên phải focus: ngày chứa nó, id điểm trên bản đồ
+ * (cùng quy ước với `WidgetDays`) và toạ độ. Khách sạn lưu trú thuộc ngày đầu; không có thì `null`.
+ */
+export function locateProduct(plan: WidgetPlan, productId: string): ProductFocus | null {
+  let step = 0;
+  for (const day of plan.days) {
+    const index = day.slots.findIndex((slot) => slot.productId === productId);
+    if (index >= 0) {
+      const slot = day.slots[index];
+      return {
+        day: day.day,
+        pointId: `day-${day.day}-slot-${slot.time}-${step + index + 1}`,
+        coordinate: slot.coordinates || slot.product?.coordinates || null,
+      };
+    }
+    step += day.slots.length;
+  }
+  const stay = plan.stay;
+  if (stay?.productId === productId) {
+    return { day: plan.days[0]?.day ?? 1, pointId: `stay-${productId}`, coordinate: stay.product?.coordinates || null };
+  }
+  return null;
 }

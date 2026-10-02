@@ -66,6 +66,7 @@ const NODE_LABEL: Record<string, string> = {
   tool: 'Tìm sản phẩm',
   evaluate: 'Kiểm tra kết quả',
   compose: 'Xếp lịch trình',
+  narrate: 'Viết lời tư vấn',
   retry: 'Thử lại',
   dead_letter: 'Chuyển sang phương án dự phòng',
   finalize: 'Hoàn tất',

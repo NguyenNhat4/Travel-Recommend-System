@@ -140,6 +140,19 @@ describe('floating assistant opening', () => {
     expect(mocks.sendMessage).toHaveBeenCalledWith('Đi Hà Nội 3 ngày từ ngày 24/10/2026');
   });
 
+  it('shows chips when a required hotel has no product and explains why', () => {
+    const question = '**Khách sạn ở Hà Nội chưa mở bán cho ngày đi**\nMình tìm thấy 10 khách sạn ở Hà Nội.';
+    const response = { status: 'NEEDS_CLARIFICATION' as const, conversationId: 'c1', question,
+      suggestions: ['Đổi ngày khởi hành sang 15/10/2026', 'Đi Hà Nội 3 ngày, không cần khách sạn'] };
+    mocks.state = { ...mocks.state, phase: 'needs_clarification', response, transcript: [
+      { id: 'user-1', sender: 'user', text: 'không có hotel à', createdAt: 1 },
+      { id: 'assistant-1', sender: 'assistant', text: question, response, createdAt: 2 },
+    ] };
+    open();
+    fireEvent.click(screen.getByRole('button', { name: 'Đi Hà Nội 3 ngày, không cần khách sạn' }));
+    expect(mocks.sendMessage).toHaveBeenCalledWith('Đi Hà Nội 3 ngày, không cần khách sạn');
+  });
+
   it('drops the chips once a later message exists', () => {
     const response = { status: 'NO_RESULTS' as const, conversationId: 'c1', message: 'Hiện chưa có sản phẩm.',
       suggestions: ['Đi Huế 3 ngày'] };

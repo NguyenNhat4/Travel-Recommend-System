@@ -517,7 +517,7 @@ Ví dụ sửa chip "3 ngày → 2 ngày":
 
 | `status` | Khi nào | Web render |
 |---|---|---|
-| `COMPLETED` | Có kế hoạch | Panel kế hoạch + thẻ tóm tắt trong chat |
+| `COMPLETED` | Có kế hoạch | Panel kế hoạch + lời diễn giải `message` trong chat: dòng đầu `**Tiêu đề**` và các mục in đậm; link `[Tên](product:<productId>)` hiện thành nút, bấm thì mở rộng widget, chọn tab ngày chứa sản phẩm, cuộn và tô viền thẻ đó ở panel và focus điểm trên bản đồ (`WidgetChat.tsx`, `useFloatingWidget.focusProduct`, `widgetPlan.locateProduct`). Không có `message` thì hiện `itinerary.title`, rồi câu cố định. Chỉ `**đậm**` và link sản phẩm được render, mọi markdown/HTML khác hiện nguyên chữ (`inlineBold.parseAssistantText`) |
 | `NEEDS_CLARIFICATION` | Thiếu `destination`, `days`, hoặc chưa hỏi `startDate`/`party`/`budget`; hoặc có giá trị không hợp lệ (ngày đã qua, điểm đến ngoài catalog, số ngày/số người/ngân sách ngoài giới hạn) | Thẻ hỏi lại có lựa chọn; có `clarificationForm` (từ lượt hỏi thứ hai) thì hiện form đã điền sẵn thay cho chip. Dòng đầu `question` dạng `**Tiêu đề**` hiển thị **chữ đậm** (bong bóng chat, widget nổi và thẻ hỏi lại tách tiêu đề khỏi phần thân). Cùng dạng cho `message` của `NO_RESULTS`/`FALLBACK` (thẻ kết quả tách tiêu đề thành tiêu đề thẻ) và `error.message` của lỗi `VALIDATION_ERROR` 400 (khung lỗi in đậm dòng đầu); tên khi chia sẻ/lưu lấy từ tiêu đề |
 | `NO_RESULTS` | Search không có sản phẩm phù hợp | Tin nhắn + chip `suggestions` |
 | `FALLBACK` | LLM lỗi nhưng Search chạy được | Tin nhắn fallback + panel "Dịch vụ gợi ý ở {destination}" |
@@ -579,11 +579,11 @@ Trường chung mọi `status`: `status`, `conversationId`, `metadata`.
 | `slots[].source` | `SEARCH` \| `RECOMMENDATION` khi có `product`; `null` khi không |
 | `slots[].because` | Schema `BecauseItem` của `/recommendations`. Chỉ khác rỗng khi `source = RECOMMENDATION` |
 | `bookableCount` | Số mục có `product.available = true`, gồm cả `stay` |
-| `estimatedTotal` | Integer VND do backend tính (không phải LLM), theo `intent.party` và công thức §2.6 hợp đồng Backend. Chỉ gồm chi phí các sản phẩm trong lịch trình. `null` khi có mục thiếu giá hoặc thiếu `priceUnit` — nghĩa là **chưa tính được**, Web không được hiển thị thành `0`. Người dùng có nêu `budget` không làm trường này thành `null` |
+| `estimatedTotal` | Integer VND do backend tính (không phải LLM), theo `intent.party` và công thức §2.6 hợp đồng Backend. Chỉ gồm chi phí các sản phẩm trong lịch trình. `null` khi có mục thiếu giá hoặc thiếu `priceUnit` — nghĩa là **chưa tính được**, Web không được hiển thị thành `0`. Ngoại lệ: điểm tham quan/golf không có giá hoặc `ticketed=false` là "tham quan tự do", backend tính 0 đ vào tổng và Web ghi "Tham quan tự do" ở mục đó, không ghi 0 ₫. Người dùng có nêu `budget` không làm trường này thành `null` |
 | `budgetStatus` | `WITHIN_BUDGET` \| `OVER_BUDGET` \| `NO_BUDGET` \| `UNKNOWN`. `NO_BUDGET` khi `intent.budget = null`; `UNKNOWN` chỉ khi `estimatedTotal = null`. So sánh đặt trên chi phí sản phẩm, không phải chi phí cả chuyến |
 | `priceAsOf` | Thời điểm lấy giá; Web ghi "giá tại thời điểm tạo kế hoạch" |
 | `searchResults` | Object key `taxonomy` → `ProductSummary[]`, tối đa 6 mỗi nhóm. Có mặt kể cả khi `COMPLETED`, phục vụ "Tìm lựa chọn khác" |
-| `warnings[]` | `{ code, message, productId }` — ví dụ `PRODUCT_DROPPED_UNAVAILABLE`, `DAY_WITHOUT_PRODUCTS`. Về tiền: `PRODUCT_COST_ONLY` (tổng chỉ gồm sản phẩm) luôn đi kèm `estimatedTotal` khác `null`; `BUDGET_ON_PRODUCT_COST` thêm vào khi người dùng có nêu ngân sách; `UNKNOWN_TOTAL` thay cho cả hai khi `estimatedTotal = null` |
+| `warnings[]` | `{ code, message, productId }` — ví dụ `PRODUCT_DROPPED_UNAVAILABLE`, `DAY_WITHOUT_PRODUCTS`. Về tiền: `PRODUCT_COST_ONLY` (tổng chỉ gồm sản phẩm) luôn đi kèm `estimatedTotal` khác `null`; `BUDGET_ON_PRODUCT_COST` thêm vào khi người dùng có nêu ngân sách; `FREE_ENTRY_ASSUMED` thêm vào khi tổng có điểm tham quan tự do (tính 0 đ); `UNKNOWN_TOTAL` thay cho cả ba khi `estimatedTotal = null`. `NO_STAY_AVAILABLE`: lịch không có chỗ ở, `message` nêu lý do (lời diễn giải đã có mục "Chưa có khách sạn") |
 
 #### `NEEDS_CLARIFICATION`
 
@@ -598,6 +598,8 @@ Trường chung mọi `status`: `status`, `conversationId`, `metadata`.
   "metadata": { "personalised": false, "searchRequestIds": [], "generatedAt": "2026-09-16T08:00:00Z", "requestId": "agent-01JXYZ" }
 }
 ```
+
+**Field tuỳ chọn `suggestions`** (OpenAPI 1.13.0): khi điều kiện bắt buộc (khách sạn, khách sạn/hoạt động cụ thể) không có sản phẩm nào, `question` nêu lý do thật và `suggestions` là câu gửi được nguyên văn (ví dụ `Đổi ngày khởi hành sang 15/10/2026`, `Đi Hà Nội 3 ngày, không cần khách sạn`). Widget hiện thành chip như `NO_RESULTS` (`useFloatingWidget.ts`, `SuggestionChips.tsx`).
 
 `missingFields` chỉ nhận `destination` \| `days` \| `startDate` \| `party` \| `budget`. Ba giá trị sau đi cùng nhau trong một câu hỏi gộp và không có chip gợi ý: câu hỏi hiện như tin nhắn của trợ lý và người dùng trả lời bằng cách gõ.
 
@@ -656,6 +658,7 @@ Không đạt → không render thẻ; hiển thị dòng mờ "Mục này hiệ
 ### 9.6. Hội thoại
 
 - Web giữ `conversationId` trong state của route `/assistant` và `sessionStorage` (khóa `vota.assistant.conversationId`), xóa khi đổi tài khoản.
+- Khi tải lại trang, Web chờ phiên đăng nhập được khôi phục rồi nạp transcript và response gần nhất qua `GET /assistant/conversations/{conversationId}` cho người dùng đã đăng nhập. Chỉ ID được giữ trong browser storage; khách không nạp archive lâu dài. Response lịch sử đến muộn sau khi tạo cuộc mới, gửi tin, đổi tài khoản hoặc rời trang bị bỏ qua. Lỗi tạm thời giữ ID và cho thử tải lại; hội thoại không còn tồn tại thì xóa ID.
 - Khi đã đăng nhập, Web hiển thị nút **Lịch sử**, tải danh sách từ backend và cho chọn một hội thoại để nạp transcript. Khách không thấy lịch sử lâu dài.
 - Kế hoạch không tự cập nhật giá. Giỏ và Checkout luôn dùng giá mới nhất.
 - Không stream trong v1: Web hiện danh sách 3 bước với một spinner chung, không đánh ✓ giả (`docs/product.md` §6.1).

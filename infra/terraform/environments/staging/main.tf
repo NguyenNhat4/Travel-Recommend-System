@@ -5,15 +5,12 @@ locals {
     component   = "database"
     role        = "replica"
   }
-
-  primary_nic = data.google_compute_instance.db_primary.network_interface[0]
-  primary_sa  = data.google_compute_instance.db_primary.service_account[0]
 }
 
 # The replica reuses the primary's network, service account and scopes, so it
 # is reachable and can pull images exactly like the primary does. In the default
 # network, default-allow-internal already lets it reach the primary on 5432 and
-# default-allow-ssh covers SSH (IAP included), so no firewall resources are needed.
+# default-allow-ssh covers SSH (IAP included).
 resource "google_compute_instance" "db_replica" {
   name         = var.db_replica_vm_name
   machine_type = var.machine_type
@@ -21,6 +18,11 @@ resource "google_compute_instance" "db_replica" {
   labels       = local.labels
 
   allow_stopping_for_update = true
+
+  # OS Login: CI and people sign in with their IAM identity instead of ssh-keys in metadata.
+  metadata = {
+    enable-oslogin = "TRUE"
+  }
 
   boot_disk {
     initialize_params {
@@ -31,8 +33,9 @@ resource "google_compute_instance" "db_replica" {
   }
 
   network_interface {
-    network    = local.primary_nic.network
-    subnetwork = local.primary_nic.subnetwork
+    network    = "default"
+    subnetwork = local.subnetwork
+    network_ip = google_compute_address.db_replica_internal.address
 
     dynamic "access_config" {
       for_each = var.assign_external_ip ? [1] : []
@@ -41,7 +44,11 @@ resource "google_compute_instance" "db_replica" {
   }
 
   service_account {
-    email  = local.primary_sa.email
-    scopes = tolist(local.primary_sa.scopes)
+    email  = google_compute_instance.db_primary.service_account[0].email
+    scopes = tolist(google_compute_instance.db_primary.service_account[0].scopes)
+  }
+
+  lifecycle {
+    ignore_changes = [metadata["ssh-keys"]]
   }
 }

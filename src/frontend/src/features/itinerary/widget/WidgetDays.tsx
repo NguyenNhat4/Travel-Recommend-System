@@ -1,7 +1,16 @@
 import React from 'react';
 import { Hotel, ExternalLink, MapPin, Clock } from 'lucide-react';
 import { getHotelVisuals, getSlotVisualUrl } from './widgetVisuals';
+import { isFreeToVisit } from './widgetPlan';
 import type { FloatingWidgetController } from './useFloatingWidget';
+import type { ItinerarySlot } from '../../../types/travel';
+
+const SLOT_PERIOD_LABEL: Record<ItinerarySlot['time'], string> = {
+  morning: 'Buổi sáng',
+  noon: 'Buổi trưa',
+  afternoon: 'Buổi chiều',
+  evening: 'Buổi tối',
+};
 
 function ItemActions({ actions }: { actions: ReturnType<FloatingWidgetController['itemActions']> }) {
   if (!actions) return null;
@@ -23,10 +32,19 @@ function ItemActions({ actions }: { actions: ReturnType<FloatingWidgetController
 }
 
 export function WidgetDays({ widget }: { widget: FloatingWidgetController }) {
-  const { activePlan, activeDayTab, setHoveredCoordinate, setHoveredPointId, itemActions } = widget;
+  const { activePlan, activeDayTab, setHoveredCoordinate, setHoveredPointId, focusedProductId, itemActions } = widget;
+  const listRef = React.useRef<HTMLDivElement>(null);
+  // Bấm tên sản phẩm trong chat: sau khi tab ngày đã đổi, cuộn thẻ vào giữa khung.
+  React.useEffect(() => {
+    if (!focusedProductId) return;
+    const card = Array.from(listRef.current?.querySelectorAll<HTMLElement>('[data-product-id]') ?? [])
+      .find((element) => element.dataset.productId === focusedProductId);
+    card?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [focusedProductId, activeDayTab, activePlan]);
   if (!activePlan) return null;
+  const focusRing = (productId?: string) => (productId && productId === focusedProductId ? ' ring-2 ring-blue-500' : '');
   return (
-<div className="flex-1 overflow-y-auto p-4 space-y-4 bg-white">
+<div ref={listRef} className="flex-1 overflow-y-auto p-4 space-y-4 bg-white">
   {/* Render Days (Tất cả các ngày hoặc ngày đang chọn) */}
   {activePlan.days
     .filter((d) => activeDayTab === 0 || d.day === activeDayTab)
@@ -62,6 +80,7 @@ export function WidgetDays({ widget }: { widget: FloatingWidgetController }) {
 
                 {/* Hotel Card trong Lộ trình - Layout ưu tiên VISUAL TO RÕ (Ít nhất 2 ảnh: Biệt Thự & Hồ Bơi) */}
                 <div
+                  data-product-id={stayForThisDay.product.id}
                   onClick={() => {
                     if (stayForThisDay.product) {
                       window.open(`/product/${stayForThisDay.product.id}`, '_blank', 'noopener,noreferrer');
@@ -77,7 +96,7 @@ export function WidgetDays({ widget }: { widget: FloatingWidgetController }) {
                     setHoveredCoordinate(null);
                     setHoveredPointId(null);
                   }}
-                  className="p-3.5 sm:p-4 rounded-2xl bg-white border border-slate-100 cursor-pointer space-y-3"
+                  className={`p-3.5 sm:p-4 rounded-2xl bg-white border border-slate-100 cursor-pointer space-y-3${focusRing(stayForThisDay.product.id)}`}
                 >
                   {/* Row 1: Header / Giá phòng */}
                   <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-100">
@@ -141,11 +160,7 @@ export function WidgetDays({ widget }: { widget: FloatingWidgetController }) {
             {/* Các chặng hoạt động trong ngày - ƯU TIÊN VISUAL TO RÕ */}
             {dayItem.slots.map((slot, sIdx) => {
               const stepNumber = dayStartOrder + sIdx + 1;
-              const formattedTimeRange = slot.timeRange || (
-                slot.time === 'morning' ? '08:30 - 11:30' :
-                slot.time === 'noon' ? '11:45 - 13:30' :
-                slot.time === 'afternoon' ? '14:30 - 17:30' : '18:00 - 21:00'
-              );
+              const slotPeriod = SLOT_PERIOD_LABEL[slot.time];
 
               const stopTitle = slot.activityTitle || (slot.product ? slot.product.name : 'Hoạt động trải nghiệm');
               const locationTitle = slot.locationName || (slot.product ? slot.product.name : slot.address ? slot.address.split(',')[0] : 'Khu vực trung tâm');
@@ -160,6 +175,7 @@ export function WidgetDays({ widget }: { widget: FloatingWidgetController }) {
 
                   {/* Stop Card - Layout ưu tiên VISUAL TO RÕ - KHÔNG HOVER ANIMATIONS */}
                   <div
+                    data-product-id={slot.product?.id}
                     onClick={() => {
                       if (slot.product) {
                         window.open(`/product/${slot.product.id}`, '_blank', 'noopener,noreferrer');
@@ -176,14 +192,14 @@ export function WidgetDays({ widget }: { widget: FloatingWidgetController }) {
                       setHoveredCoordinate(null);
                       setHoveredPointId(null);
                     }}
-                    className={`p-3.5 sm:p-4 rounded-2xl bg-white border border-slate-100 space-y-3 ${slot.product ? 'cursor-pointer' : ''}`}
+                    className={`p-3.5 sm:p-4 rounded-2xl bg-white border border-slate-100 space-y-3 ${slot.product ? 'cursor-pointer' : ''}${focusRing(slot.product?.id)}`}
                   >
-                    {/* Row 1: Khung giờ + Phân loại dịch vụ + Địa điểm */}
+                    {/* Row 1: Buổi + Phân loại dịch vụ + Địa điểm */}
                     <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-100 flex-wrap">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-blue-50 text-blue-700 text-xs font-black font-mono tracking-wide">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-blue-50 text-blue-700 text-xs font-bold">
                           <Clock className="w-3.5 h-3.5 text-blue-600" />
-                          {formattedTimeRange}
+                          {slotPeriod}
                         </span>
                         {slot.product && (
                           <span className="px-2.5 py-0.5 rounded-lg bg-slate-100 text-slate-700 text-xs font-semibold">
@@ -204,7 +220,9 @@ export function WidgetDays({ widget }: { widget: FloatingWidgetController }) {
                         {stopTitle}
                       </h4>
                       <div className="flex items-center gap-2 shrink-0">
-                        {slot.product && slot.product.unitPrice != null && (
+                        {slot.product && isFreeToVisit(slot.product) ? (
+                          <span className="text-xs font-bold text-emerald-700">Tham quan tự do</span>
+                        ) : slot.product && slot.product.unitPrice != null && (
                           <span className="text-sm font-black font-mono text-indigo-950">
                             {slot.product.unitPrice.toLocaleString('vi-VN')} ₫
                           </span>

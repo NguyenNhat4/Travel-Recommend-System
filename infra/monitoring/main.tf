@@ -106,6 +106,38 @@ resource "google_logging_metric" "staging_container_oom" {
   }
 }
 
+resource "google_logging_metric" "staging_container_disk_bytes" {
+  name        = "${var.name_prefix}_container_disk_bytes"
+  description = "Disk used per container: writable layer + json logs + named volumes, sampled by vota-container-disk-collector."
+  filter      = "resource.type=\"gce_instance\" AND jsonPayload.event=\"container_disk\""
+  # Distribution buckets are 10% wide, so percentile readings are accurate to about +/-5%. Exact bytes stay in the log entries.
+  value_extractor = "EXTRACT(jsonPayload.total_bytes)"
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "DISTRIBUTION"
+    unit        = "By"
+
+    labels {
+      key         = "container_name"
+      value_type  = "STRING"
+      description = "Docker container name."
+    }
+  }
+
+  label_extractors = {
+    container_name = "EXTRACT(jsonPayload.container_name)"
+  }
+
+  bucket_options {
+    exponential_buckets {
+      num_finite_buckets = 200
+      growth_factor      = 1.1
+      scale              = 1048576
+    }
+  }
+}
+
 resource "google_logging_metric" "staging_docker_watcher_heartbeat" {
   name        = "${var.name_prefix}_docker_watcher_heartbeat"
   description = "Heartbeat emitted by the Docker lifecycle event watcher."
@@ -531,6 +563,46 @@ resource "google_monitoring_alert_policy" "staging_crawler_failure" {
   }
 }
 
+# A new log-based metric takes a few minutes to become usable by alert policies (404 otherwise).
+resource "terraform_data" "container_disk_metric_ready" {
+  triggers_replace = [google_logging_metric.staging_container_disk_bytes.id]
+
+  provisioner "local-exec" {
+    command = "sleep 180"
+  }
+}
+
+resource "google_monitoring_alert_policy" "staging_container_disk" {
+  depends_on            = [terraform_data.container_disk_metric_ready]
+  display_name          = "${var.name_prefix} container disk usage high"
+  combiner              = "OR"
+  notification_channels = local.notification_channels
+  user_labels           = local.common_labels
+
+  conditions {
+    display_name = "A container uses more than ${var.container_disk_alert_gib} GiB of disk"
+    condition_threshold {
+      filter          = "resource.type=\"gce_instance\" metric.type=\"logging.googleapis.com/user/${google_logging_metric.staging_container_disk_bytes.name}\""
+      comparison      = "COMPARISON_GT"
+      threshold_value = var.container_disk_alert_gib * 1073741824
+      duration        = "0s"
+
+      aggregations {
+        alignment_period     = "600s"
+        per_series_aligner   = "ALIGN_PERCENTILE_99"
+        cross_series_reducer = "REDUCE_MAX"
+        group_by_fields      = ["metric.label.container_name"]
+      }
+    }
+  }
+
+  alert_strategy { auto_close = "3600s" }
+  documentation {
+    content   = "A container's writable layer, json logs and named volumes exceed ${var.container_disk_alert_gib} GiB. Open the 'Container disk usage' panels on the dashboard, then check `docker system df -v` and /var/log/vota/container-disk.jsonl on the App VM. A shared named volume is counted in every container that mounts it."
+    mime_type = "text/markdown"
+  }
+}
+
 resource "google_monitoring_alert_policy" "staging_container_stop" {
   display_name          = "${var.name_prefix} service container stopped"
   combiner              = "OR"
@@ -706,6 +778,34 @@ resource "google_monitoring_dashboard" "staging" {
           title = "Weaviate container logs"
           logsPanel = {
             filter        = "resource.type=\"gce_instance\" AND resource.labels.instance_id=\"${data.google_compute_instance.app.instance_id}\" AND jsonPayload.container_name=\"vota-weaviate\""
+            resourceNames = ["projects/${var.project_id}"]
+          }
+        },
+        {
+          title = "Container disk usage (writable + logs + volumes)"
+          xyChart = {
+            dataSets = [{
+              plotType   = "LINE"
+              targetAxis = "Y1"
+              timeSeriesQuery = {
+                unitOverride = "By"
+                timeSeriesFilter = {
+                  filter = "resource.type=\"gce_instance\" metric.type=\"logging.googleapis.com/user/${google_logging_metric.staging_container_disk_bytes.name}\""
+                  aggregation = {
+                    alignmentPeriod    = "300s"
+                    perSeriesAligner   = "ALIGN_PERCENTILE_99"
+                    crossSeriesReducer = "REDUCE_MAX"
+                    groupByFields      = ["metric.label.container_name"]
+                  }
+                }
+              }
+            }]
+          }
+        },
+        {
+          title = "Container disk usage (exact samples)"
+          logsPanel = {
+            filter        = "resource.type=\"gce_instance\" AND resource.labels.instance_id=\"${data.google_compute_instance.app.instance_id}\" AND jsonPayload.event=\"container_disk\""
             resourceNames = ["projects/${var.project_id}"]
           }
         },

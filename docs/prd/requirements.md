@@ -32,7 +32,7 @@ Tài liệu này đặc tả chi tiết toàn bộ các yêu cầu chức năng 
   - Người dùng ẩn danh / Chưa đăng nhập: Gợi ý các sản phẩm thịnh hành (`trending`), phổ biến theo điểm đến hoặc ưu đãi mùa lễ hội.
   - Người dùng có hồ sơ: Gợi ý dựa trên vector lịch sử tương tác, phân khúc hành vi và mức chi tiêu trung bình.
 - **FR-REC-02 (Khép kín vòng lặp sau mua - Trip-based Next Best Action):**
-  - Khi người dùng vừa đặt phòng khách sạn tại điểm đến X, hệ thống phải ưu tiên gợi ý vé máy bay đến X và các hoạt động trải nghiệm tại X.
+  - Khi người dùng vừa đặt phòng khách sạn tại điểm đến X **và chuyến đó chưa diễn ra xong** (ngày sử dụng `usingDate` của các sản phẩm trong chuyến chưa qua, hoặc chưa có ngày sử dụng và đặt trong vòng N ngày), hệ thống phải ưu tiên gợi ý vé máy bay đến X và các hoạt động trải nghiệm tại X (loại các loại sản phẩm đã mua trong chuyến). **Sau khi chuyến đã diễn ra xong**, hệ thống gợi ý cho chuyến kế tiếp: không loại loại sản phẩm đã mua, không khoá điểm đến X; dùng lịch sử dài hạn và mức phổ biến. *(Chốt 2026-10-01, đề xuất `update-archive/2026-10-01-category-exclusion-theo-chuyen-dang-dien-ra.md`; N là tham số engine.)*
 - **FR-REC-03 (Khả năng giải thích minh bạch - Explainable Recs):** Mọi đề xuất cá nhân hóa trên giao diện phải đi kèm lý do rõ ràng trong trường `because` (Ví dụ: *"Dành cho bạn vì bạn vừa xem các resort tại Phú Quốc"*, *"Phù hợp với chuyến du lịch gia đình"*).
 - **FR-REC-04 (Tái sắp xếp - Reranking):** Sắp xếp thứ tự danh sách sản phẩm dựa trên trọng số kết hợp giữa độ liên quan ngữ nghĩa, mức độ ưa chuộng của cộng đồng và tính khả dụng của sản phẩm.
 
@@ -112,6 +112,7 @@ Tài liệu này đặc tả chi tiết toàn bộ các yêu cầu chức năng 
   - Ngoại lệ duy nhất: công cụ vận hành "xem DB" trên monitor job cào được **đọc** mọi bảng của database `vota` (`cdp`, `catalog`, `app`) bằng SQL, chỉ trong transaction chỉ đọc; không ghi, không có ô nhập SQL tự do. Code nghiệp vụ vẫn chỉ đi qua `CdpClient`.
   - Sử dụng cơ chế Role-Based Access Control (RBAC) nghiêm ngặt trong PostgreSQL cho từng role kết nối (`vota_app`, `cdp_writer`, `cdp_reader`).
 - **NFR-SEC-03 (Dữ liệu thanh toán):** V-OTA không nhận, lưu hay ghi log dữ liệu thẻ; trang nhập thẻ do Stripe host. Khoá Stripe chỉ nằm ở Backend. Webhook phải được kiểm chữ ký `Stripe-Signature` trước khi xử lý, và xử lý phải idempotent vì Stripe có thể gửi trùng hoặc sai thứ tự.
+- **NFR-SEC-04 (Lọc đầu vào trợ lý và giới hạn tần suất):** Trước khi gọi LLM, trợ lý lọc tin nhắn rác bằng luật tất định (rỗng/chỉ ký hiệu, ký tự lặp, tỉ lệ chữ cái thấp, gõ bậy theo tỉ lệ âm tiết tiếng Việt/từ tiếng Anh hợp lệ, tục tĩu theo blacklist). Rác thì trả câu cố định "chưa hiểu" (`NEEDS_CLARIFICATION`, 200); tục tĩu không kèm yêu cầu hợp lệ thì từ chối (400 `VALIDATION_ERROR`). Không gọi LLM ở cả hai trường hợp. Câu trả lời ngắn hợp lệ (số ngày, ngày, số người, ngân sách, "ok") không bị chặn. Mỗi người dùng/khách bị giới hạn số tin gửi trợ lý trong một cửa sổ thời gian; vượt ngưỡng trả 429 `TOO_MANY_ATTEMPTS` kèm `Retry-After`.
 
 ### 2.4. Khả Năng Mở Rộng & Bảo Trì (Scalability & Maintainability)
 - **NFR-MAINT-01 (Clean Architecture):** Mã nguồn Backend phải tuân thủ kiến trúc phân lớp sạch, tách biệt hoàn toàn giữa lớp nghiệp vụ (Domain/Application) và lớp giao tiếp bên ngoài (Infrastructure/Framework).

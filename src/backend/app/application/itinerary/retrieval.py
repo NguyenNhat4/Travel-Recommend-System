@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+from collections import Counter
 from copy import deepcopy
 from datetime import date
 
 from src.backend.app.application.ports.itinerary_tools import CatalogPort
 from src.backend.app.domain.itinerary.types import (
-    Candidates, Constraints, Product, Sources, ToolErrorPayload, ToolResult, TripIntent,
+    Candidates, Constraints, DropSummary, Product, Sources, ToolErrorPayload, ToolResult, TripIntent,
 )
 
 from src.backend.app.application.itinerary.tool_contracts import SIMILAR_PRODUCTS
@@ -116,11 +117,12 @@ def collect(tool_results: list[ToolResult], details: dict[str, Product], intent:
 
 
 def nearest_open_date(tool_results: list[ToolResult], details: dict[str, Product], intent: TripIntent,
-                      constraints: Constraints, today: date) -> str | None:
+                      constraints: Constraints, today: date, taxonomy: str | None = None) -> str | None:
     """Ngày khởi hành gần `startDate` nhất mà có sản phẩm bị loại vì `DATE` đang mở bán; None khi không có.
 
     Chỉ xét sản phẩm mà `_drop_reason` xếp là DATE (đã đúng điểm đến, còn bán, không bị loại loại/giá), nên
     ngày trả về đặt lại chuyến là có sản phẩm thật. Không bao giờ sớm hơn `today` hay muộn hơn `availableTo`.
+    `taxonomy` giới hạn ở một loại sản phẩm (ví dụ ngày gần nhất có khách sạn).
     """
     if not intent.get("startDate"):
         return None
@@ -133,6 +135,8 @@ def nearest_open_date(tool_results: list[ToolResult], details: dict[str, Product
             if not product_id:
                 continue
             product = {**details.get(product_id, {}), **projection}
+            if taxonomy is not None and product.get("taxonomy") != taxonomy:
+                continue
             if _drop_reason(product, intent, constraints) != "PRODUCT_DROPPED_DATE":
                 continue
             opens = date.fromisoformat(product["availableFrom"]) if product.get("availableFrom") else visit
@@ -143,3 +147,54 @@ def nearest_open_date(tool_results: list[ToolResult], details: dict[str, Product
             if best is None or abs(nearest - visit) < abs(best - visit):
                 best = nearest
     return best.isoformat() if best else None
+
+
+#: Lý do loại không nói gì về nguồn cung ở điểm đến này: sản phẩm nơi khác, hoặc do chính người dùng loại ra.
+NOT_SUPPLY_REASONS = {"PRODUCT_DROPPED_DESTINATION", "PRODUCT_DROPPED_EXCLUDED", "PRODUCT_DROPPED_TAXONOMY"}
+
+
+def drop_summary(tool_results: list[ToolResult], details: dict[str, Product], intent: TripIntent,
+                 constraints: Constraints, today: date) -> dict[str, DropSummary]:
+    """Vì sao từng taxonomy không còn candidate nào, để câu trả lời nêu được lý do thật thay vì câu chung.
+
+    Một taxonomy có mục khi nó không còn candidate và: hoặc có sản phẩm đúng điểm đến bị loại (lý do phổ biến
+    nhất, cửa sổ mở bán, ngày gần nhất), hoặc đã được tìm riêng (`search_products` có `taxonomy`) mà không ra gì
+    (`count = 0`). Mọi giá trị lấy từ kết quả tool của lượt này, cùng luật `_drop_reason` với `collect()`.
+    """
+    kept: set[str] = set()
+    dropped: dict[str, dict[str, str]] = {}  # taxonomy → productId → reason (một sản phẩm đếm một lần)
+    windows: dict[str, list[tuple[str | None, str | None]]] = {}
+    searched: set[str] = set()
+    for result in tool_results:
+        if result.get("name") == "search_products" and (result.get("arguments") or {}).get("taxonomy"):
+            searched.add(result["arguments"]["taxonomy"])
+        data = result.get("data", {})
+        similar = result.get("name") == SIMILAR_PRODUCTS
+        for projection in (*data.get("results", []), *data.get("recommendations", [])):
+            product_id = projection.get("productId")
+            if not product_id:
+                continue
+            product = {**details.get(product_id, {}), **projection}
+            taxonomy = product.get("taxonomy")
+            if not taxonomy or (similar and _off_destination(product, intent)):
+                continue
+            reason = _drop_reason(product, intent, constraints)
+            if reason is None:
+                kept.add(taxonomy)
+            elif reason not in NOT_SUPPLY_REASONS:
+                dropped.setdefault(taxonomy, {})[product_id] = reason
+                if reason == "PRODUCT_DROPPED_DATE":
+                    windows.setdefault(taxonomy, []).append((product.get("availableFrom"), product.get("availableTo")))
+    summary: dict[str, DropSummary] = {}
+    for taxonomy in sorted((set(dropped) | searched) - kept):
+        reasons = Counter(dropped.get(taxonomy, {}).values())
+        opens = [start for start, _ in windows.get(taxonomy, []) if start]
+        closes = [end for _, end in windows.get(taxonomy, []) if end]
+        summary[taxonomy] = {
+            "count": sum(reasons.values()),
+            "reason": reasons.most_common(1)[0][0] if reasons else None,
+            "openFrom": min(opens) if opens else None,
+            "openTo": max(closes) if closes else None,
+            "nearestOpenDate": nearest_open_date(tool_results, details, intent, constraints, today, taxonomy=taxonomy),
+        }
+    return summary

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 
 from src.backend.app.application.itinerary.contracts import valid
@@ -11,9 +10,10 @@ from src.backend.app.application.itinerary.tool_contracts import (
 )
 from src.backend.app.application.ports.itinerary_tools import ToolError, ToolExecutorPort
 from src.backend.app.domain.itinerary.normalization import match_destination
+from src.backend.app.domain.itinerary.planning import SCHEDULABLE_TAXONOMIES
 
 from ..models import DestinationChoice
-from .history import llm_context
+from .history import llm_context, prompt_yaml
 from .messages import chat_model, event, failure, message
 from .prompts import DESTINATION_PROMPT, SIMILAR_HINT, TOOL_PLAN_PROMPT
 
@@ -45,7 +45,7 @@ async def _choose_destination(state: dict, value: str, supported: list[str], llm
     """Let the model pick from the catalog's own destination names; the answer is verified against them."""
     payload = {"user_destination": value, "catalog_destinations": supported, **llm_context(state)}
     result = await asyncio.wait_for(chat_model(llm).with_structured_output(DestinationChoice).ainvoke([
-        ("system", DESTINATION_PROMPT), ("human", json.dumps(payload, ensure_ascii=False))]),
+        ("system", DESTINATION_PROMPT), ("human", prompt_yaml(payload))]),
         timeout_seconds)
     chosen = DestinationChoice.model_validate(result).destination
     return chosen if chosen in supported else None
@@ -85,7 +85,9 @@ async def check_destination(state: dict, update: dict, *, tools: ToolExecutorPor
     Không lấy được catalog thì giữ nguyên: `tool` vẫn kiểm lần nữa.
     """
     intent = update.get("intent") or {}
-    if update.get("decision") == "error" or not intent.get("destination"):
+    # Hỏi chọn điểm đến theo loại ("đi biển") cần danh sách catalog để LLM gợi ý, kể cả khi chưa có điểm đến.
+    by_kind = update.get("clarification_reason") == "destination_kind"
+    if update.get("decision") == "error" or not (intent.get("destination") or by_kind):
         return update
     if not getattr(tools, "supports_catalog", False):
         return update
@@ -94,6 +96,9 @@ async def check_destination(state: dict, update: dict, *, tools: ToolExecutorPor
         supported = await catalog_destinations(tools, timeout_seconds)
     if supported is None:
         return update
+    if by_kind:
+        # Điểm đến đang có (người dùng muốn đổi sang loại khác) giữ nguyên, không đem đi khớp lại.
+        return {**update, "supported_destinations": supported}
     checked = dict(intent)
     changed: list[str] = []
     rejected = await canonical_destination(state, checked, changed, supported, llm, llm_timeout_seconds)
@@ -283,6 +288,16 @@ def validated_plan(state: dict, plan: list, *, require_recommendations: bool = F
             if not _has_room(state, validated):
                 raise ToolError("INVALID_TOOL_PLAN")
             _append_search(state, validated, None)
+    # Mặc định tìm cả hotel/attraction/golf, trừ loại người dùng đã loại trừ; một search không lọc taxonomy
+    # (None) coi như đã phủ mọi loại vì nó trả kết quả hỗn hợp. Best-effort giống Similar: hết trần MAX_CALLS
+    # thì bỏ qua phần còn thiếu, không huỷ lượt — planner có thể đã tự phủ đủ qua TOOL_PLAN_PROMPT.
+    exclude_taxonomies = state.get("constraints", {}).get("exclude_taxonomies", [])
+    covered = {call["args"].get("taxonomy") for call in validated if call["name"] == "search_products"}
+    if state.get("intent", {}).get("destination") and None not in covered:
+        for taxonomy in sorted(SCHEDULABLE_TAXONOMIES - set(exclude_taxonomies)):
+            if taxonomy not in covered and _has_room(state, validated):
+                _append_search(state, validated, taxonomy)
+                covered.add(taxonomy)
     # Đánh số sau cùng để id liên tục dù đã bỏ lời gọi Similar.
     return [{"id": f"call-{index}", **call} for index, call in enumerate(validated)]
 
@@ -308,7 +323,7 @@ def _planner_input(state: dict, intent: dict, constraints: dict,
         payload["previous_selection"] = [{key: item[key] for key in ("productId", "name", "taxonomy") if key in item}
                                          for item in selection]
     system = f"{TOOL_PLAN_PROMPT} {SIMILAR_HINT}" if offer_similar else TOOL_PLAN_PROMPT
-    messages = [("system", system), ("human", json.dumps(payload, ensure_ascii=False))]
+    messages = [("system", system), ("human", prompt_yaml(payload))]
     return definitions, messages, frozenset(d["name"] for d in definitions)
 
 
@@ -321,8 +336,10 @@ async def build_plan(state: dict, intent: dict, constraints: dict, *, tools: Too
         plan, offered = state.get("tool_plan"), None
         if not plan:  # plan đã lưu (lần retry) chạy lại nguyên trạng, không hỏi LLM và không đọc definitions()
             definitions, prompt, offered = _planner_input(state, intent, constraints, tools.definitions())
-            response = await asyncio.wait_for(chat_model(llm).bind_tools(definitions).ainvoke(prompt),
-                                              llm_timeout_seconds)
+            # "any" bắt planner gọi ít nhất một tool: không ép thì câu như "không đổi nữa" ngay sau câu hỏi đổi
+            # điểm đến khiến LLM trả lời bằng câu chat, plan rỗng và cả lượt rơi vào dead_letter.
+            bound = chat_model(llm).bind_tools(definitions, tool_choice="any")
+            response = await asyncio.wait_for(bound.ainvoke(prompt), llm_timeout_seconds)
             plan = response.tool_calls
         plan = validated_plan({**state, "intent": intent, "constraints": constraints}, plan,
                               require_recommendations=require_recommendations, offered=offered)

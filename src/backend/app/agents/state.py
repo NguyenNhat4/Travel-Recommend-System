@@ -8,7 +8,7 @@ from operator import add
 from pydantic import BaseModel, Field
 
 from src.backend.app.domain.itinerary.types import (
-    Candidates, Constraints, PlanWarning, Product, Sources, ToolCall, ToolErrorPayload, ToolResult,
+    Candidates, Constraints, DropSummary, PlanWarning, Product, Sources, ToolCall, ToolErrorPayload, ToolResult,
     TripIntent,
 )
 
@@ -42,6 +42,7 @@ class AgentState(TypedDict, total=False):
     conversation_id: str
     conversation_history: list[dict[str, str]]
     intent: TripIntent
+    previous_intent: TripIntent
     intent_override: TripIntent
     constraints: Constraints
     missing_fields: list[str]
@@ -51,10 +52,12 @@ class AgentState(TypedDict, total=False):
     invalid_inputs: list[dict[str, Any]]
     refusal: bool
     blocked_by_guardrail: str | None
+    unclear_input: str | None
     candidates: Candidates
     sources: Sources
     warnings: list[PlanWarning]
     nearest_open_date: str | None
+    drop_summary: dict[str, DropSummary]
     response: dict[str, Any]  # `ItineraryResponse` envelope; contract-owned, see domain/itinerary/types.py
     http_status: int
     decision: str
@@ -65,6 +68,7 @@ class AgentState(TypedDict, total=False):
     details: dict[str, Product]
     detail_errors: dict[str, ToolErrorPayload]
     supported_destinations: list[str] | None
+    destination_kind: str | None
     language: str
     previous_selection: list[Product]
 

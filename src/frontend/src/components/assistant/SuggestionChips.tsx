@@ -1,6 +1,7 @@
 import React from 'react';
 
-/** Gợi ý bấm được của phản hồi NO_RESULTS; bấm là gửi ngay câu đó làm lượt chat kế tiếp. */
+/** Gợi ý bấm được của phản hồi NO_RESULTS và NEEDS_CLARIFICATION (điều kiện bắt buộc chưa có sản phẩm);
+ * bấm là gửi ngay câu đó làm lượt chat kế tiếp. */
 export function SuggestionChips({ suggestions, onSelect, disabled }: {
   suggestions: string[];
   onSelect: (suggestion: string) => void;

@@ -1650,7 +1650,7 @@ export interface components {
             days: components["schemas"]["ItineraryDay"][];
             /** @description Số mục ứng viên checkout demo có available=true và giá khác null, loại ticketed=false và bản ghi cha khi đã chọn con; không xác nhận tồn kho. */
             bookableCount?: number;
-            /** @description Backend tính tổng khi đủ đơn vị/số lượng; thiếu thì null, budgetStatus UNKNOWN và warning. Không bỏ qua khoản chưa biết. */
+            /** @description Backend tính tổng khi đủ đơn vị/số lượng; thiếu thì null, budgetStatus UNKNOWN và warning. Không bỏ qua khoản chưa biết. Điểm tham quan tự do (attraction/golf có ticketed=false hoặc unitPrice null) tính 0 vào tổng, kèm warning FREE_ENTRY_ASSUMED. */
             estimatedTotal: number | null;
             currency: components["schemas"]["Currency"];
             budgetStatus: components["schemas"]["BudgetStatus"];
@@ -1688,6 +1688,9 @@ export interface components {
                 days?: number;
             };
             itinerary: components["schemas"]["ItineraryPlan"];
+            /** @description Lời diễn giải lịch trình hiển thị trong khung chat. Dòng đầu có dạng `**Tiêu đề**` (markdown in đậm), các mục sau mở đầu bằng một dòng in đậm. Khi lượt này đổi thông tin chuyến đi, câu ngay sau tiêu đề ghi nhận thay đổi đó. Sản phẩm chỉ được nhắc bằng link `[Tên](product:<productId>)`, với `productId` có trong `itinerary` và tên sao chép từ dữ liệu; giá trong câu lấy từ dữ liệu sản phẩm và `estimatedTotal`. Không có trường này thì client hiển thị `itinerary.title`. */
+            message?: string;
+            /** @description Gói hoặc tour nhiều ngày (vé dùng 2 ngày trở lên, tour 3N2Đ...) tìm được nhưng không xếp vào một buổi của lịch trình, để người dùng cân nhắc riêng; `message` có mục hỏi người dùng có muốn thêm không. Không tính vào `estimatedTotal`. */
             searchResults?: components["schemas"]["SearchResultsByTaxonomy"];
             warnings: components["schemas"]["ItineraryWarning"][];
             metadata?: components["schemas"]["ItineraryMetadata"];
@@ -1717,6 +1720,8 @@ export interface components {
                  */
                 startDateMin?: string;
             };
+            /** @description Tuỳ chọn (1.13.0). Câu yêu cầu gửi được nguyên văn làm lượt chat kế tiếp, cùng ngữ nghĩa với `ItineraryNoResults.suggestions`. Có khi điều kiện bắt buộc (khách sạn, khách sạn hoặc hoạt động cụ thể) không có sản phẩm nào đáp ứng, ví dụ ngày khởi hành gần nhất còn bán hoặc lập lịch không cần khách sạn. */
+            suggestions?: string[];
             metadata?: components["schemas"]["ItineraryMetadata"];
         };
         ItineraryNoResults: {
@@ -2747,6 +2752,7 @@ export interface operations {
             401: components["responses"]["Error"];
             404: components["responses"]["Error"];
             422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
             500: components["responses"]["Error"];
             503: components["responses"]["Error"];
         };
@@ -2777,6 +2783,7 @@ export interface operations {
                 };
             };
             422: components["responses"]["Error"];
+            429: components["responses"]["Error"];
             503: components["responses"]["Error"];
         };
     };

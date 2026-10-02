@@ -18,6 +18,7 @@ import {
   type AssistantStreamEvent,
 } from '../services/assistantStream';
 import { getAssistantConversation } from '../services/assistantHistory';
+import { ApiError } from '../services/http';
 
 const CONVERSATION_STORAGE_KEY = 'vota.assistant.conversationId';
 type IntentOverride = components['schemas']['TripIntentPatch'];
@@ -45,7 +46,7 @@ function id() {
 }
 
 function assistantError(error: unknown): AssistantError {
-  if (error instanceof AssistantStreamError) {
+  if (error instanceof AssistantStreamError || error instanceof ApiError) {
     return {
       code: error.code,
       message: error.message,
@@ -100,14 +101,15 @@ function intentDescription(intent: IntentOverride) {
 }
 
 export function AssistantProvider({ children }: { children: ReactNode }) {
-  const { currentLocale, currentPersona } = useTravel();
+  const { currentLocale, currentPersona, authReady } = useTravel();
   const [state, dispatch] = useReducer(assistantReducer, null, () => createInitialAssistantState());
   const activeRunIdRef = useRef<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const hydrationCompleteRef = useRef(false);
+  const historyVersionRef = useRef(0);
   const previousPersonaRef = useRef<string | null | undefined>(undefined);
 
   const abortCurrentRun = useCallback(() => {
+    historyVersionRef.current += 1;
     const controller = abortControllerRef.current;
     if (controller && !controller.signal.aborted) controller.abort();
     abortControllerRef.current = null;
@@ -115,6 +117,17 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (!authReady) return;
+    const personaId = currentPersona?.id ?? null;
+    if (previousPersonaRef.current !== undefined) {
+      if (previousPersonaRef.current !== personaId) {
+        abortCurrentRun();
+        dispatch({ type: 'reset' });
+        previousPersonaRef.current = personaId;
+        return;
+      }
+    }
+    previousPersonaRef.current = personaId;
     let conversationId: string | null = null;
     try {
       conversationId = window.sessionStorage.getItem(CONVERSATION_STORAGE_KEY);
@@ -122,31 +135,30 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       // Storage can be unavailable in privacy-restricted contexts; runtime remains usable.
     }
     dispatch({ type: 'hydrate-conversation', conversationId });
-    hydrationCompleteRef.current = true;
-  }, []);
+    if (conversationId && personaId) {
+      const version = historyVersionRef.current;
+      void getAssistantConversation(conversationId).then((detail) => {
+        if (version === historyVersionRef.current) dispatch({ type: 'conversation-loaded', detail });
+      }).catch((error: unknown) => {
+        if (version !== historyVersionRef.current) return;
+        if (error instanceof ApiError && error.code === 'CONVERSATION_NOT_FOUND') {
+          dispatch({ type: 'reset' });
+        } else {
+          dispatch({ type: 'request-failed', error: assistantError(error) });
+        }
+      });
+    }
+  }, [authReady, currentPersona?.id, abortCurrentRun]);
 
   useEffect(() => {
-    if (!hydrationCompleteRef.current) return;
+    if (!state.isHydrated) return;
     try {
       if (state.conversationId) window.sessionStorage.setItem(CONVERSATION_STORAGE_KEY, state.conversationId);
       else window.sessionStorage.removeItem(CONVERSATION_STORAGE_KEY);
     } catch {
       // The backend session remains usable for this tab even if browser storage is disabled.
     }
-  }, [state.conversationId]);
-
-  useEffect(() => {
-    const personaId = currentPersona?.code ?? null;
-    if (previousPersonaRef.current === undefined) {
-      previousPersonaRef.current = personaId;
-      return;
-    }
-    if (previousPersonaRef.current !== personaId) {
-      abortCurrentRun();
-      dispatch({ type: 'reset' });
-      previousPersonaRef.current = personaId;
-    }
-  }, [currentPersona?.code, abortCurrentRun]);
+  }, [state.conversationId, state.isHydrated]);
 
   useEffect(() => () => abortCurrentRun(), [abortCurrentRun]);
 
@@ -196,7 +208,11 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
             executeRequestRef.current?.({ ...request, conversationId: null }, userText, false);
             return;
           }
-          dispatch({ type: 'request-failed', error });
+          // Ngoài phạm vi (đặt chỗ, chèn lệnh, chuyện ngoài du lịch): backend trả VALIDATION_ERROR kèm câu từ chối
+          // của trợ lý — hiện như tin nhắn thường, không phải khung lỗi.
+          dispatch(error.code === 'VALIDATION_ERROR'
+            ? { type: 'request-refused', text: error.message }
+            : { type: 'request-failed', error });
           activeRunIdRef.current = null;
         }
       },
@@ -241,8 +257,16 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   const retry = useCallback(() => {
     if (state.lastRequest) {
       executeRequest(state.lastRequest, state.lastRequest.message || 'Tiếp tục cập nhật lịch trình', false);
+    } else if (state.conversationId && currentPersona?.id) {
+      abortCurrentRun();
+      const version = historyVersionRef.current;
+      void getAssistantConversation(state.conversationId).then((detail) => {
+        if (version === historyVersionRef.current) dispatch({ type: 'conversation-loaded', detail });
+      }).catch((error: unknown) => {
+        if (version === historyVersionRef.current) dispatch({ type: 'request-failed', error: assistantError(error) });
+      });
     }
-  }, [executeRequest, state.lastRequest]);
+  }, [abortCurrentRun, currentPersona?.id, executeRequest, state.lastRequest, state.conversationId]);
 
   const abort = useCallback(() => {
     if (!activeRunIdRef.current) return;
@@ -257,8 +281,9 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
 
   const loadConversation = useCallback(async (conversationId: string) => {
     abortCurrentRun();
+    const version = historyVersionRef.current;
     const detail = await getAssistantConversation(conversationId);
-    dispatch({ type: 'conversation-loaded', detail });
+    if (version === historyVersionRef.current) dispatch({ type: 'conversation-loaded', detail });
   }, [abortCurrentRun]);
 
   const value = useMemo<AssistantContextValue>(() => ({

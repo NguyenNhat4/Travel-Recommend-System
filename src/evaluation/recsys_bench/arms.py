@@ -16,10 +16,10 @@ from time import perf_counter
 import numpy as np
 
 from src.backend.app.application.ports import UnitIndex
-from src.backend.app.domain.recommendation.profile import ACTIVE_TRIP_MAX_AGE_DAYS
+from src.backend.app.domain.recommendation.profile import MAX_REPEAT_PER_TRIP, local_today, trip_is_open
 
 from .engine import POPULARITY_WINDOW_DAYS, OfflineEngine   # cửa sổ 90 ngày khai một chỗ, vào configHash (B3)
-from .events import parse_ts
+from .events import parse_ts, trip_ends_on
 
 
 @dataclass
@@ -46,22 +46,33 @@ class RandomArm:
 
 
 def trip_destination(index: UnitIndex, events: list[dict], as_of: datetime) -> str | None:
-    """Điểm đến của chuyến **đang mở** (trẻ nhất, tuổi ≤ `ACTIVE_TRIP_MAX_AGE_DAYS`) hoặc, nếu không có, chuyến gần nhất.
+    """Điểm đến của chuyến **đang mở** (như engine: chưa kết thúc theo `usingDate`, hoặc không có `usingDate` và tuổi ≤
+    `ACTIVE_TRIP_MAX_AGE_DAYS`; trẻ nhất) hoặc, nếu không có, chuyến gần nhất.
 
     Trip = `eventGroupId`, thiếu thì `_solo_<productId>` như `use_cases.py`; điểm đến = điểm đến xuất hiện nhiều nhất
     trong các event (đã quy về search unit) của chuyến đó. Không có event quy được → None (baseline lùi về toàn cục).
     """
-    trips: dict[str, list[tuple[float, int]]] = defaultdict(list)
+    rows = []
     for e in events:
         unit = index.resolve(str(e.get("productId") or ""))
         if unit is None:
             continue
         days_ago = (as_of - parse_ts(e["timestamp"])).total_seconds() / 86400
-        trips[e.get("eventGroupId") or f"_solo_{e['productId']}"].append((days_ago, unit))
+        rows.append((days_ago, e, unit, e.get("eventGroupId") or f"_solo_{e['productId']}"))
+    trips: dict[str, list[tuple[float, int]]] = defaultdict(list)     # sau cap lặp: điểm đến, như build_profile
+    raw: dict[str, list[tuple[float, dict]]] = defaultdict(list)      # mọi event: tuổi, ngày kết thúc
+    seen: Counter = Counter()
+    for days_ago, e, unit, tid in sorted(rows, key=lambda r: -r[0]):     # cũ trước; mỗi (trip, unit) giữ MAX_REPEAT như build_profile
+        raw[tid].append((days_ago, e))
+        seen[(tid, unit)] += 1
+        if seen[(tid, unit)] > MAX_REPEAT_PER_TRIP:
+            continue
+        trips[tid].append((days_ago, unit))
     if not trips:
         return None
-    ages = {tid: min(d for d, _ in rows) for tid, rows in trips.items()}
-    open_trips = [tid for tid, age in ages.items() if age <= ACTIVE_TRIP_MAX_AGE_DAYS]
+    ages = {tid: min(d for d, _ in evs) for tid, evs in raw.items()}
+    today = local_today(as_of)
+    open_trips = [tid for tid, age in ages.items() if trip_is_open(age, trip_ends_on(e for _, e in raw[tid]), today)]
     chosen = min(open_trips or ages, key=lambda tid: ages[tid])
     return Counter(str(index.destination[u]) for _, u in trips[chosen]).most_common(1)[0][0]
 

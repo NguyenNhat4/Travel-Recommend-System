@@ -90,7 +90,18 @@ variable "notification_email" {
 }
 
 variable "db_replica_vm_name" {
-  description = "DB replica VM name (infra/terraform/environments/staging output replica_vm_name). Leave empty until the replica exists: all replica monitoring is skipped."
+  description = "DB replica VM name (infra/terraform/environments/staging output replica_vm_name). Replica monitoring is skipped while this is empty or while no VM with this name exists, and turns on once the VM does."
   type        = string
   default     = ""
+}
+
+variable "container_disk_alert_gib" {
+  description = "Alert when one container (writable layer + json logs + named volumes) exceeds this many GiB."
+  type        = number
+  default     = 5
+
+  validation {
+    condition     = var.container_disk_alert_gib > 0
+    error_message = "container_disk_alert_gib must be greater than zero."
+  }
 }
