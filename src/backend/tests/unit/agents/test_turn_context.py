@@ -41,9 +41,11 @@ def planned_state(query, **extra):
 
 
 class TurnNoteTests(unittest.TestCase):
-    def test_an_itinerary_is_noted_by_place_length_and_product_names_without_prices(self):
+    def test_an_itinerary_is_noted_by_place_and_length_only(self):
+        # Trace nhat-10-1 (02/10): tên sản phẩm lặp ở mỗi ghi chú lịch trình, ở `last_assistant_message` và ở
+        # `previous_selection`; sản phẩm đã cho xem chỉ còn ở `previous_selection` (kèm id).
         note = turn_note({'intent': HANOI}, itinerary_response(), 200)
-        self.assertEqual(note, 'gửi lịch trình Hà Nội 3 ngày: The Sun Ha Noi Hotel, Hanoi Sightseeing Bus')
+        self.assertEqual(note, 'gửi lịch trình Hà Nội 3 ngày')
 
     def test_a_rejected_value_keeps_its_real_reason(self):
         state = {'clarification_reason': 'invalid_input', 'missing_fields': ['destination'],
@@ -79,31 +81,37 @@ class LlmContextTests(unittest.TestCase):
     def history(self, note=True):
         return [{'role': 'user', 'content': 'không đổi nữa'},
                 {'role': 'assistant', 'content': ITINERARY_TEXT,
-                 **({'note': 'gửi lịch trình Hà Nội 3 ngày: The Sun Ha Noi Hotel'} if note else {})}]
+                 **({'note': 'gửi lịch trình Hà Nội 3 ngày'} if note else {})}]
 
     def test_an_itinerary_turn_reaches_the_model_as_a_note_without_prices(self):
         context = llm_context(planned_state('mình muốn đi biển cơ', conversation_history=self.history()))
         dumped = yaml.safe_dump(context, allow_unicode=True)
         self.assertNotIn('550.000', dumped)
         self.assertNotIn('₫', dumped)
-        self.assertEqual(context['conversation_history'][1]['content'],
-                         'gửi lịch trình Hà Nội 3 ngày: The Sun Ha Noi Hotel')
-        self.assertEqual(context['last_assistant_message'], context['conversation_history'][1]['content'])
+        self.assertEqual(context['conversation_history'],
+                         [{'user': 'không đổi nữa'}, {'assistant_did': 'gửi lịch trình Hà Nội 3 ngày'}])
+        self.assertEqual(context['last_assistant_message'], 'gửi lịch trình Hà Nội 3 ngày')
         self.assertEqual(context['stage'], 'đã gửi lịch trình cho chuyến này')
         self.assertTrue(context['trip_so_far'].startswith('Hà Nội, 3 ngày'))
         self.assertNotIn('known_intent', context)
 
     def test_history_saved_before_notes_falls_back_to_the_title(self):
         context = llm_context(planned_state('x', conversation_history=self.history(note=False)))
-        self.assertEqual(context['conversation_history'][1]['content'], 'Khám phá Hà Nội trong 3 ngày')
+        self.assertEqual(context['conversation_history'][1], {'assistant_did': 'Khám phá Hà Nội trong 3 ngày'})
 
     def test_a_short_question_stays_verbatim_for_short_answers(self):
         history = [{'role': 'user', 'content': 'đi Huế'},
                    {'role': 'assistant', 'content': '**Chuyến đi kéo dài mấy ngày?**\nBạn đi mấy ngày?',
                     'note': 'hỏi số ngày'}]
         context = llm_context({'query': '2', 'intent': empty_intent(), 'conversation_history': history})
-        self.assertEqual(context['conversation_history'][1]['content'], 'hỏi số ngày')
+        self.assertEqual(context['conversation_history'], [{'user': 'đi Huế'}, {'assistant_did': 'hỏi số ngày'}])
         self.assertEqual(context['last_assistant_message'], 'Bạn đi mấy ngày?')
+
+    def test_each_entry_names_its_speaker_so_assistant_notes_never_read_as_the_user(self):
+        dumped = yaml.dump(llm_context(planned_state('x', conversation_history=self.history())), allow_unicode=True)
+        self.assertNotIn('role:', dumped)
+        self.assertNotIn('content:', dumped)
+        self.assertIn('- assistant_did: gửi lịch trình Hà Nội 3 ngày', dumped)
 
 
 class ExtractionTests(unittest.TestCase):

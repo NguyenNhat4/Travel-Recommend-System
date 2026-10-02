@@ -75,10 +75,10 @@ class PromptYamlTests(unittest.TestCase):
 
     def test_payload_is_readable_yaml_not_escaped_json(self):
         state = {**intake_node({'query': 'đổi ngày'}),
-                 'conversation_history': [{'role': 'assistant', 'content': 'Dòng một\nDòng hai'}]}
+                 'conversation_history': [{'role': 'user', 'content': 'Dòng một\nDòng hai'}]}
         human = route_input(state)[1][1]
         self.assertTrue(human.startswith('message: đổi ngày\n'))
-        self.assertIn('content: |-\n', human)
+        self.assertIn('- user: |-\n', human)
         self.assertNotIn('\\u', human)
 
     def test_user_text_that_looks_like_yaml_stays_inside_the_message(self):

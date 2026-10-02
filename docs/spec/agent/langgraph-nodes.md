@@ -99,7 +99,7 @@ Kiểm thử: `tests/unit/agents/test_guardrails.py` (bảng dương/âm, không
 |---|---|
 | `trip_so_far` | Chuyến đi đã biết trong một dòng kèm trường còn thiếu (`turn_notes.trip_summary`): "Hà Nội, 3 ngày; chưa có: ngày khởi hành, số người, ngân sách" |
 | `stage` | Đã gửi lịch trình (có `previous_selection`), đang hỏi thông tin, hay đầu hội thoại |
-| `conversation_history` | Tin người dùng nguyên văn; tin trợ lý là **ghi chú theo nghĩa** (`note`), không còn cả bài lịch trình kèm giá: "gửi lịch trình Hà Nội 3 ngày: …", "không dùng được điểm đến "biển": không có trong danh sách điểm đến; hỏi điểm đến" |
+| `conversation_history` | Mỗi mục một khoá theo người nói: `user` là tin người dùng nguyên văn, `assistant_did` là **ghi chú theo nghĩa** của tin trợ lý (`note`), không còn cả bài lịch trình kèm giá: "gửi lịch trình Hà Nội 3 ngày", "không dùng được điểm đến "biển": không có trong danh sách điểm đến; hỏi điểm đến". Ghi chú lịch trình không kèm tên sản phẩm: sản phẩm đã cho xem chỉ nằm ở `previous_selection` (kèm id). Trace 02/10/2026: cặp `role`/`content` phẳng và tên sản phẩm lặp ở mỗi ghi chú làm payload dài, dễ đọc nhầm ghi chú trợ lý thành lời người dùng |
 | `last_assistant_message` | Câu cuối của trợ lý: nguyên văn khi ≤ 500 ký tự (câu hỏi lại, để hiểu câu trả lời ngắn), ghi chú khi dài hơn (lịch trình) |
 | `known_constraints`, `previous_selection` | Như trước |
 
