@@ -29,7 +29,6 @@ export function VerticalLanding({ vertical, destination, type }: VerticalLanding
     limit: 8,
     ...(destination ? { destination } : {}),
   };
-  const allHref = buildSearchHref({ taxonomy: tab.taxonomy, origin: '', location: '', destination: destination ?? null, trip: {} });
   const everywhereHref = buildSearchHref({ taxonomy: tab.taxonomy, origin: '', location: '', destination: null, trip: {} });
 
   return (
@@ -42,7 +41,6 @@ export function VerticalLanding({ vertical, destination, type }: VerticalLanding
           lazy={false}
           title={titleWithDestination(tab.popularTitle, tab, destination)}
           params={{ ...base, sort: 'popular' }}
-          moreHref={allHref}
           empty={destination
             ? { text: `Chưa có ${tab.noun} ${tab.atWord} ${destination}.`, href: everywhereHref, hrefLabel: `Xem tất cả ${tab.noun}` }
             : { text: `Chưa có ${tab.noun} để hiển thị lúc này.` }}
@@ -50,7 +48,6 @@ export function VerticalLanding({ vertical, destination, type }: VerticalLanding
         <CatalogShelf
           title={titleWithDestination(tab.cheapTitle, tab, destination)}
           params={{ ...base, sort: 'price_asc' }}
-          moreHref={allHref}
           hideBelow={3}
         />
         <DestinationTiles route={config.route} query={tab.taxonomy === config.tabs[0].taxonomy ? undefined : { type: tab.taxonomy }} />

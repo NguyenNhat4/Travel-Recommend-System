@@ -1,4 +1,4 @@
-# Bỏ liên kết "Xem thêm" ở khối Phổ biến trang chủ
+# Bỏ mọi liên kết "Xem thêm" ở các khối carousel
 
 - Ngày: 2026-10-02
 - Tác giả: mihhquan / Claude
@@ -8,21 +8,25 @@
 
 ## Mục tiêu
 
-Khối "Phổ biến tại các điểm đến Việt Nam" ở trang chủ không cần liên kết "Xem thêm".
+Các khối carousel (trang chủ và trang danh mục) không cần liên kết "Xem thêm".
 
 ## File thay đổi
 
 - `src/frontend/src/components/home/HomeView.tsx` — sửa: bỏ `popularMoreHref`, prop `moreHref` và import `buildSearchHref` không còn dùng.
+- `src/frontend/src/features/catalog/landing/ProductShelf.tsx` — sửa: bỏ prop `moreHref`, liên kết và icon `ArrowRight`.
+- `src/frontend/src/features/catalog/landing/VerticalLanding.tsx` — sửa: bỏ `allHref` và hai `moreHref`.
+- `src/frontend/tests/unit/verticalLanding.test.tsx` — sửa: test nay khẳng định không có liên kết "Xem thêm".
 - `history/2026-10-02-bo-xem-them-o-khoi-pho-bien-trang-chu.md` — thêm.
 
 ## Quyết định
 
-- Chỉ bỏ ở trang chủ; `ProductShelf` vẫn hỗ trợ `moreHref` cho các trang danh mục (`VerticalLanding`).
+- Bỏ hẳn `moreHref` khỏi `ProductShelf`. Nút "Xem thêm (n/total)" tải trang kế trong `GroupResults` là phân trang, giữ nguyên.
 
 ## Kiểm tra
 
 - `tsc --noEmit` (src/frontend): sạch.
-- `vitest run tests/unit/homeView.test.tsx`: 5 test pass.
+- `eslint` (catalog, home): sạch.
+- `vitest run tests/unit/verticalLanding.test.tsx tests/unit/homeView.test.tsx`: 12 test pass.
 
 ## Còn lại / rủi ro
 

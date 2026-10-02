@@ -2,7 +2,7 @@
 
 import React, { useId, useMemo, useRef } from 'react';
 import Link from 'next/link';
-import { ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { Product } from '../../../types/travel';
 import { listProducts, productFromApi, type ListProductsParams } from '../../../services/catalog';
 import { useInView } from '../../../hooks/useInView';
@@ -24,8 +24,6 @@ export interface ProductShelfProps {
   title: string;
   state: ShelfState;
   onRetry: () => void;
-  /** Liên kết "Xem thêm" ở đầu khối. */
-  moreHref?: string;
   /** Khi không có sản phẩm nào: câu thay thế và lối đi tiếp. Không khai thì khối rỗng bị ẩn. */
   empty?: { text: string; href?: string; hrefLabel?: string };
   /** Ít thẻ hơn ngưỡng này thì ẩn cả khối (dành cho khối phụ). */
@@ -48,7 +46,7 @@ function SkeletonCard() {
 }
 
 export function ProductShelf({
-  title, state, onRetry, moreHref, empty, hideBelow = 0, tripQuery,
+  title, state, onRetry, empty, hideBelow = 0, tripQuery,
 }: ProductShelfProps) {
   const headingId = useId();
   const trackRef = useRef<HTMLDivElement>(null);
@@ -68,12 +66,6 @@ export function ProductShelf({
       <div className="mb-6 flex items-center justify-between gap-4">
         <h2 id={headingId} className="type-title text-slate-900">{title}</h2>
         <div className="flex items-center gap-3">
-          {moreHref && items.length > 0 && (
-            <Link href={moreHref} className="inline-flex items-center gap-1 text-sm font-semibold text-blue-600 hover:text-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
-              Xem thêm
-              <ArrowRight className="h-4 w-4" aria-hidden="true" />
-            </Link>
-          )}
           {items.length > 0 && (
             <div className="hidden items-center gap-2 md:flex">
               <button type="button" onClick={() => scrollTrack(-1)} aria-label="Cuộn sang trái" className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-slate-200 text-slate-600 shadow-sm transition hover:bg-slate-100 active:scale-95">
