@@ -78,6 +78,8 @@ Luôn `source .venv/bin/activate` trước khi chạy các lệnh dưới.
 | Muốn làm gì | Lệnh | Mở ở đâu |
 |---|---|---|
 | Chạy web đầy đủ (FastAPI + Next.js) | `make web` | http://localhost:3000 |
+| Build frontend image bằng Docker Compose | `docker compose build frontend` | image `travel-recommendation-product-frontend` |
+| Chạy Backend + Frontend trong Docker | `docker compose up -d --build backend frontend` | http://localhost:3000 |
 | Thử trợ lý lịch trình bằng UI Streamlit | `make chat` | http://127.0.0.1:8502 |
 | Chỉ chạy backend, tự reload khi sửa code | `make backend-local` | http://127.0.0.1:8000/docs |
 | Chạy backend trong Docker | `make backend` (log: `make backend-logs`, dừng: `make backend-stop`) | http://localhost:8000/health |
@@ -93,7 +95,48 @@ curl http://127.0.0.1:8000/health
 curl http://127.0.0.1:8000/api/v1/assistant/status    # llmMode: live | disabled | unavailable
 ```
 
-## 5. Việc thường ngày
+## 5. Dùng DB staging qua SSH tunnel (tuỳ chọn)
+
+Mặc định app dùng Postgres local. Muốn dùng DB staging dùng chung, đi qua hai tunnel SSH: primary `localhost:15432` (ghi)
+và replica `localhost:15433` (đọc, bản sao của primary trễ vài giây).
+
+1. Xin team hai mật khẩu SSH rồi chép `.env.tunnel.example` thành `.env.tunnel` ở gốc repo (đã gitignore) và điền vào:
+
+   ```
+   SSH_PRIMARY_PASSWORD=<mật khẩu SSH của 35.197.148.180>
+   SSH_REPLICA_PASSWORD=<mật khẩu SSH của 34.126.70.1>
+   ```
+
+2. Trong `.env`, comment `DATABASE_URL` và `CDP_DATABASE_URL` của local rồi đặt (mật khẩu DB phải URL-encode, ví dụ `=` → `%3D`):
+
+   ```
+   DATABASE_URL=postgresql://<user>:<mật khẩu>@localhost:15432/vota
+   CDP_DATABASE_URL=postgresql://<user>:<mật khẩu>@localhost:15432/vota
+   REPLICA_DATABASE_URL=postgresql://<user>:<mật khẩu>@localhost:15433/vota
+   REPLICA_CDP_DATABASE_URL=postgresql://<user>:<mật khẩu>@localhost:15433/vota
+   ```
+
+3. Mở tunnel rồi chạy app:
+
+   ```bash
+   make tunnel && make web
+   ```
+
+| Lệnh | Việc |
+|---|---|
+| `make tunnel` | Mở cả hai tunnel chạy nền, tự nhập mật khẩu; cổng đã mở thì bỏ qua |
+| `make tunnel-status` | Xem cổng 15432 / 15433 đã mở chưa |
+| `make tunnel-down` | Tắt tunnel do `make tunnel` mở |
+
+Lưu ý:
+
+- Dùng `make web` / `make chat` / `make backend-local`. `make backend` chạy trong Docker, không đọc `DATABASE_URL` của `.env` và không thấy tunnel.
+- Replica chỉ dành cho đường đọc thuần; ghi vào replica báo `cannot execute ... in a read-only transaction`.
+- Weaviate và Redis vẫn là local. Nếu catalog staging khác catalog local, chạy `make index-vectors` để embed lại vào Weaviate local.
+- `make db-migrate`, seed và `--reset` sẽ ghi vào staging dùng chung khi `.env` đang trỏ staging. Chỉ job seed của CI hoặc một người được `--reset` staging.
+- Muốn về DB local: bỏ comment các dòng local, comment các dòng staging.
+
+## 6. Việc thường ngày
 
 | Tình huống | Lệnh |
 |---|---|
@@ -111,7 +154,7 @@ curl http://127.0.0.1:8000/api/v1/assistant/status    # llmMode: live | disabled
 đã có dữ liệu, vì file đó chỉ chạy một lần lúc Docker tạo volume rỗng. Quy tắc chi tiết:
 [db/migrations/README.md](db/migrations/README.md).
 
-## 6. Gặp lỗi
+## 7. Gặp lỗi
 
 | Triệu chứng | Cách xử lý |
 |---|---|
@@ -122,9 +165,10 @@ curl http://127.0.0.1:8000/api/v1/assistant/status    # llmMode: live | disabled
 | `make index-vectors` báo 429 | Hết quota Cohere; chờ rồi chạy lại, job sẽ tiếp tục phần còn thiếu |
 | Web không đăng nhập được (401) | `AUTH_SERVICE_TOKEN` ở `.env` và `src/frontend/.env.local` không giống nhau |
 | Token hết hiệu lực mỗi lần khởi động lại backend | Chưa chạy `make jwt-keys` |
+| `connection refused` ở cổng 15432 / 15433 | Chưa mở tunnel hoặc tunnel đã tắt: `make tunnel-status`, rồi `make tunnel` |
 | Trợ lý trả 503 `LLM_UNAVAILABLE` | Thiếu key LLM, hoặc đang đặt `ITINERARY_USE_LLM=false` |
 
-## 7. Sơ đồ service local
+## 8. Sơ đồ service local
 
 | Service | Cổng | Khởi động bằng |
 |---|---|---|
@@ -133,6 +177,7 @@ curl http://127.0.0.1:8000/api/v1/assistant/status    # llmMode: live | disabled
 | Weaviate (vector sản phẩm) | 8080, 50051 | `make index-vectors` |
 | FastAPI backend | 8000 | `make web` / `make chat` / `make backend-local` |
 | Next.js web + BFF | 3000 | `make web` |
+| Next.js web + BFF trong Docker | 3000 | `docker compose up -d frontend` |
 | Streamlit (demo trợ lý) | 8502 | `make chat` |
 
 Dữ liệu Postgres và Weaviate nằm trong Docker volume riêng trên máy của từng người. Không chia sẻ hay commit các

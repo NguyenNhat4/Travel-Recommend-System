@@ -484,7 +484,9 @@ def load_targets(run: Run, targets: list[str], index: bool, today: date, retire_
             ok = False
             run.stage(f"load:{target}", "skipped", error=res["error"])
             continue
-        argv = [sys.executable, "-m", "data_collection.seed", "--catalog-only", "--products", str(run.data / "products.jsonl"),
+        # --real-flight-dates: dữ liệu thật giữ ngày bay thật (PRD data-model §3); chỉ seed demo mới dời vé vào cửa sổ.
+        argv = [sys.executable, "-m", "data_collection.seed", "--catalog-only", "--real-flight-dates",
+                "--products", str(run.data / "products.jsonl"),
                 "--as-of", today.isoformat()] + (["--retire-missing"] if retire_missing else [])
         with open(run.dir / f"load-{target}.log", "w", encoding="utf-8") as log:
             code = subprocess.call(argv, cwd=HERE.parent, env=env, stdout=log, stderr=subprocess.STDOUT)
@@ -495,15 +497,20 @@ def load_targets(run: Run, targets: list[str], index: bool, today: date, retire_
                 else:
                     log.write(f"\n=== {now_local()} embed_products\n")
                     log.flush()
-                    res["indexExit"] = subprocess.call([sys.executable, "-m", "src.backend.jobs.embed_products"],
+                    res["indexExit"] = subprocess.call([sys.executable, "-m", "src.data_collection.index_backlog",
+                                                       "--state-file", str(run.data / "state" / f"index_pending-{target}.json")],
                                                        cwd=REPO_ROOT, env=env, stdout=log, stderr=subprocess.STDOUT)
-        res["status"] = "ok" if code == 0 and res.get("indexExit", 0) == 0 else "error"
+        backlog_file = run.data / "state" / f"index_pending-{target}.json"
+        if index and backlog_file.exists():
+            res["indexPending"] = json.loads(backlog_file.read_text())
+        succeeded = code == 0 and res.get("indexExit", 0) == 0
+        res["status"] = ("partial" if res.get("indexPending") else "ok") if succeeded else "error"
         res["finishedAt"] = now_local()
-        ok = ok and res["status"] == "ok"
-        if res["status"] == "ok":
+        ok = ok and succeeded
+        if code == 0:
             record_loaded(run.data, target, version, run.run_id)
         print(f"[daily] nạp {target}: {res['status']} (log: {run.dir / f'load-{target}.log'})", flush=True)
-        run.stage(f"load:{target}", "done" if res["status"] == "ok" else "failed")
+        run.stage(f"load:{target}", "done" if succeeded else "failed", indexPending=bool(res.get("indexPending")))
     return ok
 
 

@@ -6,18 +6,19 @@ Chi tiết luật chấm và cách chạy: src/evaluation/agent/README.md.
 
 Cần trước khi chạy:
   - `docker compose up -d --wait postgres` (đã seed)
-  - Backend chạy `ITINERARY_DATA_MODE=http ITINERARY_SERVICE_BASE_URL=<api-base-url> uvicorn ...`
+  - Backend đã nạp RecSys, chạy `ITINERARY_DATA_MODE=inprocess` (hoặc `http`; không để `fixture`, vì
+    `productCount` của biên bản lấy từ `/assistant/status` của backend)
   - `.env` có DATABASE_URL (hoặc SEED_DATABASE_URL) đọc được `cdp.products`, và key LLM thật
 
 Dựng graph **in-process** (không đi qua route FastAPI) để đọc được `tool_plan`, `intent`,
 `candidates`, `events` — HTTP client chỉ dùng để agent tự gọi Search/Recommendation/ProductDetail/
-destinations của backend đang chạy, giống hệt cách `_itinerary_runtime` ở `src/backend/app/main.py`
-dựng dependency cho một request thật.
+destinations của backend đang chạy, giống cách `_itinerary_runtime` ở `src/backend/app/main.py`
+dựng dependency ở mode `http`. Runner luôn đi đường HTTP này, bất kể mode của backend.
 
 Usage:
     .venv/bin/python -m src.evaluation.agent.golden \\
         --dataset src/evaluation/datasets/itinerary_agent_golden.yaml \\
-        --api-base-url http://127.0.0.1:8000 [--only G-001,G-002] [--sweep] [--repeat N] \\
+        --api-base-url http://127.0.0.1:8000 [--only G-051,G-062] [--sweep] [--repeat N] \\
         [--trace-project claude-golden]
 """
 
@@ -34,7 +35,7 @@ import sys
 import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +43,7 @@ import httpx
 import yaml
 
 from src.backend.app.agents.runtime_dependencies import RuntimeAgentDependencies
+from src.backend.app.agents.steps.classification import vietnam_today
 from src.backend.app.agents.tools.itinerary_gateway import ItineraryToolGateway
 from src.backend.app.application.itinerary.contracts import valid
 from src.backend.app.core.config import get_settings
@@ -62,6 +64,28 @@ SECRET_PATTERNS = [
 ]
 
 
+# ----------------------------------------------------------------------------------------- dates
+
+# `{today}`, `{today+7}`, `{today-1}` → dd/mm/yyyy (câu người dùng gõ); thêm `:iso` → yyyy-mm-dd (để so `intent.startDate`).
+# Runner đổi lúc chạy theo ngày ở Việt Nam, cùng nguồn với mốc `today` của agent (`vietnam_today`), nên ngày luôn nằm
+# gần hôm nay và trong cửa sổ đặt chỗ 30 ngày của catalog mới nạp; câu gửi đi là ngày tường minh, LLM không phải đoán.
+DATE_PLACEHOLDER = re.compile(r"\{today([+-]\d+)?(:iso)?\}")
+
+
+def resolve_dates(value: Any, today: date) -> Any:
+    """Thay placeholder ngày trong chuỗi, kể cả lồng trong dict/list (dùng cho message và expect)."""
+    if isinstance(value, str):
+        def replace(match: re.Match[str]) -> str:
+            day = today + timedelta(days=int(match.group(1) or 0))
+            return day.isoformat() if match.group(2) else day.strftime("%d/%m/%Y")
+        return DATE_PLACEHOLDER.sub(replace, value)
+    if isinstance(value, dict):
+        return {key: resolve_dates(item, today) for key, item in value.items()}
+    if isinstance(value, list):
+        return [resolve_dates(item, today) for item in value]
+    return value
+
+
 # --------------------------------------------------------------------------------------- dataset
 
 
@@ -79,6 +103,7 @@ TURN_KEYS = {"message", "expect", "language", "conversationId"}
 EXPECT_KEYS = {
     "httpStatus", "status", "errorCode", "intent", "missingFieldsInclude", "toolCalled", "nodesInclude",
     "nodesExclude", "forbiddenText", "excludeProductsFromTurn", "minActivities", "hasStay", "warningsExclude",
+    "toolsInclude", "titleFirstLine",
 }
 
 
@@ -124,7 +149,7 @@ def build_runtime(http_client: httpx.AsyncClient):
         raise RuntimeError("Không dựng được LLM (build_chat_model trả None) — kiểm tra .env, ITINERARY_LLM_MODEL/key.")
     clients = ItineraryHttpClients(http_client)
     catalog = clients if getattr(clients, "supports_catalog", False) else None
-    gateway = ItineraryToolGateway(clients, clients, catalog, recommendation_authorization=None)
+    gateway = ItineraryToolGateway(clients, clients, catalog, recommendation_authorization=None, similar=clients)
     store = InMemoryConversationStore(ttl_seconds=settings.itinerary_conversation_ttl_seconds)
     runtime = RuntimeAgentDependencies(
         gateway, store, llm, authorization=None,
@@ -188,6 +213,19 @@ async def run_turn(planner, message: str, conversation_id: str | None, timeout: 
 #   D — kỳ vọng do case tự khai báo trong `expect`.
 
 
+def answer_text(response: dict[str, Any]) -> str:
+    """Câu trợ lý nói với người dùng: `question` (hỏi lại), `message` (không có kết quả, dự phòng) hoặc lỗi."""
+    return str(response.get("question") or response.get("message") or (response.get("error") or {}).get("message") or "")
+
+
+def has_title_first_line(text: str) -> bool:
+    """Dòng đầu là `**Tiêu đề**` và còn phần chi tiết bên dưới."""
+    first, sep, rest = text.partition("\n")
+    first = first.strip()
+    return bool(sep and rest.strip() and len(first) > 4 and first.startswith("**") and first.endswith("**")
+                and "**" not in first[2:-2])
+
+
 def _text_blob(response: dict[str, Any]) -> str:
     return json.dumps(response, ensure_ascii=False)
 
@@ -229,10 +267,16 @@ def gate_no_booking_claim(response: dict[str, Any]) -> list[str]:
     return [f"tuyên bố đã thực hiện hành động: chứa {phrase!r}" for phrase in BOOKING_CLAIM_PHRASES if phrase in blob]
 
 
+def retrieval_ran(events: list[dict[str, Any]]) -> bool:
+    """Node `tool` đã tìm dữ liệu. Điểm đến ngoài catalog đi qua `tool` để đối chiếu danh sách điểm đến nhưng
+    chưa gọi Search (event mang `retrieval=False`), nên không tính là truy xuất."""
+    return any(e.get("node") == "tool" and (e.get("metadata") or {}).get("retrieval") is not False for e in events)
+
+
 def gate_no_tool_before_info(response: dict[str, Any], events: list[dict[str, Any]]) -> list[str]:
     if response.get("status") != "NEEDS_CLARIFICATION" or not (response.get("missingFields") or []):
         return []
-    if "tool" in {e.get("node") for e in events}:
+    if retrieval_ran(events):
         return ["gọi tool trước khi đủ destination/days (missingFields không rỗng)"]
     return []
 
@@ -329,7 +373,9 @@ def _get_path(obj: dict[str, Any], path: str) -> tuple[Any, bool]:
 def dataset_findings(
     response: dict[str, Any], http_status: int, events: list[dict[str, Any]],
     expect: dict[str, Any], previous_products: dict[int, dict[str, set[str]]],
+    planned_tools: set[str] = frozenset(),
 ) -> list[str]:
+    """`planned_tools`: tên tool trong `tool_plan` cuối của lượt (sau `validated_plan`, lời gọi bị bỏ không có mặt)."""
     failures: list[str] = []
     if "httpStatus" in expect and http_status != expect["httpStatus"]:
         failures.append(f"httpStatus={http_status}, kỳ vọng {expect['httpStatus']}")
@@ -353,7 +399,7 @@ def dataset_findings(
             if name not in missing:
                 failures.append(f"missingFields thiếu {name!r}, có {sorted(missing)}")
     nodes = {e.get("node") for e in events}
-    if "toolCalled" in expect and ("tool" in nodes) != expect["toolCalled"]:
+    if "toolCalled" in expect and retrieval_ran(events) != expect["toolCalled"]:
         failures.append(f"tool {'không' if expect['toolCalled'] else 'có'} chạy, mong ngược lại")
     for name in expect.get("nodesInclude", []):
         if name not in nodes:
@@ -361,6 +407,12 @@ def dataset_findings(
     for name in expect.get("nodesExclude", []):
         if name in nodes:
             failures.append(f"node {name!r} không được chạy nhưng có trong trace")
+    for name in expect.get("toolsInclude", []):
+        if name not in planned_tools:
+            failures.append(f"tool plan thiếu {name!r}, có {sorted(planned_tools)}")
+    if "titleFirstLine" in expect and has_title_first_line(answer_text(response)) != bool(expect["titleFirstLine"]):
+        failures.append("dòng đầu của câu trả lời " + ("không phải" if expect["titleFirstLine"] else "lại là")
+                        + " `**Tiêu đề**` kèm phần chi tiết")
     if "forbiddenText" in expect:
         blob = _text_blob(response).lower()
         for phrase in expect["forbiddenText"]:
@@ -414,16 +466,19 @@ async def run_case(
     results: list[TurnResult] = []
     conversation_id: str | None = None
     previous_products: dict[int, dict[str, set[str]]] = {}
+    today = vietnam_today()
     for index, turn in enumerate(case.turns, start=1):
+        message = resolve_dates(turn.message, today)
+        expect = resolve_dates(turn.expect, today)
         started = time.perf_counter()
         request_id = uuid.uuid4().hex
         try:
-            state = await run_turn(planner, turn.message, turn.conversation_id or conversation_id, timeout,
-                                   trace_config(case, index, turn.message, request_id), request_id,
+            state = await run_turn(planner, message, turn.conversation_id or conversation_id, timeout,
+                                   trace_config(case, index, message, request_id), request_id,
                                    turn.language)
         except TimeoutError:
             results.append(TurnResult(
-                case.id, index, turn.message, 503, "TIMEOUT", 0, 0, False, None,
+                case.id, index, message, 503, "TIMEOUT", 0, 0, False, None,
                 [f"vượt timeout {timeout}s"],
             ))
             break
@@ -442,9 +497,10 @@ async def run_case(
         findings += gate_no_booking_claim(response)
         findings += gate_no_tool_before_info(response, events)
         findings += schedule_findings(response, candidates)
-        findings += dataset_findings(response, http_status, events, turn.expect, previous_products)
+        findings += dataset_findings(response, http_status, events, expect, previous_products,
+                                     {call.get("name") for call in state.get("tool_plan") or []})
 
-        tool_called = "tool" in {e.get("node") for e in events}
+        tool_called = retrieval_ran(events)
         tool_expected = expected_tool_call(response)
         if tool_expected is not None and tool_called != tool_expected:
             findings.append(f"quyết định gọi tool sai: đã {'gọi' if tool_called else 'không gọi'}, "
@@ -454,7 +510,7 @@ async def run_case(
             "stay": _product_ids(response, "stay"), "any": _product_ids(response, "any"),
         }
         results.append(TurnResult(
-            case.id, index, turn.message, http_status, response.get("status") or
+            case.id, index, message, http_status, response.get("status") or
             (response.get("error") or {}).get("code"), latency_ms, grounding_checked,
             tool_called, tool_expected, findings,
         ))
@@ -470,7 +526,9 @@ async def run_sweep(planner, dsn: str | None, settings: Any, timeout: float, htt
     for item in listed:
         destination = item["destination"]
         case = Case(id=f"SWEEP-{destination}", category="sweep", fr=["FR-AGT-04"],
-                    turns=[Turn(message=f"{destination} 2 ngày", expect={})])
+                    # Chưa nêu ngày đi thì agent hỏi ngày (AC-AGT-01); lượt thứ hai trả lời để chạm tới truy xuất.
+                    turns=[Turn(message=f"{destination} 2 ngày", expect={}),
+                           Turn(message="chưa chốt ngày đi", expect={})])
         results += await run_case(case, planner, dsn, settings, timeout)
     return results
 
@@ -493,7 +551,8 @@ def build_report(results: list[TurnResult], settings: Any, mode: str, product_co
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "mode": mode,
         "model": settings.itinerary_llm_model or settings.model_name,
-        "dataMode": settings.itinerary_data_mode,
+        # Runner luôn gọi backend qua ItineraryHttpClients (build_runtime), bất kể ITINERARY_DATA_MODE của máy chạy.
+        "dataMode": "http",
         "productCount": product_count,
         "totals": {"turns": total, "passed": passed, "failed": total - passed},
         "metrics": {

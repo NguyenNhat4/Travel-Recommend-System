@@ -102,9 +102,10 @@ type ProductSummary = components["schemas"]["ProductSummary"];
 | Route | Màn hình | Cần đăng nhập | Query param chính thức |
 |---|---|---:|---|
 | `/` | Home | Không | `debug` |
-| `/search` | Kết quả tìm kiếm | Không | `q` (bắt buộc), `taxonomy`, `destination`, `priceMin`, `priceMax`, `starRatingMin`, `sort` (`relevance` \| `price_asc` \| `price_desc`) |
-| `/product/{productId}` | Chi tiết sản phẩm | Không | — |
-| `/assistant` | Trợ lý lịch trình | Không | `q` (prompt điền sẵn, không tự gửi), `destination` |
+| `/hotels`, `/flights`, `/combos` | Trang danh mục: khách sạn & resort, vé máy bay, combo (đề xuất PRD `update-archive/2026-09-29-route-trang-danh-muc-dich-vu.md`) | Không | `destination`. `/flights` có `origin` **và** `destination` thì hiện chuyến bay của lần tìm dưới tấm tìm kiếm (§4.1b), kèm ngữ cảnh chuyến đi `checkIn`, `checkOut`, `adults`, `children`; không có thì hiện lời nhắc nhập |
+| `/experiences` | Trang danh mục: tour và trải nghiệm | Không | `destination`, `type` (`attraction` mặc định \| `golf`) |
+| `/search` | Kết quả tìm kiếm | Không | `q` (bắt buộc), `type` (hoặc `taxonomy`): `stay` \| `exp` \| `more` — nhận cả taxonomy cũ `hotel`, `attraction`, `golf`, `combo`; không có thì là tab Tất cả; `flight` chỉ khi mở từ `/flights` (danh sách phẳng, không tab), `destination` (chip ✕ ở "Đang lọc", không có checkbox); ngữ cảnh chuyến đi `checkIn`, `checkOut`, `adults`, `children`, `rooms` (§4.1a) |
+| `/product/{productId}` | Chi tiết sản phẩm | Không | ngữ cảnh chuyến đi tùy chọn `checkIn`, `checkOut`, `adults`, `children`, `rooms` (điền sẵn hộp đặt, §4.1a) |
 | `/cart` | Giỏ hàng | Có | — |
 | `/checkout` | Checkout | Có | — |
 | `/booking/{referenceCode}` | Trạng thái đơn / xác nhận đặt chỗ | Có | `payment` (`return` \| `cancelled`) — do Backend đặt vào `success_url`/`cancel_url` của phiên Stripe |
@@ -133,19 +134,68 @@ Ký hiệu auth: **—** không gửi JWT · **tùy** gửi nếu có · **bắt
 | ① Gợi ý cá nhân hóa | `GET /recommendations?k=5` | tùy | `strategy`, `nextVertical`, `destination`, `recommendations[]` (`rank`, `productId`, `name`, `taxonomy`, `destination`, `unitPrice`, `currency`, `available`, `imageUrl`, `attributes`, `score`, `because[]`), `diagnostics.excludedVerticals`, `diagnostics.coldStart` | 5xx / timeout > 3 giây → ẩn ①, hiện dòng "Chưa tải được gợi ý · Thử lại". Khách vãng lai → không gọi, hiện banner đăng nhập |
 | ② Đã xem gần đây | — | — | — | **Bỏ section** (D13) |
 | ③ Thẻ trợ lý | dùng lại response ① | — | `destination` | Không có → câu chung |
-| ④ Phổ biến | `GET /products?sort=popular&taxonomy=<tab>&limit=10` | — | `results[]` (`ProductSummary`) | **Luôn render**. Lỗi → `ErrorState` cục bộ. Hiện là hai carousel: "Khách sạn và resort" (`taxonomy=hotel`) và "Phổ biến tại các điểm đến Việt Nam" (mọi taxonomy) |
-| Chip điểm đến | `GET /destinations` | — | `destinations[].destination` | Lỗi → ẩn chip |
+| ④ Phổ biến | `GET /products?sort=popular&availableOnly=true&limit=8` (thêm `taxonomy=<tab>` khi chọn tab) | — | `results[]` (`ProductSummary`) | **Luôn render**. Một carousel có tab Tất cả · Khách sạn · Vé máy bay · Vé tham quan · Combo; **chỉ tab đang chọn gọi API**. Lỗi → "Chưa tải được · Thử lại" cục bộ |
+| Điểm đến ("Bạn muốn đi đâu?") | `GET /destinations` | — | `destinations[].destination`, `productCount` | Chỉ gọi khi khối tới gần vùng nhìn (≤ 300 px), bộ đệm 5 phút dùng chung với tấm tìm kiếm. Lỗi hoặc rỗng → ẩn khối |
+| Lối vào danh mục | — | — | — | Bốn ô tĩnh từ `navConfig.ts` → `/flights`, `/hotels`, `/experiences`, `/combos` |
 
-Sau checkout (cờ `justBooked`): gọi lại ① bỏ qua cache. Chỉ hiện toast "Trang chủ đã cập nhật" khi `strategy` **hoặc** `nextVertical` khác lần gọi trước.
+**Ngân sách request của Home:** khách ≤ 1 request khi tải (khối ④ nếu trong vùng nhìn), đã đăng nhập ≤ 2 (thêm ①); các khối dưới màn hình chỉ tải khi cuộn tới (`useInView` + `useLazySection`). ① quá 3 giây (`RECOMMENDATION_TIMEOUT_MS`) thì ẩn khối và hiện dòng "Thử lại".
 
-### 4.2. Search `/search`
+### 4.1a. Trang danh mục `/hotels`, `/flights`, `/experiences`, `/combos`
+
+Một template (`features/catalog/landing`), cấu hình ở `verticals.ts`. Hero + tấm tìm kiếm, rồi các khối. **`/flights` là ngoại lệ** (đề xuất PRD `update-archive/2026-09-30-trang-ve-may-bay-tim-tai-cho-bo-khoi-pho-bien-va-gia-tot.md`): không có hai khối 1 và 2 dưới đây; bên dưới tấm tìm kiếm là kết quả chuyến bay hoặc lời nhắc nhập (§4.1b), rồi điểm đến và banner trợ lý.
 
 | Khu vực | Endpoint | Auth | Trường Web đọc | Khi lỗi / rỗng |
 |---|---|---|---|---|
-| Danh sách | `POST /search` | tùy | `results[]` (`ProductSummary` + `score`), `total`, `limit`, `offset` | `results: []` với bộ lọc → EmptyState "bỏ bộ lọc"; không bộ lọc → EmptyState + carousel `GET /products?sort=popular` |
-| Tab danh mục, bộ đếm lọc | cùng response | — | `facets.taxonomy`, `facets.destination` | Giá trị 0 → ẩn tab |
-| Băng "kết quả yếu" | cùng response | — | `topScore` | `topScore < 0.35` → hiện băng; `null` → không hiện |
-| Xem thêm | `POST /search` với `offset += limit` | tùy | như trên | Lỗi → nút "Thử lại" dưới danh sách |
+| Khối 1 "… phổ biến" (tải ngay) | `GET /products?taxonomy=<t>&sort=popular&availableOnly=true&limit=8` (+ `destination` khi có `?destination=`) | — | `results[]` (`ProductSummary`) | Lỗi → "Chưa tải được · Thử lại" tại khối. Rỗng → "Chưa có {loại} tại {điểm đến}" + liên kết `/search` |
+| Khối 2 "… giá tốt nhất" (tải khi vào vùng nhìn) | như trên với `sort=price_asc` (sản phẩm chưa có giá xếp cuối) | — | như trên | Dưới 3 thẻ hoặc lỗi rỗng → ẩn khối |
+| Điểm đến (tải khi vào vùng nhìn) | `GET /destinations` | — | `destination`, `productCount` | Lỗi hoặc rỗng → ẩn khối |
+| Gợi ý điểm đến trong tấm tìm kiếm | `GET /destinations` | — | như trên | Lỗi → vẫn gõ tự do được |
+
+`/experiences` có hai tab (`?type=attraction|golf`); các trang khác một tab. Tấm tìm kiếm gửi bằng điều hướng sang `/search?q&type[&destination]&checkIn&checkOut&adults&children&rooms` (riêng vé máy bay **không** rời trang: tìm ngay tại `/flights`, §4.1b): điểm đến chọn từ gợi ý (hoặc gõ đúng nhãn) thành `destination`, còn lại vào `q` (rỗng thì dùng câu mặc định theo danh mục, `services/search.ts` `DEFAULT_QUERY`).
+
+**Ngữ cảnh chuyến đi** (`features/search/tripContext.ts`) là dữ liệu điền sẵn, **không phải bộ lọc phòng trống** (Backend chưa lọc theo ngày; không gửi `travelContext`). `/search` không hiển thị ngữ cảnh này (không chip ngày/số khách, vì hộp đặt ở trang chi tiết đã có chỗ chọn) mà chỉ nối query vào liên kết sản phẩm; hộp đặt ở `/product/{id}` điền sẵn ngày, số khách, số phòng nếu hợp lệ với hạng phòng đang chọn (ngày nằm trong `availableFrom`–`availableTo`, sức chứa đúng). Giá trị sai bị bỏ im lặng; Backend vẫn quyết định (`DATE_OUT_OF_RANGE`, `VALIDATION_ERROR`). Luật đoàn theo FR-BKG-08: tối đa 9 khách, mỗi phòng ít nhất 1 người lớn. Không đưa họ tên hay token vào URL.
+
+Sau checkout (cờ `justBooked`): gọi lại ① bỏ qua cache. Chỉ hiện toast "Trang chủ đã cập nhật" khi `strategy` **hoặc** `nextVertical` khác lần gọi trước.
+
+### 4.1b. Chuyến bay ngay trên `/flights`
+
+Phục vụ FR-SRC-03 (vé máy bay chỉ duyệt và tìm ở `/flights`), FR-CAT-02, FR-CAT-03, FR-BKG-10. Không đổi contract, không thêm route. **Tìm ngay tại trang, không chuyển trang:** bấm Tìm thì chuyến bay hiện luôn dưới tấm tìm kiếm, hero và tấm tìm kiếm giữ nguyên để sửa tiếp; URL được cập nhật tại chỗ (`history.replaceState`) thành `/flights?origin&destination[&checkIn&checkOut&adults&children]` để chia sẻ, và vào thẳng URL đó cũng ra kết quả.
+
+Chưa có lần tìm (vào `/flights` trơn, hoặc `/flights?destination=X` chỉ điền sẵn điểm đến) thì bên dưới chỉ có lời nhắc "Nhập chuyến đi để xem chuyến bay", rồi điểm đến và banner trợ lý. Bấm Tìm khi còn thiếu thì lời nhắc nói rõ thiếu gì: chưa nhập điểm đi, chưa chọn điểm đến, hoặc điểm đến gõ tay không khớp nhãn nào của `/destinations` (phải chọn từ gợi ý). Đã có kết quả mà lần Tìm sau thiếu thông tin thì kết quả cũ ở lại kèm lời báo. Tấm tìm kiếm của vé máy bay không dẫn sang `/search?type=flight` nữa (URL đó vẫn mở được trực tiếp). Code: `features/flights/` (`FlightsPage.tsx`, `results/`), dữ liệu qua `services/flights.ts`.
+
+| Khu vực | Endpoint | Auth | Trường Web đọc | Khi lỗi / rỗng |
+|---|---|---|---|---|
+| Tuyến | `GET /products?taxonomy=flight&destination=<điểm đến>&limit=50` (mọi trang) | — | `attributes.level = route`, `originCity`, `originAirports`, `destinationAirports` | Không tuyến khớp điểm đi → "Chưa có chặng A → B" kèm các điểm đi có chuyến tới B. Lỗi → "Thử lại" |
+| Chuyến của tuyến | `GET /products?parentProductId=<tuyến>&sort=price_asc&limit=50` (mọi trang) | — | `ProductSummary` tầng con: `unitPrice`, `available`, `availableFrom`, `attributes` (`airline`, `airlineCode`, `flightNumber`, `originAirport`, `destinationAirport`, `departureAt`, `arrivalAt`, `durationMinutes`, `nonstop`, `tripType`, `priceObservedAt`), `fareClasses` | Tuyến không có chuyến → "Chưa có chuyến bay đặt được" |
+| Chiều về (chỉ khi khứ hồi) | như hai dòng trên với tuyến ngược (điểm đến = thành phố đi của chặng đi) | — | như trên | Không có tuyến ngược → báo và vẫn đặt được vé một chiều |
+| Đặt vé | `POST /cart/items` cho từng chặng (qua `addToCart`) | bắt buộc | gửi `productId` của hạng đã chọn, `usingDate` = ngày bay, `guests` | Chưa đăng nhập → mở modal đăng nhập rồi chạy lại. Thêm lỗi → toast, ở lại trang. Xong → `/checkout` |
+
+Quy tắc:
+- **Mỗi hành trình một thẻ.** Các sản phẩm cùng hành trình có chung `fareClasses` nên được gom (`flightOptionsFromVariants`); chọn hạng nằm trong thẻ, giá và nút Chọn theo hạng đó. Bỏ vé khứ hồi (`tripType: roundTrip`), vé hết chỗ, không giá, `ticketed: false`, thiếu giờ bay. Khứ hồi đóng gói vẫn xem và đặt ở `/product/{id}`.
+- **Chọn từng chặng** (FR-BKG-10): chiều đi rồi chiều về. Chiều về chỉ có chuyến cất cánh sau khi chiều đi hạ cánh (`canFollow`). Mỗi chặng là một mục giỏ; giỏ hiển thị hai chặng ngược chiều là một chuyến khứ hồi.
+- **Chỉ hiện điều nguồn có.** `null` hoặc vắng mặt là chưa biết: không hiện hành lý ("0 kg"), suất ăn, điều kiện đổi khi `fareClasses` là `null`; hạng vẫn là "Giá rẻ nhất" khi `code` là `null`; `nonstop` vắng mặt thì không nhãn "Bay thẳng" và không lọt bộ lọc điểm dừng. Vé mô phỏng (`attributes.simulated` hoặc tên kết thúc "(giá minh hoạ)") có nhãn "Giá minh hoạ". `EXPIRED` hiện "Giá có thể đã thay đổi" và không khoá nút đặt (`docs/guide/hien-thi-hang-ve-may-bay.md`).
+- **Dải ngày** chỉ có ngày còn chuyến (dữ liệu catalog thưa), kèm giá thấp nhất mỗi ngày và số chuyến. Mở ở ngày `checkIn` nếu có chuyến, không thì ngày gần nhất sau đó kèm câu báo; không có nữa thì ngày cuối. Ngày đã qua (giờ Việt Nam) bị bỏ.
+- **Bộ lọc** chạy client trên các chuyến của ngày đang xem vì Backend chưa lọc ngày, giờ, hãng: khung giờ theo buổi (Sáng 05–11, Trưa 11–14, Chiều 14–18, Tối 18–22, Khuya 22–05, tính theo giờ đi, đầu khung tính, cuối khung không tính; chọn nhiều), hãng (mặc định chọn hết), điểm dừng (Bay thẳng / Có điểm dừng). Giá trị không có chuyến nào ở ngày đang xem thì mờ và tự bỏ khỏi bộ lọc. Sắp xếp: giá thấp nhất (mặc định), giờ đi sớm nhất, giờ đi muộn nhất, bay nhanh nhất.
+- **"Vé của tôi"** hiện các chặng đã chọn và **Tổng ước tính** = `estimateFares` của từng chặng theo số khách (`adults`, `children` từ URL, mặc định 1 người lớn), cùng công thức và cùng lời rào với hộp đặt (§4.3): Web không gửi số tiền, giá chính thức là `fares`/`lineTotal` của `CartResponse`. Nút Đặt vé bật khi đủ các chặng cần thiết.
+- Bộ đệm 60 giây của `loadSection` cho hai lời gọi trên; mỗi lần tìm khác dựng lại kết quả từ đầu (`key` theo URL), nên chuyến đã chọn, ngày và bộ lọc của lần trước không được giữ.
+
+### 4.2. Search `/search`
+
+Đề xuất PRD `update-archive/2026-09-30-trang-search-bo-diem-den-ve-may-bay-va-tab-theo-nhom.md`. Tab theo nhóm header: **Tất cả · Lưu trú (`hotel`) · Tour và trải nghiệm (`attraction` + `golf`) · Tiện ích khác (`combo`)**. Vé máy bay không nằm trong tìm kiếm ngữ nghĩa; `?type=flight` (từ `/flights`) là ngoại lệ, một danh sách phẳng không tab. Không có bộ lọc điểm đến; `?destination=` từ tấm tìm kiếm ở trang danh mục vẫn truyền cho API và hiện thành chip có ✕.
+
+| Khu vực | Endpoint | Auth | Trường Web đọc | Khi lỗi / rỗng |
+|---|---|---|---|---|
+| Số kết quả các tab | `POST /search` không `taxonomy`, `limit: 1` | tùy | `facets.taxonomy` (Lưu trú = hotel, Tour và trải nghiệm = attraction + golf, Tiện ích khác = combo; bỏ `flight`), `topScore` | Lỗi → tab không hiện số; tab 0 kết quả vẫn hiện |
+| Tab **Tất cả**: hàng theo nhóm | `POST /search` một lần cho mỗi taxonomy của nhóm, `limit: 6` | tùy | `results[]`, `total` | Lỗi → "Chưa tải được nhóm này · Thử lại" ngay hàng; nhóm 0 kết quả bị ẩn; tất cả 0 → EmptyState |
+| Tab nhóm: danh sách đầy đủ | như trên, `limit: 20`, `offset += 20` | tùy | `results[]` (`ProductSummary` + `score`), `total` | Lỗi → "Thử lại"; rỗng do lọc → "Xóa bộ lọc" |
+| Băng "kết quả yếu" | response của số kết quả các tab | — | `topScore` | `topScore < 0.35` → hiện băng; `null` → không hiện |
+
+Quy tắc:
+- **Tất cả** chỉ lấy vài mục đầu mỗi nhóm (`PREVIEW_LIMIT` = 6) để tải nhanh. Hàng đầu tải ngay, các hàng dưới tải khi gần vào vùng nhìn (`useInView`). Cuối hàng có thẻ "Còn N kết quả · Xem tất cả"; "Xem tất cả" chuyển sang tab của nhóm, lúc đó mới tải trang đầy đủ (`GROUP_PAGE_SIZE` = 20, "Xem thêm" nối trang kế).
+- Mọi lần gọi qua bộ đệm 60 giây của `hooks/useLazySection` (`useLazySection`, `loadSection`), khóa theo (truy vấn, điểm đến, nhóm, limit, offset); quay lại tab hoặc "Xem thêm" không tải lại trang đã có. Đổi tài khoản thì xóa bộ đệm (§7 điều 7). Hệ quả: cùng truy vấn tìm lại trong 60 giây có thể không sinh thêm event `search` phía Backend.
+- Hàng cuộn ngang có nút trái/phải ở giữa chiều cao hàng, sát hai bên: nút trái ẩn ở đầu hàng, nút phải ẩn ở cuối hàng hoặc khi hàng không tràn; dưới `md` chỉ vuốt (`components/search/HScroller.tsx`).
+- **Sắp xếp** là popup ("Sắp xếp: Phù hợp nhất ▾": Phù hợp nhất · Giá thấp → cao · Giá cao → thấp) ở mọi tab trừ Tất cả. Hạng sao và giá tối đa chỉ ở tab Lưu trú. Backend chưa nhận `sort`, giá, sao nên sắp xếp và lọc chạy trên các mục đã tải (`viewItems`); mục chưa có giá luôn xếp cuối.
+- Nhóm Tour và trải nghiệm là hai request (attraction, golf) trộn theo `score`.
 
 `503 SEARCH_UNAVAILABLE` → `ErrorState` có "Thử lại", giữ nguyên truy vấn trong ô.
 
@@ -157,44 +207,48 @@ Sau checkout (cờ `justBooked`): gọi lại ① bỏ qua cache. Chỉ hiện t
 | Chọn hạng phòng / chuyến bay | `GET /products?parentProductId={productId}&sort=price_asc` | — | `results[]` (`ProductSummary` của tầng con) | Chỉ gọi khi `attributes.level` là `property` hoặc `route`. Rỗng → "chưa có hạng phòng/chuyến bay đặt được", khoá nút đặt. Lỗi → dòng thông báo, khoá nút đặt |
 | Tương tự | `GET /products/{productId}/similar?limit=8` | — | `results[]` + `score` | Lỗi hoặc rỗng → ẩn section |
 | Hoàn thiện chuyến | `GET /recommendations?k=4&destination=<product.destination>` | bắt buộc | như Home ① | Chỉ render khi `destination` response trùng sản phẩm |
-| Thêm vào giỏ | `POST /cart/items` | bắt buộc | `CartResponse.itemCount` (badge header) | Xem §8 |
+| Thêm vào giỏ | `POST /cart/items` | bắt buộc | gửi `productId`, `usingDate`, `nights` (khách sạn), `guests` (số người lớn và trẻ em) và `quantity` (khách sạn, combo); đọc `CartResponse.itemCount` (badge header) | Xem §8. `400 VALIDATION_ERROR` (ví dụ vượt sức chứa) → toast `message` |
 | Ghi lượt xem | `POST /events` `{ eventName: "product_view", productId }` | bắt buộc | — (`202` không body) | Không JWT thì không gọi. Mọi lỗi bỏ qua im lặng, không hiện gì cho người dùng |
 
 Gọi `POST /events` **một lần** khi trang chi tiết đã hiển thị trên trình duyệt với người dùng đã đăng nhập; không gọi trong Server Component, khi prefetch link hay khi render lại cùng sản phẩm. Web không gửi event `search` hay `add_to_cart`: Backend tự ghi khi xử lý `/search` và `/cart/items`.
 
 Khách sạn (`property`) và tuyến bay (`route`) không đặt trực tiếp: hộp đặt dùng mục tầng con khách đã chọn (mặc định mục rẻ nhất còn đặt được), và `POST /cart/items` gửi `productId` của **tầng con**. Sản phẩm không phân tầng đặt trực tiếp. Chuyến bay có một ngày cố định (`availableFrom = availableTo`) nên ngày hiện ở dạng chỉ đọc.
 
-Hộp đặt gửi `nights` chỉ khi `taxonomy = hotel`. Tổng tiền trong hộp đặt là **ước tính hiển thị**, tính theo công thức `hop-dong-tich-hop-backend.md` §2.6; giá chính thức là `lineTotal` do backend trả.
+Hộp đặt gửi `nights` chỉ khi `taxonomy = hotel`. Bộ đếm khách theo loại dịch vụ (spec `booking/checkout-nhieu-buoc-hanh-khach.md` §6.9): vé tham quan, golf, chuyến bay có Người lớn (≥ 1) và Trẻ em (≥ 0) kèm đơn giá từng loại, và gửi `guests` (không gửi `quantity`, Backend tự tính bằng `adults + children`); khách sạn có số phòng, người lớn, trẻ em, gợi ý "Tối đa {maxOccupancy} khách/phòng" và gửi cả `quantity` (số phòng) lẫn `guests`; combo chỉ có số gói và chỉ gửi `quantity`. Tối đa 9 khách mỗi mục, mỗi phòng ít nhất 1 người lớn; nút thêm khoá khi lựa chọn chưa hợp lệ. Tổng tiền trong hộp đặt là **ước tính hiển thị** theo các dòng giá của spec đó (§4.3, §4.4); giá chính thức là `lineTotal` và `fares` do backend trả.
 
 ### 4.4. Cart `/cart`
 
 | Khu vực | Endpoint | Auth | Trường Web đọc | Khi lỗi / rỗng |
 |---|---|---|---|---|
-| Danh sách, tóm tắt | `GET /cart` | bắt buộc | `items[]` (`cartItemId`, `product`, `usingDate`, `quantity`, `nights`, `lineTotal`), `itemCount`, `subtotal`, `total`, `currency` | `items: []` → EmptyState. Mục có `product.available: false` → viền đỏ, khóa CTA checkout |
-| Sửa / xóa | `PATCH` / `DELETE /cart/items/{cartItemId}` | bắt buộc | toàn bộ `CartResponse` thay thế state | `404 CART_ITEM_NOT_FOUND` → tải lại `GET /cart` |
+| Danh sách, tóm tắt | `GET /cart` | bắt buộc | `items[]` (`cartItemId`, `product` (kèm `attributes.maxOccupancy` của hạng phòng), `usingDate`, `quantity`, `nights`, `guests`, `fares`, `lineTotal`), `itemCount`, `subtotal`, `total`, `currency` | `items: []` → EmptyState. Mục có `product.available: false` → viền đỏ, khóa CTA checkout |
+| Sửa / xóa | `PATCH` / `DELETE /cart/items/{cartItemId}` | bắt buộc | gửi `guests` (và `quantity` với khách sạn, combo); toàn bộ `CartResponse` thay thế state | `404 CART_ITEM_NOT_FOUND` → tải lại `GET /cart`. `400 VALIDATION_ERROR` → toast `message`, giữ bộ đếm để sửa tiếp |
 | Gom nhóm "Chuyến {destination}" | — | — | `items[].product.destination` | Client tự gom |
 | Thường được đặt cùng | `GET /recommendations?k=4&destination=<điểm đến đầu tiên>` | bắt buộc | như Home ① | Lỗi → ẩn |
+
+Mỗi mục hiện "2 người lớn · 1 trẻ em" (từ `guests`) và các dòng giá (`fares`); nút [Sửa] mở cùng bộ đếm với trang chi tiết và gọi `PATCH` khi bấm Cập nhật. Đơn giá vé trẻ em (`attributes.childPrice`) không nằm trong `CartResponse`, nên Web tải `GET /products/{productId}` khi mở [Sửa]. Mục hết chỗ không có [Sửa].
 
 Web **không** tự cộng tiền. Mọi con số tiền trên trang giỏ lấy từ `CartResponse`.
 
 ### 4.5. Checkout `/checkout`
 
-| Khu vực | Endpoint | Auth | Trường Web đọc / gửi | Khi lỗi |
+Ba bước trên cùng một route, bước hiện tại ở `?step=travelers|services|review`, mỗi lần chuyển bước là một mục trong lịch sử trình duyệt (spec `booking/checkout-nhieu-buoc-hanh-khach.md` §6). Chỉ sửa giỏ ở hai bước đầu; không giữ chỗ, không tạo đơn, không gọi Stripe cho tới khi bấm Thanh toán.
+
+| Bước | Endpoint | Auth | Trường Web đọc / gửi | Khi lỗi |
 |---|---|---|---|---|
-| Tóm tắt | `GET /cart` | bắt buộc | như §4.4 | `items: []` → chuyển `/cart`. Mục `product.available: false` → khoá nút Thanh toán |
-| Điền sẵn | phiên hiện tại | — | `user.fullName`, `user.email` (email khoá theo tài khoản) | — |
-| Phương thức thanh toán | — | — | — | Chỉ Stripe (chọn sẵn); ví điện tử, chuyển khoản hiển thị vô hiệu hoá, nhãn "Sắp có" (`user-flow.md` §3.3) |
-| Thanh toán | `POST /bookings` | bắt buộc | gửi `contact`, `itemDetails[]`; đọc `referenceCode`, `payment.checkoutUrl` | Xem §8. `201` → `window.location.assign(payment.checkoutUrl)` sang trang Stripe |
+| Tóm tắt (cả ba bước) | `GET /cart` (mỗi lần chuyển bước) | bắt buộc | như §4.4 | `items: []` → chuyển `/cart`. Mục `product.available: false` → khoá nút Thanh toán |
+| ① Hành khách | — (không gọi Backend) | — | Đoàn 1–9 người, ít nhất 1 người lớn; mỗi người có họ và tên đệm và tên (hai ô), trẻ em có ngày sinh; người liên hệ (`fullName`, `phone`; email khoá theo tài khoản). Điền sẵn: số người lớn, trẻ em từ `guests` lớn nhất của giỏ; họ tên Người lớn 1 từ tài khoản nếu dùng được | Kiểm ở Web theo cùng bộ luật với Backend (spec §5.2). Bấm Tiếp tục khi còn lỗi: ở lại bước, hộp "Còn n thông tin cần sửa", con trỏ về ô lỗi đầu tiên |
+| ② Dịch vụ | `PATCH /cart/items/{cartItemId}` cho mỗi mục có `guests` hoặc số phòng khác phân bổ (chờ 400 ms, các lần của cùng mục chạy lần lượt) | bắt buộc | Chọn ai dùng từng dịch vụ; khách sạn xếp người vào phòng và chọn người đại diện. Đọc `fares`, `lineTotal` mới sau mỗi `PATCH` | `PATCH` lỗi → gắn lỗi vào thẻ dịch vụ. Bấm Tiếp tục kiểm luật dịch vụ (spec §5.3) |
+| ③ Xem lại và thanh toán | `POST /bookings` | bắt buộc | gửi `contact`, `travelers[]` (`travelerRef`, `type`, `surname`, `givenNames`, `birthDate` của trẻ em), `itemDetails[]` (`cartItemId`, `travelerRefs` hoặc `rooms[]` với `leadTravelerRef`, `specialRequest`); đọc `referenceCode`, `payment.checkoutUrl` | Xem §8. `201` → `window.location.assign(payment.checkoutUrl)` sang trang Stripe |
 
-Nút **Thanh toán** bị khoá tới khi họ tên hợp lệ, `phone` khớp `^0[0-9]{9}$`, đủ tên khách theo quy tắc dưới, đã đồng ý điều khoản và đã chọn phương thức; khi đang gửi thì hiện trạng thái xử lý và chặn bấm lặp. Web không gửi số tiền; tổng hiển thị lấy từ `CartResponse.total`.
+Phương thức thanh toán: chỉ Stripe (chọn sẵn); ví điện tử, chuyển khoản hiển thị vô hiệu hoá, nhãn "Sắp có" (`user-flow.md` §3.3). Nút **Thanh toán** ở bước ③ bị khoá tới khi đã đồng ý điều khoản (gộp việc xác nhận họ tên) và đã chọn phương thức, hoặc khi giỏ còn mục hết chỗ; khi đang gửi thì hiện trạng thái xử lý và chặn bấm lặp. Web không gửi số tiền; mọi số tiền hiển thị lấy từ `CartResponse` (`fares`, `lineTotal`, `total`).
 
-Quy tắc form → `itemDetails[]`: `hotel` gửi `guestNames` 1 phần tử; `flight` gửi `guestNames` đủ `quantity` phần tử; loại khác không gửi `guestNames`. `specialRequest` tùy chọn, theo từng mục.
+Họ tên và ngày sinh chỉ nằm trong bộ nhớ của trang, không ghi `localStorage`, `sessionStorage`, URL hay cookie; tải lại trang thì mất và Web nói rõ điều đó. Web không gửi `guestNames` (chỉ client cũ gửi, spec §7.6). Hạn hoàn tiền hiển thị ở bước ③ tính theo FR-BKG-07 nhưng chỉ để hiển thị; Backend quyết định `cancellableUntil`.
 
 ### 4.6. Trạng thái đơn `/booking/{referenceCode}`
 
 | Khu vực | Endpoint | Auth | Trường Web đọc | Khi lỗi / rỗng |
 |---|---|---|---|---|
-| Đơn đặt | `GET /bookings/{referenceCode}` (dùng bản trong state nếu có để hiện ngay) | bắt buộc | `status`, `holdExpiresAt`, `cancellableUntil`, `payment` (`status`, `amount`, `checkoutUrl`, `failedAttempts`, `failureReason`, `refundedAmount`), `cancellation`, `contact`, `groups[]`, `total` | `404 BOOKING_NOT_FOUND` → "Không tìm thấy đơn đặt chỗ này" |
+| Đơn đặt | `GET /bookings/{referenceCode}` (dùng bản trong state nếu có để hiện ngay) | bắt buộc | `status`, `holdExpiresAt`, `cancellableUntil`, `payment` (`status`, `amount`, `checkoutUrl`, `failedAttempts`, `failureReason`, `refundedAmount`), `cancellation`, `contact`, `groups[]` (mỗi mục: `fares`, `travelers`, `guestNames`), `total` | `404 BOOKING_NOT_FOUND` → "Không tìm thấy đơn đặt chỗ này" |
 | Chờ xác nhận | `GET /bookings/{referenceCode}` lặp lại | bắt buộc | `status`, `payment.status` | `?payment=return`, `payment.status = SUCCEEDED` hoặc đồng hồ giữ chỗ về 0: hỏi lại 2 giây/lần, tối đa 15 lần, dừng khi `status` khác `PENDING_PAYMENT`. Quay về từ Stripe **không** phải bằng chứng đã trả |
 | Huỷ đơn | `POST /bookings/{referenceCode}/cancel` | bắt buộc | `BookingResponse` thay thế state | Xem §8 |
 | Tiếp theo cho chuyến | `GET /recommendations?k=4&destination=<groups[0].destination>` — **chỉ khi `CONFIRMED`**, gọi sau khi đơn đã hiển thị | bắt buộc | như Home ① | Lỗi hoặc rỗng → ẩn section, giữ CTA |
@@ -211,6 +265,8 @@ Hiển thị theo trạng thái (spec booking §5.1):
 | `EXPIRED` | "Hết thời gian giữ chỗ" + "Đặt lại từ giỏ" |
 | `CANCELLED` | "Đã huỷ đơn" + trạng thái hoàn tiền theo `payment.status` (`REFUND_PENDING`, `REFUNDED`, `REFUND_FAILED`, hoặc `EXPIRED` = chưa thanh toán nên không hoàn) |
 
+Mỗi mục của đơn hiện hành khách và dòng giá (spec `booking/checkout-nhieu-buoc-hanh-khach.md` §6.8): khách sạn hiện khách theo phòng ("Phòng 1: …") và đánh dấu người đại diện nhận phòng (`isLead`); dịch vụ khác hiện một dòng tên, trẻ em có nhãn "(trẻ em)"; các dòng giá từ `fares`. Response không có ngày sinh nên trang không hiện. Đơn tạo trước thay đổi có `travelers` rỗng: hiện `guestNames` như trước.
+
 Hộp thoại huỷ: đơn `CONFIRMED` hiện số tiền hoàn (`payment.amount`), `cancellableUntil` và "không thể hoàn tác"; đơn chưa thanh toán ghi rõ không phát sinh tiền, giỏ còn nguyên.
 
 ### 4.7. Login / Register
@@ -226,7 +282,9 @@ Web gọi route BFF `/api/auth/*`, không gọi thẳng `/api/v1/auth/*` (docs/s
 | Khôi phục phiên | `GET /api/auth/session` | — | `state`, `user?`, `csrfToken` | Không bao giờ 401: khách nhận `state: anonymous` |
 | Đăng xuất | `POST /api/auth/logout` | — | `204` | Cookie luôn bị xoá, kể cả khi backend lỗi |
 
-### 4.8. Assistant `/assistant`
+### 4.8. Trợ lý (widget nổi, không có route riêng)
+
+**Trạng thái mở đầu của widget nổi (FR-AGT-01, hỗ trợ AC-AGT-01):** Khi mở icon AI trong cuộc trò chuyện chưa có request, hiển thị lời chào ngắn và một ô nhập yêu cầu tự nhiên dạng search box. Chip Nghỉ dưỡng/Gia đình/Khám phá chỉ điền bản nháp, không tự gửi. Form chọn nhanh nằm trong phần “Thêm thông tin chuyến đi”; danh sách điểm đến chỉ tải qua service `GET /destinations` khi mở phần này. Khi gửi câu đầu, chuyển sang transcript với một ô nhập ở đáy. Enter gửi, Shift+Enter xuống dòng; đang xử lý thì khóa gửi và cho dừng. Đóng/mở hoặc mở rộng giữ bản nháp; tạo cuộc mới xóa bản nháp và trở về màn mở đầu. Component của widget nằm trong `src/frontend/src/features/itinerary/widget/`; `components/assistant/AiFloatingWidget.tsx` giữ entry point tương thích.
 
 | Hành động | Endpoint | Auth | Trường Web đọc | Ghi chú |
 |---|---|---|---|---|
@@ -235,6 +293,9 @@ Web gọi route BFF `/api/auth/*`, không gọi thẳng `/api/v1/auth/*` (docs/s
 | Thêm vào giỏ từ kế hoạch | `POST /cart/items` (mỗi mục một lần, tuần tự) | bắt buộc | `CartResponse` cuối cùng | Một mục lỗi không chặn mục còn lại; tổng kết lỗi trong một toast. Nút theo thẻ và nút "Thêm cả lịch trình". Mục đủ điều kiện: `available`, `unitPrice` khác null, `bookable` khác `false`, `attributes.ticketed` khác `false`; mỗi `productId` một lần. `usingDate` = `day.date` của slot; `stay` lấy check-in = `days[0].date`, check-out = check-in + `nights` |
 | Chỉnh nhanh lịch trình | cùng endpoint: `intentOverride.days` (1–7) hoặc `message` soạn sẵn nêu tên sản phẩm cần đổi | tùy | như trên | Khoá khi đang chạy; ẩn khi xem lịch trình đã lưu/chia sẻ |
 | Danh sách điểm đến (thẻ hỏi lại) | `GET /destinations` | — | `destinations[]` | Dùng khi `suggestedValues.destination` rỗng |
+| Xem lịch sử hội thoại | `GET /assistant/conversations` | bắt buộc | `data[]`, `pagination` | Mới nhất trước; chỉ của user hiện tại |
+| Mở lại hội thoại | `GET /assistant/conversations/{conversationId}` | bắt buộc | `conversation`, `messages[]` | Nạp transcript rồi tiếp tục chat với cùng `conversationId` |
+| Xem chi tiết sản phẩm trong widget (bấm thẻ hoặc tên trong lời diễn giải) | `GET /products/{productId}` | — | `name`, `description`, `imageUrl`, `attributes.images`, `attributes.address`, `attributes.latitude`/`longitude`, `attributes.openingHours`, `rating`, `reviewCount`, `unitPrice`, `priceUnit`, `available` | Panel ở cột phải (desktop), X/Esc về lịch trình. Thẻ gọn trong khung chat đặt sau lần nhắc đầu tiên, dữ liệu từ `itinerary`/`searchResults` của response (PRD `user-flow.md` §4.2). Không có danh sách bình luận vì catalog không có dữ liệu |
 
 ---
 
@@ -253,7 +314,7 @@ Prop của component dùng **đúng tên schema** trong OpenAPI. Không có lớ
 | `SectionHeader` | `strategy`, `destination`, `nextVertical`, `excludedVerticals`, `coldStart`, `context` (`home` \| `detail` \| `cart` \| `confirmation`) | `RecommendationResponse` | Bảng tiêu đề ở `docs/product.md` §5.3 |
 | `TripChecklist` | `excludedVerticals`, `nextVertical` | `RecommendationDiagnostics` | Chỉ render khi `strategy = cross_vertical` |
 | `ActivityNote` | `slot` | `ItinerarySlot` với `product: null` | Không giá, không nút, không ảnh |
-| `ItineraryProductCard` | `slot` | `ItinerarySlot` với `product` khác `null` | `ProductCard` compact + `note` + nhãn "Hợp với bạn" khi `source = RECOMMENDATION` |
+| `ItineraryProductCard` | `slot` | `ItinerarySlot` với `product` khác `null` | `ProductCard` compact + `note` + nhãn "Hợp với bạn" khi `source = RECOMMENDATION`. Trong khung chat: `ProductCard` compact đặt sau dòng đầu tiên nhắc `[Tên](product:id)`, mỗi sản phẩm một lần; id không có trong `itinerary`/`searchResults` thì không render |
 | `ErrorState` | `error` | `ErrorResponse.error` | `retryable: true` → nút "Thử lại" |
 
 Không component nào nhận `priceString`, `price{}`, `category`, `bookingUrl` hoặc `semanticScore` — các trường đó không tồn tại trong v1.
@@ -329,7 +390,7 @@ Mọi response không phải 2xx có envelope `ErrorResponse` (`hop-dong-tich-ho
 
 | Mã lỗi | Nơi gặp | Web hiển thị |
 |---|---|---|
-| `VALIDATION_ERROR` | form bất kỳ | Gắn `details.fields[]` vào trường tương ứng; không có `fields` → `message` phía trên nút |
+| `VALIDATION_ERROR` | form bất kỳ | Gắn `details.fields[]` vào trường tương ứng; không có `fields` → `message` phía trên nút. Checkout: `field` bắt đầu bằng `travelers[`, `contact.` → về bước ①; `itemDetails[` (kèm `cartItemId`) → về bước ②; lỗi ở cả hai thì về bước ①, và hộp "Còn n thông tin cần sửa" chỉ liệt kê lỗi của bước đó. `reason = GUEST_COUNT_MISMATCH` → tải lại giỏ, tính lại phân bổ, về bước ② (spec `booking/checkout-nhieu-buoc-hanh-khach.md` §6.7, §10.4) |
 | `CART_EMPTY` | Checkout | Chuyển `/cart` |
 | `BOOKING_PENDING_PAYMENT` | Checkout | Hộp thoại "Bạn đang có một đơn chờ thanh toán" với `details.referenceCode`, `details.holdExpiresAt`: "Tiếp tục thanh toán đơn đó" (đọc lại đơn, mở `checkoutUrl`) hoặc "Huỷ đơn đó và đặt lại từ giỏ" |
 | `BOOKING_ALREADY_PAID` | Huỷ đơn | Tải lại đơn, báo "Đơn vừa được thanh toán" |
@@ -342,12 +403,10 @@ Mọi response không phải 2xx có envelope `ErrorResponse` (`hop-dong-tich-ho
 | `BOOKING_NOT_FOUND` | Confirmation | "Không tìm thấy đơn đặt chỗ này" + Về trang chủ |
 | `EMAIL_ALREADY_EXISTS` | Register | Dưới trường email + link Đăng nhập |
 | `PRODUCT_UNAVAILABLE` | Thêm giỏ; Checkout | Banner "{tên} vừa hết chỗ" dùng `details.productId` để tìm tên trong giỏ; giữ form; link Quay lại giỏ |
-| `PRICE_CHANGED` | Checkout | Banner "Giá {tên} đã đổi từ {oldPrice} thành {newPrice}" + nút "Cập nhật và tiếp tục": gọi `PATCH /cart/items/{cartItemId}` với `quantity` hiện tại để Backend ghi lại giá snapshot (khách đã thấy giá mới), rồi người dùng bấm Thanh toán lần nữa. Chỉ `GET /cart` thì lần bấm sau vẫn nhận `PRICE_CHANGED` |
+| `PRICE_CHANGED` | Checkout | Banner "Giá {tên} đã đổi từ {oldPrice} thành {newPrice}" (có `details.fareType = CHILD` thì "Giá vé trẻ em của {tên} …") + nút "Cập nhật và tiếp tục": gọi `PATCH /cart/items/{cartItemId}` với `quantity` hiện tại để Backend ghi lại giá snapshot (khách đã thấy giá mới), rồi người dùng bấm Thanh toán lần nữa. Chỉ `GET /cart` thì lần bấm sau vẫn nhận `PRICE_CHANGED` |
 | `DATE_OUT_OF_RANGE` | Thêm giỏ; Checkout | Lỗi dưới ô ngày, dùng `details.availableFrom/To` để giới hạn lịch |
 | `SEARCH_UNAVAILABLE` | Search; Assistant | `ErrorState` + Thử lại |
-| `INVALID_TRIP_DURATION` | Assistant | Tin nhắn trợ lý với `message`, mở stepper số ngày |
 | `CONVERSATION_NOT_FOUND` | Assistant | Xóa `conversationId`, gửi lại tin nhắn như cuộc hội thoại mới, thêm dòng hệ thống "Đã bắt đầu cuộc trò chuyện mới" |
-| `UNSUPPORTED_DESTINATION` | Assistant | "V-OTA chưa có dịch vụ ở {details.destination}" + chip từ `details.supportedDestinations`; lưu `details.conversationId` để lượt sau tiếp tục |
 | `LLM_UNAVAILABLE` | Assistant | Chạy `POST /search` với tin nhắn gốc, hiển thị như `FALLBACK` |
 | `ITINERARY_VALIDATION_FAILED` | Assistant | `ErrorState` + Thử lại |
 | `INTERNAL_ERROR` | mọi nơi | `ErrorState` cục bộ + Thử lại |
@@ -430,8 +489,8 @@ Ví dụ sửa chip "3 ngày → 2 ngày":
 
 | `status` | Khi nào | Web render |
 |---|---|---|
-| `COMPLETED` | Có kế hoạch | Panel kế hoạch + thẻ tóm tắt trong chat |
-| `NEEDS_CLARIFICATION` | Thiếu `destination` hoặc `days` | Thẻ hỏi lại có lựa chọn |
+| `COMPLETED` | Có kế hoạch | Panel kế hoạch + lời diễn giải `message` trong chat: dòng đầu `**Tiêu đề**` và các mục in đậm; link `[Tên](product:<productId>)` hiện thành nút, bấm thì mở rộng widget, chọn tab ngày chứa sản phẩm, cuộn và tô viền thẻ đó ở panel và focus điểm trên bản đồ (`WidgetChat.tsx`, `useFloatingWidget.focusProduct`, `widgetPlan.locateProduct`). Không có `message` thì hiện `itinerary.title`, rồi câu cố định. Chỉ `**đậm**` và link sản phẩm được render, mọi markdown/HTML khác hiện nguyên chữ (`inlineBold.parseAssistantText`) |
+| `NEEDS_CLARIFICATION` | Thiếu `destination`, `days`, hoặc chưa hỏi `startDate`/`party`/`budget`; hoặc có giá trị không hợp lệ (ngày đã qua, điểm đến ngoài catalog, số ngày/số người/ngân sách ngoài giới hạn) | Thẻ hỏi lại có lựa chọn; có `clarificationForm` (từ lượt hỏi thứ hai) thì hiện form đã điền sẵn thay cho chip. Dòng đầu `question` dạng `**Tiêu đề**` hiển thị **chữ đậm** (bong bóng chat, widget nổi và thẻ hỏi lại tách tiêu đề khỏi phần thân). Cùng dạng cho `message` của `NO_RESULTS`/`FALLBACK` (thẻ kết quả tách tiêu đề thành tiêu đề thẻ) và `error.message` của lỗi `VALIDATION_ERROR` 400 (khung lỗi in đậm dòng đầu); tên khi chia sẻ/lưu lấy từ tiêu đề |
 | `NO_RESULTS` | Search không có sản phẩm phù hợp | Tin nhắn + chip `suggestions` |
 | `FALLBACK` | LLM lỗi nhưng Search chạy được | Tin nhắn fallback + panel "Dịch vụ gợi ý ở {destination}" |
 
@@ -492,11 +551,11 @@ Trường chung mọi `status`: `status`, `conversationId`, `metadata`.
 | `slots[].source` | `SEARCH` \| `RECOMMENDATION` khi có `product`; `null` khi không |
 | `slots[].because` | Schema `BecauseItem` của `/recommendations`. Chỉ khác rỗng khi `source = RECOMMENDATION` |
 | `bookableCount` | Số mục có `product.available = true`, gồm cả `stay` |
-| `estimatedTotal` | Integer VND do backend tính (không phải LLM), theo `intent.party` và công thức §2.6 hợp đồng Backend |
-| `budgetStatus` | `WITHIN_BUDGET` \| `OVER_BUDGET` \| `NO_BUDGET` |
+| `estimatedTotal` | Integer VND do backend tính (không phải LLM), theo `intent.party` và công thức §2.6 hợp đồng Backend. Chỉ gồm chi phí các sản phẩm trong lịch trình. `null` khi có mục thiếu giá hoặc thiếu `priceUnit` — nghĩa là **chưa tính được**, Web không được hiển thị thành `0`. Ngoại lệ: điểm tham quan/golf không có giá hoặc `ticketed=false` là "tham quan tự do", backend tính 0 đ vào tổng và Web ghi "Tham quan tự do" ở mục đó, không ghi 0 ₫. Người dùng có nêu `budget` không làm trường này thành `null` |
+| `budgetStatus` | `WITHIN_BUDGET` \| `OVER_BUDGET` \| `NO_BUDGET` \| `UNKNOWN`. `NO_BUDGET` khi `intent.budget = null`; `UNKNOWN` chỉ khi `estimatedTotal = null`. So sánh đặt trên chi phí sản phẩm, không phải chi phí cả chuyến |
 | `priceAsOf` | Thời điểm lấy giá; Web ghi "giá tại thời điểm tạo kế hoạch" |
 | `searchResults` | Object key `taxonomy` → `ProductSummary[]`, tối đa 6 mỗi nhóm. Có mặt kể cả khi `COMPLETED`, phục vụ "Tìm lựa chọn khác" |
-| `warnings[]` | `{ code, message, productId }` — ví dụ `PRODUCT_DROPPED_UNAVAILABLE`, `DAY_WITHOUT_PRODUCTS`, `OVER_BUDGET` |
+| `warnings[]` | `{ code, message, productId }` — ví dụ `PRODUCT_DROPPED_UNAVAILABLE`, `DAY_WITHOUT_PRODUCTS`. Về tiền: `PRODUCT_COST_ONLY` (tổng chỉ gồm sản phẩm) luôn đi kèm `estimatedTotal` khác `null`; `BUDGET_ON_PRODUCT_COST` thêm vào khi người dùng có nêu ngân sách; `FREE_ENTRY_ASSUMED` thêm vào khi tổng có điểm tham quan tự do (tính 0 đ); `UNKNOWN_TOTAL` thay cho cả ba khi `estimatedTotal = null`. `NO_STAY_AVAILABLE`: lịch không có chỗ ở, `message` nêu lý do (lời diễn giải đã có mục "Chưa có khách sạn") |
 
 #### `NEEDS_CLARIFICATION`
 
@@ -512,7 +571,17 @@ Trường chung mọi `status`: `status`, `conversationId`, `metadata`.
 }
 ```
 
-`missingFields` chỉ nhận `destination` \| `days`. Người dùng chọn trên thẻ → Web gửi `intentOverride` với các giá trị đã chọn.
+**Field tuỳ chọn `suggestions`** (OpenAPI 1.13.0): khi điều kiện bắt buộc (khách sạn, khách sạn/hoạt động cụ thể) không có sản phẩm nào, `question` nêu lý do thật và `suggestions` là câu gửi được nguyên văn (ví dụ `Đổi ngày khởi hành sang 15/10/2026`, `Đi Hà Nội 3 ngày, không cần khách sạn`). Widget hiện thành chip như `NO_RESULTS` (`useFloatingWidget.ts`, `SuggestionChips.tsx`).
+
+`missingFields` chỉ nhận `destination` \| `days` \| `startDate` \| `party` \| `budget`. Ba giá trị sau đi cùng nhau trong một câu hỏi gộp và không có chip gợi ý: câu hỏi hiện như tin nhắn của trợ lý và người dùng trả lời bằng cách gõ.
+
+**Field tuỳ chọn `clarificationForm`** (đề xuất `docs/prd/update-archive/2026-09-29-form-goi-y-thong-tin-chuyen-di.md`, đã áp dụng):
+xuất hiện từ lượt hỏi thứ hai trở đi khi vẫn còn thiếu `destination`/`days`. Web hiển thị một form đã điền sẵn giá trị gợi ý
+(`clarificationForm.defaults`) ngay dưới câu trả lời của trợ lý, cho từng `clarificationForm.fields`. Ô điểm đến chỉ liệt kê vài
+lựa chọn tiêu biểu (gọi `GET /destinations`, sắp theo `productCount`, lấy top 8 — không đổ hết catalog). Form chặn tại chỗ: số
+ngày trong khoảng 1–7 (`TripIntent.days`), `startDate` không sớm hơn `clarificationForm.startDateMin`. Bấm **Xác nhận** dựng một
+câu yêu cầu hoàn chỉnh từ giá trị trên form và **đặt vào ô nhập tin nhắn (không tự gửi)** — người dùng đọc lại, sửa nếu muốn rồi
+gửi như một lượt chat bình thường; không dùng `intentOverride`. Component: `src/frontend/src/components/assistant/TripDetailsForm.tsx`.
 
 #### `NO_RESULTS`
 
@@ -527,7 +596,7 @@ Trường chung mọi `status`: `status`, `conversationId`, `metadata`.
 }
 ```
 
-`suggestions` là câu gửi được nguyên văn khi người dùng bấm chip.
+`suggestions` là câu gửi được nguyên văn khi người dùng bấm chip. Chip hiện ngay dưới bong bóng trả lời của trợ lý, chỉ ở tin nhắn mới nhất (widget nổi: `WidgetChat.tsx`; trang `/assistant`: `AssistantConversation.tsx`; cùng dùng `SuggestionChips.tsx`); không dựng thêm card kết quả riêng cho `NO_RESULTS`.
 
 #### `FALLBACK`
 
@@ -546,7 +615,7 @@ Trường chung mọi `status`: `status`, `conversationId`, `metadata`.
 
 ### 9.4. Lỗi
 
-HTTP status và `ErrorResponse` như §8. Mã riêng của trợ lý: `INVALID_TRIP_DURATION` (400), `CONVERSATION_NOT_FOUND` (404), `UNSUPPORTED_DESTINATION` (422, `details: { destination, supportedDestinations, conversationId }`; Web gửi `conversationId` này cùng điểm đến người dùng chọn lại để giữ số ngày, ngày đi và số khách đã nói), `LLM_UNAVAILABLE` (503, chỉ khi Search cũng không dùng được), `ITINERARY_VALIDATION_FAILED` (500). Request sai định dạng dùng `VALIDATION_ERROR`; Search lỗi dùng `SEARCH_UNAVAILABLE`.
+HTTP status và `ErrorResponse` như §8. Mã riêng của trợ lý: `CONVERSATION_NOT_FOUND` (404), `LLM_UNAVAILABLE` (503, chỉ khi Search cũng không dùng được), `ITINERARY_VALIDATION_FAILED` (500). Request sai định dạng dùng `VALIDATION_ERROR`; Search lỗi dùng `SEARCH_UNAVAILABLE`. Điểm đến ngoài catalog và số ngày ngoài 1–7 **không còn là lỗi**: là `NEEDS_CLARIFICATION` (200) kèm `suggestedValues` (Web dùng chip điểm đến/số ngày như mọi lần hỏi lại; `conversationId` lấy từ response) — `UNSUPPORTED_DESTINATION`/`INVALID_TRIP_DURATION` vẫn ở enum nhưng trợ lý không trả nữa.
 
 ### 9.5. Quy tắc render grounding Web cam kết
 
@@ -561,8 +630,10 @@ Không đạt → không render thẻ; hiển thị dòng mờ "Mục này hiệ
 ### 9.6. Hội thoại
 
 - Web giữ `conversationId` trong state của route `/assistant` và `sessionStorage` (khóa `vota.assistant.conversationId`), xóa khi đổi tài khoản.
+- Khi tải lại trang, Web chờ phiên đăng nhập được khôi phục rồi nạp transcript và response gần nhất qua `GET /assistant/conversations/{conversationId}` cho người dùng đã đăng nhập. Chỉ ID được giữ trong browser storage; khách không nạp archive lâu dài. Response lịch sử đến muộn sau khi tạo cuộc mới, gửi tin, đổi tài khoản hoặc rời trang bị bỏ qua. Lỗi tạm thời giữ ID và cho thử tải lại; hội thoại không còn tồn tại thì xóa ID.
+- Khi đã đăng nhập, Web hiển thị nút **Lịch sử**, tải danh sách từ backend và cho chọn một hội thoại để nạp transcript. Khách không thấy lịch sử lâu dài.
 - Kế hoạch không tự cập nhật giá. Giỏ và Checkout luôn dùng giá mới nhất.
-- Không stream trong v1: Web hiện danh sách 3 bước với một spinner chung, không đánh ✓ giả (`docs/product.md` §6.1).
+- Tiến độ: Web đọc stream SSE và đánh ✓ 3 bước (hiểu yêu cầu → tìm sản phẩm → sắp xếp lịch trình) chỉ theo sự kiện `node.completed` thật; nhánh trò chuyện hay hỏi lại không có ✓ giả. `message` của sự kiện là chuỗi debug, không hiển thị (`docs/spec/product.md` §6.1). Đang chạy thì nút gửi thành nút Dừng (Esc cũng dừng); đã dừng thì có nút Gửi lại.
 
 ---
 
@@ -616,6 +687,11 @@ Ca biên bắt buộc để dựng đủ 8 màn hình:
 | Lịch trình chứa slot hết chỗ và slot sai điểm đến (lưới an toàn §9.5) | `assistant/createItinerary.200-completed-invalid-slots` |
 | Search kết quả yếu (`topScore < 0.35`), Search `503` | `search/searchProducts.200-weak`, `search/searchProducts.503-unavailable` |
 | Giỏ có mục hết chỗ | `booking/getCart.200-item-unavailable` |
+| Giỏ gia đình 2 người lớn + 1 trẻ em (hạng phòng, vé có giá trẻ em, chuyến bay); đơn tương ứng | `booking/getCart.200-family`, `booking/createBooking.201-family` |
+| Checkout `400 VALIDATION_ERROR` nhiều vi phạm ở cả bước ① và ② | `booking/createBooking.400-party-invalid` |
+| Checkout `409 PRICE_CHANGED` của giá vé trẻ em (`details.fareType = CHILD`) | `booking/createBooking.409-price-changed-child` |
+| Sửa số khách của mục giỏ: thành công / bị từ chối | `booking/updateCartItem.200-guests`, `booking/updateCartItem.400-guests-invalid` |
+| Bộ ca kiểm thử luật đoàn khách dùng chung với Backend | `src/shared/contracts/tests/booking-rules-cases.json` |
 | Đăng nhập sai | `auth/login.401-invalid-credentials` |
 
 ---

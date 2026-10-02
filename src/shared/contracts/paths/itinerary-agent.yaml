@@ -32,6 +32,8 @@
         $ref: ../openapi.yaml#/components/responses/Error
       '422':
         $ref: ../openapi.yaml#/components/responses/Error
+      '429':
+        $ref: ../openapi.yaml#/components/responses/Error
       '500':
         $ref: ../openapi.yaml#/components/responses/Error
       '503':
@@ -64,7 +66,66 @@
               description: Mỗi data là AssistantStreamEvent được mã hóa JSON.
       '422':
         $ref: ../openapi.yaml#/components/responses/Error
+      '429':
+        $ref: ../openapi.yaml#/components/responses/Error
       '503':
+        $ref: ../openapi.yaml#/components/responses/Error
+/assistant/conversations:
+  get:
+    tags:
+    - assistant
+    operationId: listAssistantConversations
+    summary: Liệt kê lịch sử hội thoại của người dùng hiện tại
+    security:
+    - bearerAuth: []
+    parameters:
+    - name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    - name: pageSize
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 50
+        default: 20
+    responses:
+      '200':
+        description: Danh sách hội thoại mới nhất trước, chỉ của user hiện tại
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/AssistantConversationList
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Error
+/assistant/conversations/{conversationId}:
+  get:
+    tags:
+    - assistant
+    operationId: getAssistantConversation
+    summary: Đọc transcript một hội thoại của người dùng hiện tại
+    security:
+    - bearerAuth: []
+    parameters:
+    - name: conversationId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    responses:
+      '200':
+        description: Transcript và response có cấu trúc đã lưu
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/AssistantConversationDetail
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '404':
         $ref: ../openapi.yaml#/components/responses/Error
 /assistant/status:
   get:

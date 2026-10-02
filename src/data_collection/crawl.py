@@ -31,6 +31,7 @@ import asyncio
 import logging
 import re
 import sys
+import time
 from collections import Counter
 from datetime import date, timedelta
 from pathlib import Path
@@ -47,7 +48,8 @@ log = logging.getLogger("crawler")
 BROWSER_SOURCES = ("booking-hotels", "agoda-hotels", "booking-attractions")
 TRIP_SOURCES = ("trip-flights", "trip-attractions", "trip-experiences")
 SOURCES = ("vinpearl",) + TRIP_SOURCES + BROWSER_SOURCES + ("booking-flights", "trip-hotels", "trip-combos")
-EXIT_BLOCKED = 75  # bị chặn liên tiếp nên tự dừng: nghỉ vài giờ rồi chạy lại (xem run_forever.sh)
+EXIT_BLOCKED = 75  # bị chặn liên tiếp nên tự dừng (đã lưu tiến độ): nghỉ vài giờ rồi chạy lại
+STARTED = time.monotonic()  # --source-deadline-minutes tính từ lúc tiến trình nguồn bắt đầu
 
 
 def _name(cmd: str) -> str:
@@ -65,8 +67,28 @@ def _browser_opts(a: argparse.Namespace) -> BrowserOptions:
     )
 
 
+def parse_budget(text: str | None) -> dict[str, int]:
+    """`booking_hotels=30,agoda_hotels=20` → ngân sách từng loại (tên trường của collectors/plan.py Budget)."""
+    from dataclasses import fields as dc_fields
+
+    from collectors.plan import Budget
+
+    known = {f.name for f in dc_fields(Budget)}
+    out: dict[str, int] = {}
+    for part in (text or "").split(","):
+        if not part.strip():
+            continue
+        key, sep, value = part.partition("=")
+        key = key.strip()
+        if not sep or key not in known or not value.strip().isdigit():
+            raise SystemExit(f"--budget sai: {part!r} (dạng KHOÁ=SỐ, khoá: {', '.join(sorted(known))})")
+        out[key] = int(value)
+    return out
+
+
 def _plan(a: argparse.Namespace):
-    return select_destinations(getattr(a, "destinations", None)), budget_with(getattr(a, "per_destination", None))
+    budget = budget_with(getattr(a, "per_destination", None), **parse_budget(getattr(a, "budget", None)))
+    return select_destinations(getattr(a, "destinations", None)), budget
 
 
 def _crawl_opts(a: argparse.Namespace, default_delay: float) -> booking_base.CrawlOptions:
@@ -173,6 +195,15 @@ async def cmd_trip(paths: Paths, a: argparse.Namespace, which: str) -> dict:
     state = StateDB(paths)
     try:
         result = await trip.run(paths, _name(which), opts, state)
+        if which == 'trip-flights' and not opts.discover_only and not getattr(a, 'no_business', False):
+            from collectors.trip_business import enrich, parse_days
+            stays = tuple(int(n) for n in str(getattr(a, 'roundtrip_stays', '3,5,7')).split(',') if n.strip())
+            deadline = getattr(a, 'source_deadline_minutes', None)
+            result['business'] = await enrich(
+                paths, offsets=parse_days(getattr(a, 'business_offsets', '1-29')),
+                max_flights=getattr(a, 'business_max_flights', 4), delay=opts.delay, routes=opts.routes,
+                stays=stays, pairs=getattr(a, 'roundtrip_pairs', 2), minutes=getattr(a, 'fares_minutes', 30.0),
+                deadline=STARTED + deadline * 60 if deadline else None, max_failures=a.max_blocks)
         log.info("[%s] Trạng thái: %s", _name(which), result)
         return result
     finally:
@@ -347,6 +378,8 @@ def build_parser() -> argparse.ArgumentParser:
     pl = plan.add_argument_group("kế hoạch (collectors/plan.py)")
     pl.add_argument("--destinations", default=None, help="chỉ các điểm đến này, vd. 'Nha Trang,Phú Quốc' (mặc định cả 15)")
     pl.add_argument("--per-destination", type=int, default=None, help="số khách sạn/điểm tham quan mỗi điểm đến (mặc định 30/20/25)")
+    pl.add_argument("--budget", default=None,
+                    help="ghi đè từng ngân sách, vd. booking_hotels=40,agoda_hotels=10,trip_attractions=25 (sau --per-destination)")
 
     crawl = argparse.ArgumentParser(add_help=False)
     c = crawl.add_argument_group("hàng đợi")
@@ -405,8 +438,18 @@ def build_parser() -> argparse.ArgumentParser:
 
     TRIP_LABEL = {"trip-flights": "vé máy bay", "trip-attractions": "điểm tham quan", "trip-experiences": "tour/hoạt động (things-to-do)"}
     for s in TRIP_SOURCES:
-        tp = sub.add_parser(s, parents=[browser, plan, crawl], help=f"trip.com – {TRIP_LABEL[s]} (HTTP, không cần trình duyệt)")
+        tp = sub.add_parser(s, parents=[browser, plan, crawl], help=f"trip.com – {TRIP_LABEL[s]} ({'HTTP + Chromium cho thương gia' if s == 'trip-flights' else 'HTTP'})")
         if s == "trip-flights":
+            tp.add_argument("--no-business", action="store_true", help="chỉ lấy SEO, không mở tìm kiếm thương gia/khứ hồi")
+            tp.add_argument("--business-offsets", default="1-29",
+                            help="ngày bay tương đối 0..29 cho thương gia và khứ hồi, vd. 1-29 hoặc 7,14,21")
+            tp.add_argument("--business-max-flights", type=int, default=4, help="tối đa số thẻ thương gia kiểm tra mỗi tuyến/ngày")
+            tp.add_argument("--roundtrip-stays", default="3,5,7", help="khứ hồi: ngày về sau N ngày; rỗng = không tìm khứ hồi")
+            tp.add_argument("--roundtrip-pairs", type=int, default=2, help="khứ hồi: số chuyến đi mỗi lần tìm (kèm chuyến về đề xuất)")
+            tp.add_argument("--fares-minutes", type=float, default=30.0,
+                            help="phút tối đa cho thương gia + khứ hồi mỗi lượt; việc còn lại xoay sang lượt sau")
+            tp.add_argument("--source-deadline-minutes", type=float, default=None,
+                            help="hạn giờ của cả nguồn (job fresh truyền vào); phần giá vé dừng trước 3 phút")
             tp.add_argument("--routes", help="lọc tuyến có hướng, vd. SGN-HAN,HAN-CXR")
             tp.add_argument("--refresh", action="store_true", help="lấy snapshot giá mới cho các tuyến được discovery trong phạm vi điểm đến")
     bh = sub.add_parser("booking-hotels", parents=[browser, plan, crawl, dates], help="booking.com – khách sạn theo điểm đến")
@@ -527,6 +570,9 @@ def main(argv: list[str] | None = None) -> int:
         return 130
     if isinstance(result, dict) and result.get("stopped") == "blocked":
         return EXIT_BLOCKED
+    fares = (result or {}).get('business', {}) if a.cmd == "trip-flights" else {}
+    if fares.get('stopped') or (fares.get('searches') and fares.get('failed') == fares.get('searches')):
+        return 2  # keep SEO/verified quotes; source report must show incomplete coverage
     if a.cmd == "booking-flights" and result and (result.get("failed") or result.get("skipped")
             or ("coverage" in result and not result["coverage"]["discoveredPagesComplete"])):
         return 2

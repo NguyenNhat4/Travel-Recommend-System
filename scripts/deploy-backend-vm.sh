@@ -8,12 +8,14 @@ backend_image=''
 crawler_image=''
 compose_file=''
 backend_service='backend'
-backend_health_url='http://127.0.0.1:8000/health'
+backend_health_url='http://127.0.0.1:8000/health/ready'
 db_tunnel_host='127.0.0.1'
 db_tunnel_port='15432'
 cron_runner='/opt/vota/bin/run_daily_docker.sh'
 cron_data_dir='/srv/vota/daily-data'
 cron_env_file='/etc/vota/daily.env'
+backend_env_file='/etc/vota/backend.env'
+jwt_secrets_dir='/etc/vota/backend-secrets'
 cron_schedule='0 2 * * *'
 cron_crontab_file=''
 health_timeout_seconds='900'
@@ -23,11 +25,10 @@ dry_run=0
 usage() {
   cat <<'EOF'
 Usage:
-  deploy-backend-vm.sh --backend-image IMAGE:latest
-                       --crawler-image IMAGE:latest
+  deploy-backend-vm.sh --backend-image IMAGE@sha256:DIGEST
                        --compose-file /absolute/path/compose.yml
                        [--backend-service backend]
-                       [--backend-health-url http://127.0.0.1:8000/health]
+                       [--backend-health-url http://127.0.0.1:8000/health/ready]
                        [--db-tunnel-host 127.0.0.1] [--db-tunnel-port 15432]
                        [--cron-runner /opt/vota/bin/run_daily_docker.sh]
                        [--cron-data-dir /srv/vota/daily-data]
@@ -67,10 +68,12 @@ while [ "$#" -gt 0 ]; do
 done
 
 [ -n "$backend_image" ] || die '--backend-image is required'
-[ -n "$crawler_image" ] || die '--crawler-image is required'
 [ -n "$compose_file" ] || die '--compose-file is required'
-[[ "$backend_image" =~ :latest$ ]] || die 'Backend image must use the :latest tag'
-[[ "$crawler_image" =~ :latest$ ]] || die 'Crawler image must use the :latest tag'
+[[ "$backend_image" =~ ^asia-southeast1-docker\.pkg\.dev/[a-z0-9][a-z0-9._/-]*@sha256:[a-f0-9]{64}$ ]] || die 'Backend image must be pinned by Artifact Registry digest'
+if [ -n "$crawler_image" ]; then
+  [[ "$crawler_image" =~ :latest$ ]] || die 'Crawler image must use the :latest tag'
+fi
+[[ "$backend_health_url" =~ ^https?://[a-zA-Z0-9.:-]+/health/ready$ ]] || die 'Backend health URL must target /health/ready'
 [[ "$compose_file" == /* ]] || die '--compose-file must be an absolute path'
 [[ "$cron_runner" == /* ]] || die '--cron-runner must be an absolute path'
 [[ "$cron_data_dir" == /* ]] || die '--cron-data-dir must be an absolute path'
@@ -89,21 +92,31 @@ command -v curl >/dev/null 2>&1 || die 'curl is required'
 if [ "$dry_run" -eq 0 ]; then
   [ "$(id -u)" -ne 0 ] || die 'deploy must run as the SSH user, not root (cron is per-user)'
   [ -r "$compose_file" ] || die "Compose file is not readable: $compose_file"
-  [ -x "$cron_runner" ] || die "Crawler runner is not executable: $cron_runner"
-  [ -d "$cron_data_dir" ] && [ -w "$cron_data_dir" ] || die "Crawler data directory is not writable: $cron_data_dir"
-  [ -r "$cron_env_file" ] || die "Crawler env file is not readable: $cron_env_file"
-  command -v crontab >/dev/null 2>&1 || die 'crontab is required for the SSH user'
   docker info >/dev/null 2>&1 || die 'SSH user cannot access the Docker daemon'
-  if existing_crontab="$(LC_ALL=C crontab -l 2>&1)"; then
-    :
-  elif [[ "$existing_crontab" == *'no crontab'* ]]; then
-    existing_crontab=''
-  else
-    die 'SSH user cannot read its crontab'
-  fi
-  if [[ "$existing_crontab" == *run_daily_docker.sh* && "$existing_crontab" != *'# BEGIN VOTA CRAWLER'* ]]; then
-    die 'an unmanaged crawler cron entry already exists for the SSH user; migrate it before deploying'
-  fi
+  grep -Fq '/etc/vota/backend.env' "$compose_file" || die 'Compose file must load /etc/vota/backend.env'
+  grep -Fq '/etc/vota/backend-secrets:/app/secrets:ro' "$compose_file" || die 'Compose file must mount the RS256 key directory read-only'
+
+  has_readable_file() {
+    [ -r "$1" ] 2>/dev/null || sudo -n test -r "$1" 2>/dev/null
+  }
+
+  has_nonempty_file() {
+    [ -s "$1" ] 2>/dev/null || sudo -n test -s "$1" 2>/dev/null
+  }
+
+  env_has_key() {
+    grep -Eq "^$1=" "$backend_env_file" 2>/dev/null || \
+      sudo -n grep -Eq "^$1=" "$backend_env_file" 2>/dev/null
+  }
+
+  has_readable_file "$backend_env_file" || die "Backend env file is not readable: $backend_env_file"
+  for required_key in DATABASE_URL CDP_DATABASE_URL JWT_PRIVATE_KEY_PATH JWT_PUBLIC_KEY_PATH AUTH_REDIS_URL; do
+    env_has_key "$required_key" || die "Backend env is missing ${required_key}"
+  done
+  for key_file in jwt-private.pem jwt-public.pem; do
+    has_nonempty_file "$jwt_secrets_dir/$key_file" || die "Missing backend key file: $jwt_secrets_dir/$key_file"
+  done
+  docker compose -f "$compose_file" config >/dev/null || die 'Backend Compose configuration is invalid'
 fi
 
 "$script_dir/check-db-tunnel.sh" --host "$db_tunnel_host" --port "$db_tunnel_port"
@@ -117,11 +130,9 @@ cleanup() {
 trap cleanup EXIT
 
 if [ "$dry_run" -eq 1 ]; then
-  printf 'DRY-RUN: docker pull %s\n' "$crawler_image"
   printf 'DRY-RUN: docker compose -f %s -f backend-override.yml pull %s\n' "$compose_file" "$backend_service"
   printf 'DRY-RUN: docker compose -f %s -f backend-override.yml up -d --no-deps %s\n' "$compose_file" "$backend_service"
   printf 'DRY-RUN: curl --fail %s for up to %ss\n' "$backend_health_url" "$health_timeout_seconds"
-  printf 'DRY-RUN: install cron for %s with %s\n' "$crawler_image" "$cron_runner"
   exit 0
 fi
 
@@ -141,7 +152,6 @@ previous_image="$(docker image inspect --format '{{range .RepoDigests}}{{println
 [[ "$previous_image" == *@sha256:* ]] || die 'previous Backend image is not pinned by digest'
 [[ "$previous_image" != *$'\n'* ]] || die 'previous Backend image contains a newline'
 
-docker pull "$crawler_image"
 docker compose -f "$compose_file" -f "$override_file" pull "$backend_service"
 
 wait_for_health() {
@@ -186,21 +196,18 @@ if ! wait_for_health; then
   die 'Backend deploy failed; previous image restored'
 fi
 
-install_cron() {
-  "$script_dir/install-vota-cron.sh" \
-    --image "$crawler_image" \
-    --runner "$cron_runner" \
-    --data-dir "$cron_data_dir" \
-    --env-file "$cron_env_file" \
-    --schedule "$cron_schedule" "$@"
+# Dọn image cũ của cùng repository để disk VM không đầy dần. Giữ image vừa deploy và image
+# trước đó (để rollback tay); image đang được container dùng thì `docker rmi` tự từ chối.
+# Chỉ đụng repository của Backend, không đụng image của crawler hay service khác. Lỗi dọn không làm hỏng deploy.
+prune_old_images() {
+  local repo="${backend_image%@*}" keep id
+  keep="$(docker image inspect --format '{{.Id}}' "$backend_image" ${previous_image:+"$previous_image"} 2>/dev/null || true)"
+  docker image ls "$repo" --no-trunc --quiet | sort -u | while read -r id; do
+    [ -n "$id" ] || continue
+    printf '%s\n' "$keep" | grep -Fxq "$id" && continue
+    docker rmi "$id" >/dev/null 2>&1 || true
+  done
 }
-if [ -n "$cron_crontab_file" ]; then
-  if ! install_cron --crontab-file "$cron_crontab_file"; then
-    rollback_backend
-    die 'Crawler cron update failed; previous Backend image restored'
-  fi
-elif ! install_cron; then
-  rollback_backend
-  die 'Crawler cron update failed; previous Backend image restored'
-fi
-printf 'Backend deploy and crawler cron update completed.\n'
+prune_old_images || true
+
+printf 'Backend deploy completed.\n'

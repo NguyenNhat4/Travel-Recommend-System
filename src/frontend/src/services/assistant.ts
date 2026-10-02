@@ -8,7 +8,7 @@ import { TravelIntent, GroundedPlan, Destination, ItinerarySlot, ItineraryDay, P
 import { detectTransitMode } from './routeGeometry';
 import type { components } from '../types/api.gen';
 
-const SLOT_TIME_FROM_API: Record<components['schemas']['SlotTime'], ItinerarySlot['time']> = {
+export const SLOT_TIME_FROM_API: Record<components['schemas']['SlotTime'], ItinerarySlot['time']> = {
   MORNING: 'morning',
   NOON: 'noon',
   AFTERNOON: 'afternoon',
@@ -91,7 +91,7 @@ export function convertItineraryResponseToGroundedPlan(
     title: itinerary.title || `Lịch trình khám phá ${intentDestination}`,
     stay,
     days,
-    totalEstimatedPrice: itinerary.estimatedTotal ?? 0,
+    totalEstimatedPrice: itinerary.estimatedTotal ?? null,
     bookableProductsCount: itinerary.bookableCount ?? 0,
     fallback: false,
   };

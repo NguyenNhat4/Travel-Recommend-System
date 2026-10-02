@@ -13,7 +13,7 @@ export interface ProductAttributes {
   familyFriendly?: boolean;
   pool?: boolean;
   spa?: boolean;
-  beachfront?: boolean;
+  privateBeach?: boolean;
   freeBreakfast?: boolean;
   cableCar?: boolean;
   themePark?: boolean;
@@ -149,6 +149,8 @@ export interface ItinerarySlot {
   because?: BecauseItem[];
   isActivityNote?: boolean; // For free activity/dining advice not linked to product
   activityTitle?: string;
+  /** `ActivityType` của API khi slot không có sản phẩm (MEAL, REST, FREE_TIME, TRANSFER, SIGHTSEEING). */
+  activityType?: string;
   coordinates?: Coordinates;
   address?: string;
 }
@@ -182,7 +184,8 @@ export interface GroundedPlan {
   };
   stays?: ItineraryStayItem[];
   days: ItineraryDay[];
-  totalEstimatedPrice: number;
+  /** Tổng chi phí các sản phẩm trong lịch trình. `null` = backend chưa đủ căn cứ để tính, KHÔNG phải 0. */
+  totalEstimatedPrice: number | null;
   bookableProductsCount: number;
   fallback?: boolean;
 }

@@ -1,0 +1,24 @@
+{"productId": "P001", "parentProductId": null, "name": "Resort Sóng Biển Nha Trang"}
+{"productId": "R0011", "parentProductId": "P001", "name": "Deluxe Hướng Biển"}
+{"productId": "R0012", "parentProductId": "P001", "name": "Family Suite"}
+{"productId": "P002", "parentProductId": null, "name": "Khách sạn Trung Tâm Nha Trang"}
+{"productId": "R0021", "parentProductId": "P002", "name": "Superior"}
+{"productId": "R0022", "parentProductId": "P002", "name": "Deluxe"}
+{"productId": "P003", "parentProductId": null, "name": "Resort Rừng Dừa Phú Quốc"}
+{"productId": "R0031", "parentProductId": "P003", "name": "Deluxe"}
+{"productId": "R0032", "parentProductId": "P003", "name": "Family Suite"}
+{"productId": "R0033", "parentProductId": "P003", "name": "Villa Hồ Bơi Riêng"}
+{"productId": "P004", "parentProductId": null, "name": "Khách sạn Cầu Rồng Đà Nẵng"}
+{"productId": "R0041", "parentProductId": "P004", "name": "Standard"}
+{"productId": "P005", "parentProductId": null, "name": "Resort Núi Mây Hà Giang"}
+{"productId": "R0051", "parentProductId": "P005", "name": "Bungalow"}
+{"productId": "P006", "parentProductId": null, "name": "Khách sạn Dương Đông Phú Quốc"}
+{"productId": "R0061", "parentProductId": "P006", "name": "Deluxe"}
+{"productId": "P007", "parentProductId": null, "name": "Công viên Sóng Nhạc Nha Trang"}
+{"productId": "P008", "parentProductId": null, "name": "Thủy cung Hòn Mun Nha Trang"}
+{"productId": "P009", "parentProductId": null, "name": "Resort Ngọc Trai Phú Quốc"}
+{"productId": "R0091", "parentProductId": "P009", "name": "Villa Hướng Vườn"}
+{"productId": "P010", "parentProductId": null, "name": "Khách sạn Mỹ Khê Đà Nẵng"}
+{"productId": "R0101", "parentProductId": "P010", "name": "Deluxe"}
+{"productId": "P011", "parentProductId": null, "name": "Resort Sơn Trà Đà Nẵng"}
+{"productId": "R0111", "parentProductId": "P011", "name": "Villa Hướng Biển"}

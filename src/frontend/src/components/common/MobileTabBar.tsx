@@ -1,9 +1,11 @@
 import React from 'react';
 import { useTravel } from '../../context/TravelContext';
+import { useAssistant } from '../../context/AssistantProvider';
 import { Home, Search, Sparkles, ShoppingBag, User } from 'lucide-react';
 
 export const MobileTabBar: React.FC = () => {
   const { currentRoute, navigate, cartCount, currentPersona, openLoginModal } = useTravel();
+  const { openFloatingWidget } = useAssistant();
 
   // Hide in checkout
   if (currentRoute.startsWith('/checkout')) {
@@ -12,7 +14,6 @@ export const MobileTabBar: React.FC = () => {
 
   const isHome = currentRoute === '/' || currentRoute === '';
   const isSearch = currentRoute.startsWith('/search');
-  const isAssistant = currentRoute.startsWith('/assistant');
   const isCart = currentRoute.startsWith('/cart');
   const isLogin = currentRoute.startsWith('/login');
 
@@ -36,8 +37,8 @@ export const MobileTabBar: React.FC = () => {
         </button>
 
         <button
-          onClick={() => navigate('/assistant')}
-          className={`flex flex-col items-center justify-center gap-0.5 ${isAssistant ? 'font-bold text-indigo-600' : 'text-slate-500'}`}
+          onClick={() => openFloatingWidget()}
+          className="flex flex-col items-center justify-center gap-0.5 text-slate-500"
         >
           <Sparkles className="w-5 h-5" />
           <span className="text-[10px]">Trợ lý</span>

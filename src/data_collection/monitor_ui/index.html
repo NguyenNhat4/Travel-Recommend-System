@@ -1,403 +1,597 @@
 <!doctype html>
 <html lang="vi">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>V-OTA · Theo dõi cào dữ liệu</title>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>V-OTA · Fresh catalog</title>
 <style>
-:root {
-  --bg: #f6f7f9; --panel: #ffffff; --ink: #1c2330; --muted: #5d6778; --line: #dfe3ea; --soft: #eef1f5;
-  --brand: #1f5fbf; --brand-soft: #e6effc;
-  --ok: #17803d; --ok-bg: #e3f4e9; --warn: #a15c00; --warn-bg: #fff1d6; --err: #b42318; --err-bg: #fde7e4;
-  --run: #1f5fbf; --run-bg: #e6effc; --idle: #5d6778; --idle-bg: #eceff3;
-  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0f141b; --panel: #171e28; --ink: #e6eaf0; --muted: #98a2b3; --line: #283241; --soft: #1e2733;
-    --brand: #6ea4ff; --brand-soft: #1c2a44;
-    --ok: #5fd08a; --ok-bg: #163524; --warn: #f2b45a; --warn-bg: #3a2c12; --err: #ff8a7d; --err-bg: #3d1a17;
-    --run: #6ea4ff; --run-bg: #1c2a44; --idle: #98a2b3; --idle-bg: #232c3a;
-  }
-}
-* { box-sizing: border-box; }
-html { color-scheme: light dark; }
-body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-header { position: sticky; top: 0; z-index: 5; background: var(--panel); border-bottom: 1px solid var(--line); }
-.bar { display: flex; align-items: center; gap: 16px; padding: 10px 20px; flex-wrap: wrap; }
-.brand { font-weight: 700; font-size: 16px; letter-spacing: .1px; }
-.brand small { font-weight: 500; color: var(--muted); margin-left: 8px; }
-.spacer { flex: 1; }
-.live { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
-.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--idle); }
-.dot.on { background: var(--ok); box-shadow: 0 0 0 3px var(--ok-bg); }
-.dot.err { background: var(--err); box-shadow: 0 0 0 3px var(--err-bg); }
-nav { display: flex; gap: 2px; padding: 0 14px; overflow-x: auto; }
-nav button { appearance: none; border: 0; background: none; color: var(--muted); padding: 10px 14px; font: inherit; font-weight: 600; cursor: pointer; border-bottom: 3px solid transparent; white-space: nowrap; }
-nav button:hover { color: var(--ink); }
-nav button[aria-selected="true"] { color: var(--brand); border-bottom-color: var(--brand); }
-nav .count { display: inline-block; min-width: 18px; padding: 0 6px; margin-left: 6px; border-radius: 9px; font-size: 11px; line-height: 18px; text-align: center; background: var(--soft); color: var(--muted); }
-nav .count.err { background: var(--err-bg); color: var(--err); }
-nav .count.warn { background: var(--warn-bg); color: var(--warn); }
-main { padding: 18px 20px 60px; max-width: 1500px; margin: 0 auto; }
-button.btn, select, input[type=search] { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 7px; padding: 6px 10px; }
-button.btn { cursor: pointer; font-weight: 600; }
-button.btn:hover { border-color: var(--brand); color: var(--brand); }
-button.btn.primary { background: var(--brand); color: #fff; border-color: var(--brand); }
-button.btn.primary:hover { color: #fff; filter: brightness(1.08); }
-button.btn:disabled { opacity: .55; cursor: default; }
-:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
-.grid { display: grid; gap: 14px; }
-.kpis { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
-.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
-.card h2 { margin: 0 0 10px; font-size: 14px; letter-spacing: .2px; }
-.card h2 small { color: var(--muted); font-weight: 500; margin-left: 6px; }
-.kpi .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .5px; }
-.kpi .value { font-size: 26px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; }
-.kpi .value small { font-size: 14px; font-weight: 500; color: var(--muted); }
-.kpi .sub { color: var(--muted); font-size: 12px; margin-top: 4px; }
-.bar-track { height: 8px; background: var(--soft); border-radius: 5px; overflow: hidden; margin-top: 8px; }
-.bar-fill { height: 100%; background: var(--brand); border-radius: 5px; }
-.bar-fill.ok { background: var(--ok); } .bar-fill.warn { background: var(--warn); } .bar-fill.err { background: var(--err); }
-.two { grid-template-columns: 1fr 1fr; } .split { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
-@media (max-width: 1000px) { .two, .split { grid-template-columns: 1fr; } }
-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
-th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; position: sticky; top: 0; background: var(--panel); }
-td { padding: 7px 8px; border-bottom: 1px solid var(--soft); vertical-align: middle; }
-td.num, th.num { text-align: right; }
-tr.click { cursor: pointer; } tr.click:hover td { background: var(--soft); }
-.scroll { overflow: auto; max-height: 560px; }
-.badge { display: inline-block; padding: 1px 9px; border-radius: 10px; font-size: 12px; font-weight: 600; white-space: nowrap; }
-.b-running { background: var(--run-bg); color: var(--run); } .b-done { background: var(--ok-bg); color: var(--ok); }
-.b-paused { background: var(--warn-bg); color: var(--warn); } .b-idle { background: var(--idle-bg); color: var(--idle); }
-.b-blocked, .b-failed, .b-error { background: var(--err-bg); color: var(--err); } .b-warn { background: var(--warn-bg); color: var(--warn); }
-.b-info { background: var(--run-bg); color: var(--run); } .b-ok { background: var(--ok-bg); color: var(--ok); }
-.muted { color: var(--muted); } .mono { font-family: var(--mono); font-size: 12px; }
-.chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
-.chip { border: 1px solid var(--line); background: var(--panel); border-radius: 16px; padding: 3px 12px; cursor: pointer; font: inherit; color: var(--muted); font-weight: 600; }
-.chip[aria-pressed="true"] { background: var(--brand-soft); color: var(--brand); border-color: var(--brand); }
-.cell0 { background: var(--err-bg); color: var(--err); font-weight: 600; }
-.cellNA { color: var(--muted); }
-.cellN { font-weight: 600; }
-.progress { display: flex; align-items: center; gap: 8px; min-width: 150px; }
-.progress .bar-track { flex: 1; margin: 0; } .progress span { min-width: 74px; text-align: right; font-size: 12px; color: var(--muted); }
-.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(640px, 100vw); background: var(--panel); border-left: 1px solid var(--line); box-shadow: -10px 0 30px rgba(0,0,0,.18); z-index: 20; display: none; flex-direction: column; }
-.drawer.open { display: flex; }
-.drawer header { position: static; display: flex; align-items: center; gap: 10px; padding: 12px 16px; }
-.drawer .body { overflow: auto; padding: 4px 16px 24px; }
-.drawer h3 { font-size: 13px; margin: 18px 0 6px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
-.kv { display: grid; grid-template-columns: 130px 1fr; gap: 4px 12px; font-size: 13px; }
-.kv div:nth-child(odd) { color: var(--muted); }
-pre.json, pre.log { margin: 0; padding: 10px 12px; background: var(--soft); border-radius: 8px; overflow: auto; font: 12px/1.5 var(--mono); white-space: pre-wrap; word-break: break-word; }
-pre.log { max-height: 320px; }
-.logbox { background: var(--soft); border-radius: 8px; padding: 8px 10px; max-height: 68vh; overflow: auto; font: 12px/1.55 var(--mono); }
-.logbox .row { display: grid; grid-template-columns: 150px 1fr; gap: 10px; white-space: pre-wrap; word-break: break-word; }
-.logbox .tag { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lv-WARNING { color: var(--warn); } .lv-ERROR, .lv-CRITICAL { color: var(--err); font-weight: 600; } .lv-DEBUG { color: var(--muted); }
-.hitem { display: grid; grid-template-columns: 78px 1fr; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--soft); }
-.hitem .t { font-weight: 600; } .hitem .d { color: var(--muted); font-size: 13px; }
-.note { color: var(--muted); font-size: 12px; margin-top: 8px; }
-.empty { color: var(--muted); padding: 22px; text-align: center; }
-.modal { position: fixed; inset: 0; background: rgba(8,12,18,.55); display: none; align-items: center; justify-content: center; z-index: 30; padding: 20px; }
-.modal.open { display: flex; }
-.modal .card { width: min(900px, 100%); max-height: 86vh; display: flex; flex-direction: column; }
-.modal pre.json { flex: 1; max-height: none; overflow: auto; }
-.row-flex { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-.tag-missing { display: inline-block; margin-right: 4px; padding: 0 7px; border-radius: 8px; font-size: 11px; background: var(--warn-bg); color: var(--warn); }
-.split-bars .r { display: grid; grid-template-columns: 120px 1fr 70px; gap: 8px; align-items: center; margin: 6px 0; font-size: 13px; }
-.split-bars .bar-track { margin: 0; }
+:root{--bg:#f3f6fa;--panel:#fff;--ink:#15233b;--muted:#637187;--line:#dae2ed;--brand:#215aca;--good:#12714b;--bad:#ac2939;--warn:#825400;--soft:#eef3fa;--code:#102037;--codeink:#d8e6fb}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,sans-serif}
+header{background:var(--panel);border-bottom:1px solid var(--line);padding:16px 24px}
+header h1{font-size:20px;margin:0}header p{margin:2px 0;color:var(--muted)}
+nav,.actions,.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:center}
+button,select,input,textarea{font:inherit;color:inherit;background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:7px 11px}
+button{cursor:pointer}button:hover{border-color:var(--brand)}button:disabled{opacity:.5;cursor:default}
+button.primary,nav button[aria-current=true],.tabs button[aria-current=true]{background:var(--brand);color:#fff;border-color:var(--brand)}
+button.danger{color:var(--bad)}button.small{padding:3px 8px;font-size:12px}
+:focus-visible{outline:3px solid #84acf7;outline-offset:2px}
+main{max-width:1600px;margin:20px auto;padding:0 20px 60px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;margin-bottom:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px}
+.kpi strong{display:block;font-size:23px;margin:4px 0;overflow-wrap:anywhere}.kpi strong.long{font-size:15px}
+.muted,small{color:var(--muted)}h2{font-size:17px;margin:0 0 10px}h3{font-size:14px;margin:14px 0 6px}
+.status{display:inline-block;border-radius:20px;padding:2px 9px;background:#e9eef5;font-size:12px;white-space:nowrap}
+.ok,.done{background:#dff2e9;color:var(--good)}.running,.waiting,.draft{background:#e3edff;color:var(--brand)}
+.failed,.dead,.error,.lost,.notRun,.empty{background:#fce6e8;color:var(--bad)}
+.partial,.blocked,.timeout,.stopped,.skipped,.paused{background:#fff0d2;color:var(--warn)}
+.disabled,.notInMode{background:#eef0f3;color:var(--muted)}
+.embedded{background:#e3edff;color:var(--brand)}.unchanged{background:#eef0f3;color:var(--muted)}.deleted,.orphan{background:#fce6e8;color:var(--bad)}.pending{background:#fff0d2;color:var(--warn)}
+.scroll{overflow:auto}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{text-align:left;vertical-align:top;padding:8px 10px;border-bottom:1px solid var(--line);max-width:380px;overflow-wrap:anywhere}
+th{color:var(--muted);font-weight:600;white-space:nowrap}tr:last-child td{border-bottom:0}
+tr.lostrow td{background:#fff7f8}
+pre{background:var(--code);color:var(--codeink);padding:14px;border-radius:9px;overflow:auto;max-height:65vh;white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.55 ui-monospace,monospace;margin:8px 0}
+.empty-box{padding:26px;text-align:center;color:var(--muted)}
+#notice{padding:0 20px;max-width:1600px;margin:12px auto;color:var(--bad);white-space:pre-wrap}
+#notice.info{color:var(--good)}
+.field{display:grid;grid-template-columns:minmax(200px,1fr) minmax(120px,300px);gap:12px;border-top:1px solid var(--line);padding:13px 0}
+.field label{font-weight:600}.field small{display:block;font-weight:400}.field input:not([type=checkbox]){width:100%}
+.badge-row{display:flex;gap:7px;flex-wrap:wrap}
+.link{color:var(--brand);border:0;background:transparent;padding:0;text-align:left;cursor:pointer}
+.meta{display:flex;gap:16px;flex-wrap:wrap;align-items:center}
+.pager{display:flex;align-items:center;gap:12px;margin-top:12px}
+dialog{border:1px solid var(--line);border-radius:12px;width:min(1150px,96vw);max-height:92vh;color:var(--ink)}
+dialog::backdrop{background:#13233d99}dialog .actions{justify-content:flex-end}
+details{margin:10px 0}summary{cursor:pointer}
+#connection{font-size:12px;color:var(--muted)}
+.bar{height:7px;background:var(--soft);border-radius:4px;overflow:hidden;min-width:110px;margin:3px 0}
+.bar>i{display:block;height:100%;background:var(--brand)}
+.pipeline{display:flex;gap:6px;flex-wrap:wrap;align-items:stretch}
+.stage{flex:1 1 170px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--panel);text-align:left}
+.stage strong{display:block;font-size:20px}.stage:hover{border-color:var(--brand)}
+.arrow{align-self:center;color:var(--muted)}
+.logbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
+.logbox{background:var(--code);color:var(--codeink);border-radius:9px;padding:10px 12px;height:66vh;overflow:auto;font:12px/1.5 ui-monospace,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
+.logbox .w{color:#ffd479}.logbox .e{color:#ff8a8a}.logbox .s{color:#8fd1ff}.logbox .g{color:#9be3b0}.logbox .d{color:#7f93b0}
+.tag{display:inline-block;min-width:74px;color:#b9c7ff}
+.live-row{display:grid;grid-template-columns:minmax(170px,1.1fr) minmax(260px,2fr) auto;gap:10px;align-items:center;border-top:1px solid var(--line);padding:10px 0}
+.live-row input{width:90px}
+.diff td:first-child{white-space:nowrap;font-family:ui-monospace,monospace;font-size:12px}
+.minus{color:var(--bad)}.plus{color:var(--good)}.wtext{color:var(--warn)}
+.hint{background:var(--soft);border-radius:8px;padding:8px 12px;margin:8px 0;color:var(--muted)}
+.vec{display:flex;gap:2px;align-items:center;height:36px}
+.vec i{display:block;width:10px;background:var(--brand)}
+.vec i.neg{background:var(--bad)}
+.gwrap{overflow-x:auto;padding:2px}
+.graph{position:relative;display:grid;gap:10px 30px;min-width:1100px;align-items:center}
+.graph svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+.graph svg path{fill:none;stroke:#9aaac0;stroke-width:1.5}.graph svg path.bad{stroke:var(--bad);stroke-width:2.5}
+.problem{display:block;width:100%;text-align:left;background:#fce6e8;border:1px solid #f3b7bf;border-radius:9px;padding:9px 12px;margin:0 0 12px;color:var(--ink)}.problem:hover{border-color:var(--bad)}
+.ghead{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+.gcell{display:flex;flex-direction:column;gap:8px}
+.node{position:relative;z-index:1;display:block;width:100%;text-align:left;border:1px solid var(--line);border-left:5px solid var(--line);border-radius:9px;padding:6px 9px;background:var(--panel)}
+.node b{display:block;font-size:13px;line-height:1.3;margin-bottom:3px}.node small{display:block;margin-top:3px}
+.node[aria-pressed=true]{outline:3px solid var(--brand);outline-offset:1px}
+.node.faded{opacity:.55}.node .status.notRun,#nodeHead .status.notRun{background:#eef0f3;color:var(--muted)}
+.node[data-st=ok]{border-left-color:var(--good)}.node[data-st=running],.node[data-st=waiting],.node[data-st=draft]{border-left-color:var(--brand)}
+.node[data-st=error],.node[data-st=dead],.node[data-st=failed]{border-left-color:var(--bad)}
+.node[data-st=blocked],.node[data-st=timeout],.node[data-st=stopped],.node[data-st=skipped]{border-left-color:#d69a00}
+.substeps{display:grid;gap:4px;max-width:900px}.substeps .arrow{justify-self:start;margin-left:18px}
+.substep{border:1px solid var(--line);border-left:5px solid var(--line);border-radius:9px;padding:8px 12px}.substep p{margin:4px 0}
+.substep[data-st=ok]{border-left-color:var(--good)}.substep[data-st=running]{border-left-color:var(--brand)}.substep[data-st=error]{border-left-color:var(--bad)}
+.node small.sub{color:var(--brand)}
+.strip{display:flex;gap:3px}.cell{display:inline-block;width:22px;height:18px;padding:0;border-radius:4px;border:1px solid var(--line);background:#eef0f3;cursor:pointer}
+.cell[data-st=ok]{background:#9bd9bb;border-color:#7cc8a4}.cell[data-st=running],.cell[data-st=waiting],.cell[data-st=draft]{background:#a9c5ff;border-color:#86abf5}
+.cell[data-st=error],.cell[data-st=dead],.cell[data-st=failed]{background:#f19aa6;border-color:#e27584}.cell[data-st=blocked],.cell[data-st=timeout],.cell[data-st=stopped],.cell[data-st=skipped]{background:#ffd27a;border-color:#eab54a}
+.legend{display:inline-flex;align-items:center;gap:4px;font-size:12px}.legend .cell{width:14px;height:12px;cursor:default}
+.mini .graph{min-width:980px;gap:6px 24px}.mini .node{padding:4px 7px}.mini .node b{font-size:12px}.mini .node small{font-size:11px}
+#controls{margin-top:8px}
+.facts{display:flex;gap:6px 18px;flex-wrap:wrap;margin:8px 0}.facts span small{margin-right:4px}
+@media(max-width:700px){header{padding:14px 16px}main{padding:0 12px}.field,.live-row{grid-template-columns:1fr}th,td{padding:6px}.card{padding:13px}
+ .graph{display:flex;flex-direction:column;align-items:stretch;min-width:0;gap:6px}.graph svg{display:none}.ghead{margin-top:10px}}
+.dbgrid{display:grid;gap:16px;grid-template-columns:minmax(0,1fr) minmax(0,4fr);align-items:start}.dbgrid>.card{min-width:0}@media (max-width:900px){.dbgrid{grid-template-columns:minmax(0,1fr)}}
+.rt td{white-space:nowrap}
+#dbDiagram svg{display:block;font:12px system-ui,sans-serif}#dbDiagram .tbl{cursor:pointer}#dbDiagram .tbl rect.box{fill:var(--panel);stroke:var(--line);stroke-width:1.2}
+#dbDiagram .tbl.view rect.box{stroke-dasharray:4 3}#dbDiagram .tbl:hover rect.box,#dbDiagram .tbl.on rect.box{stroke:var(--brand);stroke-width:2}
+#dbDiagram rect.head{fill:var(--soft)}#dbDiagram .edge{fill:none;stroke:var(--muted);stroke-width:1.2;opacity:.45}#dbDiagram .edge.conv{stroke-dasharray:5 4}
+#dbDiagram .edge.on{stroke:var(--brand);stroke-width:2.2;opacity:1}#dbDiagram .edge.dim{opacity:.1}#dbDiagram text.pk{fill:var(--warn);font-weight:700}#dbDiagram text.fk{fill:var(--brand)}
+#dbDiagram text.sec{fill:var(--muted);font-style:italic}#dbDiagram .schema{fill:var(--muted);font-weight:700;font-size:13px;letter-spacing:.06em}
 </style>
 </head>
 <body>
-<header>
-  <div class="bar">
-    <div class="brand">V-OTA · Theo dõi cào dữ liệu <small id="target">mục tiêu 10.000 Product</small></div>
-    <div class="spacer"></div>
-    <a class="btn" href="/pipeline" style="text-decoration:none;display:inline-block">Luồng dữ liệu tự động →</a>
-    <div class="live"><span class="dot" id="dot"></span><span id="liveText">đang tải…</span></div>
-    <button class="btn" id="pauseBtn" type="button">Tạm dừng làm mới</button>
-  </div>
-  <nav role="tablist" id="tabs">
-    <button role="tab" data-tab="overview" aria-selected="true">Tổng quan</button>
-    <button role="tab" data-tab="jobs" aria-selected="false">Jobs<span class="count" id="cJobs">0</span></button>
-    <button role="tab" data-tab="records" aria-selected="false">Dữ liệu đã parse</button>
-    <button role="tab" data-tab="files" aria-selected="false">Files</button>
-    <button role="tab" data-tab="logs" aria-selected="false">Nhật ký</button>
-    <button role="tab" data-tab="health" aria-selected="false">Kiểm tra<span class="count" id="cHealth">0</span></button>
-  </nav>
+<header><h1>V-OTA <span class="muted">/ Fresh catalog</span></h1><p>Theo dõi cào → chuẩn hoá → nạp Postgres → embed/index Weaviate</p><div id="connection" aria-live="polite">Đang kết nối…</div>
+<nav aria-label="Điều hướng"><button data-view="overview" aria-current="true">Tổng quan</button><button data-view="runs">Lịch sử</button><button data-view="system">Hệ thống</button><button data-view="settings">Cấu hình</button><button data-view="db">DB</button><button data-view="realtime">Realtime</button></nav>
+<div id="controls" class="actions" aria-label="Điều khiển lượt"><button type="button" class="primary" data-action="start" data-args='{"mode":"auto"}' title="full hoặc daily theo chu kỳ trong Cấu hình">Chạy theo chu kỳ</button><button type="button" data-action="start" data-args='{"mode":"full"}'>Cào lớn</button><button type="button" data-action="start" data-args='{"mode":"daily"}'>Làm mới Trip</button><button type="button" data-action="start" data-args='{"mode":"index"}'>Bảo trì và index</button><button type="button" class="danger" data-action="stop" data-args='{}'>Dừng lượt đang chạy</button><span id="controlState"></span></div>
 </header>
-<main id="main"></main>
-
-<aside class="drawer" id="drawer" aria-label="Chi tiết job">
-  <header><strong id="drawerTitle">Job</strong><span class="spacer"></span><button class="btn" id="drawerClose" type="button">Đóng</button></header>
-  <div class="body" id="drawerBody"></div>
-</aside>
-<div class="modal" id="modal"><div class="card"><div class="row-flex" style="margin-bottom:10px"><strong id="modalTitle">Bản ghi</strong><span class="spacer"></span><a id="modalLink" class="muted" target="_blank" rel="noopener noreferrer">mở nguồn</a><button class="btn" id="modalClose" type="button">Đóng</button></div><div id="modalMissing" style="margin-bottom:8px"></div><pre class="json" id="modalJson"></pre></div></div>
-
+<div id="notice" role="alert"></div><main id="main" aria-live="polite"></main>
+<dialog id="detail"><h2 id="detailTitle">Chi tiết</h2><div id="detailBody"></div><div class="actions"><button id="closeDetail">Đóng</button></div></dialog>
 <script>
-"use strict";
-const $ = (s, r = document) => r.querySelector(s);
-const fmt = n => n == null ? "–" : Number(n).toLocaleString("vi-VN");
-const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const gb = b => b == null ? "–" : (b / 2 ** 30).toFixed(1) + " GB";
-const mb = b => b == null ? "–" : b >= 2 ** 30 ? (b / 2 ** 30).toFixed(2) + " GB" : (b / 2 ** 20).toFixed(b < 2 ** 20 * 10 ? 1 : 0) + " MB";
-const pct = (a, b) => b ? Math.min(100, Math.round(100 * a / b)) : 0;
-const STATUS = { running: "Đang chạy", done: "Xong", paused: "Dừng giữa chừng", blocked: "Bị chặn", failed: "Lỗi", idle: "Chưa chạy" };
-const SRC = { vinpearl: "Vinpearl", booking_hotels: "Booking KS", agoda_hotels: "Agoda KS", trip_attractions: "Trip điểm", trip_flights: "Trip bay", booking_flights: "Booking bay", booking_attractions: "Booking vé/tour", mixed: "Đợt gốc" };
-const state = { tab: "overview", paused: false, jobs: [], filter: "all", source: "", q: "", recSource: "booking_hotels", recJob: "all", recQ: "", recLimit: 40, logJob: "running", logLevel: "ALL", logQ: "", autoscroll: true, drawerId: null, lastOk: 0, err: false };
+'use strict';
+const $=s=>document.querySelector(s), main=$('#main');
+const esc=v=>String(v??'—').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pretty=v=>`<pre>${esc(typeof v==='string'?v:JSON.stringify(v,null,2))}</pre>`;
+const labels={ok:'Xong',running:'Đang chạy',partial:'Chưa đủ dữ liệu',failed:'Thất bại',dead:'Mất tiến trình',stopped:'Đã dừng',error:'Lỗi',blocked:'Bị chặn',timeout:'Quá giờ',unknown:'Chưa rõ',
+ waiting:'Chờ tới lượt',skipped:'Bị bỏ qua',notRun:'Không chạy',empty:'Không có dữ liệu',disabled:'Đã tắt',notInMode:'Không thuộc lượt',
+ lost:'Mất nguồn',draft:'Đang gộp dần',embedded:'Nhúng mới',unchanged:'Giữ nguyên',deleted:'Đã xoá',orphan:'Mồ côi',pending:'Chưa nhúng',paused:'Tạm dừng'};
+const reasons={new:'sản phẩm mới',text:'text đổi',model:'đổi model',uuid:'dời id object'};
+const badge=v=>`<span class="status ${esc(v)}">${esc(labels[v]||v)}</span>`;
+const when=v=>v?new Date(v).toLocaleString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh'}):'—';
+const bytes=n=>n>1048576?`${(n/1048576).toFixed(1)} MB`:`${Math.round((n||0)/1024)} KB`;
+const num=n=>n==null?'—':Number(n).toLocaleString('vi-VN');
+const button=(label,action,args={},css='')=>`<button type="button" class="${css}" data-action="${action}" data-args="${esc(JSON.stringify(args))}">${esc(label)}</button>`;
+const card=(title,body,extra='')=>`<section class="card" ${extra}><h2>${esc(title)}</h2>${body}</section>`;
+const table=(heads,rows,rowClass=()=> '')=>rows.length?`<div class="scroll"><table><thead><tr>${heads.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map((r,i)=>`<tr class="${rowClass(i)}">${r.map(c=>`<td>${c??'—'}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`:'<div class="empty-box">Chưa có dữ liệu.</div>';
+const bar=(done,total)=>total?`<div class="bar"><i style="width:${Math.min(100,Math.round(100*done/total))}%"></i></div>`:'';
+const select=(name,options,value,all='Tất cả')=>`<select name="${esc(name)}" aria-label="${esc(name)}"><option value="">${esc(all)}</option>${Object.entries(options||{}).map(([k,n])=>`<option value="${esc(k)}" ${k===value?'selected':''}>${esc(k)} (${num(n)})</option>`).join('')}</select>`;
+const S={view:'overview',run:null,tab:null,node:null,graph:null,gtimer:null,timer:null,es:null,list:null,runData:null,preview:false,log:{lines:[],group:'',level:'',q:'',follow:true,paused:false,ended:false},settings:null};
 
-async function api(path, opts) {
-  const res = await fetch(path, opts);
-  if (!res.ok) throw new Error(path + " → " + res.status);
-  return res.json();
-}
-function ago(iso) {
-  if (!iso) return "–";
-  const s = Math.max(0, (Date.now() - new Date(iso.endsWith("Z") || iso.includes("+") ? iso : iso + "Z").getTime()) / 1000);
-  if (s < 90) return Math.round(s) + " giây trước";
-  if (s < 5400) return Math.round(s / 60) + " phút trước";
-  if (s < 172800) return Math.round(s / 3600) + " giờ trước";
-  return Math.round(s / 86400) + " ngày trước";
-}
-const badge = (s) => `<span class="badge b-${esc(s)}">${esc(STATUS[s] || s)}</span>`;
-const bar = (a, b, cls = "") => `<div class="progress"><div class="bar-track"><div class="bar-fill ${cls}" style="width:${pct(a, b)}%"></div></div><span>${fmt(a)}/${fmt(b)}</span></div>`;
+const PREVIEWABLE=/^\/api\/(normalise|products?|cities)(\/|$)/;
+async function api(path,params={},body){const url=new URL(path,location.origin);if(S.view==='run'&&S.preview&&PREVIEWABLE.test(path))url.searchParams.set('preview','1');Object.entries(params).forEach(([k,v])=>{if(v!==undefined&&v!==null&&v!=='')url.searchParams.set(k,v)});const response=await fetch(url,{cache:'no-store',...(body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json','X-Requested-With':'vota-monitor'},body:JSON.stringify(body)})});const data=await response.json();if(!response.ok)throw Error(typeof data.error==='string'?data.error:JSON.stringify(data.error||data));return data}
+function notice(text,info=false){const n=$('#notice');n.textContent=text||'';n.className=info?'info':''}
+function fail(error){notice(error.message||String(error))}
+function modal(title,html){$('#detailTitle').textContent=title;$('#detailBody').innerHTML=html;if(!$('#detail').open)$('#detail').showModal()}
+function stopLive(){clearInterval(S.timer);S.timer=null;if(S.es){S.es.close();S.es=null}}
 
-/* ------------------------------------------------------------------ Tổng quan */
-async function renderOverview() {
-  const o = await api("/api/overview");
-  $("#target").textContent = "mục tiêu " + fmt(o.target) + " Product";
-  const est = o.rowsEstimate, res = o.resources, byS = o.jobs.byStatus;
-  $("#cJobs").textContent = o.jobs.total;
-  const cat = o.catalog, pv = o.preview;
-  const jobsTotal = o.jobs.total;
-  const urls = Object.values(o.sources).reduce((a, s) => ({ done: a.done + s.done, total: a.total + s.urls, failed: a.failed + s.failed }), { done: 0, total: 0, failed: 0 });
-  const memWarn = res.memAvailable != null && res.memAvailable < 2 * 2 ** 30;
-  const kpis = `
-  <div class="grid kpis">
-    <div class="card kpi"><div class="label">Ước tính số Product</div><div class="value">${fmt(est.total)} <small>/ ${fmt(o.target)}</small></div>
-      <div class="bar-track"><div class="bar-fill ${est.total >= o.target ? "ok" : ""}" style="width:${pct(est.total, o.target)}%"></div></div>
-      <div class="sub">${fmt(est.baseline)} từ đợt cào trước + ${fmt(est.batch)} mới từ các job (${fmt(est.refreshed)} trang cào lại, tính một lần). Ước tính thô: dùng “Tạo bản xem trước” để có số thật sau khử trùng.</div></div>
-    <div class="card kpi"><div class="label">Job</div><div class="value">${fmt(byS.running || 0)} <small>đang chạy / ${fmt(jobsTotal)}</small></div>
-      <div class="sub">${fmt(byS.done || 0)} xong · ${fmt(byS.paused || 0)} dừng giữa chừng · ${fmt((byS.failed || 0) + (byS.blocked || 0))} lỗi/chặn</div></div>
-    <div class="card kpi"><div class="label">Trang đã cào</div><div class="value">${fmt(urls.done)} <small>/ ${fmt(urls.total)}</small></div>
-      <div class="bar-track"><div class="bar-fill" style="width:${pct(urls.done, urls.total)}%"></div></div><div class="sub">${fmt(urls.failed)} URL lỗi</div></div>
-    <div class="card kpi"><div class="label">Trình duyệt Chromium</div><div class="value">${fmt(res.chromeProcesses)} <small>tiến trình</small></div>
-      <div class="sub">${gb(res.chromeRss)} RAM · ${res.crawlers.length} tiến trình cào</div></div>
-    <div class="card kpi"><div class="label">RAM khả dụng</div><div class="value" style="color:${memWarn ? "var(--err)" : "inherit"}">${gb(res.memAvailable)} <small>/ ${gb(res.memTotal)}</small></div>
-      <div class="sub">${memWarn ? "Thấp: cân nhắc đóng bớt ứng dụng." : "Đủ cho các cửa sổ hiện tại."} Đĩa trống ${gb(res.diskFree)}</div></div>
-  </div>`;
-  const srcRows = Object.keys(o.sources).sort().map(k => { const s = o.sources[k]; return `<tr>
-    <td>${esc(o.sourceLabels[k] || k)}</td><td class="num">${fmt(s.running)}</td><td class="num">${fmt(s.jobs)}</td>
-    <td>${bar(s.done, s.urls, s.failed ? "warn" : "")}</td><td class="num">${fmt(s.failed)}</td><td class="num">${fmt(s.records)}</td><td class="num">${fmt(s.rows)}</td></tr>`; }).join("");
-  const sourcesCard = `<div class="card"><h2>Tiến độ theo nguồn <small>các job batch mới</small></h2><div class="scroll"><table>
-    <thead><tr><th>Nguồn</th><th class="num">Chạy</th><th class="num">Job</th><th>URL đã cào</th><th class="num">Lỗi</th><th class="num">Bản ghi</th><th class="num">≈ Dòng</th></tr></thead>
-    <tbody>${srcRows || `<tr><td colspan="7" class="empty">Chưa có job batch nào.</td></tr>`}</tbody></table></div>
-    <div class="note">${esc(est.note)}</div></div>`;
-  const cols = ["booking_hotels", "agoda_hotels", "trip_attractions", "trip_flights"];
-  const covRows = o.coverage.map(c => {
-    const cells = cols.map(k => {
-      const n = (c.counts || {})[k] || 0, cfg = c.configured ? c.configured[k] : true;
-      if (!cfg) return `<td class="num cellNA" title="Chưa cấu hình nguồn này cho điểm đến (không đoán ID)">—</td>`;
-      return n ? `<td class="num cellN">${fmt(n)}</td>` : `<td class="num cell0" title="Đã cấu hình nhưng chưa có bản ghi">0</td>`;
-    }).join("");
-    return `<tr><td>${esc(c.destination)}${c.extra ? ` <span class="muted">(ngoài kế hoạch)</span>` : ""}</td>${cells}</tr>`;
-  }).join("");
-  const covCard = `<div class="card"><h2>Độ phủ theo điểm đến <small>số bản ghi đã parse</small></h2><div class="scroll"><table>
-    <thead><tr><th>Điểm đến</th><th class="num">Booking</th><th class="num">Agoda</th><th class="num">Trip điểm</th><th class="num">Trip bay</th></tr></thead>
-    <tbody>${covRows}</tbody></table></div>
-    <div class="note">“—” = nguồn chưa có ID/slug đã kiểm chứng cho điểm đến. Ô đỏ “0” = đã cấu hình nhưng chưa có dữ liệu (chưa tới lượt cào hoặc cấu hình sai). Trip bay tính theo sân bay đến.</div></div>`;
-  const bars = (map, total) => Object.entries(map).map(([k, v]) => `<div class="r"><div>${esc(k)}</div><div class="bar-track"><div class="bar-fill" style="width:${pct(v, total)}%"></div></div><div class="num">${fmt(v)}</div></div>`).join("");
-  const catBlock = cat ? `<div class="split-bars">${bars(cat.byTaxonomy, cat.rows)}</div>
-     <div class="note">${fmt(cat.rows)} dòng · giá ${pct(cat.withPrice, cat.rows)}% · toạ độ ${pct(cat.withCoords, cat.rows)}% · mô tả ${pct(cat.withDescription, cat.rows)}% · cập nhật ${ago(cat.modified)}</div>` : `<div class="empty">Chưa có data/products.jsonl.</div>`;
-  const pvBlock = pv.status === "running" ? `<div class="note">⏳ ${esc(pv.message)} (bắt đầu ${ago(pv.startedAt)})</div>`
-    : pv.status === "error" ? `<div class="note" style="color:var(--err)">Lỗi: ${esc(pv.message)}</div>`
-    : pv.summary ? `<h2 style="margin-top:14px">Bản xem trước <small>${ago(pv.finishedAt)}</small></h2><div class="kpi"><div class="value">${fmt(pv.summary.rows)} <small>/ ${fmt(o.target)} Product sau chuẩn hoá</small></div><div class="bar-track"><div class="bar-fill ${pv.summary.rows >= o.target ? "ok" : ""}" style="width:${pct(pv.summary.rows, o.target)}%"></div></div></div>
-        <div class="split-bars">${bars(pv.summary.byTaxonomy, pv.summary.rows)}</div>
-        <div class="note">giá ${pct(pv.summary.withPrice, pv.summary.rows)}% · toạ độ ${pct(pv.summary.withCoords, pv.summary.rows)}% · mô tả ${pct(pv.summary.withDescription, pv.summary.rows)}% · ${Object.keys(pv.summary.byDestination).length} điểm đến. ${esc(pv.message)}</div>`
-    : `<div class="note">Chuẩn hoá thử dữ liệu hiện có để biết con số thật sau khử trùng. Không đụng catalog chính (ghi vào data/preview/).</div>`;
-  const catCard = `<div class="card"><h2>Catalog chuẩn hoá <small>data/products.jsonl</small></h2>${catBlock}
-    <div class="row-flex" style="margin-top:12px"><button class="btn primary" id="previewBtn" type="button" ${pv.status === "running" ? "disabled" : ""}>${pv.status === "running" ? "Đang chuẩn hoá…" : "Tạo bản xem trước"}</button></div>${pvBlock}</div>`;
-  $("#main").innerHTML = kpis + `<div class="grid split" style="margin-top:14px"><div class="grid">${sourcesCard}${covCard}</div><div class="grid" style="align-content:start">${catCard}</div></div>`;
-  const btn = $("#previewBtn");
-  if (btn) btn.onclick = async () => { btn.disabled = true; await api("/api/preview", { method: "POST", headers: { "X-Requested-With": "vota-monitor" } }); tick(); };
-}
+// ------------------------------------------------------------------ cảnh báo và SLA (CP7, CP8)
+const ALERT_KINDS={transient:'Lỗi tạm thời',blocked:'Bị chặn',timeout:'Quá giờ',code:'Lỗi code',quality:'Chặn chất lượng',infra:'Lỗi hạ tầng',unknown:'Chưa phân loại',record:'Bản ghi lỗi',sla:'SLA'};
+const SLA_STATE={ok:['ok','Đạt'],late:['error','Trễ'],pending:['waiting','Chưa tới hạn'],none:['notInMode','Không áp dụng']};
+function alertRows(list,showRun=true){return table(['Lúc','Mức','Loại',...(showRun?['Lượt']:[]),'Bước · nguồn','Nội dung'],list.map(a=>[esc(when(a.at)),`<span class="status ${a.level==='error'?'error':'partial'}">${a.level==='error'?'Lỗi':'Cảnh báo'}</span>`,esc(ALERT_KINDS[a.kind]||a.kind),...(showRun?[a.run?button(a.run,'run',{id:a.run,node:a.step},'link'):'—']:[]),esc([a.step,a.source].filter(Boolean).join(' · ')||'—'),esc(a.message)]))}
+function alertsCard(list){const L=S.alertFilter||{};const shown=(list||[]).filter(a=>(!L.level||a.level===L.level)&&(!L.kind||a.kind===L.kind));
+ const kinds=[...new Set((list||[]).map(a=>a.kind))];
+ return card(`Cảnh báo (${(list||[]).length})`,(list||[]).length?`<div class="actions"><select data-alert="level" aria-label="Mức"><option value="">Mọi mức</option><option value="error" ${L.level==='error'?'selected':''}>Lỗi</option><option value="warning" ${L.level==='warning'?'selected':''}>Cảnh báo</option></select><select data-alert="kind" aria-label="Loại"><option value="">Mọi loại</option>${kinds.map(k=>`<option value="${esc(k)}" ${L.kind===k?'selected':''}>${esc(ALERT_KINDS[k]||k)}</option>`).join('')}</select><small class="muted">Chưa gửi ra ngoài (Telegram / email chưa cấu hình); cảnh báo giống hệt trong thời gian chờ (Cấu hình) không lặp lại.</small></div>`+alertRows(shown):'<p class="muted">Chưa có cảnh báo nào.</p>')}
+function slaLine(sla){if(!sla)return '';if(sla.error)return `<p class="muted">SLA: ${esc(sla.error)}</p>`;if(!sla.enabled)return '<p class="muted">SLA đang tắt (Cấu hình → Cảnh báo và SLA).</p>';
+ return `<div class="badge-row"><strong>SLA hôm nay</strong>${(sla.rules||[]).map(r=>{const [cls,label]=SLA_STATE[r.state]||['',r.state];return `<span class="status ${cls}" title="${esc(r.message)}">${esc(r.rule==='finishBy'?'Xong trong ngày':'Catalog tươi')}: ${esc(label)}</span>`}).join('')}</div><p class="muted">${(sla.rules||[]).map(r=>esc(r.message)).join(' · ')}</p>`}
 
-/* ------------------------------------------------------------------ Jobs */
-function jobLabel(j) { return j.route ? `${esc(j.city)} <span class="muted mono" title="${esc(j.route)}">${j.route.split(",").length} tuyến</span>` : esc(j.city || "–"); }
-async function renderJobs() {
-  state.jobs = await api("/api/jobs");
-  const jobs = state.jobs.filter(j => j.kind === "batch");
-  $("#cJobs").textContent = jobs.length;
-  const match = j => (state.filter === "all" || (state.filter === "problem" ? ["failed", "blocked"].includes(j.status) : j.status === state.filter))
-    && (!state.source || j.source === state.source) && (!state.q || (j.city + " " + (j.route || "")).toLowerCase().includes(state.q.toLowerCase()));
-  const shown = jobs.filter(match).sort((a, b) => (a.status === "running" ? 0 : 1) - (b.status === "running" ? 0 : 1) || (b.lastActivity || "").localeCompare(a.lastActivity || ""));
-  const cnt = k => jobs.filter(j => k === "all" ? true : k === "problem" ? ["failed", "blocked"].includes(j.status) : j.status === k).length;
-  const chip = (k, t) => `<button class="chip" data-f="${k}" aria-pressed="${state.filter === k}">${t} ${cnt(k)}</button>`;
-  const sources = [...new Set(jobs.map(j => j.source))].sort();
-  const rows = shown.map(j => `<tr class="click" data-id="${j.id}">
-    <td>${badge(j.status)}${j.stalled ? ` <span class="badge b-warn" title="Không có hoạt động > 10 phút">im lặng</span>` : ""}</td><td>${esc(SRC[j.source] || j.source)}</td><td>${jobLabel(j)}</td>
-    <td>${j.total ? bar(j.done, j.total, j.failed ? "warn" : "") : `<span class="muted">${j.source === "vinpearl" ? "API" : "chưa có URL"}</span>`}</td>
-    <td class="num">${j.failed ? `<span style="color:var(--err)">${fmt(j.failed)}</span>` : "0"}</td><td class="num">${fmt(j.records)}</td><td class="num">${fmt(j.rowsEstimate)}</td>
-    <td class="muted">${ago(j.lastActivity)}</td></tr>`).join("");
-  $("#main").innerHTML = `<div class="chips">${chip("all", "Tất cả")}${chip("running", "Đang chạy")}${chip("paused", "Dừng giữa chừng")}${chip("done", "Xong")}${chip("problem", "Lỗi/Chặn")}
-    <select id="srcSel" aria-label="Lọc theo nguồn"><option value="">Mọi nguồn</option>${sources.map(s => `<option value="${s}" ${state.source === s ? "selected" : ""}>${esc(SRC[s] || s)}</option>`).join("")}</select>
-    <input type="search" id="qBox" placeholder="Lọc theo điểm đến / tuyến" value="${esc(state.q)}"></div>
-    <div class="card"><div class="scroll" style="max-height:none"><table><thead><tr><th>Trạng thái</th><th>Nguồn</th><th>Điểm đến / tuyến</th><th>URL đã cào</th><th class="num">Lỗi</th><th class="num">Bản ghi</th><th class="num">≈ Dòng</th><th>Hoạt động</th></tr></thead>
-    <tbody>${rows || `<tr><td colspan="8" class="empty">Không có job khớp bộ lọc.</td></tr>`}</tbody></table></div></div>`;
-  document.querySelectorAll(".chip").forEach(b => b.onclick = () => { state.filter = b.dataset.f; renderJobs(); });
-  $("#srcSel").onchange = e => { state.source = e.target.value; renderJobs(); };
-  const q = $("#qBox"); q.oninput = e => { state.q = e.target.value; renderJobs().then(() => { const n = $("#qBox"); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }); };
-  document.querySelectorAll("tr.click").forEach(r => r.onclick = () => openDrawer(r.dataset.id));
-}
-async function openDrawer(id) {
-  state.drawerId = id;
-  const j = await api("/api/job?id=" + id);
-  $("#drawerTitle").textContent = `${SRC[j.source] || j.source} · ${j.city || ""}`;
-  const kv = (k, v) => `<div>${k}</div><div>${v}</div>`;
-  const files = Object.entries(j.files || {}).map(([k, f]) => `<tr><td>${esc(k)}</td><td class="num">${fmt(f.lines)}</td><td class="num">${fmt(f.noPrice)}</td><td class="num">${fmt(f.noCoords)}</td><td class="num">${fmt(f.noDesc)}</td><td class="num">${mb(f.bytes)}</td></tr>`).join("");
-  $("#drawerBody").innerHTML = `
-    <div class="kv">${kv("Trạng thái", badge(j.status) + (j.pid ? ` <span class="muted">pid ${j.pid}</span>` : ""))}${kv("Mã thoát lần cuối", j.exitCode ?? "–")}
-    ${kv("Tiến độ", `${fmt(j.done)} xong · ${fmt(j.pending)} chờ · ${fmt(j.failed)} lỗi / ${fmt(j.total)} URL`)}${kv("Bản ghi đã parse", fmt(j.records))}${kv("≈ Dòng Product", fmt(j.rowsEstimate))}
-    ${kv("Cập nhật hàng đợi", ago(j.updatedAt))}${kv("Hoạt động cuối", ago(j.lastActivity))}${kv("Thư mục", `<span class="mono">data/batches/${esc(j.id)}</span>`)}</div>
-    <h3>Tham số job</h3><pre class="json">${esc(JSON.stringify(j.spec, null, 2))}</pre>
-    ${files ? `<h3>Dữ liệu đã parse (interim)</h3><table><thead><tr><th>Nguồn</th><th class="num">Bản ghi</th><th class="num">Thiếu giá</th><th class="num">Thiếu toạ độ</th><th class="num">Thiếu mô tả</th><th class="num">Dung lượng</th></tr></thead><tbody>${files}</tbody></table>` : ""}
-    ${(j.discovery || []).length ? `<h3>Tìm URL (discovery)</h3><table><tbody>${j.discovery.map(d => `<tr><td class="mono">${esc(d.key)}</td><td class="num">${fmt(d.found)} URL</td></tr>`).join("")}</tbody></table>` : ""}
-    ${(j.errors || []).length ? `<h3>Lỗi phổ biến</h3><table><tbody>${j.errors.map(e => `<tr><td>${esc(e.error)}</td><td class="num">${fmt(e.count)}</td></tr>`).join("")}</tbody></table>` : ""}
-    <h3>Nhật ký gần nhất</h3><pre class="log">${esc((j.log || []).join("\n")) || "Chưa có nhật ký."}</pre>
-    <div class="row-flex" style="margin-top:14px"><button class="btn" id="seeRecs" type="button">Xem bản ghi đã parse của job này</button></div>`;
-  $("#drawer").classList.add("open");
-  $("#seeRecs").onclick = () => { state.recSource = j.source === "mixed" ? "booking_hotels" : j.source; state.recJob = j.id; closeDrawer(); setTab("records"); };
-}
-function closeDrawer() { $("#drawer").classList.remove("open"); state.drawerId = null; }
+// ------------------------------------------------------------------ tổng quan
+// UI4 (docs/plan/2026-09-28-monitor-so-do-luong.md): mỗi lượt một dòng, dải ô = trạng thái xấu nhất của 7 cột sơ đồ
+const COLS=[['prepare','Chuẩn bị'],['crawl','Cào'],['normalise','Chuẩn hoá'],['merge','Gộp'],['validate','Kiểm tra'],['db','Nạp DB'],['index','Index']];
+const SEV={notInMode:0,disabled:1,notRun:2,ok:3,skipped:4,waiting:5,draft:6,running:6,stopped:7,blocked:8,dead:9,error:10};
+const dur=n=>n==null?'—':n<60?`${n} s`:n<3600?`${Math.floor(n/60)} ph ${n%60} s`:`${Math.floor(n/3600)} g ${Math.floor(n%3600/60)} ph`;
+function stripHtml(r){if(!r.strip)return '<small class="muted">chỉ còn tóm tắt</small>';
+ return `<div class="strip">${COLS.map(([c,l])=>{const st=r.strip[c]||'notRun';const detail=(r.stripDetail?.[c]||[]).map(([n,x])=>`${n}: ${labels[x]||x}`).join('\n');
+  return `<button type="button" class="cell" data-st="${esc(st)}" data-action="run" data-args="${esc(JSON.stringify({id:r.id,col:c}))}" title="${esc(`${l}: ${labels[st]||st}${detail?'\n'+detail:''}`)}" aria-label="${esc(`${l}: ${labels[st]||st}`)}"></button>`}).join('')}</div>`}
+function historyTable(runs){return table(['Bắt đầu (VN)','Chế độ','Trạng thái','Các bước','Thời gian','Sản phẩm','So với lượt trước cùng chế độ','Lượt'],
+ runs.map(r=>[esc(when(r.startedAt)),esc(r.mode),badge(r.status),r.retained?stripHtml(r):'<small class="muted">đã xoá dữ liệu</small>',esc(dur(r.seconds)),num(r.products),
+  r.productsDelta==null?'—':`<span class="${r.productsDelta<0?'minus':r.productsDelta>0?'plus':''}">${r.productsDelta>0?'+':''}${num(r.productsDelta)}</span>`,
+  r.retained?button(r.id,'run',{id:r.id},'link'):`<small>${esc(r.id)}</small>`]))}
+const stripLegend=()=>`<div class="badge-row"><small class="muted">Màu ô:</small>${['ok','running','error','blocked','notRun'].map(x=>`<span class="legend"><i class="cell" data-st="${x}"></i>${esc(labels[x])}</span>`).join('')}<small class="muted">7 ô theo thứ tự: chuẩn bị → cào → chuẩn hoá → gộp → kiểm tra → nạp DB → index. Di chuột lên ô để xem từng nguồn; bấm ô để mở lượt ở bước đó.</small></div>`;
+async function historyPage(){const L=S.runFilter||{};const all=await api('/api/runs',{limit:200});const rows=all.filter(r=>(!L.mode||r.mode===L.mode)&&(!L.status||r.status===L.status));
+ const opt=(name,values,all)=>`<select data-runfilter="${name}" aria-label="${esc(all)}"><option value="">${esc(all)}</option>${[...new Set(values)].map(v=>`<option value="${esc(v)}" ${L[name]===v?'selected':''}>${esc(labels[v]||v)}</option>`).join('')}</select>`;
+ main.innerHTML=card(`Lịch sử (${rows.length}/${all.length} lượt)`,`<div class="actions">${opt('mode',all.map(r=>r.mode),'Mọi chế độ')}${opt('status',all.map(r=>r.status),'Mọi trạng thái')}</div>${stripLegend()}`+historyTable(rows))}
 
-/* ------------------------------------------------------------------ Dữ liệu đã parse */
-async function renderRecords(keepFocus) {
-  if (!state.jobs.length) state.jobs = await api("/api/jobs");
-  const sources = ["booking_hotels", "agoda_hotels", "trip_attractions", "trip_flights", "vinpearl", "booking_attractions"];
-  const jobOpts = state.jobs.filter(j => (j.source === state.recSource || j.kind === "legacy")).map(j => `<option value="${j.id}" ${state.recJob === j.id ? "selected" : ""}>${esc(j.city || "")}${j.route ? " (" + j.route.split(",").length + " tuyến)" : ""} · ${j.id.slice(0, 6)}</option>`).join("");
-  const url = `/api/records?source=${state.recSource}&job=${encodeURIComponent(state.recJob)}&limit=${state.recLimit}&q=${encodeURIComponent(state.recQ)}`;
-  const d = await api(url);
-  const rows = d.items.map((r, i) => `<tr class="click" data-i="${i}"><td>${esc(r.name || "(không tên)")}<div class="muted" style="font-size:12px">${esc(r.extra)}</div></td><td>${esc(r.destination || "–")}</td>
-    <td class="num">${r.price ? fmt(r.price) : `<span class="muted">–</span>`}</td><td>${r.missing.map(m => `<span class="tag-missing">thiếu ${esc(m)}</span>`).join("") || `<span class="muted">đủ</span>`}</td><td class="muted">${ago(r.crawledAt)}</td><td class="muted mono">${esc(r.jobCity || "")}</td></tr>`).join("");
-  const html = `<div class="chips"><select id="rSrc" aria-label="Nguồn">${sources.map(s => `<option value="${s}" ${state.recSource === s ? "selected" : ""}>${esc(SRC[s])}</option>`).join("")}</select>
-    <select id="rJob" aria-label="Job"><option value="all">Tất cả job</option>${jobOpts}</select>
-    <input type="search" id="rQ" placeholder="Tìm trong tên, điểm đến, thông tin…" value="${esc(state.recQ)}">
-    <select id="rLim" aria-label="Số dòng">${[40, 100, 200].map(n => `<option ${state.recLimit === n ? "selected" : ""}>${n}</option>`).join("")}</select>
-    <span class="muted">${fmt(d.total)} bản ghi đã parse · hiển thị ${d.items.length} mới nhất</span></div>
-    <div class="card"><div class="scroll" style="max-height:none"><table><thead><tr><th>Tên</th><th>Điểm đến</th><th class="num">Giá (VND)</th><th>Chất lượng</th><th>Cào lúc</th><th>Job</th></tr></thead>
-    <tbody>${rows || `<tr><td colspan="6" class="empty">Chưa có bản ghi nào.</td></tr>`}</tbody></table></div><div class="note">Bấm một dòng để xem toàn bộ JSON đã parse. “thiếu …” là trường quan trọng đang trống, không nhất thiết là lỗi (điểm công cộng không có giá vé).</div></div>`;
-  const active = document.activeElement && document.activeElement.id;
-  $("#main").innerHTML = html;
-  $("#rSrc").onchange = e => { state.recSource = e.target.value; state.recJob = "all"; renderRecords(); };
-  $("#rJob").onchange = e => { state.recJob = e.target.value; renderRecords(); };
-  $("#rLim").onchange = e => { state.recLimit = +e.target.value; renderRecords(); };
-  const q = $("#rQ"); q.oninput = e => { state.recQ = e.target.value; clearTimeout(q._t); q._t = setTimeout(() => renderRecords(true), 350); };
-  if (active === "rQ") { q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
-  document.querySelectorAll("tr.click").forEach(r => r.onclick = () => showRecord(d.items[+r.dataset.i]));
-}
-async function showRecord(item) {
-  const rec = await api(`/api/record?job=${encodeURIComponent(item.job)}&source=${state.recSource}&key=${encodeURIComponent(item.key || "")}`);
-  $("#modalTitle").textContent = item.name || "Bản ghi";
-  $("#modalJson").textContent = JSON.stringify(rec, null, 2);
-  $("#modalMissing").innerHTML = item.missing.map(m => `<span class="tag-missing">thiếu ${esc(m)}</span>`).join("");
-  const a = $("#modalLink"); if (item.url) { a.href = item.url; a.style.display = ""; } else a.style.display = "none";
-  $("#modal").classList.add("open");
-}
+function targetsCard(t){if(!t)return '';const local=t.localOnly?'<span class="status ok">Chế độ local: chỉ ghi vào localhost, không đụng vota/Product</span>':'';
+ return card('Nơi lượt kế tiếp ghi dữ liệu',`<div class="badge-row">${local}<span class="status">DB_TARGET: ${esc(t.dbTarget)}</span><span class="status">Postgres: ${esc(t.db)}</span><span class="status">Weaviate: ${esc(t.weaviate)}</span><span class="status">Collection: ${esc(t.collection)}</span></div>${t.error?`<p class="muted">${esc(t.error)}</p>`:''}`)}
+// UI5: Tổng quan chỉ còn lượt hiện tại (sơ đồ thu nhỏ), lượt kế tiếp, cảnh báo + SLA; phần kỹ thuật sang trang Hệ thống
+async function overview(){const d=await api('/api/overview');const running=d.running;S.overviewAlerts=d.alerts;setControls(running);
+ const current=running?.runId||d.runs.find(r=>r.retained)?.id;let g=null;if(current){try{g=await api('/api/graph',{run:current})}catch(e){g=null}}
+ if(S.view!=='overview')return;S.miniRun=current;S.graph=g;S.node=null;
+ const head=running?`<strong>Đang chạy</strong> ${badge(running.stale?'dead':'running')} ${esc(running.mode||'')} <small class="muted">${esc(running.runId||'đang khởi động')} · bước: ${esc((running.steps||[]).join(', ')||'—')}</small>`
+  :current?`<strong>Lượt gần nhất</strong> ${badge(g?.status||'unknown')} <small class="muted">${esc(current)}</small>`:'<strong>Chưa có lượt nào</strong>';
+ main.innerHTML=card('Hiện tại',`<div class="meta">${head}${current?button('Mở lượt','run',{id:current},'primary small'):''}</div>`+(g?`<div class="mini">${problemHtml(g)}${graphHtml(g)}</div>`:'')+
+   `<div class="grid" style="margin-top:12px">${[['Lượt theo lịch kế tiếp',d.nextRun?.mode||'Đã tắt',d.nextRun?when(d.nextRun.at):'Bật ở Cấu hình → Lịch chạy'],['Cào lớn gần nhất',d.lastFull||'—','ngày (giờ Việt Nam)']].map(([l,v,sub])=>`<div class="card kpi"><small>${esc(l)}</small><strong class="long">${esc(v)}</strong><small>${esc(sub)}</small></div>`).join('')}</div>`+
+   (d.stream?`<div style="margin-top:10px">${streamPresetHtml(d.stream)}</div>`:'')+
+   (d.settingsError?`<p class="minus">${esc(d.settingsError)}</p>`:'')+(d.spawned?.launchLog?`<p class="minus">Khởi chạy lượt lỗi (mã ${esc(d.spawned.returncode)}):</p>`+pretty(d.spawned.launchLog.join('\n')):''))+
+  card('Cảnh báo và SLA',slaLine(d.sla))+alertsCard(d.alerts);
+ drawEdges()}
+async function system(){const [d,h]=await Promise.all([api('/api/overview'),api('/api/trip-hotels').catch(e=>({error:e.message}))]);if(S.view!=='system')return;
+ main.innerHTML=targetsCard(d.targets)+
+  card('Biến kết nối',`<div class="badge-row">${Object.entries(d.env).map(([key,value])=>`<span class="status">${esc(key)}: ${typeof value==='boolean'?(value?'đã đặt':'chưa đặt'):esc(value)}</span>`).join('')}</div>`)+
+  card('Dữ liệu giữ lại',`<p><strong>${esc(bytes(d.diskBytes))}</strong> <small class="muted">raw, interim, catalog và báo cáo của các lượt còn giữ (Cấu hình → Lưu trữ và log)</small></p>`)+
+  card('Log runner',table(['File','Cập nhật','Mã thoát'],d.runnerLogs.map(r=>[button(r.name,'runnerlog',{name:r.name},'link'),esc(when(r.modifiedAt)),esc(r.exitCode)])))+
+  (h.error?card('Khách sạn Trip · xoay vòng',`<p class="muted">${esc(h.error)}</p>`):hotelsCard(h,d.tripHotelIds))}
+// UI5: nút chạy / dừng lượt luôn ở thanh trên; trạng thái lấy từ /api/live mỗi 5 giây ở mọi trang
+function setControls(running){S.globalRunning=running;document.querySelectorAll('#controls [data-action=start]').forEach(b=>b.disabled=!!running);const stop=$('#controls [data-action=stop]');if(stop)stop.disabled=!running||running.starting;
+ const st=$('#controlState');if(st)st.innerHTML=running?`${badge('running')} <small>${esc(running.runId||running.mode||'')}</small>`:'<small class="muted">Không có lượt nào đang chạy</small>'}
+async function pollControls(){try{const l=await api('/api/live');setControls(l.running?{runId:l.runId}:null)}catch(e){}}
 
-/* ------------------------------------------------------------------ Files */
-async function renderFiles() {
-  const f = await api("/api/files");
-  const top = f.top.map(t => `<tr><td class="mono">${esc(t.name)}</td><td class="num">${fmt(t.files)}</td><td class="num">${mb(t.bytes)}</td></tr>`).join("");
-  const rows = f.jobs.map(j => {
-    const okRaw = j.source === "vinpearl" || j.kind === "legacy" || j.rawFiles >= j.doneItems;
-    const okParse = j.doneItems === 0 || j.interimLines > 0;
-    const verdict = okRaw && okParse ? `<span class="badge b-ok">hợp lý</span>` : `<span class="badge b-warn" title="${!okRaw ? "Số file raw ít hơn số trang đã cào: không parse lại (reparse) được." : "Đã cào trang nhưng chưa có bản ghi đã parse."}">cần xem</span>`;
-    return `<tr><td class="mono">${j.kind === "batch" ? esc(j.id.slice(0, 8)) : esc(j.id)}</td><td>${esc(SRC[(j.source || "").replace("-", "_")] || j.source)}</td><td>${esc(j.city || "")}</td><td class="num">${fmt(j.doneItems)}</td>
-      <td class="num">${fmt(j.rawFiles)}</td><td class="num">${mb(j.rawBytes)}</td><td class="num">${fmt(j.interimLines)}</td><td class="num">${mb(j.interimBytes)}</td><td class="num">${mb(j.profileBytes)}</td><td>${verdict}</td></tr>`; }).join("");
-  $("#main").innerHTML = `<div class="grid two"><div class="card"><h2>Thư mục dữ liệu <small>tổng quan</small></h2><table><thead><tr><th>Đường dẫn</th><th class="num">File</th><th class="num">Dung lượng</th></tr></thead><tbody>${top}</tbody></table>
-      <div class="note">Cache dùng chung giữa các job (trang sân bay, sitemap): ${fmt(f.shared.files)} file, ${mb(f.shared.bytes)} — mỗi trang chỉ tải một lần.</div></div>
-    <div class="card"><h2>Cấu trúc một job</h2><pre class="json">data/batches/&lt;job&gt;/
-  job.json           tham số job (nguồn, điểm đến, ngày hỏi giá)
-  last-run.json      mã thoát lần chạy gần nhất (75 = bị chặn)
-  raw/&lt;nguồn&gt;/       trang gốc đã lược review, nén gzip — để parse lại
-  interim/&lt;nguồn&gt;.jsonl   bản ghi đã parse, mỗi dòng một khách sạn/điểm/tuyến
-  state/             hàng đợi URL (SQLite) + khoá tiến trình
-  logs/              nhật ký
-  browser-profile/   cookie trình duyệt
+// ------------------------------------------------------------------ một lượt
+// Sơ đồ luồng (docs/plan/2026-09-28-monitor-so-do-luong.md): ô và đường nối tính ở server (/api/graph); bấm một ô thì
+// panel bên dưới chỉ hiện những phần của bước đó. Các hàm tab* bên dưới vẽ vào #tab của panel.
+const NS='normalise.source:',NORMALISE_ALL='normalise.sources',FADED=new Set(['notInMode','disabled','notRun']);
+const RUN_VIEWS=['log','flow','stream','reports'];
+const VIEW_LABELS={feed:'Các lô theo phần',stream:'Chạy liên tục',steps:'Các bước bên trong',flow:'Tiến độ & tốc độ',sources:'Raw / interim',cities:'Theo thành phố',log:'Log',normalise:'Chuẩn hoá',errors:'Bản ghi lỗi',products:'Catalog cuối',db:'Trước → sau',embed:'Embedding',reports:'Báo cáo',detail:'Chi tiết bước'};
+const LANE_LOG={vinpearl:'vinpearl',tripFlights:'trip',tripAttractions:'trip',booking:'booking',agoda:'agoda',tripHotels:'tripHotels'};
+function nodeViews(n){if(!n)return RUN_VIEWS;if(n.col==='crawl')return ['flow','sources','cities','log'];if(n.col==='normalise')return n.id===NORMALISE_ALL?['steps','normalise','log']:['steps','errors','normalise','log'];
+ return {merge:['steps','normalise','products','cities','log'],validate:['reports','log'],db:n.stream?['feed','db','log']:['db','log'],index:n.stream?['feed','embed','log']:['embed','log']}[n.col]||['detail','log']}
+const STREAM_KEY={merge:'stream.merge',db:'stream.db',index:'stream.index'};
+const streamKey=n=>!n?null:n.id.startsWith(NS)?'stream.normalise':STREAM_KEY[n.col]||null;
+function streamControl(e){if(!e)return '';if(!e.enabled)return `<p class="muted">${esc(e.label)}: đang tắt trong Cấu hình của lượt này.</p>`;
+ return `<div class="live-row" data-stream="${esc(e.key)}"><div><strong>${esc(e.label)}</strong>${e.paused?' '+badge('paused'):''}<br><small>chu kỳ của lượt ${esc(e.base)} s${e.override?` · đang chỉnh ${esc(e.override)} s`:''}</small></div><div><label>Giây giữa hai lô <input type="number" min="${esc(e.minimum)}" max="${esc(e.maximum)}" step="1" value="${esc(e.value)}" data-interval aria-label="${esc(e.label)}: giây giữa hai lô"></label><br><small>áp từ lô kế tiếp; tạm dừng thì dữ liệu dồn sang lô sau</small></div><div class="actions" style="margin:0">${button('Áp dụng','streamSet',{key:e.key},'primary small')}${button('Về cấu hình lượt','streamSet',{key:e.key,reset:true},'small')}${button(e.paused?'Chạy tiếp':'Tạm dừng','streamPause',{key:e.key,paused:!e.paused},e.paused?'primary small':'danger small')}${e.paused?'':button(e.key==='stream.normalise'?'Chuẩn hoá ngay':'Chạy ngay','streamKick',{key:e.key},'small')}</div></div>`}
+const RESUME_LABEL={crawl:'Cào lại nguồn này',normalise:'Chạy lại từ bước này',merge:'Chỉ gộp lại từ checkpoint',validate:'Chạy lại từ bước này',db:'Chạy lại từ bước này',index:'Chạy lại từ bước này'};
+function resumeButtons(n){if(!n?.resume?.length)return '';const crawl=n.resume.includes('crawl');return `<div class="actions">${n.resume.map(f=>button(RESUME_LABEL[f],'resume',f==='crawl'?{run:S.run,from:f,source:n.lane}:{run:S.run,from:f},f==='merge'?'small':'primary small')).join('')}<small class="muted">${crawl?'Chỉ cào lại nguồn này (tiếp tục từ tiến độ đã lưu), dùng lại dữ liệu của các nguồn khác rồi chạy tiếp tới nạp DB và index.':'Không cào lại; dùng lại interim, checkpoint, catalog của lượt này rồi chạy tiếp tới nạp DB và index.'}</small></div>`}
+function nodeStreamControl(n){const key=streamKey(n);if(!key||S.runData?.status!=='running'||!S.live?.running||S.live.runId!==S.run)return '';return streamControl((S.live.stream||[]).find(x=>x.key===key))}
+function nodeLog(n){if(!n)return {group:'',q:''};if(n.col==='crawl')return {group:LANE_LOG[n.lane]||'',q:''};if(n.id.startsWith(NS))return {group:'',q:`[normalise:${n.id.slice(NS.length)}]`};return {group:'job',q:''}}
+const currentNode=()=>S.graph?.nodes.find(n=>n.id===S.node)||null;
+const stepOf=id=>[...(S.runData?.steps||[])].reverse().find(s=>s.name===id);
+function nodeHtml(n){const bits=[];const secs=n.seconds??(n.status==='running'&&n.startedAt?Math.round((Date.now()-new Date(n.startedAt))/1000):null);if(secs!=null)bits.push(`${esc(secs)} s`);
+ if(n.in!=null)bits.push(`${num(n.in)} → ${num(n.out)}`);else if(n.out!=null)bits.push(`${num(n.out)} dòng`);
+ if(n.errors)bits.push(`<span class="minus">${num(n.errors)} lỗi</span>`);if(n.retries)bits.push(`thử lại ${esc(n.retries)}`);
+ if(n.stream)bits.push(`theo phần: ${esc(n.stream.batches)} lô${n.stream.dbRowsWritten!=null?` · ${num(n.stream.dbRowsWritten)} dòng ghi`:''}`);
+ const dr=n.draft?`<small>đang gộp: lần ${esc(n.draft.n)}${n.draft.rows!=null?` · ${num(n.draft.rows)} dòng`:''}${n.draft.groups?.length?` · xong: ${esc(n.draft.groups.join(', '))}`:''}</small>`:'';
+ return `<button type="button" class="node${FADED.has(n.status)?' faded':''}" data-node="${esc(n.id)}" data-st="${esc(n.status)}" aria-pressed="${n.id===S.node}" title="${esc(n.error||n.label)}"><b>${esc(n.label)}</b>${badge(n.status)}${bits.length?`<small>${bits.join(' · ')}</small>`:''}${dr}${n.substep?`<small class="sub">đang: ${esc(n.substep)}</small>`:''}${n.note?`<small class="sub">${esc(n.note)}</small>`:''}</button>`}
+function problemHtml(g){const p=g.problem;if(!p)return '';const kind=p.errorKind?kindBadge(p.errorKind)+' ':'';
+ const body=`<strong>${p.status==='blocked'?'Bị chặn':'Lỗi'} ở: ${esc(p.label)}</strong> ${kind}<br><small>${esc((p.error||labels[p.status]||p.status||'').slice(0,300))}</small>`;
+ return p.id?`<button type="button" class="problem" data-node="${esc(p.id)}">${body} <small class="muted">— bấm để xem</small></button>`:`<div class="problem">${body}</div>`}
+function graphHtml(g){const ci=Object.fromEntries(g.columns.map((c,i)=>[c.id,i])),li=Object.fromEntries(g.lanes.map((l,i)=>[l.id,i])),rows=g.lanes.length,cells=new Map();
+ for(const n of g.nodes){const k=`${n.col}|${n.lane??''}`;if(!cells.has(k))cells.set(k,{col:n.col,lane:n.lane,nodes:[]});cells.get(k).nodes.push(n)}
+ const heads=g.columns.map((c,i)=>`<div class="ghead" style="grid-column:${i+1};grid-row:1;order:${i*100}">${esc(c.label)}</div>`).join('');
+ const body=[...cells.values()].map(c=>{const i=ci[c.col],lane=c.lane==null?null:li[c.lane];return `<div class="gcell" style="grid-column:${i+1};grid-row:${lane==null?`2 / span ${rows}`:lane+2};order:${i*100+1+(lane??0)}">${c.nodes.map(nodeHtml).join('')}</div>`}).join('');
+ return `<div class="gwrap"><div class="graph" id="graph" style="grid-template-columns:repeat(${g.columns.length},minmax(140px,1fr));grid-template-rows:auto repeat(${rows},auto)"><svg id="edges" aria-hidden="true"></svg>${heads}${body}</div></div>`}
+function drawEdges(){const gr=$('#graph'),svg=$('#edges');if(!gr||!svg||!S.graph||getComputedStyle(svg).display==='none')return;const box=gr.getBoundingClientRect();
+ const bad=new Set(S.graph.nodes.filter(n=>['error','dead'].includes(n.status)).map(n=>n.id));  // UI3: đường tới ô lỗi tô đỏ
+ const at=id=>gr.querySelector(`[data-node="${CSS.escape(id)}"]`);
+ svg.innerHTML=S.graph.edges.map(([a,b])=>{const A=at(a),B=at(b);if(!A||!B)return '';const p=A.getBoundingClientRect(),q=B.getBoundingClientRect();
+  if(Math.abs(p.left-q.left)<4){const x=p.left+p.width/2-box.left;return `<path class="${bad.has(b)?'bad':''}" d="M${x},${p.bottom-box.top} L${x},${q.top-box.top}"/>`}
+  const x1=p.right-box.left,y1=p.top+p.height/2-box.top,x2=q.left-box.left,y2=q.top+q.height/2-box.top,m=(x1+x2)/2;return `<path class="${bad.has(b)?'bad':''}" d="M${x1},${y1} C${m},${y1} ${m},${y2} ${x2},${y2}"/>`}).join('')}
+function panelHead(){const n=currentNode(),views=nodeViews(n),st=n&&stepOf(n.id);
+ const facts=n?[['Bắt đầu',when(n.startedAt)],['Kết thúc',when(n.finishedAt)],['Giây',n.seconds??'—'],['Vào → ra',n.in!=null||n.out!=null?`${num(n.in)} → ${num(n.out)}`:'—'],['Bản ghi lỗi',n.errors==null?'—':num(n.errors)],['Thử lại',n.retries||0]]:[];
+ return `<section class="card" id="nodeHead"><div class="meta"><h2 style="margin:0">${esc(n?n.label:'Toàn lượt')}</h2>${n?badge(n.status)+' '+kindBadge(n.errorKind):''}</div>`+
+  (n?`<div class="facts">${facts.map(([k,v])=>`<span><small>${esc(k)}</small>${esc(v)}</span>`).join('')}</div>`:'<p class="muted">Log, tiến độ và báo cáo của cả lượt, không lọc theo bước.</p>')+
+  (n?.draft?`<p class="muted">Catalog đang gộp: lần ${esc(n.draft.n)} lúc ${esc(when(n.draft.at))}${n.draft.rows!=null?` · ${num(n.draft.rows)} dòng`:''}${n.draft.groups?.length?` · nhóm site đã xong: ${esc(n.draft.groups.join(', '))}`:''}${n.status==='ok'?'':' — bản chính thức chạy khi mọi site cào xong.'}</p>`:'')+
+  (n?.error?`<p class="minus">${esc(n.error)}</p>`:'')+(st?attemptsText(st.detail):'')+
+  (n?.id===NORMALISE_ALL?'<p class="muted">Lượt này không chuẩn hoá theo nguồn: ánh xạ và gộp chạy chung trong bước Gộp.</p>':'')+
+  nodeStreamControl(n)+resumeButtons(n)+
+  `<div class="tabs" role="tablist">${views.map(v=>`<button type="button" data-tab="${v}" aria-current="${v===S.tab}">${esc(VIEW_LABELS[v])}</button>`).join('')}</div></section>`}
+async function loadLive(){S.live=S.runData?.status==='running'?await api('/api/live').catch(()=>null):null}
+// UI3: URL giữ trạng thái (#run=…&node=…&view=… hoặc #page=…): tải lại trang hay gửi link mở đúng chỗ
+function stateHash(){const p=new URLSearchParams();if(S.view==='run'&&S.run){p.set('run',S.run);if(S.node)p.set('node',S.node);if(S.tab)p.set('view',S.tab)}else if(S.view&&S.view!=='overview'){p.set('page',S.view);if(S.view==='db'&&S.db?.mode==='diagram')p.set('mode','diagram');else if(S.view==='db'&&S.db?.table)p.set('table',S.db.table)}return p.toString()}
+function writeHash(){const h=stateHash();if(location.hash.slice(1)!==h)history.pushState(null,'',h?'#'+h:location.pathname)}
+async function applyHash(){const p=new URLSearchParams(location.hash.slice(1));
+ if(p.get('run'))return openRun(p.get('run'),p.get('view'),null,p.get('node')).catch(async e=>{await navigate('overview');fail(e)});  // link cũ: lượt đã bị xoá
+ if(p.get('page')==='db')S.db={table:p.get('table')||null,filters:{},offset:0,mode:p.get('mode')==='diagram'?'diagram':'list'};
+ return navigate(['overview','runs','hotels','settings','system','db','realtime'].includes(p.get('page'))?p.get('page'):'overview',false)}
+addEventListener('popstate',()=>{if(location.hash.slice(1)!==stateHash())applyHash().catch(fail)});
+async function renderPanel(){const p=$('#panel');if(!p)return;stopLive();await loadLive();writeHash();
+ if(!S.node&&!S.tab){p.innerHTML=card('Chi tiết','<p class="muted">Bấm một ô trên sơ đồ để xem tiến độ, log, dữ liệu và lỗi của bước đó.</p>');return}
+ p.innerHTML=panelHead()+'<div id="tab"></div>';await renderTab()}
+function markSelected(){document.querySelectorAll('[data-node]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.node===S.node))}
+async function selectNode(id,view=null){S.node=id;S.variant=null;const n=currentNode();Object.assign(S.log,nodeLog(n));S.tab=view||nodeViews(n)[0];S.list=null;markSelected();await renderPanel();
+ if(matchMedia('(max-width:700px)').matches)$('#panel').scrollIntoView({behavior:'smooth'})}
+async function runView(view){S.node=null;Object.assign(S.log,nodeLog(null));S.tab=view;S.list=null;markSelected();await renderPanel()}
+async function refreshGraph(){const id=S.run,g=await api('/api/graph',{run:id});if(S.view!=='run'||S.run!==id)return;S.graph=g;
+ $('#graphBox').innerHTML=graphHtml(g);$('#problemBox').innerHTML=problemHtml(g);drawEdges();const head=$('#nodeHead');if(head&&!head.contains(document.activeElement)){await loadLive();head.outerHTML=panelHead()}
+ if(g.status!=='running'){clearInterval(S.gtimer);S.gtimer=null;await openRun(id,S.tab,S.preview,S.node)}}
+async function openRun(id,tab=null,preview=null,node=null,col=null){stopLive();clearInterval(S.gtimer);S.gtimer=null;S.view='run';S.run=id;S.list=null;S.node=node;S.tab=tab;document.querySelectorAll('nav button').forEach(b=>b.setAttribute('aria-current','false'));
+ const [d,g]=await Promise.all([api('/api/run',{id}),api('/api/graph',{run:id})]);S.runData=d;S.graph=g;S.preview=preview??(!d.hasProducts&&d.preview?.status==='ok');
+ if(S.node&&!currentNode())S.node=null;
+ if(!S.node&&col){const inCol=g.nodes.filter(n=>n.col===col);if(inCol.length)S.node=inCol.reduce((a,b)=>(SEV[b.status]??6)>(SEV[a.status]??6)?b:a).id}  // UI4: bấm ô của dải bước
+ if(!S.node&&!S.tab&&g.focus)S.node=g.focus;  // UI3: chọn sẵn ô lỗi / đang chạy / cuối
+ if(S.node){Object.assign(S.log,nodeLog(currentNode()));if(!nodeViews(currentNode()).includes(S.tab))S.tab=nodeViews(currentNode())[0]}
+ main.innerHTML=`<section class="card"><div class="meta"><h2 style="margin:0">${esc(id)}</h2>${badge(d.status)}<span>${esc(d.mode)} · ${esc(d.trigger)}</span><span>${esc(when(d.startedAt))}</span><span id="runSeconds">${esc(d.seconds??'—')} s</span></div>${d.error?`<p class="muted">${kindBadge(d.errorKind)} ${esc(d.error)}</p>`:''}${(d.alerts||[]).length?`<details><summary>${d.alerts.length} cảnh báo của lượt</summary>${alertRows(d.alerts,false)}</details>`:''}${(d.resumes||[]).map(r=>`<p class="muted">Đã chạy lại từ bước “${esc(r.from)}” lúc ${esc(when(r.at))} (trước đó: ${esc(labels[r.previousStatus]||r.previousStatus)}${r.previousError?' — '+esc(r.previousError.slice(0,160)):''}).</p>`).join('')}<div class="actions">${button('Log toàn lượt','runView',{view:'log'})}${button('Tiến độ & tốc độ','runView',{view:'flow'})}${button('Báo cáo','runView',{view:'reports'})}${d.status==='running'?button('Dừng lượt','stop',{},'danger'):''}</div></section>`+
+  `<section class="card"><h2>Sơ đồ luồng</h2><p class="muted">Mỗi ô là một bước; bấm để xem chi tiết. Ô mờ: bước không thuộc chế độ này, nguồn đã tắt, hoặc bước chưa chạy.</p><div id="problemBox">${problemHtml(g)}</div><div id="graphBox">${graphHtml(g)}</div></section><div id="panel"></div>`;
+ drawEdges();await renderPanel();if(d.status==='running')S.gtimer=setInterval(()=>refreshGraph().catch(fail),3000)}
+async function renderTab(){const t=$('#tab');if(!t)return;stopLive();writeHash();document.querySelectorAll('[data-tab]').forEach(b=>b.setAttribute('aria-current',b.dataset.tab===S.tab));t.innerHTML='<p class="muted">Đang tải…</p>';
+ const fn={feed:tabFeed,stream:tabStream,steps:tabSteps,flow:tabFlow,cities:tabCities,log:tabLog,sources:tabSources,normalise:tabNormalise,errors:tabErrors,detail:tabDetail,products:()=>showList({kind:'products',run:S.run}).catch(e=>{$('#tab').innerHTML=previewBar()+card('Catalog cuối',`<p class="muted">${esc(e.message)}</p>`)}),db:tabDb,embed:tabEmbed,reports:tabReports}[S.tab];await fn()}
+const VARIANTS={official:'Bản chính thức',draft:'Catalog đang gộp (mới nhất)',stream:'Lô chạy liên tục gần nhất',process:'Chuẩn hoá một lần (tiến trình riêng)'};
+const VARIANT_HELP={official:'Bước Gộp chính thức sau khi mọi site cào xong; kết quả này được kiểm tra và nạp DB.',
+ draft:'Gộp từ các nguồn đã chuẩn hoá trong lúc site khác còn cào, để xem sớm; chưa kiểm tra, chưa nạp DB. Chỉ lần gộp mới nhất còn số liệu từng bước con.',
+ stream:'Chạy liên tục: mỗi lô chỉ đọc và ánh xạ phần interim mới. Số liệu dưới đây là của lô gần nhất.',
+ process:'Nguồn được chuẩn hoá một lần ngay khi bước cào của nó xong (tiến trình riêng).'};
+async function renderSteps(){const d=await api('/api/substeps',{run:S.run,node:S.node,variant:S.variant||''});const t=$('#tab');if(S.tab!=='steps'||!t)return;
+ const max=Math.max(...d.steps.map(x=>x.seconds||0),0.001),total=d.steps.reduce((a,x)=>a+(x.seconds||0),0);
+ const pick=d.variants.length>1?`<div class="actions">${d.variants.map(v=>button(VARIANTS[v],'variant',{variant:v},v===d.variant?'primary small':'small')).join('')}</div>`:'';
+ const flow=d.steps.length?`<div class="substeps">${d.steps.map((x,i)=>`<div class="substep" data-st="${esc(x.status)}"><div class="meta"><strong>${i+1}. ${esc(x.name)}</strong>${badge(x.status)}<small>${x.seconds==null?'—':esc(x.seconds)+' s'} · ${num(x.rowsIn)} → ${num(x.rowsOut)}${x.peakRssMb?` · RAM ${num(x.peakRssMb)} MB`:''}</small></div>${bar(x.seconds||0,max)}<p class="muted">${esc(x.description||'')}</p>${x.error?`<p class="minus">${esc(x.error)}</p>${x.traceback?button('Xem traceback','json',{title:x.name,data:x.traceback},'small'):''}`:''}</div>`).join('<span class="arrow">↓</span>')}</div>`:'<p class="muted">Chưa có số liệu bước con: bước chưa chạy, hoặc lượt chạy bằng bản cũ.</p>';
+ const drafts=d.drafts.length?card(`Các lần gộp trong lúc cào (${d.drafts.length})`,table(['Lần','Lúc','Nhóm site đã xong','Nguồn','Dòng','Giây','Trạng thái'],d.drafts.slice().reverse().map(x=>[esc(x.n),esc(when(x.startedAt)),esc((x.groups?Object.keys(x.groups):[]).join(', ')),esc((x.sources||[]).join(', ')),num(x.rows),esc(x.seconds),badge(x.status)]))):'';
+ const batches=d.batches.length?card(`Các lô chạy liên tục (${d.batches.length} gần nhất)`,table(['Lô','Lúc','Bản ghi mới','Bản ghi sau bỏ trùng','Ánh xạ mới','Dòng','Lỗi','Giây'],d.batches.slice().reverse().map(x=>[esc(x.n)+(x.final?' <small>(chốt)</small>':''),esc(when(x.at)),num(x.newRecords),num(x.records),num(x.mapped),num(x.rows),x.errors?`<span class="minus">${num(x.errors)}</span>`:'0',esc(x.seconds)]))):'';
+ t.innerHTML=card(`Các bước bên trong${d.variant?' — '+VARIANTS[d.variant]:''}`,`${pick}<p class="muted">${esc(VARIANT_HELP[d.variant]||'')} ${d.steps.length?`Tổng ${total.toFixed(3)} giây.`:''}</p>${flow}`)+drafts+batches}
+async function tabSteps(){await renderSteps();if(S.runData?.status==='running')S.timer=setInterval(()=>renderSteps().catch(fail),3000)}
+async function tabFeed(){const kind=currentNode()?.col==='index'?'index':'db';const d=await api('/api/feed',{run:S.run,kind});const t=$('#tab');if(!t||S.tab!=='feed')return;
+ const rows=kind==='db'?d.rows.map(x=>[esc(x.n),esc(when(x.at)),num(x.draftRows),num(x.ready),num(x.rows),x.error?`<span class="minus">${esc(x.error)}</span>`:num(x.written),`<small>${esc(Object.entries(x.held||{}).map(([k,v])=>`${k}: ${v}`).join(' · ')||'—')}</small>`,esc(x.seconds)])
+  :d.rows.map(x=>[esc(x.n),esc(when(x.at)),num(x.newDbRows),x.error?`<span class="minus">${esc(x.error)}</span>`:num(x.report?.embedded),num(x.report?.unchanged),esc(x.seconds)]);
+ t.innerHTML=card(kind==='db'?`Nạp DB theo phần (${d.total} lô)`:`Index theo phần (${d.total} lần)`,`<p class="muted">${kind==='db'?'Mỗi lô: dòng “đủ” mới hoặc đổi trong catalog đang gộp được upsert vào DB đích của lượt (không xoá). Khách sạn Trip và combo chờ bước nạp chính thức cuối lượt. Lô lỗi được thử lại ở chu kỳ sau.':'Chạy khi DB có dòng ghi mới từ lần trước; chỉ nhúng dòng mới hoặc đổi text.'}</p>`+
+  table(kind==='db'?['Lô','Lúc','Dòng catalog đang gộp','Dòng đủ','Dòng trong lô','Dòng ghi DB','Giữ lại (lý do)','Giây']:['Lần','Lúc','Dòng DB mới','Nhúng mới','Giữ nguyên','Giây'],rows))}
+async function tabStream(){await loadLive();const t=$('#tab');if(!t||S.tab!=='stream')return;const l=S.live;
+ if(!l||!l.running||l.runId!==S.run){t.innerHTML=card('Chạy liên tục',`<p class="muted">Chỉ chỉnh được khi lượt này đang chạy. Bật / tắt và chu kỳ mặc định ở trang Cấu hình (nhóm “Chạy liên tục”).</p>`);return}
+ t.innerHTML=card('Chạy liên tục — chỉnh khi lượt đang chạy',`<p class="muted">Mỗi việc đọc lại chu kỳ và cờ tạm dừng mỗi nửa giây: giá trị mới áp từ lô kế tiếp, lô đang chạy dở không bị đổi. Tạm dừng thì dữ liệu dồn sang lô sau, không mất. Chỉ áp cho lượt này.</p>`+(l.stream||[]).map(streamControl).join(''))}
+async function tabDetail(){const st=stepOf(S.node);$('#tab').innerHTML=card('Chi tiết bước (run.json)',st?pretty(st.detail||{}):'<p class="muted">Bước này chưa chạy trong lượt.</p>')}
+async function tabErrors(){const src=S.node.slice(NS.length);try{await showList({kind:'normalise/rows',run:S.run,stage:'errors',src})}catch(e){$('#tab').innerHTML=card('Bản ghi lỗi',`<p class="muted">${esc(e.message)}</p>`)}}
 
-sau đó:  batch.py merge → data/interim/
-         normalise.py  → data/products.jsonl (13 trường)
-         catalog.py    → data/catalog/*.json, products.json</pre></div></div>
-    <div class="card" style="margin-top:14px"><h2>Từng job <small>kiểm tra file có khớp với số trang đã cào</small></h2><div class="scroll" style="max-height:none"><table><thead><tr><th>Job</th><th>Nguồn</th><th>Điểm đến</th><th class="num">Trang xong</th><th class="num">File raw</th><th class="num">Raw</th><th class="num">Bản ghi</th><th class="num">Interim</th><th class="num">Profile</th><th>Kiểm tra</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <div class="note">“hợp lý” = mỗi trang đã cào có file raw tương ứng (parse lại được) và đã có bản ghi đã parse. Vinpearl không có hàng đợi trang nên không so sánh.</div></div>`;
-}
+// --- luồng & nguồn
+const KINDS={transient:'Lỗi tạm thời · thử lại',blocked:'Bị chặn · bỏ qua nguồn',code:'Lỗi code · dừng',quality:'Chặn chất lượng · không nạp DB',infra:'Lỗi hạ tầng · thử lại',unknown:'Chưa phân loại · dừng'};
+const kindBadge=k=>k?`<span class="status ${k==='transient'||k==='infra'?'partial':k==='blocked'?'blocked':'error'}">${esc(KINDS[k]||k)}</span>`:'';
+function attemptsText(d){const a=(d&&d.attempts)||[];return a.length?`<small>thử lại ${a.length} lần: ${esc(a.map(x=>`${x.kind} (chờ ${x.waitSeconds}s)`).join(', '))}</small>`:''}
+function stepsTable(steps){return table(['Bước','Nhóm','Trạng thái','Bắt đầu','Giây','Lỗi / thử lại','Chi tiết'],(steps||[]).map(s=>{const kind=s.errorKind||s.detail?.errorKind;return [esc(s.label||s.name),esc(s.group),badge(s.status),esc(when(s.startedAt)),esc(s.seconds),(kind?kindBadge(kind)+'<br>':'')+(s.error?`<span class="minus">${esc(s.error)}</span><br>`:'')+attemptsText(s.detail)||'—',s.detail&&Object.keys(s.detail).length?button('Xem','json',{title:s.name,data:s.detail},'small'):'—']}))}
+function progressCell(s){const p=s.log.progress;let out='';if(p){out+=`${bar(p.done,p.total)}<small>${num(p.done)}/${num(p.total)} · ${num(p.failed)} lỗi · ${p.perMinute} trang/phút · còn ~${esc(p.eta)}</small>`}
+ if(s.key==='tripHotels'){const pr=Object.entries(s.log.tripPrices||{}).map(([k,v])=>`${k}: ${v}`).join(' · ');const meta=s.log.tripMeta||{};const det=(s.steps.find(x=>x.name==='trip-hotels.prices')||{}).detail||{};
+  out+=`<small>${det.requested!=null?`hoàn tất ${num(det.completed)}/${num(det.requested)} KS · `:''}${pr||'chưa có kết quả giá'}${meta.ok||meta.failed?` · thông tin: ${meta.ok||0} ok, ${meta.failed||0} lỗi`:''}</small>`}
+ return out||'—'}
+function logCell(s){const l=s.log;const http=Object.entries(l.http||{}).filter(([c])=>c>='400').map(([c,n])=>`${c}×${n}`).join(' ');
+ return `<small>${num(l.lines)} dòng${l.warnings?` · <span class="wtext">${l.warnings} cảnh báo</span>`:''}${l.errors?` · <span class="minus">${l.errors} lỗi</span>`:''}${l.blocks?` · <span class="minus">${l.blocks} chặn</span>`:''}${http?` · HTTP ${esc(http)}`:''}</small>`}
+function healthTable(h){return table(['Nguồn','Trạng thái','Tiến độ','Raw','Interim','Log','Dòng log gần nhất','Ghi chú','Xem'],h.sources.map(s=>[
+ `<strong>${esc(s.label)}</strong>`,badge(s.state)+(s.lost?' '+badge('lost'):'')+(s.paused?' '+badge('paused'):''),
+ progressCell(s),`${num(s.rawFiles)} file<br><small>${bytes(s.rawBytes)}</small>`,`${num(s.interim)}${s.prevInterim!=null?`<br><small>lượt trước ${num(s.prevInterim)}</small>`:''}`,logCell(s),
+ s.log.lastLine?`<small>${esc(s.log.lastAt)} · ${s.log.ageSeconds!=null?Math.round(s.log.ageSeconds)+' giây trước':''}</small><br><small>${esc(s.log.lastLine.slice(-220))}</small>`:'—',
+ s.notes.length?s.notes.map(n=>`<div class="${s.lost?'minus':''}"><small>${esc(n)}</small></div>`).join(''):'—',
+ [...s.dirs.map(d=>button('Raw '+d,'list',{kind:'raw',run:h.runId,source:d},'small')+' '+button('Interim','list',{kind:'interim',run:h.runId,source:d},'small')),button('Log','logfor',{group:s.key},'small')].join(' ')
+ ]),i=>h.sources[i].lost?'lostrow':'')}
+function liveControls(l){if(!l.running)return '<p class="muted">Chỉ chỉnh được khi có lượt đang chạy. Delay cho lượt sau chỉnh ở trang Cấu hình.</p>';
+ if(l.runId!==S.run)return `<p class="muted">Lượt đang chạy là ${esc(l.runId)}. ${button('Mở lượt đó','run',{id:l.runId},'link')}</p>`;
+ return `<p class="muted">Có hiệu lực ở request kế tiếp (mốc chờ tính lại mỗi giây). Mức tối thiểu như trang Cấu hình; chỉ áp cho lượt này.</p>`+l.sources.map(s=>`<div class="live-row" data-live="${esc(s.key)}"><div><strong>${esc(s.label)}</strong>${s.paused?' '+badge('paused'):''}<br><small>${s.updatedAt?'chỉnh lúc '+esc(when(s.updatedAt)):'đang theo cấu hình của lượt'}</small></div><div>${s.fields.map(f=>`<label>${esc({delay:'Giây giữa 2 request',delayMin:'Chờ tối thiểu',delayMax:'Chờ tối đa'}[f.name])} <input type="number" step="0.5" min="${f.minimum}" max="${f.maximum}" data-field="${esc(f.name)}" value="${esc(f.value)}" aria-label="${esc(s.label+' '+f.name)}"></label> <small>cấu hình lượt: ${esc(f.base)}${f.override!=null?' · đang chỉnh':''}</small>`).join('<br>')}</div><div class="actions" style="margin:0">${button('Áp dụng','liveApply',{key:s.key},'primary small')}${button('Về cấu hình lượt','liveReset',{key:s.key,fields:s.fields.map(f=>f.name)},'small')}${button(s.paused?'Chạy tiếp':'Tạm dừng','livePause',{key:s.key,paused:!s.paused},s.paused?'primary small':'danger small')}</div></div>`).join('')}
+function nextRunControls(l){return `<p class="muted">Trình duyệt và worker đã mở không đổi số lượng giữa chừng; giá trị mới áp từ lượt sau (lưu vào Cấu hình).</p>`+table(['Cấu hình','Hiện tại','Giá trị mới',''],l.nextRun.map(f=>[esc(f.label),`${esc(f.value)} <small>(${esc(f.source)})</small>`,`<input type="number" min="${esc(f.minimum)}" max="${esc(f.maximum)}" step="1" value="${esc(f.value)}" data-next="${esc(f.key)}" aria-label="${esc(f.label)}">`,button('Lưu cho lượt sau','nextSave',{key:f.key},'small')]))}
+async function tabFlow(){const t=$('#tab');t.innerHTML=`${card('Các bước của lượt','<div id="steps"></div>')}${card('Nguồn: đang cào gì, từ đâu, có mất nguồn không','<div id="health"></div>')}${card('Chỉnh tốc độ lượt đang chạy','<div id="live"></div>')}${card('Số tab / worker (lượt sau)','<div id="nextrun"></div>')}`;
+ await refreshFlow(true);if(S.runData?.status==='running')S.timer=setInterval(()=>refreshFlow(false).catch(fail),3000)}
+async function refreshFlow(first){const [run,h,l]=await Promise.all([api('/api/run',{id:S.run}),api('/api/health',{run:S.run}),api('/api/live')]);if(S.tab!=='flow'||!$('#steps'))return;S.runData=run;
+ const ns=run.normaliseSteps||[],nsRun=ns.find(x=>x.status==='running'),nsErr=ns.find(x=>x.status==='error');
+ const nsHint=nsErr?`<div class="hint minus">Normalize lỗi ở bước “${esc(nsErr.name)}”: ${esc(nsErr.error)} ${button('Xem','tab',{tab:'normalise'},'small')}</div>`:(nsRun&&run.status==='running'?`<div class="hint">Normalize đang ở bước “${esc(nsRun.name)}” (từ ${esc(when(nsRun.startedAt))}).</div>`:'');
+ const pv=run.preview;$('#steps').innerHTML=nsHint+(pv?`<div class="hint">Catalog đang gộp ${pv.status==='ok'?badge('ok'):badge('error')} ${previewInfo(pv)} — chưa kiểm tra, chưa nạp DB. ${button('Các bước chuẩn hoá','setPreview',{on:true,tab:'normalise'},'small')} ${button('Catalog đang gộp','setPreview',{on:true,tab:'products'},'small')}</div>`:'')+stepsTable(run.steps)+(Object.keys(h.groups||{}).length?`<h3>Nhóm site</h3><div class="badge-row">${Object.entries(h.groups||{}).map(([g,v])=>`<span class="status ${v.event==='start'?'running':v.status==='ok'?'ok':v.event==='skip'?'skipped':'error'}">${esc(g)}: ${esc(v.event==='start'?'đang chạy':v.status)} · ${esc(v.at)}</span>`).join('')}</div>`:'');
+ $('#health').innerHTML=(h.previousRun?`<p class="muted">So interim với lượt ${esc(h.previousRun)}.</p>`:'')+healthTable(h);
+ const liveBox=$('#live');if(first||!liveBox.contains(document.activeElement))liveBox.innerHTML=liveControls(l);
+ const next=$('#nextrun');if(first||!next.contains(document.activeElement))next.innerHTML=nextRunControls(l);
+ $('#runSeconds').textContent=`${run.seconds??Math.round((Date.now()-new Date(run.startedAt))/1000)} s`;
+ if(run.status!=='running'&&S.timer){clearInterval(S.timer);S.timer=null}}
 
-/* ------------------------------------------------------------------ Nhật ký */
-async function renderLogs() {
-  if (!state.jobs.length) state.jobs = await api("/api/jobs");
-  const d = await api(`/api/log?job=${encodeURIComponent(state.logJob)}&lines=250`);
-  const rank = { DEBUG: 0, INFO: 1, WARNING: 2, ERROR: 3, CRITICAL: 3 };
-  const min = state.logLevel === "ALL" ? 0 : rank[state.logLevel];
-  const lines = d.lines.filter(l => rank[l.level] >= min && (!state.logQ || l.text.toLowerCase().includes(state.logQ.toLowerCase())));
-  const opts = state.jobs.filter(j => j.kind === "batch").map(j => `<option value="${j.id}" ${state.logJob === j.id ? "selected" : ""}>${esc(SRC[j.source] || j.source)} · ${esc(j.city || "")} · ${j.status}</option>`).join("");
-  const wasBottom = (() => { const b = $("#logbox"); return !b || b.scrollHeight - b.scrollTop - b.clientHeight < 40; })();
-  $("#main").innerHTML = `<div class="chips"><select id="lJob"><option value="running" ${state.logJob === "running" ? "selected" : ""}>Các job đang chạy</option>${opts}</select>
-    <select id="lLvl">${["ALL", "WARNING", "ERROR"].map(l => `<option value="${l}" ${state.logLevel === l ? "selected" : ""}>${l === "ALL" ? "Mọi mức" : l + " trở lên"}</option>`).join("")}</select>
-    <input type="search" id="lQ" placeholder="Lọc nội dung" value="${esc(state.logQ)}"><label class="muted"><input type="checkbox" id="lAuto" ${state.autoscroll ? "checked" : ""}> tự cuộn xuống cuối</label>
-    <span class="muted">${esc(d.jobs.join(" · ") || "chưa có nhật ký")}</span></div>
-    <div class="logbox" id="logbox">${lines.map(l => `<div class="row lv-${l.level}"><div class="tag" title="${esc(l.job)}">${esc(l.job)}</div><div>${esc(l.text)}</div></div>`).join("") || `<div class="empty">Chưa có dòng nhật ký nào.</div>`}</div>`;
-  $("#lJob").onchange = e => { state.logJob = e.target.value; renderLogs(); };
-  $("#lLvl").onchange = e => { state.logLevel = e.target.value; renderLogs(); };
-  const q = $("#lQ"); q.oninput = e => { state.logQ = e.target.value; renderLogs().then(() => { const n = $("#lQ"); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }); };
-  $("#lAuto").onchange = e => { state.autoscroll = e.target.checked; };
-  const box = $("#logbox"); if (state.autoscroll && wasBottom) box.scrollTop = box.scrollHeight;
-}
+// --- theo thành phố
+const cnt=n=>n?num(n):'<span class="muted">0</span>';
+function citiesCatalog(d){const c=d.catalog;if(!c)return `<p class="muted">${esc(d.catalogError)}</p>${!S.preview&&S.runData?.preview?'<p class="muted">Lượt có catalog đang gộp — bấm “Xem catalog đang gộp”.</p>':''}`;
+ const sum=f=>c.destinations.reduce((a,e)=>a+(f(e)||0),0);
+ const rows=c.destinations.map(e=>[button(e.destination,'list',{kind:'products',run:S.run,destination:e.destination},'link'),`<strong>${num(e.total)}</strong>`,...c.types.map(t=>cnt(e.byType[t])),...c.sources.map(x=>cnt(e.bySource[x])),cnt(e.merged)]);
+ rows.push(['<strong>Tổng</strong>',`<strong>${num(c.rows)}</strong>`,...c.types.map(t=>`<strong>${num(sum(e=>e.byType[t]))}</strong>`),...c.sources.map(x=>`<strong>${num(sum(e=>e.bySource[x]))}</strong>`),`<strong>${num(sum(e=>e.merged))}</strong>`]);
+ return `<p class="muted">Mỗi dòng catalog tính một lần (khách sạn và từng hạng phòng tính riêng). Cột nguồn theo nguồn thắng khi gộp trùng; “gộp nhiều nguồn” = dòng có nguồn khác gộp vào. Bấm tên thành phố để xem danh sách.</p>`+table(['Thành phố','Tổng',...c.types,...c.sources.map(x=>'Nguồn '+x),'Gộp nhiều nguồn'],rows)}
+function citiesInterim(d){const i=d.interim;if(!i.sources.length)return '<p class="muted">Chưa có bản ghi interim nào.</p>';
+ const rows=i.destinations.map(e=>[esc(e.destination),`<strong>${num(e.total)}</strong>`,...i.sources.map(x=>cnt(e.bySource[x.source]))]);
+ rows.push(['<strong>Tổng</strong>',`<strong>${num(i.sources.reduce((a,x)=>a+x.total,0))}</strong>`,...i.sources.map(x=>`<strong>${num(x.total)}</strong>`)]);
+ return `<p class="muted">Bản ghi đã parse của từng nguồn, theo điểm đến trong kế hoạch cào / thành phố của bản ghi. Khách sạn Vinpearl chưa có thành phố cho tới bước chuẩn hoá. Một bản ghi khách sạn chứa nhiều hạng phòng nên số ở đây nhỏ hơn số dòng catalog.${d.running?' Tự cập nhật 5 giây.':''}</p>`+table(['Thành phố','Tổng',...i.sources.map(x=>x.label)],rows)}
+async function renderCities(){const d=await api('/api/cities',{run:S.run});if(S.tab!=='cities'||!$('#tab'))return;
+ $('#tab').innerHTML=previewBar()+card(`Catalog đã chuẩn hoá theo thành phố — ${S.preview?'catalog đang gộp':'bản chính thức'}`,citiesCatalog(d))+card('Đang cào: bản ghi interim theo thành phố',citiesInterim(d))}
+async function tabCities(){await renderCities();if(S.runData?.status==='running')S.timer=setInterval(()=>renderCities().catch(fail),5000)}
 
-/* ------------------------------------------------------------------ Kiểm tra */
-async function renderHealth() {
-  const h = await api("/api/health");
-  const c = h.counts; const cnt = $("#cHealth"); const bad = (c.error || 0), warn = (c.warn || 0);
-  cnt.textContent = bad + warn; cnt.className = "count " + (bad ? "err" : warn ? "warn" : "");
-  const label = { error: "Lỗi", warn: "Cảnh báo", info: "Lưu ý", ok: "Ổn" };
-  $("#main").innerHTML = `<div class="card"><h2>Kiểm tra tự động <small>cập nhật ${ago(h.generatedAt)}</small></h2>${h.items.map(i => `<div class="hitem"><div><span class="badge b-${i.severity}">${label[i.severity]}</span></div>
-    <div><div class="t">${esc(i.title)}</div><div class="d">${esc(i.detail)}${i.job ? ` · <a href="#" data-job="${i.job}">xem job</a>` : ""}</div></div></div>`).join("")}</div>`;
-  document.querySelectorAll("a[data-job]").forEach(a => a.onclick = e => { e.preventDefault(); openDrawer(a.dataset.job); });
-}
+// --- log trực tiếp
+const GROUPS={'':'Tất cả',vinpearl:'Vinpearl',trip:'trip.com vé/điểm',booking:'booking.com',agoda:'agoda.com',tripHotels:'Khách sạn Trip',preview:'Catalog đang gộp',job:'Job (bước, DB, index)'};
+function lineGroup(line){const m=line.match(/^\d\d:\d\d:\d\d \[([a-z]+)\]/);if(m)return m[1];if(/ Trip meta | Trip \d+@|trip_hotels/.test(line))return 'tripHotels';return 'job'}
+function lineClass(line){if(/ (ERROR|CRITICAL) |Traceback|failed|Error:/.test(line))return 'e';if(/ WARNING |bị chặn|Bị chặn/.test(line))return 'w';if(/catalog\.(step|group)\./.test(line))return 's';if(/live\.control/.test(line))return 'g';return ''}
+function lineMatch(line){const L=S.log;if(L.group&&lineGroup(line)!==L.group)return false;if(L.level==='warn'&&!lineClass(line).match(/[we]/))return false;if(L.level==='error'&&lineClass(line)!=='e')return false;if(L.q&&!line.toLowerCase().includes(L.q))return false;return true}
+function lineHtml(line){const m=line.match(/^(\d\d:\d\d:\d\d) (\[[a-z]+\] )?(.*)$/);const cls=lineClass(line);return m?`<div class="${cls}"><span class="d">${esc(m[1])}</span> <span class="tag">${esc((m[2]||'').trim())}</span>${esc(m[3])}</div>`:`<div class="${cls}">${esc(line)}</div>`}
+function renderLog(){const box=$('#logbox');if(!box)return;const shown=S.log.lines.filter(lineMatch).slice(-4000);box.innerHTML=shown.map(lineHtml).join('')||'<div class="d">Chưa có dòng nào khớp bộ lọc.</div>';$('#logCount').textContent=`${num(shown.length)} / ${num(S.log.lines.length)} dòng`;if(S.log.follow)box.scrollTop=box.scrollHeight}
+function appendLog(lines){S.log.lines.push(...lines);if(S.log.lines.length>20000)S.log.lines.splice(0,S.log.lines.length-20000);if(S.log.paused)return;const box=$('#logbox');if(!box)return;const add=lines.filter(lineMatch);if(!add.length)return;box.insertAdjacentHTML('beforeend',add.map(lineHtml).join(''));while(box.childElementCount>4000)box.firstElementChild.remove();$('#logCount').textContent=`${num(box.childElementCount)} / ${num(S.log.lines.length)} dòng`;if(S.log.follow)box.scrollTop=box.scrollHeight}
+async function tabLog(){const L=S.log;L.lines=[];L.ended=false;const t=$('#tab');
+ t.innerHTML=card('Log trực tiếp (job.log của lượt)',`<div class="logbar"><select id="logGroup" aria-label="Nguồn">${Object.entries(GROUPS).map(([k,v])=>`<option value="${k}" ${k===L.group?'selected':''}>${esc(v)}</option>`).join('')}</select><select id="logLevel" aria-label="Mức"><option value="">Mọi mức</option><option value="warn" ${L.level==='warn'?'selected':''}>Cảnh báo + lỗi</option><option value="error" ${L.level==='error'?'selected':''}>Chỉ lỗi</option></select><input id="logQ" type="search" placeholder="Lọc chữ (URL, mã HTTP, id…)" value="${esc(L.q)}" aria-label="Lọc log"><label><input id="logFollow" type="checkbox" ${L.follow?'checked':''}> Tự cuộn</label><button type="button" id="logPause">${L.paused?'Tiếp tục hiển thị':'Tạm dừng hiển thị'}</button><button type="button" id="logReload">Tải lại</button><span id="logState" class="status running">Đang kết nối…</span><small id="logCount"></small></div><div id="logbox" class="logbox" tabindex="0" aria-label="Log"></div><p class="muted">Dòng có [nhóm] là của tiến trình crawl.py từng site; “Trip meta”/“Trip &lt;id&gt;@ngày” là khách sạn Trip; “catalog.step/group” là mốc bước. Nguồn cần hiển thị nhiều hơn: bật “Log chi tiết từng request” ở Cấu hình.</p>`);
+ $('#logGroup').onchange=e=>{L.group=e.target.value;renderLog()};$('#logLevel').onchange=e=>{L.level=e.target.value;renderLog()};$('#logQ').oninput=e=>{L.q=e.target.value.toLowerCase();renderLog()};
+ $('#logFollow').onchange=e=>{L.follow=e.target.checked;if(L.follow)renderLog()};$('#logPause').onclick=e=>{L.paused=!L.paused;e.target.textContent=L.paused?'Tiếp tục hiển thị':'Tạm dừng hiển thị';if(!L.paused)renderLog()};$('#logReload').onclick=()=>tabLog();
+ const es=new EventSource(`/api/log/stream?run=${encodeURIComponent(S.run)}&lines=2000`);S.es=es;const st=$('#logState');
+ es.addEventListener('init',e=>{L.lines=JSON.parse(e.data).lines;renderLog();st.className='status running';st.textContent='Đang nhận log'});
+ es.addEventListener('lines',e=>appendLog(JSON.parse(e.data).lines));
+ es.addEventListener('end',()=>{L.ended=true;st.className='status ok';st.textContent='Lượt đã kết thúc';es.close()});
+ es.onerror=()=>{if(!L.ended){st.className='status error';st.textContent='Mất kết nối stream';es.close()}}}
 
-/* ------------------------------------------------------------------ điều khiển chung */
-const RENDER = { overview: renderOverview, jobs: renderJobs, records: renderRecords, files: renderFiles, logs: renderLogs, health: renderHealth };
-const INTERVAL = { overview: 5000, jobs: 5000, records: 8000, files: 30000, logs: 3000, health: 8000 };
-let timer = null, busy = false;
-async function tick() {
-  if (busy) return; busy = true;
-  try {
-    const ae = document.activeElement;
-    const typing = ae && (ae.tagName === "INPUT" || ae.tagName === "SELECT") && state.tab !== "overview";
-    if (!(typing && ae.type === "search")) await RENDER[state.tab](true);
-    state.lastOk = Date.now(); state.err = false;
-    if (state.tab !== "health") api("/api/health").then(h => { const b = h.counts.error || 0, w = h.counts.warn || 0; const c = $("#cHealth"); c.textContent = b + w; c.className = "count " + (b ? "err" : w ? "warn" : ""); }).catch(() => {});
-    if (state.drawerId && $("#drawer").classList.contains("open") && state.tab === "jobs") { /* giữ nguyên drawer đang xem */ }
-  } catch (e) { state.err = true; console.error(e); }
-  finally { busy = false; paintLive(); }
-}
-function paintLive() {
-  $("#dot").className = "dot " + (state.err ? "err" : state.paused ? "" : "on");
-  $("#liveText").textContent = state.err ? "mất kết nối với monitor.py" : state.paused ? "đã tạm dừng làm mới" : "cập nhật " + new Date(state.lastOk).toLocaleTimeString("vi-VN");
-}
-function schedule() { clearTimeout(timer); if (!state.paused) timer = setTimeout(async () => { if (document.visibilityState === "visible") await tick(); schedule(); }, INTERVAL[state.tab]); }
-function setTab(t) {
-  state.tab = t;
-  document.querySelectorAll("#tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === t));
-  history.replaceState(null, "", "#" + t); tick().then(schedule);
-}
-$("#tabs").onclick = e => { const b = e.target.closest("button[data-tab]"); if (b) setTab(b.dataset.tab); };
-$("#pauseBtn").onclick = () => { state.paused = !state.paused; $("#pauseBtn").textContent = state.paused ? "Tiếp tục làm mới" : "Tạm dừng làm mới"; paintLive(); schedule(); };
-$("#drawerClose").onclick = closeDrawer; $("#modalClose").onclick = () => $("#modal").classList.remove("open");
-$("#modal").onclick = e => { if (e.target.id === "modal") $("#modal").classList.remove("open"); };
-document.addEventListener("keydown", e => { if (e.key === "Escape") { closeDrawer(); $("#modal").classList.remove("open"); } });
-const start = location.hash.slice(1); if (RENDER[start]) state.tab = start;
-document.querySelectorAll("#tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === state.tab));
-tick().then(schedule);
+// --- raw / interim
+async function tabSources(){const d=S.runData,n=currentNode(),dirs=n?.col==='crawl'?S.graph.lanes.find(l=>l.id===n.lane)?.dirs:null;$('#tab').innerHTML=card(dirs?`Nguồn dữ liệu của ${n.label}`:'Nguồn dữ liệu của lượt',`<p class="muted">Raw = phản hồi gốc đã bỏ review/tên người (JSON, HTML gọn, sitemap); interim = bản ghi đã parse từ raw, mỗi nguồn một file.</p>`+table(['Nguồn','Raw','Interim','Xem dữ liệu'],(d.sourcesData||[]).filter(s=>!dirs||dirs.includes(s.source)).map(s=>[esc(s.label),`${num(s.rawFiles)} file · ${bytes(s.rawBytes)}`,num(s.interimRecords),button('Raw','list',{kind:'raw',run:S.run,source:s.source})+' '+button('Interim','list',{kind:'interim',run:S.run,source:s.source})])))}
+function rawModal(d){const views=[];if(d.json)views.push(['JSON',d.json]);if(d.visibleText)views.push(['Văn bản hiển thị',d.visibleText]);if(d.jsonLd)views.push(['JSON-LD',d.jsonLd]);if(d.nextData)views.push(['__NEXT_DATA__',d.nextData]);if(d.text)views.push([d.kind==='html'?'HTML gốc':'Nội dung',d.text]);
+ const tabs=views.map(([l],i)=>`<button type="button" class="small" data-rawview="${i}" aria-current="${i===0}">${esc(l)}</button>`).join('');
+ modal(d.path,`<div class="meta"><span>${esc(d.kind)} · ${bytes(d.bytes)}</span>${d.title?`<span>${esc(d.title)}</span>`:''}${d.summary?`<small>${esc(JSON.stringify(d.summary).slice(0,300))}</small>`:''}${d.truncated?'<span class="status partial">Đã cắt bớt khi hiển thị</span>':''}</div><div class="tabs">${tabs}</div><div id="rawBody">${pretty(views[0]?.[1]??'')}</div>`);
+ document.querySelectorAll('[data-rawview]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-rawview]').forEach(x=>x.setAttribute('aria-current',x===b));$('#rawBody').innerHTML=pretty(views[+b.dataset.rawview][1])})}
+
+// --- danh sách chung (raw, interim, catalog, db, bước chuẩn hoá, embedding)
+const LIST_TITLES={raw:'File raw',interim:'Bản ghi interim',products:'Catalog cuối (products.jsonl, 13 trường)',db:'Báo cáo nạp DB (trước → sau)','normalise/rows':'Dòng của bước chuẩn hoá',embed:'Sản phẩm đã embed'};
+async function showList(args){stopLive();S.list={...args,offset:args.offset||0};const L=S.list;const {kind,run,source,offset,q=''}=L;const params={run,source,offset,q,limit:100,stage:L.stage,taxonomy:L.taxonomy,level:L.level,destination:L.destination,flag:L.flag,step:L.step,action:L.action,written:L.written,src:undefined};
+ if(kind==='products')params.source=L.src;if(kind==='normalise/rows')params.source=L.src;
+ const d=await api('/api/'+kind,params);let heads,rows,filters='';
+ if(kind==='raw'){heads=['File','Dung lượng','Loại','Cập nhật'];rows=d.rows.map(r=>[button(r.path,'rawfile',{run,source,path:r.path},'link'),bytes(r.bytes),esc(r.kind),esc(when(r.modifiedAt))])}
+ if(kind==='interim'){heads=['ID','Tên','Loại bản ghi','Điểm đến','Giá','Phòng','Chi tiết'];rows=d.rows.map(r=>[esc(r.id),esc(r.name),esc(r.recordType),esc(r.destination),esc(r.price),esc(r.rooms),button('Xem','record',{run,source,index:r.index},'small')]);filters=`<small class="muted">Trường: ${esc((d.fields||[]).join(', '))}</small>`}
+ if(kind==='products'){heads=['Sản phẩm','Loại / cấp','Điểm đến','Giá VND','Khả dụng','Nguồn giá','Nguồn'];rows=d.rows.map(r=>[button(r.name||r.productId,'product',{run,id:r.productId},'link'),esc(`${r.taxonomy}/${r.level||'—'}`),esc(r.destination),num(r.unitPrice),r.available?'Có':'Không',esc(r.priceSource),esc(r.sourceRef)+(r.sameAs?` <small>+${r.sameAs} nguồn gộp</small>`:'')]);
+  filters=[select('taxonomy',d.facets?.taxonomy,L.taxonomy,'Mọi loại'),select('level',d.facets?.level,L.level,'Mọi cấp'),select('src',d.facets?.source,L.src,'Mọi nguồn'),select('destination',d.facets?.destination,L.destination,'Mọi điểm đến'),`<select name="flag" aria-label="Cờ"><option value="">Mọi dòng</option>${[['noPrice','Không có giá'],['unavailable','Không khả dụng'],['noImage','Không ảnh']].map(([k,v])=>`<option value="${k}" ${L.flag===k?'selected':''}>${v}</option>`).join('')}</select>`].join(' ')}
+ if(kind==='db'){heads=['Sản phẩm','Hành động','Đã ghi','Giá trước → sau','Khả dụng trước → sau'];rows=d.rows.map(r=>[button(r.name||r.productId,'json',{title:r.productId,data:r},'link'),esc(r.action),r.written?'Có':'Không đổi',esc(`${r.before?.unitPrice??'—'} → ${r.after?.unitPrice??'—'}`),esc(`${r.before?.available??'—'} → ${r.after?.available??'—'}`)]);filters=`<small>${esc(Object.entries(d.actions||{}).map(([k,v])=>`${k}: ${v}`).join(' · '))} · đã ghi ${num(d.written)}</small>`}
+ if(kind==='normalise/rows'&&L.stage==='errors'){heads=['Nguồn','Hàm ánh xạ','Bản ghi interim','Lỗi',''];rows=d.rows.map(r=>[esc(r.source),esc(r.function),`<small>${esc(JSON.stringify(r.input))}</small>`,`<span class="minus">${esc(r.error)}</span>`,button('Traceback','stageRow',{run,stage:'errors',index:r.index},'small')]);filters=select('src',d.facets?.source,L.src,'Mọi nguồn')}
+ else if(kind==='normalise/rows'){if(L.stage==='merges'){heads=['Loại','Điểm','Khoảng cách (m)','Điểm đến','Giữ lại','Gộp vào'];rows=d.rows.map(r=>[esc(r.kind),esc(r.score),esc(r.distanceM),esc(r.destination),`${esc(r.keptName)}<br><small>${esc(r.keptRef)}</small>`,`${esc(r.mergedName)}<br><small>${esc(r.mergedRef)}</small>`])}
+  else{heads=['Sản phẩm','Nguồn','Loại / cấp','Điểm đến','Giá',L.stage==='dropped'?'Bước · lý do':'sourceRef',''];rows=d.rows.map(r=>[button(r.name||r.productId||'(không tên)','stageRow',{run,stage:L.stage,index:r.index},'link'),esc(r.source),esc(`${r.taxonomy}/${r.level||'—'}`),esc(r.destination),num(r.unitPrice),L.stage==='dropped'?`${esc(r.step)} · ${esc(r.reason)}`:esc(r.sourceRef)+(r.sameAs?` <small>+${r.sameAs} gộp</small>`:''),r.productId?button('Truy vết','trace',{id:r.productId},'small'):''])}
+  filters=[select('src',d.facets?.source,L.src,'Mọi nguồn'),select('taxonomy',d.facets?.taxonomy,L.taxonomy,'Mọi loại'),L.stage==='dropped'?select('step',d.facets?.step,L.step,'Mọi bước'):''].join(' ')}
+ if(kind==='embed'){heads=['Sản phẩm','Loại','Hành động','Vì sao nhúng','Ký tự / từ','Độ dài vector','Đầu text gửi Cohere'];rows=d.rows.map(r=>[button(r.name||r.productId,'embedRow',{run,id:r.productId},'link'),esc(r.taxonomy),badge(r.action),esc(reasons[r.reason]||r.reason),`${num(r.chars)} / ${num(r.words)}`,esc(r.norm),`<small>${esc(r.preview)}</small>`]);
+  filters=[`<select name="action" aria-label="Hành động"><option value="">Mọi hành động</option>${Object.entries(d.actions||{}).map(([k,n])=>`<option value="${esc(k)}" ${L.action===k?'selected':''}>${esc(labels[k]||k)} (${n})</option>`).join('')}</select>`,select('taxonomy',d.taxonomy,L.taxonomy,'Mọi loại')].join(' ')}
+ const back=kind==='normalise/rows'?button('← Các bước chuẩn hoá','tab',{tab:'normalise'}):kind==='embed'?button('← Embedding','tab',{tab:'embed'}):['raw','interim'].includes(kind)?button('← Raw / interim','tab',{tab:'sources'}):'';
+ const target=$('#tab')||main;target.innerHTML=(['products','normalise/rows'].includes(kind)?previewBar():'')+card(LIST_TITLES[kind]+(L.stage?` · ${L.stage}`:''),`<p class="muted">${esc(run)} ${source?'· '+esc(source):''}</p><form id="searchForm" class="actions"><input name="q" type="search" placeholder="Lọc theo tên, ID, sourceRef" value="${esc(q)}" aria-label="Tìm dữ liệu">${filters}<button type="submit">Lọc</button>${back}</form><p>${num(d.total)} kết quả</p>${table(heads,rows)}<div class="pager">${offset>0?button('← Trước','list',{...L,offset:Math.max(0,offset-100)}):''}<span>${d.total?offset+1:0}–${offset+d.rows.length} / ${num(d.total)}</span>${offset+100<d.total?button('Tiếp →','list',{...L,offset:offset+100}):''}</div>`)}
+
+// --- catalog đang gộp (gộp từ các nguồn đã chuẩn hoá trong lúc site khác còn cào)
+function previewInfo(p){return p?`sau khi xong: ${esc(Object.keys(p.groups||{}).join(', '))} · lúc ${esc(when(p.finishedAt))} · ${num(p.rows)} dòng`:''}
+function previewBar(){const d=S.runData||{},p=d.preview;if(!p)return '';
+ const status=p.status==='ok'?'':` <span class="status error">lỗi, mã ${esc(p.exitCode)} — xem log nhóm “Catalog đang gộp”</span>`;
+ const now=S.preview?`<strong>Đang xem catalog đang gộp</strong> (${previewInfo(p)}; chưa kiểm tra, chưa nạp DB)${status}`:`<strong>Đang xem bản chính thức</strong> của lượt`;
+ const toggle=S.preview?(d.hasProducts?button('Xem bản chính thức','setPreview',{on:false},'small'):'<small class="muted">Bản chính thức có khi mọi site cào xong.</small>'):button('Xem catalog đang gộp','setPreview',{on:true},'small');
+ return `<div class="hint">${now} ${toggle}</div>`}
+// --- chuẩn hoá
+async function tabNormalise(){const t=$('#tab');let d;try{d=await api('/api/normalise',{run:S.run})}catch(e){t.innerHTML=previewBar()+card('Chuẩn hoá',`<p class="muted">${esc(e.message)}</p>${!S.preview&&S.runData?.preview?'<p class="muted">Lượt có catalog đang gộp — bấm “Xem catalog đang gộp”.</p>':''}`);return}
+ const stages=d.stages||[];
+ const errs=Object.entries(d.recordErrors||{}),errTotal=errs.reduce((a,[,n])=>a+n,0);
+ const errCard=card(`Bản ghi lỗi khi ánh xạ (${num(errTotal)})`,errTotal?`<p class="muted">Bản ghi lỗi được bỏ qua, các bản ghi khác vẫn chạy. Quá ngưỡng (Cấu hình → tỉ lệ bản ghi lỗi tối đa) thì normalize dừng.</p>`+table(['Nguồn','Số bản ghi lỗi',''],errs.map(([src,n])=>[esc(src),num(n),button('Xem','list',{kind:'normalise/rows',run:S.run,stage:'errors',src},'small')])):'<p class="muted">Không có bản ghi nào lỗi.</p>');
+ if(d.incomplete){t.innerHTML=previewBar()+checkpointsCard(d.checkpoints)+stepsCard(d.steps,true)+errCard;return}
+ t.innerHTML=previewBar()+checkpointsCard(d.checkpoints)+stepsCard(d.steps,false)+errCard+card(S.preview?'Các bước chuẩn hoá — catalog đang gộp':'Các bước chuẩn hoá (normalise.py)',`<p class="muted">Bấm một bước để xem từng dòng tại bước đó. Số dòng gồm cả hạng phòng và chuyến bay con.</p><div class="pipeline">${stages.map((s,i)=>`${i?'<span class="arrow">→</span>':''}<button type="button" class="stage" data-action="list" data-args="${esc(JSON.stringify({kind:'normalise/rows',run:S.run,stage:s.id}))}"><small>${i+1}. ${esc(s.label)}</small><strong>${num(s.rows)}</strong><small>${esc(s.help)}</small></button>`).join('')}</div><h3>Số dòng theo nguồn ở từng bước</h3>${table(['Nguồn',...stages.map(s=>s.label)],[...new Set(stages.flatMap(s=>Object.keys(s.bySource||{})))].sort().map(src=>[esc(src),...stages.map(s=>num((s.bySource||{})[src]))]))}`)+
+ card('Truy vết một sản phẩm qua các bước',`<form id="traceForm" class="actions"><input name="id" type="search" placeholder="productId hoặc sourceRef (vd. booking:hotel:…)" style="min-width:min(460px,100%)" aria-label="productId hoặc sourceRef"><button class="primary" type="submit">Truy vết</button></form><div id="traceOut"></div>`)+
+ card(`Dòng bị loại (${num(Object.values(d.dropped||{}).reduce((a,b)=>a+b,0))})`,`<div class="actions">${button('Xem mọi dòng bị loại','list',{kind:'normalise/rows',run:S.run,stage:'dropped'})}${button(`Cặp gộp trùng (${num(d.merges)})`,'list',{kind:'normalise/rows',run:S.run,stage:'merges'})}</div>`+table(['Bước','Lý do','Số dòng',''],(d.dropReasons||[]).map(r=>[esc(r.step),esc(r.reason),num(r.rows),button('Xem','list',{kind:'normalise/rows',run:S.run,stage:'dropped',step:r.step,q:r.reason.slice(0,40)},'small')])))+
+ (d.report?card('Số liệu normalise_report.json',pretty(d.report)):'')}
+function stepsCard(steps,incomplete){if(!steps||!steps.length)return '';const max=Math.max(...steps.map(x=>x.seconds||0),0.001);const total=steps.reduce((a,x)=>a+(x.seconds||0),0);
+ const running=steps.find(x=>x.status==='running');const failed=steps.find(x=>x.status==='error');
+ return card('Thời gian từng bước normalize',`<p class="muted">Tổng ${total.toFixed(1)} giây. RAM là mức đỉnh của cả tiến trình tính tới hết bước đó. ${incomplete?'<strong>Normalize chưa xong hoặc đã dừng giữa chừng.</strong>':''}</p>${failed?`<p class="minus">Lỗi ở bước “${esc(failed.name)}”: ${esc(failed.error)}</p>`:running&&incomplete?`<p>Đang ở bước “${esc(running.name)}”.</p>`:''}`+
+ table(['Bước','Trạng thái','Giây','','Vào → ra','RAM (MB)','Lỗi'],steps.map(x=>[esc(x.name),badge(x.status),x.seconds==null?'—':x.seconds.toFixed(2),bar(x.seconds||0,max),`${num(x.rowsIn)} → ${num(x.rowsOut)}`,num(x.peakRssMb),x.error?button('Xem traceback','json',{title:x.name,data:x.traceback||x.error},'small'):'—'])))}
+function checkpointsCard(list){if(!list||!list.length)return '';
+ return card('Chuẩn hoá theo nguồn (checkpoint)',`<p class="muted">Mỗi nguồn được ánh xạ sang 13 trường ngay khi bước cào của nó xong, không đợi các bước khác cùng site, song song với site khác. Catalog đang gộp và bản chính thức gộp từ các checkpoint này; bản chính thức chỉ ánh xạ lại nguồn còn thiếu, cũ hoặc lỗi.</p>`+
+ table(['Nguồn','Trạng thái','Bản ghi → dòng','Bản ghi lỗi','Giây','Lúc'],list.map(c=>[esc(c.source),badge(c.status==='ok'?'ok':c.status==='streaming'?'running':'error')+(c.batches?` <small>lô ${esc(c.batches)}</small>`:'')+(c.error?`<br><small class="minus">${esc(c.error)}</small>`:''),`${num(c.records)} → ${num(c.rows)}`,c.errors?`<span class="minus">${num(c.errors)}</span>`:'0',esc(c.seconds),esc(when(c.writtenAt))])))}
+function traceHtml(d){return `<p><small>Nguồn khớp: ${d.refs.map(esc).join(' · ')}</small></p>`+d.stages.map(s=>`<h3>${esc(s.label)} — ${s.rows.length?`${s.rows.length} dòng`:'<span class="minus">không có dòng nào</span>'}</h3>${s.rows.map(r=>`<div>${button(`${r.product.name||'(không tên)'} · ${r.product.sourceRef}`,'stageRow',{run:S.run,stage:s.id,index:r.index},'link')} <small>${esc(r.source)} · ${esc(r.product.taxonomy)}/${esc(r.product.attributes?.level||'—')} · giá ${num(r.product.unitPrice)}</small></div>`).join('')}${s.diff&&Object.keys(s.diff).length?`<details><summary>${Object.keys(s.diff).length} trường đổi so với bước trước</summary><div class="scroll"><table class="diff"><tbody>${Object.entries(s.diff).map(([k,v])=>`<tr><td>${esc(k)}</td><td class="minus">${esc(v.before)}</td><td class="plus">${esc(v.after)}</td></tr>`).join('')}</tbody></table></div></details>`:s.diff?'<small class="muted">Không đổi so với bước trước.</small>':''}`).join('')+
+ (d.merges.length?`<h3>Gộp trùng</h3>${table(['Loại','Điểm','Giữ lại','Gộp vào'],d.merges.map(m=>[esc(m.kind),esc(m.score),esc(`${m.keptName} · ${m.keptRef}`),esc(`${m.mergedName} · ${m.mergedRef}`)]))}`:'')+
+ (d.dropped.length?`<h3 class="minus">Bị loại</h3>${table(['Bước','Lý do','Dòng'],d.dropped.map(r=>[esc(r.step),esc(r.reason),esc(`${r.product.name} · ${r.product.sourceRef}`)]))}`:'')}
+async function trace(id){if(S.tab!=='normalise'){S.tab='normalise';await renderTab()}const out=$('#traceOut');const input=document.querySelector('#traceForm [name=id]');if(input)input.value=id;out.innerHTML='<p class="muted">Đang truy vết…</p>';out.innerHTML=traceHtml(await api('/api/normalise/trace',{run:S.run,id}));out.scrollIntoView({behavior:'smooth'})}
+
+// --- embedding
+// --- nạp DB: lượt chưa có db_load.jsonl thì nói rõ vì sao ngay trong tab
+async function tabDb(){try{await showList({kind:'db',run:S.run})}catch(e){const r=S.runData||{};
+ const why=r.status==='running'?'Lượt đang chạy, chưa tới bước nạp DB. Bảng trước → sau sẽ có khi lượt nạp xong.':r.errorKind==='quality'?'Lượt bị chặn chất lượng nên không nạp DB.':['failed','stopped'].includes(r.status)?'Lượt dừng trước bước nạp DB.':'';
+ $('#tab').innerHTML=card('Nạp DB',`<p class="muted">${esc(e.message)}</p>${why?`<p class="muted">${esc(why)}</p>`:''}${r.error?`<p class="muted">${kindBadge(r.errorKind)} ${esc(r.error)}</p>`:''}`)}}
+async function tabEmbed(){const t=$('#tab');const idx=S.runData.index;let d=null,err='';try{d=await api('/api/embed',{run:S.run,limit:1})}catch(e){err=e.message}
+ const r=d?.report||idx||{};const a=d?.actions||{};
+ t.innerHTML=`<div class="grid">${[['Model · text builder',r.modelVersion||'—','input_type=search_document khi nạp'],['Search unit',num(r.searchUnits),'sản phẩm is_search_unit trong DB đích'],['Nhúng mới lượt này',num(a.embedded??r.embedded),Object.entries(d?.reasons||{}).map(([k,v])=>`${reasons[k]||k}: ${v}`).join(' · ')||'gọi Cohere'],['Giữ nguyên',num(a.unchanged??r.unchanged),'text + model không đổi'],['Xoá vector mồ côi',num(a.deleted??a.orphan??r.deletedOrphans),'không còn trong DB'],['Độ dài text (ký tự)',d?.chars?`${d.chars.median}`:'—',d?.chars?`min ${d.chars.min} · max ${d.chars.max}`:'']].map(([l,v,s])=>`<div class="card kpi"><small>${esc(l)}</small><strong class="${String(v).length>16?'long':''}">${esc(v)}</strong><small>${esc(s)}</small></div>`).join('')}</div>`+
+ (err?card('Chi tiết embed',`<p class="muted">${esc(err)}</p>`):'')+
+ card('Thử truy vấn trên collection đích',`<form id="queryForm" class="actions"><input name="q" type="search" required maxlength="500" placeholder="vd. resort gần biển cho gia đình ở Nha Trang" style="min-width:min(460px,100%)" aria-label="Câu truy vấn"><select name="k" aria-label="Số kết quả">${[5,10,20,50].map(k=>`<option ${k===10?'selected':''}>${k}</option>`).join('')}</select><label><input type="checkbox" name="refresh"> Đọc lại vector</label><button class="primary" type="submit">Tìm</button></form><p class="muted">Gọi Cohere một lần với input_type=search_query rồi xếp hạng cosine trên mọi vector của collection (đọc qua REST, giữ trong bộ nhớ 2 phút).</p><div id="queryOut"></div>`)+
+ (d?card('Text gửi Cohere từng sản phẩm',`<p class="muted">Đúng chuỗi mà bước index đưa vào Cohere (build_text của backend). Bấm tên để xem toàn văn và vector.</p>`+button('Mở danh sách','list',{kind:'embed',run:S.run},'primary')+' '+button('Chỉ sản phẩm nhúng mới','list',{kind:'embed',run:S.run,action:'embedded'})):'')}
+function vecHtml(v){if(!v||!v.head)return '—';const m=Math.max(...v.head.map(Math.abs),1e-9);return `<div class="meta"><span>${v.dims} chiều · độ dài ${v.norm}</span><div class="vec" aria-label="${v.head.length} chiều đầu">${v.head.map(x=>`<i class="${x<0?'neg':''}" style="height:${Math.max(2,Math.round(34*Math.abs(x)/m))}px" title="${x}"></i>`).join('')}</div></div><small>${v.head.length} chiều đầu: ${v.head.map(x=>x.toFixed(4)).join(', ')}</small>`}
+async function embedRow(args){const d=await api('/api/embed/row',args);modal(d.name||d.productId,`<div class="meta">${badge(d.action)}<span>${esc(reasons[d.reason]||d.reason||'')}</span><span>${esc(d.taxonomy)} · ${esc(d.destination)}</span><span>${num(d.chars)} ký tự · ${num(d.words)} từ</span></div><p><small>productId ${esc(d.productId)} · textHash ${esc(d.textHash)}</small></p><h3>Text gửi Cohere</h3>${pretty(d.text||'')}<h3>Vector</h3><div id="vecOut">${d.vector?vecHtml(d.vector):'<p class="muted">Lượt này không nhúng lại sản phẩm này.</p>'}</div>${button('Đọc vector đang lưu trong Weaviate','vector',{id:d.productId})} ${button('Truy vết qua chuẩn hoá','traceModal',{id:d.productId})}`)}
+function queryHtml(d){return `<p><small>${num(d.vectors)} vector trong ${esc(d.collection)} · Cohere ${d.cohereMs} ms · model: ${esc(Object.keys(d.models).join(', '))}</small></p><details><summary>Vector của câu truy vấn</summary>${vecHtml(d.queryVector)}</details>`+table(['#','Cosine','Sản phẩm','Loại','Điểm đến','Text'],d.hits.map(h=>[h.rank,`${h.cosine}${bar(Math.max(0,h.cosine),1)}`,h.inRun?button(h.name||h.productId,'embedRow',{run:S.run,id:h.productId},'link'):`${esc(h.name||h.productId)} <small>(không có trong lượt này)</small>`,esc(h.taxonomy),esc(h.destination),`<small>${esc(h.text)}</small>`]))}
+
+// --- báo cáo
+async function tabReports(){const d=S.runData;$('#tab').innerHTML=card('Báo cáo của lượt',table(['File','Dung lượng'],(d.artifacts||[]).map(a=>[button(a.name,'artifact',{run:S.run,name:a.name},'link'),bytes(a.bytes)])))+card('Số liệu của lượt',pretty(d.counts||{}))+`<details class="card"><summary>Cấu hình đã dùng trong lượt này</summary>${pretty(d.settings||{})}</details>`+card('Log',button('job.log (500 dòng cuối)','log',{run:S.run})+' '+(d.logs||[]).filter(n=>n!=='job.log').map(n=>button(n,'log',{run:S.run,name:n})).join(' '))}
+
+// ------------------------------------------------------------------ trang khác
+async function showLog(args,runner=false){const d=await api('/api/log',{...args,runner:runner?'1':'',name:args.name||'job.log',lines:500});modal(d.name,pretty(d.lines.join('\n'))+button('Làm mới log',runner?'runnerlog':'log',args))}
+function hotelsCard(d,saved){return card(`Khách sạn Trip · xoay vòng (${num(saved)} ID đã lưu)`,`<p>Lượt daily tối đa <strong>${d.dailyBatch}</strong> khách sạn. Ưu tiên ID chưa thử hoặc lâu chưa thử.</p><p class="muted">Coverage lấy từ lượt gần nhất: ${esc(d.coverageRun)}.</p>`+table(['Thứ tự','ID','Thành phố','Lần thử gần nhất','Thành công gần nhất','Lượt kế','Coverage'],d.hotels.map(r=>[esc(r.queue),esc(r.hotelId),esc(r.destination),esc(when(r.lastAttemptAt)),esc(when(r.lastSuccessAt)),r.nextBatch?'Có':'—',esc(r.lastCoverage?Object.entries(r.lastCoverage).map(([k,v])=>`${k}: ${v}`).join(', '):'—')]))+'')}
+function fieldHtml(f){const value=Array.isArray(f.value)?f.value.join(','):f.value??'';let input;if(f.kind==='bool')input=`<input id="f-${esc(f.key)}" data-key="${esc(f.key)}" type="checkbox" ${f.value?'checked':''}>`;else input=`<input id="f-${esc(f.key)}" data-key="${esc(f.key)}" type="${['int','float'].includes(f.kind)?'number':f.kind==='time'?'time':'text'}" value="${esc(value)}" ${f.minimum!=null?`min="${f.minimum}"`:''} ${f.maximum!=null?`max="${f.maximum}"`:''} step="${f.kind==='float'?'any':'1'}">`;return `<div class="field"><label for="f-${esc(f.key)}">${esc(f.label)}<small>${esc(f.help||'')} · Nguồn: ${esc(f.source)}${f.env?' · '+esc(f.env):''}</small></label><div>${input}${button('Về env/mặc định','resetSetting',{key:f.key},'link')}</div></div>`}
+// Cấu hình chia tab theo nhóm (ít cuộn); mọi ô vẫn nằm trong một form nên "Lưu" gửi thay đổi của mọi tab
+const STREAM_KEYS=['stream.enabled','stream.db','stream.index'];
+function streamPresetHtml(values){const on=STREAM_KEYS.every(k=>values[k]),some=STREAM_KEYS.some(k=>values[k]);
+ return `<div class="badge-row"><strong>Chạy liên tục (lượt kế tiếp)</strong><span class="status ${on?'ok':some?'partial':'disabled'}">${on?'Bật đủ: chuẩn hoá + nạp DB + index':some?'Bật một phần':'Tắt'}</span>${on?'':button('Bật đủ','streamPreset',{on:true},'primary small')}${some?button('Tắt','streamPreset',{on:false},'small'):''}<small class="muted">Chuẩn hoá, gộp, nạp DB và index chạy dần trong lúc cào; bước sau không đợi bước trước xong hết.</small></div>`}
+async function settings(){S.settings=await api('/api/settings');const values=Object.fromEntries(S.settings.fields.map(f=>[f.key,f.value]));
+ const groups=S.settings.groups.filter(g=>S.settings.fields.some(f=>f.group===g.id));const active=groups.some(g=>g.id===S.settingsGroup)?S.settingsGroup:groups[0]?.id;S.settingsGroup=active;
+ main.innerHTML=`<form id="settingsForm">${card('Cấu hình lượt kế tiếp',`<p class="muted">Lưu tại volume dùng chung với cron. Lượt đang chạy giữ cấu hình lúc bắt đầu; tốc độ và chạy liên tục của lượt đang chạy chỉnh trong trang của lượt đó.</p>${streamPresetHtml(values)}<div class="tabs" role="tablist">${groups.map(g=>`<button type="button" data-setgroup="${esc(g.id)}" aria-current="${g.id===active}">${esc(g.label)}</button>`).join('')}</div>${S.settings.error?`<p class="minus">${esc(S.settings.error)}</p>`:''}`)}`+
+  groups.map(g=>`<section class="card" data-group="${esc(g.id)}" ${g.id===active?'':'hidden'}><h2>${esc(g.label)}</h2>${g.id==='strategy'?button('Áp ngân sách Trip 30 / 10 / 180','tripBudget')+' ':''}${S.settings.fields.filter(f=>f.group===g.id).map(fieldHtml).join('')}</section>`).join('')+
+  `<div class="actions"><button class="primary" type="submit">Lưu thay đổi (mọi tab)</button></div></form>`}
+
+async function navigate(name,push=true){stopLive();clearInterval(S.gtimer);S.gtimer=null;clearInterval(S.rtTimer);S.rtTimer=null;S.view=name;S.run=null;S.list=null;notice('');if(push)writeHash();document.querySelectorAll('nav button').forEach(b=>b.setAttribute('aria-current',b.dataset.view===name));main.innerHTML='<p class="muted">Đang tải…</p>';if(name==='overview')await overview();if(name==='runs')await historyPage();if(name==='system'||name==='hotels')await system();if(name==='settings')await settings();if(name==='db')await dbPage();if(name==='realtime')await realtimePage()}
+
+// ------------------------------------------------------------------ tab DB: xem toàn bộ database (chỉ đọc)
+const dbKey=(d,r)=>d.pk?.length?Object.fromEntries(d.pk.map(c=>[c,r[c]])):null;
+const dbShort=v=>{if(v===null||v===undefined)return '<span class="muted">NULL</span>';const t=typeof v==='object'?JSON.stringify(v):String(v);return esc(t.length>90?t.slice(0,90)+'…':t)};
+function dbCell(d,r,c){const v=r[c];if(d.secret?.includes(c))return `<span class="muted">${esc(v??'NULL')}</span>`;
+ const fk=(d.fks||[]).find(f=>f.columns.length===1&&f.columns[0]===c);
+ if(fk&&v!==null&&v!==undefined)return button(String(v).slice(0,40),'dbRow',{table:fk.target,key:{[fk.targetColumns[0]]:v}},'link');
+ if(d.pk?.length===1&&d.pk[0]===c&&v!==null)return button(String(v).slice(0,40),'dbRow',{table:d.table,key:{[c]:v}},'link');
+ return dbShort(v)}
+async function dbPage(){const D=S.db=S.db||{table:null,filters:{},offset:0};writeHash();
+ const modes=`<div class="tabs" role="tablist">${[['list','Bảng dữ liệu'],['diagram','Sơ đồ quan hệ']].map(([m,l])=>`<button type="button" data-action="dbMode" data-args='{"mode":"${m}"}' aria-current="${(D.mode||'list')===m}">${l}</button>`).join('')}</div>`;
+ if(D.mode==='diagram'){const g=await api('/api/dbx/graph');if(S.view!=='db')return;main.innerHTML=modes+card('Sơ đồ quan hệ giữa các bảng',dbDiagram(g));dbDiagramHover();return}const list=await api('/api/dbx/tables');if(S.view!=='db')return;
+ const groups={};for(const t of list.tables)(groups[t.schema]=groups[t.schema]||[]).push(t);
+ const side=Object.entries(groups).map(([sc,ts])=>`<h3>${esc(sc)}</h3>`+ts.map(t=>button(`${t.table}${t.view?' (view)':''} · ${num(t.rows)}`,'dbTable',{table:t.name},t.name===D.table?'primary':'')).join(' ')).join('');
+ let body='<p class="muted">Chọn một bảng. Chỉ đọc; cột bí mật (password / token / secret / hash) hiện "(ẩn)". Bấm ô khoá (id) để xem dòng và các bảng liên kết.</p>';
+ if(D.table){const d=D.children?await api('/api/dbx/children',{id:D.children,offset:D.offset}):await api('/api/dbx/rows',{table:D.table,q:D.q,sort:D.sort,desc:D.desc?'1':'',offset:D.offset,limit:50,...Object.fromEntries(Object.entries(D.filters||{}).map(([k,v])=>['f.'+k,v===null?'\\N':v]))});
+  const chips=[...Object.entries(D.filters||{}).map(([k,v])=>`${k} = ${v===null?'NULL':v}`),...(D.children?[`attributes.parentProductId = ${D.children}`]:[])];
+  body=`<form id="dbForm" class="actions"><input name="q" value="${esc(D.q||'')}" placeholder="Tìm trong mọi cột (không gồm cột bí mật)" style="min-width:320px"><button class="primary">Tìm</button>${chips.length?`<span class="muted">Lọc: ${esc(chips.join(' · '))}</span> `+button('Bỏ lọc','dbClear',{}):''}</form>
+   <p class="muted">${esc(d.table)} · ${num(d.total)} dòng · hiển thị ${num(d.total?d.offset+1:0)}–${num(Math.min(d.offset+d.rows.length,d.total))}${d.fks?.length?` · khoá ngoại: ${esc(d.fks.map(f=>f.columns.join('+')+' → '+f.target).join(', '))}`:''}</p>`+
+   `<div class="scroll"><table><thead><tr>${d.columns.map(c=>`<th>${button(c+(D.sort===c?(D.desc?' ↓':' ↑'):''),'dbSort',{col:c},'link')}</th>`).join('')}</tr></thead><tbody>${d.rows.map(r=>`<tr>${d.columns.map(c=>`<td>${dbCell(d,r,c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`+
+   `<div class="actions">${d.offset>0?button('← Trước','dbOffset',{offset:Math.max(0,d.offset-d.limit)}):''}${d.offset+d.rows.length<d.total?button('Sau →','dbOffset',{offset:d.offset+d.limit}):''}</div>`}
+ main.innerHTML=modes+`<div class="dbgrid">${card('Bảng',side)}${card(D.table||'Database',body)}</div>`}
+// Sơ đồ: mỗi bảng một ô (đủ cột, khoá chính / ngoại, số dòng), cột theo schema; cạnh khoá ngoại nét liền, quy ước nét đứt.
+function dbDiagram(g){const W=270,RH=17,HH=34,GAP=26,CG=110,TOP=30;const by={};for(const t of g.tables)(by[t.schema]=by[t.schema]||[]).push(t);
+ const order=['cdp','catalog','app'].filter(k=>by[k]).concat(Object.keys(by).filter(k=>!['cdp','catalog','app'].includes(k)));
+ const cols=[];for(const sc of order){const ts=by[sc];const h=t=>HH+t.columns.length*RH+10;const total=ts.reduce((a,t)=>a+h(t)+GAP,0);
+  const parts=total>2200?2:1;const lanes=Array.from({length:parts},()=>({schema:sc,items:[],h:0}));
+  for(const t of ts.slice().sort((a,b)=>h(b)-h(a))){const l=lanes.reduce((m,x)=>x.h<m.h?x:m);l.items.push(t);l.h+=h(t)+GAP}cols.push(...lanes)}
+ const pos={};cols.forEach((c,i)=>{let y=TOP;c.items.sort((a,b)=>a.table.localeCompare(b.table)).forEach(t=>{pos[t.name]={x:20+i*(W+CG),y,t};y+=HH+t.columns.length*RH+10+GAP})});
+ const width=20+cols.length*(W+CG),height=Math.max(...Object.values(pos).map(p=>p.y+HH+p.t.columns.length*RH+10))+30;
+ const rowY=(p,c)=>{const i=p.t.columns.findIndex(x=>x.name===c);return p.y+HH+(i<0?0:i)*RH+RH/2+3};
+ const edges=g.edges.map(e=>{const a=pos[e.from],b=pos[e.to];if(!a||!b)return'';const y1=rowY(a,e.columns[0]),y2=rowY(b,e.targetColumns[0]);let d;
+  if(e.from===e.to){const x=a.x+W,off=e.columns[0].startsWith('source_ref')?70:40;d=`M${x} ${y1} C${x+off} ${y1},${x+off} ${y2},${x} ${y2}`}
+  else{const right=b.x>a.x;const x1=right?a.x+W:a.x,x2=right?b.x:b.x+W;const dx=Math.max(40,Math.abs(x2-x1)/2)*(right?1:-1);
+   if(a.x===b.x){const x=a.x+W;d=`M${x} ${y1} C${x+60} ${y1},${x+60} ${y2},${x} ${y2}`}else d=`M${x1} ${y1} C${x1+dx} ${y1},${x2-dx} ${y2},${x2} ${y2}`}
+  return `<path class="edge${e.kind==='convention'?' conv':''}" data-from="${esc(e.from)}" data-to="${esc(e.to)}" d="${d}" marker-end="url(#arrow)"><title>${esc(e.from+'.'+e.columns.join('+')+' → '+e.to+'.'+e.targetColumns.join('+')+(e.label?' ('+e.label+')':'')+(e.kind==='convention'?' · quy ước':' · khoá ngoại'))}</title></path>`}).join('');
+ const heads=cols.map((c,i)=>cols.findIndex(x=>x.schema===c.schema)===i?`<text class="schema" x="${20+i*(W+CG)}" y="18">${esc(c.schema.toUpperCase())}</text>`:'').join('');
+ const boxes=Object.values(pos).map(({x,y,t})=>{const h=HH+t.columns.length*RH+6;
+  const rows=t.columns.map((c,i)=>{const cy=y+HH+i*RH+RH/2+4;const cls=c.pk?'pk':c.fk?'fk':c.secret?'sec':'';const tag=c.pk?'PK':c.fk?'FK':'';
+   return `<text class="${cls}" x="${x+8}" y="${cy}">${esc(tag)}</text><text class="${cls}" x="${x+30}" y="${cy}">${esc(c.name.length>24?c.name.slice(0,23)+'…':c.name)}${c.secret?' (ẩn)':''}</text><text x="${x+W-8}" y="${cy}" text-anchor="end" fill="var(--muted)">${esc(c.type.replace('timestamp with time zone','timestamptz').replace('character varying','varchar').replace('USER-DEFINED','enum').slice(0,14))}</text>`}).join('');
+  return `<g class="tbl${t.view?' view':''}" data-tbl="${esc(t.name)}" data-action="dbTable" data-args="${esc(JSON.stringify({table:t.name}))}"><title>${esc(t.name)} — bấm để xem dữ liệu</title><rect class="box" x="${x}" y="${y}" width="${W}" height="${h}" rx="8"/><rect class="head" x="${x+1}" y="${y+1}" width="${W-2}" height="${HH-6}" rx="7"/>
+   <text x="${x+10}" y="${y+21}" font-weight="700" fill="var(--ink)">${esc(t.table)}${t.view?' (view)':''}</text><text x="${x+W-10}" y="${y+21}" text-anchor="end" fill="var(--muted)">${num(t.rows)} dòng</text>${rows}</g>`}).join('');
+ return `<p class="muted">${num(g.tables.length)} bảng / view · ${num(g.edges.length)} quan hệ. Nét liền: khoá ngoại; nét đứt: quan hệ quy ước (không có khoá ngoại). <b>PK</b> khoá chính, <b>FK</b> khoá ngoại. Rê chuột vào một bảng để tô các quan hệ của nó; bấm để mở dữ liệu bảng.</p>
+  <div class="actions">${button(S.db?.fit?'Cỡ thật (đọc rõ cột)':'Xem toàn cảnh (vừa khung)','dbZoom',{})}</div><div id="dbDiagram" class="scroll"><svg width="${width}" height="${height}" style="${S.db?.fit?'width:100%;height:auto':''}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Sơ đồ quan hệ database"><defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--muted)"/></marker></defs>${heads}${edges}${boxes}</svg></div>`}
+function dbDiagramHover(){const root=$('#dbDiagram');if(!root)return;
+ root.addEventListener('mouseover',e=>{const g=e.target.closest('[data-tbl]');if(!g)return;const n=g.dataset.tbl;
+  root.querySelectorAll('.edge').forEach(p=>{const on=p.dataset.from===n||p.dataset.to===n;p.classList.toggle('on',on);p.classList.toggle('dim',!on)});
+  root.querySelectorAll('[data-tbl]').forEach(t=>t.classList.toggle('on',t===g))});
+ root.addEventListener('mouseleave',()=>{root.querySelectorAll('.edge').forEach(p=>p.classList.remove('on','dim'));root.querySelectorAll('[data-tbl]').forEach(t=>t.classList.remove('on'))})}
+async function dbRow(tname,key){const d=await api('/api/dbx/row',{table:tname,...Object.fromEntries(Object.entries(key).map(([k,v])=>['k.'+k,v===null?'\\N':v]))});
+ const fields=Object.entries(d.row).map(([k,v])=>[esc(k),d.secret.includes(k)?`<span class="muted">${esc(v??'NULL')}</span>`:(v!==null&&typeof v==='object'?pretty(v):dbShort(v))]);
+ const out=d.outgoing.map(o=>button(`${o.via.join('+')} → ${o.table}${o.kind==='convention'?' (quy ước)':''}`,'dbRow',{table:o.table,key:o.key})).join(' ');
+ const inc=d.incoming.map(i=>button(`${i.table} (${num(i.count)}) qua ${i.via.join('+')}${i.kind==='convention'?' (quy ước)':''}`,i.via[0]==='attributes.parentProductId'?'dbChildren':'dbList',{table:i.table,filters:i.filters,id:i.filters['attributes.parentProductId']})).join(' ');
+ modal(`${tname} · ${Object.values(key).join(' / ')}`,`<h3>Trỏ tới</h3><div class="actions">${out||'<span class="muted">Không có</span>'}</div><h3>Được trỏ tới bởi</h3><div class="actions">${inc||'<span class="muted">Không có</span>'}</div><h3>Dữ liệu</h3>`+table(['Cột','Giá trị'],fields))}
+
+// ------------------------------------------------------------------ Realtime: từng lần gọi của web / agent (backend /internal/calls)
+const srcBadge=v=>`<span class="status ${v==='agent'?'running':'ok'}">${esc(v)}</span>`;
+const callStatus=v=>typeof v==='number'?`<span class="status ${v>=500?'failed':v>=400?'partial':'ok'}">${v}</span>`:`<span class="status ${v==='ok'?'ok':'failed'}">${esc(v)}</span>`;
+function rtRows(){const R=S.rt;const ev=R.events.filter(e=>!R.source||e.source===R.source);
+ return table(['Giờ','Nguồn','Lần gọi','Kết quả','ms','Use case','Số KQ','Thời gian từng bước (stageMs)','productId'],ev.slice().reverse().slice(0,100).map(e=>[
+  esc(new Date(e.at).toLocaleTimeString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh'})),srcBadge(e.source),esc(e.name),callStatus(e.status),num(e.ms),esc(e.useCase),num(e.resultCount),
+  e.stageMs?esc(Object.entries(e.stageMs).map(([k,v])=>`${k} ${v}`).join(' · ')):'—',
+  (e.productIds||[]).slice(0,3).map(id=>button(id.slice(0,8)+'…','dbRow',{table:'cdp.products',key:{product_id:id}},'link')).join(' ')+((e.productIds||[]).length>3?` <span class="muted">+${e.productIds.length-3}</span>`:'')]))}
+function rtRender(d){const R=S.rt;const c=d.catalog||{};
+ const head=`Backend ${esc(d.backend)} · đo từ ${esc(when(d.startedAt))} (mất khi backend restart) · tự làm mới 2 giây. Catalog / recsys trong bộ nhớ backend: <b>${num(c.products)}</b> sản phẩm, nạp lúc ${esc(when(c.loadedAt))} (${num(c.reloads)} lần). Web xem / lọc sản phẩm đọc thẳng Postgres; tìm kiếm, gợi ý, "tương tự" dùng bản trong bộ nhớ + Weaviate. Không ghi câu tìm kiếm hay dữ liệu cá nhân.`;
+ const sum=table(['Nguồn','Loại','Tên','Số lần','Lỗi','p50 ms','p95 ms','TB ms','Gần nhất'],(d.summary||[]).filter(r=>!R.source||r.source===R.source).map(r=>[srcBadge(r.source),esc(r.kind),esc(r.name),num(r.count),r.errors?`<span class="minus">${num(r.errors)}</span>`:'0',num(r.p50Ms),num(r.p95Ms),num(r.avgMs),esc(when(r.lastAt))]));
+ if(!$('#rtRows')){  // lần đầu: dựng khung; các lần sau chỉ thay nội dung để không mất vị trí cuộn
+  main.innerHTML=card('Web và agent đang lấy dữ liệu',`<p class="muted" id="rtHead"></p><div class="actions"><select id="rtSource" aria-label="Nguồn"><option value="">Mọi nguồn</option><option value="web">web</option><option value="agent">agent</option></select></div>`)+
+   card('Tổng hợp theo lần gọi','<div id="rtSummary"></div>')+`<section class="card"><h2 id="rtTitle"></h2><div id="rtRows" class="rt"></div></section>`;
+  $('#rtSource').value=R.source||''}
+ $('#rtHead').innerHTML=head;$('#rtSummary').innerHTML=sum;$('#rtTitle').textContent=`Lần gọi gần nhất (hiện 100 / ${num(R.events.length)})`;$('#rtRows').innerHTML=rtRows()}
+async function realtimePage(){S.rt=S.rt||{lastSeq:0,events:[],source:''};const R=S.rt;
+ const tick=async()=>{if(S.view!=='realtime')return;const d=await api('/api/calls',{after:R.lastSeq,limit:500});
+  if(d.lastSeq<R.lastSeq){R.events=[];R.lastSeq=0;return tick()}  // backend restart: đếm lại từ đầu
+  const fresh=(d.events||[]).length>0||!$('#rtRows');
+  R.events=R.events.concat(d.events||[]).slice(-500);R.lastSeq=d.lastSeq;R.last=d;
+  if(fresh&&S.view==='realtime'&&!$('#detail').open)rtRender(d)};  // không có lần gọi mới: không vẽ lại
+ try{await tick()}catch(e){main.innerHTML=card('Web và agent đang lấy dữ liệu',`<p class="minus">${esc(e.message)}</p><p class="muted">Monitor gọi backend qua BACKEND_URL (mặc định http://127.0.0.1:8000). Backend cần bản có /internal/calls.</p>`)}
+ clearInterval(S.rtTimer);S.rtTimer=setInterval(()=>tick().catch(()=>{}),2000)}
+document.addEventListener('change',e=>{if(e.target.id==='rtSource'){S.rt.source=e.target.value;if(S.rt.last)rtRender(S.rt.last)}});
+
+// ------------------------------------------------------------------ hành động
+async function liveSend(key,changes){await api('/api/live',{},{key,changes});notice('Đã áp dụng cho lượt đang chạy.',true);await refreshFlow(true)}
+async function action(name,args){notice('');
+ switch(name){
+  case 'run':return openRun(args.id,args.tab||null,null,args.node||null,args.col||null);
+  case 'runView':return runView(args.view);
+  case 'variant':S.variant=args.variant;return renderTab();
+  case 'streamPreset':{await api('/api/settings',{},{values:Object.fromEntries(STREAM_KEYS.map(k=>[k,args.on]))});notice(args.on?'Đã bật chạy liên tục (chuẩn hoá + nạp DB + index) từ lượt kế tiếp.':'Đã tắt chạy liên tục từ lượt kế tiếp.',true);return S.view==='settings'?settings():overview()}
+  case 'resume':{if(!confirm(args.from==='crawl'?`Cào lại nguồn “${args.source}” của lượt ${args.run}?\nChỉ cào nguồn này, rồi chuẩn hoá, nạp DB (DB đích hiện tại, DB_TARGET) và index.`:`Chạy lại lượt ${args.run} từ bước “${args.from}”?\nKhông cào lại. Bước nạp DB sẽ ghi vào DB đích hiện tại (DB_TARGET).`))return;
+   const d=await api('/api/resume',{},args);notice(`Đã bắt đầu chạy lại từ bước “${d.from}” (pid ${d.pid}). Trang tự tải lại.`,true);
+   setTimeout(()=>openRun(args.run,null,null,S.node).catch(fail),2500);return}
+  case 'streamSet':case 'streamPause':case 'streamKick':{const row=document.querySelector(`[data-stream="${args.key}"]`);
+   const changes=name==='streamPause'?{paused:args.paused}:name==='streamKick'?{kick:true}:{interval:args.reset?null:Number(row.querySelector('[data-interval]').value)};
+   S.live=await api('/api/live',{},{key:args.key,changes});notice(name==='streamKick'?'Đã yêu cầu chạy ngay (trong vòng nửa giây).':'Đã áp dụng cho lượt đang chạy, từ lô kế tiếp.',true);
+   if(S.tab==='stream')return tabStream();const head=$('#nodeHead');if(head)head.outerHTML=panelHead();return}
+  case 'tab':S.tab=args.tab;return renderTab();
+  case 'setPreview':S.preview=args.on;if(args.tab)S.tab=args.tab;return renderTab();
+  case 'list':if(S.view==='run'&&!$('#tab'))await runView('reports');return showList(args);
+  case 'log':return showLog(args);case 'runnerlog':return showLog(args,true);
+  case 'logfor':S.log.group={tripFlights:'trip',tripAttractions:'trip'}[args.group]||args.group;S.tab='log';return renderTab();
+  case 'json':return modal(args.title,pretty(args.data));
+  case 'rawfile':return rawModal(await api('/api/raw/file',args));
+  case 'record':return modal('Bản ghi interim',pretty(await api('/api/interim/record',args)));
+  case 'stageRow':{const d=await api('/api/normalise/row',args);if(args.stage==='errors')return modal(`Lỗi ánh xạ · ${d.entry.source}`,`<p class="minus">${esc(d.entry.error)}</p><p><small>${esc(d.entry.function)} · bản ghi ${esc(JSON.stringify(d.entry.input))}</small></p>${pretty(d.entry.traceback||'')}`);const p=d.entry.product||d.entry;return modal(`${args.stage} · ${p.name||''}`,`<p><small>nguồn ${esc(d.entry.source)}${d.entry.input?` · bản ghi interim/${esc(d.entry.interim)}.jsonl ${esc(JSON.stringify(d.entry.input))}`:''}${d.entry.reason?` · <span class="minus">${esc(d.entry.step)}: ${esc(d.entry.reason)}</span>`:''}</small></p>${pretty(d.entry)}${p.productId?button('Truy vết qua các bước','traceModal',{id:p.productId}):''}`)}
+  case 'trace':return trace(args.id);
+  case 'traceModal':$('#detail').close();S.tab='normalise';await renderTab();return trace(args.id);
+  case 'product':{const d=await api('/api/product',args);return modal('Sản phẩm và nguồn',pretty(d.product)+button('Truy vết qua các bước chuẩn hoá','traceModal',{id:args.id})+card('Truy vết raw / interim',d.trace.map(t=>`<p>${esc(t.ref)} · ${esc(t.source)}</p>${button('Xem interim','record',{run:args.run,source:t.source,index:t.interim.index})} ${(t.raw||[]).map(path=>button(path,'rawfile',{run:args.run,source:t.source,path})).join(' ')}`).join('')||'<p>Không tìm thấy bản ghi tương ứng.</p>')+card('Dòng nạp DB',pretty(d.db)))}
+  case 'embedRow':return embedRow(args);
+  case 'vector':{const out=$('#vecOut');out.innerHTML='<p class="muted">Đang đọc…</p>';try{const d=await api('/api/embed/vector',args);out.innerHTML=`<small>Trong ${esc(d.collection)} · ${esc(JSON.stringify(d.properties))}</small>`+vecHtml(d.vector)}catch(e){out.innerHTML=`<p class="minus">${esc(e.message)}</p>`}return}
+  case 'artifact':{const d=await api('/api/artifact',args);return modal(d.name,d.kind==='table'?table(d.header,d.rows.map(r=>r.map(esc))):pretty(d.json||d.text||d))}
+  case 'start':if(!confirm(`Bắt đầu lượt “${{auto:'theo chu kỳ',full:'cào lớn',daily:'làm mới Trip',index:'bảo trì và index'}[args.mode]||args.mode}”?`))return;await api('/api/run',{},args);await pollControls();return navigate('overview');
+  case 'stop':{const d=await api('/api/stop',{},{});notice(d.message,true);return S.view==='run'?openRun(S.run,S.tab,S.preview,S.node):navigate('overview')}
+  case 'liveApply':{const row=document.querySelector(`[data-live="${args.key}"]`);const changes={};row.querySelectorAll('[data-field]').forEach(i=>changes[i.dataset.field]=Number(i.value));return liveSend(args.key,changes)}
+  case 'liveReset':return liveSend(args.key,Object.fromEntries(args.fields.map(f=>[f,null])));
+  case 'livePause':return liveSend(args.key,{paused:args.paused});
+  case 'nextSave':{const input=document.querySelector(`[data-next="${args.key}"]`);await api('/api/settings',{},{values:{[args.key]:Number(input.value)}});notice('Đã lưu vào Cấu hình, áp từ lượt sau.',true);return refreshFlow(true)}
+  case 'tripBudget':for(const [key,value] of Object.entries({'tripHotels.initialPerCity':30,'tripHotels.newPerCity':10,'tripHotels.dailyHotels':180}))main.querySelector(`[data-key="${key}"]`).value=value;return notice('Đã điền ngân sách Trip. Bấm Lưu thay đổi để áp dụng.',true);
+  case 'dbTable':S.db={table:args.table,filters:{},offset:0,mode:'list'};return dbPage();
+  case 'dbMode':S.db={...S.db,mode:args.mode};return dbPage();
+  case 'dbZoom':S.db.fit=!S.db.fit;return dbPage();
+  case 'dbOffset':S.db.offset=args.offset;return dbPage();
+  case 'dbSort':S.db.desc=S.db.sort===args.col?!S.db.desc:false;S.db.sort=args.col;S.db.offset=0;return dbPage();
+  case 'dbClear':S.db={table:S.db.table,filters:{},offset:0};return dbPage();
+  case 'dbRow':return dbRow(args.table,args.key);
+  case 'dbList':$('#detail').close();S.db={table:args.table,filters:args.filters,offset:0};await navigate('db');return;
+  case 'dbChildren':$('#detail').close();S.db={table:'cdp.products',filters:{},children:args.id,offset:0};await navigate('db');return;
+  case 'resetSetting':await api('/api/settings',{},{values:{[args.key]:null}});return settings();
+ }}
+document.addEventListener('click',e=>{const sg=e.target.closest('[data-setgroup]');if(sg){S.settingsGroup=sg.dataset.setgroup;document.querySelectorAll('[data-setgroup]').forEach(b=>b.setAttribute('aria-current',b===sg));document.querySelectorAll('#settingsForm [data-group]').forEach(x=>x.hidden=x.dataset.group!==S.settingsGroup);return}
+ const nav=e.target.closest('nav [data-view]'),tab=e.target.closest('[data-tab]'),b=e.target.closest('[data-action]'),node=e.target.closest('[data-node]');
+ if(nav)navigate(nav.dataset.view).catch(fail);
+ if(node)(S.view==='run'?selectNode(node.dataset.node):openRun(S.miniRun,null,null,node.dataset.node)).catch(fail);
+ if(tab){S.tab=tab.dataset.tab;renderTab().catch(fail)}
+ if(b){e.preventDefault();b.disabled=true;action(b.dataset.action,JSON.parse(b.dataset.args)).catch(fail).finally(()=>b.disabled=false)}});
+document.addEventListener('change',e=>{const rf=e.target.closest('[data-runfilter]');if(rf){S.runFilter={...(S.runFilter||{}),[rf.dataset.runfilter]:rf.value};historyPage().catch(fail);return}
+ const f=e.target.closest('[data-alert]');if(!f)return;S.alertFilter={...(S.alertFilter||{}),[f.dataset.alert]:f.value};
+ const cardEl=f.closest('.card');if(cardEl)cardEl.outerHTML=alertsCard(S.overviewAlerts)});
+document.addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.target);
+ try{
+  if(e.target.id==='searchForm'){const extra={};for(const k of ['taxonomy','level','src','destination','flag','step','action'])if(f.has(k))extra[k]=f.get(k);return await showList({...S.list,...extra,q:f.get('q'),offset:0})}
+  if(e.target.id==='traceForm')return await trace(f.get('id'));
+  if(e.target.id==='dbForm'){S.db.q=f.get('q');S.db.offset=0;return await dbPage()}
+  if(e.target.id==='queryForm'){const out=$('#queryOut');out.innerHTML='<p class="muted">Đang gọi Cohere và xếp hạng…</p>';out.innerHTML=queryHtml(await api('/api/embed/query',{},{run:S.run,q:f.get('q'),k:Number(f.get('k')),refresh:f.get('refresh')==='on'}));return}
+  if(e.target.id==='settingsForm'){const values={};for(const fl of S.settings.fields){const input=main.querySelector(`[data-key="${fl.key}"]`);const value=fl.kind==='bool'?input.checked:['int','float'].includes(fl.kind)?Number(input.value):input.value;const old=Array.isArray(fl.value)?fl.value.join(','):fl.value??'';if(value!==old)values[fl.key]=value}await api('/api/settings',{},{values});await settings();notice('Đã lưu. Cấu hình áp dụng từ lượt kế tiếp.',true)}
+ }catch(err){fail(err);if(e.target.id==='queryForm')$('#queryOut').innerHTML=''}});
+$('#closeDetail').onclick=()=>$('#detail').close();
+addEventListener('resize',()=>drawEdges());
+async function poll(){if(S.view!=='overview'||$('#detail').open)return;try{await overview();$('#connection').textContent='Đã kết nối · '+when(new Date().toISOString())+' · tự làm mới 5 giây'}catch(e){$('#connection').textContent='Không kết nối được';fail(e)}}
+applyHash().then(()=>$('#connection').textContent='Đã kết nối · tự làm mới 5 giây').catch(fail);setInterval(poll,5000);pollControls();setInterval(pollControls,5000);
 </script>
 </body>
 </html>

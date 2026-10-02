@@ -1,9 +1,9 @@
 # Schema catalog du lịch V-OTA
 
-Tài liệu tham chiếu cho `products.jsonl` · 11.387 sản phẩm · bản 23/09/2026 · **sinh tự động bởi `make_docs.py`, không sửa tay**
+Tài liệu tham chiếu cho `products.jsonl` · 11.387 sản phẩm · bản 23/09/2026 · ban đầu sinh bởi `make_docs.py` (đã gỡ ngày 29/09/2026), từ đó sửa tay khi thêm khoá
 
 Bản máy đọc được, liệt kê **mọi** khoá `attributes` theo từng loại kèm độ phủ: **`template.json`** cùng thư mục
-(sinh lại bằng `python make_template.py`). Tài liệu này giải thích các khoá quan trọng; `template.json` là danh
+(bản 23/09/2026; công cụ sinh lại `make_template.py` đã gỡ ngày 29/09/2026). Tài liệu này giải thích các khoá quan trọng; `template.json` là danh
 sách đầy đủ. Bản ghi thật để đọc và chạy thử: **`sample/`**.
 
 ---
@@ -64,6 +64,7 @@ products = [json.loads(line) for line in open("products.jsonl", encoding="utf-8"
 | `url` | URL | 100% | Trang nguồn của sản phẩm |
 | `fieldSources` | object | 100% | Trường nào lấy từ nguồn nào, ví dụ `{"unitPrice": "booking.com", "description": "vinpearl"}` |
 | `sameAs` | array | 2% | `sourceRef` của các bản ghi cùng sản phẩm ở nguồn khác đã gộp vào dòng này |
+| `mergedInto` | string | mới | Chỉ có trong `cdp.products`, không có trong `products.jsonl`: `product_id` của dòng mà dòng này đã được gộp vào khi nạp DB (nạp theo phần hoặc lượt sau gộp trùng hai dòng đã nạp riêng); dòng mang khoá này có `available = false` và không được tra theo `sourceRef`/`sameAs` nữa. Xem `docs/plan/2026-09-28-pipeline-chay-lien-tuc.md` (L4) |
 | `brand` | string | 5% | Thương hiệu, chủ yếu là `Vinpearl` |
 
 ### 3.2 Vị trí
@@ -152,6 +153,16 @@ products = [json.loads(line) for line in open("products.jsonl", encoding="utf-8"
 | `datesSeen` | array | 4% | Các ngày bay (giờ VN) mà trip.com liệt kê chuyến này; `availableFrom/To` là ngày nhỏ nhất/lớn nhất trong đây |
 | `monthlyPrices` | object | <1% | Tuyến: giá trung bình một chiều theo tháng |
 | `roundTripFrom` | number | <1% | Tuyến: giá khứ hồi rẻ nhất |
+| `tripType` | string | Vé mới | `oneWay` hoặc `roundTrip`; khứ hồi vẫn là `level: flight` |
+| `cabinClass` | string | Khi nguồn xác nhận | `ECONOMY`, `PREMIUM_ECONOMY`, `BUSINESS`, `FIRST`; thiếu thì chưa biết |
+| `fixedDepartureDate` | boolean | Báo giá có ngày | `true`: job cào giữ nguyên ngày hai chặng; seed demo dời vào cửa sổ khi ngày đi nằm ngoài cửa sổ (`docs/prd/data-model.md` §3, `docs/spec/MOCK_DATA_SPEC.md` §2.1) |
+| `returnFlight` | object | Khứ hồi | Số hiệu, hãng, sân bay đi/đến, `departureAt`, `arrivalAt` của chặng về |
+| `returnDate`, `stayDays` | date, integer | Khứ hồi | Ngày về và khoảng ngày; không dùng để nhân giá hoặc ghi `using_date_to` |
+| `priceValidUntil`, `priceObservedAt` | date, datetime | Khi nguồn cung cấp | Hạn báo giá và thời điểm quan sát; hết hạn không đồng nghĩa hết chỗ |
+| `simulated` | boolean | Vé mô phỏng | `true`: vé Thương gia "(giá minh hoạ)" sinh khi nạp DB, `sourceRef` `demo:business:…`, `fieldSources.unitPrice = "mô phỏng"`; không phải giá nguồn (`docs/prd/data-model.md` §3). Normalizer không sinh khoá này |
+
+Bổ sung phục vụ FR-CAT-01, FR-CAT-03 theo PRD đã chốt ngày 29/09/2026: mỗi hành trình/ngày/hạng là một sản phẩm đặt được riêng; giữ ID các vé cũ. `unitPrice` là giá toàn hành trình cho một người lớn (`priceBasis: per_person`), `quantity` là số khách. Giá cả nhóm không được chia để suy ra giá một người. Khứ hồi Trip chỉ nhận cặp đi/về đầy đủ, sân bay đảo chiều, ngày giờ hợp lệ và giá tổng từ nguồn; dữ liệu cũ thiếu hạng không được tự gán phổ thông/thương gia. Tất cả thuộc tính bổ sung nằm trong JSONB, giữ 13 trường cấp cao nhất.
+
 
 **Nguồn toạ độ** (`locationSource`): `booking.com` 9.466 · `ourairports` 579 · `trip.com` 568 · `agoda.com` 496 · `vinpearl` 95 · `destination_center` 79 · `manual` 52 · `osm` 52.
 **Độ chính xác** (`locationPrecision`): `exact` 10.432 · `airport` 579 · `venue` 297 · `destination` 79.
@@ -254,7 +265,12 @@ Hợp đồng dùng thang 0–5, một chữ số thập phân; `reviewCount` l�
 |---|---|---|---|
 | 1 | `reviewScore`, `reviewScoreScale` | 2.292 sản phẩm (2.291 thang 10) | `rating = round(reviewScore / reviewScoreScale × 5, 1)`, `reviewCount = reviewCount` |
 | 2 | `tripAdvisorRating`, `tripAdvisorReviewCount` | 15 khách sạn Vinpearl, thang 5 | giữ nguyên |
-| — | không có điểm | còn lại | `rating = null`, `reviewCount = null` — kể cả 178 sản phẩm có `reviewCount` mà không có điểm |
+| 3 | `rating`, `ratingScale` | 178 điểm tham quan (snapshot 2026-09-30, thang 5) | `rating = round(rating / ratingScale × 5, 1)`, `reviewCount = reviewCount` |
+| — | không có điểm | còn lại | `rating = null`, `reviewCount = null` — kể cả khi có `reviewCount` |
+
+Nguồn đầu tiên có điểm hợp lệ thắng; `reviewCount` luôn lấy cùng nguồn với `rating`. Code: `RATING_SOURCES` trong
+`src/backend/app/domain/catalog/models.py`. Nguồn 3 có từ snapshot 2026-09-30: 178 sản phẩm trước đây chỉ có
+`reviewCount` nay có thêm điểm.
 
 ### 8.2 `attributes`
 

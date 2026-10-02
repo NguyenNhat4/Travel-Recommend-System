@@ -38,6 +38,7 @@ import logging
 import re
 from collections import Counter
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from urllib.parse import quote_plus
 
 from .common import (
@@ -282,7 +283,11 @@ class TripFlights(TripCrawler):
         nodes = _ld_nodes(html)
         if not any(n.get("@type") in ("Product", "Flight") for n in nodes):
             return None
-        return {"ld": [n for n in nodes if n.get("@type") in ("Product", "Flight", "BreadcrumbList")]}
+        payload = {"ld": [n for n in nodes if n.get("@type") in ("Product", "Flight", "BreadcrumbList")]}
+        cards = rt_cabin_cards(html)
+        if cards:
+            payload["rtCards"] = cards
+        return payload
 
     def parse(self, payload: dict, url: str) -> dict | None:
         return parse_route(payload, url)
@@ -339,6 +344,7 @@ def parse_route(payload: dict, url: str) -> dict | None:
             round_trips.append({**item, "leg": "out" if node_id.startswith("rt-out") else "in"})
     if not product and not flights:
         return None
+    apply_rt_cabins(round_trips, payload.get("rtCards"))
     durations = [f["durationMinutes"] for f in flights + round_trips if f.get("durationMinutes")]
     return {
         "recordType": "trip_route",
@@ -358,6 +364,81 @@ def parse_route(payload: dict, url: str) -> dict | None:
         "flights": flights,
         "roundTripLegs": round_trips,
     }
+
+
+# Hạng vé của vé khứ hồi: thẻ khứ hồi trên trang tuyến ghi hạng từng chặng ("Economy class"…). JSON-LD không có hạng.
+CABIN_TEXT = (
+    (re.compile(r"(?i)premium\s+economy|phổ thông đặc biệt"), "PREMIUM_ECONOMY"),
+    (re.compile(r"(?i)economy|phổ thông"), "ECONOMY"),
+    (re.compile(r"(?i)business|thương gia"), "BUSINESS"),
+    (re.compile(r"(?i)first\s+class|hạng nhất"), "FIRST"),
+)
+ICT = timezone(timedelta(hours=7))  # giờ Việt Nam, như normalise.ICT
+CARD_DATE_RE = re.compile(r"(\d{1,2})\s*thg\s*(\d{1,2})")
+
+
+def _cabin_code(text: str) -> str | None:
+    return next((code for pattern, code in CABIN_TEXT if pattern.search(text or "")), None)
+
+
+def rt_cabin_cards(html: str) -> list[dict]:
+    """Thẻ khứ hồi theo thứ tự trên trang: ngày đi / ngày về ("T7, 31 thg 10") và hạng từng chặng."""
+    if "flightcard_depcode_rt_to" not in html:
+        return []
+    from bs4 import BeautifulSoup
+    soup = BeautifulSoup(html, "lxml")
+    cards = []
+    for start in soup.select('[test-item="flightcard_depcode_rt_to"]'):
+        card = start
+        while card is not None and not card.select('[test-item="flightcard_saleprice_rt"]'):
+            card = card.parent
+        if card is None or len(card.select('[test-item="flightcard_depcode_rt_to"]')) != 1:
+            continue  # khối gom nhiều thẻ, không phải một thẻ khứ hồi
+        text = lambda item: (lambda e: e.get_text(" ", strip=True) if e else "")(card.select_one(f'[test-item="{item}"]'))
+        cards.append({"outDate": text("flightcard_date_rt_to"), "returnDate": text("flightcard_date_rt_return"),
+                      "cabins": [e.get_text(" ", strip=True) for e in card.select("._flightcard-comfort-cabin")]})
+    return cards
+
+
+def _local_day_month(value: str | None) -> tuple[int, int] | None:
+    try:
+        moment = datetime.fromisoformat(str(value).replace("Z", "+00:00")).astimezone(ICT)
+    except ValueError:
+        return None
+    return moment.day, moment.month
+
+
+def _card_day_month(text: str) -> tuple[int, int] | None:
+    m = CARD_DATE_RE.search(text or "")
+    return (int(m.group(1)), int(m.group(2))) if m else None
+
+
+def _card_cabins(texts: list[str]) -> tuple[str, str] | None:
+    """(hạng chặng đi, hạng chặng về) của một thẻ. Hai dòng: mỗi chặng một dòng. Nhiều dòng (chuyến nối chặng, mỗi chặng con một
+    dòng): chỉ nhận khi mọi dòng cùng một hạng. Dòng trống / không đọc được, hoặc lẫn hạng: None (chưa biết)."""
+    cabins = [_cabin_code(t) for t in texts]
+    if len(cabins) < 2 or None in cabins:
+        return None
+    if len(cabins) == 2:
+        return cabins[0], cabins[1]
+    return (cabins[0], cabins[0]) if len(set(cabins)) == 1 else None
+
+
+def apply_rt_cabins(legs: list[dict], cards: list[dict] | None) -> None:
+    """Gắn cabinClass cho từng chặng khi thẻ khứ hồi khớp đúng cặp chặng JSON-LD: cùng số lượng, cùng thứ tự, mọi thẻ cùng ngày
+    đi / về với cặp tương ứng — lệch ở bất kỳ thẻ nào thì không gắn gì cho cả trang. Thẻ khớp mà không đọc được hạng thì cặp đó giữ
+    chưa biết (không đoán)."""
+    pairs = [(go, back) for go, back in zip(legs, legs[1:]) if go.get("leg") == "out" and back.get("leg") == "in"]
+    if not cards or len(cards) != len(pairs):
+        return
+    for (go, back), card in zip(pairs, cards):
+        if (_card_day_month(card.get("outDate")) != _local_day_month(go.get("departureTime"))
+                or _card_day_month(card.get("returnDate")) != _local_day_month(back.get("departureTime"))):
+            return
+    for (go, back), card in zip(pairs, cards):
+        cabins = _card_cabins(card.get("cabins") or [])
+        if cabins:
+            go["cabinClass"], back["cabinClass"] = cabins
 
 
 def _iso_minutes(value: str | None) -> int | None:

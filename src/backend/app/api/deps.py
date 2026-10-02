@@ -8,14 +8,20 @@ from typing import Any
 
 from fastapi import Depends, Header, Request
 
-from src.backend.app.application.auth.errors import AuthError, TokenInvalid, Unauthenticated
+from src.backend.app.application.auth.bearer import bearer_token, principal_from_header, verified_principal
+from src.backend.app.application.auth.errors import AuthError, Unauthenticated
 from src.backend.app.application.auth.principal import AuthPrincipal
 from src.backend.app.application.itinerary.use_cases import PlanItinerary
+from src.backend.app.application.itinerary.history import ConversationHistory
 from src.backend.app.core.config import Settings, get_settings
 
 
 def get_plan_itinerary(request: Request) -> PlanItinerary:
     return request.app.state.plan_itinerary
+
+
+def get_conversation_history(request: Request) -> ConversationHistory:
+    return request.app.state.conversation_history
 
 
 def get_search(request: Request) -> Any:
@@ -62,24 +68,8 @@ def get_use_case(name: str):
     return dependency
 
 
-def _bearer(authorization: str | None) -> str | None:
-    if authorization is None:
-        return None
-    scheme, _, token = authorization.partition(" ")
-    if scheme.casefold() != "bearer" or not token.strip():
-        raise TokenInvalid("Authorization không phải Bearer")
-    return token.strip()
-
-
 def get_revoked_tokens(request: Request) -> Any:
     return getattr(request.app.state, "revoked_tokens", None)
-
-
-async def _verified(token: str, verifier, revoked) -> AuthPrincipal:
-    principal = verifier.verify(token)
-    if principal.token_id and revoked is not None and await revoked.is_revoked(principal.token_id):
-        raise TokenInvalid("jti đã bị thu hồi")
-    return principal
 
 
 async def optional_principal(
@@ -87,18 +77,33 @@ async def optional_principal(
     revoked=Depends(get_revoked_tokens),
 ) -> AuthPrincipal | None:
     """Không có Bearer → khách (None). Bearer hỏng → 401, KHÔNG hạ thành khách (§3.11 dòng 2)."""
-    token = _bearer(authorization)
-    return await _verified(token, verifier, revoked) if token is not None else None
+    return await principal_from_header(authorization, verifier, revoked)
+
+
+async def conversation_owner(request: Request, authorization: str | None = Header(default=None)) -> str | None:
+    """Chủ hội thoại của trợ lý = cdp_user_id của Bearer hợp lệ, để token được BFF làm mới vẫn cùng chủ.
+
+    Không có hoặc hỏng Bearer → None, không 401: contract stream không khai báo 401; agent tự trả
+    INVALID_TOKEN khi gọi Recommendation bằng token đó.
+    """
+    verifier = getattr(request.app.state, "token_verifier", None)
+    if verifier is None:
+        return None
+    try:
+        principal = await principal_from_header(authorization, verifier, get_revoked_tokens(request))
+    except AuthError:
+        return None
+    return principal.cdp_user_id if principal else None
 
 
 async def current_principal(
     authorization: str | None = Header(default=None), verifier=Depends(get_token_verifier),
     revoked=Depends(get_revoked_tokens),
 ) -> AuthPrincipal:
-    token = _bearer(authorization)
+    token = bearer_token(authorization)
     if token is None:
         raise Unauthenticated("cần đăng nhập")
-    return await _verified(token, verifier, revoked)
+    return await verified_principal(token, verifier, revoked)
 
 
 def require_service_token(

@@ -17,7 +17,7 @@ flowchart TB
         BFF[BFF: Next.js route handler\ncookie phiên HttpOnly, CSRF, giữ token]
     end
 
-    Redis[(Redis 7\nsession, rate limit)]
+    Redis[(Redis 7\nsession, rate limit,\nhội thoại trợ lý 24h)]
 
     subgraph Gateway["Lớp Cổng Giao Tiếp (API Gateway / FastAPI)"]
         Router[REST API Router & Auth Middleware]
@@ -55,7 +55,7 @@ flowchart TB
     end
 
     subgraph VectorStore["Lớp Lưu Trữ Vector (Weaviate)"]
-        WvProduct[(Collection: Product\nvector 1024 · HNSW cosine)]
+        WvProduct[(Collection: Product\nvector 1024 · ANN cosine)]
     end
 
     subgraph External["Dịch Vụ Mở Rộng & Bên Thứ Ba"]
@@ -70,6 +70,7 @@ flowchart TB
     BFF -->|Bearer JWT + X-Service-Token| Router
     BFF --> Redis
     Router --> Redis
+    AIAgent --> Redis
     Router --> Contract
     Contract --> UseCase
     UseCase --> Domain
@@ -108,10 +109,11 @@ src/backend/app/
 │   ├── ports/               # Giao diện trừu tượng, MỖI PORT MỘT FILE: cdp_client, insider_client, embedder,
 │   │                        #   vector_store, payment_gateway, llm, contract_validator, itinerary_tools, auth...
 │   └── <domain>/            # Use case theo domain (auth, booking, catalog, itinerary, recommendation, search, tracking)
+│                            #   itinerary/engine_tools.py: tool itinerary gọi engine search/recommendation/catalog trong tiến trình (ITINERARY_DATA_MODE=inprocess)
 ├── infrastructure/          # LỚP 3: hiện thực port
 │   ├── persistence/         # PostgreSQL qua DATABASE_URL (role vota_app); conversation store
 │   ├── cdp/                 # Mọi adapter CDP: LocalCdpClient, đọc lịch sử, HttpCdpClient, hàng đợi ghi event nền
-│   ├── clients/             # HTTP client ra service ngoài, gồm HttpInsiderClient; fixture itinerary cho ITINERARY_DATA_MODE=fixture
+│   ├── clients/             # HTTP client ra service ngoài, gồm HttpInsiderClient; tool itinerary dạng fixture (=fixture, mặc định dev/test) và HTTP tuỳ chọn (=http)
 │   ├── auth/                # Hash mật khẩu, JWT
 │   ├── llm/                 # Adapter LLM provider (agent lấy LLM qua port llm, không tự import SDK)
 │   ├── embeddings/          # CohereEmbedder (embed-multilingual-v3.0)
@@ -121,7 +123,7 @@ src/backend/app/
 ├── agents/                  # LangGraph: state, graph, node, steps/ (luật của từng bước) và tools/; hiện thực port planner itinerary
 ├── api/                     # LỚP 4: chỉ xử lý HTTP
 │   ├── deps.py              # FastAPI Depends: lấy use case đã nối sẵn, route không tự lắp ráp
-│   ├── middleware.py        # Request ID, CORS...
+│   ├── middleware.py        # Request ID, CORS, đo thời gian / trạng thái request cho /metrics...
 │   ├── errors.py            # Error Envelope + exception handler
 │   └── v1/
 │       ├── router.py        # Router v1 duy nhất; route không tự khai prefix /api/v1
@@ -151,6 +153,7 @@ Mỗi domain có namespace riêng trong `domain/` và `application/` để các 
 8. **`api`** chỉ gọi use case trong `application`, không import `agents` hay `infrastructure`. Use case itinerary gọi agent qua port; `main.py` nối LangGraph vào port đó.
 9. **`core`** không import FastAPI. Phần dính framework (middleware, exception handler) nằm trong `api/`.
 10. Bản giả dùng cho test đặt ở `tests/fakes/`, không đặt trong `infrastructure/`.
+    Đo lần gọi (web / agent) đi qua port `call_telemetry` trong `application/ports/`; bộ nhớ đệm sự kiện hiện thực ở `infrastructure/`, endpoint ở `api/` (`docs/prd/deployment-plan.md` §5).
 11. Quy tắc 1–9 được kiểm tự động bằng test trong `tests/architecture/`; test này chạy trong CI như unit test.
 
 ```text
@@ -168,14 +171,20 @@ Trợ lý lập lịch trình không phải là một chuỗi prompt đơn giả
 
 ```mermaid
 stateDiagram-v2
-    [*] --> AnalyzeIntent: Người dùng gửi yêu cầu
-    AnalyzeIntent --> CheckClarification: Trích xuất thông tin (Điểm đến, Ngày, Ngân sách)
+    [*] --> ClassifyTurn: Người dùng gửi yêu cầu
+    ClassifyTurn --> Converse: Trò chuyện / ngoài phạm vi (đặt chỗ, chèn lệnh) / tin nhắn rác, tục tĩu (luật tất định, không gọi LLM)
+    Converse --> [*]: Trả lời hoặc từ chối, không gọi tool
+    ClassifyTurn --> AnalyzeIntent: Yêu cầu du lịch
+    AnalyzeIntent --> CheckClarification: Trích xuất thông tin (Điểm đến, Ngày, Số người, Ngân sách)
     
-    CheckClarification --> AskUser: Thiếu thông tin thiết yếu
+    CheckClarification --> AskUser: Lượt đầu thiếu thông tin, hoặc chưa hỏi ngày đi–số người–ngân sách
+    CheckClarification --> AskUser: Người dùng muốn đổi thông tin chuyến đi mà chưa nói đổi thành gì
+    AskUser --> SuggestForm: Đã hỏi một lượt mà vẫn thiếu điểm đến/số ngày
+    SuggestForm --> [*]: Form đã điền sẵn gợi ý; xác nhận đổ câu yêu cầu vào ô nhập
     AskUser --> [*]: Chờ phản hồi tiếp theo
     
     CheckClarification --> SearchCandidates: Đủ thông tin cơ bản
-    SearchCandidates --> ToolCatalogSearch: Gọi Tool tìm kiếm phòng & tour thật
+    SearchCandidates --> ToolCatalogSearch: Gọi Tool tìm kiếm phòng & tour thật (và Similar khi đổi món)
     ToolCatalogSearch --> ValidateAvailability: Kiểm tra lịch trống & giá
     
     SearchCandidates --> NoResults: Không có sản phẩm thật phù hợp
@@ -188,11 +197,13 @@ stateDiagram-v2
 ```
 
 ### Tiêu chuẩn Grounding (Chống Bịa Đặt):
-- **Không suy đoán dữ liệu sản phẩm:** LLM chỉ đóng vai trò phân tích ý định ngôn ngữ và sắp xếp lịch trình thời gian. Mọi thông tin về `productId`, `title`, `price`, `imageUrl` bắt buộc phải được lấy nguyên trạng từ kết quả trả về của `ToolCatalogSearch`.
+- **Không suy đoán dữ liệu sản phẩm:** LLM chỉ đóng vai trò phân tích ý định ngôn ngữ và sắp xếp lịch trình thời gian. Mọi thông tin về `productId`, `title`, `price`, `imageUrl` bắt buộc phải được lấy nguyên trạng từ kết quả trả về của công cụ truy xuất (`ToolCatalogSearch`): Search, Recommendation, hoặc Similar (`getSimilarProducts`) khi đổi một sản phẩm đã hiển thị.
 - **Response phân biệt theo `status`:** `ItineraryResponse` là `oneOf` gồm `COMPLETED`, `NEEDS_CLARIFICATION`, `NO_RESULTS`, `FALLBACK` (`src/shared/contracts/schemas/itinerary-agent.yaml`). Trường cụ thể theo contract, không theo ví dụ trong PRD.
-- **Backend tự tính tổng tiền;** giá thiếu thì tổng là `null` kèm cảnh báo, không coi thiếu giá là 0.
+- **Backend tự tính tổng tiền.** Điểm tham quan tự do — điểm tham quan hoặc golf có `ticketed = false`, hoặc không có giá — tính 0 đ vào tổng và hiển thị là "tham quan tự do", không hiển thị là có giá 0 đ. Mục khác thiếu giá (khách sạn, vé máy bay, combo...) thì tổng là `null` kèm cảnh báo, không coi thiếu giá là 0.
 - **LLM lỗi:** dùng fallback dựa trên luật hoặc trả `FALLBACK`/lỗi có kiểm soát.
-- **Hội thoại** lưu intent đã chuẩn hóa (TTL mục tiêu 24 giờ); giá và tình trạng còn chỗ luôn được tải lại, không dùng bản lưu trong hội thoại.
+- **Lọc đầu vào trước LLM (NFR-SEC-04):** `ClassifyTurn` chạy luật tất định trước khi gọi LLM: mẫu chèn lệnh/đòi secret, rồi lọc tin nhắn rác (rỗng, ký tự lặp, tỉ lệ chữ thấp, gõ bậy, tục tĩu). Khớp thì trả câu cố định, không gọi LLM nào. Giới hạn tần suất gửi tin nằm ở route API, trước khi graph chạy.
+- **Ngữ cảnh cho LLM:** mọi lượt gọi LLM (phân luồng, trích intent, chọn điểm đến, lập tool plan, viết câu trả lời) nhận cùng ngữ cảnh hội thoại: lịch sử gần nhất có giới hạn, chuyến đi đã chốt, sản phẩm đã cho xem và câu hỏi gần nhất của trợ lý. Ngữ cảnh là dữ liệu không tin cậy, không phải chỉ dẫn.
+- **Hội thoại** có hai tầng lưu: Redis giữ working memory 24 giờ (intent, ràng buộc, lịch sử gần nhất và sản phẩm vừa hiển thị); Postgres giữ lâu dài các lượt `user`/`assistant` của người dùng đã đăng nhập trong `app.conversations` và `app.conversation_messages`. Web cho phép user đã đăng nhập liệt kê, mở lại và tiếp tục hội thoại của chính mình. Ghi archive lỗi không làm hỏng lượt chat. Giá và tình trạng còn chỗ luôn được tải lại, không dùng bản lưu trong hội thoại.
 
 ---
 
@@ -203,11 +214,11 @@ stateDiagram-v2
 | **Backend Framework** | **Python 3.11+, FastAPI, Pydantic v2** | Hiệu năng cao nhờ AsyncIO, tự động sinh OpenAPI spec, xác thực dữ liệu chặt chẽ bằng Pydantic. |
 | **Orchestration Agent**| **LangGraph (LangChain ecosystem)** | Quản lý đồ thị trạng thái (Stateful Multi-turn), kiểm soát luồng rẽ nhánh chặt chẽ, dễ debug. |
 | **Cơ sở dữ liệu chính** | **PostgreSQL 16** | Lưu trữ quan hệ ACID cho `cdp`, `catalog`, `app` và database `insider`. Không còn cần extension `pgvector` — vector đã tách sang Weaviate. |
-| **Cơ sở dữ liệu vector** | **Weaviate** | Dịch vụ vector riêng, có volume riêng nên **không bị dựng lại mỗi lần seed Postgres** — đây là lý do tách khỏi pgvector. HNSW + cosine là mặc định; hỗ trợ hybrid search (BM25 + vector) natively, khớp FR-SRC-01. |
+| **Cơ sở dữ liệu vector** | **Weaviate** | Dịch vụ vector riêng, có volume riêng nên **không bị dựng lại mỗi lần seed Postgres** — đây là lý do tách khỏi pgvector. Index ANN + cosine (HNSW ở local/self-host, `hfresh` trên Weaviate Cloud nếu gói chỉ cho phép loại này); hỗ trợ hybrid search (BM25 + vector) natively, khớp FR-SRC-01. |
 | **Cổng thanh toán** | **Stripe (test mode), Stripe Checkout hosted page** | V-OTA không chạm dữ liệu thẻ; có sẵn 3DS; có thẻ test cho từng loại lỗi; webhook có chữ ký. |
 | **Mô hình Embedding** | **Cohere `embed-multilingual-v3.0`** | Đa ngôn ngữ (bao gồm tiếng Việt), gọi qua API nên máy dev không phải tải model về. **1024 chiều.** Bắt buộc phân biệt `input_type`: `search_document` khi nạp, `search_query` khi truy vấn. |
 | **Frontend Framework** | **React / Next.js / TypeScript** | Xây dựng giao diện Single Page Application linh hoạt, tương tác mượt mà, type-safety cao. |
-| **Session store & rate limit** | **Redis 7** (`maxmemory-policy noeviction`) | Giữ phiên web, bộ đếm rate limit/lockout, khoá refresh. Mất dữ liệu thì người dùng chỉ phải đăng nhập lại; refresh token vẫn thu hồi được nhờ bản bền trong `app.refresh_tokens`. Không dùng `allkeys-lru` vì sẽ ngẫu nhiên đá người dùng ra. |
+| **Session store, rate limit & working memory** | **Redis 7** (`maxmemory-policy noeviction`) | Giữ phiên web, bộ đếm rate limit/lockout, khoá refresh và working memory 24 giờ của trợ lý ở DB index riêng. Mất dữ liệu thì trợ lý nạp lại bản archive gần nhất cho user đăng nhập hoặc bắt đầu ngữ cảnh mới cho khách; lịch sử lâu dài vẫn còn trong Postgres. Không dùng `allkeys-lru`. |
 | **Quản trị API** | **OpenAPI 3.1.0 Contract-First** | Hợp đồng giao tiếp trung tâm, tự động sinh mock server và kiểm tra tính tuân thủ của các nhóm phát triển. |
 | **Container & Triển khai**| **Docker, Docker Compose** | Đóng gói môi trường đồng nhất giữa phát triển local và máy chủ staging. |
 
@@ -255,7 +266,7 @@ src/
 └── cdp_clone/         # service HTTP tạm gác; hiện CDP clone là schema `cdp` trong `db/`
 ```
 
-Ngoài `src/`: `db/` (DDL, initdb, migration, verify), `docs/` (`prd/`, `spec/`, `plan/` — xem `AGENTS.md` §7), `history/`. Các thư mục cũ ở gốc `src/` (`src/agents`, `src/api`, `src/models`, `src/services`, `src/main.py`, `src/config.py`) đã bị xoá; không tạo lại. `src/__init__.py` được giữ để import dạng `src.backend.app…` chạy được.
+Ngoài `src/`: `db/` (DDL, initdb, migration, verify), `docs/` (`prd/`, `spec/`, `plan/`, `guide/` — xem `AGENTS.md` §7; `guide/` chứa hướng dẫn cho người phát triển như cách đọc code, cách chạy, quy trình — không tạo quy tắc mới, khi lệch PRD, contract hoặc `AGENTS.md` thì các nguồn đó thắng), `history/`. Các thư mục cũ ở gốc `src/` (`src/agents`, `src/api`, `src/models`, `src/services`, `src/main.py`, `src/config.py`) đã bị xoá; không tạo lại. `src/__init__.py` được giữ để import dạng `src.backend.app…` chạy được.
 
 ### 6.2. Quy tắc frontend
 

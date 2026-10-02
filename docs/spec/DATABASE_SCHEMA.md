@@ -2,7 +2,7 @@
 
 Bản 20/09/2026 · tuần 1 · đi kèm trang "V-OTA Database Schema" (artifact). **Đây là nguồn DDL duy nhất** của hệ thống (`vota_schema.sql`, `insider_schema.sql` ở cuối). `PRODUCT_SCHEMA.md` giải thích sâu phần product catalog; `SCHEMA.md` là contract của file `products.jsonl`.
 
-Hai database trên một PostgreSQL 16 (docker-compose): `vota` với ba schema `cdp` (mirror CDP), `catalog` (dựng lại được), `app` (trạng thái BE/FE/agent); và `insider` (mock của Insider, service riêng). 23 bảng, 4 view (`vota` 18 bảng + 3 view, `insider` 5 bảng + 1 view — đếm lại 24/09/2026 sau migration `0003_booking_payments` thêm `app.payments`; con số "20 bảng" trước đây có từ trước khi migration `0001_auth_p0` thêm `refresh_tokens`, `login_attempts` và `schema_migrations`). Vector sản phẩm KHÔNG nằm trong Postgres — collection `Product` trên Weaviate giữ vector (`docs/prd/data-model.md` §1). Cả hai DDL đã chạy thử và qua test ràng buộc, quyền, TTL.
+Hai database trên một PostgreSQL 16 (docker-compose): `vota` với ba schema `cdp` (mirror CDP), `catalog` (dựng lại được), `app` (trạng thái BE/FE/agent); và `insider` (mock của Insider, service riêng). 24 bảng, 4 view (`vota` 19 bảng + 3 view, `insider` 5 bảng + 1 view — đếm lại 29/09/2026 sau migration `0005_checkout_travelers` thêm `app.booking_travelers`; trước đó 23 bảng, đếm 24/09/2026 sau migration `0003_booking_payments` thêm `app.payments`; con số "20 bảng" trước đây có từ trước khi migration `0001_auth_p0` thêm `refresh_tokens`, `login_attempts` và `schema_migrations`). Vector sản phẩm KHÔNG nằm trong Postgres — collection `Product` trên Weaviate giữ vector (`docs/prd/data-model.md` §1). Cả hai DDL đã chạy thử và qua test ràng buộc, quyền, TTL.
 
 ---
 
@@ -30,7 +30,7 @@ Hai database trên một PostgreSQL 16 (docker-compose): `vota` với ba schema 
 |---|---|---|---|---|
 | `vota.cdp` | `products` · `profiles` · `events` — mirror CDP field-for-field | Loader (crawl, seed_histories); backend ghi `events`/`profiles` **chỉ qua `LocalCdpClient`** (connection riêng `CDP_DATABASE_URL`, role `cdp_writer`) | `CdpClient` (role `cdp_reader`/`cdp_writer`, không có USAGE trên `catalog`/`app`); `vota_app` chỉ SELECT `cdp.products` để dựng `catalog.*` | `HttpCdpClient` thay `LocalCdpClient`; `cdp.products` vẫn là bảng local do job sync ghi qua CdpClient; `events`/`profiles` local không dùng nữa |
 | `vota.catalog` | `product_meta` (view) · `combo_items` · `product_parents` · `search_rows` | Job `parse_combos` | Search, Recsys, Product detail | Giữ nguyên — dựng lại từ `cdp.products` |
-| `vota.app` | `users` · `carts` · `cart_items` · `bookings` · `booking_items` · `payments` · `conversations` · `conversation_messages` · `itineraries` · `recommendation_logs` · `search_logs` | Backend (role `vota_app`), agent, job | Backend, Evaluation (chỉ đọc) | Giữ nguyên — phải backup |
+| `vota.app` | `users` · `carts` · `cart_items` · `bookings` · `booking_items` · `booking_travelers` · `payments` · `conversations` · `conversation_messages` · `itineraries` · `recommendation_logs` · `search_logs` | Backend (role `vota_app`), agent, job | Backend, Evaluation (chỉ đọc) | Giữ nguyên — phải backup |
 | database `insider` | `partners` · `insider_profiles` · `identifiers` · `insider_events` (+ view `live_events`) · `channel_events` | Chỉ Insider clone service | Chỉ Insider clone service; V-OTA đi qua HTTP (`InsiderClient`) | Thay bằng Insider thật |
 
 Feedback loop (handbook §2) nằm trọn trong `vota`: checkout ghi `app.bookings` + `cdp.events` (cùng `event_group_id`) → User Profile Builder đọc `cdp.events` và dịch vụ vector → `/recommendations` đổi → tuần 5 batch đẩy sang Insider làm attribute. Không có mũi tên nào từ Insider về CDP. Web (React) chỉ nói chuyện với backend qua REST/JSON + JWT, không chạm DB. Data collection và Evaluation là Python, ghi một lần theo job / chỉ đọc.
@@ -127,7 +127,7 @@ erDiagram
 
 ## 4. ERD — schema `app` (BE · FE · agent)
 
-Mọi bảng móc vào `cdp.profiles` qua `cdp_user_id` — danh tính duy nhất của khách; `app.users` chỉ là credential + persona demo. CDP không có bảng booking, nên đơn nối sang `cdp.events` bằng `event_group_id` (trường CDP thật có) — mỗi dòng `booking_items` ứng với đúng một event `purchase` cùng `event_group_id`, `product_id`, `using_date`; không có FK tới `events.event_id` vì đó là id nội bộ của clone. `conversations` + `conversation_messages` + `itineraries` là toàn bộ trạng thái agent (intent chuẩn hoá, TTL 24h, plan JSON theo UX spec §6.4, `product_ids` để kiểm tra grounding). `search_logs` tồn tại vì UserEvent `search` của CDP không có chỗ chứa câu truy vấn. `refresh_tokens` và `login_attempts` là phần **bền** của auth hybrid (`docs/hop-dong-tich-hop-auth.md` §16.2): session, bộ đếm rate limit và OAuth state nằm ở Redis vì mất đi thì người dùng chỉ phải đăng nhập lại, còn hai bảng này phải thu hồi được kể cả khi Redis trống.
+Mọi bảng móc vào `cdp.profiles` qua `cdp_user_id` — danh tính duy nhất của khách; `app.users` chỉ là credential + persona demo. CDP không có bảng booking, nên đơn nối sang `cdp.events` bằng `event_group_id` (trường CDP thật có) — mỗi dòng `booking_items` ứng với đúng một event `purchase` cùng `event_group_id`, `product_id`, `using_date`; không có FK tới `events.event_id` vì đó là id nội bộ của clone. Redis giữ working memory agent 24 giờ; `conversations` + `conversation_messages` là archive lâu dài của user đăng nhập và `itineraries` giữ plan JSON theo UX spec §6.4 cùng `product_ids` để kiểm tra grounding. `expires_at` đánh dấu hạn working memory, không phải lịch xoá archive. `search_logs` tồn tại vì UserEvent `search` của CDP không có chỗ chứa câu truy vấn. `refresh_tokens` và `login_attempts` là phần **bền** của auth hybrid (`docs/hop-dong-tich-hop-auth.md` §16.2): session, bộ đếm rate limit và OAuth state nằm ở Redis vì mất đi thì người dùng chỉ phải đăng nhập lại, còn hai bảng này phải thu hồi được kể cả khi Redis trống.
 
 ```mermaid
 erDiagram
@@ -185,6 +185,9 @@ erDiagram
         date using_date_to "trả phòng, NULL với vé"
         numeric unit_price_snapshot
         timestamptz added_at
+        int adults "≥ 1; tổng adults + children ≤ 9"
+        int children "≥ 0"
+        numeric child_unit_price_snapshot "NULL = trẻ em trả giá người lớn"
     }
     bookings {
         uuid booking_id PK
@@ -234,7 +237,20 @@ erDiagram
         date using_date_to
         text[] guest_names
         text special_request "yêu cầu riêng của từng dòng"
-        numeric line_total "GENERATED"
+        numeric line_total "Backend ghi = tổng dòng giá"
+        jsonb metadata "fares, travelerRefs, rooms"
+    }
+    booking_travelers {
+        uuid traveler_id PK
+        uuid booking_id FK "xoá theo đơn"
+        text traveler_ref "mã tạm do Web sinh"
+        int position "1..9"
+        text traveler_type "adult · child"
+        text surname
+        text given_names
+        text full_name
+        date birth_date "bắt buộc với trẻ em; không qua API"
+        jsonb documents "FR-BKG-13: title, nationality, docType, docNumber, docExpiry, escortTravelerRef; API chỉ trả 4 số cuối"
     }
     conversations {
         uuid conversation_id PK
@@ -298,6 +314,7 @@ erDiagram
     products ||--o{ cart_items : ""
     profiles ||--o{ bookings : ""
     bookings ||--|{ booking_items : ""
+    bookings ||--o{ booking_travelers : ""
     bookings ||--o| payments : "1:1"
     products ||--o{ booking_items : ""
     bookings ||..|{ events : "event_group_id — không FK"
@@ -403,9 +420,10 @@ erDiagram
 | `combo_items` | catalog | Thành phần combo, parse từ description | parse_combos | 93 combo → ~250 dòng |
 | `users` | app | Credential + persona demo, 1:1 profile | seed + register | 4 persona + 50 test |
 | `carts`, `cart_items` | app | Giỏ phía server, một giỏ / user | backend | 0 |
+| `booking_travelers` | app | Đoàn khách của đơn (FR-BKG-08): họ, tên đệm và tên, loại khách, ngày sinh (trẻ em; người lớn khi có vé bay), giấy tờ cho vé bay `documents` (FR-BKG-13, migration `0006_traveler_documents`). Ngày sinh và số giấy tờ chỉ lưu ở đây, không trả qua API (chỉ 4 số cuối số giấy tờ), không gửi CDP, Insider, Stripe. Xoá theo đơn | backend | chỉ persona |
 | `bookings`, `booking_items` | app | Đơn đặt chỗ: giữ chỗ `pending_payment` 30 phút → `confirmed` khi Stripe thu tiền (hoặc `payment_failed` · `expired` · `cancelled`); tối đa một đơn `pending_payment` mỗi user (unique index một phần). 1 checkout = 1 event_group_id; nối sang event purchase bằng event_group_id + product_id + using_date | backend · seed persona | chỉ persona |
 | `payments` | app | Một phiên Stripe Checkout mỗi đơn; trạng thái thanh toán tách khỏi trạng thái đơn (spec booking §5.2). Không lưu dữ liệu thẻ, chỉ id của Stripe (NFR-SEC-03) | backend · seed (`provider = 'seed'` cho booking của P1) | booking của P1 |
-| `conversations`, `conversation_messages`, `itineraries` | app | Trạng thái agent, TTL 24h | backend | 0 |
+| `conversations`, `conversation_messages`, `itineraries` | app | Archive agent của user đăng nhập; working memory Redis TTL 24h, archive không tự xoá | backend | 0 |
 | `recommendation_logs` | app | Mỗi lần gọi /recommendations | backend · batch | 0 |
 | `search_logs` | app | Câu truy vấn thật + kết quả; không nối id với event | backend | 0 |
 | `refresh_tokens` | app | Chuỗi rotation một-lần-dùng; tái dùng → thu hồi cả family | backend (auth) | 0 |
@@ -693,7 +711,15 @@ CREATE TABLE app.cart_items (
     using_date_to        date,                                         -- trả phòng (hotel); NULL với vé, chuyến
     unit_price_snapshot  numeric(14,2) NOT NULL,                       -- giá lúc thêm; checkout so lại với products
     added_at             timestamptz NOT NULL DEFAULT now(),
+    -- Đoàn khách của mục (FR-BKG-08). Khách sạn: quantity là số phòng, adults + children là khách ở các phòng.
+    -- Dịch vụ tính theo người: quantity = adults + children. Combo: chỉ để ghi nhận.
+    adults               integer NOT NULL DEFAULT 1,
+    children             integer NOT NULL DEFAULT 0,
+    child_unit_price_snapshot numeric(14,2),                           -- giá vé trẻ em hợp lệ lúc thêm/sửa; NULL = trẻ em trả giá người lớn
     CONSTRAINT cart_items_dates CHECK (using_date_to IS NULL OR using_date_to > using_date),
+    CONSTRAINT cart_items_adults_min CHECK (adults >= 1),
+    CONSTRAINT cart_items_children_min CHECK (children >= 0),
+    CONSTRAINT cart_items_party_size CHECK (adults + children <= 9),
     CONSTRAINT cart_items_uq UNIQUE (cart_id, product_id, using_date)
 );
 
@@ -738,15 +764,37 @@ CREATE TABLE app.booking_items (
     quantity         integer NOT NULL CHECK (quantity > 0),
     using_date       date NOT NULL,
     using_date_to    date,
-    guest_names      text[],                                               -- tên khách nhận phòng / hành khách
+    guest_names      text[],                                               -- họ tên các khách của mục, theo thứ tự trong đoàn
     special_request  text,                                                 -- yêu cầu riêng của từng dòng (contract BookingItem.specialRequest)
-    line_total       numeric(14,2) GENERATED ALWAYS AS (unit_price * quantity) STORED,
+    -- Backend ghi = tổng các dòng giá của mục (metadata.fares). Không còn là cột sinh `unit_price * quantity`: cột sinh sai với
+    -- khách sạn nhiều đêm và với giá trẻ em (docs/spec/booking/checkout-nhieu-buoc-hanh-khach.md §2.2 L8, §9.1).
+    line_total       numeric(14,2) NOT NULL,
+    -- {"fares": [{fareType, unitPrice, count, nights, amount}], "travelerRefs": [...], "rooms": [{travelerRefs, leadTravelerRef}]}
+    metadata         jsonb NOT NULL DEFAULT '{}',
     -- event purchase tương ứng: cdp.events WHERE event_group_id = bookings.event_group_id
     --                                          AND product_id = booking_items.product_id AND using_date = booking_items.using_date
     CONSTRAINT booking_items_dates CHECK (using_date_to IS NULL OR using_date_to > using_date),
     CONSTRAINT booking_items_uq UNIQUE (booking_id, product_id, using_date)   -- khớp 1:1 với event purchase
 );
 CREATE INDEX booking_items_booking_idx ON app.booking_items (booking_id);
+
+-- app.booking_travelers — đoàn khách của đơn (FR-BKG-08). Ngày sinh chỉ lưu ở đây: không trả qua API, không gửi sang CDP,
+-- Insider hay Stripe. Xoá theo đơn. Họ tên khai ở hai ô; full_name do Backend nối từ hai ô.
+CREATE TABLE app.booking_travelers (
+    traveler_id    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    booking_id     uuid NOT NULL REFERENCES app.bookings (booking_id) ON DELETE CASCADE,
+    traveler_ref   text NOT NULL,                                          -- mã tạm do Web sinh; booking_items.metadata tham chiếu bằng mã này
+    position       integer NOT NULL CHECK (position BETWEEN 1 AND 9),      -- thứ tự khai báo; đoàn tối đa 9 người
+    traveler_type  text NOT NULL CHECK (traveler_type IN ('adult','child')),
+    surname        text NOT NULL,                                          -- Họ
+    given_names    text NOT NULL,                                          -- Tên đệm và tên
+    full_name      text NOT NULL,                                          -- surname + ' ' + given_names
+    birth_date     date,                                                   -- bắt buộc với trẻ em
+    documents      jsonb,                                                  -- FR-BKG-13, chỉ khi đơn có vé bay: {title, nationality, docType, docNumber, docExpiry, escortTravelerRef}; API chỉ trả 4 số cuối docNumber
+    CONSTRAINT booking_travelers_ref_uq UNIQUE (booking_id, traveler_ref),
+    CONSTRAINT booking_travelers_position_uq UNIQUE (booking_id, position),
+    CONSTRAINT booking_travelers_child_birth CHECK (traveler_type = 'adult' OR birth_date IS NOT NULL)
+);
 
 -- app.payments — một đơn một phiên thanh toán Stripe Checkout (FR-BKG-06). Trạng thái thanh toán tách khỏi trạng thái đơn:
 --   'đã nhận tiền' và 'đơn đã xác nhận' là hai việc khác nhau (Stripe đã thu nhưng CDP lỗi → payment succeeded, đơn vẫn pending_payment).

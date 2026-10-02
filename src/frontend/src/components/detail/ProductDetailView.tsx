@@ -10,8 +10,16 @@ import { fetchRecommendations } from '../../services/recsys';
 import { ApiError } from '../../services/http';
 import type { Product, RecommendationResponse } from '../../types/travel';
 import { TaxonomyBadge } from '../common/TaxonomyBadge';
+import { FlightSummary } from '../common/FlightSummary';
 import { PriceTag } from '../common/PriceTag';
 import { ProductCard } from '../common/ProductCard';
+import { formatVnd } from '../confirmation/bookingLabels';
+import type { CartState } from '../checkout/allocation';
+import { estimateFares } from '../checkout/fareEstimate';
+import { FareLines } from '../checkout/FareLines';
+import { GuestCounters } from '../checkout/GuestCounters';
+import { cartPayload, guestModeOf, initialCounts, isValidCounts, maxOccupancyFromAttributes, normalizeCounts } from '../checkout/guestCounts';
+import { parseTripContext } from '../../features/search/tripContext';
 import { MapPin, Star, ShieldCheck, Users, BedDouble, Plane, Loader2 } from 'lucide-react';
 
 /**
@@ -77,19 +85,6 @@ function variantFacts(variant: Product): string[] {
   }
   return facts;
 }
-
-const Stepper: React.FC<{ label: string; value: number; onChange: (value: number) => void }> = ({ label, value, onChange }) => (
-  <div>
-    <label className="block text-[11px] font-bold text-slate-600 mb-1">{label}</label>
-    <div className="flex items-center border border-slate-300 rounded-lg overflow-hidden w-32">
-      <button onClick={() => onChange(Math.max(1, value - 1))} aria-label={`Giảm ${label}`}
-        className="px-3 py-1 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-sm">–</button>
-      <span className="flex-1 text-center text-xs font-bold text-slate-800">{value}</span>
-      <button onClick={() => onChange(Math.min(20, value + 1))} aria-label={`Tăng ${label}`}
-        className="px-3 py-1 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-sm">+</button>
-    </div>
-  </div>
-);
 
 const DateInput: React.FC<{ label: string; value: string; min?: string; max?: string; onChange: (v: string) => void }> = ({
   label, value, min, max, onChange,
@@ -191,12 +186,35 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
   // Ngày và số lượng theo mục đặt được đang chọn.
   const [checkIn, setCheckIn] = useState('');
   const [checkOut, setCheckOut] = useState('');
-  const [quantity, setQuantity] = useState(1);
+  // Số khách/số phòng/số gói (spec checkout-nhieu-buoc-hanh-khach.md §6.9); đổi hạng phòng/chuyến bay thì đặt lại.
+  const [counts, setCounts] = useState<CartState>(initialCounts);
   useEffect(() => {
     if (!unit) return;
-    const start = defaultStart(unit);
+    const maxOut = unit.availableTo ? addDays(unit.availableTo, 1) : undefined;
+    let start = defaultStart(unit);
+    let out = clamp(addDays(start, 1), addDays(start, 1), maxOut);
+    let counts = initialCounts();
+
+    // Ngữ cảnh chuyến đi từ tấm tìm kiếm (?checkIn&checkOut&adults&children&rooms): chỉ điền sẵn khi hợp lệ với mục đang chọn;
+    // sai hoặc ngoài cửa sổ mở bán thì giữ mặc định. Backend vẫn là nơi quyết định (DATE_OUT_OF_RANGE, VALIDATION_ERROR).
+    const trip = parseTripContext(new URLSearchParams(window.location.search));
+    if (trip.checkIn && (!unit.availableFrom || trip.checkIn >= unit.availableFrom) && (!unit.availableTo || trip.checkIn <= unit.availableTo)) {
+      start = trip.checkIn;
+      out = trip.checkOut && (!maxOut || trip.checkOut <= maxOut) ? trip.checkOut : clamp(addDays(start, 1), addDays(start, 1), maxOut);
+    }
+    if (trip.adults) {
+      const candidate: CartState = {
+        quantity: unit.taxonomy === 'hotel' ? trip.rooms ?? counts.quantity : counts.quantity,
+        guests: { adults: trip.adults, children: trip.children ?? 0 },
+      };
+      const wanted = guestModeOf(unit.taxonomy);
+      if (isValidCounts(wanted, normalizeCounts(wanted, candidate), maxOccupancyFromAttributes(unit.attributes as Record<string, unknown>))) {
+        counts = normalizeCounts(wanted, candidate);
+      }
+    }
     setCheckIn(start);
-    setCheckOut(clamp(addDays(start, 1), addDays(start, 1), unit.availableTo ? addDays(unit.availableTo, 1) : undefined));
+    setCheckOut(out);
+    setCounts(counts);
   }, [unit?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isHotel = unit?.taxonomy === 'hotel';
@@ -204,7 +222,16 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
   const nights = isHotel && checkIn && checkOut
     ? Math.max(1, Math.round((new Date(checkOut).getTime() - new Date(checkIn).getTime()) / DAY_MS))
     : 1;
-  const estimatedTotal = bookable ? (unit.unitPrice as number) * (isHotel ? nights : 1) * quantity : null;
+  const mode = unit ? guestModeOf(unit.taxonomy) : 'person';
+  const unitAttributes = (unit?.attributes ?? null) as Record<string, unknown> | null;
+  const validCounts = bookable && isValidCounts(mode, counts, maxOccupancyFromAttributes(unitAttributes));
+  // Chỉ để hiển thị: giá chính thức do Backend tính khi thêm vào giỏ và ở bước thanh toán.
+  const estimate = bookable
+    ? estimateFares({
+      taxonomy: unit.taxonomy, unitPrice: unit.unitPrice as number, attributes: unitAttributes,
+      quantity: counts.quantity, nights: isHotel ? nights : null, adults: counts.guests.adults, children: counts.guests.children,
+    })
+    : null;
 
   // Sản phẩm tương tự: lỗi hoặc rỗng thì ẩn section.
   const [similar, setSimilar] = useState<Product[]>([]);
@@ -231,10 +258,14 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
   }, [product, currentPersona]);
 
   const handleAddToCart = () => {
-    if (bookable) void addToCart(unit, quantity, checkIn, isHotel ? checkOut : undefined);
+    if (!bookable || !validCounts) return;
+    const { quantity, guests } = cartPayload(mode, counts);
+    void addToCart(unit, quantity, checkIn, isHotel ? checkOut : undefined, guests ? { guests } : undefined);
   };
   const handleBookNow = async () => {
-    if (bookable && await addToCart(unit, quantity, checkIn, isHotel ? checkOut : undefined, { silent: true })) {
+    if (!bookable || !validCounts) return;
+    const { quantity, guests } = cartPayload(mode, counts);
+    if (await addToCart(unit, quantity, checkIn, isHotel ? checkOut : undefined, { silent: true, ...(guests ? { guests } : {}) })) {
       navigate('/checkout');
     }
   };
@@ -304,7 +335,7 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
             {product.address || product.destination}
           </span>
         </div>
-        <h1 className="text-xl sm:text-3xl font-black text-slate-900 tracking-tight">{product.name}</h1>
+        <h1 className="text-xl sm:text-3xl font-black text-slate-900">{product.name}</h1>
         {product.aggregateRating && (
           <p className="text-xs text-slate-500">
             ⭐ <strong className="text-slate-800 font-semibold">{product.aggregateRating.score}/5</strong>
@@ -374,6 +405,7 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
                             {!variant.available && <span className="font-semibold text-rose-600">Hết chỗ</span>}
                           </div>
                         </div>
+                        <FlightSummary product={variant} />
                         <PriceTag price={variant.unitPrice} taxonomy={variant.taxonomy} size="sm" className="shrink-0 items-end" />
                       </button>
                     );
@@ -392,7 +424,10 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
               {unit && needsVariant ? variantTitle(unit) : 'Giá công khai từ V-OTA'}
             </div>
             {unit ? (
-              <PriceTag price={unit.unitPrice} taxonomy={unit.taxonomy} size="lg" showTaxesIncluded={unit.unitPrice != null} />
+              <>
+                <PriceTag price={unit.unitPrice} taxonomy={unit.taxonomy} size="lg" showTaxesIncluded={unit.unitPrice != null} />
+                <FlightSummary product={unit} />
+              </>
             ) : (
               <PriceTag price={variantSummary?.minPrice ?? null} taxonomy={product.taxonomy} size="lg" hasPrefixFrom />
             )}
@@ -419,22 +454,17 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
               ) : (
                 <DateInput label="Ngày sử dụng" value={checkIn} min={unit.availableFrom} max={unit.availableTo} onChange={setCheckIn} />
               )}
-              <Stepper label={isHotel ? 'Số phòng' : unit.taxonomy === 'flight' ? 'Số hành khách' : 'Số lượng'}
-                value={quantity} onChange={setQuantity} />
+              <GuestCounters taxonomy={unit.taxonomy} unitPrice={unit.unitPrice as number} attributes={unitAttributes}
+                value={counts} onChange={setCounts} />
             </div>
           )}
 
-          {estimatedTotal != null && (
-            <div className="p-3 bg-slate-50 rounded-xl space-y-1 text-xs">
-              <div className="flex justify-between text-slate-500">
-                <span>Tạm tính:</span>
-                <span>{isHotel ? `${nights} đêm × ${quantity} phòng` : `${quantity} × ${new Intl.NumberFormat('vi-VN').format(unit!.unitPrice as number)} ₫`}</span>
-              </div>
-              <div className="flex justify-between items-baseline pt-1 border-t border-slate-200/80">
-                <span className="font-bold text-slate-800">Tổng ước tính:</span>
-                <span className="text-base font-extrabold text-blue-900 font-mono">
-                  {new Intl.NumberFormat('vi-VN').format(estimatedTotal)} ₫
-                </span>
+          {estimate && (
+            <div className="space-y-2" data-testid="estimate">
+              <FareLines fares={estimate.lines} testId="estimate-lines" />
+              <div className="flex justify-between items-baseline px-3 py-2 bg-slate-50 rounded-xl">
+                <span className="text-xs font-bold text-slate-800">Tổng ước tính:</span>
+                <span className="text-base font-extrabold text-blue-900 font-mono" data-testid="estimate-total">{formatVnd(estimate.total)}</span>
               </div>
             </div>
           )}
@@ -444,11 +474,11 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
           )}
 
           <div className="space-y-2">
-            <button onClick={handleAddToCart} disabled={!bookable}
+            <button onClick={handleAddToCart} disabled={!bookable || !validCounts}
               className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-bold text-sm rounded-xl shadow-xs transition-colors">
               Thêm vào giỏ hàng
             </button>
-            <button onClick={() => void handleBookNow()} disabled={!bookable}
+            <button onClick={() => void handleBookNow()} disabled={!bookable || !validCounts}
               className="w-full py-2.5 bg-blue-50 hover:bg-blue-100 disabled:bg-slate-100 disabled:text-slate-400 text-blue-700 font-bold text-xs rounded-xl border border-blue-200 transition-colors">
               Đặt ngay
             </button>
@@ -463,7 +493,7 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
 
       {similar.length > 0 && (
         <div className="pt-8 border-t border-slate-200 space-y-4">
-          <h2 className="text-lg font-black text-slate-900 tracking-tight">Tương tự {product.name}</h2>
+          <h2 className="text-lg font-black text-slate-900">Tương tự {product.name}</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {similar.slice(0, 8).map((sim) => <ProductCard key={sim.id} product={sim} variant="grid" />)}
           </div>
@@ -472,7 +502,7 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
 
       {tripRecs.length > 0 && (
         <div className="pt-8 border-t border-slate-200 space-y-4">
-          <h2 className="text-lg font-black text-slate-900 tracking-tight">Hoàn thiện chuyến {product.destination}</h2>
+          <h2 className="text-lg font-black text-slate-900">Hoàn thiện chuyến {product.destination}</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {tripRecs.map((rec) => (
               <ProductCard key={rec.product.id} product={rec.product} variant="grid" because={rec.because}

@@ -1,5 +1,6 @@
 import type { components } from '../types/api.gen';
 import type { AssistantRequest, AssistantResponse } from '../services/assistantStream';
+import type { AssistantConversationDetail } from '../services/assistantHistory';
 
 export type AssistantPhase =
   | 'idle'
@@ -13,6 +14,8 @@ export type AssistantPhase =
   | 'aborted';
 
 export type AssistantRequestSnapshot = AssistantRequest;
+
+export const CONVERSATION_RESTARTED_TEXT = 'Đã bắt đầu cuộc trò chuyện mới.';
 
 export interface AssistantProgress {
   sequence?: number;
@@ -62,6 +65,9 @@ type Action =
   | { type: 'node-completed'; progress: AssistantProgress }
   | { type: 'response-received'; response: AssistantResponse }
   | { type: 'request-failed'; error: AssistantError }
+  | { type: 'request-refused'; text: string }
+  | { type: 'conversation-restarted' }
+  | { type: 'conversation-loaded'; detail: AssistantConversationDetail }
   | { type: 'request-aborted' }
   | { type: 'slow-state'; isSlow: boolean }
   | { type: 'reset' }
@@ -91,7 +97,7 @@ export function createInitialAssistantState(conversationId: string | null = null
 
 function responseText(response: AssistantResponse): string {
   switch (response.status) {
-    case 'COMPLETED': return response.itinerary.title || 'Lịch trình đã được hoàn tất.';
+    case 'COMPLETED': return response.message || response.itinerary.title || 'Lịch trình đã được hoàn tất.';
     case 'NEEDS_CLARIFICATION': return response.question;
     case 'NO_RESULTS':
     case 'FALLBACK': return response.message;
@@ -135,7 +141,7 @@ export function assistantReducer(state: AssistantState, action: Action): Assista
     case 'topology-received':
       return { ...state, phase: 'streaming', topology: action.topology };
     case 'node-completed':
-      return { ...state, phase: 'streaming', progress: [...state.progress, action.progress] };
+      return { ...state, phase: 'streaming', progress: [...state.progress, action.progress], isSlow: false };
     case 'response-received':
       return {
         ...state,
@@ -160,6 +166,55 @@ export function assistantReducer(state: AssistantState, action: Action): Assista
           ? details.conversationId
           : state.conversationId;
       return { ...state, phase: 'failed', conversationId, error: action.error, isSlow: false };
+    }
+    case 'request-refused':
+      // Backend từ chối yêu cầu ngoài phạm vi (run.failed VALIDATION_ERROR): đó là lời đáp của trợ lý, không phải
+      // sự cố, nên vào transcript như một tin nhắn thường chứ không hiện khung lỗi.
+      return {
+        ...state,
+        phase: 'idle',
+        error: null,
+        isSlow: false,
+        transcript: [...state.transcript, {
+          id: `assistant-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          sender: 'assistant',
+          text: action.text,
+          createdAt: Date.now(),
+        }],
+      };
+    case 'conversation-restarted':
+      // Hợp đồng Frontend §8: hội thoại hết hạn thì bỏ conversationId và báo đã bắt đầu hội thoại mới.
+      return {
+        ...state,
+        conversationId: null,
+        transcript: [...state.transcript, {
+          id: `assistant-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          sender: 'assistant',
+          text: CONVERSATION_RESTARTED_TEXT,
+          createdAt: Date.now(),
+        }],
+      };
+    case 'conversation-loaded': {
+      const transcript = action.detail.messages.map((message) => ({
+        id: `archive-${message.messageId}`,
+        sender: message.role,
+        text: message.content,
+        response: message.response,
+        createdAt: new Date(message.createdAt).getTime(),
+      }));
+      const response = [...action.detail.messages].reverse().find((message) => message.response)?.response ?? null;
+      return {
+        ...state,
+        phase: response ? responsePhase(response) : 'idle',
+        transcript,
+        response,
+        conversationId: action.detail.conversation.conversationId,
+        topology: null,
+        progress: [],
+        error: null,
+        lastRequest: null,
+        isSlow: false,
+      };
     }
     case 'request-aborted':
       return { ...state, phase: 'aborted', error: null, isSlow: false };

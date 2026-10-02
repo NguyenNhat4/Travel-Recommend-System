@@ -1,0 +1,673 @@
+case_id	query	slice	filter_json	expected_no_result	source_refs	review_note
+c0001	khách sạn ở Huế	dest_type			228a3f3c-633c-555f-bfba-48fc86de32c3	hotel:Huế
+c0002	tìm khách sạn ở Huế	dest_type			228a3f3c-633c-555f-bfba-48fc86de32c3	hotel:Huế
+c0003	khách sạn ở Huế, có lựa chọn nào?	dest_type			228a3f3c-633c-555f-bfba-48fc86de32c3	hotel:Huế
+c0004	khách sạn nghỉ dưỡng tại Hạ Long	dest_type			957dbd7e-d450-5899-a69f-c039b45f21a6	hotel:Hạ Long
+c0005	tìm khách sạn nghỉ dưỡng tại Hạ Long	dest_type			957dbd7e-d450-5899-a69f-c039b45f21a6	hotel:Hạ Long
+c0006	khách sạn nghỉ dưỡng tại Hạ Long, có lựa chọn nào?	dest_type			957dbd7e-d450-5899-a69f-c039b45f21a6	hotel:Hạ Long
+c0007	chỗ nghỉ tại TP. Hồ Chí Minh	dest_type			ec609267-080e-5f93-bbeb-5f5e49609220	hotel:TP. Hồ Chí Minh
+c0008	tìm chỗ nghỉ tại TP. Hồ Chí Minh	dest_type			ec609267-080e-5f93-bbeb-5f5e49609220	hotel:TP. Hồ Chí Minh
+c0009	chỗ nghỉ tại TP. Hồ Chí Minh, có lựa chọn nào?	dest_type			ec609267-080e-5f93-bbeb-5f5e49609220	hotel:TP. Hồ Chí Minh
+c0010	tìm nơi lưu trú ở Huế	dest_type			921c85e6-02b6-5090-b520-442a92e49177	hotel:Huế
+c0011	tìm nơi lưu trú ở Huế, gợi ý thêm	dest_type			921c85e6-02b6-5090-b520-442a92e49177	hotel:Huế
+c0012	nơi lưu trú ở Huế, có lựa chọn nào?	dest_type			921c85e6-02b6-5090-b520-442a92e49177	hotel:Huế
+c0013	khách sạn ở Hạ Long	dest_type			d813601b-53cb-551e-8751-b50041a116e6	hotel:Hạ Long
+c0014	tìm khách sạn ở Hạ Long	dest_type			d813601b-53cb-551e-8751-b50041a116e6	hotel:Hạ Long
+c0015	khách sạn ở Hạ Long, có lựa chọn nào?	dest_type			d813601b-53cb-551e-8751-b50041a116e6	hotel:Hạ Long
+c0016	khách sạn nghỉ dưỡng tại Đà Nẵng	dest_type			76afc449-0348-5d88-8060-ee45db8060d7	hotel:Đà Nẵng
+c0017	tìm khách sạn nghỉ dưỡng tại Đà Nẵng	dest_type			76afc449-0348-5d88-8060-ee45db8060d7	hotel:Đà Nẵng
+c0018	khách sạn nghỉ dưỡng tại Đà Nẵng, có lựa chọn nào?	dest_type			76afc449-0348-5d88-8060-ee45db8060d7	hotel:Đà Nẵng
+c0019	chỗ nghỉ tại Hà Tĩnh	dest_type			ba972b34-67ef-5129-a397-73c21cf90b43	hotel:Hà Tĩnh
+c0020	tìm chỗ nghỉ tại Hà Tĩnh	dest_type			ba972b34-67ef-5129-a397-73c21cf90b43	hotel:Hà Tĩnh
+c0021	chỗ nghỉ tại Hà Tĩnh, có lựa chọn nào?	dest_type			ba972b34-67ef-5129-a397-73c21cf90b43	hotel:Hà Tĩnh
+c0022	tìm nơi lưu trú ở Hội An	dest_type			4aa7cd5d-c25d-5454-91c5-075abf29f0e4	hotel:Hội An
+c0023	tìm nơi lưu trú ở Hội An, gợi ý thêm	dest_type			4aa7cd5d-c25d-5454-91c5-075abf29f0e4	hotel:Hội An
+c0024	nơi lưu trú ở Hội An, có lựa chọn nào?	dest_type			4aa7cd5d-c25d-5454-91c5-075abf29f0e4	hotel:Hội An
+c0025	khách sạn ở Nghệ An	dest_type			3cf2dca6-6b9f-587d-bf1e-bf2942ae1ecd	hotel:Nghệ An
+c0026	tìm khách sạn ở Nghệ An	dest_type			3cf2dca6-6b9f-587d-bf1e-bf2942ae1ecd	hotel:Nghệ An
+c0027	khách sạn ở Nghệ An, có lựa chọn nào?	dest_type			3cf2dca6-6b9f-587d-bf1e-bf2942ae1ecd	hotel:Nghệ An
+c0028	khách sạn nghỉ dưỡng tại Hội An	dest_type			564d842d-1ab7-528e-bde8-fb3f09c34546	hotel:Hội An
+c0029	tìm khách sạn nghỉ dưỡng tại Hội An	dest_type			564d842d-1ab7-528e-bde8-fb3f09c34546	hotel:Hội An
+c0030	khách sạn nghỉ dưỡng tại Hội An, có lựa chọn nào?	dest_type			564d842d-1ab7-528e-bde8-fb3f09c34546	hotel:Hội An
+c0031	chỗ nghỉ tại Sa Pa	dest_type			012f74ab-daf8-575d-bfac-4738d70e30ae	hotel:Sa Pa
+c0032	tìm chỗ nghỉ tại Sa Pa	dest_type			012f74ab-daf8-575d-bfac-4738d70e30ae	hotel:Sa Pa
+c0033	chỗ nghỉ tại Sa Pa, có lựa chọn nào?	dest_type			012f74ab-daf8-575d-bfac-4738d70e30ae	hotel:Sa Pa
+c0034	tìm nơi lưu trú ở Cần Thơ	dest_type			5f057869-f9c7-53e9-9051-926ba91821fa	hotel:Cần Thơ
+c0035	tìm nơi lưu trú ở Cần Thơ, gợi ý thêm	dest_type			5f057869-f9c7-53e9-9051-926ba91821fa	hotel:Cần Thơ
+c0036	nơi lưu trú ở Cần Thơ, có lựa chọn nào?	dest_type			5f057869-f9c7-53e9-9051-926ba91821fa	hotel:Cần Thơ
+c0037	điểm vui chơi ở Phú Quốc	dest_type			75fe14ec-f89b-52b1-b78b-d5069053db81	attraction:Phú Quốc
+c0038	tìm điểm vui chơi ở Phú Quốc	dest_type			75fe14ec-f89b-52b1-b78b-d5069053db81	attraction:Phú Quốc
+c0039	điểm vui chơi ở Phú Quốc, có lựa chọn nào?	dest_type			75fe14ec-f89b-52b1-b78b-d5069053db81	attraction:Phú Quốc
+c0040	vé tham quan tại Phú Quốc	dest_type			21ce625f-ca09-5002-b11a-9108d37851ba	attraction:Phú Quốc
+c0041	tìm vé tham quan tại Phú Quốc	dest_type			21ce625f-ca09-5002-b11a-9108d37851ba	attraction:Phú Quốc
+c0042	vé tham quan tại Phú Quốc, có lựa chọn nào?	dest_type			21ce625f-ca09-5002-b11a-9108d37851ba	attraction:Phú Quốc
+c0043	hoạt động trải nghiệm ở Hà Nội	dest_type			aefa524b-5bb6-5612-ac6a-5d2b105e6260	attraction:Hà Nội
+c0044	tìm hoạt động trải nghiệm ở Hà Nội	dest_type			aefa524b-5bb6-5612-ac6a-5d2b105e6260	attraction:Hà Nội
+c0045	hoạt động trải nghiệm ở Hà Nội, có lựa chọn nào?	dest_type			aefa524b-5bb6-5612-ac6a-5d2b105e6260	attraction:Hà Nội
+c0046	điểm vui chơi ở Hải Phòng	dest_type			973f1f04-6e0f-5380-a7b9-46718793a73d	attraction:Hải Phòng
+c0047	tìm điểm vui chơi ở Hải Phòng	dest_type			973f1f04-6e0f-5380-a7b9-46718793a73d	attraction:Hải Phòng
+c0048	điểm vui chơi ở Hải Phòng, có lựa chọn nào?	dest_type			973f1f04-6e0f-5380-a7b9-46718793a73d	attraction:Hải Phòng
+c0049	vé tham quan tại Nha Trang	dest_type			664d015f-3e4b-5451-babc-b5809a9110fc	attraction:Nha Trang
+c0050	tìm vé tham quan tại Nha Trang	dest_type			664d015f-3e4b-5451-babc-b5809a9110fc	attraction:Nha Trang
+c0051	vé tham quan tại Nha Trang, có lựa chọn nào?	dest_type			664d015f-3e4b-5451-babc-b5809a9110fc	attraction:Nha Trang
+c0052	hoạt động trải nghiệm ở Nghệ An	dest_type			40c5fa48-c149-5555-8a0b-c53999e4a0aa	attraction:Nghệ An
+c0053	tìm hoạt động trải nghiệm ở Nghệ An	dest_type			40c5fa48-c149-5555-8a0b-c53999e4a0aa	attraction:Nghệ An
+c0054	hoạt động trải nghiệm ở Nghệ An, có lựa chọn nào?	dest_type			40c5fa48-c149-5555-8a0b-c53999e4a0aa	attraction:Nghệ An
+c0055	combo du lịch Quy Nhơn	dest_type			d52491b3-9572-56c5-9905-3693d313680c	combo:Quy Nhơn
+c0056	tìm combo du lịch Quy Nhơn	dest_type			d52491b3-9572-56c5-9905-3693d313680c	combo:Quy Nhơn
+c0057	combo du lịch Quy Nhơn, có lựa chọn nào?	dest_type			d52491b3-9572-56c5-9905-3693d313680c	combo:Quy Nhơn
+c0058	gói vui chơi ở Hội An	dest_type			28d47af9-8a61-5e5b-bb10-c0ef46309e17	combo:Hội An
+c0059	tìm gói vui chơi ở Hội An	dest_type			28d47af9-8a61-5e5b-bb10-c0ef46309e17	combo:Hội An
+c0060	gói vui chơi ở Hội An, có lựa chọn nào?	dest_type			28d47af9-8a61-5e5b-bb10-c0ef46309e17	combo:Hội An
+c0061	combo trải nghiệm tại Phú Quốc	dest_type			5db73de6-6ad1-5e1c-b91c-6418f1e1c5a2	combo:Phú Quốc
+c0062	tìm combo trải nghiệm tại Phú Quốc	dest_type			5db73de6-6ad1-5e1c-b91c-6418f1e1c5a2	combo:Phú Quốc
+c0063	combo trải nghiệm tại Phú Quốc, có lựa chọn nào?	dest_type			5db73de6-6ad1-5e1c-b91c-6418f1e1c5a2	combo:Phú Quốc
+c0064	combo du lịch Hà Tĩnh	dest_type			5e325d4d-71b9-589b-9b4e-fbf76971bee1	combo:Hà Tĩnh
+c0065	tìm combo du lịch Hà Tĩnh	dest_type			5e325d4d-71b9-589b-9b4e-fbf76971bee1	combo:Hà Tĩnh
+c0066	combo du lịch Hà Tĩnh, có lựa chọn nào?	dest_type			5e325d4d-71b9-589b-9b4e-fbf76971bee1	combo:Hà Tĩnh
+c0067	gói vui chơi ở Nghệ An	dest_type			da3bb972-51c9-5f4b-ba0a-40e3dfa7a23a	combo:Nghệ An
+c0068	tìm gói vui chơi ở Nghệ An	dest_type			da3bb972-51c9-5f4b-ba0a-40e3dfa7a23a	combo:Nghệ An
+c0069	gói vui chơi ở Nghệ An, có lựa chọn nào?	dest_type			da3bb972-51c9-5f4b-ba0a-40e3dfa7a23a	combo:Nghệ An
+c0070	vé máy bay đến Hà Nội	dest_type			529b1c55-bfee-5642-8698-9ade07434086	flight:Hà Nội
+c0071	tìm vé máy bay đến Hà Nội	dest_type			529b1c55-bfee-5642-8698-9ade07434086	flight:Hà Nội
+c0072	vé máy bay đến Hà Nội, có lựa chọn nào?	dest_type			529b1c55-bfee-5642-8698-9ade07434086	flight:Hà Nội
+c0073	chuyến bay đi TP. Hồ Chí Minh	dest_type			7a99ab9b-2d95-500f-b30d-7895261132a1	flight:TP. Hồ Chí Minh
+c0074	tìm chuyến bay đi TP. Hồ Chí Minh	dest_type			7a99ab9b-2d95-500f-b30d-7895261132a1	flight:TP. Hồ Chí Minh
+c0075	chuyến bay đi TP. Hồ Chí Minh, có lựa chọn nào?	dest_type			7a99ab9b-2d95-500f-b30d-7895261132a1	flight:TP. Hồ Chí Minh
+c0076	đường bay tới Huế	dest_type			8f55c820-7f47-54e0-9260-f8857522d332	flight:Huế
+c0077	tìm đường bay tới Huế	dest_type			8f55c820-7f47-54e0-9260-f8857522d332	flight:Huế
+c0078	đường bay tới Huế, có lựa chọn nào?	dest_type			8f55c820-7f47-54e0-9260-f8857522d332	flight:Huế
+c0079	vé máy bay đến Đà Nẵng	dest_type			180b3e07-2c39-535c-a12c-6999ff2b7a59	flight:Đà Nẵng
+c0080	tìm vé máy bay đến Đà Nẵng	dest_type			180b3e07-2c39-535c-a12c-6999ff2b7a59	flight:Đà Nẵng
+c0081	vé máy bay đến Đà Nẵng, có lựa chọn nào?	dest_type			180b3e07-2c39-535c-a12c-6999ff2b7a59	flight:Đà Nẵng
+c0082	chuyến bay đi Nghệ An	dest_type			ba6aaebb-5b3e-548a-9901-54b5a2c4ef6b	flight:Nghệ An
+c0083	tìm chuyến bay đi Nghệ An	dest_type			ba6aaebb-5b3e-548a-9901-54b5a2c4ef6b	flight:Nghệ An
+c0084	chuyến bay đi Nghệ An, có lựa chọn nào?	dest_type			ba6aaebb-5b3e-548a-9901-54b5a2c4ef6b	flight:Nghệ An
+c0085	sân golf ở Nha Trang	dest_type			83b5cf28-6d82-5037-9b05-f4bf2feb6edb	golf:Nha Trang
+c0086	tìm sân golf ở Nha Trang	dest_type			83b5cf28-6d82-5037-9b05-f4bf2feb6edb	golf:Nha Trang
+c0087	sân golf ở Nha Trang, có lựa chọn nào?	dest_type			83b5cf28-6d82-5037-9b05-f4bf2feb6edb	golf:Nha Trang
+c0088	voucher golf tại Hội An	dest_type			a86717ae-2a66-5aa0-9def-7e42f56fc40f	golf:Hội An
+c0089	tìm voucher golf tại Hội An	dest_type			a86717ae-2a66-5aa0-9def-7e42f56fc40f	golf:Hội An
+c0090	voucher golf tại Hội An, có lựa chọn nào?	dest_type			a86717ae-2a66-5aa0-9def-7e42f56fc40f	golf:Hội An
+c0091	chỗ nghỉ Huế cho gia đình có trẻ nhỏ	audience_style			b45efb39-80ad-52ef-b019-7f9cbab19b9a	familyFriendly=true
+c0092	tìm chỗ nghỉ Huế cho gia đình có trẻ nhỏ	audience_style			b45efb39-80ad-52ef-b019-7f9cbab19b9a	familyFriendly=true
+c0093	chỗ nghỉ Huế cho gia đình có trẻ nhỏ, ưu tiên nơi được đánh giá tốt	audience_style			b45efb39-80ad-52ef-b019-7f9cbab19b9a	familyFriendly=true
+c0094	chỗ nghỉ Đà Nẵng cho gia đình có trẻ nhỏ	audience_style			db1b55d0-1f9e-5bb3-8710-9aaf59bfd60b	familyFriendly=true
+c0095	tìm chỗ nghỉ Đà Nẵng cho gia đình có trẻ nhỏ	audience_style			db1b55d0-1f9e-5bb3-8710-9aaf59bfd60b	familyFriendly=true
+c0096	chỗ nghỉ Đà Nẵng cho gia đình có trẻ nhỏ, ưu tiên nơi được đánh giá tốt	audience_style			db1b55d0-1f9e-5bb3-8710-9aaf59bfd60b	familyFriendly=true
+c0097	chỗ nghỉ Côn Đảo cho gia đình có trẻ nhỏ	audience_style			0d79852f-bd42-5f09-8650-146201828dec	familyFriendly=true
+c0098	tìm chỗ nghỉ Côn Đảo cho gia đình có trẻ nhỏ	audience_style			0d79852f-bd42-5f09-8650-146201828dec	familyFriendly=true
+c0099	chỗ nghỉ Côn Đảo cho gia đình có trẻ nhỏ, ưu tiên nơi được đánh giá tốt	audience_style			0d79852f-bd42-5f09-8650-146201828dec	familyFriendly=true
+c0100	chỗ nghỉ TP. Hồ Chí Minh cho gia đình có trẻ nhỏ	audience_style			e701edd6-a701-5170-9693-690a438e455a	familyFriendly=true
+c0101	tìm chỗ nghỉ TP. Hồ Chí Minh cho gia đình có trẻ nhỏ	audience_style			e701edd6-a701-5170-9693-690a438e455a	familyFriendly=true
+c0102	chỗ nghỉ TP. Hồ Chí Minh cho gia đình có trẻ nhỏ, ưu tiên nơi được đánh giá tốt	audience_style			e701edd6-a701-5170-9693-690a438e455a	familyFriendly=true
+c0103	chỗ nghỉ Hà Nội cho gia đình có trẻ nhỏ	audience_style			727ebb66-9292-5955-a0b2-5bd060a4cb33	familyFriendly=true
+c0104	tìm chỗ nghỉ Hà Nội cho gia đình có trẻ nhỏ	audience_style			727ebb66-9292-5955-a0b2-5bd060a4cb33	familyFriendly=true
+c0105	chỗ nghỉ Hà Nội cho gia đình có trẻ nhỏ, ưu tiên nơi được đánh giá tốt	audience_style			727ebb66-9292-5955-a0b2-5bd060a4cb33	familyFriendly=true
+c0106	khách sạn Phú Quốc có wifi và bàn làm việc cho chuyến công tác	audience_style			e2538316-77a6-537f-8132-cba65566e073	amenities:WiFi miễn phí|Bàn làm việc
+c0107	tìm khách sạn Phú Quốc có wifi và bàn làm việc cho chuyến công tác	audience_style			e2538316-77a6-537f-8132-cba65566e073	amenities:WiFi miễn phí|Bàn làm việc
+c0108	khách sạn Phú Quốc có wifi và bàn làm việc cho chuyến công tác, ưu tiên nơi được đánh giá tốt	audience_style			e2538316-77a6-537f-8132-cba65566e073	amenities:WiFi miễn phí|Bàn làm việc
+c0109	khách sạn Sa Pa có wifi và bàn làm việc cho chuyến công tác	audience_style			2d1d0e31-16ee-5ca3-9d74-7125716b30a6|706be203-711c-5e93-977f-f4f22c04258b	amenities:WiFi miễn phí|Bàn làm việc
+c0110	tìm khách sạn Sa Pa có wifi và bàn làm việc cho chuyến công tác	audience_style			2d1d0e31-16ee-5ca3-9d74-7125716b30a6|706be203-711c-5e93-977f-f4f22c04258b	amenities:WiFi miễn phí|Bàn làm việc
+c0111	khách sạn Sa Pa có wifi và bàn làm việc cho chuyến công tác, ưu tiên nơi được đánh giá tốt	audience_style			2d1d0e31-16ee-5ca3-9d74-7125716b30a6|706be203-711c-5e93-977f-f4f22c04258b	amenities:WiFi miễn phí|Bàn làm việc
+c0112	khách sạn Quy Nhơn có wifi và bàn làm việc cho chuyến công tác	audience_style			1439b5cc-9b15-514b-8b8b-3aef77d8b81a	amenities:WiFi miễn phí|Bàn làm việc
+c0113	tìm khách sạn Quy Nhơn có wifi và bàn làm việc cho chuyến công tác	audience_style			1439b5cc-9b15-514b-8b8b-3aef77d8b81a	amenities:WiFi miễn phí|Bàn làm việc
+c0114	khách sạn Quy Nhơn có wifi và bàn làm việc cho chuyến công tác, ưu tiên nơi được đánh giá tốt	audience_style			1439b5cc-9b15-514b-8b8b-3aef77d8b81a	amenities:WiFi miễn phí|Bàn làm việc
+c0115	khách sạn Hà Tĩnh có wifi và bàn làm việc cho chuyến công tác	audience_style			6210192c-d1f9-5879-958a-8735ec554d17	amenities:WiFi miễn phí|Bàn làm việc
+c0116	tìm khách sạn Hà Tĩnh có wifi và bàn làm việc cho chuyến công tác	audience_style			6210192c-d1f9-5879-958a-8735ec554d17	amenities:WiFi miễn phí|Bàn làm việc
+c0117	khách sạn Hà Tĩnh có wifi và bàn làm việc cho chuyến công tác, ưu tiên nơi được đánh giá tốt	audience_style			6210192c-d1f9-5879-958a-8735ec554d17	amenities:WiFi miễn phí|Bàn làm việc
+c0118	khách sạn Phan Thiết có wifi và bàn làm việc cho chuyến công tác	audience_style			0e0b16a2-57f6-5d01-871b-6677fc2465c1	amenities:WiFi miễn phí|Bàn làm việc
+c0119	tìm khách sạn Phan Thiết có wifi và bàn làm việc cho chuyến công tác	audience_style			0e0b16a2-57f6-5d01-871b-6677fc2465c1	amenities:WiFi miễn phí|Bàn làm việc
+c0120	khách sạn Phan Thiết có wifi và bàn làm việc cho chuyến công tác, ưu tiên nơi được đánh giá tốt	audience_style			0e0b16a2-57f6-5d01-871b-6677fc2465c1	amenities:WiFi miễn phí|Bàn làm việc
+c0121	chỗ nghỉ yên tĩnh ở Hạ Long cho cặp đôi	audience_style			50771017-3a4b-5155-8468-1b99b71f96a4	description:yên tĩnh|cặp đôi
+c0122	tìm chỗ nghỉ yên tĩnh ở Hạ Long cho cặp đôi	audience_style			50771017-3a4b-5155-8468-1b99b71f96a4	description:yên tĩnh|cặp đôi
+c0123	chỗ nghỉ yên tĩnh ở Hạ Long cho cặp đôi, ưu tiên nơi được đánh giá tốt	audience_style			50771017-3a4b-5155-8468-1b99b71f96a4	description:yên tĩnh|cặp đôi
+c0124	chỗ nghỉ yên tĩnh ở Hải Phòng cho cặp đôi	audience_style			89afa70b-e8d0-5008-a33d-150aa5e5f501	description:yên tĩnh|cặp đôi
+c0125	tìm chỗ nghỉ yên tĩnh ở Hải Phòng cho cặp đôi	audience_style			89afa70b-e8d0-5008-a33d-150aa5e5f501	description:yên tĩnh|cặp đôi
+c0126	chỗ nghỉ yên tĩnh ở Hải Phòng cho cặp đôi, ưu tiên nơi được đánh giá tốt	audience_style			89afa70b-e8d0-5008-a33d-150aa5e5f501	description:yên tĩnh|cặp đôi
+c0127	chỗ nghỉ yên tĩnh ở Buôn Ma Thuột cho cặp đôi	audience_style			08f5a073-2578-55e3-b452-d6f630209f4a	description:yên tĩnh|cặp đôi
+c0128	tìm chỗ nghỉ yên tĩnh ở Buôn Ma Thuột cho cặp đôi	audience_style			08f5a073-2578-55e3-b452-d6f630209f4a	description:yên tĩnh|cặp đôi
+c0129	chỗ nghỉ yên tĩnh ở Buôn Ma Thuột cho cặp đôi, ưu tiên nơi được đánh giá tốt	audience_style			08f5a073-2578-55e3-b452-d6f630209f4a	description:yên tĩnh|cặp đôi
+c0130	chỗ nghỉ yên tĩnh ở Hội An cho cặp đôi	audience_style			ccf208bb-0474-5f6c-b790-8c219571a339	description:yên tĩnh|cặp đôi
+c0131	tìm chỗ nghỉ yên tĩnh ở Hội An cho cặp đôi	audience_style			ccf208bb-0474-5f6c-b790-8c219571a339	description:yên tĩnh|cặp đôi
+c0132	chỗ nghỉ yên tĩnh ở Hội An cho cặp đôi, ưu tiên nơi được đánh giá tốt	audience_style			ccf208bb-0474-5f6c-b790-8c219571a339	description:yên tĩnh|cặp đôi
+c0133	chỗ nghỉ yên tĩnh ở Nghệ An cho cặp đôi	audience_style			981e42ae-60b4-547e-a387-c1a5f50018af	description:yên tĩnh|cặp đôi
+c0134	tìm chỗ nghỉ yên tĩnh ở Nghệ An cho cặp đôi	audience_style			981e42ae-60b4-547e-a387-c1a5f50018af	description:yên tĩnh|cặp đôi
+c0135	chỗ nghỉ yên tĩnh ở Nghệ An cho cặp đôi, ưu tiên nơi được đánh giá tốt	audience_style			981e42ae-60b4-547e-a387-c1a5f50018af	description:yên tĩnh|cặp đôi
+c0136	nơi ở Pleiku cho nhóm 4 người	audience_style			8fced474-aece-5493-9990-51c668b3ff42|dabbd9f3-d086-5ced-b40e-53903f4d6cb0	child.maxOccupancy>=4
+c0137	tìm nơi ở Pleiku cho nhóm 4 người	audience_style			8fced474-aece-5493-9990-51c668b3ff42|dabbd9f3-d086-5ced-b40e-53903f4d6cb0	child.maxOccupancy>=4
+c0138	nơi ở Pleiku cho nhóm 4 người, ưu tiên nơi được đánh giá tốt	audience_style			8fced474-aece-5493-9990-51c668b3ff42|dabbd9f3-d086-5ced-b40e-53903f4d6cb0	child.maxOccupancy>=4
+c0139	nơi ở Thanh Hóa cho nhóm 4 người	audience_style			a7c00f8d-58e5-5e4d-a320-45f12c6eedf2|8155d33a-c55a-5de8-ba70-e7fde258998c	child.maxOccupancy>=4
+c0140	tìm nơi ở Thanh Hóa cho nhóm 4 người	audience_style			a7c00f8d-58e5-5e4d-a320-45f12c6eedf2|8155d33a-c55a-5de8-ba70-e7fde258998c	child.maxOccupancy>=4
+c0141	nơi ở Thanh Hóa cho nhóm 4 người, ưu tiên nơi được đánh giá tốt	audience_style			a7c00f8d-58e5-5e4d-a320-45f12c6eedf2|8155d33a-c55a-5de8-ba70-e7fde258998c	child.maxOccupancy>=4
+c0142	nơi ở Đà Lạt cho nhóm 4 người	audience_style			cb98127e-8ae1-5169-b0f5-0cfba6ee12cb|20b69ca5-ad8f-57fc-af31-69f940556782	child.maxOccupancy>=4
+c0143	tìm nơi ở Đà Lạt cho nhóm 4 người	audience_style			cb98127e-8ae1-5169-b0f5-0cfba6ee12cb|20b69ca5-ad8f-57fc-af31-69f940556782	child.maxOccupancy>=4
+c0144	nơi ở Đà Lạt cho nhóm 4 người, ưu tiên nơi được đánh giá tốt	audience_style			cb98127e-8ae1-5169-b0f5-0cfba6ee12cb|20b69ca5-ad8f-57fc-af31-69f940556782	child.maxOccupancy>=4
+c0145	nơi ở Phong Nha cho nhóm 4 người	audience_style			4109f087-a7d4-5e6a-9392-1b9f8d91bfed|59f73426-94f5-5ef4-9945-d7d8e56835c1	child.maxOccupancy>=4
+c0146	tìm nơi ở Phong Nha cho nhóm 4 người	audience_style			4109f087-a7d4-5e6a-9392-1b9f8d91bfed|59f73426-94f5-5ef4-9945-d7d8e56835c1	child.maxOccupancy>=4
+c0147	nơi ở Phong Nha cho nhóm 4 người, ưu tiên nơi được đánh giá tốt	audience_style			4109f087-a7d4-5e6a-9392-1b9f8d91bfed|59f73426-94f5-5ef4-9945-d7d8e56835c1	child.maxOccupancy>=4
+c0148	nơi ở Tuy Hòa cho nhóm 4 người	audience_style			ec4d78cd-1a13-59c2-b135-3d4d247e2663|771804df-2bdc-57f9-bd9a-8b69daeaf891	child.maxOccupancy>=4
+c0149	tìm nơi ở Tuy Hòa cho nhóm 4 người	audience_style			ec4d78cd-1a13-59c2-b135-3d4d247e2663|771804df-2bdc-57f9-bd9a-8b69daeaf891	child.maxOccupancy>=4
+c0150	nơi ở Tuy Hòa cho nhóm 4 người, ưu tiên nơi được đánh giá tốt	audience_style			ec4d78cd-1a13-59c2-b135-3d4d247e2663|771804df-2bdc-57f9-bd9a-8b69daeaf891	child.maxOccupancy>=4
+c0151	resort Cát Bà có spa để nghỉ dưỡng cuối tuần	audience_style			bbf038f1-aa00-5857-b05f-65cae97befbe	resort+spa
+c0152	tìm resort Cát Bà có spa để nghỉ dưỡng cuối tuần	audience_style			bbf038f1-aa00-5857-b05f-65cae97befbe	resort+spa
+c0153	resort Cát Bà có spa để nghỉ dưỡng cuối tuần, ưu tiên nơi được đánh giá tốt	audience_style			bbf038f1-aa00-5857-b05f-65cae97befbe	resort+spa
+c0154	resort Ninh Bình có spa để nghỉ dưỡng cuối tuần	audience_style			8327afbf-a459-5166-a7a1-e1fa78c0606d	resort+spa
+c0155	tìm resort Ninh Bình có spa để nghỉ dưỡng cuối tuần	audience_style			8327afbf-a459-5166-a7a1-e1fa78c0606d	resort+spa
+c0156	resort Ninh Bình có spa để nghỉ dưỡng cuối tuần, ưu tiên nơi được đánh giá tốt	audience_style			8327afbf-a459-5166-a7a1-e1fa78c0606d	resort+spa
+c0157	resort Cần Thơ có spa để nghỉ dưỡng cuối tuần	audience_style			7a2951e8-e7cf-50d3-9dad-ebee8068177d	resort+spa
+c0158	tìm resort Cần Thơ có spa để nghỉ dưỡng cuối tuần	audience_style			7a2951e8-e7cf-50d3-9dad-ebee8068177d	resort+spa
+c0159	resort Cần Thơ có spa để nghỉ dưỡng cuối tuần, ưu tiên nơi được đánh giá tốt	audience_style			7a2951e8-e7cf-50d3-9dad-ebee8068177d	resort+spa
+c0160	resort Nha Trang có spa để nghỉ dưỡng cuối tuần	audience_style			24921f04-dbbb-5af8-b8c5-90b9b6a5d77a	resort+spa
+c0161	tìm resort Nha Trang có spa để nghỉ dưỡng cuối tuần	audience_style			24921f04-dbbb-5af8-b8c5-90b9b6a5d77a	resort+spa
+c0162	resort Nha Trang có spa để nghỉ dưỡng cuối tuần, ưu tiên nơi được đánh giá tốt	audience_style			24921f04-dbbb-5af8-b8c5-90b9b6a5d77a	resort+spa
+c0163	resort Điện Biên có spa để nghỉ dưỡng cuối tuần	audience_style			81542b6d-4c86-56d2-894a-036f17f5bda2	resort+spa
+c0164	tìm resort Điện Biên có spa để nghỉ dưỡng cuối tuần	audience_style			81542b6d-4c86-56d2-894a-036f17f5bda2	resort+spa
+c0165	resort Điện Biên có spa để nghỉ dưỡng cuối tuần, ưu tiên nơi được đánh giá tốt	audience_style			81542b6d-4c86-56d2-894a-036f17f5bda2	resort+spa
+c0166	khách sạn ở Nghệ An có wifi miễn phí	amenity_single			fdaa8b40-1600-5ff8-ad3b-4cd611f20641	WiFi miễn phí
+c0167	tìm khách sạn ở Nghệ An có wifi miễn phí	amenity_single			fdaa8b40-1600-5ff8-ad3b-4cd611f20641	WiFi miễn phí
+c0168	khách sạn ở Nghệ An có wifi miễn phí, có lựa chọn nào?	amenity_single			fdaa8b40-1600-5ff8-ad3b-4cd611f20641	WiFi miễn phí
+c0169	tìm chỗ nghỉ Ninh Bình với máy điều hòa	amenity_single			2594e69b-38f9-54a7-a15f-afdf83af7e3e|716ae19a-eac2-507e-8c7e-9147f5367eea	Máy điều hòa
+c0170	tìm chỗ nghỉ Ninh Bình với máy điều hòa, gợi ý thêm	amenity_single			2594e69b-38f9-54a7-a15f-afdf83af7e3e|716ae19a-eac2-507e-8c7e-9147f5367eea	Máy điều hòa
+c0171	chỗ nghỉ Ninh Bình với máy điều hòa, có lựa chọn nào?	amenity_single			2594e69b-38f9-54a7-a15f-afdf83af7e3e|716ae19a-eac2-507e-8c7e-9147f5367eea	Máy điều hòa
+c0172	Quy Nhơn có nơi lưu trú nào có ban công	amenity_single			2db95a93-1b03-5a79-bc57-ac4098e8b82d|777efa66-3697-5b41-be44-4ee8e13022d6	Ban công
+c0173	tìm Quy Nhơn có nơi lưu trú nào có ban công	amenity_single			2db95a93-1b03-5a79-bc57-ac4098e8b82d|777efa66-3697-5b41-be44-4ee8e13022d6	Ban công
+c0174	Quy Nhơn có nơi lưu trú nào có ban công, có lựa chọn nào?	amenity_single			2db95a93-1b03-5a79-bc57-ac4098e8b82d|777efa66-3697-5b41-be44-4ee8e13022d6	Ban công
+c0175	khách sạn ở Hội An có bàn làm việc	amenity_single			3ea9f4c4-57a2-5d16-932e-1da60fe4eaf7	Bàn làm việc
+c0176	tìm khách sạn ở Hội An có bàn làm việc	amenity_single			3ea9f4c4-57a2-5d16-932e-1da60fe4eaf7	Bàn làm việc
+c0177	khách sạn ở Hội An có bàn làm việc, có lựa chọn nào?	amenity_single			3ea9f4c4-57a2-5d16-932e-1da60fe4eaf7	Bàn làm việc
+c0178	tìm chỗ nghỉ Phú Quốc với phòng gia đình	amenity_single			76dd731c-1a40-59f3-b856-a5f92a8d555e	Phòng gia đình
+c0179	tìm chỗ nghỉ Phú Quốc với phòng gia đình, gợi ý thêm	amenity_single			76dd731c-1a40-59f3-b856-a5f92a8d555e	Phòng gia đình
+c0180	chỗ nghỉ Phú Quốc với phòng gia đình, có lựa chọn nào?	amenity_single			76dd731c-1a40-59f3-b856-a5f92a8d555e	Phòng gia đình
+c0181	Nha Trang có nơi lưu trú nào có chỗ đỗ xe miễn phí	amenity_single			e4c0df32-5695-5888-9d79-5a20e487fe9a	Chỗ đỗ xe miễn phí
+c0182	tìm Nha Trang có nơi lưu trú nào có chỗ đỗ xe miễn phí	amenity_single			e4c0df32-5695-5888-9d79-5a20e487fe9a	Chỗ đỗ xe miễn phí
+c0183	Nha Trang có nơi lưu trú nào có chỗ đỗ xe miễn phí, có lựa chọn nào?	amenity_single			e4c0df32-5695-5888-9d79-5a20e487fe9a	Chỗ đỗ xe miễn phí
+c0184	khách sạn ở Sa Pa có nhà hàng	amenity_single			64c1ebe8-a556-528d-8ba7-8badb1986b57	Nhà hàng
+c0185	tìm khách sạn ở Sa Pa có nhà hàng	amenity_single			64c1ebe8-a556-528d-8ba7-8badb1986b57	Nhà hàng
+c0186	khách sạn ở Sa Pa có nhà hàng, có lựa chọn nào?	amenity_single			64c1ebe8-a556-528d-8ba7-8badb1986b57	Nhà hàng
+c0187	tìm chỗ nghỉ Côn Đảo với lễ tân 24 giờ	amenity_single			9dfdf120-9974-5bfe-9cc0-3fec68118e3d	Lễ tân 24 giờ
+c0188	tìm chỗ nghỉ Côn Đảo với lễ tân 24 giờ, gợi ý thêm	amenity_single			9dfdf120-9974-5bfe-9cc0-3fec68118e3d	Lễ tân 24 giờ
+c0189	chỗ nghỉ Côn Đảo với lễ tân 24 giờ, có lựa chọn nào?	amenity_single			9dfdf120-9974-5bfe-9cc0-3fec68118e3d	Lễ tân 24 giờ
+c0190	Nha Trang có nơi lưu trú nào có xe đưa đón sân bay	amenity_single			e37b1460-75c7-5bdb-af85-25ea6152a04a	Xe đưa đón sân bay
+c0191	tìm Nha Trang có nơi lưu trú nào có xe đưa đón sân bay	amenity_single			e37b1460-75c7-5bdb-af85-25ea6152a04a	Xe đưa đón sân bay
+c0192	Nha Trang có nơi lưu trú nào có xe đưa đón sân bay, có lựa chọn nào?	amenity_single			e37b1460-75c7-5bdb-af85-25ea6152a04a	Xe đưa đón sân bay
+c0193	khách sạn ở Hà Nội có bếp riêng	amenity_single			24dd785d-e1ec-5c64-8d53-9800a832ddd8|c493b560-98f1-5826-b474-5b39b4dd3094	Bếp riêng
+c0194	tìm khách sạn ở Hà Nội có bếp riêng	amenity_single			24dd785d-e1ec-5c64-8d53-9800a832ddd8|c493b560-98f1-5826-b474-5b39b4dd3094	Bếp riêng
+c0195	khách sạn ở Hà Nội có bếp riêng, có lựa chọn nào?	amenity_single			24dd785d-e1ec-5c64-8d53-9800a832ddd8|c493b560-98f1-5826-b474-5b39b4dd3094	Bếp riêng
+c0196	tìm chỗ nghỉ Hạ Long có phòng nhìn ra biển	amenity_single			d19643a5-aef9-547b-8f24-cbcc4ffffb28|fcd61a8b-4fe4-5dbe-a0c4-8c4e81706a47	Nhìn ra biển
+c0197	tìm chỗ nghỉ Hạ Long có phòng nhìn ra biển, gợi ý thêm	amenity_single			d19643a5-aef9-547b-8f24-cbcc4ffffb28|fcd61a8b-4fe4-5dbe-a0c4-8c4e81706a47	Nhìn ra biển
+c0198	chỗ nghỉ Hạ Long có phòng nhìn ra biển, có lựa chọn nào?	amenity_single			d19643a5-aef9-547b-8f24-cbcc4ffffb28|fcd61a8b-4fe4-5dbe-a0c4-8c4e81706a47	Nhìn ra biển
+c0199	Nghệ An có nơi lưu trú nào có hồ bơi view đẹp	amenity_single			bdbdf23c-2f92-58a3-90e9-65e1458816fc|d8ce9884-2962-5ad2-82a9-8802ed19a6db	Hồ bơi có tầm nhìn
+c0200	tìm Nghệ An có nơi lưu trú nào có hồ bơi view đẹp	amenity_single			bdbdf23c-2f92-58a3-90e9-65e1458816fc|d8ce9884-2962-5ad2-82a9-8802ed19a6db	Hồ bơi có tầm nhìn
+c0201	Nghệ An có nơi lưu trú nào có hồ bơi view đẹp, có lựa chọn nào?	amenity_single			bdbdf23c-2f92-58a3-90e9-65e1458816fc|d8ce9884-2962-5ad2-82a9-8802ed19a6db	Hồ bơi có tầm nhìn
+c0202	khách sạn ở Phú Quốc có phòng không hút thuốc	amenity_single			20c08a1d-2ade-5a9e-9b38-a46a87470f85	Phòng không hút thuốc
+c0203	tìm khách sạn ở Phú Quốc có phòng không hút thuốc	amenity_single			20c08a1d-2ade-5a9e-9b38-a46a87470f85	Phòng không hút thuốc
+c0204	khách sạn ở Phú Quốc có phòng không hút thuốc, có lựa chọn nào?	amenity_single			20c08a1d-2ade-5a9e-9b38-a46a87470f85	Phòng không hút thuốc
+c0205	tìm chỗ nghỉ Phan Thiết với bồn tắm	amenity_single			c2dc6824-a5f4-55c0-99a2-c37c014babf0|056635cb-57fd-57fb-9c32-a6f018e786b6	Bồn tắm
+c0206	tìm chỗ nghỉ Phan Thiết với bồn tắm, gợi ý thêm	amenity_single			c2dc6824-a5f4-55c0-99a2-c37c014babf0|056635cb-57fd-57fb-9c32-a6f018e786b6	Bồn tắm
+c0207	chỗ nghỉ Phan Thiết với bồn tắm, có lựa chọn nào?	amenity_single			c2dc6824-a5f4-55c0-99a2-c37c014babf0|056635cb-57fd-57fb-9c32-a6f018e786b6	Bồn tắm
+c0208	Đà Lạt có nơi lưu trú nào có sân hiên	amenity_single			3d5cbfc5-4325-5c51-84a6-baab051a8fac	Sân hiên
+c0209	tìm Đà Lạt có nơi lưu trú nào có sân hiên	amenity_single			3d5cbfc5-4325-5c51-84a6-baab051a8fac	Sân hiên
+c0210	Đà Lạt có nơi lưu trú nào có sân hiên, có lựa chọn nào?	amenity_single			3d5cbfc5-4325-5c51-84a6-baab051a8fac	Sân hiên
+c0211	chỗ nghỉ Buôn Ma Thuột có WiFi miễn phí và chỗ đỗ xe miễn phí	amenity_multi			d8cd7f46-aeed-533d-84e8-93091a3acd28	WiFi miễn phí|Chỗ đỗ xe miễn phí
+c0212	tìm chỗ nghỉ Buôn Ma Thuột có WiFi miễn phí và chỗ đỗ xe miễn phí	amenity_multi			d8cd7f46-aeed-533d-84e8-93091a3acd28	WiFi miễn phí|Chỗ đỗ xe miễn phí
+c0213	chỗ nghỉ Buôn Ma Thuột có WiFi miễn phí và chỗ đỗ xe miễn phí, ưu tiên nơi còn phòng	amenity_multi			d8cd7f46-aeed-533d-84e8-93091a3acd28	WiFi miễn phí|Chỗ đỗ xe miễn phí
+c0214	chỗ nghỉ Bắc Ninh có Nhà hàng và phòng không hút thuốc	amenity_multi			707194e9-97be-59a0-9398-4e90cea4e114	Nhà hàng|Phòng không hút thuốc
+c0215	tìm chỗ nghỉ Bắc Ninh có Nhà hàng và phòng không hút thuốc	amenity_multi			707194e9-97be-59a0-9398-4e90cea4e114	Nhà hàng|Phòng không hút thuốc
+c0216	chỗ nghỉ Bắc Ninh có Nhà hàng và phòng không hút thuốc, ưu tiên nơi còn phòng	amenity_multi			707194e9-97be-59a0-9398-4e90cea4e114	Nhà hàng|Phòng không hút thuốc
+c0217	chỗ nghỉ Cát Bà có WiFi miễn phí và phòng gia đình	amenity_multi			5fc0e64d-5885-5e12-978a-dbf1a95457f3	WiFi miễn phí|Phòng gia đình
+c0218	tìm chỗ nghỉ Cát Bà có WiFi miễn phí và phòng gia đình	amenity_multi			5fc0e64d-5885-5e12-978a-dbf1a95457f3	WiFi miễn phí|Phòng gia đình
+c0219	chỗ nghỉ Cát Bà có WiFi miễn phí và phòng gia đình, ưu tiên nơi còn phòng	amenity_multi			5fc0e64d-5885-5e12-978a-dbf1a95457f3	WiFi miễn phí|Phòng gia đình
+c0220	chỗ nghỉ Côn Đảo có WiFi miễn phí và phòng không hút thuốc	amenity_multi			7f95e1d1-12de-573a-be34-57c35a40b33e	WiFi miễn phí|Phòng không hút thuốc
+c0221	tìm chỗ nghỉ Côn Đảo có WiFi miễn phí và phòng không hút thuốc	amenity_multi			7f95e1d1-12de-573a-be34-57c35a40b33e	WiFi miễn phí|Phòng không hút thuốc
+c0222	chỗ nghỉ Côn Đảo có WiFi miễn phí và phòng không hút thuốc, ưu tiên nơi còn phòng	amenity_multi			7f95e1d1-12de-573a-be34-57c35a40b33e	WiFi miễn phí|Phòng không hút thuốc
+c0223	chỗ nghỉ Cần Thơ có WiFi miễn phí và lễ tân 24 giờ	amenity_multi			f594c3dd-1344-5e16-b5a0-2e8204509986	WiFi miễn phí|Lễ tân 24 giờ
+c0224	tìm chỗ nghỉ Cần Thơ có WiFi miễn phí và lễ tân 24 giờ	amenity_multi			f594c3dd-1344-5e16-b5a0-2e8204509986	WiFi miễn phí|Lễ tân 24 giờ
+c0225	chỗ nghỉ Cần Thơ có WiFi miễn phí và lễ tân 24 giờ, ưu tiên nơi còn phòng	amenity_multi			f594c3dd-1344-5e16-b5a0-2e8204509986	WiFi miễn phí|Lễ tân 24 giờ
+c0226	chỗ nghỉ Huế có WiFi miễn phí và nhà hàng	amenity_multi			9dd80562-297f-51bb-9f15-550978a742b9	WiFi miễn phí|Nhà hàng
+c0227	tìm chỗ nghỉ Huế có WiFi miễn phí và nhà hàng	amenity_multi			9dd80562-297f-51bb-9f15-550978a742b9	WiFi miễn phí|Nhà hàng
+c0228	chỗ nghỉ Huế có WiFi miễn phí và nhà hàng, ưu tiên nơi còn phòng	amenity_multi			9dd80562-297f-51bb-9f15-550978a742b9	WiFi miễn phí|Nhà hàng
+c0229	chỗ nghỉ Hà Nội có WiFi miễn phí và xe đưa đón sân bay	amenity_multi			e0fdc6e4-a5a4-571b-a08b-90441c47ce38	WiFi miễn phí|Xe đưa đón sân bay
+c0230	tìm chỗ nghỉ Hà Nội có WiFi miễn phí và xe đưa đón sân bay	amenity_multi			e0fdc6e4-a5a4-571b-a08b-90441c47ce38	WiFi miễn phí|Xe đưa đón sân bay
+c0231	chỗ nghỉ Hà Nội có WiFi miễn phí và xe đưa đón sân bay, ưu tiên nơi còn phòng	amenity_multi			e0fdc6e4-a5a4-571b-a08b-90441c47ce38	WiFi miễn phí|Xe đưa đón sân bay
+c0232	chỗ nghỉ Hà Tĩnh có WiFi miễn phí và sân hiên	amenity_multi			ba972b34-67ef-5129-a397-73c21cf90b43	WiFi miễn phí|Sân hiên
+c0233	tìm chỗ nghỉ Hà Tĩnh có WiFi miễn phí và sân hiên	amenity_multi			ba972b34-67ef-5129-a397-73c21cf90b43	WiFi miễn phí|Sân hiên
+c0234	chỗ nghỉ Hà Tĩnh có WiFi miễn phí và sân hiên, ưu tiên nơi còn phòng	amenity_multi			ba972b34-67ef-5129-a397-73c21cf90b43	WiFi miễn phí|Sân hiên
+c0235	chỗ nghỉ Hạ Long có Phòng gia đình và nhà hàng	amenity_multi			a19f9630-129c-5ebb-938f-0d26b5a4cfc1	Phòng gia đình|Nhà hàng
+c0236	tìm chỗ nghỉ Hạ Long có Phòng gia đình và nhà hàng	amenity_multi			a19f9630-129c-5ebb-938f-0d26b5a4cfc1	Phòng gia đình|Nhà hàng
+c0237	chỗ nghỉ Hạ Long có Phòng gia đình và nhà hàng, ưu tiên nơi còn phòng	amenity_multi			a19f9630-129c-5ebb-938f-0d26b5a4cfc1	Phòng gia đình|Nhà hàng
+c0238	chỗ nghỉ Hải Phòng có Phòng gia đình và chỗ đỗ xe miễn phí	amenity_multi			3efb7d68-fd7b-5450-98b0-82369751a0c1	Phòng gia đình|Chỗ đỗ xe miễn phí
+c0239	tìm chỗ nghỉ Hải Phòng có Phòng gia đình và chỗ đỗ xe miễn phí	amenity_multi			3efb7d68-fd7b-5450-98b0-82369751a0c1	Phòng gia đình|Chỗ đỗ xe miễn phí
+c0240	chỗ nghỉ Hải Phòng có Phòng gia đình và chỗ đỗ xe miễn phí, ưu tiên nơi còn phòng	amenity_multi			3efb7d68-fd7b-5450-98b0-82369751a0c1	Phòng gia đình|Chỗ đỗ xe miễn phí
+c0241	khách sạn Côn Đảo không ghi nhận hồ bơi view đẹp	amenity_negation			a525e238-e14b-5d7f-b515-30321a66e004	absence means not-recorded: Hồ bơi có tầm nhìn
+c0242	tìm khách sạn Côn Đảo không ghi nhận hồ bơi view đẹp	amenity_negation			a525e238-e14b-5d7f-b515-30321a66e004	absence means not-recorded: Hồ bơi có tầm nhìn
+c0243	khách sạn Côn Đảo không ghi nhận hồ bơi view đẹp, có lựa chọn nào?	amenity_negation			a525e238-e14b-5d7f-b515-30321a66e004	absence means not-recorded: Hồ bơi có tầm nhìn
+c0244	chỗ nghỉ tại TP. Hồ Chí Minh không ghi nhận bếp riêng	amenity_negation			8d6ecd59-4779-5d5d-be3a-17780dbd0896	absence means not-recorded: Bếp riêng
+c0245	tìm chỗ nghỉ tại TP. Hồ Chí Minh không ghi nhận bếp riêng	amenity_negation			8d6ecd59-4779-5d5d-be3a-17780dbd0896	absence means not-recorded: Bếp riêng
+c0246	chỗ nghỉ tại TP. Hồ Chí Minh không ghi nhận bếp riêng, có lựa chọn nào?	amenity_negation			8d6ecd59-4779-5d5d-be3a-17780dbd0896	absence means not-recorded: Bếp riêng
+c0247	khách sạn Hạ Long không ghi nhận ban công	amenity_negation			c38b1065-dc88-52c6-a3f3-e84f48339834	absence means not-recorded: Ban công
+c0248	tìm khách sạn Hạ Long không ghi nhận ban công	amenity_negation			c38b1065-dc88-52c6-a3f3-e84f48339834	absence means not-recorded: Ban công
+c0249	khách sạn Hạ Long không ghi nhận ban công, có lựa chọn nào?	amenity_negation			c38b1065-dc88-52c6-a3f3-e84f48339834	absence means not-recorded: Ban công
+c0250	chỗ nghỉ tại Đà Nẵng không ghi nhận nhà hàng	amenity_negation			d5eecccc-7a5e-586a-8177-1a63e75a5085	absence means not-recorded: Nhà hàng
+c0251	tìm chỗ nghỉ tại Đà Nẵng không ghi nhận nhà hàng	amenity_negation			d5eecccc-7a5e-586a-8177-1a63e75a5085	absence means not-recorded: Nhà hàng
+c0252	chỗ nghỉ tại Đà Nẵng không ghi nhận nhà hàng, có lựa chọn nào?	amenity_negation			d5eecccc-7a5e-586a-8177-1a63e75a5085	absence means not-recorded: Nhà hàng
+c0253	khách sạn Hạ Long không ghi nhận xe đưa đón sân bay	amenity_negation			90c7c2f3-568e-507c-832d-952562b1d72c	absence means not-recorded: Xe đưa đón sân bay
+c0254	tìm khách sạn Hạ Long không ghi nhận xe đưa đón sân bay	amenity_negation			90c7c2f3-568e-507c-832d-952562b1d72c	absence means not-recorded: Xe đưa đón sân bay
+c0255	khách sạn Hạ Long không ghi nhận xe đưa đón sân bay, có lựa chọn nào?	amenity_negation			90c7c2f3-568e-507c-832d-952562b1d72c	absence means not-recorded: Xe đưa đón sân bay
+c0256	chỗ nghỉ ở Ninh Bình có view địa danh	amenity_offtaxonomy			21cb0fce-2336-5836-ac0f-5d80ea15d464|bd2c29cb-727a-5635-84a7-2517df9ee659	raw amenity:Nhìn ra địa danh
+c0257	tìm chỗ nghỉ ở Ninh Bình có view địa danh	amenity_offtaxonomy			21cb0fce-2336-5836-ac0f-5d80ea15d464|bd2c29cb-727a-5635-84a7-2517df9ee659	raw amenity:Nhìn ra địa danh
+c0258	chỗ nghỉ ở Ninh Bình có view địa danh, có lựa chọn nào?	amenity_offtaxonomy			21cb0fce-2336-5836-ac0f-5d80ea15d464|bd2c29cb-727a-5635-84a7-2517df9ee659	raw amenity:Nhìn ra địa danh
+c0259	chỗ nghỉ ở Huế có máy điều hòa độc lập cho từng phòng	amenity_offtaxonomy			0155d0d4-c249-5745-83a0-31b3faf6ef7a|9ad98755-bb88-5fe3-8faf-d588fe53a1dd	raw amenity:Máy điều hòa độc lập cho từng phòng
+c0260	tìm chỗ nghỉ ở Huế có máy điều hòa độc lập cho từng phòng	amenity_offtaxonomy			0155d0d4-c249-5745-83a0-31b3faf6ef7a|9ad98755-bb88-5fe3-8faf-d588fe53a1dd	raw amenity:Máy điều hòa độc lập cho từng phòng
+c0261	chỗ nghỉ ở Huế có máy điều hòa độc lập cho từng phòng, có lựa chọn nào?	amenity_offtaxonomy			0155d0d4-c249-5745-83a0-31b3faf6ef7a|9ad98755-bb88-5fe3-8faf-d588fe53a1dd	raw amenity:Máy điều hòa độc lập cho từng phòng
+c0262	chỗ nghỉ ở Nghệ An có vòi xịt/chậu rửa vệ sinh	amenity_offtaxonomy			bdbdf23c-2f92-58a3-90e9-65e1458816fc|d8ce9884-2962-5ad2-82a9-8802ed19a6db	raw amenity:Vòi xịt/chậu rửa vệ sinh
+c0263	tìm chỗ nghỉ ở Nghệ An có vòi xịt/chậu rửa vệ sinh	amenity_offtaxonomy			bdbdf23c-2f92-58a3-90e9-65e1458816fc|d8ce9884-2962-5ad2-82a9-8802ed19a6db	raw amenity:Vòi xịt/chậu rửa vệ sinh
+c0264	chỗ nghỉ ở Nghệ An có vòi xịt/chậu rửa vệ sinh, có lựa chọn nào?	amenity_offtaxonomy			bdbdf23c-2f92-58a3-90e9-65e1458816fc|d8ce9884-2962-5ad2-82a9-8802ed19a6db	raw amenity:Vòi xịt/chậu rửa vệ sinh
+c0265	chỗ nghỉ ở Hội An có khăn tắm/ga trải giường (phụ phí)	amenity_offtaxonomy			a7fcccdb-316b-5d19-8cc1-7dc182aa6d71|c79e6731-4e3a-5e61-8da4-ba5344567aaf	raw amenity:Khăn tắm/ga trải giường (phụ phí)
+c0266	tìm chỗ nghỉ ở Hội An có khăn tắm/ga trải giường (phụ phí)	amenity_offtaxonomy			a7fcccdb-316b-5d19-8cc1-7dc182aa6d71|c79e6731-4e3a-5e61-8da4-ba5344567aaf	raw amenity:Khăn tắm/ga trải giường (phụ phí)
+c0267	chỗ nghỉ ở Hội An có khăn tắm/ga trải giường (phụ phí), có lựa chọn nào?	amenity_offtaxonomy			a7fcccdb-316b-5d19-8cc1-7dc182aa6d71|c79e6731-4e3a-5e61-8da4-ba5344567aaf	raw amenity:Khăn tắm/ga trải giường (phụ phí)
+c0268	chỗ nghỉ ở Đà Nẵng có vật dụng không gây dị ứng	amenity_offtaxonomy			e09a3d46-a431-5b22-a9ca-8deb0bd79c86|ee5aeefb-f5f8-5648-b19d-cd5635d06a20	raw amenity:Vật dụng không gây dị ứng
+c0269	tìm chỗ nghỉ ở Đà Nẵng có vật dụng không gây dị ứng	amenity_offtaxonomy			e09a3d46-a431-5b22-a9ca-8deb0bd79c86|ee5aeefb-f5f8-5648-b19d-cd5635d06a20	raw amenity:Vật dụng không gây dị ứng
+c0270	chỗ nghỉ ở Đà Nẵng có vật dụng không gây dị ứng, có lựa chọn nào?	amenity_offtaxonomy			e09a3d46-a431-5b22-a9ca-8deb0bd79c86|ee5aeefb-f5f8-5648-b19d-cd5635d06a20	raw amenity:Vật dụng không gây dị ứng
+c0271	Phòng Deluxe - Dãy nhà A ở Buôn Ma Thuột	parent_child			d0e2c79c-e3cc-5322-a0f1-08185e6eb79d|4358b43f-6fc4-5957-b5af-3fe3a14354b1	child:Phòng Deluxe - Dãy nhà A
+c0272	tìm Phòng Deluxe - Dãy nhà A ở Buôn Ma Thuột	parent_child			d0e2c79c-e3cc-5322-a0f1-08185e6eb79d|4358b43f-6fc4-5957-b5af-3fe3a14354b1	child:Phòng Deluxe - Dãy nhà A
+c0273	Phòng Deluxe - Dãy nhà A ở Buôn Ma Thuột, có lựa chọn nào?	parent_child			d0e2c79c-e3cc-5322-a0f1-08185e6eb79d|4358b43f-6fc4-5957-b5af-3fe3a14354b1	child:Phòng Deluxe - Dãy nhà A
+c0274	khách sạn Bắc Ninh có Double Double Room	parent_child			707194e9-97be-59a0-9398-4e90cea4e114|b232c9fa-42c9-59ea-93a8-16c6d86c77c7	child:Double Double Room
+c0275	tìm khách sạn Bắc Ninh có Double Double Room	parent_child			707194e9-97be-59a0-9398-4e90cea4e114|b232c9fa-42c9-59ea-93a8-16c6d86c77c7	child:Double Double Room
+c0276	khách sạn Bắc Ninh có Double Double Room, có lựa chọn nào?	parent_child			707194e9-97be-59a0-9398-4e90cea4e114|b232c9fa-42c9-59ea-93a8-16c6d86c77c7	child:Double Double Room
+c0277	Phòng Giường Đôi Có Ban Công tại Cát Bà	parent_child			9dd411ee-8445-5b86-912c-fe2c402c7ffb|a4144b8a-9f4a-5cc1-bcd0-d8c571f8d117	child:Phòng Giường Đôi Có Ban Công
+c0278	tìm Phòng Giường Đôi Có Ban Công tại Cát Bà	parent_child			9dd411ee-8445-5b86-912c-fe2c402c7ffb|a4144b8a-9f4a-5cc1-bcd0-d8c571f8d117	child:Phòng Giường Đôi Có Ban Công
+c0279	Phòng Giường Đôi Có Ban Công tại Cát Bà, có lựa chọn nào?	parent_child			9dd411ee-8445-5b86-912c-fe2c402c7ffb|a4144b8a-9f4a-5cc1-bcd0-d8c571f8d117	child:Phòng Giường Đôi Có Ban Công
+c0280	Phòng 2 Giường Đơn ở Côn Đảo	parent_child			6bbe7e53-2e9d-5cab-b7ee-2238516d2aa9|92df63c9-d618-546f-9a7c-3336e0f27221	child:Phòng 2 Giường Đơn
+c0281	tìm Phòng 2 Giường Đơn ở Côn Đảo	parent_child			6bbe7e53-2e9d-5cab-b7ee-2238516d2aa9|92df63c9-d618-546f-9a7c-3336e0f27221	child:Phòng 2 Giường Đơn
+c0282	Phòng 2 Giường Đơn ở Côn Đảo, có lựa chọn nào?	parent_child			6bbe7e53-2e9d-5cab-b7ee-2238516d2aa9|92df63c9-d618-546f-9a7c-3336e0f27221	child:Phòng 2 Giường Đơn
+c0283	khách sạn Cần Thơ có Phòng 4 Người Có Ban Công	parent_child			d087ec48-a25b-50ba-9270-10d2228eb889|da54d748-d8a6-5489-94cf-550744d5acdb	child:Phòng 4 Người Có Ban Công
+c0284	tìm khách sạn Cần Thơ có Phòng 4 Người Có Ban Công	parent_child			d087ec48-a25b-50ba-9270-10d2228eb889|da54d748-d8a6-5489-94cf-550744d5acdb	child:Phòng 4 Người Có Ban Công
+c0285	khách sạn Cần Thơ có Phòng 4 Người Có Ban Công, có lựa chọn nào?	parent_child			d087ec48-a25b-50ba-9270-10d2228eb889|da54d748-d8a6-5489-94cf-550744d5acdb	child:Phòng 4 Người Có Ban Công
+c0286	Phòng Giường Đôi Với Phòng Tắm Chung tại Huế	parent_child			23f00093-e641-50a8-8a6e-47baafccab2a|d9de3110-c3b7-5c7e-9c82-358048120f4d	child:Phòng Giường Đôi Với Phòng Tắm Chung
+c0287	tìm Phòng Giường Đôi Với Phòng Tắm Chung tại Huế	parent_child			23f00093-e641-50a8-8a6e-47baafccab2a|d9de3110-c3b7-5c7e-9c82-358048120f4d	child:Phòng Giường Đôi Với Phòng Tắm Chung
+c0288	Phòng Giường Đôi Với Phòng Tắm Chung tại Huế, có lựa chọn nào?	parent_child			23f00093-e641-50a8-8a6e-47baafccab2a|d9de3110-c3b7-5c7e-9c82-358048120f4d	child:Phòng Giường Đôi Với Phòng Tắm Chung
+c0289	Phòng Deluxe Giường Đôi Có Ban Công ở Hà Nội	parent_child			1eba6518-eee3-53ae-9fc6-cd1090197606|189cbc18-6b4e-5844-9795-77716c030d8f	child:Phòng Deluxe Giường Đôi Có Ban Công
+c0290	tìm Phòng Deluxe Giường Đôi Có Ban Công ở Hà Nội	parent_child			1eba6518-eee3-53ae-9fc6-cd1090197606|189cbc18-6b4e-5844-9795-77716c030d8f	child:Phòng Deluxe Giường Đôi Có Ban Công
+c0291	Phòng Deluxe Giường Đôi Có Ban Công ở Hà Nội, có lựa chọn nào?	parent_child			1eba6518-eee3-53ae-9fc6-cd1090197606|189cbc18-6b4e-5844-9795-77716c030d8f	child:Phòng Deluxe Giường Đôi Có Ban Công
+c0292	khách sạn Hà Tĩnh có Phòng Deluxe 2 Giường đơn	parent_child			2b42b7ff-6ad8-5a24-ab0c-3c76969af752|de94b43c-5e26-5ea4-b0ad-923740634edb	child:Phòng Deluxe 2 Giường đơn
+c0293	tìm khách sạn Hà Tĩnh có Phòng Deluxe 2 Giường đơn	parent_child			2b42b7ff-6ad8-5a24-ab0c-3c76969af752|de94b43c-5e26-5ea4-b0ad-923740634edb	child:Phòng Deluxe 2 Giường đơn
+c0294	khách sạn Hà Tĩnh có Phòng Deluxe 2 Giường đơn, có lựa chọn nào?	parent_child			2b42b7ff-6ad8-5a24-ab0c-3c76969af752|de94b43c-5e26-5ea4-b0ad-923740634edb	child:Phòng Deluxe 2 Giường đơn
+c0295	Căn Hộ Nhìn Ra Biển tại Hạ Long	parent_child			d19643a5-aef9-547b-8f24-cbcc4ffffb28|fcd61a8b-4fe4-5dbe-a0c4-8c4e81706a47	child:Căn Hộ Nhìn Ra Biển
+c0296	tìm Căn Hộ Nhìn Ra Biển tại Hạ Long	parent_child			d19643a5-aef9-547b-8f24-cbcc4ffffb28|fcd61a8b-4fe4-5dbe-a0c4-8c4e81706a47	child:Căn Hộ Nhìn Ra Biển
+c0297	Căn Hộ Nhìn Ra Biển tại Hạ Long, có lựa chọn nào?	parent_child			d19643a5-aef9-547b-8f24-cbcc4ffffb28|fcd61a8b-4fe4-5dbe-a0c4-8c4e81706a47	child:Căn Hộ Nhìn Ra Biển
+c0298	Phòng Giường Đôi ở Hải Phòng	parent_child			7df5f324-c904-5a64-9b46-5b798e35b1f8|cd420aa4-e46a-5b23-88ec-5ce641ffaf02	child:Phòng Giường Đôi
+c0299	tìm Phòng Giường Đôi ở Hải Phòng	parent_child			7df5f324-c904-5a64-9b46-5b798e35b1f8|cd420aa4-e46a-5b23-88ec-5ce641ffaf02	child:Phòng Giường Đôi
+c0300	Phòng Giường Đôi ở Hải Phòng, có lựa chọn nào?	parent_child			7df5f324-c904-5a64-9b46-5b798e35b1f8|cd420aa4-e46a-5b23-88ec-5ce641ffaf02	child:Phòng Giường Đôi
+c0301	khách sạn Hội An có Phòng Deluxe Có Ban Công/Sân Hiên	parent_child			a7fcccdb-316b-5d19-8cc1-7dc182aa6d71|c79e6731-4e3a-5e61-8da4-ba5344567aaf	child:Phòng Deluxe Có Ban Công/Sân Hiên
+c0302	tìm khách sạn Hội An có Phòng Deluxe Có Ban Công/Sân Hiên	parent_child			a7fcccdb-316b-5d19-8cc1-7dc182aa6d71|c79e6731-4e3a-5e61-8da4-ba5344567aaf	child:Phòng Deluxe Có Ban Công/Sân Hiên
+c0303	khách sạn Hội An có Phòng Deluxe Có Ban Công/Sân Hiên, có lựa chọn nào?	parent_child			a7fcccdb-316b-5d19-8cc1-7dc182aa6d71|c79e6731-4e3a-5e61-8da4-ba5344567aaf	child:Phòng Deluxe Có Ban Công/Sân Hiên
+c0304	Biệt Thự Có Hồ Bơi Riêng tại Nghệ An	parent_child			300a7d88-a1cb-5cc4-b94e-64923df37412|dd51e2be-74e2-51ad-b768-5199e6472b2c	child:Biệt Thự Có Hồ Bơi Riêng
+c0305	tìm Biệt Thự Có Hồ Bơi Riêng tại Nghệ An	parent_child			300a7d88-a1cb-5cc4-b94e-64923df37412|dd51e2be-74e2-51ad-b768-5199e6472b2c	child:Biệt Thự Có Hồ Bơi Riêng
+c0306	Biệt Thự Có Hồ Bơi Riêng tại Nghệ An, có lựa chọn nào?	parent_child			300a7d88-a1cb-5cc4-b94e-64923df37412|dd51e2be-74e2-51ad-b768-5199e6472b2c	child:Biệt Thự Có Hồ Bơi Riêng
+c0307	Phòng 2 Giường Đơn Hạng Bình Dân ở Nha Trang	parent_child			080a7f5e-57d5-5381-9f1d-5ca4efeb61c6|10b1f7ed-0801-55e4-9b83-5fc28db26441	child:Phòng 2 Giường Đơn Hạng Bình Dân
+c0308	tìm Phòng 2 Giường Đơn Hạng Bình Dân ở Nha Trang	parent_child			080a7f5e-57d5-5381-9f1d-5ca4efeb61c6|10b1f7ed-0801-55e4-9b83-5fc28db26441	child:Phòng 2 Giường Đơn Hạng Bình Dân
+c0309	Phòng 2 Giường Đơn Hạng Bình Dân ở Nha Trang, có lựa chọn nào?	parent_child			080a7f5e-57d5-5381-9f1d-5ca4efeb61c6|10b1f7ed-0801-55e4-9b83-5fc28db26441	child:Phòng 2 Giường Đơn Hạng Bình Dân
+c0310	khách sạn Ninh Bình có Phòng Có Giường Cỡ King Nhìn Ra Vườn	parent_child			2594e69b-38f9-54a7-a15f-afdf83af7e3e|716ae19a-eac2-507e-8c7e-9147f5367eea	child:Phòng Có Giường Cỡ King Nhìn Ra Vườn
+c0311	tìm khách sạn Ninh Bình có Phòng Có Giường Cỡ King Nhìn Ra Vườn	parent_child			2594e69b-38f9-54a7-a15f-afdf83af7e3e|716ae19a-eac2-507e-8c7e-9147f5367eea	child:Phòng Có Giường Cỡ King Nhìn Ra Vườn
+c0312	khách sạn Ninh Bình có Phòng Có Giường Cỡ King Nhìn Ra Vườn, có lựa chọn nào?	parent_child			2594e69b-38f9-54a7-a15f-afdf83af7e3e|716ae19a-eac2-507e-8c7e-9147f5367eea	child:Phòng Có Giường Cỡ King Nhìn Ra Vườn
+c0313	Phòng Deluxe Giường Đôi tại Phan Thiết	parent_child			d66512d7-4e4e-5d17-a1e2-49d942da116f|b5b7e5c2-fd67-59b4-a7ce-77eb53a3df10	child:Phòng Deluxe Giường Đôi
+c0314	tìm Phòng Deluxe Giường Đôi tại Phan Thiết	parent_child			d66512d7-4e4e-5d17-a1e2-49d942da116f|b5b7e5c2-fd67-59b4-a7ce-77eb53a3df10	child:Phòng Deluxe Giường Đôi
+c0315	Phòng Deluxe Giường Đôi tại Phan Thiết, có lựa chọn nào?	parent_child			d66512d7-4e4e-5d17-a1e2-49d942da116f|b5b7e5c2-fd67-59b4-a7ce-77eb53a3df10	child:Phòng Deluxe Giường Đôi
+c0316	Vinpearl Hotel Bắc Ninh	named_entity			707194e9-97be-59a0-9398-4e90cea4e114	exact name:Vinpearl Hotel Bắc Ninh
+c0317	tìm Vinpearl Hotel Bắc Ninh	named_entity			707194e9-97be-59a0-9398-4e90cea4e114	exact name:Vinpearl Hotel Bắc Ninh
+c0318	thông tin Vinpearl Hotel Bắc Ninh	named_entity			707194e9-97be-59a0-9398-4e90cea4e114	exact name:Vinpearl Hotel Bắc Ninh
+c0319	Meliá Vinpearl Hue	named_entity			e0210336-ca45-5303-9a67-b7e633d54e3a	exact name:Meliá Vinpearl Hue
+c0320	tìm Meliá Vinpearl Hue	named_entity			e0210336-ca45-5303-9a67-b7e633d54e3a	exact name:Meliá Vinpearl Hue
+c0321	thông tin Meliá Vinpearl Hue	named_entity			e0210336-ca45-5303-9a67-b7e633d54e3a	exact name:Meliá Vinpearl Hue
+c0322	Vinpearl Ha Tinh, Affiliated by Meliá	named_entity			a4140c0f-0554-5ad7-8db9-3f9c02a06e55	exact name:Vinpearl Ha Tinh, Affiliated by Meliá
+c0323	tìm Vinpearl Ha Tinh, Affiliated by Meliá	named_entity			a4140c0f-0554-5ad7-8db9-3f9c02a06e55	exact name:Vinpearl Ha Tinh, Affiliated by Meliá
+c0324	thông tin Vinpearl Ha Tinh, Affiliated by Meliá	named_entity			a4140c0f-0554-5ad7-8db9-3f9c02a06e55	exact name:Vinpearl Ha Tinh, Affiliated by Meliá
+c0325	Vinpearl Resort & Spa Hạ Long	named_entity			0ea20753-e3f7-5005-909e-382b704042fc	exact name:Vinpearl Resort & Spa Hạ Long
+c0326	tìm Vinpearl Resort & Spa Hạ Long	named_entity			0ea20753-e3f7-5005-909e-382b704042fc	exact name:Vinpearl Resort & Spa Hạ Long
+c0327	thông tin Vinpearl Resort & Spa Hạ Long	named_entity			0ea20753-e3f7-5005-909e-382b704042fc	exact name:Vinpearl Resort & Spa Hạ Long
+c0328	Meliá Vinpearl Hai Phong Rivera	named_entity			16cf5d7b-23c3-5100-b512-24d83394e13e	exact name:Meliá Vinpearl Hai Phong Rivera
+c0329	tìm Meliá Vinpearl Hai Phong Rivera	named_entity			16cf5d7b-23c3-5100-b512-24d83394e13e	exact name:Meliá Vinpearl Hai Phong Rivera
+c0330	thông tin Meliá Vinpearl Hai Phong Rivera	named_entity			16cf5d7b-23c3-5100-b512-24d83394e13e	exact name:Meliá Vinpearl Hai Phong Rivera
+c0331	Vinpearl Resort & Golf Nam Hội An	named_entity			a3967a35-37ad-5e4b-8d89-16c3bf163da4	exact name:Vinpearl Resort & Golf Nam Hội An
+c0332	tìm Vinpearl Resort & Golf Nam Hội An	named_entity			a3967a35-37ad-5e4b-8d89-16c3bf163da4	exact name:Vinpearl Resort & Golf Nam Hội An
+c0333	thông tin Vinpearl Resort & Golf Nam Hội An	named_entity			a3967a35-37ad-5e4b-8d89-16c3bf163da4	exact name:Vinpearl Resort & Golf Nam Hội An
+c0334	Vinpearl Resort & Golf Nam Hội An - Deluxe Giường Đôi	named_entity			4d9b8470-9552-53f5-9ef0-ea31d91771c9	exact name:Vinpearl Resort & Golf Nam Hội An - Deluxe Giường Đôi
+c0335	tìm Vinpearl Resort & Golf Nam Hội An - Deluxe Giường Đôi	named_entity			4d9b8470-9552-53f5-9ef0-ea31d91771c9	exact name:Vinpearl Resort & Golf Nam Hội An - Deluxe Giường Đôi
+c0336	thông tin Vinpearl Resort & Golf Nam Hội An - Deluxe Giường Đôi	named_entity			4d9b8470-9552-53f5-9ef0-ea31d91771c9	exact name:Vinpearl Resort & Golf Nam Hội An - Deluxe Giường Đôi
+c0337	Vinpearl Resort & Golf Nam Hội An - Deluxe 2 Giường Đơn	named_entity			23786155-9809-55ce-82a3-19173dcd0dd4	exact name:Vinpearl Resort & Golf Nam Hội An - Deluxe 2 Giường Đơn
+c0338	tìm Vinpearl Resort & Golf Nam Hội An - Deluxe 2 Giường Đơn	named_entity			23786155-9809-55ce-82a3-19173dcd0dd4	exact name:Vinpearl Resort & Golf Nam Hội An - Deluxe 2 Giường Đơn
+c0339	thông tin Vinpearl Resort & Golf Nam Hội An - Deluxe 2 Giường Đơn	named_entity			23786155-9809-55ce-82a3-19173dcd0dd4	exact name:Vinpearl Resort & Golf Nam Hội An - Deluxe 2 Giường Đơn
+c0340	Công Viên 30/4	named_entity			6f8afb28-ae3b-58b3-827c-002d2a059f4f	exact name:Công Viên 30/4
+c0341	tìm Công Viên 30/4	named_entity			6f8afb28-ae3b-58b3-827c-002d2a059f4f	exact name:Công Viên 30/4
+c0342	thông tin Công Viên 30/4	named_entity			6f8afb28-ae3b-58b3-827c-002d2a059f4f	exact name:Công Viên 30/4
+c0343	Thác Đray Nur	named_entity			f51eeebe-ab5a-59d0-93a4-0da4b4b2740e	exact name:Thác Đray Nur
+c0344	tìm Thác Đray Nur	named_entity			f51eeebe-ab5a-59d0-93a4-0da4b4b2740e	exact name:Thác Đray Nur
+c0345	thông tin Thác Đray Nur	named_entity			f51eeebe-ab5a-59d0-93a4-0da4b4b2740e	exact name:Thác Đray Nur
+c0346	Lò Kẹo Dừa Thiên Ái	named_entity			8d109c0d-a987-57ec-a2b1-6052595ddcec	exact name:Lò Kẹo Dừa Thiên Ái
+c0347	tìm Lò Kẹo Dừa Thiên Ái	named_entity			8d109c0d-a987-57ec-a2b1-6052595ddcec	exact name:Lò Kẹo Dừa Thiên Ái
+c0348	thông tin Lò Kẹo Dừa Thiên Ái	named_entity			8d109c0d-a987-57ec-a2b1-6052595ddcec	exact name:Lò Kẹo Dừa Thiên Ái
+c0349	Sông Bằng	named_entity			fea7ce28-28a9-5d75-89bb-b04b1d06267e	exact name:Sông Bằng
+c0350	tìm Sông Bằng	named_entity			fea7ce28-28a9-5d75-89bb-b04b1d06267e	exact name:Sông Bằng
+c0351	thông tin Sông Bằng	named_entity			fea7ce28-28a9-5d75-89bb-b04b1d06267e	exact name:Sông Bằng
+c0352	Núi Sam	named_entity			7d7a2dd6-c14e-5edc-bd89-a9962c2fd30f	exact name:Núi Sam
+c0353	tìm Núi Sam	named_entity			7d7a2dd6-c14e-5edc-bd89-a9962c2fd30f	exact name:Núi Sam
+c0354	thông tin Núi Sam	named_entity			7d7a2dd6-c14e-5edc-bd89-a9962c2fd30f	exact name:Núi Sam
+c0355	Bus Ha Noi to Cat Ba	named_entity			69ffe7b7-a935-5f44-ba89-e26d2a8c5663	exact name:Bus Ha Noi to Cat Ba
+c0356	tìm Bus Ha Noi to Cat Ba	named_entity			69ffe7b7-a935-5f44-ba89-e26d2a8c5663	exact name:Bus Ha Noi to Cat Ba
+c0357	thông tin Bus Ha Noi to Cat Ba	named_entity			69ffe7b7-a935-5f44-ba89-e26d2a8c5663	exact name:Bus Ha Noi to Cat Ba
+c0358	tiNiWorld	named_entity			c9005b53-5aa8-56fc-bc65-5d45b782fbc1	exact name:tiNiWorld
+c0359	tìm tiNiWorld	named_entity			c9005b53-5aa8-56fc-bc65-5d45b782fbc1	exact name:tiNiWorld
+c0360	thông tin tiNiWorld	named_entity			c9005b53-5aa8-56fc-bc65-5d45b782fbc1	exact name:tiNiWorld
+c0361	Chợ nổi Cái Răng	named_entity			6864d508-7bcf-5cbd-8b32-226ae66adae0	exact name:Chợ nổi Cái Răng
+c0362	tìm Chợ nổi Cái Răng	named_entity			6864d508-7bcf-5cbd-8b32-226ae66adae0	exact name:Chợ nổi Cái Răng
+c0363	thông tin Chợ nổi Cái Răng	named_entity			6864d508-7bcf-5cbd-8b32-226ae66adae0	exact name:Chợ nổi Cái Răng
+c0364	Nhà cổ Bình Thủy	named_entity			a7eae8d3-5a24-51ee-8097-ea250e233891	exact name:Nhà cổ Bình Thủy
+c0365	tìm Nhà cổ Bình Thủy	named_entity			a7eae8d3-5a24-51ee-8097-ea250e233891	exact name:Nhà cổ Bình Thủy
+c0366	thông tin Nhà cổ Bình Thủy	named_entity			a7eae8d3-5a24-51ee-8097-ea250e233891	exact name:Nhà cổ Bình Thủy
+c0367	Sea Links Golf & Country Club	named_entity			dacb4472-d4ea-5e9b-bd15-5045bd2377e1	exact name:Sea Links Golf & Country Club
+c0368	tìm Sea Links Golf & Country Club	named_entity			dacb4472-d4ea-5e9b-bd15-5045bd2377e1	exact name:Sea Links Golf & Country Club
+c0369	thông tin Sea Links Golf & Country Club	named_entity			dacb4472-d4ea-5e9b-bd15-5045bd2377e1	exact name:Sea Links Golf & Country Club
+c0370	Gói dịch vụ VIP Tour VinWonders Phú Quốc (3 tiếng)	named_entity			8eee8919-f852-5675-ac0c-073b4e26b310	exact name:Gói dịch vụ VIP Tour VinWonders Phú Quốc (3 tiếng)
+c0371	tìm Gói dịch vụ VIP Tour VinWonders Phú Quốc (3 tiếng)	named_entity			8eee8919-f852-5675-ac0c-073b4e26b310	exact name:Gói dịch vụ VIP Tour VinWonders Phú Quốc (3 tiếng)
+c0372	thông tin Gói dịch vụ VIP Tour VinWonders Phú Quốc (3 tiếng)	named_entity			8eee8919-f852-5675-ac0c-073b4e26b310	exact name:Gói dịch vụ VIP Tour VinWonders Phú Quốc (3 tiếng)
+c0373	Vé máy bay Buôn Ma Thuột - Hà Nội	named_entity			1df5080e-c179-5c0f-aced-fe0f6f5f5843	exact name:Vé máy bay Buôn Ma Thuột - Hà Nội
+c0374	tìm Vé máy bay Buôn Ma Thuột - Hà Nội	named_entity			1df5080e-c179-5c0f-aced-fe0f6f5f5843	exact name:Vé máy bay Buôn Ma Thuột - Hà Nội
+c0375	thông tin Vé máy bay Buôn Ma Thuột - Hà Nội	named_entity			1df5080e-c179-5c0f-aced-fe0f6f5f5843	exact name:Vé máy bay Buôn Ma Thuột - Hà Nội
+c0376	khach san o cat ba co wifi mien phi	no_diacritics			e329a6e1-afc6-543c-b5f1-084525f80a9d	unaccent:Cát Bà|WiFi miễn phí
+c0377	tim khach san o cat ba co wifi mien phi	no_diacritics			e329a6e1-afc6-543c-b5f1-084525f80a9d	unaccent:Cát Bà|WiFi miễn phí
+c0378	khach san o cat ba co wifi mien phi gia tot	no_diacritics			e329a6e1-afc6-543c-b5f1-084525f80a9d	unaccent:Cát Bà|WiFi miễn phí
+c0379	khach san o quy nhon co cho do xe mien phi	no_diacritics			29081cae-8c35-5d90-b28f-d2a29d61b3e6	unaccent:Quy Nhơn|Chỗ đỗ xe miễn phí
+c0380	tim khach san o quy nhon co cho do xe mien phi	no_diacritics			29081cae-8c35-5d90-b28f-d2a29d61b3e6	unaccent:Quy Nhơn|Chỗ đỗ xe miễn phí
+c0381	khach san o quy nhon co cho do xe mien phi gia tot	no_diacritics			29081cae-8c35-5d90-b28f-d2a29d61b3e6	unaccent:Quy Nhơn|Chỗ đỗ xe miễn phí
+c0382	khach san o da lat co nha hang	no_diacritics			4e22c795-679d-56ae-9407-d6455fbdec44	unaccent:Đà Lạt|Nhà hàng
+c0383	tim khach san o da lat co nha hang	no_diacritics			4e22c795-679d-56ae-9407-d6455fbdec44	unaccent:Đà Lạt|Nhà hàng
+c0384	khach san o da lat co nha hang gia tot	no_diacritics			4e22c795-679d-56ae-9407-d6455fbdec44	unaccent:Đà Lạt|Nhà hàng
+c0385	khach san o da lat co le tan 24 gio	no_diacritics			28862dc5-12a4-55b5-a184-3f551141c610	unaccent:Đà Lạt|Lễ tân 24 giờ
+c0386	tim khach san o da lat co le tan 24 gio	no_diacritics			28862dc5-12a4-55b5-a184-3f551141c610	unaccent:Đà Lạt|Lễ tân 24 giờ
+c0387	khach san o da lat co le tan 24 gio gia tot	no_diacritics			28862dc5-12a4-55b5-a184-3f551141c610	unaccent:Đà Lạt|Lễ tân 24 giờ
+c0388	khach san o ha long co ho boi co tam nhin	no_diacritics			9a0410c0-f3ce-5681-9f1b-67c83856d200|1a9b4def-9b2e-534d-8596-085698ed95cb	unaccent:Hạ Long|Hồ bơi có tầm nhìn
+c0389	tim khach san o ha long co ho boi co tam nhin	no_diacritics			9a0410c0-f3ce-5681-9f1b-67c83856d200|1a9b4def-9b2e-534d-8596-085698ed95cb	unaccent:Hạ Long|Hồ bơi có tầm nhìn
+c0390	khach san o ha long co ho boi co tam nhin gia tot	no_diacritics			9a0410c0-f3ce-5681-9f1b-67c83856d200|1a9b4def-9b2e-534d-8596-085698ed95cb	unaccent:Hạ Long|Hồ bơi có tầm nhìn
+c0391	khach san o phan thiet co phong khong hut thuoc	no_diacritics			37453acd-1cb0-5adc-bcde-d122e4a853c1	unaccent:Phan Thiết|Phòng không hút thuốc
+c0392	tim khach san o phan thiet co phong khong hut thuoc	no_diacritics			37453acd-1cb0-5adc-bcde-d122e4a853c1	unaccent:Phan Thiết|Phòng không hút thuốc
+c0393	khach san o phan thiet co phong khong hut thuoc gia tot	no_diacritics			37453acd-1cb0-5adc-bcde-d122e4a853c1	unaccent:Phan Thiết|Phòng không hút thuốc
+c0394	khach san o ha noi co san hien	no_diacritics			89c93d52-04e7-54be-b41a-1a4d2f4ae34b	unaccent:Hà Nội|Sân hiên
+c0395	tim khach san o ha noi co san hien	no_diacritics			89c93d52-04e7-54be-b41a-1a4d2f4ae34b	unaccent:Hà Nội|Sân hiên
+c0396	khach san o ha noi co san hien gia tot	no_diacritics			89c93d52-04e7-54be-b41a-1a4d2f4ae34b	unaccent:Hà Nội|Sân hiên
+c0397	khach san o hai phong co may dieu hoa	no_diacritics			7df5f324-c904-5a64-9b46-5b798e35b1f8|cd420aa4-e46a-5b23-88ec-5ce641ffaf02	unaccent:Hải Phòng|Máy điều hòa
+c0398	tim khach san o hai phong co may dieu hoa	no_diacritics			7df5f324-c904-5a64-9b46-5b798e35b1f8|cd420aa4-e46a-5b23-88ec-5ce641ffaf02	unaccent:Hải Phòng|Máy điều hòa
+c0399	khach san o hai phong co may dieu hoa gia tot	no_diacritics			7df5f324-c904-5a64-9b46-5b798e35b1f8|cd420aa4-e46a-5b23-88ec-5ce641ffaf02	unaccent:Hải Phòng|Máy điều hòa
+c0400	khach san o phan thiet co nha hang	no_diacritics			db8a77fb-17fb-59cc-a71c-8c55bff936f3	unaccent:Phan Thiết|Nhà hàng
+c0401	tim khach san o phan thiet co nha hang	no_diacritics			db8a77fb-17fb-59cc-a71c-8c55bff936f3	unaccent:Phan Thiết|Nhà hàng
+c0402	khach san o phan thiet co nha hang gia tot	no_diacritics			db8a77fb-17fb-59cc-a71c-8c55bff936f3	unaccent:Phan Thiết|Nhà hàng
+c0403	khach san o phu quoc co le tan 24 gio	no_diacritics			fa5d4cd4-ddab-557d-bd07-5c9b8e3e44eb	unaccent:Phú Quốc|Lễ tân 24 giờ
+c0404	tim khach san o phu quoc co le tan 24 gio	no_diacritics			fa5d4cd4-ddab-557d-bd07-5c9b8e3e44eb	unaccent:Phú Quốc|Lễ tân 24 giờ
+c0405	khach san o phu quoc co le tan 24 gio gia tot	no_diacritics			fa5d4cd4-ddab-557d-bd07-5c9b8e3e44eb	unaccent:Phú Quốc|Lễ tân 24 giờ
+c0406	khach san o phan thiet co nhin ra bien	no_diacritics			c34b9982-c5b7-5772-919a-b16c5627ba94|c7492800-b71d-52a5-aee7-79e49995b560	unaccent:Phan Thiết|Nhìn ra biển
+c0407	tim khach san o phan thiet co nhin ra bien	no_diacritics			c34b9982-c5b7-5772-919a-b16c5627ba94|c7492800-b71d-52a5-aee7-79e49995b560	unaccent:Phan Thiết|Nhìn ra biển
+c0408	khach san o phan thiet co nhin ra bien gia tot	no_diacritics			c34b9982-c5b7-5772-919a-b16c5627ba94|c7492800-b71d-52a5-aee7-79e49995b560	unaccent:Phan Thiết|Nhìn ra biển
+c0409	khach san o ha long co phong khong hut thuoc	no_diacritics			79a1b4b4-7966-56ef-9b32-a76d123e618a	unaccent:Hạ Long|Phòng không hút thuốc
+c0410	tim khach san o ha long co phong khong hut thuoc	no_diacritics			79a1b4b4-7966-56ef-9b32-a76d123e618a	unaccent:Hạ Long|Phòng không hút thuốc
+c0411	khach san o ha long co phong khong hut thuoc gia tot	no_diacritics			79a1b4b4-7966-56ef-9b32-a76d123e618a	unaccent:Hạ Long|Phòng không hút thuốc
+c0412	khach san o ha long co san hien	no_diacritics			f2b003aa-bc98-5ca9-ac72-329511593124	unaccent:Hạ Long|Sân hiên
+c0413	tim khach san o ha long co san hien	no_diacritics			f2b003aa-bc98-5ca9-ac72-329511593124	unaccent:Hạ Long|Sân hiên
+c0414	khach san o ha long co san hien gia tot	no_diacritics			f2b003aa-bc98-5ca9-ac72-329511593124	unaccent:Hạ Long|Sân hiên
+c0415	khach san o tp. ho chi minh co wifi mien phi	no_diacritics			d964da2b-a0d0-516f-8a4c-72262a87be7c	unaccent:TP. Hồ Chí Minh|WiFi miễn phí
+c0416	tim khach san o tp. ho chi minh co wifi mien phi	no_diacritics			d964da2b-a0d0-516f-8a4c-72262a87be7c	unaccent:TP. Hồ Chí Minh|WiFi miễn phí
+c0417	khach san o tp. ho chi minh co wifi mien phi gia tot	no_diacritics			d964da2b-a0d0-516f-8a4c-72262a87be7c	unaccent:TP. Hồ Chí Minh|WiFi miễn phí
+c0418	khach san o ha noi co may dieu hoa	no_diacritics			1eba6518-eee3-53ae-9fc6-cd1090197606|189cbc18-6b4e-5844-9795-77716c030d8f	unaccent:Hà Nội|Máy điều hòa
+c0419	tim khach san o ha noi co may dieu hoa	no_diacritics			1eba6518-eee3-53ae-9fc6-cd1090197606|189cbc18-6b4e-5844-9795-77716c030d8f	unaccent:Hà Nội|Máy điều hòa
+c0420	khach san o ha noi co may dieu hoa gia tot	no_diacritics			1eba6518-eee3-53ae-9fc6-cd1090197606|189cbc18-6b4e-5844-9795-77716c030d8f	unaccent:Hà Nội|Máy điều hòa
+c0421	khach san o ninh binh co ban cong	no_diacritics			2594e69b-38f9-54a7-a15f-afdf83af7e3e|e9c18309-661e-5226-91fb-f61219588ea5	unaccent:Ninh Bình|Ban công
+c0422	tim khach san o ninh binh co ban cong	no_diacritics			2594e69b-38f9-54a7-a15f-afdf83af7e3e|e9c18309-661e-5226-91fb-f61219588ea5	unaccent:Ninh Bình|Ban công
+c0423	khach san o ninh binh co ban cong gia tot	no_diacritics			2594e69b-38f9-54a7-a15f-afdf83af7e3e|e9c18309-661e-5226-91fb-f61219588ea5	unaccent:Ninh Bình|Ban công
+c0424	khach san o hai phong co phong khong hut thuoc	no_diacritics			0b5236c6-45ba-50dc-a00d-74e75c98294d	unaccent:Hải Phòng|Phòng không hút thuốc
+c0425	tim khach san o hai phong co phong khong hut thuoc	no_diacritics			0b5236c6-45ba-50dc-a00d-74e75c98294d	unaccent:Hải Phòng|Phòng không hút thuốc
+c0426	khach san o hai phong co phong khong hut thuoc gia tot	no_diacritics			0b5236c6-45ba-50dc-a00d-74e75c98294d	unaccent:Hải Phòng|Phòng không hút thuốc
+c0427	khach san o sa pa co san hien	no_diacritics			7e2a26f9-8ccc-58d0-b906-a6643f78ad2d	unaccent:Sa Pa|Sân hiên
+c0428	tim khach san o sa pa co san hien	no_diacritics			7e2a26f9-8ccc-58d0-b906-a6643f78ad2d	unaccent:Sa Pa|Sân hiên
+c0429	khach san o sa pa co san hien gia tot	no_diacritics			7e2a26f9-8ccc-58d0-b906-a6643f78ad2d	unaccent:Sa Pa|Sân hiên
+c0430	khach san o da nang co wifi mien phi	no_diacritics			29a0d051-ea6b-5fa3-8b6d-8de60ea7987c	unaccent:Đà Nẵng|WiFi miễn phí
+c0431	tim khach san o da nang co wifi mien phi	no_diacritics			29a0d051-ea6b-5fa3-8b6d-8de60ea7987c	unaccent:Đà Nẵng|WiFi miễn phí
+c0432	khach san o da nang co wifi mien phi gia tot	no_diacritics			29a0d051-ea6b-5fa3-8b6d-8de60ea7987c	unaccent:Đà Nẵng|WiFi miễn phí
+c0433	khach san o pleiku co may dieu hoa	no_diacritics			e605047a-2c5c-54b7-8f9d-d8679348532f|1620af9d-603a-5f4c-bd7d-1f75cabac9f1	unaccent:Pleiku|Máy điều hòa
+c0434	tim khach san o pleiku co may dieu hoa	no_diacritics			e605047a-2c5c-54b7-8f9d-d8679348532f|1620af9d-603a-5f4c-bd7d-1f75cabac9f1	unaccent:Pleiku|Máy điều hòa
+c0435	khach san o pleiku co may dieu hoa gia tot	no_diacritics			e605047a-2c5c-54b7-8f9d-d8679348532f|1620af9d-603a-5f4c-bd7d-1f75cabac9f1	unaccent:Pleiku|Máy điều hòa
+c0436	KS ở PQ có hồ bơi	abbrev_typo			6a6210dd-3abf-5e51-bb89-7fa53d36a514	alias/typo:Phú Quốc
+c0437	tìm KS ở PQ có hồ bơi	abbrev_typo			6a6210dd-3abf-5e51-bb89-7fa53d36a514	alias/typo:Phú Quốc
+c0438	KS ở PQ có hồ bơi giá tốt	abbrev_typo			6a6210dd-3abf-5e51-bb89-7fa53d36a514	alias/typo:Phú Quốc
+c0439	KDL NT cho gia đình	abbrev_typo			bebec426-afc3-548d-a2ca-193e21fd3b37	alias/typo:Nha Trang
+c0440	tìm KDL NT cho gia đình	abbrev_typo			bebec426-afc3-548d-a2ca-193e21fd3b37	alias/typo:Nha Trang
+c0441	KDL NT cho gia đình giá tốt	abbrev_typo			bebec426-afc3-548d-a2ca-193e21fd3b37	alias/typo:Nha Trang
+c0442	KS trung tâm ĐN có wifi	abbrev_typo			cd8e4033-19d2-5fb1-9dea-20e003ba61ac	alias/typo:Đà Nẵng
+c0443	tìm KS trung tâm ĐN có wifi	abbrev_typo			cd8e4033-19d2-5fb1-9dea-20e003ba61ac	alias/typo:Đà Nẵng
+c0444	KS trung tâm ĐN có wifi giá tốt	abbrev_typo			cd8e4033-19d2-5fb1-9dea-20e003ba61ac	alias/typo:Đà Nẵng
+c0445	vé VW Nha Trang	abbrev_typo			bebec426-afc3-548d-a2ca-193e21fd3b37	alias/typo:Nha Trang
+c0446	tìm vé VW Nha Trang	abbrev_typo			bebec426-afc3-548d-a2ca-193e21fd3b37	alias/typo:Nha Trang
+c0447	vé VW Nha Trang giá tốt	abbrev_typo			bebec426-afc3-548d-a2ca-193e21fd3b37	alias/typo:Nha Trang
+c0448	resort Phu Quoc gan bien	abbrev_typo			6a6210dd-3abf-5e51-bb89-7fa53d36a514	alias/typo:Phú Quốc
+c0449	tìm resort Phu Quoc gan bien	abbrev_typo			6a6210dd-3abf-5e51-bb89-7fa53d36a514	alias/typo:Phú Quốc
+c0450	resort Phu Quoc gan bien giá tốt	abbrev_typo			6a6210dd-3abf-5e51-bb89-7fa53d36a514	alias/typo:Phú Quốc
+c0451	khach san Nha Trnag co ban cong	abbrev_typo			bebec426-afc3-548d-a2ca-193e21fd3b37	alias/typo:Nha Trang
+c0452	tìm khach san Nha Trnag co ban cong	abbrev_typo			bebec426-afc3-548d-a2ca-193e21fd3b37	alias/typo:Nha Trang
+c0453	khach san Nha Trnag co ban cong giá tốt	abbrev_typo			bebec426-afc3-548d-a2ca-193e21fd3b37	alias/typo:Nha Trang
+c0454	Vinpeal Resort Nha Trang	abbrev_typo			bebec426-afc3-548d-a2ca-193e21fd3b37	alias/typo:Nha Trang
+c0455	tìm Vinpeal Resort Nha Trang	abbrev_typo			bebec426-afc3-548d-a2ca-193e21fd3b37	alias/typo:Nha Trang
+c0456	Vinpeal Resort Nha Trang giá tốt	abbrev_typo			bebec426-afc3-548d-a2ca-193e21fd3b37	alias/typo:Nha Trang
+c0457	KS HN gần điểm vui chơi	abbrev_typo			fbcca5e3-625c-5017-8999-ea37f8e804ac	alias/typo:Hà Nội
+c0458	tìm KS HN gần điểm vui chơi	abbrev_typo			fbcca5e3-625c-5017-8999-ea37f8e804ac	alias/typo:Hà Nội
+c0459	KS HN gần điểm vui chơi giá tốt	abbrev_typo			fbcca5e3-625c-5017-8999-ea37f8e804ac	alias/typo:Hà Nội
+c0460	combo vui chơi PQ dưới 2tr	abbrev_typo			6a6210dd-3abf-5e51-bb89-7fa53d36a514	alias/typo:Phú Quốc
+c0461	tìm combo vui chơi PQ dưới 2tr	abbrev_typo			6a6210dd-3abf-5e51-bb89-7fa53d36a514	alias/typo:Phú Quốc
+c0462	combo vui chơi PQ dưới 2tr giá tốt	abbrev_typo			6a6210dd-3abf-5e51-bb89-7fa53d36a514	alias/typo:Phú Quốc
+c0463	ve may bay SG di DN	abbrev_typo			cd8e4033-19d2-5fb1-9dea-20e003ba61ac	alias/typo:Đà Nẵng
+c0464	tìm ve may bay SG di DN	abbrev_typo			cd8e4033-19d2-5fb1-9dea-20e003ba61ac	alias/typo:Đà Nẵng
+c0465	ve may bay SG di DN giá tốt	abbrev_typo			cd8e4033-19d2-5fb1-9dea-20e003ba61ac	alias/typo:Đà Nẵng
+c0466	khach san Da Lat co bep rieng	abbrev_typo			2be12353-5d18-552f-a892-a9a9f83c76fa	alias/typo:Đà Lạt
+c0467	tìm khach san Da Lat co bep rieng	abbrev_typo			2be12353-5d18-552f-a892-a9a9f83c76fa	alias/typo:Đà Lạt
+c0468	khach san Da Lat co bep rieng giá tốt	abbrev_typo			2be12353-5d18-552f-a892-a9a9f83c76fa	alias/typo:Đà Lạt
+c0469	resort Hoi An cho gd co tre nho	abbrev_typo			a3967a35-37ad-5e4b-8d89-16c3bf163da4	alias/typo:Hội An
+c0470	tìm resort Hoi An cho gd co tre nho	abbrev_typo			a3967a35-37ad-5e4b-8d89-16c3bf163da4	alias/typo:Hội An
+c0471	resort Hoi An cho gd co tre nho giá tốt	abbrev_typo			a3967a35-37ad-5e4b-8d89-16c3bf163da4	alias/typo:Hội An
+c0472	ve Safari PQ	abbrev_typo			6a6210dd-3abf-5e51-bb89-7fa53d36a514	alias/typo:Phú Quốc
+c0473	tìm ve Safari PQ	abbrev_typo			6a6210dd-3abf-5e51-bb89-7fa53d36a514	alias/typo:Phú Quốc
+c0474	ve Safari PQ giá tốt	abbrev_typo			6a6210dd-3abf-5e51-bb89-7fa53d36a514	alias/typo:Phú Quốc
+c0475	KS HL nhin ra bien	abbrev_typo			0ea20753-e3f7-5005-909e-382b704042fc	alias/typo:Hạ Long
+c0476	tìm KS HL nhin ra bien	abbrev_typo			0ea20753-e3f7-5005-909e-382b704042fc	alias/typo:Hạ Long
+c0477	KS HL nhin ra bien giá tốt	abbrev_typo			0ea20753-e3f7-5005-909e-382b704042fc	alias/typo:Hạ Long
+c0478	KDL Phan Thiet nghi duong	abbrev_typo			bdb6ad84-b2b3-5100-95ff-2fc3af9a26e7	alias/typo:Phan Thiết
+c0479	tìm KDL Phan Thiet nghi duong	abbrev_typo			bdb6ad84-b2b3-5100-95ff-2fc3af9a26e7	alias/typo:Phan Thiết
+c0480	KDL Phan Thiet nghi duong giá tốt	abbrev_typo			bdb6ad84-b2b3-5100-95ff-2fc3af9a26e7	alias/typo:Phan Thiết
+c0481	khách sạn 5 sao ở Hà Tĩnh dưới 2 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Hà Tĩnh""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",5]},{""lte"":[""unit_price_min"",2000000]}]}"		ba972b34-67ef-5129-a397-73c21cf90b43	star=5;price<=2000000
+c0482	tìm khách sạn 5 sao ở Hà Tĩnh dưới 2 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Hà Tĩnh""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",5]},{""lte"":[""unit_price_min"",2000000]}]}"		ba972b34-67ef-5129-a397-73c21cf90b43	star=5;price<=2000000
+c0483	khách sạn 5 sao ở Hà Tĩnh dưới 2 triệu, còn lựa chọn nào?	multi_constraint	"{""and"":[{""eq"":[""destination"",""Hà Tĩnh""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",5]},{""lte"":[""unit_price_min"",2000000]}]}"		ba972b34-67ef-5129-a397-73c21cf90b43	star=5;price<=2000000
+c0484	KS 3 sao tại Sa Pa, ngân sách tối đa 2 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Sa Pa""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",3]},{""lte"":[""unit_price_min"",2000000]}]}"		7226d18e-5a21-5156-b6ba-279ef6ca528e	star=3;price<=2000000
+c0485	tìm KS 3 sao tại Sa Pa, ngân sách tối đa 2 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Sa Pa""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",3]},{""lte"":[""unit_price_min"",2000000]}]}"		7226d18e-5a21-5156-b6ba-279ef6ca528e	star=3;price<=2000000
+c0486	KS 3 sao tại Sa Pa, ngân sách tối đa 2 triệu, còn lựa chọn nào?	multi_constraint	"{""and"":[{""eq"":[""destination"",""Sa Pa""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",3]},{""lte"":[""unit_price_min"",2000000]}]}"		7226d18e-5a21-5156-b6ba-279ef6ca528e	star=3;price<=2000000
+c0487	chỗ nghỉ Quy Nhơn từ 4 sao, giá không quá 1 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Quy Nhơn""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",1000000]}]}"		83059db1-ff0f-5057-ac20-401e0deaf8c5	star=4;price<=1000000
+c0488	tìm chỗ nghỉ Quy Nhơn từ 4 sao, giá không quá 1 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Quy Nhơn""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",1000000]}]}"		83059db1-ff0f-5057-ac20-401e0deaf8c5	star=4;price<=1000000
+c0489	chỗ nghỉ Quy Nhơn từ 4 sao, giá không quá 1 triệu, còn lựa chọn nào?	multi_constraint	"{""and"":[{""eq"":[""destination"",""Quy Nhơn""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",1000000]}]}"		83059db1-ff0f-5057-ac20-401e0deaf8c5	star=4;price<=1000000
+c0490	khách sạn 3 sao ở Côn Đảo dưới 1.5 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Côn Đảo""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",3]},{""lte"":[""unit_price_min"",1500000]}]}"		3dd18ae2-ee81-5d4f-9698-a4d3298e097e	star=3;price<=1500000
+c0491	tìm khách sạn 3 sao ở Côn Đảo dưới 1.5 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Côn Đảo""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",3]},{""lte"":[""unit_price_min"",1500000]}]}"		3dd18ae2-ee81-5d4f-9698-a4d3298e097e	star=3;price<=1500000
+c0492	khách sạn 3 sao ở Côn Đảo dưới 1.5 triệu, còn lựa chọn nào?	multi_constraint	"{""and"":[{""eq"":[""destination"",""Côn Đảo""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",3]},{""lte"":[""unit_price_min"",1500000]}]}"		3dd18ae2-ee81-5d4f-9698-a4d3298e097e	star=3;price<=1500000
+c0493	KS 4 sao tại Hạ Long, ngân sách tối đa 1.5 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Hạ Long""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",1500000]}]}"		40199ff7-880c-58af-bae5-e81472b7633a	star=4;price<=1500000
+c0494	tìm KS 4 sao tại Hạ Long, ngân sách tối đa 1.5 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Hạ Long""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",1500000]}]}"		40199ff7-880c-58af-bae5-e81472b7633a	star=4;price<=1500000
+c0495	KS 4 sao tại Hạ Long, ngân sách tối đa 1.5 triệu, còn lựa chọn nào?	multi_constraint	"{""and"":[{""eq"":[""destination"",""Hạ Long""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",1500000]}]}"		40199ff7-880c-58af-bae5-e81472b7633a	star=4;price<=1500000
+c0496	chỗ nghỉ Phú Quốc từ 5 sao, giá không quá 3 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Phú Quốc""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",5]},{""lte"":[""unit_price_min"",3000000]}]}"		4fff982f-2398-5750-a8be-12575bfe53d2	star=5;price<=3000000
+c0497	tìm chỗ nghỉ Phú Quốc từ 5 sao, giá không quá 3 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Phú Quốc""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",5]},{""lte"":[""unit_price_min"",3000000]}]}"		4fff982f-2398-5750-a8be-12575bfe53d2	star=5;price<=3000000
+c0498	chỗ nghỉ Phú Quốc từ 5 sao, giá không quá 3 triệu, còn lựa chọn nào?	multi_constraint	"{""and"":[{""eq"":[""destination"",""Phú Quốc""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",5]},{""lte"":[""unit_price_min"",3000000]}]}"		4fff982f-2398-5750-a8be-12575bfe53d2	star=5;price<=3000000
+c0499	khách sạn 4 sao ở Đà Nẵng dưới 1.5 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Đà Nẵng""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",1500000]}]}"		cbe8bd97-9f78-5e6e-b061-c18bfec2be8c	star=4;price<=1500000
+c0500	tìm khách sạn 4 sao ở Đà Nẵng dưới 1.5 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Đà Nẵng""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",1500000]}]}"		cbe8bd97-9f78-5e6e-b061-c18bfec2be8c	star=4;price<=1500000
+c0501	khách sạn 4 sao ở Đà Nẵng dưới 1.5 triệu, còn lựa chọn nào?	multi_constraint	"{""and"":[{""eq"":[""destination"",""Đà Nẵng""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",1500000]}]}"		cbe8bd97-9f78-5e6e-b061-c18bfec2be8c	star=4;price<=1500000
+c0502	KS 3 sao tại Điện Biên, ngân sách tối đa 0.5 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Điện Biên""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",3]},{""lte"":[""unit_price_min"",500000]}]}"		5977c2d5-800a-504a-bf6e-01248613495c	star=3;price<=500000
+c0503	tìm KS 3 sao tại Điện Biên, ngân sách tối đa 0.5 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Điện Biên""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",3]},{""lte"":[""unit_price_min"",500000]}]}"		5977c2d5-800a-504a-bf6e-01248613495c	star=3;price<=500000
+c0504	KS 3 sao tại Điện Biên, ngân sách tối đa 0.5 triệu, còn lựa chọn nào?	multi_constraint	"{""and"":[{""eq"":[""destination"",""Điện Biên""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",3]},{""lte"":[""unit_price_min"",500000]}]}"		5977c2d5-800a-504a-bf6e-01248613495c	star=3;price<=500000
+c0505	chỗ nghỉ Nghệ An từ 3 sao, giá không quá 1 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Nghệ An""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",3]},{""lte"":[""unit_price_min"",1000000]}]}"		ea93865d-6381-5349-8e95-dc2a7a775b51	star=3;price<=1000000
+c0506	tìm chỗ nghỉ Nghệ An từ 3 sao, giá không quá 1 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Nghệ An""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",3]},{""lte"":[""unit_price_min"",1000000]}]}"		ea93865d-6381-5349-8e95-dc2a7a775b51	star=3;price<=1000000
+c0507	chỗ nghỉ Nghệ An từ 3 sao, giá không quá 1 triệu, còn lựa chọn nào?	multi_constraint	"{""and"":[{""eq"":[""destination"",""Nghệ An""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",3]},{""lte"":[""unit_price_min"",1000000]}]}"		ea93865d-6381-5349-8e95-dc2a7a775b51	star=3;price<=1000000
+c0508	khách sạn 4 sao ở Phan Thiết dưới 2 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Phan Thiết""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",2000000]}]}"		db5744ab-5e58-5ffc-af5b-1ddf09e25750	star=4;price<=2000000
+c0509	tìm khách sạn 4 sao ở Phan Thiết dưới 2 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Phan Thiết""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",2000000]}]}"		db5744ab-5e58-5ffc-af5b-1ddf09e25750	star=4;price<=2000000
+c0510	khách sạn 4 sao ở Phan Thiết dưới 2 triệu, còn lựa chọn nào?	multi_constraint	"{""and"":[{""eq"":[""destination"",""Phan Thiết""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",2000000]}]}"		db5744ab-5e58-5ffc-af5b-1ddf09e25750	star=4;price<=2000000
+c0511	KS 3 sao tại Hải Phòng, ngân sách tối đa 1 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Hải Phòng""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",3]},{""lte"":[""unit_price_min"",1000000]}]}"		17572215-85dd-5b2a-ae98-25c92c83cfad	star=3;price<=1000000
+c0512	tìm KS 3 sao tại Hải Phòng, ngân sách tối đa 1 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Hải Phòng""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",3]},{""lte"":[""unit_price_min"",1000000]}]}"		17572215-85dd-5b2a-ae98-25c92c83cfad	star=3;price<=1000000
+c0513	KS 3 sao tại Hải Phòng, ngân sách tối đa 1 triệu, còn lựa chọn nào?	multi_constraint	"{""and"":[{""eq"":[""destination"",""Hải Phòng""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",3]},{""lte"":[""unit_price_min"",1000000]}]}"		17572215-85dd-5b2a-ae98-25c92c83cfad	star=3;price<=1000000
+c0514	chỗ nghỉ Đà Nẵng từ 3 sao, giá không quá 1 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Đà Nẵng""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",3]},{""lte"":[""unit_price_min"",1000000]}]}"		8247bab8-922f-5a6e-9def-97dbbef5074c	star=3;price<=1000000
+c0515	tìm chỗ nghỉ Đà Nẵng từ 3 sao, giá không quá 1 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Đà Nẵng""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",3]},{""lte"":[""unit_price_min"",1000000]}]}"		8247bab8-922f-5a6e-9def-97dbbef5074c	star=3;price<=1000000
+c0516	chỗ nghỉ Đà Nẵng từ 3 sao, giá không quá 1 triệu, còn lựa chọn nào?	multi_constraint	"{""and"":[{""eq"":[""destination"",""Đà Nẵng""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",3]},{""lte"":[""unit_price_min"",1000000]}]}"		8247bab8-922f-5a6e-9def-97dbbef5074c	star=3;price<=1000000
+c0517	khách sạn 3 sao ở Nha Trang dưới 0.5 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Nha Trang""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",3]},{""lte"":[""unit_price_min"",500000]}]}"		a8b974e7-5d1d-5365-8e96-250c7c118ac5	star=3;price<=500000
+c0518	tìm khách sạn 3 sao ở Nha Trang dưới 0.5 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Nha Trang""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",3]},{""lte"":[""unit_price_min"",500000]}]}"		a8b974e7-5d1d-5365-8e96-250c7c118ac5	star=3;price<=500000
+c0519	khách sạn 3 sao ở Nha Trang dưới 0.5 triệu, còn lựa chọn nào?	multi_constraint	"{""and"":[{""eq"":[""destination"",""Nha Trang""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",3]},{""lte"":[""unit_price_min"",500000]}]}"		a8b974e7-5d1d-5365-8e96-250c7c118ac5	star=3;price<=500000
+c0520	KS 3 sao tại Phan Thiết, ngân sách tối đa 1.5 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Phan Thiết""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",3]},{""lte"":[""unit_price_min"",1500000]}]}"		ea164e06-6afe-5568-8ad7-48308eed8f7b	star=3;price<=1500000
+c0521	tìm KS 3 sao tại Phan Thiết, ngân sách tối đa 1.5 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Phan Thiết""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",3]},{""lte"":[""unit_price_min"",1500000]}]}"		ea164e06-6afe-5568-8ad7-48308eed8f7b	star=3;price<=1500000
+c0522	KS 3 sao tại Phan Thiết, ngân sách tối đa 1.5 triệu, còn lựa chọn nào?	multi_constraint	"{""and"":[{""eq"":[""destination"",""Phan Thiết""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",3]},{""lte"":[""unit_price_min"",1500000]}]}"		ea164e06-6afe-5568-8ad7-48308eed8f7b	star=3;price<=1500000
+c0523	chỗ nghỉ TP. Hồ Chí Minh từ 3 sao, giá không quá 1 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""TP. Hồ Chí Minh""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",3]},{""lte"":[""unit_price_min"",1000000]}]}"		22425913-526a-5356-9b09-3e70c77fe9b2	star=3;price<=1000000
+c0524	tìm chỗ nghỉ TP. Hồ Chí Minh từ 3 sao, giá không quá 1 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""TP. Hồ Chí Minh""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",3]},{""lte"":[""unit_price_min"",1000000]}]}"		22425913-526a-5356-9b09-3e70c77fe9b2	star=3;price<=1000000
+c0525	chỗ nghỉ TP. Hồ Chí Minh từ 3 sao, giá không quá 1 triệu, còn lựa chọn nào?	multi_constraint	"{""and"":[{""eq"":[""destination"",""TP. Hồ Chí Minh""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",3]},{""lte"":[""unit_price_min"",1000000]}]}"		22425913-526a-5356-9b09-3e70c77fe9b2	star=3;price<=1000000
+c0526	khách sạn 4 sao ở Hà Nội dưới 1 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Hà Nội""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",1000000]}]}"		dd026a0c-4b3d-5650-bb12-d5c3105129c3	star=4;price<=1000000
+c0527	tìm khách sạn 4 sao ở Hà Nội dưới 1 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Hà Nội""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",1000000]}]}"		dd026a0c-4b3d-5650-bb12-d5c3105129c3	star=4;price<=1000000
+c0528	khách sạn 4 sao ở Hà Nội dưới 1 triệu, còn lựa chọn nào?	multi_constraint	"{""and"":[{""eq"":[""destination"",""Hà Nội""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",1000000]}]}"		dd026a0c-4b3d-5650-bb12-d5c3105129c3	star=4;price<=1000000
+c0529	KS 3 sao tại Phan Thiết, ngân sách tối đa 0.5 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Phan Thiết""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",3]},{""lte"":[""unit_price_min"",500000]}]}"		498e2d0e-0173-5ccc-baf4-61ef24139125	star=3;price<=500000
+c0530	tìm KS 3 sao tại Phan Thiết, ngân sách tối đa 0.5 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Phan Thiết""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",3]},{""lte"":[""unit_price_min"",500000]}]}"		498e2d0e-0173-5ccc-baf4-61ef24139125	star=3;price<=500000
+c0531	KS 3 sao tại Phan Thiết, ngân sách tối đa 0.5 triệu, còn lựa chọn nào?	multi_constraint	"{""and"":[{""eq"":[""destination"",""Phan Thiết""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",3]},{""lte"":[""unit_price_min"",500000]}]}"		498e2d0e-0173-5ccc-baf4-61ef24139125	star=3;price<=500000
+c0532	chỗ nghỉ Đà Nẵng từ 4 sao, giá không quá 1 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Đà Nẵng""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",1000000]}]}"		6258834b-27a6-5012-97f2-5c47d587b932	star=4;price<=1000000
+c0533	tìm chỗ nghỉ Đà Nẵng từ 4 sao, giá không quá 1 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Đà Nẵng""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",1000000]}]}"		6258834b-27a6-5012-97f2-5c47d587b932	star=4;price<=1000000
+c0534	chỗ nghỉ Đà Nẵng từ 4 sao, giá không quá 1 triệu, còn lựa chọn nào?	multi_constraint	"{""and"":[{""eq"":[""destination"",""Đà Nẵng""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",1000000]}]}"		6258834b-27a6-5012-97f2-5c47d587b932	star=4;price<=1000000
+c0535	khách sạn 4 sao ở Cần Thơ dưới 2 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Cần Thơ""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",2000000]}]}"		a3d6489e-22f0-5722-a96c-99724291e689	star=4;price<=2000000
+c0536	tìm khách sạn 4 sao ở Cần Thơ dưới 2 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Cần Thơ""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",2000000]}]}"		a3d6489e-22f0-5722-a96c-99724291e689	star=4;price<=2000000
+c0537	khách sạn 4 sao ở Cần Thơ dưới 2 triệu, còn lựa chọn nào?	multi_constraint	"{""and"":[{""eq"":[""destination"",""Cần Thơ""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",2000000]}]}"		a3d6489e-22f0-5722-a96c-99724291e689	star=4;price<=2000000
+c0538	KS 5 sao tại Hạ Long, ngân sách tối đa 9.5 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Hạ Long""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",5]},{""lte"":[""unit_price_min"",9500000]}]}"		6969c87e-36c6-558d-baf7-9929b7ff5788	star=5;price<=9500000
+c0539	tìm KS 5 sao tại Hạ Long, ngân sách tối đa 9.5 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Hạ Long""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",5]},{""lte"":[""unit_price_min"",9500000]}]}"		6969c87e-36c6-558d-baf7-9929b7ff5788	star=5;price<=9500000
+c0540	KS 5 sao tại Hạ Long, ngân sách tối đa 9.5 triệu, còn lựa chọn nào?	multi_constraint	"{""and"":[{""eq"":[""destination"",""Hạ Long""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",5]},{""lte"":[""unit_price_min"",9500000]}]}"		6969c87e-36c6-558d-baf7-9929b7ff5788	star=5;price<=9500000
+c0541	khách sạn, vé máy bay và vé tham quan ở Buôn Ma Thuột	cross_vertical			62053126-4915-59b3-b027-6610ecd53a47|cf76690e-d0cc-5d12-bc49-ea140ad7c9dd|382c547a-85e0-599a-a021-623ab9220137	verticals:['attraction', 'flight', 'hotel']
+c0542	tìm khách sạn, vé máy bay và vé tham quan ở Buôn Ma Thuột	cross_vertical			62053126-4915-59b3-b027-6610ecd53a47|cf76690e-d0cc-5d12-bc49-ea140ad7c9dd|382c547a-85e0-599a-a021-623ab9220137	verticals:['attraction', 'flight', 'hotel']
+c0543	mình cần khách sạn, vé máy bay và vé tham quan ở Buôn Ma Thuột	cross_vertical			62053126-4915-59b3-b027-6610ecd53a47|cf76690e-d0cc-5d12-bc49-ea140ad7c9dd|382c547a-85e0-599a-a021-623ab9220137	verticals:['attraction', 'flight', 'hotel']
+c0544	khách sạn, vé máy bay, vé tham quan và combo du lịch ở Cần Thơ	cross_vertical			6864d508-7bcf-5cbd-8b32-226ae66adae0|f733adab-ede4-59c5-a838-76897a6a5c60|a414dd33-ea26-59e4-ae1b-17f682648623|d087ec48-a25b-50ba-9270-10d2228eb889	verticals:['attraction', 'combo', 'flight', 'hotel']
+c0545	tìm khách sạn, vé máy bay, vé tham quan và combo du lịch ở Cần Thơ	cross_vertical			6864d508-7bcf-5cbd-8b32-226ae66adae0|f733adab-ede4-59c5-a838-76897a6a5c60|a414dd33-ea26-59e4-ae1b-17f682648623|d087ec48-a25b-50ba-9270-10d2228eb889	verticals:['attraction', 'combo', 'flight', 'hotel']
+c0546	mình cần khách sạn, vé máy bay, vé tham quan và combo du lịch ở Cần Thơ	cross_vertical			6864d508-7bcf-5cbd-8b32-226ae66adae0|f733adab-ede4-59c5-a838-76897a6a5c60|a414dd33-ea26-59e4-ae1b-17f682648623|d087ec48-a25b-50ba-9270-10d2228eb889	verticals:['attraction', 'combo', 'flight', 'hotel']
+c0547	khách sạn, vé máy bay, vé tham quan và combo du lịch ở Huế	cross_vertical			df24a0a0-cb00-5584-bc65-51eeb13cbc19|72239b0a-a3e1-5853-bb33-d93516bf3055|edfcfec0-85c2-571f-8e67-24848ded62d8|23f00093-e641-50a8-8a6e-47baafccab2a	verticals:['attraction', 'combo', 'flight', 'hotel']
+c0548	tìm khách sạn, vé máy bay, vé tham quan và combo du lịch ở Huế	cross_vertical			df24a0a0-cb00-5584-bc65-51eeb13cbc19|72239b0a-a3e1-5853-bb33-d93516bf3055|edfcfec0-85c2-571f-8e67-24848ded62d8|23f00093-e641-50a8-8a6e-47baafccab2a	verticals:['attraction', 'combo', 'flight', 'hotel']
+c0549	mình cần khách sạn, vé máy bay, vé tham quan và combo du lịch ở Huế	cross_vertical			df24a0a0-cb00-5584-bc65-51eeb13cbc19|72239b0a-a3e1-5853-bb33-d93516bf3055|edfcfec0-85c2-571f-8e67-24848ded62d8|23f00093-e641-50a8-8a6e-47baafccab2a	verticals:['attraction', 'combo', 'flight', 'hotel']
+c0550	khách sạn, vé máy bay, vé tham quan và combo du lịch ở Hà Nội	cross_vertical			3b1ed5e3-d8db-519b-b484-1c28f84da751|d8aa4db1-5f2c-5a6e-8c3d-a1836f4da5e3|1df5080e-c179-5c0f-aced-fe0f6f5f5843|1eba6518-eee3-53ae-9fc6-cd1090197606	verticals:['attraction', 'combo', 'flight', 'hotel']
+c0551	tìm khách sạn, vé máy bay, vé tham quan và combo du lịch ở Hà Nội	cross_vertical			3b1ed5e3-d8db-519b-b484-1c28f84da751|d8aa4db1-5f2c-5a6e-8c3d-a1836f4da5e3|1df5080e-c179-5c0f-aced-fe0f6f5f5843|1eba6518-eee3-53ae-9fc6-cd1090197606	verticals:['attraction', 'combo', 'flight', 'hotel']
+c0552	mình cần khách sạn, vé máy bay, vé tham quan và combo du lịch ở Hà Nội	cross_vertical			3b1ed5e3-d8db-519b-b484-1c28f84da751|d8aa4db1-5f2c-5a6e-8c3d-a1836f4da5e3|1df5080e-c179-5c0f-aced-fe0f6f5f5843|1eba6518-eee3-53ae-9fc6-cd1090197606	verticals:['attraction', 'combo', 'flight', 'hotel']
+c0553	khách sạn, vé tham quan và combo du lịch ở Hà Tĩnh	cross_vertical			766e59f4-938d-505a-927f-fab0797f6e36|f751a108-420a-5322-923f-f4925c4c915d|2b42b7ff-6ad8-5a24-ab0c-3c76969af752	verticals:['attraction', 'combo', 'hotel']
+c0554	tìm khách sạn, vé tham quan và combo du lịch ở Hà Tĩnh	cross_vertical			766e59f4-938d-505a-927f-fab0797f6e36|f751a108-420a-5322-923f-f4925c4c915d|2b42b7ff-6ad8-5a24-ab0c-3c76969af752	verticals:['attraction', 'combo', 'hotel']
+c0555	mình cần khách sạn, vé tham quan và combo du lịch ở Hà Tĩnh	cross_vertical			766e59f4-938d-505a-927f-fab0797f6e36|f751a108-420a-5322-923f-f4925c4c915d|2b42b7ff-6ad8-5a24-ab0c-3c76969af752	verticals:['attraction', 'combo', 'hotel']
+c0556	khách sạn, vé tham quan và combo du lịch ở Hạ Long	cross_vertical			4624a2fb-09d9-5798-b552-9d7190449b7d|acfb8715-c7cf-5a3f-b68a-b71a48873c49|d19643a5-aef9-547b-8f24-cbcc4ffffb28	verticals:['attraction', 'combo', 'hotel']
+c0557	tìm khách sạn, vé tham quan và combo du lịch ở Hạ Long	cross_vertical			4624a2fb-09d9-5798-b552-9d7190449b7d|acfb8715-c7cf-5a3f-b68a-b71a48873c49|d19643a5-aef9-547b-8f24-cbcc4ffffb28	verticals:['attraction', 'combo', 'hotel']
+c0558	mình cần khách sạn, vé tham quan và combo du lịch ở Hạ Long	cross_vertical			4624a2fb-09d9-5798-b552-9d7190449b7d|acfb8715-c7cf-5a3f-b68a-b71a48873c49|d19643a5-aef9-547b-8f24-cbcc4ffffb28	verticals:['attraction', 'combo', 'hotel']
+c0559	khách sạn, vé máy bay, vé tham quan, sân golf và combo du lịch ở Hải Phòng	cross_vertical			8cf0822e-e242-5f60-a708-b359a900cc84|01e66d01-1295-573c-87fc-a5068be7058b|297a176c-aee9-56aa-ae1f-3b47221a102f|3834227f-1ae8-578d-9b60-c0dd10144bdb|7df5f324-c904-5a64-9b46-5b798e35b1f8	verticals:['attraction', 'combo', 'flight', 'golf', 'hotel']
+c0560	tìm khách sạn, vé máy bay, vé tham quan, sân golf và combo du lịch ở Hải Phòng	cross_vertical			8cf0822e-e242-5f60-a708-b359a900cc84|01e66d01-1295-573c-87fc-a5068be7058b|297a176c-aee9-56aa-ae1f-3b47221a102f|3834227f-1ae8-578d-9b60-c0dd10144bdb|7df5f324-c904-5a64-9b46-5b798e35b1f8	verticals:['attraction', 'combo', 'flight', 'golf', 'hotel']
+c0561	mình cần khách sạn, vé máy bay, vé tham quan, sân golf và combo du lịch ở Hải Phòng	cross_vertical			8cf0822e-e242-5f60-a708-b359a900cc84|01e66d01-1295-573c-87fc-a5068be7058b|297a176c-aee9-56aa-ae1f-3b47221a102f|3834227f-1ae8-578d-9b60-c0dd10144bdb|7df5f324-c904-5a64-9b46-5b798e35b1f8	verticals:['attraction', 'combo', 'flight', 'golf', 'hotel']
+c0562	khách sạn, vé tham quan, sân golf và combo du lịch ở Hội An	cross_vertical			6d58c14e-3952-5c1a-a801-88e4384e203d|759cb50f-b562-50be-88fd-70d60332f9e4|a86717ae-2a66-5aa0-9def-7e42f56fc40f|a7fcccdb-316b-5d19-8cc1-7dc182aa6d71	verticals:['attraction', 'combo', 'golf', 'hotel']
+c0563	tìm khách sạn, vé tham quan, sân golf và combo du lịch ở Hội An	cross_vertical			6d58c14e-3952-5c1a-a801-88e4384e203d|759cb50f-b562-50be-88fd-70d60332f9e4|a86717ae-2a66-5aa0-9def-7e42f56fc40f|a7fcccdb-316b-5d19-8cc1-7dc182aa6d71	verticals:['attraction', 'combo', 'golf', 'hotel']
+c0564	mình cần khách sạn, vé tham quan, sân golf và combo du lịch ở Hội An	cross_vertical			6d58c14e-3952-5c1a-a801-88e4384e203d|759cb50f-b562-50be-88fd-70d60332f9e4|a86717ae-2a66-5aa0-9def-7e42f56fc40f|a7fcccdb-316b-5d19-8cc1-7dc182aa6d71	verticals:['attraction', 'combo', 'golf', 'hotel']
+c0565	khách sạn, vé máy bay, vé tham quan và combo du lịch ở Nghệ An	cross_vertical			e2ff991d-f870-5562-a81f-66307d61b49e|a556a3a0-996e-507d-a310-cb57ca1fec63|ba6aaebb-5b3e-548a-9901-54b5a2c4ef6b|300a7d88-a1cb-5cc4-b94e-64923df37412	verticals:['attraction', 'combo', 'flight', 'hotel']
+c0566	tìm khách sạn, vé máy bay, vé tham quan và combo du lịch ở Nghệ An	cross_vertical			e2ff991d-f870-5562-a81f-66307d61b49e|a556a3a0-996e-507d-a310-cb57ca1fec63|ba6aaebb-5b3e-548a-9901-54b5a2c4ef6b|300a7d88-a1cb-5cc4-b94e-64923df37412	verticals:['attraction', 'combo', 'flight', 'hotel']
+c0567	mình cần khách sạn, vé máy bay, vé tham quan và combo du lịch ở Nghệ An	cross_vertical			e2ff991d-f870-5562-a81f-66307d61b49e|a556a3a0-996e-507d-a310-cb57ca1fec63|ba6aaebb-5b3e-548a-9901-54b5a2c4ef6b|300a7d88-a1cb-5cc4-b94e-64923df37412	verticals:['attraction', 'combo', 'flight', 'hotel']
+c0568	khách sạn, vé máy bay, vé tham quan, sân golf và combo du lịch ở Nha Trang	cross_vertical			4d2f58d5-9015-533c-9fa5-491ec0f8686f|2cd93729-51ad-5bca-8e7f-16811f12bd0f|f2da6070-a552-561b-8ae6-10f294685dfd|83b5cf28-6d82-5037-9b05-f4bf2feb6edb|080a7f5e-57d5-5381-9f1d-5ca4efeb61c6	verticals:['attraction', 'combo', 'flight', 'golf', 'hotel']
+c0569	tìm khách sạn, vé máy bay, vé tham quan, sân golf và combo du lịch ở Nha Trang	cross_vertical			4d2f58d5-9015-533c-9fa5-491ec0f8686f|2cd93729-51ad-5bca-8e7f-16811f12bd0f|f2da6070-a552-561b-8ae6-10f294685dfd|83b5cf28-6d82-5037-9b05-f4bf2feb6edb|080a7f5e-57d5-5381-9f1d-5ca4efeb61c6	verticals:['attraction', 'combo', 'flight', 'golf', 'hotel']
+c0570	mình cần khách sạn, vé máy bay, vé tham quan, sân golf và combo du lịch ở Nha Trang	cross_vertical			4d2f58d5-9015-533c-9fa5-491ec0f8686f|2cd93729-51ad-5bca-8e7f-16811f12bd0f|f2da6070-a552-561b-8ae6-10f294685dfd|83b5cf28-6d82-5037-9b05-f4bf2feb6edb|080a7f5e-57d5-5381-9f1d-5ca4efeb61c6	verticals:['attraction', 'combo', 'flight', 'golf', 'hotel']
+c0571	resort ở Hà Giang	out_of_catalog		true		absent destination:Hà Giang
+c0572	vé tham quan Hà Giang	out_of_catalog		true		absent destination:Hà Giang
+c0573	combo du lịch Hà Giang	out_of_catalog		true		absent destination:Hà Giang
+c0574	resort ở Mộc Châu	out_of_catalog		true		absent destination:Mộc Châu
+c0575	vé tham quan Mộc Châu	out_of_catalog		true		absent destination:Mộc Châu
+c0576	combo du lịch Mộc Châu	out_of_catalog		true		absent destination:Mộc Châu
+c0577	resort ở Tam Đảo	out_of_catalog		true		absent destination:Tam Đảo
+c0578	vé tham quan Tam Đảo	out_of_catalog		true		absent destination:Tam Đảo
+c0579	combo du lịch Tam Đảo	out_of_catalog		true		absent destination:Tam Đảo
+c0580	resort ở Vũng Tàu	out_of_catalog		true		absent destination:Vũng Tàu
+c0581	vé tham quan Vũng Tàu	out_of_catalog		true		absent destination:Vũng Tàu
+c0582	combo du lịch Vũng Tàu	out_of_catalog		true		absent destination:Vũng Tàu
+c0583	resort ở Cà Mau	out_of_catalog		true		absent destination:Cà Mau
+c0584	vé tham quan Cà Mau	out_of_catalog		true		absent destination:Cà Mau
+c0585	combo du lịch Cà Mau	out_of_catalog		true		absent destination:Cà Mau
+c0586	resort ở Lạng Sơn	out_of_catalog		true		absent destination:Lạng Sơn
+c0587	vé tham quan Lạng Sơn	out_of_catalog		true		absent destination:Lạng Sơn
+c0588	combo du lịch Lạng Sơn	out_of_catalog		true		absent destination:Lạng Sơn
+c0589	resort ở Hải Dương	out_of_catalog		true		absent destination:Hải Dương
+c0590	vé tham quan Hải Dương	out_of_catalog		true		absent destination:Hải Dương
+c0591	combo du lịch Hải Dương	out_of_catalog		true		absent destination:Hải Dương
+c0592	resort ở Sóc Trăng	out_of_catalog		true		absent destination:Sóc Trăng
+c0593	vé tham quan Sóc Trăng	out_of_catalog		true		absent destination:Sóc Trăng
+c0594	combo du lịch Sóc Trăng	out_of_catalog		true		absent destination:Sóc Trăng
+c0595	resort ở Bảo Lộc	out_of_catalog		true		absent destination:Bảo Lộc
+c0596	vé tham quan Bảo Lộc	out_of_catalog		true		absent destination:Bảo Lộc
+c0597	combo du lịch Bảo Lộc	out_of_catalog		true		absent destination:Bảo Lộc
+c0598	resort ở Lý Sơn	out_of_catalog		true		absent destination:Lý Sơn
+c0599	vé tham quan Lý Sơn	out_of_catalog		true		absent destination:Lý Sơn
+c0600	combo du lịch Lý Sơn	out_of_catalog		true		absent destination:Lý Sơn
+c0601	khách sạn Đà Lạt không có chỗ đỗ xe	amenity_negation			adf189b9-8ae6-5a8c-b6e0-dd51ceae2941|65c74d36-3480-5cc4-88c2-4a8959fe7965	absence means not-recorded: chỗ đỗ xe (parking)
+c0602	tìm khách sạn Đà Lạt không có chỗ đỗ xe	amenity_negation			adf189b9-8ae6-5a8c-b6e0-dd51ceae2941|65c74d36-3480-5cc4-88c2-4a8959fe7965	absence means not-recorded: chỗ đỗ xe (parking)
+c0603	khách sạn Đà Lạt không có chỗ đỗ xe, có lựa chọn nào?	amenity_negation			adf189b9-8ae6-5a8c-b6e0-dd51ceae2941|65c74d36-3480-5cc4-88c2-4a8959fe7965	absence means not-recorded: chỗ đỗ xe (parking)
+c0604	khách sạn Hội An không có spa	amenity_negation			997ce437-42e9-542b-ab6b-47f6f9e50471|9509d07f-b5dd-560c-980c-19fce6c697e5	absence means not-recorded: spa (spa)
+c0605	tìm khách sạn Hội An không có spa	amenity_negation			997ce437-42e9-542b-ab6b-47f6f9e50471|9509d07f-b5dd-560c-980c-19fce6c697e5	absence means not-recorded: spa (spa)
+c0606	khách sạn Hội An không có spa, có lựa chọn nào?	amenity_negation			997ce437-42e9-542b-ab6b-47f6f9e50471|9509d07f-b5dd-560c-980c-19fce6c697e5	absence means not-recorded: spa (spa)
+c0607	khách sạn Sa Pa không có thang máy	amenity_negation			63829209-69cf-52a6-9ef0-b79cc2efe125|18cfba97-fe25-5f2a-b583-5c6c534b3664	absence means not-recorded: thang máy (elevator)
+c0608	tìm khách sạn Sa Pa không có thang máy	amenity_negation			63829209-69cf-52a6-9ef0-b79cc2efe125|18cfba97-fe25-5f2a-b583-5c6c534b3664	absence means not-recorded: thang máy (elevator)
+c0609	khách sạn Sa Pa không có thang máy, có lựa chọn nào?	amenity_negation			63829209-69cf-52a6-9ef0-b79cc2efe125|18cfba97-fe25-5f2a-b583-5c6c534b3664	absence means not-recorded: thang máy (elevator)
+c0610	khách sạn Hà Nội không có bữa sáng	amenity_negation			dd091821-8c04-5d17-ae05-5314ef403e3c|f9718902-b703-5e4c-884e-c25f717ebfab	absence means not-recorded: bữa sáng (breakfast)
+c0611	tìm khách sạn Hà Nội không có bữa sáng	amenity_negation			dd091821-8c04-5d17-ae05-5314ef403e3c|f9718902-b703-5e4c-884e-c25f717ebfab	absence means not-recorded: bữa sáng (breakfast)
+c0612	khách sạn Hà Nội không có bữa sáng, có lựa chọn nào?	amenity_negation			dd091821-8c04-5d17-ae05-5314ef403e3c|f9718902-b703-5e4c-884e-c25f717ebfab	absence means not-recorded: bữa sáng (breakfast)
+c0613	khách sạn Nha Trang không có quầy bar	amenity_negation			249e03b6-e2e1-5d80-a8a5-95aa28f145a0|b4b15434-ddc0-52ec-93e9-849a1664c050	absence means not-recorded: quầy bar (bar)
+c0614	tìm khách sạn Nha Trang không có quầy bar	amenity_negation			249e03b6-e2e1-5d80-a8a5-95aa28f145a0|b4b15434-ddc0-52ec-93e9-849a1664c050	absence means not-recorded: quầy bar (bar)
+c0615	khách sạn Nha Trang không có quầy bar, có lựa chọn nào?	amenity_negation			249e03b6-e2e1-5d80-a8a5-95aa28f145a0|b4b15434-ddc0-52ec-93e9-849a1664c050	absence means not-recorded: quầy bar (bar)
+c0616	chỗ nghỉ ở Sa Pa có máy sưởi	amenity_offtaxonomy			012f74ab-daf8-575d-bfac-4738d70e30ae|0a2e985f-adf1-504c-b11b-e279333bd3e1	raw amenity:Hệ thống sưởi
+c0617	tìm chỗ nghỉ ở Sa Pa có máy sưởi	amenity_offtaxonomy			012f74ab-daf8-575d-bfac-4738d70e30ae|0a2e985f-adf1-504c-b11b-e279333bd3e1	raw amenity:Hệ thống sưởi
+c0618	chỗ nghỉ ở Sa Pa có máy sưởi, có lựa chọn nào?	amenity_offtaxonomy			012f74ab-daf8-575d-bfac-4738d70e30ae|0a2e985f-adf1-504c-b11b-e279333bd3e1	raw amenity:Hệ thống sưởi
+c0619	chỗ nghỉ ở Hải Phòng có phòng cách âm	amenity_offtaxonomy			014df0f7-516e-5b85-8f93-79668152b34d|9e9f4a63-b8cb-502b-ada4-3859bf2f1f1f	raw amenity:Cách âm
+c0620	tìm chỗ nghỉ ở Hải Phòng có phòng cách âm	amenity_offtaxonomy			014df0f7-516e-5b85-8f93-79668152b34d|9e9f4a63-b8cb-502b-ada4-3859bf2f1f1f	raw amenity:Cách âm
+c0621	chỗ nghỉ ở Hải Phòng có phòng cách âm, có lựa chọn nào?	amenity_offtaxonomy			014df0f7-516e-5b85-8f93-79668152b34d|9e9f4a63-b8cb-502b-ada4-3859bf2f1f1f	raw amenity:Cách âm
+c0622	chỗ nghỉ ở Phú Quốc có két an toàn	amenity_offtaxonomy			b1c750fa-863e-5347-ab4f-abea079a601b|d809ea12-ac96-5b17-808a-a08d9c66fb26	raw amenity:Két an toàn
+c0623	tìm chỗ nghỉ ở Phú Quốc có két an toàn	amenity_offtaxonomy			b1c750fa-863e-5347-ab4f-abea079a601b|d809ea12-ac96-5b17-808a-a08d9c66fb26	raw amenity:Két an toàn
+c0624	chỗ nghỉ ở Phú Quốc có két an toàn, có lựa chọn nào?	amenity_offtaxonomy			b1c750fa-863e-5347-ab4f-abea079a601b|d809ea12-ac96-5b17-808a-a08d9c66fb26	raw amenity:Két an toàn
+c0625	chỗ nghỉ ở Đà Lạt có sân vườn	amenity_offtaxonomy			adf189b9-8ae6-5a8c-b6e0-dd51ceae2941|cb98127e-8ae1-5169-b0f5-0cfba6ee12cb	raw amenity:Sân vườn
+c0626	tìm chỗ nghỉ ở Đà Lạt có sân vườn	amenity_offtaxonomy			adf189b9-8ae6-5a8c-b6e0-dd51ceae2941|cb98127e-8ae1-5169-b0f5-0cfba6ee12cb	raw amenity:Sân vườn
+c0627	chỗ nghỉ ở Đà Lạt có sân vườn, có lựa chọn nào?	amenity_offtaxonomy			adf189b9-8ae6-5a8c-b6e0-dd51ceae2941|cb98127e-8ae1-5169-b0f5-0cfba6ee12cb	raw amenity:Sân vườn
+c0628	chỗ nghỉ ở TP. Hồ Chí Minh có chỗ gửi hành lý	amenity_offtaxonomy			f7fb91ba-7b4f-557a-b7f0-61bd4c8fc0ad|27d29209-dcf3-5106-a088-9b7f5e82815e	raw amenity:Giữ hành lý
+c0629	tìm chỗ nghỉ ở TP. Hồ Chí Minh có chỗ gửi hành lý	amenity_offtaxonomy			f7fb91ba-7b4f-557a-b7f0-61bd4c8fc0ad|27d29209-dcf3-5106-a088-9b7f5e82815e	raw amenity:Giữ hành lý
+c0630	chỗ nghỉ ở TP. Hồ Chí Minh có chỗ gửi hành lý, có lựa chọn nào?	amenity_offtaxonomy			f7fb91ba-7b4f-557a-b7f0-61bd4c8fc0ad|27d29209-dcf3-5106-a088-9b7f5e82815e	raw amenity:Giữ hành lý
+c0631	khách sạn ở Huế có hồ bơi	amenity_single			2de3de34-b7f2-5d25-9932-df46bb6819fc|d5be1d9d-c833-5f65-a352-fa9a21938d45	hồ bơi (pool)
+c0632	tìm khách sạn ở Huế có hồ bơi	amenity_single			2de3de34-b7f2-5d25-9932-df46bb6819fc|d5be1d9d-c833-5f65-a352-fa9a21938d45	hồ bơi (pool)
+c0633	khách sạn ở Huế có hồ bơi, có lựa chọn nào?	amenity_single			2de3de34-b7f2-5d25-9932-df46bb6819fc|d5be1d9d-c833-5f65-a352-fa9a21938d45	hồ bơi (pool)
+c0634	khach san o hai phong co bua sang	no_diacritics			014df0f7-516e-5b85-8f93-79668152b34d|5675f8ee-7840-5ec5-9ff0-0920458698df	unaccent:Hải Phòng|bữa sáng (breakfast)
+c0635	tim khach san o hai phong co bua sang	no_diacritics			014df0f7-516e-5b85-8f93-79668152b34d|5675f8ee-7840-5ec5-9ff0-0920458698df	unaccent:Hải Phòng|bữa sáng (breakfast)
+c0636	khach san o hai phong co bua sang gia tot	no_diacritics			014df0f7-516e-5b85-8f93-79668152b34d|5675f8ee-7840-5ec5-9ff0-0920458698df	unaccent:Hải Phòng|bữa sáng (breakfast)
+c0637	khách sạn ở Nghệ An có bữa sáng	amenity_single			504123c9-d3c9-55f5-9bc9-171d5d1b6579|981e42ae-60b4-547e-a387-c1a5f50018af	bữa sáng (breakfast)
+c0638	tìm khách sạn ở Nghệ An có bữa sáng	amenity_single			504123c9-d3c9-55f5-9bc9-171d5d1b6579|981e42ae-60b4-547e-a387-c1a5f50018af	bữa sáng (breakfast)
+c0639	khách sạn ở Nghệ An có bữa sáng, có lựa chọn nào?	amenity_single			504123c9-d3c9-55f5-9bc9-171d5d1b6579|981e42ae-60b4-547e-a387-c1a5f50018af	bữa sáng (breakfast)
+c0640	khach san o da nang co phong gym	no_diacritics			a02d011d-715a-580d-9f91-090cd5d05c8c|74c71a51-0c69-51ec-9813-aac84c8e733d	unaccent:Đà Nẵng|phòng gym (fitness)
+c0641	tim khach san o da nang co phong gym	no_diacritics			a02d011d-715a-580d-9f91-090cd5d05c8c|74c71a51-0c69-51ec-9813-aac84c8e733d	unaccent:Đà Nẵng|phòng gym (fitness)
+c0642	khach san o da nang co phong gym gia tot	no_diacritics			a02d011d-715a-580d-9f91-090cd5d05c8c|74c71a51-0c69-51ec-9813-aac84c8e733d	unaccent:Đà Nẵng|phòng gym (fitness)
+c0643	khach san o nha trang co spa	no_diacritics			3bc6a6fe-cdf9-5b38-8f88-e19536c78af8|b5fc5fa8-5076-5c0f-90b9-fc9b8d012b1f	unaccent:Nha Trang|spa (spa)
+c0644	tim khach san o nha trang co spa	no_diacritics			3bc6a6fe-cdf9-5b38-8f88-e19536c78af8|b5fc5fa8-5076-5c0f-90b9-fc9b8d012b1f	unaccent:Nha Trang|spa (spa)
+c0645	khach san o nha trang co spa gia tot	no_diacritics			3bc6a6fe-cdf9-5b38-8f88-e19536c78af8|b5fc5fa8-5076-5c0f-90b9-fc9b8d012b1f	unaccent:Nha Trang|spa (spa)
+c0646	chỗ nghỉ Huế từ 4 sao, giá không quá 1 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Huế""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",1000000]}]}"		82dac6d3-ad0f-5064-beaf-c42422724901|0e1ffe78-41be-5b34-a933-35626f4b973a	star=4;price<=1000000
+c0647	tìm chỗ nghỉ Huế từ 4 sao, giá không quá 1 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Huế""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",1000000]}]}"		82dac6d3-ad0f-5064-beaf-c42422724901|0e1ffe78-41be-5b34-a933-35626f4b973a	star=4;price<=1000000
+c0648	chỗ nghỉ Huế từ 4 sao, giá không quá 1 triệu, còn lựa chọn nào?	multi_constraint	"{""and"":[{""eq"":[""destination"",""Huế""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",1000000]}]}"		82dac6d3-ad0f-5064-beaf-c42422724901|0e1ffe78-41be-5b34-a933-35626f4b973a	star=4;price<=1000000
+c0649	khách sạn 4 sao tại Đà Lạt, ngân sách tối đa 1.5 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Đà Lạt""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",1500000]}]}"		adf189b9-8ae6-5a8c-b6e0-dd51ceae2941|9a3195b3-3028-5815-862a-c36ac2f679e4	star=4;price<=1500000
+c0650	tìm khách sạn 4 sao tại Đà Lạt, ngân sách tối đa 1.5 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Đà Lạt""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",1500000]}]}"		adf189b9-8ae6-5a8c-b6e0-dd51ceae2941|9a3195b3-3028-5815-862a-c36ac2f679e4	star=4;price<=1500000
+c0651	khách sạn 4 sao tại Đà Lạt, ngân sách tối đa 1.5 triệu, còn lựa chọn nào?	multi_constraint	"{""and"":[{""eq"":[""destination"",""Đà Lạt""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",1500000]}]}"		adf189b9-8ae6-5a8c-b6e0-dd51ceae2941|9a3195b3-3028-5815-862a-c36ac2f679e4	star=4;price<=1500000
+c0652	khách sạn 4 sao ở Sa Pa dưới 2 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Sa Pa""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",2000000]}]}"		9afef1b2-aa5a-51de-a25d-d4bb23621634|a5c7af0a-a369-5a2f-b5ba-1e593dab06d0	star=4;price<=2000000
+c0653	tìm khách sạn 4 sao ở Sa Pa dưới 2 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Sa Pa""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",2000000]}]}"		9afef1b2-aa5a-51de-a25d-d4bb23621634|a5c7af0a-a369-5a2f-b5ba-1e593dab06d0	star=4;price<=2000000
+c0654	khách sạn 4 sao ở Sa Pa dưới 2 triệu, còn lựa chọn nào?	multi_constraint	"{""and"":[{""eq"":[""destination"",""Sa Pa""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",2000000]}]}"		9afef1b2-aa5a-51de-a25d-d4bb23621634|a5c7af0a-a369-5a2f-b5ba-1e593dab06d0	star=4;price<=2000000
+c0655	khách sạn 4 sao ở Hải Phòng dưới 1 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Hải Phòng""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",1000000]}]}"		4a7c3d93-46c3-5b1f-adc1-dca0da1f4029|dd71c19f-2cb1-539c-ad46-28f4be1341b4	star=4;price<=1000000
+c0656	tìm khách sạn 4 sao ở Hải Phòng dưới 1 triệu	multi_constraint	"{""and"":[{""eq"":[""destination"",""Hải Phòng""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",1000000]}]}"		4a7c3d93-46c3-5b1f-adc1-dca0da1f4029|dd71c19f-2cb1-539c-ad46-28f4be1341b4	star=4;price<=1000000
+c0657	khách sạn 4 sao ở Hải Phòng dưới 1 triệu, còn lựa chọn nào?	multi_constraint	"{""and"":[{""eq"":[""destination"",""Hải Phòng""]},{""eq"":[""variant"",""hotel_property""]},{""gte"":[""star_rating"",4]},{""lte"":[""unit_price_min"",1000000]}]}"		4a7c3d93-46c3-5b1f-adc1-dca0da1f4029|dd71c19f-2cb1-539c-ad46-28f4be1341b4	star=4;price<=1000000
+c0658	resort ở Mù Cang Chải	out_of_catalog		true		absent destination:Mù Cang Chải
+c0659	vé tham quan Mù Cang Chải	out_of_catalog		true		absent destination:Mù Cang Chải
+c0660	combo du lịch Mù Cang Chải	out_of_catalog		true		absent destination:Mù Cang Chải
+c0661	resort ở Bắc Kạn	out_of_catalog		true		absent destination:Bắc Kạn
+c0662	vé tham quan Bắc Kạn	out_of_catalog		true		absent destination:Bắc Kạn
+c0663	combo du lịch Bắc Kạn	out_of_catalog		true		absent destination:Bắc Kạn
+c0664	resort ở Ninh Chữ	out_of_catalog		true		absent destination:Ninh Chữ
+c0665	vé tham quan Ninh Chữ	out_of_catalog		true		absent destination:Ninh Chữ
+c0666	combo du lịch Ninh Chữ	out_of_catalog		true		absent destination:Ninh Chữ
+c0667	resort ở Ba Bể	out_of_catalog		true		absent destination:Ba Bể
+c0668	vé tham quan Ba Bể	out_of_catalog		true		absent destination:Ba Bể
+c0669	combo du lịch Ba Bể	out_of_catalog		true		absent destination:Ba Bể
+c0670	resort ở Hà Tiên	out_of_catalog		true		absent destination:Hà Tiên
+c0671	vé tham quan Hà Tiên	out_of_catalog		true		absent destination:Hà Tiên
+c0672	combo du lịch Hà Tiên	out_of_catalog		true		absent destination:Hà Tiên

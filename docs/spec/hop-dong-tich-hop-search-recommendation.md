@@ -44,12 +44,21 @@
 
 **Team Agent**
 
-- Gọi `/search` **không kèm JWT**, để lượt tìm của Agent không bị ghi thành
-  hành vi người dùng (`hop-dong-tich-hop-cdp.md` §1.4).
+- Với dữ liệu thật, tool gọi engine Search/Recommendation trong cùng tiến trình
+  qua port (`ITINERARY_DATA_MODE=inprocess`, `application/itinerary/engine_tools.py`);
+  mode `http` gọi các endpoint dưới đây và chỉ còn là tuỳ chọn. Output giữ đúng
+  hình dạng response của route, nên hành vi engine trong tài liệu này áp như nhau
+  cho route lẫn tool (`hop-dong-tich-hop-itinerary-assistant.md` §2).
+- Tìm kiếm **không gắn danh tính**: mode `inprocess` gọi engine không qua route
+  nên không ghi event, mode `http` gọi `/search` **không kèm JWT**. Nhờ vậy lượt
+  tìm của Agent không bị ghi thành hành vi người dùng (`hop-dong-tich-hop-cdp.md` §1.4).
 - Sao chép nguyên `productId`, `name`, `unitPrice` từ response. Không tự tạo sản phẩm.
 - Kiểm tra ngày và số khách **sau** retrieval; không tuyên bố engine đã xác minh.
-- Dùng `/similar?strategy=cross_taxonomy` cho cross-sell, không dùng
-  `/recommendations` cho việc đó.
+- Chỉ dùng `/products/{productId}/similar` (`same_taxonomy`) ở lượt đổi món, qua
+  tool `get_similar_products`, với sản phẩm gốc lấy từ lịch trình lượt trước
+  (`hop-dong-tich-hop-itinerary-assistant.md` §2.5; đã chốt 2026-09-29,
+  `docs/prd/update-archive/2026-09-28-tool-similar-cho-agent.md`). Agent không
+  dùng `cross_taxonomy`: route chưa hiện thực chế độ này.
 
 **Team Web**
 
@@ -117,6 +126,55 @@ results = một trang của R
 Áp cho cả ba endpoint. Với `/recommendations`, `query` được thay bằng user vector.
 `K` là `candidateK` (mặc định 200); `score = 1 − cosine distance`.
 
+**Riêng `/search` ở chế độ `HYBRID_CANDIDATE_SCORE` (từ 25/09/2026, FR-SRC-01):**
+
+```
+CHUẨN HOÁ → FILTER → TOP-K dense ∪ TOP-K BM25 (Weaviate) → CUTOFF + VỚT → TOTAL/FACETS → SORT (RRF) → PAGE
+
+q'      = chuẩn_hoá(query): NFC → viết tắt (KS, KDL, gd, VW; NT, PQ, ĐN, HN, HL, SG/HCM/TPHCM/Sài Gòn; Ntr → N triệu)
+          → sửa chính tả tên riêng theo từ vựng tên sản phẩm + điểm đến của catalog (không bảng chép tay)
+          → tên điểm đến về đúng giá trị catalog (khớp dài nhất trên token đã fold)
+          → kiểu đi về nhãn `audience` catalog dùng (bạn trai/bạn gái → cặp đôi, 1 mình → một mình, công ty → công tác)
+          Embed và BM25 đều dùng q'. Không tách điểm đến/số khách thành filter (bước 2). `query` gốc giữ ở event `search` (§3.2).
+C_dense = top-candidateK của F theo cosine
+C_lex   = top-lexicalCandidateK của F theo BM25 trên nameAscii + searchTextAscii (đã fold dấu; truy vấn fold cùng cách)
+R_dense = { p ∈ C_dense | score(p) >= cutoff }
+R_lex   = { p ∈ C_lex \ R_dense | rank_lex(p) <= lexicalK ∧ score(p) >= lexicalCutoff ∧ phủ(tên p, truy vấn) >= lexicalMinCoverage }
+R       = R_dense ∪ R_lex
+SORT    = giảm dần theo RRF(p) = Σ 1/(rrfK + rank) trên các nhánh p có mặt; hoà thì theo score
+```
+
+`score` vẫn là cosine (§2.6); RRF chỉ quyết định thứ tự, nên `score` không đơn điệu trong một trang.
+`phủ(tên, truy vấn)` = tỉ lệ token của truy vấn (đã fold, dài ≥ 2, bỏ từ chức năng) có trong tên. Truy vấn gần
+như là tên/thương hiệu thì qua ("VinWonders" → mọi tên chứa VinWonders: 1/1; "melia vinpearl hue" →
+"Meliá Vinpearl Hai Phong": 2/3); câu mô tả dài để nhánh dense lo; "khách sạn ở Cà Mau" không vớt được
+"Hoa Mau Don Homestay" (1/4). Không dùng độ hiếm (DF) của token: trên catalog 2026-09-21 "vinwonders" có mặt
+trong 4,9% tên, "trang" 5,0% — DF không tách được thương hiệu với địa danh phổ biến.
+Nhánh BM25 lỗi (collection chưa có property) → engine chạy dense-only nhưng vẫn khai `HYBRID_CANDIDATE_SCORE`
+với `diagnostics.lexicalCandidates = 0`, không trả 500.
+
+Thời gian từng bước khai ở `diagnostics.stageMs` (từ 2026-09-29, contract 1.11.0; phục vụ NFR-PERF-01/03): ms nguyên
+của `normalize` (chỉ khi bước chuẩn hoá bật), `embed`, `dense` (gồm dựng bộ lọc cấu trúc), `lexical` (chỉ ở hybrid,
+kể cả khi nhánh BM25 lỗi), `fuse` (RRF + cutoff + facets) và `hydrate`. Đo trong engine nên tổng các bước ≤
+`latencyMs` của route. Chỉ `/search` có trường này.
+
+Vector truy vấn được **cache trong tiến trình** (từ 2026-09-30, contract 1.12.0; NFR-PERF-03 yêu cầu cache khi Cohere
+vượt ngân sách): khoá là câu **sau chuẩn hoá và gộp khoảng trắng** (`SearchProducts.query_text`), nên "KS ở NT" và
+"khách sạn ở Nha Trang" dùng chung một vector; không fold hoa/thường/dấu. `diagnostics.embedCache` = `hit` / `miss`
+(chỉ `/search`; vắng khi `SEARCH_EMBED_CACHE=false`). Cache không đổi kết quả hay thứ tự — chỉ `stageMs.embed` khác.
+LRU `SEARCH_EMBED_CACHE_SIZE` (mặc định 10.000 ≈ 41 MB), single-flight: nhiều request cùng câu chỉ một lượt Cohere.
+Sau lần nạp catalog đầu tiên backend **nạp sẵn** cache ở nền (`SEARCH_PREWARM`): file câu gold đóng băng
+`src/backend/data/search_prewarm_queries.txt` (131 câu gold_v1) + head query của `app.search_logs`, pacing
+`SEARCH_PREWARM_INPUTS_PER_MINUTE`; job `python -m src.backend.jobs.prewarm_query_cache --base-url URL` làm nóng một
+backend đang chạy qua HTTP (lần hai phải `miss 0`).
+
+Bước chuẩn hoá khai ở `diagnostics.normalizedQuery` / `appliedAliases` / `corrections` / `party`, chỉ khi có
+nhận ra hoặc đổi gì; `SEARCH_NORMALIZE=false` tắt cả bước. Sửa chính tả chỉ đụng token không phải âm tiết tiếng
+Việt, dài ≥ 5, cách ≤ 1 ký tự (≤ 2 khi ≥ 8) so với token có mặt ở ≥ 3 tên sản phẩm — "Vinpeal" → "Vinpearl",
+còn "cong", "bien", "view" không bao giờ bị sửa. Bảng viết tắt chỉ chứa cách viết; điểm đến đích không có trong
+catalog thì alias đó bị bỏ. Từ vựng sửa chính tả và danh sách điểm đến dựng từ catalog đang phục vụ, lúc khởi động
+và mỗi lần nạp lại catalog (`CATALOG_REFRESH_SECONDS`, §2.4).
+
 **Vì sao filter trước:** category exclusion của `/recommendations` loại khoảng
 50% catalog. Chấm điểm trước rồi lọc sau có thể để lại dưới `k` kết quả. Vì vậy
 id của `F` được gửi làm filter cho truy vấn top-K, không lấy top-K rồi mới lọc.
@@ -128,7 +186,8 @@ Các bất biến dưới đây tính trên tập ứng viên `C`, không phải
 ```
 1. sum(facets.taxonomy) == total
 2. total và facets KHÔNG đổi khi thay limit/offset (trong phạm vi K ứng viên)
-3. mọi results[].score >= cutoff
+3. mọi results[].score >= cutoff — TRỪ ở HYBRID_CANDIDATE_SCORE: phần vớt từ nhánh BM25
+   có score >= diagnostics.lexicalCutoff, số lượng ghi ở diagnostics.lexicalCount
 4. results, total, facets dùng CÙNG filter và CÙNG cutoff
 5. sản phẩm thiếu destination → bucket "UNKNOWN", không biến mất
 ```
@@ -136,17 +195,30 @@ Các bất biến dưới đây tính trên tập ứng viên `C`, không phải
 ### 2.4. Chế độ truy xuất — khai báo, không đổi ngầm · `[C4]`
 
 ```yaml
-search:           { mode: ANN_CANDIDATE_SCORE, cutoff: 0.62, candidateK: 200 }
+search:           { mode: HYBRID_CANDIDATE_SCORE, cutoff: 0.62, candidateK: 200,
+                    lexicalCandidateK: 50, lexicalK: 10, lexicalCutoff: 0.50, lexicalMinCoverage: 0.6, fusion: rrf(60),
+                    normalize: true }
 similar:          { mode: ANN_CANDIDATE_SCORE, topK: 20 }
 recommendations:  { mode: ANN_CANDIDATE_SCORE, candidateK: 200 }
 ```
+
+`/search` chuyển sang hybrid ngày 25/09/2026 (§2.2). `SEARCH_HYBRID=false` đưa `/search` về
+`ANN_CANDIDATE_SCORE` dense-only đúng như trước; các tham số `lexical*` đọc từ `core/config.py`
+(`SEARCH_LEXICAL_K`, `SEARCH_LEXICAL_CUTOFF`…) và chưa benchmark (§10 S9).
 
 **Chốt 24/09/2026 (S8, hướng b — `docs/prd/update-archive/2026-09-24-recsys-truy-van-weaviate-top-k.md`).**
 Backend không còn tải toàn bộ vector vào RAM lúc khởi động: tải 3.183 vector từ
 Weaviate Cloud mất 453 giây. Mỗi request gửi truy vấn top-K sang Weaviate
 (`nearVector` qua gRPC, filter theo id), đúng `docs/prd/architecture.md` §5.
 Metadata (taxonomy, destination, available, recommendable, parent) vẫn nạp từ
-Postgres lúc khởi động để tính filter.
+Postgres để tính filter: lúc khởi động và sau đó mỗi `CATALOG_REFRESH_SECONDS`
+(mặc định 900 giây), để giá, trạng thái và cửa sổ ngày theo kịp job cào hằng ngày.
+Lần nạp lại lỗi thì giữ bản đang phục vụ. Mỗi lần nạp kiểm từng search unit
+theo object id, `modelVersion`, `textHash` (không tải vector): unit chưa có vector
+vẫn nằm trong metadata nhưng Weaviate chưa trả nó cho tới khi job index xong; unit
+có vector của text cũ dùng tạm vector đó. Engine chỉ từ chối (tương đương
+`SEARCH_UNAVAILABLE` ở §6) khi dưới một nửa search unit có vector đúng model —
+collection rỗng, chưa index, hoặc vừa đổi text builder.
 
 Vì chỉ có top-K, sản phẩm ngoài tập ứng viên vẫn có thể vượt cutoff. Do đó bốn
 trường sau là **bắt buộc**:
@@ -223,7 +295,8 @@ Hình dạng: `SearchRequest` / `SearchResponse` trong `search.yaml`.
 | Đổi trang, không JWT, hoặc Agent gọi | **Không** ghi event |
 | CDP lỗi | Response search không đổi |
 
-Agent gọi không kèm JWT là **quy tắc**, không phải khuyến nghị: lượt tìm của
+Agent tìm không gắn danh tính là **quy tắc**, không phải khuyến nghị (mode `http`
+không kèm JWT, mode `inprocess` gọi engine không qua route): lượt tìm của
 Agent lọt vào lịch sử sẽ làm lệch user vector của chính người dùng đó.
 
 ### 3.3. Cutoff · `[C3]`
@@ -295,7 +368,9 @@ Ba ràng buộc bắt buộc:
    — nếu không sẽ trả 10 hạng phòng của cùng một resort
 ```
 
-`strategy=cross_taxonomy` là biến thể cross-sell dành cho Agent.
+`strategy=cross_taxonomy` là biến thể cross-sell trong schema, nhưng route chưa
+hiện thực (luôn trả `same_taxonomy`) và Agent không dùng. Agent chỉ gọi
+`same_taxonomy` ở lượt đổi món (§1.2).
 
 **Không embed lại.** Lấy thẳng vector đã lưu của anchor từ Weaviate, rồi truy vấn top-K với filter id (cùng taxonomy, loại chính nó và anh em cùng cha). Embed lại vừa tốn ~60 ms
 vừa có nguy cơ so hai vector thuộc hai `embedding_version` khác nhau — kết quả
@@ -380,7 +455,43 @@ có trip đang mở + đã purchase ít nhất 1 taxonomy  → cross_vertical
 >= 3 event dùng được, không có trip đang mở       → recent_activity
 event gần nhất > 90 ngày                          → dormant
 < 3 event, không JWT, hoặc CDP lỗi                → popular
+có trip đang mở, chưa purchase trong trip,
+  tổng < 3 event dùng được                        → cold_start_content
+có lịch sử, không có trip đang mở,
+  chưa quá ngưỡng dormant của engine              → long_term
 ```
+
+**Bổ sung 2026-09-28 (OpenAPI 1.8.0).** Hai dòng cuối ghi đúng điều kiện engine
+đang chạy (`Profile.strategy` trong `domain/recommendation/profile.py`). Engine
+đã trả hai giá trị này từ trước, nhưng contract thiếu. Các dòng cũ **lệch với
+engine và chưa sửa**, đang chờ Team Recommendation/Search cùng Web quyết định:
+
+- `recent_activity`: bảng ghi "không có trip đang mở", nhưng engine chỉ trả giá
+  trị này khi **có** trip đang mở, trip đó chưa purchase và tổng ≥ 3 event dùng được. Engine
+  coi trip đang mở là trip có event gần nhất trong 60 ngày (`ACTIVE_TRIP_MAX_AGE_DAYS`) — *luật tới 01/10/2026; từ đó theo
+  bổ sung bên dưới (`usingDate`, N = 14).*
+- `dormant`: bảng này và `hop-dong-tich-hop-backend.md` §6.2 ghi 90 ngày; engine
+  dùng 180 ngày (`DORMANT_AFTER_DAYS`).
+- `< 3 event → popular`: engine trả `popular` khi không còn event nào dùng
+  được (kể cả khách ẩn danh và CDP lỗi). Dưới 3 event mà có trip đang mở thì ra
+  `cold_start_content`; chỉ có trip cũ thì ra `long_term` hoặc `dormant`.
+- Ràng buộc 4 dưới đây: engine đặt `coldStart = eventsUsed < 3` nhưng vẫn sinh
+  `because` khi có nguồn đạt ngưỡng, nên `coldStart: true` có thể đi kèm
+  `because` khác rỗng. Mock `getRecommendations.200-cold-start-content.json`
+  theo ràng buộc 4 (`because: []`).
+
+**Bổ sung 2026-10-01 (FR-REC-02 sửa theo đề xuất `category-exclusion-theo-chuyen-dang-dien-ra`, đã chốt).** "Trip đang
+mở" trong bảng trên là trip **chưa kết thúc** theo đúng định nghĩa `tripFactor` §4.3: `max(usingDate)` của các event trong
+trip ≥ hôm nay; trip không có `usingDate` nào (chỉ view / search) thì mở khi event gần nhất cách ≤ `ACTIVE_TRIP_MAX_AGE_DAYS`
+(tham số N của PRD: **14 ngày** từ 01/10, trước là 60 — đo trên split temporal đóng băng, `docs/spec/bench/recsys-offline-eval.md`
+§4.14 v5 (`usingDate` + N = 14): Recall@20 0,196 → 0,216, LLBO không đổi; grid §4.13 với luật tuổi đơn thuần N = 14 cho 0,225
+vì luật đó đóng luôn chuyến chưa đi tại T). Trip đã kết thúc không còn là trip mở dù mới 5 ngày trước → khách rơi về `long_term` /
+`dormant`, engine gợi cho chuyến kế tiếp. Trip mua từ lâu nhưng `usingDate` còn ở tương lai vẫn là trip mở (chuyến sắp đi).
+`usingDate` của event CDP là **ngày bắt đầu sử dụng** (check-in / ngày bay) và CDP không có ngày kết thúc, nên kỳ nghỉ nhiều
+đêm được coi là xong từ ngày sau check-in; muốn giữ trip mở suốt kỳ nghỉ cần thêm số đêm / ngày kết thúc vào event (đề xuất PRD
+riêng, chưa có). Tuổi trip, ngày kết thúc và món đã mua xét trên **mọi** event của trip; cap `MAX_REPEAT_PER_TRIP` chỉ giới hạn
+trọng số vector. "Hôm nay" lấy theo giờ Việt Nam (UTC+7, `profile.local_today`) để khớp `usingDate` là ngày địa phương.
+Engine ghi `ENGINE_RULES_VERSION` vào cấu hình để bench phân biệt hai luật.
 
 **Ràng buộc bắt buộc:**
 
@@ -401,6 +512,11 @@ excluded       = bookedThisTrip, mở rộng: combo kéo theo hotel
 
 Áp làm **hard filter trong câu truy vấn**, không phải phép trừ vector. Ngoài ra
 loại mọi `productId` khách đã từng mua.
+
+**Chỉ áp cho trip đang mở** theo định nghĩa §4.4 (bổ sung 2026-10-01): chuyến đã kết thúc (`usingDate` đã qua) thì không
+loại taxonomy đã mua và không khoá điểm đến — đó là gợi ý cho chuyến kế tiếp (PRD FR-REC-02). Lý do: trên split temporal
+của bench, 22 % target bị chính exclusion / khoá điểm đến của chuyến đã đi xong chặn (`docs/spec/bench/recsys-offline-eval.md`
+§4.7, §4.11).
 
 **Nếu loại hết mọi taxonomy** (khách đã đặt đủ 5 nhóm trong một chuyến): bỏ
 exclusion, trả theo similarity thuần, đặt `diagnostics.exclusionRelaxed: true`.
@@ -512,7 +628,12 @@ khác hẳn nhau.
 | `GET /products/{id}/similar` | 300 ms |
 | `GET /recommendations`, cache hit | 300 ms |
 | `GET /recommendations`, cache miss (đọc 500 event từ CDP) | 800 ms |
-| Embed một truy vấn | 60 ms |
+| Embed một truy vấn | 60 ms khi `embedCache = miss` (gọi Cohere); hit ≈ 0 ms — từ 30/09 vector truy vấn được cache (§2.2), số đo thật ở `docs/spec/bench/search-eval-results.md` |
+
+Đo thật 01/10/2026 trên VM (`release-mvp-v2`, contract 1.12.0; Weaviate Cloud ở `eu-central-1`, VM ở `asia-southeast1`):
+`/search` p95 **4,0 s** = dense 1,8 s + BM25 2,1 s nối tiếp (mỗi lượt gửi mask 3.146 id); embed cache hit 0 ms, miss p95 437 ms.
+Ngân sách 300 ms ở bảng trên chỉ đạt được khi kho vector cùng vùng với backend — số và nguyên nhân ở
+`docs/spec/bench/search-eval-results.md` §2–3, report `src/evaluation/reports/eval-2026-10-01-search-cloud-latency.md`.
 
 Dòng "cache miss" là thừa nhận thẳng: đường đó phải gọi HTTP sang CDP clone rồi
 tra tối đa 500 vector. Nó chỉ xảy ra sau `purchase` hoặc khi cache trống.
@@ -572,14 +693,27 @@ Team Search cung cấp:
    `familyFriendly`.
 2. Đổi `limit`/`offset` (trong phạm vi `candidateK`), giữ nguyên filter → `total` và `facets` **không đổi**.
 3. `sum(facets.taxonomy) == total` trên mọi truy vấn (tính trên tập ứng viên).
-4. Mọi `results[].score >= cutoff`.
+4. Mọi `results[].score >= cutoff`; ở `HYBRID_CANDIDATE_SCORE` phần vớt từ BM25 có
+   `score >= diagnostics.lexicalCutoff` và đếm đúng bằng `diagnostics.lexicalCount`.
 5. Truy vấn vô nghĩa → `results: []`, `topScore: null`, `backgroundScore: null`.
 6. ≥ 95% cặp đúng trong bộ 80 cặp có `score >= cutoff`.
 7. Cả 10 truy vấn âm rơi vào nhánh weak (theo abs hoặc theo margin).
 8. `availableOnly: true` không trả sản phẩm `available: false`.
 9. Mặc định không có sản phẩm `level: room` trong `results`.
-10. `diagnostics.searchMode: ANN_CANDIDATE_SCORE`, `approximate: true`, `totalExact: false`, `facetsExact: false`.
+10. `diagnostics.searchMode: HYBRID_CANDIDATE_SCORE` (hoặc `ANN_CANDIDATE_SCORE` khi `SEARCH_HYBRID=false`),
+    `approximate: true`, `totalExact: false`, `facetsExact: false`.
+10b. `search("VinWonders")` → có kết quả tên chứa VinWonders ở top và `diagnostics.lexicalCount >= 1` khi
+    cosine của chúng dưới `cutoff`; `search("khách sạn ở Cà Mau")` → `diagnostics.lexicalCount == 0` (không vớt
+    tên chỉ trùng một âm tiết). Nhánh dense của truy vấn ngoài catalog vẫn có thể trả kết quả ≥ cutoff — đó là
+    việc của S1 (cutoff), không phải của hybrid.
+10c. `search("KS ở PQ có hồ bơi")` → `diagnostics.normalizedQuery == "khách sạn ở Phú Quốc có hồ bơi"`;
+    `search("Vinpeal Resort Nha Trang")` → `corrections` có Vinpeal → Vinpearl và top-1 như câu viết đúng;
+    `search("khach san co ban cong")` → không có `corrections`; `search("chỗ nghỉ Đà Lạt đi cùng bạn gái")` →
+    `party: COUPLE`, `normalizedQuery` chứa "cặp đôi".
 11. p95 dưới 300 ms trên catalog đầy đủ, đo với Weaviate cùng mạng nội bộ (local hoặc cùng region).
+    *(Bổ sung 2026-09-29: PRD NFR-PERF-01 đặt ngưỡng chặt hơn, ≤ 250 ms; báo p95 tổng kèm p95 từng bước theo
+    `diagnostics.stageMs` để thấy phần nào là Cohere, phần nào là Weaviate. Bổ sung 2026-09-30: báo p95 riêng cho
+    `embedCache = hit` và `miss`; ngưỡng 250 ms áp cho đường hit, đường miss = hit + một lượt Cohere.)*
 
 ### Similar
 
@@ -593,7 +727,8 @@ Team Search cung cấp:
 
 16. Đăng nhập lần lượt 4 tài khoản demo → 4 `strategy` khác nhau.
 17. P1 vừa đặt hotel Nha Trang → `strategy: cross_vertical`, không có item
-    `taxonomy: hotel`, `nextVertical` khác `null`.
+    `taxonomy: hotel`, `nextVertical` khác `null`. *(Từ 01/10 "vừa đặt" = chuyến chưa diễn ra xong: seed gắn `usingDate`
+    cho P1 ~2 tuần sau `--as-of`, nên seed lại trước demo; quá ngày sử dụng P1 rơi về `long_term`.)*
 18. P4 (0 event) → `coldStart: true` và **mọi** `because` rỗng.
 19. Mọi `because[].productId` khác `null` đều mở được `GET /products/{id}` → `200`.
 20. Hai event giống hệt cách nhau đúng 30 ngày → trọng số sau decay chênh **hệ
@@ -625,7 +760,10 @@ Bốn tiêu chí **20, 21, 22, 23** là quan trọng nhất trong cả danh sác
 | S5 | Cache user vector chưa duyệt · `[P3]` | Không cache thì p95 `/recommendations` là 800 ms, không phải 300 ms |
 | S6 | Công thức `popularity_score` chưa chốt · `[C7]` | Tạm dùng `log(1 + review_count)` |
 | S7 | ~~Model embedding chưa chốt~~ — **đã chốt 22/09/2026** | Cohere `embed-multilingual-v3.0`, **1024 chiều**, vector lưu ở Weaviate (không còn pgvector). Xem `docs/prd/architecture.md` §4–§5. Kéo theo S8. |
-| S8 | ~~`EXACT_FILTER_SCORE` cần duyệt lại~~ — **đã chốt 24/09/2026, hướng (b)** | Đổi cam kết `total`/`facets` thành xấp xỉ trên tập ứng viên, khai báo qua `approximate`/`totalExact`/`facetsExact`. Cả ba engine chạy `ANN_CANDIDATE_SCORE` (§2.4). |
+| S8 | ~~`EXACT_FILTER_SCORE` cần duyệt lại~~ — **đã chốt 24/09/2026, hướng (b)** | Đổi cam kết `total`/`facets` thành xấp xỉ trên tập ứng viên, khai báo qua `approximate`/`totalExact`/`facetsExact`. `/similar`, `/recommendations` chạy `ANN_CANDIDATE_SCORE`; `/search` chạy `HYBRID_CANDIDATE_SCORE` từ 25/09 (§2.4). |
+| S9 | `lexicalK` / `lexicalCutoff` / `lexicalMinCoverage` của hybrid chưa benchmark | Dùng `10` / `0.50` / `0.6`; đo ở cổng S2 của bench (`docs/spec/bench/arms.md`) trên gold, kèm slice `named_entity`, `no_diacritics`, `out_of_catalog` |
+| S10 | Bảng viết tắt, cụm kiểu đi và ngưỡng sửa chính tả của bước chuẩn hoá chưa benchmark | Dùng bảng trong `domain/search/normalize.py`; đo trên slice `abbrev_typo`, `audience_style` (bench Part 6, cổng S3/S6). Bảng backend là nguồn cho `config/aliases.yaml` của bench |
+| S11 | Kích thước cache vector truy vấn (10.000), danh sách prewarm (131 câu gold_v1 + head query `app.search_logs` — bảng này chưa có code ghi) và pacing 2.000 câu/phút chưa đo | Dùng mặc định trong `core/config.py`; đo hit/miss bằng `sb latency http` (bench Part 9) trên Cloud; đổi số qua biến môi trường `SEARCH_EMBED_CACHE_*`, `SEARCH_PREWARM_*` |
 
 S5 là phụ thuộc nặng nhất: không duyệt `[P3]` thì tiêu chí nghiệm thu 26 không
 đạt được, và ngân sách §7.1 phải sửa.
@@ -637,8 +775,9 @@ S5 là phụ thuộc nặng nhất: không duyệt `[P3]` thì tiêu chí nghi�
 > Team Backend gọi được cả ba endpoint bằng mock sinh từ
 > `src/shared/contracts/schemas/`, rồi đổi sang engine thật mà không phải sửa
 > tầng `services`. Team Agent dựng được lịch trình 3 ngày mà mọi `productId`
-> trong đó truy nguyên về một response của `/search` hoặc `/recommendations`
-> trong cùng request.
+> trong đó truy nguyên về một kết quả Search hoặc Recommendation trong cùng
+> request (tool gọi engine trong tiến trình, hoặc response của `/search`,
+> `/recommendations` ở mode `http`).
 
 Luồng nghiệm thu bắt buộc:
 

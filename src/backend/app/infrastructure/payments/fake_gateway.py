@@ -46,7 +46,8 @@ class FakeGateway:
         session_id = f"cs_fake_{uuid.uuid4().hex[:12]}"
         amount = sum(line.unit_amount * line.quantity for line in lines)
         self.sessions[session_id] = {"booking_id": booking_id, "amount": amount, "status": "open",
-                                     "payment_status": "unpaid", "payment_intent": None}
+                                     "payment_status": "unpaid", "payment_intent": None, "lines": list(lines),
+                                     "customer_email": customer_email}
         session = CheckoutSession(session_id=session_id, url=f"https://checkout.fake/{session_id}", status="open",
                                   amount_total=amount, currency="vnd")
         self.idempotency_keys[idempotency_key] = session

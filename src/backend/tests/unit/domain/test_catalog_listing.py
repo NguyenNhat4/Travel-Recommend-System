@@ -18,9 +18,22 @@ def test_rating_is_review_score_scaled_to_five():
     assert product("a", reviewScore=9).rating is None  # thiếu thang điểm → null, không đoán
 
 
-def test_review_count_and_occupancy_ignore_non_numbers():
-    assert product("a", reviewCount=1206).review_count == 1206
-    assert product("a", reviewCount="nhiều").review_count is None
+def test_rating_falls_back_to_tripadvisor_then_the_attraction_rating_in_schema_order():
+    # schema.md §8.1: reviewScore trước, rồi tripAdvisorRating (thang 5), rồi rating/ratingScale của điểm tham quan.
+    hotel = product("h", reviewScore=8.5, reviewScoreScale=10, reviewCount=1016,
+                    tripAdvisorRating=4.7, tripAdvisorReviewCount=1941)
+    assert (hotel.rating, hotel.review_count) == (4.2, 1016)
+    tripadvisor_only = product("t", tripAdvisorRating=4.7, tripAdvisorReviewCount=1941)
+    assert (tripadvisor_only.rating, tripadvisor_only.review_count) == (4.7, 1941)
+    attraction = product("a", rating=4.6, ratingScale=5, reviewCount=44)
+    assert (attraction.rating, attraction.review_count) == (4.6, 44)
+
+
+def test_review_count_belongs_to_the_rating_and_ignores_non_numbers():
+    assert product("a", reviewScore=8, reviewScoreScale=10, reviewCount=1206).review_count == 1206
+    assert product("a", reviewScore=8, reviewScoreScale=10, reviewCount="nhiều").review_count is None
+    # Có số lượt mà không có điểm → cả hai null (hop-dong-tich-hop-backend.md §2.2).
+    assert product("a", reviewCount=1206).review_count is None
     assert product("a", maxOccupancy=0).max_occupancy is None
 
 

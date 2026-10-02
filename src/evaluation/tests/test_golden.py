@@ -1,14 +1,16 @@
 """Unit test cho bộ chấm golden (src/evaluation/agent/golden.py). Không cần LLM/Postgres/backend:
 chỉ nạp dataset thật và chạy từng hàm chấm với state/response giả lập."""
 
+import json
 import unittest
+from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
 
 from src.backend.app.application.itinerary.contracts import enum_values
 from src.evaluation.agent.golden import (
     conversation_of, dataset_findings, expected_tool_call, gate_no_booking_claim, gate_no_tool_before_info,
-    gate_schema, gate_secrets, load_dataset, schedule_findings,
+    gate_schema, gate_secrets, load_dataset, resolve_dates, schedule_findings,
 )
 
 DATASET_PATH = Path(__file__).resolve().parents[1] / "datasets" / "itinerary_agent_golden.yaml"
@@ -22,9 +24,43 @@ class DatasetTests(unittest.TestCase):
     def setUp(self):
         self.cases = load_dataset(DATASET_PATH)
 
-    def test_has_seventy_five_cases_with_unique_ids(self):
-        self.assertEqual(len(self.cases), 75)
-        self.assertEqual(len({c.id for c in self.cases}), 75)
+    def test_has_exactly_one_case_per_category_with_unique_ids(self):
+        """Bộ rút gọn: mỗi category một case (case agent dễ fail nhất); thêm case thứ hai vào cùng category là phá quy ước."""
+        self.assertEqual(len({c.id for c in self.cases}), len(self.cases))
+        categories = [c.category for c in self.cases]
+        self.assertEqual(len(categories), len(set(categories)), "category có hơn một case")
+        self.assertEqual(len(self.cases), 14)
+
+    def test_a_start_date_question_is_answered_before_the_expected_result(self):
+        """AC-AGT-01: lượt hỏi ngày đi không có sản phẩm; kỳ vọng kết quả nằm ở lượt trả lời sau nó."""
+        asks = 0
+        for case in self.cases:
+            for index, turn in enumerate(case.turns):
+                if "startDate" in turn.expect.get("missingFieldsInclude", []):
+                    asks += 1
+                    self.assertEqual(turn.expect.get("toolCalled"), False, f"{case.id}: lượt hỏi ngày không được gọi tool")
+                    self.assertNotIn("minActivities", turn.expect)
+        self.assertGreaterEqual(asks, 5)
+
+    def test_clear_requests_state_their_start_date_with_a_placeholder_and_check_the_extraction(self):
+        """Yêu cầu đầy đủ nêu ngày đi tường minh (không cũ theo thời gian) và kiểm `intent.startDate` chính xác."""
+        checked = 0
+        for case in self.cases:
+            if case.category != "clear_request":
+                continue
+            checked += 1
+            turn = case.turns[0]
+            self.assertRegex(turn.message, r"\{today\+\d+\}", f"{case.id}: câu chưa có ngày đi")
+            self.assertRegex(turn.expect["intent"]["startDate"], r"^\{today\+\d+:iso\}$", f"{case.id}: chưa kiểm startDate")
+        self.assertGreaterEqual(checked, 1)
+
+    def test_every_date_placeholder_in_the_dataset_resolves(self):
+        today = date(2026, 9, 25)
+        for case in self.cases:
+            for turn in case.turns:
+                resolved = json.dumps([resolve_dates(turn.message, today), resolve_dates(turn.expect, today)],
+                                      ensure_ascii=False)
+                self.assertNotIn("{today", resolved, f"{case.id}: placeholder ngày không được thay")
 
     def test_every_case_has_fr_codes_and_turns(self):
         for case in self.cases:
@@ -162,6 +198,27 @@ class ExpectedToolCallTests(unittest.TestCase):
     def test_validation_error_expects_no_tool(self):
         self.assertFalse(expected_tool_call({"error": {"code": "VALIDATION_ERROR"}}))
 
+    def test_title_first_line_checks_the_bold_summary_line(self):
+        from src.evaluation.agent.golden import answer_text, dataset_findings, has_title_first_line
+        self.assertTrue(has_title_first_line("**Bạn muốn đi đâu?**\nMình cần biết điểm đến."))
+        for text in ("Bạn muốn đi đâu?", "**Chỉ tiêu đề**", "Xin chào **bạn**\nđi đâu?", "**a** và **b**\nx"):
+            with self.subTest(text=text):
+                self.assertFalse(has_title_first_line(text))
+        self.assertEqual(answer_text({"error": {"message": "lỗi"}}), "lỗi")
+        titled = {"status": "NEEDS_CLARIFICATION", "question": "**Ngoài phạm vi hỗ trợ**\nChỉ hỗ trợ du lịch."}
+        self.assertEqual(dataset_findings(titled, 200, [], {"titleFirstLine": True}, {}), [])
+        plain = {"status": "NEEDS_CLARIFICATION", "question": "Chào bạn!"}
+        self.assertEqual(len(dataset_findings(plain, 200, [], {"titleFirstLine": True}, {})), 1)
+        self.assertEqual(dataset_findings(plain, 200, [], {"titleFirstLine": False}, {}), [])
+
+    def test_an_unsupported_destination_passing_through_tool_is_not_a_retrieval(self):
+        from src.evaluation.agent.golden import retrieval_ran
+        searched = [{"node": "tool", "metadata": {"calls": 2}}]
+        rejected = [{"node": "tool", "metadata": {"retrieval": False}}]
+        self.assertTrue(retrieval_ran(searched))
+        self.assertFalse(retrieval_ran(rejected))
+        self.assertFalse(retrieval_ran([{"node": "extract", "metadata": {}}]))
+
 
 def _product(product_id, taxonomy="attraction", price=100000, duration=60):
     return {"productId": product_id, "taxonomy": taxonomy, "unitPrice": price,
@@ -285,6 +342,45 @@ class NewExpectKeyTests(unittest.TestCase):
         self.assertTrue(dataset_findings(response, 200, [], {"warningsExclude": ["PRODUCT_DROPPED_EXCLUDED"]}, {}))
         self.assertEqual(dataset_findings(response, 200, [], {"warningsExclude": ["PRODUCT_DROPPED_DATE"]}, {}), [])
 
+    def test_tools_include_checks_the_final_tool_plan(self):
+        expect = {"toolsInclude": ["get_similar_products"]}
+        response = _itinerary_response(1)
+        findings = dataset_findings(response, 200, [], expect, {}, {"search_products"})
+        self.assertEqual(len(findings), 1)
+        self.assertIn("get_similar_products", findings[0])
+        self.assertTrue(dataset_findings(response, 200, [], expect, {}))  # lượt không có tool plan
+        self.assertEqual(dataset_findings(response, 200, [], expect, {},
+                                          {"get_similar_products", "search_products"}), [])
+
+    def test_swap_case_expects_the_similar_tool(self):
+        case = next(c for c in load_dataset(DATASET_PATH) if c.id == "G-076")
+        self.assertEqual(case.turns[1].expect["toolsInclude"], ["get_similar_products"])
+
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ResolveDatesTests(unittest.TestCase):
+    today = date(2026, 9, 25)
+
+    def test_message_uses_vietnamese_date_and_expect_uses_iso(self):
+        self.assertEqual(resolve_dates("đi Huế, khởi hành {today+7}", self.today), "đi Huế, khởi hành 02/10/2026")
+        self.assertEqual(resolve_dates("{today+7:iso}", self.today), "2026-10-02")
+
+    def test_offset_is_optional_and_may_be_negative(self):
+        self.assertEqual(resolve_dates("{today}", self.today), "25/09/2026")
+        self.assertEqual(resolve_dates("{today-1:iso}", self.today), "2026-09-24")
+
+    def test_rolls_over_month_and_year(self):
+        self.assertEqual(resolve_dates("{today+10}", date(2026, 12, 25)), "04/01/2027")
+
+    def test_nested_expect_values_are_resolved_and_other_values_are_untouched(self):
+        expect = {"intent": {"destination": "Huế", "days": 3, "startDate": "{today+1:iso}"},
+                  "status": ["COMPLETED"], "toolCalled": True}
+        self.assertEqual(resolve_dates(expect, self.today), {
+            "intent": {"destination": "Huế", "days": 3, "startDate": "2026-09-26"},
+            "status": ["COMPLETED"], "toolCalled": True})
+
+    def test_text_that_is_not_a_placeholder_is_left_alone(self):
+        self.assertEqual(resolve_dates("giá {100} và {today+x}", self.today), "giá {100} và {today+x}")

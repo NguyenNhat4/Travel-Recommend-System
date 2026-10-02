@@ -20,9 +20,12 @@
     tags:
     - booking
     operationId: addCartItem
-    summary: Thêm mục vào giỏ (cộng dồn nếu trùng productId và usingDate)
-    description: Thêm thành công thì Backend ghi event add_to_cart sang CDP clone ở nền, với taxonomy và unitPrice
-      lấy từ catalog. Thêm thất bại không ghi event. CDP lỗi không ảnh hưởng response.
+    summary: Thêm mục vào giỏ (cộng dồn quantity và guests nếu trùng productId và usingDate)
+    description: 'Thêm thành công thì Backend ghi event add_to_cart sang CDP clone ở nền, với taxonomy và unitPrice
+      lấy từ catalog. Thêm thất bại không ghi event. CDP lỗi không ảnh hưởng response. guests là số người lớn và trẻ em
+      của mục (tối đa 9 khách, mỗi phòng một người lớn, không vượt maxOccupancy của hạng phòng); vi phạm trả 400
+      VALIDATION_ERROR kèm details.fields[]. Response trả thêm guests và fares (dòng giá theo loại khách) cho từng mục.'
+
     security:
     - bearerAuth: []
     parameters:
@@ -55,7 +58,9 @@
     tags:
     - booking
     operationId: updateCartItem
-    summary: Sửa ngày, số lượng hoặc số đêm của một mục giỏ
+    summary: Sửa ngày, số lượng, số đêm hoặc số khách của một mục giỏ
+    description: 'Ghi lại giá snapshot (người lớn và trẻ em) bằng giá hiện tại. Cùng luật số khách như POST /cart/items.
+      Chỉ gửi quantity cho mục đang có trẻ em thì giữ nguyên children và đặt adults = quantity − children.'
     security:
     - bearerAuth: []
     parameters:
@@ -110,7 +115,11 @@
       Đơn chỉ thành CONFIRMED sau khi Stripe xác nhận thu tiền (webhook có chữ ký hoặc Backend tự hỏi lại Stripe); event
       purchase chỉ ghi sang CDP lúc đó. Người dùng đang có đơn giữ chỗ thì trả 409 BOOKING_PENDING_PAYMENT kèm referenceCode
       đơn đó. Stripe không phản hồi thì không tạo đơn, trả 503 PAYMENT_PROVIDER_UNAVAILABLE. Số tiền do Backend tính từ
-      catalog, không nhận từ client.'
+      catalog, không nhận từ client. Có travelers thì Backend kiểm toàn bộ luật đoàn khách và phân bổ (người lớn từ 12 tuổi,
+      trẻ em dưới 12 tuổi có ngày sinh, mỗi phòng có người lớn và không vượt sức chứa, số khách khớp giá đã thấy) và
+      trả MỌI vi phạm trong một lần: 400 VALIDATION_ERROR với details.fields[]; khi đó chưa tạo phiên Stripe và chưa ghi gì.
+      Mỗi dòng giá của mỗi mục là một line item trên trang Stripe; Backend không gửi họ tên hay ngày sinh sang Stripe. Không có
+      travelers (client cũ): guestNames được coi là tên người lớn và chỉ nhận khi giỏ không có trẻ em.'
     security:
     - bearerAuth: []
     parameters:

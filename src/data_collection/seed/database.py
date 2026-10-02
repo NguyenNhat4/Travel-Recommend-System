@@ -7,6 +7,8 @@ from pathlib import Path
 import psycopg
 from psycopg.types.json import Jsonb
 
+from . import simulated_business
+
 PRODUCT = ["product_id", "name", "taxonomy", "destination", "description", "attributes", "unit_price", "currency", "available",
            "available_from", "available_to", "image_url", "source_ref"]
 PROFILE = ["cdp_user_id", "lifecycle_stage", "days_since_last_booking", "lifetime_order_count", "vinclub_tier", "purchased_verticals",
@@ -18,7 +20,7 @@ USER = ["user_id", "email", "password_hash", "display_name", "cdp_user_id", "per
 BOOKING = ["booking_id", "reference_code", "cdp_user_id", "event_group_id", "status", "contact_name", "contact_email", "contact_phone",
            "special_request", "total_amount", "currency", "created_at"]
 ITEM = ["booking_item_id", "booking_id", "product_id", "taxonomy", "product_name", "unit_price", "quantity", "using_date", "using_date_to",
-        "guest_names"]
+        "guest_names", "line_total"]
 PARTNER = ["partner_name", "request_token", "created_at"]
 IPROFILE = ["profile_id", "partner_name", "attributes", "gdpr_optin", "created_at", "updated_at"]
 IDENT = ["identifier_id", "profile_id", "id_type", "id_value", "valid_from", "valid_to"]
@@ -89,6 +91,7 @@ def load_vota(url: str, data_dir: Path, reset: bool) -> dict[str, int]:
         """)
         conn.execute("UPDATE app.bookings SET confirmed_at = created_at WHERE status = 'confirmed' AND confirmed_at IS NULL")
         conn.execute("SELECT setval(pg_get_serial_sequence('cdp.events', 'event_id'), COALESCE((SELECT max(event_id) FROM cdp.events), 1))")
+        counts.update(simulated_business.sync(conn, True))  # seed demo local luôn bật (data-model.md §3)
         conn.execute("ANALYZE")
     return counts
 
@@ -128,6 +131,7 @@ def upsert_catalog(url: str, data_dir: Path, retire_missing: bool = False) -> di
             WHERE c.combo_product_id = i.product_id AND i.taxonomy = 'combo'
         """).rowcount
         added = copy_rows(conn, "catalog.combo_items", COMBO, combos)
+        simulated = simulated_business.sync(conn)  # mặc định bật; SIMULATED_BUSINESS_FARES=0 thì khoá vé mô phỏng đã có
     inserted = sum(1 for (flag,) in written if flag)
     return {
         "cdp.products before": before,
@@ -137,6 +141,7 @@ def upsert_catalog(url: str, data_dir: Path, retire_missing: bool = False) -> di
         "cdp.products not in catalog → available=false": retired,
         "catalog.combo_items replaced": removed,
         "catalog.combo_items written": added,
+        **simulated,
     }
 
 

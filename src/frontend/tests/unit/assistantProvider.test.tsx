@@ -3,7 +3,12 @@ import React from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ requestAssistantStream: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  requestAssistantStream: vi.fn(), getAssistantConversation: vi.fn(),
+  travel: { currentLocale: 'vi', authReady: true, currentPersona: null as { id: string; code: string } | null },
+}));
+
+vi.mock('../../src/context/TravelContext', () => ({ useTravel: () => mocks.travel }));
 
 vi.mock('../../src/services/assistantStream', () => ({
   AssistantStreamError: class AssistantStreamError extends Error {
@@ -13,13 +18,17 @@ vi.mock('../../src/services/assistantStream', () => ({
   requestAssistantStream: mocks.requestAssistantStream,
 }));
 
+vi.mock('../../src/services/assistantHistory', () => ({
+  getAssistantConversation: mocks.getAssistantConversation,
+}));
+
 vi.mock('next/navigation', () => ({
   usePathname: () => '/',
   useRouter: () => ({ push: vi.fn() }),
 }));
 
 import { AssistantProvider, useAssistant } from '../../src/context/AssistantProvider';
-import { TravelProvider } from '../../src/context/TravelContext';
+import { ApiError } from '../../src/services/http';
 import type { AssistantStreamEvent } from '../../src/services/assistantStream';
 
 function Probe() {
@@ -35,11 +44,24 @@ function Probe() {
     <button onClick={assistant.retry}>retry</button>
     <button onClick={assistant.abort}>abort</button>
     <button onClick={assistant.resetConversation}>reset</button>
+    <button onClick={() => void assistant.loadConversation('archive-id')}>load</button>
   </div>;
 }
 
 function mount() {
-  return render(<TravelProvider><AssistantProvider><Probe /></AssistantProvider></TravelProvider>);
+  return render(<AssistantProvider><Probe /></AssistantProvider>);
+}
+
+function archive(conversationId: string) {
+  return {
+    conversation: { conversationId, title: 'Nha Trang', status: 'open',
+      createdAt: '2026-09-25T01:00:00Z', updatedAt: '2026-09-25T01:01:00Z', messageCount: 2 },
+    messages: [
+      { messageId: 1, role: 'user', content: 'Nha Trang 3 ngày', createdAt: '2026-09-25T01:00:00Z' },
+      { messageId: 2, role: 'assistant', content: 'Bạn đi ngày nào?', createdAt: '2026-09-25T01:01:00Z',
+        response: { status: 'NEEDS_CLARIFICATION', conversationId, question: 'Bạn đi ngày nào?' } },
+    ],
+  };
 }
 
 function completed(response: Record<string, unknown>): AssistantStreamEvent {
@@ -51,8 +73,99 @@ describe('AssistantProvider', () => {
     sessionStorage.clear();
     mocks.requestAssistantStream.mockReset();
     mocks.requestAssistantStream.mockResolvedValue(undefined);
+    mocks.getAssistantConversation.mockReset();
+    mocks.travel.authReady = true;
+    mocks.travel.currentPersona = null;
   });
   afterEach(cleanup);
+
+  it('waits for the authenticated session then restores messages and continues the saved chat', async () => {
+    sessionStorage.setItem('vota.assistant.conversationId', 'restored-id');
+    mocks.travel.authReady = false;
+    mocks.getAssistantConversation.mockResolvedValue(archive('restored-id'));
+    const view = mount();
+    expect(mocks.getAssistantConversation).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem('vota.assistant.conversationId')).toBe('restored-id');
+
+    mocks.travel.currentPersona = { id: 'user-1', code: 'P1' };
+    mocks.travel.authReady = true;
+    view.rerender(<AssistantProvider><Probe /></AssistantProvider>);
+    await waitFor(() => expect(screen.getByTestId('transcript').textContent).toBe('Nha Trang 3 ngày|Bạn đi ngày nào?'));
+    expect(screen.getByTestId('phase').textContent).toBe('needs_clarification');
+    fireEvent.click(screen.getByText('send'));
+    expect(mocks.requestAssistantStream.mock.calls[0][0].conversationId).toBe('restored-id');
+
+    cleanup();
+    mount();
+    await waitFor(() => expect(screen.getByTestId('transcript').textContent).toBe('Nha Trang 3 ngày|Bạn đi ngày nào?'));
+    expect([...Array(sessionStorage.length)].map((_, index) => sessionStorage.key(index))).toEqual(['vota.assistant.conversationId']);
+  });
+
+  it('restores in StrictMode after effect cleanup and replay', async () => {
+    sessionStorage.setItem('vota.assistant.conversationId', 'restored-id');
+    mocks.travel.currentPersona = { id: 'user-1', code: 'P1' };
+    mocks.getAssistantConversation.mockResolvedValue(archive('restored-id'));
+    render(<React.StrictMode><AssistantProvider><Probe /></AssistantProvider></React.StrictMode>);
+    await waitFor(() => expect(screen.getByTestId('transcript').textContent).toContain('Bạn đi ngày nào?'));
+  });
+
+  it('restores the latest structured itinerary along with its transcript', async () => {
+    sessionStorage.setItem('vota.assistant.conversationId', 'planned-id');
+    mocks.travel.currentPersona = { id: 'user-1', code: 'P1' };
+    const detail = archive('planned-id');
+    mocks.getAssistantConversation.mockResolvedValue({
+      ...detail,
+      messages: [detail.messages[0], { ...detail.messages[1], content: 'Your itinerary', response: {
+        status: 'COMPLETED', conversationId: 'planned-id', warnings: [],
+        itinerary: { days: [], estimatedTotal: null, currency: 'VND', budgetStatus: 'UNKNOWN' },
+      } }],
+    });
+    mount();
+    await waitFor(() => expect(screen.getByTestId('phase').textContent).toBe('completed'));
+    expect(screen.getByTestId('transcript').textContent).toBe('Nha Trang 3 ngày|Your itinerary');
+  });
+
+  it.each(['reset', 'send', 'account change', 'unmount'])('ignores delayed restoration after %s', async (action) => {
+    sessionStorage.setItem('vota.assistant.conversationId', 'restored-id');
+    mocks.travel.currentPersona = { id: 'user-1', code: 'P1' };
+    let resolve!: (detail: ReturnType<typeof archive>) => void;
+    mocks.getAssistantConversation.mockReturnValue(new Promise((done) => { resolve = done; }));
+    const view = mount();
+    if (action === 'account change') {
+      mocks.travel.currentPersona = { id: 'user-2', code: 'P1' };
+      view.rerender(<AssistantProvider><Probe /></AssistantProvider>);
+    } else if (action === 'unmount') {
+      view.unmount();
+      mocks.travel.currentPersona = null;
+      mount();
+    } else fireEvent.click(screen.getByText(action));
+    await act(async () => resolve(archive('restored-id')));
+    expect(screen.getByTestId('transcript').textContent).not.toContain('Bạn đi ngày nào?');
+    if (action !== 'send' && action !== 'unmount') expect(screen.getByTestId('conversation').textContent).toBe('none');
+  });
+
+  it('clears an unavailable saved conversation', async () => {
+    sessionStorage.setItem('vota.assistant.conversationId', 'missing-id');
+    mocks.travel.currentPersona = { id: 'user-1', code: 'P1' };
+    mocks.getAssistantConversation.mockRejectedValue(new ApiError('Missing', 'CONVERSATION_NOT_FOUND', 404, false));
+    mount();
+    await waitFor(() => expect(sessionStorage.getItem('vota.assistant.conversationId')).toBeNull());
+    expect(screen.getByTestId('conversation').textContent).toBe('none');
+  });
+
+  it('keeps the saved ID and reports a temporary history failure', async () => {
+    sessionStorage.setItem('vota.assistant.conversationId', 'restored-id');
+    mocks.travel.currentPersona = { id: 'user-1', code: 'P1' };
+    mocks.getAssistantConversation.mockRejectedValue(new ApiError('Offline', 'NETWORK_ERROR', 0, true));
+    mount();
+    await waitFor(() => expect(screen.getByTestId('error').textContent).toBe('NETWORK_ERROR'));
+    expect(sessionStorage.getItem('vota.assistant.conversationId')).toBe('restored-id');
+    mocks.getAssistantConversation.mockResolvedValue(archive('restored-id'));
+    fireEvent.click(screen.getByText('retry'));
+    await waitFor(() => expect(screen.getByTestId('transcript').textContent).toContain('Bạn đi ngày nào?'));
+    expect(screen.getByTestId('error').textContent).toBe('none');
+    expect(mocks.requestAssistantStream).not.toHaveBeenCalled();
+  });
 
   it('hydrates and synchronizes only conversationId in tab-scoped sessionStorage', async () => {
     sessionStorage.setItem('vota.assistant.conversationId', 'restored-id');
@@ -82,6 +195,7 @@ describe('AssistantProvider', () => {
     mount();
     await waitFor(() => expect(screen.getByTestId('conversation').textContent).toBe('backend-id'));
     expect(screen.getByTestId('transcript').textContent).toBe('');
+    expect(mocks.getAssistantConversation).not.toHaveBeenCalled();
   });
 
   it('submits a clarification override with the current backend conversation', async () => {
@@ -98,7 +212,27 @@ describe('AssistantProvider', () => {
     });
   });
 
-  it('keeps an expired request without auto retry and retries the exact payload only on user action', async () => {
+  it('loads an archived transcript and makes it the active conversation', async () => {
+    mocks.getAssistantConversation.mockResolvedValue({
+      conversation: {
+        conversationId: 'archive-id', title: 'Nha Trang', status: 'open',
+        createdAt: '2026-09-25T01:00:00Z', updatedAt: '2026-09-25T01:01:00Z', messageCount: 2,
+      },
+      messages: [
+        { messageId: 1, role: 'user', content: 'Nha Trang 3 ngày', createdAt: '2026-09-25T01:00:00Z' },
+        { messageId: 2, role: 'assistant', content: 'Bạn đi ngày nào?', createdAt: '2026-09-25T01:01:00Z',
+          response: { status: 'NEEDS_CLARIFICATION', conversationId: 'archive-id', question: 'Bạn đi ngày nào?' } },
+      ],
+    });
+    mount();
+    fireEvent.click(screen.getByText('load'));
+
+    await waitFor(() => expect(screen.getByTestId('conversation').textContent).toBe('archive-id'));
+    expect(screen.getByTestId('transcript').textContent).toBe('Nha Trang 3 ngày|Bạn đi ngày nào?');
+    expect(sessionStorage.getItem('vota.assistant.conversationId')).toBe('archive-id');
+  });
+
+  it('resends an expired conversation once as a new conversation', async () => {
     const eventHandlers: Array<(event: AssistantStreamEvent) => void> = [];
     mocks.requestAssistantStream.mockImplementation((_request, options) => {
       eventHandlers.push(options.onEvent);
@@ -109,18 +243,40 @@ describe('AssistantProvider', () => {
     await waitFor(() => expect(screen.getByTestId('conversation').textContent).toBe('expired-id'));
     fireEvent.click(screen.getByText('send'));
     const originalRequest = mocks.requestAssistantStream.mock.calls[0][0];
-    eventHandlers[0]({
+    act(() => eventHandlers[0]({
       event: 'run.failed',
       data: { httpStatus: 404, error: { code: 'CONVERSATION_NOT_FOUND', message: 'Expired', retryable: false } },
-    });
+    }));
 
-    await waitFor(() => expect(screen.getByTestId('conversation').textContent).toBe('none'));
-    expect(mocks.requestAssistantStream).toHaveBeenCalledTimes(1);
-    await waitFor(() => expect(sessionStorage.getItem('vota.assistant.conversationId')).toBeNull());
-    fireEvent.click(screen.getByText('retry'));
     expect(mocks.requestAssistantStream).toHaveBeenCalledTimes(2);
-    expect(mocks.requestAssistantStream.mock.calls[1][0]).toEqual(originalRequest);
-    expect(screen.getByTestId('transcript').textContent).toBe('Plan trip');
+    expect(mocks.requestAssistantStream.mock.calls[1][0]).toEqual({ ...originalRequest, conversationId: null });
+    expect(screen.getByTestId('error').textContent).toBe('none');
+    expect(screen.getByTestId('transcript').textContent).toBe('Plan trip|Đã bắt đầu cuộc trò chuyện mới.');
+    await waitFor(() => expect(sessionStorage.getItem('vota.assistant.conversationId')).toBeNull());
+
+    act(() => eventHandlers[1](completed({ status: 'NO_RESULTS', conversationId: 'fresh-id', message: 'None' })));
+    await waitFor(() => expect(screen.getByTestId('conversation').textContent).toBe('fresh-id'));
+    expect(mocks.requestAssistantStream).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows an expired intent override instead of resending it without a conversation', async () => {
+    let onEvent: ((event: AssistantStreamEvent) => void) | undefined;
+    mocks.requestAssistantStream.mockImplementation((_request, options) => {
+      onEvent = options.onEvent;
+      return Promise.resolve();
+    });
+    sessionStorage.setItem('vota.assistant.conversationId', 'expired-id');
+    mount();
+    await waitFor(() => expect(screen.getByTestId('conversation').textContent).toBe('expired-id'));
+    fireEvent.click(screen.getByText('override'));
+    act(() => onEvent?.({
+      event: 'run.failed',
+      data: { httpStatus: 404, error: { code: 'CONVERSATION_NOT_FOUND', message: 'Expired', retryable: false } },
+    }));
+
+    await waitFor(() => expect(screen.getByTestId('error').textContent).toBe('CONVERSATION_NOT_FOUND'));
+    expect(screen.getByTestId('conversation').textContent).toBe('none');
+    expect(mocks.requestAssistantStream).toHaveBeenCalledTimes(1);
   });
 
   it('keeps backend conversation context for unsupported destinations', async () => {
@@ -163,16 +319,39 @@ describe('AssistantProvider', () => {
     expect(mocks.requestAssistantStream.mock.calls[1][0]).toEqual(mocks.requestAssistantStream.mock.calls[0][0]);
   });
 
-  it('marks a request slow after eight seconds without fabricating progress', async () => {
+  it('marks a request slow after twelve seconds without fabricating progress', async () => {
     vi.useFakeTimers();
     mocks.requestAssistantStream.mockImplementation(() => new Promise(() => undefined));
     mount();
     fireEvent.click(screen.getByText('send'));
 
-    act(() => vi.advanceTimersByTime(8_000));
+    act(() => vi.advanceTimersByTime(11_999));
+    expect(screen.getByTestId('slow').textContent).toBe('false');
+    act(() => vi.advanceTimersByTime(1));
     expect(screen.getByTestId('slow').textContent).toBe('true');
     expect(screen.getByTestId('transcript').textContent).toBe('Plan trip');
     expect(screen.getByTestId('phase').textContent).toBe('connecting');
+    vi.useRealTimers();
+  });
+
+  it('measures slowness per node: each completed node clears the warning and restarts the clock', async () => {
+    vi.useFakeTimers();
+    let onEvent: (event: AssistantStreamEvent) => void = () => undefined;
+    mocks.requestAssistantStream.mockImplementation((_request, options) => {
+      onEvent = options.onEvent;
+      return new Promise(() => undefined);
+    });
+    mount();
+    fireEvent.click(screen.getByText('send'));
+
+    act(() => vi.advanceTimersByTime(10_000));
+    act(() => onEvent({ event: 'node.completed', data: { sequence: 1, nodeId: 'extract' } }));
+    act(() => vi.advanceTimersByTime(10_000));
+    expect(screen.getByTestId('slow').textContent).toBe('false');
+    act(() => vi.advanceTimersByTime(2_000));
+    expect(screen.getByTestId('slow').textContent).toBe('true');
+    act(() => onEvent({ event: 'node.completed', data: { sequence: 2, nodeId: 'tool' } }));
+    expect(screen.getByTestId('slow').textContent).toBe('false');
     vi.useRealTimers();
   });
 

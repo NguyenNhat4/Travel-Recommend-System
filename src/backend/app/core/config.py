@@ -51,11 +51,13 @@ class Settings(BaseSettings):
     # structured output hoặc tool calling, cần quyết định ổn định.
     itinerary_llm_temperature: float = Field(default=0.0, ge=0.0, le=2.0)
     itinerary_service_base_url: str | None = Field(default=None, pattern=r"^https?://")
-    itinerary_data_mode: Literal["fixture", "http", "disabled"] | None = None
+    itinerary_data_mode: Literal["fixture", "inprocess", "http", "disabled"] | None = None
     itinerary_tool_timeout_seconds: float = Field(default=10.0, gt=0)
     itinerary_llm_timeout_seconds: float = Field(default=10.0, gt=0)
     itinerary_request_timeout_seconds: float = Field(default=10.0, gt=0)
     itinerary_conversation_ttl_seconds: int = Field(default=86_400, ge=60)
+    # Redis DB index riêng cho working memory của agent; production không được dùng process memory.
+    itinerary_redis_url: str = ""
 
     # --- Auth (docs/spec/hop-dong-tich-hop-auth.md §19) ---------------------------------------
     # RS256; HS256 bị loại (§10.2). Đường dẫn tương đối tính từ gốc repo. Thiếu file: dev/test sinh
@@ -98,23 +100,49 @@ class Settings(BaseSettings):
     cohere_api_key: str = ""
     cohere_base_url: str = "https://api.cohere.com"
     cohere_timeout_seconds: float = Field(default=30.0, gt=0)
+    # Chỉ job index (jobs/embed_products.py, P5 docs/plan/2026-09-29-index-cohere-song-song.md): số lô 96 text gọi
+    # Cohere cùng lúc (1 = tuần tự) và trần lượt gọi mỗi phút của job (0 = không giới hạn). Mặc định cho key Trial
+    # (100 lượt/phút), chừa chỗ cho Search dùng chung key; key Production thì nâng, vd. 8 và 1500. Search lúc chạy API
+    # không bị giới hạn này.
+    cohere_embed_concurrency: int = Field(default=4, ge=1, le=16)
+    cohere_calls_per_minute: int = Field(default=90, ge=0)
     weaviate_url: str = "http://localhost:8080"
     weaviate_api_key: str = ""
     weaviate_collection: str = "Product"
+    # Chỉ dùng khi job index tạo collection mới; Weaviate Cloud của nhóm chỉ cho phép hfresh.
+    weaviate_vector_index_type: Literal["hnsw", "hfresh"] = "hnsw"
     weaviate_timeout_seconds: float = Field(default=30.0, gt=0)
     # Cổng gRPC cho truy vấn top-K mỗi request; Weaviate Cloud tự dùng 443 của host grpc-<cluster>.
     weaviate_grpc_port: int = Field(default=50051, ge=1, le=65535)
-    search_cutoff: float = 0.62  # quy tắc tạm của Search contract; phải benchmark lại với Cohere
+    search_cutoff: float = 0.52  # quy tắc tạm của Search contract; phải benchmark lại với Cohere
     search_max_limit: int = 50
     search_candidate_k: int = Field(default=200, ge=1)
     recommend_candidate_k: int = 200
-
-    # Vector ở Weaviate, embedding bằng Cohere (docs/prd/architecture.md §5, deployment-plan.md §2).
-    # Runtime và job index-vectors dùng các biến này; Weaviate không bao giờ nhận COHERE_API_KEY.
-    cohere_api_key: str = ""
-    embedding_model_name: str = "embed-multilingual-v3.0"
-    weaviate_url: str = "http://localhost:8080"
-    weaviate_api_key: str = ""
+    # Hybrid /search (HYBRID_CANDIDATE_SCORE, spec §2.4): BM25 trên nameAscii/searchTextAscii + RRF ở app.
+    search_hybrid: bool = True  # False → dense-only ANN_CANDIDATE_SCORE như trước 25/09
+    search_normalize: bool = True  # bước chuẩn hoá truy vấn (viết tắt, chính tả tên riêng, điểm đến, kiểu đi); False → nguyên câu
+    search_rrf_k: int = Field(default=60, ge=1)
+    search_lexical_candidate_k: int = Field(default=50, ge=1)  # top-K BM25 lấy từ Weaviate mỗi request
+    search_lexical_k: int = Field(default=10, ge=0)  # chỉ vớt hit BM25 có rank ≤ giá trị này
+    search_lexical_cutoff: float = 0.50  # cosine tối thiểu của hit được vớt; luôn ≤ search_cutoff
+    search_lexical_min_coverage: float = Field(default=0.6, ge=0, le=1)  # tên phải chứa ≥ 60% token của truy vấn
+    # Cache vector truy vấn /search (NFR-PERF-03; contract 1.12.0 `diagnostics.embedCache`): LRU trong tiến trình, khoá =
+    # câu sau chuẩn hoá + gộp khoảng trắng; sống qua các lần nạp lại catalog vì bọc quanh client Cohere dùng chung.
+    search_embed_cache: bool = True
+    search_embed_cache_size: int = Field(default=10000, ge=1)  # 10k vector float32 1024 chiều ≈ 41 MB
+    search_embed_cache_log_every: int = Field(default=500, ge=1)  # log hits/misses mỗi N lượt tra
+    # Nạp sẵn cache lúc khởi động (sau lần nạp catalog đầu tiên, không chặn startup): file câu gold + head query của
+    # app.search_logs; pacing theo số câu / phút để không đụng trần Cohere (Trial 100 lượt/phút, mỗi lượt ≤ 96 câu).
+    search_prewarm: bool = True
+    search_prewarm_file: str = "data/search_prewarm_queries.txt"  # tương đối theo src/backend
+    search_prewarm_head_queries: int = Field(default=200, ge=0)
+    search_prewarm_head_days: int = Field(default=30, ge=1)
+    search_prewarm_inputs_per_minute: int = Field(default=2000, ge=0)  # 0 = không ngủ giữa các lô
+    search_bm25_k1: float = 1.2  # chỉ job index dùng (invertedIndexConfig của collection)
+    search_bm25_b: float = 0.75
+    # Chu kỳ nạp lại metadata catalog (giá, trạng thái, cửa sổ ngày) từ Postgres. Job cào chạy mỗi ngày
+    # một lần nên 15 phút là đủ; mỗi lần nạp đọc lại toàn bảng và dựng lại text của mọi search unit.
+    catalog_refresh_seconds: float = Field(default=900.0, gt=0)
 
     # --- Thanh toán Stripe (test mode, docs/prd/deployment-plan.md §2) --------------------------------
     stripe_secret_key: str = ""

@@ -1,13 +1,16 @@
 import React from 'react';
+import Link from 'next/link';
 import { Product, BecauseItem, Strategy, Taxonomy } from '../../types/travel';
 import { TaxonomyBadge } from './TaxonomyBadge';
 import { PriceTag } from './PriceTag';
 import { useTravel } from '../../context/TravelContext';
-import { MapPin, Star, Plus, ArrowRight, ExternalLink } from 'lucide-react';
+import { placeholderImage } from '../../services/catalog';
+import { MapPin, Star, Plus, ArrowRight, ExternalLink, Loader2, Check } from 'lucide-react';
 
 interface ProductCardProps {
   product: Product;
-  variant?: 'grid' | 'row' | 'compact';
+  /** tile: thẻ vuông của carousel ở trang danh mục và Home; là liên kết thật để mở tab mới và điều hướng bằng bàn phím. */
+  variant?: 'grid' | 'row' | 'compact' | 'tile';
   because?: BecauseItem[];
   strategy?: Strategy;
   excludedVerticals?: Taxonomy[];
@@ -19,6 +22,15 @@ interface ProductCardProps {
   isPersonalizedMatch?: boolean;
   openInNewTab?: boolean;
   hideTaxonomyBadge?: boolean;
+  /** Query string ngữ cảnh chuyến đi (ngày, số khách) nối vào `/product/{id}` để điền sẵn hộp đặt. */
+  tripQuery?: string;
+  /** compact: bấm thẻ gọi hàm này thay vì mở trang sản phẩm (thẻ trong lời diễn giải của trợ lý mở panel chi tiết). */
+  onSelect?: (product: Product) => void;
+  /** compact: thay `PriceTag`, ví dụ "Tham quan tự do" cho điểm tham quan không bán vé. */
+  priceLabel?: string;
+  /** compact: hiện điểm đánh giá (nếu có) và địa chỉ thay cho điểm đến. */
+  showRatingAndAddress?: boolean;
+  quickAddState?: 'adding' | 'added';
 }
 
 export const ProductCard: React.FC<ProductCardProps> = ({
@@ -34,9 +46,16 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   assistantNote,
   isPersonalizedMatch = false,
   openInNewTab = false,
-  hideTaxonomyBadge = false
+  hideTaxonomyBadge = false,
+  tripQuery,
+  onSelect,
+  priceLabel,
+  showRatingAndAddress = false,
+  quickAddState,
 }) => {
   const { navigate, debugMode, recordEvent } = useTravel();
+
+  const href = `/product/${product.id}${tripQuery ? `?${tripQuery}` : ''}`;
 
   const handleCardClick = (e?: React.MouseEvent) => {
     recordEvent('product_view', product);
@@ -44,25 +63,91 @@ export const ProductCard: React.FC<ProductCardProps> = ({
       if (e) {
         e.preventDefault();
       }
-      window.open(`/product/${product.id}`, '_blank', 'noopener,noreferrer');
+      window.open(href, '_blank', 'noopener,noreferrer');
       return;
     }
-    navigate(`/product/${product.id}`);
+    navigate(href);
   };
+
+  // ==================== TILE VARIANT (LANDING / HOME CAROUSEL) ====================
+  if (variant === 'tile') {
+    return (
+      <Link
+        href={href}
+        target={openInNewTab ? '_blank' : undefined}
+        rel={openInNewTab ? 'noopener noreferrer' : undefined}
+        onClick={() => recordEvent('product_view', product)}
+        className={`group flex min-w-0 flex-col gap-3 rounded-3xl focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-600 ${className}`}
+      >
+        <div className="relative aspect-square w-full overflow-hidden rounded-3xl bg-slate-100">
+          <img
+            src={product.imageUrl}
+            alt={product.name}
+            loading="lazy"
+            decoding="async"
+            referrerPolicy="no-referrer"
+            className={`h-full w-full object-cover transition-transform duration-500 group-hover:scale-105 ${!product.available ? 'grayscale' : ''}`}
+          />
+          {!hideTaxonomyBadge && (
+            <div className="absolute left-3 top-3">
+              <TaxonomyBadge taxonomy={product.taxonomy} />
+            </div>
+          )}
+          {product.attributes.starRating && !product.aggregateRating && (
+            <div className="absolute right-3 top-3 flex items-center gap-0.5 rounded-full bg-slate-900/70 px-2 py-0.5 text-[11px] font-semibold text-amber-300 backdrop-blur-xs">
+              <Star className="h-3 w-3 fill-amber-300 text-amber-300" aria-hidden="true" />
+              {product.attributes.starRating}
+              <span className="sr-only"> sao</span>
+            </div>
+          )}
+          {!product.available && (
+            <div className="absolute inset-0 flex items-center justify-center bg-slate-900/55 text-xs font-bold uppercase tracking-wider text-white">
+              Tạm hết chỗ
+            </div>
+          )}
+        </div>
+        <div className="flex min-w-0 flex-col gap-1 px-1">
+          <h3 className="line-clamp-2 text-base font-bold leading-snug text-slate-900 transition-colors group-hover:text-blue-600">
+            {product.name}
+          </h3>
+          <p className="flex items-center gap-1 text-sm text-slate-500">
+            <MapPin className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden="true" />
+            <span className="truncate">{product.destination}</span>
+          </p>
+          {product.aggregateRating && (
+            <p className="text-xs text-slate-600">
+              <span className="font-bold text-slate-800">★ {product.aggregateRating.score}</span>
+              {product.aggregateRating.count > 0 && (
+                <span className="text-slate-400"> · {product.aggregateRating.count.toLocaleString('vi-VN')} đánh giá</span>
+              )}
+            </p>
+          )}
+          <PriceTag price={product.unitPrice} taxonomy={product.taxonomy} hasPrefixFrom size="md" />
+        </div>
+      </Link>
+    );
+  }
 
   // ==================== COMPACT VARIANT ====================
   if (variant === 'compact') {
+    // Có `onSelect`: cả thẻ bấm được bằng chuột; tên là nút để dùng bàn phím/trình đọc màn hình. Nút không có handler
+    // riêng, click của nó nổi lên thẻ nên chỉ gọi `onSelect` một lần, và nút "Thêm" vẫn không lồng trong một nút khác.
+    const handleCompactClick = onSelect ? () => onSelect(product) : handleCardClick;
     return (
-      <div 
-        onClick={handleCardClick}
+      <div
+        onClick={handleCompactClick}
         className={`flex items-center justify-between p-3 bg-white rounded-lg border border-slate-200 cursor-pointer ${className} ${!product.available ? 'opacity-60 bg-slate-50' : ''}`}
       >
         <div className="flex items-center gap-3 min-w-0">
           <div className="relative w-16 h-16 rounded-md overflow-hidden bg-slate-100 shrink-0">
-            <img 
-              src={product.imageUrl} 
+            <img
+              src={product.imageUrl}
               alt={product.name}
               referrerPolicy="no-referrer"
+              onError={(event) => {
+                const fallback = placeholderImage(product.taxonomy);
+                if (!event.currentTarget.src.endsWith(fallback)) event.currentTarget.src = fallback;
+              }}
               className="w-full h-full object-cover"
             />
             {!product.available && (
@@ -86,14 +171,29 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                 </span>
               )}
             </div>
-            <h4 className="text-xs font-semibold text-slate-900 line-clamp-1">
-              {product.name}
+            <h4 className="font-sans text-xs font-semibold text-slate-900 line-clamp-1">
+              {onSelect ? (
+                <button type="button" aria-label={`Xem chi tiết ${product.name}`} className="text-left hover:text-blue-700">
+                  {product.name}
+                </button>
+              ) : product.name}
             </h4>
-            <div className="flex items-center gap-2 mt-0.5">
-              <PriceTag price={product.unitPrice} taxonomy={product.taxonomy} size="sm" />
-              <span className="text-[11px] text-slate-400 flex items-center gap-0.5">
-                <MapPin className="w-3 h-3" />
-                {product.destination}
+            {/* Điểm đánh giá (khác hạng sao `starRating`, nên không dùng biểu tượng sao) */}
+            {showRatingAndAddress && product.aggregateRating && (
+              <p className="text-[11px] text-slate-600">
+                <span className="font-semibold text-slate-800">{product.aggregateRating.score}/5</span>
+                {product.aggregateRating.count > 0 && (
+                  <span className="text-slate-400"> · {product.aggregateRating.count.toLocaleString('vi-VN')} đánh giá</span>
+                )}
+              </p>
+            )}
+            <div className="flex items-center gap-2 mt-0.5 min-w-0">
+              {priceLabel
+                ? <span className="shrink-0 text-[11px] font-bold text-emerald-700">{priceLabel}</span>
+                : <PriceTag price={product.unitPrice} taxonomy={product.taxonomy} size="sm" />}
+              <span className="min-w-0 text-[11px] text-slate-400 flex items-center gap-0.5">
+                <MapPin className="w-3 h-3 shrink-0" />
+                <span className="truncate">{showRatingAndAddress ? product.address || product.destination : product.destination}</span>
               </span>
             </div>
             {assistantNote && (
@@ -107,14 +207,17 @@ export const ProductCard: React.FC<ProductCardProps> = ({
         <div className="flex items-center gap-2 shrink-0 ml-3">
           {onQuickAdd && product.available && (
             <button
+              disabled={Boolean(quickAddState)}
+              aria-busy={quickAddState === 'adding'}
               onClick={(e) => {
                 e.stopPropagation();
                 onQuickAdd(product);
               }}
-              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-md border border-blue-200 transition-colors"
+              className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md border transition-colors disabled:cursor-default ${quickAddState === 'added' ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : 'text-blue-700 bg-blue-50 hover:bg-blue-100 border-blue-200'}`}
             >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Thêm</span>
+              {quickAddState === 'adding' ? <Loader2 className="w-3.5 h-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                : quickAddState === 'added' ? <Check className="w-3.5 h-3.5" aria-hidden="true" /> : <Plus className="w-3.5 h-3.5" aria-hidden="true" />}
+              <span aria-live="polite">{quickAddState === 'adding' ? 'Đang thêm…' : quickAddState === 'added' ? 'Đã thêm' : 'Thêm'}</span>
             </button>
           )}
           {openInNewTab && (
@@ -243,7 +346,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             <TaxonomyBadge taxonomy={product.taxonomy} />
           </div>
         )}
-        {product.attributes.starRating && (
+        {product.attributes.starRating && !product.aggregateRating && (
           <div className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded bg-slate-900/70 text-amber-300 text-[11px] font-semibold backdrop-blur-xs flex items-center gap-0.5">
             <Star className="w-3 h-3 fill-amber-300 text-amber-300" />
             {product.attributes.starRating}★

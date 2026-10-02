@@ -194,7 +194,7 @@ class VinpearlCollector:
         for _ in range(3):
             await self.limiter.wait(url)
             try:
-                status, data = await session.fetch_json(page, url, API_HEADERS)
+                status, data = await session.fetch_json(page, url, headers=API_HEADERS)
             except Exception as e:  # trang bị điều hướng/đóng
                 log.warning("Lỗi gọi API %s: %s", url, e)
                 self._api_page = None
@@ -525,7 +525,7 @@ def build_hotel_record(h: dict, responses: list[tuple[str, dict]], site: dict, c
         "key": f"hotel:{hotel_id}",
         # ngày API thật sự trả lời hợp lệ (không phải ngày có giá — ngày hết phòng vẫn nằm trong danh sách này nhưng không có
         # trong room["pricesByDate"]); cần cả hai để phân biệt "hết phòng" với "chưa hỏi ngày đó" khi dựng lịch trống thật
-        # (xem load_catalog.py: real_room_calendar).
+        # (xem seed/load_products.py: real_room_calendar).
         "priceDatesQueried": [d for d, _ in responses],
         "hotelId": hotel_id,
         "hotelCode": hotel.get("code") or h.get("hotelCode"),

@@ -2,8 +2,9 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTravel } from '../../context/TravelContext';
+import { useAssistant } from '../../context/AssistantProvider';
 import * as bookingApi from '../../services/booking';
-import type { BookingResponse } from '../../services/booking';
+import type { ApiBookingItem, BookingResponse, BookingTraveler } from '../../services/booking';
 import { fetchRecommendations } from '../../services/recsys';
 import { ApiError } from '../../services/http';
 import type { RecommendationResponse } from '../../types/travel';
@@ -15,6 +16,7 @@ import {
 import {
   BOOKING_STATUS_BADGE, FAILURE_REASON_TEXT, MAX_CARD_ATTEMPTS, formatCountdown, formatDateTimeVn, formatVnd,
 } from './bookingLabels';
+import { FareLines } from '../checkout/FareLines';
 
 interface ConfirmationViewProps {
   referenceCode: string;
@@ -28,6 +30,7 @@ export const ConfirmationView: React.FC<ConfirmationViewProps> = ({ referenceCod
   const {
     getBookingByCode, rememberBooking, refreshCart, markJustBooked, currentPersona, activeEvents, navigate, showToast,
   } = useTravel();
+  const { openFloatingWidget } = useAssistant();
   const [booking, setBooking] = useState<BookingResponse | null>(() => getBookingByCode(referenceCode) ?? null);
   const [load, setLoad] = useState<LoadState>({ kind: 'loading' });
   const [polls, setPolls] = useState(0);
@@ -158,7 +161,7 @@ export const ConfirmationView: React.FC<ConfirmationViewProps> = ({ referenceCod
         onContinue={() => booking.payment?.checkoutUrl && bookingApi.redirectToCheckout(booking.payment.checkoutUrl)}
         onBackToCart={() => navigate('/cart')}
         onHome={() => navigate('/')}
-        onAssistant={() => navigate(`/assistant?destination=${encodeURIComponent(booking.groups[0]?.destination ?? '')}`)}
+        onAssistant={() => openFloatingWidget(`Gợi ý lịch trình 3 ngày ở ${booking.groups[0]?.destination ?? 'điểm đến của tôi'}`)}
       />
 
       <BookingSummary booking={booking} />
@@ -344,6 +347,50 @@ const StatusCard: React.FC<{
   );
 };
 
+function TravelerName({ traveler }: { traveler: BookingTraveler }) {
+  return (
+    <span className="whitespace-nowrap">
+      {traveler.fullName}
+      {traveler.type === 'CHILD' && <span className="text-slate-400"> (trẻ em)</span>}
+      {traveler.isLead && <span className="ml-1 rounded bg-blue-50 px-1 py-0.5 text-[10px] font-semibold text-blue-700">Đại diện nhận phòng</span>}
+    </span>
+  );
+}
+
+/**
+ * Hành khách của một mục đơn (spec checkout-nhieu-buoc-hanh-khach.md §6.8): khách sạn hiện khách theo phòng và đánh dấu người đại
+ * diện; dịch vụ khác một dòng. Không có ngày sinh (response không trả). Đơn tạo trước thay đổi này không có `travelers` nên vẫn hiện
+ * `guestNames` như trước.
+ */
+const ItemTravelers: React.FC<{ item: ApiBookingItem }> = ({ item }) => {
+  const travelers = item.travelers ?? [];
+  if (travelers.length === 0) {
+    return item.guestNames.length ? <p className="text-[11px] text-slate-500" data-testid="item-travelers">{item.guestNames.join(', ')}</p> : null;
+  }
+  const rooms = new Map<number, BookingTraveler[]>();
+  for (const traveler of travelers) {
+    if (traveler.roomNo === null) continue;
+    rooms.set(traveler.roomNo, [...(rooms.get(traveler.roomNo) ?? []), traveler]);
+  }
+  const list = (people: BookingTraveler[]) => people.map((t, i) => <React.Fragment key={`${t.fullName}-${i}`}>{i > 0 && ', '}<TravelerName traveler={t} /></React.Fragment>);
+  return (
+    <ul className="text-[11px] text-slate-600 space-y-0.5" data-testid="item-travelers">
+      {rooms.size > 0
+        ? [...rooms.entries()].sort(([a], [b]) => a - b).map(([no, people]) => <li key={no}><span className="font-semibold text-slate-700">Phòng {no}:</span> {list(people)}</li>)
+        : <li>{list(travelers)}</li>}
+    </ul>
+  );
+};
+
+/** Số lượng của mục theo loại dịch vụ: khách sạn theo phòng (kèm số khách nếu có), combo theo gói, còn lại theo khách. */
+function quantityText(item: ApiBookingItem): string {
+  if (item.product.taxonomy === 'hotel') {
+    const guests = item.travelers?.length ?? 0;
+    return guests ? `${item.quantity} phòng · ${guests} khách` : `${item.quantity} phòng`;
+  }
+  return item.product.taxonomy === 'combo' ? `${item.quantity} gói` : `${item.quantity} khách`;
+}
+
 const BookingSummary: React.FC<{ booking: BookingResponse }> = ({ booking }) => (
   <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
     <div className="flex items-center justify-between pb-3 border-b border-slate-100">
@@ -357,16 +404,19 @@ const BookingSummary: React.FC<{ booking: BookingResponse }> = ({ booking }) => 
         <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Chuyến {group.destination}</div>
         <div className="divide-y divide-slate-100">
           {group.items.map((item) => (
-            <div key={item.bookingItemId} className="py-3 flex items-center justify-between gap-3">
-              <div>
-                <h5 className="text-xs font-bold text-slate-900">{item.product.name}</h5>
-                <p className="text-[11px] text-slate-500">
-                  {item.usingDate}
-                  {item.nights ? ` · ${item.nights} đêm` : ''} · {item.quantity} {item.product.taxonomy === 'hotel' ? 'phòng' : 'khách'}
-                  {item.guestNames.length ? ` · ${item.guestNames.join(', ')}` : ''}
-                </p>
+            <div key={item.bookingItemId} className="py-3 space-y-2" data-testid="booking-item">
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-0.5">
+                  <h5 className="text-xs font-bold text-slate-900">{item.product.name}</h5>
+                  <p className="text-[11px] text-slate-500">
+                    {item.usingDate}
+                    {item.nights ? ` · ${item.nights} đêm` : ''} · {quantityText(item)}
+                  </p>
+                  <ItemTravelers item={item} />
+                </div>
+                <span className="text-xs font-semibold text-slate-800 font-mono">{formatVnd(item.lineTotal)}</span>
               </div>
-              <span className="text-xs font-semibold text-slate-800 font-mono">{formatVnd(item.lineTotal)}</span>
+              <FareLines fares={item.fares ?? []} />
             </div>
           ))}
         </div>
@@ -401,7 +451,7 @@ const NextForTrip: React.FC<{
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-black text-slate-900 tracking-tight">TIẾP THEO CHO CHUYẾN {destination.toUpperCase()}</h2>
+          <h2 className="text-lg font-black text-slate-900">TIẾP THEO CHO CHUYẾN {destination.toUpperCase()}</h2>
           <p className="text-xs text-slate-600">Vì bạn vừa đặt dịch vụ tại {destination} — đây là các đề xuất bổ trợ cho hành trình.</p>
         </div>
         <button onClick={() => setShowWhy(true)} className="text-xs font-semibold text-blue-700 hover:text-blue-800 flex items-center gap-1">
@@ -436,7 +486,7 @@ const NextForTrip: React.FC<{
 const CenteredCard: React.FC<{ icon: React.ReactNode; title: string; children?: React.ReactNode }> = ({ icon, title, children }) => (
   <div className="p-8 bg-white rounded-3xl border border-slate-200 shadow-xl text-center space-y-4">
     <div className="w-16 h-16 rounded-full bg-slate-50 flex items-center justify-center mx-auto">{icon}</div>
-    <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">{title}</h1>
+    <h1 className="text-2xl sm:text-3xl font-black text-slate-900">{title}</h1>
     {children}
   </div>
 );

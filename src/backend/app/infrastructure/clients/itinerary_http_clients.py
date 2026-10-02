@@ -7,13 +7,15 @@ import httpx
 
 from src.backend.app.application.itinerary.tool_contracts import upstream_error_code
 from src.backend.app.application.ports.itinerary_tools import ToolError
+from src.backend.app.application.search.responses import search_tool_payload
 from src.backend.app.core.request_context import REQUEST_ID_HEADER, current_request_id
 
 
 class ItineraryHttpClients:
-    # `/destinations` có thật; `/products/{id}` chưa, nhưng Search và Recommendation trả đủ
-    # DETAIL_FIELDS nên `hydrate()` không bao giờ gọi tới `get_product_detail`.
+    # `/destinations` và `/products/{id}` đều có route. Search và Recommendation đã trả đủ
+    # DETAIL_FIELDS nên `hydrate()` thường không cần gọi tới `get_product_detail`.
     supports_catalog = True
+    supports_similar = True
 
     def __init__(self, http: httpx.AsyncClient):
         self._http = http
@@ -22,14 +24,16 @@ class ItineraryHttpClients:
         supported = {"taxonomy", "destination", "limit", "offset"}
         params = {"q": request["query"], **{key: value for key, value in request.items()
                                              if key in supported and value is not None}}
-        data = await self._request("GET", "/search", params=params)
-        # GET compatibility endpoint có metadata engine riêng. Tool chỉ giữ các
-        # trường SearchResponse ổn định mà Agent thực sự tiêu thụ.
-        return {key: value for key, value in data.items() if key not in {"cutoff", "diagnostics"}}
+        # GET compatibility endpoint có metadata engine riêng; search_tool_payload bỏ phần đó.
+        return search_tool_payload(await self._request("GET", "/search", params=params))
 
     async def get_recommendations(self, request: dict[str, Any], authorization: str | None = None) -> dict[str, Any]:
         return await self._request("GET", "/recommendations", params=request,
                                    headers={"Authorization": authorization} if authorization else {})
+
+    async def get_similar_products(self, product_id: str, limit: int) -> dict[str, Any]:
+        # Similar không cá nhân hoá: như search, không bao giờ gửi Authorization.
+        return await self._request("GET", f"/products/{quote(product_id, safe='')}/similar", params={"limit": limit})
 
     async def get_product_detail(self, product_id: str) -> dict[str, Any]:
         return await self._request("GET", f"/products/{quote(product_id, safe='')}")

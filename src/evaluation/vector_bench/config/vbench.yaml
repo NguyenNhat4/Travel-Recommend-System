@@ -1,0 +1,265 @@
+# vbench — file DUY NHẤT chứa con số (spec.md §1.2). Code chỉ đọc, không có hằng số ngưỡng/trọng số trong logic.
+# Chỗ ghi (đề xuất) là tham số spec thêm vào, chưa có trong vector-db-selection.md.
+# Mục `fast:` ở cuối là phạm vi spec-fasttrack.md §3–§6; chỉ `vb fast`, `vb fast-report`, `vb scale-data --vectors amplify` đọc.
+
+run:
+  seed: 42
+  profile: local              # local | full
+  scales: {local: [catalog, 100k], full: [catalog, 100k, 1m]}
+  engines: [pgvector, qdrant, pgvectorscale, milvus, weaviate, opensearch]
+  engine_limits:              # (đề xuất) chừa CPU cho client load test chạy cùng máy
+    local: {cpus: 4, mem: 8g}
+    full:  {cpus: 6, mem: 16g} # 16 GB theo vector-db-selection.md §5
+  default_run_id: dev         # run-all dùng <YYYYMMDD-HHMM>-<git short sha>
+
+dataset:
+  catalog:
+    source: jsonl             # jsonl | db | fake  (fast-track: jsonl)
+    # Catalog `make demo-db` đã bung từ snapshot có checksum (src/data_collection/snapshots/2026-09-21) — 10.320 dòng.
+    products_path: src/data_collection/data/snapshots/2026-09-21/products.jsonl
+    database_url_env: DATABASE_URL
+    fake_n: 5000
+    amenity_scope: property_plus_rooms  # property_only | property_plus_rooms
+    amenity_min_freq: 5       # chuỗi amenity chưa map, xuất hiện ≥ 5 lần → id riêng "raw:<slug>"
+    max_amenities_in_text: 12
+    max_room_names_in_text: 8
+    max_description_words: 60
+  scale:
+    vectors: cohere-vi        # cohere-vi | fake | amplify   (amplify: spec-fasttrack §3, tham số ở fast.amplify)
+    hf_dataset: CohereLabs/wikipedia-2023-11-embed-multilingual-v3
+    hf_config: vi
+    sizes: {100k: 100000, 1m: 1000000}
+    n_queries: 1000
+    n_reserve: 20000          # vector dự trữ cho B4/B5 (upsert mới)
+    correlation: none         # none | cluster  (metadata tương quan với vector hay không)
+    geo_jitter_m: 1000
+
+embedding:
+  backend: st                 # st (sentence-transformers) | fake
+  model: BAAI/bge-m3
+  dim: 1024
+  normalize: true
+  max_seq_length: 512
+  batch_size: 32
+  device: cpu                 # cpu | cuda
+  query_prefix: ""            # e5: "query: "
+  passage_prefix: ""          # e5: "passage: "
+
+queries:
+  n_total: 1000
+  gold_max: 300               # tối đa 300 gold + phần còn lại sinh
+  buckets:                    # selectivity S = |tập thoả filter| / N
+    b100: {range: null, quota: 250}                              # không filter
+    b10:  {range: [0.05, 0.20], quota: 250}
+    b1:   {range: [0.005, 0.02], quota: 250}
+    b01:  {range: [0.0005, 0.002], quota: 250, min_matches: 3}
+  filter_type_weights: {dest_tax: 0.25, all_amenity: 0.25, not_amenity: 0.15, range: 0.15, geo: 0.10, combo: 0.10}
+  available_true_rate: 0.5
+  geo_radius_m: [1000, 3000, 5000, 10000, 20000, 50000]
+  price_quantiles: [0.1, 0.25, 0.5, 0.75, 0.9]
+  star_min_values: [3, 4, 5]
+  max_attempts: 200000
+  text_slices: {normal: 0.7, khong_dau: 0.15, viet_tat: 0.15}
+
+groundtruth:
+  k: 100
+  tie_eps: 0.001              # (đề xuất) dung sai điểm khi so recall (fp16)
+  chunk_rows: 100000
+  geo_boundary_tol: 0.005     # (đề xuất) ±0,5% bán kính = vùng biên, không tính vi phạm
+  self_check_items: 50        # Part 4: 50 item làm query, top-1 phải là chính nó
+  self_check_min_score: 0.999
+  self_check_naive: 20        # Part 4: 20 query tính lại bằng vòng lặp ngây thơ
+
+engines:                      # chi tiết từng engine ở Part 5, 7, 8
+  # default_query = cấu hình (a): tham số mặc định của engine ({mode: ann} không kèm tham số = để engine tự chọn)
+  # query_sweep   = các cấu hình thử để tìm (b) — Part 6
+  pgvector:
+    dsn: postgresql://postgres:vbench@localhost:55432/vbench
+    index_configs:            # thử theo thứ tự; cái đầu = index mặc định
+      - {name: hnsw_m16_efc128, params: {m: 16, ef_construction: 128}}
+      - {name: hnsw_m32_efc256, params: {m: 32, ef_construction: 256}}
+    default_query: {mode: ann, ef_search: 40, iterative_scan: "off"}   # mặc định của pgvector; "off" phải có nháy (YAML)
+    query_sweep:
+      - {mode: exact}
+      - {mode: ann, ef_search: [40, 64, 100, 200, 400], iterative_scan: relaxed_order, max_scan_tuples: 20000}
+      - {mode: auto, auto_exact_max: 10000, ef_search: 100, iterative_scan: relaxed_order}
+  pgvectorscale:
+    dsn: postgresql://postgres:vbench@localhost:55433/vbench
+    index_configs:
+      - {name: diskann, params: {}}
+      - {name: diskann_labels, params: {labels: true}}
+    default_query: {mode: ann}
+    query_sweep:
+      - {mode: exact}
+      - {mode: ann, query_search_list_size: [50, 100, 200, 400], query_rescore: 50}
+  qdrant:
+    url: http://localhost:56333
+    grpc_port: 56334
+    index_configs:
+      - {name: default, params: {m: 16, ef_construct: 128}}
+      - {name: forced_hnsw, params: {m: 16, ef_construct: 128, indexing_threshold_kb: 1, full_scan_threshold_kb: 1}}
+    default_query: {mode: ann}
+    query_sweep:
+      - {mode: exact}
+      - {mode: ann, hnsw_ef: [40, 64, 100, 200, 400]}
+      - {mode: ann_acorn, hnsw_ef: [64, 128]}     # chỉ khi Capabilities báo có ACORN
+  milvus:
+    uri: http://localhost:59530
+    consistency_level: Bounded                    # B4 đo thêm với Strong
+    index_configs:
+      - {name: hnsw_m16_efc128, params: {M: 16, efConstruction: 128}}
+    default_query: {mode: ann}
+    query_sweep:
+      - {mode: ann, ef: [40, 64, 100, 200, 400]}
+  weaviate:
+    http_port: 58080
+    grpc_port: 55051
+    index_configs:
+      - {name: hnsw_sweeping, params: {max_connections: 16, ef_construction: 128, filter_strategy: sweeping}}
+      - {name: hnsw_acorn,    params: {max_connections: 16, ef_construction: 128, filter_strategy: acorn}}
+    default_query: {mode: ann}
+    query_sweep:
+      - {mode: ann, ef: [40, 64, 100, 200, 400]}
+  opensearch:
+    url: http://localhost:59200
+    force_merge: true         # (đề xuất) thông lệ benchmark; ghi vào kết quả
+    index_configs:
+      - {name: faiss_hnsw_sqfp16, params: {engine: faiss, space_type: innerproduct, m: 16, ef_construction: 128, encoder: sq_fp16}}
+      - {name: lucene_hnsw, params: {engine: lucene, space_type: cosinesimil, m: 16, ef_construction: 128}}
+    default_query: {mode: ann}
+    query_sweep:
+      - {mode: exact}
+      - {mode: ann, ef_search: [40, 64, 100, 200, 400]}
+
+load:
+  batch_size: 1000
+  shuffle: true
+
+quality:
+  k: 10
+  a1_pass: 0.95
+  a1_floor: 0.90
+  exact_max_rows: 200000      # (đề xuất) bỏ mode exact ở scale lớn hơn — quét 1M dòng mỗi query không phục vụ quyết định
+  a4_n_filters: 200
+  a5: {rebuilds: 3, n_queries: 200, scales: [catalog, 100k]}
+  a2: {rrf_k: 60, depth: 50, bootstrap: 1000, min_gold: 50}
+  explain_sample: 20          # Part 6: EXPLAIN (FORMAT JSON) 20 query mẫu mỗi cấu hình → plan_uses_index_rate
+
+gates:
+  g1: {max_up_s: 900, max_containers: 3}
+  g3: {per_type: 50, types: [all_amenity, not_amenity, range, geo], k: 20}
+  g4: {n_filters: 50}
+  g6: {n: 20, poll_ms: 100, pass_p95_s: 5}
+  g7: {n_check_queries: 50, pass_restore_s: 600}
+
+perf:
+  k: 20
+  load_model: open_loop       # tải tốc độ cố định; latency tính từ thời điểm LẼ RA gửi (tránh coordinated omission)
+  rates_qps: [25, 50, 100, 200, 400]
+  duration_s: 120             # ≥ 12.000 request ở 100 QPS — đủ mẫu cho P99 (1.000 request chỉ có 10 mẫu trên P99)
+  warmup_s: 30
+  timeout_ms: 1000            # timeout tính vào phân vị với giá trị = timeout, và vào tỷ lệ lỗi; cũng là statement timeout của mỗi query
+  b1_rate_qps: 100            # B1 = P99 ở mức tải này
+  reps: 3
+  harness_max_p99_ms: 2       # engine giả "null": P99 của harness phải dưới mức này
+  workers: 64                 # Part 11: pool ≥ 64 process (spawn), mỗi worker tự tạo adapter từ config
+  bootstrap: 1000             # (đề xuất) số lần bootstrap cho CI 95% của P99
+  b4: {n_single: 100, n_batches: 10, batch_size: 1000, poll_ms: 100, timeout_s: 120}
+  b5: {write_rate_per_s: 100, duration_s: 300, rate_qps: 100}
+  b6: {restarts: 3, rate_qps: 50, duration_s: 60}
+  sampler_interval_s: 1
+
+scoring:
+  weights: {A1: 15, A2: 10, A3: 3, A4: 4, A5: 3,
+            B1: 8, B2: 7, B3: 3, B4: 3, B5: 2, B6: 2,
+            C1: 5, C2: 2, C3: 5, C4: 5, C5: 3,
+            D1: 2.4, D2: 2.4, D3: 2.4, D4: 2.4, D5: 2.4,   # D = 12, chia đều (đề xuất)
+            E: 8}
+  groups: {A: [A1, A2, A3, A4, A5], B: [B1, B2, B3, B4, B5, B6], C: [C1, C2, C3, C4, C5], D: [D1, D2, D3, D4, D5], E: [E]}
+  metrics:                    # dir: higher | lower · pass = ngưỡng đạt · floor = tệ nhất còn điểm
+    A1: {dir: higher, pass: 0.95, floor: 0.90}
+    A2: {dir: higher, pass_vs_baseline: -0.01, floor_vs_baseline: -0.05}   # floor (đề xuất)
+    A3: {dir: higher, pass: 1.0, floor: 0.99}                               # floor (đề xuất)
+    A5: {dir: higher, pass: 0.90, floor: 0.80}                              # floor (đề xuất)
+    B1: {dir: lower, pass: {100k: 50, 1m: 100}, floor_factor: 2.0}          # P99 ms ở b1_rate_qps; floor (đề xuất)
+    B2: {dir: higher, pass: 100, floor: 50}                                 # QPS lớn nhất giữ P99 ≤ ngưỡng B1; floor (đề xuất)
+    B3: {dir: lower, pass: {1m: 30}, floor_factor: 2.0}                     # phút
+    B4: {dir: lower, single: {pass: 1, floor: 5}, batch: {pass: 60, floor: 300}}   # giây; floor (đề xuất)
+    B5: {dir: lower, pass: 0.30, floor: 0.50}                               # P99 khi ghi / P99 tĩnh − 1
+    B6: {dir: lower, pass: 3.0, floor: 6.0}                                 # P99 lạnh / P99 ấm
+    C1: {dir: lower, pass: {1m: 8}, floor_factor: 2.0}                      # GB
+    C2: {dir: lower, pass: 3.0, floor: 6.0}                                 # disk / byte vector thô
+    C3: {dir: lower, method: minmax}                                        # VND/tháng
+    C4: {dir: lower, pass: 10, floor: 20}                                   # người-ngày; floor (đề xuất)
+    C5: {dir: lower, method: minmax}                                        # giờ/tháng
+  discrete:
+    A4: {exact: 10, approx_flagged: 5, none: 0}
+    D1: {"1": 10, "2": 6, "3": 6, more: 2}
+    D2: [{max_s: 600, score: 10}, {max_s: 1800, score: 6}, {max_s: null, score: 2}]
+    D3: {both: 10, one: 5, none: 0}
+    D4: {releases_and_inplace: 10, one_of_two: 5, none: 0}                  # one_of_two (đề xuất)
+    D5: {same_db: 10, sync_measured: 5, manual_sync: 0}
+  e_checklist:
+    items: [sparse, multivector, bm25_native, vi_tokenizer, geo, facet_server, quantization, hybrid_server, mmr_server, multitenancy]
+    planned_use_double: [sparse, facet_server]
+  sensitivity:
+    - {name: A45_B15, groups: {A: 45, B: 15}}
+    - {name: C30_A25, groups: {C: 30, A: 25}}
+
+decision:
+  baseline: pgvector
+  min_total_margin: 1.5       # đề xuất — chốt với team trước khi đo
+  lexical_rule: {candidate: opensearch, min_ndcg_gain: 0.03, slices: [ten_rieng, amenity]}
+
+# ---------------------------------------------------------------------------------------------
+# spec-fasttrack.md — 3 engine, catalog thật + 1M khuếch đại, P99 open-loop. Ngưỡng chốt KHÔNG lặp ở đây:
+# A1 ← quality.a1_pass · B1 ← scoring.metrics.B1.pass.1m · B3 ← scoring.metrics.B3.pass.1m · C1 ← scoring.metrics.C1.pass.1m
+fast:
+  engines: [pgvector, qdrant, pgvectorscale]    # thứ tự chạy; thứ tự ưu tiên khi chốt nằm ở decision_order
+  decision_order: [pgvector, pgvectorscale, qdrant]   # fasttrack §6 quy tắc 2 → 3 → 4
+  scales: [catalog, 1m]
+  max_minutes_per_engine: 35
+  engine_limits: {cpus: 6, mem: 12g}            # fasttrack §2.6: máy 8 vCPU / 32 GB; laptop 16 GB → {cpus: 4, mem: 8g}
+  pg_env:                                       # fasttrack §4: maintenance_work_mem 4–8GB, parallel workers = CPU engine − 1
+    PG_SHARED_BUFFERS: 4GB                      # (đề xuất) profile full của spec.md Part 0
+    PG_MAINT_MEM: 4GB                           # graph HNSW 1M × 1024-d halfvec m=16 ≈ 2,8 GB (đo) → vừa trong 4GB
+    PG_PAR_MAINT: "5"
+    # Build HNSW song song cấp DSM ≈ maintenance_work_mem trong /dev/shm; shm nhỏ hơn → CREATE INDEX LỖI (không lùi về tuần tự).
+    # fasttrack ghi shm_size 2g — mâu thuẫn với maintenance_work_mem 4–8GB → đặt 5g (đo, workflow vbench-verify-research)
+    PG_SHM_SIZE: 5g
+  index:                                        # giữ mặc định của engine (fasttrack §4)
+    pgvector:      {name: hnsw_m16_efc64, params: {m: 16, ef_construction: 64}}
+    qdrant:        {name: default_efc100, params: {m: 16, ef_construct: 100}}
+    pgvectorscale: {name: diskann, params: {}}
+  query_sweep:                                  # (b) = P99 một client thấp nhất trong các cấu hình đạt A1 ≥ quality.a1_pass
+    pgvector:
+      - {mode: auto, auto_exact_max: 10000, ef_search: [40, 100, 200], iterative_scan: relaxed_order, max_scan_tuples: 20000}
+      # "ann thuần ef_search=100": ANN không định tuyến exact; vẫn iterative relaxed + trần max_scan_tuples như mọi cấu hình ann của spec
+      - {mode: ann, ef_search: 100, iterative_scan: relaxed_order, max_scan_tuples: 20000}
+    qdrant:
+      - {mode: ann, hnsw_ef: [64, 128, 256]}
+    pgvectorscale:
+      - {mode: ann, query_search_list_size: [100, 200, 400]}
+  perf:
+    rates_qps: [100, 200]                       # B1 = P99 @100 QPS, B2 = P99 @200 QPS (ghi nhận)
+    duration_s: 90                              # ≥ 9.000 request mỗi mức; warmup_s, timeout_ms, k, workers lấy từ perf
+    reps: 1
+  amplify:                                      # fasttrack §3 — `vb scale-data 1m --vectors amplify`
+    k_nn: 10
+    alpha: [0.1, 0.5]                           # alpha ~ U(0.1, 0.5)
+    # chọn bằng hiệu chỉnh ở bước 2. fasttrack đề xuất {0,05; 0,1; 0,2; 0,3}; trên bge-m3 thật (22/09) c1 = 0,824 nhưng
+    # σ=0,3 chỉ cho median cos(v,seed) 0,936 và LID ratio 0,747 (< 0,75) → mở rộng tới 0,6 theo quyết định của người chạy
+    # (22/09): hiệu chỉnh chọn 0,6 (gần c1), trượt LID 1,64 → lùi 0,5 (LID 1,286, qua).
+    sigmas: [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
+    calib_samples: 20000
+    block_rows: 100000
+    geo_jitter_m: 2000
+    amenity_drop: 0.1
+    amenity_add: 0.1
+    price_log_sd: 0.2
+    lid_k: 20                                   # MLE Levina–Bickel, khoảng cách Euclid trên vector chuẩn hoá
+    lid_ratio: [0.75, 1.33]                     # (đề xuất) median LID tổng hợp / median LID thật
+    near_dup_cos: 0.999
+    near_dup_max_rate: 0.01
+    info_queries: 200                           # phân bố cosine top-10 của 200 query thật trên V0 so với trên 1M
+    info_k: 10

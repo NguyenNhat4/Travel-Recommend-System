@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "snapshotId": "2026-09-30-business",
+  "purpose": "Supplemental real business-class flight quotes; insert-only VM release import.",
+  "products": {
+    "file": "products.jsonl.gz",
+    "sha256": "6f57fe75367acb4c4a22cfb0f672369a50c1ea1813e861fe0fdf17ada415e1ae",
+    "gzipSha256": "3383cc5963d026b66fc0eadfba9131a02901da99eb880534bf46769f8bbf5411",
+    "rows": 43
+  },
+  "comboManual": {
+    "file": "combo_items_manual.jsonl",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "rows": 0
+  },
+  "evidence": {
+    "file": "evidence.json.gz",
+    "gzipSha256": "66d0c6bcef48c8f78e1025ab2476856b2fe77a4a36d7d2c8ebb8ddc951a8e2fa",
+    "rows": 43
+  },
+  "source": "Trip.com public flight search UI; first displayed business fare per direct flight, one adult, MoMo payment condition.",
+  "observedFrom": "2026-09-30T03:47:48.637Z",
+  "observedTo": "2026-09-30T03:58:10.965Z",
+  "departureDates": [
+    "2026-10-15"
+  ]
+}

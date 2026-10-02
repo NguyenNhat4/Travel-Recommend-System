@@ -24,8 +24,11 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 from jsonschema import Draft202012Validator, FormatChecker
 
-from src.backend.app.agents.models import ConversationalAnswer, DestinationChoice, Extraction
+from src.backend.app.agents.models import ConversationalAnswer, DestinationChoice, Extraction, TurnRoute
 from src.backend.app.application.itinerary.contracts import schema
+from src.backend.app.application.itinerary.engine_tools import InProcessItineraryTools
+from src.backend.app.application.auth.principal import AuthPrincipal
+from src.backend.app.api.deps import current_principal
 from src.backend.app.core.config import get_settings
 from src.backend.app.main import app
 from src.shared.contracts.scripts.bundle_openapi import bundle
@@ -33,6 +36,8 @@ from src.shared.contracts.scripts.bundle_openapi import bundle
 DOC = bundle()
 ITINERARIES = "/assistant/itineraries"
 STREAM = "/assistant/itineraries/stream"
+CONVERSATIONS = "/assistant/conversations"
+CONVERSATION_ID = "3fa85f64-5717-4562-b3fc-2c963f66afa6"
 
 PRODUCT = {
     "productId": "a", "name": "Catalog a", "taxonomy": "attraction", "destination": "Nha Trang",
@@ -43,21 +48,26 @@ PRODUCT = {
 
 
 def extraction(**patch) -> Extraction:
-    return Extraction(domain="travel", patch=patch)
+    # Đủ chi tiết chuyến đi (ngày: chưa chốt; số người; ngân sách) để lượt đầu không dừng ở câu hỏi gộp.
+    patch = {"party": {"type": "SOLO", "adults": 1, "children": 0}, "budget": 5_000_000, **patch}
+    return Extraction(start_date_undecided=True, patch=patch)
 
 
 class ScriptedLlm:
     """Kịch bản hoá quyết định của model; raise nếu luồng gọi model bằng schema ngoài dự kiến."""
 
-    def __init__(self, result=None, fail=False):
+    def __init__(self, result=None, fail=False, route="travel"):
         self.result = result or extraction(destination="Nha Trang", days=2,
                                            party={"type": "SOLO", "adults": 1, "children": 0})
         self.fail = fail
+        self.route = route
 
     def with_structured_output(self, target):
         async def invoke(_prompt):
             if self.fail:
                 raise RuntimeError("provider error")
+            if target is TurnRoute:
+                return TurnRoute(route=self.route)
             if target is Extraction:
                 return self.result
             if target is DestinationChoice:
@@ -67,7 +77,7 @@ class ScriptedLlm:
             raise AssertionError(f"luồng lịch trình không được gọi model cho {target.__name__}")
         return SimpleNamespace(ainvoke=invoke)
 
-    def bind_tools(self, _definitions):
+    def bind_tools(self, _definitions, tool_choice=None):
         async def invoke(_prompt):
             return SimpleNamespace(tool_calls=[{"name": "search_products", "args": {"query": "tham quan"}}])
         return SimpleNamespace(ainvoke=invoke)
@@ -96,6 +106,38 @@ class Clients:
     async def list_destinations(self):
         return {"destinations": [{"destination": name, "productCount": len(self.products)}
                                  for name in self.destinations]}
+
+
+class History:
+    def __init__(self, found=True):
+        self.found = found
+
+    @staticmethod
+    def summary():
+        return {
+            "conversationId": CONVERSATION_ID, "title": "Nha Trang 3 ngày", "status": "planned",
+            "createdAt": "2026-09-25T01:00:00+00:00", "updatedAt": "2026-09-25T02:00:00+00:00",
+            "messageCount": 2,
+        }
+
+    async def list(self, cdp_user_id, *, page, page_size):
+        assert cdp_user_id == "VP0000001"
+        return {"data": [self.summary()], "pagination": {
+            "page": page, "pageSize": page_size, "totalItems": 1, "totalPages": 1,
+        }}
+
+    async def get(self, conversation_id, cdp_user_id):
+        assert cdp_user_id == "VP0000001"
+        if not self.found or conversation_id != CONVERSATION_ID:
+            return None
+        return {"conversation": self.summary(), "messages": [
+            {"messageId": 1, "role": "user", "content": "Nha Trang 3 ngày",
+             "createdAt": "2026-09-25T01:00:00+00:00"},
+            {"messageId": 2, "role": "assistant", "content": "Bạn đi ngày nào?",
+             "response": {"status": "NEEDS_CLARIFICATION", "conversationId": CONVERSATION_ID,
+                          "question": "Bạn đi ngày nào?"},
+             "createdAt": "2026-09-25T01:00:01+00:00"},
+        ]}
 
 
 def validator(name: str) -> Draft202012Validator:
@@ -142,8 +184,7 @@ class AssistantContractTests(unittest.TestCase):
 
     def test_every_error_path_matches_the_contract(self):
         message = {"message": "lên lịch giúp mình"}
-        refusal = ScriptedLlm(extraction(destination="Nha Trang", days=2)
-                              .model_copy(update={"domain": "side_effect"}))
+        refusal = ScriptedLlm(extraction(destination="Nha Trang", days=2), route="out_of_scope")
         cases = [
             # Chặn ở route/pydantic, không đi qua finalize_node.
             ("body rỗng", 422, "VALIDATION_ERROR", {}, ScriptedLlm(), Clients()),
@@ -154,12 +195,8 @@ class AssistantContractTests(unittest.TestCase):
             ("tool chưa cấu hình", 503, "SEARCH_UNAVAILABLE", message, ScriptedLlm(), None),
             # Sinh trong graph.
             ("yêu cầu ngoài phạm vi", 400, "VALIDATION_ERROR", message, refusal, Clients()),
-            ("số ngày ngoài 1–7", 400, "INVALID_TRIP_DURATION", message,
-             ScriptedLlm(extraction(destination="Nha Trang", days=20)), Clients()),
             ("hội thoại không tồn tại", 404, "CONVERSATION_NOT_FOUND",
              {"conversationId": "conv-khong-co", **message}, ScriptedLlm(), Clients()),
-            ("điểm đến chưa hỗ trợ", 422, "UNSUPPORTED_DESTINATION", message,
-             ScriptedLlm(extraction(destination="Sao Hỏa", days=2)), Clients()),
             ("model lỗi", 503, "LLM_UNAVAILABLE", message, ScriptedLlm(fail=True), Clients()),
             ("search lỗi", 503, "SEARCH_UNAVAILABLE", message, ScriptedLlm(), Clients(fail=True)),
         ]
@@ -177,14 +214,21 @@ class AssistantContractTests(unittest.TestCase):
         response = self.post({"message": "lên lịch"}, clients=None)
         self.assertIn(response.json()["error"]["code"], allowed)
 
-    def test_unsupported_destination_carries_the_details_web_needs(self):
-        """§9.4 hợp đồng Frontend: Web dựng lại chip điểm đến và tiếp tục hội thoại từ details."""
-        response = self.post({"message": "lên lịch"},
-                             llm=ScriptedLlm(extraction(destination="Sao Hỏa", days=2)))
-        details = response.json()["error"]["details"]
-        self.assertEqual(response.status_code, 422)
-        self.assertEqual(set(details), {"destination", "supportedDestinations", "conversationId"})
-        self.assertEqual(details["supportedDestinations"], ["Nha Trang"])
+    def test_invalid_input_is_a_clarification_with_what_web_needs_to_continue(self):
+        """§9.4 hợp đồng Frontend: Web dựng lại chip điểm đến/số ngày và tiếp tục hội thoại từ response 200."""
+        cases = (("điểm đến chưa hỗ trợ", extraction(destination="Sao Hỏa", days=2), "destination", "destination"),
+                 ("số ngày ngoài 1–7", extraction(destination="Nha Trang", days=20), "days", "days"))
+        for label, extracted, missing, suggested in cases:
+            with self.subTest(case=label):
+                response = self.post({"message": "lên lịch"}, llm=ScriptedLlm(extracted))
+                body = response.json()
+                self.assertEqual(response.status_code, 200, body)
+                self.assertEqual(body["status"], "NEEDS_CLARIFICATION")
+                self.assertTrue(body["question"].startswith("**"), body["question"])
+                self.assertEqual(body["missingFields"], [missing])
+                self.assertIn(suggested, body["suggestedValues"])
+                self.assertTrue(body["conversationId"])
+                self.assert_conforms(ITINERARIES, 200, body, label)
 
     # ---------------------------------------------------------------- SSE
 
@@ -212,6 +256,24 @@ class AssistantContractTests(unittest.TestCase):
         final = payloads[-1]
         self.assert_conforms(ITINERARIES, final["httpStatus"], final["response"], "run.completed")
 
+    def test_stream_reports_a_graph_error_as_run_failed(self):
+        """Lỗi sinh trong graph (hội thoại hết hạn) là run.failed mang Error Envelope, không phải run.completed."""
+        with TestClient(app) as client:
+            app.state.itinerary_llm = ScriptedLlm()
+            app.state.itinerary_http_clients = Clients()
+            response = client.post(f"/api/v1{STREAM}",
+                                   json={"conversationId": "conv-khong-co", "message": "đổi sang Hà Nội"})
+        events = []
+        for block in response.text.strip().split("\n\n"):
+            name, data = block.split("\n", 1)
+            events.append((name.removeprefix("event: "), json.loads(data.removeprefix("data: "))))
+        self.assertEqual(events[-1][0], "run.failed")
+        self.assertNotIn("run.completed", [name for name, _ in events])
+        final = events[-1][1]
+        self.assertEqual(final["httpStatus"], 404)
+        self.assertEqual(final["error"]["error"]["code"], "CONVERSATION_NOT_FOUND")
+        self.assert_conforms(ITINERARIES, 404, final["error"], "run.failed")
+
     def test_stream_never_leaks_prompt_state_or_credentials(self):
         """Hợp đồng Agent §4.1: event chỉ mang ID node, thứ tự, trạng thái, thời lượng, response."""
         with TestClient(app) as client:
@@ -234,6 +296,36 @@ class AssistantContractTests(unittest.TestCase):
         self.assertEqual(response.status_code, 422)
         self.assert_conforms(STREAM, 422, response.json(), "stream body rỗng")
 
+    # ------------------------------------------------------------- history
+
+    def test_history_list_and_detail_match_the_contract(self):
+        principal = AuthPrincipal("user-1", "VP0000001", "user@example.com")
+        app.dependency_overrides[current_principal] = lambda: principal
+        try:
+            with TestClient(app) as client:
+                app.state.conversation_history = History()
+                listing = client.get(f"/api/v1{CONVERSATIONS}?page=1&pageSize=20")
+                detail = client.get(f"/api/v1{CONVERSATIONS}/{CONVERSATION_ID}")
+        finally:
+            app.dependency_overrides.pop(current_principal, None)
+        self.assertEqual(listing.status_code, 200)
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual([e.message for e in validator("AssistantConversationList").iter_errors(listing.json())], [])
+        self.assertEqual([e.message for e in validator("AssistantConversationDetail").iter_errors(detail.json())], [])
+
+    def test_history_hides_unknown_or_foreign_conversation_as_404(self):
+        principal = AuthPrincipal("user-1", "VP0000001", "user@example.com")
+        app.dependency_overrides[current_principal] = lambda: principal
+        try:
+            with TestClient(app) as client:
+                app.state.conversation_history = History(found=False)
+                response = client.get(f"/api/v1{CONVERSATIONS}/{CONVERSATION_ID}")
+        finally:
+            app.dependency_overrides.pop(current_principal, None)
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()["error"]["code"], "CONVERSATION_NOT_FOUND")
+        self.assertIn("404", DOC["paths"][f"{CONVERSATIONS}/{{conversationId}}"]["get"]["responses"])
+
     # ---------------------------------------------------------------- status
 
     def test_status_endpoint_matches_the_contract(self):
@@ -254,6 +346,25 @@ class AssistantContractTests(unittest.TestCase):
                     response = client.get("/api/v1/assistant/status")
                 body = response.json()
                 self.assertEqual(body["llmMode"], mode)
+                errors = [e.message for e in validator("AssistantStatus").iter_errors(body)]
+                self.assertEqual(errors, [])
+
+    def test_status_reports_every_data_mode(self):
+        """dataMode `inprocess` là giá trị additive; status của cả bốn mode phải hợp lệ với AssistantStatus."""
+        units = SimpleNamespace(units=[1, 2, 3])
+        inprocess = InProcessItineraryTools(
+            search=lambda: None, recommend=lambda: None, index=lambda: units, product_detail=lambda: None,
+            similar_products=lambda: None, token_verifier=lambda: None, revoked_tokens=lambda: None)
+        for mode, clients, count in (("fixture", Clients(), None), ("inprocess", inprocess, 3),
+                                     ("http", Clients(), None), ("disabled", None, None)):
+            with self.subTest(mode=mode):
+                with TestClient(app) as client:
+                    app.state.itinerary_http_clients = clients
+                    app.state.itinerary_data_mode = mode
+                    body = client.get("/api/v1/assistant/status").json()
+                self.assertEqual(body["dataMode"], mode)
+                self.assertEqual(body["status"], "not_configured" if clients is None else "ready")
+                self.assertEqual(body["productCount"], count)
                 errors = [e.message for e in validator("AssistantStatus").iter_errors(body)]
                 self.assertEqual(errors, [])
 

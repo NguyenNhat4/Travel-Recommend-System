@@ -11,10 +11,19 @@ sẽ lỗi `permission denied for table events`: role `vota_app` cố ý không 
 
 Trả dict **camelCase** đúng tên trường CDP (`cdpUserId`, `eventName`, `usingDate`…) vì đó là hình dạng
 `profile.py`/`popularity.py` đang đọc, và cũng là hình dạng `HttpCdpClient` sẽ trả khi lên CDP thật.
+
+Không kết nối/đọc được (sập, timeout) → `CdpUnavailableError`, để `RecommendForUser` lui về `popular`
+(hop-dong-tich-hop-cdp.md §6–§7). Lỗi quyền/SQL lúc chạy câu lệnh (`ProgrammingError`) là lỗi cấu hình nên vẫn
+nổi lên. Lỗi xác thực lúc kết nối (sai mật khẩu, `pg_hba`) libpq báo như `OperationalError` thường, không tách được
+khỏi sự cố, nên cũng thành `CdpUnavailableError`; lúc khởi động nó vẫn làm RecSys hỏng rõ ràng vì bảng phổ biến đọc
+qua cùng đường kết nối.
 """
 from __future__ import annotations
 
+import math
 from datetime import datetime, timedelta, timezone
+
+from src.backend.app.application.ports.cdp_client import CdpUnavailableError
 
 #: `timestamp` là từ khoá SQL nên phải để trong ngoặc kép ở mọi câu lệnh.
 _COLUMNS = """
@@ -39,25 +48,73 @@ def _to_cdp(row: tuple) -> dict:
     }
 
 
+_PROFILE_COLUMNS = """
+    cdp_user_id, lifecycle_stage, days_since_last_booking, lifetime_order_count, vinclub_tier,
+    purchased_verticals, home_city, last_destination
+"""
+
+
+def _profile_to_cdp(row: tuple) -> dict:
+    """Một dòng `cdp.profiles` → dict theo tên trường CDP (camelCase), chỉ các cột đánh giá offline cần."""
+    user, stage, days, orders, tier, verticals, home, last = row
+    return {
+        "cdpUserId": user,
+        "lifecycleStage": stage,
+        "daysSinceLastBooking": days,
+        "lifetimeOrderCount": orders,
+        "vinclubTier": tier,
+        "purchasedVerticals": list(verticals or []),
+        "homeCity": home,
+        "lastDestination": last,
+    }
+
+
+def _redact(text: str, dsn: str) -> str:
+    """Xoá DSN và mật khẩu khỏi thông điệp lỗi. libpq thường không in lại chúng, nhưng không dựa vào điều đó."""
+    import psycopg
+    from psycopg.conninfo import conninfo_to_dict
+
+    try:
+        password = conninfo_to_dict(dsn).get("password")
+    except psycopg.Error:  # DSN hỏng thì psycopg.connect đã ném ProgrammingError, không tới được đây
+        password = None
+    text = text.replace(dsn, "<CDP_DATABASE_URL>")
+    return text.replace(password, "***") if password else text
+
+
 class PostgresCdpReader:
     """Chỉ đọc. Mọi thao tác ghi đi qua `local_cdp_client.LocalCdpClient`."""
 
-    def __init__(self, cdp_database_url: str):
+    def __init__(self, cdp_database_url: str, *, timeout_seconds: float = 2.0):
         self._cdp_database_url = cdp_database_url
+        self._timeout_seconds = timeout_seconds  # CDP_TIMEOUT_SECONDS (hop-dong-tich-hop-cdp.md §7)
 
-    def _query(self, sql: str, params: tuple) -> list[dict]:
+    def _query(self, sql: str, params: tuple, *, statement_timeout: bool = False, mapper=_to_cdp) -> list[dict]:
         import psycopg
 
-        with psycopg.connect(self._cdp_database_url) as conn:
-            with conn.cursor() as cur:
-                cur.execute(sql, params)
-                return [_to_cdp(row) for row in cur.fetchall()]
+        try:
+            # libpq chỉ nhận giây nguyên cho connect_timeout và coi mọi giá trị dưới 2 là 2.
+            with psycopg.connect(self._cdp_database_url,
+                                 connect_timeout=max(2, math.ceil(self._timeout_seconds))) as conn:
+                with conn.cursor() as cur:
+                    if statement_timeout:  # chỉ cho đường đọc theo request; đọc lô lúc khởi động không bị cắt
+                        # SET LOCAL trong transaction, không qua tham số khởi động `options`: không đè `options`
+                        # sẵn có trong DSN và đi qua được pooler chế độ transaction.
+                        cur.execute("SELECT set_config('statement_timeout', %s, true)",
+                                    (str(max(1, int(self._timeout_seconds * 1000))),))  # 0 = không giới hạn
+                    cur.execute(sql, params)
+                    return [mapper(row) for row in cur.fetchall()]
+        except (psycopg.OperationalError, psycopg.InterfaceError, OSError) as exc:
+            # Chỉ dòng đầu, cắt ngắn; DSN và mật khẩu bị xoá nếu driver có in lại (§8).
+            detail = (_redact(str(exc), self._cdp_database_url).strip().splitlines() or [""])[0][:200]
+            raise CdpUnavailableError(f"CDP history read failed: {type(exc).__name__}: {detail}") from exc
 
     def events_for_user(self, cdp_user_id: str) -> list[dict]:
         """Lịch sử của một khách, mới nhất trước — `profile.py` dựng hồ sơ từ đây."""
         return self._query(
             f'SELECT {_COLUMNS} FROM cdp.events WHERE cdp_user_id = %s ORDER BY "timestamp" DESC',
             (cdp_user_id,),
+            statement_timeout=True,
         )
 
     def purchase_events(self, since_days: int = 730) -> list[dict]:
@@ -67,4 +124,27 @@ class PostgresCdpReader:
             f'SELECT {_COLUMNS} FROM cdp.events '
             f'WHERE event_name = %s AND "timestamp" >= %s ORDER BY "timestamp" DESC',
             ("purchase", cutoff),
+        )
+
+    def all_events(self, until: datetime | None = None) -> list[dict]:
+        """Toàn bộ event, chỉ cho đánh giá offline (`src/evaluation/recsys_bench`); không gọi trong request.
+
+        `until` cắt ở kho (`timestamp < until`) để harness không nhận event sau mốc đánh giá. Thứ tự tất định
+        (khách, thời điểm, `event_id`) như bản của `origin/khoa/recsys-research@6b9b0af`. Đọc lô nên không
+        đặt `statement_timeout`, giống `purchase_events`.
+        """
+        where, params = ('WHERE "timestamp" < %s ', (until,)) if until is not None else ("", ())
+        return self._query(
+            f'SELECT {_COLUMNS} FROM cdp.events {where}ORDER BY cdp_user_id, "timestamp", event_id',
+            params,
+        )
+
+    def all_profiles(self) -> list[dict]:
+        """Toàn bộ `cdp.profiles` (từ 2026-10-01), chỉ cho đánh giá offline (`recsys_bench sanity`): đối chiếu
+        `lifecycle_stage` / `days_since_last_booking` seed đã ghi với bản tính lại từ event. Không gọi trong request;
+        không `statement_timeout`; thứ tự tất định theo `cdp_user_id`. Trả camelCase như `all_events`."""
+        return self._query(
+            f"SELECT {_PROFILE_COLUMNS} FROM cdp.profiles ORDER BY cdp_user_id",
+            (),
+            mapper=_profile_to_cdp,
         )

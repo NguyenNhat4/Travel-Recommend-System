@@ -50,11 +50,13 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       MODEL_NAME: ${MODEL_NAME:-gpt-4o-mini}
+      # fixture | inprocess | http | disabled (xem .env.example). Compose giữ fixture để chạy được khi RecSys chưa nạp.
       ITINERARY_DATA_MODE: ${ITINERARY_DATA_MODE:-fixture}
       ITINERARY_TOOL_TIMEOUT_SECONDS: ${ITINERARY_TOOL_TIMEOUT_SECONDS:-1}
       ITINERARY_LLM_TIMEOUT_SECONDS: ${ITINERARY_LLM_TIMEOUT_SECONDS:-30}
       ITINERARY_REQUEST_TIMEOUT_SECONDS: ${ITINERARY_REQUEST_TIMEOUT_SECONDS:-90}
       ITINERARY_CONVERSATION_TTL_SECONDS: ${ITINERARY_CONVERSATION_TTL_SECONDS:-86400}
+      ITINERARY_REDIS_URL: ${BACKEND_ITINERARY_REDIS_URL:-redis://:devpass@redis:6379/2}
       ITINERARY_SERVICE_BASE_URL: ${BACKEND_ITINERARY_SERVICE_BASE_URL:-}
       DATABASE_URL: ${BACKEND_DATABASE_URL:-postgresql://vota_app_login:vota@postgres:5432/vota}
       CDP_DATABASE_URL: ${BACKEND_CDP_DATABASE_URL:-postgresql://cdp_client_login:cdp@postgres:5432/vota}
@@ -70,8 +72,13 @@ services:
       # BFF gọi từ máy host qua cổng publish: peer là gateway của mạng Docker.
       TRUSTED_PROXIES: ${BACKEND_TRUSTED_PROXIES:-127.0.0.1/32,172.16.0.0/12}
       COHERE_API_KEY: ${COHERE_API_KEY:-}
-      WEAVIATE_URL: http://weaviate:8080
-      WEAVIATE_API_KEY: ${WEAVIATE_API_KEY:-}
+      # Dev dùng Weaviate local của compose (deployment-plan.md §1), không lấy WEAVIATE_URL/khoá của máy host.
+      # Môi trường dùng cluster chung thì đặt BACKEND_WEAVIATE_URL và BACKEND_WEAVIATE_API_KEY.
+      WEAVIATE_URL: ${BACKEND_WEAVIATE_URL:-http://weaviate:8080}
+      WEAVIATE_API_KEY: ${BACKEND_WEAVIATE_API_KEY:-}
+      WEAVIATE_COLLECTION: ${WEAVIATE_COLLECTION:-Product}
+      WEAVIATE_GRPC_PORT: ${BACKEND_WEAVIATE_GRPC_PORT:-50051}
+      CATALOG_REFRESH_SECONDS: ${CATALOG_REFRESH_SECONDS:-900}
       # Stripe test mode (docs/prd/deployment-plan.md §2). Webhook: `stripe listen --forward-to
       # localhost:${BACKEND_PORT:-8000}/api/v1/payments/stripe/webhook` chạy trên máy host.
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
@@ -84,6 +91,30 @@ services:
       - ./secrets:/app/secrets:ro
     ports:
       - "${BACKEND_PORT:-8000}:8000"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: src/frontend/Dockerfile.web
+    environment:
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: 3000
+      BACKEND_BASE_URL: http://backend:8000
+      AUTH_SERVICE_TOKEN: ${AUTH_SERVICE_TOKEN:-}
+      SESSION_REDIS_URL: redis://:devpass@redis:6379/1
+      SESSION_COOKIE_NAME: ${SESSION_COOKIE_NAME:-vota_sid}
+      CSRF_COOKIE_NAME: ${CSRF_COOKIE_NAME:-vota_csrf}
+      ALLOWED_ORIGINS: "http://localhost:${FRONTEND_HOST_PORT:-3000},http://127.0.0.1:${FRONTEND_HOST_PORT:-3000}"
+      SESSION_IDLE_TTL_SECONDS: ${SESSION_IDLE_TTL_SECONDS:-1800}
+      SESSION_ABSOLUTE_TTL_SECONDS: ${SESSION_ABSOLUTE_TTL_SECONDS:-43200}
+    depends_on:
+      backend:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${FRONTEND_HOST_PORT:-3000}:3000"
     
   # Redis — session, rate-limit counter, OAuth state (auth §16.1). Chỉ phần PHÙ DU:
   # mất khi restart thì người dùng chỉ phải đăng nhập lại. Refresh token và login attempts nằm ở Postgres.

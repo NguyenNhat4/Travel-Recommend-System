@@ -13,11 +13,16 @@
 .env
 .env.*
 !.env.example
+**/.env
+**/.env.*
+!**/.env.example
 .logs
+secrets
+**/secrets
+**/*.pem
 docs
 db
 src/cdp_clone
 src/data_collection
 src/evaluation
-src/frontend
 src/insider_clone

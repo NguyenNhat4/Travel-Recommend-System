@@ -8,7 +8,8 @@
       "fields": [
         {
           "field": "contact.phone",
-          "message": "Vui lòng nhập số điện thoại hợp lệ"
+          "reason": "PHONE_INVALID",
+          "message": "Số điện thoại gồm 10 chữ số, bắt đầu bằng 0."
         }
       ]
     }

@@ -314,7 +314,8 @@ ItineraryPlan:
       - 'null'
       minimum: 0
       description: Backend tính tổng khi đủ đơn vị/số lượng; thiếu thì null, budgetStatus UNKNOWN và warning.
-        Không bỏ qua khoản chưa biết.
+        Không bỏ qua khoản chưa biết. Điểm tham quan tự do (attraction/golf có ticketed=false hoặc unitPrice null)
+        tính 0 vào tổng, kèm warning FREE_ENTRY_ASSUMED.
     currency:
       $ref: ../openapi.yaml#/components/schemas/Currency
     budgetStatus:
@@ -406,8 +407,21 @@ ItineraryCompleted:
             maximum: 7
     itinerary:
       $ref: ../openapi.yaml#/components/schemas/ItineraryPlan
+    message:
+      type: string
+      description: >-
+        Lời diễn giải lịch trình hiển thị trong khung chat. Dòng đầu có dạng `**Tiêu đề**` (markdown in đậm), các
+        mục sau mở đầu bằng một dòng in đậm. Khi lượt này đổi thông tin chuyến đi, câu ngay sau tiêu đề ghi nhận
+        thay đổi đó. Sản phẩm chỉ được nhắc bằng link `[Tên](product:<productId>)`, với `productId` có trong
+        `itinerary` và tên sao chép từ dữ liệu; giá trong câu lấy từ dữ liệu sản phẩm và `estimatedTotal`. Không có
+        trường này thì client hiển thị `itinerary.title`.
     searchResults:
-      $ref: ../openapi.yaml#/components/schemas/SearchResultsByTaxonomy
+      description: >-
+        Gói hoặc tour nhiều ngày (vé dùng 2 ngày trở lên, tour 3N2Đ...) tìm được nhưng không xếp vào một buổi của
+        lịch trình, để người dùng cân nhắc riêng; `message` có mục hỏi người dùng có muốn thêm không. Không tính vào
+        `estimatedTotal`.
+      allOf:
+      - $ref: ../openapi.yaml#/components/schemas/SearchResultsByTaxonomy
     warnings:
       type: array
       items:
@@ -428,6 +442,11 @@ ItineraryNeedsClarification:
       type: string
     question:
       type: string
+      description: >-
+        Câu hỏi hiển thị cho người dùng. Dòng đầu có dạng `**Tiêu đề**` (markdown in đậm) tóm tắt cả câu, các dòng
+        sau là phần chi tiết: lý do và gợi ý khi một giá trị không hợp lệ (ngày đi đã qua, điểm đến ngoài catalog,
+        số ngày, số người hoặc ngân sách ngoài giới hạn), hoặc câu hỏi cụ thể khi còn thiếu thông tin. Câu trả
+        lời chào hỏi, cảm ơn không có tiêu đề.
     missingFields:
       type: array
       minItems: 1
@@ -436,6 +455,9 @@ ItineraryNeedsClarification:
         enum:
         - destination
         - days
+        - startDate
+        - party
+        - budget
     knownIntent:
       $ref: ../openapi.yaml#/components/schemas/TripIntent
     suggestedValues:
@@ -451,6 +473,39 @@ ItineraryNeedsClarification:
             type: integer
             minimum: 1
             maximum: 7
+    clarificationForm:
+      type: object
+      description: Form gợi ý hiển thị trong khung chat khi hỏi bằng câu chữ một lượt vẫn chưa đủ thông tin.
+      required:
+      - fields
+      - defaults
+      properties:
+        fields:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            enum:
+            - destination
+            - days
+            - startDate
+            - party
+            - budget
+        defaults:
+          $ref: ../openapi.yaml#/components/schemas/TripIntent
+        startDateMin:
+          type: string
+          format: date
+          description: Ngày khởi hành sớm nhất được phép chọn; hôm nay theo giờ Việt Nam.
+    suggestions:
+      type: array
+      maxItems: 3
+      description: >-
+        Tuỳ chọn (1.13.0). Câu yêu cầu gửi được nguyên văn làm lượt chat kế tiếp, cùng ngữ nghĩa với
+        `ItineraryNoResults.suggestions`. Có khi điều kiện bắt buộc (khách sạn, khách sạn hoặc hoạt động cụ thể)
+        không có sản phẩm nào đáp ứng, ví dụ ngày khởi hành gần nhất còn bán hoặc lập lịch không cần khách sạn.
+      items:
+        type: string
     metadata:
       $ref: ../openapi.yaml#/components/schemas/ItineraryMetadata
 ItineraryNoResults:
@@ -469,6 +524,8 @@ ItineraryNoResults:
       $ref: ../openapi.yaml#/components/schemas/TripIntent
     message:
       type: string
+      description: >-
+        Dòng đầu có dạng `**Tiêu đề**` (markdown in đậm) tóm tắt cả câu, các dòng sau là phần chi tiết.
     suggestions:
       type: array
       items:
@@ -494,6 +551,8 @@ ItineraryFallback:
       - type: 'null'
     message:
       type: string
+      description: >-
+        Dòng đầu có dạng `**Tiêu đề**` (markdown in đậm) tóm tắt cả câu, các dòng sau là phần chi tiết.
     searchResults:
       $ref: ../openapi.yaml#/components/schemas/SearchResultsByTaxonomy
     metadata:
@@ -512,6 +571,104 @@ ItineraryResponse:
       NEEDS_CLARIFICATION: ../openapi.yaml#/components/schemas/ItineraryNeedsClarification
       NO_RESULTS: ../openapi.yaml#/components/schemas/ItineraryNoResults
       FALLBACK: ../openapi.yaml#/components/schemas/ItineraryFallback
+AssistantConversationSummary:
+  type: object
+  required:
+  - conversationId
+  - title
+  - status
+  - createdAt
+  - updatedAt
+  - messageCount
+  properties:
+    conversationId:
+      type: string
+      format: uuid
+    title:
+      type: string
+      maxLength: 120
+    status:
+      type: string
+      enum:
+      - open
+      - planned
+      - expired
+    createdAt:
+      type: string
+      format: date-time
+    updatedAt:
+      type: string
+      format: date-time
+    messageCount:
+      type: integer
+      minimum: 0
+AssistantConversationMessage:
+  type: object
+  required:
+  - messageId
+  - role
+  - content
+  - createdAt
+  properties:
+    messageId:
+      type: integer
+      minimum: 1
+    role:
+      type: string
+      enum:
+      - user
+      - assistant
+    content:
+      type: string
+    response:
+      $ref: ../openapi.yaml#/components/schemas/ItineraryResponse
+    createdAt:
+      type: string
+      format: date-time
+AssistantConversationPagination:
+  type: object
+  required:
+  - page
+  - pageSize
+  - totalItems
+  - totalPages
+  properties:
+    page:
+      type: integer
+      minimum: 1
+    pageSize:
+      type: integer
+      minimum: 1
+    totalItems:
+      type: integer
+      minimum: 0
+    totalPages:
+      type: integer
+      minimum: 0
+AssistantConversationList:
+  type: object
+  required:
+  - data
+  - pagination
+  properties:
+    data:
+      type: array
+      items:
+        $ref: ../openapi.yaml#/components/schemas/AssistantConversationSummary
+    pagination:
+      $ref: ../openapi.yaml#/components/schemas/AssistantConversationPagination
+AssistantConversationDetail:
+  type: object
+  required:
+  - conversation
+  - messages
+  properties:
+    conversation:
+      $ref: ../openapi.yaml#/components/schemas/AssistantConversationSummary
+    messages:
+      type: array
+      items:
+        $ref: ../openapi.yaml#/components/schemas/AssistantConversationMessage
 AssistantStatus:
   type: object
   required:
@@ -531,10 +688,16 @@ AssistantStatus:
       type: string
     dataMode:
       type: string
+      description: >-
+        Nguồn dữ liệu cho tool của Agent. fixture = mock 50 sản phẩm; inprocess = gọi
+        engine Search/Recommendation trong cùng tiến trình; http = gọi HTTP tới
+        ITINERARY_SERVICE_BASE_URL; disabled = không dựng nguồn dữ liệu, status là
+        not_configured.
       enum:
       - fixture
       - http
       - disabled
+      - inprocess
     llmMode:
       type: string
       description: >-
