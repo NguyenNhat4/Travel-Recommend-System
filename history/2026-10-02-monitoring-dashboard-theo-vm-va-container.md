@@ -2,7 +2,7 @@
 
 - Ngày: 2026-10-02
 - Tác giả: người dùng / Claude
-- Nhánh: feat/monitoring-dashboard-per-vm
+- Nhánh: khoa/monitoring-dashboard-per-vm
 - Trạng thái: hoàn thành
 - Phạm vi: docs (infra/monitoring)
 
