@@ -160,6 +160,22 @@ describe('POST /api/auth/login', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it('accepts a write whose Origin matches the Host the browser used, even if request.url says localhost', async () => {
+    const anon = await anonymous();
+    delete process.env.ALLOWED_ORIGINS; // nhánh mặc định: allowlist suy từ Host
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ state: 'authenticated' })));
+    const viaLoopbackIp = browser('/api/auth/login', {
+      method: 'POST', sid: anon.sid, csrf: anon.csrf, origin: 'http://127.0.0.1:3000',
+      headers: { host: '127.0.0.1:3000' }, body: { email: 'a', password: 'b' },
+    });
+    expect((await login(viaLoopbackIp)).status).not.toBe(403);
+    const foreign = browser('/api/auth/login', {
+      method: 'POST', sid: anon.sid, csrf: anon.csrf, origin: 'https://evil.example',
+      headers: { host: '127.0.0.1:3000' }, body: {},
+    });
+    expect((await login(foreign)).status).toBe(403);
+  });
+
   it('switching account revokes the previous refresh token (§3.8 F)', async () => {
     const first = await authenticated();
     const fetchMock = vi.fn(async (url: URL) => String(url).endsWith('/revoke')

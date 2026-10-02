@@ -46,6 +46,8 @@ fi
 
 grep -q 'JWT_PRIVATE_KEY_PATH' "$deploy"
 grep -q 'AUTH_REDIS_URL' "$deploy"
+grep -Fq 'ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}' "$compose"
+grep -Fq 'read_backend_optional_value ALLOWED_ORIGINS' "$frontend_deploy"
 grep -q '/app/secrets' "$deploy"
 grep -q -- '--no-deps' "$deploy"
 grep -Fq 'IMAGE@sha256:DIGEST' "$deploy"

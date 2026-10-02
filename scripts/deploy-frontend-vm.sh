@@ -85,11 +85,23 @@ if [ "$dry_run" -eq 0 ]; then
     printf '%s' "${line#*=}"
   }
 
+  # Khoá tuỳ chọn: thiếu thì trả rỗng thay vì dừng deploy.
+  read_backend_optional_value() {
+    local key="$1" line=''
+    if [ -r "$backend_env_file" ]; then
+      line="$(grep -m 1 -E "^${key}=" "$backend_env_file" || true)"
+    else
+      line="$(sudo -n grep -m 1 -E "^${key}=" "$backend_env_file" || true)"
+    fi
+    printf '%s' "${line#*=}"
+  }
+
   AUTH_SERVICE_TOKEN="$(read_backend_value AUTH_SERVICE_TOKEN)"
   AUTH_REDIS_URL="$(read_backend_value AUTH_REDIS_URL)"
   [ -n "$AUTH_SERVICE_TOKEN" ] || die 'Backend AUTH_SERVICE_TOKEN is empty'
   [ -n "$AUTH_REDIS_URL" ] || die 'Backend AUTH_REDIS_URL is empty'
-  export AUTH_SERVICE_TOKEN AUTH_REDIS_URL
+  ALLOWED_ORIGINS="$(read_backend_optional_value ALLOWED_ORIGINS)"
+  export AUTH_SERVICE_TOKEN AUTH_REDIS_URL ALLOWED_ORIGINS
 
   docker compose -f "$compose_file" config >/dev/null || die 'Frontend Compose configuration is invalid'
   curl --silent --show-error --fail --max-time 10 "$backend_health_url" >/dev/null || die 'Backend is not healthy on loopback'
