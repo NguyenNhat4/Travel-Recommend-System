@@ -14,6 +14,7 @@ on:
       - release-mvp-v3
     paths:
       - '.github/workflows/backend-ci-cd.yml'
+      - '.github/actions/sync-env-from-secret-manager/**'
       - 'Dockerfile.backend'
       - 'src/backend/**'
       - 'scripts/**'
@@ -28,6 +29,7 @@ on:
       - release-mvp-v3
     paths:
       - '.github/workflows/backend-ci-cd.yml'
+      - '.github/actions/sync-env-from-secret-manager/**'
       - 'Dockerfile.backend'
       - 'src/backend/**'
       - 'scripts/**'
@@ -268,6 +270,18 @@ jobs:
             -C "$GITHUB_WORKSPACE/ops" docker-compose.backend-vm.yml \
             | gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --quiet \
                 --command "umask 077; mkdir -m 700 '$remote_dir' && tar -xzf - -C '$remote_dir' && sudo -n install -D -m 0644 '$remote_dir/docker-compose.backend-vm.yml' '$GCE_COMPOSE_FILE' && sudo -n docker compose -f '$GCE_COMPOSE_FILE' config >/dev/null"
+
+      # Secret ứng dụng nằm trong Secret Manager (1 secret = nội dung file backend.env); xem
+      # .github/actions/sync-env-from-secret-manager. Chưa đặt vars.GCE_BACKEND_ENV_SECRET thì bỏ qua, giữ file đặt tay.
+      - name: Sync backend env from Secret Manager
+        uses: ./.github/actions/sync-env-from-secret-manager
+        with:
+          secret: ${{ vars.GCE_BACKEND_ENV_SECRET }}
+          remote-file: /etc/vota/backend.env
+          required-keys: DATABASE_URL CDP_DATABASE_URL JWT_PRIVATE_KEY_PATH JWT_PUBLIC_KEY_PATH AUTH_REDIS_URL
+          project: ${{ secrets.GCP_PROJECT_ID }}
+          instance: ${{ secrets.GCE_INSTANCE }}
+          zone: ${{ secrets.GCE_ZONE }}
 
       - name: Deploy latest Backend image
         env:

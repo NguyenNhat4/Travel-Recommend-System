@@ -198,7 +198,14 @@ export async function rotateAfterPasswordChange(request: Request, current: { sid
 
 function allowedOrigins(request: Request) {
   const configured = (process.env.ALLOWED_ORIGINS || '').split(',').map((o) => o.trim()).filter(Boolean);
-  return configured.length ? configured : [new URL(request.url).origin];
+  if (configured.length) return configured;
+  // Mặc định: origin mà trình duyệt thật sự đã dùng (Host / X-Forwarded-Host). Không dùng riêng
+  // `request.url`: Next chuẩn hoá nó về hostname lúc khởi động (localhost, 0.0.0.0...), nên truy cập qua
+  // 127.0.0.1, IP LAN hay cổng khác sẽ bị CSRF_FAILED dù Origin hợp lệ. Trình duyệt không giả được Host.
+  const url = new URL(request.url);
+  const host = request.headers.get('x-forwarded-host')?.split(',')[0]?.trim() || request.headers.get('host');
+  const proto = request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim() || url.protocol.replace(':', '');
+  return host ? [url.origin, `${proto}://${host}`] : [url.origin];
 }
 
 function sameToken(a: string, b: string) {
