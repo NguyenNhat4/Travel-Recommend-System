@@ -35,7 +35,7 @@ export function WidgetDays({ widget }: { widget: FloatingWidgetController }) {
   if (!activePlan) return null;
   const focusRing = (productId?: string) => (productId && productId === focusedProductId ? ' ring-2 ring-blue-500' : '');
   return (
-<div ref={listRef} className="flex-1 overflow-y-auto p-4 space-y-4 bg-white">
+<div ref={listRef} className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain bg-slate-50/70 p-5">
   {/* Render Days (Tất cả các ngày hoặc ngày đang chọn) */}
   {activePlan.days
     .filter((d) => activeDayTab === 0 || d.day === activeDayTab)
@@ -54,7 +54,7 @@ export function WidgetDays({ widget }: { widget: FloatingWidgetController }) {
         <div key={dayItem.day} className="space-y-4 pt-1">
           {/* Day Header Badge */}
           <div className="flex items-center pt-1">
-            <span className="px-3.5 py-1.5 rounded-xl bg-blue-600 text-white text-sm font-bold shadow-xs">
+            <span className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-1.5 text-sm font-semibold text-blue-800">
               Ngày {dayItem.day}
             </span>
           </div>
@@ -65,7 +65,7 @@ export function WidgetDays({ widget }: { widget: FloatingWidgetController }) {
             {stayForThisDay?.product && (
               <div className="relative group">
                 {/* Timeline Step Node với Icon Khách Sạn */}
-                <div className="absolute -left-[31px] sm:-left-[35px] top-3.5 w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-indigo-600 text-white border-2 border-white shadow-xs flex items-center justify-center z-10">
+                <div className="absolute -left-[31px] sm:-left-[35px] top-3.5 w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-blue-600 text-white border-2 border-white shadow-xs flex items-center justify-center z-10">
                   <Hotel className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                 </div>
 
@@ -90,11 +90,11 @@ export function WidgetDays({ widget }: { widget: FloatingWidgetController }) {
                 >
                   {/* Row 1: Header / Giá phòng */}
                   <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-100">
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 text-xs font-bold">
-                      <Hotel className="w-3.5 h-3.5 text-indigo-600" />
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 text-xs font-semibold">
+                      <Hotel className="w-3.5 h-3.5 text-blue-600" />
                       Khách sạn lưu trú {'dayRange' in stayForThisDay && stayForThisDay.dayRange ? `(${stayForThisDay.dayRange})` : ''}
                     </span>
-                    <span className="text-sm font-black text-indigo-950 font-mono">
+                    <span className="text-sm font-semibold text-slate-900 tabular-nums">
                       {stayForThisDay.product.unitPrice != null ? `${stayForThisDay.product.unitPrice.toLocaleString('vi-VN')} ₫/đêm` : 'Chưa có giá'}
                     </span>
                   </div>
@@ -216,7 +216,7 @@ export function WidgetDays({ widget }: { widget: FloatingWidgetController }) {
                         {slot.product && isFreeToVisit(slot.product) ? (
                           <span className="text-xs font-bold text-emerald-700">Tham quan tự do</span>
                         ) : slot.product && slot.product.unitPrice != null && (
-                          <span className="text-sm font-black font-mono text-indigo-950">
+                          <span className="text-sm font-semibold text-slate-900 tabular-nums">
                             {slot.product.unitPrice.toLocaleString('vi-VN')} ₫
                           </span>
                         )}

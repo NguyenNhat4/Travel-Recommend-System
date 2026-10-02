@@ -62,16 +62,22 @@ export function WidgetNarration({ text, products, onOpen, quickAddIds, onQuickAd
       {blocks.map((block, index) => {
         if (block.kind === 'text') {
           return (
-            <span key={index} className="block whitespace-pre-wrap">
-              <AssistantText text={block.text} onProduct={onOpen} plainIds={carded} />
-            </span>
+            <NarrationText key={index} text={block.text} onOpen={onOpen} carded={carded} />
           );
         }
         const product = products[block.productId];
         return (
-          <div key={index} className="my-2 whitespace-normal">
+          <div key={index} className="my-4 whitespace-normal">
             <ProductCard
               variant="compact"
+              className="group gap-3 shadow-xs transition-colors hover:border-blue-300 focus-within:border-blue-400
+                [&]:rounded-xl [&>div:first-child]:flex-1 [&>div:first-child>div:last-child]:flex-1
+                [&_h4]:line-clamp-none [&_h4]:text-sm [&_h4]:leading-snug [&_h4_button]:line-clamp-2
+                [&_h4~div]:flex-col [&_h4~div]:items-start [&_h4~div]:gap-1
+                [&_h4~div>span]:max-w-full [&_h4~div>span]:text-slate-500
+                [&_p>span:last-child]:text-slate-500
+                [&_button]:min-h-11 [&_button]:focus-visible:outline-2
+                [&_button]:focus-visible:outline-offset-2 [&_button]:focus-visible:outline-blue-600"
               product={product}
               onSelect={() => onOpen(product.id)}
               showRatingAndAddress
@@ -82,5 +88,27 @@ export function WidgetNarration({ text, products, onOpen, quickAddIds, onQuickAd
         );
       })}
     </>
+  );
+}
+
+/** Tạo phân cấp cho tiêu đề đã có, giữ nguyên nội dung từ backend. */
+function NarrationText({ text, onOpen, carded }: {
+  text: string;
+  onOpen: (productId: string) => void;
+  carded: ReadonlySet<string>;
+}) {
+  return (
+    <div className="space-y-3 whitespace-normal">
+      {text.trim().split(/\n\s*\n/).map((paragraph, index) => (
+        <div key={index} className="space-y-2">
+          {paragraph.split('\n').map((line, lineIndex) => {
+            const heading = /^\*\*([^*]+)\*\*$/.exec(line.trim());
+            return heading
+              ? <h3 key={lineIndex} className="font-sans pt-2 text-base font-semibold leading-6 text-slate-900">{heading[1]}</h3>
+              : <div key={lineIndex} className="whitespace-pre-wrap"><AssistantText text={line} onProduct={onOpen} plainIds={carded} /></div>;
+          })}
+        </div>
+      ))}
+    </div>
   );
 }

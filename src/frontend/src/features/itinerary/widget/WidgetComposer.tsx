@@ -30,7 +30,7 @@ export function WidgetComposer({ value, onChange, onSend, busy, initial = false 
   };
 
   return (
-    <form onSubmit={submit} aria-label="Gửi yêu cầu du lịch" className={`w-full rounded-2xl border bg-white p-3 transition focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-50 ${initial ? 'border-blue-200 shadow-sm' : 'border-slate-200'}`}>
+    <form onSubmit={submit} aria-label="Gửi yêu cầu du lịch" className={`w-full rounded-2xl border bg-white p-3 shadow-xs transition focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 ${initial ? 'border-blue-200' : 'border-slate-200'}`}>
       <label htmlFor={inputId} className="sr-only">Tin nhắn cho trợ lý du lịch AI</label>
       <textarea
         ref={inputRef}
@@ -45,7 +45,7 @@ export function WidgetComposer({ value, onChange, onSend, busy, initial = false 
             event.currentTarget.form?.requestSubmit();
           }
         }}
-        placeholder={initial ? 'Mô tả chuyến đi bạn mong muốn…' : 'Nhập yêu cầu du lịch hoặc lịch trình...'}
+        placeholder={initial ? 'Mô tả chuyến đi bạn mong muốn…' : 'Bạn muốn điều chỉnh chuyến đi thế nào?'}
         className="block max-h-48 min-h-12 w-full resize-none bg-transparent px-1 py-2 text-base leading-relaxed text-slate-800 outline-none placeholder:text-slate-500"
       />
       <div className="mt-2 flex items-center justify-between gap-3">

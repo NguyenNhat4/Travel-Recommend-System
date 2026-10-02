@@ -49,7 +49,7 @@ describe('WidgetProductDetail', () => {
     expect(screen.getByText('4.6/5')).toBeTruthy();
     expect(screen.getByText(/13\.246 đánh giá/)).toBeTruthy();
     expect(screen.getByText('Tham quan tự do')).toBeTruthy();
-    expect(screen.getByRole('link', { name: /Xem trang chi tiết/ }).getAttribute('href')).toBe('/product/vanmieu');
+    expect(screen.queryByRole('link', { name: /Xem trang chi tiết/ })).toBeNull();
     expect(mocks.trackProductView).toHaveBeenCalledWith('vanmieu');
   });
 
@@ -58,6 +58,42 @@ describe('WidgetProductDetail', () => {
     render(<WidgetProductDetail productId="vanmieu" onClose={vi.fn()} />);
     await screen.findByText('Trường đại học đầu tiên của Việt Nam.');
     expect(screen.queryByRole('link', { name: /Chỉ đường/ })).toBeNull();
+  });
+
+  it('keeps the detail link for a priced product', async () => {
+    mocks.getProduct.mockResolvedValue({ ...detail(located), unitPrice: 100000 });
+    render(<WidgetProductDetail productId="vanmieu" onClose={vi.fn()} />);
+    const link = await screen.findByRole('link', { name: /Xem trang chi tiết/ });
+    expect(link.getAttribute('href')).toBe('/product/vanmieu');
+    expect(screen.queryByText('Tham quan tự do')).toBeNull();
+  });
+
+  it('hides the detail link when ticketed=false even if a price is present', async () => {
+    mocks.getProduct.mockResolvedValue({ ...detail({ ...located, ticketed: false }), unitPrice: 100000 });
+    render(<WidgetProductDetail productId="vanmieu" onClose={vi.fn()} />);
+    await screen.findByText('Tham quan tự do');
+    expect(screen.queryByRole('link', { name: /Xem trang chi tiết/ })).toBeNull();
+  });
+
+  it('shows a loading status before the catalog detail arrives', async () => {
+    let resolveDetail!: (product: ProductDetail) => void;
+    mocks.getProduct.mockReturnValue(new Promise<ProductDetail>((resolve) => { resolveDetail = resolve; }));
+    render(<WidgetProductDetail productId="vanmieu" onClose={vi.fn()} />);
+    expect(screen.getByRole('status').textContent).toContain('Đang tải chi tiết');
+    expect(screen.queryByRole('heading', { name: 'Văn Miếu – Quốc Tử Giám' })).toBeNull();
+    resolveDetail(detail(located));
+    await screen.findByRole('heading', { name: 'Văn Miếu – Quốc Tử Giám' });
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it('switches catalog images and keeps each thumbnail label tied to its original image', async () => {
+    mocks.getProduct.mockResolvedValue(detail(located));
+    render(<WidgetProductDetail productId="vanmieu" onClose={vi.fn()} />);
+    const mainImage = await screen.findByRole('img', { name: 'Văn Miếu – Quốc Tử Giám' });
+    fireEvent.click(screen.getByRole('button', { name: 'Xem ảnh 2 của Văn Miếu – Quốc Tử Giám' }));
+    expect(mainImage.getAttribute('src')).toBe(located.images[1]);
+    fireEvent.click(screen.getByRole('button', { name: 'Xem ảnh 1 của Văn Miếu – Quốc Tử Giám' }));
+    expect(mainImage.getAttribute('src')).toBe(located.images[0]);
   });
 
   it('keeps the summary visible and offers a retry when the detail fails to load', async () => {

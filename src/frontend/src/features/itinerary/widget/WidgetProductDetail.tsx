@@ -6,12 +6,10 @@ import { PriceTag } from '../../../components/common/PriceTag';
 import { TaxonomyBadge } from '../../../components/common/TaxonomyBadge';
 import type { Product } from '../../../types/travel';
 import { isFreeToVisit } from './widgetPlan';
-import { placeholderOnError } from './widgetVisuals';
+import { WidgetProductGallery } from './WidgetProductGallery';
 
 /** Mô tả dài hơn mức này thì thu gọn, có nút "Xem thêm" (mô tả khách sạn trung bình ~3.700 ký tự). */
 const DESCRIPTION_CLAMP_CHARS = 400;
-/** Số ảnh nhỏ cạnh ảnh lớn; ảnh còn lại gom thành "+n". */
-const THUMBNAILS = 4;
 
 /** Bộ ảnh của panel: ảnh đại diện rồi `attributes.images` của catalog, chỉ URL http(s), bỏ trùng. */
 export function galleryImages(product: Pick<Product, 'imageUrl' | 'attributes'>): string[] {
@@ -74,51 +72,51 @@ export function WidgetProductDetail({ productId, summary, onClose, onAddToCart }
       <PanelFrame onClose={onClose}>
         {state.status === 'error'
           ? <LoadError onRetry={() => setAttempt((count) => count + 1)} />
-          : <p role="status" className="flex items-center gap-2 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />Đang tải chi tiết…</p>}
+          : <DetailSkeleton />}
       </PanelFrame>
     );
   }
 
   const images = galleryImages(product);
-  const mainImage = images[activeImage] ?? images[0];
-  const thumbnails = images.filter((url) => url !== mainImage);
-  const hiddenCount = Math.max(0, thumbnails.length - THUMBNAILS);
   const directions = directionsUrl(product.coordinates);
   const openingHours = typeof product.attributes.openingHours === 'string' ? product.attributes.openingHours : null;
   const openingHoursDetail = typeof product.attributes.openingHoursDetail === 'string' ? product.attributes.openingHoursDetail : null;
   const description = product.description?.trim() ?? '';
   const longDescription = description.length > DESCRIPTION_CLAMP_CHARS;
+  const freeToVisit = isFreeToVisit(product);
 
   return (
-    <PanelFrame onClose={onClose}>
-      {mainImage && (
-        <div className={`grid gap-2 ${thumbnails.length ? 'grid-cols-3' : 'grid-cols-1'}`}>
-          <div className={`relative overflow-hidden rounded-2xl bg-slate-100 ${thumbnails.length ? 'col-span-2 aspect-[4/3]' : 'aspect-[16/9]'}`}>
-            <img src={mainImage} alt={product.name} onError={placeholderOnError(product.taxonomy)} className="h-full w-full object-cover" />
-          </div>
-          {thumbnails.length > 0 && (
-            <div className="grid grid-cols-2 gap-2 content-start">
-              {thumbnails.slice(0, THUMBNAILS).map((url, index) => (
-                <button key={url} type="button" onClick={() => setActiveImage(images.indexOf(url))}
-                  aria-label={`Xem ảnh ${index + 2} của ${product.name}`}
-                  className="relative aspect-square overflow-hidden rounded-xl bg-slate-100">
-                  <img src={url} alt="" onError={placeholderOnError(product.taxonomy)} className="h-full w-full object-cover" />
-                  {hiddenCount > 0 && index === THUMBNAILS - 1 && (
-                    <span className="absolute inset-0 flex items-center justify-center bg-slate-900/50 text-lg font-bold text-white">+{hiddenCount}</span>
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
+    <PanelFrame onClose={onClose} footer={
+      <div className="shrink-0 space-y-3 border-t border-slate-200/70 bg-white px-5 py-4 xl:px-6">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-xs text-slate-500">Giá dịch vụ</span>
+          {freeToVisit
+            ? <span className="text-sm font-semibold text-emerald-700">Tham quan tự do</span>
+            : <PriceTag price={product.unitPrice} taxonomy={product.taxonomy} size="lg" className="[&>div]:flex-wrap [&>div]:justify-end" />}
         </div>
-      )}
+        <div className="flex flex-col gap-2 xl:flex-row">
+          {onAddToCart && (
+            <button type="button" onClick={onAddToCart}
+              className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
+              <ShoppingCart className="h-4 w-4" aria-hidden="true" />Thêm vào giỏ
+            </button>
+          )}
+          {!freeToVisit && <a href={`/product/${encodeURIComponent(product.id)}`} target="_blank" rel="noopener noreferrer"
+            className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border-2 border-blue-600 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 transition hover:border-blue-700 hover:bg-blue-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
+            Xem trang chi tiết<ExternalLink className="h-4 w-4 shrink-0" aria-hidden="true" />
+          </a>}
+        </div>
+      </div>
+    }>
+      <WidgetProductGallery images={images} name={product.name} taxonomy={product.taxonomy}
+        activeImage={activeImage} onSelect={setActiveImage} />
 
-      <div className="space-y-2">
+      <div className="space-y-3">
         <TaxonomyBadge taxonomy={product.taxonomy} size="sm" />
-        <h2 className="text-xl font-bold text-slate-900">{product.name}</h2>
+        <h2 className="font-sans break-words text-xl font-semibold leading-snug tracking-tight text-slate-900 xl:text-2xl">{product.name}</h2>
         {product.aggregateRating && (
-          <p className="text-sm text-slate-600">
-            <span className="font-bold text-slate-800">{product.aggregateRating.score}/5</span>
+          <p className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
+            <span className="rounded-lg bg-blue-50 px-2 py-1 font-semibold text-blue-800">{product.aggregateRating.score}/5</span>
             {product.aggregateRating.count > 0 && <span className="text-slate-500"> · {product.aggregateRating.count.toLocaleString('vi-VN')} đánh giá</span>}
           </p>
         )}
@@ -130,24 +128,25 @@ export function WidgetProductDetail({ productId, summary, onClose, onAddToCart }
       )}
 
       {description && (
-        <div>
+        <div className="space-y-2 border-t border-slate-100 pt-5">
+          <h3 className="font-sans text-sm font-semibold text-slate-900">Giới thiệu</h3>
           <p className={`whitespace-pre-line text-sm leading-relaxed text-slate-700 ${longDescription && !expanded ? 'line-clamp-6' : ''}`}>{description}</p>
           {longDescription && (
-            <button type="button" onClick={() => setExpanded((open) => !open)} className="mt-1 text-sm font-semibold text-blue-700 hover:underline">
+            <button type="button" onClick={() => setExpanded((open) => !open)} aria-expanded={expanded} className="inline-flex min-h-11 items-center text-sm font-semibold text-blue-700 hover:underline focus-visible:outline-2 focus-visible:outline-blue-600">
               {expanded ? 'Thu gọn' : 'Xem thêm'}
             </button>
           )}
         </div>
       )}
 
-      <div className="grid gap-4 border-t border-slate-100 pt-4 sm:grid-cols-2">
+      <div className="grid gap-5 rounded-xl border border-slate-100 bg-slate-50 p-4">
         <div className="flex items-start gap-2 text-sm">
-          <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
-          <div>
+          <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" aria-hidden="true" />
+          <div className="min-w-0 break-words">
             <p className="font-semibold text-slate-800">Địa chỉ</p>
             <p className="text-slate-600">{product.address || product.destination}</p>
             {directions && (
-              <a href={directions} target="_blank" rel="noopener noreferrer" className="mt-1 inline-flex items-center gap-1 font-semibold text-blue-700 hover:underline">
+              <a href={directions} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center gap-1.5 font-semibold text-blue-700 hover:underline focus-visible:outline-2 focus-visible:outline-blue-600">
                 <Navigation className="h-3.5 w-3.5" aria-hidden="true" />Chỉ đường
               </a>
             )}
@@ -155,7 +154,7 @@ export function WidgetProductDetail({ productId, summary, onClose, onAddToCart }
         </div>
         {openingHours && (
           <div className="flex items-start gap-2 text-sm">
-            <Clock className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
+            <Clock className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" aria-hidden="true" />
             <div>
               <p className="font-semibold text-slate-800">Giờ mở cửa</p>
               <p className="text-slate-600">{openingHours}</p>
@@ -165,46 +164,51 @@ export function WidgetProductDetail({ productId, summary, onClose, onAddToCart }
         )}
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
-        {isFreeToVisit(product)
-          ? <span className="text-sm font-bold text-emerald-700">Tham quan tự do</span>
-          : <PriceTag price={product.unitPrice} taxonomy={product.taxonomy} size="md" />}
-        <div className="flex items-center gap-2">
-          {onAddToCart && (
-            <button type="button" onClick={onAddToCart}
-              className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-bold text-white hover:bg-blue-700">
-              <ShoppingCart className="h-4 w-4" aria-hidden="true" />Thêm vào giỏ
-            </button>
-          )}
-          <a href={`/product/${encodeURIComponent(product.id)}`} target="_blank" rel="noopener noreferrer"
-            className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-            Xem trang chi tiết<ExternalLink className="h-4 w-4" aria-hidden="true" />
-          </a>
-        </div>
-      </div>
     </PanelFrame>
   );
 }
 
-function PanelFrame({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
+function PanelFrame({ onClose, children, footer }: { onClose: () => void; children: React.ReactNode; footer?: React.ReactNode }) {
   return (
-    <div className="relative h-full w-full overflow-y-auto bg-white">
-      <button type="button" onClick={onClose} aria-label="Đóng chi tiết"
-        className="absolute right-4 top-4 z-10 flex min-h-11 min-w-11 items-center justify-center rounded-full bg-white/90 text-slate-600 shadow-md hover:text-slate-900">
-        <X className="h-5 w-5" aria-hidden="true" />
-      </button>
-      <div className="mx-auto max-w-4xl space-y-5 p-6 pt-16">{children}</div>
-    </div>
+    <section aria-label="Chi tiết sản phẩm" className="relative flex h-full min-w-0 flex-col overflow-hidden bg-white">
+      <div className="flex min-h-20 shrink-0 items-center justify-between gap-3 border-b border-slate-200/70 px-5 py-3 xl:px-6">
+        <p className="text-sm font-semibold text-slate-900">Chi tiết dịch vụ</p>
+        <button type="button" onClick={onClose} aria-label="Đóng chi tiết"
+          className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-50 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-blue-600">
+          <X className="h-5 w-5" aria-hidden="true" />
+        </button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className="mx-auto max-w-4xl space-y-5 p-5 xl:p-6">{children}</div>
+      </div>
+      {footer}
+    </section>
   );
 }
 
 function LoadError({ onRetry }: { onRetry: () => void }) {
   return (
-    <div role="alert" className="flex items-center gap-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
-      Chưa tải được chi tiết sản phẩm.
-      <button type="button" onClick={onRetry} className="inline-flex items-center gap-1 font-semibold underline">
+    <div role="alert" className="flex flex-wrap items-center justify-between gap-x-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
+      <span>Chưa tải được chi tiết sản phẩm.</span>
+      <button type="button" onClick={onRetry} className="inline-flex min-h-11 items-center gap-1.5 font-semibold underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-700">
         <RotateCcw className="h-4 w-4" aria-hidden="true" />Thử lại
       </button>
+    </div>
+  );
+}
+
+function DetailSkeleton() {
+  return (
+    <div role="status" className="space-y-5">
+      <span className="sr-only">Đang tải chi tiết…</span>
+      <div aria-hidden="true" className="space-y-5 animate-pulse motion-reduce:animate-none">
+        <div className="aspect-[4/3] rounded-xl bg-slate-100" />
+        <div className="h-6 w-3/4 rounded bg-slate-100" />
+        <div className="space-y-2">
+          <div className="h-3 w-full rounded bg-slate-100" />
+          <div className="h-3 w-5/6 rounded bg-slate-100" />
+        </div>
+      </div>
     </div>
   );
 }
