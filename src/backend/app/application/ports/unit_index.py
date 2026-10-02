@@ -43,3 +43,14 @@ class UnitIndex:
         if mask.all():
             return None
         return [self.units[i].product_id for i in np.flatnonzero(mask)]
+
+class VectorStorePort(Protocol):
+    def load(self) -> UnitIndex: ...
+
+
+class CdpClientPort(Protocol):
+    """Cửa duy nhất vào CDP (handbook §6). Trả dict theo tên trường CDP (camelCase)."""
+
+    def events_for_user(self, cdp_user_id: str) -> list[dict]: ...
+    def purchase_events(self, since_days: int = 730) -> list[dict]: ...
+    def all_events(self) -> list[dict]: ...
