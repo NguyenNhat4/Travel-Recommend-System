@@ -353,6 +353,11 @@ export const TravelProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     items: BookNowItem[], options: { allowPartial?: boolean } = {},
   ): Promise<BookingDraft | null> => {
     if (!items.length) return null;
+    // Đặt ngay cần đăng nhập (FR-BKG-01): mở hộp đăng nhập trên trang; đăng nhập xong thì tạo đơn nháp và vào /checkout.
+    if (!personaRef.current) {
+      openLoginModal(() => { void startBookingRef.current(items, options); });
+      return null;
+    }
     let draft: BookingDraft;
     try {
       draft = await bookingApi.createBookingDraft({
@@ -372,7 +377,11 @@ export const TravelProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     void refreshCart();
     navigate(bookingApi.checkoutPathOf(draft.draftId));
     return draft;
-  }, [showToast, recordEvent, refreshCart, navigate]);
+  }, [showToast, recordEvent, refreshCart, navigate, openLoginModal]);
+
+  // Bản `startBooking` mới nhất cho callback sau đăng nhập (tránh closure cũ).
+  const startBookingRef = useRef(startBooking);
+  useEffect(() => { startBookingRef.current = startBooking; });
 
   const addToCart = useCallback(async (
     product: Product,

@@ -56,6 +56,23 @@ describe('CartView — khách và dòng giá theo loại khách', () => {
     expect(screen.getAllByText('3.504.000 ₫').length).toBeGreaterThan(0);          // tổng lấy từ CartResponse
   });
 
+  it('Thanh toán khi đã đăng nhập: vào /checkout ngay', () => {
+    render(<CartView />);
+    fireEvent.click(screen.getByRole('button', { name: /Tiến hành đặt chỗ/ }));
+    expect(travel.navigate).toHaveBeenCalledWith('/checkout');
+    expect(travel.openLoginModal).not.toHaveBeenCalled();
+  });
+
+  it('Thanh toán khi chưa đăng nhập: mở hộp đăng nhập, đăng nhập xong mới vào /checkout', () => {
+    travel.currentPersona = null;
+    render(<CartView />);
+    fireEvent.click(screen.getByRole('button', { name: /Tiến hành đặt chỗ/ }));
+    expect(travel.navigate).not.toHaveBeenCalled();
+    expect(travel.openLoginModal).toHaveBeenCalledTimes(1);
+    travel.openLoginModal.mock.calls[0][0]();
+    expect(travel.navigate).toHaveBeenCalledWith('/checkout');
+  });
+
   it('[Sửa] mở bộ đếm với số khách hiện tại; giá vé trẻ em hiện sau khi tải thuộc tính sản phẩm', async () => {
     render(<CartView />);
     const ticket = rowOf('VinWonders');

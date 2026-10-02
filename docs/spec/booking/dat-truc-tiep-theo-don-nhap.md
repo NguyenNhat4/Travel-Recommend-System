@@ -13,7 +13,7 @@
 3. Đặt ngay không bao giờ thanh toán kèm giỏ. Giỏ chỉ được thanh toán từ nút Thanh toán ở trang giỏ (`/checkout` không có `draft`).
 4. Đơn nháp có hiệu lực 30 phút. Hết hạn: khách sạn, vé máy bay không giữ gì; tour và tiện ích vẫn còn trong giỏ.
 5. Khi tạo đơn nháp, các mục vào giỏ được của nó được chép vào giỏ. Vì vậy mọi trường hợp không hoàn thành thanh toán đều để lại tour và tiện ích trong giỏ.
-6. Khách chưa đăng nhập dùng được giỏ và Đặt ngay; dữ liệu nằm trong Redis 3 ngày và được gộp vào tài khoản khi đăng nhập. Tạo đơn và thanh toán cần đăng nhập.
+6. Khách chưa đăng nhập dùng được giỏ; dữ liệu nằm trong Redis 3 ngày và được gộp vào tài khoản khi đăng nhập. Đặt ngay, tạo đơn và thanh toán cần đăng nhập (Web mở hộp đăng nhập khi khách bấm, xong thì tự tiếp tục).
 
 ## 2. Thuật ngữ
 
@@ -93,7 +93,7 @@ Mục đích: khách không hoàn thành thanh toán thì tour, tiện ích nằ
 | R-CHK-03 | Kiểm luật, tính dòng giá, so snapshot (`PRICE_CHANGED`), gọi Stripe, một đơn giữ chỗ mỗi người: giữ nguyên trình tự ở `checkout-nhieu-buoc-hanh-khach.md` §8.3 |
 | R-CHK-04 | Đơn nháp không thuộc người gọi: `404 BOOKING_DRAFT_NOT_FOUND`. Hết hạn: `410 BOOKING_DRAFT_EXPIRED` |
 | R-CHK-05 | Đơn tạo từ đơn nháp: đơn nháp bị xoá trong cùng transaction ghi đơn giữ chỗ. Stripe lỗi hoặc ghi đơn lỗi thì đơn nháp còn nguyên |
-| R-CHK-06 | `POST /bookings` luôn cần đăng nhập. Khách chưa đăng nhập bấm Thanh toán thì Web mở hộp đăng nhập ngay trên trang (không tải lại, thông tin đã nhập còn), rồi gửi lại request; BFF gộp dữ liệu khách trước khi chuyển tiếp (§8.4) |
+| R-CHK-06 | `POST /bookings` luôn cần đăng nhập. Web chặn sớm: khách chưa đăng nhập bấm Đặt ngay (`startBooking`) hoặc Tiến hành đặt chỗ ở giỏ thì hộp đăng nhập mở ngay trên trang (không tải lại); đăng nhập xong Web tạo đơn nháp rồi vào `/checkout` (hoặc vào `/checkout` của giỏ). Mở thẳng `/checkout` khi chưa đăng nhập, bấm Thanh toán cũng mở hộp đăng nhập rồi gửi lại request (lớp dự phòng); BFF gộp dữ liệu khách trước khi chuyển tiếp (§8.4) |
 
 ## 7. Đặt lại (`fromBooking`)
 
@@ -227,13 +227,14 @@ Theo phân lớp ở `docs/prd/architecture.md` §2.
 | Trang chi tiết | Khách sạn: chỉ Đặt ngay. Tour, golf, combo: Thêm vào giỏ hàng và Đặt ngay. Đặt ngay gọi `POST /booking-drafts` rồi mở `/checkout?draft=<mã>` |
 | `/flights` | Một nút Đặt ngay tạo một đơn nháp cho một hoặc hai chặng |
 | Trang thanh toán | Nguồn là giỏ (`/checkout`) hoặc đơn nháp (`/checkout?draft=`). Đơn nháp: đồng hồ "Phiên thanh toán còn mm:ss" theo `expiresAt`; `410` → màn hình hết hạn (R-DRF-21, R-DRF-22); `404` → về trang chủ kèm thông báo. Nút quay lại: nguồn giỏ về `/cart`, nguồn đơn nháp về trang trước |
-| Bấm Thanh toán khi chưa đăng nhập | Hộp đăng nhập trên trang; xong thì gửi lại `POST /bookings` |
+| Bấm Đặt ngay hoặc Tiến hành đặt chỗ ở giỏ khi chưa đăng nhập | Hộp đăng nhập trên trang; xong thì tạo đơn nháp và vào `/checkout` (hoặc vào `/checkout` của giỏ) |
+| Bấm Thanh toán ở `/checkout` khi chưa đăng nhập (mở thẳng URL) | Hộp đăng nhập trên trang; xong thì gửi lại `POST /bookings` |
 | Trang giỏ | Bỏ khối "Thường được đặt cùng chuyến" và lời gọi `/recommendations` của trang giỏ. Thêm dòng giải thích khách sạn, vé máy bay được đặt trực tiếp. Khách chưa đăng nhập xem và sửa giỏ được |
 | Trợ lý | Một nút **Thanh toán tất cả** (đơn nháp cho mọi mục đặt được, `allowPartial: true`). Thẻ và ghim bản đồ: khách sạn, vé máy bay có Đặt ngay; tour, golf, combo có Thêm vào giỏ và Đặt ngay; ngày theo lịch trình, số khách theo `intent.party` |
 | Trang đơn | `PAYMENT_FAILED`, `EXPIRED`: nút **Đặt lại** (`fromBooking`) thay cho "Đặt lại từ giỏ" |
 | Nhãn gợi ý | `add_to_cart`: "đã chọn để đặt" |
 
-Thêm giỏ và Đặt ngay không còn bắt đăng nhập. Sau khi đăng nhập hoặc đăng xuất, Web tải lại giỏ.
+Thêm giỏ không bắt đăng nhập; Đặt ngay và Thanh toán thì có (hộp đăng nhập trên trang, xong tự tiếp tục). Sau khi đăng nhập hoặc đăng xuất, Web tải lại giỏ.
 
 ## 14. Trường hợp biên
 

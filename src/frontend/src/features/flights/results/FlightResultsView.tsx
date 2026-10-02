@@ -129,7 +129,7 @@ export const FlightResultsView: React.FC<{ search: FlightSearch; notice?: string
     if (picks.length === 0 || submitting) return;
     setSubmitting(true);
     // Vé máy bay đặt trực tiếp: một đơn nháp cho một hoặc hai chặng rồi mở trang thanh toán, không qua giỏ (FR-BKG-01,
-    // FR-BKG-10). Không cần đăng nhập ở bước này; đăng nhập khi bấm Thanh toán.
+    // FR-BKG-10). Khách chưa đăng nhập được mời đăng nhập trước (startBooking), xong thì tự tạo đơn nháp.
     await startBooking(picks.map(({ option, fare }) => ({
       product: productFromApi(fare.summary), quantity: adults + kids, usingDate: option.date,
       guests: { adults, children: kids },

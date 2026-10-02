@@ -81,7 +81,7 @@ const GuestEditor: React.FC<{ item: ApiCartItem; onClose: () => void }> = ({ ite
 export const CartView: React.FC = () => {
   const { openFloatingWidget } = useAssistant();
   // Giỏ dùng được cả khi chưa đăng nhập: khách chưa đăng nhập có giỏ riêng giữ 3 ngày (spec dat-truc-tiep-theo-don-nhap.md §8).
-  const { cart, removeFromCart, navigate } = useTravel();
+  const { cart, removeFromCart, navigate, currentPersona, openLoginModal } = useTravel();
   const [editing, setEditing] = useState<string | null>(null);
 
   const items = useMemo(() => cart?.items ?? [], [cart]);
@@ -266,7 +266,8 @@ export const CartView: React.FC = () => {
           )}
 
           <button
-            onClick={() => navigate('/checkout')}
+            // Thanh toán cần đăng nhập (FR-BKG-01): khách mở hộp đăng nhập trước, xong thì vào /checkout.
+            onClick={() => (currentPersona ? navigate('/checkout') : openLoginModal(() => navigate('/checkout')))}
             disabled={hasUnavailable}
             className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-bold text-sm rounded-xl shadow-xs transition-colors flex items-center justify-center gap-2"
           >
