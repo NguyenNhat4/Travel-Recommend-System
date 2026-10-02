@@ -58,7 +58,12 @@ BOOKING_HOLD_MINUTES=30            # >= 30 (giới hạn expires_at của Stripe
 PAYMENT_MAX_FAILED_ATTEMPTS=3
 PUBLIC_WEB_URL=http://localhost:3000
 BOOKING_RECONCILE_INTERVAL_SECONDS=300   # job đối soát trong tiến trình; 0 = tắt
+BOOKING_DRAFT_TTL_MINUTES=30       # đơn nháp của Đặt ngay sống bao lâu
+GUEST_BOOKING_TTL_DAYS=3           # giỏ và đơn nháp của khách chưa đăng nhập giữ bao lâu trong Redis
+BOOKING_REDIS_URL=redis://:devpass@localhost:6379/3   # trống: lưu trong bộ nhớ (chỉ dev/test); production bắt buộc
 ```
+
+Khách sạn và vé máy bay đặt trực tiếp (FR-BKG-01, `docs/spec/booking/dat-truc-tiep-theo-don-nhap.md`): giỏ chỉ nhận `attraction`, `golf`, `combo` (`POST /cart/items` với `hotel`/`flight` trả `422 DIRECT_BOOKING_ONLY`); "Đặt ngay" tạo đơn nháp 30 phút qua `/booking-drafts`, và `POST /bookings` nhận `draftId` để thanh toán đúng đơn nháp đó. Khách chưa đăng nhập dùng giỏ và đơn nháp qua BFF (`X-Service-Token` + `X-Guest-Id`), dữ liệu nằm ở Redis và được gộp vào tài khoản bằng `POST /guest-bookings/merge`. Code: `domain/booking/draft.py`, `application/booking/{drafts,guest_merge,owner}.py`, `infrastructure/persistence/guest_booking_store.py`. Migration `0007` cần chạy trước khi khởi động Backend mới (hai bảng `app.booking_drafts`, `app.booking_draft_items`; xoá mục khách sạn, vé máy bay còn sót trong giỏ).
 
 Nhận webhook ở local bằng Stripe CLI (cài một lần, `stripe login`):
 

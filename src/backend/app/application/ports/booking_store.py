@@ -32,6 +32,14 @@ class BookingTx(Protocol):
         """Xoá các mục giỏ đã đặt, khoá theo (productId, usingDate)."""
         ...
 
+    async def delete_draft(self, cdp_user_id: str, draft_id: str) -> None:
+        """Xoá đơn nháp vừa được đổi thành đơn giữ chỗ, trong cùng transaction ghi đơn (R-CHK-05)."""
+        ...
+
+    async def purge_expired_drafts(self, before: datetime) -> int:
+        """Dọn bản ghi đơn nháp đã hết hạn trước mốc `before` (R-DRF-23). Trả số đơn nháp đã xoá."""
+        ...
+
     async def find_reconcile_ids(self, now: datetime, limit: int) -> list[str]:
         """Đơn cần đối soát (spec booking §8.2); khoá SKIP LOCKED để hai tiến trình không dẫm nhau."""
         ...

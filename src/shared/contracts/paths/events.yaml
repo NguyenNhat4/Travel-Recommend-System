@@ -7,7 +7,7 @@
     description: 'Web gọi khi người dùng thật sự mở trang chi tiết, không gọi khi prefetch/SSR. Backend kiểm tra
       productId trong catalog, lấy taxonomy từ catalog, rồi ghi sang CDP clone ở nền: trả 202 trước khi CDP
       xác nhận, CDP lỗi thì event bị bỏ và chỉ ghi log. search và add_to_cart không đi qua endpoint này mà do
-      POST /search và POST /cart/items tự ghi; purchase do POST /bookings ghi.'
+      POST /search, POST /cart/items và POST /booking-drafts tự ghi; purchase do POST /bookings ghi.'
     security:
     - bearerAuth: []
     parameters:

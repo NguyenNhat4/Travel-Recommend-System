@@ -1,9 +1,9 @@
 import React from 'react';
 import Link from 'next/link';
 import { Product, BecauseItem, Strategy, Taxonomy } from '../../types/travel';
-import { TaxonomyBadge } from './TaxonomyBadge';
 import { PriceTag } from './PriceTag';
 import { useTravel } from '../../context/TravelContext';
+import { flightProductHref } from '../../features/flights/results/flightHref';
 import { placeholderImage } from '../../services/catalog';
 import { MapPin, Star, Plus, ArrowRight, ExternalLink, Loader2, Check } from 'lucide-react';
 
@@ -21,7 +21,6 @@ interface ProductCardProps {
   assistantNote?: string;
   isPersonalizedMatch?: boolean;
   openInNewTab?: boolean;
-  hideTaxonomyBadge?: boolean;
   /** Query string ngữ cảnh chuyến đi (ngày, số khách) nối vào `/product/{id}` để điền sẵn hộp đặt. */
   tripQuery?: string;
   /** compact: bấm thẻ gọi hàm này thay vì mở trang sản phẩm (thẻ trong lời diễn giải của trợ lý mở panel chi tiết). */
@@ -46,7 +45,6 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   assistantNote,
   isPersonalizedMatch = false,
   openInNewTab = false,
-  hideTaxonomyBadge = false,
   tripQuery,
   onSelect,
   priceLabel,
@@ -55,7 +53,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 }) => {
   const { navigate, debugMode, recordEvent } = useTravel();
 
-  const href = `/product/${product.id}${tripQuery ? `?${tripQuery}` : ''}`;
+  const href = (product.taxonomy === 'flight' ? flightProductHref(product, tripQuery) : null)
+    ?? `/product/${product.id}${tripQuery ? `?${tripQuery}` : ''}`;
 
   const handleCardClick = (e?: React.MouseEvent) => {
     recordEvent('product_view', product);
@@ -88,18 +87,6 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             referrerPolicy="no-referrer"
             className={`h-full w-full object-cover transition-transform duration-500 group-hover:scale-105 ${!product.available ? 'grayscale' : ''}`}
           />
-          {!hideTaxonomyBadge && (
-            <div className="absolute left-3 top-3">
-              <TaxonomyBadge taxonomy={product.taxonomy} />
-            </div>
-          )}
-          {product.attributes.starRating && !product.aggregateRating && (
-            <div className="absolute right-3 top-3 flex items-center gap-0.5 rounded-full bg-slate-900/70 px-2 py-0.5 text-[11px] font-semibold text-amber-300 backdrop-blur-xs">
-              <Star className="h-3 w-3 fill-amber-300 text-amber-300" aria-hidden="true" />
-              {product.attributes.starRating}
-              <span className="sr-only"> sao</span>
-            </div>
-          )}
           {!product.available && (
             <div className="absolute inset-0 flex items-center justify-center bg-slate-900/55 text-xs font-bold uppercase tracking-wider text-white">
               Tạm hết chỗ
@@ -158,16 +145,15 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
-              {!hideTaxonomyBadge && <TaxonomyBadge taxonomy={product.taxonomy} size="sm" />}
               {isPersonalizedMatch && (
                 <span className="text-[10px] font-medium text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
                   ✨ Hợp với bạn
                 </span>
               )}
-              {product.attributes.starRating && (
+              {product.aggregateRating && (
                 <span className="flex items-center text-[11px] font-medium text-amber-600">
                   <Star className="w-3 h-3 fill-amber-400 text-amber-400 mr-0.5" />
-                  {product.attributes.starRating}★
+                  {product.aggregateRating.score}
                 </span>
               )}
             </div>
@@ -244,11 +230,6 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             referrerPolicy="no-referrer"
             className="w-full h-full object-cover"
           />
-          {!hideTaxonomyBadge && (
-            <div className="absolute top-2.5 left-2.5">
-              <TaxonomyBadge taxonomy={product.taxonomy} />
-            </div>
-          )}
           {!product.available && (
             <div className="absolute inset-0 bg-slate-900/60 flex items-center justify-center text-xs font-bold text-white uppercase tracking-wider">
               Tạm hết chỗ
@@ -268,10 +249,13 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                 <MapPin className="w-3.5 h-3.5 text-slate-400" />
                 {product.destination}
               </span>
-              {product.attributes.starRating && (
+              {product.aggregateRating && (
                 <div className="flex items-center text-amber-500 text-xs font-semibold">
                   <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400 mr-1" />
-                  {product.attributes.starRating}★ Khách sạn 5 sao
+                  {product.aggregateRating.score}
+                  {product.aggregateRating.count > 0 && (
+                    <span className="ml-1 font-normal text-slate-400">({product.aggregateRating.count.toLocaleString('vi-VN')} đánh giá)</span>
+                  )}
                 </div>
               )}
             </div>
@@ -341,17 +325,6 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           referrerPolicy="no-referrer"
           className="w-full h-full object-cover"
         />
-        {!hideTaxonomyBadge && (
-          <div className="absolute top-2.5 left-2.5">
-            <TaxonomyBadge taxonomy={product.taxonomy} />
-          </div>
-        )}
-        {product.attributes.starRating && !product.aggregateRating && (
-          <div className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded bg-slate-900/70 text-amber-300 text-[11px] font-semibold backdrop-blur-xs flex items-center gap-0.5">
-            <Star className="w-3 h-3 fill-amber-300 text-amber-300" />
-            {product.attributes.starRating}★
-          </div>
-        )}
         {!product.available && (
           <div className="absolute inset-0 bg-slate-900/60 flex items-center justify-center text-xs font-bold text-white uppercase tracking-wider">
             Tạm hết chỗ

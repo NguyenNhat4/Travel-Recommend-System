@@ -153,6 +153,13 @@ class Settings(BaseSettings):
     public_web_url: str = "http://localhost:3000"
     # 0 = tắt job đối soát (test); mặc định 5 phút/lần.
     booking_reconcile_interval_seconds: int = Field(default=300, ge=0)
+    # Đặt trực tiếp qua đơn nháp (docs/spec/booking/dat-truc-tiep-theo-don-nhap.md): hiệu lực của một đơn nháp, và thời gian
+    # Redis giữ giỏ, đơn nháp của khách chưa đăng nhập.
+    booking_draft_ttl_minutes: int = Field(default=30, ge=1)
+    guest_booking_ttl_days: int = Field(default=3, ge=1)
+    # Redis DB index riêng cho giỏ và đơn nháp của khách chưa đăng nhập. Trống: dev/test dùng bộ nhớ một tiến trình;
+    # production bắt buộc có Redis.
+    booking_redis_url: str = ""
 
     @field_validator("stripe_secret_key")
     @classmethod

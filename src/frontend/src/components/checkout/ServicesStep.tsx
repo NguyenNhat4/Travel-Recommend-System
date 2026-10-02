@@ -113,7 +113,7 @@ const CardShell: React.FC<{
           <div role="alert" className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2 flex items-start justify-between gap-2">
             <span>{failed.message}</span>
             {['PRODUCT_UNAVAILABLE', 'DATE_OUT_OF_RANGE'].includes(failed.code) && (
-              <button type="button" onClick={() => void ctl.removeItem(item.cartItemId)} className="shrink-0 font-bold underline inline-flex items-center gap-1"><Trash2 className="w-3 h-3" aria-hidden="true" />Xoá khỏi giỏ</button>
+              <button type="button" onClick={() => void ctl.removeItem(item.cartItemId)} className="shrink-0 font-bold underline inline-flex items-center gap-1"><Trash2 className="w-3 h-3" aria-hidden="true" />{ctl.sourceKind === 'cart' ? 'Xoá khỏi giỏ' : 'Bỏ khỏi lần đặt'}</button>
             )}
           </div>
         )}
@@ -322,7 +322,7 @@ export const ServicesStep: React.FC<{ ctl: CheckoutController }> = ({ ctl }) => 
       </div>
       {ctl.cartChanged && (
         <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex items-start justify-between gap-2">
-          <span>Giỏ hàng vừa thay đổi. Danh sách dịch vụ đã được cập nhật.</span>
+          <span>{ctl.sourceKind === 'cart' ? 'Giỏ hàng' : 'Lần đặt'} vừa thay đổi. Danh sách dịch vụ đã được cập nhật.</span>
           <button type="button" onClick={ctl.dismissCartChanged} className="font-bold underline shrink-0">Đóng</button>
         </div>
       )}

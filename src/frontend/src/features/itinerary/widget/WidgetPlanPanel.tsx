@@ -21,8 +21,8 @@ const ItineraryMap = dynamic(
 
 export function WidgetPlanPanel({ widget }: { widget: FloatingWidgetController }) {
   const { activePlan, activeDayTab, setActiveDayTab, isCheckingOut,
-    handleCheckoutPlan, addToCart, hoveredCoordinate, hoveredPointId,
-    selectedProduct, closeProductDetail, addSelectedToCart } = widget;
+    handleCheckoutPlan, itemActions, hoveredCoordinate, hoveredPointId,
+    selectedProduct, closeProductDetail, addSelectedToCart, selectedCanAddToCart, bookSelectedNow } = widget;
   if (!activePlan) return null;
   return (
 <div className="grid grid-cols-1 md:grid-cols-2 w-full h-full min-w-0 overflow-hidden divide-x divide-slate-200/70">
@@ -31,7 +31,7 @@ export function WidgetPlanPanel({ widget }: { widget: FloatingWidgetController }
   {selectedProduct ? (
     <div className="h-full overflow-hidden">
       <WidgetProductDetail key={selectedProduct.productId} productId={selectedProduct.productId}
-        summary={selectedProduct.summary} onClose={closeProductDetail} onAddToCart={addSelectedToCart}
+        summary={selectedProduct.summary} onClose={closeProductDetail} onAddToCart={selectedCanAddToCart ? addSelectedToCart : undefined} onBookNow={bookSelectedNow}
         cartAddState={widget.cartAddStates[selectedProduct.productId]} />
     </div>
   ) : (
@@ -126,7 +126,7 @@ export function WidgetPlanPanel({ widget }: { widget: FloatingWidgetController }
           aria-busy={isCheckingOut}
           className="flex min-h-11 cursor-pointer items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 active:bg-blue-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:cursor-wait disabled:opacity-60"
         >
-          <span>{isCheckingOut ? 'Đang thêm vào giỏ…' : 'Thanh toán'}</span>
+          <span>{isCheckingOut ? 'Đang mở trang thanh toán…' : 'Thanh toán tất cả'}</span>
           {isCheckingOut ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
         </button>
       </div>
@@ -148,7 +148,7 @@ export function WidgetPlanPanel({ widget }: { widget: FloatingWidgetController }
       plan={activePlan}
       activeDay={activeDayTab}
       onSelectDay={setActiveDayTab}
-      onAddToCart={(p) => addToCart(p, 2)}
+      itemActions={(p) => itemActions(p.id)}
       focusedCoordinate={hoveredCoordinate}
       focusedPointId={hoveredPointId}
       className="w-full h-full flex-1"

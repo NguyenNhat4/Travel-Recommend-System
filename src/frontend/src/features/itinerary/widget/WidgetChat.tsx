@@ -1,4 +1,5 @@
 import React from 'react';
+import { isCartEligible } from '../../../services/booking';
 import Image from 'next/image';
 import { AlertCircle, Maximize2, RotateCcw, Sparkles } from 'lucide-react';
 import { AssistantText, InlineBold } from '../../../components/assistant/inlineBold';
@@ -40,7 +41,7 @@ export function WidgetChat({ widget }: { widget: FloatingWidgetController }) {
                   ? (message.products
                     ? <WidgetNarration text={message.text} products={message.products}
                         onOpen={(productId) => openProductDetail(productId, message)}
-                        quickAddIds={message.plan ? new Set(message.plan.cartItems.map((item) => item.product.productId)) : undefined}
+                        quickAddIds={message.plan ? new Set(message.plan.cartItems.filter((item) => isCartEligible(item.product.taxonomy)).map((item) => item.product.productId)) : undefined}
                         cartAddStates={widget.cartAddStates}
                         onQuickAdd={message.plan ? (productId) => addPlanItemToCart(message.plan!, productId) : undefined} />
                     : <AssistantText text={message.text} />)

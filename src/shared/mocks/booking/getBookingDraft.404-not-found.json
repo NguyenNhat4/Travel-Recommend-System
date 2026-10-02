@@ -1,0 +1,8 @@
+{
+  "error": {
+    "code": "BOOKING_DRAFT_NOT_FOUND",
+    "message": "Không tìm thấy phiên thanh toán này.",
+    "retryable": false,
+    "requestId": "draft-01JXYZ"
+  }
+}

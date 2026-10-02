@@ -3,51 +3,49 @@
   "cdpUserId": "VP0092381",
   "items": [
     {
-      "cartItemId": "ci-8k3f2a",
+      "cartItemId": "ci-2m9d7c",
       "product": {
-        "productId": "nt-h-01",
-        "name": "Vinpearl Resort Nha Trang - Deluxe Ocean View",
-        "taxonomy": "hotel",
+        "productId": "nt-a-01",
+        "name": "VinWonders Nha Trang",
+        "taxonomy": "attraction",
         "destination": "Nha Trang",
-        "unitPrice": 3400000,
+        "unitPrice": 880000,
         "currency": "VND",
         "available": true,
-        "availableFrom": "2026-10-01",
-        "availableTo": "2027-03-31",
-        "imageUrl": "https://cdn.example.vn/nt-h-01.jpg",
-        "rating": 4.6,
-        "reviewCount": 1293,
+        "availableFrom": "2026-09-01",
+        "availableTo": "2027-08-31",
+        "imageUrl": "https://cdn.example.vn/nt-a-01.jpg",
+        "rating": 4.5,
+        "reviewCount": 8421,
         "attributes": {
-          "starRating": 5,
-          "oceanView": true,
-          "privateBeach": true,
-          "kidsPool": true,
+          "outdoor": true,
+          "waterPark": true,
           "familyFriendly": true
         },
-        "priceUnit": "PER_NIGHT"
+        "priceUnit": "PER_PERSON"
       },
-      "usingDate": "2026-10-15",
-      "quantity": 1,
-      "nights": 3,
+      "usingDate": "2026-10-16",
+      "quantity": 3,
+      "nights": null,
       "guests": {
-        "adults": 1,
+        "adults": 3,
         "children": 0
       },
       "fares": [
         {
-          "fareType": "ROOM",
-          "unitPrice": 3400000,
-          "count": 1,
-          "nights": 3,
-          "amount": 10200000
+          "fareType": "ADULT",
+          "unitPrice": 880000,
+          "count": 3,
+          "nights": null,
+          "amount": 2640000
         }
       ],
-      "lineTotal": 10200000
+      "lineTotal": 2640000
     }
   ],
   "itemCount": 1,
-  "subtotal": 10200000,
-  "total": 10200000,
+  "subtotal": 2640000,
+  "total": 2640000,
   "currency": "VND",
   "updatedAt": "2026-09-16T10:20:00Z"
 }
