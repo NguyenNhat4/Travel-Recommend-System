@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Clock, ExternalLink, Loader2, MapPin, Navigation, RotateCcw, ShoppingCart, X } from 'lucide-react';
+import { Check, Clock, ExternalLink, Loader2, MapPin, Navigation, RotateCcw, ShoppingCart, X } from 'lucide-react';
 import { getProduct, productFromApi, trackProductView } from '../../../services/catalog';
 import { useTravel } from '../../../context/TravelContext';
 import { PriceTag } from '../../../components/common/PriceTag';
@@ -7,6 +7,7 @@ import { TaxonomyBadge } from '../../../components/common/TaxonomyBadge';
 import type { Product } from '../../../types/travel';
 import { isFreeToVisit } from './widgetPlan';
 import { WidgetProductGallery } from './WidgetProductGallery';
+import type { CartAddState } from './useWidgetCart';
 
 /** Mô tả dài hơn mức này thì thu gọn, có nút "Xem thêm" (mô tả khách sạn trung bình ~3.700 ký tự). */
 const DESCRIPTION_CLAMP_CHARS = 400;
@@ -30,6 +31,7 @@ interface WidgetProductDetailProps {
   onClose: () => void;
   /** Chỉ có khi sản phẩm là mục đặt được của lịch trình (`cartItems`). */
   onAddToCart?: () => void;
+  cartAddState?: CartAddState;
 }
 
 type LoadState = { status: 'loading' | 'error' } | { status: 'ready'; product: Product };
@@ -38,7 +40,7 @@ type LoadState = { status: 'loading' | 'error' } | { status: 'ready'; product: P
  * Panel chi tiết ở cột phải của widget khi bấm thẻ hoặc tên sản phẩm trong lời diễn giải (PRD user-flow.md §4.2).
  * Mọi nội dung lấy từ `GET /products/{productId}`; không có danh sách bình luận vì catalog không có dữ liệu đó.
  */
-export function WidgetProductDetail({ productId, summary, onClose, onAddToCart }: WidgetProductDetailProps) {
+export function WidgetProductDetail({ productId, summary, onClose, onAddToCart, cartAddState }: WidgetProductDetailProps) {
   const { currentPersona } = useTravel();
   const [state, setState] = useState<LoadState>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
@@ -96,9 +98,11 @@ export function WidgetProductDetail({ productId, summary, onClose, onAddToCart }
         </div>
         <div className="flex flex-col gap-2 xl:flex-row">
           {onAddToCart && (
-            <button type="button" onClick={onAddToCart}
-              className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
-              <ShoppingCart className="h-4 w-4" aria-hidden="true" />Thêm vào giỏ
+            <button type="button" onClick={onAddToCart} disabled={Boolean(cartAddState)} aria-busy={cartAddState === 'adding'}
+              className={`inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:cursor-default ${cartAddState === 'added' ? 'bg-emerald-600' : 'bg-blue-600 hover:bg-blue-700'}`}>
+              {cartAddState === 'adding' ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                : cartAddState === 'added' ? <Check className="h-4 w-4" aria-hidden="true" /> : <ShoppingCart className="h-4 w-4" aria-hidden="true" />}
+              <span aria-live="polite">{cartAddState === 'adding' ? 'Đang thêm…' : cartAddState === 'added' ? 'Đã thêm vào giỏ' : 'Thêm vào giỏ'}</span>
             </button>
           )}
           {!freeToVisit && <a href={`/product/${encodeURIComponent(product.id)}`} target="_blank" rel="noopener noreferrer"

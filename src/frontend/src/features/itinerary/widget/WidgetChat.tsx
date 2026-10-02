@@ -37,6 +37,7 @@ export function WidgetChat({ widget }: { widget: FloatingWidgetController }) {
                     ? <WidgetNarration text={message.text} products={message.products}
                         onOpen={(productId) => openProductDetail(productId, message)}
                         quickAddIds={message.plan ? new Set(message.plan.cartItems.map((item) => item.product.productId)) : undefined}
+                        cartAddStates={widget.cartAddStates}
                         onQuickAdd={message.plan ? (productId) => addPlanItemToCart(message.plan!, productId) : undefined} />
                     : <AssistantText text={message.text} />)
                   : message.text}

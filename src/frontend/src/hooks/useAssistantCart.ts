@@ -20,6 +20,7 @@ export function useAssistantCart() {
   const { addToCart, currentPersona, openLoginModal, showToast, navigate } = useTravel();
   // Callback sau đăng nhập chạy ở render sau; đọc bản addToCart mới nhất qua ref để không dùng closure cũ.
   const latest = useRef({ addToCart, currentPersona });
+  const pending = useRef(new Set<string>());
   useEffect(() => {
     latest.current = { addToCart, currentPersona };
   }, [addToCart, currentPersona]);
@@ -49,11 +50,22 @@ export function useAssistantCart() {
     return added;
   }, [navigate, showToast]);
 
-  return useCallback(async (items: AssistantCartItem[], onAdded?: (added: number) => void): Promise<void> => {
+  return useCallback(async (items: AssistantCartItem[], onAdded?: (added: number) => void,
+    feedback?: { onStart: () => void; onSettled: (added: number) => void }): Promise<void> => {
     if (!items.length) return;
     const run = async () => {
-      const added = await addItems(items);
-      if (added > 0) onAdded?.(added);
+      const key = JSON.stringify(items.map((item) => [item.product.productId, item.usingDate, item.checkOutDate, item.party]));
+      if (pending.current.has(key)) return;
+      pending.current.add(key);
+      let added = 0;
+      try {
+        feedback?.onStart();
+        added = await addItems(items);
+        if (added > 0) onAdded?.(added);
+      } finally {
+        pending.current.delete(key);
+        feedback?.onSettled(added);
+      }
     };
     if (!currentPersona) {
       openLoginModal(() => { void run(); });

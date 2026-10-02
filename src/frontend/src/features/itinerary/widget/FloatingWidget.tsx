@@ -176,7 +176,8 @@ export function FloatingWidget() {
               </button>
               {selectedProduct && !activePlan
                 ? <WidgetProductDetail key={selectedProduct.productId} productId={selectedProduct.productId}
-                    summary={selectedProduct.summary} onClose={closeProductDetail} onAddToCart={addSelectedToCart} />
+                    summary={selectedProduct.summary} onClose={closeProductDetail} onAddToCart={addSelectedToCart}
+                    cartAddState={widget.cartAddStates[selectedProduct.productId]} />
                 : activePlan ? <WidgetPlanPanel widget={widget} /> : <WidgetPlanEmpty onPrompt={handleQuickPrompt} />}
             </div>
           </div>

@@ -31,7 +31,8 @@ export function WidgetPlanPanel({ widget }: { widget: FloatingWidgetController }
   {selectedProduct ? (
     <div className="h-full overflow-hidden">
       <WidgetProductDetail key={selectedProduct.productId} productId={selectedProduct.productId}
-        summary={selectedProduct.summary} onClose={closeProductDetail} onAddToCart={addSelectedToCart} />
+        summary={selectedProduct.summary} onClose={closeProductDetail} onAddToCart={addSelectedToCart}
+        cartAddState={widget.cartAddStates[selectedProduct.productId]} />
     </div>
   ) : (
   <section aria-label="Lịch trình theo ngày" className="flex flex-col h-full bg-white overflow-hidden">

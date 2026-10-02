@@ -5,6 +5,7 @@ import { useAssistantCart } from '../../../hooks/useAssistantCart';
 import { convertItineraryCompletedToGroundedPlan, locateProduct, narrationProducts } from './widgetPlan';
 import type { WidgetPlan, WidgetChatMessage, ConversationSession } from './widgetTypes';
 import type { Product } from '../../../types/travel';
+import { useWidgetCart } from './useWidgetCart';
 
 /** Sản phẩm đang mở ở panel chi tiết; `summary` để hiện ngay trong lúc tải, `plan` để biết có đặt được không. */
 interface SelectedProduct {
@@ -25,6 +26,7 @@ export function useFloatingWidget() {
     loadConversation,
   } = useAssistant();
   const addItineraryToCart = useAssistantCart();
+  const { addPlanItemToCart, cartAddStates } = useWidgetCart();
 
   // Widget States
   const [isOpen, setIsOpen] = useState<boolean>(false);
@@ -193,12 +195,6 @@ export function useFloatingWidget() {
 
   const closeProductDetail = () => setSelectedProduct(null);
 
-  /** "Thêm" trên thẻ: chỉ mục đặt được của lịch trình (`cartItems`, đủ ngày dùng và đoàn khách); mục khác không có nút. */
-  const addPlanItemToCart = (plan: WidgetPlan, productId: string) => {
-    const items = plan.cartItems.filter((item) => item.product.productId === productId);
-    if (items.length) void addItineraryToCart(items);
-  };
-
   const addSelectedToCart = selectedProduct?.plan?.cartItems.some((item) => item.product.productId === selectedProduct.productId)
     ? () => addPlanItemToCart(selectedProduct.plan!, selectedProduct.productId)
     : undefined;
@@ -269,7 +265,7 @@ export function useFloatingWidget() {
   return { isOpen, setIsOpen, isExpanded, setIsExpanded, activePlan, activeDayTab, setActiveDayTab,
     isCheckingOut, isChatCollapsed, setIsChatCollapsed, hoveredCoordinate, hoveredPointId,
     setHoveredCoordinate, setHoveredPointId, focusedProductId, isHistoryOpen, setIsHistoryOpen, conversations, activeSessionId,
-    selectedProduct, openProductDetail, closeProductDetail, addPlanItemToCart, addSelectedToCart,
+    selectedProduct, openProductDetail, closeProductDetail, addPlanItemToCart, addSelectedToCart, cartAddStates,
     assistantState, isRunning, messages, inputVal, setInputVal, chatScrollRef, addToCart, retry, abort,
     handleSendMessage, handleQuickPrompt, handleConfirmTripDetails, handleCheckoutPlan,
     handleStartNewChat, handleSelectConversation, handleDeleteConversation };

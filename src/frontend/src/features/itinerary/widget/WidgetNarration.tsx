@@ -3,6 +3,7 @@ import { AssistantText, parseAssistantText } from '../../../components/assistant
 import { ProductCard } from '../../../components/common/ProductCard';
 import type { Product } from '../../../types/travel';
 import { isFreeToVisit } from './widgetPlan';
+import type { CartAddState } from './useWidgetCart';
 
 export type NarrationBlock = { kind: 'text'; text: string } | { kind: 'card'; productId: string };
 
@@ -44,10 +45,11 @@ interface WidgetNarrationProps {
   /** Sản phẩm đặt được của lịch trình (`cartItems`); chỉ những thẻ này có nút "Thêm". */
   quickAddIds?: ReadonlySet<string>;
   onQuickAdd?: (productId: string) => void;
+  cartAddStates?: Record<string, CartAddState>;
 }
 
 /** Lời diễn giải lịch trình trong bong bóng chat, kèm thẻ gọn của từng sản phẩm. */
-export function WidgetNarration({ text, products, onOpen, quickAddIds, onQuickAdd }: WidgetNarrationProps) {
+export function WidgetNarration({ text, products, onOpen, quickAddIds, onQuickAdd, cartAddStates }: WidgetNarrationProps) {
   const known = (productId: string) => Object.prototype.hasOwnProperty.call(products, productId);
   // Mọi sản phẩm có trong `products` đều có thẻ, nên tên của chúng không cần link nữa; id lạ vẫn là link.
   const carded = new Set(Object.keys(products));
@@ -83,6 +85,7 @@ export function WidgetNarration({ text, products, onOpen, quickAddIds, onQuickAd
               showRatingAndAddress
               priceLabel={isFreeToVisit(product) ? 'Tham quan tự do' : undefined}
               onQuickAdd={onQuickAdd && quickAddIds?.has(product.id) ? () => onQuickAdd(product.id) : undefined}
+              quickAddState={cartAddStates?.[product.id]}
             />
           </div>
         );
