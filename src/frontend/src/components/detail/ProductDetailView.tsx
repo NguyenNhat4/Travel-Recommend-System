@@ -20,7 +20,7 @@ import { FareLines } from '../checkout/FareLines';
 import { GuestCounters } from '../checkout/GuestCounters';
 import { cartPayload, guestModeOf, initialCounts, isValidCounts, maxOccupancyFromAttributes, normalizeCounts } from '../checkout/guestCounts';
 import { parseTripContext } from '../../features/search/tripContext';
-import { MapPin, Star, ShieldCheck, Users, BedDouble, Plane, Loader2 } from 'lucide-react';
+import { MapPin, ShieldCheck, Users, BedDouble, Plane, Loader2 } from 'lucide-react';
 
 /**
  * Trang chi tiết `/product/{productId}` (docs/spec/hop-dong-tich-hop-frontend.md §4.3, product.md §4.3).
@@ -298,7 +298,6 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
     );
   }
 
-  const stars = Math.round(Number(product.attributes?.starRating) || 0);
   const variantNoun = product.taxonomy === 'flight' ? 'chuyến bay' : 'hạng phòng';
   const bookableVariants = (variants ?? []).filter(isBookable);
   const unavailableReason = !unit
@@ -324,12 +323,6 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
         </div>
 
         <div className="flex items-center gap-2 flex-wrap mb-1.5">
-          {stars > 0 && (
-            <div className="flex items-center text-amber-500 text-xs font-bold">
-              {Array.from({ length: stars }).map((_, i) => <Star key={i} className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />)}
-              <span className="ml-1 text-slate-700">{stars} sao</span>
-            </div>
-          )}
           <span className="flex items-center gap-1 text-xs text-slate-500">
             <MapPin className="w-3.5 h-3.5 text-slate-400" />
             {product.address || product.destination}

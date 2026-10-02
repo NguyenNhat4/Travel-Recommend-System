@@ -89,11 +89,6 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             <MapPin className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden="true" />
             <span className="truncate">{product.destination}</span>
           </p>
-          {!product.aggregateRating && product.attributes.starRating && (
-            <p className="text-xs text-slate-600">
-              <span className="font-bold text-slate-800">★ {product.attributes.starRating} sao</span>
-            </p>
-          )}
           {product.aggregateRating && (
             <p className="text-xs text-slate-600">
               <span className="font-bold text-slate-800">★ {product.aggregateRating.score}</span>
@@ -136,10 +131,10 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                   ✨ Hợp với bạn
                 </span>
               )}
-              {product.attributes.starRating && (
+              {product.aggregateRating && (
                 <span className="flex items-center text-[11px] font-medium text-amber-600">
                   <Star className="w-3 h-3 fill-amber-400 text-amber-400 mr-0.5" />
-                  {product.attributes.starRating}★
+                  {product.aggregateRating.score}
                 </span>
               )}
             </div>
@@ -217,10 +212,13 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                 <MapPin className="w-3.5 h-3.5 text-slate-400" />
                 {product.destination}
               </span>
-              {product.attributes.starRating && (
+              {product.aggregateRating && (
                 <div className="flex items-center text-amber-500 text-xs font-semibold">
                   <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400 mr-1" />
-                  {product.attributes.starRating}★ Khách sạn 5 sao
+                  {product.aggregateRating.score}
+                  {product.aggregateRating.count > 0 && (
+                    <span className="ml-1 font-normal text-slate-400">({product.aggregateRating.count.toLocaleString('vi-VN')} đánh giá)</span>
+                  )}
                 </div>
               )}
             </div>
@@ -290,12 +288,6 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           referrerPolicy="no-referrer"
           className="w-full h-full object-cover"
         />
-        {product.attributes.starRating && !product.aggregateRating && (
-          <div className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded bg-slate-900/70 text-amber-300 text-[11px] font-semibold backdrop-blur-xs flex items-center gap-0.5">
-            <Star className="w-3 h-3 fill-amber-300 text-amber-300" />
-            {product.attributes.starRating}★
-          </div>
-        )}
         {!product.available && (
           <div className="absolute inset-0 bg-slate-900/60 flex items-center justify-center text-xs font-bold text-white uppercase tracking-wider">
             Tạm hết chỗ
