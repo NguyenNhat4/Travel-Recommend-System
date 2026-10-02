@@ -14,6 +14,7 @@ on:
       - release-mvp-v3
     paths:
       - '.github/workflows/frontend-ci-cd.yml'
+      - '.github/actions/sync-env-from-secret-manager/**'
       - 'ops/docker-compose.backend-vm.yml'
       - 'scripts/deploy-frontend-vm.sh'
       - 'src/frontend/Dockerfile.web'
@@ -27,6 +28,7 @@ on:
       - release-mvp-v3
     paths:
       - '.github/workflows/frontend-ci-cd.yml'
+      - '.github/actions/sync-env-from-secret-manager/**'
       - 'ops/docker-compose.backend-vm.yml'
       - 'scripts/deploy-frontend-vm.sh'
       - 'src/frontend/Dockerfile.web'
@@ -314,6 +316,19 @@ jobs:
             -C "$GITHUB_WORKSPACE/ops" docker-compose.backend-vm.yml \
             | gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --quiet \
                 --command "umask 077; mkdir -m 700 '$remote_dir' && tar -xzf - -C '$remote_dir' && chmod 0755 '$remote_dir/deploy-frontend-vm.sh' && sudo -n install -D -m 0644 '$remote_dir/docker-compose.backend-vm.yml' '$GCE_COMPOSE_FILE' && sudo -n docker compose -f '$GCE_COMPOSE_FILE' config >/dev/null"
+
+      # Frontend đọc AUTH_SERVICE_TOKEN/AUTH_REDIS_URL từ /etc/vota/backend.env (deploy-frontend-vm.sh), nên đồng bộ
+      # cùng secret với Backend để lần deploy chỉ-frontend cũng dùng giá trị mới nhất. Không khởi động lại backend.
+      # Chưa đặt vars.GCE_BACKEND_ENV_SECRET thì bỏ qua, giữ file đặt tay.
+      - name: Sync backend env from Secret Manager
+        uses: ./.github/actions/sync-env-from-secret-manager
+        with:
+          secret: ${{ vars.GCE_BACKEND_ENV_SECRET }}
+          remote-file: /etc/vota/backend.env
+          required-keys: AUTH_SERVICE_TOKEN AUTH_REDIS_URL
+          project: ${{ secrets.GCP_PROJECT_ID }}
+          instance: ${{ secrets.GCE_INSTANCE }}
+          zone: ${{ secrets.GCE_ZONE }}
 
       - name: Deploy Frontend image and verify health
         env:
