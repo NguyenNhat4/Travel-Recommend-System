@@ -183,7 +183,7 @@ locals {
             } }
           }]
           yAxis      = { scale = "LINEAR" }
-          thresholds = [{ value = 1000, color = "RED", direction = "ABOVE", targetAxis = "Y1", label = "SLO 1s" }]
+          thresholds = [{ value = 1000, targetAxis = "Y1", label = "SLO 1s" }]
         }
       }
     },
@@ -261,8 +261,8 @@ locals {
             }]
             yAxis = { scale = "LINEAR" }
             thresholds = [
-              { value = 0.7, color = "YELLOW", direction = "ABOVE", targetAxis = "Y1" },
-              { value = 0.9, color = "RED", direction = "ABOVE", targetAxis = "Y1" },
+              { value = 0.7, targetAxis = "Y1", label = "warn" },
+              { value = 0.9, targetAxis = "Y1", label = "alert" },
             ]
           }
         }
@@ -297,8 +297,8 @@ locals {
             }]
             yAxis = { scale = "LINEAR" }
             thresholds = [
-              { value = 80, color = "YELLOW", direction = "ABOVE", targetAxis = "Y1" },
-              { value = 90, color = "RED", direction = "ABOVE", targetAxis = "Y1" },
+              { value = 80, targetAxis = "Y1", label = "warn" },
+              { value = 90, targetAxis = "Y1", label = "alert" },
             ]
           }
         }
@@ -382,7 +382,7 @@ locals {
             } }
           }]
           yAxis      = { scale = "LINEAR" }
-          thresholds = [{ value = var.container_cpu_alert_percent, color = "RED", direction = "ABOVE", targetAxis = "Y1", label = "alert" }]
+          thresholds = [{ value = var.container_cpu_alert_percent, targetAxis = "Y1", label = "alert" }]
         }
       }
     },
@@ -418,7 +418,7 @@ locals {
             }
           }]
           yAxis      = { scale = "LINEAR" }
-          thresholds = [{ value = var.container_disk_alert_gib * 1073741824, color = "RED", direction = "ABOVE", targetAxis = "Y1", label = "alert" }]
+          thresholds = [{ value = var.container_disk_alert_gib * 1073741824, targetAxis = "Y1", label = "alert" }]
         }
       }
     },
