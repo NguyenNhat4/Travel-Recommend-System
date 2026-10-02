@@ -54,4 +54,8 @@ if grep -Eq 'crawler|CRAWLER|Dockerfile.daily|run_daily_docker' "$workflow"; the
   exit 1
 fi
 
+grep -Fq 'name: Sync backend env from Secret Manager' "$workflow"
+grep -Fq 'gcloud secrets versions access latest --secret "$BACKEND_ENV_SECRET"' "$workflow"
+grep -Fq "tee /etc/vota/backend.env" "$workflow"
+
 echo 'backend VM CD sync checks passed'
