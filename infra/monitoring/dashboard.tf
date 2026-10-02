@@ -205,7 +205,7 @@ locals {
               filter      = "${local.dash_gce} metric.type=\"compute.googleapis.com/instance/cpu/utilization\" resource.labels.instance_id=\"${vm.id}\""
               aggregation = { alignmentPeriod = "60s", perSeriesAligner = "ALIGN_MEAN", crossSeriesReducer = "REDUCE_MEAN" }
             } }
-            sparkChartView = { sparkChartType = "SPARK_AREA" }
+            sparkChartView = { sparkChartType = "SPARK_LINE" }
             thresholds = [
               { value = 0.7, color = "YELLOW", direction = "ABOVE" },
               { value = 0.9, color = "RED", direction = "ABOVE" },
@@ -222,7 +222,7 @@ locals {
               filter      = "${local.dash_gce} metric.type=\"agent.googleapis.com/memory/percent_used\" metric.labels.state=\"used\" resource.labels.instance_id=\"${vm.id}\""
               aggregation = { alignmentPeriod = "60s", perSeriesAligner = "ALIGN_MEAN", crossSeriesReducer = "REDUCE_MEAN" }
             } }
-            sparkChartView = { sparkChartType = "SPARK_AREA" }
+            sparkChartView = { sparkChartType = "SPARK_LINE" }
             thresholds = [
               { value = 70, color = "YELLOW", direction = "ABOVE" },
               { value = 90, color = "RED", direction = "ABOVE" },
@@ -239,7 +239,7 @@ locals {
               filter      = "${local.dash_gce} metric.type=\"agent.googleapis.com/disk/percent_used\" metric.labels.state=\"used\" metric.labels.device=starts_with(\"/dev/\") resource.labels.instance_id=\"${vm.id}\""
               aggregation = { alignmentPeriod = "300s", perSeriesAligner = "ALIGN_MEAN", crossSeriesReducer = "REDUCE_MAX" }
             } }
-            sparkChartView = { sparkChartType = "SPARK_AREA" }
+            sparkChartView = { sparkChartType = "SPARK_LINE" }
             thresholds = [
               { value = 80, color = "YELLOW", direction = "ABOVE" },
               { value = 90, color = "RED", direction = "ABOVE" },
