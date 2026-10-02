@@ -100,6 +100,32 @@ describe('ProductDetailView', () => {
     expect(item.guests).toEqual({ adults: 2, children: 1 });
   });
 
+  it('khách sạn: trả phòng không sau nhận phòng hoặc ngày trống thì báo lỗi, khoá nút đặt và không tự sửa ngày', async () => {
+    api.getProduct.mockResolvedValue(hotelProperty());
+    render(<ProductDetailView productId="nt-h-10" />);
+    await screen.findAllByRole('radio', {}, WAIT);
+    await waitFor(() => expect(document.querySelector<HTMLInputElement>('input[type="date"]')?.value).toBeTruthy(), WAIT);
+    const checkIn = screen.getByLabelText('Nhận phòng') as HTMLInputElement;
+    const checkOut = screen.getByLabelText('Trả phòng') as HTMLInputElement;
+    expect(checkIn.value).toMatch(/^\d{2}\/\d{2}\/\d{4}$/);
+    const book = () => screen.getByRole('button', { name: 'Đặt ngay' }) as HTMLButtonElement;
+    expect(screen.queryByTestId('date-error')).toBeNull();
+    expect(book().disabled).toBe(false);
+
+    fireEvent.change(checkOut, { target: { value: checkIn.value } });
+    expect(screen.getByTestId('date-error').textContent).toContain('Ngày trả phòng phải sau ngày nhận phòng');
+    expect(checkOut.value).toBe(checkIn.value);
+    expect(book().disabled).toBe(true);
+
+    fireEvent.change(checkOut, { target: { value: '' } });
+    expect(screen.getByTestId('date-error').textContent).toContain('ngày trả phòng');
+    expect(book().disabled).toBe(true);
+
+    fireEvent.change(checkIn, { target: { value: '' } });
+    expect(screen.getByTestId('date-error').textContent).toContain('ngày nhận phòng');
+    expect(book().disabled).toBe(true);
+  });
+
   it('vé tham quan: hai bộ đếm Người lớn/Trẻ em kèm đơn giá từng loại; ước tính theo giá trẻ em; gửi guests', async () => {
     api.getProduct.mockResolvedValue({
       ...ticketFixture, productId: 'nt-a-vinwonders-buggy', name: 'Vé VinWonders + Buggy', taxonomy: 'attraction', unitPrice: 1500000,
@@ -178,6 +204,7 @@ describe('ProductDetailView', () => {
     render(<ProductDetailView productId="nt-h-01" />);
     await screen.findByRole('heading', { name: ticketFixture.name });
     expect(api.listVariants).not.toHaveBeenCalled();
+    await waitFor(() => expect(document.querySelector<HTMLInputElement>('input[type="date"]')?.value).toBeTruthy(), WAIT);
     fireEvent.click(screen.getByRole('button', { name: 'Đặt ngay' }));
     await waitFor(() => expect(travel.startBooking).toHaveBeenCalledTimes(1));
     const [items] = travel.startBooking.mock.calls[0];

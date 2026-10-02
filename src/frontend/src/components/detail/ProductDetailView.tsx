@@ -20,7 +20,7 @@ import { FareLines } from '../checkout/FareLines';
 import { GuestCounters } from '../checkout/GuestCounters';
 import { cartPayload, guestModeOf, initialCounts, isValidCounts, maxOccupancyFromAttributes, normalizeCounts } from '../checkout/guestCounts';
 import { parseTripContext } from '../../features/search/tripContext';
-import { MapPin, ShieldCheck, Users, BedDouble, Plane, Loader2 } from 'lucide-react';
+import { MapPin, ShieldCheck, Users, BedDouble, Plane, Loader2, Calendar } from 'lucide-react';
 
 /**
  * Trang chi tiết `/product/{productId}` (docs/spec/hop-dong-tich-hop-frontend.md §4.3, product.md §4.3).
@@ -50,6 +50,27 @@ function clamp(iso: string, min?: string, max?: string): string {
   if (min && iso < min) return min;
   if (max && iso > max) return max;
   return iso;
+}
+
+const fmtDate = (iso: string) => new Date(`${iso}T12:00:00+07:00`).toLocaleDateString('vi-VN');
+
+/** Thông báo lỗi cho ngày đang nhập, hoặc null khi hợp lệ. Cửa sổ mở bán: ngày nhận trong [availableFrom, availableTo], ngày trả tối đa availableTo + 1. */
+function validateDates(unit: Product, checkIn: string, checkOut?: string): string | null {
+  const isHotel = checkOut !== undefined;
+  if (!checkIn) return isHotel ? 'Vui lòng chọn ngày nhận phòng.' : 'Vui lòng chọn ngày sử dụng.';
+  const label = isHotel ? 'Ngày nhận phòng' : 'Ngày sử dụng';
+  if ((unit.availableFrom && checkIn < unit.availableFrom) || (unit.availableTo && checkIn > unit.availableTo)) {
+    return unit.availableFrom && unit.availableTo
+      ? `${label} phải trong khoảng ${fmtDate(unit.availableFrom)} – ${fmtDate(unit.availableTo)}.`
+      : `${label} nằm ngoài thời gian mở bán.`;
+  }
+  if (!isHotel) return null;
+  if (!checkOut) return 'Vui lòng chọn ngày trả phòng.';
+  if (checkOut <= checkIn) return 'Ngày trả phòng phải sau ngày nhận phòng ít nhất 1 đêm.';
+  if (unit.availableTo && checkOut > addDays(unit.availableTo, 1)) {
+    return `Ngày trả phòng chậm nhất là ${fmtDate(addDays(unit.availableTo, 1))}.`;
+  }
+  return null;
 }
 
 /** Mặc định: ngày mai (giờ Việt Nam), kéo vào cửa sổ mở bán của mục đặt được. */
@@ -86,15 +107,49 @@ function variantFacts(variant: Product): string[] {
   return facts;
 }
 
+const isoToDmy = (iso: string) => (iso ? iso.split('-').reverse().join('/') : '');
+
+/** "dd/mm/yyyy" → ISO; null nếu chưa đủ hoặc không phải ngày có thật. */
+function dmyToIso(text: string): string | null {
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(text);
+  if (!m) return null;
+  const iso = `${m[3]}-${m[2]}-${m[1]}`;
+  const d = new Date(`${iso}T12:00:00Z`);
+  return Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== iso ? null : iso;
+}
+
+/** Ô ngày dd/mm/yyyy (không phụ thuộc locale trình duyệt) kèm nút mở lịch; min/max chỉ ràng buộc trong lịch, lỗi do validateDates báo. */
 const DateInput: React.FC<{ label: string; value: string; min?: string; max?: string; onChange: (v: string) => void }> = ({
   label, value, min, max, onChange,
-}) => (
-  <div>
-    <label className="block text-[11px] font-bold text-slate-600 mb-1">{label}</label>
-    <input type="date" value={value} min={min} max={max} onChange={(e) => onChange(e.target.value)}
-      className="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg outline-hidden focus:ring-1 focus:ring-blue-500" />
-  </div>
-);
+}) => {
+  const [text, setText] = useState(isoToDmy(value));
+  const picker = useRef<HTMLInputElement>(null);
+  // Đồng bộ khi giá trị đổi từ ngoài (ngày mặc định, tự dời ngày trả); không ghi đè khi đang gõ dở.
+  useEffect(() => { if (value !== (dmyToIso(text) ?? '')) setText(isoToDmy(value)); }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
+  const handleText = (raw: string) => {
+    const digits = raw.replace(/\D/g, '').slice(0, 8);
+    const masked = [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4)].filter(Boolean).join('/');
+    setText(masked);
+    onChange(dmyToIso(masked) ?? '');
+  };
+  return (
+    <div>
+      <label className="block text-[11px] font-bold text-slate-600 mb-1">{label}</label>
+      <div className="relative">
+        <input type="text" inputMode="numeric" placeholder="dd/mm/yyyy" value={text} maxLength={10} aria-label={label}
+          onChange={(e) => handleText(e.target.value)}
+          className="w-full pl-2.5 pr-8 py-1.5 text-xs border border-slate-300 rounded-lg outline-hidden focus:ring-1 focus:ring-blue-500" />
+        <button type="button" aria-label={`Mở lịch ${label.toLowerCase()}`} onClick={() => picker.current?.showPicker?.()}
+          className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-blue-600">
+          <Calendar className="w-4 h-4" />
+        </button>
+        <input ref={picker} type="date" tabIndex={-1} aria-hidden value={value} min={min} max={max}
+          onChange={(e) => e.target.value && onChange(e.target.value)}
+          className="absolute right-0 bottom-0 w-0 h-0 opacity-0 pointer-events-none" />
+      </div>
+    </div>
+  );
+};
 
 /** 404: "Sản phẩm này không còn trên V-OTA" + carousel phổ biến (product.md §4.3.4). */
 const NotFound: React.FC<{ onHome: () => void }> = ({ onHome }) => {
@@ -222,9 +277,12 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
   const nights = isHotel && checkIn && checkOut
     ? Math.max(1, Math.round((new Date(checkOut).getTime() - new Date(checkIn).getTime()) / DAY_MS))
     : 1;
+  // Ngày người dùng nhập tay có thể trống, ngoài cửa sổ mở bán hoặc trả phòng không sau nhận phòng: báo lỗi và khoá nút đặt,
+  // không tự sửa ngày (nightsBetween/defaultUsingDate ở TravelContext sẽ âm thầm sửa nếu cứ gửi đi).
+  const dateError = bookable && !fixedDate ? validateDates(unit, checkIn, isHotel ? checkOut : undefined) : null;
   const mode = unit ? guestModeOf(unit.taxonomy) : 'person';
   const unitAttributes = (unit?.attributes ?? null) as Record<string, unknown> | null;
-  const validCounts = bookable && isValidCounts(mode, counts, maxOccupancyFromAttributes(unitAttributes));
+  const validCounts = bookable && !dateError && isValidCounts(mode, counts, maxOccupancyFromAttributes(unitAttributes));
   // Chỉ để hiển thị: giá chính thức do Backend tính khi thêm vào giỏ và ở bước thanh toán.
   const estimate = bookable
     ? estimateFares({
@@ -440,7 +498,7 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
               ) : isHotel ? (
                 <div className="grid grid-cols-2 gap-2">
                   <DateInput label="Nhận phòng" value={checkIn} min={unit.availableFrom} max={unit.availableTo}
-                    onChange={(v) => { setCheckIn(v); if (checkOut <= v) setCheckOut(addDays(v, 1)); }} />
+                    onChange={(v) => { setCheckIn(v); if (v && (!checkOut || checkOut <= v)) setCheckOut(addDays(v, 1)); }} />
                   <DateInput label="Trả phòng" value={checkOut} min={checkIn ? addDays(checkIn, 1) : undefined}
                     max={unit.availableTo ? addDays(unit.availableTo, 1) : undefined} onChange={setCheckOut} />
                 </div>
@@ -460,6 +518,10 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
                 <span className="text-base font-extrabold text-blue-900 font-mono" data-testid="estimate-total">{formatVnd(estimate.total)}</span>
               </div>
             </div>
+          )}
+
+          {dateError && (
+            <p role="alert" data-testid="date-error" className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-2.5">{dateError}</p>
           )}
 
           {unavailableReason && (
