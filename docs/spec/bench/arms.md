@@ -168,6 +168,16 @@ Ví dụ câu bị loại: *"Khách sạn cung cấp dịch vụ lễ tân 24 gi
 
 ### Nhóm E2 — model (cùng text, đổi model)
 
+**Day 4 (01/10, benchmark local):** Các arm đã có file YAML dùng chung `T3+R`, dense-only, cùng filter/cutoff với `E2.e5`; khác model và dimension. Đây là arm đánh giá, không đổi model `Product` production của FR-SRC-02.
+
+| Arm YAML | Model cấu hình | Chiều | Ghi chú |
+|---|---|---:|---|
+| `E2.e5s` | `e5-small` | 384 | `query:` / `passage:`, CPU |
+| `E2.gte` | `gte-mb` | 768 | `trust_remote_code`, ghi revision thực tế khi report |
+| `E2.bge` | `bge-m3` | 1024 | fp32 theo adapter hiện tại; int8 chưa chốt |
+| `E2.v4-1536`, `E2.v4-1024`, `E2.v4-512`, `E2.v4-256` | `cohere-v4-*` / `cohere-v4` | 1536 / 1024 / 512 / 256 | Cùng `embed-v4.0`, cache và collection tách theo dimension; chỉ chạy khi được phép gửi text tới Cohere |
+
+
 **E2.v4 — `embed-v4.0`, `output_dimension = 1024`.** Cùng `embed_text` thắng E1. Đo nDCG@10 × latency; v4 có context 128k nên E4.full có thể chạy lại trên v4 nếu v3 bị gate 512 token.
 
 **E2.bge — `bge-m3` local, không prefix.** Đối chứng model mở có số VN-MTEB. Đây là arm trả lời "Cohere có tốt cho tiếng Việt của mình không". **q1** (không dấu) và slice audience là chỗ hai model có thể khác nhau nhiều nhất.

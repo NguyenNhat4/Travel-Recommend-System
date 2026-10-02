@@ -3,17 +3,18 @@ from .state import AgentState
 
 
 def route_after_classify(state: AgentState) -> str:
-    return {"simple": "converse", "travel": "extract", "error": "dead_letter"}.get(state.get("route"), "dead_letter")
+    return {"simple": "converse", "travel": "extract", "error": "dead_letter"}.get(state.get("decision"), "dead_letter")
 
 
 def route_after_extract(state: AgentState) -> str:
-    return {"tool": "tool", "missing_info": "clarify", "error": "dead_letter"}.get(state.get("route"), "dead_letter")
+    return {"tool": "tool", "missing_info": "clarify", "error": "dead_letter"}.get(state.get("decision"), "dead_letter")
 
 
 def route_after_evaluate(state: AgentState) -> str:
-    if state.get("decision") == "constraint_clarification":
+    decision = state.get("decision")
+    if decision in {"constraint_clarification", "invalid_input"}:
         return "clarify"
-    return {"needs_retry": "retry", "failed": "dead_letter"}.get(state.get("evaluation_result"), "compose")
+    return {"needs_retry": "retry", "failed": "dead_letter", "error": "dead_letter"}.get(decision, "compose")
 
 
 def route_after_retry(state: AgentState) -> str:

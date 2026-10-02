@@ -23,6 +23,7 @@ import contextvars
 import functools
 import json
 import logging
+import time
 import traceback
 from collections.abc import Callable, Coroutine
 from concurrent.futures import Executor
@@ -33,9 +34,11 @@ from src.backend.app.application.auth.errors import AuthError
 from src.backend.app.application.auth.principal import AuthPrincipal
 from src.backend.app.application.catalog.errors import CatalogError
 from src.backend.app.application.catalog.views import destination_list
+from src.backend.app.application.ports.call_telemetry import CallTelemetry
 from src.backend.app.application.ports.itinerary_tools import ToolError
 from src.backend.app.application.recommendation.responses import recommendation_response
 from src.backend.app.application.search.responses import search_tool_payload
+from src.backend.app.core.call_context import call_scope
 from src.backend.app.core.request_context import current_request_id
 
 logger = logging.getLogger("uvicorn.error")
@@ -56,7 +59,7 @@ class InProcessItineraryTools:
 
     def __init__(self, *, search: Provider, recommend: Provider, index: Provider, product_detail: Provider,
                  similar_products: Provider, token_verifier: Provider, revoked_tokens: Provider,
-                 executor: Executor | None = None):
+                 executor: Executor | None = None, telemetry: CallTelemetry | None = None):
         self._search = search
         self._recommend = recommend
         self._index = index
@@ -65,6 +68,7 @@ class InProcessItineraryTools:
         self._token_verifier = token_verifier
         self._revoked_tokens = revoked_tokens
         self._executor = executor
+        self._telemetry = telemetry  # đo lần gọi nguồn `agent` (docs/prd/deployment-plan.md §5)
 
     @property
     def product_count(self) -> int | None:
@@ -135,6 +139,23 @@ class InProcessItineraryTools:
         return await asyncio.get_running_loop().run_in_executor(self._executor, job)
 
     async def _guard(self, tool: str, call: Coroutine[Any, Any, Any]) -> dict[str, Any]:
+        """Mỗi lời gọi công cụ là một lần gọi nguồn `agent`: tên công cụ, kết quả, thời gian và chi tiết use case."""
+        started, status = time.perf_counter(), "ok"
+        with call_scope("agent") as detail:
+            try:
+                return await self._mapped(tool, call)
+            except ToolError as exc:
+                status = f"error:{exc.code}"
+                raise
+            except BaseException:  # CancelledError khi agent hết giờ
+                status = "cancelled"
+                raise
+            finally:
+                if self._telemetry is not None:
+                    self._telemetry.record({"source": "agent", "kind": "tool", "name": tool, "status": status,
+                                            "ms": round((time.perf_counter() - started) * 1000, 1), **detail})
+
+    async def _mapped(self, tool: str, call: Coroutine[Any, Any, Any]) -> dict[str, Any]:
         """Một chỗ map lỗi. CancelledError không phải Exception nên timeout của agent vẫn huỷ được lời gọi."""
         try:
             result = await call

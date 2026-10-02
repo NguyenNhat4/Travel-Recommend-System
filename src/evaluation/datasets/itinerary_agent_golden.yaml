@@ -599,7 +599,8 @@
   turns:
     # Số ngày suy từ khoảng ngày (tính cả hai đầu). Lỗi agent 24/09: lịch không có hoạt động nào dù
     # Hà Nội có 68 điểm tham quan.
-    - message: đi Hà Nội từ 1/10 đến 3/10
+    # Ngày dùng placeholder (2026-09-30): ngày cứng "1/10 đến 3/10" sẽ thành ngày đã qua và bị hỏi lại (G-078).
+    - message: đi Hà Nội từ {today+1} đến {today+3}
       expect:
         httpStatus: 200
         status: [COMPLETED]
@@ -719,6 +720,7 @@
         status: [NEEDS_CLARIFICATION]
         missingFieldsInclude: [destination, days]
         toolCalled: false
+        titleFirstLine: true
         forbiddenText: ["Bạn muốn đi đâu"]
 
 - id: G-064
@@ -727,9 +729,11 @@
   turns:
     - message: Huế 0 ngày
       expect:
-        httpStatus: 400
-        errorCode: INVALID_TRIP_DURATION
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        missingFieldsInclude: [days]
         toolCalled: false
+        titleFirstLine: true
 
 - id: G-065
   category: invalid_duration
@@ -737,9 +741,11 @@
   turns:
     - message: Phú Quốc 30 ngày
       expect:
-        httpStatus: 400
-        errorCode: INVALID_TRIP_DURATION
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        missingFieldsInclude: [days]
         toolCalled: false
+        titleFirstLine: true
 
 - id: G-066
   category: invalid_request
@@ -826,8 +832,11 @@
     # Vũng Tàu không có trong catalog (không phải tên gọi khác của điểm đến nào).
     - message: đi vũng tàu 1 ngày
       expect:
-        httpStatus: 422
-        errorCode: UNSUPPORTED_DESTINATION
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        missingFieldsInclude: [destination]
+        toolCalled: false
+        titleFirstLine: true
 
 - id: G-074
   category: greeting
@@ -837,6 +846,7 @@
       expect:
         httpStatus: 200
         toolCalled: false
+        titleFirstLine: false  # chào hỏi, cảm ơn: không có tiêu đề
 
 - id: G-075
   category: ambiguous
@@ -848,6 +858,7 @@
         httpStatus: 200
         status: [NEEDS_CLARIFICATION]
         toolCalled: false
+        titleFirstLine: true
 
 # ---------------------------------------------------------------------------------------------------
 # G-076: thêm ngày 2026-09-29 cùng tool get_similar_products (đề xuất đã chốt
@@ -875,3 +886,66 @@
         excludeProductsFromTurn: {turn: 1, role: stay}
         warningsExclude: [PRODUCT_DROPPED_DESTINATION]
         toolsInclude: [get_similar_products]
+
+# ---------------------------------------------------------------------------------------------------
+# G-077: thêm ngày 2026-09-29 (đề xuất đã chốt
+# docs/prd/update-archive/2026-09-29-form-goi-y-thong-tin-chuyen-di.md). Đánh số lại từ G-076 vì trùng id
+# với case Similar-tool ở trên khi merge hai nhánh (mỗi bên độc lập lấy "id tiếp theo" lúc chưa thấy nhau).
+
+- id: G-077
+  category: multi_turn
+  fr: [FR-AGT-01, FR-AGT-03, FR-AGT-05]
+  turns:
+    # Người dùng không nêu số ngày: lượt 1 hỏi lại bằng câu chữ, chưa gợi ý form, chưa gọi tool.
+    - message: hà nội
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        missingFieldsInclude: [days]
+        toolCalled: false
+        titleFirstLine: true
+    # Vẫn không nêu số ngày: lượt 2 không hỏi lại y hệt nữa (hết ngân sách hỏi), phải gợi ý form.
+    - message: bao nhiêu ngày cũng được
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        missingFieldsInclude: [days]
+        toolCalled: false
+        titleFirstLine: true
+    # Người dùng chỉnh form rồi gửi câu hoàn chỉnh (mô phỏng bằng câu chat thường): lập lịch bình thường.
+    - message: lên lịch trình 3 ngày tại Hà Nội
+      expect:
+        httpStatus: 200
+        status: [COMPLETED, FALLBACK]
+        intent: {destination: Hà Nội, days: 3}
+        toolCalled: true
+
+# ---------------------------------------------------------------------------------------------------
+# G-078: thêm ngày 2026-09-30 (đề xuất đã chốt
+# docs/prd/update-archive/2026-09-30-bao-loi-dau-vao-khong-hop-le.md). Giá trị không hợp lệ (ngày đi đã qua,
+# số ngày, điểm đến ngoài catalog...) thì hỏi lại qua clarify: dòng đầu in đậm, LLM viết lý do và gợi ý.
+# Từ đề xuất này G-064, G-065 (số ngày) và G-073 (điểm đến) cũng là hỏi lại (200) thay vì lỗi 400/422.
+
+- id: G-078
+  category: multi_turn
+  fr: [FR-AGT-01]
+  turns:
+    - message: đi Nha Trang 3 ngày từ {today-1}
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        missingFieldsInclude: [startDate]
+        toolCalled: false
+        titleFirstLine: true
+    - message: đi từ ngày {today+7}
+      expect:
+        httpStatus: 200
+        status: [COMPLETED, FALLBACK, NO_RESULTS]
+        intent: {destination: Nha Trang, days: 3, startDate: "{today+7:iso}"}
+        toolCalled: true
+
+# ---------------------------------------------------------------------------------------------------
+# Thêm ngày 2026-09-30 (đề xuất đã chốt docs/prd/update-archive/2026-09-30-tieu-de-cho-moi-cau-tra-loi.md):
+# khoá `titleFirstLine` kiểm dòng đầu của câu trả lời là `**Tiêu đề**` kèm phần chi tiết. Đặt ở các case
+# hỏi lại xác định (G-063, G-064, G-065, G-073, G-075, G-077, G-078); G-074 (cảm ơn) kỳ vọng không có tiêu đề.
+# Không đặt ở G-046 (LLM có thể xếp vào chào hỏi hoặc ngoài phạm vi) và các case NO_RESULTS (kết quả phụ thuộc dữ liệu).

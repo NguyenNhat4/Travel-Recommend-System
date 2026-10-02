@@ -174,18 +174,27 @@ describe('AssistantResultPanel', () => {
       ]);
     });
 
-    it('adds the whole itinerary and single items through onAddToCart', () => {
+    it('attaches the itinerary party to every cart item so the cart gets adults and children', () => {
+      const party = { adults: 2, children: 1 };
+      expect(itineraryCartItems(completed.status === 'COMPLETED' ? completed.itinerary : (undefined as never), party)).toEqual([
+        { product: hotel, usingDate: '2026-10-01', checkOutDate: '2026-10-02', party },
+        { product: ticket, usingDate: '2026-10-01', party },
+      ]);
+    });
+
+    it('adds the whole itinerary and single items through onAddToCart, with the intent party', () => {
       const onAddToCart = vi.fn();
       render(<AssistantResultPanel response={completed} onAddToCart={onAddToCart} />);
+      const party = { adults: 2, children: 1 };                                 // intent.party của fixture
       fireEvent.click(screen.getByRole('button', { name: /Thêm cả lịch trình vào giỏ \(2\)/ }));
       expect(onAddToCart).toHaveBeenLastCalledWith([
-        { product: hotel, usingDate: '2026-10-01', checkOutDate: '2026-10-02' },
-        { product: ticket, usingDate: '2026-10-01' },
+        { product: hotel, usingDate: '2026-10-01', checkOutDate: '2026-10-02', party },
+        { product: ticket, usingDate: '2026-10-01', party },
       ]);
       // hotel + ticket ngày 1 + ticket ngày 2; vé hết chỗ không có nút.
       expect(screen.getAllByRole('button', { name: 'Thêm vào giỏ' })).toHaveLength(3);
       fireEvent.click(screen.getAllByRole('button', { name: 'Thêm vào giỏ' })[2]);
-      expect(onAddToCart).toHaveBeenLastCalledWith([{ product: ticket, usingDate: '2026-10-02' }]);
+      expect(onAddToCart).toHaveBeenLastCalledWith([{ product: ticket, usingDate: '2026-10-02', party }]);
     });
 
     it('hides add-to-cart when the price is unknown', () => {

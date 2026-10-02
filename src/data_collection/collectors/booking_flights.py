@@ -176,6 +176,11 @@ def parse_detail(payload):
         if arrival <= departure:
             raise ValueError("Ngày/giờ đến không sau ngày/giờ đi")
         number_class = text_at(leg, "timeline_leg_info_flight_number_and_class").split(" · ")
+        cabin_text = number_class[1].strip().lower().removesuffix(" class") if len(number_class) > 1 else ""
+        observed_cabin = {"economy": "ECONOMY", "premium economy": "PREMIUM_ECONOMY",
+                          "business": "BUSINESS", "first": "FIRST"}.get(cabin_text)
+        if observed_cabin != ctx.get("cabinClass"):
+            raise ValueError("Hạng vé trên chặng không khớp hạng tìm kiếm; không suy hạng từ URL")
         number = number_class[0].replace(" ", "")
         if not re.fullmatch(r"[A-Z0-9]{2}\d{1,4}[A-Z]?", number):
             raise ValueError("Thiếu số hiệu chuyến bay")

@@ -118,6 +118,20 @@ def test_holes_done_when_scenario(cfg, sample_home, tmp_path, monkeypatch):
     assert H.verify_append(records, tampered)
 
 
+def test_cap_holes_balances_queries_and_is_deterministic():
+    records = [
+        G.GoldRecord(qid="q1", text="a", slice="s1", judgments={"old": 2}, provenance={"old": "human"}),
+        G.GoldRecord(qid="q2", text="b", slice="s2", judgments={"old": 2}, provenance={"old": "human"}),
+    ]
+    holes = [
+        H.Hole("q1", f"a{i}", ["A", "B"] if i == 0 else ["A"], i + 1) for i in range(5)
+    ] + [H.Hole("q2", f"b{i}", ["A"], i + 1) for i in range(5)]
+    got = H.cap_holes(holes, records, 4, seed=42)
+    assert got == H.cap_holes(holes, records, 4, seed=42)
+    assert {h.qid for h in got} == {"q1", "q2"}
+    assert any(h.product_id == "a0" for h in got)
+
+
 def test_write_holes_split_alternates_queries(cfg, sample_home, tmp_path):
     records = read_gold_jsonl(GOLD)
     view = _view(cfg)
@@ -191,6 +205,7 @@ def test_rescore_after_holes_restores_judged_and_matches_fresh_run(cfg, sample_h
     env2 = R.load_env(cfg, "sample", g2, run_id="t1")
     res, rows2, info = R.rescore_arm(env2, "t1", "B0")
     assert res["overall"]["judged@10"] == 1.0 and res["needs_labels"] == [] and info["missing"] == []
+    assert res["condensed"]["mode"] == "condensed" and res["condensed"]["coverage"]["retained_ratio"] == 1.0
     assert res["rescored_from"] == env.gold_version and res["gold_version"] == env2.gold_version and res["latency_ms"] == res0["latency_ms"]
     # metric khớp chạy lại từ đầu trên gold mới
     st2 = _Store(records, view)
@@ -200,8 +215,9 @@ def test_rescore_after_holes_restores_judged_and_matches_fresh_run(cfg, sample_h
         assert res["overall"][m] == pytest.approx(fresh["overall"][m], abs=1e-12)
     vers = R.available_versions("t1", "B0")
     assert set(vers) == {env.gold_version, env2.gold_version}
-    got, _, gv = R.read_results_at("t1", "B0", env2.gold_version)
+    got, stored_rows, gv = R.read_results_at("t1", "B0", env2.gold_version)
     assert gv == env2.gold_version and got["rescored_from"] == env.gold_version
+    assert R.compare(stored_rows, stored_rows, cfg, condensed=True)["verdict"] == "TIE"
     assert R.read_results_at("t1", "B0")[2] == max(vers, key=R._version_key)
     with pytest.raises(R.RunnerError, match="không có kết quả trên gold"):
         R.read_results_at("t1", "B0", "gold_v99")
@@ -244,7 +260,13 @@ def test_cli_holes_import_rescore(cfg, sample_home, tmp_path, monkeypatch):
     res = runner_cli.invoke(app, ["--dataset", "sample", "--run-id", "t7", "rescore", "--gold", str(gold_p)])
     assert_exit(res, 0, "B0:", "judged@10 1.000")
     assert (R.arm_dir("t7", "B0", create=False) / f"results@fixture_{H.file_sha256(gold_p)[:8]}.json").exists()   # ':' → '_' (Windows)
-    assert_exit(runner_cli.invoke(app, ["--run-id", "t7", "compare", "B0", "B0"]), 0, "TIE")
+    latest = runner_cli.invoke(app, ["--run-id", "t7", "compare", "B0", "B0"])
+    assert_exit(latest, 0, "TIE", "judged@10", "1.000")
+    version = R.read_results_at("t7", "B0")[2]
+    assert_exit(runner_cli.invoke(app, ["--run-id", "t7", "compare", "B0", "B0", "--gold", version]),
+                0, "TIE", "1.000")
+    assert_exit(runner_cli.invoke(app, ["--run-id", "t7", "compare", "B0", "B0", "--gold", "gold_v99"]),
+                2, "không có kết quả trên gold gold_v99")
     # không còn hole → exit 1
     assert_exit(runner_cli.invoke(app, ["--dataset", "sample", "--run-id", "t7", "gold", "holes", "--arms", "B0", "--gold", str(gold_p),
                                         "--out-dir", str(tmp_path / "h2")]), 1, "không có hole")

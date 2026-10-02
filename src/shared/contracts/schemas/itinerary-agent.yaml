@@ -428,6 +428,11 @@ ItineraryNeedsClarification:
       type: string
     question:
       type: string
+      description: >-
+        Câu hỏi hiển thị cho người dùng. Dòng đầu có dạng `**Tiêu đề**` (markdown in đậm) tóm tắt cả câu, các dòng
+        sau là phần chi tiết: lý do và gợi ý khi một giá trị không hợp lệ (ngày đi đã qua, điểm đến ngoài catalog,
+        số ngày, số người hoặc ngân sách ngoài giới hạn), hoặc câu hỏi cụ thể khi còn thiếu thông tin. Câu trả
+        lời chào hỏi, cảm ơn không có tiêu đề.
     missingFields:
       type: array
       minItems: 1
@@ -454,6 +459,30 @@ ItineraryNeedsClarification:
             type: integer
             minimum: 1
             maximum: 7
+    clarificationForm:
+      type: object
+      description: Form gợi ý hiển thị trong khung chat khi hỏi bằng câu chữ một lượt vẫn chưa đủ thông tin.
+      required:
+      - fields
+      - defaults
+      properties:
+        fields:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            enum:
+            - destination
+            - days
+            - startDate
+            - party
+            - budget
+        defaults:
+          $ref: ../openapi.yaml#/components/schemas/TripIntent
+        startDateMin:
+          type: string
+          format: date
+          description: Ngày khởi hành sớm nhất được phép chọn; hôm nay theo giờ Việt Nam.
     metadata:
       $ref: ../openapi.yaml#/components/schemas/ItineraryMetadata
 ItineraryNoResults:
@@ -472,6 +501,8 @@ ItineraryNoResults:
       $ref: ../openapi.yaml#/components/schemas/TripIntent
     message:
       type: string
+      description: >-
+        Dòng đầu có dạng `**Tiêu đề**` (markdown in đậm) tóm tắt cả câu, các dòng sau là phần chi tiết.
     suggestions:
       type: array
       items:
@@ -497,6 +528,8 @@ ItineraryFallback:
       - type: 'null'
     message:
       type: string
+      description: >-
+        Dòng đầu có dạng `**Tiêu đề**` (markdown in đậm) tóm tắt cả câu, các dòng sau là phần chi tiết.
     searchResults:
       $ref: ../openapi.yaml#/components/schemas/SearchResultsByTaxonomy
     metadata:

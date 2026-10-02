@@ -17,7 +17,7 @@ Không dùng URL từ máy host (`localhost`) bên trong container. Nếu cần 
 
 ## Search / Recommendation
 
-RecSys cố định Cohere `embed-multilingual-v3.0` (1024 chiều). Job index dùng `search_document`; request tìm kiếm dùng `search_query`. `WEAVIATE_URL`, `WEAVIATE_COLLECTION`, `COHERE_API_KEY` và `SEARCH_CUTOFF` (`0.62`, còn phải benchmark lại) được đọc qua `core/config.py`. Weaviate chỉ giữ vector + `productId`/`modelVersion`/`textHash`; tên, giá, ảnh và availability luôn hydrate từ PostgreSQL. Metadata nạp lúc khởi động rồi nạp lại mỗi `CATALOG_REFRESH_SECONDS` (mặc định 900 giây); lần nạp lại lỗi thì giữ bản đang phục vụ. Search unit chưa có vector (job index chưa chạy xong) vẫn có giá mới nhưng chưa tìm được qua vector. Chưa nạp được lần nào — thiếu PostgreSQL, Weaviate, khóa Cohere, hoặc dưới một nửa search unit có vector đúng model — thì RecSys tắt và thử lại sau 30 giây, các route còn lại vẫn chạy.
+RecSys cố định Cohere `embed-multilingual-v3.0` (1024 chiều). Job index dùng `search_document`; request tìm kiếm dùng `search_query`. `WEAVIATE_URL`, `WEAVIATE_COLLECTION`, `COHERE_API_KEY` và `SEARCH_CUTOFF` (`0.62`, còn phải benchmark lại) được đọc qua `core/config.py`. Job index (`python -m src.backend.jobs.embed_products`) gọi Cohere song song `COHERE_EMBED_CONCURRENCY` lô (mặc định 4; 1 = tuần tự) dưới trần `COHERE_CALLS_PER_MINUTE` lượt/phút cho cả job (mặc định 90, hợp key Trial 100 lượt/phút; 0 = không giới hạn); gặp 429 thì mọi lô cùng chờ. Chỉ luồng chính ghi Weaviate, lô nào xong ghi ngay, lỗi giữa chừng vẫn giữ phần đã ghi. `--force` nhúng lại toàn bộ (chỉ để đo, tốn quota). Search lúc chạy API không bị giới hạn này. Weaviate chỉ giữ vector + `productId`/`modelVersion`/`textHash`; tên, giá, ảnh và availability luôn hydrate từ PostgreSQL. Metadata nạp lúc khởi động rồi nạp lại mỗi `CATALOG_REFRESH_SECONDS` (mặc định 900 giây); lần nạp lại lỗi thì giữ bản đang phục vụ. Search unit chưa có vector (job index chưa chạy xong) vẫn có giá mới nhưng chưa tìm được qua vector. Vector **truy vấn** được cache trong tiến trình (`application/search/query_cache.py`, LRU `SEARCH_EMBED_CACHE_SIZE`, khoá = câu sau chuẩn hoá; `diagnostics.embedCache` hit/miss, contract 1.12.0) và nạp sẵn ở nền sau lần nạp catalog đầu (`SEARCH_PREWARM`, file `data/search_prewarm_queries.txt` + head query `app.search_logs`); `python -m src.backend.jobs.prewarm_query_cache --base-url URL` làm nóng một backend đang chạy qua HTTP. Job index có `--lexical-only`: chỉ ghi property BM25 còn thiếu và từ chối khi catalog lệch index (không embed, không xoá). Chưa nạp được lần nào — thiếu PostgreSQL, Weaviate, khóa Cohere, hoặc dưới một nửa search unit có vector đúng model — thì RecSys tắt và thử lại sau 30 giây, các route còn lại vẫn chạy.
 
 Endpoint hiện có (prefix `/api/v1`): `GET|POST /search` (`q`/`query`, `taxonomy`, `destination`, `limit`, `offset`;
 ở `ITINERARY_DATA_MODE=http`, adapter đổi tham số tool `query` thành `q`) · `GET /similar/{productId}?k=` · `GET /recommendations?k=&destination=`
@@ -30,7 +30,8 @@ auth v1 `POST /auth/register|login`, `GET /auth/me` · chỉ BFF (`X-Service-Tok
 `GET /cart`, `POST /cart/items`, `PATCH|DELETE /cart/items/{cartItemId}`, `POST /bookings`,
 `GET /bookings/{referenceCode}`, `POST /bookings/{referenceCode}/cancel` · Stripe gọi thẳng (chữ ký, không JWT)
 `POST /payments/stripe/webhook`. Ngoài prefix: `GET /health`,
-`GET /.well-known/jwks.json`.
+`GET /.well-known/jwks.json`, `GET /metrics` (Prometheus), `GET /internal/calls` (lần gọi web / agent gần nhất cho monitor;
+`docs/spec/hop-dong-tich-hop-backend.md` §8.6a).
 
 ## Auth
 
@@ -45,7 +46,9 @@ RUN_REDIS_INTEGRATION=1 python -m pytest -q src/backend/tests/integration`.
 
 Luồng và sơ đồ: `docs/spec/booking/so-do-luong-dat-cho-thanh-toan.md`. `POST /bookings` giữ chỗ 30 phút và trả
 `payment.checkoutUrl` (trang Stripe Checkout); đơn chỉ `CONFIRMED` khi webhook có chữ ký báo đã thu tiền (hoặc job
-đối soát tự hỏi Stripe). Database cần migration `0003`, `0004` (`make db-migrate`).
+đối soát tự hỏi Stripe). Database cần migration `0003`, `0004`, `0005` (`make db-migrate`).
+
+Checkout ba bước (FR-BKG-08, `docs/spec/booking/checkout-nhieu-buoc-hanh-khach.md`): giỏ lưu `guests` (người lớn, trẻ em) và trả `fares`; `POST /bookings` nhận `travelers` và `itemDetails` theo từng mục, kiểm mọi luật trước khi gọi Stripe và trả `400 VALIDATION_ERROR` liệt kê hết vi phạm. Luật nằm ở `domain/booking/party_rules.py`, giá theo loại khách ở `domain/booking/fares.py`; Web chạy cùng bộ ca `src/shared/contracts/tests/booking-rules-cases.json`. Migration `0005` cần chạy trước khi khởi động Backend mới (thêm cột vào `app.cart_items`, bảng `app.booking_travelers`); chạy `python db/migrations/run.py --status` để xem đã áp chưa.
 
 ```env
 STRIPE_SECRET_KEY=sk_test_...      # chỉ khoá test; sk_live_ bị từ chối khi khởi động
@@ -71,7 +74,7 @@ pytest -q src/backend/tests/integration/test_booking_postgres.py` (dùng user te
 
 | Lớp | Thư mục | Nội dung |
 |---|---|---|
-| domain | `domain/<domain>/` | Business rule thuần: vai trò sản phẩm + text builder (`catalog`), FILTER → SCORE → CUTOFF (`search`), hồ sơ người dùng + MMR + phổ biến (`recommendation`), chuẩn hoá intent + ghép lịch trình (`itinerary`), mật khẩu + phiên (`auth`), máy trạng thái đơn/thanh toán + giữ chỗ + chính sách huỷ (`booking`) |
+| domain | `domain/<domain>/` | Business rule thuần: vai trò sản phẩm + text builder (`catalog`), FILTER → SCORE → CUTOFF (`search`), hồ sơ người dùng + MMR + phổ biến (`recommendation`), chuẩn hoá intent + ghép lịch trình (`itinerary`), mật khẩu + phiên (`auth`), máy trạng thái đơn/thanh toán + giữ chỗ + chính sách huỷ + đoàn khách, dòng giá theo loại khách và luật kiểm (`booking`: `party`, `fares`, `party_rules`) |
 | application | `application/ports/` | Mỗi port một file: `cdp_client.py` (`CdpClient` ghi, `CdpHistoryReader` đọc), `embedder.py`, `vector_store.py`, `unit_index.py`, `llm.py`, `itinerary_planner.py`, `itinerary_tools.py`, `auth.py`, `payment_gateway.py`, `booking_store.py`, `cart_repository.py`, `product_catalog.py`, `product_query.py` (GET /products) |
 | application | `application/<domain>/` | Use case: `SearchProducts`, `SimilarProducts`, `RecommendForUser`, `BuildPopularity`, `PlanItinerary`, auth, booking, tracking; `itinerary/engine_tools.py` (`InProcessItineraryTools`, tool itinerary gọi engine trong tiến trình); `auth/bearer.py` (resolver Bearer dùng chung cho `api/deps.py` và tool) |
 | agents | `agents/` | LangGraph 10 node; `runtime_dependencies.py` hiện thực port `ItineraryPlanner`; `tools/itinerary_gateway.py` gọi Search/Recommendation (và Similar ở lượt đổi món) qua port |

@@ -7,6 +7,8 @@ Mỗi lượt có thư mục `<CATALOG_RUN_ROOT>/<lượt>/` chứa:
 Trong `<CATALOG_STATE_DIR>/`:
   running.json  lượt đang chạy + nhịp sống (heartbeat) 10 giây/lần — monitor dùng để biết lượt còn sống
   stop.request  monitor ghi để yêu cầu dừng; lượt đang chạy tự kiểm và dừng các tiến trình con của nó
+  live_control.json  monitor ghi để tạm dừng / đổi delay từng nguồn khi lượt đang chạy (collectors/live_control.py);
+                xoá đầu và cuối mỗi lượt
   runs.jsonl    tóm tắt mọi lượt, không bị xoá theo `runs.keep`
 
 Dừng hoạt động qua file nên được cả khi monitor và lượt chạy nằm ở hai container khác nhau (cùng volume /data).
@@ -24,6 +26,8 @@ import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+
+from collectors.live_control import FILE_NAME as LIVE_FILE
 
 RUN_FILE = "run.json"
 LOG_FILE = "job.log"
@@ -127,7 +131,16 @@ def descendants(pid: int) -> list[int]:
 
 def terminate_children(grace: float = 10.0) -> int:
     """SIGTERM mọi tiến trình con (crawl.py, Chromium, driver Playwright), chờ `grace` giây rồi SIGKILL phần còn lại."""
-    pids = descendants(os.getpid())
+    return _terminate(descendants(os.getpid()), grace)
+
+
+def terminate_tree(pid: int, grace: float = 10.0) -> int:
+    """Như terminate_children nhưng cho một tiến trình và mọi tiến trình con của nó (một nguồn crawl.py quá giờ, P4).
+    Lấy danh sách con trước khi gửi tín hiệu: con của tiến trình đã chết bị chuyển cho init, không tìm lại được."""
+    return _terminate([*descendants(pid), pid], grace)
+
+
+def _terminate(pids: list[int], grace: float) -> int:
     for pid in pids:
         try:
             os.kill(pid, signal.SIGTERM)
@@ -177,12 +190,32 @@ class RunRecorder:
             "steps": [], "counts": {}, "sources": {},
         }
         self._t0 = time.monotonic()
+        self._base_seconds = 0
+
+    @classmethod
+    def resume(cls, run_dir: Path, state_dir: Path, *, from_step: str, trigger: str) -> "RunRecorder":
+        """Mở lại lượt đã kết thúc để chạy lại từ bước `from_step` (CP6 docs/plan/2026-09-28-normalize-on-dinh-theo-buoc.md).
+        Giữ nguyên các bước cũ (bước chạy lại được thêm vào sau), ghi một mục `resumes` (lúc, từ bước, trạng thái / lỗi cũ)."""
+        data = read_json(Path(run_dir) / RUN_FILE)
+        if not isinstance(data, dict) or not data.get("id"):
+            raise ValueError(f"Không đọc được {RUN_FILE} của lượt {Path(run_dir).name}")
+        if data.get("status") == "running":
+            raise ValueError("Lượt này đang chạy (hoặc chưa ghi kết thúc); không chạy lại được")
+        rec = cls(run_dir, state_dir, run_id=data["id"], mode=data.get("mode") or "full",
+                  trigger=data.get("trigger") or trigger, settings=data.get("settings") or {})
+        keep = {k: v for k, v in data.items() if k not in ("status", "finishedAt", "exitCode", "error", "errorKind",
+                                                              "host", "pid")}
+        rec.data.update(keep)
+        rec.data["resumes"] = list(data.get("resumes") or []) + [{
+            "from": from_step, "at": now_iso(), "trigger": trigger, "previousStatus": data.get("status"),
+            "previousError": data.get("error"), "previousSeconds": data.get("seconds")}]
+        rec._base_seconds = data.get("seconds") or 0
+        return rec
 
     # -- vòng đời
     def start(self) -> "RunRecorder":
         self.run_dir.mkdir(parents=True, exist_ok=True)
-        stale = self.state_dir / STOP_FILE
-        if stale.exists():  # yêu cầu dừng của lượt trước không áp cho lượt mới
+        for stale in (self.state_dir / STOP_FILE, self.state_dir / LIVE_FILE):  # yêu cầu của lượt trước không áp cho lượt mới
             stale.unlink(missing_ok=True)
         self._log_handle = open(self.run_dir / LOG_FILE, "a", encoding="utf-8")
         lock = threading.Lock()
@@ -200,7 +233,7 @@ class RunRecorder:
             self._thread.join()
         with self.lock:
             self.data.update(status=status, exitCode=exit_code, error=(error or None) and error[:2000],
-                             finishedAt=now_iso(), seconds=round(time.monotonic() - self._t0))
+                             finishedAt=now_iso(), seconds=round(time.monotonic() - self._t0) + self._base_seconds)
             self.data["diskBytes"] = dir_bytes(self.run_dir)
             self.save(running=False)
         self._stop_thread.set()
@@ -212,7 +245,7 @@ class RunRecorder:
                 fh.write(json.dumps(summary, ensure_ascii=False, default=str) + "\n")
         except OSError:
             pass
-        for path in (self.state_dir / RUNNING_FILE, self.state_dir / STOP_FILE):
+        for path in (self.state_dir / RUNNING_FILE, self.state_dir / STOP_FILE, self.state_dir / LIVE_FILE):
             try:
                 path.unlink(missing_ok=True)
             except OSError:
@@ -270,8 +303,12 @@ class RunRecorder:
         try:
             yield entry["detail"]
         except BaseException as exc:
-            entry["status"] = "stopped" if (isinstance(exc, StopRequested) or self.stop_event.is_set()) else "error"
+            # lỗi phân loại (pipeline_errors) mang trạng thái bước riêng, vd. BlockedError → "blocked"
+            entry["status"] = "stopped" if (isinstance(exc, StopRequested) or self.stop_event.is_set()) \
+                else getattr(exc, "step_status", "error")
             entry["error"] = f"{type(exc).__name__}: {exc}"[:1000]
+            if getattr(exc, "kind", None):
+                entry["errorKind"] = exc.kind
             raise
         else:
             if self.stop_event.is_set():

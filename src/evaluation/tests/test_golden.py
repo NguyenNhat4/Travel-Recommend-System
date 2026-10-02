@@ -198,6 +198,27 @@ class ExpectedToolCallTests(unittest.TestCase):
     def test_validation_error_expects_no_tool(self):
         self.assertFalse(expected_tool_call({"error": {"code": "VALIDATION_ERROR"}}))
 
+    def test_title_first_line_checks_the_bold_summary_line(self):
+        from src.evaluation.agent.golden import answer_text, dataset_findings, has_title_first_line
+        self.assertTrue(has_title_first_line("**Bạn muốn đi đâu?**\nMình cần biết điểm đến."))
+        for text in ("Bạn muốn đi đâu?", "**Chỉ tiêu đề**", "Xin chào **bạn**\nđi đâu?", "**a** và **b**\nx"):
+            with self.subTest(text=text):
+                self.assertFalse(has_title_first_line(text))
+        self.assertEqual(answer_text({"error": {"message": "lỗi"}}), "lỗi")
+        titled = {"status": "NEEDS_CLARIFICATION", "question": "**Ngoài phạm vi hỗ trợ**\nChỉ hỗ trợ du lịch."}
+        self.assertEqual(dataset_findings(titled, 200, [], {"titleFirstLine": True}, {}), [])
+        plain = {"status": "NEEDS_CLARIFICATION", "question": "Chào bạn!"}
+        self.assertEqual(len(dataset_findings(plain, 200, [], {"titleFirstLine": True}, {})), 1)
+        self.assertEqual(dataset_findings(plain, 200, [], {"titleFirstLine": False}, {}), [])
+
+    def test_an_unsupported_destination_passing_through_tool_is_not_a_retrieval(self):
+        from src.evaluation.agent.golden import retrieval_ran
+        searched = [{"node": "tool", "metadata": {"calls": 2}}]
+        rejected = [{"node": "tool", "metadata": {"retrieval": False}}]
+        self.assertTrue(retrieval_ran(searched))
+        self.assertFalse(retrieval_ran(rejected))
+        self.assertFalse(retrieval_ran([{"node": "extract", "metadata": {}}]))
+
 
 def _product(product_id, taxonomy="attraction", price=100000, duration=60):
     return {"productId": product_id, "taxonomy": taxonomy, "unitPrice": price,

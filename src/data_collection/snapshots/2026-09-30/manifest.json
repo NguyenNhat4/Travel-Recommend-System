@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "snapshotId": "2026-09-30",
+  "description": "Snapshot 2026-09-23 cộng vé máy bay trip.com cào lại 30/09/2026 (vé khứ hồi có hạng vé, 29 tuyến): 11718 sản phẩm",
+  "products": {
+    "file": "products.jsonl.gz",
+    "rows": 11718,
+    "sha256": "07134fc2c5e50c28f63fefdcb02fef5699e75ee19a7e2364c29e05d336918235",
+    "gzipSha256": "69db7f770bd81814cf3a8f49b86ce21186ba05917e4b1adb9c73fba17c82eb7a"
+  },
+  "comboManual": {
+    "file": "combo_items_manual.jsonl",
+    "rows": 64,
+    "sha256": "8506b183b7503dd648cf959d05da56087b049ccd2eda97929ff8e02de45502d5"
+  }
+}

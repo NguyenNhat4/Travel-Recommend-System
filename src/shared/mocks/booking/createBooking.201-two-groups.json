@@ -40,6 +40,16 @@
           "quantity": 1,
           "nights": 3,
           "lineTotal": 10200000,
+          "fares": [
+            {
+              "fareType": "ROOM",
+              "unitPrice": 3400000,
+              "count": 1,
+              "nights": 3,
+              "amount": 10200000
+            }
+          ],
+          "travelers": [],
           "guestNames": [
             "Nguyễn Minh Anh"
           ],
@@ -71,6 +81,16 @@
           "quantity": 3,
           "nights": null,
           "lineTotal": 2640000,
+          "fares": [
+            {
+              "fareType": "ADULT",
+              "unitPrice": 880000,
+              "count": 3,
+              "nights": null,
+              "amount": 2640000
+            }
+          ],
+          "travelers": [],
           "guestNames": [],
           "specialRequest": null
         }
@@ -106,6 +126,16 @@
           "quantity": 2,
           "nights": null,
           "lineTotal": 5200000,
+          "fares": [
+            {
+              "fareType": "ADULT",
+              "unitPrice": 2600000,
+              "count": 2,
+              "nights": null,
+              "amount": 5200000
+            }
+          ],
+          "travelers": [],
           "guestNames": [],
           "specialRequest": null
         }

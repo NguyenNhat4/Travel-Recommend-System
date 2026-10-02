@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from src.backend.app.application.ports import UnitIndex
-from src.backend.app.domain.recommendation.profile import ACTIVE_TRIP_MAX_AGE_DAYS, MAX_REPEAT_PER_TRIP
+from src.backend.app.domain.recommendation.profile import MAX_REPEAT_PER_TRIP, trip_is_open
 
 from .events import PERSONA_IDS, parse_ts
 
@@ -142,8 +142,10 @@ def excluded_taxonomies(train: list[dict], index: UnitIndex, as_of: datetime) ->
         seen[(trip, unit)] += 1
         if seen[(trip, unit)] <= MAX_REPEAT_PER_TRIP:
             trips[trip].append((days_ago, e, unit))
+    from .ceiling import ends_on
     ages = {tid: min(d for d, _, _ in rows) for tid, rows in trips.items()}
-    open_trips = [tid for tid, age in ages.items() if age <= ACTIVE_TRIP_MAX_AGE_DAYS]
+    today = as_of.date()
+    open_trips = [tid for tid, age in ages.items() if trip_is_open(age, ends_on(e for _, e, _ in trips[tid]), today)]
     if not open_trips:
         return set()
     active = min(open_trips, key=lambda tid: ages[tid])

@@ -27,7 +27,7 @@ const DEFAULT_SUGGESTIONS_VI = [
   'VinWonders Phú Quốc',
   'Combo 3N2Đ tiết kiệm',
   'Villa ven biển',
-  'Vé máy bay Hà Nội - Đà Nẵng'
+  'Sân golf nghỉ dưỡng'
 ];
 
 const DEFAULT_SUGGESTIONS_EN = [
@@ -35,7 +35,7 @@ const DEFAULT_SUGGESTIONS_EN = [
   'VinWonders Phu Quoc',
   '3D2N Combo Deals',
   'Beachfront Villa',
-  'Hanoi - Da Nang Flight'
+  'Golf Resort Course'
 ];
 
 export const SearchBox: React.FC<SearchBoxProps> = ({

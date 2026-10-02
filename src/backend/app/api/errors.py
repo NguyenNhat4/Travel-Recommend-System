@@ -63,7 +63,8 @@ _BOOKING_MESSAGES = {
 
 async def booking_error(_: Request, exc: BookingError):
     body = error_response(
-        exc.code, _BOOKING_MESSAGES.get(exc.code, "Có lỗi xảy ra."), current_request_id() or "booking", exc.retryable)
+        exc.code, exc.user_message or _BOOKING_MESSAGES.get(exc.code, "Có lỗi xảy ra."),
+        current_request_id() or "booking", exc.retryable)
     if exc.details:
         body["error"]["details"] = exc.details
     headers = {"Retry-After": "5"} if exc.http_status == 503 else None

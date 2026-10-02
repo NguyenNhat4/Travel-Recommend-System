@@ -3,6 +3,7 @@
 import React from 'react';
 import { AlertCircle, CalendarDays, Check, CloudSun, Compass, ExternalLink, MapPin, PackageOpen, Repeat, ShoppingCart, Sparkles, Users } from 'lucide-react';
 import type { components } from '../../types/api.gen';
+import { splitBoldTitle } from './inlineBold';
 import {
   ACTIVITY_TYPE_LABEL,
   BUDGET_STATUS_LABEL,
@@ -21,6 +22,8 @@ export interface AssistantCartItem {
   product: Product;
   usingDate?: string;
   checkOutDate?: string;
+  /** Đoàn của lịch trình (`intent.party`): có thì thêm vào giỏ kèm `guests` (spec checkout-nhieu-buoc-hanh-khach.md §6.9). */
+  party?: { adults: number; children: number };
 }
 
 const MIN_TRIP_DAYS = 1;
@@ -39,20 +42,22 @@ function addDays(isoDate: string, days: number) {
 }
 
 /** Gom mọi sản phẩm đặt được của lịch trình, mỗi productId một lần, kèm ngày dùng theo ngày của lịch trình. */
-export function itineraryCartItems(itinerary: Itinerary): AssistantCartItem[] {
+export function itineraryCartItems(itinerary: Itinerary, party?: { adults: number; children: number } | null): AssistantCartItem[] {
   const items = new Map<string, AssistantCartItem>();
+  const guests = party ? { party: { adults: party.adults, children: party.children } } : {};
   if (itinerary.stay && isCartEligible(itinerary.stay.product)) {
     const checkIn = itinerary.days[0]?.date ?? undefined;
     items.set(itinerary.stay.product.productId, {
       product: itinerary.stay.product,
       usingDate: checkIn,
       checkOutDate: checkIn ? addDays(checkIn, itinerary.stay.nights) : undefined,
+      ...guests,
     });
   }
   for (const day of itinerary.days) {
     for (const slot of day.slots) {
       if (!slot.product || !isCartEligible(slot.product) || items.has(slot.product.productId)) continue;
-      items.set(slot.product.productId, { product: slot.product, usingDate: day.date ?? undefined });
+      items.set(slot.product.productId, { product: slot.product, usingDate: day.date ?? undefined, ...guests });
     }
   }
   return [...items.values()];
@@ -135,7 +140,7 @@ function SearchResults({ results, onAddToCart }: { results: Record<string, Produ
   if (!groups.length) return <p className="mt-4 rounded-xl bg-white p-4 text-sm text-slate-500">Chưa có sản phẩm phù hợp.</p>;
   return <div className="mt-4 space-y-5">{groups.map(([taxonomy, products]) => (
     <section key={taxonomy} className="space-y-2.5">
-      <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-500">{taxonomyLabel(taxonomy)} · {products.length}</h4>
+      <h4 className="font-sans text-xs font-extrabold uppercase tracking-wider text-slate-500">{taxonomyLabel(taxonomy)} · {products.length}</h4>
       {products.map((product) => <ProductCard key={product.productId} product={product} onAddToCart={onAddToCart && (() => onAddToCart([{ product }]))} />)}
     </section>
   ))}</div>;
@@ -227,11 +232,13 @@ export function AssistantResultPanel({
     const missing = response.missingFields ?? [];
     const destinations = response.suggestedValues?.destination ?? [];
     const days = response.suggestedValues?.days ?? [];
+    const { title, body } = splitBoldTitle(response.question);
     return (
       <section aria-label="Cần làm rõ yêu cầu" className="rounded-3xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-5 shadow-sm sm:p-7">
         <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-100 text-amber-700"><AlertCircle className="h-5 w-5" /></div>
         <p className="mt-4 text-xs font-extrabold uppercase tracking-[0.16em] text-amber-700">Cần thêm thông tin</p>
-        <h2 className="mt-2 text-xl font-extrabold leading-snug text-slate-900">{response.question}</h2>
+        <h2 className="mt-2 text-xl font-extrabold leading-snug text-slate-900">{title ?? response.question}</h2>
+        {title && body && <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-slate-700">{body}</p>}
         {missing.includes('destination') && destinations.length > 0 && <div className="mt-5"><p className="mb-2 text-xs font-semibold text-slate-500">Điểm đến gợi ý</p><div className="flex flex-wrap gap-2">{destinations.map((destination) => <button key={destination} onClick={() => onIntentOverride?.({ destination })} className="rounded-full border border-amber-200 bg-white px-3.5 py-2 text-xs font-bold text-amber-900 transition hover:border-amber-400 hover:bg-amber-100">{destination}</button>)}</div></div>}
         {missing.includes('days') && days.length > 0 && <div className="mt-5"><p className="mb-2 text-xs font-semibold text-slate-500">Số ngày gợi ý</p><div className="flex flex-wrap gap-2">{days.map((value) => <button key={value} onClick={() => onIntentOverride?.({ days: value })} className="rounded-full border border-amber-200 bg-white px-3.5 py-2 text-xs font-bold text-amber-900 transition hover:border-amber-400 hover:bg-amber-100">{value} ngày</button>)}</div></div>}
         {missing.length === 0 && <p className="mt-4 text-sm text-slate-500">Bạn có thể bổ sung thông tin trực tiếp trong khung trò chuyện.</p>}
@@ -240,20 +247,24 @@ export function AssistantResultPanel({
   }
 
   if (response.status === 'NO_RESULTS') {
+    const { title, body } = splitBoldTitle(response.message);
     return (
       <section aria-label="Không tìm thấy kết quả" className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
         <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-100 text-slate-600"><PackageOpen className="h-5 w-5" /></div>
         <p className="mt-4 text-xs font-extrabold uppercase tracking-[0.16em] text-slate-500">Chưa có kết quả</p>
-        <h2 className="mt-2 text-xl font-extrabold leading-snug text-slate-900">{response.message}</h2>
+        <h2 className="mt-2 text-xl font-extrabold leading-snug text-slate-900">{title ?? response.message}</h2>
+        {title && body && <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-slate-700">{body}</p>}
         {response.suggestions?.length ? <div className="mt-5 space-y-2">{response.suggestions.map((suggestion) => <button key={suggestion} onClick={() => onSuggestion?.(suggestion)} className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm font-semibold text-indigo-700 transition hover:border-indigo-200 hover:bg-indigo-50">{suggestion}<span aria-hidden="true">→</span></button>)}</div> : <p className="mt-3 text-sm text-slate-500">Bạn có thể thử điều chỉnh điểm đến hoặc thời gian chuyến đi.</p>}
       </section>
     );
   }
 
   if (response.status === 'FALLBACK') {
+    const { title, body } = splitBoldTitle(response.message);
     return (
       <section aria-label="Kết quả tìm kiếm gần nhất" className="rounded-3xl border border-indigo-200 bg-gradient-to-br from-indigo-50/70 to-white p-5 shadow-sm sm:p-7">
-        <div className="flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-700"><Compass className="h-5 w-5" /></span><div><p className="text-xs font-extrabold uppercase tracking-[0.16em] text-indigo-700">Lựa chọn gần nhất</p><h2 className="mt-1 text-lg font-extrabold text-slate-900">{response.message}</h2></div></div>
+        <div className="flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-700"><Compass className="h-5 w-5" /></span><div><p className="text-xs font-extrabold uppercase tracking-[0.16em] text-indigo-700">Lựa chọn gần nhất</p><h2 className="mt-1 text-lg font-extrabold text-slate-900">{title ?? response.message}</h2></div></div>
+        {title && body && <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-slate-700">{body}</p>}
         <SearchResults results={response.searchResults} onAddToCart={onAddToCart} />
       </section>
     );
@@ -263,7 +274,8 @@ export function AssistantResultPanel({
   const intent = response.intent;
   const products = [itinerary.stay?.product, ...itinerary.days.flatMap((day) => day.slots.map((slot) => slot.product))].filter((value): value is Product => Boolean(value));
   const distinctProducts = new Map(products.map((product) => [product.productId, product]));
-  const cartItems = itineraryCartItems(itinerary);
+  const party = intent?.party ? { adults: intent.party.adults, children: intent.party.children } : undefined;
+  const cartItems = itineraryCartItems(itinerary, party);
   const canEdit = !readOnly && Boolean(onSuggestion);
   const currentDays = intent?.days ?? itinerary.days.length;
   const addOne = (item: AssistantCartItem) => onAddToCart && (() => onAddToCart([item]));
@@ -322,7 +334,7 @@ export function AssistantResultPanel({
         />
       )}
 
-      {itinerary.stay && <section className="space-y-2.5"><div className="flex items-center justify-between"><h3 className="text-sm font-extrabold text-slate-800">Nơi lưu trú</h3><span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-bold text-indigo-700">{itinerary.stay.nights} đêm</span></div><ProductCard product={itinerary.stay.product} note={itinerary.stay.note} onAddToCart={addOne({ product: itinerary.stay.product, usingDate: stayCheckIn, checkOutDate: stayCheckIn ? addDays(stayCheckIn, itinerary.stay.nights) : undefined })} /></section>}
+      {itinerary.stay && <section className="space-y-2.5"><div className="flex items-center justify-between"><h3 className="text-sm font-extrabold text-slate-800">Nơi lưu trú</h3><span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-bold text-indigo-700">{itinerary.stay.nights} đêm</span></div><ProductCard product={itinerary.stay.product} note={itinerary.stay.note} onAddToCart={addOne({ product: itinerary.stay.product, usingDate: stayCheckIn, checkOutDate: stayCheckIn ? addDays(stayCheckIn, itinerary.stay.nights) : undefined, party })} /></section>}
 
       <section className="space-y-3">
         <div className="flex items-center justify-between"><h3 className="text-sm font-extrabold text-slate-800">Lịch trình từng ngày</h3><span className="text-xs text-slate-400">{itinerary.days.length} ngày</span></div>
@@ -346,7 +358,7 @@ export function AssistantResultPanel({
                         ? <ProductCard
                             product={product}
                             note={slot.note}
-                            onAddToCart={addOne({ product, usingDate: day.date ?? undefined })}
+                            onAddToCart={addOne({ product, usingDate: day.date ?? undefined, party })}
                             onReplace={canEdit ? () => onSuggestion?.(`Đổi ${product.name} (ngày ${day.day}, buổi ${timeLabel.toLowerCase()}) sang lựa chọn khác`) : undefined}
                             replaceDisabled={busy}
                           />
@@ -360,7 +372,7 @@ export function AssistantResultPanel({
         ))}
       </section>
 
-      {response.warnings.length > 0 && <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4"><h3 className="text-xs font-extrabold text-amber-900">Lưu ý</h3><ul className="mt-2 space-y-1.5 text-xs leading-relaxed text-amber-800">{response.warnings.map((warning, index) => <li key={`${warning.code}-${index}`}>• {warning.message}</li>)}</ul></section>}
+      {response.warnings.length > 0 && <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4"><h3 className="font-sans text-xs font-extrabold text-amber-900">Lưu ý</h3><ul className="mt-2 space-y-1.5 text-xs leading-relaxed text-amber-800">{response.warnings.map((warning, index) => <li key={`${warning.code}-${index}`}>• {warning.message}</li>)}</ul></section>}
       {showMap && <AssistantMapPanel />}
       {response.searchResults && <section><h3 className="text-sm font-extrabold text-slate-800">Kết quả tìm kiếm liên quan</h3><SearchResults results={response.searchResults} onAddToCart={onAddToCart} /></section>}
     </div>

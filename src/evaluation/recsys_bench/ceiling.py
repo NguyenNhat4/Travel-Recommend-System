@@ -21,7 +21,7 @@ from datetime import datetime
 import numpy as np
 
 from src.backend.app.application.ports import UnitIndex
-from src.backend.app.domain.recommendation.profile import ACTIVE_TRIP_MAX_AGE_DAYS, DORMANT_AFTER_DAYS, MAX_REPEAT_PER_TRIP
+from src.backend.app.domain.recommendation.profile import DORMANT_AFTER_DAYS, MAX_REPEAT_PER_TRIP, trip_is_open
 
 from .events import parse_ts
 from .splits import Split
@@ -39,6 +39,7 @@ class TripView:
     destination: str
     units: set[int]
     solo: bool
+    ends_on: object = None           # max(usingDate) — trip đang mở xét theo đây (FR-REC-02, 2026-10-02)
 
 
 @dataclass
@@ -72,6 +73,22 @@ class EngineView:
         return "dormant" if min(t.age_days for t in self.trips.values()) > DORMANT_AFTER_DAYS else "long_term"
 
 
+def ends_on(events) -> object:
+    """max(usingDate) của một trip như `build_profile` (chuỗi ISO → date); không có → None."""
+    from datetime import date
+    out = None
+    for e in events:
+        v = e.get("usingDate")
+        if not v:
+            continue
+        try:
+            d = date.fromisoformat(str(v)[:10])
+        except ValueError:
+            continue
+        out = d if out is None or d > out else out
+    return out
+
+
 def engine_view(train: list[dict], index: UnitIndex, as_of: datetime, has_vector: set[str] | None = None) -> EngineView:
     """`has_vector`: productId của unit có vector; None = coi mọi unit đều có (run `vectorsMissing 0`)."""
     rows = []
@@ -96,10 +113,11 @@ def engine_view(train: list[dict], index: UnitIndex, as_of: datetime, has_vector
         bought |= {u for _, e, u in evs if e.get("eventName") == "purchase"}
         trips[tid] = TripView(tid, min(d for d, _, _ in evs), len(evs), purchased,
                               str(Counter(str(index.destination[u]) for _, _, u in evs).most_common(1)[0][0]),
-                              {u for _, _, u in evs}, tid.startswith("_solo_"))
+                              {u for _, _, u in evs}, tid.startswith("_solo_"), ends_on(e for _, e, _ in evs))
     if not trips:
         return EngineView(0, {}, None)
-    active = [t for t, v in trips.items() if v.age_days <= ACTIVE_TRIP_MAX_AGE_DAYS]
+    today = as_of.date()
+    active = [t for t, v in trips.items() if trip_is_open(v.age_days, v.ends_on, today)]
     return EngineView(sum(v.n_events for v in trips.values()), trips,
                       min(active, key=lambda t: trips[t].age_days) if active else None, bought)
 

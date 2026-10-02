@@ -16,6 +16,17 @@ from src.backend.app.domain.recommendation.profile import MAX_PER_VERTICAL
 logger = logging.getLogger("uvicorn.error")
 
 
+def _using_date(value):
+    """`usingDate` của event CDP (ISO date hoặc datetime) → `date`; thiếu / hỏng → None (không chặn request)."""
+    from datetime import date
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except ValueError:
+        return None
+
+
 def _ts(x) -> float:
     if isinstance(x, datetime):
         return x.timestamp()
@@ -109,8 +120,10 @@ class RecommendForUser:
                 continue
             resolved.append(ResolvedEvent(unit=space.add(i, stored[idx.units[i].product_id]), event_name=e["eventName"],
                                           days_ago=max(0.0, (t0 - _ts(e["timestamp"])) / 86400),
-                                          trip_id=e.get("eventGroupId") or f"_solo_{e['productId']}", product_id=e["productId"]))
-        profile = build_profile(resolved, space.E, space.taxonomy, space.destination)
+                                          trip_id=e.get("eventGroupId") or f"_solo_{e['productId']}", product_id=e["productId"],
+                                          using_date=_using_date(e.get("usingDate"))))
+        # trip đang mở xét theo usingDate (FR-REC-02, 2026-10-02): ngày của `now` (UTC; usingDate là ngày địa phương, lệch ≤ 1 ngày)
+        profile = build_profile(resolved, space.E, space.taxonomy, space.destination, today=now.date())
 
         if not profile.trips:
             return {**base, **self._cold_start(k, now, destination)}

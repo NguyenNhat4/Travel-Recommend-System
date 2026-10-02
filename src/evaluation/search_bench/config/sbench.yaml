@@ -31,15 +31,20 @@ embedding:                        # Part 3
   models:
     cohere-v3: {api_model: embed-multilingual-v3.0, dim: 1024, max_batch: 96, truncate: NONE}
     cohere-v4: {api_model: embed-v4.0, dim: 1024, max_batch: 96, output_dimension: 1024, truncate: NONE}
-    bge-m3:    {hf_model: BAAI/bge-m3, dim: 1024, max_seq_length: 512, device: cpu, batch_size: 16, pooling: cls}
+    cohere-v4-1536: {api_model: embed-v4.0, dim: 1536, max_batch: 96, output_dimension: 1536, truncate: NONE}
+    cohere-v4-512: {api_model: embed-v4.0, dim: 512, max_batch: 96, output_dimension: 512, truncate: NONE}
+    cohere-v4-256: {api_model: embed-v4.0, dim: 256, max_batch: 96, output_dimension: 256, truncate: NONE}
+    bge-m3:    {hf_model: BAAI/bge-m3, dim: 1024, max_seq_length: 512, device: cpu, batch_size: 32, pooling: cls, input_type_mode: symmetric}
     e5-base:   {hf_model: intfloat/multilingual-e5-base, dim: 768, max_seq_length: 512, device: cpu, batch_size: 32, pooling: mean,
                 query_prefix: "query: ", passage_prefix: "passage: "}   # E2.e5 (lịch 10 ngày M2: Cohere vs e5-base); sai prefix = arm không công bằng
-    gte-mb:    {hf_model: Alibaba-NLP/gte-multilingual-base, dim: 768, max_seq_length: 512, device: cpu, batch_size: 32, trust_remote_code: true, pooling: cls}   # E2.gte, tuỳ chọn
+    e5-small:  {hf_model: intfloat/multilingual-e5-small, dim: 384, max_seq_length: 512, device: cpu, batch_size: 32, pooling: mean,
+                query_prefix: "query: ", passage_prefix: "passage: "}
+    gte-mb:    {hf_model: Alibaba-NLP/gte-multilingual-base, dim: 768, max_seq_length: 512, device: cpu, batch_size: 32, trust_remote_code: true, pooling: cls, input_type_mode: symmetric}   # E2.gte, tuỳ chọn
     fake:      {dim: 1024}
   input_type: {document: search_document, query: search_query}
   bedrock: {model_id: cohere.embed-multilingual-v3, region: ap-southeast-1}
   retry: {max_attempts: 6, backoff_s: [1, 2, 4, 8, 16, 32]}
-  cost_per_1m_tokens_usd: {cohere-v3: 0.10, cohere-v4: 0.12}   # xác nhận lại trên trang giá chính thức
+  cost_per_1m_tokens_usd: {cohere-v3: 0.10, cohere-v4: 0.12, cohere-v4-1536: 0.12, cohere-v4-512: 0.12, cohere-v4-256: 0.12}   # benchmark accounting; xác nhận giá trước khi báo chi phí
   max_inputs_per_min: 2000        # (đề xuất) giới hạn tốc độ Cohere — pacer phía app
   max_tokens_per_min: 90000       # (đề xuất) đo 24/09: key trial trả 429 quanh 90–100k token/phút — pacer đếm token offline
 

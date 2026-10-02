@@ -44,3 +44,19 @@ SELECT 'booking/payment status pairs valid: ' || CASE WHEN count(*) = 0 THEN 'PA
      OR p.status IS NULL;
 SELECT 'one pending booking per user: ' || CASE WHEN count(*) = 0 THEN 'PASS' ELSE 'FAIL ('||count(*)||')' END
   FROM (SELECT cdp_user_id FROM app.bookings WHERE status = 'pending_payment' GROUP BY cdp_user_id HAVING count(*) > 1) t;
+-- Tiền của đơn nhất quán (docs/spec/booking/checkout-nhieu-buoc-hanh-khach.md §3.1, §9.1): tổng đơn = tổng các dòng = số tiền
+-- thanh toán; dòng có dòng giá thì line_total = tổng fares[].amount.
+SELECT 'booking total = sum(line_total): ' || CASE WHEN count(*) = 0 THEN 'PASS' ELSE 'FAIL ('||count(*)||')' END
+  FROM app.bookings b JOIN (SELECT booking_id, sum(line_total) AS s FROM app.booking_items GROUP BY booking_id) i USING (booking_id)
+  WHERE b.total_amount <> i.s;
+SELECT 'booking total = payment amount: ' || CASE WHEN count(*) = 0 THEN 'PASS' ELSE 'FAIL ('||count(*)||')' END
+  FROM app.bookings b JOIN app.payments p USING (booking_id) WHERE b.total_amount::bigint <> p.amount;
+SELECT 'booking item line_total = sum(fares): ' || CASE WHEN count(*) = 0 THEN 'PASS' ELSE 'FAIL ('||count(*)||')' END
+  FROM app.booking_items bi
+  WHERE bi.metadata->'fares' IS NOT NULL
+    AND bi.line_total <> (SELECT sum((f->>'amount')::numeric) FROM jsonb_array_elements(bi.metadata->'fares') f);
+-- Đoàn khách: thứ tự khai báo liên tục 1..n, tối đa 9 người mỗi đơn; giỏ có ít nhất 1 người lớn và tối đa 9 khách mỗi mục.
+SELECT 'booking travelers positions 1..n, max 9: ' || CASE WHEN count(*) = 0 THEN 'PASS' ELSE 'FAIL ('||count(*)||')' END
+  FROM (SELECT booking_id FROM app.booking_travelers GROUP BY booking_id HAVING count(*) <> max(position) OR count(*) > 9) t;
+SELECT 'cart party size 1..9 with an adult: ' || CASE WHEN count(*) = 0 THEN 'PASS' ELSE 'FAIL ('||count(*)||')' END
+  FROM app.cart_items WHERE adults < 1 OR children < 0 OR adults + children > 9;

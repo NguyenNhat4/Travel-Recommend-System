@@ -8,7 +8,8 @@ Pooling làm đúng model card: e5 = mean pooling trên `last_hidden_state` theo
 - Prefix chỉ ghép lúc encode; khoá cache là text gốc + `input_type` + tên embedder (= `hf_model`).
 - **Không cắt ngầm:** đếm token trước bằng tokenizer của model (kể cả prefix và token đặc biệt) và từ chối text vượt
   `max_seq_length` (`TokenLimitError`, spec §1.7 #2).
-- Model và tokenizer nạp lười — `sb tokens` chỉ cần tokenizer, không nạp model. Test tiêm `encode_fn` / `tokenizer` giả.
+- Model và tokenizer nạp lười — `sb tokens` chỉ cần tokenizer, không nạp model. Model luôn đọc trọng số
+  `safetensors`, tránh fallback sang pickle/`torch.load`. Test tiêm `encode_fn` / `tokenizer` giả.
 - `stats` đếm lượt encode + token, USD = 0 (không ghi cost.jsonl).
 """
 from __future__ import annotations
@@ -49,7 +50,11 @@ class LocalHFEmbedder:
     def _model_(self):
         if self._model is None:
             from transformers import AutoModel
-            m = AutoModel.from_pretrained(self.mcfg.hf_model, trust_remote_code=bool(self.mcfg.trust_remote_code))
+            m = AutoModel.from_pretrained(
+                self.mcfg.hf_model,
+                trust_remote_code=bool(self.mcfg.trust_remote_code),
+                use_safetensors=True,
+            )
             m.eval()
             self._model = m.to(self.mcfg.device or "cpu")
         return self._model

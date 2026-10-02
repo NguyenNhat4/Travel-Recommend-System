@@ -91,7 +91,7 @@ export function convertItineraryResponseToGroundedPlan(
     title: itinerary.title || `Lịch trình khám phá ${intentDestination}`,
     stay,
     days,
-    totalEstimatedPrice: itinerary.estimatedTotal ?? 0,
+    totalEstimatedPrice: itinerary.estimatedTotal ?? null,
     bookableProductsCount: itinerary.bookableCount ?? 0,
     fallback: false,
   };

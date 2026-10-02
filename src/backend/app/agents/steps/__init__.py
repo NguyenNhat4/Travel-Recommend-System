@@ -9,4 +9,5 @@
 - `composition` — dựng lịch trình bằng luật tất định (`compose`).
 - `failures` — gom lỗi thành một Error Envelope (`dead_letter`).
 - `validation` — kiểm response theo contract và grounding (`finalize`).
+- `guardrails` — mẫu tất định chặn chèn lệnh (`classify`) và lộ secret/tuyên bố đặt chỗ (`finalize`).
 """

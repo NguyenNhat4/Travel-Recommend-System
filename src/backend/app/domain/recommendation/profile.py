@@ -4,16 +4,23 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
+from datetime import date
 
 import numpy as np
 
 W_TYPE = {"purchase": 1.0, "add_to_cart": 0.5, "product_view": 0.2, "search": 0.1}
 H_SHORT_DAYS, H_LONG_DAYS = 30.0, 365.0
-ACTIVE_TRIP_MAX_AGE_DAYS = 60
+#: Tham số N của FR-REC-02 (chốt 02/10): trip KHÔNG có `usingDate` (chỉ view / search) còn mở khi event gần nhất ≤ N ngày.
+#: 60 → 14 theo grid trên temporal đóng băng (Recall@20 0,196 → 0,216, LLBO không đổi — docs/spec/bench/recsys-offline-eval.md
+#: §4.14); trip có `usingDate` không dùng N (mở tới hết ngày sử dụng, xem `trip_is_open`).
+ACTIVE_TRIP_MAX_AGE_DAYS = 14
 DORMANT_AFTER_DAYS = 180
 MAX_REPEAT_PER_TRIP = 3
 W_SHORT, W_POP, W_LONG = 0.6, 0.25, 0.15
 MMR_LAMBDA, MAX_PER_VERTICAL = 0.7, 2
+#: Phiên bản luật của engine (không phải tham số): đổi khi hành vi đổi mà không có hằng nào đổi, để bench tách hai bộ số.
+#: 2026-10-02: trip đang mở = chưa kết thúc theo `usingDate` (FR-REC-02, spec §4.4–4.5); trước đó chỉ theo tuổi event.
+ENGINE_RULES_VERSION = "2026-10-02-trip-ended"
 
 
 @dataclass
@@ -23,6 +30,7 @@ class ResolvedEvent:
     days_ago: float
     trip_id: str
     product_id: str           # id gốc trong event (có thể là phòng/chuyến)
+    using_date: date | None = None   # ngày sử dụng (purchase / add_to_cart); None với view / search
 
 
 @dataclass
@@ -33,6 +41,16 @@ class Trip:
     age_days: float
     purchased_taxonomies: set[str]
     destination: str
+    ends_on: date | None = None      # max(usingDate) của trip; None khi không event nào có ngày sử dụng
+    ended: bool = False              # chuyến đã diễn ra xong (spec §4.3 tripFactor): ends_on < hôm nay
+
+
+def trip_is_open(age_days: float, ends_on: date | None, today: date | None) -> bool:
+    """Trip đang mở (FR-REC-02, spec §4.4 bổ sung 2026-10-02): có `usingDate` → mở khi `max(usingDate) >= hôm nay`
+    (chuyến sắp đi hay đang đi, kể cả mua từ lâu); không có → mở khi event gần nhất cách ≤ ACTIVE_TRIP_MAX_AGE_DAYS."""
+    if ends_on is not None and today is not None:
+        return ends_on >= today
+    return age_days <= ACTIVE_TRIP_MAX_AGE_DAYS
 
 
 @dataclass
@@ -54,7 +72,9 @@ class Profile:
         return "dormant" if min(t.age_days for t in self.trips.values()) > DORMANT_AFTER_DAYS else "long_term"
 
 
-def build_profile(events: list[ResolvedEvent], E: np.ndarray, taxonomy: np.ndarray, destination: np.ndarray) -> Profile:
+def build_profile(events: list[ResolvedEvent], E: np.ndarray, taxonomy: np.ndarray, destination: np.ndarray,
+                  today: date | None = None) -> Profile:
+    """`today`: ngày của `now` để xét trip đã kết thúc theo `usingDate`; None → chỉ theo tuổi event (luật cũ)."""
     by_trip: dict[str, list[ResolvedEvent]] = defaultdict(list)
     seen: Counter = Counter()
     for e in sorted(events, key=lambda x: -x.days_ago):
@@ -69,10 +89,12 @@ def build_profile(events: list[ResolvedEvent], E: np.ndarray, taxonomy: np.ndarr
         for e in evs:
             v += W_TYPE.get(e.event_name, 0.1) * 2 ** (-e.days_ago / H_SHORT_DAYS) * E[e.unit]
         n = np.linalg.norm(v)
+        ends_on = max((e.using_date for e in evs if e.using_date is not None), default=None)
         trips[tid] = Trip(
             trip_id=tid, events=evs, vec=v / n if n else v, age_days=min(e.days_ago for e in evs),
             purchased_taxonomies={str(taxonomy[e.unit]) for e in evs if e.event_name == "purchase"},
             destination=str(Counter(destination[e.unit] for e in evs).most_common(1)[0][0]),
+            ends_on=ends_on, ended=ends_on is not None and today is not None and ends_on < today,
         )
 
     if not trips:
@@ -80,7 +102,7 @@ def build_profile(events: list[ResolvedEvent], E: np.ndarray, taxonomy: np.ndarr
 
     u_long = sum(2 ** (-t.age_days / H_LONG_DAYS) * t.vec for t in trips.values())
     u_long = u_long / (np.linalg.norm(u_long) or 1)
-    active = [t for t in trips.values() if t.age_days <= ACTIVE_TRIP_MAX_AGE_DAYS]
+    active = [t for t in trips.values() if trip_is_open(t.age_days, t.ends_on, today)]
     active_trip = min(active, key=lambda t: t.age_days) if active else None
     bought = {e.unit for t in trips.values() for e in t.events if e.event_name == "purchase"}
     return Profile(trips=trips, u_long=u_long, active_trip=active_trip,

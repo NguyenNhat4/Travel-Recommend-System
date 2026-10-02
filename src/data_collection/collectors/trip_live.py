@@ -21,12 +21,14 @@ from urllib.parse import urlencode
 from curl_cffi.requests import AsyncSession
 from playwright.async_api import async_playwright
 
+from . import live_control
 from .common import BrowserOptions, BrowserSession, Paths, StateDB, now_iso
 from .plan import DEFAULT_BUDGET, Destination
 from .trip import _scrub as scrub_people
 from .trip_hotels import DETAIL_ANCHOR, TripHotels, TripHotelsOptions, extract_anchored_json, parse_hotel_detail
 
 BASE = 'https://vn.trip.com/hotels/detail/?'
+LIVE_KEY = 'tripHotels'   # khoá chỉnh tốc độ live trên monitor (collectors/live_control.py)
 HEADERS = {
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
     'Accept-Language': 'vi-VN,vi;q=0.9,en;q=0.7',
@@ -40,6 +42,24 @@ class LiveOptions:
     delay_min: float = 0.5
     delay_max: float = 1.0
     offsets: tuple[int, ...] = (14, 30, 60)
+
+
+async def next_start(clock: dict, options: LiveOptions) -> None:
+    """Giữ khoảng chờ ngẫu nhiên giữa hai lần mở trang. Monitor có thể tạm dừng hoặc đổi khoảng chờ khi lượt đang chạy;
+    mốc chờ được tính lại mỗi giây nên thay đổi có hiệu lực ngay."""
+    loop = asyncio.get_running_loop()
+    bounds, gap = None, 0.0
+    while True:
+        control = await live_control.hold_while_paused(LIVE_KEY)
+        low = control.get('delayMin', options.delay_min)
+        high = max(low, control.get('delayMax', options.delay_max))
+        if (low, high) != bounds:
+            bounds, gap = (low, high), random.uniform(low, high)
+        wait = clock['last'] + gap - loop.time()
+        if wait <= 0:
+            break
+        await asyncio.sleep(min(wait, 1.0))
+    clock['last'] = loop.time()
 
 
 def stays(offsets: tuple[int, ...], today: date | None = None) -> list[tuple[str, str]]:
@@ -108,22 +128,17 @@ async def fetch_metadata(targets: list[dict], stay: tuple[str, str], run_dir: Pa
                          options: LiveOptions) -> dict[str, dict | None]:
     semaphore = asyncio.Semaphore(options.http_workers)
     start_lock = asyncio.Lock()
-    last_start = 0.0
+    clock = {'last': float('-inf')}
     out: dict[str, dict | None] = {}
     session = AsyncSession(impersonate="chrome124", timeout=30)
 
     async def one(target: dict) -> None:
-        nonlocal last_start
         hotel_id = target['trip_hotel_id']
         url = detail_url(target, *stay)
         async with semaphore:
             for attempt in range(2):
                 async with start_lock:
-                    pause = max(0, last_start + random.uniform(options.delay_min, options.delay_max)
-                                - asyncio.get_running_loop().time())
-                    if pause:
-                        await asyncio.sleep(pause)
-                    last_start = asyncio.get_running_loop().time()
+                    await next_start(clock, options)
                 started = time.monotonic()
                 try:
                     response = await session.get(url, headers=HEADERS, allow_redirects=True)
@@ -213,7 +228,7 @@ async def capture_prices(targets: list[dict], date_pairs: list[tuple[str, str]],
             jobs.put_nowait((target, checkin, checkout))
     results = {}
     start_lock = asyncio.Lock()
-    last_start = 0.0
+    clock = {'last': float('-inf')}
     async with async_playwright() as playwright:
         context = await playwright.chromium.launch_persistent_context(
             user_data_dir=str(run_dir / 'trip_price_profile'), headless=False,
@@ -222,7 +237,6 @@ async def capture_prices(targets: list[dict], date_pairs: list[tuple[str, str]],
             args=['--disable-blink-features=AutomationControlled'])
         try:
             async def worker() -> None:
-                nonlocal last_start
                 while not jobs.empty():
                     try:
                         target, checkin, checkout = jobs.get_nowait()
@@ -258,11 +272,7 @@ async def capture_prices(targets: list[dict], date_pairs: list[tuple[str, str]],
                                          if route.request.resource_type in ('image', 'media', 'font')
                                          else route.continue_())
                         async with start_lock:
-                            pause = max(0, last_start + random.uniform(options.delay_min, options.delay_max)
-                                        - asyncio.get_running_loop().time())
-                            if pause:
-                                await asyncio.sleep(pause)
-                            last_start = asyncio.get_running_loop().time()
+                            await next_start(clock, options)
                         navigation = await page.goto(url, wait_until='domcontentloaded', timeout=60_000)
                         if checkin == date_pairs[0][0] and navigation and navigation.status == 200:
                             # Raw navigation response keeps the SSR blob after React

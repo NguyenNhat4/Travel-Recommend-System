@@ -32,3 +32,41 @@
   arms:
   - B0
   - E2.e5
+- version: gold_v3
+  at: '2026-10-01T15:31:24+07:00'
+  action: holes_import
+  n_queries_active: 131
+  n_queries_retired: 1
+  n_labels: 4249
+  tag: D4b
+  new_labels_by_source:
+    human: 278
+    auto_ooc: 0
+    queries: 67
+  holes_dir: gold_v2__D4b
+  run_id: 20261001-day4-local
+  arms:
+  - APP.dense
+  - APP.hybrid
+  - APP.hybrid_norm
+- version: gold_v3
+  at: '2026-10-01T16:56:44+07:00'
+  action: holes_import
+  n_queries_active: 131
+  n_queries_retired: 1
+  n_labels: 5021
+  tag: D5a
+  new_labels_by_source:
+    human: 700
+    auto_ooc: 72
+    queries: 131
+  holes_dir: gold_v3__D5a
+  run_id: 20261001-day4-local
+  arms:
+  - E2.gte
+  - E2.bge
+  - E2.e5s
+  - E2.v4-1536
+  - E2.v4-1024
+  - E2.v4-512
+  - E2.v4-256

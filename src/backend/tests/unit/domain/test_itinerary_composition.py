@@ -1,7 +1,7 @@
 """The itinerary layout is decided by rules alone, so the rules themselves need coverage."""
 import unittest
 
-from src.backend.app.domain.itinerary.planning import compose_plan, render_proposal, validate_plan
+from src.backend.app.domain.itinerary.planning import compose_plan, render_proposal, summary, validate_plan
 
 
 def product(pid, **updates):
@@ -94,6 +94,30 @@ class ComposePlanTests(unittest.TestCase):
         sources = {pid: 'search' for pid in candidates}
         plan = render_proposal(compose_plan(candidates, trip), candidates, sources, trip)
         self.assertEqual(validate_plan(plan, candidates, sources, trip, {'require_hotel': True}), [])
+
+
+class SummaryTests(unittest.TestCase):
+    """docs/spec/agent/field-review.md §2.1: ProductSummary trong lịch trình bỏ `description`,
+    `attributes` chỉ giữ khoá FE đọc."""
+
+    def test_description_is_dropped(self):
+        item = product('h', description='Mô tả rất dài về khách sạn.')
+        self.assertNotIn('description', summary(item))
+
+    def test_attributes_keep_only_the_fields_the_frontend_reads(self):
+        item = product('h', attributes={
+            'oceanView': True, 'privateBeach': True, 'pool': True, 'ticketed': True,
+            'starRating': 5, 'durationMinutes': 480, 'parentProductId': 'p',
+        })
+        self.assertEqual(summary(item)['attributes'],
+                         {'oceanView': True, 'privateBeach': True, 'pool': True, 'ticketed': True})
+
+    def test_attributes_key_is_dropped_entirely_when_nothing_survives_the_cut(self):
+        item = product('h', attributes={'starRating': 5, 'parentProductId': 'p'})
+        self.assertNotIn('attributes', summary(item))
+
+    def test_a_non_dict_product_summarizes_to_an_empty_dict(self):
+        self.assertEqual(summary(None), {})
 
 
 if __name__ == '__main__':
