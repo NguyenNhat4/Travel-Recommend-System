@@ -15,9 +15,18 @@ if str(ROOT) not in sys.path:
 from src.backend.tests.conftest import ROWS, FakeEmbedder  # noqa: E402
 
 
-def ev(user, name, product_id, timestamp, group=None):
+def ev(user, name, product_id, timestamp, group=None, using_date="+45"):
+    """Event CDP. Purchase mặc định có `usingDate` = ngày mua + 45 (seed luôn gắn ngày sử dụng, p50 +25 ngày): từ 02/10 trip
+    có `usingDate` mở tới hết ngày đó, trip chỉ view mở ≤ 14 ngày (FR-REC-02). `using_date=None` để bỏ."""
+    using = None
+    if name == "purchase" and using_date is not None:
+        if isinstance(using_date, str) and using_date.startswith("+"):
+            from datetime import datetime, timedelta
+            using = (datetime.fromisoformat(timestamp.replace("Z", "+00:00")) + timedelta(days=int(using_date))).date().isoformat()
+        else:
+            using = using_date
     return {"cdpUserId": user, "eventName": name, "productId": product_id, "timestamp": timestamp,
-            "eventGroupId": group, "usingDate": None}
+            "eventGroupId": group, "usingDate": using}
 
 
 def make_events() -> list[dict]:
