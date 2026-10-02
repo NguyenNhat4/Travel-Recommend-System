@@ -97,6 +97,8 @@ Mọi khoá đều tuỳ chọn; runner chỉ kiểm khoá có mặt.
 | `hasStay` | Lịch có hoặc không có chỗ ở | `false` |
 | `warningsExclude` | Các `warnings[].code` này không được xuất hiện | `[PRODUCT_DROPPED_EXCLUDED]` |
 | `toolsInclude` | Các tool này phải có trong `tool_plan` cuối của lượt (sau `validated_plan`; lời gọi bị server bỏ không tính) | `[get_similar_products]` |
+| `judge` | Danh sách tiêu chí cho LLM giám khảo (golden-run.md mục 4); mỗi tiêu chí không đạt là một finding `[judge]`. Chỉ dùng cho điều khó viết thành luật (lời giải thích, câu thông báo); điều kiểm được bằng luật thì dùng khoá khác | `["Câu trả lời cho người dùng biết ngày đi đã đổi"]` |
+| `formMatchesAnswer` | `true`: response có `clarificationForm`, và nếu câu trả lời nêu tên một điểm đến trong `suggestedValues.destination` thì form phải điền sẵn đúng điểm đến đó | `true` |
 
 Giá trị hợp lệ:
 
@@ -162,6 +164,8 @@ placeholder, runner thay lúc chạy theo ngày ở Việt Nam (cùng nguồn v�
 | `{today+7}` | `02/10/2026` | `message` — câu người dùng gõ |
 | `{today+7:iso}` | `2026-10-02` | giá trị trong `expect`, ví dụ `intent: {startDate: "{today+7:iso}"}` |
 | `{today}`, `{today-1}` | hôm nay, hôm qua | như trên; offset là tuỳ chọn và có thể âm |
+| `{today+19:dm}` | `14/10` | `message` — ngày không năm, như người dùng thật gõ |
+| `{today+19:vi}` | `14 tháng 10` | `message` — như trên, dạng chữ |
 
 Giá trị có placeholder trong `expect` phải đặt trong dấu nháy kép (`"{today+7:iso}"`), vì `{` mở đầu là cú pháp map của YAML.
 Chỉ dùng cho ngày trong vài tuần tới. Biên bản ghi câu đã thay, không ghi placeholder.

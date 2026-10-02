@@ -2,7 +2,14 @@
 
 Phục vụ `docs/prd/test-plan.md` §2.4 và FR-AGT-01..05, NFR-REL-01, NFR-SEC-01 trong `docs/prd/requirements.md`.
 
-Hướng dẫn chạy bộ đánh giá tự động 76 case. Cấu trúc case và cách thêm case:
+Hướng dẫn chạy bộ đánh giá tự động. Có hai dataset:
+
+| Dataset | Nội dung | Chạy |
+|---|---|---|
+| `src/evaluation/datasets/agent_test_cases_nhat.yaml` (**mặc định**) | TC-01..TC-03: lỗi người dùng tái hiện (`src/evaluation/agent/agent-test-cases-nhat.md`), có tiêu chí LLM giám khảo | `.venv/bin/python -m src.evaluation.agent.golden` |
+| `src/evaluation/datasets/itinerary_agent_golden.yaml` | Bộ golden đầy đủ (benchmark test-plan §2.4), chạy hồi quy | thêm `--dataset src/evaluation/datasets/itinerary_agent_golden.yaml` |
+
+Cấu trúc case và cách thêm case:
 [golden-dataset-how-to-add-more-case.md](golden-dataset-how-to-add-more-case.md). Luật chấm: mục 4 bên dưới.
 
 Mọi lệnh chạy từ thư mục gốc repo.
@@ -66,7 +73,8 @@ Response phải có `"status":"ready"`, `"llmMode":"live"` và `"dataMode"` là 
 .venv/bin/python -m src.evaluation.agent.golden
 ```
 
-Lệnh trên chạy 75 case (89 lượt), mất khoảng 6 phút.
+Lệnh trên chạy bộ mặc định (3 case, 9 lượt, khoảng 2 phút). Bộ golden đầy đủ (79 case) chạy bằng
+`--dataset src/evaluation/datasets/itinerary_agent_golden.yaml`, mất khoảng 6 phút.
 
 | Cờ | Tác dụng | Ví dụ |
 |---|---|---|
@@ -77,6 +85,8 @@ Lệnh trên chạy 75 case (89 lượt), mất khoảng 6 phút.
 | `--api-base-url` | Địa chỉ backend, mặc định `http://127.0.0.1:8000` | |
 | `--dataset` | File dataset khác | `--dataset path/to.yaml` |
 | `--timeout` | Giới hạn giây cho mỗi lượt, mặc định 90 | |
+| `--report-slug` | Tên biên bản `eval-<ngày>-<slug>.md`; mặc định suy từ dataset (`agent-test-cases` cho bộ mặc định, `golden` cho bộ đầy đủ) | `--report-slug thu-nghiem` |
+| `--judge-model` | Model của LLM giám khảo (khoá `judge`); mặc định cùng model với agent, nhiệt độ 0 | `--judge-model gpt-4.1` |
 
 Các cách chạy thường dùng:
 
@@ -86,6 +96,12 @@ Các cách chạy thường dùng:
 
 # Thử case vừa thêm
 .venv/bin/python -m src.evaluation.agent.golden --only G-051 --repeat 3 --trace-project claude-golden
+
+# Bộ mặc định (TC-01..TC-03), mỗi case 3 lần, kèm giám khảo
+.venv/bin/python -m src.evaluation.agent.golden --repeat 3 --trace-project nhat-agent-tc
+
+# Bộ golden đầy đủ
+.venv/bin/python -m src.evaluation.agent.golden --dataset src/evaluation/datasets/itinerary_agent_golden.yaml
 
 # Đo tỷ lệ fail của các case hay dao động
 .venv/bin/python -m src.evaluation.agent.golden --only G-047,G-072 --repeat 5
@@ -127,6 +143,13 @@ Khi có lượt FAIL, xác định là kỳ vọng sai, lỗi agent hay nhiễu 
 [golden-dataset-how-to-add-more-case.md](golden-dataset-how-to-add-more-case.md) mục 8.
 
 ## 4. Luật chấm
+
+**LLM giám khảo (khoá `judge`).** Lượt có `judge: [tiêu chí, ...]` được một LLM chấm thêm sau các check tất định
+bên dưới. Giám khảo nhận lịch sử hội thoại như người dùng thấy, câu trả lời, và các facts của response (status,
+intent, `missingFields`, form điền sẵn, tên sản phẩm, warnings); với mỗi tiêu chí trả đạt/không đạt kèm lý do. Tiêu
+chí không đạt, hoặc giám khảo lỗi, thành finding `[judge] <tiêu chí>: <lý do>` và làm lượt FAIL. Giám khảo chỉ bổ sung
+cho check tất định, không thay chúng: kết luận của LLM dao động giữa các lần chạy, nên chạy kèm `--repeat` và đọc lý do
+trước khi kết luận. Tiêu chí bắt đầu bằng "Nếu" chỉ áp dụng khi điều kiện đúng.
 
 Dataset: `src/evaluation/datasets/itinerary_agent_golden.yaml` — 76 case, một số đa lượt (FR-AGT-01,
 FR-AGT-05). Runner: `src/evaluation/agent/golden.py`.

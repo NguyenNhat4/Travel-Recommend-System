@@ -1,7 +1,9 @@
 # Vòng đánh giá golden cho Itinerary Agent
 
 Chi tiết runner, cờ và luật chấm: `docs/spec/agent/golden-run.md`. Cấu trúc case và khoá `expect`:
-`docs/spec/agent/golden-dataset-how-to-add-more-case.md`. Dataset: `src/evaluation/datasets/itinerary_agent_golden.yaml`.
+`docs/spec/agent/golden-dataset-how-to-add-more-case.md`. Dataset mặc định: `src/evaluation/datasets/agent_test_cases_nhat.yaml`
+(lỗi người dùng tái hiện, có tiêu chí `judge` cho LLM giám khảo); bộ golden đầy đủ:
+`src/evaluation/datasets/itinerary_agent_golden.yaml` (chạy bằng `--dataset`).
 
 ## Vòng làm việc
 

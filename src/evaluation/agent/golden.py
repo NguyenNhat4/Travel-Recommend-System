@@ -41,6 +41,7 @@ from typing import Any
 
 import httpx
 import yaml
+from pydantic import BaseModel, Field
 
 from src.backend.app.agents.runtime_dependencies import RuntimeAgentDependencies
 from src.backend.app.agents.steps.classification import vietnam_today
@@ -66,10 +67,12 @@ SECRET_PATTERNS = [
 
 # ----------------------------------------------------------------------------------------- dates
 
-# `{today}`, `{today+7}`, `{today-1}` → dd/mm/yyyy (câu người dùng gõ); thêm `:iso` → yyyy-mm-dd (để so `intent.startDate`).
+# `{today}`, `{today+7}`, `{today-1}` → dd/mm/yyyy (câu người dùng gõ); thêm `:iso` → yyyy-mm-dd (để so `intent.startDate`);
+# `:dm` → "14/10" và `:vi` → "14 tháng 10" (cách người dùng thật gõ, không có năm).
 # Runner đổi lúc chạy theo ngày ở Việt Nam, cùng nguồn với mốc `today` của agent (`vietnam_today`), nên ngày luôn nằm
 # gần hôm nay và trong cửa sổ đặt chỗ 30 ngày của catalog mới nạp; câu gửi đi là ngày tường minh, LLM không phải đoán.
-DATE_PLACEHOLDER = re.compile(r"\{today([+-]\d+)?(:iso)?\}")
+DATE_PLACEHOLDER = re.compile(r"\{today([+-]\d+)?(?::(iso|dm|vi))?\}")
+DATE_FORMATS = {None: "{d:%d/%m/%Y}", "iso": "{d:%Y-%m-%d}", "dm": "{d.day}/{d.month}", "vi": "{d.day} tháng {d.month}"}
 
 
 def resolve_dates(value: Any, today: date) -> Any:
@@ -77,7 +80,7 @@ def resolve_dates(value: Any, today: date) -> Any:
     if isinstance(value, str):
         def replace(match: re.Match[str]) -> str:
             day = today + timedelta(days=int(match.group(1) or 0))
-            return day.isoformat() if match.group(2) else day.strftime("%d/%m/%Y")
+            return DATE_FORMATS[match.group(2)].format(d=day)
         return DATE_PLACEHOLDER.sub(replace, value)
     if isinstance(value, dict):
         return {key: resolve_dates(item, today) for key, item in value.items()}
@@ -103,7 +106,7 @@ TURN_KEYS = {"message", "expect", "language", "conversationId"}
 EXPECT_KEYS = {
     "httpStatus", "status", "errorCode", "intent", "missingFieldsInclude", "toolCalled", "nodesInclude",
     "nodesExclude", "forbiddenText", "excludeProductsFromTurn", "minActivities", "hasStay", "warningsExclude",
-    "toolsInclude", "titleFirstLine",
+    "toolsInclude", "titleFirstLine", "formMatchesAnswer", "judge",
 }
 
 
@@ -295,8 +298,12 @@ def _product_ids(response: dict[str, Any], role: str) -> set[str]:
     return ids
 
 
-def schedule_findings(response: dict[str, Any], candidates: dict[str, dict[str, Any]]) -> list[str]:
-    """Nhóm B (cấu trúc) + C1 (chỗ ở rẻ nhất) — chỉ áp dụng khi status=COMPLETED."""
+def schedule_findings(response: dict[str, Any], candidates: dict[str, dict[str, Any]],
+                      sources: dict[str, str] | None = None) -> list[str]:
+    """Nhóm B (cấu trúc) + C1 (chỗ ở rẻ nhất) — chỉ áp dụng khi status=COMPLETED.
+
+    C1 dùng đúng thứ tự của `compose_plan`: chỉ hotel còn chỗ, Search trước Recommendation (`sources`), rồi giá.
+    """
     if response.get("status") != "COMPLETED":
         return []
     failures: list[str] = []
@@ -312,9 +319,10 @@ def schedule_findings(response: dict[str, Any], candidates: dict[str, dict[str, 
         if stay.get("taxonomy") != STAY_TAXONOMY:
             failures.append(f"stay taxonomy={stay.get('taxonomy')!r}, phải là {STAY_TAXONOMY!r}")
         seen_ids.add(stay["productId"])
-        hotel_candidates = [p for p in candidates.values() if p.get("taxonomy") == STAY_TAXONOMY]
+        hotel_candidates = [p for p in candidates.values()
+                            if p.get("taxonomy") == STAY_TAXONOMY and p.get("available")]
         if hotel_candidates:
-            cheapest = min(hotel_candidates, key=_stay_order)
+            cheapest = min(hotel_candidates, key=lambda product: _stay_order(sources or {}, product))
             if stay["productId"] != cheapest["productId"]:
                 failures.append(f"stay={stay['productId']} nhưng hotel rẻ nhất là {cheapest['productId']}")
 
@@ -413,6 +421,8 @@ def dataset_findings(
     if "titleFirstLine" in expect and has_title_first_line(answer_text(response)) != bool(expect["titleFirstLine"]):
         failures.append("dòng đầu của câu trả lời " + ("không phải" if expect["titleFirstLine"] else "lại là")
                         + " `**Tiêu đề**` kèm phần chi tiết")
+    if expect.get("formMatchesAnswer"):
+        failures += form_answer_findings(response)
     if "forbiddenText" in expect:
         blob = _text_blob(response).lower()
         for phrase in expect["forbiddenText"]:
@@ -439,6 +449,88 @@ def dataset_findings(
     return failures
 
 
+def form_answer_findings(response: dict[str, Any]) -> list[str]:
+    """Form điền sẵn phải khớp điểm đến câu trả lời gợi ý (TC-02: lời gợi ý Đà Nẵng mà form chưa chọn Đà Nẵng).
+
+    Điểm đến "được gợi ý" là tên trong `suggestedValues.destination` (danh sách catalog) xuất hiện trong câu trả lời.
+    Câu trả lời không nêu tên nào thì không có gì để so; prompt `suggest_form` cho phép không nêu giá trị.
+    """
+    form = response.get("clarificationForm")
+    if not form:
+        return ["không có clarificationForm"]
+    default = (form.get("defaults") or {}).get("destination")
+    text = answer_text(response).casefold()
+    named = [name for name in (response.get("suggestedValues") or {}).get("destination") or []
+             if name.casefold() in text]
+    if named and default not in named:
+        return [f"câu trả lời gợi ý {named}, form điền sẵn {default!r}"]
+    return []
+
+
+# ------------------------------------------------------------------------------------------- judge
+#
+# LLM giám khảo chấm tiêu chí khó viết thành luật ("giải thích nguyên nhân", "thông báo ngày vừa cập nhật").
+# Chỉ bổ sung cho các check tất định ở trên, không thay chúng: kết luận của LLM dao động giữa các lần chạy, nên
+# đọc cùng `--repeat` và đọc lý do; finding của giám khảo luôn mang tiền tố `[judge]`.
+
+JUDGE_PROMPT = """You are a strict QA reviewer for a Vietnamese travel-itinerary chat assistant.
+You receive `transcript` (earlier turns: user messages verbatim, assistant replies as the user saw them), the latest
+user `message`, the assistant `reply` the user sees, `facts` (what the system actually returned for that reply:
+status, trip intent, missing fields, prefilled form, products, warnings) and a list of `criteria`.
+For EACH criterion set passed=true only when the reply and facts clearly satisfy it; when in doubt, passed=false.
+Judge only what is shown: never assume the assistant said or did something that is not in the reply or facts.
+A criterion that starts with "Nếu" only applies when its condition holds; when the condition does not hold, it passes.
+reason: one short sentence in Vietnamese that quotes the decisive words of the reply.
+Return exactly one verdict per criterion, in the same order."""
+
+
+class JudgeVerdict(BaseModel):
+    passed: bool
+    reason: str = Field(max_length=500)
+
+
+class JudgeResult(BaseModel):
+    verdicts: list[JudgeVerdict]
+
+
+def judge_facts(response: dict[str, Any]) -> dict[str, Any]:
+    """Phần response người dùng nhìn thấy ngoài câu chữ, rút gọn cho giám khảo (không có id, không có giá)."""
+    itinerary = response.get("itinerary") or {}
+    stay = (itinerary.get("stay") or {}).get("product") or {}
+    form = response.get("clarificationForm") or {}
+    return {
+        "status": response.get("status") or (response.get("error") or {}).get("code"),
+        "intent": response.get("intent") or response.get("knownIntent"),
+        "missingFields": response.get("missingFields"),
+        "prefilledForm": form.get("defaults"),
+        "suggestions": response.get("suggestions"),
+        "warnings": [w.get("code") for w in response.get("warnings") or []],
+        "stay": stay.get("name"),
+        "days": [[(slot.get("product") or {}).get("name") for slot in day.get("slots") or [] if slot.get("product")]
+                 for day in itinerary.get("days") or []],
+    }
+
+
+async def judge_findings(judge_llm, transcript: list[dict[str, str]], message: str, response: dict[str, Any],
+                         criteria: list[str], timeout: float, config: dict[str, Any] | None = None) -> list[str]:
+    """Finding `[judge] <tiêu chí>: <lý do>` cho mỗi tiêu chí không đạt; lỗi gọi giám khảo cũng là finding."""
+    payload = {"transcript": transcript, "message": message, "reply": answer_text(response),
+               "facts": judge_facts(response), "criteria": list(criteria)}
+    human = yaml.dump(payload, allow_unicode=True, sort_keys=False, width=1_000_000)
+    try:
+        raw = await asyncio.wait_for(
+            judge_llm.with_structured_output(JudgeResult).ainvoke([("system", JUDGE_PROMPT), ("human", human)],
+                                                                 config=config),
+            timeout=timeout)
+        result = JudgeResult.model_validate(raw)
+    except Exception as exc:  # giám khảo lỗi thì lượt không được coi là đạt
+        return [f"[judge] không chấm được: {type(exc).__name__}"]
+    if len(result.verdicts) != len(criteria):
+        return [f"[judge] trả {len(result.verdicts)} kết luận cho {len(criteria)} tiêu chí"]
+    return [f"[judge] {criterion}: {verdict.reason}"
+            for criterion, verdict in zip(criteria, result.verdicts) if not verdict.passed]
+
+
 # -------------------------------------------------------------------------------------------- run
 
 
@@ -461,9 +553,10 @@ class TurnResult:
 
 
 async def run_case(
-    case: Case, planner, dsn: str | None, settings: Any, timeout: float,
+    case: Case, planner, dsn: str | None, settings: Any, timeout: float, judge_llm=None,
 ) -> list[TurnResult]:
     results: list[TurnResult] = []
+    transcript: list[dict[str, str]] = []  # cho giám khảo: các lượt trước như người dùng thấy
     conversation_id: str | None = None
     previous_products: dict[int, dict[str, set[str]]] = {}
     today = vietnam_today()
@@ -496,9 +589,17 @@ async def run_case(
         findings += gate_secrets(response, settings)
         findings += gate_no_booking_claim(response)
         findings += gate_no_tool_before_info(response, events)
-        findings += schedule_findings(response, candidates)
+        findings += schedule_findings(response, candidates, state.get("sources", {}))
         findings += dataset_findings(response, http_status, events, expect, previous_products,
                                      {call.get("name") for call in state.get("tool_plan") or []})
+        if expect.get("judge"):
+            if judge_llm is None:
+                findings.append("[judge] lượt có tiêu chí giám khảo nhưng runner không có LLM giám khảo")
+            else:
+                judge_config = {**trace_config(case, index, message, request_id), "tags": ["golden-judge", case.id]}
+                findings += await judge_findings(judge_llm, transcript, message, response, expect["judge"], timeout,
+                                                 judge_config)
+        transcript += [{"user": message}, {"assistant": answer_text(response)}]
 
         tool_called = retrieval_ran(events)
         tool_expected = expected_tool_call(response)
@@ -588,6 +689,7 @@ def render_markdown(report: dict[str, Any], commit_sha: str) -> str:
         f"- Model: `{report['model']}` · dataMode: `{report['dataMode']}` · mode: `{report['mode']}`",
         f"- productCount: {report['productCount']}",
         f"- LangSmith project: `{report.get('traceProject') or 'không bật'}`",
+        *([f"- LLM giám khảo: `{report['judgeModel']}` (finding `[judge]`)"] if report.get("judgeModel") else []),
         "",
         "## Ba chỉ số PRD (test-plan.md §2.4)",
         "",
@@ -623,6 +725,19 @@ def render_markdown(report: dict[str, Any], commit_sha: str) -> str:
 # -------------------------------------------------------------------------------------------- cli
 
 
+# Bộ mặc định là các case người dùng tái hiện (agent-test-cases-nhat.md); bộ golden đầy đủ giữ lại để chạy hồi quy
+# bằng `--dataset`, vì test-plan §2.4 vẫn yêu cầu bộ benchmark khoảng 50 câu.
+DEFAULT_DATASET = "src/evaluation/datasets/agent_test_cases_nhat.yaml"
+FULL_GOLDEN_DATASET = "src/evaluation/datasets/itinerary_agent_golden.yaml"
+REPORT_SLUGS = {"itinerary_agent_golden.yaml": "golden", "agent_test_cases_nhat.yaml": "agent-test-cases"}
+
+
+def report_slug(dataset: str) -> str:
+    """Tên biên bản theo dataset, để chạy bộ này không ghi đè biên bản của bộ kia."""
+    name = Path(dataset).name
+    return REPORT_SLUGS.get(name, Path(dataset).stem.replace("_", "-"))
+
+
 def _commit_sha() -> str:
     try:
         return subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True,
@@ -648,6 +763,13 @@ async def _main_async(args: argparse.Namespace) -> int:
         runtime, settings = build_runtime(http)
         planner = runtime.planner()
         dsn = args.dsn or settings.database_url or None
+        judge_llm = None
+        if any(turn.expect.get("judge") for case in cases for turn in case.turns):
+            # Nhiệt độ 0 để kết luận ổn định nhất có thể; `--judge-model` cho phép dùng model khác agent.
+            judge_settings = settings.model_copy(update={
+                "itinerary_llm_temperature": 0.0,
+                **({"itinerary_llm_model": args.judge_model} if args.judge_model else {})})
+            judge_llm = build_chat_model(judge_settings)
 
         status = await http.get("assistant/status", timeout=10)
         product_count = status.json().get("productCount") if status.status_code == 200 else None
@@ -655,7 +777,7 @@ async def _main_async(args: argparse.Namespace) -> int:
         results: list[TurnResult] = []
         for repetition in range(max(1, args.repeat)):
             for case in cases:
-                results += await run_case(case, planner, dsn, settings, args.timeout)
+                results += await run_case(case, planner, dsn, settings, args.timeout, judge_llm)
         if args.sweep:
             results += await run_sweep(planner, dsn, settings, args.timeout, http)
 
@@ -666,13 +788,16 @@ async def _main_async(args: argparse.Namespace) -> int:
     mode = "dataset+sweep" if args.sweep else "dataset"
     report = build_report(results, settings, mode, product_count)
     report["traceProject"] = args.trace_project
+    if judge_llm is not None:
+        report["judgeModel"] = args.judge_model or report["model"]
     commit_sha = _commit_sha()
 
     reports_dir = REPO_ROOT / "src/evaluation/reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
     today = datetime.now(timezone.utc).date().isoformat()
-    json_path = reports_dir / f"eval-{today}-golden.json"
-    md_path = reports_dir / f"eval-{today}-golden.md"
+    slug = args.report_slug or report_slug(args.dataset)
+    json_path = reports_dir / f"eval-{today}-{slug}.json"
+    md_path = reports_dir / f"eval-{today}-{slug}.md"
     json_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     md_path.write_text(render_markdown(report, commit_sha), encoding="utf-8")
     print(f"Đã ghi {json_path} và {md_path}")
@@ -690,13 +815,18 @@ async def _main_async(args: argparse.Namespace) -> int:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--dataset", default="src/evaluation/datasets/itinerary_agent_golden.yaml")
+    parser.add_argument("--dataset", default=DEFAULT_DATASET,
+                        help="Mặc định bộ test case người dùng tái hiện; bộ golden đầy đủ: " + FULL_GOLDEN_DATASET)
     parser.add_argument("--api-base-url", default="http://127.0.0.1:8000")
     parser.add_argument("--dsn", default=None, help="Mặc định dùng DATABASE_URL từ Settings.")
     parser.add_argument("--only", default=None, help="Danh sách id case, phân tách bằng dấu phẩy.")
     parser.add_argument("--sweep", action="store_true", help="Thêm một lượt Nhóm A/B/C cho mọi điểm đến thật.")
     parser.add_argument("--repeat", type=int, default=1, help="Chạy lại toàn bộ case đã chọn N lần để đo ổn định.")
     parser.add_argument("--timeout", type=float, default=90.0)
+    parser.add_argument("--judge-model", default=None,
+                        help="Model của LLM giám khảo (khoá expect `judge`); mặc định cùng model với agent.")
+    parser.add_argument("--report-slug", default=None,
+                        help="Tên biên bản eval-<ngày>-<slug>.md; mặc định suy từ dataset (REPORT_SLUGS).")
     parser.add_argument("--trace-project", default=None,
                         help="Gửi trace từng lượt lên LangSmith project này (key lấy từ .env).")
     args = parser.parse_args()
