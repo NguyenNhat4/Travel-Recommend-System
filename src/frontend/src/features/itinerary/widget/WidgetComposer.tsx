@@ -1,15 +1,17 @@
 import React, { useEffect, useId, useRef } from 'react';
-import { ArrowUp, Sparkles } from 'lucide-react';
+import { ArrowUp, Sparkles, Square } from 'lucide-react';
 
 interface WidgetComposerProps {
   value: string;
   onChange: (value: string) => void;
   onSend: () => void;
   busy: boolean;
+  /** Có thì nút gửi thành nút Dừng khi `busy`, và Esc trong ô nhập cũng dừng. */
+  onStop?: () => void;
   initial?: boolean;
 }
 
-export function WidgetComposer({ value, onChange, onSend, busy, initial = false }: WidgetComposerProps) {
+export function WidgetComposer({ value, onChange, onSend, busy, onStop, initial = false }: WidgetComposerProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const inputId = useId();
 
@@ -23,6 +25,8 @@ export function WidgetComposer({ value, onChange, onSend, busy, initial = false 
   useEffect(() => {
     inputRef.current?.focus();
   }, [initial]);
+
+  const canStop = busy && Boolean(onStop);
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
@@ -40,6 +44,13 @@ export function WidgetComposer({ value, onChange, onSend, busy, initial = false 
         value={value}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={(event) => {
+          if (event.key === 'Escape' && canStop) {
+            // Esc lúc đang chạy là dừng, không đóng/thu nhỏ widget (listener ở useFloatingWidget).
+            event.preventDefault();
+            event.stopPropagation();
+            onStop?.();
+            return;
+          }
           if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
             event.preventDefault();
             event.currentTarget.form?.requestSubmit();
@@ -50,11 +61,15 @@ export function WidgetComposer({ value, onChange, onSend, busy, initial = false 
       />
       <div className="mt-2 flex items-center justify-between gap-3">
         <span className="flex items-center gap-1.5 text-xs text-slate-500">
-          {initial ? <><Sparkles className="h-3.5 w-3.5 text-blue-600" aria-hidden="true" /> Lên lịch trình cùng AI</> : 'Enter để gửi · Shift+Enter xuống dòng'}
+          {initial ? <><Sparkles className="h-3.5 w-3.5 text-blue-600" aria-hidden="true" /> Lên lịch trình cùng AI</> : canStop ? 'Esc để dừng' : 'Enter để gửi · Shift+Enter xuống dòng'}
         </span>
-        <button type="submit" disabled={!value.trim() || busy} aria-label="Gửi yêu cầu" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500">
+        {canStop ? (
+          <button type="button" onClick={onStop} aria-label="Dừng xử lý" title="Dừng xử lý" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-800 text-white transition hover:bg-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2">
+            <Square className="h-4 w-4 fill-current" aria-hidden="true" />
+          </button>
+        ) : <button type="submit" disabled={!value.trim() || busy} aria-label="Gửi yêu cầu" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500">
           <ArrowUp className="h-5 w-5" aria-hidden="true" />
-        </button>
+        </button>}
       </div>
     </form>
   );
