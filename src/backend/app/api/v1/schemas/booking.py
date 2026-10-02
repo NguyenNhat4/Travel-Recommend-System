@@ -23,14 +23,14 @@ class AddCartItemRequest(BaseModel):
     usingDate: date
     # Không gửi guests thì bắt buộc có quantity; dịch vụ tính theo người gửi guests được phép bỏ quantity (R-CRT-02).
     quantity: int | None = Field(default=None, ge=1, le=99)
-    nights: int | None = Field(default=None, ge=1, le=60)
+    nights: int | None = Field(default=None, ge=1, le=30)
     guests: GuestCountsBody | None = None
 
 
 class UpdateCartItemRequest(BaseModel):
     usingDate: date | None = None
     quantity: int | None = Field(default=None, ge=1, le=99)
-    nights: int | None = Field(default=None, ge=1, le=60)
+    nights: int | None = Field(default=None, ge=1, le=30)
     guests: GuestCountsBody | None = None
 
     def has_changes(self) -> bool:

@@ -12,7 +12,7 @@ from src.backend.app.application.auth.principal import AuthPrincipal
 from src.backend.app.application.booking.errors import (
     CartItemNotFound, DirectBookingOnly, GuestStoreUnavailable, ProductNotFound, ValidationFailed,
 )
-from src.backend.app.application.booking.lines import resolve_line, stay_nights
+from src.backend.app.application.booking.lines import resolve_line, stay_nights, vn_today
 from src.backend.app.application.booking.owner import CartOwner, owner_of
 from src.backend.app.application.booking.views import cart_response
 from src.backend.app.application.ports.cart_repository import CartRepository
@@ -75,7 +75,7 @@ class CartService:
         # Thêm trùng sản phẩm và ngày thì cộng dồn; luật sức chứa và số khách tối đa kiểm trên kết quả đã cộng (R-CRT-04).
         line = resolve_line(
             product, using_date=using_date, quantity=quantity, nights=nights, guests=guests,
-            existing_quantity=existing.quantity if existing else None,
+            today=vn_today(self._clock()), existing_quantity=existing.quantity if existing else None,
             existing_guests=existing.guests if existing else None)
         await carts.upsert(
             owner.key, product_id=line.product_id, using_date=line.using_date, quantity=line.quantity,
@@ -108,7 +108,7 @@ class CartService:
             raise ProductNotFound("sản phẩm không tồn tại", {"productId": line.product_id})
         resolved = resolve_line(
             product, using_date=using_date or line.using_date, quantity=quantity, nights=nights, guests=guests,
-            mode="update", existing_quantity=line.quantity, existing_guests=line.guests)
+            today=vn_today(self._clock()), mode="update", existing_quantity=line.quantity, existing_guests=line.guests)
         # Sửa mục giỏ nghĩa là khách đã thấy giá hiện tại: ghi lại giá snapshot (người lớn và trẻ em) để checkout
         # không báo PRICE_CHANGED nữa.
         await carts.update(

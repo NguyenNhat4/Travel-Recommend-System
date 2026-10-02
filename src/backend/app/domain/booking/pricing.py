@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+import calendar
+from datetime import date, timedelta
 from typing import Any
 
 from src.backend.app.domain.catalog.models import Product
@@ -28,10 +29,43 @@ class LineIssue:
     details: dict[str, Any]
 
 
+HOTEL_MAX_ADVANCE_MONTHS = 3
+HOTEL_MAX_NIGHTS = 30
+
+
+def hotel_booking_window(today: date) -> tuple[date, date]:
+    """Ngày nhận phòng khách sạn hợp lệ: từ hôm nay đến hôm nay + 3 tháng (cắt về cuối tháng nếu tháng đó ngắn hơn)."""
+    month_index = today.month - 1 + HOTEL_MAX_ADVANCE_MONTHS
+    year, month = today.year + month_index // 12, month_index % 12 + 1
+    return today, date(year, month, min(today.day, calendar.monthrange(year, month)[1]))
+
+
+def _sold_out_in_calendar(product: Product, using_date: date, nights: int) -> bool:
+    """Lịch kín/trống đọc-only (`attributes.availability`): true khi một đêm của kỳ lưu trú được đánh dấu kín ("0")."""
+    availability = (product.attributes or {}).get("availability")
+    if not isinstance(availability, dict):
+        return False
+    try:
+        start = date.fromisoformat(str(availability["from"]))
+        days = str(availability["calendar"])
+    except (KeyError, ValueError):
+        return False
+    for offset in range(nights):
+        index = (using_date + timedelta(days=offset) - start).days
+        if 0 <= index < len(days) and days[index] == "0":
+            return True
+    return False
+
+
 def check_product(
-    product: Product, using_date: date, *, snapshot_price: int | None = None
+    product: Product, using_date: date, *, snapshot_price: int | None = None, today: date | None = None,
+    nights: int | None = None,
 ) -> LineIssue | None:
-    """Dùng chung cho thêm giỏ (không có snapshot) và tạo đơn (so với giá lúc thêm giỏ)."""
+    """Dùng chung cho thêm giỏ (không có snapshot) và tạo đơn (so với giá lúc thêm giỏ).
+
+    Khách sạn có `today` thì ngày nhận phòng kiểm theo lịch (không quá khứ, tối đa 3 tháng) thay cho cửa sổ mở bán của dữ liệu,
+    và hạng phòng kín trong lịch ở các đêm đang chọn là `PRODUCT_UNAVAILABLE` (FR-CAT-03).
+    """
     if not product.available or not product.is_bookable:
         return LineIssue("PRODUCT_UNAVAILABLE", {"productId": product.product_id})
     if snapshot_price is not None and int(product.unit_price) != snapshot_price:
@@ -39,6 +73,17 @@ def check_product(
             "PRICE_CHANGED",
             {"productId": product.product_id, "oldPrice": snapshot_price, "newPrice": int(product.unit_price)},
         )
+    if product.taxonomy == "hotel" and today is not None:
+        window_from, window_to = hotel_booking_window(today)
+        if not window_from <= using_date <= window_to:
+            return LineIssue(
+                "DATE_OUT_OF_RANGE",
+                {"productId": product.product_id, "availableFrom": window_from.isoformat(),
+                 "availableTo": window_to.isoformat()},
+            )
+        if _sold_out_in_calendar(product, using_date, max(1, nights or 1)):
+            return LineIssue("PRODUCT_UNAVAILABLE", {"productId": product.product_id})
+        return None
     if (product.available_from and using_date < product.available_from) or (
         product.available_to and using_date > product.available_to
     ):

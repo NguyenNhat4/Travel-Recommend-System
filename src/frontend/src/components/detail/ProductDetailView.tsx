@@ -54,28 +54,67 @@ function clamp(iso: string, min?: string, max?: string): string {
 
 const fmtDate = (iso: string) => new Date(`${iso}T12:00:00+07:00`).toLocaleDateString('vi-VN');
 
-/** Thông báo lỗi cho ngày đang nhập, hoặc null khi hợp lệ. Cửa sổ mở bán: ngày nhận trong [availableFrom, availableTo], ngày trả tối đa availableTo + 1. */
+const HOTEL_MAX_NIGHTS = 30;
+const HOTEL_MAX_ADVANCE_MONTHS = 3;
+
+/** Cộng tháng theo lịch; ngày vượt số ngày của tháng đích thì cắt về ngày cuối tháng (30/11 + 3 tháng = 28/02). */
+function addMonths(iso: string, months: number): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  const index = m - 1 + months;
+  const year = y + Math.floor(index / 12), month = index % 12;
+  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  return `${year}-${String(month + 1).padStart(2, '0')}-${String(Math.min(d, lastDay)).padStart(2, '0')}`;
+}
+
+/** Ngày nhận phòng khách sạn: từ hôm nay đến hôm nay + 3 tháng (giờ Việt Nam), không phụ thuộc cửa sổ mở bán của dữ liệu. */
+function hotelCheckInWindow(): { from: string; to: string } {
+  const today = isoDate(new Date());
+  return { from: today, to: addMonths(today, HOTEL_MAX_ADVANCE_MONTHS) };
+}
+
+/** Lịch kín/trống đọc-only (`attributes.availability`, ký tự "0" là kín): true khi một đêm của kỳ lưu trú kín. */
+function soldOutInCalendar(unit: Product, checkIn: string, checkOut: string): boolean {
+  const availability = unit.attributes?.availability as { from?: string; calendar?: string } | undefined;
+  if (!availability?.from || typeof availability.calendar !== 'string') return false;
+  const start = Date.parse(`${availability.from}T00:00:00Z`);
+  for (let night = checkIn; night < checkOut; night = addDays(night, 1)) {
+    const index = Math.round((Date.parse(`${night}T00:00:00Z`) - start) / DAY_MS);
+    if (index >= 0 && index < availability.calendar.length && availability.calendar[index] === '0') return true;
+  }
+  return false;
+}
+
+/**
+ * Thông báo lỗi cho ngày đang nhập, hoặc null khi hợp lệ.
+ * Khách sạn (FR-CAT-03): nhận phòng từ hôm nay đến hôm nay + 3 tháng, trả phòng sau 1–30 đêm, hạng phòng kín thì báo hết chỗ.
+ * Loại khác: ngày sử dụng trong cửa sổ mở bán [availableFrom, availableTo].
+ */
 function validateDates(unit: Product, checkIn: string, checkOut?: string): string | null {
   const isHotel = checkOut !== undefined;
   if (!checkIn) return isHotel ? 'Vui lòng chọn ngày nhận phòng.' : 'Vui lòng chọn ngày sử dụng.';
-  const label = isHotel ? 'Ngày nhận phòng' : 'Ngày sử dụng';
-  if ((unit.availableFrom && checkIn < unit.availableFrom) || (unit.availableTo && checkIn > unit.availableTo)) {
-    return unit.availableFrom && unit.availableTo
-      ? `${label} phải trong khoảng ${fmtDate(unit.availableFrom)} – ${fmtDate(unit.availableTo)}.`
-      : `${label} nằm ngoài thời gian mở bán.`;
+  if (!isHotel) {
+    if ((unit.availableFrom && checkIn < unit.availableFrom) || (unit.availableTo && checkIn > unit.availableTo)) {
+      return unit.availableFrom && unit.availableTo
+        ? `Ngày sử dụng phải trong khoảng ${fmtDate(unit.availableFrom)} – ${fmtDate(unit.availableTo)}.`
+        : 'Ngày sử dụng nằm ngoài thời gian mở bán.';
+    }
+    return null;
   }
-  if (!isHotel) return null;
+  const allowed = hotelCheckInWindow();
+  if (checkIn < allowed.from) return 'Ngày nhận phòng không được ở quá khứ.';
+  if (checkIn > allowed.to) return `Chỉ nhận đặt phòng trước tối đa 3 tháng, ngày nhận phòng chậm nhất là ${fmtDate(allowed.to)}.`;
   if (!checkOut) return 'Vui lòng chọn ngày trả phòng.';
   if (checkOut <= checkIn) return 'Ngày trả phòng phải sau ngày nhận phòng ít nhất 1 đêm.';
-  if (unit.availableTo && checkOut > addDays(unit.availableTo, 1)) {
-    return `Ngày trả phòng chậm nhất là ${fmtDate(addDays(unit.availableTo, 1))}.`;
-  }
+  if (checkOut > addDays(checkIn, HOTEL_MAX_NIGHTS)) return `Mỗi lần đặt tối đa ${HOTEL_MAX_NIGHTS} đêm.`;
+  if (soldOutInCalendar(unit, checkIn, checkOut)) return 'Hạng phòng này đã hết chỗ trong thời gian bạn chọn.';
   return null;
 }
 
-/** Mặc định: ngày mai (giờ Việt Nam), kéo vào cửa sổ mở bán của mục đặt được. */
+/** Mặc định: ngày mai (giờ Việt Nam); khách sạn nằm trong cửa sổ 3 tháng, loại khác kéo vào cửa sổ mở bán. */
 function defaultStart(unit: Product): string {
-  return clamp(addDays(isoDate(new Date()), 1), unit.availableFrom, unit.availableTo);
+  const tomorrow = addDays(isoDate(new Date()), 1);
+  if (unit.taxonomy === 'hotel') return clamp(tomorrow, hotelCheckInWindow().from, hotelCheckInWindow().to);
+  return clamp(tomorrow, unit.availableFrom, unit.availableTo);
 }
 
 function isBookable(unit: Product | null): unit is Product {
@@ -245,17 +284,23 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
   const [counts, setCounts] = useState<CartState>(initialCounts);
   useEffect(() => {
     if (!unit) return;
-    const maxOut = unit.availableTo ? addDays(unit.availableTo, 1) : undefined;
+    const hotel = unit.taxonomy === 'hotel';
+    const checkInWindow = hotelCheckInWindow();
+    const maxOutOf = (from: string) => (hotel ? addDays(from, HOTEL_MAX_NIGHTS) : unit.availableTo ? addDays(unit.availableTo, 1) : undefined);
     let start = defaultStart(unit);
-    let out = clamp(addDays(start, 1), addDays(start, 1), maxOut);
+    let out = clamp(addDays(start, 1), addDays(start, 1), maxOutOf(start));
     let counts = initialCounts();
 
     // Ngữ cảnh chuyến đi từ tấm tìm kiếm (?checkIn&checkOut&adults&children&rooms): chỉ điền sẵn khi hợp lệ với mục đang chọn;
     // sai hoặc ngoài cửa sổ mở bán thì giữ mặc định. Backend vẫn là nơi quyết định (DATE_OUT_OF_RANGE, VALIDATION_ERROR).
     const trip = parseTripContext(new URLSearchParams(window.location.search));
-    if (trip.checkIn && (!unit.availableFrom || trip.checkIn >= unit.availableFrom) && (!unit.availableTo || trip.checkIn <= unit.availableTo)) {
+    const tripInRange = hotel
+      ? trip.checkIn && trip.checkIn >= checkInWindow.from && trip.checkIn <= checkInWindow.to
+      : trip.checkIn && (!unit.availableFrom || trip.checkIn >= unit.availableFrom) && (!unit.availableTo || trip.checkIn <= unit.availableTo);
+    if (trip.checkIn && tripInRange) {
       start = trip.checkIn;
-      out = trip.checkOut && (!maxOut || trip.checkOut <= maxOut) ? trip.checkOut : clamp(addDays(start, 1), addDays(start, 1), maxOut);
+      const maxOut = maxOutOf(start);
+      out = trip.checkOut && trip.checkOut > start && (!maxOut || trip.checkOut <= maxOut) ? trip.checkOut : clamp(addDays(start, 1), addDays(start, 1), maxOut);
     }
     if (trip.adults) {
       const candidate: CartState = {
@@ -273,7 +318,7 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
   }, [unit?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isHotel = unit?.taxonomy === 'hotel';
-  const fixedDate = unit?.availableFrom && unit.availableFrom === unit.availableTo;
+  const fixedDate = !isHotel && unit?.availableFrom && unit.availableFrom === unit.availableTo;
   const nights = isHotel && checkIn && checkOut
     ? Math.max(1, Math.round((new Date(checkOut).getTime() - new Date(checkIn).getTime()) / DAY_MS))
     : 1;
@@ -497,10 +542,10 @@ export const ProductDetailView: React.FC<{ productId: string }> = ({ productId }
                 </div>
               ) : isHotel ? (
                 <div className="grid grid-cols-2 gap-2">
-                  <DateInput label="Nhận phòng" value={checkIn} min={unit.availableFrom} max={unit.availableTo}
+                  <DateInput label="Nhận phòng" value={checkIn} min={hotelCheckInWindow().from} max={hotelCheckInWindow().to}
                     onChange={(v) => { setCheckIn(v); if (v && (!checkOut || checkOut <= v)) setCheckOut(addDays(v, 1)); }} />
                   <DateInput label="Trả phòng" value={checkOut} min={checkIn ? addDays(checkIn, 1) : undefined}
-                    max={unit.availableTo ? addDays(unit.availableTo, 1) : undefined} onChange={setCheckOut} />
+                    max={checkIn ? addDays(checkIn, HOTEL_MAX_NIGHTS) : undefined} onChange={setCheckOut} />
                 </div>
               ) : (
                 <DateInput label="Ngày sử dụng" value={checkIn} min={unit.availableFrom} max={unit.availableTo} onChange={setCheckIn} />

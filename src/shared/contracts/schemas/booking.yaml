@@ -252,7 +252,8 @@ AddCartItemRequest:
       - integer
       - 'null'
       minimum: 1
-      description: Chỉ dùng với taxonomy hotel; loại khác bị bỏ qua.
+      maximum: 30
+      description: Chỉ dùng với taxonomy hotel; loại khác bị bỏ qua. Tối đa 30 đêm.
     guests:
       $ref: ../openapi.yaml#/components/schemas/GuestCounts
 UpdateCartItemRequest:
@@ -273,6 +274,7 @@ UpdateCartItemRequest:
       - integer
       - 'null'
       minimum: 1
+      maximum: 30
     guests:
       $ref: ../openapi.yaml#/components/schemas/GuestCounts
 CartItem:

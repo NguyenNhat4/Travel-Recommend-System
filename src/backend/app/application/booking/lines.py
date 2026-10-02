@@ -6,11 +6,12 @@ không phải phân biệt mục đến từ đâu (spec dat-truc-tiep-theo-don-
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 
 from src.backend.app.application.booking.errors import LineRejected
 from src.backend.app.application.booking.messages import CART_MESSAGE, validation_failed
 from src.backend.app.domain.booking import check_product, child_unit_price
+from src.backend.app.domain.booking.cancellation import VN_TZ
 from src.backend.app.domain.booking.party import Guests
 from src.backend.app.domain.booking.party_rules import resolve_cart_guests
 from src.backend.app.domain.catalog.models import Product
@@ -30,6 +31,11 @@ class ResolvedLine:
     child_unit_price: int | None
 
 
+def vn_today(now: datetime) -> date:
+    """Ngày hiện tại theo giờ Việt Nam: mốc "không đặt quá khứ" của khách sạn."""
+    return now.astimezone(VN_TZ).date()
+
+
 def stay_nights(product: Product, nights: int | None) -> int | None:
     """Chỉ khách sạn có số đêm; loại khác bỏ qua kể cả khi client gửi."""
     return max(1, nights or 1) if product.taxonomy == "hotel" else None
@@ -42,10 +48,10 @@ def child_snapshot(product: Product) -> int | None:
 
 def resolve_line(
     product: Product, *, using_date: date, quantity: int | None, nights: int | None, guests: Guests | None,
-    mode: str = "add", existing_quantity: int | None = None, existing_guests: Guests | None = None,
+    today: date, mode: str = "add", existing_quantity: int | None = None, existing_guests: Guests | None = None,
 ) -> ResolvedLine:
     """Kiểm sản phẩm và số khách rồi trả mục đã chuẩn hoá. Vi phạm thì raise `LineRejected` hoặc `ValidationFailed`."""
-    issue = check_product(product, using_date)
+    issue = check_product(product, using_date, today=today, nights=stay_nights(product, nights))
     if issue:
         raise LineRejected(issue.code, issue.details)
     result = resolve_cart_guests(

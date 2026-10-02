@@ -126,6 +126,37 @@ describe('ProductDetailView', () => {
     expect(book().disabled).toBe(true);
   });
 
+  it('khách sạn: ngày nhận phòng theo lịch (không quá khứ, tối đa 3 tháng), tối đa 30 đêm, không phụ thuộc cửa sổ mở bán', async () => {
+    api.getProduct.mockResolvedValue(hotelProperty());
+    render(<ProductDetailView productId="nt-h-10" />);
+    await screen.findAllByRole('radio', {}, WAIT);
+    await waitFor(() => expect(document.querySelector<HTMLInputElement>('input[type="date"]')?.value).toBeTruthy(), WAIT);
+    const checkIn = screen.getByLabelText('Nhận phòng') as HTMLInputElement;
+    const checkOut = screen.getByLabelText('Trả phòng') as HTMLInputElement;
+    const dmy = (offsetDays: number) => {
+      const iso = new Date(Date.now() + offsetDays * 24 * 3600 * 1000).toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
+      return iso.split('-').reverse().join('/');
+    };
+    const error = () => screen.queryByTestId('date-error')?.textContent ?? '';
+
+    // Hôm nay được nhận phòng; hôm qua thì không.
+    fireEvent.change(checkIn, { target: { value: dmy(0) } });
+    fireEvent.change(checkOut, { target: { value: dmy(1) } });
+    expect(error()).toBe('');
+    fireEvent.change(checkIn, { target: { value: dmy(-1) } });
+    expect(error()).toContain('không được ở quá khứ');
+    // Quá 3 tháng thì không đặt được.
+    fireEvent.change(checkIn, { target: { value: dmy(120) } });
+    fireEvent.change(checkOut, { target: { value: dmy(121) } });
+    expect(error()).toContain('tối đa 3 tháng');
+    // 30 đêm được, 31 đêm thì không.
+    fireEvent.change(checkIn, { target: { value: dmy(1) } });
+    fireEvent.change(checkOut, { target: { value: dmy(31) } });
+    expect(error()).toBe('');
+    fireEvent.change(checkOut, { target: { value: dmy(32) } });
+    expect(error()).toContain('tối đa 30 đêm');
+  });
+
   it('vé tham quan: hai bộ đếm Người lớn/Trẻ em kèm đơn giá từng loại; ước tính theo giá trẻ em; gửi guests', async () => {
     api.getProduct.mockResolvedValue({
       ...ticketFixture, productId: 'nt-a-vinwonders-buggy', name: 'Vé VinWonders + Buggy', taxonomy: 'attraction', unitPrice: 1500000,

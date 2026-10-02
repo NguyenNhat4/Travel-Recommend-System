@@ -17,7 +17,7 @@ from src.backend.app.application.booking.errors import (
     BookingDraftExpired, BookingDraftNotFound, BookingError, BookingNotFound, CartItemNotFound, GuestStoreUnavailable,
     LineRejected, ProductNotFound, ValidationFailed,
 )
-from src.backend.app.application.booking.lines import ResolvedLine, resolve_line, stay_nights
+from src.backend.app.application.booking.lines import ResolvedLine, resolve_line, stay_nights, vn_today
 from src.backend.app.application.booking.owner import CartOwner, owner_of
 from src.backend.app.application.booking.reconcile import ReconcileBookings
 from src.backend.app.application.booking.views import draft_response
@@ -122,7 +122,8 @@ class BookingDraftService:
                 if product is None:
                     raise ProductNotFound("sản phẩm không tồn tại", {"productId": item.product_id})
                 resolved = resolve_line(
-                    product, using_date=item.using_date, quantity=item.quantity, nights=item.nights, guests=item.guests)
+                    product, using_date=item.using_date, quantity=item.quantity, nights=item.nights, guests=item.guests,
+                    today=vn_today(now))
             except (ProductNotFound, LineRejected, ValidationFailed) as error:
                 if not allow_partial:
                     raise
@@ -227,7 +228,7 @@ class BookingDraftService:
             raise ProductNotFound("sản phẩm không tồn tại", {"productId": line.product_id})
         resolved = resolve_line(
             product, using_date=using_date or line.using_date, quantity=quantity, nights=nights, guests=guests,
-            mode="update", existing_quantity=line.quantity, existing_guests=line.guests)
+            today=vn_today(self._clock()), mode="update", existing_quantity=line.quantity, existing_guests=line.guests)
         # Sửa mục nghĩa là khách đã thấy giá hiện tại: ghi lại snapshot. Mục giỏ đã chép không đổi (R-CPY-04).
         await drafts.update_item(
             owner.key, draft_id, cart_item_id, using_date=using_date, quantity=resolved.quantity,

@@ -130,3 +130,39 @@ def test_check_product_reports_unavailable_price_change_and_date():
     issue = check_product(p, date(2026, 10, 1), snapshot_price=3_000_000)
     assert issue.code == "PRICE_CHANGED" and issue.details["oldPrice"] == 3_000_000 and issue.details["newPrice"] == 3_400_000
     assert check_product(p, date(2027, 1, 1)).code == "DATE_OUT_OF_RANGE"
+
+
+TODAY = date(2026, 10, 2)
+
+
+def test_hotel_check_in_window_is_today_to_three_months_ahead():
+    p = product(available_from=date(2026, 10, 15), available_to=date(2026, 10, 16))
+    # Không dùng cửa sổ mở bán của dữ liệu: nhận phòng ngay hôm nay và đến đúng hôm nay + 3 tháng đều hợp lệ.
+    assert check_product(p, TODAY, today=TODAY) is None
+    assert check_product(p, date(2027, 1, 2), today=TODAY) is None
+    past = check_product(p, date(2026, 10, 1), today=TODAY)
+    assert past.code == "DATE_OUT_OF_RANGE"
+    assert past.details["availableFrom"] == "2026-10-02" and past.details["availableTo"] == "2027-01-02"
+    assert check_product(p, date(2027, 1, 3), today=TODAY).code == "DATE_OUT_OF_RANGE"
+
+
+def test_hotel_window_clamps_to_end_of_short_month():
+    p = product()
+    assert check_product(p, date(2027, 2, 28), today=date(2026, 11, 30)) is None
+    assert check_product(p, date(2027, 3, 1), today=date(2026, 11, 30)).code == "DATE_OUT_OF_RANGE"
+
+
+def test_hotel_sold_out_calendar_reports_unavailable_not_date_error():
+    calendar = "1" * 5 + "0" + "1" * 24  # kín đêm 07/10 (from + 5)
+    p = product(attributes={"level": "room", "availability": {"from": "2026-10-02", "days": 30, "calendar": calendar}})
+    assert check_product(p, date(2026, 10, 3), today=TODAY, nights=2) is None
+    assert check_product(p, date(2026, 10, 6), today=TODAY, nights=2).code == "PRODUCT_UNAVAILABLE"
+    assert check_product(p, date(2026, 10, 7), today=TODAY, nights=1).code == "PRODUCT_UNAVAILABLE"
+    assert check_product(p, date(2026, 10, 8), today=TODAY, nights=2) is None
+    # Ngoài khoảng lịch đã nạp (không có dữ liệu) thì không chặn.
+    assert check_product(p, date(2026, 12, 20), today=TODAY, nights=3) is None
+
+
+def test_non_hotel_keeps_source_window_even_with_today():
+    p = product(taxonomy="attraction", available_from=date(2026, 10, 15), available_to=date(2026, 10, 16))
+    assert check_product(p, date(2026, 10, 20), today=TODAY).code == "DATE_OUT_OF_RANGE"
