@@ -1,6 +1,6 @@
 output "dashboard_id" {
   description = "Cloud Monitoring dashboard resource name."
-  value       = google_monitoring_dashboard.staging.id
+  value       = google_monitoring_dashboard.staging_overview.id
 }
 
 output "uptime_check_id" {
@@ -35,6 +35,8 @@ output "alert_policy_ids" {
     container_stop  = google_monitoring_alert_policy.staging_container_stop.id
     container_oom   = google_monitoring_alert_policy.staging_container_oom.id
     watcher_absent  = google_monitoring_alert_policy.staging_docker_watcher_absent.id
+    stats_absent    = google_monitoring_alert_policy.staging_container_stats_absent.id
+    container_cpu   = google_monitoring_alert_policy.staging_container_cpu.id
   }
 }
 
