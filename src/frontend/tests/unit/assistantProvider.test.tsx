@@ -319,16 +319,39 @@ describe('AssistantProvider', () => {
     expect(mocks.requestAssistantStream.mock.calls[1][0]).toEqual(mocks.requestAssistantStream.mock.calls[0][0]);
   });
 
-  it('marks a request slow after eight seconds without fabricating progress', async () => {
+  it('marks a request slow after twelve seconds without fabricating progress', async () => {
     vi.useFakeTimers();
     mocks.requestAssistantStream.mockImplementation(() => new Promise(() => undefined));
     mount();
     fireEvent.click(screen.getByText('send'));
 
-    act(() => vi.advanceTimersByTime(8_000));
+    act(() => vi.advanceTimersByTime(11_999));
+    expect(screen.getByTestId('slow').textContent).toBe('false');
+    act(() => vi.advanceTimersByTime(1));
     expect(screen.getByTestId('slow').textContent).toBe('true');
     expect(screen.getByTestId('transcript').textContent).toBe('Plan trip');
     expect(screen.getByTestId('phase').textContent).toBe('connecting');
+    vi.useRealTimers();
+  });
+
+  it('measures slowness per node: each completed node clears the warning and restarts the clock', async () => {
+    vi.useFakeTimers();
+    let onEvent: (event: AssistantStreamEvent) => void = () => undefined;
+    mocks.requestAssistantStream.mockImplementation((_request, options) => {
+      onEvent = options.onEvent;
+      return new Promise(() => undefined);
+    });
+    mount();
+    fireEvent.click(screen.getByText('send'));
+
+    act(() => vi.advanceTimersByTime(10_000));
+    act(() => onEvent({ event: 'node.completed', data: { sequence: 1, nodeId: 'extract' } }));
+    act(() => vi.advanceTimersByTime(10_000));
+    expect(screen.getByTestId('slow').textContent).toBe('false');
+    act(() => vi.advanceTimersByTime(2_000));
+    expect(screen.getByTestId('slow').textContent).toBe('true');
+    act(() => onEvent({ event: 'node.completed', data: { sequence: 2, nodeId: 'tool' } }));
+    expect(screen.getByTestId('slow').textContent).toBe('false');
     vi.useRealTimers();
   });
 

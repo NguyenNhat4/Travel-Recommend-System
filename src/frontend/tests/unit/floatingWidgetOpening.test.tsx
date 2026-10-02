@@ -64,9 +64,26 @@ describe('floating assistant opening', () => {
     view.rerender(<AiFloatingWidget />);
     expect(screen.queryByRole('heading', { name: 'Bạn muốn đi đâu tiếp theo?' })).toBeNull();
     expect(screen.getAllByRole('textbox')).toHaveLength(1);
-    expect(screen.getByRole('button', { name: 'Gửi yêu cầu' }).hasAttribute('disabled')).toBe(true);
+    // Đang chạy: nút gửi thành nút Dừng ngay trong ô nhập; tiến trình là 3 bước, không có chuỗi debug của backend.
+    expect(screen.queryByRole('button', { name: 'Gửi yêu cầu' })).toBeNull();
+    expect(screen.getByRole('status').textContent).toBe('Đang hiểu yêu cầu của bạn…');
     fireEvent.click(screen.getByRole('button', { name: 'Dừng xử lý' }));
     expect(mocks.abort).toHaveBeenCalledOnce();
+    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' });
+    expect(mocks.abort).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole('textbox')).toBeTruthy();
+  });
+
+  it('offers to resend after the user stops a request', () => {
+    const view = open();
+    mocks.state = { ...mocks.state, phase: 'aborted', lastRequest: {
+      message: 'Đi Hội An 3 ngày', conversationId: null, intentOverride: null, context: { language: 'vi' },
+    }, transcript: [{ id: 'user-1', sender: 'user', text: 'Đi Hội An 3 ngày', createdAt: Date.now() }] };
+    view.rerender(<AiFloatingWidget />);
+    expect(screen.getByText('Đã dừng. Trợ lý chưa trả lời tin nhắn này.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Dừng xử lý' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Gửi lại' }));
+    expect(mocks.retry).toHaveBeenCalledOnce();
   });
 
   it('loads real destination options only when the optional form is opened', async () => {

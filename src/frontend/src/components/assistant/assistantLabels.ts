@@ -55,23 +55,3 @@ const PRICE_UNIT_SUFFIX: Record<Schemas['PriceUnit'], string> = {
 export function priceUnitSuffix(priceUnit: Schemas['PriceUnit']) {
   return PRICE_UNIT_SUFFIX[priceUnit] ?? '';
 }
-
-// Node ID theo src/backend/app/agents/graph.py.
-const NODE_LABEL: Record<string, string> = {
-  intake: 'Nhận yêu cầu',
-  classify: 'Phân loại yêu cầu',
-  extract: 'Hiểu ý định',
-  converse: 'Trò chuyện',
-  clarify: 'Hỏi thêm thông tin',
-  tool: 'Tìm sản phẩm',
-  evaluate: 'Kiểm tra kết quả',
-  compose: 'Xếp lịch trình',
-  narrate: 'Viết lời tư vấn',
-  retry: 'Thử lại',
-  dead_letter: 'Chuyển sang phương án dự phòng',
-  finalize: 'Hoàn tất',
-};
-
-export function nodeLabel(nodeId: string | undefined) {
-  return (nodeId && NODE_LABEL[nodeId]) || 'Đang xử lý';
-}

@@ -141,7 +141,7 @@ export function assistantReducer(state: AssistantState, action: Action): Assista
     case 'topology-received':
       return { ...state, phase: 'streaming', topology: action.topology };
     case 'node-completed':
-      return { ...state, phase: 'streaming', progress: [...state.progress, action.progress] };
+      return { ...state, phase: 'streaming', progress: [...state.progress, action.progress], isSlow: false };
     case 'response-received':
       return {
         ...state,

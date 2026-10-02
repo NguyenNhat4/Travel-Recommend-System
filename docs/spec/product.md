@@ -761,7 +761,7 @@ Handbook §7: `because` là "ranh giới giữa một cuộc tranh cãi và mộ
 
 **Phụ thuộc: tiến độ thật hay giả lập.** Nếu chat backend trả một response duy nhất (không stream), UI **không được** tự đánh ✓ từng bước theo đồng hồ như thể đó là tiến độ thật. Khi đó hiển thị cả 3 bước dạng danh sách "Trợ lý sẽ: hiểu yêu cầu → tìm sản phẩm → sắp xếp lịch trình" với một spinner chung. Nếu Backend stream sự kiện theo bước (SSE) thì đánh ✓ theo sự kiện thật. Đề xuất Backend stream, vì mục tiêu p95 < 5 giây (handbook §12) vẫn đủ lâu để người dùng cần thấy tiến độ.
 
-**Hiện trạng code:** client đọc stream SSE; `AssistantView` chỉ chuyển event `run.failed` thành thông báo lỗi và hiển thị response cuối. UI chưa thể hiện trạng thái hoàn tất riêng cho từng bước trong bảng.
+**Hiện trạng code:** client đọc stream SSE. Widget trợ lý đánh ✓ 3 bước theo `node.completed` thật (`features/itinerary/widget/widgetProgress.ts`); bước đang chạy hiện việc con khi có (thử lại, viết lời tư vấn).
 
 ### 6.2 Chip ý định: cho phép sửa mà không phải gõ lại
 
@@ -887,7 +887,7 @@ Nếu cắt về single-turn (handbook §2, mục 6) thì thẻ này là cách *
 |---|---|---|
 | **Rỗng** | Lời chào có tên (nếu đã đăng nhập) + 3–4 câu mẫu dạng thẻ + dòng phạm vi. Khách vãng lai có thêm dòng "Đăng nhập để kế hoạch ưu tiên những gì hợp với bạn" | `[R87]` Booking.com iOS; `[R89]` Mindtrip web |
 | **Đang xử lý** | Thẻ tiến độ 3 bước trong chat + skeleton panel. Nút "Dừng" hủy request và khôi phục ô nhập kèm nội dung vừa gửi | `[R109]` Wabi iOS; `[R110]` Structured iOS |
-| **Chậm** (> 8 giây, vượt mục tiêu p95 5 giây) | Thêm dòng "Vẫn đang làm, lâu hơn thường lệ một chút…" + link "Xem kết quả tìm kiếm trước" (mở fallback song song) | — |
+| **Chậm** (> 12 giây không có bước nào xong — thời gian dồn vào các node gọi LLM nên đo theo từng node, không theo cả lượt) | Thêm dòng "Đang lâu hơn thường lệ. Bạn có thể đợi thêm hoặc dừng." + link "Xem kết quả tìm kiếm trước" (mở fallback song song) | — |
 | **Có kế hoạch** | 6.3 | — |
 | **Kế hoạch một phần** | Khung giờ không có sản phẩm hợp lệ thì hiện `ActivityNote` do LLM viết. Nếu cả một ngày không có sản phẩm nào thì hiện "Chưa tìm thấy dịch vụ phù hợp cho ngày này · [Tìm ở {destination}]" | — |
 | **Ngoài phạm vi** (hỏi thời tiết, visa, chuyện chung) | Tin nhắn: "Mình chỉ giúp lên lịch trình và gợi ý dịch vụ du lịch trên V-OTA. Thử: …" + 2 câu mẫu | `[R101]` Wanderlog iOS (giới hạn phạm vi được nói rõ) |
