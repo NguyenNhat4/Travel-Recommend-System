@@ -5,7 +5,7 @@ from collections import Counter
 from copy import deepcopy
 import logging
 
-from src.backend.app.domain.itinerary.planning import (compose_plan, free_to_visit, multi_day_offers, render_proposal,
+from src.backend.app.domain.itinerary.planning import (SCHEDULABLE_TAXONOMIES, compose_plan, free_to_visit, multi_day_offers, render_proposal,
                                                         summary, validate_plan)
 
 from . import messages
@@ -40,13 +40,54 @@ def grouped(state: dict) -> dict:
     return groups
 
 
-def fallback(state: dict) -> dict:
-    """Không dựng được lịch trình: trả danh sách ứng viên, hoặc lỗi khi không còn gì để trả."""
+#: Thứ tự liệt kê loại sản phẩm trong câu FALLBACK.
+FALLBACK_TAXONOMIES = ("hotel", "attraction", "golf", "combo", "flight")
+
+
+def _fallback_noun(state: dict, taxonomy: str | None) -> str:
+    key = taxonomy if taxonomy in FALLBACK_TAXONOMIES else "other"
+    return messages.message(state, f"fallback_noun_{key}")
+
+
+def _found(state: dict, candidates: dict) -> str:
+    counts = Counter(product["taxonomy"] for product in candidates.values())
+    order = sorted(counts, key=lambda tax: FALLBACK_TAXONOMIES.index(tax) if tax in FALLBACK_TAXONOMIES else 99)
+    return ", ".join(messages.message(state, "fallback_count", count=counts[tax], noun=_fallback_noun(state, tax))
+                     for tax in order)
+
+
+def fallback_message(state: dict, *, compose_failed: bool = False) -> str:
+    """Câu FALLBACK dựng bằng luật từ dữ liệu thật của lượt: nguồn nào lỗi, vì sao không xếp được lịch, đã tìm được gì.
+    Không qua LLM; tiêu đề cố định theo spec itinerary §4.3."""
+    destination = state.get("intent", {}).get("destination") or ""
+    candidates = state.get("candidates", {})
+    lines: list[str] = []
+    for result in state.get("tool_results", []):
+        if not result.get("error"):
+            continue
+        if result.get("name") == "search_products":
+            noun = _fallback_noun(state, (result.get("arguments") or {}).get("taxonomy"))
+            lines.append(messages.message(state, "fallback_search_failed", noun=noun, destination=destination))
+        elif result.get("name") == "get_recommendations":
+            lines.append(messages.message(state, "fallback_recommendations_failed"))
+        else:
+            lines.append(messages.message(state, "fallback_source_failed"))
+    if compose_failed:
+        lines.append(messages.message(state, "fallback_compose_failed"))
+    elif not any(product["taxonomy"] in SCHEDULABLE_TAXONOMIES for product in candidates.values()):
+        lines.append(messages.message(state, "fallback_nothing_schedulable", destination=destination,
+                                      found=_found(state, candidates)))
+    lines.append(messages.message(state, "fallback_found", found=_found(state, candidates)))
+    return messages.titled(messages.message(state, "fallback_title"), "\n".join(dict.fromkeys(lines)))
+
+
+def fallback(state: dict, *, compose_failed: bool = False) -> dict:
+    """Không dựng được lịch trình: trả danh sách ứng viên kèm lý do thật, hoặc lỗi khi không còn gì để trả."""
     if not state.get("candidates"):
         return failure(state, "LLM_UNAVAILABLE", messages.COMPOSE_UNAVAILABLE, retryable=True)
     return {"decision": "fallback",
             "response": {"status": "FALLBACK", "conversationId": state["conversation_id"],
-                         "intent": state["intent"], "message": messages.FALLBACK,
+                         "intent": state["intent"], "message": fallback_message(state, compose_failed=compose_failed),
                          "searchResults": grouped(state)}}
 
 
@@ -186,4 +227,4 @@ def compose_or_fallback(state: dict) -> dict:
     except Exception:
         # Rules rejecting their own proposal is a backend defect, not a model failure; never hide it.
         logger.exception("itinerary.composition_failed requestId=%s", state.get("request_id", "unknown"))
-        return fallback(state)
+        return fallback(state, compose_failed=True)

@@ -133,15 +133,17 @@ class SummaryTests(unittest.TestCase):
         self.assertNotIn('description', summary(item))
 
     def test_attributes_keep_only_the_fields_the_frontend_reads(self):
+        place = {'latitude': 12.2451, 'longitude': 109.1943, 'address': 'Đường Trần Phú, Nha Trang'}
         item = product('h', attributes={
-            'oceanView': True, 'privateBeach': True, 'pool': True, 'ticketed': True,
-            'starRating': 5, 'durationMinutes': 480, 'parentProductId': 'p',
+            'oceanView': True, 'privateBeach': True, 'pool': True, 'ticketed': True, 'starRating': 5, **place,
+            'durationMinutes': 480, 'parentProductId': 'p', 'images': ['https://example.vn/1.jpg'],
         })
         self.assertEqual(summary(item)['attributes'],
-                         {'oceanView': True, 'privateBeach': True, 'pool': True, 'ticketed': True})
+                         {'oceanView': True, 'privateBeach': True, 'pool': True, 'ticketed': True, 'starRating': 5,
+                          **place})
 
     def test_attributes_key_is_dropped_entirely_when_nothing_survives_the_cut(self):
-        item = product('h', attributes={'starRating': 5, 'parentProductId': 'p'})
+        item = product('h', attributes={'durationMinutes': 480, 'parentProductId': 'p'})
         self.assertNotIn('attributes', summary(item))
 
     def test_a_non_dict_product_summarizes_to_an_empty_dict(self):

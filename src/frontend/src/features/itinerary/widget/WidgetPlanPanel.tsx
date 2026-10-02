@@ -2,6 +2,7 @@ import React from 'react';
 import dynamic from 'next/dynamic';
 import { MapPin, Calendar, Users, Loader2, ArrowRight } from 'lucide-react';
 import { WidgetDays } from './WidgetDays';
+import { WidgetProductDetail } from './WidgetProductDetail';
 import type { FloatingWidgetController } from './useFloatingWidget';
 
 
@@ -20,11 +21,19 @@ const ItineraryMap = dynamic(
 
 export function WidgetPlanPanel({ widget }: { widget: FloatingWidgetController }) {
   const { activePlan, activeDayTab, setActiveDayTab, isCheckingOut,
-    handleCheckoutPlan, addToCart, hoveredCoordinate, hoveredPointId } = widget;
+    handleCheckoutPlan, addToCart, hoveredCoordinate, hoveredPointId,
+    selectedProduct, closeProductDetail, addSelectedToCart } = widget;
   if (!activePlan) return null;
   return (
 <div className="grid grid-cols-1 md:grid-cols-2 w-full h-full overflow-hidden divide-x divide-slate-100">
   {/* PHẦN Ở GIỮA: DANH SÁCH LỘ TRÌNH (CÓ HEADER) */}
+  {/* Bấm thẻ trong lời diễn giải: panel chi tiết thay chỗ danh sách ngày, bản đồ vẫn hiện và focus đúng điểm */}
+  {selectedProduct ? (
+    <div className="h-full overflow-hidden">
+      <WidgetProductDetail key={selectedProduct.productId} productId={selectedProduct.productId}
+        summary={selectedProduct.summary} onClose={closeProductDetail} onAddToCart={addSelectedToCart} />
+    </div>
+  ) : (
   <div className="flex flex-col h-full bg-white overflow-hidden">
     {/* Header của phần ở giữa */}
     <div className="p-4 bg-white border-b border-slate-100 space-y-3 shrink-0 shadow-2xs">
@@ -42,10 +51,12 @@ export function WidgetPlanPanel({ widget }: { widget: FloatingWidgetController }
               <Calendar className="w-3.5 h-3.5 text-slate-400" />
               {activePlan.intent.days} ngày
             </span>
-            <span className="flex items-center gap-1.5">
-              <Users className="w-3.5 h-3.5 text-slate-400" />
-              {activePlan.intent.party === 'family_with_kids' ? 'Gia đình' : 'Cặp đôi'}
-            </span>
+            {activePlan.partyLabel && (
+              <span className="flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5 text-slate-400" />
+                {activePlan.partyLabel}
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -118,6 +129,8 @@ export function WidgetPlanPanel({ widget }: { widget: FloatingWidgetController }
       </div>
     </div>
   </div>
+
+  )}
 
   {/* PHẦN MAP BÊN PHẢI (KHÔNG CÓ HEADER - FULL HEIGHT) */}
   <div className="h-full relative overflow-hidden bg-slate-100 flex flex-col">

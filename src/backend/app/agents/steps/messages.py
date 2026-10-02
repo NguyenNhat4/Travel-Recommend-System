@@ -65,6 +65,20 @@ MESSAGES = {
         "note_itinerary": "gửi lịch trình {destination} {days} ngày: {products}",
         "note_no_results": "không tìm thấy sản phẩm phù hợp ở {destination}",
         "note_fallback": "gửi vài sản phẩm tham khảo ở {destination}, chưa dựng được lịch trình",
+        "fallback_title": "Chưa dựng được lịch trình hoàn chỉnh",
+        "fallback_search_failed": "Mình chưa tải được kết quả tìm {noun} ở {destination}.",
+        "fallback_recommendations_failed": "Phần gợi ý cá nhân hoá đang trả dữ liệu lỗi nên mình chưa dùng được.",
+        "fallback_source_failed": "Một nguồn dữ liệu sản phẩm đang lỗi.",
+        "fallback_nothing_schedulable": "Ở {destination} mình chỉ tìm thấy {found}, chưa có khách sạn hay điểm tham quan để xếp vào lịch.",
+        "fallback_compose_failed": "Bước xếp lịch gặp lỗi hệ thống.",
+        "fallback_found": "Mình tìm được {found}; bạn xem các thẻ bên dưới (giá, điều kiện và ngày sử dụng cần kiểm tra lại khi đặt). Bạn có thể gửi lại yêu cầu để mình thử dựng lịch lần nữa.",
+        "fallback_count": "{count} {noun}",
+        "fallback_noun_hotel": "khách sạn",
+        "fallback_noun_attraction": "điểm tham quan",
+        "fallback_noun_golf": "sân golf",
+        "fallback_noun_combo": "combo",
+        "fallback_noun_flight": "vé máy bay",
+        "fallback_noun_other": "sản phẩm",
         "note_unclear": "chưa hiểu tin nhắn, nhờ người dùng nói rõ hơn",
         "note_chat": "trò chuyện",
         "note_refusal": "từ chối: yêu cầu ngoài phạm vi lập lịch trình",
@@ -244,6 +258,20 @@ MESSAGES = {
         "note_itinerary": "sent a {days}-day itinerary for {destination}: {products}",
         "note_no_results": "found no matching products in {destination}",
         "note_fallback": "sent a few candidate products in {destination}, no itinerary built",
+        "fallback_title": "Could not build a complete itinerary",
+        "fallback_search_failed": "I could not load the {noun} search results in {destination}.",
+        "fallback_recommendations_failed": "The personalised suggestions returned invalid data, so I could not use them.",
+        "fallback_source_failed": "One product data source is failing.",
+        "fallback_nothing_schedulable": "In {destination} I only found {found}, with no hotel or attraction to schedule.",
+        "fallback_compose_failed": "The scheduling step hit a system error.",
+        "fallback_found": "I found {found}; see the cards below (check price, conditions and dates when booking). You can send the request again and I will retry the itinerary.",
+        "fallback_count": "{count} {noun}",
+        "fallback_noun_hotel": "hotel(s)",
+        "fallback_noun_attraction": "attraction(s)",
+        "fallback_noun_golf": "golf course(s)",
+        "fallback_noun_combo": "combo(s)",
+        "fallback_noun_flight": "flight(s)",
+        "fallback_noun_other": "product(s)",
         "note_unclear": "did not understand the message, asked the user to rephrase",
         "note_chat": "small talk",
         "note_refusal": "declined: outside itinerary planning",
@@ -369,9 +397,6 @@ REFUSAL_BLOCKED = ("**Mình chưa thể hỗ trợ yêu cầu này**\n"
 #: Tin nhắn rác (gõ bậy, ký tự lặp, toàn ký hiệu) bị guardrail tầng 1 chặn trước LLM; hỏi lại, không từ chối.
 UNCLEAR_INPUT = ("**Mình chưa hiểu ý bạn**\n"
                  "Bạn nói rõ hơn giúp mình nhé, ví dụ: \"Đi Đà Nẵng 3 ngày, 2 người, ngân sách 10 triệu\".")
-FALLBACK = ("**Chưa dựng được lịch trình hoàn chỉnh**\n"
-            "Chưa thể dựng lịch trình đã kiểm tra. Các sản phẩm dưới đây là ứng viên tham khảo; "
-            "cần kiểm tra lại giá, điều kiện và ngày sử dụng.")
 COMPOSE_UNAVAILABLE = "Chưa thể dựng lịch trình lúc này. Vui lòng thử lại."
 INVALID_CREDENTIALS = "Thông tin đăng nhập không hợp lệ hoặc đã hết hạn."
 PLAN_UNAVAILABLE = "Chưa thể lập kế hoạch truy vấn hợp lệ. Vui lòng thử lại."

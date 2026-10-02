@@ -171,10 +171,12 @@ export const ItineraryMap: React.FC<ItineraryMapProps> = ({
     let order = 1;
     plan.days.forEach(day => {
       day.slots.forEach(slot => {
+        // Đếm mọi slot, kể cả slot không có toạ độ (không vẽ điểm), để số và id điểm khớp danh sách ngày và `locateProduct`.
+        const orderNumber = order++;
         const coord = slot.coordinates || slot.product?.coordinates;
         if (coord) {
           points.push({
-            id: `day-${day.day}-slot-${slot.time}-${order}`,
+            id: `day-${day.day}-slot-${slot.time}-${orderNumber}`,
             lat: coord.lat,
             lng: coord.lng,
             title: slot.product?.name || slot.activityTitle || 'Điểm tham quan',
@@ -184,7 +186,7 @@ export const ItineraryMap: React.FC<ItineraryMapProps> = ({
             product: slot.product,
             address: slot.address || slot.product?.address,
             note: slot.note,
-            orderNumber: order++,
+            orderNumber,
             transitInfo: slot.transitInfo,
             transitMode: slot.transitMode,
           });

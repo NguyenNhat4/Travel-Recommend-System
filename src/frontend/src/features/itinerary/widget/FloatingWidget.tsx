@@ -9,11 +9,13 @@ import { WidgetHistory } from './WidgetHistory';
 import { WidgetChat } from './WidgetChat';
 import { WidgetPlanPanel } from './WidgetPlanPanel';
 import { WidgetPlanEmpty } from './WidgetPlanEmpty';
+import { WidgetProductDetail } from './WidgetProductDetail';
 
 export function FloatingWidget() {
   const widget = useFloatingWidget();
   const { isOpen, setIsOpen, isExpanded, setIsExpanded, isHistoryOpen, setIsHistoryOpen,
-    activePlan, isChatCollapsed, setIsChatCollapsed, handleQuickPrompt } = widget;
+    activePlan, isChatCollapsed, setIsChatCollapsed, handleQuickPrompt,
+    selectedProduct, closeProductDetail, addSelectedToCart } = widget;
   const dialogRef = useWidgetFocus(isOpen, isExpanded, isHistoryOpen);
   return (
     <>
@@ -176,7 +178,10 @@ export function FloatingWidget() {
                   <ChevronLeft className="w-4 h-4" />
                 )}
               </button>
-              {activePlan ? <WidgetPlanPanel widget={widget} /> : <WidgetPlanEmpty onPrompt={handleQuickPrompt} />}
+              {selectedProduct && !activePlan
+                ? <WidgetProductDetail key={selectedProduct.productId} productId={selectedProduct.productId}
+                    summary={selectedProduct.summary} onClose={closeProductDetail} onAddToCart={addSelectedToCart} />
+                : activePlan ? <WidgetPlanPanel widget={widget} /> : <WidgetPlanEmpty onPrompt={handleQuickPrompt} />}
             </div>
           </div>
         </div>

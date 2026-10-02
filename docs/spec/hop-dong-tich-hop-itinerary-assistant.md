@@ -554,6 +554,8 @@ Khi Search vẫn trả sản phẩm thật nhưng Agent không thể dựng lị
 
 Nếu rule-based planner dựng được itinerary hợp lệ và vượt qua grounding validation, API có thể trả `COMPLETED` kèm warning cho biết đã dùng fallback.
 
+`message` của `FALLBACK` do backend dựng bằng luật (`composition.fallback_message`, không gọi LLM), tiêu đề cố định "Chưa dựng được lịch trình hoàn chỉnh", thân nêu **lý do thật** của lượt đó: tool nào lỗi (ví dụ "Phần gợi ý cá nhân hoá đang trả dữ liệu lỗi nên mình chưa dùng được", "Mình chưa tải được kết quả tìm điểm tham quan ở Đà Nẵng"), hoặc vì sao không xếp được lịch ("chỉ tìm thấy 2 combo, chưa có khách sạn hay điểm tham quan để xếp vào lịch"), rồi đếm những gì đã tìm được và mời xem thẻ. Web hiện mỗi sản phẩm trong `searchResults` thành một thẻ gọn dưới câu trả lời (PRD `user-flow.md` §4.2).
+
 ### 4.6. Response lỗi
 
 Lỗi thực sự không nằm trong `ItineraryResponse` và không dùng `status: ERROR` trong body HTTP 200. API trả HTTP 4xx/5xx với `ErrorResponse` dùng chung:
