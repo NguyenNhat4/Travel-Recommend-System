@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { Product, BecauseItem, Strategy, Taxonomy } from '../../types/travel';
 import { PriceTag } from './PriceTag';
 import { useTravel } from '../../context/TravelContext';
+import { flightProductHref } from '../../features/flights/results/flightHref';
 import { MapPin, Star, Plus, ArrowRight, ExternalLink } from 'lucide-react';
 
 interface ProductCardProps {
@@ -40,7 +41,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 }) => {
   const { navigate, debugMode, recordEvent } = useTravel();
 
-  const href = `/product/${product.id}${tripQuery ? `?${tripQuery}` : ''}`;
+  const href = (product.taxonomy === 'flight' ? flightProductHref(product, tripQuery) : null)
+    ?? `/product/${product.id}${tripQuery ? `?${tripQuery}` : ''}`;
 
   const handleCardClick = (e?: React.MouseEvent) => {
     recordEvent('product_view', product);
