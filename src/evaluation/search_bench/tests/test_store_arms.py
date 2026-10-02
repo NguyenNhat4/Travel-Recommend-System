@@ -89,7 +89,7 @@ def test_tier1_embedding_arms_share_dense_retrieval_and_distinct_vector_identity
     from evaluation.search_bench.embed import embedder_name
     cfg = load_config(None)
     names = {}
-    for arm_id, dim in {"E2.e5s": 384, "E2.gte": 768, "E2.bge": 1024,
+    for arm_id, dim in {"E2.e5s": 384, "E2.e5L": 1024, "E2.gte": 768, "E2.bge": 1024,
                         "E2.v4-1536": 1536, "E2.v4-1024": 1024,
                         "E2.v4-512": 512, "E2.v4-256": 256}.items():
         arm = arms.load_arm(arm_id)
@@ -103,3 +103,9 @@ def test_tier1_embedding_arms_share_dense_retrieval_and_distinct_vector_identity
     assert len({collection for _, collection in names.values()}) == len(names)
     assert cfg.model_cfg("e5-small").query_prefix == "query: "
     assert cfg.model_cfg("e5-small").passage_prefix == "passage: "
+    e5_large = cfg.model_cfg("e5-large-instruct")
+    assert e5_large.dim == 1024
+    assert e5_large.query_prefix == (
+        "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery: "
+    )
+    assert e5_large.passage_prefix == ""

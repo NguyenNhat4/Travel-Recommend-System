@@ -1,164 +1,345 @@
-# Search Day 4 — kết quả cuối sau D5a
+# Search Day 4–5 — giải thích kết quả và xếp hạng model local ưu tiên miễn phí
 
-- Phục vụ: FR-SRC-01..04, AC-SRC-01, NFR-PERF-01.
-- Nhánh: `bench_search_recomSys`. Run ID: `20261001-day4-local`.
-- Trạng thái: working tree chờ người dùng review; dự kiến tag `gold_v3` sau khi được đồng ý commit. Base của lượt chạy retrieval là `b692047eb075327d86d95b048a229e2abf43b6d4`.
-- Gold cuối: 131 câu active / 13 slice / 4.991 nhãn active; 1 câu retired / 30 nhãn. Tổng 5.021 nhãn. SHA-256 `4d2ac02fa960ceaf2c9286bf546da1b77023435a9337ecadee22dd7cc62f5784`.
-- Catalog snapshot `2026-09-23`: 11.387 record, 3.183 search unit; records SHA-256 `ad3f3be25647a44c027ab21592f4defc3740f247090a146ea3614eb83adff4ab`.
-- Máy local: Intel Core i5-1145G7, 8 logical CPU; Weaviate 1.37.3. Rescore và condensed chỉ đọc top-k đã lưu, không gọi Cohere hay Weaviate.
+- Ngày chạy: **01–02/10/2026**. Ngày viết lại và bổ sung local-only: **02/10/2026**.
+- Phục vụ: **FR-SRC-01..04, AC-SRC-01, NFR-PERF-01**.
+- Nhánh: `bench_search_recomSys`; run ID: `20261001-day4-local`, `20261002-day5-local-only`, `20261002-day5-e5-large`, `20261002-day5-local-ranking`.
+- Commit lưu kết quả và tag `gold_v3`: `d1d52571c6ebb88d1a444fa1a1c4d3680fd84389`. Base lúc chạy retrieval: `b692047eb075327d86d95b048a229e2abf43b6d4`.
+- Gold SHA-256: `4d2ac02fa960ceaf2c9286bf546da1b77023435a9337ecadee22dd7cc62f5784`.
+- Snapshot catalog: `2026-09-23`; records SHA-256: `ad3f3be25647a44c027ab21592f4defc3740f247090a146ea3614eb83adff4ab`.
+- Nguồn số: các thư mục run nói trên, mỗi arm dùng artifact có `gold_version=gold_v3`, `per_query*.parquet` và `latency-embed.json`. Artifact chạy nằm local, không commit; gold/config/report có trong Git.
 
-## Việc đã hoàn thành
+## 1. Kết luận dành cho nhóm
 
-- S1: gold sanity PASS trên 131 câu active, 13 slice.
-- S2: hồ sơ gold đã cập nhật đủ D4a, D4b và D5a.
-- S3: `sb compare --gold` đọc đúng artifact rescore; thêm `--condensed` và coverage.
-- S4: 8 bộ vector document × 3.183 = **25.464 vector**.
-- S5: đánh giá dense, hybrid, hybrid+normalize; D4b 278/278 nhãn đã import.
-- S6: đánh giá 7 arm E; D5a 700/700 nhãn người + 72 auto-OOC đã import và rescore.
-- S7: latency query embedding có warm-up, cache off và điều kiện đo riêng.
-- S8a: condensed evaluation hoàn thành, có test. S8b/c (stages và dev/test split) để Day 5 vì là mục tùy thời gian và 131 câu không đủ split 100/100.
+**Trong nhóm model local đã đo, e5-base/768 đứng đầu và là model nên đưa vào bước thử production tiếp theo.** Nó có nDCG@10 cao nhất (**0,697**), Recall@10 cao nhất (**0,348**), đủ nhãn Judged@10 = **1,000**, query embedding p95 **65,0 ms**, và re-index 3.183 document mất **11 phút 57 giây** trên CPU laptop.
 
-## Cách so sánh công bằng
+Xếp hạng khuyến nghị local-only: **(1) e5-base, (2) e5-small, (3) BGE-M3, (4) GTE multilingual-base, (5) e5-large-instruct**. Bảng và lý do chi tiết ở §8.
 
-Mọi arm dùng cùng catalog, 131 query, text `T3+R`, `k=10`, filter và scorer. Pool D5a lấy hợp top-10 của cả 7 arm E, bỏ trùng, phân phối round-robin theo slice/query, rồi cap 700 theo plan. Sau cap vẫn còn kết quả chưa nhãn nên report giữ hai góc nhìn:
+Các kết luận chính:
 
-- **Full:** mọi kết quả chưa nhãn được tính relevance 0; `Judged@10` cho biết mức phủ.
-- **Condensed:** bỏ kết quả chưa nhãn, dồn hạng rồi tính lại; luôn báo `retained ratio` cạnh số này.
+1. **E5-base là lựa chọn cân bằng nhất:** chất lượng local cao nhất; paired bootstrap cho thấy e5-small, BGE, GTE và e5-large đều thấp hơn e5-base trên cùng query/gold_v3. Nó chậm hơn e5-small nhưng vẫn còn ngân sách để toàn API hướng tới p95 ≤ 250 ms.
+2. **E5-small là lựa chọn CPU nhẹ:** p95 tạo vector chỉ **11,369 ms**, vector 384 chiều và re-index **4 phút 47 giây**. Chất lượng full thấp hơn e5-base 6,24 điểm nDCG; coverage 0,789 còn thiếu nhãn nên mức chênh có thể thay đổi sau top-up.
+3. **E5-large-instruct không thắng trên dữ liệu này:** nDCG full 0,610; query p95 284,2 ms chỉ riêng embedding đã vượt NFR toàn API 250 ms; re-index 34 phút 33 giây và vector 1024 chiều. Tên “large” không đảm bảo tốt hơn cho domain V-OTA.
+4. **Chưa model nào được chứng nhận sẵn sàng production:** chưa đo HTTP end-to-end, concurrency, cache, HNSW/hfresh và resource trên máy triển khai. PASS độ phủ nhãn không phải PASS production.
 
-Full là số chính. Condensed dùng để kiểm độ nhạy khi pool đã chạm cap, không che mức thiếu nhãn.
+PRD hiện vẫn quy định Cohere v3/1024 tại FR-SRC-02. Report chỉ đưa ra thứ tự đánh giá local; muốn thay model vận hành cần đề xuất thay đổi PRD và người dùng chốt trước khi triển khai.
 
-## Xếp hạng chất lượng sau D5a
+## 2. Đã đo trên dữ liệu nào?
 
-Bảng này xếp theo nDCG@10 full. Đây là **xếp hạng điểm ước lượng**, không phải thứ tự chọn model: coverage khác nhau và chênh lệch nhỏ phải đọc cùng paired CI.
+| Thành phần | Quy mô thực tế | Ý nghĩa |
+|---|---:|---|
+| Catalog gốc | 11.387 record | Gồm khách sạn, phòng, tuyến/chuyến bay và các loại khác |
+| Sản phẩm được tìm kiếm bằng vector | **3.183 search unit / collection** | Chọn hotel_property, flight_route, attraction, combo, golf; không vector hóa riêng từng phòng/chuyến bay trong phép đo này |
+| Cấu hình embedding | 10 | v3; e5-small; e5-base; e5-large-instruct; GTE; BGE; v4 ở 4 số chiều |
+| Tổng vector document đã tạo | 10 × 3.183 = **31.830** | Tổng của mười bộ; **mỗi truy vấn chỉ tìm trong một bộ 3.183 vector**, không tìm trên 31.830 vector |
+| Câu hỏi đánh giá | 131 active, 13 slice | 128 câu trong catalog và 3 câu mong đợi không có kết quả |
+| Nhãn gold | 4.991 active; tổng 5.021 | Một nhãn thuộc một cặp câu hỏi–sản phẩm; 30 nhãn của 1 câu retired không tính điểm |
+| K | 10 | Chấm tối đa 10 kết quả đầu của mỗi câu hỏi |
+| Máy | Intel Core i5-1145G7, 8 logical CPU | Máy local đo ngày 01/10; chưa đại diện cho máy production |
+| Vector DB | Weaviate 1.37.3 local | B0/E dùng cấu hình bench `flat`, cosine; đây không phải phép đo ANN production |
 
-| Hạng điểm | Arm/model | Dim | Recall@10 full | nDCG@10 full | MRR@10 full | Judged@10 | nDCG@10 condensed | Gate |
-|---:|---|---:|---:|---:|---:|---:|---:|---|
-| 1 | E2.v4-1536 | 1536 | 0,354631 | 0,718561 | 0,794922 | 0,912977 | 0,720852 | Chưa đạt: no_diacritics 0,658 |
-| 2 | **E2.v4-1024** | **1024** | **0,352025** | **0,715580** | **0,800000** | **0,922901** | **0,718036** | **Đạt sau tolerance số thực** |
-| 3 | **E2.v4-512** | **512** | **0,350643** | **0,708921** | **0,791174** | **0,898473** | **0,711304** | **Đạt** |
-| 4 | B0 / Cohere v3 | 1024 | 0,350257 | 0,685006 | 0,757909 | 1,000000 | 0,685006 | Đạt; control production |
-| 5 | E2.v4-256 | 256 | 0,321962 | 0,641191 | 0,740256 | 0,812977 | 0,652074 | Chưa đạt: no_diacritics 0,600 |
-| 6 | E2.bge | 1024 | 0,322666 | 0,636094 | 0,738046 | 0,802290 | 0,648056 | Chưa đạt: no_diacritics 0,358 |
-| 7 | E2.e5s | 384 | 0,317468 | 0,634556 | 0,727883 | 0,788550 | 0,647075 | Chưa đạt overall và 2 slice |
-| 8 | E2.gte | 768 | 0,282691 | 0,582810 | 0,686620 | 0,722901 | 0,597945 | Chưa đạt overall và 3 slice |
+`Dimension` / `dim` / số chiều là số phần tử trong **một vector**: e5-small có 384, v4-512 có 512. Nó không phải số sản phẩm, số ảnh hay số kết quả trả về. Benchmark này dùng văn bản, không dùng ảnh sản phẩm.
 
-V4-1024 có `no_diacritics Judged@10 = 84/120 = 0,700` đúng ngưỡng. Giá trị float nội bộ nhỏ hơn 0,7 khoảng 1e-16 từng làm gate báo sai `0.700 < 0.7`. Gate nay dùng tolerance tuyệt đối 1e-12; test hồi quy xác nhận giá trị bằng ngưỡng PASS, thấp hơn 1e-6 vẫn FAIL.
+`Arm` là một cấu hình thử nghiệm. `T3+R` là biến thể text builder dùng chung (`catalog-text-v2`, có thông tin phòng/combo theo builder); đổi arm E chủ yếu là đổi model và input/prefix thích hợp. B0/E đều dense-only, không normalize, không filter và không cutoff. Cùng dữ liệu, K và cách chấm để so model.
 
-`retained ratio` bằng `Judged@10` vì các arm trả tối đa 10 kết quả. Condensed có 1 query rỗng ở BGE và 3 query rỗng ở GTE; các arm còn lại không rỗng.
+`Slice` là nhóm câu hỏi để tránh điểm tổng che lỗi cục bộ: `no_diacritics` = không dấu; `abbrev_typo` = viết tắt/lỗi gõ; `dest_type` = điểm đến + loại sản phẩm; `amenity_negation` = phủ định tiện ích; `cross_vertical` = nhiều loại sản phẩm. Một số nhóm chỉ có 3–5 câu nên độ bất định lớn.
 
-## So sánh trực tiếp các ứng viên v4
+## 3. Giải thích các chỉ số và cách tính
 
-| A → B | Δ Recall@10 condensed | CI95 | Δ nDCG@10 condensed | CI95 | p nDCG | Kết luận |
+Gold gán độ liên quan `rel` bằng **0 / 1 / 2**: không liên quan / liên quan một phần / phù hợp cao. Runner chấm từng câu hỏi rồi lấy **trung bình theo câu**, không gộp tất cả sản phẩm thành một mẫu lớn.
+
+| Chỉ số trong bảng | Đo điều gì? | Cách tính đúng trong code | Cách đọc |
+|---|---|---|---|
+| **Recall@10**, `R`, `full R` | Tìm được bao nhiêu trong số sản phẩm liên quan đã biết? | Số ID top-10 có rel ≥ 1 / tổng ID có rel ≥ 1 trong gold của câu đó | Gold có 20 sản phẩm liên quan, lấy được 7 → 0,35. Không có nghĩa 35% kết quả đúng; đó là khái niệm precision |
+| **nDCG@10** | Có xếp sản phẩm phù hợp lên đầu không? | DCG = tổng `(2^rel − 1) / log2(rank + 1)`; chia cho DCG của top-10 lý tưởng từ gold | Rel 2 được gain 3, rel 1 được gain 1. Sản phẩm tốt ở hạng 1 có giá trị hơn hạng 10. 0,709 không phải accuracy 70,9% |
+| **MRR@10** | Người dùng gặp kết quả phù hợp cao sớm đến đâu? | `1 / rank` của kết quả đầu có **rel ≥ 2** trong top-10; không gặp thì 0 | Hạng 1 → 1; hạng 2 → 0,5; hạng 5 → 0,2. MRR dùng ngưỡng nhãn cao hơn Recall |
+| **Judged@10** | Đã chấm nhãn đủ chưa? | Số kết quả top-10 có nhãn / số kết quả thực trả về trong top-10, rồi trung bình theo câu | 0,80 nghĩa khoảng 80% kết quả đã có nhãn, **không phải 80% kết quả đúng**. Nhãn 0 vẫn là đã chấm |
+| **Zero in-catalog** | Có bỏ người dùng lại với kết quả rỗng không? | Số câu trong catalog trả 0 kết quả / 128 | Càng thấp càng tốt; không gộp 3 câu cố ý ngoài catalog vào mẫu số |
+| **Retained ratio** | Condensed giữ lại bao nhiêu kết quả? | Tổng kết quả có nhãn / tổng kết quả trả về | Đây là tỷ lệ gộp; chỉ bằng Judged trung bình khi mọi câu có cùng số kết quả như B0/E ở lượt này |
+| **p50 / p95 latency** | Thời gian điển hình / phần đuôi chậm | Percentile 50/95 của các mẫu thời gian, bằng NumPy | p95 = 11 ms nghĩa khoảng 95% mẫu không vượt 11 ms; không phải thời gian tệ nhất |
+
+Recall, nDCG và MRR ở bảng model có **n = 128 câu xác định**. Ba câu ngoài catalog không có nhãn liên quan nên metric này không xác định và bị loại khỏi trung bình, không ép thành 0. Judged có n = 131 với B0/E. Câu trả rỗng không có Judged xác định; vì vậy Judged cao không bảo đảm ít kết quả rỗng.
+
+Recall dùng các sản phẩm liên quan **đã biết trong pool nhãn**, không biết hết mọi sản phẩm liên quan trong toàn catalog. Khi thêm nhãn gold, mẫu số Recall có thể tăng và Recall giảm dù top-10 không đổi. Chỉ so các arm trên cùng gold version.
+
+### Full và condensed khác nhau thế nào?
+
+- **Full:** giữ nguyên top-10; sản phẩm chưa có nhãn được tính rel = 0. Đây là số chính, nhưng có thể phạt model mới do pool chưa phủ các kết quả nó tìm được.
+- **Condensed:** lấy đúng top-10 đã lưu, bỏ sản phẩm chưa nhãn rồi dồn hạng. Không lấy thêm hạng 11 trở đi để lấp chỗ. Giữ nguyên gold và mẫu số Recall/IDCG.
+- Ví dụ top-3 là `[chưa nhãn, rel 2, rel 0]`: full tính kết quả rel 2 ở hạng 2; condensed tính nó ở hạng 1. MRR tăng từ 0,5 lên 1 trong ví dụ này mà hệ thống không thay đổi.
+- Trong cách cài đặt này, **Recall@10 full = Recall@10 condensed** vì chỉ bỏ ID chưa nhãn, không bỏ ID đã biết liên quan và không bổ sung kết quả. nDCG/MRR có thể tăng nhờ dồn hạng.
+- Condensed dùng để kiểm độ nhạy với thiếu nhãn; không được dùng nó để tự công bố model vượt gate độ phủ. Với BGE có 1 câu, GTE có 3 câu không còn kết quả sau khi bỏ chưa nhãn.
+
+## 4. PASS / NEEDS_LABELS / WIN / LOSE dựa trên gì?
+
+### 4.1 Gate độ phủ nhãn — áp dụng cho bảng model bên dưới
+
+Nguồn: `config/sbench.yaml: gold`, hàm `runner.judged_gate`.
+
+- **PASS độ phủ:** Judged@10 tổng ≥ **0,80**, và ở **từng slice có metric xác định** ≥ **0,70**.
+- **NEEDS_LABELS:** ít nhất một điều kiện trên chưa đạt. Report cũ gọi đây là FAIL; cách ghi đó dễ nhầm với chất lượng kém nên bản này ghi đúng tên trạng thái.
+- Giá trị bằng ngưỡng được chấp nhận; code dùng tolerance tuyệt đối `1e-12` để tránh sai số float. V4-1024 có slice không dấu 84/120 = 0,700, nên PASS.
+- Gate này không đo độ chính xác. Model đạt 100% Judged vẫn có thể trả nhiều kết quả nhãn 0.
+
+### 4.2 WIN / TIE / LOSE — so hai arm, không phải gate độ phủ
+
+Nguồn: `metrics.win_rule`, `metrics.win_verdict`.
+
+1. **WIN:** ΔRecall@10 ≥ **+2 điểm phần trăm**, bootstrap p một phía < **0,05**, và không slice nào giảm nDCG quá **3 điểm**.
+2. Nếu chưa WIN, **TIE** khi `|ΔnDCG@10| < 2 điểm`.
+3. Còn lại là **LOSE** theo quy tắc chọn. LOSE có thể xảy ra dù điểm tổng tăng, vì một slice giảm mạnh; không đồng nghĩa mọi chỉ số đều kém hơn.
+
+Δ luôn là `(B − A) × 100`. Ví dụ 0,65 − 0,62 = +3 điểm, không phải tăng tương đối 3%.
+
+Paired bootstrap lấy lại mẫu **các cặp điểm cùng câu hỏi** 1.000 lần, seed 42. CI95 lấy percentile 2,5 và 97,5 của các Δ trung bình. CI chứa 0 nghĩa chưa chứng minh được hướng chênh lệch ở mức này, không chứng minh hai model tương đương. Code tính p một phía bằng tỷ lệ Δ bootstrap < 0 cộng nửa tỷ lệ Δ = 0. Nhãn TIE của CLI dựa trên ngưỡng 2 điểm ở trên, không chỉ dựa vào CI.
+
+### 4.3 Gate vận hành và production — phải kiểm riêng
+
+Theo spec Part 10: constraint precision ≥ 0,95 (tỷ lệ kết quả thỏa filter), trung bình số kết quả dư cùng cha ≤ 1, zero-result trong catalog ≤ 0,02, zero-result ngoài catalog = 1, và p95 cache-miss ≤ 250 ms. Cấu hình còn có hub guard 3,0 cho stage áp dụng: hub score là số lần một item xuất hiện so với kỳ vọng xuất hiện đều, không phải phần trăm.
+
+**NFR-PERF-01 quy định toàn API Search p95 ≤ 250 ms.** Con số 300 ms trong plan cũ không thay thế PRD. Bảng ngày 01/10 chưa có đo HTTP end-to-end đầy đủ để xác nhận gate này. B0/E không filter/cutoff nên không dùng PASS độ phủ của chúng để chứng nhận filter hay hành vi ngoài catalog. Ngưỡng filter smoke 100% trong plan là phép kiểm riêng, không nhầm với guard tổng hợp 95%.
+
+## 5. Kết quả chất lượng — cùng gold_v3
+
+Các số dưới đây giữ 6 chữ số thập phân từ artifact cuối. `Full R` = Recall@10 full; `Full nDCG` = nDCG@10 full; `Full MRR` = MRR@10 full. Các cột điểm càng cao càng tốt, nhưng phải đọc cùng độ phủ nhãn.
+
+| Arm | Chiều | Full R | Full nDCG | Full MRR | Judged@10 | nDCG condensed | Gate độ phủ |
+|---|---:|---:|---:|---:|---:|---:|---|
+| B0 | 1024 | 0,350257 | 0,685006 | 0,757909 | 1,000000 | 0,685006 | PASS độ phủ |
+| E2.e5s | 384 | 0,317468 | 0,634556 | 0,727883 | 0,788550 | 0,647075 | NEEDS_LABELS |
+| E2.e5 | 768 | 0,347525 | 0,696969 | 0,756830 | 1,000000 | 0,696969 | PASS độ phủ |
+| E2.e5L | 1024 | 0,304645 | 0,610243 | 0,695799 | 0,793130 | 0,618387 | NEEDS_LABELS |
+| E2.gte | 768 | 0,282691 | 0,582810 | 0,686620 | 0,722901 | 0,597945 | NEEDS_LABELS |
+| E2.bge | 1024 | 0,322666 | 0,636094 | 0,738046 | 0,802290 | 0,648056 | NEEDS_LABELS |
+| E2.v4-256 | 256 | 0,321962 | 0,641191 | 0,740256 | 0,812977 | 0,652074 | NEEDS_LABELS |
+| E2.v4-512 | 512 | 0,350643 | 0,708921 | 0,791174 | 0,898473 | 0,711304 | PASS độ phủ |
+| E2.v4-1024 | 1024 | 0,352025 | 0,715580 | 0,800000 | 0,922901 | 0,718036 | NEEDS_LABELS |
+| E2.v4-1536 | 1536 | 0,354631 | 0,718561 | 0,794922 | 0,912977 | 0,720852 | NEEDS_LABELS |
+
+Ví dụ e5-small: full R 0,317468 là trung bình thu hồi khoảng 31,75% sản phẩm liên quan đã biết; nDCG 0,634556 là điểm thứ hạng, không phải 63,46% truy vấn thành công; Judged 0,788550 cho thấy còn thiếu nhãn. So với B0, nDCG full thấp hơn khoảng 5,05 điểm; chưa thể quy toàn bộ mức giảm đó cho model.
+
+Lý do thiếu nhãn cụ thể từ `needs_labels`:
+
+- **E2.e5s:** judged@10 0.789 < 0.8; slice abbrev_typo: judged@10 0.692 < 0.7; slice no_diacritics: judged@10 0.367 < 0.7.
+- **E2.e5:** PASS tổng và tất cả slice; 1.310/1.310 kết quả top-10 đã có nhãn.
+- **E2.e5L:** judged@10 0.793 < 0.8; slice no_diacritics: judged@10 0.417 < 0.7.
+- **E2.gte:** judged@10 0.723 < 0.8; slice abbrev_typo: judged@10 0.633 < 0.7; slice amenity_offtaxonomy: judged@10 0.680 < 0.7; slice no_diacritics: judged@10 0.208 < 0.7.
+- **E2.bge:** slice no_diacritics: judged@10 0.358 < 0.7.
+- **E2.v4-256:** slice no_diacritics: judged@10 0.600 < 0.7.
+- **E2.v4-1024:** slice no_diacritics: judged@10 0.700 < 0.7.
+- **E2.v4-1536:** slice no_diacritics: judged@10 0.658 < 0.7.
+
+### So sánh các số chiều v4
+
+| A → B | Δ Recall condensed | CI95 | Δ nDCG condensed | CI95 | p nDCG | Verdict |
 |---|---:|---|---:|---|---:|---|
 | v4-512 → v4-1024 | +0,14 điểm | [−0,62; +0,89] | +0,67 điểm | [−0,83; +2,05] | 0,184 | TIE |
 | v4-512 → v4-1536 | +0,40 điểm | [−0,40; +1,22] | +0,95 điểm | [−0,66; +2,58] | 0,131 | TIE |
 
-Điểm trung bình tăng theo chiều vector, nhưng cả hai CI đều cắt qua 0. Dữ liệu hiện tại không chứng minh 1024 hoặc 1536 tốt hơn 512 có ý nghĩa.
+Điểm tăng nhẹ theo chiều nhưng CI đều chứa 0. V4-1536 còn thiếu nhãn ở slice không dấu. So với B0, v4-512 có ΔnDCG condensed +2,63 điểm, CI [−1,46; +6,58], nên chưa chứng minh thắng. Các số này không phải lý do bắt buộc nhóm chuyển sang API trả phí.
 
-### V4-512 so với v4-1024
+## 6. Latency: đo bước nào, trên bao nhiêu vector?
 
-- 1024 nhỉnh +0,67 điểm nDCG condensed và +0,14 điểm Recall; chênh lệch là TIE.
-- 1024 có coverage tốt hơn: 0,923 so với 0,898 và cả hai đạt gate.
-- 1024 dùng **2 lần** số chiều và raw vector float32; truy xuất local p50/p95 8,20/9,98 ms so với 6,83/8,11 ms của 512.
-- Chọn 1024 khi ưu tiên tối đa điểm chất lượng và chấp nhận thêm bộ nhớ/index. Chọn 512 khi ưu tiên hiệu quả vì chưa thấy lợi ích chất lượng có ý nghĩa từ 1024.
+Một lượt search thường gồm: **câu hỏi → chuẩn hóa → tạo vector câu hỏi → truy xuất vector/từ khóa → lọc, xếp hạng, lấy thông tin sản phẩm → trả API**. Các phép đo dưới chỉ bao phủ những đoạn khác nhau trong chuỗi đó.
 
-### V4-512 so với v4-1536
+### 6.1 Tạo vector câu hỏi — chưa tìm kiếm trong catalog
 
-- 1536 có điểm cao nhất, nhưng chỉ hơn 512 +0,95 điểm nDCG condensed và vẫn là TIE.
-- 1536 chưa đạt coverage ở `no_diacritics`: 0,658.
-- 1536 dùng **3 lần** số chiều; truy xuất local p50/p95 9,84/11,57 ms.
-- 1536 phù hợp làm upper-bound nghiên cứu. Không nên chọn làm mặc định ở vòng này.
+Nguồn: `latency-embed.json`, hàm `latency.measure_embed_queries`. Mỗi model chạy 20 lượt warm-up trước, rồi đo **toàn bộ 131 câu**, mỗi lần một câu, tuần tự, cache tắt. 20 lượt warm-up không tính vào 131 mẫu. Đồng hồ wall-clock bọc lệnh `embed([text], "query")`, không gồm thời gian tải model ban đầu. Cohere có mạng/API trong phép đo; model local chạy CPU.
 
-### V4-512 so với B0/Cohere v3
+Artifact Day 4 ghi gold_v2 vì được đo trước top-up; gold_v3 chỉ bổ sung nhãn và giữ nguyên các câu hỏi. Hai lượt e5-base/e5-large ngày 02/10 ghi trực tiếp gold_v3. Rescore chất lượng không tự chạy lại latency.
 
-- Recall gần như bằng nhau: v4-512 chỉ +0,04 điểm. Condensed nDCG nhỉnh +2,63 điểm nhưng CI [−1,46; +6,58] và có slice giảm mạnh.
-- B0 có coverage 1,000, đang là production control và không cần migration.
-- V4-512 dùng nửa số chiều và retrieval local nhanh hơn, nhưng vẫn cần API v4 và quy trình promote.
-- Kết quả chưa đủ để đổi production trực tiếp. V4-512 nên đi tiếp như challenger Day 5.
+| Model | p50 tạo vector (ms) | p95 tạo vector (ms) | Số mẫu | Điều kiện |
+|---|---:|---:|---:|---|
+| e5-small / 384 | 9,192 | 11,369 | 131 | Local CPU |
+| e5-base / 768 | 39,835 | 64,990 | 131 | Local CPU |
+| GTE multilingual-base / 768 | 66,487 | 78,001 | 131 | Local CPU |
+| BGE-M3 / 1024 | 148,779 | 245,814 | 131 | Local CPU, fp32/safetensors; không gọi là kết quả int8 |
+| e5-large-instruct / 1024 | 257,675 | 284,236 | 131 | Local CPU; query dùng instruction chính thức của model |
+| Cohere v3 / 1024 | 459,105 | 734,967 | 131 | API; nghỉ 1.000 ms giữa request, khoảng nghỉ nằm ngoài đồng hồ |
+| Cohere v4 | — | — | Không có lượt hợp lệ hoàn chỉnh | Gặp 429 (rate limit); không công bố percentile từ lượt lỗi |
 
-## Bảng so sánh toàn diện cho production và scale dài hạn
+**Phép đo này không truy xuất trên bất kỳ vector catalog nào.** Nó chỉ biến một câu hỏi thành một vector. Số 3.183 không phải mẫu số của bảng này. Chưa đo batch throughput, tải nhiều người dùng hoặc thời gian khởi động lạnh. Không tự coi model local đã đo là bản lượng tử hóa nếu metadata không chứng minh điều đó.
 
-### Giả định và phạm vi chi phí
+### 6.2 Truy xuất vector — mỗi collection chứa đúng 3.183 vector
 
-- Lượt benchmark dùng **Cohere trial key**, nên tiền bị trừ thực tế là **0 USD**. Trial key bị rate limit và không dùng cho production; lỗi 429 trong lượt đo v4 cho thấy rủi ro vận hành dù chưa phát sinh hóa đơn. [Trang giá Cohere](https://cohere.com/pricing) xác nhận trial miễn phí/rate-limited và production tính pay-as-you-go, nhưng hiện không công bố đơn giá Embed v3/v4 theo token trên trang này.
-- Ước tính production dùng đúng working estimate đang khóa trong `docs/spec/bench/search-eval-local-spec.md`: v3 = **0,10 USD/1M input token**, v4 = **0,12 USD/1M input token**. Đây là số để so tương đối, **không phải báo giá chính thức**; phải xác nhận lại trong Cohere dashboard/hợp đồng trước khi lập ngân sách.
-- Log benchmark ghi 997 API call, 2.170.114 input token, chi phí quy đổi **0,251771 USD**: v3 document 0,042661; v3 query 0,000554; v4 document 0,206932; v4 query 0,001624. Đây là số quy đổi theo cấu hình, không phải tiền trial bị trừ.
-- Một lần embed lại 3.183 search unit ước tính: v3 khoảng **0,0425 USD**; mỗi cấu hình v4 khoảng **0,051–0,052 USD**. V4 256/512/1024/1536 có cùng lượng input, nên giảm chiều **không giảm phí Cohere**; lợi ích nằm ở RAM, disk, network, backup, replica và tốc độ vector search.
-- Query benchmark trung bình khoảng 11–12 token. API estimate: v3 khoảng **1,14 / 11,35 / 113,52 USD** cho 1M/10M/100M query; v4 khoảng **1,40 / 13,97 / 139,72 USD**. Chưa gồm vector DB, network, replica, backup, monitoring và nhân công.
-- Kịch bản scale trong bảng là **1 triệu sản phẩm + 100 triệu query/tháng**. Raw vector = `N × dimension × 4 byte`. HNSW, metadata, WAL, replica và backup làm dung lượng thật cao hơn; chưa đổi storage thành USD vì dự án chưa chốt nhà cung cấp/tier.
-- CPU-hour local là nội suy tuyến tính từ i5-1145G7 và latency tuần tự p50, chỉ dùng để so tương đối. Production phải benchmark throughput theo batch, concurrency, CPU/GPU, SLO và autoscaling trước khi dự toán tiền.
+Nguồn: `results@gold_v3.json: latency_ms`; hàm `runner.retrieve`. Runner tạo/lấy cache vector của 131 câu **trước** khi bắt đầu đồng hồ truy xuất. Mỗi câu gọi `store.dense` top-10 một lần; đo wall-clock phía runner gồm gọi local Weaviate và chuyển kết quả sang ID/score. Không gồm tạo embedding, không qua HTTP `/search`. Không có bước loại 20 warm-up được cài cho phép đo retrieval này.
 
-| Phương án | Chất lượng full: R / nDCG / MRR | Coverage / gate | Latency đã đo | Scale 1M SP + 100M query/tháng | Chi phí và vận hành production | Ưu điểm | Nhược điểm / rủi ro dài hạn | Kết luận |
-|---|---|---|---|---|---|---|---|---|
-| **Cohere v4-512** | **0,3506 / 0,7089 / 0,7912** | 0,8985; **PASS** | Retrieval 6,83/8,11 ms. Query API: chưa có số sạch do 429 | Raw vector **2,048 GB**; API query estimate **139,72 USD/tháng**; reindex 1M SP xấp xỉ **16,3 USD/lần** nếu token/SP giữ nguyên | Phí API gần như bằng mọi chiều v4. Footprint bằng 1/2 v4-1024 và 1/3 v4-1536, nên có khả năng cần ít RAM/disk/replica bandwidth hơn | TIE với 1024/1536; đạt gate; footprint thấp; retrieval nhanh; dễ scale vector DB nhất trong nhóm chất lượng cao | Phụ thuộc Cohere, internet, quota và thay đổi giá/model; coverage thấp hơn 1024; chưa có latency API v4 end-to-end sạch; cần migration/promote | **Mặc định hiệu quả cho Day 5; ứng viên production tốt nhất hiện tại nếu SLO API đạt** |
-| **Cohere v4-1024** | **0,3520 / 0,7156 / 0,8000** | **0,9229; PASS** sau tolerance | Retrieval 8,20/9,98 ms. Query API: chưa có số sạch do 429 | Raw vector **4,096 GB**; API query cũng **139,72 USD/tháng**; reindex xấp xỉ **16,3 USD/lần** | Hóa đơn Cohere gần như bằng v4-512, nhưng vector storage/RAM/backup/network khoảng **2×** ở phần vector thô; có thể đẩy hệ thống sang tier Weaviate cao hơn | Điểm và coverage cao nhất trong hai arm v4 đạt gate; thêm dư địa chất lượng | Chỉ hơn 512 +0,67 điểm nDCG condensed, CI cắt 0; retrieval chậm hơn; 2× footprint; vendor/network risk giống 512 | **Challenger quality-first; chỉ chọn khi Day 5 chứng minh lợi ích đủ bù 2× footprint** |
-| Cohere v4-1536 | **0,3546 / 0,7186 / 0,7949** | 0,9130; **FAIL** `no_diacritics` 0,658 | Retrieval 9,84/11,57 ms. Query API chưa có số sạch | Raw vector **6,144 GB**; API query **139,72 USD/tháng**; reindex xấp xỉ **16,3 USD/lần** | Cohere cost gần như bằng v4-512, nhưng vector thô/traffic backup **3×**; xác suất cần tier RAM cao nhất | Điểm trung bình cao nhất; upper bound hữu ích | Không chứng minh hơn 512; fail slice gate; footprint, migration và retrieval cost cao nhất; lợi ích biên nhỏ | Upper bound nghiên cứu; **không hợp lý cho production hiện tại** |
-| **B0 / Cohere v3-1024** | 0,3503 / 0,6850 / 0,7579 | **1,0000; PASS** | Retrieval 8,10/12,19 ms; query API 459,11/734,97 ms | Raw vector **4,096 GB**; API query estimate **113,52 USD/tháng**; reindex 1M SP xấp xỉ **13,4 USD/lần** | Token estimate thấp hơn v4 khoảng 19%; đang là production control nên migration cost gần 0. Vẫn cần external API, quota, retry/circuit breaker | Coverage hoàn chỉnh; ít rủi ro thay đổi; số latency API đã đo; rollback/control rõ | nDCG thấp hơn v4; p95 API cao; footprint 2× v4-512; model cũ có rủi ro vòng đời/deprecation dài hạn | **Control và phương án an toàn; không phải đích tối ưu nếu v4 qua SLO Day 5** |
-| Cohere v4-256 | 0,3220 / 0,6412 / 0,7403 | 0,8130; **FAIL** `no_diacritics` 0,600 | Retrieval 6,86/11,61 ms; query API chưa có số sạch | Raw vector **1,024 GB**; API query vẫn **139,72 USD/tháng**; reindex vẫn xấp xỉ **16,3 USD/lần** | Vector DB rẻ nhất nhóm Cohere, nhưng phí API không giảm; p95 retrieval không tốt hơn 512 trong phép đo | Footprint nhỏ nhất; dễ chứa nhiều replica/cache | Mất chất lượng rõ, fail gate; tiết kiệm storage nhưng vẫn trả cùng phí query v4; có nguy cơ giảm conversion/search success | Không shortlist; chỉ xét nếu hạ tầng vector bị giới hạn cực chặt |
-| **e5-small local-384** | 0,3175 / 0,6346 / 0,7279 | 0,7886; **FAIL** overall + 2 slice | Retrieval 5,97/7,23 ms; query CPU 9,19/11,37 ms | Raw vector **1,536 GB**. Reindex ~**25 CPUh/1M SP**. Nội suy tuần tự ~**255 CPUh/100M query** ở p50 | 0 phí API và không phụ thuộc internet. Chi phí chuyển sang máy inference, RAM, autoscaling, image/model distribution, monitoring và on-call. Có thể rẻ ở tải đều nếu tận dụng CPU sẵn có | Data ở local; không 429; query encode nhanh nhất; footprint nhỏ; kiểm soát version/rollback; tránh vendor lock-in | Chất lượng chưa đạt; phải tự bảo đảm HA/capacity; CPU estimate chưa gồm concurrency; patch bảo mật và model lifecycle do team chịu | **Fallback local tốt nhất; chưa đủ chất lượng làm primary** |
-| BGE-M3 local-1024 | 0,3227 / 0,6361 / 0,7380 | 0,8023; **FAIL** `no_diacritics` 0,358 | Retrieval 5,71/8,78 ms; query CPU 148,78/245,81 ms | Raw vector **4,096 GB**. Reindex ~**179,5 CPUh/1M SP**. Nội suy ~**4.133 CPUh/100M query** | 0 phí API nhưng compute/replica/autoscale lớn; có thể cần GPU hoặc nhiều worker để giữ SLO | Local, kiểm soát dữ liệu; retrieval p50 thấp nhất | Query encode chậm nhất; footprint lớn; fail gate nặng; chất lượng chỉ nhỉnh e5 ít nhưng compute cao hơn nhiều | Không shortlist; bị e5 chi phối về cost/performance |
-| GTE multilingual-base-768 | 0,2827 / 0,5828 / 0,6866 | 0,7229; **FAIL** overall + 3 slice | Retrieval 6,42/8,17 ms; query CPU 66,49/78,00 ms | Raw vector **3,072 GB**. Reindex ~**94,7 CPUh/1M SP**. Nội suy ~**1.847 CPUh/100M query** | 0 phí API, nhưng CPU và hạ tầng cao hơn e5; vẫn cần HA, rollout và monitoring model | Local/offline; footprint trung bình; không vendor API | Chất lượng/coverage thấp nhất; compute cao hơn e5; không có lợi thế bù lại | Không shortlist |
+B0/E dùng cấu hình bench `flat` cosine (tìm chính xác) ở quy mô nhỏ. Production theo NFR-PERF-03 dùng ANN HNSW/hfresh; không ngoại suy những con số này sang production hoặc một triệu vector.
 
-### Trade-off quyết định production
+| Arm | Vector trong collection | Số query đo | p50 truy xuất (ms) | p95 truy xuất (ms) |
+|---|---:|---:|---:|---:|
+| B0 | 3,183 | 131 | 8.098 | 12.191 |
+| E2.e5s | 3,183 | 131 | 3.582 | 6.270 |
+| E2.e5 | 3,183 | 131 | 6.828 | 8.247 |
+| E2.e5L | 3,183 | 131 | 5.172 | 8.593 |
+| E2.gte | 3,183 | 131 | 6.339 | 8.933 |
+| E2.bge | 3,183 | 131 | 6.305 | 9.577 |
+| E2.v4-256 | 3,183 | 131 | 6.863 | 11.613 |
+| E2.v4-512 | 3,183 | 131 | 6.832 | 8.111 |
+| E2.v4-1024 | 3,183 | 131 | 8.200 | 9.985 |
+| E2.v4-1536 | 3,183 | 131 | 9.837 | 11.574 |
 
-1. **Chất lượng trước, rồi mới tối ưu chi phí.** V4-256 và ba model local hiện fail gate; chi phí thấp không bù được rủi ro trả kết quả kém. Chúng chỉ phù hợp fallback hoặc nghiên cứu.
-2. **V4-512 có cost/performance tốt nhất trong dữ liệu hiện tại.** So với v4-1024, Cohere API bill gần như bằng nhau nhưng footprint vector giảm 50%; đổi lại nDCG condensed thấp hơn 0,67 điểm và coverage thấp hơn 2,44 điểm phần trăm. Chênh chất lượng chưa có ý nghĩa thống kê.
-3. **V4-1024 là khoản đầu tư vào chất lượng tiềm năng.** Chỉ nên trả 2× footprint nếu Day 5/A-B test chứng minh tăng search success, click hoặc conversion đủ lớn; Day 4 chưa chứng minh được.
-4. **V4-1536 có lợi ích biên thấp.** 3× footprint của 512, fail một gate và vẫn TIE; không có business case production ở vòng này.
-5. **B0/v3 giảm rủi ro migration nhưng có technical debt vòng đời model.** Nó phù hợp làm control/rollback trong giai đoạn chuyển đổi, không nên mặc định là phương án 3–5 năm nếu vendor công bố lộ trình thay thế.
-6. **Local không đồng nghĩa miễn phí.** E5 bỏ hóa đơn API và rủi ro mạng nhưng cần capacity, HA, autoscaling, monitoring và người vận hành. E5 chỉ trở nên kinh tế hơn khi tổng chi phí CPU/hạ tầng/on-call thấp hơn API + vector DB và chất lượng được cải thiện đủ qua gate.
-7. **Chi phí chính ở scale lớn chưa phải tiền reindex.** Với giả định hiện tại, 100M query/tháng tốn khoảng 113,52 USD ở v3 hoặc 139,72 USD ở v4 cho embedding query; vector DB, replica, RAM và vận hành có thể lớn hơn. Vì chưa có báo giá Weaviate/cloud và SLO tải, report không tự gán USD cho phần này.
+Ví dụ **e5-small p95 tạo vector 11,369 ms** và **p95 truy xuất 7,233 ms** là hai phép đo tách biệt. Không cộng hai p95 để khẳng định p95 API = 18,602 ms: percentile của tổng cần đo trên cùng request, còn các bước khác chưa được tính. Tương tự, 8,11 ms của v4-512 là retrieval, không phải tốc độ gọi Cohere v4.
 
-### Quyết định đề xuất và điều kiện trước production
+### 6.3 Ba arm chạy logic SearchProducts — không phải HTTP production
 
-- Đưa **v4-512** và **v4-1024** sang Day 5; B0/v3 là control/rollback; e5-small là fallback local.
-- Chưa đổi production từ Day 4. Day 5 cần đo end-to-end `/search` với concurrency/QPS mục tiêu, timeout/retry/circuit breaker, quota Cohere production, chi phí Weaviate thật theo 512 và 1024, và A/B metric gắn với business.
-- Chọn **v4-512** nếu hai arm tiếp tục TIE hoặc v4-1024 không tạo uplift business đủ bù 2× footprint.
-- Chọn **v4-1024** nếu kiểm thử độc lập chứng minh uplift ổn định và hạ tầng vẫn nằm trong cùng tier ngân sách.
-- Duy trì khả năng rollback về B0 và fallback e5 khi Cohere/network lỗi; không xem trial key là cấu hình production.
+APP.dense/hybrid/hybrid_norm chạy use case thật qua adapter local, có BenchQueryEmbedder/cache, candidate và cutoff. Đồng hồ trong `app_adapter.retrieve_app` bọc lời gọi use case; trường artifact vẫn mang tên `weaviate_p50/p95` nhưng phạm vi thực tế rộng hơn truy xuất thuần ở §6.2. Không dùng tên trường đó để gọi đây là thời gian riêng Weaviate hoặc toàn API.
 
-## Ba arm Search v1 sau gold cuối
+| Arm | p50 use case local (ms) | p95 use case local (ms) |
+|---|---:|---:|
+| APP.dense | 75,180 | 99,976 |
+| APP.hybrid | 163,421 | 195,559 |
+| APP.hybrid_norm | 171,994 | 694,708 |
 
-| Arm | Recall@10 | nDCG@10 | MRR@10 | Judged@10 | Zero in-catalog |
+Các số này chưa tách hit/miss theo HTTP và chưa có load test. Cần đo lại trên máy triển khai với cache hit/miss, QPS và concurrency cụ thể trước khi đánh giá NFR-PERF-01.
+
+## 7. Dense, hybrid và normalize thay đổi chất lượng ra sao?
+
+- **Dense:** tìm theo vector ngữ nghĩa.
+- **Hybrid:** kết hợp dense với tìm từ khóa BM25.
+- **Normalize:** chuẩn hóa câu hỏi trước tìm kiếm, ví dụ xử lý các dạng viết khác nhau theo normalizer hiện có.
+
+Bảng APP chạy cùng Cohere v3, collection `ProductBench` 3.183 object. APP.dense lấy candidate top-200 và cutoff cosine 0,62; B0 lấy top-10 trực tiếp không cutoff. Vì vậy **B0 và APP.dense không phải cùng cấu hình**, dù cùng model: không đối chiếu hai điểm như thể chỉ khác do nhiễu đo.
+
+| Arm | Recall@10 full | nDCG@10 full | MRR@10 full | Judged@10 | Zero in-catalog |
 |---|---:|---:|---:|---:|---:|
 | APP.dense | 0,305920 | 0,619530 | 0,693304 | 1,000000 | 0,164062 |
 | APP.hybrid | 0,306081 | 0,596552 | 0,643083 | 1,000000 | 0,156250 |
 | APP.hybrid_norm | 0,339702 | 0,647718 | 0,704021 | 1,000000 | 0,070312 |
 
-Hybrid+normalize tăng Recall so với dense +3,38 điểm, CI95 [+1,33; +5,67], nhưng vẫn LOSE theo guard slice vì `dest_type` −13,19 điểm. Chưa thay dense bằng hybrid+normalize.
+Hybrid+normalize so với dense: Recall +3,38 điểm, CI95 [+1,33; +5,67]; nDCG +2,82 điểm, CI95 [−1,21; +7,00]. Tuy nhiên slice `dest_type` giảm nDCG **13,19 điểm**, vượt guard 3 điểm, nên verdict **LOSE**. Zero-result giảm từ 21/128 xuống 9/128, nhưng 7,03% vẫn trên guard 2%.
 
-## Vector và latency
+Ở slice không dấu, dense/hybrid rỗng 12/12 câu; hybrid+normalize còn rỗng 8/12. Đây là vấn đề hành vi cần xử lý dù Judged của các kết quả đã trả là 1,0. Chi tiết CI nằm ở [report ba arm](eval-2026-10-01-search-v1-3arm.md).
 
-Có 8 bộ vector document hoàn chỉnh:
+## 8. Xếp hạng local-only, ưu tiên miễn phí
 
-| Model | Dim | Số vector | Điều kiện query latency p50/p95 ms |
-|---|---:|---:|---|
-| Cohere v3 | 1024 | 3.183 | 459,105 / 734,967; Cohere API, nghỉ 1.000 ms ngoài khoảng đo |
-| Cohere v4 | 1536 | 3.183 | API bị 429 giữa sweep; dùng Weaviate local 9,84 / 11,57 để so kích thước |
-| Cohere v4 | 1024 | 3.183 | Weaviate local 8,20 / 9,98 |
-| Cohere v4 | 512 | 3.183 | Weaviate local 6,83 / 8,11 |
-| Cohere v4 | 256 | 3.183 | Weaviate local 6,86 / 11,61 |
-| e5-small | 384 | 3.183 | local CPU 9,192 / 11,369 |
-| GTE multilingual base | 768 | 3.183 | local CPU 66,487 / 78,001 |
-| BGE-M3 | 1024 | 3.183 | local CPU fp32/safetensors 148,779 / 245,814 |
+Trong phần này, **miễn phí = tự chạy model, không trả tiền embedding API theo request/token**. Máy chủ, RAM, điện, vector DB và công vận hành vẫn là chi phí. Cohere bị loại khỏi bảng xếp hạng; các dòng Cohere ở §5–7 chỉ giữ lại để giải thích lịch sử Day 4 và không ảnh hưởng quyết định local.
 
-Cohere API và local CPU không cùng điều kiện nên không dùng bảng này để tuyên bố model nào nhanh hơn end-to-end. V4 API bị 429 đã được loại, không trộn retry vào percentile. Gate latency toàn `/search` thuộc Day 5.
+### 8.1 Điều kiện so sánh đã khóa
 
-## Dữ liệu nhãn D5a
+Năm model local đều dùng cùng một phép thử:
 
-Pool trước cap có 2.024 cặp người duyệt. Pool chính thức có 700 cặp / 128 câu; người dùng gán đủ 700/700 với phân bố: 190 nhãn 0, 170 nhãn 1, 340 nhãn 2. Thêm 72 cặp out-of-catalog tự gán 0. `gold check` và `gold verify-append gold_v2` PASS: +1.050 nhãn tính cả D4b + D5a, không đổi query/nhãn cũ.
+| Điều kiện | Giá trị dùng chung |
+|---|---|
+| Gold | `gold_v3`, SHA-256 `4d2ac02fa960ceaf2c9286bf546da1b77023435a9337ecadee22dd7cc62f5784` |
+| Query | 131 active; metric chất lượng xác định trên 128 query in-catalog |
+| Catalog | Cùng snapshot; 3.183 search unit trong mỗi collection |
+| Text | `T3+R`, builder `catalog-text-v2` |
+| Retrieval | Dense-only, cosine, top-10, Weaviate local `flat`; không filter, cutoff hay normalize |
+| Latency query | Cùng máy CPU; 20 warm-up + 131 query tuần tự, từng query một, cache tắt |
+| Chi phí API | 0 USD cho cả năm model local |
 
-Sau vòng này **không cần label thêm để hoàn thành Day 4**. V4-512 và v4-1024 đều đạt gate. Các arm còn lại được đọc bằng condensed theo cap đã quy định; muốn đưa một arm chưa đạt gate vào shortlist thì cần top-up riêng ở Day 5.
+Prefix/instruction là phần bắt buộc của từng model, nên được áp dụng đúng model thay vì ép chuỗi đầu vào giống từng ký tự. E5-small/e5-base dùng prefix `query:` và `passage:`; e5-large-instruct dùng `Instruct: ...\nQuery:` cho query và không thêm instruction cho document theo model card. Các yếu tố còn lại được giữ nguyên.
 
-## Lệnh tái sinh số
+### 8.2 Bảng xếp hạng khuyến nghị
 
-Chạy từ `src/` trong conda `vsf2`:
+| Hạng | Model | Full R | Full nDCG | Judged@10 | p95 embed query | p95 retrieval / 3.183 vector | Re-index document | Tài nguyên chính |
+|---:|---|---:|---:|---:|---:|---:|---:|---|
+| **1** | **e5-base / 768** | **0,3475** | **0,6970** | **1,000** | **65,0 ms** | 8,2 ms | 11m57s | vector ~9,4 MB; cache model ~1,1 GB |
+| **2** | **e5-small / 384** | 0,3175 | 0,6346 | 0,789 | **11,4 ms** | **6,3 ms** | **4m47s** | vector ~4,7 MB; cache model ~471 MB |
+| **3** | **BGE-M3 / 1024** | 0,3227 | 0,6361 | 0,802 | 245,8 ms | 9,6 ms | 34m17s | vector ~13 MB; cache model ~4,3 GB |
+| **4** | **GTE multilingual-base / 768** | 0,2827 | 0,5828 | 0,723 | 78,0 ms | 8,9 ms | 18m05s | vector ~9,4 MB; cache model ~599 MB |
+| **5** | **e5-large-instruct / 1024** | 0,3046 | 0,6102 | 0,793 | 284,2 ms | 8,6 ms | 34m33s | vector ~13 MB; peak re-index RSS ~4,16 GB |
+
+Re-index là wall-clock cho 3.183 document trên máy local. Lượt BGE có 2.991 vector mới và 192 cache hit, nên con số của nó có lợi nhẹ so với một lượt hoàn toàn không cache. Dung lượng vector là file float32 xấp xỉ; cache model không phải RAM phục vụ thực tế.
+
+**1 — e5-base:** đứng đầu vì có Recall và nDCG local cao nhất, đồng thời 1.310/1.310 kết quả top-10 đã được chấm. So với từng model còn lại, paired bootstrap đều cho khoảng tin cậy của ΔnDCG `(model kia − e5-base)` nằm hoàn toàn dưới 0. p95 embedding 65 ms vẫn để lại ngân sách cho retrieval, business logic và HTTP, dù cần đo end-to-end mới biết có đạt NFR hay không.
+
+**2 — e5-small:** là phương án tiết kiệm CPU/RAM tốt nhất. Nó nhanh hơn e5-base khoảng 5,7 lần ở p95 query, vector nhỏ bằng một nửa và re-index nhanh hơn khoảng 2,5 lần. Full nDCG thấp hơn e5-base 6,24 điểm. Hạng 2 là khuyến nghị vận hành: coverage chưa đạt gate, nên cần top-up nhãn nếu muốn chốt chính xác khoảng cách chất lượng.
+
+**3 — BGE-M3:** nDCG chỉ hơn e5-small 0,15 điểm và paired bootstrap kết luận TIE; lợi ích chất lượng chưa bù p95 query 245,8 ms, cache model lớn và re-index lâu. Vì vậy BGE đứng sau e5-small dù điểm full nhỉnh hơn rất ít.
+
+**4 — GTE multilingual-base:** p95 query 78 ms chấp nhận được hơn BGE, nhưng Recall/nDCG thấp rõ rệt và coverage chỉ 0,723. Nó không có bằng chứng chất lượng để ưu tiên trước hai model e5 nhỏ hơn.
+
+**5 — e5-large-instruct:** kích thước lớn không tạo chất lượng tốt hơn trên V-OTA. Full nDCG chỉ 0,610; p95 embedding 284,2 ms đã vượt NFR toàn API 250 ms trước khi cộng retrieval và HTTP; re-index lâu nhất nhóm. Nó cần thêm ít nhất 34 nhãn trong slice `no_diacritics` để gate slice đạt 0,70; việc top-up này không giải quyết điểm latency.
+
+### 8.3 Bằng chứng thống kê
+
+Các dòng dưới dùng paired bootstrap 1.000 lần, seed 42, trên cùng query. Δ là `(model B − model A) × 100`; CI âm hoàn toàn nghĩa model B thấp hơn A ở phép đo này.
+
+| A → B | Δ Recall | CI95 | Δ nDCG | CI95 | Diễn giải |
+|---|---:|---|---:|---|---|
+| e5-base → e5-small | −3,01 điểm | [−4,50; −1,53] | −6,24 điểm | [−10,13; −2,52] | e5-small thấp hơn |
+| e5-base → BGE-M3 | −2,49 điểm | [−4,07; −1,08] | −6,09 điểm | [−9,71; −2,39] | BGE thấp hơn |
+| e5-base → GTE | −6,48 điểm | [−8,98; −4,34] | −11,42 điểm | [−15,31; −7,53] | GTE thấp hơn |
+| e5-base → e5-large | −4,29 điểm | [−6,26; −2,39] | −8,67 điểm | [−12,50; −5,09] | e5-large thấp hơn |
+| e5-small → BGE-M3 | +0,52 điểm | [−0,74; +1,80] | +0,15 điểm | [−2,56; +3,10] | Chưa phân biệt được; TIE |
+
+Nếu chỉ sắp theo **full nDCG thô**, thứ tự là e5-base > BGE-M3 > e5-small > e5-large > GTE. Bảng khuyến nghị đổi e5-small lên trên BGE vì hai model hòa về mặt thống kê, trong khi e5-small nhẹ và nhanh hơn nhiều. Hạng 2–5 vẫn là thứ tự tạm thời do coverage khác nhau; e5-base là model duy nhất trong năm model có Judged@10 = 1,000.
+
+License công bố bởi chủ model: [e5-small — MIT](https://huggingface.co/intfloat/multilingual-e5-small/blob/main/README.md), [e5-base — MIT](https://huggingface.co/intfloat/multilingual-e5-base), [e5-large-instruct — MIT](https://huggingface.co/intfloat/multilingual-e5-large-instruct), [BGE-M3 — MIT](https://huggingface.co/BAAI/bge-m3), [GTE — Apache-2.0](https://huggingface.co/Alibaba-NLP/gte-multilingual-base). Giữ license/notice tương ứng khi phân phối.
+
+### 8.4 Số chiều và dung lượng
+
+Ước tính **vector thô float32** = số vector × số chiều × 4 byte. Bảng này là phép tính dung lượng, không phải RAM thực đo hay benchmark một triệu sản phẩm. Chưa gồm model weights, metadata, index, WAL, replica và backup.
+
+| Số chiều | 3.183 vector, MB thập phân | 1 triệu vector, GB thập phân |
+|---:|---:|---:|
+| 256 | 3.259 | 1.024 |
+| 384 | 4.889 | 1.536 |
+| 512 | 6.519 | 2.048 |
+| 768 | 9.778 | 3.072 |
+| 1024 | 13.038 | 4.096 |
+| 1536 | 19.556 | 6.144 |
+
+Với model local, ngoài vector còn phải tính RAM, CPU và thời gian khởi động model. Chưa có dữ liệu tải để quy số ms/query thành số máy production: wall-clock không phải CPU-time, và inference có thể dùng nhiều thread.
+
+## 9. Việc đã xong và bằng chứng còn thiếu
+
+Đã hoàn thành Day 4 và lượt bổ sung Day 5 local-only: e5-base và e5-large-instruct đã qua token gate, embed 3.183 document, load collection, chạy chất lượng, đo latency query và sanity 4/4 trên `gold_v3`. Run `20261002-day5-local-ranking` chạy cả năm model local trong cùng một run; query vector đều cache hit 131/131, không gọi Cohere. Năm phép compare paired bootstrap ở §8.3 được sinh trực tiếp từ run này.
+
+Lịch sử ngày 01/10 ghi Search suite 346 passed, 11 skipped, 1 deselected. Phần bổ sung ngày 02/10 có test cấu hình/arm **15 passed**; sanity e5-base và e5-large đều **4/4 PASS**. Artifact benchmark nằm local và không được commit.
+
+Các giới hạn khi dùng báo cáo để quyết định:
+
+- Pool nhãn chưa đầy đủ và có ảnh hưởng của các model dùng dựng pool. D4a ở lineage gold gồm nhãn máy: 93 cặp được duyệt tay, phần còn lại duyệt hàng loạt; không coi toàn gold là đánh giá độc lập hai người.
+- Một số câu typo từng dùng xây normalizer; đây chưa phải test set hoàn toàn độc lập. Slice nhỏ có CI rộng.
+- PASS coverage không phải PASS production. Chưa có HTTP load test; bench flat 3.183 vector không chứng minh tốc độ ANN ở catalog lớn.
+- S8 stages/regression và split dev/test còn lại; 131 câu không đủ split 100/100 theo plan cũ.
+
+Bước tiếp theo theo ưu tiên miễn phí: chạy e5-base qua pipeline APP và HTTP end-to-end; đo cache hit/miss, concurrency, RAM và HNSW trên máy gần production; bổ sung nhãn có mục tiêu cho các hạng 2–5 nếu nhóm cần chốt thứ tự phụ; hoàn thiện baseline/regression. Chỉ sau các bước đó mới lập đề xuất đổi model trong PRD. Report này chưa thay đổi engine hoặc hạ ngưỡng nghiệm thu.
+
+## 10. Cách tái sinh và kiểm tra số
+
+Từ thư mục `src/`, dùng môi trường bench hiện có (lượt này dùng conda `vsf2`). `tokens/embed/load/run` dùng model và Weaviate local; không gọi Cohere. `compare` chỉ đọc artifact trong cùng run. Muốn tái đo thời gian re-index từ đầu phải dùng cache rỗng; chạy lại trên cache nóng sẽ nhanh hơn và không tái sinh wall-clock ở §8.
 
 ```bash
-python -m evaluation.search_bench --dataset jsonl --run-id 20261001-day4-local rescore --allow-untagged
-python -m evaluation.search_bench --dataset jsonl --run-id 20261001-day4-local compare E2.v4-512 E2.v4-1024 --gold untagged --condensed
-python -m evaluation.search_bench --dataset jsonl --run-id 20261001-day4-local compare E2.v4-512 E2.v4-1536 --gold untagged --condensed
-python -m evaluation.search_bench --dataset jsonl --run-id 20261001-day4-local compare APP.dense APP.hybrid_norm --gold untagged
+python -m evaluation.search_bench gold check
+python -m evaluation.search_bench tokens --variant T3+R --model e5-base
+python -m evaluation.search_bench tokens --variant T3+R --model e5-large-instruct
+python -m evaluation.search_bench embed --variant T3+R --model e5-base
+python -m evaluation.search_bench embed --variant T3+R --model e5-large-instruct
+python -m evaluation.search_bench load --variant T3+R --model e5-base
+python -m evaluation.search_bench load --variant T3+R --model e5-large-instruct
+python -m evaluation.search_bench --dataset jsonl --run-id 20261002-day5-local-ranking run --arm E2.e5 --arm E2.e5s --arm E2.bge --arm E2.gte --arm E2.e5L
+python -m evaluation.search_bench --dataset jsonl --run-id 20261002-day5-local-ranking compare E2.e5 E2.e5s --gold gold_v3
+python -m evaluation.search_bench --dataset jsonl --run-id 20261002-day5-local-ranking compare E2.e5 E2.bge --gold gold_v3
+python -m evaluation.search_bench --dataset jsonl --run-id 20261002-day5-local-ranking compare E2.e5 E2.gte --gold gold_v3
+python -m evaluation.search_bench --dataset jsonl --run-id 20261002-day5-local-ranking compare E2.e5 E2.e5L --gold gold_v3
+python -m evaluation.search_bench --dataset jsonl --run-id 20261002-day5-local-ranking compare E2.e5s E2.bge --gold gold_v3
+python -m evaluation.search_bench --run-id 20261002-day5-local-only latency embed --models e5-base --warmup 20
+python -m evaluation.search_bench --run-id 20261002-day5-e5-large latency embed --models e5-large-instruct --warmup 20
 ```
 
-Artifact run ở `bench_out/search/runs/20261001-day4-local/` không commit. Config, gold, pool, report và test đang ở working tree để người dùng review; chưa commit.
+### Hash cấu hình của các arm
+
+Hash dưới đây lấy từ artifact, giúp phát hiện so nhầm cấu hình giữa các lượt chạy.
+
+| Arm | resolved_config_hash |
+|---|---|
+| B0 | `9b08fb796dd62a1146126d86051a2c998316c54b` |
+| E2.e5s | `57f52b431dde153fadc24fc2f1f6c45e788fe250` |
+| E2.e5 | `b08fc11d0f795139c8179708f03779bec4b7fa63` |
+| E2.e5L | `58335f4870d829c3afc9cfc65a87e365211400c3` |
+| E2.gte | `6954d71cfd23bb63152ba631a73c5cd166aff592` |
+| E2.bge | `149251b5a16194fce8af1df43be8e8c1aa9bb831` |
+| E2.v4-256 | `003f86735027db47d446c2d0b494e436cca9d889` |
+| E2.v4-512 | `0b9b6be1ea72e34fdcdb51134decdf6ecffb3c84` |
+| E2.v4-1024 | `4c681c65fba4f90890de5f1f9c9356281eeff35f` |
+| E2.v4-1536 | `8261bbd3abb23d1b8c6e06f0236a016cd554759c` |
+| APP.dense | `9b5603cb85c0a5b39714d15d7d75b9efcefa9b3d` |
+| APP.hybrid | `154339f447230ab37195c8e61f4a989db080d886` |
+| APP.hybrid_norm | `b7c0f98691338a5f59bec8726020b49d5a3fd6a8` |
+
+Với run Day 4, đọc đúng `results@gold_v3.json` vì `results.json` gốc có thể vẫn ghi gold_v2. Run `20261002-day5-local-ranking` sinh trực tiếp `results.json` trên gold_v3. Rescore chỉ tính lại điểm theo nhãn mới, giữ nguyên top-k và thời gian cũ, không tái đo latency. Muốn đo embedding mới dùng `python -m evaluation.search_bench latency embed --help` để chọn model/warm-up; muốn đo HTTP dùng `python -m evaluation.search_bench latency http --help`. Hai phép đo đó là lượt chạy mới, phải lưu run ID và cấu hình riêng.
+
+Nguồn kiểm chứng trong repo: `search_bench/metrics.py` (công thức, bootstrap, verdict), `runner.py` (đồng hồ retrieval, judged gate), `latency.py` (đo embedding/HTTP), `app_adapter.py` (phạm vi đo APP), `config/sbench.yaml` (ngưỡng), `arms/*.yaml` (cấu hình từng arm), `docs/prd/requirements.md` (NFR/FR), `docs/spec/bench/search-eval-local-spec.md` Part 8–10 (metric và chọn cấu hình).

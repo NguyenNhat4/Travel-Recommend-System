@@ -22,7 +22,7 @@ trên 15 điểm đến Việt Nam, mô tả tiếng Việt, xuất theo schema 
 |---|---|
 | vinpearl.com trước: khách sạn, VinWonders, golf, combo | `crawl.py vinpearl`: API của booking.vinpearl.com (vinpearl.com có Cloudflare) |
 | booking.com: độ phủ chỗ ở, thuộc tính có cấu trúc | `crawl.py booking-hotels`: N khách sạn phổ biến mỗi điểm đến + hạng phòng + giá |
-| agoda.com: phủ tốt chỗ ở nội địa | `crawl.py agoda-hotels`: N khách sạn phổ biến mỗi điểm đến + giá |
+| agoda.com: phủ tốt chỗ ở nội địa | Fresh pipeline gọi `crawl.py agoda-api`: N khách sạn mỗi điểm đến, hạng phòng và một ngày giá thật; loader dựng availability 30 ngày |
 | trip.com: vé máy bay, điểm tham quan (gợi ý chéo tuần 3) | `crawl.py trip-flights`, `crawl.py trip-attractions` |
 | 2.000–5.000 sản phẩm, 10–15 điểm đến | `collectors/plan.py`: 15 điểm đến, ngân sách mỗi điểm đến |
 | Gộp trùng: vinpearl.com thắng tên/mô tả, OTA thắng giá/tình trạng | `normalise.py` |
