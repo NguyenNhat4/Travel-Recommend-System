@@ -10,6 +10,7 @@ from psycopg.rows import dict_row
 
 from src.backend.app.application.auth.errors import CdpUserIdTaken, EmailAlreadyExists
 from src.backend.app.application.auth.principal import AuthenticatedUser
+from src.backend.app.infrastructure.persistence.db_connection import connect_async
 
 _COLUMNS = "user_id, email, password_hash, display_name, cdp_user_id, persona, email_verified_at"
 
@@ -31,14 +32,14 @@ class PostgresUserRepository:
         self._database_url = database_url
 
     async def find_by_email(self, email: str) -> AuthenticatedUser | None:
-        async with await psycopg.AsyncConnection.connect(self._database_url, row_factory=dict_row) as conn:
+        async with await connect_async(self._database_url, row_factory=dict_row) as conn:
             row = await (
                 await conn.execute(f"SELECT {_COLUMNS} FROM app.users WHERE email = %s", (email.lower(),))
             ).fetchone()
         return _to_user(row) if row else None
 
     async def find_by_id(self, user_id: str) -> AuthenticatedUser | None:
-        async with await psycopg.AsyncConnection.connect(self._database_url, row_factory=dict_row) as conn:
+        async with await connect_async(self._database_url, row_factory=dict_row) as conn:
             try:
                 row = await (
                     await conn.execute(f"SELECT {_COLUMNS} FROM app.users WHERE user_id = %s::uuid", (user_id,))
@@ -48,7 +49,7 @@ class PostgresUserRepository:
         return _to_user(row) if row else None
 
     async def email_exists(self, email: str) -> bool:
-        async with await psycopg.AsyncConnection.connect(self._database_url) as conn:
+        async with await connect_async(self._database_url) as conn:
             row = await (
                 await conn.execute("SELECT 1 FROM app.users WHERE email = %s", (email.lower(),))
             ).fetchone()
@@ -58,7 +59,7 @@ class PostgresUserRepository:
         self, *, email: str, password_hash: str, display_name: str, cdp_user_id: str
     ) -> AuthenticatedUser:
         try:
-            async with await psycopg.AsyncConnection.connect(self._database_url, row_factory=dict_row) as conn:
+            async with await connect_async(self._database_url, row_factory=dict_row) as conn:
                 row = await (
                     await conn.execute(
                         f"""
@@ -80,13 +81,13 @@ class PostgresUserRepository:
         return _to_user(row)
 
     async def update_password_hash(self, user_id: str, password_hash: str) -> None:
-        async with await psycopg.AsyncConnection.connect(self._database_url) as conn:
+        async with await connect_async(self._database_url) as conn:
             await conn.execute(
                 "UPDATE app.users SET password_hash = %s WHERE user_id = %s", (password_hash, user_id)
             )
             await conn.commit()
 
     async def touch_last_login(self, user_id: str) -> None:
-        async with await psycopg.AsyncConnection.connect(self._database_url) as conn:
+        async with await connect_async(self._database_url) as conn:
             await conn.execute("UPDATE app.users SET last_login_at = now() WHERE user_id = %s", (user_id,))
             await conn.commit()

@@ -177,6 +177,8 @@ ErrorCode:
   - BOOKING_NOT_CANCELLABLE
   - PAYMENT_PROVIDER_UNAVAILABLE
   - INVALID_WEBHOOK_SIGNATURE
+  # --- 1.14.0: PostgreSQL không với tới được (503, retryable) ---
+  - DATABASE_UNAVAILABLE
 
 ValidationFieldError:
   type: object
@@ -225,7 +227,8 @@ ErrorResponse:
           type: boolean
           description: >-
             true chỉ với SEARCH_UNAVAILABLE, INTERNAL_ERROR, LLM_UNAVAILABLE,
-            TOO_MANY_ATTEMPTS, CDP_UNAVAILABLE và PAYMENT_PROVIDER_UNAVAILABLE.
+            TOO_MANY_ATTEMPTS, CDP_UNAVAILABLE, PAYMENT_PROVIDER_UNAVAILABLE và
+            DATABASE_UNAVAILABLE (503, kèm Retry-After; áp dụng cho mọi endpoint cần DB).
             Mọi mã còn lại là false — thử lại nguyên request cho cùng kết quả.
         requestId:
           type: string

@@ -14,6 +14,8 @@ from src.backend.app.application.ports.cdp_client import (
     PurchaseEvent,
     UserEvent,
 )
+from src.backend.app.application.errors import DatabaseUnavailableError
+from src.backend.app.infrastructure.persistence.db_connection import connect_async
 
 
 class LocalCdpClient:
@@ -32,7 +34,7 @@ class LocalCdpClient:
         if not events:
             return
         try:
-            async with await psycopg.AsyncConnection.connect(self._database_url) as conn:
+            async with await connect_async(self._database_url) as conn:
                 for event in events:
                     # Serialize retries for one user because the official DDL has
                     # no external event-id unique key.
@@ -58,14 +60,14 @@ class LocalCdpClient:
                             event.cdp_user_id, event.event_group_id, event.product_id, event.using_date,
                         ),
                     )
-        except (psycopg.Error, OSError) as exc:
+        except (psycopg.Error, OSError, DatabaseUnavailableError) as exc:
             raise CdpUnavailableError(f"Local CDP purchase write failed: {type(exc).__name__}") from exc
 
     async def cancel_purchases(self, events: Sequence[PurchaseEvent]) -> None:
         if not events:
             return
         try:
-            async with await psycopg.AsyncConnection.connect(self._database_url) as conn:
+            async with await connect_async(self._database_url) as conn:
                 for event in events:
                     await conn.execute(
                         """
@@ -75,7 +77,7 @@ class LocalCdpClient:
                         """,
                         (event.cdp_user_id, event.event_group_id, event.product_id, event.using_date),
                     )
-        except (psycopg.Error, OSError) as exc:
+        except (psycopg.Error, OSError, DatabaseUnavailableError) as exc:
             raise CdpUnavailableError(f"Local CDP cancellation failed: {type(exc).__name__}") from exc
 
     async def record_browse_events(self, events: Sequence[BrowseEvent], *, request_id: str | None = None) -> None:
@@ -90,7 +92,7 @@ class LocalCdpClient:
             for event in events
         ]
         try:
-            async with await psycopg.AsyncConnection.connect(self._database_url) as conn:
+            async with await connect_async(self._database_url) as conn:
                 async with conn.cursor() as cursor:
                     await cursor.executemany(
                         """
@@ -101,7 +103,7 @@ class LocalCdpClient:
                         """,
                         rows,
                     )
-        except (psycopg.Error, OSError) as exc:
+        except (psycopg.Error, OSError, DatabaseUnavailableError) as exc:
             raise CdpUnavailableError(f"Local CDP browse write failed: {type(exc).__name__}") from exc
 
     async def list_events(
@@ -133,16 +135,16 @@ class LocalCdpClient:
             LIMIT %s
         """
         try:
-            async with await psycopg.AsyncConnection.connect(self._database_url, row_factory=dict_row) as conn:
+            async with await connect_async(self._database_url, row_factory=dict_row) as conn:
                 cursor = await conn.execute(query, params)
                 rows = await cursor.fetchall()
                 return [_to_event(row) for row in rows]
-        except (psycopg.Error, OSError) as exc:
+        except (psycopg.Error, OSError, DatabaseUnavailableError) as exc:
             raise CdpUnavailableError(f"Local CDP history read failed: {type(exc).__name__}") from exc
 
     async def get_profile(self, cdp_user_id: str) -> CdpProfile | None:
         try:
-            async with await psycopg.AsyncConnection.connect(self._database_url, row_factory=dict_row) as conn:
+            async with await connect_async(self._database_url, row_factory=dict_row) as conn:
                 row = await (
                     await conn.execute(
                         """
@@ -155,7 +157,7 @@ class LocalCdpClient:
                         (cdp_user_id,),
                     )
                 ).fetchone()
-        except (psycopg.Error, OSError) as exc:
+        except (psycopg.Error, OSError, DatabaseUnavailableError) as exc:
             raise CdpUnavailableError(f"Local CDP profile read failed: {type(exc).__name__}") from exc
         return _to_profile(row) if row else None
 
@@ -170,7 +172,7 @@ class LocalCdpClient:
         không rút lại được. Đó là lý do use case để hồ sơ mồ côi lại và chỉ ghi log khi bước ④ hỏng.
         """
         try:
-            async with await psycopg.AsyncConnection.connect(self._database_url) as conn:
+            async with await connect_async(self._database_url) as conn:
                 await conn.execute(
                     """
                     INSERT INTO cdp.profiles (cdp_user_id, home_city)
@@ -180,7 +182,7 @@ class LocalCdpClient:
                     (cdp_user_id, home_city),
                 )
                 await conn.commit()
-        except (psycopg.Error, OSError) as exc:
+        except (psycopg.Error, OSError, DatabaseUnavailableError) as exc:
             raise CdpUnavailableError(f"Local CDP profile create failed: {type(exc).__name__}") from exc
 
 

@@ -8,6 +8,7 @@ from psycopg.rows import dict_row
 
 from src.backend.app.application.tracking.behaviour import CatalogProduct
 from src.backend.app.domain.catalog import ListingItem, Product
+from src.backend.app.infrastructure.persistence.db_connection import connect_async
 
 
 class PostgresProductLookup:
@@ -18,7 +19,7 @@ class PostgresProductLookup:
 
     async def find_product(self, product_id: str) -> CatalogProduct | None:
         try:
-            async with await psycopg.AsyncConnection.connect(self._database_url, row_factory=dict_row) as conn:
+            async with await connect_async(self._database_url, row_factory=dict_row) as conn:
                 row = await (
                     await conn.execute(
                         """
@@ -72,7 +73,7 @@ class PostgresProductQuery:
         self._database_url = database_url
 
     async def _fetch(self, sql: str, params: tuple) -> list[dict]:
-        async with await psycopg.AsyncConnection.connect(self._database_url, row_factory=dict_row) as conn:
+        async with await connect_async(self._database_url, row_factory=dict_row) as conn:
             return await (await conn.execute(sql, params)).fetchall()
 
     async def get(self, product_id: str) -> Product | None:

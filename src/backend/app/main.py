@@ -26,12 +26,15 @@ from concurrent.futures import Executor, ThreadPoolExecutor
 from contextlib import AsyncExitStack, asynccontextmanager
 
 import httpx
+import psycopg
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
 from src.backend.app.agents.runtime_dependencies import RuntimeAgentDependencies
 from src.backend.app.agents.tools.itinerary_gateway import ItineraryToolGateway
 from src.backend.app.api.errors import install_error_handlers
+from src.backend.app.infrastructure.persistence import db_connection
+from src.backend.app.infrastructure.persistence.db_probe import DatabaseProbe
 from src.backend.app.api.middleware import install_call_telemetry, install_cors, install_request_id
 from src.backend.app.api.ops import ops_router
 from src.backend.app.api.v1.router import api_router, root_router
@@ -497,6 +500,11 @@ def _forward_langsmith_env(settings) -> None:
 async def lifespan(app: FastAPI):
     settings = get_settings()
     app.state.ready = False
+    db_connection.configure(
+        connect_timeout_seconds=settings.db_connect_timeout_seconds,
+        tcp_user_timeout_ms=settings.db_tcp_user_timeout_ms,
+    )
+    app.state.db_probe = DatabaseProbe(settings.database_url)
     print(f"Starting {settings.app_name} in {settings.app_env} mode")
     _forward_langsmith_env(settings)
     logger.info("startup.begin app=%s env=%s", settings.app_name, settings.app_env)
@@ -647,7 +655,7 @@ app.state.call_telemetry = InMemoryCallTelemetry()
 install_cors(app, settings.cors_origins)
 install_call_telemetry(app)
 install_request_id(app)
-install_error_handlers(app)
+install_error_handlers(app, (psycopg.OperationalError,))
 app.include_router(api_router, prefix="/api/v1")
 app.include_router(root_router)
 app.include_router(ops_router)
@@ -661,7 +669,12 @@ async def health():
 @app.get("/health/ready")
 async def health_ready():
     ready = bool(getattr(app.state, "ready", False))
+    # DB không quyết định HTTP status: app vẫn phục vụ được đường không cần DB, và deploy không được hoàn tác
+    # chỉ vì DB đang gián đoạn. Liveness (/health) không đụng DB.
+    probe = getattr(app.state, "db_probe", None)
+    database = "unknown" if probe is None else ("ok" if await probe.is_up() else "down")
     return JSONResponse(
         status_code=200 if ready else 503,
-        content={"status": "ok" if ready else "starting", "ready": ready, "env": settings.app_env},
+        content={"status": "ok" if ready else "starting", "ready": ready, "env": settings.app_env,
+                 "database": database},
     )
