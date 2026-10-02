@@ -11,6 +11,8 @@ on:
       - 'infra/monitoring/vota-docker-event-watcher.service'
       - 'infra/monitoring/vota-container-disk-collector.py'
       - 'infra/monitoring/vota-container-disk-collector.service'
+      - 'infra/monitoring/vota-container-stats-collector.py'
+      - 'infra/monitoring/vota-container-stats-collector.service'
       - 'infra/monitoring/install-vota-docker-event-watcher.sh'
       - 'infra/monitoring/vota-monitoring-logrotate.conf'
   push:
@@ -22,6 +24,8 @@ on:
       - 'infra/monitoring/vota-docker-event-watcher.service'
       - 'infra/monitoring/vota-container-disk-collector.py'
       - 'infra/monitoring/vota-container-disk-collector.service'
+      - 'infra/monitoring/vota-container-stats-collector.py'
+      - 'infra/monitoring/vota-container-stats-collector.service'
       - 'infra/monitoring/install-vota-docker-event-watcher.sh'
       - 'infra/monitoring/vota-monitoring-logrotate.conf'
   workflow_dispatch:
@@ -46,7 +50,7 @@ jobs:
         run: |
           bash infra/monitoring/tests/test_staging_layout.sh
           bash -n infra/monitoring/install-vota-docker-event-watcher.sh
-          python3 -m py_compile infra/monitoring/vota-docker-event-watcher.py infra/monitoring/vota-container-disk-collector.py
+          python3 -m py_compile infra/monitoring/vota-docker-event-watcher.py infra/monitoring/vota-container-disk-collector.py infra/monitoring/vota-container-stats-collector.py
 
   deploy_staging:
     name: Install watcher and restart Ops Agent on staging VM
@@ -91,7 +95,7 @@ jobs:
           remote_dir="/tmp/vota-monitoring-agent-cd-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           tar -czf - \
             -C "$GITHUB_WORKSPACE/infra/monitoring" \
-            vota-docker-event-watcher.py vota-docker-event-watcher.service vota-container-disk-collector.py vota-container-disk-collector.service vota-monitoring-logrotate.conf ops-agent-staging.yaml \
+            vota-docker-event-watcher.py vota-docker-event-watcher.service vota-container-disk-collector.py vota-container-disk-collector.service vota-container-stats-collector.py vota-container-stats-collector.service vota-monitoring-logrotate.conf ops-agent-staging.yaml \
             | gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" \
                 --tunnel-through-iap --quiet \
                 --command "umask 077; mkdir -m 700 '$remote_dir' && tar -xzf - -C '$remote_dir'"
@@ -100,7 +104,7 @@ jobs:
         run: |
           remote_dir="/tmp/vota-monitoring-agent-cd-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           remote_command="set -eu
-          python3 -m py_compile '$remote_dir/vota-docker-event-watcher.py' '$remote_dir/vota-container-disk-collector.py'
+          python3 -m py_compile '$remote_dir/vota-docker-event-watcher.py' '$remote_dir/vota-container-disk-collector.py' '$remote_dir/vota-container-stats-collector.py'
           if sudo -n test -f /etc/google-cloud-ops-agent/config.yaml; then
             sudo -n cp -a /etc/google-cloud-ops-agent/config.yaml /etc/google-cloud-ops-agent/config.yaml.bak.$GITHUB_RUN_ID
           fi
@@ -108,6 +112,8 @@ jobs:
           sudo -n install -D -m 0644 '$remote_dir/vota-docker-event-watcher.service' /etc/systemd/system/vota-docker-event-watcher.service
           sudo -n install -D -m 0750 '$remote_dir/vota-container-disk-collector.py' /usr/local/libexec/vota-container-disk-collector.py
           sudo -n install -D -m 0644 '$remote_dir/vota-container-disk-collector.service' /etc/systemd/system/vota-container-disk-collector.service
+          sudo -n install -D -m 0750 '$remote_dir/vota-container-stats-collector.py' /usr/local/libexec/vota-container-stats-collector.py
+          sudo -n install -D -m 0644 '$remote_dir/vota-container-stats-collector.service' /etc/systemd/system/vota-container-stats-collector.service
           sudo -n install -D -m 0644 '$remote_dir/vota-monitoring-logrotate.conf' /etc/logrotate.d/vota-monitoring
           sudo -n install -D -m 0644 '$remote_dir/ops-agent-staging.yaml' /etc/google-cloud-ops-agent/config.yaml
           sudo -n install -d -m 0750 /var/log/vota
@@ -116,11 +122,12 @@ jobs:
           sudo -n touch /var/log/vota/container-disk.jsonl
           sudo -n chmod 0640 /var/log/vota/container-disk.jsonl
           sudo -n systemctl daemon-reload
-          sudo -n systemctl enable --now vota-docker-event-watcher.service vota-container-disk-collector.service
+          sudo -n systemctl enable --now vota-docker-event-watcher.service vota-container-disk-collector.service vota-container-stats-collector.service
           sudo -n systemctl restart google-cloud-ops-agent.service
           sudo -n systemctl restart google-cloud-ops-agent-fluent-bit.service google-cloud-ops-agent-opentelemetry-collector.service
           sudo -n systemctl is-active --quiet vota-docker-event-watcher.service
           sudo -n systemctl is-active --quiet vota-container-disk-collector.service
+          sudo -n systemctl is-active --quiet vota-container-stats-collector.service
           sudo -n systemctl is-active --quiet google-cloud-ops-agent-fluent-bit.service
           sudo -n systemctl is-active --quiet google-cloud-ops-agent-opentelemetry-collector.service
           sudo -n logrotate -d /etc/logrotate.d/vota-monitoring >/dev/null

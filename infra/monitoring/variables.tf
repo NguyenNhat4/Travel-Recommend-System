@@ -105,3 +105,14 @@ variable "container_disk_alert_gib" {
     error_message = "container_disk_alert_gib must be greater than zero."
   }
 }
+
+variable "container_cpu_alert_percent" {
+  description = "Alert when one container's CPU exceeds this value (100 = one vCPU). 190 = about 95% of the 2-vCPU App VM."
+  type        = number
+  default     = 190
+
+  validation {
+    condition     = var.container_cpu_alert_percent > 0
+    error_message = "container_cpu_alert_percent must be greater than zero."
+  }
+}
