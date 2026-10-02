@@ -69,6 +69,12 @@ từ `candidates`/`details` trong state, **không** đọc từ response.
 Cắt hai field này không ảnh hưởng grounding: `steps/validation.py` (bước `finalize`) và
 `src/evaluation/agent/grounding.py` không đọc `attributes` hay `description`.
 
+**Sửa ngày 2026-10-02.** Danh sách "FE chỉ đọc" ở trên thiếu: `productFromApi` (`src/frontend/src/services/catalog.ts`)
+đọc `attributes.latitude`, `attributes.longitude` và `attributes.address` để đặt điểm trên bản đồ lịch trình. Vì bị cắt,
+widget đặt mọi điểm ở tâm thành phố (hoặc Nha Trang). `SUMMARY_ATTRIBUTE_KEYS` nay giữ thêm ba khoá này, cùng `starRating`
+cho tag khách sạn dựng từ thuộc tính thật (theo đúng điều kiện của quyết định trên: FE có đọc thì giữ). `description` vẫn bỏ.
+Entry: `history/2026-10-02-anh-va-toa-do-that-cho-lich-trinh.md`.
+
 ### 2.2. Contract có, backend không bao giờ trả, FE vẫn đọc
 
 | Field | FE đọc ở | Hệ quả hiện tại | Đề xuất | Quyết định |

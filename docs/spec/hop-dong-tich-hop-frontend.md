@@ -321,6 +321,7 @@ Web gọi route BFF `/api/auth/*`, không gọi thẳng `/api/v1/auth/*` (docs/s
 | Danh sách điểm đến (thẻ hỏi lại) | `GET /destinations` | — | `destinations[]` | Dùng khi `suggestedValues.destination` rỗng |
 | Xem lịch sử hội thoại | `GET /assistant/conversations` | bắt buộc | `data[]`, `pagination` | Mới nhất trước; chỉ của user hiện tại |
 | Mở lại hội thoại | `GET /assistant/conversations/{conversationId}` | bắt buộc | `conversation`, `messages[]` | Nạp transcript rồi tiếp tục chat với cùng `conversationId` |
+| Xem chi tiết sản phẩm trong widget (bấm thẻ hoặc tên trong lời diễn giải) | `GET /products/{productId}` | — | `name`, `description`, `imageUrl`, `attributes.images`, `attributes.address`, `attributes.latitude`/`longitude`, `attributes.openingHours`, `rating`, `reviewCount`, `unitPrice`, `priceUnit`, `available` | Panel ở cột phải (desktop), X/Esc về lịch trình. Thẻ gọn trong khung chat đặt sau lần nhắc đầu tiên, dữ liệu từ `itinerary`/`searchResults` của response (PRD `user-flow.md` §4.2). Không có danh sách bình luận vì catalog không có dữ liệu |
 
 ---
 
@@ -339,7 +340,7 @@ Prop của component dùng **đúng tên schema** trong OpenAPI. Không có lớ
 | `SectionHeader` | `strategy`, `destination`, `nextVertical`, `excludedVerticals`, `coldStart`, `context` (`home` \| `detail` \| `cart` \| `confirmation`) | `RecommendationResponse` | Bảng tiêu đề ở `docs/product.md` §5.3 |
 | `TripChecklist` | `excludedVerticals`, `nextVertical` | `RecommendationDiagnostics` | Chỉ render khi `strategy = cross_vertical` |
 | `ActivityNote` | `slot` | `ItinerarySlot` với `product: null` | Không giá, không nút, không ảnh |
-| `ItineraryProductCard` | `slot` | `ItinerarySlot` với `product` khác `null` | `ProductCard` compact + `note` + nhãn "Hợp với bạn" khi `source = RECOMMENDATION` |
+| `ItineraryProductCard` | `slot` | `ItinerarySlot` với `product` khác `null` | `ProductCard` compact + `note` + nhãn "Hợp với bạn" khi `source = RECOMMENDATION`. Trong khung chat: `ProductCard` compact đặt sau dòng đầu tiên nhắc `[Tên](product:id)`, mỗi sản phẩm một lần; id không có trong `itinerary`/`searchResults` thì không render |
 | `ErrorState` | `error` | `ErrorResponse.error` | `retryable: true` → nút "Thử lại" |
 
 Không component nào nhận `priceString`, `price{}`, `category`, `bookingUrl` hoặc `semanticScore` — các trường đó không tồn tại trong v1.
@@ -661,7 +662,7 @@ Không đạt → không render thẻ; hiển thị dòng mờ "Mục này hiệ
 - Khi tải lại trang, Web chờ phiên đăng nhập được khôi phục rồi nạp transcript và response gần nhất qua `GET /assistant/conversations/{conversationId}` cho người dùng đã đăng nhập. Chỉ ID được giữ trong browser storage; khách không nạp archive lâu dài. Response lịch sử đến muộn sau khi tạo cuộc mới, gửi tin, đổi tài khoản hoặc rời trang bị bỏ qua. Lỗi tạm thời giữ ID và cho thử tải lại; hội thoại không còn tồn tại thì xóa ID.
 - Khi đã đăng nhập, Web hiển thị nút **Lịch sử**, tải danh sách từ backend và cho chọn một hội thoại để nạp transcript. Khách không thấy lịch sử lâu dài.
 - Kế hoạch không tự cập nhật giá. Giỏ và Checkout luôn dùng giá mới nhất.
-- Không stream trong v1: Web hiện danh sách 3 bước với một spinner chung, không đánh ✓ giả (`docs/product.md` §6.1).
+- Tiến độ: Web đọc stream SSE và đánh ✓ 3 bước (hiểu yêu cầu → tìm sản phẩm → sắp xếp lịch trình) chỉ theo sự kiện `node.completed` thật; nhánh trò chuyện hay hỏi lại không có ✓ giả. `message` của sự kiện là chuỗi debug, không hiển thị (`docs/spec/product.md` §6.1). Đang chạy thì nút gửi thành nút Dừng (Esc cũng dừng); đã dừng thì có nút Gửi lại.
 
 ---
 

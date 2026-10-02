@@ -3,9 +3,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date
+import math
 from typing import Any
 
 TAXONOMIES = ("hotel", "flight", "attraction", "combo", "golf")
+#: Nguồn điểm đánh giá theo thứ tự ưu tiên (docs/spec/data-collection/schema.md §8.1): (khoá điểm, khoá thang,
+#: khoá số lượt). Thang `None` là thang 5 cố định của nguồn đó.
+RATING_SOURCES = (
+    ("reviewScore", "reviewScoreScale", "reviewCount"),
+    ("tripAdvisorRating", None, "tripAdvisorReviewCount"),
+    ("rating", "ratingScale", "reviewCount"),
+)
 
 
 def _date(value: Any) -> date | None:
@@ -41,22 +49,32 @@ class Product:
             image_url=row.get("imageUrl"),
         )
 
+    def _rating_source(self) -> tuple[float, int | None] | None:
+        """Điểm 0–5 (một chữ số) và số lượt của nguồn đầu tiên trong `RATING_SOURCES` có điểm hợp lệ."""
+        for score_key, scale_key, count_key in RATING_SOURCES:
+            try:
+                score = float(self.attributes.get(score_key))
+                scale = 5.0 if scale_key is None else float(self.attributes.get(scale_key))
+            except (TypeError, ValueError):
+                continue
+            if not (math.isfinite(score) and math.isfinite(scale)) or scale <= 0:
+                continue
+            count = self.attributes.get(count_key)
+            count = int(count) if isinstance(count, (int, float)) and not isinstance(count, bool) and count >= 0 else None
+            return round(max(0.0, min(5.0, score / scale * 5)), 1), count
+        return None
+
     @property
     def rating(self) -> float | None:
-        """Điểm đánh giá 0–5 = reviewScore / reviewScoreScale × 5, một chữ số (contract ProductSummary.rating)."""
-        score, scale = self.attributes.get("reviewScore"), self.attributes.get("reviewScoreScale")
-        try:
-            score, scale = float(score), float(scale)
-        except (TypeError, ValueError):
-            return None
-        if scale <= 0:
-            return None
-        return round(max(0.0, min(5.0, score / scale * 5)), 1)
+        """Điểm đánh giá 0–5, một chữ số (contract ProductSummary.rating); không nguồn nào có điểm thì None."""
+        source = self._rating_source()
+        return source[0] if source else None
 
     @property
     def review_count(self) -> int | None:
-        value = self.attributes.get("reviewCount")
-        return int(value) if isinstance(value, (int, float)) and value >= 0 else None
+        """Số lượt của cùng nguồn với `rating`; `rating` là None thì cũng None (hop-dong-tich-hop-backend.md §2.2)."""
+        source = self._rating_source()
+        return source[1] if source else None
 
     @property
     def max_occupancy(self) -> int | None:

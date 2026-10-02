@@ -2,18 +2,9 @@ import { productFromApi } from '../../../services/catalog';
 import type { components } from '../../../types/api.gen';
 import type { Product, ItineraryDay, ItinerarySlot } from '../../../types/travel';
 import { itineraryCartItems } from '../../../components/assistant/AssistantResultPanel';
+import { ACTIVITY_TYPE_LABEL, PARTY_TYPE_LABEL } from '../../../components/assistant/assistantLabels';
 import { SLOT_TIME_FROM_API } from '../../../services/assistant';
 import type { WidgetPlan } from './widgetTypes';
-
-const DESTINATION_COORDINATES: Record<string, { lat: number; lng: number }> = {
-  'Nha Trang': { lat: 12.2388, lng: 109.1967 },
-  'Phú Quốc': { lat: 10.2899, lng: 103.9840 },
-  'Đà Nẵng': { lat: 16.0544, lng: 108.2022 },
-  'Đà Lạt': { lat: 11.9404, lng: 108.4376 },
-  'Hội An': { lat: 15.8801, lng: 108.3380 },
-  'Hạ Long': { lat: 20.9501, lng: 107.0734 },
-  'Hà Nội': { lat: 21.0285, lng: 105.8542 },
-};
 
 /**
  * Điểm tham quan tự do: điểm tham quan/golf có `ticketed=false` hoặc chưa có giá. Backend tính 0 đ vào tổng
@@ -25,28 +16,53 @@ export function isFreeToVisit(product: Pick<Product, 'taxonomy' | 'unitPrice' | 
 }
 
 function adaptProductSummaryToProduct(summary: components['schemas']['ProductSummary']): Product {
-  const product = productFromApi(summary);
-  const defaultCoords = DESTINATION_COORDINATES[product.destination] || { lat: 12.2388, lng: 109.1967 };
+  // Toạ độ chỉ lấy từ `attributes` của catalog; thiếu thì không có điểm trên bản đồ, không đặt giả ở tâm thành phố.
   return {
-    ...product,
+    ...productFromApi(summary),
     priceString: summary.unitPrice != null ? new Intl.NumberFormat('vi-VN').format(summary.unitPrice) + ' ₫' : undefined,
-    coordinates: product.coordinates || defaultCoords,
   };
+}
+
+/**
+ * productId → sản phẩm của response `COMPLETED`/`FALLBACK` (chỗ ở, các slot, `searchResults`): nguồn duy nhất
+ * của thẻ trong lời diễn giải (PRD user-flow.md §4.2). Id không có ở đây thì không dựng thẻ.
+ */
+export function narrationProducts(
+  response: components['schemas']['ItineraryCompleted'] | components['schemas']['ItineraryFallback'],
+): Record<string, Product> {
+  const itinerary = 'itinerary' in response ? response.itinerary : null;
+  const summaries = [
+    ...(itinerary?.stay ? [itinerary.stay.product] : []),
+    ...(itinerary?.days ?? []).flatMap((day) => day.slots.flatMap((slot) => (slot.product ? [slot.product] : []))),
+    ...Object.values(response.searchResults ?? {}).flatMap((products) => products ?? []),
+  ];
+  const products: Record<string, Product> = {};
+  for (const summary of summaries) {
+    if (!Object.prototype.hasOwnProperty.call(products, summary.productId)) {
+      products[summary.productId] = adaptProductSummaryToProduct(summary);
+    }
+  }
+  return products;
+}
+
+/** Nhãn đoàn khách từ `intent.party` thật; không có thì `null` để ẩn, không đoán là gia đình hay cặp đôi. */
+export function partyLabel(party: components['schemas']['Party'] | null | undefined): string | null {
+  if (!party) return null;
+  if (party.adults > 0) return party.children > 0 ? `${party.adults} người lớn, ${party.children} trẻ em` : `${party.adults} người lớn`;
+  return party.type ? PARTY_TYPE_LABEL[party.type] : null;
 }
 
 export function convertItineraryCompletedToGroundedPlan(
   response: components['schemas']['ItineraryCompleted']
 ): WidgetPlan {
-  const dest = (response.intent?.destination || 'Nha Trang') as any;
+  const dest = (response.intent?.destination ?? '') as any;
   const daysCount = response.intent?.days || response.itinerary.days.length || 3;
-  const party = (response.intent?.party as any) || 'family_with_kids';
-  const defaultCoords = DESTINATION_COORDINATES[dest] || { lat: 12.2388, lng: 109.1967 };
 
   const stayItem = response.itinerary.stay ? {
     productId: response.itinerary.stay.product.productId,
     product: adaptProductSummaryToProduct(response.itinerary.stay.product),
     nights: response.itinerary.stay.nights || (daysCount > 1 ? daysCount - 1 : 1),
-    note: response.itinerary.stay.note || 'Khách sạn lưu trú 5 sao',
+    note: response.itinerary.stay.note ?? '',
     source: (response.itinerary.stay.source as any) || 'search',
     because: response.itinerary.stay.because as any,
   } : undefined;
@@ -54,23 +70,22 @@ export function convertItineraryCompletedToGroundedPlan(
   const days: ItineraryDay[] = response.itinerary.days.map((d) => {
     const slots: ItinerarySlot[] = d.slots.map((s) => {
       const product = s.product ? adaptProductSummaryToProduct(s.product) : undefined;
-      const title = s.product?.name || s.activityType || s.note || 'Hoạt động trải nghiệm';
-      const locName = s.product?.name || s.product?.destination || dest;
-      const coords = product?.coordinates || defaultCoords;
+      const title = s.product?.name ?? (s.activityType ? ACTIVITY_TYPE_LABEL[s.activityType] : 'Hoạt động tự do');
 
       return {
         time: SLOT_TIME_FROM_API[s.time],
         activityTitle: title,
-        locationName: locName,
+        locationName: product?.address || dest,
         productId: s.product?.productId,
         product,
         note: s.note || '',
         source: (s.source as any) || 'curated',
-        coordinates: coords,
+        coordinates: product?.coordinates,
         address: product?.address || dest,
         transitInfo: '',
         transitMode: 'driving',
         isActivityNote: !s.product,
+        activityType: s.activityType ?? undefined,
         because: s.because as any,
       };
     });
@@ -86,9 +101,11 @@ export function convertItineraryCompletedToGroundedPlan(
     intent: {
       destination: dest,
       days: daysCount,
-      party,
+      // Party của API là object, không phải nhãn: Web hiển thị `partyLabel`, giỏ hàng đọc `response.intent.party`.
+      party: response.intent?.party as any,
       interests: response.intent?.interests || [],
     },
+    partyLabel: partyLabel(response.intent?.party),
     title: response.itinerary.title || `Lịch trình ${daysCount} ngày tại ${dest}`,
     stay: stayItem,
     stays: stayItem ? [stayItem] : undefined,

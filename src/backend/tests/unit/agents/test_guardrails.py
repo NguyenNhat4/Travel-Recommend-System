@@ -181,6 +181,9 @@ class InputQualityTests(unittest.TestCase):
             ("aaaaaaa", "repeated_char"), ("?????", "no_content"), ("😀😀😀😀", "no_content"),
             ("!!!!!! a", "low_alnum_ratio"), ("asdfjkl", "gibberish"), ("qwerty", "gibberish"),
             ("sdfgh jkl qwe", "gibberish"), ("ajsdhakjsd", "gibberish"),
+            # Spam có dấu tiếng Việt, nối bằng ";" — token dài, có nguyên âm nhưng không phải từ.
+            ("pưaiegapòigấ;sldááđăsdpưaiegapòigấ;sldááđăsd", "gibberish"),
+            ("pưaiegapòigấ;sldááđăsdpưaiegapòigấ;sldááđăsdpưaiegapòigấ;sldááđăsdpưaiegapòigấ", "gibberish"),
         ):
             with self.subTest(query=query):
                 self.assertEqual(guardrails.input_quality(query), (guardrails.UNCLEAR, rule))

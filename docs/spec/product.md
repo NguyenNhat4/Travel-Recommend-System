@@ -611,7 +611,7 @@ Bố cục dưới đây là UX mục tiêu. Frontend hiện render form và k�
 | Quyết định | Lý do | Pattern |
 |---|---|---|
 | Chia đôi: chat trái, kế hoạch phải | Kế hoạch là một **đối tượng** (có ngày, có tổng tiền), không nên chìm trong luồng tin nhắn dài | `[R90]` Mindtrip web (chat trái + panel "Best trip ever!" có Day accordion + "Generate itinerary"); `[R91]` Mindtrip web (chat trái + bản đồ phải); `[R105]` Etsy web ("Gifting assistant": chat trái + lưới sản phẩm phải) |
-| Tin nhắn của trợ lý chỉ chứa **thẻ tóm tắt** kế hoạch, bấm vào thì focus panel | Tránh lặp nội dung giữa hai cột | `[R103]` Trip.com iOS (thẻ trong chat dẫn tới "View Hotels / Trip Map") |
+| Tin nhắn của trợ lý có **thẻ gọn của từng sản phẩm** ngay sau lần nhắc đầu tiên; bấm thẻ mở panel chi tiết ở cột phải (PRD `user-flow.md` §4.2, chốt 2026-10-02, thay quyết định cũ "chỉ chứa thẻ tóm tắt") | Người đọc lời kể thấy ngay nơi được nhắc là gì, không phải dò sang cột phải; chi tiết mở tại chỗ thay vì sang tab mới | `[R104]` Klarna iOS (thẻ sản phẩm có giá ngay trong câu trả lời chat); `[R103]` Trip.com iOS (thẻ trong chat dẫn tới chi tiết) |
 | Câu mẫu bằng tiếng Việt khi hội thoại rỗng | Hướng người dùng vào đúng phạm vi hẹp của trợ lý (handbook §9 "Giữ nó hẹp") | `[R87]` Booking.com iOS ("You can try asking about…" + 3 chip "Build an itinerary…"); `[R89]` Mindtrip web (thẻ ví dụ có tiêu đề nhóm); `[R124]` Trip.com iOS ("TripGenie is here to inspire" + thẻ câu hỏi) |
 | Dòng phạm vi dưới ô nhập: "Trợ lý chỉ lên kế hoạch chuyến đi, sản phẩm lấy từ kho V-OTA." | Đặt kỳ vọng và nhắc về grounding | `[R101]` Wanderlog iOS (hộp "The AI Assistant is purely informational…" + "Asking questions about New York. Change") |
 | Nút "Cuộc mới" | Handbook §9 "không duy trì hội thoại dài". Không có lịch sử nhiều cuộc | — (chủ động không làm danh sách lịch sử như `[R87]`) |
@@ -764,7 +764,7 @@ Handbook §7: `because` là "ranh giới giữa một cuộc tranh cãi và mộ
 
 **Phụ thuộc: tiến độ thật hay giả lập.** Nếu chat backend trả một response duy nhất (không stream), UI **không được** tự đánh ✓ từng bước theo đồng hồ như thể đó là tiến độ thật. Khi đó hiển thị cả 3 bước dạng danh sách "Trợ lý sẽ: hiểu yêu cầu → tìm sản phẩm → sắp xếp lịch trình" với một spinner chung. Nếu Backend stream sự kiện theo bước (SSE) thì đánh ✓ theo sự kiện thật. Đề xuất Backend stream, vì mục tiêu p95 < 5 giây (handbook §12) vẫn đủ lâu để người dùng cần thấy tiến độ.
 
-**Hiện trạng code:** client đọc stream SSE; `AssistantView` chỉ chuyển event `run.failed` thành thông báo lỗi và hiển thị response cuối. UI chưa thể hiện trạng thái hoàn tất riêng cho từng bước trong bảng.
+**Hiện trạng code:** client đọc stream SSE. Widget trợ lý đánh ✓ 3 bước theo `node.completed` thật (`features/itinerary/widget/widgetProgress.ts`); bước đang chạy hiện việc con khi có (thử lại, viết lời tư vấn).
 
 ### 6.2 Chip ý định: cho phép sửa mà không phải gõ lại
 
@@ -879,6 +879,7 @@ Nếu cắt về single-turn (handbook §2, mục 6) thì thẻ này là cách *
 | Người dùng | Bong bóng phải |
 | Trợ lý: văn bản | Bong bóng trái, markdown giới hạn (đậm, danh sách). Không render link ngoài |
 | Trợ lý: **thẻ tóm tắt kế hoạch** | "📋 Lịch trình 3 ngày ở Nha Trang · 5 dịch vụ · ~9.870.000 ₫ · [Xem kế hoạch]". Bấm vào focus panel phải (mobile: mở sheet) |
+| Trợ lý: **thẻ sản phẩm trong lời diễn giải** | `ProductCard` compact ngay sau dòng đầu tiên nhắc sản phẩm, dữ liệu từ response (tuân thủ §6.4). Bấm thẻ hoặc tên: panel chi tiết ở cột phải (PRD `user-flow.md` §4.2) |
 | Trợ lý: thẻ hỏi lại | 6.2 |
 | Trợ lý: gợi ý tiếp theo | 2–3 chip dưới tin nhắn cuối: "Đổi thành 2 ngày", "Thêm hoạt động buổi tối", "Rẻ hơn". Bấm là gửi. Pattern: `[R103]` Trip.com iOS ("You may also ask" + các câu hỏi gửi được); `[R104]` Klarna iOS (chip câu hỏi tiếp theo dưới carousel) |
 | Hệ thống | Dòng chữ nhỏ căn giữa: "Đã đổi: 3 ngày → 2 ngày", "Đã thêm 5 dịch vụ vào giỏ · [Xem giỏ]" |
@@ -889,7 +890,7 @@ Nếu cắt về single-turn (handbook §2, mục 6) thì thẻ này là cách *
 |---|---|---|
 | **Rỗng** | Lời chào có tên (nếu đã đăng nhập) + 3–4 câu mẫu dạng thẻ + dòng phạm vi. Khách vãng lai có thêm dòng "Đăng nhập để kế hoạch ưu tiên những gì hợp với bạn" | `[R87]` Booking.com iOS; `[R89]` Mindtrip web |
 | **Đang xử lý** | Thẻ tiến độ 3 bước trong chat + skeleton panel. Nút "Dừng" hủy request và khôi phục ô nhập kèm nội dung vừa gửi | `[R109]` Wabi iOS; `[R110]` Structured iOS |
-| **Chậm** (> 8 giây, vượt mục tiêu p95 5 giây) | Thêm dòng "Vẫn đang làm, lâu hơn thường lệ một chút…" + link "Xem kết quả tìm kiếm trước" (mở fallback song song) | — |
+| **Chậm** (> 12 giây không có bước nào xong — thời gian dồn vào các node gọi LLM nên đo theo từng node, không theo cả lượt) | Thêm dòng "Đang lâu hơn thường lệ. Bạn có thể đợi thêm hoặc dừng." + link "Xem kết quả tìm kiếm trước" (mở fallback song song) | — |
 | **Có kế hoạch** | 6.3 | — |
 | **Kế hoạch một phần** | Khung giờ không có sản phẩm hợp lệ thì hiện `ActivityNote` do LLM viết. Nếu cả một ngày không có sản phẩm nào thì hiện "Chưa tìm thấy dịch vụ phù hợp cho ngày này · [Tìm ở {destination}]" | — |
 | **Ngoài phạm vi** (hỏi thời tiết, visa, chuyện chung) | Tin nhắn: "Mình chỉ giúp lên lịch trình và gợi ý dịch vụ du lịch trên V-OTA. Thử: …" + 2 câu mẫu | `[R101]` Wanderlog iOS (giới hạn phạm vi được nói rõ) |

@@ -69,8 +69,9 @@ Blacklist so trên chữ thường giữ dấu; bản không dấu chỉ gồm t
   nên câu không dấu ("di da nang 3 ngay") hợp lệ sẵn.
 - Viết tắt/teencode (`ko`, `dc`, `j`, `ns`, `ks`, `hcm`, `tr`…) và tiếng cười (`haha`, `kkk`).
 - Từ tiếng Anh thông dụng và từ du lịch (contract nhận cả `language=en`).
-- Token Latin "đọc được": có nguyên âm, không dồn ≥ 5 phụ âm liền, không phải gõ dọc một hàng phím ("qwerty", "lkjh") hay
-  dồn hàng giữa ("ajsdhakjsd") — để tên riêng/thương hiệu ("VinWonders", "Thác Đray Nur", "Bangkok") và tiếng Anh ngoài
+- Token Latin "đọc được": có nguyên âm, dài ≤ 14 ký tự (đã bỏ dấu), không dồn ≥ 5 phụ âm hoặc ≥ 4 nguyên âm liền, không phải
+  gõ dọc một hàng phím ("qwerty", "lkjh") hay dồn hàng giữa ("ajsdhakjsd"). Hai điều kiện độ dài và nguyên âm bắt chuỗi
+  spam có dấu nối bằng dấu câu ("pưaiegapòigấ;sldááđăsd…") — để tên riêng/thương hiệu ("VinWonders", "Thác Đray Nur", "Bangkok") và tiếng Anh ngoài
   từ điển đi qua.
 - Chữ không phải Latin (Hán, Thái…): không xét.
 

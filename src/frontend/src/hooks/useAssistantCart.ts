@@ -25,42 +25,59 @@ export function bookNowItemOf(item: AssistantCartItem): BookNowItem {
  * (docs/spec/hop-dong-tich-hop-frontend.md §4.8). Chỉ tour, trải nghiệm và tiện ích khác vào giỏ được; khách sạn và vé máy
  * bay bị bỏ qua ở đây vì chúng chỉ đặt trực tiếp (docs/spec/booking/dat-truc-tiep-theo-don-nhap.md R-DIR-02). Không cần đăng
  * nhập: khách chưa đăng nhập có giỏ riêng. `onAdded` chạy sau khi mọi request đã xong và có ít nhất một mục vào giỏ.
+ * `feedback` báo trạng thái đang thêm/đã xong cho nút của sản phẩm; cùng một nhóm mục đang chạy thì bấm lại bị bỏ qua.
  */
 export function useAssistantCart() {
   const { addToCart, showToast, navigate } = useTravel();
   // Đọc bản addToCart mới nhất qua ref để callback bất đồng bộ không dùng closure cũ.
   const latest = useRef({ addToCart });
+  const pending = useRef(new Set<string>());
   useEffect(() => {
     latest.current = { addToCart };
   }, [addToCart]);
 
-  return useCallback(async (items: AssistantCartItem[], onAdded?: (added: number) => void): Promise<void> => {
-    const eligible = items.filter((item) => isCartEligible(item.product.taxonomy));
-    if (!eligible.length) return;
-    let added = 0;
-    if (eligible.length === 1) {
-      const [item] = eligible;
+  const addItems = useCallback(async (items: AssistantCartItem[]): Promise<number> => {
+    if (items.length === 1) {
+      const [item] = items;
       const { quantity, guests } = cartArgs(item);
       // addToCart đã tự báo toast cho một mục.
-      added = await latest.current.addToCart(
+      return await latest.current.addToCart(
         mapProductSummaryToProduct(item.product), quantity, item.usingDate, item.checkOutDate, guests ? { guests } : undefined) ? 1 : 0;
-    } else {
-      // Tuần tự, mỗi mục một request; một mục lỗi không chặn mục còn lại.
-      const failed: string[] = [];
-      for (const item of eligible) {
-        const { quantity, guests } = cartArgs(item);
-        const ok = await latest.current.addToCart(
-          mapProductSummaryToProduct(item.product), quantity, item.usingDate, item.checkOutDate, { silent: true, ...(guests ? { guests } : {}) });
-        if (ok) added += 1;
-        else failed.push(item.product.name);
-      }
-      const summary = failed.length
-        ? `Đã thêm ${added}/${eligible.length} mục vào giỏ. Chưa thêm được: ${failed.join(', ')}.`
-        : `Đã thêm ${added} mục của lịch trình vào giỏ. Giá chính thức hiển thị ở giỏ hàng.`;
-      showToast(summary, 'Xem giỏ', () => navigate('/cart'));
     }
-    if (added > 0) onAdded?.(added);
+    // Tuần tự, mỗi mục một request; một mục lỗi không chặn mục còn lại.
+    let added = 0;
+    const failed: string[] = [];
+    for (const item of items) {
+      const { quantity, guests } = cartArgs(item);
+      const ok = await latest.current.addToCart(
+        mapProductSummaryToProduct(item.product), quantity, item.usingDate, item.checkOutDate, { silent: true, ...(guests ? { guests } : {}) });
+      if (ok) added += 1;
+      else failed.push(item.product.name);
+    }
+    const summary = failed.length
+      ? `Đã thêm ${added}/${items.length} mục vào giỏ. Chưa thêm được: ${failed.join(', ')}.`
+      : `Đã thêm ${added} mục của lịch trình vào giỏ. Giá chính thức hiển thị ở giỏ hàng.`;
+    showToast(summary, 'Xem giỏ', () => navigate('/cart'));
+    return added;
   }, [navigate, showToast]);
+
+  return useCallback(async (items: AssistantCartItem[], onAdded?: (added: number) => void,
+    feedback?: { onStart: () => void; onSettled: (added: number) => void }): Promise<void> => {
+    const eligible = items.filter((item) => isCartEligible(item.product.taxonomy));
+    if (!eligible.length) return;
+    const key = JSON.stringify(eligible.map((item) => [item.product.productId, item.usingDate, item.checkOutDate, item.party]));
+    if (pending.current.has(key)) return;
+    pending.current.add(key);
+    let added = 0;
+    try {
+      feedback?.onStart();
+      added = await addItems(eligible);
+      if (added > 0) onAdded?.(added);
+    } finally {
+      pending.current.delete(key);
+      feedback?.onSettled(added);
+    }
+  }, [addItems]);
 }
 
 /**

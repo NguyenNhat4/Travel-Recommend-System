@@ -76,8 +76,8 @@ flowchart TD
     D --> E{Có sản phẩm phù hợp?}
     E -->|Có| F[LangGraph cấu trúc lịch trình từng ngày]
     E -->|Thiếu| G[Mở rộng điều kiện tìm kiếm hoặc hỏi thêm người dùng]
-    F --> H[Stream phản hồi + Render thẻ sản phẩm Grounded]
-    H --> I[Người dùng bấm 'Xem chi tiết', đặt từng mục, hoặc 'Thanh toán tất cả']
+    F --> H["Lời diễn giải kèm thẻ sản phẩm Grounded ngay sau lần nhắc đầu tiên; bấm thẻ mở panel chi tiết cạnh bản đồ"]
+    H --> I[Người dùng bấm 'Xem chi tiết', đặt từng mục (Đặt ngay / Thêm vào giỏ), hoặc 'Thanh toán tất cả']
     I --> J[Tạo đơn nháp và mở trang Thanh toán]
 ```
 
@@ -156,18 +156,27 @@ Trợ lý là **một giao diện duy nhất**: widget nổi (linh vật ở gó
 
 ```
 Thu gọn: hộp chat ở góc dưới phải.
-Toàn màn hình (nút mở rộng):
-+----------------------------------+--------------------------------------------+
-| [Lịch sử]  Trợ lý du lịch AI     |  LỊCH TRÌNH THEO NGÀY (Ngày 1 | 2 | 3)         |
-|                                  |  [Thẻ khách sạn / hoạt động thật, có giá]  |
-| [AI]: Bạn muốn đi đâu tiếp theo? |  Tổng chi phí tạm tính                     |
-| [User]: Nha Trang 3N2Đ ...       |  [Thanh toán tất cả]                       |
-|                                  |  BẢN ĐỒ LỘ TRÌNH                           |
-| [ Mô tả chuyến đi...        [↑] ]|                                            |
-+----------------------------------+--------------------------------------------+
+Toàn màn hình (desktop):
++------------------------------------+------------------------------------------------+
+| [Lịch sử]  Trợ lý du lịch AI       | Mặc định: LỊCH TRÌNH THEO NGÀY + BẢN ĐỒ        |
+|                                    |   thẻ, tổng chi phí, [Thanh toán tất cả]     |
+| [AI]: **Ngày 1**                   |                                                |
+|   Sáng: tắm biển, dạo bãi cát...   | Bấm thẻ → PANEL CHI TIẾT thay danh sách ngày,  |
+|                                    |   bản đồ giữ nguyên:                           |
+|   [ảnh] Bãi biển Trần Phú  ★4.5 [›]|   [ảnh lớn][ảnh][ảnh][+n]                 [X]  |
+|   Tối: xem show...                 |   Tên · mô tả                                  |
+|   [ảnh] Combo Tata Show 620.000 ₫  |   Địa chỉ [Chỉ đường] · Giờ mở cửa             |
+|                                    |   ★ 4.5 (2.046 đánh giá) · Giá                 |
+| [ Mô tả chuyến đi...          [↑] ]|   [Đặt ngay] [Xem trang chi tiết]              |
++------------------------------------+------------------------------------------------+
 ```
 
-> **Nút trên thẻ sản phẩm của lịch trình:** khách sạn và vé máy bay có `[Đặt ngay]`; tour, golf, combo có `[Thêm vào giỏ] [Đặt ngay]`. `[Thanh toán tất cả]` mở trang thanh toán với mọi mục đặt được của lịch trình.
+1. **Thẻ trong khung chat:** mỗi sản phẩm của lịch trình (khách sạn, hoạt động, gói nhiều ngày gợi ý riêng) có một thẻ gọn **ngay sau lần nhắc đầu tiên** trong lời diễn giải: ảnh nhỏ, tên, điểm đánh giá và số lượt (nếu có), địa chỉ, giá hoặc "Tham quan tự do", nút "Thêm". Dữ liệu thẻ lấy từ `itinerary`/`searchResults` của response, không từ chữ của LLM. Mỗi sản phẩm một thẻ; id lạ bỏ qua.
+2. **Bấm thẻ:** mở panel chi tiết ở cột phải, thay chỗ danh sách ngày; **bản đồ vẫn hiện** và focus đúng điểm. Đang ở dạng thu gọn thì widget mở toàn màn hình trước. X hoặc Esc: về danh sách ngày. Tên của sản phẩm đã có thẻ chỉ in đậm, không làm link.
+3. **Panel chi tiết** (dữ liệu từ `GET /products/{productId}`): bộ ảnh, tên, mô tả, địa chỉ + "Chỉ đường" (mở Google Maps theo toạ độ; ẩn khi không có toạ độ), giờ mở cửa (nếu có), điểm đánh giá + số lượt (không gắn logo nguồn), giá, "Thêm vào giỏ", "Xem trang chi tiết". Nút "Xem trang chi tiết" chỉ hiện khi sản phẩm không có nhãn "Tham quan tự do"; điểm tham quan tự do vẫn xem được bộ ảnh, mô tả, địa chỉ và chỉ đường trong panel.
+4. **Ngoài phạm vi:** danh sách bình luận, ảnh/video của người đánh giá (catalog không có dữ liệu này, không hiển thị và không tạo giả); giao diện mobile.
+
+> **Nút đặt trong lịch trình:** khách sạn và vé máy bay chỉ có `[Đặt ngay]`; tour, golf, combo có `[Thêm vào giỏ] [Đặt ngay]` (trên thẻ trong chat, panel chi tiết và ghim bản đồ). `[Thanh toán tất cả]` mở trang thanh toán với mọi mục đặt được của lịch trình.
 
 > **Form gợi ý thông tin chuyến đi:** khi trợ lý đã hỏi một lượt mà vẫn chưa biết điểm đến hoặc số ngày, khung chat hiển thị ngay dưới câu trả lời một form đã điền sẵn giá trị gợi ý (điểm đến — chỉ vài lựa chọn tiêu biểu, số ngày 1–7, ngày khởi hành không trước hôm nay, số người, ngân sách) kèm nút **Xác nhận**. Bấm xác nhận đặt câu yêu cầu hoàn chỉnh vào ô nhập tin nhắn để người dùng sửa hoặc gửi. Form xuất hiện trong widget trợ lý.
 

@@ -122,7 +122,8 @@ class FixedTextTests(unittest.TestCase):
         self.assertTrue(question.startswith('**Chưa có sản phẩm đáp ứng yêu cầu bắt buộc**\n'))
 
     def test_no_results_and_fallback_messages_are_titled(self):
-        self.assertTrue(messages.FALLBACK.startswith('**Chưa dựng được lịch trình hoàn chỉnh**\n'))
+        for language, title in (('vi', 'Chưa dựng được lịch trình hoàn chỉnh'), ('en', 'Could not build a complete itinerary')):
+            self.assertEqual(messages.message({'language': language}, 'fallback_title'), title)
         for language in ('vi', 'en'):
             for key in ('no_results', 'no_results_date'):
                 with self.subTest(language=language, key=key):
