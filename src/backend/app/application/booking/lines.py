@@ -51,7 +51,7 @@ def resolve_line(
     today: date, mode: str = "add", existing_quantity: int | None = None, existing_guests: Guests | None = None,
 ) -> ResolvedLine:
     """Kiểm sản phẩm và số khách rồi trả mục đã chuẩn hoá. Vi phạm thì raise `LineRejected` hoặc `ValidationFailed`."""
-    issue = check_product(product, using_date, today=today, nights=stay_nights(product, nights))
+    issue = check_product(product, using_date, today=today)
     if issue:
         raise LineRejected(issue.code, issue.details)
     result = resolve_cart_guests(

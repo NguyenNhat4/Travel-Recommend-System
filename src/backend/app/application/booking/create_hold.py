@@ -141,8 +141,7 @@ class CreateBookingHold:
         for line in lines:
             product = products[line.product_id]
             issue = check_product(
-                product, line.using_date, snapshot_price=line.unit_price_snapshot, today=now.astimezone(VN_TZ).date(),
-                nights=line.nights)
+                product, line.using_date, snapshot_price=line.unit_price_snapshot, today=now.astimezone(VN_TZ).date())
             if issue is None and line.children and product.taxonomy in CHILD_PRICED_TAXONOMIES:
                 issue = check_child_price(
                     product, snapshot_child=line.child_unit_price_snapshot, snapshot_adult=line.unit_price_snapshot)

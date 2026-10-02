@@ -72,21 +72,9 @@ function hotelCheckInWindow(): { from: string; to: string } {
   return { from: today, to: addMonths(today, HOTEL_MAX_ADVANCE_MONTHS) };
 }
 
-/** Lịch kín/trống đọc-only (`attributes.availability`, ký tự "0" là kín): true khi một đêm của kỳ lưu trú kín. */
-function soldOutInCalendar(unit: Product, checkIn: string, checkOut: string): boolean {
-  const availability = unit.attributes?.availability as { from?: string; calendar?: string } | undefined;
-  if (!availability?.from || typeof availability.calendar !== 'string') return false;
-  const start = Date.parse(`${availability.from}T00:00:00Z`);
-  for (let night = checkIn; night < checkOut; night = addDays(night, 1)) {
-    const index = Math.round((Date.parse(`${night}T00:00:00Z`) - start) / DAY_MS);
-    if (index >= 0 && index < availability.calendar.length && availability.calendar[index] === '0') return true;
-  }
-  return false;
-}
-
 /**
  * Thông báo lỗi cho ngày đang nhập, hoặc null khi hợp lệ.
- * Khách sạn (FR-CAT-03): nhận phòng từ hôm nay đến hôm nay + 3 tháng, trả phòng sau 1–30 đêm, hạng phòng kín thì báo hết chỗ.
+ * Khách sạn (FR-CAT-03): nhận phòng từ hôm nay đến hôm nay + 3 tháng, trả phòng sau 1–30 đêm; lịch `availability` không dùng để chặn.
  * Loại khác: ngày sử dụng trong cửa sổ mở bán [availableFrom, availableTo].
  */
 function validateDates(unit: Product, checkIn: string, checkOut?: string): string | null {
@@ -106,7 +94,6 @@ function validateDates(unit: Product, checkIn: string, checkOut?: string): strin
   if (!checkOut) return 'Vui lòng chọn ngày trả phòng.';
   if (checkOut <= checkIn) return 'Ngày trả phòng phải sau ngày nhận phòng ít nhất 1 đêm.';
   if (checkOut > addDays(checkIn, HOTEL_MAX_NIGHTS)) return `Mỗi lần đặt tối đa ${HOTEL_MAX_NIGHTS} đêm.`;
-  if (soldOutInCalendar(unit, checkIn, checkOut)) return 'Hạng phòng này đã hết chỗ trong thời gian bạn chọn.';
   return null;
 }
 

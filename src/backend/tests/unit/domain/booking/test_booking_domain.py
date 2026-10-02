@@ -152,15 +152,10 @@ def test_hotel_window_clamps_to_end_of_short_month():
     assert check_product(p, date(2027, 3, 1), today=date(2026, 11, 30)).code == "DATE_OUT_OF_RANGE"
 
 
-def test_hotel_sold_out_calendar_reports_unavailable_not_date_error():
-    calendar = "1" * 5 + "0" + "1" * 24  # kín đêm 07/10 (from + 5)
-    p = product(attributes={"level": "room", "availability": {"from": "2026-10-02", "days": 30, "calendar": calendar}})
-    assert check_product(p, date(2026, 10, 3), today=TODAY, nights=2) is None
-    assert check_product(p, date(2026, 10, 6), today=TODAY, nights=2).code == "PRODUCT_UNAVAILABLE"
-    assert check_product(p, date(2026, 10, 7), today=TODAY, nights=1).code == "PRODUCT_UNAVAILABLE"
-    assert check_product(p, date(2026, 10, 8), today=TODAY, nights=2) is None
-    # Ngoài khoảng lịch đã nạp (không có dữ liệu) thì không chặn.
-    assert check_product(p, date(2026, 12, 20), today=TODAY, nights=3) is None
+def test_hotel_ignores_availability_calendar():
+    # "0" trong lịch nghĩa là nguồn không có giá ngày đó, không phải hết phòng: không chặn đặt.
+    p = product(attributes={"level": "room", "availability": {"from": "2026-10-02", "days": 30, "calendar": "0" * 30}})
+    assert check_product(p, date(2026, 10, 3), today=TODAY) is None
 
 
 def test_non_hotel_keeps_source_window_even_with_today():
