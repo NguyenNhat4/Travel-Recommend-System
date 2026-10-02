@@ -1382,7 +1382,7 @@ export interface components {
             usingDate: string;
             /** @description Số phòng (khách sạn), số gói (combo) hoặc số vé. Dịch vụ tính theo người (vé máy bay, tham quan, golf) gửi guests thì được bỏ quantity; gửi cả hai mà lệch adults + children thì bị từ chối (GUEST_COUNT_MISMATCH). */
             quantity?: number;
-            /** @description Chỉ dùng với taxonomy hotel; loại khác bị bỏ qua. */
+            /** @description Chỉ dùng với taxonomy hotel; loại khác bị bỏ qua. Tối đa 30 đêm. */
             nights?: number | null;
             guests?: components["schemas"]["GuestCounts"];
         } | unknown | unknown;
