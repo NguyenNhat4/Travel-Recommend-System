@@ -90,7 +90,8 @@ def hit(index: UnitIndex, i: int, score: float, **extra) -> dict:
             "available": p.available,
             "availableFrom": p.available_from.isoformat() if p.available_from else None,
             "availableTo": p.available_to.isoformat() if p.available_to else None,
-            "imageUrl": p.image_url, "score": normalized_score, **extra}
+            "imageUrl": p.image_url, "rating": p.rating, "reviewCount": p.review_count,
+            "score": normalized_score, **extra}
 
 
 def scored(index: UnitIndex, i: int, score: float) -> dict:

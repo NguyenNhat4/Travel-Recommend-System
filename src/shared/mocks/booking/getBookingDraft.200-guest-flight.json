@@ -1,0 +1,51 @@
+{
+  "draftId": "5f0c1c2e-6b1f-4a57-9d0a-2f4d6c1a9b03",
+  "cdpUserId": null,
+  "expiresAt": "2026-10-01T03:35:00Z",
+  "items": [
+    {
+      "cartItemId": "ci-vj601",
+      "product": {
+        "productId": "nt-f-vj601",
+        "name": "VietJet Air VJ601 Nha Trang → TP. Hồ Chí Minh 16:20",
+        "taxonomy": "flight",
+        "destination": "Nha Trang",
+        "unitPrice": 634000,
+        "currency": "VND",
+        "priceUnit": "PER_PERSON",
+        "available": true,
+        "availableFrom": "2026-10-19",
+        "availableTo": "2026-10-19",
+        "imageUrl": null
+      },
+      "usingDate": "2026-10-19",
+      "quantity": 3,
+      "nights": null,
+      "guests": {
+        "adults": 2,
+        "children": 1
+      },
+      "fares": [
+        {
+          "fareType": "ADULT",
+          "unitPrice": 634000,
+          "count": 2,
+          "nights": null,
+          "amount": 1268000
+        },
+        {
+          "fareType": "CHILD",
+          "unitPrice": 634000,
+          "count": 1,
+          "nights": null,
+          "amount": 634000
+        }
+      ],
+      "lineTotal": 1902000
+    }
+  ],
+  "itemCount": 1,
+  "subtotal": 1902000,
+  "total": 1902000,
+  "currency": "VND"
+}

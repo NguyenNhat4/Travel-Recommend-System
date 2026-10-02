@@ -13,6 +13,25 @@ const SLOT_PERIOD_LABEL: Record<ItinerarySlot['time'], string> = {
   evening: 'Buổi tối',
 };
 
+function ItemActions({ actions }: { actions: ReturnType<FloatingWidgetController['itemActions']> }) {
+  if (!actions) return null;
+  const stop = (run: () => void) => (e: React.MouseEvent) => { e.stopPropagation(); run(); };
+  return (
+    <div className="flex items-center justify-end gap-2 pt-1" data-testid="itinerary-item-actions">
+      {actions.canAddToCart && (
+        <button type="button" onClick={stop(actions.addToCart)}
+          className="min-h-11 px-3 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 text-xs font-bold hover:bg-blue-100 transition-colors">
+          Thêm vào giỏ
+        </button>
+      )}
+      <button type="button" onClick={stop(actions.bookNow)}
+        className="min-h-11 px-4 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition-colors">
+        Đặt ngay
+      </button>
+    </div>
+  );
+}
+
 /** Slot không có sản phẩm (`ActivityNote`) không có ảnh và giá (hop-dong-tich-hop-frontend.md §5); chỉ hiện icon theo loại. */
 const ACTIVITY_ICON: Record<string, LucideIcon> = {
   MEAL: Utensils,
@@ -23,7 +42,7 @@ const ACTIVITY_ICON: Record<string, LucideIcon> = {
 };
 
 export function WidgetDays({ widget }: { widget: FloatingWidgetController }) {
-  const { activePlan, activeDayTab, setHoveredCoordinate, setHoveredPointId, focusedProductId } = widget;
+  const { activePlan, activeDayTab, setHoveredCoordinate, setHoveredPointId, focusedProductId, itemActions } = widget;
   const listRef = React.useRef<HTMLDivElement>(null);
   // Bấm tên sản phẩm trong chat: sau khi tab ngày đã đổi, cuộn thẻ vào giữa khung.
   React.useEffect(() => {
@@ -139,6 +158,7 @@ export function WidgetDays({ widget }: { widget: FloatingWidgetController }) {
                       {stayForThisDay.note}
                     </p>
                   )}
+                  {stayForThisDay.product && <ItemActions actions={itemActions(stayForThisDay.product.id)} />}
                 </div>
               </div>
             )}
@@ -244,6 +264,7 @@ export function WidgetDays({ widget }: { widget: FloatingWidgetController }) {
                     <p className="text-xs sm:text-sm text-slate-600 leading-relaxed pt-0.5">
                       {slot.note}
                     </p>
+                    {slot.product && <ItemActions actions={itemActions(slot.product.id)} />}
                   </div>
                 </div>
               );

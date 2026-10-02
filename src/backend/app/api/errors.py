@@ -58,6 +58,10 @@ _BOOKING_MESSAGES = {
     "BOOKING_NOT_CANCELLABLE": "Đơn này không huỷ được.",
     "PAYMENT_PROVIDER_UNAVAILABLE": "Cổng thanh toán tạm thời không phản hồi. Vui lòng thử lại.",
     "INVALID_WEBHOOK_SIGNATURE": "Chữ ký không hợp lệ.",
+    "DIRECT_BOOKING_ONLY": "Khách sạn và vé máy bay được đặt trực tiếp, không thêm vào giỏ hàng.",
+    "BOOKING_DRAFT_NOT_FOUND": "Không tìm thấy phiên thanh toán này.",
+    "BOOKING_DRAFT_EXPIRED": "Phiên thanh toán đã hết hạn.",
+    "INTERNAL_ERROR": "Dịch vụ tạm thời không phản hồi. Vui lòng thử lại.",
 }
 
 

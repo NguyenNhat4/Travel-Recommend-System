@@ -13,7 +13,6 @@ import { VerticalChips } from '../layout/nav/VerticalChips';
 import { categoryShortcuts } from '../layout/nav/navConfig';
 import { CatalogShelf } from '../../features/catalog/landing/ProductShelf';
 import { DestinationTiles } from '../../features/catalog/landing/DestinationTiles';
-import { buildSearchHref } from '../../features/catalog/landing/searchHref';
 
 /** Gợi ý cá nhân hóa quá 3 giây thì ẩn khối và hiện dòng "Thử lại" (frontend §6.4 RECOMMENDATION_TIMEOUT_MS). */
 const RECOMMENDATION_TIMEOUT_MS = 3000;
@@ -87,12 +86,18 @@ export const HomeView: React.FC = () => {
   const [isLoadingRecs, setIsLoadingRecs] = useState(false);
   const [showSectionWhy, setShowSectionWhy] = useState(false);
 
+  // Chỉ phụ thuộc vào giá trị thật sự đổi kết quả. Đưa cả `currentPersona`/`activeEvents` vào deps thì mỗi lần
+  // đối tượng/mảng đổi tham chiếu (nạp lại phiên, `resetClientState` gán `[]` mới) effect huỷ request đang bay.
+  const personaId = currentPersona?.id;
+  const personaDestination = currentPersona?.activeDestination;
+  const eventCount = activeEvents.length;
+
   useEffect(() => {
     const controller = new AbortController();
     let timedOut = false;
 
     // Danh tính do BFF gắn từ cookie phiên; đổi tài khoản = đổi phiên nên effect chạy lại. Khách không gọi.
-    if (!currentPersona) {
+    if (!personaId) {
       setRecResponse(null);
       setRecsFailed(false);
       return () => controller.abort();
@@ -100,7 +105,7 @@ export const HomeView: React.FC = () => {
     const timer = setTimeout(() => { timedOut = true; controller.abort(); }, RECOMMENDATION_TIMEOUT_MS);
     setIsLoadingRecs(true);
     setRecsFailed(false);
-    fetchRecommendations({ k: 4, destination: currentPersona.activeDestination, signal: controller.signal })
+    fetchRecommendations({ k: 4, destination: personaDestination, signal: controller.signal })
       .then((data) => setRecResponse(data))
       .catch(() => {
         if (!controller.signal.aborted || timedOut) {
@@ -117,7 +122,7 @@ export const HomeView: React.FC = () => {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [currentPersona, activeEvents, recsRetry]);
+  }, [personaId, personaDestination, eventCount, recsRetry]);
 
   const strategy = recResponse?.strategy ?? 'popular';
   const destination = recResponse?.destination ?? '';
@@ -130,10 +135,6 @@ export const HomeView: React.FC = () => {
     showToast(`Đang tìm kiếm: "${query.slice(0, 32)}..."`);
     navigate(`/search?q=${encodeURIComponent(query)}`);
   };
-
-  const popularMoreHref = popularTab.taxonomy
-    ? buildSearchHref({ taxonomy: popularTab.taxonomy, origin: '', location: '', destination: null, trip: {} })
-    : undefined;
 
   return (
     <div className="flex flex-col bg-[#f8fafc] font-sans text-slate-800 antialiased">
@@ -304,7 +305,6 @@ export const HomeView: React.FC = () => {
             key={popularTab.id}
             title="Phổ biến tại các điểm đến Việt Nam"
             params={{ ...(popularTab.taxonomy ? { taxonomy: popularTab.taxonomy } : {}), sort: 'popular', availableOnly: true, limit: 8 }}
-            moreHref={popularMoreHref}
             empty={{ text: 'Chưa có dịch vụ nào trong danh mục này.' }}
           />
         </div>

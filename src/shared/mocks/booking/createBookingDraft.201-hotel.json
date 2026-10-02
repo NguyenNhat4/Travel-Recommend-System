@@ -1,0 +1,53 @@
+{
+  "draftId": "5f0c1c2e-6b1f-4a57-9d0a-2f4d6c1a9b01",
+  "cdpUserId": "VP0092381",
+  "expiresAt": "2026-10-01T03:35:00Z",
+  "items": [
+    {
+      "cartItemId": "ci-8k3f2a",
+      "product": {
+        "productId": "nt-h-01",
+        "name": "Vinpearl Resort Nha Trang - Deluxe Ocean View",
+        "taxonomy": "hotel",
+        "destination": "Nha Trang",
+        "unitPrice": 3400000,
+        "currency": "VND",
+        "available": true,
+        "availableFrom": "2026-10-01",
+        "availableTo": "2027-03-31",
+        "imageUrl": "https://cdn.example.vn/nt-h-01.jpg",
+        "rating": 4.6,
+        "reviewCount": 1293,
+        "attributes": {
+          "starRating": 5,
+          "oceanView": true,
+          "privateBeach": true,
+          "kidsPool": true,
+          "familyFriendly": true
+        },
+        "priceUnit": "PER_NIGHT"
+      },
+      "usingDate": "2026-10-15",
+      "quantity": 1,
+      "nights": 3,
+      "guests": {
+        "adults": 1,
+        "children": 0
+      },
+      "fares": [
+        {
+          "fareType": "ROOM",
+          "unitPrice": 3400000,
+          "count": 1,
+          "nights": 3,
+          "amount": 10200000
+        }
+      ],
+      "lineTotal": 10200000
+    }
+  ],
+  "itemCount": 1,
+  "subtotal": 10200000,
+  "total": 10200000,
+  "currency": "VND"
+}

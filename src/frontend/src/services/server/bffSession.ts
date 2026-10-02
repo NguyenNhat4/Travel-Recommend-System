@@ -17,6 +17,7 @@ const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 export const sessionCookieName = () => process.env.SESSION_COOKIE_NAME || 'vota_sid';
 export const csrfCookieName = () => process.env.CSRF_COOKIE_NAME || 'vota_csrf';
+export const guestCookieName = () => process.env.GUEST_COOKIE_NAME || 'vota_guest';
 
 const nowSeconds = () => Math.floor(Date.now() / 1000);
 const opaque = (prefix: string) => `${prefix}_${randomBytes(16).toString('base64url')}`;
@@ -80,6 +81,28 @@ export function clearedCookies(): string[] {
     cookie(sessionCookieName(), '', { httpOnly: true, maxAge: 0 }),
     cookie(csrfCookieName(), '', { httpOnly: false, maxAge: 0 }),
   ];
+}
+
+// --- khách chưa đăng nhập: giỏ và đơn nháp (docs/spec/booking/dat-truc-tiep-theo-don-nhap.md §8.1) -----------------
+
+const GUEST_ID = /^g_[A-Za-z0-9_-]{22}$/;
+const guestTtlSeconds = () => Number(process.env.GUEST_BOOKING_TTL_DAYS || 3) * 86400;
+
+/** `guestId` trong cookie `vota_guest`; giá trị sai định dạng coi như không có. */
+export function readGuestId(request: Request): string | null {
+  const value = readCookie(request, guestCookieName());
+  return value && GUEST_ID.test(value) ? value : null;
+}
+
+/** 128 bit ngẫu nhiên. Khác `anon_id` của phiên: sống 3 ngày, không phụ thuộc phiên 30 phút. */
+export const newGuestId = () => opaque('g');
+
+export function guestCookie(guestId: string): string {
+  return cookie(guestCookieName(), guestId, { httpOnly: true, maxAge: guestTtlSeconds() });
+}
+
+export function clearedGuestCookie(): string {
+  return cookie(guestCookieName(), '', { httpOnly: true, maxAge: 0 });
 }
 
 export function withCookies(response: Response, cookies: string[]) {

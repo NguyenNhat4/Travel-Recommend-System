@@ -1,0 +1,51 @@
+{
+  "cartId": "cart-01JXYZ",
+  "cdpUserId": null,
+  "items": [
+    {
+      "cartItemId": "ci-2m9d7c",
+      "product": {
+        "productId": "nt-a-01",
+        "name": "VinWonders Nha Trang",
+        "taxonomy": "attraction",
+        "destination": "Nha Trang",
+        "unitPrice": 880000,
+        "currency": "VND",
+        "available": true,
+        "availableFrom": "2026-09-01",
+        "availableTo": "2027-08-31",
+        "imageUrl": "https://cdn.example.vn/nt-a-01.jpg",
+        "rating": 4.5,
+        "reviewCount": 8421,
+        "attributes": {
+          "outdoor": true,
+          "waterPark": true,
+          "familyFriendly": true
+        },
+        "priceUnit": "PER_PERSON"
+      },
+      "usingDate": "2026-10-16",
+      "quantity": 3,
+      "nights": null,
+      "guests": {
+        "adults": 3,
+        "children": 0
+      },
+      "fares": [
+        {
+          "fareType": "ADULT",
+          "unitPrice": 880000,
+          "count": 3,
+          "nights": null,
+          "amount": 2640000
+        }
+      ],
+      "lineTotal": 2640000
+    }
+  ],
+  "itemCount": 1,
+  "subtotal": 2640000,
+  "total": 2640000,
+  "currency": "VND",
+  "updatedAt": "2026-09-16T10:20:00Z"
+}

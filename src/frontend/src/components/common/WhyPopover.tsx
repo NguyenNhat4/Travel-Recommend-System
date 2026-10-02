@@ -43,7 +43,7 @@ export const WhyPopover: React.FC<WhyPopoverProps> = ({
       case 'purchase':
         return 'Bạn đã đặt';
       case 'add_to_cart':
-        return 'Bạn đã thêm vào giỏ';
+        return 'Bạn đã chọn để đặt';
       case 'product_view':
         return 'Bạn đã xem';
       case 'search':

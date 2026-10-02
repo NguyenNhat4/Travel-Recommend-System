@@ -46,16 +46,12 @@ describe('widget cart feedback', () => {
     expect(travel.addToCart).toHaveBeenCalledTimes(2);
   });
 
-  it('waits for login and the actual add before reporting success', async () => {
+  it('adds for a guest without opening the login modal and reports success after the cart confirms', async () => {
     travel.currentPersona = null;
     travel.addToCart.mockResolvedValue(true);
-    const { result, rerender } = renderHook(() => useWidgetCart());
+    const { result } = renderHook(() => useWidgetCart());
     await act(async () => result.current.addPlanItemToCart(plan, id));
-    expect(travel.addToCart).not.toHaveBeenCalled();
-    expect(result.current.cartAddStates[id]).toBeUndefined();
-    travel.currentPersona = { id: 'u1' };
-    rerender();
-    await act(async () => travel.openLoginModal.mock.calls[0][0]());
+    expect(travel.openLoginModal).not.toHaveBeenCalled();
     expect(travel.addToCart).toHaveBeenCalledTimes(1);
     expect(result.current.cartAddStates[id]).toBe('added');
   });

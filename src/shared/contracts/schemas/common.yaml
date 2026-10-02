@@ -177,6 +177,10 @@ ErrorCode:
   - BOOKING_NOT_CANCELLABLE
   - PAYMENT_PROVIDER_UNAVAILABLE
   - INVALID_WEBHOOK_SIGNATURE
+  # --- booking: đặt trực tiếp qua đơn nháp (docs/spec/booking/dat-truc-tiep-theo-don-nhap.md) ---
+  - DIRECT_BOOKING_ONLY
+  - BOOKING_DRAFT_NOT_FOUND
+  - BOOKING_DRAFT_EXPIRED
 
 ValidationFieldError:
   type: object
@@ -186,7 +190,8 @@ ValidationFieldError:
     REQUIRED, NAME_INVALID, PHONE_INVALID, EMAIL_INVALID, BIRTH_DATE_INVALID, CHILD_AGE_INVALID, ADULT_REQUIRED,
     PARTY_TOO_LARGE, TRAVELER_UNKNOWN, TRAVELER_DUPLICATED, ITEM_DETAIL_MISSING, ITEM_DETAIL_UNKNOWN, ITEM_DETAIL_DUPLICATED,
     ITEM_WITHOUT_TRAVELER, GUEST_COUNT_MISMATCH, INFANTS_EXCEED_ADULTS, ROOM_COUNT_MISMATCH, OCCUPANCY_EXCEEDED,
-    LEAD_GUEST_INVALID, TRAVELERS_REQUIRED. Client gặp reason lạ thì hiển thị message.
+    LEAD_GUEST_INVALID, TRAVELERS_REQUIRED; với đơn nháp và giỏ của khách: DUPLICATE_ITEM, CART_FULL, NOT_REBOOKABLE. Client
+    gặp reason lạ thì hiển thị message.
   required:
   - field
   - reason
@@ -201,7 +206,7 @@ ValidationFieldError:
       type: string
     cartItemId:
       type: string
-      description: Có khi vi phạm thuộc một mục giỏ, để Web gắn lỗi vào đúng thẻ dịch vụ.
+      description: Có khi vi phạm thuộc một mục giỏ hoặc mục đơn nháp, để Web gắn lỗi vào đúng thẻ dịch vụ.
 
 ErrorResponse:
   type: object
@@ -246,4 +251,6 @@ ErrorResponse:
             {purpose}; OAUTH_EMAIL_UNVERIFIED và OAUTH_ALREADY_LINKED
             {provider}; BOOKING_PENDING_PAYMENT {referenceCode, holdExpiresAt} — đơn đang
             giữ chỗ để tiếp tục hoặc huỷ; BOOKING_NOT_CANCELLABLE {referenceCode, reason,
-            cancellableUntil}; BOOKING_ALREADY_PAID {referenceCode}.
+            cancellableUntil}; BOOKING_ALREADY_PAID {referenceCode}; DIRECT_BOOKING_ONLY {productId, taxonomy};
+            BOOKING_DRAFT_EXPIRED {draftId, items: [{productId, taxonomy, inCart}]}; PRODUCT_UNAVAILABLE khi tạo đơn
+            nháp mà không mục nào được nhận {rejectedItems}.
