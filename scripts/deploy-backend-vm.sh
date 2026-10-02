@@ -207,7 +207,6 @@ prune_old_images() {
     printf '%s\n' "$keep" | grep -Fxq "$id" && continue
     docker rmi "$id" >/dev/null 2>&1 || true
   done
-  docker image prune -f >/dev/null 2>&1 || true
 }
 prune_old_images || true
 
