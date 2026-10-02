@@ -196,4 +196,19 @@ if ! wait_for_health; then
   die 'Backend deploy failed; previous image restored'
 fi
 
+# Dọn image cũ của cùng repository để disk VM không đầy dần. Giữ image vừa deploy và image
+# trước đó (để rollback tay); image đang được container dùng thì `docker rmi` tự từ chối.
+# Chỉ đụng repository của Backend, không đụng image của crawler hay service khác. Lỗi dọn không làm hỏng deploy.
+prune_old_images() {
+  local repo="${backend_image%@*}" keep id
+  keep="$(docker image inspect --format '{{.Id}}' "$backend_image" ${previous_image:+"$previous_image"} 2>/dev/null || true)"
+  docker image ls "$repo" --no-trunc --quiet | sort -u | while read -r id; do
+    [ -n "$id" ] || continue
+    printf '%s\n' "$keep" | grep -Fxq "$id" && continue
+    docker rmi "$id" >/dev/null 2>&1 || true
+  done
+  docker image prune -f >/dev/null 2>&1 || true
+}
+prune_old_images || true
+
 printf 'Backend deploy completed.\n'
