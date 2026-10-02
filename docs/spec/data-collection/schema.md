@@ -265,7 +265,12 @@ Hợp đồng dùng thang 0–5, một chữ số thập phân; `reviewCount` l�
 |---|---|---|---|
 | 1 | `reviewScore`, `reviewScoreScale` | 2.292 sản phẩm (2.291 thang 10) | `rating = round(reviewScore / reviewScoreScale × 5, 1)`, `reviewCount = reviewCount` |
 | 2 | `tripAdvisorRating`, `tripAdvisorReviewCount` | 15 khách sạn Vinpearl, thang 5 | giữ nguyên |
-| — | không có điểm | còn lại | `rating = null`, `reviewCount = null` — kể cả 178 sản phẩm có `reviewCount` mà không có điểm |
+| 3 | `rating`, `ratingScale` | 178 điểm tham quan (snapshot 2026-09-30, thang 5) | `rating = round(rating / ratingScale × 5, 1)`, `reviewCount = reviewCount` |
+| — | không có điểm | còn lại | `rating = null`, `reviewCount = null` — kể cả khi có `reviewCount` |
+
+Nguồn đầu tiên có điểm hợp lệ thắng; `reviewCount` luôn lấy cùng nguồn với `rating`. Code: `RATING_SOURCES` trong
+`src/backend/app/domain/catalog/models.py`. Nguồn 3 có từ snapshot 2026-09-30: 178 sản phẩm trước đây chỉ có
+`reviewCount` nay có thêm điểm.
 
 ### 8.2 `attributes`
 

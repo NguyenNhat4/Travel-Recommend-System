@@ -6,26 +6,40 @@ import { AssistantText, InlineBold } from '../../../components/assistant/inlineB
 import { SuggestionChips } from '../../../components/assistant/SuggestionChips';
 import { TripDetailsForm } from '../../../components/assistant/TripDetailsForm';
 import { WidgetOpening } from './WidgetOpening';
+import { WidgetNarration } from './WidgetNarration';
 import { WidgetComposer } from './WidgetComposer';
 import type { FloatingWidgetController } from './useFloatingWidget';
 
 export function WidgetChat({ widget }: { widget: FloatingWidgetController }) {
   const { messages, assistantState, isRunning, isExpanded, setIsExpanded, chatScrollRef,
-    inputVal, setInputVal, handleSendMessage, handleConfirmTripDetails, retry, abort, focusProduct } = widget;
+    inputVal, setInputVal, handleSendMessage, handleConfirmTripDetails, retry, abort, openProductDetail, addPlanItemToCart } = widget;
   const isInitial = messages.length === 0 && !isRunning;
   const lastMessageId = messages.length > 0 ? messages[messages.length - 1].id : null;
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-white">
-      <div ref={chatScrollRef} className={`min-h-0 flex-1 overflow-y-auto ${isInitial ? 'flex flex-col' : 'space-y-4 p-4'}`}>
+      <div ref={chatScrollRef} className={`min-h-0 flex-1 overflow-y-auto overscroll-contain ${isInitial ? 'flex flex-col' : 'space-y-6 px-4 py-6 sm:px-6'}`}>
         {isInitial && <WidgetOpening value={inputVal} onChange={setInputVal} onSend={handleSendMessage} busy={isRunning} />}
-        <div className="space-y-4" role="log" aria-label="Hội thoại với trợ lý du lịch" aria-live="polite">
+        <div className="space-y-7" role="log" aria-label="Hội thoại với trợ lý du lịch" aria-live="polite">
           {messages.map((message) => (
-            <div key={message.id} className={`flex items-start gap-3 ${message.sender === 'user' ? 'justify-end' : ''}`}>
-              {message.sender === 'assistant' && <Image src="/mascot_welcome.webp" alt="" width={36} height={36} className="mt-1 h-9 w-9 shrink-0 object-contain" />}
-              <div className={`min-w-0 max-w-[88%] whitespace-pre-wrap break-words rounded-2xl p-4 text-base leading-relaxed ${message.sender === 'user' ? 'rounded-tr-none bg-blue-600 text-white' : 'rounded-tl-none bg-slate-100 text-slate-800'}`}>
+            <div key={message.id} className={`flex min-w-0 ${message.sender === 'user' ? 'justify-end' : 'flex-col gap-3'}`}>
+              {message.sender === 'assistant' && (
+                <div className="flex items-center gap-2.5">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50">
+                    <Image src="/mascot_welcome.webp" alt="" width={28} height={28} className="h-7 w-7 object-contain" />
+                  </span>
+                  <span className="text-xs font-semibold tracking-wide text-slate-500">Trợ lý du lịch V-OTA</span>
+                </div>
+              )}
+              <div className={`min-w-0 whitespace-pre-wrap break-words text-sm leading-7 sm:text-base ${message.sender === 'user' ? 'max-w-[88%] rounded-2xl rounded-tr-md bg-blue-600 px-4 py-3 text-white' : 'w-full text-slate-700'}`}>
                 {message.sender === 'assistant'
-                  ? <AssistantText text={message.text} onProduct={message.plan ? (productId) => focusProduct(message.plan!, productId) : undefined} />
+                  ? (message.products
+                    ? <WidgetNarration text={message.text} products={message.products}
+                        onOpen={(productId) => openProductDetail(productId, message)}
+                        quickAddIds={message.plan ? new Set(message.plan.cartItems.map((item) => item.product.productId)) : undefined}
+                        cartAddStates={widget.cartAddStates}
+                        onQuickAdd={message.plan ? (productId) => addPlanItemToCart(message.plan!, productId) : undefined} />
+                    : <AssistantText text={message.text} />)
                   : message.text}
                 {message.plan && !isExpanded && (
                   <button onClick={() => setIsExpanded(true)} className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-blue-600 hover:bg-blue-50">
@@ -62,7 +76,7 @@ export function WidgetChat({ widget }: { widget: FloatingWidgetController }) {
         {assistantState.phase === 'aborted' && <p role="status" className="text-sm text-slate-500">Đã dừng yêu cầu.</p>}
       </div>
       {!isInitial && (
-        <div className="shrink-0 border-t border-slate-100 bg-white px-4 pb-5 pt-3">
+        <div className="shrink-0 border-t border-slate-100 bg-slate-50/80 px-4 pb-4 pt-4 sm:px-6">
           <WidgetComposer value={inputVal} onChange={setInputVal} onSend={handleSendMessage} busy={isRunning} />
           <div className="mt-2 flex items-center justify-between gap-2 text-xs text-slate-500">
             <span>{assistantState.conversationId ? 'Đang tiếp tục cuộc trò chuyện' : 'Trợ lý AI V-OTA'}</span>

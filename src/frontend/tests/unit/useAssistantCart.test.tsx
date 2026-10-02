@@ -142,4 +142,19 @@ describe('useAssistantCart', () => {
     await travel.openLoginModal.mock.calls[0][0]();
     await vi.waitFor(() => expect(onAdded).toHaveBeenCalledWith(3));
   });
+
+  it('ignores duplicate submissions until the same cart operation settles', async () => {
+    let finish!: (ok: boolean) => void;
+    travel.addToCart.mockReturnValue(new Promise<boolean>((resolve) => { finish = resolve; }));
+    const feedback = { onStart: vi.fn(), onSettled: vi.fn() };
+    const { result } = renderHook(() => useAssistantCart());
+    const first = result.current([items[0]], undefined, feedback);
+    await result.current([items[0]], undefined, feedback);
+    expect(travel.addToCart).toHaveBeenCalledTimes(1);
+    expect(feedback.onStart).toHaveBeenCalledTimes(1);
+    expect(feedback.onSettled).not.toHaveBeenCalled();
+    finish(true);
+    await first;
+    expect(feedback.onSettled).toHaveBeenCalledWith(1);
+  });
 });

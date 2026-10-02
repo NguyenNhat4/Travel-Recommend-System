@@ -608,7 +608,7 @@ Bố cục dưới đây là UX mục tiêu. Frontend hiện render form và k�
 | Quyết định | Lý do | Pattern |
 |---|---|---|
 | Chia đôi: chat trái, kế hoạch phải | Kế hoạch là một **đối tượng** (có ngày, có tổng tiền), không nên chìm trong luồng tin nhắn dài | `[R90]` Mindtrip web (chat trái + panel "Best trip ever!" có Day accordion + "Generate itinerary"); `[R91]` Mindtrip web (chat trái + bản đồ phải); `[R105]` Etsy web ("Gifting assistant": chat trái + lưới sản phẩm phải) |
-| Tin nhắn của trợ lý chỉ chứa **thẻ tóm tắt** kế hoạch, bấm vào thì focus panel | Tránh lặp nội dung giữa hai cột | `[R103]` Trip.com iOS (thẻ trong chat dẫn tới "View Hotels / Trip Map") |
+| Tin nhắn của trợ lý có **thẻ gọn của từng sản phẩm** ngay sau lần nhắc đầu tiên; bấm thẻ mở panel chi tiết ở cột phải (PRD `user-flow.md` §4.2, chốt 2026-10-02, thay quyết định cũ "chỉ chứa thẻ tóm tắt") | Người đọc lời kể thấy ngay nơi được nhắc là gì, không phải dò sang cột phải; chi tiết mở tại chỗ thay vì sang tab mới | `[R104]` Klarna iOS (thẻ sản phẩm có giá ngay trong câu trả lời chat); `[R103]` Trip.com iOS (thẻ trong chat dẫn tới chi tiết) |
 | Câu mẫu bằng tiếng Việt khi hội thoại rỗng | Hướng người dùng vào đúng phạm vi hẹp của trợ lý (handbook §9 "Giữ nó hẹp") | `[R87]` Booking.com iOS ("You can try asking about…" + 3 chip "Build an itinerary…"); `[R89]` Mindtrip web (thẻ ví dụ có tiêu đề nhóm); `[R124]` Trip.com iOS ("TripGenie is here to inspire" + thẻ câu hỏi) |
 | Dòng phạm vi dưới ô nhập: "Trợ lý chỉ lên kế hoạch chuyến đi, sản phẩm lấy từ kho V-OTA." | Đặt kỳ vọng và nhắc về grounding | `[R101]` Wanderlog iOS (hộp "The AI Assistant is purely informational…" + "Asking questions about New York. Change") |
 | Nút "Cuộc mới" | Handbook §9 "không duy trì hội thoại dài". Không có lịch sử nhiều cuộc | — (chủ động không làm danh sách lịch sử như `[R87]`) |
@@ -876,6 +876,7 @@ Nếu cắt về single-turn (handbook §2, mục 6) thì thẻ này là cách *
 | Người dùng | Bong bóng phải |
 | Trợ lý: văn bản | Bong bóng trái, markdown giới hạn (đậm, danh sách). Không render link ngoài |
 | Trợ lý: **thẻ tóm tắt kế hoạch** | "📋 Lịch trình 3 ngày ở Nha Trang · 5 dịch vụ · ~9.870.000 ₫ · [Xem kế hoạch]". Bấm vào focus panel phải (mobile: mở sheet) |
+| Trợ lý: **thẻ sản phẩm trong lời diễn giải** | `ProductCard` compact ngay sau dòng đầu tiên nhắc sản phẩm, dữ liệu từ response (tuân thủ §6.4). Bấm thẻ hoặc tên: panel chi tiết ở cột phải (PRD `user-flow.md` §4.2) |
 | Trợ lý: thẻ hỏi lại | 6.2 |
 | Trợ lý: gợi ý tiếp theo | 2–3 chip dưới tin nhắn cuối: "Đổi thành 2 ngày", "Thêm hoạt động buổi tối", "Rẻ hơn". Bấm là gửi. Pattern: `[R103]` Trip.com iOS ("You may also ask" + các câu hỏi gửi được); `[R104]` Klarna iOS (chip câu hỏi tiếp theo dưới carousel) |
 | Hệ thống | Dòng chữ nhỏ căn giữa: "Đã đổi: 3 ngày → 2 ngày", "Đã thêm 5 dịch vụ vào giỏ · [Xem giỏ]" |

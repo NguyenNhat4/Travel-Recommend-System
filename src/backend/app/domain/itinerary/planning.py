@@ -23,9 +23,11 @@ SUMMARY_FIELDS = (
     "available", "availableFrom", "availableTo", "imageUrl", "rating",
     "reviewCount", "attributes", "priceUnit",
 )
-# `attributes` chỉ giữ khoá FE thật sự đọc trong lịch trình (docs/spec/agent/field-review.md §2.1);
-# nguồn đầy đủ vẫn ở `candidates`/`ProductDetail`, không mất dữ liệu.
-SUMMARY_ATTRIBUTE_KEYS = frozenset({"oceanView", "privateBeach", "pool", "ticketed"})
+# `attributes` chỉ giữ khoá FE thật sự đọc trong lịch trình (docs/spec/agent/field-review.md §2.1): tag khách sạn,
+# "tham quan tự do" (`ticketed`), toạ độ và địa chỉ của bản đồ (`services/catalog.ts` đọc `latitude`/`longitude`/`address`;
+# thiếu thì widget đặt mọi điểm ở tâm thành phố). Nguồn đầy đủ vẫn ở `candidates`/`ProductDetail`, không mất dữ liệu.
+SUMMARY_ATTRIBUTE_KEYS = frozenset({"oceanView", "privateBeach", "pool", "ticketed", "starRating",
+                                    "latitude", "longitude", "address"})
 # Flights and combos have no confirmed slot mapping, so they can be retrieved but never scheduled.
 STAY_TAXONOMY = "hotel"
 SLOT_TAXONOMIES = frozenset({"attraction", "golf"})

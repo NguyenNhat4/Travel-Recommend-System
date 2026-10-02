@@ -149,6 +149,8 @@ export interface ItinerarySlot {
   because?: BecauseItem[];
   isActivityNote?: boolean; // For free activity/dining advice not linked to product
   activityTitle?: string;
+  /** `ActivityType` của API khi slot không có sản phẩm (MEAL, REST, FREE_TIME, TRANSFER, SIGHTSEEING). */
+  activityType?: string;
   coordinates?: Coordinates;
   address?: string;
 }
