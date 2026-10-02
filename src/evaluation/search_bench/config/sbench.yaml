@@ -39,6 +39,10 @@ embedding:                        # Part 3
                 query_prefix: "query: ", passage_prefix: "passage: "}   # E2.e5 (lịch 10 ngày M2: Cohere vs e5-base); sai prefix = arm không công bằng
     e5-small:  {hf_model: intfloat/multilingual-e5-small, dim: 384, max_seq_length: 512, device: cpu, batch_size: 32, pooling: mean,
                 query_prefix: "query: ", passage_prefix: "passage: "}
+    e5-large-instruct: {hf_model: intfloat/multilingual-e5-large-instruct, dim: 1024, max_seq_length: 512, device: cpu,
+                        batch_size: 4, pooling: mean,
+                        query_prefix: "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery: ",
+                        passage_prefix: ""}
     gte-mb:    {hf_model: Alibaba-NLP/gte-multilingual-base, dim: 768, max_seq_length: 512, device: cpu, batch_size: 32, trust_remote_code: true, pooling: cls, input_type_mode: symmetric}   # E2.gte, tuỳ chọn
     fake:      {dim: 1024}
   input_type: {document: search_document, query: search_query}

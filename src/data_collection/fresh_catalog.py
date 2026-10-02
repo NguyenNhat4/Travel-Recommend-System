@@ -120,10 +120,13 @@ def _num(value: float) -> str:
 
 def source_command(run_dir: Path, source: str, destinations: str, values: dict) -> list[str]:
     """Lệnh crawl.py của một nguồn theo cấu hình."""
+    # Giữ id bước agoda-hotels để tương thích run.json/monitor cũ, nhưng dùng collector HTTP đã có khả năng
+    # xuất hotel_room + giá thật. Collector trình duyệt cũ chỉ tạo property nên FE không có phòng để bán.
+    cli_source = 'agoda-api' if source == 'agoda-hotels' else source
     command = [sys.executable, str(ROOT / 'crawl.py')]
     if values['log.verbose']:
         command.append('-v')
-    command += ['--data-dir', str(run_dir), source, '--max-blocks', str(values['crawl.maxBlocks'])]
+    command += ['--data-dir', str(run_dir), cli_source, '--max-blocks', str(values['crawl.maxBlocks'])]
     if source == 'vinpearl':
         command += ['--refresh', '--delay', _num(values['vinpearl.delay']),
                     '--price-dates', ','.join(str(d) for d in values['vinpearl.priceOffsets'])]
@@ -148,9 +151,10 @@ def source_command(run_dir: Path, source: str, destinations: str, values: dict) 
         if not values['booking.vinpearlBrand']:
             command.append('--no-brand-sitemap')
     elif source == 'agoda-hotels':
-        command += ['--delay', _num(values['agoda.delay']), '--concurrency', str(values['agoda.tabs']),
-                    '--checkin-offset-days', str(values['agoda.checkinOffsetDays']),
-                    '--budget', f"agoda_hotels={values['agoda.hotelsPerDestination']}"]
+        # Một ngày giá thật đủ để xác nhận phòng bán được; fresh_catalog_db mở rộng availability thành cửa sổ 30 ngày.
+        # State SQLite của collector giúp lượt sau tiếp tục thay vì cào lại từ đầu.
+        command += ['--delay', _num(values['agoda.delay']),
+                    '--per-city', str(values['agoda.hotelsPerDestination']), '--days', '1']
     return command
 
 
