@@ -2,11 +2,11 @@ import React from 'react';
 import Link from 'next/link';
 import { NAV_ITEMS } from '../layout/nav/navConfig';
 import { useTravel } from '../../context/TravelContext';
-import { 
-  Phone, 
-  Mail, 
-  MapPin, 
-  Smartphone, 
+import {
+  Phone,
+  Mail,
+  MapPin,
+  Smartphone,
   ArrowUpRight,
   ArrowUp
 } from 'lucide-react';
@@ -22,10 +22,10 @@ export const Footer: React.FC = () => {
     <footer className="bg-[#00254d] text-white pt-16 pb-12 border-t border-blue-900/50 mt-12 transition-colors">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-10 pb-12 border-b border-blue-900/60">
-          
+
           {/* Company Info Column */}
           <div className="lg:col-span-2 space-y-4">
-            <div 
+            <div
               onClick={() => navigate('/')}
               className="flex items-center space-x-2.5 cursor-pointer group"
             >
@@ -44,7 +44,7 @@ export const Footer: React.FC = () => {
                   <Phone className="w-4 h-4" />
                 </div>
                 <div>
-                  <div className="font-medium text-white">1900 23 23 89 (Nhánh 3)</div>
+                  <div className="font-medium text-white">xxx xxx xxx xxx</div>
                   <div className="text-[11px] text-blue-300">Hỗ trợ 24/7 toàn quốc</div>
                 </div>
               </div>
@@ -53,7 +53,7 @@ export const Footer: React.FC = () => {
                 <div className="w-8 h-8 rounded-full bg-blue-900/80 flex items-center justify-center text-blue-300">
                   <Mail className="w-4 h-4" />
                 </div>
-                <span className="text-blue-100/90">callcenter@v-ota.com</span>
+                <span className="text-blue-100/90">xxxxxxxxx@gmail.com</span>
               </div>
 
               <div className="flex items-center space-x-3">
@@ -116,8 +116,8 @@ export const Footer: React.FC = () => {
             <h4 className="font-sans text-xs font-bold uppercase tracking-wider text-blue-300 mb-4">TẢI ỨNG DỤNG</h4>
             <p className="text-xs text-blue-100/70 mb-3">Tận hưởng ưu đãi độc quyền trên ứng dụng V-OTA Booking</p>
             <div className="flex flex-col space-y-2">
-              <button 
-                onClick={() => {}}
+              <button
+                onClick={() => { }}
                 className="bg-blue-900/60 hover:bg-blue-800 text-white text-xs px-3.5 py-2.5 rounded-xl flex items-center space-x-2 border border-blue-700/50 transition cursor-pointer"
               >
                 <Smartphone className="w-4 h-4 text-amber-400" />
@@ -135,8 +135,8 @@ export const Footer: React.FC = () => {
             <button onClick={() => navigate('/')} className="hover:text-white transition cursor-pointer">Bảo mật</button>
             <button onClick={() => navigate('/')} className="hover:text-white transition cursor-pointer">Cookies</button>
             <button onClick={() => navigate('/')} className="hover:text-white transition cursor-pointer">Sơ đồ trang</button>
-            <button 
-              onClick={scrollToTop} 
+            <button
+              onClick={scrollToTop}
               className="ml-2 flex items-center gap-1 text-blue-300 hover:text-white transition cursor-pointer"
               title="Lên đầu trang"
             >
