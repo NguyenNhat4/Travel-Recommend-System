@@ -135,7 +135,43 @@ q'      = chuẩn_hoá(query): NFC → viết tắt (KS, KDL, gd, VW; NT, PQ, Đ
           → sửa chính tả tên riêng theo từ vựng tên sản phẩm + điểm đến của catalog (không bảng chép tay)
           → tên điểm đến về đúng giá trị catalog (khớp dài nhất trên token đã fold)
           → kiểu đi về nhãn `audience` catalog dùng (bạn trai/bạn gái → cặp đôi, 1 mình → một mình, công ty → công tác)
-          Embed và BM25 đều dùng q'. Không tách điểm đến/số khách thành filter (bước 2). `query` gốc giữ ở event `search` (§3.2).
+          Embed và BM25 đều dùng q'. Số khách chưa thành filter. `query` gốc giữ ở event `search` (§3.2).
+F       = structured filter, trong đó điểm đến (từ 2026-10-05, FR-SRC-03, sau cờ `SEARCH_DEST_FILTER`, mặc định tắt
+          cho tới khi bench xác nhận): `destination` của request luôn thắng; không có thì lấy địa danh **duy nhất** mà
+          bước chuẩn hoá nhận ra trong q'; câu nêu ≥ 2 nơi (nơi đi + nơi đến, "A hoặc B", thương hiệu chứa địa danh) hay
+          câu hỏi vé máy bay (`taxonomy = flight`, cụm "vé máy bay / chuyến bay / đường bay / chặng bay") thì **không**
+          lọc theo điểm đến. F rỗng sau khi lọc theo địa danh suy ra → chạy lại không lọc (FR-SRC-04), khai
+          `diagnostics.destinationFilter.fallback = dropped_empty`. Khi filter suy ra đang áp, token địa danh không tính
+          vào `phủ(tên, truy vấn)` ở bước VỚT. Khai báo: `diagnostics.derivedDestinations` (luôn, khi câu có địa danh),
+          `diagnostics.destinationFilter` và `appliedFilters.hard.destinationSource` (khi cờ bật) — contract 1.14.0.
+Câu không dấu (từ 2026-10-05, `SEARCH_NO_DIACRITICS_MODE=relax`, mặc định `off`): câu gốc không có dấu nào và có ≥ 3 token
+          truy vấn → bước VỚT dùng bộ ngưỡng riêng (`lexicalK 20 / lexicalCutoff 0 / lexicalMinCoverage 0,4`, tạm — chưa
+          qua dev/test) và cutoff dense riêng nếu cấu hình; vector và khoá cache không đổi; khai
+          `diagnostics.queryProfile = no_diacritics`, `cutoff` của response là cutoff hiệu lực.
+QUERY PLAN (từ 2026-10-05, kiến trúc Phase A — `docs/spec/bench/kien_truc_search_ota_so_do_va_giai_doan.md`; contract
+          1.15.0 `diagnostics.queryPlan`): sau chuẩn hoá, parse hard constraint từ q' theo thứ tự giá/sao → phủ định → loại
+          sản phẩm → tuyến bay. Tham số request luôn thắng giá trị suy ra; mỗi họ một cờ, mặc định tắt (tắt vẫn parse và khai
+          ở `queryPlan` để bench đo). Ngữ nghĩa từng họ:
+          · F6 `SEARCH_NUMERIC_FILTER`: "dưới / không quá / tối đa N triệu|nghìn" → priceMax (hard, trên giá thấp nhất của
+            unit kể cả phòng con; giá null bị loại khi có lọc giá); "từ / không dưới / N sao" → starRatingMin (SOFT theo
+            [C6]: unit khai sao thấp hơn bị loại, unit không khai sao giữ và xếp sau). "không nhất thiết N sao" → bỏ điều
+            kiện, không lọc.
+          · F3 `SEARCH_NEGATION_FILTER`: "không có / không ghi nhận / không gồm / không phải / trừ X" với X trong từ vựng
+            tiện ích (`domain/search/amenities.py`) → loại unit CÓ GHI NHẬN X (property ∪ phòng con); vắng = không biết →
+            qua ([C2], khớp quy ước gán nhãn #3/#7 của `docs/spec/bench/gold-guide.md`). "không cần / không nhất thiết X" →
+            bỏ điều kiện. Cụm ngoài từ vựng → `queryPlan.unresolved`, không lọc, không bịa khoá.
+          · F4 `SEARCH_TAXONOMY_FILTER`: câu nêu đúng MỘT loại sản phẩm (khách sạn/resort/villa…, vé máy bay/chuyến bay…,
+            vé tham quan/VinWonders…, combo, golf) và không có `taxonomy` request → lọc taxonomy; ≥ 2 loại (cross-vertical)
+            hoặc cụm nằm trong tên thương hiệu → không lọc. Bật cờ này làm request tổng quan của Web (không taxonomy, dùng để
+            đếm tab) chỉ còn đếm loại câu nêu — bật cần ý kiến Web (`docs/spec/product.md` §4.2.3).
+          · F5 `SEARCH_ROUTE_FILTER`: chỉ câu vé máy bay (`taxonomy = flight` hoặc cụm bay ở trên): "từ A đến/đi/vào/ra B",
+            "A - B", "A đi B" → origin A, destination B (lọc `originCity` / `destinationCity` của tuyến); chỉ "đến B" → chỉ
+            đích; thiếu nơi đi thì không bịa; hai nơi không rõ vai → không lọc. Tham số `origin` (1.15.0) thắng câu; ngoài
+            câu bay `origin` bị bỏ qua và khai ở `queryPlan.ignored`.
+          Cụm đã thành filter bị bỏ khỏi câu đưa vào BM25 và độ phủ vớt (`queryPlan.lexicalText`); vector dense vẫn dùng q'
+          đầy đủ (khoá cache embed không đổi). Sau RRF kiểm lại hard filter trên R (`queryPlan.revalidatedDrops`, kỳ vọng
+          0). F rỗng do filter suy ra → `total 0` + `queryPlan.emptyReason`, KHÔNG nới ngầm (kiến trúc Phase A §6); chỉ điểm
+          đến suy ra giữ fallback ở trên. `appliedFilters.hard/soft` khai những gì đã áp (§2.5).
 C_dense = top-candidateK của F theo cosine
 C_lex   = top-lexicalCandidateK của F theo BM25 trên nameAscii + searchTextAscii (đã fold dấu; truy vấn fold cùng cách)
 R_dense = { p ∈ C_dense | score(p) >= cutoff }
@@ -197,7 +233,8 @@ Các bất biến dưới đây tính trên tập ứng viên `C`, không phải
 ```yaml
 search:           { mode: HYBRID_CANDIDATE_SCORE, cutoff: 0.62, candidateK: 200,
                     lexicalCandidateK: 50, lexicalK: 10, lexicalCutoff: 0.50, lexicalMinCoverage: 0.6, fusion: rrf(60),
-                    normalize: true }
+                    normalize: true, destFilter: false, noDiacriticsMode: off,   # hai knob này: 2026-10-05, §2.2
+                    negationFilter: false, taxonomyFilter: false, routeFilter: false, numericFilter: false }   # 2026-10-05, QUERY PLAN §2.2
 similar:          { mode: ANN_CANDIDATE_SCORE, topK: 20 }
 recommendations:  { mode: ANN_CANDIDATE_SCORE, candidateK: 200 }
 ```
@@ -241,10 +278,22 @@ chạy offline trong test).
 |---|---|---:|---|
 | **Hard** | `taxonomy`, `destination`, `priceMin/Max`, `availableOnly` | ≥ 93% | Loại thẳng |
 | **Soft** | `starRatingMin` | 51% | Thiếu dữ liệu **không bị loại**, chỉ xếp sau |
+| **Hard** suy từ câu (05/10, sau cờ, §2.2 QUERY PLAN) | `taxonomy` (F4), `origin` / `destinationCity` tuyến bay (F5), `mustNotAmenities` (F3), `priceMin/priceMax` (F6) | taxonomy 100 % · tuyến 100 % · amenities 99 % property · giá 100 % | Loại thẳng; `mustNot` chỉ loại unit **có ghi nhận** tiện ích, không cam kết "chắc chắn không có" ([C2]); giá null bị loại khi có lọc giá |
+| **Soft** suy từ câu (05/10) | `starRatingMin` (F6) | 70 % property | Unit khai sao thấp hơn bị loại; không khai → giữ, xếp sau |
 
 Response echo `appliedFilters.hard` và `.soft`. Agent **phải đọc** khối này: nếu
 `starRatingMin` nằm trong `soft`, Agent không được nói với người dùng "khách sạn
 này 4 sao" cho một kết quả không khai `starRating`.
+
+Từ 2026-10-05 (contract 1.14.0) `/search` phát `appliedFilters` khi `SEARCH_DEST_FILTER` bật và có hard filter đang áp;
+`hard.destinationSource` = `param` (destination của request) hoặc `query` (địa danh suy ra từ câu, §2.2). Sau fallback
+(`diagnostics.destinationFilter.fallback`) khối `hard` không còn `destination`. Agent đọc `destinationSource = query` để
+biết engine đã khoá điểm đến theo câu, không theo yêu cầu tường minh của người dùng.
+
+Từ 2026-10-05 (contract 1.15.0) `appliedFilters` còn được phát khi bất kỳ hard/soft filter nào đang áp — tham số request
+tường minh (`origin`, `priceMin/priceMax`, `starRatingMin`, `availableOnly`) hoặc filter suy từ câu khi cờ bật — với các khoá
+`taxonomySource`, `origin`, `originSource`, `destinationCity`, `mustNotAmenities`, `priceSource` (hard) và `starRatingMin`,
+`starRatingSource` (soft). `diagnostics.queryPlan` là "parse ra gì", `appliedFilters` là "đã lọc gì".
 
 ### 2.6. Điểm số — và điều bên tiêu thụ không được suy ra
 
@@ -757,6 +806,9 @@ Bốn tiêu chí **20, 21, 22, 23** là quan trọng nhất trong cả danh sác
 | S8 | ~~`EXACT_FILTER_SCORE` cần duyệt lại~~ — **đã chốt 24/09/2026, hướng (b)** | Đổi cam kết `total`/`facets` thành xấp xỉ trên tập ứng viên, khai báo qua `approximate`/`totalExact`/`facetsExact`. `/similar`, `/recommendations` chạy `ANN_CANDIDATE_SCORE`; `/search` chạy `HYBRID_CANDIDATE_SCORE` từ 25/09 (§2.4). |
 | S9 | `lexicalK` / `lexicalCutoff` / `lexicalMinCoverage` của hybrid chưa benchmark | Dùng `10` / `0.50` / `0.6`; đo ở cổng S2 của bench (`docs/spec/bench/arms.md`) trên gold, kèm slice `named_entity`, `no_diacritics`, `out_of_catalog` |
 | S10 | Bảng viết tắt, cụm kiểu đi và ngưỡng sửa chính tả của bước chuẩn hoá chưa benchmark | Dùng bảng trong `domain/search/normalize.py`; đo trên slice `abbrev_typo`, `audience_style` (bench Part 6, cổng S3/S6). Bảng backend là nguồn cho `config/aliases.yaml` của bench |
+| S12 | Từ vựng tiện ích và cue phủ định (`domain/search/amenities.py`, `constraints.py`, F3) chưa benchmark | Dùng bảng trong code; cờ `SEARCH_NEGATION_FILTER` tắt; đo trên gold v4 (slice phủ định) bằng Forbidden@10 và `filter_recall_loss` của bench |
+| S13 | Bảng cue loại sản phẩm + guard thương hiệu (F4) chưa benchmark; bật sẽ đổi số đếm tab của Web | Cờ `SEARCH_TAXONOMY_FILTER` tắt; đo `cross_vertical`, `named_entity` và slice lẫn loại của gold v4; bật cần ý kiến Web |
+| S14 | Mẫu giá/sao và vai trò nơi đi/đến (F5/F6) chưa benchmark | Cờ `SEARCH_ROUTE_FILTER` / `SEARCH_NUMERIC_FILTER` tắt; đo `multi_constraint` và slice chiều bay của gold v4 (direction accuracy); tham số request tường minh vẫn áp theo contract |
 | S11 | Kích thước cache vector truy vấn (10.000), danh sách prewarm (131 câu gold_v1 + head query `app.search_logs` — bảng này chưa có code ghi) và pacing 2.000 câu/phút chưa đo | Dùng mặc định trong `core/config.py`; đo hit/miss bằng `sb latency http` (bench Part 9) trên Cloud; đổi số qua biến môi trường `SEARCH_EMBED_CACHE_*`, `SEARCH_PREWARM_*` |
 
 S5 là phụ thuộc nặng nhất: không duyệt `[P3]` thì tiêu chí nghiệm thu 26 không

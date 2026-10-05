@@ -71,7 +71,8 @@ def app_collection(model: str) -> str:
 
 def build_app_catalog(cfg: SBenchConfig, dataset: str, *, model_version: str = MODEL_VERSION) -> AppCatalog:
     """`Product` cho mọi search unit của dataset (attributes combo gắn thêm như `load_products`), `parent_of` con → cha,
-    `available` / `taxonomy` / `destination` như `CatalogUnits.to_index`. Text lấy từ `load_texts` (T3+R)."""
+    `available` / `taxonomy` / `destination` như `CatalogUnits.to_index`. Text lấy từ `load_texts` (T3+R).
+    `model_version`: của model đang đo (`model_vectors(...)[3]`) — vào `UnitIndex.model_version` và `diagnostics`."""
     UnitIndex, _, Product, _, _ = _backend()
     records = catalog.reload_records(cfg, dataset)
     units, children, _, _ = catalog.group_children(records, cfg.catalog.search_unit_variants)
@@ -90,6 +91,10 @@ def build_app_catalog(cfg: SBenchConfig, dataset: str, *, model_version: str = M
 
     products = [product(by_id[pid]) for pid in ids]
     parent_of = {k["productId"]: pid for pid, kids in children.items() for k in kids}
+    # Thuộc tính lọc Phase A dựng KÈM phòng/chuyến con như `PostgresCatalogReader.load` (giá thấp nhất của con, tiện ích con).
+    from src.backend.app.domain.catalog import UnitAttributes  # sys.path đã có repo root sau `_backend()`
+    children_products = {pid: [Product.from_cdp(k) for k in kids] for pid, kids in children.items()}
+    attrs = UnitAttributes.build(products, children_products)
     tdf, _ = load_texts(cfg, dataset, "T3+R", need=len(ids))
     texts = dict(zip(tdf["product_id"], tdf["text"]))
     lost = [pid for pid in ids if pid not in texts]
@@ -99,7 +104,7 @@ def build_app_catalog(cfg: SBenchConfig, dataset: str, *, model_version: str = M
                       destination=np.array([p.destination for p in products], dtype=object),
                       available=np.array([bool(p.available) for p in products], dtype=bool),
                       recommendable=np.array([bool(p.available) for p in products], dtype=bool),
-                      parent_of=parent_of, model_version=model_version)
+                      parent_of=parent_of, model_version=model_version, attrs=attrs)
     return AppCatalog(index=index, texts={pid: texts[pid] for pid in ids},
                       text_hash={pid: hashlib.sha256(texts[pid].encode("utf-8")).hexdigest() for pid in ids})
 
@@ -188,6 +193,8 @@ def load_collection(cfg: SBenchConfig, cat: AppCatalog, ids: list[str], vecs: An
         client.close()
     if len(meta) != len(ids):
         raise AppAdapterError(f"{collection}: {len(meta)} object sau khi nạp, cần {len(ids)}")
+    # 05/10: ba arm hybrid chạy trong ~25 s đầu sau khi nạp ProductBench_e5_small cho top-10 khác hẳn các arm cùng cấu hình chạy sau
+    # (BM25 còn đang cập nhật inverted index dù vector index đã READY) → chờ thêm cho BM25 ổn định trước khi trả về.
     return len(objects)
 
 
@@ -323,7 +330,16 @@ class BenchQueryEmbedder:
 
 
 APP_DEFAULTS = {"cutoff": 0.62, "candidate_k": 200, "hybrid": True, "normalize": True, "rrf_k": 60, "lexical_k": 10,
-                "lexical_cutoff": 0.50, "min_coverage": 0.6, "lexical_candidate_k": 50}
+                "lexical_cutoff": 0.50, "min_coverage": 0.6, "lexical_candidate_k": 50,
+                # 05/10 (fix/search): F1 lọc điểm đến suy từ câu, F2 bộ ngưỡng câu không dấu — giá trị = production hôm nay (tắt)
+                "dest_filter": False, "dest_filter_fallback": True, "no_diacritics_mode": "off",
+                # 05/10: query plan F3 phủ định tiện ích / F4 loại sản phẩm / F5 chiều bay / F6 giá-sao — mặc định tắt = production
+                "negation_filter": False, "taxonomy_filter": False, "route_filter": False, "numeric_filter": False,
+                "no_diacritics": {"lexical_k": 20, "lexical_cutoff": 0.0, "min_coverage": 0.4, "cutoff": None, "min_tokens": 3}}
+#: khoá bắt buộc trong `app.no_diacritics` của arm yaml
+NO_DIACRITICS_KEYS = ("lexical_k", "lexical_cutoff", "min_coverage", "cutoff", "min_tokens")
+#: bốn cờ query plan (05/10) → kwargs cùng tên của `SearchProducts`
+QUERY_PLAN_KEYS = ("negation_filter", "taxonomy_filter", "route_filter", "numeric_filter")
 
 
 def app_params(arm_app: dict | None) -> dict:
@@ -332,6 +348,11 @@ def app_params(arm_app: dict | None) -> dict:
     missing = [k for k in APP_DEFAULTS if k not in p]
     if missing:
         raise AppAdapterError(f"arm APP thiếu app.{', app.'.join(missing)} (xem arms/APP.*.yaml)")
+    nd = p.get("no_diacritics")
+    if not isinstance(nd, dict) or any(k not in nd for k in NO_DIACRITICS_KEYS):
+        raise AppAdapterError(f"arm APP: app.no_diacritics phải có đủ {NO_DIACRITICS_KEYS}")
+    if p["no_diacritics_mode"] not in ("off", "relax"):
+        raise AppAdapterError(f"arm APP: app.no_diacritics_mode = {p['no_diacritics_mode']!r} (off | relax)")
     return p
 
 
@@ -352,7 +373,13 @@ class AppSearch:
         d = out.get("diagnostics") or {}
         return ids, scores, {"total": out.get("total"), "topScore": out.get("topScore"), "normalizedQuery": d.get("normalizedQuery"),
                              "lexicalCount": d.get("lexicalCount"), "lexicalCandidates": d.get("lexicalCandidates"),
-                             "corrections": d.get("corrections"), "appliedAliases": d.get("appliedAliases"), "party": d.get("party")}
+                             "corrections": d.get("corrections"), "appliedAliases": d.get("appliedAliases"), "party": d.get("party"),
+                             # 05/10: F1 / F2 (contract 1.14.0)
+                             "derivedDestinations": d.get("derivedDestinations"), "destinationFilter": d.get("destinationFilter"),
+                             "queryProfile": d.get("queryProfile"), "appliedFilters": out.get("appliedFilters"),
+                             # 05/10: query plan F3–F6 (diagnostics.queryPlan, contract EngineDiagnostics.queryPlan)
+                             "queryPlan": d.get("queryPlan"),
+                             "cutoff": out.get("cutoff")}
 
 
 @dataclass
@@ -404,9 +431,22 @@ class AppContext:
         hybrid = HybridConfig(rrf_k=int(p["rrf_k"]), lexical_k=int(p["lexical_k"]),
                               lexical_cutoff=min(float(p["lexical_cutoff"]), float(p["cutoff"])),   # như build_recsys
                               min_coverage=float(p["min_coverage"])) if p["hybrid"] else None
+        # F2 (05/10): bộ ngưỡng riêng cho câu không dấu — dựng như main.build_recsys (chỉ khi hybrid và mode relax)
+        nd = p["no_diacritics"]
+        relax = p["no_diacritics_mode"] == "relax"
+        nd_cutoff = float(nd["cutoff"]) if (relax and nd.get("cutoff") is not None) else None
+        no_diacritics = HybridConfig(
+            rrf_k=int(p["rrf_k"]), lexical_k=int(nd["lexical_k"]),
+            lexical_cutoff=min(float(nd["lexical_cutoff"]), nd_cutoff if nd_cutoff is not None else float(p["cutoff"])),
+            min_coverage=float(nd["min_coverage"])) if hybrid and relax else None
         engine = SearchProducts(self.cat.index, vs, BenchQueryEmbedder(embedder), cutoff=float(p["cutoff"]),
                                 candidate_k=int(p["candidate_k"]), lexical=vs if hybrid else None, hybrid=hybrid,
-                                lexical_candidate_k=int(p["lexical_candidate_k"]), normalize=bool(p["normalize"]))
+                                lexical_candidate_k=int(p["lexical_candidate_k"]), normalize=bool(p["normalize"]),
+                                dest_filter=bool(p["dest_filter"]), dest_filter_fallback=bool(p["dest_filter_fallback"]),
+                                no_diacritics=no_diacritics, no_diacritics_cutoff=nd_cutoff,
+                                no_diacritics_min_tokens=int(nd["min_tokens"]),
+                                # 05/10: query plan F3–F6, mỗi cờ một kwarg cùng tên
+                                **{k: bool(p[k]) for k in QUERY_PLAN_KEYS})
         return AppSearch(engine=engine, params=p)
 
 
@@ -419,6 +459,35 @@ def retrieve_app(arm, env, ctx: AppContext, embedder: Any, *, limit: int | None 
     for g in env.gold:
         t0 = perf_counter()
         ids, scores, diag = s.search(g.text, limit=k)
-        out.append(Retrieved(qid=g.qid, top_ids=ids, top_scores=scores, applied_filter=None,
+        out.append(Retrieved(qid=g.qid, top_ids=ids, top_scores=scores, applied_filter=applied_filter_of(diag),
                              latency_ms=(perf_counter() - t0) * 1000.0, extra=diag))
     return out
+
+
+def applied_filter_of(diag: dict) -> dict | None:
+    """Hard filter engine đã áp (`appliedFilters.hard`, 05–05/10) → node filter của bench (`store/filters.py`) để
+    `filter_recall_loss` đếm nhãn liên quan bị filter suy ra loại. Mỗi khoá một node, nhiều khoá → `and`; None khi không lọc.
+
+    - `destination` → `eq destination` (F1) · `taxonomy` → `eq taxonomy` (F4) · `origin` → `eq origin_city` (F5)
+    - `mustNotAmenities` → `not contains_any features` (F3) · `mustNotBrands` → mỗi thương hiệu một `not eq brand` (F3)
+    - `priceMin` / `priceMax` → `gte` / `lte unit_price_min` (F6)
+    - bỏ qua `*Source`, `destinationCity`, `availableOnly` (không phải điều kiện trên items của bench).
+    Tên trường `origin_city` / `features` theo items + `store/filters.py` (block B, 05/10)."""
+    hard = ((diag.get("appliedFilters") or {}).get("hard") or {})
+    nodes: list[dict] = []
+    for key, fld in (("destination", "destination"), ("taxonomy", "taxonomy"), ("origin", "origin_city")):
+        if hard.get(key):
+            nodes.append({"eq": [fld, hard[key]]})
+    must_not = [str(a) for a in (hard.get("mustNotAmenities") or []) if a]
+    if must_not:
+        nodes.append({"not": {"contains_any": ["features", must_not]}})
+    for brand in (hard.get("mustNotBrands") or []):     # brand có thể null → not(eq) giữ cả unit không ghi thương hiệu
+        if brand:
+            nodes.append({"not": {"eq": ["brand", str(brand)]}})
+    if hard.get("priceMin") is not None:
+        nodes.append({"gte": ["unit_price_min", hard["priceMin"]]})
+    if hard.get("priceMax") is not None:
+        nodes.append({"lte": ["unit_price_min", hard["priceMax"]]})
+    if not nodes:
+        return None
+    return nodes[0] if len(nodes) == 1 else {"and": nodes}

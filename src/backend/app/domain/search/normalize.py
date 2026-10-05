@@ -65,6 +65,9 @@ class NormalizedQuery:
     corrections: tuple[tuple[str, str], ...] = ()       # (token gốc, token đã sửa)
     destinations: tuple[str, ...] = ()                  # tên chuẩn xuất hiện trong câu — dành cho bước 2
     party: str | None = None                            # SOLO | COUPLE | FAMILY | FRIENDS | BUSINESS
+    #: (bắt đầu, kết thúc, tên chuẩn) của từng địa danh TRÊN `text` cuối — offset hợp lệ với chuỗi trả về, để parser
+    #: ràng buộc (`constraints.py`) cắt cụm ra khỏi text BM25. `destinations` giữ nguyên (không lặp, theo thứ tự).
+    destination_spans: tuple[tuple[int, int, str], ...] = ()
 
 
 def _spans(text: str) -> list[tuple[int, int, str, str]]:
@@ -120,6 +123,11 @@ def _osa(a: str, b: str) -> int:
             if i > 1 and j > 1 and a[i - 1] == b[j - 2] and a[i - 2] == b[j - 1]:
                 d[i][j] = min(d[i][j], d[i - 2][j - 2] + 1)
     return d[-1][-1]
+
+
+#: Tên công khai cho module khác trong `domain/search` (parser ràng buộc dùng chung cách tách token và khớp cụm).
+spans = _spans
+find_phrases = _find
 
 
 class QueryNormalizer:
@@ -205,4 +213,10 @@ class QueryNormalizer:
         text, party_edits = _apply(text, spans, hits, lambda k: self._party[k][1])
         party = self._party[hits[0][2]][0] if hits else None   # nhắc nhiều kiểu thì lấy kiểu nhắc trước
 
-        return NormalizedQuery(text, tuple(aliases + places + party_edits), tuple(corrections), destinations, party)
+        # Quét gazetteer lần cuối trên text ĐÃ xong để offset địa danh đúng với chuỗi trả về.
+        spans = _spans(text)
+        hits = _find(spans, self._gazetteer.__contains__, self._max_n)
+        destination_spans = tuple((spans[i][0], spans[i + n - 1][1], self._gazetteer[k]) for i, n, k in hits)
+
+        return NormalizedQuery(text, tuple(aliases + places + party_edits), tuple(corrections), destinations, party,
+                               destination_spans)

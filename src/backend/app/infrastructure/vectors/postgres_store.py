@@ -27,7 +27,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from src.backend.app.application.ports import EmbedderPort, UnitIndex, VectorSearchPort
-from src.backend.app.domain.catalog import Product, build_text
+from src.backend.app.domain.catalog import Product, UnitAttributes, build_text
 from src.backend.app.infrastructure.vectors.numpy_search import NumpyVectorSearch
 
 #: Đọc nguyên 13 trường CDP + ba cờ vai trò của view. `attributes` là JSONB nên psycopg trả dict sẵn.
@@ -60,6 +60,7 @@ class CatalogUnits:
     available: np.ndarray
     recommendable: np.ndarray
     parent_of: dict[str, str]
+    attrs: UnitAttributes | None = None   # thuộc tính lọc Phase A, dựng kèm phòng/chuyến con
 
     def to_index(self, model_version: str) -> UnitIndex:
         return UnitIndex(
@@ -70,6 +71,7 @@ class CatalogUnits:
             recommendable=self.recommendable,
             parent_of=self.parent_of,
             model_version=model_version,
+            attrs=self.attrs,
         )
 
 
@@ -160,6 +162,7 @@ class PostgresCatalogReader:
             available=np.array([p.available for p in units]),
             recommendable=np.array([bool(meta[p.product_id]["is_recommendable"]) for p in units]),
             parent_of=parent_of,
+            attrs=UnitAttributes.build(units, children),
         )
 
 

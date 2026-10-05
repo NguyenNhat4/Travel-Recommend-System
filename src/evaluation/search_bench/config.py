@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Literal, Optional
 
 import yaml
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from evaluation.vector_bench.config import read_env_file
 
@@ -19,6 +19,17 @@ from . import paths
 # Khoá được nạp từ .env gốc repo (file đó còn chứa DATABASE_URL, WEAVIATE_URL của app — không được lẫn vào bench).
 ENV_ALLOW = ("COHERE_API_KEY", "AWS_PROFILE", "LLM_PROVIDER")
 ENV_ALLOW_PREFIX = "SBENCH_"
+
+#: Phase A (05/10): tên trường gold v4 mà `metrics.load_gold` đọc → tên nội bộ của `GoldQuery`. Tên cuối của máy gán nhãn chưa
+#: chốt nên ánh xạ nằm trong config (`metrics.gold_fields`); thiếu khoá nào thì dùng tên mặc định ở đây.
+DEFAULT_GOLD_FIELDS: dict[str, str] = {
+    "forbidden_filter": "forbidden_filter",   # AST filter: kết quả KHÔNG được xuất hiện
+    "forbidden": "forbidden",                 # danh sách product_id cấm
+    "origin": "origin",                       # chặng bay kỳ vọng (attributes.originCity)
+    "destination_city": "destination_city",   # (attributes.destinationCity)
+    "expected_parse": "expected_parse",       # {taxonomy, destination, origin, destination_city, must_not, price_max, price_min, star_min}
+    "family": "family",                       # họ câu (chẩn đoán)
+}
 
 
 class _M(BaseModel):
@@ -133,6 +144,12 @@ class Guards(_M):
     zero_result_in_catalog_max: float
     hub_score_max: float
     p95_cache_miss_ms_max: float
+    # Phase A (05/10) — đề xuất, chờ chốt Sprint 2 (xem chú thích trong sbench.yaml); None = chưa có ngưỡng. Chưa có `select()`
+    # nên chưa nơi nào ép các ngưỡng này — chỉ đọc và báo.
+    forbidden_at_10_max: Optional[float] = None
+    direction_accuracy_min: Optional[float] = None
+    filter_pass_min: Optional[float] = None
+    parse_accuracy_min: Optional[float] = None
 
 
 class MetricsConfig(_M):
@@ -146,6 +163,18 @@ class MetricsConfig(_M):
     guards: Guards
     rerank_keep_if_delta_ndcg: float
     hub_random_queries: int
+    # Phase A (05/10): tên trường gold v4 (xem DEFAULT_GOLD_FIELDS) và file forbidden chẩn đoán cho gold_v3 (đường dẫn tương đối
+    # theo thư mục gói search_bench; None = không gắn). Gold có `forbidden_filter` thì gold thắng.
+    gold_fields: dict[str, str] = Field(default_factory=lambda: dict(DEFAULT_GOLD_FIELDS))
+    forbidden_overrides: Optional[str] = "config/forbidden_v3.yaml"
+
+    @field_validator("gold_fields")
+    @classmethod
+    def _gold_fields_known(cls, v: dict[str, str]) -> dict[str, str]:
+        unknown = sorted(set(v) - set(DEFAULT_GOLD_FIELDS))
+        if unknown:
+            raise ValueError(f"metrics.gold_fields: khoá lạ {unknown} (có: {', '.join(DEFAULT_GOLD_FIELDS)})")
+        return {**DEFAULT_GOLD_FIELDS, **v}
 
 
 class DoctorConfig(_M):

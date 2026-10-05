@@ -91,3 +91,15 @@ def test_party_phrases(norm, q, expected, party):
     r = norm(q)
     assert (r.text, r.party) == (expected, party)
     assert norm(r.text).text == r.text
+
+
+def test_destination_spans_point_into_final_text(norm):
+    r = norm("ve may bay SG di DN")
+    assert r.text == "ve may bay TP. Hồ Chí Minh di Đà Nẵng"
+    assert r.destinations == ("TP. Hồ Chí Minh", "Đà Nẵng")
+    assert [name for _, _, name in r.destination_spans] == ["TP. Hồ Chí Minh", "Đà Nẵng"]
+    assert all(r.text[s:e] == name for s, e, name in r.destination_spans)
+    assert norm("khách sạn gần biển").destination_spans == ()
+    # địa danh lặp: `destinations` không lặp, `destination_spans` giữ từng lần xuất hiện
+    twice = norm("Hà Nội đi Đà Nẵng về Hà Nội")
+    assert twice.destinations == ("Hà Nội", "Đà Nẵng") and len(twice.destination_spans) == 3
