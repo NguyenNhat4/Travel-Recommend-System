@@ -6,7 +6,7 @@ Hướng dẫn chạy bộ đánh giá tự động. Dataset duy nhất hiện c
 
 | Dataset | Nội dung | Chạy |
 |---|---|---|
-| `src/evaluation/datasets/agent_test_cases_nhat.yaml` (**mặc định**) | TC-01, TC-02, TC-03, TC-10: lỗi người dùng tái hiện (`src/evaluation/agent/agent-test-cases-nhat.md`), có tiêu chí LLM giám khảo | `.venv/bin/python -m src.evaluation.agent.golden` |
+| `src/evaluation/datasets/agent_test_cases_nhat.yaml` (**mặc định**) | TC-01, TC-02, TC-03, TC-04, TC-10: lỗi người dùng tái hiện (`src/evaluation/agent/agent-test-cases-nhat.md`), có tiêu chí LLM giám khảo | `.venv/bin/python -m src.evaluation.agent.golden` |
 
 Bộ golden cũ (`itinerary_agent_golden.yaml`, case `G-NNN`) đã bị gỡ; muốn xem lại thì lấy từ lịch sử git.
 
