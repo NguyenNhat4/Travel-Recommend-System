@@ -98,6 +98,12 @@ Collection Weaviate: 14–16 collection chính (8–9 text variant, 0–3 độ 
 | **APP.hybrid_nocut** | APP | APP.hybrid | như trên, không cutoff (chỉ hiệu ứng xếp hạng) | không | như trên | ✔ (30/09) |
 | **APP.hybrid_norm** | APP | APP.hybrid | + `QueryNormalizer` của backend (cấu hình production hiện nay) | không | dòng "hybrid + normalize" của M2; contract S10 (abbrev_typo, audience_style) | ✔ (30/09) |
 | **APP.hybrid_norm_nocut** | APP | APP.hybrid_norm | như trên, không cutoff | không | như trên | ✔ (30/09) |
+| **APP.e5s.dense** | APP | E2.e5s | như APP.dense, model e5-small (collection `ProductBench__e5_small`, embedder truy vấn e5-small), cutoff 0,62 giữ nguyên | `ProductBench__e5_small` (vector E2.e5s, hnsw) | Day 5: `/search` production với model đã chốt e5-small | ✔ (05/10) |
+| **APP.e5s.dense_nocut** | APP | APP.e5s.dense | như trên, không cutoff | không | Day 5: `/search` production với model đã chốt e5-small | ✔ (05/10) |
+| **APP.e5s.hybrid** | APP | APP.e5s.dense | như APP.hybrid, model e5-small | không | Day 5: `/search` production với model đã chốt e5-small | ✔ (05/10) |
+| **APP.e5s.hybrid_nocut** | APP | APP.e5s.hybrid | như trên, không cutoff | không | Day 5: `/search` production với model đã chốt e5-small | ✔ (05/10) |
+| **APP.e5s.hybrid_norm** | APP | APP.e5s.hybrid | như APP.hybrid_norm (cấu hình production), model e5-small — nguồn `regression/baseline_v1.json` | không | Day 5: `/search` production với model đã chốt e5-small | ✔ (05/10) |
+| **APP.e5s.hybrid_norm_nocut** | APP | APP.e5s.hybrid_norm | như trên, không cutoff | không | Day 5: `/search` production với model đã chốt e5-small | ✔ (05/10) |
 
 `@<cổng>` = arm được promote ở cổng đó (ví dụ `@E1a` = text base thắng E1a; `@S4` = cách xử lý amenity thắng S4). `arms/*.yaml` ghi đúng tham chiếu này; giá trị thật giải lúc chạy từ `state/promotions.yaml` (spec Part 12) — `sb list-arms --resolved` in ra. Cột **Cổng** là cổng mà arm thuộc về; thứ tự cổng ở §3.
 
@@ -300,6 +306,8 @@ Lịch 10 ngày M2 cần số cho **dense-only / hybrid / hybrid + normalize** �
 | APP.hybrid_norm / APP.hybrid_norm_nocut | `hybrid: true`, `normalize: true` | Cấu hình production hiện nay; Δ so với APP.hybrid trên `abbrev_typo`, `audience_style` = số cho contract S10. **Caveat:** 15 câu gold `abbrev_typo` đã được dùng để viết và test `QueryNormalizer` (`history/2026-09-25-search-chuan-hoa-truy-van.md`) → số slice này là số đo trong mẫu |
 
 Cutoff mốc 0,62 theo contract §2.4 và `.env` (`SEARCH_CUTOFF=0.62`); mặc định trong code là 0,52 (`core/config.py`, đổi ở commit `dbc22c1` không có history) — bench không sửa config production, chỉ báo. `multi_constraint` trên cổng APP báo riêng: `/search` không có filter sao / giá nên arm APP không thể thoả các câu này như pool có filter. Lệnh: `sb app-load` (dựng / kiểm ProductBench), `sb run --arm APP.dense --arm APP.hybrid --arm APP.hybrid_norm …`; `sb run` tự gọi `app-load` khi có arm APP.
+
+**Model khác Cohere (05/10).** Arm APP lấy model từ trường `model`: `cohere-v3` → collection `ProductBench` (như trên); model khác → `ProductBench__<model>` nạp từ `vec_T3+R_<model>.npy` của bench (`modelVersion = <cache_model>:catalog-text-v2`), embedder truy vấn cùng model, số chiều theo vector. `sb app-load --model e5-small` dựng trước. Sáu arm `APP.e5s.*` giữ nguyên khối `app` của bản Cohere, kể cả cutoff 0,62 — với e5 ngưỡng này không lọc gì (cosine 0,85–0,92); sweep cutoff ở `src/evaluation/reports/eval-2026-10-05-search-day5-e5s-app.md` §3. ~60 s đầu sau khi nạp collection, BM25 của Weaviate xếp sai thứ tự (số hybrid Day 4 lệch vì vậy); từ 05/10 `load_collection` chờ thêm `wait_bm25_settled` (kết quả BM25 câu thăm dò đổi rồi đứng yên, tối đa 90 s).
 
 ---
 

@@ -149,6 +149,12 @@ stages:                           # Part 12 (cấu trúc cổng ở config/stage
   default_model: cohere-v3        # quyết định team 23/09; cổng E2 không tự đổi model
 
 regression:                       # Part 13
+  baseline_file: regression/baseline_v1.json   # Day 5 bản gọn (`sb regress`), tương đối theo thư mục gói search_bench
+  regress_v1:                     # Day 5 bản gọn (plan Day 4–5 §2.3 việc 5): FAIL khi tụt quá ngưỡng, không cần p
+    metrics: [ndcg@10, recall@10]
+    max_drop_overall: 1.0         # điểm (×100) trên tập câu chung
+    max_drop_slice: 3.0
+    worst_n: 10                   # số câu tụt nhiều nhất in kèm
   max_drop_ndcg: 2.0              # điểm nDCG@10 overall, kèm p < 0.05
   max_slice_drop: 3.0
   p_max: 0.05

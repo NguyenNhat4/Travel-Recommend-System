@@ -174,7 +174,7 @@ Không tách cột nên câu hỏi là "khoá này truy vấn bằng gì": cột
 | `originCity`, `destinationCity`, `originDestination`, `destinationAirportName`, `originLatitude`, `originLongitude`, `airline`, `flightNumber`, `priceObservedAt` | đọc JSONB; thêm index `originDestination` khi có filter cặp điểm đến | |
 | `hotelName` | không dùng | = `name` của cha |
 | *mới:* `nights`, `priceBasis`, `minPax` | đọc JSONB | khoá cấp combo do loader gán; `priceBasis` mặc định `per_package`, `per_person` khi text nói giá theo khách |
-| *mới:* `availability` {from, days, calendar}, `sourceAvailableFrom/To` | đọc JSONB ở hộp đặt | lịch kín/trống 30 ngày, chuỗi 1/0 đọc-only; ký tự i = ngày from + i. Vinpearl dùng lịch thật khi đã hỏi ≥ 26/30 ngày (`pricesByDateQueried`), dữ liệu thưa fallback sang lịch mô phỏng. `available_from/to` = cửa sổ `[as_of, as_of+29]` cắt với khoảng của nguồn (giữ nguồn ở `sourceAvailableFrom/To`); loader `--as-of`, chạy lại trước demo |
+| *mới:* `availability` {from, days, calendar}, `sourceAvailableFrom/To` | đọc JSONB ở hộp đặt | lịch kín/trống 30 ngày, chuỗi 1/0 đọc-only; ký tự i = ngày from + i. Vinpearl dùng lịch thật khi đã hỏi ≥ 26/30 ngày (`pricesByDateQueried`), dữ liệu thưa thì mở đủ 30 đêm, trừ ngày đã hỏi và hết phòng. `available_from/to` = cửa sổ `[as_of, as_of+29]` cắt với khoảng của nguồn, riêng hạng phòng lấy nguyên cửa sổ, không cắt theo ngày nguồn (chốt 02/10/2026) (giữ nguồn ở `sourceAvailableFrom/To`); loader `--as-of`, chạy lại trước demo |
 | *mới:* `departureAt`, `arrivalAt`, `checkInTime`, `checkOutTime` | đọc JSONB | giờ cố định — không nằm trong `available_from/to` |
 | *thành phần combo* | `catalog.combo_items` | chưa có trong attributes — việc mở #1 |
 

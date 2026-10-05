@@ -484,17 +484,23 @@ def run(c: typer.Context,
               f"dataset {ctx.dataset} · {env.n_items} item", highlight=False)
     if env.gold_version is None:
         con.print("  cảnh báo: gold chưa khớp tag gold_v* — kết quả không được trích dẫn hay promote (spec §1.5)", style="yellow")
-    app_ctx = None
-    if any(a.engine == "app" for a in loaded):
-        from .app_adapter import PRODUCT_BENCH, AppAdapterError, AppContext
+    app_ctxs: dict = {}                                          # model bench → AppContext (mỗi model một collection)
+    for a in loaded:
+        m_app = model or a.model
+        if a.engine != "app" or m_app in app_ctxs:
+            continue
+        from .app_adapter import AppAdapterError, AppContext
         try:
-            app_ctx = AppContext.open(cfg, ctx.dataset)          # dựng UnitIndex + nạp ProductBench nếu thiếu (0 Cohere)
+            app_ctxs[m_app] = AppContext.open(cfg, ctx.dataset, model=m_app)   # UnitIndex + nạp collection nếu thiếu (0 API)
         except (AppAdapterError, CatalogError) as e:
-            _fail(f"cổng APP: {e}", 2)
-        con.print(f"  cổng APP: SearchProducts thật · collection {PRODUCT_BENCH} ({len(app_ctx.cat.texts)} unit, hnsw)", highlight=False)
+            _fail(f"cổng APP ({m_app}): {e}", 2)
+        ac = app_ctxs[m_app]
+        con.print(f"  cổng APP: SearchProducts thật · collection {ac.collection} ({len(ac.cat.texts)} unit, hnsw, "
+                  f"{ac.cache_model}, {ac.dimension} chiều)", highlight=False)
     with _store(cfg) as st:
         for a in loaded:
             m = model or a.model
+            app_ctx = app_ctxs.get(m) if a.engine == "app" else None
             try:
                 if a.engine == "app":
                     logical, phys = f"app:{app_ctx.collection}", app_ctx.collection
@@ -512,10 +518,9 @@ def run(c: typer.Context,
                     con.print(f"[dim]{a.id}: đã có kết quả cùng cấu hình + gold_version trong run này — bỏ qua (--force để chạy lại)[/]")
                     continue
 
-            def _emb(arm, _m=m, _phys=phys, _app=(a.engine == "app")):
+            def _emb(arm, _m=m, _phys=phys, _app_ctx=app_ctx):
                 emb = make_embedder(cfg, _m, embedding_type=arm.embedding_types, preflight=False)
-                from .app_adapter import MODEL_VERSION
-                want = MODEL_VERSION.split(":")[0] if _app else st.description(_phys).get("cache_model")
+                want = _app_ctx.cache_model if _app_ctx is not None else st.description(_phys).get("cache_model")
                 if emb.name != want:
                     emb.close()
                     raise StoreError(f"collection {_phys} nạp vector của {want}, query đang embed bằng {emb.name}")
@@ -554,8 +559,8 @@ def run(c: typer.Context,
             if results["needs_labels"]:
                 con.print("  → `sb gold holes --arms …` → gán → `holes import` → tag → `sb rescore` (Part 11)", style="yellow")
             con.print(f"  → {R.arm_dir(run_id, a.id, create=False)}", style="dim", highlight=False)
-    if app_ctx is not None:
-        app_ctx.close()
+    for ac in app_ctxs.values():
+        ac.close()
 
 
 @app.command()
@@ -628,17 +633,20 @@ def sanity(c: typer.Context,
 
 
 @app.command("app-load")
-def app_load(c: typer.Context, recreate: bool = typer.Option(False, "--recreate", help="xoá và nạp lại ProductBench")):
+def app_load(c: typer.Context, recreate: bool = typer.Option(False, "--recreate", help="xoá và nạp lại collection"),
+             model: str = typer.Option("cohere-v3", "--model", help="model bench của vector (cohere-v3 → ProductBench; "
+                                                                    "model khác → ProductBench__<model>)")):
     """Cổng APP: dựng collection `ProductBench` (hình dạng production: WeaviateClient của backend, hnsw, nameAscii /
-    searchTextAscii) trên Weaviate của bench và nạp vector B0 đã embed (`vec_T3+R_cohere-v3.npy`, 0 Cohere). Đủ và đúng
-    textHash thì không làm gì. `sb run --arm APP.*` tự gọi bước này."""
-    from .app_adapter import PRODUCT_BENCH, AppAdapterError, build_app_catalog, load_product_bench
+    searchTextAscii) trên Weaviate của bench và nạp vector document đã embed (`vec_T3+R_<model>.npy`, 0 lượt gọi API).
+    Đủ và đúng textHash thì không làm gì. `sb run --arm APP.*` tự gọi bước này."""
+    from .app_adapter import AppAdapterError, app_collection, build_app_catalog, load_product_bench, model_vectors
     from .catalog import CatalogError
     ctx = _ctx(c)
     cfg = ctx.cfg()
+    PRODUCT_BENCH = app_collection(model)
     try:
-        cat = build_app_catalog(cfg, ctx.dataset)
-        s = load_product_bench(cfg, ctx.dataset, cat, recreate=recreate)
+        cat = build_app_catalog(cfg, ctx.dataset, model_version=model_vectors(ctx.dataset, model)[3])
+        s = load_product_bench(cfg, ctx.dataset, cat, collection=PRODUCT_BENCH, recreate=recreate, model=model)
     except (AppAdapterError, CatalogError) as e:
         _fail(str(e), 2)
     except Exception as e:  # noqa: BLE001 — lỗi Weaviate / vector
@@ -723,6 +731,92 @@ def compare(c: typer.Context, arm_a: str = typer.Argument(..., help="arm mốc (
         con.print(f"  cảnh báo: {', '.join(low)} chưa đạt judged@{k} (NEEDS_LABELS) — đọc condensed cùng coverage", style="yellow")
     if condensed:
         con.print("  condensed chỉ chấm kết quả đã có nhãn; đọc cùng full judged và retained ratio ở trên", style="yellow")
+
+
+# ------------------------------------------------------------------ Day 5: regression gọn (regress.py)
+regress_app = typer.Typer(no_args_is_help=True, help="Day 5 (bản gọn của Part 13): `baseline` ghi ảnh chụp metric từng câu của "
+                                                     "một arm; `check` so lượt chạy mới với ảnh chụp đó")
+app.add_typer(regress_app, name="regress")
+
+
+def _split_qids(gold_version: str, which: Optional[str]) -> Optional[set]:
+    if which in (None, "all"):
+        return None
+    from . import devtest as DT
+    if which not in DT.SPLITS:
+        raise DT.DevTestError(f"--split phải là dev | test | all, nhận {which!r}")
+    data = DT.load(gold_version)
+    return {q for q, s_ in data["assignment"].items() if s_ == which}
+
+
+@regress_app.command("baseline")
+def regress_baseline(c: typer.Context,
+                     arm: str = typer.Option(..., "--arm", help="arm làm mốc, vd APP.e5s.hybrid_norm"),
+                     note: str = typer.Option(..., "--note", help="vì sao đặt mốc này (trỏ entry history)"),
+                     gold_version: Optional[str] = typer.Option(None, "--gold", help="gold_vN; mặc định bản mới nhất của arm"),
+                     force: bool = typer.Option(False, "--force", help="ghi đè baseline đã có (đổi mốc có chủ đích)")):
+    """Ghi `regression/baseline_v1.json` từ kết quả arm trong run (--run-id; mặc định run mới nhất): metric overall,
+    theo slice và từng câu + top_ids, gold_version, sha catalog, commit. Mã thoát: 0 · 2 thiếu kết quả / đã có baseline."""
+    from . import regress as RG, runner as R
+    from .catalog import read_stats
+    ctx = _ctx(c)
+    cfg = ctx.cfg()
+    try:
+        run_id = _run_id_or_latest(ctx)
+        res, rows, _ = R.read_results_at(run_id, arm, gold_version)
+        th = RG.Thresholds.from_cfg(cfg)
+        data = RG.make_baseline(res, rows, th, items_sha256=read_stats(ctx.dataset)["items_sha256"], note=note)
+        out = RG.write_baseline(data, RG.baseline_path(cfg), force=force)
+    except (R.RunnerError, RG.RegressError) as e:
+        _fail(str(e), 2)
+    o = data["overall"]
+    typer.echo(f"{out}: {arm} · run {run_id} · {data['gold_version']} · {len(data['per_query'])} câu · "
+               + " · ".join(f"{m} {o[m]:.3f}" for m in data["metrics"]) + ("  (cây làm việc có thay đổi chưa commit)" if data["git_dirty"] else ""))
+
+
+@regress_app.command("check")
+def regress_check(c: typer.Context,
+                  arm: Optional[str] = typer.Option(None, "--arm", help="mặc định arm của baseline"),
+                  split: Optional[str] = typer.Option(None, "--split", help="dev | test | all (mặc định all)"),
+                  out_json: Optional[Path] = typer.Option(None, "--json", help="ghi kết quả JSON ra file")):
+    """So arm trong run (--run-id; mặc định run mới nhất) với baseline_v1 trên tập câu chung: FAIL khi Δ overall < −ngưỡng
+    hoặc một slice < −ngưỡng (điểm ×100, `regression.regress_v1`). Mã thoát: 0 PASS · 1 FAIL · 2 không so được."""
+    import json as _json
+    from . import devtest as DT, regress as RG, runner as R
+    ctx = _ctx(c)
+    cfg = ctx.cfg()
+    try:
+        th = RG.Thresholds.from_cfg(cfg)
+        base = RG.load_baseline(RG.baseline_path(cfg))
+        run_id = _run_id_or_latest(ctx)
+        res, rows, _ = R.read_results_at(run_id, arm or base["arm"], base["gold_version"])
+        rep = RG.check(base, res, rows, th, qids=_split_qids(base["gold_version"], split))
+    except (R.RunnerError, RG.RegressError, DT.DevTestError) as e:
+        _fail(str(e), 2)
+    con = _console()
+    from rich.table import Table
+    t = Table(title=f"regress · run {run_id} vs {base['version']} ({base['arm']} @ {base['run_id']}) · {base['gold_version']} · "
+                    f"split {split or 'all'} · n = {rep['n_queries']}")
+    for col in ("phạm vi", "n", "metric", "baseline", "hiện tại", "Δ điểm", "ngưỡng", ""):
+        t.add_column(col, justify="left" if col in ("phạm vi", "metric") else "right")
+    for ln in rep["lines"]:
+        if ln["scope"] != "overall" and ln["status"] == "ok":
+            continue
+        f = (lambda v: "-" if v is None else f"{v:.3f}")
+        t.add_row(ln["scope"], str(ln["n"]), ln["metric"], f(ln["baseline"]), f(ln["current"]),
+                  "-" if ln["delta"] is None else f"{ln['delta']:+.2f}", f"{ln['limit']:g}", ln["status"])
+    con.print(t)
+    con.print(f"top_ids đổi ở {rep['n_top_ids_changed']}/{rep['n_queries']} câu; slice không in = trong ngưỡng", highlight=False)
+    for w in rep["warnings"]:
+        con.print(f"  cảnh báo: {w}", style="yellow", highlight=False)
+    for d in rep["worst"][:5]:
+        con.print(f"  tụt: {d['qid']} ({d['slice']}) {d['metric']} {d['delta']:+.1f}", highlight=False)
+    if out_json:
+        out_json.write_text(_json.dumps(rep, ensure_ascii=False, indent=1), encoding="utf-8")
+    style = "green" if rep["status"] == "PASS" else "red"
+    con.print(f"[{style}]{rep['status']}[/]" + (f": {'; '.join(rep['failures'])}" if rep["failures"] else ""), highlight=False)
+    if rep["status"] != "PASS":
+        raise typer.Exit(1)
 
 
 # ------------------------------------------------------------------ Part 5 (ngày 2: pool, split)
@@ -1501,6 +1595,30 @@ def gold_check(c: typer.Context,
         _fail(f"gold check đỏ: {len(rep.problems)} lỗi (min_per_slice = {n_min})", 1)
     typer.secho(f"gold check xanh ({sum(rep.n_queries.values())} câu, min_per_slice = {n_min}) — chốt bằng: git tag gold_v1 "
                 "(lần thêm sau: gold_vN+1, spec Part 11)", fg=typer.colors.GREEN)
+
+
+@gold_app.command("devtest")
+def gold_devtest(c: typer.Context,
+                 seed: int = typer.Option(42, "--seed", help="seed xáo trong từng slice"),
+                 gold_p: Optional[Path] = typer.Option(None, "--gold", help="mặc định gold/gold.jsonl (phải khớp tag gold_v*)"),
+                 force: bool = typer.Option(False, "--force", help="ghi đè file phân chia đã có (chia lại có chủ đích)")):
+    """Chia câu active của gold đã tag thành `dev` (chỉnh tham số) / `test` (chỉ báo cáo), phân tầng theo slice →
+    `gold/splits/devtest@<gold_version>.json` (devtest.py; quyết định 05/10: ~65/66, không 100/100). Mã thoát: 0 · 2 lỗi."""
+    from . import devtest as DT, metrics as M, paths, runner as R
+    from .gold_schema import file_sha256
+    gp = gold_p or paths.GOLD_JSONL
+    try:
+        version = R.gold_version_for(gp, allow_untagged=False)
+        if not version or not version.startswith("gold_v"):
+            raise DT.DevTestError(f"{gp} không phải gold đã tag (version {version!r})")
+        gold = M.load_gold(gp)
+        data = DT.build_file(gold, gold_version=version, gold_sha256=file_sha256(gp), seed=seed)
+        out = DT.write(data, force=force)
+    except (DT.DevTestError, R.RunnerError) as e:
+        _fail(str(e), 2)
+    typer.echo(f"{out}: {version} · dev {data['n_dev']} / test {data['n_test']} câu · seed {seed}")
+    for s_, v in data["by_slice"].items():
+        typer.echo(f"  {s_:22} dev {v['dev']:>2} · test {v['test']:>2}")
 
 
 # ------------------------------------------------------------------ nhãn máy (máy gán phần còn lại, người duyệt trong app)

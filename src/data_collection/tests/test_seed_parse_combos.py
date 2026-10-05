@@ -103,6 +103,39 @@ class ParseComboTests(unittest.TestCase):
         self.assertEqual(attrs["minPax"], 2)
         self.assertEqual(attrs["priceBasis"], "per_person")
 
+    def test_trip_flight_hotel_uses_structured_attributes_not_the_name(self):
+        rows = catalog() + [
+            product("route", "Vé máy bay TP. Hồ Chí Minh - Nha Trang", taxonomy="flight", level="route",
+                    originAirports=["SGN"], destinationAirports=["CXR"]),
+            product("h2", "Khách sạn Happy Day Riverside Hotel & Spa", taxonomy="hotel", level="property", ref="trip:hotel:h2"),
+            product("h2r", "Happy Day - Suite Gia Đình", taxonomy="hotel", level="room", parent="h2", roomName="Suite Gia Đình"),
+            product("h3", "Hasa Nha Trang Hotel", taxonomy="hotel", level="property", ref="trip:hotel:h3")]
+        cat = pc.Catalog(rows)
+        url = "https://vn.trip.com/packages/list?adult=2&dCityCode=SGN&aCityCode=CXR&iDate=2026-10-14&oDate=2026-10-16"
+        combo = product("c-trip", "Vé máy bay khứ hồi TP. Hồ Chí Minh - Nha Trang + Phòng Đôi tại Happy Day Riverside Hotel & Spa",
+                        taxonomy="combo", ref="trip:combo:x", comboKind="trip_real_flight_hotel", fromCode="SGN", toCode="CXR",
+                        hotelName="Happy Day Riverside Hotel & Spa", roomType="Phòng Đôi", url=url)
+        flight, hotel = pc.parse_combo(combo, cat)
+        self.assertEqual(flight["label"], "Vé máy bay khứ hồi TP. Hồ Chí Minh - Nha Trang")  # không mất điểm đến ở ' - '
+        self.assertEqual((flight["item_kind"], flight["item_product_id"], flight["quantity"], flight["source"]),
+                         ("flight", "route", 2.0, "api"))
+        self.assertEqual(hotel["label"], "Phòng Đôi tại Happy Day Riverside Hotel & Spa")  # không vỡ ở '&'
+        self.assertEqual((hotel["item_kind"], hotel["quantity"], hotel["unit"]), ("hotel", 2.0, "đêm"))  # 2 đêm từ url
+        self.assertEqual((hotel["item_product_id"], hotel["confidence"]), ("h2", 0.6))  # có property, hạng phòng không khớp
+        near = dict(combo, attributes=dict(combo["attributes"], hotelName="Hạ Na Hotel"))
+        self.assertIsNone(pc.parse_combo(near, cat)[1]["item_product_id"])  # 0,41 với "Hasa": ngưỡng cũ 0,4 sẽ map nhầm, 0,7 thì không
+
+    def test_venue_only_pieces_become_the_venue_entrance_ticket(self):
+        _, items = self.parse("[VinWonders Nha Trang] - Combo Phá Đảo 04 Khu + Ẩm thực")
+        self.assertEqual([(i["item_kind"], i["label"], i["item_product_id"]) for i in items],
+                         [("attraction", "Vé vào cửa VinWonders Nha Trang", "t-bare"), ("meal", "Ẩm thực", None)])
+        _, items = self.parse("[VinWonders Nha Trang] - Combo VinWonders + Túi tote")
+        self.assertEqual([i["item_kind"] for i in items], ["attraction", "other"])
+
+    def test_head_counts_are_not_components(self):
+        _, items = self.parse("[Vinpearl Harbour] - Combo 01 người: Cáp treo 02 chiều + Xe đơn GoKart", venue="Vinpearl Harbour")
+        self.assertNotIn("01 người", [i["label"] for i in items])
+
     def test_every_combo_gets_at_least_one_item(self):
         _, items = self.parse("Combo ưu đãi đặc biệt")
         self.assertGreaterEqual(len(items), 1)

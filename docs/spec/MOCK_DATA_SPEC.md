@@ -27,7 +27,7 @@ Người dùng chốt sáu quyết định (21/09):
 2. **Khách sạn `quantity = 1`** (số phòng, khớp hợp đồng booking). P1 ở **1 đêm** vì `app.booking_items.line_total = unit_price × quantity` (GENERATED) không nhân số đêm.
 3. **Có event `search`** (30% chuyến), `product_id`/`taxonomy`/`event_group_id` NULL và không có câu truy vấn: `cdp.events` không có cột query, `app.search_logs` không seed. Hệ quả đã biết: các dòng này không replay được qua `HttpCdpClient` vì `schemas/cdp-clone.yaml` bắt buộc `searchQuery`.
 4. **Chỉ `purchase` mang `event_group_id`**, giống dữ liệu app ghi thật (`BrowseEvent` không có gid). "3% event bỏ `event_group_id`" vì vậy áp lên purchase.
-5. **Lịch phòng Vinpearl:** tỷ lệ kín = `min(40%, gốc × 1,3)` để mọi phòng nằm trong 25–40%.
+5. **Lịch phòng:** ~~kín 25–40%, Vinpearl `min(40%, gốc × 1,3)`~~ — thay ngày 02/10/2026: hạng phòng không có lịch thật mở đủ 30 đêm và cửa sổ là nguyên `[as_of, as_of + 29]`, không cắt theo ngày nguồn; ngày nguồn đã hỏi và báo hết phòng vẫn là `0`.
 6. **`lifetime_order_count` đúng chữ §4:** chỉ đếm `event_group_id` khác NULL. Vài khách có purchase mất gid (cạnh lộn xộn) nên có 0 đơn nhưng `days_since_last_booking` khác NULL — dữ liệu bẩn có chủ đích.
 
 Diễn giải cho chỗ spec mơ hồ hoặc tự mâu thuẫn:
@@ -47,7 +47,7 @@ Diễn giải cho chỗ spec mơ hồ hoặc tự mâu thuẫn:
 | Chuyến một / nhiều vertical | Một vertical: bốc loại trước (`SINGLE_VERTICAL_WEIGHTS`), rồi điểm đến. Nhiều vertical: luôn có phòng, thêm vé bay (`MULTI_FLIGHT_RATE`) và/hoặc vé (`MULTI_TICKET_RATE`); không có gì thì ép loại có sẵn |
 | Khách new | 0 hoặc 1 chuyến chỉ có product_view (không search), 1–90 ngày trước as_of |
 | Persona | Khuôn cố định: không search, 1 view mỗi chuyến, không add_to_cart ở chuyến cũ (P1 = 12 event, P3 = 6, dưới cap 15 mà `verify.sql` tính cả persona). Persona luôn opt-in, gdpr true, không bị cạnh lộn xộn. P1 lấy phòng Vinpearl Nha Trang phổ biến nhất còn trống đêm as_of + 12 |
-| Lịch phòng | Sinh trực tiếp cho cửa sổ 30 ngày theo `(product_id, as_of)`: số đêm kín mục tiêu rồi xếp cụm 1–4 đêm, giữa hai cụm có ≥ 1 đêm trống. "T6/T7 ×1,5" hiểu là theo từng đêm: cụm chứa T6/T7 được chọn với trọng số ×2 (`ROOM_WEEKEND_CLUSTER_WEIGHT`), đo trên snapshot cho ×1,48–1,49 mỗi đêm. Trạng thái một đêm có thể đổi khi cuộn cửa sổ |
+| Lịch phòng | Từ 02/10/2026: phòng không có lịch thật mở đủ 30 đêm (`"1" × 30`); chỉ ngày nguồn đã hỏi và báo hết phòng là `0`. Lịch mô phỏng kín 25–40% theo cụm (chốt 21/09) đã bỏ |
 | Ngày bay | Ngày trip.com đã liệt kê (`datesSeen`) sớm nhất trong cửa sổ — trùng `sourceAvailableFrom` khi nó nằm trong cửa sổ; không có thì `as_of + crc32(product_id) % 30`. Vé báo giá ngày cố định (`fixedDepartureDate`, gồm khứ hồi): giữ ngày đi thật khi nằm trong cửa sổ, không thì dời như trên (xem §2.1) |
 | Phễu "open 35% → click 8%" | click 8% tính trên delivered, như open |
 | Email Insider | Luôn `<cdp_user_id viết thường>@example.com`, kể cả persona (hợp đồng Insider chỉ yêu cầu khớp `cdpUserId`) |
@@ -56,7 +56,7 @@ Diễn giải cho chỗ spec mơ hồ hoặc tự mâu thuẫn:
 | campaign_id | 12 chiến dịch cách đều từ as_of − 176 tới as_of − 11, id `CMP-yyyymm-NN` với NN là thứ tự trong tháng |
 | Baseline Recall@20 trong report | Ẩn lần đặt cuối của khách có ≥ 2 `event_group_id` **khác NULL**. Đòn bẩy trong phạm vi spec: `MULTI_FLIGHT_RATE`, `MULTI_TICKET_RATE`, `SINGLE_VERTICAL_WEIGHTS` (mục bị ẩn là mục cuối checkout, vé bay / vé tham quan ít sản phẩm nên dễ trúng top-20). Không vặn `TRIPS_PER_STAGE` về phía 1 — làm recall tăng. Tập ẩn chỉ ~270 khách nên chỉ số dao động mạnh giữa các seed; vượt `RECALL_CEILING` thì report ghi **VƯỢT TRẦN** và `seed_histories` in WARNING nhưng không dừng pipeline (DoD #5 đo trên seed demo 42) |
 
-Số đo trên snapshot hiện hành 11.387 dòng, `--seed 42`: 7.145 event (purchase 3.153, product_view 2.179, add_to_cart 1.284, search 529), stage đúng 25/45/20/10, 64% chuyến ≥ 2 vertical, golf 3,2%, chuyến có search 29%, có add_to_cart 41%, Recall@20 = 59,9%. Đợt quét 62 seed trước đó trên snapshot 10.320 dòng cho Recall trung bình 54,0% (sd 3,5 điểm, cao nhất 64,2%), 4/62 seed vượt 60%; event 6.795–7.286. Chưa quét lại toàn bộ 62 seed cho snapshot mới; seed demo 42 vẫn nằm dưới trần 60%.
+Số đo trên snapshot 11.387 dòng, `--as-of 2026-10-02 --seed 42`, `MULTI_TICKET_RATE = 0.35`, lịch phòng mở đủ 30 đêm (đo 02/10/2026): 7.324 event (purchase 3.288, product_view 2.175, add_to_cart 1.332, search 529), stage đúng 25/45/20/10, 64% chuyến ≥ 2 vertical, golf 2,9%, chuyến có search 29%, có add_to_cart 41%, purchase attraction 597 / combo 246, Recall@20 = 59,9%. Quét seed 1–61 cùng snapshot: `MULTI_TICKET_RATE = 0.35` cho Recall trung bình 51,5%, cao nhất 59,9%, 0/61 seed vượt 60%; mức cũ 0.10 cho trung bình 51,4%, cao nhất 60,7%, 1/61 vượt. Đợt quét 62 seed cũ trên snapshot 10.320 dòng (0.10, lịch kín 25–40%): trung bình 54,0%, 4/62 vượt.
 
 ## 1. Đầu vào và bố cục code
 
@@ -106,7 +106,7 @@ Tổng ≈ 450 dòng. `destination` lấy từ danh sách Vinpearl: Nha Trang, P
    Vé báo giá ngày cố định (`fixedDepartureDate: true`, gồm khứ hồi; `docs/prd/data-model.md` §3): giữ ngày đi thật khi nằm trong cửa sổ, kể cả khi `priceValidUntil` đã qua; ngày đi ngoài cửa sổ thì dời như trên, dùng `product_id` nhỏ nhất của hành trình (các hạng vé của cùng hành trình dời cùng ngày), ngày đã có hành trình khác cùng chuyến thì lùi sang ngày kế tiếp. Hai chặng dời cùng số ngày, giữ giờ và `stayDays`; `returnDate` và ngày trong `name`/`description` đổi theo; giá và `priceValidUntil` giữ nguyên, không thêm khoá. Chỉ seed làm vậy: job cào (`fresh_catalog_db.apply_window`) giữ ngày thật và khoá vé hết hạn báo giá.
    Sau khi cắt mà `available_from > available_to` → đặt `available = false`, `available_from = available_to = NULL`.
 2. **Lịch 30 ngày** `attributes.availability = {from: as_of, days: 30, calendar: "…30 ký tự…"}` chỉ cho `level = room` và `taxonomy ∈ {attraction, golf}`:
-   - room: nếu Vinpearl có `pricesByDateQueried` phủ ≥ 85% cửa sổ (ít nhất 26/30 ngày), dùng lịch thật từ `pricesByDate`; ngày đã hỏi có giá = `1`, đã hỏi không có giá = `0`. Dữ liệu hỏi thưa không được coi ngày chưa hỏi là hết phòng mà fallback sang lịch mô phỏng: kín theo cụm 1–4 đêm, tổng 25–40% đêm; thứ Sáu/Bảy xác suất kín ×1.5; `brand = Vinpearl` ×1.3. Ký tự i = ngày `as_of + i`; `1` trống, `0` kín.
+   - room: nếu Vinpearl có `pricesByDateQueried` phủ ≥ 85% cửa sổ (ít nhất 26/30 ngày), dùng lịch thật từ `pricesByDate`; ngày đã hỏi có giá = `1`, đã hỏi không có giá = `0`. Dữ liệu hỏi thưa không được coi ngày chưa hỏi là hết phòng: mở đủ 30 đêm, chỉ ngày đã hỏi mà không có giá là `0` (từ 02/10/2026; trước đó là lịch mô phỏng kín 25–40%). Cửa sổ của hạng phòng là nguyên `[as_of, as_of + 29]`, không cắt theo ngày nguồn. Ký tự i = ngày `as_of + i`; `1` trống, `0` kín.
    - attraction/golf: toàn `1`, trừ blackout: 2–3 ngày ngẫu nhiên cho 15% sản phẩm.
    - flight, property, route, combo: không có khoá này.
    - Job cào mới (`src/data_collection/fresh_catalog_db.py`) áp đúng bước 1–2 cho toàn catalog mỗi lượt, với `as_of` = ngày chạy, thêm hai điểm: phòng có dữ liệu hỏi thưa (ví dụ Trip.com 3 ngày mẫu) dùng lịch mô phỏng nhưng các ngày đã hỏi nằm trong cửa sổ ghi theo kết quả thật (có giá = `1`, hết phòng = `0`); dòng `available = false` (hết bán, giá quá hạn, ngoài cửa sổ) có lịch toàn `0`.
@@ -120,6 +120,19 @@ Idempotent: `INSERT … ON CONFLICT (product_id) DO UPDATE` toàn bộ cột.
 ## 3. Bước 2 — `parse_combos.py`
 
 Chạy sau bước 1 cho mọi `taxonomy = combo`. Thuật toán và bảng từ khoá: `docs/DATABASE_SCHEMA.md` §9. Ghi `catalog.combo_items` với `source = 'description_parse'`, `confidence`, `evidence`. Trước khi ghi: `DELETE WHERE combo_product_id = … AND source = 'description_parse'` (giữ `manual`). Map sang `item_product_id` bằng `pg_trgm` (`CREATE EXTENSION IF NOT EXISTS pg_trgm` trong script, không sửa DDL): `similarity(unaccent(label), unaccent(name)) > 0.45` trong cùng `destination`, ưu tiên `brand = Vinpearl`; hotel map về `hotel_room` con có `roomName` khớp, không có thì về property và `confidence = 0.6`.
+
+Combo có cấu trúc trong `attributes` (từ 02/10/2026) thì không tách từ tên, `source = 'api'`:
+- `comboKind = flight_hotel`: bundle Vinpearl.
+- `comboKind = trip_real_flight_hotel`: combo bay + ở của trip.com.
+  - Thành phần vé máy bay: tuyến tìm theo `fromCode`/`toCode`, số khách lấy `adult` trong `url`, nhãn là phần tên trước " + ".
+  - Thành phần khách sạn: nhãn là `<roomType> tại <hotelName>`, số đêm = `oDate − iDate` trong `url`. Chỉ map theo `hotelName` khi `similarity ≥ 0.7`. `roomType` không khớp phòng nào thì gán về property, `confidence = 0.6`.
+  - Lý do: tách theo tên thì cắt mất điểm đến ở " - " và cắt đôi tên khách sạn ở "&" hoặc ",".
+
+Với mọi combo:
+- Mảnh chỉ nêu địa điểm (tên venue, "Phá đảo 04 khu", "trọn vẹn 03 khu") thành vé vào cửa của venue, nếu combo chưa có attraction nào.
+- "N người/khách" không phải thành phần.
+
+Job nạp DB (`fresh_catalog_db.load_into_db`) chép `combo_items_manual.jsonl` của snapshot mặc định vào thư mục lượt cào trước khi parse, để không mất các dòng đã duyệt tay.
 
 Báo cáo: số combo, số hạng mục, tỷ lệ map được theo `item_kind`, số dòng `confidence < 0.8` (hàng đợi soát tay).
 

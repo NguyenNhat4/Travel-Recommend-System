@@ -95,3 +95,86 @@ def test_product_bench_loads_and_dense_nocut_matches_b0(cfg):
     cat = A.build_app_catalog(cfg, "jsonl")
     s = A.load_product_bench(cfg, "jsonl", cat)
     assert s["n"] == len(cat.texts) and s["missing"] == 0 and s["stale"] == 0
+
+
+# ------------------------------------------------------------------ model khác Cohere v3 (05/10, Day 5 Search: e5-small)
+def test_app_collection_keeps_productbench_for_production_model():
+    assert A.app_collection("cohere-v3") == A.PRODUCT_BENCH == "ProductBench"
+    assert A.app_collection("e5-small") == "ProductBench__e5_small"
+
+
+def _fake_read(meta):
+    def read(dataset, variant, model, input_type):
+        assert (variant, input_type) == ("T3+R", "document")
+        return ["a", "b"], np.ones((2, 384), dtype=np.float32), meta
+    return read
+
+
+def test_model_vectors_model_version_from_meta(monkeypatch):
+    monkeypatch.setattr(A.vectors, "read", _fake_read({"cache_model": "intfloat/multilingual-e5-small",
+                                                       "text_builder_version": "catalog-text-v2"}))
+    ids, vecs, meta, mv = A.model_vectors("sample", "e5-small")
+    assert ids == ["a", "b"] and vecs.shape == (2, 384) and mv == "intfloat/multilingual-e5-small:catalog-text-v2"
+
+
+@pytest.mark.parametrize("model, meta, match", [
+    ("e5-small", {"cache_model": "intfloat/multilingual-e5-small", "text_builder_version": "catalog-text-v1"}, "text"),
+    ("e5-small", {"cache_model": "", "text_builder_version": "catalog-text-v2"}, "cache_model"),
+    ("cohere-v3", {"cache_model": "embed-multilingual-v4.0", "text_builder_version": "catalog-text-v2"}, "production"),
+])
+def test_model_vectors_rejects_wrong_vectors(monkeypatch, model, meta, match):
+    monkeypatch.setattr(A.vectors, "read", _fake_read(meta))
+    with pytest.raises(A.AppAdapterError, match=match):
+        A.model_vectors("sample", model)
+
+
+def test_model_vectors_production_keeps_model_version(monkeypatch):
+    monkeypatch.setattr(A.vectors, "read", _fake_read({"cache_model": "embed-multilingual-v3.0",
+                                                       "text_builder_version": "catalog-text-v2"}))
+    assert A.model_vectors("sample", "cohere-v3")[3] == A.MODEL_VERSION
+
+
+# ------------------------------------------------------------------ guard BM25 sau khi nạp (05/10)
+class _FakeBm25Http:
+    """Trả điểm BM25 "cũ" cho `stale` lượt gọi snapshot đầu, sau đó điểm "mới" (như Weaviate cập nhật thống kê độ dài)."""
+
+    def __init__(self, stale: int, n_probes: int = len(A.BM25_PROBES)):
+        self.calls, self.stale, self.n = 0, stale, n_probes
+
+    def post(self, path, json):
+        assert path == "/v1/graphql" and "bm25" in json["query"]
+        snap = self.calls // self.n
+        self.calls += 1
+        score = 1.0 if snap < self.stale else 5.0
+        return SimpleNamespace(raise_for_status=lambda: None,
+                               json=lambda: {"data": {"Get": {"C": [{"productId": "p1", "_additional": {"score": str(score)}}]}}})
+
+
+class _Clock:
+    def __init__(self):
+        self.t = 0.0
+
+    def __call__(self):
+        return self.t
+
+    def sleep(self, s):
+        self.t += s
+
+
+def test_wait_bm25_settled_waits_for_change_then_stability():
+    clock = _Clock()
+    out = A.wait_bm25_settled(_FakeBm25Http(stale=4), "C", poll_s=3, stable_polls=2, sleep=clock.sleep, clock=clock)
+    assert out["changed"] is True and out["waited_s"] == 18.0           # đổi ở lần chụp 5 (t=12), giữ 2 lần → t=18
+
+
+def test_wait_bm25_settled_gives_up_when_nothing_changes():
+    clock = _Clock()
+    out = A.wait_bm25_settled(_FakeBm25Http(stale=10**6), "C", max_wait_s=9, poll_s=3, sleep=clock.sleep, clock=clock)
+    assert out == {"changed": False, "waited_s": 9.0}
+
+
+def test_bm25_snapshot_raises_on_graphql_error():
+    http = SimpleNamespace(post=lambda path, json: SimpleNamespace(raise_for_status=lambda: None,
+                                                                   json=lambda: {"errors": [{"message": "no class"}]}))
+    with pytest.raises(A.AppAdapterError, match="BM25"):
+        A.bm25_snapshot(http, "C")

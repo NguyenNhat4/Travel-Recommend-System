@@ -817,6 +817,13 @@ sb status
 
 ## Part 13 — Regression sau khi chốt
 
+> **Bản gọn đang dùng (Day 5, 05/10 — người dùng chốt làm trước bản đầy đủ dưới đây).** `sb gold devtest [--seed 42]` chia gold đã tag thành
+> dev / test phân tầng theo slice → `gold/splits/devtest@<gold_version>.json` (`devtest.py`; dev để chỉnh tham số, test chỉ để báo cáo).
+> `sb --run-id R regress baseline --arm A --note "…" [--force]` ghi `regression/baseline_v1.json` (metric overall / slice / từng câu + top_ids,
+> gold_version, sha catalog, commit); `sb --run-id R regress check [--arm A] [--split dev|test]` so trên tập câu chung: FAIL (mã 1) khi
+> nDCG@10 hoặc Recall@10 tụt > `max_drop_overall` (1,0) điểm tổng hoặc > `max_drop_slice` (3,0) điểm một slice (`regression.regress_v1`),
+> mã 2 khi khác gold / arm hoặc thiếu baseline. Chưa có: dựng lại collection `__reg_<date>`, canary B0, p-value, INCONCLUSIVE, CI.
+
 **Mục tiêu.** Sau khi ký cổng FINAL, mỗi thay đổi có thể làm tụt chất lượng search (text builder, QU, alias, crawl lại catalog, version Weaviate, model string, gold mới) phải chạy lại luồng đã chọn trên gold và báo **PASS / FAIL / INCONCLUSIVE** trước khi merge.
 
 **Baseline** — `sb regression baseline set --flow <P*> --note "…"`: chỉ chạy được khi cổng FINAL đã promote và working tree sạch. Ghi `regression/baseline.json`: flow id, YAML đã giải đầy đủ, model string, image Weaviate, `sha256` + số search unit của catalog, `gold_version`, git commit, metric overall / by_slice / guard, `top_ids` từng query, `note`, `by`, `at`. Arm **B0** được lưu kèm làm **canary**: cấu hình B0 không đổi, nên nếu B0 lệch thì nguyên nhân là môi trường (catalog, Weaviate, API) chứ không phải thay đổi trong PR.

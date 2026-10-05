@@ -323,7 +323,7 @@ class Previewer:
     lỗi đúng chỗ) ở bước normalize chính thức.
     """
 
-    SOURCE_WORKERS = 2
+    SOURCE_WORKERS = 1 if (os.cpu_count() or 2) <= 2 else 2
 
     STREAM_LABELS = {stream.name: stream.title for stream in graph.STREAMS}
 
@@ -564,6 +564,18 @@ class Previewer:
             say(f'catalog.preview.done groups={",".join(names)} sources={",".join(stems)} rows={rows} exit={code}')
 
 
+# VM 2 vCPU / 4 GB: mỗi Chromium ~0,8–1 GB, hai cái cùng lúc dễ bị OOM-killer. Các bước dùng trình duyệt chạy lần lượt
+# (khoá giữ trong lúc chạy, không giữ khi chờ retry); nguồn HTTP (Vinpearl, Trip vé/điểm tham quan, Agoda API) vẫn song song.
+# Bước có mở Chromium: Vinpearl (vé/tour qua trang có Cloudflare), Trip vé máy bay (báo giá thương gia), booking.com,
+# Trip KS tìm ID (hàm find_hotels, không gắn .step) và giá phòng (price_rooms.step). Agoda dùng API nên không cần khoá.
+BROWSER_STEPS = {'vinpearl', 'trip-flights', 'booking-hotels', 'find_hotels', 'trip-hotels.prices'}
+_browser_lock = threading.Lock()
+
+
+def browser_slot(key: str):
+    return _browser_lock if key in BROWSER_STEPS else contextlib.nullcontext()
+
+
 def crawl_sites(run_dir: Path, destinations: str, groups, parallel: int,
                 previewer: Previewer | None = None, deadline: float | None = None) -> dict[str, int]:
     """Isolate failures per source; only dependent steps are skipped, not an entire site or run."""
@@ -597,7 +609,8 @@ def crawl_sites(run_dir: Path, destinations: str, groups, parallel: int,
                     continue
                 if callable(item):
                     try:
-                        item()
+                        with browser_slot(key):
+                            item()
                         if key in graph.SOURCE_BY_STEP:
                             statuses[key] = 0
                     except StopRequested:
@@ -611,8 +624,11 @@ def crawl_sites(run_dir: Path, destinations: str, groups, parallel: int,
                     with step(key, group=name) as detail:
                         attempt = 0
                         while True:
-                            code = (perr.EXIT_TIMEOUT if limit is not None and time.monotonic() >= limit else
-                                    run_source(run_dir, key, destinations, name, deadline=limit))
+                            with browser_slot(key):
+                                if attempt == 0:  # ngân sách giờ tính từ lúc có slot trình duyệt, không tính lúc chờ
+                                    limit = step_deadline(key, deadline)
+                                code = (perr.EXIT_TIMEOUT if limit is not None and time.monotonic() >= limit else
+                                        run_source(run_dir, key, destinations, name, deadline=limit))
                             kind = perr.classify_exit(code, list(SOURCE_TAIL.get(key, ())))
                             statuses[key] = code
                             detail['exitCode'] = code

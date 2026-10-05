@@ -9,6 +9,7 @@ from __future__ import annotations
 import copy
 import json
 import re
+import shutil
 import sys
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
@@ -302,7 +303,7 @@ def _calendar(kind: str, row: dict, view: dict, views: dict, as_of: date, meta, 
     attrs = row["attributes"]
     if kind == "hotel_room":
         calendar = loader.real_room_calendar(attrs.get("pricesByDate"), attrs.get("pricesByDateQueried"), as_of)
-        if calendar is None:  # dữ liệu hỏi thưa: lịch mô phỏng của seed, cộng các ngày mẫu đã biết
+        if calendar is None:  # dữ liệu hỏi thưa: mở đủ 30 đêm, cộng các ngày đã hỏi (hết phòng thật = 0)
             calendar = _with_observed(meta.room_calendar(view, as_of, views), attrs, as_of)
     else:
         calendar = meta.ticket_calendar(view["productId"], as_of)
@@ -313,7 +314,7 @@ def apply_window(rows: list[dict], as_of: date) -> dict[str, dict]:
     """Cửa sổ đặt chỗ và lịch 30 ngày cho toàn catalog, như seed (DATABASE_SCHEMA.md #13, MOCK_DATA_SPEC.md §2).
 
     available_from/to = khoảng nguồn `attributes.sourceAvailableFrom/To` cắt vào [as_of, as_of + 29]; nguồn không
-    có thì lấy cả cửa sổ. Chuyến bay: from = to = ngày bay (ngày đã thấy trong cửa sổ, không có thì dời vào cửa sổ
+    có thì lấy cả cửa sổ. Hạng phòng luôn lấy cả cửa sổ. Chuyến bay: from = to = ngày bay (ngày đã thấy trong cửa sổ, không có thì dời vào cửa sổ
     theo crc32), giờ bay đổi theo. Tuyến: min/max ngày của các chuyến con. Giao rỗng thì available = false và hai
     ngày = NULL. Không bật lại dòng đang available = false: nguồn còn bán thì lượt cào sau ghi lại.
     Hạng phòng, điểm tham quan, golf có `attributes.availability` phủ đúng cửa sổ (xem `_calendar`).
@@ -332,7 +333,9 @@ def apply_window(rows: list[dict], as_of: date) -> dict[str, dict]:
         kinds[pid] = meta.variant({"taxonomy": row["taxonomy"], "attributes": attrs})
         start, end = (date.fromisoformat(day) for day in
                       loader.clip(attrs.get("sourceAvailableFrom"), attrs.get("sourceAvailableTo"), lo, hi))
-        if kinds[pid] == "flight" and attrs.get("fixedDepartureDate"):
+        if kinds[pid] == "hotel_room":  # nguyên cửa sổ, không cắt theo ngày nguồn (như load_products.convert)
+            start, end = lo, hi
+        elif kinds[pid] == "flight" and attrs.get("fixedDepartureDate"):
             start, end = loader.fixed_flight_window(attrs, lo, hi)
             if start <= end:
                 flight_days[attrs.get("parentProductId") or ""].append(start)
@@ -434,6 +437,19 @@ def write_load_report(path: Path, prepared: list[dict], existing: list[dict], fr
             }, ensure_ascii=False, default=str) + "\n")
 
 
+def bring_manual_combo_mapping(run_dir: Path, source: Path | None = None) -> bool:
+    """Thư mục lượt cào không có mapping combo duyệt tay: chép `combo_items_manual.jsonl` của snapshot mặc định vào để
+    parse_combos ghép vào (dòng `source = manual`). Thiếu bước này thì mỗi lần nạp DB xoá mất các dòng đã duyệt tay."""
+    if source is None:
+        from data_collection.seed.config import DEFAULT_SNAPSHOT_DIR
+        source = DEFAULT_SNAPSHOT_DIR / "combo_items_manual.jsonl"
+    target = run_dir / "combo_items_manual.jsonl"
+    if not source.is_file() or target.exists():
+        return False
+    shutil.copyfile(source, target)
+    return True
+
+
 def load_into_db(products_path: Path, coverage_path: Path | None, url: str,
                  collection_root: Path, report_path: Path | None = None) -> dict[str, int]:
     """COPY into a temporary table then upsert in one transaction, as V-OTA does.
@@ -454,6 +470,7 @@ def load_into_db(products_path: Path, coverage_path: Path | None, url: str,
         if match and match.group(1) not in checked:
             raise ValueError(f"Trip hotel chưa đủ coverage: {item['sourceRef']}")
     # Parse combo relationships with the same implementation as the source repo.
+    bring_manual_combo_mapping(products_path.parent)
     parse_combos.main(["--data-dir", str(products_path.parent)])
     combo_attrs = json.loads((products_path.parent / "combo_attributes.json").read_text(encoding="utf-8"))
     for item in fresh:

@@ -1,0 +1,26 @@
+# Cổng APP với e5-small (05/10, Day 5 Search — model chốt e5-small / 384): giống hệt APP.dense_nocut (cùng khối app,
+# kể cả cutoff Cohere 0,62 — chưa hiệu chỉnh cho e5), chỉ đổi model: collection ProductBench__e5_small, embedder truy vấn e5-small.
+id: APP.e5s.dense_nocut
+stage: APP
+parent: APP.e5s.dense
+description: "e5-small (384) · dense-only production, KHÔNG cutoff (tách hiệu ứng ngưỡng; ≈ B0 trên hnsw)"
+composite: true
+engine: app
+app: {cutoff: -1.0, candidate_k: 200, hybrid: false, normalize: false, rrf_k: 60, lexical_k: 10, lexical_cutoff: 0.50, min_coverage: 0.6, lexical_candidate_k: 50}
+text_variant: T3+R
+model: e5-small
+embedding_types: float
+query_input_type: query
+retrieval: dense
+query_vec: null
+fusion: null
+bm25: {tokenization: word, k1: 1.2, b: 0.75}
+filters: {qu: false, amenity_must: none}
+boost: {amenity_nice_w: 0.0, amenity_must_w: 0.0}
+dedupe_parent: false
+query_preproc: {alias: false, symspell: false}
+cutoff: {max_vector_distance: null}
+csls: null
+rerank: null
+fallback_bm25_only: false
+phase: 1

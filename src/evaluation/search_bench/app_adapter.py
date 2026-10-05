@@ -10,6 +10,9 @@ bench. Mọi thứ đi qua chính lớp `application/search/use_cases.py`; chỉ
   `nameAscii` / `searchTextAscii` fold ở app, uuid5 `vota:product:<id>`), vector lấy từ file `.npy` đã embed cho B0 →
   0 lượt gọi Cohere. Backend chỉ nhận `hnsw` / `hfresh` (không `flat`), nên kết quả có nhiễu ANN nhỏ — ghi caveat.
 - Embedder truy vấn: `CachedEmbedder` của bench (Cohere v3, `input_type=query`, cache sqlite) bọc thành `EmbedderPort`.
+- Model khác Cohere v3 (05/10, Day 5 Search: model chốt e5-small): mỗi model một collection `ProductBench__<model>` nạp từ
+  `vec_T3+R_<model>.npy` của bench, `modelVersion = <cache_model>:<text_builder_version>`, embedder truy vấn đúng model đó.
+  `ProductBench` (không hậu tố) giữ nguyên cho Cohere v3.
 
 Mọi import backend đi qua tiền tố `src.backend.*` (use case tự import như vậy); không trộn với tiền tố `backend.` của
 `textbuild._import_backend`.
@@ -17,6 +20,7 @@ Mọi import backend đi qua tiền tố `src.backend.*` (use case tự import n
 from __future__ import annotations
 
 import hashlib
+import json
 import sys
 from dataclasses import dataclass, field
 from time import perf_counter
@@ -30,6 +34,7 @@ from .textbuild import load_texts
 
 PRODUCT_BENCH = "ProductBench"
 MODEL_VERSION = "embed-multilingual-v3.0:catalog-text-v2"      # như production (main.build_recsys)
+PRODUCTION_MODEL = "cohere-v3"                                  # model bench tương ứng MODEL_VERSION
 
 
 class AppAdapterError(RuntimeError):
@@ -59,7 +64,12 @@ class AppCatalog:
     text_hash: dict[str, str]         # sha256(text) như WeaviateVectorStore / job embed_products
 
 
-def build_app_catalog(cfg: SBenchConfig, dataset: str) -> AppCatalog:
+def app_collection(model: str) -> str:
+    """Collection APP của một model bench: `ProductBench` cho Cohere v3 (như trước), `ProductBench__<model>` cho model khác."""
+    return PRODUCT_BENCH if model == PRODUCTION_MODEL else f"{PRODUCT_BENCH}__{model.replace('-', '_')}"
+
+
+def build_app_catalog(cfg: SBenchConfig, dataset: str, *, model_version: str = MODEL_VERSION) -> AppCatalog:
     """`Product` cho mọi search unit của dataset (attributes combo gắn thêm như `load_products`), `parent_of` con → cha,
     `available` / `taxonomy` / `destination` như `CatalogUnits.to_index`. Text lấy từ `load_texts` (T3+R)."""
     UnitIndex, _, Product, _, _ = _backend()
@@ -89,13 +99,14 @@ def build_app_catalog(cfg: SBenchConfig, dataset: str) -> AppCatalog:
                       destination=np.array([p.destination for p in products], dtype=object),
                       available=np.array([bool(p.available) for p in products], dtype=bool),
                       recommendable=np.array([bool(p.available) for p in products], dtype=bool),
-                      parent_of=parent_of, model_version=MODEL_VERSION)
+                      parent_of=parent_of, model_version=model_version)
     return AppCatalog(index=index, texts={pid: texts[pid] for pid in ids},
                       text_hash={pid: hashlib.sha256(texts[pid].encode("utf-8")).hexdigest() for pid in ids})
 
 
 # ------------------------------------------------------------------ ProductBench: collection hình dạng production
-def product_bench_status(cfg: SBenchConfig, cat: AppCatalog, *, collection: str = PRODUCT_BENCH) -> dict:
+def product_bench_status(cfg: SBenchConfig, cat: AppCatalog, *, collection: str = PRODUCT_BENCH,
+                         model_version: str = MODEL_VERSION) -> dict:
     """{n, matching, missing, stale}: object có đúng textHash / còn thiếu / text cũ so với catalog hiện tại."""
     _, _, _, _, W = _backend()
     client = W.WeaviateClient(cfg.weaviate.url, collection=collection, vector_index_type="hnsw")
@@ -106,34 +117,45 @@ def product_bench_status(cfg: SBenchConfig, cat: AppCatalog, *, collection: str 
             return {"n": 0, "matching": 0, "missing": len(cat.texts), "stale": 0, "exists": False}
     finally:
         client.close()
-    matching = sum(1 for pid, m in meta.items() if cat.text_hash.get(pid) == m.text_hash and m.model_version == MODEL_VERSION)
+    matching = sum(1 for pid, m in meta.items() if cat.text_hash.get(pid) == m.text_hash and m.model_version == model_version)
     return {"n": len(meta), "matching": matching, "missing": len(cat.texts) - matching,
             "stale": sum(1 for pid, m in meta.items() if pid in cat.text_hash and cat.text_hash[pid] != m.text_hash), "exists": True}
 
 
+def model_vectors(dataset: str, model: str) -> tuple[list[str], Any, dict, str]:
+    """(ids, vectors, meta, modelVersion) của vector document T3+R của `model`; Cohere v3 phải đúng model production."""
+    ids, vecs, vmeta = vectors.read(dataset, "T3+R", model, "document")
+    if model == PRODUCTION_MODEL:
+        if vmeta.get("cache_model") != MODEL_VERSION.split(":")[0]:
+            raise AppAdapterError(f"vector B0 do {vmeta.get('cache_model')} sinh — cần {MODEL_VERSION.split(':')[0]} (production)")
+        return ids, vecs, vmeta, MODEL_VERSION
+    if not vmeta.get("cache_model") or vmeta.get("text_builder_version") != MODEL_VERSION.split(":")[1]:
+        raise AppAdapterError(f"vector {model}: cache_model {vmeta.get('cache_model')!r}, text {vmeta.get('text_builder_version')!r} — "
+                              f"cần text {MODEL_VERSION.split(':')[1]} như production")
+    return ids, vecs, vmeta, f"{vmeta['cache_model']}:{vmeta['text_builder_version']}"
+
+
 def load_product_bench(cfg: SBenchConfig, dataset: str, cat: AppCatalog, *, collection: str = PRODUCT_BENCH,
-                       recreate: bool = False) -> dict:
-    """Dựng `collection` bằng chính `WeaviateClient` của backend và nạp vector đã embed cho B0 (`vec_T3+R_cohere-v3.npy`).
-    Đã đủ và đúng textHash thì không làm gì (trừ `recreate`). 0 lượt gọi Cohere."""
+                       recreate: bool = False, model: str = PRODUCTION_MODEL) -> dict:
+    """Dựng `collection` bằng chính `WeaviateClient` của backend và nạp vector document đã embed của `model`
+    (`vec_T3+R_<model>.npy`; mặc định B0 Cohere v3). Đã đủ và đúng textHash thì không làm gì (trừ `recreate`). 0 lượt gọi API."""
     _, _, _, _, W = _backend()
-    status = product_bench_status(cfg, cat, collection=collection)
+    ids, vecs, vmeta, model_version = model_vectors(dataset, model)
+    status = product_bench_status(cfg, cat, collection=collection, model_version=model_version)
     if status["exists"] and not recreate and status["missing"] == 0 and status["stale"] == 0 and status["n"] == len(cat.texts):
         return {**status, "loaded": 0}
-    ids, vecs, vmeta = vectors.read(dataset, "T3+R", "cohere-v3", "document")
-    if vmeta.get("cache_model") != "embed-multilingual-v3.0":
-        raise AppAdapterError(f"vector B0 do {vmeta.get('cache_model')} sinh — cần embed-multilingual-v3.0 (production)")
     if set(ids) != set(cat.texts):
-        raise AppAdapterError(f"vector B0 có {len(ids)} id, catalog có {len(cat.texts)} — chạy lại `sb embed --variant T3+R --model cohere-v3`")
+        raise AppAdapterError(f"vector {model} có {len(ids)} id, catalog có {len(cat.texts)} — chạy lại `sb embed --variant T3+R --model {model}`")
     if vmeta.get("text_sha256") and vmeta.get("text_sha256") != vectors.texts_digest([
             hashlib.sha1(cat.texts[p].encode("utf-8")).hexdigest() for p in ids]):
         pass   # digest của bench dùng text_hash riêng (textbuild.text_hash) — kiểm theo textHash từng object bên dưới
-    n = load_collection(cfg, cat, ids, vecs, collection=collection,
+    n = load_collection(cfg, cat, ids, vecs, collection=collection, model_version=model_version,
                         drop_first=status["exists"] and (recreate or status["stale"] or status["n"] != status["matching"]))
-    return {**product_bench_status(cfg, cat, collection=collection), "loaded": n}
+    return {**product_bench_status(cfg, cat, collection=collection, model_version=model_version), "loaded": n}
 
 
 def load_collection(cfg: SBenchConfig, cat: AppCatalog, ids: list[str], vecs: Any, *, collection: str,
-                    drop_first: bool) -> int:
+                    drop_first: bool, model_version: str = MODEL_VERSION) -> int:
     """Nạp `collection` trên Weaviate bench bằng `WeaviateClient` của backend từ (ids, vectors) cho trước — hình dạng như
     `Product` production (property BM25 fold ở app, uuid5). Trả số object đã nạp; sai số lượng sau nạp → lỗi."""
     _, _, _, _, W = _backend()
@@ -151,7 +173,7 @@ def load_collection(cfg: SBenchConfig, cat: AppCatalog, ids: list[str], vecs: An
         for pid, vec in zip(ids, vecs):
             p = cat.index.units[cat.index.idx[pid]]
             objects.append({"class": collection, "id": client.object_uuid(pid),
-                            "properties": {"productId": pid, "modelVersion": MODEL_VERSION, "textHash": cat.text_hash[pid],
+                            "properties": {"productId": pid, "modelVersion": model_version, "textHash": cat.text_hash[pid],
                                            **W.lexical_properties(p.name, cat.texts[pid])},
                             "vector": np.asarray(vec, dtype=np.float32).tolist()})
         client.insert(objects)
@@ -159,6 +181,9 @@ def load_collection(cfg: SBenchConfig, cat: AppCatalog, ids: list[str], vecs: An
         # Truy vấn ngay sau khi nạp lô lớn (3k object) từng cho thứ tự sai (01/10: dense có filter trả đúng tập nhưng theo
         # uuid trong lúc HNSW còn đang dựng) → chờ shard báo READY và hàng đợi index rỗng rồi mới trả về.
         wait_index_ready(client._client, collection)
+        # 05/10: ~60 s đầu sau khi nạp, BM25 của Weaviate chấm điểm theo thống kê độ dài chưa cập nhật → thứ tự sai ở mọi câu
+        # (lượt hybrid đo ngay sau nạp lệch 79–93/131 câu). Chờ kết quả BM25 của câu thăm dò đổi rồi đứng yên.
+        wait_bm25_settled(client._client, collection)
     finally:
         client.close()
     if len(meta) != len(ids):
@@ -190,6 +215,47 @@ def wait_index_ready(http: Any, collection: str, *, timeout_s: float = 300.0, po
         if time.monotonic() >= deadline:
             raise AppAdapterError(f"{collection}: index chưa sẵn sàng sau {timeout_s:.0f} s (status {status}, queue {queue})")
         sleep(poll_s)
+
+
+BM25_PROBES = ("khach san nha trang", "ve may bay ha noi", "combo phu quoc", "vinwonders", "resort bai bien")
+
+
+def bm25_snapshot(http: Any, collection: str, probes: tuple[str, ...] = BM25_PROBES) -> tuple:
+    """(productId, score) top-10 BM25 (`nameAscii^2`, `searchTextAscii` — như backend) của từng câu thăm dò, qua GraphQL."""
+    out = []
+    for q in probes:
+        gql = ('{ Get { %s(bm25: {query: %s, properties: ["nameAscii^2", "searchTextAscii"]}, limit: 10) '
+               '{ productId _additional { score } } } }') % (collection, json.dumps(q))
+        r = http.post("/v1/graphql", json={"query": gql})
+        r.raise_for_status()
+        body = r.json()
+        if body.get("errors"):
+            raise AppAdapterError(f"{collection}: BM25 thăm dò lỗi {body['errors'][:1]}")
+        hits = (body.get("data") or {}).get("Get", {}).get(collection) or []
+        out.append(tuple((h["productId"], round(float(h["_additional"]["score"]), 4)) for h in hits))
+    return tuple(out)
+
+
+def wait_bm25_settled(http: Any, collection: str, *, max_wait_s: float = 90.0, poll_s: float = 3.0, stable_polls: int = 2,
+                      sleep: Any = None, clock: Any = None) -> dict:
+    """Chờ BM25 của `collection` ổn định sau khi nạp: kết quả câu thăm dò **đổi** so với lần chụp đầu rồi giữ nguyên `stable_polls`
+    lần liền. Không đổi trong `max_wait_s` → coi là đã ổn định từ đầu (collection nạp trước đó, thống kê đã có). Trả {changed, waited_s}."""
+    import time
+    sleep = sleep or time.sleep
+    clock = clock or time.monotonic
+    start = clock()
+    first = last = bm25_snapshot(http, collection)
+    changed, same = False, 0
+    while clock() - start < max_wait_s:
+        sleep(poll_s)
+        cur = bm25_snapshot(http, collection)
+        if cur != first:
+            changed = True
+        same = same + 1 if cur == last else 0
+        last = cur
+        if changed and same >= stable_polls:
+            break
+    return {"changed": changed, "waited_s": round(clock() - start, 1)}
 
 
 # ------------------------------------------------------------------ catalog VM + vector Cloud (sb parity --mode weaviate)
@@ -296,6 +362,9 @@ class AppContext:
     dataset: str
     cat: AppCatalog
     collection: str = PRODUCT_BENCH
+    model: str = PRODUCTION_MODEL       # model bench của vector trong collection (embedder truy vấn phải cùng model)
+    cache_model: str = MODEL_VERSION.split(":")[0]
+    dimension: int = 1024
     weaviate_url: str | None = None      # None → Weaviate của bench (cfg.weaviate); Cloud → URL + api_key (sb parity)
     api_key: str = ""
     grpc_port: int | None = None
@@ -303,11 +372,15 @@ class AppContext:
     _vs: Any = None
 
     @classmethod
-    def open(cls, cfg: SBenchConfig, dataset: str, *, collection: str = PRODUCT_BENCH, ensure_loaded: bool = True) -> "AppContext":
-        cat = build_app_catalog(cfg, dataset)
+    def open(cls, cfg: SBenchConfig, dataset: str, *, model: str = PRODUCTION_MODEL, collection: str | None = None,
+             ensure_loaded: bool = True) -> "AppContext":
+        _, vecs, vmeta, model_version = model_vectors(dataset, model)
+        collection = collection or app_collection(model)
+        cat = build_app_catalog(cfg, dataset, model_version=model_version)
         if ensure_loaded:
-            load_product_bench(cfg, dataset, cat, collection=collection)
-        return cls(cfg=cfg, dataset=dataset, cat=cat, collection=collection)
+            load_product_bench(cfg, dataset, cat, collection=collection, model=model)
+        return cls(cfg=cfg, dataset=dataset, cat=cat, collection=collection, model=model,
+                   cache_model=vmeta["cache_model"], dimension=int(vecs.shape[1]))
 
     def vector_search(self):
         if self._vs is None:
@@ -315,7 +388,7 @@ class AppContext:
             self._client = W.connect_weaviate(self.weaviate_url or self.cfg.weaviate.url, api_key=self.api_key,
                                               grpc_port=self.grpc_port or self.cfg.weaviate.grpc_port,
                                               timeout_seconds=self.cfg.weaviate.query_timeout_s)
-            self._vs = W.WeaviateVectorSearch(self._client, collection=self.collection, dimension=1024)
+            self._vs = W.WeaviateVectorSearch(self._client, collection=self.collection, dimension=self.dimension)
         return self._vs
 
     def close(self) -> None:

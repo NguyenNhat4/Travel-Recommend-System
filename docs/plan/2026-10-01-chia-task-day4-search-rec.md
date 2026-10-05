@@ -279,6 +279,6 @@ Mỗi report phải có commit + run ID + gold/split version/hash + cấu hình 
 
 - [ ] Tên hai người tương ứng S/R. *(R = tqanh123 / Claude, 01/10; S chưa.)*
 - [x] Nguồn đặc tả `cooc_trip`/`star_blend` và tham số còn thiếu của thuật toán; không suy đoán để bỏ blocker. *(01/10 chiều: người dùng bổ sung `docs/spec/bench/recsys-algos-v1.md`; errata E1–E12 đối chiếu code sau M6 ghi trong spec.)*
-- [ ] bge-m3 dùng int8 hay fp32, model revision cụ thể. *(05/10 rà: thực tế đã chạy **fp32**, safetensors, CPU, `BAAI/bge-m3` bản tải mặc định; revision commit chưa ghi vào meta. BGE không vào shortlist nên không chặn việc gì; còn chờ lead xác nhận.)*
+- [x] bge-m3 dùng int8 hay fp32, model revision cụ thể. *(05/10 rà: thực tế đã chạy **fp32**, safetensors, CPU, `BAAI/bge-m3` bản tải mặc định; revision commit chưa ghi vào meta. BGE không vào shortlist nên không chặn việc gì; còn chờ lead xác nhận.)* *05/10: tokenizer/config revision `5617a9f6` (main), trọng số `model.safetensors` revision `9a0624b8`, fp32 (`eval-2026-10-05-search-day5-e5s-app.md` §12).*
 - [x] Kích thước split dev/test hợp lệ nếu làm S8 (131 câu không đủ 100/100). *(05/10 người dùng chốt: chia đôi ~65/66, phân tầng theo slice, seed cố định, file riêng không sửa `gold.jsonl`; chưa chạy.)*
 - [ ] Owner xử lý `/search` cloud và thời điểm bàn giao cho người đo gate P. *(05/10 rà: vẫn chưa có owner. Nguyên nhân đã đo 01/10: Weaviate Cloud `eu-central-1` khác vùng VM, mask 3.146 id mỗi lượt, dense và BM25 nối tiếp — `eval-2026-10-01-search-cloud-latency.md`.)*
