@@ -328,12 +328,53 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(clients.calls, [])
         self.assertEqual([e['node'] for e in first['events']], ['intake', 'classify', 'extract', 'clarify', 'finalize'])
 
-        # Người dùng trả lời không nêu gì: hội thoại nhớ đã hỏi nên không hỏi lại mà lập lịch luôn.
+        # Người dùng trả lời không nêu gì: không hỏi lại bằng câu chữ mà đưa form điền sẵn (AC-AGT-01).
         second = await self.run_graph(ScriptedLlm(extraction=Extraction()), clients,
                                       state={'conversation_id': first['conversation_id']}, store=store, owner='one')
-        self.assertEqual(second['response']['status'], 'COMPLETED')
-        self.assertIsNone(second['intent']['startDate'])
+        self.assertEqual(second['response']['status'], 'NEEDS_CLARIFICATION')
+        self.assertIn('clarificationForm', second['response'])
+        self.assertEqual(clients.calls, [])
+
+        # Bỏ qua form mà vẫn không nêu gì: form chỉ hiện một lần, lập lịch với các trường còn trống.
+        third = await self.run_graph(ScriptedLlm(extraction=Extraction()), clients,
+                                     state={'conversation_id': first['conversation_id']}, store=store, owner='one')
+        self.assertEqual(third['response']['status'], 'COMPLETED')
+        self.assertIsNone(third['intent']['startDate'])
         self.assertEqual(clients.calls[0], 'search')
+
+    async def test_dont_know_after_the_trip_details_question_shows_the_prefilled_form(self):
+        # Trace thật 05/10 (LangSmith nhat-10-1, conversation 9841548a): "Đi Đà Nẵng" → "3 ngày" → "không biết"
+        # từng lập lịch ngay với ngày đi, số người, ngân sách trống thay vì đưa form gợi ý.
+        store = InMemoryConversationStore()
+        clients = Clients(products=[product(destination='Đà Nẵng')], destinations=['Hà Nội', 'Đà Nẵng'])
+
+        async def turn(query, extraction, **state):
+            return await self.run_graph(ScriptedLlm(extraction=extraction), clients, store=store, owner='one',
+                                        state={'query': query, **state})
+
+        first = await turn('Đi Đà Nẵng', Extraction(patch={'destination': 'Đà Nẵng'}), start_date_asked=False)
+        self.assertEqual(first['response']['status'], 'NEEDS_CLARIFICATION')
+        self.assertEqual(first['response']['missingFields'], ['days'])
+        self.assertNotIn('clarificationForm', first['response'])
+        cid = first['conversation_id']
+
+        second = await turn('3 ngày', Extraction(patch={'days': 3}), conversation_id=cid)
+        self.assertEqual(second['response']['status'], 'NEEDS_CLARIFICATION')
+        self.assertEqual(second['response']['missingFields'], ['startDate', 'party', 'budget'])
+        self.assertNotIn('clarificationForm', second['response'])
+
+        # Extraction thô của LLM ở lượt này: patch rỗng, không đánh dấu chưa chốt ngày.
+        third = await turn('không biết', Extraction(constraints={'exclude_products': [], 'clear_fields': []}),
+                           conversation_id=cid)
+        response = third['response']
+        self.assertEqual(response['status'], 'NEEDS_CLARIFICATION')
+        self.assertEqual(response['missingFields'], ['startDate', 'party', 'budget'])
+        form = response['clarificationForm']
+        self.assertEqual(form['defaults']['destination'], 'Đà Nẵng')
+        self.assertEqual(form['defaults']['days'], 3)
+        self.assertIsNotNone(form['defaults']['startDate'])
+        self.assertIsNotNone(form['defaults']['party'])
+        self.assertFalse([call for call in clients.calls if call in ('search', 'rec')])
 
     async def test_trip_details_given_in_the_first_message_are_not_asked(self):
         llm = ScriptedLlm(extraction=Extraction(

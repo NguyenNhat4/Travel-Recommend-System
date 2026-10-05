@@ -179,7 +179,7 @@ stateDiagram-v2
     
     CheckClarification --> AskUser: Lượt đầu thiếu thông tin, hoặc chưa hỏi ngày đi–số người–ngân sách
     CheckClarification --> AskUser: Người dùng muốn đổi thông tin chuyến đi mà chưa nói đổi thành gì
-    AskUser --> SuggestForm: Đã hỏi một lượt mà vẫn thiếu điểm đến/số ngày
+    AskUser --> SuggestForm: Đã hỏi một lượt mà vẫn thiếu điểm đến/số ngày, hoặc không thêm được ngày đi–số người–ngân sách
     SuggestForm --> [*]: Form đã điền sẵn gợi ý; xác nhận gửi ngay câu yêu cầu
     AskUser --> [*]: Chờ phản hồi tiếp theo
     

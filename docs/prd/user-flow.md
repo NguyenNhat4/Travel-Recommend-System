@@ -178,7 +178,7 @@ Toàn màn hình (desktop):
 
 > **Nút đặt trong lịch trình:** khách sạn và vé máy bay chỉ có `[Đặt ngay]`; tour, golf, combo có `[Thêm vào giỏ] [Đặt ngay]` (trên thẻ trong chat, panel chi tiết và ghim bản đồ). `[Thanh toán tất cả]` mở trang thanh toán với mọi mục đặt được của lịch trình.
 
-> **Form gợi ý thông tin chuyến đi:** khi trợ lý đã hỏi một lượt mà vẫn chưa biết điểm đến hoặc số ngày, khung chat hiển thị ngay dưới câu trả lời một form đã điền sẵn giá trị gợi ý (điểm đến — chỉ vài lựa chọn tiêu biểu, số ngày 1–7, ngày khởi hành không trước hôm nay, số người, ngân sách) kèm nút **Xác nhận**. Bấm xác nhận gửi ngay câu yêu cầu hoàn chỉnh dựng từ form như một tin nhắn của người dùng; trợ lý coi đó là yêu cầu đầy đủ và lập lịch, không hỏi thêm. Form xuất hiện trong widget trợ lý.
+> **Form gợi ý thông tin chuyến đi:** khi trợ lý đã hỏi một lượt mà vẫn chưa biết điểm đến hoặc số ngày, hoặc người dùng không trả lời được ngày đi, số người, ngân sách (form này chỉ hiện một lần mỗi hội thoại), khung chat hiển thị ngay dưới câu trả lời một form đã điền sẵn giá trị gợi ý (điểm đến — chỉ vài lựa chọn tiêu biểu, số ngày 1–7, ngày khởi hành không trước hôm nay, số người, ngân sách) kèm nút **Xác nhận**. Bấm xác nhận gửi ngay câu yêu cầu hoàn chỉnh dựng từ form như một tin nhắn của người dùng; trợ lý coi đó là yêu cầu đầy đủ và lập lịch, không hỏi thêm. Form xuất hiện trong widget trợ lý.
 
 ### 4.3. Màn hình Xác Nhận Đơn Hàng & Vòng Lặp Gợi Ý Tiếp Theo (`/booking/:referenceCode`)
 ```

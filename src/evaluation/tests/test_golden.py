@@ -438,7 +438,7 @@ class FormMatchesAnswerTests(unittest.TestCase):
 class AgentTestCasesDatasetTests(unittest.TestCase):
     def test_the_user_reported_cases_load_and_every_placeholder_resolves(self):
         cases = load_dataset(AGENT_CASES_PATH)
-        self.assertEqual([case.id for case in cases], ["TC-01", "TC-02", "TC-03"])
+        self.assertEqual([case.id for case in cases], ["TC-01", "TC-02", "TC-03", "TC-10"])
         for case in cases:
             for turn in case.turns:
                 resolved = json.dumps([resolve_dates(turn.message, date(2026, 10, 2)),

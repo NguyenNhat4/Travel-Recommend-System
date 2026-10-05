@@ -98,3 +98,34 @@
           - Nếu status không phải COMPLETED thì câu trả lời giải thích nguyên nhân không dựng được lịch trình, khớp với facts; không bịa nguyên nhân.
           - Nếu status không phải COMPLETED thì câu trả lời đề xuất bước tiếp theo cụ thể (ví dụ đổi ngày, đổi điều kiện tìm kiếm).
           - Nếu status không phải COMPLETED thì câu trả lời không tuyên bố đã hoàn tất lịch trình.
+
+# TC-10 — Không trả lời được ngày đi, số người, ngân sách thì hiện form (AC-AGT-01, đề xuất 2026-10-05-form-khi-chua-chot-chi-tiet).
+# Lỗi gốc 05/10 (LangSmith nhat-10-1, conversation 9841548a): T3 "không biết" lập lịch ngay với ba trường trống, không có form.
+- id: TC-10
+  category: details_form
+  fr: [FR-AGT-01, FR-AGT-03]
+  turns:
+    - message: Đi Đà Nẵng 3 ngày
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        toolCalled: false
+        intent: {destination: Đà Nẵng, days: 3}
+        missingFieldsInclude: [startDate, party, budget]
+    - message: không biết
+      expect:
+        httpStatus: 200
+        status: [NEEDS_CLARIFICATION]
+        toolCalled: false
+        intent: {destination: Đà Nẵng, days: 3}
+        missingFieldsInclude: [startDate, party, budget]
+        formMatchesAnswer: true
+        judge:
+          - Trợ lý không hỏi lại ngày đi, số người, ngân sách bằng câu chữ y hệt lượt trước; nó mời người dùng chọn hoặc giữ giá trị gợi ý trên form.
+          - Câu trả lời không nói như thể người dùng đã chọn các giá trị gợi ý.
+    # Bỏ qua form mà vẫn không nêu gì: form chỉ hiện một lần, lượt này lập lịch.
+    - message: không biết
+      expect:
+        httpStatus: 200
+        status: [COMPLETED, FALLBACK, NO_RESULTS]
+        intent: {destination: Đà Nẵng, days: 3}
