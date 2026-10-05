@@ -126,6 +126,27 @@ class Settings(BaseSettings):
     search_lexical_k: int = Field(default=10, ge=0)  # chỉ vớt hit BM25 có rank ≤ giá trị này
     search_lexical_cutoff: float = 0.50  # cosine tối thiểu của hit được vớt; luôn ≤ search_cutoff
     search_lexical_min_coverage: float = Field(default=0.6, ge=0, le=1)  # tên phải chứa ≥ 60% token của truy vấn
+    # FR-SRC-03 (05/10): lọc cứng theo địa danh suy ra từ câu (domain/search/destination.py; contract 1.14.0
+    # `diagnostics.destinationFilter`, `appliedFilters`). Mặc định tắt cho tới khi bench xác nhận trên slice dest_type và các slice
+    # guard. `SEARCH_DEST_FILTER_FALLBACK`: F rỗng sau khi lọc → chạy lại không lọc (FR-SRC-04).
+    search_dest_filter: bool = False
+    search_dest_filter_fallback: bool = True
+    # Câu gõ không dấu (slice no_diacritics; contract 1.14.0 `diagnostics.queryProfile`): `relax` nới cổng vớt BM25 và (tuỳ chọn)
+    # cutoff dense cho riêng câu phát hiện không dấu (≥ min_tokens token); `off` = như cũ. Giá trị nới là tạm, chưa qua dev/test.
+    search_no_diacritics_mode: Literal["off", "relax"] = "off"
+    search_no_diacritics_lexical_k: int = Field(default=20, ge=0)
+    search_no_diacritics_lexical_cutoff: float = 0.0
+    search_no_diacritics_min_coverage: float = Field(default=0.4, ge=0, le=1)
+    search_no_diacritics_cutoff: float | None = None   # None = dùng SEARCH_CUTOFF
+    search_no_diacritics_min_tokens: int = Field(default=3, ge=1)
+    # Query plan — kiến trúc Phase A (docs/spec/bench/kien_truc_search_ota_so_do_va_giai_doan.md; FR-SRC-01/03; contract 1.15.0
+    # `diagnostics.queryPlan`): hard constraint suy từ câu, mỗi họ một cờ, mặc định tắt cho tới khi gold v4 xác nhận. Tắt vẫn
+    # parse và khai ở `queryPlan` (bench đo độ chính xác parse). Tham số request tường minh (origin, priceMin/priceMax,
+    # starRatingMin, availableOnly) luôn được áp theo contract, không phụ thuộc cờ.
+    search_negation_filter: bool = False   # F3: "không có / không ghi nhận X" → loại unit CÓ GHI NHẬN tiện ích X ([C2])
+    search_taxonomy_filter: bool = False   # F4: câu nêu đúng một loại sản phẩm → lọc taxonomy (≥ 2 loại thì không)
+    search_route_filter: bool = False      # F5: câu vé máy bay "từ A đến B" → lọc originCity / destinationCity của tuyến
+    search_numeric_filter: bool = False    # F6: giá ("dưới 2 triệu") hard, sao ("4 sao") soft — suy từ câu
     # Cache vector truy vấn /search (NFR-PERF-03; contract 1.12.0 `diagnostics.embedCache`): LRU trong tiến trình, khoá =
     # câu sau chuẩn hoá + gộp khoảng trắng; sống qua các lần nạp lại catalog vì bọc quanh client Cohere dùng chung.
     search_embed_cache: bool = True

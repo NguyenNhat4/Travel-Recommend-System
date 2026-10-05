@@ -189,6 +189,21 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
     ) if settings.search_hybrid and hasattr(vector_search, "bm25") else None
     logger.info("startup.recsys.search.mode=%s", "HYBRID_CANDIDATE_SCORE" if hybrid else "ANN_CANDIDATE_SCORE")
     logger.info("startup.recsys.search.normalize=%s", settings.search_normalize)
+    # Câu không dấu (contract 1.14.0 `queryProfile`): bộ ngưỡng vớt riêng, chỉ khi hybrid bật và SEARCH_NO_DIACRITICS_MODE=relax.
+    relax = settings.search_no_diacritics_mode == "relax"
+    no_diacritics_cutoff = settings.search_no_diacritics_cutoff if relax else None
+    no_diacritics = HybridConfig(
+        rrf_k=settings.search_rrf_k,
+        lexical_k=settings.search_no_diacritics_lexical_k,
+        lexical_cutoff=min(settings.search_no_diacritics_lexical_cutoff,
+                           no_diacritics_cutoff if no_diacritics_cutoff is not None else settings.search_cutoff),
+        min_coverage=settings.search_no_diacritics_min_coverage,
+    ) if hybrid and relax else None
+    logger.info("startup.recsys.search.dest_filter=%s no_diacritics=%s", settings.search_dest_filter,
+                settings.search_no_diacritics_mode)
+    logger.info("startup.recsys.search.query_plan negation=%s taxonomy=%s route=%s numeric=%s",
+                settings.search_negation_filter, settings.search_taxonomy_filter, settings.search_route_filter,
+                settings.search_numeric_filter)
     return {
         "recsys_embedder": embedder,
         "recsys_vectors": vector_search,
@@ -205,6 +220,15 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
             hybrid=hybrid,
             lexical_candidate_k=settings.search_lexical_candidate_k,
             normalize=settings.search_normalize,
+            dest_filter=settings.search_dest_filter,
+            dest_filter_fallback=settings.search_dest_filter_fallback,
+            no_diacritics=no_diacritics,
+            no_diacritics_cutoff=no_diacritics_cutoff,
+            no_diacritics_min_tokens=settings.search_no_diacritics_min_tokens,
+            negation_filter=settings.search_negation_filter,
+            taxonomy_filter=settings.search_taxonomy_filter,
+            route_filter=settings.search_route_filter,
+            numeric_filter=settings.search_numeric_filter,
         ),
         "similar": SimilarProducts(index, vector_search),
         # GET /products: cùng tập search unit với /search, sắp xếp popular theo lượt mua CDP (backend §4.1).
@@ -637,7 +661,7 @@ settings = get_settings()
 app = FastAPI(
     title=settings.app_name,
     description="Travel recommendation and itinerary API",
-    version="1.12.0",
+    version="1.15.0",
     lifespan=lifespan,
 )
 

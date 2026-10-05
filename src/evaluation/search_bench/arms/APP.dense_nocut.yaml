@@ -7,7 +7,9 @@ parent: APP.dense
 description: "dense-only production, KHÔNG cutoff (tách hiệu ứng ngưỡng; ≈ B0 trên hnsw)"
 composite: true
 engine: app
-app: {cutoff: -1.0, candidate_k: 200, hybrid: false, normalize: false, rrf_k: 60, lexical_k: 10, lexical_cutoff: 0.50, min_coverage: 0.6, lexical_candidate_k: 50}
+app: {cutoff: -1.0, candidate_k: 200, hybrid: false, normalize: false, rrf_k: 60, lexical_k: 10, lexical_cutoff: 0.50, min_coverage: 0.6, lexical_candidate_k: 50, dest_filter: false, dest_filter_fallback: true, no_diacritics_mode: "off",
+      negation_filter: false, taxonomy_filter: false, route_filter: false, numeric_filter: false,
+      no_diacritics: {lexical_k: 20, lexical_cutoff: 0.0, min_coverage: 0.4, cutoff: null, min_tokens: 3}}
 text_variant: T3+R
 model: cohere-v3
 embedding_types: float

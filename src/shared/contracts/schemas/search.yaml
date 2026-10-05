@@ -49,6 +49,12 @@ SearchRequest:
       pattern: \S
     destination:
       type: [string, 'null']
+    origin:
+      type: [string, 'null']
+      description: >-
+        (từ 1.15.0, FR-SRC-03) Thành phố đi của tuyến bay (= attributes.originCity). Chỉ có hiệu lực khi taxonomy = flight
+        hoặc câu hỏi là vé máy bay; ngoài ngữ cảnh đó bị bỏ qua và khai ở diagnostics.queryPlan.ignored. Tham số thắng
+        giá trị suy ra từ câu. Phục vụ Agent, client API và /search?type=flight; trang /flights của Web dùng GET /products.
     taxonomy:
       oneOf:
       - $ref: ../openapi.yaml#/components/schemas/Taxonomy
@@ -113,6 +119,8 @@ SearchRequest:
 
 # [CHỜ DUYỆT: C6] Echo lại filter đã áp, tách cứng và mềm.
 # Agent cần để không tuyên bố với người dùng điều mà dữ liệu không xác nhận.
+# Từ 1.14.0 (2026-10-05) backend phát khối này ở /search khi SEARCH_DEST_FILTER bật và có hard filter đang áp
+# (taxonomy của request, destination của request hoặc suy ra từ câu — `hard.destinationSource` = param | query).
 AppliedFilters:
   type: object
   required:
@@ -122,13 +130,21 @@ AppliedFilters:
     hard:
       type: object
       additionalProperties: true
-      description: Đã loại thẳng. taxonomy, destination, priceMin/Max, availableOnly.
+      description: >-
+        Đã loại thẳng. taxonomy, destination, priceMin/Max, availableOnly. Ở /search từ 1.14.0 có thêm
+        destinationSource (param = tham số request, query = địa danh suy ra từ câu, FR-SRC-03); sau fallback
+        (diagnostics.destinationFilter.fallback) khối hard không còn destination. Từ 1.15.0 (query plan, kiến trúc
+        Phase A): taxonomySource (param | query), origin + originSource + destinationCity (tuyến bay, chỉ câu vé máy bay),
+        mustNotAmenities (khoá tiện ích bị phủ định — loại unit CÓ GHI NHẬN tiện ích; unit không có dữ liệu vẫn qua, [C2]),
+        mustNotBrands ("không phải Vinpearl" — loại unit có ghi brand đó),
+        priceMin/priceMax + priceSource (param | query; giá null bị loại khi có lọc giá), availableOnly.
     soft:
       type: object
       additionalProperties: true
       description: >-
         Đã áp mềm — kết quả CÓ THỂ không thỏa. starRatingMin và mọi thuộc tính
-        phủ dưới 70%.
+        phủ dưới 70%. Từ 1.15.0: starRatingMin + starRatingSource (param | query) — unit KHAI sao thấp hơn bị loại,
+        unit không khai sao được giữ và xếp sau các unit thoả.
 
 # [C4] Dùng chung cho /search, /similar, /recommendations.
 EngineDiagnostics:
@@ -280,6 +296,168 @@ EngineDiagnostics:
       description: >-
         Kiểu đi nhận ra trong câu (đi một mình / cặp đôi, bạn trai, bạn gái / gia đình, có trẻ nhỏ / nhóm bạn /
         công ty, công tác). Mới chỉ để chuẩn hoá chữ và khai báo; chưa lọc hay suy số khách (bước 2).
+    # Lọc cứng điểm đến suy ra từ câu (FR-SRC-03; từ 2026-10-05, contract 1.14.0). Mọi trường tuỳ chọn.
+    derivedDestinations:
+      type: array
+      minItems: 1
+      items:
+        type: string
+      description: >-
+        Địa danh (giá trị catalog) bước chuẩn hoá nhận ra trong câu, theo thứ tự xuất hiện. Có mặt kể cả khi
+        SEARCH_DEST_FILTER tắt (để đo tần suất filter sẽ kích hoạt); vắng khi câu không nêu địa danh hay tắt chuẩn hoá.
+    destinationFilter:
+      type: object
+      required: [source, value]
+      additionalProperties: false
+      description: >-
+        Chỉ có khi SEARCH_DEST_FILTER bật. source = param: dùng destination của request; query: dùng địa danh duy nhất
+        trong câu; none: không lọc theo điểm đến (câu không nêu, hoặc skipped). skipped = multi: câu nêu từ hai nơi
+        (nơi đi + nơi đến, "A hoặc B", thương hiệu chứa địa danh); flight: câu hỏi vé máy bay (destination của tuyến là
+        nơi đến). fallback = dropped_empty: F sau khi lọc theo địa danh suy ra rỗng nên đã chạy lại không lọc (FR-SRC-04);
+        total, facets, results khi đó là của lượt không lọc.
+      properties:
+        source:
+          type: string
+          enum: [param, query, none]
+        value:
+          type: [string, 'null']
+        skipped:
+          type: string
+          enum: [multi, flight]
+        fallback:
+          type: string
+          enum: [dropped_empty]
+    # Hồ sơ câu truy vấn (từ 2026-10-05, contract 1.14.0): chỉ có khi backend đổi ngưỡng cho riêng câu này.
+    queryProfile:
+      type: string
+      enum: [no_diacritics]
+      description: >-
+        no_diacritics: câu gõ không dấu (≥ SEARCH_NO_DIACRITICS_MIN_TOKENS token) và SEARCH_NO_DIACRITICS_MODE=relax →
+        cổng vớt BM25 dùng bộ ngưỡng riêng (lexicalK / lexicalCutoff / lexicalMinCoverage trong diagnostics là giá trị
+        hiệu lực) và `cutoff` của response là cutoff hiệu lực. Vector và khoá cache embed không đổi.
+    # Query plan (kiến trúc Phase A, docs/spec/bench/kien_truc_search_ota_so_do_va_giai_doan.md; từ 2026-10-05, contract 1.15.0):
+    # hard constraint parse từ câu — taxonomy (F4), tuyến bay (F5), phủ định tiện ích (F3), giá/sao (F6). Phát khi bước chuẩn hoá
+    # bật, KỂ CẢ khi mọi cờ SEARCH_*_FILTER tắt (để bench đo độ chính xác parse); khối này khai "parse ra gì và áp gì",
+    # appliedFilters mới là "đã lọc gì". Mọi trường tuỳ chọn; trường vắng = không parse ra.
+    queryPlan:
+      type: object
+      additionalProperties: false
+      properties:
+        taxonomy:
+          type: object
+          additionalProperties: false
+          description: >-
+            source = param: taxonomy của request; query: câu nêu đúng một loại sản phẩm (cờ SEARCH_TAXONOMY_FILTER quyết định
+            có lọc hay chỉ khai); none: không có. skipped = multi: câu nêu từ hai loại (cross-vertical, không lọc); brand: cụm
+            loại nằm trong tên thương hiệu/sản phẩm. candidates: các loại nhận ra, theo thứ tự xuất hiện.
+          properties:
+            value:
+              type: [string, 'null']
+            source:
+              type: string
+              enum: [param, query, none]
+            skipped:
+              type: string
+              enum: [multi, brand]
+            candidates:
+              type: array
+              items:
+                type: string
+        route:
+          type: object
+          additionalProperties: false
+          description: >-
+            Chỉ câu vé máy bay (taxonomy = flight hoặc cụm vé máy bay / chuyến bay / đường bay / chặng bay). origin và
+            destinationCity là giá trị catalog (attributes.originCity / destinationCity). direction = explicit (từ A đến B,
+            A - B, A đi B); destination_only (đến B); origin_only (từ A). skipped = ambiguous: hai địa danh không rõ vai;
+            not_flight: có tham số origin nhưng câu không phải vé máy bay (origin bị bỏ qua).
+          properties:
+            origin:
+              type: [string, 'null']
+            destinationCity:
+              type: [string, 'null']
+            direction:
+              type: [string, 'null']
+              enum: [explicit, destination_only, origin_only, null]
+            source:
+              type: string
+              enum: [param, query, none]
+            skipped:
+              type: string
+              enum: [ambiguous, not_flight]
+        mustNot:
+          type: object
+          additionalProperties: false
+          description: >-
+            Phủ định cứng parse từ câu (không có, không ghi nhận, không gồm, không phải, trừ). amenities = khoá tiện ích
+            (từ vựng domain/search/amenities.py); brands = thương hiệu. Ngữ nghĩa: loại unit có ghi nhận; vắng = không biết.
+          properties:
+            amenities:
+              type: array
+              items:
+                type: string
+            brands:
+              type: array
+              items:
+                type: string
+        softDropped:
+          type: array
+          description: Cụm "không cần / không nhất thiết / không bắt buộc X" — bỏ điều kiện X, không lọc, không xếp hạng theo X.
+          items:
+            type: string
+        unresolved:
+          type: array
+          description: Cụm sau cue phủ định/giá không map được vào từ vựng (để bench đếm lỗ từ vựng); không tạo filter.
+          items:
+            type: string
+        price:
+          type: object
+          additionalProperties: false
+          description: VND. source = param (priceMin/priceMax của request thắng) | query (dưới / không quá / tối đa N triệu).
+          properties:
+            min:
+              type: [integer, 'null']
+            max:
+              type: [integer, 'null']
+            source:
+              type: string
+              enum: [param, query]
+        star:
+          type: object
+          additionalProperties: false
+          description: Soft theo [C6]. source = param (starRatingMin) | query (từ 4 sao, không dưới 4 sao, 4 sao).
+          properties:
+            min:
+              type: [number, 'null']
+            source:
+              type: string
+              enum: [param, query]
+        lexicalText:
+          type: string
+          description: >-
+            Câu đưa vào nhánh BM25 và độ phủ vớt sau khi bỏ các cụm đã thành filter (phủ định, giá/sao, cue loại, địa danh
+            tuyến). Vector dense vẫn dùng câu chuẩn hoá đầy đủ (khoá cache embed không đổi).
+        applied:
+          type: array
+          description: Họ filter suy từ câu THẬT SỰ đã áp vào F (cờ bật và câu có giá trị); rỗng khi mọi cờ tắt.
+          items:
+            type: string
+            enum: [taxonomy, route, mustNot, price, star]
+        revalidatedDrops:
+          type: integer
+          minimum: 0
+          description: Số kết quả bị loại ở bước kiểm lại hard filter sau fusion (kỳ vọng 0; > 0 là lỗi dữ liệu/mask).
+        emptyReason:
+          type: string
+          enum: [taxonomy, route, mustNot, price, destination, param]
+          description: >-
+            F rỗng do họ filter nào (họ đầu tiên làm F rỗng theo thứ tự áp). Filter suy từ câu KHÔNG được nới ngầm (kiến trúc
+            Phase A §6); chỉ điểm đến suy ra có fallback (diagnostics.destinationFilter.fallback, FR-SRC-04).
+        ignored:
+          type: array
+          description: Tham số request bị bỏ qua vì sai ngữ cảnh (ví dụ origin cho câu không phải vé máy bay).
+          items:
+            type: string
 
 SearchFacets:
   type: object
@@ -347,7 +525,8 @@ SearchResponse:
       minimum: 0
       maximum: 1
       description: >-
-        [C3][C4] Ngưỡng đã áp cho nhánh dense. Giá trị tạm 0.62 (PROVISIONAL), benchmark Ngày 3
+        [C3][C4] Ngưỡng đã áp cho nhánh dense **ở câu này** (cutoff hiệu lực: khác cấu hình chung chỉ khi
+        diagnostics.queryProfile có mặt). Giá trị tạm 0.62 (PROVISIONAL), benchmark Ngày 3
         trên 80 cặp query-product gán nhãn cộng 10 truy vấn âm.
         Nguồn sự thật là search.cutoff trong application.yml; frontend đọc lại từ
         trường này, KHÔNG hard-code bản sao. Ở HYBRID_CANDIDATE_SCORE, kết quả vớt từ

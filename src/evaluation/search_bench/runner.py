@@ -11,6 +11,11 @@ model, text_variant, collection, overall, by_slice, n_queries, n_defined, latenc
 Store và embedder được tiêm vào (`retrieve`) như `gold.build_pool`, nên test chạy bằng bản giả không cần Weaviate.
 Cách truy xuất hôm nay: `dense` (có `cutoff.max_vector_distance`, filter của gold khi `filters.qu`), `bm25`; `hybrid` và
 `dense+query_vec` báo `RunnerError` cho tới khi cài (P7).
+
+Phase A (05/10): `load_env` gắn thêm cột RAM `origin_city` / `destination_city` / `features` vào items (không đổi
+`ITEM_SCHEMA` / items.parquet — `items_sha256` đã ghim theo collection Weaviate) cho metric forbidden / direction, và gắn
+`forbidden_filter` chẩn đoán từ `metrics.forbidden_overrides` cho câu gold chưa có. `score_arm` / `rescore_arm` đưa
+`extra` (diagnostics arm APP) vào `evaluate_query` (parse_ok) và `rescore` giữ lại cột `extra`.
 """
 from __future__ import annotations
 
@@ -96,14 +101,62 @@ def gold_version_for(gold_path: Path, *, allow_untagged: bool) -> str | None:
     return ver
 
 
+def _backend_amenity_keys():
+    """`amenity_keys` của backend (`src.backend.app.domain.search.amenities`) — import kiểu `app_adapter._backend()` để bench
+    và backend dùng MỘT từ vựng khoá tiện ích."""
+    import sys
+    root = str(paths.repo_root())
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    try:
+        from src.backend.app.domain.search.amenities import amenity_keys
+    except Exception as e:  # noqa: BLE001
+        raise RunnerError(f"không import được từ vựng tiện ích backend (src.backend.app.domain.search.amenities): "
+                          f"{type(e).__name__}: {e}") from None
+    return amenity_keys
+
+
+def _amenity_strings(a: dict) -> list[str]:
+    raw = a.get("amenities")
+    return [x for x in raw if isinstance(x, str)] if isinstance(raw, (list, tuple)) else []
+
+
+def attach_unit_columns(items: pd.DataFrame, records: list[dict], cfg: SBenchConfig) -> pd.DataFrame:
+    """Cột RAM Phase A trên `items` (index product_id): `origin_city` / `destination_city` từ `attributes` của tuyến bay
+    ("" khi thiếu — như `UnitAttributes` của backend) và `features` = danh sách khoá tiện ích của BACKEND
+    (`amenity_keys`) trên chuỗi tiện ích của unit + phòng/chuyến con. Với `amenity_scope: property_plus_rooms` cột
+    `amenities_raw` đã gộp phòng con nên dùng thẳng; scope khác thì gộp lại từ `records` qua `group_children`."""
+    amenity_keys = _backend_amenity_keys()
+    attrs = {r["productId"]: (r.get("attributes") or {}) for r in records}
+    ids = items["product_id"].tolist()
+
+    def city(pid: str, key: str) -> str:
+        v = attrs.get(pid, {}).get(key)
+        return v if isinstance(v, str) else ""
+
+    items["origin_city"] = [city(pid, "originCity") for pid in ids]
+    items["destination_city"] = [city(pid, "destinationCity") for pid in ids]
+    if cfg.catalog.amenity_scope == "property_plus_rooms":
+        strings = {pid: (list(raw) if raw is not None else []) for pid, raw in zip(ids, items["amenities_raw"])}
+    else:
+        _, children, _, _ = catalog.group_children(records, cfg.catalog.search_unit_variants)
+        strings = {pid: _amenity_strings(attrs.get(pid, {})) + [x for k in children.get(pid, []) for x in _amenity_strings(k.get("attributes") or {})]
+                   for pid in ids}
+    items["features"] = [sorted(amenity_keys(strings[pid])) for pid in ids]
+    return items
+
+
 def load_env(cfg: SBenchConfig, dataset: str, gold_path: Path, *, run_id: str, allow_untagged: bool = False) -> RunEnv:
     if not gold_path.exists():
         raise RunnerError(f"không thấy gold {gold_path} — chạy `sb gold import` trước")
     items = catalog.read_items(dataset).set_index("product_id", drop=False)
+    items = attach_unit_columns(items, catalog.reload_records(cfg, dataset), cfg)
     key_to_id = load_key_index(paths.data_dir(dataset) / paths.AMENITY_VOCAB)
-    gold = M.load_gold(gold_path)
+    gold = M.load_gold(gold_path, gold_fields=cfg.metrics.gold_fields)
     if not gold:
         raise RunnerError(f"{gold_path}: không có câu active nào")
+    if cfg.metrics.forbidden_overrides:   # chẩn đoán cho gold_v3 — chỉ câu gold chưa có forbidden_filter (gold thắng)
+        M.apply_forbidden_overrides(gold, M.load_forbidden_overrides(paths.PKG_DIR / cfg.metrics.forbidden_overrides))
     return RunEnv(cfg=cfg, dataset=dataset, run_id=run_id, gold_path=gold_path,
                   gold_version=gold_version_for(gold_path, allow_untagged=allow_untagged),
                   gold_sha256=file_sha256(gold_path), gold=gold, ctx=M.EvalContext(cfg.metrics, items, key_to_id),
@@ -174,7 +227,8 @@ def score_arm(env: RunEnv, retrieved: list[Retrieved], *, hub_score_max: float |
     rows = []
     for g in env.gold:
         r = by[g.qid]
-        row = M.evaluate_query(g, r.top_ids, env.ctx, top_scores=r.top_scores, applied_filter=r.applied_filter)
+        row = M.evaluate_query(g, r.top_ids, env.ctx, top_scores=r.top_scores, applied_filter=r.applied_filter,
+                               extra=r.extra or None)
         M.add_condensed_metrics(row, g, env.cfg.metrics)
         row["applied_filter"] = json.dumps(r.applied_filter, ensure_ascii=False) if r.applied_filter is not None else None
         row["latency_ms"] = r.latency_ms
@@ -383,6 +437,34 @@ def _rows_from_parquet(p: Path) -> list[dict]:
     return rows
 
 
+def extra_of(row: dict) -> dict | None:
+    """Cột `extra` của per_query (JSON diagnostics arm APP) → dict; None / rỗng / hỏng → None."""
+    v = row.get("extra")
+    if isinstance(v, dict):
+        return v or None
+    if not isinstance(v, str) or not v:
+        return None
+    try:
+        d = json.loads(v)
+    except ValueError:
+        return None
+    return d if isinstance(d, dict) and d else None
+
+
+def rescore_row(g: M.GoldQuery, old: dict, env: RunEnv) -> dict:
+    """Một dòng per_query chấm lại từ dòng cũ: `top_ids`, `applied_filter`, `extra` giữ nguyên, metric tính lại trên gold
+    của `env`. Cột `extra` được giữ (05/10 — trước đây rescore làm rơi diagnostics arm APP)."""
+    applied = json.loads(old["applied_filter"]) if old.get("applied_filter") else None
+    row = M.evaluate_query(g, list(old["top_ids"] or []), env.ctx, top_scores=old.get("top_scores"), applied_filter=applied,
+                           extra=extra_of(old))
+    M.add_condensed_metrics(row, g, env.cfg.metrics)
+    row["applied_filter"] = old.get("applied_filter")
+    row["latency_ms"] = old.get("latency_ms")
+    row["extra"] = old.get("extra") if isinstance(old.get("extra"), str) else (
+        json.dumps(old["extra"], ensure_ascii=False, default=str) if old.get("extra") else None)
+    return row
+
+
 def rescore_arm(env: RunEnv, run_id: str, arm_id: str) -> tuple[dict, list[dict], dict]:
     """Chấm lại từ `top_ids` đã lưu (bản gốc results.json) trên gold của `env` → `results@<gv>.json` +
     `per_query@<gv>.parquet`. Không gọi Weaviate / Cohere. Câu mới thêm vào gold mà run chưa có → bỏ qua và đếm; câu đã
@@ -395,12 +477,7 @@ def rescore_arm(env: RunEnv, run_id: str, arm_id: str) -> tuple[dict, list[dict]
         if r is None:
             missing.append(g.qid)
             continue
-        applied = json.loads(r["applied_filter"]) if r.get("applied_filter") else None
-        row = M.evaluate_query(g, list(r["top_ids"] or []), env.ctx, top_scores=r.get("top_scores"), applied_filter=applied)
-        M.add_condensed_metrics(row, g, env.cfg.metrics)
-        row["applied_filter"] = r.get("applied_filter")
-        row["latency_ms"] = r.get("latency_ms")
-        rows.append(row)
+        rows.append(rescore_row(g, r, env))
     if not rows:
         raise RunnerError(f"{arm_id}: không có câu nào chung giữa run {run_id} và gold {env.gold_version}")
     agg = M.aggregate(rows, env.cfg.metrics, hub_score_max=old["overall"].get("hub_score_max"))

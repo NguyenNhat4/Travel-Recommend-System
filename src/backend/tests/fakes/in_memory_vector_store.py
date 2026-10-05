@@ -11,7 +11,7 @@ from collections import defaultdict
 import numpy as np
 
 from src.backend.app.application.ports import EmbedderPort, UnitIndex, VectorSearchPort
-from src.backend.app.domain.catalog import Product, build_text
+from src.backend.app.domain.catalog import Product, UnitAttributes, build_text
 from src.backend.app.infrastructure.vectors.numpy_search import NumpyVectorSearch
 
 
@@ -51,6 +51,7 @@ class InMemoryVectorStore:
             available=np.array([p.available for p in units]),
             recommendable=np.array([p.is_bookable or any(c.is_bookable and c.available for c in children.get(p.product_id, [])) for p in units]),
             parent_of=parent_of, model_version=f"{self.embedder.name}@{key}",
+            attrs=UnitAttributes.build(units, children),
         )
         # Văn bản BM25 như job index ghi lên Weaviate: tên (trọng số 2) + text đã dựng.
         return index, NumpyVectorSearch([p.product_id for p in units], E,

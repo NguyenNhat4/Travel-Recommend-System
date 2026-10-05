@@ -484,17 +484,21 @@ def run(c: typer.Context,
               f"dataset {ctx.dataset} · {env.n_items} item", highlight=False)
     if env.gold_version is None:
         con.print("  cảnh báo: gold chưa khớp tag gold_v* — kết quả không được trích dẫn hay promote (spec §1.5)", style="yellow")
-    app_ctx = None
+    app_ctxs: dict = {}                                  # 05/10: một AppContext mỗi model (collection riêng theo model)
     if any(a.engine == "app" for a in loaded):
-        from .app_adapter import PRODUCT_BENCH, AppAdapterError, AppContext
-        try:
-            app_ctx = AppContext.open(cfg, ctx.dataset)          # dựng UnitIndex + nạp ProductBench nếu thiếu (0 Cohere)
-        except (AppAdapterError, CatalogError) as e:
-            _fail(f"cổng APP: {e}", 2)
-        con.print(f"  cổng APP: SearchProducts thật · collection {PRODUCT_BENCH} ({len(app_ctx.cat.texts)} unit, hnsw)", highlight=False)
+        from .app_adapter import AppAdapterError, AppContext
+        for am_key in sorted({(model or a.model) for a in loaded if a.engine == "app"}):
+            try:
+                app_ctxs[am_key] = AppContext.open(cfg, ctx.dataset, model=am_key)   # dựng UnitIndex + nạp collection nếu thiếu
+            except (AppAdapterError, CatalogError) as e:
+                _fail(f"cổng APP ({am_key}): {e}", 2)
+            actx = app_ctxs[am_key]
+            con.print(f"  cổng APP: SearchProducts thật · model {am_key} · collection {actx.collection} "
+                      f"({len(actx.cat.texts)} unit, hnsw, {actx.dimension} chiều)", highlight=False)
     with _store(cfg) as st:
         for a in loaded:
             m = model or a.model
+            app_ctx = app_ctxs.get(m) if a.engine == "app" else None
             try:
                 if a.engine == "app":
                     logical, phys = f"app:{app_ctx.collection}", app_ctx.collection
@@ -514,8 +518,8 @@ def run(c: typer.Context,
 
             def _emb(arm, _m=m, _phys=phys, _app=(a.engine == "app")):
                 emb = make_embedder(cfg, _m, embedding_type=arm.embedding_types, preflight=False)
-                from .app_adapter import MODEL_VERSION
-                want = MODEL_VERSION.split(":")[0] if _app else st.description(_phys).get("cache_model")
+                from .app_adapter import app_model
+                want = app_model(cfg, _m).cache_model if _app else st.description(_phys).get("cache_model")
                 if emb.name != want:
                     emb.close()
                     raise StoreError(f"collection {_phys} nạp vector của {want}, query đang embed bằng {emb.name}")
@@ -572,6 +576,7 @@ def sanity(c: typer.Context,
     from .embed import EmbedBatchError, EmbedderUnavailable, make_embedder
     from .metrics import MetricsError, load_gold
     from .store.weaviate_store import StoreError, collection_name
+    from .app_adapter import app_model
     ctx = _ctx(c)
     cfg = ctx.cfg()
     gp = gold_p or paths.GOLD_JSONL
@@ -606,7 +611,7 @@ def sanity(c: typer.Context,
     counts: dict[str, int] = {}
     with _store(cfg) as st:
         for a in loaded:
-            phys = "ProductBench" if a.engine == "app" else collection_name(a.text_variant, a.model, ctx.dataset)[1]
+            phys = app_model(cfg, a.model).collection if a.engine == "app" else collection_name(a.text_variant, a.model, ctx.dataset)[1]
             try:
                 counts[phys] = st.count(phys) if st.exists(phys) else 0
             except (StoreError, *_weaviate_errors()) as e:
@@ -628,24 +633,27 @@ def sanity(c: typer.Context,
 
 
 @app.command("app-load")
-def app_load(c: typer.Context, recreate: bool = typer.Option(False, "--recreate", help="xoá và nạp lại ProductBench")):
-    """Cổng APP: dựng collection `ProductBench` (hình dạng production: WeaviateClient của backend, hnsw, nameAscii /
-    searchTextAscii) trên Weaviate của bench và nạp vector B0 đã embed (`vec_T3+R_cohere-v3.npy`, 0 Cohere). Đủ và đúng
-    textHash thì không làm gì. `sb run --arm APP.*` tự gọi bước này."""
-    from .app_adapter import PRODUCT_BENCH, AppAdapterError, build_app_catalog, load_product_bench
+def app_load(c: typer.Context, recreate: bool = typer.Option(False, "--recreate", help="xoá và nạp lại collection"),
+             model: str = typer.Option("cohere-v3", "--model", help="model của collection: cohere-v3 → ProductBench; khác → ProductBench_<model>")):
+    """Cổng APP: dựng collection hình dạng production (WeaviateClient của backend, hnsw, nameAscii / searchTextAscii) trên
+    Weaviate của bench và nạp vector đã embed của `--model` (`vec_T3+R_<model>.npy`, 0 lượt gọi API). Đủ và đúng textHash
+    thì không làm gì. `sb run --arm APP.*` tự gọi bước này theo `model` của từng arm."""
+    from .app_adapter import AppAdapterError, app_model, build_app_catalog, load_product_bench
     from .catalog import CatalogError
+    from .embed import EmbedderUnavailable
     ctx = _ctx(c)
     cfg = ctx.cfg()
     try:
-        cat = build_app_catalog(cfg, ctx.dataset)
-        s = load_product_bench(cfg, ctx.dataset, cat, recreate=recreate)
-    except (AppAdapterError, CatalogError) as e:
+        am = app_model(cfg, model)
+        cat = build_app_catalog(cfg, ctx.dataset, model_version=am.model_version)
+        s = load_product_bench(cfg, ctx.dataset, cat, model=model, recreate=recreate)
+    except (AppAdapterError, CatalogError, EmbedderUnavailable) as e:
         _fail(str(e), 2)
     except Exception as e:  # noqa: BLE001 — lỗi Weaviate / vector
         _fail(f"{type(e).__name__}: {str(e)[:300]}")
-    typer.echo(f"{PRODUCT_BENCH}: {s['n']} object · khớp textHash {s['matching']} · thiếu {s['missing']} · text cũ {s['stale']} · "
-               f"nạp mới {s['loaded']} · index hnsw (backend không nhận flat) · {len(cat.index.units)} unit, "
-               f"{int(cat.index.available.sum())} available")
+    typer.echo(f"{am.collection}: {s['n']} object · khớp textHash {s['matching']} · thiếu {s['missing']} · text cũ {s['stale']} · "
+               f"nạp mới {s['loaded']} · index hnsw (backend không nhận flat) · {am.dimension} chiều · modelVersion {am.model_version} · "
+               f"{len(cat.index.units)} unit, {int(cat.index.available.sum())} available")
 
 
 def paths_gold() -> Path:
@@ -1650,6 +1658,153 @@ def cost():
     t.add_row("[bold]tổng[/]", "", "", str(sum(r["calls"] for r in rows)), str(sum(r["texts"] for r in rows)),
               str(sum(r["tokens"] for r in rows)), f"{sum(r['usd'] for r in rows):.6f}")
     _console().print(t)
+
+
+# ------------------------------------------------------------------ Phase A (05/10): chẩn đoán, không cần Weaviate / Cohere
+def topids_compare(rows_a: list[dict], rows_b: list[dict]) -> tuple[int, int, list[tuple[str, int, str | None, str | None]], list[str]]:
+    """So `top_ids` theo qid: (số câu trùng, số câu chung, [(qid, vị trí khác đầu tiên (0-based), A[pos], B[pos])…],
+    qid chỉ có ở một bên)."""
+    a = {r["qid"]: list(r.get("top_ids") or []) for r in rows_a}
+    b = {r["qid"]: list(r.get("top_ids") or []) for r in rows_b}
+    common = sorted(set(a) & set(b))
+    only = sorted(set(a) ^ set(b))
+    same, diffs = 0, []
+    for q in common:
+        if a[q] == b[q]:
+            same += 1
+            continue
+        pos = next((i for i, (x, y) in enumerate(zip(a[q], b[q])) if x != y), min(len(a[q]), len(b[q])))
+        diffs.append((q, pos, a[q][pos] if pos < len(a[q]) else None, b[q][pos] if pos < len(b[q]) else None))
+    return same, len(common), diffs, only
+
+
+@app.command("topids-diff")
+def topids_diff(run_a: str = typer.Argument(..., help="run_id A"), arm_a: str = typer.Argument(..., help="arm A"),
+                run_b: Optional[str] = typer.Option(None, "--run-b", help="mặc định = RUN_A"),
+                arm_b: Optional[str] = typer.Option(None, "--arm-b", help="mặc định = ARM_A")):
+    """So `top_ids` của hai per_query.parquet theo qid (kiểm một arm chạy lại có ra đúng danh sách — tính tất định): in số câu
+    trùng / tổng và tối đa 5 qid khác kèm vị trí khác đầu tiên. Mã thoát: 0 trùng hết · 1 có câu khác (hoặc tập qid khác) ·
+    2 thiếu kết quả."""
+    from . import runner as R
+    run_b, arm_b = run_b or run_a, arm_b or arm_a
+    try:
+        rows_a, rows_b = R.read_rows(run_a, arm_a), R.read_rows(run_b, arm_b)
+    except R.RunnerError as e:
+        _fail(str(e), 2)
+    same, total, diffs, only = topids_compare(rows_a, rows_b)
+    typer.echo(f"{same}/{total} câu trùng top_ids  ·  A = {run_a}/{arm_a}  ·  B = {run_b}/{arm_b}")
+    for q, pos, x, y in diffs[:5]:
+        typer.echo(f"  {q}: khác từ vị trí {pos + 1}: A={x} B={y}")
+    if len(diffs) > 5:
+        typer.echo(f"  … và {len(diffs) - 5} câu khác nữa")
+    if only:
+        typer.echo(f"  qid chỉ có ở một bên: {only[:5]}{' …' if len(only) > 5 else ''}")
+    raise typer.Exit(1 if diffs or only else 0)
+
+
+qu_app = typer.Typer(no_args_is_help=True, help="Phase A: chẩn đoán query understanding của backend trên gold "
+                                                 "(QueryNormalizer + build_query_plan; không Weaviate / Cohere)")
+app.add_typer(qu_app, name="qu")
+
+#: Chặng bay kỳ vọng cho câu gold_v3 chưa có trường origin / destination_city (gold v4 có trường thì trường thắng).
+ROUTE_EXPECTED_V3: dict[str, tuple[str | None, str | None]] = {"c0373": ("Buôn Ma Thuột", "Hà Nội")}
+
+
+def _num_eq(a, b) -> bool:
+    return a is not None and b is not None and float(a) == float(b)
+
+
+def _scan_checks(gq, plan) -> list[tuple[str, bool, str]]:
+    """Kiểm ĐỊNH NGHĨA câu gold (không chấm nhãn) so với query plan của backend: [(tên kiểm, đạt?, parser cho ra gì)].
+    `plan` = `QueryPlan` (hoặc object cùng thuộc tính). Mỗi slice một nhóm kiểm; chặng bay kiểm khi gold nêu
+    origin / destination_city hoặc câu nằm trong `ROUTE_EXPECTED_V3`."""
+    from .metrics import _conjuncts
+    out: list[tuple[str, bool, str]] = []
+    dest = getattr(plan.destination, "value", None)
+    cands = list(plan.taxonomy_candidates or ())
+    if gq.slice == "multi_constraint":
+        for n in _conjuncts(gq.filter):
+            (op, arg), = n.items()
+            if not (isinstance(arg, list) and len(arg) == 2):
+                continue
+            f, v = arg
+            if op == "lte" and f == "unit_price_min":
+                out.append(("multi_constraint.price_max", _num_eq(plan.price_max, v), f"price_max={plan.price_max} (gold ≤ {v})"))
+            elif op == "gte" and f == "star_rating":
+                out.append(("multi_constraint.star_min", _num_eq(plan.star_min, v), f"star_min={plan.star_min} (gold ≥ {v})"))
+            elif op == "eq" and f == "destination":
+                out.append(("multi_constraint.destination", dest == v, f"destination={dest!r} (gold {v!r})"))
+    elif gq.slice == "cross_vertical":
+        out.append(("cross_vertical.taxonomy_none", plan.taxonomy is None,
+                    f"taxonomy={plan.taxonomy!r} skipped={plan.taxonomy_skipped!r} candidates={cands}"))
+    elif gq.slice == "amenity_negation":
+        out.append(("amenity_negation.must_not", bool(plan.must_not_amenities),
+                    f"must_not={list(plan.must_not_amenities)} unresolved={list(plan.unresolved or ())}"))
+    elif gq.slice == "dest_type":
+        out.append(("dest_type.single_vertical", len(cands) <= 1, f"candidates={cands} taxonomy={plan.taxonomy!r}"))
+    route = (gq.origin, gq.destination_city) if (gq.origin or gq.destination_city) else ROUTE_EXPECTED_V3.get(gq.qid)
+    if route:
+        o, d = route
+        ok = (not o or plan.route_origin == o) and (not d or plan.route_destination == d)
+        out.append(("route.origin_destination", ok,
+                    f"origin={plan.route_origin!r} destination={plan.route_destination!r} direction={plan.route_direction!r} "
+                    f"skipped={plan.route_skipped!r} (gold {o!r} → {d!r})"))
+    return out
+
+
+@qu_app.command("gold-scan")
+def qu_gold_scan(c: typer.Context, gold_p: Optional[Path] = typer.Option(None, "--gold", help="mặc định gold/gold.jsonl")):
+    """Chạy QueryNormalizer + build_query_plan của backend (CẢ BỐN cờ bật; gazetteer điểm đến / tên từ items, thành phố bay +
+    IATA + thương hiệu từ attributes của catalog như `SearchProducts`) trên mọi câu gold active và kiểm ĐỊNH NGHĨA câu (không
+    chấm nhãn): multi_constraint (giá / sao / điểm đến khớp filter gold) · cross_vertical (không chốt taxonomy) ·
+    amenity_negation (có must_not) · dest_type (≤ 1 loại sản phẩm) · chặng bay (c0373, hoặc gold có origin /
+    destination_city). In bảng đạt / tổng từng kiểm và câu trượt kèm parser cho ra gì. Luôn thoát 0 (chẩn đoán)."""
+    from rich.table import Table
+    from . import catalog, metrics as M, paths
+    from .app_adapter import AppAdapterError, _backend
+    from .catalog import CatalogError
+    ctx = _ctx(c)
+    cfg = ctx.cfg()
+    try:
+        _backend()
+        from src.backend.app.application.search.use_cases import _plan_gazetteers
+        from src.backend.app.domain.catalog import Product
+        from src.backend.app.domain.search import PlanFlags, PlanParams, QueryNormalizer, build_query_plan
+    except (AppAdapterError, ImportError) as e:
+        _fail(f"không import được backend: {e}")
+    try:
+        items = catalog.read_items(ctx.dataset)
+        records = catalog.reload_records(cfg, ctx.dataset)
+        gold = M.load_gold(gold_p or paths.GOLD_JSONL, gold_fields=cfg.metrics.gold_fields)
+    except (CatalogError, M.MetricsError, FileNotFoundError) as e:
+        _fail(str(e), 2)
+    units, _, _, _ = catalog.group_children(records, cfg.catalog.search_unit_variants)
+    normalizer = QueryNormalizer(destinations=set(items["destination"].tolist()), names=items["name"].tolist())
+    gaz = _plan_gazetteers([Product.from_cdp(r) for r in units])
+    flags = PlanFlags(destination=True, negation=True, taxonomy=True, route=True, numeric=True)
+    results: dict[str, list[tuple[str, bool, str, str]]] = {}
+    for gq in gold:
+        plan = build_query_plan(normalizer(gq.text), gq.text, PlanParams(), flags, gaz)
+        for name, ok, detail in _scan_checks(gq, plan):
+            results.setdefault(name, []).append((gq.qid, ok, detail, gq.text))
+    con = _console()
+    con.print(f"gold-scan: {len(gold)} câu active · {len(units)} unit · thành phố bay {len(gaz.flight_cities)} · IATA {len(gaz.iata)} · "
+              f"cờ: destination, negation, taxonomy, route, numeric = bật", highlight=False)
+    t = Table(title="kiểm định nghĩa câu (ok / tổng)")
+    for col in ("kiểm", "ok", "tổng"):
+        t.add_column(col, justify="left" if col == "kiểm" else "right")
+    for name in sorted(results):
+        rs = results[name]
+        n_ok = sum(1 for _, ok, _, _ in rs if ok)
+        t.add_row(name, f"[{'green' if n_ok == len(rs) else 'red'}]{n_ok}[/]", str(len(rs)))
+    con.print(t)
+    for name in sorted(results):
+        bad = [(q, d, txt) for q, ok, d, txt in results[name] if not ok]
+        if bad:
+            con.print(f"[bold]{name}[/] trượt {len(bad)}:", highlight=False)
+            for q, d, txt in bad:
+                con.print(f"  {q} «{txt}» → {d}", highlight=False)
+    raise typer.Exit(0)
 
 
 if __name__ == "__main__":

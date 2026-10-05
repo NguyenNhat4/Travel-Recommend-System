@@ -17,6 +17,7 @@ Mọi import backend đi qua tiền tố `src.backend.*` (use case tự import n
 from __future__ import annotations
 
 import hashlib
+import re
 import sys
 from dataclasses import dataclass, field
 from time import perf_counter
@@ -29,7 +30,29 @@ from .config import SBenchConfig
 from .textbuild import load_texts
 
 PRODUCT_BENCH = "ProductBench"
-MODEL_VERSION = "embed-multilingual-v3.0:catalog-text-v2"      # như production (main.build_recsys)
+TEXT_BUILDER_VERSION = "catalog-text-v2"                        # TEXT_BUILDER_VERSION của backend (main.build_recsys)
+DEFAULT_APP_MODEL = "cohere-v3"                                 # production hôm nay (FR-SRC-02)
+MODEL_VERSION = f"embed-multilingual-v3.0:{TEXT_BUILDER_VERSION}"   # modelVersion production (main.build_recsys)
+
+
+@dataclass(frozen=True)
+class AppModel:
+    """Model của cổng APP (05/10): mỗi model một collection riêng, không trộn hai không gian vector trong một collection."""
+    key: str                 # khoá trong config/sbench.yaml (cohere-v3, e5-small…)
+    cache_model: str         # tên embedder = `cache_model` trong .meta.json của vector và tiền tố `modelVersion`
+    dimension: int
+    collection: str          # ProductBench (cohere-v3, production) | ProductBench_<key> cho model khác
+    model_version: str       # f"{cache_model}:{TEXT_BUILDER_VERSION}" — như main.build_recsys
+
+
+def app_model(cfg: SBenchConfig, model: str = DEFAULT_APP_MODEL) -> AppModel:
+    from .embed import embedder_name
+    name = embedder_name(cfg, model)
+    dim = int(cfg.model_cfg(model).dim)
+    if model == DEFAULT_APP_MODEL:
+        return AppModel(model, name, dim, PRODUCT_BENCH, MODEL_VERSION)
+    safe = re.sub(r"[^0-9A-Za-z]+", "_", model).strip("_")
+    return AppModel(model, name, dim, f"{PRODUCT_BENCH}_{safe}", f"{name}:{TEXT_BUILDER_VERSION}")
 
 
 class AppAdapterError(RuntimeError):
@@ -59,9 +82,10 @@ class AppCatalog:
     text_hash: dict[str, str]         # sha256(text) như WeaviateVectorStore / job embed_products
 
 
-def build_app_catalog(cfg: SBenchConfig, dataset: str) -> AppCatalog:
+def build_app_catalog(cfg: SBenchConfig, dataset: str, *, model_version: str = MODEL_VERSION) -> AppCatalog:
     """`Product` cho mọi search unit của dataset (attributes combo gắn thêm như `load_products`), `parent_of` con → cha,
-    `available` / `taxonomy` / `destination` như `CatalogUnits.to_index`. Text lấy từ `load_texts` (T3+R)."""
+    `available` / `taxonomy` / `destination` như `CatalogUnits.to_index`. Text lấy từ `load_texts` (T3+R).
+    `model_version`: của model đang đo (`app_model(...).model_version`) — vào `UnitIndex.model_version` và `diagnostics`."""
     UnitIndex, _, Product, _, _ = _backend()
     records = catalog.reload_records(cfg, dataset)
     units, children, _, _ = catalog.group_children(records, cfg.catalog.search_unit_variants)
@@ -80,6 +104,10 @@ def build_app_catalog(cfg: SBenchConfig, dataset: str) -> AppCatalog:
 
     products = [product(by_id[pid]) for pid in ids]
     parent_of = {k["productId"]: pid for pid, kids in children.items() for k in kids}
+    # Thuộc tính lọc Phase A dựng KÈM phòng/chuyến con như `PostgresCatalogReader.load` (giá thấp nhất của con, tiện ích con).
+    from src.backend.app.domain.catalog import UnitAttributes  # sys.path đã có repo root sau `_backend()`
+    children_products = {pid: [Product.from_cdp(k) for k in kids] for pid, kids in children.items()}
+    attrs = UnitAttributes.build(products, children_products)
     tdf, _ = load_texts(cfg, dataset, "T3+R", need=len(ids))
     texts = dict(zip(tdf["product_id"], tdf["text"]))
     lost = [pid for pid in ids if pid not in texts]
@@ -89,13 +117,14 @@ def build_app_catalog(cfg: SBenchConfig, dataset: str) -> AppCatalog:
                       destination=np.array([p.destination for p in products], dtype=object),
                       available=np.array([bool(p.available) for p in products], dtype=bool),
                       recommendable=np.array([bool(p.available) for p in products], dtype=bool),
-                      parent_of=parent_of, model_version=MODEL_VERSION)
+                      parent_of=parent_of, model_version=model_version, attrs=attrs)
     return AppCatalog(index=index, texts={pid: texts[pid] for pid in ids},
                       text_hash={pid: hashlib.sha256(texts[pid].encode("utf-8")).hexdigest() for pid in ids})
 
 
 # ------------------------------------------------------------------ ProductBench: collection hình dạng production
-def product_bench_status(cfg: SBenchConfig, cat: AppCatalog, *, collection: str = PRODUCT_BENCH) -> dict:
+def product_bench_status(cfg: SBenchConfig, cat: AppCatalog, *, collection: str = PRODUCT_BENCH,
+                         model_version: str = MODEL_VERSION) -> dict:
     """{n, matching, missing, stale}: object có đúng textHash / còn thiếu / text cũ so với catalog hiện tại."""
     _, _, _, _, W = _backend()
     client = W.WeaviateClient(cfg.weaviate.url, collection=collection, vector_index_type="hnsw")
@@ -106,34 +135,38 @@ def product_bench_status(cfg: SBenchConfig, cat: AppCatalog, *, collection: str 
             return {"n": 0, "matching": 0, "missing": len(cat.texts), "stale": 0, "exists": False}
     finally:
         client.close()
-    matching = sum(1 for pid, m in meta.items() if cat.text_hash.get(pid) == m.text_hash and m.model_version == MODEL_VERSION)
+    matching = sum(1 for pid, m in meta.items() if cat.text_hash.get(pid) == m.text_hash and m.model_version == model_version)
     return {"n": len(meta), "matching": matching, "missing": len(cat.texts) - matching,
             "stale": sum(1 for pid, m in meta.items() if pid in cat.text_hash and cat.text_hash[pid] != m.text_hash), "exists": True}
 
 
-def load_product_bench(cfg: SBenchConfig, dataset: str, cat: AppCatalog, *, collection: str = PRODUCT_BENCH,
-                       recreate: bool = False) -> dict:
-    """Dựng `collection` bằng chính `WeaviateClient` của backend và nạp vector đã embed cho B0 (`vec_T3+R_cohere-v3.npy`).
-    Đã đủ và đúng textHash thì không làm gì (trừ `recreate`). 0 lượt gọi Cohere."""
+def load_product_bench(cfg: SBenchConfig, dataset: str, cat: AppCatalog, *, model: str = DEFAULT_APP_MODEL,
+                       collection: str | None = None, recreate: bool = False) -> dict:
+    """Dựng collection của `model` (`app_model`) bằng chính `WeaviateClient` của backend và nạp vector đã embed
+    (`vec_T3+R_<model>.npy`, cùng text T3+R). Đã đủ và đúng textHash thì không làm gì (trừ `recreate`). 0 lượt gọi API."""
     _, _, _, _, W = _backend()
-    status = product_bench_status(cfg, cat, collection=collection)
+    am = app_model(cfg, model)
+    collection = collection or am.collection
+    status = product_bench_status(cfg, cat, collection=collection, model_version=am.model_version)
     if status["exists"] and not recreate and status["missing"] == 0 and status["stale"] == 0 and status["n"] == len(cat.texts):
         return {**status, "loaded": 0}
-    ids, vecs, vmeta = vectors.read(dataset, "T3+R", "cohere-v3", "document")
-    if vmeta.get("cache_model") != "embed-multilingual-v3.0":
-        raise AppAdapterError(f"vector B0 do {vmeta.get('cache_model')} sinh — cần embed-multilingual-v3.0 (production)")
+    ids, vecs, vmeta = vectors.read(dataset, "T3+R", model, "document")
+    if vmeta.get("cache_model") != am.cache_model:
+        raise AppAdapterError(f"vector {model} do {vmeta.get('cache_model')} sinh — cần {am.cache_model}")
     if set(ids) != set(cat.texts):
-        raise AppAdapterError(f"vector B0 có {len(ids)} id, catalog có {len(cat.texts)} — chạy lại `sb embed --variant T3+R --model cohere-v3`")
+        raise AppAdapterError(f"vector {model} có {len(ids)} id, catalog có {len(cat.texts)} — chạy lại `sb embed --variant T3+R --model {model}`")
+    if len(vecs) and int(vecs.shape[1]) != am.dimension:
+        raise AppAdapterError(f"vector {model} {vecs.shape[1]} chiều, config nói {am.dimension}")
     if vmeta.get("text_sha256") and vmeta.get("text_sha256") != vectors.texts_digest([
             hashlib.sha1(cat.texts[p].encode("utf-8")).hexdigest() for p in ids]):
         pass   # digest của bench dùng text_hash riêng (textbuild.text_hash) — kiểm theo textHash từng object bên dưới
-    n = load_collection(cfg, cat, ids, vecs, collection=collection,
+    n = load_collection(cfg, cat, ids, vecs, collection=collection, model_version=am.model_version,
                         drop_first=status["exists"] and (recreate or status["stale"] or status["n"] != status["matching"]))
-    return {**product_bench_status(cfg, cat, collection=collection), "loaded": n}
+    return {**product_bench_status(cfg, cat, collection=collection, model_version=am.model_version), "loaded": n}
 
 
 def load_collection(cfg: SBenchConfig, cat: AppCatalog, ids: list[str], vecs: Any, *, collection: str,
-                    drop_first: bool) -> int:
+                    drop_first: bool, model_version: str = MODEL_VERSION) -> int:
     """Nạp `collection` trên Weaviate bench bằng `WeaviateClient` của backend từ (ids, vectors) cho trước — hình dạng như
     `Product` production (property BM25 fold ở app, uuid5). Trả số object đã nạp; sai số lượng sau nạp → lỗi."""
     _, _, _, _, W = _backend()
@@ -151,7 +184,7 @@ def load_collection(cfg: SBenchConfig, cat: AppCatalog, ids: list[str], vecs: An
         for pid, vec in zip(ids, vecs):
             p = cat.index.units[cat.index.idx[pid]]
             objects.append({"class": collection, "id": client.object_uuid(pid),
-                            "properties": {"productId": pid, "modelVersion": MODEL_VERSION, "textHash": cat.text_hash[pid],
+                            "properties": {"productId": pid, "modelVersion": model_version, "textHash": cat.text_hash[pid],
                                            **W.lexical_properties(p.name, cat.texts[pid])},
                             "vector": np.asarray(vec, dtype=np.float32).tolist()})
         client.insert(objects)
@@ -163,7 +196,37 @@ def load_collection(cfg: SBenchConfig, cat: AppCatalog, ids: list[str], vecs: An
         client.close()
     if len(meta) != len(ids):
         raise AppAdapterError(f"{collection}: {len(meta)} object sau khi nạp, cần {len(ids)}")
+    # 05/10: ba arm hybrid chạy trong ~25 s đầu sau khi nạp ProductBench_e5_small cho top-10 khác hẳn các arm cùng cấu hình chạy sau
+    # (BM25 còn đang cập nhật inverted index dù vector index đã READY) → chờ thêm cho BM25 ổn định trước khi trả về.
+    wait_bm25_stable(cfg, collection)
     return len(objects)
+
+
+def wait_bm25_stable(cfg: SBenchConfig, collection: str, *, probes: tuple[str, ...] = ("khach san", "ve may bay", "vinpearl"),
+                     settle_s: float = 2.0, timeout_s: float = 120.0, sleep: Any = None) -> int:
+    """Chờ tới khi BM25 trả cùng top-20 cho các câu thăm dò ở hai lần đo cách `settle_s`; trả số vòng đã chờ. Quá `timeout_s`
+    → AppAdapterError (không đo trên inverted index đang xây)."""
+    import time
+    _, _, _, _, W = _backend()
+    sleep = sleep or time.sleep
+    client = W.connect_weaviate(cfg.weaviate.url, grpc_port=cfg.weaviate.grpc_port, timeout_seconds=cfg.weaviate.query_timeout_s)
+    vs = W.WeaviateVectorSearch(client, collection=collection)
+    try:
+        def snapshot():
+            return [tuple(h.product_id for h in vs.bm25(q, None, 20, with_vectors=False)) for q in probes]
+        deadline = time.monotonic() + timeout_s
+        prev, rounds = snapshot(), 0
+        while True:
+            sleep(settle_s)
+            cur = snapshot()
+            rounds += 1
+            if cur == prev and all(len(c) for c in cur):
+                return rounds
+            if time.monotonic() >= deadline:
+                raise AppAdapterError(f"{collection}: BM25 chưa ổn định sau {timeout_s:.0f} s")
+            prev = cur
+    finally:
+        vs.close()
 
 
 def index_status(http: Any, collection: str) -> tuple[str | None, int | None]:
@@ -257,7 +320,16 @@ class BenchQueryEmbedder:
 
 
 APP_DEFAULTS = {"cutoff": 0.62, "candidate_k": 200, "hybrid": True, "normalize": True, "rrf_k": 60, "lexical_k": 10,
-                "lexical_cutoff": 0.50, "min_coverage": 0.6, "lexical_candidate_k": 50}
+                "lexical_cutoff": 0.50, "min_coverage": 0.6, "lexical_candidate_k": 50,
+                # 05/10 (fix/search): F1 lọc điểm đến suy từ câu, F2 bộ ngưỡng câu không dấu — giá trị = production hôm nay (tắt)
+                "dest_filter": False, "dest_filter_fallback": True, "no_diacritics_mode": "off",
+                # 05/10: query plan F3 phủ định tiện ích / F4 loại sản phẩm / F5 chiều bay / F6 giá-sao — mặc định tắt = production
+                "negation_filter": False, "taxonomy_filter": False, "route_filter": False, "numeric_filter": False,
+                "no_diacritics": {"lexical_k": 20, "lexical_cutoff": 0.0, "min_coverage": 0.4, "cutoff": None, "min_tokens": 3}}
+#: khoá bắt buộc trong `app.no_diacritics` của arm yaml
+NO_DIACRITICS_KEYS = ("lexical_k", "lexical_cutoff", "min_coverage", "cutoff", "min_tokens")
+#: bốn cờ query plan (05/10) → kwargs cùng tên của `SearchProducts`
+QUERY_PLAN_KEYS = ("negation_filter", "taxonomy_filter", "route_filter", "numeric_filter")
 
 
 def app_params(arm_app: dict | None) -> dict:
@@ -266,6 +338,11 @@ def app_params(arm_app: dict | None) -> dict:
     missing = [k for k in APP_DEFAULTS if k not in p]
     if missing:
         raise AppAdapterError(f"arm APP thiếu app.{', app.'.join(missing)} (xem arms/APP.*.yaml)")
+    nd = p.get("no_diacritics")
+    if not isinstance(nd, dict) or any(k not in nd for k in NO_DIACRITICS_KEYS):
+        raise AppAdapterError(f"arm APP: app.no_diacritics phải có đủ {NO_DIACRITICS_KEYS}")
+    if p["no_diacritics_mode"] not in ("off", "relax"):
+        raise AppAdapterError(f"arm APP: app.no_diacritics_mode = {p['no_diacritics_mode']!r} (off | relax)")
     return p
 
 
@@ -286,7 +363,13 @@ class AppSearch:
         d = out.get("diagnostics") or {}
         return ids, scores, {"total": out.get("total"), "topScore": out.get("topScore"), "normalizedQuery": d.get("normalizedQuery"),
                              "lexicalCount": d.get("lexicalCount"), "lexicalCandidates": d.get("lexicalCandidates"),
-                             "corrections": d.get("corrections"), "appliedAliases": d.get("appliedAliases"), "party": d.get("party")}
+                             "corrections": d.get("corrections"), "appliedAliases": d.get("appliedAliases"), "party": d.get("party"),
+                             # 05/10: F1 / F2 (contract 1.14.0)
+                             "derivedDestinations": d.get("derivedDestinations"), "destinationFilter": d.get("destinationFilter"),
+                             "queryProfile": d.get("queryProfile"), "appliedFilters": out.get("appliedFilters"),
+                             # 05/10: query plan F3–F6 (diagnostics.queryPlan, contract EngineDiagnostics.queryPlan)
+                             "queryPlan": d.get("queryPlan"),
+                             "cutoff": out.get("cutoff")}
 
 
 @dataclass
@@ -299,15 +382,20 @@ class AppContext:
     weaviate_url: str | None = None      # None → Weaviate của bench (cfg.weaviate); Cloud → URL + api_key (sb parity)
     api_key: str = ""
     grpc_port: int | None = None
+    model: str = DEFAULT_APP_MODEL       # khoá model của collection (05/10: mỗi model một AppContext)
+    dimension: int = 1024
     _client: Any = None
     _vs: Any = None
 
     @classmethod
-    def open(cls, cfg: SBenchConfig, dataset: str, *, collection: str = PRODUCT_BENCH, ensure_loaded: bool = True) -> "AppContext":
-        cat = build_app_catalog(cfg, dataset)
+    def open(cls, cfg: SBenchConfig, dataset: str, *, model: str = DEFAULT_APP_MODEL, collection: str | None = None,
+             ensure_loaded: bool = True) -> "AppContext":
+        am = app_model(cfg, model)
+        collection = collection or am.collection
+        cat = build_app_catalog(cfg, dataset, model_version=am.model_version)
         if ensure_loaded:
-            load_product_bench(cfg, dataset, cat, collection=collection)
-        return cls(cfg=cfg, dataset=dataset, cat=cat, collection=collection)
+            load_product_bench(cfg, dataset, cat, model=model, collection=collection)
+        return cls(cfg=cfg, dataset=dataset, cat=cat, collection=collection, model=model, dimension=am.dimension)
 
     def vector_search(self):
         if self._vs is None:
@@ -315,7 +403,7 @@ class AppContext:
             self._client = W.connect_weaviate(self.weaviate_url or self.cfg.weaviate.url, api_key=self.api_key,
                                               grpc_port=self.grpc_port or self.cfg.weaviate.grpc_port,
                                               timeout_seconds=self.cfg.weaviate.query_timeout_s)
-            self._vs = W.WeaviateVectorSearch(self._client, collection=self.collection, dimension=1024)
+            self._vs = W.WeaviateVectorSearch(self._client, collection=self.collection, dimension=self.dimension)
         return self._vs
 
     def close(self) -> None:
@@ -331,9 +419,22 @@ class AppContext:
         hybrid = HybridConfig(rrf_k=int(p["rrf_k"]), lexical_k=int(p["lexical_k"]),
                               lexical_cutoff=min(float(p["lexical_cutoff"]), float(p["cutoff"])),   # như build_recsys
                               min_coverage=float(p["min_coverage"])) if p["hybrid"] else None
+        # F2 (05/10): bộ ngưỡng riêng cho câu không dấu — dựng như main.build_recsys (chỉ khi hybrid và mode relax)
+        nd = p["no_diacritics"]
+        relax = p["no_diacritics_mode"] == "relax"
+        nd_cutoff = float(nd["cutoff"]) if (relax and nd.get("cutoff") is not None) else None
+        no_diacritics = HybridConfig(
+            rrf_k=int(p["rrf_k"]), lexical_k=int(nd["lexical_k"]),
+            lexical_cutoff=min(float(nd["lexical_cutoff"]), nd_cutoff if nd_cutoff is not None else float(p["cutoff"])),
+            min_coverage=float(nd["min_coverage"])) if hybrid and relax else None
         engine = SearchProducts(self.cat.index, vs, BenchQueryEmbedder(embedder), cutoff=float(p["cutoff"]),
                                 candidate_k=int(p["candidate_k"]), lexical=vs if hybrid else None, hybrid=hybrid,
-                                lexical_candidate_k=int(p["lexical_candidate_k"]), normalize=bool(p["normalize"]))
+                                lexical_candidate_k=int(p["lexical_candidate_k"]), normalize=bool(p["normalize"]),
+                                dest_filter=bool(p["dest_filter"]), dest_filter_fallback=bool(p["dest_filter_fallback"]),
+                                no_diacritics=no_diacritics, no_diacritics_cutoff=nd_cutoff,
+                                no_diacritics_min_tokens=int(nd["min_tokens"]),
+                                # 05/10: query plan F3–F6, mỗi cờ một kwarg cùng tên
+                                **{k: bool(p[k]) for k in QUERY_PLAN_KEYS})
         return AppSearch(engine=engine, params=p)
 
 
@@ -346,6 +447,35 @@ def retrieve_app(arm, env, ctx: AppContext, embedder: Any, *, limit: int | None 
     for g in env.gold:
         t0 = perf_counter()
         ids, scores, diag = s.search(g.text, limit=k)
-        out.append(Retrieved(qid=g.qid, top_ids=ids, top_scores=scores, applied_filter=None,
+        out.append(Retrieved(qid=g.qid, top_ids=ids, top_scores=scores, applied_filter=applied_filter_of(diag),
                              latency_ms=(perf_counter() - t0) * 1000.0, extra=diag))
     return out
+
+
+def applied_filter_of(diag: dict) -> dict | None:
+    """Hard filter engine đã áp (`appliedFilters.hard`, 05–05/10) → node filter của bench (`store/filters.py`) để
+    `filter_recall_loss` đếm nhãn liên quan bị filter suy ra loại. Mỗi khoá một node, nhiều khoá → `and`; None khi không lọc.
+
+    - `destination` → `eq destination` (F1) · `taxonomy` → `eq taxonomy` (F4) · `origin` → `eq origin_city` (F5)
+    - `mustNotAmenities` → `not contains_any features` (F3) · `mustNotBrands` → mỗi thương hiệu một `not eq brand` (F3)
+    - `priceMin` / `priceMax` → `gte` / `lte unit_price_min` (F6)
+    - bỏ qua `*Source`, `destinationCity`, `availableOnly` (không phải điều kiện trên items của bench).
+    Tên trường `origin_city` / `features` theo items + `store/filters.py` (block B, 05/10)."""
+    hard = ((diag.get("appliedFilters") or {}).get("hard") or {})
+    nodes: list[dict] = []
+    for key, fld in (("destination", "destination"), ("taxonomy", "taxonomy"), ("origin", "origin_city")):
+        if hard.get(key):
+            nodes.append({"eq": [fld, hard[key]]})
+    must_not = [str(a) for a in (hard.get("mustNotAmenities") or []) if a]
+    if must_not:
+        nodes.append({"not": {"contains_any": ["features", must_not]}})
+    for brand in (hard.get("mustNotBrands") or []):     # brand có thể null → not(eq) giữ cả unit không ghi thương hiệu
+        if brand:
+            nodes.append({"not": {"eq": ["brand", str(brand)]}})
+    if hard.get("priceMin") is not None:
+        nodes.append({"gte": ["unit_price_min", hard["priceMin"]]})
+    if hard.get("priceMax") is not None:
+        nodes.append({"lte": ["unit_price_min", hard["priceMax"]]})
+    if not nodes:
+        return None
+    return nodes[0] if len(nodes) == 1 else {"and": nodes}

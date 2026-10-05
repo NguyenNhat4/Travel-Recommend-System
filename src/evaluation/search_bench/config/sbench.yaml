@@ -113,8 +113,20 @@ metrics:                          # Part 8
     zero_result_in_catalog_max: 0.02
     hub_score_max: 3.0
     p95_cache_miss_ms_max: 250      # = NFR-PERF-01 (p95 ≤ 250 ms); p99 được đo và báo cáo, không có ngưỡng (PRD không đặt)
+    # Phase A (05/10) — guard an toàn cho filter suy từ câu (đề xuất, chờ chốt — Sprint 2). Chưa có select() nên chưa ép;
+    # metric vẫn được tính và ghi vào results.json (overall / by_slice). Bỏ ghi chú khi chốt.
+    # forbidden_at_10_max: 0          # (đề xuất, chờ chốt — Sprint 2) không kết quả cấm nào trong top-10
+    # direction_accuracy_min: 1.0     # (đề xuất, chờ chốt — Sprint 2) mọi câu nêu chiều bay đều đúng chiều
+    # filter_pass_min: 1.0            # (đề xuất, chờ chốt — Sprint 2) kết quả luôn thoả filter cứng arm đã áp
+    # parse_accuracy_min: 0.9         # (đề xuất, chờ chốt — Sprint 2) mỗi trường expected_parse đúng ≥ 90% câu
   rerank_keep_if_delta_ndcg: 3.0
   hub_random_queries: 500
+  # Phase A (05/10): forbidden chẩn đoán cho gold_v3 (KHÔNG phải gold; gold có forbidden_filter thì gold thắng) — tương đối
+  # theo thư mục gói search_bench; bỏ dòng / null để không gắn. Sẽ bị thay bởi trường `forbidden` của gold v4.
+  forbidden_overrides: config/forbidden_v3.yaml
+  # gold_fields: tên trường gold v4 → tên nội bộ (mặc định = cùng tên; chờ máy gán nhãn chốt tên). Ví dụ:
+  # gold_fields: {forbidden_filter: forbidden_filter, forbidden: forbidden, origin: origin,
+  #               destination_city: destination_city, expected_parse: expected_parse, family: family}
 
 latency:                          # Part 9
   embed_calls: 500

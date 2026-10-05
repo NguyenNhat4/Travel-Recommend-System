@@ -1,0 +1,35 @@
+# forbidden_v3 — filter "kết quả KHÔNG được xuất hiện" CHẨN ĐOÁN cho gold_v3 (Phase A, 05/10).
+#
+# Đây KHÔNG phải gold: gold_v3 chưa có trường `forbidden`, nên bench gắn tạm các AST dưới đây cho vài câu tiêu biểu để đo
+# `forbidden_at_10` / `forbidden_query_rate` của các arm APP (kiến trúc search OTA §4–§6: phủ định tiện ích, chiều bay, loại
+# sản phẩm). Chỉ gắn cho câu gold CHƯA có `forbidden_filter` (gold thắng — `metrics.apply_forbidden_overrides`).
+# File này sẽ bị thay bởi trường `forbidden` / `forbidden_filter` của gold v4 (tên trường chốt ở `metrics.gold_fields`).
+#
+# Cú pháp = AST filter của `store/filters.py` trên items + cột RAM `runner.load_env`:
+#   features         = khoá tiện ích của backend (`domain/search/amenities.py`: pool, kitchen, balcony, restaurant, shuttle…)
+#   origin_city / destination_city = attributes.originCity / destinationCity của tuyến bay (chuỗi catalog nguyên văn)
+# Chuỗi thành phố đã đối chiếu với snapshot 2026-09-23 (originCity có "Buôn Ma Thuột" 18 chuyến, "Hà Nội" 70;
+# destinationCity "Hà Nội" 94).
+
+# ---- amenity_negation: "không có / không ghi nhận X" → unit CÓ ghi nhận X là kết quả cấm
+c0241: {contains_any: [features, [pool]]}         # khách sạn Côn Đảo không có hồ bơi view đẹp
+c0244: {contains_any: [features, [kitchen]]}      # chỗ nghỉ tại TP. Hồ Chí Minh không ghi nhận bếp riêng
+c0247: {contains_any: [features, [balcony]]}      # Khách sạn Hạ Long không có ban công
+c0250: {contains_any: [features, [restaurant]]}   # chỗ nghỉ tại Đà Nẵng không ghi nhận nhà hàng
+c0253: {contains_any: [features, [shuttle]]}      # khách sạn Hạ Long không ghi nhận xe đưa đón sân bay
+
+# ---- chiều bay: tuyến bay KHÁC chặng nêu trong câu là kết quả cấm (unit không phải flight_route không bị cấm)
+c0373:                                            # Vé máy bay Buôn Ma Thuột - Hà Nội
+  and:
+    - {eq: [variant, flight_route]}
+    - not:
+        and:
+          - {eq: [origin_city, "Buôn Ma Thuột"]}
+          - {eq: [destination_city, "Hà Nội"]}
+c0070:                                            # vé máy bay đến Hà Nội
+  and:
+    - {eq: [variant, flight_route]}
+    - not: {eq: [destination_city, "Hà Nội"]}
+
+# ---- loại sản phẩm: "voucher golf tại Hội An" — điểm tham quan không phải thứ khách hỏi
+c0088: {eq: [taxonomy, attraction]}
