@@ -62,19 +62,19 @@ Các dòng dưới đây thay chỗ tương ứng trong các mục sau; nội du
 ## 3. Day 1 — T2 28/09
 
 ### A1 — đóng băng drafts
-- [ ] Rà 42 câu `--fill` trong `gold/drafts.txt` bằng app Streamlit hiện có (KEEP / REJECT / NEEDS_EDIT). Mỗi câu kiểm 3 điều: đúng slice; tiếng Việt tự nhiên như khách gõ; có ≥ 1 sản phẩm trong catalog có thể liên quan (trừ slice `out_of_catalog`). REJECT → thay bằng câu trong 472 draft chưa dùng. *(2h)*
-- [ ] Sửa `c0241`, `c0503`, `c0531` theo ghi chú đã có. *(0,5h)*
-- [ ] Thêm 2 câu dự phòng cho 5 slice đang đúng 10 câu: `amenity_multi`, `amenity_negation`, `amenity_offtaxonomy`, `cross_vertical`, `out_of_catalog` — chọn câu khác mẫu với 10 câu đang có. *(1h)*
-- [ ] `sb gold check` trên drafts → commit → ghi hash vào `docs/spec/bench/search-eval-checklist.md` → **đóng băng `drafts.txt`** (210 câu, 13 slice đủ quota). *(0,5h)*
+- [x] Rà 42 câu `--fill` trong `gold/drafts.txt` bằng app Streamlit hiện có (KEEP / REJECT / NEEDS_EDIT). Mỗi câu kiểm 3 điều: đúng slice; tiếng Việt tự nhiên như khách gõ; có ≥ 1 sản phẩm trong catalog có thể liên quan (trừ slice `out_of_catalog`). REJECT → thay bằng câu trong 472 draft chưa dùng. *(2h)* — *05/10 rà: đóng, không làm theo dạng này — người dùng chốt 28/09 drafts = mọi câu người soát chọn, mỗi slice ≥ 3, không lấp (`history/2026-09-28-draft-chon-tu-do-va-app-gan-nhan.md`); `gold/drafts.txt` đóng băng 29/09 ở 132 câu / 13 slice (`history/2026-09-29-split-gold-a-b-theo-132-cau.md`).*
+- [x] Sửa `c0241`, `c0503`, `c0531` theo ghi chú đã có. *(0,5h)* — *05/10 rà: đóng, không làm theo dạng này — người dùng chốt 28/09 drafts = mọi câu người soát chọn, mỗi slice ≥ 3, không lấp (`history/2026-09-28-draft-chon-tu-do-va-app-gan-nhan.md`); `gold/drafts.txt` đóng băng 29/09 ở 132 câu / 13 slice (`history/2026-09-29-split-gold-a-b-theo-132-cau.md`).*
+- [x] Thêm 2 câu dự phòng cho 5 slice đang đúng 10 câu: `amenity_multi`, `amenity_negation`, `amenity_offtaxonomy`, `cross_vertical`, `out_of_catalog` — chọn câu khác mẫu với 10 câu đang có. *(1h)* — *05/10 rà: đóng, không làm theo dạng này — người dùng chốt 28/09 drafts = mọi câu người soát chọn, mỗi slice ≥ 3, không lấp (`history/2026-09-28-draft-chon-tu-do-va-app-gan-nhan.md`); `gold/drafts.txt` đóng băng 29/09 ở 132 câu / 13 slice (`history/2026-09-29-split-gold-a-b-theo-132-cau.md`).*
+- [x] `sb gold check` trên drafts → commit → ghi hash vào `docs/spec/bench/search-eval-checklist.md` → **đóng băng `drafts.txt`** (210 câu, 13 slice đủ quota). *(0,5h)* — *05/10 rà: đóng, không làm theo dạng này — người dùng chốt 28/09 drafts = mọi câu người soát chọn, mỗi slice ≥ 3, không lấp (`history/2026-09-28-draft-chon-tu-do-va-app-gan-nhan.md`); `gold/drafts.txt` đóng băng 29/09 ở 132 câu / 13 slice (`history/2026-09-29-split-gold-a-b-theo-132-cau.md`).*
 
 ### A2 — app gán nhãn
-- [ ] Dựng app gán nhãn 0/1/2 theo `docs/spec/bench/prompts/may2-label-app.md`: đọc file pool; hiển thị query + slice + product card (name, taxonomy, destination, price, amenities, description rút gọn); phím tắt `0/1/2`, skip, flag; lưu tăng dần để resume; xuất đúng `gold_schema.py`. *(4–5h)*
-- [ ] Test: gán thử trên fixture `gold_small/` → `sb gold import` nhận file xuất không lỗi.
-- [ ] Chọn ~20 cặp khó từ pool thử `bench_out/` cho phiên calibration: negation, off-taxonomy, cross_vertical, hạng phòng anh em, out_of_catalog. *(0,5h)*
+- [x] Dựng app gán nhãn 0/1/2 theo `docs/spec/bench/prompts/may2-label-app.md`: đọc file pool; hiển thị query + slice + product card (name, taxonomy, destination, price, amenities, description rút gọn); phím tắt `0/1/2`, skip, flag; lưu tăng dần để resume; xuất đúng `gold_schema.py`. *(4–5h)* — *28/09: xong (`history/2026-09-28-draft-chon-tu-do-va-app-gan-nhan.md`), A/B gán hết bằng app ngày 30/09.*
+- [x] Test: gán thử trên fixture `gold_small/` → `sb gold import` nhận file xuất không lỗi. — *30/09: file xuất của app import thật vào `gold.jsonl` không lỗi (`history/2026-09-30-gold-merge-import-retire-tag-v1.md`).*
+- [x] Chọn ~20 cặp khó từ pool thử `bench_out/` cho phiên calibration: negation, off-taxonomy, cross_vertical, hạng phòng anh em, out_of_catalog. *(0,5h)* — *05/10 rà: không làm phiên calibration trước khi gán; thay bằng 7 quy ước chốt 30/09 sau khi gán, dựa trên 640 cặp chung (`history/2026-09-30-gold-guide-quy-uoc-chot.md`).*
 
 ### A1 + A2 — calibration (cuối ngày, 1,5h)
-- [ ] Đọc `docs/spec/bench/gold-guide.md`; gán độc lập 20 cặp khó; so đáp án; bất đồng ≤ 3/20.
-- [ ] Ghi quy ước vào mục "ví dụ khó" của guide. Phải trả lời được:
+- [x] Đọc `docs/spec/bench/gold-guide.md`; gán độc lập 20 cặp khó; so đáp án; bất đồng ≤ 3/20. — *05/10 rà: không làm phiên calibration trước khi gán; thay bằng 7 quy ước chốt 30/09 sau khi gán, dựa trên 640 cặp chung (`history/2026-09-30-gold-guide-quy-uoc-chot.md`).*
+- [x] Ghi quy ước vào mục "ví dụ khó" của guide. Phải trả lời được: — *05/10 rà: không làm phiên calibration trước khi gán; thay bằng 7 quy ước chốt 30/09 sau khi gán, dựa trên 640 cặp chung (`history/2026-09-30-gold-guide-quy-uoc-chot.md`).*
   - hạng phòng anh em của đúng khách sạn → 1 hay 2?
   - đúng amenity nhưng sai destination → 0?
   - `out_of_catalog` → mọi ứng viên = 0?
@@ -92,29 +92,31 @@ Các dòng dưới đây thay chỗ tương ứng trong các mục sau; nội du
 - [x] Kiểm nhanh `/recommendations` với persona P1 `VP0000001` (đã mua hotel Nha Trang, chưa flight): kỳ vọng `strategy = cross_vertical`, `excludedVerticals = ["hotel"]`, `nextVertical ∈ {flight, attraction}`, có `diagnostics`. **Chỉ ghi nhận vào issue, chưa sửa.** *(1h)* — *29/09 (local, `recsys_bench user --id VP0000001`): đạt cả 4 kỳ vọng, `nextVertical = flight`, 0 lỗi contract; top-5 gồm flight, golf, attraction. 7 issue (I-1…I-7) ở `docs/spec/bench/recsys-offline-eval.md` §6. Chưa kiểm trên cloud.*
 
 ### Checkpoint Day 1
-- [ ] `drafts.txt` đóng băng · app gán nhãn chạy · guide có ví dụ khó · harness load được DB seed · cloud có BM25 · note đã gửi mentor
+- [ ] `drafts.txt` đóng băng · app gán nhãn chạy · guide có ví dụ khó · harness load được DB seed · cloud có BM25 · note đã gửi mentor — *05/10 rà: đạt mọi mục (drafts 29/09, app 28/09, guide 30/09, harness 29/09, BM25 cloud 30/09) **trừ mentor**: note đã soạn 29/09 (`docs/spec/bench/note-mentor-lech-handbook.md`), chưa có ghi nhận mentor trả lời.*
 
 ## 4. Day 2 — T3 29/09
 
 ### A1 + A2 — pool, split, pilot κ
-- [ ] `sb gold pool` trên drafts đã đóng băng → ghi vào `gold/` (không phải `bench_out/`). Kiểm: 0 câu rỗng, p50 ≈ 26 ứng viên/câu, tổng ≈ 5.000 cặp. *(0,5h)*
-- [ ] `sb gold split` → 2 phần + phần overlap để tính κ. *(0,5h)*
-- [ ] **Pilot κ:** cả hai gán 100 cặp overlap đầu tiên → `sb gold kappa`. κ = ____. κ ≥ 0,6 → gán tiếp; < 0,6 → dừng, sửa guide, gán lại 100 cặp đó. **Không gán đại trà khi pilot chưa đạt.** *(1,5h)*
+- [x] `sb gold pool` trên drafts đã đóng băng → ghi vào `gold/` (không phải `bench_out/`). Kiểm: 0 câu rỗng, p50 ≈ 26 ứng viên/câu, tổng ≈ 5.000 cặp. *(0,5h)* — *29/09: 132 câu / 3.359 dòng, 6–30 ứng viên/câu (p50 26), 0 câu rỗng (`docs/spec/bench/search-eval-checklist.md` Ngày 2 B).*
+- [x] `sb gold split` → 2 phần + phần overlap để tính κ. *(0,5h)* — *29/09: A 78 câu / 1.999 cặp, B 79 câu / 2.000 cặp, 25 câu chung / 640 cặp, mọi slice có câu chung.*
+- [x] **Pilot κ:** cả hai gán 100 cặp overlap đầu tiên → `sb gold kappa`. κ = ____. κ ≥ 0,6 → gán tiếp; < 0,6 → dừng, sửa guide, gán lại 100 cặp đó. **Không gán đại trà khi pilot chưa đạt.** *(1,5h)* — *05/10 rà: không chạy pilot riêng; κ chính thức trên 640 cặp chung sau khi gán hết: **0,692** (0,661 sau rà slice), đạt ngưỡng 0,6 (`history/2026-09-30-gold-merge-import-retire-tag-v1.md`).*
 
 ### A1, A2 — gán nhãn chính (5–6h)
-- [ ] Làm theo block slice để giữ nhất quán; flag cặp khó; chốt chung 15 phút cuối ngày. Nhịp ~20 s/cặp.
-- [ ] Cuối ngày: A1 ____ cặp · A2 ____ cặp (mục tiêu ≥ 1.000 mỗi người, ~35 % phần của mình).
+- [x] Làm theo block slice để giữ nhất quán; flag cặp khó; chốt chung 15 phút cuối ngày. Nhịp ~20 s/cặp. — *30/09: gán xong (`history/2026-09-30-gan-nhan-gold-xong.md`).*
+- [x] Cuối ngày: A1 1.999 cặp · A2 2.000 cặp *(gán hết ngày 30/09, không theo mốc ngày 2)* (mục tiêu ≥ 1.000 mỗi người, ~35 % phần của mình).
 
 ### B — sanity check + 3 baseline
 - [x] `eval/sanity.py` (chạy lại được, in bảng): phân bố `lifecycle_stage` khớp 25/45/20/10 ± 5 %; tỉ lệ chuyến ≥ 2 vertical ≈ 65 %; mỗi chuyến 1 destination (trừ 1 % nhiễu cố ý); top-10 % sản phẩm chiếm ____ % purchase (Zipf 1.1 phải thấy rõ) + Gini; số khách vào test split = ____. *(2h)* — *01/10: `recsys_bench sanity` PASS 5/5 kiểm tra cứng (lifecycle 25,1/45,0/20,0/10,0 %; tính lại từ event lệch 0/2.000; chuyến ≥ 2 vertical 63,6 %; 0 chuyến nhiều điểm đến; orphan 2,0 % / thiếu gid 3,0 %); top-10 % sản phẩm chiếm **41,1 %** purchase, Gini sản phẩm 0,423 / unit 0,525, Zipf slope −0,63 (seed 0,8 — phẳng hơn vì cắt theo điểm đến); khách test LLBO **1.007** · temporal **102**. Spec recsys §2.1.*
-- [ ] Chạy 3 baseline bắt buộc: random (3 seed, báo trung bình); most-popular **theo cửa sổ thời gian** (không phải toàn thời gian); most-popular-in-destination (destination = chuyến đang mở hoặc gần nhất). Metric: Recall@10/20, NDCG@10, coverage, availability precision. *(3h)*
-- [ ] Kiểm thứ tự bắt buộc: random ≈ 20 / số sản phẩm bookable ≪ most-popular < most-popular-in-destination. Thứ tự sai → lỗi split hoặc data, **sửa trước khi chạy engine**. Ghi tham số split + bảng v0 vào `eval/report.md` mục "Baselines". *(1h)*
+- [x] Chạy 3 baseline bắt buộc: random (3 seed, báo trung bình); most-popular **theo cửa sổ thời gian** (không phải toàn thời gian); most-popular-in-destination (destination = chuyến đang mở hoặc gần nhất). Metric: Recall@10/20, NDCG@10, coverage, availability precision. *(3h)* — *30/09: run `2026-09-30-llbo-v1` (seed 09-21), số ở bảng dưới; spec `docs/spec/bench/recsys-offline-eval.md` §4.4.*
+- [x] Kiểm thứ tự bắt buộc: random ≈ 20 / số sản phẩm bookable ≪ most-popular < most-popular-in-destination. Thứ tự sai → lỗi split hoặc data, **sửa trước khi chạy engine**. Ghi tham số split + bảng v0 vào `eval/report.md` mục "Baselines". *(1h)* — *30/09: thứ tự đúng — random 0,008 ≪ most-popular 0,293 < most-popular-in-destination 0,635 (Recall@20, LLBO).*
 
 | Baseline v0 | Recall@10 | Recall@20 | NDCG@10 | Coverage | Availability |
 |---|---|---|---|---|---|
-| random | | | | | |
-| most-popular (window) | | | | | |
-| most-popular-in-destination | | | | | |
+| random (3 seed) | 0.0040 | 0.0083 | 0.0017 | 0.999 | 1.000 |
+| most-popular (window) | 0.1867 | 0.2929 | 0.0891 | 0.068 | 1.000 |
+| most-popular-in-destination | 0.5780 | 0.6346 | 0.3890 | 0.416 | 1.000 |
+
+*LLBO, run `2026-09-30-llbo-v1`, seed 09-21, 1.007 khách, k = 20 — chép từ `docs/spec/bench/recsys-offline-eval.md` §4.4 (điền 05/10).*
 
 ### C — parity, latency, cache
 - [x] Parity test cloud vs local: 20 query cố định trải 13 slice (gồm "VinWonders", "KS biển tại NT", "Vinpeal"). So top-10: overlap ≥ 8/10 và top-1 trùng ≥ 18/20. Lệch → kiểm backfill hoặc version Weaviate (bench local 1.37.3). Kết quả (01/10, `sb parity --mode weaviate`, cùng `SearchProducts` trên catalog VM, `ProductVM` nạp từ vector Cloud): overlap **min 8/10 trên 16 câu đủ dài (13 câu 10/10)**, 4 câu ngắn trùng hết / top-1 **20/20** → PASS. Chi tiết `docs/spec/bench/search-eval-results.md` §1. *(2h)*
@@ -142,28 +144,29 @@ Dự phòng nếu pilot κ < 0,6 hai lần liên tiếp: hạ thang 0/1/2 xuốn
 ## 5. Day 3 – Day 5 (tuần 1, phần còn lại)
 
 ### Day 3 — T4 30/09
-- [ ] A: gán nhãn ngày 2. **Checkpoint cuối ngày: < 50 % → cắt pool còn top-15/câu.**
-- [ ] B: engine production chạy trên harness → bảng metric v0 (cùng cột với bảng baseline).
-- [ ] C: code query-embedding cache + prewarm; đo lại p95 cache-hit / cache-miss.
-- [ ] C: viết `stages.yaml` cho search bench (mới có `arms/B0.yaml`).
+- [x] A: gán nhãn ngày 2. **Checkpoint cuối ngày: < 50 % → cắt pool còn top-15/câu.** — *30/09: gán xong 100 % hai phía (A 1.999, B 2.000 cặp); không cần cắt pool.*
+- [x] B: engine production chạy trên harness → bảng metric v0 (cùng cột với bảng baseline). — *29–30/09: run `2026-09-29-llbo-v0`, `2026-09-30-llbo-v1` (engine Recall@20 0,851 / NDCG@10 0,524 LLBO seed 09-21); spec recsys §4.1, §4.4.*
+- [x] C: code query-embedding cache + prewarm; đo lại p95 cache-hit / cache-miss. — *30/09–01/10: cache + prewarm deploy (contract 1.12.0, `history/2026-09-30-search-query-embedding-cache-prewarm.md`); đo trên VM 01/10: embed miss p50 281 / p95 437 ms, hit 0 ms (`src/evaluation/reports/eval-2026-10-01-search-cloud-latency.md`).*
+- [ ] C: viết `stages.yaml` cho search bench (mới có `arms/B0.yaml`). — *05/10 rà: **chưa làm**. Day 4–5 chạy arm trực tiếp bằng `sb run --arm`, không qua cổng; plan Day 4–5 S8(b) chuyển sang Day 5 và vẫn chưa làm.*
 
 ### Day 4 — T5 01/10
-- [ ] A: `sb gold kappa` (κ = ____) → `merge` → `import` → `check` → **tag `gold_v1`**.
+- [x] A: `sb gold kappa` (κ = ____) → `merge` → `import` → `check` → **tag `gold_v1`**. — *30/09: κ = 0,692 (0,661 sau rà slice) → merge → import → retire c0463 → check xanh 131 câu / 13 slice, commit `6fb5053` (`history/2026-09-30-gold-merge-import-retire-tag-v1.md`). ⚠ 05/10: **tag `gold_v1` không có trên git** (local lẫn remote chỉ có `gold_v2`, `gold_v3`) — cần gắn lại vào `6fb5053` sau khi kiểm sha `gold.jsonl` khớp changelog. Sau đó: `gold_v2` (D4a, 01/10), `gold_v3` (D4b + D5a, 01/10, 5.021 nhãn).*
 - [x] B: cross-category rate, availability precision, catalog coverage; p95/p99 offline. *(01/10, Day 4 R — engine v5, bộ split `asof20260924` trên DB local seed 09-23: LLBO 1.016 khách engine Recall@20 **0,848** / NDCG@10 **0,517** vs mpd 0,602 / 0,380 (Δ +24,6 điểm, CI95 [+21,8; +27,6]); availability 1,000; coverage 0,565 (prod 0,207); Gini 0,834; cross-cat chuyến mở có mua 1,000 (mpd 0,400); p95/p99 offline 63 / 93 ms; temporal 98 khách engine 0,194 / 0,151 vs mpd 0,102 / 0,038. Report `src/evaluation/reports/eval-2026-10-01-recsys-bench-v5-asof20260924.md`, spec §4.15. Không so chữ số với v5 bộ 0922.)*
-- [ ] C: test tiêu chí 20–23 (decay theo ngày, `userVectorNorm` ≈ 1, `tripFactor`); xác nhận category exclusion & `diagnostics` (từ issue Day 1), sửa nếu lệch §7.
+- [ ] C: test tiêu chí 20–23 (decay theo ngày, `userVectorNorm` ≈ 1, `tripFactor`); xác nhận category exclusion & `diagnostics` (từ issue Day 1), sửa nếu lệch §7. — *05/10 rà: chưa thấy bằng chứng trong history / spec recsys; phần exclusion + `diagnostics` đã kiểm lại sau M6 (spec recsys §5.1, R7).*
 
 ### Day 5 — T6 02/10 — checkpoint tuần
-- [ ] A: gate SAN; arm E (Cohere vs `multilingual-e5-base`); S0–S9 lần 1.
+- [ ] A: gate SAN; arm E (Cohere vs `multilingual-e5-base`); S0–S9 lần 1. — *05/10 rà: **SAN xong** (`sb gold check` xanh, sanity 4/4 mọi model); **arm E xong** (B0 vs e5-base TIE trên gold_v2; 01–02/10 mở rộng 8 model + e5-large, `eval-2026-10-01-search-day4-local.md`, `eval-2026-10-02-search-local-fair.md`); **S0–S9 chưa** — mới có 3 arm APP dense / hybrid / hybrid + normalize (`eval-2026-10-01-search-v1-3arm.md`), chưa chạy S1–S9 của `arms.md`.*
 - [x] B: grid-search lần 1: event weight (1/0.5/0.2 vs 5/3/1), half-life, dormant 90 vs 180, công thức điểm. — *01/10: `run --override` (hằng engine đổi trong tiến trình, vào `configHash`), 9 run một-yếu-tố trên temporal đóng băng; Chỉ **cửa sổ trip mở** đổi kết quả: `ACTIVE_TRIP_MAX_AGE_DAYS` 60 → 30 / 14 nâng Recall@20 0,196 → 0,216 / **0,225** và NDCG@10 0,144 → 0,154 (+0,010), prod NDCG@5 +0,006 — cùng hướng với finding M6 (trip cũ còn trong 60 ngày bị coi là đang mở nên loại nhầm). `W_SHORT=0,7 / W_POP=0,15` +0,006 NDCG@10 và prod NDCG@5 +0,026; `W_SHORT=0,5 / W_POP=0,35` tệ hẳn (NDCG@10 −0,046). MMR λ 0,85 / 1,0, `H_SHORT_DAYS` 60, `DORMANT_AFTER_DAYS` 90 và `W_TYPE` 5/3/1 không đổi hoặc giảm nhẹ. Khác biệt trên 102 khách là 1–3 khách nên chỉ là hướng dò, không phải quyết định; muốn áp dụng phải qua M6 (đề xuất PRD) và chạy lại LLBO. Bảng: spec recsys §4.13.*
-- [ ] C + cả nhóm: **quyết định embedding model** (giữ Cohere + cache, hay đổi sang local). Ghi quyết định vào `docs/decisions/`.
-- [ ] Checkpoint tuần: có số v0 cho cả search lẫn recsys. Mentor đã xác nhận lệch handbook: có / chưa.
+- [ ] C + cả nhóm: **quyết định embedding model** (giữ Cohere + cache, hay đổi sang local). Ghi quyết định vào `docs/decisions/`. — *05/10: **nhóm chốt e5-small / 384** (`intfloat/multilingual-e5-small`), bỏ Cohere — người dùng báo; bằng chứng `eval-2026-10-02-search-local-fair.md` (e5-small hoà e5-base, BGE, GTE; rẻ và nhanh nhất). Còn phải: đề xuất `docs/prd/update/` cho FR-SRC-02 (đang ghi Cohere v3 / 1024) và chờ chốt trước khi sửa backend; chạy lại bench RecSys bằng vector e5 (report tuần 3 D8).*
+- [ ] Checkpoint tuần: có số v0 cho cả search lẫn recsys. Mentor đã xác nhận lệch handbook: có / chưa. — *05/10 rà: số v0 **có** cả hai (search: B0 + 3 arm APP trên gold; recsys: 4 arm + bảng thuật toán, `report_week_3.md`); mentor: **chưa** có ghi nhận trả lời.*
 
 ## 6. Day 6 – Day 10 (tuần 2)
 
 ### Day 6 — T2 05/10
-- [ ] Chốt S1/S2/S9/S10 → config + spec §10; `qu.py`; baseline regression cho search bench.
+- [ ] Chốt S1/S2/S9/S10 → config + spec §10; `qu.py`; baseline regression cho search bench. — *05/10: mở. Cần trước: split dev/test (người dùng chốt 05/10: ~65/66 phân tầng slice), `baseline_v1` + `sb regress` bản gọn (người dùng chốt 05/10).*
 - [ ] Chốt tham số recsys → config, `modelVersion`, sửa spec §4.3–4.7 khớp code. *(Thứ tự theo ADR 2 — `history/2026-10-01-adr2-huong-cai-thien-recsys-tuan-sau.md`: harness `targetInOwnHistory` + split biến thể trước; grid trên temporal `W_SHORT/W_POP` rồi λ MMR; bỏ `H_*`.)*
 - [ ] Đóng bug phát hiện từ bench.
+- [ ] RecSys chạy lại bằng vector e5-small / e5-base đã có (`bench_out/search/data/vec_T3+R_e5-*.npy`, 3.183 unit, text `catalog-text-v2`; không embed lại) → so `baseline_v1` (report tuần 3 D8). Harness cần chế độ đọc `.npy` vì settings backend khoá Cohere v3 / 1024. *(thêm 05/10; vector e5-small + e5-base đã đóng gói gửi bên RecSys 05/10, kèm sha256)*
 
 ### Day 7 — T3 06/10
 - [ ] Ablation search: hybrid vs dense-only (từ S-arms).
@@ -211,7 +214,8 @@ Mỗi ngày 3 dòng: xong gì (kèm số) · vướng gì · quyết định gì
 - Day 4 (R = B + phần recsys của C, Claude — 01/10 chiều): **xong** merge M6 vào nhánh con `bench/day4-rec` (`69e01a5`; `configHash` v5 `b0aee886` / `81d16abd` khớp, harness 70 + backend recommendation 25 test xanh); DB local là seed 09-23 ≠ split 0922 → đóng băng bộ mới `asof20260924` (LLBO 1.016 / temporal 98 khách, sanity PASS 6/6); đủ cột handbook §12: Gini độ phủ, cross-cat theo chuyến mở (2 biến thể: mọi chuyến mở / chuyến đã mua), `compare` paired bootstrap CI95, `report` sinh markdown + `gitDescribe`/`history` trong `summary.json`; 6 arm × 2 split: engine Recall@20 0,848 / NDCG@10 0,517 (LLBO), thắng mpd +24,6 điểm hit@20 [+21,8; +27,6]; engine_prod ≈ mpd ở hit@20 (CI chứa 0, cả hai split — I-5); MMR −2,7 điểm; ceiling 0,988 / 0,918 ≥ mpd; P1 4/4, P3 4/4 sau M6; spec §4.15 / §5.1 / §7, report `eval-2026-10-01-recsys-bench-v5-asof20260924.md`. · **vướng** không tái lập chữ số report v5 trên máy này (khác DB; tunnel VM đóng); R3–R5 (registry / funnel / scorer Tier 1) chưa làm; `cooc_trip` / `star_blend` không có đặc tả gốc. · **quyết định** (người dùng, 01/10) phạm vi Day 4 R = report đủ metric cho engine v5 + baseline; đóng băng split mới thay vì seed lại; báo cả hai biến thể cross-cat; gate R1 thay bằng `configHash` + thứ tự baseline + ceiling.
 - Day 4 → 5 (R, Claude — 01/10 chiều, R3–R6): **xong** commit Day 4 R `993669d`; spec thuật toán của người dùng đổi tên `docs/spec/bench/recsys-algos-v1.md` + errata E1–E12 đối chiếu code sau M6 (trip mở theo `usingDate` N = 14, arm `engine` eval vẫn MMR, funnel = mask engine, pool engine bị cắt 4/1.016 LLBO nhưng 76/98 temporal); registry `src/evaluation/recsys_bench/models/` (14 module: data/seeds/funnel/content/cooc/star/ease/rp3beta/itemknn/ials/bpr/registry/regress), `algos_v1.yaml`, CLI `run --algos … --mode funnel|raw` (knob `pool` × `rerank`, `algosHash`, fit log, cột `Collab cov.`/`Pool cắt`/`Fit s`) và `regress`; `scipy`/`implicit` vào `.venv`; test harness 96 → 97 passed. **Gate R4** trên dữ liệu thật: `content_profile+mmr` ≡ `engine` v5 **1016/1016 và 98/98**, `content_profile` ≡ `engine_nommr[:20]` 1016/1016 và 98/98, `star_blend_a1` ≡ `content_profile` 100 %. Smoke 50 khách × 2 split × 2 mode: mọi Tier 1 + `rp3beta` chạy exit 0, fit ≤ 1 s. · **vướng** `+mmr` phá scorer thang điểm nhỏ (cooc/ease/knn R@20 0,76 → 0,54 trên 50 khách) — chỉ đọc hàng `none` cho chúng; ở 7k event chỉ ≈ 5 % item top-20 có co-occurrence > 0 nên cooc/itemknn/rp3beta ra cùng top-20; `bpr_dest` không có cài đặt. · **quyết định** (người dùng 01/10) funnel = mask engine, bảng pool mask + gate pool engine, chạy cả hai rerank; R chốt X_train ⊆ `kept`, LLBO fit toàn cục + caveat, seed dạng `explain`, `because[]` hoãn. Full run Day 5 chưa chạy.
 - Day 5 (R, Claude — 01/10 tối, full Day 5 + because + bpr_dest): **xong** commit R3–R6 `8fffd4b`; gate numpy trong-run G1/G2 1016/1016 và 98/98; 6 run bảng (`2026-10-01-{llbo,temporal}-algos-{funnel,raw}` pool mask × rerank none/mmr, `--max-tier 2`, thêm baseline `pop_funnel`) + `content-nodecay`, 102 so cặp có CI, phân khúc, ceiling → report `src/evaluation/reports/eval-2026-10-01-recsys-algos-v1.md`; `baseline_v1` (`frozen/baseline_v1-{llbo,temporal}-asof20260924.json`) + lệnh `baseline` / `regress --baseline` (mã 0/1/2/3) + `make recsys-{test,gate-run,regress,baseline}`, PASS trên chính nó; because[] cho scorer mới với `--because-k K` (K = 5/10/15/20); `bpr_numpy` / `bpr_dest` (numpy, sampler cắm được) Tier 2; ADR 2 ở `history/2026-10-01-adr2-huong-cai-thien-recsys-tuan-sau.md`. Số chính LLBO funnel hit@20: content 0,875 · `star_blend` 0,896 · `pop_funnel` = cooc = itemknn = rp3beta 0,820 · `ials` 0,835 · engine 0,848; temporal: content 0,194, mọi CF ≤ 0,112. · **vướng** 441/1.016 khách LLBO đã `add_to_cart` (không gid) đúng target trước khi mua — `ials` thắng NDCG@10 ở LLBO nhờ tín hiệu này (0,977 trên nhóm có giỏ, −13,2 điểm ở nhóm còn lại); temporal chỉ 2/98. · **quyết định** (ADR 2, theo quy tắc, chưa đồng thuận) giữ engine v5 làm lõi; harness thêm nhãn `targetInOwnHistory` + split biến thể trước grid; đề xuất PRD cap theo `parentProductId` (I-5); grid temporal `W_SHORT/W_POP` rồi λ MMR; bỏ grid `H_*`; không chạy kiến trúc sâu.
-- Day 6:
+- Day 4–5 (S, Codex / Claude — 01–02/10, ghi bù 05/10): **xong** S1–S8a (`history/2026-10-01-search-day4-local.md`): gold_v3 5.021 nhãn; 8 model × 3.183 vector; 3 arm APP (dense giữ làm mốc vì hybrid + normalize thua guard slice); v4-512 / v4-1024 qua gate judged; 02/10 so 5 model local cùng thang đo condensed-deep → e5-small hoà e5-base / BGE / GTE, e5-large kém. · **vướng** chưa có stages / regress / split; gate P kẹt ở `/search` cloud p95 4,0 s; tag `gold_v1` không có trên git. · **quyết định** không đổi production; quyết định model còn treo.
+- Day 6 (05/10 sáng, rà checklist): đối chiếu ô tick với history; điền bảng baseline v0; ghi việc mở quá hạn (`stages.yaml`, tiêu chí 20–23); nhóm chốt model e5-small / 384 (cần đề xuất PRD FR-SRC-02); gửi vector e5 cho RecSys.
 - Day 7:
 - Day 8:
 - Day 9:
