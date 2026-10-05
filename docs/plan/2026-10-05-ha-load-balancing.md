@@ -42,6 +42,7 @@ Trạng thái phải nằm ngoài VM: session BFF, rate limit và working memory
 | 7 | Cloud NAT cho VM không IP public, vỏ secret và quyền đọc, cổng `require_secret_versions` (use case ở §3b) | Xong, test pass, chưa apply |
 | 6.5 | `/health/ready` thăm dò DB (`READY_REQUIRES_DB`, chỉ cho LB; use case ở §3b) | Xong, test pass, chưa apply |
 | 6.3 + 6.4 | pgbouncer sidecar (transaction pooling) trên mỗi VM + `LEADER_LOCK_DATABASE_URL` cho khoá leader; đã đo trước/sau (use case ở §3b) | Xong, test pass trên Postgres và pgbouncer thật, chưa apply |
+| 6.2 | `ops/promote-db-replica.sh`: tắt primary, nâng replica, đổi DNS bằng một lệnh (use case ở §3b) | Xong, test trên primary/replica thật, chưa chạy trên GCP |
 | 6 | DB: endpoint ổn định cho MIG (thay `vota-db-tunnel` trên 127.0.0.1:15432), cân nhắc Cloud SQL HA hoặc Patroni + pgbouncer | Chưa làm |
 | 7 | Cloud NAT cho VM không có IP public; tạo secret `vota-ha-backend-env` | Chưa làm |
 | 8 | Alert MIG: số VM khỏe < min, autoscaler chạm max, 5xx của LB | Chưa làm |
@@ -166,6 +167,20 @@ Tình huống: 20:00 khuyến mãi khách sạn Vinpearl Phú Quốc, nhóm HA c
 Rủi ro kèm theo đã tái hiện: khoá advisory mức session của job đối soát (vấn đề 1) không dùng được qua pooler transaction mode: hai bản sao cùng thấy mình là leader (`(True, True)`, test `test_session_advisory_lock_is_not_exclusive_through_the_pooler`). Sửa: `LEADER_LOCK_DATABASE_URL` đi thẳng tới Postgres; guard `REQUIRE_SHARED_BACKENDS` bắt buộc đặt nó khi dùng pooler, và chấp nhận loopback `127.0.0.1:6432` (pgbouncer sidecar) nhưng vẫn từ chối tunnel `127.0.0.1:15432`.
 
 Chưa kiểm: chạy trên VM thật (image kéo qua NAT, quyền ghi `/etc/vota/pgbouncer`, `nc` trong image cho healthcheck); mật khẩu role có ký tự cần mã hoá URL bị script từ chối (kiểm bằng test).
+
+## Use case: primary DB chết lúc cao điểm, đang có đơn chờ thanh toán (3 VM)
+
+Tình huống: 20:03, VM primary Postgres chết đột ngột. Nhóm có 3 VM; có 8 đơn đang `PENDING_PAYMENT` (giữ chỗ 30 phút), trong đó đơn Vinpearl Phú Quốc 12 triệu của một khách vừa trả tiền xong ở Stripe.
+1. Mọi VM trả 5xx cho đăng nhập, đặt chỗ và webhook Stripe (Stripe sẽ thử lại webhook). `/health/ready` trả 503 do readiness có kiểm DB (6.5); liveness vẫn ổn nên MIG không thay VM vô ích.
+2. Quy trình cũ (`docs/guide/van-hanh-db-replica.md` mục 6) gồm bốn bước tay, trong đó bước 3 là sửa tunnel và `DATABASE_URL` trên từng VM rồi deploy lại; với MIG còn phải tạo instance template mới và cuốn chiếu thay VM. Ước lượng của tôi từ 30 phút trở lên (chưa đo trên cloud) trong khi giữ chỗ chỉ 30 phút, đơn có thể hết hạn trước khi hệ thống phục hồi.
+3. Dễ sai khi làm tay lúc sự cố: quên tắt hẳn primary cũ (hai primary cùng ghi), promote khi replica chưa replay hết WAL.
+
+Đã kiểm thật trên cặp Postgres 16 primary/replica streaming trong Docker: script dừng primary trước, replica vẫn là standby lúc đó, rồi promote, rồi mới đổi DNS (lúc đổi DNS replica đã `pg_is_in_recovery = f`); dữ liệu đã có trước đó (đơn demo `VP-12M-PHUQUOC`) còn nguyên trên replica mới và replica mới ghi được; dry run không gọi gcloud; chạy lại khi replica đã là primary thì từ chối, không dừng hay đổi DNS thêm; thiếu biến bắt buộc thì từ chối. Cục bộ chạy trong 2 giây.
+Chưa kiểm: chạy trên GCP thật (thời gian `gcloud compute instances stop` thường tính theo chục giây, `gcloud dns record-sets update`, SSH vào replica), thời gian pgbouncer nhận IP mới sau TTL 30 giây, và việc WAL chưa kịp sang replica lúc primary chết (mất dữ liệu tối đa bằng độ trễ replication; script in số byte WAL chưa replay).
+
+Sau khi sửa: một lệnh `ops/promote-db-replica.sh --yes` (có dry run) làm đủ bốn bước; backend không phải sửa env hay deploy lại vì nối qua `db.vota.internal` (6.1) và pgbouncer phân giải lại khi mở kết nối mới (6.4). Không có failover tự động, vẫn là quyết định của người vận hành; việc đó (Patroni hoặc Cloud SQL HA) ngoài phạm vi và cần bạn quyết riêng.
+
+Kiểm chứng: `ops/tests/test_promote_db_replica.sh` (4 ca trên Postgres thật; lần chạy đầu lộ hai lỗi của chính test, đã sửa).
 
 ## 4. Điều kiện trước khi `terraform apply`
 
