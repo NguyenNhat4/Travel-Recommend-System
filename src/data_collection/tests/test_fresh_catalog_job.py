@@ -107,6 +107,14 @@ class CalendarTests(unittest.TestCase):
         self.assertEqual(self.calendar(changed, 'closed')[14], '0')  # nguồn xác nhận hết phòng ngày mẫu
         self.assertNotIn('availability', changed['hotel']['attributes'])  # property không có lịch
 
+    def test_rooms_take_whole_window_whatever_the_source_dates(self):
+        narrow = {'level': 'room', 'parentProductId': 'hotel', 'sourceAvailableFrom': '2026-10-23',
+                  'sourceAvailableTo': '2026-10-24'}
+        changed = apply_window([self.parent, row('narrow', attributes=narrow)], AS_OF)
+        lo, hi = AS_OF, AS_OF + timedelta(days=29)
+        self.assertEqual((changed['narrow']['available_from'], changed['narrow']['available_to']), (lo, hi))
+        self.assertEqual(self.calendar(changed, 'narrow'), '1' * 30)
+
     def test_dense_real_sweep_uses_the_real_calendar(self):
         days = [(AS_OF + timedelta(days=i)).isoformat() for i in range(30)]
         prices = {day: 900000 for day in days if day != days[3]}
@@ -536,6 +544,22 @@ class IndexSettingsTests(unittest.TestCase):
             self.settings(DB_TARGET='local', SEED_DATABASE_URL='postgresql://seed',
                           WEAVIATE_URL='ftp://weaviate', COHERE_API_KEY='k')
 
+
+class ManualComboMappingTests(unittest.TestCase):
+    def test_run_dir_gets_the_reviewed_combo_mapping_once(self):
+        from fresh_catalog_db import bring_manual_combo_mapping
+        with tempfile.TemporaryDirectory() as tmp:
+            run, source = Path(tmp) / 'run', Path(tmp) / 'combo_items_manual.jsonl'
+            run.mkdir()
+            source.write_text('{"combo_product_id": "c", "position": 1}\n', encoding='utf-8')
+            self.assertTrue(bring_manual_combo_mapping(run, source))
+            self.assertEqual((run / 'combo_items_manual.jsonl').read_text(encoding='utf-8'), source.read_text(encoding='utf-8'))
+            self.assertFalse(bring_manual_combo_mapping(run, source))  # đã có thì không ghi đè
+            self.assertFalse(bring_manual_combo_mapping(run, Path(tmp) / 'missing.jsonl'))
+
+    def test_default_snapshot_ships_the_reviewed_mapping(self):
+        from data_collection.seed.config import DEFAULT_SNAPSHOT_DIR
+        self.assertTrue((DEFAULT_SNAPSHOT_DIR / 'combo_items_manual.jsonl').is_file())
 
 if __name__ == '__main__':
     unittest.main()

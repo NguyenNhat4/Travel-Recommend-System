@@ -212,8 +212,9 @@ FIELDS: tuple[Field, ...] = (
     Field("sla.maxCatalogAgeHours", "alerts", "SLA – báo khi lần nạp DB thành công gần nhất cũ hơn (giờ, 0 = tắt)", "int", 48,
           minimum=0, maximum=720),
     # ---- lưu trữ và log
-    Field("runs.keep", "storage", "Số lượt giữ lại dữ liệu (raw, interim, catalog, báo cáo)", "int", 7,
-          minimum=1, maximum=100, help="Lượt cũ hơn bị xoá đầu mỗi lượt mới. Tóm tắt của mọi lượt vẫn còn trong lịch sử."),
+    Field("runs.keep", "storage", "Số lượt giữ lại dữ liệu (raw, interim, catalog, báo cáo)", "int", 2,
+          env="RUNS_KEEP", minimum=1, maximum=100,
+          help="Lượt cũ hơn bị xoá đầu mỗi lượt mới (mặc định 2 lượt để tiết kiệm dung lượng VM 2 vCPU 4 GB). Tóm tắt của mọi lượt vẫn còn trong lịch sử."),
     Field("log.verbose", "storage", "Log chi tiết từng request (URL, mã HTTP, thời gian)", "bool", False),
 )
 BY_KEY = {f.key: f for f in FIELDS}

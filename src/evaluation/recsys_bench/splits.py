@@ -6,6 +6,14 @@
   `origin/khoa/recsys-research@6b9b0af` (`src/evaluation/benchmark.py`: `_time_key`, `leave_one_purchase_out`).
 - **Temporal (`temporal`)** — mốc `T` chung: train = mọi event `< T`; khách test = có ≥ 1 event train và ≥ 1 purchase
   hợp lệ `>= T`; target = purchase sớm nhất `>= T`; `as_of = T` cho mọi khách.
+- **Chuyến kế tiếp (`nexttrip`, 05/10)** — khách có ≥ `min_trips` chuyến (`eventGroupId`) có purchase hợp lệ; target = món đầu tiên
+  của chuyến **mới nhất mà chuyến liền trước đã đi xong** (mọi `usingDate` của chuyến trước < ngày `as_of`); `as_of` = lúc **bắt đầu
+  duyệt** cho chuyến đó (event sớm nhất trong `browse_days` ngày trước purchase đầu), nên train chỉ có các chuyến cũ + lần bỏ giỏ trước
+  đó, không có lượt xem của chính chuyến mới. Hỏi "gợi gì cho chuyến sau", khác LLBO (thường giấu món kế trong cùng chuyến đang mở).
+- **Lần mua đầu (`coldstart`, 05/10)** — target = purchase hợp lệ đầu tiên của khách, `as_of` = thời điểm đó, train = event trước đó
+  (xem / giỏ / tìm); chỉ lấy khách có ≥ `min_events` event train. Hỏi "khách mới chưa từng mua".
+- **Nhãn tín hiệu sẵn có (05/10)** — `history_labels`: target (quy về unit) đã xuất hiện trong train của khách (`targetInOwnHistory`),
+  trong giỏ (`targetInOwnCart`). Ghi vào `per_user`, không vào sha đóng băng (split cũ giữ nguyên sha).
 
 Target luôn quy về **search unit cha** (phòng → khách sạn, chuyến → tuyến) vì engine chỉ trả search unit.
 Đầu vào là event đã qua `events.filter_events`.
@@ -16,7 +24,7 @@ import hashlib
 import json
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from src.backend.app.application.ports import UnitIndex
@@ -26,7 +34,7 @@ from .events import PERSONA_IDS, parse_ts
 
 
 EVENT_KEYS = ("cdpUserId", "eventName", "productId", "timestamp", "eventGroupId", "usingDate")
-PARAM_KEYS = ("minPurchases", "minTrips", "T", "quantile")
+PARAM_KEYS = ("minPurchases", "minTrips", "T", "quantile", "minEvents", "browseDays")
 
 
 class SplitMismatch(AssertionError):
@@ -194,6 +202,88 @@ def leave_last_booking_out(events: list[dict], index: UnitIndex, *, min_purchase
             "sameInstantDropped": same_instant_dropped, "eventsSha256": events_sha256(events), "eventsCount": len(events),
             **_meta_for_targets(targets, train_by_user, as_of_by_user, index)}
     return Split("llbo", targets, target_events, as_of_by_user, train_by_user, train_purchases, meta)
+
+
+def history_labels(split: Split, index: UnitIndex) -> dict[str, dict]:
+    """Khách → {targetInOwnHistory, targetInOwnCart, targetViewed}: unit target đã có trong event train (mọi loại / add_to_cart /
+    product_view) của chính khách trước `as_of`. Tách số "đoán món đã có sẵn trong giỏ / đã xem" khỏi số dự đoán sở thích mới."""
+    out = {}
+    for user, target in split.targets.items():
+        kinds = {e.get("eventName") for e in split.train_by_user[user]
+                 if e.get("productId") and index.resolve(str(e["productId"])) is not None
+                 and _unit_id(index, str(e["productId"])) == target}
+        out[user] = {"targetInOwnHistory": bool(kinds), "targetInOwnCart": "add_to_cart" in kinds, "targetViewed": "product_view" in kinds}
+    return out
+
+
+def _with_label_meta(split: Split, index: UnitIndex) -> Split:
+    labels = history_labels(split, index)
+    split.meta["targetInOwnHistory"] = sum(v["targetInOwnHistory"] for v in labels.values())
+    split.meta["targetInOwnCart"] = sum(v["targetInOwnCart"] for v in labels.values())
+    return split
+
+
+def _trips(rows: list[tuple[int, dict]], index: UnitIndex) -> dict[str, list[tuple[int, dict]]]:
+    trips: dict[str, list[tuple[int, dict]]] = defaultdict(list)
+    for pos, e in rows:
+        if _is_valid_purchase(e, index) and e.get("eventGroupId"):
+            trips[str(e["eventGroupId"])].append((pos, e))
+    return trips
+
+
+def next_trip_split(events: list[dict], index: UnitIndex, *, min_trips: int = 2, browse_days: int = 7) -> Split:
+    targets, target_events, as_of_by_user, train_by_user = {}, {}, {}, {}
+    no_ended_previous = 0
+    for user, rows in _by_user(events).items():
+        trips = _trips(rows, index)
+        if len(trips) < min_trips:
+            continue
+        ordered = sorted(trips.values(), key=lambda t: min(_order_key(e, pos) for pos, e in t))
+        chosen = None
+        for prev, cur in reversed(list(zip(ordered, ordered[1:]))):
+            pos, first = min(cur, key=lambda pe: _order_key(pe[1], pe[0]))
+            bought_at = parse_ts(first["timestamp"])
+            # bắt đầu duyệt: event sớm nhất của khách trong [purchase − browse_days, purchase] (view / search / giỏ của chuyến mới)
+            as_of = min(parse_ts(e["timestamp"]) for _, e in rows
+                        if bought_at - timedelta(days=browse_days) <= parse_ts(e["timestamp"]) <= bought_at)
+            ends = [str(e.get("usingDate"))[:10] for _, e in prev if e.get("usingDate")]
+            if ends and max(ends) < as_of.date().isoformat():
+                chosen = (first, as_of)
+                break
+        if chosen is None:
+            no_ended_previous += 1
+            continue
+        first, as_of = chosen
+        targets[user] = _unit_id(index, str(first["productId"]))
+        target_events[user], as_of_by_user[user] = first, as_of
+        train_by_user[user] = [e for _, e in rows if parse_ts(e["timestamp"]) < as_of]
+    train_purchases = [e for e in events if _is_valid_purchase(e, index)]
+    meta = {"minTrips": min_trips, "browseDays": browse_days, "usersTotal": len(_by_user(events)), "noEndedPreviousTrip": no_ended_previous,
+            "eventsSha256": events_sha256(events), "eventsCount": len(events),
+            **_meta_for_targets(targets, train_by_user, as_of_by_user, index)}
+    return _with_label_meta(Split("nexttrip", targets, target_events, as_of_by_user, train_by_user, train_purchases, meta), index)
+
+
+def cold_start_split(events: list[dict], index: UnitIndex, *, min_events: int = 1) -> Split:
+    targets, target_events, as_of_by_user, train_by_user = {}, {}, {}, {}
+    no_prior = 0
+    for user, rows in _by_user(events).items():
+        purchases = [(pos, e) for pos, e in rows if _is_valid_purchase(e, index)]
+        if not purchases:
+            continue
+        pos, first = min(purchases, key=lambda pe: _order_key(pe[1], pe[0]))
+        as_of = parse_ts(first["timestamp"])
+        train = [e for _, e in rows if parse_ts(e["timestamp"]) < as_of]
+        if len(train) < min_events:
+            no_prior += 1
+            continue
+        targets[user] = _unit_id(index, str(first["productId"]))
+        target_events[user], as_of_by_user[user], train_by_user[user] = first, as_of, train
+    train_purchases = [e for e in events if _is_valid_purchase(e, index)]
+    meta = {"minEvents": min_events, "usersTotal": len(_by_user(events)), "noPriorEvents": no_prior,
+            "eventsSha256": events_sha256(events), "eventsCount": len(events),
+            **_meta_for_targets(targets, train_by_user, as_of_by_user, index)}
+    return _with_label_meta(Split("coldstart", targets, target_events, as_of_by_user, train_by_user, train_purchases, meta), index)
 
 
 def default_cutoff(events: list[dict], index: UnitIndex, quantile: float = 0.8) -> datetime:

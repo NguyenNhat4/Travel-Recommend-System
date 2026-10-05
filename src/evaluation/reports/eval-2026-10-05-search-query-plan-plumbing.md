@@ -1,5 +1,7 @@
 # Search query plan (Phase A) qua pipeline thật — F3 phủ định, F4 loại sản phẩm, F5 chiều bay, F6 giá/sao: số chẩn đoán Sprint 1 trên gold_v3
 
+> **Ghi chú sau merge 05/10 (nhánh `bench_search_recomSys`):** máy khác cũng tạo cổng APP e5-small với `APP.e5s.hybrid_norm` = cutoff **0,62** (`regression/baseline_v1.json`). Trong report này các arm `APP.e5s.hybrid_norm*` có cutoff **0,84** nay đổi tên thành `APP.e5s.hybrid_norm_c84*` (yaml trong `arms/`); collection `ProductBench_e5_small` của máy này tương ứng `ProductBench__e5_small` theo quy ước đã hợp nhất. Số và run id giữ nguyên.
+
 - Ngày chạy và viết: **05/10/2026** (tối; Sprint 1 theo plan `fix/search` Phase A).
 - Phục vụ: **FR-SRC-01, FR-SRC-03, FR-SRC-04, AC-SRC-01**; kiến trúc `docs/spec/bench/kien_truc_search_ota_so_do_va_giai_doan.md` §4–§6, §11
   (guard Forbidden@10, filter pass, direction). **Không phải số nghiệm thu**: gold_v3 chỉ có 5 câu phủ định (`filter: null`), 1 câu tuyến

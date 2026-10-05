@@ -37,6 +37,30 @@ def test_positive_matches(matcher, raw, key):
     assert matcher.match(raw) == ("seed", key)
 
 
+@pytest.mark.parametrize("raw", [
+    # 05/10 (D11): chuỗi phủ định và chuỗi khoảng cách không phải tiện ích của sản phẩm
+    "Không có Thang máy Thang máy", "Không có Wi-Fi miễn phí trong tất cả các phòng!", "Không có Khu vực hút thuốc",
+    "Sân Golf Đà Lạt 570 m", "Story Beach & Pool 190 m", "Chợ Đà Lạt 1,6 km", "Khoảng cách từ trung tâm thành phố : 1km",
+    "Phòng / tầng không hút thuốc : no", "Hồ bơi ngoài trời\n\n(Tạm thời ngừng hoạt động)",
+])
+def test_negated_and_distance_strings_are_dropped(matcher, raw):
+    assert amenities.is_not_amenity(raw)
+    assert matcher.match(raw) == ("raw", "")
+
+
+@pytest.mark.parametrize("raw", ["Thang máy", "Phòng không hút thuốc", "Hồ bơi 2 tầng", "Spa 24 giờ", "Wi-Fi miễn phí",
+                                 "Phòng / tầng không hút thuốc : yes"])
+def test_positive_strings_are_kept(raw):
+    assert not amenities.is_not_amenity(raw)
+
+
+def test_build_vocab_skips_dropped_strings(matcher):
+    vocab, ids = amenities.build_vocab([["Không có Thang máy Thang máy", "Sân Golf Đà Lạt 570 m"], ["Thang máy"]],
+                                       matcher, 1)
+    assert ids[0] == []
+    assert ids[1] == [vocab.ids["elevator"]]
+
+
 def test_fuzzy_hits_are_recorded(cfg, tmp_path):
     seed = amenities.load_seed(paths.resolve_repo_path(cfg.catalog.amenity_seed_path))
     m = amenities.TrigramAmenityMatcher(seed, cfg.catalog.amenity_fuzzy_min)

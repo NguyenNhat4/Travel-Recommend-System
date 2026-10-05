@@ -1,11 +1,9 @@
-# Cổng APP trên e5-small (05/10, fix/search): chạy đúng SearchProducts của backend trên collection ProductBench_e5_small
-# (vector `vec_T3+R_e5-small.npy`, 384 chiều, prefix query:/passage: theo config). Người dùng chốt 05/10 chuyển model sang e5-small
-# và không gọi Cohere nữa; cutoff -1 vì 0,62 là ngưỡng cosine của Cohere (cosine e5 dồn 0,72–0,78 cho cặp không liên quan) —
-# cutoff cho e5 chọn sau khi xem phân bố top_scores (tạm, chờ dev/test split).
+# Cổng APP với e5-small (05/10, Day 5 Search — model chốt e5-small / 384): giống hệt APP.hybrid_norm_nocut (cùng khối app,
+# kể cả cutoff Cohere 0,62 — chưa hiệu chỉnh cho e5), chỉ đổi model: collection ProductBench__e5_small, embedder truy vấn e5-small.
 id: APP.e5s.hybrid_norm_nocut
 stage: APP
-parent: APP.e5s.hybrid_nocut
-description: "e5-small: hybrid + QueryNormalizer (cấu hình production hiện nay, không cutoff) — mốc cho F1/F2"
+parent: APP.e5s.hybrid_norm
+description: "e5-small (384) · hybrid + normalize, KHÔNG cutoff"
 composite: true
 engine: app
 app: {cutoff: -1.0, candidate_k: 200, hybrid: true, normalize: true, rrf_k: 60, lexical_k: 10, lexical_cutoff: 0.50, min_coverage: 0.6, lexical_candidate_k: 50,

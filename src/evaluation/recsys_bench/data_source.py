@@ -9,6 +9,10 @@ Chế độ vector:
 - `weaviate` — y hệt `main.build_recsys`: `WeaviateVectorStore(...).load()`, mỗi request truy vấn top-K (đúng production);
 - `numpy` — kéo toàn bộ vector một lần qua REST (`WeaviateClient.fetch`), cache `.npz`, tra bằng `NumpyVectorSearch`
   (kNN chính xác, nhanh cho grid-search; lệch nhẹ so với HNSW).
+- `npy:<prefix>` (05/10, plan `docs/plan/2026-10-05-bench-recsys-e5-small.md` 6.5) — vector document đã embed sẵn của search
+  bench (`<prefix>.npy` + `.ids.json` + `.meta.json`, vd `bench_out/search/data/vec_T3+R_e5-small`), tra bằng
+  `NumpyVectorSearch`. Không cần Weaviate, không bị khoá vào model của settings backend: `modelVersion` =
+  `<cache_model>:<text_builder_version>` của file meta.
 """
 from __future__ import annotations
 
@@ -28,6 +32,8 @@ from .paths import cache_dir
 logger = logging.getLogger("recsys_bench")
 
 VECTOR_MODES = ("none", "weaviate", "numpy")
+NPY_PREFIX = "npy:"
+NORM_TOLERANCE = 1e-3
 
 
 def settings():
@@ -56,8 +62,10 @@ def dsn_label(dsn: str) -> str:
 
 
 def load_index(mode: str = "none") -> tuple[UnitIndex, VectorSearchPort | None]:
+    if mode.startswith(NPY_PREFIX):
+        return _npy_index(mode[len(NPY_PREFIX):])
     if mode not in VECTOR_MODES:
-        raise ValueError(f"--vectors phải là một trong {VECTOR_MODES}")
+        raise ValueError(f"--vectors phải là một trong {VECTOR_MODES} hoặc {NPY_PREFIX}<prefix>")
     s = settings()
     version = model_version(s)
     if mode == "weaviate":
@@ -97,6 +105,62 @@ def _numpy_vectors(index: UnitIndex, s, version: str) -> VectorSearchPort:
     path.parent.mkdir(parents=True, exist_ok=True)
     np.savez(path, ids=np.array(ids), E=E)
     return NumpyVectorSearch(ids, E)
+
+
+def read_npy_vectors(prefix: str) -> tuple[list[str], np.ndarray, dict]:
+    """(ids, E, meta) của bộ `<prefix>.npy` / `.ids.json` / `.meta.json`; kiểm số dòng, số chiều, chuẩn hoá L2 và
+    text builder (vector dựng bằng text khác production thì không đo được engine production)."""
+    from src.backend.app.domain.catalog import TEXT_BUILDER_VERSION
+    paths = {ext: f"{prefix}{ext}" for ext in (".npy", ".ids.json", ".meta.json")}
+    missing = [p for p in paths.values() if not os.path.exists(p)]
+    if missing:
+        raise FileNotFoundError(f"thiếu file vector: {missing}")
+    E = np.load(paths[".npy"], allow_pickle=False).astype(np.float32)
+    with open(paths[".ids.json"], encoding="utf-8") as f:
+        ids = json.load(f)
+    with open(paths[".meta.json"], encoding="utf-8") as f:
+        meta = json.load(f)
+    if E.ndim != 2 or len(ids) != E.shape[0]:
+        raise ValueError(f"{paths['.npy']}: {E.shape} không khớp {len(ids)} id")
+    if len(set(ids)) != len(ids):
+        raise ValueError(f"{paths['.ids.json']}: id trùng")
+    if meta.get("dim") is not None and int(meta["dim"]) != E.shape[1]:
+        raise ValueError(f"meta dim {meta['dim']} ≠ {E.shape[1]} chiều của ma trận")
+    if meta.get("text_builder_version") != TEXT_BUILDER_VERSION:
+        raise ValueError(f"vector dựng bằng text {meta.get('text_builder_version')!r}, backend đang là {TEXT_BUILDER_VERSION!r}")
+    if not meta.get("cache_model"):
+        raise ValueError(f"{paths['.meta.json']}: thiếu cache_model")
+    norms = np.linalg.norm(E, axis=1)
+    if not np.allclose(norms, 1.0, atol=NORM_TOLERANCE):
+        raise ValueError(f"vector chưa chuẩn hoá L2 (norm {norms.min():.4f}..{norms.max():.4f})")
+    return list(ids), E, meta
+
+
+def _npy_index(prefix: str) -> tuple[UnitIndex, VectorSearchPort]:
+    from src.backend.app.infrastructure.vectors.numpy_search import NumpyVectorSearch
+    from src.backend.app.infrastructure.vectors.postgres_store import PostgresCatalogReader
+    ids, E, meta = read_npy_vectors(prefix)
+    version = f"{meta['cache_model']}:{meta['text_builder_version']}"
+    index = PostgresCatalogReader(settings().database_url).load().to_index(version)
+    pos = {pid: i for i, pid in enumerate(ids)}
+    keep = [p.product_id for p in index.units if p.product_id in pos]
+    if 2 * len(keep) < len(index.units):
+        raise RuntimeError(f"{prefix}: chỉ {len(keep)}/{len(index.units)} search unit có vector — catalog khác bộ vector")
+    if len(keep) < len(index.units):
+        logger.warning("%s: %d search unit không có vector", prefix, len(index.units) - len(keep))
+    search = NumpyVectorSearch(keep, E[[pos[pid] for pid in keep]])
+    search.source = {"prefix": os.path.basename(prefix), "cacheModel": meta["cache_model"], "dim": int(E.shape[1]),
+                     "itemsSha256": meta.get("items_sha256"), "textSha256": meta.get("text_sha256"),
+                     "npySha256": _file_sha256(f"{prefix}.npy"), "nFile": len(ids), "nUsed": len(keep)}
+    return index, search
+
+
+def _file_sha256(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 def _event_cache_key(url: str) -> str:

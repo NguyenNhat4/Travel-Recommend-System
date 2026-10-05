@@ -1,5 +1,7 @@
 # Search e5-small qua pipeline thật — lọc điểm đến từ câu (F1), câu không dấu (F2) và cutoff tạm
 
+> **Ghi chú sau merge 05/10 (nhánh `bench_search_recomSys`):** máy khác cũng tạo cổng APP e5-small với `APP.e5s.hybrid_norm` = cutoff **0,62** (`regression/baseline_v1.json`). Trong report này các arm `APP.e5s.hybrid_norm*` có cutoff **0,84** nay đổi tên thành `APP.e5s.hybrid_norm_c84*` (yaml trong `arms/`); collection `ProductBench_e5_small` của máy này tương ứng `ProductBench__e5_small` theo quy ước đã hợp nhất. Số và run id giữ nguyên.
+
 - Ngày chạy và viết: **05/10/2026**.
 - Phục vụ: **FR-SRC-01, FR-SRC-03, FR-SRC-04, AC-SRC-01** (chất lượng truy xuất, điểm đến do câu quyết định, không trả rỗng vô cớ). Số
   về e5-small chỉ là bằng chứng cho đề xuất `docs/prd/update/2026-10-05-fr-src-02-embedding-local-e5-small.md` (**chờ chốt**) — PRD

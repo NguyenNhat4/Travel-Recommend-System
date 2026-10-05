@@ -70,3 +70,35 @@
   - E2.v4-1024
   - E2.v4-512
   - E2.v4-256
+- version: gold_v4
+  at: '2026-10-05T17:15:38+07:00'
+  action: import_append
+  n_queries_active: 154
+  n_queries_retired: 1
+  n_labels: 5580
+  source: pool@gold_v4
+  merged: merged.csv
+  snapshot: '2026-09-23'
+  new_queries: 23
+  new_labels_by_source:
+    machine_accepted: 559
+  pool_dir: v4a
+- version: gold_v4
+  at: '2026-10-05T17:15:40+07:00'
+  action: holes_import
+  n_queries_active: 154
+  n_queries_retired: 1
+  n_labels: 5666
+  tag: D8a
+  new_labels_by_source:
+    human: 0
+    auto_ooc: 27
+    queries: 20
+    machine: 59
+    machine_unreviewed: 0
+  holes_dir: gold_v4__D8a
+  run_id: 20261005-v4a-holes
+  arms:
+  - B0
+  - E2.e5
+  - APP.hybrid_norm

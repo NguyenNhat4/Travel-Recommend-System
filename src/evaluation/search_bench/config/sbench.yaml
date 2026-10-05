@@ -69,8 +69,8 @@ doctor:                           # (đề xuất) Part 0
   min_weaviate_version: "1.37"
 
 gold:                             # Part 5
-  target: 200                     # mục tiêu tham khảo (= tổng slices) — 28/09: KHÔNG bắt buộc đủ, lấy mọi câu người soát chọn
-  minimum: 39                     # 28/09: 13 slice × min_per_slice (trước: 150)
+  target: 211                     # mục tiêu tham khảo (= tổng slices); 05/10: +taxonomy_collision 5, +flight_direction 6 (gold_v4) — 28/09: KHÔNG bắt buộc đủ, lấy mọi câu người soát chọn
+  minimum: 45                     # 05/10: 15 slice × min_per_slice (28/09: 13 × 3 = 39; trước: 150)
   pool_depth: 15
   overlap_queries: 25
   kappa_min: 0.6
@@ -91,6 +91,8 @@ gold:                             # Part 5
     multi_constraint: 20
     cross_vertical: 10
     out_of_catalog: 10
+    taxonomy_collision: 5          # 05/10 (D3): gold_v4 — va chạm loại sản phẩm cùng nơi
+    flight_direction: 6            # 05/10 (D3): gold_v4 — vé máy bay có chiều / chỉ điểm đi hoặc đến
 
 synth:                            # Part 7
   per_unit: 8
@@ -161,6 +163,12 @@ stages:                           # Part 12 (cấu trúc cổng ở config/stage
   default_model: cohere-v3        # quyết định team 23/09; cổng E2 không tự đổi model
 
 regression:                       # Part 13
+  baseline_file: regression/baseline_v1.json   # Day 5 bản gọn (`sb regress`), tương đối theo thư mục gói search_bench
+  regress_v1:                     # Day 5 bản gọn (plan Day 4–5 §2.3 việc 5): FAIL khi tụt quá ngưỡng, không cần p
+    metrics: [ndcg@10, recall@10]
+    max_drop_overall: 1.0         # điểm (×100) trên tập câu chung
+    max_drop_slice: 3.0
+    worst_n: 10                   # số câu tụt nhiều nhất in kèm
   max_drop_ndcg: 2.0              # điểm nDCG@10 overall, kèm p < 0.05
   max_slice_drop: 3.0
   p_max: 0.05

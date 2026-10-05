@@ -1,13 +1,13 @@
-# Cổng APP trên e5-small (05/10, fix/search): chạy đúng SearchProducts của backend trên collection ProductBench_e5_small
+# Cổng APP trên e5-small (05/10, fix/search): chạy đúng SearchProducts của backend trên collection ProductBench__e5_small
 # (vector `vec_T3+R_e5-small.npy`, 384 chiều, prefix query:/passage: theo config). Người dùng chốt 05/10 chuyển model sang e5-small
 # và không gọi Cohere nữa; cutoff -1 vì 0,62 là ngưỡng cosine của Cohere (cosine e5 dồn 0,72–0,78 cho cặp không liên quan) —
 # cutoff 0,84 = TẠM (05/10, chọn từ phân bố top_scores của APP.e5s.dense_nocut trên toàn gold: giữ 95 % rel≥1, 6/128 câu rỗng; chưa qua dev/test).
 # 06/10: query plan (contract `diagnostics.queryPlan`): F3 negation_filter ("không có hồ bơi" → loại unit có ghi nhận tiện ích đó),
 # F4 taxonomy_filter (câu nêu đúng một loại sản phẩm → lọc taxonomy), F5 route_filter (vé máy bay "từ A đến B" → lọc originCity),
 # F6 numeric_filter (giá hard / sao soft suy từ câu). Mặc định production hôm nay: cả bốn tắt.
-id: APP.e5s.hybrid_norm_dest_nodia_nc80_qp
+id: APP.e5s.hybrid_norm_c84_dest_nodia_nc80_qp
 stage: APP
-parent: APP.e5s.hybrid_norm_dest_nodia_nc80
+parent: APP.e5s.hybrid_norm_c84_dest_nodia_nc80
 description: "mốc cutoff 0,84 + F1 + F2 (no_diacritics.cutoff 0,80) + tổ hợp query plan F3 + F4 + F5 + F6 — tổ hợp đầy đủ"
 composite: true
 engine: app

@@ -14,10 +14,11 @@ Quy tắc (--as-of mặc định là hôm nay; chạy lại trước demo để 
     Vé có báo giá ngày cố định (fixedDepartureDate, gồm khứ hồi): giữ ngày đi thật nếu trong cửa sổ, không thì dời như trên; hai chặng
     dời cùng số ngày, returnDate và ngày trong tên/mô tả đổi theo; ngày đã có cùng hành trình thì lùi sang ngày kế tiếp
     (PRD data-model §3, chỉ seed demo — job cào giữ ngày thật).
+  * hạng phòng: available_from/to = nguyên cửa sổ, không cắt theo khoảng ngày của nguồn (chốt 02/10/2026).
   * attributes.availability = {"from": as_of, "days": 30, "calendar": <30 ký tự 1/0>} chỉ cho hạng phòng, điểm tham quan, golf:
-    hạng phòng Vinpearl dùng lịch thật khi `pricesByDateQueried` phủ ít nhất 85% cửa sổ; dữ liệu thưa fallback sang lịch mô phỏng kín
-    25–40% theo cụm 1–4 đêm (T6/T7 ×1,5, Vinpearl ×1,3 tối đa 40%). Điểm tham quan / golf toàn trống trừ 15% sản phẩm
-    blackout 2–3 ngày. Ngày ngoài khoảng bán của nguồn luôn đóng. Chuyến bay, property, tuyến, combo không có khoá này.
+    hạng phòng Vinpearl dùng lịch thật khi `pricesByDateQueried` phủ ít nhất 85% cửa sổ; dữ liệu thưa thì mở đủ 30 đêm.
+    Điểm tham quan / golf toàn trống trừ 15% sản phẩm blackout 2–3 ngày. Ngày ngoài khoảng bán của nguồn luôn đóng (trừ hạng
+    phòng, xem trên). Chuyến bay, property, tuyến, combo không có khoá này.
   * khách sạn (property) thiếu giờ thì gán checkInTime / checkOutTime mặc định.
   * combo: gán thêm attributes.priceBasis / nights / minPax từ combo_attributes.json (kết quả parse_combos.py).
 Đầu ra: cdp_products.jsonl / .csv (cột snake_case như ERD), catalog_combo_items.jsonl, loader_report.md. Kết quả xác định.
@@ -185,7 +186,8 @@ def convert(rows: list[dict], combo_attrs: dict[str, dict], as_of: date,
             attrs["sourceAvailableFrom"] = r["availableFrom"]
         if r["availableTo"] is not None:
             attrs["sourceAvailableTo"] = r["availableTo"]
-        f, t = clip(r["availableFrom"], r["availableTo"], lo, hi)
+        # Hạng phòng: nguyên cửa sổ, không cắt theo ngày nguồn (ngày nguồn chỉ là ngày đã hỏi giá; giá dùng làm giá tham khảo).
+        f, t = (lo.isoformat(), hi.isoformat()) if v == "hotel_room" else clip(r["availableFrom"], r["availableTo"], lo, hi)
         available = bool(r["available"])
         name, description = r["name"], r["description"]
         if v == "flight" and attrs.get('fixedDepartureDate') and real_flight_dates:

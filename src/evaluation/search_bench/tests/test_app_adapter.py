@@ -18,11 +18,11 @@ E5_ARMS = ("APP.e5s.dense_nocut", "APP.e5s.hybrid_nocut", "APP.e5s.hybrid_norm_n
            "APP.e5s.hybrid_norm_nocut_nodia", "APP.e5s.hybrid_norm_nocut_dest_nodia")
 # 06/10: query plan F3 (neg) / F4 (tax) / F5 (route) / F6 (num) và tổ hợp (qp) trên mốc không cutoff + trên arm đầy đủ có cutoff
 QP_ARMS = ("APP.e5s.hybrid_norm_nocut_neg", "APP.e5s.hybrid_norm_nocut_tax", "APP.e5s.hybrid_norm_nocut_route",
-           "APP.e5s.hybrid_norm_nocut_num", "APP.e5s.hybrid_norm_nocut_qp", "APP.e5s.hybrid_norm_dest_nodia_nc80_qp")
+           "APP.e5s.hybrid_norm_nocut_num", "APP.e5s.hybrid_norm_nocut_qp", "APP.e5s.hybrid_norm_c84_dest_nodia_nc80_qp")
 # mọi arm APP có trong arms/ (dùng để kiểm hash phân biệt và khoá bắt buộc)
-ALL_APP_ARMS = APP_ARMS + E5_ARMS + ("APP.e5s.hybrid_norm", "APP.e5s.hybrid_norm_dest", "APP.e5s.hybrid_norm_nodia",
-                                     "APP.e5s.hybrid_norm_dest_nodia", "APP.e5s.hybrid_norm_nodia_nc80",
-                                     "APP.e5s.hybrid_norm_dest_nodia_nc80") + QP_ARMS
+ALL_APP_ARMS = APP_ARMS + E5_ARMS + ("APP.e5s.dense", "APP.e5s.hybrid", "APP.e5s.hybrid_norm", "APP.e5s.hybrid_norm_c84", "APP.e5s.hybrid_norm_c84_dest", "APP.e5s.hybrid_norm_c84_nodia",
+                                     "APP.e5s.hybrid_norm_c84_dest_nodia", "APP.e5s.hybrid_norm_c84_nodia_nc80",
+                                     "APP.e5s.hybrid_norm_c84_dest_nodia_nc80") + QP_ARMS
 
 
 @pytest.fixture()
@@ -76,15 +76,15 @@ def test_qp_arms_toggle_f3_f6_and_hash_distinct():
     on = {a: {k for k in A.QUERY_PLAN_KEYS if arms[a].app[k] is True} for a in QP_ARMS}
     assert on["APP.e5s.hybrid_norm_nocut_neg"] == {"negation_filter"} and on["APP.e5s.hybrid_norm_nocut_tax"] == {"taxonomy_filter"}
     assert on["APP.e5s.hybrid_norm_nocut_route"] == {"route_filter"} and on["APP.e5s.hybrid_norm_nocut_num"] == {"numeric_filter"}
-    assert on["APP.e5s.hybrid_norm_nocut_qp"] == set(A.QUERY_PLAN_KEYS) == on["APP.e5s.hybrid_norm_dest_nodia_nc80_qp"]
+    assert on["APP.e5s.hybrid_norm_nocut_qp"] == set(A.QUERY_PLAN_KEYS) == on["APP.e5s.hybrid_norm_c84_dest_nodia_nc80_qp"]
     # năm arm trên mốc không cutoff kế thừa đúng mốc (parent + knob F1/F2 tắt); arm cuối trên arm đầy đủ có cutoff
     base = load_arm("APP.e5s.hybrid_norm_nocut").app
     for a in QP_ARMS[:5]:
         assert arms[a].parent == "APP.e5s.hybrid_norm_nocut"
         assert {k: v for k, v in arms[a].app.items() if k not in A.QUERY_PLAN_KEYS} == {k: v for k, v in base.items() if k not in A.QUERY_PLAN_KEYS}
-    full = arms["APP.e5s.hybrid_norm_dest_nodia_nc80_qp"]
-    nc80 = load_arm("APP.e5s.hybrid_norm_dest_nodia_nc80").app
-    assert full.parent == "APP.e5s.hybrid_norm_dest_nodia_nc80"
+    full = arms["APP.e5s.hybrid_norm_c84_dest_nodia_nc80_qp"]
+    nc80 = load_arm("APP.e5s.hybrid_norm_c84_dest_nodia_nc80").app
+    assert full.parent == "APP.e5s.hybrid_norm_c84_dest_nodia_nc80"
     assert (full.app["cutoff"], full.app["dest_filter"], full.app["no_diacritics_mode"], full.app["no_diacritics"]["cutoff"]) == (0.84, True, "relax", 0.80)
     assert {k: v for k, v in full.app.items() if k not in A.QUERY_PLAN_KEYS} == {k: v for k, v in nc80.items() if k not in A.QUERY_PLAN_KEYS}
     for a in QP_ARMS:
@@ -103,16 +103,6 @@ def test_e5_app_arms_toggle_f1_f2_and_hash_distinct():
     assert len({R.config_hash(load_arm(a)) for a in APP_ARMS + E5_ARMS}) == len(APP_ARMS) + len(E5_ARMS)
     for a in E5_ARMS:
         A.app_params(arms[a].app)
-
-
-def test_app_model_collection_dimension_and_model_version(cfg):
-    c = A.app_model(cfg, "cohere-v3")
-    assert (c.collection, c.dimension, c.cache_model, c.model_version) == (A.PRODUCT_BENCH, 1024, "embed-multilingual-v3.0", A.MODEL_VERSION)
-    e = A.app_model(cfg, "e5-small")
-    assert e.collection == "ProductBench_e5_small" and e.dimension == 384 and e.cache_model == "intfloat/multilingual-e5-small"
-    assert e.model_version == "intfloat/multilingual-e5-small:catalog-text-v2"
-    with pytest.raises(Exception):
-        A.app_model(cfg, "nope")
 
 
 def test_applied_filter_of_reads_hard_destination():
@@ -273,3 +263,86 @@ def test_product_bench_loads_and_dense_nocut_matches_b0(cfg):
     cat = A.build_app_catalog(cfg, "jsonl")
     s = A.load_product_bench(cfg, "jsonl", cat)
     assert s["n"] == len(cat.texts) and s["missing"] == 0 and s["stale"] == 0
+
+
+# ------------------------------------------------------------------ model khác Cohere v3 (05/10, Day 5 Search: e5-small)
+def test_app_collection_keeps_productbench_for_production_model():
+    assert A.app_collection("cohere-v3") == A.PRODUCT_BENCH == "ProductBench"
+    assert A.app_collection("e5-small") == "ProductBench__e5_small"
+
+
+def _fake_read(meta):
+    def read(dataset, variant, model, input_type):
+        assert (variant, input_type) == ("T3+R", "document")
+        return ["a", "b"], np.ones((2, 384), dtype=np.float32), meta
+    return read
+
+
+def test_model_vectors_model_version_from_meta(monkeypatch):
+    monkeypatch.setattr(A.vectors, "read", _fake_read({"cache_model": "intfloat/multilingual-e5-small",
+                                                       "text_builder_version": "catalog-text-v2"}))
+    ids, vecs, meta, mv = A.model_vectors("sample", "e5-small")
+    assert ids == ["a", "b"] and vecs.shape == (2, 384) and mv == "intfloat/multilingual-e5-small:catalog-text-v2"
+
+
+@pytest.mark.parametrize("model, meta, match", [
+    ("e5-small", {"cache_model": "intfloat/multilingual-e5-small", "text_builder_version": "catalog-text-v1"}, "text"),
+    ("e5-small", {"cache_model": "", "text_builder_version": "catalog-text-v2"}, "cache_model"),
+    ("cohere-v3", {"cache_model": "embed-multilingual-v4.0", "text_builder_version": "catalog-text-v2"}, "production"),
+])
+def test_model_vectors_rejects_wrong_vectors(monkeypatch, model, meta, match):
+    monkeypatch.setattr(A.vectors, "read", _fake_read(meta))
+    with pytest.raises(A.AppAdapterError, match=match):
+        A.model_vectors("sample", model)
+
+
+def test_model_vectors_production_keeps_model_version(monkeypatch):
+    monkeypatch.setattr(A.vectors, "read", _fake_read({"cache_model": "embed-multilingual-v3.0",
+                                                       "text_builder_version": "catalog-text-v2"}))
+    assert A.model_vectors("sample", "cohere-v3")[3] == A.MODEL_VERSION
+
+
+# ------------------------------------------------------------------ guard BM25 sau khi nạp (05/10)
+class _FakeBm25Http:
+    """Trả điểm BM25 "cũ" cho `stale` lượt gọi snapshot đầu, sau đó điểm "mới" (như Weaviate cập nhật thống kê độ dài)."""
+
+    def __init__(self, stale: int, n_probes: int = len(A.BM25_PROBES)):
+        self.calls, self.stale, self.n = 0, stale, n_probes
+
+    def post(self, path, json):
+        assert path == "/v1/graphql" and "bm25" in json["query"]
+        snap = self.calls // self.n
+        self.calls += 1
+        score = 1.0 if snap < self.stale else 5.0
+        return SimpleNamespace(raise_for_status=lambda: None,
+                               json=lambda: {"data": {"Get": {"C": [{"productId": "p1", "_additional": {"score": str(score)}}]}}})
+
+
+class _Clock:
+    def __init__(self):
+        self.t = 0.0
+
+    def __call__(self):
+        return self.t
+
+    def sleep(self, s):
+        self.t += s
+
+
+def test_wait_bm25_settled_waits_for_change_then_stability():
+    clock = _Clock()
+    out = A.wait_bm25_settled(_FakeBm25Http(stale=4), "C", poll_s=3, stable_polls=2, sleep=clock.sleep, clock=clock)
+    assert out["changed"] is True and out["waited_s"] == 18.0           # đổi ở lần chụp 5 (t=12), giữ 2 lần → t=18
+
+
+def test_wait_bm25_settled_gives_up_when_nothing_changes():
+    clock = _Clock()
+    out = A.wait_bm25_settled(_FakeBm25Http(stale=10**6), "C", max_wait_s=9, poll_s=3, sleep=clock.sleep, clock=clock)
+    assert out == {"changed": False, "waited_s": 9.0}
+
+
+def test_bm25_snapshot_raises_on_graphql_error():
+    http = SimpleNamespace(post=lambda path, json: SimpleNamespace(raise_for_status=lambda: None,
+                                                                   json=lambda: {"errors": [{"message": "no class"}]}))
+    with pytest.raises(A.AppAdapterError, match="BM25"):
+        A.bm25_snapshot(http, "C")

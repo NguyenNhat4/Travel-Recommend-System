@@ -53,6 +53,10 @@ SLICES: tuple[str, ...] = (
     "multi_constraint",
     "cross_vertical",
     "out_of_catalog",
+    # gold_v4 (05/10, người dùng chốt D3 — đề xuất ở docs/spec/bench/gold-v4-bo-sung-va-quy-trinh-gan-nhan.md §14):
+    # nối CUỐI để `split` giữ nguyên luồng RNG theo SLICES.index của 13 slice cũ.
+    "taxonomy_collision",
+    "flight_direction",
 )
 PARENT_CHILD_SLICE = "parent_child"
 OUT_OF_CATALOG_SLICE = "out_of_catalog"
