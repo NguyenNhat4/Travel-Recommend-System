@@ -87,6 +87,12 @@ services:
       BOOKING_HOLD_MINUTES: ${BOOKING_HOLD_MINUTES:-30}
       PAYMENT_MAX_FAILED_ATTEMPTS: ${PAYMENT_MAX_FAILED_ATTEMPTS:-3}
       PUBLIC_WEB_URL: ${PUBLIC_WEB_URL:-http://localhost:3000}
+      # Số process uvicorn. Mặc định 1 để dev nhẹ; đo RAM rồi mới tăng (mỗi worker giữ cache catalog riêng).
+      UVICORN_WORKERS: ${UVICORN_WORKERS:-1}
+    # Trần tài nguyên: một container không được ăn hết RAM/CPU của host (docs/plan/2026-10-05-ha-load-balancing.md).
+    mem_limit: ${BACKEND_MEM_LIMIT:-2g}
+    cpus: ${BACKEND_CPUS:-1.5}
+    stop_grace_period: 40s
     volumes:
       - ./secrets:/app/secrets:ro
     ports:
@@ -108,6 +114,8 @@ services:
       ALLOWED_ORIGINS: "http://localhost:${FRONTEND_HOST_PORT:-3000},http://127.0.0.1:${FRONTEND_HOST_PORT:-3000}"
       SESSION_IDLE_TTL_SECONDS: ${SESSION_IDLE_TTL_SECONDS:-1800}
       SESSION_ABSOLUTE_TTL_SECONDS: ${SESSION_ABSOLUTE_TTL_SECONDS:-43200}
+    mem_limit: ${FRONTEND_MEM_LIMIT:-768m}
+    cpus: ${FRONTEND_CPUS:-0.5}
     depends_on:
       backend:
         condition: service_started
@@ -126,6 +134,7 @@ services:
                    --maxmemory 256mb
                    --maxmemory-policy noeviction
                    --appendonly no
+    mem_limit: 384m   # maxmemory 256mb + overhead
     ports: ["127.0.0.1:${REDIS_HOST_PORT:-6379}:6379"]   # chỉ loopback, không mở ra mạng ngoài
     healthcheck:
       test: ["CMD-SHELL", "redis-cli -a devpass ping | grep -q PONG"]
@@ -153,6 +162,7 @@ services:
       - "127.0.0.1:${WEAVIATE_GRPC_PORT:-50051}:50051" # gRPC, client Python v4 dùng cổng này
     volumes:
       - weaviate_data:/var/lib/weaviate
+    mem_limit: ${WEAVIATE_MEM_LIMIT:-2g}
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/v1/.well-known/ready || exit 1"]
       interval: 5s

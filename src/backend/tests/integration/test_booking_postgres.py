@@ -205,3 +205,16 @@ def test_database_rejects_a_child_without_birth_date_and_a_cart_over_nine_guests
             await carts.upsert(USER, product_id=product.product_id, using_date=product.available_from, quantity=1,
                                nights=1, unit_price=int(product.unit_price), adults=8, children=2, child_unit_price=None)
     asyncio.run(scenario())
+
+
+def test_reconcile_leader_is_exclusive_across_connections():
+    """Hai bản sao backend tranh một khoá advisory: chỉ một bên làm leader, nhả khoá thì bên kia lấy được."""
+    async def go():
+        a, b = PostgresBookingStore(APP_URL), PostgresBookingStore(APP_URL)
+        async with a.reconcile_leader() as first:
+            assert first is True
+            async with b.reconcile_leader() as second:
+                assert second is False
+        async with b.reconcile_leader() as after:
+            assert after is True
+    asyncio.run(go())

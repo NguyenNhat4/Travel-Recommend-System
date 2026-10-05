@@ -1,0 +1,7 @@
+project_id                = "vinpearl-508801"
+subnetwork                = "projects/vinpearl-508801/regions/asia-southeast1/subnetworks/default"
+app_service_account_email = "REPLACE@vinpearl-508801.iam.gserviceaccount.com"
+backend_image             = "asia-southeast1-docker.pkg.dev/vinpearl-508801/v-ota-data-pipeline-crawler/vota-backend:REPLACE_TAG"
+frontend_image            = "asia-southeast1-docker.pkg.dev/vinpearl-508801/v-ota-data-pipeline-crawler/vota-frontend:REPLACE_TAG"
+backend_env_secret        = "vota-ha-backend-env"
+# domain = "staging.example.com"   # empty = HTTP only

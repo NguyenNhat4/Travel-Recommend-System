@@ -1,0 +1,18 @@
+#!/bin/bash
+# Boots one app VM: pull images, fetch env from Secret Manager, run compose.
+set -euo pipefail
+mkdir -p /etc/vota
+gcloud secrets versions access latest --secret='${backend_env_secret}' > /etc/vota/backend.env
+chmod 600 /etc/vota/backend.env
+# The frontend gets only what it needs, not the DB credentials in backend.env.
+{
+  grep -E '^AUTH_SERVICE_TOKEN=' /etc/vota/backend.env || true
+  sed -n 's/^AUTH_REDIS_URL=/SESSION_REDIS_URL=/p' /etc/vota/backend.env
+} > /etc/vota/frontend.env
+chmod 600 /etc/vota/frontend.env
+docker-credential-gcr configure-docker --registries='${registry_host}'
+cat > /etc/vota/compose.yml <<'COMPOSE'
+${compose}
+COMPOSE
+export BACKEND_IMAGE='${backend_image}' FRONTEND_IMAGE='${frontend_image}' UVICORN_WORKERS='${uvicorn_workers}'
+docker compose -f /etc/vota/compose.yml up -d

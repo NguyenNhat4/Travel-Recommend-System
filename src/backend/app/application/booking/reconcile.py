@@ -24,6 +24,15 @@ class ReconcileBookings:
         self._clock, self._batch = clock, batch_size
 
     async def __call__(self) -> int:
+        # Nhiều worker × nhiều VM cùng chạy vòng lặp này; chỉ một nơi được đối soát mỗi lượt để
+        # không gọi Stripe/CDP trùng (hoàn tiền, huỷ purchase event).
+        async with self._store.reconcile_leader() as leader:
+            if not leader:
+                logger.debug("reconcile.skipped not_leader")
+                return 0
+            return await self._run()
+
+    async def _run(self) -> int:
         async with self._store.transaction() as tx:
             ids = await tx.find_reconcile_ids(self._clock(), self._batch)
         for booking_id in ids:

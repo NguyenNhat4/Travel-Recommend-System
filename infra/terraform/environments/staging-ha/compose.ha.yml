@@ -1,0 +1,39 @@
+# One app VM of the HA group. Host networking is kept so the frontend keeps reaching the
+# backend on 127.0.0.1:8000, as in ops/docker-compose.backend-vm.yml. Redis, Postgres and
+# Weaviate are NOT here: they are shared services reached through the env secret.
+services:
+  backend:
+    container_name: vota-backend
+    image: ${BACKEND_IMAGE}
+    restart: unless-stopped
+    network_mode: host
+    env_file:
+      - /etc/vota/backend.env
+    environment:
+      UVICORN_WORKERS: ${UVICORN_WORKERS:-2}
+    mem_limit: 3g
+    cpus: 1.5
+    stop_grace_period: 40s
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3).status == 200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  frontend:
+    container_name: vota-frontend
+    image: ${FRONTEND_IMAGE}
+    restart: unless-stopped
+    network_mode: host
+    env_file:
+      - /etc/vota/frontend.env   # only AUTH_SERVICE_TOKEN and SESSION_REDIS_URL, never DB credentials
+    environment:
+      NODE_ENV: production
+      APP_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: 3000
+      BACKEND_BASE_URL: http://127.0.0.1:8000
+    mem_limit: 768m
+    cpus: 0.5
+    stop_grace_period: 20s
