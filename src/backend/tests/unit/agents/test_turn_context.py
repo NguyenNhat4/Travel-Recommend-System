@@ -36,7 +36,9 @@ def itinerary_response():
 
 def planned_state(query, **extra):
     """Sau lịch trình Hà Nội 3 ngày: đã hỏi chi tiết, có sản phẩm đã cho xem."""
-    return {**intake_node({'query': query}), 'intent': dict(HANOI), 'start_date_asked': True,
+    # Lập lịch cần đủ ngày đi và số người (AC-AGT-01), nên lịch đã gửi luôn có hai trường này.
+    intent = {**HANOI, 'startDate': '2099-10-02', 'party': {'type': 'SOLO', 'adults': 1, 'children': 0}}
+    return {**intake_node({'query': query}), 'intent': intent, 'start_date_asked': True,
             'clarification_rounds': 1, 'previous_selection': list(SHOWN), **extra}
 
 

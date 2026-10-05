@@ -2,7 +2,7 @@
 
 - Ngày: 2026-10-05
 - Người đề xuất: Nguyễn Minh Nhật / Claude Code
-- Trạng thái: đã chốt
+- Trạng thái: đã áp dụng (phần "Thay đổi source" được thay bởi `2026-10-05-classify-route-clarify.md`, áp dụng 2026-10-05)
 - Chốt bởi / ngày: Nguyễn Minh Nhật, 2026-10-05
 - PRD bị ảnh hưởng: `docs/prd/requirements.md` §3 (AC-AGT-01), `docs/prd/user-flow.md` (đoạn "Form gợi ý thông tin chuyến đi", dòng 181), `docs/prd/architecture.md` §3 (sơ đồ, cạnh `AskUser --> SuggestForm`)
 - Mã FR/NFR: FR-AGT-01, FR-AGT-03

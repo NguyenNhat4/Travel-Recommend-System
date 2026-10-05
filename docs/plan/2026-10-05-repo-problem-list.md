@@ -164,9 +164,9 @@
 
 ## Needs a decision (already documented)
 
-### - [ ] 20. Proposal waiting for approval
+### - [x] 20. Proposal waiting for approval
 
-- `docs/prd/update/2026-10-02-hoi-tiep-khi-cau-hoi-bi-cat-ngang.md` (agent, AC-AGT-01).
+- `docs/prd/update-archive/2026-10-02-hoi-tiep-khi-cau-hoi-bi-cat-ngang.md` (agent, AC-AGT-01): approved in a reduced form and applied on 05/10.
 
 ### - [ ] 21. Persona sets differ between PRD and DDL
 

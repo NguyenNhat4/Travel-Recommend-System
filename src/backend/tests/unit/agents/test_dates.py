@@ -6,7 +6,7 @@ from unittest import mock
 from src.backend.app.agents.models import Extraction
 from src.backend.app.agents.nodes import intake_node
 from src.backend.app.agents.steps.classification import extract_result
-from src.backend.app.domain.itinerary.dates import explicit_dates, this_year
+from src.backend.app.domain.itinerary.dates import explicit_dates, stated_days, this_year
 from src.backend.app.domain.itinerary.planning import empty_intent
 
 TODAY = date(2026, 10, 1)
@@ -89,6 +89,44 @@ class DateSafetyNetTests(unittest.TestCase):
         result = extract_result(self.planned('đổi sang 20/9'), Extraction(change_without_value=['startDate']))
         self.assertEqual(result['clarification_reason'], 'invalid_input')
         self.assertEqual(result['invalid_inputs'][0]['reason'], 'past_date')
+
+
+class StatedDaysTests(unittest.TestCase):
+    """Dạng gói "N ngày M đêm"/"NnMd": số ngày là N (AC-AGT-01: "3 ngày 2 đêm" là lịch 3 ngày)."""
+
+    def test_reads_the_day_count_of_a_package_duration(self):
+        cases = {'Lập lịch trình 3 ngày 2 đêm tại Nha Trang': 3, 'pq 3n2d': 3, 'đi 2N1Đ nhé': 2,
+                 'nghỉ ngơi. 1 ngày 2 đêm': 1, '4 ngay 3 dem': 4}
+        for text, expected in cases.items():
+            with self.subTest(text=text):
+                self.assertEqual(stated_days(text), expected)
+
+    def test_ignores_dates_relative_days_and_bare_counts(self):
+        for text in ('ngày 18/10, 2 người lớn', 'đi sau 2 ngày nữa', 'ở 2 đêm', 'ngày 2 tháng 10', ''):
+            with self.subTest(text=text):
+                self.assertIsNone(stated_days(text))
+
+
+class DaysSafetyNetTests(unittest.TestCase):
+    """LLM bỏ trống số ngày dù câu viết dạng gói: backend lấy số ngày đọc được."""
+
+    def test_a_package_duration_the_model_left_empty_is_read_from_the_message(self):
+        # Golden TC-03 (LangSmith claude-golden-vague, 05/10): Extraction thô `days: null` cho câu này, nên agent hỏi
+        # lại số ngày; hội thoại gốc chỉ hỏi điểm đến.
+        state = intake_node({'query': 'Mình muốn một chuyến nghỉ dưỡng, ưu tiên thư giãn và nghỉ ngơi. 1 ngày 2 đêm'})
+        result = extract_result(state, Extraction(patch={'interests': ['nghỉ dưỡng'], 'pace': 'RELAXED'}))
+        self.assertEqual(result['intent']['days'], 1)
+        self.assertEqual(result['missing_fields'], ['destination'])
+
+    def test_the_model_day_count_wins(self):
+        state = intake_node({'query': 'Đà Nẵng 3 ngày 2 đêm'})
+        result = extract_result(state, Extraction(patch={'destination': 'Đà Nẵng', 'days': 2}))
+        self.assertEqual(result['intent']['days'], 2)
+
+    def test_a_chip_day_count_is_not_overridden(self):
+        state = {**intake_node({'query': 'Đà Nẵng 3 ngày 2 đêm'}), 'intent_override': {'days': 4}}
+        result = extract_result(state, Extraction(patch={'destination': 'Đà Nẵng'}))
+        self.assertEqual(result['intent']['days'], 4)
 
 
 if __name__ == '__main__':

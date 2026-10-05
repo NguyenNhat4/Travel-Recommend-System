@@ -175,15 +175,16 @@ stateDiagram-v2
     ClassifyTurn --> Converse: Trò chuyện / ngoài phạm vi (đặt chỗ, chèn lệnh) / tin nhắn rác, tục tĩu (luật tất định, không gọi LLM)
     Converse --> [*]: Trả lời hoặc từ chối, không gọi tool
     ClassifyTurn --> AnalyzeIntent: Yêu cầu du lịch
+    ClassifyTurn --> SuggestForm: Câu trả lời không thêm được thông tin ("không biết") khi còn thiếu điểm đến/số ngày/ngày đi/số người
     AnalyzeIntent --> CheckClarification: Trích xuất thông tin (Điểm đến, Ngày, Số người, Ngân sách)
     
     CheckClarification --> AskUser: Lượt đầu thiếu thông tin, hoặc chưa hỏi ngày đi–số người–ngân sách
     CheckClarification --> AskUser: Người dùng muốn đổi thông tin chuyến đi mà chưa nói đổi thành gì
-    AskUser --> SuggestForm: Đã hỏi một lượt mà vẫn thiếu điểm đến/số ngày, hoặc không thêm được ngày đi–số người–ngân sách
+    AskUser --> SuggestForm: Đã hỏi một lượt mà vẫn thiếu điểm đến, số ngày, ngày đi hoặc số người
     SuggestForm --> [*]: Form đã điền sẵn gợi ý; xác nhận gửi ngay câu yêu cầu
     AskUser --> [*]: Chờ phản hồi tiếp theo
     
-    CheckClarification --> SearchCandidates: Đủ thông tin cơ bản
+    CheckClarification --> SearchCandidates: Đủ điểm đến, số ngày, ngày đi, số người
     SearchCandidates --> ToolCatalogSearch: Gọi Tool tìm kiếm phòng & tour thật (và Similar khi đổi món)
     ToolCatalogSearch --> ValidateAvailability: Kiểm tra lịch trống & giá
     

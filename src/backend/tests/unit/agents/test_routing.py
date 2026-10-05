@@ -4,7 +4,8 @@ from src.backend.app.agents.routing import route_after_classify, route_after_eva
 
 class RoutingTests(unittest.TestCase):
     def test_classification_branches_and_fail_closed_default(self):
-        for decision, node in [('simple', 'converse'), ('travel', 'extract'), ('error', 'dead_letter')]:
+        for decision, node in [('simple', 'converse'), ('travel', 'extract'), ('missing_info', 'clarify'),
+                               ('error', 'dead_letter')]:
             self.assertEqual(route_after_classify({'decision': decision}), node)
         self.assertEqual(route_after_classify({}), 'dead_letter')
 

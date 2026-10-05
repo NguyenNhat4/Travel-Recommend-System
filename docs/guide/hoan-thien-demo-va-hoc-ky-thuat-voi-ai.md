@@ -105,7 +105,7 @@ Nếu chậm, lần theo breakdown rồi tối ưu đúng chỗ. Thêm replica b
 | [Agent report 02/10](../../src/evaluation/reports/eval-2026-10-02-agent-test-cases.md), commit `95dfc8c` | Report ghi grounding/schema 100%, tool accuracy 100% trên 9 lượt tính được; tổng 27 lượt PASS 8, FAIL 19; p95 14.737 ms. Có lỗi kết nối provider và lỗi judge | Phân loại lỗi sản phẩm, môi trường, bộ chấm; xác định mẫu số metric; chạy lại đúng bản release. Không gọi đây là agent đạt 100% |
 | [Search latency 01/10](../../src/evaluation/reports/eval-2026-10-01-search-cloud-latency.md), backend `fe7e04d` | p95 server toàn nhóm 4.007 ms; request tuần tự; kết quả có caveat mạng/vùng và cache | Đo lại sau thay đổi, so NFR 250 ms; không trình bày số này như kết quả chịu tải |
 | [History UX widget](../../history/2026-10-02-ux-tien-trinh-va-nut-dung-widget.md) | Test UI đã dùng API mô phỏng; chưa chứng minh E2E với backend/LLM thật ở entry đó | Kiểm lại luồng thật, không dùng test mock thay cho acceptance |
-| [Đề xuất hỏi tiếp](../prd/update/2026-10-02-hoi-tiep-khi-cau-hoi-bi-cat-ngang.md) | Còn ở trạng thái chờ chốt khi đọc | Tách khỏi bug đã được phép sửa; không tự áp dụng hành vi mới |
+| [Đề xuất hỏi tiếp](../prd/update-archive/2026-10-02-hoi-tiep-khi-cau-hoi-bi-cat-ngang.md) | Còn ở trạng thái chờ chốt khi đọc | Tách khỏi bug đã được phép sửa; không tự áp dụng hành vi mới |
 
 Grounding đúng và request thất bại có thể đồng thời xảy ra: một request lỗi không sinh sản phẩm giả nhưng vẫn không hoàn thành nhiệm vụ. Báo cả task success, tỷ lệ lỗi và grounding cùng mẫu số. Không bỏ request lỗi để làm p95 đẹp hơn; nếu chỉ tính latency thành công thì ghi rõ và kèm error rate.
 

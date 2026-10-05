@@ -669,9 +669,10 @@ async def run_sweep(planner, dsn: str | None, settings: Any, timeout: float, htt
     for item in listed:
         destination = item["destination"]
         case = Case(id=f"SWEEP-{destination}", category="sweep", fr=["FR-AGT-04"],
-                    # Chưa nêu ngày đi thì agent hỏi ngày (AC-AGT-01); lượt thứ hai trả lời để chạm tới truy xuất.
+                    # Chưa nêu ngày đi thì agent hỏi ngày (AC-AGT-01); lượt thứ hai đủ ngày đi và số người (trường
+                    # bắt buộc) để chạm tới truy xuất.
                     turns=[Turn(message=f"{destination} 2 ngày", expect={}),
-                           Turn(message="chưa chốt ngày đi", expect={})])
+                           Turn(message="đi từ {today+7}, 2 người lớn", expect={})])
         results += await run_case(case, planner, dsn, settings, timeout, on_event=on_event)
     return results
 

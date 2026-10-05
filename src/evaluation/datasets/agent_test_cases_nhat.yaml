@@ -99,10 +99,9 @@
           - Nếu status không phải COMPLETED thì câu trả lời đề xuất bước tiếp theo cụ thể (ví dụ đổi ngày, đổi điều kiện tìm kiếm).
           - Nếu status không phải COMPLETED thì câu trả lời không tuyên bố đã hoàn tất lịch trình.
 
-# TC-04 — Hủy yêu cầu đổi điểm đến (AC-AGT-01, đề xuất 2026-10-02-hoi-tiep-khi-cau-hoi-bi-cat-ngang).
+# TC-04 — Hủy yêu cầu đổi điểm đến (AC-AGT-01, đề xuất 2026-10-02-hoi-tiep-khi-cau-hoi-bi-cat-ngang, bản rút gọn).
 # Lỗi gốc: "không đổi nữa" bị hiểu thành không muốn đi Hà Nội và hỏi điểm đến mới; sau đó (02/10) lập lịch ngay mà
-# chưa hỏi ngày đi, số người, ngân sách. Mong đợi: xác nhận vẫn đi Hà Nội 3 ngày và hỏi lại ba chi tiết đó.
-# Case này fail cho tới khi đề xuất trên được chốt và áp dụng.
+# chưa hỏi ngày đi, số người, ngân sách. Mong đợi: xác nhận vẫn đi Hà Nội 3 ngày và hỏi lại ba chi tiết đó (kèm form).
 - id: TC-04
   category: cancel_change_destination
   fr: [FR-AGT-01, FR-AGT-05]
@@ -126,13 +125,14 @@
         toolCalled: false
         intent: {destination: Hà Nội, days: 3}
         missingFieldsInclude: [startDate, party, budget]
+        formMatchesAnswer: true
         judge:
           - Trợ lý hiểu "không đổi nữa" là hủy việc đổi điểm đến; không hỏi người dùng muốn đi nơi nào khác.
-          - Trợ lý xác nhận vẫn đi Hà Nội 3 ngày.
-          - Trợ lý hỏi lại ngày khởi hành, số người và ngân sách.
+          - Trợ lý cho biết còn thiếu ngày khởi hành, số người hoặc ngân sách và mời người dùng bổ sung trên form.
           - Trợ lý không trình bày lịch trình ở lượt này.
 
-# TC-10 — Không trả lời được ngày đi, số người, ngân sách thì hiện form (AC-AGT-01, đề xuất 2026-10-05-form-khi-chua-chot-chi-tiet).
+# TC-10 — Không trả lời được ngày đi, số người, ngân sách thì hiện form (AC-AGT-01, đề xuất 2026-10-05-classify-route-clarify:
+# câu không thêm được thông tin được `classify` gắn `vague` và đi thẳng `clarify`).
 # Lỗi gốc 05/10 (LangSmith nhat-10-1, conversation 9841548a): T3 "không biết" lập lịch ngay với ba trường trống, không có form.
 - id: TC-10
   category: details_form
@@ -143,6 +143,7 @@
         httpStatus: 200
         status: [NEEDS_CLARIFICATION]
         toolCalled: false
+        nodesInclude: [classify, clarify]
         intent: {destination: Đà Nẵng, days: 3}
         missingFieldsInclude: [startDate, party, budget]
     - message: không biết
@@ -150,6 +151,7 @@
         httpStatus: 200
         status: [NEEDS_CLARIFICATION]
         toolCalled: false
+        nodesInclude: [classify, clarify]
         intent: {destination: Đà Nẵng, days: 3}
         missingFieldsInclude: [startDate, party, budget]
         formMatchesAnswer: true

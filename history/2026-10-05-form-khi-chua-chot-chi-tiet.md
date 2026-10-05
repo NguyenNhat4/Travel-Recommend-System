@@ -5,6 +5,7 @@
 - Nhánh: feat/agent
 - Trạng thái: dang dở
 - Phạm vi: docs, agent
+- Bị thay thế bởi: 2026-10-05-form-den-khi-du-truong-bat-buoc.md
 
 ## Mục tiêu
 

@@ -80,7 +80,7 @@ Lệnh trên chạy bộ mặc định (`agent_test_cases_nhat.yaml`).
 
 | Cờ | Tác dụng | Ví dụ |
 |---|---|---|
-| `--sweep` | Thêm hai lượt (`"<điểm đến> 2 ngày"` rồi `"chưa chốt ngày đi"`) cho mọi điểm đến trong catalog (35 điểm, tổng 93 lượt; chưa đo thời gian) | `--sweep` |
+| `--sweep` | Thêm hai lượt (`"<điểm đến> 2 ngày"` rồi `"đi từ {today+7}, 2 người lớn"`) cho mọi điểm đến trong catalog (35 điểm, tổng 93 lượt; chưa đo thời gian) | `--sweep` |
 | `--only` | Chỉ chạy các case liệt kê, cách nhau bằng dấu phẩy | `--only TC-01,TC-02` |
 | `--repeat N` | Chạy lại các case đã chọn N lần, để đo độ ổn định | `--repeat 5` |
 | `--trace-project` | Gửi trace từng lượt lên LangSmith project này (key lấy từ `.env`) | `--trace-project claude-golden` |

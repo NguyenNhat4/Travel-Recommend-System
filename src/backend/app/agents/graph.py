@@ -112,7 +112,7 @@ def build_graph(checkpointer: Any | None = None, *, tools: ToolExecutorPort | No
     graph.add_edge(START, "intake")
     graph.add_edge("intake", "classify")
     graph.add_conditional_edges("classify", route_after_classify,
-                                {name: name for name in ("converse", "extract", "dead_letter")})
+                                {name: name for name in ("converse", "extract", "clarify", "dead_letter")})
     graph.add_conditional_edges("extract", route_after_extract,
                                 {name: name for name in ("tool", "clarify", "dead_letter")})
     graph.add_edge("tool", "evaluate")

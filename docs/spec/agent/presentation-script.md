@@ -91,7 +91,7 @@ Lướt sáu luật, nhấn luật 2 và 4: "Khách sạn chọn giá thấp nh�
 
 ## Slide 10 — Hội thoại nhiều lượt (1 phút)
 
-Đọc theo năm lượt: "Lượt 1 thiếu điểm đến thì hỏi. Lượt 2 đủ điểm đến và số ngày, trợ lý hỏi gộp một lần ngày đi, số người, ngân sách. Lượt 3 người dùng trả lời ngắn *2 người, chưa chốt ngày*; classify nhìn câu hỏi gần nhất nên hiểu đây là câu trả lời, và lịch trình được dựng."
+Đọc theo năm lượt: "Lượt 1 thiếu điểm đến thì hỏi. Lượt 2 đủ điểm đến và số ngày, trợ lý hỏi gộp một lần ngày đi, số người, ngân sách. Lượt 3 người dùng trả lời ngắn *2 người, đi từ 15/10*; classify nhìn câu hỏi gần nhất nên hiểu đây là câu trả lời, và lịch trình được dựng. Trả lời thiếu ngày đi hoặc số người (*không biết*, *2 người* thôi) thì trợ lý hiện form điền sẵn thay vì lập lịch."
 
 "Từ đó mỗi lượt chỉ sửa phần người dùng vừa đổi. Nói *đổi thành Đà Nẵng* thì chỉ đổi điểm đến, giữ số ngày và số người, và không hỏi lại các chi tiết đã hỏi."
 
@@ -143,7 +143,8 @@ Chuẩn bị trước buổi thuyết trình theo [README.md](README.md) mục "
 | `chào bạn` | Trace chỉ có `classify` → `converse`, không có `extract` hay `tool` |
 | `đặt phòng và thanh toán giúp tôi` | `classify` → `converse`, từ chối 400 |
 | `đi 3 ngày` rồi `Nha Trang nhé` | Hỏi điểm đến, rồi ghép intent và hỏi gộp ngày đi, số người, ngân sách |
-| `2 người, chưa chốt ngày` | Câu trả lời ngắn vẫn được hiểu; luồng đầy đủ, thẻ sản phẩm có `productId` |
+| `2 người, đi từ 15/10` | Câu trả lời ngắn vẫn được hiểu; luồng đầy đủ, thẻ sản phẩm có `productId` |
+| `không biết` (sau câu hỏi gộp) | `classify` gắn `vague` → `clarify` kèm form điền sẵn, không có `extract` hay `tool` |
 | `đổi thành Đà Nẵng` | Chỉ điểm đến đổi, không hỏi lại, tìm lại từ đầu |
 | `Paris 2 ngày` rồi trả lời câu hỏi | Hỏi lại: dòng đầu in đậm "Điểm đến chưa được hỗ trợ", lý do và danh sách điểm đến |
 

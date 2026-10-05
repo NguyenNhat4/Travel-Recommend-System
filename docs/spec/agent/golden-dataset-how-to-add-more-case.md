@@ -123,11 +123,14 @@ Runner từ chối khoá lạ khi nạp dataset: gõ nhầm `missingField` thay 
 
 Mỗi case mô tả một lỗi người dùng tái hiện được; `category` là nhóm tự đặt (`snake_case`), cũng thành tag trong LangSmith.
 
-**Lượt hỏi ngày đi.** Câu đầu chỉ có điểm đến và số ngày thì agent hỏi ngày đi và chưa gọi tool. Vì vậy hầu hết case
-bắt đầu bằng câu như vậy có hai lượt liền nhau: lượt hỏi (`status: [NEEDS_CLARIFICATION]`,
-`missingFieldsInclude: [startDate]`, `toolCalled: false`) rồi lượt trả lời `chưa chốt ngày đi`; kỳ vọng kết quả nằm ở
-lượt trả lời. Số lượt trong `excludeProductsFromTurn` tính cả lượt hỏi. Case mới cần tới bước truy xuất thì làm
-theo cách này, hoặc nêu ngày đi ngay trong câu đầu (như nhóm `clear_request`).
+**Lượt hỏi ngày đi.** Câu đầu chỉ có điểm đến và số ngày thì agent hỏi ngày đi, số người, ngân sách và chưa gọi tool.
+Vì vậy hầu hết case bắt đầu bằng câu như vậy có hai lượt liền nhau: lượt hỏi (`status: [NEEDS_CLARIFICATION]`,
+`missingFieldsInclude: [startDate]`, `toolCalled: false`) rồi lượt trả lời có **ngày đi và số người** (ví dụ
+`đi từ {today+7}, 2 người lớn`); kỳ vọng kết quả nằm ở lượt trả lời. Từ đề xuất
+`docs/prd/update-archive/2026-10-05-classify-route-clarify.md`, ngày đi và số người là trường bắt buộc: trả lời
+`chưa chốt ngày đi` hay chỉ một phần thì agent hiện form, không lập lịch. Ngân sách không bắt buộc. Số lượt trong
+`excludeProductsFromTurn` tính cả lượt hỏi. Case mới cần tới bước truy xuất thì làm theo cách này, hoặc nêu ngày đi và
+số người ngay trong câu đầu (như nhóm `clear_request`).
 
 **Lượt hỏi thiếu điểm đến/số ngày, không chốt được sau hai lượt.** Không giới hạn số lần hỏi lại từng làm hội thoại
 kẹt vòng khi người dùng trả lời kiểu "bao nhiêu ngày cũng được" (LLM không trích được số). Từ đề xuất

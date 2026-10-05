@@ -31,6 +31,37 @@ class RouteTests(unittest.TestCase):
         self.assertFalse(result['refusal'])
         self.assertEqual(result['missing_fields'], ['days'])
 
+    def vague_state(self, **intent):
+        return {**intake_node({'query': 'không biết'}),
+                'conversation_history': [{'role': 'user', 'content': 'Đi Đà Nẵng 3 ngày'},
+                                         {'role': 'assistant', 'content': 'Bạn đi ngày nào, mấy người, ngân sách bao nhiêu?'}],
+                'intent': {**empty_intent(), 'destination': 'Đà Nẵng', 'days': 3, **intent}}
+
+    def test_a_vague_answer_goes_straight_to_the_form_while_required_fields_are_missing(self):
+        # Golden TC-10: "Đi Đà Nẵng 3 ngày" → "không biết" phải hiện form, không qua `extract` rồi lập lịch.
+        result = route_result(self.vague_state(), TurnRoute(route='vague'))
+        self.assertEqual(result['decision'], 'missing_info')
+        self.assertEqual(result['clarification_reason'], 'suggest_form')
+        self.assertEqual(result['missing_fields'], ['startDate', 'party', 'budget'])
+        self.assertEqual(result['interaction_type'], 'travel')
+        self.assertTrue(result['start_date_asked'])
+
+    def test_a_vague_answer_while_destination_is_missing_counts_a_round(self):
+        state = {**self.vague_state(destination=None), 'clarification_rounds': 1}
+        result = route_result(state, TurnRoute(route='vague'))
+        self.assertEqual(result['clarification_reason'], 'suggest_form')
+        self.assertEqual(result['missing_fields'], ['destination', 'startDate', 'party', 'budget'])
+        self.assertEqual(result['clarification_rounds'], 2)
+
+    def test_a_vague_answer_on_a_complete_trip_goes_to_extract(self):
+        # Ngân sách không bắt buộc: đủ bốn trường thì không có gì để hỏi bằng form.
+        state = self.vague_state(startDate='2999-10-10', party={'type': 'COUPLE', 'adults': 2, 'children': 0})
+        self.assertEqual(route_result(state, TurnRoute(route='vague'))['decision'], 'travel')
+
+    def test_a_vague_first_message_goes_to_extract(self):
+        state = {**intake_node({'query': 'không biết'}), 'intent': empty_intent()}
+        self.assertEqual(route_result(state, TurnRoute(route='vague'))['decision'], 'travel')
+
     def test_classify_sees_the_whole_conversation_context(self):
         state = {**intake_node({'query': 'chưa chốt ngày đi'}),
                  'conversation_history': [{'role': 'user', 'content': 'Huế 2 ngày'},
@@ -63,6 +94,18 @@ class ClassifyPromptTests(unittest.TestCase):
         travel = CLASSIFY_PROMPT.split('conversation:')[0]
         for phrase in ('đổi ngày', 'ngày nào cũng được', 'không đi nữa'):
             self.assertIn(phrase, travel)
+
+    def test_prompt_defines_the_vague_label_from_the_trip_context(self):
+        self.assertIn('vague:', CLASSIFY_PROMPT)
+        self.assertIn('trip_so_far', CLASSIFY_PROMPT.split('vague:')[1].split('\n\n')[0])
+
+    def test_replies_confirm_the_kept_trip_when_a_change_is_withdrawn(self):
+        # Golden TC-04 (05/10): "không đổi nữa" hiện form đúng nhưng không nói chuyến Hà Nội 3 ngày vẫn được giữ.
+        from src.backend.app.agents.steps.prompts import CONVERSATION_PROMPT, NARRATE_PROMPT
+        for prompt in (CONVERSATION_PROMPT, NARRATE_PROMPT):
+            with self.subTest(prompt=prompt[:30]):
+                self.assertIn('withdraws', prompt)
+                self.assertIn('Mình giữ chuyến Hà Nội 3 ngày nhé', prompt)
 
     def test_cancellation_is_out_of_scope_only_for_existing_orders(self):
         out_of_scope = CLASSIFY_PROMPT.split('out_of_scope:')[1]
@@ -204,7 +247,7 @@ class ClassifyRouteTests(unittest.TestCase):
 
     def test_complete_intent_uses_tools_without_keyword_override(self):
         state = intake_node({'query': 'timeout search status'})
-        result = extract_result(state, Extraction(start_date_undecided=True, patch={'budget': 5000000, 'party': {'type': 'SOLO', 'adults': 1, 'children': 0}} | {'destination': 'Nha Trang', 'days': 3}))
+        result = extract_result(state, Extraction(patch={'budget': 5000000, 'startDate': '2999-10-10', 'party': {'type': 'SOLO', 'adults': 1, 'children': 0}} | {'destination': 'Nha Trang', 'days': 3}))
         self.assertEqual(result['decision'], 'tool')
 
     def test_clear_constraints_and_explicit_false_are_preserved(self):
@@ -215,8 +258,8 @@ class ClassifyRouteTests(unittest.TestCase):
         self.assertFalse(result['constraints']['hotel_attributes']['oceanView'])
 
     def test_unknown_party_type_remains_null_when_counts_are_explicit(self):
-        result = extract_result(intake_node({'query': 'request'}), Extraction(start_date_undecided=True,
-                  patch={'destination': 'Nha Trang', 'days': 2, 'budget': 5000000,
+        result = extract_result(intake_node({'query': 'request'}), Extraction(
+                  patch={'destination': 'Nha Trang', 'days': 2, 'budget': 5000000, 'startDate': '2999-10-10',
                          'party': {'type': None, 'adults': 4, 'children': 0}}))
         self.assertEqual(result['decision'], 'tool')
         self.assertIsNone(result['intent']['party']['type'])
@@ -257,21 +300,34 @@ class StartDateQuestionTests(unittest.TestCase):
         result = self.classify(patch={'startDate': '2999-10-10', 'party': self.complete['party']})
         self.assertEqual(result['missing_fields'], ['budget'])
 
-    def test_does_not_ask_again_after_it_has_asked(self):
+    def test_after_asking_missing_required_details_show_the_form(self):
         state = intake_node({'query': 'request', 'start_date_asked': True})
         result = self.classify(state)
+        self.assertEqual(result['decision'], 'missing_info')
+        self.assertEqual(result['clarification_reason'], 'suggest_form')
+        self.assertEqual(result['missing_fields'], ['startDate', 'party', 'budget'])
+
+    def test_a_partial_answer_still_shows_the_form_with_what_is_left(self):
+        state = intake_node({'query': '2 người', 'start_date_asked': True})
+        result = self.classify(state, patch={'party': self.complete['party']})
+        self.assertEqual(result['clarification_reason'], 'suggest_form')
+        self.assertEqual(result['missing_fields'], ['startDate', 'budget'])
+        self.assertEqual(result['intent']['party'], self.complete['party'])
+
+    def test_budget_is_not_required_once_asked(self):
+        state = intake_node({'query': 'request', 'start_date_asked': True})
+        result = self.classify(state, patch={'startDate': '2999-10-10', 'party': self.complete['party']})
         self.assertEqual(result['decision'], 'tool')
-        self.assertIsNone(result['intent']['startDate'])
-        self.assertIsNone(result['intent']['budget'])
 
     def test_complete_details_need_no_question_and_close_the_question_for_later_turns(self):
         result = self.classify(patch=self.complete)
         self.assertEqual(result['decision'], 'tool')
         self.assertTrue(result['start_date_asked'])
 
-    def test_an_undecided_date_is_not_counted_as_missing(self):
+    def test_an_undecided_date_is_still_missing(self):
         result = self.classify(start_date_undecided=True, patch={'budget': 5_000_000, 'party': self.complete['party']})
-        self.assertEqual(result['decision'], 'tool')
+        self.assertEqual(result['decision'], 'missing_info')
+        self.assertEqual(result['missing_fields'], ['startDate'])
 
     def test_missing_destination_or_days_come_before_the_details(self):
         result = self.classify(patch={'destination': None})
@@ -279,9 +335,9 @@ class StartDateQuestionTests(unittest.TestCase):
         self.assertEqual(result['missing_fields'], ['destination'])
         self.assertFalse(result['start_date_asked'])
 
-    def test_a_chip_override_is_not_asked_for_details(self):
+    def test_a_chip_override_is_not_asked_for_the_optional_budget(self):
         state = {**intake_node({'query': ''}), 'intent_override': {'days': 3}}
-        result = self.classify(state)
+        result = self.classify(state, patch={'startDate': '2999-10-10', 'party': self.complete['party']})
         self.assertEqual(result['decision'], 'tool')
 
 
@@ -314,7 +370,8 @@ class DefaultYearTests(unittest.TestCase):
         from datetime import date
         from src.backend.app.agents.steps import classification
         state = state or intake_node({'query': 'request', 'start_date_asked': True})
-        result = Extraction(patch={'destination': 'Hà Nội', 'days': 2, 'startDate': start}, end_date=end_date)
+        result = Extraction(patch={'destination': 'Hà Nội', 'days': 2, 'startDate': start,
+                                   'party': {'type': 'SOLO', 'adults': 1, 'children': 0}}, end_date=end_date)
         with patch.object(classification, 'vietnam_today', return_value=date(2026, 9, 15)):
             return extract_result(state, result)
 
@@ -392,7 +449,7 @@ class InvalidInputTests(unittest.TestCase):
         self.assertEqual(result['missing_fields'], ['startDate'])
 
     def test_today_is_a_valid_start_date(self):
-        result = self.extract({'startDate': '2026-09-25'})
+        result = self.extract({'startDate': '2026-09-25', 'party': {'type': 'SOLO', 'adults': 1, 'children': 0}})
         self.assertEqual(result['decision'], 'tool')
         self.assertEqual(result['intent']['startDate'], '2026-09-25')
         self.assertEqual(result['invalid_inputs'], [])
@@ -421,7 +478,8 @@ class InvalidInputTests(unittest.TestCase):
         self.assert_asks_again(result, 'budget', 'budget_out_of_range')
 
     def test_a_large_party_or_budget_is_valid_by_the_contract(self):
-        result = self.extract({'party': {'type': 'FRIENDS', 'adults': 100, 'children': 0}, 'budget': 999_999_999_999})
+        result = self.extract({'party': {'type': 'FRIENDS', 'adults': 100, 'children': 0}, 'budget': 999_999_999_999,
+                               'startDate': '2026-10-01'})
         self.assertEqual(result['decision'], 'tool')
 
     def test_several_invalid_fields_are_reported_together(self):
