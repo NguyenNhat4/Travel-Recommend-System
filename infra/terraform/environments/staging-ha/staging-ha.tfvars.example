@@ -7,3 +7,4 @@ backend_env_secret        = "vota-ha-backend-env"
 # domain = "staging.example.com"   # empty = HTTP only
 db_primary_ip             = "10.148.0.2"
 # db_replica_ip            = "10.148.0.4"
+# alert_emails            = ["oncall@example.com"]

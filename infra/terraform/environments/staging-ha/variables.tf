@@ -173,3 +173,26 @@ variable "require_secret_versions" {
   type        = bool
   default     = false
 }
+
+variable "alert_emails" {
+  description = "Emails that receive HA alerts. Empty = alert policies exist but notify nobody (see notification_channel_ids)."
+  type        = list(string)
+  default     = []
+}
+
+variable "notification_channel_ids" {
+  description = "Existing Cloud Monitoring notification channel ids to attach in addition to alert_emails."
+  type        = list(string)
+  default     = []
+}
+
+variable "alert_p95_latency_ms" {
+  type    = number
+  default = 800
+}
+
+variable "alert_5xx_ratio" {
+  description = "Fraction of LB requests answered 5xx (over 5 minutes) that raises an alert."
+  type        = number
+  default     = 0.02
+}

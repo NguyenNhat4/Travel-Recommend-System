@@ -43,6 +43,7 @@ Trạng thái phải nằm ngoài VM: session BFF, rate limit và working memory
 | 6.5 | `/health/ready` thăm dò DB (`READY_REQUIRES_DB`, chỉ cho LB; use case ở §3b) | Xong, test pass, chưa apply |
 | 6.3 + 6.4 | pgbouncer sidecar (transaction pooling) trên mỗi VM + `LEADER_LOCK_DATABASE_URL` cho khoá leader; đã đo trước/sau (use case ở §3b) | Xong, test pass trên Postgres và pgbouncer thật, chưa apply |
 | 6.2 | `ops/promote-db-replica.sh`: tắt primary, nâng replica, đổi DNS bằng một lệnh (use case ở §3b) | Xong, test trên primary/replica thật, chưa chạy trên GCP |
+| 8 | Cảnh báo cho nhóm HA: số VM, chạm trần, 5xx LB, p95, uptime qua LB, Redis đầy (use case ở §3b) | Xong, test cấu trúc pass, chưa apply nên chưa xác nhận trên GCP |
 | 6 | DB: endpoint ổn định cho MIG (thay `vota-db-tunnel` trên 127.0.0.1:15432), cân nhắc Cloud SQL HA hoặc Patroni + pgbouncer | Chưa làm |
 | 7 | Cloud NAT cho VM không có IP public; tạo secret `vota-ha-backend-env` | Chưa làm |
 | 8 | Alert MIG: số VM khỏe < min, autoscaler chạm max, 5xx của LB | Chưa làm |
@@ -181,6 +182,18 @@ Chưa kiểm: chạy trên GCP thật (thời gian `gcloud compute instances sto
 Sau khi sửa: một lệnh `ops/promote-db-replica.sh --yes` (có dry run) làm đủ bốn bước; backend không phải sửa env hay deploy lại vì nối qua `db.vota.internal` (6.1) và pgbouncer phân giải lại khi mở kết nối mới (6.4). Không có failover tự động, vẫn là quyết định của người vận hành; việc đó (Patroni hoặc Cloud SQL HA) ngoài phạm vi và cần bạn quyết riêng.
 
 Kiểm chứng: `ops/tests/test_promote_db_replica.sh` (4 ca trên Postgres thật; lần chạy đầu lộ hai lỗi của chính test, đã sửa).
+
+## Use case: nhóm HA chạm trần, chậm và 5xx mà không ai được báo (4 VM)
+
+Tình huống: 20:10 khuyến mãi khách sạn Vinpearl Phú Quốc, tải tăng. Autoscaler đưa nhóm lên 4 VM (`max_replicas`) lúc 20:10 và ở đó; CPU mỗi VM vẫn 85%, p95 độ trễ backend 2,4 giây, và 6% request trả 5xx vì Redis đầy (`noeviction`).
+1. Không có gì "sập": VM đều sống, LB vẫn trả phần lớn 200.
+2. Các alert hiện có trong `infra/monitoring` nhắm đúng **một** app VM staging (`data.google_compute_instance.app` trong `infra/monitoring/main.tf`), nên nhóm HA hoàn toàn không được giám sát: không ai biết tới khi khách phàn nàn.
+3. Mất một VM (ví dụ template lỗi khiến VM mới không lên) cũng im lặng: nhóm còn 1 VM thay vì tối thiểu 2.
+
+Đã kiểm: các alert cũ chỉ lọc theo `instance_id` của một VM (đọc `infra/monitoring/main.tf`); test cấu trúc cho 6 alert pass (`test_alerts.py`, 9 test); `terraform validate` pass. Metric `request_count`/`https_lb_rule`/`response_code_class` và `backend_latencies` đối chiếu tài liệu Cloud Load Balancing; `cpu/utilization` đã được dùng sẵn ở `infra/monitoring`.
+Chưa kiểm: tên và nhãn của `redis.googleapis.com/stats/memory/usage_ratio` (`resource.labels.instance_id`), lọc VM theo `metric.labels.instance_name=starts_with(...)`, và việc alert thật sự kích hoạt trên GCP; chỉ `terraform apply` cộng với tạo tải thử (k6) mới xác nhận.
+
+Sau khi sửa: 6 cảnh báo cho nhóm, gửi tới `alert_emails` hoặc channel có sẵn: số VM dưới `min_replicas` (kèm điều kiện vắng mặt khi nhóm bị xoá sạch), autoscaler chạm `max_replicas` 15 phút, tỷ lệ 5xx của LB trên 2% (5 phút), p95 backend trên 800 ms (10 phút), uptime check `/health/ready` qua LB, và Redis trên 80% bộ nhớ. Trong tình huống trên, cảnh báo "chạm max" kêu lúc 20:25, p95 lúc 20:20 và 5xx lúc 20:15, thay vì không có gì.
 
 ## 4. Điều kiện trước khi `terraform apply`
 
