@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Callable
 
 from src.backend.app.application.booking.payment_events import PaymentEventHandler
@@ -13,6 +13,8 @@ from src.backend.app.application.ports.payment_gateway import PaymentEvent, Paym
 from src.backend.app.domain.booking.status import BookingStatus, PaymentStatus
 
 logger = logging.getLogger(__name__)
+# Bản ghi đơn nháp hết hạn được giữ thêm một ngày để trang thanh toán còn báo được "hết hạn" thay vì "không tìm thấy".
+DRAFT_RETENTION = timedelta(days=1)
 
 
 class ReconcileBookings:
@@ -35,6 +37,9 @@ class ReconcileBookings:
     async def _run(self) -> int:
         async with self._store.transaction() as tx:
             ids = await tx.find_reconcile_ids(self._clock(), self._batch)
+            purged = await tx.purge_expired_drafts(self._clock() - DRAFT_RETENTION)
+        if purged:
+            logger.info("reconcile.drafts_purged count=%d", purged)
         for booking_id in ids:
             try:
                 await self.reconcile_one(booking_id)

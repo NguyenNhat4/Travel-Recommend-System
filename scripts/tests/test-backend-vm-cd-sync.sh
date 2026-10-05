@@ -46,6 +46,8 @@ fi
 
 grep -q 'JWT_PRIVATE_KEY_PATH' "$deploy"
 grep -q 'AUTH_REDIS_URL' "$deploy"
+grep -Fq 'ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}' "$compose"
+grep -Fq 'read_backend_optional_value ALLOWED_ORIGINS' "$frontend_deploy"
 grep -q '/app/secrets' "$deploy"
 grep -q -- '--no-deps' "$deploy"
 grep -Fq 'IMAGE@sha256:DIGEST' "$deploy"
@@ -53,5 +55,19 @@ if grep -Eq 'crawler|CRAWLER|Dockerfile.daily|run_daily_docker' "$workflow"; the
   echo 'backend workflow must not deploy the crawler' >&2
   exit 1
 fi
+
+sync_action="$repo_root/.github/actions/sync-env-from-secret-manager/action.yml"
+test -f "$sync_action"
+grep -Fq 'gcloud secrets versions access latest --secret "$SECRET"' "$sync_action"
+grep -Fq 'sudo -n tee "$f"' "$sync_action"
+grep -Fq 'name: Sync backend env from Secret Manager' "$workflow"
+grep -Fq 'name: Sync backend env from Secret Manager' "$frontend_workflow"
+grep -Fq 'name: Sync crawler env from Secret Manager' "$crawler_workflow"
+for wf in "$workflow" "$frontend_workflow" "$crawler_workflow"; do
+  grep -Fq 'uses: ./.github/actions/sync-env-from-secret-manager' "$wf"
+done
+grep -Fq 'vars.GCE_BACKEND_ENV_SECRET' "$workflow"
+grep -Fq 'vars.GCE_BACKEND_ENV_SECRET' "$frontend_workflow"
+grep -Fq 'vars.GCE_CRAWLER_ENV_SECRET' "$crawler_workflow"
 
 echo 'backend VM CD sync checks passed'

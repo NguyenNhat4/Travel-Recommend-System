@@ -4,12 +4,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useTravel } from '../../context/TravelContext';
 import { useAssistant } from '../../context/AssistantProvider';
 import { getProduct } from '../../services/catalog';
-import { fetchRecommendations } from '../../services/recsys';
 import type { ApiCartItem } from '../../services/booking';
-import type { RecommendationResponse, Taxonomy } from '../../types/travel';
+import type { Taxonomy } from '../../types/travel';
 import { TaxonomyBadge } from '../common/TaxonomyBadge';
 import { FlightSummary } from '../common/FlightSummary';
-import { ProductCard } from '../common/ProductCard';
 import { Trash2, ShoppingBag, ArrowRight, ShieldCheck, Sparkles, Loader2, AlertTriangle, Pencil } from 'lucide-react';
 import { formatVnd } from '../confirmation/bookingLabels';
 import { cartStateOf, guestsOfItem, sameCartState, type CartState } from '../checkout/allocation';
@@ -82,15 +80,12 @@ const GuestEditor: React.FC<{ item: ApiCartItem; onClose: () => void }> = ({ ite
 
 export const CartView: React.FC = () => {
   const { openFloatingWidget } = useAssistant();
-  const {
-    cart, removeFromCart, navigate, currentPersona, authReady, activeEvents, addToCart, openLoginModal,
-  } = useTravel();
-  const [recs, setRecs] = useState<RecommendationResponse | null>(null);
+  // Giỏ dùng được cả khi chưa đăng nhập: khách chưa đăng nhập có giỏ riêng giữ 3 ngày (spec dat-truc-tiep-theo-don-nhap.md §8).
+  const { cart, removeFromCart, navigate, currentPersona, openLoginModal } = useTravel();
   const [editing, setEditing] = useState<string | null>(null);
 
   const items = useMemo(() => cart?.items ?? [], [cart]);
   const hasUnavailable = items.some((item) => !item.product.available);
-  const primaryDestination = items[0]?.product.destination;
 
   // Gom nhóm "Chuyến {destination}" phía client (docs/spec/hop-dong-tich-hop-frontend.md §4.4)
   const itemsByDestination = useMemo(() => {
@@ -98,30 +93,6 @@ export const CartView: React.FC = () => {
     for (const item of items) (groups[item.product.destination || 'Khác'] ??= []).push(item);
     return groups;
   }, [items]);
-
-  // Thường được đặt cùng: GET /recommendations theo điểm đến đầu tiên; lỗi thì ẩn.
-  useEffect(() => {
-    if (!currentPersona || !primaryDestination) return;
-    const controller = new AbortController();
-    fetchRecommendations({ k: 4, destination: primaryDestination, signal: controller.signal })
-      .then(setRecs).catch(() => setRecs(null));
-    return () => controller.abort();
-  }, [currentPersona, primaryDestination, activeEvents]);
-
-  if (authReady && !currentPersona) {
-    return (
-      <div className="max-w-4xl mx-auto px-4 py-16 text-center space-y-4">
-        <h2 className="text-xl font-bold text-slate-900">Đăng nhập để xem giỏ hàng</h2>
-        <p className="text-xs text-slate-500">Giỏ hàng được lưu theo tài khoản của bạn.</p>
-        <button
-          onClick={() => openLoginModal()}
-          className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors"
-        >
-          Đăng nhập
-        </button>
-      </div>
-    );
-  }
 
   if (!cart) {
     return (
@@ -140,7 +111,7 @@ export const CartView: React.FC = () => {
         <div className="space-y-1">
           <h2 className="text-xl font-bold text-slate-900">Giỏ hàng của bạn đang trống</h2>
           <p className="text-xs text-slate-500 max-w-sm mx-auto">
-            Chưa có dịch vụ nào được thêm vào giỏ. Hãy bắt đầu chọn khách sạn, chuyến bay hoặc vé vui chơi!
+            Giỏ hàng giữ tour, trải nghiệm và các tiện ích khác. Khách sạn và vé máy bay được đặt ngay ở trang sản phẩm, không qua giỏ.
           </p>
         </div>
         <div className="flex justify-center gap-3">
@@ -257,25 +228,9 @@ export const CartView: React.FC = () => {
             </div>
           ))}
 
-          {/* Thường được đặt cùng (§4.4) */}
-          {recs && recs.recommendations.length > 0 && (
-            <div className="pt-4 space-y-3">
-              <h3 className="font-sans text-xs font-bold text-slate-700 uppercase tracking-wider">
-                Thường được đặt cùng chuyến {primaryDestination}
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {recs.recommendations.slice(0, 2).map(rec => (
-                  <ProductCard
-                    key={rec.product.id}
-                    product={rec.product}
-                    variant="compact"
-                    because={rec.because}
-                    onQuickAdd={(p) => void addToCart(p, 1)}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
+          <p className="text-[11px] text-slate-500 leading-relaxed" data-testid="cart-direct-note">
+            Khách sạn và vé máy bay không nằm trong giỏ: giá và chỗ thay đổi liên tục nên được đặt ngay ở trang sản phẩm.
+          </p>
         </div>
 
         {/* Right: Sticky Summary Box — mọi con số lấy từ CartResponse */}
@@ -311,7 +266,8 @@ export const CartView: React.FC = () => {
           )}
 
           <button
-            onClick={() => navigate('/checkout')}
+            // Thanh toán cần đăng nhập (FR-BKG-01): khách mở hộp đăng nhập trước, xong thì vào /checkout.
+            onClick={() => (currentPersona ? navigate('/checkout') : openLoginModal(() => navigate('/checkout')))}
             disabled={hasUnavailable}
             className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-bold text-sm rounded-xl shadow-xs transition-colors flex items-center justify-center gap-2"
           >

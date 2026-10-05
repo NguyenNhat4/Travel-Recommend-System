@@ -15,7 +15,7 @@ export function FloatingWidget() {
   const widget = useFloatingWidget();
   const { isOpen, setIsOpen, isExpanded, setIsExpanded, isHistoryOpen, setIsHistoryOpen,
     activePlan, isChatCollapsed, setIsChatCollapsed, handleQuickPrompt,
-    selectedProduct, closeProductDetail, addSelectedToCart } = widget;
+    selectedProduct, closeProductDetail, addSelectedToCart, selectedCanAddToCart, bookSelectedNow } = widget;
   const dialogRef = useWidgetFocus(isOpen, isExpanded, isHistoryOpen);
   return (
     <>
@@ -176,7 +176,7 @@ export function FloatingWidget() {
               </button>
               {selectedProduct && !activePlan
                 ? <WidgetProductDetail key={selectedProduct.productId} productId={selectedProduct.productId}
-                    summary={selectedProduct.summary} onClose={closeProductDetail} onAddToCart={addSelectedToCart}
+                    summary={selectedProduct.summary} onClose={closeProductDetail} onAddToCart={selectedCanAddToCart ? addSelectedToCart : undefined} onBookNow={bookSelectedNow}
                     cartAddState={widget.cartAddStates[selectedProduct.productId]} />
                 : activePlan ? <WidgetPlanPanel widget={widget} /> : <WidgetPlanEmpty onPrompt={handleQuickPrompt} />}
             </div>

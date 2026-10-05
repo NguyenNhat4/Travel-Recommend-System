@@ -1,4 +1,8 @@
-"""Port giỏ hàng phía server (app.carts, app.cart_items)."""
+"""Port giỏ hàng phía server.
+
+Hai adapter: PostgreSQL (app.carts, app.cart_items) cho người đã đăng nhập, khoá theo `cdp_user_id`; Redis cho khách chưa
+đăng nhập, khoá theo `guestId` (spec dat-truc-tiep-theo-don-nhap.md §8.2). Tham số đầu của mọi hàm là khoá chủ giỏ đó.
+"""
 from __future__ import annotations
 
 from datetime import date

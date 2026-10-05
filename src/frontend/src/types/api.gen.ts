@@ -252,6 +252,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/search/suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Gợi ý tức thì khi gõ ở ô tìm kiếm (FR-SRC-05)
+         * @description Khớp chữ theo đầu từ trên tên điểm đến và tên search unit của catalog đang phục vụ, không phân biệt dấu và hoa thường. Không gọi embed hay kho vector, không ghi event search sang CDP và không ghi search log, nên Web được gọi theo từng lần gõ. Không gợi ý vé máy bay. `q` có dưới 2 ký tự chữ hoặc số sau chuẩn hoá thì trả `suggestions` rỗng với status 200. Response giống nhau cho mọi người dùng và có `Cache-Control: public`. Thiếu `q`, `q` dài quá 100 ký tự hoặc `limit` ngoài 1–10 trả 422 VALIDATION_ERROR.
+         */
+        get: operations["suggestSearch"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/recommendations": {
         parameters: {
             query?: never;
@@ -299,7 +319,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Giỏ hàng của người dùng hiện tại */
+        /**
+         * Giỏ hàng của người dùng hiện tại (hoặc của khách chưa đăng nhập)
+         * @description Giỏ chỉ chứa tour, trải nghiệm và tiện ích khác (taxonomy attraction, golf, combo); khách sạn và vé máy bay được đặt trực tiếp qua POST /booking-drafts. Người đã đăng nhập gọi bằng Bearer. Khách chưa đăng nhập đi qua BFF: BFF gửi X-Service-Token kèm X-Guest-Id, giỏ nằm trong Redis 3 ngày và response có cdpUserId null. Thiếu cả hai cách thì 401. Áp dụng cho cả bốn thao tác giỏ (docs/spec/booking/dat-truc-tiep-theo-don-nhap.md §8).
+         */
         get: operations["getCart"];
         put?: never;
         post?: never;
@@ -320,7 +343,7 @@ export interface paths {
         put?: never;
         /**
          * Thêm mục vào giỏ (cộng dồn quantity và guests nếu trùng productId và usingDate)
-         * @description Thêm thành công thì Backend ghi event add_to_cart sang CDP clone ở nền, với taxonomy và unitPrice lấy từ catalog. Thêm thất bại không ghi event. CDP lỗi không ảnh hưởng response. guests là số người lớn và trẻ em của mục (tối đa 9 khách, mỗi phòng một người lớn, không vượt maxOccupancy của hạng phòng); vi phạm trả 400 VALIDATION_ERROR kèm details.fields[]. Response trả thêm guests và fares (dòng giá theo loại khách) cho từng mục.
+         * @description Thêm thành công thì Backend ghi event add_to_cart sang CDP clone ở nền, với taxonomy và unitPrice lấy từ catalog. Thêm thất bại không ghi event. CDP lỗi không ảnh hưởng response. guests là số người lớn và trẻ em của mục (tối đa 9 khách, mỗi phòng một người lớn, không vượt maxOccupancy của hạng phòng); vi phạm trả 400 VALIDATION_ERROR kèm details.fields[]. Response trả thêm guests và fares (dòng giá theo loại khách) cho từng mục. Sản phẩm taxonomy hotel hoặc flight bị từ chối với 422 DIRECT_BOOKING_ONLY (details productId, taxonomy): giỏ không đổi, không ghi add_to_cart. Khách chưa đăng nhập thêm được vào giỏ (tối đa 20 mục, vượt thì 400 VALIDATION_ERROR reason CART_FULL) nhưng không sinh event CDP.
          */
         post: operations["addCartItem"];
         delete?: never;
@@ -352,6 +375,95 @@ export interface paths {
         patch: operations["updateCartItem"];
         trace?: never;
     };
+    "/booking-drafts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Đặt ngay — tạo đơn nháp cho đúng một lần đặt
+         * @description Đơn nháp chỉ chứa các mục của lần đặt này (một sản phẩm, một hoặc hai chặng bay, hoặc mọi mục đặt được của một lịch trình) và có hiệu lực 30 phút (expiresAt); không giữ chỗ, không trừ tồn kho. Nhận mọi taxonomy. Mỗi mục được kiểm như POST /cart/items. allowPartial false (mặc định): một mục vi phạm làm cả request lỗi với mã của vi phạm đó. allowPartial true: mục vi phạm bị bỏ và trả trong rejectedItems; không mục nào được nhận thì 409 PRODUCT_UNAVAILABLE kèm details.rejectedItems. Hai mục cùng productId và usingDate: 400 VALIDATION_ERROR reason DUPLICATE_ITEM. fromBooking (cần đăng nhập) tạo đơn nháp từ các mục của một đơn PAYMENT_FAILED hoặc EXPIRED của chính người gọi với giá hiện tại, luôn theo kiểu allowPartial; đơn ở trạng thái khác trả 400 VALIDATION_ERROR reason NOT_REBOOKABLE. Mục attraction, golf, combo của đơn nháp được chép vào giỏ của người gọi nếu giỏ chưa có mục cùng productId và usingDate. Người đã đăng nhập: mỗi mục được nhận ghi một event add_to_cart sang CDP ở nền. Khách chưa đăng nhập (X-Service-Token kèm X-Guest-Id qua BFF) tạo được đơn nháp, lưu ở Redis, không sinh event (docs/spec/booking/dat-truc-tiep-theo-don-nhap.md §4, §5, §8).
+         */
+        post: operations["createBookingDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/booking-drafts/{draftId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draftId: components["parameters"]["DraftId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Đọc đơn nháp với giá và tình trạng còn bán hiện tại
+         * @description Giá, available và fares lấy lại từ catalog ở mỗi lần đọc; snapshot không đổi khi đọc. Không có, hoặc của người khác: 404 BOOKING_DRAFT_NOT_FOUND. Quá expiresAt: 410 BOOKING_DRAFT_EXPIRED với details.items[] {productId, taxonomy, inCart} để Web dẫn khách về giỏ (mục còn trong giỏ) hoặc về trang sản phẩm.
+         */
+        get: operations["getBookingDraft"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/booking-drafts/{draftId}/items/{cartItemId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draftId: components["parameters"]["DraftId"];
+                cartItemId: components["parameters"]["CartItemId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Bỏ một mục khỏi đơn nháp
+         * @description Dùng khi một mục của lần đặt không còn đặt được hoặc khách không muốn đặt mục đó nữa. Không đổi mục giỏ đã chép. Bỏ mục cuối cùng thì đơn nháp bị xoá và response có items rỗng; lần đọc sau trả 404.
+         */
+        delete: operations["removeBookingDraftItem"];
+        options?: never;
+        head?: never;
+        /**
+         * Sửa ngày, số lượng, số đêm hoặc số khách của một mục đơn nháp
+         * @description Cùng body và luật với PATCH /cart/items/{cartItemId}; ghi lại giá snapshot bằng giá hiện tại. Không đổi mục giỏ đã chép. Không có thao tác thêm mục vào đơn nháp đã có.
+         */
+        patch: operations["updateBookingDraftItem"];
+        trace?: never;
+    };
+    "/guest-bookings/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Gộp giỏ và đơn nháp của khách chưa đăng nhập vào tài khoản vừa đăng nhập (chỉ BFF gọi)
+         * @description Cần cả X-Service-Token và Bearer của tài khoản đích. Mục giỏ khách mà giỏ tài khoản chưa có (theo productId và usingDate) được thêm; mục trùng chỉ giữ mục đang có trong tài khoản. Đơn nháp khách còn hạn được chuyển sang tài khoản với cùng draftId. Sau đó dữ liệu Redis của guestId bị xoá. Idempotent: gọi lại trả các số đếm bằng 0. Mỗi cặp productId, usingDate thực sự vào tài khoản ghi một event add_to_cart.
+         */
+        post: operations["mergeGuestBooking"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/bookings": {
         parameters: {
             query?: never;
@@ -362,8 +474,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Checkout giỏ hiện tại — giữ chỗ và tạo phiên thanh toán Stripe
-         * @description Backend kiểm giỏ, tạo đơn PENDING_PAYMENT (giữ giá và thành phần 30 phút) rồi tạo phiên Stripe Checkout. 201 nghĩa là đã giữ chỗ và chờ thanh toán, KHÔNG phải đã đặt xong: Web chuyển trình duyệt tới payment.checkoutUrl. Đơn chỉ thành CONFIRMED sau khi Stripe xác nhận thu tiền (webhook có chữ ký hoặc Backend tự hỏi lại Stripe); event purchase chỉ ghi sang CDP lúc đó. Người dùng đang có đơn giữ chỗ thì trả 409 BOOKING_PENDING_PAYMENT kèm referenceCode đơn đó. Stripe không phản hồi thì không tạo đơn, trả 503 PAYMENT_PROVIDER_UNAVAILABLE. Số tiền do Backend tính từ catalog, không nhận từ client. Có travelers thì Backend kiểm toàn bộ luật đoàn khách và phân bổ (người lớn từ 12 tuổi, trẻ em dưới 12 tuổi có ngày sinh, mỗi phòng có người lớn và không vượt sức chứa, số khách khớp giá đã thấy) và trả MỌI vi phạm trong một lần: 400 VALIDATION_ERROR với details.fields[]; khi đó chưa tạo phiên Stripe và chưa ghi gì. Mỗi dòng giá của mỗi mục là một line item trên trang Stripe; Backend không gửi họ tên hay ngày sinh sang Stripe. Không có travelers (client cũ): guestNames được coi là tên người lớn và chỉ nhận khi giỏ không có trẻ em.
+         * Thanh toán giỏ hiện tại hoặc một đơn nháp — giữ chỗ và tạo phiên thanh toán Stripe
+         * @description Có draftId thì thanh toán đúng các mục của đơn nháp đó (Đặt ngay), không kèm mục nào trong giỏ; đơn nháp không thuộc người gọi trả 404 BOOKING_DRAFT_NOT_FOUND, quá hạn trả 410 BOOKING_DRAFT_EXPIRED, và đơn nháp bị xoá khi đơn giữ chỗ được tạo. Không có draftId thì thanh toán toàn bộ giỏ. itemDetails[].cartItemId là mã mục của nguồn đang thanh toán. Luôn cần đăng nhập. Backend kiểm giỏ hoặc đơn nháp, tạo đơn PENDING_PAYMENT (giữ giá và thành phần 30 phút) rồi tạo phiên Stripe Checkout. 201 nghĩa là đã giữ chỗ và chờ thanh toán, KHÔNG phải đã đặt xong: Web chuyển trình duyệt tới payment.checkoutUrl. Đơn chỉ thành CONFIRMED sau khi Stripe xác nhận thu tiền (webhook có chữ ký hoặc Backend tự hỏi lại Stripe); event purchase chỉ ghi sang CDP lúc đó. Người dùng đang có đơn giữ chỗ thì trả 409 BOOKING_PENDING_PAYMENT kèm referenceCode đơn đó. Stripe không phản hồi thì không tạo đơn, trả 503 PAYMENT_PROVIDER_UNAVAILABLE. Số tiền do Backend tính từ catalog, không nhận từ client. Có travelers thì Backend kiểm toàn bộ luật đoàn khách và phân bổ (người lớn từ 12 tuổi, trẻ em dưới 12 tuổi có ngày sinh, mỗi phòng có người lớn và không vượt sức chứa, số khách khớp giá đã thấy) và trả MỌI vi phạm trong một lần: 400 VALIDATION_ERROR với details.fields[]; khi đó chưa tạo phiên Stripe và chưa ghi gì. Mỗi dòng giá của mỗi mục là một line item trên trang Stripe; Backend không gửi họ tên hay ngày sinh sang Stripe. Không có travelers (client cũ): guestNames được coi là tên người lớn và chỉ nhận khi giỏ không có trẻ em.
          */
         post: operations["createBooking"];
         delete?: never;
@@ -531,7 +643,7 @@ export interface paths {
         put?: never;
         /**
          * Ghi hành vi người dùng mà Backend không tự thấy được (hiện chỉ product_view)
-         * @description Web gọi khi người dùng thật sự mở trang chi tiết, không gọi khi prefetch/SSR. Backend kiểm tra productId trong catalog, lấy taxonomy từ catalog, rồi ghi sang CDP clone ở nền: trả 202 trước khi CDP xác nhận, CDP lỗi thì event bị bỏ và chỉ ghi log. search và add_to_cart không đi qua endpoint này mà do POST /search và POST /cart/items tự ghi; purchase do POST /bookings ghi.
+         * @description Web gọi khi người dùng thật sự mở trang chi tiết, không gọi khi prefetch/SSR. Backend kiểm tra productId trong catalog, lấy taxonomy từ catalog, rồi ghi sang CDP clone ở nền: trả 202 trước khi CDP xác nhận, CDP lỗi thì event bị bỏ và chỉ ghi log. search và add_to_cart không đi qua endpoint này mà do POST /search, POST /cart/items và POST /booking-drafts tự ghi; purchase do POST /bookings ghi.
          */
         post: operations["trackEvent"];
         delete?: never;
@@ -568,7 +680,7 @@ export interface components {
         Currency: "VND";
         ReferenceCode: string;
         /** @enum {string} */
-        ErrorCode: "VALIDATION_ERROR" | "CART_EMPTY" | "INVALID_CREDENTIALS" | "INVALID_TOKEN" | "TOKEN_EXPIRED" | "PRODUCT_NOT_FOUND" | "CART_ITEM_NOT_FOUND" | "BOOKING_NOT_FOUND" | "NOT_FOUND" | "EMAIL_ALREADY_EXISTS" | "PRODUCT_UNAVAILABLE" | "PRICE_CHANGED" | "DATE_OUT_OF_RANGE" | "SEARCH_UNAVAILABLE" | "INTERNAL_ERROR" | "INVALID_TRIP_DURATION" | "CONVERSATION_NOT_FOUND" | "UNSUPPORTED_DESTINATION" | "LLM_UNAVAILABLE" | "ITINERARY_VALIDATION_FAILED" | "AVAILABILITY_NOT_FOUND" | "AVAILABILITY_EXPIRED" | "NO_RATE_PLAN" | "MIN_STAY_NOT_MET" | "CLOSED_ON_ARRIVAL" | "CLOSED_ON_DEPARTURE" | "PARTIALLY_AVAILABLE" | "PRODUCT_NOT_INDEXED" | "UNAUTHENTICATED" | "SESSION_EXPIRED" | "CSRF_FAILED" | "MFA_REQUIRED" | "MFA_INVALID" | "EMAIL_NOT_VERIFIED" | "TOO_MANY_ATTEMPTS" | "CAPTCHA_REQUIRED" | "CAPTCHA_FAILED" | "WEAK_PASSWORD" | "INVALID_VERIFICATION_TOKEN" | "OAUTH_EMAIL_UNVERIFIED" | "OAUTH_ALREADY_LINKED" | "CDP_UNAVAILABLE" | "BOOKING_PENDING_PAYMENT" | "BOOKING_ALREADY_PAID" | "BOOKING_NOT_CANCELLABLE" | "PAYMENT_PROVIDER_UNAVAILABLE" | "INVALID_WEBHOOK_SIGNATURE";
+        ErrorCode: "VALIDATION_ERROR" | "CART_EMPTY" | "INVALID_CREDENTIALS" | "INVALID_TOKEN" | "TOKEN_EXPIRED" | "PRODUCT_NOT_FOUND" | "CART_ITEM_NOT_FOUND" | "BOOKING_NOT_FOUND" | "NOT_FOUND" | "EMAIL_ALREADY_EXISTS" | "PRODUCT_UNAVAILABLE" | "PRICE_CHANGED" | "DATE_OUT_OF_RANGE" | "SEARCH_UNAVAILABLE" | "INTERNAL_ERROR" | "INVALID_TRIP_DURATION" | "CONVERSATION_NOT_FOUND" | "UNSUPPORTED_DESTINATION" | "LLM_UNAVAILABLE" | "ITINERARY_VALIDATION_FAILED" | "AVAILABILITY_NOT_FOUND" | "AVAILABILITY_EXPIRED" | "NO_RATE_PLAN" | "MIN_STAY_NOT_MET" | "CLOSED_ON_ARRIVAL" | "CLOSED_ON_DEPARTURE" | "PARTIALLY_AVAILABLE" | "PRODUCT_NOT_INDEXED" | "UNAUTHENTICATED" | "SESSION_EXPIRED" | "CSRF_FAILED" | "MFA_REQUIRED" | "MFA_INVALID" | "EMAIL_NOT_VERIFIED" | "TOO_MANY_ATTEMPTS" | "CAPTCHA_REQUIRED" | "CAPTCHA_FAILED" | "WEAK_PASSWORD" | "INVALID_VERIFICATION_TOKEN" | "OAUTH_EMAIL_UNVERIFIED" | "OAUTH_ALREADY_LINKED" | "CDP_UNAVAILABLE" | "BOOKING_PENDING_PAYMENT" | "BOOKING_ALREADY_PAID" | "BOOKING_NOT_CANCELLABLE" | "PAYMENT_PROVIDER_UNAVAILABLE" | "INVALID_WEBHOOK_SIGNATURE" | "DIRECT_BOOKING_ONLY" | "BOOKING_DRAFT_NOT_FOUND" | "BOOKING_DRAFT_EXPIRED";
         ErrorResponse: {
             error: {
                 code: components["schemas"]["ErrorCode"];
@@ -577,19 +689,19 @@ export interface components {
                 /** @description true chỉ với SEARCH_UNAVAILABLE, INTERNAL_ERROR, LLM_UNAVAILABLE, TOO_MANY_ATTEMPTS, CDP_UNAVAILABLE và PAYMENT_PROVIDER_UNAVAILABLE. Mọi mã còn lại là false — thử lại nguyên request cho cùng kết quả. */
                 retryable: boolean;
                 requestId: string;
-                /** @description Tùy mã lỗi. VALIDATION_ERROR {fields: ValidationFieldError[]}; PRODUCT_NOT_FOUND và PRODUCT_UNAVAILABLE {productId}; CART_ITEM_NOT_FOUND {cartItemId}; PRICE_CHANGED {productId, oldPrice, newPrice, fareType?} — fareType là CHILD khi giá vé trẻ em đổi; DATE_OUT_OF_RANGE {productId, availableFrom, availableTo}; UNSUPPORTED_DESTINATION {destination, supportedDestinations, conversationId} — conversationId là hội thoại đã lưu phần chuyến đi còn lại, gửi lại cùng điểm đến hợp lệ để tiếp tục; MIN_STAY_NOT_MET {productId, minStay}; PRODUCT_NOT_INDEXED {productId, taxonomy}; TOO_MANY_ATTEMPTS {retryAfterSeconds}; MFA_INVALID {attemptsLeft}; EMAIL_NOT_VERIFIED {email}; WEAK_PASSWORD {reasons}; INVALID_VERIFICATION_TOKEN {purpose}; OAUTH_EMAIL_UNVERIFIED và OAUTH_ALREADY_LINKED {provider}; BOOKING_PENDING_PAYMENT {referenceCode, holdExpiresAt} — đơn đang giữ chỗ để tiếp tục hoặc huỷ; BOOKING_NOT_CANCELLABLE {referenceCode, reason, cancellableUntil}; BOOKING_ALREADY_PAID {referenceCode}. */
+                /** @description Tùy mã lỗi. VALIDATION_ERROR {fields: ValidationFieldError[]}; PRODUCT_NOT_FOUND và PRODUCT_UNAVAILABLE {productId}; CART_ITEM_NOT_FOUND {cartItemId}; PRICE_CHANGED {productId, oldPrice, newPrice, fareType?} — fareType là CHILD khi giá vé trẻ em đổi; DATE_OUT_OF_RANGE {productId, availableFrom, availableTo}; UNSUPPORTED_DESTINATION {destination, supportedDestinations, conversationId} — conversationId là hội thoại đã lưu phần chuyến đi còn lại, gửi lại cùng điểm đến hợp lệ để tiếp tục; MIN_STAY_NOT_MET {productId, minStay}; PRODUCT_NOT_INDEXED {productId, taxonomy}; TOO_MANY_ATTEMPTS {retryAfterSeconds}; MFA_INVALID {attemptsLeft}; EMAIL_NOT_VERIFIED {email}; WEAK_PASSWORD {reasons}; INVALID_VERIFICATION_TOKEN {purpose}; OAUTH_EMAIL_UNVERIFIED và OAUTH_ALREADY_LINKED {provider}; BOOKING_PENDING_PAYMENT {referenceCode, holdExpiresAt} — đơn đang giữ chỗ để tiếp tục hoặc huỷ; BOOKING_NOT_CANCELLABLE {referenceCode, reason, cancellableUntil}; BOOKING_ALREADY_PAID {referenceCode}; DIRECT_BOOKING_ONLY {productId, taxonomy}; BOOKING_DRAFT_EXPIRED {draftId, items: [{productId, taxonomy, inCart}]}; PRODUCT_UNAVAILABLE khi tạo đơn nháp mà không mục nào được nhận {rejectedItems}. */
                 details?: {
                     [key: string]: unknown;
                 };
             };
         };
-        /** @description Một vi phạm trong details.fields[] của VALIDATION_ERROR. Backend trả mọi vi phạm trong một lần; message là tiếng Việt hiển thị được trực tiếp. reason là mã luật dùng chung giữa Web và Backend (docs/spec/booking/checkout-nhieu-buoc-hanh-khach.md §5.6): REQUIRED, NAME_INVALID, PHONE_INVALID, EMAIL_INVALID, BIRTH_DATE_INVALID, CHILD_AGE_INVALID, ADULT_REQUIRED, PARTY_TOO_LARGE, TRAVELER_UNKNOWN, TRAVELER_DUPLICATED, ITEM_DETAIL_MISSING, ITEM_DETAIL_UNKNOWN, ITEM_DETAIL_DUPLICATED, ITEM_WITHOUT_TRAVELER, GUEST_COUNT_MISMATCH, INFANTS_EXCEED_ADULTS, ROOM_COUNT_MISMATCH, OCCUPANCY_EXCEEDED, LEAD_GUEST_INVALID, TRAVELERS_REQUIRED. Client gặp reason lạ thì hiển thị message. */
+        /** @description Một vi phạm trong details.fields[] của VALIDATION_ERROR. Backend trả mọi vi phạm trong một lần; message là tiếng Việt hiển thị được trực tiếp. reason là mã luật dùng chung giữa Web và Backend (docs/spec/booking/checkout-nhieu-buoc-hanh-khach.md §5.6): REQUIRED, NAME_INVALID, PHONE_INVALID, EMAIL_INVALID, BIRTH_DATE_INVALID, CHILD_AGE_INVALID, ADULT_REQUIRED, PARTY_TOO_LARGE, TRAVELER_UNKNOWN, TRAVELER_DUPLICATED, ITEM_DETAIL_MISSING, ITEM_DETAIL_UNKNOWN, ITEM_DETAIL_DUPLICATED, ITEM_WITHOUT_TRAVELER, GUEST_COUNT_MISMATCH, INFANTS_EXCEED_ADULTS, ROOM_COUNT_MISMATCH, OCCUPANCY_EXCEEDED, LEAD_GUEST_INVALID, TRAVELERS_REQUIRED; với đơn nháp và giỏ của khách: DUPLICATE_ITEM, CART_FULL, NOT_REBOOKABLE. Client gặp reason lạ thì hiển thị message. */
         ValidationFieldError: {
             /** @description Đường dẫn trong request, ví dụ travelers[2].birthDate hoặc itemDetails[0].rooms[1]. */
             field: string;
             reason: string;
             message: string;
-            /** @description Có khi vi phạm thuộc một mục giỏ, để Web gắn lỗi vào đúng thẻ dịch vụ. */
+            /** @description Có khi vi phạm thuộc một mục giỏ hoặc mục đơn nháp, để Web gắn lỗi vào đúng thẻ dịch vụ. */
             cartItemId?: string;
         };
         /**
@@ -779,7 +891,7 @@ export interface components {
             attributes?: components["schemas"]["ProductAttributes"];
             /** @description Mô tả catalog phục vụ Agent; giữ nguyên, không chứa chỉ dẫn hệ thống. */
             description?: string;
-            /** @description Chỉ có ở vé máy bay tầng con (taxonomy flight, level flight): các hạng vé của CÙNG một hành trình (cùng chuyến, cùng ngày đi; khứ hồi thì cùng chuyến và ngày về), kể cả chính sản phẩm này. Mỗi hạng là một productId riêng; đặt vé bằng productId của hạng đã chọn (AddCartItemRequest không đổi). Các sản phẩm cùng hành trình có cùng fareClasses, nên Web hiển thị một thẻ cho mỗi hành trình. Chỉ liệt kê hạng có báo giá thật — thiếu hạng nào là chưa có dữ liệu, không phải hết chỗ. Vắng mặt ở loại sản phẩm khác. */
+            /** @description Chỉ có ở vé máy bay tầng con (taxonomy flight, level flight): các hạng vé của CÙNG một hành trình (cùng chuyến, cùng ngày đi; khứ hồi thì cùng chuyến và ngày về), kể cả chính sản phẩm này. Mỗi hạng là một productId riêng; đặt vé bằng productId của hạng đã chọn qua POST /booking-drafts (vé máy bay không vào giỏ). Các sản phẩm cùng hành trình có cùng fareClasses, nên Web hiển thị một thẻ cho mỗi hành trình. Chỉ liệt kê hạng có báo giá thật — thiếu hạng nào là chưa có dữ liệu, không phải hết chỗ. Vắng mặt ở loại sản phẩm khác. */
             fareClasses?: components["schemas"]["FareClass"][];
         };
         ProductDetail: components["schemas"]["ProductSummary"] & {
@@ -1009,6 +1121,30 @@ export interface components {
             facets?: components["schemas"]["SearchFacets"];
             appliedFilters?: components["schemas"]["AppliedFilters"];
             diagnostics?: components["schemas"]["EngineDiagnostics"];
+            requestId?: string;
+        };
+        SearchSuggestion: {
+            /**
+             * @description destination: một điểm đến chuẩn hoá của catalog (cùng giá trị với /destinations). product: một search unit (property, vé tham quan, sân golf, combo); không có vé máy bay.
+             * @enum {string}
+             */
+            type: "destination" | "product";
+            /** @description Tên hiển thị, giữ nguyên dấu. Web tự in đậm phần khớp với chữ đang gõ. */
+            label: string;
+            /** @description Chỉ có khi type = product. */
+            productId?: string;
+            /** @description Chỉ có khi type = product. */
+            taxonomy?: components["schemas"]["Taxonomy"];
+            /** @description Điểm đến của sản phẩm. Chỉ có khi type = product. */
+            destination?: string | null;
+            /** @description Số search unit tại điểm đến. Chỉ có khi type = destination. */
+            productCount?: number;
+        };
+        SearchSuggestionResponse: {
+            /** @description Chữ đã nhận, sau khi gộp khoảng trắng. */
+            query: string;
+            /** @description Thứ tự hiển thị: điểm đến trước, rồi sản phẩm theo taxonomy (hotel, attraction, golf, combo); trong mỗi nhóm, khớp ở đầu tên đứng trước. */
+            suggestions: components["schemas"]["SearchSuggestion"][];
             requestId?: string;
         };
         TravelContext: {
@@ -1290,7 +1426,7 @@ export interface components {
             usingDate: string;
             /** @description Số phòng (khách sạn), số gói (combo) hoặc số vé. Dịch vụ tính theo người (vé máy bay, tham quan, golf) gửi guests thì được bỏ quantity; gửi cả hai mà lệch adults + children thì bị từ chối (GUEST_COUNT_MISMATCH). */
             quantity?: number;
-            /** @description Chỉ dùng với taxonomy hotel; loại khác bị bỏ qua. */
+            /** @description Chỉ dùng với taxonomy hotel; loại khác bị bỏ qua. Tối đa 30 đêm. */
             nights?: number | null;
             guests?: components["schemas"]["GuestCounts"];
         } | unknown | unknown;
@@ -1302,6 +1438,7 @@ export interface components {
             nights?: number | null;
             guests?: components["schemas"]["GuestCounts"];
         };
+        /** @description Một mục của giỏ hoặc của đơn nháp (BookingDraft.items); cartItemId là mã mục trong nguồn đó. */
         CartItem: {
             cartItemId: string;
             product: components["schemas"]["ProductSummary"];
@@ -1316,7 +1453,8 @@ export interface components {
         };
         CartResponse: {
             cartId: string;
-            cdpUserId: string;
+            /** @description null khi giỏ của khách chưa đăng nhập. */
+            cdpUserId: string | null;
             items: components["schemas"]["CartItem"][];
             itemCount: number;
             subtotal: number;
@@ -1325,6 +1463,47 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
+        /** @description Đúng một trong hai: items (các mục của lần Đặt ngay) hoặc fromBooking (đặt lại một đơn PAYMENT_FAILED hoặc EXPIRED). */
+        CreateBookingDraftRequest: {
+            items?: components["schemas"]["AddCartItemRequest"][];
+            /**
+             * @description true thì mục không đặt được bị bỏ và trả trong rejectedItems thay vì làm lỗi cả request.
+             * @default false
+             */
+            allowPartial: boolean;
+            fromBooking?: components["schemas"]["ReferenceCode"];
+        } & (unknown | unknown);
+        RejectedDraftItem: {
+            productId: string;
+            /** Format: date */
+            usingDate: string;
+            code: components["schemas"]["ErrorCode"];
+            /** @description Tiếng Việt, hiển thị được trực tiếp. */
+            message: string;
+        };
+        /** @description Đơn nháp của một lần Đặt ngay. Không giữ chỗ. Hết hiệu lực tại expiresAt (30 phút sau khi tạo). items dùng cùng schema với mục giỏ để trang thanh toán chạy chung cho hai nguồn. */
+        BookingDraft: {
+            draftId: string;
+            /** @description null khi đơn nháp của khách chưa đăng nhập. */
+            cdpUserId: string | null;
+            /** Format: date-time */
+            expiresAt: string;
+            items: components["schemas"]["CartItem"][];
+            itemCount: number;
+            subtotal: number;
+            total: number;
+            currency: components["schemas"]["Currency"];
+            /** @description Chỉ có trong response tạo đơn nháp khi allowPartial hoặc fromBooking bỏ bớt mục. */
+            rejectedItems?: components["schemas"]["RejectedDraftItem"][];
+        };
+        GuestMergeRequest: {
+            guestId: string;
+        };
+        GuestMergeResponse: {
+            mergedCartItems: number;
+            skippedDuplicates: number;
+            mergedDrafts: number;
+        };
         Contact: {
             fullName: string;
             /** Format: email */
@@ -1332,6 +1511,7 @@ export interface components {
             phone: string;
         };
         CheckoutItemDetail: {
+            /** @description Mã mục giỏ, hoặc mã mục đơn nháp khi request có draftId. */
             cartItemId: string;
             /** @description Chỉ dùng khi request không có travelers (client cũ); bị bỏ qua khi có travelers. */
             guestNames?: string[];
@@ -1342,6 +1522,8 @@ export interface components {
             specialRequest?: string | null;
         };
         CheckoutRequest: {
+            /** @description Có thì thanh toán đúng các mục của đơn nháp này (Đặt ngay), không kèm mục nào trong giỏ. Không có thì thanh toán toàn bộ giỏ. itemDetails[].cartItemId là mã mục của nguồn đang thanh toán. */
+            draftId?: string;
             contact: components["schemas"]["Contact"];
             /** @description Đoàn khách (1–9 người, ít nhất 1 người lớn). Có travelers thì áp luật đoàn khách; không có thì Backend coi guestNames là tên người lớn và chỉ nhận khi mọi mục giỏ không có trẻ em. */
             travelers?: components["schemas"]["CheckoutTraveler"][];
@@ -1702,6 +1884,15 @@ export interface components {
                 "application/json": components["schemas"]["CartResponse"];
             };
         };
+        /** @description Đơn nháp với giá và tình trạng còn bán hiện tại */
+        BookingDraft: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["BookingDraft"];
+            };
+        };
     };
     parameters: {
         /** @description ID truy vết. Caller chưa gửi thì service đầu tiên tự sinh. */
@@ -1710,6 +1901,9 @@ export interface components {
         Offset: number;
         ProductId: string;
         CartItemId: string;
+        DraftId: string;
+        /** @description Mã khách chưa đăng nhập, do BFF phát và chỉ BFF gửi. Backend chỉ tin khi X-Service-Token hợp lệ; có Bearer thì bị bỏ qua. Trình duyệt không tự đặt được header này. */
+        XGuestId: string;
     };
     requestBodies: never;
     headers: never;
@@ -2151,6 +2345,34 @@ export interface operations {
             503: components["responses"]["Error"];
         };
     };
+    suggestSearch: {
+        parameters: {
+            query: {
+                q: string;
+                limit?: number;
+            };
+            header?: {
+                /** @description ID truy vết. Caller chưa gửi thì service đầu tiên tự sinh. */
+                "X-Request-ID"?: components["parameters"]["XRequestId"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Gợi ý, có thể rỗng */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchSuggestionResponse"];
+                };
+            };
+            422: components["responses"]["Error"];
+            500: components["responses"]["Error"];
+        };
+    };
     getRecommendations: {
         parameters: {
             query?: {
@@ -2216,6 +2438,8 @@ export interface operations {
             header?: {
                 /** @description ID truy vết. Caller chưa gửi thì service đầu tiên tự sinh. */
                 "X-Request-ID"?: components["parameters"]["XRequestId"];
+                /** @description Mã khách chưa đăng nhập, do BFF phát và chỉ BFF gửi. Backend chỉ tin khi X-Service-Token hợp lệ; có Bearer thì bị bỏ qua. Trình duyệt không tự đặt được header này. */
+                "X-Guest-Id"?: components["parameters"]["XGuestId"];
             };
             path?: never;
             cookie?: never;
@@ -2233,6 +2457,8 @@ export interface operations {
             header?: {
                 /** @description ID truy vết. Caller chưa gửi thì service đầu tiên tự sinh. */
                 "X-Request-ID"?: components["parameters"]["XRequestId"];
+                /** @description Mã khách chưa đăng nhập, do BFF phát và chỉ BFF gửi. Backend chỉ tin khi X-Service-Token hợp lệ; có Bearer thì bị bỏ qua. Trình duyệt không tự đặt được header này. */
+                "X-Guest-Id"?: components["parameters"]["XGuestId"];
             };
             path?: never;
             cookie?: never;
@@ -2258,6 +2484,8 @@ export interface operations {
             header?: {
                 /** @description ID truy vết. Caller chưa gửi thì service đầu tiên tự sinh. */
                 "X-Request-ID"?: components["parameters"]["XRequestId"];
+                /** @description Mã khách chưa đăng nhập, do BFF phát và chỉ BFF gửi. Backend chỉ tin khi X-Service-Token hợp lệ; có Bearer thì bị bỏ qua. Trình duyệt không tự đặt được header này. */
+                "X-Guest-Id"?: components["parameters"]["XGuestId"];
             };
             path: {
                 cartItemId: components["parameters"]["CartItemId"];
@@ -2278,6 +2506,8 @@ export interface operations {
             header?: {
                 /** @description ID truy vết. Caller chưa gửi thì service đầu tiên tự sinh. */
                 "X-Request-ID"?: components["parameters"]["XRequestId"];
+                /** @description Mã khách chưa đăng nhập, do BFF phát và chỉ BFF gửi. Backend chỉ tin khi X-Service-Token hợp lệ; có Bearer thì bị bỏ qua. Trình duyệt không tự đặt được header này. */
+                "X-Guest-Id"?: components["parameters"]["XGuestId"];
             };
             path: {
                 cartItemId: components["parameters"]["CartItemId"];
@@ -2297,6 +2527,146 @@ export interface operations {
             409: components["responses"]["Error"];
             422: components["responses"]["Error"];
             500: components["responses"]["Error"];
+        };
+    };
+    createBookingDraft: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description ID truy vết. Caller chưa gửi thì service đầu tiên tự sinh. */
+                "X-Request-ID"?: components["parameters"]["XRequestId"];
+                /** @description Mã khách chưa đăng nhập, do BFF phát và chỉ BFF gửi. Backend chỉ tin khi X-Service-Token hợp lệ; có Bearer thì bị bỏ qua. Trình duyệt không tự đặt được header này. */
+                "X-Guest-Id"?: components["parameters"]["XGuestId"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateBookingDraftRequest"];
+            };
+        };
+        responses: {
+            201: components["responses"]["BookingDraft"];
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    getBookingDraft: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description ID truy vết. Caller chưa gửi thì service đầu tiên tự sinh. */
+                "X-Request-ID"?: components["parameters"]["XRequestId"];
+                /** @description Mã khách chưa đăng nhập, do BFF phát và chỉ BFF gửi. Backend chỉ tin khi X-Service-Token hợp lệ; có Bearer thì bị bỏ qua. Trình duyệt không tự đặt được header này. */
+                "X-Guest-Id"?: components["parameters"]["XGuestId"];
+            };
+            path: {
+                draftId: components["parameters"]["DraftId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["BookingDraft"];
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            410: components["responses"]["Error"];
+            500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    removeBookingDraftItem: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description ID truy vết. Caller chưa gửi thì service đầu tiên tự sinh. */
+                "X-Request-ID"?: components["parameters"]["XRequestId"];
+                /** @description Mã khách chưa đăng nhập, do BFF phát và chỉ BFF gửi. Backend chỉ tin khi X-Service-Token hợp lệ; có Bearer thì bị bỏ qua. Trình duyệt không tự đặt được header này. */
+                "X-Guest-Id"?: components["parameters"]["XGuestId"];
+            };
+            path: {
+                draftId: components["parameters"]["DraftId"];
+                cartItemId: components["parameters"]["CartItemId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["BookingDraft"];
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            410: components["responses"]["Error"];
+            500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    updateBookingDraftItem: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description ID truy vết. Caller chưa gửi thì service đầu tiên tự sinh. */
+                "X-Request-ID"?: components["parameters"]["XRequestId"];
+                /** @description Mã khách chưa đăng nhập, do BFF phát và chỉ BFF gửi. Backend chỉ tin khi X-Service-Token hợp lệ; có Bearer thì bị bỏ qua. Trình duyệt không tự đặt được header này. */
+                "X-Guest-Id"?: components["parameters"]["XGuestId"];
+            };
+            path: {
+                draftId: components["parameters"]["DraftId"];
+                cartItemId: components["parameters"]["CartItemId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateCartItemRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["BookingDraft"];
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            410: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    mergeGuestBooking: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description ID truy vết. Caller chưa gửi thì service đầu tiên tự sinh. */
+                "X-Request-ID"?: components["parameters"]["XRequestId"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GuestMergeRequest"];
+            };
+        };
+        responses: {
+            /** @description Kết quả gộp */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuestMergeResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            500: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     createBooking: {
@@ -2326,7 +2696,9 @@ export interface operations {
             };
             400: components["responses"]["Error"];
             401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
             409: components["responses"]["Error"];
+            410: components["responses"]["Error"];
             422: components["responses"]["Error"];
             500: components["responses"]["Error"];
             503: components["responses"]["Error"];

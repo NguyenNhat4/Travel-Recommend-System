@@ -27,6 +27,8 @@ services:
       BACKEND_BASE_URL: http://127.0.0.1:8000
       AUTH_SERVICE_TOKEN: ${AUTH_SERVICE_TOKEN:-}
       SESSION_REDIS_URL: ${AUTH_REDIS_URL:-}
+      # Allowlist Origin cho CSRF của BFF (auth §7), phân tách bằng dấu phẩy. Trống thì BFF suy từ Host/X-Forwarded-*.
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
     mem_limit: 768m
     cpus: 0.5
     stop_grace_period: 20s

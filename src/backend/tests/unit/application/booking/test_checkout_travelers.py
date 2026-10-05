@@ -38,10 +38,10 @@ def family_world() -> World:
 
 
 async def fill_family(w: World, guests=Guests(2, 1)):
-    await w.cart.add(PRINCIPAL, product_id=HOTEL, using_date=date(2026, 10, 17), quantity=1, nights=2, guests=guests)
-    await w.cart.add(PRINCIPAL, product_id=TICKET, using_date=date(2026, 10, 18), quantity=None, nights=None, guests=guests)
-    await w.cart.add(PRINCIPAL, product_id=FLIGHT, using_date=date(2026, 10, 19), quantity=None, nights=None, guests=guests)
-    return (await w.carts.get(USER)).lines
+    await w.basket.add(PRINCIPAL, product_id=HOTEL, using_date=date(2026, 10, 17), quantity=1, nights=2, guests=guests)
+    await w.basket.add(PRINCIPAL, product_id=TICKET, using_date=date(2026, 10, 18), quantity=None, nights=None, guests=guests)
+    await w.basket.add(PRINCIPAL, product_id=FLIGHT, using_date=date(2026, 10, 19), quantity=None, nights=None, guests=guests)
+    return (await w.lines())
 
 
 def family_details(lines, refs=("t1", "t2", "t3")):
@@ -59,7 +59,7 @@ def test_family_of_three_is_priced_by_traveler_type_and_every_total_agrees():
     async def go():
         w = family_world()
         lines = await fill_family(w)
-        cart = await w.cart.get(PRINCIPAL)
+        cart = await w.basket.get(PRINCIPAL)
         ticket = next(i for i in cart["items"] if i["product"]["productId"] == TICKET)
         assert ticket["quantity"] == 3 and ticket["guests"] == {"adults": 2, "children": 1}
         assert ticket["fares"] == [
@@ -113,10 +113,10 @@ def test_child_who_turns_twelve_mid_trip_pays_the_adult_price_on_later_days():
         w = family_world()
         w.clock.now = w.clock.now.replace(month=9, day=29)
         turning = TravelerInput("t3", "CHILD", "Trần", "Bảo Châu", "2014-10-18")   # tròn 12 tuổi ngày 18/10, sau ngày nhận phòng
-        await w.cart.add(PRINCIPAL, product_id=HOTEL, using_date=date(2026, 10, 17), quantity=1, nights=2, guests=Guests(2, 1))
-        await w.cart.add(PRINCIPAL, product_id=TICKET, using_date=date(2026, 10, 18), quantity=None, nights=None,
+        await w.basket.add(PRINCIPAL, product_id=HOTEL, using_date=date(2026, 10, 17), quantity=1, nights=2, guests=Guests(2, 1))
+        await w.basket.add(PRINCIPAL, product_id=TICKET, using_date=date(2026, 10, 18), quantity=None, nights=None,
                          guests=Guests(3, 0))
-        lines = (await w.carts.get(USER)).lines
+        lines = (await w.lines())
         by = {l.product_id: l.cart_item_id for l in lines}
         details = [ItemDetail(by[HOTEL], rooms=[RoomInput(("t1", "t2", "t3"), "t1")]),
                    ItemDetail(by[TICKET], traveler_refs=["t1", "t2", "t3"])]
@@ -150,7 +150,7 @@ def test_direct_api_call_with_bad_data_lists_every_violation_and_creates_nothing
         assert all(f["message"] for f in fields)                                       # thông điệp tiếng Việt cho từng lỗi
         assert e.value.http_status == 400 and e.value.code == "VALIDATION_ERROR"
         assert w.store.bookings == {} and w.gateway.sessions == {}
-        assert len((await w.carts.get(USER)).lines) == 3                               # giỏ còn nguyên
+        assert len((await w.lines())) == 3                               # giỏ còn nguyên
     run(go())
 
 
@@ -241,8 +241,8 @@ def test_child_price_change_is_reported_with_fare_type_child_after_the_data_rule
         assert e.value.details == {"productId": TICKET, "oldPrice": 504_000, "newPrice": 550_000, "fareType": "CHILD"}
         assert w.gateway.sessions == {}
         # khách xem giá mới bằng PATCH (ghi lại snapshot) rồi đặt lại được
-        item = next(l for l in (await w.carts.get(USER)).lines if l.product_id == TICKET)
-        await w.cart.update(PRINCIPAL, item.cart_item_id, using_date=None, quantity=item.quantity, nights=None,
+        item = next(l for l in (await w.lines()) if l.product_id == TICKET)
+        await w.basket.update(PRINCIPAL, item.cart_item_id, using_date=None, quantity=item.quantity, nights=None,
                             nights_given=False)
         res = await w.create(PRINCIPAL, CONTACT, family_details(lines), [A1, A2, KID])
         assert res["total"] == 6_960_384 + (550_000 - 504_000)
@@ -264,10 +264,10 @@ def test_child_price_becoming_invalid_means_children_now_pay_the_adult_price_and
 def test_a_child_price_change_does_not_block_an_order_with_no_children_on_that_item():
     async def go():
         w = family_world()
-        await w.cart.add(PRINCIPAL, product_id=TICKET, using_date=date(2026, 10, 18), quantity=None, nights=None,
+        await w.basket.add(PRINCIPAL, product_id=TICKET, using_date=date(2026, 10, 18), quantity=None, nights=None,
                          guests=Guests(2, 0))
         w.catalog.products[TICKET].attributes["childPrice"] = 550_000.0
-        line = (await w.carts.get(USER)).lines[0]
+        line = (await w.lines())[0]
         res = await w.create(PRINCIPAL, CONTACT, [ItemDetail(line.cart_item_id, traveler_refs=["t1", "t2"])], [A1, A2])
         assert res["total"] == 3_000_000
     run(go())
@@ -286,8 +286,9 @@ def test_cart_merges_guests_and_rejects_over_capacity_and_over_nine_guests_with_
         with pytest.raises(ValidationFailed) as e:                                          # 4 + 6 = 10 khách
             await w.cart.add(PRINCIPAL, product_id=TICKET, using_date=d, quantity=None, nights=None, guests=Guests(6, 0))
         assert [(f["field"], f["reason"]) for f in e.value.details["fields"]] == [("guests", "PARTY_TOO_LARGE")]
+        # Khách sạn không vào giỏ; luật sức chứa áp ngay khi tạo đơn nháp (R-DRF-01).
         with pytest.raises(ValidationFailed) as e:                                          # phòng sức chứa 3, 4 khách
-            await w.cart.add(PRINCIPAL, product_id=HOTEL, using_date=date(2026, 10, 17), quantity=1, nights=2,
+            await w.basket.add(PRINCIPAL, product_id=HOTEL, using_date=date(2026, 10, 17), quantity=1, nights=2,
                              guests=Guests(2, 2))
         assert e.value.details["fields"][0]["reason"] == "OCCUPANCY_EXCEEDED" and e.value.http_status == 400
         assert "tối đa 3 khách" in e.value.details["fields"][0]["message"]
@@ -297,13 +298,13 @@ def test_cart_merges_guests_and_rejects_over_capacity_and_over_nine_guests_with_
 def test_patching_only_the_quantity_of_an_item_with_children_keeps_the_children():
     async def go():
         w = family_world()
-        cart = await w.cart.add(PRINCIPAL, product_id=TICKET, using_date=date(2026, 10, 18), quantity=None, nights=None,
+        cart = await w.basket.add(PRINCIPAL, product_id=TICKET, using_date=date(2026, 10, 18), quantity=None, nights=None,
                                 guests=Guests(2, 1))
         cid = cart["items"][0]["cartItemId"]
-        cart = await w.cart.update(PRINCIPAL, cid, using_date=None, quantity=4, nights=None, nights_given=False)
+        cart = await w.basket.update(PRINCIPAL, cid, using_date=None, quantity=4, nights=None, nights_given=False)
         assert cart["items"][0]["guests"] == {"adults": 3, "children": 1} and cart["items"][0]["quantity"] == 4
         with pytest.raises(ValidationFailed) as e:
-            await w.cart.update(PRINCIPAL, cid, using_date=None, quantity=1, nights=None, nights_given=False)
+            await w.basket.update(PRINCIPAL, cid, using_date=None, quantity=1, nights=None, nights_given=False)
         assert e.value.details["fields"][0] == {
             "field": "guests.adults", "reason": "ADULT_REQUIRED", "message": "Cần ít nhất 1 người lớn (từ 12 tuổi)."}
     run(go())
@@ -313,7 +314,7 @@ def test_add_requires_quantity_or_guests():
     async def go():
         w = family_world()
         with pytest.raises(ValidationFailed) as e:
-            await w.cart.add(PRINCIPAL, product_id=TICKET, using_date=date(2026, 10, 18), quantity=None, nights=None)
+            await w.basket.add(PRINCIPAL, product_id=TICKET, using_date=date(2026, 10, 18), quantity=None, nights=None)
         assert e.value.details["fields"][0]["reason"] == "REQUIRED"
     run(go())
 
@@ -323,8 +324,8 @@ def test_add_requires_quantity_or_guests():
 def test_old_client_checkout_still_works_when_names_are_complete_and_prices_do_not_change():
     async def go():
         w = family_world()
-        await w.cart.add(PRINCIPAL, product_id=HOTEL, using_date=date(2026, 10, 17), quantity=1, nights=2)
-        await w.cart.add(PRINCIPAL, product_id=TICKET, using_date=date(2026, 10, 18), quantity=2, nights=None)
+        await w.basket.add(PRINCIPAL, product_id=HOTEL, using_date=date(2026, 10, 17), quantity=1, nights=2)
+        await w.basket.add(PRINCIPAL, product_id=TICKET, using_date=date(2026, 10, 18), quantity=2, nights=None)
         res = await w.create(PRINCIPAL, CONTACT, await w.details())
         assert res["total"] == 777_192 * 2 + 2 * 1_500_000
         assert res["groups"][0]["items"][0]["travelers"] == []       # đơn kiểu cũ: chỉ có guestNames
@@ -388,8 +389,8 @@ def test_flight_in_cart_requires_documents_and_reports_every_missing_field_in_on
 def test_documents_are_not_required_without_a_flight_in_the_cart():
     async def go():
         w = World(products=[product(HOTEL, "hotel", 777_192, attributes={"level": "room", "maxOccupancy": 3})])
-        await w.cart.add(PRINCIPAL, product_id=HOTEL, using_date=date(2026, 10, 17), quantity=1, nights=2, guests=Guests(1, 0))
-        line = (await w.carts.get(USER)).lines[0]
+        await w.basket.add(PRINCIPAL, product_id=HOTEL, using_date=date(2026, 10, 17), quantity=1, nights=2, guests=Guests(1, 0))
+        line = (await w.lines())[0]
         res = await w.create(PRINCIPAL, CONTACT, [ItemDetail(line.cart_item_id, rooms=[RoomInput(("t1",), "t1")])],
                              [TravelerInput("t1", "ADULT", "Nguyễn", "Minh Anh")])
         assert "documents" not in res["groups"][0]["items"][0]["travelers"][0]

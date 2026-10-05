@@ -47,7 +47,8 @@ export const BecauseLine: React.FC<BecauseLineProps> = ({
       case 'purchase':
         return 'đã đặt';
       case 'add_to_cart':
-        return 'đã thêm vào giỏ';
+        // Đặt ngay cũng ghi add_to_cart (khách sạn, vé máy bay không vào giỏ), nên nhãn không nói "giỏ".
+        return 'đã chọn để đặt';
       case 'product_view':
         return 'đã xem';
       case 'search':

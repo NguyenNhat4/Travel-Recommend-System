@@ -85,6 +85,9 @@ services:
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:-stripe}
       BOOKING_HOLD_MINUTES: ${BOOKING_HOLD_MINUTES:-30}
+      BOOKING_DRAFT_TTL_MINUTES: ${BOOKING_DRAFT_TTL_MINUTES:-30}
+      GUEST_BOOKING_TTL_DAYS: ${GUEST_BOOKING_TTL_DAYS:-3}
+      BOOKING_REDIS_URL: ${BACKEND_BOOKING_REDIS_URL:-redis://:devpass@redis:6379/3}
       PAYMENT_MAX_FAILED_ATTEMPTS: ${PAYMENT_MAX_FAILED_ATTEMPTS:-3}
       PUBLIC_WEB_URL: ${PUBLIC_WEB_URL:-http://localhost:3000}
       # Số process uvicorn. Mặc định 1 để dev nhẹ; đo RAM rồi mới tăng (mỗi worker giữ cache catalog riêng).

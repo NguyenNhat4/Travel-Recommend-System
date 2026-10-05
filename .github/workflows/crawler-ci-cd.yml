@@ -14,6 +14,7 @@ on:
       - release-mvp-v3
     paths:
       - '.github/workflows/crawler-ci-cd.yml'
+      - '.github/actions/sync-env-from-secret-manager/**'
       - 'Dockerfile.daily'
       - 'Dockerfile.fresh-catalog'
       - 'src/data_collection/**'
@@ -27,6 +28,7 @@ on:
       - release-mvp-v3
     paths:
       - '.github/workflows/crawler-ci-cd.yml'
+      - '.github/actions/sync-env-from-secret-manager/**'
       - 'Dockerfile.daily'
       - 'Dockerfile.fresh-catalog'
       - 'src/data_collection/**'
@@ -215,6 +217,17 @@ jobs:
         run: |
           remote_dir="/tmp/vota-crawler-cd-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           tar -czf - -C "$GITHUB_WORKSPACE/scripts" install-vota-cron.sh check-db-tunnel.sh -C "$GITHUB_WORKSPACE/src/data_collection" run_daily_docker.sh | gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --quiet --command "umask 077; mkdir -m 700 '$remote_dir' && tar -xzf - -C '$remote_dir' && sudo -n install -D -m 0755 '$remote_dir/run_daily_docker.sh' /opt/vota/bin/run_daily_docker.sh"
+
+      # Env của crawler (GCE_CRON_ENV_FILE, mặc định /etc/vota/fresh-catalog.env) lấy từ Secret Manager. Chưa đặt
+      # vars.GCE_CRAWLER_ENV_SECRET thì bỏ qua, giữ file đặt tay.
+      - name: Sync crawler env from Secret Manager
+        uses: ./.github/actions/sync-env-from-secret-manager
+        with:
+          secret: ${{ vars.GCE_CRAWLER_ENV_SECRET }}
+          remote-file: ${{ secrets.GCE_CRON_ENV_FILE || '/etc/vota/fresh-catalog.env' }}
+          project: ${{ secrets.GCP_PROJECT_ID }}
+          instance: ${{ secrets.GCE_INSTANCE }}
+          zone: ${{ secrets.GCE_ZONE }}
 
       - name: Install crawler cron
         env:

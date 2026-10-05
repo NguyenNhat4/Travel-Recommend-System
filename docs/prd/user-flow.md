@@ -22,7 +22,7 @@ Hệ thống được tối ưu hóa cho 4 luồng trải nghiệm chính tươn
 1. **Tiếp cận:** Mở widget Trợ lý AI, yêu cầu *"Lập lịch trình 3 ngày khám phá ẩm thực và văn hóa Hội An - Đà Nẵng ngân sách tiết kiệm"*.
 2. **Tương tác AI:** Trợ lý AI phân tích ý định, gửi lại lịch trình chia theo buổi với các địa điểm nổi tiếng kèm thẻ sản phẩm homestay và tour trải nghiệm thực tế.
 3. **Điều chỉnh:** Bấm vào thẻ sản phẩm để xem chi tiết đánh giá và ảnh, yêu cầu AI đổi một điểm tham quan buổi chiều.
-4. **Thêm vào giỏ & Đặt:** Lưu toàn bộ các sản phẩm đã chọn trong lịch trình vào giỏ hàng và tiến hành thanh toán một lần.
+4. **Đặt lịch trình:** Tự đặt từng mục ngay trên lịch trình, hoặc bấm Thanh toán tất cả để mở trang thanh toán với toàn bộ sản phẩm của lịch trình và thanh toán một lần.
 
 ---
 
@@ -30,14 +30,14 @@ Hệ thống được tối ưu hóa cho 4 luồng trải nghiệm chính tươn
 
 | Tuyến đường (Route) | Tên màn hình | Mục đích chính | Thành phần cốt lõi |
 |---|---|---|---|
-| `/` | **Trang chủ (Home)** | Khám phá ban đầu, tìm kiếm nhanh, khối gợi ý cá nhân hóa | Hero Search Bar, Category Nav, Personalized Carousels, Trending Destinations |
+| `/` | **Trang chủ (Home)** | Khám phá ban đầu, tìm kiếm nhanh, khối gợi ý cá nhân hóa | Hero Search Bar (gợi ý tức thì khi gõ), Category Nav, Personalized Carousels, Trending Destinations |
 | `/hotels` | **Khách sạn & resort** | Duyệt và bắt đầu tìm khách sạn theo điểm đến, ngày, số phòng và số khách | Hero, Search Sheet, Product Shelves (phổ biến, giá tốt), Destination Tiles |
 | `/flights` | **Vé máy bay** | Tìm vé theo điểm đi, điểm đến, ngày, hành khách và chọn chuyến bay ngay tại trang; chưa nhập đủ thì trang nhắc nhập | Hero, Search Sheet, Kết quả chuyến bay (Filter Sidebar, Date Strip, Sort popup, Flight Cards, Vé của tôi) hoặc lời nhắc nhập, Destination Tiles |
 | `/experiences` | **Tour và trải nghiệm** | Duyệt vé tham quan, vui chơi và sân golf (`?type=attraction\|golf`) | Hero, Search Sheet, Tab loại, Product Shelves, Destination Tiles |
 | `/combos` | **Combo du lịch** | Duyệt gói kết hợp | Hero, Search Sheet, Product Shelves, Destination Tiles |
-| `/search` | **Kết quả tìm kiếm** | Hiển thị kết quả tìm kiếm ngữ nghĩa và bộ lọc đa chiều | Query Header, Tab nhóm (Tất cả · Lưu trú · Tour và trải nghiệm · Tiện ích khác), Hàng cuộn ngang theo nhóm (tab Tất cả), Filter Sidebar (chỉ Lưu trú), Sort popup (mọi tab trừ Tất cả), Product Row Cards, Xem thêm |
-| `/products/:id` | **Chi tiết sản phẩm** | Thông tin đầy đủ về phòng, vé, tour; trạng thái khả dụng | Image Gallery, Attribute Badges, Availability Calendar, Pricing, Add-to-Cart CTA |
-| `/checkout` | **Thanh toán / Đặt chỗ** | Ba bước: khai đoàn khách và người liên hệ; chọn ai dùng từng dịch vụ (khách sạn xếp phòng); xem lại, chọn phương thức, bấm Thanh toán để chuyển sang trang Stripe | Stepper, Party Counter, Traveler Forms, Service Allocation Cards, Order Summary (sticky; bottom bar trên mobile), Payment Method Selector, Pay CTA |
+| `/search` | **Kết quả tìm kiếm** | Hiển thị kết quả tìm kiếm ngữ nghĩa và bộ lọc đa chiều | Query Header, ô tìm kiếm có gợi ý tức thì, Tab nhóm (Tất cả · Lưu trú · Tour và trải nghiệm · Tiện ích khác), Hàng cuộn ngang theo nhóm (tab Tất cả), Filter Sidebar (chỉ Lưu trú), Sort popup (mọi tab trừ Tất cả), Product Row Cards, Xem thêm |
+| `/products/:id` | **Chi tiết sản phẩm** | Thông tin đầy đủ về phòng, vé, tour; trạng thái khả dụng | Image Gallery, Attribute Badges, Availability Calendar, Pricing, Book-now CTA; Add-to-Cart CTA (chỉ tour, trải nghiệm, tiện ích khác) |
+| `/checkout` (từ giỏ), `/checkout?draft=<mã đơn nháp>` (từ Đặt ngay) | **Thanh toán / Đặt chỗ** | Ba bước: khai đoàn khách và người liên hệ; chọn ai dùng từng dịch vụ (khách sạn xếp phòng); xem lại, chọn phương thức, bấm Thanh toán để chuyển sang trang Stripe | Stepper, Party Counter, Traveler Forms, Service Allocation Cards, Order Summary (sticky; bottom bar trên mobile), Payment Method Selector, Pay CTA |
 | `/booking/:referenceCode` | **Xác nhận đơn hàng** | Hiển thị đơn theo trạng thái: đang giữ chỗ (đồng hồ đếm ngược, tiếp tục thanh toán), đã xác nhận (mã đặt chỗ, gợi ý chặng tiếp), thanh toán thất bại, hết hạn, đã huỷ; huỷ đơn | Booking Status Card, Next Best Action Recommendations (Flight, Tours) |
 | `/profile` | **Hồ sơ & Lịch sử** | Quản lý thông tin cá nhân, lịch sử đơn hàng và chuyến đi | User Preferences, Booking History, Saved Items |
 
@@ -50,7 +50,10 @@ Hệ thống được tối ưu hóa cho 4 luồng trải nghiệm chính tươn
 ```mermaid
 flowchart TD
     A[Người dùng tại Trang chủ] --> B[Nhập câu truy vấn tự nhiên]
-    B --> C{Loại truy vấn?}
+    B --> S[Gợi ý tức thì hiện trong lúc gõ]
+    S -->|Chọn một sản phẩm| J
+    S -->|Chọn điểm đến hoặc Xem tất cả kết quả| G
+    S -->|Nhấn Enter| C{Loại truy vấn?}
     C -->|Từ khóa truyền thống| D[Full-text / Facet Search]
     C -->|Ngữ nghĩa / Mô tả| E[Vector Embedding Search]
     D --> F[Hợp nhất kết quả & Reranking]
@@ -77,33 +80,42 @@ flowchart TD
     E -->|Có| F[LangGraph cấu trúc lịch trình từng ngày]
     E -->|Thiếu| G[Mở rộng điều kiện tìm kiếm hoặc hỏi thêm người dùng]
     F --> H["Lời diễn giải kèm thẻ sản phẩm Grounded ngay sau lần nhắc đầu tiên; bấm thẻ mở panel chi tiết cạnh bản đồ"]
-    H --> I[Người dùng bấm 'Xem chi tiết' hoặc 'Thêm vào chuyến đi']
-    I --> J[Chuyển trực tiếp sang Giỏ hàng / Đặt chỗ]
+    H --> I[Người dùng bấm 'Xem chi tiết', đặt từng mục (Đặt ngay / Thêm vào giỏ), hoặc 'Thanh toán tất cả']
+    I --> J[Tạo đơn nháp và mở trang Thanh toán]
 ```
 
 ### 3.3. Luồng Đặt Chỗ & Khép Kín Vòng Lặp Cá Nhân Hóa (Booking & Recs Loop)
 
-> Ở `/checkout`, khách đi qua ba bước: (1) **Hành khách**: số người lớn, trẻ em, họ và tên đệm và tên từng người, ngày sinh trẻ em và người liên hệ; (2) **Dịch vụ**: chọn ai dùng từng dịch vụ, khách sạn xếp khách vào phòng, giá cập nhật theo loại khách; (3) **Xem lại và thanh toán**: kiểm tra, chọn phương thức, đồng ý điều khoản và bấm **Thanh toán**. Bấm Tiếp tục khi còn lỗi thì ở lại bước đó và thấy danh sách lỗi. Chỉ sửa giỏ, không tạo đơn cho tới khi bấm Thanh toán.
+> Ở `/checkout`, khách đi qua ba bước: (1) **Hành khách**: số người lớn, trẻ em, họ và tên đệm và tên từng người, ngày sinh trẻ em và người liên hệ; (2) **Dịch vụ**: chọn ai dùng từng dịch vụ, khách sạn xếp khách vào phòng, giá cập nhật theo loại khách; (3) **Xem lại và thanh toán**: kiểm tra, chọn phương thức, đồng ý điều khoản và bấm **Thanh toán**. Bấm Tiếp tục khi còn lỗi thì ở lại bước đó và thấy danh sách lỗi. Chỉ sửa giỏ hoặc đơn nháp, không tạo đơn cho tới khi bấm Thanh toán.
 >
 > - **Phương thức thanh toán.** Trang hiển thị danh sách phương thức. Hiện chỉ hỗ trợ **Stripe** (thẻ, test mode); phương thức này được chọn sẵn. Các phương thức khác (ví điện tử, chuyển khoản, cổng ngân hàng nội địa…) nếu có hiển thị thì ở dạng vô hiệu hoá kèm nhãn "Sắp có", không chọn được. Danh sách để mở rộng về sau mà không đổi luồng.
 > - **Chưa rời trang khi chưa bấm Thanh toán.** Điền thông tin và chọn phương thức chỉ là thao tác trên `/checkout`, không gọi Stripe và không tạo đơn. Nút **Thanh toán** ở bước (3) bị vô hiệu hoá cho tới khi đã chọn phương thức và đồng ý điều khoản; thông tin ở bước (1) và (2) đã được kiểm khi bấm Tiếp tục.
-> - **Bấm Thanh toán mới sang Stripe.** Khi bấm, Web gọi Backend; Backend kiểm giỏ, tạo đơn giữ chỗ 30 phút và Stripe Checkout Session, rồi Web chuyển trình duyệt sang trang Stripe để nhập thẻ. Nút hiện trạng thái đang xử lý và chặn bấm lặp. Nếu Backend hoặc Stripe lỗi thì khách ở lại `/checkout` với thông báo lỗi và bấm lại được.
+> - **Bấm Thanh toán mới sang Stripe.** Khi bấm, Web gọi Backend; Backend kiểm giỏ hoặc đơn nháp, tạo đơn giữ chỗ 30 phút và Stripe Checkout Session, rồi Web chuyển trình duyệt sang trang Stripe để nhập thẻ. Nút hiện trạng thái đang xử lý và chặn bấm lặp. Nếu Backend hoặc Stripe lỗi thì khách ở lại `/checkout` với thông báo lỗi và bấm lại được.
+> - **Đăng nhập.** Khách chưa đăng nhập vẫn thêm giỏ. Bấm Đặt ngay hoặc Thanh toán thì hộp đăng nhập mở ngay trên trang; đăng nhập xong, giỏ của phiên khách chuyển sang tài khoản và Web tự tiếp tục: vào `/checkout` với đơn nháp của lần Đặt ngay đó (hoặc với giỏ) để khách hoàn tất. Mở thẳng `/checkout` khi chưa đăng nhập vẫn bị chặn ở nút Thanh toán như cũ (lớp bảo vệ dự phòng).
 > - **Quay về.** Xong trên Stripe (thành công, thất bại hoặc khách bấm quay lại), trình duyệt về `/booking/:referenceCode`; trạng thái đơn do Backend quyết định, không do việc quay về.
 
 ```mermaid
 flowchart TD
-    A[Khách chọn sản phẩm & nhấn 'Đặt ngay'] --> B[Mở trang /checkout]
+    A[Khách chọn sản phẩm & nhấn 'Đặt ngay'] --> A1[Backend tạo đơn nháp: kiểm còn bán, lấy giá hiện tại, chép tour và tiện ích vào giỏ]
+    A1 --> B[Mở trang /checkout]
+    A2[Khách mở giỏ tour, trải nghiệm, tiện ích khác & bấm Thanh toán] --> B
+    B -->|Rời trang, chưa thanh toán| X0[Tour, trải nghiệm, tiện ích nằm lại trong giỏ, khách sạn và vé máy bay không giữ]
     B --> C1[Bước 1: Hành khách] --> C2[Bước 2: Dịch vụ] --> C3[Bước 3: Xem lại]
     C3 --> M[Chọn phương thức thanh toán: hiện chỉ có Stripe]
     M --> P[Bấm 'Thanh toán']
-    P --> D[Backend kiểm giỏ, tạo đơn giữ chỗ 30 phút và phiên Stripe]
+    P --> L{Đã đăng nhập?}
+    L -->|Chưa| L1[Đăng nhập, chuyển giỏ và đơn nháp sang tài khoản]
+    L1 --> D
+    L -->|Rồi| D[Backend kiểm giỏ hoặc đơn nháp, tạo đơn giữ chỗ 30 phút và phiên Stripe]
     D -->|400: lỗi hành khách| C1
     D -->|400: lỗi dịch vụ| C2
     D -->|Lỗi khác hoặc Stripe| C3
     D --> S[Chuyển sang trang Stripe: nhập thẻ]
     S -->|Thẻ bị từ chối, dưới 3 lần| S
-    S -->|Từ chối lần 3| X1[Đơn PAYMENT_FAILED, giỏ còn nguyên]
-    S -->|Quá 30 phút| X2[Đơn EXPIRED, giỏ còn nguyên]
+    S -->|Từ chối lần 3| X1[Đơn PAYMENT_FAILED, có nút Đặt lại]
+    S -->|Quá 30 phút| X2[Đơn EXPIRED, có nút Đặt lại]
+    X1 --> X0
+    X2 --> X0
     S -->|Stripe thu tiền| F[Ghi purchase vào CDP, đơn CONFIRMED]
     F --> G[Trang /booking/:referenceCode]
     G --> H[Gợi ý vé máy bay & vé vui chơi cho chuyến đi]
@@ -150,7 +162,7 @@ Thu gọn: hộp chat ở góc dưới phải.
 Toàn màn hình (desktop):
 +------------------------------------+------------------------------------------------+
 | [Lịch sử]  Trợ lý du lịch AI       | Mặc định: LỊCH TRÌNH THEO NGÀY + BẢN ĐỒ        |
-|                                    |   thẻ, tổng chi phí, [Thêm vào giỏ] [Thanh toán] |
+|                                    |   thẻ, tổng chi phí, [Thanh toán tất cả]     |
 | [AI]: **Ngày 1**                   |                                                |
 |   Sáng: tắm biển, dạo bãi cát...   | Bấm thẻ → PANEL CHI TIẾT thay danh sách ngày,  |
 |                                    |   bản đồ giữ nguyên:                           |
@@ -158,7 +170,7 @@ Toàn màn hình (desktop):
 |   Tối: xem show...                 |   Tên · mô tả                                  |
 |   [ảnh] Combo Tata Show 620.000 ₫  |   Địa chỉ [Chỉ đường] · Giờ mở cửa             |
 |                                    |   ★ 4.5 (2.046 đánh giá) · Giá                 |
-| [ Mô tả chuyến đi...          [↑] ]|   [Thêm vào giỏ] [Xem trang chi tiết]          |
+| [ Mô tả chuyến đi...          [↑] ]|   [Đặt ngay] [Xem trang chi tiết]              |
 +------------------------------------+------------------------------------------------+
 ```
 
@@ -166,6 +178,8 @@ Toàn màn hình (desktop):
 2. **Bấm thẻ:** mở panel chi tiết ở cột phải, thay chỗ danh sách ngày; **bản đồ vẫn hiện** và focus đúng điểm. Đang ở dạng thu gọn thì widget mở toàn màn hình trước. X hoặc Esc: về danh sách ngày. Tên của sản phẩm đã có thẻ chỉ in đậm, không làm link.
 3. **Panel chi tiết** (dữ liệu từ `GET /products/{productId}`): bộ ảnh, tên, mô tả, địa chỉ + "Chỉ đường" (mở Google Maps theo toạ độ; ẩn khi không có toạ độ), giờ mở cửa (nếu có), điểm đánh giá + số lượt (không gắn logo nguồn), giá, "Thêm vào giỏ", "Xem trang chi tiết". Nút "Xem trang chi tiết" chỉ hiện khi sản phẩm không có nhãn "Tham quan tự do"; điểm tham quan tự do vẫn xem được bộ ảnh, mô tả, địa chỉ và chỉ đường trong panel.
 4. **Ngoài phạm vi:** danh sách bình luận, ảnh/video của người đánh giá (catalog không có dữ liệu này, không hiển thị và không tạo giả); giao diện mobile.
+
+> **Nút đặt trong lịch trình:** khách sạn và vé máy bay chỉ có `[Đặt ngay]`; tour, golf, combo có `[Thêm vào giỏ] [Đặt ngay]` (trên thẻ trong chat, panel chi tiết và ghim bản đồ). `[Thanh toán tất cả]` mở trang thanh toán với mọi mục đặt được của lịch trình.
 
 > **Form gợi ý thông tin chuyến đi:** khi trợ lý đã hỏi một lượt mà vẫn chưa biết điểm đến hoặc số ngày, khung chat hiển thị ngay dưới câu trả lời một form đã điền sẵn giá trị gợi ý (điểm đến — chỉ vài lựa chọn tiêu biểu, số ngày 1–7, ngày khởi hành không trước hôm nay, số người, ngân sách) kèm nút **Xác nhận**. Bấm xác nhận đặt câu yêu cầu hoàn chỉnh vào ô nhập tin nhắn để người dùng sửa hoặc gửi. Form xuất hiện trong widget trợ lý.
 

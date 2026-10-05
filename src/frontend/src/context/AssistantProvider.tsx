@@ -85,6 +85,8 @@ function isAssistantResponse(value: unknown): value is AssistantResponse {
     && typeof response.conversationId === 'string';
 }
 
+const SLOW_NODE_MS = 12_000;
+
 function nodeProgress(data: Record<string, unknown>) {
   return {
     sequence: typeof data.sequence === 'number' ? data.sequence : undefined,
@@ -177,9 +179,16 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'request-started', request, userText, appendUser });
 
     const isCurrent = () => activeRunIdRef.current === runId && !controller.signal.aborted;
-    const slowTimer = window.setTimeout(() => {
-      if (isCurrent()) dispatch({ type: 'slow-state', isSlow: true });
-    }, 8_000);
+    // Chậm = 12 giây không có node nào xong. Thời gian dồn vào các node gọi LLM, nên đo theo từng node chứ không
+    // theo cả lượt: lượt dài nhưng vẫn tiến đều thì không báo chậm.
+    let slowTimer = 0;
+    const armSlowTimer = () => {
+      window.clearTimeout(slowTimer);
+      slowTimer = window.setTimeout(() => {
+        if (isCurrent()) dispatch({ type: 'slow-state', isSlow: true });
+      }, SLOW_NODE_MS);
+    };
+    armSlowTimer();
 
     void requestAssistantStream(request, {
       signal: controller.signal,
@@ -191,6 +200,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
           dispatch({ type: 'topology-received', topology: event.data });
         } else if (event.event === 'node.completed') {
           dispatch({ type: 'node-completed', progress: nodeProgress(event.data) });
+          armSlowTimer();
         } else if (event.event === 'run.completed') {
           const response = event.data.response;
           if (!isAssistantResponse(response)) {

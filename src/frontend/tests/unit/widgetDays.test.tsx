@@ -33,7 +33,7 @@ const response = {
 function renderDays() {
   const widget = {
     activePlan: convertItineraryCompletedToGroundedPlan(response), activeDayTab: 0,
-    setHoveredCoordinate: vi.fn(), setHoveredPointId: vi.fn(), focusedProductId: null,
+    setHoveredCoordinate: vi.fn(), setHoveredPointId: vi.fn(), focusedProductId: null, itemActions: () => null,
   } as unknown as FloatingWidgetController;
   return render(<WidgetDays widget={widget} />);
 }
