@@ -39,6 +39,7 @@ Trạng thái phải nằm ngoài VM: session BFF, rate limit và working memory
 | 5 | Weaviate dùng chung: VM riêng + đĩa riêng + snapshot hằng ngày (`weaviate.tf`, hoặc `create_weaviate=false` để dùng Weaviate Cloud); readiness phụ thuộc RecSys (`READY_REQUIRES_RECSYS`); chặn Weaviate/Redis loopback (`REQUIRE_SHARED_BACKENDS`) | Code và Terraform xong, test pass, **chưa apply**; còn chạy job index vào Weaviate mới trước khi nhận traffic |
 | 6.0 | Tách health check: autohealing dùng liveness `/health/live`, LB dùng readiness `/health/ready` (use case ở §3b) | Xong, test pass, chưa apply |
 | 6.1 | Bỏ SSH tunnel cho nhóm HA: private DNS `db.vota.internal`, backend từ chối DB loopback, script kiểm kết nối và ngân sách kết nối | Xong, test pass, chưa apply |
+| 7 | Cloud NAT cho VM không IP public, vỏ secret và quyền đọc, cổng `require_secret_versions` (use case ở §3b) | Xong, test pass, chưa apply |
 | 6 | DB: endpoint ổn định cho MIG (thay `vota-db-tunnel` trên 127.0.0.1:15432), cân nhắc Cloud SQL HA hoặc Patroni + pgbouncer | Chưa làm |
 | 7 | Cloud NAT cho VM không có IP public; tạo secret `vota-ha-backend-env` | Chưa làm |
 | 8 | Alert MIG: số VM khỏe < min, autoscaler chạm max, 5xx của LB | Chưa làm |
@@ -119,6 +120,22 @@ Sau khi sửa:
 * `ops/check-db-direct.sh` chạy trên VM: kiểm kết nối trực tiếp, từ chối loopback, và tính `VM × worker × kết nối/worker + dự trữ` so với `max_connections` (ví dụ 4 × 2 × 10 + 10 = 90 so với 30 thì báo lỗi).
 
 Kiểm chứng: `src/backend/tests/unit/api/test_ha_readiness.py` (11 test, thêm 2 ca DB loopback), `ops/tests/test_check_db_direct.sh` (4 ca trên Postgres Docker thật), `terraform validate`.
+
+## Use case: VM không IP public không gọi được Stripe/Cohere, và secret chưa có giá trị
+
+Tình huống A (đường ra): nhóm HA có VM không IP public (chỉ nhận traffic qua load balancer). Khách đặt khách sạn Vinpearl Phú Quốc 12 triệu lúc 20:05 và bấm thanh toán.
+1. Backend tạo phiên Checkout bằng `https://api.stripe.com` (`stripe_gateway.py`). VM không có IP public và VPC không có Cloud NAT, nên kết nối hết thời gian chờ.
+2. Cùng lúc `/search` cần embed truy vấn qua `https://api.cohere.com` và trợ lý gọi LLM; các lời gọi này cũng thất bại.
+3. Staging một VM không gặp vì VM có IP public; lỗi chỉ xuất hiện khi chuyển sang nhóm HA không IP public. Ngoài ra VM Weaviate kéo image `cr.weaviate.io` cũng cần đường ra.
+
+Tình huống B (secret): `google_secret_manager_secret` đã tạo nhưng chưa có phiên bản. VM boot, startup script chạy `gcloud secrets versions access latest` và thất bại, container không bao giờ lên. `/health/live` không trả lời nên sau 300 giây autohealing xoá VM và tạo lại, lặp vô hạn, tính tiền mỗi vòng, không có lỗi rõ ràng nào ngoài log startup script.
+
+Đã kiểm trong code: Stripe (`stripe_gateway.py: STRIPE_API`), Cohere (`cohere_base_url`) là địa chỉ ngoài Internet; template không có `access_config` (test).
+Chưa kiểm: egress thật qua Cloud NAT trên GCP; VPC staging có sẵn Cloud NAT hay chưa (biến `create_nat` để tắt nếu đã có).
+
+Sau khi sửa: Cloud NAT cho cả region (`network.tf`, 256 cổng mỗi VM) và VM chờ NAT trước khi tạo; secret có quyền đọc cho service account của VM và **giá trị không bao giờ nằm trong Terraform/state** (nạp tay bằng `gcloud secrets versions add`); với `require_secret_versions = true` plan dừng ngay nếu secret chưa có phiên bản, nên vòng lặp thay VM không bao giờ bắt đầu.
+
+Kiểm chứng: `infra/terraform/environments/staging-ha/tests/test_egress_and_secrets.py` (6 test), `terraform validate`.
 
 ## 4. Điều kiện trước khi `terraform apply`
 

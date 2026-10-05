@@ -161,3 +161,15 @@ variable "internal_zone_dns_name" {
   type    = string
   default = "vota.internal."
 }
+
+variable "create_nat" {
+  description = "Create Cloud NAT for the region. Set false if the VPC already has one."
+  type        = bool
+  default     = true
+}
+
+variable "require_secret_versions" {
+  description = "Fail the plan unless the env secrets already have a version. First apply: false; after loading values: true."
+  type        = bool
+  default     = false
+}

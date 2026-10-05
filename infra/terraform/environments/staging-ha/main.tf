@@ -45,6 +45,12 @@ resource "google_compute_instance_template" "app" {
     google-logging-enabled = "true"
   }
 
+  depends_on = [
+    google_secret_manager_secret_iam_member.backend_env_reader,
+    google_compute_router_nat.egress,
+    data.google_secret_manager_secret_version.backend_env,
+  ]
+
   lifecycle {
     create_before_destroy = true
   }

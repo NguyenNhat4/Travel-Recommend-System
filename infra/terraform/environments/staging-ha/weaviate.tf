@@ -85,6 +85,12 @@ resource "google_compute_instance" "weaviate" {
 
   allow_stopping_for_update = true
 
+  depends_on = [
+    google_secret_manager_secret_iam_member.weaviate_key_reader,
+    google_compute_router_nat.egress,
+    data.google_secret_manager_secret_version.weaviate_api_key,
+  ]
+
   metadata = {
     startup-script = <<-SCRIPT
       #!/bin/bash
