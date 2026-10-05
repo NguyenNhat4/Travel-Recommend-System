@@ -11,6 +11,9 @@ services:
       - /etc/vota/backend.env
     environment:
       UVICORN_WORKERS: ${UVICORN_WORKERS:-2}
+      # Nhiều bản sao sau LB: chỉ nhận traffic khi RecSys đã nạp, và từ chối Weaviate/Redis loopback.
+      READY_REQUIRES_RECSYS: "true"
+      REQUIRE_SHARED_BACKENDS: "true"
     mem_limit: 3g
     cpus: 1.5
     stop_grace_period: 40s

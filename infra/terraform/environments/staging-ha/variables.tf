@@ -116,3 +116,31 @@ variable "redis_memory_gb" {
   type    = number
   default = 1
 }
+
+variable "create_weaviate" {
+  description = "Create the shared Weaviate VM. Set false when using Weaviate Cloud (then put its URL in the env secret)."
+  type        = bool
+  default     = true
+}
+
+variable "weaviate_zone" {
+  type    = string
+  default = "asia-southeast1-a"
+}
+
+variable "weaviate_machine_type" {
+  description = "Vectors for ~11k search units are tens of MB; memory is for HNSW + BM25, not data size."
+  type        = string
+  default     = "e2-medium"
+}
+
+variable "weaviate_disk_gb" {
+  type    = number
+  default = 50
+}
+
+variable "weaviate_api_key_secret" {
+  description = "Secret Manager secret id holding the Weaviate API key (same value as WEAVIATE_API_KEY in the backend env secret)."
+  type        = string
+  default     = "vota-ha-weaviate-api-key"
+}

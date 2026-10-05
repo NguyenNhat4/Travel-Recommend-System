@@ -63,7 +63,7 @@ from src.backend.app.domain.catalog import ListingItem
 from src.backend.app.application.recommendation import BuildPopularity, RecommendForUser
 from src.backend.app.application.search import SearchProducts, SimilarProducts
 from src.backend.app.domain.search import HybridConfig
-from src.backend.app.core.config import REPO_ROOT, Settings, get_settings
+from src.backend.app.core.config import REPO_ROOT, Settings, get_settings, shared_backend_violations
 from src.backend.app.infrastructure.auth.argon2_hasher import Argon2Hasher
 from src.backend.app.infrastructure.auth.jwt_issuer import JwtConfig, JwtIssuer
 from src.backend.app.infrastructure.auth.keys import load_rsa_pem_pair
@@ -497,6 +497,11 @@ def _forward_langsmith_env(settings) -> None:
 async def lifespan(app: FastAPI):
     settings = get_settings()
     app.state.ready = False
+    violations = shared_backend_violations(settings)
+    if violations:
+        raise RuntimeError(
+            "REQUIRE_SHARED_BACKENDS=true nhưng " + ", ".join(violations)
+            + " trống hoặc trỏ loopback; mỗi bản sao sẽ có dịch vụ riêng và lệch trạng thái")
     print(f"Starting {settings.app_name} in {settings.app_env} mode")
     _forward_langsmith_env(settings)
     logger.info("startup.begin app=%s env=%s", settings.app_name, settings.app_env)
@@ -661,7 +666,10 @@ async def health():
 @app.get("/health/ready")
 async def health_ready():
     ready = bool(getattr(app.state, "ready", False))
+    # Có bật thì RecSys phải nạp xong: bản sao Weaviate rỗng chỉ trả /search rỗng với HTTP 200, LB sẽ không biết để loại.
+    recsys_ready = not settings.ready_requires_recsys or getattr(app.state, "index", None) is not None
+    ok = ready and recsys_ready
     return JSONResponse(
-        status_code=200 if ready else 503,
-        content={"status": "ok" if ready else "starting", "ready": ready, "env": settings.app_env},
+        status_code=200 if ok else 503,
+        content={"status": "ok" if ok else "starting", "ready": ok, "recsys": recsys_ready, "env": settings.app_env},
     )

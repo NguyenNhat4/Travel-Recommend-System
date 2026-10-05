@@ -11,3 +11,8 @@ output "redis_host" {
 output "instance_group" {
   value = google_compute_region_instance_group_manager.app.instance_group
 }
+
+output "weaviate_url" {
+  description = "Put in WEAVIATE_URL of the env secret (gRPC port stays 50051). Run the index job against it before the group takes traffic."
+  value       = try("http://${google_compute_address.weaviate[0].address}:8080", null)
+}

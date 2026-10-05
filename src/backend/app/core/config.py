@@ -151,6 +151,14 @@ class Settings(BaseSettings):
     booking_hold_minutes: int = Field(default=30, ge=30)  # Stripe chỉ cho phiên Checkout hết hạn sau ít nhất 30 phút
     payment_max_failed_attempts: int = Field(default=3, ge=1)
     public_web_url: str = "http://localhost:3000"
+    # Chế độ nhiều bản sao sau load balancer (docs/plan/2026-10-05-ha-load-balancing.md §3b). Mặc định tắt để dev và
+    # staging một VM chạy như cũ; compose HA bật cả hai.
+    # - ready_requires_recsys: /health/ready trả 503 khi RecSys chưa nạp được (Weaviate rỗng/không tới được),
+    #   để LB không đưa traffic vào bản sao chỉ trả kết quả rỗng.
+    # - require_shared_backends: từ chối khởi động nếu Weaviate/Redis trỏ loopback (mỗi VM một bản riêng thì
+    #   phiên đăng nhập và kết quả tìm kiếm lệch nhau giữa các bản sao).
+    ready_requires_recsys: bool = False
+    require_shared_backends: bool = False
     # 0 = tắt job đối soát (test); mặc định 5 phút/lần.
     booking_reconcile_interval_seconds: int = Field(default=300, ge=0)
 
@@ -168,6 +176,24 @@ class Settings(BaseSettings):
         if isinstance(value, str) and not value.strip():
             return None
         return value
+
+
+_LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
+
+
+def shared_backend_violations(settings: Settings) -> list[str]:
+    """Biến kết nối dịch vụ dùng chung đang trỏ loopback (chỉ bản sao này thấy). Rỗng nếu hợp lệ hoặc không bật chế độ."""
+    if not settings.require_shared_backends:
+        return []
+    from urllib.parse import urlparse
+
+    bad = []
+    for name, value in (("WEAVIATE_URL", settings.weaviate_url), ("AUTH_REDIS_URL", settings.auth_redis_url),
+                        ("ITINERARY_REDIS_URL", settings.itinerary_redis_url)):
+        host = (urlparse(value).hostname or "").lower() if value else ""
+        if not value or host in _LOOPBACK_HOSTS:
+            bad.append(name)
+    return bad
 
 
 @lru_cache

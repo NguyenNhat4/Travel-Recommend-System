@@ -36,7 +36,7 @@ Trạng thái phải nằm ngoài VM: session BFF, rate limit và working memory
 | 3 | Terraform `infra/terraform/environments/staging-ha/`: instance template, regional MIG (rolling update, autohealing), autoscaler CPU + RAM, Global LB (HTTP hoặc HTTPS managed cert), firewall cho dải health check, Memorystore Redis HA | Viết xong, `terraform validate` pass, **chưa apply** |
 | 4 | Kịch bản tải `ops/loadtest/k6-ha.js` | Viết xong, chưa chạy (máy chưa có k6) |
 | 4b | Job đối soát đơn chạy một nơi duy nhất trong cả cụm (Postgres advisory lock, `BookingStore.reconcile_leader`); trước đó mỗi worker × VM đều chạy (use case ở §3b) | Xong trong nhánh, test đơn vị pass; test Postgres thật chưa chạy |
-| 5 | Weaviate dùng chung: tách khỏi app VM (VM riêng hoặc Weaviate Cloud), đặt `WEAVIATE_URL` trong secret | Chưa làm, **điều kiện tiên quyết để apply** |
+| 5 | Weaviate dùng chung: VM riêng + đĩa riêng + snapshot hằng ngày (`weaviate.tf`, hoặc `create_weaviate=false` để dùng Weaviate Cloud); readiness phụ thuộc RecSys (`READY_REQUIRES_RECSYS`); chặn Weaviate/Redis loopback (`REQUIRE_SHARED_BACKENDS`) | Code và Terraform xong, test pass, **chưa apply**; còn chạy job index vào Weaviate mới trước khi nhận traffic |
 | 6 | DB: endpoint ổn định cho MIG (thay `vota-db-tunnel` trên 127.0.0.1:15432), cân nhắc Cloud SQL HA hoặc Patroni + pgbouncer | Chưa làm |
 | 7 | Cloud NAT cho VM không có IP public; tạo secret `vota-ha-backend-env` | Chưa làm |
 | 8 | Alert MIG: số VM khỏe < min, autoscaler chạm max, 5xx của LB | Chưa làm |
@@ -64,6 +64,27 @@ Sau khi sửa: vòng đầu lấy được advisory lock nên được đối so
 Với 1 VM 1 worker (staging hiện tại) vấn đề chưa lộ; nó chỉ lộ khi scale ngang, đúng mục tiêu HA của nhánh này.
 
 Kiểm chứng: `test_reconcile_runs_only_on_the_leader_replica` (đơn vị) và `test_reconcile_leader_is_exclusive_across_connections` (Postgres thật, cần `RUN_POSTGRES_INTEGRATION=1`).
+
+## Use case: Weaviate dùng chung và bản sao có RecSys rỗng (2 VM)
+
+Tình huống: hệ thống chạy 2 VM sau load balancer, mỗi VM 1 backend. Staging hiện tại chạy container `vota-weaviate` ngay trên app VM (monitoring và test container disk đều tham chiếu `vota-weaviate`; comment trong `app.tf`). Khách tìm "Vinpearl Phú Quốc" trong giờ cao điểm.
+
+1. VM mới (hoặc VM bị autohealing thay) lên với Weaviate local rỗng: volume `weaviate_data` mới, chưa chạy job index.
+2. `RecsysRefresher.reload()` thất bại ở lần nạp đầu, backend ghi `startup.recsys.disabled` rồi vẫn đặt `app.state.ready = True`.
+3. LB probe `/health/ready` nhận 200, đưa VM vào rotation; autohealing cũng thấy khoẻ.
+4. Khi RecSys tắt, `/search` **không báo lỗi**: `deps.get_search` trả `None` và route trả trang rỗng với HTTP 200 (`_safe_search`).
+
+Hậu quả đã kiểm trong code: khoảng 1/2 lượt tìm kiếm (theo cách LB chia) trả "không có kết quả" với HTTP 200. Không có 5xx nên cảnh báo 5xx của LB không kêu, và VM lỗi không bị loại. Kể cả khi có Weaviate dùng chung, nếu `WEAVIATE_URL` hay Redis vẫn là `localhost` trong env secret thì từng VM nhìn thấy dữ liệu và phiên riêng (đăng nhập ở VM A, request kế tiếp sang VM B mất phiên).
+
+Sau khi sửa:
+* Cả hai VM trỏ một Weaviate dùng chung (VM riêng, đĩa riêng, snapshot hằng ngày). Cùng một câu hỏi cho cùng kết quả bất kể LB chọn VM nào.
+* `READY_REQUIRES_RECSYS=true`: `/health/ready` trả 503 khi chưa nạp được RecSys; LB không gửi traffic, autohealing thay VM sau 3 lần probe lỗi.
+* `REQUIRE_SHARED_BACKENDS=true`: backend từ chối khởi động nếu `WEAVIATE_URL`, `AUTH_REDIS_URL` hoặc `ITINERARY_REDIS_URL` trống/loopback, nên cấu hình sai lộ ra ngay lúc rollout (rolling update dừng vì VM mới không healthy).
+* Staging một VM giữ nguyên hành vi vì cả hai cờ mặc định tắt.
+
+Chưa kiểm: gRPC 50051 từ VM tới Weaviate qua firewall thật; thời gian dựng lại index từ đầu (job index phụ thuộc quota Cohere); Weaviate một node nên mất VM Weaviate = search ngừng tới khi dựng lại hoặc khôi phục snapshot (đã chấp nhận, ghi ở `weaviate.tf`).
+
+Kiểm chứng: `src/backend/tests/unit/api/test_ha_readiness.py` (9 test).
 
 ## 4. Điều kiện trước khi `terraform apply`
 
