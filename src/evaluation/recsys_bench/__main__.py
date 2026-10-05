@@ -177,7 +177,7 @@ def run(arms: List[str] = typer.Option([], "--arm", help="random | most_popular 
         kind: str = typer.Option("llbo", "--split", help="llbo | temporal"),
         k: int = typer.Option(20, "--k"),
         seeds: str = typer.Option("42,43,44", "--seeds", help="seed cho arm random"),
-        vectors: Optional[str] = typer.Option(None, "--vectors", help="none | weaviate | numpy (engine cần vector)"),
+        vectors: Optional[str] = typer.Option(None, "--vectors", help="none | weaviate | numpy | npy:<prefix> (vector đã embed của search bench, vd npy:bench_out/search/data/vec_T3+R_e5-small; engine cần vector)"),
         cutoff: Optional[str] = typer.Option(None, "--T"),
         min_purchases: int = typer.Option(2, "--min-purchases"),
         min_trips: int = typer.Option(1, "--min-trips"),
@@ -239,7 +239,7 @@ def run(arms: List[str] = typer.Option([], "--arm", help="random | most_popular 
     need_vec = bool({"engine", "engine_prod", "engine_nommr"} & set(arms)) or algos is not None
     mode = vectors or ("weaviate" if need_vec else "none")
     if need_vec and mode == "none":
-        _fail("arm engine / engine_prod / --algos cần --vectors weaviate hoặc numpy")
+        _fail("arm engine / engine_prod / --algos cần --vectors weaviate, numpy hoặc npy:<prefix>")
     run_id_given = run_id
     run_id = run_id or f"{datetime.now():%Y%m%d-%H%M%S}-{kind}"
     refresh = refresh or bool(split_file)   # bản đóng băng phải đối chiếu với DB thật, không với cache JSONL (review 01/10)
@@ -380,6 +380,7 @@ def run(arms: List[str] = typer.Option([], "--arm", help="random | most_popular 
                    "asOf": snapshot.isoformat(), "k": k, "vectors": mode,
                    "searchUnits": len(index.units), "recommendable": int(index.recommendable.sum()),
                    "vectorsMissing": None if vector_ids is None else len(index.units) - len(vector_ids),
+                   "vectorsSource": getattr(vector_search, "source", None),
                    "limitUsers": limit_users, "usersEvaluated": len(users) if users is not None else len(result.targets),
                    "filter": report.as_dict(),
                    "split": {**{kw: v for kw, v in result.summary().items() if kw != "targets"},
