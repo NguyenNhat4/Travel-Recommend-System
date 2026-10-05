@@ -31,7 +31,7 @@ Chỉ đọc hàng khớp với task hiện tại. Không cần nạp các nhán
 | Tune Search ranking | handbook §12 và spec Backend mục Search | `application/search/use_cases.py`, `domain/search/`, `infrastructure/vectors/` |
 | Tune Recommendation | handbook §8, §12 và spec Backend mục Recommendation | `application/recommendation/use_cases.py`, `domain/recommendation/` |
 | Đổi API/request/response | `src/shared/contracts/README.md`, `MVP.md`, baseline contract | fragment OpenAPI trước, rồi `api/v1/routes/assistant.py` |
-| Eval hành vi Agent | `golden-run.md` | `src/evaluation/agent/streamlit_app.py`, tests Agent |
+| Eval hành vi Agent | `golden-run.md` (giao diện: mục 2.1) | `src/evaluation/agent/golden.py`, `src/evaluation/agent/eval_app.py`, `src/evaluation/agent/streamlit_app.py`, tests Agent |
 | Debug runtime/trace | `README.md` mục LangSmith, `response-and-errors.md` | `api/v1/routes/assistant.py`, `agents/report.py` |
 
 Đường dẫn source trong bảng đều tương đối với `src/backend/app/`, trừ khi ghi đầy đủ.

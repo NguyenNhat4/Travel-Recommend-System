@@ -30,6 +30,8 @@ htmlcov/
 
 # Local logs and generated evaluation reports.
 *.log
+# Các lần chạy từ giao diện eval (src/evaluation/agent/eval_app.py): tiến độ, biên bản, log.
+.logs/
 src/evaluation/reports/itinerary-agent-metrics.json
 src/evaluation/reports/eval-*.json
 artifacts/

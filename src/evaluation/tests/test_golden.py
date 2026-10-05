@@ -9,8 +9,9 @@ from types import SimpleNamespace
 
 from src.backend.app.application.itinerary.contracts import enum_values
 from src.evaluation.agent.golden import (
-    conversation_of, dataset_findings, expected_tool_call, gate_no_booking_claim, gate_no_tool_before_info,
-    gate_schema, gate_secrets, judge_findings, load_dataset, resolve_dates, schedule_findings,
+    Case, Turn, conversation_of, dataset_findings, expected_tool_call, gate_no_booking_claim,
+    gate_no_tool_before_info, gate_schema, gate_secrets, judge_findings, load_dataset, progress_writer,
+    resolve_dates, run_case, schedule_findings,
 )
 
 DATASET_PATH = Path(__file__).resolve().parents[1] / "datasets" / "agent_test_cases_nhat.yaml"
@@ -464,3 +465,57 @@ class ReportSlugTests(unittest.TestCase):
         from src.evaluation.agent.golden import DEFAULT_DATASET, report_slug
         self.assertEqual(report_slug(DEFAULT_DATASET), "agent-test-cases")
         self.assertEqual(report_slug("x/my_cases.yaml"), "my-cases")
+
+
+class _StubPlanner:
+    """Graph giả: mỗi lượt trả câu hỏi lại; lượt có câu "chậm" thì treo để runner gặp timeout."""
+
+    async def ainvoke(self, inputs, config=None):
+        import asyncio
+        if inputs["query"] == "chậm":
+            await asyncio.sleep(1)
+        return {"http_status": 200, "events": [], "candidates": {}, "response": {
+            "status": "NEEDS_CLARIFICATION", "conversationId": "5f0c8a52-0b7e-4b5e-9d55-8d5b1f8e2a10",
+            "question": "Bạn đi ngày nào?", "missingFields": ["startDate"], "knownIntent": {
+                "destination": "Hà Nội", "startDate": None, "days": None, "party": None, "budget": None,
+                "interests": [], "pace": None}}}
+
+
+class ProgressEventTests(unittest.IsolatedAsyncioTestCase):
+    """Event tiến độ mà eval_app.py đọc (qua --progress-file)."""
+
+    async def test_each_turn_reports_start_then_result_and_the_case_closes(self):
+        events = []
+        case = Case(id="X-1", category="c", fr=["FR-AGT-01"],
+                    turns=[Turn("Đi Hà Nội", {"status": ["NEEDS_CLARIFICATION"]}), Turn("2 ngày", {"status": ["COMPLETED"]})])
+        await run_case(case, _StubPlanner(), None, FAKE_SETTINGS, 5, on_event=events.append, repetition=2)
+        self.assertEqual([e["event"] for e in events], ["turn_start", "turn_done", "turn_start", "turn_done", "case_done"])
+        first, second = events[1], events[3]
+        self.assertTrue(first["passed"])
+        self.assertEqual(first["reply"], "Bạn đi ngày nào?")
+        self.assertEqual(first["intent"]["destination"], "Hà Nội")
+        self.assertEqual((first["turn"], first["turns"], first["repetition"]), (1, 2, 2))
+        self.assertFalse(second["passed"])
+        self.assertTrue(any("status=" in f for f in second["findings"]))
+        self.assertEqual(events[-1], {"event": "case_done", "caseId": "X-1", "repetition": 2, "turns": 2,
+                                      "turnsRun": 2, "passed": False})
+
+    async def test_a_timeout_reports_the_turn_and_the_skipped_rest(self):
+        events = []
+        case = Case(id="X-2", category="c", fr=["FR-AGT-01"], turns=[Turn("chậm"), Turn("không chạy tới")])
+        await run_case(case, _StubPlanner(), None, FAKE_SETTINGS, 0.05, on_event=events.append)
+        self.assertEqual([e["event"] for e in events], ["turn_start", "turn_done", "case_done"])
+        self.assertEqual(events[1]["status"], "TIMEOUT")
+        self.assertEqual((events[2]["turns"], events[2]["turnsRun"]), (2, 1))
+
+    def test_progress_writer_appends_one_json_line_per_event(self):
+        import tempfile
+        self.assertIsNone(progress_writer(None))
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "run" / "progress.jsonl"
+            write = progress_writer(path)
+            write({"event": "start", "turns": 3})
+            write({"event": "done", "exitCode": 0})
+            lines = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+        self.assertEqual([line["event"] for line in lines], ["start", "done"])
+        self.assertIn("at", lines[0])

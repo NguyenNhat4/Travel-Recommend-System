@@ -104,9 +104,15 @@ Giá trị hợp lệ:
 
 - `status`: `COMPLETED`, `NEEDS_CLARIFICATION`, `NO_RESULTS`, `FALLBACK`.
 - `errorCode`: một mã trong enum `ErrorCode` của `src/shared/contracts/schemas/common.yaml`.
-- `missingFieldsInclude`: `destination`, `days`.
+- `missingFieldsInclude`: `destination`, `days`, `startDate`, `party`, `budget` (enum `missingFields` của
+  `ItineraryNeedsClarification` trong contract).
 - Tên node: `intake`, `classify`, `extract`, `tool`, `evaluate`, `retry`, `converse`, `compose`, `clarify`,
-  `dead_letter`, `finalize`.
+  `narrate`, `dead_letter`, `finalize`.
+- Tên tool (`toolsInclude`): `search_products`, `get_recommendations`, `get_similar_products`.
+
+Tab "📖 Hướng dẫn" của giao diện eval ([golden-run.md](golden-run.md) mục 2.1) liệt kê các giá trị này lấy thẳng từ
+contract và graph, nên luôn khớp code. Hướng dẫn từng khoá nằm ở `FIELD_HELP` trong
+`src/evaluation/agent/case_builder.py`; test buộc mọi khoá trong `EXPECT_KEYS` có hướng dẫn.
 - `intent.destination` phải viết đúng tên catalog đã chuẩn hoá, ví dụ `TP. Hồ Chí Minh`, không viết
   `TPHCM`. Danh sách hiện hành lấy từ `GET /api/v1/destinations`.
 
@@ -169,6 +175,23 @@ không phải với điều mình đoán.
 
 ## 7. Quy trình thêm case
 
+**Cách nhanh: tab "➕ Thêm case" của giao diện eval** (`make agent-eval`, [golden-run.md](golden-run.md) mục 2.1).
+
+- Bắt đầu từ trống, hoặc chọn một case có sẵn rồi bấm "Nạp mẫu" để sửa từ đó.
+- Id `TC-NN` được gợi ý sẵn. Điền nhóm, mã FR và lỗi gốc; lỗi gốc thành comment phía trên case.
+- Mỗi lượt: câu người dùng gõ, kèm bản đã thay ngày theo hôm nay; tick khoá `expect` cần kiểm. Rê chuột vào ⓘ để xem
+  khoá kiểm gì, khi nào dùng, ví dụ.
+- Xem YAML sẽ ghi; có chế độ sửa YAML thô.
+- **Kiểm tra** chạy đúng `load_dataset` của runner cộng các kiểm của `test_golden.py`: id trùng, mã FR, status,
+  errorCode, placeholder ngày, khoá gõ sai tên. Kiểm tra cũng cảnh báo id từng bị xoá và điểm đến không có trong
+  catalog.
+- **Lưu vào dataset** chỉ nối khối mới vào cuối file; comment của các case cũ giữ nguyên.
+- **Chạy thử** chạy riêng case đó.
+
+Sửa hoặc xoá case cũ vẫn làm trực tiếp trong file YAML. Sau khi lưu, vẫn làm bước 2, 5, 6 dưới đây trước khi commit.
+
+**Cách thủ công:**
+
 1. Thêm khối YAML vào cuối file dataset, với `id` tiếp theo (không dùng lại id đã xoá), `category` và `fr`.
 2. Chạy test của dataset:
 
@@ -219,4 +242,5 @@ Với case nhiều lượt fail ở lượt 2, kiểm lượt 1 trước: lượ
   tool; độ đúng của điểm đến được kiểm gián tiếp qua `intent.destination` và grounding.
 
 Muốn thêm khoá mới vào `expect`: sửa `dataset_findings` trong `golden.py`, thêm test cho khoá đó trong
-`test_golden.py`, rồi cập nhật bảng ở mục 4 của tài liệu này.
+`test_golden.py`, thêm hướng dẫn vào `FIELD_HELP`/`EXPECT_GROUPS` và widget trong `eval_app.py`, rồi cập nhật bảng ở
+mục 4 của tài liệu này.

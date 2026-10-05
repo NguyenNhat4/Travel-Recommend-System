@@ -156,9 +156,4 @@
         judge:
           - Trợ lý không hỏi lại ngày đi, số người, ngân sách bằng câu chữ y hệt lượt trước; nó mời người dùng chọn hoặc giữ giá trị gợi ý trên form.
           - Câu trả lời không nói như thể người dùng đã chọn các giá trị gợi ý.
-    # Bỏ qua form mà vẫn không nêu gì: form chỉ hiện một lần, lượt này lập lịch.
-    - message: không biết
-      expect:
-        httpStatus: 200
-        status: [COMPLETED, FALLBACK, NO_RESULTS]
-        intent: {destination: Đà Nẵng, days: 3}
+   

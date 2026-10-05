@@ -12,6 +12,7 @@ Bộ golden cũ (`itinerary_agent_golden.yaml`, case `G-NNN`) đã bị gỡ; mu
 
 Cấu trúc case và cách thêm case:
 [golden-dataset-how-to-add-more-case.md](golden-dataset-how-to-add-more-case.md). Luật chấm: mục 4 bên dưới.
+Chạy bằng giao diện (chọn case, xem tiến độ, so các lần chạy, thêm case bằng form): mục 2.1.
 
 Mọi lệnh chạy từ thư mục gốc repo.
 
@@ -23,7 +24,8 @@ Kiểm dataset và code chấm điểm, mất khoảng 1 giây:
 .venv/bin/python -m pytest src/evaluation/tests/test_golden.py -q
 ```
 
-Chạy lệnh này mỗi khi sửa dataset hoặc `golden.py`.
+Chạy lệnh này mỗi khi sửa dataset hoặc `golden.py`. Sửa giao diện (mục 2.1) thì chạy thêm
+`src/evaluation/tests/test_case_builder.py`, `test_eval_runs.py`, `test_eval_app.py`.
 
 ## 2. Chạy bộ golden với LLM thật
 
@@ -87,6 +89,8 @@ Lệnh trên chạy bộ mặc định (`agent_test_cases_nhat.yaml`).
 | `--timeout` | Giới hạn giây cho mỗi lượt, mặc định 90 | |
 | `--report-slug` | Tên biên bản `eval-<ngày>-<slug>.md`; mặc định suy từ dataset (`agent-test-cases` cho bộ mặc định) | `--report-slug thu-nghiem` |
 | `--judge-model` | Model của LLM giám khảo (khoá `judge`); mặc định cùng model với agent, nhiệt độ 0 | `--judge-model gpt-4.1` |
+| `--progress-file` | Ghi tiến độ từng lượt ra file JSONL (event `start`, `turn_start`, `turn_done`, `case_done`, `sweep_start`, `done`, `failed`); giao diện mục 2.1 đọc file này | `--progress-file /tmp/p.jsonl` |
+| `--report-dir` | Thư mục ghi biên bản, mặc định `src/evaluation/reports/` | `--report-dir /tmp/run` |
 
 Các cách chạy thường dùng:
 
@@ -105,6 +109,35 @@ Các cách chạy thường dùng:
 ```
 
 Runner không tự gửi trace. Không có `--trace-project` thì LangSmith không ghi lượt nào.
+
+### 2.1. Chạy bằng giao diện
+
+```bash
+make agent-eval        # mở http://127.0.0.1:8503
+```
+
+Lệnh dùng lại backend đang chạy ở `:8000`; chưa có thì tự bật như `make chat` (mặc định `inprocess`), chờ
+`/assistant/status` báo `ready`, và tắt backend khi Ctrl+C. Đổi cổng bằng `BACKEND_PORT`, `EVAL_PORT`. Khi backend
+đã chạy sẵn, có thể mở thẳng:
+`.venv/bin/python -m streamlit run src/evaluation/agent/eval_app.py --server.port 8503`.
+
+Giao diện không tự chấm điểm. Mỗi lần bấm chạy, nó mở tiến trình `python -m src.evaluation.agent.golden` với
+`--only`, `--progress-file` và `--report-dir`, nên luật chấm và kết quả y hệt chạy CLI. Mỗi lần chạy có một thư mục
+`.logs/agent-eval/<giờ bắt đầu>/` (gitignored) chứa `meta.json` (tham số, commit, working tree có thay đổi chưa
+commit hay không), `progress.jsonl`, `stdout.log` và biên bản. Tải lại trang không làm mất lần chạy đang chạy.
+Mỗi lúc chỉ chạy một lần, để hai lần không tranh backend và LLM.
+
+| Tab | Dùng để |
+|---|---|
+| ▶️ Chạy | Chọn case trong bảng (cột "Lần gần nhất" và "Lý do fail đầu tiên" lấy từ lần chạy gần nhất có case đó) rồi bấm **Chạy case đã chọn**, **Chạy tất cả** hoặc **Chạy lại case FAIL**. Trong lúc chạy: thanh tiến độ, case và lượt đang chạy, nút **Dừng**. Mỗi case một khung: câu người dùng, câu trả lời của agent, status, latency, finding tất định (đỏ) và finding của giám khảo (vàng), tên trace LangSmith. Khi xong: ba chỉ số PRD và latency. |
+| 📈 Lịch sử & so sánh | Ma trận case × các lần chạy gần nhất. **Hồi quy** = case đạt ở lần trước có chạy nó nhưng không đạt ở lần gần nhất; **đã sửa** = ngược lại. Dùng sau mỗi lần tune để biết case cũ còn đạt không. |
+| ➕ Thêm case | Form dựng case, xem [golden-dataset-how-to-add-more-case.md](golden-dataset-how-to-add-more-case.md) mục 7. |
+| 📖 Hướng dẫn | Bảng mọi khoá `expect`, trường intent và giá trị hợp lệ (lấy từ contract và graph). |
+
+Chạy từ giao diện ghi biên bản vào thư mục của lần chạy, **không** ghi đè biên bản đã commit ở
+`src/evaluation/reports/`. Muốn có biên bản chính thức để commit, tick "Ghi biên bản chính thức" rồi bấm **Chạy tất cả**
+(tương đương `.venv/bin/python -m src.evaluation.agent.golden`). Tuỳ chọn `--repeat`, `--sweep`, `--trace-project`,
+`--judge-model`, `--timeout` nằm ở sidebar.
 
 ## 3. Đọc kết quả
 

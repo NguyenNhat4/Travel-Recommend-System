@@ -19,7 +19,10 @@ Usage:
     .venv/bin/python -m src.evaluation.agent.golden \\
         --dataset src/evaluation/datasets/agent_test_cases_nhat.yaml \\
         --api-base-url http://127.0.0.1:8000 [--only TC-01,TC-02] [--sweep] [--repeat N] \\
-        [--trace-project claude-golden]
+        [--trace-project claude-golden] [--progress-file run/progress.jsonl] [--report-dir run/]
+
+Giao diện chạy và xem tiến độ: `src/evaluation/agent/eval_app.py` (`make agent-eval`), gọi đúng CLI này với
+`--progress-file`.
 """
 
 from __future__ import annotations
@@ -37,7 +40,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import httpx
 import yaml
@@ -533,6 +536,22 @@ async def judge_findings(judge_llm, transcript: list[dict[str, str]], message: s
 
 # -------------------------------------------------------------------------------------------- run
 
+# Callback nhận từng event tiến độ (dict có khoá "event"); `--progress-file` ghi chúng ra JSONL cho eval_app.py.
+ProgressCallback = Callable[[dict[str, Any]], None]
+
+
+def progress_writer(path: Path | None) -> ProgressCallback | None:
+    """Mỗi event một dòng JSON, ghi và đóng file ngay, để app đọc được giữa chừng và còn dấu vết nếu bị dừng."""
+    if path is None:
+        return None
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    def write(event: dict[str, Any]) -> None:
+        line = json.dumps({"at": datetime.now(timezone.utc).isoformat(), **event}, ensure_ascii=False)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(line + "\n")
+    return write
+
 
 @dataclass
 class TurnResult:
@@ -554,6 +573,7 @@ class TurnResult:
 
 async def run_case(
     case: Case, planner, dsn: str | None, settings: Any, timeout: float, judge_llm=None,
+    on_event: ProgressCallback | None = None, repetition: int = 1,
 ) -> list[TurnResult]:
     results: list[TurnResult] = []
     transcript: list[dict[str, str]] = []  # cho giám khảo: các lượt trước như người dùng thấy
@@ -565,15 +585,22 @@ async def run_case(
         expect = resolve_dates(turn.expect, today)
         started = time.perf_counter()
         request_id = uuid.uuid4().hex
+        trace = trace_config(case, index, message, request_id)
+        position = {"caseId": case.id, "turn": index, "turns": len(case.turns), "repetition": repetition}
+        if on_event:
+            on_event({"event": "turn_start", **position, "message": message})
         try:
             state = await run_turn(planner, message, turn.conversation_id or conversation_id, timeout,
-                                   trace_config(case, index, message, request_id), request_id,
-                                   turn.language)
+                                   trace, request_id, turn.language)
         except TimeoutError:
             results.append(TurnResult(
                 case.id, index, message, 503, "TIMEOUT", 0, 0, False, None,
                 [f"vượt timeout {timeout}s"],
             ))
+            if on_event:
+                on_event({"event": "turn_done", **position, "message": message, "httpStatus": 503,
+                          "status": "TIMEOUT", "latencyMs": 0, "passed": False, "findings": results[-1].findings,
+                          "reply": "", "intent": None, "traceName": trace["run_name"], "requestId": request_id})
             break
         latency_ms = round((time.perf_counter() - started) * 1000)
         response = state["response"]
@@ -596,7 +623,7 @@ async def run_case(
             if judge_llm is None:
                 findings.append("[judge] lượt có tiêu chí giám khảo nhưng runner không có LLM giám khảo")
             else:
-                judge_config = {**trace_config(case, index, message, request_id), "tags": ["golden-judge", case.id]}
+                judge_config = {**trace, "tags": ["golden-judge", case.id]}
                 findings += await judge_findings(judge_llm, transcript, message, response, expect["judge"], timeout,
                                                  judge_config)
         transcript += [{"user": message}, {"assistant": answer_text(response)}]
@@ -615,14 +642,29 @@ async def run_case(
             (response.get("error") or {}).get("code"), latency_ms, grounding_checked,
             tool_called, tool_expected, findings,
         ))
+        if on_event:
+            on_event({"event": "turn_done", **position, "message": message, "httpStatus": http_status,
+                      "status": results[-1].status, "latencyMs": latency_ms, "passed": not findings,
+                      "findings": findings, "reply": answer_text(response),
+                      "intent": response.get("intent") or response.get("knownIntent"),
+                      "missingFields": response.get("missingFields"),
+                      "traceName": trace["run_name"], "requestId": request_id})
         # Lượt đầu sai vẫn chạy tiếp các lượt sau (không dừng sớm): silent-skip che mất lỗi ở
         # những lượt kế, và excludeProductsFromTurn cần previous_products của mọi lượt đã chạy.
+    if on_event:
+        # Lượt timeout làm case dừng sớm; turnsRun < turns cho app biết các lượt còn lại bị bỏ.
+        on_event({"event": "case_done", "caseId": case.id, "repetition": repetition,
+                  "turns": len(case.turns), "turnsRun": len(results),
+                  "passed": all(r.passed for r in results) and len(results) == len(case.turns)})
     return results
 
 
-async def run_sweep(planner, dsn: str | None, settings: Any, timeout: float, http: httpx.AsyncClient) -> list[TurnResult]:
+async def run_sweep(planner, dsn: str | None, settings: Any, timeout: float, http: httpx.AsyncClient,
+                    on_event: ProgressCallback | None = None) -> list[TurnResult]:
     """Nhóm A/B/C cho MỌI điểm đến hiện có trong catalog — không cần ai viết case."""
     listed = (await http.get("destinations", timeout=30)).json()["destinations"]
+    if on_event:
+        on_event({"event": "sweep_start", "destinations": len(listed), "turns": 2 * len(listed)})
     results: list[TurnResult] = []
     for item in listed:
         destination = item["destination"]
@@ -630,7 +672,7 @@ async def run_sweep(planner, dsn: str | None, settings: Any, timeout: float, htt
                     # Chưa nêu ngày đi thì agent hỏi ngày (AC-AGT-01); lượt thứ hai trả lời để chạm tới truy xuất.
                     turns=[Turn(message=f"{destination} 2 ngày", expect={}),
                            Turn(message="chưa chốt ngày đi", expect={})])
-        results += await run_case(case, planner, dsn, settings, timeout)
+        results += await run_case(case, planner, dsn, settings, timeout, on_event=on_event)
     return results
 
 
@@ -745,13 +787,30 @@ def _commit_sha() -> str:
 
 
 async def _main_async(args: argparse.Namespace) -> int:
+    progress = progress_writer(Path(args.progress_file) if args.progress_file else None)
+    try:
+        return await _run(args, progress)
+    except Exception as exc:
+        if progress:
+            progress({"event": "failed", "error": f"{type(exc).__name__}: {exc}"})
+        raise
+
+
+async def _run(args: argparse.Namespace, progress: ProgressCallback | None) -> int:
     cases = load_dataset(Path(args.dataset))
     if args.only:
         wanted = set(args.only.split(","))
         cases = [c for c in cases if c.id in wanted]
         if not cases:
             print(f"Không case nào khớp --only {args.only}", file=sys.stderr)
+            if progress:
+                progress({"event": "failed", "error": f"Không case nào khớp --only {args.only}"})
             return 2
+    repeat = max(1, args.repeat)
+    if progress:
+        progress({"event": "start", "repeat": repeat, "sweep": args.sweep,
+                  "cases": [{"id": c.id, "category": c.category, "turns": len(c.turns)} for c in cases],
+                  "turns": repeat * sum(len(c.turns) for c in cases)})
 
     if args.trace_project:
         enable_tracing(get_settings(), args.trace_project)
@@ -773,11 +832,12 @@ async def _main_async(args: argparse.Namespace) -> int:
         product_count = status.json().get("productCount") if status.status_code == 200 else None
 
         results: list[TurnResult] = []
-        for repetition in range(max(1, args.repeat)):
+        for repetition in range(1, repeat + 1):
             for case in cases:
-                results += await run_case(case, planner, dsn, settings, args.timeout, judge_llm)
+                results += await run_case(case, planner, dsn, settings, args.timeout, judge_llm,
+                                          on_event=progress, repetition=repetition)
         if args.sweep:
-            results += await run_sweep(planner, dsn, settings, args.timeout, http)
+            results += await run_sweep(planner, dsn, settings, args.timeout, http, on_event=progress)
 
     if args.trace_project:
         from langchain_core.tracers.langchain import wait_for_all_tracers
@@ -790,7 +850,7 @@ async def _main_async(args: argparse.Namespace) -> int:
         report["judgeModel"] = args.judge_model or report["model"]
     commit_sha = _commit_sha()
 
-    reports_dir = REPO_ROOT / "src/evaluation/reports"
+    reports_dir = Path(args.report_dir) if args.report_dir else REPO_ROOT / "src/evaluation/reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
     today = datetime.now(timezone.utc).date().isoformat()
     slug = args.report_slug or report_slug(args.dataset)
@@ -808,7 +868,13 @@ async def _main_async(args: argparse.Namespace) -> int:
 
     gate_ok = (metrics["groundingRate"] in (None, 1.0) and metrics["structuredOutputIntegrity"] in (None, 1.0))
     tool_ok = metrics["toolCallingAccuracy"] is None or metrics["toolCallingAccuracy"] >= 0.95
-    return 0 if (gate_ok and tool_ok and report["totals"]["failed"] == 0) else 1
+    exit_code = 0 if (gate_ok and tool_ok and report["totals"]["failed"] == 0) else 1
+    if progress:
+        progress({"event": "done", "exitCode": exit_code, "commit": commit_sha, "totals": report["totals"],
+                  "metrics": metrics, "latencyMs": report["latencyMs"], "model": report["model"],
+                  "judgeModel": report.get("judgeModel"), "productCount": product_count,
+                  "reportMd": str(md_path), "reportJson": str(json_path)})
+    return exit_code
 
 
 def main() -> None:
@@ -827,6 +893,10 @@ def main() -> None:
                         help="Tên biên bản eval-<ngày>-<slug>.md; mặc định suy từ dataset (REPORT_SLUGS).")
     parser.add_argument("--trace-project", default=None,
                         help="Gửi trace từng lượt lên LangSmith project này (key lấy từ .env).")
+    parser.add_argument("--progress-file", default=None,
+                        help="Ghi tiến độ từng lượt ra file JSONL (eval_app.py đọc file này).")
+    parser.add_argument("--report-dir", default=None,
+                        help="Thư mục ghi biên bản; mặc định src/evaluation/reports/.")
     args = parser.parse_args()
     sys.exit(asyncio.run(_main_async(args)))
 
