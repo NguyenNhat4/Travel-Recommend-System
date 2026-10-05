@@ -653,8 +653,8 @@ def app_load(c: typer.Context, recreate: bool = typer.Option(False, "--recreate"
         _fail(str(e), 2)
     except Exception as e:  # noqa: BLE001 — lỗi Weaviate / vector
         _fail(f"{type(e).__name__}: {str(e)[:300]}")
-    typer.echo(f"{am.collection}: {s['n']} object · khớp textHash {s['matching']} · thiếu {s['missing']} · text cũ {s['stale']} · "
-               f"nạp mới {s['loaded']} · index hnsw (backend không nhận flat) · {am.dimension} chiều · modelVersion {am.model_version} · "
+    typer.echo(f"{PRODUCT_BENCH}: {s['n']} object · khớp textHash {s['matching']} · thiếu {s['missing']} · text cũ {s['stale']} · "
+               f"nạp mới {s['loaded']} · index hnsw (backend không nhận flat) · modelVersion {cat.index.model_version} · "
                f"{len(cat.index.units)} unit, {int(cat.index.available.sum())} available")
 
 
