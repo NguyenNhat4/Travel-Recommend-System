@@ -5,3 +5,5 @@ backend_image             = "asia-southeast1-docker.pkg.dev/vinpearl-508801/v-ot
 frontend_image            = "asia-southeast1-docker.pkg.dev/vinpearl-508801/v-ota-data-pipeline-crawler/vota-frontend:REPLACE_TAG"
 backend_env_secret        = "vota-ha-backend-env"
 # domain = "staging.example.com"   # empty = HTTP only
+db_primary_ip             = "10.148.0.2"
+# db_replica_ip            = "10.148.0.4"

@@ -144,3 +144,20 @@ variable "weaviate_api_key_secret" {
   type        = string
   default     = "vota-ha-weaviate-api-key"
 }
+
+variable "db_primary_ip" {
+  description = "Private IP of the Postgres primary (staging root output db_primary_private_ip / addresses.tf)."
+  type        = string
+  nullable    = false
+}
+
+variable "db_replica_ip" {
+  description = "Private IP of the Postgres replica; empty = no db-replica record."
+  type        = string
+  default     = ""
+}
+
+variable "internal_zone_dns_name" {
+  type    = string
+  default = "vota.internal."
+}

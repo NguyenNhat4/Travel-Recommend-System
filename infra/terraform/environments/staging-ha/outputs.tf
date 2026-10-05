@@ -16,3 +16,8 @@ output "weaviate_url" {
   description = "Put in WEAVIATE_URL of the env secret (gRPC port stays 50051). Run the index job against it before the group takes traffic."
   value       = try("http://${google_compute_address.weaviate[0].address}:8080", null)
 }
+
+output "db_host" {
+  description = "Use as the host in DATABASE_URL / CDP_DATABASE_URL of the env secret (port 5432, no SSH tunnel)."
+  value       = trimsuffix(google_dns_record_set.db.name, ".")
+}

@@ -155,7 +155,7 @@ class Settings(BaseSettings):
     # staging một VM chạy như cũ; compose HA bật cả hai.
     # - ready_requires_recsys: /health/ready trả 503 khi RecSys chưa nạp được (Weaviate rỗng/không tới được),
     #   để LB không đưa traffic vào bản sao chỉ trả kết quả rỗng.
-    # - require_shared_backends: từ chối khởi động nếu Weaviate/Redis trỏ loopback (mỗi VM một bản riêng thì
+    # - require_shared_backends: từ chối khởi động nếu Weaviate/Redis/Postgres trỏ loopback (mỗi VM một bản riêng thì
     #   phiên đăng nhập và kết quả tìm kiếm lệch nhau giữa các bản sao).
     ready_requires_recsys: bool = False
     require_shared_backends: bool = False
@@ -188,8 +188,10 @@ def shared_backend_violations(settings: Settings) -> list[str]:
     from urllib.parse import urlparse
 
     bad = []
+    # DATABASE_URL loopback = tunnel SSH cấu hình tay (127.0.0.1:15432) mà VM sinh từ instance template không có.
     for name, value in (("WEAVIATE_URL", settings.weaviate_url), ("AUTH_REDIS_URL", settings.auth_redis_url),
-                        ("ITINERARY_REDIS_URL", settings.itinerary_redis_url)):
+                        ("ITINERARY_REDIS_URL", settings.itinerary_redis_url),
+                        ("DATABASE_URL", settings.database_url), ("CDP_DATABASE_URL", settings.cdp_database_url)):
         host = (urlparse(value).hostname or "").lower() if value else ""
         if not value or host in _LOOPBACK_HOSTS:
             bad.append(name)

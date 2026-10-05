@@ -38,7 +38,9 @@ def test_single_vm_default_keeps_ready_without_recsys(monkeypatch):
 
 def _settings(**kw) -> Settings:
     base = dict(require_shared_backends=True, weaviate_url="http://10.148.0.9:8080",
-                auth_redis_url="redis://:p@10.0.0.5:6379/1", itinerary_redis_url="redis://:p@10.0.0.5:6379/2")
+                auth_redis_url="redis://:p@10.0.0.5:6379/1", itinerary_redis_url="redis://:p@10.0.0.5:6379/2",
+                database_url="postgresql://u:p@db.vota.internal:5432/vota",
+                cdp_database_url="postgresql://c:p@db.vota.internal:5432/vota")
     return Settings(_env_file=None, **{**base, **kw})
 
 
@@ -50,6 +52,8 @@ def test_shared_backends_pass_with_private_ips():
     ("weaviate_url", "http://localhost:8080", "WEAVIATE_URL"),
     ("auth_redis_url", "redis://:p@127.0.0.1:6379/1", "AUTH_REDIS_URL"),
     ("itinerary_redis_url", "", "ITINERARY_REDIS_URL"),
+    ("database_url", "postgresql://u:p@127.0.0.1:15432/vota", "DATABASE_URL"),      # tunnel SSH không có trên VM của MIG
+    ("cdp_database_url", "postgresql://c:p@localhost:5432/vota", "CDP_DATABASE_URL"),
 ])
 def test_loopback_or_blank_shared_backend_is_rejected(field, value, name):
     assert shared_backend_violations(_settings(**{field: value})) == [name]
