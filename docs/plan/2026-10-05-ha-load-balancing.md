@@ -37,6 +37,7 @@ Trạng thái phải nằm ngoài VM: session BFF, rate limit và working memory
 | 4 | Kịch bản tải `ops/loadtest/k6-ha.js` | Viết xong, chưa chạy (máy chưa có k6) |
 | 4b | Job đối soát đơn chạy một nơi duy nhất trong cả cụm (Postgres advisory lock, `BookingStore.reconcile_leader`); trước đó mỗi worker × VM đều chạy (use case ở §3b) | Xong trong nhánh, test đơn vị pass; test Postgres thật chưa chạy |
 | 5 | Weaviate dùng chung: VM riêng + đĩa riêng + snapshot hằng ngày (`weaviate.tf`, hoặc `create_weaviate=false` để dùng Weaviate Cloud); readiness phụ thuộc RecSys (`READY_REQUIRES_RECSYS`); chặn Weaviate/Redis loopback (`REQUIRE_SHARED_BACKENDS`) | Code và Terraform xong, test pass, **chưa apply**; còn chạy job index vào Weaviate mới trước khi nhận traffic |
+| 6.0 | Tách health check: autohealing dùng liveness `/health/live`, LB dùng readiness `/health/ready` (use case ở §3b) | Xong, test pass, chưa apply |
 | 6 | DB: endpoint ổn định cho MIG (thay `vota-db-tunnel` trên 127.0.0.1:15432), cân nhắc Cloud SQL HA hoặc Patroni + pgbouncer | Chưa làm |
 | 7 | Cloud NAT cho VM không có IP public; tạo secret `vota-ha-backend-env` | Chưa làm |
 | 8 | Alert MIG: số VM khỏe < min, autoscaler chạm max, 5xx của LB | Chưa làm |
@@ -85,6 +86,21 @@ Sau khi sửa:
 Chưa kiểm: gRPC 50051 từ VM tới Weaviate qua firewall thật; thời gian dựng lại index từ đầu (job index phụ thuộc quota Cohere); Weaviate một node nên mất VM Weaviate = search ngừng tới khi dựng lại hoặc khôi phục snapshot (đã chấp nhận, ghi ở `weaviate.tf`).
 
 Kiểm chứng: `src/backend/tests/unit/api/test_ha_readiness.py` (9 test).
+
+## Use case: autohealing thay VM liên tục khi Weaviate gián đoạn (3 VM, autoscale)
+
+Tình huống: 20:00, giờ cao điểm, nhóm có 3 VM. Weaviate VM khởi động lại 8 phút do bảo trì. 20:01 autoscaler thêm VM thứ 4 vì CPU vượt 60%.
+
+1. VM thứ 4 lên (khoảng 2–3 phút), `RecsysRefresher` nạp lần đầu thất bại vì Weaviate đang tắt, nên backend chưa có `index` và `/health/ready` trả 503 (đúng thiết kế ở việc 5).
+2. Cấu hình cũ dùng **cùng** health check readiness cho autohealing. Sau `initial_delay_sec = 300` VM bị coi là hỏng nên MIG xoá và tạo lại nó (khoảng 20:06), dù lỗi nằm ở Weaviate chứ không phải VM.
+3. VM mới lại boot trong lúc Weaviate chưa về (về lúc 20:08), tiếp tục vòng lặp. Mỗi vòng tốn tài nguyên và VM thứ 4 không giúp được gì trong đúng lúc cần dung lượng. Rolling update trong cùng lúc cũng bị kẹt.
+
+Đã kiểm trong code: 3 VM cũ không bị ảnh hưởng vì `RecsysRefresher` giữ index đang phục vụ khi nạp lại thất bại; `RecsysRefresher.run` thử lại sau `RECSYS_RETRY_SECONDS` khi chưa có index.
+Chưa kiểm: thời điểm thật GCE xoá VM unhealthy (dựa trên tài liệu `initial_delay_sec` và `unhealthy_threshold`, chưa quan sát trên cloud).
+
+Sau khi sửa: autohealing dùng `/health/live` (frontend sống và backend trả lời `/health`), không phụ thuộc RecSys hay DB. VM thứ 4 sống tiếp, bị load balancer loại khỏi rotation nhờ readiness, tự thử nạp lại và vào rotation khoảng 30 giây sau khi Weaviate về (khoảng 20:08:30). VM chỉ bị thay khi thật sự treo liên tục 60 giây.
+
+Kiểm chứng: `src/frontend/tests/api/health-live.test.ts` (route live không bao giờ gọi `/health/ready`), `infra/terraform/environments/staging-ha/tests/test_health_checks.py` (MIG dùng `live`, LB dùng `ready`), `terraform validate`.
 
 ## 4. Điều kiện trước khi `terraform apply`
 

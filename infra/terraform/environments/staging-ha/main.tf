@@ -50,9 +50,13 @@ resource "google_compute_instance_template" "app" {
   }
 }
 
-# Probes the FRONTEND readiness route, which proxies backend /health/ready, so a VM
-# leaves rotation when either half is down.
-resource "google_compute_health_check" "app" {
+# Hai health check có vai trò khác nhau, KHÔNG dùng chung:
+# - ready (load balancer): frontend /health/ready proxy backend /health/ready, gồm cả RecSys đã nạp. Chưa sẵn sàng thì
+#   chỉ bị loại khỏi rotation, VM vẫn sống và tự hồi phục khi Weaviate/DB quay lại.
+# - live (autohealing): frontend /health/live proxy backend /health, chỉ nói "tiến trình còn trả lời". Chỉ khi VM thật sự
+#   treo mới bị thay. Dùng readiness cho autohealing thì Weaviate/DB gián đoạn làm MIG xoá và tạo lại VM liên tục
+#   mà không sửa được gì (docs/plan/2026-10-05-ha-load-balancing.md §3b, use case 3).
+resource "google_compute_health_check" "ready" {
   name                = "${var.name_prefix}-app-ready"
   check_interval_sec  = 10
   timeout_sec         = 5
@@ -63,6 +67,20 @@ resource "google_compute_health_check" "app" {
     port_specification = "USE_FIXED_PORT"
     port               = 3000
     request_path       = "/health/ready"
+  }
+}
+
+resource "google_compute_health_check" "live" {
+  name                = "${var.name_prefix}-app-live"
+  check_interval_sec  = 15
+  timeout_sec         = 5
+  healthy_threshold   = 2
+  unhealthy_threshold = 4 # 60 giây liên tục không trả lời mới thay VM
+
+  http_health_check {
+    port_specification = "USE_FIXED_PORT"
+    port               = 3000
+    request_path       = "/health/live"
   }
 }
 
@@ -82,7 +100,7 @@ resource "google_compute_region_instance_group_manager" "app" {
   }
 
   auto_healing_policies {
-    health_check      = google_compute_health_check.app.id
+    health_check      = google_compute_health_check.live.id
     initial_delay_sec = 300
   }
 
@@ -155,7 +173,7 @@ resource "google_compute_backend_service" "app" {
   port_name                       = "http-web"
   load_balancing_scheme           = "EXTERNAL_MANAGED"
   timeout_sec                     = var.lb_timeout_seconds
-  health_checks                   = [google_compute_health_check.app.id]
+  health_checks                   = [google_compute_health_check.ready.id]
   session_affinity                = "NONE" # sessions live in Redis; any VM can serve any request
   connection_draining_timeout_sec = 60
 
