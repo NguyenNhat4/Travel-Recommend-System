@@ -150,9 +150,9 @@ export function useFloatingWidget() {
     }
   }, [isOpen]);
 
-  // Close widget when navigating to checkout
+  // Đóng widget khi sang thanh toán hoặc giỏ hàng (toast "Xem giỏ"): widget phủ toàn màn hình nên không đóng thì che mất trang.
   useEffect(() => {
-    if (currentRoute.startsWith('/checkout')) {
+    if (currentRoute.startsWith('/checkout') || currentRoute.startsWith('/cart')) {
       setIsOpen(false);
       setIsExpanded(false);
     }
