@@ -1,4 +1,4 @@
-# gold_v1 e47b0d6ac3339c85ded509f0d0e0da6c27cf58ee34bd733d3b6df007103874af 2026-09-30 — 131 câu gold active của search bench (src/evaluation/search_bench/gold/gold.jsonl);
+# gold_v4 721f164d37fd11e77b8a8c84b183fb06335c9935a5a378501f350c465b1dfe1a 2026-10-05 — 154 câu gold active của search bench (src/evaluation/search_bench/gold/gold.jsonl);
 # nạp sẵn vector truy vấn lúc khởi động (SEARCH_PREWARM). Mỗi dòng một câu; '#' là chú thích. Không sửa tay:
 # sinh lại khi gold đổi tag; test phía evaluation (search_bench/tests/test_prewarm_list.py) đối chiếu.
 tìm khách sạn nghỉ dưỡng tại Hạ Long
@@ -132,3 +132,26 @@ tìm khách sạn, vé máy bay, vé tham quan, sân golf và combo du lịch �
 resort ở Mộc Châu
 combo du lịch Cà Mau
 combo du lịch Bắc Kạn
+khách sạn Sa Pa có spa nhưng không có hồ bơi
+chỗ nghỉ ở TP. Hồ Chí Minh có xe đưa đón sân bay, không có hồ bơi
+khách sạn Hội An có hồ bơi nhưng không có dịch vụ đưa đón sân bay
+chỗ nghỉ Đà Lạt có nhà hàng, không có hồ bơi
+khách sạn ở Phú Quốc có hồ bơi nhưng không có nhà hàng
+khách sạn Huế có hồ bơi, không có spa
+chỗ nghỉ Quy Nhơn có hồ bơi nhưng không có quầy bar
+khách sạn Đà Nẵng có hồ bơi, không có phòng gym
+khách sạn ở Grand World Phú Quốc
+vé vui chơi ở Grand World Phú Quốc
+vé lẻ VinWonders Nam Hội An, không lấy combo
+combo vé máy bay và khách sạn Đà Lạt
+khách sạn Vinpearl ở Nha Trang
+vé máy bay Sài Gòn đi Đà Nẵng
+vé máy bay Cần Thơ đi Hà Nội
+vé máy bay Côn Đảo về TP. Hồ Chí Minh
+vé máy bay đi Côn Đảo
+các chuyến bay xuất phát từ Cần Thơ
+vé máy bay đến Phú Quốc
+khách sạn ở Lạng Sơn
+resort Bạc Liêu
+tour hồ Ba Bể
+homestay Tà Xùa
