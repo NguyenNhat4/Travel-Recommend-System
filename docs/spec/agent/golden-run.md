@@ -95,10 +95,10 @@ Các cách chạy thường dùng:
 .venv/bin/python -m src.evaluation.agent.golden --sweep --trace-project claude-golden
 
 # Thử case vừa thêm
-.venv/bin/python -m src.evaluation.agent.golden --only TC-10 --repeat 3 --trace-project claude-golden
+.venv/bin/python -m src.evaluation.agent.golden --only TC-10 --trace-project claude-golden
 
-# Bộ mặc định, mỗi case 3 lần, kèm giám khảo
-.venv/bin/python -m src.evaluation.agent.golden --repeat 3 --trace-project nhat-agent-tc
+# Bộ mặc định, mỗi case 1 lần, kèm giám khảo
+.venv/bin/python -m src.evaluation.agent.golden --trace-project nhat-agent-tc
 
 # Đo tỷ lệ fail của các case hay dao động
 .venv/bin/python -m src.evaluation.agent.golden --only TC-01,TC-02 --repeat 5

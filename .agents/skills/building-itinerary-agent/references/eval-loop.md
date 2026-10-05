@@ -12,7 +12,7 @@ Eval loop:
 - [ ] 2. pytest src/evaluation/tests/test_golden.py
 - [ ] 3. Baseline: case fail trên code cũ
 - [ ] 4. Sửa code
-- [ ] 5. Case pass --repeat 3 (cả ba lần)
+- [ ] 5. Case pass (chạy 1 lần)
 - [ ] 6. Cả bộ pass, biên bản vào src/evaluation/reports/
 - [ ] 7. Đọc trace của mọi case fail trước khi kết luận
 ```
@@ -22,8 +22,8 @@ Eval loop:
 2. **Kỳ vọng chỉ ghi điều luôn đúng** theo PRD và contract. Ví dụ `status: [COMPLETED, FALLBACK]` khi cả hai đều hợp lệ,
    không bắt đúng tên sản phẩm.
 3. **Baseline trước khi sửa.** Case phải fail trên code cũ. Nếu nó pass thì case không bắt được lỗi.
-4. **pass^k, không phải pass@k.** Người dùng chỉ thấy một lần chạy, nên `--repeat 3` phải pass cả ba lần.
-   Fail một trong ba là lỗi chập chờn ở bước LLM; xem trace của lần fail.
+4. **Chạy 1 lần.** Mặc định mỗi case chạy một lần. Chỉ thêm `--repeat N` khi một case lúc pass lúc fail và cần đo tỷ lệ;
+   fail ngắt quãng là lỗi chập chờn ở bước LLM, xem trace của lần fail.
 5. **Hai loại bộ.** Case mô tả năng lực mới có thể fail lúc đầu. Bộ hồi quy (case đã pass) phải giữ gần 100%, và mọi case
    fail trong bộ hồi quy chặn merge.
 6. **Đọc transcript.** Số PASS/FAIL chỉ nói "có vấn đề". Trace LangSmith (`--trace-project <tên>`) mới nói vấn đề nằm ở node
@@ -48,7 +48,7 @@ Eval loop:
 
 ```bash
 .venv/bin/python -m pytest -q src/evaluation/tests/test_golden.py
-.venv/bin/python -m src.evaluation.agent.golden --only TC-NN --repeat 3 --trace-project <tên>
+.venv/bin/python -m src.evaluation.agent.golden --only TC-NN --trace-project <tên>
 .venv/bin/python -m src.evaluation.agent.golden --sweep --trace-project <tên>
 ```
 

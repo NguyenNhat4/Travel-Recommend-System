@@ -1,7 +1,7 @@
 # Test case agent do người dùng tái hiện (nguồn: src/evaluation/agent/agent-test-cases-nhat.md, PDF "agent case Nhat").
 # Chạy riêng, không gộp vào bộ golden rút gọn:
 #   .venv/bin/python -m src.evaluation.agent.golden --dataset src/evaluation/datasets/agent_test_cases_nhat.yaml \
-#       --report-slug agent-test-cases --repeat 3 --trace-project <tên>
+#       --report-slug agent-test-cases --trace-project <tên>
 # Khoá `judge` là tiêu chí cho LLM giám khảo, chép từ "Tiêu chí đạt đề xuất" của tài liệu nguồn; check tất định
 # (status, intent, toolCalled...) vẫn là phần chính, giám khảo chỉ chấm phần khó viết thành luật.
 # Ngày trong PDF là ngày lịch sử (hôm đó là 02/10/2026); ở đây đổi sang placeholder giữ đúng khoảng cách tới hôm nay,

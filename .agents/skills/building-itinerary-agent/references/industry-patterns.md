@@ -73,7 +73,7 @@ Nguồn: [Anthropic, Demystifying evals for AI agents](https://www.anthropic.com
 
 - **Trong repo:** golden dataset và runner (`src/evaluation/agent/golden.py`), `--repeat`, `--trace-project`;
   quy trình ở [eval-loop.md](eval-loop.md).
-- **Trước khi kết luận "đã sửa":** case fail trên code cũ, và pass `--repeat 3` trên code mới chưa?
+- **Trước khi kết luận "đã sửa":** case fail trên code cũ, và pass trên code mới chưa? (Case chập chờn thì đo thêm bằng `--repeat`.)
 
 ## 7. Generative UI an toàn
 

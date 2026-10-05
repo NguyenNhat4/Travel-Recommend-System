@@ -181,7 +181,7 @@ không phải với điều mình đoán.
 3. Chạy riêng case mới vài lần với LLM thật, kèm trace:
 
    ```bash
-   .venv/bin/python -m src.evaluation.agent.golden --only TC-10 --repeat 3 --trace-project claude-golden
+   .venv/bin/python -m src.evaluation.agent.golden --only TC-10 --trace-project claude-golden
    ```
 
    Cần Postgres đã seed và backend chạy với `ITINERARY_DATA_MODE=http`. Backend phải khởi động xong recsys
