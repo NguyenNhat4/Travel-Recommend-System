@@ -244,9 +244,11 @@ Bố cục theo bản mẫu đã duyệt, ngay trên `/flights` (tìm không chu
 
 - Ở Home, `/search` và header trang chi tiết chỉ có **một ô nhập tự do**, không tách thành Điểm đến / Ngày / Khách, vì engine nhận `q` tự do. Ngoại lệ: **tấm tìm kiếm ở hero trang danh mục** (`/hotels`, `/flights`, `/experiences`, `/combos`) tách Địa điểm / Ngày / Số khách theo FR-SRC-03; ngày và số khách là ngữ cảnh chuyến đi điền sẵn hộp đặt, không lọc phòng trống (frontend §4.1a). Placeholder xoay vòng giữa các câu mẫu: "nghỉ dưỡng biển cho gia đình", "vé tham quan cho trẻ nhỏ ở Phú Quốc", "khách sạn 5 sao gần biển Đà Nẵng".
   Pattern: `[R35]` Booking.com iOS (tab "AI search": "Search in your own words ⓘ" + thẻ ví dụ "Try these out"). `[R37]` cho thấy chính Booking.com đặt tab "AI search" song song tab "Destination".
-- **Khi focus (ô rỗng):** dropdown gồm "Tìm kiếm gần đây" (lưu `localStorage`, tối đa 5, có nút xóa) và "Thử tìm" (4 câu mẫu). Pattern: `[R38]` Skyscanner iOS ("Recent searches" + "Popular destinations").
-- **Khi đang gõ:** autocomplete theo tên (ví dụ "VinWonders") chỉ có nếu làm hybrid search (handbook §2: có thể cắt). MVP: không autocomplete, Enter là tìm.
-- Nhấn Enter → `/search?q=…`. Truy vấn giữ lại trong ô ở trang kết quả.
+- **Khi focus (ô rỗng):** dropdown gồm "Tìm kiếm gần đây" (lưu `localStorage` khoá `vota_recent_searches`, tối đa 5, có nút Xóa) và "Từ khoá phổ biến" (danh sách cố định `POPULAR_KEYWORDS` ở `features/search/instant/recentSearches.ts`). Không gọi API. Pattern: `[R38]` Skyscanner iOS ("Recent searches" + "Popular destinations").
+- **Khi đang gõ (FR-SRC-05, đề xuất `update-archive/2026-10-05-goi-y-tuc-thi-o-tim-kiem.md`):** gợi ý tức thì, không cần Enter, ở ô hero Home và ô đầu `/search`. Chia theo loại (điểm đến · khách sạn · vé tham quan · sân golf · combo; **không có vé máy bay**), mỗi dòng có icon, tên loại và phần chữ khớp in đậm (khớp đầu từ, không phân biệt dấu và hoa thường), tối đa 8 dòng, cuối là nút "Xem tất cả kết quả cho "…"" → `/search?q=…`. Chọn điểm đến hoặc từ khoá → `/search?q=<nhãn>`; chọn sản phẩm → `/product/{id}`. Gợi ý lấy từ `GET /search/suggestions` (khớp chữ trên catalog, không embed, không ghi event), không phải từ `POST /search`.
+  - Kiểm soát lượt gọi (`features/search/instant/useInstantSearch.ts`): chỉ gọi khi có ≥ 2 ký tự chữ/số; chờ 200 ms sau phím cuối; phím mới huỷ lượt đang bay; bộ nhớ đệm theo khoá đã bỏ dấu (tối đa 50 khoá, 5 phút); lỗi thì hiện "Chưa tải được gợi ý" và vẫn giữ nút "Xem tất cả".
+  - Bàn phím: ↑ ↓ chọn, Enter trên dòng đang chọn thì đi tới dòng đó, Enter khi chưa chọn thì tìm như cũ, Esc đóng. ARIA combobox/listbox.
+- Nhấn Enter → `/search?q=…`. Truy vấn giữ lại trong ô ở trang kết quả. Tìm bằng Enter, nút "Xem tất cả", chip, giọng nói hoặc chọn điểm đến đều được ghi vào "Tìm kiếm gần đây"; mở một sản phẩm thì không.
 
 #### 4.2.2 Bố cục desktop
 

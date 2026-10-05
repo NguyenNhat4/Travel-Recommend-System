@@ -27,6 +27,14 @@ Tài liệu này đặc tả chi tiết toàn bộ các yêu cầu chức năng 
   - Đánh giá sao, phân loại dịch vụ.
   - Ngày khởi hành / Thời gian nhận phòng.
 - **FR-SRC-04 (Xử lý không có kết quả):** Khi truy vấn không có kết quả khớp chính xác, hệ thống phải đề xuất các sản phẩm có độ tương đồng ngữ nghĩa gần nhất hoặc gợi ý điều chỉnh từ khóa tìm kiếm.
+- **FR-SRC-05 (Gợi ý tức thì khi gõ):** Ô tìm kiếm ở trang chủ và ở trang `/search` hiển thị gợi ý ngay trong lúc người dùng gõ, không cần nhấn phím nào khác. *(Chốt 2026-10-05, đề xuất `update-archive/2026-10-05-goi-y-tuc-thi-o-tim-kiem.md`.)*
+  - Gợi ý chia theo loại: điểm đến, khách sạn, vé tham quan, sân golf, combo. Mỗi dòng có biểu tượng của loại và tên loại; phần chữ trùng với từ đang gõ được in đậm. Không gợi ý vé máy bay (vé máy bay chỉ tìm ở `/flights`, như FR-SRC-03).
+  - So khớp theo đầu từ, không phân biệt dấu và hoa thường: gõ "ha" thấy "Hà Nội", "Hạ Long".
+  - Tối đa 8 gợi ý. Cuối danh sách luôn có nút "Xem tất cả kết quả cho …" dẫn sang `/search` với đúng chữ đang gõ.
+  - Chọn một điểm đến thì sang `/search` với tên điểm đến đó; chọn một sản phẩm thì mở trang chi tiết sản phẩm.
+  - Kiểm soát số lượt gọi: chỉ gợi ý khi có ít nhất 2 ký tự chữ hoặc số; chuỗi rỗng hoặc toàn khoảng trắng thì không gọi; lượt gọi cũ bị huỷ khi người dùng gõ tiếp; kết quả của từ đã gõ gần đây được dùng lại mà không gọi lại.
+  - Khi ô còn trống và đang được chọn: hiện "Tìm kiếm gần đây" (tối đa 5, lưu trên trình duyệt của người dùng, có nút xóa) và "Từ khoá phổ biến" (danh sách cố định).
+  - Gợi ý lấy từ catalog đang phục vụ, không do LLM sinh. Gõ để xem gợi ý không được tính là một lượt tìm kiếm trong lịch sử hành vi (không ghi event `search`).
 
 ### 1.3. Phân Hệ Gợi Ý Cá Nhân Hóa (Recommendation Engine)
 - **FR-REC-01 (Sinh danh mục theo ngữ cảnh - Candidate Generation):**
@@ -126,6 +134,7 @@ Tài liệu này đặc tả chi tiết toàn bộ các yêu cầu chức năng 
 | Mã tiêu chí | Kịch bản / Điều kiện kích hoạt | Hành vi kỳ vọng của hệ thống |
 |---|---|---|
 | **AC-SRC-01** | Người dùng tìm kiếm: *"resort yên tĩnh có hồ bơi riêng"* | Trả về danh sách các resort/khách sạn có mô tả hoặc tiện ích phù hợp về sự yên tĩnh và hồ bơi, sắp xếp theo độ tương đồng ngữ nghĩa. |
+| **AC-SRC-02** | Người dùng gõ "Ha" vào ô tìm kiếm ở trang chủ | Không cần nhấn Enter, danh sách tối đa 8 gợi ý hiện ra, chia theo loại, có điểm đến Hà Nội và Hạ Long, phần "Ha"/"Hà"/"Hạ" in đậm, cuối danh sách có "Xem tất cả kết quả cho "Ha"". Gõ một ký tự hoặc toàn khoảng trắng thì không có lượt gọi nào. Ô trống khi được chọn thì hiện tìm kiếm gần đây và từ khoá phổ biến. API gợi ý phản hồi trong 250 ms ở p95 (NFR-PERF-01). |
 | **AC-REC-01** | Người dùng P1 (Gia đình) đăng nhập vào hệ thống | Trang chủ hiển thị khu vực gợi ý với tiêu đề và nội dung phù hợp cho gia đình, mỗi thẻ sản phẩm hiển thị lý do `because` tương ứng. |
 | **AC-REC-02** | Người dùng hoàn tất đặt phòng tại Đà Nẵng | Tại trang xác nhận và khi quay lại trang chủ, khối gợi ý ưu tiên hiển thị vé máy bay đến Đà Nẵng và tour tham quan tại Bà Nà / Hội An. |
 | **AC-AGT-01** | Người dùng yêu cầu: *"Lập lịch trình 3 ngày 2 đêm tại Nha Trang ngân sách 5 triệu"* | Trợ lý hỏi gộp một câu, một lần, những gì còn thiếu trong ngày đi, số người và ngân sách (không tự đoán ngày). Người dùng trả lời đủ, trả lời một phần hoặc nói chưa chốt; khi đó trợ lý xuất ra lịch trình 3 ngày có cấu trúc; các địa điểm nghỉ ngơi và hoạt động đều là thẻ sản phẩm thật kèm giá rõ ràng và nút bấm xem chi tiết. Câu đầu đã đủ ngày đi, số người và ngân sách thì xuất lịch ngay. Người dùng đã được hỏi một lượt mà câu trả lời vẫn không cho biết điểm đến hoặc số ngày thì trợ lý không hỏi lại bằng câu chữ nữa: nó hiển thị ngay trong khung chat một form thông tin chuyến đi đã điền sẵn giá trị gợi ý (điểm đến, số ngày, ngày khởi hành, số người, ngân sách) kèm một câu mời tinh chỉnh; ô điểm đến chỉ liệt kê vài điểm đến tiêu biểu của catalog. Form chặn giá trị không hợp lệ: số ngày trong khoảng 1–7, ngày khởi hành không trước ngày hôm nay. Người dùng bấm xác nhận thì câu yêu cầu hoàn chỉnh được đặt sẵn vào ô nhập tin nhắn để họ sửa hoặc gửi ngay; gửi đi thì trợ lý coi đó là một yêu cầu đầy đủ và lập lịch, không hỏi thêm. |

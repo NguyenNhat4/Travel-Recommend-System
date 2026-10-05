@@ -385,6 +385,26 @@ Hai mã khác nhau vì cách xử lý khác nhau: cái đầu là sai id, cái s
 
 ---
 
+### 3.7. `/search/suggestions` — gợi ý tức thì khi gõ · FR-SRC-05
+
+```http
+GET /api/v1/search/suggestions?q=ha&limit=8
+```
+
+Hình dạng: `SearchSuggestionResponse` trong `search.yaml` (contract 1.14.0). Đây **không** phải một chế độ của `/search`: khớp chữ, không điểm số, không embed, không kho vector.
+
+| Hạng mục | Quy tắc |
+|---|---|
+| Nguồn | `UnitIndex` đang phục vụ: tên điểm đến (cùng giá trị và số đếm với `/destinations`) và tên search unit còn bán. Không có vé máy bay, hạng phòng, chuyến bay hay unit `available = false` |
+| Khớp | Sau `fold` (bỏ dấu, chữ thường): hạng 0 tên bắt đầu bằng truy vấn · hạng 1 truy vấn khớp từ đầu một từ · hạng 2 mọi token của truy vấn là tiền tố của một từ trong tên. Không khớp giữa từ ("ha" ≠ "nhạc") |
+| Xếp và chia | Nhóm theo thứ tự điểm đến, `hotel`, `attraction`, `golf`, `combo`; trong nhóm theo hạng khớp, rồi độ phổ biến (`BuildPopularity`), rồi tên ngắn hơn. Chia chỗ theo vòng giữa các nhóm đến `limit` (mặc định 8, tối đa 10), nên một nhóm đông không đẩy nhóm khác ra |
+| Truy vấn ngắn | Dưới 2 ký tự chữ/số sau `fold` → `200` với `suggestions: []`, không phải lỗi. `q` thiếu, dài hơn 100 ký tự hoặc `limit` ngoài 1–10 → `422 VALIDATION_ERROR` |
+| Ghi hành vi | **Không** ghi event `search` sang CDP và không ghi `app.search_logs`: Web gọi theo từng lần gõ. Không cần JWT |
+| Bộ nhớ đệm | LRU trong tiến trình theo `(fold(q), limit)`, dựng lại cùng mỗi lần catalog nạp lại; response có `Cache-Control: public, max-age=300` (RecSys chưa sẵn sàng thì trả rỗng và không có header này) |
+| Ngân sách | p95 ≤ 250 ms (AC-SRC-02). Không gọi dịch vụ ngoài nên không chịu độ trễ Weaviate/Cohere ở §7.1 |
+
+Code: `domain/search/suggest.py`, `application/search/suggest.py`, `api/v1/routes/search.py`.
+
 ## 4. Recommendation engine
 
 ### 4.1. Endpoint

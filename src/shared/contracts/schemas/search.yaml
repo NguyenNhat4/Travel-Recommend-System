@@ -363,3 +363,57 @@ SearchResponse:
   description: >-
     [C4] Bất biến: sum(facets.taxonomy) == total. total và facets KHÔNG đổi khi
     thay limit/offset. total, facets và results phải dùng cùng filter và cùng cutoff.
+
+# Gợi ý tức thì khi gõ (FR-SRC-05, contract 1.14.0). Khớp chữ trên catalog, không có điểm số.
+SearchSuggestion:
+  type: object
+  additionalProperties: false
+  required:
+  - type
+  - label
+  properties:
+    type:
+      type: string
+      enum:
+      - destination
+      - product
+      description: >-
+        destination: một điểm đến chuẩn hoá của catalog (cùng giá trị với /destinations).
+        product: một search unit (property, vé tham quan, sân golf, combo); không có vé máy bay.
+    label:
+      type: string
+      minLength: 1
+      description: Tên hiển thị, giữ nguyên dấu. Web tự in đậm phần khớp với chữ đang gõ.
+    productId:
+      type: string
+      description: Chỉ có khi type = product.
+    taxonomy:
+      $ref: ../openapi.yaml#/components/schemas/Taxonomy
+      description: Chỉ có khi type = product.
+    destination:
+      type: [string, 'null']
+      description: Điểm đến của sản phẩm. Chỉ có khi type = product.
+    productCount:
+      type: integer
+      minimum: 0
+      description: Số search unit tại điểm đến. Chỉ có khi type = destination.
+
+SearchSuggestionResponse:
+  type: object
+  required:
+  - query
+  - suggestions
+  properties:
+    query:
+      type: string
+      description: Chữ đã nhận, sau khi gộp khoảng trắng.
+    suggestions:
+      type: array
+      maxItems: 10
+      description: >-
+        Thứ tự hiển thị: điểm đến trước, rồi sản phẩm theo taxonomy (hotel, attraction, golf, combo);
+        trong mỗi nhóm, khớp ở đầu tên đứng trước.
+      items:
+        $ref: ../openapi.yaml#/components/schemas/SearchSuggestion
+    requestId:
+      type: string

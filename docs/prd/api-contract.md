@@ -73,6 +73,7 @@ Các API trả về danh sách sử dụng cơ chế phân trang dựa trên `pa
   }
   ```
 - **Response Payload:** Trả về danh sách sản phẩm kèm điểm tương đồng ngữ nghĩa (`similarityScore`) và nhãn tiện ích nổi bật.
+- **Gợi ý khi gõ:** `GET /api/v1/search/suggestions?q=ha&limit=8` — trả tối đa 10 gợi ý, mỗi gợi ý có loại (`destination` hoặc `product`), nhãn hiển thị và, với sản phẩm, `productId` cùng `taxonomy`. Không cần đăng nhập, không ghi hành vi. Hình dạng chính xác ở `src/shared/contracts/openapi.yaml`.
 
 ### 2.4. Phân Nhóm Gợi Ý Cá Nhân Hóa (`/api/v1/recommendations`)
 - **Endpoint:** `GET /api/v1/recommendations`

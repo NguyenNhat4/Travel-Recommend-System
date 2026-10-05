@@ -13,6 +13,8 @@ import { VerticalChips } from '../layout/nav/VerticalChips';
 import { categoryShortcuts } from '../layout/nav/navConfig';
 import { CatalogShelf } from '../../features/catalog/landing/ProductShelf';
 import { DestinationTiles } from '../../features/catalog/landing/DestinationTiles';
+import { InstantSearchPanel } from '../../features/search/instant/InstantSearchPanel';
+import { useInstantSearchBox } from '../../features/search/instant/useInstantSearchBox';
 
 /** Gợi ý cá nhân hóa quá 3 giây thì ẩn khối và hiện dòng "Thử lại" (frontend §6.4 RECOMMENDATION_TIMEOUT_MS). */
 const RECOMMENDATION_TIMEOUT_MS = 3000;
@@ -129,11 +131,19 @@ export const HomeView: React.FC = () => {
   const recommendations = recResponse?.recommendations ?? [];
   const excludedVerticals = recResponse?.diagnostics.excludedVerticals ?? [];
 
+  // Gợi ý tức thì khi gõ (FR-SRC-05): chọn điểm đến hoặc từ khoá thì tìm như Enter, chọn sản phẩm thì mở trang chi tiết.
+  const { containerRef: instantContainerRef, ...instant } = useInstantSearchBox({
+    value: aiQuery,
+    onSearch: (query) => {
+      showToast(`Đang tìm kiếm: "${query.slice(0, 32)}..."`);
+      navigate(`/search?q=${encodeURIComponent(query)}`);
+    },
+    onOpenProduct: (productId) => navigate(`/product/${encodeURIComponent(productId)}`),
+  });
+
   const submitAi = (event: React.FormEvent) => {
     event.preventDefault();
-    const query = aiQuery.trim() || placeholder || 'Resort V-OTA';
-    showToast(`Đang tìm kiếm: "${query.slice(0, 32)}..."`);
-    navigate(`/search?q=${encodeURIComponent(query)}`);
+    instant.search(aiQuery.trim() || placeholder || 'Resort V-OTA');
   };
 
   return (
@@ -152,7 +162,8 @@ export const HomeView: React.FC = () => {
           <div className="absolute inset-0 bg-gradient-to-b from-slate-900/60 via-slate-900/30 to-slate-950/80" />
         </div>
 
-        <div className="relative z-10 mx-auto flex w-full max-w-5xl flex-col items-center gap-6 text-center">
+        {/* z-20: panel gợi ý của ô tìm kiếm phải nằm trên dải danh mục (z-10) ngay bên dưới hero. */}
+        <div className="relative z-20 mx-auto flex w-full max-w-5xl flex-col items-center gap-6 text-center">
           <VerticalChips activeGroup={null} />
           <div>
             <h1 className="type-hero text-white drop-shadow-md">
@@ -164,6 +175,7 @@ export const HomeView: React.FC = () => {
           </div>
 
           <div className="w-full max-w-4xl space-y-3">
+            <div ref={instantContainerRef} className="relative">
             <form
               onSubmit={submitAi}
               role="search"
@@ -172,7 +184,8 @@ export const HomeView: React.FC = () => {
               <input
                 type="text"
                 value={aiQuery}
-                onChange={(e) => setAiQuery(e.target.value)}
+                onChange={(e) => { setAiQuery(e.target.value); instant.onType(); }}
+                {...instant.inputProps}
                 aria-label="Mô tả chuyến đi bạn muốn"
                 placeholder={placeholder || 'Hỏi AI: Tìm resort V-OTA view biển cho gia đình 4 người...'}
                 className="min-w-0 flex-1 truncate bg-transparent pl-3.5 text-base font-medium text-slate-800 outline-none placeholder:text-slate-500 sm:pl-4"
@@ -185,6 +198,8 @@ export const HomeView: React.FC = () => {
                 <Search className="h-5 w-5" aria-hidden="true" />
               </button>
             </form>
+            {instant.open && <InstantSearchPanel {...instant.panel} />}
+            </div>
 
             <div className="flex flex-wrap items-center justify-center gap-2 text-[13px]">
               <span className="font-medium text-white/80 drop-shadow">Gợi ý câu hỏi:</span>
@@ -192,6 +207,7 @@ export const HomeView: React.FC = () => {
                 <Link
                   key={chip}
                   href={`/search?q=${encodeURIComponent(chip)}`}
+                  onClick={() => instant.remember(chip)}
                   className="inline-flex min-h-10 items-center rounded-full border border-white/25 bg-white/20 px-4 font-medium text-white backdrop-blur-md transition-colors duration-200 hover:bg-white/35 focus-visible:outline-2 focus-visible:outline-white"
                 >
                   {chip}
