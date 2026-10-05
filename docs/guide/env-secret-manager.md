@@ -72,3 +72,16 @@ Rồi chạy lại workflow tương ứng (`workflow_dispatch`) hoặc deploy b�
 - Rollback của script deploy chỉ khôi phục image, không khôi phục env. Quay lại env cũ: `sudo cp -p <file>.prev <file>` trên VM, hoặc thêm lại version cũ của secret.
 - Chưa quản lý bằng cách này: file PEM của JWT (`/etc/vota/backend-secrets/`), `/etc/vota/daily.env` (job legacy).
 - Quyền đọc theo cả file, không theo từng key; ai đọc được secret thì đọc được toàn bộ khóa trong đó.
+
+## DSN cho migration lúc deploy Backend
+
+Khác các secret ở trên (nội dung file env, ghi lên VM), secret này chỉ chứa **một dòng** DSN của role có quyền tạo bảng trong schema `app` (không phải `DATABASE_URL` của backend). Job deploy Backend đọc nó bằng danh tính CI rồi đưa cho `deploy-backend-vm.sh --migrate-dsn-stdin` qua stdin của SSH; không có file nào trên VM. Script chạy `db/migrations/run.py` bằng image sắp deploy, **trước** khi thay container.
+
+```bash
+printf '%s' 'postgresql://USER:PASS@127.0.0.1:15432/vota' | \
+  gcloud secrets create vota-migrate-database-url --project <project> --data-file=-
+gcloud secrets add-iam-policy-binding vota-migrate-database-url --project <project> \
+  --member="serviceAccount:<GCP_CI_SERVICE_ACCOUNT>" --role="roles/secretmanager.secretAccessor"
+```
+
+Cổng phải khớp `GCE_DB_TUNNEL_PORT` (mặc định 15432). Đổi tên secret thì đặt biến `GCE_MIGRATE_DB_SECRET` ở Environment `staging`; mặc định là `vota-migrate-database-url`. Khác các secret trên, bước này **không** tự bỏ qua khi thiếu: secret thiếu, rỗng hoặc không phải DSN thì job dừng trước khi đụng tới VM. Đổi mật khẩu: `gcloud secrets versions add …`.
