@@ -12,8 +12,8 @@ chỉ dẫn thứ tự đọc tối thiểu và chọn thêm tài liệu/source 
 | [state-fields.md](state-fields.md) | Tra theo từng field của `AgentState`: node nào ghi, node nào đọc, dùng để làm gì |
 | [field-review.md](field-review.md) | Review field của request/response và `AgentState`: đề xuất giữ, bỏ, gộp — đã chốt và áp dụng 2026-09-28 |
 | [response-and-errors.md](response-and-errors.md) | `status` so với `error.code`, luồng sau khi nhập giá trị không hợp lệ |
-| [golden-run.md](golden-run.md) | Chạy bộ golden: chuẩn bị Postgres/backend, các cờ của runner, đọc kết quả, luật chấm, ngưỡng kết luận, lỗi thường gặp |
-| [golden-dataset-how-to-add-more-case.md](golden-dataset-how-to-add-more-case.md) | Cấu trúc bộ golden 14 case (mỗi category một case khó nhất), các khoá `expect`, cách thêm case và xử lý khi case fail |
+| [golden-run.md](golden-run.md) | Chạy bộ test case: chuẩn bị Postgres/backend, các cờ của runner, đọc kết quả, luật chấm, ngưỡng kết luận, lỗi thường gặp |
+| [golden-dataset-how-to-add-more-case.md](golden-dataset-how-to-add-more-case.md) | Cấu trúc dataset test case, các khoá `expect`, cách thêm case và xử lý khi case fail |
 | [presentation-slides.html](presentation-slides.html) | Bộ 14 slide giới thiệu agent (mở bằng trình duyệt, phím ←/→); số liệu golden ngày 2026-09-24 |
 | [presentation-script.md](presentation-script.md) | Kịch bản nói theo từng slide, phần demo trực tiếp và câu hỏi dễ gặp |
 
@@ -50,10 +50,10 @@ Runner dựng graph trong tiến trình của nó và luôn gọi Search/Recomme
 bản (golden-run.md). Staging/production chạy `ITINERARY_DATA_MODE=inprocess`, nên golden không đo đường gọi engine
 trong tiến trình; hai đường được đối chiếu output bằng test parity trong `src/backend/tests`.
 
-Ghi `src/evaluation/reports/eval-YYYY-MM-DD-golden.md` (commit được) và `.json` cùng tên (gitignored).
-`--only G-051,G-062` chạy một phần; `--sweep` thêm một lượt cho mọi điểm đến thật hiện có trong catalog;
+Ghi `src/evaluation/reports/eval-YYYY-MM-DD-agent-test-cases.md` (commit được) và `.json` cùng tên (gitignored).
+`--only TC-01,TC-02` chạy một phần; `--sweep` thêm một lượt cho mọi điểm đến thật hiện có trong catalog;
 `--repeat N` chạy lại để soi độ ổn định của bước `classify`; `--trace-project <tên>` gửi trace từng
-lượt lên LangSmith project đó (key lấy từ `.env`), tên trace dạng `G-059#3 <câu nhập>`, tag `golden`,
+lượt lên LangSmith project đó (key lấy từ `.env`), tên trace dạng `TC-01#3 <câu nhập>`, tag `golden`,
 id case và category. Runner không qua `lifespan` nên không bật cờ này thì không có trace nào.
 
 ## Đọc input/output từng node bằng LangSmith

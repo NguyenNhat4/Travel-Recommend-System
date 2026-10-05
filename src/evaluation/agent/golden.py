@@ -1,7 +1,7 @@
 """Golden dataset runner cho Itinerary Agent.
 
 Chấm theo docs/prd/test-plan.md §2.4: Tool Calling Accuracy ≥ 95%, Grounding Rate 100%,
-Structured Output Integrity 100%. Dataset: src/evaluation/datasets/itinerary_agent_golden.yaml.
+Structured Output Integrity 100%. Dataset: src/evaluation/datasets/agent_test_cases_nhat.yaml.
 Chi tiết luật chấm và cách chạy: src/evaluation/agent/README.md.
 
 Cần trước khi chạy:
@@ -17,8 +17,8 @@ dựng dependency ở mode `http`. Runner luôn đi đường HTTP này, bất k
 
 Usage:
     .venv/bin/python -m src.evaluation.agent.golden \\
-        --dataset src/evaluation/datasets/itinerary_agent_golden.yaml \\
-        --api-base-url http://127.0.0.1:8000 [--only G-051,G-062] [--sweep] [--repeat N] \\
+        --dataset src/evaluation/datasets/agent_test_cases_nhat.yaml \\
+        --api-base-url http://127.0.0.1:8000 [--only TC-01,TC-02] [--sweep] [--repeat N] \\
         [--trace-project claude-golden]
 """
 
@@ -725,11 +725,9 @@ def render_markdown(report: dict[str, Any], commit_sha: str) -> str:
 # -------------------------------------------------------------------------------------------- cli
 
 
-# Bộ mặc định là các case người dùng tái hiện (agent-test-cases-nhat.md); bộ golden đầy đủ giữ lại để chạy hồi quy
-# bằng `--dataset`, vì test-plan §2.4 vẫn yêu cầu bộ benchmark khoảng 50 câu.
+# Bộ mặc định là các case người dùng tái hiện (agent-test-cases-nhat.md).
 DEFAULT_DATASET = "src/evaluation/datasets/agent_test_cases_nhat.yaml"
-FULL_GOLDEN_DATASET = "src/evaluation/datasets/itinerary_agent_golden.yaml"
-REPORT_SLUGS = {"itinerary_agent_golden.yaml": "golden", "agent_test_cases_nhat.yaml": "agent-test-cases"}
+REPORT_SLUGS = {"agent_test_cases_nhat.yaml": "agent-test-cases"}
 
 
 def report_slug(dataset: str) -> str:
@@ -816,7 +814,7 @@ async def _main_async(args: argparse.Namespace) -> int:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--dataset", default=DEFAULT_DATASET,
-                        help="Mặc định bộ test case người dùng tái hiện; bộ golden đầy đủ: " + FULL_GOLDEN_DATASET)
+                        help="Mặc định bộ test case người dùng tái hiện.")
     parser.add_argument("--api-base-url", default="http://127.0.0.1:8000")
     parser.add_argument("--dsn", default=None, help="Mặc định dùng DATABASE_URL từ Settings.")
     parser.add_argument("--only", default=None, help="Danh sách id case, phân tách bằng dấu phẩy.")

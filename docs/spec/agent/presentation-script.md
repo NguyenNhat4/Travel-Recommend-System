@@ -1,6 +1,6 @@
 # Kịch bản thuyết trình Itinerary Agent
 
-Lời nói kèm theo bộ slide [presentation-slides.html](presentation-slides.html) (14 slide, mở bằng trình duyệt, phím ←/→ để chuyển). Phục vụ FR-AGT-01…05, NFR-REL-01 trong `docs/prd/requirements.md`. Số liệu slide 11–12 lấy từ `src/evaluation/reports/eval-2026-09-24-golden.md` (commit `601f112`, bộ 75 case, **trước khi** tách `classify`/`extract` và thêm câu hỏi gộp); chạy golden mới (bộ rút gọn 14 case) thì cập nhật hai slide đó và phần tương ứng ở đây.
+Lời nói kèm theo bộ slide [presentation-slides.html](presentation-slides.html) (14 slide, mở bằng trình duyệt, phím ←/→ để chuyển). Phục vụ FR-AGT-01…05, NFR-REL-01 trong `docs/prd/requirements.md`. Số liệu slide 11–12 lấy từ biên bản `eval-2026-09-24-golden.md` đã gỡ khỏi repo (xem git, commit `601f112`, bộ 75 case, **trước khi** tách `classify`/`extract` và thêm câu hỏi gộp); chạy golden mới (bộ rút gọn 14 case) thì cập nhật hai slide đó và phần tương ứng ở đây.
 
 Thời lượng khoảng 15 phút + hỏi đáp. Câu trong ngoặc kép là gợi ý nói, không cần đọc nguyên văn.
 

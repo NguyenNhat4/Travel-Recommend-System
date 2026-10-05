@@ -259,14 +259,14 @@ class ConverseUnclearInputTests(unittest.TestCase):
         self.assertEqual(llm.calls, [])
 
 
-class GoldenQueriesPassTier1Tests(unittest.TestCase):
-    """Không câu nào trong bộ golden của agent bị tầng 1 chặn nhầm (điều kiện merge của NFR-SEC-04)."""
+class AgentTestCaseQueriesPassTier1Tests(unittest.TestCase):
+    """Không câu nào trong bộ test case của agent bị tầng 1 chặn nhầm (điều kiện merge của NFR-SEC-04)."""
 
-    def test_no_golden_query_is_blocked(self):
+    def test_no_agent_test_case_query_is_blocked(self):
         import yaml
         from pathlib import Path
 
-        golden = Path(__file__).resolve().parents[4] / "evaluation" / "datasets" / "itinerary_agent_golden.yaml"
+        golden = Path(__file__).resolve().parents[4] / "evaluation" / "datasets" / "agent_test_cases_nhat.yaml"
         queries: list[str] = []
 
         def walk(node):

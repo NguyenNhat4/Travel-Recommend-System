@@ -13,7 +13,7 @@ from src.evaluation.agent.golden import (
     gate_schema, gate_secrets, judge_findings, load_dataset, resolve_dates, schedule_findings,
 )
 
-DATASET_PATH = Path(__file__).resolve().parents[1] / "datasets" / "itinerary_agent_golden.yaml"
+DATASET_PATH = Path(__file__).resolve().parents[1] / "datasets" / "agent_test_cases_nhat.yaml"
 
 FAKE_SETTINGS = SimpleNamespace(
     openai_api_key="sk-fake-test-key-0123456789", gemini_api_key="", anthropic_api_key="", langsmith_api_key="",
@@ -24,38 +24,11 @@ class DatasetTests(unittest.TestCase):
     def setUp(self):
         self.cases = load_dataset(DATASET_PATH)
 
-    def test_has_exactly_one_case_per_category_with_unique_ids(self):
-        """Bộ rút gọn: mỗi category một case (case agent dễ fail nhất); thêm case thứ hai vào cùng category là phá quy ước."""
+    def test_case_ids_are_unique(self):
         self.assertEqual(len({c.id for c in self.cases}), len(self.cases))
-        categories = [c.category for c in self.cases]
-        self.assertEqual(len(categories), len(set(categories)), "category có hơn một case")
-        self.assertEqual(len(self.cases), 14)
-
-    def test_a_start_date_question_is_answered_before_the_expected_result(self):
-        """AC-AGT-01: lượt hỏi ngày đi không có sản phẩm; kỳ vọng kết quả nằm ở lượt trả lời sau nó."""
-        asks = 0
-        for case in self.cases:
-            for index, turn in enumerate(case.turns):
-                if "startDate" in turn.expect.get("missingFieldsInclude", []):
-                    asks += 1
-                    self.assertEqual(turn.expect.get("toolCalled"), False, f"{case.id}: lượt hỏi ngày không được gọi tool")
-                    self.assertNotIn("minActivities", turn.expect)
-        self.assertGreaterEqual(asks, 5)
-
-    def test_clear_requests_state_their_start_date_with_a_placeholder_and_check_the_extraction(self):
-        """Yêu cầu đầy đủ nêu ngày đi tường minh (không cũ theo thời gian) và kiểm `intent.startDate` chính xác."""
-        checked = 0
-        for case in self.cases:
-            if case.category != "clear_request":
-                continue
-            checked += 1
-            turn = case.turns[0]
-            self.assertRegex(turn.message, r"\{today\+\d+\}", f"{case.id}: câu chưa có ngày đi")
-            self.assertRegex(turn.expect["intent"]["startDate"], r"^\{today\+\d+:iso\}$", f"{case.id}: chưa kiểm startDate")
-        self.assertGreaterEqual(checked, 1)
 
     def test_every_date_placeholder_in_the_dataset_resolves(self):
-        today = date(2026, 9, 25)
+        today = date(2026, 10, 2)
         for case in self.cases:
             for turn in case.turns:
                 resolved = json.dumps([resolve_dates(turn.message, today), resolve_dates(turn.expect, today)],
@@ -362,10 +335,6 @@ class NewExpectKeyTests(unittest.TestCase):
         self.assertEqual(dataset_findings(response, 200, [], expect, {},
                                           {"get_similar_products", "search_products"}), [])
 
-    def test_swap_case_expects_the_similar_tool(self):
-        case = next(c for c in load_dataset(DATASET_PATH) if c.id == "G-076")
-        self.assertEqual(case.turns[1].expect["toolsInclude"], ["get_similar_products"])
-
 
 if __name__ == "__main__":
     unittest.main()
@@ -400,7 +369,7 @@ class ResolveDatesTests(unittest.TestCase):
         self.assertEqual(resolve_dates("ngày {today+20:dm}, 2 người lớn", self.today), "ngày 15/10, 2 người lớn")
 
 
-AGENT_CASES_PATH = DATASET_PATH.parent / "agent_test_cases_nhat.yaml"
+AGENT_CASES_PATH = DATASET_PATH
 
 
 def _form_response(question, default, suggested=("Đà Nẵng", "Nha Trang", "Phú Quốc"), form=True):
@@ -492,7 +461,6 @@ class JudgeFindingsTests(unittest.IsolatedAsyncioTestCase):
 
 class ReportSlugTests(unittest.TestCase):
     def test_each_dataset_writes_its_own_report(self):
-        from src.evaluation.agent.golden import DEFAULT_DATASET, FULL_GOLDEN_DATASET, report_slug
+        from src.evaluation.agent.golden import DEFAULT_DATASET, report_slug
         self.assertEqual(report_slug(DEFAULT_DATASET), "agent-test-cases")
-        self.assertEqual(report_slug(FULL_GOLDEN_DATASET), "golden")
         self.assertEqual(report_slug("x/my_cases.yaml"), "my-cases")

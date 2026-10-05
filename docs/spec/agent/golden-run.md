@@ -2,12 +2,13 @@
 
 Phục vụ `docs/prd/test-plan.md` §2.4 và FR-AGT-01..05, NFR-REL-01, NFR-SEC-01 trong `docs/prd/requirements.md`.
 
-Hướng dẫn chạy bộ đánh giá tự động. Có hai dataset:
+Hướng dẫn chạy bộ đánh giá tự động. Dataset duy nhất hiện có:
 
 | Dataset | Nội dung | Chạy |
 |---|---|---|
-| `src/evaluation/datasets/agent_test_cases_nhat.yaml` (**mặc định**) | TC-01..TC-03: lỗi người dùng tái hiện (`src/evaluation/agent/agent-test-cases-nhat.md`), có tiêu chí LLM giám khảo | `.venv/bin/python -m src.evaluation.agent.golden` |
-| `src/evaluation/datasets/itinerary_agent_golden.yaml` | Bộ golden đầy đủ (benchmark test-plan §2.4), chạy hồi quy | thêm `--dataset src/evaluation/datasets/itinerary_agent_golden.yaml` |
+| `src/evaluation/datasets/agent_test_cases_nhat.yaml` (**mặc định**) | TC-01, TC-02, TC-03, TC-10: lỗi người dùng tái hiện (`src/evaluation/agent/agent-test-cases-nhat.md`), có tiêu chí LLM giám khảo | `.venv/bin/python -m src.evaluation.agent.golden` |
+
+Bộ golden cũ (`itinerary_agent_golden.yaml`, case `G-NNN`) đã bị gỡ; muốn xem lại thì lấy từ lịch sử git.
 
 Cấu trúc case và cách thêm case:
 [golden-dataset-how-to-add-more-case.md](golden-dataset-how-to-add-more-case.md). Luật chấm: mục 4 bên dưới.
@@ -73,19 +74,18 @@ Response phải có `"status":"ready"`, `"llmMode":"live"` và `"dataMode"` là 
 .venv/bin/python -m src.evaluation.agent.golden
 ```
 
-Lệnh trên chạy bộ mặc định (3 case, 9 lượt, khoảng 2 phút). Bộ golden đầy đủ (79 case) chạy bằng
-`--dataset src/evaluation/datasets/itinerary_agent_golden.yaml`, mất khoảng 6 phút.
+Lệnh trên chạy bộ mặc định (`agent_test_cases_nhat.yaml`).
 
 | Cờ | Tác dụng | Ví dụ |
 |---|---|---|
 | `--sweep` | Thêm hai lượt (`"<điểm đến> 2 ngày"` rồi `"chưa chốt ngày đi"`) cho mọi điểm đến trong catalog (35 điểm, tổng 93 lượt; chưa đo thời gian) | `--sweep` |
-| `--only` | Chỉ chạy các case liệt kê, cách nhau bằng dấu phẩy | `--only G-047,G-072` |
+| `--only` | Chỉ chạy các case liệt kê, cách nhau bằng dấu phẩy | `--only TC-01,TC-02` |
 | `--repeat N` | Chạy lại các case đã chọn N lần, để đo độ ổn định | `--repeat 5` |
 | `--trace-project` | Gửi trace từng lượt lên LangSmith project này (key lấy từ `.env`) | `--trace-project claude-golden` |
 | `--api-base-url` | Địa chỉ backend, mặc định `http://127.0.0.1:8000` | |
 | `--dataset` | File dataset khác | `--dataset path/to.yaml` |
 | `--timeout` | Giới hạn giây cho mỗi lượt, mặc định 90 | |
-| `--report-slug` | Tên biên bản `eval-<ngày>-<slug>.md`; mặc định suy từ dataset (`agent-test-cases` cho bộ mặc định, `golden` cho bộ đầy đủ) | `--report-slug thu-nghiem` |
+| `--report-slug` | Tên biên bản `eval-<ngày>-<slug>.md`; mặc định suy từ dataset (`agent-test-cases` cho bộ mặc định) | `--report-slug thu-nghiem` |
 | `--judge-model` | Model của LLM giám khảo (khoá `judge`); mặc định cùng model với agent, nhiệt độ 0 | `--judge-model gpt-4.1` |
 
 Các cách chạy thường dùng:
@@ -95,16 +95,13 @@ Các cách chạy thường dùng:
 .venv/bin/python -m src.evaluation.agent.golden --sweep --trace-project claude-golden
 
 # Thử case vừa thêm
-.venv/bin/python -m src.evaluation.agent.golden --only G-051 --repeat 3 --trace-project claude-golden
+.venv/bin/python -m src.evaluation.agent.golden --only TC-10 --repeat 3 --trace-project claude-golden
 
-# Bộ mặc định (TC-01..TC-03), mỗi case 3 lần, kèm giám khảo
+# Bộ mặc định, mỗi case 3 lần, kèm giám khảo
 .venv/bin/python -m src.evaluation.agent.golden --repeat 3 --trace-project nhat-agent-tc
 
-# Bộ golden đầy đủ
-.venv/bin/python -m src.evaluation.agent.golden --dataset src/evaluation/datasets/itinerary_agent_golden.yaml
-
 # Đo tỷ lệ fail của các case hay dao động
-.venv/bin/python -m src.evaluation.agent.golden --only G-047,G-072 --repeat 5
+.venv/bin/python -m src.evaluation.agent.golden --only TC-01,TC-02 --repeat 5
 ```
 
 Runner không tự gửi trace. Không có `--trace-project` thì LangSmith không ghi lượt nào.
@@ -130,13 +127,13 @@ Exit code `0` khi mọi lượt PASS và ba chỉ số đạt ngưỡng; `1` khi
 
 Biên bản ghi vào `src/evaluation/reports/`:
 
-- `eval-<ngày>-golden.md`: commit, model, ba chỉ số, latency p50/p95/max, danh sách lượt FAIL kèm lý do.
+- `eval-<ngày>-agent-test-cases.md`: commit, model, ba chỉ số, latency p50/p95/max, danh sách lượt FAIL kèm lý do.
   Commit file này cùng thay đổi.
-- `eval-<ngày>-golden.json`: dữ liệu thô từng lượt, đã gitignore.
+- `eval-<ngày>-agent-test-cases.json`: dữ liệu thô từng lượt, đã gitignore.
 
 Chạy nhiều lần trong cùng ngày thì file bị ghi đè; biên bản còn lại là của lần chạy cuối.
 
-Trên LangSmith, mỗi lượt là một trace tên `G-073#2 chưa chốt ngày đi`, gắn tag `golden`, id case và category.
+Trên LangSmith, mỗi lượt là một trace tên `TC-01#2 Đổi ngày`, gắn tag `golden`, id case và category.
 Lọc theo id case để xem đúng lượt đó; mở node `classify` để xem nhãn phân luồng, node `extract` để xem LLM trích ra gì, node `tool` để xem tool plan.
 
 Khi có lượt FAIL, xác định là kỳ vọng sai, lỗi agent hay nhiễu LLM theo
@@ -151,13 +148,8 @@ chí không đạt, hoặc giám khảo lỗi, thành finding `[judge] <tiêu ch
 cho check tất định, không thay chúng: kết luận của LLM dao động giữa các lần chạy, nên chạy kèm `--repeat` và đọc lý do
 trước khi kết luận. Tiêu chí bắt đầu bằng "Nếu" chỉ áp dụng khi điều kiện đúng.
 
-Dataset: `src/evaluation/datasets/itinerary_agent_golden.yaml` — 76 case, một số đa lượt (FR-AGT-01,
-FR-AGT-05). Runner: `src/evaluation/agent/golden.py`.
-
-*(Ghi chú đối chiếu 2026-09-29: tài liệu này từng mô tả một bộ rút gọn 14 case — xem
-`history/2026-09-25-rut-gon-golden-14-case.md` — nhưng dataset thực tế trên nhánh này chưa bao giờ dưới 75
-case; bản rút gọn hoặc chưa từng được áp dụng vào file, hoặc đã bị một lần merge sau đó ghi đè mà không ai
-cập nhật lại tài liệu. Số liệu ở đây bám theo file `.yaml` thật, không theo mô tả cũ.)*
+Dataset: `src/evaluation/datasets/agent_test_cases_nhat.yaml` (FR-AGT-01, FR-AGT-05). Runner:
+`src/evaluation/agent/golden.py`.
 
 Vì chạy trên catalog thật (dữ liệu đổi theo lần seed), case **không khoá `productId` hay tên sản phẩm cụ
 thể** — chỉ khoá bất biến. Runner tự kiểm bốn nhóm quy tắc:
@@ -213,23 +205,7 @@ Mục tiêu theo dõi — fail thì ghi nhận, không chặn:
 | Hầu hết case ra `FALLBACK` hoặc sai điểm đến | Backend chạy khi Postgres tắt, nên recsys bị tắt | Bật Postgres rồi khởi động lại backend; kiểm log có `startup.recsys.index.load.ready` |
 | `Không dựng được LLM` | `ITINERARY_USE_LLM=false` hoặc thiếu key | Sửa `.env` |
 | `--trace-project cần LANGSMITH_API_KEY` | Thiếu key LangSmith | Thêm `LANGSMITH_API_KEY` vào `.env` |
-| G-047 (và các case đã bị bỏ khỏi bộ rút gọn như G-013, G-032) lúc PASS lúc FAIL | Bước `classify` phân loại không ổn định | Đo bằng `--repeat 5`; xem mục 7.1 |
+| Một case lúc PASS lúc FAIL | Bước `classify` phân loại không ổn định | Đo bằng `--repeat 5` |
 
 Đừng đọc P50 hay tổng token của project LangSmith dev (`nhat-23-9`) như số đo agent. `pytest src/backend/tests`
 gửi khoảng 140 trace giả (0 token, khoảng 30ms) lên project đó mỗi lần chạy.
-
-### 7.1. Lỗi đã phát hiện qua bộ golden và trạng thái
-
-Ghi lại để không lặp lại điều tra; chi tiết ở `history/2026-09-23-golden-dataset-itinerary-agent.md`.
-
-- **Đã sửa — planner bịa tham số `excludeProducts`.** Khi `constraints.exclude_products` khác rỗng, bước
-  lập tool plan thêm `excludeProducts` (không có trong `SearchRequest`, `additionalProperties: false`),
-  làm huỷ cả plan → 503 `LLM_UNAVAILABLE` ở lượt sau (ví dụ "rút ngắn còn 2 ngày"). Nay `validated_plan`
-  bỏ khoá không có trong hợp đồng tool; loại trừ sản phẩm vẫn áp dụng sau truy xuất.
-- **Đã sửa — mất `party` khi nói "N người lớn".** LLM gán `FAMILY_WITH_KIDS` với `children=0`, bị
-  `normalize_party` xoá. `EXTRACT_PROMPT` nay quy định type cho số người lớn không kèm trẻ em.
-- **Đã sửa (lỗi runner) — G-042.** `conversationId` của lỗi có thể tiếp tục nằm trong `error.details`.
-- **Còn mở — nhiễu phân loại của `classify`.** G-047 (đặt phòng) thỉnh thoảng ra `NEEDS_CLARIFICATION` thay vì 400.
-  Cùng loại: G-032 (Bangkok, thỉnh thoảng ra `NEEDS_CLARIFICATION` thay vì 422) và G-013 (`tphcm`, khoảng 1/8 lần
-  ra `clarification_reason=conflict` dù LLM không báo conflict; nghi `_days_from_end_date`, chưa kiểm). Theo dõi
-  bằng `--repeat`.

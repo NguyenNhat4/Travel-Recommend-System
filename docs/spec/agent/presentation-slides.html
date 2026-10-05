@@ -521,7 +521,7 @@ pre.cmd{margin:0;background:var(--ink);color:var(--paper);border-radius:6px;padd
   </div>
   <pre class="cmd">uvicorn src.backend.app.main:app --reload --port 8000
 ASSISTANT_API_BASE_URL=http://127.0.0.1:8000/api/v1 streamlit run src/evaluation/agent/streamlit_app.py --server.port 8502
-python -m src.evaluation.agent.golden --only G-051,G-062   # --sweep · --repeat N · --trace-project &lt;tên&gt;</pre>
+python -m src.evaluation.agent.golden --only TC-01,TC-02   # --sweep · --repeat N · --trace-project &lt;tên&gt;</pre>
   <div class="foot"><span>Itinerary Agent</span><span>13</span></div>
 </section>
 
@@ -542,7 +542,7 @@ python -m src.evaluation.agent.golden --only G-051,G-062   # --sweep · --repeat
     </div>
     <div class="head" style="gap:18px;align-self:center">
       <span class="qa">Hỏi<br>&amp; đáp</span>
-      <p class="small">Tài liệu: <code>docs/spec/agent/</code> · <code>docs/spec/hop-dong-tich-hop-itinerary-assistant.md</code><br>Báo cáo: <code>src/evaluation/reports/eval-2026-09-24-golden.md</code></p>
+      <p class="small">Tài liệu: <code>docs/spec/agent/</code> · <code>docs/spec/hop-dong-tich-hop-itinerary-assistant.md</code><br>Báo cáo 24/09 đã gỡ khỏi repo (xem git, commit <code>601f112</code>)</p>
     </div>
   </div>
   <div class="foot"><span>Itinerary Agent</span><span>14</span></div>

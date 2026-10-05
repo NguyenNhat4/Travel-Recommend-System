@@ -44,4 +44,4 @@ Mỗi chi tiết vẫn chỉ hỏi lại khi câu hỏi trước chưa được 
 - `src/backend/app/agents/state.py`, `nodes.py`: lưu `details_pending` và lý do hỏi của lượt trước theo hội thoại (`intake` khôi phục, `finalize` lưu).
 - `src/backend/app/agents/steps/prompts.py`, `messages.py`, `conversation.py`, `turn_notes.py`: câu xác nhận (vi/en), tiêu đề, câu dự phòng, ghi chú lượt.
 - `docs/spec/agent/langgraph-nodes.md`, `docs/spec/agent/state-fields.md`, `docs/spec/hop-dong-tich-hop-itinerary-assistant.md`: cập nhật quy tắc hỏi.
-- Test: unit test cho `extract_result` (chen ngang, rút lại, trả lời "cứ lên lịch"), test đồ thị nhiều lượt cho TC-04 và TC-08; golden case tương ứng trong `src/evaluation/datasets/itinerary_agent_golden.yaml`.
+- Test: unit test cho `extract_result` (chen ngang, rút lại, trả lời "cứ lên lịch"), test đồ thị nhiều lượt cho TC-04 và TC-08; case tương ứng (TC-04, TC-08) trong `src/evaluation/datasets/agent_test_cases_nhat.yaml`.
