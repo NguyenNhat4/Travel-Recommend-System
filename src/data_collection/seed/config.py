@@ -152,6 +152,27 @@ BOUNCE_REASONS = ("mailbox_full", "invalid_address", "blocked")
 CAMPAIGN_NAMES = ("welcome", "hotel-weekend", "flight-flash-sale", "vinwonders-combo", "golf-open", "summer-beach",
                   "dormant-winback", "tier-upgrade", "autumn-getaway", "family-trip", "last-minute", "member-perk")
 
+# ================================================================== bộ đánh giá RecSys (KHÔNG phải seed demo)
+# Chuyến bỏ giỏ: xem + add_to_cart rồi không mua (không event_group_id, như app thật). Tắt ở seed demo (0.0).
+ABANDONED_CART_RATE = 0.0                 # xác suất chèn một lần bỏ giỏ trước mỗi chuyến có mua
+ABANDONED_SAME_DEST_RATE = 0.5            # lần bỏ giỏ cùng điểm đến với chuyến mua kế sau nó …
+ABANDONED_DAYS_BEFORE = (3, 60)           # … và xảy ra 3–60 ngày trước chuyến đó
+
+# Profile `eval-v2` (05/10/2026, người dùng chốt): bộ dữ liệu sinh RIÊNG để đánh giá đủ tín hiệu RecSys — khách quay lại (CF, chuyến
+# kế tiếp), bỏ giỏ, chuyến một loại đa dạng. Nạp vào database riêng, không phải demo / staging; db/verify.sql (cổng 2.000 khách,
+# 6.000–8.000 event, ≤ 15 event/khách) không áp cho bộ này. Ghi đè hằng ở trên khi chạy `seed_histories --profile eval-v2`.
+PROFILES = {
+    "eval-v2": {
+        "DEFAULT_USERS": 5_000,
+        "MAX_EVENTS_PER_USER": 40,
+        # hiệu chỉnh 05/10 (snapshot 30/09, as_of 05/10, seed 42): khách có mua quay lại ≥ 2 chuyến ≈ 40 %
+        "TRIPS_PER_STAGE": {"active": (0.50, 0.25, 0.15, 0.10), "dormant": (0.70, 0.30), "churned": (0.70, 0.30)},
+        "SINGLE_VERTICAL_WEIGHTS": {"hotel": 0.50, "ticket": 0.30, "flight": 0.20},
+        "VIEWS_PER_TRIP": (0.50, 0.30, 0.20),
+        "ABANDONED_CART_RATE": 0.22,      # ≈ 20 % số chuyến (lần bỏ giỏ / (lần bỏ giỏ + chuyến có mua)); 0,25 cho 22,5 %
+    },
+}
+
 # Tên cũ, giữ để không vỡ import bên ngoài.
 DEFAULT_ZIPF = ZIPF_S
 DEFAULT_VINPEARL_BOOST = VINPEARL_BOOST
@@ -163,3 +184,12 @@ def find_products(explicit: Path | None = None) -> Path | None:
     """Return the first usable real/synthetic catalog path."""
     candidates = (explicit,) if explicit else DEFAULT_PRODUCTS_CANDIDATES
     return next((path.resolve() for path in candidates if path and path.is_file()), None)
+
+# Additive staging batch, explicitly requested 05/10: 5,000 NEW customers,
+# exclude the four generated personas. Use valid catalog references/group IDs.
+PROFILES["append-v1"] = {
+    **PROFILES["eval-v2"],
+    "DEFAULT_USERS": 5_000 + len(PERSONAS),
+    "MESSY_PURCHASE_BAD_PRODUCT": 0.0,
+    "MESSY_DROP_GROUP": 0.0,
+}
