@@ -422,9 +422,8 @@ Backend đếm `clarification_rounds` theo hội thoại (0, 1, 2…), chỉ tă
   `startDate` = hôm nay theo giờ Việt Nam (không được sớm hơn `startDateMin`), `party` = 2 người lớn, `budget` = `null`
   (không giới hạn), `destination` = điểm đến đầu tiên trong `supported_destinations` nếu hội thoại đã từng gọi tool.
   Frontend tự nạp danh sách điểm đến cho ô chọn (`GET /destinations`, chỉ hiện vài điểm đến tiêu biểu, không đổ hết catalog)
-  và chặn tại chỗ: số ngày trong 1–7, `startDate ≥ startDateMin`. Bấm xác nhận dựng một câu yêu cầu hoàn chỉnh và **đặt vào ô
-  nhập tin nhắn, không tự gửi**; người dùng đọc lại, sửa nếu muốn rồi gửi như một lượt chat bình thường (không dùng
-  `intentOverride`). `suggestedValues` giữ nguyên hành vi cũ, không đổi.
+  và chặn tại chỗ: số ngày trong 1–7, `startDate ≥ startDateMin`. Bấm xác nhận dựng một câu yêu cầu hoàn chỉnh và **gửi
+  ngay** như một lượt chat bình thường (không dùng `intentOverride`). `suggestedValues` giữ nguyên hành vi cũ, không đổi.
 
 **Giá trị không hợp lệ thì hỏi lại (đề xuất `docs/prd/update-archive/2026-09-30-bao-loi-dau-vao-khong-hop-le.md`, đã áp dụng; thay `2026-09-30-hoi-lai-khi-ngay-di-da-qua.md`).**
 Không hợp lệ gồm: `startDate` sớm hơn hôm nay theo giờ Việt Nam, `days` ngoài 1–7, `party.adults` < 1 hoặc `party.children` < 0,

@@ -36,7 +36,7 @@ export function WidgetChat({ widget }: { widget: FloatingWidgetController }) {
           {messages.map((message) => (
             <div key={message.id} className={`flex min-w-0 ${message.sender === 'user' ? 'justify-end' : 'flex-col gap-3'}`}>
               {message.sender === 'assistant' && <AssistantHeader />}
-              <div className={`min-w-0 whitespace-pre-wrap break-words text-sm leading-7 sm:text-base ${message.sender === 'user' ? 'max-w-[88%] rounded-2xl rounded-tr-md bg-blue-600 px-4 py-3 text-white' : 'w-full text-slate-700'}`}>
+              <div className={`min-w-0 whitespace-pre-wrap break-words text-sm leading-7 sm:text-base ${message.sender === 'user' ? 'message-send-in max-w-[88%] rounded-2xl rounded-tr-md bg-blue-600 px-4 py-3 text-white' : 'w-full text-slate-700'}`}>
                 {message.sender === 'assistant'
                   ? (message.products
                     ? <WidgetNarration text={message.text} products={message.products}
