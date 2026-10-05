@@ -15,6 +15,8 @@
 __pycache__/
 *.py[cod]
 .venv/
+.venv-studio/
+.langgraph_api/
 venv/
 .pytest_cache/
 .mypy_cache/
