@@ -14,7 +14,21 @@ from src.backend.app.core.config import Settings
 LlmMode = Literal["live", "disabled", "unavailable"]
 
 GEMINI_DEFAULT_MODEL = "gemini-2.5-flash"
+OPENAI_DEFAULT_MODEL = "gpt-4o-mini"
 ANTHROPIC_DEFAULT_MODEL = "claude-sonnet-4-20250514"
+
+
+def chat_model_name(settings: Settings) -> str | None:
+    """Model thực sự được dùng: `ITINERARY_LLM_MODEL`, bỏ trống thì mặc định của provider được chọn."""
+    if settings.itinerary_llm_model:
+        return settings.itinerary_llm_model
+    if settings.gemini_api_key:
+        return GEMINI_DEFAULT_MODEL
+    if settings.openai_api_key:
+        return OPENAI_DEFAULT_MODEL
+    if settings.anthropic_api_key:
+        return ANTHROPIC_DEFAULT_MODEL
+    return None
 
 
 def build_chat_model(settings: Settings) -> Any | None:
@@ -48,7 +62,7 @@ def build_chat_model(settings: Settings) -> Any | None:
         except ImportError as exc:
             raise RuntimeError("Install: pip install langchain-openai") from exc
         return ChatOpenAI(
-            model=model or settings.model_name,
+            model=model or OPENAI_DEFAULT_MODEL,
             api_key=settings.openai_api_key,
             temperature=temperature,
         )

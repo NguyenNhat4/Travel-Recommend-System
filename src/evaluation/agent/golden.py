@@ -52,7 +52,7 @@ from src.backend.app.domain.itinerary.planning import (
     MAX_ACTIVITIES_PER_DAY, SLOT_TAXONOMIES, STAY_TAXONOMY, _stay_order,
 )
 from src.backend.app.infrastructure.clients.itinerary_http_clients import ItineraryHttpClients
-from src.backend.app.infrastructure.llm import build_chat_model
+from src.backend.app.infrastructure.llm import build_chat_model, chat_model_name
 from src.backend.app.infrastructure.persistence.conversation_store import InMemoryConversationStore
 from src.evaluation.agent.grounding import check_product_grounding, products_in_response
 
@@ -651,7 +651,7 @@ def build_report(results: list[TurnResult], settings: Any, mode: str, product_co
     return {
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "mode": mode,
-        "model": settings.itinerary_llm_model or settings.model_name,
+        "model": chat_model_name(settings),
         # Runner luôn gọi backend qua ItineraryHttpClients (build_runtime), bất kể ITINERARY_DATA_MODE của máy chạy.
         "dataMode": "http",
         "productCount": product_count,

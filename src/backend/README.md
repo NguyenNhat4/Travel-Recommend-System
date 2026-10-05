@@ -134,7 +134,7 @@ ITINERARY_USE_LLM=true          # false: không dựng client nào, không cần
 OPENAI_API_KEY=                 # thứ tự chọn provider: GEMINI -> OPENAI -> ANTHROPIC
 GEMINI_API_KEY=
 ANTHROPIC_API_KEY=
-ITINERARY_LLM_MODEL=            # bỏ trống: OpenAI dùng MODEL_NAME, provider khác dùng mặc định
+ITINERARY_LLM_MODEL=            # biến model duy nhất; bỏ trống: mỗi provider dùng mặc định
 ITINERARY_LLM_TEMPERATURE=0     # riêng của agent, không dùng chung LLM_TEMPERATURE
 ITINERARY_REDIS_URL=redis://:devpass@localhost:6379/2  # working memory 24h; bắt buộc production
 ```

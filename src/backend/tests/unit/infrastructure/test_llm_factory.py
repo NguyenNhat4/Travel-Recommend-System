@@ -13,7 +13,7 @@ from types import ModuleType, SimpleNamespace
 from unittest.mock import patch
 
 from src.backend.app.core.config import Settings
-from src.backend.app.infrastructure.llm import build_chat_model
+from src.backend.app.infrastructure.llm import build_chat_model, chat_model_name
 
 
 def settings(**overrides) -> Settings:
@@ -24,7 +24,6 @@ def settings(**overrides) -> Settings:
         "anthropic_api_key": "",
         "itinerary_llm_model": None,
         "itinerary_llm_temperature": 0.0,
-        "model_name": "gpt-4o-mini",
         # Không đọc .env của máy đang chạy: test phải quyết định hết cấu hình.
         "_env_file": None,
     }
@@ -72,13 +71,18 @@ class BuildChatModelTests(unittest.TestCase):
         self.assertEqual(llm.provider, "ChatAnthropic")
         self.assertEqual(calls[0]["api_key"], "a")
 
-    def test_openai_falls_back_to_model_name_then_honours_itinerary_llm_model(self):
+    def test_openai_uses_its_default_then_honours_itinerary_llm_model(self):
         mock, calls = fake_sdk("langchain_openai", "ChatOpenAI")
         with mock:
-            build_chat_model(settings(openai_api_key="o", model_name="gpt-4o-mini"))
-            build_chat_model(settings(openai_api_key="o", model_name="gpt-4o-mini",
-                                      itinerary_llm_model="gpt-4.1"))
+            build_chat_model(settings(openai_api_key="o"))
+            build_chat_model(settings(openai_api_key="o", itinerary_llm_model="gpt-4.1"))
         self.assertEqual([call["model"] for call in calls], ["gpt-4o-mini", "gpt-4.1"])
+
+    def test_chat_model_name_reports_the_model_build_chat_model_uses(self):
+        self.assertEqual(chat_model_name(settings(openai_api_key="o")), "gpt-4o-mini")
+        self.assertEqual(chat_model_name(settings(gemini_api_key="g", openai_api_key="o")), "gemini-2.5-flash")
+        self.assertEqual(chat_model_name(settings(openai_api_key="o", itinerary_llm_model="gpt-4.1")), "gpt-4.1")
+        self.assertIsNone(chat_model_name(settings()))
 
     def test_temperature_comes_from_the_itinerary_specific_setting(self):
         """Agent chỉ gọi structured output/tool calling, không dùng chung llm_temperature=0.7."""

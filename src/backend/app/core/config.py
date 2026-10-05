@@ -41,11 +41,11 @@ class Settings(BaseSettings):
     langsmith_api_key: str = ""
     langsmith_endpoint: str = "https://api.smith.langchain.com"
     langsmith_project: str = "default"
-    model_name: str = "gpt-4o-mini"
     llm_temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     # false = không dựng client LLM nào; app vẫn khởi động được không cần API key và request
     # itinerary trả 503 LLM_UNAVAILABLE có kiểm soát (hop-dong-tich-hop-itinerary-assistant.md §5.9).
     itinerary_use_llm: bool = True
+    # Model duy nhất của agent; bỏ trống thì mỗi provider dùng mặc định của mình (infrastructure/llm).
     itinerary_llm_model: str | None = None
     # Riêng của agent, không dùng chung llm_temperature (0.7): mọi lời gọi của agent là
     # structured output hoặc tool calling, cần quyết định ổn định.
