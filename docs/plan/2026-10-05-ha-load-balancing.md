@@ -44,9 +44,6 @@ Trạng thái phải nằm ngoài VM: session BFF, rate limit và working memory
 | 6.3 + 6.4 | pgbouncer sidecar (transaction pooling) trên mỗi VM + `LEADER_LOCK_DATABASE_URL` cho khoá leader; đã đo trước/sau (use case ở §3b) | Xong, test pass trên Postgres và pgbouncer thật, chưa apply |
 | 6.2 | `ops/promote-db-replica.sh`: tắt primary, nâng replica, đổi DNS bằng một lệnh (use case ở §3b) | Xong, test trên primary/replica thật, chưa chạy trên GCP |
 | 8 | Cảnh báo cho nhóm HA: số VM, chạm trần, 5xx LB, p95, uptime qua LB, Redis đầy (use case ở §3b) | Xong, test cấu trúc pass, chưa apply nên chưa xác nhận trên GCP |
-| 6 | DB: endpoint ổn định cho MIG (thay `vota-db-tunnel` trên 127.0.0.1:15432), cân nhắc Cloud SQL HA hoặc Patroni + pgbouncer | Chưa làm |
-| 7 | Cloud NAT cho VM không có IP public; tạo secret `vota-ha-backend-env` | Chưa làm |
-| 8 | Alert MIG: số VM khỏe < min, autoscaler chạm max, 5xx của LB | Chưa làm |
 
 ## 3b. Quy ước: mỗi vấn đề HA phải kèm một use case cụ thể
 
@@ -195,12 +192,17 @@ Chưa kiểm: tên và nhãn của `redis.googleapis.com/stats/memory/usage_rati
 
 Sau khi sửa: 6 cảnh báo cho nhóm, gửi tới `alert_emails` hoặc channel có sẵn: số VM dưới `min_replicas` (kèm điều kiện vắng mặt khi nhóm bị xoá sạch), autoscaler chạm `max_replicas` 15 phút, tỷ lệ 5xx của LB trên 2% (5 phút), p95 backend trên 800 ms (10 phút), uptime check `/health/ready` qua LB, và Redis trên 80% bộ nhớ. Trong tình huống trên, cảnh báo "chạm max" kêu lúc 20:25, p95 lúc 20:20 và 5xx lúc 20:15, thay vì không có gì.
 
-## 4. Điều kiện trước khi `terraform apply`
+## 4. Điều kiện trước khi `terraform apply` (staging-ha)
 
-1. Việc 5, 6, 7 xong; env secret trỏ Redis/Weaviate/DB dùng chung, không phải `localhost`.
-2. Image backend/frontend ghim tag (không `:latest`).
-3. `TRUSTED_PROXIES` bao dải LB (130.211.0.0/22, 35.191.0.0/16) vì client IP đi qua `X-Forwarded-For`; sai giá trị thì rate limit sai.
-4. Chạy `terraform plan` và người dùng duyệt; apply chỉ trên staging.
+Tất cả việc code và Terraform trong §3 đã xong; còn các bước phải làm trên cloud, theo thứ tự:
+
+1. Chạy `terraform plan` với `require_secret_versions = false`, người dùng duyệt rồi apply: tạo vỏ secret, NAT, DNS private, Redis, Weaviate VM.
+2. Nạp giá trị secret bằng `gcloud secrets versions add` (env backend phải có `DATABASE_URL` và `CDP_DATABASE_URL` trỏ `127.0.0.1:6432`, `LEADER_LOCK_DATABASE_URL` trỏ `db.vota.internal:5432`, `PGBOUNCER_UPSTREAM_HOST=db.vota.internal`, `WEAVIATE_URL`, `AUTH_REDIS_URL`, `ITINERARY_REDIS_URL`; mật khẩu role dùng ký tự an toàn trong URL), rồi đặt `require_secret_versions = true`.
+3. Chạy `ops/check-db-direct.sh` (và `POOLED=1`) trên một VM thử để xác nhận firewall, `pg_hba` và ngân sách `max_connections`.
+4. Chạy job index vào Weaviate mới trước khi nhận traffic.
+5. `TRUSTED_PROXIES` bao dải LB (130.211.0.0/22, 35.191.0.0/16) vì client IP đi qua `X-Forwarded-For`; sai giá trị thì rate limit sai.
+6. Ghim tag image (không `:latest`); `alert_emails` ít nhất một địa chỉ.
+7. Chạy `ops/loadtest/k6-ha.js` và kịch bản xoá VM giữa lúc chạy (§5), rồi mới chuyển traffic.
 
 ## 5. Nghiệm thu
 
