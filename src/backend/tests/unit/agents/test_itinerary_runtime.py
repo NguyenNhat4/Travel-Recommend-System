@@ -138,6 +138,17 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(valid('ItineraryResponse' if result['http_status'] == 200 else 'ErrorResponse', result['response']))
         return result
 
+    async def test_every_event_carries_the_measured_node_latency(self):
+        class SlowClients(Clients):
+            async def search_products(self, args):
+                await asyncio.sleep(0.05)
+                return await super().search_products(args)
+
+        result = await self.run_graph(clients=SlowClients())
+        self.assertTrue(all(item['latency_ms'] >= 1 for item in result['events']))
+        tool_event = next(item for item in result['events'] if item['node'] == 'tool')
+        self.assertGreaterEqual(tool_event['latency_ms'], 50)
+
     async def test_completed_is_grounded_and_has_exact_days_and_computed_total(self):
         clients = Clients(incomplete=True)
         result = await self.run_graph(clients=clients)

@@ -234,7 +234,7 @@ Bảng bên phải màn hình demo là trace của **một lượt gọi API qua
 | `nodeId` | Tên node vừa hoàn tất. Node không đi qua trong lượt này sẽ không có dòng. |
 | `outcome` | Trạng thái thực thi. `completed` chỉ có nghĩa node đã chạy xong; **kết quả nghiệp vụ vẫn phải xem response**. |
 | `message` | Tóm tắt việc node vừa làm. Ví dụ `tool` ghi `retrieval completed (normalized destination)` khi tên điểm đến được đổi thành tên catalog. |
-| `durationMs` | Thời gian quan sát từ event node trước tới event hiện tại **tại biên SSE**, gồm cả overhead cập nhật state. Đây không phải CPU profile bên trong node. Tối thiểu 1 ms. |
+| `durationMs` | Thời gian chạy của chính node đó (wall-clock, gồm cả lúc chờ LLM/tool), lấy từ `latency_ms` của event — `build_graph` bọc mọi node bằng `timed()` để đo. Không gồm overhead cập nhật state giữa các node. Event nào thiếu `latency_ms` mới lùi về thời gian quan sát tại biên SSE. Tối thiểu 1 ms. |
 
 Các điểm cần nhớ khi đọc trace:
 
