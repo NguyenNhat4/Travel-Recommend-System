@@ -63,7 +63,7 @@ from src.backend.app.application.tracking.behaviour import BehaviourTracker
 from src.backend.app.domain.booking import DraftPolicy, HoldPolicy
 from src.backend.app.domain.catalog import ListingItem
 from src.backend.app.application.recommendation import BuildPopularity, RecommendForUser
-from src.backend.app.application.search import SearchProducts, SimilarProducts
+from src.backend.app.application.search import SearchProducts, SimilarProducts, SuggestProducts
 from src.backend.app.domain.search import HybridConfig
 from src.backend.app.core.config import REPO_ROOT, Settings, get_settings
 from src.backend.app.infrastructure.auth.argon2_hasher import Argon2Hasher
@@ -198,6 +198,7 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
     ) if settings.search_hybrid and hasattr(vector_search, "bm25") else None
     logger.info("startup.recsys.search.mode=%s", "HYBRID_CANDIDATE_SCORE" if hybrid else "ANN_CANDIDATE_SCORE")
     logger.info("startup.recsys.search.normalize=%s", settings.search_normalize)
+    product_popularity = {index.units[u].product_id: s for u, s in popularity.unit_scores().items()}
     return {
         "recsys_embedder": embedder,
         "recsys_vectors": vector_search,
@@ -216,9 +217,11 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
             normalize=settings.search_normalize,
         ),
         "similar": SimilarProducts(index, vector_search),
+        # GET /search/suggestions (FR-SRC-05): khớp chữ trên chính index này, không gọi embed hay kho vector.
+        "suggest": SuggestProducts(index, product_popularity),
         # GET /products: cùng tập search unit với /search, sắp xếp popular theo lượt mua CDP (backend §4.1).
         "listing_units": [ListingItem(p, bool(index.recommendable[i])) for i, p in enumerate(index.units)],
-        "product_popularity": {index.units[u].product_id: s for u, s in popularity.unit_scores().items()},
+        "product_popularity": product_popularity,
         "recommend": RecommendForUser(
             index, vector_search, cdp_reader, popularity, candidate_k=settings.recommend_candidate_k
         ),
@@ -629,7 +632,7 @@ async def lifespan(app: FastAPI):
         # Recsys tách khỏi phần itinerary: chưa nạp được thì tắt recsys và thử lại sau, các route còn lại
         # (kể cả assistant chạy fixture) vẫn phục vụ được.
         logger.info("startup.recsys.start model=%s", settings.embed_model)
-        for name in ("index", "search", "similar", "recommend", "listing_units", "product_popularity"):
+        for name in ("index", "search", "similar", "suggest", "recommend", "listing_units", "product_popularity"):
             setattr(app.state, name, None)
 
         # Catalog đọc thẳng database nên vẫn chạy khi RecSys tắt; khi đó danh sách đọc search unit mỗi request

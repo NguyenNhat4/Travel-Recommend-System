@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { scrollEdges } from '../../src/components/search/HScroller';
 
 const state = vi.hoisted(() => ({ params: new URLSearchParams('q=Nha+Trang'), navigate: vi.fn() }));
+const suggest = vi.hoisted(() => ({ fetchSuggestions: vi.fn() }));
+vi.mock('../../src/services/suggest', () => ({ fetchSuggestions: suggest.fetchSuggestions, SUGGESTION_LIMIT: 8 }));
 vi.mock('next/navigation', () => ({ useSearchParams: () => state.params }));
 vi.mock('../../src/context/TravelContext', () => ({ useTravel: () => ({ navigate: state.navigate, showToast: vi.fn() }) }));
 vi.mock('../../src/context/AssistantProvider', () => ({ useAssistant: () => ({ openFloatingWidget: vi.fn() }) }));
@@ -15,6 +17,7 @@ vi.mock('../../src/components/common/ProductCard', () => ({
 import { SearchView } from '../../src/components/search/SearchView';
 import { SortMenu } from '../../src/components/search/SortMenu';
 import { clearSectionCache } from '../../src/hooks/useLazySection';
+import { clearSuggestionCache } from '../../src/features/search/instant/useInstantSearch';
 
 const item = (productId: string, taxonomy: string, unitPrice: number) => ({
   productId, name: productId, taxonomy, destination: 'Nha Trang', unitPrice, currency: 'VND',
@@ -71,6 +74,10 @@ describe('SearchView', () => {
   const originalFetch = global.fetch;
   beforeEach(() => {
     clearSectionCache();
+    clearSuggestionCache();
+    window.localStorage.clear();
+    suggest.fetchSuggestions.mockReset();
+    suggest.fetchSuggestions.mockResolvedValue([{ type: 'destination', label: 'Hà Nội', productCount: 214 }]);
     document.cookie = 'vota_csrf=test'; // có cookie CSRF thì apiFetch không gọi bootstrap phiên trước POST
     state.navigate.mockReset();
     state.params = new URLSearchParams('q=Nha+Trang');
@@ -93,6 +100,24 @@ describe('SearchView', () => {
     expect(calls.some((c) => c.taxonomy === 'flight')).toBe(false);
     // Chỉ xem nhanh: mỗi request của hàng lấy 6 mục đầu, không lấy hết.
     expect(calls.filter((c) => c.taxonomy).every((c) => c.limit === 6)).toBe(true);
+  });
+
+  it('the search box suggests while typing and keeps Enter, chips and the see-all button going to /search', async () => {
+    stubSearch();
+    render(<SearchView />);
+    const box = screen.getByRole('combobox');
+    fireEvent.change(box, { target: { value: 'Ha' } });
+    expect(await screen.findByRole('option', { name: /Hà Nội/ })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Xem tất cả kết quả cho “Ha”' }));
+    expect(state.navigate).toHaveBeenLastCalledWith(expect.stringContaining('q=Ha'));
+
+    fireEvent.change(box, { target: { value: 'Phú Quốc' } });
+    fireEvent.submit(box.closest('form') as HTMLFormElement);
+    expect(state.navigate).toHaveBeenLastCalledWith(expect.stringContaining('q=Ph'));
+    fireEvent.click(screen.getByRole('button', { name: 'Sân golf nghỉ dưỡng' }));
+    expect(state.navigate).toHaveBeenLastCalledWith(expect.stringContaining('golf'));
+    expect(JSON.parse(window.localStorage.getItem('vota_recent_searches') ?? '[]')).toEqual(['Sân golf nghỉ dưỡng', 'Phú Quốc', 'Ha']);
   });
 
   it('"Xem tất cả" goes to the group tab, which loads a full page with a sort popup and load-more', async () => {

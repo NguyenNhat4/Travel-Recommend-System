@@ -137,6 +137,7 @@ Ký hiệu auth: **—** không gửi JWT · **tùy** gửi nếu có · **bắt
 | ④ Phổ biến | `GET /products?sort=popular&availableOnly=true&limit=8` (thêm `taxonomy=<tab>` khi chọn tab) | — | `results[]` (`ProductSummary`) | **Luôn render**. Một carousel có tab Tất cả · Khách sạn · Vé máy bay · Vé tham quan · Combo; **chỉ tab đang chọn gọi API**. Lỗi → "Chưa tải được · Thử lại" cục bộ |
 | Điểm đến ("Bạn muốn đi đâu?") | `GET /destinations` | — | `destinations[].destination`, `productCount` | Chỉ gọi khi khối tới gần vùng nhìn (≤ 300 px), bộ đệm 5 phút dùng chung với tấm tìm kiếm. Lỗi hoặc rỗng → ẩn khối |
 | Lối vào danh mục | — | — | — | Bốn ô tĩnh từ `navConfig.ts` → `/flights`, `/hotels`, `/experiences`, `/combos` |
+| Gợi ý khi gõ ở ô tìm kiếm (FR-SRC-05) | `GET /search/suggestions?q=&limit=8` | — | `suggestions[]` (`type` = `destination` \| `product`, `label`, `productId`, `taxonomy`, `destination`, `productCount`) | Chỉ gọi khi có ≥ 2 ký tự chữ/số, sau 200 ms không gõ; huỷ lượt cũ; bộ nhớ đệm trang 50 khoá / 5 phút. Lỗi → "Chưa tải được gợi ý", vẫn có "Xem tất cả". Không tính vào ngân sách request khi tải trang vì chỉ gọi lúc gõ. Ô rỗng không gọi |
 
 **Ngân sách request của Home:** khách ≤ 1 request khi tải (khối ④ nếu trong vùng nhìn), đã đăng nhập ≤ 2 (thêm ①); các khối dưới màn hình chỉ tải khi cuộn tới (`useInView` + `useLazySection`). ① quá 3 giây (`RECOMMENDATION_TIMEOUT_MS`) thì ẩn khối và hiện dòng "Thử lại".
 
@@ -200,6 +201,8 @@ Quy tắc:
 - Nhóm Tour và trải nghiệm là hai request (attraction, golf) trộn theo `score`.
 
 `503 SEARCH_UNAVAILABLE` → `ErrorState` có "Thử lại", giữ nguyên truy vấn trong ô.
+
+**Ô tìm kiếm đầu trang** (`components/common/SearchBox.tsx`) dùng chung hook và panel gợi ý tức thì với hero Home (`features/search/instant/`, FR-SRC-05): `GET /search/suggestions`, không phải `POST /search`, nên gõ không sinh event `search` và không đổi bộ đệm 60 giây ở trên. Mic, chữ lớn, chip gợi ý và Enter giữ nguyên.
 
 ### 4.3. Product detail `/product/{productId}`
 

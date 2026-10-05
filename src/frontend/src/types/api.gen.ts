@@ -252,6 +252,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/search/suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Gợi ý tức thì khi gõ ở ô tìm kiếm (FR-SRC-05)
+         * @description Khớp chữ theo đầu từ trên tên điểm đến và tên search unit của catalog đang phục vụ, không phân biệt dấu và hoa thường. Không gọi embed hay kho vector, không ghi event search sang CDP và không ghi search log, nên Web được gọi theo từng lần gõ. Không gợi ý vé máy bay. `q` có dưới 2 ký tự chữ hoặc số sau chuẩn hoá thì trả `suggestions` rỗng với status 200. Response giống nhau cho mọi người dùng và có `Cache-Control: public`. Thiếu `q`, `q` dài quá 100 ký tự hoặc `limit` ngoài 1–10 trả 422 VALIDATION_ERROR.
+         */
+        get: operations["suggestSearch"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/recommendations": {
         parameters: {
             query?: never;
@@ -1101,6 +1121,30 @@ export interface components {
             facets?: components["schemas"]["SearchFacets"];
             appliedFilters?: components["schemas"]["AppliedFilters"];
             diagnostics?: components["schemas"]["EngineDiagnostics"];
+            requestId?: string;
+        };
+        SearchSuggestion: {
+            /**
+             * @description destination: một điểm đến chuẩn hoá của catalog (cùng giá trị với /destinations). product: một search unit (property, vé tham quan, sân golf, combo); không có vé máy bay.
+             * @enum {string}
+             */
+            type: "destination" | "product";
+            /** @description Tên hiển thị, giữ nguyên dấu. Web tự in đậm phần khớp với chữ đang gõ. */
+            label: string;
+            /** @description Chỉ có khi type = product. */
+            productId?: string;
+            /** @description Chỉ có khi type = product. */
+            taxonomy?: components["schemas"]["Taxonomy"];
+            /** @description Điểm đến của sản phẩm. Chỉ có khi type = product. */
+            destination?: string | null;
+            /** @description Số search unit tại điểm đến. Chỉ có khi type = destination. */
+            productCount?: number;
+        };
+        SearchSuggestionResponse: {
+            /** @description Chữ đã nhận, sau khi gộp khoảng trắng. */
+            query: string;
+            /** @description Thứ tự hiển thị: điểm đến trước, rồi sản phẩm theo taxonomy (hotel, attraction, golf, combo); trong mỗi nhóm, khớp ở đầu tên đứng trước. */
+            suggestions: components["schemas"]["SearchSuggestion"][];
             requestId?: string;
         };
         TravelContext: {
@@ -2299,6 +2343,34 @@ export interface operations {
             401: components["responses"]["Error"];
             500: components["responses"]["Error"];
             503: components["responses"]["Error"];
+        };
+    };
+    suggestSearch: {
+        parameters: {
+            query: {
+                q: string;
+                limit?: number;
+            };
+            header?: {
+                /** @description ID truy vết. Caller chưa gửi thì service đầu tiên tự sinh. */
+                "X-Request-ID"?: components["parameters"]["XRequestId"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Gợi ý, có thể rỗng */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchSuggestionResponse"];
+                };
+            };
+            422: components["responses"]["Error"];
+            500: components["responses"]["Error"];
         };
     };
     getRecommendations: {
