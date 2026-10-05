@@ -78,6 +78,14 @@ class BuildChatModelTests(unittest.TestCase):
             build_chat_model(settings(openai_api_key="o", itinerary_llm_model="gpt-4.1"))
         self.assertEqual([call["model"] for call in calls], ["gpt-4o-mini", "gpt-4.1"])
 
+    def test_openai_reasoning_effort_is_forwarded_only_when_set(self):
+        """Model reasoning từ chối function tools khi reasoning bật mặc định; None thì không gửi gì."""
+        mock, calls = fake_sdk("langchain_openai", "ChatOpenAI")
+        with mock:
+            build_chat_model(settings(openai_api_key="o"))
+            build_chat_model(settings(openai_api_key="o", itinerary_llm_reasoning_effort="none"))
+        self.assertEqual([call["reasoning_effort"] for call in calls], [None, "none"])
+
     def test_chat_model_name_reports_the_model_build_chat_model_uses(self):
         self.assertEqual(chat_model_name(settings(openai_api_key="o")), "gpt-4o-mini")
         self.assertEqual(chat_model_name(settings(gemini_api_key="g", openai_api_key="o")), "gemini-2.5-flash")

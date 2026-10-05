@@ -65,6 +65,8 @@ def build_chat_model(settings: Settings) -> Any | None:
             model=model or OPENAI_DEFAULT_MODEL,
             api_key=settings.openai_api_key,
             temperature=temperature,
+            # None = không gửi tham số, giữ nguyên hành vi mặc định của model.
+            reasoning_effort=settings.itinerary_llm_reasoning_effort,
         )
 
     if settings.anthropic_api_key:
