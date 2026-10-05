@@ -70,12 +70,16 @@ def _prepared(as_of: Optional[str], refresh: bool, vectors: str):
 
 
 def _make_split(kind: str, kept: list[dict], index, cutoff: Optional[str], min_purchases: int, min_trips: int):
-    from .splits import leave_last_booking_out, temporal_split
+    from .splits import cold_start_split, leave_last_booking_out, next_trip_split, temporal_split
     if kind == "llbo":
         return leave_last_booking_out(kept, index, min_purchases=min_purchases, min_trips=min_trips)
     if kind == "temporal":
         return temporal_split(kept, index, cutoff=_parse_as_of(cutoff))
-    _fail("--kind phải là llbo hoặc temporal")
+    if kind == "nexttrip":                      # 05/10: ≥ 2 chuyến, chuyến trước đã đi xong
+        return next_trip_split(kept, index, min_trips=max(2, min_trips))
+    if kind == "coldstart":                     # 05/10: lần mua đầu, có ≥ 1 event trước đó
+        return cold_start_split(kept, index)
+    _fail("--kind phải là llbo, temporal, nexttrip hoặc coldstart")
 
 
 @app.command()
@@ -125,7 +129,7 @@ def load(as_of: Optional[str] = typer.Option(None, "--as-of", help=AS_OF_HELP),
 
 
 @app.command()
-def split(kind: str = typer.Option("llbo", "--kind", help="llbo | temporal"),
+def split(kind: str = typer.Option("llbo", "--kind", help="llbo | temporal | nexttrip | coldstart"),
           cutoff: Optional[str] = typer.Option(None, "--T", help="mốc T cho temporal (mặc định phân vị 80 % purchase)"),
           min_purchases: int = typer.Option(2, "--min-purchases"),
           min_trips: int = typer.Option(1, "--min-trips", help="2 = chọn khách như baseline trong seed"),
@@ -167,14 +171,14 @@ def run(arms: List[str] = typer.Option([], "--arm", help="random | most_popular 
                                                            "khi không có --algos"),
         algos: Optional[str] = typer.Option(None, "--algos", help="algos_v1.yaml — registry scorer (R3–R5, spec recsys-algos-v1); "
                                                                    "bắt buộc --vectors numpy|weaviate"),
-        algo_mode: str = typer.Option("funnel", "--mode", help="funnel (mask engine) | raw (recommendable trừ đã mua) — chỉ với --algos"),
+        algo_mode: str = typer.Option("funnel", "--mode", help="funnel (mask engine) | raw (recommendable trừ đã mua) | noexcl (mask engine không category exclusion) — chỉ với --algos"),
         only: List[str] = typer.Option([], "--only", help="chỉ chạy các algo này (lặp cờ); không có → mọi algo tier ≤ --max-tier, status run"),
         max_tier: int = typer.Option(1, "--max-tier"),
         funnel_pool: Optional[str] = typer.Option(None, "--funnel-pool", help="engine | mask — ghi đè common.funnel.pool (gate dùng engine)"),
         funnel_rerank: List[str] = typer.Option([], "--funnel-rerank", help="none | mmr (lặp cờ) — ghi đè common.funnel.rerank"),
         because_k: int = typer.Option(0, "--because-k", help="--algos: ghi because[] cho top-K mỗi khách (K = 5, 10, 15, 20 …; 0 = tắt; "
                                                              "≤ --k) + cột Because@K / Vi phạm because — không đổi ids, không vào algosHash"),
-        kind: str = typer.Option("llbo", "--split", help="llbo | temporal"),
+        kind: str = typer.Option("llbo", "--split", help="llbo | temporal | nexttrip | coldstart"),
         k: int = typer.Option(20, "--k"),
         seeds: str = typer.Option("42,43,44", "--seeds", help="seed cho arm random"),
         vectors: Optional[str] = typer.Option(None, "--vectors", help="none | weaviate | numpy | npy:<prefix> (vector đã embed của search bench, vd npy:bench_out/search/data/vec_T3+R_e5-small; engine cần vector)"),

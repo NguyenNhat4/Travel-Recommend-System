@@ -10,7 +10,7 @@ Mirror phần glue của `RecommendForUser.__call__` (`use_cases.py:131-169`) v�
   (như engine cắt `candidate_k` trước MMR). Với `pool engine` thứ tự vào MMR là của engine (score ổn định, hoà theo thứ tự chèn);
   với `pool mask` là khoá `(score↓, pop_D↓, item_id↑)` để scorer có nhiều điểm 0 không đưa 200 unit "chỉ số nhỏ nhất" vào MMR.
 
-`mode`: `funnel` = mask engine (có trip mở: destination ∧ taxonomy ∉ đã mua ∧ recommendable/available, mask rỗng → bỏ destination; không
+`mode`: `noexcl` (05/10) = mask engine bỏ riêng category exclusion (ablation Day 7); `funnel` = mask engine (có trip mở: destination ∧ taxonomy ∉ đã mua ∧ recommendable/available, mask rỗng → bỏ destination; không
 trip mở: recommendable/available; luôn bỏ bought_units); `raw` = recommendable/available trừ bought_units. Khách không có trip nào
 (engine đi `_cold_start`): funnel xếp mask theo pop_D toàn cục, `strategy = popular` — không mô phỏng section của `_cold_start`.
 """
@@ -34,7 +34,7 @@ from .seeds import profile_for, resolved_events, seeds_for
 
 POOLS = ("engine", "mask")
 RERANKS = ("none", "mmr")
-MODES = ("funnel", "raw")
+MODES = ("funnel", "raw", "noexcl")   # noexcl (05/10, ablation Day 7): mask engine nhưng không loại taxonomy đã mua trong trip mở
 
 
 @dataclass(frozen=True)
@@ -54,11 +54,12 @@ class FunnelCfg:
         return {"mode": self.mode, "pool": self.pool, "rerank": self.rerank, "poolK": self.pool_k, "popularK": self.popular_k, "k": self.k}
 
 
-def engine_mask(index: UnitIndex, profile: Profile) -> tuple[np.ndarray, str | None, set[str]]:
-    """Mirror `use_cases.py:131-142` với `destination=None` (harness). Trả (mask, dest, taxonomy bị loại)."""
+def engine_mask(index: UnitIndex, profile: Profile, *, exclude_taxonomy: bool = True) -> tuple[np.ndarray, str | None, set[str]]:
+    """Mirror `use_cases.py:131-142` với `destination=None` (harness). Trả (mask, dest, taxonomy bị loại).
+    `exclude_taxonomy=False` (mode `noexcl`): giữ khoá điểm đến của trip mở và bỏ món đã mua, chỉ tắt category exclusion."""
     if profile.active_trip is not None:
         t = profile.active_trip
-        dest, done = t.destination, set(t.purchased_taxonomies)
+        dest, done = t.destination, set(t.purchased_taxonomies) if exclude_taxonomy else set()
         m = index.mask(destination=dest, only_recommendable=True) & ~np.isin(index.taxonomy, list(done))
         if not m.any():
             m = index.mask(only_recommendable=True) & ~np.isin(index.taxonomy, list(done))
@@ -168,7 +169,7 @@ class AlgoArm:
         if cfg.mode == "raw":
             mask, dest, done = raw_mask(index, profile), ctx.destination, ctx.excluded
         else:
-            mask, dest, done = engine_mask(index, profile)
+            mask, dest, done = engine_mask(index, profile, exclude_taxonomy=cfg.mode != "noexcl")
         pool_truncated = 0
         if cfg.pool == "engine" and profile.trips:
             cand = np.asarray(engine_pool(index, self.vector_search, ctx.pop_dict, profile, mask, data.has_vec, cfg), dtype=np.int64)

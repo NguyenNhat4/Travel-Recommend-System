@@ -235,6 +235,26 @@ file cũ); (4) ADR chọn scorer mới vào production (thêm arm vai trò `prim
 bảng báo cáo cuối dùng **LLBO** đóng băng; không chọn tham số theo LLBO. Mọi run ghi `configHash` (eval) / `configHashProd`;
 hai bảng chỉ so được khi cùng `frozenSha256` **và** cùng `configHash`, cùng `modelVersion`.
 
+### 3.2. Split `nexttrip`, `coldstart` và nhãn tín hiệu sẵn có (05/10, bộ `eval-v2`)
+
+| Split | Target | `as_of` | Khách |
+|---|---|---|---|
+| `nexttrip` | món đầu (purchase sớm nhất) của chuyến mới | lúc **bắt đầu duyệt** chuyến đó: event sớm nhất trong 7 ngày (`browseDays`) trước purchase | ≥ 2 chuyến có purchase hợp lệ, chuyến liền trước đã đi xong (mọi `usingDate` < ngày `as_of`); chọn chuyến mới nhất thoả |
+| `coldstart` | purchase hợp lệ đầu tiên | thời điểm purchase đó | có ≥ 1 event (xem / giỏ / tìm) trước đó |
+
+Nhãn theo khách trong `per_user.jsonl` (mọi split, không vào sha đóng băng — split cũ giữ sha): `targetInOwnHistory` (unit target có trong
+event train của khách), `targetInOwnCart`, `targetViewed`; tổng ở `split-<kind>.json` cho `nexttrip` / `coldstart`. Dùng để tách số "đoán món
+đã có sẵn" (LLBO: 441/1.016 khách bộ cũ có target trong giỏ) khỏi số dự đoán sở thích mới.
+
+Bộ `eval-v2` (DB `vota_recsys_evalv2_20261005`, `docs/spec/MOCK_DATA_SPEC.md` §4.1), đóng băng `frozen/split-{llbo,temporal,nexttrip,coldstart}-evalv2-asof20261005.json`:
+
+| Split | Khách test | sha256 | Target theo loại | Target có sẵn trong lịch sử / giỏ |
+|---|---:|---|---|---|
+| llbo | 2.876 | `a2d8ae24b77b` | attraction 1.170 · flight 888 · combo 422 · hotel 271 · golf 125 | (theo khách trong `per_user`) |
+| temporal | 658 | `8ae501115c20` | hotel 524 · attraction 58 · flight 55 · combo 21 | (theo khách trong `per_user`) |
+| nexttrip | 1.493 | `a309dc74c2d4` | hotel 1.194 · attraction 133 · flight 114 · combo 52 | 28 / 21 (do lần bỏ giỏ trước) |
+| coldstart | 3.705 | `3b150ca38aa9` | hotel 2.990 · flight 288 · attraction 280 · combo 147 | 3.637 / 1.465 (đã xem / bỏ giỏ ngay trước lần mua đầu — bản chất của khách mới) |
+
 ## 4. Kết quả
 
 k = 20, cùng tập khách và cùng train cho mọi arm. Random chạy 3 seed (42, 43, 44), báo trung bình ± độ lệch.

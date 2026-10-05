@@ -15,7 +15,7 @@ from src.backend.app.application.ports import UnitIndex
 from .ceiling import EngineView, engine_view
 from .events import PERSONA_IDS
 from .metrics import purchased_taxonomies, rank_of, score
-from .splits import Split
+from .splits import Split, history_labels
 
 
 def open_trip_taxonomies(views: dict[str, EngineView]) -> dict[str, set[str] | None]:
@@ -32,6 +32,7 @@ def evaluate(arm, split: Split, index: UnitIndex, k: int = 20,
     for user in chosen:
         if user not in views:
             views[user] = engine_view(split.train_by_user[user], index, split.as_of_by_user[user])
+    labels = history_labels(split, index)                 # 05/10: target đã có sẵn trong lịch sử / giỏ của khách (không vào sha)
     recommendations, latencies, per_user = {}, [], []
     strategies: Counter = Counter()
     for user in chosen:
@@ -50,6 +51,7 @@ def evaluate(arm, split: Split, index: UnitIndex, k: int = 20,
                          # strict: đúng productId đã mua (B7). Mọi arm chỉ trả search unit → targetIsChild=True (phòng /
                          # chuyến) luôn None; ngược lại == rank. Bảng strict/lenient chỉ có nghĩa ở độ mịn unit.
                          "rankStrict": rank_of(original, ranked.product_ids),
+                         **labels[user],
                          "returned": len(ranked.product_ids), "ids": list(ranked.product_ids),
                          "latencyMs": round(ranked.latency_ms, 2), **ranked.meta})
     bought = {u: purchased_taxonomies(split.train_by_user[u], index) for u in chosen}
