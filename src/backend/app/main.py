@@ -64,6 +64,7 @@ from src.backend.app.application.recommendation import BuildPopularity, Recommen
 from src.backend.app.application.search import SearchProducts, SimilarProducts
 from src.backend.app.domain.search import HybridConfig
 from src.backend.app.core.config import REPO_ROOT, Settings, get_settings, shared_backend_violations
+from src.backend.app.infrastructure.persistence.db_probe import DatabaseProbe
 from src.backend.app.infrastructure.auth.argon2_hasher import Argon2Hasher
 from src.backend.app.infrastructure.auth.jwt_issuer import JwtConfig, JwtIssuer
 from src.backend.app.infrastructure.auth.keys import load_rsa_pem_pair
@@ -497,6 +498,10 @@ def _forward_langsmith_env(settings) -> None:
 async def lifespan(app: FastAPI):
     settings = get_settings()
     app.state.ready = False
+    if settings.ready_requires_db:
+        app.state.db_probe = DatabaseProbe(
+            settings.database_url, timeout_seconds=settings.ready_db_timeout_seconds,
+            cache_seconds=settings.ready_db_cache_seconds)
     violations = shared_backend_violations(settings)
     if violations:
         raise RuntimeError(
@@ -668,8 +673,11 @@ async def health_ready():
     ready = bool(getattr(app.state, "ready", False))
     # Có bật thì RecSys phải nạp xong: bản sao Weaviate rỗng chỉ trả /search rỗng với HTTP 200, LB sẽ không biết để loại.
     recsys_ready = not settings.ready_requires_recsys or getattr(app.state, "index", None) is not None
-    ok = ready and recsys_ready
+    probe = getattr(app.state, "db_probe", None) if settings.ready_requires_db else None
+    db_ready = True if probe is None else await probe.ok()
+    ok = ready and recsys_ready and db_ready
     return JSONResponse(
         status_code=200 if ok else 503,
-        content={"status": "ok" if ok else "starting", "ready": ok, "recsys": recsys_ready, "env": settings.app_env},
+        content={"status": "ok" if ok else "starting", "ready": ok, "recsys": recsys_ready, "db": db_ready,
+                 "env": settings.app_env},
     )

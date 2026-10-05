@@ -40,6 +40,7 @@ Trạng thái phải nằm ngoài VM: session BFF, rate limit và working memory
 | 6.0 | Tách health check: autohealing dùng liveness `/health/live`, LB dùng readiness `/health/ready` (use case ở §3b) | Xong, test pass, chưa apply |
 | 6.1 | Bỏ SSH tunnel cho nhóm HA: private DNS `db.vota.internal`, backend từ chối DB loopback, script kiểm kết nối và ngân sách kết nối | Xong, test pass, chưa apply |
 | 7 | Cloud NAT cho VM không IP public, vỏ secret và quyền đọc, cổng `require_secret_versions` (use case ở §3b) | Xong, test pass, chưa apply |
+| 6.5 | `/health/ready` thăm dò DB (`READY_REQUIRES_DB`, chỉ cho LB; use case ở §3b) | Xong, test pass, chưa apply |
 | 6 | DB: endpoint ổn định cho MIG (thay `vota-db-tunnel` trên 127.0.0.1:15432), cân nhắc Cloud SQL HA hoặc Patroni + pgbouncer | Chưa làm |
 | 7 | Cloud NAT cho VM không có IP public; tạo secret `vota-ha-backend-env` | Chưa làm |
 | 8 | Alert MIG: số VM khỏe < min, autoscaler chạm max, 5xx của LB | Chưa làm |
@@ -136,6 +137,20 @@ Chưa kiểm: egress thật qua Cloud NAT trên GCP; VPC staging có sẵn Cloud
 Sau khi sửa: Cloud NAT cho cả region (`network.tf`, 256 cổng mỗi VM) và VM chờ NAT trước khi tạo; secret có quyền đọc cho service account của VM và **giá trị không bao giờ nằm trong Terraform/state** (nạp tay bằng `gcloud secrets versions add`); với `require_secret_versions = true` plan dừng ngay nếu secret chưa có phiên bản, nên vòng lặp thay VM không bao giờ bắt đầu.
 
 Kiểm chứng: `infra/terraform/environments/staging-ha/tests/test_egress_and_secrets.py` (6 test), `terraform validate`.
+
+## Use case: một VM mất đường tới DB nhưng vẫn "ready" (3 VM)
+
+Tình huống: nhóm 3 VM chạy bình thường. 21:10 sidecar kết nối DB trên VM #2 bị OOM, nên VM #2 mất đường tới Postgres (3 VM vẫn thấy DB bình thường).
+1. VM #2 vẫn trả `/health` và `/health/ready` 200 (readiness cũ chỉ nhìn cờ `ready` và RecSys đã nạp, không nhìn DB; đã kiểm trong code).
+2. Load balancer chia đều, nên 1/3 lượt đăng nhập, đặt chỗ và webhook Stripe rơi vào VM #2 và trả 5xx. Cảnh báo 5xx sẽ kêu nhưng VM lỗi không bị loại.
+3. Autohealing (liveness) cố ý không phụ thuộc DB (việc 6.0), nên không thay VM; VM #2 hỏng cho tới khi có người can thiệp.
+
+Đã kiểm: probe `SELECT 1` trên Postgres Docker thật: DB chạy trả True sau 0,05 giây; dừng DB thì trả False ngay; khởi động lại thì tự hồi phục. Unit test: cache 5 giây (probe liên tiếp của LB không mở kết nối mỗi lần), 20 probe đồng thời chỉ chạy 1 lượt, mọi lỗi đều là "chưa sẵn sàng".
+Chưa kiểm: hành vi trên cloud với LB thật (3 lần probe × 10 giây).
+
+Sau khi sửa: `READY_REQUIRES_DB=true` (chỉ bật trong compose HA). `/health/ready` thăm dò DSN mà request dùng (nên sidecar pgbouncer hỏng cũng bị phát hiện), timeout 2 giây, cache 5 giây. VM #2 trả 503, LB loại nó sau 3 lần probe lỗi (khoảng 30 giây cộng cache), 2 VM còn lại gánh tải; lỗi 5xx dừng. Khi DB sập toàn bộ thì cả 3 VM unready: LB trả 503 rõ ràng, nhưng autohealing **không** thay VM, nên khi DB về VM tự vào lại rotation trong vài giây.
+
+Kiểm chứng: `src/backend/tests/unit/api/test_db_readiness.py` (9 test), chạy thật trên Postgres Docker như trên, `test_health_checks.py` (liveness vẫn tách khỏi readiness).
 
 ## 4. Điều kiện trước khi `terraform apply`
 

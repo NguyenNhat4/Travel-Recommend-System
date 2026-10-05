@@ -158,6 +158,11 @@ class Settings(BaseSettings):
     # - require_shared_backends: từ chối khởi động nếu Weaviate/Redis/Postgres trỏ loopback (mỗi VM một bản riêng thì
     #   phiên đăng nhập và kết quả tìm kiếm lệch nhau giữa các bản sao).
     ready_requires_recsys: bool = False
+    # - ready_requires_db: /health/ready thăm dò `SELECT 1` (timeout, cache vài giây) để bản sao mất đường tới DB bị loại.
+    #   Chỉ readiness; liveness/autohealing KHÔNG phụ thuộc DB, kẻo DB gián đoạn làm MIG thay VM vô ích.
+    ready_requires_db: bool = False
+    ready_db_timeout_seconds: float = Field(default=2.0, gt=0)
+    ready_db_cache_seconds: float = Field(default=5.0, ge=0)
     require_shared_backends: bool = False
     # 0 = tắt job đối soát (test); mặc định 5 phút/lần.
     booking_reconcile_interval_seconds: int = Field(default=300, ge=0)
