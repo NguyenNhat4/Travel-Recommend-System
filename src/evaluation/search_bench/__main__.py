@@ -1084,9 +1084,9 @@ def gold_drafts(c: typer.Context,
     from .labeling import JsonlLabelStore
     ctx = _ctx(c)
     cfg = ctx.cfg()
-    overrides_p = paths.GOLD_DIR / "overrides.tsv"
     labels_p = labels or paths.sbench_home() / "labels" / "labels.jsonl"
     raw_p = raw or paths.GOLD_DIR / "drafts_raw.tsv"
+    overrides_p = raw_p.parent / "overrides.tsv"                # cạnh drafts_raw (05/10, như `gold pool`); v1: gold/
     out_p = out or paths.GOLD_DIR / "drafts.txt"
     if not labels_p.exists():
         _fail(f"không thấy kho nhãn {labels_p} — chạy app soát draft (streamlit_app.py) trước", 2)
@@ -1169,7 +1169,7 @@ def gold_pool(c: typer.Context,
         if qid_mode == "case":
             raw_p = raw or paths.GOLD_DIR / "drafts_raw.tsv"
             cases = read_draft_cases(raw_p)
-            overrides = read_overrides(paths.GOLD_DIR / "overrides.tsv", {r["case_id"] for r in cases})
+            overrides = read_overrides(raw_p.parent / "overrides.tsv", {r["case_id"] for r in cases})   # cạnh drafts_raw (v4a: gold/v4a/)
             ds = [d.with_qid(q) for d, q in zip(ds, case_ids_for(ds, cases, overrides))]
         if slice_:
             ds = [d for d in ds if d.slice == slice_]
@@ -1353,20 +1353,42 @@ def gold_import(c: typer.Context,
                 catalog_p: Optional[Path] = typer.Option(None, "--catalog", help="products.jsonl của snapshot (mặc định "
                                                                                   "catalog.products_path)"),
                 out: Optional[Path] = typer.Option(None, "-o", "--out", help="mặc định gold/gold.jsonl"),
-                provenance: str = typer.Option("pool@gold_v1", "--provenance"),
+                provenance: Optional[str] = typer.Option(None, "--provenance", help="mặc định pool@gold_v1; với --append "
+                                                                                     "mặc định pool@<version>"),
                 overwrite: bool = typer.Option(False, "--overwrite", help="ghi đè gold.jsonl khác nội dung (chỉ trước tag)"),
+                append: bool = typer.Option(False, "--append", help="gold_v4+: nối các câu MỚI của pool này vào cuối "
+                                                                    "gold.jsonl đang có (Part 11: gold chỉ thêm); qid đã có → "
+                                                                    "từ chối; provenance theo nguồn từng nhãn"),
+                accept_unreviewed: bool = typer.Option(False, "--accept-unreviewed",
+                                                       help="(--append) cho nhãn máy CHƯA duyệt vào gold, provenance "
+                                                            "`…:machine_unreviewed@…`; mặc định từ chối"),
                 version: Optional[str] = typer.Option(None, "--version", help="version ghi vào changelog; mặc định tag "
                                                                                 "gold_v* mới nhất + 1 (chưa có tag: gold_v1)")):
     """merged.csv → gold.jsonl (GoldRecord) + một mục `changelog.yaml` cạnh file (Part 11). Từ chối nếu còn
     needs_discussion, thiếu / thừa cặp, id lạ với catalog, nhãn sai luật (exit 1) hoặc sha pool lệch meta, file thiếu /
-    sai định dạng (exit 2)."""
+    sai định dạng (exit 2). `--append` (gold_v4+): thêm câu mới vào gold đã tag thay vì ghi file mới — provenance từng nhãn
+    theo `labels/provenance_<X>.csv` (người · `pool:machine@…` máy đã duyệt), nhãn máy chưa duyệt bị từ chối (trừ
+    `--accept-unreviewed`), `verify-append` với gold cũ phải xanh."""
+    from collections import Counter
+
     from . import paths
     from .catalog import CatalogError, _jsonl_path
-    from .gold import GoldError, build_gold, load_pool_set, read_catalog_parents, write_gold_checked
-    from .gold_schema import read_merged_csv
-    from .holes import append_changelog, changelog_entry, list_gold_tags, next_version
+    from .gold import (SOURCE_HUMAN, SOURCE_MACHINE_UNREVIEWED, GoldError, RuleViolation, append_gold, build_gold,
+                       load_pool_set, pair_sources, read_catalog_parents, write_gold_checked)
+    from .gold_schema import read_gold_jsonl, read_merged_csv
+    from .holes import append_changelog, changelog_entry, gold_at, list_gold_tags, next_version, verify_append
     out_p = out or paths.GOLD_JSONL
+    if append and overwrite:
+        _fail("--append và --overwrite loại trừ nhau", 2)
+    if accept_unreviewed and not append:
+        _fail("--accept-unreviewed chỉ dùng với --append", 2)
+    by_source: Counter = Counter()
+    ver = version
     with _gold_errors():
+        tags = list_gold_tags() if append else None                      # git chỉ khi cần (không --append: lúc ghi)
+        if append and ver is None:
+            ver = next_version(tags)
+        prov = provenance or (f"pool@{ver}" if append else "pool@gold_v1")
         ps = load_pool_set(_meta_path(meta))
         try:
             cat = catalog_p or _jsonl_path(_ctx(c).cfg())
@@ -1375,15 +1397,46 @@ def gold_import(c: typer.Context,
         if ps.meta.snapshot not in str(cat):
             typer.secho(f"  cảnh báo: pool dựng từ snapshot {ps.meta.snapshot}, catalog đang kiểm là {cat}",
                         fg=typer.colors.YELLOW)
-        records = build_gold(ps, read_merged_csv(merged), read_catalog_parents(cat), provenance)
-        changed = write_gold_checked(records, out_p, overwrite=overwrite)
+        rows = read_merged_csv(merged)
+        if not append:
+            records = new_records = build_gold(ps, rows, read_catalog_parents(cat), prov)
+            changed = write_gold_checked(records, out_p, overwrite=overwrite)
+        else:
+            if not out_p.exists():
+                raise GoldError(f"--append cần gold đang có ở {out_p}")
+            sources = pair_sources(ps.meta_path)
+            keys = ps.all_keys()
+            unrev = sorted(k for k in keys if sources.get(k) == SOURCE_MACHINE_UNREVIEWED)
+            if unrev and not accept_unreviewed:
+                raise RuleViolation("import --append: nhãn máy chưa duyệt (duyệt trong app, hoặc --accept-unreviewed)",
+                                    [f"{q}/{p}" for q, p in unrev])
+            new_records = build_gold(ps, rows, read_catalog_parents(cat), prov, sources=sources)
+            existing = read_gold_jsonl(out_p)
+            records = append_gold(existing, new_records)
+            # gold của package: so với tag gold_v* mới nhất (bắt cả trôi giữa tag và file đang có); file khác: so với chính nó
+            is_pkg = out_p.resolve() == paths.GOLD_JSONL.resolve()
+            base_ref = tags[-1] if (is_pkg and tags) else None
+            problems = verify_append(gold_at(base_ref) if base_ref else existing, records)
+            if problems:
+                raise RuleViolation(f"import --append: verify-append {base_ref or out_p.name} → bản mới", problems)
+            by_source = Counter(sources.get(k, SOURCE_HUMAN) for k in keys)
+            changed = write_gold_checked(records, out_p, overwrite=True)
         if changed:
-            ver = version or next_version(list_gold_tags())
-            append_changelog(changelog_entry(ver, "import", records, source=provenance, merged=str(merged.name),
-                                             snapshot=ps.meta.snapshot), out_p.parent / paths.GOLD_CHANGELOG.name)
-    n = sum(len(r.judgments) for r in records)
-    typer.echo(f"{out_p}: {len(records)} câu · {n} nhãn · provenance {provenance}" + ("" if changed else " (không đổi)"))
-    typer.echo("  tiếp: `sb gold check`")
+            ver = ver or next_version(list_gold_tags())
+            extra = {"source": prov, "merged": str(merged.name), "snapshot": ps.meta.snapshot}
+            if append:
+                extra.update(new_queries=len(new_records), new_labels_by_source=dict(sorted(by_source.items())),
+                             pool_dir=str(ps.meta_path.parent.name))
+            append_changelog(changelog_entry(ver, "import_append" if append else "import", records, **extra),
+                             out_p.parent / paths.GOLD_CHANGELOG.name)
+    n = sum(len(r.judgments) for r in new_records)
+    head = f"+{len(new_records)} câu (tổng {len(records)})" if append else f"{len(records)} câu"
+    typer.echo(f"{out_p}: {head} · {n} nhãn · provenance {prov}" + ("" if changed else " (không đổi)"))
+    if append:
+        typer.echo(f"  nguồn nhãn mới: {dict(sorted(by_source.items()))}")
+        typer.echo(f"  tiếp: `sb gold check` → `sb gold verify-append <tag cũ>` → commit → `git tag {ver}`")
+    else:
+        typer.echo("  tiếp: `sb gold check`")
 
 
 @gold_app.command("retire")
@@ -1452,7 +1505,11 @@ def gold_holes(c: typer.Context,
                split: bool = typer.Option(False, "--split", help="chia câu xen kẽ A/B (hai người gán, không câu chung)"),
                gold_p: Optional[Path] = typer.Option(None, "--gold", help="mặc định gold/gold.jsonl"),
                out_dir: Optional[Path] = typer.Option(None, "--out-dir", help="mặc định gold/holes/<gold_version>__<tag>/"),
-               variant: str = typer.Option("T3+R", "--variant", help="text lấy snippet (B0)")):
+               variant: str = typer.Option("T3+R", "--variant", help="text lấy snippet (B0)"),
+               qids: Optional[str] = typer.Option(None, "--qids", help="chỉ quét các câu này (phẩy), vd câu mới của gold_v4"),
+               new_since: Optional[str] = typer.Option(None, "--new-since",
+                                                       help="chỉ quét câu CHƯA có trong tag / commit / file gold này "
+                                                            "(vd gold_v3 → các câu thêm ở gold_v4)")):
     """Quét per_query của các arm trong run (--run-id, mặc định run mới nhất): cặp trong top-k chưa có nhãn → thư mục
     hole để gán (app: nhập pool_meta.json của thư mục đó). Câu out_of_catalog tự gán 0 (auto_ooc). Mã thoát: 0 ·
     1 không có hole · 2 lỗi đầu vào."""
@@ -1483,11 +1540,30 @@ def gold_holes(c: typer.Context,
         _fail(str(e), 2)
     except CatalogError as e:
         _fail(str(e))
+    scan = records
+    if qids is not None or new_since is not None:
+        from pydantic import ValidationError
+
+        from .gold_schema import SchemaError
+        want = {q.strip() for q in qids.split(",") if q.strip()} if qids is not None else None
+        if want is not None and not want:
+            _fail("--qids rỗng — liệt kê qid cách nhau bằng phẩy", 2)
+        try:
+            old_q = {r.qid for r in H.gold_at(new_since)} if new_since else set()
+        except (GoldError, H.RuleViolation, SchemaError, ValidationError, OSError, ValueError) as e:
+            _fail(f"--new-since {new_since}: {e}", 2)
+        unknown = sorted((want or set()) - {r.qid for r in records})
+        if unknown:
+            _fail(f"--qids không có trong gold: {', '.join(unknown)}", 2)
+        scan = [r for r in records if (want is None or r.qid in want) and r.qid not in old_q]
+        if not scan:
+            _fail("--qids / --new-since không còn câu nào để quét", 2)
+        typer.echo(f"  chỉ quét {len(scan)}/{len(records)} câu" + (f" (mới so với {new_since})" if new_since else ""))
     kk = k or cfg.holes.k
-    to_label, auto = H.find_holes(records, rows_by_arm, kk)
+    to_label, auto = H.find_holes(scan, rows_by_arm, kk)
     n_uncapped = len(to_label)
     if cap is not None:
-        to_label = H.cap_holes(to_label, records, cap, seed=cfg.run.seed)
+        to_label = H.cap_holes(to_label, scan, cap, seed=cfg.run.seed)
     if not to_label and not auto:
         _fail(f"không có hole: mọi cặp top-{kk} của {', '.join(arm_ids)} đã có nhãn", 1)
     out = out_dir or paths.HOLES_DIR / f"{gv or 'untagged'}__{tag_}"
@@ -1508,11 +1584,14 @@ def gold_holes_import(c: typer.Context,
                       holes_dir: Path = typer.Argument(..., help="thư mục do `sb gold holes` tạo (có labels/labels_X.csv)"),
                       gold_p: Optional[Path] = typer.Option(None, "--gold", help="mặc định gold/gold.jsonl"),
                       version: Optional[str] = typer.Option(None, "--version", help="mặc định tag gold_v* mới nhất + 1"),
-                      partial: bool = typer.Option(False, "--partial", help="cho phép còn cặp chưa gán (chỉ thêm phần đã gán)")):
+                      partial: bool = typer.Option(False, "--partial", help="cho phép còn cặp chưa gán (chỉ thêm phần đã gán)"),
+                      accept_unreviewed: bool = typer.Option(False, "--accept-unreviewed",
+                                                             help="cho nhãn máy CHƯA duyệt vào gold (provenance "
+                                                                  "`holes:<tag>:machine_unreviewed@…`); mặc định từ chối")):
     """Thêm nhãn hole vào gold.jsonl (provenance holes:<tag>@<version>; hole out_of_catalog: auto_ooc). Từ chối cặp đã có
     nhãn (gold chỉ thêm), nhãn sai luật, thiếu nhãn (trừ --partial). In lệnh `git tag` cần chạy. Mã thoát: 0 · 1 · 2."""
     from . import holes as H, paths
-    from .gold import GoldError
+    from .gold import GoldError, pair_sources
     from .gold_schema import read_gold_jsonl
     p = gold_p or paths.GOLD_JSONL
     with _gold_errors():
@@ -1520,12 +1599,16 @@ def gold_holes_import(c: typer.Context,
             raise GoldError(f"không thấy {p}")
         s = H.read_holes_summary(holes_dir)
         ver = version or H.next_version(H.list_gold_tags())
-        records, stats = H.import_holes(read_gold_jsonl(p), holes_dir, version=ver, tag=s["tag"], partial=partial)
+        sources = pair_sources(holes_dir / "pool_meta.json") or None          # 05/10: nguồn nhãn máy / người
+        records, stats = H.import_holes(read_gold_jsonl(p), holes_dir, version=ver, tag=s["tag"], partial=partial,
+                                        sources=sources, accept_unreviewed=accept_unreviewed)
         H.write_gold(records, p)
         H.append_changelog(H.changelog_entry(ver, "holes_import", records, tag=s["tag"], new_labels_by_source=stats,
                                              holes_dir=str(holes_dir.name), run_id=s.get("run_id"), arms=s.get("arms")),
                            p.parent / paths.GOLD_CHANGELOG.name)
-    typer.echo(f"{p}: +{stats['human']} nhãn người · +{stats['auto_ooc']} auto_ooc · {stats['queries']} câu · version {ver}")
+    machine = (f" · +{stats['machine']} nhãn máy đã duyệt" if "machine" in stats else "") + (
+        f" · +{stats['machine_unreviewed']} nhãn máy CHƯA duyệt" if stats.get("machine_unreviewed") else "")
+    typer.echo(f"{p}: +{stats['human']} nhãn người{machine} · +{stats['auto_ooc']} auto_ooc · {stats['queries']} câu · version {ver}")
     typer.echo(f"  tiếp: `sb gold check` → `sb gold verify-append <tag cũ> {p}` → commit → `git tag {ver}` → `sb rescore`")
 
 
