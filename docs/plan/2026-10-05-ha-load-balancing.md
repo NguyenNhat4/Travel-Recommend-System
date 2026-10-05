@@ -41,6 +41,7 @@ Trạng thái phải nằm ngoài VM: session BFF, rate limit và working memory
 | 6.1 | Bỏ SSH tunnel cho nhóm HA: private DNS `db.vota.internal`, backend từ chối DB loopback, script kiểm kết nối và ngân sách kết nối | Xong, test pass, chưa apply |
 | 7 | Cloud NAT cho VM không IP public, vỏ secret và quyền đọc, cổng `require_secret_versions` (use case ở §3b) | Xong, test pass, chưa apply |
 | 6.5 | `/health/ready` thăm dò DB (`READY_REQUIRES_DB`, chỉ cho LB; use case ở §3b) | Xong, test pass, chưa apply |
+| 6.3 + 6.4 | pgbouncer sidecar (transaction pooling) trên mỗi VM + `LEADER_LOCK_DATABASE_URL` cho khoá leader; đã đo trước/sau (use case ở §3b) | Xong, test pass trên Postgres và pgbouncer thật, chưa apply |
 | 6 | DB: endpoint ổn định cho MIG (thay `vota-db-tunnel` trên 127.0.0.1:15432), cân nhắc Cloud SQL HA hoặc Patroni + pgbouncer | Chưa làm |
 | 7 | Cloud NAT cho VM không có IP public; tạo secret `vota-ha-backend-env` | Chưa làm |
 | 8 | Alert MIG: số VM khỏe < min, autoscaler chạm max, 5xx của LB | Chưa làm |
@@ -151,6 +152,20 @@ Chưa kiểm: hành vi trên cloud với LB thật (3 lần probe × 10 giây).
 Sau khi sửa: `READY_REQUIRES_DB=true` (chỉ bật trong compose HA). `/health/ready` thăm dò DSN mà request dùng (nên sidecar pgbouncer hỏng cũng bị phát hiện), timeout 2 giây, cache 5 giây. VM #2 trả 503, LB loại nó sau 3 lần probe lỗi (khoảng 30 giây cộng cache), 2 VM còn lại gánh tải; lỗi 5xx dừng. Khi DB sập toàn bộ thì cả 3 VM unready: LB trả 503 rõ ràng, nhưng autohealing **không** thay VM, nên khi DB về VM tự vào lại rotation trong vài giây.
 
 Kiểm chứng: `src/backend/tests/unit/api/test_db_readiness.py` (9 test), chạy thật trên Postgres Docker như trên, `test_health_checks.py` (liveness vẫn tách khỏi readiness).
+
+## Use case: khuyến mãi 20:00, 250 request đồng thời hết kết nối Postgres (4 VM × 2 worker)
+
+Tình huống: 20:00 khuyến mãi khách sạn Vinpearl Phú Quốc, nhóm HA có 4 VM × 2 worker. Mỗi request đăng nhập, xem giỏ hoặc đặt chỗ mở **một connection Postgres mới** (backend gọi `psycopg ... connect` khoảng 30 chỗ, không có pool). Primary là `e2-small` với `max_connections` mặc định 100.
+1. 250 request cùng lúc tạo 250 connection. Postgres từ chối từ connection thứ ~100 bằng `too many clients already`; các request đó trả 5xx cho khách đang đặt chỗ.
+2. Các VM khác và job đối soát (cũng cần connection) cũng bị đói; superuser và replication có thể không còn chỗ.
+3. Giải pháp đơn giản "tăng max_connections" làm mỗi connection tốn thêm RAM trên VM 2 GB.
+
+Đã đo thật (Postgres 16 Docker `max_connections=100`, pgbouncer 1.26 transaction mode, 250 client đồng thời, mỗi client giữ 0,2 giây, lặp 3 lần): **trực tiếp** lỗi 42, 83, 81 trên 250 request, đỉnh khoảng 91/100 connection; **qua pgbouncer** lỗi 0/250 và đỉnh chỉ 12 connection thật. Chạy lại toàn bộ 20 test tích hợp (booking, auth, catalog, CDP) qua pooler đều pass, gồm auto-prepare của psycopg.
+Điều chỉnh sau khi đo: pool 10 (+2 dự phòng) cho mỗi (database, role), nên trần xấu nhất của 4 VM × 2 role = 96 connection, được tính bằng `POOLED=1 ops/check-db-direct.sh`.
+
+Rủi ro kèm theo đã tái hiện: khoá advisory mức session của job đối soát (vấn đề 1) không dùng được qua pooler transaction mode: hai bản sao cùng thấy mình là leader (`(True, True)`, test `test_session_advisory_lock_is_not_exclusive_through_the_pooler`). Sửa: `LEADER_LOCK_DATABASE_URL` đi thẳng tới Postgres; guard `REQUIRE_SHARED_BACKENDS` bắt buộc đặt nó khi dùng pooler, và chấp nhận loopback `127.0.0.1:6432` (pgbouncer sidecar) nhưng vẫn từ chối tunnel `127.0.0.1:15432`.
+
+Chưa kiểm: chạy trên VM thật (image kéo qua NAT, quyền ghi `/etc/vota/pgbouncer`, `nc` trong image cho healthcheck); mật khẩu role có ký tự cần mã hoá URL bị script từ chối (kiểm bằng test).
 
 ## 4. Điều kiện trước khi `terraform apply`
 

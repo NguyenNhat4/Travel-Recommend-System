@@ -9,6 +9,8 @@ locals {
     frontend_image     = var.frontend_image
     uvicorn_workers    = var.uvicorn_workers
     compose            = local.compose
+    pgbouncer_ini      = file("${path.module}/pgbouncer.ini")
+    pgbouncer_setup    = file("${path.module}/pgbouncer-setup.sh")
   })
 }
 

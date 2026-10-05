@@ -2,6 +2,7 @@
 # Kiểm một VM của nhóm HA nối được DB trực tiếp (không SSH tunnel) và đủ chỗ cho số kết nối dự kiến.
 # Chạy trên VM app hoặc máy có route tới DB:
 #   DB_HOST=db.vota.internal DB_PASSWORD_FILE=/etc/vota/db_pw ops/check-db-direct.sh
+# POOLED=1 tính theo pgbouncer sidecar (trần cố định) thay vì theo số worker.
 # Thoát 0 nếu đạt, khác 0 kèm lý do. Không in mật khẩu.
 set -Eeuo pipefail
 
@@ -31,7 +32,14 @@ echo "OK: kết nối $DB_USER@$DB_HOST:$DB_PORT/$DB_NAME"
 
 max=$("${PSQL[@]}" -c 'SHOW max_connections')
 used=$("${PSQL[@]}" -c 'SELECT count(*) FROM pg_stat_activity')
-need=$(( VMS * WORKERS * CONNS_PER_WORKER + RESERVED ))
-echo "max_connections=$max đang dùng=$used dự kiến đỉnh=$need (VM=$VMS × worker=$WORKERS × kết nối/worker=$CONNS_PER_WORKER + dự trữ=$RESERVED)"
+if [[ "${POOLED:-0}" == 1 ]]; then
+  # Có pgbouncer sidecar: trần kết nối thật là VM × role × (default_pool_size + reserve_pool_size), không theo số worker.
+  ROLES=${ROLES:-2}; POOL_SIZE=${POOL_SIZE:-10}; RESERVE_POOL=${RESERVE_POOL:-2}
+  need=$(( VMS * ROLES * (POOL_SIZE + RESERVE_POOL) + RESERVED ))
+  echo "max_connections=$max đang dùng=$used trần có pooler=$need (VM=$VMS × role=$ROLES × (pool=$POOL_SIZE + dự phòng=$RESERVE_POOL) + dự trữ=$RESERVED)"
+else
+  need=$(( VMS * WORKERS * CONNS_PER_WORKER + RESERVED ))
+  echo "max_connections=$max đang dùng=$used dự kiến đỉnh=$need (VM=$VMS × worker=$WORKERS × kết nối/worker=$CONNS_PER_WORKER + dự trữ=$RESERVED)"
+fi
 (( need <= max )) || fail "dự kiến $need kết nối vượt max_connections=$max: giảm worker, tăng max_connections hoặc bật pgbouncer (docs/plan/2026-10-05-ha-load-balancing.md)"
 echo 'OK: đủ chỗ kết nối'

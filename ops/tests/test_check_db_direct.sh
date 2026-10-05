@@ -43,6 +43,11 @@ echo '3. vượt max_connections: 4 VM × 2 worker × 10 + 10 = 90 > 30'
 if run DB_PASSWORD_FILE="$tmp/pw" 2>"$tmp/err"; then echo 'phải fail'; exit 1; fi
 grep -q 'vượt max_connections=30' "$tmp/err"
 
+echo '3b. có pooler: 1 VM × 2 role × (10+2) + 10 = 34 > 30 báo lỗi; 1 VM × 1 role = 22 đạt'
+if run DB_PASSWORD_FILE="$tmp/pw" POOLED=1 VMS=1 2>"$tmp/err"; then echo 'phải fail'; exit 1; fi
+grep -q 'vượt max_connections=30' "$tmp/err"
+run DB_PASSWORD_FILE="$tmp/pw" POOLED=1 VMS=1 ROLES=1 | grep -q 'trần có pooler=22'
+
 echo '4. sai mật khẩu'
 if run DB_PASSWORD_FILE="$tmp/bad" 2>"$tmp/err"; then echo 'phải fail'; exit 1; fi
 grep -q 'không kết nối được' "$tmp/err"

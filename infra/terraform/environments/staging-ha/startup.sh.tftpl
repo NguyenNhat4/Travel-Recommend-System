@@ -11,6 +11,14 @@ chmod 600 /etc/vota/backend.env
 } > /etc/vota/frontend.env
 chmod 600 /etc/vota/frontend.env
 docker-credential-gcr configure-docker --registries='${registry_host}'
+cat > /etc/vota/pgbouncer.ini.tmpl <<'PGBINI'
+${pgbouncer_ini}
+PGBINI
+cat > /etc/vota/pgbouncer-setup.sh <<'PGBSETUP'
+${pgbouncer_setup}
+PGBSETUP
+chmod +x /etc/vota/pgbouncer-setup.sh
+/etc/vota/pgbouncer-setup.sh /etc/vota/backend.env /etc/vota/pgbouncer /etc/vota/pgbouncer.ini.tmpl
 cat > /etc/vota/compose.yml <<'COMPOSE'
 ${compose}
 COMPOSE

@@ -210,7 +210,9 @@ def test_database_rejects_a_child_without_birth_date_and_a_cart_over_nine_guests
 def test_reconcile_leader_is_exclusive_across_connections():
     """Hai bản sao backend tranh một khoá advisory: chỉ một bên làm leader, nhả khoá thì bên kia lấy được."""
     async def go():
-        a, b = PostgresBookingStore(APP_URL), PostgresBookingStore(APP_URL)
+        # Khoá advisory mức session phải đi DSN trực tiếp; khi app chạy qua pgbouncer đặt LEADER_LOCK_DATABASE_URL.
+        leader_url = os.getenv("LEADER_LOCK_DATABASE_URL") or None
+        a, b = PostgresBookingStore(APP_URL, leader_url), PostgresBookingStore(APP_URL, leader_url)
         async with a.reconcile_leader() as first:
             assert first is True
             async with b.reconcile_leader() as second:

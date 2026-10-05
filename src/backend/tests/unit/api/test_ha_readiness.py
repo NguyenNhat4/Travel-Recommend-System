@@ -72,3 +72,21 @@ def test_lifespan_refuses_to_start_on_loopback_weaviate(monkeypatch):
 
     with pytest.raises(RuntimeError, match="WEAVIATE_URL"):
         asyncio.run(go())
+
+
+def test_pooler_sidecar_is_allowed_only_with_a_direct_leader_lock_dsn():
+    pooled = dict(database_url="postgresql://u:p@127.0.0.1:6432/vota", cdp_database_url="postgresql://c:p@127.0.0.1:6432/vota")
+    assert shared_backend_violations(_settings(**pooled)) == ["LEADER_LOCK_DATABASE_URL"]
+    ok = _settings(**pooled, leader_lock_database_url="postgresql://u:p@db.vota.internal:5432/vota")
+    assert shared_backend_violations(ok) == []
+
+
+def test_leader_lock_dsn_through_the_pooler_is_rejected():
+    pooled = dict(database_url="postgresql://u:p@127.0.0.1:6432/vota", cdp_database_url="postgresql://c:p@127.0.0.1:6432/vota")
+    bad = _settings(**pooled, leader_lock_database_url="postgresql://u:p@127.0.0.1:6432/vota")
+    assert shared_backend_violations(bad) == ["LEADER_LOCK_DATABASE_URL"]
+
+
+def test_ssh_tunnel_port_is_not_mistaken_for_the_pooler():
+    tunnel = _settings(database_url="postgresql://u:p@127.0.0.1:15432/vota")
+    assert shared_backend_violations(tunnel) == ["DATABASE_URL"]

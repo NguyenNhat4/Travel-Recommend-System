@@ -84,6 +84,8 @@ class Settings(BaseSettings):
     # Local week-1 topology: one PostgreSQL instance, two roles/connections.
     # The app role cannot read cdp.events/profiles; LocalCdpClient cannot access app/catalog.
     database_url: str = "postgresql://vota_app_login:vota@localhost:5432/vota"
+    # Kết nối TRỰC TIẾP tới Postgres (không qua pgbouncer) cho khoá advisory của job đối soát. Trống = dùng database_url.
+    leader_lock_database_url: str = ""
     cdp_database_url: str = "postgresql://cdp_client_login:cdp@localhost:5432/vota"
     cdp_adapter: Literal["local", "http"] = "local"
 
@@ -186,20 +188,45 @@ class Settings(BaseSettings):
 _LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
 
 
+#: Cổng pgbouncer chạy sidecar trên mỗi VM (compose HA). Loopback ở cổng này là pooler hợp lệ, khác tunnel SSH 15432.
+POOLER_SIDECAR_PORT = 6432
+
+
 def shared_backend_violations(settings: Settings) -> list[str]:
-    """Biến kết nối dịch vụ dùng chung đang trỏ loopback (chỉ bản sao này thấy). Rỗng nếu hợp lệ hoặc không bật chế độ."""
+    """Biến kết nối đang trỏ sai chỗ cho chế độ nhiều bản sao. Rỗng nếu hợp lệ hoặc không bật chế độ.
+
+    - Weaviate/Redis/Postgres không được là loopback (mỗi VM một bản riêng thì lệch trạng thái), trừ pgbouncer sidecar
+      ở 127.0.0.1:6432 cho DATABASE_URL/CDP_DATABASE_URL.
+    - Có pooler thì khoá leader của job đối soát phải đi DSN trực tiếp tới Postgres (LEADER_LOCK_DATABASE_URL), nếu
+      không khoá advisory mức session rơi vào connection của người khác và mọi bản sao đều tưởng mình là leader.
+    """
     if not settings.require_shared_backends:
         return []
     from urllib.parse import urlparse
 
+    def parsed(value: str):
+        return urlparse(value) if value else None
+
+    def loopback(value: str) -> bool:
+        u = parsed(value)
+        return bool(u) and (u.hostname or "").lower() in _LOOPBACK_HOSTS
+
+    def pooler(value: str) -> bool:
+        u = parsed(value)
+        return loopback(value) and u.port == POOLER_SIDECAR_PORT
+
     bad = []
-    # DATABASE_URL loopback = tunnel SSH cấu hình tay (127.0.0.1:15432) mà VM sinh từ instance template không có.
     for name, value in (("WEAVIATE_URL", settings.weaviate_url), ("AUTH_REDIS_URL", settings.auth_redis_url),
-                        ("ITINERARY_REDIS_URL", settings.itinerary_redis_url),
-                        ("DATABASE_URL", settings.database_url), ("CDP_DATABASE_URL", settings.cdp_database_url)):
-        host = (urlparse(value).hostname or "").lower() if value else ""
-        if not value or host in _LOOPBACK_HOSTS:
+                        ("ITINERARY_REDIS_URL", settings.itinerary_redis_url)):
+        if not value or loopback(value):
             bad.append(name)
+    for name, value in (("DATABASE_URL", settings.database_url), ("CDP_DATABASE_URL", settings.cdp_database_url)):
+        if not value or (loopback(value) and not pooler(value)):
+            bad.append(name)  # loopback ngoài pooler sidecar = tunnel SSH mà VM của MIG không có
+    uses_pooler = pooler(settings.database_url) or pooler(settings.cdp_database_url)
+    leader = settings.leader_lock_database_url
+    if uses_pooler and (not leader or loopback(leader)):
+        bad.append("LEADER_LOCK_DATABASE_URL")
     return bad
 
 

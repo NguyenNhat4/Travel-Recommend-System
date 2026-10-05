@@ -382,8 +382,11 @@ RECONCILE_LOCK_KEY = 0x564F5441_0001   # "VOTA" + 1
 
 
 class PostgresBookingStore:
-    def __init__(self, database_url: str):
+    def __init__(self, database_url: str, leader_lock_database_url: str | None = None):
         self._database_url = database_url
+        # Khoá advisory mức session cần một connection Postgres thật; qua pgbouncer chế độ transaction nó rơi vào
+        # connection phía server của người khác. Vì vậy DSN trực tiếp (không qua pooler), mặc định bằng database_url.
+        self._leader_url = leader_lock_database_url or database_url
 
     @asynccontextmanager
     async def transaction(self) -> AsyncIterator[_Tx]:
@@ -394,8 +397,8 @@ class PostgresBookingStore:
     @asynccontextmanager
     async def reconcile_leader(self) -> AsyncIterator[bool]:
         # Advisory lock mức session trên một connection riêng: đóng connection là nhả khoá, kể cả khi
-        # tiến trình chết. Không dùng được qua pgbouncer chế độ transaction (khoá sẽ mất theo connection trả pool).
-        async with await psycopg.AsyncConnection.connect(self._database_url, autocommit=True) as conn:
+        # tiến trình chết. Phải dùng DSN trực tiếp, không qua pgbouncer chế độ transaction.
+        async with await psycopg.AsyncConnection.connect(self._leader_url, autocommit=True) as conn:
             cur = await conn.execute("SELECT pg_try_advisory_lock(%s)", (RECONCILE_LOCK_KEY,))
             acquired = bool((await cur.fetchone())[0])
             try:

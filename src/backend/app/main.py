@@ -396,7 +396,7 @@ def build_booking(settings: Settings, cdp_client, recorder, product_lookup, *, c
         gateway = FakeGateway()
     else:
         gateway = StripePaymentGateway(settings.stripe_secret_key, settings.stripe_webhook_secret)
-    store = PostgresBookingStore(settings.database_url)
+    store = PostgresBookingStore(settings.database_url, settings.leader_lock_database_url or None)
     carts = PostgresCartRepository(settings.database_url)
     catalog = PostgresProductCatalog(settings.database_url)
     settlement = Settlement(store, gateway, cdp_client, clock)
