@@ -43,7 +43,11 @@ Hạ tầng staging chỉ có 1 app VM, 1 worker uvicorn, không LB, không auto
 - `pytest src/backend/tests/unit/application/booking`: 63 passed (gồm test leader mới).
 - `APP_ENV=test pytest src/backend/tests --ignore=integration`: 1094 passed, 8 failed. 8 fail đều ở `test_assistant_contract.py` do `ConnectionRefused 127.0.0.1:6379` (`.env` cục bộ trỏ Redis, Docker đang tắt); baseline sạch (worktree không có `.env`) 1101 passed. Không liên quan đối soát.
 - `APP_ENV=test pytest src/backend/tests --ignore=integration` sau việc 5: 1103 passed, 8 failed; 8 fail vẫn là `test_assistant_contract.py` do Redis `127.0.0.1:6379` không chạy (như trên). `test_ha_readiness.py`: 9 passed. `terraform validate` staging-ha: pass.
-- Chưa chạy: test Postgres thật cho advisory lock (Docker tắt), `terraform plan/apply`, k6, `UVICORN_WORKERS` với backend thật, image build. Không đụng contract/DB nên không chạy `validate_contract.py`/`verify.sql`.
+- Kiểm thật trên Docker (Postgres 16 tạm `vota-ha-test`, cổng 55432, seed snapshot 2026-09-30, Redis cục bộ; Weaviate/Cohere/OpenAI/LangSmith bị vô hiệu bằng biến môi trường):
+  - `src/backend/tests/integration`: 22 passed, gồm `test_reconcile_leader_is_exclusive_across_connections` (advisory lock thật giữa hai connection) và toàn bộ test booking/auth/catalog.
+  - Phần còn lại của `src/backend/tests` (không gồm integration): 1107 passed, 4 failed. 4 fail là `test_assistant_contract.py` trả 429 `TOO_MANY_ATTEMPTS` khi `AUTH_REDIS_URL` trỏ Redis thật (các test giả định bộ đếm trong bộ nhớ); **fail y hệt trên mã gốc 3aef222**, không do nhánh này.
+  - DB dev cục bộ cũ (volume còn thư viện pgvector) lỗi migration 0002 nên không dùng làm DB test.
+- Chưa chạy: test Postgres thật cho advisory lock `terraform plan/apply`, k6, `UVICORN_WORKERS` với backend thật, image build. Không đụng contract/DB nên không chạy `validate_contract.py`/`verify.sql`.
 
 ## Vấn đề HA đã giải: đối soát đơn chạy trùng khi scale ngang
 
