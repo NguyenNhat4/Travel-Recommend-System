@@ -31,7 +31,7 @@ from typing import Any, Optional
 import numpy as np
 from pydantic import BaseModel, ConfigDict
 
-from .gold_schema import (CHILD_FILTER_FIELDS, OUT_OF_CATALOG_SLICE, PARENT_CHILD_SLICE, SLICES, Child, GoldRecord,
+from .gold_schema import (CHILD_FILTER_FIELDS, LABELERS, OUT_OF_CATALOG_SLICE, PARENT_CHILD_SLICE, SLICES, Child, GoldRecord,
                           LabelRow, MergedRow, PoolFile, PoolMeta, PoolRow, SchemaError, atomic_write_text,
                           children_visible, file_sha256, read_labels_csv, read_pool_csv, read_pool_meta,
                           validate_label_against_pool, write_gold_jsonl, write_pool_csv, write_pool_meta)
@@ -1145,8 +1145,10 @@ def read_catalog_parents(path: Path) -> dict[str, str | None]:
     return out
 
 
-def build_gold(pools: PoolSet, merged: list, parents: dict[str, str | None], provenance: str) -> list[GoldRecord]:
-    """merged.csv (đã hoà, đã thảo luận) → GoldRecord mỗi câu. Gom mọi lỗi rồi mới từ chối."""
+def build_gold(pools: PoolSet, merged: list, parents: dict[str, str | None], provenance: str,
+               sources: dict[tuple[str, str], str] | None = None) -> list[GoldRecord]:
+    """merged.csv (đã hoà, đã thảo luận) → GoldRecord mỗi câu. Gom mọi lỗi rồi mới từ chối. `sources` (gold_v4+,
+    `pair_sources`): provenance từng nhãn theo nguồn (`provenance_by_source`); không có → mọi nhãn cùng `provenance`."""
     problems: list[str] = []
     by_key = {m.key: m for m in merged}
     want = pools.all_keys()
@@ -1181,9 +1183,62 @@ def build_gold(pools: PoolSet, merged: list, parents: dict[str, str | None], pro
         records.append(GoldRecord(
             qid=qid, text=h.query, slice=h.slice, filter=h.filter_json, child_filter=h.child_filter_json,
             expected_no_result=h.expected_no_result, judgments={m.product_id: m.label for m in ms},
-            provenance={m.product_id: provenance for m in ms},
+            provenance={m.product_id: provenance if sources is None
+                        else provenance_by_source(provenance, sources.get(m.key, SOURCE_HUMAN)) for m in ms},
             expected_children={m.product_id: m.children_ok for m in ms if m.children_ok}))
     return records
+
+
+# ------------------------------------------------------------------ gold_v4+: thêm câu mới vào gold đã tag
+# Nguồn một cặp theo `labels/provenance_<X>.csv` cạnh pool_meta (app + `gold machine-import` ghi; cặp không có dòng =
+# người gán tự gán). merge / kappa không đọc file này; `import --append` đọc để giữ nguồn trong provenance của gold.
+SOURCE_HUMAN, SOURCE_MACHINE_ACCEPTED, SOURCE_MACHINE_EDITED, SOURCE_MACHINE_UNREVIEWED = (
+    "human", "machine_accepted", "machine_edited", "machine_unreviewed")
+
+
+def pair_sources(meta_path: Path) -> dict[tuple[str, str], str]:
+    """(qid, product_id) → human · machine_accepted (máy, người tick duyệt) · machine_edited (máy, người sửa nhãn) ·
+    machine_unreviewed. Cặp chung (κ) không bao giờ có nhãn máy nên hai file không mâu thuẫn."""
+    import csv
+    out: dict[tuple[str, str], str] = {}
+    for x in LABELERS:
+        p = meta_path.parent / "labels" / f"provenance_{x}.csv"
+        if not p.exists():
+            continue
+        with p.open(encoding="utf-8-sig", newline="") as fh:
+            rd = csv.DictReader(fh)
+            need = {"qid", "product_id", "source", "review"}
+            if not need <= set(rd.fieldnames or ()):
+                raise GoldError(f"{p.name}: thiếu cột {sorted(need - set(rd.fieldnames or ()))} (có {rd.fieldnames}) — "
+                                "file nguồn nhãn hỏng (mở bằng Excel rồi lưu lại?)")
+            for r in rd:
+                if r["source"] not in ("machine", "human", ""):
+                    raise GoldError(f"{p.name}: source lạ {r['source']!r} ở {r['qid']}/{r['product_id']}")
+                key = (r["qid"], r["product_id"])
+                if r.get("source") != "machine":
+                    out[key] = SOURCE_HUMAN
+                else:
+                    out[key] = {"accepted": SOURCE_MACHINE_ACCEPTED,
+                                "edited": SOURCE_MACHINE_EDITED}.get(r.get("review") or "", SOURCE_MACHINE_UNREVIEWED)
+    return out
+
+
+def provenance_by_source(provenance: str, source: str) -> str:
+    """`pool@gold_v4` + nguồn → provenance của một nhãn: người gán / máy bị người sửa → giữ nguyên; máy được người duyệt
+    → `pool:machine@gold_v4`; máy chưa duyệt (chỉ khi `--accept-unreviewed`) → `pool:machine_unreviewed@gold_v4`."""
+    if source in (SOURCE_HUMAN, SOURCE_MACHINE_EDITED):
+        return provenance
+    kind, sep, ver = provenance.partition("@")
+    return f"{kind}:{'machine' if source == SOURCE_MACHINE_ACCEPTED else 'machine_unreviewed'}{sep}{ver}"
+
+
+def append_gold(existing: list[GoldRecord], new: list[GoldRecord]) -> list[GoldRecord]:
+    """Câu mới nối vào CUỐI gold đang có (Part 11: gold chỉ thêm, kể cả thêm câu). qid đã có (kể cả retired) → từ chối."""
+    have = {r.qid for r in existing}
+    dup = sorted(r.qid for r in new if r.qid in have)
+    if dup:
+        raise RuleViolation("import --append", [f"{q}: qid đã có trong gold — câu mới cần qid mới" for q in dup])
+    return [*existing, *new]
 
 
 def write_gold_checked(records: list[GoldRecord], out: Path, *, overwrite: bool = False) -> bool:

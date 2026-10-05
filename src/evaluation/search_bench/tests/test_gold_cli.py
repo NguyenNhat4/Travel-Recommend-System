@@ -151,6 +151,92 @@ def test_import_refuses_overwriting_different_gold(tmp_path):
     assert out.read_bytes() == (FX / "gold_expected.jsonl").read_bytes()
 
 
+# ------------------------------------------------------------------ import --append (gold_v4+)
+def _old_gold(path: Path, qid: str = "c0001") -> list:
+    """Một gold "đã tag" có sẵn: câu đầu của gold_expected đổi qid (không trùng câu nào của pool fixture)."""
+    rec = read_gold_jsonl(FX / "gold_expected.jsonl")[0].model_copy(update={"qid": qid})
+    write_gold_jsonl([rec], path)
+    return [rec]
+
+
+def _append_args(fx: Path, out: Path, *extra):
+    return ("import", fx / "merged_resolved.csv", "--meta", fx / "pool_meta.json", "--catalog", fx / "catalog_small.jsonl",
+            "-o", out, "--append", "--version", "gold_v9", *extra)
+
+
+def _write_prov(fx: Path, key: tuple[str, str], review: str) -> None:
+    from evaluation.search_bench.labeling_core import PROV_COLUMNS
+    (fx / "labels").mkdir(exist_ok=True)
+    row = {c: "" for c in PROV_COLUMNS} | {"qid": key[0], "product_id": key[1], "source": "machine", "machine_label": "0",
+                                          "model": "t", "review": review}
+    lines = [",".join(PROV_COLUMNS), ",".join(row[c] for c in PROV_COLUMNS)]
+    (fx / "labels" / "provenance_A.csv").write_text("\n".join(lines) + "\n", encoding="utf-8-sig")
+
+
+def test_import_append_adds_new_queries_after_old_gold(fx, tmp_path):
+    out = tmp_path / "gold.jsonl"
+    old = _old_gold(out)
+    assert_exit(run(*_append_args(fx, out)), 0, "+7 câu (tổng 8)")
+    recs = read_gold_jsonl(out)
+    assert recs[0] == old[0]                                             # câu cũ giữ nguyên, đứng đầu
+    expected = read_gold_jsonl(FX / "gold_expected.jsonl")
+    assert [r.qid for r in recs[1:]] == [r.qid for r in expected]
+    assert all(v == "pool@gold_v9" for r in recs[1:] for v in r.provenance.values())
+    assert [r.judgments for r in recs[1:]] == [r.judgments for r in expected]
+    log = (tmp_path / "changelog.yaml").read_text(encoding="utf-8")
+    assert "action: import_append" in log and "new_queries: 7" in log
+
+
+def test_import_append_refuses_existing_qid_and_missing_gold(fx, tmp_path):
+    out = tmp_path / "gold.jsonl"
+    assert_exit(run(*_append_args(fx, out)), 2, "--append cần gold đang có")
+    first = read_gold_jsonl(FX / "gold_expected.jsonl")[0].qid
+    _old_gold(out, qid=first)
+    before = out.read_bytes()
+    assert_exit(run(*_append_args(fx, out)), 1, f"{first}: qid đã có trong gold")
+    assert out.read_bytes() == before
+
+
+def test_import_append_machine_provenance(fx, tmp_path):
+    out = tmp_path / "gold.jsonl"
+    key = read_merged_csv(FX / "merged_resolved.csv")[0].key
+    _old_gold(out)
+    before = out.read_bytes()
+    _write_prov(fx, key, review="")
+    assert_exit(run(*_append_args(fx, out)), 1, "nhãn máy chưa duyệt", f"{key[0]}/{key[1]}")
+    assert out.read_bytes() == before
+    assert_exit(run(*_append_args(fx, out, "--accept-unreviewed")), 0)
+    rec = next(r for r in read_gold_jsonl(out) if r.qid == key[0])
+    assert rec.provenance[key[1]] == "pool:machine_unreviewed@gold_v9"
+
+
+@pytest.mark.parametrize("review, want", [("accepted", "pool:machine@gold_v9"), ("edited", "pool@gold_v9")])
+def test_import_append_reviewed_machine_label(fx, tmp_path, review, want):
+    out = tmp_path / "gold.jsonl"
+    key = read_merged_csv(FX / "merged_resolved.csv")[0].key
+    _old_gold(out)
+    _write_prov(fx, key, review=review)
+    assert_exit(run(*_append_args(fx, out)), 0)
+    rec = next(r for r in read_gold_jsonl(out) if r.qid == key[0])
+    assert rec.provenance[key[1]] == want
+
+
+def test_import_append_rejects_broken_provenance_file(fx, tmp_path):
+    out = tmp_path / "gold.jsonl"
+    _old_gold(out)
+    (fx / "labels").mkdir()
+    (fx / "labels" / "provenance_A.csv").write_text("qid;product_id;source\nc0001;P001;machine\n", encoding="utf-8-sig")
+    assert_exit(run(*_append_args(fx, out)), 2, "thiếu cột")
+
+
+def test_import_flag_combinations(fx, tmp_path):
+    out = tmp_path / "gold.jsonl"
+    assert_exit(run(*_append_args(fx, out, "--overwrite")), 2, "loại trừ nhau")
+    args = ("import", fx / "merged_resolved.csv", "--meta", fx / "pool_meta.json", "--catalog", fx / "catalog_small.jsonl",
+            "-o", out, "--accept-unreviewed")
+    assert_exit(run(*args), 2, "chỉ dùng với --append")
+
+
 def _merged_variant(fx: Path, edit) -> Path:
     rows = [r for r in (edit(r) for r in read_merged_csv(fx / "merged_resolved.csv")) if r is not None]
     p = fx / "merged_edit.csv"

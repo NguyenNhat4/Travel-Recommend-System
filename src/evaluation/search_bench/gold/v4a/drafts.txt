@@ -1,0 +1,23 @@
+khách sạn Sa Pa có spa nhưng không có hồ bơi	amenity_negation	{"and":[{"eq":["destination","Sa Pa"]},{"eq":["variant","hotel_property"]}]}
+chỗ nghỉ ở TP. Hồ Chí Minh có xe đưa đón sân bay, không có hồ bơi	amenity_negation	{"and":[{"eq":["destination","TP. Hồ Chí Minh"]},{"eq":["variant","hotel_property"]}]}
+khách sạn Hội An có hồ bơi nhưng không có dịch vụ đưa đón sân bay	amenity_negation	{"and":[{"eq":["destination","Hội An"]},{"eq":["variant","hotel_property"]}]}
+chỗ nghỉ Đà Lạt có nhà hàng, không có hồ bơi	amenity_negation	{"and":[{"eq":["destination","Đà Lạt"]},{"eq":["variant","hotel_property"]}]}
+khách sạn ở Phú Quốc có hồ bơi nhưng không có nhà hàng	amenity_negation	{"and":[{"eq":["destination","Phú Quốc"]},{"eq":["variant","hotel_property"]}]}
+khách sạn Huế có hồ bơi, không có spa	amenity_negation	{"and":[{"eq":["destination","Huế"]},{"eq":["variant","hotel_property"]}]}
+chỗ nghỉ Quy Nhơn có hồ bơi nhưng không có quầy bar	amenity_negation	{"and":[{"eq":["destination","Quy Nhơn"]},{"eq":["variant","hotel_property"]}]}
+khách sạn Đà Nẵng có hồ bơi, không có phòng gym	amenity_negation	{"and":[{"eq":["destination","Đà Nẵng"]},{"eq":["variant","hotel_property"]}]}
+khách sạn ở Grand World Phú Quốc	taxonomy_collision
+vé vui chơi ở Grand World Phú Quốc	taxonomy_collision
+vé lẻ VinWonders Nam Hội An, không lấy combo	taxonomy_collision
+combo vé máy bay và khách sạn Đà Lạt	taxonomy_collision
+khách sạn Vinpearl ở Nha Trang	taxonomy_collision
+vé máy bay Sài Gòn đi Đà Nẵng	flight_direction	{"eq":["variant","flight_route"]}
+vé máy bay Cần Thơ đi Hà Nội	flight_direction	{"eq":["variant","flight_route"]}
+vé máy bay Côn Đảo về TP. Hồ Chí Minh	flight_direction	{"eq":["variant","flight_route"]}
+vé máy bay đi Côn Đảo	flight_direction	{"eq":["variant","flight_route"]}
+các chuyến bay xuất phát từ Cần Thơ	flight_direction	{"eq":["variant","flight_route"]}
+vé máy bay đến Phú Quốc	flight_direction	{"eq":["variant","flight_route"]}
+khách sạn ở Lạng Sơn	out_of_catalog		true
+resort Bạc Liêu	out_of_catalog		true
+tour hồ Ba Bể	out_of_catalog		true
+homestay Tà Xùa	out_of_catalog		true
