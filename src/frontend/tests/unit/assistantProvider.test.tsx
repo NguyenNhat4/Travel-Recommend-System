@@ -229,7 +229,8 @@ describe('AssistantProvider', () => {
 
     await waitFor(() => expect(screen.getByTestId('conversation').textContent).toBe('archive-id'));
     expect(screen.getByTestId('transcript').textContent).toBe('Nha Trang 3 ngày|Bạn đi ngày nào?');
-    expect(sessionStorage.getItem('vota.assistant.conversationId')).toBe('archive-id');
+    // sessionStorage được ghi trong effect sau lần render có conversationId; chờ thay vì đọc ngay.
+    await waitFor(() => expect(sessionStorage.getItem('vota.assistant.conversationId')).toBe('archive-id'));
   });
 
   it('resends an expired conversation once as a new conversation', async () => {
@@ -299,7 +300,8 @@ describe('AssistantProvider', () => {
     });
 
     await waitFor(() => expect(screen.getByTestId('conversation').textContent).toBe('backend-context-id'));
-    expect(sessionStorage.getItem('vota.assistant.conversationId')).toBe('backend-context-id');
+    // sessionStorage được ghi trong effect sau lần render có conversationId; chờ thay vì đọc ngay.
+    await waitFor(() => expect(sessionStorage.getItem('vota.assistant.conversationId')).toBe('backend-context-id'));
     expect(screen.getByTestId('error').textContent).toBe('UNSUPPORTED_DESTINATION');
     expect(screen.getByTestId('transcript').textContent).toBe('Plan trip');
   });
