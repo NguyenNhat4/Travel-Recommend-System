@@ -34,6 +34,11 @@ def get_similar(request: Request) -> Any:
     return request.app.state.similar
 
 
+def get_suggest(request: Request) -> Any:
+    """None khi recsys bị tắt lúc khởi động; route gợi ý trả danh sách rỗng thay vì 500."""
+    return getattr(request.app.state, "suggest", None)
+
+
 def get_recommend(request: Request) -> Any:
     return request.app.state.recommend
 

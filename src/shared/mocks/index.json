@@ -179,6 +179,22 @@
       "file": "search/searchProducts.503-unavailable.json"
     },
     {
+      "operationId": "suggestSearch",
+      "method": "get",
+      "path": "/search/suggestions",
+      "status": 200,
+      "case": "default",
+      "file": "search/suggestSearch.200-default.json"
+    },
+    {
+      "operationId": "suggestSearch",
+      "method": "get",
+      "path": "/search/suggestions",
+      "status": 200,
+      "case": "empty",
+      "file": "search/suggestSearch.200-empty.json"
+    },
+    {
       "operationId": "getRecommendations",
       "method": "get",
       "path": "/recommendations",
