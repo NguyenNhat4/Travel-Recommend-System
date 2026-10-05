@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import propertyFixture from '../../../shared/mocks/catalog/getProduct.200-property.json';
 import ticketFixture from '../../../shared/mocks/catalog/getProduct.200-default.json';
@@ -104,7 +104,8 @@ describe('ProductDetailView', () => {
     api.getProduct.mockResolvedValue(hotelProperty());
     render(<ProductDetailView productId="nt-h-10" />);
     await screen.findAllByRole('radio', {}, WAIT);
-    await waitFor(() => expect(document.querySelector<HTMLInputElement>('input[type="date"]')?.value).toBeTruthy(), WAIT);
+    // Ô text dd/mm/yyyy đồng bộ từ ngày mặc định qua effect, sau ô date ẩn; chờ chính ô này để khỏi chạy đua trên CI chậm.
+    await waitFor(() => expect((screen.getByLabelText('Nhận phòng') as HTMLInputElement).value).toMatch(/^\d{2}\/\d{2}\/\d{4}$/), WAIT);
     const checkIn = screen.getByLabelText('Nhận phòng') as HTMLInputElement;
     const checkOut = screen.getByLabelText('Trả phòng') as HTMLInputElement;
     expect(checkIn.value).toMatch(/^\d{2}\/\d{2}\/\d{4}$/);
@@ -130,7 +131,8 @@ describe('ProductDetailView', () => {
     api.getProduct.mockResolvedValue(hotelProperty());
     render(<ProductDetailView productId="nt-h-10" />);
     await screen.findAllByRole('radio', {}, WAIT);
-    await waitFor(() => expect(document.querySelector<HTMLInputElement>('input[type="date"]')?.value).toBeTruthy(), WAIT);
+    // Ô text dd/mm/yyyy đồng bộ từ ngày mặc định qua effect, sau ô date ẩn; chờ chính ô này để khỏi chạy đua trên CI chậm.
+    await waitFor(() => expect((screen.getByLabelText('Nhận phòng') as HTMLInputElement).value).toMatch(/^\d{2}\/\d{2}\/\d{4}$/), WAIT);
     const checkIn = screen.getByLabelText('Nhận phòng') as HTMLInputElement;
     const checkOut = screen.getByLabelText('Trả phòng') as HTMLInputElement;
     const dmy = (offsetDays: number) => {
@@ -164,6 +166,7 @@ describe('ProductDetailView', () => {
     });
     render(<ProductDetailView productId="nt-a-vinwonders-buggy" />);
     await screen.findByRole('heading', { name: 'Vé VinWonders + Buggy' });
+    await act(async () => {});                                                          // chờ effect đặt lại số khách chạy xong trước khi bấm
     expect(screen.getByText('Từ 12 tuổi · 1.500.000 ₫')).toBeTruthy();
     expect(screen.getByText('Dưới 12 tuổi · 504.000 ₫')).toBeTruthy();
     expect(screen.getByTestId('estimate-total').textContent).toContain('1.500.000');
@@ -194,6 +197,8 @@ describe('ProductDetailView', () => {
     });
     render(<ProductDetailView productId="nt-f-vj601" />);
     await screen.findByRole('heading', { name: 'VietJet Air VJ601' });
+    // Effect đặt lại ngày/số khách theo mục đang chọn chạy sau lần render đầu; chờ nó xong để lần bấm không bị ghi đè.
+    await act(async () => {});
     expect(screen.getByText('Dưới 12 tuổi · cùng giá người lớn')).toBeTruthy();
     expect(screen.queryByTestId('flight-child-note')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Thêm trẻ em' }));
@@ -210,6 +215,8 @@ describe('ProductDetailView', () => {
     });
     render(<ProductDetailView productId="nt-c-01" />);
     await screen.findByRole('heading', { name: 'Combo 3N2Đ' });
+    // Effect đặt lại ngày/số khách theo mục đang chọn chạy sau lần render đầu; chờ nó xong để lần bấm không bị ghi đè.
+    await act(async () => {});
     expect(screen.queryByRole('button', { name: 'Thêm người lớn' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Thêm gói' }));
     expect(screen.getByTestId('estimate-total').textContent).toContain('10.400.000');
