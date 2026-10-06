@@ -38,7 +38,7 @@ import pipeline_graph as graph
 from collectors import live_control
 from collectors.geo import normalise_destination
 from normalise import STAGES as STAGE_LABELS
-from fresh_run_log import HISTORY_FILE, LOG_FILE, RUN_FILE, RUNNING_FILE, STOP_FILE, run_dirs, write_json
+from fresh_run_log import HISTORY_FILE, LOG_FILE, RUN_FILE, RUNNING_FILE, STOP_FILE, prune_runs, run_dirs, write_json
 
 ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "monitor_ui"
@@ -1018,6 +1018,56 @@ class FreshMonitor:
             if p.is_file() and p.name not in skip and not p.name.startswith("."):
                 out.append({"name": str(p.relative_to(path)), "bytes": p.stat().st_size})
         return out
+
+    # -- dung lượng: theo dõi đĩa VM và dọn lượt cào cũ (người dùng yêu cầu 06/10)
+    def _storage_root(self) -> Path:
+        """Thư mục dữ liệu gắn vào container (`/data` trên VM): cha chung của state và các lượt cào."""
+        return self.run_root.parent if self.run_root.parent == self.state_dir.parent else self.run_root
+
+    def _running_dir(self) -> Path | None:
+        info = read_json(self.state_dir / RUNNING_FILE) or {}
+        if lock_busy(self.state_dir) and info.get("runId"):
+            return self.run_root / str(info["runId"])
+        return None
+
+    def storage(self) -> dict:
+        """Đĩa của VM (filesystem chứa thư mục dữ liệu), từng thư mục con và từng lượt cào còn giữ."""
+        root = self._storage_root()
+        usage = shutil.disk_usage(root if root.exists() else Path("/"))
+        dirs = []
+        if root.is_dir():
+            for entry in sorted(root.iterdir()):
+                if entry.is_symlink():
+                    continue
+                files, size = dir_size(entry) if entry.is_dir() else (1, entry.stat().st_size)
+                dirs.append({"name": entry.name, "bytes": size, "files": files})
+        dirs.sort(key=lambda d: d["bytes"], reverse=True)
+        running = self._running_dir()
+        keep = None
+        described = fresh_settings.describe(self.state_dir)
+        if not described["error"]:
+            keep = next((f["value"] for f in described["fields"] if f["key"] == "runs.keep"), None)
+        runs = []
+        for index, path in enumerate(run_dirs(self.run_root)):
+            files, size = dir_size(path)
+            runs.append({"runId": path.name, "bytes": size, "files": files,
+                         "modifiedAt": datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat(),
+                         "running": running is not None and path.resolve() == running.resolve()})
+        return {"path": str(root), "disk": {"total": usage.total, "used": usage.used, "free": usage.free},
+                "dirs": dirs, "runs": runs, "runsKeep": keep,
+                "note": "Image Docker cũ không xoá được từ monitor (container không có quyền Docker); "
+                        "bước deploy job cào tự xoá image cũ, giữ bản đang chạy và một bản trước."}
+
+    def storage_cleanup(self, keep_runs) -> dict:
+        """Xoá các lượt cào cũ, giữ `keep_runs` lượt mới nhất; lượt đang chạy luôn được giữ."""
+        if isinstance(keep_runs, bool) or not isinstance(keep_runs, int) or not 1 <= keep_runs <= 100:
+            raise ValueError("Số lượt giữ lại phải là số nguyên 1–100")
+        root = self._storage_root()
+        before = shutil.disk_usage(root if root.exists() else Path("/")).free
+        removed = prune_runs(self.run_root, keep_runs, protect=self._running_dir())
+        self._disk = (0.0, None)
+        after = shutil.disk_usage(root if root.exists() else Path("/")).free
+        return {"removed": removed, "freedBytes": max(0, after - before), "kept": keep_runs}
 
     # -- log
     def runner_logs(self) -> list[dict]:
@@ -2031,6 +2081,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._stream_log(q.get("run", ""), num("lines", 300))
             routes = {
                 "/api/overview": lambda: m.overview(),
+                "/api/storage": lambda: m.storage(),
                 "/api/runs": lambda: m.runs(limit=num("limit", 60)),
                 "/api/run": lambda: m.run(q.get("id", "")),
                 "/api/graph": lambda: m.graph(q.get("run", "")),
@@ -2157,6 +2208,8 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/live":
                 code, out = self.monitor.set_live(str(body.get("key") or ""), body.get("changes") or {})
                 return self._json(out, code)
+            if path == "/api/storage/cleanup":
+                return self._json(self.monitor.storage_cleanup(body.get("keepRuns")))
             if path == "/api/embed/query":
                 return self._json(self.monitor.embed_query(str(body.get("run") or ""), str(body.get("q") or ""),
                                                            int(body.get("k") or 10), bool(body.get("refresh"))))

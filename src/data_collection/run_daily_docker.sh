@@ -302,6 +302,26 @@ cmd_backend() {
   if [ -z "$errors" ]; then echo 'không có'; else echo "$errors" | tail -n 5; echo "(tổng $(echo "$errors" | wc -l) dòng)"; fi
 }
 
+# Image cũ của job cào: mỗi lần deploy kéo image mới (vài GB) mà không xoá bản cũ → đĩa VM đầy dần (06/10). Giữ image vừa
+# deploy ($1, repo@digest) và image mới nhất trước đó của cùng repository (rollback tay); image đang được container dùng thì
+# `docker rmi` tự từ chối. Không đụng repository khác (backend, frontend). Lỗi dọn không làm hỏng deploy.
+cmd_prune_images() {
+  local current="${1:-}" repo keep previous id
+  [ -n "$current" ] || die "cần image vừa deploy, vd. prune-images <repo>@sha256:..."
+  repo="${current%@*}"
+  [ "$repo" = "$current" ] && repo="${current%:*}"
+  keep="$(docker image inspect --format '{{.Id}}' "$current" 2>/dev/null || true)"
+  [ -n "$keep" ] || { echo "Không thấy image $current trên máy; bỏ qua dọn." >&2; return 0; }
+  previous="$(docker image ls "$repo" --no-trunc --format '{{.CreatedAt}}|{{.ID}}' | sort -r | cut -d'|' -f2 \
+    | grep -Fxv "$keep" | head -n 1 || true)"
+  docker image ls "$repo" --no-trunc --quiet | sort -u | while read -r id; do
+    [ -n "$id" ] || continue
+    if [ "$id" = "$keep" ] || [ "$id" = "$previous" ]; then continue; fi
+    docker rmi "$id" >/dev/null 2>&1 && echo "Đã xoá image cũ $id" || true
+  done
+  docker image prune -f >/dev/null 2>&1 || true
+}
+
 cmd_cleanup() {
   local keep="${1:-2}"
   echo "=== Dọn dẹp dung lượng VM (giữ tối đa $keep lượt mới nhất) ==="
@@ -325,6 +345,7 @@ cmd_cleanup() {
 
 case "${1:-}" in
   cleanup) shift; cmd_cleanup "$@" ;;
+  prune-images) shift; cmd_prune_images "$@" ;;
   import-flights) shift; cmd_import_flights "$@" ;;
   init) shift; cmd_init "$@" ;;
   run) cmd_legacy_run ;;  # compatibility for the legacy cron/CLI

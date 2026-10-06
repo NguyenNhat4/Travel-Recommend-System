@@ -101,7 +101,7 @@ details{margin:10px 0}summary{cursor:pointer}
 </head>
 <body>
 <header><h1>V-OTA <span class="muted">/ Fresh catalog</span></h1><p>Theo dõi cào → chuẩn hoá → nạp Postgres → embed/index Weaviate</p><div id="connection" aria-live="polite">Đang kết nối…</div>
-<nav aria-label="Điều hướng"><button data-view="overview" aria-current="true">Tổng quan</button><button data-view="runs">Lịch sử</button><button data-view="system">Hệ thống</button><button data-view="settings">Cấu hình</button><button data-view="db">DB</button><button data-view="realtime">Realtime</button></nav>
+<nav aria-label="Điều hướng"><button data-view="overview" aria-current="true">Tổng quan</button><button data-view="runs">Lịch sử</button><button data-view="system">Hệ thống</button><button data-view="storage">Dung lượng</button><button data-view="settings">Cấu hình</button><button data-view="db">DB</button><button data-view="realtime">Realtime</button></nav>
 <div id="controls" class="actions" aria-label="Điều khiển lượt"><button type="button" class="primary" data-action="start" data-args='{"mode":"auto"}' title="full hoặc daily theo chu kỳ trong Cấu hình">Chạy theo chu kỳ</button><button type="button" data-action="start" data-args='{"mode":"full"}'>Cào lớn</button><button type="button" data-action="start" data-args='{"mode":"daily"}'>Làm mới Trip</button><button type="button" data-action="start" data-args='{"mode":"index"}'>Bảo trì và index</button><button type="button" class="danger" data-action="stop" data-args='{}'>Dừng lượt đang chạy</button><span id="controlState"></span></div>
 </header>
 <div id="notice" role="alert"></div><main id="main" aria-live="polite"></main>
@@ -240,7 +240,7 @@ function writeHash(){const h=stateHash();if(location.hash.slice(1)!==h)history.p
 async function applyHash(){const p=new URLSearchParams(location.hash.slice(1));
  if(p.get('run'))return openRun(p.get('run'),p.get('view'),null,p.get('node')).catch(async e=>{await navigate('overview');fail(e)});  // link cũ: lượt đã bị xoá
  if(p.get('page')==='db')S.db={table:p.get('table')||null,filters:{},offset:0,mode:p.get('mode')==='diagram'?'diagram':'list'};
- return navigate(['overview','runs','hotels','settings','system','db','realtime'].includes(p.get('page'))?p.get('page'):'overview',false)}
+ return navigate(['overview','runs','hotels','settings','system','storage','db','realtime'].includes(p.get('page'))?p.get('page'):'overview',false)}
 addEventListener('popstate',()=>{if(location.hash.slice(1)!==stateHash())applyHash().catch(fail)});
 async function renderPanel(){const p=$('#panel');if(!p)return;stopLive();await loadLive();writeHash();
  if(!S.node&&!S.tab){p.innerHTML=card('Chi tiết','<p class="muted">Bấm một ô trên sơ đồ để xem tiến độ, log, dữ liệu và lỗi của bước đó.</p>');return}
@@ -441,7 +441,18 @@ async function settings(){S.settings=await api('/api/settings');const values=Obj
   groups.map(g=>`<section class="card" data-group="${esc(g.id)}" ${g.id===active?'':'hidden'}><h2>${esc(g.label)}</h2>${g.id==='strategy'?button('Áp ngân sách Trip 30 / 10 / 180','tripBudget')+' ':''}${S.settings.fields.filter(f=>f.group===g.id).map(fieldHtml).join('')}</section>`).join('')+
   `<div class="actions"><button class="primary" type="submit">Lưu thay đổi (mọi tab)</button></div></form>`}
 
-async function navigate(name,push=true){stopLive();clearInterval(S.gtimer);S.gtimer=null;clearInterval(S.rtTimer);S.rtTimer=null;S.view=name;S.run=null;S.list=null;notice('');if(push)writeHash();document.querySelectorAll('nav button').forEach(b=>b.setAttribute('aria-current',b.dataset.view===name));main.innerHTML='<p class="muted">Đang tải…</p>';if(name==='overview')await overview();if(name==='runs')await historyPage();if(name==='system'||name==='hotels')await system();if(name==='settings')await settings();if(name==='db')await dbPage();if(name==='realtime')await realtimePage()}
+async function navigate(name,push=true){stopLive();clearInterval(S.gtimer);S.gtimer=null;clearInterval(S.rtTimer);S.rtTimer=null;S.view=name;S.run=null;S.list=null;notice('');if(push)writeHash();document.querySelectorAll('nav button').forEach(b=>b.setAttribute('aria-current',b.dataset.view===name));main.innerHTML='<p class="muted">Đang tải…</p>';if(name==='overview')await overview();if(name==='runs')await historyPage();if(name==='system'||name==='hotels')await system();if(name==='settings')await settings();if(name==='storage')await storagePage();if(name==='db')await dbPage();if(name==='realtime')await realtimePage()}
+
+// ------------------------------------------------------------------ tab Dung lượng: đĩa VM và dọn lượt cào cũ
+const gb=n=>n==null?'—':n>=1073741824?`${(n/1073741824).toFixed(1)} GB`:bytes(n);
+async function storagePage(){const d=await api('/api/storage');if(S.view!=='storage')return;
+ const k=d.disk,pct=k.total?Math.round(100*k.used/k.total):0,cls=pct>=90?'error':pct>=75?'partial':'ok';
+ const runsBytes=d.runs.reduce((a,r)=>a+r.bytes,0),keep=d.runsKeep||2;
+ main.innerHTML=card('Đĩa VM',`<div class="grid">${[['Đã dùng',`${gb(k.used)} / ${gb(k.total)}`,`${pct}%`],['Còn trống',gb(k.free),d.path],['Các lượt cào',gb(runsBytes),`${d.runs.length} lượt · cấu hình giữ ${esc(d.runsKeep??'—')}`]].map(([a,b,c])=>`<div class="kpi"><small>${esc(a)}</small><strong>${esc(b)}</strong><small class="muted">${esc(c)}</small></div>`).join('')}</div><p><span class="status ${cls}">${pct>=90?'Sắp đầy':pct>=75?'Cần dọn':'Ổn'}</span> <small class="muted">${esc(d.note)}</small></p>`)+
+  card('Theo thư mục',table(['Thư mục','Dung lượng','Số file'],d.dirs.map(r=>[esc(r.name),esc(gb(r.bytes)),esc(num(r.files))])))+
+  card('Các lượt cào còn giữ',table(['Lượt','Cập nhật','Dung lượng','Trạng thái'],d.runs.map((r,i)=>[esc(r.runId),esc(when(r.modifiedAt)),esc(gb(r.bytes)),r.running?'<span class="status running">đang chạy</span>':i<keep?'<span class="status ok">giữ</span>':'<span class="status partial">sẽ xoá khi dọn</span>'])))+
+  card('Dọn dữ liệu cũ',`<form id="cleanupForm" class="actions"><label>Giữ lại <input name="keep" type="number" min="1" max="100" value="${keep}" style="width:5em"> lượt mới nhất</label><button class="danger" type="submit">Xoá các lượt cũ hơn</button></form><p class="muted">Xoá raw, interim, catalog, log và profile trình duyệt của các lượt cũ. Lượt đang chạy luôn được giữ. Dữ liệu đã nạp vào DB và state (ID khách sạn, lịch xoay vòng) không bị đụng.</p><div id="cleanupOut"></div>`)}
+async function storageCleanup(f){const keep=Number(f.get('keep'));if(!confirm(`Xoá mọi lượt cào cũ, chỉ giữ ${keep} lượt mới nhất?`))return;const out=$('#cleanupOut');out.innerHTML='<p class="muted">Đang xoá…</p>';const r=await api('/api/storage/cleanup',{},{keepRuns:keep});out.innerHTML=`<p>Đã xoá ${r.removed.length} lượt, giải phóng ${esc(gb(r.freedBytes))}.</p>`;setTimeout(()=>storagePage().catch(fail),800)}
 
 // ------------------------------------------------------------------ tab DB: xem toàn bộ database (chỉ đọc)
 const dbKey=(d,r)=>d.pk?.length?Object.fromEntries(d.pk.map(c=>[c,r[c]])):null;
@@ -585,6 +596,7 @@ document.addEventListener('submit',async e=>{e.preventDefault();const f=new Form
   if(e.target.id==='searchForm'){const extra={};for(const k of ['taxonomy','level','src','destination','flag','step','action'])if(f.has(k))extra[k]=f.get(k);return await showList({...S.list,...extra,q:f.get('q'),offset:0})}
   if(e.target.id==='traceForm')return await trace(f.get('id'));
   if(e.target.id==='dbForm'){S.db.q=f.get('q');S.db.offset=0;return await dbPage()}
+  if(e.target.id==='cleanupForm')return await storageCleanup(f);
   if(e.target.id==='queryForm'){const out=$('#queryOut');out.innerHTML='<p class="muted">Đang embed và xếp hạng…</p>';out.innerHTML=queryHtml(await api('/api/embed/query',{},{run:S.run,q:f.get('q'),k:Number(f.get('k')),refresh:f.get('refresh')==='on'}));return}
   if(e.target.id==='settingsForm'){const values={};for(const fl of S.settings.fields){const input=main.querySelector(`[data-key="${fl.key}"]`);const value=fl.kind==='bool'?input.checked:['int','float'].includes(fl.kind)?Number(input.value):input.value;const old=Array.isArray(fl.value)?fl.value.join(','):fl.value??'';if(value!==old)values[fl.key]=value}await api('/api/settings',{},{values});await settings();notice('Đã lưu. Cấu hình áp dụng từ lượt kế tiếp.',true)}
  }catch(err){fail(err);if(e.target.id==='queryForm')$('#queryOut').innerHTML=''}});

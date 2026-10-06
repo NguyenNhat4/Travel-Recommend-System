@@ -235,6 +235,13 @@ Theo dõi trên console của VM (chỉ cần Docker, `curl` cho lệnh backend)
 
 ### Monitor của cron mới
 
+**Dung lượng (tab "Dung lượng" của monitor, 06/10/2026):** hiện đĩa VM (đã dùng / còn trống của filesystem chứa thư mục dữ
+liệu), dung lượng từng thư mục con và từng lượt cào còn giữ; nút "Xoá các lượt cũ hơn" giữ N lượt mới nhất (lượt đang chạy
+luôn được giữ; state và dữ liệu đã nạp DB không bị đụng). API: `GET /api/storage`, `POST /api/storage/cleanup {"keepRuns": N}`.
+Monitor không xoá được image Docker (container không có quyền Docker): bước deploy job cào gọi
+`run_daily_docker.sh prune-images <image vừa deploy>`, giữ image đó và một bản trước, xoá image cũ hơn của cùng repository.
+Dọn tay trên VM: `run_daily_docker.sh cleanup` (container dừng, image không dùng, lượt cũ, log cũ).
+
 Phục vụ FR-CAT-01/03 và NFR-SEC-01. Dùng cùng **image/tag, env file và volume** với `fresh-run`:
 
 ```bash
