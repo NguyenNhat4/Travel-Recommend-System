@@ -16,6 +16,8 @@ RUN python -m pip install --no-cache-dir -r /tmp/backend-requirements.txt
 COPY src/backend /app/src/backend
 COPY src/shared/contracts /app/src/shared/contracts
 COPY src/shared/mocks /app/src/shared/mocks
+# Runner migration chạy trong image này lúc deploy (scripts/deploy-backend-vm.sh); chỉ cần thư mục migrations.
+COPY db/migrations /app/db/migrations
 
 USER app
 
