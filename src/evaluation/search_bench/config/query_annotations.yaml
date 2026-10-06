@@ -110,7 +110,7 @@ queries:
     forbidden_filter: {and: [{eq: ["variant", "flight_route"]}, {not: {eq: ["destination_city", "Hà Nội"]}}]}
     destination_city: "Hà Nội"
   c0078:  # [dest_type] đường bay tới Huế, có lựa chọn nào?
-    allowed_variants: [attraction, combo, flight_route]
+    allowed_variants: [combo, flight_route]   # 06/10 rà: bỏ attraction (câu vé máy bay chỉ nhận combo khứ hồi #8d làm phương án thay thế)
     # chỉ điểm đến (#8b); nhãn v3 hiện có đã cho 0 mọi tuyến ra từ Huế
     expected_parse: {taxonomy: "flight", destination: "Huế", origin: null, destination_city: "Huế", must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
     forbidden_filter: {and: [{eq: ["variant", "flight_route"]}, {not: {eq: ["destination_city", "Huế"]}}]}
@@ -619,7 +619,7 @@ queries:
     forbidden_filter: {and: [{eq: ["variant", "flight_route"]}, {not: {eq: ["destination_city", "Côn Đảo"]}}]}
     destination_city: "Côn Đảo"
   c0724:  # [flight_direction] các chuyến bay xuất phát từ Cần Thơ
-    allowed_variants: [attraction, combo, flight_route]
+    allowed_variants: [combo, flight_route]   # 06/10 rà: bỏ attraction (như c0078)
     # chỉ điểm đi (#8c) -> destination null
     expected_parse: {taxonomy: "flight", destination: null, origin: "Cần Thơ", destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
     forbidden_filter: {and: [{eq: ["variant", "flight_route"]}, {not: {eq: ["origin_city", "Cần Thơ"]}}]}

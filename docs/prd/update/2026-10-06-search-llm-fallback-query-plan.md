@@ -15,8 +15,8 @@
    loại sản phẩm, chiều bay, giá/sao, số khách — sau cờ, mặc định tắt) và tự chấm **độ tin cậy** cùng lý do (`queryPlan.confidence`,
    `queryPlan.fallbackReasons`): phủ định không xác định được phạm vi, hai địa danh không rõ vai trò, nhiều loại sản phẩm cùng lúc, cụm
    tiện ích ngoài từ vựng. Với các câu đó engine hôm nay **giữ plan bảo thủ** (không lọc phần không chắc) — an toàn nhưng bỏ lỡ ràng buộc.
-   Trên gold_v4 (+ nhãn hole chưa duyệt) 59 / 154 câu có độ tin cậy < 1 (10 câu ≤ 0,5; lý do chính: câu dài nhiều ràng buộc 48, cue
-   loại yếu 11, nhiều loại 10); với cấu hình rule tốt nhất (F1–F6) nhóm này đạt nDCG@10 0,770 so 0,832 ở nhóm còn lại
+   Trên gold_v5 (đã duyệt, chiếu rubric v4) 59 / 154 câu có độ tin cậy < 1 (10 câu ≤ 0,5; lý do chính: câu dài nhiều ràng buộc 48, cue
+   loại yếu 11, nhiều loại 10); với cấu hình rule tốt nhất (F1–F6) nhóm này đạt nDCG@10 0,770 so 0,850 ở nhóm còn lại
    (`src/evaluation/reports/eval-2026-10-06-search-query-plan-gold-v4.md` §3).
 2. **Kiến trúc tham chiếu đã chốt hướng này** (`docs/spec/bench/kien_truc_search_ota_so_do_va_giai_doan.md` §5, Phase C): LLM chỉ là
    fallback có cache và schema chặt, không thay hard filter, không trả `productId`, không xếp hạng.
