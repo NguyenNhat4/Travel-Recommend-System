@@ -7,6 +7,7 @@
  * `MemorySessionStore` chỉ cho test và dev không có Redis; production bắt buộc SESSION_REDIS_URL.
  */
 import { createClient } from 'redis';
+import { log } from '../../lib/logger';
 
 export type SessionState = 'anonymous' | 'pending_mfa' | 'authenticated';
 
@@ -156,13 +157,13 @@ export function getSessionStore(): Promise<SessionStore> {
     if (process.env.NODE_ENV === 'production' && process.env.APP_ENV !== 'development') {
       throw new Error('SESSION_REDIS_URL là bắt buộc ở production');
     }
-    console.warn(JSON.stringify({ event: 'session.store.memory', reason: 'SESSION_REDIS_URL trống' }));
+    log.warn('bff.session.store', { outcome: 'memory', reason: 'SESSION_REDIS_URL trống' });
     globalStore.__votaSessionStore = new MemorySessionStore();
     globalStore.__votaSessionStoreReady = Promise.resolve(globalStore.__votaSessionStore);
     return globalStore.__votaSessionStoreReady;
   }
   const client = createClient({ url });
-  client.on('error', (error) => console.error(JSON.stringify({ event: 'session.store.error', message: String(error) })));
+  client.on('error', (error) => log.error('bff.session.store', { outcome: 'error', error }));
   globalStore.__votaSessionStoreReady = client.connect().then(() => {
     globalStore.__votaSessionStore = new RedisSessionStore(client as RedisClient);
     return globalStore.__votaSessionStore;

@@ -6,6 +6,7 @@
  * BFF không ký token: nó xin token từ FastAPI bằng X-Service-Token.
  */
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { hashId, log } from '../../lib/logger';
 import { getSessionStore, type SessionRecord, type SessionStore, type SessionUser } from './sessionStore';
 
 const IDLE_TTL_SECONDS = Number(process.env.SESSION_IDLE_TTL_SECONDS || 1800);
@@ -22,12 +23,8 @@ export const guestCookieName = () => process.env.GUEST_COOKIE_NAME || 'vota_gues
 const nowSeconds = () => Math.floor(Date.now() / 1000);
 const opaque = (prefix: string) => `${prefix}_${randomBytes(16).toString('base64url')}`;
 const sha256 = (value: string) => `sha256:${createHash('sha256').update(value).digest('hex')}`;
-const shortSid = (sid: string) => sid.slice(0, 8);
-
-export function logAuth(event: string, fields: Record<string, unknown> = {}) {
-  // Không bao giờ ghi token, sid đầy đủ, CSRF token hay email thô (§15.2).
-  console.info(JSON.stringify({ event, ts: new Date().toISOString(), ...fields }));
-}
+/** Băm sid trước khi log: 8 ký tự đầu của cookie phiên vẫn là một phần bí mật. */
+const shortSid = (sid: string) => hashId(sid);
 
 // --- lỗi theo Error Envelope --------------------------------------------------------------------
 
@@ -38,9 +35,10 @@ export function errorResponse(status: number, code: string, message: string, req
   return new Response(JSON.stringify({ error: { code, message, retryable: false, requestId } }), { status, headers });
 }
 
+/** X-Request-ID của client nếu hợp lệ, không thì sinh mới; proxy chuyển tiếp xuống backend để nối log. */
 export function requestIdOf(request: Request) {
   const incoming = request.headers.get('x-request-id');
-  return incoming ? incoming.slice(0, 64) : `web-${randomBytes(6).toString('hex')}`;
+  return incoming && /^[A-Za-z0-9._-]{1,64}$/.test(incoming) ? incoming : `web-${randomBytes(6).toString('hex')}`;
 }
 
 // --- cookie -------------------------------------------------------------------------------------
@@ -125,18 +123,18 @@ export async function loadSession(request: Request, store?: SessionStore): Promi
   const s = store ?? await getSessionStore();
   const record = await s.get(sid);
   if (!record) {
-    logAuth('auth.session.expired', { sid: shortSid(sid), reason: 'idle' });
+    log.info('bff.session.load', { outcome: 'expired', reason: 'idle', sid_hash: shortSid(sid) });
     return { kind: 'expired', reason: 'idle' };
   }
   if (record.absoluteExp <= nowSeconds()) {
     await destroySession(sid, record, s);
-    logAuth('auth.session.expired', { sid: shortSid(sid), reason: 'absolute' });
+    log.info('bff.session.load', { outcome: 'expired', reason: 'absolute', sid_hash: shortSid(sid) });
     return { kind: 'expired', reason: 'absolute' };
   }
   if (record.uaHash !== uaHashOf(request)) {
     // §3.8 dòng H: User-Agent đổi giữa chừng = cookie bị mang sang trình duyệt khác.
     await destroySession(sid, record, s);
-    logAuth('session.ua_mismatch', { sid: shortSid(sid) });
+    log.warn('bff.session.load', { outcome: 'expired', reason: 'ua_mismatch', sid_hash: shortSid(sid) });
     return { kind: 'expired', reason: 'ua_mismatch' };
   }
   record.lastSeenAt = nowSeconds();
@@ -186,7 +184,7 @@ export async function establishSession(request: Request, previous: { sid: string
   };
   await s.set(sid, record, IDLE_TTL_SECONDS);
   await s.addUserSession(tokens.user.userId, sid);
-  if (previous) logAuth('auth.session.rotated', { oldSid: shortSid(previous.sid), newSid: shortSid(sid), reason: 'login' });
+  if (previous) log.info('bff.session.rotate', { old_sid_hash: shortSid(previous.sid), new_sid_hash: shortSid(sid), reason: 'login' });
   return { sid, record };
 }
 
@@ -194,6 +192,7 @@ export async function destroySession(sid: string, record: SessionRecord | null, 
   const s = store ?? await getSessionStore();
   await s.del(sid);
   if (record?.user) await s.removeUserSession(record.user.userId, sid);
+  log.info('bff.session.destroy', { sid_hash: shortSid(sid), user_id_hash: hashId(record?.user?.userId) });
 }
 
 /** §3.8 dòng J: đổi mật khẩu → huỷ mọi phiên khác của user, phiên hiện tại sống tiếp với sid mới. */
@@ -213,7 +212,7 @@ export async function rotateAfterPasswordChange(request: Request, current: { sid
   const record = { ...current.record, csrfToken: opaque('c') };
   await s.set(sid, record, IDLE_TTL_SECONDS);
   await s.addUserSession(userId, sid);
-  logAuth('auth.session.rotated', { oldSid: shortSid(current.sid), newSid: shortSid(sid), reason: 'password_change' });
+  log.info('bff.session.rotate', { old_sid_hash: shortSid(current.sid), new_sid_hash: shortSid(sid), reason: 'password_change' });
   return { sid, record };
 }
 
@@ -303,10 +302,11 @@ export async function ensureFreshAccessToken(sid: string, record: SessionRecord,
       method: 'POST', service: true, requestId, body: { refreshToken: record.refreshToken },
     });
     if (!response.ok) {
-      logAuth('auth.session.refresh_failed', { sid: shortSid(sid), status: response.status });
+      log.warn('bff.session.refresh', { outcome: 'failed', sid_hash: shortSid(sid), status: response.status, request_id: requestId });
       return null;
     }
     const body = await response.json();
+    log.info('bff.session.refresh', { outcome: 'ok', sid_hash: shortSid(sid), request_id: requestId });
     const updated: SessionRecord = {
       ...record, accessToken: body.accessToken, refreshToken: body.refreshToken,
       accessTokenExp: nowSeconds() + Number(body.expiresIn), user: body.user ?? record.user,

@@ -19,7 +19,6 @@ import {
   errorResponse,
   guestCookie,
   loadSession,
-  logAuth,
   newGuestId,
   readGuestId,
   requestIdOf,
@@ -27,6 +26,7 @@ import {
   sessionCookies,
   withCookies,
 } from './bffSession';
+import { hashId, log, routeOf, serializeError } from '../../lib/logger';
 
 type RouteContext = { params: Promise<{ path: string[] }> };
 
@@ -50,12 +50,13 @@ async function mergeGuest(guestId: string, accessToken: string, requestId: strin
       method: 'POST', service: true, bearer: accessToken, requestId, body: { guestId },
     });
     if (response.status >= 500) {
-      logAuth('booking.guest_merge.failed', { status: response.status, guest: guestId.slice(0, 8) });
+      log.warn('bff.guest.merge', { request_id: requestId, outcome: 'failed', status: response.status, guest_hash: hashId(guestId) });
       return false;
     }
+    log.info('bff.guest.merge', { request_id: requestId, outcome: 'ok', status: response.status, guest_hash: hashId(guestId) });
     return true;
-  } catch {
-    logAuth('booking.guest_merge.failed', { status: 0, guest: guestId.slice(0, 8) });
+  } catch (error) {
+    log.warn('bff.guest.merge', { request_id: requestId, outcome: 'failed', status: 0, guest_hash: hashId(guestId), error });
     return false;
   }
 }
@@ -64,7 +65,44 @@ function sessionExpired(requestId: string) {
   return withCookies(errorResponse(401, 'SESSION_EXPIRED', 'Phiên đăng nhập đã hết hạn.', requestId), clearedCookies());
 }
 
+/**
+ * Bọc body SSE của trợ lý để ghi `bff.stream.open/close`. Chỉ đếm byte và thời gian, không đọc nội dung.
+ * `close` ghi đúng một lần: stream hết (`done`), upstream lỗi (`error`) hoặc trình duyệt ngắt (`cancelled`).
+ */
+function trackStream(body: ReadableStream<Uint8Array>, base: Record<string, unknown>): ReadableStream<Uint8Array> {
+  const startedAt = Date.now();
+  const reader = body.getReader();
+  let bytes = 0;
+  let closed = false;
+  const finish = (outcome: string, error?: unknown) => {
+    if (closed) return;
+    closed = true;
+    const fields = { ...base, outcome, duration_ms: Date.now() - startedAt, response_bytes: bytes };
+    if (error) log.warn('bff.stream.close', { ...fields, error });
+    else log.info('bff.stream.close', fields);
+  };
+  log.info('bff.stream.open', base);
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const { done, value } = await reader.read();
+        if (done) { finish('done'); controller.close(); return; }
+        bytes += value.byteLength;
+        controller.enqueue(value);
+      } catch (error) {
+        finish('error', error);
+        controller.error(error);
+      }
+    },
+    async cancel(reason) {
+      finish('cancelled');
+      await reader.cancel(reason).catch(() => undefined);
+    },
+  });
+}
+
 export async function proxyToBackend(request: Request, context: RouteContext) {
+  const startedAt = Date.now();
   const { path } = await context.params;
   const requestId = requestIdOf(request);
   const base = backendBase();
@@ -78,7 +116,7 @@ export async function proxyToBackend(request: Request, context: RouteContext) {
   try {
     loaded = await loadSession(request);
   } catch (error) {
-    console.error('Session store unavailable', error);
+    log.error('bff.proxy.upstream_error', { request_id: requestId, target: 'session_store', error: serializeError(error) });
     return errorResponse(503, 'INTERNAL_ERROR', 'Dịch vụ phiên tạm thời không khả dụng.', requestId);
   }
   // Cookie có nhưng phiên đã chết (idle/absolute/UA lệch): báo rõ, không âm thầm thành khách.
@@ -87,7 +125,7 @@ export async function proxyToBackend(request: Request, context: RouteContext) {
 
   const csrf = csrfFailure(request, current?.record ?? null);
   if (csrf) {
-    logAuth('auth.csrf.failed', { reason: csrf, path: target.pathname });
+    log.warn('bff.csrf.rejected', { request_id: requestId, reason: csrf, method: request.method, route: routeOf(target.pathname) });
     return errorResponse(403, 'CSRF_FAILED', 'Phiên trang đã cũ. Vui lòng tải lại trang rồi thử lại.', requestId);
   }
 
@@ -116,10 +154,14 @@ export async function proxyToBackend(request: Request, context: RouteContext) {
     headers.set('x-guest-id', guestId);
     // Phát cookie lần đầu; request ghi đặt lại hạn 3 ngày, khớp TTL của Redis (R-GST-01).
     if (!existing || MUTATING.has(request.method.toUpperCase())) extraCookies.push(guestCookie(guestId));
+    if (!existing) log.info('bff.guest.issue', { request_id: requestId, guest_hash: hashId(guestId) });
   }
 
   const body = ['GET', 'HEAD'].includes(request.method) ? undefined : await request.arrayBuffer();
 
+  const route = routeOf(target.pathname);
+  const authenticated = current?.record.state === 'authenticated';
+  const upstreamStart = Date.now();
   let response: Response;
   try {
     response = await fetch(target, {
@@ -128,7 +170,10 @@ export async function proxyToBackend(request: Request, context: RouteContext) {
   } catch (error) {
     // Trình duyệt tự huỷ (đổi trang, effect chạy lại, Strict Mode ở dev): không phải lỗi backend, không ghi log.
     if (request.signal.aborted) return new Response(null, { status: 499 });
-    console.error('Backend proxy error', error);
+    log.error('bff.proxy.upstream_error', {
+      request_id: requestId, method: request.method, route, upstream_ms: Date.now() - upstreamStart, authenticated,
+      error: serializeError(error),
+    });
     return errorResponse(502, 'INTERNAL_ERROR', 'Backend service unavailable', requestId);
   }
 
@@ -139,7 +184,16 @@ export async function proxyToBackend(request: Request, context: RouteContext) {
   }
   responseHeaders.set('x-request-id', response.headers.get('x-request-id') || requestId);
 
-  const proxied = new Response(response.body, {
+  const upstreamMs = Date.now() - upstreamStart;
+  const summary = {
+    request_id: requestId, method: request.method, route, status: response.status, upstream_ms: upstreamMs, authenticated,
+  };
+  const isStream = (response.headers.get('content-type') || '').includes('text/event-stream');
+  const logProxy = response.status >= 500 ? log.error : response.status >= 400 ? log.warn : log.info;
+  logProxy('bff.proxy', { ...summary, duration_ms: Date.now() - startedAt, ...(isStream ? { stream: true } : {}) });
+
+  const responseBody = isStream && response.body ? trackStream(response.body, { request_id: requestId, route }) : response.body;
+  const proxied = new Response(responseBody, {
     status: response.status, statusText: response.statusText, headers: responseHeaders,
   });
 
