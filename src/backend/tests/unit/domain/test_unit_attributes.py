@@ -1,10 +1,12 @@
-"""Thuộc tính lọc theo unit (`domain/catalog/unit_attributes.py`): tiện ích + con, giá thấp nhất, sao, chặng bay; thuần."""
+"""Thuộc tính lọc theo unit (`domain/catalog/unit_attributes.py`): tiện ích + con, giá thấp nhất, sao, chặng bay, cờ loại
+sản phẩm, sức chứa, danh sách con; thuần."""
 import math
 
 import numpy as np
 import pytest
 
 from src.backend.app.domain.catalog import Product, UnitAttributes
+from src.backend.app.domain.catalog.unit_attributes import FLAG_INCLUDES_FLIGHT, FLAG_INCLUDES_HOTEL, FLAG_TICKETED, FLAGS
 from src.backend.tests.conftest import P
 
 H1 = Product.from_cdp(P("H1", "Vinpearl Resort Nha Trang", "hotel", "Nha Trang",
@@ -80,3 +82,72 @@ def test_build_without_children_uses_unit_only():
 def test_empty_units():
     a = UnitAttributes.build([])
     assert len(a) == 0 and a.brand.shape == (0,) and a.min_price.shape == (0,)
+
+
+# --- cờ, sức chứa, con (kiến trúc §6 filter-first, checklist dữ liệu §15)
+C1 =Product.from_cdp(P("C1", "Combo bay + ở Phú Quốc", "combo", "Phú Quốc", {}, price=5_000_000))
+C2 = Product.from_cdp(P("C2", "Combo VinWonders + buffet", "combo", "Nha Trang", {}, price=900_000))
+A2 = Product.from_cdp(P("A2", "Bãi biển Trần Phú", "attraction", "Nha Trang", {"ticketed": False}, price=None))
+A3 = Product.from_cdp(P("A3", "Vé VinWonders", "attraction", "Nha Trang", {"ticketed": True}, price=880000))
+A4 = Product.from_cdp(P("A4", "Vé chữ", "attraction", "Nha Trang", {"ticketed": "true"}, price=1))
+H3 = Product.from_cdp(P("H3", "Villa", "hotel", "Phú Quốc", {"level": "property", "maxOccupancy": 6}, price=None))
+R3A = Product.from_cdp(P("R3A", "Villa - A", "hotel", "Phú Quốc", {"level": "room", "parentProductId": "H3", "maxOccupancy": 12},
+                         price=9_000_000))
+R3B = Product.from_cdp(P("R3B", "Villa - B", "hotel", "Phú Quốc", {"level": "room", "parentProductId": "H3", "maxOccupancy": "4"},
+                         price=2_000_000))
+R3C = Product.from_cdp(P("R3C", "Villa - C", "hotel", "Phú Quốc", {"level": "room", "parentProductId": "H3", "maxOccupancy": 2},
+                         price=None))
+R3D = Product.from_cdp(P("R3D", "Villa - D", "hotel", "Phú Quốc", {"level": "room", "parentProductId": "H3"}, price=2_000_000))
+UNITS2 = [C1, C2, A2, A3, A4, H3, H1]
+KIDS2 = {"H3": [R3A, R3B, R3C, R3D], "H1": [R1, R1B]}
+KINDS = {"C1": ["flight", "hotel"], "C2": ["attraction", "meal"], "A3": ["flight"]}   # A3 không phải combo → bỏ qua
+
+
+@pytest.fixture(scope="module")
+def attrs2() -> UnitAttributes:
+    return UnitAttributes.build(UNITS2, KIDS2, KINDS)
+
+
+def test_flags_from_combo_kinds_and_ticketed(attrs2):
+    assert FLAGS == {FLAG_INCLUDES_FLIGHT, FLAG_INCLUDES_HOTEL, FLAG_TICKETED}
+    assert attrs2.flags[0] == {"includesFlight", "includesHotel"}
+    assert attrs2.flags[1] == frozenset()                      # combo không có chặng bay / khách sạn
+    assert attrs2.flags[2] == frozenset()                      # ticketed False
+    assert attrs2.flags[3] == {"ticketed"}                     # chỉ True thật; kinds của unit không phải combo bị bỏ qua
+    assert attrs2.flags[4] == frozenset()                      # "true" (chuỗi) không tính
+    assert attrs2.flags[5] == frozenset() and attrs2.flags[6] == frozenset()
+    assert UnitAttributes.build(UNITS2, KIDS2).flags[0] == frozenset()   # không truyền thành phần combo → không cờ
+
+
+def test_max_occupancy_over_unit_and_children(attrs2):
+    occ = attrs2.max_occupancy
+    assert occ.dtype == np.float64 and occ.shape == (len(UNITS2),)
+    assert occ[5] == 12.0                                      # max(6 của property, 12, 2); "4" (chuỗi) bị bỏ
+    assert math.isnan(occ[0]) and math.isnan(occ[6])           # không ai khai
+
+
+def test_children_sorted_by_price_none_last_then_id(attrs2):
+    assert attrs2.children[5] == (("R3B", 2_000_000.0, None), ("R3D", 2_000_000.0, None), ("R3A", 9_000_000.0, 12.0),
+                                  ("R3C", None, 2.0))
+    assert attrs2.children[6] == (("R1", 3_400_000.0, None), ("R1B", None, None))
+    assert attrs2.children[0] == ()
+
+
+def test_new_fields_default_when_constructed_by_hand():
+    base = UnitAttributes.build(UNITS)
+    legacy = UnitAttributes(amenities=base.amenities, brand=base.brand, star_rating=base.star_rating,
+                            min_price=base.min_price, origin_city=base.origin_city, destination_city=base.destination_city)
+    assert legacy.flags == (frozenset(),) * len(UNITS) and legacy.children == ((),) * len(UNITS)
+    assert legacy.max_occupancy.shape == (len(UNITS),) and np.isnan(legacy.max_occupancy).all()
+    with pytest.raises(ValueError):
+        UnitAttributes(amenities=base.amenities, brand=base.brand, star_rating=base.star_rating, min_price=base.min_price,
+                       origin_city=base.origin_city, destination_city=base.destination_city, flags=(frozenset(),))
+
+
+def test_existing_fields_unchanged_by_new_arguments(attrs2):
+    old = UnitAttributes.build(UNITS2, KIDS2)
+    assert old.amenities == attrs2.amenities and (old.brand == attrs2.brand).all()
+    assert np.array_equal(old.min_price, attrs2.min_price, equal_nan=True)
+    assert np.array_equal(old.star_rating, attrs2.star_rating, equal_nan=True)
+    e = UnitAttributes.build([])
+    assert e.flags == () and e.children == () and e.max_occupancy.shape == (0,)

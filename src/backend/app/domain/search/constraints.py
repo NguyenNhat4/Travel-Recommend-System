@@ -1,7 +1,8 @@
 """Parser ràng buộc cứng rút từ câu truy vấn của /search (FR-SRC-03; kiến trúc Phase A — spec tích hợp §2.2, §2.5):
-F3 phủ định tiện ích, F4 taxonomy từ cue ngành dọc, F5 vai trò nơi đi/nơi đến của vé máy bay, F6 giá/sao.
+F3 phủ định tiện ích / thương hiệu / loại sản phẩm, F4 taxonomy từ cue ngành dọc, F5 vai trò nơi đi/nơi đến của vé máy bay,
+F6 giá/sao, số khách (kiến trúc §6 "Room child: occupancy").
 
-Bốn parser chạy trên text ĐÃ chuẩn hoá (`QueryNormalizer`: NFC, địa danh đã về tên catalog, "2tr" đã thành "2 triệu"),
+Các parser chạy trên text ĐÃ chuẩn hoá (`QueryNormalizer`: NFC, địa danh đã về tên catalog, "2tr" đã thành "2 triệu"),
 khớp trên token đã fold (`lexical.fold`) nhưng trả về span ký tự trên text đầu vào: mỗi parser liệt kê đúng những đoạn
 nó đã "tiêu", để tầng gọi cắt chúng khỏi text BM25 (`remove_spans`) — điều kiện đã thành filter thì không được xếp hạng
 lần hai qua lexical. Không dùng `lexical.query_tokens` để nhận toán tử: STOPWORDS chứa `tu`/`den`/`co`.
@@ -289,7 +290,7 @@ def parse_numeric(text: str) -> NumericParse:
 #: Cue cứng (fold) → tiện ích sau nó bị loại. "khong" và "tru" trần chỉ khi NGAY SAU là cụm tiện ích/thương hiệu
 #: ("không gian", "lưu trú" không bao giờ là cue).
 _HARD_CUES = frozenset({"khong co", "khong ghi nhan", "khong gom", "khong bao gom", "khong kem", "ngoai tru", "tru",
-                        "khong phai", "khong"})
+                        "khong phai", "khong lay", "khong muon", "khong"})
 _BARE_CUES = frozenset({"khong", "tru"})
 #: Cue mềm: người dùng nới điều kiện ("không cần gần biển") — bỏ điều kiện, không lọc.
 _SOFT_CUES = frozenset({"khong can", "khong nhat thiet", "khong bat buoc", "khong yeu cau", "khong can phai",
@@ -310,6 +311,12 @@ _MAX_FILLER = 2
 _SCOPE_WINDOW = 4
 #: Thương hiệu có dữ liệu để lọc theo tên (fold → tên hiển thị).
 BRAND_CUES: dict[str, str] = {"vinpearl": "Vinpearl"}
+#: Loại phần tử trong phạm vi phủ định (`_scope`).
+_AMENITY, _BRAND, _VERTICAL = "amenity", "brand", "vertical"
+#: Dấu câu giữa cue phủ định và cue loại sản phẩm đứng đầu phạm vi → hai ý khác nhau ("có phòng không, khách sạn ở …").
+_VERTICAL_GAP_STOP = ",;.?!"
+#: Thành phần combo bị phủ định khi câu có cue combo dương ("combo … không gồm vé máy bay"; kiến trúc §4 `includes_flight=false`).
+FLAG_INCLUDES_FLIGHT, FLAG_INCLUDES_HOTEL = "includesFlight", "includesHotel"
 
 
 @dataclass(frozen=True)
@@ -326,6 +333,8 @@ class NegationParse:
     soft_dropped: tuple[str, ...] = ()      # "không cần gần biển": bỏ điều kiện, không lọc
     unresolved: tuple[str, ...] = ()        # cụm sau cue cứng không trỏ tới tiện ích nào ("view đẹp")
     spans: tuple[Span, ...] = ()            # cue + phạm vi đã tiêu
+    must_not_taxonomies: tuple[str, ...] = ()   # loại sản phẩm bị loại rõ: "không lấy combo", "vé lẻ" → combo (rubric v4 #10)
+    must_not_flags: tuple[str, ...] = ()        # thành phần combo bị loại: "combo … không gồm vé máy bay" → includesFlight
 
     @property
     def must_not_keys(self) -> frozenset[str]:
@@ -337,12 +346,16 @@ def _gap_has(text: str, toks: list[_Tok], i: int, chars: str) -> bool:
 
 
 def _scope(text: str, toks: list[_Tok], j: int, protected: tuple[Span, ...], allow_filler: bool):
-    """Thu tiện ích/thương hiệu sau cue từ token j → (danh sách (khoá|None, token đầu, token cuối+1), token cuối+1).
+    """Thu tiện ích/thương hiệu/loại sản phẩm sau cue từ token j → (danh sách (loại, giá trị, token đầu, token cuối+1),
+    token cuối+1).
 
-    Khoá None = thương hiệu (tên ở `phrase`). Nối qua `và`/`hoặc`/dấu phẩy/gạch chéo; dừng ở nhưng|mà|có, `;`, `.`,
-    đoạn đã tiêu bởi parser số. Chưa thấy tiện ích nào thì cho phép tối đa 2 token đệm ("không có sẵn hồ bơi").
+    Loại `amenity` (giá trị = khoá tiện ích), `brand` (tên hiển thị), `vertical` (taxonomy của cue F4: "không lấy combo",
+    "không gồm vé máy bay"). Tiện ích khớp trước ("sân golf" là tiện ích, không phải ngành golf). Cue loại sản phẩm chỉ nhận
+    khi phạm vi chưa có tiện ích/thương hiệu và không bị dấu câu tách khỏi cue — "không có hồ bơi, phòng rộng" vẫn chỉ là hồ
+    bơi. Nối qua `và`/`hoặc`/dấu phẩy/gạch chéo; dừng ở nhưng|mà|có, `;`, `.`, đoạn đã tiêu bởi parser số. Chưa thấy phần tử
+    nào thì cho phép tối đa 2 token đệm ("không có sẵn hồ bơi").
     """
-    found: list[tuple[str | None, int, int]] = []
+    found: list[tuple[str, str, int, int]] = []
     k, filler = j, 0
     while k < len(toks):
         if _overlaps((toks[k].start, toks[k].end), protected) or toks[k].folded in _SCOPE_STOP:
@@ -350,12 +363,17 @@ def _scope(text: str, toks: list[_Tok], j: int, protected: tuple[Span, ...], all
         if k > j and _gap_has(text, toks, k, ";."):
             break
         hit = _phrase_at(toks, k, QUERY_CUES, MAX_CUE_TOKENS)
+        vhit = None if hit or toks[k].folded in BRAND_CUES else _phrase_at(toks, k, VERTICAL_CUES, _VERTICAL_MAX)
         if hit:
-            found.append((QUERY_CUES[hit[1]], k, k + hit[0]))
+            found.append((_AMENITY, QUERY_CUES[hit[1]], k, k + hit[0]))
             k += hit[0]
         elif toks[k].folded in BRAND_CUES:
-            found.append((None, k, k + 1))
+            found.append((_BRAND, BRAND_CUES[toks[k].folded], k, k + 1))
             k += 1
+        elif vhit and all(kind == _VERTICAL for kind, *_ in found) \
+                and (found or not any(_gap_has(text, toks, m, _VERTICAL_GAP_STOP) for m in range(j, k + 1))):
+            found.append((_VERTICAL, VERTICAL_CUES[vhit[1]], k, k + vhit[0]))
+            k += vhit[0]
         elif not found and allow_filler and filler < _MAX_FILLER and toks[k].folded not in _FILLER_STOP \
                 and _number(toks[k]) is None:
             filler, k = filler + 1, k + 1
@@ -401,7 +419,8 @@ def _free_phrase_end(text: str, toks: list[_Tok], j: int, protected: tuple[Span,
 
 
 def parse_negation(text: str, protected: Iterable[Span] = ()) -> NegationParse:
-    """F3: tiện ích bị phủ định → `must_not`; cue mềm → `soft_dropped`; `protected` = đoạn `parse_numeric` đã tiêu."""
+    """F3: tiện ích bị phủ định → `must_not`; thương hiệu → `must_not_brands`; loại sản phẩm → `must_not_taxonomies` /
+    `must_not_flags` (`_vertical_exclusions`); cue mềm → `soft_dropped`; `protected` = đoạn `parse_numeric` đã tiêu."""
     prot = tuple(protected)
     toks = _toks(text)
     must_not: list[MustNot] = []
@@ -409,6 +428,7 @@ def parse_negation(text: str, protected: Iterable[Span] = ()) -> NegationParse:
     soft: list[str] = []
     unresolved: list[str] = []
     spans: list[Span] = []
+    negated_verticals: list[tuple[str, Span]] = []
     i = 0
     while i < len(toks):
         if _overlaps((toks[i].start, toks[i].end), prot):
@@ -436,7 +456,7 @@ def parse_negation(text: str, protected: Iterable[Span] = ()) -> NegationParse:
                 i += 1
                 continue
         found, end = _scope(text, toks, j, prot, allow_filler=not (key in _BARE_CUES) or soft_cue)
-        if key in _BARE_CUES and not (found and found[0][1] == j):
+        if key in _BARE_CUES and not (found and found[0][2] == j):
             i += 1                                  # "khong"/"tru" trần: cụm phải đứng ngay sau
             continue
         if soft_cue:
@@ -446,7 +466,7 @@ def parse_negation(text: str, protected: Iterable[Span] = ()) -> NegationParse:
                     i += 1
                     continue
             else:
-                end = found[-1][2]
+                end = found[-1][3]
             soft.append(text[toks[i].start:toks[end - 1].end])
             spans.append((toks[i].start, toks[end - 1].end))
             i = end
@@ -459,16 +479,49 @@ def parse_negation(text: str, protected: Iterable[Span] = ()) -> NegationParse:
                 spans.append((toks[i].start, toks[end - 1].end))
             i = max(end, j)
             continue
-        for k, s, e in found:
+        for kind, value, s, e in found:
             phrase, span = text[toks[s].start:toks[e - 1].end], (toks[s].start, toks[e - 1].end)
-            if k is None:
-                brands.append(BRAND_CUES[toks[s].folded])
+            if kind == _BRAND:
+                brands.append(value)
+            elif kind == _AMENITY:
+                must_not.append(MustNot(value, phrase, span))
             else:
-                must_not.append(MustNot(k, phrase, span))
-        end = found[-1][2]
+                negated_verticals.append((value, span))
+        end = found[-1][3]
         spans.append((toks[i].start, toks[end - 1].end))
         i = end
-    return NegationParse(tuple(must_not), tuple(dict.fromkeys(brands)), tuple(soft), tuple(unresolved), tuple(spans))
+    taxonomies, flags = _vertical_exclusions(toks, negated_verticals, spans)
+    return NegationParse(tuple(must_not), tuple(dict.fromkeys(brands)), tuple(soft), tuple(unresolved), tuple(spans),
+                         must_not_taxonomies=taxonomies, must_not_flags=flags)
+
+
+def _single_ticket_at(toks: list[_Tok], k: int) -> bool:
+    """"vé lẻ" / "ve le" tại token k — khớp chữ gốc: "về lễ" fold cũng ra "ve le"."""
+    return k + 1 < len(toks) and toks[k].raw.lower() in ("vé", "ve") and toks[k + 1].raw.lower() in ("lẻ", "le")
+
+
+def _vertical_exclusions(toks: list[_Tok], negated: list[tuple[str, Span]],
+                         neg_spans: list[Span]) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """(must_not_taxonomies, must_not_flags) theo thứ tự xuất hiện.
+
+    Câu có cue combo DƯƠNG (ngoài mọi phạm vi phủ định) thì vé máy bay / chỗ nghỉ bị phủ định là thành phần của combo →
+    cờ `includesFlight` / `includesHotel` ("combo Phú Quốc không gồm vé máy bay"); ngoài ngữ cảnh đó là loại trừ cả loại sản
+    phẩm ("khách sạn không phải combo" → combo). "vé lẻ" dương = loại trừ combo rõ ràng (rubric v4 #10, câu c0703).
+    """
+    composition = {FLIGHT: FLAG_INCLUDES_FLIGHT, HOTEL: FLAG_INCLUDES_HOTEL}
+    combo_context = any(tax == COMBO and not _overlaps(span, neg_spans) for tax, span in _vertical_hits(toks))
+    out: list[tuple[int, bool, str]] = []          # (offset, là cờ?, giá trị)
+    for tax, span in negated:
+        if combo_context and tax in composition:
+            out.append((span[0], True, composition[tax]))
+        else:
+            out.append((span[0], False, tax))
+    for k in range(len(toks)):
+        if _single_ticket_at(toks, k) and not _overlaps((toks[k].start, toks[k + 1].end), neg_spans):
+            out.append((toks[k].start, False, COMBO))
+    out.sort(key=lambda x: x[0])
+    return (tuple(dict.fromkeys(v for _, is_flag, v in out if not is_flag)),
+            tuple(dict.fromkeys(v for _, is_flag, v in out if is_flag)))
 
 
 # ====================================================================================== F4: taxonomy từ cue ngành dọc
@@ -476,33 +529,50 @@ HOTEL, FLIGHT, ATTRACTION, COMBO, GOLF = "hotel", "flight", "attraction", "combo
 #: Cụm (fold) → taxonomy (enum `schemas/common.yaml`). Khớp dài nhất trước: "ve may bay" thắng "ve"; "ve" trần không là cue.
 VERTICAL_CUES: dict[str, str] = {
     **{c: HOTEL for c in ("khach san", "resort", "khu nghi duong", "khu du lich nghi duong", "nghi duong", "villa",
-                          "biet thu", "homestay", "can ho", "nha nghi", "cho nghi", "noi luu tru", "noi o", "phong")},
+                          "biet thu", "homestay", "can ho", "nha nghi", "cho nghi", "noi luu tru", "noi o", "phong",
+                          "hotel")},
     **{c: FLIGHT for c in (*FLIGHT_CUES, "bay tu", "bay den")},
     **{c: ATTRACTION for c in ("ve tham quan", "ve vao cua", "ve vui choi", "diem tham quan", "tham quan", "vinwonders",
-                               "cong vien", "safari", "grand world", "khu vui choi")},
+                               "cong vien", "safari", "grand world", "khu vui choi", "diem vui choi")},
     **{c: COMBO for c in ("combo", "tron goi", "goi du lich")},
     **{c: GOLF for c in ("voucher golf", "san golf", "san gon", "golf", "tee time")},
 }
 _VERTICAL_MAX = max(len(c.split()) for c in VERTICAL_CUES)
+STRONG, WEAK = "strong", "weak"
+#: Cue YẾU: chữ chung chung hoặc tên điểm vui chơi — hay xuất hiện mà không thật sự giới hạn loại. Cờ
+#: `PlanFlags.taxonomy_strong_only` chỉ lọc taxonomy khi câu có ít nhất một cue mạnh. Chốt theo dữ liệu 06/10 (gold_v5 chưa tag,
+#: chọn trên dev, kiểm trên test của `devtest@gold_v4`; tỷ lệ item nhãn 2 cùng taxonomy với cue, câu một ngành dọc):
+#: danh từ chỗ nghỉ ("cho nghi" dev 100 % / test 100 %, "noi luu tru" 100 %, "noi o" 100 %, "khu nghi duong") → MẠNH;
+#: tên điểm vui chơi ("safari" dev 73 %, "vinwonders" test 50 % — combo chứa vé được nhãn 2) → YẾU; "phong", "nghi duong",
+#: "tham quan", "cong vien", "khu vui choi", "goi du lich" giữ YẾU (chung chung, n nhỏ).
+WEAK_VERTICAL_CUES = frozenset({"nghi duong", "phong", "tham quan", "cong vien", "khu vui choi", "diem vui choi",
+                                "goi du lich", "vinwonders", "safari", "grand world"})
+#: Cue (fold) → "strong" | "weak", phủ mọi khoá của `VERTICAL_CUES` (dựng từ `WEAK_VERTICAL_CUES`).
+VERTICAL_CUE_STRENGTH: dict[str, str] = {c: WEAK if c in WEAK_VERTICAL_CUES else STRONG for c in VERTICAL_CUES}
+#: Sau cue combo đứng đầu câu, cue loại này là THÀNH PHẦN của combo ("combo vé máy bay và khách sạn Đà Lạt" = combo, c0706).
+_COMBO_COMPONENTS = frozenset({HOTEL, FLIGHT, ATTRACTION})
 #: Cue đứng ngay sau từ này là tiện ích/điểm lân cận của chỗ nghỉ, không phải ngành dọc ("resort có sân golf").
 _ATTACHED_PREV = frozenset({"co", "kem", "gan", "voi", "gom", "canh", "sat"})
 #: Tên điểm vui chơi hay đi kèm tên khu/địa điểm: sau cue chỗ nghỉ ("khách sạn Grand World Phú Quốc") nó chỉ định vị,
 #: không phải ngành dọc thứ hai — trừ khi có "vé"/từ nối/dấu phẩy đứng trước ("khách sạn gần biển và vé VinWonders").
 _POI_BRAND_CUES = frozenset({"vinwonders", "grand world", "safari"})
+#: Công khai cho query plan: span của cue này KHÔNG bị cắt khỏi `lexical_text` khi F4 lọc — là tên sản phẩm, BM25 cần nó.
+POI_BRAND_CUES = _POI_BRAND_CUES
 _POI_SEPARATE_PREV = frozenset({"ve", "va", "hoac", "hay", "cung", "them", "kem"})
 SKIPPED_MULTI = "multi"
 
 
 @dataclass(frozen=True)
 class VerticalParse:
-    verticals: tuple[str, ...] = ()         # ngành dọc phân biệt, theo thứ tự xuất hiện
-    taxonomy: str | None = None             # đúng một ngành dọc → lọc theo nó
+    verticals: tuple[str, ...] = ()         # ngành dọc phân biệt, theo thứ tự xuất hiện (kể cả thành phần của combo)
+    taxonomy: str | None = None             # đúng một ngành dọc (hoặc combo đứng đầu + thành phần) → lọc theo nó
     skipped: str | None = None              # "multi" khi câu nêu ≥ 2 ngành dọc (gold cross_vertical)
-    spans: tuple[Span, ...] = ()            # các cue đã tính
+    spans: tuple[Span, ...] = ()            # cue đã tính của `taxonomy` (multi: mọi cue đã tính) — phần cắt khỏi BM25
+    strength: str | None = None             # "strong": có cue mạnh của `taxonomy` · "weak": chỉ cue yếu · None: không có taxonomy
 
 
-def _brand_ranges(toks: list[_Tok], brand_names: Iterable[str]) -> list[tuple[int, int]]:
-    """Dải token thuộc tên thương hiệu/sản phẩm (khớp dài nhất trên token fold)."""
+def _brand_ranges(toks: list[_Tok], brand_names: Iterable[str]) -> list[tuple[int, int, str]]:
+    """Dải token thuộc tên thương hiệu/sản phẩm (khớp dài nhất trên token fold) → (đầu, cuối, tên fold)."""
     names = {fold(b) for b in brand_names if b}
     names.discard("")
     if not names:
@@ -512,20 +582,47 @@ def _brand_ranges(toks: list[_Tok], brand_names: Iterable[str]) -> list[tuple[in
     while i < len(toks):
         hit = _phrase_at(toks, i, names, max_n)
         if hit:
-            out.append((i, i + hit[0]))
+            out.append((i, i + hit[0], hit[1]))
             i += hit[0]
         else:
             i += 1
     return out
 
 
-def parse_vertical(text: str, excluded: Iterable[Span] = (), brand_names: Iterable[str] = ()) -> VerticalParse:
-    """F4: `excluded` = phạm vi phủ định (cue trong đó không tính); `brand_names` = tên có chứa cue ("Golf Valley Hotel")."""
+def _vertical_hits(toks: list[_Tok]) -> list[tuple[str, Span]]:
+    """Mọi cue loại sản phẩm (khớp dài nhất, không chồng) → (taxonomy, span); không xét ngữ cảnh."""
+    out, i = [], 0
+    while i < len(toks):
+        hit = _phrase_at(toks, i, VERTICAL_CUES, _VERTICAL_MAX)
+        if hit is None:
+            i += 1
+            continue
+        out.append((VERTICAL_CUES[hit[1]], (toks[i].start, toks[i + hit[0] - 1].end)))
+        i += hit[0]
+    return out
+
+
+def _combo_head(text: str, toks: list[_Tok], counted: list[tuple[str, str, Span, int]]) -> bool:
+    """Cue đã tính đầu tiên là combo, mọi cue khác là thành phần (chỗ nghỉ / vé máy bay / vé tham quan), và cue combo không
+    đứng thành một mục của danh sách — "trọn gói và vé máy bay Đà Lạt" (ngay sau là từ nối / dấu phẩy) vẫn là multi."""
+    tax, _, _, after = counted[0]
+    if tax != COMBO or any(t != COMBO and t not in _COMBO_COMPONENTS for t, *_ in counted):
+        return False
+    return not (after < len(toks) and (toks[after].folded in _CONNECTORS or _gap_has(text, toks, after, ",/;")))
+
+
+def parse_vertical(text: str, excluded: Iterable[Span] = (), brand_names: Iterable[str] = (),
+                   brand_taxonomy: Mapping[str, str] | None = None) -> VerticalParse:
+    """F4: `excluded` = phạm vi phủ định (cue trong đó không tính); `brand_names` = tên có chứa cue ("Golf Valley Hotel").
+    `brand_taxonomy` (tên fold → taxonomy của unit): cue NẰM TRONG tên chỉ tính khi đúng loại của chính unit đó
+    ("tìm Vinpearl Resort & Golf Nam Hội An" → "resort" tính là hotel, "golf" bỏ); không có bảng → mọi cue trong tên bỏ.
+    "có <cue> nào" là câu hỏi tồn tại ("Quy Nhơn có nơi lưu trú nào…") — không coi cue là tiện ích gắn sau "có".
+
+    Một loại → lọc theo nó; nhiều loại → multi, trừ khi combo đứng đầu và các loại sau là thành phần (`_combo_head`)."""
     excl = tuple(excluded)
     toks = _toks(text)
     brands = _brand_ranges(toks, brand_names)
-    verticals: list[str] = []
-    spans: list[Span] = []
+    counted: list[tuple[str, str, Span, int]] = []      # (taxonomy, cue, span, token ngay sau cue)
     i = 0
     while i < len(toks):
         hit = _phrase_at(toks, i, VERTICAL_CUES, _VERTICAL_MAX)
@@ -534,18 +631,24 @@ def parse_vertical(text: str, excluded: Iterable[Span] = (), brand_names: Iterab
             continue
         n, key = hit
         span = (toks[i].start, toks[i + n - 1].end)
-        attached = i > 0 and toks[i - 1].folded in _ATTACHED_PREV
-        in_brand = any(s <= i < e for s, e in brands)
-        poi_modifier = key in _POI_BRAND_CUES and bool(verticals) and verticals[0] == HOTEL and i > 0 \
+        attached = i > 0 and toks[i - 1].folded in _ATTACHED_PREV             and not (toks[i - 1].folded == "co" and i + n < len(toks) and toks[i + n].folded == "nao")
+        own = next(((brand_taxonomy or {}).get(nm) for s_, e_, nm in brands if s_ <= i < e_), None)
+        in_brand = any(s_ <= i < e_ for s_, e_, _ in brands) and own != VERTICAL_CUES[key]
+        poi_modifier = key in _POI_BRAND_CUES and bool(counted) and counted[0][0] == HOTEL and i > 0 \
             and toks[i - 1].folded not in _POI_SEPARATE_PREV and not _gap_has(text, toks, i, ",/;")
         if not (attached or in_brand or poi_modifier or _overlaps(span, excl)):
-            verticals.append(VERTICAL_CUES[key])
-            spans.append(span)
+            counted.append((VERTICAL_CUES[key], key, span, i + n))
         i += n
-    distinct = tuple(dict.fromkeys(verticals))
+    distinct = tuple(dict.fromkeys(tax for tax, *_ in counted))
     if len(distinct) == 1:
-        return VerticalParse(distinct, distinct[0], None, tuple(spans))
-    return VerticalParse(distinct, None, SKIPPED_MULTI if len(distinct) > 1 else None, tuple(spans))
+        chosen = distinct[0]
+    elif len(distinct) > 1 and _combo_head(text, toks, counted):
+        chosen = COMBO
+    else:
+        return VerticalParse(distinct, None, SKIPPED_MULTI if len(distinct) > 1 else None, tuple(c[2] for c in counted))
+    mine = [c for c in counted if c[0] == chosen]
+    strength = STRONG if any(VERTICAL_CUE_STRENGTH[c[1]] == STRONG for c in mine) else WEAK
+    return VerticalParse(distinct, chosen, None, tuple(c[2] for c in mine), strength)
 
 
 # ====================================================================================== F5: nơi đi → nơi đến
@@ -676,3 +779,88 @@ def parse_flight_roles(text: str, places: Iterable[tuple[int, int, str]], iata: 
         s = toks[_from_start(toks, b0 - 1)].start           # "đến B từ A"
         return FlightRoles(b[2], a[2], EXPLICIT, spans=((prev_a.start, a[1]), (s, b[1])))
     return FlightRoles(skipped=AMBIGUOUS)
+
+
+# ====================================================================================== Số khách (party)
+#: Kiến trúc §6 "Room child: occupancy"; contract `SearchRequest.travelContext.guests {adults, children}`. Chỉ số viết bằng
+#: chữ số 1–30 ngay trước đơn vị; số viết bằng chữ ("bốn người") không nhận — "ba", "năm" trùng từ thường.
+_PARTY_MIN, _PARTY_MAX = 1, 30
+_INT = re.compile(r"^\d+$")
+#: Từ nối giữa hai cụm số khách ("2 người lớn và 1 trẻ em") — gộp thành một span để BM25 không còn "và" lẻ loi.
+_PARTY_LINKS = frozenset({"va", "voi", "cung", "kem"})
+ADULTS, CHILDREN, TOTAL = "adults", "children", "total"
+
+
+@dataclass(frozen=True)
+class PartyParse:
+    adults: int | None = None               # "N người lớn"
+    children: int | None = None             # "M trẻ em / trẻ nhỏ / bé / con / em bé"
+    total: int | None = None                # người lớn + trẻ em, hoặc "N người / N khách / nhóm N người"; None khi chỉ biết trẻ em
+    spans: tuple[Span, ...] = ()            # số + đơn vị (gộp qua từ nối) — phần cắt khỏi BM25 khi filter áp
+
+
+def _party_unit(toks: list[_Tok], k: int) -> tuple[str, int] | None:
+    """(loại, số token) của đơn vị số khách bắt đầu tại token k. Khớp chữ gốc ở chỗ fold trùng: "bé" ≠ "bể" (bể bơi), "con"
+    ≠ "còn"/"Côn"; "khách sạn" không phải "khách"."""
+    if k >= len(toks):
+        return None
+    f, raw = toks[k].folded, toks[k].raw.lower()
+    nxt = toks[k + 1] if k + 1 < len(toks) else None
+    nf = nxt.folded if nxt else None
+    if f == "nguoi":
+        return (ADULTS, 2) if nf == "lon" else (TOTAL, 1)
+    if f == "khach":
+        return None if nf == "san" else (TOTAL, 1)
+    if f == "tre" and nf in ("em", "nho"):
+        return CHILDREN, 2
+    if f == "em" and nxt is not None and nxt.raw.lower() in ("bé", "be"):
+        return CHILDREN, 2
+    if raw in ("bé", "be") and nf != "boi":
+        return CHILDREN, 1
+    if raw == "con":
+        return CHILDREN, 1
+    return None
+
+
+def parse_party(text: str, protected: Iterable[Span] = ()) -> PartyParse:
+    """Số khách trong câu: "N người lớn" · "M trẻ em" · "N người" / "N khách" (cả "nhóm / gia đình / đoàn N người", tên hạng
+    phòng "Phòng 4 Người"). `protected` = đoạn `parse_numeric` đã tiêu (giá, sao) — số trong đó không bao giờ là số khách.
+    Nêu nhiều lần thì lấy lần đầu mỗi loại; tổng = người lớn + trẻ em (hoặc tổng nêu thẳng nếu lớn hơn)."""
+    prot = tuple(protected)
+    toks = _toks(text)
+    found: list[tuple[str, int, int, int]] = []          # (loại, số, token đầu, token cuối+1)
+    i = 0
+    while i < len(toks):
+        t = toks[i]
+        unit = None
+        if _INT.match(t.raw) and _PARTY_MIN <= int(t.raw) <= _PARTY_MAX and not _overlaps((t.start, t.end), prot):
+            unit = _party_unit(toks, i + 1)
+        if unit is None or _overlaps((toks[i + 1].start, toks[i + unit[1]].end), prot):
+            i += 1
+            continue
+        kind, n = unit
+        found.append((kind, int(t.raw), i, i + 1 + n))
+        i += 1 + n
+    if not found:
+        return PartyParse()
+    first = {}
+    for kind, v, _, _ in found:
+        first.setdefault(kind, v)
+    adults, children, stated = first.get(ADULTS), first.get(CHILDREN), first.get(TOTAL)
+    if adults is not None:
+        total = adults + (children or 0)
+        if stated is not None and stated > total:
+            total = stated
+    else:
+        total = stated
+    spans: list[Span] = []
+    prev_end = None
+    for _, _, s, e in found:
+        joined = prev_end is not None and not _gap_has(text, toks, s, ";.") and (
+            s == prev_end or (s == prev_end + 1 and toks[prev_end].folded in _PARTY_LINKS))
+        if joined:
+            spans[-1] = (spans[-1][0], toks[e - 1].end)
+        else:
+            spans.append((toks[s].start, toks[e - 1].end))
+        prev_end = e
+    return PartyParse(adults, children, total, tuple(spans))

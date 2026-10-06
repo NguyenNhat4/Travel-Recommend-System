@@ -54,14 +54,15 @@ def is_flight_query(query: str, taxonomy: str | None) -> bool:
 
 
 def decide_destination(nq: NormalizedQuery | None, explicit: str | None, taxonomy: str | None, enabled: bool,
-                       *, query: str = "") -> DestinationDecision:
-    """`explicit` = tham số request; `enabled` = cờ lọc; `query` = câu gốc (để nhận cue bay, không phụ thuộc chuẩn hoá)."""
+                       *, query: str = "", flight: bool | None = None) -> DestinationDecision:
+    """`explicit` = tham số request; `enabled` = cờ lọc; `query` = câu gốc (để nhận cue bay, không phụ thuộc chuẩn hoá);
+    `flight` = quyết định "câu vé máy bay" của query plan (None → tự nhận từ cue bay như trước)."""
     candidates = tuple(nq.destinations) if nq is not None else ()
     if explicit:
         return DestinationDecision(explicit, SOURCE_PARAM, None, candidates)
     if not enabled or not candidates:
         return DestinationDecision(None, None, None, candidates)
-    if is_flight_query(query or (nq.text if nq is not None else ""), taxonomy):
+    if flight if flight is not None else is_flight_query(query or (nq.text if nq is not None else ""), taxonomy):
         return DestinationDecision(None, None, SKIPPED_FLIGHT, candidates)
     if len(candidates) > 1:
         return DestinationDecision(None, None, SKIPPED_MULTI, candidates)

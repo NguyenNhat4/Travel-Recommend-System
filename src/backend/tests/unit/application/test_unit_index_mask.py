@@ -122,3 +122,75 @@ def test_revalidate_drops_masked_out_and_counts():
     assert revalidate([3, 2, 1, 0], mask) == ([2, 0], 2)
     assert revalidate([0, 2], mask) == ([0, 2], 0)
     assert revalidate([], mask) == ([], 0)
+
+
+# --- kiến trúc Phase A/B §6: loại taxonomy, cờ, sức chứa; lọc phòng/chuyến con
+ROWS2 = [
+    P("H1", "Resort A", "hotel", "Nha Trang", {"level": "property", "maxOccupancy": 2}, price=None),
+    P("H2", "Villa B", "hotel", "Phú Quốc", {"level": "property"}, price=None),                       # sức chứa từ con
+    P("H3", "Khách sạn C", "hotel", "Nha Trang", {"level": "property"}, price=None),                  # không biết sức chứa
+    P("C1", "Combo bay + ở", "combo", "Phú Quốc", {}, price=5_000_000),
+    P("C2", "Combo vé + buffet", "combo", "Nha Trang", {}, price=900_000),
+    P("A1", "Vé VinWonders", "attraction", "Nha Trang", {"ticketed": True}, price=880_000),
+    P("A2", "Bãi biển", "attraction", "Nha Trang", {"ticketed": False}, price=None),
+]
+CHILD_ROWS2 = {
+    "H2": [P("R2A", "Villa B - 12 khách", "hotel", "Phú Quốc", {"level": "room", "parentProductId": "H2", "maxOccupancy": 12}, price=9_000_000),
+           P("R2B", "Villa B - 4 khách", "hotel", "Phú Quốc", {"level": "room", "parentProductId": "H2", "maxOccupancy": 4}, price=2_500_000),
+           P("R2C", "Villa B - giá ẩn", "hotel", "Phú Quốc", {"level": "room", "parentProductId": "H2", "maxOccupancy": 6}, price=None),
+           P("R2D", "Villa B - chưa rõ", "hotel", "Phú Quốc", {"level": "room", "parentProductId": "H2"}, price=3_000_000)],
+    "H3": [P("R3A", "C - Standard", "hotel", "Nha Trang", {"level": "room", "parentProductId": "H3"}, price=700_000)],
+}
+KINDS2 = {"C1": ["flight", "hotel"], "C2": ["attraction", "meal"]}
+
+
+@pytest.fixture(scope="module")
+def ix2() -> UnitIndex:
+    units = [Product.from_cdp(r) for r in ROWS2]
+    children = {pid: [Product.from_cdp(k) for k in kids] for pid, kids in CHILD_ROWS2.items()}
+    return UnitIndex(units=units, taxonomy=np.array([p.taxonomy for p in units]),
+                     destination=np.array([p.destination for p in units]),
+                     available=np.array([p.available for p in units]), recommendable=np.ones(len(units), dtype=bool),
+                     parent_of={k["productId"]: pid for pid, kids in CHILD_ROWS2.items() for k in kids}, model_version="t",
+                     attrs=UnitAttributes.build(units, children, KINDS2))
+
+
+def test_new_kwargs_defaults_identical(ix, ix2):
+    for index in (ix, ix2):
+        for kw in ({}, {"only_available": False}, {"taxonomy": "hotel"}, {"price_max": 3_000_000}, {"star_min": 4},
+                   {"exclude_amenities": ["pool"]}, {"destination": "Nha Trang", "origin_city": "Hà Nội"}):
+            assert (index.mask(**kw) == index.mask(**kw, exclude_taxonomies=(), exclude_flags=(), min_occupancy=None)).all()
+            assert (index.mask(**kw) == index.mask(**kw, exclude_taxonomies=[""], exclude_flags=[""])).all()   # rỗng = không lọc
+
+
+def test_exclude_taxonomies(ix2):
+    assert ids(ix2, ix2.mask(exclude_taxonomies=["combo"])) == ["H1", "H2", "H3", "A1", "A2"]
+    assert ids(ix2, ix2.mask(exclude_taxonomies={"combo", "attraction"})) == ["H1", "H2", "H3"]
+    assert ids(ix2, ix2.mask(taxonomy="hotel", exclude_taxonomies=["hotel"])) == []
+    assert ids(ix2, ix2.mask(exclude_taxonomies=["golf"])) == [r["productId"] for r in ROWS2]   # không ai là golf
+
+
+def test_exclude_flags_drops_only_units_with_the_flag(ix2):
+    assert ids(ix2, ix2.mask(exclude_flags=["includesFlight"])) == ["H1", "H2", "H3", "C2", "A1", "A2"]
+    assert ids(ix2, ix2.mask(exclude_flags={"ticketed", "includesHotel"})) == ["H1", "H2", "H3", "C2", "A2"]
+    assert ids(ix2, ix2.mask(taxonomy="combo", exclude_flags=["includesFlight"])) == ["C2"]
+
+
+def test_min_occupancy_keeps_unknown_drops_known_small(ix2):
+    assert ix2.attrs.max_occupancy[1] == 12.0                                       # H2 = max của con
+    assert ids(ix2, ix2.mask(taxonomy="hotel", min_occupancy=4)) == ["H2", "H3"]    # H1 = 2 bị loại; H3 không biết → giữ
+    assert ids(ix2, ix2.mask(taxonomy="hotel", min_occupancy=2)) == ["H1", "H2", "H3"]
+    assert ids(ix2, ix2.mask(taxonomy="hotel", min_occupancy=13)) == ["H3"]
+
+
+def test_matched_children(ix2):
+    h2, h3 = ix2.idx["H2"], ix2.idx["H3"]
+    assert ix2.matched_children(h2) == []                                           # không điều kiện → []
+    assert ix2.matched_children(h2, price_max=3_000_000) == ["R2B", "R2D"]          # giá null (R2C) bị loại khi có biên
+    assert ix2.matched_children(h2, price_min=2_600_000) == ["R2D", "R2A"]          # thứ tự đã lưu = giá tăng dần
+    assert ix2.matched_children(h2, min_occupancy=6) == ["R2D", "R2A", "R2C"]       # R2D không biết sức chứa → giữ; R2B 4 < 6
+    assert ix2.matched_children(h2, price_max=3_000_000, min_occupancy=6) == ["R2D"]
+    assert ix2.matched_children(h2, min_occupancy=1, limit=2) == ["R2B", "R2D"]
+    assert ix2.matched_children(h2, min_occupancy=1, limit=0) == []
+    assert ix2.matched_children(h3, price_max=500_000) == [] and ix2.matched_children(h3, price_max=700_000) == ["R3A"]
+    assert ix2.matched_children(ix2.idx["C1"], price_max=10**9) == []               # không có con

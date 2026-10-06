@@ -105,7 +105,7 @@ Sau đó chạy `sb gold import` rồi `sb gold check`.
 
 ## Rubric v4 — áp dụng cho câu từ `gold_v4` (người dùng chốt 05/10)
 
-**Phạm vi.** Chỉ áp dụng cho câu thêm từ `gold_v4` (qid từ `c0673`, thư mục `gold/v4a/` và các hole của chúng). Câu `gold_v1`–`gold_v3` giữ nguyên nhãn theo các mục phía trên: gold chỉ được thêm (spec Part 11), không gán lại. Report đặt khối câu v3 và khối câu v4 riêng, không trộn hai rubric trong một con số mà không ghi rõ. Nguồn: đề xuất `docs/spec/bench/gold-v4-bo-sung-va-quy-trinh-gan-nhan.md` §4 (D1) và kế hoạch `docs/plan/2026-10-05-gold-v4a-mo-rong.md`.
+**Phạm vi (sửa 06/10, người dùng chốt).** Áp dụng cho **mọi nhãn gán từ `gold_v4` trở đi**: câu mới (qid từ `c0673`, `gold/v4a/`) **và hole của câu cũ** (từ đợt D9a). Nhãn đã có trong `gold_v1`–`gold_v3` giữ nguyên theo các mục phía trên (gold chỉ được thêm, spec Part 11, không gán lại) — nên trong một câu cũ, nhãn 1 cũ cho "đúng nơi sai loại" (quy ước #2) và nhãn 0 mới cho cùng tình huống **cùng tồn tại** (06/10: 161 cặp nhãn 1 cũ / 34 câu). Hợp nhất (người dùng chốt 06/10, phương án b): **chiếu rubric v4 lúc chấm** — mỗi câu có `allowed_variants` trong `config/query_annotations.yaml`; evaluator (`metrics.project_rubric_v4`, bật bằng `metrics.rubric_v4_projection`) tính nhãn ≥ 1 của sản phẩm ngoài danh sách là 0, gold.jsonl không đổi. Report ghi `rubric_v4_projection {pairs, queries}` của results.json. Nguồn: đề xuất `docs/spec/bench/gold-v4-bo-sung-va-quy-trinh-gan-nhan.md` §4 (D1) và kế hoạch `docs/plan/2026-10-05-gold-v4a-mo-rong.md`.
 
 | Nhãn | Nghĩa (rubric v4) |
 |---|---|
@@ -118,7 +118,9 @@ Sau đó chạy `sb gold import` rồi `sb gold check`.
 **Ràng buộc cứng / mềm.**
 - Cứng (vi phạm → 0): điểm đến hoặc tuyến bay và chiều; loại sản phẩm khách hỏi; tiện ích bị phủ định ("không có X") mà sản phẩm có ghi; loại trừ rõ ("vé lẻ", "không lấy combo", "không phải …"); thương hiệu khách nêu tên.
 - Mềm (thiếu → 1): tiện ích yêu cầu dương ("có X") không được ghi nhận; vị trí cụ thể trong tỉnh ("ở Grand World") chưa thể hiện.
-- Giá, sao, ngày, số khách: **không chấm** — câu v4a không có điều kiện giá / sao, app không hiện giá.
+- **Loại cốt lõi = `variant` catalog** (`hotel_property` / `attraction` / `combo` / `flight_route` / `golf`), theo từ ngành dọc trong câu (khách sạn / chỗ nghỉ / resort / KS / KDL → hotel_property; vé tham quan / điểm vui chơi / VinWonders → attraction; combo → combo; vé máy bay → flight_route; golf → golf). Khác **subtype trong cùng variant** (resort / khách sạn / homestay / căn hộ; thương hiệu khác khi câu nêu thương hiệu dương) = 1. Phương án thay thế rubric cho **1** (không phải vi phạm cứng): combo / passport có kèm vé cho câu hỏi vé và vé lẻ thành phần cho câu hỏi combo (#10, hai chiều — trừ combo vé máy bay + khách sạn như c0706: vé bay lẻ / KS lẻ = 0), combo khứ hồi cho câu vé máy bay (#8d). Câu `cross_vertical`: mọi vertical được nêu đều đúng loại. Câu tên POI hoặc không có từ ngành dọc ("hoạt động trải nghiệm", "gói vui chơi"): đúng loại = loại của sản phẩm đúng.
+- **Sao** (câu `multi_constraint` có "N sao"): dưới ngưỡng = **0** (ràng buộc cứng, đề xuất v4 §4.1; v3 cho 1); không khai sao = 1, `note` bắt đầu `unknown_metadata:`.
+- Giá, ngày, số khách: **không chấm** — app không hiện giá; giá máy kiểm qua `child_filter`.
 
 **Thứ tự quyết định** (đề xuất v4 §4.2): sai ràng buộc cứng → 0, dù rất giống câu hỏi; qua hết ràng buộc cứng → đúng ý định thì 2, là phương án thay thế được chính sách cho phép hoặc thiếu điều kiện mềm thì 1. **Không có trạng thái "review"**: luôn gán 0 / 1 / 2; không chắc thì gán theo luật và ghi `note` bắt đầu bằng `unknown_metadata:`.
 

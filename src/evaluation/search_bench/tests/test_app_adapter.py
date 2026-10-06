@@ -2,13 +2,15 @@
 (engine giả). Nạp ProductBench và parity với B0 là test integration (`pytest -m integration`)."""
 from __future__ import annotations
 
+import zlib
 from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
-from evaluation.search_bench import app_adapter as A, catalog, runner as R
+from evaluation.search_bench import app_adapter as A, catalog, paths, runner as R
 from evaluation.search_bench.arms import load_arm
+from evaluation.search_bench.rerank import RerankCache, Reranker, rerank_params
 from evaluation.search_bench.store import filters as F
 from evaluation.search_bench.textbuild import load_texts
 
@@ -160,6 +162,44 @@ def test_build_app_catalog_matches_bench_text(cfg, sample_home):
     assert p.product_id == items["product_id"].iloc[0] and p.taxonomy in ("hotel", "flight", "attraction", "combo", "golf")
     assert all(cat.index.idx[parent] is not None for parent in cat.index.parent_of.values())
     assert all(len(h) == 64 for h in cat.text_hash.values())
+
+
+def test_build_app_catalog_attrs_flags_occupancy_children(cfg, sample_home, monkeypatch):
+    """06/10 (kiến trúc §6): cờ combo lấy từ `item_kind` của `combo_enrichment` (= catalog.combo_items của production);
+    sức chứa / danh sách con dựng kèm phòng/chuyến con. Sample không có combo bay/ở → bọc combo_enrichment để thêm kind."""
+    real = catalog.combo_enrichment
+    picked = {}
+
+    def with_flight_hotel(records, manual):
+        items, attrs, info = real(records, manual)
+        cid = sorted(items)[0]
+        picked["cid"] = cid
+        return {**items, cid: [*items[cid], {"item_kind": "flight"}, {"item_kind": "hotel"}]}, attrs, info
+
+    monkeypatch.setattr(catalog, "combo_enrichment", with_flight_hotel)
+    cat = A.build_app_catalog(cfg, "sample")
+    ix, a = cat.index, cat.index.attrs
+    records = catalog.reload_records(cfg, "sample")
+    by_id = {r["productId"]: r for r in records}
+    _, children, _, _ = catalog.group_children(records, cfg.catalog.search_unit_variants)
+
+    def occ(r):
+        v = (r.get("attributes") or {}).get("maxOccupancy")
+        return float(v) if isinstance(v, (int, float)) and v >= 1 else None
+
+    for i, p in enumerate(ix.units):
+        rec = by_id[p.product_id]
+        want = {"includesFlight", "includesHotel"} if p.product_id == picked["cid"] else set()
+        if p.taxonomy == "attraction" and (rec.get("attributes") or {}).get("ticketed") is True:
+            want.add("ticketed")
+        assert a.flags[i] == want, p.product_id
+        kids = children.get(p.product_id, [])
+        assert sorted(c[0] for c in a.children[i]) == sorted(k["productId"] for k in kids)
+        occs = [o for o in (occ(rec), *(occ(k) for k in kids)) if o is not None]
+        assert (a.max_occupancy[i] == max(occs)) if occs else np.isnan(a.max_occupancy[i])
+    assert ix.attrs.flags[ix.idx[picked["cid"]]] == {"includesFlight", "includesHotel"}
+    assert not ix.mask(exclude_flags=["includesFlight"], only_available=False)[ix.idx[picked["cid"]]]
+    assert any(len(c) for c in a.children) and not np.isnan(a.max_occupancy).all()   # sample có phòng khai sức chứa
 
 
 class _Engine:
@@ -346,3 +386,322 @@ def test_bm25_snapshot_raises_on_graphql_error():
                                                                    json=lambda: {"errors": [{"message": "no class"}]}))
     with pytest.raises(A.AppAdapterError, match="BM25"):
         A.bm25_snapshot(http, "C")
+
+
+# ------------------------------------------------------------------ 06/10: ma trận ablation (núm mới, lexical-only, rerank)
+NEW_KNOBS = A.ENGINE_FLAG_KEYS + A.HYBRID_CHANNEL_KEYS + ("retrieval_mode",)
+A_BASE = "APP.e5s.hybrid_norm_nocut"
+ALL = "APP.e5s.hybrid_norm_nocut_all"
+# arm mới của ma trận → (cha, các khoá app đổi so với cha)
+MATRIX = {
+    f"{A_BASE}_tax_strong": (A_BASE, {"taxonomy_filter", "taxonomy_strong_only"}),
+    f"{A_BASE}_party": (A_BASE, {"party_filter"}),
+    f"{A_BASE}_tone": (A_BASE, {"tone_normalize"}),
+    f"{A_BASE}_fuzzy": (A_BASE, {"fuzzy_k"}),
+    f"{A_BASE}_fuzzy60": (A_BASE, {"fuzzy_k", "fuzzy_min_sim"}),
+    f"{A_BASE}_wrrf": (A_BASE, {"lexical_weight"}),
+    f"{A_BASE}_wrrf_d": (A_BASE, {"dense_weight"}),
+    f"{A_BASE}_lexonly": (A_BASE, {"retrieval_mode"}),
+    ALL: (A_BASE, {"dest_filter", "no_diacritics_mode", *A.QUERY_PLAN_KEYS, "taxonomy_strong_only", "party_filter",
+                   "tone_normalize", "fuzzy_k"}),
+    **{f"{ALL}_minus_{s}": (ALL, {k}) for s, k in (("dest", "dest_filter"), ("nodia", "no_diacritics_mode"),
+                                                   ("neg", "negation_filter"), ("tax", "taxonomy_filter"),
+                                                   ("route", "route_filter"), ("num", "numeric_filter"),
+                                                   ("party", "party_filter"), ("tone", "tone_normalize"), ("fuzzy", "fuzzy_k"))},
+    f"{ALL}_c84": (ALL, {"cutoff", "no_diacritics"}),
+    f"{ALL}_rr": (ALL, set()),
+    f"{A_BASE}_rr": (A_BASE, set()),
+}
+
+
+@pytest.mark.parametrize("key", NEW_KNOBS)
+def test_app_params_requires_new_knobs(key):
+    """06/10: núm mới bắt buộc như các khoá trước (spec §1.5) — thiếu thì lỗi nêu đúng tên khoá; mặc định = production (tắt)."""
+    with pytest.raises(A.AppAdapterError, match=f"app.{key}"):
+        A.app_params({k: v for k, v in A.APP_DEFAULTS.items() if k != key})
+    assert A.APP_DEFAULTS[key] == {**A.NEUTRAL, "fuzzy_candidate_k": 50, "fuzzy_min_sim": 0.75, "retrieval_mode": "hybrid"}[key]
+
+
+@pytest.mark.parametrize("patch, match", [
+    ({"retrieval_mode": "bm25"}, "retrieval_mode"),
+    ({"hybrid": False}, "mâu thuẫn"),                                       # hybrid false phải đi với dense
+    ({"retrieval_mode": "dense"}, "mâu thuẫn"),                             # dense phải đi với hybrid false
+    ({"hybrid": False, "retrieval_mode": "dense", "fuzzy_k": 5}, "dense"),
+    ({"hybrid": False, "retrieval_mode": "dense", "lexical_weight": 0.5}, "dense"),
+    ({"retrieval_mode": "lexical", "lexical_weight": 0.0}, "lexical_weight"),
+    ({"fuzzy_k": -1}, "fuzzy_k"),
+    ({"fuzzy_min_sim": 1.5}, "fuzzy_min_sim"),
+    ({"dense_weight": -0.1}, "weight"),
+])
+def test_app_params_rejects_inconsistent_knobs(patch, match):
+    with pytest.raises(A.AppAdapterError, match=match):
+        A.app_params({**A.APP_DEFAULTS, **patch})
+
+
+def test_app_params_accepts_modes():
+    assert A.app_params({**A.APP_DEFAULTS, "retrieval_mode": "lexical"})["retrieval_mode"] == "lexical"
+    assert A.app_params({**A.APP_DEFAULTS, "hybrid": False, "retrieval_mode": "dense"})["hybrid"] is False
+
+
+def _all_app_arm_ids() -> list[str]:
+    return sorted(p.stem for p in paths.ARMS_DIR.glob("APP.*.yaml"))
+
+
+def test_every_app_arm_yaml_loads_with_valid_params_and_distinct_hash():
+    ids = _all_app_arm_ids()
+    assert set(ALL_APP_ARMS) | set(MATRIX) <= set(ids)
+    arms = {a: load_arm(a) for a in ids}
+    for a, arm in arms.items():
+        assert arm.engine == "app" and arm.text_variant == "T3+R", a
+        A.app_params(arm.app)                                              # đủ khoá + nhất quán hybrid ⇔ retrieval_mode
+        if arm.rerank is not None:
+            rerank_params(arm.rerank, k=10)
+        if arm.parent and arm.parent.startswith("APP."):
+            assert arm.parent in arms, (a, arm.parent)                   # cha là arm APP có thật (vs_parent so được)
+    assert len({R.config_hash(x) for x in arms.values()}) == len(arms)   # mỗi arm một cấu hình
+
+
+def test_existing_app_arms_keep_new_knobs_neutral():
+    """Arm có từ trước: núm mới = production hôm nay (hành vi không đổi; hash đổi vì thêm khoá — dự kiến)."""
+    for a in ALL_APP_ARMS:
+        app = load_arm(a).app
+        assert all(app[k] == A.NEUTRAL[k] for k in A.NEUTRAL), a
+        assert (app["fuzzy_candidate_k"], app["fuzzy_min_sim"]) == (50, 0.75), a
+        assert app["retrieval_mode"] == ("hybrid" if app["hybrid"] else "dense"), a
+        assert load_arm(a).rerank is None
+
+
+@pytest.mark.parametrize("arm_id", sorted(MATRIX))
+def test_matrix_arm_changes_exactly_listed_knobs(arm_id):
+    parent, changed = MATRIX[arm_id]
+    arm, par = load_arm(arm_id), load_arm(parent)
+    assert arm.parent == parent and arm.composite and arm.model == "e5-small" and arm.retrieval == "hybrid"
+    assert {k for k in arm.app if arm.app[k] != par.app[k]} == changed
+    hard = any(arm.app[k] for k in ("dest_filter", *A.QUERY_PLAN_KEYS, "party_filter"))
+    assert arm.filters["qu"] is hard                                      # quy ước cũ: qu = có hard filter suy từ câu
+
+
+def test_matrix_arm_values():
+    a = {x: load_arm(x).app for x in MATRIX}
+    assert a[f"{A_BASE}_fuzzy"]["fuzzy_k"] == 10 and a[f"{A_BASE}_fuzzy"]["fuzzy_min_sim"] == 0.75
+    assert a[f"{A_BASE}_fuzzy60"]["fuzzy_min_sim"] == 0.6
+    assert (a[f"{A_BASE}_wrrf"]["dense_weight"], a[f"{A_BASE}_wrrf"]["lexical_weight"]) == (1.0, 0.5)
+    assert (a[f"{A_BASE}_wrrf_d"]["dense_weight"], a[f"{A_BASE}_wrrf_d"]["lexical_weight"]) == (0.5, 1.0)
+    assert a[f"{A_BASE}_lexonly"]["retrieval_mode"] == "lexical" and a[f"{A_BASE}_lexonly"]["hybrid"] is True
+    full = a[ALL]
+    assert full["cutoff"] == -1.0 and full["no_diacritics_mode"] == "relax" and full["no_diacritics"]["cutoff"] is None
+    assert all(full[k] is True for k in ("dest_filter", *A.QUERY_PLAN_KEYS, *A.ENGINE_FLAG_KEYS))
+    assert (full["fuzzy_k"], full["fuzzy_min_sim"], full["dense_weight"], full["lexical_weight"]) == (10, 0.75, 1.0, 1.0)
+    qp = load_arm("APP.e5s.hybrid_norm_c84_dest_nodia_nc80_qp").app
+    assert {k: v for k, v in full["no_diacritics"].items() if k != "cutoff"} == {k: v for k, v in qp["no_diacritics"].items() if k != "cutoff"}
+    assert a[f"{ALL}_c84"]["cutoff"] == 0.84 and a[f"{ALL}_c84"]["no_diacritics"]["cutoff"] == 0.80
+    assert a[f"{ALL}_minus_tax"]["taxonomy_strong_only"] is True and a[f"{ALL}_minus_fuzzy"]["fuzzy_k"] == 0
+    for rr in (f"{ALL}_rr", f"{A_BASE}_rr"):
+        r = load_arm(rr).rerank
+        assert r == {"model": "BAAI/bge-reranker-v2-m3", "top_n": 30, "parent_engine": "app", "query": "raw",
+                     "batch_size": 16, "max_length": 512}
+
+
+class _Spy:
+    """SearchProducts / HybridConfig giả nhận mọi kwargs (như test cũ)."""
+
+    seen: list
+
+    def __init__(self, *args, **kwargs):
+        self.args, self.kwargs = args, kwargs
+        type(self).seen.append(self)
+
+
+def _spy_ctx(monkeypatch, search_cls=None, hybrid_cls=None):
+    class SP(_Spy):
+        seen = []
+
+    class HC(_Spy):
+        seen = []
+
+    sp, hc = search_cls or SP, hybrid_cls or HC
+    monkeypatch.setattr(A, "_backend", lambda: (None, sp, None, hc, None))
+    ctx = A.AppContext(cfg=None, dataset="x", cat=SimpleNamespace(index=None))
+    ctx._vs = object()
+    return ctx, sp, hc
+
+
+def test_make_search_passes_new_knobs(monkeypatch):
+    ctx, SP, HC = _spy_ctx(monkeypatch)
+    knobs = {"tone_normalize": True, "taxonomy_strong_only": True, "party_filter": True, "fuzzy_k": 10, "fuzzy_candidate_k": 40,
+             "fuzzy_min_sim": 0.6, "dense_weight": 0.5, "lexical_weight": 0.25, "fuzzy_weight": 2.0}
+    s = ctx.make_search({**A.APP_DEFAULTS, **knobs, "no_diacritics_mode": "relax"}, embedder=None)
+    kw = SP.seen[-1].kwargs
+    assert {k: kw[k] for k in A.ENGINE_FLAG_KEYS} == dict.fromkeys(A.ENGINE_FLAG_KEYS, True)
+    assert kw["candidate_k"] == 200 and kw["lexical"] is ctx._vs and s.params["fuzzy_k"] == 10
+    main, nd = HC.seen[-2].kwargs, HC.seen[-1].kwargs                     # hybrid chung, rồi bộ câu không dấu
+    assert kw["hybrid"] is HC.seen[-2] and kw["no_diacritics"] is HC.seen[-1]
+    for cfg_kw in (main, nd):                                             # núm của kênh đi vào CẢ hai bộ ngưỡng
+        assert {k: cfg_kw[k] for k in A.HYBRID_CHANNEL_KEYS} == {k: knobs[k] for k in A.HYBRID_CHANNEL_KEYS}
+        assert isinstance(cfg_kw["fuzzy_k"], int) and isinstance(cfg_kw["dense_weight"], float)
+    assert (main["lexical_k"], nd["lexical_k"]) == (10, 20)
+
+
+def test_make_search_lexical_mode_empties_dense_channel(monkeypatch):
+    ctx, SP, HC = _spy_ctx(monkeypatch)
+    ctx.make_search({**A.APP_DEFAULTS, "retrieval_mode": "lexical"}, embedder=None)
+    kw = SP.seen[-1].kwargs
+    assert kw["candidate_k"] == 0 and kw["hybrid"] is HC.seen[-1] and kw["lexical"] is ctx._vs
+    assert kw["lexical_candidate_k"] == 50 and kw["cutoff"] == A.APP_DEFAULTS["cutoff"]
+
+
+def test_make_search_dense_mode_has_no_channel(monkeypatch):
+    ctx, SP, HC = _spy_ctx(monkeypatch)
+    ctx.make_search({**A.APP_DEFAULTS, "hybrid": False, "retrieval_mode": "dense"}, embedder=None)
+    kw = SP.seen[-1].kwargs
+    assert kw["hybrid"] is None and kw["lexical"] is None and kw["candidate_k"] == 200 and HC.seen == []
+
+
+def test_make_search_guards_fields_backend_lacks(monkeypatch):
+    """Backend cũ (dataclass không có field mới): giá trị tắt → không truyền; giá trị bật → lỗi 'backend chưa có field'."""
+    import dataclasses as dc
+
+    @dc.dataclass
+    class OldSP:
+        index: object
+        vectors: object
+        embedder: object
+        cutoff: float
+        candidate_k: int = 200
+        lexical: object = None
+        hybrid: object = None
+        lexical_candidate_k: int = 50
+        normalize: bool = True
+        dest_filter: bool = False
+        dest_filter_fallback: bool = True
+        no_diacritics: object = None
+        no_diacritics_cutoff: object = None
+        no_diacritics_min_tokens: int = 3
+        negation_filter: bool = False
+        taxonomy_filter: bool = False
+        route_filter: bool = False
+        numeric_filter: bool = False
+
+    @dc.dataclass(frozen=True)
+    class OldHC:
+        rrf_k: int = 60
+        lexical_k: int = 10
+        lexical_cutoff: float = 0.5
+        min_coverage: float = 0.6
+
+    ctx, _, _ = _spy_ctx(monkeypatch, search_cls=OldSP, hybrid_cls=OldHC)
+    s = ctx.make_search(dict(A.APP_DEFAULTS), embedder=None)              # mọi núm mới tắt → chạy được trên backend cũ
+    assert isinstance(s.engine, OldSP) and s.engine.hybrid == OldHC(60, 10, 0.5, 0.6)
+    with pytest.raises(A.AppAdapterError, match="backend chưa có field SearchProducts.party_filter"):
+        ctx.make_search({**A.APP_DEFAULTS, "party_filter": True}, embedder=None)
+    with pytest.raises(A.AppAdapterError, match="backend chưa có field HybridConfig.fuzzy_k"):
+        ctx.make_search({**A.APP_DEFAULTS, "fuzzy_k": 10}, embedder=None)
+    with pytest.raises(A.AppAdapterError, match="backend chưa có field HybridConfig.lexical_weight"):
+        ctx.make_search({**A.APP_DEFAULTS, "lexical_weight": 0.5}, embedder=None)
+    # fuzzy_min_sim / fuzzy_candidate_k chỉ có nghĩa khi fuzzy bật → đổi mà fuzzy_k 0 thì vẫn chạy
+    ctx.make_search({**A.APP_DEFAULTS, "fuzzy_min_sim": 0.6}, embedder=None)
+
+
+def test_real_backend_has_every_knob():
+    """Backend hiện tại có đủ field cho mọi núm của arm (nếu hỏng: backend đổi tên field → sửa APP_DEFAULTS / arm)."""
+    _, SearchProducts, _, HybridConfig, _ = A._backend()
+    assert set(A.ENGINE_FLAG_KEYS) | set(A.QUERY_PLAN_KEYS) <= A._init_names(SearchProducts)
+    assert set(A.HYBRID_CHANNEL_KEYS) <= A._init_names(HybridConfig)
+
+
+class _QEmb:
+    """Embedder truy vấn giả (CachedEmbedder.embed) — vector tất định theo câu."""
+
+    def __init__(self, dim):
+        self.dim = dim
+
+    def embed(self, texts, input_type):
+        rng = np.random.default_rng(zlib.crc32(texts[0].encode("utf-8")))
+        v = rng.normal(size=(len(texts), self.dim)).astype("float32")
+        return v / np.linalg.norm(v, axis=1, keepdims=True)
+
+
+def _numpy_ctx(cfg):
+    from src.backend.app.infrastructure.vectors.numpy_search import NumpyVectorSearch
+    cat = A.build_app_catalog(cfg, "sample")
+    ids = [p.product_id for p in cat.index.units]
+    rng = np.random.default_rng(7)
+    E = rng.normal(size=(len(ids), 16)).astype("float32")
+    E /= np.linalg.norm(E, axis=1, keepdims=True)
+    vs = NumpyVectorSearch(ids, E, texts=[f"{p.name} {p.name} {cat.texts[p.product_id]}" for p in cat.index.units])
+    ctx = A.AppContext(cfg=cfg, dataset="sample", cat=cat, dimension=16)
+    ctx._vs = vs
+    return ctx, vs
+
+
+def test_lexical_mode_real_use_case_ranks_by_bm25_only(cfg, sample_home):
+    """SearchProducts thật + kho numpy: lexical = đúng thứ tự BM25 trong mask (không unit nào chỉ có ở dense); hybrid thì có."""
+    ctx, vs = _numpy_ctx(cfg)
+    base = {**A.APP_DEFAULTS, "cutoff": -1.0, "normalize": False}
+    lex = ctx.make_search({**base, "retrieval_mode": "lexical"}, _QEmb(16))
+    hyb = ctx.make_search(base, _QEmb(16))
+    ix = ctx.cat.index
+    allowed = ix.allowed_ids(ix.mask(only_available=True))
+    checked = 0
+    for q in ("resort", "khách sạn", "vé máy bay", "golf"):
+        bm = [h.product_id for h in vs.bm25(q, allowed, 50)]
+        ids, scores, extra = lex.search(q, limit=10)
+        assert ids == bm[:10], q
+        assert extra["retrievalMode"] == "lexical"
+        h_ids, _, h_extra = hyb.search(q, limit=10)
+        assert "retrievalMode" not in h_extra
+        if 0 < len(bm) < 10:
+            assert len(h_ids) == 10 and set(h_ids) - set(bm)                # hybrid lấp bằng hit dense; lexical thì không
+            checked += 1
+    assert checked >= 1
+
+
+class _Engine30:
+    def __init__(self):
+        self.calls = []
+
+    def __call__(self, q, *, limit):
+        self.calls.append((q, limit))
+        return {"results": [{"productId": f"p{i}", "score": round(0.9 - i * 0.01, 4)} for i in range(limit)],
+                "total": limit, "topScore": 0.9, "cutoff": -1.0, "diagnostics": {"normalizedQuery": q.upper(), "fuzzyCount": 1,
+                                                                                  "stageMs": {"dense": 1}, "searchMode": "X"}}
+
+
+def _fake_score_fn(calls):
+    def score(pairs):
+        calls.append(len(pairs))
+        return np.array([float(t.split()[-1]) for _, t in pairs], dtype="float32"), 0     # text "unit i" → điểm i
+    return score
+
+
+def test_retrieve_app_rerank_reorders_and_caches(cfg, sample_home, tmp_path):
+    env = R.load_env(cfg, "sample", __import__("pathlib").Path(__file__).parent / "fixtures" / "gold_small.jsonl", run_id="t")
+    arm = load_arm(f"{A_BASE}_rr")
+    eng = _Engine30()
+    s = A.AppSearch(engine=eng, params=dict(arm.app))
+    ctx = SimpleNamespace(make_search=lambda app, emb: s, cat=SimpleNamespace(texts={f"p{i}": f"unit {i}" for i in range(50)}))
+    calls = []
+    rr = Reranker("m", batch_size=16, max_length=512, cache=RerankCache(tmp_path / "rr.sqlite"), score_fn=_fake_score_fn(calls))
+    got = A.retrieve_app(arm, env, ctx, embedder=None, reranker=rr)
+    assert all(c[1] == 30 for c in eng.calls)                            # engine trả top-30 (rerank.top_n)
+    first = got[0]
+    assert first.top_ids == [f"p{i}" for i in range(29, 19, -1)]           # điểm giả = i → đảo thứ tự, cắt top-10
+    assert first.top_scores == [round(0.9 - i * 0.01, 4) for i in range(29, 19, -1)]   # cosine đi theo unit
+    info = first.extra["rerank"]
+    assert (info["topN"], info["inputN"], info["scored"], info["cached"], info["movedIn"]) == (30, 30, 30, 0, 10)
+    assert info["scores"][0] == 29.0 and info["modelMs"] >= 0 and info["ms"] >= 0
+    assert first.extra["fuzzyCount"] == 1 and first.extra["stageMs"] == {"dense": 1} and "searchMode" not in first.extra
+    n_model = sum(calls)
+    assert n_model == 30 * len({g.text for g in env.gold})
+    again = A.retrieve_app(arm, env, ctx, embedder=None, reranker=rr)     # lần 2: toàn bộ từ cache, 0 lượt model
+    assert sum(calls) == n_model and [g.top_ids for g in again] == [g.top_ids for g in got]
+    assert again[0].extra["rerank"]["cached"] == 30 and again[0].extra["rerank"]["scored"] == 0
+    rr.close()
+
+
+def test_retrieve_app_rerank_rejects_bad_block(cfg, sample_home):
+    env = R.load_env(cfg, "sample", __import__("pathlib").Path(__file__).parent / "fixtures" / "gold_small.jsonl", run_id="t")
+    arm = load_arm(f"{A_BASE}_rr")
+    bad = arm.model_copy(update={"rerank": {**arm.rerank, "top_n": 5}})
+    with pytest.raises(A.AppAdapterError, match="top_n"):
+        A.retrieve_app(bad, env, SimpleNamespace(), embedder=None, reranker=object())

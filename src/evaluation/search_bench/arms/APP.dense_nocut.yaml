@@ -9,6 +9,8 @@ composite: true
 engine: app
 app: {cutoff: -1.0, candidate_k: 200, hybrid: false, normalize: false, rrf_k: 60, lexical_k: 10, lexical_cutoff: 0.50, min_coverage: 0.6, lexical_candidate_k: 50, dest_filter: false, dest_filter_fallback: true, no_diacritics_mode: "off",
       negation_filter: false, taxonomy_filter: false, route_filter: false, numeric_filter: false,
+      tone_normalize: false, taxonomy_strong_only: false, party_filter: false,
+      fuzzy_k: 0, fuzzy_candidate_k: 50, fuzzy_min_sim: 0.75, dense_weight: 1.0, lexical_weight: 1.0, fuzzy_weight: 1.0, retrieval_mode: "dense",
       no_diacritics: {lexical_k: 20, lexical_cutoff: 0.0, min_coverage: 0.4, cutoff: null, min_tokens: 3}}
 text_variant: T3+R
 model: cohere-v3

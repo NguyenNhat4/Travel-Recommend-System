@@ -2,9 +2,10 @@
 bảng câu gold + biến thể không dấu; thuần, không catalog."""
 import pytest
 
-from src.backend.app.domain.search.constraints import (VERTICAL_CUES, FlightRoles, MustNot, NegationParse,
-                                                       NumericParse, VerticalParse, parse_flight_roles,
-                                                       parse_negation, parse_numeric, parse_vertical, remove_spans)
+from src.backend.app.domain.search.constraints import (VERTICAL_CUE_STRENGTH, VERTICAL_CUES, WEAK_VERTICAL_CUES,
+                                                       FlightRoles, MustNot, NegationParse, NumericParse,
+                                                       VerticalParse, parse_flight_roles, parse_negation,
+                                                       parse_numeric, parse_vertical, remove_spans)
 from src.backend.app.domain.search.lexical import fold
 from src.backend.app.domain.search.normalize import QueryNormalizer
 
@@ -215,10 +216,49 @@ def test_parse_negation_brand():
     assert r.must_not == () and r.must_not_brands == ("Vinpearl",) and consumed(q, r.spans) == ["không phải Vinpearl"]
 
 
+# ------------------------------------------------------------------------------------------------ F3: phủ định loại sản phẩm
+@pytest.mark.parametrize("q, taxonomies, flags, taxonomy", [
+    ("vé lẻ VinWonders Nam Hội An, không lấy combo", ("combo",), (), "attraction"),     # gold c0703 (rubric v4 #10)
+    ("ve le vinwonders khong lay combo", ("combo",), (), "attraction"),                # không dấu
+    ("vé lẻ VinWonders Nha Trang", ("combo",), (), "attraction"),                       # "vé lẻ" dương = loại combo
+    ("vé VinWonders không muốn combo", ("combo",), (), "attraction"),
+    ("khách sạn không phải combo", ("combo",), (), "hotel"),
+    ("resort Phú Quốc không lấy vé máy bay", ("flight",), (), "hotel"),                # không có combo → loại cả loại
+    ("không lấy vé tham quan, chỉ cần khách sạn Huế", ("attraction",), (), "hotel"),
+    ("combo Phú Quốc không gồm vé máy bay", (), ("includesFlight",), "combo"),         # kiến trúc §4: includes_flight=false
+    ("combo Đà Nẵng không kèm khách sạn", (), ("includesHotel",), "combo"),
+    ("combo Phú Quốc không bao gồm vé máy bay và khách sạn", (), ("includesFlight", "includesHotel"), "combo"),
+])
+def test_parse_negation_taxonomy_and_composition(q, taxonomies, flags, taxonomy):
+    r = parse_negation(q, parse_numeric(q).spans)
+    assert (r.must_not_taxonomies, r.must_not_flags) == (taxonomies, flags)
+    assert r.must_not == () and r.must_not_brands == () and r.unresolved == ()
+    assert parse_vertical(q, excluded=r.spans).taxonomy == taxonomy     # cue trong scope phủ định không tính là loại dương
+
+
+def test_parse_negation_taxonomy_scope_is_consumed_but_single_ticket_phrase_is_not():
+    q = "vé lẻ VinWonders Nam Hội An, không lấy combo"
+    r = parse_negation(q)
+    assert consumed(q, r.spans) == ["không lấy combo"]
+    assert remove_spans(q, r.spans) == "vé lẻ VinWonders Nam Hội An"
+
+
+@pytest.mark.parametrize("q, keys", [
+    ("khách sạn không có hồ bơi, phòng rộng", ["pool"]),       # cue loại sau tiện ích → kết thúc phạm vi, như trước
+    ("khách sạn không có phòng gym", ["gym"]),                  # tiện ích khớp trước cue "phòng"
+    ("resort ngoại trừ sân golf", ["golf"]),                     # "sân golf" là tiện ích, không phải ngành golf
+    ("khách sạn không muốn hồ bơi", ["pool"]),                   # cue cứng mới
+    ("còn phòng không, khách sạn ở Đà Nẵng", []),               # dấu phẩy tách cue và cue loại → không phủ định
+    ("về lễ hội Huế", []),                                       # "về lễ" fold cũng ra "ve le" nhưng không phải "vé lẻ"
+])
+def test_parse_negation_taxonomy_cues_do_not_change_amenity_scopes(q, keys):
+    r = parse_negation(q)
+    assert [m.key for m in r.must_not] == keys and r.must_not_taxonomies == () and r.must_not_flags == ()
+
+
 # ------------------------------------------------------------------------------------------------ F4: ngành dọc
-CROSS_VERTICAL = [
+CROSS_VERTICAL = [   # câu dựng tay; "combo khách sạn và vé máy bay Phú Quốc" chuyển sang luật combo đứng đầu (rubric v4 c0706)
     "khách sạn, vé máy bay và vé tham quan ở Buôn Ma Thuột",
-    "combo khách sạn và vé máy bay Phú Quốc",
     "vé máy bay và khách sạn Đà Nẵng",
     "resort và sân golf Nha Trang",
     "khách sạn gần biển và vé VinWonders",
@@ -226,14 +266,69 @@ CROSS_VERTICAL = [
     "voucher golf và khách sạn Hội An",
     "vé tham quan và chỗ nghỉ Huế",
     "homestay và vé vào cửa Grand World",
-    "trọn gói và vé máy bay Đà Lạt",
+    "trọn gói và vé máy bay Đà Lạt",            # cue combo là một mục của danh sách ("và" ngay sau) → không phải đầu combo
+]
+GOLD_CROSS_VERTICAL = [   # đủ 10 câu slice cross_vertical của gold (src/evaluation/search_bench/gold/drafts.txt)
+    "khách sạn, vé máy bay và vé tham quan ở Buôn Ma Thuột",
+    "mình cần khách sạn, vé máy bay, vé tham quan và combo du lịch ở Cần Thơ",
+    "khách sạn, vé máy bay, vé tham quan và combo du lịch ở Huế",
+    "tìm khách sạn, vé máy bay, vé tham quan và combo du lịch ở Hà Nội",
+    "mình cần khách sạn, vé tham quan và combo du lịch ở Hà Tĩnh",
+    "khách sạn, vé tham quan và combo du lịch ở Hạ Long",
+    "tìm khách sạn, vé máy bay, vé tham quan, sân golf và combo du lịch ở Hải Phòng",
+    "mình cần khách sạn, vé tham quan, sân golf và combo du lịch ở Hội An",
+    "khách sạn, vé máy bay, vé tham quan và combo du lịch ở Nghệ An",
+    "tìm khách sạn, vé máy bay, vé tham quan, sân golf và combo du lịch ở Nha Trang",
 ]
 
 
-@pytest.mark.parametrize("q", CROSS_VERTICAL)
+@pytest.mark.parametrize("q", CROSS_VERTICAL + GOLD_CROSS_VERTICAL)
 def test_parse_vertical_multi(q):
     r = parse_vertical(q)
-    assert r.taxonomy is None and r.skipped == "multi" and len(r.verticals) >= 2
+    assert r.taxonomy is None and r.skipped == "multi" and len(r.verticals) >= 2 and r.strength is None
+
+
+@pytest.mark.parametrize("q, taxonomy, skipped", [
+    ("combo vé máy bay và khách sạn Đà Lạt", "combo", None),       # gold c0706: thành phần của combo, không phải multi
+    ("combo khách sạn và vé máy bay Phú Quốc", "combo", None),
+    ("combo gồm vé máy bay và khách sạn", "combo", None),
+    ("trọn gói khách sạn và vé VinWonders Nha Trang", "combo", None),
+    ("trọn gói và vé máy bay Đà Lạt", None, "multi"),             # combo đứng thành một mục của danh sách
+    ("combo, khách sạn Huế", None, "multi"),
+    ("combo golf và khách sạn", None, "multi"),                    # golf không phải thành phần combo
+    ("khách sạn và combo Phú Quốc", None, "multi"),                 # combo không đứng đầu
+])
+def test_parse_vertical_combo_head_takes_components(q, taxonomy, skipped):
+    r = parse_vertical(q)
+    assert (r.taxonomy, r.skipped) == (taxonomy, skipped) and len(r.verticals) >= 2
+    if taxonomy:   # chỉ cue combo bị cắt khỏi BM25 — thành phần ("vé máy bay", "khách sạn") vẫn xếp hạng tên combo
+        assert [VERTICAL_CUES[fold(q[s:e])] for s, e in r.spans] == ["combo"] * len(r.spans)
+
+
+def test_vertical_cue_strength_table_covers_every_cue():
+    assert set(VERTICAL_CUE_STRENGTH) == set(VERTICAL_CUES) and set(VERTICAL_CUE_STRENGTH.values()) == {"strong", "weak"}
+    assert WEAK_VERTICAL_CUES <= set(VERTICAL_CUES)
+    assert {c for c, s in VERTICAL_CUE_STRENGTH.items() if s == "weak"} == WEAK_VERTICAL_CUES
+
+
+@pytest.mark.parametrize("q, taxonomy, strength", [
+    ("resort Phú Quốc", "hotel", "strong"),
+    ("khu nghỉ dưỡng Phú Quốc", "hotel", "strong"),                # danh từ chỗ nghỉ: mạnh từ 06/10 (dev/test 100 %)
+    ("nơi ở Pleiku cho nhóm 4 người", "hotel", "strong"),
+    ("nghỉ dưỡng Phú Quốc", "hotel", "weak"),
+    ("VinWonders Nha Trang", "attraction", "weak"),               # tên điểm vui chơi: yếu (combo chứa vé được nhãn 2)
+    ("vé vui chơi VinWonders Nha Trang", "attraction", "strong"),
+    ("phòng cho 2 người", "hotel", "weak"),
+    ("resort nghỉ dưỡng Phú Quốc", "hotel", "strong"),             # có một cue mạnh là đủ
+    ("điểm tham quan Huế", "attraction", "strong"),
+    ("tham quan Huế", "attraction", "weak"),
+    ("gói du lịch Đà Nẵng", "combo", "weak"),
+    ("combo vé máy bay và khách sạn Đà Lạt", "combo", "strong"),
+    ("đi chơi Đà Lạt", None, None),
+])
+def test_parse_vertical_strength(q, taxonomy, strength):
+    r = parse_vertical(q)
+    assert (r.taxonomy, r.strength) == (taxonomy, strength)
 
 
 @pytest.mark.parametrize("q, taxonomy", [
@@ -277,7 +372,7 @@ def test_parse_vertical_poi_brand_after_hotel_is_location_modifier(q, taxonomy, 
 def test_parse_vertical_excluded_and_brands():
     q = "resort Nha Trang không có sân golf"
     neg = parse_negation(q)
-    assert parse_vertical(q, excluded=neg.spans) == VerticalParse(("hotel",), "hotel", None, ((0, 6),))
+    assert parse_vertical(q, excluded=neg.spans) == VerticalParse(("hotel",), "hotel", None, ((0, 6),), "strong")
     assert parse_vertical("golf valley hotel Đà Lạt", brand_names=["Golf Valley Hotel"]).taxonomy is None
     assert parse_vertical("khách sạn Golf Valley Hotel", brand_names=["Golf Valley Hotel"]).taxonomy == "hotel"
     assert parse_vertical("Vinpearl Golf Nha Trang").taxonomy == "golf"
@@ -372,3 +467,23 @@ def test_remove_spans_drops_exactly_consumed_phrases(norm):
     fr = parse_flight_roles(nq.text, nq.destination_spans, IATA)
     assert remove_spans(nq.text, fr.spans) == "vé máy bay"
     assert remove_spans("a  b", []) == "a b" and remove_spans("x, y", [(0, 1)]) == "y"
+
+
+# ------------------------------------------------------------------ 06/10: lỗi parse loại tìm qua parse_accuracy trên 154 câu
+def test_cue_inside_product_name_counts_when_it_is_the_units_own_type():
+    name = "Vinpearl Resort & Golf Nam Hội An"
+    tax = {"vinpearl resort golf nam hoi an": "hotel"}
+    r = parse_vertical(f"tìm {name}", brand_names=[name], brand_taxonomy=tax)
+    assert (r.taxonomy, r.skipped) == ("hotel", None)                     # "resort" (đúng loại unit) tính, "golf" bỏ
+    assert parse_vertical(f"tìm {name}", brand_names=[name]).taxonomy is None   # không có bảng loại → như cũ
+    assert parse_vertical("Vinpearl Hotel Bắc Ninh").taxonomy == "hotel"
+
+
+def test_existential_co_nao_keeps_the_lodging_cue():
+    assert parse_vertical("Quy Nhơn có nơi lưu trú nào có ban công").taxonomy == "hotel"
+    assert parse_vertical("resort có sân golf").taxonomy == "hotel"        # "có sân golf" vẫn là tiện ích gắn sau "có"
+
+
+def test_diem_vui_choi_is_a_weak_attraction_cue():
+    r = parse_vertical("điểm vui chơi ở Phú Quốc")
+    assert (r.taxonomy, r.strength) == ("attraction", "weak")

@@ -833,32 +833,34 @@ sequenceDiagram
 
 ## 15. Checklist vận hành
 
+`[x]` đã có trong V-OTA (06/10/2026, phần lớn sau cờ), `[~]` một phần, `[ ]` chưa — chi tiết ở §17.
+
 ### Request path
 
-- [ ] Lưu raw query và normalized forms.
-- [ ] Parse/validate hard constraints trước retrieval.
-- [ ] Không bỏ dấu trước dense embedding.
-- [ ] Apply `must_not` tại filter layer.
-- [ ] Route flight bằng origin/destination có thứ tự.
-- [ ] Run dense và lexical trên cùng candidate universe.
-- [ ] Re-validate filters sau fusion.
-- [ ] Không dùng promotion/rerank để vượt hard relevance.
+- [~] Lưu raw query và normalized forms. *(06/10: câu gốc + filter đã áp → `app.search_logs` sau cờ `SEARCH_LOG_QUERIES`; dạng chuẩn hoá chỉ ở `diagnostics.normalizedQuery`, chưa ghi log)*
+- [x] Parse/validate hard constraints trước retrieval. *(query plan F1–F6 + loại trừ loại sản phẩm / số khách, `domain/search/query_plan.py`)*
+- [x] Không bỏ dấu trước dense embedding. *(embed dùng câu chuẩn hoá còn dấu; câu không dấu chỉ đổi bộ ngưỡng — F2)*
+- [x] Apply `must_not` tại filter layer. *(tiện ích, thương hiệu, loại sản phẩm, cờ combo — `UnitIndex.mask`)*
+- [x] Route flight bằng origin/destination có thứ tự. *(F5 + param `origin`; chiều bay 0,11 → 1,00 trên gold)*
+- [x] Run dense và lexical trên cùng candidate universe. *(cùng mask id; kênh fuzzy cũng trong mask)*
+- [x] Re-validate filters sau fusion. *(`queryPlan.revalidatedDrops`; kiểm chung giá + số khách bằng phòng con)*
+- [x] Không dùng promotion/rerank để vượt hard relevance. *(không có promotion; rerank chỉ offline, chạy trên tập đã lọc)*
 
 ### Evaluation path
 
-- [ ] Report trung bình và theo slice.
-- [ ] Theo dõi `Judged@10` cùng nDCG/Recall.
-- [ ] Pool và label holes từ arm mới.
-- [ ] Hard fail khi forbidden taxonomy/route/negation item xuất hiện.
-- [ ] Aggregate typo/no-diacritic variants theo query family.
-- [ ] Tách query-understanding metrics khỏi ranking metrics.
+- [x] Report trung bình và theo slice. *(cùng khối rubric v3 / v4 và split dev / test)*
+- [x] Theo dõi `Judged@10` cùng nDCG/Recall. *(+ condensed; 06/10 Judged@10 = 1,00 cho 45 arm)*
+- [x] Pool và label holes từ arm mới. *(D9a–D9e, 1.924 nhãn máy chưa duyệt)*
+- [~] Hard fail khi forbidden taxonomy/route/negation item xuất hiện. *(`sb guards` báo PASS/FAIL theo `metrics.guards_proposed`; ngưỡng chưa chốt, chưa chặn CI)*
+- [~] Aggregate typo/no-diacritic variants theo query family. *(cơ chế `family` / `by_family` / `family_macro_ndcg@10` có; gold chưa có cặp biến thể chắc chắn nên chưa gắn họ nào)*
+- [x] Tách query-understanding metrics khỏi ranking metrics. *(parse accuracy theo trường, so `expected_parse` 154 câu)*
 
 ### Data/catalog path
 
-- [ ] Taxonomy đủ chi tiết để phân biệt golf voucher, tee time, attraction ticket, room, property, combo.
-- [ ] Destination và airport mapping canonical, có aliases.
-- [ ] Attribute `has_golf`, `includes_flight`, `ticketed`, `product_kind`, price/availability có nguồn dữ liệu đáng tin.
-- [ ] Parent/child relationship và child filter được kiểm tra trước khi hiển thị.
+- [~] Taxonomy đủ chi tiết để phân biệt golf voucher, tee time, attraction ticket, room, property, combo. *(taxonomy + variant của catalog; golf voucher / tee time chưa tách — việc của Data)*
+- [x] Destination và airport mapping canonical, có aliases. *(alias trong `normalize.py`; IATA ↔ thành phố dựng từ attributes tuyến bay mỗi lần nạp catalog)*
+- [~] Attribute `has_golf`, `includes_flight`, `ticketed`, `product_kind`, price/availability có nguồn dữ liệu đáng tin. *(dựng trong RAM, không DDL: tiện ích chuẩn hoá (golf…), `includesFlight` / `includesHotel` từ `combo_items.item_kind`, `ticketed`, giá thấp nhất kể cả phòng con, sức chứa; một số danh sách tiện ích nguồn bị cắt ở 60 chuỗi)*
+- [x] Parent/child relationship và child filter được kiểm tra trước khi hiển thị. *(`results[].matchedChildren`, kiểm chung giá + số khách)*
 
 ## 16. Quyết định kiến trúc chốt
 
@@ -868,3 +870,38 @@ sequenceDiagram
 4. Dùng hybrid dense + lexical + fuzzy/alias sau filter; RRF là baseline an toàn trước khi có đủ data tune weight.
 5. Dùng vector search cho semantic preference/paraphrase, không dùng nó để giải logic phủ định hay directionality.
 6. Đánh giá với gold có `forbidden`, expected parse và safety guards; không chỉ dựa vào nDCG trung bình.
+
+## 17. Trạng thái hiện thực trong V-OTA (06/10/2026)
+
+Phục vụ FR-SRC-01, FR-SRC-03, FR-SRC-04, AC-SRC-01; NFR-PERF-01. Hợp đồng chi tiết: `docs/spec/hop-dong-tich-hop-search-recommendation.md`
+§2.2, §2.4, §2.5, §7.3, §10 (contract **1.16.0**). Số đo: `src/evaluation/reports/eval-2026-10-06-search-query-plan-gold-v4.md` (gold_v4 + 1.924 nhãn máy chưa duyệt, Judged@10 = 1,00;
+mốc A = hybrid + normalize production, nDCG@10 0,707).
+
+| Giai đoạn kiến trúc | Trạng thái | Ở đâu | Cờ (mặc định) | Bằng chứng bench (nDCG@10 Δ so A, guard) |
+|---|---|---|---|---|
+| 1 — chuẩn hoá NFC, unaccent, alias, sửa chính tả | có | `domain/search/normalize.py` | `SEARCH_NORMALIZE` (bật) | hybrid không normalize −2,9 |
+| 1 — vị trí dấu thanh (oà/òa…) | có, sau cờ | `domain/search/tone.py` | `SEARCH_TONE_NORMALIZE` (tắt) | 0,0 — gold không có câu lệch kiểu dấu |
+| 2 — điểm đến suy từ câu (F1) | có, sau cờ | `query_plan.py`, `destination.py` | `SEARCH_DEST_FILTER` (tắt) | **WIN** +3,8 |
+| 2 — câu không dấu (F2) | có, sau cờ | `use_cases.py` | `SEARCH_NO_DIACRITICS_MODE` (off) | 0 khi không cutoff |
+| 2 — phủ định tiện ích / thương hiệu / loại sản phẩm / cờ combo (F3) | có, sau cờ | `constraints.py`, `amenities.py` | `SEARCH_NEGATION_FILTER` (tắt) | +4,5; Forbidden câu phủ định → 0 |
+| 2 — loại sản phẩm suy từ câu (F4), combo đứng đầu, cue mạnh/yếu | có, sau cờ | `constraints.py` | `SEARCH_TAXONOMY_FILTER`, `SEARCH_TAXONOMY_STRONG_ONLY` (tắt) | +1,6; `taxonomy_collision` +21,8 |
+| 2 — tuyến bay có chiều (F5), IATA | có, sau cờ | `constraints.py`, param `origin` | `SEARCH_ROUTE_FILTER` (tắt) | chiều bay 0,11 → 1,00 |
+| 2 — giá hard / sao soft (F6) | có, sau cờ | `constraints.py` | `SEARCH_NUMERIC_FILTER` (tắt) | constraint precision 0,79 → 0,92 |
+| 2 — số khách / occupancy | có (tham số request luôn áp, suy từ câu sau cờ) | `parse_party`, `UnitIndex.mask` | `SEARCH_PARTY_FILTER` (tắt) | −0,4 (3 câu) |
+| 3 — router confidence | có (chỉ khai) | `queryPlan.confidence`, `fallbackReasons` | luôn phát | — |
+| 3 — LLM fallback | **chưa** — lệch PRD | đề xuất `docs/prd/update/2026-10-06-search-llm-fallback-query-plan.md` | — | chờ chốt |
+| 4 — filter-first; F rỗng không nới (trừ điểm đến suy ra) | có | `UnitIndex.mask`, `queryPlan.emptyReason` | theo cờ từng họ | zero-result trong catalog 0 |
+| 4 — parent–child filter | có | `matchedChildren`, kiểm chung giá + số khách | theo F6 / số khách | — |
+| 5A — dense | có | Weaviate `nearVector` top-200 | — | dense-only −4,4 |
+| 5B — BM25 | có | Weaviate BM25 top-50 + luật vớt | — | lexical-only −11,8 |
+| 5C — fuzzy / alias tên (trigram trong tiến trình) | có, sau cờ | `domain/search/fuzzy.py` | `SEARCH_FUZZY_K` (0) | −0,5 (ngưỡng 0,75) |
+| 6 — RRF, trọng số theo kênh | có | `hybrid.py` | `SEARCH_RRF_*_WEIGHT` (1,0) | lexical 0,5: +1,7 trên A, +1,2 trên F1–F6 (TIE) |
+| 6 — routing thay full hybrid | chưa | — | — | chưa có bằng chứng an toàn |
+| 7 — re-validate sau fusion | có | `queryPlan.revalidatedDrops` | luôn | — |
+| 7 — rerank | **chỉ offline** (bench) | `src/evaluation/search_bench/rerank.py` (bge-reranker-v2-m3) | — | +3,8 trên F1–F6 nhưng ~3,4 s CPU/câu, constraint precision 0,93 |
+| 8 — response: `appliedFilters`, `queryPlan`, kết quả yếu | có (kết quả yếu do client) | contract 1.16.0 | — | margin 0,058 (chọn trên dev, kiểm trên test) |
+| 9 — log truy vấn | có, sau cờ | writer `app.search_logs` | `SEARCH_LOG_QUERIES` (tắt) | — |
+| 9 — gold có forbidden / expected parse / guard / hole | có | `config/query_annotations.yaml`, `sb guards`, `sb gold holes` | — | 28 forbidden, 154 expected parse |
+
+Cấu hình đề xuất bật (người dùng chốt; F4 cần ý kiến Web vì đổi số đếm tab): F1 + F2 + F3 + F4 + F5 + F6, không cutoff tuyệt đối —
+arm `APP.e5s.hybrid_norm_nocut_f1f6` nDCG@10 **0,807** (+9,9, WIN), mọi guard Phase A PASS.

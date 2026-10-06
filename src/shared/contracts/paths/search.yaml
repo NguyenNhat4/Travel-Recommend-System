@@ -93,7 +93,8 @@
     summary: Semantic search trên catalog theo hợp đồng v1
     description: 'Bề mặt v1 được giữ để không phá client hiện có. Agent không gắn danh tính khi tìm kiếm:
       chế độ `inprocess` gọi engine trong tiến trình; chế độ `http` gọi GET compatibility endpoint không kèm
-      JWT. Web có thể tiếp tục dùng POST với SearchRequest.'
+      JWT. Web có thể tiếp tục dùng POST với SearchRequest. Từ 1.16.0 travelContext.guests (adults, children) thành
+      filter sức chứa (appliedFilters.hard.minOccupancy, partySource = param); GET không có tham số tương ứng.'
     security:
     - {}
     - bearerAuth: []

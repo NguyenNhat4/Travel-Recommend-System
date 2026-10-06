@@ -40,6 +40,7 @@
 | D9 | Chấp nhận | Giữ 10 qid trôi nhãn; report có / không có. |
 | D10 | `/search` vẫn có vé máy bay | `flight_direction` là slice bình thường, không chỉ chẩn đoán. FR-SRC-03 ghi "Vé máy bay không nằm trong kết quả `/search`" → lệch PRD đã biết, cập nhật PRD sau (D12). |
 | D11 | Sửa lỗi dữ liệu | Đã sửa matcher tiện ích của bench (bỏ chuỗi "Không có …" và chuỗi khoảng cách; `elevator` 681 → 607 khách sạn, `golf` 2 → 1) và build lại catalog bench. Tỉnh sai của sản phẩm golf và Vinpearl Hà Tĩnh trùng nằm ở snapshot nguồn (`src/data_collection`) → việc riêng, chưa làm. |
+| D13 (06/10) | Rubric v4 cho **mọi** nhãn gán từ gold_v4 (kể cả hole câu cũ); nhãn 1 cũ "sai loại" của câu v3 xử lý theo **phương án b**: chiếu rubric v4 lúc chấm | Hole D9a–c gán lại (149 cặp 1 → 0); `allowed_variants` cho 154 câu + `metrics.rubric_v4_projection` — `history/2026-10-06-gold-v5-hole-d9-rubric-v4-nhan-1.md`. |
 | D12 | Bench trước, cập nhật PRD sau | Không sửa PRD đợt này. Filter-first chỉ là arm bench; đổi `/search` production phải qua `docs/prd/update/`. |
 
 **Đã thực hiện (05/10):** 23 câu `gold/v4a/` — qid `c0673`–`c0727` (bước 3, khối 3 case như `drafts_raw.tsv` cũ) và `c0730`–`c0733` (out_of_catalog); câu bay dùng filter `variant = flight_route` (không lọc destination, để pool có tuyến ngược làm bẫy). Pool B0 (dense ∪ BM25 depth 15): 559 cặp, đủ mọi tuyến đúng của 6 câu bay (kể cả 10 / 10 ở hai câu chỉ có điểm đi / điểm đến). Split: `pool_A.csv` 12 câu / 279 cặp, `pool_B.csv` 11 câu / 280 cặp.

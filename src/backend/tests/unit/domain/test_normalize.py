@@ -103,3 +103,39 @@ def test_destination_spans_point_into_final_text(norm):
     # địa danh lặp: `destinations` không lặp, `destination_spans` giữ từng lần xuất hiện
     twice = norm("Hà Nội đi Đà Nẵng về Hà Nội")
     assert twice.destinations == ("Hà Nội", "Đà Nẵng") and len(twice.destination_spans) == 3
+
+
+# ------------------------------------------------------------------------------------------------ dấu thanh (tone=True)
+OLD_STYLE_NAMES = NAMES + ["Khách sạn Hòa Bình", "Thủy Tiên Resort", "Khỏe Spa Nha Trang", "Hoàng Gia Hotel"]
+
+
+def test_tone_is_off_by_default():
+    n = QueryNormalizer(DESTINATIONS, OLD_STYLE_NAMES, spelling=False)
+    assert n.tone_style is None and n("resort Thuỷ Tiên khoẻ").text == "resort Thuỷ Tiên khoẻ"
+
+
+@pytest.mark.parametrize("q, expected", [
+    ("resort Thuỷ Tiên khoẻ", "resort Thủy Tiên khỏe"),
+    ("KHÁCH SẠN HOÀ BÌNH", "KHÁCH SẠN HÒA BÌNH"),
+    ("Hoàng Gia quý khách", "Hoàng Gia quý khách"),          # có phụ âm cuối / sau "q" → không đổi
+    ("KS Thuỷ Tiên ở NT", "khách sạn Thủy Tiên ở Nha Trang"),  # dấu chạy trước alias, alias vẫn chạy
+])
+def test_tone_follows_catalog_style(q, expected):
+    n = QueryNormalizer(DESTINATIONS, OLD_STYLE_NAMES, spelling=False, tone=True)
+    assert n.tone_style == "old"
+    r = n(q)
+    assert r.text == expected and n(r.text).text == r.text
+
+
+def test_tone_new_style_catalog_and_generator_names():
+    names = (x for x in ["Khách sạn Hoà Bình", "Thuỷ Tiên Resort", "Vinpearl Resort Nha Trang", "Vinpearl Luxury Nha Trang",
+                         "Vinpearl Golf Nha Trang"])
+    n = QueryNormalizer(DESTINATIONS, names, tone=True)       # generator: vừa đếm kiểu dấu vừa dựng từ vựng sửa chính tả
+    assert n.tone_style == "new"
+    assert n("khách sạn Hòa Bình gần Thủy Tiên").text == "khách sạn Hoà Bình gần Thuỷ Tiên"
+    assert n("Vinpeal Resort").text == "Vinpearl Resort"
+
+
+def test_tone_without_evidence_changes_nothing():
+    n = QueryNormalizer(["Nha Trang"], ["Vinpearl Resort Nha Trang"], spelling=False, tone=True)
+    assert n.tone_style is None and n("khoẻ hoà").text == "khoẻ hoà"

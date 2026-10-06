@@ -43,6 +43,17 @@ from src.backend.app.domain.search.amenities import (AMENITIES, KEYS, MAX_CUE_TO
     ("Công viên nước", {"waterPark"}),
     ("Phòng họp", {"meetingRoom"}),
     ("Máy điều hòa", set()),
+    # 06/10 — chuỗi khớp nhầm phát hiện khi viết annotation gold_v4 (lọc phủ định loại nhầm sản phẩm nhãn 2)
+    ("Bồn tắm spa", {"bathtub"}),                 # bồn tắm trong phòng, không phải dịch vụ spa
+    ("Ghế mát-xa", set()),
+    ("Giường mát-xa", set()),
+    ("Spa/xông khô", {"spa"}),
+    ("Phòng tập thể", set()),                     # phòng ngủ tập thể (dorm)
+    ("Giường trong phòng tập thể", set()),
+    ("Phòng tập thể dục", {"gym"}),
+    ("Phòng tập Miễn phí", {"gym"}),
+    ("Nhà hàng / phòng chờ phù hợp cho người khuyết tật tại chỗ nghỉ", set()),
+    ("Nhà hàng phục vụ bữa sáng", {"restaurant", "breakfast"}),
 ])
 def test_keys_of_string(raw, expected):
     assert set(keys_of_string(raw)) == expected

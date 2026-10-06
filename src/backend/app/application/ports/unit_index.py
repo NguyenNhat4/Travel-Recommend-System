@@ -35,13 +35,17 @@ class UnitIndex:
              origin_city: str | None = None, destination_city: str | None = None,
              price_min: float | None = None, price_max: float | None = None,
              star_min: float | None = None, exclude_amenities: Iterable[str] = (),
-             exclude_brands: Iterable[str] = ()) -> np.ndarray:
+             exclude_brands: Iterable[str] = (), exclude_taxonomies: Iterable[str] = (),
+             exclude_flags: Iterable[str] = (), min_occupancy: int | None = None) -> np.ndarray:
         """Mask bool theo index unit; mọi tham số mới mặc định tắt nên không đổi hành vi cũ.
 
         Quy ước "không biết" (spec §2.7 [C2]):
         - giá: có một trong hai biên thì unit giá NaN bị LOẠI (contract: giá null bị loại khi áp filter giá);
         - sao: chỉ loại unit sao ĐÃ BIẾT và < `star_min`; NaN giữ lại (mềm — demote ở `soft_star_order`);
-        - tiện ích: chỉ loại unit CÓ khoá nằm trong `exclude_amenities`; vắng khoá = không biết → giữ.
+        - tiện ích: chỉ loại unit CÓ khoá nằm trong `exclude_amenities`; vắng khoá = không biết → giữ;
+        - cờ (`exclude_flags`, `UnitAttributes.FLAGS`): chỉ loại unit CÓ cờ; không cờ = không biết → giữ;
+        - sức chứa: chỉ loại unit sức chứa ĐÃ BIẾT và < `min_occupancy`; NaN giữ (không biết ≠ "quá nhỏ").
+        `exclude_taxonomies`: loại unit có taxonomy nằm trong tập (kiến trúc §6 — chặn cross-vertical).
         """
         m = np.ones(len(self.units), dtype=bool)
         if only_available:
@@ -71,7 +75,36 @@ class UnitIndex:
         brands = [b for b in exclude_brands if b]
         if brands:   # "không phải Vinpearl": chỉ loại unit có ghi brand đó; brand rỗng = không biết → giữ
             m &= ~np.isin(a.brand, brands)
+        drop_tax = sorted({t for t in exclude_taxonomies if t})
+        if drop_tax:
+            m &= ~np.isin(self.taxonomy, drop_tax)
+        drop_flags = frozenset(f for f in exclude_flags if f)
+        if drop_flags:
+            m &= np.array([not (f & drop_flags) for f in a.flags], dtype=bool)
+        if min_occupancy is not None:
+            m &= np.isnan(a.max_occupancy) | (a.max_occupancy >= min_occupancy)
         return m
+
+    def matched_children(self, i: int, *, price_min: float | None = None, price_max: float | None = None,
+                         min_occupancy: int | None = None, limit: int = 5) -> list[str]:
+        """productId các phòng/chuyến con của unit `i` thoả MỌI điều kiện được truyền (kiến trúc §6 parent–child filter),
+        theo thứ tự đã lưu (giá tăng dần, giá null cuối), tối đa `limit`. Không truyền điều kiện nào → [].
+
+        Giá: có biên thì con giá null bị loại (như `mask`). Sức chứa: con không biết sức chứa được giữ."""
+        if (price_min is None and price_max is None and min_occupancy is None) or limit <= 0:
+            return []
+        priced = price_min is not None or price_max is not None
+        out: list[str] = []
+        for child_id, price, occupancy in self.attrs.children[i]:
+            if priced and (price is None or (price_min is not None and price < price_min)
+                           or (price_max is not None and price > price_max)):
+                continue
+            if min_occupancy is not None and occupancy is not None and occupancy < min_occupancy:
+                continue
+            out.append(child_id)
+            if len(out) >= limit:
+                break
+        return out
 
     def star_known_ok(self, star_min: float) -> np.ndarray:
         """True ở unit có sao ĐÃ BIẾT và >= `star_min`; NaN → False (dùng để đẩy unit chưa biết sao xuống sau)."""

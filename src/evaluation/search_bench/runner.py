@@ -16,11 +16,20 @@ Phase A (05/10): `load_env` gắn thêm cột RAM `origin_city` / `destination_c
 `ITEM_SCHEMA` / items.parquet — `items_sha256` đã ghim theo collection Weaviate) cho metric forbidden / direction, và gắn
 `forbidden_filter` chẩn đoán từ `metrics.forbidden_overrides` cho câu gold chưa có. `score_arm` / `rescore_arm` đưa
 `extra` (diagnostics arm APP) vào `evaluate_query` (parse_ok) và `rescore` giữ lại cột `extra`.
+
+06/10: `load_env` gắn nhãn theo câu từ `metrics.annotations` (query_annotations.yaml; gold thắng; qid phải có trong
+gold/gold.jsonl) rồi mới tới `forbidden_overrides` (annotations thắng), và gắn `block` (v3 / v4 theo tag gold_v3 —
+`rubric_v3_qids`). results.json thêm `by_block` / `by_family`. Thêm phần đọc cho `sb compare --split`, `sb guards`,
+`sb weak-results`: `attach_query_meta` (block / family cho dòng per_query cũ), `resolve_split`, `query_vectors_from_cache`
+(đọc cache embed sqlite chỉ-đọc, không gọi model), `weak_entries`.
 """
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
+import re
+import sqlite3
 import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -30,6 +39,7 @@ from typing import Any, Callable
 
 import numpy as np
 import pandas as pd
+import structlog
 
 from . import catalog, metrics as M, paths
 from .arms import Arm
@@ -50,6 +60,9 @@ class RunnerError(RuntimeError):
     pass
 
 
+log = structlog.get_logger("sbench.runner")
+
+
 # ------------------------------------------------------------------ môi trường một lượt chạy
 @dataclass
 class RunEnv:
@@ -62,6 +75,7 @@ class RunEnv:
     gold: list[M.GoldQuery]
     ctx: M.EvalContext
     n_items: int
+    projection: dict[str, Any] = field(default_factory=lambda: {"enabled": False})   # chiếu rubric v4 (metrics.rubric_v4_projection)
 
     @property
     def k(self) -> int:
@@ -146,6 +160,53 @@ def attach_unit_columns(items: pd.DataFrame, records: list[dict], cfg: SBenchCon
     return items
 
 
+@functools.lru_cache(maxsize=1)
+def _rubric_v3_qids_cached() -> frozenset[str] | None:
+    from .holes import gold_at
+    try:
+        return frozenset(r.qid for r in gold_at(M.RUBRIC_V3_TAG))
+    except Exception as e:  # noqa: BLE001 — không có git / tag thì dùng ngưỡng qid dự phòng
+        log.warning("không đọc được gold.jsonl của tag — khối rubric dùng ngưỡng qid dự phòng", tag=M.RUBRIC_V3_TAG,
+                    fallback=f"qid <= {M.RUBRIC_V3_MAX_QID} là v3", error=f"{type(e).__name__}: {str(e)[:160]}")
+        return None
+
+
+def rubric_v3_qids() -> frozenset[str] | None:
+    """qid trong gold.jsonl của tag `gold_v3` (`git show gold_v3:…` qua `holes.gold_at`, đọc một lần mỗi tiến trình); None khi
+    không đọc được (không git / không tag) → `metrics.block_of` dùng ngưỡng `RUBRIC_V3_MAX_QID` và log cảnh báo."""
+    return _rubric_v3_qids_cached()
+
+
+def gold_file_qids(path: Path) -> set[str]:
+    """Mọi qid trong một gold.jsonl (kể cả retired) — chỉ đọc trường qid."""
+    out = set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            try:
+                out.add(str(json.loads(line)["qid"]))
+            except (ValueError, KeyError, TypeError):
+                continue
+    return out
+
+
+def annotate_gold(gold: list[M.GoldQuery], cfg: SBenchConfig, gold_path: Path) -> dict[str, int]:
+    """Nhãn theo câu (`metrics.annotations`, rồi `metrics.forbidden_overrides` cũ — annotations thắng vì gắn trước, cả hai chỉ
+    gắn trường gold chưa có) và khối rubric. qid của annotations phải có trong gold/gold.jsonl (gold chuẩn, mọi trạng thái —
+    bắt qid gõ sai); câu không có trong gold đang chấm (fixture, gold cũ) chỉ bị bỏ qua. Trả {trường: số câu được gắn}."""
+    n: dict[str, int] = {}
+    if cfg.metrics.annotations:
+        ann = M.load_annotations(paths.PKG_DIR / cfg.metrics.annotations)
+        canon = paths.GOLD_JSONL if paths.GOLD_JSONL.exists() else gold_path
+        n = M.apply_annotations(gold, ann, known_qids=gold_file_qids(canon) | gold_file_qids(gold_path))
+    if cfg.metrics.forbidden_overrides:   # chẩn đoán cũ cho gold_v3 (05/10) — chỉ câu chưa có spec cấm
+        n["forbidden_overrides"] = M.apply_forbidden_overrides(
+            gold, M.load_forbidden_overrides(paths.PKG_DIR / cfg.metrics.forbidden_overrides))
+    v3 = rubric_v3_qids()
+    for g in gold:
+        g.block = M.block_of(g.qid, v3)
+    return n
+
+
 def load_env(cfg: SBenchConfig, dataset: str, gold_path: Path, *, run_id: str, allow_untagged: bool = False) -> RunEnv:
     if not gold_path.exists():
         raise RunnerError(f"không thấy gold {gold_path} — chạy `sb gold import` trước")
@@ -155,12 +216,19 @@ def load_env(cfg: SBenchConfig, dataset: str, gold_path: Path, *, run_id: str, a
     gold = M.load_gold(gold_path, gold_fields=cfg.metrics.gold_fields)
     if not gold:
         raise RunnerError(f"{gold_path}: không có câu active nào")
-    if cfg.metrics.forbidden_overrides:   # chẩn đoán cho gold_v3 — chỉ câu gold chưa có forbidden_filter (gold thắng)
-        M.apply_forbidden_overrides(gold, M.load_forbidden_overrides(paths.PKG_DIR / cfg.metrics.forbidden_overrides))
+    annotate_gold(gold, cfg, gold_path)
+    projection: dict[str, Any] = {"enabled": bool(cfg.metrics.rubric_v4_projection)}
+    if cfg.metrics.rubric_v4_projection:                      # 06/10 (b): nhãn ≥ 1 sai loại cốt lõi → 0 lúc chấm, gold không đổi
+        variant_of = items["variant"].to_dict()
+        per_q = {g.qid: M.project_rubric_v4(g, variant_of) for g in gold}
+        projection.update(pairs=sum(per_q.values()), queries=sum(1 for v in per_q.values() if v),
+                          annotated_queries=sum(1 for g in gold if g.allowed_variants))
+        log.info("chiếu rubric v4", pairs=projection["pairs"], queries=projection["queries"],
+                 annotated=projection["annotated_queries"], gold=len(gold))
     return RunEnv(cfg=cfg, dataset=dataset, run_id=run_id, gold_path=gold_path,
                   gold_version=gold_version_for(gold_path, allow_untagged=allow_untagged),
                   gold_sha256=file_sha256(gold_path), gold=gold, ctx=M.EvalContext(cfg.metrics, items, key_to_id),
-                  n_items=len(items))
+                  n_items=len(items), projection=projection)
 
 
 # ------------------------------------------------------------------ truy xuất
@@ -282,10 +350,12 @@ def build_results(env: RunEnv, arm: Arm, agg: dict, rows: list[dict], *, collect
                   vs_parent: dict | None) -> dict:
     return {"arm": arm.id, "stage": arm.stage, "parent": arm.parent, "run_id": env.run_id,
             "gold_version": env.gold_version, "gold_sha256": env.gold_sha256, "gold_path": paths_rel(env.gold_path),
+            "rubric_v4_projection": env.projection,
             "resolved_config_hash": config_hash(arm), "stale": False, "model": arm.model, "text_variant": arm.text_variant,
             "collection": collection, "dataset": env.dataset, "n_items": env.n_items, "k": env.k,
             "created_at": datetime.now().astimezone().replace(microsecond=0).isoformat(),
-            "overall": agg["overall"], "by_slice": agg["by_slice"], "n_queries": agg["n_queries"],
+            "overall": agg["overall"], "by_slice": agg["by_slice"], "by_block": agg.get("by_block"),
+            "by_family": agg.get("by_family"), "n_queries": agg["n_queries"],
             "n_defined": agg["n_defined"], "condensed": agg["condensed"], "latency_ms": latency_summary(rows),
             "cost_usd": {"embed_docs": None, "embed_queries": (embed or {}).get("usd", 0.0), "rerank": 0.0},
             "embed": embed, "vs_parent": vs_parent, "needs_labels": judged_gate(agg, env.cfg)}
@@ -483,10 +553,11 @@ def rescore_arm(env: RunEnv, run_id: str, arm_id: str) -> tuple[dict, list[dict]
     agg = M.aggregate(rows, env.cfg.metrics, hub_score_max=old["overall"].get("hub_score_max"))
     condensed = M.aggregate_condensed(rows, env.cfg.metrics)
     results = {**old, "gold_version": env.gold_version, "gold_sha256": env.gold_sha256, "gold_path": paths_rel(env.gold_path),
+            "rubric_v4_projection": env.projection,
                "rescored_from": old.get("gold_version"), "rescored_at": datetime.now().astimezone().replace(microsecond=0).isoformat(),
-               "overall": agg["overall"], "by_slice": agg["by_slice"], "n_queries": agg["n_queries"], "n_defined": agg["n_defined"],
-               "condensed": condensed, "needs_labels": judged_gate(agg, env.cfg), "vs_parent": None,
-               "queries_missing_in_run": missing}
+               "overall": agg["overall"], "by_slice": agg["by_slice"], "by_block": agg["by_block"], "by_family": agg["by_family"],
+               "n_queries": agg["n_queries"], "n_defined": agg["n_defined"], "condensed": condensed,
+               "needs_labels": judged_gate(agg, env.cfg), "vs_parent": None, "queries_missing_in_run": missing}
     from evaluation.vector_bench.results import dump_json
     d = arm_dir(run_id, arm_id)
     gv = safe_version(env.gold_version)
@@ -500,3 +571,128 @@ def arms_in_run(run_id: str) -> list[str]:
     if not d.exists():
         return []
     return sorted(p.parent.name for p in d.glob(f"*/{RESULTS}"))
+
+
+# ------------------------------------------------------------------ 06/10: đọc kết quả đã lưu cho compare --split / guards / weak-results
+def attach_query_meta(rows: list[dict], gold: list[M.GoldQuery] | None = None) -> list[dict]:
+    """Điền `block` (và `family` khi truyền `gold` đã gắn annotations) cho dòng per_query chưa có — artifact chạy trước 06/10
+    không có hai cột này. Giá trị đã có trong dòng được giữ. Sửa tại chỗ và trả lại `rows`."""
+    fam = {g.qid: g.family for g in gold} if gold is not None else {}
+    need_block = any(not r.get("block") for r in rows)
+    v3 = rubric_v3_qids() if need_block else None
+    for r in rows:
+        if not r.get("block"):
+            r["block"] = M.block_of(r["qid"], v3)
+        if gold is not None and not r.get("family"):
+            r["family"] = fam.get(r["qid"])
+    return rows
+
+
+def _split_version_key(p: Path) -> int:
+    m = re.match(r"^devtest@gold_v(\d+)\.json$", p.name)
+    return int(m.group(1)) if m else -1
+
+
+def resolve_split(gold_version: str | None, qids: set[str], *, split_file: Path | None = None,
+                  splits_dir: Path | None = None) -> tuple[dict, Path, str | None]:
+    """File phân chia dev/test cho một lượt so: (dữ liệu, đường dẫn, ghi chú hoặc None).
+    1. `split_file` truyền tường minh → dùng nguyên văn.
+    2. `devtest@<gold_version>.json` có sẵn → dùng (devtest.filter_rows sẽ báo nếu thiếu câu).
+    3. Dự phòng (gold chưa tag / chưa chia): file `devtest@gold_v*.json` MỚI NHẤT có assignment phủ đủ `qids` — kèm ghi chú
+       để CLI in ra. Không file nào phủ đủ → DevTestError."""
+    from . import devtest as DT
+    sd = splits_dir or DT.SPLITS_DIR
+
+    def _read(p: Path) -> dict:
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as e:
+            raise DT.DevTestError(f"không đọc được {p}: {e}") from None
+        if not isinstance(data, dict) or not isinstance(data.get("assignment"), dict):
+            raise DT.DevTestError(f"{p}: thiếu assignment {{qid: dev|test}}")
+        data.setdefault("gold_version", p.stem.split("@", 1)[-1])
+        return data
+
+    if split_file is not None:
+        if not split_file.exists():
+            raise DT.DevTestError(f"không thấy --split-file {split_file}")
+        return _read(split_file), split_file, None
+    if gold_version and DT.split_path(gold_version, sd).exists():
+        p = DT.split_path(gold_version, sd)
+        return _read(p), p, None
+    for p in sorted(sd.glob("devtest@gold_v*.json"), key=_split_version_key, reverse=True):
+        data = _read(p)
+        if qids <= set(data["assignment"]):
+            return data, p, (f"gold {gold_version or 'chưa tag'} chưa có file phân chia — dùng {p.name} (bản mới nhất phủ đủ "
+                             f"{len(qids)} câu)")
+    raise DT.DevTestError(f"không có devtest@{gold_version}.json và không file devtest@gold_v*.json nào trong {sd} phủ đủ "
+                          f"{len(qids)} câu — truyền --split-file")
+
+
+def canonical_query_text(text: str) -> str:
+    """= `canonical_query` của backend (`application/search/use_cases.py`): gộp khoảng trắng — chuỗi đi vào embed và là khoá
+    cache vector truy vấn. Chép lại (một dòng) để đọc cache không cần import backend."""
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def embedded_query_text(gold_text: str, extra: dict | None) -> str:
+    """Chuỗi arm APP đã embed cho một câu: câu đã chuẩn hoá (`diagnostics.normalizedQuery`, chỉ có khi bước chuẩn hoá đổi
+    chữ) hoặc câu gốc, sau `canonical_query_text`."""
+    nq = (extra or {}).get("normalizedQuery")
+    return canonical_query_text(nq if isinstance(nq, str) and nq.strip() else gold_text)
+
+
+def query_vectors_from_cache(cfg: SBenchConfig, model: str, texts: list[str], *,
+                             cache_path: Path | None = None) -> dict[str, np.ndarray]:
+    """{text: vector query} lấy từ cache embed sqlite của bench (khoá `embed.cache_key(<tên embedder>, "query", text)`,
+    `embedder_name` không nạp model) — mở CHỈ-ĐỌC, không gọi model / API. Text chưa có trong cache không có trong kết quả."""
+    from .embed import cache_key, embedder_name
+    p = cache_path or paths.cache_dir(create=False) / paths.EMBED_CACHE
+    if not p.exists():
+        return {}
+    name = embedder_name(cfg, model)
+    keys = {cache_key(name, "query", t): t for t in dict.fromkeys(texts)}
+    db = sqlite3.connect(f"file:{p.as_posix()}?mode=ro", uri=True)
+    out: dict[str, np.ndarray] = {}
+    try:
+        ks = list(keys)
+        for i in range(0, len(ks), 500):
+            chunk = ks[i:i + 500]
+            for k, d, blob in db.execute(f"SELECT key, dim, vec FROM embeddings WHERE key IN ({','.join('?' * len(chunk))})",
+                                         chunk):
+                v = np.frombuffer(blob, dtype=np.float32)
+                if v.shape[0] == d:
+                    out[keys[k]] = v
+    finally:
+        db.close()
+    return out
+
+
+def weak_entries(rows: list[dict], gold: dict[str, M.GoldQuery], doc_vecs: np.ndarray,
+                 qvecs: dict[str, np.ndarray], *, top_source: str = "top_scores") -> list[dict]:
+    """Mỗi câu một dòng cho `metrics.weak_grid`: top = max(top_scores) đã lưu (cosine — trường `score` của contract; None khi
+    rỗng) hoặc, với `top_source="diagnostics"`, `diagnostics.topScore` của arm APP (= topScore của response: max trên cả R,
+    có thể nằm ngoài top-k; thiếu thì dùng top_scores); background = trung vị cosine giữa vector truy vấn và MỌI vector
+    document (F = cả catalog: phân tích này không dựng lại filter của arm); margin = top − background (None khi thiếu vector
+    truy vấn hoặc rỗng). Vector được L2-normalise lại."""
+    docs = np.asarray(doc_vecs, dtype=np.float32)
+    docs = docs / np.clip(np.linalg.norm(docs, axis=1, keepdims=True), 1e-12, None)
+    out = []
+    for r in rows:
+        g = gold.get(r["qid"])
+        extra = extra_of(r)
+        text = embedded_query_text(g.text if g else "", extra)
+        scores = [float(x) for x in (r.get("top_scores") or []) if x is not None and not np.isnan(x)]
+        scores_top = max(scores) if scores else None
+        diag_top = (extra or {}).get("topScore")
+        diag_top = float(diag_top) if isinstance(diag_top, (int, float)) and not isinstance(diag_top, bool) else None
+        top = diag_top if (top_source == "diagnostics" and diag_top is not None and scores_top is not None) else scores_top
+        q = qvecs.get(text)
+        bg = None
+        if q is not None and q.shape[0] == docs.shape[1]:
+            q = q / max(float(np.linalg.norm(q)), 1e-12)
+            bg = float(np.median(docs @ q))
+        out.append({"qid": r["qid"], "slice": r.get("slice"), "ooc": bool(r.get("expected_no_result")), "text": text,
+                    "top": top, "background": bg, "margin": (top - bg) if (top is not None and bg is not None) else None,
+                    "scores_top": scores_top, "diag_top": diag_top})
+    return out

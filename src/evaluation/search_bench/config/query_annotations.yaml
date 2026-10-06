@@ -1,0 +1,644 @@
+# query_annotations — nhãn THEO CÂU cho gold (06/10; thay config/forbidden_v3.yaml của 05/10).
+#
+# NHÃN MÁY, CHƯA DUYỆT — không phải gold. Bench (`runner.load_env` → `metrics.apply_annotations`) chỉ gắn trường nào câu gold
+# CHƯA có (gold thắng từng trường; phần cấm forbidden_filter + forbidden tính là một: gold có một trong hai thì không gắn).
+# Nạp qua `metrics.annotations` của sbench.yaml (tương đối theo thư mục gói search_bench).
+#
+# Khoá của một câu (thiếu khoá = không gắn; khoá lạ hoặc qid không có trong gold/gold.jsonl → MetricsError):
+#   forbidden_filter  AST filter của `store/filters.py`: kết quả KHÔNG được xuất hiện trong top-k (forbidden_at_10). Trường
+#                     dùng được: cột items + cột RAM `runner.attach_unit_columns`:
+#                       features         = khoá tiện ích của backend (`domain/search/amenities.py`: pool, kitchen, balcony…)
+#                       origin_city / destination_city = attributes.originCity / destinationCity của tuyến bay (chuỗi catalog)
+#                       brand, taxonomy, variant, destination… = cột items.parquet
+#   forbidden         danh sách product_id cấm tường minh
+#   origin            câu vé máy bay: thành phố đi kỳ vọng (giá trị catalog) — direction_accuracy
+#   destination_city  câu vé máy bay: thành phố đến kỳ vọng
+#   expected_parse    {taxonomy, destination, origin, destination_city, must_not, must_not_brands, must_not_taxonomies,
+#                      price_max, price_min, star_min, party_total} — chỉ so trường được nêu; null = kỳ vọng parser KHÔNG ra gì
+#                      (metrics.PARSE_FIELDS / parse_ok)
+#   family            id gộp các biến thể không dấu / gõ sai của cùng một ý định (by_family, family_macro_ndcg)
+#   allowed_variants  (06/10, phương án b) variant catalog KHÔNG vi phạm loại cốt lõi của câu — kể cả phương án thay thế
+#                     rubric cho 1 (combo cho câu hỏi vé #10 / vé máy bay #8d); lúc chấm, nhãn ≥ 1 của sản phẩm ngoài danh
+#                     sách tính là 0 (`metrics.project_rubric_v4`, bật bằng `metrics.rubric_v4_projection`). Sinh từ
+#                     expected_parse.taxonomy (cross_vertical: ngành dọc nêu trong câu; tên POI: loại của nhãn 2 cũ), bỏ
+#                     must_not_taxonomies; kiểm: mọi nhãn 2 cũ nằm trong danh sách.
+#
+# Nhãn gán từ gold_v4 trở đi (câu mới + hole D9a trở đi của câu cũ) theo rubric v4; nhãn cũ của câu v3 theo rubric v3
+# (docs/spec/bench/gold-guide.md, 06/10) — report đọc theo `by_block` và ghi rõ câu v3 có nhãn hai rubric.
+# Giữ các mục theo thứ tự qid.
+#
+# ---- Quy ước của bộ chú giải 06/10 (sinh bởi agent ANN, gộp bởi orchestrator; giữ nguyên nghĩa 8 mục forbidden_v3) ----
+# Chú giải query understanding cho gold search bench: expected_parse / forbidden_filter / origin / destination_city / family.
+# Nguồn: claude-opus-5-5, nhãn máy CHƯA DUYỆT, 06/10/2026. Sinh từ src/evaluation/search_bench/gold/gold.jsonl (154 câu
+# active; c0463 retired bị bỏ qua) theo docs/spec/bench/gold-guide.md (rubric v3 cho câu < c0673; rubric v4 + quy ước
+# #8-#14 + bảng chính sách từng câu cho câu từ c0673). Orchestrator gộp vào repo; người duyệt sửa trực tiếp file này.
+# Cấu trúc: annotations.<qid>.{expected_parse, forbidden_filter?, origin?, destination_city?}; không câu nào có family.
+#
+# Quy ước expected_parse (thứ parser luật lý tưởng rút ra từ CHỮ của câu; catalog chỉ dùng để lấy đúng chính tả):
+# - taxonomy: một ngành dọc duy nhất khách hỏi. khách sạn/KS/resort/villa/homestay/chỗ nghỉ/nơi ở/nơi lưu trú/KDL/phòng
+#   -> hotel; vé máy bay/chuyến bay/đường bay -> flight; vé tham quan/vé vui chơi/VinWonders/Safari/điểm-khu vui chơi
+#   -> attraction; combo/trọn gói -> combo; golf/sân golf/voucher golf -> golf. null khi câu nêu >= 2 ngành dọc
+#   (cross_vertical; riêng "combo X và Y" -> combo vì combo là danh từ chính) hoặc không có từ ngành dọc (tên POI trần,
+#   "hoạt động trải nghiệm", "gói vui chơi", "tour", "Bus").
+# - destination: giá trị cột destination của bench_out/search/data/items.parquet (đúng chính tả catalog) khi câu nêu
+#   đúng một điểm đến; vé máy bay -> thành phố ĐẾN; địa danh con không có giá trị riêng quy về destination catalog
+#   (Nam Hội An -> Hội An, Grand World Phú Quốc -> Phú Quốc); Phong Nha / Cát Bà có giá trị riêng trong catalog nên
+#   giữ nguyên; điểm đến không có trong catalog (out_of_catalog) -> null.
+# - origin / destination_city: chỉ cho câu vé máy bay; chuỗi attributes.originCity / destinationCity của snapshot
+#   2026-09-23 ("Sài Gòn" -> "TP. Hồ Chí Minh"). Câu cross_vertical có "vé máy bay ... ở X" không có chiều -> null.
+# - must_not: khoá tiện ích backend (src/backend/app/domain/search/amenities.py) bị phủ định; "có X" không ghi;
+#   "phòng không hút thuốc" là yêu cầu dương (#14). must_not_taxonomies: "vé lẻ" / "không lấy combo" -> [combo].
+#   must_not_brands: không câu nào loại trừ thương hiệu ("khách sạn Vinpearl" là thương hiệu dương).
+# - price_max / price_min: VND nguyên; star_min: "N sao" / "từ N sao"; party_total: "N người" / "nhóm N người" /
+#   "Phòng N Người" ("cặp đôi", "gia đình", "2 Giường Đơn", "double room" -> null).
+#
+# Quy ước forbidden_filter (Forbidden@10: vi phạm ràng buộc CỨNG, không bao giờ được vào top-10), AST store/filters.py:
+# (a) câu phủ định: unit CÓ ghi tiện ích bị phủ định -> {contains_any: [features, [k]]}; câu v4 hai điều kiện chỉ cấm
+#     phần phủ định, không cấm phần "có X". (Bản nháp đầu loại trừ một product_id ở c0688 / c0694 vì dương tính giả của
+#     amenities.py — 'Bồn tắm spa' -> spa, 'Phòng tập thể' -> gym; đã sửa từ vựng 06/10 nên bỏ ngoại lệ.)
+# (b) vé máy bay có điểm đi và/hoặc điểm đến: flight_route sai chặng / chiều (#7b, #8a-c); unit không phải tuyến bay
+#     không bị filter này cấm.
+# (c) taxonomy_collision (rubric v4: loại sản phẩm cốt lõi là ràng buộc cứng): mọi taxonomy mà chính sách câu + rubric
+#     v4 cho 0. c0697 / c0709 -> mọi non-hotel; c0700 -> hotel / flight / golf (combo được 1 nên không cấm);
+#     c0703 -> mọi non-attraction (gồm combo bị loại trừ rõ và khách sạn); c0706 -> mọi non-combo.
+# 8 mục của config/forbidden_v3.yaml giữ nguyên nghĩa (c0241, c0244, c0247, c0250, c0253, c0373, c0070, c0088).
+# Không cấm theo sai điểm đến hay điều kiện mềm; câu cross_vertical không cấm chiều bay (nhãn v3 không thống nhất:
+# c0541 cho 2 cả hai chiều, c0546 / c0547 cho 0 chiều ra, c0565 cho 1 chiều vào).
+#
+# family: không tạo họ nào. Gold không có cặp biến thể (không dấu / viết tắt / typo) cùng ý định mà chắc chắn; ứng viên
+# gần nhất c0196 ~ c0475 (chỗ nghỉ "phòng nhìn ra biển" vs KS "nhìn ra biển", 4/8 nhãn chung lệch) và c0456 ~ c0709
+# (resort vs khách sạn, rubric v3 vs v4) không gộp.
+#
+# Đã kiểm: yaml.safe_load; store.filters.validate cho mọi forbidden_filter; với các câu mới (ngoài 8 mục forbidden_v3)
+# không cặp (câu, sản phẩm) nhãn >= 1 nào trong gold rơi vào forbidden_filter của câu đó (features = amenity_keys backend trên amenities_raw của items.parquet,
+# origin_city / destination_city từ snapshot 2026-09-23). 8 mục forbidden_v3 giữ nguyên nghĩa dù nhãn v3 có 34 cặp nhãn
+# >= 1 rơi vào filter (c0088: 3, c0241: 2, c0244: 6, c0247: 7, c0250: 3, c0253: 13) - nhãn cũ theo luật "tối đa 1"
+# trước quy ước #3, không sửa ở đây.
+version: 1
+annotated_by: "claude-opus-5-5 (nhãn máy, chưa duyệt), 06/10/2026"
+queries:
+  c0005:  # [dest_type] tìm khách sạn nghỉ dưỡng tại Hạ Long
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Hạ Long", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0020:  # [dest_type] tìm chỗ nghỉ tại Hà Tĩnh
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Hà Tĩnh", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0030:  # [dest_type] khách sạn nghỉ dưỡng tại Hội An, có lựa chọn nào?
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Hội An", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0037:  # [dest_type] điểm vui chơi ở Phú Quốc
+    allowed_variants: [attraction, combo]
+    expected_parse: {taxonomy: "attraction", destination: "Phú Quốc", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0052:  # [dest_type] hoạt động trải nghiệm ở Nghệ An
+    allowed_variants: [hotel_property, attraction, combo]
+    # không có từ ngành dọc: 'hoạt động trải nghiệm' (nhãn cho 2 cả attraction lẫn combo) -> taxonomy null
+    expected_parse: {taxonomy: null, destination: "Nghệ An", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0056:  # [dest_type] tìm combo du lịch Quy Nhơn
+    allowed_variants: [attraction, combo]
+    expected_parse: {taxonomy: "combo", destination: "Quy Nhơn", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0059:  # [dest_type] tìm gói vui chơi ở Hội An
+    allowed_variants: [attraction, combo]
+    # 'gói vui chơi': 'gói' gợi combo, 'vui chơi' gợi attraction (nhãn cho 2 cả hai) -> taxonomy null
+    expected_parse: {taxonomy: null, destination: "Hội An", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0061:  # [dest_type] combo trải nghiệm tại Phú Quốc
+    allowed_variants: [attraction, combo]
+    expected_parse: {taxonomy: "combo", destination: "Phú Quốc", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0070:  # [dest_type] vé máy bay đến Hà Nội
+    allowed_variants: [combo, flight_route]
+    # chỉ điểm đến; forbidden giữ nghĩa forbidden_v3
+    expected_parse: {taxonomy: "flight", destination: "Hà Nội", origin: null, destination_city: "Hà Nội", must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+    forbidden_filter: {and: [{eq: ["variant", "flight_route"]}, {not: {eq: ["destination_city", "Hà Nội"]}}]}
+    destination_city: "Hà Nội"
+  c0078:  # [dest_type] đường bay tới Huế, có lựa chọn nào?
+    allowed_variants: [attraction, combo, flight_route]
+    # chỉ điểm đến (#8b); nhãn v3 hiện có đã cho 0 mọi tuyến ra từ Huế
+    expected_parse: {taxonomy: "flight", destination: "Huế", origin: null, destination_city: "Huế", must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+    forbidden_filter: {and: [{eq: ["variant", "flight_route"]}, {not: {eq: ["destination_city", "Huế"]}}]}
+    destination_city: "Huế"
+  c0085:  # [dest_type] sân golf ở Nha Trang
+    allowed_variants: [golf]
+    expected_parse: {taxonomy: "golf", destination: "Nha Trang", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0088:  # [dest_type] voucher golf tại Hội An
+    allowed_variants: [golf]
+    # forbidden giữ nghĩa forbidden_v3 (rubric v3: KS/combo Hội An vẫn được 1 nên không mở rộng)
+    expected_parse: {taxonomy: "golf", destination: "Hội An", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+    forbidden_filter: {eq: ["taxonomy", "attraction"]}
+  c0097:  # [audience_style] chỗ nghỉ Côn Đảo cho gia đình có trẻ nhỏ
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Côn Đảo", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0105:  # [audience_style] chỗ nghỉ Hà Nội cho gia đình có trẻ nhỏ, ưu tiên nơi được đánh giá tốt
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Hà Nội", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0109:  # [audience_style] khách sạn Sa Pa có wifi và bàn làm việc cho chuyến công tác
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Sa Pa", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0118:  # [audience_style] khách sạn Phan Thiết có wifi và bàn làm việc cho chuyến công tác
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Phan Thiết", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0126:  # [audience_style] chỗ nghỉ yên tĩnh ở Hải Phòng cho cặp đôi, ưu tiên nơi được đánh giá tốt
+    allowed_variants: [hotel_property]
+    # 'cặp đôi' không phải 'N người' -> party_total null
+    expected_parse: {taxonomy: "hotel", destination: "Hải Phòng", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0135:  # [audience_style] chỗ nghỉ yên tĩnh ở Nghệ An cho cặp đôi, ưu tiên nơi được đánh giá tốt
+    allowed_variants: [hotel_property]
+    # 'cặp đôi' không phải 'N người' -> party_total null
+    expected_parse: {taxonomy: "hotel", destination: "Nghệ An", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0136:  # [audience_style] nơi ở Pleiku cho nhóm 4 người
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Pleiku", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: 4}
+  c0147:  # [audience_style] nơi ở Phong Nha cho nhóm 4 người, ưu tiên nơi được đánh giá tốt
+    allowed_variants: [hotel_property]
+    # catalog có destination 'Phong Nha' riêng (ngoài 'Quảng Bình')
+    expected_parse: {taxonomy: "hotel", destination: "Phong Nha", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: 4}
+  c0153:  # [audience_style] resort Cát Bà có spa để nghỉ dưỡng cuối tuần, ưu tiên nơi được đánh giá tốt
+    allowed_variants: [hotel_property]
+    # catalog có destination 'Cát Bà' riêng
+    expected_parse: {taxonomy: "hotel", destination: "Cát Bà", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0154:  # [audience_style] resort Ninh Bình có spa để nghỉ dưỡng cuối tuần
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Ninh Bình", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0165:  # [audience_style] resort Điện Biên có spa để nghỉ dưỡng cuối tuần, ưu tiên nơi được đánh giá tốt
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Điện Biên", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0166:  # [amenity_single] khách sạn ở Nghệ An có wifi miễn phí
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Nghệ An", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0169:  # [amenity_single] tìm chỗ nghỉ Ninh Bình với máy điều hòa
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Ninh Bình", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0172:  # [amenity_single] Quy Nhơn có nơi lưu trú nào có ban công
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Quy Nhơn", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0175:  # [amenity_single] khách sạn ở Hội An có bàn làm việc
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Hội An", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0178:  # [amenity_single] tìm chỗ nghỉ Phú Quốc với phòng gia đình
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Phú Quốc", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0181:  # [amenity_single] Nha Trang có nơi lưu trú nào có chỗ đỗ xe miễn phí
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Nha Trang", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0185:  # [amenity_single] tìm khách sạn ở Sa Pa có nhà hàng
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Sa Pa", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0187:  # [amenity_single] tìm chỗ nghỉ Côn Đảo với lễ tân 24 giờ
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Côn Đảo", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0190:  # [amenity_single] Nha Trang có nơi lưu trú nào có xe đưa đón sân bay
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Nha Trang", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0196:  # [amenity_single] tìm chỗ nghỉ Hạ Long có phòng nhìn ra biển
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Hạ Long", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0202:  # [amenity_single] khách sạn ở Phú Quốc có thang máy
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Phú Quốc", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0205:  # [amenity_single] chỗ nghỉ Phan Thiết có spa
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Phan Thiết", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0208:  # [amenity_single] Đà Lạt có nơi lưu trú nào có dịch vụ giặt ủi
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Đà Lạt", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0211:  # [amenity_multi] chỗ nghỉ Buôn Ma Thuột có WiFi miễn phí và chỗ đỗ xe miễn phí
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Buôn Ma Thuột", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0214:  # [amenity_multi] chỗ nghỉ Bắc Ninh có Nhà hàng và phòng không hút thuốc
+    allowed_variants: [hotel_property]
+    # 'phòng không hút thuốc' là yêu cầu dương (#14) -> không vào must_not
+    expected_parse: {taxonomy: "hotel", destination: "Bắc Ninh", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0217:  # [amenity_multi] chỗ nghỉ Cát Bà có WiFi miễn phí và phòng gia đình
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Cát Bà", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0220:  # [amenity_multi] chỗ nghỉ Côn Đảo có WiFi miễn phí và phòng không hút thuốc
+    allowed_variants: [hotel_property]
+    # 'phòng không hút thuốc' là yêu cầu dương (#14)
+    expected_parse: {taxonomy: "hotel", destination: "Côn Đảo", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0223:  # [amenity_multi] chỗ nghỉ Cần Thơ có WiFi miễn phí và lễ tân 24 giờ
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Cần Thơ", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0226:  # [amenity_multi] chỗ nghỉ Huế có WiFi miễn phí và nhà hàng
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Huế", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0229:  # [amenity_multi] chỗ nghỉ Hà Nội có WiFi miễn phí và xe đưa đón sân bay
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Hà Nội", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0232:  # [amenity_multi] chỗ nghỉ Hà Tĩnh có WiFi miễn phí và sân hiên
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Hà Tĩnh", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0235:  # [amenity_multi] chỗ nghỉ Hạ Long có Phòng gia đình và nhà hàng
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Hạ Long", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0238:  # [amenity_multi] chỗ nghỉ Hải Phòng có Phòng gia đình và chỗ đỗ xe miễn phí
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Hải Phòng", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0241:  # [amenity_negation] khách sạn Côn Đảo không có hồ bơi view đẹp
+    allowed_variants: [hotel_property]
+    # forbidden giữ nghĩa forbidden_v3
+    expected_parse: {taxonomy: "hotel", destination: "Côn Đảo", origin: null, destination_city: null, must_not: ["pool"], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+    forbidden_filter: {contains_any: ["features", ["pool"]]}
+  c0244:  # [amenity_negation] chỗ nghỉ tại TP. Hồ Chí Minh không ghi nhận bếp riêng
+    allowed_variants: [hotel_property]
+    # forbidden giữ nghĩa forbidden_v3
+    expected_parse: {taxonomy: "hotel", destination: "TP. Hồ Chí Minh", origin: null, destination_city: null, must_not: ["kitchen"], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+    forbidden_filter: {contains_any: ["features", ["kitchen"]]}
+  c0247:  # [amenity_negation] Khách sạn Hạ Long không có ban công
+    allowed_variants: [hotel_property]
+    # forbidden giữ nghĩa forbidden_v3
+    expected_parse: {taxonomy: "hotel", destination: "Hạ Long", origin: null, destination_city: null, must_not: ["balcony"], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+    forbidden_filter: {contains_any: ["features", ["balcony"]]}
+  c0250:  # [amenity_negation] chỗ nghỉ tại Đà Nẵng không ghi nhận nhà hàng
+    allowed_variants: [hotel_property]
+    # forbidden giữ nghĩa forbidden_v3
+    expected_parse: {taxonomy: "hotel", destination: "Đà Nẵng", origin: null, destination_city: null, must_not: ["restaurant"], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+    forbidden_filter: {contains_any: ["features", ["restaurant"]]}
+  c0253:  # [amenity_negation] khách sạn Hạ Long không ghi nhận xe đưa đón sân bay
+    allowed_variants: [hotel_property]
+    # forbidden giữ nghĩa forbidden_v3
+    expected_parse: {taxonomy: "hotel", destination: "Hạ Long", origin: null, destination_city: null, must_not: ["shuttle"], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+    forbidden_filter: {contains_any: ["features", ["shuttle"]]}
+  c0256:  # [amenity_offtaxonomy] chỗ nghỉ ở Ninh Bình có view địa danh
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Ninh Bình", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0259:  # [amenity_offtaxonomy] chỗ nghỉ ở Huế có máy điều hòa độc lập cho từng phòng
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Huế", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0262:  # [amenity_offtaxonomy] chỗ nghỉ ở Nghệ An có vòi xịt/chậu rửa vệ sinh
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Nghệ An", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0265:  # [amenity_offtaxonomy] chỗ nghỉ ở Hội An có khăn tắm/ga trải giường (phụ phí)
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Hội An", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0268:  # [amenity_offtaxonomy] chỗ nghỉ ở Đà Nẵng có vật dụng không gây dị ứng
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Đà Nẵng", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0272:  # [parent_child] tìm Phòng Deluxe - Dãy nhà A ở Buôn Ma Thuột
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Buôn Ma Thuột", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0276:  # [parent_child] khách sạn Bắc Ninh có lựa chọn nào có double room
+    allowed_variants: [hotel_property]
+    # 'double room' không nêu số người -> party_total null
+    expected_parse: {taxonomy: "hotel", destination: "Bắc Ninh", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0277:  # [parent_child] Phòng Giường Đôi Có Ban Công tại Cát Bà
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Cát Bà", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0284:  # [parent_child] tìm khách sạn Cần Thơ có Phòng 4 Người Có Ban Công
+    allowed_variants: [hotel_property]
+    # 'Phòng 4 Người' -> party_total 4
+    expected_parse: {taxonomy: "hotel", destination: "Cần Thơ", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: 4}
+  c0286:  # [parent_child] Phòng Giường Đôi Với Phòng Tắm Chung tại Huế
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Huế", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0290:  # [parent_child] tìm Phòng Deluxe Giường Đôi Có Ban Công ở Hà Nội
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Hà Nội", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0295:  # [parent_child] Căn Hộ Nhìn Ra Biển tại Hạ Long
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Hạ Long", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0299:  # [parent_child] tìm Phòng Giường Đôi ở Hải Phòng
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Hải Phòng", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0304:  # [parent_child] Biệt Thự Có Hồ Bơi Riêng tại Nghệ An
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Nghệ An", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0307:  # [parent_child] Phòng 2 Giường Đơn Hạng Bình Dân ở Nha Trang
+    allowed_variants: [hotel_property]
+    # '2 Giường Đơn' là loại giường, không phải số người -> party_total null
+    expected_parse: {taxonomy: "hotel", destination: "Nha Trang", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0310:  # [parent_child] khách sạn Ninh Bình có Phòng Có Giường Cỡ King Nhìn Ra Vườn
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Ninh Bình", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0316:  # [named_entity] Vinpearl Hotel Bắc Ninh
+    allowed_variants: [hotel_property]
+    # 'Hotel' trong tên -> hotel
+    expected_parse: {taxonomy: "hotel", destination: "Bắc Ninh", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0321:  # [named_entity] thông tin Meliá Vinpearl Hue
+    allowed_variants: [hotel_property]
+    # tên riêng không có từ ngành dọc -> taxonomy null; 'Hue' (không dấu) -> Huế
+    expected_parse: {taxonomy: null, destination: "Huế", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0324:  # [named_entity] thông tin Vinpearl Ha Tinh, Affiliated by Meliá
+    allowed_variants: [hotel_property]
+    # tên riêng không có từ ngành dọc -> taxonomy null; 'Ha Tinh' -> Hà Tĩnh
+    expected_parse: {taxonomy: null, destination: "Hà Tĩnh", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0332:  # [named_entity] tìm Vinpearl Resort & Golf Nam Hội An
+    allowed_variants: [hotel_property]
+    # tên 'Resort & Golf': 'Resort' là danh từ chính, 'Golf' là tiện ích trong tên; 'Nam Hội An' -> Hội An
+    expected_parse: {taxonomy: "hotel", destination: "Hội An", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0336:  # [named_entity] thông tin Vinpearl Resort & Golf Nam Hội An - Deluxe Giường Đôi
+    allowed_variants: [hotel_property]
+    # như c0332, kèm hạng phòng -> hotel
+    expected_parse: {taxonomy: "hotel", destination: "Hội An", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0338:  # [named_entity] tìm Vinpearl Resort & Golf Nam Hội An - Deluxe 2 Giường Đơn
+    allowed_variants: [hotel_property]
+    # như c0332, kèm hạng phòng -> hotel
+    expected_parse: {taxonomy: "hotel", destination: "Hội An", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0340:  # [named_entity] Công Viên 30/4
+    allowed_variants: [attraction, combo]
+    # tên POI trần ('Công Viên' không nằm trong danh sách từ ngành dọc) -> taxonomy null; không nêu nơi
+    expected_parse: {taxonomy: null, destination: null, origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0343:  # [named_entity] Thác Đray Nur
+    allowed_variants: [attraction, combo]
+    # tên POI trần, không nêu nơi
+    expected_parse: {taxonomy: null, destination: null, origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0348:  # [named_entity] thông tin Lò Kẹo Dừa Thiên Ái
+    allowed_variants: [attraction, combo]
+    # tên POI trần, không nêu nơi
+    expected_parse: {taxonomy: null, destination: null, origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0349:  # [named_entity] Sông Bằng
+    allowed_variants: [attraction, combo]
+    # tên POI trần (Sông Bằng, Cao Bằng) - câu không nêu điểm đến
+    expected_parse: {taxonomy: null, destination: null, origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0352:  # [named_entity] Núi Sam
+    allowed_variants: [attraction, combo]
+    # tên POI trần (Núi Sam, Châu Đốc) - câu không nêu điểm đến
+    expected_parse: {taxonomy: null, destination: null, origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0355:  # [named_entity] Bus Ha Noi to Cat Ba
+    allowed_variants: [attraction, combo]
+    # 'Bus' không phải ngành dọc -> null; chặng 'Ha Noi to Cat Ba' xử như tuyến bay: destination = nơi đến Cát Bà
+    expected_parse: {taxonomy: null, destination: "Cát Bà", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0358:  # [named_entity] tiNiWorld
+    allowed_variants: [attraction, combo]
+    # tên POI trần, không nêu nơi
+    expected_parse: {taxonomy: null, destination: null, origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0361:  # [named_entity] Chợ nổi Cái Răng
+    allowed_variants: [attraction, combo]
+    # 'Cái Răng' (quận của Cần Thơ) nằm trong tên POI, không phải giá trị catalog -> null (không chắc, có thể Cần Thơ)
+    expected_parse: {taxonomy: null, destination: null, origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0366:  # [named_entity] thông tin Nhà cổ Bình Thủy
+    allowed_variants: [attraction, combo]
+    # 'Bình Thủy' (quận của Cần Thơ) nằm trong tên POI -> null (không chắc, có thể Cần Thơ)
+    expected_parse: {taxonomy: null, destination: null, origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0367:  # [named_entity] Sea Links Golf & Country Club
+    allowed_variants: [golf]
+    # 'Golf' trong tên sân -> golf; câu không nêu nơi (sản phẩm ở Phan Thiết)
+    expected_parse: {taxonomy: "golf", destination: null, origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0372:  # [named_entity] thông tin Gói dịch vụ VIP Tour VinWonders Phú Quốc (3 tiếng)
+    allowed_variants: [attraction, combo]
+    # tên sản phẩm trộn 'Gói dịch vụ' (catalog xếp combo) và 'VinWonders' (cue attraction) -> taxonomy null
+    expected_parse: {taxonomy: null, destination: "Phú Quốc", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0373:  # [named_entity] Vé máy bay Buôn Ma Thuột - Hà Nội
+    allowed_variants: [combo, flight_route]
+    # forbidden giữ nghĩa forbidden_v3
+    expected_parse: {taxonomy: "flight", destination: "Hà Nội", origin: "Buôn Ma Thuột", destination_city: "Hà Nội", must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+    forbidden_filter: {and: [{eq: ["variant", "flight_route"]}, {not: {and: [{eq: ["origin_city", "Buôn Ma Thuột"]}, {eq: ["destination_city", "Hà Nội"]}]}}]}
+    origin: "Buôn Ma Thuột"
+    destination_city: "Hà Nội"
+  c0379:  # [no_diacritics] khach san o quy nhon co cho do xe mien phi
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Quy Nhơn", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0383:  # [no_diacritics] tim khach san o da lat co nha hang
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Đà Lạt", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0385:  # [no_diacritics] khach san o da lat co le tan 24 gio
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Đà Lạt", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0388:  # [no_diacritics] khach san o ha long co ho boi co tam nhin
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Hạ Long", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0394:  # [no_diacritics] khach san o ha noi co san hien
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Hà Nội", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0400:  # [no_diacritics] khach san o phan thiet co nha hang
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Phan Thiết", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0403:  # [no_diacritics] khach san o phu quoc co dua don san bay
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Phú Quốc", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0408:  # [no_diacritics] khach san o phan thiet co nhin ra bien gia tot
+    allowed_variants: [hotel_property]
+    # 'gia tot' không có con số -> không price_max
+    expected_parse: {taxonomy: "hotel", destination: "Phan Thiết", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0409:  # [no_diacritics] khach san o ha long co quay bar
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Hạ Long", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0426:  # [no_diacritics] khach san o hai phong co phong khong hut thuoc gia tot
+    allowed_variants: [hotel_property]
+    # 'phong khong hut thuoc' là yêu cầu dương (#14) -> không must_not
+    expected_parse: {taxonomy: "hotel", destination: "Hải Phòng", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0428:  # [no_diacritics] tim khach san o sa pa co san hien
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Sa Pa", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0433:  # [no_diacritics] khach san o pleiku co may dieu hoa
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Pleiku", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0439:  # [abbrev_typo] KDL NT cho gia đình
+    allowed_variants: [hotel_property]
+    # KDL = khu du lịch/nghỉ dưỡng (#6) -> hotel; NT -> Nha Trang
+    expected_parse: {taxonomy: "hotel", destination: "Nha Trang", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0446:  # [abbrev_typo] tìm vé VW Nha Trang
+    allowed_variants: [attraction, combo]
+    # VW -> VinWonders
+    expected_parse: {taxonomy: "attraction", destination: "Nha Trang", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0450:  # [abbrev_typo] resort Phu Quoc gan bien giá tốt
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Phú Quốc", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0451:  # [abbrev_typo] khach san Nha Trnag co ban cong
+    allowed_variants: [hotel_property]
+    # typo 'Nha Trnag'
+    expected_parse: {taxonomy: "hotel", destination: "Nha Trang", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0456:  # [abbrev_typo] Vinpeal Resort Nha Trang giá tốt
+    allowed_variants: [hotel_property]
+    # typo 'Vinpeal' (thương hiệu dương, không phải loại trừ)
+    expected_parse: {taxonomy: "hotel", destination: "Nha Trang", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0457:  # [abbrev_typo] KS HN gần điểm vui chơi
+    allowed_variants: [hotel_property]
+    # 'gần điểm vui chơi' là vị trí, không phải ngành dọc thứ hai
+    expected_parse: {taxonomy: "hotel", destination: "Hà Nội", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0460:  # [abbrev_typo] combo vui chơi PQ dưới 2tr
+    allowed_variants: [attraction, combo]
+    # 'dưới 2tr' -> 2.000.000
+    expected_parse: {taxonomy: "combo", destination: "Phú Quốc", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: 2000000, price_min: null, star_min: null, party_total: null}
+  c0466:  # [abbrev_typo] khach san Da Lat co bep rieng
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Đà Lạt", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0469:  # [abbrev_typo] resort Hoi An cho gd co tre nho
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Hội An", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0472:  # [abbrev_typo] ve Safari PQ
+    allowed_variants: [attraction, combo]
+    expected_parse: {taxonomy: "attraction", destination: "Phú Quốc", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0475:  # [abbrev_typo] KS HL nhin ra bien
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Hạ Long", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0480:  # [abbrev_typo] KDL Phan Thiet nghi duong giá tốt
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Phan Thiết", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0481:  # [multi_constraint] khách sạn 5 sao ở Hà Tĩnh dưới 2 triệu
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Hà Tĩnh", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: 2000000, price_min: null, star_min: 5, party_total: null}
+  c0489:  # [multi_constraint] chỗ nghỉ Quy Nhơn từ 4 sao, giá không quá 1 triệu, còn lựa chọn nào?
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Quy Nhơn", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: 1000000, price_min: null, star_min: 4, party_total: null}
+  c0495:  # [multi_constraint] KS 4 sao tại Hạ Long, ngân sách tối đa 1.5 triệu, còn lựa chọn nào?
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Hạ Long", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: 1500000, price_min: null, star_min: 4, party_total: null}
+  c0497:  # [multi_constraint] tìm chỗ nghỉ Phú Quốc từ 5 sao, giá không quá 3 triệu
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Phú Quốc", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: 3000000, price_min: null, star_min: 5, party_total: null}
+  c0503:  # [multi_constraint] tìm KS 3 sao tại Điện Biên, ngân sách tối đa 500 nghìn
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Điện Biên", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: 500000, price_min: null, star_min: 3, party_total: null}
+  c0514:  # [multi_constraint] chỗ nghỉ Đà Nẵng từ 3 sao, giá không quá 1 triệu
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Đà Nẵng", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: 1000000, price_min: null, star_min: 3, party_total: null}
+  c0517:  # [multi_constraint] khách sạn 3 sao ở Nha Trang dưới 500 nghìn
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Nha Trang", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: 500000, price_min: null, star_min: 3, party_total: null}
+  c0531:  # [multi_constraint] KS 3 sao tại Phan Thiết, ngân sách tối đa 500 nghìn, còn lựa chọn nào?
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Phan Thiết", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: 500000, price_min: null, star_min: 3, party_total: null}
+  c0538:  # [multi_constraint] KS 5 sao tại Hạ Long, ngân sách tối đa 9.5 triệu
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Hạ Long", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: 9500000, price_min: null, star_min: 5, party_total: null}
+  c0541:  # [cross_vertical] khách sạn, vé máy bay và vé tham quan ở Buôn Ma Thuột
+    allowed_variants: [hotel_property, attraction, combo, flight_route]
+    expected_parse: {taxonomy: null, destination: "Buôn Ma Thuột", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0546:  # [cross_vertical] mình cần khách sạn, vé máy bay, vé tham quan và combo du lịch ở Cần Thơ
+    allowed_variants: [hotel_property, attraction, combo, flight_route]
+    expected_parse: {taxonomy: null, destination: "Cần Thơ", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0547:  # [cross_vertical] khách sạn, vé máy bay, vé tham quan và combo du lịch ở Huế
+    allowed_variants: [hotel_property, attraction, combo, flight_route]
+    expected_parse: {taxonomy: null, destination: "Huế", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0551:  # [cross_vertical] tìm khách sạn, vé máy bay, vé tham quan và combo du lịch ở Hà Nội
+    allowed_variants: [hotel_property, attraction, combo, flight_route]
+    expected_parse: {taxonomy: null, destination: "Hà Nội", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0555:  # [cross_vertical] mình cần khách sạn, vé tham quan và combo du lịch ở Hà Tĩnh
+    allowed_variants: [hotel_property, attraction, combo]
+    expected_parse: {taxonomy: null, destination: "Hà Tĩnh", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0556:  # [cross_vertical] khách sạn, vé tham quan và combo du lịch ở Hạ Long
+    allowed_variants: [hotel_property, attraction, combo]
+    expected_parse: {taxonomy: null, destination: "Hạ Long", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0560:  # [cross_vertical] tìm khách sạn, vé máy bay, vé tham quan, sân golf và combo du lịch ở Hải Phòng
+    allowed_variants: [hotel_property, attraction, combo, flight_route, golf]
+    expected_parse: {taxonomy: null, destination: "Hải Phòng", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0564:  # [cross_vertical] mình cần khách sạn, vé tham quan, sân golf và combo du lịch ở Hội An
+    allowed_variants: [hotel_property, attraction, combo, golf]
+    expected_parse: {taxonomy: null, destination: "Hội An", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0565:  # [cross_vertical] khách sạn, vé máy bay, vé tham quan và combo du lịch ở Nghệ An
+    allowed_variants: [hotel_property, attraction, combo, flight_route]
+    expected_parse: {taxonomy: null, destination: "Nghệ An", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0569:  # [cross_vertical] tìm khách sạn, vé máy bay, vé tham quan, sân golf và combo du lịch ở Nha Trang
+    allowed_variants: [hotel_property, attraction, combo, flight_route, golf]
+    expected_parse: {taxonomy: null, destination: "Nha Trang", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0574:  # [out_of_catalog] resort ở Mộc Châu
+    # Mộc Châu không có trong catalog (khác 'Mai Châu') -> destination null
+    expected_parse: {taxonomy: "hotel", destination: null, origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0585:  # [out_of_catalog] combo du lịch Cà Mau
+    # Cà Mau không có trong catalog -> destination null
+    expected_parse: {taxonomy: "combo", destination: null, origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0663:  # [out_of_catalog] combo du lịch Bắc Kạn
+    # Bắc Kạn không có trong catalog -> destination null
+    expected_parse: {taxonomy: "combo", destination: null, origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0673:  # [amenity_negation] khách sạn Sa Pa có spa nhưng không có hồ bơi
+    allowed_variants: [hotel_property]
+    # 'có spa' là điều kiện dương, không vào forbidden
+    expected_parse: {taxonomy: "hotel", destination: "Sa Pa", origin: null, destination_city: null, must_not: ["pool"], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+    forbidden_filter: {contains_any: ["features", ["pool"]]}
+  c0676:  # [amenity_negation] chỗ nghỉ ở TP. Hồ Chí Minh có xe đưa đón sân bay, không có hồ bơi
+    allowed_variants: [hotel_property]
+    # 'có xe đưa đón sân bay' là điều kiện dương
+    expected_parse: {taxonomy: "hotel", destination: "TP. Hồ Chí Minh", origin: null, destination_city: null, must_not: ["pool"], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+    forbidden_filter: {contains_any: ["features", ["pool"]]}
+  c0679:  # [amenity_negation] khách sạn Hội An có hồ bơi nhưng không có dịch vụ đưa đón sân bay
+    allowed_variants: [hotel_property]
+    # 'có hồ bơi' là điều kiện dương
+    expected_parse: {taxonomy: "hotel", destination: "Hội An", origin: null, destination_city: null, must_not: ["shuttle"], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+    forbidden_filter: {contains_any: ["features", ["shuttle"]]}
+  c0682:  # [amenity_negation] chỗ nghỉ Đà Lạt có nhà hàng, không có hồ bơi
+    allowed_variants: [hotel_property]
+    # 'có nhà hàng' là điều kiện dương
+    expected_parse: {taxonomy: "hotel", destination: "Đà Lạt", origin: null, destination_city: null, must_not: ["pool"], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+    forbidden_filter: {contains_any: ["features", ["pool"]]}
+  c0685:  # [amenity_negation] khách sạn ở Phú Quốc có hồ bơi nhưng không có nhà hàng
+    allowed_variants: [hotel_property]
+    # 'có hồ bơi' là điều kiện dương
+    expected_parse: {taxonomy: "hotel", destination: "Phú Quốc", origin: null, destination_city: null, must_not: ["restaurant"], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+    forbidden_filter: {contains_any: ["features", ["restaurant"]]}
+  c0688:  # [amenity_negation] khách sạn Huế có hồ bơi, không có spa
+    allowed_variants: [hotel_property]
+    # 'có hồ bơi' là điều kiện dương ('Bồn tắm spa' không còn tính là spa từ 06/10)
+    expected_parse: {taxonomy: "hotel", destination: "Huế", origin: null, destination_city: null, must_not: ["spa"], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+    forbidden_filter: {contains_any: ["features", ["spa"]]}
+  c0691:  # [amenity_negation] chỗ nghỉ Quy Nhơn có hồ bơi nhưng không có quầy bar
+    allowed_variants: [hotel_property]
+    # 'có hồ bơi' là điều kiện dương
+    expected_parse: {taxonomy: "hotel", destination: "Quy Nhơn", origin: null, destination_city: null, must_not: ["bar"], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+    forbidden_filter: {contains_any: ["features", ["bar"]]}
+  c0694:  # [amenity_negation] khách sạn Đà Nẵng có hồ bơi, không có phòng gym
+    allowed_variants: [hotel_property]
+    # 'có hồ bơi' là điều kiện dương ('Phòng tập thể' = dorm không còn tính là gym từ 06/10)
+    expected_parse: {taxonomy: "hotel", destination: "Đà Nẵng", origin: null, destination_city: null, must_not: ["gym"], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+    forbidden_filter: {contains_any: ["features", ["gym"]]}
+  c0697:  # [taxonomy_collision] khách sạn ở Grand World Phú Quốc
+    allowed_variants: [hotel_property]
+    # chính sách: chỉ chỗ nghỉ được 1/2; vé/combo vui chơi (và mọi loại khác - sai loại cốt lõi) = 0
+    expected_parse: {taxonomy: "hotel", destination: "Phú Quốc", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+    forbidden_filter: {not: {eq: ["taxonomy", "hotel"]}}
+  c0700:  # [taxonomy_collision] vé vui chơi ở Grand World Phú Quốc
+    allowed_variants: [attraction, combo]
+    # chính sách: vé = 2, combo/passport = 1 -> combo KHÔNG cấm; khách sạn (kể cả tên Grand World) = 0
+    expected_parse: {taxonomy: "attraction", destination: "Phú Quốc", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+    forbidden_filter: {in: ["taxonomy", ["hotel", "flight", "golf"]]}
+  c0703:  # [taxonomy_collision] vé lẻ VinWonders Nam Hội An, không lấy combo
+    allowed_variants: [attraction]
+    # 'vé lẻ' + 'không lấy combo' -> must_not_taxonomies [combo]; chính sách: combo, khách sạn = 0, chỉ attraction được 1/2; 'Nam Hội An' -> Hội An
+    expected_parse: {taxonomy: "attraction", destination: "Hội An", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: ["combo"], price_max: null, price_min: null, star_min: null, party_total: null}
+    forbidden_filter: {not: {eq: ["taxonomy", "attraction"]}}
+  c0706:  # [taxonomy_collision] combo vé máy bay và khách sạn Đà Lạt
+    allowed_variants: [combo]
+    # 'combo' là danh từ chính; chính sách: cột 1 trống, tuyến bay lẻ / KS lẻ = 0 -> mọi non-combo = 0
+    expected_parse: {taxonomy: "combo", destination: "Đà Lạt", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+    forbidden_filter: {not: {eq: ["taxonomy", "combo"]}}
+  c0709:  # [taxonomy_collision] khách sạn Vinpearl ở Nha Trang
+    allowed_variants: [hotel_property]
+    # Vinpearl là thương hiệu dương (KS hãng khác = 1, không phải ràng buộc cứng); vé, golf, combo = 0
+    expected_parse: {taxonomy: "hotel", destination: "Nha Trang", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+    forbidden_filter: {not: {eq: ["taxonomy", "hotel"]}}
+  c0712:  # [flight_direction] vé máy bay Sài Gòn đi Đà Nẵng
+    allowed_variants: [combo, flight_route]
+    # 'Sài Gòn' -> TP. Hồ Chí Minh
+    expected_parse: {taxonomy: "flight", destination: "Đà Nẵng", origin: "TP. Hồ Chí Minh", destination_city: "Đà Nẵng", must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+    forbidden_filter: {and: [{eq: ["variant", "flight_route"]}, {not: {and: [{eq: ["origin_city", "TP. Hồ Chí Minh"]}, {eq: ["destination_city", "Đà Nẵng"]}]}}]}
+    origin: "TP. Hồ Chí Minh"
+    destination_city: "Đà Nẵng"
+  c0715:  # [flight_direction] vé máy bay Cần Thơ đi Hà Nội
+    allowed_variants: [combo, flight_route]
+    expected_parse: {taxonomy: "flight", destination: "Hà Nội", origin: "Cần Thơ", destination_city: "Hà Nội", must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+    forbidden_filter: {and: [{eq: ["variant", "flight_route"]}, {not: {and: [{eq: ["origin_city", "Cần Thơ"]}, {eq: ["destination_city", "Hà Nội"]}]}}]}
+    origin: "Cần Thơ"
+    destination_city: "Hà Nội"
+  c0718:  # [flight_direction] vé máy bay Côn Đảo về TP. Hồ Chí Minh
+    allowed_variants: [combo, flight_route]
+    expected_parse: {taxonomy: "flight", destination: "TP. Hồ Chí Minh", origin: "Côn Đảo", destination_city: "TP. Hồ Chí Minh", must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+    forbidden_filter: {and: [{eq: ["variant", "flight_route"]}, {not: {and: [{eq: ["origin_city", "Côn Đảo"]}, {eq: ["destination_city", "TP. Hồ Chí Minh"]}]}}]}
+    origin: "Côn Đảo"
+    destination_city: "TP. Hồ Chí Minh"
+  c0721:  # [flight_direction] vé máy bay đi Côn Đảo
+    allowed_variants: [combo, flight_route]
+    # chỉ điểm đến (#8b)
+    expected_parse: {taxonomy: "flight", destination: "Côn Đảo", origin: null, destination_city: "Côn Đảo", must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+    forbidden_filter: {and: [{eq: ["variant", "flight_route"]}, {not: {eq: ["destination_city", "Côn Đảo"]}}]}
+    destination_city: "Côn Đảo"
+  c0724:  # [flight_direction] các chuyến bay xuất phát từ Cần Thơ
+    allowed_variants: [attraction, combo, flight_route]
+    # chỉ điểm đi (#8c) -> destination null
+    expected_parse: {taxonomy: "flight", destination: null, origin: "Cần Thơ", destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+    forbidden_filter: {and: [{eq: ["variant", "flight_route"]}, {not: {eq: ["origin_city", "Cần Thơ"]}}]}
+    origin: "Cần Thơ"
+  c0727:  # [flight_direction] vé máy bay đến Phú Quốc
+    allowed_variants: [combo, flight_route]
+    # chỉ điểm đến (#8b)
+    expected_parse: {taxonomy: "flight", destination: "Phú Quốc", origin: null, destination_city: "Phú Quốc", must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+    forbidden_filter: {and: [{eq: ["variant", "flight_route"]}, {not: {eq: ["destination_city", "Phú Quốc"]}}]}
+    destination_city: "Phú Quốc"
+  c0730:  # [out_of_catalog] khách sạn ở Lạng Sơn
+    # Lạng Sơn không có trong catalog -> destination null
+    expected_parse: {taxonomy: "hotel", destination: null, origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0731:  # [out_of_catalog] resort Bạc Liêu
+    # Bạc Liêu không có trong catalog -> destination null
+    expected_parse: {taxonomy: "hotel", destination: null, origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0732:  # [out_of_catalog] tour hồ Ba Bể
+    # 'tour' không nằm trong danh sách từ ngành dọc (catalog bán tour dưới cả attraction lẫn combo) -> null; Ba Bể không có trong catalog
+    expected_parse: {taxonomy: null, destination: null, origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0733:  # [out_of_catalog] homestay Tà Xùa
+    # Tà Xùa không có trong catalog -> destination null
+    expected_parse: {taxonomy: "hotel", destination: null, origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}

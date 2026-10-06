@@ -168,6 +168,27 @@ QUERY PLAN (từ 2026-10-05, kiến trúc Phase A — `docs/spec/bench/kien_truc
             "A - B", "A đi B" → origin A, destination B (lọc `originCity` / `destinationCity` của tuyến); chỉ "đến B" → chỉ
             đích; thiếu nơi đi thì không bịa; hai nơi không rõ vai → không lọc. Tham số `origin` (1.15.0) thắng câu; ngoài
             câu bay `origin` bị bỏ qua và khai ở `queryPlan.ignored`.
+          · Từ 2026-10-06 (contract 1.16.0; mọi phần mới sau cờ, mặc định tắt):
+            – Loại trừ loại sản phẩm / thành phần (thuộc F3, cờ `SEARCH_NEGATION_FILTER`): "vé lẻ", "không lấy combo", "không
+              phải khách sạn" → `queryPlan.mustNot.taxonomies`; "không kèm vé máy bay / khách sạn" → `mustNot.flags`
+              (`includesFlight` / `includesHotel`, suy từ `catalog.combo_items.item_kind` của combo). Không bao giờ loại chính
+              loại câu (hoặc tham số) đang hỏi — xung đột khai `unresolved`.
+            – Combo đứng đầu câu ("combo vé máy bay và khách sạn Đà Lạt") → taxonomy combo, thành phần không tính là loại thứ
+              hai. Câu đã có một loại khác flight (tham số hoặc suy ra) không phải câu vé máy bay: không parse tuyến, điểm đến
+              lọc như câu thường.
+            – `SEARCH_TAXONOMY_STRONG_ONLY`: F4 chỉ lọc khi câu có cue MẠNH; bảng cue yếu `constraints.WEAK_VERTICAL_CUES`
+              ("nghỉ dưỡng", "phòng", "tham quan", "công viên", "khu vui chơi", "gói du lịch", tên điểm VinWonders / Safari /
+              Grand World — combo chứa vé được tính là đúng ý) chọn theo dữ liệu nhãn 06/10; khai `queryPlan.taxonomy.strength`.
+              Tên điểm vui chơi luôn giữ trong `lexicalText` (là tên sản phẩm, BM25 cần).
+            – `SEARCH_PARTY_FILTER`: "N người", "N người lớn M trẻ em" → `appliedFilters.hard.minOccupancy` = tổng; tham số
+              `travelContext.guests` của request luôn áp (không cờ — tuân thủ contract). Loại unit có sức chứa tối đa (unit ∪
+              phòng con) < tổng; không khai sức chứa → giữ ([C2]). Giá và số khách cùng áp → phải có MỘT phòng con thoả cả hai.
+              `results[].matchedChildren` (≤ 5 id phòng con, giá tăng dần) phát mỗi khi lọc giá hoặc số khách đang áp.
+            – `SEARCH_TONE_NORMALIZE`: đưa vị trí dấu thanh (oà/òa, oé/óe, uý/úy) về kiểu đa số của catalog trước mọi bước.
+            – Độ tin cậy router (không LLM): `queryPlan.confidence` (0–1) và `fallbackReasons` (phủ định không rõ phạm vi, tuyến
+              hai nơi không rõ vai, nhiều loại, cue loại yếu, xung đột tham số ↔ câu, câu dài nhiều ràng buộc…). Hôm nay chỉ
+              khai; LLM fallback cho câu độ tin cậy thấp là đề xuất chờ chốt
+              `docs/prd/update/2026-10-06-search-llm-fallback-query-plan.md` (không code trước khi chốt).
           Cụm đã thành filter bị bỏ khỏi câu đưa vào BM25 và độ phủ vớt (`queryPlan.lexicalText`); vector dense vẫn dùng q'
           đầy đủ (khoá cache embed không đổi). Sau RRF kiểm lại hard filter trên R (`queryPlan.revalidatedDrops`, kỳ vọng
           0). F rỗng do filter suy ra → `total 0` + `queryPlan.emptyReason`, KHÔNG nới ngầm (kiến trúc Phase A §6); chỉ điểm
@@ -179,6 +200,17 @@ R_lex   = { p ∈ C_lex \ R_dense | rank_lex(p) <= lexicalK ∧ score(p) >= lexi
 R       = R_dense ∪ R_lex
 SORT    = giảm dần theo RRF(p) = Σ 1/(rrfK + rank) trên các nhánh p có mặt; hoà thì theo score
 ```
+
+Từ 2026-10-06 (contract 1.16.0, kiến trúc §7 kênh 5C) có thêm kênh **fuzzy tên** và RRF **có trọng số**, mặc định tắt / trung tính:
+
+```
+C_fuzzy = (SEARCH_FUZZY_K > 0) top-fuzzyCandidateK của F theo độ giống trigram (kiểu pg_trgm, trong tiến trình — không
+          trigram Postgres) giữa tên unit và cửa sổ token cùng độ dài tên của lexicalText
+R_fuzzy = { p ∈ C_fuzzy \ (R_dense ∪ R_lex) | rank_fuzzy(p) <= fuzzyK ∧ sim(p) >= fuzzyMinSim ∧ score(p) >= lexicalCutoff }
+RRF(p)  = Σ w_kênh / (rrfK + rank_kênh(p)),  w = SEARCH_RRF_DENSE_WEIGHT / _LEXICAL_WEIGHT / _FUZZY_WEIGHT (mặc định 1 → như cũ)
+```
+
+`diagnostics.fuzzyCount` = số unit chỉ vào R nhờ kênh fuzzy; `stageMs.fuzzy` gồm cả lấy vector để tính `score`.
 
 `score` vẫn là cosine (§2.6); RRF chỉ quyết định thứ tự, nên `score` không đơn điệu trong một trang.
 `phủ(tên, truy vấn)` = tỉ lệ token của truy vấn (đã fold, dài ≥ 2, bỏ từ chức năng) có trong tên. Truy vấn gần
@@ -234,7 +266,10 @@ Các bất biến dưới đây tính trên tập ứng viên `C`, không phải
 search:           { mode: HYBRID_CANDIDATE_SCORE, cutoff: 0.62, candidateK: 200,
                     lexicalCandidateK: 50, lexicalK: 10, lexicalCutoff: 0.50, lexicalMinCoverage: 0.6, fusion: rrf(60),
                     normalize: true, destFilter: false, noDiacriticsMode: off,   # hai knob này: 2026-10-05, §2.2
-                    negationFilter: false, taxonomyFilter: false, routeFilter: false, numericFilter: false }   # 2026-10-05, QUERY PLAN §2.2
+                    negationFilter: false, taxonomyFilter: false, routeFilter: false, numericFilter: false,   # 2026-10-05, QUERY PLAN §2.2
+                    toneNormalize: false, taxonomyStrongOnly: false, partyFilter: false,                     # 2026-10-06, §2.2
+                    fuzzyK: 0, fuzzyCandidateK: 50, fuzzyMinSim: 0.75, rrfWeights: { dense: 1, lexical: 1, fuzzy: 1 },
+                    logQueries: false }                                                                      # 2026-10-06, §7.3
 similar:          { mode: ANN_CANDIDATE_SCORE, topK: 20 }
 recommendations:  { mode: ANN_CANDIDATE_SCORE, candidateK: 200 }
 ```
@@ -280,6 +315,8 @@ chạy offline trong test).
 | **Soft** | `starRatingMin` | 51% | Thiếu dữ liệu **không bị loại**, chỉ xếp sau |
 | **Hard** suy từ câu (05/10, sau cờ, §2.2 QUERY PLAN) | `taxonomy` (F4), `origin` / `destinationCity` tuyến bay (F5), `mustNotAmenities` (F3), `priceMin/priceMax` (F6) | taxonomy 100 % · tuyến 100 % · amenities 99 % property · giá 100 % | Loại thẳng; `mustNot` chỉ loại unit **có ghi nhận** tiện ích, không cam kết "chắc chắn không có" ([C2]); giá null bị loại khi có lọc giá |
 | **Soft** suy từ câu (05/10) | `starRatingMin` (F6) | 70 % property | Unit khai sao thấp hơn bị loại; không khai → giữ, xếp sau |
+| **Hard** số khách (06/10) | `minOccupancy` — `travelContext.guests` (luôn áp) hoặc "N người" (cờ `SEARCH_PARTY_FILTER`) | sức chứa biết ở 1.807/2.321 khách sạn | Loại unit có sức chứa tối đa < tổng; không khai → giữ ([C2]); cùng lọc giá → một phòng con phải thoả cả hai |
+| **Hard** loại trừ suy từ câu (06/10, F3) | `mustNotTaxonomies` ("vé lẻ", "không lấy combo"), `mustNotFlags` (`includesFlight` / `includesHotel` của combo) | taxonomy 100 % · cờ combo 39/39 combo vé+phòng | Loại thẳng; không loại chính loại câu đang hỏi |
 
 Response echo `appliedFilters.hard` và `.soft`. Agent **phải đọc** khối này: nếu
 `starRatingMin` nằm trong `soft`, Agent không được nói với người dùng "khách sạn
@@ -695,6 +732,12 @@ lọc, danh sách `productId` trả về, `strategy`, `cutoff`, `topScore`,
 
 **Không được:** JWT, `X-Service-Token`, email hoặc số điện thoại đầy đủ.
 
+**Ghi `app.search_logs` (từ 2026-10-06, cờ `SEARCH_LOG_QUERIES`, mặc định tắt; kiến trúc §11):** route `/search` ghi một dòng
+cho trang đầu của câu thật — `query`, `filters` (taxonomy/destination của request + `appliedFilters.hard` + `queryPlan.confidence`),
+`result_product_ids`, `result_count`, `model_version`, `latency_ms`, `cdp_user_id` chỉ khi request đã xác thực (token lỗi → NULL,
+không 401). Ghi ngoài đường request (hàng đợi 1.000 dòng, một luồng ghi), lỗi ghi không bao giờ lên response. Bảng này là nguồn
+head query cho prewarm (§2.2) và cho hole detection / gold mới (bench).
+
 ### 7.4. Versioning
 
 - Thêm field hoặc thêm giá trị enum là tương thích ngược, được phép trong `v1`.
@@ -806,9 +849,12 @@ Bốn tiêu chí **20, 21, 22, 23** là quan trọng nhất trong cả danh sác
 | S8 | ~~`EXACT_FILTER_SCORE` cần duyệt lại~~ — **đã chốt 24/09/2026, hướng (b)** | Đổi cam kết `total`/`facets` thành xấp xỉ trên tập ứng viên, khai báo qua `approximate`/`totalExact`/`facetsExact`. `/similar`, `/recommendations` chạy `ANN_CANDIDATE_SCORE`; `/search` chạy `HYBRID_CANDIDATE_SCORE` từ 25/09 (§2.4). |
 | S9 | `lexicalK` / `lexicalCutoff` / `lexicalMinCoverage` của hybrid chưa benchmark | Dùng `10` / `0.50` / `0.6`; đo ở cổng S2 của bench (`docs/spec/bench/arms.md`) trên gold, kèm slice `named_entity`, `no_diacritics`, `out_of_catalog` |
 | S10 | Bảng viết tắt, cụm kiểu đi và ngưỡng sửa chính tả của bước chuẩn hoá chưa benchmark | Dùng bảng trong `domain/search/normalize.py`; đo trên slice `abbrev_typo`, `audience_style` (bench Part 6, cổng S3/S6). Bảng backend là nguồn cho `config/aliases.yaml` của bench |
-| S12 | Từ vựng tiện ích và cue phủ định (`domain/search/amenities.py`, `constraints.py`, F3) chưa benchmark | Dùng bảng trong code; cờ `SEARCH_NEGATION_FILTER` tắt; đo trên gold v4 (slice phủ định) bằng Forbidden@10 và `filter_recall_loss` của bench |
-| S13 | Bảng cue loại sản phẩm + guard thương hiệu (F4) chưa benchmark; bật sẽ đổi số đếm tab của Web | Cờ `SEARCH_TAXONOMY_FILTER` tắt; đo `cross_vertical`, `named_entity` và slice lẫn loại của gold v4; bật cần ý kiến Web |
-| S14 | Mẫu giá/sao và vai trò nơi đi/đến (F5/F6) chưa benchmark | Cờ `SEARCH_ROUTE_FILTER` / `SEARCH_NUMERIC_FILTER` tắt; đo `multi_constraint` và slice chiều bay của gold v4 (direction accuracy); tham số request tường minh vẫn áp theo contract |
+| S12 | Từ vựng tiện ích và cue phủ định (F3) — **đã đo 06/10** trên gold_v4 + nhãn máy chưa duyệt (`src/evaluation/reports/eval-2026-10-06-search-query-plan-gold-v4.md`): `amenity_negation` nDCG@10 0,316 → 0,776, Forbidden@10 0,539 → 0,225 (một mình) / 0 (tổ hợp F1–F6); bỏ F3 khỏi tổ hợp LOSE (−5,2) | Cờ `SEARCH_NEGATION_FILTER` vẫn tắt tới khi người dùng chốt bật (đề xuất: bật). Danh sách tiện ích nguồn dừng ở 60 chuỗi ở một số khách sạn → tiện ích bị loại trừ có thể vắng (Data) |
+| S13 | Bảng cue loại sản phẩm + guard thương hiệu (F4) — **đã đo 06/10**: `taxonomy_collision` +21,8; cue chỗ nghỉ giữ 99–100 % item đúng (dev/test), tên điểm vui chơi 47–73 % → yếu (`WEAK_VERTICAL_CUES`); chỉ-cue-mạnh thua F4 đủ 1,0 (TIE); bỏ F4 khỏi tổ hợp → Forbidden 0,065. Bật đổi số đếm tab của Web | Cờ `SEARCH_TAXONOMY_FILTER` tắt; đề xuất bật **cần ý kiến Web**; `SEARCH_TAXONOMY_STRONG_ONLY` giữ tắt |
+| S14 | Mẫu giá/sao và vai trò nơi đi/đến (F5/F6) — **đã đo 06/10**: chiều bay 0,11 → 1,00; constraint precision 0,79 → 0,92 (0,96 trong tổ hợp); nDCG TIE từng phần, bỏ khỏi tổ hợp làm hỏng guard | Cờ `SEARCH_ROUTE_FILTER` / `SEARCH_NUMERIC_FILTER` tắt tới khi chốt (đề xuất: bật); tham số request tường minh vẫn áp theo contract |
+| S15 | Kênh fuzzy tên, RRF trọng số, chuẩn hoá dấu thanh, lọc số khách suy từ câu (1.16.0) — đo 06/10: fuzzy −0,5 (ngưỡng 0,75) / −1,2 (0,6); lexical weight 0,5 +1,2 trên F1–F6 (TIE dev/test cùng chiều); tone 0,0; party −0,4 — gold gần như không có câu dấu thanh lệch / số khách | Giữ tắt (`SEARCH_FUZZY_K=0`, trọng số 1,0, `SEARCH_TONE_NORMALIZE` / `SEARCH_PARTY_FILTER` false); cần gold riêng trước khi bật |
+| S16 | Ngưỡng kết quả yếu trên e5 (S2) — đo 06/10 trên dev/test: margin **0,058** chặn 3/3 + 4/4 câu ngoài catalog, gắn weak nhầm 9–12 % câu trong catalog (0,06: 14–16 %); cutoff tuyệt đối không chặn câu ngoài catalog nào | Client dùng margin 0,058 khi người dùng chốt; S2 giữ "chưa chốt" (7 câu ngoài catalog, nền tính trên cả catalog) |
+| S17 | Ghi `app.search_logs` (`SEARCH_LOG_QUERIES`) chưa chạy trên Postgres thật; LLM fallback cho câu độ tin cậy thấp là lệch PRD | Cờ tắt; đề xuất `docs/prd/update/2026-10-06-search-llm-fallback-query-plan.md` chờ chốt, không code |
 | S11 | Kích thước cache vector truy vấn (10.000), danh sách prewarm (131 câu gold_v1 + head query `app.search_logs` — bảng này chưa có code ghi) và pacing 2.000 câu/phút chưa đo | Dùng mặc định trong `core/config.py`; đo hit/miss bằng `sb latency http` (bench Part 9) trên Cloud; đổi số qua biến môi trường `SEARCH_EMBED_CACHE_*`, `SEARCH_PREWARM_*` |
 
 S5 là phụ thuộc nặng nhất: không duyệt `[P3]` thì tiêu chí nghiệm thu 26 không

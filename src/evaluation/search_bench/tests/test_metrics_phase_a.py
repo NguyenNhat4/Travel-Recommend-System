@@ -1,5 +1,7 @@
 """Phase A (05/10) — metric forbidden / direction / filter_pass / parse_ok trên items tự dựng (không Weaviate, không fixture
-gold_small). Công thức tính tay ghi ở comment; None-safety của aggregate và thứ tự ưu tiên gold > forbidden_overrides."""
+gold_small). Công thức tính tay ghi ở comment; None-safety của aggregate và thứ tự ưu tiên gold > forbidden_overrides.
+06/10: parse_ok theo 11 trường PARSE_FIELDS và quy tắc đọc queryPlan mới của `plan_fields`; forbidden_v3.yaml đã chuyển vào
+config/query_annotations.yaml (test của file nhãn theo câu: test_annotations.py)."""
 from __future__ import annotations
 
 import json
@@ -99,15 +101,20 @@ def test_filter_pass(ctx):
 # ------------------------------------------------------------------ parse_ok
 EXTRA = {"queryPlan": {"taxonomy": {"value": "hotel", "source": "query"},
                        "route": {"origin": "Buôn Ma Thuột", "destinationCity": "Hà Nội", "direction": "explicit", "source": "query"},
-                       "mustNot": {"amenities": ["spa", "pool"], "brands": []},
+                       "mustNot": {"amenities": ["spa", "pool"], "brands": ["Vinpearl"], "taxonomies": ["golf"]},
                        "price": {"min": None, "max": 2000000, "source": "query"},
-                       "star": {"min": 4, "source": "query"}},
+                       "star": {"min": 4, "source": "query"},
+                       "party": {"total": 4}},
+         "derivedDestinations": ["Buôn Ma Thuột", "Hà Nội"],
          "appliedFilters": {"hard": {"destination": "Côn Đảo", "destinationSource": "query"}, "soft": {}}}
 
 
 def test_parse_ok_fields(ctx):
-    expected = {"taxonomy": "Hotel", "destination": "Con Dao", "origin": "buon ma thuot", "destination_city": "Hà Nội",
-                "must_not": ["pool", "spa"], "price_max": 2000000.0, "price_min": None, "star_min": 4.0}
+    # destination = route.destinationCity khi parse ra tuyến bay (appliedFilters / destinationFilter không còn được đọc)
+    expected = {"taxonomy": "Hotel", "destination": "Ha Noi", "origin": "buon ma thuot", "destination_city": "Hà Nội",
+                "must_not": ["pool", "spa"], "must_not_brands": ["vinpearl"], "must_not_taxonomies": ["Golf"],
+                "price_max": 2000000.0, "price_min": None, "star_min": 4.0, "party_total": 4}
+    assert set(expected) == set(M.PARSE_FIELDS)
     row = M.evaluate_query(gq(expected_parse=expected), ["h_pool"], ctx, extra=EXTRA)
     assert json.loads(row["parse_ok"]) == {f: True for f in M.PARSE_FIELDS}
     # chỉ so trường gold nêu; sai một trường
@@ -119,11 +126,55 @@ def test_parse_ok_fields(ctx):
     assert M.evaluate_query(gq(expected_parse={"taxonomy": "hotel"}), ["h_pool"], ctx)["parse_ok"] is None
 
 
-def test_plan_fields_destination_fallback():
-    extra = {"queryPlan": {"applied": []}, "destinationFilter": {"source": "query", "value": "Hạ Long"}}
-    got = M.plan_fields(extra)
+def test_plan_fields_destination_and_taxonomy_rules():
+    # không có tuyến bay → địa danh duy nhất của derivedDestinations (destinationFilter / appliedFilters không được đọc:
+    # parser được chấm độc lập với cờ filter của arm)
+    one = {"queryPlan": {"applied": []}, "derivedDestinations": ["Hạ Long"], "destinationFilter": {"source": "query", "value": "X"}}
+    got = M.plan_fields(one)
     assert got["destination"] == "Hạ Long" and got["taxonomy"] is None and got["must_not"] == [] and got["price_max"] is None
+    assert got["must_not_brands"] == [] and got["must_not_taxonomies"] == [] and got["party_total"] is None
+    # 0 hoặc ≥ 2 địa danh → None
+    assert M.plan_fields({"queryPlan": {}, "derivedDestinations": ["Hạ Long", "Hà Nội"]})["destination"] is None
+    assert M.plan_fields({"queryPlan": {}, "appliedFilters": {"hard": {"destination": "Hạ Long"}}})["destination"] is None
+    # có tuyến bay (kể cả chỉ origin) → destination = route.destinationCity, bỏ qua derivedDestinations
+    route = {"queryPlan": {"route": {"origin": "Cần Thơ", "destinationCity": None, "direction": "origin_only"}},
+             "derivedDestinations": ["Cần Thơ"]}
+    assert M.plan_fields(route)["destination"] is None and M.plan_fields(route)["origin"] == "Cần Thơ"
+    # route bị skipped (không có thành phố) không tính là tuyến
+    skipped = {"queryPlan": {"route": {"skipped": "ambiguous", "source": "none"}}, "derivedDestinations": ["Đà Nẵng"]}
+    assert M.plan_fields(skipped)["destination"] == "Đà Nẵng"
+    # taxonomy chỉ khi source query / param
+    for src, want in (("query", "golf"), ("param", "golf"), ("none", None), (None, None)):
+        assert M.plan_fields({"queryPlan": {"taxonomy": {"value": "golf", "source": src}}})["taxonomy"] == want
     assert M.plan_fields(None) is None and M.plan_fields({"appliedFilters": {}}) is None
+
+
+@pytest.mark.parametrize("field, a, b, same", [
+    ("taxonomy", "Khách Sạn", "khach san", True),
+    ("destination", "", None, True),                       # chuỗi rỗng ≡ không parse ra
+    ("destination", "Hà Nội", None, False),
+    ("must_not", None, [], True),                          # danh sách: None ≡ rỗng
+    ("must_not", ["spa", "pool"], ["Pool", "SPA"], True),
+    ("must_not_brands", ["vinpearl"], [], False),
+    ("price_max", 2000000.0, 2000000, True),               # giá → int
+    ("price_min", 1999999.6, 2000000, True),
+    ("party_total", 4.0, 4, True),
+    ("star_min", 4, 4.0, True),                            # sao → float
+    ("star_min", 4.5, 4, False),
+    ("party_total", None, None, True),
+])
+def test_canon_parse(field, a, b, same):
+    assert (M.canon_parse(field, a) == M.canon_parse(field, b)) is same
+
+
+def test_parse_ok_null_expected_means_parser_found_nothing(ctx):
+    extra = {"queryPlan": {"taxonomy": {"value": None, "source": "none", "skipped": "multi"}}, "derivedDestinations": ["Hà Nội"]}
+    exp = {"taxonomy": None, "origin": None, "must_not": [], "must_not_taxonomies": None, "party_total": None,
+           "destination": "Hà Nội"}
+    row = M.evaluate_query(gq(expected_parse=exp), ["h_pool"], ctx, extra=extra)
+    assert json.loads(row["parse_ok"]) == {f: True for f in exp}
+    row = M.evaluate_query(gq(expected_parse={"party_total": 2, "must_not_taxonomies": ["golf"]}), ["h_pool"], ctx, extra=extra)
+    assert json.loads(row["parse_ok"]) == {"party_total": False, "must_not_taxonomies": False}
 
 
 # ------------------------------------------------------------------ aggregate
@@ -228,12 +279,23 @@ def test_forbidden_overrides_skip_gold_with_explicit_ids():
     assert gold[1].forbidden_filter == {"eq": ["taxonomy", "attraction"]}
 
 
-def test_shipped_forbidden_v3_is_valid_and_matches_catalog_cities():
+def test_shipped_annotations_keep_forbidden_v3_entries_and_match_catalog_cities():
+    """8 mục forbidden_v3.yaml (05/10) đã chuyển nguyên văn vào query_annotations.yaml (06/10); file có thể có thêm câu."""
     from evaluation.search_bench import paths
-    over = M.load_forbidden_overrides(paths.PKG_DIR / "config" / "forbidden_v3.yaml")
-    assert set(over) == {"c0241", "c0244", "c0247", "c0250", "c0253", "c0373", "c0070", "c0088"}
+    ann = M.load_annotations(paths.PKG_DIR / "config" / "query_annotations.yaml")
+    over = {q: a["forbidden_filter"] for q, a in ann.items() if "forbidden_filter" in a}
+    assert {"c0241", "c0244", "c0247", "c0250", "c0253", "c0373", "c0070", "c0088"} <= set(over)
     assert over["c0241"] == {"contains_any": ["features", ["pool"]]} and over["c0088"] == {"eq": ["taxonomy", "attraction"]}
     # chạy được trên items tự dựng: c0373 cấm tuyến khác BMT→HN, c0070 cấm tuyến không đến Hà Nội
     from evaluation.search_bench.store import filters as F
     assert F.mask(over["c0373"], ITEMS).tolist() == [False, True, True, False, False, False, False]
     assert F.mask(over["c0070"], ITEMS).tolist() == [False, True, False, False, False, False, False]
+
+
+def test_plan_fields_app_arm_without_query_plan_is_empty_parse():
+    """06/10: arm APP có diagnostics nhưng không có queryPlan (parser không ra gì) → plan rỗng, vẫn được chấm parse."""
+    empty = M.plan_fields({"stageMs": {"embed": 1}, "filteredCount": 10})
+    assert empty is not None and empty["taxonomy"] is None and empty["must_not"] == [] and empty["party_total"] is None
+    assert M.plan_fields({"something": 1}) is None and M.plan_fields(None) is None           # không phải arm APP
+    po = M.parse_ok({"taxonomy": "attraction", "destination": None}, {"filteredCount": 3})
+    assert po == {"taxonomy": False, "destination": True}
