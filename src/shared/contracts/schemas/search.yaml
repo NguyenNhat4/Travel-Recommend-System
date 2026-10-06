@@ -216,7 +216,7 @@ EngineDiagnostics:
         embed:
           type: integer
           minimum: 0
-          description: 'Embed truy vấn qua Cohere (input_type search_query).'
+          description: 'Tạo vector câu truy vấn (e5-small local, tiền tố query:).'
         dense:
           type: integer
           minimum: 0
@@ -233,13 +233,13 @@ EngineDiagnostics:
           type: integer
           minimum: 0
           description: 'Dựng các ProductSummary của trang trả về.'
-    # Cache vector truy vấn trong bộ nhớ backend (từ 2026-09-30, contract 1.12.0; NFR-PERF-03: Cohere vượt ngân sách thì
-    # cache vector của truy vấn lặp lại). Chỉ có ở /search; vắng khi SEARCH_EMBED_CACHE=false.
+    # Cache vector truy vấn trong bộ nhớ backend (từ 2026-09-30, contract 1.12.0; NFR-PERF-03: cache vector của truy vấn
+    # lặp lại). Chỉ có ở /search; vắng khi SEARCH_EMBED_CACHE=false.
     embedCache:
       type: string
       enum: [hit, miss]
       description: >-
-        hit = vector của câu (sau chuẩn hoá) lấy từ cache, không gọi Cohere; miss = gọi Cohere rồi ghi cache. Không đổi
+        hit = vector của câu (sau chuẩn hoá) lấy từ cache, không chạy model; miss = chạy model embedding rồi ghi cache. Không đổi
         kết quả hay thứ tự — chỉ stageMs.embed khác nhau. Khoá cache là chuỗi đã chuẩn hoá và gộp khoảng trắng, nên
         "KS ở NT" và "khách sạn ở Nha Trang" dùng chung một vector.
     # Chuẩn hoá truy vấn /search (bước 1, từ 2026-09-25): viết tắt, chính tả tên riêng, tên điểm đến về dạng chuẩn,

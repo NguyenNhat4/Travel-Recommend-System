@@ -34,7 +34,7 @@ _WS = re.compile(r"\s+")
 
 def canonical_query(text: str) -> str:
     """Gộp khoảng trắng — chuỗi duy nhất đi vào embed / BM25 và làm khoá cache vector truy vấn (không fold hoa/thường/dấu:
-    Cohere embed hai dạng đó khác nhau, không được gộp)."""
+    model embed hai dạng đó khác nhau, không được gộp)."""
     return _WS.sub(" ", text).strip()
 
 

@@ -1210,7 +1210,7 @@ export interface components {
             stageMs?: {
                 /** @description Chuẩn hoá truy vấn: viết tắt, chính tả tên riêng, tên điểm đến. */
                 normalize?: number;
-                /** @description Embed truy vấn qua Cohere (input_type search_query). */
+                /** @description Tạo vector câu truy vấn (e5-small local, tiền tố query:). */
                 embed?: number;
                 /** @description Dựng bộ lọc cấu trúc và truy vấn top-K theo vector ở Weaviate. */
                 dense?: number;
@@ -1222,7 +1222,7 @@ export interface components {
                 hydrate?: number;
             };
             /**
-             * @description hit = vector của câu (sau chuẩn hoá) lấy từ cache, không gọi Cohere; miss = gọi Cohere rồi ghi cache. Không đổi kết quả hay thứ tự — chỉ stageMs.embed khác nhau. Khoá cache là chuỗi đã chuẩn hoá và gộp khoảng trắng, nên "KS ở NT" và "khách sạn ở Nha Trang" dùng chung một vector.
+             * @description hit = vector của câu (sau chuẩn hoá) lấy từ cache, không chạy model; miss = chạy model embedding rồi ghi cache. Không đổi kết quả hay thứ tự — chỉ stageMs.embed khác nhau. Khoá cache là chuỗi đã chuẩn hoá và gộp khoảng trắng, nên "KS ở NT" và "khách sạn ở Nha Trang" dùng chung một vector.
              * @enum {string}
              */
             embedCache?: "hit" | "miss";

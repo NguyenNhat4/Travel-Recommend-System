@@ -134,7 +134,7 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
     try:
         if vector_store is None:
             from src.backend.app.domain.catalog import TEXT_BUILDER_VERSION
-            from src.backend.app.infrastructure.embeddings.cohere_embedder import CohereEmbedder
+            from src.backend.app.infrastructure.embeddings.factory import build_embedder
             from src.backend.app.infrastructure.vectors.weaviate_store import (
                 WeaviateVectorSearch,
                 WeaviateVectorStore,
@@ -142,16 +142,10 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
             )
 
             if embedder is None:
-                embedder = CohereEmbedder(
-                    settings.cohere_api_key,
-                    settings.embed_model,
-                    base_url=settings.cohere_base_url,
-                    dimension=settings.embed_dimension,
-                    timeout_seconds=settings.cohere_timeout_seconds,
-                )
+                embedder = build_embedder(settings)  # e5-small chạy local (PRD FR-SRC-02)
                 owns_embedder = True
                 if settings.search_embed_cache:
-                    # Cache vector truy vấn (NFR-PERF-03, contract 1.12.0 `embedCache`) bọc quanh client Cohere dùng chung:
+                    # Cache vector truy vấn (NFR-PERF-03, contract 1.12.0 `embedCache`) bọc quanh embedder dùng chung:
                     # RecsysRefresher truyền lại object này mỗi lần nạp catalog nên cache sống qua reload.
                     from src.backend.app.application.search.query_cache import CachingQueryEmbedder, QueryEmbeddingCache
 
@@ -230,13 +224,13 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
 
 #: Chưa nạp được lần nào (database chưa seed, Weaviate chưa index…) thì thử lại sớm, không chờ trọn chu kỳ.
 RECSYS_RETRY_SECONDS = 30.0
-#: Shutdown chờ prewarm đang chạy tối đa chừng này rồi mới đóng client Cohere (prewarm kiểm `stop` giữa hai lô).
+#: Shutdown chờ prewarm đang chạy tối đa chừng này rồi mới đóng embedder (prewarm kiểm `stop` giữa hai lô).
 PREWARM_SHUTDOWN_WAIT_SECONDS = 10.0
 
 
 def prewarm_from_settings(settings, services: dict, stop: threading.Event):
     """Nạp sẵn cache vector truy vấn: file câu gold (`SEARCH_PREWARM_FILE`, tương đối theo src/backend) + head query của
-    `app.search_logs`. Chạy trong thread (Cohere sync); `stop` cắt giữa hai lô khi shutdown."""
+    `app.search_logs`. Chạy trong thread (model chạy đồng bộ); `stop` cắt giữa hai lô khi shutdown."""
     from src.backend.app.application.search.prewarm import prewarm, read_query_file
     from src.backend.app.infrastructure.persistence.postgres_search_logs import PostgresSearchLogReader
 
@@ -256,7 +250,7 @@ def prewarm_from_settings(settings, services: dict, stop: threading.Event):
 class RecsysRefresher:
     """Nạp lại engine recsys theo chu kỳ để giá, trạng thái và cửa sổ ngày theo kịp job cào.
 
-    Client Cohere/Weaviate dùng chung giữa các lần nạp; request đang chạy giữ use case của bản cũ nên không
+    Embedder/client Weaviate dùng chung giữa các lần nạp; request đang chạy giữ use case của bản cũ nên không
     client nào bị đóng giữa chừng. Lần nạp lại lỗi thì giữ bản đang phục vụ thay vì tắt recsys.
     """
 
@@ -316,7 +310,7 @@ class RecsysRefresher:
             logger.warning("search.prewarm.failed error=%s", exc)
 
     async def wait_prewarm(self, timeout: float = PREWARM_SHUTDOWN_WAIT_SECONDS) -> None:
-        """Shutdown: chờ prewarm dừng (đã nhận `stop`) trước khi đóng client Cohere dùng chung."""
+        """Shutdown: chờ prewarm dừng (đã nhận `stop`) trước khi đóng embedder dùng chung."""
         if self._prewarm_task is None:
             return
         try:

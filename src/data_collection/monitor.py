@@ -8,7 +8,7 @@ Chỉ nghe 127.0.0.1 và từ chối Host khác localhost (chống DNS rebinding
   ssh -L 8765:127.0.0.1:8765 <user>@<vm>
 Monitor đọc file của các lượt (không đọc DB), ghi đúng bốn thứ: settings.json (Cấu hình), stop.request (Dừng),
 live_control.json (tạm dừng / đổi delay từng nguồn khi lượt đang chạy) và tiến trình fresh_catalog.py khi bấm Chạy. Hai chỗ
-gọi ra ngoài, chỉ khi người vận hành bấm: đọc vector từ Weaviate và ô thử truy vấn (gọi Cohere một lần, xếp hạng cosine trên
+gọi ra ngoài, chỉ khi người vận hành bấm: đọc vector từ Weaviate và ô thử truy vấn (embed bằng e5-small, xếp hạng cosine trên
 vector của collection đích). Không bao giờ trả giá trị secret: biến kết nối chỉ báo đã đặt hay chưa.
 """
 from __future__ import annotations
@@ -1852,10 +1852,11 @@ class FreshMonitor:
             return cached
 
     def embed_query(self, run_id: str, query: str, k: int = 10, refresh: bool = False) -> dict:
-        """Thử truy vấn: Cohere `search_query` → xếp hạng cosine trên mọi vector của collection đích (đọc qua REST)."""
+        """Thử truy vấn: e5-small (tiền tố `query: `) → xếp hạng cosine trên mọi vector của collection đích (đọc qua REST).
+        Model nạp một lần ở lần bấm đầu (vài giây), giữ cho các lần sau."""
         ensure_backend_path()
         import numpy as np
-        from src.backend.app.infrastructure.embeddings.cohere_embedder import CohereEmbedder
+        from src.backend.app.infrastructure.embeddings.factory import build_embedder
         from src.backend.jobs.embed_products import vector_preview
         query = (query or "").strip()
         if not query or len(query) > EMBED_QUERY_MAX:
@@ -1863,13 +1864,10 @@ class FreshMonitor:
         k = max(1, min(int(k), 50))
         settings = self._index_settings()
         started = time.monotonic()
-        embedder = CohereEmbedder(settings.cohere_api_key, settings.embed_model, base_url=settings.cohere_base_url,
-                                  dimension=settings.embed_dimension, timeout_seconds=settings.cohere_timeout_seconds)
-        try:
-            vector = np.asarray(embedder.embed_query(query), dtype=np.float32).reshape(-1)
-        finally:
-            embedder.close()
-        cohere_ms = round((time.monotonic() - started) * 1000)
+        if getattr(self, "_query_embedder", None) is None:
+            self._query_embedder = build_embedder(settings)
+        vector = np.asarray(self._query_embedder.embed_query(query), dtype=np.float32).reshape(-1)
+        embed_ms = round((time.monotonic() - started) * 1000)
         data = self._collection_vectors(settings, refresh)
         if not data["ids"]:
             raise ValueError(f"Collection {settings.weaviate_collection} chưa có vector nào")
@@ -1893,7 +1891,7 @@ class FreshMonitor:
                          "name": info.get("name"), "taxonomy": info.get("taxonomy"), "destination": info.get("destination"),
                          "text": (info.get("text") or info.get("description") or "")[:300], "inRun": pid in names})
         return {"query": query, "k": k, "collection": settings.weaviate_collection, "vectors": len(data["ids"]),
-                "models": dict(data["models"]), "cohereMs": cohere_ms, "queryVector": vector_preview(vector),
+                "models": dict(data["models"]), "embedMs": embed_ms, "queryVector": vector_preview(vector),
                 "hits": hits}
 
 
@@ -2083,7 +2081,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(routes[url.path]())
         except (ValueError, KeyError, fresh_settings.SettingsError) as e:
             return self._json({"error": str(e)}, 400)
-        except Exception as e:  # lỗi gọi Weaviate/Cohere…: báo gọn thay vì đóng kết nối
+        except Exception as e:  # lỗi gọi Weaviate/model…: báo gọn thay vì đóng kết nối
             return self._json({"error": f"{type(e).__name__}: {str(e)[:300]}"}, 502)
         return self._json({"error": "không tìm thấy"}, 404)
 
@@ -2164,7 +2162,7 @@ class Handler(BaseHTTPRequestHandler):
                                                            int(body.get("k") or 10), bool(body.get("refresh"))))
         except (ValueError, UnicodeDecodeError, fresh_settings.SettingsError) as e:
             return self._json({"error": str(e)}, 400)
-        except Exception as e:  # lỗi gọi Cohere/Weaviate: báo gọn
+        except Exception as e:  # lỗi model/Weaviate: báo gọn
             return self._json({"error": f"{type(e).__name__}: {str(e)[:300]}"}, 502)
         return self._json({"error": "không tìm thấy"}, 404)
 

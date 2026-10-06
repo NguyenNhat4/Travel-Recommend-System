@@ -210,7 +210,7 @@ update:
 	npm --prefix src/frontend install
 	echo "Đã cập nhật dependency."
 
-# Job tốn quota Cohere nên không tự chạy trong demo-db. Cần COHERE_API_KEY trong .env.
+# Embed toàn catalog bằng e5-small trên CPU (vài phút) nên không tự chạy trong demo-db.
 index-vectors:
 	docker compose up -d --wait postgres weaviate
 	$(PYTHON) -m src.backend.jobs.embed_products

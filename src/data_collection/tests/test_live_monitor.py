@@ -758,9 +758,9 @@ class EmbedTests(Workspace):
                    'models': {'m:v2': 3}}
         vectors['norms'] = np.linalg.norm(vectors['matrix'], axis=1)
         monitor.ensure_backend_path()
-        settings = SimpleNamespace(cohere_api_key='k', embed_model='embed-multilingual-v3.0', cohere_base_url='x',
-                                   embed_dimension=3, cohere_timeout_seconds=1, weaviate_collection='ProductCrawl')
-        with patch('src.backend.app.infrastructure.embeddings.cohere_embedder.CohereEmbedder', Embedder), \
+        settings = SimpleNamespace(embed_model='intfloat/multilingual-e5-small', embed_dimension=3,
+                                   weaviate_collection='ProductCrawl')
+        with patch('src.backend.app.infrastructure.embeddings.factory.build_embedder', lambda settings: Embedder()), \
                 patch.object(self.monitor, '_index_settings', return_value=settings), \
                 patch.object(self.monitor, '_collection_vectors', return_value=vectors):
             result = self.monitor.embed_query(RUN_ID, 'resort gần biển', 2)

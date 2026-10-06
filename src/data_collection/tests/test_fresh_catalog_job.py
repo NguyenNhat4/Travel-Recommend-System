@@ -635,13 +635,15 @@ class IndexSettingsTests(unittest.TestCase):
                                  WEAVIATE_URL='http://localhost:8080', WEAVIATE_API_KEY='', COHERE_API_KEY='k')
         self.assertEqual((settings.database_url, settings.weaviate_url), ('postgresql://seed', 'http://localhost:8080'))
 
-    def test_missing_key_or_invalid_url_is_reported_by_name(self):
-        with self.assertRaisesRegex(ValueError, 'COHERE_API_KEY'):
-            self.settings(DB_TARGET='cloud', CLOUD_SEED_DATABASE_URL='postgresql://seed',
-                          CLOUD_WEAVIATE_URL='https://abc.weaviate.cloud', COHERE_API_KEY='')
+    def test_missing_variable_or_invalid_url_is_reported_by_name(self):
+        # e5-small chạy trong image: không cần khoá embedding (PRD FR-SRC-02, chốt 06/10).
+        local = self.settings(DB_TARGET='cloud', CLOUD_SEED_DATABASE_URL='postgresql://seed',
+                              CLOUD_WEAVIATE_URL='https://abc.weaviate.cloud')
+        self.assertEqual((local.embed_model, local.weaviate_collection), ('intfloat/multilingual-e5-small', 'ProductE5Small'))
+        with self.assertRaisesRegex(ValueError, 'CLOUD_WEAVIATE_URL'):
+            self.settings(DB_TARGET='cloud', CLOUD_SEED_DATABASE_URL='postgresql://seed')
         with self.assertRaises(ValueError):
-            self.settings(DB_TARGET='local', SEED_DATABASE_URL='postgresql://seed',
-                          WEAVIATE_URL='ftp://weaviate', COHERE_API_KEY='k')
+            self.settings(DB_TARGET='local', SEED_DATABASE_URL='postgresql://seed', WEAVIATE_URL='ftp://weaviate')
 
 
 class ManualComboMappingTests(unittest.TestCase):

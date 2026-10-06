@@ -49,7 +49,7 @@ gantt
 ### Giai Đoạn 2: Lõi Dịch Vụ Nghiệp Vụ & Tìm Kiếm Ngữ Nghĩa (Core Services & Semantic Search)
 - **Hạng mục công việc:**
   - Triển khai cấu trúc Clean Architecture cho Backend (`domain`, `application`, `infrastructure`, `api`).
-  - Xây dựng job embed: gọi Cohere `embed-multilingual-v3.0` (`input_type=search_document`) và ghi vector vào collection `Product` của Weaviate; bỏ qua sản phẩm có `textHash` không đổi.
+  - Xây dựng job embed: embed bằng `multilingual-e5-small` (tiền tố `passage: `) và ghi vector vào collection của Weaviate; bỏ qua sản phẩm có `textHash` không đổi.
   - Viết logic tìm kiếm lai (Hybrid Search) bằng `hybrid` của Weaviate (BM25 + vector, tham số `alpha`).
   - Triển khai phân hệ xác thực tài khoản (đăng ký, đăng nhập, phiên).
 - **Đầu ra then chốt:** API `/api/v1/search` phản hồi kết quả tìm kiếm ngữ nghĩa chính xác với thời gian $\le 250\text{ ms}$.

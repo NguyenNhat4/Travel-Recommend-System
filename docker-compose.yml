@@ -71,7 +71,6 @@ services:
       AUTH_SERVICE_TOKEN: ${AUTH_SERVICE_TOKEN:-}
       # BFF gọi từ máy host qua cổng publish: peer là gateway của mạng Docker.
       TRUSTED_PROXIES: ${BACKEND_TRUSTED_PROXIES:-127.0.0.1/32,172.16.0.0/12}
-      COHERE_API_KEY: ${COHERE_API_KEY:-}
       # Dev dùng Weaviate local của compose (deployment-plan.md §1), không lấy WEAVIATE_URL/khoá của máy host.
       # Môi trường dùng cluster chung thì đặt BACKEND_WEAVIATE_URL và BACKEND_WEAVIATE_API_KEY.
       WEAVIATE_URL: ${BACKEND_WEAVIATE_URL:-http://weaviate:8080}
@@ -138,7 +137,7 @@ services:
       start_period: 3s
 
   # Weaviate — vector sản phẩm (collection `Product`, 1024 chiều, HNSW cosine).
-  # vectorizer: none — backend tự gọi Cohere rồi tự ghi vector, nên Weaviate KHÔNG giữ COHERE_API_KEY
+  # vectorizer: none — backend tự embed bằng e5-small rồi tự ghi vector, Weaviate không tự vector hoá
   # và không có module text2vec nào được bật (docs/prd/architecture.md §5).
   # Volume weaviate_data tách khỏi pgdata: `make demo-db` dựng lại Postgres không đụng tới vector.
   weaviate:

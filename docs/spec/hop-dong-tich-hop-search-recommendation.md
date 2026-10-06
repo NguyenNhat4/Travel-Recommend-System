@@ -158,11 +158,11 @@ của `normalize` (chỉ khi bước chuẩn hoá bật), `embed`, `dense` (gồ
 kể cả khi nhánh BM25 lỗi), `fuse` (RRF + cutoff + facets) và `hydrate`. Đo trong engine nên tổng các bước ≤
 `latencyMs` của route. Chỉ `/search` có trường này.
 
-Vector truy vấn được **cache trong tiến trình** (từ 2026-09-30, contract 1.12.0; NFR-PERF-03 yêu cầu cache khi Cohere
-vượt ngân sách): khoá là câu **sau chuẩn hoá và gộp khoảng trắng** (`SearchProducts.query_text`), nên "KS ở NT" và
+Vector truy vấn được **cache trong tiến trình** (từ 2026-09-30, contract 1.12.0; NFR-PERF-03 yêu cầu cache vector của
+truy vấn lặp lại): khoá là câu **sau chuẩn hoá và gộp khoảng trắng** (`SearchProducts.query_text`), nên "KS ở NT" và
 "khách sạn ở Nha Trang" dùng chung một vector; không fold hoa/thường/dấu. `diagnostics.embedCache` = `hit` / `miss`
 (chỉ `/search`; vắng khi `SEARCH_EMBED_CACHE=false`). Cache không đổi kết quả hay thứ tự — chỉ `stageMs.embed` khác.
-LRU `SEARCH_EMBED_CACHE_SIZE` (mặc định 10.000 ≈ 41 MB), single-flight: nhiều request cùng câu chỉ một lượt Cohere.
+LRU `SEARCH_EMBED_CACHE_SIZE` (mặc định 10.000 ≈ 15 MB với e5-small 384 chiều), single-flight: nhiều request cùng câu chỉ embed một lần.
 Sau lần nạp catalog đầu tiên backend **nạp sẵn** cache ở nền (`SEARCH_PREWARM`): file câu gold đóng băng
 `src/backend/data/search_prewarm_queries.txt` (131 câu gold_v1) + head query của `app.search_logs`, pacing
 `SEARCH_PREWARM_INPUTS_PER_MINUTE`; job `python -m src.backend.jobs.prewarm_query_cache --base-url URL` làm nóng một
@@ -195,7 +195,7 @@ Các bất biến dưới đây tính trên tập ứng viên `C`, không phải
 ### 2.4. Chế độ truy xuất — khai báo, không đổi ngầm · `[C4]`
 
 ```yaml
-search:           { mode: HYBRID_CANDIDATE_SCORE, cutoff: 0.62, candidateK: 200,
+search:           { mode: HYBRID_CANDIDATE_SCORE, cutoff: 0.84, candidateK: 200,
                     lexicalCandidateK: 50, lexicalK: 10, lexicalCutoff: 0.50, lexicalMinCoverage: 0.6, fusion: rrf(60),
                     normalize: true }
 similar:          { mode: ANN_CANDIDATE_SCORE, topK: 20 }
@@ -306,7 +306,7 @@ Mọi sản phẩm đều có cosine với mọi truy vấn. Không có cutoff t
 yêu cầu điều đó.
 
 ```yaml
-search.cutoff: 0.62     # PROVISIONAL — benchmark Ngày 3
+search.cutoff: 0.84     # e5-small, hiệu chỉnh trên gold_v4 (06/10)
 ```
 
 Nguồn sự thật duy nhất là `application.yml`. Response trả lại giá trị đã áp
@@ -648,7 +648,7 @@ khác hẳn nhau.
 | `GET /products/{id}/similar` | 300 ms |
 | `GET /recommendations`, cache hit | 300 ms |
 | `GET /recommendations`, cache miss (đọc 500 event từ CDP) | 800 ms |
-| Embed một truy vấn | 60 ms khi `embedCache = miss` (gọi Cohere); hit ≈ 0 ms — từ 30/09 vector truy vấn được cache (§2.2), số đo thật ở `docs/spec/bench/search-eval-results.md` |
+| Embed một truy vấn | p95 ≈ 11 ms khi `embedCache = miss` (e5-small trên CPU laptop; Cohere trước đây ≈ 60 ms, p95 437 ms trên VM); hit ≈ 0 ms — từ 30/09 vector truy vấn được cache (§2.2), số đo thật ở `docs/spec/bench/search-eval-results.md` |
 
 Đo thật 01/10/2026 trên VM (`release-mvp-v2`, contract 1.12.0; Weaviate Cloud ở `eu-central-1`, VM ở `asia-southeast1`):
 `/search` p95 **4,0 s** = dense 1,8 s + BM25 2,1 s nối tiếp (mỗi lượt gửi mask 3.146 id); embed cache hit 0 ms, miss p95 437 ms.
@@ -732,8 +732,8 @@ Team Search cung cấp:
     `party: COUPLE`, `normalizedQuery` chứa "cặp đôi".
 11. p95 dưới 300 ms trên catalog đầy đủ, đo với Weaviate cùng mạng nội bộ (local hoặc cùng region).
     *(Bổ sung 2026-09-29: PRD NFR-PERF-01 đặt ngưỡng chặt hơn, ≤ 250 ms; báo p95 tổng kèm p95 từng bước theo
-    `diagnostics.stageMs` để thấy phần nào là Cohere, phần nào là Weaviate. Bổ sung 2026-09-30: báo p95 riêng cho
-    `embedCache = hit` và `miss`; ngưỡng 250 ms áp cho đường hit, đường miss = hit + một lượt Cohere.)*
+    `diagnostics.stageMs` để thấy phần nào là embed, phần nào là Weaviate. Bổ sung 2026-09-30: báo p95 riêng cho
+    `embedCache = hit` và `miss`; ngưỡng 250 ms áp cho đường hit, đường miss = hit + một lần embed e5-small.)*
 
 ### Similar
 
@@ -779,7 +779,7 @@ Bốn tiêu chí **20, 21, 22, 23** là quan trọng nhất trong cả danh sác
 | S4 | Soft delete chưa duyệt · `[U1]` | `because[].productName` giả định sản phẩm còn hàng trong `products` |
 | S5 | Cache user vector chưa duyệt · `[P3]` | Không cache thì p95 `/recommendations` là 800 ms, không phải 300 ms |
 | S6 | Công thức `popularity_score` chưa chốt · `[C7]` | Tạm dùng `log(1 + review_count)` |
-| S7 | ~~Model embedding chưa chốt~~ — **đã chốt 22/09/2026** | Cohere `embed-multilingual-v3.0`, **1024 chiều**, vector lưu ở Weaviate (không còn pgvector). Xem `docs/prd/architecture.md` §4–§5. Kéo theo S8. |
+| S7 | ~~Model embedding chưa chốt~~ — **đổi 06/10/2026** | `intfloat/multilingual-e5-small`, **384 chiều**, chạy local trong backend, tiền tố `query: ` / `passage: `, collection `ProductE5Small` (thay Cohere `embed-multilingual-v3.0` 1024 chiều chốt 22/09; Cohere bỏ hẳn, không còn đường lui). Xem `docs/prd/architecture.md` §4–§5, `docs/prd/update-archive/2026-10-05-fr-src-02-embedding-local-e5-small.md`, `docs/prd/update-archive/2026-10-06-bo-duong-lui-cohere.md`. Kéo theo S8. |
 | S8 | ~~`EXACT_FILTER_SCORE` cần duyệt lại~~ — **đã chốt 24/09/2026, hướng (b)** | Đổi cam kết `total`/`facets` thành xấp xỉ trên tập ứng viên, khai báo qua `approximate`/`totalExact`/`facetsExact`. `/similar`, `/recommendations` chạy `ANN_CANDIDATE_SCORE`; `/search` chạy `HYBRID_CANDIDATE_SCORE` từ 25/09 (§2.4). |
 | S9 | `lexicalK` / `lexicalCutoff` / `lexicalMinCoverage` của hybrid chưa benchmark | Dùng `10` / `0.50` / `0.6`; đo ở cổng S2 của bench (`docs/spec/bench/arms.md`) trên gold, kèm slice `named_entity`, `no_diacritics`, `out_of_catalog` |
 | S10 | Bảng viết tắt, cụm kiểu đi và ngưỡng sửa chính tả của bước chuẩn hoá chưa benchmark | Dùng bảng trong `domain/search/normalize.py`; đo trên slice `abbrev_typo`, `audience_style` (bench Part 6, cổng S3/S6). Bảng backend là nguồn cho `config/aliases.yaml` của bench |

@@ -1,4 +1,4 @@
-"""Weaviate adapter with self-provided Cohere vectors.
+"""Weaviate adapter with self-provided e5-small vectors (PRD FR-SRC-02).
 
 `WeaviateClient` (REST) phục vụ job `embed_products`; `WeaviateVectorSearch` (client v4, gRPC) phục vụ
 truy vấn top-K mỗi request của Search / Similar / Recommendation.
@@ -116,7 +116,7 @@ class WeaviateClient:
             "/v1/schema",
             json={
                 "class": self.collection,
-                "description": "V-OTA search units indexed with Cohere embed-multilingual-v3.0",
+                "description": "V-OTA search units with self-provided vectors (model in modelVersion)",
                 "vectorizer": "none",
                 "vectorIndexType": self.vector_index_type,
                 "vectorIndexConfig": {"distance": "cosine"},
@@ -140,7 +140,7 @@ class WeaviateClient:
                 self._client.post(f"/v1/schema/{self.collection}/properties", json=prop).raise_for_status()
 
     def patch_properties(self, object_id: str, properties: dict) -> None:
-        """Ghi thêm/đè property, giữ nguyên vector — backfill BM25 cho object đã index mà không gọi Cohere."""
+        """Ghi thêm/đè property, giữ nguyên vector — backfill BM25 cho object đã index mà không embed lại."""
         response = self._client.patch(
             f"/v1/objects/{self.collection}/{object_id}",
             json={"class": self.collection, "id": object_id, "properties": properties},

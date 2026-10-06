@@ -14,7 +14,7 @@ Hai điểm bám theo quy tắc repo:
 
 `PostgresCatalogReader` là phần dùng chung cho job index Weaviate và adapter runtime. `PostgresVectorStore`
 được giữ làm fallback/test offline (quét vector trong RAM qua `NumpyVectorSearch`); composition root mặc
-định dùng Cohere + Weaviate theo PRD.
+định dùng e5-small + Weaviate theo PRD.
 """
 from __future__ import annotations
 

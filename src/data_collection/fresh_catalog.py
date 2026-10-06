@@ -815,7 +815,7 @@ def index_settings(db_target: str):
         values = {'database_url': os.environ.get('DATABASE_URL') or os.environ['SEED_DATABASE_URL']}
         required = {}
     settings = Settings(**values)
-    required['COHERE_API_KEY'] = settings.cohere_api_key
+    # e5-small chạy trong image (PRD FR-SRC-02): bước index không cần khoá embedding nào.
     missing = [name for name, value in required.items() if not value]
     if missing:
         raise ValueError(f'Thiếu biến cho bước index: {", ".join(missing)}')
@@ -825,7 +825,7 @@ def index_settings(db_target: str):
 
 def index_catalog(settings, detail_path: Path | None = None) -> dict:
     # Đọc lại đúng DB vừa ghi, ghi vào Weaviate của cùng đích; runtime API vẫn dùng role chỉ đọc của nó.
-    # detail_path: text gửi Cohere, hash, hành động và vài chiều đầu của vector từng sản phẩm, cho monitor.
+    # detail_path: text đem embed, hash, hành động và vài chiều đầu của vector từng sản phẩm, cho monitor.
     from src.backend.jobs.embed_products import run
     print("catalog.index.start", flush=True)
     report = run(settings=settings, detail_path=detail_path)
@@ -850,8 +850,8 @@ def check_local_only(db_target: str, db_url: str, index_config) -> None:
             problems.append(f'{name} trỏ tới {parsed.hostname or "?"} (không phải localhost)')
         if name != 'WEAVIATE_URL' and parsed.path.lstrip('/') in ('', 'vota'):
             problems.append(f'{name} dùng database "{parsed.path.lstrip("/") or "mặc định"}" của backend local')
-    if index_config is not None and index_config.weaviate_collection == 'Product':
-        problems.append('WEAVIATE_COLLECTION=Product là collection của backend local')
+    if index_config is not None and index_config.weaviate_collection in ('Product', 'ProductE5Small'):
+        problems.append(f'WEAVIATE_COLLECTION={index_config.weaviate_collection} là collection của backend local')
     if problems:
         raise ValueError('Chế độ local chặn lượt này: ' + '; '.join(problems))
 
