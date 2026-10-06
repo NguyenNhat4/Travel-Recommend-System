@@ -465,12 +465,10 @@ export const ItineraryMap: React.FC<ItineraryMapProps> = ({
         easeLinearity: 0.25
       });
 
-      // 2. Thêm hiệu ứng pulse tỏa sáng (ripple effect) tại vị trí đó
+      // 2. Một vòng ping quanh marker sẵn có (không vẽ thêm chấm, tránh chồng hiệu ứng)
       const pulseHtml = `
-        <div class="relative flex items-center justify-center -translate-x-1/2 -translate-y-1/2 pointer-events-none">
-          <div class="absolute w-12 h-12 rounded-full bg-blue-500/30 animate-ping"></div>
-          <div class="absolute w-8 h-8 rounded-full bg-blue-600/40 animate-pulse"></div>
-          <div class="w-4 h-4 rounded-full bg-blue-600 border-2 border-white shadow-lg"></div>
+        <div class="relative flex h-full w-full items-center justify-center pointer-events-none">
+          <div class="absolute h-10 w-10 rounded-full bg-blue-500/30 animate-ping motion-reduce:animate-none"></div>
         </div>
       `;
 

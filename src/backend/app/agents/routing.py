@@ -3,7 +3,8 @@ from .state import AgentState
 
 
 def route_after_classify(state: AgentState) -> str:
-    return {"simple": "converse", "travel": "extract", "error": "dead_letter"}.get(state.get("decision"), "dead_letter")
+    return {"simple": "converse", "travel": "extract", "missing_info": "clarify",
+            "error": "dead_letter"}.get(state.get("decision"), "dead_letter")
 
 
 def route_after_extract(state: AgentState) -> str:

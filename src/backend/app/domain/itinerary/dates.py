@@ -17,6 +17,8 @@ _WORDS = re.compile(r"(?<!\d)(\d{1,2})\s*(?:tháng|thang|thg)\s*(\d{1,2})(?:\s*(
                     + _NOT_A_DATE_AFTER, re.IGNORECASE)
 _NUMERIC = re.compile(r"(?<![\d/.\-])(\d{1,2})\s*([/.\-])\s*(\d{1,2})(?:\s*\2\s*(\d{4}|\d{2}))?(?![\d/.\-])"
                       + _NOT_A_DATE_AFTER, re.IGNORECASE)
+#: Thời lượng dạng gói "3 ngày 2 đêm", "3n2d", "2N1Đ": cần cả phần đêm, để "2 ngày nữa" (ngày tương đối) không lọt vào.
+_PACKAGE = re.compile(r"(?<!\d)(\d{1,2})\s*(?:ngày|ngay|n)\s*\d{1,2}\s*(?:đêm|dem|đ|d)(?!\w)", re.IGNORECASE)
 
 
 def this_year(value: date, today: date) -> date:
@@ -35,6 +37,15 @@ def _build(day: str, month: str, year: str | None, today: date) -> date | None:
         return this_year(date(full_year, int(month), int(day)), today)
     except ValueError:
         return None
+
+
+def stated_days(text: str) -> int | None:
+    """Số ngày của thời lượng dạng gói "N ngày M đêm"/"NnMd" đầu tiên trong `text`: là N, kể cả khi M không phải N-1.
+
+    Theo quy ước của AC-AGT-01 ("3 ngày 2 đêm" là lịch 3 ngày). Không có dạng gói thì `None`; "3 ngày" trơn để LLM hiểu.
+    """
+    match = _PACKAGE.search(text or "")
+    return int(match.group(1)) if match else None
 
 
 def explicit_dates(text: str, today: date) -> list[date]:

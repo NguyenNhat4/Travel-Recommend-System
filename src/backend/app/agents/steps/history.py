@@ -87,8 +87,8 @@ def llm_context(state: dict[str, Any], *, intent: dict[str, Any] | None = None,
     """Ngữ cảnh hội thoại chung cho MỌI lượt gọi LLM của graph, đã diễn giải sẵn thay cho bản dump thô.
 
     - `trip_so_far`: chuyến đi đã biết trong một dòng, kèm trường còn thiếu; `stage`: đã gửi lịch trình hay đang hỏi.
-    - `conversation_history`: tin người dùng giữ nguyên văn; tin trợ lý là ghi chú theo nghĩa (`turn_notes`), không
-      còn cả bài lịch trình kèm giá — thứ khiến LLM chép giá/khách sạn cũ thành ràng buộc mới.
+    - `conversation_history`: mỗi mục một khoá theo người nói — `user` nguyên văn, `assistant_did` là ghi chú theo
+      nghĩa (`turn_notes`), không còn cả bài lịch trình kèm giá — thứ khiến LLM chép giá/khách sạn cũ thành ràng buộc mới.
     - `last_assistant_message`: câu cuối của trợ lý, nguyên văn khi ngắn (câu hỏi lại) để hiểu câu trả lời ngắn
       ("1 ngày thôi") là trả lời cho câu nào; lịch trình thì là ghi chú.
     - `known_constraints`, `previous_selection`: ràng buộc đã chốt và sản phẩm đã cho xem (id để loại/đổi món).
@@ -96,8 +96,9 @@ def llm_context(state: dict[str, Any], *, intent: dict[str, Any] | None = None,
     Node truyền `intent`/`constraints` khi đã có bản mới hơn state (ví dụ điểm đến đã chuẩn hóa ở `tool`).
     """
     raw = sanitize_conversation_history(state.get("conversation_history", []))
-    history = [{"role": "assistant", "content": _assistant_line(item)} if item["role"] == "assistant"
-               else {"role": "user", "content": item["content"]} for item in raw]
+    # Mỗi mục một khoá theo người nói: cặp `role`/`content` phẳng làm LLM đọc nhầm ghi chú trợ lý thành lời người dùng.
+    history = [{"assistant_did": _assistant_line(item)} if item["role"] == "assistant" else {"user": item["content"]}
+               for item in raw]
     last = next((item for item in reversed(raw) if item["role"] == "assistant"), None)
     last_text = None
     if last is not None:

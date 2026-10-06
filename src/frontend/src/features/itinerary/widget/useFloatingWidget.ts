@@ -150,9 +150,9 @@ export function useFloatingWidget() {
     }
   }, [isOpen]);
 
-  // Close widget when navigating to checkout
+  // Đóng widget khi sang thanh toán hoặc giỏ hàng (toast "Xem giỏ"): widget phủ toàn màn hình nên không đóng thì che mất trang.
   useEffect(() => {
-    if (currentRoute.startsWith('/checkout')) {
+    if (currentRoute.startsWith('/checkout') || currentRoute.startsWith('/cart')) {
       setIsOpen(false);
       setIsExpanded(false);
     }
@@ -170,9 +170,9 @@ export function useFloatingWidget() {
     setInputVal(promptText);
   };
 
-  // Xác nhận form gợi ý: đặt câu yêu cầu hoàn chỉnh vào ô nhập để người dùng đọc lại, sửa rồi mới gửi — không tự gửi.
+  // Xác nhận form gợi ý: gửi ngay câu yêu cầu hoàn chỉnh (PRD user-flow.md, AC-AGT-01).
   const handleConfirmTripDetails = (prompt: string) => {
-    setInputVal(prompt);
+    handleSendMessage(prompt);
   };
 
 

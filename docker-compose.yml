@@ -49,7 +49,8 @@ services:
       APP_PORT: 8000
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      MODEL_NAME: ${MODEL_NAME:-gpt-4o-mini}
+      ITINERARY_LLM_MODEL: ${ITINERARY_LLM_MODEL:-}
+      ITINERARY_LLM_REASONING_EFFORT: ${ITINERARY_LLM_REASONING_EFFORT:-}
       # fixture | inprocess | http | disabled (xem .env.example). Compose giữ fixture để chạy được khi RecSys chưa nạp.
       ITINERARY_DATA_MODE: ${ITINERARY_DATA_MODE:-fixture}
       ITINERARY_TOOL_TIMEOUT_SECONDS: ${ITINERARY_TOOL_TIMEOUT_SECONDS:-1}

@@ -65,7 +65,7 @@ lập tool plan và viết chữ.
 .venv/bin/python -m pytest -q src/backend/tests                                      # trước khi bàn giao
 PYTHONDONTWRITEBYTECODE=1 python3 src/shared/contracts/tests/validate_contract.py   # đổi contract/mock
 .venv/bin/python -m pytest -q src/evaluation/tests/test_golden.py                  # sửa dataset golden
-.venv/bin/python -m src.evaluation.agent.golden --only G-0NN --repeat 3            # LLM thật: docs/spec/agent/golden-run.md
+.venv/bin/python -m src.evaluation.agent.golden --only TC-NN                     # LLM thật: docs/spec/agent/golden-run.md
 cd src/frontend && node_modules/.bin/vitest run && node_modules/.bin/tsc --noEmit  # sửa widget
 ```
 

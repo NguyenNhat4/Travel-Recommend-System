@@ -57,12 +57,16 @@ def _invalid_for_llm(state: dict) -> list[dict]:
 
 
 def _form_shown(state: dict) -> bool:
-    """Câu hỏi kèm `clarificationForm`: đã hỏi một lượt mà vẫn thiếu điểm đến/số ngày.
+    """Câu hỏi kèm `clarificationForm`: đã hỏi một lượt mà vẫn thiếu trường bắt buộc (`suggest_form`), hoặc giá trị
+    không hợp lệ ở lượt đã hỏi một lần mà vẫn thiếu điểm đến/số ngày.
 
     Không kèm khi đang hỏi chọn điểm đến theo loại ("đi biển"): form điền sẵn điểm đến đầu catalog, có thể không hợp loại.
     """
-    if state.get("clarification_reason") == "destination_kind":
+    reason = state.get("clarification_reason")
+    if reason == "destination_kind":
         return False
+    if reason == "suggest_form":
+        return True
     return state.get("clarification_rounds", 0) >= 2 and bool({"destination", "days"} & set(state.get("missing_fields") or []))
 
 
