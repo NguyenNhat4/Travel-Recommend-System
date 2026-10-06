@@ -142,6 +142,8 @@ export class MemorySessionStore implements SessionStore {
   }
 }
 
+const SESSION_STORE_LOG_INTERVAL_MS = 60_000;
+
 // Một store cho cả tiến trình; giữ trên globalThis để HMR của `next dev` không mở thêm kết nối.
 const globalStore = globalThis as unknown as { __votaSessionStore?: SessionStore; __votaSessionStoreReady?: Promise<SessionStore> };
 
@@ -163,7 +165,22 @@ export function getSessionStore(): Promise<SessionStore> {
     return globalStore.__votaSessionStoreReady;
   }
   const client = createClient({ url });
-  client.on('error', (error) => log.error('bff.session.store', { outcome: 'error', error }));
+  // Redis sập thì client retry liên tục: ghi lần lỗi đầu, rồi gộp mỗi 60 giây kèm số lần lỗi; ghi lại khi kết nối trở lại.
+  let failing = 0;
+  let lastLogged = 0;
+  client.on('error', (error) => {
+    failing += 1;
+    const now = Date.now();
+    if (failing === 1 || now - lastLogged >= SESSION_STORE_LOG_INTERVAL_MS) {
+      log.error('bff.session.store', { outcome: 'error', count: failing, error });
+      lastLogged = now;
+    }
+  });
+  client.on('ready', () => {
+    if (failing > 0) log.info('bff.session.store.recovered', { outcome: 'ok', failed_events: failing });
+    failing = 0;
+    lastLogged = 0;
+  });
   globalStore.__votaSessionStoreReady = client.connect().then(() => {
     globalStore.__votaSessionStore = new RedisSessionStore(client as RedisClient);
     return globalStore.__votaSessionStore;

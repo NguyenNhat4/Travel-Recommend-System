@@ -11,8 +11,17 @@
 #   docker compose up -d --wait postgres redis
 #
 # db/init/*.sql chỉ chạy khi volume pgdata còn trống. Tạo lại từ đầu: docker compose down -v && docker compose up -d --wait postgres
+# Giới hạn log container (json-file): mỗi container tối đa 5 x 50 MB. Không đặt thì Docker giữ log vô hạn và làm đầy đĩa VM;
+# Ops Agent đã đẩy log lên Cloud Logging nên đĩa chỉ cần giữ đệm.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+
 services:
   postgres:
+    logging: *default-logging
     # Không còn cần pgvector: vector đã chuyển sang Weaviate (db/migrations/0002_drop_product_vectors.sql).
     image: postgres:16
     environment:
@@ -33,6 +42,7 @@ services:
       retries: 20
       start_period: 10s
   backend:
+    logging: *default-logging
     build:
       context: .
       dockerfile: Dockerfile.backend
@@ -102,6 +112,7 @@ services:
       - "${BACKEND_PORT:-8000}:8000"
 
   frontend:
+    logging: *default-logging
     build:
       context: .
       dockerfile: src/frontend/Dockerfile.web
@@ -130,6 +141,7 @@ services:
   # Redis — session, rate-limit counter, OAuth state (auth §16.1). Chỉ phần PHÙ DU:
   # mất khi restart thì người dùng chỉ phải đăng nhập lại. Refresh token và login attempts nằm ở Postgres.
   redis:
+    logging: *default-logging
     image: redis:7-alpine
     # noeviction, KHÔNG allkeys-lru: eviction theo LRU sẽ ngẫu nhiên đá người dùng ra khi bộ nhớ đầy.
     command: >-
@@ -151,6 +163,7 @@ services:
   # và không có module text2vec nào được bật (docs/prd/architecture.md §5).
   # Volume weaviate_data tách khỏi pgdata: `make demo-db` dựng lại Postgres không đụng tới vector.
   weaviate:
+    logging: *default-logging
     image: cr.weaviate.io/semitechnologies/weaviate:1.27.0
     command: ["--host", "0.0.0.0", "--port", "8080", "--scheme", "http"]
     environment:
