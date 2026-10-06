@@ -27,6 +27,8 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
+import log
+import pipeline_graph as graph
 from collectors.live_control import FILE_NAME as LIVE_FILE
 
 RUN_FILE = "run.json"
@@ -89,6 +91,24 @@ class Tee:
             except (ValueError, OSError):
                 pass
         return len(text)
+
+    def stream_only(self, text: str) -> None:
+        """Chỉ ra luồng gốc (stdout container): dòng JSON của log.py. job.log không đổi."""
+        with self.lock:
+            try:
+                self.stream.write(text)
+                self.stream.flush()
+            except (ValueError, OSError):
+                pass
+
+    def file_only(self, text: str) -> None:
+        """Chỉ vào job.log (có giờ đầu dòng): bản text mà monitor đọc, tương ứng dòng JSON ở `stream_only`."""
+        with self.lock:
+            try:
+                self.handle.write(datetime.now().strftime("%H:%M:%S ") + text)
+                self.handle.flush()
+            except (ValueError, OSError):
+                pass
 
     def flush(self) -> None:
         try:
@@ -191,6 +211,7 @@ class RunRecorder:
         }
         self._t0 = time.monotonic()
         self._base_seconds = 0
+        self._resume_at = None
 
     @classmethod
     def resume(cls, run_dir: Path, state_dir: Path, *, from_step: str, trigger: str) -> "RunRecorder":
@@ -210,6 +231,7 @@ class RunRecorder:
             "from": from_step, "at": now_iso(), "trigger": trigger, "previousStatus": data.get("status"),
             "previousError": data.get("error"), "previousSeconds": data.get("seconds")}]
         rec._base_seconds = data.get("seconds") or 0
+        rec._resume_at = rec.data["resumes"][-1]["at"]
         return rec
 
     # -- vòng đời
@@ -222,6 +244,8 @@ class RunRecorder:
         self._saved_streams = (sys.stdout, sys.stderr)
         sys.stdout = Tee(sys.stdout, self._log_handle, lock)
         sys.stderr = Tee(sys.stderr, self._log_handle, lock)
+        self._resumed = bool(self.data.get("resumes")) and self.data["resumes"][-1].get("at") == self._resume_at
+        log.configure(run_id=self.data["id"], flow="resume" if self._resumed else self.data["mode"])
         self.save()
         self._thread = threading.Thread(target=self._heartbeat, name="run-heartbeat", daemon=True)
         self._thread.start()
@@ -254,6 +278,7 @@ class RunRecorder:
             sys.stdout.flush()
             sys.stdout, sys.stderr = self._saved_streams
             self._saved_streams = None
+        log.configure(reset=True)
         if self._log_handle:
             self._log_handle.close()
             self._log_handle = None
@@ -274,12 +299,13 @@ class RunRecorder:
             if request is not None and not self.stop_event.is_set() \
                     and request.get("runId") in (None, "", self.data["id"]):
                 self.stop_event.set()
-                print(f"catalog.stop.requested at={request.get('requestedAt')} — dừng các tiến trình con", flush=True)
+                log.say(f"catalog.stop.requested at={request.get('requestedAt')} — dừng các tiến trình con",
+                        severity="WARNING")
                 try:
                     killed = terminate_children()
-                    print(f"catalog.stop.children killed={killed}", flush=True)
+                    log.say(f"catalog.stop.children killed={killed}", severity="WARNING", killed=killed)
                 except Exception as exc:  # không để luồng nhịp sống chết vì lỗi dừng
-                    print(f"catalog.stop.failed {type(exc).__name__}: {exc}", flush=True)
+                    log.say(f"catalog.stop.failed {type(exc).__name__}: {exc}", severity="ERROR")
             try:
                 self.save()
             except OSError:
@@ -299,7 +325,12 @@ class RunRecorder:
         with self.lock:
             self.data["steps"].append(entry)
             self.save()
-        print(f"catalog.step.start name={name}" + (f" group={group}" if group else ""), flush=True)
+        src = graph.SOURCE_BY_STEP.get(name)
+        source = src.key if src else (name.split(":", 1)[1] if name.startswith(graph.NORMALISE_SOURCE) else None)
+        step_ctx = log.scope(step=name, source=source)
+        step_ctx.__enter__()
+        log.emit("step.start", f"catalog.step.start name={name}" + (f" group={group}" if group else ""),
+                 group=group)
         try:
             yield entry["detail"]
         except BaseException as exc:
@@ -320,7 +351,15 @@ class RunRecorder:
             entry["seconds"] = round(time.monotonic() - started, 1)
             with self.lock:
                 self.save()
-            print(f"catalog.step.done name={name} status={entry['status']} seconds={entry['seconds']}", flush=True)
+            counts = {k: v for k, v in entry["detail"].items() if k in ("records", "rows", "total") and isinstance(v, int)}
+            log.emit("step.end", f"catalog.step.done name={name} status={entry['status']} seconds={entry['seconds']}",
+                     "ERROR" if entry["status"] in ("error", "failed", "timeout", "blocked") else
+                     "WARNING" if entry["status"] == "stopped" else "INFO",
+                     group=group, duration_ms=round(entry["seconds"] * 1000), status=entry["status"],
+                     records=counts.get("records", counts.get("rows", counts.get("total"))),
+                     error_kind=entry.get("errorKind"),
+                     error={"type": entry["error"].split(":")[0], "message": entry["error"]} if entry.get("error") else None)
+            step_ctx.__exit__(None, None, None)
 
     def set_counts(self, **counts) -> None:
         with self.lock:

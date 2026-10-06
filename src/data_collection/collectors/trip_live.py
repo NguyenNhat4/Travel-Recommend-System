@@ -21,6 +21,7 @@ from urllib.parse import urlencode
 from curl_cffi.requests import AsyncSession
 from playwright.async_api import async_playwright
 
+import log
 from . import live_control
 from .common import BrowserOptions, BrowserSession, Paths, StateDB, now_iso
 from .plan import DEFAULT_BUDGET, Destination
@@ -143,9 +144,11 @@ async def fetch_metadata(targets: list[dict], stay: tuple[str, str], run_dir: Pa
                 try:
                     response = await session.get(url, headers=HEADERS, allow_redirects=True)
                     ok = response.status_code == 200 and 'hotelDetailResponse' in response.text
-                    print(f'Trip meta {hotel_id} lần {attempt + 1}: HTTP {response.status_code} · '
-                          f'{round((time.monotonic() - started) * 1000)} ms · {len(response.content)} B'
-                          + ('' if ok else ' · thiếu hotelDetailResponse'), flush=True)
+                    log.say(f'Trip meta {hotel_id} lần {attempt + 1}: HTTP {response.status_code} · '
+                            f'{round((time.monotonic() - started) * 1000)} ms · {len(response.content)} B'
+                            + ('' if ok else ' · thiếu hotelDetailResponse'), event='trip.meta',
+                            severity='INFO' if ok else 'WARNING', source='tripHotels', step='trip-hotels.prices',
+                            http_status=response.status_code, hotel_id=str(hotel_id))
                     if not ok:
                         continue
                     _write_capture(run_dir, hotel_id, f'{stay[0]}.detail', {
@@ -155,7 +158,9 @@ async def fetch_metadata(targets: list[dict], stay: tuple[str, str], run_dir: Pa
                                                         checkin=stay[0], checkout=stay[1], adults=2)
                     return
                 except Exception as exc:
-                    print(f'Trip meta {hotel_id} lần {attempt + 1}: lỗi {type(exc).__name__}: {str(exc)[:160]}', flush=True)
+                    log.say(f'Trip meta {hotel_id} lần {attempt + 1}: lỗi {type(exc).__name__}: {str(exc)[:160]}',
+                            event='trip.meta', severity='WARNING', source='tripHotels', step='trip-hotels.prices',
+                            hotel_id=str(hotel_id))
                     if attempt == 1:
                         break
         out[hotel_id] = None
@@ -297,7 +302,9 @@ async def capture_prices(targets: list[dict], date_pairs: list[tuple[str, str]],
                         'url': url, 'fetchedAt': now_iso(), 'status': status, 'offers': offers,
                         'packets': packets})
                     results[(hotel_id, checkin)] = (status, data, offers, browser_html)
-                    print(f'Trip {hotel_id}@{checkin}: {status}, {offers} offers', flush=True)
+                    log.say(f'Trip {hotel_id}@{checkin}: {status}, {offers} offers', event='trip.price',
+                            source='tripHotels', step='trip-hotels.prices', hotel_id=str(hotel_id),
+                            checkin=str(checkin), offers=offers)
                     jobs.task_done()
             await asyncio.gather(*(worker() for _ in range(min(options.price_workers, jobs.qsize()))))
         finally:
