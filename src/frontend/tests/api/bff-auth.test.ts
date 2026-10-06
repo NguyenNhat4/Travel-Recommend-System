@@ -249,20 +249,25 @@ describe('catch-all proxy', () => {
   });
 
   it('browser abort is answered 499 without an error log; a real network failure stays 502', async () => {
-    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const lines: string[] = [];
+    vi.spyOn(process.stdout, 'write').mockImplementation(((chunk: string | Uint8Array) => {
+      lines.push(String(chunk));
+      return true;
+    }) as typeof process.stdout.write);
+    const upstreamErrors = () => lines.filter((l) => l.includes('"event":"bff.proxy.upstream_error"')).length;
     const controller = new AbortController();
     vi.stubGlobal('fetch', vi.fn(async () => { controller.abort(); throw new DOMException('aborted', 'AbortError'); }));
     const aborted = await proxyGet(new Request(`${ORIGIN}/api/v1/recommendations?k=4`, {
       headers: { 'user-agent': UA }, signal: controller.signal,
     }), ctx('v1/recommendations'));
     expect(aborted.status).toBe(499);
-    expect(errorLog).not.toHaveBeenCalled();
+    expect(upstreamErrors()).toBe(0);
 
     vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('fetch failed'); }));
     const down = await proxyGet(browser('/api/v1/recommendations?k=4'), ctx('v1/recommendations'));
     expect(down.status).toBe(502);
-    expect(errorLog).toHaveBeenCalledTimes(1);
-    errorLog.mockRestore();
+    expect(upstreamErrors()).toBe(1);
+    vi.restoreAllMocks();
   });
 
   it('write without X-CSRF-Token is 403 CSRF_FAILED and never reaches FastAPI', async () => {

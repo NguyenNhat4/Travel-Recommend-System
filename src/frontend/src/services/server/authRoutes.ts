@@ -13,13 +13,13 @@ import {
   errorResponse,
   establishSession,
   loadSession,
-  logAuth,
   publicState,
   requestIdOf,
   sessionCookies,
   withCookies,
   type IssuedTokens,
 } from './bffSession';
+import { hashId, log, routeOf } from '../../lib/logger';
 
 function json(body: unknown, status: number, requestId: string) {
   return new Response(JSON.stringify(body), {
@@ -57,7 +57,7 @@ async function guardWrite(request: Request, requestId: string) {
   const current = loaded.kind === 'active' ? loaded : null;
   const failure = csrfFailure(request, current?.record ?? null);
   if (failure) {
-    logAuth('auth.csrf.failed', { reason: failure, path: new URL(request.url).pathname });
+    log.warn('bff.csrf.rejected', { request_id: requestId, reason: failure, route: routeOf(new URL(request.url).pathname) });
     return { error: errorResponse(403, 'CSRF_FAILED', 'Phiên trang đã cũ. Vui lòng tải lại trang rồi thử lại.', requestId) };
   }
   return { current };
@@ -68,7 +68,10 @@ async function signIn(request: Request, requestId: string, current: Awaited<Retu
   const response = await callBackend('auth/session', {
     method: 'POST', service: true, requestId, clientIp: clientIpOf(request), body: credentials,
   });
-  if (!response.ok) return passThrough(response, requestId);
+  if (!response.ok) {
+    log.info('bff.auth.login', { request_id: requestId, outcome: 'failed', status: response.status });
+    return passThrough(response, requestId);
+  }
   const tokens = (await response.json()) as IssuedTokens;
   // §3.8 dòng F: đang đăng nhập tài khoản khác → đăng xuất tài khoản cũ ở backend trước.
   if (current?.record.refreshToken) {
@@ -77,6 +80,7 @@ async function signIn(request: Request, requestId: string, current: Awaited<Retu
     }).catch(() => undefined);
   }
   const next = await establishSession(request, current ? { sid: current.sid, record: current.record } : null, tokens);
+  log.info('bff.auth.login', { request_id: requestId, outcome: 'ok', user_id_hash: hashId(tokens.user?.userId) });
   return withCookies(json(publicState(next.record), 200, requestId), sessionCookies(next.sid, next.record));
 }
 
@@ -113,6 +117,7 @@ export async function register(request: Request) {
     const created = await callBackend('auth/register', {
       method: 'POST', requestId, clientIp: clientIpOf(request), body: payload,
     });
+    log.info('bff.auth.register', { request_id: requestId, outcome: created.ok ? 'ok' : 'failed', status: created.status });
     if (!created.ok) return passThrough(created, requestId);
     return await signIn(request, requestId, guard.current, { email: payload.email, password: payload.password });
   } catch {
@@ -133,7 +138,7 @@ export async function logout(request: Request) {
       }).catch(() => undefined);
     }
     await destroySession(current.sid, current.record);
-    logAuth('auth.logout', { userId: current.record.user?.userId ?? null, sid: current.sid.slice(0, 8) });
+    log.info('bff.auth.logout', { request_id: requestId, user_id_hash: hashId(current.record.user?.userId) });
   }
   return withCookies(new Response(null, { status: 204, headers: { 'x-request-id': requestId } }), clearedCookies());
 }
