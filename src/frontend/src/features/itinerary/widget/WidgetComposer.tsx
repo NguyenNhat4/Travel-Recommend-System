@@ -63,11 +63,12 @@ export function WidgetComposer({ value, onChange, onSend, busy, onStop, initial 
         <span className="flex items-center gap-1.5 text-xs text-slate-500">
           {initial ? <><Sparkles className="h-3.5 w-3.5 text-blue-600" aria-hidden="true" /> Lên lịch trình cùng AI</> : canStop ? 'Esc để dừng' : 'Enter để gửi · Shift+Enter xuống dòng'}
         </span>
+        {/* `key` riêng: nếu dùng chung một nút DOM, bấm Dừng làm busy=false và nút đổi thành type=submit ngay trong lượt click → form gửi luôn chữ đang gõ. */}
         {canStop ? (
-          <button type="button" onClick={onStop} aria-label="Dừng xử lý" title="Dừng xử lý" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-800 text-white transition hover:bg-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2">
+          <button key="stop" type="button" onClick={onStop} aria-label="Dừng xử lý" title="Dừng xử lý" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-800 text-white transition hover:bg-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2">
             <Square className="h-4 w-4 fill-current" aria-hidden="true" />
           </button>
-        ) : <button type="submit" disabled={!value.trim() || busy} aria-label="Gửi yêu cầu" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500">
+        ) : <button key="send" type="submit" disabled={!value.trim() || busy} aria-label="Gửi yêu cầu" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500">
           <ArrowUp className="h-5 w-5" aria-hidden="true" />
         </button>}
       </div>

@@ -137,7 +137,7 @@ class HistoryTests(unittest.TestCase):
                    {'role': 'assistant', 'content': '**Chuyến đi kéo dài mấy ngày?**\nBạn đi mấy ngày?'}]
         context = llm_context(state(conversation_history=history))
         self.assertEqual(context['last_assistant_message'], 'Bạn đi mấy ngày?')
-        self.assertEqual(context['conversation_history'][1]['content'], 'Bạn đi mấy ngày?')
+        self.assertEqual(context['conversation_history'][1], {'assistant_did': 'Bạn đi mấy ngày?'})
         self.assertEqual(history[1]['content'], '**Chuyến đi kéo dài mấy ngày?**\nBạn đi mấy ngày?')  # bản lưu giữ nguyên
 
 

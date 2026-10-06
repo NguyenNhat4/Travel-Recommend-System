@@ -9,6 +9,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+import log
+
 from fresh_run_log import (HISTORY_FILE, LIVE_FILE, RUNNING_FILE, STOP_FILE, descendants,
                            read_json, write_json, _terminate)
 
@@ -106,7 +108,7 @@ def supervise(command: list[str], state: Path, runs: Path, *, max_seconds: float
             if reason:
                 kill_worker(proc, before_release=lambda: finish_interrupted(
                     state, runs, proc.pid, reason, stopped=requested, lock_held=True))
-                print(f'catalog.supervisor: {reason}', flush=True)
+                log.emit('catalog.supervisor', f'catalog.supervisor: {reason}', 'ERROR', reason=reason)
                 return 5 if requested else 3
             time.sleep(poll)
         if proc.returncode:

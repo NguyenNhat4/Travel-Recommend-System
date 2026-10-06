@@ -595,7 +595,7 @@ class CrawlSitesTests(unittest.TestCase):
         self.assertEqual(trip, ['discover', 'trip-flights', 'trip-attractions', 'prices'])
         self.assertEqual(statuses, {'trip-flights': 0, 'trip-attractions': 0, 'vinpearl': 0,
                                     'booking-hotels': 0, 'agoda-hotels': 0})
-        self.assertEqual(log.count('catalog.group.done'), 4)
+        self.assertEqual(log.count('"event": "catalog.group.done"'), 4)  # log.py: một dòng JSON mỗi sự kiện
 
     def test_one_site_at_a_time_is_the_old_sequential_run(self):
         groups = [('vinpearl', ('vinpearl',)), ('booking', ('booking-hotels',))]

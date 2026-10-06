@@ -49,6 +49,8 @@ export function TripDetailsForm({
   const [options, setOptions] = useState<string[]>([]);
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'empty' | 'error'>('loading');
   const [intent, setIntent] = useState<TripIntent>(form.defaults);
+  // Điểm đến đến từ ô gõ hay từ chip: ô gõ chỉ hiện chữ người dùng tự gõ, chọn chip thì ô để trống (hiện placeholder).
+  const [typedDestination, setTypedDestination] = useState(false);
   const requestRef = useRef<AbortController | null>(null);
   const titleId = useId();
   const today = form.startDateMin ?? new Date().toISOString().slice(0, 10);
@@ -126,20 +128,25 @@ export function TripDetailsForm({
             )}
             {loadState === 'ready' && (
               <div className="flex flex-wrap gap-1.5" aria-label="Điểm đến gợi ý">
-                {options.map((destination) => (
-                  <button key={destination} type="button" disabled={disabled} aria-pressed={intent.destination === destination}
-                    onClick={() => setIntent((prev) => ({ ...prev, destination }))} className={chipClass(intent.destination === destination)}>
+                {options.map((destination) => {
+                  const selected = !typedDestination && intent.destination === destination;
+                  return (
+                  <button key={destination} type="button" disabled={disabled} aria-pressed={selected}
+                    onClick={() => { setTypedDestination(false); setIntent((prev) => ({ ...prev, destination })); }} className={chipClass(selected)}>
                     {destination}
                   </button>
-                ))}
+                  );
+                })}
               </div>
             )}
-            <input type="text" disabled={disabled} value={intent.destination ?? ''}
-              onChange={(event) => setIntent((prev) => ({ ...prev, destination: event.target.value }))}
-              onFocus={() => setIntent((prev) => (
-                // Bấm vào ô gõ khi đang chọn chip: xoá để không còn chip nào hiện đang chọn, tránh nhầm hai lựa chọn cùng lúc.
-                prev.destination && options.includes(prev.destination) ? { ...prev, destination: '' } : prev
-              ))}
+            <input type="text" disabled={disabled}
+              value={typedDestination || !intent.destination || !options.includes(intent.destination) ? intent.destination ?? '' : ''}
+              onChange={(event) => { setTypedDestination(true); setIntent((prev) => ({ ...prev, destination: event.target.value })); }}
+              onFocus={() => {
+                // Bấm vào ô gõ khi đang chọn chip: bỏ chọn chip, tránh nhầm hai lựa chọn cùng lúc.
+                if (typedDestination) return;
+                setIntent((prev) => (prev.destination && options.includes(prev.destination) ? { ...prev, destination: '' } : prev));
+              }}
               placeholder="Hoặc nhập điểm đến khác…"
               className="mt-1.5 w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs outline-hidden focus:ring-1 focus:ring-blue-500" />
           </fieldset>

@@ -18,7 +18,7 @@
 # Tuỳ chọn: PYTHON (mặc định `python`, nên `conda activate vsf`), LOCAL_CRAWL_DB, LOCAL_CRAWL_COLLECTION, LOCAL_CRAWL_DIR
 # (ghi đè từng chỗ riêng lẻ), MONITOR_PORT (8765),
 # SHOW_BROWSER=1 để thấy cửa sổ Chromium (mặc định chạy trong Xvfb, không bật cửa sổ).
-# COHERE_API_KEY đọc từ .env ở gốc repo (backend Settings), script không in giá trị.
+# Bước index embed bằng e5-small local (không cần khoá; model tải về cache Hugging Face lần đầu).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -117,8 +117,6 @@ cmd_setup() {
   load_env
   "$PY" "$REPO/db/migrations/run.py" --database-url "$SEED_DATABASE_URL"
   curl -fsS "$WEAVIATE/v1/.well-known/ready" >/dev/null || die "Weaviate $WEAVIATE chưa sẵn sàng"
-  grep -q '^COHERE_API_KEY=.\+' "$REPO/.env" 2>/dev/null \
-    || echo "Cảnh báo: .env gốc chưa có COHERE_API_KEY — bước index sẽ dừng lượt trước khi cào" >&2
   ls -d "${PLAYWRIGHT_BROWSERS_PATH:-$HOME/.cache/ms-playwright}"/chromium-* >/dev/null 2>&1 \
     || echo "Cảnh báo: chưa thấy Chromium của Playwright — chạy: $PY -m playwright install chromium" >&2
   if [[ ! -f "$WORK/state/settings.json" ]]; then

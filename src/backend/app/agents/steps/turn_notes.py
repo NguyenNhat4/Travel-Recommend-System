@@ -1,15 +1,13 @@
 """Câu ngắn mô tả chuyến đi và từng lượt trợ lý theo nghĩa, dựng bằng luật từ state (không gọi LLM).
 
 LLM đọc lại hội thoại qua các câu này thay vì nguyên văn: lịch trình dài kèm giá bị thay bằng
-"gửi lịch trình Hà Nội 3 ngày: …", câu hỏi lại kèm lý do thật ("không dùng được điểm đến "biển": …").
+"gửi lịch trình Hà Nội 3 ngày" (sản phẩm đã cho xem nằm ở `previous_selection`), câu hỏi lại kèm lý do thật ("không dùng được điểm đến "biển": …").
 Không có giá hay số tiền nào ở đây, để LLM không chép giá của lịch trình cũ thành ràng buộc mới.
 """
 from __future__ import annotations
 
 from .messages import display_date, message, money, party_text
 
-#: Số tên sản phẩm tối đa trong ghi chú một lịch trình; đủ để người dùng nhắc lại "khách sạn đó", "tour kia".
-MAX_NOTE_PRODUCTS = 8
 INTENT_FIELDS = ("destination", "days", "startDate", "party", "budget")
 
 
@@ -65,16 +63,6 @@ def stage(state: dict) -> str:
     return message(state, "stage_start")
 
 
-def _itinerary_names(itinerary: dict) -> list[str]:
-    names = []
-    stay = itinerary.get("stay")
-    if stay and stay.get("product"):
-        names.append(stay["product"]["name"])
-    for day in itinerary.get("days", []):
-        names.extend(slot["product"]["name"] for slot in day.get("slots", []) if slot.get("product"))
-    return list(dict.fromkeys(names))[:MAX_NOTE_PRODUCTS]
-
-
 def _invalid_parts(state: dict) -> list[str]:
     parts = []
     for item in state.get("invalid_inputs") or []:
@@ -127,9 +115,10 @@ def turn_note(state: dict, response: dict, http_status: int) -> str | None:
     destination = (state.get("intent") or {}).get("destination") or ""
     if status == "COMPLETED":
         itinerary = response.get("itinerary") or {}
+        # Không kèm tên sản phẩm: lịch gần nhất đã có ở `previous_selection` (kèm id), lặp lại ở mỗi ghi chú chỉ làm
+        # payload dài và lấn át câu mới nhất của người dùng.
         return message(state, "note_itinerary", destination=destination,
-                       days=(state.get("intent") or {}).get("days") or len(itinerary.get("days", [])),
-                       products=", ".join(_itinerary_names(itinerary)))
+                       days=(state.get("intent") or {}).get("days") or len(itinerary.get("days", [])))
     if status == "NO_RESULTS":
         return message(state, "note_no_results", destination=destination)
     if status == "FALLBACK":

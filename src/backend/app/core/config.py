@@ -15,7 +15,7 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 # "copy .env.example sang .env" đều vấp. Coi rỗng là "không đặt".
 # Chỉ các trường thực sự Optional: trường `str` thường (cdp_service_token, openai_api_key) coi ""
 # là "chưa cấu hình" và vẫn hợp lệ, không được đổi thành None.
-_OPTIONAL_BLANK_IS_NONE = ("itinerary_service_base_url", "itinerary_data_mode")
+_OPTIONAL_BLANK_IS_NONE = ("itinerary_service_base_url", "itinerary_data_mode", "itinerary_llm_reasoning_effort")
 
 
 class Settings(BaseSettings):
@@ -41,15 +41,18 @@ class Settings(BaseSettings):
     langsmith_api_key: str = ""
     langsmith_endpoint: str = "https://api.smith.langchain.com"
     langsmith_project: str = "default"
-    model_name: str = "gpt-4o-mini"
     llm_temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     # false = không dựng client LLM nào; app vẫn khởi động được không cần API key và request
     # itinerary trả 503 LLM_UNAVAILABLE có kiểm soát (hop-dong-tich-hop-itinerary-assistant.md §5.9).
     itinerary_use_llm: bool = True
+    # Model duy nhất của agent; bỏ trống thì mỗi provider dùng mặc định của mình (infrastructure/llm).
     itinerary_llm_model: str | None = None
     # Riêng của agent, không dùng chung llm_temperature (0.7): mọi lời gọi của agent là
     # structured output hoặc tool calling, cần quyết định ổn định.
     itinerary_llm_temperature: float = Field(default=0.0, ge=0.0, le=2.0)
+    # Chỉ áp cho OpenAI. Model reasoning (vd gpt-6-luna) từ chối function tools trên chat completions khi
+    # reasoning bật mặc định (400); đặt "none" để tool calling chạy được. Bỏ trống thì không gửi tham số.
+    itinerary_llm_reasoning_effort: Literal["none", "minimal", "low", "medium", "high"] | None = None
     itinerary_service_base_url: str | None = Field(default=None, pattern=r"^https?://")
     itinerary_data_mode: Literal["fixture", "inprocess", "http", "disabled"] | None = None
     itinerary_tool_timeout_seconds: float = Field(default=10.0, gt=0)
@@ -84,6 +87,8 @@ class Settings(BaseSettings):
     # Local week-1 topology: one PostgreSQL instance, two roles/connections.
     # The app role cannot read cdp.events/profiles; LocalCdpClient cannot access app/catalog.
     database_url: str = "postgresql://vota_app_login:vota@localhost:5432/vota"
+    # Kết nối TRỰC TIẾP tới Postgres (không qua pgbouncer) cho khoá advisory của job đối soát. Trống = dùng database_url.
+    leader_lock_database_url: str = ""
     cdp_database_url: str = "postgresql://cdp_client_login:cdp@localhost:5432/vota"
     cdp_adapter: Literal["local", "http"] = "local"
 
@@ -189,6 +194,19 @@ class Settings(BaseSettings):
     booking_hold_minutes: int = Field(default=30, ge=30)  # Stripe chỉ cho phiên Checkout hết hạn sau ít nhất 30 phút
     payment_max_failed_attempts: int = Field(default=3, ge=1)
     public_web_url: str = "http://localhost:3000"
+    # Chế độ nhiều bản sao sau load balancer (docs/plan/2026-10-05-ha-load-balancing.md §3b). Mặc định tắt để dev và
+    # staging một VM chạy như cũ; compose HA bật cả hai.
+    # - ready_requires_recsys: /health/ready trả 503 khi RecSys chưa nạp được (Weaviate rỗng/không tới được),
+    #   để LB không đưa traffic vào bản sao chỉ trả kết quả rỗng.
+    # - require_shared_backends: từ chối khởi động nếu Weaviate/Redis/Postgres trỏ loopback (mỗi VM một bản riêng thì
+    #   phiên đăng nhập và kết quả tìm kiếm lệch nhau giữa các bản sao).
+    ready_requires_recsys: bool = False
+    # - ready_requires_db: /health/ready thăm dò `SELECT 1` (timeout, cache vài giây) để bản sao mất đường tới DB bị loại.
+    #   Chỉ readiness; liveness/autohealing KHÔNG phụ thuộc DB, kẻo DB gián đoạn làm MIG thay VM vô ích.
+    ready_requires_db: bool = False
+    ready_db_timeout_seconds: float = Field(default=2.0, gt=0)
+    ready_db_cache_seconds: float = Field(default=5.0, ge=0)
+    require_shared_backends: bool = False
     # 0 = tắt job đối soát (test); mặc định 5 phút/lần.
     booking_reconcile_interval_seconds: int = Field(default=300, ge=0)
     # Đặt trực tiếp qua đơn nháp (docs/spec/booking/dat-truc-tiep-theo-don-nhap.md): hiệu lực của một đơn nháp, và thời gian
@@ -219,6 +237,51 @@ class Settings(BaseSettings):
         if isinstance(value, str) and not value.strip():
             return None
         return value
+
+
+_LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
+
+
+#: Cổng pgbouncer chạy sidecar trên mỗi VM (compose HA). Loopback ở cổng này là pooler hợp lệ, khác tunnel SSH 15432.
+POOLER_SIDECAR_PORT = 6432
+
+
+def shared_backend_violations(settings: Settings) -> list[str]:
+    """Biến kết nối đang trỏ sai chỗ cho chế độ nhiều bản sao. Rỗng nếu hợp lệ hoặc không bật chế độ.
+
+    - Weaviate/Redis/Postgres không được là loopback (mỗi VM một bản riêng thì lệch trạng thái), trừ pgbouncer sidecar
+      ở 127.0.0.1:6432 cho DATABASE_URL/CDP_DATABASE_URL.
+    - Có pooler thì khoá leader của job đối soát phải đi DSN trực tiếp tới Postgres (LEADER_LOCK_DATABASE_URL), nếu
+      không khoá advisory mức session rơi vào connection của người khác và mọi bản sao đều tưởng mình là leader.
+    """
+    if not settings.require_shared_backends:
+        return []
+    from urllib.parse import urlparse
+
+    def parsed(value: str):
+        return urlparse(value) if value else None
+
+    def loopback(value: str) -> bool:
+        u = parsed(value)
+        return bool(u) and (u.hostname or "").lower() in _LOOPBACK_HOSTS
+
+    def pooler(value: str) -> bool:
+        u = parsed(value)
+        return loopback(value) and u.port == POOLER_SIDECAR_PORT
+
+    bad = []
+    for name, value in (("WEAVIATE_URL", settings.weaviate_url), ("AUTH_REDIS_URL", settings.auth_redis_url),
+                        ("ITINERARY_REDIS_URL", settings.itinerary_redis_url)):
+        if not value or loopback(value):
+            bad.append(name)
+    for name, value in (("DATABASE_URL", settings.database_url), ("CDP_DATABASE_URL", settings.cdp_database_url)):
+        if not value or (loopback(value) and not pooler(value)):
+            bad.append(name)  # loopback ngoài pooler sidecar = tunnel SSH mà VM của MIG không có
+    uses_pooler = pooler(settings.database_url) or pooler(settings.cdp_database_url)
+    leader = settings.leader_lock_database_url
+    if uses_pooler and (not leader or loopback(leader)):
+        bad.append("LEADER_LOCK_DATABASE_URL")
+    return bad
 
 
 @lru_cache

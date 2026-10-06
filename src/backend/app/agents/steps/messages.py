@@ -1,12 +1,17 @@
 """Câu chữ trả về người dùng, và ba helper mọi node dùng chung: message, event, failure."""
 from __future__ import annotations
 
+import logging
 import re
+from time import perf_counter
 
 from src.backend.app.application.itinerary.contracts import bounds, error_response
 from src.backend.app.application.ports.llm import ChatModelPort
+from src.backend.app.core.logging_config import log_event
 
 from ..state import make_event
+
+logger = logging.getLogger(__name__)
 
 MESSAGES = {
     "vi": {
@@ -62,7 +67,7 @@ MESSAGES = {
         "stage_planned": "đã gửi lịch trình cho chuyến này",
         "stage_collecting": "đang hỏi thông tin chuyến đi, chưa lập lịch trình",
         "stage_start": "đầu hội thoại",
-        "note_itinerary": "gửi lịch trình {destination} {days} ngày: {products}",
+        "note_itinerary": "gửi lịch trình {destination} {days} ngày",
         "note_no_results": "không tìm thấy sản phẩm phù hợp ở {destination}",
         "note_fallback": "gửi vài sản phẩm tham khảo ở {destination}, chưa dựng được lịch trình",
         "fallback_title": "Chưa dựng được lịch trình hoàn chỉnh",
@@ -255,7 +260,7 @@ MESSAGES = {
         "stage_planned": "an itinerary has been sent for this trip",
         "stage_collecting": "still collecting trip details, no itinerary yet",
         "stage_start": "start of the conversation",
-        "note_itinerary": "sent a {days}-day itinerary for {destination}: {products}",
+        "note_itinerary": "sent a {days}-day itinerary for {destination}",
         "note_no_results": "found no matching products in {destination}",
         "note_fallback": "sent a few candidate products in {destination}, no itinerary built",
         "fallback_title": "Could not build a complete itinerary",
@@ -467,8 +472,56 @@ def failure(state: dict, code: str, text: str, status: int = 503, retryable: boo
             "http_status": status, "decision": "error"}
 
 
+class _LoggedStructured:
+    """Bọc `with_structured_output(X)`: ghi `assistant.llm.call` (schema, thời gian, kết quả), không ghi prompt hay
+    câu trả lời thô (docs/spec/logging-schema.md §4). Mọi thuộc tính khác chuyển thẳng cho runnable gốc."""
+
+    def __init__(self, inner, schema):
+        self._inner, self._schema = inner, getattr(schema, "__name__", str(schema))
+
+    def _log(self, started: float, outcome: str) -> None:
+        log_event(logger, "assistant.llm.call", "INFO" if outcome == "ok" else "WARNING", schema=self._schema,
+                  duration_ms=round((perf_counter() - started) * 1000, 1), outcome=outcome)
+
+    def invoke(self, *args, **kwargs):
+        started = perf_counter()
+        try:
+            result = self._inner.invoke(*args, **kwargs)
+        except BaseException as exc:
+            self._log(started, type(exc).__name__)
+            raise
+        self._log(started, "ok")
+        return result
+
+    async def ainvoke(self, *args, **kwargs):
+        started = perf_counter()
+        try:
+            result = await self._inner.ainvoke(*args, **kwargs)
+        except BaseException as exc:  # gồm CancelledError khi quá hạn `asyncio.wait_for`
+            self._log(started, type(exc).__name__)
+            raise
+        self._log(started, "ok")
+        return result
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
+class _LoggedModel:
+    __slots__ = ("_llm",)
+
+    def __init__(self, llm):
+        self._llm = llm
+
+    def with_structured_output(self, schema, *args, **kwargs):
+        return _LoggedStructured(self._llm.with_structured_output(schema, *args, **kwargs), schema)
+
+    def __getattr__(self, name):
+        return getattr(self._llm, name)
+
+
 def chat_model(llm: ChatModelPort | None) -> ChatModelPort:
     """Model do composition root truyền vào; thiếu thì node ghi LLM_UNAVAILABLE như khi provider lỗi."""
     if llm is None:
         raise RuntimeError("LLM chưa được cấu hình cho graph")
-    return llm
+    return _LoggedModel(llm)

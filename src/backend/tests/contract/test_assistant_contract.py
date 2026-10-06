@@ -48,9 +48,10 @@ PRODUCT = {
 
 
 def extraction(**patch) -> Extraction:
-    # Đủ chi tiết chuyến đi (ngày: chưa chốt; số người; ngân sách) để lượt đầu không dừng ở câu hỏi gộp.
-    patch = {"party": {"type": "SOLO", "adults": 1, "children": 0}, "budget": 5_000_000, **patch}
-    return Extraction(start_date_undecided=True, patch=patch)
+    # Đủ chi tiết chuyến đi (ngày đi, số người, ngân sách) để lượt đầu không dừng ở câu hỏi gộp hay form.
+    patch = {"startDate": "2999-10-10", "party": {"type": "SOLO", "adults": 1, "children": 0}, "budget": 5_000_000,
+             **patch}
+    return Extraction(patch=patch)
 
 
 class ScriptedLlm:

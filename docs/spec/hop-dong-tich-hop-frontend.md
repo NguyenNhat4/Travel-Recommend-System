@@ -612,8 +612,7 @@ xuất hiện từ lượt hỏi thứ hai trở đi khi vẫn còn thiếu `des
 (`clarificationForm.defaults`) ngay dưới câu trả lời của trợ lý, cho từng `clarificationForm.fields`. Ô điểm đến chỉ liệt kê vài
 lựa chọn tiêu biểu (gọi `GET /destinations`, sắp theo `productCount`, lấy top 8 — không đổ hết catalog). Form chặn tại chỗ: số
 ngày trong khoảng 1–7 (`TripIntent.days`), `startDate` không sớm hơn `clarificationForm.startDateMin`. Bấm **Xác nhận** dựng một
-câu yêu cầu hoàn chỉnh từ giá trị trên form và **đặt vào ô nhập tin nhắn (không tự gửi)** — người dùng đọc lại, sửa nếu muốn rồi
-gửi như một lượt chat bình thường; không dùng `intentOverride`. Component: `src/frontend/src/components/assistant/TripDetailsForm.tsx`.
+câu yêu cầu hoàn chỉnh từ giá trị trên form và **gửi ngay** như một lượt chat bình thường; không dùng `intentOverride`. Component: `src/frontend/src/components/assistant/TripDetailsForm.tsx`.
 
 #### `NO_RESULTS`
 

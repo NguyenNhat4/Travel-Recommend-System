@@ -134,8 +134,9 @@ ITINERARY_USE_LLM=true          # false: không dựng client nào, không cần
 OPENAI_API_KEY=                 # thứ tự chọn provider: GEMINI -> OPENAI -> ANTHROPIC
 GEMINI_API_KEY=
 ANTHROPIC_API_KEY=
-ITINERARY_LLM_MODEL=            # bỏ trống: OpenAI dùng MODEL_NAME, provider khác dùng mặc định
+ITINERARY_LLM_MODEL=            # biến model duy nhất; bỏ trống: mỗi provider dùng mặc định
 ITINERARY_LLM_TEMPERATURE=0     # riêng của agent, không dùng chung LLM_TEMPERATURE
+ITINERARY_LLM_REASONING_EFFORT= # chỉ OpenAI; model reasoning cần "none" để dùng tool calling; bỏ trống = không gửi
 ITINERARY_REDIS_URL=redis://:devpass@localhost:6379/2  # working memory 24h; bắt buộc production
 ```
 
@@ -184,3 +185,19 @@ response của route và đủ trường catalog để Agent hậu kiểm mà kh
 
 CLI chạy kịch bản đánh giá agent đã chuyển sang `src/evaluation/agent/cli.py`
 (`python -m src.evaluation.agent.cli --help`).
+
+### Xem graph trong LangGraph Studio
+
+Studio vẽ 12 node, chạy từng lượt và cho xem/sửa state sau mỗi node. Entry: `scripts/langgraph_studio.py`
+(LLM theo `.env`), khai báo ở `langgraph.json` gốc repo. Tool theo `ITINERARY_DATA_MODE`, bỏ trống thì `inprocess`
+(engine thật, cần Postgres đã seed, Weaviate đã index, `COHERE_API_KEY`; nạp ~12 s lúc mở graph); `fixture` dùng
+50 sản phẩm mẫu, không cần database. Studio không gửi Bearer nên `get_recommendations` chạy như khách. `langgraph-api` cần
+`grpcio>=1.81.1`, còn `.venv` giữ bản cũ cho `weaviate-client`, nên Studio dùng venv riêng:
+
+```bash
+uv venv --python 3.11 .venv-studio
+VIRTUAL_ENV=.venv-studio uv pip install -r src/backend/requirements.txt "langgraph-cli[inmem]" "grpcio>=1.81.1"
+.venv-studio/bin/langgraph dev        # mở link Studio UI in ra (cần đăng nhập LangSmith trên trình duyệt)
+```
+
+Lượt đầu chỉ nhập `{"query": "..."}`; lượt sau thêm `conversation_id` lấy từ output lượt trước.

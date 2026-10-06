@@ -70,7 +70,7 @@ class ConstraintUpdate(StrictModel):
 
 class TurnRoute(StrictModel):
     """Nhãn của `classify`: chỉ phân luồng, không trích gì khác."""
-    route: Literal["travel", "conversation", "out_of_scope"]
+    route: Literal["travel", "vague", "conversation", "out_of_scope"]
 
 
 class Extraction(StrictModel):

@@ -42,7 +42,7 @@ docker_run() {  # docker_run <tên container> [tuỳ chọn docker…] -- <lện
   shift
   [ -d "$DATA_DIR/interim" ] || die "chưa có $DATA_DIR/interim — chạy trước: $0 init <thư mục interim>"
   [ -r "$ENV_FILE" ] || die "không đọc được $ENV_FILE (mẫu: src/data_collection/.env.example, khối Job hằng ngày)"
-  local args=(--rm --name "$name" --user "$(owner)" -v "$DATA_DIR:/data" --env-file "$ENV_FILE")
+  local args=(--rm --log-opt max-size=50m --log-opt max-file=5 --name "$name" --user "$(owner)" -v "$DATA_DIR:/data" --env-file "$ENV_FILE")
   if [ -n "$DOCKER_NETWORK" ]; then args+=(--network "$DOCKER_NETWORK"); fi
   docker run "${args[@]}" "${opts[@]}" "$IMAGE" "$@"
 }
@@ -105,7 +105,7 @@ cmd_fresh_run() {
   [[ "$mode" = status || "$mode" = due ]] || [ -r "$FRESH_ENV_FILE" ] || die "không đọc được $FRESH_ENV_FILE"
   container_name="$FRESH_NAME"
   if [[ "$mode" = status || "$mode" = due ]]; then container_name="$FRESH_NAME-$mode-$$"; fi
-  local args=(--rm --init --name "$container_name"
+  local args=(--rm --init --log-opt max-size=50m --log-opt max-file=5 --name "$container_name"
               --network "$FRESH_NETWORK" --shm-size "${FRESH_SHM_SIZE:-512m}"
               -v "$FRESH_DATA_DIR:/data")
   if [ -r "$FRESH_ENV_FILE" ]; then args+=(--env-file "$FRESH_ENV_FILE"); fi
@@ -152,7 +152,8 @@ cmd_fresh_monitor() {
   case "$restart" in no|on-failure|always|unless-stopped) ;; *) die "MONITOR_RESTART phải là no, on-failure, always hoặc unless-stopped" ;; esac
   # Chạy nền, Docker tự bật lại khi bị tắt (hết RAM, VM khởi động lại, phiên SSH của CD đóng). MONITOR_RESTART=no: chạy
   # tiền cảnh như cũ (máy dev, Ctrl+C để dừng). Mặc định KHÔNG giới hạn RAM: lượt bấm trên monitor (Cào lớn, Làm mới Trip…)
-  # chạy trong container này — giới hạn 1 GB đã giết lượt full ngày 30/09 (mã -9). MONITOR_MEMORY đặt giới hạn nếu cần.
+  # chạy trong container này — giới hạn 1 GB đã giết lượt full ngày 30/09 (mã -9). MONITOR_MEMORY đặt giới hạn nếu cần
+  # (vd. 1g để monitor bị tắt trước backend khi VM hết RAM). Chạy nền thì log container giới hạn 3 × 10 MB.
   local args=(--init --name "$name" --network host
               --shm-size "${FRESH_SHM_SIZE:-512m}" -v "$FRESH_DATA_DIR:/data"
               --env-file "$FRESH_ENV_FILE" -e CATALOG_STATE_DIR=/data/state
