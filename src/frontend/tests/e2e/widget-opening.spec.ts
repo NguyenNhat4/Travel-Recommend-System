@@ -92,6 +92,7 @@ test('keyboard submission switches to chat, preserves context, and resets to the
   await dialog.getByRole('button', { name: 'Đoạn chat mới' }).click();
   await expect(dialog.getByPlaceholder(openingPlaceholder)).toHaveValue('');
   await expect(dialog.getByRole('heading', { name: 'Bạn muốn đi đâu tiếp theo?' })).toBeVisible();
+  await expect(dialog.getByRole('textbox')).toBeFocused();
   await page.keyboard.press('Shift+Tab');
   await expect(dialog.getByRole('button', { name: 'Đóng', exact: true })).toBeFocused();
   await page.keyboard.press('Escape');
@@ -111,10 +112,11 @@ test('completed results still open the timeline and map after the widget split',
   await page.getByPlaceholder(openingPlaceholder).fill('Lập lịch trình Nha Trang 3 ngày');
   await page.getByRole('button', { name: 'Gửi yêu cầu' }).click();
   await page.getByRole('button', { name: 'Xem lộ trình & Bản đồ song song' }).click();
-  await expect(page.getByRole('heading', { name: completed.itinerary.title, exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Tất cả', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Ngày 1', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Thanh toán', exact: true })).toBeVisible();
+  const plan = page.getByRole('region', { name: 'Lịch trình theo ngày' });
+  await expect(plan.getByRole('heading', { name: completed.itinerary.title, exact: true })).toBeVisible();
+  await expect(plan.getByRole('button', { name: 'Tất cả', exact: true })).toBeVisible();
+  await plan.getByRole('button', { name: 'Ngày 1', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Thanh toán tất cả', exact: true })).toBeVisible();
   await expect(page.getByRole('dialog', { name: 'Trợ lý du lịch AI' }).getByRole('textbox')).toHaveCount(1);
   expect(errors).toEqual([]);
 });

@@ -205,6 +205,21 @@ class PlanWarning(TypedDict, total=False):
     productId: str | None
 
 
+class DropSummary(TypedDict, total=False):
+    """Vì sao một taxonomy không còn candidate nào ở lượt này; giá trị của `state["drop_summary"]`.
+
+    `count` là số sản phẩm đúng điểm đến đã tìm thấy rồi bị loại (0 = tìm mà không thấy sản phẩm nào);
+    `reason` là mã `PRODUCT_DROPPED_*` phổ biến nhất (None khi `count = 0`); `openFrom`/`openTo` là ngày mở bán
+    sớm nhất/muộn nhất của các sản phẩm bị loại vì ngày; `nearestOpenDate` là ngày khởi hành gần nhất có sản phẩm.
+    """
+
+    count: int
+    reason: str | None
+    openFrom: str | None
+    openTo: str | None
+    nearestOpenDate: str | None
+
+
 class ToolDefinition(TypedDict):
     """LLM function-calling definition, as returned by `ToolExecutorPort.definitions()`."""
 

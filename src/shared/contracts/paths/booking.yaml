@@ -3,11 +3,17 @@
     tags:
     - booking
     operationId: getCart
-    summary: Giỏ hàng của người dùng hiện tại
+    summary: Giỏ hàng của người dùng hiện tại (hoặc của khách chưa đăng nhập)
+    description: 'Giỏ chỉ chứa tour, trải nghiệm và tiện ích khác (taxonomy attraction, golf, combo); khách sạn và vé máy bay
+      được đặt trực tiếp qua POST /booking-drafts. Người đã đăng nhập gọi bằng Bearer. Khách chưa đăng nhập đi qua BFF: BFF
+      gửi X-Service-Token kèm X-Guest-Id, giỏ nằm trong Redis 3 ngày và response có cdpUserId null. Thiếu cả hai cách thì 401.
+      Áp dụng cho cả bốn thao tác giỏ (docs/spec/booking/dat-truc-tiep-theo-don-nhap.md §8).'
     security:
     - bearerAuth: []
+    - serviceToken: []
     parameters:
     - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    - $ref: ../openapi.yaml#/components/parameters/XGuestId
     responses:
       '200':
         $ref: ../openapi.yaml#/components/responses/Cart
@@ -24,12 +30,17 @@
     description: 'Thêm thành công thì Backend ghi event add_to_cart sang CDP clone ở nền, với taxonomy và unitPrice
       lấy từ catalog. Thêm thất bại không ghi event. CDP lỗi không ảnh hưởng response. guests là số người lớn và trẻ em
       của mục (tối đa 9 khách, mỗi phòng một người lớn, không vượt maxOccupancy của hạng phòng); vi phạm trả 400
-      VALIDATION_ERROR kèm details.fields[]. Response trả thêm guests và fares (dòng giá theo loại khách) cho từng mục.'
+      VALIDATION_ERROR kèm details.fields[]. Response trả thêm guests và fares (dòng giá theo loại khách) cho từng mục.
+      Sản phẩm taxonomy hotel hoặc flight bị từ chối với 422 DIRECT_BOOKING_ONLY (details productId, taxonomy): giỏ không đổi,
+      không ghi add_to_cart. Khách chưa đăng nhập thêm được vào giỏ (tối đa 20 mục, vượt thì 400 VALIDATION_ERROR reason
+      CART_FULL) nhưng không sinh event CDP.'
 
     security:
     - bearerAuth: []
+    - serviceToken: []
     parameters:
     - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    - $ref: ../openapi.yaml#/components/parameters/XGuestId
     requestBody:
       required: true
       content:
@@ -63,8 +74,10 @@
       Chỉ gửi quantity cho mục đang có trẻ em thì giữ nguyên children và đặt adults = quantity − children.'
     security:
     - bearerAuth: []
+    - serviceToken: []
     parameters:
     - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    - $ref: ../openapi.yaml#/components/parameters/XGuestId
     requestBody:
       required: true
       content:
@@ -93,8 +106,10 @@
     summary: Xóa một mục giỏ
     security:
     - bearerAuth: []
+    - serviceToken: []
     parameters:
     - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    - $ref: ../openapi.yaml#/components/parameters/XGuestId
     responses:
       '200':
         $ref: ../openapi.yaml#/components/responses/Cart
@@ -109,8 +124,11 @@
     tags:
     - booking
     operationId: createBooking
-    summary: Checkout giỏ hiện tại — giữ chỗ và tạo phiên thanh toán Stripe
-    description: 'Backend kiểm giỏ, tạo đơn PENDING_PAYMENT (giữ giá và thành phần 30 phút) rồi tạo phiên Stripe Checkout.
+    summary: Thanh toán giỏ hiện tại hoặc một đơn nháp — giữ chỗ và tạo phiên thanh toán Stripe
+    description: 'Có draftId thì thanh toán đúng các mục của đơn nháp đó (Đặt ngay), không kèm mục nào trong giỏ; đơn nháp không
+      thuộc người gọi trả 404 BOOKING_DRAFT_NOT_FOUND, quá hạn trả 410 BOOKING_DRAFT_EXPIRED, và đơn nháp bị xoá khi đơn giữ
+      chỗ được tạo. Không có draftId thì thanh toán toàn bộ giỏ. itemDetails[].cartItemId là mã mục của nguồn đang thanh toán.
+      Luôn cần đăng nhập. Backend kiểm giỏ hoặc đơn nháp, tạo đơn PENDING_PAYMENT (giữ giá và thành phần 30 phút) rồi tạo phiên Stripe Checkout.
       201 nghĩa là đã giữ chỗ và chờ thanh toán, KHÔNG phải đã đặt xong: Web chuyển trình duyệt tới payment.checkoutUrl.
       Đơn chỉ thành CONFIRMED sau khi Stripe xác nhận thu tiền (webhook có chữ ký hoặc Backend tự hỏi lại Stripe); event
       purchase chỉ ghi sang CDP lúc đó. Người dùng đang có đơn giữ chỗ thì trả 409 BOOKING_PENDING_PAYMENT kèm referenceCode
@@ -141,7 +159,11 @@
         $ref: ../openapi.yaml#/components/responses/Error
       '401':
         $ref: ../openapi.yaml#/components/responses/Error
+      '404':
+        $ref: ../openapi.yaml#/components/responses/Error
       '409':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '410':
         $ref: ../openapi.yaml#/components/responses/Error
       '422':
         $ref: ../openapi.yaml#/components/responses/Error
@@ -216,6 +238,185 @@
       '404':
         $ref: ../openapi.yaml#/components/responses/Error
       '409':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '503':
+        $ref: ../openapi.yaml#/components/responses/Error
+/booking-drafts:
+  post:
+    tags:
+    - booking
+    operationId: createBookingDraft
+    summary: Đặt ngay — tạo đơn nháp cho đúng một lần đặt
+    description: 'Đơn nháp chỉ chứa các mục của lần đặt này (một sản phẩm, một hoặc hai chặng bay, hoặc mọi mục đặt được của
+      một lịch trình) và có hiệu lực 30 phút (expiresAt); không giữ chỗ, không trừ tồn kho. Nhận mọi taxonomy. Mỗi mục được
+      kiểm như POST /cart/items. allowPartial false (mặc định): một mục vi phạm làm cả request lỗi với mã của vi phạm đó.
+      allowPartial true: mục vi phạm bị bỏ và trả trong rejectedItems; không mục nào được nhận thì 409 PRODUCT_UNAVAILABLE
+      kèm details.rejectedItems. Hai mục cùng productId và usingDate: 400 VALIDATION_ERROR reason DUPLICATE_ITEM. fromBooking
+      (cần đăng nhập) tạo đơn nháp từ các mục của một đơn PAYMENT_FAILED hoặc EXPIRED của chính người gọi với giá hiện tại,
+      luôn theo kiểu allowPartial; đơn ở trạng thái khác trả 400 VALIDATION_ERROR reason NOT_REBOOKABLE. Mục attraction, golf,
+      combo của đơn nháp được chép vào giỏ của người gọi nếu giỏ chưa có mục cùng productId và usingDate. Người đã đăng nhập:
+      mỗi mục được nhận ghi một event add_to_cart sang CDP ở nền. Khách chưa đăng nhập (X-Service-Token kèm X-Guest-Id qua
+      BFF) tạo được đơn nháp, lưu ở Redis, không sinh event (docs/spec/booking/dat-truc-tiep-theo-don-nhap.md §4, §5, §8).'
+    security:
+    - bearerAuth: []
+    - serviceToken: []
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    - $ref: ../openapi.yaml#/components/parameters/XGuestId
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/CreateBookingDraftRequest
+    responses:
+      '201':
+        $ref: ../openapi.yaml#/components/responses/BookingDraft
+      '400':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '404':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '409':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '422':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '503':
+        $ref: ../openapi.yaml#/components/responses/Error
+/booking-drafts/{draftId}:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/DraftId
+  get:
+    tags:
+    - booking
+    operationId: getBookingDraft
+    summary: Đọc đơn nháp với giá và tình trạng còn bán hiện tại
+    description: 'Giá, available và fares lấy lại từ catalog ở mỗi lần đọc; snapshot không đổi khi đọc. Không có, hoặc của người
+      khác: 404 BOOKING_DRAFT_NOT_FOUND. Quá expiresAt: 410 BOOKING_DRAFT_EXPIRED với details.items[] {productId, taxonomy,
+      inCart} để Web dẫn khách về giỏ (mục còn trong giỏ) hoặc về trang sản phẩm.'
+    security:
+    - bearerAuth: []
+    - serviceToken: []
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    - $ref: ../openapi.yaml#/components/parameters/XGuestId
+    responses:
+      '200':
+        $ref: ../openapi.yaml#/components/responses/BookingDraft
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '404':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '410':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '503':
+        $ref: ../openapi.yaml#/components/responses/Error
+/booking-drafts/{draftId}/items/{cartItemId}:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/DraftId
+  - $ref: ../openapi.yaml#/components/parameters/CartItemId
+  patch:
+    tags:
+    - booking
+    operationId: updateBookingDraftItem
+    summary: Sửa ngày, số lượng, số đêm hoặc số khách của một mục đơn nháp
+    description: 'Cùng body và luật với PATCH /cart/items/{cartItemId}; ghi lại giá snapshot bằng giá hiện tại. Không đổi mục giỏ
+      đã chép. Không có thao tác thêm mục vào đơn nháp đã có.'
+    security:
+    - bearerAuth: []
+    - serviceToken: []
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    - $ref: ../openapi.yaml#/components/parameters/XGuestId
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/UpdateCartItemRequest
+    responses:
+      '200':
+        $ref: ../openapi.yaml#/components/responses/BookingDraft
+      '400':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '404':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '409':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '410':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '422':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '503':
+        $ref: ../openapi.yaml#/components/responses/Error
+  delete:
+    tags:
+    - booking
+    operationId: removeBookingDraftItem
+    summary: Bỏ một mục khỏi đơn nháp
+    description: 'Dùng khi một mục của lần đặt không còn đặt được hoặc khách không muốn đặt mục đó nữa. Không đổi mục giỏ đã
+      chép. Bỏ mục cuối cùng thì đơn nháp bị xoá và response có items rỗng; lần đọc sau trả 404.'
+    security:
+    - bearerAuth: []
+    - serviceToken: []
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    - $ref: ../openapi.yaml#/components/parameters/XGuestId
+    responses:
+      '200':
+        $ref: ../openapi.yaml#/components/responses/BookingDraft
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '404':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '410':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '503':
+        $ref: ../openapi.yaml#/components/responses/Error
+/guest-bookings/merge:
+  post:
+    tags:
+    - booking-internal
+    operationId: mergeGuestBooking
+    summary: Gộp giỏ và đơn nháp của khách chưa đăng nhập vào tài khoản vừa đăng nhập (chỉ BFF gọi)
+    description: 'Cần cả X-Service-Token và Bearer của tài khoản đích. Mục giỏ khách mà giỏ tài khoản chưa có (theo productId và
+      usingDate) được thêm; mục trùng chỉ giữ mục đang có trong tài khoản. Đơn nháp khách còn hạn được chuyển sang tài khoản
+      với cùng draftId. Sau đó dữ liệu Redis của guestId bị xoá. Idempotent: gọi lại trả các số đếm bằng 0. Mỗi cặp productId,
+      usingDate thực sự vào tài khoản ghi một event add_to_cart.'
+    security:
+    - serviceToken: []
+      bearerAuth: []
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/GuestMergeRequest
+    responses:
+      '200':
+        description: Kết quả gộp
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/GuestMergeResponse
+      '400':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '401':
         $ref: ../openapi.yaml#/components/responses/Error
       '500':
         $ref: ../openapi.yaml#/components/responses/Error

@@ -11,6 +11,7 @@ from fastapi import Depends, Header, Request
 from src.backend.app.application.auth.bearer import bearer_token, principal_from_header, verified_principal
 from src.backend.app.application.auth.errors import AuthError, Unauthenticated
 from src.backend.app.application.auth.principal import AuthPrincipal
+from src.backend.app.application.booking.owner import GUEST_ID_PATTERN, CartOwner
 from src.backend.app.application.itinerary.use_cases import PlanItinerary
 from src.backend.app.application.itinerary.history import ConversationHistory
 from src.backend.app.core.config import Settings, get_settings
@@ -31,6 +32,11 @@ def get_search(request: Request) -> Any:
 
 def get_similar(request: Request) -> Any:
     return request.app.state.similar
+
+
+def get_suggest(request: Request) -> Any:
+    """None khi recsys bị tắt lúc khởi động; route gợi ý trả danh sách rỗng thay vì 500."""
+    return getattr(request.app.state, "suggest", None)
 
 
 def get_recommend(request: Request) -> Any:
@@ -106,15 +112,38 @@ async def current_principal(
     return await verified_principal(token, verifier, revoked)
 
 
+def _service_token_valid(x_service_token: str | None, settings: Settings) -> bool:
+    """So sánh hằng thời gian. Chưa cấu hình (hoặc < 32 ký tự) thì không token nào hợp lệ."""
+    expected = settings.auth_service_token
+    return bool(len(expected) >= 32 and x_service_token and hmac.compare_digest(
+        x_service_token.encode(), expected.encode()))
+
+
 def require_service_token(
     x_service_token: str | None = Header(default=None), settings: Settings = Depends(get_settings)
 ) -> None:
     """So sánh hằng thời gian. Chưa cấu hình (hoặc < 32 ký tự) thì mọi request đều bị từ chối."""
-    expected = settings.auth_service_token
-    if len(expected) < 32 or not x_service_token or not hmac.compare_digest(
-        x_service_token.encode(), expected.encode()
-    ):
+    if not _service_token_valid(x_service_token, settings):
         raise ServiceTokenInvalid("X-Service-Token không hợp lệ")
+
+
+async def cart_owner(
+    authorization: str | None = Header(default=None), x_service_token: str | None = Header(default=None),
+    x_guest_id: str | None = Header(default=None), verifier=Depends(get_token_verifier),
+    revoked=Depends(get_revoked_tokens), settings: Settings = Depends(get_settings),
+) -> CartOwner:
+    """Chủ giỏ và đơn nháp (spec dat-truc-tiep-theo-don-nhap.md R-GST-03).
+
+    Có Bearer thì là người đã đăng nhập; Bearer hỏng trả 401, không hạ thành khách (auth §3.11 dòng 2). Không có Bearer:
+    chỉ nhận `X-Guest-Id` khi `X-Service-Token` hợp lệ, tức request đến từ BFF chứ không phải trình duyệt tự đặt header.
+    """
+    token = bearer_token(authorization)
+    if token is not None:
+        principal = await verified_principal(token, verifier, revoked)
+        return CartOwner.user(principal.cdp_user_id)
+    if x_guest_id and _service_token_valid(x_service_token, settings) and GUEST_ID_PATTERN.match(x_guest_id):
+        return CartOwner.guest(x_guest_id)
+    raise Unauthenticated("cần đăng nhập")
 
 
 def require_internal_api(settings: Settings = Depends(get_settings)) -> None:

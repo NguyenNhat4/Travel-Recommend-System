@@ -90,7 +90,15 @@ def hit(index: UnitIndex, i: int, score: float, **extra) -> dict:
             "available": p.available,
             "availableFrom": p.available_from.isoformat() if p.available_from else None,
             "availableTo": p.available_to.isoformat() if p.available_to else None,
-            "imageUrl": p.image_url, "score": normalized_score, **extra}
+            "imageUrl": p.image_url, "rating": p.rating, "reviewCount": p.review_count,
+            "score": normalized_score, **extra}
+
+
+def scored(index: UnitIndex, i: int, score: float) -> dict:
+    """Kết quả Search/Similar: `hit` cộng điểm đánh giá của catalog (`rating`/`reviewCount` tùy chọn trong ProductSummary),
+    để thẻ sản phẩm trong lịch trình của trợ lý có điểm đánh giá. Recommendation vẫn dùng `hit` rút gọn."""
+    product = index.units[i]
+    return hit(index, i, score, rating=product.rating, reviewCount=product.review_count)
 
 
 @dataclass
@@ -148,7 +156,7 @@ class SearchProducts:
         if embed_cache:   # contract 1.12.0: chỉ khi embedder có cache (CachingQueryEmbedder)
             diagnostics["embedCache"] = embed_cache
         page = out.order[offset: offset + limit]
-        results = [hit(self.index, i, out.scores[i]) for i in page]
+        results = [scored(self.index, i, out.scores[i]) for i in page]
         stages.lap("hydrate")
         stage_ms = stages.ms
         logger.debug("search.stage_ms %s", stage_ms)
@@ -245,4 +253,4 @@ class SimilarProducts:
                 m[self.index.idx[child]] = False
         hits = self.vectors.near_vector(anchor, self.index.allowed_ids(m), k)
         return SimilarLookup("ok", anchor_id, tuple(
-            hit(self.index, self.index.idx[h.product_id], h.score) for h in hits if h.product_id in self.index.idx))
+            scored(self.index, self.index.idx[h.product_id], h.score) for h in hits if h.product_id in self.index.idx))

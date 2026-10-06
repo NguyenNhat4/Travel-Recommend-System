@@ -34,6 +34,11 @@ const PLACEHOLDER_IMAGE: Record<Taxonomy, string> = {
   golf: '/placeholders/golf.svg',
 };
 
+/** Ảnh thay thế theo loại khi `imageUrl` null hoặc tải lỗi (docs/spec/hop-dong-tich-hop-frontend.md §6.6). */
+export function placeholderImage(taxonomy: string): string {
+  return PLACEHOLDER_IMAGE[taxonomy as Taxonomy] ?? PLACEHOLDER_IMAGE.hotel;
+}
+
 function coordinates(attributes: Record<string, unknown>): Product['coordinates'] {
   const lat = Number(attributes.latitude);
   const lng = Number(attributes.longitude);

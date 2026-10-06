@@ -1,6 +1,6 @@
 output "dashboard_id" {
   description = "Cloud Monitoring dashboard resource name."
-  value       = google_monitoring_dashboard.staging.id
+  value       = google_monitoring_dashboard.staging_overview.id
 }
 
 output "uptime_check_id" {
@@ -24,6 +24,7 @@ output "alert_policy_ids" {
     app_cpu         = google_monitoring_alert_policy.staging_vm_cpu.id
     app_memory      = google_monitoring_alert_policy.staging_memory.id
     app_disk        = google_monitoring_alert_policy.staging_disk.id
+    container_disk  = google_monitoring_alert_policy.staging_container_disk.id
     db_uptime       = google_monitoring_alert_policy.staging_db_uptime.id
     db_cpu          = google_monitoring_alert_policy.staging_db_cpu.id
     db_memory       = google_monitoring_alert_policy.staging_db_memory.id
@@ -34,5 +35,17 @@ output "alert_policy_ids" {
     container_stop  = google_monitoring_alert_policy.staging_container_stop.id
     container_oom   = google_monitoring_alert_policy.staging_container_oom.id
     watcher_absent  = google_monitoring_alert_policy.staging_docker_watcher_absent.id
+    stats_absent    = google_monitoring_alert_policy.staging_container_stats_absent.id
+    container_cpu   = google_monitoring_alert_policy.staging_container_cpu.id
   }
+}
+
+output "db_replica_alert_policy_ids" {
+  description = "DB replica alert policy resource names; empty until db_replica_vm_name is set."
+  value = merge(
+    { for p in google_monitoring_alert_policy.replica_uptime : "uptime" => p.id },
+    { for p in google_monitoring_alert_policy.replica_replication : "replication" => p.id },
+    { for p in google_monitoring_alert_policy.replica_probe_absent : "probe" => p.id },
+    { for k, p in google_monitoring_alert_policy.replica_vm : "vm_${k}" => p.id },
+  )
 }

@@ -1,0 +1,58 @@
+{
+  "query": "ha",
+  "suggestions": [
+    {
+      "type": "destination",
+      "label": "Hà Nội",
+      "productCount": 214
+    },
+    {
+      "type": "destination",
+      "label": "Hạ Long",
+      "productCount": 96
+    },
+    {
+      "type": "product",
+      "label": "Hạ Long Bay View Residence",
+      "productId": "hl-h-12",
+      "taxonomy": "hotel",
+      "destination": "Hạ Long"
+    },
+    {
+      "type": "product",
+      "label": "Vinpearl Resort & Spa Hạ Long",
+      "productId": "hl-h-01",
+      "taxonomy": "hotel",
+      "destination": "Hạ Long"
+    },
+    {
+      "type": "product",
+      "label": "Hà Nội | Khám phá làng gốm sứ Bát Tràng",
+      "productId": "hn-a-07",
+      "taxonomy": "attraction",
+      "destination": "Hà Nội"
+    },
+    {
+      "type": "product",
+      "label": "Du thuyền vịnh Hạ Long 1 ngày",
+      "productId": "hl-a-03",
+      "taxonomy": "attraction",
+      "destination": "Hạ Long"
+    },
+    {
+      "type": "product",
+      "label": "Vinpearl Golf Hải Phòng",
+      "productId": "hp-g-01",
+      "taxonomy": "golf",
+      "destination": "Hải Phòng"
+    },
+    {
+      "type": "product",
+      "label": "Combo Hà Nội – Hạ Long 3N2Đ",
+      "productId": "hn-c-02",
+      "taxonomy": "combo",
+      "destination": "Hà Nội"
+    }
+  ],
+  "requestId": "suggest-01JXYZ"
+}

@@ -9,12 +9,15 @@ import expiredFixture from '../../../shared/mocks/booking/getBooking.200-expired
 import cancelledFixture from '../../../shared/mocks/booking/getBooking.200-cancelled-refunded.json';
 import tooLateFixture from '../../../shared/mocks/booking/cancelBooking.409-too-late.json';
 import familyFixture from '../../../shared/mocks/booking/createBooking.201-family.json';
+import rebookDraft from '../../../shared/mocks/booking/createBookingDraft.201-hotel.json';
+import notRebookable from '../../../shared/mocks/booking/createBooking.409-pending-payment.json';
 import type { BookingResponse } from '../../src/services/booking';
 
 const api = vi.hoisted(() => ({
   getBooking: vi.fn(),
   cancelBooking: vi.fn(),
   redirectToCheckout: vi.fn(),
+  createBookingDraft: vi.fn(),
   fetchRecommendations: vi.fn(),
 }));
 const travel = vi.hoisted(() => ({
@@ -34,6 +37,7 @@ vi.mock('../../src/services/booking', async (importOriginal) => ({
   getBooking: api.getBooking,
   cancelBooking: api.cancelBooking,
   redirectToCheckout: api.redirectToCheckout,
+  createBookingDraft: api.createBookingDraft,
   PAYMENT_POLL_INTERVAL_MS: 5,
 }));
 vi.mock('../../src/services/recsys', () => ({ fetchRecommendations: api.fetchRecommendations }));
@@ -98,18 +102,19 @@ describe('ConfirmationView — trạng thái đơn', () => {
     expect(await screen.findByText('Đã nhận thanh toán, đang xác nhận đơn')).toBeTruthy();
   });
 
-  it('treats a hold past its deadline as expired and points back to the cart', async () => {
+  it('treats a hold past its deadline as expired and offers to rebook', async () => {
     const late = pending();
     late.holdExpiresAt = '2026-09-16T10:29:00Z';
     api.getBooking.mockResolvedValue(late);
     render(<ConfirmationView referenceCode="VOTA-20260916-8K3F" />);
     expect(await screen.findByText('Hết thời gian giữ chỗ')).toBeTruthy();
     expect(screen.queryByText('Tiếp tục thanh toán')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Đặt lại' })).toBeTruthy();
   });
 
   it.each([
-    [failedFixture, 'Thanh toán không thành công', 'Thanh toán không thành công sau 3 lần. Giỏ hàng vẫn còn, bạn có thể đặt lại.'],
-    [expiredFixture, 'Hết thời gian giữ chỗ', 'Đơn chưa được thanh toán trong 30 phút. Giỏ hàng vẫn còn, bạn có thể đặt lại.'],
+    [failedFixture, 'Thanh toán không thành công', 'Thanh toán không thành công sau 3 lần. Bạn có thể đặt lại các dịch vụ của đơn này theo giá hiện tại.'],
+    [expiredFixture, 'Hết thời gian giữ chỗ', 'Đơn chưa được thanh toán trong 30 phút. Bạn có thể đặt lại các dịch vụ của đơn này theo giá hiện tại.'],
     [cancelledFixture, 'Đã huỷ đơn', 'Đã hoàn 12.840.000 ₫ về thẻ.'],
   ])('renders closed booking %#', async (fixture, title, text) => {
     api.getBooking.mockResolvedValue(clone(fixture));
@@ -118,6 +123,34 @@ describe('ConfirmationView — trạng thái đơn', () => {
     expect(screen.getByText(text.replace(/ /g, ' '), { normalizer: (s) => s.replace(/ /g, ' ') })).toBeTruthy();
     expect(api.fetchRecommendations).not.toHaveBeenCalled();
     expect(screen.queryByText('Huỷ đơn')).toBeNull();
+  });
+
+  it.each([[failedFixture], [expiredFixture]])('"Đặt lại" on an unpaid order %# makes a new draft from the order and opens its payment page', async (fixture) => {
+    api.getBooking.mockResolvedValue(clone(fixture));
+    api.createBookingDraft.mockResolvedValue(rebookDraft);
+    render(<ConfirmationView referenceCode={fixture.referenceCode} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Đặt lại' }));
+    await waitFor(() => expect(travel.navigate).toHaveBeenCalledWith(`/checkout?draft=${rebookDraft.draftId}`));
+    // Chỉ gửi mã đơn: mục, số khách và giá do Backend dựng lại theo giá hiện tại; không chép tên hay ngày sinh hành khách (R-RBK).
+    expect(api.createBookingDraft).toHaveBeenCalledWith({ fromBooking: fixture.referenceCode, allowPartial: true });
+    expect(travel.navigate).not.toHaveBeenCalledWith('/cart');
+  });
+
+  it('"Đặt lại" says which part could not be rebooked, and stays on the page when the backend refuses', async () => {
+    api.getBooking.mockResolvedValue(clone(expiredFixture));
+    api.createBookingDraft.mockResolvedValueOnce({
+      ...rebookDraft,
+      rejectedItems: [{ productId: 'nt-a-02', usingDate: '2026-10-16', code: 'PRODUCT_UNAVAILABLE', message: 'Sản phẩm đã hết chỗ.' }],
+    });
+    render(<ConfirmationView referenceCode={expiredFixture.referenceCode} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Đặt lại' }));
+    await waitFor(() => expect(travel.showToast).toHaveBeenCalledWith('1 dịch vụ không còn đặt được nên không nằm trong lần đặt lại này.'));
+
+    travel.navigate.mockClear();
+    api.createBookingDraft.mockRejectedValueOnce(apiError(notRebookable as any, 409));
+    fireEvent.click(screen.getByRole('button', { name: 'Đặt lại' }));
+    await waitFor(() => expect(travel.showToast).toHaveBeenCalledWith(notRebookable.error.message));
+    expect(travel.navigate).not.toHaveBeenCalled();
   });
 
   it('shows not found for someone else’s or unknown reference', async () => {

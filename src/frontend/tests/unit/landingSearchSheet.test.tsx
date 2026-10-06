@@ -31,6 +31,7 @@ describe('LandingSearchSheet', () => {
     api.listDestinations.mockResolvedValue([
       { destination: 'Nha Trang', productCount: 120 }, { destination: 'Đà Nẵng', productCount: 75 },
     ]);
+    window.localStorage.clear();
   });
   afterEach(() => {
     cleanup();
@@ -136,7 +137,7 @@ describe('LandingSearchSheet', () => {
     const onFlightSearch = vi.fn();
     renderSheet('flights', { onFlightSearch });
     fireEvent.change(screen.getByLabelText('Điểm đi'), { target: { value: ' Hà Nội ' } });
-    fireEvent.focus(screen.getByRole('combobox'));
+    fireEvent.focus(screen.getByRole('combobox', { name: /Điểm đến/ }));
     fireEvent.click(await screen.findByRole('option', { name: 'Đà Nẵng' }));
     fireEvent.click(screen.getByRole('button', { name: 'Tìm kiếm' }));
     expect(travel.navigate).not.toHaveBeenCalled();
@@ -149,7 +150,7 @@ describe('LandingSearchSheet', () => {
   it('flights: hands over incomplete input too, so the page can say what is missing', () => {
     const onFlightSearch = vi.fn();
     renderSheet('flights', { onFlightSearch });
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'xứ sở thần tiên' } });
+    fireEvent.change(screen.getByRole('combobox', { name: /Điểm đến/ }), { target: { value: 'xứ sở thần tiên' } });
     fireEvent.click(screen.getByRole('button', { name: 'Tìm kiếm' }));
     expect(travel.navigate).not.toHaveBeenCalled();
     expect(onFlightSearch).toHaveBeenCalledWith(expect.objectContaining({ origin: '', location: 'xứ sở thần tiên', destination: null }));
@@ -163,12 +164,104 @@ describe('LandingSearchSheet', () => {
       initialSearch: { origin: 'Hà Nội', trip: { checkIn: '2026-10-20', checkOut: '2026-10-25', adults: 3, children: 1 } },
     });
     expect((screen.getByLabelText('Điểm đi') as HTMLInputElement).value).toBe('Hà Nội');
-    expect((screen.getByRole('combobox') as HTMLInputElement).value).toBe('Đà Nẵng');
+    expect((screen.getByRole('combobox', { name: /Điểm đến/ }) as HTMLInputElement).value).toBe('Đà Nẵng');
     expect(screen.getByText('3 người lớn, 1 trẻ em')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Tìm kiếm' }));
     expect(onFlightSearch).toHaveBeenCalledWith({
       origin: 'Hà Nội', location: 'Đà Nẵng', destination: 'Đà Nẵng',
       trip: { checkIn: '2026-10-20', checkOut: '2026-10-25', adults: 3, children: 1 },
+    });
+  });
+
+  describe('flights: origin and history', () => {
+    const originBox = () => screen.getByRole('combobox', { name: /Điểm đi/ }) as HTMLInputElement;
+    const destinationBox = () => screen.getByRole('combobox', { name: /Điểm đến/ }) as HTMLInputElement;
+
+    it('the origin field suggests places as you type and moves on to the destination after a pick', async () => {
+      renderSheet('flights');
+      fireEvent.focus(originBox());
+      const list = await screen.findByRole('listbox', { name: 'Gợi ý điểm đi' });
+      expect(within(list).getAllByRole('option').map((o) => o.textContent)).toEqual(['Nha Trang', 'Đà Nẵng']);
+
+      fireEvent.change(originBox(), { target: { value: 'da n' } });
+      expect(within(screen.getByRole('listbox', { name: 'Gợi ý điểm đi' })).getAllByRole('option').map((o) => o.textContent)).toEqual(['Đà Nẵng']);
+
+      fireEvent.click(screen.getByRole('option', { name: 'Đà Nẵng' }));
+      expect(originBox().value).toBe('Đà Nẵng');
+      expect(document.activeElement).toBe(destinationBox());
+      expect(screen.getByRole('listbox', { name: 'Gợi ý điểm đến' })).toBeTruthy();
+      // Điểm đi đã chọn không được gợi ý lại làm điểm đến.
+      expect(screen.queryByRole('option', { name: 'Đà Nẵng' })).toBeNull();
+    });
+
+    it('arrow keys and Enter pick an origin suggestion; a free-typed origin still goes through', async () => {
+      const onFlightSearch = vi.fn();
+      renderSheet('flights', { onFlightSearch });
+      fireEvent.focus(originBox());
+      await screen.findByRole('option', { name: 'Nha Trang' });
+      fireEvent.keyDown(originBox(), { key: 'ArrowDown' });
+      fireEvent.keyDown(originBox(), { key: 'ArrowDown' });
+      fireEvent.keyDown(originBox(), { key: 'Enter' });
+      expect(originBox().value).toBe('Đà Nẵng');
+
+      fireEvent.change(originBox(), { target: { value: 'Cần Thơ' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Tìm kiếm' }));
+      expect(onFlightSearch).toHaveBeenCalledWith(expect.objectContaining({ origin: 'Cần Thơ' }));
+    });
+
+    it('a finished search is remembered for both fields, newest first, and offered again when the field is empty', async () => {
+      const { unmount } = renderSheet('flights', { onFlightSearch: vi.fn() });
+      fireEvent.change(originBox(), { target: { value: 'nha trang' } });
+      fireEvent.focus(destinationBox());
+      fireEvent.click(await screen.findByRole('option', { name: 'Đà Nẵng' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Tìm kiếm' }));
+      // Chuẩn hóa về nhãn của /destinations.
+      expect(JSON.parse(window.localStorage.getItem('vota_flight_recent_origins')!)).toEqual(['Nha Trang']);
+      expect(JSON.parse(window.localStorage.getItem('vota_flight_recent_destinations')!)).toEqual(['Đà Nẵng']);
+      unmount();
+
+      renderSheet('flights', { onFlightSearch: vi.fn() });
+      fireEvent.focus(originBox());
+      const recent = await screen.findByRole('group', { name: 'Tìm gần đây' });
+      expect(within(recent).getAllByRole('option').map((o) => o.textContent)).toEqual(['Nha Trang']);
+      // Mục đã có ở "Tìm gần đây" không lặp ở nhóm phổ biến.
+      expect(screen.getAllByRole('option', { name: 'Nha Trang' })).toHaveLength(1);
+
+      fireEvent.click(within(recent).getByRole('option', { name: 'Nha Trang' }));
+      expect(originBox().value).toBe('Nha Trang');
+      expect(within(await screen.findByRole('group', { name: 'Tìm gần đây' })).getAllByRole('option').map((o) => o.textContent)).toEqual(['Đà Nẵng']);
+    });
+
+    it('history is hidden while typing, capped at five, and can be cleared', async () => {
+      window.localStorage.setItem('vota_flight_recent_origins', JSON.stringify(['Đà Nẵng', 'Nha Trang']));
+      renderSheet('flights');
+      fireEvent.focus(originBox());
+      expect(await screen.findByRole('group', { name: 'Tìm gần đây' })).toBeTruthy();
+
+      fireEvent.change(originBox(), { target: { value: 'nha' } });
+      expect(screen.queryByRole('group', { name: 'Tìm gần đây' })).toBeNull();
+
+      fireEvent.change(originBox(), { target: { value: '' } });
+      fireEvent.click(within(screen.getByRole('group', { name: 'Tìm gần đây' })).getByRole('button', { name: 'Xóa' }));
+      expect(screen.queryByRole('group', { name: 'Tìm gần đây' })).toBeNull();
+      expect(window.localStorage.getItem('vota_flight_recent_origins')).toBeNull();
+    });
+
+    it('history entries that are no longer in /destinations are not offered', async () => {
+      window.localStorage.setItem('vota_flight_recent_destinations', JSON.stringify(['Atlantis', 'Nha Trang']));
+      renderSheet('flights');
+      fireEvent.focus(destinationBox());
+      const recent = await screen.findByRole('group', { name: 'Tìm gần đây' });
+      expect(within(recent).getAllByRole('option').map((o) => o.textContent)).toEqual(['Nha Trang']);
+    });
+
+    it('other categories keep no history', async () => {
+      renderSheet('hotels');
+      fireEvent.focus(screen.getByRole('combobox'));
+      await screen.findByRole('option', { name: 'Nha Trang' });
+      fireEvent.click(screen.getByRole('option', { name: 'Nha Trang' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Tìm kiếm' }));
+      expect(window.localStorage.length).toBe(0);
     });
   });
 

@@ -40,18 +40,27 @@ def test_every_profile_branch_is_a_contract_strategy(expected):
     assert strategy in enum_values("Strategy")
 
 
-def _events(now: datetime, *rows: tuple[str, str, int, str]) -> list[dict]:
-    return [{"eventName": name, "productId": pid, "eventGroupId": group,
+def _events(now: datetime, *rows: tuple) -> list[dict]:
+    out = []
+    for name, pid, days, group, *using in rows:      # phần tử thứ 5 (tuỳ chọn): usingDate = now + N ngày
+        e = {"eventName": name, "productId": pid, "eventGroupId": group,
              "timestamp": (now - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")}
-            for name, pid, days, group in rows]
+        if using:
+            e["usingDate"] = (now + timedelta(days=using[0])).strftime("%Y-%m-%d")
+        out.append(e)
+    return out
 
 
 @pytest.mark.parametrize("expected, rows", [
-    # Chuyến đã đóng (> 60 ngày) nhưng chưa quá ngưỡng dormant.
+    # Chuyến đã đóng (không `usingDate`, quá ACTIVE_TRIP_MAX_AGE_DAYS = 14 ngày) nhưng chưa quá ngưỡng dormant.
     ("long_term", [("product_view", "A1", 100, "T9"), ("product_view", "G1", 100, "T9"),
                    ("purchase", "C1", 99, "T9")]),
     # Chuyến đang mở, mới một event, chưa mua.
     ("cold_start_content", [("product_view", "A1", 5, "T8")]),
+    # FR-REC-02 (2026-10-02): mua 10 ngày trước nhưng usingDate đã qua 3 ngày → chuyến đã đi xong → không còn cross_vertical.
+    ("long_term", [("purchase", "R1", 10, "T7", -3), ("product_view", "A1", 11, "T7"), ("product_view", "G1", 12, "T7")]),
+    # Mua 120 ngày trước, usingDate còn 10 ngày nữa → chuyến sắp đi vẫn là trip mở → cross_vertical.
+    ("cross_vertical", [("purchase", "R1", 120, "T6", 10), ("product_view", "A1", 121, "T6")]),
 ])
 def test_engine_response_for_new_strategies_validates(services, expected, rows):
     now = services["now"]

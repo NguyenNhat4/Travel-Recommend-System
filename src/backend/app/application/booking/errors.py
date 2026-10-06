@@ -40,12 +40,34 @@ class BookingNotFound(BookingError):
     code, http_status = "BOOKING_NOT_FOUND", 404
 
 
+class DirectBookingOnly(BookingError):
+    """Khách sạn và vé máy bay không thêm được vào giỏ, chỉ đặt trực tiếp qua đơn nháp (R-DIR-01)."""
+
+    code, http_status = "DIRECT_BOOKING_ONLY", 422
+
+
+class BookingDraftNotFound(BookingError):
+    """Không có đơn nháp này, hoặc đơn nháp của chủ giỏ khác: không phân biệt hai trường hợp (R-DRF-11)."""
+
+    code, http_status = "BOOKING_DRAFT_NOT_FOUND", 404
+
+
+class BookingDraftExpired(BookingError):
+    code, http_status = "BOOKING_DRAFT_EXPIRED", 410
+
+
+class GuestStoreUnavailable(BookingError):
+    """Kho giỏ và đơn nháp của khách chưa đăng nhập (Redis) không phản hồi."""
+
+    code, http_status, retryable = "INTERNAL_ERROR", 503, True
+
+
 class LineRejected(BookingError):
     """Một dòng giỏ vi phạm catalog: PRODUCT_UNAVAILABLE, PRICE_CHANGED hoặc DATE_OUT_OF_RANGE."""
 
     _STATUS = {"PRODUCT_UNAVAILABLE": 409, "PRICE_CHANGED": 409, "DATE_OUT_OF_RANGE": 422}
 
-    def __init__(self, code: str, details: dict):
+    def __init__(self, code: str, details: dict | None):
         super().__init__(code, details)
         self.code = code
         self.http_status = self._STATUS[code]

@@ -1,11 +1,14 @@
 """Hybrid /search trên fake offline: nhánh BM25 của NumpyVectorSearch + RRF ở app, khai HYBRID_CANDIDATE_SCORE."""
 import json
+from types import SimpleNamespace
 
 import pytest
 from jsonschema import Draft202012Validator
 
 from src.backend.app.application.itinerary.tool_contracts import contracts
 from src.backend.app.application.search import SearchProducts
+from src.backend.app.application.search.use_cases import scored
+from src.backend.app.domain.catalog import Product
 from src.backend.app.domain.search import HybridConfig
 from src.backend.tests.conftest import FakeEmbedder
 
@@ -21,6 +24,17 @@ def rescue_only(services):
 def pass_all(services):
     return SearchProducts(services["index"], services["vectors"], FakeEmbedder(), cutoff=-1.0,
                           lexical=services["vectors"], hybrid=HybridConfig())
+
+
+def test_search_results_carry_the_catalog_rating_for_itinerary_cards(rescue_only):
+    # Thẻ sản phẩm trong lời diễn giải của trợ lý hiện điểm đánh giá: Search phải trả `rating`/`reviewCount` (tùy chọn
+    # trong ProductSummary), không có điểm thì null. Recommendation giữ payload rút gọn (hop-dong-tich-hop-backend.md).
+    result = rescue_only("VinWonders", limit=5)["results"][0]
+    assert (result["rating"], result["reviewCount"]) == (None, None)
+    rated = Product(product_id="A9", name="Tháp Bà", taxonomy="attraction", destination="Nha Trang", description="",
+                    attributes={"rating": 4.6, "ratingScale": 5, "reviewCount": 44})
+    rated_result = scored(SimpleNamespace(units=[rated]), 0, 0.7)
+    assert (rated_result["rating"], rated_result["reviewCount"], rated_result["score"]) == (4.6, 44, 0.7)
 
 
 def test_brand_query_is_rescued_from_bm25_and_declared_in_diagnostics(rescue_only):

@@ -76,7 +76,7 @@ describe('FlightsPage', () => {
   it('searching shows the flights right below on the same page and keeps the URL shareable', async () => {
     render(<FlightsPage initial={null}><Shelves /></FlightsPage>);
     fireEvent.change(screen.getByLabelText('Điểm đi'), { target: { value: 'Hà Nội' } });
-    fireEvent.focus(screen.getByRole('combobox'));
+    fireEvent.focus(screen.getByRole('combobox', { name: /Điểm đến/ }));
     fireEvent.click(await screen.findByRole('option', { name: 'Đà Nẵng' }));
     fireEvent.click(screen.getByRole('button', { name: 'Tìm kiếm' }));
 

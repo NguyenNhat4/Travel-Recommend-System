@@ -41,7 +41,7 @@ const Notice: React.FC<{ tone?: 'info' | 'warn'; children: React.ReactNode }> = 
  */
 export const FlightResultsView: React.FC<{ search: FlightSearch; notice?: string | null }> = ({ search, notice }) => {
   const { origin, destination, trip } = search;
-  const { addToCart, navigate, showToast, currentPersona, openLoginModal } = useTravel();
+  const { startBooking } = useTravel();
   const today = todayVN();
   const adults = trip.adults ?? 1;
   const kids = trip.children ?? 0;
@@ -127,21 +127,14 @@ export const FlightResultsView: React.FC<{ search: FlightSearch; notice?: string
   const checkout = async () => {
     const picks = [chosen.out, roundTrip ? chosen.ret : null].filter((c): c is NonNullable<Chosen> => c !== null);
     if (picks.length === 0 || submitting) return;
-    if (!currentPersona) {
-      openLoginModal(() => { void checkout(); });
-      return;
-    }
     setSubmitting(true);
-    for (const { option, fare } of picks) {
-      const added = await addToCart(productFromApi(fare.summary), adults + kids, option.date, undefined, { silent: true, guests: { adults, children: kids } });
-      if (!added) {
-        showToast(`Chưa thêm được chuyến ${option.flightNumber} vào giỏ. Vui lòng thử lại.`);
-        setSubmitting(false);
-        return;
-      }
-    }
+    // Vé máy bay đặt trực tiếp: một đơn nháp cho một hoặc hai chặng rồi mở trang thanh toán, không qua giỏ (FR-BKG-01,
+    // FR-BKG-10). Khách chưa đăng nhập được mời đăng nhập trước (startBooking), xong thì tự tạo đơn nháp.
+    await startBooking(picks.map(({ option, fare }) => ({
+      product: productFromApi(fare.summary), quantity: adults + kids, usingDate: option.date,
+      guests: { adults, children: kids },
+    })));
     setSubmitting(false);
-    navigate('/checkout');
   };
 
   const dateNote = pick && !pick.exact && wantedDate

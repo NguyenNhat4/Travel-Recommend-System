@@ -160,6 +160,22 @@ describe('POST /api/auth/login', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it('accepts a write whose Origin matches the Host the browser used, even if request.url says localhost', async () => {
+    const anon = await anonymous();
+    delete process.env.ALLOWED_ORIGINS; // nhánh mặc định: allowlist suy từ Host
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ state: 'authenticated' })));
+    const viaLoopbackIp = browser('/api/auth/login', {
+      method: 'POST', sid: anon.sid, csrf: anon.csrf, origin: 'http://127.0.0.1:3000',
+      headers: { host: '127.0.0.1:3000' }, body: { email: 'a', password: 'b' },
+    });
+    expect((await login(viaLoopbackIp)).status).not.toBe(403);
+    const foreign = browser('/api/auth/login', {
+      method: 'POST', sid: anon.sid, csrf: anon.csrf, origin: 'https://evil.example',
+      headers: { host: '127.0.0.1:3000' }, body: {},
+    });
+    expect((await login(foreign)).status).toBe(403);
+  });
+
   it('switching account revokes the previous refresh token (§3.8 F)', async () => {
     const first = await authenticated();
     const fetchMock = vi.fn(async (url: URL) => String(url).endsWith('/revoke')
@@ -230,6 +246,23 @@ describe('catch-all proxy', () => {
     }), ctx('v1/recommendations'));
     expect(response.status).toBe(200);
     expect(new Headers(fetchMock.mock.calls[0][1].headers).get('authorization')).toBeNull();
+  });
+
+  it('browser abort is answered 499 without an error log; a real network failure stays 502', async () => {
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const controller = new AbortController();
+    vi.stubGlobal('fetch', vi.fn(async () => { controller.abort(); throw new DOMException('aborted', 'AbortError'); }));
+    const aborted = await proxyGet(new Request(`${ORIGIN}/api/v1/recommendations?k=4`, {
+      headers: { 'user-agent': UA }, signal: controller.signal,
+    }), ctx('v1/recommendations'));
+    expect(aborted.status).toBe(499);
+    expect(errorLog).not.toHaveBeenCalled();
+
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('fetch failed'); }));
+    const down = await proxyGet(browser('/api/v1/recommendations?k=4'), ctx('v1/recommendations'));
+    expect(down.status).toBe(502);
+    expect(errorLog).toHaveBeenCalledTimes(1);
+    errorLog.mockRestore();
   });
 
   it('write without X-CSRF-Token is 403 CSRF_FAILED and never reaches FastAPI', async () => {

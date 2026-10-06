@@ -19,7 +19,7 @@ Không dùng URL từ máy host (`localhost`) bên trong container. Nếu cần 
 
 RecSys cố định Cohere `embed-multilingual-v3.0` (1024 chiều). Job index dùng `search_document`; request tìm kiếm dùng `search_query`. `WEAVIATE_URL`, `WEAVIATE_COLLECTION`, `COHERE_API_KEY` và `SEARCH_CUTOFF` (`0.62`, còn phải benchmark lại) được đọc qua `core/config.py`. Job index (`python -m src.backend.jobs.embed_products`) gọi Cohere song song `COHERE_EMBED_CONCURRENCY` lô (mặc định 4; 1 = tuần tự) dưới trần `COHERE_CALLS_PER_MINUTE` lượt/phút cho cả job (mặc định 90, hợp key Trial 100 lượt/phút; 0 = không giới hạn); gặp 429 thì mọi lô cùng chờ. Chỉ luồng chính ghi Weaviate, lô nào xong ghi ngay, lỗi giữa chừng vẫn giữ phần đã ghi. `--force` nhúng lại toàn bộ (chỉ để đo, tốn quota). Search lúc chạy API không bị giới hạn này. Weaviate chỉ giữ vector + `productId`/`modelVersion`/`textHash`; tên, giá, ảnh và availability luôn hydrate từ PostgreSQL. Metadata nạp lúc khởi động rồi nạp lại mỗi `CATALOG_REFRESH_SECONDS` (mặc định 900 giây); lần nạp lại lỗi thì giữ bản đang phục vụ. Search unit chưa có vector (job index chưa chạy xong) vẫn có giá mới nhưng chưa tìm được qua vector. Vector **truy vấn** được cache trong tiến trình (`application/search/query_cache.py`, LRU `SEARCH_EMBED_CACHE_SIZE`, khoá = câu sau chuẩn hoá; `diagnostics.embedCache` hit/miss, contract 1.12.0) và nạp sẵn ở nền sau lần nạp catalog đầu (`SEARCH_PREWARM`, file `data/search_prewarm_queries.txt` + head query `app.search_logs`); `python -m src.backend.jobs.prewarm_query_cache --base-url URL` làm nóng một backend đang chạy qua HTTP. Job index có `--lexical-only`: chỉ ghi property BM25 còn thiếu và từ chối khi catalog lệch index (không embed, không xoá). Chưa nạp được lần nào — thiếu PostgreSQL, Weaviate, khóa Cohere, hoặc dưới một nửa search unit có vector đúng model — thì RecSys tắt và thử lại sau 30 giây, các route còn lại vẫn chạy.
 
-Endpoint hiện có (prefix `/api/v1`): `GET|POST /search` (`q`/`query`, `taxonomy`, `destination`, `limit`, `offset`;
+Endpoint hiện có (prefix `/api/v1`): `GET /search/suggestions` (`q`, `limit` ≤ 10; gợi ý tức thì khi gõ, khớp chữ trên catalog trong bộ nhớ, không embed, không ghi event; FR-SRC-05) · `GET|POST /search` (`q`/`query`, `taxonomy`, `destination`, `limit`, `offset`;
 ở `ITINERARY_DATA_MODE=http`, adapter đổi tham số tool `query` thành `q`) · `GET /similar/{productId}?k=` · `GET /recommendations?k=&destination=`
 (JWT tùy chọn, `cdp_user_id` lấy từ token; token hỏng → 401, không hạ thành khách) · `GET /destinations` ·
 `POST /assistant/itineraries` · `POST /assistant/itineraries/stream` · `GET /assistant/status` ·
@@ -58,7 +58,12 @@ BOOKING_HOLD_MINUTES=30            # >= 30 (giới hạn expires_at của Stripe
 PAYMENT_MAX_FAILED_ATTEMPTS=3
 PUBLIC_WEB_URL=http://localhost:3000
 BOOKING_RECONCILE_INTERVAL_SECONDS=300   # job đối soát trong tiến trình; 0 = tắt
+BOOKING_DRAFT_TTL_MINUTES=30       # đơn nháp của Đặt ngay sống bao lâu
+GUEST_BOOKING_TTL_DAYS=3           # giỏ và đơn nháp của khách chưa đăng nhập giữ bao lâu trong Redis
+BOOKING_REDIS_URL=redis://:devpass@localhost:6379/3   # trống: lưu trong bộ nhớ (chỉ dev/test); production bắt buộc
 ```
+
+Khách sạn và vé máy bay đặt trực tiếp (FR-BKG-01, `docs/spec/booking/dat-truc-tiep-theo-don-nhap.md`): giỏ chỉ nhận `attraction`, `golf`, `combo` (`POST /cart/items` với `hotel`/`flight` trả `422 DIRECT_BOOKING_ONLY`); "Đặt ngay" tạo đơn nháp 30 phút qua `/booking-drafts`, và `POST /bookings` nhận `draftId` để thanh toán đúng đơn nháp đó. Khách chưa đăng nhập dùng giỏ và đơn nháp qua BFF (`X-Service-Token` + `X-Guest-Id`), dữ liệu nằm ở Redis và được gộp vào tài khoản bằng `POST /guest-bookings/merge`. Code: `domain/booking/draft.py`, `application/booking/{drafts,guest_merge,owner}.py`, `infrastructure/persistence/guest_booking_store.py`. Migration `0007` cần chạy trước khi khởi động Backend mới (hai bảng `app.booking_drafts`, `app.booking_draft_items`; xoá mục khách sạn, vé máy bay còn sót trong giỏ).
 
 Nhận webhook ở local bằng Stripe CLI (cài một lần, `stripe login`):
 

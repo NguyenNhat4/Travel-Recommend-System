@@ -16,6 +16,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 
 from src.backend.app.application.ports import UnitIndex
+from src.backend.app.domain.recommendation.profile import parse_using_date
 
 #: Persona cố định của seed (`docs/spec/MOCK_DATA_SPEC.md`): vẫn vào tập test nhưng được gắn cờ riêng.
 PERSONA_IDS = frozenset({"VP0000001", "VP0000002", "VP0000003", "VP0000004"})
@@ -23,6 +24,16 @@ PERSONA_IDS = frozenset({"VP0000001", "VP0000002", "VP0000003", "VP0000004"})
 
 class FutureEventError(ValueError):
     """Có event ở hoặc sau mốc đánh giá — dữ liệu đó không được đi vào engine."""
+
+
+def trip_ends_on(events):
+    """max(usingDate) của một trip như `build_profile` (cùng parser `profile.parse_using_date`); không có → None."""
+    out = None
+    for e in events:
+        d = parse_using_date(e.get("usingDate"))
+        if d is not None and (out is None or d > out):
+            out = d
+    return out
 
 
 def parse_ts(value) -> datetime:

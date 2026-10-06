@@ -88,3 +88,31 @@ variable "notification_email" {
     error_message = "notification_email must be empty or a valid email address."
   }
 }
+
+variable "db_replica_vm_name" {
+  description = "DB replica VM name (infra/terraform/environments/staging output replica_vm_name). Replica monitoring is skipped while this is empty or while no VM with this name exists, and turns on once the VM does."
+  type        = string
+  default     = ""
+}
+
+variable "container_disk_alert_gib" {
+  description = "Alert when one container (writable layer + json logs + named volumes) exceeds this many GiB."
+  type        = number
+  default     = 5
+
+  validation {
+    condition     = var.container_disk_alert_gib > 0
+    error_message = "container_disk_alert_gib must be greater than zero."
+  }
+}
+
+variable "container_cpu_alert_percent" {
+  description = "Alert when one container's CPU exceeds this value (100 = one vCPU). 190 = about 95% of the 2-vCPU App VM."
+  type        = number
+  default     = 190
+
+  validation {
+    condition     = var.container_cpu_alert_percent > 0
+    error_message = "container_cpu_alert_percent must be greater than zero."
+  }
+}

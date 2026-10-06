@@ -101,6 +101,33 @@ function usePastHero(enabled: boolean) {
   return [ref, past] as const;
 }
 
+/** Trang thanh toán đang mở cho một đơn nháp (`/checkout?draft=<mã>`) chứ không phải cho giỏ. */
+/**
+ * Nút quay lại ở header rút gọn của trang thanh toán. Thanh toán giỏ thì về giỏ; thanh toán một đơn nháp của Đặt ngay
+ * (`?draft=`) thì về trang trước (sản phẩm, vé máy bay, trợ lý). Đọc `draft` bằng `useSearchParams` để đúng ngay cả khi
+ * vừa chuyển trang (lúc đó `window.location` còn là URL cũ).
+ */
+function CheckoutBackLabelled({ onCart }: { onCart: () => void }) {
+  const isDraft = Boolean(useSearchParams()?.has('draft'));
+  return <CheckoutBackButton label={isDraft ? '← Quay lại' : '← Quay lại giỏ hàng'} onClick={isDraft ? () => window.history.back() : onCart} />;
+}
+
+function CheckoutBackButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button onClick={onClick} className="text-xs font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1 transition-colors">
+      {label}
+    </button>
+  );
+}
+
+function CheckoutBack({ onCart }: { onCart: () => void }) {
+  return (
+    <Suspense fallback={<CheckoutBackButton label="← Quay lại giỏ hàng" onClick={onCart} />}>
+      <CheckoutBackLabelled onCart={onCart} />
+    </Suspense>
+  );
+}
+
 /** Panel thả xuống của ngôn ngữ, đặt chỗ và tài khoản: cách viên header 12 px, cùng vỏ với menu dịch vụ. */
 const DROPDOWN_CLASS = `${PANEL_CLASS} absolute right-0 top-full z-50 mt-3`;
 
@@ -187,12 +214,7 @@ export const Header: React.FC<HeaderProps> = ({ isCheckout = false }) => {
           </div>
 
           <div className="flex items-center gap-4">
-            <button
-              onClick={() => navigate('/cart')}
-              className="text-xs font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1 transition-colors"
-            >
-              ← Quay lại giỏ hàng
-            </button>
+            <CheckoutBack onCart={() => navigate('/cart')} />
           </div>
         </div>
       </header>

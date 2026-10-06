@@ -1,10 +1,10 @@
 from time import perf_counter
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel, Field
 
-from src.backend.app.api.deps import get_search, get_similar
-from src.backend.app.application.search.use_cases import ANN_DIAGNOSTICS
+from src.backend.app.api.deps import get_search, get_similar, get_suggest
+from src.backend.app.application.search.use_cases import ANN_DIAGNOSTICS, canonical_query
 
 router = APIRouter(tags=["search"])
 
@@ -59,6 +59,16 @@ def search_post(body: SearchRequestPayload, search_products=Depends(get_search))
     limit = body.limit if body.limit is not None else 20
     offset = body.offset if body.offset is not None else 0
     return _safe_search(search_products, query, body.taxonomy, body.destination, limit, offset)
+
+
+# Gợi ý tức thì khi gõ (FR-SRC-05): dữ liệu công khai, giống nhau cho mọi người nên trình duyệt được giữ lại 5 phút.
+@router.get("/search/suggestions")
+def search_suggestions(response: Response, q: str = Query(..., min_length=1, max_length=100),
+                       limit: int = Query(8, ge=1, le=10), suggest_products=Depends(get_suggest)):
+    if suggest_products is None:   # recsys chưa sẵn sàng: không cho cache, lần gõ sau thử lại
+        return {"query": canonical_query(q), "suggestions": []}
+    response.headers["Cache-Control"] = "public, max-age=300"
+    return suggest_products(q, limit=limit)
 
 
 @router.get("/similar/{product_id}")

@@ -1,0 +1,17 @@
+[Unit]
+Description=V-OTA per-container CPU and memory metrics collector
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/libexec/vota-container-stats-collector.py
+Restart=always
+RestartSec=30s
+Environment=VOTA_CONTAINER_STATS_INTERVAL_SECONDS=60
+Nice=10
+User=root
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

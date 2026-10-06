@@ -1,0 +1,71 @@
+name: Sync env file from Secret Manager
+description: >
+  Đọc một secret của GCP Secret Manager (nội dung file env) bằng danh tính CI hiện tại rồi ghi vào một file trên VM
+  qua SSH stdin. Giá trị không nằm trong tham số dòng lệnh hay log. Gọi sau bước xác thực GCP và setup-gcloud.
+inputs:
+  secret:
+    description: Secret id trong Secret Manager. Rỗng thì bỏ qua (giữ file đặt tay như cũ).
+    required: false
+    default: ''
+  remote-file:
+    description: Đường dẫn tuyệt đối của file env trên VM.
+    required: true
+  required-keys:
+    description: Các khóa phải có giá trị khác rỗng, cách nhau bằng khoảng trắng. Thiếu thì dừng, không đụng tới VM.
+    required: false
+    default: ''
+  project:
+    description: GCP project id.
+    required: true
+  instance:
+    description: Tên VM.
+    required: true
+  zone:
+    description: Zone của VM.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Sync env file from Secret Manager
+      if: ${{ inputs.secret != '' }}
+      shell: bash
+      env:
+        SECRET: ${{ inputs.secret }}
+        REMOTE_FILE: ${{ inputs.remote-file }}
+        REQUIRED_KEYS: ${{ inputs.required-keys }}
+        GCP_PROJECT_ID: ${{ inputs.project }}
+        GCE_INSTANCE: ${{ inputs.instance }}
+        GCE_ZONE: ${{ inputs.zone }}
+      run: |
+        if [[ ! "$SECRET" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+          echo 'secret must be a Secret Manager secret id.' >&2
+          exit 1
+        fi
+        if [[ ! "$REMOTE_FILE" =~ ^/[a-zA-Z0-9._/-]+$ ]]; then
+          echo 'remote-file must be an absolute path without shell metacharacters.' >&2
+          exit 1
+        fi
+        if [[ ! "$REQUIRED_KEYS" =~ ^[A-Z0-9_\ ]*$ ]]; then
+          echo 'required-keys must be space-separated upper-case env names.' >&2
+          exit 1
+        fi
+        umask 077
+        env_file="$(mktemp)"
+        trap 'rm -f "$env_file"' EXIT
+        gcloud secrets versions access latest --secret "$SECRET" --project "$GCP_PROJECT_ID" > "$env_file"
+        if [ ! -s "$env_file" ]; then
+          echo "Secret $SECRET is empty; not touching the VM." >&2
+          exit 1
+        fi
+        for key in $REQUIRED_KEYS; do
+          if ! grep -Eq "^${key}=." "$env_file"; then
+            echo "Secret $SECRET has no value for $key; not touching the VM." >&2
+            exit 1
+          fi
+        done
+        # File chưa có: tạo root:<nhóm của user SSH> 0640 để user deploy/cron (docker --env-file) đọc được.
+        # File đã có: tee ghi đè nội dung, giữ owner/mode; bản cũ được giữ ở <file>.prev.
+        remote_command="f='$REMOTE_FILE'; "'[ -f "$f" ] || sudo -n install -D -m 0640 -o root -g "$(id -gn)" /dev/null "$f"; [ ! -s "$f" ] || sudo -n cp -p "$f" "$f.prev"; sudo -n tee "$f" >/dev/null'
+        gcloud compute ssh "$GCE_INSTANCE" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" --tunnel-through-iap --quiet \
+          --command "$remote_command" < "$env_file"
+        echo "Synced $REMOTE_FILE from secret $SECRET."

@@ -14,7 +14,8 @@ interface ItineraryMapProps {
   plan: GroundedPlan;
   activeDay: number;
   onSelectDay: (day: number) => void;
-  onAddToCart?: (product: Product) => void;
+  /** Nút của sản phẩm trên ghim: Đặt ngay, và Thêm vào giỏ với loại vào giỏ được. `null` khi sản phẩm chưa đặt được. */
+  itemActions?: (product: Product) => { canAddToCart: boolean; bookNow: () => void; addToCart: () => void } | null;
   focusedCoordinate?: { lat: number; lng: number } | null;
   focusedPointId?: string | null;
   className?: string;
@@ -114,7 +115,7 @@ export const ItineraryMap: React.FC<ItineraryMapProps> = ({
   plan,
   activeDay,
   onSelectDay,
-  onAddToCart,
+  itemActions,
   focusedCoordinate,
   focusedPointId,
   className = ''
@@ -171,10 +172,12 @@ export const ItineraryMap: React.FC<ItineraryMapProps> = ({
     let order = 1;
     plan.days.forEach(day => {
       day.slots.forEach(slot => {
+        // Đếm mọi slot, kể cả slot không có toạ độ (không vẽ điểm), để số và id điểm khớp danh sách ngày và `locateProduct`.
+        const orderNumber = order++;
         const coord = slot.coordinates || slot.product?.coordinates;
         if (coord) {
           points.push({
-            id: `day-${day.day}-slot-${slot.time}-${order}`,
+            id: `day-${day.day}-slot-${slot.time}-${orderNumber}`,
             lat: coord.lat,
             lng: coord.lng,
             title: slot.product?.name || slot.activityTitle || 'Điểm tham quan',
@@ -184,7 +187,7 @@ export const ItineraryMap: React.FC<ItineraryMapProps> = ({
             product: slot.product,
             address: slot.address || slot.product?.address,
             note: slot.note,
-            orderNumber: order++,
+            orderNumber,
             transitInfo: slot.transitInfo,
             transitMode: slot.transitMode,
           });
@@ -508,6 +511,8 @@ export const ItineraryMap: React.FC<ItineraryMapProps> = ({
     }
   };
 
+  const pinActions = selectedPoint?.product && itemActions ? itemActions(selectedPoint.product) : null;
+
   return (
     <div className={`relative flex flex-col h-full bg-slate-50 overflow-hidden ${className}`}>
       {/* Top Map Control Bar */}
@@ -651,20 +656,26 @@ export const ItineraryMap: React.FC<ItineraryMapProps> = ({
             </p>
           )}
 
-          {selectedPoint.product && onAddToCart && (
+          {pinActions && (
             <div className="mt-3 flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
               <span className="text-[10px] text-slate-400">Sản phẩm thật trên V-OTA</span>
-              <button
-                onClick={() => {
-                  if (selectedPoint.product) {
-                    onAddToCart(selectedPoint.product);
-                  }
-                }}
-                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-xs transition-colors flex items-center gap-1 shrink-0"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Thêm vào giỏ</span>
-              </button>
+              <div className="flex items-center gap-1.5 shrink-0">
+                {pinActions.canAddToCart && (
+                  <button
+                    onClick={pinActions.addToCart}
+                    className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold rounded-lg transition-colors flex items-center gap-1"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Thêm vào giỏ</span>
+                  </button>
+                )}
+                <button
+                  onClick={pinActions.bookNow}
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-xs transition-colors"
+                >
+                  Đặt ngay
+                </button>
+              </div>
             </div>
           )}
         </div>

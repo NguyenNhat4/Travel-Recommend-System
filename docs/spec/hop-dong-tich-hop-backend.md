@@ -624,25 +624,31 @@ Lý do một endpoint: `docs/product.md` §4.1.3 yêu cầu Home của khách v�
 
 Giỏ lưu **phía server**, khóa theo `cdpUserId`. Lý do: khi kiểm thử, nhiều tài khoản đăng nhập lần lượt trên cùng một máy; giỏ lưu ở client sẽ lẫn giữa các tài khoản.
 
+**Giỏ chỉ giữ tour, trải nghiệm và tiện ích khác** (`attraction`, `golf`, `combo`). Khách sạn và vé máy bay có giá và chỗ đổi liên tục nên **chỉ đặt trực tiếp** qua đơn nháp (§7.1a): `POST /cart/items` với `hotel` hoặc `flight` trả `422 DIRECT_BOOKING_ONLY` (FR-BKG-01). Bộ luật đầy đủ: `docs/spec/booking/dat-truc-tiep-theo-don-nhap.md`.
+
 ```http
 GET    /api/v1/cart
 POST   /api/v1/cart/items
 PATCH  /api/v1/cart/items/{cartItemId}
 DELETE /api/v1/cart/items/{cartItemId}
-Authorization: Bearer <jwt>    # bắt buộc
+Authorization: Bearer <jwt>    # người đã đăng nhập
+X-Service-Token: <token>       # khách chưa đăng nhập: chỉ BFF gửi được,
+X-Guest-Id: g_<22 ký tự>       # kèm mã khách do BFF phát (§7.1b)
 ```
+
+Không có `Authorization` lẫn cặp header của khách thì `401`. Giỏ của khách chưa đăng nhập có `cdpUserId: null`, tối đa 20 mục.
 
 #### `POST /api/v1/cart/items` — Request
 
 ```json
 {
-  "productId": "nt-h-01",
-  "usingDate": "2026-10-15",
-  "quantity": 1,
-  "nights": 3,
+  "productId": "nt-a-01",
+  "usingDate": "2026-10-16",
   "guests": { "adults": 2, "children": 1 }
 }
 ```
+
+Cùng hình dạng này là một phần tử của `items[]` khi tạo đơn nháp (§7.1a); `nights` và luật khách sạn bên dưới áp dụng ở đó.
 
 | Trường | Bắt buộc | Ý nghĩa |
 |---|---:|---|
@@ -654,7 +660,7 @@ Authorization: Bearer <jwt>    # bắt buộc
 
 Khách sạn: mỗi phòng cần ít nhất 1 người lớn (`adults ≥ quantity`) và `adults + children ≤ maxOccupancy × quantity` khi hạng phòng có `maxOccupancy`. Vi phạm thì `400 VALIDATION_ERROR` với `details.fields[].reason` (`ADULT_REQUIRED`, `PARTY_TOO_LARGE`, `OCCUPANCY_EXCEEDED`, `GUEST_COUNT_MISMATCH`). Bộ luật R-CRT-01…05: `docs/spec/booking/checkout-nhieu-buoc-hanh-khach.md` §5.5. `PATCH` nhận cùng các trường (ít nhất một trường).
 
-Thêm thành công thì Backend ghi event `add_to_cart` sang CDP ở nền, với `taxonomy` và `unitPrice` lấy từ catalog. Thêm thất bại không ghi event; `PATCH`/`DELETE` không ghi event; CDP lỗi không ảnh hưởng response.
+Thêm thành công thì Backend ghi event `add_to_cart` sang CDP ở nền, với `taxonomy` và `unitPrice` lấy từ catalog. Thêm thất bại không ghi event; `PATCH`/`DELETE` không ghi event; CDP lỗi không ảnh hưởng response. Khách chưa đăng nhập không có danh tính CDP nên không sinh event lúc thêm; event được ghi khi gộp giỏ vào tài khoản (§7.1b).
 
 #### Response `200` — `CartResponse` (chung cho cả bốn thao tác)
 
@@ -664,21 +670,21 @@ Thêm thành công thì Backend ghi event `add_to_cart` sang CDP ở nền, vớ
   "cdpUserId": "VP0092381",
   "items": [
     {
-      "cartItemId": "ci-8k3f2a",
-      "product": { "productId": "nt-h-01", "...": "ProductSummary" },
-      "usingDate": "2026-10-15",
-      "quantity": 1,
-      "nights": 3,
-      "guests": { "adults": 2, "children": 1 },
+      "cartItemId": "ci-2m9d7c",
+      "product": { "productId": "nt-a-01", "...": "ProductSummary" },
+      "usingDate": "2026-10-16",
+      "quantity": 3,
+      "nights": null,
+      "guests": { "adults": 3, "children": 0 },
       "fares": [
-        { "fareType": "ROOM", "unitPrice": 3400000, "count": 1, "nights": 3, "amount": 10200000 }
+        { "fareType": "ADULT", "unitPrice": 880000, "count": 3, "nights": null, "amount": 2640000 }
       ],
-      "lineTotal": 10200000
+      "lineTotal": 2640000
     }
   ],
   "itemCount": 1,
-  "subtotal": 10200000,
-  "total": 10200000,
+  "subtotal": 2640000,
+  "total": 2640000,
   "currency": "VND",
   "updatedAt": "2026-09-16T10:20:00Z"
 }
@@ -692,6 +698,52 @@ Cam kết:
 4. `subtotal` bằng `total` trong MVP — không có thuế, phí hay mã giảm giá.
 5. Không gom nhóm theo điểm đến ở tầng API. Client tự gom theo `product.destination` để hiện "Chuyến {destination}"; backend chỉ chốt nhóm ở bước checkout (§7.2).
 6. Thêm một `productId` đã có trong giỏ với cùng `usingDate` thì **cộng dồn** `quantity` và `guests`, không tạo mục mới; kết quả sau khi cộng vẫn phải đạt luật (tối đa 9 khách, sức chứa). Riêng combo: `quantity` cộng dồn, `guests` lấy giá trị lớn hơn theo từng loại.
+
+### 7.1a. Đơn nháp của Đặt ngay
+
+"Đặt ngay" ở mọi sản phẩm (và "Thanh toán tất cả" của lịch trình trợ lý) tạo một **đơn nháp**: đúng các mục của lần đặt đó, sống 30 phút (`BOOKING_DRAFT_TTL_MINUTES`), không liên quan tới các mục đang có trong giỏ.
+
+```http
+POST   /api/v1/booking-drafts                              # 201 BookingDraft
+GET    /api/v1/booking-drafts/{draftId}
+PATCH  /api/v1/booking-drafts/{draftId}/items/{cartItemId}
+DELETE /api/v1/booking-drafts/{draftId}/items/{cartItemId}
+```
+
+Xác thực như giỏ (JWT, hoặc cặp header của khách). `POST` nhận đúng một trong hai:
+
+```json
+{ "items": [ { "productId": "nt-h-luckysun-d3", "usingDate": "2026-10-17", "quantity": 1, "nights": 2,
+               "guests": { "adults": 2, "children": 1 } } ],
+  "allowPartial": false }
+```
+
+```json
+{ "fromBooking": "VOTA-20260916-8K3F" }
+```
+
+Cam kết:
+
+1. `BookingDraft` có `draftId`, `expiresAt`, `cdpUserId` (null với khách) và `items`, `itemCount`, `subtotal`, `total`, `currency` cùng hình dạng với `CartResponse`; `cartItemId` của mục là mã mục đơn nháp. Tối đa 20 mục một đơn nháp, 5 đơn nháp còn hạn một người.
+2. Một mục không đặt được làm cả request lỗi (cùng mã lỗi với thêm giỏ). `allowPartial: true` thì mục lỗi bị bỏ và trả trong `rejectedItems[{productId, usingDate, code, message}]`; không còn mục nào thì `409`.
+3. Mục thuộc loại vào giỏ được (`attraction`, `golf`, `combo`) được **chép vào giỏ** lúc tạo đơn nháp nếu giỏ chưa có cùng `productId` + `usingDate`. Nhờ vậy khi khách không hoàn thành thanh toán, tour và tiện ích vẫn còn trong giỏ, còn khách sạn và vé máy bay thì không.
+4. `fromBooking` đặt lại một đơn `PAYMENT_FAILED` hoặc `EXPIRED` của chính người gọi: mục, số lượng, số khách lấy từ đơn, giá tính lại theo catalog, luôn chạy như `allowPartial`. Tên, ngày sinh, giấy tờ hành khách không được chép sang. Cần đăng nhập.
+5. Quá `expiresAt`: mọi thao tác trả `410 BOOKING_DRAFT_EXPIRED` với `details.items[{productId, taxonomy, inCart}]`. Không tìm thấy hoặc không thuộc người gọi: `404 BOOKING_DRAFT_NOT_FOUND`.
+6. Tạo đơn nháp ghi `add_to_cart` cho từng mục (người đã đăng nhập), kể cả khách sạn và vé máy bay: đây là tín hiệu "đã chọn để đặt" cho Recommendation.
+
+### 7.1b. Khách chưa đăng nhập và gộp vào tài khoản
+
+Khách chưa đăng nhập thêm giỏ, Đặt ngay và điền thông tin được; chỉ `POST /bookings` cần đăng nhập. Giỏ và đơn nháp của khách nằm trong **Redis** (`BOOKING_REDIS_URL`), khoá theo `guestId` do BFF phát, giữ `GUEST_BOOKING_TTL_DAYS` = 3 ngày (đơn nháp vẫn chỉ thanh toán được trong 30 phút). `guestId` không bao giờ được ghi vào PostgreSQL. Backend chỉ tin `X-Guest-Id` khi `X-Service-Token` hợp lệ.
+
+```http
+POST /api/v1/guest-bookings/merge
+Authorization: Bearer <jwt>
+X-Service-Token: <token>
+{ "guestId": "g_…" }
+→ 200 { "mergedCartItems": 2, "skippedDuplicates": 1, "mergedDrafts": 1 }
+```
+
+BFF gọi endpoint này một lần sau khi khách đăng nhập (không mở ra ngoài). Mục chưa có trong giỏ tài khoản được thêm vào giỏ ở database; mục trùng `productId` + `usingDate` thì giữ mục của tài khoản; đơn nháp còn hạn chuyển sang tài khoản với `draftId` cũ; dữ liệu Redis của khách bị xoá. `add_to_cart` chỉ ghi cho mục thực sự được chép sang. Gọi lại với cùng `guestId` không gây trùng.
 
 ### 7.2. Checkout
 
@@ -724,7 +776,7 @@ Content-Type: application/json
 }
 ```
 
-Checkout luôn đặt **toàn bộ giỏ hiện tại**. `travelers` là đoàn khách (1–9 người, ít nhất 1 người lớn; trẻ em có `birthDate`); mỗi mục giỏ có đúng một `itemDetails` cho biết ai dùng: `travelerRefs` với dịch vụ tính theo người và combo, `rooms[]` (mỗi phòng có `travelerRefs` và `leadTravelerRef`) với khách sạn. `itemDetails` không được thay đổi thành phần giỏ; `cartItemId` lạ thì trả `VALIDATION_ERROR`. Body không có trường tiền nào: số tiền do Backend tính từ catalog. Request cũ không có `travelers` (chỉ `guestNames`) vẫn được nhận khi giỏ không có trẻ em (`TRAVELERS_REQUIRED` nếu có), và cũng được kiểm thật. Họ tên và ngày sinh chỉ lưu ở `app.booking_travelers`, không trả trong response, không gửi sang CDP, Insider, Stripe (NFR-SEC-01).
+Checkout có hai nguồn mục. Không gửi `draftId`: đặt **toàn bộ giỏ hiện tại** (thanh toán từ màn hình giỏ). Gửi `draftId`: đặt đúng các mục của đơn nháp đó, giỏ không bị đụng tới; đơn nháp bị xoá trong cùng transaction với việc tạo đơn, và `itemDetails[].cartItemId` là mã mục của đơn nháp. Khi đơn `CONFIRMED`, mục giỏ trùng `productId` + `usingDate` với mục của đơn bị gỡ khỏi giỏ. `travelers` là đoàn khách (1–9 người, ít nhất 1 người lớn; trẻ em có `birthDate`); mỗi mục giỏ có đúng một `itemDetails` cho biết ai dùng: `travelerRefs` với dịch vụ tính theo người và combo, `rooms[]` (mỗi phòng có `travelerRefs` và `leadTravelerRef`) với khách sạn. `itemDetails` không được thay đổi thành phần giỏ; `cartItemId` lạ thì trả `VALIDATION_ERROR`. Body không có trường tiền nào: số tiền do Backend tính từ catalog. Request cũ không có `travelers` (chỉ `guestNames`) vẫn được nhận khi giỏ không có trẻ em (`TRAVELERS_REQUIRED` nếu có), và cũng được kiểm thật. Họ tên và ngày sinh chỉ lưu ở `app.booking_travelers`, không trả trong response, không gửi sang CDP, Insider, Stripe (NFR-SEC-01).
 
 `201` nghĩa là **đã giữ chỗ, chờ thanh toán** (FR-BKG-05, FR-BKG-06), không phải đã đặt xong. Backend kiểm giỏ, gọi Stripe tạo Checkout Session (`expires_at` = `holdExpiresAt`, 30 phút), rồi mới ghi đơn `PENDING_PAYMENT` + dòng `app.payments`. Web chuyển trình duyệt tới `payment.checkoutUrl`. Luồng đầy đủ và sơ đồ: `docs/spec/booking/so-do-luong-dat-cho-thanh-toan.md`.
 
@@ -859,6 +911,8 @@ Body tuỳ chọn `{ "reason": "…" }` (≤ 500 ký tự). Huỷ **cả đơn**
 5. Event được ghi **trước khi** đơn chuyển `CONFIRMED`; Web chỉ gọi `/recommendations` sau khi thấy `CONFIRMED`, nên thấy kết quả đã đổi (AC-REC-02).
 6. Một booking không bao giờ sinh hai event cho cùng một `bookingItemId`: `eventId` là `purchase:{bookingItemId}`, CDP clone trả `duplicate` khi gửi lại. Lần checkout sau một lần lỗi sinh `bookingItemId` mới.
 
+`add_to_cart` (thêm giỏ, tạo đơn nháp, gộp giỏ của khách) là event ghi ở nền, không nằm trong các cam kết giao dịch trên: lỗi CDP không làm hỏng thao tác của khách.
+
 ### 7.5. Ghi hành vi `product_view`
 
 ```http
@@ -910,6 +964,9 @@ Mã lỗi riêng của auth (`UNAUTHENTICATED`, `SESSION_EXPIRED`, `CSRF_FAILED`
 |---:|---|---|---|
 | 400 | `VALIDATION_ERROR` | Request vi phạm luật nghiệp vụ (đoàn khách, phân bổ, số khách của mục giỏ) hoặc `POST /events` sai | `{ fields: [{ field, reason, message, cartItemId? }] }`; mọi vi phạm trong một lần. Sai kiểu dữ liệu ở request khác vẫn là `422` |
 | 400 | `CART_EMPTY` | Checkout khi giỏ rỗng | — |
+| 404 | `BOOKING_DRAFT_NOT_FOUND` | Đơn nháp không tồn tại, đã dùng, hoặc không thuộc người gọi | `{ draftId }` |
+| 410 | `BOOKING_DRAFT_EXPIRED` | Đơn nháp quá 30 phút | `{ draftId, items: [{ productId, taxonomy, inCart }] }` |
+| 422 | `DIRECT_BOOKING_ONLY` | Thêm khách sạn hoặc vé máy bay vào giỏ | `{ productId, taxonomy }` |
 | 401 | `INVALID_CREDENTIALS` | Sai email hoặc mật khẩu | — |
 | 401 | `INVALID_TOKEN` | JWT không hợp lệ | — |
 | 401 | `TOKEN_EXPIRED` | JWT hết hạn | — |
@@ -919,7 +976,7 @@ Mã lỗi riêng của auth (`UNAUTHENTICATED`, `SESSION_EXPIRED`, `CSRF_FAILED`
 | 409 | `EMAIL_ALREADY_EXISTS` | Email đã được đăng ký | — |
 | 409 | `PRODUCT_UNAVAILABLE` | Sản phẩm hết chỗ tại thời điểm thêm giỏ hoặc checkout | `{ productId }` |
 | 409 | `PRICE_CHANGED` | Giá đã đổi kể từ lúc thêm vào giỏ | `{ productId, oldPrice, newPrice, fareType? }`; `fareType = CHILD` khi giá vé trẻ em đổi |
-| 422 | `DATE_OUT_OF_RANGE` | `usingDate` ngoài `availableFrom`–`availableTo` | `{ productId, availableFrom, availableTo }` |
+| 422 | `DATE_OUT_OF_RANGE` | `usingDate` ngoài `availableFrom`–`availableTo`; riêng khách sạn: ngoài khoảng hôm nay (giờ Việt Nam) đến hôm nay + 3 tháng, khi đó `availableFrom`/`availableTo` là hai mốc này, không phải cửa sổ mở bán (FR-CAT-03). Khách sạn tối đa 30 đêm (`nights` ≤ 30, vượt thì 400 `VALIDATION_ERROR`); lịch `attributes.availability` không dùng để chặn | `{ productId, availableFrom, availableTo }` |
 | 409 | `BOOKING_PENDING_PAYMENT` | Đã có đơn giữ chỗ còn hạn | `{ referenceCode, holdExpiresAt }` |
 | 409 | `BOOKING_ALREADY_PAID` | Huỷ đơn chưa trả nhưng Stripe vừa thu tiền | `{ referenceCode }` |
 | 409 | `BOOKING_NOT_CANCELLABLE` | Quá hạn huỷ hoặc đơn đã đóng | `{ referenceCode, reason: TOO_LATE \| NOT_ACTIVE, cancellableUntil? }` |

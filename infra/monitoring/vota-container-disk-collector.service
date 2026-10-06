@@ -1,0 +1,19 @@
+[Unit]
+Description=V-OTA per-container disk usage collector
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/libexec/vota-container-disk-collector.py
+Restart=always
+RestartSec=30s
+Environment=VOTA_CONTAINER_DISK_LOG=/var/log/vota/container-disk.jsonl
+Environment=VOTA_CONTAINER_DISK_INTERVAL_SECONDS=300
+Nice=10
+IOSchedulingClass=idle
+User=root
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

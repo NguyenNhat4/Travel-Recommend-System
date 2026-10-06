@@ -8,7 +8,7 @@ import similarFixture from '../../../shared/mocks/catalog/getSimilarProducts.200
 import popularFixture from '../../../shared/mocks/catalog/listProducts.200-popular.json';
 
 const api = vi.hoisted(() => ({ getProduct: vi.fn(), listVariants: vi.fn(), listProducts: vi.fn(), getSimilarProducts: vi.fn(), trackProductView: vi.fn() }));
-const travel = vi.hoisted(() => ({ currentPersona: null as unknown, navigate: vi.fn(), addToCart: vi.fn() }));
+const travel = vi.hoisted(() => ({ currentPersona: null as unknown, navigate: vi.fn(), addToCart: vi.fn(), startBooking: vi.fn() }));
 vi.mock('../../src/services/catalog', async (importOriginal) => ({ ...(await importOriginal<typeof import('../../src/services/catalog')>()), ...api }));
 vi.mock('../../src/services/recsys', () => ({ fetchRecommendations: vi.fn().mockRejectedValue(new Error('x')) }));
 vi.mock('../../src/context/TravelContext', () => ({ useTravel: () => travel }));
@@ -31,6 +31,7 @@ describe('ProductDetailView: trip context from the URL', () => {
     api.getSimilarProducts.mockResolvedValue(similarFixture);
     api.listProducts.mockResolvedValue(popularFixture);
     travel.addToCart.mockResolvedValue(true);
+    travel.startBooking.mockResolvedValue(null);
   });
   afterEach(() => {
     cleanup();
@@ -43,9 +44,11 @@ describe('ProductDetailView: trip context from the URL', () => {
     await screen.findAllByRole('radio', {}, WAIT);
     await waitFor(() => expect(dateInputs()[0].value).toBe(IN));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Thêm vào giỏ hàng' }));
-    await waitFor(() => expect(travel.addToCart).toHaveBeenCalled());
-    const [, quantity, usingDate, checkOut, options] = travel.addToCart.mock.calls[0];
+    fireEvent.click(screen.getByRole('button', { name: 'Đặt ngay' }));
+    await waitFor(() => expect(travel.startBooking).toHaveBeenCalled());
+    const [[booked]] = travel.startBooking.mock.calls[0];
+    const { quantity, usingDate, checkOutDate: checkOut } = booked;
+    const options = { guests: booked.guests };
     expect(usingDate).toBe(IN);
     expect(checkOut).toBe(OUT);
     expect(quantity).toBe(1);
@@ -58,9 +61,11 @@ describe('ProductDetailView: trip context from the URL', () => {
     await screen.findAllByRole('radio', {}, WAIT);
     await waitFor(() => expect(dateInputs()[0].value).not.toBe(''));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Thêm vào giỏ hàng' }));
-    await waitFor(() => expect(travel.addToCart).toHaveBeenCalled());
-    const [, , usingDate, , options] = travel.addToCart.mock.calls[0];
+    fireEvent.click(screen.getByRole('button', { name: 'Đặt ngay' }));
+    await waitFor(() => expect(travel.startBooking).toHaveBeenCalled());
+    const [[booked]] = travel.startBooking.mock.calls[0];
+    const { usingDate } = booked;
+    const options = { guests: booked.guests };
     expect(usingDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(usingDate).not.toBe('2030-01-10');
     expect(options).toEqual({ guests: { adults: 1, children: 0 } });

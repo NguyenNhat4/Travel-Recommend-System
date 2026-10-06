@@ -16,7 +16,36 @@ LOCAL_SEED_DATABASE_URL = postgresql://postgres:postgres@localhost:$(POSTGRES_HO
 MIGRATE_PYTHON = $(shell test -x src/backend/.venv/bin/python && echo src/backend/.venv/bin/python || echo $(PYTHON))
 LOCAL_INSIDER_DATABASE_URL = postgresql://postgres:postgres@localhost:$(POSTGRES_HOST_PORT)/insider
 
-.PHONY: chat web demo-db demo-db-reset verify-db index-vectors db-migrate db-migrate-status update backend backend-logs backend-stop backend-local jwt-keys
+.PHONY: tunnel tunnel-down tunnel-status chat web demo-db demo-db-reset verify-db index-vectors db-migrate db-migrate-status update backend backend-logs backend-stop backend-local jwt-keys
+
+# SSH tunnel tới DB staging: primary (ghi) :15432, replica (đọc) :15433. Mật khẩu đọc từ .env.tunnel (gitignore),
+# nạp qua SSH_ASKPASS nên không cần sshpass. Chạy nền; dừng bằng `make tunnel-down`.
+TUNNEL_PRIMARY = 127.0.0.1:15432:10.148.0.2:5432 vota-dev@35.197.148.180
+TUNNEL_REPLICA = 127.0.0.1:15433:10.148.0.4:5432 vota-dev@34.126.70.1
+tunnel:
+	if [[ ! -f .env.tunnel ]]; then echo "Thiếu .env.tunnel (SSH_PRIMARY_PASSWORD, SSH_REPLICA_PASSWORD)"; exit 1; fi
+	ASKPASS="$$(mktemp)"; trap 'rm -f "$$ASKPASS"' EXIT
+	printf '#!/bin/sh\nprintf %%s "$$TUNNEL_PW"\n' > "$$ASKPASS"; chmod 700 "$$ASKPASS"
+	open_tunnel() { # $$1=tên $$2=cổng local $$3=biến mật khẩu $$4=spec "-L ... user@host"
+		if (exec 3<>/dev/tcp/127.0.0.1/$$2) 2>/dev/null; then echo "$$1: cổng $$2 đã mở, bỏ qua"; return; fi
+		PW="$$(sed -n "s/^$$3=//p" .env.tunnel | tail -n 1)"
+		if [[ -z "$$PW" ]]; then echo "$$1: thiếu $$3 trong .env.tunnel"; exit 1; fi
+		TUNNEL_PW="$$PW" SSH_ASKPASS="$$ASKPASS" SSH_ASKPASS_REQUIRE=force setsid ssh -f -N \
+			-o PreferredAuthentications=password -o PubkeyAuthentication=no \
+			-o ExitOnForwardFailure=yes -o StrictHostKeyChecking=accept-new \
+			-o ServerAliveInterval=30 -L $$4
+		echo "$$1: tunnel mở trên :$$2"
+	}
+	open_tunnel primary 15432 SSH_PRIMARY_PASSWORD "$(TUNNEL_PRIMARY)"
+	open_tunnel replica 15433 SSH_REPLICA_PASSWORD "$(TUNNEL_REPLICA)"
+
+tunnel-down:
+	pkill -f "ssh -f -N .*-L 127.0.0.1:1543[23]:" && echo "Đã tắt tunnel" || echo "Không có tunnel đang chạy"
+
+tunnel-status:
+	for p in 15432 15433; do
+		if (exec 3<>/dev/tcp/127.0.0.1/$$p) 2>/dev/null; then echo ":$$p mở"; else echo ":$$p đóng"; fi
+	done
 
 # Chạy trọn bộ FastAPI + Streamlit; Ctrl+C sẽ dừng cả hai.
 # Agent mặc định gọi engine trong tiến trình (inprocess); ITINERARY_DATA_MODE=http để gọi qua ITINERARY_SERVICE_BASE_URL.

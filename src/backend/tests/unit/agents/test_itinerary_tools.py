@@ -3,6 +3,8 @@ import asyncio
 import copy
 import importlib.util
 import json
+
+import yaml
 import unittest
 from types import SimpleNamespace
 
@@ -313,7 +315,7 @@ class NodeTests(unittest.IsolatedAsyncioTestCase):
                 return {'tool_call_id': call['id'], 'data': {'strategy': 'popular', 'recommendations': []}}
         async def plan(prompt):
             return SimpleNamespace(tool_calls=[{'name': 'get_recommendations', 'args': {'destination': 'Da Nang'}}])
-        llm = SimpleNamespace(bind_tools=lambda schemas: SimpleNamespace(ainvoke=plan))
+        llm = SimpleNamespace(bind_tools=lambda schemas, tool_choice=None: SimpleNamespace(ainvoke=plan))
         result = await nodes.tool_node({'query': 'recommend Da Nang'}, tools=Executor(), llm=llm)
         self.assertEqual(result['tool_plan'][0]['args'], {'destination': 'Da Nang', 'k': tool_planning.RECOMMENDATION_K})
 
@@ -325,7 +327,7 @@ class NodeTests(unittest.IsolatedAsyncioTestCase):
                 return {'tool_call_id': call['id'], 'data': {'strategy': 'popular', 'recommendations': []}}
         async def plan(prompt):
             return SimpleNamespace(tool_calls=[{'name': 'get_recommendations', 'args': {'destination': 'Hồ Chí Minh'}}])
-        llm = SimpleNamespace(bind_tools=lambda schemas: SimpleNamespace(ainvoke=plan))
+        llm = SimpleNamespace(bind_tools=lambda schemas, tool_choice=None: SimpleNamespace(ainvoke=plan))
         state = {'query': '2 ngày', 'intent': {'destination': 'TP. Hồ Chí Minh', 'days': 2}}
         result = await nodes.tool_node(state, tools=Executor(), llm=llm)
         self.assertEqual(result['tool_plan'][0]['args']['destination'], 'TP. Hồ Chí Minh')
@@ -343,7 +345,7 @@ class NodeTests(unittest.IsolatedAsyncioTestCase):
         async def plan(prompt):
             return SimpleNamespace(tool_calls=[
                 {'name': 'search_products', 'args': {'destination': 'Hạ Long', 'taxonomy': 'attraction', 'limit': 5}}])
-        llm = SimpleNamespace(bind_tools=lambda schemas: SimpleNamespace(ainvoke=plan))
+        llm = SimpleNamespace(bind_tools=lambda schemas, tool_choice=None: SimpleNamespace(ainvoke=plan))
         tools = Executor()
         state = {'query': '2 ngày', 'intent': {'destination': 'Hạ Long', 'days': 2}}
         result = await nodes.tool_node(state, tools=tools, llm=llm)
@@ -363,12 +365,13 @@ class NodeTests(unittest.IsolatedAsyncioTestCase):
         async def plan(prompt):
             return SimpleNamespace(tool_calls=[{'name': 'search_products', 'args': {
                 'query': 'Đà Lạt', 'taxonomy': 'attraction', 'limit': 5, 'excludeProducts': ['p-1']}}])
-        llm = SimpleNamespace(bind_tools=lambda schemas: SimpleNamespace(ainvoke=plan))
+        llm = SimpleNamespace(bind_tools=lambda schemas, tool_choice=None: SimpleNamespace(ainvoke=plan))
         tools = Executor()
         state = {'query': 'rút ngắn còn 2 ngày', 'intent': {'destination': 'Đà Lạt', 'days': 2},
                  'constraints': {'exclude_products': ['p-1']}}
         result = await nodes.tool_node(state, tools=tools, llm=llm)
-        self.assertEqual(len(result['tool_plan']), 1)
+        # 1 lời gọi của planner (attraction) + 2 lời gọi lấp category mặc định (golf, hotel).
+        self.assertEqual(len(result['tool_plan']), 3)
         self.assertNotIn('excludeProducts', result['tool_plan'][0]['args'])
         self.assertNotIn('excludeProducts', tools.seen[0])
         self.assertNotIn('error', result.get('response', {}))
@@ -497,10 +500,11 @@ class SimilarPlanTests(unittest.IsolatedAsyncioTestCase):
 
     def test_similar_without_search_gets_a_safety_net_search(self):
         plan = tool_planning.validated_plan(swap_state(), [similar('H1')])
-        self.assertEqual(names(plan), ['get_similar_products', 'search_products'])
-        # Search tất định cho đúng loại đang đổi (loại của anchor trong previous_selection).
+        # Search tất định cho đúng loại đang đổi (hotel), cộng lấp category mặc định còn thiếu (attraction, golf).
+        self.assertEqual(names(plan), ['get_similar_products', 'search_products', 'search_products', 'search_products'])
         self.assertEqual((plan[1]['args']['query'], plan[1]['args']['destination'], plan[1]['args']['taxonomy']),
                          ('Nha Trang', 'Nha Trang', 'hotel'))
+        self.assertEqual({call['args']['taxonomy'] for call in plan[1:]}, {'hotel', 'attraction', 'golf'})
         # Đã đủ 5 lời gọi: bỏ Similar cuối để chèn search, không vượt trần.
         full = tool_planning.validated_plan(swap_state(), [similar('H1'), REC, REC, REC, REC])
         self.assertEqual(names(full), ['get_recommendations', 'get_recommendations', 'get_recommendations',
@@ -516,20 +520,24 @@ class SimilarPlanTests(unittest.IsolatedAsyncioTestCase):
         # lượt đổi khách sạn sẽ không còn ứng viên chỗ ở.
         state = swap_state(constraints={'hotel_price_max': 900000})
         plan = tool_planning.validated_plan(state, [similar('H1'), search(taxonomy='attraction')])
-        self.assertEqual(names(plan), ['get_similar_products', 'search_products', 'search_products'])
+        # Loại đang đổi (hotel) qua lưới an toàn Similar, cộng golf lấp category mặc định còn thiếu.
+        self.assertEqual(names(plan), ['get_similar_products', 'search_products', 'search_products', 'search_products'])
         self.assertEqual(plan[2]['args']['taxonomy'], 'hotel')
         self.assertEqual((plan[2]['args']['query'], plan[2]['args']['priceMax']), ('Nha Trang', 900000))
+        self.assertEqual(plan[3]['args']['taxonomy'], 'golf')
         self.assertEqual(tool_planning.validated_plan(state, copy.deepcopy(plan)), plan)
-        # Search đúng loại, hoặc search không lọc loại, đã đủ: không thêm gì.
-        for covering in (search(taxonomy='hotel'), search()):
-            with self.subTest(covering=covering['args']):
-                self.assertEqual(len(tool_planning.validated_plan(swap_state(), [similar('H1'), covering])), 2)
+        # Search đúng loại đang đổi đã đủ cho lưới an toàn Similar, nhưng lấp category mặc định vẫn thêm phần còn thiếu
+        # (trừ khi search không lọc taxonomy — kết quả hỗn hợp coi như đã phủ mọi loại).
+        self.assertEqual(len(tool_planning.validated_plan(swap_state(), [similar('H1'), search(taxonomy='hotel')])), 4)
+        self.assertEqual(len(tool_planning.validated_plan(swap_state(), [similar('H1'), search()])), 2)
         # Mỗi loại đang đổi một search; loại người dùng đã loại trừ thì không search.
         two = tool_planning.validated_plan(swap_state(), [similar('H1'), similar('A1'), search(taxonomy='golf')])
         self.assertEqual([call['args'].get('taxonomy') for call in two[2:]], ['golf', 'hotel', 'attraction'])
         excluded = tool_planning.validated_plan(swap_state(constraints={'exclude_taxonomies': ['attraction']}),
                                                 [similar('A1'), search(taxonomy='hotel')])
-        self.assertEqual(names(excluded), ['get_similar_products', 'search_products'])
+        # golf lấp category mặc định còn thiếu; attraction bị loại trừ nên không được thêm.
+        self.assertEqual(names(excluded), ['get_similar_products', 'search_products', 'search_products'])
+        self.assertEqual(excluded[2]['args']['taxonomy'], 'golf')
         # Similar nhường chỗ cho search của loại đang đổi; get_recommendations bắt buộc được xếp chỗ trước. Hết
         # chỗ mà không còn Similar để bỏ thì giữ plan như plan không có Similar, không huỷ lượt.
         others = [search(taxonomy='golf'), search(taxonomy='combo'), search(taxonomy='golf'), search(taxonomy='combo')]
@@ -559,18 +567,22 @@ class SimilarPlanTests(unittest.IsolatedAsyncioTestCase):
 
     def test_dropped_similar_still_gets_the_safety_net_search(self):
         # Similar bị bỏ (anchor bịa, hoặc không được mời) không được làm lượt đổi món mất search mà Similar hợp lệ có.
-        # Anchor bịa không cho biết loại nên search theo điểm đến; anchor thật (dù Similar không được mời) thì theo loại.
-        for plan, offered, taxonomy in (([similar('X1'), REC], None, None),
-                                        ([similar('H1'), REC], frozenset({'search_products', 'get_recommendations'}),
-                                         'hotel')):
-            with self.subTest(offered=offered):
-                validated = tool_planning.validated_plan(swap_state(), plan, offered=offered)
-                self.assertEqual(names(validated), ['get_recommendations', 'search_products'])
-                self.assertEqual([call['id'] for call in validated], ['call-0', 'call-1'])
-                self.assertEqual(validated[1]['args']['query'], 'Nha Trang')
-                self.assertEqual(validated[1]['args'].get('taxonomy'), taxonomy)
-        # Plan không có Similar giữ nguyên như trước; đã đủ 5 lời gọi mà không còn Similar để nhường chỗ thì sai.
-        self.assertEqual(names(tool_planning.validated_plan(swap_state(), [REC])), ['get_recommendations'])
+        # Anchor bịa không cho biết loại nên search theo điểm đến (không lọc taxonomy, đã phủ mọi loại mặc định);
+        # anchor thật (dù Similar không được mời) thì theo loại, và lấp thêm các category mặc định còn thiếu.
+        validated = tool_planning.validated_plan(swap_state(), [similar('X1'), REC], offered=None)
+        self.assertEqual(names(validated), ['get_recommendations', 'search_products'])
+        self.assertEqual([call['id'] for call in validated], ['call-0', 'call-1'])
+        self.assertEqual(validated[1]['args']['query'], 'Nha Trang')
+        self.assertIsNone(validated[1]['args'].get('taxonomy'))
+        validated = tool_planning.validated_plan(
+            swap_state(), [similar('H1'), REC], offered=frozenset({'search_products', 'get_recommendations'}))
+        self.assertEqual(names(validated), ['get_recommendations', 'search_products', 'search_products', 'search_products'])
+        self.assertEqual(validated[1]['args']['query'], 'Nha Trang')
+        self.assertEqual({call['args']['taxonomy'] for call in validated[1:]}, {'hotel', 'attraction', 'golf'})
+        # Plan không có Similar vẫn được lấp category mặc định (hotel/attraction/golf) cạnh get_recommendations.
+        no_similar = tool_planning.validated_plan(swap_state(), [REC])
+        self.assertEqual(names(no_similar), ['get_recommendations', 'search_products', 'search_products', 'search_products'])
+        # Đã đủ 5 lời gọi mà không còn Similar để nhường chỗ thì sai như trước.
         with self.assertRaises(ToolError) as caught:
             tool_planning.validated_plan(swap_state(), [similar('X1')] + [REC] * 5)
         self.assertEqual(caught.exception.code, 'INVALID_TOOL_PLAN')
@@ -634,7 +646,7 @@ class SimilarPlanTests(unittest.IsolatedAsyncioTestCase):
                                         (swap_state(), every, True)):
             bound, prompts = [], []
 
-            def bind_tools(schemas):
+            def bind_tools(schemas, tool_choice=None):
                 bound.append([d['name'] for d in schemas])
 
                 async def invoke(messages):
@@ -648,7 +660,7 @@ class SimilarPlanTests(unittest.IsolatedAsyncioTestCase):
                     llm_timeout_seconds=1, require_recommendations=False)
                 self.assertIsNone(error)
                 (system_role, system), (_, human) = prompts[0]
-                payload = json.loads(human)
+                payload = yaml.safe_load(human)
                 if offered:
                     self.assertEqual(bound, [list(every)])
                     self.assertEqual(system, f'{TOOL_PLAN_PROMPT} {SIMILAR_HINT}')
@@ -662,6 +674,36 @@ class SimilarPlanTests(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(set(payload), {'message', 'intent', 'constraints', *llm_context(state)})
                     self.assertEqual(payload['previous_selection'], state['previous_selection'])
                     self.assertEqual(names(plan), ['search_products'])
+
+
+class DefaultCategoryFillTests(unittest.TestCase):
+    """`tool` search mặc định cả hotel/attraction/golf, chỉ loại khi user yêu cầu (constraints.exclude_taxonomies)."""
+
+    def _state(self, **constraints):
+        return {'request_id': 'default-fill-test', 'intent': {'destination': 'Nha Trang', 'days': 2},
+                'constraints': constraints}
+
+    def test_a_single_category_call_is_filled_up_to_all_three_defaults(self):
+        plan = tool_planning.validated_plan(self._state(), [search(taxonomy='hotel')])
+        self.assertEqual(names(plan), ['search_products', 'search_products', 'search_products'])
+        self.assertEqual({call['args']['taxonomy'] for call in plan}, {'hotel', 'attraction', 'golf'})
+
+    def test_an_untyped_search_already_covers_every_default_category(self):
+        plan = tool_planning.validated_plan(self._state(), [search()])
+        self.assertEqual(names(plan), ['search_products'])
+
+    def test_an_explicitly_excluded_category_is_never_filled_in(self):
+        plan = tool_planning.validated_plan(self._state(exclude_taxonomies=['golf']), [search(taxonomy='hotel')])
+        self.assertEqual({call['args'].get('taxonomy') for call in plan}, {'hotel', 'attraction'})
+
+    def test_missing_destination_does_not_crash_the_fill(self):
+        plan = tool_planning.validated_plan({'intent': {}, 'constraints': {}}, [REC], require_recommendations=True)
+        self.assertEqual(names(plan), ['get_recommendations'])
+
+    def test_the_fill_is_best_effort_and_skipped_quietly_once_the_call_budget_is_full(self):
+        plan = tool_planning.validated_plan(self._state(), [search(taxonomy='hotel')] + [REC] * 4)
+        self.assertEqual(len(plan), 5)
+        self.assertEqual({call['args'].get('taxonomy') for call in plan if call['name'] == 'search_products'}, {'hotel'})
 
 
 class SimilarEvaluationTests(unittest.TestCase):

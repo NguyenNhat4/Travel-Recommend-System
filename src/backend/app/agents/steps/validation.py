@@ -4,6 +4,8 @@ from __future__ import annotations
 from src.backend.app.application.itinerary.contracts import valid
 from src.backend.app.domain.itinerary.planning import summary, validate_plan
 
+from .narration import unknown_links
+
 
 def response_issues(state: dict, response: dict, http_status: int) -> list:
     """Danh sách lỗi; rỗng nghĩa là response được phép trả cho client."""
@@ -17,7 +19,9 @@ def response_issues(state: dict, response: dict, http_status: int) -> list:
                                    state["intent"], state.get("constraints", {}))
             if response.get("intent") != state["intent"] or response["conversationId"] != state["conversation_id"]:
                 issues.append("intent")
-        if response.get("status") == "FALLBACK":
+            if unknown_links(response):
+                issues.append("message_grounding")
+        if response.get("status") in ("COMPLETED", "FALLBACK") and response.get("searchResults"):
             for products in response["searchResults"].values():
                 if any(p != summary(state.get("candidates", {}).get(p["productId"], {})) for p in products):
                     issues.append("fallback_grounding")
@@ -27,7 +31,9 @@ def response_issues(state: dict, response: dict, http_status: int) -> list:
 
 
 def answer_text(response: dict) -> str:
-    """Một dòng tóm tắt cho UI: câu hỏi, message, lỗi, hoặc tên các sản phẩm đã xếp lịch."""
+    """Câu hiển thị cho UI: câu hỏi, message (kể cả lời diễn giải của `COMPLETED`), lỗi, hoặc tên các sản phẩm đã xếp."""
+    if response.get("status") == "COMPLETED" and response.get("message"):
+        return response["message"]
     if response.get("status") == "COMPLETED":
         names = [slot["product"]["name"] for day in response["itinerary"]["days"]
                  for slot in day["slots"] if slot["product"]]

@@ -385,6 +385,26 @@ Hai mã khác nhau vì cách xử lý khác nhau: cái đầu là sai id, cái s
 
 ---
 
+### 3.7. `/search/suggestions` — gợi ý tức thì khi gõ · FR-SRC-05
+
+```http
+GET /api/v1/search/suggestions?q=ha&limit=8
+```
+
+Hình dạng: `SearchSuggestionResponse` trong `search.yaml` (contract 1.14.0). Đây **không** phải một chế độ của `/search`: khớp chữ, không điểm số, không embed, không kho vector.
+
+| Hạng mục | Quy tắc |
+|---|---|
+| Nguồn | `UnitIndex` đang phục vụ: tên điểm đến (cùng giá trị và số đếm với `/destinations`) và tên search unit còn bán. Không có vé máy bay, hạng phòng, chuyến bay hay unit `available = false` |
+| Khớp | Sau `fold` (bỏ dấu, chữ thường): hạng 0 tên bắt đầu bằng truy vấn · hạng 1 truy vấn khớp từ đầu một từ · hạng 2 mọi token của truy vấn là tiền tố của một từ trong tên. Không khớp giữa từ ("ha" ≠ "nhạc") |
+| Xếp và chia | Nhóm theo thứ tự điểm đến, `hotel`, `attraction`, `golf`, `combo`; trong nhóm theo hạng khớp, rồi độ phổ biến (`BuildPopularity`), rồi tên ngắn hơn. Chia chỗ theo vòng giữa các nhóm đến `limit` (mặc định 8, tối đa 10), nên một nhóm đông không đẩy nhóm khác ra |
+| Truy vấn ngắn | Dưới 2 ký tự chữ/số sau `fold` → `200` với `suggestions: []`, không phải lỗi. `q` thiếu, dài hơn 100 ký tự hoặc `limit` ngoài 1–10 → `422 VALIDATION_ERROR` |
+| Ghi hành vi | **Không** ghi event `search` sang CDP và không ghi `app.search_logs`: Web gọi theo từng lần gõ. Không cần JWT |
+| Bộ nhớ đệm | LRU trong tiến trình theo `(fold(q), limit)`, dựng lại cùng mỗi lần catalog nạp lại; response có `Cache-Control: public, max-age=300` (RecSys chưa sẵn sàng thì trả rỗng và không có header này) |
+| Ngân sách | p95 ≤ 250 ms (AC-SRC-02). Không gọi dịch vụ ngoài nên không chịu độ trễ Weaviate/Cohere ở §7.1 |
+
+Code: `domain/search/suggest.py`, `application/search/suggest.py`, `api/v1/routes/search.py`.
+
 ## 4. Recommendation engine
 
 ### 4.1. Endpoint
@@ -468,7 +488,8 @@ engine và chưa sửa**, đang chờ Team Recommendation/Search cùng Web quy�
 
 - `recent_activity`: bảng ghi "không có trip đang mở", nhưng engine chỉ trả giá
   trị này khi **có** trip đang mở, trip đó chưa purchase và tổng ≥ 3 event dùng được. Engine
-  coi trip đang mở là trip có event gần nhất trong 60 ngày (`ACTIVE_TRIP_MAX_AGE_DAYS`).
+  coi trip đang mở là trip có event gần nhất trong 60 ngày (`ACTIVE_TRIP_MAX_AGE_DAYS`) — *luật tới 01/10/2026; từ đó theo
+  bổ sung bên dưới (`usingDate`, N = 14).*
 - `dormant`: bảng này và `hop-dong-tich-hop-backend.md` §6.2 ghi 90 ngày; engine
   dùng 180 ngày (`DORMANT_AFTER_DAYS`).
 - `< 3 event → popular`: engine trả `popular` khi không còn event nào dùng
@@ -478,6 +499,19 @@ engine và chưa sửa**, đang chờ Team Recommendation/Search cùng Web quy�
   `because` khi có nguồn đạt ngưỡng, nên `coldStart: true` có thể đi kèm
   `because` khác rỗng. Mock `getRecommendations.200-cold-start-content.json`
   theo ràng buộc 4 (`because: []`).
+
+**Bổ sung 2026-10-01 (FR-REC-02 sửa theo đề xuất `category-exclusion-theo-chuyen-dang-dien-ra`, đã chốt).** "Trip đang
+mở" trong bảng trên là trip **chưa kết thúc** theo đúng định nghĩa `tripFactor` §4.3: `max(usingDate)` của các event trong
+trip ≥ hôm nay; trip không có `usingDate` nào (chỉ view / search) thì mở khi event gần nhất cách ≤ `ACTIVE_TRIP_MAX_AGE_DAYS`
+(tham số N của PRD: **14 ngày** từ 01/10, trước là 60 — đo trên split temporal đóng băng, `docs/spec/bench/recsys-offline-eval.md`
+§4.14 v5 (`usingDate` + N = 14): Recall@20 0,196 → 0,216, LLBO không đổi; grid §4.13 với luật tuổi đơn thuần N = 14 cho 0,225
+vì luật đó đóng luôn chuyến chưa đi tại T). Trip đã kết thúc không còn là trip mở dù mới 5 ngày trước → khách rơi về `long_term` /
+`dormant`, engine gợi cho chuyến kế tiếp. Trip mua từ lâu nhưng `usingDate` còn ở tương lai vẫn là trip mở (chuyến sắp đi).
+`usingDate` của event CDP là **ngày bắt đầu sử dụng** (check-in / ngày bay) và CDP không có ngày kết thúc, nên kỳ nghỉ nhiều
+đêm được coi là xong từ ngày sau check-in; muốn giữ trip mở suốt kỳ nghỉ cần thêm số đêm / ngày kết thúc vào event (đề xuất PRD
+riêng, chưa có). Tuổi trip, ngày kết thúc và món đã mua xét trên **mọi** event của trip; cap `MAX_REPEAT_PER_TRIP` chỉ giới hạn
+trọng số vector. "Hôm nay" lấy theo giờ Việt Nam (UTC+7, `profile.local_today`) để khớp `usingDate` là ngày địa phương.
+Engine ghi `ENGINE_RULES_VERSION` vào cấu hình để bench phân biệt hai luật.
 
 **Ràng buộc bắt buộc:**
 
@@ -498,6 +532,11 @@ excluded       = bookedThisTrip, mở rộng: combo kéo theo hotel
 
 Áp làm **hard filter trong câu truy vấn**, không phải phép trừ vector. Ngoài ra
 loại mọi `productId` khách đã từng mua.
+
+**Chỉ áp cho trip đang mở** theo định nghĩa §4.4 (bổ sung 2026-10-01): chuyến đã kết thúc (`usingDate` đã qua) thì không
+loại taxonomy đã mua và không khoá điểm đến — đó là gợi ý cho chuyến kế tiếp (PRD FR-REC-02). Lý do: trên split temporal
+của bench, 22 % target bị chính exclusion / khoá điểm đến của chuyến đã đi xong chặn (`docs/spec/bench/recsys-offline-eval.md`
+§4.7, §4.11).
 
 **Nếu loại hết mọi taxonomy** (khách đã đặt đủ 5 nhóm trong một chuyến): bỏ
 exclusion, trả theo similarity thuần, đặt `diagnostics.exclusionRelaxed: true`.
@@ -611,6 +650,11 @@ khác hẳn nhau.
 | `GET /recommendations`, cache miss (đọc 500 event từ CDP) | 800 ms |
 | Embed một truy vấn | 60 ms khi `embedCache = miss` (gọi Cohere); hit ≈ 0 ms — từ 30/09 vector truy vấn được cache (§2.2), số đo thật ở `docs/spec/bench/search-eval-results.md` |
 
+Đo thật 01/10/2026 trên VM (`release-mvp-v2`, contract 1.12.0; Weaviate Cloud ở `eu-central-1`, VM ở `asia-southeast1`):
+`/search` p95 **4,0 s** = dense 1,8 s + BM25 2,1 s nối tiếp (mỗi lượt gửi mask 3.146 id); embed cache hit 0 ms, miss p95 437 ms.
+Ngân sách 300 ms ở bảng trên chỉ đạt được khi kho vector cùng vùng với backend — số và nguyên nhân ở
+`docs/spec/bench/search-eval-results.md` §2–3, report `src/evaluation/reports/eval-2026-10-01-search-cloud-latency.md`.
+
 Dòng "cache miss" là thừa nhận thẳng: đường đó phải gọi HTTP sang CDP clone rồi
 tra tối đa 500 vector. Nó chỉ xảy ra sau `purchase` hoặc khi cache trống.
 Tỉ lệ cache miss cao là dấu hiệu quy tắc vô hiệu hóa đang sai, không phải engine chậm.
@@ -703,7 +747,8 @@ Team Search cung cấp:
 
 16. Đăng nhập lần lượt 4 tài khoản demo → 4 `strategy` khác nhau.
 17. P1 vừa đặt hotel Nha Trang → `strategy: cross_vertical`, không có item
-    `taxonomy: hotel`, `nextVertical` khác `null`.
+    `taxonomy: hotel`, `nextVertical` khác `null`. *(Từ 01/10 "vừa đặt" = chuyến chưa diễn ra xong: seed gắn `usingDate`
+    cho P1 ~2 tuần sau `--as-of`, nên seed lại trước demo; quá ngày sử dụng P1 rơi về `long_term`.)*
 18. P4 (0 event) → `coldStart: true` và **mọi** `because` rỗng.
 19. Mọi `because[].productId` khác `null` đều mở được `GET /products/{id}` → `200`.
 20. Hai event giống hệt cách nhau đúng 30 ngày → trọng số sau decay chênh **hệ

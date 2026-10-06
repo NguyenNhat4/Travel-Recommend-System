@@ -6,8 +6,8 @@ import pytest
 
 from src.backend.app.application.booking import Contact, ItemDetail
 from src.backend.app.application.booking.errors import (
-    BookingAlreadyPaid, BookingNotCancellable, BookingNotFound, CartEmpty, LineRejected, PaymentUnavailable,
-    PendingPaymentExists, ValidationFailed,
+    BookingAlreadyPaid, BookingNotCancellable, BookingNotFound, CartEmpty, DirectBookingOnly, LineRejected,
+    PaymentUnavailable, PendingPaymentExists, ValidationFailed,
 )
 from src.backend.app.domain.booking.status import BookingStatus, PaymentStatus
 from src.backend.tests.fakes.booking import HOTEL, PRINCIPAL, TICKET, USER, World, product
@@ -16,8 +16,19 @@ CONTACT = Contact("Nguyễn Minh Anh", "minh@example.vn", "0912345678")
 run = asyncio.run
 
 
+GOLF = "33333333-3333-3333-3333-333333333333"
+
+
 async def hold(w: World, **kw):
+    """Giữ chỗ cho một lần Đặt ngay gồm phòng khách sạn và vé tham quan (đơn nháp)."""
     await w.fill_cart(**kw)
+    return await w.create(PRINCIPAL, CONTACT, await w.details())
+
+
+async def cart_hold(w: World):
+    """Giữ chỗ từ giỏ hàng: giỏ chỉ có vé tham quan (khách sạn, vé máy bay không vào giỏ)."""
+    if not (await w.carts.get(USER)).lines:
+        await w.cart.add(PRINCIPAL, product_id=TICKET, using_date=date(2026, 10, 15), quantity=2, nights=None)
     return await w.create(PRINCIPAL, CONTACT, await w.details())
 
 
@@ -30,10 +41,11 @@ def session_of(w: World, ref: str) -> str:
 def test_cart_adds_merges_and_computes_totals_and_tracks_add_to_cart():
     async def go():
         w = World()
-        await w.cart.add(PRINCIPAL, product_id=HOTEL, using_date=date(2026, 10, 15), quantity=1, nights=3)
-        cart = await w.cart.add(PRINCIPAL, product_id=HOTEL, using_date=date(2026, 10, 15), quantity=1, nights=3)
+        await w.cart.add(PRINCIPAL, product_id=TICKET, using_date=date(2026, 10, 15), quantity=1, nights=None)
+        cart = await w.cart.add(PRINCIPAL, product_id=TICKET, using_date=date(2026, 10, 15), quantity=1, nights=None)
         assert cart["itemCount"] == 1 and cart["items"][0]["quantity"] == 2  # cộng dồn
-        assert cart["items"][0]["lineTotal"] == 3_400_000 * 3 * 2 and cart["total"] == cart["subtotal"]
+        assert cart["items"][0]["lineTotal"] == 880_000 * 2 and cart["total"] == cart["subtotal"]
+        assert cart["cdpUserId"] == USER
         return w
     w = run(go())
     assert [e.event_name for e in w.recorder.events] == ["add_to_cart", "add_to_cart"]
@@ -41,12 +53,12 @@ def test_cart_adds_merges_and_computes_totals_and_tracks_add_to_cart():
 
 def test_cart_rejects_unknown_unavailable_and_out_of_range_products():
     async def go():
-        w = World(products=[product(), product(TICKET, "attraction", available=False)])
+        w = World(products=[product(), product(TICKET, "attraction", available=False), product(GOLF, "golf", 2_600_000)])
         with pytest.raises(LineRejected) as e:
             await w.cart.add(PRINCIPAL, product_id=TICKET, using_date=date(2026, 10, 15), quantity=1, nights=None)
         assert e.value.code == "PRODUCT_UNAVAILABLE" and e.value.http_status == 409
         with pytest.raises(LineRejected) as e:
-            await w.cart.add(PRINCIPAL, product_id=HOTEL, using_date=date(2027, 6, 1), quantity=1, nights=1)
+            await w.cart.add(PRINCIPAL, product_id=GOLF, using_date=date(2027, 6, 1), quantity=1, nights=None)
         assert e.value.code == "DATE_OUT_OF_RANGE" and e.value.http_status == 422
         from src.backend.app.application.booking.errors import ProductNotFound
         with pytest.raises(ProductNotFound):
@@ -57,6 +69,21 @@ def test_cart_rejects_unknown_unavailable_and_out_of_range_products():
 
 # --- Case 1: đặt chỗ thành công -----------------------------------------------------------------
 
+def test_cart_rejects_hotels_and_flights_which_are_booked_directly():
+    """R-DIR-01 (AC-BKG-15): khách sạn và vé máy bay không vào giỏ; giỏ không đổi, không ghi add_to_cart."""
+    async def go():
+        flight = "44444444-4444-4444-4444-444444444444"
+        day = date(2026, 10, 15)
+        w = World(products=[product(), product(flight, "flight", 634_000, available_from=day, available_to=day)])
+        for pid, taxonomy in ((HOTEL, "hotel"), (flight, "flight")):
+            with pytest.raises(DirectBookingOnly) as e:
+                await w.cart.add(PRINCIPAL, product_id=pid, using_date=day, quantity=1, nights=1)
+            assert (e.value.code, e.value.http_status) == ("DIRECT_BOOKING_ONLY", 422)
+            assert e.value.details == {"productId": pid, "taxonomy": taxonomy}
+        assert (await w.carts.get(USER)).lines == [] and w.recorder.events == []
+    run(go())
+
+
 def test_create_hold_returns_pending_payment_with_checkout_url_and_does_not_touch_cdp_or_cart():
     async def go():
         w = World()
@@ -66,7 +93,8 @@ def test_create_hold_returns_pending_payment_with_checkout_url_and_does_not_touc
         assert res["payment"]["status"] == "OPEN" and res["payment"]["checkoutUrl"].startswith("https://checkout.fake/")
         assert res["payment"]["amount"] == res["total"] == 3_400_000 * 3 + 2 * 880_000
         assert w.cdp.recorded == []                            # purchase chưa ghi
-        assert len((await w.carts.get(USER)).lines) == 2        # giỏ còn nguyên
+        assert [l.product_id for l in (await w.carts.get(USER)).lines] == [TICKET]   # vé tham quan nằm trong giỏ, phòng thì không
+        assert w.basket.draft_id not in w.draft_repo.drafts    # đơn nháp đã thành đơn giữ chỗ (R-CHK-05)
         return w
     run(go())
 
@@ -169,7 +197,7 @@ def test_item_details_are_stored_per_item():
     async def go():
         w = World()
         await w.fill_cart()
-        line = (await w.carts.get(USER)).lines[0]
+        line = (await w.lines())[0]
         details = [ItemDetail(line.cart_item_id, ["An"], "Tầng cao"), *(await w.details())[1:]]
         res = await w.create(PRINCIPAL, CONTACT, details)
         first = res["groups"][0]["items"][0]
@@ -185,7 +213,7 @@ def test_stripe_timeout_creates_no_booking_and_keeps_cart():
         with pytest.raises(PaymentUnavailable) as e:
             await w.create(PRINCIPAL, CONTACT, await w.details())
         assert e.value.http_status == 503 and e.value.retryable
-        assert w.store.bookings == {} and len((await w.carts.get(USER)).lines) == 2
+        assert w.store.bookings == {} and len(await w.lines()) == 2   # đơn nháp còn nguyên để bấm lại
     run(go())
 
 
@@ -219,7 +247,8 @@ def test_two_declines_keep_holding_third_fails_booking_and_closes_session():
         assert (shown["status"], shown["payment"]["status"], shown["payment"]["failureReason"]) == (
             "PAYMENT_FAILED", "FAILED", "TOO_MANY_ATTEMPTS")
         assert w.gateway.sessions[sid]["status"] == "expired" and w.cdp.recorded == []
-        assert len((await w.carts.get(USER)).lines) == 2     # giỏ còn nguyên
+        # Không hoàn thành thanh toán: vé tham quan nằm lại trong giỏ, phòng khách sạn thì không (AC-BKG-02, AC-BKG-16).
+        assert [l.product_id for l in (await w.carts.get(USER)).lines] == [TICKET]
     run(go())
 
 
@@ -242,9 +271,11 @@ def test_money_arriving_for_a_closed_booking_is_refunded_automatically():
 def test_second_hold_while_pending_is_rejected_with_reference_code():
     async def go():
         w = World()
-        first = await hold(w)
+        await w.fill_cart()
+        details = await w.details()
+        first = await w.create(PRINCIPAL, CONTACT, details)
         with pytest.raises(PendingPaymentExists) as e:
-            await w.create(PRINCIPAL, CONTACT, await w.details())
+            await w.create(PRINCIPAL, CONTACT, details)
         assert e.value.http_status == 409 and e.value.details["referenceCode"] == first["referenceCode"]
         assert len(w.gateway.sessions) == 1
     run(go())
@@ -253,9 +284,9 @@ def test_second_hold_while_pending_is_rejected_with_reference_code():
 def test_expired_hold_is_released_on_next_attempt_without_waiting_for_webhook():
     async def go():
         w = World()
-        first = (await hold(w))["referenceCode"]
+        first = (await cart_hold(w))["referenceCode"]
         w.clock.advance(minutes=32)
-        second = await w.create(PRINCIPAL, CONTACT, await w.details())
+        second = await cart_hold(w)                           # giỏ còn nguyên nên bấm Thanh toán lại được
         assert w.booking(first).status is BookingStatus.EXPIRED and second["status"] == "PENDING_PAYMENT"
     run(go())
 
@@ -263,12 +294,12 @@ def test_expired_hold_is_released_on_next_attempt_without_waiting_for_webhook():
 def test_expired_webhook_and_reconcile_expire_the_booking_and_keep_cart():
     async def go():
         w = World()
-        ref = (await hold(w))["referenceCode"]
+        ref = (await cart_hold(w))["referenceCode"]
         await w.handler(w.gateway.expire_event(session_of(w, ref)))
         b = w.booking(ref)
         assert (b.status, b.payment.status) == (BookingStatus.EXPIRED, PaymentStatus.EXPIRED)
-        assert len((await w.carts.get(USER)).lines) == 2
-        ref2 = (await w.create(PRINCIPAL, CONTACT, await w.details()))["referenceCode"]   # bấm lại được sau khi hết hạn
+        assert len((await w.carts.get(USER)).lines) == 1
+        ref2 = (await cart_hold(w))["referenceCode"]                         # bấm lại được sau khi hết hạn
         w.clock.advance(minutes=45)                                          # webhook lỡ
         assert await w.reconciler() == 1 and w.booking(ref2).status is BookingStatus.EXPIRED
     run(go())
