@@ -1,3 +1,4 @@
+import logging
 from time import perf_counter
 
 from fastapi import APIRouter, Depends, Query, Response
@@ -5,8 +6,10 @@ from pydantic import BaseModel, Field
 
 from src.backend.app.api.deps import get_search, get_similar, get_suggest
 from src.backend.app.application.search.use_cases import ANN_DIAGNOSTICS, canonical_query
+from src.backend.app.core.logging_config import log_event
 
 router = APIRouter(tags=["search"])
+logger = logging.getLogger(__name__)
 
 
 class SearchRequestPayload(BaseModel):
@@ -44,6 +47,10 @@ def _safe_search(search_products, query: str, taxonomy: str | None, destination:
     result.setdefault("diagnostics", {})["latencyMs"] = max(
         0, round((perf_counter() - started) * 1000)
     )
+    diagnostics = result["diagnostics"]
+    log_event(logger, "search.run", mode=diagnostics.get("searchMode"), query_text=query[:200],
+              result_count=len(result.get("results") or []), total=result.get("total"),
+              engine_ms=diagnostics.get("latencyMs"), degraded=search_products is None)
     return result
 
 

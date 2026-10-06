@@ -15,6 +15,7 @@ from src.backend.app.application.ports import (
     VectorHit,
     VectorSearchPort,
 )
+from src.backend.app.core.logging_config import log_event
 from src.backend.app.domain.search import (
     HybridConfig,
     NormalizedQuery,
@@ -181,9 +182,13 @@ class SearchProducts:
     def _embed(self, text: str) -> tuple[np.ndarray, str | None]:
         """(vector, "hit" | "miss" | None): None khi embedder không có cache (bench, test, SEARCH_EMBED_CACHE=false)."""
         with_status = getattr(self.embedder, "embed_query_status", None)
-        if with_status is None:
-            return self.embedder.embed_query(text), None
-        vec, status = with_status(text)
+        try:
+            if with_status is None:
+                return self.embedder.embed_query(text), None
+            vec, status = with_status(text)
+        except Exception as exc:
+            log_event(logger, "search.embed.failed", "ERROR", error_kind=type(exc).__name__)
+            raise
         return vec, status
 
     def _hybrid(self, q: str, qvec: np.ndarray, dense: list[VectorHit], allowed, filtered_count: int,

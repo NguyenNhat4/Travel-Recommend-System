@@ -10,6 +10,7 @@ from src.backend.app.application.booking.settlement import Settlement
 from src.backend.app.application.ports.booking_store import BookingStore
 from src.backend.app.application.ports.cdp_client import CdpUnavailableError
 from src.backend.app.application.ports.payment_gateway import PaymentEvent, PaymentGateway, PaymentProviderUnavailable
+from src.backend.app.core.logging_config import log_event
 from src.backend.app.domain.booking.status import BookingStatus, PaymentStatus
 
 logger = logging.getLogger(__name__)
@@ -44,9 +45,11 @@ class ReconcileBookings:
             try:
                 await self.reconcile_one(booking_id)
             except (PaymentProviderUnavailable, CdpUnavailableError):
-                logger.warning("reconcile.deferred bookingId=%s", booking_id)
+                log_event(logger, "booking.reconcile.deferred", "WARNING", booking_id=booking_id,
+                          reason="provider_or_cdp_unavailable")
             except Exception:
-                logger.exception("reconcile.failed bookingId=%s", booking_id)
+                log_event(logger, "booking.reconcile.failed", "ERROR", exc_info=True, booking_id=booking_id,
+                          reason="exception")
         return len(ids)
 
     async def reconcile_one(self, booking_id: str) -> None:

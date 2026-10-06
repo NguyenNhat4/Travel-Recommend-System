@@ -9,7 +9,7 @@ import numpy as np
 from src.backend.app.application.ports import CdpHistoryReader, UnitIndex, VectorSearchPort
 from src.backend.app.application.ports.cdp_client import CdpUnavailableError
 from src.backend.app.application.search import hit
-from src.backend.app.core.request_context import current_request_id
+from src.backend.app.core.logging_config import log_event
 from src.backend.app.domain.recommendation import Popularity, Purchase, ResolvedEvent, build_profile, explain, mmr_select, score_candidates
 from src.backend.app.domain.recommendation.profile import MAX_PER_VERTICAL, local_today, parse_using_date
 
@@ -100,8 +100,8 @@ class RecommendForUser:
         except CdpUnavailableError as exc:
             # CDP sập/timeout vẫn trả 200 popular; chỉ lỗi CDP mới log WARNING, không log cdp_user_id
             # (hop-dong-tich-hop-cdp.md §6, §8).
-            logger.warning("recommend.cdp_unavailable requestId=%s reason=%s; fallback popular",
-                           current_request_id() or "-", type(exc.__cause__ or exc).__name__)
+            log_event(logger, "recsys.fallback", "WARNING", reason="cdp_unavailable",
+                      message=f"recommend.cdp_unavailable reason={type(exc.__cause__ or exc).__name__}; fallback popular")
             return {**base, **self._cold_start(k, now, destination)}
 
         units = {e.get("productId") or "": idx.resolve(e.get("productId") or "") for e in raw}

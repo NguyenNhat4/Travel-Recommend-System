@@ -3,12 +3,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from time import perf_counter
 
 from src.backend.app.application.itinerary.contracts import valid
 from src.backend.app.application.itinerary.tool_contracts import (
     SIMILAR_PRODUCTS, argument_names, contracts, normalize_arguments, validate,
 )
 from src.backend.app.application.ports.itinerary_tools import ToolError, ToolExecutorPort
+from src.backend.app.core.logging_config import log_event
 from src.backend.app.domain.itinerary.normalization import match_destination
 from src.backend.app.domain.itinerary.planning import SCHEDULABLE_TAXONOMIES
 
@@ -364,21 +366,33 @@ async def run_calls(state: dict, plan: list, tools: ToolExecutorPort, timeout_se
         old = previous.get(call["id"])
         if old and ("error" not in old or not old["error"]["retryable"]):
             return old
+        started = perf_counter()
+
+        def logged(outcome: str, code: str | None = None) -> None:
+            log_event(logger, "assistant.tool.call", "INFO" if outcome == "ok" else "WARNING", tool=call["name"],
+                      duration_ms=round((perf_counter() - started) * 1000, 1), outcome=outcome, error_code=code,
+                      request_id=state.get("request_id"))
+
         try:
             result = await asyncio.wait_for(tools.execute(call), timeout_seconds)
             if "data" in result:
                 validate(call["name"], result["data"], "response")
             elif not isinstance(result.get("error"), dict):
                 raise ToolError("INVALID_TOOL_RESPONSE")
+            err = result.get("error")
+            logged("ok" if "data" in result else "error", err.get("code") if isinstance(err, dict) else None)
             return {**result, "tool_call_id": call["id"], "name": call["name"], "arguments": call["args"]}
         except TimeoutError:
             # Tên lấy từ plan đã qua `validated_plan`; không log arguments.
             logger.warning("itinerary.tool.timeout requestId=%s name=%s",
                            state.get("request_id", "unknown"), call["name"])
+            logged("timeout", "TOOL_TIMEOUT")
             error = ToolError("TOOL_TIMEOUT", retryable=True)
         except ToolError as exc:
+            logged("error", str(exc))
             error = exc
         except Exception:
+            logged("error", "TOOL_EXECUTION_FAILED")
             error = ToolError("TOOL_EXECUTION_FAILED")
         return {"tool_call_id": call["id"], "name": call["name"], "error": error.as_dict()}
 
