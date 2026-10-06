@@ -2,8 +2,9 @@
 
 Nguồn câu: file câu gold đóng băng dưới `src/backend/data/` (Docker chỉ COPY `src/backend`) và head query của
 `app.search_logs` (port `SearchLogReader`). Mỗi câu đi qua `SearchProducts.query_text` (chuẩn hoá + gộp khoảng trắng) để
-khoá cache trùng với lúc request thật; câu đã có trong cache thì bỏ qua. Pacing theo số câu / phút để không đụng trần
-Cohere (`inputs_per_minute`); `stop` (threading.Event) để shutdown cắt ngang giữa hai lô.
+khoá cache trùng với lúc request thật; câu đã có trong cache thì bỏ qua. Pacing theo số câu / phút (`inputs_per_minute`):
+với Cohere để không đụng trần lượt gọi, với model local (mặc định, FR-SRC-02) để prewarm không chiếm hết CPU của request đang
+phục vụ; `stop` (threading.Event) để shutdown cắt ngang giữa hai lô.
 """
 from __future__ import annotations
 
@@ -17,7 +18,7 @@ from typing import Any, Callable, Iterable
 class PrewarmReport:
     queries: int          # số câu đầu vào (kể cả trùng)
     unique: int           # số khoá sau chuẩn hoá + khử trùng
-    embedded: int         # số câu vừa gọi Cohere
+    embedded: int         # số câu vừa embed (model local hoặc Cohere)
     skipped: int          # đã có trong cache
     batches: int
     seconds: float

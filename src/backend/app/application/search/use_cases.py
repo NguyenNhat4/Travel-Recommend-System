@@ -5,6 +5,7 @@ import re
 from collections import Counter
 from dataclasses import dataclass, field, replace
 from time import perf_counter
+from typing import Any
 
 import numpy as np
 
@@ -42,6 +43,17 @@ from src.backend.app.domain.search import (
     tokens,
 )
 from src.backend.app.domain.search.fuzzy import FuzzyIndex
+
+from .query_plan_llm import (
+    MODE_OFF,
+    MODES,
+    CachedQueryHypothesizer,
+    LlmPlanFallback,
+    HypothesisRequest,
+    build_vocab,
+    cache_keys,
+    hypothesis_context,
+)
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -143,7 +155,8 @@ def _plan_gazetteers(units) -> PlanGazetteers:
                           brand_taxonomy={k: v for k, v in brands.items() if v})
 
 
-def _plan_diagnostics(plan: QueryPlan, flags: PlanFlags, *, revalidated_drops: int, empty_reason: str | None) -> dict:
+def _plan_diagnostics(plan: QueryPlan, flags: PlanFlags, *, revalidated_drops: int, empty_reason: str | None,
+                      llm: dict | None = None) -> dict:
     """Khối `diagnostics.queryPlan` theo contract 1.16.0 (`as_diagnostics(extended=True)`).
 
     Khoá 1.16.0 gắn với một núm mới chỉ khai khi núm đó đang dùng cho câu: `taxonomy.strength` khi
@@ -158,7 +171,10 @@ def _plan_diagnostics(plan: QueryPlan, flags: PlanFlags, *, revalidated_drops: i
     if not flags.negation:
         hide.update(must_not_taxonomies=(), must_not_flags=())
     shown = replace(plan, **hide) if hide else plan
-    return shown.as_diagnostics(revalidated_drops=revalidated_drops, empty_reason=empty_reason, extended=True)
+    out = shown.as_diagnostics(revalidated_drops=revalidated_drops, empty_reason=empty_reason, extended=True)
+    if llm is not None:   # contract 1.17.0: chỉ khi SEARCH_LLM_FALLBACK ≠ off và fallback kích hoạt cho câu này
+        out["llm"] = llm
+    return out
 
 
 def _child_filter(plan: QueryPlan) -> dict:
@@ -203,12 +219,21 @@ class SearchProducts:
     tone_normalize: bool = False         # đưa vị trí dấu thanh của câu về kiểu đa số của catalog (hoà ↔ hòa), trước embed/BM25
     taxonomy_strong_only: bool = False   # F4 chỉ lọc khi câu có cue loại MẠNH ("khách sạn"), không lọc với cue yếu ("phòng")
     party_filter: bool = False           # số khách suy từ câu → sức chứa tối thiểu; travelContext.guests của request luôn áp
+    # LLM fallback của query plan (đề xuất đã chốt 2026-10-06-search-llm-fallback-query-plan; contract 1.17.0): off | shadow | on.
+    # Chỉ khi plan rule có confidence < `llm_min_confidence`; `hypothesizer` = QueryHypothesisPort (bọc cache nếu chưa bọc).
+    llm_fallback: str = MODE_OFF
+    llm_min_confidence: float = 0.75
+    llm_timeout_ms: int = 1500
+    hypothesizer: Any = None
     _name_tokens: list[set[str]] = field(default_factory=list, init=False, repr=False, compare=False)
     _normalizer: QueryNormalizer | None = field(default=None, init=False, repr=False, compare=False)
     _gaz: PlanGazetteers = field(default_factory=PlanGazetteers, init=False, repr=False, compare=False)
     _fuzzy: FuzzyIndex | None = field(default=None, init=False, repr=False, compare=False)
+    _llm: LlmPlanFallback | None = field(default=None, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
+        if self.llm_fallback not in MODES:
+            raise ValueError(f"llm_fallback phải là một trong {MODES}, nhận {self.llm_fallback!r}")
         # Token (đã fold) của tên từng search unit, tính một lần: dùng để xét độ phủ khi vớt hit BM25.
         if self.hybrid_on:
             self._name_tokens = [set(tokens(p.name)) for p in self.index.units]
@@ -218,6 +243,12 @@ class SearchProducts:
             self._gaz = _plan_gazetteers(self.index.units)
         if self.fuzzy_on:   # dựng chỉ mục trigram ngay lúc nạp catalog (luồng nạp lại), không để request đầu tiên trả giá
             self._fuzzy_index()
+        if self.llm_fallback != MODE_OFF and self.normalize:   # off → không dựng gì: response như 1.16.0
+            hyp = self.hypothesizer
+            if hyp is not None and not isinstance(hyp, CachedQueryHypothesizer):
+                hyp = CachedQueryHypothesizer(hyp)
+            self._llm = LlmPlanFallback(self.llm_fallback, self.llm_min_confidence, self.llm_timeout_ms, hyp,
+                                        build_vocab(set(self.index.destination.tolist()), self._gaz), self._gaz)
 
     @property
     def hybrid_on(self) -> bool:
@@ -251,12 +282,6 @@ class SearchProducts:
         text = canonical_query(nq.text if nq else q)
         if nq:
             stages.lap("normalize")
-        qvec, embed_cache = self._embed(text)
-        stages.lap("embed")
-        # Câu không dấu → bộ ngưỡng riêng (nếu bật); khoá cache và vector không đổi, chỉ cổng vớt / cutoff đổi.
-        profile = self._profile(q)
-        cfg = self.no_diacritics if profile and self.no_diacritics is not None else self.hybrid
-        cutoff = self.no_diacritics_cutoff if profile and self.no_diacritics_cutoff is not None else self.cutoff
         derive = self.dest_filter if derive_destination is None else derive_destination
         flags = PlanFlags(destination=derive,
                           negation=self.negation_filter if derive_plan is None else derive_plan,
@@ -268,7 +293,22 @@ class SearchProducts:
         params = PlanParams(taxonomy=taxonomy, destination=destination, origin=origin, price_min=price_min,
                             price_max=price_max, star_min=star_min, available_only=available_only,
                             adults=adults, children=children)
-        plan = build_query_plan(nq, q, params, flags, self._gaz)
+        plan = pending = llm_block = None
+        if self._llm is not None and nq is not None and derive_plan is not False:
+            # LLM fallback bật: dựng plan TRƯỚC embed để lượt gọi model (khi confidence thấp) chạy song song với embed
+            plan = build_query_plan(nq, q, params, flags, self._gaz)
+            pending = self._llm.begin(plan, nq, q, flags)
+        qvec, embed_cache = self._embed(text)
+        stages.lap("embed")
+        # Câu không dấu → bộ ngưỡng riêng (nếu bật); khoá cache và vector không đổi, chỉ cổng vớt / cutoff đổi.
+        profile = self._profile(q)
+        cfg = self.no_diacritics if profile and self.no_diacritics is not None else self.hybrid
+        cutoff = self.no_diacritics_cutoff if profile and self.no_diacritics_cutoff is not None else self.cutoff
+        if plan is None:
+            plan = build_query_plan(nq, q, params, flags, self._gaz)
+        if pending is not None:
+            plan, llm_block = self._llm.finish(pending)   # chờ phần hạn còn lại; on + nhận → plan đã trộn
+            stages.lap("llm")
         decision = plan.destination
         out, diagnostics, drops = self._retrieve(plan, text, qvec, decision.value, cfg, cutoff, stages)
         fallback = None
@@ -283,7 +323,7 @@ class SearchProducts:
             if nq.destinations:   # phát kể cả khi cờ tắt: bench đếm được tần suất filter sẽ kích hoạt
                 diagnostics["derivedDestinations"] = list(nq.destinations)
             # contract 1.15.0: khối queryPlan phát kể cả khi mọi cờ tắt (bench đo độ chính xác parse); rỗng thì bỏ.
-            query_plan = _plan_diagnostics(plan, flags, revalidated_drops=drops, empty_reason=empty_reason)
+            query_plan = _plan_diagnostics(plan, flags, revalidated_drops=drops, empty_reason=empty_reason, llm=llm_block)
             if query_plan:
                 diagnostics["queryPlan"] = query_plan
         if derive:
@@ -398,6 +438,18 @@ class SearchProducts:
         """Chuỗi thật sự gửi đi embed cho câu `q` (chuẩn hoá + gộp khoảng trắng) — khoá cache; prewarm dùng để nạp đúng khoá."""
         nq = self._normalizer(q) if self._normalizer else None
         return canonical_query(nq.text if nq else q)
+
+    def llm_hypothesis_request(self, q: str) -> HypothesisRequest | None:
+        """Khoá cache, câu gửi model, context và confidence của plan rule cho câu `q` KHÔNG kèm tham số request — đúng khoá và
+        prompt mà LLM fallback dùng lúc request; job prewarm (`jobs/prewarm_llm_hypotheses.py`) nạp cache bằng hàm này.
+        None khi bước chuẩn hoá tắt (không có query plan) hoặc câu rỗng."""
+        if self._normalizer is None or not q.strip():
+            return None
+        nq = self._normalizer(q)
+        plan = build_query_plan(nq, q, PlanParams(), PlanFlags(), self._gaz)
+        vocab = self._llm.vocab if self._llm is not None else build_vocab(set(self.index.destination.tolist()), self._gaz)
+        return HypothesisRequest(cache_keys(nq.text, q), nq.text, hypothesis_context(nq, q, self._gaz, vocab),
+                                 plan.confidence)
 
     def _embed(self, text: str) -> tuple[np.ndarray, str | None]:
         """(vector, "hit" | "miss" | None): None khi embedder không có cache (bench, test, SEARCH_EMBED_CACHE=false)."""

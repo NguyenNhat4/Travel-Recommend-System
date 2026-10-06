@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Đường dẫn tuyệt đối tới .env ở gốc repo: uvicorn và CLI chạy từ nhiều thư mục khác nhau, nên
@@ -15,7 +15,28 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 # "copy .env.example sang .env" đều vấp. Coi rỗng là "không đặt".
 # Chỉ các trường thực sự Optional: trường `str` thường (cdp_service_token, openai_api_key) coi ""
 # là "chưa cấu hình" và vẫn hợp lệ, không được đổi thành None.
-_OPTIONAL_BLANK_IS_NONE = ("itinerary_service_base_url", "itinerary_data_mode")
+_OPTIONAL_BLANK_IS_NONE = ("itinerary_service_base_url", "itinerary_data_mode", "search_no_diacritics_cutoff")
+
+
+LOCAL_EMBED_MODEL = "intfloat/multilingual-e5-small"
+LOCAL_EMBED_REVISION = "614241f622f53c4eeff9890bdc4f31cfecc418b3"
+COHERE_EMBED_MODEL = "embed-multilingual-v3.0"
+
+#: Model được phép theo provider → số chiều. Adapter local làm mean pooling + tiền tố `query: `/`passage: ` đúng họ e5;
+#: thêm model khác là đổi FR-SRC-02 (đề xuất trong docs/prd/update/ trước).
+EMBED_MODELS: dict[str, dict[str, int]] = {
+    "local": {LOCAL_EMBED_MODEL: 384},
+    "cohere": {COHERE_EMBED_MODEL: 1024},
+}
+
+#: Giá trị phụ thuộc provider. Mặc định của trường là cột `local`; provider=cohere thì trường nào KHÔNG được đặt tường minh
+#: (env/.env/tham số) lấy cột `cohere` — cutoff 0,62 và collection `Product` 1024 chiều của cấu hình trước 06/10.
+PROVIDER_DEFAULTS: dict[str, dict[str, object]] = {
+    "local": {"embed_model": LOCAL_EMBED_MODEL, "embed_dimension": 384, "weaviate_collection": "ProductE5",
+              "search_cutoff": 0.84, "search_no_diacritics_cutoff": 0.80},
+    "cohere": {"embed_model": COHERE_EMBED_MODEL, "embed_dimension": 1024, "weaviate_collection": "Product",
+               "search_cutoff": 0.62, "search_no_diacritics_cutoff": None},
+}
 
 
 class Settings(BaseSettings):
@@ -94,9 +115,20 @@ class Settings(BaseSettings):
     # Browse events waiting to be sent; beyond this they are dropped and logged.
     cdp_event_queue_size: int = Field(default=1000, ge=1)
 
-    # RecSys (search / similar / recommendations). Model và chiều đã chốt trong PRD 22/09/2026.
-    embed_model: Literal["embed-multilingual-v3.0"] = "embed-multilingual-v3.0"
-    embed_dimension: Literal[1024] = 1024
+    # RecSys (search / similar / recommendations). Embedding theo FR-SRC-02 (chốt 06/10/2026,
+    # docs/prd/update-archive/2026-10-05-fr-src-02-embedding-local-e5-small.md): mặc định model local e5-small 384 chiều chạy CPU
+    # trong tiến trình; `cohere` là đường lui. Đổi EMBED_PROVIDER=cohere mà không đặt tường minh các biến phụ thuộc provider thì
+    # chúng lấy giá trị của Cohere (xem PROVIDER_DEFAULTS bên dưới) — rollback chỉ cần đổi một biến + COHERE_API_KEY.
+    embed_provider: Literal["local", "cohere"] = "local"
+    embed_model: str = LOCAL_EMBED_MODEL
+    # Commit Hugging Face mà bench đã đo (eval-2026-10-05-search-day5-e5s-app.md: "e5-small `614241f6`"); Dockerfile.backend
+    # tải sẵn đúng revision này. Bỏ qua khi provider=cohere.
+    embed_model_revision: str = LOCAL_EMBED_REVISION
+    embed_dimension: int = Field(default=384, ge=1)
+    embed_threads: int = Field(default=0, ge=0)        # torch.set_num_threads; 0 = mặc định của torch (số lõi vật lý)
+    embed_batch_size: int = Field(default=32, ge=1)    # lô docs của job index (bench dùng 32)
+    embed_max_length: int = Field(default=512, ge=8, le=512)
+    embed_cache_dir: str = ""                          # cache model Hugging Face; trống = HF_HOME / ~/.cache/huggingface
     cohere_api_key: str = ""
     cohere_base_url: str = "https://api.cohere.com"
     cohere_timeout_seconds: float = Field(default=30.0, gt=0)
@@ -108,13 +140,15 @@ class Settings(BaseSettings):
     cohere_calls_per_minute: int = Field(default=90, ge=0)
     weaviate_url: str = "http://localhost:8080"
     weaviate_api_key: str = ""
-    weaviate_collection: str = "Product"
+    # Collection theo model: `ProductE5` (e5-small, 384) cho provider local, `Product` (Cohere, 1024) giữ cho rollback.
+    weaviate_collection: str = "ProductE5"
     # Chỉ dùng khi job index tạo collection mới; Weaviate Cloud của nhóm chỉ cho phép hfresh.
     weaviate_vector_index_type: Literal["hnsw", "hfresh"] = "hnsw"
     weaviate_timeout_seconds: float = Field(default=30.0, gt=0)
     # Cổng gRPC cho truy vấn top-K mỗi request; Weaviate Cloud tự dùng 443 của host grpc-<cluster>.
     weaviate_grpc_port: int = Field(default=50051, ge=1, le=65535)
-    search_cutoff: float = 0.52  # quy tắc tạm của Search contract; phải benchmark lại với Cohere
+    # e5 dồn cosine ở 0,85–0,92 nên 0,62 của Cohere không lọc gì; 0,84 đo trên gold_v4 (eval-2026-10-06-recsys-search-tong-hop.md B1).
+    search_cutoff: float = 0.84
     search_max_limit: int = 50
     search_candidate_k: int = Field(default=200, ge=1)
     recommend_candidate_k: int = 200
@@ -129,24 +163,26 @@ class Settings(BaseSettings):
     # FR-SRC-03 (05/10): lọc cứng theo địa danh suy ra từ câu (domain/search/destination.py; contract 1.14.0
     # `diagnostics.destinationFilter`, `appliedFilters`). Mặc định tắt cho tới khi bench xác nhận trên slice dest_type và các slice
     # guard. `SEARCH_DEST_FILTER_FALLBACK`: F rỗng sau khi lọc → chạy lại không lọc (FR-SRC-04).
-    search_dest_filter: bool = False
+    # Mặc định production 06/10 (người dùng chốt; bench gold_v5 `APP.e5s.prod_f12356`): F1, F2 (relax), F3, F5, F6 BẬT — F4 TẮT
+    # (đổi số đếm tab của Web). Tắt từng họ bằng biến môi trường tương ứng.
+    search_dest_filter: bool = True
     search_dest_filter_fallback: bool = True
     # Câu gõ không dấu (slice no_diacritics; contract 1.14.0 `diagnostics.queryProfile`): `relax` nới cổng vớt BM25 và (tuỳ chọn)
     # cutoff dense cho riêng câu phát hiện không dấu (≥ min_tokens token); `off` = như cũ. Giá trị nới là tạm, chưa qua dev/test.
-    search_no_diacritics_mode: Literal["off", "relax"] = "off"
+    search_no_diacritics_mode: Literal["off", "relax"] = "relax"
     search_no_diacritics_lexical_k: int = Field(default=20, ge=0)
     search_no_diacritics_lexical_cutoff: float = 0.0
     search_no_diacritics_min_coverage: float = Field(default=0.4, ge=0, le=1)
-    search_no_diacritics_cutoff: float | None = None   # None = dùng SEARCH_CUTOFF
+    search_no_diacritics_cutoff: float | None = 0.80   # chỉ áp khi MODE=relax; None = dùng SEARCH_CUTOFF
     search_no_diacritics_min_tokens: int = Field(default=3, ge=1)
     # Query plan — kiến trúc Phase A (docs/spec/bench/kien_truc_search_ota_so_do_va_giai_doan.md; FR-SRC-01/03; contract 1.15.0
     # `diagnostics.queryPlan`): hard constraint suy từ câu, mỗi họ một cờ, mặc định tắt cho tới khi gold v4 xác nhận. Tắt vẫn
     # parse và khai ở `queryPlan` (bench đo độ chính xác parse). Tham số request tường minh (origin, priceMin/priceMax,
     # starRatingMin, availableOnly) luôn được áp theo contract, không phụ thuộc cờ.
-    search_negation_filter: bool = False   # F3: "không có / không ghi nhận X" → loại unit CÓ GHI NHẬN tiện ích X ([C2])
+    search_negation_filter: bool = True    # F3: "không có / không ghi nhận X" → loại unit CÓ GHI NHẬN tiện ích X ([C2])
     search_taxonomy_filter: bool = False   # F4: câu nêu đúng một loại sản phẩm → lọc taxonomy (≥ 2 loại thì không)
-    search_route_filter: bool = False      # F5: câu vé máy bay "từ A đến B" → lọc originCity / destinationCity của tuyến
-    search_numeric_filter: bool = False    # F6: giá ("dưới 2 triệu") hard, sao ("4 sao") soft — suy từ câu
+    search_route_filter: bool = True       # F5: câu vé máy bay "từ A đến B" → lọc originCity / destinationCity của tuyến
+    search_numeric_filter: bool = True     # F6: giá ("dưới 2 triệu") hard, sao ("4 sao") soft — suy từ câu
     # 06/10 (kiến trúc search §3, §4, §6, §7 5C, §8, §11; contract 1.16.0): mặc định tắt / trung tính — mọi giá trị mặc định cho
     # đúng kết quả 1.15.0. travelContext.guests của POST /search luôn áp (tham số request), không phụ thuộc cờ.
     search_tone_normalize: bool = False        # dời dấu thanh của câu về kiểu đa số của catalog (hoà ↔ hòa) trước embed/BM25
@@ -164,13 +200,23 @@ class Settings(BaseSettings):
     # Ghi một dòng app.search_logs mỗi lượt /search trang đầu (câu gốc, appliedFilters.hard + confidence, productId trang trả
     # về, total, modelVersion, latencyMs, cdp_user_id khi có Bearer hợp lệ). Ghi nền qua hàng đợi có trần; lỗi không tới response.
     search_log_queries: bool = False
+    # LLM fallback của query plan /search (đề xuất 2026-10-06 đã áp dụng, contract 1.17.0): off | shadow | on; chỉ gọi khi
+    # queryPlan.confidence < ngưỡng; giả thuyết JSON kiểm với catalog, chỉ điền chỗ luật để trống, cache theo câu chuẩn hoá.
+    search_llm_fallback: Literal["off", "shadow", "on"] = "off"
+    search_llm_fallback_min_confidence: float = Field(default=0.75, ge=0.0, le=1.0)
+    search_llm_fallback_timeout_ms: int = Field(default=1500, ge=1)
+    search_llm_fallback_model: str = "gpt-4o-mini"
+    search_llm_fallback_cache_size: int = Field(default=10_000, ge=1)
+    search_llm_fallback_cache_path: str = ""      # JSONL, tương đối theo src/backend; trống = chỉ cache trong tiến trình
+    search_llm_fallback_cache_only: bool = False  # chỉ đọc cache (bench / replay), không gọi model
     # Cache vector truy vấn /search (NFR-PERF-03; contract 1.12.0 `diagnostics.embedCache`): LRU trong tiến trình, khoá =
-    # câu sau chuẩn hoá + gộp khoảng trắng; sống qua các lần nạp lại catalog vì bọc quanh client Cohere dùng chung.
+    # câu sau chuẩn hoá + gộp khoảng trắng; sống qua các lần nạp lại catalog vì bọc quanh embedder dùng chung.
     search_embed_cache: bool = True
-    search_embed_cache_size: int = Field(default=10000, ge=1)  # 10k vector float32 1024 chiều ≈ 41 MB
+    search_embed_cache_size: int = Field(default=10000, ge=1)  # 10k vector float32: 384 chiều ≈ 15 MB, 1024 chiều ≈ 41 MB
     search_embed_cache_log_every: int = Field(default=500, ge=1)  # log hits/misses mỗi N lượt tra
     # Nạp sẵn cache lúc khởi động (sau lần nạp catalog đầu tiên, không chặn startup): file câu gold + head query của
-    # app.search_logs; pacing theo số câu / phút để không đụng trần Cohere (Trial 100 lượt/phút, mỗi lượt ≤ 96 câu).
+    # app.search_logs; pacing theo số câu / phút: với Cohere để không đụng trần (Trial 100 lượt/phút, mỗi lượt ≤ 96 câu), với
+    # model local để prewarm không chiếm hết CPU của request đang phục vụ.
     search_prewarm: bool = True
     search_prewarm_file: str = "data/search_prewarm_queries.txt"  # tương đối theo src/backend
     search_prewarm_head_queries: int = Field(default=200, ge=0)
@@ -191,6 +237,24 @@ class Settings(BaseSettings):
     public_web_url: str = "http://localhost:3000"
     # 0 = tắt job đối soát (test); mặc định 5 phút/lần.
     booking_reconcile_interval_seconds: int = Field(default=300, ge=0)
+
+    @model_validator(mode="after")
+    def _embedding_provider(self) -> "Settings":
+        """Điền giá trị phụ thuộc provider chưa đặt tường minh, rồi kiểm model ↔ số chiều ↔ revision."""
+        explicit = self.model_fields_set
+        for name, value in PROVIDER_DEFAULTS[self.embed_provider].items():
+            if name not in explicit:
+                object.__setattr__(self, name, value)
+        allowed = EMBED_MODELS[self.embed_provider]
+        if self.embed_model not in allowed:
+            raise ValueError(f"EMBED_MODEL={self.embed_model!r} không dùng được với EMBED_PROVIDER={self.embed_provider}; "
+                             f"chọn một trong {sorted(allowed)}")
+        if self.embed_dimension != allowed[self.embed_model]:
+            raise ValueError(f"EMBED_DIMENSION={self.embed_dimension} lệch {self.embed_model} "
+                             f"({allowed[self.embed_model]} chiều)")
+        if self.embed_provider == "local" and not self.embed_model_revision.strip():
+            raise ValueError("EMBED_MODEL_REVISION phải ghim một commit Hugging Face khi EMBED_PROVIDER=local")
+        return self
 
     @field_validator("stripe_secret_key")
     @classmethod

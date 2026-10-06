@@ -179,7 +179,7 @@ Sai còn lại của F1–F6: c0340 "Công Viên 30/4" (tên POI trần, chú gi
 Cat Ba" (hai địa danh, chú giải chọn Cát Bà); `party_total` sai ở c0136 / c0147 / c0284 chỉ vì arm tắt cờ party nên `queryPlan.party`
 không phát (khi cờ bật — ALL — đúng 3/3).
 
-**Độ tin cậy router (không LLM, `queryPlan.confidence`, arm F1–F6):** 59 / 154 câu < 1 (10 câu ≤ 0,5); lý do `long_multi_constraint` 48, `weak_taxonomy_cue` 11, `multi_vertical` 10. nDCG@10 của F1–F6 trên nhóm này 0,770 (n = 59) so 0,850 (n = 88, độ tin cậy 1) — đây là nhóm câu đề xuất LLM fallback nhắm tới (`docs/prd/update/2026-10-06-search-llm-fallback-query-plan.md`, chờ chốt).
+**Độ tin cậy router (không LLM, `queryPlan.confidence`, arm F1–F6):** 59 / 154 câu < 1 (10 câu ≤ 0,5); lý do `long_multi_constraint` 48, `weak_taxonomy_cue` 11, `multi_vertical` 10. nDCG@10 của F1–F6 trên nhóm này 0,770 (n = 59) so 0,850 (n = 88, độ tin cậy 1) — đây là nhóm câu đề xuất LLM fallback nhắm tới (`docs/prd/update-archive/2026-10-06-search-llm-fallback-query-plan.md`, chờ chốt).
 
 ## 4. Chọn ngưỡng bằng dữ liệu (chọn trên dev, kiểm trên test)
 
@@ -286,3 +286,38 @@ python -m evaluation.search_bench --run-id 2026-10-06-gold-v4-r2 gold holes --ar
 
 Bảng §2 sinh từ `per_query@untagged.parquet` / `results@untagged.json` của từng arm + dòng verdict của `sb compare`; split từ
 `devtest@gold_v4.json`.
+
+## 9. Cấu hình production 06/10 (người dùng chốt) — đo lại trên `gold_v5`
+
+Người dùng chốt 06/10: **e5-small** (đề xuất FR-SRC-02 đã áp dụng, `docs/prd/update-archive/2026-10-05-fr-src-02-embedding-local-e5-small.md`),
+**F1, F2, F3, F5, F6 bật, F4 tắt** (F4 đổi số đếm tab của Web), `SEARCH_CUTOFF` 0,84 + cutoff câu không dấu 0,80, **LLM fallback** thêm vào
+(đề xuất đã áp dụng, mặc định `off`). Arm `APP.e5s.prod_f12356` = đúng mặc định mới của `core/config.py`; `_nocut` = cùng cờ, cutoff −1.
+Cùng run `2026-10-06-gold-v4-r2`, `gold_v5` + chiếu rubric v4.
+
+| arm | nDCG@10 | R@10 | Judged@10 | nDCG v3 | nDCG v4 | dev | test | Forbidden@10 | Chiều bay | Constraint prec. | ms p50 / p95 |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| production hôm qua `hybrid_norm` (cờ tắt, cutoff 0,62) | 0.711 | 0.352 | 1.00 | 0.738 | 0.528 | 0.724 | 0.691 | 0.539 | 0.11 | 0.79 | 55 / 84 |
+| **production mới `prod_f12356`** | **0.798** | **0.391** | 0.999 | 0.799 | 0.789 | 0.810 | 0.785 | 0.065 | 1.00 | 0.91 | 12 / 54 |
+| `prod_f12356_nocut` | 0.797 | 0.389 | 1.00 | 0.798 | 0.789 | 0.808 | 0.785 | 0.065 | 1.00 | 0.91 | 12 / 53 |
+| F1–F6 có F4, cutoff 0,84 (`hybrid_norm_c84_dest_nodia_nc80_qp`) | 0.817 | 0.400 | 1.00 | 0.816 | 0.824 | 0.822 | 0.812 | 0.000 | 1.00 | 0.95 | 11 / 65 |
+
+Win rule: production mới vs `hybrid_norm` **WIN** (Δrecall +3,82, p 0,003, slice kém nhất `no_diacritics` −1,0); dev ΔnDCG +8,4 / test +9,0 (mỗi
+nửa "không thắng" vì một slice nhỏ tụt > 3: `parent_child` −3,6 dev, `flight_direction` −6,0 test); `_nocut` vs `prod_f12356` TIE (cutoff 0,84
+không đổi gì đo được); F1–F6 có F4 vs production mới **TIE** (ΔnDCG +1,9 < 2). Judged@10 0,999: một cặp chưa nhãn (c0078 "đường bay tới Huế" →
+khách sạn Huế, sai loại cốt lõi theo rubric v4 nên nhãn sẽ là 0 = như chưa nhãn; không tạo gold mới cho một cặp).
+
+**Cái giá của F4 tắt — guard Phase A:** Forbidden@10 0,000 → **0,065** (c0697 "khách sạn ở Grand World", c0706 "combo vé máy bay và khách
+sạn Đà Lạt", c0709 "khách sạn Vinpearl ở Nha Trang", c0088 "voucher golf tại Hội An" — sản phẩm sai loại cốt lõi lọt top-10) và constraint
+precision 0,96 → **0,91** (FAIL ngưỡng đề xuất 0,95). Nếu Web đồng ý cách đếm tab, bật F4 trả lại cả hai guard (+1,9 nDCG).
+
+**Regression:** `regression/baseline_v1.json` đặt lại = `APP.e5s.prod_f12356` (nDCG@10 0,798, recall@10 0,352 → 0,391); `sb regress check` PASS.
+
+**LLM fallback — đo 06/10 chiều (gpt-4o-mini):** cache 155 câu gold nạp bằng `prewarm_llm_hypotheses` (0 lỗi, 240 s), bench phát lại
+(`cache_only`). Arm `APP.e5s.prod_f12356_llm` (ngưỡng 0,75, mặc định) kích hoạt **10** câu; `_llm100` (ngưỡng 1,0) kích hoạt **59** câu. Cả hai:
+**0 trường được nhận, top-10 đổi 0/154, nDCG@10 0,798 = production** (TIE tuyệt đối). Lý do: trên 59 câu độ tin cậy thấp, LLM trùng plan luật
+về loại 59/59 và điểm đến 58/59; phần "thêm" chỉ là số khách ở 2 câu (c0147, c0284 — cờ party tắt nên không áp) và một tiện ích bị loại
+trừ bịa ở c0214 ("phòng không hút thuốc" là yêu cầu dương → `smokingRoom` bị kiểm catalog từ chối, `invalid_value`); 7 lượt `destination`
+bị từ chối `not_flight` (LLM điền thành phố đến cho câu không phải vé máy bay). Lý do độ tin cậy thấp chủ yếu là `long_multi_constraint`
+(48) — câu dài mà luật vẫn parse đúng, nên trigger hiện tại gọi LLM khi không cần. **Kết luận:** trên gold này LLM fallback không có lợi
+cũng không gây hại (kiểm catalog chặn đúng giá trị sai); giữ `off` cho production, có thể bật `shadow` để thu câu thật trước khi xét `on`;
+nên siết trigger (bỏ `long_multi_constraint` khỏi lý do kích hoạt) trước khi đo lại.

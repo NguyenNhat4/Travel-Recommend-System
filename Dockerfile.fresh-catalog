@@ -9,7 +9,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     CATALOG_STATE_DIR=/data/state \
     CATALOG_RUN_ROOT=/data/fresh_runs \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
-    TZ=Asia/Ho_Chi_Minh
+    TZ=Asia/Ho_Chi_Minh \
+    HF_HOME=/opt/hf \
+    HF_HUB_DISABLE_TELEMETRY=1
 
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends xvfb xauth tzdata ca-certificates \
@@ -23,11 +25,31 @@ RUN python -m pip install --no-cache-dir -r /tmp/catalog-requirements.txt \
     && chmod -R a+rX /ms-playwright \
     && chown app:app /data
 
-# Index job has a small dependency set; no LLM/torch stack in the crawler image.
+# Index job has a small dependency set (no LLM stack), plus the local embedding model below.
 COPY src/backend/jobs/requirements.txt /tmp/index-requirements.txt
 RUN python -m pip install --no-cache-dir -r /tmp/index-requirements.txt
+
+# Local embedding (FR-SRC-02), identical to Dockerfile.backend so the vectors this job writes live in the space the backend
+# queries: CPU-only torch from the PyTorch CPU index (the PyPI Linux wheel pulls ~2 GB of CUDA), versions pinned once in
+# src/backend/requirements-embed.txt. Adds ~0.7 GB torch CPU + transformers and ~0.47 GB model to the image.
+COPY src/backend/requirements-embed.txt /tmp/backend-requirements-embed.txt
+RUN python -m pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu \
+        "$(grep -E '^torch==' /tmp/backend-requirements-embed.txt)" \
+    && python -m pip install --no-cache-dir -r /tmp/backend-requirements-embed.txt
+
+# Model downloaded at build time (revision pinned in backend core/config.py, same value as Dockerfile.backend); Hugging Face
+# runs offline afterwards. Cohere rollback (EMBED_PROVIDER=cohere + WEAVIATE_COLLECTION=Product + COHERE_API_KEY in the
+# env file) needs no rebuild.
+ARG EMBED_MODEL=intfloat/multilingual-e5-small
+ARG EMBED_MODEL_REVISION=614241f622f53c4eeff9890bdc4f31cfecc418b3
+RUN python -c "from huggingface_hub import snapshot_download; snapshot_download('${EMBED_MODEL}', revision='${EMBED_MODEL_REVISION}', allow_patterns=['config.json', 'model.safetensors', 'tokenizer.json', 'tokenizer_config.json', 'special_tokens_map.json', 'sentencepiece.bpe.model'])" \
+    && chmod -R a+rX /opt/hf
+ENV HF_HUB_OFFLINE=1 \
+    TRANSFORMERS_OFFLINE=1
 COPY src/backend /app/src/backend
 COPY src/data_collection /app/src/data_collection
+# Build-time check: the model loads offline from the cache and embeds a probe sentence to exactly 384 dims.
+RUN python -c "from src.backend.app.infrastructure.embeddings.local_e5_embedder import LocalE5Embedder; LocalE5Embedder('${EMBED_MODEL}', revision='${EMBED_MODEL_REVISION}').warmup()"
 WORKDIR /app/src/data_collection
 USER app
 

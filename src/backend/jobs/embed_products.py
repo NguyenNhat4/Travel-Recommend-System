@@ -1,7 +1,16 @@
 """Incrementally index PostgreSQL catalog search units into Weaviate.
 
 Run from repository root:
-    python -m src.backend.jobs.embed_products
+    python -m src.backend.jobs.embed_products [--dry-run]
+
+Embedder theo `EMBED_PROVIDER` (FR-SRC-02): `local` (mặc định) chạy `intfloat/multilingual-e5-small` trên CPU của máy chạy
+job, tiền tố `passage: ` do adapter ghép; `cohere` là đường lui. Ghi vào `WEAVIATE_COLLECTION` (mặc định `ProductE5` cho
+local, `Product` cho Cohere). Job **từ chối** ghi (không embed, không xoá, mã thoát 2) khi collection đang giữ vector khác số
+chiều `EMBED_DIMENSION`, hoặc vector của một model embedding khác — trừ khi có `--allow-model-change` (cùng số chiều, thay
+dần vector cũ bằng vector model mới). Đổi model thì dựng collection mới song song, không ghi đè collection đang phục vụ.
+
+CẢNH BÁO: job xoá mọi object không có trong catalog của `DATABASE_URL` đang trỏ. Đừng chạy với `.env` trỏ Weaviate Cloud
+từ máy dev.
 """
 from __future__ import annotations
 
@@ -17,12 +26,60 @@ import numpy as np
 from src.backend.app.core.config import get_settings
 from src.backend.app.domain.catalog import TEXT_BUILDER_VERSION
 from src.backend.app.infrastructure.embeddings.cohere_embedder import CallLimiter, CohereEmbedder
+from src.backend.app.infrastructure.embeddings.local_e5_embedder import LocalE5Embedder
 from src.backend.app.infrastructure.vectors.postgres_store import PostgresCatalogReader
 from src.backend.app.infrastructure.vectors.weaviate_store import WeaviateClient, lexical_properties
 
 
 def model_version(model_name: str) -> str:
+    """`<EMBED_MODEL>:<TEXT_BUILDER_VERSION>` — cùng công thức với `infrastructure/embeddings/factory.model_version`."""
     return f"{model_name}:{TEXT_BUILDER_VERSION}"
+
+
+def embedding_model(version: str) -> str:
+    """Phần model của `modelVersion`: đổi text builder thì embed lại bình thường, đổi model thì là không gian vector khác."""
+    return version.rsplit(":", 1)[0] if ":" in version else version
+
+
+#: Số text mỗi lần ghi Weaviate (và mỗi lần gọi Cohere). Model local tự chia nhỏ theo `EMBED_BATCH_SIZE` bên trong.
+WRITE_BATCH = 96
+
+
+def make_embedder(settings, limiter: CallLimiter):
+    if settings.embed_provider == "local":
+        return LocalE5Embedder(
+            settings.embed_model,
+            revision=settings.embed_model_revision,
+            dimension=settings.embed_dimension,
+            threads=settings.embed_threads,
+            batch_size=settings.embed_batch_size,
+            max_length=settings.embed_max_length,
+            cache_dir=settings.embed_cache_dir or None,
+        )
+    return CohereEmbedder(
+        settings.cohere_api_key,
+        settings.embed_model,
+        base_url=settings.cohere_base_url,
+        dimension=settings.embed_dimension,
+        timeout_seconds=settings.cohere_timeout_seconds,
+        limiter=limiter,
+    )
+
+
+def collection_guard(existing: dict, version: str, stored_dimension: int | None, dimension: int,
+                     allow_model_change: bool) -> str | None:
+    """Lý do từ chối ghi (None = được ghi). Lệch số chiều: luôn từ chối — Weaviate không nhận vector khác chiều trong một
+    collection, và trộn hai không gian vector làm cosine vô nghĩa. Model khác cùng chiều: từ chối trừ khi `allow_model_change`."""
+    if stored_dimension is not None and stored_dimension != dimension:
+        return (f"collection đang giữ vector {stored_dimension} chiều, EMBED_DIMENSION={dimension} — không ghi. "
+                "Đổi model thì dùng collection mới (WEAVIATE_COLLECTION), không ghi đè collection đang phục vụ.")
+    target = embedding_model(version)
+    foreign = sorted({embedding_model(meta.model_version) for meta in existing.values()
+                      if meta.model_version and embedding_model(meta.model_version) != target})
+    if foreign and not allow_model_change:
+        return (f"collection đang giữ vector của model khác {foreign} (job ghi {target}) — không ghi. Dùng collection mới, "
+                "hoặc chạy lại với --allow-model-change nếu chủ đích thay toàn bộ vector trong collection này.")
+    return None
 
 
 def text_hash(text: str) -> str:
@@ -40,7 +97,7 @@ def vector_preview(vector) -> dict:
 
 def write_detail(path: Path, catalog, desired: dict, reasons: dict, previews: dict, orphans: list,
                  orphans_deleted: bool) -> None:
-    """Một dòng JSON mỗi search unit (text gửi Cohere, hash, hành động, vài chiều đầu của vector) và mỗi vector mồ côi.
+    """Một dòng JSON mỗi search unit (text đưa vào embedder, hash, hành động, vài chiều đầu của vector) và mỗi vector mồ côi.
 
     Chỉ để người vận hành xem lại lượt index; không lưu cả vector để file không phình theo số chiều."""
     path = Path(path)
@@ -68,7 +125,7 @@ def write_detail(path: Path, catalog, desired: dict, reasons: dict, previews: di
 
 
 def embed_batches(embedder, batches: list[list[str]], texts: dict[str, str], concurrency: int, write) -> None:
-    """Gọi Cohere cho từng lô, tối đa `concurrency` lô cùng lúc (P5.2, docs/plan/2026-09-29-index-cohere-song-song.md).
+    """Embed từng lô, tối đa `concurrency` lô cùng lúc (P5.2, docs/plan/2026-09-29-index-cohere-song-song.md; model local: 1).
 
     `write(ids, vectors)` luôn chạy ở luồng gọi hàm này (chỉ một luồng ghi Weaviate), theo thứ tự lô xong trước. Một lô lỗi
     hẳn: không gửi lô mới, chờ và ghi các lô đang chạy, rồi ném lại lỗi đầu tiên — phần đã ghi được giữ, chạy lại chỉ
@@ -79,7 +136,7 @@ def embed_batches(embedder, batches: list[list[str]], texts: dict[str, str], con
         return
     queue = iter(batches)
     failure: BaseException | None = None
-    with ThreadPoolExecutor(max_workers=concurrency, thread_name_prefix="cohere") as pool:
+    with ThreadPoolExecutor(max_workers=concurrency, thread_name_prefix="embed") as pool:
         pending = {}
 
         def submit_next() -> None:
@@ -105,9 +162,12 @@ def embed_batches(embedder, batches: list[list[str]], texts: dict[str, str], con
 
 
 def run(*, dry_run: bool = False, backfill_lexical: bool = False, force: bool = False, settings=None,
-        detail_path: Path | str | None = None, lexical_only: bool = False) -> dict[str, int | str | bool]:
+        detail_path: Path | str | None = None, lexical_only: bool = False,
+        allow_model_change: bool = False) -> dict[str, int | str | bool]:
     """`detail_path`: nếu có, ghi chi tiết từng sản phẩm (xem `write_detail`) kể cả khi job lỗi giữa chừng.
-    `force`: nhúng lại mọi search unit dù text không đổi (chỉ để đo tốc độ, tốn quota Cohere).
+    `force`: nhúng lại mọi search unit dù text không đổi (chỉ để đo tốc độ; với Cohere tốn quota).
+    `allow_model_change`: cho ghi vector model hiện tại vào collection đang giữ vector model khác CÙNG số chiều
+    (`collection_guard`); lệch số chiều thì luôn từ chối.
     `lexical_only`: chỉ PATCH property BM25 còn thiếu; **từ chối** (không ghi gì, `report["refused"]`) khi catalog lệch
     index — có unit phải embed hoặc object mồ côi phải xoá — để một `DATABASE_URL` trỏ nhầm không xoá vector production."""
     started = time.monotonic()
@@ -123,6 +183,7 @@ def run(*, dry_run: bool = False, backfill_lexical: bool = False, force: bool = 
         timeout_seconds=settings.weaviate_timeout_seconds,
         bm25_k1=settings.search_bm25_k1,
         bm25_b=settings.search_bm25_b,
+        embed_model=settings.embed_model,
     )
     desired: dict[str, tuple[str, str, str]] = {}
     reasons: dict[str, str] = {}
@@ -151,12 +212,14 @@ def run(*, dry_run: bool = False, backfill_lexical: bool = False, force: bool = 
                 reasons[product_id] = "force"
         changed = [product_id for product_id in desired if product_id in reasons]
         orphans = sorted(set(existing) - set(desired))
-        # Object index trước 25/09 chưa có property BM25: ghi thêm bằng PATCH, không gọi Cohere (chỉ khi được yêu cầu).
+        # Object index trước 25/09 chưa có property BM25: ghi thêm bằng PATCH, không embed lại (chỉ khi được yêu cầu).
         stale_lexical = [
             product_id for product_id in desired
             if product_id in existing and product_id not in set(changed) and not existing[product_id].lexical
         ]
         report: dict[str, int | str] = {
+            "provider": settings.embed_provider,
+            "collection": settings.weaviate_collection,
             "modelVersion": version,
             "searchUnits": len(desired),
             "unchanged": len(desired) - len(changed),
@@ -174,20 +237,20 @@ def run(*, dry_run: bool = False, backfill_lexical: bool = False, force: bool = 
             if not dry_run:
                 _patch_lexical(client, existing, desired, stale_lexical)
             return report
+        refused = collection_guard(existing, version, client.vector_dimension() if existing else None,
+                                   settings.embed_dimension, allow_model_change)
+        if refused:
+            report["refused"] = refused
+            return report
         if dry_run or (not changed and not orphans and not (backfill_lexical and stale_lexical)):
             return report
 
-        # Mọi luồng gọi Cohere của job dùng chung một limiter: trần lượt gọi mỗi phút, và 429 làm mọi luồng cùng chờ.
+        # Cohere: mọi luồng của job dùng chung một limiter (trần lượt gọi mỗi phút, 429 làm mọi luồng cùng chờ).
+        # Model local: một luồng — torch đã dùng các lõi (EMBED_THREADS), chạy song song chỉ tranh CPU.
         limiter = CallLimiter(settings.cohere_calls_per_minute)
-        concurrency = settings.cohere_embed_concurrency
-        embedder = CohereEmbedder(
-            settings.cohere_api_key,
-            settings.embed_model,
-            base_url=settings.cohere_base_url,
-            dimension=settings.embed_dimension,
-            timeout_seconds=settings.cohere_timeout_seconds,
-            limiter=limiter,
-        )
+        local = settings.embed_provider == "local"
+        concurrency = 1 if local else settings.cohere_embed_concurrency
+        embedder = make_embedder(settings, limiter)
         written = 0
 
         def write(ids: list[str], vectors) -> None:
@@ -214,14 +277,15 @@ def run(*, dry_run: bool = False, backfill_lexical: bool = False, force: bool = 
             written += len(ids)
             print(f"indexed {written}/{len(changed)}", flush=True)
 
-        step = CohereEmbedder.batch_size
+        step = WRITE_BATCH
         batches = [changed[start : start + step] for start in range(0, len(changed), step)]
         try:
             embed_batches(embedder, batches, {pid: desired[pid][0] for pid in changed}, concurrency, write)
         finally:
             embedder.close()
-            report.update(concurrency=concurrency, cohereCalls=limiter.calls, rateLimited=limiter.rate_limited,
-                          seconds=round(time.monotonic() - started, 1))
+            report.update(concurrency=concurrency, seconds=round(time.monotonic() - started, 1))
+            if not local:
+                report.update(cohereCalls=limiter.calls, rateLimited=limiter.rate_limited)
 
         if backfill_lexical:
             _patch_lexical(client, existing, desired, stale_lexical)
@@ -236,7 +300,7 @@ def run(*, dry_run: bool = False, backfill_lexical: bool = False, force: bool = 
 
 
 def _patch_lexical(client, existing: dict, desired: dict, stale_lexical: list[str]) -> None:
-    """Ghi property BM25 cho object đã index mà còn thiếu — giữ nguyên vector, không gọi Cohere."""
+    """Ghi property BM25 cho object đã index mà còn thiếu — giữ nguyên vector, không embed lại."""
     for done, product_id in enumerate(stale_lexical, 1):
         text, _digest, name = desired[product_id]
         client.patch_properties(existing[product_id].uuid, lexical_properties(name, text))
@@ -246,15 +310,18 @@ def _patch_lexical(client, existing: dict, desired: dict, stale_lexical: list[st
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dry-run", action="store_true", help="chỉ đếm phần cần cập nhật, không gọi Cohere hoặc ghi Weaviate")
+    parser.add_argument("--dry-run", action="store_true", help="chỉ đếm phần cần cập nhật, không embed hoặc ghi Weaviate")
     parser.add_argument("--backfill-lexical", action="store_true",
-                        help="ghi property BM25 (nameAscii/searchTextAscii) cho object đã index mà còn thiếu; không gọi Cohere")
+                        help="ghi property BM25 (nameAscii/searchTextAscii) cho object đã index mà còn thiếu; không embed lại")
     parser.add_argument("--force", action="store_true",
-                        help="nhúng lại mọi search unit dù text không đổi (đo tốc độ; tốn quota Cohere)")
+                        help="nhúng lại mọi search unit dù text không đổi (đo tốc độ; với Cohere tốn quota)")
+    parser.add_argument("--allow-model-change", action="store_true",
+                        help="cho ghi vào collection đang giữ vector của model khác CÙNG số chiều; lệch chiều luôn từ chối")
     parser.add_argument("--lexical-only", action="store_true",
                         help="chỉ PATCH property BM25 còn thiếu; từ chối (mã thoát 2) khi catalog lệch index — không embed, không xoá")
     args = parser.parse_args(argv)
-    report = run(dry_run=args.dry_run, backfill_lexical=args.backfill_lexical, force=args.force, lexical_only=args.lexical_only)
+    report = run(dry_run=args.dry_run, backfill_lexical=args.backfill_lexical, force=args.force, lexical_only=args.lexical_only,
+                 allow_model_change=args.allow_model_change)
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 2 if report.get("refused") else 0
 

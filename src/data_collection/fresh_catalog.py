@@ -799,6 +799,8 @@ def index_settings(db_target: str):
 
     Đích cloud đọc catalog bằng CLOUD_DATABASE_URL (thiếu thì CLOUD_SEED_DATABASE_URL) và ghi vào CLOUD_WEAVIATE_URL
     với CLOUD_WEAVIATE_API_KEY; đích local dùng DATABASE_URL (thiếu thì SEED_DATABASE_URL) và WEAVIATE_URL như backend.
+    Embedding theo EMBED_PROVIDER của backend Settings: `local` (mặc định, e5-small trong tiến trình) không cần key;
+    `cohere` (đường lui, đi cùng WEAVIATE_COLLECTION=Product) bắt buộc COHERE_API_KEY.
     Kiểm trước khi cào để VM cấu hình thiếu không cào hàng giờ rồi mới lỗi ở bước cuối.
     """
     repo_root = str(ROOT.parent.parent)
@@ -815,7 +817,8 @@ def index_settings(db_target: str):
         values = {'database_url': os.environ.get('DATABASE_URL') or os.environ['SEED_DATABASE_URL']}
         required = {}
     settings = Settings(**values)
-    required['COHERE_API_KEY'] = settings.cohere_api_key
+    if settings.embed_provider == 'cohere':
+        required['COHERE_API_KEY'] = settings.cohere_api_key
     missing = [name for name, value in required.items() if not value]
     if missing:
         raise ValueError(f'Thiếu biến cho bước index: {", ".join(missing)}')
@@ -825,7 +828,7 @@ def index_settings(db_target: str):
 
 def index_catalog(settings, detail_path: Path | None = None) -> dict:
     # Đọc lại đúng DB vừa ghi, ghi vào Weaviate của cùng đích; runtime API vẫn dùng role chỉ đọc của nó.
-    # detail_path: text gửi Cohere, hash, hành động và vài chiều đầu của vector từng sản phẩm, cho monitor.
+    # detail_path: text đem embed, hash, hành động và vài chiều đầu của vector từng sản phẩm, cho monitor.
     from src.backend.jobs.embed_products import run
     print("catalog.index.start", flush=True)
     report = run(settings=settings, detail_path=detail_path)
@@ -833,9 +836,14 @@ def index_catalog(settings, detail_path: Path | None = None) -> dict:
     return report
 
 
+#: Collection mà backend local đọc: ProductE5 (e5-small, mặc định) và Product (Cohere, đường lui); lượt local không ghi.
+BACKEND_COLLECTIONS = ('ProductE5', 'Product')
+
+
 def check_local_only(db_target: str, db_url: str, index_config) -> None:
     """`CATALOG_LOCAL_ONLY=1` (local_crawl.sh): chỉ cho ghi vào Postgres/Weaviate trên máy này và không đụng database
-    `vota` hay collection `Product` mà backend local đang dùng. Kiểm trước khi cào để lượt thử không ghi nhầm lên staging."""
+    `vota` hay collection của backend local (`ProductE5`, và `Product` của đường lui Cohere). Kiểm trước khi cào để lượt
+    thử không ghi nhầm lên staging."""
     if os.environ.get('CATALOG_LOCAL_ONLY') != '1':
         return
     problems = []
@@ -850,8 +858,8 @@ def check_local_only(db_target: str, db_url: str, index_config) -> None:
             problems.append(f'{name} trỏ tới {parsed.hostname or "?"} (không phải localhost)')
         if name != 'WEAVIATE_URL' and parsed.path.lstrip('/') in ('', 'vota'):
             problems.append(f'{name} dùng database "{parsed.path.lstrip("/") or "mặc định"}" của backend local')
-    if index_config is not None and index_config.weaviate_collection == 'Product':
-        problems.append('WEAVIATE_COLLECTION=Product là collection của backend local')
+    if index_config is not None and index_config.weaviate_collection in BACKEND_COLLECTIONS:
+        problems.append(f'WEAVIATE_COLLECTION={index_config.weaviate_collection} là collection của backend local')
     if problems:
         raise ValueError('Chế độ local chặn lượt này: ' + '; '.join(problems))
 

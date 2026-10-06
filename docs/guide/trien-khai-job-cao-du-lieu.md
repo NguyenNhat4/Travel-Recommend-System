@@ -46,7 +46,7 @@ Các bước:
 CD **không** tự chạy lượt cào ngay. Code mới có hiệu lực ở lượt kế tiếp theo giờ trong monitor. Muốn cào ngay: mở monitor, bấm chạy
 lượt `full` (gồm vé Trip SEO/khứ hồi và collector thương gia, rồi normalize → DB → index).
 
-Nguồn quá giờ có dữ liệu hợp lệ hoặc Cohere 429 không còn làm lượt trả `exit=3`: report ghi `partial`, index chờ đến hạn rồi tick tự
+Nguồn quá giờ có dữ liệu hợp lệ hoặc index bị 429 (chỉ còn ở đường lui Cohere; model local mặc định không có quota) không còn làm lượt trả `exit=3`: report ghi `partial`, index chờ đến hạn rồi tick tự
 thử lại (xem [vé thương gia và index chờ](ve-thuong-gia-va-index-cho.md)).
 
 ## Điều kiện VM và kiểm sau deploy
@@ -54,9 +54,14 @@ thử lại (xem [vé thương gia và index chờ](ve-thuong-gia-va-index-cho.m
 VM hiện có job fresh cần giữ nguyên:
 
 - `/srv/vota/fresh-catalog-data` (app UID/GID 10001 ghi được), `/etc/vota/fresh-catalog.env` (deploy account đọc được), `/srv/vota/fresh-catalog-logs` (deploy account ghi được).
-- Env có `DB_TARGET`, kết nối DB, Cohere và Weaviate của đúng đích; tunnel DB và Docker đã hoạt động. CD không tự tạo env hay sửa secret:
-  **đổi key Cohere hoặc tắt vé Thương gia mô phỏng (`SIMULATED_BUSINESS_FARES=0`) phải sửa tay `/etc/vota/fresh-catalog.env`
-  trên VM** (xem [mục dưới](#vé-thương-gia-mô-phỏng-trên-vm)).
+- Env có `DB_TARGET`, kết nối DB và Weaviate của đúng đích; tunnel DB và Docker đã hoạt động. Embedding mặc định là model local
+  `intfloat/multilingual-e5-small` có sẵn trong image (torch CPU + model tải lúc build, ghi collection `ProductE5`, không cần key);
+  chỉ đường lui `EMBED_PROVIDER=cohere` + `WEAVIATE_COLLECTION=Product` mới cần `COHERE_API_KEY`. Không để dòng
+  `EMBED_PROVIDER=` / `WEAVIATE_COLLECTION=` trống trong env file (`--env-file` truyền chuỗi rỗng). CD không tự tạo env hay sửa
+  secret: **đổi provider embedding / key Cohere hoặc tắt vé Thương gia mô phỏng (`SIMULATED_BUSINESS_FARES=0`) phải sửa tay
+  `/etc/vota/fresh-catalog.env` trên VM** (xem [mục dưới](#vé-thương-gia-mô-phỏng-trên-vm)).
+- Collection `ProductE5` của đích chưa có vector thì lượt index đầu embed toàn bộ search unit trên CPU của VM (một lần); các
+  lượt sau chỉ embed dòng mới hoặc đổi text. Job từ chối ghi vào collection đang giữ vector khác số chiều/model.
 - Đổi đường dẫn bằng các secret tùy chọn `GCE_CRON_DATA_DIR`, `GCE_CRON_ENV_FILE`, `GCE_CRON_LOG_DIR`, `GCE_CRON_RUNNER` (mặc định là
   các đường dẫn fresh ở trên).
 
@@ -117,8 +122,8 @@ vé máy bay trip.com cào ngày 30/09/2026: 11.718 sản phẩm, có 290 vé kh
 (`src/data_collection/snapshots/README.md`).
 
 Chế độ `--catalog-only` chỉ upsert `cdp.products` và thay `catalog.combo_items` của các combo. Nó **không xoá** gì, không đụng
-`cdp.profiles` / `cdp.events`, `app.*` (user, giỏ, đơn) hay database `insider`. Không cần Weaviate / Cohere: chuyến bay không được
-index, tuyến đã có vector.
+`cdp.profiles` / `cdp.events`, `app.*` (user, giỏ, đơn) hay database `insider`. Không cần Weaviate / model embedding: chuyến bay không
+được index, tuyến đã có vector.
 
 1. Mở SSH tunnel tới Postgres staging rồi kiểm: `bash scripts/check-db-tunnel.sh` (mặc định `127.0.0.1:15432`).
 2. Tài khoản cần quyền ghi `cdp.products`, `catalog.combo_items`: tài khoản seed/superuser của staging, không phải
@@ -161,7 +166,7 @@ Lưu ý:
   `tripFlights.fareMinutes = 0` trên monitor. Không lách chống bot.
 - **43 vé Thương gia thật** (bay 15/10/2026) đã có trên DB VM. CD không import; DB mới thì chạy lệnh `import-flights` ở mục
   trên.
-- **Cohere 429 / nguồn quá giờ:** report `partial` nhưng trả 0 khi dữ liệu hợp lệ đã nạp; 429 được hoãn vào
+- **Cohere 429 / nguồn quá giờ** (từ 06/10/2026 phần 429 chỉ còn ở đường lui Cohere): report `partial` nhưng trả 0 khi dữ liệu hợp lệ đã nạp; 429 được hoãn vào
   `state/index_pending.json`, cron thử lại riêng index khi tới `retryAfter`. Lỗi DB / schema / quality gate và lỗi index khác
   vẫn báo lỗi. Chi tiết: [vé thương gia và index chờ](ve-thuong-gia-va-index-cho.md).
 

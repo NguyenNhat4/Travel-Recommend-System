@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Chạy thử job cào mới (fresh_catalog.py) trên máy cá nhân và theo dõi bằng monitor.
 # Ghi vào Postgres + Weaviate Docker local, vào database và collection RIÊNG (mặc định vota_crawl / ProductCrawl):
-# không đụng database `vota` và collection `Product` mà backend local đang dùng, không bao giờ ghi lên staging/cloud
+# không đụng database `vota` và collection `ProductE5` (hoặc `Product` của đường lui Cohere) mà backend local đang dùng,
+# không bao giờ ghi lên staging/cloud
 # (fresh_catalog.py chặn khi CATALOG_LOCAL_ONLY=1 mà đích không phải localhost).
 #
 #   ./local_crawl.sh setup      # bật postgres + weaviate (docker compose), tạo database từ db/vota_schema.sql, kiểm môi trường
@@ -18,7 +19,10 @@
 # Tuỳ chọn: PYTHON (mặc định `python`, nên `conda activate vsf`), LOCAL_CRAWL_DB, LOCAL_CRAWL_COLLECTION, LOCAL_CRAWL_DIR
 # (ghi đè từng chỗ riêng lẻ), MONITOR_PORT (8765),
 # SHOW_BROWSER=1 để thấy cửa sổ Chromium (mặc định chạy trong Xvfb, không bật cửa sổ).
-# COHERE_API_KEY đọc từ .env ở gốc repo (backend Settings), script không in giá trị.
+# Embedding theo EMBED_PROVIDER của .env gốc (backend Settings): `local` (mặc định) chạy intfloat/multilingual-e5-small
+# trong tiến trình — cần torch + transformers (src/backend/requirements-embed.txt), lần đầu tải model ~0,5 GB vào cache
+# Hugging Face, không cần key; `cohere` (đường lui) cần COHERE_API_KEY. Script không in giá trị. Collection giữ vector của
+# một model: đổi provider thì `reset` hoặc dùng LOCAL_CRAWL_NAME khác (job index từ chối ghi lệch số chiều/model).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -35,8 +39,8 @@ WEAVIATE="http://localhost:${WEAVIATE_HOST_PORT:-8080}"
 die() { echo "local_crawl: $*" >&2; exit 1; }
 [[ "$DB_NAME" =~ ^[a-z_][a-z0-9_]*$ && "$DB_NAME" != vota && "$DB_NAME" != insider ]] \
   || die "LOCAL_CRAWL_DB phải là tên database riêng (không phải vota/insider)"
-[[ "$COLLECTION" =~ ^[A-Z][A-Za-z0-9_]*$ && "$COLLECTION" != Product ]] \
-  || die "LOCAL_CRAWL_COLLECTION phải là collection riêng (không phải Product)"
+[[ "$COLLECTION" =~ ^[A-Z][A-Za-z0-9_]*$ && "$COLLECTION" != Product && "$COLLECTION" != ProductE5 ]] \
+  || die "LOCAL_CRAWL_COLLECTION phải là collection riêng (không phải ProductE5/Product của backend)"
 
 compose() { (cd "$REPO" && docker compose "$@"); }
 psql_admin() { compose exec -T postgres psql -v ON_ERROR_STOP=1 -U postgres "$@"; }
@@ -91,6 +95,33 @@ PY
   echo "Trình duyệt: $([[ "${SHOW_BROWSER:-0}" == 1 ]] && echo 'cửa sổ thật' || echo 'Xvfb (ẩn)')"
 }
 
+# Bước index cần gì theo EMBED_PROVIDER (biến môi trường thắng .env gốc, như backend Settings): local → torch + transformers;
+# cohere → COHERE_API_KEY. Chỉ cảnh báo; fresh_catalog.py kiểm lại trước khi cào.
+check_embed() {
+  "$PY" - "$REPO/.env" <<'PY'
+import importlib.util, os, sys
+found = {}
+try:
+    for line in open(sys.argv[1], encoding="utf-8"):
+        name, _, value = line.strip().partition("=")
+        if name in ("EMBED_PROVIDER", "COHERE_API_KEY"):
+            found[name] = value.strip().strip('"').strip("'")
+except OSError:
+    pass
+provider = (os.environ.get("EMBED_PROVIDER") or found.get("EMBED_PROVIDER") or "local").strip().lower()
+if provider == "cohere":
+    if not (os.environ.get("COHERE_API_KEY") or found.get("COHERE_API_KEY")):
+        print("Cảnh báo: EMBED_PROVIDER=cohere mà chưa có COHERE_API_KEY — bước index sẽ dừng lượt trước khi cào",
+              file=sys.stderr)
+else:
+    missing = [m for m in ("torch", "transformers") if importlib.util.find_spec(m) is None]
+    if missing:
+        print(f"Cảnh báo: EMBED_PROVIDER={provider} cần {', '.join(missing)} cho bước index — "
+              "pip install -r src/backend/requirements-embed.txt (Linux: cài torch bản CPU trước, xem đầu file đó)",
+              file=sys.stderr)
+PY
+}
+
 check_python() {
   "$PY" - <<'PY' || die "Python thiếu thư viện — chạy trong env có requirements (vd. conda activate vsf) hoặc đặt PYTHON=..."
 import importlib.util, sys
@@ -117,8 +148,7 @@ cmd_setup() {
   load_env
   "$PY" "$REPO/db/migrations/run.py" --database-url "$SEED_DATABASE_URL"
   curl -fsS "$WEAVIATE/v1/.well-known/ready" >/dev/null || die "Weaviate $WEAVIATE chưa sẵn sàng"
-  grep -q '^COHERE_API_KEY=.\+' "$REPO/.env" 2>/dev/null \
-    || echo "Cảnh báo: .env gốc chưa có COHERE_API_KEY — bước index sẽ dừng lượt trước khi cào" >&2
+  check_embed
   ls -d "${PLAYWRIGHT_BROWSERS_PATH:-$HOME/.cache/ms-playwright}"/chromium-* >/dev/null 2>&1 \
     || echo "Cảnh báo: chưa thấy Chromium của Playwright — chạy: $PY -m playwright install chromium" >&2
   if [[ ! -f "$WORK/state/settings.json" ]]; then

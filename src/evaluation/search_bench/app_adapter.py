@@ -30,6 +30,7 @@ import hashlib
 import inspect
 import json
 import sys
+from pathlib import Path
 from dataclasses import dataclass, field
 from time import perf_counter
 from typing import Any
@@ -542,8 +543,30 @@ class AppContext:
                                 no_diacritics=no_diacritics, no_diacritics_cutoff=nd_cutoff,
                                 no_diacritics_min_tokens=int(nd["min_tokens"]),
                                 # 05/10: query plan F3–F6, mỗi cờ một kwarg cùng tên
-                                **{k: bool(p[k]) for k in QUERY_PLAN_KEYS}, **flags)
+                                **{k: bool(p[k]) for k in QUERY_PLAN_KEYS}, **flags, **self.llm_kwargs(p))
         return AppSearch(engine=engine, params=p)
+
+    def llm_kwargs(self, p: dict) -> dict:
+        """06/10 (contract 1.17.0): khối TUỲ CHỌN `app.llm: {mode: on|shadow, min_confidence, cache_path}` — LLM fallback của
+        query plan, PHÁT LẠI từ cache JSONL (`cache_only`, không gọi API; nạp cache bằng `src/backend/jobs/prewarm_llm_hypotheses.py`).
+        Vắng khối → không truyền gì (≡ off). Câu không có trong cache → `queryPlan.llm.status = cache_miss`, giữ plan luật."""
+        cfg = p.get("llm")
+        if not cfg:
+            return {}
+        mode = cfg.get("mode")
+        if mode not in ("on", "shadow") or not cfg.get("cache_path"):
+            raise AppAdapterError("arm APP: app.llm cần mode (on | shadow) và cache_path")
+        from src.backend.app.application.search.query_plan_llm import CachedQueryHypothesizer, HypothesisCache
+        path = Path(cfg["cache_path"])
+        path = path if path.is_absolute() else paths.repo_root() / path
+        if not path.exists():
+            raise AppAdapterError(f"arm APP: chưa có cache giả thuyết LLM {path} — chạy prewarm_llm_hypotheses trước")
+        hyp = getattr(self, "_llm_hyp", {}).get(str(path))
+        if hyp is None:
+            hyp = CachedQueryHypothesizer(None, cache=HypothesisCache(100_000, path=path), cache_only=True)
+            self._llm_hyp = {**getattr(self, "_llm_hyp", {}), str(path): hyp}
+        return {"llm_fallback": mode, "llm_min_confidence": float(cfg.get("min_confidence", 0.75)),
+                "llm_timeout_ms": int(cfg.get("timeout_ms", 60_000)), "hypothesizer": hyp}
 
 
 def retrieve_app(arm, env, ctx: AppContext, embedder: Any, *, limit: int | None = None, reranker: Any = None) -> list:

@@ -66,7 +66,9 @@ COVERAGE_FIELDS = ("unitPrice", "description", "imageUrl", "coordinates")
 #   seed    : kết nối cho `python -m data_collection.seed --catalog-only` (cần INSERT/UPDATE cdp.products, DELETE/INSERT
 #             catalog.combo_items)
 #   db      : kết nối job embed đọc catalog (mặc định = seed)
-#   weaviate: collection Product của đích đó; COHERE_API_KEY dùng chung
+#   weaviate: Weaviate của đích đó, ghi vào WEAVIATE_COLLECTION (mặc định ProductE5). Embedding theo EMBED_PROVIDER dùng
+#             chung mọi đích: local (mặc định, e5-small chạy trong tiến trình, không cần key) · cohere (đường lui, cần
+#             COHERE_API_KEY, đi cùng WEAVIATE_COLLECTION=Product) — xem index_missing()
 TARGETS = {
     "local": {"seed": "SEED_DATABASE_URL", "db": "DATABASE_URL", "weaviate": "WEAVIATE_URL", "weaviate_key": "WEAVIATE_API_KEY"},
     "cloud": {"seed": "CLOUD_SEED_DATABASE_URL", "db": "CLOUD_DATABASE_URL", "weaviate": "CLOUD_WEAVIATE_URL",
@@ -459,6 +461,20 @@ def target_env(target: str) -> tuple[dict[str, str], list[str]]:
     return env, missing
 
 
+def embed_provider(env) -> str:
+    """EMBED_PROVIDER của job embed, cùng mặc định với backend Settings (`local`, FR-SRC-02 chốt 06/10/2026)."""
+    return (env.get("EMBED_PROVIDER") or "local").strip().lower() or "local"
+
+
+def index_missing(env) -> list[str]:
+    """Biến còn thiếu để chạy bước embed (chỉ tên, không bao giờ giá trị). Provider `local` chạy model trong tiến trình nên
+    chỉ cần WEAVIATE_URL; `cohere` (đường lui) cần thêm COHERE_API_KEY. Provider lạ để job embed tự báo lỗi cấu hình."""
+    missing = [] if env.get("WEAVIATE_URL") else ["WEAVIATE_URL"]
+    if embed_provider(env) == "cohere" and not env.get("COHERE_API_KEY"):
+        missing.append("COHERE_API_KEY")
+    return missing
+
+
 def _with_scheme(url: str) -> str:
     return url if not url or url.startswith(("http://", "https://")) else "https://" + url  # Weaviate Cloud cho URL không scheme
 
@@ -492,8 +508,9 @@ def load_targets(run: Run, targets: list[str], index: bool, today: date, retire_
             code = subprocess.call(argv, cwd=HERE.parent, env=env, stdout=log, stderr=subprocess.STDOUT)
             res["seedExit"] = code
             if code == 0 and index:
-                if not env["WEAVIATE_URL"] or not env.get("COHERE_API_KEY"):
-                    res["index"] = "skipped: thiếu WEAVIATE_URL/COHERE_API_KEY"
+                index_gap = index_missing(env)
+                if index_gap:
+                    res["index"] = f"skipped: thiếu {'/'.join(index_gap)}"
                 else:
                     log.write(f"\n=== {now_local()} embed_products\n")
                     log.flush()

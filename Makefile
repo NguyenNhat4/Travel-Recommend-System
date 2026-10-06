@@ -31,6 +31,8 @@ chat:
 		echo "Không tìm thấy .venv. Hãy chạy:"
 		echo "  python3 -m venv .venv"
 		echo "  .venv/bin/pip install -r src/backend/requirements.txt -r src/evaluation/requirements.txt"
+		echo "  # embedding local (Search/RecSys): Linux cài torch CPU trước, xem đầu src/backend/requirements-embed.txt"
+		echo "  .venv/bin/pip install -r src/backend/requirements-embed.txt"
 		exit 1
 	fi
 	cleanup() {
@@ -96,6 +98,8 @@ web:
 		echo "Không tìm thấy .venv. Hãy chạy:"
 		echo "  python3 -m venv .venv"
 		echo "  .venv/bin/pip install -r src/backend/requirements.txt"
+		echo "  # embedding local (Search/RecSys): Linux cài torch CPU trước, xem đầu src/backend/requirements-embed.txt"
+		echo "  .venv/bin/pip install -r src/backend/requirements-embed.txt"
 		exit 1
 	fi
 	if ! command -v npm >/dev/null 2>&1; then
@@ -165,6 +169,7 @@ verify-db:
 	docker compose exec -T postgres psql -U postgres -d insider < db/verify_insider.sql
 
 # Cài thêm dependency khi requirements.txt hoặc package.json đổi (vd sau git pull). Không đụng DB hay dữ liệu.
+# Embedding local (requirements-embed.txt): trên Linux cài torch bản CPU từ index của PyTorch trước (bản PyPI kéo CUDA).
 # Venv: .venv (make web/chat dùng) hoặc src/backend/.venv (README dùng), cái nào có trước.
 update:
 	@VENV="$$(for v in .venv src/backend/.venv; do [[ -x $$v/bin/python ]] && echo $$v && break; done || true)"
@@ -174,6 +179,11 @@ update:
 	fi
 	echo "==> Python: $${VENV}"
 	"$${VENV}/bin/python" -m pip install -r src/backend/requirements.txt -r src/evaluation/requirements.txt
+	if [[ "$$(uname -s)" == Linux ]]; then
+		"$${VENV}/bin/python" -m pip install --index-url https://download.pytorch.org/whl/cpu \
+			"$$(grep -E '^torch==' src/backend/requirements-embed.txt)"
+	fi
+	"$${VENV}/bin/python" -m pip install -r src/backend/requirements-embed.txt
 	if ! command -v npm >/dev/null 2>&1; then
 		echo "Không tìm thấy npm. Cần Node.js để cập nhật frontend."
 		exit 1
@@ -182,7 +192,9 @@ update:
 	npm --prefix src/frontend install
 	echo "Đã cập nhật dependency."
 
-# Job tốn quota Cohere nên không tự chạy trong demo-db. Cần COHERE_API_KEY trong .env.
+# Embed search unit vào WEAVIATE_COLLECTION bằng EMBED_PROVIDER: mặc định model local e5-small → ProductE5 (cần
+# requirements-embed.txt, không tốn quota, vài phút CPU nên không tự chạy trong demo-db). Đường lui Cohere
+# (EMBED_PROVIDER=cohere + WEAVIATE_COLLECTION=Product + COHERE_API_KEY trong .env) tốn quota Cohere.
 index-vectors:
 	docker compose up -d --wait postgres weaviate
 	$(PYTHON) -m src.backend.jobs.embed_products

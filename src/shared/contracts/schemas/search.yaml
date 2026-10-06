@@ -7,6 +7,8 @@
 #   "party" trong applied/emptyReason, "star" trong emptyReason; diagnostics.fuzzyCount + stageMs.fuzzy;
 #   ScoredProduct.matchedChildren (catalog.yaml);
 #   travelContext.guests → filter sức chứa ở POST /search.
+# 1.17.0 (2026-10-06, additive): diagnostics.queryPlan.llm (LLM fallback của query plan, SEARCH_LLM_FALLBACK off|shadow|on,
+#   mặc định off) + diagnostics.stageMs.llm. Mặc định off → response y như 1.16.0.
 
 # [Q1] Ngữ cảnh chuyến đi. KHÔNG phải xác nhận availability nếu
 # availabilityMode là CATALOG_ONLY.
@@ -252,7 +254,7 @@ EngineDiagnostics:
         embed:
           type: integer
           minimum: 0
-          description: 'Embed truy vấn qua Cohere (input_type search_query).'
+          description: 'Embed truy vấn bằng model đang cấu hình (e5-small local, tiền tố `query: `; Cohere search_query khi EMBED_PROVIDER=cohere).'
         dense:
           type: integer
           minimum: 0
@@ -270,17 +272,23 @@ EngineDiagnostics:
           minimum: 0
           description: >-
             (1.16.0) Kênh fuzzy: tra chỉ mục trigram tên và lấy vector của unit chỉ có ở kênh này. Chỉ có khi kênh fuzzy bật.
+        llm:
+          type: integer
+          minimum: 0
+          description: >-
+            (1.17.0) Thời gian chờ giả thuyết LLM của query plan SAU bước embed (lượt gọi model chạy song song với embed; phần
+            dựng query plan tính vào embed). Chỉ có khi diagnostics.queryPlan.llm có mặt.
         hydrate:
           type: integer
           minimum: 0
           description: 'Dựng các ProductSummary của trang trả về.'
-    # Cache vector truy vấn trong bộ nhớ backend (từ 2026-09-30, contract 1.12.0; NFR-PERF-03: Cohere vượt ngân sách thì
+    # Cache vector truy vấn trong bộ nhớ backend (từ 2026-09-30, contract 1.12.0; NFR-PERF-03: giữ ngân sách embed
     # cache vector của truy vấn lặp lại). Chỉ có ở /search; vắng khi SEARCH_EMBED_CACHE=false.
     embedCache:
       type: string
       enum: [hit, miss]
       description: >-
-        hit = vector của câu (sau chuẩn hoá) lấy từ cache, không gọi Cohere; miss = gọi Cohere rồi ghi cache. Không đổi
+        hit = vector của câu (sau chuẩn hoá) lấy từ cache, không chạy model embed; miss = embed (e5-small local hoặc Cohere) rồi ghi cache. Không đổi
         kết quả hay thứ tự — chỉ stageMs.embed khác nhau. Khoá cache là chuỗi đã chuẩn hoá và gộp khoảng trắng, nên
         "KS ở NT" và "khách sạn ở Nha Trang" dùng chung một vector.
     # Chuẩn hoá truy vấn /search (bước 1, từ 2026-09-25): viết tắt, chính tả tên riêng, tên điểm đến về dạng chuẩn,
@@ -535,7 +543,8 @@ EngineDiagnostics:
           maximum: 1
           description: >-
             (1.16.0) Router confidence của plan rule-based (kiến trúc §5): 1 trừ 0.25 cho mỗi lý do ở fallbackReasons, tất
-            định, chỉ để khai báo — /search không gọi LLM. Có mặt khi khối queryPlan có mặt.
+            định. Có mặt khi khối queryPlan có mặt. Từ 1.17.0: dưới ngưỡng SEARCH_LLM_FALLBACK_MIN_CONFIDENCE và
+            SEARCH_LLM_FALLBACK ≠ off thì kích hoạt LLM fallback (khối llm); giá trị này luôn là của plan rule.
         fallbackReasons:
           type: array
           description: >-
@@ -545,6 +554,73 @@ EngineDiagnostics:
             taxonomy khác thứ câu nêu), long_multi_constraint (câu dài và nêu từ hai họ ràng buộc). Vắng khi không có lý do.
           items:
             type: string
+        llm:
+          type: object
+          additionalProperties: false
+          required: [mode, used, cached, status, latencyMs, accepted, rejected]
+          description: >-
+            (1.17.0) LLM fallback của query plan (kiến trúc §5; SEARCH_LLM_FALLBACK). Chỉ có khi chế độ ≠ off VÀ confidence <
+            ngưỡng (SEARCH_LLM_FALLBACK_MIN_CONFIDENCE) cho câu này. Model chỉ trả giả thuyết JSON (loại sản phẩm, điểm đến,
+            tuyến bay, phủ định, giá/sao, số khách) — không productId, không xếp hạng. Server kiểm mọi giá trị với catalog
+            (enum Taxonomy, bảng điểm đến / thành phố bay của catalog và phải có mặt trong câu, từ vựng tiện ích, khoảng số
+            hợp lý); giá trị hỏng nằm ở rejected, không bao giờ thành filter. Chỉ điền ô plan rule để trống: tham số request
+            và giá trị rule luôn thắng. Giá trị đã nhận khai ở các khoá queryPlan khác với source = query và chỉ lọc khi cờ
+            họ đó bật (SEARCH_*_FILTER) — y như giá trị rule; riêng điểm đến cần SEARCH_DEST_FILTER (tắt → rejected
+            flag_off). shadow: không bao giờ đổi plan hay kết quả, accepted là những gì on SẼ nhận.
+          properties:
+            mode:
+              type: string
+              enum: [shadow, 'on']
+            used:
+              type: boolean
+              description: true khi mode = on và ít nhất một trường được trộn vào plan.
+            cached:
+              type: boolean
+              description: Giả thuyết lấy từ cache (theo câu đã chuẩn hoá), không gọi model.
+            status:
+              type: string
+              enum: [ok, empty, pending, timeout, failed, unavailable, cache_miss, busy]
+              description: >-
+                ok: có giả thuyết; empty: model không cho giả thuyết; pending: shadow, model đang chạy nền (so sánh chỉ ghi
+                log); timeout: quá SEARCH_LLM_FALLBACK_TIMEOUT_MS → plan rule; failed: model / mạng lỗi → plan rule;
+                unavailable: chế độ bật nhưng không có adapter (thiếu API key / SDK); cache_miss: chỉ đọc cache (bench) và câu
+                chưa có; busy: đã đủ số lượt gọi đang bay.
+            latencyMs:
+              type: integer
+              minimum: 0
+              description: Thời gian từ lúc khởi lượt fallback tới khi có kết quả (gồm phần chạy song song với embed).
+            accepted:
+              type: array
+              description: Trường đã trộn vào plan (mode = on) hoặc sẽ trộn (shadow).
+              items:
+                type: string
+                enum: [taxonomy, destination, origin, destinationCity, mustNotAmenities, mustNotTaxonomies, price, star,
+                       party]
+            rejected:
+              type: array
+              items:
+                type: object
+                additionalProperties: false
+                required: [field, reason]
+                properties:
+                  field:
+                    type: string
+                    enum: [hypothesis, taxonomy, destination, origin, destinationCity, mustNotAmenities,
+                           mustNotTaxonomies, price, star, party]
+                  reason:
+                    type: string
+                    enum: [invalid_value, not_in_catalog, not_in_query, no_cue, out_of_range, param_set, rule_set,
+                           flag_off, conflict, multi_vertical, not_flight, low_confidence]
+                    description: >-
+                      invalid_value: sai kiểu / ngoài enum; not_in_catalog: địa danh không có trong catalog; not_in_query:
+                      địa danh không có mặt trong câu; no_cue: câu không có dấu hiệu tương ứng (cue phủ định, chữ số,
+                      "sao"); out_of_range: số ngoài khoảng hợp lý; param_set / rule_set: tham số request / plan rule đã có
+                      giá trị khác; flag_off: cờ của họ đó tắt (chỉ điểm đến); conflict: tự mâu thuẫn với loại câu đang
+                      hỏi; multi_vertical: câu nêu nhiều loại, không thu hẹp; not_flight: trường tuyến bay ở câu không
+                      phải vé máy bay (hoặc điểm đến ở câu vé máy bay); low_confidence: model tự chấm giả thuyết dưới 0.5.
+            error:
+              type: string
+              description: Tên lớp lỗi khi status = failed.
 
 SearchFacets:
   type: object

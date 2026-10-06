@@ -40,8 +40,12 @@ Hệ thống phân tách ranh giới bảo mật bằng các chuỗi kết nối
 | `ITINERARY_DATA_MODE` | Nguồn dữ liệu cho tool của trợ lý: `fixture` (dữ liệu mẫu, mặc định dev/test), `inprocess` (gọi engine trong cùng tiến trình; dùng khi chạy dữ liệu thật), `http` (gọi qua HTTP tới `ITINERARY_SERVICE_BASE_URL`; tuỳ chọn, để hoàn tác hoặc khi tách agent thành service riêng), `disabled` | Tất cả | Không bí mật. Không đặt thì ngoài dev/test là `disabled`, nên staging/production phải đặt tường minh |
 | `ITINERARY_SERVICE_BASE_URL` | Gốc URL backend mà adapter HTTP gọi tới | Chỉ khi `ITINERARY_DATA_MODE=http` | Không bí mật. Bắt buộc ở mode `http`, bỏ qua ở mode khác |
 | `ITINERARY_TOOL_TIMEOUT_SECONDS` | Thời hạn (giây) cho mỗi lời gọi tool của trợ lý, áp dụng mọi mode | Tất cả | Không bí mật |
-| `COHERE_API_KEY` | Khóa gọi Cohere Embed API | Tất cả | Bí mật, không commit. Chỉ backend và job embed giữ — Weaviate **không** nhận khóa này |
-| `EMBEDDING_MODEL_NAME`| Tên mô hình vector — mặc định `embed-multilingual-v3.0` | Tất cả | Đổi giá trị này là đổi chiều vector → phải tạo lại collection và chạy lại job embed |
+| `COHERE_API_KEY` | Khóa gọi Cohere Embed API — chỉ cần khi `EMBED_PROVIDER=cohere` (đường lui) | Tuỳ chọn | Bí mật, không commit. Chỉ backend và job embed giữ — Weaviate **không** nhận khóa này |
+| `EMBED_PROVIDER` | `local` (mặc định, e5-small trong backend) hoặc `cohere` (đường lui) | Tất cả | Không bí mật. Đổi provider là đổi chiều vector → đổi `WEAVIATE_COLLECTION` cùng lúc |
+| `EMBED_MODEL` / `EMBED_MODEL_REVISION` / `EMBED_DIMENSION` | Model local (`intfloat/multilingual-e5-small`), revision pin, 384 chiều | Tất cả | Không bí mật. Đổi giá trị → tạo collection mới và chạy lại job embed |
+| `WEAVIATE_COLLECTION` | Collection vector đang phục vụ — mặc định `ProductE5` (e5, 384); `Product` (Cohere, 1024) giữ để hoàn tác | Tất cả | Không bí mật |
+| `SEARCH_CUTOFF` | Ngưỡng cosine của `/search` — mặc định **0,84** cho e5-small (cosine e5 dồn 0,85–0,92 nên 0,62 của Cohere không lọc gì); `SEARCH_NO_DIACRITICS_CUTOFF` **0,80** cho câu không dấu; `SEARCH_LEXICAL_CUTOFF` giữ 0,50 | Tất cả | Không bí mật. Cutoff tuyệt đối không làm câu ngoài catalog trả rỗng — giới hạn đã biết |
+| `SEARCH_LLM_FALLBACK` / `SEARCH_LLM_FALLBACK_MIN_CONFIDENCE` / `SEARCH_LLM_FALLBACK_TIMEOUT_MS` | LLM fallback của query plan: `off` (mặc định) \| `shadow` \| `on`; ngưỡng độ tin cậy kích hoạt; hạn thời gian mỗi lượt | Tất cả | Không bí mật; dùng khoá LLM có sẵn (`LLM_API_KEY`) |
 | `WEAVIATE_URL` | Endpoint Weaviate (local: `http://localhost:8080`) | Tất cả | Không mở ra mạng ngoài ở local |
 | `WEAVIATE_GRPC_PORT` | Cổng gRPC của Weaviate (mặc định `50051`). Search, Similar và Recommendation truy vấn top-K qua gRPC; Weaviate Cloud tự dùng cổng 443 của host `grpc-<cluster>` nên bỏ qua biến này | Tất cả | Không mở ra mạng ngoài ở local |
 | `JWT_PRIVATE_KEY_PATH` / `JWT_PUBLIC_KEY_PATH` | Khoá RS256 để FastAPI ký và kiểm JWT; public key công bố qua JWKS | Tất cả | Khoá riêng bí mật: không commit, không vào image. Chỉ FastAPI giữ |
@@ -122,8 +126,8 @@ Hệ thống cung cấp các endpoint kiểm tra trạng thái sức khỏe đ�
 - **Readiness Probe (`GET /health/ready`):** Kiểm tra trạng thái sẵn sàng phục vụ:
   - Kết nối tới PostgreSQL (`DATABASE_URL`).
   - Kết nối tới CDP (`CDP_DATABASE_URL`).
-  - Kết nối tới Weaviate (`WEAVIATE_URL`) và sự tồn tại của collection `Product`.
-  - Kiểm tra trạng thái sẵn sàng của Cohere Embed API.
+  - Kết nối tới Weaviate (`WEAVIATE_URL`) và sự tồn tại của collection đang phục vụ (`WEAVIATE_COLLECTION`).
+  - Model embedding đã tải và embed thử một câu (với `EMBED_PROVIDER=cohere`: trạng thái sẵn sàng của Cohere Embed API).
 - **Metrics Endpoint (`GET /metrics`):** Xuất các chỉ số độ trễ API, tỷ lệ lỗi HTTP 5xx và thời gian xử lý của Trợ lý AI.
 - **Xem DB trên monitor job cào (tab "DB"):** danh sách schema / bảng kèm số dòng; xem từng bảng có phân trang, lọc, sắp xếp; xem một dòng kèm **liên kết** theo khoá ngoại: bấm sang dòng được trỏ tới (vd. `booking_items.product_id` → sản phẩm) và xem các dòng trỏ về nó (vd. sản phẩm → `booking_items`, `cart_items`, `combo_items`; hồ sơ CDP → `events`, `users`, `bookings`). Quan hệ lấy từ khoá ngoại khai báo trong PostgreSQL (tự theo migration mới), cộng hai quan hệ theo quy ước không có khoá ngoại: `attributes.parentProductId` (vé / phòng → tuyến / khách sạn) và `demo:business:<sourceRef>` (vé mô phỏng → vé gốc). Dùng kết nối DB sẵn có của job, mỗi yêu cầu trong transaction chỉ đọc, `statement_timeout` 5 giây. Chỉ database `vota`; database `insider` không có (monitor không có kết nối tới nó). Monitor chưa có đăng nhập: trong lúc chờ, nên giới hạn IP nguồn cổng 8765.
 - **Sơ đồ và hoạt động DB realtime trên monitor (tab "DB"):**

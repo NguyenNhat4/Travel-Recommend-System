@@ -537,12 +537,23 @@ class IndexSettingsTests(unittest.TestCase):
         self.assertEqual((settings.database_url, settings.weaviate_url), ('postgresql://seed', 'http://localhost:8080'))
 
     def test_missing_key_or_invalid_url_is_reported_by_name(self):
-        with self.assertRaisesRegex(ValueError, 'COHERE_API_KEY'):
-            self.settings(DB_TARGET='cloud', CLOUD_SEED_DATABASE_URL='postgresql://seed',
+        with self.assertRaisesRegex(ValueError, 'COHERE_API_KEY'):  # đường lui Cohere vẫn bắt buộc key
+            self.settings(DB_TARGET='cloud', CLOUD_SEED_DATABASE_URL='postgresql://seed', EMBED_PROVIDER='cohere',
                           CLOUD_WEAVIATE_URL='https://abc.weaviate.cloud', COHERE_API_KEY='')
+        with self.assertRaisesRegex(ValueError, '^Thiếu biến cho bước index: CLOUD_WEAVIATE_URL$'):
+            self.settings(DB_TARGET='cloud', CLOUD_SEED_DATABASE_URL='postgresql://seed', EMBED_PROVIDER='local',
+                          COHERE_API_KEY='')
         with self.assertRaises(ValueError):
             self.settings(DB_TARGET='local', SEED_DATABASE_URL='postgresql://seed',
                           WEAVIATE_URL='ftp://weaviate', COHERE_API_KEY='k')
+
+    def test_local_provider_needs_no_cohere_key(self):
+        settings = self.settings(DB_TARGET='cloud', CLOUD_SEED_DATABASE_URL='postgresql://seed', EMBED_PROVIDER='local',
+                                 CLOUD_WEAVIATE_URL='https://abc.weaviate.cloud', COHERE_API_KEY='')
+        self.assertEqual((settings.embed_provider, settings.embed_dimension), ('local', 384))
+        local = self.settings(DB_TARGET='local', SEED_DATABASE_URL='postgresql://seed', EMBED_PROVIDER='local',
+                              WEAVIATE_URL='http://localhost:8080', COHERE_API_KEY='')
+        self.assertEqual(local.embed_provider, 'local')
 
 
 class ManualComboMappingTests(unittest.TestCase):

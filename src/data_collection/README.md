@@ -80,7 +80,8 @@ cp .env.example .env                      # điền các biến ở khối "Job 
 | `SEED_DATABASE_URL`, `DATABASE_URL`, `WEAVIATE_URL` | đích `local` (Postgres Docker + Weaviate local) |
 | `CLOUD_SEED_DATABASE_URL` | đích `cloud`: `postgresql://<user>:<mật khẩu mã hoá URL>@127.0.0.1:15432/vota` qua SSH tunnel |
 | `CLOUD_WEAVIATE_URL`, `CLOUD_WEAVIATE_API_KEY` | Weaviate Cloud (`https://<cluster>.weaviate.cloud`) |
-| `COHERE_API_KEY` | embed, dùng chung mọi đích |
+| `EMBED_PROVIDER`, `WEAVIATE_COLLECTION` | embed, dùng chung mọi đích: mặc định `local` (model `intfloat/multilingual-e5-small` trong tiến trình, không cần key) ghi `ProductE5`; đường lui `cohere` + `Product` |
+| `COHERE_API_KEY` | chỉ khi `EMBED_PROVIDER=cohere` (đường lui) |
 | `DAILY_DESTINATIONS` | phạm vi điểm đến, mặc định `@v1` (38 điểm, `collectors/plan.py`) |
 | `DAILY_AGODA_PER_CITY`, `DAILY_AGODA_HOURS` | số khách sạn Agoda tối đa mỗi điểm đến (50), số giờ Agoda chạy mỗi ngày (14, hết giờ thì dừng êm) |
 
@@ -103,7 +104,7 @@ Mã thoát `daily.py`: 0 ổn · 1 gate chặn / lỗi · 2 có worker lỗi ho�
 ### Luồng Docker/daily.py cũ (chỉ chạy khi chủ động chọn `legacy-run`)
 
 Image `Dockerfile.daily` (repository root) gói `src/data_collection` + phần backend mà bước embed cần, Python 3.11 và Chromium cho vé thương gia, không chứa `data/`, `.env` hay secret. Dữ liệu làm việc nằm trên ổ VPS (`DATA_DIR`, mount vào `/data`) nên giữ
-nguyên giữa các lượt; kết nối DB/Weaviate/Cohere nằm trong `ENV_FILE`. Mọi thao tác đi qua một script:
+nguyên giữa các lượt; kết nối DB/Weaviate (và key Cohere khi chạy đường lui) nằm trong `ENV_FILE`; image có sẵn torch CPU + model e5-small cho bước embed. Mọi thao tác đi qua một script:
 `run_daily_docker.sh` (`init` · `run`/`legacy-run` · `daily <lệnh>`). `run` giữ job cũ để tương thích các lệnh legacy; job mới dùng `fresh-run`, monitor mới dùng `fresh-monitor`.
 
 ```bash
@@ -142,7 +143,7 @@ Image [Dockerfile.fresh-catalog](../../Dockerfile.fresh-catalog) chứa collecto
 - Hằng ngày còn lại: xoay vòng tối đa 180 ID đã biết, ưu tiên ID chưa thử/lâu chưa thử, hỏi JSON phòng/giá mới cho cả phòng cũ và phòng mới. Chỉ file ID/thành phố và thời điểm thử/thành công được giữ cho lịch chạy; marker full chỉ ghi sau khi nạp DB thành công. Giá Trip.com gốc quá 7 ngày chưa làm mới sẽ được đặt chưa khả dụng để không quảng bá giá cũ.
 - DB giữ các trường mô tả đã có, cập nhật giá/trạng thái, thêm phòng mới, đánh dấu phòng Trip.com không còn xuất hiện trong phản hồi hợp lệ là hết bán. Một phản hồi lỗi/chặn **không** được coi là hết phòng. Không xóa `cdp.products` đã được đơn hàng tham chiếu.
 - Đầu mỗi lượt (kể cả khi mọi nguồn lỗi sau đó) job chạy một transaction riêng: đặt chưa khả dụng các giá Trip.com quá 7 ngày, và cuộn cửa sổ đặt chỗ 30 ngày cho toàn catalog đúng như seed (`docs/spec/DATABASE_SCHEMA.md` #13): `available_from/to` = khoảng nguồn `attributes.sourceAvailableFrom/To` cắt vào `[hôm nay, +29]`, thiếu thì lấy cả cửa sổ; chuyến bay `from = to` = ngày bay; giao rỗng → `available = false`. Dòng mới/làm mới trong lượt ghi lại khoảng nguồn của lượt đó. Lịch `attributes.availability` của hạng phòng, điểm tham quan, golf được sinh lại theo cửa sổ mới như seed (`docs/spec/MOCK_DATA_SPEC.md` §2 bước 2); ngày Trip.com đã hỏi ghi theo kết quả thật, dòng chưa khả dụng có lịch toàn `0`.
-- Sau khi nạp DB (và cả khi lượt cào lỗi), job gọi bước index `embed_products` vào Weaviate của **cùng đích**: chỉ embed search unit mới hoặc đổi text, xoá vector mồ côi. Cohere 429 sau khi DB đã nạp: giữ DB, ghi index pending vào `state/index_pending.json`, lượt báo `partial` nhưng trả mã 0; cron bật sẽ thử lại riêng index sau cooldown (1 giờ, tăng dần tối đa 24 giờ; ưu tiên Retry-After). Các lỗi index khác vẫn trả mã 3. `fresh-run index` cũng tuân thủ cooldown. Backend tự nạp lại giá/trạng thái mỗi `CATALOG_REFRESH_SECONDS` (mặc định 15 phút), không cần restart.
+- Sau khi nạp DB (và cả khi lượt cào lỗi), job gọi bước index `embed_products` vào Weaviate của **cùng đích**: chỉ embed search unit mới hoặc đổi text, xoá vector mồ côi. Embedding theo `EMBED_PROVIDER` (mặc định model local e5-small, collection `ProductE5`, không quota). Với đường lui Cohere, 429 sau khi DB đã nạp: giữ DB, ghi index pending vào `state/index_pending.json`, lượt báo `partial` nhưng trả mã 0; cron bật sẽ thử lại riêng index sau cooldown (1 giờ, tăng dần tối đa 24 giờ; ưu tiên Retry-After). Các lỗi index khác vẫn trả mã 3. `fresh-run index` cũng tuân thủ cooldown. Backend tự nạp lại giá/trạng thái mỗi `CATALOG_REFRESH_SECONDS` (mặc định 15 phút), không cần restart.
 - Raw/JSON đã bỏ review/tên người, interim, `products.jsonl`, log và báo cáo giữ theo từng lượt; mặc định giữ 2 lượt (`runs.keep` trong monitor, hoặc biến môi trường `RUNS_KEEP`). Tóm tắt lịch sử, ID và lịch xoay vòng được giữ lâu dài. Giá/input vẫn chỉ lấy từ phản hồi mới của lượt hiện tại. `KEEP_FAILED_RUNS` cũ không còn dùng; browser profile Trip được dọn sau bước hỏi giá.
 
 ### Hạn giờ và phục hồi khi nghẽn
@@ -195,8 +196,9 @@ MAX_DELAY=1.0
 FULL_REFRESH_DAYS=7
 # Số site cào cùng lúc ở lượt full (mỗi site vẫn tuần tự). Tăng thì theo dõi RAM bằng `fresh-run status`.
 CRAWL_PARALLEL=2
-# Bước index sau mỗi lượt; thiếu cấu hình thì vẫn cào/nạp nhưng báo lỗi index. Collection `Product` trên Cloud chỉ do job này ghi.
-COHERE_API_KEY=...
+# Bước index sau mỗi lượt; thiếu cấu hình thì vẫn cào/nạp nhưng báo lỗi index. Collection `ProductE5` trên Cloud chỉ do job
+# này ghi (model local e5-small có sẵn trong image, không cần key). Đường lui Cohere: thêm ba dòng
+# EMBED_PROVIDER=cohere, WEAVIATE_COLLECTION=Product, COHERE_API_KEY=... (không để hai dòng đầu trống).
 CLOUD_WEAVIATE_URL=https://<cluster>.weaviate.cloud
 CLOUD_WEAVIATE_API_KEY=...
 # Tuỳ chọn: role chỉ đọc cho bước index; để trống thì dùng CLOUD_SEED_DATABASE_URL.
@@ -260,7 +262,7 @@ Server chỉ nghe loopback trên mạng host của VM; URL DB trong env phải p
   - *Chuẩn hoá theo nguồn và bản nháp* (lượt cào lớn, cấu hình "Chuẩn hoá từng nguồn ngay khi nguồn cào xong", mặc định bật): bước cào nào xong thì `normalise.py --only-source` ánh xạ ngay file interim của bước đó, không đợi các bước khác cùng site (vd. vé máy bay Trip không đợi điểm tham quan); file còn lại của site được ánh xạ khi cả site xong (tối đa 2 tiến trình) thành checkpoint `<lượt>/normalised/<nguồn>.jsonl`; sau đó gộp nháp từ các checkpoint vào `<lượt>/preview/` để xem ở tab Chuẩn hoá / Catalog cuối (công tắc Nháp / Chính thức). Bước normalize chính thức (`--reuse-checkpoints`) chỉ ánh xạ lại nguồn còn thiếu, cũ hoặc lỗi rồi gộp. Không validate, không nạp DB, không index ở bản nháp; lượt lỗi giữ bản nháp cuối.
   - *Ổn định*: bảng "Thời gian từng bước normalize" (giây, vào → ra, RAM, traceback khi lỗi), "Bản ghi lỗi khi ánh xạ" (bản ghi hỏng bị bỏ, quá ngưỡng thì dừng), cột "Lỗi / thử lại" ở bảng bước (lỗi tạm thời/hạ tầng tự thử lại, nguồn bị chặn bị bỏ qua, lỗi code dừng ngay, catalog tụt mạnh thì không nạp DB). Chạy lại riêng: `normalise.py --only-source <nguồn>`, `normalise.py --merge-only`.
   - *Catalog cuối*, *Nạp DB* (trước/sau), *Báo cáo*.
-  - *Embedding*: text đúng như gửi Cohere cho từng search unit, hash, nhúng mới/giữ nguyên/xoá và lý do, 8 chiều đầu + độ dài vector, đọc vector đang lưu trong Weaviate; ô thử truy vấn (Cohere `search_query`, xếp hạng cosine trên collection đích).
+  - *Embedding*: text đúng như đem embed (chưa gồm tiền tố `passage: `) cho từng search unit, hash, nhúng mới/giữ nguyên/xoá và lý do, 8 chiều đầu + độ dài vector, đọc vector đang lưu trong Weaviate; ô thử truy vấn (embed câu bằng provider của job index — e5 `query: `, hoặc Cohere `search_query` ở đường lui — rồi xếp hạng cosine trên collection đích).
 - Lượt bị kill được đánh dấu mất tiến trình qua khoá file; heartbeat cũ được báo riêng.
 - **Cấu hình:** file `/data/state/settings.json` ưu tiên hơn env, rồi mới tới mặc định. Chỉ gửi thay đổi; nút “Về env/mặc định” xoá override của trường đó. Lượt đang chạy giữ cấu hình ban đầu.
 - **Trip nhiều khách sạn:** bấm “Áp ngân sách Trip 30 / 10 / 180” rồi Lưu, kể cả env cũ vẫn đặt 10/3/60. Có thể tăng thêm: tối đa 500 ID/thành phố, quét 2.000 ID/thành phố, 2.000 ID/daily. Đây là ngân sách, không bảo đảm nguồn trả đủ. Giữ 2 tab giá + 4 worker HTTP trên VM 2 CPU/4 GB; mức này chưa được benchmark với ngân sách mới trên VM.
@@ -291,9 +293,10 @@ Job cũ không sinh `run.json` mới nên lịch sử cũ không được chuy�
 
 ### Chạy thử job mới trên máy cá nhân
 
-Cần Docker, Python ≥ 3.10 có `requirements.txt` (vd. `conda activate vsf`), Chromium của Playwright, `xvfb-run` và
-`COHERE_API_KEY` trong `.env` ở gốc repo. [local_crawl.sh](local_crawl.sh) ghi vào Postgres + Weaviate Docker local, vào
-database `vota_crawl` và collection `ProductCrawl` riêng; không đụng `vota`/`Product` của backend local. Lượt chạy ở chế độ
+Cần Docker, Python ≥ 3.10 có `requirements.txt` (vd. `conda activate vsf`), Chromium của Playwright, `xvfb-run` và cho bước
+index: `src/backend/requirements-embed.txt` (torch + transformers; Linux cài torch CPU trước, xem đầu file đó) với
+`EMBED_PROVIDER=local` mặc định, hoặc `COHERE_API_KEY` trong `.env` ở gốc repo khi chạy đường lui `EMBED_PROVIDER=cohere`. [local_crawl.sh](local_crawl.sh) ghi vào Postgres + Weaviate Docker local, vào
+database `vota_crawl` và collection `ProductCrawl` riêng; không đụng `vota`/`ProductE5` (hay `Product` của đường lui) của backend local. Lượt chạy ở chế độ
 local (`CATALOG_LOCAL_ONLY=1`) nên `fresh_catalog.py` dừng ngay nếu đích DB/Weaviate không phải localhost, kể cả khi `.env`
 gốc đang trỏ `WEAVIATE_URL` tới Weaviate Cloud.
 
@@ -314,8 +317,8 @@ export LOCAL_CRAWL_NAME=demo  # tuỳ chọn: bộ riêng vota_crawl_demo / Prod
 khách sạn Trip tắt vì trang danh sách Trip đang trả "Tìm thấy 0 nơi lưu trú" cho trình duyệt tự động (25/09/2026).
 
 Trình duyệt chạy trong Xvfb; `SHOW_BROWSER=1 ./local_crawl.sh monitor` để thấy cửa sổ Chromium (tự bấm xác minh nếu nguồn hỏi).
-Dữ liệu các lượt ở `data/local_crawl/` (Git ignore). Bước index gọi Cohere cho search unit mới hoặc đổi text; ô thử truy
-vấn gọi Cohere một lần mỗi lần bấm.
+Dữ liệu các lượt ở `data/local_crawl/` (Git ignore). Bước index embed (model local, lần đầu tải ~0,5 GB vào cache
+Hugging Face) search unit mới hoặc đổi text; ô thử truy vấn embed câu một lần mỗi lần bấm (model nạp một lần rồi giữ).
 
 ## Chạy
 

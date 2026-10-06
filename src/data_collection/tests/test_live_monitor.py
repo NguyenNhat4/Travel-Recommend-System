@@ -742,30 +742,68 @@ class EmbedTests(Workspace):
             self.monitor.embed_row(RUN_ID, 'nope')
 
     def test_query_ranks_collection_vectors_by_cosine(self):
+        built, closed = [], []
+
         class Embedder:
-            def __init__(self, *args, **kwargs):
-                pass
+            def __init__(self, settings):
+                built.append(settings.embed_provider)
 
             def embed_query(self, q):
                 return np.array([0.9, 0.1, 0.0], dtype=np.float32)
 
             def close(self):
-                pass
+                closed.append(True)
 
         vectors = {'ids': ['P2', 'P1', 'X'], 'matrix': np.array([[0, 1, 0], [1, 0, 0], [0.7, 0.7, 0]], np.float32),
                    'models': {'m:v2': 3}}
         vectors['norms'] = np.linalg.norm(vectors['matrix'], axis=1)
         monitor.ensure_backend_path()
-        settings = SimpleNamespace(cohere_api_key='k', embed_model='embed-multilingual-v3.0', cohere_base_url='x',
-                                   embed_dimension=3, cohere_timeout_seconds=1, weaviate_collection='ProductCrawl')
-        with patch('src.backend.app.infrastructure.embeddings.cohere_embedder.CohereEmbedder', Embedder), \
+        settings = SimpleNamespace(embed_provider='local', embed_model='intfloat/multilingual-e5-small',
+                                   embed_model_revision='rev', embed_dimension=3, cohere_api_key='',
+                                   weaviate_collection='ProductCrawl')
+        with patch('src.backend.app.infrastructure.embeddings.factory.build_embedder', Embedder), \
                 patch.object(self.monitor, '_index_settings', return_value=settings), \
                 patch.object(self.monitor, '_collection_vectors', return_value=vectors):
             result = self.monitor.embed_query(RUN_ID, 'resort gần biển', 2)
+            self.monitor.embed_query(RUN_ID, 'resort', 2)
         self.assertEqual([hit['productId'] for hit in result['hits']], ['P1', 'X'])
         self.assertEqual((result['hits'][0]['name'], result['hits'][1]['inRun']), ('Resort biển', False))
+        self.assertEqual(result['embedProvider'], 'local')
+        self.assertIsInstance(result['embedMs'], int)
+        self.assertEqual((built, closed), (['local'], []))  # model local nạp một lần cho mọi lần thử
         with self.assertRaises(ValueError):
             self.monitor.embed_query(RUN_ID, ' ')
+
+        rollback = SimpleNamespace(**(vars(settings) | {'embed_provider': 'cohere', 'embed_model': 'embed-multilingual-v3.0',
+                                                         'cohere_api_key': 'k'}))
+        with patch('src.backend.app.infrastructure.embeddings.factory.build_embedder', Embedder), \
+                patch.object(self.monitor, '_index_settings', return_value=rollback), \
+                patch.object(self.monitor, '_collection_vectors', return_value=vectors):
+            self.assertEqual(self.monitor.embed_query(RUN_ID, 'resort', 1)['embedProvider'], 'cohere')
+        self.assertEqual((built, closed), (['local', 'cohere'], [True]))  # đổi cấu hình: đóng embedder cũ
+
+    def test_query_refuses_a_collection_of_another_dimension(self):
+        class Embedder:
+            def __init__(self, settings):
+                pass
+
+            def embed_query(self, q):
+                return np.ones(4, dtype=np.float32)
+
+            def close(self):
+                pass
+
+        vectors = {'ids': ['P1'], 'matrix': np.ones((1, 3), np.float32), 'models': {'m:v2': 1}}
+        vectors['norms'] = np.linalg.norm(vectors['matrix'], axis=1)
+        monitor.ensure_backend_path()
+        settings = SimpleNamespace(embed_provider='local', embed_model='intfloat/multilingual-e5-small',
+                                   embed_model_revision='rev', embed_dimension=4, cohere_api_key='',
+                                   weaviate_collection='ProductCrawl')
+        with patch('src.backend.app.infrastructure.embeddings.factory.build_embedder', Embedder), \
+                patch.object(self.monitor, '_index_settings', return_value=settings), \
+                patch.object(self.monitor, '_collection_vectors', return_value=vectors), \
+                self.assertRaisesRegex(ValueError, '3 chiều'):
+            self.monitor.embed_query(RUN_ID, 'resort', 1)
 
 
 # ---------------------------------------------------------------------------------------------------- chặn đích local
@@ -786,7 +824,8 @@ class LocalOnlyGuardTests(unittest.TestCase):
                     ('local', 'postgresql://u:p@10.0.0.5:5432/vota_crawl', self.config()),
                     ('local', 'postgresql://u:p@localhost:5432/vota', self.config()),
                     ('local', url, self.config(weaviate_url='abc.weaviate.cloud')),
-                    ('local', url, self.config(weaviate_collection='Product'))):
+                    ('local', url, self.config(weaviate_collection='Product')),
+                    ('local', url, self.config(weaviate_collection='ProductE5'))):
                 with self.subTest(target=target, db=db_url, config=config), self.assertRaises(ValueError):
                     fresh_catalog.check_local_only(target, db_url, config)
         with patch.dict(os.environ, {}, clear=True):  # VM: không bật chế độ local thì không chặn

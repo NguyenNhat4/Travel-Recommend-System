@@ -98,6 +98,37 @@ from src.backend.app.infrastructure.persistence.postgres_search_logs import Post
 
 logger = logging.getLogger("uvicorn.error")
 
+_SEARCH_HYPOTHESIZERS: dict = {}
+
+
+def search_hypothesizer(settings):
+    """LLM fallback query plan (contract 1.17.0): dựng MỘT lần, sống qua các lần nạp catalog (cache + thread pool)."""
+    if settings.search_llm_fallback == "off":
+        return None
+    key = (settings.search_llm_fallback_model, settings.search_llm_fallback_cache_path,
+           settings.search_llm_fallback_cache_only, settings.search_llm_fallback_cache_size)
+    if key not in _SEARCH_HYPOTHESIZERS:
+        from src.backend.app.application.search.query_plan_llm import CachedQueryHypothesizer, HypothesisCache
+        from src.backend.app.infrastructure.llm.query_hypothesis import query_hypothesizer_from_settings
+        inner = None
+        if not settings.search_llm_fallback_cache_only:
+            try:
+                inner = query_hypothesizer_from_settings(settings)
+            except RuntimeError as exc:   # thiếu key / SDK → queryPlan.llm.status = unavailable
+                logger.warning("startup.search.llm_fallback.unavailable error=%s", exc)
+        path = settings.search_llm_fallback_cache_path or None
+        if path and not Path(path).is_absolute():
+            path = Path(__file__).resolve().parents[1] / path
+        _SEARCH_HYPOTHESIZERS[key] = CachedQueryHypothesizer(
+            inner, cache=HypothesisCache(settings.search_llm_fallback_cache_size, path=path,
+                                         tag=getattr(inner, "version", None)),
+            cache_only=settings.search_llm_fallback_cache_only)
+        logger.info("startup.recsys.search.llm_fallback mode=%s min_conf=%s timeout_ms=%s model=%s cache_only=%s",
+                    settings.search_llm_fallback, settings.search_llm_fallback_min_confidence,
+                    settings.search_llm_fallback_timeout_ms, settings.search_llm_fallback_model,
+                    settings.search_llm_fallback_cache_only)
+    return _SEARCH_HYPOTHESIZERS[key]
+
 # psycopg async không chạy được trên ProactorEventLoop — event loop mặc định của Windows và của
 # uvicorn trên Windows. Phải đặt trước khi uvicorn tạo loop, nếu không mọi truy cập cdp.* qua
 # LocalCdpClient trả InterfaceError lúc chạy thật. Trên Linux/macOS dòng này không có tác dụng gì.
@@ -117,6 +148,34 @@ def build_catalog(settings, state) -> dict:
     }
 
 
+def build_query_embedder(settings):
+    """Embedder theo EMBED_PROVIDER (FR-SRC-02): `local` = e5-small trong tiến trình (mặc định), `cohere` = đường lui qua API.
+
+    Model local được nạp và embed thử một câu ngay tại đây (deployment-plan §5: "model đã tải và embed thử một câu"), để
+    request đầu không trả giá nạp model và RecSys chỉ "ready" khi model chạy được. Bọc cache vector truy vấn (NFR-PERF-03,
+    contract 1.12.0 `embedCache`): RecsysRefresher truyền lại object này mỗi lần nạp catalog nên cache và model sống qua reload.
+    """
+    from src.backend.app.infrastructure.embeddings.factory import build_embedder
+
+    embedder = build_embedder(settings)
+    try:
+        warmup = getattr(embedder, "warmup", None)
+        if warmup is not None:
+            warmup()
+    except Exception:
+        if hasattr(embedder, "close"):
+            embedder.close()
+        raise
+    if settings.search_embed_cache:
+        from src.backend.app.application.search.query_cache import CachingQueryEmbedder, QueryEmbeddingCache
+
+        embedder = CachingQueryEmbedder(
+            embedder, QueryEmbeddingCache(settings.search_embed_cache_size),
+            log_every=settings.search_embed_cache_log_every,
+        )
+    return embedder
+
+
 def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) -> dict:
     """Dựng engine recsys trên database đã seed.
 
@@ -126,32 +185,13 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
     owns_vector_store = vector_store is None
     try:
         if vector_store is None:
-            from src.backend.app.domain.catalog import TEXT_BUILDER_VERSION
-            from src.backend.app.infrastructure.embeddings.cohere_embedder import CohereEmbedder
+            from src.backend.app.infrastructure.embeddings.factory import embedding_model_version
             from src.backend.app.infrastructure.vectors.weaviate_store import (
                 WeaviateVectorSearch,
                 WeaviateVectorStore,
                 connect_weaviate,
             )
 
-            if embedder is None:
-                embedder = CohereEmbedder(
-                    settings.cohere_api_key,
-                    settings.embed_model,
-                    base_url=settings.cohere_base_url,
-                    dimension=settings.embed_dimension,
-                    timeout_seconds=settings.cohere_timeout_seconds,
-                )
-                owns_embedder = True
-                if settings.search_embed_cache:
-                    # Cache vector truy vấn (NFR-PERF-03, contract 1.12.0 `embedCache`) bọc quanh client Cohere dùng chung:
-                    # RecsysRefresher truyền lại object này mỗi lần nạp catalog nên cache sống qua reload.
-                    from src.backend.app.application.search.query_cache import CachingQueryEmbedder, QueryEmbeddingCache
-
-                    embedder = CachingQueryEmbedder(
-                        embedder, QueryEmbeddingCache(settings.search_embed_cache_size),
-                        log_every=settings.search_embed_cache_log_every,
-                    )
             vector_store = WeaviateVectorStore(
                 settings.database_url,
                 WeaviateVectorSearch(
@@ -164,10 +204,14 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
                     collection=settings.weaviate_collection,
                     dimension=settings.embed_dimension,
                 ),
-                expected_model_version=f"{settings.embed_model}:{TEXT_BUILDER_VERSION}",
+                expected_model_version=embedding_model_version(settings),
             )
         logger.info("startup.recsys.index.load.start source=weaviate")
         index, vector_search = vector_store.load()
+        if embedder is None and owns_vector_store:
+            # Dựng embedder SAU khi index nạp được: Weaviate chưa sẵn sàng thì không nạp model local (~470 MB) mỗi lần thử lại.
+            embedder = build_query_embedder(settings)
+            owns_embedder = True
     except Exception:
         if owns_embedder and hasattr(embedder, "close"):
             embedder.close()
@@ -248,6 +292,10 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
             tone_normalize=settings.search_tone_normalize,
             taxonomy_strong_only=settings.search_taxonomy_strong_only,
             party_filter=settings.search_party_filter,
+            llm_fallback=settings.search_llm_fallback,
+            llm_min_confidence=settings.search_llm_fallback_min_confidence,
+            llm_timeout_ms=settings.search_llm_fallback_timeout_ms,
+            hypothesizer=search_hypothesizer(settings),
         ),
         "similar": SimilarProducts(index, vector_search),
         # GET /products: cùng tập search unit với /search, sắp xếp popular theo lượt mua CDP (backend §4.1).
@@ -261,13 +309,13 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
 
 #: Chưa nạp được lần nào (database chưa seed, Weaviate chưa index…) thì thử lại sớm, không chờ trọn chu kỳ.
 RECSYS_RETRY_SECONDS = 30.0
-#: Shutdown chờ prewarm đang chạy tối đa chừng này rồi mới đóng client Cohere (prewarm kiểm `stop` giữa hai lô).
+#: Shutdown chờ prewarm đang chạy tối đa chừng này rồi mới đóng embedder dùng chung (prewarm kiểm `stop` giữa hai lô).
 PREWARM_SHUTDOWN_WAIT_SECONDS = 10.0
 
 
 def prewarm_from_settings(settings, services: dict, stop: threading.Event):
     """Nạp sẵn cache vector truy vấn: file câu gold (`SEARCH_PREWARM_FILE`, tương đối theo src/backend) + head query của
-    `app.search_logs`. Chạy trong thread (Cohere sync); `stop` cắt giữa hai lô khi shutdown."""
+    `app.search_logs`. Chạy trong thread (embedder đồng bộ); `stop` cắt giữa hai lô khi shutdown."""
     from src.backend.app.application.search.prewarm import prewarm, read_query_file
     from src.backend.app.infrastructure.persistence.postgres_search_logs import PostgresSearchLogReader
 
@@ -287,8 +335,8 @@ def prewarm_from_settings(settings, services: dict, stop: threading.Event):
 class RecsysRefresher:
     """Nạp lại engine recsys theo chu kỳ để giá, trạng thái và cửa sổ ngày theo kịp job cào.
 
-    Client Cohere/Weaviate dùng chung giữa các lần nạp; request đang chạy giữ use case của bản cũ nên không
-    client nào bị đóng giữa chừng. Lần nạp lại lỗi thì giữ bản đang phục vụ thay vì tắt recsys.
+    Embedder (model local hoặc client Cohere) và client Weaviate dùng chung giữa các lần nạp; request đang chạy giữ use
+    case của bản cũ nên không client nào bị đóng giữa chừng. Lần nạp lại lỗi thì giữ bản đang phục vụ thay vì tắt recsys.
     """
 
     def __init__(self, app: FastAPI, settings: Settings, build=None, on_publish=None, prewarm=None):
@@ -347,7 +395,7 @@ class RecsysRefresher:
             logger.warning("search.prewarm.failed error=%s", exc)
 
     async def wait_prewarm(self, timeout: float = PREWARM_SHUTDOWN_WAIT_SECONDS) -> None:
-        """Shutdown: chờ prewarm dừng (đã nhận `stop`) trước khi đóng client Cohere dùng chung."""
+        """Shutdown: chờ prewarm dừng (đã nhận `stop`) trước khi đóng embedder dùng chung."""
         if self._prewarm_task is None:
             return
         try:
@@ -646,7 +694,8 @@ async def lifespan(app: FastAPI):
 
         # Recsys tách khỏi phần itinerary: chưa nạp được thì tắt recsys và thử lại sau, các route còn lại
         # (kể cả assistant chạy fixture) vẫn phục vụ được.
-        logger.info("startup.recsys.start model=%s", settings.embed_model)
+        logger.info("startup.recsys.start provider=%s model=%s collection=%s", settings.embed_provider, settings.embed_model,
+                    settings.weaviate_collection)
         for name in ("index", "search", "similar", "recommend", "listing_units", "product_popularity"):
             setattr(app.state, name, None)
 
@@ -687,7 +736,7 @@ settings = get_settings()
 app = FastAPI(
     title=settings.app_name,
     description="Travel recommendation and itinerary API",
-    version="1.16.0",
+    version="1.17.0",
     lifespan=lifespan,
 )
 

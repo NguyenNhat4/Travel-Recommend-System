@@ -71,12 +71,16 @@ services:
       AUTH_SERVICE_TOKEN: ${AUTH_SERVICE_TOKEN:-}
       # BFF gọi từ máy host qua cổng publish: peer là gateway của mạng Docker.
       TRUSTED_PROXIES: ${BACKEND_TRUSTED_PROXIES:-127.0.0.1/32,172.16.0.0/12}
+      # Embedding (FR-SRC-02): mặc định model local intfloat/multilingual-e5-small (384 chiều) có sẵn trong image, không cần
+      # key. Đường lui Cohere: đặt EMBED_PROVIDER=cohere, WEAVIATE_COLLECTION=Product và COHERE_API_KEY trong .env — đặt CẢ
+      # HAI biến đầu, vì collection ProductE5 giữ vector 384 chiều của e5, không dùng được với Cohere 1024 chiều.
+      EMBED_PROVIDER: ${EMBED_PROVIDER:-local}
       COHERE_API_KEY: ${COHERE_API_KEY:-}
       # Dev dùng Weaviate local của compose (deployment-plan.md §1), không lấy WEAVIATE_URL/khoá của máy host.
       # Môi trường dùng cluster chung thì đặt BACKEND_WEAVIATE_URL và BACKEND_WEAVIATE_API_KEY.
       WEAVIATE_URL: ${BACKEND_WEAVIATE_URL:-http://weaviate:8080}
       WEAVIATE_API_KEY: ${BACKEND_WEAVIATE_API_KEY:-}
-      WEAVIATE_COLLECTION: ${WEAVIATE_COLLECTION:-Product}
+      WEAVIATE_COLLECTION: ${WEAVIATE_COLLECTION:-ProductE5}
       WEAVIATE_GRPC_PORT: ${BACKEND_WEAVIATE_GRPC_PORT:-50051}
       CATALOG_REFRESH_SECONDS: ${CATALOG_REFRESH_SECONDS:-900}
       # Stripe test mode (docs/prd/deployment-plan.md §2). Webhook: `stripe listen --forward-to
@@ -134,8 +138,9 @@ services:
       retries: 20
       start_period: 3s
 
-  # Weaviate — vector sản phẩm (collection `Product`, 1024 chiều, HNSW cosine).
-  # vectorizer: none — backend tự gọi Cohere rồi tự ghi vector, nên Weaviate KHÔNG giữ COHERE_API_KEY
+  # Weaviate — vector sản phẩm (collection `ProductE5`, 384 chiều e5-small, HNSW cosine; collection `Product` 1024 chiều
+  # của Cohere chỉ còn cho đường lui). vectorizer: none — backend/job index tự embed (model local, hoặc Cohere khi
+  # EMBED_PROVIDER=cohere) rồi tự ghi vector, nên Weaviate KHÔNG giữ COHERE_API_KEY
   # và không có module text2vec nào được bật (docs/prd/architecture.md §5).
   # Volume weaviate_data tách khỏi pgdata: `make demo-db` dựng lại Postgres không đụng tới vector.
   weaviate:

@@ -47,6 +47,9 @@ class _Weaviate:
     def ensure_collection(self):
         pass
 
+    def vector_dimension(self):
+        return 1024
+
     def fetch(self, *, include_vectors):
         model = embed_products.model_version("embed-multilingual-v3.0")
         return {
@@ -86,7 +89,8 @@ def test_job_moves_legacy_objects_to_deterministic_ids_and_uses_configured_index
     monkeypatch.setattr(embed_products, "CohereEmbedder", _Embedder)
     _Weaviate.instances.clear()
     settings = SimpleNamespace(
-        database_url="postgresql://unused", embed_model="embed-multilingual-v3.0", weaviate_url="http://weaviate.test",
+        database_url="postgresql://unused", embed_provider="cohere", embed_model="embed-multilingual-v3.0",
+        weaviate_url="http://weaviate.test",
         weaviate_collection="Product", weaviate_vector_index_type="hfresh", weaviate_api_key="",
         weaviate_timeout_seconds=5.0, cohere_api_key="k", cohere_base_url="http://cohere.test",
         embed_dimension=1024, cohere_timeout_seconds=5.0, search_bm25_k1=1.2, search_bm25_b=0.75,
@@ -108,7 +112,8 @@ def test_detail_file_records_text_action_reason_and_vector_preview(monkeypatch, 
     monkeypatch.setattr(embed_products, "WeaviateClient", _Weaviate)
     monkeypatch.setattr(embed_products, "CohereEmbedder", _Embedder)
     settings = SimpleNamespace(
-        database_url="postgresql://unused", embed_model="embed-multilingual-v3.0", weaviate_url="http://weaviate.test",
+        database_url="postgresql://unused", embed_provider="cohere", embed_model="embed-multilingual-v3.0",
+        weaviate_url="http://weaviate.test",
         weaviate_collection="Product", weaviate_vector_index_type="hnsw", weaviate_api_key="",
         weaviate_timeout_seconds=5.0, cohere_api_key="k", cohere_base_url="http://cohere.test",
         embed_dimension=1024, cohere_timeout_seconds=5.0, search_bm25_k1=1.2, search_bm25_b=0.75,
@@ -130,7 +135,8 @@ def test_detail_file_records_text_action_reason_and_vector_preview(monkeypatch, 
 # ---------------------------------------------------------------- --lexical-only (30/09): chỉ PATCH BM25, từ chối khi index lệch catalog
 def _base_settings():
     return SimpleNamespace(
-        database_url="postgresql://unused", embed_model="embed-multilingual-v3.0", weaviate_url="http://weaviate.test",
+        database_url="postgresql://unused", embed_provider="cohere", embed_model="embed-multilingual-v3.0",
+        weaviate_url="http://weaviate.test",
         weaviate_collection="Product", weaviate_vector_index_type="hnsw", weaviate_api_key="",
         weaviate_timeout_seconds=5.0, cohere_api_key="k", cohere_base_url="http://cohere.test",
         embed_dimension=1024, cohere_timeout_seconds=5.0, search_bm25_k1=1.2, search_bm25_b=0.75,
@@ -202,7 +208,8 @@ def test_main_exits_2_when_lexical_only_is_refused(monkeypatch, capsys):
 # ---------------------------------------------------------------- P5.2: nhúng song song (docs/plan/2026-09-29-index-cohere-song-song.md)
 def _settings(concurrency, calls_per_minute=0):
     return SimpleNamespace(
-        database_url="postgresql://unused", embed_model="embed-multilingual-v3.0", weaviate_url="http://weaviate.test",
+        database_url="postgresql://unused", embed_provider="cohere", embed_model="embed-multilingual-v3.0",
+        weaviate_url="http://weaviate.test",
         weaviate_collection="Product", weaviate_vector_index_type="hnsw", weaviate_api_key="",
         weaviate_timeout_seconds=5.0, cohere_api_key="k", cohere_base_url="http://cohere.test",
         embed_dimension=1024, cohere_timeout_seconds=5.0, search_bm25_k1=1.2, search_bm25_b=0.75,
@@ -232,6 +239,9 @@ class _Store:
 
     def ensure_collection(self):
         pass
+
+    def vector_dimension(self):
+        return len(next(iter(_Store.objects.values()))["vector"]) if _Store.objects else None
 
     def fetch(self, *, include_vectors):
         return {obj["properties"]["productId"]: VectorMetadata(obj["id"], obj["properties"]["productId"],
@@ -395,3 +405,95 @@ def test_real_http_client_is_shared_safely_across_threads():
     for pid, vector in results.items():
         expected = _vector(texts[pid])
         assert np.allclose(vector, expected / np.linalg.norm(expected), atol=1e-6)
+
+
+# ---------------------------------------------------------------- FR-SRC-02 (06/10): provider local + chặn ghi lẫn model / số chiều
+def _local_settings(collection="ProductE5", dimension=384):
+    return SimpleNamespace(
+        database_url="postgresql://unused", embed_provider="local", embed_model="intfloat/multilingual-e5-small",
+        embed_model_revision="614241f622f53c4eeff9890bdc4f31cfecc418b3", embed_dimension=dimension, embed_threads=0,
+        embed_batch_size=32, embed_max_length=512, embed_cache_dir="",
+        weaviate_url="http://weaviate.test", weaviate_collection=collection, weaviate_vector_index_type="hfresh",
+        weaviate_api_key="", weaviate_timeout_seconds=5.0, search_bm25_k1=1.2, search_bm25_b=0.75,
+        cohere_api_key="", cohere_base_url="http://cohere.test", cohere_timeout_seconds=5.0,
+        cohere_embed_concurrency=4, cohere_calls_per_minute=90,
+    )
+
+
+class _LocalEmbedder:
+    """Model local giả (384 chiều): ghi lại tham số dựng, không tải gì."""
+
+    built: list = []
+
+    def __init__(self, model_name, **kwargs):
+        _LocalEmbedder.built.append((model_name, kwargs))
+
+    def embed_docs(self, texts):
+        return np.full((len(texts), 384), 0.05, dtype=np.float32)
+
+    def close(self):
+        pass
+
+
+def _store_with(objects_model: str | None, dimension: int):
+    """Weaviate giả đang giữ P1, P2 của model `objects_model` (None = collection rỗng) với vector `dimension` chiều."""
+    _Store.objects = {}
+    if objects_model:
+        for pid in ("P1", "P2"):
+            uid = WeaviateClient.object_uuid(pid)
+            _Store.objects[uid] = {"id": uid, "vector": [0.0] * dimension,
+                                   "properties": {"productId": pid, "modelVersion": embed_products.model_version(objects_model),
+                                                  "textHash": _digest(pid)}}
+
+
+@pytest.fixture
+def local_job(monkeypatch):
+    monkeypatch.setattr(embed_products, "PostgresCatalogReader", lambda url: SimpleNamespace(load=lambda: _catalog(["P1", "P2"])))
+    monkeypatch.setattr(embed_products, "WeaviateClient", _Store)
+    monkeypatch.setattr(embed_products, "LocalE5Embedder", _LocalEmbedder)
+    monkeypatch.setattr(embed_products, "CohereEmbedder", _NoCohere)
+    _LocalEmbedder.built = []
+    _Store.writers = set()
+
+
+def test_local_provider_indexes_new_collection_with_e5_model_version_in_one_thread(local_job):
+    _store_with(None, 0)
+    report = embed_products.run(settings=_local_settings())
+    assert (report["provider"], report["collection"], report["embedded"], report["concurrency"]) == ("local", "ProductE5", 2, 1)
+    assert "cohereCalls" not in report and "refused" not in report
+    assert report["modelVersion"] == "intfloat/multilingual-e5-small:catalog-text-v2"
+    [(model, kwargs)] = _LocalEmbedder.built
+    assert model == "intfloat/multilingual-e5-small"
+    assert (kwargs["revision"], kwargs["dimension"], kwargs["batch_size"]) == ("614241f622f53c4eeff9890bdc4f31cfecc418b3", 384, 32)
+    stored = {o["properties"]["productId"]: o for o in _Store.objects.values()}
+    assert {o["properties"]["modelVersion"] for o in stored.values()} == {"intfloat/multilingual-e5-small:catalog-text-v2"}
+    assert {len(o["vector"]) for o in stored.values()} == {384}
+
+
+def test_job_refuses_to_write_e5_vectors_into_the_cohere_collection(local_job):
+    _store_with("embed-multilingual-v3.0", 1024)   # WEAVIATE_COLLECTION=Product cũ còn trong .env
+    before = dict(_Store.objects)
+    for kw in ({}, {"dry_run": True}, {"allow_model_change": True}):
+        report = embed_products.run(settings=_local_settings(collection="Product"), **kw)
+        assert "1024 chiều" in report["refused"] and "EMBED_DIMENSION=384" in report["refused"]
+    assert _Store.objects == before and _LocalEmbedder.built == [] and _Store.writers == set()
+
+
+def test_job_refuses_other_model_with_same_dimension_unless_allowed(local_job):
+    _store_with("other/e5-variant", 384)
+    report = embed_products.run(settings=_local_settings())
+    assert "model khác ['other/e5-variant']" in report["refused"] and _LocalEmbedder.built == []
+    report = embed_products.run(settings=_local_settings(), allow_model_change=True)
+    assert "refused" not in report and report["embedded"] == 2
+    assert {o["properties"]["modelVersion"] for o in _Store.objects.values()} == {"intfloat/multilingual-e5-small:catalog-text-v2"}
+
+
+def test_text_builder_change_alone_is_a_normal_reindex():
+    meta = {"P1": VectorMetadata("u", "P1", "intfloat/multilingual-e5-small:catalog-text-v1", "h")}
+    assert embed_products.collection_guard(meta, "intfloat/multilingual-e5-small:catalog-text-v2", 384, 384, False) is None
+
+
+def test_main_passes_allow_model_change(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(embed_products, "run", lambda **kw: seen.update(kw) or {"embedded": 0})
+    assert embed_products.main(["--allow-model-change"]) == 0 and seen["allow_model_change"] is True

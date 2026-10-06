@@ -34,7 +34,7 @@ Hệ sinh thái lưu trữ của V-OTA gồm hai cơ sở dữ liệu PostgreSQL
 
 +-------------------------------------------------------------------------+
 | WEAVIATE (dịch vụ riêng, volume riêng)                                  |
-|  Collection: Product — vector 1024 chiều (Cohere embed-multilingual-v3) |
+|  Collection e5: ProductE5 — vector 384 chiều (multilingual-e5-small)    |
 |  Thuộc tính: productId (khóa nối về Postgres), modelVersion, textHash   |
 |  vectorizer: none — backend tự sinh vector và tự ghi                    |
 +-------------------------------------------------------------------------+
@@ -107,9 +107,9 @@ erDiagram
     WEAVIATE_PRODUCT {
         uuid id PK "UUID do Weaviate cấp"
         string productId "Khóa nối logic về cdp.products — KHÔNG phải FK"
-        string modelVersion "embed-multilingual-v3.0 + phiên bản text builder"
+        string modelVersion "intfloat/multilingual-e5-small + phiên bản text builder"
         string textHash "Phát hiện text đổi để embed lại"
-        vector _vector "1024 chiều, ANN (HNSW hoặc hfresh) + cosine, vectorizer none"
+        vector _vector "384 chiều, ANN (HNSW hoặc hfresh) + cosine, vectorizer none"
     }
 ```
 

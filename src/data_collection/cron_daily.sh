@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Job hằng ngày trên VPS (console, không trình duyệt): cào HTTP → chuẩn hoá → gate → promote → nạp DB local/cloud → embed.
 # Crontab gợi ý (02:00 giờ máy): 0 2 * * * /đường/dẫn/src/data_collection/cron_daily.sh
-# Kết nối DB/Weaviate/Cohere đọc từ src/data_collection/.env (xem .env.example). Khoá chống chồng lượt nằm trong daily.py.
+# Kết nối DB/Weaviate (và key Cohere khi EMBED_PROVIDER=cohere) đọc từ src/data_collection/.env (xem .env.example). Khoá chống chồng lượt nằm trong daily.py.
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 

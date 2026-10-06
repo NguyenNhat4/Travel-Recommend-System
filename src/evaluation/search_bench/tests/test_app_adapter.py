@@ -705,3 +705,19 @@ def test_retrieve_app_rerank_rejects_bad_block(cfg, sample_home):
     bad = arm.model_copy(update={"rerank": {**arm.rerank, "top_n": 5}})
     with pytest.raises(A.AppAdapterError, match="top_n"):
         A.retrieve_app(bad, env, SimpleNamespace(), embedder=None, reranker=object())
+
+
+# ------------------------------------------------------------------ 06/10: LLM fallback phát lại cache (contract 1.17.0)
+def test_llm_block_optional_and_replays_cache_only(tmp_path):
+    from evaluation.search_bench import app_adapter as AA
+    ctx = AA.AppContext.__new__(AA.AppContext)
+    assert ctx.llm_kwargs({}) == {}                                             # vắng khối = off, không đổi arm cũ
+    with pytest.raises(AA.AppAdapterError):
+        ctx.llm_kwargs({"llm": {"mode": "always", "cache_path": "x.jsonl"}})
+    with pytest.raises(AA.AppAdapterError):
+        ctx.llm_kwargs({"llm": {"mode": "on", "cache_path": str(tmp_path / "missing.jsonl")}})
+    cache = tmp_path / "h.jsonl"
+    cache.write_text("", encoding="utf-8")
+    kw = ctx.llm_kwargs({"llm": {"mode": "on", "min_confidence": 0.6, "cache_path": str(cache)}})
+    assert kw["llm_fallback"] == "on" and kw["llm_min_confidence"] == 0.6 and kw["hypothesizer"].inner is None
+    assert ctx.llm_kwargs({"llm": {"mode": "on", "cache_path": str(cache)}})["hypothesizer"] is kw["hypothesizer"]   # dựng một lần

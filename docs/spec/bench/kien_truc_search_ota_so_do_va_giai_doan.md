@@ -889,7 +889,7 @@ mốc A = hybrid + normalize production, nDCG@10 0,711).
 | 2 — giá hard / sao soft (F6) | có, sau cờ | `constraints.py` | `SEARCH_NUMERIC_FILTER` (tắt) | constraint precision 0,79 → 0,92 |
 | 2 — số khách / occupancy | có (tham số request luôn áp, suy từ câu sau cờ) | `parse_party`, `UnitIndex.mask` | `SEARCH_PARTY_FILTER` (tắt) | −0,6 (3 câu) |
 | 3 — router confidence | có (chỉ khai) | `queryPlan.confidence`, `fallbackReasons` | luôn phát | — |
-| 3 — LLM fallback | **chưa** — lệch PRD | đề xuất `docs/prd/update/2026-10-06-search-llm-fallback-query-plan.md` | — | chờ chốt |
+| 3 — LLM fallback | có, sau cờ (đề xuất đã áp dụng 06/10, contract 1.17.0) | `application/search/query_plan_llm.py`, `domain/search/hypothesis.py`, `infrastructure/llm/query_hypothesis.py` | `SEARCH_LLM_FALLBACK` (off) | gpt-4o-mini: kích hoạt 10 / 59 câu (ngưỡng 0,75 / 1,0), 0 trường nhận, nDCG không đổi — luật đã đúng |
 | 4 — filter-first; F rỗng không nới (trừ điểm đến suy ra) | có | `UnitIndex.mask`, `queryPlan.emptyReason` | theo cờ từng họ | zero-result trong catalog 0 |
 | 4 — parent–child filter | có | `matchedChildren`, kiểm chung giá + số khách | theo F6 / số khách | — |
 | 5A — dense | có | Weaviate `nearVector` top-200 | — | dense-only −4,9 |
@@ -903,5 +903,5 @@ mốc A = hybrid + normalize production, nDCG@10 0,711).
 | 9 — log truy vấn | có, sau cờ | writer `app.search_logs` | `SEARCH_LOG_QUERIES` (tắt) | — |
 | 9 — gold có forbidden / expected parse / guard / hole | có | `config/query_annotations.yaml`, `sb guards`, `sb gold holes` | — | 28 forbidden, 154 expected parse |
 
-Cấu hình đề xuất bật (người dùng chốt; F4 cần ý kiến Web vì đổi số đếm tab): F1 + F2 + F3 + F4 + F5 + F6, không cutoff tuyệt đối —
+**Production 06/10 (người dùng chốt):** e5-small (FR-SRC-02 đã áp dụng), cutoff 0,84, F1 + F2 + F3 + F5 + F6 bật, F4 tắt — arm `APP.e5s.prod_f12356` nDCG@10 **0,798** (+8,7, WIN), Forbidden@10 0,065 và constraint precision 0,91 vì F4 tắt. Bản có F4: F1 + F2 + F3 + F4 + F5 + F6 —
 arm `APP.e5s.hybrid_norm_nocut_f1f6` nDCG@10 **0,818** (+10,7, WIN), mọi guard Phase A PASS.

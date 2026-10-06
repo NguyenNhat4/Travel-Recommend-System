@@ -8,8 +8,9 @@ Chỉ nghe 127.0.0.1 và từ chối Host khác localhost (chống DNS rebinding
   ssh -L 8765:127.0.0.1:8765 <user>@<vm>
 Monitor đọc file của các lượt (không đọc DB), ghi đúng bốn thứ: settings.json (Cấu hình), stop.request (Dừng),
 live_control.json (tạm dừng / đổi delay từng nguồn khi lượt đang chạy) và tiến trình fresh_catalog.py khi bấm Chạy. Hai chỗ
-gọi ra ngoài, chỉ khi người vận hành bấm: đọc vector từ Weaviate và ô thử truy vấn (gọi Cohere một lần, xếp hạng cosine trên
-vector của collection đích). Không bao giờ trả giá trị secret: biến kết nối chỉ báo đã đặt hay chưa.
+gọi ra ngoài, chỉ khi người vận hành bấm: đọc vector từ Weaviate và ô thử truy vấn (embed câu bằng EMBED_PROVIDER của job
+index — model local e5-small mặc định, Cohere ở đường lui — rồi xếp hạng cosine trên vector của collection đích). Không
+bao giờ trả giá trị secret: biến kết nối chỉ báo đã đặt hay chưa.
 """
 from __future__ import annotations
 
@@ -585,6 +586,8 @@ class FreshMonitor:
         self._tallies: dict[str, InterimTally] = {}
         self._vectors: dict = {}
         self._vector_lock = threading.Lock()
+        self._embedder: tuple | None = None  # (cấu hình, embedder) của ô thử truy vấn
+        self._embedder_lock = threading.Lock()
 
     # -- lượt đang chạy
     def running(self) -> dict | None:
@@ -708,10 +711,11 @@ class FreshMonitor:
         db_target = os.environ.get("DB_TARGET", "local")
         url = os.environ.get("SEED_DATABASE_URL" if db_target == "local" else "CLOUD_SEED_DATABASE_URL") or ""
         out = {"dbTarget": db_target, "localOnly": os.environ.get("CATALOG_LOCAL_ONLY") == "1",
-               "db": _where(url) if url else None, "weaviate": None, "collection": None, "error": None}
+               "db": _where(url) if url else None, "weaviate": None, "collection": None, "embed": None, "error": None}
         try:
             settings = self._index_settings()
-            out.update(weaviate=_where(settings.weaviate_url), collection=settings.weaviate_collection)
+            out.update(weaviate=_where(settings.weaviate_url), collection=settings.weaviate_collection,
+                       embed=f"{settings.embed_provider} · {settings.embed_model}")
         except Exception as exc:  # thiếu env, backend chưa cài…: vẫn hiện phần còn lại
             out["error"] = str(exc)[:300]
         return out
@@ -1851,11 +1855,24 @@ class FreshMonitor:
             self._vectors = {key: cached}
             return cached
 
+    def _query_embedder(self, settings):
+        """Embedder theo EMBED_PROVIDER của job index (backend `build_embedder`), giữ lại giữa các lần thử: model local nạp
+        ~0,5 GB nên chỉ nạp lại khi cấu hình đổi. Gọi trong `_embedder_lock`."""
+        from src.backend.app.infrastructure.embeddings import factory
+        key = (settings.embed_provider, settings.embed_model, getattr(settings, "embed_model_revision", ""),
+               settings.embed_dimension, getattr(settings, "cohere_api_key", ""))
+        if self._embedder is None or self._embedder[0] != key:
+            if self._embedder is not None:
+                self._embedder[1].close()
+                self._embedder = None
+            self._embedder = (key, factory.build_embedder(settings))
+        return self._embedder[1]
+
     def embed_query(self, run_id: str, query: str, k: int = 10, refresh: bool = False) -> dict:
-        """Thử truy vấn: Cohere `search_query` → xếp hạng cosine trên mọi vector của collection đích (đọc qua REST)."""
+        """Thử truy vấn: embed câu bằng đúng provider/model của job index (e5 `query: ` hoặc Cohere `search_query`) →
+        xếp hạng cosine trên mọi vector của collection đích (đọc qua REST)."""
         ensure_backend_path()
         import numpy as np
-        from src.backend.app.infrastructure.embeddings.cohere_embedder import CohereEmbedder
         from src.backend.jobs.embed_products import vector_preview
         query = (query or "").strip()
         if not query or len(query) > EMBED_QUERY_MAX:
@@ -1863,16 +1880,15 @@ class FreshMonitor:
         k = max(1, min(int(k), 50))
         settings = self._index_settings()
         started = time.monotonic()
-        embedder = CohereEmbedder(settings.cohere_api_key, settings.embed_model, base_url=settings.cohere_base_url,
-                                  dimension=settings.embed_dimension, timeout_seconds=settings.cohere_timeout_seconds)
-        try:
-            vector = np.asarray(embedder.embed_query(query), dtype=np.float32).reshape(-1)
-        finally:
-            embedder.close()
-        cohere_ms = round((time.monotonic() - started) * 1000)
+        with self._embedder_lock:
+            vector = np.asarray(self._query_embedder(settings).embed_query(query), dtype=np.float32).reshape(-1)
+        embed_ms = round((time.monotonic() - started) * 1000)
         data = self._collection_vectors(settings, refresh)
         if not data["ids"]:
             raise ValueError(f"Collection {settings.weaviate_collection} chưa có vector nào")
+        if data["matrix"].shape[1] != vector.size:
+            raise ValueError(f"Collection {settings.weaviate_collection} giữ vector {data['matrix'].shape[1]} chiều, "
+                             f"{settings.embed_model} cho {vector.size} chiều — kiểm EMBED_PROVIDER/WEAVIATE_COLLECTION")
         scores = data["matrix"] @ vector / np.maximum(data["norms"] * float(np.linalg.norm(vector)), 1e-12)
         order = np.argsort(-scores)[:k]
         names: dict[str, dict] = {}
@@ -1893,8 +1909,8 @@ class FreshMonitor:
                          "name": info.get("name"), "taxonomy": info.get("taxonomy"), "destination": info.get("destination"),
                          "text": (info.get("text") or info.get("description") or "")[:300], "inRun": pid in names})
         return {"query": query, "k": k, "collection": settings.weaviate_collection, "vectors": len(data["ids"]),
-                "models": dict(data["models"]), "cohereMs": cohere_ms, "queryVector": vector_preview(vector),
-                "hits": hits}
+                "models": dict(data["models"]), "embedProvider": settings.embed_provider, "embedMs": embed_ms,
+                "queryVector": vector_preview(vector), "hits": hits}
 
 
 def ensure_backend_path() -> None:

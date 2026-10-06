@@ -1,7 +1,8 @@
 # Job daily.py cho VPS; Chromium phục vụ báo giá thương gia từ UI Trip.com.
 # Build từ repository root:  docker build -f Dockerfile.daily -t vota-daily .
 # Chạy qua src/data_collection/run_daily_docker.sh; dữ liệu làm việc (interim, cache, sqlite tiến độ, catalog, version)
-# nằm trên ổ VPS, mount vào /data. Image không chứa data/, .env hay secret — kết nối DB/Weaviate/Cohere đến từ --env-file.
+# nằm trên ổ VPS, mount vào /data. Image không chứa data/, .env hay secret — kết nối DB/Weaviate (và key Cohere khi chạy
+# đường lui EMBED_PROVIDER=cohere) đến từ --env-file. Embedding mặc định: model local e5-small có sẵn trong image.
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -9,7 +10,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app \
     VOTA_DATA_DIR=/data \
     TZ=Asia/Ho_Chi_Minh \
-    PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
+    PLAYWRIGHT_BROWSERS_PATH=/opt/playwright \
+    HF_HOME=/opt/hf \
+    HF_HUB_DISABLE_TELEMETRY=1
 
 # tzdata: "hôm nay" của daily.py (giữ dòng 7 ngày, --as-of của loader, tên version) theo giờ Việt Nam, không theo UTC.
 RUN apt-get update \
@@ -21,7 +24,8 @@ RUN apt-get update \
 
 # Playwright/Chromium: collector thương gia chạy headless; không đăng nhập/checkout.
 # Bước embed chạy `python -m src.backend.jobs.embed_products`; chuỗi import của nó chỉ cần pydantic, pydantic-settings, numpy
-# (httpx, psycopg đã có ở trên) nên không cài cả requirements backend (langgraph, openai…). Ràng buộc phiên bản lấy từ file backend.
+# (httpx, psycopg đã có ở trên) cộng torch + transformers của model local (khối dưới), nên không cài cả requirements backend
+# (langgraph, openai…). Ràng buộc phiên bản lấy từ file backend.
 # Bước nạp DB chạy `python -m data_collection.seed --catalog-only`: seed/__main__ import seed_histories, file này băm mật khẩu demo
 # bằng argon2 ngay khi import — thiếu argon2-cffi thì bước nạp thoát lỗi dù --catalog-only không dùng tới.
 COPY src/data_collection/requirements.txt /tmp/data-collection-requirements.txt
@@ -32,9 +36,29 @@ RUN cp /tmp/data-collection-requirements.txt /tmp/job-requirements.txt \
     && python -m playwright install --with-deps chromium \
     && chmod -R a+rX /opt/playwright
 
+# Embedding local (FR-SRC-02, giống hệt Dockerfile.backend để vector job index ghi = vector backend tra): torch bản CPU từ
+# index CPU của PyTorch (bản PyPI trên Linux kéo CUDA ~2 GB thừa), phiên bản đọc từ requirements-embed.txt của backend.
+COPY src/backend/requirements-embed.txt /tmp/backend-requirements-embed.txt
+RUN python -m pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu \
+        "$(grep -E '^torch==' /tmp/backend-requirements-embed.txt)" \
+    && python -m pip install --no-cache-dir -r /tmp/backend-requirements-embed.txt
+
+# Tải sẵn model lúc build (đúng revision ghim trong backend core/config.py, cùng giá trị với Dockerfile.backend) để job
+# index không tải gì lúc chạy; sau bước này HF chạy offline. Thêm ~0,7 GB torch CPU + transformers và ~0,47 GB model.
+# Đường lui Cohere (EMBED_PROVIDER=cohere + WEAVIATE_COLLECTION=Product + COHERE_API_KEY trong --env-file) không cần build lại.
+ARG EMBED_MODEL=intfloat/multilingual-e5-small
+ARG EMBED_MODEL_REVISION=614241f622f53c4eeff9890bdc4f31cfecc418b3
+RUN python -c "from huggingface_hub import snapshot_download; snapshot_download('${EMBED_MODEL}', revision='${EMBED_MODEL_REVISION}', allow_patterns=['config.json', 'model.safetensors', 'tokenizer.json', 'tokenizer_config.json', 'special_tokens_map.json', 'sentencepiece.bpe.model'])" \
+    && chmod -R a+rX /opt/hf
+ENV HF_HUB_OFFLINE=1 \
+    TRANSFORMERS_OFFLINE=1
+
 COPY src/__init__.py /app/src/__init__.py
 COPY src/backend /app/src/backend
 COPY src/data_collection /app/src/data_collection
+
+# Kiểm ngay lúc build: model nạp được offline từ cache và embed thử một câu ra đúng 384 chiều.
+RUN python -c "from src.backend.app.infrastructure.embeddings.local_e5_embedder import LocalE5Embedder; LocalE5Embedder('${EMBED_MODEL}', revision='${EMBED_MODEL_REVISION}').warmup()"
 
 WORKDIR /app/src/data_collection
 USER app
