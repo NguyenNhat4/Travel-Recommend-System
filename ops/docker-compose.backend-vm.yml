@@ -1,5 +1,14 @@
+# Giới hạn log container (json-file): mỗi container tối đa 5 x 50 MB. Không đặt thì Docker giữ log vô hạn và làm đầy đĩa VM;
+# Ops Agent đã đẩy log lên Cloud Logging nên đĩa chỉ cần giữ đệm.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+
 services:
   backend:
+    logging: *default-logging
     container_name: vota-backend
     image: asia-southeast1-docker.pkg.dev/vinpearl-508801/v-ota-data-pipeline-crawler/vota-backend:latest
     restart: unless-stopped
@@ -18,6 +27,7 @@ services:
       - /etc/vota/backend-secrets:/app/secrets:ro
 
   frontend:
+    logging: *default-logging
     container_name: vota-frontend
     image: asia-southeast1-docker.pkg.dev/vinpearl-508801/v-ota-data-pipeline-crawler/vota-frontend:latest
     restart: unless-stopped
