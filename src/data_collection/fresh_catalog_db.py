@@ -9,6 +9,7 @@ from __future__ import annotations
 import copy
 import json
 import re
+import shutil
 import sys
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
@@ -84,6 +85,7 @@ def price_attributes(fresh: dict, previous: dict | None, seen_at: str) -> dict:
     attrs.pop("availability", None)
     attrs.pop("missingSince", None)
     attrs.pop("priceFreshness", None)
+    attrs.pop("windowClosed", None)  # `available` của lượt này do nguồn quyết định; apply_window đánh dấu lại nếu cần
     if incoming.get("sameAs"):
         attrs["sameAs"] = list(dict.fromkeys((attrs.get("sameAs") or []) + incoming["sameAs"]))
     if fresh.get("taxonomy") == "flight":
@@ -146,14 +148,7 @@ def prepare_rows(fresh: list[dict], existing: list[dict], checked_hotels: set[st
     cutoff = now - timedelta(days=trip_max_age_days)
     validate_catalog(fresh, allow_external_parents=True)
     old = {str(row["product_id"]): row for row in existing}
-    by_ref = {}
-    for previous in existing:
-        if (previous["attributes"] or {}).get("mergedInto"):  # đã gộp vào dòng khác: ref của nó thuộc dòng kia
-            continue
-        for ref in [previous["source_ref"], *((previous["attributes"] or {}).get("sameAs") or [])]:
-            if ref in by_ref and by_ref[ref]["product_id"] != previous["product_id"]:
-                raise ValueError(f"sourceRef/sameAs conflict: {ref}")
-            by_ref[ref] = previous
+    by_ref, merged_away = resolve_ref_conflicts(existing)
     # The full catalog may have merged a Trip hotel/room into a Booking row.
     # Resolve by sameAs, then reparent new Trip rooms to the retained DB ID.
     # Tra bằng MỌI ref của dòng mới (sourceRef rồi sameAs), không chỉ sourceRef: dòng được giữ khi gộp trùng có thể đổi
@@ -171,8 +166,7 @@ def prepare_rows(fresh: list[dict], existing: list[dict], checked_hotels: set[st
     canonical_refs = set()
     result = []
     counts = {"new": 0, "newRooms": 0, "refreshed": 0, "missingRooms": 0, "missingProperties": 0, "staleTrip": 0,
-              "mergedAway": 0}
-    merged_away: list[tuple[dict, str]] = []
+              "mergedAway": 0, "refConflicts": len(merged_away)}
     for item in fresh:
         original_ref = item["sourceRef"]
         hits = matches[item["productId"]]
@@ -210,6 +204,7 @@ def prepare_rows(fresh: list[dict], existing: list[dict], checked_hotels: set[st
             counts["newRooms"] += item["taxonomy"] == "hotel" and item["attributes"].get("level") == "room"
         result.append(row)
     represented = {str(row["product_id"]) for row in result}
+    hidden: dict[str, str] = {}
     for previous, keeper in merged_away:
         pid = str(previous["product_id"])
         if pid in represented:
@@ -220,10 +215,12 @@ def prepare_rows(fresh: list[dict], existing: list[dict], checked_hotels: set[st
         result.append(dict(previous, attributes=attrs, available=False))
         counts["mergedAway"] += 1
         represented.add(pid)
+        hidden[pid] = keeper
     for previous in existing:
         room_match, property_match = trip_price_reference(previous)
         match = room_match or property_match
-        if not match or match.group(1) not in checked_hotels or previous["source_ref"] in canonical_refs:
+        if (not match or match.group(1) not in checked_hotels or previous["source_ref"] in canonical_refs
+                or str(previous["product_id"]) in represented):  # dòng vừa gộp đi đã được ghi ở trên
             continue
         attrs = copy.deepcopy(previous["attributes"])
         attrs.pop("availability", None)
@@ -265,10 +262,52 @@ def prepare_rows(fresh: list[dict], existing: list[dict], checked_hotels: set[st
         expired["priceFreshness"] = "stale"
         result.append(dict(previous, attributes=expired, unit_price=None, available=False))
         counts["staleTrip"] += 1
+    # Phòng con của dòng vừa bị gộp chuyển sang dòng giữ, để không treo dưới một property đã ẩn.
+    written = {str(row["product_id"]): index for index, row in enumerate(result)}
+    for child in existing:
+        parent = (child["attributes"] or {}).get("parentProductId")
+        if parent in hidden and str(child["product_id"]) not in written:
+            written[str(child["product_id"])] = len(result)
+            result.append(child)
+    for index, row in enumerate(result):
+        parent = (row["attributes"] or {}).get("parentProductId")
+        if parent in hidden:
+            result[index] = dict(row, attributes=dict(row["attributes"], parentProductId=hidden[parent]))
     return result, counts
 
 
+def resolve_ref_conflicts(existing: list[dict]) -> tuple[dict[str, dict], list[tuple[dict, str]]]:
+    """Tra cứu ref → dòng DB. Hai dòng chưa gộp cùng nhận một ref (vd. dòng agoda nạp riêng trong khi dòng booking đã
+    ghi ref đó vào sameAs) thì giữ dòng ghi ref trong sameAs — kết quả gộp trùng — và trả dòng kia để đánh dấu mergedInto,
+    thay vì dừng cả lượt nạp. Hai bên cùng ghi trong sameAs thì giữ product_id nhỏ hơn cho ổn định."""
+    rows = {str(row["product_id"]): row for row in existing}
+    owner: dict[str, str] = {}
+    losers: dict[str, str] = {}
+
+    def canon(pid: str) -> str:
+        while pid in losers:
+            pid = losers[pid]
+        return pid
+
+    for previous in existing:
+        if (previous["attributes"] or {}).get("mergedInto"):  # đã gộp vào dòng khác: ref của nó thuộc dòng kia
+            continue
+        for ref in [previous["source_ref"], *((previous["attributes"] or {}).get("sameAs") or [])]:
+            mine = canon(str(previous["product_id"]))
+            theirs = canon(owner[ref]) if ref in owner else mine
+            if theirs == mine:
+                owner[ref] = mine
+                continue
+            alias_mine, alias_theirs = rows[mine]["source_ref"] != ref, rows[theirs]["source_ref"] != ref
+            keep = mine if (alias_mine, theirs) > (alias_theirs, mine) else theirs
+            losers[theirs if keep == mine else mine] = keep
+            owner[ref] = keep
+    by_ref = {ref: rows[canon(pid)] for ref, pid in owner.items()}
+    return by_ref, [(rows[pid], canon(pid)) for pid in losers]
+
+
 CALENDAR_VARIANTS = ("hotel_room", "attraction", "golf")
+SIMULATED_PREFIX = "demo:business:"
 
 
 def _seed_rules():
@@ -302,7 +341,7 @@ def _calendar(kind: str, row: dict, view: dict, views: dict, as_of: date, meta, 
     attrs = row["attributes"]
     if kind == "hotel_room":
         calendar = loader.real_room_calendar(attrs.get("pricesByDate"), attrs.get("pricesByDateQueried"), as_of)
-        if calendar is None:  # dữ liệu hỏi thưa: lịch mô phỏng của seed, cộng các ngày mẫu đã biết
+        if calendar is None:  # dữ liệu hỏi thưa: mở đủ 30 đêm, cộng các ngày đã hỏi (hết phòng thật = 0)
             calendar = _with_observed(meta.room_calendar(view, as_of, views), attrs, as_of)
     else:
         calendar = meta.ticket_calendar(view["productId"], as_of)
@@ -313,11 +352,17 @@ def apply_window(rows: list[dict], as_of: date) -> dict[str, dict]:
     """Cửa sổ đặt chỗ và lịch 30 ngày cho toàn catalog, như seed (DATABASE_SCHEMA.md #13, MOCK_DATA_SPEC.md §2).
 
     available_from/to = khoảng nguồn `attributes.sourceAvailableFrom/To` cắt vào [as_of, as_of + 29]; nguồn không
-    có thì lấy cả cửa sổ. Chuyến bay: from = to = ngày bay (ngày đã thấy trong cửa sổ, không có thì dời vào cửa sổ
-    theo crc32), giờ bay đổi theo. Tuyến: min/max ngày của các chuyến con. Giao rỗng thì available = false và hai
-    ngày = NULL. Không bật lại dòng đang available = false: nguồn còn bán thì lượt cào sau ghi lại.
+    có thì lấy cả cửa sổ. Hạng phòng luôn lấy cả cửa sổ. Chuyến bay: from = to = ngày bay (ngày đã thấy trong cửa sổ, không có thì dời vào cửa sổ
+    theo crc32), giờ bay đổi theo. Vé ngày cố định dùng đúng quy tắc của seed (PRD data-model §3.1, chốt 06/10): ngày đi
+    ngoài cửa sổ (đã bay, sau cửa sổ, hết hạn báo giá) thì dời cả hai chặng vào cửa sổ, ngày trong tên/mô tả đổi theo;
+    vé đã dời giữ ngày mới tới khi ngày đó qua. Vé máy bay có giá, chưa gộp luôn available. Vé Thương gia mô phỏng
+    (`demo:business:*`) không xử lý ở đây: simulated_business.sync chép lại từ vé gốc.
+    Tuyến: min/max ngày của các chuyến con. Giao rỗng thì available = false và hai
+    ngày = NULL; dòng đang bán bị tắt theo cách này mang `windowClosed` và được bật lại khi cửa sổ cuộn tới khoảng của
+    nó (còn giá, chưa gộp, không có priceFreshness). Dòng tắt vì lý do khác (hết bán, giá quá hạn…) không bị bật lại:
+    nguồn còn bán thì lượt cào sau ghi lại.
     Hạng phòng, điểm tham quan, golf có `attributes.availability` phủ đúng cửa sổ (xem `_calendar`).
-    Trả về các dòng có thay đổi, theo product_id.
+    Trả về các dòng có thay đổi (kể cả name/description của vé được dời), theo product_id.
     """
     meta, loader = _seed_rules()
     lo, hi = meta.window(as_of)
@@ -327,14 +372,37 @@ def apply_window(rows: list[dict], as_of: date) -> dict[str, dict]:
     after: dict[str, dict] = {}
     kinds: dict[str, str] = {}
     flight_days: dict[str, list[date]] = defaultdict(list)
+    simulated = {pid for pid, row in before.items() if str(row["source_ref"]).startswith(SIMULATED_PREFIX)}
+    fixed = [row["attributes"] for pid, row in before.items() if pid not in simulated
+             and meta.variant({"taxonomy": row["taxonomy"], "attributes": row["attributes"] or {}}) == "flight"
+             and (row["attributes"] or {}).get("fixedDepartureDate")]
+    # Như load_products.convert: vé giữ ngày thật giữ chỗ trước; các hạng của cùng hành trình dời theo ID nhỏ nhất.
+    taken = {loader.itinerary(attrs)[:-1] + (day,): loader.itinerary(attrs) for attrs in fixed
+             for day in [loader._departure_day(attrs)] if day is not None and lo <= day <= hi}
+    trip_ids: dict[tuple, str] = {}
     for pid, row in before.items():
+        if (row["attributes"] or {}).get("fixedDepartureDate") and pid not in simulated:
+            trip = loader.itinerary(row["attributes"])
+            trip_ids[trip] = min(trip_ids.get(trip, pid), pid)
+    for pid, row in before.items():
+        if pid in simulated:
+            continue
         attrs = row["attributes"] or {}
+        name, description = row.get("name"), row.get("description")
         kinds[pid] = meta.variant({"taxonomy": row["taxonomy"], "attributes": attrs})
         start, end = (date.fromisoformat(day) for day in
                       loader.clip(attrs.get("sourceAvailableFrom"), attrs.get("sourceAvailableTo"), lo, hi))
-        if kinds[pid] == "flight" and attrs.get("fixedDepartureDate"):
-            start, end = loader.fixed_flight_window(attrs, lo, hi)
-            if start <= end:
+        if kinds[pid] == "hotel_room":  # nguyên cửa sổ, không cắt theo ngày nguồn (như load_products.convert)
+            start, end = lo, hi
+        elif kinds[pid] == "flight" and attrs.get("fixedDepartureDate"):
+            day, real = loader.seed_fixed_flight_date(trip_ids.get(loader.itinerary(attrs), pid), attrs, lo, hi, taken)
+            if day is None:  # thiếu/sai departureAt: không đặt được
+                start, end = lo, lo - timedelta(days=1)
+            else:
+                if not real:
+                    attrs = copy.deepcopy(attrs)
+                    name, description = loader.shift_fixed_flight(attrs, day, name or "", description or "")
+                start = end = day
                 flight_days[attrs.get("parentProductId") or ""].append(start)
         elif kinds[pid] == "flight":
             start, _ = loader.pick_flight_date({"productId": pid, "availableFrom": attrs.get("sourceAvailableFrom"),
@@ -343,21 +411,31 @@ def apply_window(rows: list[dict], as_of: date) -> dict[str, dict]:
             attrs = copy.deepcopy(attrs)
             loader.move_flight(attrs, start)
             flight_days[attrs.get("parentProductId") or ""].append(start)
-        after[pid] = dict(row, attributes=attrs, available_from=start, available_to=end)
+        after[pid] = dict(row, attributes=attrs, available_from=start, available_to=end, name=name, description=description)
+        if kinds[pid] == "flight" and start <= end:  # vé luôn đặt được khi có giá (PRD data-model §3.1, chốt 06/10)
+            after[pid]["available"] = row.get("unit_price") is not None and not attrs.get("mergedInto")
     changed = {}
     for pid, row in after.items():
         if kinds[pid] == "flight_route" and flight_days.get(pid):
             row["available_from"], row["available_to"] = min(flight_days[pid]), max(flight_days[pid])
         if row["available_from"] > row["available_to"]:
+            if row["available"]:  # chính cửa sổ tắt dòng này: đánh dấu để bật lại khi cửa sổ cuộn tới
+                row["attributes"] = dict(row["attributes"], windowClosed=True)
             row.update(available=False, available_from=None, available_to=None)
+        elif row["attributes"].get("windowClosed"):
+            attrs = {key: value for key, value in row["attributes"].items() if key != "windowClosed"}
+            reopen = (not row["available"] and row.get("unit_price") is not None
+                      and not attrs.get("mergedInto") and not attrs.get("priceFreshness"))
+            row.update(attributes=attrs, available=row["available"] or reopen)
         if kinds[pid] in CALENDAR_VARIANTS:
             calendar = _calendar(kinds[pid], row, views[pid], views, as_of, meta, loader)
             row["attributes"] = dict(row["attributes"], availability={
                 "from": as_of.isoformat(), "days": meta.WINDOW_DAYS, "calendar": calendar})
         old = before[pid]
-        if ((row["available"], row["available_from"], row["available_to"], row["attributes"])
+        if ((row["available"], row["available_from"], row["available_to"], row["attributes"], row.get("name"),
+             row.get("description"))
                 != (old["available"], _as_date(old["available_from"]), _as_date(old["available_to"]),
-                    old["attributes"] or {})):
+                    old["attributes"] or {}, old.get("name"), old.get("description"))):
             changed[pid] = row
     return changed
 
@@ -387,10 +465,11 @@ def maintain_catalog(url: str, *, today: date | None = None, now: datetime | Non
         with conn.cursor() as cursor:
             cursor.executemany(
                 """UPDATE cdp.products SET attributes = %s, unit_price = %s, available = %s,
-                       available_from = %s, available_to = %s
+                       available_from = %s, available_to = %s, name = COALESCE(%s, name), description = COALESCE(%s, description)
                    WHERE product_id = %s""",
                 [(Jsonb(row["attributes"]), row["unit_price"], row["available"], row["available_from"],
-                  row["available_to"], row["product_id"]) for row in writes.values()])
+                  row["available_to"], row.get("name"), row.get("description"), row["product_id"])
+                 for row in writes.values()])
         from data_collection.seed import simulated_business  # _seed_rules() đã đưa src/ vào sys.path
         simulated = simulated_business.sync(conn)
     return {"staleTrip": counts["staleTrip"], "windowRows": len(windowed), **simulated}
@@ -434,6 +513,19 @@ def write_load_report(path: Path, prepared: list[dict], existing: list[dict], fr
             }, ensure_ascii=False, default=str) + "\n")
 
 
+def bring_manual_combo_mapping(run_dir: Path, source: Path | None = None) -> bool:
+    """Thư mục lượt cào không có mapping combo duyệt tay: chép `combo_items_manual.jsonl` của snapshot mặc định vào để
+    parse_combos ghép vào (dòng `source = manual`). Thiếu bước này thì mỗi lần nạp DB xoá mất các dòng đã duyệt tay."""
+    if source is None:
+        from data_collection.seed.config import DEFAULT_SNAPSHOT_DIR
+        source = DEFAULT_SNAPSHOT_DIR / "combo_items_manual.jsonl"
+    target = run_dir / "combo_items_manual.jsonl"
+    if not source.is_file() or target.exists():
+        return False
+    shutil.copyfile(source, target)
+    return True
+
+
 def load_into_db(products_path: Path, coverage_path: Path | None, url: str,
                  collection_root: Path, report_path: Path | None = None) -> dict[str, int]:
     """COPY into a temporary table then upsert in one transaction, as V-OTA does.
@@ -454,6 +546,7 @@ def load_into_db(products_path: Path, coverage_path: Path | None, url: str,
         if match and match.group(1) not in checked:
             raise ValueError(f"Trip hotel chưa đủ coverage: {item['sourceRef']}")
     # Parse combo relationships with the same implementation as the source repo.
+    bring_manual_combo_mapping(products_path.parent)
     parse_combos.main(["--data-dir", str(products_path.parent)])
     combo_attrs = json.loads((products_path.parent / "combo_attributes.json").read_text(encoding="utf-8"))
     for item in fresh:
@@ -489,6 +582,7 @@ def load_into_db(products_path: Path, coverage_path: Path | None, url: str,
         cols = ", ".join(COLUMNS)
         changed = " OR ".join(f"p.{c} IS DISTINCT FROM EXCLUDED.{c}" for c in
                               ("attributes", "unit_price", "available", "available_from", "available_to"))
+        changed += " OR (p.taxonomy = 'flight' AND (p.name, p.description) IS DISTINCT FROM (EXCLUDED.name, EXCLUDED.description))"
         written = conn.execute(f"""
             INSERT INTO cdp.products AS p ({cols}) SELECT {cols} FROM incoming_products WHERE true
             ON CONFLICT (product_id) DO UPDATE SET
@@ -496,7 +590,10 @@ def load_into_db(products_path: Path, coverage_path: Path | None, url: str,
                 unit_price = EXCLUDED.unit_price,
                 available = EXCLUDED.available,
                 available_from = EXCLUDED.available_from,
-                available_to = EXCLUDED.available_to
+                available_to = EXCLUDED.available_to,
+                -- Chỉ vé máy bay: ngày trong tên/mô tả đổi khi dời ngày (data-model §3.1). Loại khác giữ text đã có trong DB.
+                name = CASE WHEN p.taxonomy = 'flight' THEN EXCLUDED.name ELSE p.name END,
+                description = CASE WHEN p.taxonomy = 'flight' THEN EXCLUDED.description ELSE p.description END
             WHERE {changed}
             RETURNING product_id
         """).fetchall()

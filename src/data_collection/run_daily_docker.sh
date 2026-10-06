@@ -301,7 +301,29 @@ cmd_backend() {
   if [ -z "$errors" ]; then echo 'không có'; else echo "$errors" | tail -n 5; echo "(tổng $(echo "$errors" | wc -l) dòng)"; fi
 }
 
+cmd_cleanup() {
+  local keep="${1:-2}"
+  echo "=== Dọn dẹp dung lượng VM (giữ tối đa $keep lượt mới nhất) ==="
+  echo "1. Dọn dẹp Docker container và dangling image..."
+  docker container prune -f || true
+  docker image prune -f || true
+  if [ -d "$FRESH_DATA_DIR/fresh_runs" ]; then
+    echo "2. Dọn dẹp các lượt cào cũ trong $FRESH_DATA_DIR/fresh_runs..."
+    docker run --rm -v "$FRESH_DATA_DIR:/data" "$FRESH_IMAGE" python -c \
+      "from fresh_run_log import prune_runs; from pathlib import Path; p = prune_runs(Path('/data/fresh_runs'), $keep); print('Đã xoá các lượt cũ:', p)" || true
+    echo "3. Dọn dẹp Chromium cache trong các lượt còn lại..."
+    find "$FRESH_DATA_DIR/fresh_runs" -type d \( -name "Cache" -o -name "Code Cache" -o -name "GPUCache" \) -exec rm -rf {} + 2>/dev/null || true
+  fi
+  if [ -d "$FRESH_LOG_DIR" ]; then
+    echo "4. Dọn log cũ hơn 7 ngày trong $FRESH_LOG_DIR..."
+    find "$FRESH_LOG_DIR" -maxdepth 1 -name 'fresh-catalog-*.log' -mtime +7 -delete 2>/dev/null || true
+  fi
+  echo "=== Hoàn tất dọn dẹp dung lượng. Dung lượng đĩa hiện tại: ==="
+  df -h "$FRESH_DATA_DIR" 2>/dev/null || df -h /
+}
+
 case "${1:-}" in
+  cleanup) shift; cmd_cleanup "$@" ;;
   import-flights) shift; cmd_import_flights "$@" ;;
   init) shift; cmd_init "$@" ;;
   run) cmd_legacy_run ;;  # compatibility for the legacy cron/CLI

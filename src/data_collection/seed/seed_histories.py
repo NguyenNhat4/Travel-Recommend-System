@@ -37,7 +37,7 @@ from pathlib import Path
 from argon2.low_level import Type, hash_secret
 
 from . import config as C
-from .catalog_meta import build_meta, is_vinpearl, open_nights, room_calendar, stable_order_key, variant, window
+from .catalog_meta import build_meta, is_vinpearl, open_nights, room_calendar, stable_order_key, variant
 
 NS = uuid.UUID("6f3b1f0e-8a52-4c1e-9d0a-7a0c5b1d2e77")  # không gian tên cố định cho uuid5 (seed)
 TZ_VN = timezone(timedelta(hours=7))
@@ -358,15 +358,11 @@ def seed_personas(w: World, b: Builder, rng: random.Random, as_of: date) -> dict
     # P1 — chuyến sắp tới: đã đặt 1 phòng Vinpearl Nha Trang (1 đêm), chưa có vé bay / vé tham quan
     using = as_of + timedelta(days=C.P1["upcoming_using_in_days"])
     nights = C.P1["upcoming_nights"]
-    lo, hi = window(as_of)
     room = None
-    last_night = using + timedelta(days=nights - 1)
     rooms = w.buy.get((C.P1["destination"], "hotel"))
     for cand in rooms.items if rooms else []:                       # thứ tự Zipf: phòng phổ biến nhất còn trống trước
-        src_from, src_to = cand.get("availableFrom"), cand.get("availableTo")
-        in_source = (not src_from or date.fromisoformat(src_from) <= using) and (not src_to or last_night <= date.fromisoformat(src_to))
         brand_ok = is_vinpearl(cand, w.by_id) if C.P1["upcoming_brand"] == "Vinpearl" else cand["attributes"].get("brand") == C.P1["upcoming_brand"]
-        if brand_ok and cand["available"] and in_source and lo <= using <= hi and open_nights(room_calendar(cand, as_of, w.by_id), as_of, using, nights):
+        if brand_ok and cand["available"] and open_nights(room_calendar(cand, as_of, w.by_id), as_of, using, nights):
             room = cand
             break
     if room is None:

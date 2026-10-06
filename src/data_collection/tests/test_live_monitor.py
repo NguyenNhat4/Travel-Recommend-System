@@ -559,8 +559,10 @@ class PreviewTriggerTests(unittest.TestCase):
             return code(source) if callable(code) else code
         groups = groups or [('trip', ('trip-flights',)), ('vinpearl', ('vinpearl',)), ('booking', ('booking-hotels',)),
                             ('agoda', ('agoda-hotels',)), ('empty', ())]
+        # Thứ tự xong do độ trễ giả lập quyết định: bỏ khoá một Chromium (BROWSER_STEPS) để các site chạy song song thật.
         with patch.object(fresh_catalog, 'run_source', fake_source), \
                 patch.object(fresh_catalog, 'wait_or_stop', lambda seconds: None), \
+                patch.object(fresh_catalog, 'BROWSER_STEPS', set()), \
                 contextlib.redirect_stdout(io.StringIO()):
             try:
                 fresh_catalog.crawl_sites(Path('/tmp/unused'), '@deep', groups, 4, recorder)
@@ -575,7 +577,7 @@ class PreviewTriggerTests(unittest.TestCase):
                                          ('agoda', 'ok', False)])
         self.assertEqual(recorder.sources, [('trip', ('trip_flights',), True),
                                             ('vinpearl', ('vinpearl', 'vinpearl_bundles'), True),
-                                            ('booking', ('booking_hotels',), True), ('agoda', ('agoda_hotels',), False)])
+                                            ('booking', ('booking_hotels',), True), ('agoda', ('agoda_api',), False)])
         self.assertFalse(recorder.finished)
 
     def test_partial_run_finishes_previews_before_building_the_official_catalog(self):

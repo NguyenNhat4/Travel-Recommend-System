@@ -128,7 +128,7 @@ Sửa schema = sửa file .sql, **thêm migration idempotent tương ứng** và
 
 ### 6.2. Quy tắc dữ liệu
 
-- `available_from/to` = cửa sổ đặt chỗ 30 ngày từ `as_of` (ngày nạp), cắt với khoảng của nguồn; chuyến bay `from = to = ngày bay`. Loader nhận `--as-of`; mọi thứ có ngày (cửa sổ, `attributes.availability`, event seed, chuyến của persona) sinh tương đối theo `as_of`. Chạy lại loader trước demo.
+- `available_from/to` = cửa sổ đặt chỗ 30 ngày từ `as_of` (ngày nạp), cắt với khoảng của nguồn — riêng hạng phòng lấy nguyên cửa sổ, không cắt theo ngày nguồn (chốt 02/10/2026); chuyến bay `from = to = ngày bay`. Loader nhận `--as-of`; mọi thứ có ngày (cửa sổ, `attributes.availability`, event seed, chuyến của persona) sinh tương đối theo `as_of`. Chạy lại loader trước demo.
 - Lịch kín/trống ở `attributes.availability {from, days, calendar "1/0"}` — đọc-only, không có bảng tồn kho.
 - Vai trò sản phẩm chỉ định nghĩa ở view `catalog.product_meta`: `variant`, `is_bookable` (property/route/điểm công cộng = false), `is_search_unit` (room/flight = false), `is_recommendable`. Chỉ đặt ở cấp `hotel_room`; property không có phòng con chỉ hiển thị.
 - Combo: một dòng `cdp.products`; thành phần ở `catalog.combo_items`, parse từ `description` (job `parse_combos`, ghi `source`/`confidence`/`evidence`). `attributes.priceBasis` mặc định `per_package`, `per_person` khi text nói giá theo khách.

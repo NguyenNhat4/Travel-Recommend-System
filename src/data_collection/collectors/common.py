@@ -11,6 +11,7 @@ import logging
 import os
 import random
 import re
+import shutil
 import sqlite3
 import time
 from dataclasses import dataclass, field, replace
@@ -601,6 +602,26 @@ class FetchResult:
     extra: dict = field(default_factory=dict)
 
 
+def clean_browser_cache(profile_dir: Path) -> None:
+    """Xóa các thư mục cache tạm của Chromium (Cache, Code Cache, GPUCache...) để tránh đầy ổ đĩa VM."""
+    if not profile_dir.is_dir():
+        return
+    cache_subs = (
+        "Default/Cache",
+        "Default/Code Cache",
+        "Default/GPUCache",
+        "Default/DawnGraphiteCache",
+        "Default/DawnWebGPUCache",
+        "GrShaderCache",
+        "ShaderCache",
+        "GPUCache",
+    )
+    for sub in cache_subs:
+        target = profile_dir / sub
+        if target.exists():
+            shutil.rmtree(target, ignore_errors=True)
+
+
 class BrowserSession:
     """Chromium thật qua Playwright, profile bền vững theo từng site.
 
@@ -666,6 +687,7 @@ class BrowserSession:
         finally:
             if self._pw:
                 await self._pw.stop()
+            clean_browser_cache(self.paths.profiles / self.name)
 
     async def new_page(self):
         pages = self.context.pages
