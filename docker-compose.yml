@@ -11,8 +11,17 @@
 #   docker compose up -d --wait postgres redis
 #
 # db/init/*.sql chỉ chạy khi volume pgdata còn trống. Tạo lại từ đầu: docker compose down -v && docker compose up -d --wait postgres
+# Giới hạn log container (json-file): mỗi container tối đa 5 x 50 MB. Không đặt thì Docker giữ log vô hạn và làm đầy đĩa VM;
+# Ops Agent đã đẩy log lên Cloud Logging nên đĩa chỉ cần giữ đệm.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+
 services:
   postgres:
+    logging: *default-logging
     # Không còn cần pgvector: vector đã chuyển sang Weaviate (db/migrations/0002_drop_product_vectors.sql).
     image: postgres:16
     environment:
@@ -33,6 +42,7 @@ services:
       retries: 20
       start_period: 10s
   backend:
+    logging: *default-logging
     build:
       context: .
       dockerfile: Dockerfile.backend
@@ -91,12 +101,19 @@ services:
       BOOKING_REDIS_URL: ${BACKEND_BOOKING_REDIS_URL:-redis://:devpass@redis:6379/3}
       PAYMENT_MAX_FAILED_ATTEMPTS: ${PAYMENT_MAX_FAILED_ATTEMPTS:-3}
       PUBLIC_WEB_URL: ${PUBLIC_WEB_URL:-http://localhost:3000}
+      # Số process uvicorn. Mặc định 1 để dev nhẹ; đo RAM rồi mới tăng (mỗi worker giữ cache catalog riêng).
+      UVICORN_WORKERS: ${UVICORN_WORKERS:-1}
+    # Trần tài nguyên: một container không được ăn hết RAM/CPU của host (docs/plan/2026-10-05-ha-load-balancing.md).
+    mem_limit: ${BACKEND_MEM_LIMIT:-2g}
+    cpus: ${BACKEND_CPUS:-1.5}
+    stop_grace_period: 40s
     volumes:
       - ./secrets:/app/secrets:ro
     ports:
       - "${BACKEND_PORT:-8000}:8000"
 
   frontend:
+    logging: *default-logging
     build:
       context: .
       dockerfile: src/frontend/Dockerfile.web
@@ -112,6 +129,8 @@ services:
       ALLOWED_ORIGINS: "http://localhost:${FRONTEND_HOST_PORT:-3000},http://127.0.0.1:${FRONTEND_HOST_PORT:-3000}"
       SESSION_IDLE_TTL_SECONDS: ${SESSION_IDLE_TTL_SECONDS:-1800}
       SESSION_ABSOLUTE_TTL_SECONDS: ${SESSION_ABSOLUTE_TTL_SECONDS:-43200}
+    mem_limit: ${FRONTEND_MEM_LIMIT:-768m}
+    cpus: ${FRONTEND_CPUS:-0.5}
     depends_on:
       backend:
         condition: service_started
@@ -123,6 +142,7 @@ services:
   # Redis — session, rate-limit counter, OAuth state (auth §16.1). Chỉ phần PHÙ DU:
   # mất khi restart thì người dùng chỉ phải đăng nhập lại. Refresh token và login attempts nằm ở Postgres.
   redis:
+    logging: *default-logging
     image: redis:7-alpine
     # noeviction, KHÔNG allkeys-lru: eviction theo LRU sẽ ngẫu nhiên đá người dùng ra khi bộ nhớ đầy.
     command: >-
@@ -130,6 +150,7 @@ services:
                    --maxmemory 256mb
                    --maxmemory-policy noeviction
                    --appendonly no
+    mem_limit: 384m   # maxmemory 256mb + overhead
     ports: ["127.0.0.1:${REDIS_HOST_PORT:-6379}:6379"]   # chỉ loopback, không mở ra mạng ngoài
     healthcheck:
       test: ["CMD-SHELL", "redis-cli -a devpass ping | grep -q PONG"]
@@ -143,6 +164,7 @@ services:
   # và không có module text2vec nào được bật (docs/prd/architecture.md §5).
   # Volume weaviate_data tách khỏi pgdata: `make demo-db` dựng lại Postgres không đụng tới vector.
   weaviate:
+    logging: *default-logging
     image: cr.weaviate.io/semitechnologies/weaviate:1.27.0
     command: ["--host", "0.0.0.0", "--port", "8080", "--scheme", "http"]
     environment:
@@ -157,6 +179,7 @@ services:
       - "127.0.0.1:${WEAVIATE_GRPC_PORT:-50051}:50051" # gRPC, client Python v4 dùng cổng này
     volumes:
       - weaviate_data:/var/lib/weaviate
+    mem_limit: ${WEAVIATE_MEM_LIMIT:-2g}
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/v1/.well-known/ready || exit 1"]
       interval: 5s

@@ -32,7 +32,12 @@ from fastapi.responses import JSONResponse
 from src.backend.app.agents.runtime_dependencies import RuntimeAgentDependencies
 from src.backend.app.agents.tools.itinerary_gateway import ItineraryToolGateway
 from src.backend.app.api.errors import install_error_handlers
-from src.backend.app.api.middleware import install_call_telemetry, install_cors, install_request_id
+from src.backend.app.api.middleware import (
+    install_call_telemetry,
+    install_cors,
+    install_http_logging,
+    install_request_id,
+)
 from src.backend.app.api.ops import ops_router
 from src.backend.app.api.v1.router import api_router, root_router
 from src.backend.app.application.auth.use_cases import (
@@ -65,7 +70,9 @@ from src.backend.app.domain.catalog import ListingItem
 from src.backend.app.application.recommendation import BuildPopularity, RecommendForUser
 from src.backend.app.application.search import SearchProducts, SimilarProducts, SuggestProducts
 from src.backend.app.domain.search import HybridConfig
-from src.backend.app.core.config import REPO_ROOT, Settings, get_settings
+from src.backend.app.core.config import REPO_ROOT, Settings, get_settings, shared_backend_violations
+from src.backend.app.core.logging_config import configure_logging, log_event
+from src.backend.app.infrastructure.persistence.db_probe import DatabaseProbe
 from src.backend.app.infrastructure.auth.argon2_hasher import Argon2Hasher
 from src.backend.app.infrastructure.auth.jwt_issuer import JwtConfig, JwtIssuer
 from src.backend.app.infrastructure.auth.keys import load_rsa_pem_pair
@@ -103,6 +110,7 @@ from src.backend.app.infrastructure.persistence.postgres_booking import (
 )
 from src.backend.app.infrastructure.persistence.postgres_catalog import PostgresProductLookup, PostgresProductQuery
 
+configure_logging()  # một lần, trước mọi logger.info lúc nạp module (docs/spec/logging-schema.md)
 logger = logging.getLogger("uvicorn.error")
 
 # psycopg async không chạy được trên ProactorEventLoop — event loop mặc định của Windows và của
@@ -283,7 +291,6 @@ class RecsysRefresher:
             if not first:
                 logger.warning("catalog.refresh.failed error=%s; giữ bản đang phục vụ", exc)
             elif self._failures == 1:
-                print(f"RecSys disabled: {exc}")
                 logger.warning("startup.recsys.disabled error=%s; retry_seconds=%s", exc, RECSYS_RETRY_SECONDS)
             else:  # vẫn chưa lên: không lặp cảnh báo mỗi 30 giây
                 logger.debug("startup.recsys.retry_failed error=%s", exc)
@@ -295,7 +302,6 @@ class RecsysRefresher:
         if self._on_publish is not None:
             self._on_publish()
         if first:
-            print(f"RecSys ready: {len(updated['index'].units)} search unit, model {updated['index'].model_version}")
             logger.info("startup.recsys.ready search_units=%d", len(updated["index"].units))
             if getattr(self.settings, "search_prewarm", False) and self._prewarm_task is None:
                 # Nền, không chặn startup: request vẫn được phục vụ (miss) trong lúc cache đang nạp.
@@ -414,7 +420,7 @@ def build_booking(settings: Settings, cdp_client, recorder, product_lookup, *, c
         gateway = FakeGateway()
     else:
         gateway = StripePaymentGateway(settings.stripe_secret_key, settings.stripe_webhook_secret)
-    store = PostgresBookingStore(settings.database_url)
+    store = PostgresBookingStore(settings.database_url, settings.leader_lock_database_url or None)
     carts = PostgresCartRepository(settings.database_url)
     drafts = PostgresBookingDraftRepository(settings.database_url)
     catalog = PostgresProductCatalog(settings.database_url)
@@ -509,22 +515,31 @@ def _forward_langsmith_env(settings) -> None:
     if not settings.langsmith_tracing:
         return
     if not settings.langsmith_api_key:
-        print("LangSmith tracing bật nhưng thiếu LANGSMITH_API_KEY; bỏ qua.")
+        logger.warning("startup.langsmith.skipped reason=missing_api_key")
         return
     os.environ["LANGSMITH_TRACING"] = "true"
     os.environ["LANGSMITH_API_KEY"] = settings.langsmith_api_key
     os.environ["LANGSMITH_ENDPOINT"] = settings.langsmith_endpoint
     os.environ["LANGSMITH_PROJECT"] = settings.langsmith_project
-    print(f"LangSmith tracing: on (project={settings.langsmith_project})")
+    logger.info("startup.langsmith.on project=%s", settings.langsmith_project)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
     app.state.ready = False
-    print(f"Starting {settings.app_name} in {settings.app_env} mode")
+    if settings.ready_requires_db:
+        app.state.db_probe = DatabaseProbe(
+            settings.database_url, timeout_seconds=settings.ready_db_timeout_seconds,
+            cache_seconds=settings.ready_db_cache_seconds)
+    violations = shared_backend_violations(settings)
+    if violations:
+        raise RuntimeError(
+            "REQUIRE_SHARED_BACKENDS=true nhưng " + ", ".join(violations)
+            + " trống hoặc trỏ loopback; mỗi bản sao sẽ có dịch vụ riêng và lệch trạng thái")
     _forward_langsmith_env(settings)
-    logger.info("startup.begin app=%s env=%s", settings.app_name, settings.app_env)
+    log_event(logger, "app.startup", stage="begin", app=settings.app_name, env=settings.app_env,
+              workers=os.environ.get("UVICORN_WORKERS"))
     async with AsyncExitStack() as stack:
         logger.info("startup.cdp_adapter.start adapter=%s", settings.cdp_adapter)
         if settings.cdp_adapter == "local":
@@ -626,8 +641,8 @@ async def lifespan(app: FastAPI):
         except Exception as exc:  # thiếu API key, thiếu SDK của provider…
             app.state.itinerary_llm = None
             app.state.itinerary_llm_mode = "unavailable"
-            print(f"Itinerary LLM unavailable: {exc}")
-        print(f"Itinerary LLM: {app.state.itinerary_llm_mode}")
+            logger.warning("startup.itinerary_llm.unavailable error=%s", exc)
+        logger.info("startup.itinerary_llm.mode mode=%s", app.state.itinerary_llm_mode)
 
         # Recsys tách khỏi phần itinerary: chưa nạp được thì tắt recsys và thử lại sau, các route còn lại
         # (kể cả assistant chạy fixture) vẫn phục vụ được.
@@ -653,11 +668,12 @@ async def lifespan(app: FastAPI):
         app.state.behaviour_tracker = BehaviourTracker(app.state.browse_event_recorder, app.state.product_lookup)
         refresh_task = asyncio.create_task(recsys.run())
 
-        logger.info("startup.ready")
+        log_event(logger, "app.startup", stage="ready", app=settings.app_name, env=settings.app_env)
         app.state.ready = True
         try:
             yield
         finally:
+            log_event(logger, "app.shutdown", stage="begin")
             app.state.ready = False
             recsys.stop()
             await refresh_task  # chờ lần nạp đang chạy xong rồi mới đóng client dùng chung
@@ -665,7 +681,7 @@ async def lifespan(app: FastAPI):
             recsys.close()
             logger.info("shutdown.browse_event_recorder.stop")
             await app.state.browse_event_recorder.stop()
-    print("Shutting down...")
+    log_event(logger, "app.shutdown", stage="done")
 
 
 settings = get_settings()
@@ -679,6 +695,7 @@ app = FastAPI(
 app.state.call_telemetry = InMemoryCallTelemetry()
 install_cors(app, settings.cors_origins)
 install_call_telemetry(app)
+install_http_logging(app)  # trước install_request_id: nằm trong, đọc được X-Request-ID
 install_request_id(app)
 install_error_handlers(app)
 app.include_router(api_router, prefix="/api/v1")
@@ -694,7 +711,23 @@ async def health():
 @app.get("/health/ready")
 async def health_ready():
     ready = bool(getattr(app.state, "ready", False))
+    # Có bật thì RecSys phải nạp xong: bản sao Weaviate rỗng chỉ trả /search rỗng với HTTP 200, LB sẽ không biết để loại.
+    recsys_ready = not settings.ready_requires_recsys or getattr(app.state, "index", None) is not None
+    probe = getattr(app.state, "db_probe", None) if settings.ready_requires_db else None
+    db_ready = True if probe is None else await probe.ok()
+    ok = ready and recsys_ready and db_ready
+    # Chỉ ghi khi trạng thái đổi: LB gọi endpoint này vài giây một lần, ghi mỗi lần sẽ ngập log.
+    state = (ok, recsys_ready, db_ready)
+    if state != getattr(app.state, "last_readiness", None):
+        app.state.last_readiness = state
+        if not ok:
+            log_event(logger, "readiness.degraded", "WARNING", ready=ready, recsys=recsys_ready, db=db_ready)
+            if not db_ready:
+                log_event(logger, "db.unavailable", "ERROR", component="postgres", error_kind="readiness_probe")
+        else:
+            logger.info("readiness.recovered")
     return JSONResponse(
-        status_code=200 if ready else 503,
-        content={"status": "ok" if ready else "starting", "ready": ready, "env": settings.app_env},
+        status_code=200 if ok else 503,
+        content={"status": "ok" if ok else "starting", "ready": ok, "recsys": recsys_ready, "db": db_ready,
+                 "env": settings.app_env},
     )

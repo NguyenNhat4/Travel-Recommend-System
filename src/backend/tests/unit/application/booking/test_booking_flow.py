@@ -144,6 +144,24 @@ def test_cdp_down_keeps_payment_succeeded_and_retry_confirms_without_cancelling_
     run(go())
 
 
+def test_reconcile_runs_only_on_the_leader_replica():
+    async def go():
+        w = World()
+        ref = (await hold(w))["referenceCode"]
+        event = w.gateway.pay(session_of(w, ref))
+        w.cdp.down = True
+        with pytest.raises(Exception):
+            await w.handler(event)
+        w.cdp.down = False
+        async with w.store.reconcile_leader() as leader:      # bản sao khác đang đối soát
+            assert leader
+            assert await w.reconciler() == 0                  # bỏ qua lượt, không đụng đơn
+            assert w.booking(ref).status is not BookingStatus.CONFIRMED
+        assert await w.reconciler() == 1                      # leader nhả khoá thì chạy được
+        assert w.booking(ref).status is BookingStatus.CONFIRMED
+    run(go())
+
+
 def test_reconcile_finishes_a_paid_but_unconfirmed_booking():
     async def go():
         w = World()

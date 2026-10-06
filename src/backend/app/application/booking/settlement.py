@@ -5,6 +5,7 @@ Mỗi hàm idempotent theo trạng thái đã lưu, nên webhook gửi trùng v�
 from __future__ import annotations
 
 import logging
+from time import perf_counter
 from datetime import datetime
 from typing import Callable
 
@@ -16,6 +17,7 @@ from src.backend.app.application.ports.payment_gateway import (
     PaymentProviderError,
     PaymentProviderUnavailable,
 )
+from src.backend.app.core.logging_config import log_event
 from src.backend.app.core.request_context import current_request_id
 from src.backend.app.domain.booking import Booking
 from src.backend.app.domain.booking.status import BookingStatus, PaymentStatus
@@ -50,17 +52,28 @@ class Settlement:
                     or booking.payment is None or booking.payment.status is not PaymentStatus.SUCCEEDED):
                 return booking
             now = self._clock()
+            facts = {"booking_ref": booking.reference_code, "amount_vnd": booking.total_amount,
+                     "item_count": len(booking.items)}
+            started = perf_counter()
 
             async def commit() -> None:
+                # Chạy sau khi CDP đã ghi purchase (record_then_commit): hai sự kiện nối nhau theo request_id.
+                log_event(logger, "booking.cdp.record_purchase", outcome="ok",
+                          duration_ms=round((perf_counter() - started) * 1000, 1), **facts)
                 booking.confirm(now)
                 await tx.save(booking)
                 await tx.clear_cart_items(booking.cdp_user_id, [(i.product_id, i.using_date) for i in booking.items])
+                log_event(logger, "booking.commit", outcome="ok", **facts)
 
             try:
                 await record_then_commit(self._cdp, purchase_events(booking, now), commit)
             except CdpUnavailableError:
-                logger.warning("booking.confirm.cdp_unavailable bookingId=%s requestId=%s",
-                               booking_id, current_request_id())
+                log_event(logger, "booking.cdp.record_purchase", "WARNING", outcome="unavailable",
+                          duration_ms=round((perf_counter() - started) * 1000, 1), **facts,
+                          message="booking.confirm.cdp_unavailable")
+                raise
+            except Exception:
+                log_event(logger, "booking.commit", "ERROR", outcome="failed", exc_info=True, **facts)
                 raise
             return booking
 
@@ -110,8 +123,10 @@ class Settlement:
             try:
                 await self._cdp.cancel_purchases(purchase_events(booking, booking.confirmed_at))
             except CdpUnavailableError:
-                logger.warning("booking.cancel_events.cdp_unavailable bookingId=%s requestId=%s",
-                               booking_id, current_request_id())
+                log_event(logger, "booking.cdp.cancel_purchase", "WARNING", outcome="unavailable",
+                          booking_ref=booking.reference_code)
                 return
             booking.purchase_events_cancelled_at = now
             await tx.save(booking)
+            log_event(logger, "booking.cdp.cancel_purchase", outcome="ok", booking_ref=booking.reference_code,
+                      amount_vnd=booking.total_amount, item_count=len(booking.items))

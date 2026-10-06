@@ -69,7 +69,17 @@ IMAGE=<image của primary> PRIMARY_HOST=<primary_private_ip> sudo -E bash ops/b
 
 ## 6. Nâng replica thành primary (sự cố primary)
 
-Làm tay, có người quyết định; không có failover tự động.
+Làm tay, có người quyết định; không có failover tự động. Với nhóm HA (nối DB qua `db.vota.internal`) dùng một lệnh:
+
+```bash
+PRIMARY_VM=<vm primary> REPLICA_VM=<vm replica> REPLICA_IP=<ip private replica> ZONE=<zone> DNS_ZONE=vota-ha-internal \
+  ops/promote-db-replica.sh          # dry run: kiểm điều kiện, in kế hoạch
+  ops/promote-db-replica.sh --yes    # thực hiện
+```
+
+Script: kiểm replica đang là standby, tắt hẳn primary, chờ replay hết WAL đã nhận, `pg_promote`, rồi đổi bản ghi `db.vota.internal` sang IP replica (TTL 30 giây). Backend không phải sửa env hay deploy lại; kết nối mới đi tới primary mới. Chạy lại khi replica đã là primary thì script từ chối và không làm gì.
+
+Với app VM đơn cũ (tunnel SSH), vẫn theo cách tay:
 
 1. Xác nhận primary thật sự mất và tắt nó hẳn (tránh hai primary cùng ghi): `gcloud compute instances stop <primary>`.
 2. Trên replica: `sudo docker exec -u postgres vota-postgres psql -U postgres -Atc "SELECT pg_promote()"`; kiểm `pg_is_in_recovery()` = `f`.

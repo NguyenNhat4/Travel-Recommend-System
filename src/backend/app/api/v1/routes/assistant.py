@@ -25,6 +25,7 @@ from src.backend.app.application.itinerary.history import ConversationHistory
 from src.backend.app.api.v1.schemas.itinerary import ItineraryRequestModel
 from src.backend.app.application.itinerary.contracts import error_response, valid
 from src.backend.app.application.itinerary.use_cases import PlanItinerary
+from src.backend.app.core.logging_config import log_event
 from src.backend.app.core.request_context import current_request_id
 
 router = APIRouter(tags=["assistant"])
@@ -64,7 +65,8 @@ async def _run(payload: ItineraryRequestModel, request: Request, authorization: 
                owner: str | None, use_case: PlanItinerary):
     request_id = current_request_id() or uuid.uuid4().hex
     conversation = _conversation_label(payload)
-    logger.info("itinerary.start requestId=%s conversationId=%s transport=json", request_id, conversation)
+    started = perf_counter()
+    log_event(logger, "assistant.run.start", conversation_id=conversation, transport="json")
     if not valid("ItineraryRequest", payload.model_dump(exclude_none=True)):
         return JSONResponse(status_code=422, content=error_response(
             "VALIDATION_ERROR", "Yêu cầu lịch trình không hợp lệ.", request_id
@@ -76,12 +78,15 @@ async def _run(payload: ItineraryRequestModel, request: Request, authorization: 
         state = await use_case.run(planner, payload.model_dump(), request_id, config=use_case.trace_config(
             payload.message, request_id, conversation, transport="json"))
     except TimeoutError:
-        logger.warning("itinerary.timeout requestId=%s conversationId=%s transport=json", request_id, conversation)
+        log_event(logger, "assistant.run.end", "WARNING", conversation_id=conversation, transport="json",
+                  status="TIMEOUT", http_status=503, duration_ms=round((perf_counter() - started) * 1000))
         return JSONResponse(status_code=503, content=error_response(
             "SEARCH_UNAVAILABLE", "Yêu cầu vượt quá thời gian xử lý. Vui lòng thử lại.", request_id, True
         ))
     except Exception:
-        logger.exception("itinerary.failed requestId=%s conversationId=%s transport=json", request_id, conversation)
+        log_event(logger, "assistant.run.end", "ERROR", exc_info=True, conversation_id=conversation,
+                  transport="json", status="FAILED", http_status=500,
+                  duration_ms=round((perf_counter() - started) * 1000))
         return JSONResponse(status_code=500, content=error_response(
             "INTERNAL_ERROR", "Không thể xử lý yêu cầu lúc này.", request_id
         ))
@@ -89,11 +94,13 @@ async def _run(payload: ItineraryRequestModel, request: Request, authorization: 
         "latencyMs": state["latency_ms"], "retryCount": state["attempt"],
         "status": state["response"].get("status"), "validationIssues": state["validation_issues"],
     }
-    logger.info(
-        "itinerary.completed requestId=%s conversationId=%s transport=json httpStatus=%s status=%s latencyMs=%s retryCount=%s",
-        request_id, state["response"].get("conversationId", conversation), state["http_status"],
-        state["response"].get("status", "ERROR"), state["latency_ms"], state["attempt"],
-    )
+    for index, item in enumerate(state.get("events", []), 1):
+        log_event(logger, "assistant.node", conversation_id=conversation, transport="json", sequence=index,
+                  node=item.get("node", "unknown"), outcome=item.get("event_type", "completed"),
+                  duration_ms=item.get("latency_ms"))
+    log_event(logger, "assistant.run.end", conversation_id=state["response"].get("conversationId", conversation),
+              transport="json", status=state["response"].get("status", "ERROR"), http_status=state["http_status"],
+              duration_ms=state["latency_ms"], retry_count=state["attempt"])
     return JSONResponse(status_code=state["http_status"], content=state["response"])
 
 
@@ -134,12 +141,19 @@ async def stream_itinerary(payload: ItineraryRequestModel, request: Request,
         return _unavailable(request_id)
     run_id = uuid.uuid4().hex
     conversation = _conversation_label(payload)
-    logger.info(
-        "itinerary.start requestId=%s runId=%s conversationId=%s transport=sse",
-        request_id, run_id, conversation,
-    )
+    started = perf_counter()
+    log_event(logger, "assistant.run.start", run_id=run_id, conversation_id=conversation, transport="sse")
+    log_event(logger, "assistant.stream.open", run_id=run_id, conversation_id=conversation, transport="sse")
 
     async def events() -> AsyncIterator[str]:
+        try:
+            async for chunk in _events():
+                yield chunk
+        finally:  # kể cả khi client ngắt giữa chừng (GeneratorExit/CancelledError)
+            log_event(logger, "assistant.stream.close", run_id=run_id, conversation_id=conversation,
+                      transport="sse", duration_ms=round((perf_counter() - started) * 1000))
+
+    async def _events() -> AsyncIterator[str]:
         yield _sse("run.started", {"runId": run_id, "requestId": request_id})
         yield _sse("graph.topology", planner.topology())
         emitted = 0
@@ -159,11 +173,9 @@ async def stream_itinerary(payload: ItineraryRequestModel, request: Request,
                     observed_duration_ms = _observed_duration_ms(last_node_at)
                     for index, item in enumerate(new_events):
                         duration_ms = item.get("latency_ms") or (observed_duration_ms if index == 0 else 1)
-                        logger.info(
-                            "itinerary.node requestId=%s runId=%s sequence=%s node=%s outcome=%s durationMs=%s",
-                            request_id, run_id, emitted + 1, item.get("node", "unknown"),
-                            item.get("event_type", "completed"), duration_ms,
-                        )
+                        log_event(logger, "assistant.node", run_id=run_id, conversation_id=conversation,
+                                  transport="sse", sequence=emitted + 1, node=item.get("node", "unknown"),
+                                  outcome=item.get("event_type", "completed"), duration_ms=duration_ms)
                         yield _sse("node.completed", {
                             "sequence": emitted + 1, "nodeId": item.get("node", "unknown"),
                             "outcome": item.get("event_type", "completed"),
@@ -185,25 +197,21 @@ async def stream_itinerary(payload: ItineraryRequestModel, request: Request,
                     "runId": run_id, "httpStatus": final_state["http_status"],
                     "response": final_state["response"],
                 })
-            logger.info(
-                "itinerary.completed requestId=%s runId=%s conversationId=%s transport=sse httpStatus=%s status=%s latencyMs=%s retryCount=%s",
-                request_id, run_id, final_state["response"].get("conversationId", conversation),
-                final_state["http_status"], final_state["response"].get("status", "ERROR"),
-                final_state.get("latency_ms", 0), final_state.get("attempt", 0),
-            )
+            log_event(logger, "assistant.run.end", run_id=run_id,
+                      conversation_id=final_state["response"].get("conversationId", conversation), transport="sse",
+                      status=final_state["response"].get("status", "ERROR"), http_status=final_state["http_status"],
+                      duration_ms=final_state.get("latency_ms", 0), retry_count=final_state.get("attempt", 0))
         except TimeoutError:
-            logger.warning(
-                "itinerary.timeout requestId=%s runId=%s conversationId=%s transport=sse",
-                request_id, run_id, conversation,
-            )
+            log_event(logger, "assistant.run.end", "WARNING", run_id=run_id, conversation_id=conversation,
+                      transport="sse", status="TIMEOUT", http_status=503,
+                      duration_ms=round((perf_counter() - started) * 1000))
             yield _sse("run.failed", {"runId": run_id, "httpStatus": 503, "error": error_response(
                 "SEARCH_UNAVAILABLE", "Yêu cầu vượt quá thời gian xử lý. Vui lòng thử lại.", request_id, True
             )})
         except Exception:
-            logger.exception(
-                "itinerary.failed requestId=%s runId=%s conversationId=%s transport=sse",
-                request_id, run_id, conversation,
-            )
+            log_event(logger, "assistant.run.end", "ERROR", exc_info=True, run_id=run_id,
+                      conversation_id=conversation, transport="sse", status="FAILED", http_status=500,
+                      duration_ms=round((perf_counter() - started) * 1000))
             yield _sse("run.failed", {"runId": run_id, "httpStatus": 500, "error": error_response(
                 "INTERNAL_ERROR", "Không thể xử lý yêu cầu lúc này.", request_id
             )})
