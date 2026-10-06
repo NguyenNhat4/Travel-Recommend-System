@@ -159,8 +159,10 @@ def classify_node(state: AgentState, *, llm=None) -> dict:
     """Phân luồng lượt chat, không trích gì khác. **Gọi LLM** (prompt ngắn, output một nhãn).
 
     Đọc: `query` và ngữ cảnh hội thoại chung (`history.llm_context`).
-    Ghi: `decision` (`travel`/`simple`/`error`), `interaction_type` (`travel`/`conversation`/`out_of_scope`), `refusal`, `missing_fields`.
-    Đi tiếp (`routing.route_after_classify`): `extract` khi là du lịch · `converse` khi trò chuyện hoặc
+    Ghi: `decision` (`travel`/`missing_info`/`simple`/`error`), `interaction_type` (`travel`/`conversation`/`out_of_scope`), `refusal`, `missing_fields`;
+    nhãn `vague` còn ghi `clarification_reason`, `start_date_asked`, `clarification_rounds`.
+    Đi tiếp (`routing.route_after_classify`): `extract` khi là du lịch · `clarify` (kèm form) khi câu trả lời
+    không thêm được thông tin mà chuyến đi còn thiếu trường bắt buộc · `converse` khi trò chuyện hoặc
     ngoài phạm vi (đặt chỗ, thanh toán, chèn lệnh đều là ngoài phạm vi) · `dead_letter` khi lỗi.
     """
     if state.get("decision") == "error":

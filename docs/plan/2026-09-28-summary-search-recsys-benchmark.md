@@ -66,7 +66,7 @@
 | Vector DB (`src/evaluation/vector_bench`) | Chọn Qdrant / pgvector / pgvectorscale | Chạy fast-track 22–23/09. Catalog thật: cả ba đạt. Quy mô 1M: chưa chốt. Nhóm đã chọn Weaviate từ 22/09, nên bench này dừng. |
 | Search bench (`src/evaluation/search_bench`, lệnh `sb`) | Embedding, text builder, hybrid, ngưỡng — đo trên gold | Cuối Ngày 2 của checklist 8 ngày (mục 2.1) |
 | RecSys offline | So 10 kiến trúc recommender trên temporal holdout: Recall@10/20, NDCG@10, cross-category, availability, coverage, p95/p99 | Code ở nhánh `origin/khoa/recsys-research` (22/09), **chưa merge**, chưa chạy trên DB đã seed. Dữ liệu là lịch sử tổng hợp. |
-| Itinerary Agent golden (`src/evaluation/agent`) | Grounding, structured output, tool calling | Chạy 24/09: ba chỉ số PRD đạt 100%; 74/89 lượt PASS; p95 11,3 giây (mục tiêu < 5 giây, không gate). Báo cáo: `src/evaluation/reports/eval-2026-09-24-golden.md` |
+| Itinerary Agent golden (`src/evaluation/agent`) | Grounding, structured output, tool calling | Chạy 24/09: ba chỉ số PRD đạt 100%; 74/89 lượt PASS; p95 11,3 giây (mục tiêu < 5 giây, không gate). Báo cáo đã gỡ cùng bộ golden cũ (lấy từ lịch sử git, commit `601f112`) |
 
 ### 2.1. Search bench — chi tiết
 
