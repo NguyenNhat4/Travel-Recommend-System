@@ -249,6 +249,15 @@ def convert(rows: list[dict], combo_attrs: dict[str, dict], as_of: date,
             p["available_from"] = p["available_to"] = None
         elif p["_variant"] not in ("flight", "flight_route") and (p["available_from"] > lo.isoformat() or p["available_to"] < hi.isoformat()):
             stats["khoảng bị cắt hẹp hơn cửa sổ (theo khoảng bán của nguồn)"] += 1
+    # PRD FR-CAT-02 (chốt 06/10): khách sạn tổng quan không có hạng phòng con đặt được → available = false (như job cào).
+    bookable = {p["attributes"].get("parentProductId") for p in out.values()
+                if p["_variant"] == "hotel_room" and p["available"] and p["unit_price"] is not None
+                and p["attributes"].get("ticketed") is not False}
+    for pid, p in out.items():
+        if p["_variant"] == "hotel_property" and p["available"] and pid not in bookable:
+            p["available"] = False
+            p["attributes"]["noBookableRoom"] = True
+            stats["khách sạn không có phòng đặt được → available=false"] += 1
     stats["hạng phòng: tỷ lệ đêm kín trung bình (%)"] = round(100 * sum(closed_frac) / max(1, len(closed_frac)))
     stats["available=true"] = sum(1 for p in out.values() if p["available"])
     stats["is_bookable"] = sum(1 for m in meta.values() if m["is_bookable"])

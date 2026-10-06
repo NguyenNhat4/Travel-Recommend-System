@@ -382,7 +382,7 @@ CONFIRMED       PAYMENT_FAILED         EXPIRED        CANCELLED
 Trạng thái xuất vé máy bay (FR-BKG-12) thuộc từng mục đơn (`booking_items.metadata.ticketing`), không đổi vòng đời đơn.
 
 ### 4.2. Vòng đời Sản phẩm & Khả năng phục vụ
-- **is_search_unit = true:** Sản phẩm đại diện cho một thực thể tìm kiếm (Ví dụ: Một resort/khách sạn tổng quan). Xuất hiện trong kết quả tìm kiếm và danh mục gợi ý.
+- **is_search_unit = true:** Sản phẩm đại diện cho một thực thể tìm kiếm (Ví dụ: Một resort/khách sạn tổng quan). Xuất hiện trong kết quả tìm kiếm và danh mục gợi ý. Khách sạn tổng quan không có hạng phòng con nào đặt được thì `available = false` (giữ dòng, tự bật lại khi có phòng đặt được), nên không ra ở tìm kiếm mặc định và trợ lý.
 - **is_bookable = true:** Đơn vị có thể đặt chỗ. Khách sạn và vé máy bay chỉ đặt trực tiếp; các loại khác thêm được vào giỏ (Ví dụ: Từng loại phòng cụ thể, từng chuyến bay trong ngày).
 - **is_recommendable = true:** Đủ tiêu chuẩn chất lượng và tính khả dụng để đưa vào các thuật toán gợi ý tự động.
 

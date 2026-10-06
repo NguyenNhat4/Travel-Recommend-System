@@ -111,8 +111,32 @@ class ApplyWindowTests(unittest.TestCase):
             self.assertNotIn('flown', {k: v for k, v in apply_window([moved], AS_OF + timedelta(days=1)).items()
                                        if v['available_from'] != day})
 
+    def test_hotel_without_a_bookable_room_is_hidden_and_reopens_when_a_room_appears(self):
+        """PRD FR-CAT-02 (chốt 06/10)."""
+        hotel = row('hotel', start=AS_OF, end=HI)
+        no_price = row('cheap', attributes={'level': 'room', 'parentProductId': 'hotel'}, unit_price=None)
+        hidden = apply_window([hotel, no_price], AS_OF)['hotel']
+        self.assertEqual((hidden['available'], hidden['attributes']['noBookableRoom']), (False, True))
+        room = row('room', attributes={'level': 'room', 'parentProductId': 'hotel'})
+        reopened = apply_window([hidden, room], AS_OF)['hotel']
+        self.assertTrue(reopened['available'])
+        self.assertNotIn('noBookableRoom', reopened['attributes'])
+        with_room = apply_window([row('h2', start=AS_OF, end=HI), row('r2', attributes={'level': 'room', 'parentProductId': 'h2'})], AS_OF)
+        self.assertNotIn('h2', with_room)  # có phòng đặt được: giữ nguyên
+
+    def test_hidden_hotel_without_marker_or_merged_is_not_reopened(self):
+        room = row('room', attributes={'level': 'room', 'parentProductId': 'hotel'})
+        sold = row('hotel', available=False, start=AS_OF, end=HI)  # tắt vì lý do khác, không có dấu
+        merged = row('merged', available=False, start=AS_OF, end=HI,
+                     attributes={'level': 'property', 'noBookableRoom': True, 'mergedInto': 'x'})
+        merged_room = row('mroom', attributes={'level': 'room', 'parentProductId': 'merged'})
+        changed = apply_window([sold, room, merged, merged_room], AS_OF)
+        self.assertNotIn('hotel', changed)
+        self.assertFalse(changed['merged']['available'])
+
     def test_rows_already_inside_the_window_are_not_rewritten(self):
-        current = row('same', start=AS_OF.isoformat(), end=HI.isoformat())
+        # combo: không có lịch, không phụ thuộc phòng con (khách sạn không phòng bị tắt theo FR-CAT-02).
+        current = row('same', taxonomy='combo', attributes={}, start=AS_OF.isoformat(), end=HI.isoformat())
         self.assertEqual(apply_window([current], AS_OF), {})
         # Hôm sau cửa sổ cuộn thêm một ngày.
         rolled = apply_window([current], AS_OF + timedelta(days=1))['same']
@@ -302,8 +326,8 @@ class MaintainCatalogTests(unittest.TestCase):
     def test_expires_stale_trip_prices_and_rolls_windows_in_one_pass(self):
         stale = row('stale', source_ref='trip:hotel:1', start=AS_OF, end=HI,
                     attributes={'level': 'property', 'priceRefreshedAt': '2026-09-01T00:00:00+00:00'})
-        seeded = row('seeded', start=date(2026, 9, 20), end=date(2026, 10, 19))
-        current = row('current', start=AS_OF, end=HI)
+        seeded = row('seeded', taxonomy='combo', attributes={}, start=date(2026, 9, 20), end=date(2026, 10, 19))
+        current = row('current', taxonomy='combo', attributes={}, start=AS_OF, end=HI)
         conn = _Conn([stale, seeded, current])
         sync = Mock(return_value={'simulatedBusiness': 0})
         with patch('psycopg.connect', return_value=conn), \

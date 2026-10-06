@@ -361,7 +361,8 @@ def apply_window(rows: list[dict], as_of: date) -> dict[str, dict]:
     ngày = NULL; dòng đang bán bị tắt theo cách này mang `windowClosed` và được bật lại khi cửa sổ cuộn tới khoảng của
     nó (còn giá, chưa gộp, không có priceFreshness). Dòng tắt vì lý do khác (hết bán, giá quá hạn…) không bị bật lại:
     nguồn còn bán thì lượt cào sau ghi lại.
-    Hạng phòng, điểm tham quan, golf có `attributes.availability` phủ đúng cửa sổ (xem `_calendar`).
+    Hạng phòng, điểm tham quan, golf có `attributes.availability` phủ đúng cửa sổ (xem `_calendar`). Khách sạn tổng quan không
+    có phòng con đặt được thì tắt (`_hide_hotels_without_rooms`).
     Trả về các dòng có thay đổi (kể cả name/description của vé được dời), theo product_id.
     """
     meta, loader = _seed_rules()
@@ -431,6 +432,8 @@ def apply_window(rows: list[dict], as_of: date) -> dict[str, dict]:
             calendar = _calendar(kinds[pid], row, views[pid], views, as_of, meta, loader)
             row["attributes"] = dict(row["attributes"], availability={
                 "from": as_of.isoformat(), "days": meta.WINDOW_DAYS, "calendar": calendar})
+    _hide_hotels_without_rooms(after, kinds)
+    for pid, row in after.items():
         old = before[pid]
         if ((row["available"], row["available_from"], row["available_to"], row["attributes"], row.get("name"),
              row.get("description"))
@@ -438,6 +441,27 @@ def apply_window(rows: list[dict], as_of: date) -> dict[str, dict]:
                     old["attributes"] or {}, old.get("name"), old.get("description"))):
             changed[pid] = row
     return changed
+
+
+def _hide_hotels_without_rooms(rows: dict[str, dict], kinds: dict[str, str]) -> None:
+    """PRD FR-CAT-02 (chốt 06/10): khách sạn tổng quan không có hạng phòng con nào đặt được (đang bán, có giá, không
+    `ticketed: false`) thì `available = false` kèm `noBookableRoom`; có phòng đặt được trở lại thì bỏ dấu và bật lại (trừ
+    dòng đã gộp, giá quá hạn hoặc ngoài cửa sổ). Dòng tắt vì lý do khác không có dấu nên không bị bật."""
+    bookable = {(row["attributes"] or {}).get("parentProductId") for pid, row in rows.items()
+                if kinds[pid] == "hotel_room" and row["available"] and row.get("unit_price") is not None
+                and (row["attributes"] or {}).get("ticketed") is not False}
+    for pid, row in rows.items():
+        if kinds[pid] != "hotel_property":
+            continue
+        attrs = row["attributes"] or {}
+        if pid not in bookable:
+            if row["available"]:
+                row.update(available=False, attributes=dict(attrs, noBookableRoom=True))
+        elif attrs.get("noBookableRoom"):
+            attrs = {key: value for key, value in attrs.items() if key != "noBookableRoom"}
+            reopen = (row["available_from"] is not None and not attrs.get("mergedInto")
+                      and not attrs.get("priceFreshness") and not attrs.get("windowClosed"))
+            row.update(attributes=attrs, available=row["available"] or reopen)
 
 
 def pipeline_connection(url: str, **kwargs):
