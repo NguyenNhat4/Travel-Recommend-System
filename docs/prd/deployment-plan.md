@@ -41,7 +41,7 @@ Hệ thống phân tách ranh giới bảo mật bằng các chuỗi kết nối
 | `ITINERARY_SERVICE_BASE_URL` | Gốc URL backend mà adapter HTTP gọi tới | Chỉ khi `ITINERARY_DATA_MODE=http` | Không bí mật. Bắt buộc ở mode `http`, bỏ qua ở mode khác |
 | `ITINERARY_TOOL_TIMEOUT_SECONDS` | Thời hạn (giây) cho mỗi lời gọi tool của trợ lý, áp dụng mọi mode | Tất cả | Không bí mật |
 | `EMBED_MODEL` / `EMBED_MODEL_REVISION` / `EMBED_DIMENSION` | Model vector — chỉ `intfloat/multilingual-e5-small`, revision ghim, 384 chiều (chạy local trong backend và job index, không cần khoá) | Tất cả | Không bí mật. Thường không đặt (mặc định trong `core/config.py`); đổi revision = chạy lại job embed |
-| `WEAVIATE_COLLECTION` | Collection vector — mặc định `ProductE5Small` (collection `Product` cũ chứa vector Cohere không còn được đọc) | Tất cả | Không bí mật. Job embed từ chối ghi vào collection đang chứa vector của model khác |
+| `WEAVIATE_COLLECTION` | Collection vector — mặc định `Product` (dựng lại bằng vector e5-small ngày 06/10, thay vector Cohere cũ) | Tất cả | Không bí mật. Job embed từ chối ghi vào collection đang chứa vector của model khác |
 | `SEARCH_CUTOFF` / `SEARCH_LEXICAL_CUTOFF` | Ngưỡng cosine của Search — mặc định 0,84 (hiệu chỉnh cho e5-small) / 0,50 | Tất cả | Không bí mật. Hiệu chỉnh trên gold khi đổi model |
 | `WEAVIATE_URL` | Endpoint Weaviate (local: `http://localhost:8080`) | Tất cả | Không mở ra mạng ngoài ở local |
 | `WEAVIATE_GRPC_PORT` | Cổng gRPC của Weaviate (mặc định `50051`). Search, Similar và Recommendation truy vấn top-K qua gRPC; Weaviate Cloud tự dùng cổng 443 của host `grpc-<cluster>` nên bỏ qua biến này | Tất cả | Không mở ra mạng ngoài ở local |

@@ -192,7 +192,7 @@ def test_main_exits_2_when_lexical_only_is_refused(monkeypatch, capsys):
 def _settings():
     return SimpleNamespace(
         database_url="postgresql://unused", embed_model="intfloat/multilingual-e5-small", weaviate_url="http://weaviate.test",
-        weaviate_collection="ProductE5Small", weaviate_vector_index_type="hnsw", weaviate_api_key="",
+        weaviate_collection="Product", weaviate_vector_index_type="hnsw", weaviate_api_key="",
         weaviate_timeout_seconds=5.0, embed_dimension=384, search_bm25_k1=1.2, search_bm25_b=0.75,
     )
 

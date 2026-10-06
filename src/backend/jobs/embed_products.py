@@ -135,7 +135,7 @@ def run(*, dry_run: bool = False, backfill_lexical: bool = False, force: bool = 
             return {"modelVersion": version, "searchUnits": len(desired), "embedded": 0,
                     "refused": (f"collection {settings.weaviate_collection} đang chứa vector của {', '.join(others)}; "
                                 f"không ghi vector {settings.embed_model} vào đó. Đặt WEAVIATE_COLLECTION sang collection riêng "
-                                "(mặc định ProductE5Small).")}
+                                "hoặc xoá collection cũ rồi chạy lại để dựng bằng model mới.")}
         orphans = sorted(set(existing) - set(desired))
         # Object index trước 25/09 chưa có property BM25: ghi thêm bằng PATCH, không embed (chỉ khi được yêu cầu).
         stale_lexical = [

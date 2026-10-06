@@ -54,7 +54,7 @@ def _settings(**env):
 def test_default_is_e5_small_and_other_dimensions_are_rejected():
     settings = _settings()
     assert (settings.embed_model, settings.embed_dimension) == ("intfloat/multilingual-e5-small", 384)
-    assert settings.weaviate_collection == "ProductE5Small"
+    assert settings.weaviate_collection == "Product"
     assert settings.search_cutoff == 0.84
     with pytest.raises(ValidationError, match="EMBED_DIMENSION"):
         _settings(embed_dimension=1024)

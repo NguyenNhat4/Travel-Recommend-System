@@ -55,7 +55,7 @@ flowchart TB
     end
 
     subgraph VectorStore["Lớp Lưu Trữ Vector (Weaviate)"]
-        WvProduct[(Collection: ProductE5Small\nvector 384 · ANN cosine)]
+        WvProduct[(Collection: Product\nvector 384 · ANN cosine)]
     end
 
     subgraph External["Dịch Vụ Mở Rộng & Bên Thứ Ba"]
