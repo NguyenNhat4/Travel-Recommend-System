@@ -34,6 +34,7 @@ from urllib.parse import urlparse
 import alerts
 import fresh_settings
 import index_backlog
+import log
 import pipeline_errors as perr
 import pipeline_graph as graph
 from collectors import live_control
@@ -108,10 +109,10 @@ def trip_cities(values: dict):
 _print_lock = threading.Lock()
 
 
-def say(line: str) -> None:
-    """Một dòng log nguyên vẹn khi nhiều nhóm cùng in."""
+def say(line: str, **fields) -> None:
+    """Một dòng log nguyên vẹn khi nhiều nhóm cùng in: JSON ra stdout container, text nguyên chữ vào job.log (log.py)."""
     with _print_lock:
-        print(line, flush=True)
+        log.say(line, **fields)
 
 
 def _num(value: float) -> str:
@@ -161,8 +162,8 @@ def run_source(run_dir: Path, source: str, destinations: str, group: str, deadli
     """Chạy `crawl.py <source>`. `deadline` (time.monotonic): quá hạn thì dừng cả cây tiến trình của nguồn này (crawl.py,
     Chromium) và trả perr.EXIT_TIMEOUT (P4); các nguồn khác không bị đụng."""
     command = source_command(run_dir, source, destinations, settings_values())
-    say(f'[{group}] $ ' + ' '.join(command))
-    env = dict(os.environ, CRAWL_LIVE_KEY=LIVE_KEYS.get(source, ''), PYTHONUNBUFFERED='1')
+    say(f'[{group}] $ ' + ' '.join(command), source=source)
+    env = dict(os.environ, CRAWL_LIVE_KEY=LIVE_KEYS.get(source, ''), PYTHONUNBUFFERED='1', CRAWL_LOG_PLAIN='1')
     tail = SOURCE_TAIL[source] = deque(maxlen=80)
     timed_out = threading.Event()
     with subprocess.Popen(command, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -172,14 +173,15 @@ def run_source(run_dir: Path, source: str, destinations: str, group: str, deadli
                 while proc.poll() is None:
                     if time.monotonic() >= deadline:
                         timed_out.set()
-                        say(f'[{group}] catalog.source.timeout name={source}: quá hạn giờ, dừng nguồn này')
+                        say(f'[{group}] catalog.source.timeout name={source}: quá hạn giờ, dừng nguồn này',
+                            source=source, step=source, severity='ERROR')
                         terminate_tree(proc.pid)
                         return
                     time.sleep(0.5)
             threading.Thread(target=watch, name=f'timeout-{source}', daemon=True).start()
         for line in proc.stdout:
             tail.append(line.rstrip())
-            say(f'[{group}] {line.rstrip()}')
+            say(f'[{group}] {line.rstrip()}', event='source.output', source=source, step=source)
     return perr.EXIT_TIMEOUT if timed_out.is_set() else proc.returncode
 
 
@@ -263,7 +265,7 @@ def notify_finished(data: dict, run_dir: Path, state_dir: Path, values: dict) ->
     try:
         alerts.on_run_finished(data, run_dir, state_dir, values)
     except Exception as exc:
-        print(f'alert.failed {type(exc).__name__}: {exc}', file=sys.stderr, flush=True)
+        log.emit('alert.failed', f'alert.failed {type(exc).__name__}: {exc}', 'ERROR', error=exc)
 
 
 def check_sla(state_dir: Path, run_root: Path, values: dict) -> None:
@@ -271,7 +273,7 @@ def check_sla(state_dir: Path, run_root: Path, values: dict) -> None:
     try:
         alerts.check_sla(state_dir, run_root, values)
     except Exception as exc:
-        print(f'alert.sla.failed {type(exc).__name__}: {exc}', file=sys.stderr, flush=True)
+        log.emit('alert.sla.failed', f'alert.sla.failed {type(exc).__name__}: {exc}', 'WARNING', error=exc)
 
 
 def save_run() -> None:
@@ -453,7 +455,7 @@ class Previewer:
 
     def _run(self, command: list[str], prefix: str, track: bool = False) -> int:
         proc = subprocess.Popen(command, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-                                errors='replace', env=dict(os.environ, PYTHONUNBUFFERED='1'))
+                                errors='replace', env=dict(os.environ, PYTHONUNBUFFERED='1', CRAWL_LOG_PLAIN='1'))
         if track:
             with self.lock:
                 self.proc = proc
@@ -807,9 +809,10 @@ def index_catalog(settings, detail_path: Path | None = None) -> dict:
     # Đọc lại đúng DB vừa ghi, ghi vào Weaviate của cùng đích; runtime API vẫn dùng role chỉ đọc của nó.
     # detail_path: text gửi Cohere, hash, hành động và vài chiều đầu của vector từng sản phẩm, cho monitor.
     from src.backend.jobs.embed_products import run
-    print("catalog.index.start", flush=True)
+    log.emit('catalog.index.start', 'catalog.index.start')
     report = run(settings=settings, detail_path=detail_path)
-    print("catalog.index.complete " + json.dumps(report, ensure_ascii=False), flush=True)
+    log.emit('catalog.index.complete', 'catalog.index.complete ' + json.dumps(report, ensure_ascii=False),
+             report=report if isinstance(report, dict) else None)
     return report
 
 
@@ -866,6 +869,20 @@ def print_status(values: dict, state_dir: Path) -> None:
         print(f'Running: {running.get("runId")} since {running.get("startedAt")} steps={running.get("steps")}')
 
 
+def emit_run_end(rec: RunRecorder, status: str, code: int) -> None:
+    """`run.end` (status, duration_ms, exit_code, records theo nguồn). Phát trước `recorder.finish` để dòng còn vào job.log.
+    Chuỗi `fresh-catalog.exit=N` nằm trong message cho metric đang khớp nó."""
+    try:
+        counts = rec.data.get('counts') or {}
+        records = {key: value for key, value in (rec.data.get('sourceStatuses') or {}).items()} or None
+        log.emit('run.end', f'run.end status={status} fresh-catalog.exit={code}',
+                 'ERROR' if status == 'failed' else 'WARNING' if status in ('partial', 'stopped') else 'INFO',
+                 status=status, exit_code=code, duration_ms=round((time.monotonic() - rec._t0) * 1000),
+                 records=counts, source_statuses=records)
+    except Exception:  # log không được làm đổi kết quả lượt
+        pass
+
+
 def run_job(mode: str, trigger: str | None = None, run_id: str | None = None, from_step: str | None = None,
             source: str | None = None) -> int:
     global CFG, REC
@@ -874,7 +891,7 @@ def run_job(mode: str, trigger: str | None = None, run_id: str | None = None, fr
     run_root.mkdir(parents=True, exist_ok=True)
     values = fresh_settings.load(state_dir)
     if mode == 'status':
-        print_status(values, state_dir)
+        print_status(values, state_dir)  # stdout = báo cáo cho người đọc; không phát log JSON
         return 0
     def scheduled():
         selected, reason = fresh_settings.scheduled_mode(values, state_dir)
@@ -884,8 +901,9 @@ def run_job(mode: str, trigger: str | None = None, run_id: str | None = None, fr
 
     if mode == 'due':
         chosen, reason = (None, 'đang có lượt chạy') if lock_busy(state_dir) else scheduled()
-        print(chosen or '', flush=True)
-        print(f'catalog.due {chosen or "-"}: {reason}', file=sys.stderr, flush=True)
+        print(chosen or '', flush=True)  # stdout = tên chế độ cho run_fresh_catalog_container.sh; log chỉ đi stderr
+        with log.use_stream(sys.stderr):
+            log.emit('catalog.due', f'catalog.due {chosen or "-"}: {reason}', mode=chosen or '-', reason=reason)
         return 0
     # An idle cron tick needs neither DB credentials nor an index connection.
     if mode == 'tick' and (lock_busy(state_dir) or scheduled()[0] is None):
@@ -907,13 +925,14 @@ def run_job(mode: str, trigger: str | None = None, run_id: str | None = None, fr
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
+            log.emit('catalog.lock.busy', 'catalog.lock.busy: đã có job catalog khác đang chạy', 'WARNING', mode=mode)
             if mode == 'tick':
                 return 0
             raise RuntimeError('Đã có job catalog khác đang chạy') from None
         if mode == 'tick':
             selected, reason = scheduled()
             if selected is None:
-                print(f'catalog.schedule.skip: {reason}', flush=True)
+                log.emit('catalog.schedule.skip', f'catalog.schedule.skip: {reason}', 'WARNING', reason=reason)
                 return 0
             trigger = 'schedule'
         elif mode != 'resume':
@@ -940,13 +959,15 @@ def run_job(mode: str, trigger: str | None = None, run_id: str | None = None, fr
         status, code, error = 'failed', EXIT_PARTIAL, None
         try:
             if mode == 'resume':
-                print(f'Resume {run_id} from {from_step}' + (f' source={source}' if source else '') + f': {run_dir}',
-                      flush=True)
+                log.emit('resume.plan', f'Resume {run_id} from {from_step}' + (f' source={source}' if source else '')
+                         + f': {run_dir}', from_step=from_step, source=source)
                 code = resume_run(recorder, values, state_dir, run_dir, from_step, os.environ[key], index_config,
                                   source=source)
             else:
                 removed = prune_runs(run_root, values['runs.keep'], protect=run_dir)
-                print(f'Run {selected}: {run_dir}' + (f' (xoá lượt cũ: {", ".join(removed)})' if removed else ''), flush=True)
+                log.emit('run.start', f'Run {selected}: {run_dir}'
+                         + (f' (xoá lượt cũ: {", ".join(removed)})' if removed else ''), trigger=trigger,
+                         pruned=len(removed))
                 code = execute(selected, recorder, values, state_dir, run_dir, os.environ[key], index_config)
             recorder.check_stop()
             incomplete = recorder.data.get('incompleteSources') or recorder.data['counts'].get('index', {}).get('deferred')
@@ -957,13 +978,14 @@ def run_job(mode: str, trigger: str | None = None, run_id: str | None = None, fr
             if not isinstance(exc, (StopRequested, KeyboardInterrupt)):
                 recorder.data['errorKind'] = perr.classify_exception(exc)
                 # vào job.log: sau recorder.finish() stdout/stderr đã trả về luồng gốc nên traceback ở ngoài sẽ mất
-                print('catalog.failed traceback:\n' + traceback.format_exc(), file=sys.stderr, flush=True)
+                log.emit('catalog.failed', 'catalog.failed traceback:\n' + traceback.format_exc(), 'ERROR', error=exc)
             if isinstance(exc, StopRequested) or recorder.stop_event.is_set():
                 status, code = 'stopped', EXIT_STOPPED
                 if not isinstance(exc, StopRequested):
                     raise StopRequested(str(exc)) from exc
             raise
         finally:
+            emit_run_end(recorder, status, code)
             recorder.finish(status, code, error)
             CFG = REC = None
             notify_finished(recorder.data, run_dir, state_dir, values)
@@ -996,7 +1018,8 @@ def execute(selected: str, rec: RunRecorder, values: dict, state_dir: Path, run_
             try:
                 run_index(rec, index_config)
             except Exception as exc:
-                print(f"catalog.index.failed {type(exc).__name__}: {exc}; retry mode=index", file=sys.stderr, flush=True)
+                log.emit('catalog.index.failed', f"catalog.index.failed {type(exc).__name__}: {exc}; retry mode=index",
+                         'ERROR', error=exc)
                 if not failed:
                     raise RuntimeError("Index thất bại; DB đã giữ dữ liệu mới. Chạy lại mode=index") from exc
 
@@ -1107,12 +1130,14 @@ def crawl_and_load(selected: str, rec: RunRecorder, values: dict, state_dir: Pat
             save_run_targets(run_dir, trip['targets'])
             price_rooms()
         else:
-            print('Khách sạn Trip đang tắt: lượt hằng ngày chỉ bảo trì DB và index.', flush=True)
+            log.emit('catalog.trip.disabled', 'Khách sạn Trip đang tắt: lượt hằng ngày chỉ bảo trì DB và index.',
+                     'WARNING')
             return 0
     rec.check_stop()
     records, coverage = trip['records'], trip['coverage']
     if trip_used:
-        print(f'Trip complete: {len(records)}/{len(trip["targets"])}', flush=True)
+        log.emit('catalog.trip.complete', f'Trip complete: {len(records)}/{len(trip["targets"])}',
+                 records=len(records), requested=len(trip['targets']))
         rec.set_counts(trip={'requested': len(trip['targets']), 'completed': len(records),
                              'unpricedHotelDates': len((coverage or {}).get('unpricedHotelDates') or [])})
         if not records:
@@ -1136,8 +1161,9 @@ def crawl_and_load(selected: str, rec: RunRecorder, values: dict, state_dir: Pat
     if trip_used:
         write_state(schedule_file, record_batch(trip['targets'], coverage, read_state(schedule_file),
                                                 datetime.now(timezone.utc).isoformat()))
-    print(json.dumps({'mode': selected, 'discovery': trip['discovery'], 'sources': statuses,
-                      'catalog': summary, 'database': counts}, ensure_ascii=False, default=str), flush=True)
+    final = {'mode': selected, 'discovery': trip['discovery'], 'sources': statuses, 'catalog': summary,
+             'database': counts}
+    log.emit('run.summary', json.dumps(final, ensure_ascii=False, default=str), summary=final)
     unpriced = (coverage or {}).get('unpricedHotelDates') if trip_used else None
     # A committed partial catalog is usable. Keep warnings in run.json, not a fatal process exit.
     rec.data['incompleteSources'] = incomplete_sources(rec, run_dir)
@@ -1312,10 +1338,10 @@ def main(argv=None) -> int:
             return run_job('resume', args.trigger, run_id=args.run_id, from_step=args.from_step, source=args.source)
         return run_job(args.mode, args.trigger)
     except StopRequested as exc:
-        print(f'Fresh catalog stopped: {exc}', file=sys.stderr)
+        log.emit('run.stopped', f'Fresh catalog stopped: {exc}', 'WARNING')
         return EXIT_STOPPED
     except (RuntimeError, ValueError, OSError) as exc:
-        print(f'Fresh catalog failed: {exc}', file=sys.stderr)
+        log.emit('run.failed', f'Fresh catalog failed: {exc}', 'ERROR', error=exc)
         return EXIT_PARTIAL
 
 
