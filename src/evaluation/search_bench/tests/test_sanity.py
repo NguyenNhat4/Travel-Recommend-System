@@ -64,3 +64,11 @@ def test_gold_append_ok_skips_without_tags_and_checks_with_tag(tmp_path, monkeyp
                       for r in recs], g)
     bad = S.gold_append_ok(g)
     assert bad.ok is False and "vi phạm" in bad.detail
+
+
+def test_input_type_vectors_match_symmetric():
+    texts = ["khách sạn Đà Nẵng", "tour biển"]
+    same = S.input_type_vectors_match(FakeEmbedder(16, ignore_input_type=True), texts, max_gap=1e-5, model="symmetric")
+    different = S.input_type_vectors_match(FakeEmbedder(16), texts, max_gap=1e-5, model="asymmetric")
+    assert same.ok is True
+    assert different.ok is False

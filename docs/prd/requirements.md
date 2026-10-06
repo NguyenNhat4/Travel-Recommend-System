@@ -11,6 +11,7 @@ Tài liệu này đặc tả chi tiết toàn bộ các yêu cầu chức năng 
 - **FR-CAT-02 (Cấu trúc phân cấp và đơn vị đặt chỗ):**
   - Chỉ các đơn vị cụ thể (`hotel_room`, `flight_instance`, `experience`, `combo`) mới có trạng thái đặt chỗ được (`is_bookable = true`).
   - Điểm lưu trú tổng quan (`hotel_property`) chỉ mang tính hiển thị thông tin và là đơn vị tìm kiếm (`is_search_unit = true`), không đặt chỗ trực tiếp trên property mà đặt qua phòng con.
+  - Khách sạn tổng quan không có hạng phòng con nào đặt được (đang bán và có giá) thì `available = false`: không ra ở tìm kiếm mặc định, trợ lý và gợi ý. Dòng được giữ (không xoá) và tự bật lại khi có hạng phòng đặt được.
 - **FR-CAT-03 (Lịch khả dụng & Định giá):**
   - Quản lý cửa sổ mở bán (`available_from`, `available_to`) và trạng thái phòng/vé trống theo từng ngày (`attributes.availability`).
   - Riêng khách sạn (`hotel_room`), ngày nhận phòng không kiểm theo cửa sổ mở bán của dữ liệu mà theo lịch: là ngày có thật, không ở quá khứ (được nhận phòng ngay hôm nay, giờ Việt Nam) và đặt trước tối đa 3 tháng kể từ hôm nay. Ngày trả phòng sau ngày nhận ít nhất 1 đêm và tối đa 30 đêm. Web và Backend kiểm cùng bộ luật, Backend quyết định cuối (`DATE_OUT_OF_RANGE` trả `availableFrom` = hôm nay, `availableTo` = hôm nay + 3 tháng). Lịch `attributes.availability` chỉ để tham khảo, không dùng để chặn đặt phòng khách sạn (ký tự `0` trong lịch nghĩa là nguồn không có giá ngày đó, không phải hết phòng); khách sạn còn bán (`available`) thì mở cho mọi ngày trong cửa sổ trên. Vé máy bay và hoạt động giữ cửa sổ mở bán. *(Chốt 2026-10-02, đề xuất `update-archive/2026-10-02-quy-tac-ngay-nhan-phong-khach-san.md`.)*
@@ -20,7 +21,7 @@ Tài liệu này đặc tả chi tiết toàn bộ các yêu cầu chức năng 
 
 ### 1.2. Phân Hệ Tìm Kiếm Ngữ Nghĩa (Semantic Search Engine)
 - **FR-SRC-01 (Tìm kiếm đa phương thức):** Hỗ trợ cả tìm kiếm từ khóa truyền thống và tìm kiếm ngữ nghĩa (Semantic Search) bằng ngôn ngữ tự nhiên tiếng Việt.
-- **FR-SRC-02 (Vector Embedding):** Hệ thống phải tự động vector hóa mô tả sản phẩm, tiện ích, đặc điểm nổi bật bằng Cohere `embed-multilingual-v3.0` (1024 chiều) và lưu trong collection `Product` của Weaviate. Chỉ vector hóa sản phẩm có `is_search_unit = true`; truy vấn phải dùng `input_type=search_query`, nạp dùng `input_type=search_document`.
+- **FR-SRC-02 (Vector Embedding):** Hệ thống phải tự động vector hóa mô tả sản phẩm, tiện ích, đặc điểm nổi bật bằng model local `intfloat/multilingual-e5-small` (384 chiều, revision ghim trong `core/config.py`), chạy trong tiến trình backend bằng `transformers` + `torch` CPU, mean pooling, L2-normalize, và lưu trong collection của Weaviate. Chỉ vector hóa sản phẩm có `is_search_unit = true`; **câu truy vấn thêm tiền tố `query: `, văn bản sản phẩm thêm `passage: `** (thiếu tiền tố làm giảm chất lượng mà không báo lỗi). Truy vấn và văn bản luôn cùng model, cùng revision, cùng text builder; `modelVersion` = `intfloat/multilingual-e5-small:<text builder>`.
 - **FR-SRC-03 (Bộ lọc đa chiều - Faceted Filtering):** Cho phép kết hợp tìm kiếm ngữ nghĩa với các bộ lọc có cấu trúc:
   - Địa điểm (Điểm đến, thành phố, khu vực): áp dụng ở API `/search` và ở tấm tìm kiếm của trang danh mục. Trang `/search` không có bộ lọc điểm đến; điểm đến do câu truy vấn ngữ nghĩa quyết định. Vé máy bay không nằm trong kết quả `/search` (chỉ duyệt và tìm ở `/flights`).
   - Khoảng ngân sách (Giá tối thiểu, giá tối đa).
@@ -108,7 +109,7 @@ Tài liệu này đặc tả chi tiết toàn bộ các yêu cầu chức năng 
 - **NFR-PERF-02 (AI Assistant Response Time):**
   - Thời gian bắt đầu xuất luồng văn bản (First token latency) của Trợ lý AI phải $\le 1.0\text{ s}$.
   - Tổng thời gian hoàn tất một phản hồi lịch trình phức tạp phải $\le 4.0\text{ s}$.
-- **NFR-PERF-03 (Vector Indexing):** Truy vấn tương đồng phải đi qua chỉ mục ANN của Weaviate, cosine: HNSW khi chạy local/self-host, `hfresh` khi gói Weaviate Cloud chỉ cho phép loại này, không quét tuần tự. Ngân sách thời gian của Cohere Embed API cho một truy vấn phải nằm trong giới hạn p95 250 ms ở NFR-PERF-01 — nếu vượt thì phải cache vector của truy vấn lặp lại.
+- **NFR-PERF-03 (Vector Indexing):** Truy vấn tương đồng phải đi qua chỉ mục ANN của Weaviate, cosine: HNSW khi chạy local/self-host, `hfresh` khi gói Weaviate Cloud chỉ cho phép loại này, không quét tuần tự. Ngân sách tạo vector câu hỏi (model local trên CPU của backend) phải nằm trong giới hạn p95 250 ms ở NFR-PERF-01, đo trên máy đích; cache vector của truy vấn lặp lại giữ nguyên.
 
 ### 2.2. Độ Tin Cậy & Tính Xác Thực (Reliability & Grounding)
 - **NFR-REL-01 (Zero Hallucination trên dữ liệu sản phẩm):** 100% các thực thể sản phẩm hiển thị trong lịch trình của AI Assistant phải là sản phẩm có thật, đang hoạt động trong hệ thống.

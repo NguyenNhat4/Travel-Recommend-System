@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Đường dẫn tuyệt đối tới .env ở gốc repo: uvicorn và CLI chạy từ nhiều thư mục khác nhau, nên
@@ -99,27 +99,27 @@ class Settings(BaseSettings):
     # Browse events waiting to be sent; beyond this they are dropped and logged.
     cdp_event_queue_size: int = Field(default=1000, ge=1)
 
-    # RecSys (search / similar / recommendations). Model và chiều đã chốt trong PRD 22/09/2026.
-    embed_model: Literal["embed-multilingual-v3.0"] = "embed-multilingual-v3.0"
-    embed_dimension: Literal[1024] = 1024
-    cohere_api_key: str = ""
-    cohere_base_url: str = "https://api.cohere.com"
-    cohere_timeout_seconds: float = Field(default=30.0, gt=0)
-    # Chỉ job index (jobs/embed_products.py, P5 docs/plan/2026-09-29-index-cohere-song-song.md): số lô 96 text gọi
-    # Cohere cùng lúc (1 = tuần tự) và trần lượt gọi mỗi phút của job (0 = không giới hạn). Mặc định cho key Trial
-    # (100 lượt/phút), chừa chỗ cho Search dùng chung key; key Production thì nâng, vd. 8 và 1500. Search lúc chạy API
-    # không bị giới hạn này.
-    cohere_embed_concurrency: int = Field(default=4, ge=1, le=16)
-    cohere_calls_per_minute: int = Field(default=90, ge=0)
+    # RecSys (search / similar / recommendations). PRD FR-SRC-02 (chốt 06/10/2026): chỉ e5-small chạy local trong tiến trình,
+    # 384 chiều, không dùng dịch vụ embedding ngoài. Đổi revision = chạy lại job embed.
+    embed_model: Literal["intfloat/multilingual-e5-small"] = "intfloat/multilingual-e5-small"
+    # Revision Hugging Face ghim (cùng bản bench đã đo); query và document phải cùng revision.
+    embed_model_revision: str = "614241f622f53c4eeff9890bdc4f31cfecc418b3"
+    embed_dimension: int = 384  # đọc từ env là chuỗi nên để int; `_embedding_dimension` chỉ nhận 384
+    embed_device: str = "cpu"
+    embed_batch_size: int = Field(default=32, ge=1, le=256)  # số text mỗi lần chạy model (job index, prewarm)
+    embed_max_tokens: int = Field(default=512, ge=8, le=512)  # e5: tối đa 512 token kể cả tiền tố; dài hơn thì cắt đuôi
     weaviate_url: str = "http://localhost:8080"
     weaviate_api_key: str = ""
-    weaviate_collection: str = "Product"
+    # Collection vector e5-small 384 chiều (env VECTOR_COLLECTION). Tên biến mới thay WEAVIATE_COLLECTION: env cũ trên VM
+    # (`WEAVIATE_COLLECTION=Product`, vector Cohere) bị bỏ qua, nên collection e5 dựng sẵn trước khi deploy được (chốt 06/10).
+    vector_collection: str = "ProductE5Small"
     # Chỉ dùng khi job index tạo collection mới; Weaviate Cloud của nhóm chỉ cho phép hfresh.
     weaviate_vector_index_type: Literal["hnsw", "hfresh"] = "hnsw"
     weaviate_timeout_seconds: float = Field(default=30.0, gt=0)
     # Cổng gRPC cho truy vấn top-K mỗi request; Weaviate Cloud tự dùng 443 của host grpc-<cluster>.
     weaviate_grpc_port: int = Field(default=50051, ge=1, le=65535)
-    search_cutoff: float = 0.52  # quy tắc tạm của Search contract; phải benchmark lại với Cohere
+    # Cosine e5 dồn ở 0,85–0,92; 0,84 hiệu chỉnh trên gold_v4 (PRD deployment-plan §2).
+    search_cutoff: float = 0.84
     search_max_limit: int = 50
     search_candidate_k: int = Field(default=200, ge=1)
     recommend_candidate_k: int = 200
@@ -131,13 +131,51 @@ class Settings(BaseSettings):
     search_lexical_k: int = Field(default=10, ge=0)  # chỉ vớt hit BM25 có rank ≤ giá trị này
     search_lexical_cutoff: float = 0.50  # cosine tối thiểu của hit được vớt; luôn ≤ search_cutoff
     search_lexical_min_coverage: float = Field(default=0.6, ge=0, le=1)  # tên phải chứa ≥ 60% token của truy vấn
+    # FR-SRC-03 (05/10): lọc cứng theo địa danh suy ra từ câu (domain/search/destination.py; contract 1.14.0
+    # `diagnostics.destinationFilter`, `appliedFilters`). Mặc định tắt cho tới khi bench xác nhận trên slice dest_type và các slice
+    # guard. `SEARCH_DEST_FILTER_FALLBACK`: F rỗng sau khi lọc → chạy lại không lọc (FR-SRC-04).
+    search_dest_filter: bool = False
+    search_dest_filter_fallback: bool = True
+    # Câu gõ không dấu (slice no_diacritics; contract 1.14.0 `diagnostics.queryProfile`): `relax` nới cổng vớt BM25 và (tuỳ chọn)
+    # cutoff dense cho riêng câu phát hiện không dấu (≥ min_tokens token); `off` = như cũ. Giá trị nới là tạm, chưa qua dev/test.
+    search_no_diacritics_mode: Literal["off", "relax"] = "off"
+    search_no_diacritics_lexical_k: int = Field(default=20, ge=0)
+    search_no_diacritics_lexical_cutoff: float = 0.0
+    search_no_diacritics_min_coverage: float = Field(default=0.4, ge=0, le=1)
+    search_no_diacritics_cutoff: float | None = None   # None = dùng SEARCH_CUTOFF
+    search_no_diacritics_min_tokens: int = Field(default=3, ge=1)
+    # Query plan — kiến trúc Phase A (docs/spec/bench/kien_truc_search_ota_so_do_va_giai_doan.md; FR-SRC-01/03; contract 1.15.0
+    # `diagnostics.queryPlan`): hard constraint suy từ câu, mỗi họ một cờ, mặc định tắt cho tới khi gold v4 xác nhận. Tắt vẫn
+    # parse và khai ở `queryPlan` (bench đo độ chính xác parse). Tham số request tường minh (origin, priceMin/priceMax,
+    # starRatingMin, availableOnly) luôn được áp theo contract, không phụ thuộc cờ.
+    search_negation_filter: bool = False   # F3: "không có / không ghi nhận X" → loại unit CÓ GHI NHẬN tiện ích X ([C2])
+    search_taxonomy_filter: bool = False   # F4: câu nêu đúng một loại sản phẩm → lọc taxonomy (≥ 2 loại thì không)
+    search_route_filter: bool = False      # F5: câu vé máy bay "từ A đến B" → lọc originCity / destinationCity của tuyến
+    search_numeric_filter: bool = False    # F6: giá ("dưới 2 triệu") hard, sao ("4 sao") soft — suy từ câu
+    # 06/10 (kiến trúc search §3, §4, §6, §7 5C, §8, §11; contract 1.16.0): mặc định tắt / trung tính — mọi giá trị mặc định cho
+    # đúng kết quả 1.15.0. travelContext.guests của POST /search luôn áp (tham số request), không phụ thuộc cờ.
+    search_tone_normalize: bool = False        # dời dấu thanh của câu về kiểu đa số của catalog (hoà ↔ hòa) trước embed/BM25
+    search_taxonomy_strong_only: bool = False  # F4 chỉ lọc taxonomy khi cue loại MẠNH ("khách sạn"); cue yếu ("phòng") chỉ khai
+    search_party_filter: bool = False          # số khách suy từ câu ("3 người") → loại unit có sức chứa ĐÃ BIẾT nhỏ hơn
+    # Kênh fuzzy tên gần đúng (trigram cửa sổ, domain/search/fuzzy.py): 0 = tắt. Bật thì unit có rank fuzzy ≤ K, độ giống
+    # ≥ MIN_SIM (0.6 vớt cả tên chung chung — đo 06/10) và cosine ≥ SEARCH_LEXICAL_CUTOFF được vớt vào R. Chỉ ở hybrid.
+    search_fuzzy_k: int = Field(default=0, ge=0)
+    search_fuzzy_candidate_k: int = Field(default=50, ge=1)   # số ứng viên kênh fuzzy đem fuse
+    search_fuzzy_min_sim: float = Field(default=0.75, ge=0, le=1)
+    # Trọng số RRF theo nhánh (kiến trúc §8 weighted fusion); 1.0 = RRF thường. Chỉ tune trên split dev của gold.
+    search_rrf_dense_weight: float = Field(default=1.0, ge=0)
+    search_rrf_lexical_weight: float = Field(default=1.0, ge=0)
+    search_rrf_fuzzy_weight: float = Field(default=1.0, ge=0)
+    # Ghi một dòng app.search_logs mỗi lượt /search trang đầu (câu gốc, appliedFilters.hard + confidence, productId trang trả
+    # về, total, modelVersion, latencyMs, cdp_user_id khi có Bearer hợp lệ). Ghi nền qua hàng đợi có trần; lỗi không tới response.
+    search_log_queries: bool = False
     # Cache vector truy vấn /search (NFR-PERF-03; contract 1.12.0 `diagnostics.embedCache`): LRU trong tiến trình, khoá =
-    # câu sau chuẩn hoá + gộp khoảng trắng; sống qua các lần nạp lại catalog vì bọc quanh client Cohere dùng chung.
+    # câu sau chuẩn hoá + gộp khoảng trắng; sống qua các lần nạp lại catalog vì bọc quanh embedder dùng chung.
     search_embed_cache: bool = True
-    search_embed_cache_size: int = Field(default=10000, ge=1)  # 10k vector float32 1024 chiều ≈ 41 MB
+    search_embed_cache_size: int = Field(default=10000, ge=1)  # 10k vector float32 384 chiều ≈ 15 MB
     search_embed_cache_log_every: int = Field(default=500, ge=1)  # log hits/misses mỗi N lượt tra
     # Nạp sẵn cache lúc khởi động (sau lần nạp catalog đầu tiên, không chặn startup): file câu gold + head query của
-    # app.search_logs; pacing theo số câu / phút để không đụng trần Cohere (Trial 100 lượt/phút, mỗi lượt ≤ 96 câu).
+    # app.search_logs; pacing theo số câu / phút để prewarm không chiếm hết CPU của backend.
     search_prewarm: bool = True
     search_prewarm_file: str = "data/search_prewarm_queries.txt"  # tương đối theo src/backend
     search_prewarm_head_queries: int = Field(default=200, ge=0)
@@ -186,6 +224,12 @@ class Settings(BaseSettings):
         if value.startswith(("sk_live_", "rk_live_")):
             raise ValueError("STRIPE_SECRET_KEY phải là khoá test (sk_test_…); dự án không dùng Stripe live mode")
         return value
+
+    @model_validator(mode="after")
+    def _embedding_dimension(self):
+        if self.embed_dimension != 384:
+            raise ValueError(f"EMBED_DIMENSION của {self.embed_model} là 384, đang là {self.embed_dimension}")
+        return self
 
     @field_validator(*_OPTIONAL_BLANK_IS_NONE, mode="before")
     @classmethod

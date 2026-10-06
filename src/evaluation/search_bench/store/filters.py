@@ -9,6 +9,17 @@ AST (spec Part 4):
 Ngữ nghĩa (giống `vector_bench/filters.py`): NULL không khớp eq / in / so sánh; `not` chỉ được bọc `eq` trên trường
 không bao giờ null hoặc `contains_any` trên amenity_ids (mảng rỗng thoả "không chứa"). Amenity ghi bằng **khoá**
 (`kids_club`, `raw:<slug>`) hoặc id int; `resolve` đổi khoá → id theo `amenity_vocab.json` của dataset.
+
+Phase A (05/10, kiến trúc search OTA §4–§6) — chỉ cho evaluator pandas `mask()` (filter `forbidden` của gold / overrides):
+- `origin_city`, `destination_city`: keyword CÓ THỂ null ("" ngoài tuyến bay — cột RAM `runner.load_env` gắn thêm, không nằm
+  trong items.parquet); `not` được bọc `eq` trên hai trường này ("không phải chặng A→B" giữ cả unit không có chặng).
+- `brand`: keyword có thể null của items.parquet; `not(eq brand)` cho `appliedFilters.hard.mustNotBrands` của arm APP ("không
+  phải thương hiệu X" giữ cả unit không ghi thương hiệu). `to_weaviate` vẫn dựng `eq brand` nhưng từ chối `not(eq brand)`.
+- `features`: mảng **khoá tiện ích của backend** (`domain/search/amenities.py`, vd `pool`, `kitchen`) — `contains_any` /
+  `contains_all` so chuỗi, `resolve` KHÔNG đổi sang id.
+- `not` được bọc `and` / `or` (filter tuyến: `not(and(origin, destination))`).
+`to_weaviate` không diễn đạt được các hình dạng này và báo `FilterError` rõ — nó chỉ dùng cho filter gold của arm không
+phải APP (vẫn đơn giản).
 """
 from __future__ import annotations
 
@@ -18,11 +29,18 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-KEYWORD_FIELDS = ("product_id", "taxonomy", "variant", "destination", "province", "brand", "parent_product_id")
+KEYWORD_FIELDS = ("product_id", "taxonomy", "variant", "destination", "province", "brand", "parent_product_id",
+                  "origin_city", "destination_city")
 NON_NULL_KEYWORDS = ("product_id", "taxonomy", "variant", "destination")
+#: keyword có thể null nhưng vẫn được `not(eq)` (ngữ nghĩa "không phải X" giữ cả dòng không có giá trị) — chỉ evaluator pandas
+NOT_EQ_NULLABLE = ("origin_city", "destination_city", "brand")
+#: cột RAM của bench (`runner.load_env` gắn), không có trong collection Weaviate — `to_weaviate` từ chối mọi toán tử trên chúng
+RAM_ONLY_FIELDS = ("origin_city", "destination_city")
 NUMBER_FIELDS = ("star_rating", "unit_price_min")
 BOOL_FIELDS = ("ticketed", "family_friendly", "ocean_view", "available")
-ARRAY_FIELDS = ("amenity_ids",)
+ARRAY_FIELDS = ("amenity_ids", "features")
+#: mảng chuỗi (khoá backend) — `resolve` giữ nguyên, `mask` so chuỗi
+STRING_ARRAY_FIELDS = ("features",)
 RANGE_OPS = ("lte", "lt", "gte", "gt")
 OPS = ("and", "or", "not", "eq", "in", "contains_all", "contains_any", *RANGE_OPS)
 
@@ -55,10 +73,12 @@ def validate(node: Any) -> None:
             validate(ch)
     elif op == "not":
         cop, carg = _one(arg)
-        ok = (cop == "eq" and _pair(cop, carg)[0] in NON_NULL_KEYWORDS) or \
+        ok = cop in ("and", "or") or \
+             (cop == "eq" and _pair(cop, carg)[0] in (*NON_NULL_KEYWORDS, *NOT_EQ_NULLABLE)) or \
              (cop == "contains_any" and _pair(cop, carg)[0] in ARRAY_FIELDS)
         if not ok:
-            raise FilterError(f"not chỉ bọc eq trên {', '.join(NON_NULL_KEYWORDS)} hoặc contains_any trên amenity_ids, gặp {arg!r}")
+            raise FilterError(f"not chỉ bọc and/or, eq trên {', '.join((*NON_NULL_KEYWORDS, *NOT_EQ_NULLABLE))} hoặc "
+                              f"contains_any trên {', '.join(ARRAY_FIELDS)}, gặp {arg!r}")
         validate(arg)
     elif op == "eq":
         f, v = _pair(op, arg)
@@ -74,7 +94,9 @@ def validate(node: Any) -> None:
     elif op in ("contains_all", "contains_any"):
         f, v = _pair(op, arg)
         if f not in ARRAY_FIELDS or not isinstance(v, list) or not v or not all(isinstance(x, (str, int)) and not isinstance(x, bool) for x in v):
-            raise FilterError(f"{op} cần [amenity_ids, [khoá|id…]] khác rỗng, gặp {arg!r}")
+            raise FilterError(f"{op} cần [{'|'.join(ARRAY_FIELDS)}, [khoá|id…]] khác rỗng, gặp {arg!r}")
+        if f in STRING_ARRAY_FIELDS and not all(isinstance(x, str) for x in v):
+            raise FilterError(f"{op} {f}: giá trị phải là khoá chuỗi (từ vựng backend amenities.py), gặp {v!r}")
     else:  # range
         f, v = _pair(op, arg)
         if f not in NUMBER_FIELDS or isinstance(v, bool) or not isinstance(v, (int, float)):
@@ -105,6 +127,8 @@ def resolve(node: dict, key_to_id: dict[str, int]) -> dict:
     if op == "not":
         return {op: resolve(arg, key_to_id)}
     if op in ("contains_all", "contains_any"):
+        if arg[0] in STRING_ARRAY_FIELDS:            # khoá backend giữ nguyên chuỗi, chỉ bỏ trùng
+            return {op: [arg[0], sorted(set(arg[1]))]}
         out = []
         for x in arg[1]:
             if isinstance(x, int):
@@ -128,9 +152,15 @@ def to_weaviate(node: dict | None):
     if op == "or":
         return Filter.any_of([to_weaviate(ch) for ch in arg])
     if op == "not":
-        cop, (f, v) = _one(arg)
+        cop, carg = _one(arg)
+        if cop in ("and", "or") or (cop == "eq" and carg[0] not in NON_NULL_KEYWORDS) or carg[0] in STRING_ARRAY_FIELDS:
+            raise FilterError(f"to_weaviate không diễn đạt được not{{{cop}}} trên {carg!r} — hình dạng này chỉ dành cho evaluator "
+                              "pandas (filter forbidden của gold)")
+        f, v = carg
         return Filter.by_property(f).not_equal(v) if cop == "eq" else Filter.by_property(f).contains_none(list(v))
     f, v = arg
+    if f in STRING_ARRAY_FIELDS or f in RAM_ONLY_FIELDS:
+        raise FilterError(f"to_weaviate: trường {f!r} là cột RAM của bench, không có trong collection Weaviate")
     p = Filter.by_property(f)
     if op == "eq":
         return p.equal(v)
@@ -154,6 +184,13 @@ def _as_set(x: Any) -> set:
     return {int(i) for i in x}
 
 
+def _as_str_set(x: Any) -> set:
+    """Mảng khoá chuỗi (`features`): None / NaN → rỗng; phần tử về str."""
+    if x is None or (isinstance(x, float) and np.isnan(x)):
+        return set()
+    return {str(i) for i in x}
+
+
 def mask(node: dict | None, df: pd.DataFrame) -> np.ndarray:
     """Evaluator tham chiếu: True cho dòng thoả filter (AST đã resolve sang id)."""
     if node is None:
@@ -172,12 +209,13 @@ def mask(node: dict | None, df: pd.DataFrame) -> np.ndarray:
     if op == "in":
         vals = set(v)
         return np.array([x in vals for x in col], dtype=bool)
+    as_set = _as_str_set if f in STRING_ARRAY_FIELDS else _as_set
     if op == "contains_all":
         need = set(v)
-        return np.array([need <= _as_set(x) for x in col], dtype=bool)
+        return np.array([need <= as_set(x) for x in col], dtype=bool)
     if op == "contains_any":
         need = set(v)
-        return np.array([bool(need & _as_set(x)) for x in col], dtype=bool)
+        return np.array([bool(need & as_set(x)) for x in col], dtype=bool)
     num = pd.to_numeric(col, errors="coerce").to_numpy(dtype=float)
     with np.errstate(invalid="ignore"):
         res = {"lte": num <= v, "lt": num < v, "gte": num >= v, "gt": num > v}[op]

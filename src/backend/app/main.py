@@ -69,6 +69,7 @@ from src.backend.app.domain.booking import DraftPolicy, HoldPolicy
 from src.backend.app.domain.catalog import ListingItem
 from src.backend.app.application.recommendation import BuildPopularity, RecommendForUser
 from src.backend.app.application.search import SearchProducts, SimilarProducts, SuggestProducts
+from src.backend.app.application.search.search_log import SearchLogRecorder
 from src.backend.app.domain.search import HybridConfig
 from src.backend.app.core.config import REPO_ROOT, Settings, get_settings, shared_backend_violations
 from src.backend.app.core.logging_config import configure_logging, log_event
@@ -109,6 +110,7 @@ from src.backend.app.infrastructure.persistence.postgres_booking import (
     PostgresProductCatalog,
 )
 from src.backend.app.infrastructure.persistence.postgres_catalog import PostgresProductLookup, PostgresProductQuery
+from src.backend.app.infrastructure.persistence.postgres_search_logs import PostgresSearchLogWriter
 
 configure_logging()  # một lần, trước mọi logger.info lúc nạp module (docs/spec/logging-schema.md)
 logger = logging.getLogger("uvicorn.error")
@@ -142,7 +144,7 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
     try:
         if vector_store is None:
             from src.backend.app.domain.catalog import TEXT_BUILDER_VERSION
-            from src.backend.app.infrastructure.embeddings.cohere_embedder import CohereEmbedder
+            from src.backend.app.infrastructure.embeddings.factory import build_embedder
             from src.backend.app.infrastructure.vectors.weaviate_store import (
                 WeaviateVectorSearch,
                 WeaviateVectorStore,
@@ -150,16 +152,10 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
             )
 
             if embedder is None:
-                embedder = CohereEmbedder(
-                    settings.cohere_api_key,
-                    settings.embed_model,
-                    base_url=settings.cohere_base_url,
-                    dimension=settings.embed_dimension,
-                    timeout_seconds=settings.cohere_timeout_seconds,
-                )
+                embedder = build_embedder(settings)  # e5-small chạy local (PRD FR-SRC-02)
                 owns_embedder = True
                 if settings.search_embed_cache:
-                    # Cache vector truy vấn (NFR-PERF-03, contract 1.12.0 `embedCache`) bọc quanh client Cohere dùng chung:
+                    # Cache vector truy vấn (NFR-PERF-03, contract 1.12.0 `embedCache`) bọc quanh embedder dùng chung:
                     # RecsysRefresher truyền lại object này mỗi lần nạp catalog nên cache sống qua reload.
                     from src.backend.app.application.search.query_cache import CachingQueryEmbedder, QueryEmbeddingCache
 
@@ -176,7 +172,7 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
                         grpc_port=settings.weaviate_grpc_port,
                         timeout_seconds=settings.weaviate_timeout_seconds,
                     ),
-                    collection=settings.weaviate_collection,
+                    collection=settings.vector_collection,
                     dimension=settings.embed_dimension,
                 ),
                 expected_model_version=f"{settings.embed_model}:{TEXT_BUILDER_VERSION}",
@@ -198,14 +194,43 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
     popularity = BuildPopularity(index, cdp_reader)()
     logger.info("startup.recsys.popularity.build.ready")
     # Hybrid dùng chính adapter vector làm nhánh BM25 (cùng collection `Product`); tắt bằng SEARCH_HYBRID=false.
+    # Kênh fuzzy + trọng số RRF (contract 1.16.0) dùng chung cho cả bộ ngưỡng câu không dấu; mặc định tắt / 1.0.
+    fusion = dict(
+        fuzzy_k=settings.search_fuzzy_k,
+        fuzzy_candidate_k=settings.search_fuzzy_candidate_k,
+        fuzzy_min_sim=settings.search_fuzzy_min_sim,
+        dense_weight=settings.search_rrf_dense_weight,
+        lexical_weight=settings.search_rrf_lexical_weight,
+        fuzzy_weight=settings.search_rrf_fuzzy_weight,
+    )
     hybrid = HybridConfig(
         rrf_k=settings.search_rrf_k,
         lexical_k=settings.search_lexical_k,
         lexical_cutoff=min(settings.search_lexical_cutoff, settings.search_cutoff),  # contract: lexicalCutoff ≤ cutoff
         min_coverage=settings.search_lexical_min_coverage,
+        **fusion,
     ) if settings.search_hybrid and hasattr(vector_search, "bm25") else None
     logger.info("startup.recsys.search.mode=%s", "HYBRID_CANDIDATE_SCORE" if hybrid else "ANN_CANDIDATE_SCORE")
     logger.info("startup.recsys.search.normalize=%s", settings.search_normalize)
+    # Câu không dấu (contract 1.14.0 `queryProfile`): bộ ngưỡng vớt riêng, chỉ khi hybrid bật và SEARCH_NO_DIACRITICS_MODE=relax.
+    relax = settings.search_no_diacritics_mode == "relax"
+    no_diacritics_cutoff = settings.search_no_diacritics_cutoff if relax else None
+    no_diacritics = HybridConfig(
+        rrf_k=settings.search_rrf_k,
+        lexical_k=settings.search_no_diacritics_lexical_k,
+        lexical_cutoff=min(settings.search_no_diacritics_lexical_cutoff,
+                           no_diacritics_cutoff if no_diacritics_cutoff is not None else settings.search_cutoff),
+        min_coverage=settings.search_no_diacritics_min_coverage,
+        **fusion,
+    ) if hybrid and relax else None
+    logger.info("startup.recsys.search.dest_filter=%s no_diacritics=%s", settings.search_dest_filter,
+                settings.search_no_diacritics_mode)
+    logger.info("startup.recsys.search.query_plan negation=%s taxonomy=%s strong_only=%s route=%s numeric=%s party=%s "
+                "tone=%s", settings.search_negation_filter, settings.search_taxonomy_filter,
+                settings.search_taxonomy_strong_only, settings.search_route_filter, settings.search_numeric_filter,
+                settings.search_party_filter, settings.search_tone_normalize)
+    logger.info("startup.recsys.search.fusion fuzzy_k=%s weights=%s/%s/%s", settings.search_fuzzy_k if hybrid else 0,
+                settings.search_rrf_dense_weight, settings.search_rrf_lexical_weight, settings.search_rrf_fuzzy_weight)
     product_popularity = {index.units[u].product_id: s for u, s in popularity.unit_scores().items()}
     return {
         "recsys_embedder": embedder,
@@ -223,6 +248,18 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
             hybrid=hybrid,
             lexical_candidate_k=settings.search_lexical_candidate_k,
             normalize=settings.search_normalize,
+            dest_filter=settings.search_dest_filter,
+            dest_filter_fallback=settings.search_dest_filter_fallback,
+            no_diacritics=no_diacritics,
+            no_diacritics_cutoff=no_diacritics_cutoff,
+            no_diacritics_min_tokens=settings.search_no_diacritics_min_tokens,
+            negation_filter=settings.search_negation_filter,
+            taxonomy_filter=settings.search_taxonomy_filter,
+            route_filter=settings.search_route_filter,
+            numeric_filter=settings.search_numeric_filter,
+            tone_normalize=settings.search_tone_normalize,
+            taxonomy_strong_only=settings.search_taxonomy_strong_only,
+            party_filter=settings.search_party_filter,
         ),
         "similar": SimilarProducts(index, vector_search),
         # GET /search/suggestions (FR-SRC-05): khớp chữ trên chính index này, không gọi embed hay kho vector.
@@ -238,13 +275,13 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
 
 #: Chưa nạp được lần nào (database chưa seed, Weaviate chưa index…) thì thử lại sớm, không chờ trọn chu kỳ.
 RECSYS_RETRY_SECONDS = 30.0
-#: Shutdown chờ prewarm đang chạy tối đa chừng này rồi mới đóng client Cohere (prewarm kiểm `stop` giữa hai lô).
+#: Shutdown chờ prewarm đang chạy tối đa chừng này rồi mới đóng embedder (prewarm kiểm `stop` giữa hai lô).
 PREWARM_SHUTDOWN_WAIT_SECONDS = 10.0
 
 
 def prewarm_from_settings(settings, services: dict, stop: threading.Event):
     """Nạp sẵn cache vector truy vấn: file câu gold (`SEARCH_PREWARM_FILE`, tương đối theo src/backend) + head query của
-    `app.search_logs`. Chạy trong thread (Cohere sync); `stop` cắt giữa hai lô khi shutdown."""
+    `app.search_logs`. Chạy trong thread (model chạy đồng bộ); `stop` cắt giữa hai lô khi shutdown."""
     from src.backend.app.application.search.prewarm import prewarm, read_query_file
     from src.backend.app.infrastructure.persistence.postgres_search_logs import PostgresSearchLogReader
 
@@ -264,7 +301,7 @@ def prewarm_from_settings(settings, services: dict, stop: threading.Event):
 class RecsysRefresher:
     """Nạp lại engine recsys theo chu kỳ để giá, trạng thái và cửa sổ ngày theo kịp job cào.
 
-    Client Cohere/Weaviate dùng chung giữa các lần nạp; request đang chạy giữ use case của bản cũ nên không
+    Embedder/client Weaviate dùng chung giữa các lần nạp; request đang chạy giữ use case của bản cũ nên không
     client nào bị đóng giữa chừng. Lần nạp lại lỗi thì giữ bản đang phục vụ thay vì tắt recsys.
     """
 
@@ -322,7 +359,7 @@ class RecsysRefresher:
             logger.warning("search.prewarm.failed error=%s", exc)
 
     async def wait_prewarm(self, timeout: float = PREWARM_SHUTDOWN_WAIT_SECONDS) -> None:
-        """Shutdown: chờ prewarm dừng (đã nhận `stop`) trước khi đóng client Cohere dùng chung."""
+        """Shutdown: chờ prewarm dừng (đã nhận `stop`) trước khi đóng embedder dùng chung."""
         if self._prewarm_task is None:
             return
         try:
@@ -563,6 +600,13 @@ async def lifespan(app: FastAPI):
             setattr(app.state, name, service)
         logger.info("startup.auth.ready ratelimit=%s", "redis" if redis_client else "memory")
         app.state.product_lookup = PostgresProductLookup(settings.database_url)
+        # Log tìm kiếm (SEARCH_LOG_QUERIES, mặc định tắt): hàng đợi có trần + một luồng ghi app.search_logs; None → route
+        # /search không ghi gì và không xác thực Bearer.
+        app.state.search_log = (SearchLogRecorder(PostgresSearchLogWriter(settings.database_url))
+                                if settings.search_log_queries else None)
+        if app.state.search_log is not None:
+            stack.callback(app.state.search_log.close)
+        logger.info("startup.search_log enabled=%s", settings.search_log_queries)
         app.state.browse_event_recorder = BackgroundCdpEventRecorder(
             app.state.cdp_client, max_queue=settings.cdp_event_queue_size
         )
@@ -688,7 +732,7 @@ settings = get_settings()
 app = FastAPI(
     title=settings.app_name,
     description="Travel recommendation and itinerary API",
-    version="1.12.0",
+    version="1.17.0",
     lifespan=lifespan,
 )
 

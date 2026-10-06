@@ -1,0 +1,40 @@
+{
+  "run_id": "2026-10-06-gold-v4-r1",
+  "arms": [
+    "APP.e5s.dense",
+    "APP.e5s.dense_nocut",
+    "APP.e5s.hybrid",
+    "APP.e5s.hybrid_nocut",
+    "APP.e5s.hybrid_norm",
+    "APP.e5s.hybrid_norm_c84",
+    "APP.e5s.hybrid_norm_c84_dest",
+    "APP.e5s.hybrid_norm_c84_dest_nodia",
+    "APP.e5s.hybrid_norm_c84_dest_nodia_nc80",
+    "APP.e5s.hybrid_norm_c84_dest_nodia_nc80_qp",
+    "APP.e5s.hybrid_norm_c84_nodia",
+    "APP.e5s.hybrid_norm_c84_nodia_nc80",
+    "APP.e5s.hybrid_norm_nocut",
+    "APP.e5s.hybrid_norm_nocut_dest",
+    "APP.e5s.hybrid_norm_nocut_dest_nodia",
+    "APP.e5s.hybrid_norm_nocut_neg",
+    "APP.e5s.hybrid_norm_nocut_nodia",
+    "APP.e5s.hybrid_norm_nocut_num",
+    "APP.e5s.hybrid_norm_nocut_qp",
+    "APP.e5s.hybrid_norm_nocut_route",
+    "APP.e5s.hybrid_norm_nocut_tax"
+  ],
+  "k": 10,
+  "gold_version": "gold_v4",
+  "tag": "D9a",
+  "snapshot": "2026-09-23",
+  "n_to_label": 829,
+  "n_auto_ooc": 56,
+  "n_queries": 121,
+  "files": {
+    "A": {
+      "n_queries": 121,
+      "n_pairs": 829
+    }
+  },
+  "created_at": "2026-10-06T00:14:39+07:00"
+}
