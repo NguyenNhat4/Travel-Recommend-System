@@ -35,6 +35,7 @@ from src.backend.app.application.auth.principal import AuthPrincipal
 from src.backend.app.application.catalog.errors import CatalogError
 from src.backend.app.application.catalog.views import destination_list
 from src.backend.app.application.ports.call_telemetry import CallTelemetry
+from src.backend.app.application.ports.embedder import EmbeddingUnavailableError
 from src.backend.app.application.ports.itinerary_tools import ToolError
 from src.backend.app.application.recommendation.responses import recommendation_response
 from src.backend.app.application.search.responses import search_tool_payload
@@ -163,6 +164,9 @@ class InProcessItineraryTools:
             raise
         except CatalogError as exc:
             raise ToolError(exc.code, retryable=exc.retryable, http_status=exc.http_status) from None
+        except EmbeddingUnavailableError as exc:  # adapter đã log `cohere.embed.*`; lý do đi tiếp vào trace
+            raise ToolError("SEARCH_UNAVAILABLE", retryable=exc.retryable, http_status=503,
+                            reason=f"embed:{exc.reason}") from None
         except Exception as exc:
             # Tên kiểu lỗi và các frame traceback (chỉ file, dòng, mã nguồn), không kèm thông điệp: thông điệp có thể
             # chứa câu truy vấn của người dùng. Frame đủ để lần ra bug, vì lỗi này bị thử lại chứ không nổi lên 500.

@@ -57,6 +57,7 @@ from src.backend.app.application.booking import (
 from src.backend.app.application.catalog.use_cases import GetProductDetail, GetSimilarProducts, ListProducts
 from src.backend.app.application.itinerary.history import ConversationHistory
 from src.backend.app.application.itinerary.engine_tools import InProcessItineraryTools
+from src.backend.app.application.ports.embedder import EmbeddingUnavailableError
 from src.backend.app.application.telemetry import traced
 from src.backend.app.application.itinerary.use_cases import PlanItinerary
 from src.backend.app.application.tracking.behaviour import BehaviourTracker
@@ -148,6 +149,7 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
                     base_url=settings.cohere_base_url,
                     dimension=settings.embed_dimension,
                     timeout_seconds=settings.cohere_timeout_seconds,
+                    max_wait_seconds=settings.cohere_query_max_wait_seconds,
                 )
                 owns_embedder = True
                 if settings.search_embed_cache:
@@ -312,6 +314,12 @@ class RecsysRefresher:
             report = await asyncio.to_thread(self._prewarm or prewarm_from_settings, self.settings, self.services,
                                              self._prewarm_stop)
             logger.info("search.prewarm.done %s", " ".join(f"{k}={v}" for k, v in report.as_dict().items()))
+        except EmbeddingUnavailableError as exc:
+            logger.warning("search.prewarm.failed reason=%s", exc.reason)
+            if exc.reason == "quota_exhausted":
+                # Prewarm chạy ngay sau startup: key hết hạn mức thì báo to ở đây, trước khi có ai chat.
+                logger.error("search.embed.unavailable reason=quota_exhausted — Search và trợ lý sẽ trả "
+                             "SEARCH_UNAVAILABLE cho tới khi thay COHERE_API_KEY")
         except Exception as exc:  # noqa: BLE001 — prewarm hỏng thì cache chỉ nạp dần theo request, không ảnh hưởng phục vụ
             logger.warning("search.prewarm.failed error=%s", exc)
 

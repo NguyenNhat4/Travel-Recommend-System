@@ -23,7 +23,7 @@ reason `docs/prd/architecture.md` keeps `cdp.products.attributes` as open JSONB)
 
 from __future__ import annotations
 
-from typing import Any, TypedDict
+from typing import Any, NotRequired, TypedDict
 
 
 class Party(TypedDict, total=False):
@@ -171,6 +171,7 @@ class ToolErrorPayload(TypedDict):
     code: str
     retryable: bool
     httpStatus: int | None
+    reason: NotRequired[str]  # kiểm tra nào hỏng; chỉ có khi nơi raise biết lý do
 
 
 class ToolCall(TypedDict, total=False):

@@ -103,6 +103,9 @@ class Settings(BaseSettings):
     cohere_api_key: str = ""
     cohere_base_url: str = "https://api.cohere.com"
     cohere_timeout_seconds: float = Field(default=30.0, gt=0)
+    # Search lúc phục vụ request: tổng thời gian chờ backoff tối đa khi Cohere trả 429/5xx, rồi báo SEARCH_UNAVAILABLE.
+    # Job index không dùng giá trị này (vẫn thử lại đủ lượt).
+    cohere_query_max_wait_seconds: float = Field(default=2.0, ge=0)
     # Chỉ job index (jobs/embed_products.py, P5 docs/plan/2026-09-29-index-cohere-song-song.md): số lô 96 text gọi
     # Cohere cùng lúc (1 = tuần tự) và trần lượt gọi mỗi phút của job (0 = không giới hạn). Mặc định cho key Trial
     # (100 lượt/phút), chừa chỗ cho Search dùng chung key; key Production thì nâng, vd. 8 và 1500. Search lúc chạy API

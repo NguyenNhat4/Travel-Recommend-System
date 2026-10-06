@@ -669,7 +669,7 @@ Log không được chứa:
 - Thông tin thanh toán đầy đủ.
 - Dữ liệu cá nhân không cần thiết.
 
-Mỗi lời gọi tool kết thúc trong hạn ghi một dòng `itinerary.tool requestId= name= outcome= code= retryable= durationMs=`, thay cho access log mà mode `http` từng có. Lời gọi quá hạn bị huỷ trước khi tới dòng đó, nên chỉ ghi WARNING `itinerary.tool.timeout requestId= name=`. Ở mode `inprocess`, engine chưa sẵn sàng ghi WARNING `itinerary.tool.unavailable ... reason=not_ready`; engine lỗi bất ngờ ghi cùng dòng đó với tên kiểu lỗi, kèm các frame traceback (file, dòng, mã nguồn) để lần ra bug. Các dòng này không ghi tham số tool, thông điệp lỗi hay token.
+Mỗi lời gọi tool kết thúc trong hạn ghi một dòng `itinerary.tool requestId= name= outcome= code= retryable= durationMs=`, thay cho access log mà mode `http` từng có. Lời gọi quá hạn bị huỷ trước khi tới dòng đó, nên chỉ ghi WARNING `itinerary.tool.timeout requestId= name=`. Ở mode `inprocess`, engine chưa sẵn sàng ghi WARNING `itinerary.tool.unavailable ... reason=not_ready`; engine lỗi bất ngờ ghi cùng dòng đó với tên kiểu lỗi, kèm các frame traceback (file, dòng, mã nguồn) để lần ra bug. Embedding (Cohere) lỗi thì tool trả `SEARCH_UNAVAILABLE` 503 trong vài giây, không chờ tới `TOOL_TIMEOUT`; `error` trong `tool_results` có thêm `reason: embed:<lý do>` (`quota_exhausted` — không retryable, `rate_limited`, `upstream_5xx`, `timeout`, `http_error`), nên lý do hiện ngay ở output node `tool` trên trace. Khoá `reason` chỉ dùng nội bộ, không đi ra API của trợ lý; nơi raise không biết lý do thì bỏ trống khoá này. Các dòng này không ghi tham số tool, thông điệp lỗi hay token.
 
 ### 7.4. Versioning
 

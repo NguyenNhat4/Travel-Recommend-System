@@ -37,14 +37,19 @@ class CatalogPort(Protocol):
 
 class ToolError(Exception):
     """Safe internal error: never includes response bodies or credentials."""
-    def __init__(self, code: str, *, retryable: bool = False, http_status: int | None = None):
+    def __init__(self, code: str, *, retryable: bool = False, http_status: int | None = None,
+                 reason: str | None = None):
         super().__init__(code)
         self.code = code
         self.retryable = retryable
         self.http_status = http_status
+        self.reason = reason  # từ cố định do backend đặt (vd. `embed:quota_exhausted`), không chứa text upstream
 
     def as_dict(self) -> ToolErrorPayload:
-        return {"code": self.code, "retryable": self.retryable, "httpStatus": self.http_status}
+        payload: ToolErrorPayload = {"code": self.code, "retryable": self.retryable, "httpStatus": self.http_status}
+        if self.reason:
+            payload["reason"] = self.reason
+        return payload
 
 
 class ToolExecutorPort(Protocol):

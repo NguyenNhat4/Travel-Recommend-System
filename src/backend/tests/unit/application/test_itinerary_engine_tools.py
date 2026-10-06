@@ -24,6 +24,7 @@ from src.backend.app.application.catalog.use_cases import GetProductDetail, GetS
 from src.backend.app.application.itinerary.contracts import valid
 from src.backend.app.application.itinerary.engine_tools import InProcessItineraryTools
 from src.backend.app.application.itinerary.tool_contracts import validate
+from src.backend.app.application.ports.embedder import EmbeddingUnavailableError
 from src.backend.app.application.ports.itinerary_tools import ToolError
 from src.backend.app.core.request_context import bind_request_id, current_request_id, reset_request_id
 from src.backend.app.infrastructure.auth.keys import generate_rsa_pem_pair
@@ -352,6 +353,35 @@ SIMILAR_ROWS = ROWS + [P("X1", "Phòng chưa gắn cha", "hotel", "Nha Trang", {
 @pytest.fixture
 def similar(services):
     return GetSimilarProducts(InMemoryProductQuery(SIMILAR_ROWS), services["similar"])
+
+
+def test_embedding_failure_reaches_the_trace_with_its_reason():
+    """Cohere hết hạn mức: tool báo ngay lý do `embed:quota_exhausted`, không còn chờ tới TOOL_TIMEOUT."""
+    tools = tools_with(search=Spy(error=EmbeddingUnavailableError("quota_exhausted", status=429, retryable=False)))
+    gateway = ItineraryToolGateway(tools, tools, tools)
+    result = run(gateway.execute({"id": "a", "name": "search_products", "args": {"query": "biển"}}))
+    assert result["error"] == {"code": "SEARCH_UNAVAILABLE", "retryable": False, "httpStatus": 503,
+                               "reason": "embed:quota_exhausted"}
+
+
+def test_search_route_answers_503_with_reason_when_embedding_fails():
+    app = FastAPI()
+    install_error_handlers(app)
+    app.include_router(search_routes.router, prefix="/api/v1")
+
+    def search(*_args, **_kwargs):
+        raise EmbeddingUnavailableError("quota_exhausted", status=429, retryable=False)
+    app.state.search = search
+
+    async def scenario():
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(base_url="http://backend.test/api/v1/", transport=transport) as http:
+            return await http.get("search", params={"q": "khách sạn"})
+    response = run(scenario())
+    assert response.status_code == 503
+    error = response.json()["error"]
+    assert (error["code"], error["retryable"], error["details"]) == ("SEARCH_UNAVAILABLE", False,
+                                                                       {"reason": "quota_exhausted"})
 
 
 def test_similar_matches_the_route_and_the_http_adapter(services, world, detail, similar):

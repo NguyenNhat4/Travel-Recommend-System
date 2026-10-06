@@ -4,6 +4,7 @@ import httpx
 import numpy as np
 import pytest
 
+from src.backend.app.application.ports.embedder import EmbeddingUnavailableError
 from src.backend.app.infrastructure.embeddings.cohere_embedder import CallLimiter, CohereEmbedder
 
 
@@ -148,3 +149,67 @@ def test_threads_sharing_a_limiter_never_exceed_the_limit():
     assert len(stamps) == 16
     for start in range(len(stamps) - 5):
         assert stamps[start + 5] - stamps[start] >= 60.0
+
+
+# ------------------------------------------------------------------ lỗi Cohere không được im lặng
+
+QUOTA_BODY = {"message": "You are using a Trial key, which is limited to 1000 API calls / month."}
+
+
+def failing_client(*responses):
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return responses[min(len(calls), len(responses)) - 1]
+    return httpx.Client(base_url="https://cohere.test", transport=httpx.MockTransport(handler)), calls
+
+
+def test_monthly_quota_fails_at_once_with_a_named_reason(monkeypatch, caplog):
+    slept = []
+    monkeypatch.setattr("src.backend.app.infrastructure.embeddings.cohere_embedder.time.sleep", slept.append)
+    client, calls = failing_client(httpx.Response(429, json=QUOTA_BODY))
+    with caplog.at_level("WARNING", logger="uvicorn.error"), pytest.raises(EmbeddingUnavailableError) as caught:
+        CohereEmbedder("secret-key", client=client).embed_query("khách sạn bí mật")
+    assert (caught.value.reason, caught.value.retryable, caught.value.status) == ("quota_exhausted", False, 429)
+    assert len(calls) == 1 and slept == []  # hạn mức tháng: thử lại vô ích
+    assert "cohere.embed.failed status=429 reason=quota_exhausted" in caplog.text
+    assert "cohere.embed.gave_up reason=quota_exhausted" in caplog.text
+    # Không lộ key, câu truy vấn hay thông điệp của Cohere.
+    assert "secret-key" not in caplog.text and "bí mật" not in caplog.text and "Trial" not in caplog.text
+
+
+def test_query_retries_stay_within_the_wait_budget(monkeypatch, caplog):
+    slept = []
+    monkeypatch.setattr("src.backend.app.infrastructure.embeddings.cohere_embedder.time.sleep", slept.append)
+    client, calls = failing_client(httpx.Response(429, json={"message": "too many requests"}))
+    with caplog.at_level("WARNING", logger="uvicorn.error"), pytest.raises(EmbeddingUnavailableError) as caught:
+        CohereEmbedder("k", client=client, max_wait_seconds=2).embed_query("q")
+    assert (caught.value.reason, caught.value.retryable) == ("rate_limited", True)
+    assert slept == [2.0] and len(calls) == 2  # lần chờ kế (4 s) vượt ngân sách 2 s nên dừng
+    assert caplog.text.count("cohere.embed.failed") == 2
+
+
+def test_without_budget_5xx_still_gives_up_with_a_named_error(monkeypatch):
+    slept = []
+    monkeypatch.setattr("src.backend.app.infrastructure.embeddings.cohere_embedder.time.sleep", slept.append)
+    client, calls = failing_client(httpx.Response(503, json={}))
+    with pytest.raises(EmbeddingUnavailableError) as caught:
+        CohereEmbedder("k", client=client).embed_query("q")
+    assert (caught.value.reason, caught.value.status) == ("upstream_5xx", 503)
+    assert len(calls) == CohereEmbedder.max_attempts  # job index: vẫn thử đủ lượt như trước
+    assert slept == [2.0, 4.0, 8.0, 16.0, 32.0]
+
+
+def test_other_4xx_and_network_errors_are_named():
+    client, _ = failing_client(httpx.Response(401, json={"message": "invalid api token"}))
+    with pytest.raises(EmbeddingUnavailableError) as caught:
+        CohereEmbedder("k", client=client).embed_query("q")
+    assert (caught.value.reason, caught.value.status) == ("http_error", 401)
+
+    def timeout(request):
+        raise httpx.ReadTimeout("slow", request=request)
+    client = httpx.Client(base_url="https://cohere.test", transport=httpx.MockTransport(timeout))
+    with pytest.raises(EmbeddingUnavailableError) as caught:
+        CohereEmbedder("k", client=client).embed_query("q")
+    assert caught.value.reason == "timeout"
