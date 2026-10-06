@@ -72,7 +72,7 @@ class WeaviateClient:
         bm25_b: float = 0.75,
     ):
         if not re.fullmatch(r"[A-Z][A-Za-z0-9_]*", collection):
-            raise ValueError("WEAVIATE_COLLECTION must be a valid GraphQL collection name")
+            raise ValueError("VECTOR_COLLECTION must be a valid GraphQL collection name")
         if vector_index_type not in {"hnsw", "hfresh"}:
             raise ValueError("WEAVIATE_VECTOR_INDEX_TYPE must be hnsw or hfresh")
         self.vector_index_type = vector_index_type

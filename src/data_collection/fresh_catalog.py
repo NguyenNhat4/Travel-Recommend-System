@@ -850,8 +850,8 @@ def check_local_only(db_target: str, db_url: str, index_config) -> None:
             problems.append(f'{name} trỏ tới {parsed.hostname or "?"} (không phải localhost)')
         if name != 'WEAVIATE_URL' and parsed.path.lstrip('/') in ('', 'vota'):
             problems.append(f'{name} dùng database "{parsed.path.lstrip("/") or "mặc định"}" của backend local')
-    if index_config is not None and index_config.weaviate_collection == 'Product':
-        problems.append(f'WEAVIATE_COLLECTION={index_config.weaviate_collection} là collection của backend local')
+    if index_config is not None and index_config.vector_collection in ('Product', 'ProductE5Small'):
+        problems.append(f'VECTOR_COLLECTION={index_config.vector_collection} là collection của backend local')
     if problems:
         raise ValueError('Chế độ local chặn lượt này: ' + '; '.join(problems))
 

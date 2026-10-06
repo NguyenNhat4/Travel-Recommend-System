@@ -54,7 +54,7 @@ def _settings(**env):
 def test_default_is_e5_small_and_other_dimensions_are_rejected():
     settings = _settings()
     assert (settings.embed_model, settings.embed_dimension) == ("intfloat/multilingual-e5-small", 384)
-    assert settings.weaviate_collection == "Product"
+    assert settings.vector_collection == "ProductE5Small"
     assert settings.search_cutoff == 0.84
     with pytest.raises(ValidationError, match="EMBED_DIMENSION"):
         _settings(embed_dimension=1024)
@@ -109,7 +109,7 @@ def test_index_job_refuses_to_write_e5_vectors_into_a_cohere_collection(monkeypa
     created = []
     monkeypatch.setattr(embed_products, "WeaviateClient", lambda url, **kw: created.append(_CohereCollection(url)) or created[-1])
     monkeypatch.setattr(embed_products, "build_embedder", lambda *a, **k: pytest.fail("không được embed"))
-    report = embed_products.run(settings=_settings(weaviate_collection="Product"))
+    report = embed_products.run(settings=_settings(vector_collection="Product"))
     assert "embed-multilingual-v3.0" in report["refused"]
     assert created[0].writes == []
 
@@ -128,3 +128,12 @@ def test_settings_from_environment_strings(monkeypatch):
     monkeypatch.setenv("EMBED_MODEL", "intfloat/multilingual-e5-small")
     monkeypatch.setenv("EMBED_DIMENSION", "384")
     assert _settings().embed_dimension == 384
+
+
+def test_old_weaviate_collection_env_is_ignored(monkeypatch):
+    """Env trên VM còn `WEAVIATE_COLLECTION=Product` (vector Cohere): code e5 đọc VECTOR_COLLECTION, nên collection e5
+    dựng sẵn trước khi deploy dùng được ngay (chốt 06/10)."""
+    monkeypatch.setenv("WEAVIATE_COLLECTION", "Product")
+    assert _settings().vector_collection == "ProductE5Small"
+    monkeypatch.setenv("VECTOR_COLLECTION", "Other")
+    assert _settings().vector_collection == "Other"

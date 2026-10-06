@@ -105,8 +105,9 @@ class Settings(BaseSettings):
     embed_max_tokens: int = Field(default=512, ge=8, le=512)  # e5: tối đa 512 token kể cả tiền tố; dài hơn thì cắt đuôi
     weaviate_url: str = "http://localhost:8080"
     weaviate_api_key: str = ""
-    # Vector e5-small 384 chiều. Giữ tên `Product` (chốt 06/10): collection dựng lại bằng e5 thay vector Cohere cũ, env trên VM không đổi.
-    weaviate_collection: str = "Product"
+    # Collection vector e5-small 384 chiều (env VECTOR_COLLECTION). Tên biến mới thay WEAVIATE_COLLECTION: env cũ trên VM
+    # (`WEAVIATE_COLLECTION=Product`, vector Cohere) bị bỏ qua, nên collection e5 dựng sẵn trước khi deploy được (chốt 06/10).
+    vector_collection: str = "ProductE5Small"
     # Chỉ dùng khi job index tạo collection mới; Weaviate Cloud của nhóm chỉ cho phép hfresh.
     weaviate_vector_index_type: Literal["hnsw", "hfresh"] = "hnsw"
     weaviate_timeout_seconds: float = Field(default=30.0, gt=0)

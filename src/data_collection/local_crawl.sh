@@ -66,7 +66,7 @@ load_env() {
   local url
   url="$(crawl_url)" || die "không dựng được URL database local"
   export DB_TARGET=local SEED_DATABASE_URL="$url" DATABASE_URL="$url"
-  export WEAVIATE_URL="$WEAVIATE" WEAVIATE_API_KEY="" WEAVIATE_COLLECTION="$COLLECTION" WEAVIATE_VECTOR_INDEX_TYPE=hnsw
+  export WEAVIATE_URL="$WEAVIATE" WEAVIATE_API_KEY="" VECTOR_COLLECTION="$COLLECTION" WEAVIATE_VECTOR_INDEX_TYPE=hnsw
   export CATALOG_LOCAL_ONLY=1 CATALOG_STATE_DIR="$WORK/state" CATALOG_RUN_ROOT="$WORK/runs" PYTHONUNBUFFERED=1
   unset CLOUD_SEED_DATABASE_URL CLOUD_DATABASE_URL CLOUD_WEAVIATE_URL CLOUD_WEAVIATE_API_KEY CATALOG_LOG_DIR
   if [[ "${SHOW_BROWSER:-0}" != 1 ]]; then
@@ -84,7 +84,7 @@ import os
 from urllib.parse import urlparse
 u = urlparse(os.environ["SEED_DATABASE_URL"])
 print(f"Postgres : {u.hostname}:{u.port or 5432}{u.path}")
-print(f"Weaviate : {os.environ['WEAVIATE_URL']} · collection {os.environ['WEAVIATE_COLLECTION']}")
+print(f"Weaviate : {os.environ['WEAVIATE_URL']} · collection {os.environ['VECTOR_COLLECTION']}")
 print(f"Dữ liệu  : state {os.environ['CATALOG_STATE_DIR']} · lượt {os.environ['CATALOG_RUN_ROOT']}")
 PY
   echo "Bộ      : ${NAME:-mặc định}"

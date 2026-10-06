@@ -75,7 +75,7 @@ services:
       # Môi trường dùng cluster chung thì đặt BACKEND_WEAVIATE_URL và BACKEND_WEAVIATE_API_KEY.
       WEAVIATE_URL: ${BACKEND_WEAVIATE_URL:-http://weaviate:8080}
       WEAVIATE_API_KEY: ${BACKEND_WEAVIATE_API_KEY:-}
-      WEAVIATE_COLLECTION: ${WEAVIATE_COLLECTION:-Product}
+      VECTOR_COLLECTION: ${VECTOR_COLLECTION:-ProductE5Small}
       WEAVIATE_GRPC_PORT: ${BACKEND_WEAVIATE_GRPC_PORT:-50051}
       CATALOG_REFRESH_SECONDS: ${CATALOG_REFRESH_SECONDS:-900}
       # Stripe test mode (docs/prd/deployment-plan.md §2). Webhook: `stripe listen --forward-to

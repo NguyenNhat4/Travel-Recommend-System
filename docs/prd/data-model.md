@@ -36,7 +36,7 @@ Hệ sinh thái lưu trữ của V-OTA gồm hai cơ sở dữ liệu PostgreSQL
 
 +-------------------------------------------------------------------------+
 | WEAVIATE (dịch vụ riêng, volume riêng)                                  |
-|  Collection: Product — vector 384 chiều (multilingual-e5-small) |
+|  Collection: ProductE5Small — vector 384 chiều (multilingual-e5-small) |
 |  Thuộc tính: productId (khóa nối về Postgres), modelVersion, textHash   |
 |  vectorizer: none — backend tự sinh vector và tự ghi                    |
 +-------------------------------------------------------------------------+

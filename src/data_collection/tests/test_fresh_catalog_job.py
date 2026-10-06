@@ -663,7 +663,7 @@ class IndexSettingsTests(unittest.TestCase):
         # e5-small chạy trong image: không cần khoá embedding (PRD FR-SRC-02, chốt 06/10).
         local = self.settings(DB_TARGET='cloud', CLOUD_SEED_DATABASE_URL='postgresql://seed',
                               CLOUD_WEAVIATE_URL='https://abc.weaviate.cloud')
-        self.assertEqual((local.embed_model, local.weaviate_collection), ('intfloat/multilingual-e5-small', 'Product'))
+        self.assertEqual((local.embed_model, local.vector_collection), ('intfloat/multilingual-e5-small', 'ProductE5Small'))
         with self.assertRaisesRegex(ValueError, 'CLOUD_WEAVIATE_URL'):
             self.settings(DB_TARGET='cloud', CLOUD_SEED_DATABASE_URL='postgresql://seed')
         with self.assertRaises(ValueError):

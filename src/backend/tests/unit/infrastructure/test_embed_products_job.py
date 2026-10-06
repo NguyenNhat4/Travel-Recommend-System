@@ -82,7 +82,7 @@ def test_job_moves_legacy_objects_to_deterministic_ids_and_uses_configured_index
     _Weaviate.instances.clear()
     settings = SimpleNamespace(
         database_url="postgresql://unused", embed_model="intfloat/multilingual-e5-small", weaviate_url="http://weaviate.test",
-        weaviate_collection="Product", weaviate_vector_index_type="hfresh", weaviate_api_key="",
+        vector_collection="ProductE5Small", weaviate_vector_index_type="hfresh", weaviate_api_key="",
         weaviate_timeout_seconds=5.0, embed_dimension=384, search_bm25_k1=1.2, search_bm25_b=0.75,
     )
 
@@ -102,7 +102,7 @@ def test_detail_file_records_text_action_reason_and_vector_preview(monkeypatch, 
     monkeypatch.setattr(embed_products, "build_embedder", lambda settings: _Embedder())
     settings = SimpleNamespace(
         database_url="postgresql://unused", embed_model="intfloat/multilingual-e5-small", weaviate_url="http://weaviate.test",
-        weaviate_collection="Product", weaviate_vector_index_type="hnsw", weaviate_api_key="",
+        vector_collection="ProductE5Small", weaviate_vector_index_type="hnsw", weaviate_api_key="",
         weaviate_timeout_seconds=5.0, embed_dimension=384, search_bm25_k1=1.2, search_bm25_b=0.75,
     )
     detail = tmp_path / "index_detail.jsonl"
@@ -122,7 +122,7 @@ def test_detail_file_records_text_action_reason_and_vector_preview(monkeypatch, 
 def _base_settings():
     return SimpleNamespace(
         database_url="postgresql://unused", embed_model="intfloat/multilingual-e5-small", weaviate_url="http://weaviate.test",
-        weaviate_collection="Product", weaviate_vector_index_type="hnsw", weaviate_api_key="",
+        vector_collection="ProductE5Small", weaviate_vector_index_type="hnsw", weaviate_api_key="",
         weaviate_timeout_seconds=5.0, embed_dimension=384, search_bm25_k1=1.2, search_bm25_b=0.75,
     )
 
@@ -192,7 +192,7 @@ def test_main_exits_2_when_lexical_only_is_refused(monkeypatch, capsys):
 def _settings():
     return SimpleNamespace(
         database_url="postgresql://unused", embed_model="intfloat/multilingual-e5-small", weaviate_url="http://weaviate.test",
-        weaviate_collection="Product", weaviate_vector_index_type="hnsw", weaviate_api_key="",
+        vector_collection="ProductE5Small", weaviate_vector_index_type="hnsw", weaviate_api_key="",
         weaviate_timeout_seconds=5.0, embed_dimension=384, search_bm25_k1=1.2, search_bm25_b=0.75,
     )
 

@@ -164,7 +164,7 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
                         grpc_port=settings.weaviate_grpc_port,
                         timeout_seconds=settings.weaviate_timeout_seconds,
                     ),
-                    collection=settings.weaviate_collection,
+                    collection=settings.vector_collection,
                     dimension=settings.embed_dimension,
                 ),
                 expected_model_version=f"{settings.embed_model}:{TEXT_BUILDER_VERSION}",

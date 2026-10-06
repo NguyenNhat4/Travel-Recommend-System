@@ -27,7 +27,7 @@ def model_version(model_name: str) -> str:
 def foreign_models(existing: dict, model_name: str) -> list[str]:
     """Model khác đang có vector trong collection. Khác model thường khác số chiều (Cohere 1024, e5-small 384) và luôn khác
     không gian vector: ghi đè từng phần sẽ trộn hai không gian, Weaviate từ chối vector sai chiều giữa chừng. Job không tự
-    xoá collection — dùng collection riêng (`WEAVIATE_COLLECTION`) cho model mới."""
+    xoá collection — dùng collection riêng (`VECTOR_COLLECTION`) cho model mới."""
     return sorted({obj.model_version.rsplit(":", 1)[0] for obj in existing.values() if obj.model_version} - {model_name})
 
 
@@ -97,7 +97,7 @@ def run(*, dry_run: bool = False, backfill_lexical: bool = False, force: bool = 
     version = model_version(settings.embed_model)
     client = WeaviateClient(
         settings.weaviate_url,
-        collection=settings.weaviate_collection,
+        collection=settings.vector_collection,
         vector_index_type=settings.weaviate_vector_index_type,
         api_key=settings.weaviate_api_key,
         timeout_seconds=settings.weaviate_timeout_seconds,
@@ -133,8 +133,8 @@ def run(*, dry_run: bool = False, backfill_lexical: bool = False, force: bool = 
         others = foreign_models(existing, settings.embed_model)
         if others:
             return {"modelVersion": version, "searchUnits": len(desired), "embedded": 0,
-                    "refused": (f"collection {settings.weaviate_collection} đang chứa vector của {', '.join(others)}; "
-                                f"không ghi vector {settings.embed_model} vào đó. Đặt WEAVIATE_COLLECTION sang collection riêng "
+                    "refused": (f"collection {settings.vector_collection} đang chứa vector của {', '.join(others)}; "
+                                f"không ghi vector {settings.embed_model} vào đó. Đặt VECTOR_COLLECTION sang collection riêng "
                                 "hoặc xoá collection cũ rồi chạy lại để dựng bằng model mới.")}
         orphans = sorted(set(existing) - set(desired))
         # Object index trước 25/09 chưa có property BM25: ghi thêm bằng PATCH, không embed (chỉ khi được yêu cầu).
@@ -173,7 +173,7 @@ def run(*, dry_run: bool = False, backfill_lexical: bool = False, force: bool = 
             client.delete([existing[product_id].uuid for product_id in ids if product_id in existing])
             client.insert([
                 {
-                    "class": settings.weaviate_collection,
+                    "class": settings.vector_collection,
                     "id": client.object_uuid(product_id),
                     "properties": {
                         "productId": product_id,

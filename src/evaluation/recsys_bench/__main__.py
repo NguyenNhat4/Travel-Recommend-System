@@ -106,7 +106,7 @@ def doctor():
         typer.echo(f"cdp      FAIL {type(exc).__name__}: {str(exc).splitlines()[0][:200]}")
     try:
         from src.backend.app.infrastructure.vectors.weaviate_store import WeaviateClient
-        client = WeaviateClient(s.weaviate_url, collection=s.weaviate_collection, api_key=s.weaviate_api_key,
+        client = WeaviateClient(s.weaviate_url, collection=s.vector_collection, api_key=s.weaviate_api_key,
                                 timeout_seconds=5)
         try:
             client.ready()

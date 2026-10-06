@@ -711,7 +711,7 @@ class FreshMonitor:
                "db": _where(url) if url else None, "weaviate": None, "collection": None, "error": None}
         try:
             settings = self._index_settings()
-            out.update(weaviate=_where(settings.weaviate_url), collection=settings.weaviate_collection)
+            out.update(weaviate=_where(settings.weaviate_url), collection=settings.vector_collection)
         except Exception as exc:  # thiếu env, backend chưa cài…: vẫn hiện phần còn lại
             out["error"] = str(exc)[:300]
         return out
@@ -1818,25 +1818,25 @@ class FreshMonitor:
         from src.backend.jobs.embed_products import vector_preview
         settings = self._index_settings()
         with self._weaviate_http(settings) as client:
-            response = client.get(f"/v1/objects/{settings.weaviate_collection}/{WeaviateClient.object_uuid(product_id)}",
+            response = client.get(f"/v1/objects/{settings.vector_collection}/{WeaviateClient.object_uuid(product_id)}",
                                   params={"include": "vector"})
             if response.status_code == 404:
-                raise ValueError(f"Collection {settings.weaviate_collection} không có vector của sản phẩm này")
+                raise ValueError(f"Collection {settings.vector_collection} không có vector của sản phẩm này")
             response.raise_for_status()
             obj = response.json()
-        return {"productId": product_id, "collection": settings.weaviate_collection,
+        return {"productId": product_id, "collection": settings.vector_collection,
                 "properties": obj.get("properties"), "vector": vector_preview(obj.get("vector") or [])}
 
     def _collection_vectors(self, settings, refresh: bool):
         ensure_backend_path()
         from src.backend.app.infrastructure.vectors.weaviate_store import WeaviateClient
         import numpy as np
-        key = (settings.weaviate_url, settings.weaviate_collection)
+        key = (settings.weaviate_url, settings.vector_collection)
         with self._vector_lock:
             cached = self._vectors.get(key)
             if cached and not refresh and time.monotonic() - cached["at"] < VECTOR_CACHE_SECONDS:
                 return cached
-            client = WeaviateClient(settings.weaviate_url, collection=settings.weaviate_collection,
+            client = WeaviateClient(settings.weaviate_url, collection=settings.vector_collection,
                                     vector_index_type=settings.weaviate_vector_index_type,
                                     api_key=settings.weaviate_api_key, timeout_seconds=settings.weaviate_timeout_seconds)
             try:
@@ -1870,7 +1870,7 @@ class FreshMonitor:
         embed_ms = round((time.monotonic() - started) * 1000)
         data = self._collection_vectors(settings, refresh)
         if not data["ids"]:
-            raise ValueError(f"Collection {settings.weaviate_collection} chưa có vector nào")
+            raise ValueError(f"Collection {settings.vector_collection} chưa có vector nào")
         scores = data["matrix"] @ vector / np.maximum(data["norms"] * float(np.linalg.norm(vector)), 1e-12)
         order = np.argsort(-scores)[:k]
         names: dict[str, dict] = {}
@@ -1890,7 +1890,7 @@ class FreshMonitor:
             hits.append({"rank": rank, "productId": pid, "cosine": round(float(scores[i]), 5),
                          "name": info.get("name"), "taxonomy": info.get("taxonomy"), "destination": info.get("destination"),
                          "text": (info.get("text") or info.get("description") or "")[:300], "inRun": pid in names})
-        return {"query": query, "k": k, "collection": settings.weaviate_collection, "vectors": len(data["ids"]),
+        return {"query": query, "k": k, "collection": settings.vector_collection, "vectors": len(data["ids"]),
                 "models": dict(data["models"]), "embedMs": embed_ms, "queryVector": vector_preview(vector),
                 "hits": hits}
 
