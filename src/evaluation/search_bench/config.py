@@ -27,8 +27,9 @@ DEFAULT_GOLD_FIELDS: dict[str, str] = {
     "forbidden": "forbidden",                 # danh sách product_id cấm
     "origin": "origin",                       # chặng bay kỳ vọng (attributes.originCity)
     "destination_city": "destination_city",   # (attributes.destinationCity)
-    "expected_parse": "expected_parse",       # {taxonomy, destination, origin, destination_city, must_not, price_max, price_min, star_min}
-    "family": "family",                       # họ câu (chẩn đoán)
+    "expected_parse": "expected_parse",       # {taxonomy, destination, origin, destination_city, must_not, must_not_brands,
+                                              #  must_not_taxonomies, price_max, price_min, star_min, party_total} (metrics.PARSE_FIELDS)
+    "family": "family",                       # họ câu: biến thể không dấu / gõ sai của cùng một ý định (gộp theo họ)
 }
 
 
@@ -152,6 +153,23 @@ class Guards(_M):
     parse_accuracy_min: Optional[float] = None
 
 
+class GuardsProposed(_M):
+    """`sb guards` (06/10): ngưỡng guard Phase A ĐỀ XUẤT, chưa chốt — lệnh chỉ in PASS/FAIL để đọc, không chặn gì (kiến trúc
+    search OTA §15 "Hard fail khi forbidden …"). Mọi giá trị nằm ở sbench.yaml `metrics.guards_proposed`."""
+    forbidden_at_10_max: float
+    direction_accuracy_min: float
+    filter_pass_min: float
+    parse_accuracy_min: float          # áp cho từng trường của parse_accuracy
+    constraint_precision_min: float
+    zero_result_in_catalog_max: float
+
+
+class WeakResultsConfig(_M):
+    """`sb weak-results` (06/10): lưới ngưỡng phân tích quy tắc "kết quả yếu" (hợp đồng search §3.4, S2 của §10)."""
+    top_score_grid: list[float]        # WEAK_RESULT_TOP_SCORE thử
+    margin_grid: list[float]           # WEAK_RESULT_MARGIN thử
+
+
 class MetricsConfig(_M):
     k: int
     ndcg_gain: Literal["pow2"]
@@ -166,7 +184,13 @@ class MetricsConfig(_M):
     # Phase A (05/10): tên trường gold v4 (xem DEFAULT_GOLD_FIELDS) và file forbidden chẩn đoán cho gold_v3 (đường dẫn tương đối
     # theo thư mục gói search_bench; None = không gắn). Gold có `forbidden_filter` thì gold thắng.
     gold_fields: dict[str, str] = Field(default_factory=lambda: dict(DEFAULT_GOLD_FIELDS))
-    forbidden_overrides: Optional[str] = "config/forbidden_v3.yaml"
+    # 06/10: `forbidden_overrides` (chỉ forbidden_filter) được thay bằng `annotations` (forbidden_filter, origin,
+    # destination_city, expected_parse, family theo qid — `metrics.load_annotations`). Cả hai cùng cấu hình thì annotations
+    # thắng phần forbidden_filter; gold có trường nào thì gold thắng trường đó.
+    forbidden_overrides: Optional[str] = None
+    annotations: Optional[str] = "config/query_annotations.yaml"
+    guards_proposed: Optional[GuardsProposed] = None
+    weak_results: Optional[WeakResultsConfig] = None
 
     @field_validator("gold_fields")
     @classmethod

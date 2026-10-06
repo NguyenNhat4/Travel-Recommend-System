@@ -116,16 +116,33 @@ metrics:                          # Part 8
     hub_score_max: 3.0
     p95_cache_miss_ms_max: 250      # = NFR-PERF-01 (p95 ≤ 250 ms); p99 được đo và báo cáo, không có ngưỡng (PRD không đặt)
     # Phase A (05/10) — guard an toàn cho filter suy từ câu (đề xuất, chờ chốt — Sprint 2). Chưa có select() nên chưa ép;
-    # metric vẫn được tính và ghi vào results.json (overall / by_slice). Bỏ ghi chú khi chốt.
+    # metric vẫn được tính và ghi vào results.json (overall / by_slice). Bỏ ghi chú khi chốt. Bản đọc được bằng `sb guards`:
+    # khối `guards_proposed` bên dưới.
     # forbidden_at_10_max: 0          # (đề xuất, chờ chốt — Sprint 2) không kết quả cấm nào trong top-10
     # direction_accuracy_min: 1.0     # (đề xuất, chờ chốt — Sprint 2) mọi câu nêu chiều bay đều đúng chiều
     # filter_pass_min: 1.0            # (đề xuất, chờ chốt — Sprint 2) kết quả luôn thoả filter cứng arm đã áp
     # parse_accuracy_min: 0.9         # (đề xuất, chờ chốt — Sprint 2) mỗi trường expected_parse đúng ≥ 90% câu
+  # sb guards (06/10): ngưỡng guard Phase A cho từng arm — CHỈ BÁO PASS/FAIL, không chặn (kiến trúc search OTA §15
+  # "Hard fail khi forbidden taxonomy/route/negation item xuất hiện"). Khác `guards` ở trên: khối này chưa ai chốt.
+  guards_proposed:
+    forbidden_at_10_max: 0.0          # (đề xuất 06/10, chưa chốt) không kết quả cấm nào trong top-10
+    direction_accuracy_min: 1.0       # (đề xuất 06/10, chưa chốt) mọi câu nêu chiều bay đều đúng chiều
+    filter_pass_min: 1.0              # (đề xuất 06/10, chưa chốt) kết quả luôn thoả filter cứng arm đã áp
+    parse_accuracy_min: 0.9           # (đề xuất 06/10, chưa chốt) từng trường expected_parse đúng ≥ 90% câu
+    constraint_precision_min: 0.95    # (đề xuất 06/10, chưa chốt) = guards.constraint_precision_min
+    zero_result_in_catalog_max: 0.02  # (đề xuất 06/10, chưa chốt) = guards.zero_result_in_catalog_max
+  # sb weak-results (06/10): lưới thử quy tắc "kết quả yếu" của hợp đồng search §3.4 (weak khi topScore < T HOẶC
+  # topScore − backgroundScore < M; giá trị tạm của hợp đồng 0.70 / 0.06 — mục S2 §10). e5-small có dải cosine nén.
+  weak_results:
+    top_score_grid: [0.70, 0.80, 0.82, 0.84, 0.86, 0.88, 0.90]
+    margin_grid: [0.0, 0.02, 0.04, 0.06, 0.08, 0.10, 0.12]
   rerank_keep_if_delta_ndcg: 3.0
   hub_random_queries: 500
-  # Phase A (05/10): forbidden chẩn đoán cho gold_v3 (KHÔNG phải gold; gold có forbidden_filter thì gold thắng) — tương đối
-  # theo thư mục gói search_bench; bỏ dòng / null để không gắn. Sẽ bị thay bởi trường `forbidden` của gold v4.
-  forbidden_overrides: config/forbidden_v3.yaml
+  # 06/10: nhãn theo câu (forbidden_filter, origin, destination_city, expected_parse, family) cho câu gold CHƯA có trường đó
+  # (gold thắng) — NHÃN MÁY, chưa duyệt; tương đối theo thư mục gói search_bench; null = không gắn. Thay `forbidden_overrides`
+  # (config/forbidden_v3.yaml, 05/10 — 8 mục đã chuyển vào file này); nếu cấu hình cả hai thì annotations thắng forbidden_filter.
+  annotations: config/query_annotations.yaml
+  forbidden_overrides: null
   # gold_fields: tên trường gold v4 → tên nội bộ (mặc định = cùng tên; chờ máy gán nhãn chốt tên). Ví dụ:
   # gold_fields: {forbidden_filter: forbidden_filter, forbidden: forbidden, origin: origin,
   #               destination_city: destination_city, expected_parse: expected_parse, family: family}

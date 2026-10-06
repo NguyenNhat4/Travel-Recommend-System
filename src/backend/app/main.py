@@ -62,6 +62,7 @@ from src.backend.app.domain.booking import HoldPolicy
 from src.backend.app.domain.catalog import ListingItem
 from src.backend.app.application.recommendation import BuildPopularity, RecommendForUser
 from src.backend.app.application.search import SearchProducts, SimilarProducts
+from src.backend.app.application.search.search_log import SearchLogRecorder
 from src.backend.app.domain.search import HybridConfig
 from src.backend.app.core.config import REPO_ROOT, Settings, get_settings
 from src.backend.app.infrastructure.auth.argon2_hasher import Argon2Hasher
@@ -93,6 +94,7 @@ from src.backend.app.infrastructure.persistence.postgres_booking import (
     PostgresProductCatalog,
 )
 from src.backend.app.infrastructure.persistence.postgres_catalog import PostgresProductLookup, PostgresProductQuery
+from src.backend.app.infrastructure.persistence.postgres_search_logs import PostgresSearchLogWriter
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -181,11 +183,21 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
     popularity = BuildPopularity(index, cdp_reader)()
     logger.info("startup.recsys.popularity.build.ready")
     # Hybrid dùng chính adapter vector làm nhánh BM25 (cùng collection `Product`); tắt bằng SEARCH_HYBRID=false.
+    # Kênh fuzzy + trọng số RRF (contract 1.16.0) dùng chung cho cả bộ ngưỡng câu không dấu; mặc định tắt / 1.0.
+    fusion = dict(
+        fuzzy_k=settings.search_fuzzy_k,
+        fuzzy_candidate_k=settings.search_fuzzy_candidate_k,
+        fuzzy_min_sim=settings.search_fuzzy_min_sim,
+        dense_weight=settings.search_rrf_dense_weight,
+        lexical_weight=settings.search_rrf_lexical_weight,
+        fuzzy_weight=settings.search_rrf_fuzzy_weight,
+    )
     hybrid = HybridConfig(
         rrf_k=settings.search_rrf_k,
         lexical_k=settings.search_lexical_k,
         lexical_cutoff=min(settings.search_lexical_cutoff, settings.search_cutoff),  # contract: lexicalCutoff ≤ cutoff
         min_coverage=settings.search_lexical_min_coverage,
+        **fusion,
     ) if settings.search_hybrid and hasattr(vector_search, "bm25") else None
     logger.info("startup.recsys.search.mode=%s", "HYBRID_CANDIDATE_SCORE" if hybrid else "ANN_CANDIDATE_SCORE")
     logger.info("startup.recsys.search.normalize=%s", settings.search_normalize)
@@ -198,12 +210,16 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
         lexical_cutoff=min(settings.search_no_diacritics_lexical_cutoff,
                            no_diacritics_cutoff if no_diacritics_cutoff is not None else settings.search_cutoff),
         min_coverage=settings.search_no_diacritics_min_coverage,
+        **fusion,
     ) if hybrid and relax else None
     logger.info("startup.recsys.search.dest_filter=%s no_diacritics=%s", settings.search_dest_filter,
                 settings.search_no_diacritics_mode)
-    logger.info("startup.recsys.search.query_plan negation=%s taxonomy=%s route=%s numeric=%s",
-                settings.search_negation_filter, settings.search_taxonomy_filter, settings.search_route_filter,
-                settings.search_numeric_filter)
+    logger.info("startup.recsys.search.query_plan negation=%s taxonomy=%s strong_only=%s route=%s numeric=%s party=%s "
+                "tone=%s", settings.search_negation_filter, settings.search_taxonomy_filter,
+                settings.search_taxonomy_strong_only, settings.search_route_filter, settings.search_numeric_filter,
+                settings.search_party_filter, settings.search_tone_normalize)
+    logger.info("startup.recsys.search.fusion fuzzy_k=%s weights=%s/%s/%s", settings.search_fuzzy_k if hybrid else 0,
+                settings.search_rrf_dense_weight, settings.search_rrf_lexical_weight, settings.search_rrf_fuzzy_weight)
     return {
         "recsys_embedder": embedder,
         "recsys_vectors": vector_search,
@@ -229,6 +245,9 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
             taxonomy_filter=settings.search_taxonomy_filter,
             route_filter=settings.search_route_filter,
             numeric_filter=settings.search_numeric_filter,
+            tone_normalize=settings.search_tone_normalize,
+            taxonomy_strong_only=settings.search_taxonomy_strong_only,
+            party_filter=settings.search_party_filter,
         ),
         "similar": SimilarProducts(index, vector_search),
         # GET /products: cùng tập search unit với /search, sắp xếp popular theo lượt mua CDP (backend §4.1).
@@ -545,6 +564,13 @@ async def lifespan(app: FastAPI):
             setattr(app.state, name, service)
         logger.info("startup.auth.ready ratelimit=%s", "redis" if redis_client else "memory")
         app.state.product_lookup = PostgresProductLookup(settings.database_url)
+        # Log tìm kiếm (SEARCH_LOG_QUERIES, mặc định tắt): hàng đợi có trần + một luồng ghi app.search_logs; None → route
+        # /search không ghi gì và không xác thực Bearer.
+        app.state.search_log = (SearchLogRecorder(PostgresSearchLogWriter(settings.database_url))
+                                if settings.search_log_queries else None)
+        if app.state.search_log is not None:
+            stack.callback(app.state.search_log.close)
+        logger.info("startup.search_log enabled=%s", settings.search_log_queries)
         app.state.browse_event_recorder = BackgroundCdpEventRecorder(
             app.state.cdp_client, max_queue=settings.cdp_event_queue_size
         )
@@ -661,7 +687,7 @@ settings = get_settings()
 app = FastAPI(
     title=settings.app_name,
     description="Travel recommendation and itinerary API",
-    version="1.15.0",
+    version="1.16.0",
     lifespan=lifespan,
 )
 

@@ -1,16 +1,32 @@
+import logging
 import uuid
 from time import perf_counter
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from src.backend.app.api.deps import get_search, get_similar
+from src.backend.app.api.deps import get_revoked_tokens, get_search, get_similar
+from src.backend.app.application.auth.bearer import principal_from_header
 from src.backend.app.application.itinerary.contracts import error_response
+from src.backend.app.application.search.search_log import search_log_entry
 from src.backend.app.application.search.use_cases import ANN_DIAGNOSTICS
 from src.backend.app.core.request_context import current_request_id
 
+logger = logging.getLogger("uvicorn.error")
+
 router = APIRouter(tags=["search"])
+
+
+class GuestsPayload(BaseModel):
+    adults: int | None = Field(None, ge=1)
+    children: int | None = Field(None, ge=0)
+
+
+class TravelContextPayload(BaseModel):
+    """contract `TravelContext`: route chỉ dùng `guests` (1.16.0 — filter sức chứa); checkIn/checkOut/rooms bỏ qua."""
+    guests: GuestsPayload | None = None
 
 
 class SearchRequestPayload(BaseModel):
@@ -25,13 +41,15 @@ class SearchRequestPayload(BaseModel):
     priceMax: int | None = Field(None, ge=0)
     starRatingMin: float | None = Field(None, ge=0, le=5)
     availableOnly: bool | None = True
+    travelContext: TravelContextPayload | None = None
     limit: int | None = Field(20, ge=1, le=50)
     offset: int | None = Field(0, ge=0)
 
 
 def _safe_search(search_products, query: str, taxonomy: str | None, destination: str | None,
                  limit: int, offset: int, *, origin: str | None = None, price_min: int | None = None,
-                 price_max: int | None = None, star_min: float | None = None, available_only: bool = True):
+                 price_max: int | None = None, star_min: float | None = None, available_only: bool = True,
+                 guests: dict | None = None):
     started = perf_counter()
     if price_min is not None and price_max is not None and price_min > price_max:
         return JSONResponse(status_code=400, content=error_response(
@@ -58,6 +76,7 @@ def _safe_search(search_products, query: str, taxonomy: str | None, destination:
         result = search_products(
             query.strip(), taxonomy=taxonomy, destination=destination, origin=origin, price_min=price_min,
             price_max=price_max, star_min=star_min, available_only=available_only, limit=limit, offset=offset,
+            **(guests or {}),   # travelContext.guests (1.16.0) — chỉ truyền khi request có, engine cũ không cần biết
         )
     result.setdefault("diagnostics", {})["latencyMs"] = max(
         0, round((perf_counter() - started) * 1000)
@@ -65,23 +84,79 @@ def _safe_search(search_products, query: str, taxonomy: str | None, destination:
     return result
 
 
+def _guests(body: "SearchRequestPayload") -> dict | None:
+    g = body.travelContext.guests if body.travelContext is not None else None
+    if g is None:
+        return None
+    out = {k: v for k, v in (("adults", g.adults), ("children", g.children)) if v is not None}
+    return out or None
+
+
+# --- log tìm kiếm (SEARCH_LOG_QUERIES; composition root gắn `app.state.search_log` khi bật) ---------------------------------
+
+def _search_log(request: Request | None):
+    app = getattr(request, "app", None)
+    return getattr(getattr(app, "state", None), "search_log", None)
+
+
+async def search_log_identity(request: Request, authorization: str | None = Header(default=None)) -> tuple:
+    """(cdp_user_id, session_id) cho dòng log tìm kiếm. Chỉ xác thực Bearer khi log đang bật; token thiếu / hỏng / lỗi kho
+    thu hồi → (None, None), KHÔNG 401: ghi log không bao giờ được đổi response của /search."""
+    if _search_log(request) is None or not authorization:
+        return None, None
+    verifier = getattr(request.app.state, "token_verifier", None)
+    if verifier is None:
+        return None, None
+    try:
+        principal = await principal_from_header(authorization, verifier, get_revoked_tokens(request))
+    except Exception:  # noqa: BLE001 — AuthError hay lỗi Redis đều chỉ làm mất gán danh tính của dòng log
+        return None, None
+    return (principal.cdp_user_id, principal.session_id) if principal is not None else (None, None)
+
+
+def _log_search(request: Request | None, search_products, query: str, offset: int, result, identity,
+                request_filters: dict) -> None:
+    """Đưa một dòng vào hàng đợi log (không chặn). Chỉ trang đầu của lượt tìm thật (như event `search` sang CDP)."""
+    recorder = _search_log(request)
+    if recorder is None or search_products is None or offset or not query.strip() or not isinstance(result, dict):
+        return
+    cdp_user_id, session_id = identity if isinstance(identity, tuple) else (None, None)
+    try:
+        recorder.record(search_log_entry(query.strip(), result, request_filters=request_filters,
+                                         cdp_user_id=cdp_user_id, session_id=session_id))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("search.log.enqueue.failed error=%s", type(exc).__name__)
+
+
+# Ràng buộc qua `Annotated[..., Query(...)]` để mặc định là giá trị thật: code gọi thẳng hàm route (test agent dựng backend
+# giả) nhận None/20/0 thay vì đối tượng Query. `request` / `identity` đứng cuối, có mặc định: FastAPI vẫn tiêm (nhận
+# `Request` theo kiểu), gọi thẳng thì không phải truyền — khi đó không ghi log.
 @router.get("/search")
 def search(q: str = "", taxonomy: str | None = None, destination: str | None = None, origin: str | None = None,
-           priceMin: int | None = Query(None, ge=0), priceMax: int | None = Query(None, ge=0),
-           starRatingMin: float | None = Query(None, ge=0, le=5), availableOnly: bool = True,
-           limit: int = Query(20, ge=1, le=50), offset: int = Query(0, ge=0), search_products=Depends(get_search)):
-    return _safe_search(search_products, q, taxonomy, destination, limit, offset, origin=origin, price_min=priceMin,
-                        price_max=priceMax, star_min=starRatingMin, available_only=availableOnly)
+           priceMin: Annotated[int | None, Query(ge=0)] = None, priceMax: Annotated[int | None, Query(ge=0)] = None,
+           starRatingMin: Annotated[float | None, Query(ge=0, le=5)] = None, availableOnly: bool = True,
+           limit: Annotated[int, Query(ge=1, le=50)] = 20, offset: Annotated[int, Query(ge=0)] = 0,
+           search_products=Depends(get_search), request: Request = None,
+           identity: tuple = Depends(search_log_identity)):
+    result = _safe_search(search_products, q, taxonomy, destination, limit, offset, origin=origin, price_min=priceMin,
+                          price_max=priceMax, star_min=starRatingMin, available_only=availableOnly)
+    _log_search(request, search_products, q, offset, result, identity, {"taxonomy": taxonomy, "destination": destination})
+    return result
 
 
 @router.post("/search")
-def search_post(body: SearchRequestPayload, search_products=Depends(get_search)):
+def search_post(body: SearchRequestPayload, search_products=Depends(get_search), request: Request = None,
+                identity: tuple = Depends(search_log_identity)):
     query = (body.query or body.q or "").strip()
     limit = body.limit if body.limit is not None else 20
     offset = body.offset if body.offset is not None else 0
-    return _safe_search(search_products, query, body.taxonomy, body.destination, limit, offset, origin=body.origin,
-                        price_min=body.priceMin, price_max=body.priceMax, star_min=body.starRatingMin,
-                        available_only=body.availableOnly if body.availableOnly is not None else True)
+    result = _safe_search(search_products, query, body.taxonomy, body.destination, limit, offset, origin=body.origin,
+                          price_min=body.priceMin, price_max=body.priceMax, star_min=body.starRatingMin,
+                          available_only=body.availableOnly if body.availableOnly is not None else True,
+                          guests=_guests(body))
+    _log_search(request, search_products, query, offset, result, identity,
+                {"taxonomy": body.taxonomy, "destination": body.destination})
+    return result
 
 
 @router.get("/similar/{product_id}")

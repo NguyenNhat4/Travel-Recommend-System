@@ -41,12 +41,18 @@ JOIN   catalog.product_meta m USING (product_id)
 
 logger = logging.getLogger("uvicorn.error")
 
-#: Thành phần combo cho ô ROLLUP của text builder ("Gồm: vé VinWonders; buffet…"); chỉ cần thứ tự và nhãn.
+#: Thành phần combo: thứ tự + nhãn cho ô ROLLUP của text builder ("Gồm: vé VinWonders; buffet…"), `item_kind` cho cờ
+#: `includesFlight` / `includesHotel` của `UnitAttributes` (cột có sẵn trong DDL; text builder không đọc nó → text không đổi).
 _COMBO_QUERY = """
-SELECT combo_product_id, position, label
+SELECT combo_product_id, position, label, item_kind
 FROM   catalog.combo_items
 ORDER  BY combo_product_id, position
 """
+
+
+def combo_kinds_of(combo_items: dict[str, list[dict]]) -> dict[str, list[str]]:
+    """combo product_id → `item_kind` các thành phần (theo position) — đầu vào cờ combo của `UnitAttributes.build`."""
+    return {pid: [str(it["item_kind"]) for it in items if it.get("item_kind")] for pid, items in combo_items.items()}
 
 
 @dataclass
@@ -162,7 +168,7 @@ class PostgresCatalogReader:
             available=np.array([p.available for p in units]),
             recommendable=np.array([bool(meta[p.product_id]["is_recommendable"]) for p in units]),
             parent_of=parent_of,
-            attrs=UnitAttributes.build(units, children),
+            attrs=UnitAttributes.build(units, children, combo_kinds_of(combo_items)),
         )
 
 

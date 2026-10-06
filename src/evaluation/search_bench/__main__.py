@@ -666,11 +666,19 @@ def paths_gold() -> Path:
 @app.command()
 def compare(c: typer.Context, arm_a: str = typer.Argument(..., help="arm mốc (A)"), arm_b: str = typer.Argument(..., help="arm so (B)"),
             gold_version: Optional[str] = typer.Option(None, "--gold", help="gold_vN; mặc định bản mới nhất có ở cả hai arm"),
-            condensed: bool = typer.Option(False, "--condensed", help="Bỏ kết quả chưa nhãn rồi dồn hạng; vẫn báo coverage full")):
+            condensed: bool = typer.Option(False, "--condensed", help="Bỏ kết quả chưa nhãn rồi dồn hạng; vẫn báo coverage full"),
+            split: Optional[str] = typer.Option(None, "--split", help="dev | test | all (mặc định all): chỉ so câu thuộc phần "
+                                                                      "đó của gold/splits/devtest@<gold_version>.json"),
+            split_file: Optional[Path] = typer.Option(None, "--split-file", help="file phân chia dùng thay devtest@<gold_version>"
+                                                                                 ".json (gold chưa tag / chưa chia)")):
     """So hai arm trong cùng run (--run-id; mặc định run mới nhất): paired bootstrap Δrecall / Δndcg, Δ theo slice và kết luận
-    win_rule (WIN / TIE / LOSE — spec Part 8). Hai arm phải cùng gold_version. Mã thoát: 0 · 1 khác gold_version · 2 thiếu kết quả."""
+    win_rule (WIN / TIE / LOSE — spec Part 8), cuối cùng là bảng theo khối rubric (v3 = câu của tag gold_v3, v4 = câu thêm
+    từ gold_v4 — hai rubric khác nhau, gold-guide.md): Δ nDCG full và condensed. `--split dev|test` lọc câu của cả hai arm theo
+    file phân chia rồi tính lại mọi số trên phần đó (không có devtest@<gold_version>.json thì dùng --split-file, hoặc tự lấy
+    file devtest@gold_v*.json mới nhất phủ đủ câu và in ghi chú). Hai arm phải cùng gold_version. Mã thoát: 0 · 1 khác
+    gold_version · 2 thiếu kết quả / file phân chia."""
     from rich.table import Table
-    from . import runner as R
+    from . import devtest as DT, metrics as M, runner as R
     ctx = _ctx(c)
     cfg = ctx.cfg()
     k = cfg.metrics.k
@@ -690,10 +698,27 @@ def compare(c: typer.Context, arm_a: str = typer.Argument(..., help="arm mốc (
             selected = gold_version
         ra, rows_a, _ = R.read_results_at(run_id, arm_a, selected)
         rb, rows_b, _ = R.read_results_at(run_id, arm_b, selected)
-    except R.RunnerError as e:
+        split_note = split_src = None
+        if split not in (None, "all"):
+            if split not in DT.SPLITS:
+                raise DT.DevTestError(f"--split phải là dev | test | all, nhận {split!r}")
+            data, split_src, split_note = R.resolve_split(selected, {r["qid"] for r in rows_a} | {r["qid"] for r in rows_b},
+                                                          split_file=split_file)
+            rows_a, rows_b = DT.filter_rows(rows_a, data, split), DT.filter_rows(rows_b, data, split)
+            if not rows_a or not rows_b:
+                raise DT.DevTestError(f"split {split}: không còn câu nào ({len(rows_a)} / {len(rows_b)})")
+    except (R.RunnerError, DT.DevTestError) as e:
         _fail(str(e), 2)
     if condensed and (not ra.get("condensed") or not rb.get("condensed")):
         _fail("artifact chưa có condensed metrics; chạy sb rescore bằng code hiện tại", 2)
+    if split_src is not None:            # số trong results.json là của cả gold → tính lại trên phần câu đã lọc
+        def _view(res, rows):
+            agg = M.aggregate(rows, cfg.metrics, hub_score_max=res["overall"].get("hub_score_max"))
+            out = {**res, "overall": agg["overall"], "by_slice": agg["by_slice"]}
+            if res.get("condensed"):
+                out["condensed"] = M.aggregate_condensed(rows, cfg.metrics)
+            return out
+        ra, rb = _view(ra, rows_a), _view(rb, rows_b)
     cmp = R.compare(rows_a, rows_b, cfg, condensed=condensed)
     aa = ra["condensed"] if condensed else ra
     bb = rb["condensed"] if condensed else rb
@@ -702,7 +727,10 @@ def compare(c: typer.Context, arm_a: str = typer.Argument(..., help="arm mốc (
     def _f(v):
         return "-" if v is None else f"{v:.3f}"
     mode = "condensed" if condensed else "full"
-    t = Table(title=f"run {run_id} · gold {ra.get('gold_version')} · {mode} · {arm_a} → {arm_b} (Δ = B − A, điểm %)")
+    if split_note:
+        con.print(f"  ghi chú: {split_note}", style="yellow", highlight=False)
+    split_tag = f" · split {split} ({split_src.name}, {len(rows_a)} câu)" if split_src is not None else ""
+    t = Table(title=f"run {run_id} · gold {ra.get('gold_version')} · {mode} · {arm_a} → {arm_b} (Δ = B − A, điểm %){split_tag}")
     for col in ("metric", arm_a, arm_b, "Δ", "CI95", "p (một phía)"):
         t.add_column(col, justify="left" if col == "metric" else "right")
     for mname in (f"recall@{k}", f"ndcg@{k}"):
@@ -733,6 +761,35 @@ def compare(c: typer.Context, arm_a: str = typer.Argument(..., help="arm mốc (
         con.print(f"  cảnh báo: {', '.join(low)} chưa đạt judged@{k} (NEEDS_LABELS) — đọc condensed cùng coverage", style="yellow")
     if condensed:
         con.print("  condensed chỉ chấm kết quả đã có nhãn; đọc cùng full judged và retained ratio ở trên", style="yellow")
+    _print_block_table(con, rows_a, rows_b, arm_a, arm_b, k)
+
+
+def _print_block_table(con, rows_a: list[dict], rows_b: list[dict], arm_a: str, arm_b: str, k: int) -> None:
+    """Bảng theo khối rubric (06/10): nDCG@k full và condensed của A, B và Δ (điểm %) trên cặp qid cả hai xác định."""
+    from rich.table import Table
+    from . import metrics as M, runner as R
+    R.attach_query_meta(rows_a)
+    R.attach_query_meta(rows_b)
+    full = M.group_delta_stats(rows_a, rows_b, f"ndcg@{k}", "block")
+    cond = M.group_delta_stats(rows_a, rows_b, f"condensed_ndcg@{k}", "block")
+    n_rows = {b: sum(1 for r in rows_a if r.get("block") == b) for b in sorted(set(full) | set(cond))}
+
+    def _f(v):
+        return "-" if v is None else f"{v:.3f}"
+
+    def _d(v):
+        return "-" if v is None else f"{v:+.2f}"
+    tb = Table(title=f"theo khối rubric: ndcg@{k} full / condensed (Δ = B − A, điểm %) — v3 = câu của tag gold_v3 (rubric v3), "
+                     "v4 = câu thêm từ gold_v4 (rubric v4); không trộn hai rubric khi trích dẫn")
+    for col in ("khối", "n", f"{arm_a} full", f"{arm_b} full", "Δ full", f"{arm_a} cond", f"{arm_b} cond", "Δ cond"):
+        tb.add_column(col, justify="left" if col == "khối" else "right")
+    for b, n in n_rows.items():
+        f_, c_ = full.get(b, {}), cond.get(b, {})
+        tb.add_row(b, f"{n} (cặp {f_.get('n', 0)})", _f(f_.get("a")), _f(f_.get("b")), _d(f_.get("delta")),
+                   _f(c_.get("a")), _f(c_.get("b")), _d(c_.get("delta")))
+    con.print(tb)
+    if not cond:
+        con.print("  condensed: artifact chưa có cột condensed_ndcg — chạy sb rescore bằng code hiện tại", style="yellow")
 
 
 # ------------------------------------------------------------------ Day 5: regression gọn (regress.py)
@@ -1895,6 +1952,223 @@ def topids_diff(run_a: str = typer.Argument(..., help="run_id A"), arm_a: str = 
     if only:
         typer.echo(f"  qid chỉ có ở một bên: {only[:5]}{' …' if len(only) > 5 else ''}")
     raise typer.Exit(1 if diffs or only else 0)
+
+
+# ------------------------------------------------------------------ 06/10: guard Phase A, phân tích "kết quả yếu"
+def _rows_for(run_id: str, arm: str, gold_version: Optional[str], split: Optional[str], split_file: Optional[Path]):
+    """(results, rows, gold_version, ghi chú phân chia | None, tên file phân chia | None) của một arm, đã lọc theo split."""
+    from . import devtest as DT, runner as R
+    res, rows, gv = R.read_results_at(run_id, arm, gold_version)
+    if split in (None, "all"):
+        return res, rows, gv, None, None
+    if split not in DT.SPLITS:
+        raise DT.DevTestError(f"--split phải là dev | test | all, nhận {split!r}")
+    data, src, note = R.resolve_split(gv, {r["qid"] for r in rows}, split_file=split_file)
+    return res, DT.filter_rows(rows, data, split), gv, note, src.name
+
+
+@app.command()
+def guards(c: typer.Context,
+           arms: str = typer.Option(..., "--arms", help="id arm, phân cách bằng dấu phẩy"),
+           split: Optional[str] = typer.Option(None, "--split", help="dev | test | all (mặc định all)"),
+           split_file: Optional[Path] = typer.Option(None, "--split-file", help="file phân chia thay devtest@<gold_version>.json"),
+           gold_version: Optional[str] = typer.Option(None, "--gold", help="gold_vN; mặc định bản mới nhất của từng arm"),
+           recompute: bool = typer.Option(False, "--recompute", help="chấm lại trong RAM từ top_ids + extra đã lưu với gold + "
+                                                                    "query_annotations hiện tại (không ghi file; cần catalog local, "
+                                                                    "không Weaviate / model)")):
+    """Guard Phase A của từng arm trong run (--run-id; mặc định run mới nhất) so với ngưỡng ĐỀ XUẤT `metrics.guards_proposed`
+    (kiến trúc search OTA §15 "Hard fail khi forbidden …"): forbidden_at_10, forbidden_query_rate, direction_accuracy,
+    filter_pass_rate, parse_accuracy từng trường, constraint_precision, zero_result_in_catalog / out_of_catalog — PASS / FAIL
+    / n/a (không câu nào định nghĩa) kèm số câu định nghĩa và qid làm trượt. Chỉ báo, không chặn: mã thoát 0, trừ lỗi đầu
+    vào (2). Số đọc từ per_query đã lưu (chấm lúc chạy); annotations thêm sau đó chỉ có tác dụng với --recompute hoặc sau
+    `sb rescore`."""
+    from rich.table import Table
+    from . import devtest as DT, metrics as M, paths, runner as R
+    from .catalog import CatalogError
+    from .gold import GoldError
+    ctx = _ctx(c)
+    cfg = ctx.cfg()
+    prop = cfg.metrics.guards_proposed
+    if prop is None:
+        _fail("sbench.yaml thiếu metrics.guards_proposed (ngưỡng đề xuất cho sb guards)", 2)
+    arm_ids = [a.strip() for a in arms.split(",") if a.strip()]
+    if not arm_ids:
+        _fail("--arms rỗng", 2)
+    per_arm: dict[str, tuple[str, list[dict], int]] = {}
+    notes: list[str] = []
+    try:
+        run_id = _run_id_or_latest(ctx)
+        env = R.load_env(cfg, ctx.dataset, paths.GOLD_JSONL, run_id=run_id, allow_untagged=True) if recompute else None
+        for a in arm_ids:
+            res, rows, gv, note, src = _rows_for(run_id, a, gold_version, split, split_file)
+            if note:
+                notes.append(f"{a}: {note}")
+            if env is not None:
+                old = {r["qid"]: r for r in R.read_rows(run_id, a)}
+                keep = {r["qid"] for r in rows}
+                rows = [R.rescore_row(g, old[g.qid], env) for g in env.gold if g.qid in old and g.qid in keep]
+                gv = f"{env.gold_version or 'gold chưa tag'}, chấm lại trong RAM"
+            label = f"{gv}" + (f" · split {split} ({src})" if src else "")
+            per_arm[a] = (label, M.guard_lines(rows, prop), len(rows))
+    except (R.RunnerError, DT.DevTestError, M.MetricsError, GoldError) as e:
+        _fail(str(e), 2)
+    except CatalogError as e:
+        _fail(str(e), 2)
+    con = _console()
+    for n_ in notes:
+        con.print(f"  ghi chú: {n_}", style="yellow", highlight=False)
+    t = Table(title=f"guard Phase A · run {run_id} · ngưỡng metrics.guards_proposed (đề xuất 06/10, chưa chốt — chỉ báo)")
+    t.add_column("guard", justify="left")
+    t.add_column("ngưỡng", justify="right")
+    for a in arm_ids:
+        t.add_column(f"{a}\n{per_arm[a][0]} · {per_arm[a][2]} câu", justify="right")
+    names: list[str] = []
+    for a in arm_ids:
+        for ln in per_arm[a][1]:
+            if ln["name"] not in names:
+                names.append(ln["name"])
+    style = {"PASS": "green", "FAIL": "red", "n/a": "dim", "-": ""}
+    for name in names:
+        lines = {a: next((ln for ln in per_arm[a][1] if ln["name"] == name), None) for a in arm_ids}
+        ref = next(ln for ln in lines.values() if ln is not None)
+        thr = "-" if ref["op"] is None or ref["threshold"] is None else f"{'≤' if ref['op'] == 'max' else '≥'} {ref['threshold']:g}"
+        cells = []
+        for a in arm_ids:
+            ln = lines[a]
+            if ln is None:
+                cells.append("[dim]n/a[/]")
+                continue
+            v = "-" if ln["value"] is None else f"{ln['value']:.3f}"
+            st = ln["status"]
+            cells.append(f"{v} (n={ln['n']})" + (f" [{style[st]}]{st}[/]" if st not in ("-",) else ""))
+        t.add_row(name, thr, *cells)
+    con.print(t)
+    for a in arm_ids:
+        bad = [ln for ln in per_arm[a][1] if ln["status"] == "FAIL"]
+        for ln in bad:
+            q = ln["bad"]
+            con.print(f"  {a} · {ln['name']} trượt ở {len(q)} câu: {', '.join(q[:10])}{' …' if len(q) > 10 else ''}",
+                      highlight=False)
+    raise typer.Exit(0)
+
+
+def _float_list(raw: Optional[str], default: list[float], what: str) -> list[float]:
+    if not raw:
+        return list(default)
+    try:
+        return [float(x) for x in raw.split(",") if x.strip()]
+    except ValueError:
+        _fail(f"{what}: danh sách số phân cách bằng dấu phẩy, nhận {raw!r}", 2)
+
+
+@app.command("weak-results")
+def weak_results(c: typer.Context,
+                 arm: str = typer.Option(..., "--arm", help="arm có top_scores là cosine (arm APP / dense)"),
+                 model: Optional[str] = typer.Option(None, "--model", help="model bench của vector (mặc định model trong "
+                                                                           "results.json của arm), vd e5-small"),
+                 split: Optional[str] = typer.Option(None, "--split", help="dev | test | all (mặc định all)"),
+                 split_file: Optional[Path] = typer.Option(None, "--split-file", help="file phân chia thay devtest@<gold>.json"),
+                 gold_version: Optional[str] = typer.Option(None, "--gold", help="gold_vN; mặc định bản mới nhất của arm"),
+                 top_grid: Optional[str] = typer.Option(None, "--top-grid", help="ngưỡng topScore thử, vd 0.80,0.84 (mặc định "
+                                                                                 "metrics.weak_results.top_score_grid)"),
+                 margin_grid: Optional[str] = typer.Option(None, "--margin-grid", help="ngưỡng margin thử (mặc định "
+                                                                                       "metrics.weak_results.margin_grid)"),
+                 top_source: str = typer.Option("top_scores", "--top-source", help="top_scores: max top_scores đã lưu (top-k) | "
+                                                                                   "diagnostics: diagnostics.topScore của arm APP "
+                                                                                   "(= topScore của response, max trên cả R)")):
+    """Phân tích quy tắc "kết quả yếu" của hợp đồng search §3.4 (S2: WEAK_RESULT_TOP_SCORE / MARGIN) trên một arm đã chạy, không
+    Weaviate / model / API: topScore = max top_scores đã lưu; backgroundScore = trung vị cosine giữa vector truy vấn (cache embed
+    sqlite của bench, khoá = câu arm đã embed) và MỌI vector document `vec_T3+R_<model>.npy` — F = cả catalog vì phân tích này
+    không dựng lại filter của arm (hợp đồng: F = tập đã lọc); margin = topScore − backgroundScore. In từng câu out_of_catalog,
+    phân vị của câu trong catalog và lưới (T, M): số câu ngoài catalog bị chặn (rỗng hoặc weak) vs câu trong catalog bị gắn
+    weak nhầm. Thiếu vector truy vấn thì câu đó chỉ xét topScore. Mã thoát: 0 · 2 thiếu kết quả / vector / config."""
+    from rich.table import Table
+    import numpy as np
+    from . import devtest as DT, metrics as M, paths, runner as R, vectors
+    ctx = _ctx(c)
+    cfg = ctx.cfg()
+    wr = cfg.metrics.weak_results
+    if wr is None and (not top_grid or not margin_grid):
+        _fail("sbench.yaml thiếu metrics.weak_results (top_score_grid, margin_grid) — hoặc truyền --top-grid và --margin-grid", 2)
+    tgrid = _float_list(top_grid, wr.top_score_grid if wr else [], "--top-grid")
+    mgrid = _float_list(margin_grid, wr.margin_grid if wr else [], "--margin-grid")
+    try:
+        run_id = _run_id_or_latest(ctx)
+        res, rows, gv, note, src = _rows_for(run_id, arm, gold_version, split, split_file)
+        m = model or res.get("model")
+        if not m:
+            raise R.RunnerError(f"{arm}: results.json không ghi model — truyền --model")
+        ids, doc_vecs, vmeta = vectors.read(ctx.dataset, res.get("text_variant") or "T3+R", m, "document")
+        gold = {g.qid: g for g in M.load_gold(paths.GOLD_JSONL, include_retired=True, gold_fields=cfg.metrics.gold_fields)}
+    except (R.RunnerError, DT.DevTestError, M.MetricsError, vectors.VectorsMissing) as e:
+        _fail(str(e), 2)
+    except Exception as e:  # noqa: BLE001 — model không có trong config (embedder_name) …
+        _fail(f"{type(e).__name__}: {e}", 2)
+    bad_scores = [r["qid"] for r in rows for x in (r.get("top_scores") or []) if x is not None and not (-1.0001 <= x <= 1.0001)]
+    if bad_scores:
+        _fail(f"{arm}: top_scores ngoài [-1, 1] (vd {bad_scores[:3]}) — không phải cosine (arm bm25?)", 2)
+    missing_gold = sorted({r["qid"] for r in rows} - set(gold))
+    texts = [R.embedded_query_text(gold[r["qid"]].text if r["qid"] in gold else "", R.extra_of(r)) for r in rows]
+    try:
+        qvecs = R.query_vectors_from_cache(cfg, m, texts)
+    except Exception as e:  # noqa: BLE001
+        _fail(f"không đọc được cache embed: {type(e).__name__}: {e}", 2)
+    if top_source not in ("top_scores", "diagnostics"):
+        _fail(f"--top-source phải là top_scores | diagnostics, nhận {top_source!r}", 2)
+    entries = R.weak_entries(rows, gold, doc_vecs, qvecs, top_source=top_source)
+    grid = M.weak_grid(entries, tgrid, mgrid)
+    con = _console()
+    if note:
+        con.print(f"  ghi chú: {note}", style="yellow", highlight=False)
+    con.print(f"weak-results · run {run_id} · {arm} · gold {gv}" + (f" · split {split} ({src})" if src else "") +
+              f" · topScore từ {top_source}" +
+              f" · model {m} ({vmeta.get('cache_model')}) · {len(ids)} vector document · {len(rows)} câu "
+              f"({grid['n_ooc']} out_of_catalog, {grid['n_in']} trong catalog)", highlight=False)
+    con.print(f"  vector truy vấn từ cache embed: {sum(1 for e in entries if e['background'] is not None)}/{len(entries)} câu"
+              + (f" — {len(entries) - sum(1 for e in entries if e['background'] is not None)} câu thiếu: chỉ xét topScore"
+                 if any(e['background'] is None and e['top'] is not None for e in entries) else ""), highlight=False)
+    con.print("  backgroundScore = trung vị cosine trên CẢ catalog (F = mọi search unit — phân tích không dựng lại filter của "
+              "arm); hợp đồng §3.4 lấy trung vị trên tập F đã lọc, nên với arm có filter, margin thật có thể khác.",
+              style="dim", highlight=False)
+    if missing_gold:
+        con.print(f"  cảnh báo: {len(missing_gold)} qid không có trong gold/gold.jsonl: {missing_gold[:5]}", style="yellow")
+    diff_top = [e for e in entries if e["diag_top"] is not None and e["scores_top"] is not None
+                and abs(e["diag_top"] - e["scores_top"]) > 1e-3]
+    if diff_top:
+        con.print(f"  {len(diff_top)} câu: max(top_scores) khác diagnostics.topScore (kết quả cosine cao nhất của R nằm ngoài "
+                  f"top-k), vd {diff_top[0]['qid']} {diff_top[0]['scores_top']:.4f} vs {diff_top[0]['diag_top']:.4f} — "
+                  f"--top-source {'diagnostics' if top_source == 'top_scores' else 'top_scores'} để xem bên kia", style="dim")
+
+    def _f(v):
+        return "-" if v is None else f"{v:.3f}"
+    to = Table(title="câu out_of_catalog (muốn: rỗng hoặc weak)")
+    for col in ("qid", "topScore", "background", "margin", "câu đã embed"):
+        to.add_column(col, justify="left" if col in ("qid", "câu đã embed") else "right")
+    for e in sorted((e for e in entries if e["ooc"]), key=lambda e: (e["margin"] is None, e["margin"] or 0.0)):
+        to.add_row(e["qid"], _f(e["top"]) if e["top"] is not None else "rỗng", _f(e["background"]), _f(e["margin"]), e["text"][:70])
+    con.print(to)
+    inc = [e for e in entries if not e["ooc"] and e["top"] is not None]
+    if inc:
+        tp = Table(title=f"câu trong catalog có kết quả ({len(inc)} câu; {grid['n_in_empty']} câu rỗng không tính): phân vị")
+        for col in ("", "p5", "p10", "p25", "p50", "min"):
+            tp.add_column(col, justify="left" if col == "" else "right")
+        for name, vals in (("topScore", [e["top"] for e in inc]), ("margin", [e["margin"] for e in inc if e["margin"] is not None])):
+            if vals:
+                a = np.asarray(vals, dtype=float)
+                tp.add_row(name, *(f"{np.percentile(a, q):.3f}" for q in (5, 10, 25, 50)), f"{a.min():.3f}")
+        con.print(tp)
+    tg = Table(title=f"lưới weak: ô = câu ngoài catalog bị chặn (rỗng hoặc weak) /{grid['n_ooc']} · câu trong catalog bị gắn weak "
+                     f"nhầm /{grid['n_in'] - grid['n_in_empty']} (weak khi topScore < T HOẶC margin < M; tạm của hợp đồng 0.70 / "
+                     "0.06)")
+    tg.add_column("T \\ M", justify="left")
+    for mm in mgrid:
+        tg.add_column(f"{mm:g}", justify="right")
+    by = {(cell["top"], cell["margin"]): cell for cell in grid["cells"]}
+    for tt in tgrid:
+        tg.add_row(f"{tt:g}", *(f"{by[(float(tt), float(mm))]['ooc_suppressed']} · {by[(float(tt), float(mm))]['in_weak']}"
+                               for mm in mgrid))
+    con.print(tg)
+    raise typer.Exit(0)
 
 
 qu_app = typer.Typer(no_args_is_help=True, help="Phase A: chẩn đoán query understanding của backend trên gold "

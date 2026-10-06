@@ -3,6 +3,10 @@
 # Đã áp dụng: C3 (backgroundScore, cutoff) · C4 (thứ tự query, searchMode, diagnostics)
 #             Q1 (travelContext, availabilityMode)
 # [CHỜ DUYỆT: C5] includeVariants · [CHỜ DUYỆT: C6] appliedFilters
+# 1.16.0 (2026-10-06, additive): queryPlan.taxonomy.strength, mustNot.taxonomies/flags, party, confidence, fallbackReasons,
+#   "party" trong applied/emptyReason, "star" trong emptyReason; diagnostics.fuzzyCount + stageMs.fuzzy;
+#   ScoredProduct.matchedChildren (catalog.yaml);
+#   travelContext.guests → filter sức chứa ở POST /search.
 
 # [Q1] Ngữ cảnh chuyến đi. KHÔNG phải xác nhận availability nếu
 # availabilityMode là CATALOG_ONLY.
@@ -19,6 +23,11 @@ TravelContext:
       description: Không bao gồm. Kiểm tra mọi đêm trong [checkIn, checkOut).
     guests:
       type: object
+      description: >-
+        (1.16.0) Ở POST /search: số khách thành hard filter sức chứa — minOccupancy = adults + children (chỉ có children
+        thì không lọc). Loại unit có sức chứa ĐÃ BIẾT (attributes.maxOccupancy của unit hoặc hạng phòng con) nhỏ hơn;
+        không biết sức chứa thì giữ. Thắng số khách suy ra từ câu; khai ở appliedFilters.hard.minOccupancy và
+        diagnostics.queryPlan.party.
       properties:
         adults:   { type: integer, minimum: 1 }
         children: { type: integer, minimum: 0 }
@@ -138,6 +147,10 @@ AppliedFilters:
         mustNotAmenities (khoá tiện ích bị phủ định — loại unit CÓ GHI NHẬN tiện ích; unit không có dữ liệu vẫn qua, [C2]),
         mustNotBrands ("không phải Vinpearl" — loại unit có ghi brand đó),
         priceMin/priceMax + priceSource (param | query; giá null bị loại khi có lọc giá), availableOnly.
+        Từ 1.16.0: mustNotTaxonomies (loại sản phẩm bị phủ định — "không lấy combo", "vé lẻ"; loại unit có taxonomy đó),
+        mustNotFlags (includesFlight | includesHotel — combo CÓ GHI NHẬN thành phần đó bị loại; combo không có dữ liệu thành
+        phần vẫn qua, [C2]), minOccupancy + partySource (param = travelContext.guests của request | query = số khách suy từ
+        câu; loại unit có sức chứa ĐÃ BIẾT nhỏ hơn minOccupancy, không biết thì giữ).
     soft:
       type: object
       additionalProperties: true
@@ -215,6 +228,13 @@ EngineDiagnostics:
       type: integer
       minimum: 0
       description: Số phần tử của R chỉ vào nhờ nhánh BM25 (score trong [lexicalCutoff, cutoff)).
+    fuzzyCount:
+      type: integer
+      minimum: 0
+      description: >-
+        (1.16.0) Số phần tử của R chỉ vào nhờ kênh fuzzy tên gần đúng (trigram cửa sổ trên tên unit, kiến trúc §7 5C):
+        rank fuzzy <= SEARCH_FUZZY_K, độ giống >= SEARCH_FUZZY_MIN_SIM và cosine >= lexicalCutoff. Chỉ có khi kênh fuzzy bật
+        (SEARCH_FUZZY_K > 0, ở HYBRID_CANDIDATE_SCORE); khi bật, rrf = Σ w_nhánh/(rrfK + rank) trên cả ba nhánh.
     # Thời gian từng bước của /search (từ 2026-09-29, contract 1.11.0) — phục vụ đo p95 theo NFR-PERF-01/03.
     stageMs:
       type: object
@@ -245,6 +265,11 @@ EngineDiagnostics:
           type: integer
           minimum: 0
           description: 'Hợp nhất RRF, lọc cutoff và dựng facets.'
+        fuzzy:
+          type: integer
+          minimum: 0
+          description: >-
+            (1.16.0) Kênh fuzzy: tra chỉ mục trigram tên và lấy vector của unit chỉ có ở kênh này. Chỉ có khi kênh fuzzy bật.
         hydrate:
           type: integer
           minimum: 0
@@ -363,6 +388,12 @@ EngineDiagnostics:
               type: array
               items:
                 type: string
+            strength:
+              type: [string, 'null']
+              enum: [strong, weak, null]
+              description: >-
+                (1.16.0) Độ mạnh của cue loại khi source = query: strong ("khách sạn", "vé máy bay") | weak ("nghỉ dưỡng",
+                "phòng"). Chỉ khai khi SEARCH_TAXONOMY_STRONG_ONLY bật — khi đó F4 chỉ lọc với cue strong.
         route:
           type: object
           additionalProperties: false
@@ -400,6 +431,21 @@ EngineDiagnostics:
               type: array
               items:
                 type: string
+            taxonomies:
+              type: array
+              description: >-
+                (1.16.0) Loại sản phẩm bị phủ định ("không lấy combo", "vé lẻ" → combo); không bao giờ là loại câu đang hỏi.
+                Khai khi cờ phủ định (SEARCH_NEGATION_FILTER) đang áp cho câu.
+              items:
+                $ref: ../openapi.yaml#/components/schemas/Taxonomy
+            flags:
+              type: array
+              description: >-
+                (1.16.0) Thành phần combo bị phủ định ("combo không gồm vé máy bay" → includesFlight). Khai khi cờ phủ định
+                đang áp cho câu.
+              items:
+                type: string
+                enum: [includesFlight, includesHotel]
         softDropped:
           type: array
           description: Cụm "không cần / không nhất thiết / không bắt buộc X" — bỏ điều kiện X, không lọc, không xếp hạng theo X.
@@ -432,6 +478,26 @@ EngineDiagnostics:
             source:
               type: string
               enum: [param, query]
+        party:
+          type: object
+          additionalProperties: false
+          description: >-
+            (1.16.0) Số khách. source = param: travelContext.guests của request (luôn áp); query: suy từ câu ("3 người",
+            "2 người lớn 1 trẻ em" — chỉ áp khi SEARCH_PARTY_FILTER bật). total = adults + children (hoặc tổng nêu thẳng),
+            null khi chỉ biết số trẻ em. Khai khi request có guests hoặc khi SEARCH_PARTY_FILTER bật.
+          properties:
+            adults:
+              type: [integer, 'null']
+              minimum: 0
+            children:
+              type: [integer, 'null']
+              minimum: 0
+            total:
+              type: [integer, 'null']
+              minimum: 0
+            source:
+              type: string
+              enum: [param, query]
         lexicalText:
           type: string
           description: >-
@@ -442,20 +508,41 @@ EngineDiagnostics:
           description: Họ filter suy từ câu THẬT SỰ đã áp vào F (cờ bật và câu có giá trị); rỗng khi mọi cờ tắt.
           items:
             type: string
-            enum: [taxonomy, route, mustNot, price, star]
+            enum: [taxonomy, route, mustNot, price, star, party]
         revalidatedDrops:
           type: integer
           minimum: 0
-          description: Số kết quả bị loại ở bước kiểm lại hard filter sau fusion (kỳ vọng 0; > 0 là lỗi dữ liệu/mask).
+          description: >-
+            Số kết quả bị loại ở bước kiểm lại hard filter sau fusion (kỳ vọng 0; > 0 là lỗi dữ liệu/mask). Từ 1.16.0 gồm cả
+            unit có phòng/chuyến con mà KHÔNG con nào thoả đồng thời giá và số khách khi hai điều kiện cùng áp (mask kiểm hai
+            điều kiện độc lập trên unit + con).
         emptyReason:
           type: string
-          enum: [taxonomy, route, mustNot, price, destination, param]
+          enum: [taxonomy, route, mustNot, price, star, party, destination, param]
           description: >-
             F rỗng do họ filter nào (họ đầu tiên làm F rỗng theo thứ tự áp). Filter suy từ câu KHÔNG được nới ngầm (kiến trúc
-            Phase A §6); chỉ điểm đến suy ra có fallback (diagnostics.destinationFilter.fallback, FR-SRC-04).
+            Phase A §6); chỉ điểm đến suy ra có fallback (diagnostics.destinationFilter.fallback, FR-SRC-04). Từ 1.16.0 khai
+            thêm star (mọi unit còn lại đều KHAI sao thấp hơn starRatingMin — giá trị engine 1.15.0 đã có thể trả) và party
+            (mọi unit còn lại có sức chứa đã biết nhỏ hơn số khách).
         ignored:
           type: array
           description: Tham số request bị bỏ qua vì sai ngữ cảnh (ví dụ origin cho câu không phải vé máy bay).
+          items:
+            type: string
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: >-
+            (1.16.0) Router confidence của plan rule-based (kiến trúc §5): 1 trừ 0.25 cho mỗi lý do ở fallbackReasons, tất
+            định, chỉ để khai báo — /search không gọi LLM. Có mặt khi khối queryPlan có mặt.
+        fallbackReasons:
+          type: array
+          description: >-
+            (1.16.0) Tín hiệu hạ confidence, theo thứ tự khai báo: unresolved_constraint (cụm sau cue phủ định / số tiền không
+            map được, hoặc must-not tự mâu thuẫn), ambiguous_route (câu bay hai địa danh không rõ vai), multi_vertical (câu
+            nêu từ hai loại sản phẩm), weak_taxonomy_cue (loại chỉ suy từ cue yếu), param_conflict (tham số destination /
+            taxonomy khác thứ câu nêu), long_multi_constraint (câu dài và nêu từ hai họ ràng buộc). Vắng khi không có lý do.
           items:
             type: string
 

@@ -37,6 +37,7 @@ class Amenity:
     catalog: tuple[str, ...]          # cụm (fold) xuất hiện trong chuỗi tiện ích catalog
     query: tuple[str, ...]            # cụm (fold) khách gõ trong câu hỏi
     exclude: tuple[str, ...] = ()     # chuỗi catalog chứa cụm này thì KHÔNG tính cho khoá (dù khớp `catalog`)
+    exclude_re: str | None = None     # như `exclude` nhưng là regex trên chuỗi đã fold (khi cụm loại là tiền tố của cụm hợp lệ)
 
 
 AMENITIES: tuple[Amenity, ...] = (
@@ -47,17 +48,24 @@ AMENITIES: tuple[Amenity, ...] = (
     # golf: "san gon tai cho nghi" 128 · "san golf" 1; loại "san gon nho" 31 (mini golf), "san gon trong vong 3 km" 20 (gần)
     Amenity("golf", ("san gon", "san golf", "golf"), ("san golf", "san gon", "golf", "gon"),
             exclude=("san gon nho", "mini golf", "trong vong")),
-    Amenity("restaurant", ("nha hang", "restaurant"), ("nha hang", "restaurant")),
+    # nhà hàng: loại "nha hang / phong cho phu hop cho nguoi khuyet tat" 96 (tiện nghi tiếp cận: nhà hàng HOẶC phòng chờ — không
+    # khẳng định có nhà hàng; 29 unit chỉ có chuỗi này, kiểm 06/10)
+    Amenity("restaurant", ("nha hang", "restaurant"), ("nha hang", "restaurant"),
+            exclude=("phu hop cho nguoi khuyet tat",)),
     # bữa sáng: "bua sang" 560 · "bua sang tu chon" 365 · … — không phân biệt miễn phí/có phí (khoá `freeBreakfast` của §8.2 cần loại
     # mục có phí; ở đây chỉ nói "có ghi nhận bữa sáng")
     Amenity("breakfast", ("bua sang", "an sang", "breakfast"), ("bua sang", "an sang", "breakfast")),
     Amenity("shuttle", ("dua don san bay", "xe dua don", "dich vu dua don", "shuttle"),
             ("xe dua don san bay", "dua don san bay", "xe dua don", "dua don", "shuttle")),
     Amenity("parking", ("do xe", "dau xe", "parking"), ("cho do xe", "bai do xe", "do xe", "dau xe", "parking")),
+    # spa: loại đồ trong phòng — "bon tam spa" 111 (bồn tắm, vẫn tính `bathtub`; 62 unit chỉ có chuỗi này), "ghe/giuong mat xa"
     Amenity("spa", ("spa", "massage", "mat xa", "xong hoi", "xong kho", "sauna"),
-            ("spa", "massage", "mat xa", "xong hoi", "sauna")),
+            ("spa", "massage", "mat xa", "xong hoi", "sauna"),
+            exclude=("bon tam spa", "ghe mat xa", "giuong mat xa", "ghe massage")),
+    # gym: loại "phong tap the" = phòng ngủ tập thể (dorm, 29 chuỗi, 18 unit chỉ có chuỗi này) nhưng giữ "phong tap the duc"
     Amenity("gym", ("trung tam the duc", "phong gym", "gym", "fitness", "the hinh", "phong tap"),
-            ("gym", "phong gym", "phong tap", "the duc", "fitness")),
+            ("gym", "phong gym", "phong tap", "the duc", "fitness"),
+            exclude_re=r"(?:^| )phong tap the(?! duc)(?: |$)"),
     Amenity("bar", ("quay bar", "quan bar", "bar", "lounge"), ("quay bar", "quan bar", "bar")),
     Amenity("elevator", ("thang may", "elevator", "lift"), ("thang may", "elevator")),
     Amenity("wifi", ("wifi", "wi fi", "internet"), ("wifi", "wi fi", "internet")),
@@ -113,6 +121,8 @@ def keys_of_string(raw: str) -> frozenset[str]:
     out = set()
     for a in AMENITIES:
         if any(_contains_phrase(s, ex) or ex in s for ex in a.exclude):
+            continue
+        if a.exclude_re and re.search(a.exclude_re, s):
             continue
         if any(_contains_phrase(s, ph) for ph in a.catalog):
             out.add(a.key)

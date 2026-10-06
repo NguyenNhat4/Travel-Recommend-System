@@ -20,9 +20,21 @@ Phase A (05/10, kiến trúc search OTA §4–§6; gold v4 chưa chốt tên tr�
   chiều (so sau `fold`); None khi câu không nêu chiều HOẶC top-k không có `flight_route` nào (không có gì để chấm —
   không tính là đúng rỗng). Gộp: `direction_accuracy`.
 - filter_pass_ok / filter_pass_n = kết quả top-k thoả filter cứng arm đã áp (`applied_filter`); None khi arm không lọc.
-- parse_ok          = {trường: đúng/sai} so `diagnostics.queryPlan` của arm APP với `expected_parse` của gold (chuỗi so sau
-  `fold`); None khi gold không có `expected_parse` hoặc arm không phát queryPlan. Gộp: `parse_accuracy` {trường: tỷ lệ}.
+- parse_ok          = {trường: đúng/sai} so `diagnostics.queryPlan` của arm APP với `expected_parse` của gold (dạng chuẩn theo
+  trường: chuỗi `fold`, giá / số khách int, sao float, danh sách sắp xếp; None ≡ thiếu, danh sách None ≡ rỗng); None khi gold
+  không có `expected_parse` hoặc arm không phát queryPlan. Gộp: `parse_accuracy` {trường: tỷ lệ}.
 Mọi cột cũ giữ nguyên giá trị; dòng per_query cũ (không có cột mới) vẫn gộp ra cùng số recall / ndcg.
+
+06/10 — nhãn theo câu và khối rubric:
+- `query_annotations.yaml` (`load_annotations` / `apply_annotations`): forbidden_filter, forbidden, origin, destination_city,
+  expected_parse, family theo qid cho câu gold chưa có trường đó (gold thắng). Thay `forbidden_v3.yaml` (đã xoá; định dạng
+  {qid: AST} cũ vẫn đọc được qua `metrics.forbidden_overrides`).
+- `block` = "v3" khi qid có trong gold.jsonl của tag `gold_v3` (rubric v3), "v4" khi thêm từ gold_v4 (rubric v4 —
+  docs/spec/bench/gold-guide.md: không trộn hai rubric trong một con số mà không ghi rõ). `aggregate` thêm `by_block` (cùng
+  bộ metric như by_slice), `by_family` (họ ≥ 2 câu: ndcg / recall trung bình) và `overall.family_macro_ndcg@k` (trung bình
+  theo họ của trung bình trong họ; câu không có họ là một họ riêng).
+- `guard_lines`: giá trị guard Phase A + PASS/FAIL theo `metrics.guards_proposed` (đề xuất, chỉ báo — `sb guards`).
+- `weak_grid`: quy tắc "kết quả yếu" của hợp đồng search §3.4 trên lưới ngưỡng (`sb weak-results`).
 
 Paired bootstrap: Δ = (B − A) × 100 (điểm phần trăm) trên các qid cả hai arm đều xác định; p một phía = P(Δ* < 0)
 + ½·P(Δ* = 0) (mid-p) để một arm so với chính nó cho p = 0,5 đúng như spec.
@@ -67,8 +79,9 @@ class GoldQuery:
     forbidden: tuple[str, ...] = ()          # product_id cấm tường minh
     origin: str | None = None                # chiều bay kỳ vọng — attributes.originCity của catalog
     destination_city: str | None = None      # attributes.destinationCity
-    expected_parse: dict | None = None       # {taxonomy, destination, origin, destination_city, must_not, price_max, price_min, star_min}
-    family: str | None = None                # họ câu (chẩn đoán, không vào metric)
+    expected_parse: dict | None = None       # khoá ⊆ PARSE_FIELDS
+    family: str | None = None                # họ câu: biến thể không dấu / gõ sai cùng ý định (by_family, family_macro_ndcg)
+    block: str | None = None                 # "v3" | "v4": khối rubric (runner.load_env gắn — `block_of`)
 
     @property
     def has_forbidden(self) -> bool:
@@ -76,7 +89,19 @@ class GoldQuery:
 
 
 #: trường của `expected_parse` được so với queryPlan (thiếu trường nào trong gold thì không so trường đó)
-PARSE_FIELDS = ("taxonomy", "destination", "origin", "destination_city", "must_not", "price_max", "price_min", "star_min")
+PARSE_FIELDS = ("taxonomy", "destination", "origin", "destination_city", "must_not", "must_not_brands", "must_not_taxonomies",
+                "price_max", "price_min", "star_min", "party_total")
+#: kiểu của từng trường parse (dạng chuẩn để so — `canon_parse`)
+PARSE_STR_FIELDS = ("taxonomy", "destination", "origin", "destination_city")
+PARSE_LIST_FIELDS = ("must_not", "must_not_brands", "must_not_taxonomies")
+PARSE_INT_FIELDS = ("price_max", "price_min", "party_total")
+PARSE_FLOAT_FIELDS = ("star_min",)
+
+#: khối rubric (gold-guide.md "Rubric v4"): câu có trong tag gold_v3 theo rubric v3, câu thêm từ gold_v4 theo rubric v4
+BLOCKS = ("v3", "v4")
+RUBRIC_V3_TAG = "gold_v3"
+#: dự phòng khi không đọc được tag gold_v3 qua git: qid ≤ giá trị này là câu v3 (gold_v4 bắt đầu từ c0673)
+RUBRIC_V3_MAX_QID = "c0672"
 
 CHILD_TO_ITEMS = {"unit_price": "unit_price_min"}      # child_filter (gold_schema) → cột items.parquet
 
@@ -103,6 +128,30 @@ def _opt_str(v: Any) -> str | None:
     return v.strip() if isinstance(v, str) and v.strip() else None
 
 
+def _check_expected_parse(ep: Any, where: str, label: str) -> dict | None:
+    """`expected_parse` hợp lệ (None / {} → None): khoá ⊆ PARSE_FIELDS, giá trị đúng kiểu từng trường (null luôn được — nghĩa
+    là kỳ vọng parser không ra gì). Khoá gõ sai (vd price_maximum) sẽ không bao giờ được so → báo thay vì lặng lẽ bỏ qua."""
+    if ep is None or ep == {}:
+        return None
+    if not isinstance(ep, dict):
+        raise MetricsError(f"{where}: {label} phải là object")
+    unknown = sorted(str(k) for k in ep if k not in PARSE_FIELDS)
+    if unknown:
+        raise MetricsError(f"{where}: {label} có khoá lạ {unknown} (chỉ nhận {', '.join(PARSE_FIELDS)})")
+    for f, v in ep.items():
+        if v is None:
+            continue
+        if f in PARSE_STR_FIELDS:
+            ok = isinstance(v, str)
+        elif f in PARSE_LIST_FIELDS:
+            ok = isinstance(v, list) and all(isinstance(x, str) for x in v)
+        else:
+            ok = isinstance(v, (int, float)) and not isinstance(v, bool)
+        if not ok:
+            raise MetricsError(f"{where}: {label}.{f} sai kiểu ({type(v).__name__}: {v!r})")
+    return dict(ep)
+
+
 def _phase_a_fields(r: dict, names: Mapping[str, str], where: str) -> dict:
     """Trường gold v4 của một bản ghi (tên theo `names`); kiểu sai hoặc khoá `expected_parse` ngoài `PARSE_FIELDS` → MetricsError."""
     fb = r.get(names["forbidden_filter"]) or None
@@ -114,13 +163,7 @@ def _phase_a_fields(r: dict, names: Mapping[str, str], where: str) -> dict:
     forb = r.get(names["forbidden"]) or []
     if not isinstance(forb, list) or not all(isinstance(x, str) for x in forb):
         raise MetricsError(f"{where}: {names['forbidden']} phải là danh sách product_id")
-    ep = r.get(names["expected_parse"]) or None
-    if ep is not None:
-        if not isinstance(ep, dict):
-            raise MetricsError(f"{where}: {names['expected_parse']} phải là object")
-        unknown = sorted(str(k) for k in ep if k not in PARSE_FIELDS)
-        if unknown:     # khoá gõ sai (vd price_maximum) sẽ không bao giờ được so → báo thay vì lặng lẽ bỏ qua
-            raise MetricsError(f"{where}: {names['expected_parse']} có khoá lạ {unknown} (chỉ nhận {', '.join(PARSE_FIELDS)})")
+    ep = _check_expected_parse(r.get(names["expected_parse"]) or None, where, names["expected_parse"])
     return {"forbidden_filter": fb, "forbidden": tuple(forb), "origin": _opt_str(r.get(names["origin"])),
             "destination_city": _opt_str(r.get(names["destination_city"])), "expected_parse": ep,
             "family": _opt_str(r.get(names["family"]))}
@@ -153,7 +196,8 @@ def load_gold(path: Path, *, include_retired: bool = False, gold_fields: Mapping
 
 
 def load_forbidden_overrides(path: Path) -> dict[str, dict]:
-    """`config/forbidden_v3.yaml`: {qid: AST} chẩn đoán cho gold chưa có trường `forbidden`. File không có → {}."""
+    """{qid: AST} chẩn đoán cho gold chưa có trường `forbidden` (định dạng `config/forbidden_v3.yaml` của 05/10 — đã chuyển vào
+    query_annotations.yaml; giữ để `metrics.forbidden_overrides` cũ còn dùng được). File không có → {}."""
     if not path.exists():
         return {}
     raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
@@ -178,6 +222,102 @@ def apply_forbidden_overrides(gold: list[GoldQuery], overrides: Mapping[str, dic
             g.forbidden_filter = overrides[g.qid]
             n += 1
     return n
+
+
+# ------------------------------------------------------------------ nhãn theo câu (06/10, query_annotations.yaml)
+ANNOTATIONS_VERSION = 1
+ANNOTATION_TOP_KEYS = ("version", "annotated_by", "queries")
+#: khoá của một câu trong `queries` (tên nội bộ của GoldQuery — không qua `gold_fields`)
+ANNOTATION_KEYS = ("forbidden_filter", "forbidden", "origin", "destination_city", "expected_parse", "family")
+
+
+def load_annotations(path: Path) -> dict[str, dict]:
+    """`config/query_annotations.yaml` → {qid: {khoá: giá trị}} đã kiểm (chỉ khoá có giá trị khác null; `expected_parse` giữ
+    nguyên các trường null bên trong vì null ở đó là kỳ vọng). Không có file, sai version, khoá lạ (cấp file hoặc cấp câu),
+    filter AST sai, `expected_parse` sai khoá / kiểu → MetricsError."""
+    if not path.exists():
+        raise MetricsError(f"không thấy {path} (metrics.annotations) — đặt null trong sbench.yaml nếu không dùng")
+    try:
+        raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError as e:
+        raise MetricsError(f"{path.name}: YAML hỏng: {e}") from None
+    if not isinstance(raw, dict):
+        raise MetricsError(f"{path.name}: phải là mapping {{version, annotated_by, queries}}")
+    unknown = sorted(str(k) for k in raw if k not in ANNOTATION_TOP_KEYS)
+    if unknown:
+        raise MetricsError(f"{path.name}: khoá lạ {unknown} (chỉ nhận {', '.join(ANNOTATION_TOP_KEYS)})")
+    if raw.get("version") != ANNOTATIONS_VERSION:
+        raise MetricsError(f"{path.name}: version phải là {ANNOTATIONS_VERSION}, gặp {raw.get('version')!r}")
+    queries = raw.get("queries") or {}
+    if not isinstance(queries, dict):
+        raise MetricsError(f"{path.name}: queries phải là mapping qid → {{khoá: giá trị}}")
+    out: dict[str, dict] = {}
+    for qid, entry in queries.items():
+        where = f"{path.name}: {qid}"
+        entry = entry or {}
+        if not isinstance(entry, dict):
+            raise MetricsError(f"{where}: phải là mapping khoá → giá trị")
+        bad = sorted(str(k) for k in entry if k not in ANNOTATION_KEYS)
+        if bad:
+            raise MetricsError(f"{where}: khoá lạ {bad} (chỉ nhận {', '.join(ANNOTATION_KEYS)})")
+        a: dict[str, Any] = {}
+        if entry.get("forbidden_filter") is not None:
+            try:
+                F.validate(entry["forbidden_filter"])
+            except F.FilterError as e:
+                raise MetricsError(f"{where}: forbidden_filter: {e}") from None
+            a["forbidden_filter"] = entry["forbidden_filter"]
+        if entry.get("forbidden") is not None:
+            forb = entry["forbidden"]
+            if not isinstance(forb, list) or not all(isinstance(x, str) for x in forb):
+                raise MetricsError(f"{where}: forbidden phải là danh sách product_id")
+            a["forbidden"] = tuple(forb)
+        for f in ("origin", "destination_city", "family"):
+            v = entry.get(f)
+            if v is not None and not isinstance(v, str):
+                raise MetricsError(f"{where}: {f} phải là chuỗi hoặc null")
+            if _opt_str(v) is not None:
+                a[f] = _opt_str(v)
+        ep = _check_expected_parse(entry.get("expected_parse"), where, "expected_parse")
+        if ep is not None:
+            a["expected_parse"] = ep
+        out[str(qid)] = a
+    return out
+
+
+def apply_annotations(gold: list[GoldQuery], annotations: Mapping[str, Mapping[str, Any]], *,
+                      known_qids: Iterable[str] | None = None) -> dict[str, int]:
+    """Gắn nhãn theo câu cho câu gold CHƯA có trường đó (gold thắng từng trường). Phần cấm (`forbidden_filter` + `forbidden`)
+    là một khối như `apply_forbidden_overrides`: câu gold đã có một trong hai thì không nhận gì. `known_qids` (vd mọi qid
+    của gold/gold.jsonl, kể cả retired) → qid lạ (gõ sai) là MetricsError; câu có trong `known_qids` nhưng không có trong
+    `gold` đang chấm (fixture, gold cũ) chỉ bị bỏ qua. Trả {trường: số câu được gắn}."""
+    if known_qids is not None:
+        unknown = sorted(set(annotations) - set(known_qids))
+        if unknown:
+            raise MetricsError(f"annotations: {len(unknown)} qid không có trong gold ({', '.join(unknown[:5])}"
+                               f"{' …' if len(unknown) > 5 else ''})")
+    by = {g.qid: g for g in gold}
+    n: Counter = Counter()
+    for qid, a in annotations.items():
+        g = by.get(qid)
+        if g is None:
+            continue
+        if not g.has_forbidden and ("forbidden_filter" in a or "forbidden" in a):
+            g.forbidden_filter = a.get("forbidden_filter")
+            g.forbidden = tuple(a.get("forbidden") or ())
+            n["forbidden"] += 1
+        for f in ("origin", "destination_city", "expected_parse", "family"):
+            if f in a and getattr(g, f) is None:
+                setattr(g, f, a[f])
+                n[f] += 1
+    return dict(n)
+
+
+def block_of(qid: str, v3_qids: set[str] | frozenset[str] | None) -> str:
+    """Khối rubric của một câu: "v3" khi qid có trong gold_v3 (dự phòng khi không đọc được tag: qid ≤ RUBRIC_V3_MAX_QID)."""
+    if v3_qids is None:
+        return "v3" if qid <= RUBRIC_V3_MAX_QID else "v4"
+    return "v3" if qid in v3_qids else "v4"
 
 
 # ------------------------------------------------------------------ metric theo query
@@ -307,46 +447,82 @@ def filter_pass(top_ids: list[str], resolved_applied: dict | None, items: pd.Dat
     return int(F.mask(resolved_applied, _rows_of(top, items, "filter_pass")).sum()), len(top)
 
 
+def _d(v: Any) -> dict:
+    return v if isinstance(v, dict) else {}
+
+
+#: khoá diagnostics theo câu mà arm APP luôn lưu vào `extra` (app_adapter 06/10) — có khoá này mà vắng `queryPlan` nghĩa là
+#: backend không parse ra gì (contract: queryPlan chỉ phát khi có gì để khai)
+_APP_DIAG_KEYS = ("stageMs", "filteredCount", "relevantCount")
+
+
 def plan_fields(extra: Mapping[str, Any] | None) -> dict[str, Any] | None:
-    """Giá trị parse của arm APP theo `PARSE_FIELDS`, đọc từ diagnostics đã lưu (`queryPlan` contract 1.15.0; điểm đến lấy ở
-    `appliedFilters.hard.destination` rồi `destinationFilter.value` vì queryPlan không khai điểm đến). None khi không có
-    `queryPlan` (arm không phải APP, hoặc backend chưa phát)."""
-    if not extra or not isinstance(extra.get("queryPlan"), dict):
+    """Giá trị parser của arm APP theo `PARSE_FIELDS`, đọc từ diagnostics đã lưu (`queryPlan` contract 1.15.0) — KHÔNG phụ
+    thuộc cờ filter của arm (queryPlan được phát cả khi mọi cờ tắt; `appliedFilters` mới là "đã lọc gì"):
+    - taxonomy        = queryPlan.taxonomy.value, chỉ khi source là "query" hoặc "param" (không thì None)
+    - destination     = queryPlan.route.destinationCity khi parse ra tuyến bay (route có origin hoặc destinationCity), không thì
+                        phần tử duy nhất của `derivedDestinations` (None khi 0 hoặc ≥ 2 địa danh)
+    - origin / destination_city = queryPlan.route.origin / destinationCity
+    - must_not / must_not_brands / must_not_taxonomies = queryPlan.mustNot.amenities / brands / taxonomies (sắp xếp; khoá
+      `taxonomies` mới, có thể vắng → [])
+    - price_max / price_min = queryPlan.price.max / min · star_min = queryPlan.star.min · party_total = queryPlan.party.total
+      (khoá mới, có thể vắng → None)
+    None khi không có `queryPlan` (arm không phải APP, hoặc backend chưa phát). Arm APP đã lưu diagnostics theo câu (khoá
+    `_APP_DIAG_KEYS`, có từ 06/10) mà không có `queryPlan` = backend không parse ra gì → so như plan rỗng (mọi trường None /
+    []), không bỏ câu khỏi `parse_accuracy` (trước 06/10 23/154 câu bị bỏ, làm số parse cao giả)."""
+    if not extra:
         return None
-    qp = extra["queryPlan"]
-    route = qp.get("route") or {}
-    hard = ((extra.get("appliedFilters") or {}).get("hard") or {})
-    dest = hard.get("destination")
-    if dest is None:
-        dest = (extra.get("destinationFilter") or {}).get("value")
-    price, star = qp.get("price") or {}, qp.get("star") or {}
-    return {"taxonomy": (qp.get("taxonomy") or {}).get("value"), "destination": dest, "origin": route.get("origin"),
-            "destination_city": route.get("destinationCity"),
-            "must_not": sorted((qp.get("mustNot") or {}).get("amenities") or []),
-            "price_max": price.get("max"), "price_min": price.get("min"), "star_min": star.get("min")}
+    qp = extra.get("queryPlan")
+    if not isinstance(qp, dict):
+        if not any(k in extra for k in _APP_DIAG_KEYS):
+            return None
+        qp = {}
+    tax = _d(qp.get("taxonomy"))
+    route = _d(qp.get("route"))
+    must_not = _d(qp.get("mustNot"))
+    if route.get("origin") or route.get("destinationCity"):
+        dest = route.get("destinationCity")
+    else:
+        derived = extra.get("derivedDestinations") or []
+        dest = derived[0] if isinstance(derived, list) and len(derived) == 1 else None
+    price, star, party = _d(qp.get("price")), _d(qp.get("star")), _d(qp.get("party"))
+    return {"taxonomy": tax.get("value") if tax.get("source") in ("query", "param") else None,
+            "destination": dest, "origin": route.get("origin"), "destination_city": route.get("destinationCity"),
+            "must_not": sorted(must_not.get("amenities") or []), "must_not_brands": sorted(must_not.get("brands") or []),
+            "must_not_taxonomies": sorted(must_not.get("taxonomies") or []),
+            "price_max": price.get("max"), "price_min": price.get("min"), "star_min": star.get("min"),
+            "party_total": party.get("total")}
 
 
-def _canon(v: Any) -> Any:
-    """Dạng so sánh của một giá trị parse: chuỗi → fold, danh sách → sắp xếp, số → float, None giữ None."""
-    if isinstance(v, str):
-        return fold(v)
-    if isinstance(v, (list, tuple)):
-        return sorted(_canon(x) for x in v)
-    if isinstance(v, bool) or v is None:
+def canon_parse(field_name: str, v: Any) -> Any:
+    """Dạng so sánh của một giá trị parse theo trường: chuỗi → `fold` (chuỗi rỗng ≡ None), danh sách → sắp xếp các chuỗi đã
+    fold (None ≡ []), giá / số khách → int, sao → float; None giữ None. Giá trị sai kiểu giữ nguyên (so bằng ==)."""
+    if field_name in PARSE_LIST_FIELDS:
+        if v is None:
+            return []
+        if isinstance(v, (list, tuple)):
+            return sorted(fold(x) if isinstance(x, str) else x for x in v)
         return v
-    if isinstance(v, (int, float)):
-        return float(v)
-    return v
+    if v is None:
+        return None
+    if field_name in PARSE_STR_FIELDS:
+        return (fold(v) or None) if isinstance(v, str) else v
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return v
+    if field_name in PARSE_INT_FIELDS:
+        return int(round(v))
+    return float(v)
 
 
 def parse_ok(expected: Mapping[str, Any] | None, extra: Mapping[str, Any] | None) -> dict[str, bool] | None:
-    """{trường: đúng?} cho các trường của `PARSE_FIELDS` có trong `expected`; None khi thiếu expected hoặc queryPlan."""
+    """{trường: đúng?} cho các trường của `PARSE_FIELDS` có trong `expected` (so dạng `canon_parse`; trường parser không ra
+    ≡ None); None khi thiếu expected hoặc queryPlan."""
     if not expected:
         return None
     got = plan_fields(extra)
     if got is None:
         return None
-    return {f: _canon(expected[f]) == _canon(got.get(f)) for f in PARSE_FIELDS if f in expected}
+    return {f: canon_parse(f, expected[f]) == canon_parse(f, got.get(f)) for f in PARSE_FIELDS if f in expected}
 
 
 def hub_scores(top_lists: Iterable[list[str]], n_items: int, depth: int) -> dict[str, float]:
@@ -404,6 +580,7 @@ def evaluate_query(gq: GoldQuery, top_ids: list[str], ctx: EvalContext, *, top_s
                 "direction_ok": direction_ok(top_ids, gq.origin, gq.destination_city, ctx.items, k),
                 "filter_pass_ok": fp_ok, "filter_pass_n": fp_n,
                 "parse_ok": json.dumps(po, ensure_ascii=False) if po is not None else None})   # JSON để vào parquet
+    row.update({"block": gq.block, "family": gq.family})      # 06/10: khối rubric + họ câu (by_block / by_family)
     return row
 
 
@@ -509,37 +686,78 @@ def phase_a_aggregate(rows: list[dict]) -> dict[str, Any]:
     return out
 
 
+def _constraint_precision(rows: list[dict]) -> float | None:
+    filtered = [r for r in rows if r["constraint_n"]]
+    total_n = sum(r["constraint_n"] for r in filtered)
+    return (sum(r["constraint_ok"] for r in filtered) / total_n) if total_n else None
+
+
+def _zero_rates(rows: list[dict]) -> tuple[float | None, float | None]:
+    """(zero_result_in_catalog, zero_result_out_of_catalog)."""
+    in_cat = [r for r in rows if not r["expected_no_result"]]
+    ooc = [r for r in rows if r["expected_no_result"]]
+    return ((sum(r["zero_result"] for r in in_cat) / len(in_cat)) if in_cat else None,
+            (sum(r["zero_result"] for r in ooc) / len(ooc)) if ooc else None)
+
+
+def _group_metrics(rs: list[dict], rank_metrics: list[str]) -> dict[str, Any]:
+    """Bộ metric của một nhóm câu (slice / khối rubric)."""
+    out: dict[str, Any] = {mname: _mean(r[mname] for r in rs)[0] for mname in rank_metrics}
+    # zero-result và constraint precision theo nhóm (M2 cần zero-result theo slice; slice out_of_catalog thì zero_result cao là
+    # đúng thiết kế — đọc cùng expected_no_result)
+    out["zero_result"] = sum(r["zero_result"] for r in rs) / len(rs)
+    cn = sum(r["constraint_n"] for r in rs)
+    out["constraint_precision"] = (sum(r["constraint_ok"] for r in rs) / cn) if cn else None
+    out.update(phase_a_aggregate(rs))
+    out["n"] = len(rs)
+    return out
+
+
+def _key_of(r: dict, key: str) -> str | None:
+    v = r.get(key)
+    return v if isinstance(v, str) and v else None
+
+
+def family_aggregate(rows: list[dict], k: int) -> tuple[dict[str, dict], float | None]:
+    """(by_family, family_macro_ndcg@k). by_family: chỉ họ có ≥ 2 câu trong `rows` → {n, ndcg@k, recall@k, qids}. Macro: mỗi
+    họ (câu không có họ, hoặc họ chỉ một câu, là một họ riêng) lấy trung bình ndcg@k các câu xác định trong họ, rồi lấy
+    trung bình các họ — biến thể không dấu / gõ sai của một ý định chỉ được tính một phiếu (kiến trúc §15)."""
+    groups: dict[str, list[dict]] = {}
+    for r in rows:
+        fam = _key_of(r, "family")
+        groups.setdefault(f"family:{fam}" if fam else f"qid:{r['qid']}", []).append(r)
+    by_family: dict[str, dict] = {}
+    for g, rs in sorted(groups.items()):
+        if g.startswith("family:") and len(rs) >= 2:
+            by_family[g[len("family:"):]] = {"n": len(rs), f"ndcg@{k}": _mean(r.get(f"ndcg@{k}") for r in rs)[0],
+                                             f"recall@{k}": _mean(r.get(f"recall@{k}") for r in rs)[0],
+                                             "qids": sorted(r["qid"] for r in rs)}
+    means = [m for m in (_mean(r.get(f"ndcg@{k}") for r in rs)[0] for rs in groups.values()) if m is not None]
+    return by_family, (float(np.mean(means)) if means else None)
+
+
 def aggregate(rows: list[dict], cfg: MetricsConfig, *, hub_score_max: float | None = None) -> dict:
-    """overall + by_slice như `results.json` (spec §1.4); `n_defined` = số query mỗi metric thật sự tính."""
+    """overall + by_slice như `results.json` (spec §1.4); `n_defined` = số query mỗi metric thật sự tính. 06/10: `by_block`
+    (khối rubric v3 / v4, cùng bộ metric như by_slice — chỉ dòng có cột `block`), `by_family` và
+    `overall.family_macro_ndcg@k` (`family_aggregate`)."""
     k = cfg.k
     rank_metrics = [f"recall@{k}", f"ndcg@{k}", f"mrr@{k}", f"judged@{k}", *(f"recall@{kk}" for kk in cfg.extra_recall_k)]
     overall: dict[str, Any] = {}
     n_defined: dict[str, int] = {}
     for mname in rank_metrics:
         overall[mname], n_defined[mname] = _mean(r[mname] for r in rows)
-    filtered = [r for r in rows if r["constraint_n"]]
-    total_n = sum(r["constraint_n"] for r in filtered)
-    overall["constraint_precision"] = (sum(r["constraint_ok"] for r in filtered) / total_n) if total_n else None
+    overall["constraint_precision"] = _constraint_precision(rows)
     overall["filter_recall_loss"] = int(sum(r["filter_recall_loss"] for r in rows))
     overall["parent_dup_rate"], _ = _mean(float(r["n_dup_parent"]) for r in rows)
-    in_cat = [r for r in rows if not r["expected_no_result"]]
-    ooc = [r for r in rows if r["expected_no_result"]]
-    overall["zero_result_in_catalog"] = (sum(r["zero_result"] for r in in_cat) / len(in_cat)) if in_cat else None
-    overall["zero_result_out_of_catalog"] = (sum(r["zero_result"] for r in ooc) / len(ooc)) if ooc else None
+    overall["zero_result_in_catalog"], overall["zero_result_out_of_catalog"] = _zero_rates(rows)
     overall["hub_score_max"] = hub_score_max
     overall.update(phase_a_aggregate(rows))
-    by_slice: dict[str, dict] = {}
-    for s in sorted({r["slice"] for r in rows}):
-        rs = [r for r in rows if r["slice"] == s]
-        by_slice[s] = {mname: _mean(r[mname] for r in rs)[0] for mname in rank_metrics}
-        # zero-result và constraint precision theo slice (M2 cần zero-result theo slice; slice out_of_catalog thì
-        # zero_result cao là đúng thiết kế — đọc cùng expected_no_result)
-        by_slice[s]["zero_result"] = sum(r["zero_result"] for r in rs) / len(rs)
-        cn = sum(r["constraint_n"] for r in rs)
-        by_slice[s]["constraint_precision"] = (sum(r["constraint_ok"] for r in rs) / cn) if cn else None
-        by_slice[s].update(phase_a_aggregate(rs))
-        by_slice[s]["n"] = len(rs)
-    return {"overall": overall, "by_slice": by_slice, "n_queries": len(rows), "n_defined": n_defined}
+    by_family, overall[f"family_macro_ndcg@{k}"] = family_aggregate(rows, k)
+    by_slice = {s: _group_metrics([r for r in rows if r["slice"] == s], rank_metrics) for s in sorted({r["slice"] for r in rows})}
+    blocks = sorted({b for b in (_key_of(r, "block") for r in rows) if b})
+    by_block = {b: _group_metrics([r for r in rows if _key_of(r, "block") == b], rank_metrics) for b in blocks}
+    return {"overall": overall, "by_slice": by_slice, "by_block": by_block, "by_family": by_family, "n_queries": len(rows),
+            "n_defined": n_defined}
 
 
 # ------------------------------------------------------------------ so hai arm
@@ -572,6 +790,29 @@ def slice_deltas(rows_a: list[dict], rows_b: list[dict], metric: str) -> dict[st
     return {s: float(np.mean(v)) for s, v in sorted(acc.items())}
 
 
+def _num(v: Any) -> float | None:
+    if v is None or isinstance(v, bool) or not isinstance(v, (int, float)) or (isinstance(v, float) and math.isnan(v)):
+        return None
+    return float(v)
+
+
+def group_delta_stats(rows_a: list[dict], rows_b: list[dict], metric: str, key: str) -> dict[str, dict[str, Any]]:
+    """Theo nhóm `key` (vd "block") của A: {nhóm: {a, b, delta, n}} — a / b = trung bình metric của từng arm trên các qid CẢ HAI
+    xác định (n cặp), delta = (b − a)·100 điểm. Dòng thiếu cột `key` hoặc metric (artifact cũ) bị bỏ qua."""
+    b_of = {r["qid"]: _num(r.get(metric)) for r in rows_b}
+    acc: dict[str, list[tuple[float, float]]] = {}
+    for r in rows_a:
+        g, va, vb = _key_of(r, key), _num(r.get(metric)), b_of.get(r["qid"])
+        if g is None or va is None or vb is None:
+            continue
+        acc.setdefault(g, []).append((va, vb))
+    out = {}
+    for g, pairs in sorted(acc.items()):
+        a, b = float(np.mean([x for x, _ in pairs])), float(np.mean([y for _, y in pairs]))
+        out[g] = {"a": a, "b": b, "delta": (b - a) * 100.0, "n": len(pairs)}
+    return out
+
+
 def win_verdict(recall: dict, ndcg: dict, slice_ndcg_deltas: dict[str, float], rule: WinRule) -> tuple[str, str]:
     """Kết luận cặp theo win_rule (spec Part 8): WIN nếu Δrecall ≥ min, p < p_max và không slice nào thua > max_slice_loss;
     không thì TIE nếu |Δndcg| < tie_delta_ndcg; còn lại LOSE. Chỉ để đọc report — chọn arm ở cổng dùng select() (Part 10)."""
@@ -595,3 +836,102 @@ def compare_rows(rows_a: list[dict], rows_b: list[dict], cfg: MetricsConfig, *, 
     out["slice_delta_ndcg"] = slice_deltas(rows_a, rows_b, f"ndcg@{k}")
     out["verdict"], out["reason"] = win_verdict(out[f"recall@{k}"], out[f"ndcg@{k}"], out["slice_delta_ndcg"], cfg.win_rule)
     return out
+
+
+# ------------------------------------------------------------------ guard Phase A (06/10, `sb guards` — chỉ báo, không chặn)
+#: (tên giá trị, chiều so, khoá ngưỡng trong `metrics.guards_proposed`); chiều None = chỉ báo giá trị, không có ngưỡng
+GUARD_SPECS: tuple[tuple[str, str | None, str | None], ...] = (
+    ("forbidden_at_10", "max", "forbidden_at_10_max"),
+    ("forbidden_query_rate", None, None),
+    ("direction_accuracy", "min", "direction_accuracy_min"),
+    ("filter_pass_rate", "min", "filter_pass_min"),
+    ("constraint_precision", "min", "constraint_precision_min"),
+    ("zero_result_in_catalog", "max", "zero_result_in_catalog_max"),
+    ("zero_result_out_of_catalog", None, None),
+)
+_GUARD_EPS = 1e-12
+
+
+def guard_status(value: float | None, op: str | None, threshold: float | None) -> str:
+    """PASS / FAIL theo ngưỡng (sai số 1e-12); "n/a" khi không câu nào định nghĩa giá trị; "-" khi không có ngưỡng."""
+    if value is None:
+        return "n/a"
+    if op is None or threshold is None:
+        return "-"
+    ok = value <= threshold + _GUARD_EPS if op == "max" else value >= threshold - _GUARD_EPS
+    return "PASS" if ok else "FAIL"
+
+
+def guard_lines(rows: list[dict], proposed: Any) -> list[dict[str, Any]]:
+    """Giá trị guard Phase A của một arm trên `rows` (cùng công thức với `aggregate`) kèm PASS/FAIL theo `proposed`
+    (`GuardsProposed` hoặc object cùng thuộc tính): mỗi dòng {name, value, op, threshold, status, n (số câu định nghĩa),
+    bad (qid làm trượt, sắp xếp)}. `parse_accuracy` tách mỗi trường một dòng `parse_accuracy.<trường>` (ngưỡng
+    parse_accuracy_min). Dòng per_query cũ thiếu cột Phase A → giá trị None, status "n/a"."""
+    pa = phase_a_aggregate(rows)
+    zin, zooc = _zero_rates(rows)
+    values = {**pa, "constraint_precision": _constraint_precision(rows), "zero_result_in_catalog": zin,
+              "zero_result_out_of_catalog": zooc}
+    fb = [r for r in rows if _defined(r, "forbidden_n")]
+    dr = [r for r in rows if _defined(r, "direction_ok")]
+    fp = [r for r in rows if _defined(r, "filter_pass_n")]
+    cp = [r for r in rows if r.get("constraint_n")]
+    incat = [r for r in rows if not r.get("expected_no_result")]
+    support = {
+        "forbidden_at_10": (fb, [r for r in fb if int(r["forbidden_hits"]) > 0]),
+        "forbidden_query_rate": (fb, [r for r in fb if int(r["forbidden_hits"]) > 0]),
+        "direction_accuracy": (dr, [r for r in dr if not int(r["direction_ok"])]),
+        "filter_pass_rate": (fp, [r for r in fp if int(r["filter_pass_ok"]) < int(r["filter_pass_n"])]),
+        "constraint_precision": (cp, [r for r in cp if int(r["constraint_ok"]) < int(r["constraint_n"])]),
+        "zero_result_in_catalog": (incat, [r for r in incat if r.get("zero_result")]),
+        "zero_result_out_of_catalog": ([r for r in rows if r.get("expected_no_result")],
+                                       [r for r in rows if r.get("expected_no_result") and not r.get("zero_result")]),
+    }
+    out = []
+    for name, op, key in GUARD_SPECS:
+        thr = getattr(proposed, key) if (key and proposed is not None) else None
+        val = values.get(name)
+        n_rows, bad = support[name]
+        out.append({"name": name, "value": val, "op": op, "threshold": thr, "status": guard_status(val, op, thr),
+                    "n": len(n_rows), "bad": sorted(r["qid"] for r in bad)})
+    per_field: dict[str, tuple[list[str], list[str]]] = {}
+    for r in rows:
+        po = _parse_ok_of(r)
+        for f, okv in (po or {}).items():
+            seen, bad = per_field.setdefault(f, ([], []))
+            seen.append(r["qid"])
+            if not okv:
+                bad.append(r["qid"])
+    thr = getattr(proposed, "parse_accuracy_min", None) if proposed is not None else None
+    order = {f: i for i, f in enumerate(PARSE_FIELDS)}
+    for f in sorted(per_field, key=lambda x: (order.get(x, len(order)), x)):
+        seen, bad = per_field[f]
+        val = (len(seen) - len(bad)) / len(seen)
+        out.append({"name": f"parse_accuracy.{f}", "value": val, "op": "min", "threshold": thr,
+                    "status": guard_status(val, "min", thr), "n": len(seen), "bad": sorted(bad)})
+    return out
+
+
+# ------------------------------------------------------------------ "kết quả yếu" (06/10, hợp đồng search §3.4, `sb weak-results`)
+def is_weak(top: float | None, margin: float | None, top_min: float, margin_min: float) -> bool:
+    """Quy tắc client của hợp đồng §3.4: weak khi topScore < WEAK_RESULT_TOP_SCORE HOẶC margin < WEAK_RESULT_MARGIN. Không có
+    margin (thiếu vector truy vấn) → chỉ xét topScore. `top` None (results rỗng) → False: câu rỗng không phải "yếu", đếm riêng."""
+    if top is None:
+        return False
+    return top < top_min or (margin is not None and margin < margin_min)
+
+
+def weak_grid(entries: list[Mapping[str, Any]], top_grid: Iterable[float], margin_grid: Iterable[float]) -> dict[str, Any]:
+    """`entries`: {qid, ooc (expected_no_result), top (topScore | None khi rỗng), margin (| None)}. Với mỗi (T, M) của lưới:
+    `ooc_suppressed` = câu ngoài catalog KHÔNG hiện kết quả (rỗng HOẶC weak) — muốn cao; `in_weak` = câu trong catalog có kết
+    quả nhưng bị gắn weak (báo động giả) — muốn thấp. Câu trong catalog rỗng (`n_in_empty`) không phụ thuộc ngưỡng."""
+    ooc = [e for e in entries if e["ooc"]]
+    inc = [e for e in entries if not e["ooc"]]
+    cells = []
+    for t in top_grid:
+        for m in margin_grid:
+            cells.append({"top": float(t), "margin": float(m),
+                          "ooc_suppressed": sum(1 for e in ooc if e["top"] is None or is_weak(e["top"], e["margin"], t, m)),
+                          "in_weak": sum(1 for e in inc if is_weak(e["top"], e["margin"], t, m))})
+    return {"cells": cells, "n_ooc": len(ooc), "n_in": len(inc), "n_ooc_empty": sum(1 for e in ooc if e["top"] is None),
+            "n_in_empty": sum(1 for e in inc if e["top"] is None),
+            "n_no_margin": sum(1 for e in entries if e["top"] is not None and e["margin"] is None)}
