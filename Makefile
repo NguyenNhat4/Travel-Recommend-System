@@ -46,6 +46,7 @@ tunnel-status:
 	for p in 15432 15433; do
 		if (exec 3<>/dev/tcp/127.0.0.1/$$p) 2>/dev/null; then echo ":$$p mở"; else echo ":$$p đóng"; fi
 	done
+.PHONY: recsys-test recsys-gate-run recsys-regress recsys-baseline
 
 # Chạy trọn bộ FastAPI + Streamlit; Ctrl+C sẽ dừng cả hai.
 # Agent mặc định gọi engine trong tiến trình (inprocess); ITINERARY_DATA_MODE=http để gọi qua ITINERARY_SERVICE_BASE_URL.
@@ -248,3 +249,48 @@ jwt-keys:
 	openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out secrets/jwt-private.pem
 	openssl rsa -pubout -in secrets/jwt-private.pem -out secrets/jwt-public.pem
 	chmod 600 secrets/jwt-private.pem
+
+# --- RecSys offline bench: regression tự động so với baseline_v1 (docs/spec/bench/recsys-offline-eval.md §1, §3.1) ---
+# Cần Postgres local đã seed và biến môi trường của harness: DATABASE_URL, EVAL_DATABASE_URL (.env.example) và WEAVIATE_URL
+# (khoá cache vector numpy). `.env` gốc có thể trỏ VM / cloud, nên đặt RECSYS_ENV=<file export …> để nạp môi trường local
+# trước khi chạy; Makefile không ghi DSN. Ví dụ:
+#   make recsys-test
+#   make recsys-regress RECSYS_SPLIT=llbo RECSYS_ENV=~/.vota-local.env      # mã 0 PASS/WARN · 1 FAIL · 2 không so được · 3 INCONCLUSIVE
+#   make recsys-baseline RECSYS_SPLIT=temporal NOTE="lý do; history/<entry>.md" [FORCE=1]
+RECSYS_PYTHON ?= $(shell if [ -x .venv/bin/python ]; then echo .venv/bin/python; elif [ -x .venv/Scripts/python.exe ]; then echo .venv/Scripts/python.exe; else echo $(PYTHON); fi)
+RECSYS_ASOF ?= 20260924
+RECSYS_SPLIT ?= llbo
+RECSYS_VECTORS ?= numpy
+RECSYS_BASELINE ?= auto
+RECSYS_ENV ?=
+# gán một lần (:=) để recsys-gate-run và regress dùng cùng run id
+ifeq ($(origin RECSYS_RUN), undefined)
+RECSYS_RUN := $(shell date +%Y%m%d-%H%M%S)-$(RECSYS_SPLIT)-regress
+endif
+RECSYS = PYTHONUTF8=1 $(RECSYS_PYTHON) -m src.evaluation.recsys_bench
+# nạp env và chạy lệnh trên cùng một dòng logic: make cũ (không .ONESHELL) chạy mỗi dòng recipe trong một shell riêng
+RECSYS_LOAD_ENV = if [ -n "$(RECSYS_ENV)" ]; then set -a; . "$(RECSYS_ENV)"; set +a; fi;
+ifneq ($(filter recsys-baseline,$(MAKECMDGOALS)),)
+ifeq ($(strip $(NOTE)),)
+$(error recsys-baseline cần NOTE="…" (vì sao ghi baseline; trỏ entry history))
+endif
+endif
+
+recsys-test:
+	PYTHONUTF8=1 $(RECSYS_PYTHON) -m pytest -q src/evaluation/recsys_bench/tests
+
+# Run gate (pool engine, numpy): engine / engine_nommr / mpd + content_profile, star_blend_a1 — đúng bộ arm của baseline_v1.
+recsys-gate-run:
+	$(RECSYS_LOAD_ENV) $(RECSYS) run --arm engine --arm engine_nommr --arm most_popular_in_destination \
+		--algos src/evaluation/recsys_bench/algos_v1.yaml --only content_profile --only star_blend_a1 --funnel-pool engine --mode funnel \
+		--split $(RECSYS_SPLIT) --vectors $(RECSYS_VECTORS) \
+		--split-file src/evaluation/recsys_bench/frozen/split-$(RECSYS_SPLIT)-asof$(RECSYS_ASOF).json --run-id $(RECSYS_RUN)
+
+# regress chỉ đọc bench_out/ và frozen/: không cần DB
+recsys-regress: recsys-gate-run
+	$(RECSYS) regress --run-id $(RECSYS_RUN) --baseline $(RECSYS_BASELINE)
+
+# Ghi lại baseline chỉ khi engine đổi đã chốt / modelVersion đổi / split mới (chính sách: spec §3.1); kèm entry history + report.
+recsys-baseline: recsys-gate-run
+	$(RECSYS_LOAD_ENV) $(RECSYS) analyze --run-id $(RECSYS_RUN)
+	$(RECSYS) baseline --run-id $(RECSYS_RUN) --note "$(NOTE)" $(if $(FORCE),--force,)

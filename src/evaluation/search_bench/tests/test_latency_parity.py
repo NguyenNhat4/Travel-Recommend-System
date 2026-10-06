@@ -197,3 +197,43 @@ def test_wait_index_ready_polls_until_shard_ready_and_times_out():
     assert A.index_status(_Http([("READY", 0)]), "Missing") == (None, None)       # collection không có → không chờ
     with pytest.raises(A.AppAdapterError, match="chưa sẵn sàng"):
         A.wait_index_ready(_Http([("INDEXING", 9)]), "ProductVM", timeout_s=0.0, sleep=slept.append)
+
+
+def test_embed_latency_excludes_warmup_and_writes_artifact(home, monkeypatch):
+    from evaluation.search_bench.__main__ import app
+    import evaluation.search_bench.embed as E
+
+    class FakeEmbedder:
+        name = "fake"
+        def __init__(self):
+            self.calls = []
+        def embed(self, texts, input_type):
+            self.calls.append((texts, input_type))
+        def close(self):
+            pass
+
+    fake = FakeEmbedder()
+    monkeypatch.setattr(E, "make_embedder", lambda *args, **kwargs: fake)
+    gold_p = paths.PKG_DIR / "tests/fixtures/gold_small.jsonl"
+    r = CliRunner().invoke(app, ["--run-id", "embed-test", "latency", "embed", "--models", "fake",
+                                 "--gold", str(gold_p), "--warmup", "2"])
+    assert r.exit_code == 0, r.output + repr(r.exception)
+    report = json.loads((paths.run_dir("embed-test") / "latency-embed.json").read_text(encoding="utf-8"))
+    assert report["models"][0]["n"] == len(read_gold_jsonl(gold_p))
+    assert len(fake.calls) == report["models"][0]["n"] + 2
+    assert all(kind == "query" for _, kind in fake.calls)
+    assert report["models"][0]["cache"] == "disabled"
+
+
+def test_embed_latency_excludes_inter_request_delay():
+    class FakeEmbedder:
+        def embed(self, texts, input_type):
+            pass
+
+    times = iter([0.0, 0.010, 1.0, 1.020])
+    slept = []
+    result = L.measure_embed_queries(FakeEmbedder(), ["a", "b"], warmup=1, delay_s=0.25,
+                                     clock=lambda: next(times), sleeper=slept.append)
+    assert result["samples_ms"] == pytest.approx([10.0, 20.0])
+    assert result["inter_request_delay_ms"] == 250.0
+    assert slept == [0.25, 0.25]

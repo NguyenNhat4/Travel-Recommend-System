@@ -27,7 +27,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from src.backend.app.application.ports import EmbedderPort, UnitIndex, VectorSearchPort
-from src.backend.app.domain.catalog import Product, build_text
+from src.backend.app.domain.catalog import Product, UnitAttributes, build_text
 from src.backend.app.infrastructure.vectors.numpy_search import NumpyVectorSearch
 
 #: Đọc nguyên 13 trường CDP + ba cờ vai trò của view. `attributes` là JSONB nên psycopg trả dict sẵn.
@@ -41,12 +41,18 @@ JOIN   catalog.product_meta m USING (product_id)
 
 logger = logging.getLogger("uvicorn.error")
 
-#: Thành phần combo cho ô ROLLUP của text builder ("Gồm: vé VinWonders; buffet…"); chỉ cần thứ tự và nhãn.
+#: Thành phần combo: thứ tự + nhãn cho ô ROLLUP của text builder ("Gồm: vé VinWonders; buffet…"), `item_kind` cho cờ
+#: `includesFlight` / `includesHotel` của `UnitAttributes` (cột có sẵn trong DDL; text builder không đọc nó → text không đổi).
 _COMBO_QUERY = """
-SELECT combo_product_id, position, label
+SELECT combo_product_id, position, label, item_kind
 FROM   catalog.combo_items
 ORDER  BY combo_product_id, position
 """
+
+
+def combo_kinds_of(combo_items: dict[str, list[dict]]) -> dict[str, list[str]]:
+    """combo product_id → `item_kind` các thành phần (theo position) — đầu vào cờ combo của `UnitAttributes.build`."""
+    return {pid: [str(it["item_kind"]) for it in items if it.get("item_kind")] for pid, items in combo_items.items()}
 
 
 @dataclass
@@ -60,6 +66,7 @@ class CatalogUnits:
     available: np.ndarray
     recommendable: np.ndarray
     parent_of: dict[str, str]
+    attrs: UnitAttributes | None = None   # thuộc tính lọc Phase A, dựng kèm phòng/chuyến con
 
     def to_index(self, model_version: str) -> UnitIndex:
         return UnitIndex(
@@ -70,6 +77,7 @@ class CatalogUnits:
             recommendable=self.recommendable,
             parent_of=self.parent_of,
             model_version=model_version,
+            attrs=self.attrs,
         )
 
 
@@ -160,6 +168,7 @@ class PostgresCatalogReader:
             available=np.array([p.available for p in units]),
             recommendable=np.array([bool(meta[p.product_id]["is_recommendable"]) for p in units]),
             parent_of=parent_of,
+            attrs=UnitAttributes.build(units, children, combo_kinds_of(combo_items)),
         )
 
 

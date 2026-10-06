@@ -13,7 +13,7 @@ import re
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from time import perf_counter
+from time import perf_counter, sleep
 from typing import Any, Callable
 
 import numpy as np
@@ -160,3 +160,30 @@ def write_latency(run_id: str, *, base_url: str, queries_path: Path, samples: li
                **(meta or {}), "summary": summary, "samples": [asdict(s) for s in samples]}
     p.write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
     return p
+
+
+# Query embedding latency: independent of Weaviate and /search transport.
+def measure_embed_queries(embedder: Any, texts: list[str], *, warmup: int = 20, delay_s: float = 0.0,
+                          clock: Callable[[], float] = perf_counter,
+                          sleeper: Callable[[float], None] = sleep) -> dict[str, Any]:
+    """Measure one uncached query per call; warm-up and inter-request delay are excluded."""
+    if not texts:
+        raise LatencyError("gold không có câu active")
+    if warmup < 0:
+        raise LatencyError("warmup phải >= 0")
+    if delay_s < 0:
+        raise LatencyError("delay_s phải >= 0")
+    for text in texts[:warmup]:
+        embedder.embed([text], "query")
+        if delay_s:
+            sleeper(delay_s)
+    samples = []
+    for index, text in enumerate(texts):
+        start = clock()
+        embedder.embed([text], "query")
+        samples.append((clock() - start) * 1000)
+        if delay_s and index + 1 < len(texts):
+            sleeper(delay_s)
+    return {"n": len(samples), "warmup": min(warmup, len(texts)), "p50_ms": float(np.percentile(samples, 50)),
+            "p95_ms": float(np.percentile(samples, 95)), "samples_ms": samples, "cache": "disabled",
+            "input_type": "query", "inter_request_delay_ms": delay_s * 1000.0}

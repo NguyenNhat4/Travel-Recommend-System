@@ -197,6 +197,19 @@ def test_new_run_id_shape():
     assert rid.startswith("20261001-0905-") and len(rid) > len("20261001-0905-")
 
 
+def test_judged_gate_tolerates_float_rounding_at_threshold(cfg):
+    k = cfg.metrics.k
+    agg = {
+        "overall": {f"judged@{k}": cfg.gold.judged_at_10_min - 1e-16},
+        "by_slice": {"s": {f"judged@{k}": cfg.gold.judged_at_10_slice_min - 1e-16}},
+    }
+    assert R.judged_gate(agg, cfg) == []
+    agg["by_slice"]["s"][f"judged@{k}"] -= 1e-6
+    assert R.judged_gate(agg, cfg) == [
+        f"slice s: judged@{k} {agg['by_slice']['s'][f'judged@{k}']:.3f} < {cfg.gold.judged_at_10_slice_min}"
+    ]
+
+
 # ------------------------------------------------------------------ CLI (store + embedder giả thay Weaviate / Cohere)
 def test_cli_run_and_compare(cfg, sample_home, run_small, monkeypatch):
     import evaluation.search_bench.__main__ as main

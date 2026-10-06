@@ -1,0 +1,15 @@
+﻿qid,product_id,source,machine_label,machine_children,machine_note,model,created_at,reviewed_by,reviewed_at,review
+c0190,24bf0ac1-7970-503d-af3c-3530c289aa57,machine,2,,"ghi xe đưa đón sân bay (danh sách + dòng tiện ích), đúng nơi, chỗ nghỉ",claude-opus-5-5,2026-10-06T02:08:21+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0190,977c37fd-a4e5-5f28-9d09-5e922ebcb9d5,machine,2,,"ghi xe đưa đón sân bay (danh sách + dòng tiện ích), đúng nơi, chỗ nghỉ",claude-opus-5-5,2026-10-06T02:08:21+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0190,95c2a2da-8ca0-5681-96e3-4a8c2ccdb9c0,machine,2,,"ghi xe đưa đón sân bay (danh sách + dòng tiện ích), đúng nơi, chỗ nghỉ",claude-opus-5-5,2026-10-06T02:08:21+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0332,38e0d7b8-4746-578d-b5d9-a4b9f9327372,machine,1,,"chỗ nghỉ khác ở Hội An, không phải sản phẩm được nêu tên (như nhãn 1 cùng câu)",claude-opus-5-5,2026-10-06T02:08:21+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0332,e9c731c6-667a-59ab-88b6-d3f774224479,machine,1,,"chỗ nghỉ khác ở Hội An, không phải sản phẩm được nêu tên (như nhãn 1 cùng câu)",claude-opus-5-5,2026-10-06T02:08:21+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0332,f0412c8b-e7f7-5092-876e-84b467747928,machine,1,,"chỗ nghỉ khác ở Hội An, không phải sản phẩm được nêu tên (như nhãn 1 cùng câu)",claude-opus-5-5,2026-10-06T02:08:21+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0332,ad96c58c-42f6-56f2-a636-da94f67a679f,machine,1,,"chỗ nghỉ khác ở Hội An, không phải sản phẩm được nêu tên (như nhãn 1 cùng câu)",claude-opus-5-5,2026-10-06T02:08:21+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0332,27e0e68d-0d33-55cc-b6fa-9dbdd0c595c0,machine,1,,"chỗ nghỉ khác ở Hội An, không phải sản phẩm được nêu tên (như nhãn 1 cùng câu)",claude-opus-5-5,2026-10-06T02:08:21+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0332,997ce437-42e9-542b-ab6b-47f6f9e50471,machine,1,,"chỗ nghỉ khác ở Hội An, không phải sản phẩm được nêu tên (như nhãn 1 cùng câu)",claude-opus-5-5,2026-10-06T02:08:21+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0336,b65c2c60-bd65-5884-bc07-7742cf3211d6,machine,1,,"chỗ nghỉ khác ở Hội An, không phải sản phẩm được nêu tên (như nhãn 1 cùng câu)",claude-opus-5-5,2026-10-06T02:08:21+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0336,ec9432a9-a8e6-57d3-acc4-e658b1ff2666,machine,1,,"chỗ nghỉ khác ở Hội An, không phải sản phẩm được nêu tên (như nhãn 1 cùng câu)",claude-opus-5-5,2026-10-06T02:08:21+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0338,6c0c3c82-4131-5080-9fd3-e82326c106f3,machine,1,,"chỗ nghỉ khác ở Hội An, không phải sản phẩm được nêu tên (như nhãn 1 cùng câu)",claude-opus-5-5,2026-10-06T02:08:21+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0338,b65c2c60-bd65-5884-bc07-7742cf3211d6,machine,1,,"chỗ nghỉ khác ở Hội An, không phải sản phẩm được nêu tên (như nhãn 1 cùng câu)",claude-opus-5-5,2026-10-06T02:08:21+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0037,964b8c01-1db7-5f93-a048-61cb3f91ee2d,machine,2,,vé/tiện ích trong Vinpearl Safari Phú Quốc — như các vé Safari khác của câu (nhãn 2),claude-opus-5-5,2026-10-06T02:08:21+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted

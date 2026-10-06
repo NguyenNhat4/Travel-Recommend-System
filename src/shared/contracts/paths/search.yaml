@@ -29,6 +29,35 @@
       in: query
       schema:
         type: string
+    - name: origin
+      in: query
+      description: >-
+        (1.15.0) Thành phố đi của tuyến bay; chỉ có hiệu lực với taxonomy = flight hoặc câu hỏi vé máy bay (xem
+        SearchRequest.origin). Trang /flights của Web dùng GET /products, không dùng tham số này.
+      schema:
+        type: string
+    - name: priceMin
+      in: query
+      schema:
+        type: integer
+        minimum: 0
+    - name: priceMax
+      in: query
+      schema:
+        type: integer
+        minimum: 0
+    - name: starRatingMin
+      in: query
+      description: SOFT filter như SearchRequest.starRatingMin ([C6]).
+      schema:
+        type: number
+        minimum: 0
+        maximum: 5
+    - name: availableOnly
+      in: query
+      schema:
+        type: boolean
+        default: true
     - name: limit
       in: query
       schema:
@@ -64,7 +93,8 @@
     summary: Semantic search trên catalog theo hợp đồng v1
     description: 'Bề mặt v1 được giữ để không phá client hiện có. Agent không gắn danh tính khi tìm kiếm:
       chế độ `inprocess` gọi engine trong tiến trình; chế độ `http` gọi GET compatibility endpoint không kèm
-      JWT. Web có thể tiếp tục dùng POST với SearchRequest.'
+      JWT. Web có thể tiếp tục dùng POST với SearchRequest. Từ 1.16.0 travelContext.guests (adults, children) thành
+      filter sức chứa (appliedFilters.hard.minOccupancy, partySource = param); GET không có tham số tương ứng.'
     security:
     - {}
     - bearerAuth: []

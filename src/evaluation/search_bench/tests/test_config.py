@@ -22,7 +22,7 @@ def test_config_loads_with_spec_numbers(cfg):
 def test_gold_slice_quota_matches_target_and_min(cfg):
     """spec §1.2 + Part 5 `sb gold check`: tổng quota = target, mỗi slice ≥ min_per_slice."""
     q = cfg.gold.slices
-    assert sum(q.values()) == cfg.gold.target                            # 200
+    assert sum(q.values()) == cfg.gold.target                            # 211 (05/10: +2 slice gold_v4)
     assert min(q.values()) >= cfg.gold.min_per_slice                     # mục tiêu mỗi slice ≥ tối thiểu (3)
     assert len(q) * cfg.gold.min_per_slice <= cfg.gold.minimum <= cfg.gold.target
 
