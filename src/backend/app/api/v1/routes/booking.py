@@ -7,6 +7,8 @@ Số tiền luôn do Backend tính từ catalog; body không có trường tiề
 """
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, status
 
 from src.backend.app.api.deps import cart_owner, current_principal, get_use_case, require_service_token
@@ -23,9 +25,15 @@ from src.backend.app.application.booking import (
     CartOwner, Contact, DocumentsInput, DraftItemRequest, ItemDetail, RoomInput, TravelerInput,
 )
 from src.backend.app.application.booking.errors import ValidationFailed
+from src.backend.app.core.logging_config import log_event
 from src.backend.app.domain.booking import Guests
 
 router = APIRouter(tags=["booking"])
+logger = logging.getLogger(__name__)
+
+
+def _kind(owner: CartOwner) -> str:
+    return "guest" if owner.is_guest else "user"
 
 
 def _documents(body) -> DocumentsInput | None:
@@ -48,9 +56,12 @@ async def add_cart_item(
     body: AddCartItemRequest, owner: CartOwner = Depends(cart_owner),
     cart=Depends(get_use_case("cart_service")),
 ):
-    return await cart.add(
+    result = await cart.add(
         owner, product_id=body.productId, using_date=body.usingDate, quantity=body.quantity, nights=body.nights,
         guests=_guests(body.guests))
+    log_event(logger, "cart.item.add", product_id=body.productId, quantity=body.quantity,
+              using_date=str(body.usingDate), owner_kind=_kind(owner))
+    return result
 
 
 @router.patch("/cart/items/{cart_item_id}")
@@ -70,7 +81,9 @@ async def remove_cart_item(
     cart_item_id: str, owner: CartOwner = Depends(cart_owner),
     cart=Depends(get_use_case("cart_service")),
 ):
-    return await cart.remove(owner, cart_item_id)
+    result = await cart.remove(owner, cart_item_id)
+    log_event(logger, "cart.item.remove", cart_item_id=cart_item_id, owner_kind=_kind(owner))
+    return result
 
 
 def _draft_shape_error(message: str) -> ValidationFailed:
@@ -88,9 +101,13 @@ async def create_booking_draft(
     if (body.items is None) == (body.fromBooking is None):
         raise _draft_shape_error("Gửi đúng một trong hai: danh sách sản phẩm cần đặt, hoặc mã đơn cần đặt lại.")
     if body.fromBooking is not None:
-        return await drafts.create(owner, from_booking=body.fromBooking)
+        result = await drafts.create(owner, from_booking=body.fromBooking)
+        log_event(logger, "draft.create", owner_kind=_kind(owner), draft_id=result.get("draftId"))
+        return result
     items = [DraftItemRequest(i.productId, i.usingDate, i.quantity, i.nights, _guests(i.guests)) for i in body.items]
-    return await drafts.create(owner, items=items, allow_partial=body.allowPartial)
+    result = await drafts.create(owner, items=items, allow_partial=body.allowPartial)
+    log_event(logger, "draft.create", owner_kind=_kind(owner), draft_id=result.get("draftId"), item_count=len(items))
+    return result
 
 
 @router.get("/booking-drafts/{draft_id}")
@@ -107,9 +124,11 @@ async def update_booking_draft_item(
 ):
     if not body.has_changes():
         raise ValidationFailed("cần ít nhất một trường")
-    return await drafts.update_item(
+    result = await drafts.update_item(
         owner, draft_id, cart_item_id, using_date=body.usingDate, quantity=body.quantity, nights=body.nights,
         nights_given="nights" in body.model_fields_set, guests=_guests(body.guests))
+    log_event(logger, "draft.update", draft_id=draft_id, owner_kind=_kind(owner))
+    return result
 
 
 @router.delete("/booking-drafts/{draft_id}/items/{cart_item_id}")
@@ -117,7 +136,9 @@ async def remove_booking_draft_item(
     draft_id: str, cart_item_id: str, owner: CartOwner = Depends(cart_owner),
     drafts=Depends(get_use_case("booking_draft_service")),
 ):
-    return await drafts.remove_item(owner, draft_id, cart_item_id)
+    result = await drafts.remove_item(owner, draft_id, cart_item_id)
+    log_event(logger, "draft.update", draft_id=draft_id, owner_kind=_kind(owner))
+    return result
 
 
 @router.post("/guest-bookings/merge", dependencies=[Depends(require_service_token)])

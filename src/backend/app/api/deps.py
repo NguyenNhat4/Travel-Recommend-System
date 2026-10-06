@@ -15,6 +15,7 @@ from src.backend.app.application.booking.owner import GUEST_ID_PATTERN, CartOwne
 from src.backend.app.application.itinerary.use_cases import PlanItinerary
 from src.backend.app.application.itinerary.history import ConversationHistory
 from src.backend.app.core.config import Settings, get_settings
+from src.backend.app.core.request_context import note_actor
 
 
 def get_plan_itinerary(request: Request) -> PlanItinerary:
@@ -125,6 +126,7 @@ def require_service_token(
     """So sánh hằng thời gian. Chưa cấu hình (hoặc < 32 ký tự) thì mọi request đều bị từ chối."""
     if not _service_token_valid(x_service_token, settings):
         raise ServiceTokenInvalid("X-Service-Token không hợp lệ")
+    note_actor("service")
 
 
 async def cart_owner(
@@ -142,6 +144,7 @@ async def cart_owner(
         principal = await verified_principal(token, verifier, revoked)
         return CartOwner.user(principal.cdp_user_id)
     if x_guest_id and _service_token_valid(x_service_token, settings) and GUEST_ID_PATTERN.match(x_guest_id):
+        note_actor("guest", x_guest_id)
         return CartOwner.guest(x_guest_id)
     raise Unauthenticated("cần đăng nhập")
 
