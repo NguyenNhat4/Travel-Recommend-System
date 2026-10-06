@@ -1,61 +1,67 @@
-# Chốt tham số hybrid `/search` cho e5-small: `lexicalMinCoverage` 0,6 → 0,1 và RRF `k` 60 → 30
+# Chốt tham số hybrid `/search` cho e5-small: `lexicalMinCoverage` 0,6 → 0,1 và RRF `k` 60 → 30 (dùng cùng F1 + F2)
 
 - Ngày: 2026-10-06
 - Người đề xuất: Pham Nguyen Dang Khoi / Claude Code soạn
 - Trạng thái: chờ chốt
 - Chốt bởi / ngày:
 - PRD bị ảnh hưởng: không đổi câu chữ (`docs/prd/requirements.md` §1.2 không ghi các tham số này). Giá trị đang nằm ở
-  `docs/spec/hop-dong-tich-hop-search-recommendation.md` §2.4 và mục S9 "chưa benchmark" §10; đổi chúng làm đổi kết quả tìm kiếm người dùng
-  thấy, nên đưa ra để nhóm chốt. **Phụ thuộc** đề xuất đổi model `2026-10-05-fr-src-02-embedding-local-e5-small.md` — chỉ áp dụng khi đã đổi
-  model; và phải đối chiếu với F1/F2 của nhánh `fix/search` (mục "Quan hệ với F1/F2" dưới) trước khi chốt.
-- Mã FR/NFR: FR-SRC-01, FR-SRC-02
+  `docs/spec/hop-dong-tich-hop-search-recommendation.md` §2.4 và mục S9 "chưa benchmark" §10. Đổi chúng làm đổi kết quả tìm kiếm người
+  dùng thấy, nên đưa ra để nhóm chốt. **Phụ thuộc** đề xuất đổi model `2026-10-05-fr-src-02-embedding-local-e5-small.md`: chỉ áp dụng khi
+  đã đổi model.
+- Mã FR/NFR: FR-SRC-01, FR-SRC-02, FR-SRC-03 (dùng cùng F1)
 
 ## Lý do
 
-Đo bằng đúng code `/search` của backend (hybrid + chuẩn hoá, e5-small, cutoff 0,85) trên gold 131 câu, chọn trên nửa dev, kiểm trên nửa test
-(`src/evaluation/reports/eval-2026-10-06-search-e5s-hybrid-params.md`):
+Đo lại 06/10 trên **gold_v4** (154 câu đang dùng, chưa gắn tag) bằng đúng `SearchProducts` của backend. Mốc là arm
+`APP.e5s.hybrid_norm_c84` của nhóm Search (cutoff 0,84); F1 / F2 / QP là các cờ của PR #108. Nguồn:
+`src/evaluation/reports/eval-2026-10-06-recsys-search-tong-hop.md` phần B1. Nhóm câu:
 
-| Cấu hình so với hiện tại | nDCG@10 dev (65) | nDCG@10 test (63) | nDCG@10 cả bộ (128) | Kết quả rỗng | Câu không dấu |
-|---|---|---|---|---|---|
-| `minCoverage 0,1` | +2,59 [−0,53; +6,43] | +1,59 [−0,77; +4,55] | **+2,10** [+0,03; +4,44] | 1,6 % → 0 % | 0,28 → 0,58 |
-| `rrf 30` | +0,85 [−0,09; +2,06] | +0,58 [−0,18; +1,45] | **+0,72** [+0,10; +1,45] | không đổi | không đổi |
-| **`minCoverage 0,1` + `rrf 30`** | +3,09 [−0,20; +7,05] | +1,84 [−0,73; +4,96] | **+2,48** [+0,29; +4,92] | 1,6 % → 0 % | 0,28 → 0,59 |
+- **dev / test**: phân công `devtest@gold_v3`. Giá trị A được chọn trên dev.
+- **v4new**: 19 câu mới của gold_v4 có đáp án, không dùng khi chọn, nên là tập kiểm tra độc lập.
 
-- `lexicalMinCoverage` là tỉ lệ từ của truy vấn phải có trong tên sản phẩm thì kết quả BM25 mới được "vớt" vào danh sách. 0,6 chặn gần hết
-  câu gõ không dấu / sai chính tả; 0,1–0,2 vớt được mà không làm hỏng các nhóm câu khác (trừ `audience_style` −5,6 điểm, 11 câu).
-- `rrf` nhỏ hơn làm thứ hạng đầu của từng nhánh nặng hơn; giúp nhóm câu hỏi nhiều loại sản phẩm (`cross_vertical`) 0,58 → 0,63 — nhóm mà
-  e5-small đang kém Cohere 26 điểm.
-- Các tham số khác giữ nguyên (đã đo): `candidateK` 200, `lexicalCandidateK` 50, `lexicalK` 10, `lexicalCutoff` 0,50, cutoff 0,85.
+Δ nDCG@10 so với mốc, điểm ×100, CI95 paired bootstrap 10.000 lượt (**đậm** = CI không chứa 0):
 
-Điều kiện trước khi áp dụng: nửa test riêng chưa có CI cắt 0 (63 câu), và cấu hình mới đưa vào top-10 một số sản phẩm chưa gán nhãn
-(judged@10 giảm ~1 điểm). Cần gán nhãn các cặp này, chấm lại, rồi mới chốt số.
+| Cấu hình (cutoff 0,84) | dev (65) | test (63) | v4new (19) | Tổng (147) | condensed tổng | judged@10 |
+|---|---|---|---|---|---|---:|
+| A = `minCoverage 0,1` + `rrf 30` | **+2,72** | **+1,89** | +0,98 | **+2,14** [+0,81; +3,64] | **+2,17** | 0,858 |
+| F1 + F2 (đang có cờ) | **+3,80** | +2,56 | +0,99 | **+2,90** [+1,01; +4,95] | **+3,26** | 0,829 |
+| **F1 + F2 + A** | **+5,07** | **+4,06** | +1,17 | **+4,14** [+2,19; +6,24] | **+4,41** | 0,850 |
+| F1 + F2 + QP | +2,97 | +3,03 | **+9,03** | **+3,78** [+1,18; +6,53] | **+5,35** | 0,797 |
+| F1 + F2 + QP + A | +3,45 | +3,64 | **+8,93** | **+4,24** [+1,60; +7,00] | **+5,49** | 0,799 |
 
-## Quan hệ với F1/F2 (PR #108, `src/evaluation/reports/eval-2026-10-05-search-e5s-dest-nodia.md`)
+- **A cộng thêm trên F1 + F2:** +1,23 [+0,60; +1,93] tổng, có ý nghĩa riêng ở dev (+1,27) và test (+1,50). Hai cơ chế bổ sung nhau, không
+  trùng lặp:
+  - F2 nới cho câu không dấu; `minCoverage` thấp vớt thêm ở mọi câu.
+  - F1 lọc điểm đến; `rrf 30` kéo `cross_vertical` 0,554 → 0,614.
+- **Khi bật QP (F3–F6)**, A chỉ cộng thêm +0,46 [−0,14; +1,15], vì QP đã xử lý phần lớn câu mà A giúp. QP tăng mạnh 19 câu mới (+9) nhưng
+  judged@10 giảm còn 0,80 (nhiều kết quả chưa nhãn) và còn đang chờ nhãn lỗ `amenity_negation`.
+- **Cutoff:** 0,84 và 0,85 cho kết quả như nhau ở mọi tổ hợp (Δ ≤ 0,23, CI chứa 0). Riêng mốc không bật gì, 0,85 làm 1,4 % câu trong
+  catalog trả rỗng, còn 0,84 thì 0 %. Đề xuất theo cutoff **0,84** của nhóm Search.
+- Slice: với F1 + F2 + A, `no_diacritics` 0,381 → 0,569, `cross_vertical` 0,556 → 0,614, `named_entity` 0,820 → 0,862, `audience_style`
+  0,633 → 0,718. Riêng A (không F1) làm `audience_style` −2,3; F1 bù lại.
+- Không thay đổi: 7 câu ngoài catalog vẫn có kết quả ở mọi cấu hình. Cutoff tuyệt đối không giải quyết được, cần cơ chế khác.
 
-Nhóm Search đã thêm hai cơ chế bằng cờ, mặc định tắt: F1 lọc điểm đến suy từ câu (`SEARCH_DEST_FILTER`) và F2 cho câu không dấu với cutoff
-riêng 0,80 (`SEARCH_NO_DIACRITICS_*`), trên mốc cutoff tạm **0,84** (arm `*_c84`). Số trong đề xuất này đo **không bật F1/F2**, cutoff
-**0,85**, gold_v3, nên chồng lấn:
-
-- `lexicalMinCoverage` thấp và F2 cùng nhắm câu không dấu. Report F2 ghi rằng khi không có cutoff, nới `min_coverage` không đổi top-10. Ở đây,
-  với cutoff 0,85, nó có tác dụng: hai kết quả nhất quán, vì tham số chỉ có nghĩa khi cutoff cắt bớt nhánh dense. Cần chọn **một** cơ chế,
-  hoặc đo tổ hợp.
-- `rrf 30` và F1 cùng giúp `cross_vertical`; filter điểm đến oracle đo ở report của đề xuất này tăng +7,35 nhưng CI chứa 0.
-
-Trước khi chốt: đo lại trên **gold_v4** (đã merge) với cutoff đã chọn cho đề xuất model, so `min_coverage 0,1 + rrf 30` với F1 + F2 và
-tổ hợp cả hai trên split dev/test.
+Số gold_v3 trước đó (cutoff 0,85, không F1/F2) cùng hướng: A gộp 128 câu +2,48 [+0,29; +4,92] (report phần B2).
 
 ## Nội dung đề xuất
 
 **`docs/prd/`:** không đổi.
 
-**`docs/spec/hop-dong-tich-hop-search-recommendation.md`** (đổi sau khi chốt, cùng lúc với đề xuất e5-small):
+**`docs/spec/hop-dong-tich-hop-search-recommendation.md`** (sửa sau khi chốt, cùng lúc với đề xuất e5-small):
 
-- §2.4: `lexicalMinCoverage: 0.6, fusion: rrf(60)` → `lexicalMinCoverage: 0.1, fusion: rrf(30)`.
-- §10 S9: đổi "chưa benchmark" thành đã đo, trỏ report trên; giữ `lexicalK` 10 / `lexicalCutoff` 0,50.
+- §2.4: `lexicalMinCoverage: 0.6, fusion: rrf(60)` → `lexicalMinCoverage: 0.1, fusion: rrf(30)`. Ghi rằng giá trị đo cùng `destFilter: true`,
+  `noDiacriticsMode: relax` (cutoff riêng 0,80).
+- §10 S9: đổi "chưa benchmark" thành đã đo, trỏ report trên. Giữ `lexicalK` 10 và `lexicalCutoff` 0,50.
+
+Điều kiện chốt:
+
+1. Bật F1 + F2 trên production cùng lúc với thay đổi này.
+2. Nếu chốt bật cả QP, A không còn lợi ích có ý nghĩa: có thể giữ A (không hại) hoặc bỏ.
+3. Gắn tag `gold_v4` rồi đặt lại `baseline_v1` theo cấu hình được chốt.
 
 ## Thay đổi source sau khi chốt
 
-- `src/backend/app/core/config.py`: `search_lexical_min_coverage` 0.6 → 0.1, `search_rrf_k` 60 → 30 (và biến môi trường tương ứng trong
-  `docs/prd/deployment-plan.md` §2 nếu đang ghi giá trị).
-- Bench: `src/evaluation/search_bench/arms/APP.e5s.*.yaml` thêm arm cấu hình mới; gán nhãn cặp mới, `sb rescore`, đặt lại `baseline_v1` +
-  `sb regress`; test backend `/search`.
+- `src/backend/app/core/config.py`: `search_lexical_min_coverage` 0.6 → 0.1, `search_rrf_k` 60 → 30, cùng với cờ F1/F2 đã chốt (biến môi
+  trường trong `.env.example`, và `docs/prd/deployment-plan.md` §2 nếu ghi giá trị).
+- Bench: thêm arm `APP.e5s.hybrid_norm_c84_dest_nodia_nc80_mc10_rrf30` (yaml trong `src/evaluation/search_bench/arms/`, cập nhật
+  `docs/spec/bench/arms.md`); `sb regress baseline` trên gold_v4 đã gắn tag; test backend `/search`.

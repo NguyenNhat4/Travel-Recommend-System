@@ -1,4 +1,50 @@
-# RecSys append-v1 — đo đầy đủ engine, baseline và toàn bộ thuật toán CF (`algos_v1`) trên 4 đề thi (05–06/10/2026)
+# Báo cáo tổng hợp RecSys + Search — đo đầy đủ sau làm giàu lịch sử (append-v1) và đo lại tham số hybrid search trên gold_v4 (05–06/10/2026)
+
+- Phục vụ: FR-REC-01..04, FR-CDP-01/03, FR-SRC-01..04, NFR-PERF-01; `docs/prd/test-plan.md` §2.4–2.5; M5–M7 lịch 10 ngày
+  (`docs/plan/2026-09-28-lich-10-ngay-3-engine.md`).
+- Thay hai report 06/10 trước đó (`eval-2026-10-06-recsys-append-v1-cf-full.md` → phần A, `eval-2026-10-06-search-e5s-hybrid-params.md` →
+  phần B2–B3); nội dung và số giữ nguyên, thêm phần B1 đo lại trên gold_v4 cùng F1/F2/QP của PR #108.
+- Commit đo: RecSys `ac7642a`; search gold_v3 `ac7642a`, search gold_v4 `a46c424` (sau merge PR #108). **Không sửa code / config** trong
+  mọi lượt đo.
+- Đề xuất rút ra (chờ chốt): `docs/prd/update/2026-10-06-recsys-trong-so-ngan-han-pho-bien.md`,
+  `docs/prd/update/2026-10-06-search-hybrid-min-coverage-rrf.md`; bằng chứng cutoff cho `docs/prd/update/2026-10-05-fr-src-02-embedding-local-e5-small.md`.
+
+> Dữ liệu lịch sử RecSys là dữ liệu sinh (handbook §12); gold search là 154 câu gán nhãn. Số dùng để so tương đối trên cùng dữ liệu và
+> cùng đề thi, không nói về khách thật.
+
+## Tóm tắt
+
+**RecSys (phần A — append-v1: 7.003 khách, 40.048 event, 4 đề thi đóng băng):**
+
+1. Engine v5 thắng mốc "bán chạy tại điểm đến" (mpd) ở cả 4 đề — hit@20 LLBO +14,0, temporal +7,5, nexttrip +2,0, coldstart +46,9 điểm (CI không
+   chứa 0). Không thuật toán CF nào vượt engine ở hit@20; item-item CF thua cả mpd ở temporal.
+2. `ials` dẫn NDCG@10 ở LLBO (0,602 so với 0,493) chỉ nhờ khách đã bỏ target vào giỏ — tín hiệu giỏ bỏ dở engine chưa dùng.
+3. Trọng số `W_SHORT 0,7 / W_POP 0,15` tăng thứ hạng ở mọi đề (coldstart +20 NDCG@10) và tăng list production 5 món; đánh đổi hit@20 list
+   20 món ở LLBO −1,8 → đề xuất chờ chốt.
+4. Category exclusion là phần quyết định ở LLBO (tắt → −21 điểm); decay và λ MMR không đáng kể. Nexttrip vẫn là khoảng trống (0,080 / trần 0,947).
+5. Gate nhất quán PASS ở cả 4 đề.
+
+**Search (phần B — e5-small qua `SearchProducts` thật):**
+
+1. Trên gold_v4, cutoff 0,84: **F1 + F2 + A** (`minCoverage 0,1` + `rrf 30`) tốt nhất khi chưa bật QP: nDCG@10 +4,14 [+2,19; +6,24] so với
+   mốc, có ý nghĩa ở cả dev (+5,07) và test (+4,06). A cộng thêm có ý nghĩa trên F1 + F2 (+1,23 [+0,60; +1,93]) — hai cơ chế bổ sung, không trùng.
+2. Bật thêm QP (F3–F6): A chỉ còn cộng +0,46 (CI chứa 0); QP giúp mạnh 19 câu mới của gold_v4 (+9) nhưng nhiều kết quả chưa nhãn (judged 0,80).
+3. Cutoff 0,84 ≈ 0,85 ở mọi tổ hợp; 0,84 không có câu trong catalog trả rỗng → theo 0,84.
+4. Giữ `candidateK` 200, `lexicalK` 10, `lexicalCandidateK` 50, `lexicalCutoff` 0,50. Câu ngoài catalog vẫn có kết quả ở mọi cấu hình.
+
+## Mục lục
+
+- Phần A — RecSys append-v1 (engine, baseline, toàn bộ CF, ablation, grid)
+- Phần B — Search e5-small
+  - B1. Đo lại trên gold_v4 cùng F1 / F2 / QP (06/10)
+  - B2–B3. Sweep tham số hybrid và filter điểm đến oracle trên gold_v3 (05–06/10)
+- Phần C — Đề xuất và việc tiếp
+- Phụ lục 1–6 — script
+
+---
+
+# Phần A — RecSys append-v1
+
 
 - Phục vụ: FR-REC-01..04, FR-CDP-01/03, NFR-PERF-01; `docs/prd/test-plan.md` §2.5; M5–M7 lịch 10 ngày
   (`docs/plan/2026-09-28-lich-10-ngay-3-engine.md`); bàn giao `eval-2026-10-05-cdp-append-recsys-handoff.md` (phần "Đo lại RecSys").
@@ -30,7 +76,7 @@
 > Dữ liệu sinh (handbook §12). Số cho biết thuật toán chạy đúng và so tương đối **trên cùng dữ liệu, cùng đề thi**; không nói gì về
 > khách thật. Không so chữ số với eval-v2, enriched-v1 hay bộ 0924 (khác dữ liệu và đề thi).
 
-## 1. Kết luận nhanh
+### 1. Kết luận nhanh
 
 1. **Engine v5 (content + MMR) vẫn là lõi tốt nhất về tổng thể.** Thắng mpd có ý nghĩa ở cả 4 đề hit@20: LLBO +14,0 [+12,6; +15,4],
    temporal +7,5 [+4,9; +10,1], **nexttrip +1,96 [+0,65; +3,27]** (eval-v2 chạy thử từng hoà), coldstart +46,9 điểm. Trong ma trận so cặp
@@ -58,7 +104,7 @@
    PASS ở chế độ bỏ qua hoà điểm (thứ tự 1834/1835 nexttrip, 4019/4021 LLBO do hoà điểm, tập 100 %); `star_blend_a1 ≡ content_profile`
    100 %; engine / mpd / most_popular trùng ids giữa run `v5`, `cf-funnel`, `cf-raw` 100 %.
 
-## 2. Bảng tổng — engine và baseline (run `v5`)
+### 2. Bảng tổng — engine và baseline (run `v5`)
 
 | Split | n | Engine hit@20 / NDCG@10 | mpd hit@20 / NDCG@10 | Δ hit@20 engine − mpd [CI95] | Δ NDCG@10 [CI95] | engine_prod hit@20 / NDCG@10 | Ceiling |
 |---|---:|---|---|---|---|---|---:|
@@ -69,7 +115,7 @@
 
 `random` hit@20 0,007–0,008 mọi đề; `most_popular` 0,050–0,281.
 
-## 3. Ablation category exclusion (funnel bật / `noexcl` tắt; Δ = tắt − bật, điểm %)
+### 3. Ablation category exclusion (funnel bật / `noexcl` tắt; Δ = tắt − bật, điểm %)
 
 | Split | Arm | hit@20 bật → tắt | Δ hit@20 [CI95] | NDCG@10 bật → tắt | Δ NDCG@10 [CI95] | Cross-cat chuyến mở có mua bật → tắt |
 |---|---|---|---|---|---|---|
@@ -86,7 +132,7 @@
 | coldstart (5231) | content_profile+mmr | 0.815 → 0.815 | +0.00 [+0.00; +0.00] | 0.411 → 0.411 | +0.00 [+0.00; +0.00] | 0.000 → 0.000 |
 | coldstart (5231) | pop_funnel | 0.362 → 0.362 | +0.00 [+0.00; +0.00] | 0.117 → 0.117 | +0.00 [+0.00; +0.00] | 0.000 → 0.000 |
 
-## 4. Grid trọng số điểm và các override (Δ so với engine mặc định `W_SHORT 0,6 / W_POP 0,25 / W_LONG 0,15`, λ 0,7)
+### 4. Grid trọng số điểm và các override (Δ so với engine mặc định `W_SHORT 0,6 / W_POP 0,25 / W_LONG 0,15`, λ 0,7)
 
 Xem bảng "Run override" ở §6 (đủ mọi điểm grid, `configHash`, engine và engine_prod). Đọc:
 
@@ -97,7 +143,7 @@ Xem bảng "Run override" ở §6 (đủ mọi điểm grid, `configHash`, engin
 - Kết hợp 0,7 / 0,15 với λ 0,85: kém 0,7 / 0,15 + λ 0,7 (NDCG@10 +2,33 so với +2,68).
 - Nghĩa với sản phẩm: list production (5 món) tăng ở mọi đề trừ nexttrip (hoà) → đáng đề xuất M6; list 20 món ở LLBO giảm hit@20 1,8 điểm.
 
-## 5. Caveat khi trích dẫn
+### 5. Caveat khi trích dẫn
 
 - Dữ liệu tổng hợp; phân bố của 5.000 khách append (40 % quay lại, ~20 % bỏ giỏ) do người dùng chốt — kết luận phụ thuộc giả định đó.
 - **p95 ms trong bảng không dùng được để so latency:** lượt đo chạy 4–8 tiến trình song song trên 8 core (tranh CPU), p95 cao hơn đo
@@ -114,17 +160,17 @@ Xem bảng "Run override" ở §6 (đủ mọi điểm grid, `configHash`, engin
 - So cặp trong cùng split giữa run khác nhau (vd override so với `v5`) hợp lệ vì cùng đề thi đóng băng và cùng vector; `configHash` khác
   ghi ở bảng.
 
-## 6. Bảng chi tiết (nguyên văn từ script tổng hợp)
+### 6. Bảng chi tiết (nguyên văn từ script tổng hợp)
 
 Mỗi split: (a) bảng metric mọi run × arm; (b) Δ mọi arm so với engine và mpd; (c) ma trận so cặp hit@20 và NDCG@10 giữa 14 arm chính
 (funnel, rerank none); (d) phân khúc hit@20 (cohort append / demo cũ, `targetInOwnHistory`, `targetInOwnCart`, `targetViewed`, loại target).
 Sau đó: bảng chéo 4 đề (thứ hạng), bảng override (grid / ablation), gate nhất quán, metadata run.
 
 
-### Split `llbo` — 4021 khách
+#### Split `llbo` — 4021 khách
 
 
-#### llbo — bảng metric (k = 20; arm nhiều seed: mean ± sd 3 seed)
+##### llbo — bảng metric (k = 20; arm nhiều seed: mean ± sd 3 seed)
 
 | Run | Arm | Khách | R@5 | R@10 | R@20 | NDCG@5 | NDCG@10 | Coverage | Cross-cat chuyến mở có mua | Gini | Div@10 | Trả về | p95 ms | Fit s |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -184,7 +230,7 @@ Sau đó: bảng chéo 4 đề (thứ hạng), bảng override (grid / ablation)
 | ablate-noexcl | content_profile+mmr | 4021 | 0.5145 | 0.5902 | 0.6406 | 0.3713 | 0.3960 | 0.9534 | 0.2202 | 0.6877 | 0.6679 | 20.0 | 146.5 | 0.0 |
 | ablate-noexcl | pop_funnel | 4021 | 0.4939 | 0.6103 | 0.7075 | 0.3667 | 0.4043 | 0.5661 | 0.4282 | 0.8184 | 0.7040 | 20.0 | 0.3 | 0.0 |
 
-#### llbo — Δ mọi arm so với engine và mpd (điểm %, paired bootstrap 10.000 lượt seed 42; **đậm** = CI95 không chứa 0)
+##### llbo — Δ mọi arm so với engine và mpd (điểm %, paired bootstrap 10.000 lượt seed 42; **đậm** = CI95 không chứa 0)
 
 | Arm | hit@20 | NDCG@10 | Δ hit@20 vs engine | Δ NDCG@10 vs engine | Δ hit@20 vs mpd | Δ NDCG@10 vs mpd |
 |---|---:|---:|---|---|---|---|
@@ -244,7 +290,7 @@ Sau đó: bảng chéo 4 đề (thứ hạng), bảng override (grid / ablation)
 | raw:bpr_numpy | 0.1185 | 0.0934 | **-73.22** [-74.54; -71.91] | **-40.01** [-41.17; -38.85] | **-59.22** [-60.71; -57.70] | **-31.35** [-32.51; -30.20] |
 | random | 0.0075 | 0.0016 | **-84.33** [-85.45; -83.24] | **-49.19** [-50.34; -48.03] | **-70.33** [-71.74; -68.90] | **-40.52** [-41.71; -39.31] |
 
-#### llbo — ma trận so cặp Δ hit@20 (hàng − cột, điểm %; `*` = CI95 bootstrap 2.000 lượt không chứa 0)
+##### llbo — ma trận so cặp Δ hit@20 (hàng − cột, điểm %; `*` = CI95 bootstrap 2.000 lượt không chứa 0)
 
 | hàng \ cột | engine | content_profile | star_blend | pop_funnel | cooc_trip | itemknn | ease | rp3beta | ials | bpr | bpr_numpy | bpr_dest | mpd | mp |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -265,7 +311,7 @@ Sau đó: bảng chéo 4 đề (thứ hạng), bảng override (grid / ablation)
 
 Số đối thủ thắng có ý nghĩa: star_blend 13 · content_profile 12 · engine 10 · bpr_dest 10 · pop_funnel 8 · ials 8 · cooc_trip 5 · itemknn 5 · rp3beta 5 · ease 3 · mpd 3 · bpr 1 · bpr_numpy 1 · mp 0
 
-#### llbo — ma trận so cặp Δ ndcg@10 (hàng − cột, điểm %; `*` = CI95 bootstrap 2.000 lượt không chứa 0)
+##### llbo — ma trận so cặp Δ ndcg@10 (hàng − cột, điểm %; `*` = CI95 bootstrap 2.000 lượt không chứa 0)
 
 | hàng \ cột | engine | content_profile | star_blend | pop_funnel | cooc_trip | itemknn | ease | rp3beta | ials | bpr | bpr_numpy | bpr_dest | mpd | mp |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -286,7 +332,7 @@ Số đối thủ thắng có ý nghĩa: star_blend 13 · content_profile 12 · 
 
 Số đối thủ thắng có ý nghĩa: ials 13 · content_profile 11 · engine 9 · star_blend 9 · bpr_dest 9 · pop_funnel 8 · mpd 7 · cooc_trip 6 · ease 5 · itemknn 4 · rp3beta 3 · bpr 1 · bpr_numpy 1 · mp 0
 
-#### llbo — phân khúc hit@20
+##### llbo — phân khúc hit@20
 
 | Nhãn | Giá trị | n | engine | content_profile | star_blend | pop_funnel | cooc_trip | itemknn | ease | rp3beta | ials | bpr | bpr_numpy | bpr_dest | mpd | mp |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -304,10 +350,10 @@ Số đối thủ thắng có ý nghĩa: ials 13 · content_profile 11 · engine
 | targetTaxonomy | hotel | 347 | 0.908 | 0.908 | 0.873 | 0.354 | 0.354 | 0.354 | 0.271 | 0.354 | 0.529 | 0.256 | 0.256 | 0.432 | 0.308 | 0.020 |
 | targetTaxonomy | golf | 172 | 1.000 | 0.994 | 1.000 | 0.988 | 0.994 | 0.994 | 0.843 | 0.988 | 0.924 | 0.744 | 0.738 | 1.000 | 0.971 | 0.209 |
 
-### Split `temporal` — 774 khách
+#### Split `temporal` — 774 khách
 
 
-#### temporal — bảng metric (k = 20; arm nhiều seed: mean ± sd 3 seed)
+##### temporal — bảng metric (k = 20; arm nhiều seed: mean ± sd 3 seed)
 
 | Run | Arm | Khách | R@5 | R@10 | R@20 | NDCG@5 | NDCG@10 | Coverage | Cross-cat chuyến mở có mua | Gini | Div@10 | Trả về | p95 ms | Fit s |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -367,7 +413,7 @@ Số đối thủ thắng có ý nghĩa: ials 13 · content_profile 11 · engine
 | ablate-noexcl | content_profile+mmr | 774 | 0.1059 | 0.1292 | 0.1718 | 0.0629 | 0.0705 | 0.4593 | 0.2451 | 0.9266 | 0.6150 | 19.9 | 181.5 | 0.0 |
 | ablate-noexcl | pop_funnel | 774 | 0.0349 | 0.0607 | 0.1150 | 0.0223 | 0.0305 | 0.1854 | 0.3787 | 0.9675 | 0.4863 | 19.9 | 3.4 | 0.0 |
 
-#### temporal — Δ mọi arm so với engine và mpd (điểm %, paired bootstrap 10.000 lượt seed 42; **đậm** = CI95 không chứa 0)
+##### temporal — Δ mọi arm so với engine và mpd (điểm %, paired bootstrap 10.000 lượt seed 42; **đậm** = CI95 không chứa 0)
 
 | Arm | hit@20 | NDCG@10 | Δ hit@20 vs engine | Δ NDCG@10 vs engine | Δ hit@20 vs mpd | Δ NDCG@10 vs mpd |
 |---|---:|---:|---|---|---|---|
@@ -427,7 +473,7 @@ Số đối thủ thắng có ý nghĩa: ials 13 · content_profile 11 · engine
 | raw:rp3beta+mmr | 0.0194 | 0.0044 | **-15.12** [-17.96; -12.40] | **-6.62** [-8.02; -5.30] | **-7.62** [-9.82; -5.43] | **-2.46** [-3.37; -1.59] |
 | random | 0.0082 | 0.0023 | **-16.24** [-18.95; -13.57] | **-6.82** [-8.24; -5.48] | **-8.74** [-10.90; -6.68] | **-2.66** [-3.62; -1.76] |
 
-#### temporal — ma trận so cặp Δ hit@20 (hàng − cột, điểm %; `*` = CI95 bootstrap 2.000 lượt không chứa 0)
+##### temporal — ma trận so cặp Δ hit@20 (hàng − cột, điểm %; `*` = CI95 bootstrap 2.000 lượt không chứa 0)
 
 | hàng \ cột | engine | content_profile | star_blend | pop_funnel | cooc_trip | itemknn | ease | rp3beta | ials | bpr | bpr_numpy | bpr_dest | mpd | mp |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -448,7 +494,7 @@ Số đối thủ thắng có ý nghĩa: ials 13 · content_profile 11 · engine
 
 Số đối thủ thắng có ý nghĩa: engine 12 · content_profile 11 · star_blend 11 · pop_funnel 10 · bpr_dest 7 · mpd 6 · ials 2 · cooc_trip 1 · itemknn 1 · rp3beta 1 · ease 0 · bpr 0 · bpr_numpy 0 · mp 0
 
-#### temporal — ma trận so cặp Δ ndcg@10 (hàng − cột, điểm %; `*` = CI95 bootstrap 2.000 lượt không chứa 0)
+##### temporal — ma trận so cặp Δ ndcg@10 (hàng − cột, điểm %; `*` = CI95 bootstrap 2.000 lượt không chứa 0)
 
 | hàng \ cột | engine | content_profile | star_blend | pop_funnel | cooc_trip | itemknn | ease | rp3beta | ials | bpr | bpr_numpy | bpr_dest | mpd | mp |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -469,7 +515,7 @@ Số đối thủ thắng có ý nghĩa: engine 12 · content_profile 11 · star
 
 Số đối thủ thắng có ý nghĩa: engine 12 · content_profile 12 · star_blend 11 · pop_funnel 7 · ials 7 · bpr_dest 7 · mpd 6 · bpr 3 · bpr_numpy 2 · cooc_trip 0 · itemknn 0 · ease 0 · rp3beta 0 · mp 0
 
-#### temporal — phân khúc hit@20
+##### temporal — phân khúc hit@20
 
 | Nhãn | Giá trị | n | engine | content_profile | star_blend | pop_funnel | cooc_trip | itemknn | ease | rp3beta | ials | bpr | bpr_numpy | bpr_dest | mpd | mp |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -486,10 +532,10 @@ Số đối thủ thắng có ý nghĩa: engine 12 · content_profile 12 · star
 | targetTaxonomy | attraction | 42 | 0.333 | 0.286 | 0.333 | 0.381 | 0.143 | 0.143 | 0.119 | 0.143 | 0.135 | 0.103 | 0.103 | 0.278 | 0.238 | 0.286 |
 | targetTaxonomy | combo | 20 | 0.100 | 0.050 | 0.100 | 0.050 | 0.100 | 0.100 | 0.150 | 0.100 | 0.117 | 0.050 | 0.067 | 0.050 | 0.150 | 0.000 |
 
-### Split `nexttrip` — 1835 khách
+#### Split `nexttrip` — 1835 khách
 
 
-#### nexttrip — bảng metric (k = 20; arm nhiều seed: mean ± sd 3 seed)
+##### nexttrip — bảng metric (k = 20; arm nhiều seed: mean ± sd 3 seed)
 
 | Run | Arm | Khách | R@5 | R@10 | R@20 | NDCG@5 | NDCG@10 | Coverage | Cross-cat chuyến mở có mua | Gini | Div@10 | Trả về | p95 ms | Fit s |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -549,7 +595,7 @@ Số đối thủ thắng có ý nghĩa: engine 12 · content_profile 12 · star
 | ablate-noexcl | content_profile+mmr | 1835 | 0.0229 | 0.0469 | 0.0801 | 0.0149 | 0.0226 | 0.4662 | 0.0000 | 0.9600 | 0.6239 | 20.0 | 149.8 | 0.0 |
 | ablate-noexcl | pop_funnel | 1835 | 0.0207 | 0.0371 | 0.0708 | 0.0135 | 0.0188 | 0.2900 | 0.0000 | 0.9781 | 0.3925 | 20.0 | 1.7 | 0.0 |
 
-#### nexttrip — Δ mọi arm so với engine và mpd (điểm %, paired bootstrap 10.000 lượt seed 42; **đậm** = CI95 không chứa 0)
+##### nexttrip — Δ mọi arm so với engine và mpd (điểm %, paired bootstrap 10.000 lượt seed 42; **đậm** = CI95 không chứa 0)
 
 | Arm | hit@20 | NDCG@10 | Δ hit@20 vs engine | Δ NDCG@10 vs engine | Δ hit@20 vs mpd | Δ NDCG@10 vs mpd |
 |---|---:|---:|---|---|---|---|
@@ -609,7 +655,7 @@ Số đối thủ thắng có ý nghĩa: engine 12 · content_profile 12 · star
 | raw:bpr_numpy+mmr | 0.0151 | 0.0067 | **-6.50** [-7.79; -5.29] | **-1.60** [-2.09; -1.13] | **-4.54** [-5.65; -3.49] | **-1.25** [-1.72; -0.83] |
 | random | 0.0082 | 0.0021 | **-7.19** [-8.52; -5.94] | **-2.05** [-2.59; -1.54] | **-5.23** [-6.39; -4.14] | **-1.70** [-2.22; -1.23] |
 
-#### nexttrip — ma trận so cặp Δ hit@20 (hàng − cột, điểm %; `*` = CI95 bootstrap 2.000 lượt không chứa 0)
+##### nexttrip — ma trận so cặp Δ hit@20 (hàng − cột, điểm %; `*` = CI95 bootstrap 2.000 lượt không chứa 0)
 
 | hàng \ cột | engine | content_profile | star_blend | pop_funnel | cooc_trip | itemknn | ease | rp3beta | ials | bpr | bpr_numpy | bpr_dest | mpd | mp |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -630,7 +676,7 @@ Số đối thủ thắng có ý nghĩa: engine 12 · content_profile 12 · star
 
 Số đối thủ thắng có ý nghĩa: engine 11 · star_blend 10 · content_profile 9 · pop_funnel 9 · mpd 7 · bpr_dest 6 · mp 6 · cooc_trip 4 · itemknn 2 · rp3beta 2 · ials 2 · ease 1 · bpr 1 · bpr_numpy 0
 
-#### nexttrip — ma trận so cặp Δ ndcg@10 (hàng − cột, điểm %; `*` = CI95 bootstrap 2.000 lượt không chứa 0)
+##### nexttrip — ma trận so cặp Δ ndcg@10 (hàng − cột, điểm %; `*` = CI95 bootstrap 2.000 lượt không chứa 0)
 
 | hàng \ cột | engine | content_profile | star_blend | pop_funnel | cooc_trip | itemknn | ease | rp3beta | ials | bpr | bpr_numpy | bpr_dest | mpd | mp |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -651,7 +697,7 @@ Số đối thủ thắng có ý nghĩa: engine 11 · star_blend 10 · content_p
 
 Số đối thủ thắng có ý nghĩa: engine 12 · content_profile 7 · star_blend 7 · pop_funnel 7 · bpr_dest 6 · mpd 6 · ials 5 · mp 3 · cooc_trip 1 · ease 1 · bpr 1 · itemknn 0 · rp3beta 0 · bpr_numpy 0
 
-#### nexttrip — phân khúc hit@20
+##### nexttrip — phân khúc hit@20
 
 | Nhãn | Giá trị | n | engine | content_profile | star_blend | pop_funnel | cooc_trip | itemknn | ease | rp3beta | ials | bpr | bpr_numpy | bpr_dest | mpd | mp |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -668,10 +714,10 @@ Số đối thủ thắng có ý nghĩa: engine 12 · content_profile 7 · star_
 | targetTaxonomy | flight | 109 | 0.394 | 0.495 | 0.495 | 0.505 | 0.101 | 0.101 | 0.046 | 0.110 | 0.159 | 0.083 | 0.073 | 0.495 | 0.183 | 0.596 |
 | targetTaxonomy | combo | 48 | 0.021 | 0.021 | 0.021 | 0.021 | 0.042 | 0.042 | 0.021 | 0.042 | 0.076 | 0.014 | 0.021 | 0.021 | 0.062 | 0.000 |
 
-### Split `coldstart` — 5231 khách
+#### Split `coldstart` — 5231 khách
 
 
-#### coldstart — bảng metric (k = 20; arm nhiều seed: mean ± sd 3 seed)
+##### coldstart — bảng metric (k = 20; arm nhiều seed: mean ± sd 3 seed)
 
 | Run | Arm | Khách | R@5 | R@10 | R@20 | NDCG@5 | NDCG@10 | Coverage | Cross-cat chuyến mở có mua | Gini | Div@10 | Trả về | p95 ms | Fit s |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -731,7 +777,7 @@ Số đối thủ thắng có ý nghĩa: engine 12 · content_profile 7 · star_
 | ablate-noexcl | content_profile+mmr | 5231 | 0.6328 | 0.7530 | 0.8153 | 0.3718 | 0.4112 | 0.9743 | 0.0000 | 0.6433 | 0.6611 | 20.0 | 55.3 | 0.0 |
 | ablate-noexcl | pop_funnel | 5231 | 0.1434 | 0.2355 | 0.3619 | 0.0872 | 0.1168 | 0.5631 | 0.0000 | 0.7946 | 0.6955 | 20.0 | 0.2 | 0.0 |
 
-#### coldstart — Δ mọi arm so với engine và mpd (điểm %, paired bootstrap 10.000 lượt seed 42; **đậm** = CI95 không chứa 0)
+##### coldstart — Δ mọi arm so với engine và mpd (điểm %, paired bootstrap 10.000 lượt seed 42; **đậm** = CI95 không chứa 0)
 
 | Arm | hit@20 | NDCG@10 | Δ hit@20 vs engine | Δ NDCG@10 vs engine | Δ hit@20 vs mpd | Δ NDCG@10 vs mpd |
 |---|---:|---:|---|---|---|---|
@@ -791,7 +837,7 @@ Số đối thủ thắng có ý nghĩa: engine 12 · content_profile 7 · star_
 | raw:bpr+mmr | 0.0336 | 0.0194 | **-78.17** [-79.28; -77.05] | **-39.17** [-39.92; -38.44] | **-31.24** [-32.50; -29.96] | **-9.59** [-10.16; -9.03] |
 | random | 0.0069 | 0.0016 | **-80.84** [-81.89; -79.78] | **-40.96** [-41.70; -40.20] | **-33.91** [-35.19; -32.61] | **-11.37** [-12.01; -10.74] |
 
-#### coldstart — ma trận so cặp Δ hit@20 (hàng − cột, điểm %; `*` = CI95 bootstrap 2.000 lượt không chứa 0)
+##### coldstart — ma trận so cặp Δ hit@20 (hàng − cột, điểm %; `*` = CI95 bootstrap 2.000 lượt không chứa 0)
 
 | hàng \ cột | engine | content_profile | star_blend | pop_funnel | cooc_trip | itemknn | ease | rp3beta | ials | bpr | bpr_numpy | bpr_dest | mpd | mp |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -812,7 +858,7 @@ Số đối thủ thắng có ý nghĩa: engine 12 · content_profile 7 · star_
 
 Số đối thủ thắng có ý nghĩa: engine 12 · content_profile 11 · star_blend 11 · ials 10 · bpr_dest 9 · pop_funnel 4 · cooc_trip 4 · itemknn 4 · ease 4 · rp3beta 4 · mpd 3 · bpr_numpy 2 · bpr 1 · mp 0
 
-#### coldstart — ma trận so cặp Δ ndcg@10 (hàng − cột, điểm %; `*` = CI95 bootstrap 2.000 lượt không chứa 0)
+##### coldstart — ma trận so cặp Δ ndcg@10 (hàng − cột, điểm %; `*` = CI95 bootstrap 2.000 lượt không chứa 0)
 
 | hàng \ cột | engine | content_profile | star_blend | pop_funnel | cooc_trip | itemknn | ease | rp3beta | ials | bpr | bpr_numpy | bpr_dest | mpd | mp |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -833,7 +879,7 @@ Số đối thủ thắng có ý nghĩa: engine 12 · content_profile 11 · star
 
 Số đối thủ thắng có ý nghĩa: engine 13 · content_profile 12 · ials 11 · star_blend 10 · bpr_dest 9 · pop_funnel 4 · cooc_trip 4 · itemknn 4 · ease 4 · rp3beta 4 · mpd 3 · bpr_numpy 2 · bpr 1 · mp 0
 
-#### coldstart — phân khúc hit@20
+##### coldstart — phân khúc hit@20
 
 | Nhãn | Giá trị | n | engine | content_profile | star_blend | pop_funnel | cooc_trip | itemknn | ease | rp3beta | ials | bpr | bpr_numpy | bpr_dest | mpd | mp |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -851,7 +897,7 @@ Số đối thủ thắng có ý nghĩa: engine 13 · content_profile 12 · ials
 | targetTaxonomy | combo | 150 | 0.840 | 0.853 | 0.847 | 0.427 | 0.427 | 0.427 | 0.427 | 0.427 | 0.562 | 0.298 | 0.302 | 0.509 | 0.420 | 0.013 |
 | targetTaxonomy | golf | 3 | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 0.000 |
 
-### Bảng chéo split — hit@20 / NDCG@10 (thứ hạng theo hit@20 trong ngoặc)
+#### Bảng chéo split — hit@20 / NDCG@10 (thứ hạng theo hit@20 trong ngoặc)
 
 | Arm | llbo | temporal | nexttrip | coldstart |
 |---|---|---|---|---|
@@ -911,7 +957,7 @@ Số đối thủ thắng có ý nghĩa: engine 13 · content_profile 12 · ials
 | raw:bpr_numpy+mmr | 0.125 / 0.095 (53) | 0.025 / 0.013 (50) | 0.015 / 0.007 (54) | 0.037 / 0.020 (53) |
 | random | 0.007 / 0.002 (55) | 0.008 / 0.002 (55) | 0.008 / 0.002 (55) | 0.007 / 0.002 (55) |
 
-### Run override (grid / ablation) — Δ so với engine mặc định của run v5 cùng split (điểm %, 10.000 lượt; **đậm** = CI95 không chứa 0)
+#### Run override (grid / ablation) — Δ so với engine mặc định của run v5 cùng split (điểm %, 10.000 lượt; **đậm** = CI95 không chứa 0)
 
 | Split | Run | Override | configHash | Arm | hit@20 | NDCG@10 | NDCG@5 | Δ hit@20 | Δ NDCG@10 | Δ NDCG@5 |
 |---|---|---|---|---|---:|---:|---:|---|---|---|
@@ -956,7 +1002,7 @@ Số đối thủ thắng có ý nghĩa: engine 13 · content_profile 12 · ials
 | coldstart | nodecay | H_SHORT_DAYS=1000000.0, H_LONG_DAYS=1000000.0 | c557f49b | engine | 0.8153 | 0.4111 | 0.3717 | +0.00 [+0.00; +0.00] | **-0.01** [-0.01; -0.00] | -0.01 [-0.03; +0.00] |
 | coldstart | nodecay | H_SHORT_DAYS=1000000.0, H_LONG_DAYS=1000000.0 | 421f1134 | engine_prod | 0.6058 | 0.3600 | 0.3555 | -0.02 [-0.06; +0.00] | -0.01 [-0.03; +0.00] | -0.01 [-0.03; +0.00] |
 
-### Gate nhất quán (ids top-20 trùng / khách)
+#### Gate nhất quán (ids top-20 trùng / khách)
 
 | Split | Kiểm | Trùng |
 |---|---|---:|
@@ -1114,7 +1160,7 @@ Số đối thủ thắng có ý nghĩa: engine 13 · content_profile 12 · ials
 }
 ```
 
-## 7. Tái sinh
+### 7. Tái sinh
 
 ```bash
 # 1. DB: dựng theo docs/guide/recsys-append-v1-snapshot.md vào database local rỗng (ở máy Khôi: vota_append_eval_20261005, cổng 55433).
@@ -1152,12 +1198,500 @@ $RB run --arm engine --arm engine_prod --split temporal --as-of 2026-10-05 --vec
 $RB sanity
 ```
 
-Bảng §3 và §6 sinh bằng hai script đọc `per_user.jsonl` / `summary.json` của các run trên (không cần DB), chép nguyên văn ở phụ lục A–C (chạy từ repo root với `PYTHONPATH=.`):
+Bảng §3 và §6 sinh bằng hai script đọc `per_user.jsonl` / `summary.json` của các run trên (không cần DB), chép nguyên văn ở Phụ lục 1–3 cuối báo cáo (chạy từ repo root với `PYTHONPATH=.`):
 `agg.py` (bảng metric, Δ so với engine / mpd, ma trận so cặp, phân khúc, bảng chéo, override, gate) và `ablate.py` (bật / tắt exclusion);
 cả hai dùng `src.evaluation.recsys_bench.metrics.paired_bootstrap` (seed 42). Mật khẩu trong DSN là credential demo local công khai trong
 `db/init/03_roles_dev.sql`.
 
-## Phụ lục A — `vec_append.py` (dựng vector; `PYTHONPATH=$PWD:$PWD/src`, `HF_HUB_OFFLINE=1`)
+---
+
+# Phần B — Search e5-small
+
+## B1. Đo lại trên gold_v4 cùng F1 / F2 / QP (06/10)
+
+- Lý do: số B2 đo trước khi PR #108 merge — không bật F1 (lọc điểm đến suy từ câu), F2 (cutoff riêng 0,80 cho câu không dấu), QP (F3 phủ
+  định tiện ích, F4 loại sản phẩm, F5 chiều bay, F6 giá / sao), cutoff 0,85, gold_v3. Nhóm Search dùng mốc cutoff 0,84 và gold_v4; F2 và
+  `minCoverage` cùng nhắm câu không dấu, F1 và `rrf` cùng nhắm `cross_vertical` → cần đo chung một chỗ để biết hai cơ chế cộng hay trùng.
+- Cách đo: `search_v4.py` (phụ lục 6) — `SearchProducts` thật qua `app_adapter.retrieve_app`, arm gốc `APP.e5s.hybrid_norm_c84` (hybrid +
+  normalize, `candidateK 200, rrf 60, lexicalK 10, lexicalCutoff 0,50, minCoverage 0,6, lexicalCandidateK 50`, mọi cờ tắt), mỗi cấu hình
+  chỉ đổi khối `app`; collection `ProductBench__e5_small` (Weaviate bench local); gold `gold/gold.jsonl` = gold_v4 **chưa gắn tag**
+  (`allow_untagged`), 154 câu active, 7 câu ngoài catalog. Commit `a46c424`.
+- Nhóm câu: `dev` / `test` = phân công `devtest@gold_v3` (65 / 63 câu có đáp án); `v4new` = 19 câu mới của gold_v4 có đáp án (không dùng khi
+  chọn A → kiểm độc lập); `all` = 147. Δ so với mốc cùng cutoff, paired bootstrap 10.000 lượt seed 42, điểm ×100, **đậm** = CI95 không chứa 0.
+- A = `minCoverage 0,1` + `rrf 30` (chọn trên dev gold_v3 ở B2). F2 = `noDiacriticsMode relax` với `{lexicalK 20, lexicalCutoff 0, minCoverage
+  0,4, cutoff 0,80, minTokens 3}` (như arm `_nodia_nc80`). QP = bốn cờ F3–F6.
+
+### B1.1 Đọc
+
+1. **A bổ sung cho F1 + F2:** F1 + F2 + A so với F1 + F2: dev +1,27 [+0,33; +2,41], test +1,50 [+0,49; +2,71], tổng +1,23 [+0,60; +1,93]
+   (cutoff 0,84; cutoff 0,85 cùng hướng). Một mình A trên gold_v4: tổng +2,14 [+0,81; +3,64], test +1,89 [+0,31; +3,76] — lần đầu có CI
+   cắt 0 trên nửa test (B2 gold_v3: +1,84 [−0,73; +4,96]).
+2. **Tổ hợp tốt nhất không QP: F1 + F2 + A** — nDCG@10 0,663 (mốc 0,621), condensed 0,676, Recall@10 +3,12, judged@10 0,850 (mốc 0,836) →
+   phần tăng không nhờ kết quả chưa nhãn.
+3. **QP:** F1 + F2 + QP tăng mạnh 19 câu v4new (+9,03; `amenity_negation` 0,256 → 0,438) nhưng judged@10 0,797 và dev / test không cắt 0 ở
+   nDCG full; A trên QP chỉ +0,46 [−0,14; +1,15]. Trước khi chốt QP cần gán nhãn lỗ (đã ghi ở `history/2026-10-05-fix-app-load-sau-merge.md`).
+4. **Cutoff 0,84 vs 0,85:** mọi tổ hợp Δ ≤ 0,23 (CI chứa 0); mốc không cờ ở 0,85 trả rỗng 1,4 % câu trong catalog, 0,84 là 0 % → 0,84.
+5. **Ngoài catalog:** 7/7 câu vẫn có kết quả ở mọi cấu hình (cả hai cutoff).
+6. **Slice** (cutoff 0,84): F1 + F2 + A nâng `no_diacritics` 0,381 → 0,569, `cross_vertical` 0,556 → 0,614, `named_entity` 0,820 → 0,862,
+   `audience_style` 0,633 → 0,718, `dest_type` 0,693 → 0,750; `abbrev_typo` 0,619 → 0,620. A đứng riêng làm `audience_style` −2,3 — F1 bù.
+
+### B1.2 Bảng nguyên văn
+
+#### Tổng (nDCG@10 full · condensed · Recall@10 · MRR@10 · judged@10 · zero-result trong catalog; Δ nDCG@10 và Δ condensed vs M0 cùng cutoff)
+
+| Cutoff | Cấu hình | Nhóm | n | nDCG@10 | cond. nDCG@10 | Recall@10 | MRR@10 | judged@10 | zero-result | Δ nDCG@10 [CI95] | Δ cond. nDCG@10 [CI95] | Δ Recall@10 [CI95] |
+|---|---|---|---:|---:|---:|---:|---:|---:|---:|---|---|---|
+| 0.84 | M0 mốc | dev | 65 | 0.683 | 0.694 | 0.342 | 0.822 | 0.868 | 0.000 | — | — | — |
+| 0.84 | M0 mốc | test | 63 | 0.644 | 0.655 | 0.310 | 0.732 | 0.823 | 0.000 | — | — | — |
+| 0.84 | M0 mốc | v4new | 19 | 0.336 | 0.341 | 0.283 | 0.423 | 0.768 | 0.000 | — | — | — |
+| 0.84 | M0 mốc | all | 147 | 0.621 | 0.632 | 0.321 | 0.732 | 0.836 | 0.000 | — | — | — |
+| 0.84 | A (minCov 0,1 + rrf 30) | dev | 65 | 0.710 | 0.723 | 0.357 | 0.831 | 0.883 | 0.000 | **+2.72** [+0.30; +5.62] | **+2.89** [+0.39; +5.83] | +1.47 [-0.00; +3.13] |
+| 0.84 | A (minCov 0,1 + rrf 30) | test | 63 | 0.662 | 0.672 | 0.323 | 0.741 | 0.852 | 0.000 | **+1.89** [+0.31; +3.76] | **+1.69** [+0.10; +3.55] | **+1.27** [+0.24; +2.52] |
+| 0.84 | A (minCov 0,1 + rrf 30) | v4new | 19 | 0.345 | 0.353 | 0.297 | 0.426 | 0.789 | 0.000 | +0.98 [-0.29; +2.54] | +1.28 [-0.04; +2.92] | +1.37 [+0.00; +3.44] |
+| 0.84 | A (minCov 0,1 + rrf 30) | all | 147 | 0.643 | 0.653 | 0.335 | 0.740 | 0.858 | 0.000 | **+2.14** [+0.81; +3.64] | **+2.17** [+0.82; +3.71] | **+1.37** [+0.52; +2.28] |
+| 0.84 | minCov 0,1 | dev | 65 | 0.702 | 0.714 | 0.352 | 0.830 | 0.863 | 0.000 | +1.90 [-0.18; +4.62] | +2.00 [-0.16; +4.78] | +0.99 [-0.34; +2.53] |
+| 0.84 | minCov 0,1 | test | 63 | 0.655 | 0.667 | 0.320 | 0.732 | 0.821 | 0.000 | **+1.11** [+0.11; +2.65] | **+1.14** [+0.12; +2.71] | **+0.96** [+0.10; +2.09] |
+| 0.84 | minCov 0,1 | v4new | 19 | 0.336 | 0.341 | 0.283 | 0.423 | 0.768 | 0.000 | +0.00 [+0.00; +0.00] | +0.00 [+0.00; +0.00] | +0.00 [+0.00; +0.00] |
+| 0.84 | minCov 0,1 | all | 147 | 0.634 | 0.645 | 0.329 | 0.735 | 0.833 | 0.000 | **+1.32** [+0.23; +2.65] | **+1.37** [+0.25; +2.74] | **+0.85** [+0.13; +1.68] |
+| 0.84 | rrf 30 | dev | 65 | 0.692 | 0.703 | 0.347 | 0.823 | 0.886 | 0.000 | +0.90 [-0.11; +2.17] | +0.94 [-0.12; +2.22] | +0.53 [-0.05; +1.22] |
+| 0.84 | rrf 30 | test | 63 | 0.651 | 0.661 | 0.314 | 0.740 | 0.853 | 0.000 | +0.77 [-0.37; +2.11] | +0.56 [-0.56; +1.86] | +0.33 [-0.28; +0.99] |
+| 0.84 | rrf 30 | v4new | 19 | 0.345 | 0.353 | 0.297 | 0.426 | 0.789 | 0.000 | +0.98 [-0.29; +2.54] | +1.28 [-0.04; +2.92] | +1.37 [+0.00; +3.44] |
+| 0.84 | rrf 30 | all | 147 | 0.630 | 0.640 | 0.326 | 0.736 | 0.860 | 0.000 | **+0.85** [+0.15; +1.65] | **+0.82** [+0.12; +1.60] | **+0.55** [+0.12; +1.02] |
+| 0.84 | F1 | dev | 65 | 0.700 | 0.711 | 0.356 | 0.813 | 0.871 | 0.000 | +1.64 [-0.44; +3.88] | +1.76 [-0.30; +4.07] | **+1.37** [+0.13; +2.70] |
+| 0.84 | F1 | test | 63 | 0.650 | 0.669 | 0.324 | 0.759 | 0.795 | 0.000 | +0.68 [-1.84; +3.47] | +1.32 [-1.18; +4.15] | +1.38 [-0.38; +3.56] |
+| 0.84 | F1 | v4new | 19 | 0.345 | 0.349 | 0.290 | 0.447 | 0.763 | 0.000 | +0.99 [-1.59; +4.15] | +0.85 [-1.99; +4.17] | +0.68 [-1.34; +3.07] |
+| 0.84 | F1 | all | 147 | 0.633 | 0.646 | 0.334 | 0.743 | 0.824 | 0.000 | +1.14 [-0.35; +2.73] | +1.45 [-0.06; +3.06] | **+1.28** [+0.28; +2.39] |
+| 0.84 | F2 (nc80) | dev | 65 | 0.701 | 0.714 | 0.351 | 0.830 | 0.855 | 0.000 | **+1.78** [+0.19; +4.13] | **+1.98** [+0.22; +4.48] | +0.90 [-0.08; +2.24] |
+| 0.84 | F2 (nc80) | test | 63 | 0.654 | 0.666 | 0.319 | 0.731 | 0.827 | 0.000 | +1.09 [-0.02; +2.65] | +1.06 [-0.12; +2.67] | +0.82 [-0.08; +1.98] |
+| 0.84 | F2 (nc80) | v4new | 19 | 0.336 | 0.341 | 0.283 | 0.423 | 0.768 | 0.000 | +0.00 [+0.00; +0.00] | +0.00 [+0.00; +0.00] | +0.00 [+0.00; +0.00] |
+| 0.84 | F2 (nc80) | all | 147 | 0.634 | 0.645 | 0.328 | 0.735 | 0.832 | 0.000 | **+1.25** [+0.32; +2.47] | **+1.33** [+0.32; +2.62] | **+0.75** [+0.14; +1.51] |
+| 0.84 | F1+F2 | dev | 65 | 0.721 | 0.734 | 0.368 | 0.821 | 0.866 | 0.000 | **+3.80** [+0.88; +7.16] | **+4.01** [+1.08; +7.43] | **+2.57** [+0.90; +4.45] |
+| 0.84 | F1+F2 | test | 63 | 0.669 | 0.688 | 0.338 | 0.764 | 0.811 | 0.000 | +2.56 [-0.22; +5.76] | **+3.22** [+0.52; +6.46] | **+2.74** [+0.69; +5.22] |
+| 0.84 | F1+F2 | v4new | 19 | 0.345 | 0.349 | 0.290 | 0.447 | 0.763 | 0.000 | +0.99 [-1.59; +4.15] | +0.85 [-1.99; +4.17] | +0.68 [-1.34; +3.07] |
+| 0.84 | F1+F2 | all | 147 | 0.650 | 0.664 | 0.345 | 0.748 | 0.829 | 0.000 | **+2.90** [+1.01; +4.95] | **+3.26** [+1.39; +5.32] | **+2.40** [+1.17; +3.81] |
+| 0.84 | F1+F2+A | dev | 65 | 0.734 | 0.748 | 0.378 | 0.821 | 0.892 | 0.000 | **+5.07** [+2.08; +8.44] | **+5.42** [+2.38; +8.90] | **+3.62** [+1.80; +5.69] |
+| 0.84 | F1+F2+A | test | 63 | 0.684 | 0.700 | 0.345 | 0.773 | 0.828 | 0.000 | **+4.06** [+1.09; +7.41] | **+4.41** [+1.51; +7.71] | **+3.48** [+1.14; +6.45] |
+| 0.84 | F1+F2+A | v4new | 19 | 0.347 | 0.351 | 0.285 | 0.448 | 0.779 | 0.000 | +1.17 [-1.63; +4.54] | +1.00 [-2.01; +4.49] | +0.21 [-2.32; +2.96] |
+| 0.84 | F1+F2+A | all | 147 | 0.663 | 0.676 | 0.352 | 0.752 | 0.850 | 0.000 | **+4.14** [+2.19; +6.24] | **+4.41** [+2.46; +6.56] | **+3.12** [+1.72; +4.68] |
+| 0.84 | F1+F2+QP | dev | 65 | 0.713 | 0.735 | 0.356 | 0.831 | 0.837 | 0.000 | +2.97 [-0.83; +7.25] | **+4.12** [+0.21; +8.43] | +1.39 [-0.92; +3.72] |
+| 0.84 | F1+F2+QP | test | 63 | 0.674 | 0.699 | 0.332 | 0.767 | 0.792 | 0.000 | +3.03 [-0.71; +7.10] | **+4.35** [+0.60; +8.40] | +2.19 [-0.15; +4.91] |
+| 0.84 | F1+F2+QP | v4new | 19 | 0.426 | 0.469 | 0.321 | 0.617 | 0.674 | 0.000 | **+9.03** [+0.58; +17.49] | **+12.86** [+2.74; +23.04] | +3.73 [-5.54; +11.03] |
+| 0.84 | F1+F2+QP | all | 147 | 0.659 | 0.685 | 0.341 | 0.776 | 0.797 | 0.000 | **+3.78** [+1.18; +6.53] | **+5.35** [+2.60; +8.31] | **+2.04** [+0.22; +3.89] |
+| 0.84 | F1+F2+QP+A | dev | 65 | 0.718 | 0.738 | 0.357 | 0.833 | 0.842 | 0.000 | +3.45 [-0.37; +7.71] | **+4.41** [+0.57; +8.67] | +1.50 [-0.83; +3.86] |
+| 0.84 | F1+F2+QP+A | test | 63 | 0.680 | 0.701 | 0.335 | 0.786 | 0.793 | 0.000 | +3.64 [-0.16; +7.81] | **+4.60** [+0.85; +8.64] | +2.44 [-0.04; +5.51] |
+| 0.84 | F1+F2+QP+A | v4new | 19 | 0.425 | 0.462 | 0.315 | 0.617 | 0.674 | 0.000 | **+8.93** [+0.18; +17.84] | **+12.15** [+2.05; +22.76] | +3.16 [-6.05; +10.60] |
+| 0.84 | F1+F2+QP+A | all | 147 | 0.664 | 0.687 | 0.342 | 0.785 | 0.799 | 0.000 | **+4.24** [+1.60; +7.00] | **+5.49** [+2.76; +8.40] | **+2.12** [+0.26; +4.08] |
+| 0.85 | M0 mốc | dev | 65 | 0.678 | 0.687 | 0.335 | 0.811 | 0.873 | 0.015 | — | — | — |
+| 0.85 | M0 mốc | test | 63 | 0.648 | 0.660 | 0.311 | 0.728 | 0.850 | 0.016 | — | — | — |
+| 0.85 | M0 mốc | v4new | 19 | 0.336 | 0.341 | 0.283 | 0.423 | 0.779 | 0.000 | — | — | — |
+| 0.85 | M0 mốc | all | 147 | 0.621 | 0.631 | 0.318 | 0.725 | 0.851 | 0.014 | — | — | — |
+| 0.85 | A (minCov 0,1 + rrf 30) | dev | 65 | 0.709 | 0.722 | 0.358 | 0.832 | 0.883 | 0.000 | +3.09 [-0.20; +7.05] | **+3.53** [+0.04; +7.75] | **+2.23** [+0.40; +4.45] |
+| 0.85 | A (minCov 0,1 + rrf 30) | test | 63 | 0.666 | 0.675 | 0.326 | 0.746 | 0.859 | 0.000 | +1.84 [-0.73; +4.96] | +1.54 [-1.14; +4.67] | +1.53 [-0.17; +3.45] |
+| 0.85 | A (minCov 0,1 + rrf 30) | v4new | 19 | 0.346 | 0.353 | 0.297 | 0.426 | 0.795 | 0.000 | +0.94 [-0.31; +2.50] | +1.28 [-0.04; +2.92] | +1.37 [+0.00; +3.44] |
+| 0.85 | A (minCov 0,1 + rrf 30) | all | 147 | 0.644 | 0.654 | 0.336 | 0.743 | 0.861 | 0.000 | **+2.28** [+0.38; +4.43] | **+2.38** [+0.40; +4.65] | **+1.82** [+0.70; +3.10] |
+| 0.85 | minCov 0,1 | dev | 65 | 0.704 | 0.717 | 0.354 | 0.829 | 0.867 | 0.000 | +2.59 [-0.53; +6.43] | +3.02 [-0.25; +7.04] | **+1.90** [+0.14; +4.09] |
+| 0.85 | minCov 0,1 | test | 63 | 0.664 | 0.675 | 0.325 | 0.738 | 0.838 | 0.000 | +1.59 [-0.77; +4.55] | +1.52 [-1.02; +4.57] | +1.41 [-0.23; +3.29] |
+| 0.85 | minCov 0,1 | v4new | 19 | 0.336 | 0.341 | 0.283 | 0.423 | 0.779 | 0.000 | +0.00 [+0.00; +0.00] | +0.00 [+0.00; +0.00] | +0.00 [+0.00; +0.00] |
+| 0.85 | minCov 0,1 | all | 147 | 0.639 | 0.650 | 0.332 | 0.738 | 0.843 | 0.000 | **+1.83** [+0.04; +3.91] | **+1.99** [+0.13; +4.17] | **+1.44** [+0.38; +2.67] |
+| 0.85 | rrf 30 | dev | 65 | 0.687 | 0.695 | 0.340 | 0.811 | 0.889 | 0.015 | +0.85 [-0.09; +2.06] | +0.80 [-0.16; +1.97] | +0.46 [-0.09; +1.12] |
+| 0.85 | rrf 30 | test | 63 | 0.654 | 0.664 | 0.313 | 0.736 | 0.866 | 0.016 | +0.58 [-0.18; +1.45] | +0.39 [-0.25; +1.04] | +0.20 [-0.07; +0.48] |
+| 0.85 | rrf 30 | v4new | 19 | 0.346 | 0.353 | 0.297 | 0.426 | 0.795 | 0.000 | +0.94 [-0.31; +2.50] | +1.28 [-0.04; +2.92] | +1.37 [+0.00; +3.44] |
+| 0.85 | rrf 30 | all | 147 | 0.629 | 0.637 | 0.323 | 0.729 | 0.867 | 0.014 | **+0.75** [+0.17; +1.40] | **+0.69** [+0.14; +1.30] | **+0.47** [+0.12; +0.87] |
+| 0.85 | F1 | dev | 65 | 0.681 | 0.692 | 0.342 | 0.785 | 0.872 | 0.015 | +0.26 [-1.55; +2.25] | +0.53 [-1.36; +2.67] | +0.71 [-0.45; +1.98] |
+| 0.85 | F1 | test | 63 | 0.644 | 0.660 | 0.312 | 0.742 | 0.828 | 0.016 | -0.41 [-2.77; +1.88] | -0.00 [-2.22; +2.09] | +0.14 [-0.90; +1.30] |
+| 0.85 | F1 | v4new | 19 | 0.346 | 0.349 | 0.290 | 0.447 | 0.774 | 0.000 | +0.99 [-1.59; +4.15] | +0.85 [-1.99; +4.17] | +0.68 [-1.34; +3.07] |
+| 0.85 | F1 | all | 147 | 0.622 | 0.634 | 0.323 | 0.723 | 0.840 | 0.014 | +0.07 [-1.30; +1.44] | +0.34 [-1.01; +1.70] | +0.46 [-0.30; +1.23] |
+| 0.85 | F2 (nc80) | dev | 65 | 0.707 | 0.718 | 0.347 | 0.853 | 0.855 | 0.000 | **+2.86** [+0.32; +6.31] | **+3.11** [+0.31; +6.77] | +1.21 [-0.15; +2.94] |
+| 0.85 | F2 (nc80) | test | 63 | 0.667 | 0.681 | 0.326 | 0.736 | 0.837 | 0.000 | +1.96 [-0.50; +5.15] | +2.12 [-0.36; +5.35] | +1.53 [-0.04; +3.38] |
+| 0.85 | F2 (nc80) | v4new | 19 | 0.336 | 0.341 | 0.283 | 0.423 | 0.779 | 0.000 | +0.00 [+0.00; +0.00] | +0.00 [+0.00; +0.00] | +0.00 [+0.00; +0.00] |
+| 0.85 | F2 (nc80) | all | 147 | 0.642 | 0.653 | 0.330 | 0.747 | 0.838 | 0.000 | **+2.10** [+0.46; +4.16] | **+2.29** [+0.55; +4.43] | **+1.19** [+0.27; +2.29] |
+| 0.85 | F1+F2 | dev | 65 | 0.716 | 0.729 | 0.359 | 0.829 | 0.860 | 0.000 | **+3.75** [+0.38; +7.86] | **+4.17** [+0.61; +8.44] | **+2.41** [+0.56; +4.54] |
+| 0.85 | F1+F2 | test | 63 | 0.674 | 0.692 | 0.333 | 0.768 | 0.825 | 0.000 | +2.58 [-0.69; +6.57] | **+3.21** [+0.06; +7.13] | **+2.27** [+0.29; +4.61] |
+| 0.85 | F1+F2 | v4new | 19 | 0.346 | 0.349 | 0.290 | 0.447 | 0.774 | 0.000 | +0.99 [-1.59; +4.15] | +0.85 [-1.99; +4.17] | +0.68 [-1.34; +3.07] |
+| 0.85 | F1+F2 | all | 147 | 0.650 | 0.664 | 0.339 | 0.754 | 0.834 | 0.000 | **+2.89** [+0.72; +5.40] | **+3.33** [+1.12; +5.89] | **+2.13** [+0.86; +3.52] |
+| 0.85 | F1+F2+A | dev | 65 | 0.727 | 0.741 | 0.371 | 0.821 | 0.888 | 0.000 | **+4.85** [+1.31; +9.12] | **+5.42** [+1.67; +9.90] | **+3.57** [+1.59; +5.93] |
+| 0.85 | F1+F2+A | test | 63 | 0.686 | 0.701 | 0.344 | 0.773 | 0.830 | 0.000 | **+3.80** [+0.35; +7.84] | **+4.14** [+0.85; +8.13] | **+3.35** [+0.89; +6.39] |
+| 0.85 | F1+F2+A | v4new | 19 | 0.348 | 0.351 | 0.285 | 0.448 | 0.784 | 0.000 | +1.14 [-1.66; +4.53] | +1.00 [-2.01; +4.49] | +0.21 [-2.32; +2.96] |
+| 0.85 | F1+F2+A | all | 147 | 0.660 | 0.674 | 0.348 | 0.752 | 0.850 | 0.000 | **+3.92** [+1.65; +6.51] | **+4.30** [+1.98; +6.92] | **+3.04** [+1.55; +4.73] |
+| 0.85 | F1+F2+QP | dev | 65 | 0.706 | 0.729 | 0.348 | 0.839 | 0.833 | 0.000 | +2.81 [-1.64; +7.90] | +4.19 [-0.44; +9.39] | +1.28 [-1.31; +3.93] |
+| 0.85 | F1+F2+QP | test | 63 | 0.676 | 0.700 | 0.322 | 0.771 | 0.801 | 0.000 | +2.78 [-1.41; +7.49] | +4.06 [-0.04; +8.65] | +1.19 [-0.84; +3.50] |
+| 0.85 | F1+F2+QP | v4new | 19 | 0.426 | 0.469 | 0.321 | 0.617 | 0.674 | 0.000 | **+8.95** [+0.50; +17.44] | **+12.86** [+2.74; +23.04] | +3.73 [-5.54; +11.03] |
+| 0.85 | F1+F2+QP | all | 147 | 0.657 | 0.683 | 0.334 | 0.781 | 0.799 | 0.000 | **+3.59** [+0.64; +6.73] | **+5.26** [+2.17; +8.55] | +1.56 [-0.29; +3.36] |
+| 0.85 | F1+F2+QP+A | dev | 65 | 0.711 | 0.732 | 0.349 | 0.840 | 0.838 | 0.000 | +3.28 [-1.21; +8.33] | +4.44 [-0.20; +9.60] | +1.40 [-1.22; +4.08] |
+| 0.85 | F1+F2+QP+A | test | 63 | 0.681 | 0.703 | 0.329 | 0.788 | 0.793 | 0.000 | +3.34 [-0.82; +8.09] | **+4.33** [+0.27; +8.91] | +1.86 [-0.58; +4.94] |
+| 0.85 | F1+F2+QP+A | v4new | 19 | 0.425 | 0.462 | 0.315 | 0.617 | 0.674 | 0.000 | **+8.85** [+0.10; +17.81] | **+12.15** [+2.05; +22.76] | +3.16 [-6.05; +10.60] |
+| 0.85 | F1+F2+QP+A | all | 147 | 0.661 | 0.684 | 0.336 | 0.789 | 0.798 | 0.000 | **+4.02** [+1.07; +7.23] | **+5.39** [+2.32; +8.65] | +1.83 [-0.11; +3.78] |
+
+#### Câu ngoài catalog (n = 7): tỉ lệ trả rỗng (cao = đúng)
+
+| Cutoff | M0 mốc | A (minCov 0,1 + rrf 30) | minCov 0,1 | rrf 30 | F1 | F2 (nc80) | F1+F2 | F1+F2+A | F1+F2+QP | F1+F2+QP+A |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0.84 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 |
+| 0.85 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 |
+
+#### Slice — nDCG@10 (154 câu active, mọi nhóm)
+
+
+**cutoff 0.84**
+
+| Slice | n | M0 mốc | A (minCov 0,1 + rrf 30) | minCov 0,1 | rrf 30 | F1 | F2 (nc80) | F1+F2 | F1+F2+A | F1+F2+QP | F1+F2+QP+A |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| no_diacritics | 12 | 0.381 | 0.570 | 0.544 | 0.391 | 0.344 | 0.521 | 0.543 | 0.569 | 0.495 | 0.504 |
+| cross_vertical | 10 | 0.556 | 0.618 | 0.556 | 0.631 | 0.554 | 0.556 | 0.554 | 0.614 | 0.554 | 0.614 |
+| dest_type | 12 | 0.693 | 0.696 | 0.693 | 0.701 | 0.749 | 0.693 | 0.749 | 0.750 | 0.788 | 0.781 |
+| named_entity | 18 | 0.820 | 0.826 | 0.824 | 0.821 | 0.850 | 0.820 | 0.850 | 0.862 | 0.858 | 0.868 |
+| abbrev_typo | 12 | 0.619 | 0.631 | 0.632 | 0.616 | 0.586 | 0.633 | 0.603 | 0.620 | 0.566 | 0.552 |
+| audience_style | 11 | 0.633 | 0.610 | 0.621 | 0.623 | 0.707 | 0.633 | 0.707 | 0.718 | 0.654 | 0.652 |
+| amenity_negation | 13 | 0.256 | 0.275 | 0.256 | 0.275 | 0.261 | 0.256 | 0.261 | 0.267 | 0.438 | 0.434 |
+| taxonomy_collision | 5 | 0.540 | 0.533 | 0.540 | 0.533 | 0.543 | 0.540 | 0.543 | 0.537 | 0.502 | 0.502 |
+| flight_direction | 6 | 0.347 | 0.348 | 0.347 | 0.348 | 0.347 | 0.347 | 0.347 | 0.348 | 0.354 | 0.354 |
+
+**cutoff 0.85**
+
+| Slice | n | M0 mốc | A (minCov 0,1 + rrf 30) | minCov 0,1 | rrf 30 | F1 | F2 (nc80) | F1+F2 | F1+F2+A | F1+F2+QP | F1+F2+QP+A |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| no_diacritics | 12 | 0.284 | 0.589 | 0.583 | 0.288 | 0.232 | 0.521 | 0.543 | 0.569 | 0.495 | 0.504 |
+| cross_vertical | 10 | 0.584 | 0.625 | 0.584 | 0.632 | 0.583 | 0.584 | 0.583 | 0.620 | 0.583 | 0.620 |
+| dest_type | 12 | 0.711 | 0.701 | 0.693 | 0.722 | 0.760 | 0.711 | 0.760 | 0.751 | 0.794 | 0.787 |
+| named_entity | 18 | 0.817 | 0.826 | 0.821 | 0.818 | 0.844 | 0.820 | 0.847 | 0.863 | 0.847 | 0.863 |
+| abbrev_typo | 12 | 0.617 | 0.618 | 0.632 | 0.610 | 0.572 | 0.633 | 0.603 | 0.620 | 0.566 | 0.552 |
+| audience_style | 11 | 0.672 | 0.605 | 0.615 | 0.672 | 0.696 | 0.672 | 0.696 | 0.701 | 0.643 | 0.640 |
+| amenity_negation | 13 | 0.256 | 0.275 | 0.256 | 0.275 | 0.261 | 0.256 | 0.261 | 0.267 | 0.438 | 0.434 |
+| taxonomy_collision | 5 | 0.540 | 0.533 | 0.540 | 0.533 | 0.543 | 0.540 | 0.543 | 0.537 | 0.502 | 0.502 |
+| flight_direction | 6 | 0.349 | 0.349 | 0.349 | 0.349 | 0.349 | 0.349 | 0.349 | 0.349 | 0.354 | 0.354 |
+
+#### So cặp: đề xuất A có cộng thêm gì trên F1/F2 không (Δ = trái − phải)
+
+| Cutoff | Cặp | Nhóm | n | Δ nDCG@10 [CI95] | Δ cond. nDCG@10 [CI95] | Δ Recall@10 [CI95] |
+|---|---|---|---:|---|---|---|
+| 0.84 | F1+F2+A vs F1+F2 | dev | 65 | **+1.27** [+0.33; +2.41] | **+1.41** [+0.29; +2.73] | **+1.05** [+0.30; +1.94] |
+| 0.84 | F1+F2+A vs F1+F2 | test | 63 | **+1.50** [+0.49; +2.71] | **+1.19** [+0.25; +2.29] | **+0.73** [+0.05; +1.60] |
+| 0.84 | F1+F2+A vs F1+F2 | v4new | 19 | +0.18 [-0.48; +1.04] | +0.15 [-0.56; +1.08] | -0.47 [-1.97; +0.56] |
+| 0.84 | F1+F2+A vs F1+F2 | all | 147 | **+1.23** [+0.60; +1.93] | **+1.15** [+0.50; +1.88] | **+0.71** [+0.22; +1.26] |
+| 0.84 | F1+F2+QP+A vs F1+F2+QP | dev | 65 | +0.48 [-0.30; +1.47] | +0.29 [-0.51; +1.22] | +0.11 [-0.31; +0.62] |
+| 0.84 | F1+F2+QP+A vs F1+F2+QP | test | 63 | +0.61 [-0.42; +1.82] | +0.25 [-0.77; +1.39] | +0.24 [-0.67; +1.20] |
+| 0.84 | F1+F2+QP+A vs F1+F2+QP | v4new | 19 | -0.11 [-1.62; +1.29] | -0.71 [-3.57; +1.43] | -0.57 [-2.63; +0.93] |
+| 0.84 | F1+F2+QP+A vs F1+F2+QP | all | 147 | +0.46 [-0.14; +1.15] | +0.14 [-0.54; +0.84] | +0.08 [-0.42; +0.60] |
+| 0.84 | A (minCov 0,1 + rrf 30) vs F1+F2 | dev | 65 | -1.07 [-4.04; +1.62] | -1.12 [-3.99; +1.50] | -1.10 [-2.85; +0.54] |
+| 0.84 | A (minCov 0,1 + rrf 30) vs F1+F2 | test | 63 | -0.67 [-3.40; +1.80] | -1.53 [-4.26; +0.85] | -1.47 [-3.69; +0.31] |
+| 0.84 | A (minCov 0,1 + rrf 30) vs F1+F2 | v4new | 19 | -0.01 [-2.40; +2.24] | +0.43 [-2.06; +2.85] | +0.70 [-0.75; +2.16] |
+| 0.84 | A (minCov 0,1 + rrf 30) vs F1+F2 | all | 147 | -0.77 [-2.53; +0.89] | -1.09 [-2.83; +0.49] | -1.03 [-2.26; +0.08] |
+| 0.85 | F1+F2+A vs F1+F2 | dev | 65 | **+1.10** [+0.05; +2.32] | **+1.25** [+0.01; +2.66] | **+1.16** [+0.40; +2.04] |
+| 0.85 | F1+F2+A vs F1+F2 | test | 63 | **+1.22** [+0.23; +2.36] | **+0.93** [+0.00; +1.95] | **+1.08** [+0.09; +2.61] |
+| 0.85 | F1+F2+A vs F1+F2 | v4new | 19 | +0.15 [-0.51; +1.01] | +0.15 [-0.56; +1.08] | -0.47 [-1.97; +0.56] |
+| 0.85 | F1+F2+A vs F1+F2 | all | 147 | **+1.03** [+0.38; +1.75] | **+0.97** [+0.28; +1.72] | **+0.91** [+0.31; +1.68] |
+| 0.85 | F1+F2+QP+A vs F1+F2+QP | dev | 65 | +0.47 [-0.30; +1.44] | +0.25 [-0.55; +1.18] | +0.11 [-0.31; +0.62] |
+| 0.85 | F1+F2+QP+A vs F1+F2+QP | test | 63 | +0.56 [-0.48; +1.76] | +0.27 [-0.67; +1.32] | +0.68 [-0.22; +2.19] |
+| 0.85 | F1+F2+QP+A vs F1+F2+QP | v4new | 19 | -0.11 [-1.62; +1.29] | -0.71 [-3.57; +1.43] | -0.57 [-2.63; +0.93] |
+| 0.85 | F1+F2+QP+A vs F1+F2+QP | all | 147 | +0.43 [-0.18; +1.12] | +0.13 [-0.52; +0.81] | +0.27 [-0.28; +0.98] |
+| 0.85 | A (minCov 0,1 + rrf 30) vs F1+F2 | dev | 65 | -0.66 [-3.25; +1.84] | -0.65 [-3.39; +1.89] | -0.18 [-1.72; +1.36] |
+| 0.85 | A (minCov 0,1 + rrf 30) vs F1+F2 | test | 63 | -0.74 [-3.59; +1.83] | -1.68 [-4.44; +0.67] | -0.74 [-2.59; +0.86] |
+| 0.85 | A (minCov 0,1 + rrf 30) vs F1+F2 | v4new | 19 | -0.04 [-2.43; +2.22] | +0.43 [-2.06; +2.85] | +0.70 [-0.75; +2.16] |
+| 0.85 | A (minCov 0,1 + rrf 30) vs F1+F2 | all | 147 | -0.62 [-2.33; +0.99] | -0.95 [-2.67; +0.64] | -0.31 [-1.38; +0.67] |
+
+#### Cutoff 0,85 so với 0,84 (cùng cấu hình, nhóm all)
+
+| Cấu hình | nDCG@10 0,84 → 0,85 | Δ [CI95] | zero-result 0,84 → 0,85 |
+|---|---|---|---|
+| M0 mốc | 0.621 → 0.621 | -0.02 [-1.23; +1.09] | 0.000 → 0.014 |
+| A (minCov 0,1 + rrf 30) | 0.643 → 0.644 | +0.12 [-0.27; +0.49] | 0.000 → 0.000 |
+| minCov 0,1 | 0.634 → 0.639 | +0.50 [-0.11; +1.15] | 0.000 → 0.000 |
+| rrf 30 | 0.630 → 0.629 | -0.13 [-1.26; +0.89] | 0.000 → 0.014 |
+| F1 | 0.633 → 0.622 | -1.09 [-2.31; +0.02] | 0.000 → 0.014 |
+| F2 (nc80) | 0.634 → 0.642 | **+0.83** [+0.25; +1.54] | 0.000 → 0.000 |
+| F1+F2 | 0.650 → 0.650 | -0.03 [-0.73; +0.65] | 0.000 → 0.000 |
+| F1+F2+A | 0.663 → 0.660 | -0.23 [-0.77; +0.19] | 0.000 → 0.000 |
+| F1+F2+QP | 0.659 → 0.657 | -0.20 [-0.89; +0.44] | 0.000 → 0.000 |
+| F1+F2+QP+A | 0.664 → 0.661 | -0.23 [-0.81; +0.22] | 0.000 → 0.000 |
+
+```json
+{"gold": "gold.jsonl (gold_v4, untagged)", "active": 154, "groups": {"dev": 65, "test": 63, "v4new": 19, "all": 147}, "ooc": 7, "arm0": "APP.e5s.hybrid_norm_c84", "configs": {"M0 mốc": {}, "A (minCov 0,1 + rrf 30)": {"min_coverage": 0.1, "rrf_k": 30}, "minCov 0,1": {"min_coverage": 0.1}, "rrf 30": {"rrf_k": 30}, "F1": {"dest_filter": true}, "F2 (nc80)": {"no_diacritics_mode": "relax", "no_diacritics": {"lexical_k": 20, "lexical_cutoff": 0.0, "min_coverage": 0.4, "cutoff": 0.8, "min_tokens": 3}}, "F1+F2": {"dest_filter": true, "no_diacritics_mode": "relax", "no_diacritics": {"lexical_k": 20, "lexical_cutoff": 0.0, "min_coverage": 0.4, "cutoff": 0.8, "min_tokens": 3}}, "F1+F2+A": {"dest_filter": true, "no_diacritics_mode": "relax", "no_diacritics": {"lexical_k": 20, "lexical_cutoff": 0.0, "min_coverage": 0.4, "cutoff": 0.8, "min_tokens": 3}, "min_coverage": 0.1, "rrf_k": 30}, "F1+F2+QP": {"dest_filter": true, "no_diacritics_mode": "relax", "no_diacritics": {"lexical_k": 20, "lexical_cutoff": 0.0, "min_coverage": 0.4, "cutoff": 0.8, "min_tokens": 3}, "negation_filter": true, "taxonomy_filter": true, "route_filter": true, "numeric_filter": true}, "F1+F2+QP+A": {"dest_filter": true, "no_diacritics_mode": "relax", "no_diacritics": {"lexical_k": 20, "lexical_cutoff": 0.0, "min_coverage": 0.4, "cutoff": 0.8, "min_tokens": 3}, "negation_filter": true, "taxonomy_filter": true, "route_filter": true, "numeric_filter": true, "min_coverage": 0.1, "rrf_k": 30}}}
+```
+
+## B2–B3. Sweep tham số hybrid và filter điểm đến oracle trên gold_v3 (05–06/10)
+
+Nội dung nguyên văn của report `eval-2026-10-06-search-e5s-hybrid-params.md` (đã thay bằng báo cáo này). Đề xuất trong mục 1.6 dưới đây
+đã được cập nhật theo B1 (dùng cùng F1 + F2, cutoff 0,84).
+
+
+- Phục vụ: FR-SRC-01..04, NFR-PERF-01 (chất lượng, không đo latency); việc mở của `eval-2026-10-05-search-day5-e5s-app.md` §11 (`cross_vertical`)
+  và §13 ("`lexical_k` và `min_coverage` chưa sweep"); đề xuất đổi model `docs/prd/update/2026-10-05-fr-src-02-embedding-local-e5-small.md`
+  (chờ chốt); đề xuất rút ra từ phần B: `docs/prd/update/2026-10-06-search-hybrid-min-coverage-rrf.md`.
+- Commit: `ac7642a` + working tree chưa commit; **không sửa code / config**. Đo bằng `SearchProducts` thật của backend qua cổng APP
+  (`app_adapter.retrieve_app`), arm gốc `APP.e5s.hybrid_norm` (hybrid + QueryNormalizer = cấu hình production), collection
+  `ProductBench__e5_small` trên Weaviate bench local (`sbench-weaviate-1`, đã nạp từ 05/10 — guard BM25 đã ổn định), gold `gold_v3`,
+  split `gold/splits/devtest@gold_v3.json` (dev 66 / test 65 câu; 2 câu không có kết quả kỳ vọng nằm ngoài catalog).
+- Mốc so sánh: arm gốc với `cutoff 0,85` (giá trị trong đề xuất PRD), còn lại như arm: `rrf_k 60 · lexical_k 10 · lexical_cutoff 0,50 ·
+  min_coverage 0,6 · candidate_k 200 · lexical_candidate_k 50`. Mỗi lần đổi một tham số (hoặc tổ hợp ở §2); chọn trên dev, kiểm trên test.
+  CI = paired bootstrap 10.000 lượt theo câu, seed 42 (`metrics.paired_bootstrap`), Δ = mới − mốc, điểm ×100.
+
+> **Đọc cùng PR #108** (`eval-2026-10-05-search-e5s-dest-nodia.md`, merge vào nhánh sau khi lượt đo này chạy): F1 lọc điểm đến và F2 cutoff
+> riêng cho câu không dấu, mốc cutoff tạm 0,84, gold_v4 đã có. Số ở đây đo **không bật F1/F2**, cutoff 0,85, gold_v3 — chưa so trực tiếp được.
+> Hai report nhất quán ở một điểm: `min_coverage` / `lexical_k` chỉ có tác dụng khi cutoff cắt bớt nhánh dense.
+
+> Gold 131 câu: một câu = ~1,5 điểm nDCG ở mỗi nửa. Các cấu hình mới đưa lên top-10 một số sản phẩm **chưa có nhãn** (cột judged@10) — chưa
+> nhãn tính là không liên quan, nên Δ có thể bị đánh giá thấp hoặc cao tuỳ chất lượng phần chưa nhãn; cần gán nhãn (đợt D6a) trước khi chốt.
+
+#### 1. Kết luận nhanh
+
+1. **`min_coverage` là tham số có tác động lớn nhất còn lại.** 0,6 → 0,1: nDCG@10 dev +2,59 [−0,53; +6,43], test +1,59 [−0,77; +4,55],
+   gộp 128 câu **+2,10 [+0,03; +4,44]**; zero-result trong catalog 1,6 % → **0 %**; câu không dấu (`no_diacritics`) 0,284 → **0,583** gộp
+   (dev 0,327 → 0,676, test 0,240 → 0,490). Slice tụt: `audience_style` −5,6 (n = 11), `multi_constraint` −6,6 dev (n = 5).
+   `min_coverage` 0,0 / 0,1 / 0,2 cho test như nhau (0,664–0,666); 0,3 trở lên mất phần lớn lợi ích câu không dấu.
+2. **`rrf_k` nhỏ giúp `cross_vertical`**: `rrf_k` 10 → slice này dev 0,604 → 0,757, test 0,564 → 0,665 (gộp 0,584 → 0,711, n = 10) nhưng
+   tổng nDCG không đổi có ý nghĩa (+0,82 [−0,44; +2,19]). `rrf_k` 30 nhẹ hơn và đều hơn: gộp **+0,72 [+0,10; +1,45]**.
+3. **Tổ hợp tốt nhất: `min_coverage 0,1 + rrf_k 30`** — dev +3,09 [−0,20; +7,05], test +1,84 [−0,73; +4,96], gộp **+2,48 [+0,29; +4,92]**,
+   Recall@10 gộp +1,89 [+0,61; +3,33], zero-result 0 %, `no_diacritics` 0,284 → 0,589, `cross_vertical` 0,584 → 0,625. Thêm
+   `lexical_candidate_k 20` không tăng thêm trên test.
+4. **Giữ nguyên:** `candidate_k` 200 (50 / 100 / 400 không hơn trên test), `lexical_k` 10 (5 / 20 / 50 bằng hoặc kém), `lexical_candidate_k`
+   50 (100 / 200 kém rõ: test −1,3 nDCG; 20 hơn nhẹ không ý nghĩa), **cutoff 0,85** — với `min_coverage 0,1` cutoff 0,85 vẫn tốt nhất cả
+   dev (0,704) lẫn test (0,664) trong 0,80–0,87, khớp đề xuất PRD.
+5. **Filter điểm đến (oracle — cận trên của QU) cho 10 câu `cross_vertical`:** 0,584 → 0,657, Δ +7,35 [−1,90; +17,19] — không đủ bằng chứng,
+   không lấp được khoảng cách −26 so với Cohere. 4 câu tăng mạnh (Hải Phòng +0,38, Nha Trang +0,20, Nghệ An +0,17, Cần Thơ +0,16), 3 câu
+   giảm (Buôn Ma Thuột −0,18, Huế −0,07, Hạ Long −0,04); judged@10 0,70 → 0,68 nên một phần do kết quả chưa nhãn. `rrf_k` nhỏ (mục 2) đem
+   lại cùng cỡ cải thiện mà không cần QU.
+6. **Đề xuất (chưa áp dụng; phải đối chiếu F1/F2 và đo lại trên gold_v4 trước khi chốt):** khi đổi production sang e5-small, cân nhắc `SEARCH_MIN_COVERAGE` 0,1–0,2 và `rrf_k` 30 cùng `cutoff 0,85`.
+   Trước khi chốt: gán nhãn các cặp mới vào top-10 (judged@10 giảm ~1 điểm), rescore, đặt lại `baseline_v1`, rồi `sb regress`. Nếu các giá
+   trị này khác điều PRD / contract đang ghi, đưa vào đề xuất `docs/prd/update/` trước khi sửa config.
+
+#### 2. CI so cặp các ứng viên (`search_ci.py`, Phụ lục 4)
+
+| Cấu hình (so với mốc cutoff 0,85) | split | n | nDCG@10 mốc → mới | Δ nDCG@10 [CI95] p | Δ Recall@10 [CI95] | Δ MRR@10 | zero-result mốc → mới | judged@10 mốc → mới | cross_vertical | no_diacritics | slice thấp nhất |
+|---|---|---:|---|---|---|---:|---|---|---|---|---|
+| min_coverage=0.1 | dev | 65 | 0.678 → 0.704 | +2.59 [-0.53; +6.43] p 0.057 | +1.90 [+0.14; +4.09] | +1.85 | 0.015 → 0.000 | 0.873 → 0.867 | 0.604 → 0.604 | 0.327 → 0.676 | multi_constraint -6.6 (n=5) |
+| min_coverage=0.1 | test | 63 | 0.648 → 0.664 | +1.59 [-0.77; +4.55] p 0.116 | +1.41 [-0.23; +3.29] | +0.98 | 0.016 → 0.000 | 0.850 → 0.838 | 0.564 → 0.564 | 0.240 → 0.490 | audience_style -6.9 (n=6) |
+| min_coverage=0.1 | all | 128 | 0.663 → 0.684 | **+2.10** [+0.03; +4.44] p 0.023 | +1.66 [+0.43; +3.06] | +1.42 | 0.016 → 0.000 | 0.862 → 0.853 | 0.584 → 0.584 | 0.284 → 0.583 | audience_style -5.6 (n=11) |
+| rrf_k=10 | dev | 65 | 0.678 → 0.691 | +1.30 [-0.50; +3.38] p 0.087 | +0.88 [-0.24; +2.10] | -0.85 | 0.015 → 0.015 | 0.873 → 0.898 | 0.604 → 0.757 | 0.327 → 0.329 | amenity_negation -5.7 (n=3) |
+| rrf_k=10 | test | 63 | 0.648 → 0.651 | +0.33 [-1.40; +2.19] p 0.374 | +0.23 [-0.43; +0.92] | -0.15 | 0.016 → 0.016 | 0.850 → 0.874 | 0.564 → 0.665 | 0.240 → 0.210 | no_diacritics -3.1 (n=6) |
+| rrf_k=10 | all | 128 | 0.663 → 0.672 | +0.82 [-0.44; +2.19] p 0.108 | +0.56 [-0.10; +1.26] | -0.51 | 0.016 → 0.016 | 0.862 → 0.886 | 0.584 → 0.711 | 0.284 → 0.270 | amenity_negation -2.1 (n=5) |
+| rrf_k=30 | dev | 65 | 0.678 → 0.687 | +0.85 [-0.09; +2.06] p 0.041 | +0.46 [-0.09; +1.12] | +0.06 | 0.015 → 0.015 | 0.873 → 0.889 | 0.604 → 0.664 | 0.327 → 0.340 | parent_child -1.3 (n=6) |
+| rrf_k=30 | test | 63 | 0.648 → 0.654 | +0.58 [-0.18; +1.45] p 0.077 | +0.20 [-0.07; +0.48] | +0.74 | 0.016 → 0.016 | 0.850 → 0.866 | 0.564 → 0.599 | 0.240 → 0.236 | no_diacritics -0.5 (n=6) |
+| rrf_k=30 | all | 128 | 0.663 → 0.670 | **+0.72** [+0.10; +1.45] p 0.010 | +0.33 [+0.03; +0.68] | +0.39 | 0.016 → 0.016 | 0.862 → 0.878 | 0.584 → 0.632 | 0.284 → 0.288 | abbrev_typo -0.7 (n=12) |
+| lexical_candidate_k=20 | dev | 65 | 0.678 → 0.687 | +0.89 [-0.80; +2.57] p 0.146 | +0.84 [-0.09; +1.79] | -1.25 | 0.015 → 0.015 | 0.873 → 0.906 | 0.604 → 0.614 | 0.327 → 0.357 | multi_constraint -5.0 (n=5) |
+| lexical_candidate_k=20 | test | 63 | 0.648 → 0.660 | +1.22 [-1.06; +3.60] p 0.153 | -0.13 [-1.67; +1.14] | +1.50 | 0.016 → 0.016 | 0.850 → 0.876 | 0.564 → 0.599 | 0.240 → 0.235 | multi_constraint -2.2 (n=4) |
+| lexical_candidate_k=20 | all | 128 | 0.663 → 0.674 | +1.05 [-0.36; +2.52] p 0.074 | +0.36 [-0.52; +1.16] | +0.10 | 0.016 → 0.016 | 0.862 → 0.891 | 0.584 → 0.607 | 0.284 → 0.296 | multi_constraint -3.7 (n=9) |
+| candidate_k=50 | dev | 65 | 0.678 → 0.687 | +0.83 [-0.24; +2.31] p 0.090 | +0.46 [-0.11; +1.22] | -0.17 | 0.015 → 0.015 | 0.873 → 0.884 | 0.604 → 0.671 | 0.327 → 0.327 | abbrev_typo -1.6 (n=6) |
+| candidate_k=50 | test | 63 | 0.648 → 0.645 | -0.31 [-1.23; +0.46] p 0.754 | -0.05 [-0.34; +0.22] | -1.72 | 0.016 → 0.016 | 0.850 → 0.858 | 0.564 → 0.562 | 0.240 → 0.195 | no_diacritics -4.6 (n=6) |
+| candidate_k=50 | all | 128 | 0.663 → 0.666 | +0.27 [-0.46; +1.10] p 0.252 | +0.21 [-0.12; +0.61] | -0.93 | 0.016 → 0.016 | 0.862 → 0.871 | 0.584 → 0.616 | 0.284 → 0.261 | no_diacritics -2.3 (n=12) |
+| min_coverage=0.1 + rrf_k=10 | dev | 65 | 0.678 → 0.708 | +3.02 [-0.59; +7.19] p 0.055 | +2.36 [+0.33; +4.68] | +0.19 | 0.015 → 0.000 | 0.873 → 0.892 | 0.604 → 0.710 | 0.327 → 0.663 | multi_constraint -8.5 (n=5) |
+| min_coverage=0.1 + rrf_k=10 | test | 63 | 0.648 → 0.661 | +1.26 [-1.90; +4.83] p 0.237 | +1.43 [-0.32; +3.43] | +2.78 | 0.016 → 0.000 | 0.850 → 0.865 | 0.564 → 0.620 | 0.240 → 0.499 | audience_style -9.2 (n=6) |
+| min_coverage=0.1 + rrf_k=10 | all | 128 | 0.663 → 0.685 | +2.15 [-0.33; +4.83] p 0.043 | +1.90 [+0.54; +3.39] | +1.46 | 0.016 → 0.000 | 0.862 → 0.879 | 0.584 → 0.665 | 0.284 → 0.581 | audience_style -7.9 (n=11) |
+| min_coverage=0.1 + rrf_k=30 | dev | 65 | 0.678 → 0.709 | +3.09 [-0.20; +7.05] p 0.033 | +2.23 [+0.40; +4.45] | +2.11 | 0.015 → 0.000 | 0.873 → 0.883 | 0.604 → 0.651 | 0.327 → 0.696 | multi_constraint -6.9 (n=5) |
+| min_coverage=0.1 + rrf_k=30 | test | 63 | 0.648 → 0.666 | +1.84 [-0.73; +4.96] p 0.094 | +1.53 [-0.17; +3.45] | +1.77 | 0.016 → 0.000 | 0.850 → 0.859 | 0.564 → 0.598 | 0.240 → 0.482 | audience_style -8.0 (n=6) |
+| min_coverage=0.1 + rrf_k=30 | all | 128 | 0.663 → 0.688 | **+2.48** [+0.29; +4.92] p 0.012 | +1.89 [+0.61; +3.33] | +1.94 | 0.016 → 0.000 | 0.862 → 0.871 | 0.584 → 0.625 | 0.284 → 0.589 | audience_style -6.7 (n=11) |
+| min_coverage=0.1 + rrf_k=10 + lexical_candidate_k=20 | dev | 65 | 0.678 → 0.709 | +3.10 [-0.59; +7.35] p 0.052 | +2.07 [-0.03; +4.39] | +1.93 | 0.015 → 0.000 | 0.873 → 0.927 | 0.604 → 0.666 | 0.327 → 0.663 | multi_constraint -9.7 (n=5) |
+| min_coverage=0.1 + rrf_k=10 + lexical_candidate_k=20 | test | 63 | 0.648 → 0.660 | +1.16 [-2.24; +4.73] p 0.260 | +0.66 [-1.58; +2.93] | +4.35 | 0.016 → 0.000 | 0.850 → 0.891 | 0.564 → 0.633 | 0.240 → 0.488 | multi_constraint -10.1 (n=4) |
+| min_coverage=0.1 + rrf_k=10 + lexical_candidate_k=20 | all | 128 | 0.663 → 0.685 | +2.15 [-0.42; +4.85] p 0.052 | +1.37 [-0.16; +2.99] | +3.12 | 0.016 → 0.000 | 0.862 → 0.909 | 0.584 → 0.650 | 0.284 → 0.576 | multi_constraint -9.9 (n=9) |
+
+Ghi chú: "gộp" (all) gồm cả nửa dev đã dùng để chọn giá trị nên lạc quan; đọc nửa test làm bằng chứng độc lập — ở test không cấu hình nào có
+CI cắt 0 (n = 63), cùng hướng với dev.
+
+#### 3. `cross_vertical` với filter `destination` oracle (`search_extra.py`, Phụ lục 5; cutoff 0,85, `min_coverage` 0,6)
+
+Điểm đến lấy bằng khớp chuỗi tên điểm đến của catalog (dài nhất trước) trong câu hỏi, truyền vào `SearchProducts(destination=…)` — đúng filter
+`/search` đã nhận; các câu khác giữ kết quả không filter.
+
+| qid | split | destination | nDCG@10 không → có filter | judged@10 không → có |
+|---|---|---|---|---|
+| c0541 | dev | Buôn Ma Thuột | 1.00 → 0.82 | 1.00 → 0.80 |
+| c0546 | dev | Cần Thơ | 0.49 → 0.65 | 0.50 → 0.60 |
+| c0547 | test | Huế | 0.78 → 0.71 | 0.70 → 0.60 |
+| c0551 | test | Hà Nội | 0.50 → 0.56 | 0.80 → 0.50 |
+| c0555 | dev | Hà Tĩnh | 0.94 → 0.95 | 0.90 → 1.00 |
+| c0556 | test | Hạ Long | 0.87 → 0.83 | 0.80 → 0.80 |
+| c0560 | dev | Hải Phòng | 0.40 → 0.78 | 0.30 → 0.70 |
+| c0564 | test | Hội An | 0.37 → 0.39 | 0.70 → 0.60 |
+| c0565 | dev | Nghệ An | 0.20 → 0.37 | 1.00 → 0.80 |
+| c0569 | test | Nha Trang | 0.31 → 0.51 | 0.30 → 0.40 |
+| **TB** | | | 0.584 → 0.657 (Δ +7.35 [-1.90; +17.19]) | 0.70 → 0.68 |
+
+#### 4. Bảng sweep nguyên văn (`sweep_app.py` của `eval-2026-10-05-search-day5-e5s-app.md` phụ lục E, không sửa)
+
+Cột: nDCG@10, Recall@10, MRR@10, judged@10, nDCG@10 condensed, zero-result trong / ngoài catalog, số kết quả vớt từ BM25 (p50 / tổng) và
+nDCG@10 theo slice `named_entity`, `no_diacritics`, `abbrev_typo`, `cross_vertical`. Lần sweep `min_coverage` dev đầu tiên in lặp ba dòng cuối
+do hai lệnh ghi chung một log (đã bỏ dòng trùng).
+
+
+**APP.e5s.hybrid_norm · e5-small · gold gold_v3 · split dev · cố định {'cutoff': 0.85} · sweep lexical_k**
+
+| lexical_k | n | nDCG@10 | Recall@10 | MRR@10 | judged@10 | nDCG@10 condensed | zero-result trong catalog | zero-result ngoài catalog | kết quả vớt từ BM25 p50 / tổng | nDCG named_entity | nDCG no_diacritics | nDCG abbrev_typo | nDCG cross_vertical |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|
+| 3.00 | 66 | 0.676 | 0.333 | 0.811 | 0.872 | 0.685 | 0.015 | 0.000 (n=1) | 0 / 9 | 0.805 | 0.315 | 0.602 | 0.604 |
+| 5.00 | 66 | 0.677 | 0.334 | 0.811 | 0.872 | 0.686 | 0.015 | 0.000 (n=1) | 0 / 12 | 0.805 | 0.321 | 0.602 | 0.604 |
+| 10.00 | 66 | 0.678 | 0.335 | 0.811 | 0.873 | 0.687 | 0.015 | 0.000 (n=1) | 0 / 19 | 0.805 | 0.327 | 0.610 | 0.604 |
+| 20.00 | 66 | 0.678 | 0.335 | 0.811 | 0.872 | 0.687 | 0.015 | 0.000 (n=1) | 0 / 29 | 0.805 | 0.327 | 0.610 | 0.604 |
+| 30.00 | 66 | 0.679 | 0.336 | 0.811 | 0.874 | 0.687 | 0.015 | 0.000 (n=1) | 0 / 34 | 0.805 | 0.327 | 0.614 | 0.604 |
+| 50.00 | 66 | 0.679 | 0.336 | 0.811 | 0.874 | 0.687 | 0.015 | 0.000 (n=1) | 0 / 36 | 0.805 | 0.327 | 0.614 | 0.604 |
+
+**APP.e5s.hybrid_norm · e5-small · gold gold_v3 · split dev · cố định {'cutoff': 0.85} · sweep min_coverage**
+
+| min_coverage | n | nDCG@10 | Recall@10 | MRR@10 | judged@10 | nDCG@10 condensed | zero-result trong catalog | zero-result ngoài catalog | kết quả vớt từ BM25 p50 / tổng | nDCG named_entity | nDCG no_diacritics | nDCG abbrev_typo | nDCG cross_vertical |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|
+| 0.30 | 66 | 0.698 | 0.346 | 0.834 | 0.866 | 0.708 | 0.000 | 0.000 (n=1) | 0 / 112 | 0.813 | 0.520 | 0.641 | 0.604 |
+| 0.40 | 66 | 0.689 | 0.342 | 0.834 | 0.862 | 0.699 | 0.000 | 0.000 (n=1) | 0 / 69 | 0.813 | 0.430 | 0.610 | 0.604 |
+| 0.50 | 66 | 0.684 | 0.340 | 0.818 | 0.861 | 0.694 | 0.000 | 0.000 (n=1) | 0 / 43 | 0.813 | 0.376 | 0.610 | 0.604 |
+| 0.60 | 66 | 0.678 | 0.335 | 0.811 | 0.873 | 0.687 | 0.015 | 0.000 (n=1) | 0 / 19 | 0.805 | 0.327 | 0.610 | 0.604 |
+| 0.70 | 66 | 0.671 | 0.329 | 0.803 | 0.865 | 0.679 | 0.031 | 0.000 (n=1) | 0 / 1 | 0.805 | 0.276 | 0.581 | 0.604 |
+| 0.80 | 66 | 0.671 | 0.329 | 0.803 | 0.865 | 0.679 | 0.031 | 0.000 (n=1) | 0 / 1 | 0.805 | 0.276 | 0.581 | 0.604 |
+| 1.00 | 66 | 0.671 | 0.329 | 0.803 | 0.865 | 0.679 | 0.031 | 0.000 (n=1) | 0 / 1 | 0.805 | 0.276 | 0.581 | 0.604 |
+
+**APP.e5s.hybrid_norm · e5-small · gold gold_v3 · split dev · cố định {'cutoff': 0.85} · sweep min_coverage**
+
+| min_coverage | n | nDCG@10 | Recall@10 | MRR@10 | judged@10 | nDCG@10 condensed | zero-result trong catalog | zero-result ngoài catalog | kết quả vớt từ BM25 p50 / tổng | nDCG named_entity | nDCG no_diacritics | nDCG abbrev_typo | nDCG cross_vertical |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|
+| 0.00 | 66 | 0.703 | 0.354 | 0.829 | 0.868 | 0.716 | 0.000 | 0.000 (n=1) | 3 / 261 | 0.813 | 0.676 | 0.641 | 0.604 |
+| 0.10 | 66 | 0.704 | 0.354 | 0.829 | 0.867 | 0.717 | 0.000 | 0.000 (n=1) | 3 / 237 | 0.813 | 0.676 | 0.641 | 0.604 |
+| 0.20 | 66 | 0.697 | 0.352 | 0.822 | 0.865 | 0.711 | 0.000 | 0.000 (n=1) | 1 / 176 | 0.813 | 0.547 | 0.641 | 0.604 |
+| 0.25 | 66 | 0.696 | 0.349 | 0.822 | 0.870 | 0.708 | 0.000 | 0.000 (n=1) | 1 / 139 | 0.813 | 0.533 | 0.641 | 0.604 |
+
+**APP.e5s.hybrid_norm · e5-small · gold gold_v3 · split test · cố định {'cutoff': 0.85} · sweep min_coverage**
+
+| min_coverage | n | nDCG@10 | Recall@10 | MRR@10 | judged@10 | nDCG@10 condensed | zero-result trong catalog | zero-result ngoài catalog | kết quả vớt từ BM25 p50 / tổng | nDCG named_entity | nDCG no_diacritics | nDCG abbrev_typo | nDCG cross_vertical |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|
+| 0.00 | 65 | 0.666 | 0.327 | 0.738 | 0.848 | 0.677 | 0.000 | 0.000 (n=2) | 2 / 235 | 0.829 | 0.510 | 0.623 | 0.564 |
+| 0.20 | 65 | 0.666 | 0.325 | 0.739 | 0.840 | 0.677 | 0.000 | 0.000 (n=2) | 1 / 162 | 0.834 | 0.490 | 0.623 | 0.564 |
+| 0.30 | 65 | 0.654 | 0.318 | 0.717 | 0.826 | 0.666 | 0.000 | 0.000 (n=2) | 0 / 98 | 0.834 | 0.323 | 0.623 | 0.564 |
+| 0.40 | 65 | 0.652 | 0.312 | 0.732 | 0.836 | 0.664 | 0.000 | 0.000 (n=2) | 0 / 54 | 0.829 | 0.303 | 0.624 | 0.564 |
+| 0.50 | 65 | 0.653 | 0.312 | 0.734 | 0.842 | 0.665 | 0.016 | 0.000 (n=2) | 0 / 39 | 0.829 | 0.305 | 0.624 | 0.564 |
+| 0.60 | 65 | 0.648 | 0.311 | 0.728 | 0.850 | 0.660 | 0.016 | 0.000 (n=2) | 0 / 21 | 0.829 | 0.240 | 0.624 | 0.564 |
+
+**APP.e5s.hybrid_norm · e5-small · gold gold_v3 · split dev · cố định {'cutoff': 0.85} · sweep rrf_k**
+
+| rrf_k | n | nDCG@10 | Recall@10 | MRR@10 | judged@10 | nDCG@10 condensed | zero-result trong catalog | zero-result ngoài catalog | kết quả vớt từ BM25 p50 / tổng | nDCG named_entity | nDCG no_diacritics | nDCG abbrev_typo | nDCG cross_vertical |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|
+| 10.00 | 66 | 0.691 | 0.344 | 0.802 | 0.898 | 0.698 | 0.015 | 0.000 (n=1) | 0 / 19 | 0.819 | 0.329 | 0.592 | 0.757 |
+| 30.00 | 66 | 0.687 | 0.340 | 0.811 | 0.889 | 0.695 | 0.015 | 0.000 (n=1) | 0 / 19 | 0.808 | 0.340 | 0.600 | 0.664 |
+| 60.00 | 66 | 0.678 | 0.335 | 0.811 | 0.873 | 0.687 | 0.015 | 0.000 (n=1) | 0 / 19 | 0.805 | 0.327 | 0.610 | 0.604 |
+| 100.00 | 66 | 0.679 | 0.336 | 0.811 | 0.872 | 0.688 | 0.015 | 0.000 (n=1) | 0 / 19 | 0.804 | 0.327 | 0.607 | 0.591 |
+| 200.00 | 66 | 0.679 | 0.336 | 0.809 | 0.872 | 0.687 | 0.015 | 0.000 (n=1) | 0 / 19 | 0.800 | 0.327 | 0.607 | 0.593 |
+
+**APP.e5s.hybrid_norm · e5-small · gold gold_v3 · split dev · cố định {'cutoff': 0.85} · sweep candidate_k**
+
+| candidate_k | n | nDCG@10 | Recall@10 | MRR@10 | judged@10 | nDCG@10 condensed | zero-result trong catalog | zero-result ngoài catalog | kết quả vớt từ BM25 p50 / tổng | nDCG named_entity | nDCG no_diacritics | nDCG abbrev_typo | nDCG cross_vertical |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|
+| 50.00 | 66 | 0.687 | 0.340 | 0.809 | 0.884 | 0.695 | 0.015 | 0.000 (n=1) | 0 / 19 | 0.805 | 0.327 | 0.594 | 0.671 |
+| 100.00 | 66 | 0.680 | 0.336 | 0.811 | 0.878 | 0.690 | 0.015 | 0.000 (n=1) | 0 / 19 | 0.805 | 0.327 | 0.608 | 0.632 |
+| 200.00 | 66 | 0.678 | 0.335 | 0.811 | 0.873 | 0.687 | 0.015 | 0.000 (n=1) | 0 / 19 | 0.805 | 0.327 | 0.610 | 0.604 |
+| 400.00 | 66 | 0.679 | 0.335 | 0.818 | 0.873 | 0.688 | 0.015 | 0.000 (n=1) | 0 / 19 | 0.805 | 0.336 | 0.610 | 0.604 |
+
+**APP.e5s.hybrid_norm · e5-small · gold gold_v3 · split dev · cố định {'cutoff': 0.85} · sweep lexical_candidate_k**
+
+| lexical_candidate_k | n | nDCG@10 | Recall@10 | MRR@10 | judged@10 | nDCG@10 condensed | zero-result trong catalog | zero-result ngoài catalog | kết quả vớt từ BM25 p50 / tổng | nDCG named_entity | nDCG no_diacritics | nDCG abbrev_typo | nDCG cross_vertical |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|
+| 20.00 | 66 | 0.687 | 0.344 | 0.798 | 0.906 | 0.695 | 0.015 | 0.000 (n=1) | 0 / 17 | 0.809 | 0.357 | 0.599 | 0.614 |
+| 50.00 | 66 | 0.678 | 0.335 | 0.811 | 0.873 | 0.687 | 0.015 | 0.000 (n=1) | 0 / 19 | 0.805 | 0.327 | 0.610 | 0.604 |
+| 100.00 | 66 | 0.660 | 0.331 | 0.774 | 0.860 | 0.670 | 0.015 | 0.000 (n=1) | 0 / 19 | 0.803 | 0.310 | 0.588 | 0.577 |
+| 200.00 | 66 | 0.659 | 0.332 | 0.773 | 0.861 | 0.673 | 0.015 | 0.000 (n=1) | 0 / 19 | 0.792 | 0.311 | 0.581 | 0.610 |
+
+**APP.e5s.hybrid_norm · e5-small · gold gold_v3 · split dev · cố định {'min_coverage': 0.1} · sweep cutoff**
+
+| cutoff | n | nDCG@10 | Recall@10 | MRR@10 | judged@10 | nDCG@10 condensed | zero-result trong catalog | zero-result ngoài catalog | kết quả vớt từ BM25 p50 / tổng | nDCG named_entity | nDCG no_diacritics | nDCG abbrev_typo | nDCG cross_vertical |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|
+| 0.80 | 66 | 0.693 | 0.347 | 0.825 | 0.849 | 0.704 | 0.000 | 0.000 (n=1) | 0 / 31 | 0.830 | 0.605 | 0.642 | 0.590 |
+| 0.82 | 66 | 0.698 | 0.352 | 0.825 | 0.857 | 0.709 | 0.000 | 0.000 (n=1) | 0 / 72 | 0.836 | 0.638 | 0.642 | 0.590 |
+| 0.84 | 66 | 0.702 | 0.352 | 0.830 | 0.863 | 0.714 | 0.000 | 0.000 (n=1) | 1 / 172 | 0.813 | 0.652 | 0.640 | 0.603 |
+| 0.85 | 66 | 0.704 | 0.354 | 0.829 | 0.867 | 0.717 | 0.000 | 0.000 (n=1) | 3 / 237 | 0.813 | 0.676 | 0.641 | 0.604 |
+| 0.86 | 66 | 0.701 | 0.352 | 0.822 | 0.889 | 0.715 | 0.000 | 0.000 (n=1) | 4 / 302 | 0.808 | 0.706 | 0.645 | 0.621 |
+| 0.87 | 66 | 0.694 | 0.347 | 0.810 | 0.879 | 0.704 | 0.000 | 0.000 (n=1) | 6 / 400 | 0.813 | 0.722 | 0.683 | 0.685 |
+
+**APP.e5s.hybrid_norm · e5-small · gold gold_v3 · split dev · cố định {'cutoff': 0.85, 'min_coverage': 0.1} · sweep lexical_k**
+
+| lexical_k | n | nDCG@10 | Recall@10 | MRR@10 | judged@10 | nDCG@10 condensed | zero-result trong catalog | zero-result ngoài catalog | kết quả vớt từ BM25 p50 / tổng | nDCG named_entity | nDCG no_diacritics | nDCG abbrev_typo | nDCG cross_vertical |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|
+| 5.00 | 66 | 0.699 | 0.348 | 0.834 | 0.884 | 0.711 | 0.000 | 0.000 (n=1) | 1 / 115 | 0.805 | 0.608 | 0.651 | 0.604 |
+| 10.00 | 66 | 0.704 | 0.354 | 0.829 | 0.867 | 0.717 | 0.000 | 0.000 (n=1) | 3 / 237 | 0.813 | 0.676 | 0.641 | 0.604 |
+| 20.00 | 66 | 0.702 | 0.352 | 0.828 | 0.864 | 0.715 | 0.000 | 0.000 (n=1) | 6 / 451 | 0.813 | 0.644 | 0.647 | 0.604 |
+| 50.00 | 66 | 0.699 | 0.349 | 0.831 | 0.855 | 0.710 | 0.000 | 0.000 (n=1) | 12 / 938 | 0.813 | 0.653 | 0.631 | 0.603 |
+
+**APP.e5s.hybrid_norm · e5-small · gold gold_v3 · split test · cố định {'cutoff': 0.85} · sweep rrf_k**
+
+| rrf_k | n | nDCG@10 | Recall@10 | MRR@10 | judged@10 | nDCG@10 condensed | zero-result trong catalog | zero-result ngoài catalog | kết quả vớt từ BM25 p50 / tổng | nDCG named_entity | nDCG no_diacritics | nDCG abbrev_typo | nDCG cross_vertical |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|
+| 10.00 | 65 | 0.651 | 0.313 | 0.727 | 0.874 | 0.660 | 0.016 | 0.000 (n=2) | 0 / 21 | 0.828 | 0.210 | 0.613 | 0.665 |
+| 30.00 | 65 | 0.654 | 0.313 | 0.736 | 0.866 | 0.664 | 0.016 | 0.000 (n=2) | 0 / 21 | 0.829 | 0.236 | 0.620 | 0.599 |
+| 60.00 | 65 | 0.648 | 0.311 | 0.728 | 0.850 | 0.660 | 0.016 | 0.000 (n=2) | 0 / 21 | 0.829 | 0.240 | 0.624 | 0.564 |
+| 100.00 | 65 | 0.650 | 0.312 | 0.739 | 0.852 | 0.662 | 0.016 | 0.000 (n=2) | 0 / 21 | 0.829 | 0.256 | 0.628 | 0.561 |
+| 200.00 | 65 | 0.650 | 0.313 | 0.739 | 0.853 | 0.662 | 0.016 | 0.000 (n=2) | 0 / 21 | 0.829 | 0.256 | 0.641 | 0.546 |
+
+**APP.e5s.hybrid_norm · e5-small · gold gold_v3 · split test · cố định {'cutoff': 0.85} · sweep candidate_k**
+
+| candidate_k | n | nDCG@10 | Recall@10 | MRR@10 | judged@10 | nDCG@10 condensed | zero-result trong catalog | zero-result ngoài catalog | kết quả vớt từ BM25 p50 / tổng | nDCG named_entity | nDCG no_diacritics | nDCG abbrev_typo | nDCG cross_vertical |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|
+| 50.00 | 65 | 0.645 | 0.310 | 0.711 | 0.858 | 0.657 | 0.016 | 0.000 (n=2) | 0 / 21 | 0.829 | 0.195 | 0.613 | 0.562 |
+| 100.00 | 65 | 0.643 | 0.309 | 0.723 | 0.850 | 0.654 | 0.016 | 0.000 (n=2) | 0 / 21 | 0.829 | 0.205 | 0.624 | 0.549 |
+| 200.00 | 65 | 0.648 | 0.311 | 0.728 | 0.850 | 0.660 | 0.016 | 0.000 (n=2) | 0 / 21 | 0.829 | 0.240 | 0.624 | 0.564 |
+| 400.00 | 65 | 0.648 | 0.311 | 0.728 | 0.850 | 0.660 | 0.016 | 0.000 (n=2) | 0 / 21 | 0.829 | 0.241 | 0.624 | 0.564 |
+
+**APP.e5s.hybrid_norm · e5-small · gold gold_v3 · split test · cố định {'cutoff': 0.85} · sweep lexical_candidate_k**
+
+| lexical_candidate_k | n | nDCG@10 | Recall@10 | MRR@10 | judged@10 | nDCG@10 condensed | zero-result trong catalog | zero-result ngoài catalog | kết quả vớt từ BM25 p50 / tổng | nDCG named_entity | nDCG no_diacritics | nDCG abbrev_typo | nDCG cross_vertical |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|
+| 20.00 | 65 | 0.660 | 0.309 | 0.743 | 0.876 | 0.668 | 0.016 | 0.000 (n=2) | 0 / 20 | 0.820 | 0.235 | 0.637 | 0.599 |
+| 50.00 | 65 | 0.648 | 0.311 | 0.728 | 0.850 | 0.660 | 0.016 | 0.000 (n=2) | 0 / 21 | 0.829 | 0.240 | 0.624 | 0.564 |
+| 100.00 | 65 | 0.635 | 0.309 | 0.733 | 0.837 | 0.652 | 0.016 | 0.000 (n=2) | 0 / 21 | 0.834 | 0.204 | 0.577 | 0.544 |
+| 200.00 | 65 | 0.634 | 0.306 | 0.731 | 0.834 | 0.653 | 0.016 | 0.000 (n=2) | 0 / 21 | 0.834 | 0.204 | 0.550 | 0.537 |
+
+**APP.e5s.hybrid_norm · e5-small · gold gold_v3 · split test · cố định {'min_coverage': 0.1} · sweep cutoff**
+
+| cutoff | n | nDCG@10 | Recall@10 | MRR@10 | judged@10 | nDCG@10 condensed | zero-result trong catalog | zero-result ngoài catalog | kết quả vớt từ BM25 p50 / tổng | nDCG named_entity | nDCG no_diacritics | nDCG abbrev_typo | nDCG cross_vertical |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|
+| 0.80 | 65 | 0.655 | 0.319 | 0.731 | 0.794 | 0.666 | 0.000 | 0.000 (n=2) | 0 / 19 | 0.835 | 0.437 | 0.623 | 0.509 |
+| 0.82 | 65 | 0.655 | 0.319 | 0.731 | 0.795 | 0.666 | 0.000 | 0.000 (n=2) | 0 / 55 | 0.835 | 0.437 | 0.623 | 0.509 |
+| 0.84 | 65 | 0.655 | 0.320 | 0.732 | 0.821 | 0.667 | 0.000 | 0.000 (n=2) | 1 / 153 | 0.835 | 0.436 | 0.623 | 0.509 |
+| 0.85 | 65 | 0.664 | 0.325 | 0.738 | 0.838 | 0.675 | 0.000 | 0.000 (n=2) | 2 / 205 | 0.829 | 0.490 | 0.623 | 0.564 |
+| 0.86 | 65 | 0.655 | 0.314 | 0.736 | 0.845 | 0.666 | 0.000 | 0.000 (n=2) | 3 / 251 | 0.820 | 0.480 | 0.623 | 0.563 |
+| 0.87 | 65 | 0.636 | 0.299 | 0.735 | 0.847 | 0.646 | 0.000 | 0.000 (n=2) | 5 / 317 | 0.820 | 0.476 | 0.612 | 0.574 |
+
+**APP.e5s.hybrid_norm · e5-small · gold gold_v3 · split test · cố định {'cutoff': 0.85, 'min_coverage': 0.1} · sweep lexical_k**
+
+| lexical_k | n | nDCG@10 | Recall@10 | MRR@10 | judged@10 | nDCG@10 condensed | zero-result trong catalog | zero-result ngoài catalog | kết quả vớt từ BM25 p50 / tổng | nDCG named_entity | nDCG no_diacritics | nDCG abbrev_typo | nDCG cross_vertical |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|
+| 5.00 | 65 | 0.659 | 0.319 | 0.746 | 0.845 | 0.670 | 0.000 | 0.000 (n=2) | 1 / 104 | 0.836 | 0.399 | 0.623 | 0.564 |
+| 10.00 | 65 | 0.664 | 0.325 | 0.738 | 0.838 | 0.675 | 0.000 | 0.000 (n=2) | 2 / 205 | 0.829 | 0.490 | 0.623 | 0.564 |
+| 20.00 | 65 | 0.663 | 0.325 | 0.737 | 0.820 | 0.675 | 0.000 | 0.000 (n=2) | 3 / 365 | 0.835 | 0.474 | 0.623 | 0.564 |
+| 50.00 | 65 | 0.657 | 0.322 | 0.736 | 0.801 | 0.671 | 0.000 | 0.000 (n=2) | 8 / 785 | 0.835 | 0.451 | 0.623 | 0.522 |
+
+#### 5. Tái sinh
+
+```bash
+cd src
+export PYTHONPATH=.:<thư mục chứa script Phụ lục 4–6> PYTHONUTF8=1 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
+# Weaviate bench đang chạy và có ProductBench__e5_small (sb app-load --model e5-small; chờ guard BM25)
+python sweep_app.py APP.e5s.hybrid_norm dev  lexical_k 3 5 10 20 30 50 --set cutoff=0.85
+python sweep_app.py APP.e5s.hybrid_norm dev  min_coverage 0.0 0.1 0.2 0.25 0.3 0.4 0.5 0.6 0.7 0.8 1.0 --set cutoff=0.85
+python sweep_app.py APP.e5s.hybrid_norm test min_coverage 0.0 0.2 0.3 0.4 0.5 0.6 --set cutoff=0.85
+for sp in dev test; do
+  python sweep_app.py APP.e5s.hybrid_norm $sp rrf_k 10 30 60 100 200 --set cutoff=0.85
+  python sweep_app.py APP.e5s.hybrid_norm $sp candidate_k 50 100 200 400 --set cutoff=0.85
+  python sweep_app.py APP.e5s.hybrid_norm $sp lexical_candidate_k 20 50 100 200 --set cutoff=0.85
+  python sweep_app.py APP.e5s.hybrid_norm $sp cutoff 0.80 0.82 0.84 0.85 0.86 0.87 --set min_coverage=0.1
+  python sweep_app.py APP.e5s.hybrid_norm $sp lexical_k 5 10 20 50 --set cutoff=0.85 --set min_coverage=0.1
+done
+python search_ci.py                    # §2
+ONLY_CV=1 python search_extra.py       # §3 (bỏ ONLY_CV để in thêm CI min_coverage 0,1 / 0,2 / 0,3)
+```
+
+---
+
+# Phần C — Đề xuất và việc tiếp
+
+| Đề xuất (chờ chốt) | Nội dung | Bằng chứng | Điều kiện |
+|---|---|---|---|
+| `docs/prd/update/2026-10-06-recsys-trong-so-ngan-han-pho-bien.md` | `W_SHORT / W_POP / W_LONG` 0,6 / 0,25 / 0,15 → 0,7 / 0,15 / 0,15 | Phần A §4, bảng override §6 | Kiểm lại AC-REC-01/02 (P1, P3), ghi lại `baseline_v1` RecSys |
+| `docs/prd/update/2026-10-06-search-hybrid-min-coverage-rrf.md` | `lexicalMinCoverage` 0,6 → 0,1, `rrf` 60 → 30, dùng cùng F1 + F2 | B1 (gold_v4), B2 (gold_v3) | Sau đề xuất e5-small; bật F1 + F2 cùng lúc; gắn tag `gold_v4` + đặt lại baseline search |
+| `docs/prd/update/2026-10-05-fr-src-02-embedding-local-e5-small.md` (đã hợp nhất 06/10) | Cohere v3 / 1024 → e5-small / 384, cutoff 0,84 | B1 (cutoff), report Day 5 §2 (so Cohere cùng thang) | Gate nghiệm thu trong đề xuất (p95 Cloud, parity) |
+
+Việc tiếp (không thuộc đề xuất nào):
+
+- RecSys: khai thác tín hiệu giỏ bỏ dở (`ials` thắng NDCG ở nhóm có giỏ); đề "chuyến kế tiếp" cần tín hiệu điểm đến kế (mọi arm ≤ 0,082).
+- Search: gán nhãn lỗ cho QP (`amenity_negation`, judged 0,43–0,48) trước khi chốt QP; câu ngoài catalog chưa có cơ chế trả rỗng.
+- Đo p95 trên Cloud sau khi đổi model (NFR-PERF-01); số p95 trong phần A bị nhiễu tranh CPU, không dùng.
+
+---
+
+# Phụ lục — script
+
+## Phụ lục 1 — `vec_append.py` (dựng vector; `PYTHONPATH=$PWD:$PWD/src`, `HF_HUB_OFFLINE=1`)
 
 ```python
 import hashlib, json, sys, numpy as np
@@ -1195,7 +1729,7 @@ json.dump({"cache_model": "intfloat/multilingual-e5-small", "text_builder_versio
 print("written", out)
 ```
 
-## Phụ lục B — `agg.py` (bảng §6)
+## Phụ lục 2 — `agg.py` (bảng §6)
 
 ```python
 """Tổng hợp run append-v1 (05/10): bảng metric, Δ vs engine / mpd (CI95), ma trận so cặp, phân khúc, gate nhất quán, bảng chéo split.
@@ -1491,7 +2025,7 @@ if __name__ == "__main__":
     main()
 ```
 
-## Phụ lục C — `ablate.py` (bảng §3)
+## Phụ lục 3 — `ablate.py` (bảng §3)
 
 ```python
 import json
@@ -1527,4 +2061,254 @@ for sp in ["llbo", "temporal", "nexttrip", "coldstart"]:
         x = lambda s: s.get(arm, {}).get("cross_category_open_trip_bought")
         cx = f"{x(son):.3f} → {x(soff):.3f}" if x(son) is not None and x(soff) is not None else "—"
         print(f"| {sp} ({len(us)}) | {arm} | " + " | ".join(cells) + f" | {cx} |")
+```
+
+## Phụ lục 4 — `search_ci.py`
+
+```python
+"""CI so cặp các cấu hình app của APP.e5s.hybrid_norm so với mốc (cutoff 0.85, còn lại như arm). Từ src/: python search_ci.py"""
+import numpy as np
+from evaluation.search_bench import devtest as DT, paths, runner as R
+from evaluation.search_bench.app_adapter import AppContext, retrieve_app
+from evaluation.search_bench.arms import load_arm
+from evaluation.search_bench.config import load_config, load_env
+from evaluation.search_bench.embed import make_embedder
+from evaluation.search_bench.metrics import paired_bootstrap
+
+CANDS = {"min_coverage=0.1": {"min_coverage": 0.1}, "rrf_k=10": {"rrf_k": 10}, "rrf_k=30": {"rrf_k": 30},
+         "lexical_candidate_k=20": {"lexical_candidate_k": 20}, "candidate_k=50": {"candidate_k": 50},
+         "min_coverage=0.1 + rrf_k=10": {"min_coverage": 0.1, "rrf_k": 10},
+         "min_coverage=0.1 + rrf_k=30": {"min_coverage": 0.1, "rrf_k": 30},
+         "min_coverage=0.1 + rrf_k=10 + lexical_candidate_k=20": {"min_coverage": 0.1, "rrf_k": 10, "lexical_candidate_k": 20}}
+load_env(); cfg = load_config(None)
+env = R.load_env(cfg, "jsonl", paths.GOLD_JSONL, run_id="sweep")
+assign = DT.load(env.gold_version)["assignment"]
+arm0 = load_arm("APP.e5s.hybrid_norm")
+ctx = AppContext.open(cfg, "jsonl", model=arm0.model)
+emb = make_embedder(cfg, arm0.model, embedding_type=arm0.embedding_types, preflight=False)
+run = lambda kw: {r["qid"]: r for r in R.score_arm(env, retrieve_app(arm0.model_copy(update={"app": {**arm0.app, "cutoff": 0.85, **kw}}), env, ctx, emb))[1]}
+ok = lambda v: v is not None and not (isinstance(v, float) and np.isnan(v))
+try:
+    base = run({})
+    print("| Cấu hình (so với mốc cutoff 0,85) | split | n | nDCG@10 mốc → mới | Δ nDCG@10 [CI95] p | Δ Recall@10 [CI95] | Δ MRR@10 | zero-result mốc → mới | judged@10 mốc → mới | cross_vertical | no_diacritics | slice thấp nhất |")
+    print("|---|---|---:|---|---|---|---:|---|---|---|---|---|")
+    for name, kw in CANDS.items():
+        c = run(kw)
+        for sp in ("dev", "test", "all"):
+            q = [k for k in base if not base[k]["expected_no_result"] and (sp == "all" or assign.get(k) == sp)]
+            g = lambda rr, m: {k: rr[k][m] for k in q}
+            nd, rc, mr = (paired_bootstrap(g(base, m), g(c, m), n_boot=10000, seed=42) for m in ("ndcg@10", "recall@10", "mrr@10"))
+            mean = lambda rr, m, qs=q: np.mean([rr[k][m] for k in qs if ok(rr[k][m])])
+            sl = lambda s: [k for k in q if base[k]["slice"] == s]
+            per = {}
+            for k in q:
+                if ok(base[k]["ndcg@10"]) and ok(c[k]["ndcg@10"]):
+                    per.setdefault(base[k]["slice"], []).append((c[k]["ndcg@10"] - base[k]["ndcg@10"]) * 100)
+            w = min(((s, np.mean(v), len(v)) for s, v in per.items()), key=lambda x: x[1])
+            sig = "**" if nd["ci95"][0] > 0 or nd["ci95"][1] < 0 else ""
+            print(f"| {name} | {sp} | {nd['n']} | {mean(base,'ndcg@10'):.3f} → {mean(c,'ndcg@10'):.3f} | {sig}{nd['delta']:+.2f}{sig} [{nd['ci95'][0]:+.2f}; {nd['ci95'][1]:+.2f}] p {nd['p_one_sided']:.3f} | "
+                  f"{rc['delta']:+.2f} [{rc['ci95'][0]:+.2f}; {rc['ci95'][1]:+.2f}] | {mr['delta']:+.2f} | {mean(base,'zero_result'):.3f} → {mean(c,'zero_result'):.3f} | "
+                  f"{mean(base,'judged@10'):.3f} → {mean(c,'judged@10'):.3f} | {mean(base,'ndcg@10',sl('cross_vertical')):.3f} → {mean(c,'ndcg@10',sl('cross_vertical')):.3f} | "
+                  f"{mean(base,'ndcg@10',sl('no_diacritics')):.3f} → {mean(c,'ndcg@10',sl('no_diacritics')):.3f} | {w[0]} {w[1]:+.1f} (n={w[2]}) |", flush=True)
+finally:
+    ctx.close(); emb.close()
+```
+
+## Phụ lục 5 — `search_extra.py`
+
+```python
+"""05/10 tối: (1) CI so cặp min_coverage (cutoff 0,85 cố định) trên dev/test/all; (2) cross_vertical + filter destination oracle.
+Chạy đúng SearchProducts (cổng APP). Không ghi run, không sửa config. Từ src/ với PYTHONPATH=. : python search_extra.py"""
+import json, unicodedata
+from time import perf_counter
+import numpy as np
+from evaluation.search_bench import devtest as DT, paths, runner as R
+from evaluation.search_bench.app_adapter import AppContext, retrieve_app
+from evaluation.search_bench.arms import load_arm
+from evaluation.search_bench.config import load_config, load_env
+from evaluation.search_bench.embed import make_embedder
+from evaluation.search_bench.metrics import paired_bootstrap
+
+load_env(); cfg = load_config(None)
+env = R.load_env(cfg, "jsonl", paths.GOLD_JSONL, run_id="sweep")
+assign = DT.load(env.gold_version)["assignment"]
+arm0 = load_arm("APP.e5s.hybrid_norm")
+ctx = AppContext.open(cfg, "jsonl", model=arm0.model)
+emb = make_embedder(cfg, arm0.model, embedding_type=arm0.embedding_types, preflight=False)
+def arm(**kw): return arm0.model_copy(update={"app": {**arm0.app, "cutoff": 0.85, **kw}})
+def rows_of(a, retrieved=None):
+    _, rows = R.score_arm(env, retrieved or retrieve_app(a, env, ctx, emb)); return {r["qid"]: r for r in rows}
+try:
+    base_ret = retrieve_app(arm(min_coverage=0.6), env, ctx, emb)
+    base = rows_of(None, base_ret)
+    import os
+    print("## min_coverage vs 0.6 (cutoff 0.85), Δ = cand − 0.6, điểm ×100")
+    print("| min_coverage | split | n | nDCG@10 0.6 → cand | Δ nDCG@10 [CI95] p | Δ Recall@10 [CI95] | Δ MRR@10 | judged@10 0.6 → cand | slice Δ nDCG thấp nhất |")
+    print("|---:|---|---:|---|---|---|---:|---|---|")
+    for mc in (() if os.environ.get("ONLY_CV") else (0.1, 0.2, 0.3)):
+        cand = rows_of(arm(min_coverage=mc))
+        for sp in ("dev", "test", "all"):
+            q = [k for k in base if not base[k]["expected_no_result"] and (sp == "all" or assign.get(k) == sp)]
+            f = lambda rr, m: {k: rr[k][m] for k in q}
+            nd = paired_bootstrap(f(base, "ndcg@10"), f(cand, "ndcg@10"), n_boot=10000, seed=42)
+            rc = paired_bootstrap(f(base, "recall@10"), f(cand, "recall@10"), n_boot=10000, seed=42)
+            mr = paired_bootstrap(f(base, "mrr@10"), f(cand, "mrr@10"), n_boot=10000, seed=42)
+            mean = lambda rr, m: np.nanmean([rr[k][m] for k in q if rr[k][m] is not None])
+            sl = {}
+            for k in q:
+                if base[k]["ndcg@10"] is not None and cand[k]["ndcg@10"] is not None: sl.setdefault(base[k]["slice"], []).append((cand[k]["ndcg@10"] - base[k]["ndcg@10"]) * 100)
+            worst = min(((s, float(np.mean(v)), len(v)) for s, v in sl.items()), key=lambda x: x[1])
+            print(f"| {mc} | {sp} | {nd['n']} | {mean(base,'ndcg@10'):.3f} → {mean(cand,'ndcg@10'):.3f} | {nd['delta']:+.2f} [{nd['ci95'][0]:+.2f}; {nd['ci95'][1]:+.2f}] p {nd['p_one_sided']:.3f} | "
+                  f"{rc['delta']:+.2f} [{rc['ci95'][0]:+.2f}; {rc['ci95'][1]:+.2f}] | {mr['delta']:+.2f} | {mean(base,'judged@10'):.3f} → {mean(cand,'judged@10'):.3f} | {worst[0]} {worst[1]:+.1f} (n={worst[2]}) |", flush=True)
+    # (2) cross_vertical + destination oracle
+    dests = sorted({d for d in ctx.cat.index.destination.tolist() if d}, key=len, reverse=True)
+    nf = lambda s: unicodedata.normalize("NFC", s).lower()
+    s = ctx.make_search(arm(min_coverage=0.6).app, emb)
+    cv = [g for g in env.gold if g.slice == "cross_vertical"]
+    out, dmap = [], {}
+    for g in cv:
+        d = next((d for d in dests if nf(d) in nf(g.text)), None); dmap[g.qid] = d
+        t0 = perf_counter(); res = s.engine(g.text, destination=d, limit=env.k)
+        out.append(R.Retrieved(qid=g.qid, top_ids=[r["productId"] for r in res["results"]], top_scores=[float(r["score"]) for r in res["results"]],
+                               applied_filter=None, latency_ms=(perf_counter()-t0)*1000, extra={}))
+    byq = {r.qid: r for r in out}
+    filt = {r["qid"]: r for r in R.score_arm(env, [byq.get(r.qid, r) for r in base_ret])[1]}
+    print("\n## cross_vertical: không filter vs filter destination oracle (cutoff 0.85, min_coverage 0.6)")
+    print("| qid | split | destination | nDCG@10 không → có filter | judged@10 không → có |"); print("|---|---|---|---|---|")
+    for g in cv:
+        a, b = base[g.qid], filt[g.qid]
+        print(f"| {g.qid} | {assign.get(g.qid)} | {dmap[g.qid]} | {a['ndcg@10'] or 0:.2f} → {b['ndcg@10'] or 0:.2f} | {a['judged@10'] or 0:.2f} → {b['judged@10'] or 0:.2f} |")
+    q = [g.qid for g in cv]
+    nd = paired_bootstrap({k: base[k]["ndcg@10"] for k in q}, {k: filt[k]["ndcg@10"] for k in q}, n_boot=10000, seed=42)
+    print(f"| **TB** | | | {np.mean([base[k]['ndcg@10'] for k in q]):.3f} → {np.mean([filt[k]['ndcg@10'] for k in q]):.3f} (Δ {nd['delta']:+.2f} [{nd['ci95'][0]:+.2f}; {nd['ci95'][1]:+.2f}]) | "
+          f"{np.mean([base[k]['judged@10'] for k in q]):.2f} → {np.mean([filt[k]['judged@10'] for k in q]):.2f} |")
+finally:
+    ctx.close(); emb.close()
+```
+
+## Phụ lục 6 — `search_v4.py` (B1; từ `src/` với `PYTHONPATH=.`)
+
+```python
+"""Đo lại đề xuất search (min_coverage 0,1 + rrf 30) trên gold_v4 (chưa tag) cùng F1/F2/QP của PR #108, 06/10.
+
+Chạy đúng SearchProducts của backend (cổng APP) từ arm APP.e5s.hybrid_norm_c84 (mốc của nhóm Search), mỗi cấu hình chỉ đổi khối `app`.
+Nhóm câu: dev / test = phân công `devtest@gold_v3` (131 câu cũ); `v4new` = 23 câu thêm ở gold_v4 (không dùng khi chọn tham số → kiểm
+độc lập); `all` = 154 câu active. Δ = cấu hình − mốc cùng cutoff, điểm ×100, paired bootstrap 10.000 lượt seed 42.
+Từ src/: PYTHONPATH=. python search_v4.py
+"""
+import json
+
+import numpy as np
+
+from evaluation.search_bench import devtest as DT, paths, runner as R
+from evaluation.search_bench.app_adapter import AppContext, retrieve_app
+from evaluation.search_bench.arms import load_arm
+from evaluation.search_bench.config import load_config, load_env
+from evaluation.search_bench.embed import make_embedder
+from evaluation.search_bench.metrics import paired_bootstrap
+
+A = {"min_coverage": 0.1, "rrf_k": 30}                                   # đề xuất 06/10
+F1 = {"dest_filter": True}
+F2 = {"no_diacritics_mode": "relax", "no_diacritics": {"lexical_k": 20, "lexical_cutoff": 0.0, "min_coverage": 0.4, "cutoff": 0.80, "min_tokens": 3}}
+QP = {"negation_filter": True, "taxonomy_filter": True, "route_filter": True, "numeric_filter": True}
+CONFIGS = [
+    ("M0 mốc", {}), ("A (minCov 0,1 + rrf 30)", A), ("minCov 0,1", {"min_coverage": 0.1}), ("rrf 30", {"rrf_k": 30}),
+    ("F1", F1), ("F2 (nc80)", F2), ("F1+F2", {**F1, **F2}), ("F1+F2+A", {**F1, **F2, **A}),
+    ("F1+F2+QP", {**F1, **F2, **QP}), ("F1+F2+QP+A", {**F1, **F2, **QP, **A}),
+]
+CUTOFFS = (0.84, 0.85)
+SLICES = ("no_diacritics", "cross_vertical", "dest_type", "named_entity", "abbrev_typo", "audience_style", "amenity_negation",
+          "taxonomy_collision", "flight_direction")
+PAIRS = [("F1+F2+A", "F1+F2"), ("F1+F2+QP+A", "F1+F2+QP"), ("A (minCov 0,1 + rrf 30)", "F1+F2")]
+
+load_env()
+cfg = load_config(None)
+env = R.load_env(cfg, "jsonl", paths.GOLD_JSONL, run_id="v4", allow_untagged=True)
+assign = DT.load("gold_v3")["assignment"]
+group = {g.qid: assign.get(g.qid, "v4new") for g in env.gold}
+arm0 = load_arm("APP.e5s.hybrid_norm_c84")
+ctx = AppContext.open(cfg, "jsonl", model=arm0.model)
+emb = make_embedder(cfg, arm0.model, embedding_type=arm0.embedding_types, preflight=False)
+ok = lambda v: v is not None and not (isinstance(v, float) and np.isnan(v))
+
+
+def run(cut, kw):
+    app = {**arm0.app, "cutoff": cut, **kw}
+    _, rows = R.score_arm(env, retrieve_app(arm0.model_copy(update={"app": app}), env, ctx, emb))
+    return {r["qid"]: r for r in rows}
+
+
+def mean(rr, m, qs):
+    v = [rr[q][m] for q in qs if ok(rr[q].get(m))]
+    return float(np.mean(v)) if v else float("nan")
+
+
+def ci(a, b, m, qs):
+    r = paired_bootstrap({q: a[q][m] for q in qs}, {q: b[q][m] for q in qs}, n_boot=10000, seed=42)
+    if r["delta"] is None:
+        return "—"
+    s = "**" if r["ci95"][0] > 0 or r["ci95"][1] < 0 else ""
+    return f"{s}{r['delta']:+.2f}{s} [{r['ci95'][0]:+.2f}; {r['ci95'][1]:+.2f}]"
+
+
+try:
+    res = {}
+    for cut in CUTOFFS:
+        for name, kw in CONFIGS:
+            res[(cut, name)] = run(cut, kw)
+            print(f"done {cut} {name}", flush=True)
+    groups = {"dev": [], "test": [], "v4new": [], "all": []}
+    for g in env.gold:
+        if g.expected_no_result:
+            continue
+        groups[group[g.qid]].append(g.qid)
+        groups["all"].append(g.qid)
+    ooc = [g.qid for g in env.gold if g.expected_no_result]
+    print("\n## Tổng (nDCG@10 full · condensed · Recall@10 · MRR@10 · judged@10 · zero-result trong catalog; Δ nDCG@10 và Δ condensed vs M0 cùng cutoff)\n")
+    print("| Cutoff | Cấu hình | Nhóm | n | nDCG@10 | cond. nDCG@10 | Recall@10 | MRR@10 | judged@10 | zero-result | Δ nDCG@10 [CI95] | Δ cond. nDCG@10 [CI95] | Δ Recall@10 [CI95] |")
+    print("|---|---|---|---:|---:|---:|---:|---:|---:|---:|---|---|---|")
+    for cut in CUTOFFS:
+        base = res[(cut, "M0 mốc")]
+        for name, _ in CONFIGS:
+            rr = res[(cut, name)]
+            for gname, qs in groups.items():
+                d = "—" if name == "M0 mốc" else ci(base, rr, "ndcg@10", qs)
+                dc = "—" if name == "M0 mốc" else ci(base, rr, "condensed_ndcg@10", qs)
+                dr = "—" if name == "M0 mốc" else ci(base, rr, "recall@10", qs)
+                print(f"| {cut} | {name} | {gname} | {len(qs)} | {mean(rr,'ndcg@10',qs):.3f} | {mean(rr,'condensed_ndcg@10',qs):.3f} | "
+                      f"{mean(rr,'recall@10',qs):.3f} | {mean(rr,'mrr@10',qs):.3f} | {mean(rr,'judged@10',qs):.3f} | {mean(rr,'zero_result',qs):.3f} | {d} | {dc} | {dr} |")
+    print("\n## Câu ngoài catalog (n = %d): tỉ lệ trả rỗng (cao = đúng)\n" % len(ooc))
+    print("| Cutoff | " + " | ".join(n for n, _ in CONFIGS) + " |")
+    print("|---|" + "---:|" * len(CONFIGS))
+    for cut in CUTOFFS:
+        print(f"| {cut} | " + " | ".join(f"{mean(res[(cut, n)], 'zero_result', ooc):.2f}" for n, _ in CONFIGS) + " |")
+    print("\n## Slice — nDCG@10 (154 câu active, mọi nhóm)\n")
+    for cut in CUTOFFS:
+        print(f"\n**cutoff {cut}**\n")
+        print("| Slice | n | " + " | ".join(n for n, _ in CONFIGS) + " |")
+        print("|---|---:|" + "---:|" * len(CONFIGS))
+        for s in SLICES:
+            qs = [q for q in groups["all"] if res[(cut, 'M0 mốc')][q]["slice"] == s]
+            if qs:
+                print(f"| {s} | {len(qs)} | " + " | ".join(f"{mean(res[(cut, n)], 'ndcg@10', qs):.3f}" for n, _ in CONFIGS) + " |")
+    print("\n## So cặp: đề xuất A có cộng thêm gì trên F1/F2 không (Δ = trái − phải)\n")
+    print("| Cutoff | Cặp | Nhóm | n | Δ nDCG@10 [CI95] | Δ cond. nDCG@10 [CI95] | Δ Recall@10 [CI95] |")
+    print("|---|---|---|---:|---|---|---|")
+    for cut in CUTOFFS:
+        for a, b in PAIRS:
+            for gname, qs in groups.items():
+                print(f"| {cut} | {a} vs {b} | {gname} | {len(qs)} | {ci(res[(cut, b)], res[(cut, a)], 'ndcg@10', qs)} | "
+                      f"{ci(res[(cut, b)], res[(cut, a)], 'condensed_ndcg@10', qs)} | {ci(res[(cut, b)], res[(cut, a)], 'recall@10', qs)} |")
+    print("\n## Cutoff 0,85 so với 0,84 (cùng cấu hình, nhóm all)\n")
+    print("| Cấu hình | nDCG@10 0,84 → 0,85 | Δ [CI95] | zero-result 0,84 → 0,85 |")
+    print("|---|---|---|---|")
+    for name, _ in CONFIGS:
+        a, b = res[(0.84, name)], res[(0.85, name)]
+        qs = groups["all"]
+        print(f"| {name} | {mean(a,'ndcg@10',qs):.3f} → {mean(b,'ndcg@10',qs):.3f} | {ci(a, b, 'ndcg@10', qs)} | {mean(a,'zero_result',qs):.3f} → {mean(b,'zero_result',qs):.3f} |")
+    print("\n```json\n" + json.dumps({"gold": "gold.jsonl (gold_v4, untagged)", "active": len(env.gold), "groups": {k: len(v) for k, v in groups.items()},
+                                     "ooc": len(ooc), "arm0": arm0.id, "configs": dict(CONFIGS)}, ensure_ascii=False, default=str) + "\n```")
+finally:
+    ctx.close()
+    emb.close()
 ```

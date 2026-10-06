@@ -22,7 +22,7 @@
 | Chuyến kế tiếp (nexttrip) | 1.835 | +0,12 [−0,10; +0,36] | −0,11 [−0,49; +0,27] | −0,16 [−0,93; +0,60] |
 | Khách mua lần đầu (coldstart) | 5.231 | **+19,98** [+19,40; +20,57] | **+10,82** [+9,96; +11,70] | −0,32 [−0,73; +0,10] |
 
-Điểm %, Δ = mới − hiện tại, CI95 paired bootstrap 10.000 lượt (**đậm** = có ý nghĩa). Nguồn: `src/evaluation/reports/eval-2026-10-06-recsys-append-v1-cf-full.md` §4, §6.
+Điểm %, Δ = mới − hiện tại, CI95 paired bootstrap 10.000 lượt (**đậm** = có ý nghĩa). Nguồn: `src/evaluation/reports/eval-2026-10-06-recsys-search-tong-hop.md` phần A §4, §6.
 
 - Danh sách khách thật sự thấy trên trang chủ là 5 món (`engine_prod`): tốt hơn ở 3/4 đề, hoà ở đề còn lại.
 - Đánh đổi: danh sách 20 món (chế độ đánh giá) mất 1,84 điểm hit@20 ở LLBO — món đúng vẫn có trong danh sách nhưng ít hơn một chút ở vị
