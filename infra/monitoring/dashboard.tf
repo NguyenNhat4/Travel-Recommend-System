@@ -505,15 +505,15 @@ locals {
   dash_log_panels = [
     {
       title  = "Backend container logs"
-      filter = "${local.dash_container_filter} AND jsonPayload.container_name=\"vota-backend\""
+      filter = "${local.dash_container_filter} AND jsonPayload.service=\"backend\""
     },
     {
       title  = "Frontend container logs"
-      filter = "${local.dash_container_filter} AND jsonPayload.container_name=\"vota-frontend\""
+      filter = "${local.dash_container_filter} AND jsonPayload.service=\"frontend\""
     },
     {
       title  = "Crawler container logs"
-      filter = "${local.dash_container_filter} AND (jsonPayload.container_name=\"vota-fresh-catalog\" OR jsonPayload.message:\"fresh-catalog.\")"
+      filter = "${local.dash_container_filter} AND (jsonPayload.service=\"crawler\" OR jsonPayload.container_name=\"vota-fresh-catalog\" OR jsonPayload.message:\"fresh-catalog.\")"
     },
     {
       title  = "Redis container logs"
@@ -532,7 +532,7 @@ locals {
   dash_log_tiles = concat(
     [{
       xPos   = 0, yPos = local.dash_logs_base, width = 12, height = 2
-      widget = { text = { format = "MARKDOWN", content = "## Logs\nNamed panels need `jsonPayload.container_name` on the log entry; verify in Logs Explorer before treating an empty panel as an ingestion failure." } }
+      widget = { text = { format = "MARKDOWN", content = "## Logs\nBackend, frontend and crawler panels filter on `jsonPayload.service` (docs/spec/logging-schema.md); Redis and Weaviate need `jsonPayload.container_name`. Verify in Logs Explorer before treating an empty panel as an ingestion failure." } }
     }],
     [for i, panel in local.dash_log_panels : {
       xPos   = 4 * (i % 3)
