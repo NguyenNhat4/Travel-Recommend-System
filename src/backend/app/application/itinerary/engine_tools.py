@@ -164,7 +164,7 @@ class InProcessItineraryTools:
             raise
         except CatalogError as exc:
             raise ToolError(exc.code, retryable=exc.retryable, http_status=exc.http_status) from None
-        except EmbeddingUnavailableError as exc:  # adapter đã log `cohere.embed.*`; lý do đi tiếp vào trace
+        except EmbeddingUnavailableError as exc:  # adapter embedding đã log lỗi; lý do đi tiếp vào trace
             raise ToolError("SEARCH_UNAVAILABLE", retryable=exc.retryable, http_status=503,
                             reason=f"embed:{exc.reason}") from None
         except Exception as exc:

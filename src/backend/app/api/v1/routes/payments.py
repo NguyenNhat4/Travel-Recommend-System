@@ -9,7 +9,9 @@ from fastapi.responses import JSONResponse
 from src.backend.app.api.deps import get_use_case
 from src.backend.app.application.booking.errors import InvalidWebhook
 from src.backend.app.application.ports.payment_gateway import InvalidWebhookSignature
+from src.backend.app.core.logging_config import log_event
 from src.backend.app.core.request_context import current_request_id
+from src.backend.app.domain.auth.privacy import ip_prefix
 
 router = APIRouter(tags=["payments-internal"])
 logger = logging.getLogger(__name__)
@@ -27,9 +29,10 @@ async def stripe_webhook(
         event = gateway.parse_webhook(raw, stripe_signature)
     except InvalidWebhookSignature as exc:
         client = request.client.host if request.client else "unknown"
-        logger.warning("payment.webhook.bad_signature requestId=%s ip=%s", current_request_id(), client)
+        log_event(logger, "payment.signature.invalid", "WARNING", client_ip_prefix=ip_prefix(client))
         raise InvalidWebhook("chữ ký không hợp lệ") from exc
     if event is not None:
+        log_event(logger, "payment.webhook.received", stripe_event_type=event.kind, event_id=event.event_id)
         try:
             await handler(event)
         except Exception:

@@ -1,15 +1,33 @@
+# Giới hạn log container (json-file): mỗi container tối đa 5 x 50 MB. Không đặt thì Docker giữ log vô hạn và làm đầy đĩa VM;
+# Ops Agent đã đẩy log lên Cloud Logging nên đĩa chỉ cần giữ đệm.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+
 services:
   backend:
+    logging: *default-logging
     container_name: vota-backend
     image: asia-southeast1-docker.pkg.dev/vinpearl-508801/v-ota-data-pipeline-crawler/vota-backend:latest
     restart: unless-stopped
     network_mode: host
     env_file:
       - /etc/vota/backend.env
+    environment:
+      UVICORN_WORKERS: ${UVICORN_WORKERS:-1}
+      # Log JSON (docs/spec/logging-schema.md): LOG_BODIES=false khi chạy tải để giảm dung lượng log.
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_BODIES: ${LOG_BODIES:-true}
+    mem_limit: 3g
+    cpus: 1.5
+    stop_grace_period: 40s
     volumes:
       - /etc/vota/backend-secrets:/app/secrets:ro
 
   frontend:
+    logging: *default-logging
     container_name: vota-frontend
     image: asia-southeast1-docker.pkg.dev/vinpearl-508801/v-ota-data-pipeline-crawler/vota-frontend:latest
     restart: unless-stopped
@@ -24,3 +42,6 @@ services:
       SESSION_REDIS_URL: ${AUTH_REDIS_URL:-}
       # Allowlist Origin cho CSRF của BFF (auth §7), phân tách bằng dấu phẩy. Trống thì BFF suy từ Host/X-Forwarded-*.
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+    mem_limit: 768m
+    cpus: 0.5
+    stop_grace_period: 20s

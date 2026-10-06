@@ -14,6 +14,23 @@ if sys.platform == "win32":
 os.environ["LANGSMITH_TRACING"] = "false"
 os.environ["LANGCHAIN_TRACING_V2"] = "false"
 
+# Test không bao giờ đọc `.env`: file đó của dev thường trỏ DB staging qua tunnel, Weaviate Cloud và khóa Cohere/OpenAI
+# thật (APP_ENV=production). Kết nối cho test integration đặt tường minh bằng biến môi trường trong shell, ví dụ
+# DATABASE_URL=... RUN_POSTGRES_INTEGRATION=1. Phải chạy trước khi `main` tạo Settings (conftest nạp trước test).
+from src.backend.app.core.config import Settings  # noqa: E402
+from src.backend.tests.guard import OVERRIDE, remote_dependency_violations  # noqa: E402
+
+Settings.model_config["env_file"] = None
+
+
+def pytest_configure(config):
+    bad = remote_dependency_violations()
+    if bad:
+        raise pytest.UsageError(
+            "Từ chối chạy test: biến môi trường trỏ dịch vụ không phải máy này (" + "; ".join(bad) + "). "
+            "Trỏ về Docker cục bộ, hoặc đặt " + OVERRIDE + "=1 nếu thật sự muốn."
+        )
+
 
 class FakeEmbedder:
     """Vector giả, xác định theo hash text — đủ để test luồng, không test chất lượng."""

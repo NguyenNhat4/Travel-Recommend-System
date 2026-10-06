@@ -3,6 +3,7 @@ import logging
 from typing import Awaitable, Callable, Sequence, TypeVar
 
 from src.backend.app.application.ports.cdp_client import CdpClient, CdpUnavailableError, PurchaseEvent
+from src.backend.app.core.logging_config import log_event
 from src.backend.app.core.request_context import current_request_id
 
 logger = logging.getLogger(__name__)
@@ -34,11 +35,8 @@ async def _cancel_quietly(cdp: CdpClient, events: Sequence[PurchaseEvent]) -> No
     except CdpUnavailableError:
         # Orphan purchase left in CDP: needs manual cancellation. bookingItemIds are not personal data.
         booking_item_ids = sorted({e.booking_item_id for e in events})
-        logger.error(
-            "Could not cancel purchase events after failed booking commit requestId=%s bookingItemIds=%s",
-            current_request_id(),
-            booking_item_ids,
-        )
+        log_event(logger, "booking.cdp.cancel_purchase", "ERROR", outcome="failed",
+                  message=f"Could not cancel purchase events after failed booking commit bookingItemIds={booking_item_ids}")
 
 
 async def record_then_commit(

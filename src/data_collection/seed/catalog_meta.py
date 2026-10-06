@@ -6,11 +6,11 @@ Quyết định nằm ở đây (đổi một chỗ là cả loader lẫn seed �
     (route) là cha, không đặt trực tiếp. Điểm tham quan chưa có giá vẫn tìm được nhưng không đặt được.
   * is_search_unit = khách sạn, tuyến bay, điểm tham quan, combo, golf (hạng phòng và chuyến bay dùng vector của cha).
   * is_recommendable = search unit tự đặt được, hoặc có >= 1 con đặt được (khách sạn không có phòng đặt được thì không được gợi ý).
+  * hạng phòng: cửa sổ đặt chỗ là nguyên [as_of, as_of + 29] (không cắt theo ngày nguồn) và lịch mô phỏng mở đủ 30 đêm.
 Mọi tỷ lệ của lịch khả dụng nằm trong config.py.
 """
 from __future__ import annotations
 
-import math
 import random
 import zlib
 from collections import defaultdict
@@ -70,43 +70,13 @@ def build_meta(rows: list[dict]) -> dict[str, dict]:
 
 
 # ------------------------------------------------------------------ lịch khả dụng
-def room_closed_target(product: dict, as_of: date, by_id: dict[str, dict] | None = None) -> int:
-    """Số đêm kín trong cửa sổ: U(25%, 40%) × 30; Vinpearl ×1,3 nhưng không vượt 40%."""
-    rng = random.Random(f"cal-share|{product['productId']}|{as_of.isoformat()}")
-    share = rng.uniform(*config.ROOM_CLOSED_SHARE)
-    if is_vinpearl(product, by_id):
-        share = min(config.ROOM_CLOSED_CAP, share * config.ROOM_VINPEARL_MULT)
-    lo = math.ceil(round(config.ROOM_CLOSED_SHARE[0] * WINDOW_DAYS, 6))
-    hi = math.floor(round(config.ROOM_CLOSED_CAP * WINDOW_DAYS, 6))
-    return min(hi, max(lo, round(share * WINDOW_DAYS)))
-
-
 def room_calendar(product: dict, as_of: date, by_id: dict[str, dict] | None = None) -> str:
     """Chuỗi 30 ký tự: '1' = trống, '0' = kín, ký tự đầu là đêm as_of.
 
-    Số đêm kín = room_closed_target(); xếp thành cụm 1–4 đêm liên tiếp, giữa hai cụm luôn có ≥ 1 đêm trống; cụm chứa đêm
-    thứ Sáu / thứ Bảy được chọn với trọng số ROOM_WEEKEND_CLUSTER_WEIGHT để mỗi đêm T6/T7 dễ kín ≈ ROOM_WEEKEND_MULT lần
-    đêm thường. Xác định theo (productId, as_of).
+    Hạng phòng không có lịch thật: mở đủ 30 đêm (chốt 02/10/2026, thay lịch mô phỏng kín 25–40% chốt 21/09). Ngày nguồn đã
+    hỏi và báo hết phòng vẫn là '0' — do real_room_calendar / _with_observed ghi đè, không phải ở đây.
     """
-    rng = random.Random(f"cal|{product['productId']}|{as_of.isoformat()}")
-    weekend = [(as_of + timedelta(days=i)).weekday() in (4, 5) for i in range(WINDOW_DAYS)]
-    closed = [False] * WINDOW_DAYS
-    remaining = room_closed_target(product, as_of, by_id)
-    while remaining > 0:
-        length = min(remaining, rng.randint(*config.ROOM_CLOSED_CLUSTER))
-        while length > 0:
-            starts = [s for s in range(WINDOW_DAYS - length + 1)
-                      if not any(closed[j] for j in range(max(0, s - 1), min(WINDOW_DAYS, s + length + 1)))]
-            if starts:
-                break
-            length -= 1
-        if length == 0:
-            break
-        s = rng.choices(starts, [config.ROOM_WEEKEND_CLUSTER_WEIGHT if any(weekend[s:s + length]) else 1.0 for s in starts])[0]
-        for j in range(s, s + length):
-            closed[j] = True
-        remaining -= length
-    return "".join("0" if c else "1" for c in closed)
+    return "1" * WINDOW_DAYS
 
 
 def ticket_calendar(product_id: str, as_of: date) -> str:

@@ -24,6 +24,7 @@ from time import time
 import uuid
 
 from src.backend.app.application.itinerary.contracts import error_response
+from src.backend.app.core.logging_config import log_event
 from src.backend.app.application.itinerary.retrieval import hydrate
 from src.backend.app.application.ports.conversation_archive import ConversationArchivePort
 from src.backend.app.application.ports.itinerary_tools import ConversationStorePort, ToolExecutorPort
@@ -149,8 +150,9 @@ def _guardrail_junk_input(state: AgentState) -> dict | None:
 
 
 def _llm_failed(state: AgentState, node: str, mode: str, timeout_seconds: float | None = None) -> dict:
-    logger.exception("itinerary.llm_failed requestId=%s node=%s mode=%s timeoutSeconds=%s",
-                     state.get("request_id", "unknown"), node, mode, timeout_seconds)
+    log_event(logger, "assistant.llm.call", "ERROR", exc_info=True, schema=node, outcome="failed",
+              request_id=state.get("request_id"),
+              message=f"itinerary.llm_failed node={node} mode={mode} timeoutSeconds={timeout_seconds}")
     return {**failure(state, "LLM_UNAVAILABLE", message(state, "llm_understand"), retryable=True),
             "events": [event(node, "LLM_UNAVAILABLE")]}
 
@@ -490,6 +492,10 @@ def finalize_node(state: AgentState) -> dict:
             # Câu chữ do luật tất định soạn lại, đúng theo `refusal` đã ghi lúc trước — không gọi LLM lần nữa.
             response = conversation.conversational_fallback(state).get("response", response)
     all_issues = issues + [f"guardrail:{reason}" for reason in guardrail_issues]
+    if response.get("status") == "COMPLETED" or all_issues:  # chỉ lượt có lịch trình mới có gì để kiểm grounding
+        log_event(logger, "assistant.grounding", "WARNING" if all_issues else "INFO",
+                  request_id=state.get("request_id"), checked=len(state.get("candidates", {})),
+                  violations=len(all_issues), issues=",".join(all_issues)[:200] or None)
     answer = validation.answer_text(response)
     note = turn_notes.turn_note(state, response, http_status)
     history = append_conversation_turn(state.get("conversation_history", []), state.get("query", ""), answer, note)

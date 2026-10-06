@@ -49,6 +49,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+import log as structlog
 from collectors.common import default_data_dir
 
 HERE = Path(__file__).resolve().parent
@@ -254,6 +255,7 @@ class Run:
         self.dir.mkdir(parents=True, exist_ok=True)
         self.state.setdefault("runId", self.run_id)
         self.state.setdefault("startedAt", now_local())
+        structlog.configure(run_id=self.run_id, flow="daily")
 
     def stage(self, name: str, status: str = "running", **info) -> None:
         """Ghi bước đang chạy để UI biết luồng đang ở đâu: crawl → normalise → carry → gate → promote → load:<đích>."""
@@ -263,6 +265,13 @@ class Run:
             cur = {"name": name, "startedAt": now_local()}
             stages.append(cur)
         cur.update(status=status, **info)
+        if status == "running":
+            structlog.emit("step.start", f"daily.stage.start name={name}", step=name, human="")
+        else:
+            structlog.emit("step.end", f"daily.stage.end name={name} status={status}",
+                           "ERROR" if status in ("failed", "error", "blocked") else
+                           "WARNING" if status in ("warn", "skipped", "timeout") else "INFO",
+                           step=name, status=status, human="")
         if status != "running":
             cur["finishedAt"] = now_local()
         self.state["currentStage"] = name if status == "running" else None
@@ -314,7 +323,8 @@ def crawl(run: Run, only: set[str] | None, max_hours: float | None) -> bool:
     run.state["workers"] = {}
     run.stage("crawl")
     threads = [threading.Thread(target=run_worker, args=(run, name, steps, deadline), name=name) for name, steps in plan.items()]
-    print(f"[daily] {run.run_id}: {len(threads)} worker song song ({', '.join(plan)}) – log ở {run.dir}", flush=True)
+    structlog.emit("daily.crawl.start", f"[daily] {run.run_id}: {len(threads)} worker song song ({', '.join(plan)}) – log ở {run.dir}",
+                   workers=list(plan), step="crawl")
     for t in threads:
         t.start()
     for t in threads:
@@ -322,7 +332,10 @@ def crawl(run: Run, only: set[str] | None, max_hours: float | None) -> bool:
     ok = all(w["status"] == "ok" for w in run.state["workers"].values())
     run.stage("crawl", "done" if ok else "warn")
     for name, w in run.state["workers"].items():
-        print(f"[daily]   {name}: {w['status']} " + ", ".join(f"{s['cmd']}={s['exit']}" for s in w["steps"]), flush=True)
+        structlog.emit("daily.worker.end", f"[daily]   {name}: {w['status']} "
+                       + ", ".join(f"{s['cmd']}={s['exit']}" for s in w["steps"]),
+                       "INFO" if w["status"] == "ok" else "ERROR", source=name, step="crawl", status=w["status"],
+                       steps={s["cmd"]: s["exit"] for s in w["steps"]})
     return ok
 
 
@@ -337,7 +350,7 @@ def publish(run: Run, today: date) -> int:
     if not any((stage / "interim").iterdir()):
         run.state["publish"] = {"status": "error", "error": "data/interim trống – chép interim nền vào trước (xem README)"}
         run.save()
-        print("[daily] data/interim trống, không có gì để chuẩn hoá.", file=sys.stderr)
+        structlog.emit("daily.normalise.empty", "[daily] data/interim trống, không có gì để chuẩn hoá.", "ERROR")
         return 1
     argv = [sys.executable, str(HERE / "normalise.py"), "--data-dir", str(stage), "--no-plan", "--rooms-per-hotel", "0",
             "--flights-per-route", "0", "--report-json", str(stage / "normalise_report.json")]
@@ -366,8 +379,10 @@ def publish(run: Run, today: date) -> int:
                             "stats": dict(stats), "problems": problems, "profile": new_profile, "previousProfile": old_profile}
     run.save()
     if problems:
-        print("[daily] GATE CHẶN – giữ catalog cũ:\n  - " + "\n  - ".join(problems), flush=True)
-        print(f"[daily] Soát {stage}/catalog.jsonl; đúng thì: python daily.py accept {run.run_id}", flush=True)
+        structlog.emit("daily.gate.blocked", "[daily] GATE CHẶN – giữ catalog cũ:\n  - " + "\n  - ".join(problems),
+                       "ERROR", step="gate", problem_count=len(problems))
+        structlog.emit("daily.gate.review", f"[daily] Soát {stage}/catalog.jsonl; đúng thì: python daily.py accept {run.run_id}",
+                       step="gate")
         return 1
     return promote(run)
 
@@ -378,7 +393,8 @@ def promote(run: Run) -> int:
     current_path = data / "products.jsonl"
     pub = run.state.get("publish") or {}
     if sha256_of(current_path) != pub.get("baseSha256"):
-        print("[daily] data/products.jsonl đã đổi sau khi lượt này chuẩn hoá – chạy publish lại thay vì promote bản cũ.", file=sys.stderr)
+        structlog.emit("daily.promote.stale", "[daily] data/products.jsonl đã đổi sau khi lượt này chuẩn hoá – chạy publish lại thay vì promote bản cũ.",
+                       "ERROR", step="promote")
         return 1
     backups = data / "backups"
     backups.mkdir(parents=True, exist_ok=True)
@@ -397,8 +413,9 @@ def promote(run: Run) -> int:
     run.state["publish"] = pub
     run.stage("promote", "done", version=version)
     s = pub.get("stats") or {}
-    print(f"[daily] Promote xong: {s.get('total')} dòng ({s.get('fresh')} thấy lượt này, {s.get('new', 0)} mới, "
-          f"{s.get('carried', 0)} giữ lại, {s.get('retired', 0)} ngừng bán) → {current_path}", flush=True)
+    structlog.emit("daily.promote.done", f"[daily] Promote xong: {s.get('total')} dòng ({s.get('fresh')} thấy lượt này, {s.get('new', 0)} mới, "
+                   f"{s.get('carried', 0)} giữ lại, {s.get('retired', 0)} ngừng bán) → {current_path}",
+                   step="promote", records=s.get("total"), new=s.get("new", 0), retired=s.get("retired", 0))
     return 0
 
 
@@ -480,7 +497,8 @@ def load_targets(run: Run, targets: list[str], index: bool, today: date, retire_
         run.stage(f"load:{target}")
         if missing:
             res.update(status="skipped", error=f"thiếu biến {', '.join(missing)} trong .env")
-            print(f"[daily] nạp {target}: bỏ qua – thiếu {', '.join(missing)} (xem README, mục Job hằng ngày)", flush=True)
+            structlog.emit("daily.load.skipped", f"[daily] nạp {target}: bỏ qua – thiếu {', '.join(missing)} (xem README, mục Job hằng ngày)",
+                           "WARNING", step=f"load:{target}", source=target)
             ok = False
             run.stage(f"load:{target}", "skipped", error=res["error"])
             continue
@@ -509,7 +527,8 @@ def load_targets(run: Run, targets: list[str], index: bool, today: date, retire_
         ok = ok and succeeded
         if code == 0:
             record_loaded(run.data, target, version, run.run_id)
-        print(f"[daily] nạp {target}: {res['status']} (log: {run.dir / f'load-{target}.log'})", flush=True)
+        structlog.emit("daily.load.done", f"[daily] nạp {target}: {res['status']} (log: {run.dir / f'load-{target}.log'})",
+                       "INFO" if succeeded else "ERROR", step=f"load:{target}", source=target, status=res["status"])
         run.stage(f"load:{target}", "done" if succeeded else "failed", indexPending=bool(res.get("indexPending")))
     return ok
 
@@ -741,7 +760,7 @@ def cmd_run(a: argparse.Namespace) -> int:
     data = a.data_dir.resolve()
     lock = DailyLock(data / "state" / "daily.lock")
     if not lock.acquire():
-        print(f"[daily] SKIP: đang có lượt khác chạy (khoá {lock.path})", flush=True)
+        structlog.emit("catalog.lock.busy", f"[daily] SKIP: đang có lượt khác chạy (khoá {lock.path})", "WARNING", flow="daily")
         return 0
     try:
         run = Run(data, a.run_id or datetime.now().strftime("%Y%m%d-%H%M%S"))
@@ -763,6 +782,8 @@ def cmd_run(a: argparse.Namespace) -> int:
             code = 2
         run.state.update(finishedAt=now_local(), exitCode=code)
         run.save()
+        structlog.emit("run.end", f"run.end exit={code}", "INFO" if code == 0 else "ERROR" if code == 1 else "WARNING",
+                       exit_code=code, status="ok" if code == 0 else "failed" if code == 1 else "partial")
         write_report(run)
         prune_runs(data)
         return code
@@ -935,5 +956,5 @@ if __name__ == "__main__":
     try:
         sys.exit(main())
     except KeyboardInterrupt:
-        print("[daily] Đã dừng theo yêu cầu.", file=sys.stderr)
+        structlog.emit("run.stopped", "[daily] Đã dừng theo yêu cầu.", "WARNING", flow="daily")
         sys.exit(130)

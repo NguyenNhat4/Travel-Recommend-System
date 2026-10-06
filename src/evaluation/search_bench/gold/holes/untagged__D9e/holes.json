@@ -1,0 +1,22 @@
+{
+  "run_id": "2026-10-06-gold-v4-r2",
+  "arms": [
+    "APP.e5s.hybrid_norm_nocut_f1f6",
+    "APP.e5s.hybrid_norm_nocut_f1f6_wrrf",
+    "APP.e5s.hybrid_norm_nocut_f1f6_rr"
+  ],
+  "k": 10,
+  "gold_version": null,
+  "tag": "D9e",
+  "snapshot": "2026-09-23",
+  "n_to_label": 16,
+  "n_auto_ooc": 0,
+  "n_queries": 14,
+  "files": {
+    "A": {
+      "n_queries": 14,
+      "n_pairs": 16
+    }
+  },
+  "created_at": "2026-10-06T02:11:49+07:00"
+}

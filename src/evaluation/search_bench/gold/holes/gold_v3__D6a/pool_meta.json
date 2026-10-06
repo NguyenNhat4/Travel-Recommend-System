@@ -1,0 +1,26 @@
+{
+  "schema_version": "1",
+  "snapshot": "2026-09-23",
+  "collection": "app:ProductBench__e5_small",
+  "depth": 10,
+  "seed": 42,
+  "drafts_sha256": null,
+  "overlap_qids": [],
+  "files": {
+    "A": {
+      "path": "pool_A.csv",
+      "sha256": "fe70570b53ce25a6f2d9dff1caa8e2333a8a6546d3fa67f72a32965543c41048",
+      "labeler": "A",
+      "n_queries": 46,
+      "n_pairs": 251
+    },
+    "B": {
+      "path": "pool_B.csv",
+      "sha256": "85a4fa3cbf61c535b90e10ddbd882f66919941cdf1cd633ef4905b44819df139",
+      "labeler": "B",
+      "n_queries": 46,
+      "n_pairs": 215
+    }
+  },
+  "created_at": "2026-10-05T12:38:30+07:00"
+}

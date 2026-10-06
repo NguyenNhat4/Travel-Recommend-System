@@ -5,7 +5,8 @@
 #   `fresh-run status`; backend compose cùng VM: `backend [logs [-f] [-n SỐ_DÒNG]]`.
 # `fresh-monitor`: UI của job cào mới ở 127.0.0.1:8765 (image FRESH_IMAGE). `monitor`: cùng UI chạy trong image daily
 #   (IMAGE), đọc <DATA_DIR>/state, /fresh_runs. CD khởi động lại `fresh-monitor` sau mỗi lần deploy. `fresh-monitor` chạy nền
-#   với --restart unless-stopped, --memory 1g (MONITOR_RESTART=no: tiền cảnh như cũ; MONITOR_MEMORY đổi giới hạn).
+#   với --restart unless-stopped (MONITOR_RESTART=no: tiền cảnh như cũ). MONITOR_MEMORY đặt giới hạn RAM (mặc định không giới hạn:
+#   lượt bấm trên monitor chạy trong container này).
 # Cả hai mở public tạm thời (IP ngoài của VM) bằng MONITOR_HOST=0.0.0.0 MONITOR_PUBLIC=1; chưa có đăng nhập.
 # Only this runner script, Docker, an env file and a data volume are needed on the VM.
 set -euo pipefail
@@ -41,7 +42,7 @@ docker_run() {  # docker_run <tên container> [tuỳ chọn docker…] -- <lện
   shift
   [ -d "$DATA_DIR/interim" ] || die "chưa có $DATA_DIR/interim — chạy trước: $0 init <thư mục interim>"
   [ -r "$ENV_FILE" ] || die "không đọc được $ENV_FILE (mẫu: src/data_collection/.env.example, khối Job hằng ngày)"
-  local args=(--rm --name "$name" --user "$(owner)" -v "$DATA_DIR:/data" --env-file "$ENV_FILE")
+  local args=(--rm --log-opt max-size=50m --log-opt max-file=5 --name "$name" --user "$(owner)" -v "$DATA_DIR:/data" --env-file "$ENV_FILE")
   if [ -n "$DOCKER_NETWORK" ]; then args+=(--network "$DOCKER_NETWORK"); fi
   docker run "${args[@]}" "${opts[@]}" "$IMAGE" "$@"
 }
@@ -104,7 +105,7 @@ cmd_fresh_run() {
   [[ "$mode" = status || "$mode" = due ]] || [ -r "$FRESH_ENV_FILE" ] || die "không đọc được $FRESH_ENV_FILE"
   container_name="$FRESH_NAME"
   if [[ "$mode" = status || "$mode" = due ]]; then container_name="$FRESH_NAME-$mode-$$"; fi
-  local args=(--rm --init --name "$container_name"
+  local args=(--rm --init --log-opt max-size=50m --log-opt max-file=5 --name "$container_name"
               --network "$FRESH_NETWORK" --shm-size "${FRESH_SHM_SIZE:-512m}"
               -v "$FRESH_DATA_DIR:/data")
   if [ -r "$FRESH_ENV_FILE" ]; then args+=(--env-file "$FRESH_ENV_FILE"); fi
@@ -149,9 +150,11 @@ cmd_fresh_monitor() {
   [ -r "$FRESH_ENV_FILE" ] || die "không đọc được $FRESH_ENV_FILE"
   local name="$FRESH_NAME-monitor" restart="${MONITOR_RESTART:-unless-stopped}"
   case "$restart" in no|on-failure|always|unless-stopped) ;; *) die "MONITOR_RESTART phải là no, on-failure, always hoặc unless-stopped" ;; esac
-  # Chạy nền, Docker tự bật lại khi bị tắt (hết RAM, VM khởi động lại, phiên SSH của CD đóng). Giới hạn RAM để nếu hết RAM
-  # thì monitor bị tắt trước backend. MONITOR_RESTART=no: chạy tiền cảnh như cũ (máy dev, Ctrl+C để dừng).
-  local args=(--init --name "$name" --network host --memory "${MONITOR_MEMORY:-1g}"
+  # Chạy nền, Docker tự bật lại khi bị tắt (hết RAM, VM khởi động lại, phiên SSH của CD đóng). MONITOR_RESTART=no: chạy
+  # tiền cảnh như cũ (máy dev, Ctrl+C để dừng). Mặc định KHÔNG giới hạn RAM: lượt bấm trên monitor (Cào lớn, Làm mới Trip…)
+  # chạy trong container này — giới hạn 1 GB đã giết lượt full ngày 30/09 (mã -9). MONITOR_MEMORY đặt giới hạn nếu cần
+  # (vd. 1g để monitor bị tắt trước backend khi VM hết RAM). Chạy nền thì log container giới hạn 3 × 10 MB.
+  local args=(--init --name "$name" --network host
               --shm-size "${FRESH_SHM_SIZE:-512m}" -v "$FRESH_DATA_DIR:/data"
               --env-file "$FRESH_ENV_FILE" -e CATALOG_STATE_DIR=/data/state
               -e CATALOG_RUN_ROOT=/data/fresh_runs -e "BACKEND_URL=$BACKEND_URL" --entrypoint python)
@@ -161,6 +164,7 @@ cmd_fresh_monitor() {
   fi
   local monitor_args
   monitor_flags
+  if [ -n "${MONITOR_MEMORY:-}" ]; then args+=(--memory "$MONITOR_MEMORY"); fi
   if [ "$restart" = no ]; then
     docker run --rm "${args[@]}" "$FRESH_IMAGE" /app/src/data_collection/monitor.py "${monitor_args[@]}" "$@"
     return
@@ -168,7 +172,7 @@ cmd_fresh_monitor() {
   docker rm -f "$name" >/dev/null 2>&1 || true  # --restart không đi cùng --rm: thay container cũ cùng tên
   docker run -d --restart "$restart" --log-opt max-size=10m --log-opt max-file=3 "${args[@]}" \
     "$FRESH_IMAGE" /app/src/data_collection/monitor.py "${monitor_args[@]}" "$@" >/dev/null
-  echo "$(date -Is) monitor $name chạy nền (restart=$restart, memory=${MONITOR_MEMORY:-1g}); log: docker logs -f $name"
+  echo "$(date -Is) monitor $name chạy nền (restart=$restart, memory=${MONITOR_MEMORY:-không giới hạn}); log: docker logs -f $name"
 }
 
 # ---------------------------------------------------------------------- theo dõi trên console
@@ -298,7 +302,50 @@ cmd_backend() {
   if [ -z "$errors" ]; then echo 'không có'; else echo "$errors" | tail -n 5; echo "(tổng $(echo "$errors" | wc -l) dòng)"; fi
 }
 
+# Image cũ của job cào: mỗi lần deploy kéo image mới (vài GB) mà không xoá bản cũ → đĩa VM đầy dần (06/10). Giữ image vừa
+# deploy ($1, repo@digest) và image mới nhất trước đó của cùng repository (rollback tay); image đang được container dùng thì
+# `docker rmi` tự từ chối. Không đụng repository khác (backend, frontend). Lỗi dọn không làm hỏng deploy.
+cmd_prune_images() {
+  local current="${1:-}" repo keep previous id
+  [ -n "$current" ] || die "cần image vừa deploy, vd. prune-images <repo>@sha256:..."
+  repo="${current%@*}"
+  [ "$repo" = "$current" ] && repo="${current%:*}"
+  keep="$(docker image inspect --format '{{.Id}}' "$current" 2>/dev/null || true)"
+  [ -n "$keep" ] || { echo "Không thấy image $current trên máy; bỏ qua dọn." >&2; return 0; }
+  previous="$(docker image ls "$repo" --no-trunc --format '{{.CreatedAt}}|{{.ID}}' | sort -r | cut -d'|' -f2 \
+    | grep -Fxv "$keep" | head -n 1 || true)"
+  docker image ls "$repo" --no-trunc --quiet | sort -u | while read -r id; do
+    [ -n "$id" ] || continue
+    if [ "$id" = "$keep" ] || [ "$id" = "$previous" ]; then continue; fi
+    docker rmi "$id" >/dev/null 2>&1 && echo "Đã xoá image cũ $id" || true
+  done
+  docker image prune -f >/dev/null 2>&1 || true
+}
+
+cmd_cleanup() {
+  local keep="${1:-2}"
+  echo "=== Dọn dẹp dung lượng VM (giữ tối đa $keep lượt mới nhất) ==="
+  echo "1. Dọn dẹp Docker container và dangling image..."
+  docker container prune -f || true
+  docker image prune -f || true
+  if [ -d "$FRESH_DATA_DIR/fresh_runs" ]; then
+    echo "2. Dọn dẹp các lượt cào cũ trong $FRESH_DATA_DIR/fresh_runs..."
+    docker run --rm -v "$FRESH_DATA_DIR:/data" "$FRESH_IMAGE" python -c \
+      "from fresh_run_log import prune_runs; from pathlib import Path; p = prune_runs(Path('/data/fresh_runs'), $keep); print('Đã xoá các lượt cũ:', p)" || true
+    echo "3. Dọn dẹp Chromium cache trong các lượt còn lại..."
+    find "$FRESH_DATA_DIR/fresh_runs" -type d \( -name "Cache" -o -name "Code Cache" -o -name "GPUCache" \) -exec rm -rf {} + 2>/dev/null || true
+  fi
+  if [ -d "$FRESH_LOG_DIR" ]; then
+    echo "4. Dọn log cũ hơn 7 ngày trong $FRESH_LOG_DIR..."
+    find "$FRESH_LOG_DIR" -maxdepth 1 -name 'fresh-catalog-*.log' -mtime +7 -delete 2>/dev/null || true
+  fi
+  echo "=== Hoàn tất dọn dẹp dung lượng. Dung lượng đĩa hiện tại: ==="
+  df -h "$FRESH_DATA_DIR" 2>/dev/null || df -h /
+}
+
 case "${1:-}" in
+  cleanup) shift; cmd_cleanup "$@" ;;
+  prune-images) shift; cmd_prune_images "$@" ;;
   import-flights) shift; cmd_import_flights "$@" ;;
   init) shift; cmd_init "$@" ;;
   run) cmd_legacy_run ;;  # compatibility for the legacy cron/CLI

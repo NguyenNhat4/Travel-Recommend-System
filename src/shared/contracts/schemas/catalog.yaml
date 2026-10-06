@@ -424,6 +424,16 @@ ScoredProduct:
         description: >-
           Cosine đã clamp về [0,1]. Chỉ hiển thị cho khách ở chế độ debug —
           0.81 KHÔNG phải "81% phù hợp".
+      matchedChildren:
+        type: array
+        maxItems: 5
+        items:
+          type: string
+        description: >-
+          (1.16.0, chỉ /search) productId các hạng phòng / chuyến bay con của kết quả thoả ĐỒNG THỜI các điều kiện giá
+          (priceMin/priceMax) và số khách (minOccupancy) đang áp, giá tăng dần (giá null cuối), tối đa 5 — để UI hiển thị
+          đúng phòng hợp giá/số khách thay vì giá thấp nhất của property. Chỉ có khi lọc giá hoặc số khách đang áp và kết quả
+          có ít nhất một con thoả; con không biết sức chứa được tính là thoả điều kiện số khách.
 
 ProductListResponse:
   type: object

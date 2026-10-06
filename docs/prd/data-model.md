@@ -36,7 +36,7 @@ Hệ sinh thái lưu trữ của V-OTA gồm hai cơ sở dữ liệu PostgreSQL
 
 +-------------------------------------------------------------------------+
 | WEAVIATE (dịch vụ riêng, volume riêng)                                  |
-|  Collection: Product — vector 1024 chiều (Cohere embed-multilingual-v3) |
+|  Collection: ProductE5Small — vector 384 chiều (multilingual-e5-small) |
 |  Thuộc tính: productId (khóa nối về Postgres), modelVersion, textHash   |
 |  vectorizer: none — backend tự sinh vector và tự ghi                    |
 +-------------------------------------------------------------------------+
@@ -111,9 +111,9 @@ erDiagram
     WEAVIATE_PRODUCT {
         uuid id PK "UUID do Weaviate cấp"
         string productId "Khóa nối logic về cdp.products — KHÔNG phải FK"
-        string modelVersion "embed-multilingual-v3.0 + phiên bản text builder"
+        string modelVersion "intfloat/multilingual-e5-small + phiên bản text builder"
         string textHash "Phát hiện text đổi để embed lại"
-        vector _vector "1024 chiều, ANN (HNSW hoặc hfresh) + cosine, vectorizer none"
+        vector _vector "384 chiều, ANN (HNSW hoặc hfresh) + cosine, vectorizer none"
     }
 ```
 
@@ -316,7 +316,7 @@ Mọi thông tin động theo loại sản phẩm được chuẩn hóa trong tr
 
   `unitPrice` của sản phẩm là giá của hạng rẻ nhất còn chỗ. Thiếu `fareClasses` thì coi như một hạng duy nhất với giá `unitPrice`.
 
-Vé có báo giá theo ngày cố định giữ `level: flight`, `fixedDepartureDate: true`, `tripType: oneWay | roundTrip` và `cabinClass` khi nguồn xác nhận. Định danh mới bao gồm hành trình, ngày và hạng vé, không thay ID cũ. `available_from = available_to` là ngày đi. Job cào (dữ liệu thật) không dời ngày của vé này; ngoài cửa sổ hoặc hết hạn báo giá thì không đặt được. Riêng seed demo (`make demo-db`, snapshot có version): vé có ngày đi ngoài cửa sổ được dời vào cửa sổ như vé không cố định ngày (`as_of + crc32(productId) % 30`), hai chặng dời cùng số ngày, giữ giờ bay và `stayDays`, `returnDate` cùng ngày ghi trong tên/mô tả đổi theo; vé có ngày đi trong cửa sổ giữ ngày thật. Giá giữ nguyên từ nguồn (gắn với ngày gốc, chỉ là giá tham khảo) và `priceValidUntil` giữ nguyên, nên `fareClasses` báo `EXPIRED` khi báo giá hết hạn nhưng vé seed vẫn đặt được. Vé khứ hồi có `returnFlight` (số hiệu, hãng, sân bay đi/đến, giờ đi/đến), `returnDate`, `stayDays`, `priceValidUntil` nếu có. `unitPrice` là tổng hai chặng cho một người lớn (`priceBasis: per_person`); `quantity` là số khách. Ngày về không ghi vào `using_date_to`, không nhân số đêm. Thiếu hạng vé thì giữ chưa biết. Giá lịch sử giữ thời điểm nguồn, không được coi là báo giá mới.
+Vé có báo giá theo ngày cố định giữ `level: flight`, `fixedDepartureDate: true`, `tripType: oneWay | roundTrip` và `cabinClass` khi nguồn xác nhận. Định danh mới bao gồm hành trình, ngày và hạng vé, không thay ID cũ. `available_from = available_to` là ngày đi. Job cào và seed demo (`make demo-db`, snapshot có version) dùng cùng quy tắc: vé có ngày đi ngoài cửa sổ (đã bay, sau cửa sổ, hoặc hết hạn báo giá) được dời vào cửa sổ như vé không cố định ngày (`as_of + crc32(productId) % 30`), hai chặng dời cùng số ngày, giữ giờ bay và `stayDays`, `returnDate` cùng ngày ghi trong tên/mô tả đổi theo; vé có ngày đi trong cửa sổ giữ ngày thật. Giá giữ nguyên từ nguồn (gắn với ngày gốc, chỉ là giá tham khảo) và `priceValidUntil` giữ nguyên, nên `fareClasses` báo `EXPIRED` khi báo giá hết hạn nhưng vé có giá vẫn đặt được. Job cuộn cửa sổ mỗi ngày: vé đã dời giữ ngày mới cho tới khi ngày đó qua, rồi được dời lại; lượt cào lấy được báo giá mới thì ngày và giá thật thay thế. Vé khứ hồi có `returnFlight` (số hiệu, hãng, sân bay đi/đến, giờ đi/đến), `returnDate`, `stayDays`, `priceValidUntil` nếu có. `unitPrice` là tổng hai chặng cho một người lớn (`priceBasis: per_person`); `quantity` là số khách. Ngày về không ghi vào `using_date_to`, không nhân số đêm. Thiếu hạng vé thì giữ chưa biết. Giá lịch sử giữ thời điểm nguồn, không được coi là báo giá mới.
 
 **Vé Thương gia mô phỏng (demo).**
 
@@ -382,7 +382,7 @@ CONFIRMED       PAYMENT_FAILED         EXPIRED        CANCELLED
 Trạng thái xuất vé máy bay (FR-BKG-12) thuộc từng mục đơn (`booking_items.metadata.ticketing`), không đổi vòng đời đơn.
 
 ### 4.2. Vòng đời Sản phẩm & Khả năng phục vụ
-- **is_search_unit = true:** Sản phẩm đại diện cho một thực thể tìm kiếm (Ví dụ: Một resort/khách sạn tổng quan). Xuất hiện trong kết quả tìm kiếm và danh mục gợi ý.
+- **is_search_unit = true:** Sản phẩm đại diện cho một thực thể tìm kiếm (Ví dụ: Một resort/khách sạn tổng quan). Xuất hiện trong kết quả tìm kiếm và danh mục gợi ý. Khách sạn tổng quan không có hạng phòng con nào đặt được thì `available = false` (giữ dòng, tự bật lại khi có phòng đặt được), nên không ra ở tìm kiếm mặc định và trợ lý.
 - **is_bookable = true:** Đơn vị có thể đặt chỗ. Khách sạn và vé máy bay chỉ đặt trực tiếp; các loại khác thêm được vào giỏ (Ví dụ: Từng loại phòng cụ thể, từng chuyến bay trong ngày).
 - **is_recommendable = true:** Đủ tiêu chuẩn chất lượng và tính khả dụng để đưa vào các thuật toán gợi ý tự động.
 

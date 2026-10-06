@@ -113,9 +113,36 @@ def test_holes_done_when_scenario(cfg, sample_home, tmp_path, monkeypatch):
     assert any("chưa gán" in p for p in e.value.problems)
     part, st2 = H.import_holes(records, out, version="gold_v2", tag="B0", partial=True)
     assert st2["human"] == 1 and st2["auto_ooc"] == 1
+    # 05/10: nhãn máy (provenance) — chưa duyệt → từ chối; duyệt giữ nguyên → provenance `holes:<tag>:machine@…`
+    k0, k1 = (pool[0].qid, pool[0].product_id), (pool[1].qid, pool[1].product_id)
+    write_labels_csv([LabelRow(qid=r.qid, product_id=r.product_id, label=lab, labeler="A", labeled_at=now, pool_sha=meta.files["A"].sha256)
+                      for r, lab in zip(pool, (2, 1))], out / "labels" / "labels_A.csv")
+    with pytest.raises(RuleViolation) as e:
+        H.import_holes(records, out, version="gold_v2", tag="B0", sources={k0: "machine_unreviewed"})
+    assert any("nhãn máy chưa duyệt" in p for p in e.value.problems)
+    mach, st3 = H.import_holes(records, out, version="gold_v2", tag="B0", sources={k0: "machine_accepted", k1: "machine_edited"})
+    assert st3 == {"human": 1, "auto_ooc": 1, "queries": 3, "machine": 1, "machine_unreviewed": 0}
+    mb = {r.qid: r for r in mach}
+    assert mb[k0[0]].provenance[k0[1]] == "holes:B0:machine@gold_v2" and mb[k1[0]].provenance[k1[1]] == "holes:B0@gold_v2"
+    _, st4 = H.import_holes(records, out, version="gold_v2", tag="B0", sources={k0: "machine_unreviewed"}, accept_unreviewed=True)
+    assert st4["machine_unreviewed"] == 1
     # sửa tay nhãn cũ → verify-append đỏ
     tampered = [r.model_copy(update={"judgments": {**r.judgments, list(r.judgments)[0]: 0}}) if r.qid == "q001" else r for r in new]
     assert H.verify_append(records, tampered)
+
+
+def test_cap_holes_balances_queries_and_is_deterministic():
+    records = [
+        G.GoldRecord(qid="q1", text="a", slice="s1", judgments={"old": 2}, provenance={"old": "human"}),
+        G.GoldRecord(qid="q2", text="b", slice="s2", judgments={"old": 2}, provenance={"old": "human"}),
+    ]
+    holes = [
+        H.Hole("q1", f"a{i}", ["A", "B"] if i == 0 else ["A"], i + 1) for i in range(5)
+    ] + [H.Hole("q2", f"b{i}", ["A"], i + 1) for i in range(5)]
+    got = H.cap_holes(holes, records, 4, seed=42)
+    assert got == H.cap_holes(holes, records, 4, seed=42)
+    assert {h.qid for h in got} == {"q1", "q2"}
+    assert any(h.product_id == "a0" for h in got)
 
 
 def test_write_holes_split_alternates_queries(cfg, sample_home, tmp_path):
@@ -191,6 +218,7 @@ def test_rescore_after_holes_restores_judged_and_matches_fresh_run(cfg, sample_h
     env2 = R.load_env(cfg, "sample", g2, run_id="t1")
     res, rows2, info = R.rescore_arm(env2, "t1", "B0")
     assert res["overall"]["judged@10"] == 1.0 and res["needs_labels"] == [] and info["missing"] == []
+    assert res["condensed"]["mode"] == "condensed" and res["condensed"]["coverage"]["retained_ratio"] == 1.0
     assert res["rescored_from"] == env.gold_version and res["gold_version"] == env2.gold_version and res["latency_ms"] == res0["latency_ms"]
     # metric khớp chạy lại từ đầu trên gold mới
     st2 = _Store(records, view)
@@ -200,8 +228,9 @@ def test_rescore_after_holes_restores_judged_and_matches_fresh_run(cfg, sample_h
         assert res["overall"][m] == pytest.approx(fresh["overall"][m], abs=1e-12)
     vers = R.available_versions("t1", "B0")
     assert set(vers) == {env.gold_version, env2.gold_version}
-    got, _, gv = R.read_results_at("t1", "B0", env2.gold_version)
+    got, stored_rows, gv = R.read_results_at("t1", "B0", env2.gold_version)
     assert gv == env2.gold_version and got["rescored_from"] == env.gold_version
+    assert R.compare(stored_rows, stored_rows, cfg, condensed=True)["verdict"] == "TIE"
     assert R.read_results_at("t1", "B0")[2] == max(vers, key=R._version_key)
     with pytest.raises(R.RunnerError, match="không có kết quả trên gold"):
         R.read_results_at("t1", "B0", "gold_v99")
@@ -244,7 +273,54 @@ def test_cli_holes_import_rescore(cfg, sample_home, tmp_path, monkeypatch):
     res = runner_cli.invoke(app, ["--dataset", "sample", "--run-id", "t7", "rescore", "--gold", str(gold_p)])
     assert_exit(res, 0, "B0:", "judged@10 1.000")
     assert (R.arm_dir("t7", "B0", create=False) / f"results@fixture_{H.file_sha256(gold_p)[:8]}.json").exists()   # ':' → '_' (Windows)
-    assert_exit(runner_cli.invoke(app, ["--run-id", "t7", "compare", "B0", "B0"]), 0, "TIE")
+    latest = runner_cli.invoke(app, ["--run-id", "t7", "compare", "B0", "B0"])
+    assert_exit(latest, 0, "TIE", "judged@10", "1.000")
+    version = R.read_results_at("t7", "B0")[2]
+    assert_exit(runner_cli.invoke(app, ["--run-id", "t7", "compare", "B0", "B0", "--gold", version]),
+                0, "TIE", "1.000")
+    assert_exit(runner_cli.invoke(app, ["--run-id", "t7", "compare", "B0", "B0", "--gold", "gold_v99"]),
+                2, "không có kết quả trên gold gold_v99")
     # không còn hole → exit 1
     assert_exit(runner_cli.invoke(app, ["--dataset", "sample", "--run-id", "t7", "gold", "holes", "--arms", "B0", "--gold", str(gold_p),
                                         "--out-dir", str(tmp_path / "h2")]), 1, "không có hole")
+
+
+def test_cli_holes_qids_and_new_since(cfg, sample_home, tmp_path, monkeypatch):
+    """05/10 (gold_v4): `--qids` / `--new-since` chỉ quét các câu được chọn — cap không bị loãng bởi câu cũ."""
+    import evaluation.search_bench.__main__ as main
+    import evaluation.search_bench.embed as E
+    from contextlib import contextmanager
+    records = read_gold_jsonl(GOLD)
+    view = _view(cfg)
+    st = _Store(records, view)
+
+    @contextmanager
+    def fake_store(_cfg):
+        yield st
+    monkeypatch.setattr(main, "_store", fake_store)
+    monkeypatch.setattr(E, "make_embedder", lambda *a, **k: _Emb())
+    monkeypatch.setattr(G, "load_pool_view", lambda cfg_, ds, variant: view)
+    gold_p = tmp_path / "g" / "gold.jsonl"
+    gold_p.parent.mkdir()
+    gold_p.write_bytes(GOLD.read_bytes())
+    assert_exit(runner_cli.invoke(app, ["--dataset", "sample", "--run-id", "t8", "run", "--arm", "B0", "--gold", str(gold_p),
+                                        "--model", "fake"]), 0)
+    base = ["--dataset", "sample", "--run-id", "t8", "gold", "holes", "--arms", "B0", "--gold", str(gold_p)]
+    full = tmp_path / "full"
+    assert_exit(runner_cli.invoke(app, [*base, "--out-dir", str(full)]), 0)
+    with_holes = sorted({r.qid for r in read_pool_csv(full / "pool_A.csv")})
+    one = with_holes[0]
+    out = tmp_path / "one"
+    res = runner_cli.invoke(app, [*base, "--out-dir", str(out), "--qids", one])
+    assert_exit(res, 0, f"chỉ quét 1/{len(records)} câu")
+    assert {r.qid for r in read_pool_csv(out / "pool_A.csv")} == {one}
+    assert_exit(runner_cli.invoke(app, [*base, "--out-dir", str(tmp_path / "x"), "--qids", "c0000"]), 2,
+                "--qids không có trong gold: c0000")
+    assert_exit(runner_cli.invoke(app, [*base, "--out-dir", str(tmp_path / "y"), "--new-since", str(gold_p)]), 2,
+                "không còn câu nào")
+    assert_exit(runner_cli.invoke(app, [*base, "--out-dir", str(tmp_path / "z"), "--qids", ""]), 2, "--qids rỗng")
+    bad = tmp_path / "bad.jsonl"
+    bad.write_text("{not json}\n", encoding="utf-8")
+    for ref in (bad, tmp_path):                                             # file hỏng, thư mục
+        assert_exit(runner_cli.invoke(app, [*base, "--out-dir", str(tmp_path / "w"), "--new-since", str(ref)]), 2,
+                    "--new-since")

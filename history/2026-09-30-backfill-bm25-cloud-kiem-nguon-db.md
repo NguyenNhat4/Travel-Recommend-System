@@ -6,6 +6,7 @@
 - Trạng thái: dang dở
 - Phạm vi: docs
 - Thay thế: `2026-09-29-cloud-backfill-lexical.md` (runbook ở đó chỉ định sai nguồn DB)
+- Bị thay thế bởi: `2026-09-30-backfill-bm25-cloud-da-chay.md`
 
 ## Mục tiêu
 

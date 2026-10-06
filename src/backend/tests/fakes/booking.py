@@ -217,11 +217,24 @@ class _Tx:
 class InMemoryBookingStore:
     def __init__(self, carts: InMemoryCarts, drafts: "InMemoryDrafts | None" = None):
         self.carts, self.bookings, self.fail_insert = carts, {}, False
+        self.leader_held = False
         self.drafts = drafts or InMemoryDrafts(carts)
 
     @asynccontextmanager
     async def transaction(self):
         yield _Tx(self)
+
+    @asynccontextmanager
+    async def reconcile_leader(self):
+        # Mô phỏng advisory lock: chỉ một bên giữ tại một thời điểm.
+        if self.leader_held:
+            yield False
+            return
+        self.leader_held = True
+        try:
+            yield True
+        finally:
+            self.leader_held = False
 
 
 class FakeCdp:

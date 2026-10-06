@@ -35,6 +35,7 @@ from src.backend.app.application.ports.payment_gateway import (
     PaymentProviderUnavailable,
 )
 from src.backend.app.application.ports.product_catalog import ProductCatalog
+from src.backend.app.core.logging_config import hash_user_id, log_event
 from src.backend.app.core.request_context import current_request_id
 from src.backend.app.domain.booking import (
     Booking,
@@ -164,9 +165,10 @@ class CreateBookingHold:
             logger.error("booking.create.total_mismatch requestId=%s", current_request_id())
             raise RuntimeError("tổng các dòng thanh toán lệch tổng đơn")
         # Chỉ ghi số lượng, không ghi họ tên, ngày sinh hay số điện thoại (NFR-SEC-01, spec §8.6).
-        logger.info("booking.create adults=%d children=%d items=%d requestId=%s",
-                    sum(1 for t in party if t.type.value == "adult"), sum(1 for t in party if t.type.value == "child"),
-                    len(items), current_request_id())
+        adults, children = (sum(1 for t in party if t.type.value == "adult"),
+                            sum(1 for t in party if t.type.value == "child"))
+        log_event(logger, "booking.checkout.start", booking_ref=booking.reference_code,
+                  amount_vnd=booking.total_amount, item_count=len(items))
 
         # Gọi Stripe TRƯỚC khi ghi database: Stripe lỗi thì chưa có gì để dọn (spec booking §6.1).
         try:
@@ -180,7 +182,8 @@ class CreateBookingHold:
                 idempotency_key=f"booking:{booking_id}",
             )
         except PaymentProviderUnavailable as exc:
-            logger.warning("booking.create.provider_unavailable requestId=%s", current_request_id())
+            log_event(logger, "booking.create_hold", "WARNING", booking_ref=booking.reference_code,
+                      message="booking.create.provider_unavailable")
             raise PaymentUnavailable("cổng thanh toán không phản hồi") from exc
         except PaymentProviderError:
             logger.exception("booking.create.provider_rejected requestId=%s", current_request_id())
@@ -197,6 +200,8 @@ class CreateBookingHold:
             # Commit lỗi sau khi Stripe đã tạo phiên: đóng phiên để bù trừ (spec §6.2 F12).
             await self._close_session(session.session_id)
             raise
+        log_event(logger, "booking.create_hold", booking_ref=booking.reference_code, amount_vnd=booking.total_amount,
+                  item_count=len(items), adults=adults, children=children)
         return booking_response(booking, products)
 
     def _check_rules(self, contact, details, travelers, lines, products, now):

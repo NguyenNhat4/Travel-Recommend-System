@@ -7,6 +7,7 @@
  * `MemorySessionStore` chỉ cho test và dev không có Redis; production bắt buộc SESSION_REDIS_URL.
  */
 import { createClient } from 'redis';
+import { log } from '../../lib/logger';
 
 export type SessionState = 'anonymous' | 'pending_mfa' | 'authenticated';
 
@@ -141,6 +142,8 @@ export class MemorySessionStore implements SessionStore {
   }
 }
 
+const SESSION_STORE_LOG_INTERVAL_MS = 60_000;
+
 // Một store cho cả tiến trình; giữ trên globalThis để HMR của `next dev` không mở thêm kết nối.
 const globalStore = globalThis as unknown as { __votaSessionStore?: SessionStore; __votaSessionStoreReady?: Promise<SessionStore> };
 
@@ -156,13 +159,28 @@ export function getSessionStore(): Promise<SessionStore> {
     if (process.env.NODE_ENV === 'production' && process.env.APP_ENV !== 'development') {
       throw new Error('SESSION_REDIS_URL là bắt buộc ở production');
     }
-    console.warn(JSON.stringify({ event: 'session.store.memory', reason: 'SESSION_REDIS_URL trống' }));
+    log.warn('bff.session.store', { outcome: 'memory', reason: 'SESSION_REDIS_URL trống' });
     globalStore.__votaSessionStore = new MemorySessionStore();
     globalStore.__votaSessionStoreReady = Promise.resolve(globalStore.__votaSessionStore);
     return globalStore.__votaSessionStoreReady;
   }
   const client = createClient({ url });
-  client.on('error', (error) => console.error(JSON.stringify({ event: 'session.store.error', message: String(error) })));
+  // Redis sập thì client retry liên tục: ghi lần lỗi đầu, rồi gộp mỗi 60 giây kèm số lần lỗi; ghi lại khi kết nối trở lại.
+  let failing = 0;
+  let lastLogged = 0;
+  client.on('error', (error) => {
+    failing += 1;
+    const now = Date.now();
+    if (failing === 1 || now - lastLogged >= SESSION_STORE_LOG_INTERVAL_MS) {
+      log.error('bff.session.store', { outcome: 'error', count: failing, error });
+      lastLogged = now;
+    }
+  });
+  client.on('ready', () => {
+    if (failing > 0) log.info('bff.session.store.recovered', { outcome: 'ok', failed_events: failing });
+    failing = 0;
+    lastLogged = 0;
+  });
   globalStore.__votaSessionStoreReady = client.connect().then(() => {
     globalStore.__votaSessionStore = new RedisSessionStore(client as RedisClient);
     return globalStore.__votaSessionStore;

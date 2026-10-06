@@ -17,6 +17,7 @@ from src.backend.app.application.booking.views import booking_response, iso
 from src.backend.app.application.ports.booking_store import BookingStore
 from src.backend.app.application.ports.payment_gateway import PaymentGateway, PaymentProviderUnavailable
 from src.backend.app.application.ports.product_catalog import ProductCatalog
+from src.backend.app.core.logging_config import log_event
 from src.backend.app.domain.booking import CancelDecision, cancellable_until, decide_cancellation
 
 logger = logging.getLogger(__name__)
@@ -61,10 +62,12 @@ class CancelBooking:
                 booking.cancel_paid(now, reason)
                 await tx.save(booking)
                 refund_needed = True
-            booking_id = booking.booking_id
+            booking_id, booking_amount, booking_items = booking.booking_id, booking.total_amount, len(booking.items)
         if refund_needed:
             await self._settlement.refund(booking_id)
             await self._settlement.cancel_purchase_events(booking_id)
+        log_event(logger, "booking.cancel", booking_ref=reference_code, decision=decision.name,
+                  amount_vnd=booking_amount, item_count=booking_items)
         async with self._store.transaction() as tx:
             booking = await tx.get_by_id(booking_id)
         products = await self._catalog.get_products([i.product_id for i in booking.items])

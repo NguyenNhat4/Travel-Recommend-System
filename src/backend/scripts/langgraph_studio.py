@@ -3,7 +3,7 @@
 Chạy từ repo root: `.venv-studio/bin/langgraph dev` (đọc `langgraph.json`), rồi mở link Studio mà lệnh in ra.
 Nguồn dữ liệu cho tool theo `ITINERARY_DATA_MODE` như backend, bỏ trống thì `inprocess`:
 - `inprocess`: engine Search/Recommendation/Similar/catalog thật, dựng một lần lúc nạp graph bằng `build_recsys`
-  và `build_catalog` của `main.py` — cần Postgres đã seed, Weaviate đã index và `COHERE_API_KEY`.
+  và `build_catalog` của `main.py` — cần Postgres đã seed, Weaviate đã index và model e5 local.
 - `fixture`: 50 sản phẩm `src/shared/mocks/itinerary-agent/products.json`, không cần Postgres hay Weaviate.
 LLM dựng như backend (`build_chat_model`). Studio không gửi Bearer nên `get_recommendations` chạy như khách.
 Lượt đầu chỉ gửi `{"query": "3 ngày ở Nha Trang cho gia đình"}` (id tự đặt chưa tồn tại thì intake trả

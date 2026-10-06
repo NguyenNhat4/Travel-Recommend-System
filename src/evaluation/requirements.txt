@@ -2,3 +2,8 @@ streamlit>=1.64,<2
 httpx>=0.27,<1
 typer>=0.12,<1
 pyyaml>=6,<7
+# recsys_bench registry thuật toán (R3–R5, docs/spec/bench/recsys-algos-v1.md): itemknn / ials / bpr dùng implicit; scipy cho CSR.
+# CI không cài file này (chỉ dev local); các scorer numpy (cooc_trip, star_blend, ease, rp3beta, content) không cần ba dòng dưới.
+scipy>=1.13,<2
+implicit>=0.7.3,<0.8
+threadpoolctl>=3,<4

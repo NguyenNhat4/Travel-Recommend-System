@@ -18,7 +18,7 @@ from evaluation.search_bench.store import filters as F
     ({"in": ["destination", []]}, "in cần"),
     ({"contains_all": ["destination", ["x"]]}, "contains_all cần"),
     ({"lte": ["destination", 3]}, "lte cần"),
-    ({"not": {"eq": ["brand", "Vinpearl"]}}, "not chỉ bọc"),          # brand có thể null
+    ({"not": {"eq": ["province", "Khánh Hoà"]}}, "not chỉ bọc"),          # province có thể null, không trong NOT_EQ_NULLABLE
     ({"not": {"contains_all": ["amenity_ids", ["pool"]]}}, "not chỉ bọc"),
     ({"eq": "destination"}, "cần \\[trường"),
 ])

@@ -102,7 +102,7 @@ async def tracked_product_not_found(_: Request, exc: ProductNotFoundError):
 
 
 async def embedding_unavailable(_: Request, exc: EmbeddingUnavailableError):
-    # Adapter đã ghi log `cohere.embed.*`; ở đây chỉ đưa lý do (từ cố định) ra client thay cho 500 chung chung.
+    # Adapter embedding đã ghi log lỗi; ở đây chỉ đưa lý do (từ cố định) ra client thay cho 500 chung chung.
     return _catalog_response("SEARCH_UNAVAILABLE", 503, exc.retryable, {"reason": exc.reason})
 
 

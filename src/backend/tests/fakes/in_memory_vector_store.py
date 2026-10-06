@@ -1,6 +1,10 @@
 """`VectorStorePort` giả cho test offline: đọc products.jsonl, dựng text, embed, cache .npy.
 Bản chạy thật là `infrastructure/vectors/weaviate_store.py`; cả hai trả `(UnitIndex, VectorSearchPort)`.
-Kho vector ở đây là `NumpyVectorSearch` quét toàn bộ ma trận, nên test không cần Weaviate."""
+Kho vector ở đây là `NumpyVectorSearch` quét toàn bộ ma trận, nên test không cần Weaviate.
+
+Thành phần combo (cờ `includesFlight` / `includesHotel` của `UnitAttributes`): đọc `combo_items.jsonl` cạnh products.jsonl
+nếu có (cùng quy ước đầu ra của `parse_combos`, mà `load_products` / `fresh_catalog_db` cũng đọc) hoặc file truyền tường minh;
+không có file → không combo nào có cờ. Chỉ dùng cho thuộc tính lọc — text (và cache vector) không đổi."""
 from __future__ import annotations
 
 import hashlib
@@ -11,13 +15,29 @@ from collections import defaultdict
 import numpy as np
 
 from src.backend.app.application.ports import EmbedderPort, UnitIndex, VectorSearchPort
-from src.backend.app.domain.catalog import Product, build_text
+from src.backend.app.domain.catalog import Product, UnitAttributes, build_text
 from src.backend.app.infrastructure.vectors.numpy_search import NumpyVectorSearch
 
 
+def read_combo_kinds(path: str) -> dict[str, list[str]]:
+    """combo_items.jsonl (mỗi dòng một thành phần: combo_product_id, position, item_kind…) → combo id → item_kind theo position."""
+    rows: dict[str, list[tuple[int, str]]] = defaultdict(list)
+    if not os.path.exists(path):
+        return {}
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            if line.strip():
+                it = json.loads(line)
+                if it.get("combo_product_id") and it.get("item_kind"):
+                    rows[str(it["combo_product_id"])].append((int(it.get("position") or 0), str(it["item_kind"])))
+    return {pid: [kind for _, kind in sorted(items)] for pid, items in rows.items()}
+
+
 class InMemoryVectorStore:
-    def __init__(self, products_path: str, embedder: EmbedderPort, cache_dir: str = ".embcache"):
+    def __init__(self, products_path: str, embedder: EmbedderPort, cache_dir: str = ".embcache",
+                 combo_items_path: str | None = None):
         self.products_path, self.embedder, self.cache_dir = products_path, embedder, cache_dir
+        self.combo_items_path = combo_items_path or os.path.join(os.path.dirname(products_path), "combo_items.jsonl")
 
     def load(self) -> tuple[UnitIndex, VectorSearchPort]:
         products: dict[str, Product] = {}
@@ -51,6 +71,7 @@ class InMemoryVectorStore:
             available=np.array([p.available for p in units]),
             recommendable=np.array([p.is_bookable or any(c.is_bookable and c.available for c in children.get(p.product_id, [])) for p in units]),
             parent_of=parent_of, model_version=f"{self.embedder.name}@{key}",
+            attrs=UnitAttributes.build(units, children, read_combo_kinds(self.combo_items_path)),
         )
         # Văn bản BM25 như job index ghi lên Weaviate: tên (trọng số 2) + text đã dựng.
         return index, NumpyVectorSearch([p.product_id for p in units], E,

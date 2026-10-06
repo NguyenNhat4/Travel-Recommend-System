@@ -37,7 +37,7 @@ from pathlib import Path
 from argon2.low_level import Type, hash_secret
 
 from . import config as C
-from .catalog_meta import build_meta, is_vinpearl, open_nights, room_calendar, stable_order_key, variant, window
+from .catalog_meta import build_meta, is_vinpearl, open_nights, room_calendar, stable_order_key, variant
 
 NS = uuid.UUID("6f3b1f0e-8a52-4c1e-9d0a-7a0c5b1d2e77")  # không gian tên cố định cho uuid5 (seed)
 TZ_VN = timezone(timedelta(hours=7))
@@ -271,6 +271,28 @@ class Builder:
         self.events.extend(events)
         return purchases
 
+    def abandoned(self, user: str, rng: random.Random, dest: str, home: str, verticals: list[str], carted: datetime, *,
+                  n_views: int) -> int:
+        """Lần bỏ giỏ (profile eval): product_view → add_to_cart mọi mục tại `carted`, không purchase, không event_group_id
+        (như app thật). using_date của giỏ = ngày dự định đi, kẹp ≤ as_of − 1 như chuyến thường. Trả số event đã sinh."""
+        products = [self.w.pick(rng, dest, v, home) for v in verticals if self.w.has(dest, v, home)]
+        if not products:
+            return 0
+        products.sort(key=lambda p: CHECKOUT_ORDER[p["taxonomy"]])
+        latest = self.as_of - timedelta(days=C.LATEST_PAST_USING_DAYS)
+        check_in = min(local_day(carted) + timedelta(days=inclusive(rng, C.LEAD_DAYS)), latest - timedelta(days=C.TICKET_DAY_OFFSET))
+        carts = []
+        for k, p in enumerate(products):
+            using = check_in + timedelta(days=0 if p["taxonomy"] in ("hotel", "flight") else C.TICKET_DAY_OFFSET)
+            carts.append(self.event(user, "add_to_cart", carted + timedelta(seconds=C.ITEM_GAP_SECONDS * k), p, None,
+                                    inclusive(rng, C.QUANTITY[p["taxonomy"]]), noisy_price(rng, p["unitPrice"]), using))
+        first = self.w.view_of(products[0])
+        targets = [first] + distinct_picks(self.w.views[dest], rng, n_views - 1, [first])
+        views = [self.event(user, "product_view", carted - timedelta(seconds=rng.uniform(60, C.VIEW_LEAD_DAYS[1] * 86400)), t)
+                 for t in targets]
+        self.events.extend(views + carts)
+        return len(views) + len(carts)
+
 
 def at(day: date, rng: random.Random) -> datetime:
     """Giờ ngẫu nhiên trong ngày (giờ Việt Nam)."""
@@ -327,6 +349,11 @@ def plan_generic(w: World, b: Builder, rng: random.Random, user: str, stage: str
             break
         purchases += len(b.trip(user, rng, dest, home, verticals, at(as_of - timedelta(days=days_ago), rng), n_views=views(),
                                 search=rng.random() < C.SEARCH_TRIP_RATE, cart=rng.random() < C.ADD_TO_CART_TRIP_RATE))
+        if C.ABANDONED_CART_RATE and rng.random() < C.ABANDONED_CART_RATE:   # profile eval: bỏ giỏ trước chuyến này
+            back = days_ago + inclusive(rng, C.ABANDONED_DAYS_BEFORE)
+            if back <= oldest:
+                a_dest, a_verticals = (dest, verticals) if rng.random() < C.ABANDONED_SAME_DEST_RATE else plan_trip(w, rng, home)
+                b.abandoned(user, rng, a_dest, home, a_verticals, at(as_of - timedelta(days=back), rng), n_views=views())
         days_ago += inclusive(rng, C.TRIP_GAP_DAYS)
 
 
@@ -358,15 +385,11 @@ def seed_personas(w: World, b: Builder, rng: random.Random, as_of: date) -> dict
     # P1 — chuyến sắp tới: đã đặt 1 phòng Vinpearl Nha Trang (1 đêm), chưa có vé bay / vé tham quan
     using = as_of + timedelta(days=C.P1["upcoming_using_in_days"])
     nights = C.P1["upcoming_nights"]
-    lo, hi = window(as_of)
     room = None
-    last_night = using + timedelta(days=nights - 1)
     rooms = w.buy.get((C.P1["destination"], "hotel"))
     for cand in rooms.items if rooms else []:                       # thứ tự Zipf: phòng phổ biến nhất còn trống trước
-        src_from, src_to = cand.get("availableFrom"), cand.get("availableTo")
-        in_source = (not src_from or date.fromisoformat(src_from) <= using) and (not src_to or last_night <= date.fromisoformat(src_to))
         brand_ok = is_vinpearl(cand, w.by_id) if C.P1["upcoming_brand"] == "Vinpearl" else cand["attributes"].get("brand") == C.P1["upcoming_brand"]
-        if brand_ok and cand["available"] and in_source and lo <= using <= hi and open_nights(room_calendar(cand, as_of, w.by_id), as_of, using, nights):
+        if brand_ok and cand["available"] and open_nights(room_calendar(cand, as_of, w.by_id), as_of, using, nights):
             room = cand
             break
     if room is None:
@@ -424,8 +447,37 @@ def messy_edges(w: World, b: Builder, rng: random.Random, max_events: int, n_pro
 
 
 # ------------------------------------------------------------------ chính
-def generate(rows: list[dict], as_of: date, seed: int = C.DEFAULT_SEED, n_profiles: int = C.DEFAULT_USERS, zipf: float = C.ZIPF_S,
-             boost: float = C.VINPEARL_BOOST, max_events: int = C.MAX_EVENTS_PER_USER) -> dict:
+class profile_overrides:
+    """Ghi đè hằng của config.py theo `config.PROFILES[name]` trong lúc sinh (None → seed demo, không đổi gì); khôi phục khi xong."""
+
+    def __init__(self, name: str | None):
+        if name is not None and name not in C.PROFILES:
+            raise SystemExit(f"--profile {name!r}: chỉ có {', '.join(C.PROFILES)}")
+        self.values = dict(C.PROFILES[name]) if name else {}
+        self.saved: dict = {}
+
+    def __enter__(self):
+        for k, v in self.values.items():
+            self.saved[k] = getattr(C, k)
+            setattr(C, k, v)
+        return self
+
+    def __exit__(self, *exc):
+        for k, v in self.saved.items():
+            setattr(C, k, v)
+
+
+def generate(rows: list[dict], as_of: date, seed: int = C.DEFAULT_SEED, n_profiles: int | None = None, zipf: float = C.ZIPF_S,
+             boost: float = C.VINPEARL_BOOST, max_events: int | None = None, profile: str | None = None) -> dict:
+    """`profile` (vd `eval-v2`): ghi đè tham số theo `config.PROFILES`; `n_profiles` / `max_events` None → giá trị của profile / demo."""
+    with profile_overrides(profile):
+        res = _generate(rows, as_of, seed, C.DEFAULT_USERS if n_profiles is None else n_profiles, zipf, boost,
+                        C.MAX_EVENTS_PER_USER if max_events is None else max_events)
+    res["profile"] = profile
+    return res
+
+
+def _generate(rows: list[dict], as_of: date, seed: int, n_profiles: int, zipf: float, boost: float, max_events: int) -> dict:
     w = World(rows, zipf, boost)
     b = Builder(w, as_of)
     rng = random.Random(f"{seed}|seed")
@@ -566,6 +618,15 @@ def report(res: dict, as_of: date, args: dict) -> tuple[str, dict]:
         top_share = sum(c for _, c in prod.most_common(max(1, len(prod) // 10))) / len(buys)
     pers = res["persona"]
     no_group = sum(1 for e in buys if e["event_group_id"] is None)
+    # bỏ giỏ = add_to_cart không có purchase cùng khách + sản phẩm trong cửa sổ cart của chuyến (profile eval)
+    bought_after: dict[tuple[str, str], list[datetime]] = defaultdict(list)
+    for e in buys:
+        bought_after[(e["cdp_user_id"], e["product_id"])].append(parse(e["timestamp"]))
+    abandoned_carts = sum(1 for e in ev if e["event_name"] == "add_to_cart" and not any(
+        parse(e["timestamp"]) <= t <= parse(e["timestamp"]) + window_cart for t in bought_after.get((e["cdp_user_id"], e["product_id"]), ())))
+    trips_per_user = Counter(g[0]["cdp_user_id"] for g in generic_groups)
+    buyers = len(trips_per_user)
+    returning = sum(1 for n_ in trips_per_user.values() if n_ >= 2)
     lines = [f"# Kết quả seed_histories — as_of {as_of.isoformat()}, seed {args['seed']}", "",
              f"- Profile: **{n}** · event: **{len(ev)}** ({', '.join(f'{k} {v}' for k, v in names.most_common())}) · "
              f"trung bình {len(ev) / n:.1f} event/khách, nhiều nhất {max(per.values() or [0])} (giới hạn {args['max_events']})",
@@ -589,7 +650,9 @@ def report(res: dict, as_of: date, args: dict) -> tuple[str, dict]:
              f"({pers['P1_upcoming']['nights']} đêm, chưa có vé bay); "
              + " · ".join(f"{p['cdp_user_id']} {p['lifecycle_stage']} ({per.get(p['cdp_user_id'], 0)} event)" for p in pr if p["cdp_user_id"] in PERSONA_IDS),
              f"- app.users: {len(res['users'])} ({len(C.PERSONAS)} persona + {C.TEST_USERS} test) · app.bookings: {len(res['bookings'])} · "
-             f"app.booking_items: {len(res['booking_items'])}", "",
+             f"app.booking_items: {len(res['booking_items'])}",
+             f"- Profile sinh: **{res.get('profile') or 'demo'}** · khách thường có mua: {buyers}, quay lại (≥ 2 chuyến có event_group_id): "
+             f"{returning} ({100 * returning / max(1, buyers):.0f}%) · add_to_cart bỏ giỏ (không mua sau đó): {abandoned_carts}", "",
              "`app.users.password_hash` là Argon2id của mật khẩu demo chung; email / số điện thoại là dữ liệu giả. "
              "Event `search` không có câu truy vấn (cdp.events không có cột này; `app.search_logs` không seed). "
              "Insider clone (`partners`, `insider_profiles`, `identifiers`, `insider_events`, `channel_events`) sinh từ các file này ở bước sau."]
@@ -608,23 +671,26 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out-dir", type=Path, default=None)
     ap.add_argument("--as-of", type=date.fromisoformat, default=date.today())
     ap.add_argument("--seed", type=int, default=C.DEFAULT_SEED)
-    ap.add_argument("--profiles", type=int, default=C.DEFAULT_USERS)
+    ap.add_argument("--profiles", type=int, default=None, help=f"mặc định {C.DEFAULT_USERS} (demo) hoặc theo --profile")
     ap.add_argument("--zipf", type=float, default=C.ZIPF_S)
     ap.add_argument("--vinpearl-boost", type=float, default=C.VINPEARL_BOOST)
-    ap.add_argument("--max-events", type=int, default=C.MAX_EVENTS_PER_USER)
+    ap.add_argument("--max-events", type=int, default=None, help=f"mặc định {C.MAX_EVENTS_PER_USER} (demo) hoặc theo --profile")
+    ap.add_argument("--profile", choices=sorted(C.PROFILES), default=None,
+                    help="bộ đánh giá RecSys (vd eval-v2): ghi đè tham số theo config.PROFILES; nạp vào database RIÊNG, không phải demo")
     a = ap.parse_args(argv)
     out = a.out_dir or a.data_dir / "seed"
     with open(a.data_dir / "products.jsonl", encoding="utf-8") as f:
         rows = [json.loads(line) for line in f if line.strip()]
-    res = generate(rows, a.as_of, a.seed, a.profiles, a.zipf, a.vinpearl_boost, a.max_events)
+    res = generate(rows, a.as_of, a.seed, a.profiles, a.zipf, a.vinpearl_boost, a.max_events, profile=a.profile)
     out.mkdir(parents=True, exist_ok=True)
     for name, key in (("cdp_profiles", "profiles"), ("cdp_events", "events"), ("app_users", "users"), ("app_bookings", "bookings"),
                       ("app_booking_items", "booking_items")):
         write_jsonl(out / f"{name}.jsonl", res[key])
-    text, stats = report(res, a.as_of, {"seed": a.seed, "max_events": a.max_events})
+    max_events = a.max_events or (C.PROFILES.get(a.profile, {}).get("MAX_EVENTS_PER_USER") if a.profile else None) or C.MAX_EVENTS_PER_USER
+    text, stats = report(res, a.as_of, {"seed": a.seed, "max_events": max_events})
     (out / "seed_report.md").write_text(text, encoding="utf-8")
     print(text)
-    if stats["recall"] > C.RECALL_CEILING:   # không chặn pipeline: DoD #5 đo trên seed demo; seed khác có thể vượt do tập ẩn nhỏ
+    if stats["recall"] > C.RECALL_CEILING and not a.profile:   # không chặn pipeline: DoD #5 đo trên seed demo; seed khác có thể vượt do tập ẩn nhỏ
         print(f"WARNING: baseline Recall@{C.RECALL_K} = {stats['recall']:.3f} > {C.RECALL_CEILING} với --seed {a.seed}; "
               "chỉnh MULTI_FLIGHT_RATE / MULTI_TICKET_RATE / SINGLE_VERTICAL_WEIGHTS trong config.py hoặc dùng seed demo.", file=sys.stderr)
     return 0

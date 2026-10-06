@@ -1,8 +1,8 @@
 """Part 12.2 — kiểm tra cứng của pipeline, chạy rời bằng `sb sanity` (máy trạng thái cổng đầy đủ làm sau).
 
 Hỏng một kiểm tra cứng → mọi số sau đó vô nghĩa (spec 12.2):
-- `input_type_vectors_differ`: embed câu gold hai lần (`query` và `document`) bằng model của arm; trung bình `1 − cos`
-  phải > `stages.pipeline_checks.input_type_min_cos_gap` — không thì `input_type` không tới API / prefix không được ghép.
+- `input_type_vectors_differ` (asymmetric) / `input_type_vectors_match` (symmetric): embed câu gold hai lần (`query` và `document`) bằng model của arm; trung bình `1 − cos`
+  phải đúng hợp đồng model: asymmetric > `stages.pipeline_checks.input_type_min_cos_gap`, symmetric gần 0.
 - `cache_recheck`: embed lại `cache_recheck_n` text ngẫu nhiên **không qua cache**; cos với vector trong cache ≥ 0,999 —
   không thì cache trả vector cũ / sai model.
 - `collection_counts`: mọi collection dùng có `count == n_items`.
@@ -37,6 +37,17 @@ def input_type_vectors_differ(embedder: Any, texts: list[str], *, min_gap: float
     gap = float(np.mean(1.0 - np.sum(q * d, axis=1)))
     return Check("input_type_vectors_differ", gap > min_gap,
                  f"mean(1 − cos(query, document)) = {gap:.4f} trên {len(texts)} câu (cần > {min_gap})", model)
+
+
+def input_type_vectors_match(embedder: Any, texts: list[str], *, max_gap: float, model: str) -> Check:
+    """Model dùng chung encoder/query-document phải trả cùng vector cho cùng text."""
+    if not texts:
+        return Check("input_type_vectors_match", None, "không có câu", model)
+    q = np.asarray(embedder.embed(list(texts), "query"), dtype=np.float32)
+    d = np.asarray(embedder.embed(list(texts), "document"), dtype=np.float32)
+    gap = float(np.max(np.abs(q - d)))
+    return Check("input_type_vectors_match", gap <= max_gap,
+                 f"max |query − document| = {gap:.6f} trên {len(texts)} câu (cần ≤ {max_gap})", model)
 
 
 def cache_recheck(cached: Any, fresh: Any, texts: list[str], *, n: int, seed: int, model: str,
