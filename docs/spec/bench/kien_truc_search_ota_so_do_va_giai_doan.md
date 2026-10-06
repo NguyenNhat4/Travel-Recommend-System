@@ -850,7 +850,7 @@ sequenceDiagram
 
 - [x] Report trung bình và theo slice. *(cùng khối rubric v3 / v4 và split dev / test)*
 - [x] Theo dõi `Judged@10` cùng nDCG/Recall. *(+ condensed; 06/10 Judged@10 = 1,00 cho 45 arm)*
-- [x] Pool và label holes từ arm mới. *(D9a–D9e, 1.924 nhãn máy chưa duyệt)*
+- [x] Pool và label holes từ arm mới. *(D9a–D9e, 1.924 nhãn — QAnh đã duyệt, tag `gold_v5`)*
 - [~] Hard fail khi forbidden taxonomy/route/negation item xuất hiện. *(`sb guards` báo PASS/FAIL theo `metrics.guards_proposed`; ngưỡng chưa chốt, chưa chặn CI)*
 - [~] Aggregate typo/no-diacritic variants theo query family. *(cơ chế `family` / `by_family` / `family_macro_ndcg@10` có; gold chưa có cặp biến thể chắc chắn nên chưa gắn họ nào)*
 - [x] Tách query-understanding metrics khỏi ranking metrics. *(parse accuracy theo trường, so `expected_parse` 154 câu)*
@@ -874,34 +874,34 @@ sequenceDiagram
 ## 17. Trạng thái hiện thực trong V-OTA (06/10/2026)
 
 Phục vụ FR-SRC-01, FR-SRC-03, FR-SRC-04, AC-SRC-01; NFR-PERF-01. Hợp đồng chi tiết: `docs/spec/hop-dong-tich-hop-search-recommendation.md`
-§2.2, §2.4, §2.5, §7.3, §10 (contract **1.16.0**). Số đo: `src/evaluation/reports/eval-2026-10-06-search-query-plan-gold-v4.md` (gold_v4 + 1.924 nhãn máy chưa duyệt, Judged@10 = 1,00;
-mốc A = hybrid + normalize production, nDCG@10 0,707).
+§2.2, §2.4, §2.5, §7.3, §10 (contract **1.16.0**). Số đo: `src/evaluation/reports/eval-2026-10-06-search-query-plan-gold-v4.md` (`gold_v5` đã duyệt, chiếu rubric v4 lúc chấm, Judged@10 = 1,00;
+mốc A = hybrid + normalize production, nDCG@10 0,711).
 
 | Giai đoạn kiến trúc | Trạng thái | Ở đâu | Cờ (mặc định) | Bằng chứng bench (nDCG@10 Δ so A, guard) |
 |---|---|---|---|---|
-| 1 — chuẩn hoá NFC, unaccent, alias, sửa chính tả | có | `domain/search/normalize.py` | `SEARCH_NORMALIZE` (bật) | hybrid không normalize −2,9 |
+| 1 — chuẩn hoá NFC, unaccent, alias, sửa chính tả | có | `domain/search/normalize.py` | `SEARCH_NORMALIZE` (bật) | hybrid không normalize −3,0 |
 | 1 — vị trí dấu thanh (oà/òa…) | có, sau cờ | `domain/search/tone.py` | `SEARCH_TONE_NORMALIZE` (tắt) | 0,0 — gold không có câu lệch kiểu dấu |
-| 2 — điểm đến suy từ câu (F1) | có, sau cờ | `query_plan.py`, `destination.py` | `SEARCH_DEST_FILTER` (tắt) | **WIN** +3,8 |
+| 2 — điểm đến suy từ câu (F1) | có, sau cờ | `query_plan.py`, `destination.py` | `SEARCH_DEST_FILTER` (tắt) | **WIN** +3,3 |
 | 2 — câu không dấu (F2) | có, sau cờ | `use_cases.py` | `SEARCH_NO_DIACRITICS_MODE` (off) | 0 khi không cutoff |
 | 2 — phủ định tiện ích / thương hiệu / loại sản phẩm / cờ combo (F3) | có, sau cờ | `constraints.py`, `amenities.py` | `SEARCH_NEGATION_FILTER` (tắt) | +4,5; Forbidden câu phủ định → 0 |
-| 2 — loại sản phẩm suy từ câu (F4), combo đứng đầu, cue mạnh/yếu | có, sau cờ | `constraints.py` | `SEARCH_TAXONOMY_FILTER`, `SEARCH_TAXONOMY_STRONG_ONLY` (tắt) | +1,6; `taxonomy_collision` +21,8 |
+| 2 — loại sản phẩm suy từ câu (F4), combo đứng đầu, cue mạnh/yếu | có, sau cờ | `constraints.py` | `SEARCH_TAXONOMY_FILTER`, `SEARCH_TAXONOMY_STRONG_ONLY` (tắt) | +2,4; `taxonomy_collision` +21,8 |
 | 2 — tuyến bay có chiều (F5), IATA | có, sau cờ | `constraints.py`, param `origin` | `SEARCH_ROUTE_FILTER` (tắt) | chiều bay 0,11 → 1,00 |
 | 2 — giá hard / sao soft (F6) | có, sau cờ | `constraints.py` | `SEARCH_NUMERIC_FILTER` (tắt) | constraint precision 0,79 → 0,92 |
-| 2 — số khách / occupancy | có (tham số request luôn áp, suy từ câu sau cờ) | `parse_party`, `UnitIndex.mask` | `SEARCH_PARTY_FILTER` (tắt) | −0,4 (3 câu) |
+| 2 — số khách / occupancy | có (tham số request luôn áp, suy từ câu sau cờ) | `parse_party`, `UnitIndex.mask` | `SEARCH_PARTY_FILTER` (tắt) | −0,6 (3 câu) |
 | 3 — router confidence | có (chỉ khai) | `queryPlan.confidence`, `fallbackReasons` | luôn phát | — |
 | 3 — LLM fallback | **chưa** — lệch PRD | đề xuất `docs/prd/update/2026-10-06-search-llm-fallback-query-plan.md` | — | chờ chốt |
 | 4 — filter-first; F rỗng không nới (trừ điểm đến suy ra) | có | `UnitIndex.mask`, `queryPlan.emptyReason` | theo cờ từng họ | zero-result trong catalog 0 |
 | 4 — parent–child filter | có | `matchedChildren`, kiểm chung giá + số khách | theo F6 / số khách | — |
-| 5A — dense | có | Weaviate `nearVector` top-200 | — | dense-only −4,4 |
-| 5B — BM25 | có | Weaviate BM25 top-50 + luật vớt | — | lexical-only −11,8 |
-| 5C — fuzzy / alias tên (trigram trong tiến trình) | có, sau cờ | `domain/search/fuzzy.py` | `SEARCH_FUZZY_K` (0) | −0,5 (ngưỡng 0,75) |
+| 5A — dense | có | Weaviate `nearVector` top-200 | — | dense-only −4,9 |
+| 5B — BM25 | có | Weaviate BM25 top-50 + luật vớt | — | lexical-only −12,1 |
+| 5C — fuzzy / alias tên (trigram trong tiến trình) | có, sau cờ | `domain/search/fuzzy.py` | `SEARCH_FUZZY_K` (0) | −0,6 (ngưỡng 0,75) |
 | 6 — RRF, trọng số theo kênh | có | `hybrid.py` | `SEARCH_RRF_*_WEIGHT` (1,0) | lexical 0,5: +1,7 trên A, +1,2 trên F1–F6 (TIE) |
 | 6 — routing thay full hybrid | chưa | — | — | chưa có bằng chứng an toàn |
 | 7 — re-validate sau fusion | có | `queryPlan.revalidatedDrops` | luôn | — |
-| 7 — rerank | **chỉ offline** (bench) | `src/evaluation/search_bench/rerank.py` (bge-reranker-v2-m3) | — | +3,8 trên F1–F6 nhưng ~3,4 s CPU/câu, constraint precision 0,93 |
+| 7 — rerank | **chỉ offline** (bench) | `src/evaluation/search_bench/rerank.py` (bge-reranker-v2-m3) | — | +3,9 trên F1–F6 nhưng ~3,4 s CPU/câu, constraint precision 0,93 |
 | 8 — response: `appliedFilters`, `queryPlan`, kết quả yếu | có (kết quả yếu do client) | contract 1.16.0 | — | margin 0,058 (chọn trên dev, kiểm trên test) |
 | 9 — log truy vấn | có, sau cờ | writer `app.search_logs` | `SEARCH_LOG_QUERIES` (tắt) | — |
 | 9 — gold có forbidden / expected parse / guard / hole | có | `config/query_annotations.yaml`, `sb guards`, `sb gold holes` | — | 28 forbidden, 154 expected parse |
 
 Cấu hình đề xuất bật (người dùng chốt; F4 cần ý kiến Web vì đổi số đếm tab): F1 + F2 + F3 + F4 + F5 + F6, không cutoff tuyệt đối —
-arm `APP.e5s.hybrid_norm_nocut_f1f6` nDCG@10 **0,807** (+9,9, WIN), mọi guard Phase A PASS.
+arm `APP.e5s.hybrid_norm_nocut_f1f6` nDCG@10 **0,818** (+10,7, WIN), mọi guard Phase A PASS.
