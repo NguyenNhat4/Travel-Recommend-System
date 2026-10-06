@@ -70,6 +70,28 @@ def test_load_annotations_rejects(tmp_path, body, match):
         M.load_annotations(_write(tmp_path, body))
 
 
+def test_load_annotations_allowed_variants(tmp_path):
+    p = _write(tmp_path, HEADER + "  c1:\n    allowed_variants: [hotel_property, combo, hotel_property]\n  c2:\n")
+    ann = M.load_annotations(p)
+    assert ann["c1"]["allowed_variants"] == ("hotel_property", "combo") and "allowed_variants" not in ann["c2"]
+    for body in ("  c1:\n    allowed_variants: []\n", "  c1:\n    allowed_variants: [hotel]\n",
+                 "  c1:\n    allowed_variants: hotel_property\n"):
+        with pytest.raises(M.MetricsError, match="allowed_variants"):
+            M.load_annotations(_write(tmp_path, HEADER + body, "bad.yaml"))
+
+
+def test_project_rubric_v4():
+    """06/10 (b): nhãn ≥ 1 ngoài allowed_variants → 0; nhãn 0, sản phẩm lạ, câu không có allowed_variants giữ nguyên."""
+    variant_of = {"a": "hotel_property", "b": "combo", "c": "attraction", "d": "golf"}
+    g = gq("c1", judgments={"a": 2, "b": 1, "c": 0, "d": 1, "e": 2}, allowed_variants=("hotel_property", "combo"))
+    assert M.project_rubric_v4(g, variant_of) == 1
+    assert g.judgments == {"a": 2, "b": 1, "c": 0, "d": 0, "e": 2} and g.v4_projected == 1
+    g2 = gq("c2", judgments={"d": 1})
+    assert M.project_rubric_v4(g2, variant_of) == 0 and g2.judgments == {"d": 1} and g2.v4_projected == 0
+    assert M.apply_annotations([g2], {"c2": {"allowed_variants": ("golf",)}}) == {"allowed_variants": 1}
+    assert g2.allowed_variants == ("golf",) and M.project_rubric_v4(g2, variant_of) == 0
+
+
 def test_load_annotations_missing_file(tmp_path):
     with pytest.raises(M.MetricsError, match="không thấy"):
         M.load_annotations(tmp_path / "none.yaml")
@@ -179,3 +201,15 @@ def test_shipped_annotations_valid_against_canonical_gold():
 def test_default_config_points_to_annotations(cfg):
     assert cfg.metrics.annotations == "config/query_annotations.yaml" and cfg.metrics.forbidden_overrides is None
     assert (paths.PKG_DIR / cfg.metrics.annotations).exists()
+    assert cfg.metrics.rubric_v4_projection is True
+
+
+def test_shipped_allowed_variants_cover_every_active_query():
+    """06/10 (b): mọi câu active trong catalog của gold/gold.jsonl có allowed_variants (câu expected_no_result: mọi nhãn 0,
+    không cần) — thiếu thì phép chiếu bỏ sót câu đó."""
+    import json
+    ann = M.load_annotations(paths.PKG_DIR / "config" / "query_annotations.yaml")
+    gold = [json.loads(l) for l in paths.GOLD_JSONL.read_text(encoding="utf-8").splitlines() if l.strip()]
+    active = [r for r in gold if r.get("status", "active") == "active" and not r.get("expected_no_result")]
+    missing = [r["qid"] for r in active if "allowed_variants" not in ann.get(r["qid"], {})]
+    assert not missing, missing[:5]

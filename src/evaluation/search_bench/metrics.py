@@ -82,6 +82,10 @@ class GoldQuery:
     expected_parse: dict | None = None       # khoá ⊆ PARSE_FIELDS
     family: str | None = None                # họ câu: biến thể không dấu / gõ sai cùng ý định (by_family, family_macro_ndcg)
     block: str | None = None                 # "v3" | "v4": khối rubric (runner.load_env gắn — `block_of`)
+    # 06/10 (người dùng chốt phương án b): variant catalog KHÔNG vi phạm loại cốt lõi của câu (query_annotations.yaml);
+    # `project_rubric_v4` hạ nhãn ≥ 1 của sản phẩm ngoài danh sách về 0 lúc chấm — gold.jsonl không đổi.
+    allowed_variants: tuple[str, ...] | None = None
+    v4_projected: int = 0                    # số cặp bị chiếu về 0 ở câu này (per_query `v4_projected_n`)
 
     @property
     def has_forbidden(self) -> bool:
@@ -96,6 +100,9 @@ PARSE_STR_FIELDS = ("taxonomy", "destination", "origin", "destination_city")
 PARSE_LIST_FIELDS = ("must_not", "must_not_brands", "must_not_taxonomies")
 PARSE_INT_FIELDS = ("price_max", "price_min", "party_total")
 PARSE_FLOAT_FIELDS = ("star_min",)
+
+#: variant của search unit (catalog.py `search_unit_variants`) — miền giá trị của `allowed_variants`
+UNIT_VARIANTS = ("hotel_property", "attraction", "combo", "flight_route", "golf")
 
 #: khối rubric (gold-guide.md "Rubric v4"): câu có trong tag gold_v3 theo rubric v3, câu thêm từ gold_v4 theo rubric v4
 BLOCKS = ("v3", "v4")
@@ -228,7 +235,8 @@ def apply_forbidden_overrides(gold: list[GoldQuery], overrides: Mapping[str, dic
 ANNOTATIONS_VERSION = 1
 ANNOTATION_TOP_KEYS = ("version", "annotated_by", "queries")
 #: khoá của một câu trong `queries` (tên nội bộ của GoldQuery — không qua `gold_fields`)
-ANNOTATION_KEYS = ("forbidden_filter", "forbidden", "origin", "destination_city", "expected_parse", "family")
+ANNOTATION_KEYS = ("forbidden_filter", "forbidden", "origin", "destination_city", "expected_parse", "family",
+                   "allowed_variants")
 
 
 def load_annotations(path: Path) -> dict[str, dict]:
@@ -281,8 +289,30 @@ def load_annotations(path: Path) -> dict[str, dict]:
         ep = _check_expected_parse(entry.get("expected_parse"), where, "expected_parse")
         if ep is not None:
             a["expected_parse"] = ep
+        av = entry.get("allowed_variants")
+        if av is not None:
+            if not isinstance(av, list) or not av or not all(isinstance(x, str) and x in UNIT_VARIANTS for x in av):
+                raise MetricsError(f"{where}: allowed_variants phải là danh sách khác rỗng gồm {', '.join(UNIT_VARIANTS)}")
+            a["allowed_variants"] = tuple(dict.fromkeys(av))
         out[str(qid)] = a
     return out
+
+
+def project_rubric_v4(gq: GoldQuery, variant_of: Mapping[str, str]) -> int:
+    """Chiếu rubric v4 lúc chấm (gold-guide "Rubric v4", 06/10 — phương án b): nhãn ≥ 1 của sản phẩm có variant ngoài
+    `allowed_variants` của câu → 0 (sai loại cốt lõi là ràng buộc cứng). Sản phẩm không có trong `variant_of` giữ nguyên.
+    Sửa `gq.judgments` tại chỗ, ghi `gq.v4_projected`; trả số cặp đổi. Câu không có `allowed_variants` → 0."""
+    if not gq.allowed_variants:
+        gq.v4_projected = 0
+        return 0
+    n = 0
+    for pid, lab in gq.judgments.items():
+        v = variant_of.get(pid)
+        if lab >= 1 and v is not None and v not in gq.allowed_variants:
+            gq.judgments[pid] = 0
+            n += 1
+    gq.v4_projected = n
+    return n
 
 
 def apply_annotations(gold: list[GoldQuery], annotations: Mapping[str, Mapping[str, Any]], *,
@@ -306,7 +336,7 @@ def apply_annotations(gold: list[GoldQuery], annotations: Mapping[str, Mapping[s
             g.forbidden_filter = a.get("forbidden_filter")
             g.forbidden = tuple(a.get("forbidden") or ())
             n["forbidden"] += 1
-        for f in ("origin", "destination_city", "expected_parse", "family"):
+        for f in ("origin", "destination_city", "expected_parse", "family", "allowed_variants"):
             if f in a and getattr(g, f) is None:
                 setattr(g, f, a[f])
                 n[f] += 1
@@ -580,7 +610,8 @@ def evaluate_query(gq: GoldQuery, top_ids: list[str], ctx: EvalContext, *, top_s
                 "direction_ok": direction_ok(top_ids, gq.origin, gq.destination_city, ctx.items, k),
                 "filter_pass_ok": fp_ok, "filter_pass_n": fp_n,
                 "parse_ok": json.dumps(po, ensure_ascii=False) if po is not None else None})   # JSON để vào parquet
-    row.update({"block": gq.block, "family": gq.family})      # 06/10: khối rubric + họ câu (by_block / by_family)
+    row.update({"block": gq.block, "family": gq.family,       # 06/10: khối rubric + họ câu (by_block / by_family)
+                "v4_projected_n": gq.v4_projected})           # số cặp nhãn bị chiếu rubric v4 về 0 (runner.load_env)
     return row
 
 

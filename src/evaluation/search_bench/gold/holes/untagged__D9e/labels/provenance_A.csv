@@ -1,17 +1,17 @@
 ﻿qid,product_id,source,machine_label,machine_children,machine_note,model,created_at,reviewed_by,reviewed_at,review
-c0265,fe3735a0-827c-5815-9eb9-2aa1ea2e5c4a,machine,1,,"offtaxonomy #4: Hội An, chỉ ghi 'Khăn tắm'/'Bộ khăn trải giường' – chưa rõ phụ phí → 1",claude-opus-5-5,2026-10-06T02:15:00+07:00,,,
-c0307,38cd32e4-0b7a-5076-9fe8-a1feb3961e00,machine,1,,"Nha Trang; chỉ có Deluxe/Grand Deluxe 2 giường đơn, không hạng bình dân – gần đúng, không tick",claude-opus-5-5,2026-10-06T02:15:00+07:00,,,
-c0321,77016930-e4f5-528f-ba08-11f43080c31c,machine,1,,"Đúng nơi Huế, homestay khác, không phải Meliá Vinpearl Hue (như anchor)",claude-opus-5-5,2026-10-06T02:15:00+07:00,,,
-c0324,0b808a40-aded-5975-b585-d3e10d747fba,machine,1,,"Đúng nơi Hà Tĩnh, khách sạn khác, không phải Vinpearl Hà Tĩnh (như anchor)",claude-opus-5-5,2026-10-06T02:15:00+07:00,,,
-c0336,20ea22bd-f5ba-5c36-826b-eda19210d2f3,machine,1,,"Đúng nơi Hội An, biệt thự khác, không phải Vinpearl Resort & Golf Nam Hội An (như anchor)",claude-opus-5-5,2026-10-06T02:15:00+07:00,,,
-c0372,a7aa4b96-4ba1-56c9-99e0-edf1a86fbbfc,machine,1,,"Vé 3 ngày Safari+VinWonders PQ, không phải gói VIP Tour – như bản 03 ngày cùng thành phần = 1",claude-opus-5-5,2026-10-06T02:15:00+07:00,,,
-c0426,1c7f6625-36a9-5ade-9bd2-783844f67dc8,machine,1,,"Hải Phòng, nhà nghỉ b&b = KS (#6) nhưng không ghi phòng không hút thuốc (như HAPPY GUEST HOUSE = 1)",claude-opus-5-5,2026-10-06T02:15:00+07:00,,,
-c0433,1d0bc813-db90-54c3-8f59-53a8e71d00ff,machine,2,,"Pleiku, homestay = KS (#6), có ghi «Máy điều hòa»",claude-opus-5-5,2026-10-06T02:15:00+07:00,,,
-c0439,bfc1d7fa-5a0b-5b49-aa07-78ad02fe5ac9,machine,2,,"Resort 5 sao Nha Trang = KDL (#6), có ghi CLB trẻ em/khu vui chơi trẻ em, hợp gia đình",claude-opus-5-5,2026-10-06T02:15:00+07:00,,,
-c0439,ad1f858b-c504-547f-bf48-5583ffaf692e,machine,1,,"Đúng nơi Nha Trang nhưng là khách sạn (Sunrise), không phải KDL/resort (#6)",claude-opus-5-5,2026-10-06T02:15:00+07:00,,,
-c0446,1dea8cd4-2ec9-5ac7-8d92-37fdb22baa4b,machine,1,,Passport Nha Trang (Hòn Tằm + Harbour + Tata Show) không có vé VinWonders – như Passport nửa ngày = 1,claude-opus-5-5,2026-10-06T02:15:00+07:00,,,
-c0451,3931606d-432c-5ef8-972a-01feaaf3c013,machine,2,,"Căn hộ Nha Trang (KS = mọi hotel_property), có ghi «Ban công»",claude-opus-5-5,2026-10-06T02:15:00+07:00,,,
-c0466,71553071-b8ba-57be-a3de-1231f24e4217,machine,2,,"Nhà nghỉ dưỡng Đà Lạt (KS #6), có ghi «Bếp riêng»",claude-opus-5-5,2026-10-06T02:15:00+07:00,,,
-c0472,b6533809-4dcd-518c-bd37-b8959caa5637,machine,1,,"Workshop Junior Zoo Keeper tại Safari PQ, không phải vé vào cửa – như anchor Workshop Nhí = 1",claude-opus-5-5,2026-10-06T02:15:00+07:00,,,
-c0676,5ab80654-c7ee-5eda-8119-198c5854d349,machine,2,,"TP.HCM, có ghi xe đưa đón sân bay, không ghi hồ bơi",claude-opus-5-5,2026-10-06T02:15:00+07:00,,,
-c0676,444b49aa-67f5-5507-92db-730a2bdace1c,machine,2,,"TP.HCM, có ghi xe đưa đón sân bay, không ghi hồ bơi",claude-opus-5-5,2026-10-06T02:15:00+07:00,,,
+c0265,fe3735a0-827c-5815-9eb9-2aa1ea2e5c4a,machine,1,,"offtaxonomy #4: Hội An, chỉ ghi 'Khăn tắm'/'Bộ khăn trải giường' – chưa rõ phụ phí → 1",claude-opus-5-5,2026-10-06T02:15:00+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0307,38cd32e4-0b7a-5076-9fe8-a1feb3961e00,machine,1,,"Nha Trang; chỉ có Deluxe/Grand Deluxe 2 giường đơn, không hạng bình dân – gần đúng, không tick",claude-opus-5-5,2026-10-06T02:15:00+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0321,77016930-e4f5-528f-ba08-11f43080c31c,machine,1,,"Đúng nơi Huế, homestay khác, không phải Meliá Vinpearl Hue (như anchor)",claude-opus-5-5,2026-10-06T02:15:00+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0324,0b808a40-aded-5975-b585-d3e10d747fba,machine,1,,"Đúng nơi Hà Tĩnh, khách sạn khác, không phải Vinpearl Hà Tĩnh (như anchor)",claude-opus-5-5,2026-10-06T02:15:00+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0336,20ea22bd-f5ba-5c36-826b-eda19210d2f3,machine,1,,"Đúng nơi Hội An, biệt thự khác, không phải Vinpearl Resort & Golf Nam Hội An (như anchor)",claude-opus-5-5,2026-10-06T02:15:00+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0372,a7aa4b96-4ba1-56c9-99e0-edf1a86fbbfc,machine,1,,"Vé 3 ngày Safari+VinWonders PQ, không phải gói VIP Tour – như bản 03 ngày cùng thành phần = 1",claude-opus-5-5,2026-10-06T02:15:00+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0426,1c7f6625-36a9-5ade-9bd2-783844f67dc8,machine,1,,"Hải Phòng, nhà nghỉ b&b = KS (#6) nhưng không ghi phòng không hút thuốc (như HAPPY GUEST HOUSE = 1)",claude-opus-5-5,2026-10-06T02:15:00+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0433,1d0bc813-db90-54c3-8f59-53a8e71d00ff,machine,2,,"Pleiku, homestay = KS (#6), có ghi «Máy điều hòa»",claude-opus-5-5,2026-10-06T02:15:00+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0439,bfc1d7fa-5a0b-5b49-aa07-78ad02fe5ac9,machine,2,,"Resort 5 sao Nha Trang = KDL (#6), có ghi CLB trẻ em/khu vui chơi trẻ em, hợp gia đình",claude-opus-5-5,2026-10-06T02:15:00+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0439,ad1f858b-c504-547f-bf48-5583ffaf692e,machine,1,,"Đúng nơi Nha Trang nhưng là khách sạn (Sunrise), không phải KDL/resort (#6)",claude-opus-5-5,2026-10-06T02:15:00+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0446,1dea8cd4-2ec9-5ac7-8d92-37fdb22baa4b,machine,1,,Passport Nha Trang (Hòn Tằm + Harbour + Tata Show) không có vé VinWonders – như Passport nửa ngày = 1,claude-opus-5-5,2026-10-06T02:15:00+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0451,3931606d-432c-5ef8-972a-01feaaf3c013,machine,2,,"Căn hộ Nha Trang (KS = mọi hotel_property), có ghi «Ban công»",claude-opus-5-5,2026-10-06T02:15:00+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0466,71553071-b8ba-57be-a3de-1231f24e4217,machine,2,,"Nhà nghỉ dưỡng Đà Lạt (KS #6), có ghi «Bếp riêng»",claude-opus-5-5,2026-10-06T02:15:00+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0472,b6533809-4dcd-518c-bd37-b8959caa5637,machine,1,,"Workshop Junior Zoo Keeper tại Safari PQ, không phải vé vào cửa – như anchor Workshop Nhí = 1",claude-opus-5-5,2026-10-06T02:15:00+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0676,5ab80654-c7ee-5eda-8119-198c5854d349,machine,2,,"TP.HCM, có ghi xe đưa đón sân bay, không ghi hồ bơi",claude-opus-5-5,2026-10-06T02:15:00+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0676,444b49aa-67f5-5507-92db-730a2bdace1c,machine,2,,"TP.HCM, có ghi xe đưa đón sân bay, không ghi hồ bơi",claude-opus-5-5,2026-10-06T02:15:00+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted

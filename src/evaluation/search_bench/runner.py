@@ -75,6 +75,7 @@ class RunEnv:
     gold: list[M.GoldQuery]
     ctx: M.EvalContext
     n_items: int
+    projection: dict[str, Any] = field(default_factory=lambda: {"enabled": False})   # chiếu rubric v4 (metrics.rubric_v4_projection)
 
     @property
     def k(self) -> int:
@@ -216,10 +217,18 @@ def load_env(cfg: SBenchConfig, dataset: str, gold_path: Path, *, run_id: str, a
     if not gold:
         raise RunnerError(f"{gold_path}: không có câu active nào")
     annotate_gold(gold, cfg, gold_path)
+    projection: dict[str, Any] = {"enabled": bool(cfg.metrics.rubric_v4_projection)}
+    if cfg.metrics.rubric_v4_projection:                      # 06/10 (b): nhãn ≥ 1 sai loại cốt lõi → 0 lúc chấm, gold không đổi
+        variant_of = items["variant"].to_dict()
+        per_q = {g.qid: M.project_rubric_v4(g, variant_of) for g in gold}
+        projection.update(pairs=sum(per_q.values()), queries=sum(1 for v in per_q.values() if v),
+                          annotated_queries=sum(1 for g in gold if g.allowed_variants))
+        log.info("chiếu rubric v4", pairs=projection["pairs"], queries=projection["queries"],
+                 annotated=projection["annotated_queries"], gold=len(gold))
     return RunEnv(cfg=cfg, dataset=dataset, run_id=run_id, gold_path=gold_path,
                   gold_version=gold_version_for(gold_path, allow_untagged=allow_untagged),
                   gold_sha256=file_sha256(gold_path), gold=gold, ctx=M.EvalContext(cfg.metrics, items, key_to_id),
-                  n_items=len(items))
+                  n_items=len(items), projection=projection)
 
 
 # ------------------------------------------------------------------ truy xuất
@@ -341,6 +350,7 @@ def build_results(env: RunEnv, arm: Arm, agg: dict, rows: list[dict], *, collect
                   vs_parent: dict | None) -> dict:
     return {"arm": arm.id, "stage": arm.stage, "parent": arm.parent, "run_id": env.run_id,
             "gold_version": env.gold_version, "gold_sha256": env.gold_sha256, "gold_path": paths_rel(env.gold_path),
+            "rubric_v4_projection": env.projection,
             "resolved_config_hash": config_hash(arm), "stale": False, "model": arm.model, "text_variant": arm.text_variant,
             "collection": collection, "dataset": env.dataset, "n_items": env.n_items, "k": env.k,
             "created_at": datetime.now().astimezone().replace(microsecond=0).isoformat(),
@@ -543,6 +553,7 @@ def rescore_arm(env: RunEnv, run_id: str, arm_id: str) -> tuple[dict, list[dict]
     agg = M.aggregate(rows, env.cfg.metrics, hub_score_max=old["overall"].get("hub_score_max"))
     condensed = M.aggregate_condensed(rows, env.cfg.metrics)
     results = {**old, "gold_version": env.gold_version, "gold_sha256": env.gold_sha256, "gold_path": paths_rel(env.gold_path),
+            "rubric_v4_projection": env.projection,
                "rescored_from": old.get("gold_version"), "rescored_at": datetime.now().astimezone().replace(microsecond=0).isoformat(),
                "overall": agg["overall"], "by_slice": agg["by_slice"], "by_block": agg["by_block"], "by_family": agg["by_family"],
                "n_queries": agg["n_queries"], "n_defined": agg["n_defined"], "condensed": condensed,

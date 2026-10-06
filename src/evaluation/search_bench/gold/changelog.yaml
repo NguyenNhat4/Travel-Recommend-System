@@ -103,7 +103,7 @@
   - E2.e5
   - APP.hybrid_norm
 - version: gold_v5
-  at: '2026-10-06T00:28:42+07:00'
+  at: '2026-10-06T10:53:51+07:00'
   action: holes_import
   n_queries_active: 154
   n_queries_retired: 1
@@ -113,8 +113,8 @@
     human: 0
     auto_ooc: 56
     queries: 128
-    machine: 0
-    machine_unreviewed: 829
+    machine: 829
+    machine_unreviewed: 0
   holes_dir: gold_v4__D9a
   run_id: 2026-10-06-gold-v4-r1
   arms:
@@ -140,7 +140,7 @@
   - APP.e5s.hybrid_norm_nocut_route
   - APP.e5s.hybrid_norm_nocut_tax
 - version: gold_v5
-  at: '2026-10-06T01:46:46+07:00'
+  at: '2026-10-06T10:53:53+07:00'
   action: holes_import
   n_queries_active: 154
   n_queries_retired: 1
@@ -150,8 +150,8 @@
     human: 0
     auto_ooc: 60
     queries: 147
-    machine: 0
-    machine_unreviewed: 871
+    machine: 871
+    machine_unreviewed: 0
   holes_dir: untagged__D9b
   run_id: 2026-10-06-gold-v4-r2
   arms:
@@ -198,7 +198,7 @@
   - APP.e5s.hybrid_norm_nocut_all_rr
   - APP.e5s.hybrid_norm_nocut_rr
 - version: gold_v5
-  at: '2026-10-06T01:55:01+07:00'
+  at: '2026-10-06T10:53:54+07:00'
   action: holes_import
   n_queries_active: 154
   n_queries_retired: 1
@@ -208,8 +208,8 @@
     human: 0
     auto_ooc: 9
     queries: 40
-    machine: 0
-    machine_unreviewed: 69
+    machine: 69
+    machine_unreviewed: 0
   holes_dir: untagged__D9c
   run_id: 2026-10-06-gold-v4-r2
   arms:
@@ -256,7 +256,7 @@
   - APP.e5s.hybrid_norm_nocut_all_rr
   - APP.e5s.hybrid_norm_nocut_rr
 - version: gold_v5
-  at: '2026-10-06T02:08:23+07:00'
+  at: '2026-10-06T10:53:56+07:00'
   action: holes_import
   n_queries_active: 154
   n_queries_retired: 1
@@ -266,8 +266,8 @@
     human: 0
     auto_ooc: 0
     queries: 5
-    machine: 0
-    machine_unreviewed: 14
+    machine: 14
+    machine_unreviewed: 0
   holes_dir: untagged__D9d
   run_id: 2026-10-06-gold-v4-r2
   arms:
@@ -314,7 +314,7 @@
   - APP.e5s.hybrid_norm_nocut_all_rr
   - APP.e5s.hybrid_norm_nocut_rr
 - version: gold_v5
-  at: '2026-10-06T02:15:01+07:00'
+  at: '2026-10-06T10:53:57+07:00'
   action: holes_import
   n_queries_active: 154
   n_queries_retired: 1
@@ -324,8 +324,8 @@
     human: 0
     auto_ooc: 0
     queries: 14
-    machine: 0
-    machine_unreviewed: 16
+    machine: 16
+    machine_unreviewed: 0
   holes_dir: untagged__D9e
   run_id: 2026-10-06-gold-v4-r2
   arms:

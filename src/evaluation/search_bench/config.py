@@ -189,6 +189,9 @@ class MetricsConfig(_M):
     # thắng phần forbidden_filter; gold có trường nào thì gold thắng trường đó.
     forbidden_overrides: Optional[str] = None
     annotations: Optional[str] = "config/query_annotations.yaml"
+    # 06/10 (người dùng chốt phương án b, gold-guide "Rubric v4"): lúc chấm, nhãn ≥ 1 của sản phẩm có variant ngoài
+    # `allowed_variants` của câu (annotations) tính là 0 — áp cả nhãn cũ v1–v3 mà không sửa gold.jsonl.
+    rubric_v4_projection: bool = True
     guards_proposed: Optional[GuardsProposed] = None
     weak_results: Optional[WeakResultsConfig] = None
 

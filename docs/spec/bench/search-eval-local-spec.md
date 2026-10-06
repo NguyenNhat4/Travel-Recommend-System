@@ -525,6 +525,8 @@ Arm E5.doc / E5.qry retrieve: dense `content` top-50 ∪ `query_vec` top-50 củ
 
 ## Part 8 — Arm runner, metric, so cặp
 
+**Chiếu rubric v4 lúc chấm (06/10, người dùng chốt phương án b).** `runner.load_env` sau khi gắn chú giải: với câu có `allowed_variants` (query_annotations.yaml — variant catalog không vi phạm loại cốt lõi, kể cả phương án thay thế rubric cho 1 như combo cho câu hỏi vé / vé máy bay), nhãn ≥ 1 của sản phẩm có `variant` ngoài danh sách tính là 0 (`metrics.project_rubric_v4`); gold.jsonl không đổi, nên 161 nhãn 1 cũ "đúng nơi sai loại" của câu v3 không còn được gain. Tắt bằng `metrics.rubric_v4_projection: false`. results.json ghi `rubric_v4_projection {enabled, pairs, queries, annotated_queries}`, per_query ghi `v4_projected_n`. Số chạy trước 06/10 (chưa chiếu) không so trực tiếp với số sau — rescore.
+
 **Arm YAML** (`arms/<id>.yaml`):
 
 ```yaml

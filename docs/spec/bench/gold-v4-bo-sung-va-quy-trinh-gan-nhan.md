@@ -2,7 +2,7 @@
 
 - Phục vụ: **FR-SRC-01**, **FR-SRC-03**, **FR-SRC-04**, **AC-SRC-01** (`docs/prd/requirements.md`) và test-plan §2.5 (`docs/prd/test-plan.md`).
 - Trạng thái (05/10, người dùng chốt — `docs/plan/2026-10-05-gold-v4a-mo-rong.md` §12):
-  - **Rubric §4 áp dụng** cho câu thêm từ `gold_v4` (D1). Bản thi hành: `docs/spec/bench/gold-guide.md` mục "Rubric v4" (kèm quy ước #8–#14 và chính sách từng câu). Câu `gold_v1`–`gold_v3` giữ rubric cũ (gold chỉ được thêm).
+  - **Rubric §4 áp dụng cho mọi nhãn gán từ `gold_v4` trở đi** — câu mới và hole của câu cũ (D1; mở rộng 06/10 sau khi người dùng soát hole D9a). Bản thi hành: `docs/spec/bench/gold-guide.md` mục "Rubric v4" (kèm quy ước #8–#14 và chính sách từng câu). Nhãn đã có trong `gold_v1`–`gold_v3` giữ nguyên (gold chỉ được thêm).
   - Slice mới: chỉ `taxonomy_collision`, `flight_direction` (§14). Các slice khác của §5 gộp vào slice v3 có sẵn hoặc để sau.
   - Guard và luật WIN ở §7, ngưỡng ở §7 / §9: **chỉ báo cáo**, WIN vẫn tính trên câu `gold_v3` (D7). Chưa cài trong đợt này.
   - Một người gán (QAnh) và cho phép nhãn máy cả 1 / 2, người duyệt (D5, D6) — lệch có chủ đích so với §8.6, §9.1, §10, §13 #3–#4.
