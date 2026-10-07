@@ -483,7 +483,7 @@ Thay điều 1–2 và 8 của `hop-dong-tich-hop-frontend.md` §7:
 
 ## 5. Bề mặt Backend (FastAPI)
 
-**Nhóm v1 cũ giữ nguyên, không sửa một dòng nào.** `POST /auth/register`, `POST /auth/login`, `GET /auth/me` tiếp tục trả `AuthResponse` có `accessToken` cho client nội bộ, Agent, CLI và contract test. Đây là điều kiện để không phải lên v2 (`AGENTS.md` §3).
+**Nhóm v1 cũ giữ nguyên, không sửa một dòng nào.** (Từ contract 1.16.0: `AuthUser` thêm trường `phone` — chỉ thêm, nullable — và có thêm `PATCH /auth/me` sửa họ tên, số điện thoại; BFF ghi họ tên, số điện thoại mới vào phiên sau khi Backend trả 200.) `POST /auth/register`, `POST /auth/login`, `GET /auth/me` tiếp tục trả `AuthResponse` có `accessToken` cho client nội bộ, Agent, CLI và contract test. Đây là điều kiện để không phải lên v2 (`AGENTS.md` §3).
 
 Nhóm mới, **chỉ BFF gọi**, bắt buộc `X-Service-Token`:
 

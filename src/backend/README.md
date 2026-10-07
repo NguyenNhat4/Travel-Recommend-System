@@ -24,10 +24,10 @@ Endpoint hiện có (prefix `/api/v1`): `GET /search/suggestions` (`q`, `limit` 
 (JWT tùy chọn, `cdp_user_id` lấy từ token; token hỏng → 401, không hạ thành khách) · `GET /destinations` ·
 `POST /assistant/itineraries` · `POST /assistant/itineraries/stream` · `GET /assistant/status` ·
 `GET /assistant/conversations` · `GET /assistant/conversations/{conversationId}` (JWT bắt buộc) ·
-auth v1 `POST /auth/register|login`, `GET /auth/me` · chỉ BFF (`X-Service-Token`)
+auth v1 `POST /auth/register|login`, `GET|PATCH /auth/me` (PATCH sửa họ tên và số điện thoại, FR-USR-04) · chỉ BFF (`X-Service-Token`)
 `POST /auth/session`, `/auth/session/token`, `/auth/session/revoke` · `PUT /auth/password` ·
 `GET /internal/recommendations?cdp_user_id=` (`X-Service-Token`, tắt ở production) · booking (JWT bắt buộc)
-`GET /cart`, `POST /cart/items`, `PATCH|DELETE /cart/items/{cartItemId}`, `POST /bookings`,
+`GET /cart`, `POST /cart/items`, `PATCH|DELETE /cart/items/{cartItemId}`, `GET /bookings` (danh sách đơn: `tab`, `taxonomy`, `days`, `page`, `pageSize`; FR-BKG-14), `POST /bookings`,
 `GET /bookings/{referenceCode}`, `POST /bookings/{referenceCode}/cancel` · Stripe gọi thẳng (chữ ký, không JWT)
 `POST /payments/stripe/webhook`. Ngoài prefix: `GET /health`,
 `GET /.well-known/jwks.json`, `GET /metrics` (Prometheus), `GET /internal/calls` (lần gọi web / agent gần nhất cho monitor;
@@ -63,7 +63,7 @@ GUEST_BOOKING_TTL_DAYS=3           # giỏ và đơn nháp của khách chưa đ
 BOOKING_REDIS_URL=redis://:devpass@localhost:6379/3   # trống: lưu trong bộ nhớ (chỉ dev/test); production bắt buộc
 ```
 
-Khách sạn và vé máy bay đặt trực tiếp (FR-BKG-01, `docs/spec/booking/dat-truc-tiep-theo-don-nhap.md`): giỏ chỉ nhận `attraction`, `golf`, `combo` (`POST /cart/items` với `hotel`/`flight` trả `422 DIRECT_BOOKING_ONLY`); "Đặt ngay" tạo đơn nháp 30 phút qua `/booking-drafts`, và `POST /bookings` nhận `draftId` để thanh toán đúng đơn nháp đó. Khách chưa đăng nhập dùng giỏ và đơn nháp qua BFF (`X-Service-Token` + `X-Guest-Id`), dữ liệu nằm ở Redis và được gộp vào tài khoản bằng `POST /guest-bookings/merge`. Code: `domain/booking/draft.py`, `application/booking/{drafts,guest_merge,owner}.py`, `infrastructure/persistence/guest_booking_store.py`. Migration `0007` cần chạy trước khi khởi động Backend mới (hai bảng `app.booking_drafts`, `app.booking_draft_items`; xoá mục khách sạn, vé máy bay còn sót trong giỏ).
+Khách sạn và vé máy bay đặt trực tiếp (FR-BKG-01, `docs/spec/booking/dat-truc-tiep-theo-don-nhap.md`): giỏ chỉ nhận `attraction`, `golf`, `combo` (`POST /cart/items` với `hotel`/`flight` trả `422 DIRECT_BOOKING_ONLY`); "Đặt ngay" tạo đơn nháp 30 phút qua `/booking-drafts`, và `POST /bookings` nhận `draftId` để thanh toán đúng đơn nháp đó. Khách chưa đăng nhập dùng giỏ và đơn nháp qua BFF (`X-Service-Token` + `X-Guest-Id`), dữ liệu nằm ở Redis và được gộp vào tài khoản bằng `POST /guest-bookings/merge`. Code: `domain/booking/draft.py`, `application/booking/{drafts,guest_merge,owner}.py`, `infrastructure/persistence/guest_booking_store.py`. Migration `0007` cần chạy trước khi khởi động Backend mới (hai bảng `app.booking_drafts`, `app.booking_draft_items`; xoá mục khách sạn, vé máy bay còn sót trong giỏ). Migration `0008` (cột `app.users.phone` cho hồ sơ, FR-USR-04) cũng cần chạy trước khi khởi động Backend mới: `make db-migrate`.
 
 Nhận webhook ở local bằng Stripe CLI (cài một lần, `stripe login`):
 

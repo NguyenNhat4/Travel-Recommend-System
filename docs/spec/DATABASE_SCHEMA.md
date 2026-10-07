@@ -145,6 +145,7 @@ erDiagram
         text email UK
         text password_hash "Argon2id (PHC); bcrypt seed được rehash khi đăng nhập"
         text display_name
+        text phone "NULL hoặc 10 chữ số bắt đầu bằng 0 (FR-USR-04)"
         text cdp_user_id UK,FK "→ cdp.profiles"
         text persona "P1_frequent · P2_first_time · P3_dormant · P4_no_history"
         timestamptz created_at
@@ -712,11 +713,13 @@ CREATE TABLE app.users (
     password_hash  text NOT NULL,                                     -- Argon2id, chuỗi PHC tự mô tả thuật toán (auth §8.1).
                                                                       -- bcrypt của user seed vẫn kiểm được và được rehash ngay khi đăng nhập (auth §8.2).
     display_name   text NOT NULL,
+    phone          text,                                              -- số điện thoại hồ sơ (FR-USR-04); chỉ ở app.users, không gửi CDP/Insider/Stripe
     cdp_user_id    text NOT NULL UNIQUE REFERENCES cdp.profiles (cdp_user_id),
     persona        text CHECK (persona IN ('P1_frequent','P2_first_time','P3_dormant','P4_no_history')),  -- tài khoản seed cho demo
     created_at     timestamptz NOT NULL DEFAULT now(),
     email_verified_at timestamptz,                                    -- NULL = chưa xác minh; chặn checkout, không chặn đăng nhập (auth §11.1)
-    last_login_at  timestamptz
+    last_login_at  timestamptz,
+    CONSTRAINT users_phone_format CHECK (phone IS NULL OR phone ~ '^0[0-9]{9}$')
 );
 
 -- app.carts / app.cart_items — giỏ phía server, một giỏ đang mở / user (UX spec D6). Chỉ chứa attraction, golf, combo (FR-BKG-01).

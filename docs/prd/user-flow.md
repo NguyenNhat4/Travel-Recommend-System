@@ -38,8 +38,9 @@ Hệ thống được tối ưu hóa cho 4 luồng trải nghiệm chính tươn
 | `/search` | **Kết quả tìm kiếm** | Hiển thị kết quả tìm kiếm ngữ nghĩa và bộ lọc đa chiều | Query Header, ô tìm kiếm có gợi ý tức thì, Tab nhóm (Tất cả · Lưu trú · Tour và trải nghiệm · Tiện ích khác), Hàng cuộn ngang theo nhóm (tab Tất cả), Filter Sidebar (chỉ Lưu trú), Sort popup (mọi tab trừ Tất cả), Product Row Cards, Xem thêm |
 | `/products/:id` | **Chi tiết sản phẩm** | Thông tin đầy đủ về phòng, vé, tour; trạng thái khả dụng | Image Gallery, Attribute Badges, Availability Calendar, Pricing, Book-now CTA; Add-to-Cart CTA (chỉ tour, trải nghiệm, tiện ích khác) |
 | `/checkout` (từ giỏ), `/checkout?draft=<mã đơn nháp>` (từ Đặt ngay) | **Thanh toán / Đặt chỗ** | Ba bước: khai đoàn khách và người liên hệ; chọn ai dùng từng dịch vụ (khách sạn xếp phòng); xem lại, chọn phương thức, bấm Thanh toán để chuyển sang trang Stripe | Stepper, Party Counter, Traveler Forms, Service Allocation Cards, Order Summary (sticky; bottom bar trên mobile), Payment Method Selector, Pay CTA |
-| `/booking/:referenceCode` | **Xác nhận đơn hàng** | Hiển thị đơn theo trạng thái: đang giữ chỗ (đồng hồ đếm ngược, tiếp tục thanh toán), đã xác nhận (mã đặt chỗ, gợi ý chặng tiếp), thanh toán thất bại, hết hạn, đã huỷ; huỷ đơn | Booking Status Card, Next Best Action Recommendations (Flight, Tours) |
-| `/profile` | **Hồ sơ & Lịch sử** | Quản lý thông tin cá nhân, lịch sử đơn hàng và chuyến đi | User Preferences, Booking History, Saved Items |
+| `/booking/:referenceCode` | **Xác nhận đơn hàng / Chi tiết đơn hàng** | Hiển thị đơn theo trạng thái: đang giữ chỗ (đồng hồ đếm ngược, tiếp tục thanh toán), đã xác nhận (mã đặt chỗ, gợi ý chặng tiếp), thanh toán thất bại, hết hạn, đã huỷ; huỷ đơn; xem lại đầy đủ đơn ở mọi trạng thái (FR-BKG-15) | Booking Status Card, Booking Detail Blocks, Cancellation Policy, Payment Panel, Next Best Action Recommendations (Flight, Tours) |
+| `/profile` | **Hồ sơ cá nhân** | Xem và sửa họ tên, số điện thoại; xem email; đổi mật khẩu (FR-USR-04) | Account Shell (menu trái, tab trên điện thoại), Profile Form, Password Form |
+| `/profile/booking_history` | **Lịch sử đặt chỗ** | Xem lại đơn theo ba tab Sắp đến, Hoàn thành, Đã huỷ; lọc theo dịch vụ và ngày đặt; phân trang (FR-BKG-14) | Account Shell, Tab trạng thái, Service Chips, Date Filter, Booking Cards, Pagination, Empty State |
 
 ---
 
@@ -333,4 +334,42 @@ Mục "Chỗ ngồi" và màn hình sơ đồ ghế của vé máy bay (FR-BKG-1
 |  12    [T][T][T]   [T][T][T]        Phí chọn ghế: 150.000 đ        [ XÁC NHẬN ]  |
 |  Tình trạng ghế là mô phỏng; hãng có thể xếp ghế khác.                          |
 +-------------------------------------------------------------------------------+
+```
+
+### 4.5. Hồ sơ cá nhân (`/profile`), Lịch sử đặt chỗ (`/profile/booking_history`) và Chi Tiết Đơn (`/booking/:referenceCode`)
+
+Giao diện chốt ngày 2026-10-07 trên bản mẫu https://claude.ai/artifact/J5umeEEBdAnLcYsaKgBL8B (FR-USR-04, FR-BKG-14) và https://claude.ai/artifact/ATHDHksuHw5ddMFS5ADqX9 (FR-BKG-15). Hồ sơ và lịch sử dùng chung khung tài khoản: menu trái (thẻ người dùng, "Hồ sơ cá nhân", "Lịch sử đặt chỗ") trên máy tính, hai tab ngang trên điện thoại. Hồ sơ: thẻ "Thông tin cá nhân" (họ tên, email chỉ xem, số điện thoại, nút Lưu thay đổi và Huỷ thay đổi) và thẻ "Mật khẩu". Đường dẫn "Đơn hàng của tôi" ở trang chi tiết đơn dẫn về `/profile/booking_history`.
+```
++-------------------------------------------------------------------------------+
+| Đơn hàng của tôi                                  Ngày đặt [ Tất cả        v ] |
+| +---------------------------------------------------------------------------+ |
+| |   Sắp đến          |        Hoàn thành        |          Đã huỷ           | |
+| |  [Tất cả][Khách sạn][Vé máy bay][Vé tham quan][Combo][Sân Golf]  (cuộn ngang) |
+| |                                                                           | |
+| |  +---------------------------------------------------------------------+  | |
+| |  | VOTA-20261006-4K7Q  Đặt lúc 06/10/2026 09:12      (o) Chờ thanh toán |  | |
+| |  | [icon] Hà Nội -> Đà Nẵng · VN 123           12/10 · 2 người   2.480.000 d | |
+| |  | Đang giữ chỗ cho bạn, còn 14:32                                      |  | |
+| |  | Tổng thanh toán 2.480.000 d          [Huỷ giữ chỗ] [Thanh toán ngay] |  | |
+| |  +---------------------------------------------------------------------+  | |
+| |  ... (5 đơn mỗi trang)                                                    | |
+| |  Hiển thị 1-5 trong 12 đơn              [<] [1] 2 3 [>]                   | |
+| +---------------------------------------------------------------------------+ |
++-------------------------------------------------------------------------------+
+Trống: hình minh hoạ + "Bạn chưa có chuyến đi nào." + [Tìm khách sạn].
+Lỗi: "Chưa tải được đơn hàng của bạn." + [Thử lại] + mã yêu cầu.
+
+Chi tiết đơn (hai cột trên máy tính, một cột trên điện thoại):
++--------------------------------------------------+----------------------------+
+| Đơn hàng của tôi / Chi tiết đơn hàng             | Thông tin thanh toán       |
+| [Dòng trạng thái và lý do]                       |  Mã đơn VOTA-...  [Sao chép]|
+| Thông tin đặt chỗ (mỗi dịch vụ một khối)         |  Từng dòng giá             |
+|   Nhận phòng ----- 1 đêm · 2 khách ----- Trả phòng|  Tổng thanh toán           |
+|   Tên, hạng sao, địa chỉ, [Bản đồ]               |  Trạng thái, phương thức   |
+|   Phòng đã chọn, tiện ích, ảnh                   |  [Nút hành động]           |
+| Thông tin khách hàng                             |                            |
+| Thông tin khách lưu trú / hành khách             |                            |
+| Thông tin dịch vụ (địa chỉ, hỗ trợ, chính sách)  |                            |
+| Chính sách hoàn huỷ (hai mốc theo FR-BKG-07)     |                            |
++--------------------------------------------------+----------------------------+
 ```

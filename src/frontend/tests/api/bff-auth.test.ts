@@ -5,7 +5,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { GET as proxyGet, POST as proxyPost, PUT as proxyPut } from '../../src/app/api/[...path]/route';
+import { GET as proxyGet, PATCH as proxyPatch, POST as proxyPost, PUT as proxyPut } from '../../src/app/api/[...path]/route';
 import { GET as getSession } from '../../src/app/api/auth/session/route';
 import { POST as login } from '../../src/app/api/auth/login/route';
 import { POST as logout } from '../../src/app/api/auth/logout/route';
@@ -335,6 +335,56 @@ describe('catch-all proxy', () => {
     expect(await store.get(jar.vota_sid)).toMatchObject({ state: 'authenticated' });
     expect(await store.get(current.sid)).toBeNull();
     expect(await store.get(other.sid)).toBeNull();
+  });
+});
+
+describe('sửa hồ sơ qua proxy (FR-USR-04)', () => {
+  it('Backend trả 200 thì phiên giữ họ tên và số điện thoại mới, response trả nguyên cho client', async () => {
+    const current = await authenticated();
+    const updated = { ...USER, fullName: 'Tên Mới', phone: '0345484496' };
+    vi.stubGlobal('fetch', vi.fn(async () => json(updated)));
+    const response = await proxyPatch(browser('/api/v1/auth/me', {
+      method: 'PATCH', sid: current.sid, csrf: current.csrf, body: { fullName: 'Tên Mới', phone: '0345484496' },
+    }), ctx('v1/auth/me'));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(updated);
+    const record = await store.get(current.sid);
+    expect(record?.user).toMatchObject({ userId: 'u-1', email: USER.email, fullName: 'Tên Mới', phone: '0345484496' });
+    // Tải lại trang: GET /api/auth/session đọc từ phiên, không hiện tên cũ.
+    const session = await getSession(browser('/api/auth/session', { sid: current.sid, csrf: current.csrf }));
+    expect((await session.json()).user).toMatchObject({ fullName: 'Tên Mới', phone: '0345484496' });
+  });
+
+  it('xoá số điện thoại (null) cũng được ghi vào phiên', async () => {
+    const current = await authenticated();
+    vi.stubGlobal('fetch', vi.fn(async () => json({ ...USER, phone: '0345484496' })));
+    await proxyPatch(browser('/api/v1/auth/me', { method: 'PATCH', sid: current.sid, csrf: current.csrf, body: { phone: '0345484496' } }), ctx('v1/auth/me'));
+    vi.stubGlobal('fetch', vi.fn(async () => json({ ...USER, phone: null })));
+    await proxyPatch(browser('/api/v1/auth/me', { method: 'PATCH', sid: current.sid, csrf: current.csrf, body: { phone: null } }), ctx('v1/auth/me'));
+    expect((await store.get(current.sid))?.user?.phone).toBeNull();
+  });
+
+  it('Backend từ chối (422) thì phiên giữ nguyên và lỗi được trả về', async () => {
+    const current = await authenticated();
+    const before = (await store.get(current.sid))?.user;
+    vi.stubGlobal('fetch', vi.fn(async () => json({ error: { code: 'VALIDATION_ERROR', message: 'x', retryable: false, requestId: 'r' } }, 422)));
+    const response = await proxyPatch(browser('/api/v1/auth/me', {
+      method: 'PATCH', sid: current.sid, csrf: current.csrf, body: { phone: '034548' },
+    }), ctx('v1/auth/me'));
+    expect(response.status).toBe(422);
+    expect((await response.json()).error.code).toBe('VALIDATION_ERROR');
+    expect((await store.get(current.sid))?.user).toEqual(before);
+  });
+
+  it('thiếu CSRF thì bị chặn và không chạm Backend', async () => {
+    const current = await authenticated();
+    const fetchMock = vi.fn(async () => json(USER));
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await proxyPatch(browser('/api/v1/auth/me', {
+      method: 'PATCH', sid: current.sid, csrf: null, body: { fullName: 'Kẻ lạ' },
+    }), ctx('v1/auth/me'));
+    expect(response.status).toBe(403);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 

@@ -254,3 +254,25 @@ ErrorResponse:
             cancellableUntil}; BOOKING_ALREADY_PAID {referenceCode}; DIRECT_BOOKING_ONLY {productId, taxonomy};
             BOOKING_DRAFT_EXPIRED {draftId, items: [{productId, taxonomy, inCart}]}; PRODUCT_UNAVAILABLE khi tạo đơn
             nháp mà không mục nào được nhận {rejectedItems}.
+
+Pagination:
+  type: object
+  required:
+  - page
+  - pageSize
+  - totalItems
+  - totalPages
+  description: Phân trang theo trang (docs/prd/api-contract.md §1.3). totalPages bằng 0 khi không có phần tử nào.
+  properties:
+    page:
+      type: integer
+      minimum: 1
+    pageSize:
+      type: integer
+      minimum: 1
+    totalItems:
+      type: integer
+      minimum: 0
+    totalPages:
+      type: integer
+      minimum: 0

@@ -9,12 +9,14 @@ from datetime import date, datetime, timedelta, timezone
 from src.backend.app.application.auth.principal import AuthPrincipal
 from src.backend.app.application.booking import (
     BookingDraftService, CancelBooking, CartService, CreateBookingHold, DraftItemRequest, GetBooking, ItemDetail,
-    MergeGuestBooking, PaymentEventHandler, ReconcileBookings, Settlement,
+    ListBookings, MergeGuestBooking, PaymentEventHandler, ReconcileBookings, Settlement,
 )
 from src.backend.app.application.ports.booking_store import PendingBookingExists
 from src.backend.app.application.ports.cdp_client import CdpUnavailableError
 from src.backend.app.application.tracking.behaviour import BehaviourTracker
-from src.backend.app.domain.booking import Booking, BookingDraft, Cart, CartLine, DraftPolicy, HoldPolicy
+from src.backend.app.domain.booking import (
+    Booking, BookingDraft, BookingOverview, Cart, CartLine, DraftPolicy, HoldPolicy, item_end_date,
+)
 from src.backend.app.domain.booking.status import BookingStatus, PaymentStatus
 from src.backend.app.domain.catalog.models import Product
 from src.backend.app.infrastructure.payments.fake_gateway import FakeGateway
@@ -175,6 +177,17 @@ class _Tx:
     async def get_pending_for_user(self, cdp_user_id, *, lock=False):
         return self._find(lambda b: b.cdp_user_id == cdp_user_id and b.status is BookingStatus.PENDING_PAYMENT)
 
+    async def list_overviews(self, cdp_user_id, since):
+        mine = [b for b in self.s.bookings.values()
+                if b.cdp_user_id == cdp_user_id and (since is None or b.created_at >= since)]
+        mine.sort(key=lambda b: (b.created_at, b.booking_id), reverse=True)
+        return [BookingOverview(b.booking_id, b.status, b.created_at, b.hold_expires_at,
+                                max(item_end_date(i) for i in b.items), tuple(sorted({i.taxonomy for i in b.items})))
+                for b in mine]
+
+    async def get_many(self, booking_ids):
+        return [copy.deepcopy(self.s.bookings[i]) for i in booking_ids if i in self.s.bookings]
+
     async def insert(self, booking):
         if self.s.fail_insert:
             raise RuntimeError("db down")
@@ -305,6 +318,7 @@ class World:
             public_web_url="http://web.test", provider="fake", clock=self.clock, drafts=self.draft_repo)
         self.basket = Basket(self)
         self.get = GetBooking(self.store, self.catalog)
+        self.list = ListBookings(self.store, self.clock)
         self.cancel = CancelBooking(self.store, self.gateway, self.settlement, self.catalog, self.clock)
 
     async def create(self, principal, contact, details, travelers=None, draft_id=_AUTO):
@@ -314,7 +328,7 @@ class World:
 
     def state(self) -> dict:
         return {"cart_service": self.cart, "booking_draft_service": self.drafts, "merge_guest_booking": self.merge,
-                "create_booking_hold": self.create_hold, "get_booking": self.get,
+                "create_booking_hold": self.create_hold, "get_booking": self.get, "list_bookings": self.list,
                 "cancel_booking": self.cancel, "payment_event_handler": self.handler, "payment_gateway": self.gateway}
 
     def booking(self, reference_code: str) -> Booking:

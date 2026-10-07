@@ -42,6 +42,7 @@ from src.backend.app.application.auth.use_cases import (
     RegisterUser,
     RevokeSession,
     RotateSession,
+    UpdateProfile,
 )
 from src.backend.app.application.booking import (
     BookingDraftService,
@@ -49,6 +50,7 @@ from src.backend.app.application.booking import (
     CartService,
     CreateBookingHold,
     GetBooking,
+    ListBookings,
     MergeGuestBooking,
     PaymentEventHandler,
     ReconcileBookings,
@@ -393,6 +395,7 @@ def build_auth(settings: Settings, cdp_client, redis_client=None) -> dict:
         "revoke_session": RevokeSession(refresh=refresh),
         "change_password": ChangePassword(users=users, hasher=hasher, refresh=refresh),
         "get_current_user": GetCurrentUser(users=users),
+        "update_profile": UpdateProfile(users=users),
     }
 
 
@@ -434,6 +437,7 @@ def build_booking(settings: Settings, cdp_client, recorder, product_lookup, *, c
             store, carts, catalog, gateway, reconciler, HoldPolicy(settings.booking_hold_minutes),
             public_web_url=settings.public_web_url, provider=settings.payment_provider, clock=clock, drafts=drafts),
         "get_booking": GetBooking(store, catalog),
+        "list_bookings": ListBookings(store, clock),
         "cancel_booking": CancelBooking(store, gateway, settlement, catalog, clock),
         "payment_event_handler": handler,
         "reconcile_bookings": reconciler,

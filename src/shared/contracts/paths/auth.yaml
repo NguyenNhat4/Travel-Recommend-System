@@ -75,6 +75,38 @@
         $ref: ../openapi.yaml#/components/responses/Error
       '500':
         $ref: ../openapi.yaml#/components/responses/Error
+  patch:
+    tags:
+    - auth
+    operationId: updateMe
+    summary: Sửa hồ sơ của chính người dùng (họ tên, số điện thoại)
+    description: >-
+      FR-USR-04. Trả hồ sơ sau khi sửa. Body rỗng, trường lạ, họ tên rỗng hoặc dài quá 100 ký tự, số điện thoại không
+      đúng 10 chữ số bắt đầu bằng 0 đều trả 422 VALIDATION_ERROR và không đổi gì. BFF làm mới họ tên trong phiên sau khi
+      Backend trả 200.
+    security:
+    - bearerAuth: []
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/UpdateProfileRequest
+    responses:
+      '200':
+        description: Hồ sơ sau khi sửa
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/AuthUser
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '422':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error
 # --- Hybrid session (docs/hop-dong-tich-hop-auth.md §5) ------------------------
 # Chỉ BFF (Next.js route handler) gọi nhóm này, gác bằng X-Service-Token.
 # Bốn path phía trên giữ nguyên cho client nội bộ, Agent, CLI và contract test.

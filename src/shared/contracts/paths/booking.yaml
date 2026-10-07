@@ -120,6 +120,66 @@
       '500':
         $ref: ../openapi.yaml#/components/responses/Error
 /bookings:
+  get:
+    tags:
+    - booking
+    operationId: listBookings
+    summary: Danh sách đơn của chính người dùng, mới nhất trước (FR-BKG-14)
+    description: 'Mỗi đơn thuộc đúng một tab (BookingTab). taxonomy lọc các đơn có ít nhất một dịch vụ thuộc loại đó; days chỉ
+      giữ đơn đặt trong N ngày gần nhất (giờ Việt Nam), vắng mặt là mọi ngày. Chỉ trả đơn của người gọi. Danh sách rỗng là
+      200 với data rỗng và totalPages 0. page vượt quá totalPages trả data rỗng. Mọi tham số sai kiểu hoặc ngoài khoảng trả
+      422.'
+    security:
+    - bearerAuth: []
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    - name: tab
+      in: query
+      required: false
+      schema:
+        $ref: ../openapi.yaml#/components/schemas/BookingTab
+        default: upcoming
+    - name: taxonomy
+      in: query
+      required: false
+      schema:
+        $ref: ../openapi.yaml#/components/schemas/Taxonomy
+    - name: days
+      in: query
+      required: false
+      schema:
+        type: integer
+        enum:
+        - 1
+        - 7
+        - 30
+        - 60
+    - name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    - name: pageSize
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 50
+        default: 20
+    responses:
+      '200':
+        description: Một trang đơn của người dùng
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/BookingListResponse
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '422':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error
   post:
     tags:
     - booking

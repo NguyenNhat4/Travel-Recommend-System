@@ -196,6 +196,16 @@ export async function destroySession(sid: string, record: SessionRecord | null, 
   if (record?.user) await s.removeUserSession(record.user.userId, sid);
 }
 
+/** FR-USR-04: sau khi Backend sửa hồ sơ, phiên giữ họ tên và số điện thoại mới để tải lại trang không hiện tên cũ. */
+export async function updateSessionUser(current: { sid: string; record: SessionRecord },
+                                        changes: Pick<SessionUser, 'fullName' | 'phone'>, store?: SessionStore) {
+  const s = store ?? await getSessionStore();
+  if (!current.record.user) return current.record;
+  const record: SessionRecord = { ...current.record, user: { ...current.record.user, ...changes } };
+  await s.set(current.sid, record, IDLE_TTL_SECONDS);
+  return record;
+}
+
 /** §3.8 dòng J: đổi mật khẩu → huỷ mọi phiên khác của user, phiên hiện tại sống tiếp với sid mới. */
 export async function rotateAfterPasswordChange(request: Request, current: { sid: string; record: SessionRecord },
                                                 store?: SessionStore) {

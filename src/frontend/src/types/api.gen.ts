@@ -52,7 +52,11 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Sửa hồ sơ của chính người dùng (họ tên, số điện thoại)
+         * @description FR-USR-04. Trả hồ sơ sau khi sửa. Body rỗng, trường lạ, họ tên rỗng hoặc dài quá 100 ký tự, số điện thoại không đúng 10 chữ số bắt đầu bằng 0 đều trả 422 VALIDATION_ERROR và không đổi gì. BFF làm mới họ tên trong phiên sau khi Backend trả 200.
+         */
+        patch: operations["updateMe"];
         trace?: never;
     };
     "/auth/session": {
@@ -471,7 +475,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Danh sách đơn của chính người dùng, mới nhất trước (FR-BKG-14)
+         * @description Mỗi đơn thuộc đúng một tab (BookingTab). taxonomy lọc các đơn có ít nhất một dịch vụ thuộc loại đó; days chỉ giữ đơn đặt trong N ngày gần nhất (giờ Việt Nam), vắng mặt là mọi ngày. Chỉ trả đơn của người gọi. Danh sách rỗng là 200 với data rỗng và totalPages 0. page vượt quá totalPages trả data rỗng. Mọi tham số sai kiểu hoặc ngoài khoảng trả 422.
+         */
+        get: operations["listBookings"];
         put?: never;
         /**
          * Thanh toán giỏ hiện tại hoặc một đơn nháp — giữ chỗ và tạo phiên thanh toán Stripe
@@ -678,6 +686,13 @@ export interface components {
         BecauseEvent: "purchase" | "add_to_cart" | "product_view" | "search";
         /** @constant */
         Currency: "VND";
+        /** @description Phân trang theo trang (docs/prd/api-contract.md §1.3). totalPages bằng 0 khi không có phần tử nào. */
+        Pagination: {
+            page: number;
+            pageSize: number;
+            totalItems: number;
+            totalPages: number;
+        };
         ReferenceCode: string;
         /** @enum {string} */
         ErrorCode: "VALIDATION_ERROR" | "CART_EMPTY" | "INVALID_CREDENTIALS" | "INVALID_TOKEN" | "TOKEN_EXPIRED" | "PRODUCT_NOT_FOUND" | "CART_ITEM_NOT_FOUND" | "BOOKING_NOT_FOUND" | "NOT_FOUND" | "EMAIL_ALREADY_EXISTS" | "PRODUCT_UNAVAILABLE" | "PRICE_CHANGED" | "DATE_OUT_OF_RANGE" | "SEARCH_UNAVAILABLE" | "INTERNAL_ERROR" | "INVALID_TRIP_DURATION" | "CONVERSATION_NOT_FOUND" | "UNSUPPORTED_DESTINATION" | "LLM_UNAVAILABLE" | "ITINERARY_VALIDATION_FAILED" | "AVAILABILITY_NOT_FOUND" | "AVAILABILITY_EXPIRED" | "NO_RATE_PLAN" | "MIN_STAY_NOT_MET" | "CLOSED_ON_ARRIVAL" | "CLOSED_ON_DEPARTURE" | "PARTIALLY_AVAILABLE" | "PRODUCT_NOT_INDEXED" | "UNAUTHENTICATED" | "SESSION_EXPIRED" | "CSRF_FAILED" | "MFA_REQUIRED" | "MFA_INVALID" | "EMAIL_NOT_VERIFIED" | "TOO_MANY_ATTEMPTS" | "CAPTCHA_REQUIRED" | "CAPTCHA_FAILED" | "WEAK_PASSWORD" | "INVALID_VERIFICATION_TOKEN" | "OAUTH_EMAIL_UNVERIFIED" | "OAUTH_ALREADY_LINKED" | "CDP_UNAVAILABLE" | "BOOKING_PENDING_PAYMENT" | "BOOKING_ALREADY_PAID" | "BOOKING_NOT_CANCELLABLE" | "PAYMENT_PROVIDER_UNAVAILABLE" | "INVALID_WEBHOOK_SIGNATURE" | "DIRECT_BOOKING_ONLY" | "BOOKING_DRAFT_NOT_FOUND" | "BOOKING_DRAFT_EXPIRED";
@@ -1004,6 +1019,13 @@ export interface components {
             /** Format: email */
             email: string;
             fullName: string;
+            /** @description Số điện thoại hồ sơ (FR-USR-04); null hoặc vắng mặt khi chưa có. Chỉ lưu ở tài khoản V-OTA. */
+            phone?: string | null;
+        };
+        /** @description Sửa hồ sơ (FR-USR-04). Chỉ các trường có mặt mới đổi; phone = null xoá số. Họ tên và số điện thoại được cắt khoảng trắng hai đầu trước khi kiểm. Email không sửa được qua đây. */
+        UpdateProfileRequest: {
+            fullName?: string;
+            phone?: string | null;
         };
         AuthResponse: {
             accessToken: string;
@@ -1578,6 +1600,55 @@ export interface components {
          * @enum {string}
          */
         BookingStatus: "PENDING_PAYMENT" | "CONFIRMED" | "PAYMENT_FAILED" | "EXPIRED" | "CANCELLED";
+        /**
+         * @description Nhóm hiển thị của đơn ở trang Đơn hàng của tôi (FR-BKG-14), tính ở Backend theo giờ Việt Nam. upcoming: CONFIRMED có ngày kết thúc dịch vụ từ hôm nay trở đi, hoặc PENDING_PAYMENT còn hạn giữ chỗ. done: CONFIRMED mà mọi dịch vụ đã qua ngày kết thúc. cancelled: CANCELLED, EXPIRED, PAYMENT_FAILED, hoặc PENDING_PAYMENT đã quá hạn giữ chỗ.
+         * @enum {string}
+         */
+        BookingTab: "upcoming" | "done" | "cancelled";
+        BookingSummaryItem: {
+            bookingItemId: string;
+            productId: string;
+            /** @description Tên sản phẩm lúc đặt (snapshot). */
+            name: string;
+            taxonomy: components["schemas"]["Taxonomy"];
+            /** Format: date */
+            usingDate: string;
+            /**
+             * Format: date
+             * @description Ngày trả phòng của khách sạn; null với dịch vụ khác.
+             */
+            usingDateTo: string | null;
+            quantity: number;
+            nights: number | null;
+            lineTotal: number;
+        };
+        /** @description Bản tóm tắt nhẹ của một đơn để liệt kê; chi tiết đầy đủ lấy bằng GET /bookings/{referenceCode}. */
+        BookingSummary: {
+            referenceCode: components["schemas"]["ReferenceCode"];
+            /** Format: date-time */
+            createdAt: string;
+            status: components["schemas"]["BookingStatus"];
+            tab: components["schemas"]["BookingTab"];
+            /**
+             * Format: date-time
+             * @description Hạn giữ chỗ. Chỉ khác null khi status là PENDING_PAYMENT.
+             */
+            holdExpiresAt: string | null;
+            /**
+             * Format: date-time
+             * @description Hạn huỷ có hoàn 100%. Chỉ khác null khi status là CONFIRMED.
+             */
+            cancellableUntil: string | null;
+            paymentStatus: components["schemas"]["PaymentStatus"] | null;
+            paymentFailureReason: components["schemas"]["PaymentFailureReason"] | null;
+            total: number;
+            currency: components["schemas"]["Currency"];
+            items: components["schemas"]["BookingSummaryItem"][];
+        };
+        BookingListResponse: {
+            data: components["schemas"]["BookingSummary"][];
+            pagination: components["schemas"]["Pagination"];
+        };
         /** @enum {string} */
         PaymentStatus: "OPEN" | "SUCCEEDED" | "FAILED" | "EXPIRED" | "REFUND_PENDING" | "REFUNDED" | "REFUND_FAILED";
         /** @enum {string} */
@@ -1993,6 +2064,36 @@ export interface operations {
                 };
             };
             401: components["responses"]["Error"];
+            500: components["responses"]["Error"];
+        };
+    };
+    updateMe: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description ID truy vết. Caller chưa gửi thì service đầu tiên tự sinh. */
+                "X-Request-ID"?: components["parameters"]["XRequestId"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateProfileRequest"];
+            };
+        };
+        responses: {
+            /** @description Hồ sơ sau khi sửa */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthUser"];
+                };
+            };
+            401: components["responses"]["Error"];
+            422: components["responses"]["Error"];
             500: components["responses"]["Error"];
         };
     };
@@ -2667,6 +2768,38 @@ export interface operations {
             401: components["responses"]["Error"];
             500: components["responses"]["Error"];
             503: components["responses"]["Error"];
+        };
+    };
+    listBookings: {
+        parameters: {
+            query?: {
+                tab?: components["schemas"]["BookingTab"];
+                taxonomy?: components["schemas"]["Taxonomy"];
+                days?: 1 | 7 | 30 | 60;
+                page?: number;
+                pageSize?: number;
+            };
+            header?: {
+                /** @description ID truy vết. Caller chưa gửi thì service đầu tiên tự sinh. */
+                "X-Request-ID"?: components["parameters"]["XRequestId"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Một trang đơn của người dùng */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookingListResponse"];
+                };
+            };
+            401: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            500: components["responses"]["Error"];
         };
     };
     createBooking: {

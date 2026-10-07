@@ -7,6 +7,8 @@ const routes = [
   '/cart',
   '/checkout',
   '/booking/VOTA-TEST',
+  '/profile',
+  '/profile/booking_history',
   '/login',
   '/register',
 ];

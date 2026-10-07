@@ -10,6 +10,7 @@ from src.backend.app.application.auth.use_cases import (
     RegisterUser,
     RevokeSession,
     RotateSession,
+    UpdateProfile,
 )
 from src.backend.app.infrastructure.auth.rate_limiter import InMemoryRateLimiter
 from src.backend.tests.fakes.auth import (
@@ -57,6 +58,7 @@ class AuthWorld:
             "revoke_session": RevokeSession(refresh=self.refresh),
             "change_password": ChangePassword(**common, refresh=self.refresh),
             "get_current_user": GetCurrentUser(users=self.users),
+            "update_profile": UpdateProfile(users=self.users),
             "recommend": self.recommend,
         }
 

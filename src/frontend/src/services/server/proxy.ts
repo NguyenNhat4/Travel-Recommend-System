@@ -25,6 +25,7 @@ import {
   requestIdOf,
   rotateAfterPasswordChange,
   sessionCookies,
+  updateSessionUser,
   withCookies,
 } from './bffSession';
 
@@ -139,7 +140,21 @@ export async function proxyToBackend(request: Request, context: RouteContext) {
   }
   responseHeaders.set('x-request-id', response.headers.get('x-request-id') || requestId);
 
-  const proxied = new Response(response.body, {
+  // FR-USR-04: Backend đã sửa hồ sơ → phiên giữ họ tên và số điện thoại mới. Đọc hết body trước vì còn phải trả nguyên cho client.
+  let payload: BodyInit | null = response.body;
+  if (current?.record.state === 'authenticated' && request.method === 'PATCH' && joined === 'v1/auth/me' && response.status === 200) {
+    const text = await response.text();
+    payload = text;
+    try {
+      const user = JSON.parse(text) as { fullName?: string; phone?: string | null };
+      if (typeof user.fullName === 'string') {
+        await updateSessionUser(current, { fullName: user.fullName, phone: user.phone ?? null });
+      }
+    } catch (error) {
+      logAuth('auth.profile.session_refresh_failed', { reason: error instanceof Error ? error.message : 'unknown' });
+    }
+  }
+  const proxied = new Response(payload, {
     status: response.status, statusText: response.statusText, headers: responseHeaders,
   });
 

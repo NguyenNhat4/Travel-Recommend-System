@@ -40,3 +40,4 @@ class AuthenticatedUser:
     persona: str | None = None
     email_verified: bool = False
     mfa_enabled: bool = False
+    phone: str | None = None   # hồ sơ (FR-USR-04); chỉ ở app.users, không gửi CDP/Insider/Stripe

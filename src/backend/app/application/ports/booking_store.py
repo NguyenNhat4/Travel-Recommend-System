@@ -5,7 +5,7 @@ from contextlib import AbstractAsyncContextManager
 from datetime import date, datetime
 from typing import Protocol, Sequence
 
-from src.backend.app.domain.booking import Booking
+from src.backend.app.domain.booking import Booking, BookingOverview
 
 
 class PendingBookingExists(Exception):
@@ -26,6 +26,14 @@ class BookingTx(Protocol):
     async def get_by_reference(self, reference_code: str, cdp_user_id: str, *, lock: bool = False) -> Booking | None: ...
     async def get_by_session(self, session_id: str, *, lock: bool = False) -> Booking | None: ...
     async def get_pending_for_user(self, cdp_user_id: str, *, lock: bool = False) -> Booking | None: ...
+    async def list_overviews(self, cdp_user_id: str, since: datetime | None) -> list[BookingOverview]:
+        """Mọi đơn của người dùng đặt từ `since` (None: không giới hạn), mới nhất trước; chưa nạp dịch vụ."""
+        ...
+
+    async def get_many(self, booking_ids: Sequence[str]) -> list[Booking]:
+        """Nạp đơn (dịch vụ và thanh toán, không có hành khách) theo đúng thứ tự `booking_ids`; mã không có thì bỏ qua."""
+        ...
+
     async def insert(self, booking: Booking) -> None: ...
     async def save(self, booking: Booking) -> None: ...
     async def clear_cart_items(self, cdp_user_id: str, keys: Sequence[tuple[str, date]]) -> None:
