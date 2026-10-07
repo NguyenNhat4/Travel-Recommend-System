@@ -35,6 +35,9 @@ test('Home loads one catalog request up front and the rest only when scrolled to
 test('header groups open by keyboard and lead to the category pages', async ({ page }) => {
   await mockApi(page);
   await page.goto('/');
+  // Thanh nhóm nằm trong Suspense (useSearchParams): client thay nút render sẵn bằng nút mới sau hydrate.
+  // Focus trước lúc đó thì focus rơi về body và Enter không mở menu.
+  await page.waitForLoadState('networkidle');
   const stay = page.getByRole('button', { name: 'Lưu trú' });
   await stay.focus();
   await page.keyboard.press('Enter');
