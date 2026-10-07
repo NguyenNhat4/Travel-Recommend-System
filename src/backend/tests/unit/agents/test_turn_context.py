@@ -75,7 +75,7 @@ class TurnNoteTests(unittest.TestCase):
         self.assertTrue(note.startswith('sent a 3-day itinerary for Hà Nội'))
 
     def test_trip_summary_lists_what_is_missing(self):
-        self.assertEqual(trip_summary({'intent': HANOI}), 'Hà Nội, 3 ngày; chưa có: ngày khởi hành, số người, ngân sách')
+        self.assertEqual(trip_summary({'intent': HANOI}), 'Hà Nội, 3 ngày; chưa có: ngày khởi hành, số người, ngân sách, nơi đi')
         self.assertEqual(trip_summary({'intent': empty_intent()}), 'chưa có thông tin chuyến đi')
 
 

@@ -14,3 +14,15 @@ class EmbedderPort(Protocol):
 
     def embed_docs(self, texts: list[str]) -> np.ndarray: ...
     def embed_query(self, q: str) -> np.ndarray: ...
+
+
+class EmbeddingUnavailableError(Exception):
+    """Nhà cung cấp embedding từ chối hoặc lỗi. `reason` là từ cố định do adapter đặt, không bao giờ là text của nhà cung
+    cấp (có thể lẫn câu truy vấn): `quota_exhausted` (hết hạn mức tháng, không thử lại), `rate_limited`, `upstream_5xx`,
+    `timeout`, `http_error`."""
+
+    def __init__(self, reason: str, *, status: int | None = None, retryable: bool = True):
+        super().__init__(reason)
+        self.reason = reason
+        self.status = status
+        self.retryable = retryable

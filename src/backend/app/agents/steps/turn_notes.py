@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from .messages import display_date, message, money, party_text
 
-INTENT_FIELDS = ("destination", "days", "startDate", "party", "budget")
+INTENT_FIELDS = ("destination", "days", "startDate", "party", "budget", "origin")
 
 
 def _field(state: dict, field: str) -> str:
@@ -45,6 +45,8 @@ def trip_summary(state: dict, intent: dict | None = None) -> str:
         parts.append(party_text(state, intent["party"]))
     if intent.get("budget") is not None:
         parts.append(message(state, "trip_budget", budget=money(intent["budget"], state.get("language", "vi"))))
+    if intent.get("origin"):
+        parts.append(message(state, "trip_origin", origin=intent["origin"]))
     if intent.get("interests"):
         parts.append(message(state, "trip_interests", interests=", ".join(intent["interests"])))
     missing = [field for field in INTENT_FIELDS if intent.get(field) is None]

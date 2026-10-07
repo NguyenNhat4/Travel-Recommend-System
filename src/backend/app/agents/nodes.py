@@ -25,6 +25,7 @@ import uuid
 
 from src.backend.app.application.itinerary.contracts import error_response
 from src.backend.app.core.logging_config import log_event
+from src.backend.app.application.itinerary.flights import flight_options
 from src.backend.app.application.itinerary.retrieval import hydrate
 from src.backend.app.application.ports.conversation_archive import ConversationArchivePort
 from src.backend.app.application.ports.itinerary_tools import ConversationStorePort, ToolExecutorPort
@@ -65,7 +66,7 @@ def intake_node(state: AgentState) -> dict:
             "max_attempts": min(max(1, state.get("max_attempts", MAX_ATTEMPTS)), MAX_ATTEMPTS),
             "tool_plan": [], "tool_results": [], "details": {}, "detail_errors": {},
             "supported_destinations": None, "destination_kind": None,
-            "candidates": {}, "sources": {}, "response": {}, "warnings": [], "drop_summary": {},
+            "candidates": {}, "sources": {}, "response": {}, "warnings": [], "drop_summary": {}, "flight_options": {},
             "missing_fields": [], "start_date_asked": bool(state.get("start_date_asked", False)),
             "clarification_rounds": int(state.get("clarification_rounds", 0) or 0),
             "invalid_inputs": [],
@@ -242,8 +243,9 @@ async def tool_node(state: AgentState, *, tools: ToolExecutorPort | None = None,
 
     Đọc: `intent`, `constraints`, `conversation_history`, `tool_plan` (lần retry), `tool_results`
     và `details` của lần trước.
-    Ghi: `intent`/`constraints` đã chuẩn hóa, `supported_destinations`, `tool_plan`, `tool_results`,
-    `details`, `detail_errors`; điểm đến ngoài catalog thì xoá điểm đến khỏi intent, ghi `invalid_inputs` và
+    Ghi: `intent`/`constraints` đã chuẩn hóa (cả nơi đi theo tên catalog), `supported_destinations`, `tool_plan`,
+    `tool_results`, `details`, `detail_errors`, `flight_options` (chuyến bay tra tất định song song, AC-AGT-02);
+    điểm đến ngoài catalog thì xoá điểm đến khỏi intent, ghi `invalid_inputs` và
     `decision = "invalid_input"` (hỏi lại qua `clarify`).
     Đi tiếp: `evaluate` — kể cả khi mọi lời gọi đều lỗi, vì `evaluate` mới phân loại tạm thời/vĩnh viễn.
     """
@@ -261,9 +263,15 @@ async def tool_node(state: AgentState, *, tools: ToolExecutorPort | None = None,
         require_recommendations=require_recommendations)
     if plan_error is not None:
         return plan_error
-    results = await tool_planning.run_calls(state, plan, tools, timeout_seconds)
+    results, flights = await asyncio.gather(
+        tool_planning.run_calls(state, plan, tools, timeout_seconds),
+        flight_options(tools, intent, constraints, timeout_seconds, state.get("request_id", "unknown")))
+    if flights.get("origin") and flights["origin"] != intent.get("origin"):
+        intent["origin"] = flights["origin"]  # tên catalog ("Sài Gòn" → "TP. Hồ Chí Minh"), như điểm đến
+        changed.append("origin")
     details, detail_errors = await hydrate(results, tools, state.get("details", {}), timeout_seconds)
     return {"tool_plan": plan, "tool_results": results, "details": details, "detail_errors": detail_errors,
+            "flight_options": flights,
             "intent": intent, "constraints": constraints, "supported_destinations": supported,
             "events": [event("tool", "retrieval completed" + (f" (normalized {', '.join(changed)})" if changed else ""),
                              calls=len(results), detail_errors=len(detail_errors), changed=changed)]}

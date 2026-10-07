@@ -326,10 +326,10 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         llm = ScriptedLlm(extraction=Extraction(patch={'destination': 'Nha Trang', 'days': 2}), fail_conversation=True)
         first = await self.run_graph(llm, clients, state={'start_date_asked': False}, store=store, owner='one')
         self.assertEqual(first['response']['status'], 'NEEDS_CLARIFICATION')
-        self.assertEqual(first['response']['missingFields'], ['startDate', 'party', 'budget'])
-        # Câu cố định (LLM lỗi) vẫn hỏi gộp cả ba trong một câu.
+        self.assertEqual(first['response']['missingFields'], ['startDate', 'party', 'budget', 'origin'])
+        # Câu cố định (LLM lỗi) vẫn hỏi gộp cả bốn trong một câu (nơi đi: AC-AGT-02).
         question = first['response']['question']
-        for phrase in ('ngày khởi hành', 'số người lớn và trẻ em', 'ngân sách tổng'):
+        for phrase in ('ngày khởi hành', 'số người lớn và trẻ em', 'ngân sách tổng', 'nơi bạn khởi hành'):
             self.assertIn(phrase, question)
         self.assertEqual(clients.calls, [])
         self.assertEqual([e['node'] for e in first['events']], ['intake', 'classify', 'extract', 'clarify', 'finalize'])
@@ -373,7 +373,7 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('Extraction', llm.calls)
         response = second['response']
         self.assertEqual(response['status'], 'NEEDS_CLARIFICATION')
-        self.assertEqual(response['missingFields'], ['startDate', 'party', 'budget'])
+        self.assertEqual(response['missingFields'], ['startDate', 'party', 'budget', 'origin'])
         self.assertEqual(response['clarificationForm']['defaults']['destination'], 'Nha Trang')
         self.assertEqual(response['clarificationForm']['defaults']['days'], 3)
         self.assertEqual(clients.calls, [])
@@ -396,7 +396,7 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
 
         second = await turn('3 ngày', Extraction(patch={'days': 3}), conversation_id=cid)
         self.assertEqual(second['response']['status'], 'NEEDS_CLARIFICATION')
-        self.assertEqual(second['response']['missingFields'], ['startDate', 'party', 'budget'])
+        self.assertEqual(second['response']['missingFields'], ['startDate', 'party', 'budget', 'origin'])
         self.assertNotIn('clarificationForm', second['response'])
 
         # Extraction thô của LLM ở lượt này: patch rỗng, không đánh dấu chưa chốt ngày.
@@ -404,7 +404,7 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
                            conversation_id=cid)
         response = third['response']
         self.assertEqual(response['status'], 'NEEDS_CLARIFICATION')
-        self.assertEqual(response['missingFields'], ['startDate', 'party', 'budget'])
+        self.assertEqual(response['missingFields'], ['startDate', 'party', 'budget', 'origin'])
         form = response['clarificationForm']
         self.assertEqual(form['defaults']['destination'], 'Đà Nẵng')
         self.assertEqual(form['defaults']['days'], 3)
@@ -415,7 +415,7 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
     async def test_trip_details_given_in_the_first_message_are_not_asked(self):
         llm = ScriptedLlm(extraction=Extraction(
                           patch={'destination': 'Nha Trang', 'days': 2, 'startDate': '2999-10-10', 'budget': 5_000_000,
-                                 'party': {'type': 'COUPLE', 'adults': 2, 'children': 0}}))
+                                 'party': {'type': 'COUPLE', 'adults': 2, 'children': 0}, 'origin': 'Hà Nội'}))
         result = await self.run_graph(llm, state={'start_date_asked': False})
         self.assertEqual(result['response']['status'], 'COMPLETED')
         self.assertEqual(result['intent']['startDate'], '2999-10-10')
@@ -821,7 +821,7 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         result = await self.run_graph(clients=clients)
         self.assertEqual(result['response']['status'], 'COMPLETED')
         self.assertEqual(clients.maximum, 5)
-        # `details` bị `evaluate` xoá sau khi dùng (docs/spec/agent/field-review.md §3.2); đếm qua
+        # `details` bị `evaluate` xoá sau khi dùng (history/2026-09-28-ap-dung-de-xuat-field-review-agent.md); đếm qua
         # số lời gọi get_product_detail thay vì đọc lại state.
         self.assertEqual(len([call for call in clients.calls if call.startswith('detail:')]), 10)
 
@@ -1068,6 +1068,98 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         scheduled = [(day['day'], slot['time'], slot['product']['productId'])
                      for day in response['itinerary']['days'] for slot in day['slots'] if slot['product']]
         self.assertEqual(scheduled, [(1, 'MORNING', 'a'), (2, 'MORNING', 'b')])
+
+
+def flight_product(pid, destination, day, price, *, parent, clock='08:00'):
+    return product(pid, taxonomy='flight', destination=destination, unitPrice=price, availableFrom=day,
+                   availableTo=day, attributes={'level': 'flight', 'parentProductId': parent, 'tripType': 'oneWay',
+                                                'departureAt': f'{day}T{clock}:00+07:00', 'departureTimeLocal': clock,
+                                                'nonstop': True, 'airline': 'VietJet Air', 'flightNumber': pid})
+
+
+class FlightClients(Clients):
+    """Catalog có tuyến Hà Nội ⇄ Nha Trang: chuyến chỉ đọc qua GET /products, không qua search."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.routes = [product('r-out', taxonomy='flight', destination='Nha Trang', unitPrice=None,
+                               attributes={'level': 'route', 'originCity': 'Hà Nội'}),
+                       product('r-back', taxonomy='flight', destination='Hà Nội', unitPrice=None,
+                               attributes={'level': 'route', 'originCity': 'Nha Trang'})]
+        self.flights = [flight_product('VJ1', 'Nha Trang', START, 1_000_000, parent='r-out'),
+                        flight_product('VJ2', 'Hà Nội', '2999-10-12', 900_000, parent='r-back', clock='19:00')]
+
+    async def list_products(self, params):
+        self.calls.append('flights')
+        parent = params.get('parentProductId')
+        rows = [p for p in self.flights if p['attributes']['parentProductId'] == parent] if parent else \
+            [r for r in self.routes if r['destination'] == params.get('destination')]
+        return {'results': deepcopy(rows), 'total': len(rows), 'limit': params['limit'], 'offset': params['offset'],
+                'requestId': 'test'}
+
+
+class FlightTests(unittest.IsolatedAsyncioTestCase):
+    """AC-AGT-02: chặng bay chọn bằng luật từ chuyến bay thật, tính vào tổng, lý do thiếu vé nằm trong câu trả lời."""
+
+    run_graph = RuntimeTests.run_graph  # chỉ mượn cách chạy graph, không kế thừa (và chạy lại) test của RuntimeTests
+
+    def trip(self, **patch):
+        return ScriptedLlm(extraction=extracted(destination='Nha Trang', days=3,
+                                                party={'type': 'COUPLE', 'adults': 2, 'children': 0}, **patch))
+
+    async def test_origin_adds_outbound_and_return_flights_to_the_itinerary_and_total(self):
+        clients = FlightClients()
+        result = await self.run_graph(self.trip(origin='hà nội'), clients)
+        response = result['response']
+        self.assertEqual(response['status'], 'COMPLETED')
+        self.assertEqual(response['intent']['origin'], 'Hà Nội')  # tên catalog, như điểm đến
+        flights = response['itinerary']['flights']
+        self.assertEqual([(f['direction'], f['product']['productId'], f['date'], f['passengers']) for f in flights],
+                         [('OUTBOUND', 'VJ1', START, 2), ('RETURN', 'VJ2', '2999-10-12', 2)])
+        # Vé: (1.000.000 + 900.000) × 2 khách; hoạt động 100.000/người × 2.
+        self.assertEqual(response['itinerary']['estimatedTotal'], 3_800_000 + 200_000)
+        self.assertIn('**Vé máy bay**', response['message'])
+        self.assertIn('(product:VJ1)', response['message'])
+        self.assertFalse([w for w in response['warnings'] if w['code'].startswith('FLIGHT_')])
+        self.assertEqual(result['validation_issues'], [])
+
+    async def test_a_late_landing_keeps_the_first_day_free_of_activities(self):
+        """Lỗi chạy thật 06/10/2026: bay 19:50 ngày 1 mà Bà Nà vẫn ở sáng ngày 1 (AC-AGT-02, chốt 2026-10-07)."""
+        clients = FlightClients()
+        late = clients.flights[0]['attributes']
+        late.update({'departureAt': f'{START}T19:50:00+07:00', 'departureTimeLocal': '19:50',
+                     'arrivalAt': f'{START}T21:05:00+07:00'})
+        result = await self.run_graph(self.trip(origin='Hà Nội'), clients)
+        response = result['response']
+        self.assertEqual(response['status'], 'COMPLETED')
+        days = response['itinerary']['days']
+        self.assertEqual([(s['time'], s['activityType'], s['product']) for s in days[0]['slots']],
+                         [('EVENING', 'TRANSFER', None)])
+        self.assertTrue(any(slot['product'] for day in days[1:] for slot in day['slots']))
+        # VJ2 cất cánh 19:00 ngày 3: dòng ra sân bay ở buổi tối, không có hoạt động buổi tối.
+        self.assertEqual(days[2]['slots'][-1]['activityType'], 'TRANSFER')
+        self.assertNotIn('Ngày 1 dành cho nghỉ ngơi', ' '.join(w['message'] for w in response['warnings']))
+        self.assertEqual(result['validation_issues'], [])
+
+    async def test_without_origin_the_reply_invites_the_user_to_give_it(self):
+        clients = FlightClients()
+        result = await self.run_graph(self.trip(), clients)
+        response = result['response']
+        self.assertEqual(response['status'], 'COMPLETED')
+        self.assertNotIn('flights', response['itinerary'])
+        self.assertIn('FLIGHT_NO_ORIGIN', [w['code'] for w in response['warnings']])
+        self.assertIn('chưa biết bạn đi từ đâu', response['message'])
+        self.assertNotIn('flights', clients.calls)
+
+    async def test_no_route_is_explained_and_excluded_flights_are_not_mentioned(self):
+        result = await self.run_graph(self.trip(origin='Cần Thơ'), FlightClients())
+        self.assertIn('Chưa có chuyến bay từ Cần Thơ đến Nha Trang', result['response']['message'])
+        excluded = await self.run_graph(ScriptedLlm(extraction=Extraction(
+            patch={'destination': 'Nha Trang', 'days': 3, 'startDate': START, 'origin': 'Hà Nội',
+                   'party': {'type': 'COUPLE', 'adults': 2, 'children': 0}},
+            constraints={'exclude_taxonomies': ['flight']})), FlightClients())
+        self.assertNotIn('Vé máy bay', excluded['response']['message'])
+        self.assertFalse([w for w in excluded['response']['warnings'] if w['code'].startswith('FLIGHT_')])
 
 
 if __name__ == '__main__':

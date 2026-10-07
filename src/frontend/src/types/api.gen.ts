@@ -1804,6 +1804,8 @@ export interface components {
             budget: number | null;
             interests: string[];
             pace: components["schemas"]["Pace"] | null;
+            /** @description (1.18.0, AC-AGT-02) Thành phố đi, đúng giá trị `attributes.originCity` của tuyến bay trong catalog. Tuỳ chọn: vắng mặt tương đương null; null thì lịch trình không có chặng bay. Web gợi ý từ vị trí trình duyệt chỉ gửi tên thành phố, không gửi toạ độ (AC-AGT-03). */
+            origin?: string | null;
         };
         /** @description Chỉ các trường người dùng sửa bằng chip; trường vắng mặt nghĩa là không đổi. */
         TripIntentPatch: {
@@ -1815,6 +1817,8 @@ export interface components {
             budget?: number | null;
             interests?: string[];
             pace?: components["schemas"]["Pace"] | null;
+            /** @description (1.18.0) Thành phố đi; chỉ gửi tên thành phố, không gửi toạ độ. */
+            origin?: string;
         };
         /** @description Baseline tích hợp 1.1.0. Cần message hoặc intentOverride; intentOverride yêu cầu conversationId khác null. */
         ItineraryRequest: {
@@ -1856,6 +1860,29 @@ export interface components {
             source?: components["schemas"]["ItemSource"];
             because?: components["schemas"]["BecauseItem"][];
         };
+        /**
+         * @description (1.18.0) Chặng của vé trong lịch trình; ROUND_TRIP là một vé khứ hồi phủ cả hai chặng.
+         * @enum {string}
+         */
+        FlightDirection: "OUTBOUND" | "RETURN" | "ROUND_TRIP";
+        /** @description (1.18.0, AC-AGT-02) Một vé máy bay trong lịch trình. Backend chọn bằng luật tất định từ chuyến bay thật của catalog (tầng con của tuyến), không do LLM tạo. Giá tính vào estimatedTotal bằng unitPrice × passengers. */
+        ItineraryFlight: {
+            product: components["schemas"]["ProductSummary"];
+            direction: components["schemas"]["FlightDirection"];
+            /**
+             * Format: date
+             * @description Ngày bay của chặng đi (OUTBOUND, ROUND_TRIP) hoặc chặng về (RETURN).
+             */
+            date: string;
+            /**
+             * Format: date
+             * @description Ngày bay chặng về; chỉ khác null khi direction là ROUND_TRIP.
+             */
+            returnDate?: string | null;
+            /** @description Số khách (người lớn + trẻ em) dùng để tính tiền vé. */
+            passengers: number;
+            source: components["schemas"]["ItemSource"];
+        };
         ItineraryDay: {
             day: number;
             /** Format: date */
@@ -1866,6 +1893,8 @@ export interface components {
         ItineraryPlan: {
             title?: string;
             stay?: components["schemas"]["ItineraryStay"] | null;
+            /** @description (1.18.0, AC-AGT-02) Vé máy bay của chuyến: một vé ROUND_TRIP, hoặc OUTBOUND và/hoặc RETURN. Vắng mặt hoặc rỗng khi không đủ điều kiện có chặng bay; lý do nằm trong warnings (mã FLIGHT_*). */
+            flights?: components["schemas"]["ItineraryFlight"][];
             days: components["schemas"]["ItineraryDay"][];
             /** @description Số mục ứng viên checkout demo có available=true và giá khác null, loại ticketed=false và bản ghi cha khi đã chọn con; không xác nhận tồn kho. */
             bookableCount?: number;
@@ -1923,7 +1952,7 @@ export interface components {
             conversationId: string;
             /** @description Câu hỏi hiển thị cho người dùng. Dòng đầu có dạng `**Tiêu đề**` (markdown in đậm) tóm tắt cả câu, các dòng sau là phần chi tiết: lý do và gợi ý khi một giá trị không hợp lệ (ngày đi đã qua, điểm đến ngoài catalog, số ngày, số người hoặc ngân sách ngoài giới hạn), hoặc câu hỏi cụ thể khi còn thiếu thông tin. Câu trả lời chào hỏi, cảm ơn không có tiêu đề. */
             question: string;
-            missingFields?: ("destination" | "days" | "startDate" | "party" | "budget")[];
+            missingFields?: ("destination" | "days" | "startDate" | "party" | "budget" | "origin")[];
             knownIntent?: components["schemas"]["TripIntent"];
             suggestedValues?: {
                 destination?: string[];
@@ -1931,7 +1960,7 @@ export interface components {
             };
             /** @description Form gợi ý hiển thị trong khung chat khi hỏi bằng câu chữ một lượt vẫn chưa đủ thông tin. */
             clarificationForm?: {
-                fields: ("destination" | "days" | "startDate" | "party" | "budget")[];
+                fields: ("destination" | "days" | "startDate" | "party" | "budget" | "origin")[];
                 defaults: components["schemas"]["TripIntent"];
                 /**
                  * Format: date

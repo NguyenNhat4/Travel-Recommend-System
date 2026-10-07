@@ -7,6 +7,8 @@ mở source được chỉ ra trong mục 3.
 ## 1. Context tối thiểu — đọc trước mọi task Agent
 
 1. `docs/spec/agent/working-context.md` — file này.
+   Chưa nắm agent đang làm gì về nghiệp vụ (hỏi lại, tìm, vé, xếp lịch, diễn giải) thì đọc trước
+   [nghiep-vu/README.md](nghiep-vu/README.md) và [nghiep-vu/glossary.md](nghiep-vu/glossary.md).
 2. `docs/prd/architecture.md` §2, §3 — phân lớp/quy tắc phụ thuộc và grounding; quality gate ở `golden-run.md` mục 5.
 3. `src/shared/contracts/openapi.yaml`, sau đó chỉ mở fragment liên quan:
    - Assistant: `paths/itinerary-agent.yaml`, `schemas/itinerary-agent.yaml`.
@@ -24,6 +26,7 @@ Chỉ đọc hàng khớp với task hiện tại. Không cần nạp các nhán
 
 | Việc cần làm | Đọc thêm | Source bắt đầu từ |
 |---|---|---|
+| Hiểu hoặc đổi luật nghiệp vụ (hỏi lại, lọc, vé, xếp lịch, tiền, diễn giải) | đúng một file trong `nghiep-vu/` theo mục lục [nghiep-vu/README.md](nghiep-vu/README.md) | file ở mục "Code liên quan" của file đó |
 | Hiểu hoặc đổi topology/routing | `langgraph-nodes.md` | `agents/graph.py`, `agents/routing.py`, `agents/state.py` |
 | Tune classify/clarify/converse hoặc prompt | `langgraph-nodes.md`, phần hội thoại trong spec Itinerary | `agents/steps/prompts.py`, `agents/steps/classification.py`, `agents/steps/conversation.py`, `infrastructure/llm/` |
 | Tune tool planning, Search/Recommendation/Similar | spec Itinerary §2 (Similar: §2.5), `src/backend/README.md` | `agents/steps/tool_planning.py`, `agents/tools/itinerary_gateway.py`, `application/itinerary/tool_contracts.py`, `application/itinerary/engine_tools.py` |

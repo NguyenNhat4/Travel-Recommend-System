@@ -196,7 +196,7 @@ CLI chạy kịch bản đánh giá agent đã chuyển sang `src/evaluation/age
 
 Studio vẽ 12 node, chạy từng lượt và cho xem/sửa state sau mỗi node. Entry: `scripts/langgraph_studio.py`
 (LLM theo `.env`), khai báo ở `langgraph.json` gốc repo. Tool theo `ITINERARY_DATA_MODE`, bỏ trống thì `inprocess`
-(engine thật, cần Postgres đã seed, Weaviate đã index, `COHERE_API_KEY`; nạp ~12 s lúc mở graph); `fixture` dùng
+(engine thật, cần Postgres đã seed, Weaviate đã index, model e5 local; nạp ~12 s lúc mở graph); `fixture` dùng
 50 sản phẩm mẫu, không cần database. Studio không gửi Bearer nên `get_recommendations` chạy như khách. `langgraph-api` cần
 `grpcio>=1.81.1`, còn `.venv` giữ bản cũ cho `weaviate-client`, nên Studio dùng venv riêng:
 

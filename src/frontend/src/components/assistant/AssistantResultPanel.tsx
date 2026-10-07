@@ -49,6 +49,12 @@ function addDays(isoDate: string, days: number) {
 export function itineraryCartItems(itinerary: Itinerary, party?: { adults: number; children: number } | null): AssistantCartItem[] {
   const items = new Map<string, AssistantCartItem>();
   const guests = party ? { party: { adults: party.adults, children: party.children } } : {};
+  // Vé máy bay (AC-AGT-02) chỉ có "Đặt ngay", như khách sạn; ngày dùng là ngày bay của chặng (vé khứ hồi: chặng đi).
+  for (const flight of itinerary.flights ?? []) {
+    if (isBookable(flight.product) && !items.has(flight.product.productId)) {
+      items.set(flight.product.productId, { product: flight.product, usingDate: flight.date, ...guests });
+    }
+  }
   if (itinerary.stay && isBookable(itinerary.stay.product)) {
     const checkIn = itinerary.days[0]?.date ?? undefined;
     items.set(itinerary.stay.product.productId, {
