@@ -1,6 +1,6 @@
 # Xếp lịch và tính tiền
 
-Phục vụ FR-AGT-03, FR-AGT-04, AC-AGT-02. Mô tả theo code tại 2026-10-07; khi lệch, PRD và contract thắng.
+Phục vụ FR-AGT-03, FR-AGT-04, AC-AGT-02, AC-AGT-04. Mô tả theo code tại 2026-10-07; khi lệch, PRD và contract thắng.
 
 ## Mục đích
 
@@ -29,11 +29,13 @@ flowchart LR
 - [Gói nhiều ngày](glossary.md#goi-nhieu-ngay) (từ 2 ngày: theo `durationMinutes` hoặc tên như "03 ngày", "4D3N", "3N2Đ")
   không vào slot. Tối đa 2 gói mỗi loại được trả kèm để người dùng cân nhắc riêng; không tính vào tổng.
 
-**Chỗ ở** — đúng một khách sạn, cho `max(1, days − 1)` đêm. Thứ tự chọn:
+**Chỗ ở** — đúng một khách sạn, cho `max(1, days − 1)` đêm, chọn **sau** hoạt động. Thứ tự chọn:
 1. nguồn Search trước Recommendation;
-2. giá thấp (không có giá xếp cuối);
-3. sao cao;
-4. `productId`.
+2. [mức khoảng cách](glossary.md#muc-khoang-cach) trung bình tới các hoạt động đã xếp (xem
+   [gom theo khoảng cách](#gom-theo-khoang-cach)); khách sạn chưa rõ vị trí xếp sau;
+3. giá thấp (không có giá xếp cuối);
+4. sao cao;
+5. `productId`.
 
 Không bao giờ chọn cả phòng lẫn khách sạn cha của nó.
 
@@ -41,13 +43,35 @@ Không bao giờ chọn cả phòng lẫn khách sạn cha của nó.
 - Thứ tự chọn:
   1. nguồn Search trước Recommendation;
   2. [hoạt động cả ngày](glossary.md#hoat-dong-ca-ngay) (≥ 360 phút) trước;
-  3. giá thấp;
-  4. `productId`.
+  3. [mức khoảng cách](glossary.md#muc-khoang-cach) tới [mốc](glossary.md#moc) của chuyến; chưa rõ vị trí xếp sau;
+  4. giá thấp;
+  5. `productId`.
 - Không chọn hai sản phẩm cùng cha.
-- **Rải ngày:** mỗi hoạt động vào ngày đang ít việc nhất, hoà thì ngày sớm hơn.
+- **Rải ngày:** mỗi hoạt động vào ngày đang ít việc nhất, hoà thì ngày sớm hơn. Luật này quyết định *số* hoạt động mỗi
+  ngày; *điểm nào* đi cùng ngày do [gom theo khoảng cách](#gom-theo-khoang-cach) quyết định.
 - Tối đa 2 hoạt động một ngày, ở buổi sáng rồi buổi chiều. Hoạt động cả ngày đứng một mình trong ngày.
 - Hoạt động dư so với sức chứa của chuyến thì không xếp, không dồn.
 - `pace` (nhịp độ) chưa ảnh hưởng xếp lịch.
+
+<a id="gom-theo-khoang-cach"></a>
+**Gom theo khoảng cách** (AC-AGT-04, chốt 2026-10-07)
+- Khoảng cách là đường chim bay giữa hai toạ độ catalog (`attributes.latitude`/`longitude`). Lịch trình không hiện số km.
+- **Rõ vị trí:** có toạ độ hợp lệ và không phải toạ độ tâm thành phố. Toạ độ tâm thành phố = có từ 4 chữ số thập phân
+  trở xuống **và** dùng chung cho từ 5 ứng viên trở lên của cùng điểm đến trong lượt.
+- **[Mốc](glossary.md#moc):** medoid của các hoạt động rõ vị trí nguồn Search (không có thì mọi nguồn).
+- **Ghép ngày:** sau khi đã biết ngày nào có 2 hoạt động, ghép từng cặp điểm gần nhau nhất trước, đủ số ngày đó. Điểm
+  còn lại đứng một mình. Ngày bị giờ bay giới hạn nhận điểm đơn gần khách sạn nhất. Ngày có hoạt động cả ngày giữ nguyên.
+- Câu trả lời có mục "Cách mình xếp lịch" (warning `PLAN_CRITERIA`), chỉ khi có ít nhất một hoạt động rõ vị trí.
+- Không hoạt động nào rõ vị trí: xếp như luật cũ (giá), không có `PLAN_CRITERIA`.
+
+```mermaid
+flowchart LR
+    A1((Bắc 1)) --- A2((Bắc 2))
+    B1((Nam 1)) --- B2((Nam 2))
+    H[Khách sạn<br/>gần cả hai cụm]
+    A1 -.Ngày 1.- H
+    B1 -.Ngày 2.- H
+```
 
 <a id="theo-gio-bay"></a>
 **Theo giờ bay** (khi có vé)
@@ -89,11 +113,15 @@ timeline
 - Ngày không có sản phẩm: cảnh báo `DAY_WITHOUT_PRODUCTS`. Riêng ngày mà giờ bay không chừa buổi nào thì không cảnh báo.
 - Luật tự bác lịch do chính nó đề xuất: đây là lỗi backend, được log `itinerary.composition_failed` rồi trả `FALLBACK`.
 - ⚠️ cần xác nhận: tiền chỗ ở = giá × số đêm, **không tính số phòng**. Đoàn đông người vẫn tính như một phòng.
+- ⚠️ cần xác nhận: nhận diện toạ độ tâm thành phố là cách tạm. Staging 07/10/2026 có khoảng 270/953 điểm tham quan dùng
+  toạ độ tâm thành phố (Vũng Tàu 48/48, Huế 64/80). Số ứng viên chung toạ độ được đếm trong lượt, nên khi ít hơn 5 tour
+  về cùng một điểm, chúng vẫn bị coi là rõ vị trí. Cần nguồn đánh dấu độ chính xác (ví dụ `attributes.geoPrecision`).
 - ⚠️ cần xác nhận: khung buổi chỉ dùng khi có vé. Không có vé thì buổi chỉ là nhãn, không kiểm thời lượng hoạt động (vd
   hoạt động 5 giờ vẫn có thể nằm ở buổi chiều).
 
 ## Code liên quan
 
-- [`domain/itinerary/planning.py`](../../../../src/backend/app/domain/itinerary/planning.py) — `compose_plan`, `day_windows`, `render_proposal`, `totals`, `validate_plan`
+- [`domain/itinerary/planning.py`](../../../../src/backend/app/domain/itinerary/planning.py) — `compose_plan`, `_group_by_distance`, `day_windows`, `render_proposal`, `totals`, `validate_plan`
+- [`domain/itinerary/geo.py`](../../../../src/backend/app/domain/itinerary/geo.py) — `located`, `medoid`, `band`, `haversine_km`
 - [`agents/steps/composition.py`](../../../../src/backend/app/agents/steps/composition.py) — ghép vé, cảnh báo, `NO_RESULTS`/`FALLBACK`
 - [`agents/steps/explanations.py`](../../../../src/backend/app/agents/steps/explanations.py) — câu "chưa có khách sạn"

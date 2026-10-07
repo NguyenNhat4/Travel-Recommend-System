@@ -219,6 +219,9 @@ MESSAGES = {
         "cost_UNKNOWN": "Mình chưa cộng thành một con số tổng vì lịch có mục chưa có giá; "
                         "giá từng mục có vé bạn xem ở khung lịch trình bên phải nhé.",
         "narrate_notes": "Giá là giá tham khảo, chưa gồm ăn uống và đi lại; cần kiểm tra lại khi đặt.",
+        "section_criteria": "Cách mình xếp lịch",
+        "plan_criteria": "Mình gom các điểm gần nhau vào cùng một ngày và chọn nơi ở gần các điểm đó để bạn ít phải di "
+                         "chuyển; nếu hai lựa chọn gần ngang nhau thì mình chọn chỗ giá thấp hơn.",
         "narrate_outro": "Bấm vào tên sản phẩm để xem chi tiết ở khung lịch trình bên phải, hoặc nhắn mình nếu muốn "
                          "đổi ngày, khách sạn hay hoạt động.",
     },
@@ -419,6 +422,9 @@ MESSAGES = {
         "cost_UNKNOWN": "I haven't added a single total because the plan includes items without a price yet; "
                         "check the price of each ticketed item in the panel on the right.",
         "narrate_notes": "Prices are for reference only and exclude meals and transport; check them again when booking.",
+        "section_criteria": "How I arranged the plan",
+        "plan_criteria": "I grouped nearby places on the same day and picked a stay close to them so you travel less; "
+                         "when two options are about as close, I chose the cheaper one.",
         "narrate_outro": "Tap a product name to see its details in the itinerary panel on the right, or tell me if you "
                          "want to change the date, hotel or activities.",
     },

@@ -227,6 +227,9 @@ def composed(state: dict) -> dict:
         warnings.append(flight_warning)
     warnings.append({"code": "SNAPSHOT_ONLY", "message": WARNINGS["SNAPSHOT_ONLY"]})
     warnings.append({"code": "SCHEDULE_ESTIMATE", "message": WARNINGS["SCHEDULE_ESTIMATE"]})
+    if proposal.get("criteria") == "DISTANCE":
+        # Tiêu chí xếp lịch được nói cho người dùng (AC-AGT-04); chỉ khi luật khoảng cách thật sự được dùng.
+        warnings.append({"code": "PLAN_CRITERIA", "message": messages.message(state, "plan_criteria")})
     if _uses_recommendation(plan):
         warnings.append({"code": "RECOMMENDATION_FALLBACK", "message": WARNINGS["RECOMMENDATION_FALLBACK"]})
     _budget_warnings(plan, state["intent"], warnings)

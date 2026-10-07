@@ -44,6 +44,9 @@ Mỗi thuật ngữ một dòng định nghĩa. Cột "Chi tiết" trỏ tới f
 | <a id="tham-quan-tu-do"></a>Tham quan tự do | Điểm `ticketed = false`, hoặc điểm tham quan/golf không có giá; tính 0 đ | [xep-lich.md](xep-lich.md) |
 | <a id="cua-so-gio"></a>Cửa sổ giờ (`day_windows`) | Các buổi còn dùng được ở ngày đến/ngày về theo giờ bay | [xep-lich.md](xep-lich.md#theo-gio-bay) |
 | <a id="transfer"></a>`TRANSFER` | Dòng di chuyển sân bay ở ngày đến và ngày về | [xep-lich.md](xep-lich.md#theo-gio-bay) |
+| <a id="moc"></a>Mốc (anchor) | Medoid của các hoạt động rõ vị trí; hoạt động gần mốc được chọn trước | [xep-lich.md](xep-lich.md#gom-theo-khoang-cach) |
+| <a id="muc-khoang-cach"></a>Mức khoảng cách (band) | Khoảng cách chia theo bậc 2 km; cùng mức thì giá quyết định | [xep-lich.md](xep-lich.md#gom-theo-khoang-cach) |
+| <a id="ro-vi-tri"></a>Rõ vị trí | Có toạ độ và không phải toạ độ tâm thành phố | [xep-lich.md](xep-lich.md#gom-theo-khoang-cach) |
 
 ## Vé máy bay
 

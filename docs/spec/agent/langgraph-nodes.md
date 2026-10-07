@@ -242,10 +242,13 @@ Các điểm cần nhớ khi đọc trace:
 
 ## 5. Quy tắc xếp lịch của `compose`
 
-Luật nghiệp vụ (chọn chỗ ở, hoạt động, rải ngày, buổi theo giờ bay, dòng `TRANSFER`, gói nhiều ngày, tiền) nằm ở
+Luật nghiệp vụ (chọn chỗ ở, hoạt động, rải ngày, gom theo khoảng cách, buổi theo giờ bay, dòng `TRANSFER`, gói nhiều
+ngày, tiền) nằm ở
 [nghiep-vu/xep-lich.md](nghiep-vu/xep-lich.md). Về kỹ thuật: `compose_plan` → `render_proposal` → `validate_plan`
 (`domain/itinerary/planning.py`), gọi từ `steps/composition.composed`; hai hàm sau bác đề xuất của hàm đầu là lỗi
-backend, `compose` trả `FALLBACK` và log `itinerary.composition_failed`.
+backend, `compose` trả `FALLBACK` và log `itinerary.composition_failed`. Khoảng cách (`domain/itinerary/geo.py`) là hàm
+thuần trên toạ độ của `candidates`, không gọi mạng; proposal có `criteria = "DISTANCE"` khi luật khoảng cách được dùng,
+và `composed` khi đó thêm warning `PLAN_CRITERIA` để `narrate` chèn mục "Cách mình xếp lịch" trước mục chi phí.
 
 ## 6. Bảng tra cứu mười hai node
 

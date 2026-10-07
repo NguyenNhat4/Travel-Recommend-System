@@ -218,6 +218,9 @@ When no_stay_explained is true the plan has no hotel and the system adds its own
 hotels or accommodation, and never guess a reason.
 When flights_shown_separately is true the system adds its own **Vé máy bay** section with the flights or the reason
 there are none; do not mention flights, airlines or plane tickets, and do not write that section yourself.
+When criteria_shown_separately is true the system adds its own section explaining how the plan was arranged (nearby
+places grouped on the same day, a stay close to them); do not write that section or restate it, and never claim
+distances or travel times.
 Always include the **Chi phí dự kiến** section, even when the total is not known.
 An item with activityType TRANSFER is the airport transfer the system placed by the flight times on the arrival or
 departure day: write it as one line with its time and its note, add no flight detail and no activity around it.

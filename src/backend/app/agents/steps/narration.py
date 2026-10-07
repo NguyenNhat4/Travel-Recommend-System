@@ -140,6 +140,7 @@ def narration_input(state: dict) -> list:
                "budgetStatus": itinerary.get("budgetStatus"), "total_known": itinerary.get("estimatedTotal") is not None,
                "no_stay_explained": _no_stay_block(state, response) is not None,
                "flights_shown_separately": _flights_block(state, response) is not None,
+               "criteria_shown_separately": _criteria_block(state, response) is not None,
                "has_budget": state["intent"].get("budget") is not None}
     return [("system", NARRATE_PROMPT + f"\nReply in {language}."), ("human", prompt_yaml(payload))]
 
@@ -212,6 +213,13 @@ def _no_stay_block(state: dict, response: dict) -> str | None:
     return f"**{message(state, 'section_no_stay')}**\n{note}" if note else None
 
 
+def _criteria_block(state: dict, response: dict) -> str | None:
+    """Mục "Cách mình xếp lịch" (cảnh báo `PLAN_CRITERIA` của `compose`, AC-AGT-04); None khi lịch không xếp theo vị trí."""
+    note = next((warning["message"] for warning in response.get("warnings", [])
+                 if warning.get("code") == "PLAN_CRITERIA"), None)
+    return f"**{message(state, 'section_criteria')}**\n{note}" if note else None
+
+
 def fallback_message(state: dict, response: dict) -> str:
     """Bản dựng bằng luật, cùng bố cục với câu LLM: tiêu đề, ghi nhận thay đổi, nơi nghỉ, từng ngày, chi phí, lưu ý."""
     itinerary = response["itinerary"]
@@ -235,6 +243,9 @@ def fallback_message(state: dict, response: dict) -> str:
     no_stay = _no_stay_block(state, response)
     if no_stay:
         blocks.append(no_stay)
+    criteria = _criteria_block(state, response)
+    if criteria:
+        blocks.append(criteria)
     blocks.append(f"**{message(state, 'section_cost')}**\n{_cost_line(state, itinerary)}")
     blocks.append(f"**{message(state, 'section_notes')}**\n{message(state, 'narrate_notes')}\n"
                   f"{message(state, 'narrate_outro')}")
@@ -328,6 +339,10 @@ def render(state: dict, response: dict, narration: ItineraryNarration) -> tuple[
     if no_stay:
         # Lý do không có chỗ ở lấy từ dữ liệu tool, không để LLM tự diễn đạt: chèn trước mục chi phí.
         body = _before_cost(state, body, no_stay)
+    criteria = _criteria_block(state, response)
+    if criteria:
+        # Tiêu chí xếp lịch là luật của hệ thống, không để LLM tự diễn đạt (AC-AGT-04): chèn trước mục chi phí.
+        body = _before_cost(state, body, criteria)
     flights = _flights_block(state, response)
     if flights:
         # Vé và lý do thiếu vé lấy từ dữ liệu catalog, không để LLM diễn đạt: chèn trước mục đầu tiên.

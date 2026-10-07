@@ -176,6 +176,8 @@ class Proposal(TypedDict, total=False):
 
     stay_id: str | None
     slots: list[ProposedSlot]
+    #: "DISTANCE" khi lịch được xếp theo khoảng cách (AC-AGT-04); không có khoá khi không sản phẩm nào rõ vị trí.
+    criteria: str
 
 
 class ToolErrorPayload(TypedDict):

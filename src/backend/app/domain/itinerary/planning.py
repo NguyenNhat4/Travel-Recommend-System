@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import date, datetime, timedelta
+import math
 import re
 from typing import Any
 
 from .flights import flight_cost, flight_times
+from .geo import Point, band, haversine_km, located, medoid
 from .normalization import strip_accents
 from .types import Candidates, Constraints, Party, Plan, Product, Proposal, Sources, TripIntent
 
@@ -185,16 +187,18 @@ def _source_rank(sources: Sources, product: Product) -> int:
     return 0 if sources.get(product["productId"]) != "recommendation" else 1
 
 
-def _stay_order(sources: Sources, product: Product) -> tuple[Any, ...]:
+def _stay_order(sources: Sources, product: Product, distance: float = 0.0) -> tuple[Any, ...]:
+    """`distance`: mức khoảng cách tới các hoạt động đã xếp (`geo.band`); 0 cho mọi khách sạn khi không xét vị trí."""
     star = product.get("attributes", {}).get("starRating")
-    return (_source_rank(sources, product), *_price_key(product),
+    return (_source_rank(sources, product), distance, *_price_key(product),
             -(star if isinstance(star, (int, float)) else -1), product["productId"])
 
 
-def _activity_order(sources: Sources, product: Product) -> tuple[Any, ...]:
+def _activity_order(sources: Sources, product: Product, distance: float = 0.0) -> tuple[Any, ...]:
+    """`distance`: mức khoảng cách tới mốc của chuyến (`geo.band`); 0 cho mọi hoạt động khi không xét vị trí."""
     # A full-day item needs a day to itself, so it is placed before anything that can share one.
     return (_source_rank(sources, product), 0 if allowed_times(product) == ["MORNING"] else 1,
-            *_price_key(product), product["productId"])
+            distance, *_price_key(product), product["productId"])
 
 
 def _period_at(moment: datetime) -> str:
@@ -244,6 +248,47 @@ def _slot_order(slot: dict[str, Any]) -> tuple[int, int]:
     return list(PERIODS).index(slot["time"]), kind
 
 
+def _km(positions: dict[str, Point], product_id: str, point: Point | None) -> float | None:
+    own = positions.get(product_id)
+    return haversine_km(own, point) if own is not None and point is not None else None
+
+
+def _group_by_distance(per_day: list[list[Product]], full_days: set[int], limited: set[int],
+                       positions: dict[str, Point], reference: Point | None) -> list[list[Product]]:
+    """Đổi điểm nào đi cùng ngày để các điểm gần nhau nằm chung một ngày (AC-AGT-04). Số hoạt động mỗi ngày giữ nguyên.
+
+    Ghép từng cặp gần nhau nhất trước (tham lam theo cạnh ngắn nhất), đủ số ngày có hai hoạt động; điểm còn lại đứng một
+    mình. Ngày bị giờ bay giới hạn (`limited`) nhận điểm đơn gần nơi ở (`reference`) nhất. Ngày có hoạt động cả ngày
+    không đổi. Viết cho `MAX_ACTIVITIES_PER_DAY = 2`; ngày có nhiều hơn hai hoạt động được giữ nguyên.
+    """
+    flexible = [index for index, products in enumerate(per_day)
+                if index not in full_days and 1 <= len(products) <= 2]
+    pool = sorted((product for index in flexible for product in per_day[index]), key=lambda p: p["productId"])
+    pair_days = [index for index in flexible if len(per_day[index]) == 2]
+    edges = sorted(((_km(positions, a["productId"], positions.get(b["productId"])), a, b)
+                    for position, a in enumerate(pool) for b in pool[position + 1:]),
+                   key=lambda edge: (math.inf if edge[0] is None else edge[0], edge[1]["productId"], edge[2]["productId"]))
+    pairs: list[list[Product]] = []
+    used: set[str] = set()
+    for _, a, b in edges:
+        if len(pairs) == len(pair_days):
+            break
+        if a["productId"] not in used and b["productId"] not in used:
+            pairs.append([a, b])
+            used.update({a["productId"], b["productId"]})
+    singles = sorted((product for product in pool if product["productId"] not in used),
+                     key=lambda p: (math.inf if (km := _km(positions, p["productId"], reference)) is None else km,
+                                    p["productId"]))
+    single_days = sorted((index for index in flexible if len(per_day[index]) == 1),
+                         key=lambda index: (index not in limited, index))
+    grouped = [list(products) for products in per_day]
+    for index, pair in zip(pair_days, pairs):
+        grouped[index] = pair
+    for index, product in zip(single_days, singles):
+        grouped[index] = [product]
+    return grouped
+
+
 def compose_plan(candidates: Candidates, sources: Sources, intent: TripIntent,
                  windows: dict[int, dict[str, Any]] | None = None) -> Proposal:
     """Choose products and lay them out on days with fixed rules. No model is involved.
@@ -256,19 +301,29 @@ def compose_plan(candidates: Candidates, sources: Sources, intent: TripIntent,
 
     `windows` (từ `day_windows`) giới hạn buổi của ngày đến và ngày về theo giờ bay, và thêm dòng di chuyển ở hai ngày
     đó. Ngày không có trong `windows` dùng đủ `ACTIVITY_TIMES`.
+
+    Ít di chuyển (AC-AGT-04): khi có hoạt động rõ vị trí (`geo.located`), hoạt động gần mốc của chuyến (`geo.medoid`)
+    được chọn trước, khách sạn gần các hoạt động đã xếp được chọn, và các điểm gần nhau được gom chung ngày. Cùng mức
+    khoảng cách (`geo.band`, 2 km) thì giá quyết định. Proposal khi đó có `criteria = "DISTANCE"`; không điểm nào rõ vị
+    trí thì xếp như trước và không có khoá này.
     """
     windows = windows or {}
     days_count = intent.get("days")
     if not isinstance(days_count, int) or days_count < 1:  # upper bound is enforced by TripIntent
         raise ValueError("invalid trip duration")
     usable = [product for product in candidates.values() if product.get("available")]
-    stays = sorted((p for p in usable if p.get("taxonomy") == STAY_TAXONOMY),
-                   key=lambda product: _stay_order(sources, product))
-    stay = stays[0] if stays else None
-    taken = {_parent_key(stay), stay["productId"]} if stay else set()
+    positions = located(usable)
+    pool = [p for p in usable if p.get("taxonomy") in SLOT_TAXONOMIES and not multi_day_span(p)]
+    pool_points = {p["productId"]: positions[p["productId"]] for p in pool if p["productId"] in positions}
+    searched_points = {pid: point for pid, point in pool_points.items() if sources.get(pid) != "recommendation"}
+    anchor = medoid(searched_points or pool_points)
+
+    def to_anchor(product: Product) -> float:
+        return 0.0 if anchor is None else band(_km(positions, product["productId"], anchor))
+
+    taken: set[str] = set()
     activities: list[Product] = []
-    for product in sorted((p for p in usable if p.get("taxonomy") in SLOT_TAXONOMIES and not multi_day_span(p)),
-                          key=lambda product: _activity_order(sources, product)):
+    for product in sorted(pool, key=lambda product: _activity_order(sources, product, to_anchor(product))):
         key = _parent_key(product)
         if key in taken or product["productId"] in taken:
             continue
@@ -292,6 +347,23 @@ def compose_plan(candidates: Candidates, sources: Sources, intent: TripIntent,
         if full_day:
             full_days.add(index)
         per_day[index].append(product)
+    # Khách sạn chọn sau hoạt động, theo khoảng cách trung bình tới các hoạt động đã xếp (AC-AGT-04).
+    scheduled = [positions[p["productId"]] for products in per_day for p in products if p["productId"] in positions]
+
+    def to_activities(product: Product) -> float:
+        if not scheduled:
+            return 0.0
+        point = positions.get(product["productId"])
+        return band(None if point is None else sum(haversine_km(point, other) for other in scheduled) / len(scheduled))
+
+    stays = sorted((p for p in usable if p.get("taxonomy") == STAY_TAXONOMY
+                    and _parent_key(p) not in taken and p["productId"] not in taken),
+                   key=lambda product: _stay_order(sources, product, to_activities(product)))
+    stay = stays[0] if stays else None
+    if anchor is not None:
+        reference = positions.get(stay["productId"]) if stay else None
+        per_day = _group_by_distance(per_day, full_days, set(index - 1 for index in windows), positions,
+                                     reference or anchor)
     slots = []
     for index, products in enumerate(per_day):
         day_slots = [{"day": index + 1, "note_kind": "VISIT", "activity_type": None, "product_id": product["productId"],
@@ -300,7 +372,10 @@ def compose_plan(candidates: Candidates, sources: Sources, intent: TripIntent,
         day_slots += [{"day": index + 1, "note_kind": kind, "activity_type": "TRANSFER", "product_id": None, "time": time}
                       for time, kind in windows.get(index + 1, {}).get("transfers", [])]
         slots.extend(sorted(day_slots, key=_slot_order))
-    return {"stay_id": stay["productId"] if stay else None, "slots": slots}
+    proposal: Proposal = {"stay_id": stay["productId"] if stay else None, "slots": slots}
+    if anchor is not None:
+        proposal["criteria"] = "DISTANCE"
+    return proposal
 
 
 def render_proposal(proposal: Proposal, candidates: Candidates,

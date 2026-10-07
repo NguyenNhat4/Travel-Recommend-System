@@ -234,6 +234,33 @@ class NoStayTests(unittest.TestCase):
         self.assertIn('no_stay_explained: true', narration.narration_input(current)[1][1])
 
 
+CRITERIA = {'code': 'PLAN_CRITERIA', 'message': 'Mình gom các điểm gần nhau vào cùng một ngày.'}
+
+
+class PlanCriteriaTests(unittest.TestCase):
+    """`compose` thêm `PLAN_CRITERIA` (AC-AGT-04); lời diễn giải nêu tiêu chí ở mục riêng ngay trước mục chi phí."""
+
+    def test_the_criteria_sits_before_the_cost_section_in_the_llm_reply(self):
+        current = state()
+        current['response']['warnings'].append(CRITERIA)
+        text = narrated(current, 'Một ngày ở Hà Nội.\n\n**Ngày 1 · 15/10/2026**\n'
+                                 '• Cả ngày — [Tour](product:t1) ([[price:t1]]): đi sớm.\n\n'
+                                 '**Chi phí dự kiến**\n• [[total]]')[0]['response']['message']
+        self.assertIn(f"**Cách mình xếp lịch**\n{CRITERIA['message']}\n\n**Chi phí dự kiến**", text)
+
+    def test_the_rule_based_reply_has_the_criteria_too(self):
+        current = state()
+        current['response']['warnings'].append(CRITERIA)
+        text = narration.fallback_message(current, current['response'])
+        self.assertIn(f"**Cách mình xếp lịch**\n{CRITERIA['message']}\n\n**Chi phí dự kiến**", text)
+
+    def test_the_llm_is_told_the_system_states_the_criteria(self):
+        current = state()
+        self.assertIn('criteria_shown_separately: false', narration.narration_input(current)[1][1])
+        current['response']['warnings'].append(CRITERIA)
+        self.assertIn('criteria_shown_separately: true', narration.narration_input(current)[1][1])
+
+
 class NodeTests(unittest.TestCase):
     def llm(self, result=None, error=None):
         def with_structured_output(schema):
