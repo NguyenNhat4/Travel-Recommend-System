@@ -273,7 +273,7 @@ class PreviewerFeedTests(unittest.TestCase):
             'stream.minRecords': 1}
         loads, indexed = [], []
 
-        def fake_load(path, coverage, url, root, report_path=None):
+        def fake_load(path, coverage, url, root, report_path=None, **_):
             loads.append([json.loads(line) for line in path.read_text(encoding='utf-8').splitlines()])
             return {'dbRowsWritten': len(loads[-1])}
 

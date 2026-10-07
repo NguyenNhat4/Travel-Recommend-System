@@ -77,7 +77,7 @@ CRAWL = "crawl"  # dep giả: mọi bước cào của lượt (và chuẩn hoá
 COLUMNS = (("prepare", "Chuẩn bị"), ("crawl", "Cào"), ("normalise", "Chuẩn hoá"), ("merge", "Gộp"),
            ("validate", "Kiểm tra"), ("db", "Nạp DB"), ("index", "Index"))
 STEPS: tuple[Step, ...] = (
-    Step("maintain", "prepare", "Bảo trì DB", "Bảo trì DB: hết hạn giá Trip cũ, cuộn cửa sổ 30 ngày", (), None),
+    Step("maintain", "prepare", "Bảo trì DB", "Bảo trì DB: hết hạn giá Trip cũ, cuộn cửa sổ 30 ngày, parse lại thành phần combo", (), None),
     # `merge`: chạy lại chỉ bước gộp từ checkpoint (không ánh xạ lại interim)
     Step("normalise", "merge", "Gộp catalog", "Chuẩn hoá 13 trường, gộp trùng", (CRAWL,), ("full", "daily"),
          resume=("normalise", "merge")),
