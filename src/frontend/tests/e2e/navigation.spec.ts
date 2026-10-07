@@ -86,7 +86,7 @@ test('header controls share one 40px height and the header has no assistant entr
   const controls = [
     ...(await serviceButtons.all()),
     header.getByTitle('Thay đổi ngôn ngữ và tiền tệ'),
-    header.getByRole('button', { name: 'Đặt chỗ của tôi' }),
+    header.getByRole('button', { name: 'Giỏ hàng' }),
     header.getByRole('button', { name: 'Đăng nhập' }),
     header.getByRole('button', { name: 'Đăng ký' }),
   ];

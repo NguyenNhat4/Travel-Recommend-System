@@ -261,3 +261,54 @@ def test_forwarded_for_trusted_only_from_configured_proxies(world):
     cfg = settings(trusted_proxies="10.0.0.0/8")
     assert client_ip(Req("10.1.2.3", "1.2.3.4, 10.9.9.9"), cfg) == "1.2.3.4"
     assert client_ip(Req("8.8.8.8", "1.2.3.4"), cfg) == "8.8.8.8"  # peer lạ: bỏ qua header
+
+
+# --- hồ sơ (FR-USR-04) --------------------------------------------------------------------------
+
+def _token(client, persona=PERSONAS[0]) -> dict:
+    r = client.post("/api/v1/auth/login", json={"email": persona.email, "password": PASSWORD})
+    return {"Authorization": f"Bearer {r.json()['accessToken']}"}
+
+
+def test_patch_me_updates_name_and_phone_and_get_me_agrees(client):
+    headers = _token(client)
+    assert client.get("/api/v1/auth/me", headers=headers).json()["phone"] is None
+    r = client.patch("/api/v1/auth/me", headers=headers, json={"fullName": "  Minh Anh Mới  ", "phone": "0345484496"})
+    assert r.status_code == 200
+    assert_contract(r, "/auth/me", "patch")
+    assert r.json()["fullName"] == "Minh Anh Mới" and r.json()["phone"] == "0345484496"
+    assert r.json()["email"] == PERSONAS[0].email and r.json()["cdpUserId"] == PERSONAS[0].cdp_user_id
+    assert client.get("/api/v1/auth/me", headers=headers).json() == r.json()
+
+
+def test_patch_me_changes_only_the_fields_sent_and_null_clears_the_phone(client):
+    headers = _token(client)
+    client.patch("/api/v1/auth/me", headers=headers, json={"phone": "0345484496"})
+    only_name = client.patch("/api/v1/auth/me", headers=headers, json={"fullName": "Tên khác"}).json()
+    assert only_name["fullName"] == "Tên khác" and only_name["phone"] == "0345484496"
+    cleared = client.patch("/api/v1/auth/me", headers=headers, json={"phone": None})
+    assert cleared.status_code == 200 and cleared.json()["phone"] is None and cleared.json()["fullName"] == "Tên khác"
+
+
+@pytest.mark.parametrize("body", [
+    {}, {"fullName": ""}, {"fullName": "   "}, {"fullName": "x" * 101}, {"fullName": None}, {"phone": "034548"},
+    {"phone": "1345484496"}, {"phone": "03454844961"}, {"phone": "0345 484 496"}, {"phone": ""}, {"email": "a@b.vn"},
+    {"fullName": "Hợp lệ", "persona": "P1_frequent"},
+])
+def test_patch_me_rejects_invalid_body_with_422_and_changes_nothing(client, body):
+    headers = _token(client)
+    before = client.get("/api/v1/auth/me", headers=headers).json()
+    r = client.patch("/api/v1/auth/me", headers=headers, json=body)
+    assert r.status_code == 422
+    assert_contract(r, "/auth/me", "patch")
+    assert r.json()["error"]["code"] == "VALIDATION_ERROR"
+    assert client.get("/api/v1/auth/me", headers=headers).json() == before
+
+
+def test_patch_me_requires_bearer_and_only_touches_the_callers_account(client):
+    r = client.patch("/api/v1/auth/me", json={"fullName": "Kẻ lạ"})
+    assert r.status_code == 401
+    assert_contract(r, "/auth/me", "patch")
+    client.patch("/api/v1/auth/me", headers=_token(client, PERSONAS[1]), json={"fullName": "Của Bảo"})
+    assert client.get("/api/v1/auth/me", headers=_token(client, PERSONAS[0])).json()["fullName"] == "Minh Anh"
+

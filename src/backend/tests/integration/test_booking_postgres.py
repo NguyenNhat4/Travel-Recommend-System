@@ -12,7 +12,8 @@ import pytest
 
 from src.backend.app.application.ports.booking_store import PendingBookingExists
 from src.backend.app.domain.booking import (
-    Booking, BookingDraft, BookingItem, CartLine, FareLine, FareType, Payment, RoomAllocation, Traveler, TravelerType,
+    Booking, BookingDraft, BookingItem, BookingTab, CartLine, FareLine, FareType, Payment, RoomAllocation, Traveler,
+    TravelerType, tab_of,
 )
 from src.backend.app.domain.booking.party import TravelerDocuments
 from src.backend.app.domain.booking.status import BookingStatus, PaymentStatus
@@ -350,4 +351,34 @@ def test_draft_is_deleted_in_the_booking_transaction_and_old_expired_drafts_are_
             purged = await tx.purge_expired_drafts(now - timedelta(days=1))
         assert purged >= 1 and await drafts.get(USER, old.draft_id) is None
         assert await drafts.get(USER, fresh.draft_id) is not None               # còn để trang thanh toán báo "hết hạn"
+    asyncio.run(scenario())
+
+
+def test_booking_store_lists_own_bookings_newest_first_and_loads_a_page_in_order(bookable_hotel_room) -> None:
+    async def scenario() -> None:
+        catalog, store = PostgresProductCatalog(APP_URL), PostgresBookingStore(APP_URL)
+        product = (await catalog.get_products([bookable_hotel_room]))[bookable_hotel_room]
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        using = product.available_from
+        old = _booking(product, using, status=BookingStatus.CONFIRMED)
+        old.created_at, old.hold_expires_at = now - timedelta(days=40), None
+        new = _booking(product, using, status=BookingStatus.PENDING_PAYMENT)
+        new.created_at = now - timedelta(days=1)
+        for booking in (old, new):
+            async with store.transaction() as tx:
+                await tx.insert(booking)
+
+        async with store.transaction() as tx:
+            everything = await tx.list_overviews(USER, None)
+            recent = await tx.list_overviews(USER, now - timedelta(days=7))
+            nobody = await tx.list_overviews("VP0000001", now + timedelta(days=1))
+            page = await tx.get_many([old.booking_id, "not-a-uuid", new.booking_id])
+        assert [o.booking_id for o in everything] == [new.booking_id, old.booking_id]   # mới nhất trước
+        assert [o.booking_id for o in recent] == [new.booking_id] and nobody == []
+        first = everything[0]
+        assert first.taxonomies == ("hotel",) and first.last_end_date == using + timedelta(days=2)   # trả phòng sau 2 đêm
+        assert tab_of(first, now) is BookingTab.UPCOMING                                   # đang giữ chỗ
+        assert [b.booking_id for b in page] == [old.booking_id, new.booking_id]            # đúng thứ tự yêu cầu, bỏ mã sai
+        assert page[0].payment.status is PaymentStatus.OPEN and page[0].items[0].nights == 2
+        assert page[0].total_amount == old.total_amount and page[0].travelers == []
     asyncio.run(scenario())

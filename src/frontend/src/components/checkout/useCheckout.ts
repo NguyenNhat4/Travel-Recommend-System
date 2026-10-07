@@ -151,11 +151,17 @@ export function useCheckout() {
     // Khách vừa đăng nhập ngay trên trang thanh toán (giỏ của khách đã được gộp vào tài khoản): giữ thông tin đang nhập.
     const keepsInput = initializedFor.current === 'cart:guest' && currentPersona !== null;
     initializedFor.current = owner;
-    if (keepsInput) return;
+    // Số điện thoại hồ sơ (FR-USR-04) điền sẵn ô liên hệ; người dùng đã gõ rồi thì không ghi đè.
+    const profilePhone = currentPersona?.phone ?? '';
+    if (keepsInput) {
+      if (profilePhone) setPhone((current) => current || profilePhone);
+      return;
+    }
     const { drafts: initial, seq: nextSeq } = newDrafts(defaultParty(cart.items), currentPersona?.name ?? '');
     setDrafts(initial);
     setSeq(nextSeq);
     setContactName(currentPersona?.name ?? '');
+    setPhone(profilePhone);
     setAllocs(Object.fromEntries(cart.items.map((item) => [item.cartItemId, defaultAllocation(item, initial)])));
     setDone({ travelers: false, services: false });
     setErrors({});

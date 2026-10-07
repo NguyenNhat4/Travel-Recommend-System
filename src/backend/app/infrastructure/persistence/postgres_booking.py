@@ -16,7 +16,8 @@ from psycopg.types.json import Jsonb
 from src.backend.app.application.booking.errors import ValidationFailed
 from src.backend.app.application.ports.booking_store import PendingBookingExists, ReferenceCodeTaken
 from src.backend.app.domain.booking import (
-    Booking, BookingDraft, BookingItem, Cart, CartLine, FareLine, Payment, RoomAllocation, Traveler, TravelerType,
+    Booking, BookingDraft, BookingItem, BookingOverview, Cart, CartLine, FareLine, Payment, RoomAllocation, Traveler,
+    TravelerType,
 )
 from src.backend.app.domain.booking.party import TravelerDocuments
 from src.backend.app.domain.booking.status import BookingStatus, PaymentStatus
@@ -348,6 +349,33 @@ def _item_metadata(metadata: dict | None) -> dict:
     }
 
 
+def _payment_of(row: dict) -> Payment | None:
+    if not row["payment_id"]:
+        return None
+    return Payment(
+        payment_id=row["payment_id"], provider=row["provider"], amount=int(row["payment_amount"]),
+        currency=row["payment_currency"].strip(), status=PaymentStatus(row["payment_status"]),
+        checkout_session_id=row["checkout_session_id"], payment_intent_id=row["payment_intent_id"],
+        checkout_url=row["checkout_url"], failed_attempts=row["failed_attempts"],
+        last_failure_code=row["last_failure_code"], refund_id=row["refund_id"], updated_at=row["payment_updated_at"])
+
+
+_ITEM_SELECT = """
+    SELECT booking_item_id::text AS booking_item_id, booking_id::text AS booking_id, product_id::text AS product_id,
+           taxonomy, product_name, unit_price, quantity, using_date, using_date_to, guest_names, special_request, metadata
+      FROM app.booking_items
+"""
+
+
+def _item_of(i: dict) -> BookingItem:
+    return BookingItem(
+        booking_item_id=i["booking_item_id"], product_id=i["product_id"], taxonomy=i["taxonomy"],
+        product_name=i["product_name"], unit_price=int(i["unit_price"]), quantity=i["quantity"],
+        using_date=i["using_date"], nights=_nights(i["using_date"], i["using_date_to"]),
+        guest_names=list(i["guest_names"] or []), special_request=i["special_request"],
+        **_item_metadata(i["metadata"]))
+
+
 class _Tx:
     def __init__(self, conn: psycopg.AsyncConnection):
         self._conn = conn
@@ -368,31 +396,14 @@ class _Tx:
             SELECT traveler_ref, traveler_type, surname, given_names, birth_date, documents
               FROM app.booking_travelers WHERE booking_id = %s::uuid ORDER BY position
             """, (row["booking_id"],))).fetchall()
-        payment = None
-        if row["payment_id"]:
-            payment = Payment(
-                payment_id=row["payment_id"], provider=row["provider"], amount=int(row["payment_amount"]),
-                currency=row["payment_currency"].strip(), status=PaymentStatus(row["payment_status"]),
-                checkout_session_id=row["checkout_session_id"], payment_intent_id=row["payment_intent_id"],
-                checkout_url=row["checkout_url"], failed_attempts=row["failed_attempts"],
-                last_failure_code=row["last_failure_code"], refund_id=row["refund_id"],
-                updated_at=row["payment_updated_at"])
         return Booking(
             booking_id=row["booking_id"], reference_code=row["reference_code"], cdp_user_id=row["cdp_user_id"],
             event_group_id=row["event_group_id"], contact_name=row["contact_name"], contact_email=row["contact_email"],
             contact_phone=row["contact_phone"], created_at=row["created_at"], status=BookingStatus(row["status"]),
             currency=row["currency"].strip(), hold_expires_at=row["hold_expires_at"],
             confirmed_at=row["confirmed_at"], cancelled_at=row["cancelled_at"], cancel_reason=row["cancel_reason"],
-            purchase_events_cancelled_at=row["purchase_events_cancelled_at"], payment=payment,
-            items=[
-                BookingItem(
-                    booking_item_id=i["booking_item_id"], product_id=i["product_id"], taxonomy=i["taxonomy"],
-                    product_name=i["product_name"], unit_price=int(i["unit_price"]), quantity=i["quantity"],
-                    using_date=i["using_date"], nights=_nights(i["using_date"], i["using_date_to"]),
-                    guest_names=list(i["guest_names"] or []), special_request=i["special_request"],
-                    **_item_metadata(i["metadata"]))
-                for i in items
-            ],
+            purchase_events_cancelled_at=row["purchase_events_cancelled_at"], payment=_payment_of(row),
+            items=[_item_of(i) for i in items],
             travelers=[
                 Traveler(t["traveler_ref"], TravelerType(t["traveler_type"]), t["surname"], t["given_names"],
                          t["birth_date"], _documents_from_json(t["documents"]))
@@ -412,6 +423,44 @@ class _Tx:
 
     async def get_pending_for_user(self, cdp_user_id: str, *, lock: bool = False) -> Booking | None:
         return await self._load("b.cdp_user_id = %s AND b.status = 'pending_payment'", (cdp_user_id,), lock)
+
+    async def list_overviews(self, cdp_user_id: str, since: datetime | None) -> list[BookingOverview]:
+        rows = await (await self._conn.execute(
+            """
+            SELECT b.booking_id::text AS booking_id, b.status, b.created_at, b.hold_expires_at,
+                   max(COALESCE(i.using_date_to, i.using_date)) AS last_end_date,
+                   array_agg(DISTINCT i.taxonomy ORDER BY i.taxonomy) AS taxonomies
+              FROM app.bookings b JOIN app.booking_items i ON i.booking_id = b.booking_id
+             WHERE b.cdp_user_id = %s AND (%s::timestamptz IS NULL OR b.created_at >= %s::timestamptz)
+             GROUP BY b.booking_id
+             ORDER BY b.created_at DESC, b.booking_id DESC
+            """, (cdp_user_id, since, since))).fetchall()
+        return [BookingOverview(r["booking_id"], BookingStatus(r["status"]), r["created_at"], r["hold_expires_at"],
+                                r["last_end_date"], tuple(r["taxonomies"])) for r in rows]
+
+    async def get_many(self, booking_ids: Sequence[str]) -> list[Booking]:
+        ids = [i for i in (_uuid_or_none(b) for b in booking_ids) if i]
+        if not ids:
+            return []
+        rows = await (await self._conn.execute(f"{_BOOKING_SELECT} WHERE b.booking_id = ANY(%s::uuid[])", (ids,))).fetchall()
+        items = await (await self._conn.execute(
+            f"{_ITEM_SELECT} WHERE booking_id = ANY(%s::uuid[]) ORDER BY using_date, booking_item_id", (ids,))).fetchall()
+        by_booking: dict[str, list[dict]] = {}
+        for item in items:
+            by_booking.setdefault(item["booking_id"], []).append(item)
+        found = {
+            row["booking_id"]: Booking(
+                booking_id=row["booking_id"], reference_code=row["reference_code"], cdp_user_id=row["cdp_user_id"],
+                event_group_id=row["event_group_id"], contact_name=row["contact_name"],
+                contact_email=row["contact_email"], contact_phone=row["contact_phone"], created_at=row["created_at"],
+                status=BookingStatus(row["status"]), currency=row["currency"].strip(),
+                hold_expires_at=row["hold_expires_at"], confirmed_at=row["confirmed_at"],
+                cancelled_at=row["cancelled_at"], cancel_reason=row["cancel_reason"],
+                purchase_events_cancelled_at=row["purchase_events_cancelled_at"], payment=_payment_of(row),
+                items=[_item_of(i) for i in by_booking.get(row["booking_id"], [])])
+            for row in rows
+        }
+        return [found[i] for i in ids if i in found]
 
     async def insert(self, booking: Booking) -> None:
         try:

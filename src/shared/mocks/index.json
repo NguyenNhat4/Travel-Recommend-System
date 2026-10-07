@@ -51,6 +51,22 @@
       "file": "auth/getMe.401-token-expired.json"
     },
     {
+      "operationId": "updateMe",
+      "method": "patch",
+      "path": "/auth/me",
+      "status": 200,
+      "case": "default",
+      "file": "auth/updateMe.200-default.json"
+    },
+    {
+      "operationId": "updateMe",
+      "method": "patch",
+      "path": "/auth/me",
+      "status": 422,
+      "case": "invalid-phone",
+      "file": "auth/updateMe.422-invalid-phone.json"
+    },
+    {
       "operationId": "createSession",
       "method": "post",
       "path": "/auth/session",
@@ -513,6 +529,38 @@
       "status": 200,
       "case": "cancelled-refunded",
       "file": "booking/getBooking.200-cancelled-refunded.json"
+    },
+    {
+      "operationId": "listBookings",
+      "method": "get",
+      "path": "/bookings",
+      "status": 200,
+      "case": "default",
+      "file": "booking/listBookings.200-default.json"
+    },
+    {
+      "operationId": "listBookings",
+      "method": "get",
+      "path": "/bookings",
+      "status": 200,
+      "case": "cancelled",
+      "file": "booking/listBookings.200-cancelled.json"
+    },
+    {
+      "operationId": "listBookings",
+      "method": "get",
+      "path": "/bookings",
+      "status": 200,
+      "case": "empty",
+      "file": "booking/listBookings.200-empty.json"
+    },
+    {
+      "operationId": "listBookings",
+      "method": "get",
+      "path": "/bookings",
+      "status": 422,
+      "case": "invalid-tab",
+      "file": "booking/listBookings.422-invalid-tab.json"
     },
     {
       "operationId": "cancelBooking",

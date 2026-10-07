@@ -17,6 +17,10 @@ import {
   BOOKING_STATUS_BADGE, FAILURE_REASON_TEXT, MAX_CARD_ATTEMPTS, formatCountdown, formatDateTimeVn, formatVnd,
 } from './bookingLabels';
 import { FareLines } from '../checkout/FareLines';
+import {
+  BookingBreadcrumb, CancellationPolicyBlock, CustomerBlock, PartyBlock, PaymentPanel, ServiceFacts, ServiceInfoBlock,
+} from './BookingDetailSections';
+import { useProductInfo, type PropertyInfo } from './useProductInfo';
 
 interface ConfirmationViewProps {
   referenceCode: string;
@@ -63,6 +67,7 @@ export const ConfirmationView: React.FC<ConfirmationViewProps> = ({ referenceCod
 
   const status = booking?.status;
   const paymentStatus = booking?.payment?.status;
+  const propertyInfo = useProductInfo(booking ? bookingApi.bookingItems(booking) : []);
 
   // Đồng hồ đếm ngược theo holdExpiresAt do server trả.
   const holdExpiresAt = status === 'PENDING_PAYMENT' ? booking?.holdExpiresAt ?? null : null;
@@ -170,35 +175,49 @@ export const ConfirmationView: React.FC<ConfirmationViewProps> = ({ referenceCod
   const canCancel = booking.status === 'PENDING_PAYMENT' && paymentStatus === 'OPEN' || canCancelConfirmed;
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-10">
-      <StatusCard
-        booking={booking}
-        paymentReturn={paymentReturn}
-        remainingMs={remainingMs}
-        pollsExhausted={polls >= bookingApi.PAYMENT_POLL_MAX_ATTEMPTS}
-        onContinue={() => booking.payment?.checkoutUrl && bookingApi.redirectToCheckout(booking.payment.checkoutUrl)}
-        onRebook={() => void rebook()}
-        rebooking={rebooking}
-        onHome={() => navigate('/')}
-        onAssistant={() => openFloatingWidget(`Gợi ý lịch trình 3 ngày ở ${booking.groups[0]?.destination ?? 'điểm đến của tôi'}`)}
-      />
+    <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <BookingBreadcrumb />
+      <div className="space-y-6">
+        <StatusCard
+          booking={booking}
+          paymentReturn={paymentReturn}
+          remainingMs={remainingMs}
+          pollsExhausted={polls >= bookingApi.PAYMENT_POLL_MAX_ATTEMPTS}
+          onContinue={() => booking.payment?.checkoutUrl && bookingApi.redirectToCheckout(booking.payment.checkoutUrl)}
+          onRebook={() => void rebook()}
+          rebooking={rebooking}
+          onHome={() => navigate('/')}
+          onAssistant={() => openFloatingWidget(`Gợi ý lịch trình 3 ngày ở ${booking.groups[0]?.destination ?? 'điểm đến của tôi'}`)}
+        />
 
-      <BookingSummary booking={booking} />
-
-      {canCancel && (
-        <div className="flex justify-end">
-          <button
-            onClick={() => { setCancelError(null); setCancelOpen(true); }}
-            className="px-4 py-2 text-xs font-bold text-rose-700 border border-rose-300 rounded-xl hover:bg-rose-50"
-          >
-            Huỷ đơn
-          </button>
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
+          <div className="min-w-0 space-y-4">
+            <BookingSummary booking={booking} info={propertyInfo} />
+            <CustomerBlock booking={booking} />
+            <PartyBlock booking={booking} />
+            <ServiceInfoBlock items={bookingApi.bookingItems(booking)} info={propertyInfo} />
+            <CancellationPolicyBlock booking={booking} nowMs={now} />
+          </div>
+          <aside className="min-w-0 lg:sticky lg:top-4">
+            <PaymentPanel
+              booking={booking}
+              cancel={canCancel ? (
+                <button
+                  type="button"
+                  onClick={() => { setCancelError(null); setCancelOpen(true); }}
+                  className="mt-1 min-h-11 rounded-xl border border-rose-300 px-4 py-2 text-xs font-bold text-rose-700 hover:bg-rose-50"
+                >
+                  Huỷ đơn
+                </button>
+              ) : null}
+            />
+          </aside>
         </div>
-      )}
 
-      {booking.status === 'CONFIRMED' && (
-        <NextForTrip destination={booking.groups[0]?.destination} persona={currentPersona} events={activeEvents} />
-      )}
+        {booking.status === 'CONFIRMED' && (
+          <NextForTrip destination={booking.groups[0]?.destination} persona={currentPersona} events={activeEvents} />
+        )}
+      </div>
 
       {cancelOpen && (
         <div role="dialog" aria-modal="true" aria-labelledby="cancel-title"
@@ -411,10 +430,10 @@ function quantityText(item: ApiBookingItem): string {
   return item.product.taxonomy === 'combo' ? `${item.quantity} gói` : `${item.quantity} khách`;
 }
 
-const BookingSummary: React.FC<{ booking: BookingResponse }> = ({ booking }) => (
+const BookingSummary: React.FC<{ booking: BookingResponse; info: Record<string, PropertyInfo> }> = ({ booking, info }) => (
   <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
     <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-      <h3 className="text-sm font-bold text-slate-900">CHI TIẾT ĐƠN ĐẶT CHỖ</h3>
+      <h3 className="text-sm font-bold text-slate-900">Thông tin đặt chỗ</h3>
       <span className={`text-xs font-bold ${BOOKING_STATUS_BADGE[booking.status].className}`}>
         {BOOKING_STATUS_BADGE[booking.status].label}
       </span>
@@ -437,15 +456,14 @@ const BookingSummary: React.FC<{ booking: BookingResponse }> = ({ booking }) => 
                 <span className="text-xs font-semibold text-slate-800 font-mono">{formatVnd(item.lineTotal)}</span>
               </div>
               <FareLines fares={item.fares ?? []} />
+              <div className="-mx-1 overflow-hidden rounded-xl border border-slate-100">
+                <ServiceFacts item={item} info={info[item.bookingItemId]} />
+              </div>
             </div>
           ))}
         </div>
       </div>
     ))}
-    <div className="pt-3 border-t border-slate-100 text-xs text-slate-500 flex flex-wrap justify-between gap-2">
-      <span>Người liên hệ: <strong>{booking.contact.fullName}</strong> ({booking.contact.phone})</span>
-      <span>Tổng: <strong className="font-mono text-slate-900">{formatVnd(booking.total)}</strong></span>
-    </div>
   </div>
 );
 

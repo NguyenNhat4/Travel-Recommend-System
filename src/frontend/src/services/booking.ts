@@ -30,6 +30,11 @@ export type ApiBookingItem = components['schemas']['BookingItem'];
 export type BookingResponse = components['schemas']['BookingResponse'];
 export type BookingStatus = components['schemas']['BookingStatus'];
 export type PaymentFailureReason = components['schemas']['PaymentFailureReason'];
+export type PaymentStatus = components['schemas']['PaymentStatus'];
+export type BookingTab = components['schemas']['BookingTab'];
+export type BookingSummary = components['schemas']['BookingSummary'];
+export type BookingSummaryItem = components['schemas']['BookingSummaryItem'];
+export type BookingListResponse = components['schemas']['BookingListResponse'];
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 
@@ -88,6 +93,26 @@ export function createBooking(body: CheckoutRequest): Promise<BookingResponse> {
 
 export function getBooking(referenceCode: string, signal?: AbortSignal): Promise<BookingResponse> {
   return apiJson(`/api/v1/bookings/${encodeURIComponent(referenceCode)}`, { cache: 'no-store', signal });
+}
+
+export interface ListBookingsParams {
+  tab: BookingTab;
+  /** Loại dịch vụ (`hotel`, `flight`, `attraction`, `combo`, `golf`); vắng mặt là mọi loại. */
+  taxonomy?: string;
+  /** Chỉ đơn đặt trong N ngày gần nhất; vắng mặt là mọi ngày. */
+  days?: 1 | 7 | 30 | 60;
+  page?: number;
+  pageSize?: number;
+}
+
+/** Một trang đơn của chính người dùng, mới nhất trước (FR-BKG-14). Backend xếp tab, lọc và đếm; Web không tự lọc. */
+export function listBookings(params: ListBookingsParams, signal?: AbortSignal): Promise<BookingListResponse> {
+  const search = new URLSearchParams({ tab: params.tab });
+  if (params.taxonomy) search.set('taxonomy', params.taxonomy);
+  if (params.days) search.set('days', String(params.days));
+  if (params.page && params.page > 1) search.set('page', String(params.page));
+  if (params.pageSize) search.set('pageSize', String(params.pageSize));
+  return apiJson(`/api/v1/bookings?${search.toString()}`, { cache: 'no-store', signal });
 }
 
 export function cancelBooking(referenceCode: string, reason?: string): Promise<BookingResponse> {
