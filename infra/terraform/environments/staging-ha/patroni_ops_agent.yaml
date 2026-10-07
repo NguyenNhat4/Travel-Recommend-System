@@ -1,0 +1,29 @@
+logging:
+  receivers:
+    patroni_cluster_probe:
+      type: files
+      include_paths:
+        - /var/log/vota/patroni-cluster.jsonl
+      record_log_file_path: true
+  processors:
+    parse_patroni_cluster:
+      type: parse_json
+      field: message
+  service:
+    pipelines:
+      patroni_cluster_pipeline:
+        receivers:
+          - patroni_cluster_probe
+        processors:
+          - parse_patroni_cluster
+
+metrics:
+  receivers:
+    hostmetrics:
+      type: hostmetrics
+      collection_interval: 60s
+  service:
+    pipelines:
+      default_pipeline:
+        receivers:
+          - hostmetrics

@@ -206,6 +206,11 @@ class Settings(BaseSettings):
     ready_requires_db: bool = False
     ready_db_timeout_seconds: float = Field(default=2.0, gt=0)
     ready_db_cache_seconds: float = Field(default=5.0, ge=0)
+    # - ready_db_outage_keeps_ready: mọi VM cùng mất DB thì giữ /health/ready = 200 (chế độ không DB: catalog/search
+    #   vẫn chạy, đường cần DB trả lỗi) thay vì loại hết khiến LB không còn backend nào. Một VM mất DB khi VM khác còn
+    #   DB vẫn bị loại. Cần Redis dùng chung (AUTH_REDIS_URL); không có Redis thì coi như mất toàn cục.
+    ready_db_outage_keeps_ready: bool = True
+    ready_db_peer_ttl_seconds: float = Field(default=30.0, gt=0)
     require_shared_backends: bool = False
     # 0 = tắt job đối soát (test); mặc định 5 phút/lần.
     booking_reconcile_interval_seconds: int = Field(default=300, ge=0)

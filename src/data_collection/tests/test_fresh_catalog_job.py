@@ -364,6 +364,7 @@ class RunJobTests(unittest.TestCase):
                  'maintain_catalog': record('maintain', {'staleTrip': 0, 'windowRows': 0}),
                  'index_catalog': record('index', {}),
                  'load_into_db': record('load', {}),
+                 'acquire_run_lock': lambda *args, **kwargs: True,  # khoá DB: test riêng ở test_catalog_run_lock.py
                  'normalize': record('normalize', Path('products.jsonl')),
                  'validate_run': record('validate', {})}
         mocks.update(overrides)
@@ -454,6 +455,30 @@ class RunJobTests(unittest.TestCase):
                 patch.object(fresh_catalog.alerts, 'check_sla', lambda *a: checked.append(a)):
             self.assertEqual(fresh_catalog.run_job('tick'), 0)
         self.assertEqual(len(checked), 1)
+
+    def test_idle_tick_emits_catalog_freshness_for_the_external_alert(self):
+        """Use case (docs/plan/2026-10-07-ha-vung-crawler-rolling.md §4): job cào chết hoặc catalog đứng quá lâu thì
+        cảnh báo SLA trong monitor (chỉ ghi file) không ai thấy; dòng `catalog.freshness` mỗi tick đi ra Cloud Logging."""
+        env = {k: v for k, v in self.env.items() if k.startswith('CATALOG_')}
+        (Path(env['CATALOG_STATE_DIR']) / 'settings.json').write_text(json.dumps({'values': {'schedule.enabled': False}}),
+                                                                       encoding='utf-8')
+        events = []
+        with patch.dict(os.environ, env, clear=True), \
+                patch.object(fresh_catalog.log, 'emit', lambda name, *a, **kw: events.append((name, kw))):
+            self.assertEqual(fresh_catalog.run_job('tick'), 0)
+        fresh = [kw for name, kw in events if name == 'catalog.freshness']
+        self.assertEqual(len(fresh), 1)
+        self.assertIn(fresh[0]['state'], {'ok', 'late', 'none'})
+        self.assertIn('max_age_hours', fresh[0])
+
+    def test_late_catalog_is_emitted_as_error_severity(self):
+        severities = []
+        with patch.object(fresh_catalog.log, 'emit', lambda name, msg, sev='INFO', **kw: severities.append((name, sev, kw))), \
+                patch.object(fresh_catalog.alerts, 'sla_status', lambda *a: {'rules': [
+                    {'rule': 'catalogAge', 'state': 'late', 'hours': 60.0}]}):
+            fresh_catalog.emit_freshness(Path('/x'), Path('/y'), {'sla.maxCatalogAgeHours': 48})
+        self.assertEqual(severities[0][:2], ('catalog.freshness', 'ERROR'))
+        self.assertEqual(severities[0][2]['age_hours'], 60.0)
 
     def test_missing_index_configuration_keeps_crawl_and_load_then_reports_index_failure(self):
         del self.env['CLOUD_WEAVIATE_URL']
@@ -614,7 +639,7 @@ class CrawlSitesTests(unittest.TestCase):
                     'results': [{'hotelId': '1', 'checkin': '2026-10-08', 'status': 'priced'}],
                     'completedHotels': ['1'], 'unpricedHotelDates': []}
         with tempfile.TemporaryDirectory() as tmp:
-            env = {'CATALOG_STATE_DIR': f'{tmp}/state', 'CATALOG_RUN_ROOT': f'{tmp}/runs', 'DB_TARGET': 'local',
+            env = {'CATALOG_STATE_DIR': f'{tmp}/state', 'CATALOG_RUN_ROOT': f'{tmp}/runs', 'CATALOG_DB_RUN_LOCK': 'off', 'DB_TARGET': 'local',
                    'SEED_DATABASE_URL': 'postgresql://seed', 'CATALOG_DESTINATIONS': 'Nha Trang', 'CRAWL_PARALLEL': '2'}
             calls = []
             fake = lambda name, value=None: (lambda *args, **kwargs: calls.append(name) or value)

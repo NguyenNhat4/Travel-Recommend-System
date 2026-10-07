@@ -1,6 +1,6 @@
 # Vận hành DB replica (staging)
 
-Hướng dẫn dựng, kiểm tra và xử lý sự cố cho PostgreSQL replica. Kế hoạch: `docs/plan/2026-10-01-db-replica-terraform.md`. Nếu lệch PRD, contract hoặc `AGENTS.md` thì các nguồn đó thắng.
+Hướng dẫn dựng, kiểm tra và xử lý sự cố cho PostgreSQL replica. Kế hoạch: `docs/plan/2026-10-01-db-replica-terraform.md`. Cụm tự failover (Patroni, thay cho promote tay): `docs/guide/van-hanh-db-patroni.md`. Nếu lệch PRD, contract hoặc `AGENTS.md` thì các nguồn đó thắng.
 
 ## 1. Dựng lần đầu (tự động qua CI/CD)
 
@@ -38,7 +38,7 @@ Thử ghi đọc: tạo một bảng tạm trên primary, kiểm tra thấy trê
 
 ## 3. Đọc từ máy/VM app qua tunnel
 
-Primary dùng cổng 15432 như hiện tại. Replica dùng cổng 15433, tunnel thẳng tới IP private của replica:
+Primary dùng cổng 15432 như hiện tại. (Replica nên ở zone KHÁC primary, biến `db_replica_zone`; replica cùng zone không bảo hiểm được mất zone.) Replica dùng cổng 15433, tunnel thẳng tới IP private của replica:
 
 ```bash
 ssh -N -L 127.0.0.1:15433:<replica_private_ip>:5432 <user>@<replica_private_ip>
@@ -85,6 +85,22 @@ Với app VM đơn cũ (tunnel SSH), vẫn theo cách tay:
 2. Trên replica: `sudo docker exec -u postgres vota-postgres psql -U postgres -Atc "SELECT pg_promote()"`; kiểm `pg_is_in_recovery()` = `f`.
 3. Đổi tunnel của backend và `DATABASE_URL`/`CDP_DATABASE_URL` sang replica (đã thành primary); chạy `scripts/deploy-backend-vm.sh` với `--db-tunnel-port` tương ứng.
 4. Primary cũ không được bật lại vào cụm. Khi cần replica mới, dựng VM/volume mới và chạy lại mục 1 với primary mới.
+
+### 6.1. Sau khi nâng: dựng lại replica (hệ thống KHÔNG còn replica)
+
+Ngay sau `promote-db-replica.sh`, DB mới là một node duy nhất. Mất nó trước khi có replica mới là mất mọi ghi từ lúc nâng. Làm ngay, không để đến sáng:
+
+1. Tạo VM replica mới **ở zone khác** zone của DB vừa được nâng (cùng region): workflow Staging Infra Terraform với `TF_VAR_db_replica_vm_name` mới và `TF_VAR_db_replica_zone` khác zone của primary mới (biến GitHub `GCE_DB_REPLICA_INSTANCE`, `GCE_DB_REPLICA_ZONE`).
+2. Nối replication cho cặp mới (primary mới = VM vừa nâng):
+   ```bash
+   GCP_PROJECT_ID=<project> PRIMARY_VM=<vm vừa nâng> GCE_ZONE=<zone của nó> \
+   REPLICA_VM=<vm replica mới> GCE_REPLICA_ZONE=<zone mới> bash ops/ci-db-replication.sh
+   ```
+   Idempotent: tạo role và slot trên primary mới, `pg_basebackup` lên replica mới, kiểm streaming và lag.
+3. Primary cũ: không bật lại vào cụm (dữ liệu có thể lệch). Muốn dùng lại làm replica thì xoá volume rồi dựng như mục 5 từ primary mới.
+4. Cập nhật `PRIMARY_VM/REPLICA_VM/REPLICA_ZONE` cho lần failover kế tiếp và các biến GitHub tương ứng.
+
+Cụm Patroni không cần các bước này: node cũ tự vào lại hoặc node mới tự basebackup; xem `docs/guide/van-hanh-db-patroni.md` §5.
 
 ## 7. Giới hạn đã biết
 
