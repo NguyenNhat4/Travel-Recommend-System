@@ -32,6 +32,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import alerts
+import catalog_run_lock
 import fresh_settings
 import index_backlog
 import log
@@ -272,12 +273,33 @@ def notify_finished(data: dict, run_dir: Path, state_dir: Path, values: dict) ->
         log.emit('alert.failed', f'alert.failed {type(exc).__name__}: {exc}', 'ERROR', error=exc)
 
 
+def acquire_run_lock(stack: contextlib.ExitStack, url: str) -> bool:
+    """Khoá một-lượt-chạy ở mức DB (catalog_run_lock.py). Tách hàm để test thay thế được."""
+    return catalog_run_lock.acquire(stack, url)
+
+
 def check_sla(state_dir: Path, run_root: Path, values: dict) -> None:
     """CP8: kiểm SLA ở mỗi cron tick (kể cả tick rảnh; không cần DB). Best effort."""
     try:
         alerts.check_sla(state_dir, run_root, values)
     except Exception as exc:
         log.emit('alert.sla.failed', f'alert.sla.failed {type(exc).__name__}: {exc}', 'WARNING', error=exc)
+    emit_freshness(state_dir, run_root, values)
+
+
+def emit_freshness(state_dir: Path, run_root: Path, values: dict) -> None:
+    """Một dòng `catalog.freshness` mỗi tick (15 phút), cho cảnh báo ngoài job (infra/terraform/environments/staging-ha/
+    crawler_monitoring.tf): dòng vắng mặt = job không còn chạy; `state=late` = catalog không đổi quá
+    `sla.maxCatalogAgeHours`. Cảnh báo SLA trong monitor chỉ ghi file nên không ai thấy khi VM/job đã chết."""
+    try:
+        rules = {r['rule']: r for r in alerts.sla_status(state_dir, run_root, values).get('rules', [])}
+        age = rules.get('catalogAge', {})
+        state = age.get('state', 'none')
+        log.emit('catalog.freshness', f'catalog.freshness state={state} age_hours={age.get("hours")}',
+                 'ERROR' if state == 'late' else 'INFO', state=state, age_hours=age.get('hours'),
+                 max_age_hours=values.get('sla.maxCatalogAgeHours'))
+    except Exception as exc:  # không được làm đổi kết quả tick
+        log.emit('catalog.freshness.failed', f'catalog.freshness.failed {type(exc).__name__}: {exc}', 'WARNING', error=exc)
 
 
 def save_run() -> None:
@@ -859,8 +881,11 @@ def check_local_only(db_target: str, db_url: str, index_config) -> None:
         raise ValueError('Chế độ local chặn lượt này: ' + '; '.join(problems))
 
 
+lock_file = catalog_run_lock.lock_file
+
+
 def lock_busy(state_dir: Path) -> bool:
-    path = state_dir / 'fresh_catalog.lock'
+    path = lock_file(state_dir)
     if not path.exists():
         return False
     with path.open('a') as handle:
@@ -940,15 +965,24 @@ def run_job(mode: str, trigger: str | None = None, run_id: str | None = None, fr
         index_config = None
         say(f'catalog.index.deferred: {exc}; cào và nạp DB vẫn tiếp tục')
     check_local_only(db_target, os.environ[key], index_config)
-    lock_path = state_dir / 'fresh_catalog.lock'
-    with lock_path.open('w') as lock:
+    lock_path = lock_file(state_dir)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open('w') as lock, contextlib.ExitStack() as held:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            log.emit('catalog.lock.busy', 'catalog.lock.busy: đã có job catalog khác đang chạy', 'WARNING', mode=mode)
+            log.emit('catalog.lock.busy', 'catalog.lock.busy: đã có job catalog khác đang chạy', 'WARNING', mode=mode,
+                     scope='host')
             if mode == 'tick':
                 return 0
             raise RuntimeError('Đã có job catalog khác đang chạy') from None
+        # Khoá tệp chỉ thấy tiến trình cùng máy; lượt ở container/VM khác (chạy tay trên máy khác lúc cron chạy) cần khoá DB.
+        if os.environ.get('CATALOG_DB_RUN_LOCK', 'on') != 'off' and not acquire_run_lock(held, os.environ[key]):
+            log.emit('catalog.lock.busy', 'catalog.lock.busy: một lượt catalog khác đang chạy ở máy khác (khoá DB)',
+                     'WARNING', mode=mode, scope='database')
+            if mode == 'tick':
+                return 0
+            raise RuntimeError('Đã có job catalog khác đang chạy (khoá DB)')
         if mode == 'tick':
             selected, reason = scheduled()
             if selected is None:

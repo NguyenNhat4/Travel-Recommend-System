@@ -33,6 +33,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import alerts as run_alerts
+import catalog_run_lock
 import fresh_settings
 import pipeline_graph as graph
 from collectors import live_control
@@ -215,7 +216,7 @@ def dir_size(path: Path, limit_files: int = 200_000) -> tuple[int, int]:
 
 
 def lock_busy(state_dir: Path) -> bool:
-    path = state_dir / "fresh_catalog.lock"
+    path = catalog_run_lock.lock_file(state_dir)
     if not path.exists():
         return False
     try:

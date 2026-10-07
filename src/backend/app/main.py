@@ -21,6 +21,7 @@ import threading
 from pathlib import Path
 import logging
 import os
+import socket
 import sys
 from concurrent.futures import Executor, ThreadPoolExecutor
 from contextlib import AsyncExitStack, asynccontextmanager
@@ -73,6 +74,7 @@ from src.backend.app.application.search.search_log import SearchLogRecorder
 from src.backend.app.domain.search import HybridConfig
 from src.backend.app.core.config import REPO_ROOT, Settings, get_settings, shared_backend_violations
 from src.backend.app.core.logging_config import configure_logging, log_event
+from src.backend.app.infrastructure.persistence.db_peer_registry import DbPeerRegistry
 from src.backend.app.infrastructure.persistence.db_probe import DatabaseProbe
 from src.backend.app.infrastructure.auth.argon2_hasher import Argon2Hasher
 from src.backend.app.infrastructure.auth.jwt_issuer import JwtConfig, JwtIssuer
@@ -596,6 +598,10 @@ async def lifespan(app: FastAPI):
 
             redis_client = redis_asyncio.from_url(settings.auth_redis_url)
             stack.push_async_callback(redis_client.aclose)
+            if settings.ready_requires_db and settings.ready_db_outage_keeps_ready:
+                # Hostname = một VM (các worker cùng VM dùng chung một dấu), xem db_peer_registry.py.
+                app.state.db_peers = DbPeerRegistry(
+                    redis_client, socket.gethostname(), ttl_seconds=settings.ready_db_peer_ttl_seconds)
         for name, service in build_auth(settings, cdp_client, redis_client).items():
             setattr(app.state, name, service)
         logger.info("startup.auth.ready ratelimit=%s", "redis" if redis_client else "memory")
@@ -758,20 +764,36 @@ async def health_ready():
     # Có bật thì RecSys phải nạp xong: bản sao Weaviate rỗng chỉ trả /search rỗng với HTTP 200, LB sẽ không biết để loại.
     recsys_ready = not settings.ready_requires_recsys or getattr(app.state, "index", None) is not None
     probe = getattr(app.state, "db_probe", None) if settings.ready_requires_db else None
-    db_ready = True if probe is None else await probe.ok()
+    db_reachable = True if probe is None else await probe.ok()
+    db_outage = False
+    db_ready = db_reachable
+    peers = getattr(app.state, "db_peers", None)
+    if peers is not None and probe is not None:
+        if db_reachable:
+            await peers.mark_ok()
+        else:
+            # Mất DB một mình (VM khác còn DB) thì bị loại; mất cùng lúc ở mọi VM (hoặc không biết) thì giữ lại
+            # để catalog/search không cần DB vẫn phục vụ. Không phụ thuộc DB nên đường cần DB tự trả lỗi.
+            await peers.mark_failed()
+            others_ok = await peers.peers_ok()
+            if others_ok is None or others_ok == 0:
+                db_outage, db_ready = True, True
     ok = ready and recsys_ready and db_ready
     # Chỉ ghi khi trạng thái đổi: LB gọi endpoint này vài giây một lần, ghi mỗi lần sẽ ngập log.
-    state = (ok, recsys_ready, db_ready)
+    state = (ok, recsys_ready, db_reachable, db_outage)
     if state != getattr(app.state, "last_readiness", None):
         app.state.last_readiness = state
+        if not db_reachable:
+            log_event(logger, "db.unavailable", "ERROR", component="postgres", error_kind="readiness_probe",
+                      scope="all_instances" if db_outage else "this_instance")
         if not ok:
-            log_event(logger, "readiness.degraded", "WARNING", ready=ready, recsys=recsys_ready, db=db_ready)
-            if not db_ready:
-                log_event(logger, "db.unavailable", "ERROR", component="postgres", error_kind="readiness_probe")
+            log_event(logger, "readiness.degraded", "WARNING", ready=ready, recsys=recsys_ready, db=db_reachable)
+        elif db_outage:
+            log_event(logger, "readiness.db_outage_kept", "WARNING", recsys=recsys_ready)
         else:
             logger.info("readiness.recovered")
     return JSONResponse(
         status_code=200 if ok else 503,
-        content={"status": "ok" if ok else "starting", "ready": ok, "recsys": recsys_ready, "db": db_ready,
-                 "env": settings.app_env},
+        content={"status": "ok" if ok else "starting", "ready": ok, "recsys": recsys_ready, "db": db_reachable,
+                 "mode": "db_outage" if db_outage else "normal", "env": settings.app_env},
     )

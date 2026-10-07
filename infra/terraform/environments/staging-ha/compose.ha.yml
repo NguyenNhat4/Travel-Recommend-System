@@ -27,17 +27,21 @@ services:
       - /etc/vota/backend.env
     environment:
       UVICORN_WORKERS: ${UVICORN_WORKERS:-2}
+      # Chờ SSE (90s) xong khi bị rút khỏi LB: bằng LB draining (100s), nhỏ hơn stop_grace_period bên dưới.
+      UVICORN_TIMEOUT_GRACEFUL_SHUTDOWN: ${UVICORN_GRACEFUL_SECONDS:-100}
       # Nhiều bản sao sau LB: chỉ nhận traffic khi RecSys đã nạp, và từ chối Weaviate/Redis loopback.
       READY_REQUIRES_RECSYS: "true"
       REQUIRE_SHARED_BACKENDS: "true"
       # Chỉ readiness (LB) thăm dò DB; liveness cho autohealing cố ý không phụ thuộc DB.
       READY_REQUIRES_DB: "true"
+      # Mọi VM cùng mất DB thì giữ lại (catalog/search không cần DB); một VM mất DB một mình vẫn bị loại.
+      READY_DB_OUTAGE_KEEPS_READY: "true"
     depends_on:
       pgbouncer:
         condition: service_healthy
     mem_limit: 3g
     cpus: 1.5
-    stop_grace_period: 40s
+    stop_grace_period: ${BACKEND_STOP_GRACE:-110}s
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3).status == 200 else 1)"]
       interval: 15s
@@ -60,4 +64,4 @@ services:
       BACKEND_BASE_URL: http://127.0.0.1:8000
     mem_limit: 768m
     cpus: 0.5
-    stop_grace_period: 20s
+    stop_grace_period: ${BACKEND_STOP_GRACE:-110}s   # frontend proxy SSE, phải sống bằng backend

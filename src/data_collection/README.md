@@ -326,6 +326,12 @@ Trình duyệt chạy trong Xvfb; `SHOW_BROWSER=1 ./local_crawl.sh monitor` đ�
 Dữ liệu các lượt ở `data/local_crawl/` (Git ignore). Bước index gọi Cohere cho search unit mới hoặc đổi text; ô thử truy
 vấn gọi Cohere một lần mỗi lần bấm.
 
+### Nối DB nội bộ và chống chồng lượt (HA)
+
+Job `fresh_catalog.py` nối DB bằng `db.vota.internal:5432` (không tunnel SSH, không qua pgbouncer), giữ **khoá tệp** (một
+container) và **khoá DB** `pg_try_advisory_lock(7791025)` (giữa các container; `catalog_run_lock.py`, tắt chỉ để chạy thử bằng
+`CATALOG_DB_RUN_LOCK=off`) nên tick chồng nhau thoát với `catalog.lock.busy`. `CATALOG_LOCK_DIR` đặt khoá tệp ra thư mục khác state. Mỗi tick phát `catalog.freshness` (`state`, `age_hours`) cho cảnh báo ngoài job. Hướng dẫn: `docs/guide/van-hanh-crawler-db-noi-bo.md`.
+
 ## Chạy
 
 Chạy trọn kế hoạch (Vinpearl → trip.com → booking.com → agoda.com → normalise), ước tính 2–3 giờ:

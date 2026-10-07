@@ -222,7 +222,7 @@ class JobTimeoutTests(unittest.TestCase):
         (root / 'state').mkdir()
         (root / 'state' / 'settings.json').write_text(json.dumps({'values': {'normalise.preview': False, **(settings or {})}}),
                                                       encoding='utf-8')
-        env = {'CATALOG_STATE_DIR': f'{tmp.name}/state', 'CATALOG_RUN_ROOT': f'{tmp.name}/runs', 'DB_TARGET': 'local',
+        env = {'CATALOG_STATE_DIR': f'{tmp.name}/state', 'CATALOG_RUN_ROOT': f'{tmp.name}/runs', 'CATALOG_DB_RUN_LOCK': 'off', 'DB_TARGET': 'local',
                'SEED_DATABASE_URL': 'postgresql://seed', 'CATALOG_DESTINATIONS': 'Nha Trang', 'CRAWL_PARALLEL': '4'}
         calls = []
         fake = lambda name, value=None: (lambda *a, **k: calls.append(name) or value)

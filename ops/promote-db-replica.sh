@@ -12,14 +12,15 @@ set -Eeuo pipefail
 PRIMARY_VM=${PRIMARY_VM:?set PRIMARY_VM}
 REPLICA_VM=${REPLICA_VM:?set REPLICA_VM}
 REPLICA_IP=${REPLICA_IP:?set REPLICA_IP (IP private của replica)}
-ZONE=${ZONE:?set ZONE}
+ZONE=${ZONE:?set ZONE (zone của primary)}
+REPLICA_ZONE=${REPLICA_ZONE:-$ZONE}   # zone của replica; nên KHÁC ZONE (cùng region)
 DNS_ZONE=${DNS_ZONE:?set DNS_ZONE (tên managed zone, ví dụ vota-ha-internal)}
 DNS_NAME=${DNS_NAME:-db.vota.internal.}
 DNS_TTL=${DNS_TTL:-30}
 CATCHUP_SECONDS=${CATCHUP_SECONDS:-30}
 GCLOUD=${GCLOUD:-gcloud}
 # Lệnh chạy psql -Atqc trên replica (tham số cuối là câu SQL). Mặc định qua SSH vào container; test ghi đè.
-REPLICA_PSQL=${REPLICA_PSQL:-"$GCLOUD compute ssh $REPLICA_VM --zone $ZONE --command"}
+REPLICA_PSQL=${REPLICA_PSQL:-"$GCLOUD compute ssh $REPLICA_VM --zone $REPLICA_ZONE --command"}
 REPLICA_CONTAINER=${REPLICA_CONTAINER:-vota-postgres}
 CONFIRM=0; [[ "${1:-}" == "--yes" ]] && CONFIRM=1
 
@@ -73,8 +74,20 @@ log "4/4 đổi DNS $DNS_NAME -> $REPLICA_IP"
 
 log "XONG sau $(( $(date +%s) - started )) giây. Backend nhận IP mới trong tối đa ${DNS_TTL}s (+ thời gian pgbouncer mở lại kết nối)."
 cat <<NEXT
+
+################################################################################
+#  CẢNH BÁO: HỆ THỐNG KHÔNG CÒN REPLICA.
+#  $REPLICA_VM giờ là DB đơn lẻ. Mất nó trước khi dựng replica mới là mất dữ liệu đã ghi từ lúc nâng.
+#  Dựng replica mới ngay (runbook: docs/guide/van-hanh-db-replica.md §6.1):
+################################################################################
 Việc còn lại (làm tay):
-  - KHÔNG bật lại $PRIMARY_VM vào cụm: dữ liệu của nó có thể lệch. Giữ disk để điều tra.
-  - Dựng replica mới từ primary mới (docs/guide/van-hanh-db-replica.md mục 5) và chạy ops/bootstrap-db-primary-replication.sh trên primary mới.
-  - Cập nhật PRIMARY_VM/REPLICA_VM/REPLICA_IP cho lần failover kế tiếp.
+  1. KHÔNG bật lại $PRIMARY_VM vào cụm: dữ liệu của nó có thể lệch (không pg_rewind được vì không có script). Giữ disk để điều tra.
+  2. Tạo VM replica mới Ở ZONE KHÁC $REPLICA_ZONE (cùng region): đặt TF_VAR_db_replica_vm_name mới và
+     TF_VAR_db_replica_zone khác $REPLICA_ZONE rồi chạy workflow Staging Infra Terraform; hoặc tạo VM tay.
+  3. Cho primary mới ($REPLICA_VM) và replica mới chạy replication:
+       GCP_PROJECT_ID=<project> PRIMARY_VM=$REPLICA_VM GCE_ZONE=$REPLICA_ZONE REPLICA_VM=<vm replica mới> GCE_REPLICA_ZONE=<zone mới> bash ops/ci-db-replication.sh
+     Script idempotent: tạo role/slot trên primary mới, pg_basebackup lên replica mới, kiểm streaming và lag.
+  4. Cập nhật PRIMARY_VM=$REPLICA_VM, ZONE=$REPLICA_ZONE, REPLICA_VM, REPLICA_ZONE cho lần failover kế tiếp, và biến GitHub
+     GCE_DB_INSTANCE / GCE_DB_REPLICA_INSTANCE nếu CI dùng.
+  Cụm Patroni (create_patroni = true) KHÔNG cần các bước này: node cũ tự vào lại, xem docs/guide/van-hanh-db-patroni.md.
 NEXT

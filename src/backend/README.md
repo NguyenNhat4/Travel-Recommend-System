@@ -33,6 +33,12 @@ auth v1 `POST /auth/register|login`, `GET /auth/me` · chỉ BFF (`X-Service-Tok
 `GET /.well-known/jwks.json`, `GET /metrics` (Prometheus), `GET /internal/calls` (lần gọi web / agent gần nhất cho monitor;
 `docs/spec/hop-dong-tich-hop-backend.md` §8.6a).
 
+`GET /health/ready` (cho load balancer; `/health` là liveness): 503 khi chưa nạp xong; nhóm HA bật thêm `READY_REQUIRES_RECSYS`,
+`READY_REQUIRES_DB`. Với `READY_REQUIRES_DB`, một VM mất DB trong khi VM khác còn DB thì bị loại (503); mọi VM cùng mất DB thì
+giữ 200 kèm `mode: "db_outage"` để catalog/search không cần DB vẫn phục vụ (`READY_DB_OUTAGE_KEEPS_READY`, mặc định bật, cần
+`AUTH_REDIS_URL` dùng chung; `READY_DB_PEER_TTL_SECONDS`). Chi tiết: `docs/plan/2026-10-07-ha-vung-crawler-rolling.md` §3.
+Thời gian chờ SSE khi tắt: `UVICORN_TIMEOUT_GRACEFUL_SHUTDOWN` (mặc định 30; nhóm HA đặt 100).
+
 ## Auth
 
 Chi tiết: `docs/spec/hop-dong-tich-hop-auth.md`. JWT ký RS256; sinh khoá dev một lần bằng `make jwt-keys` (ghi vào

@@ -1,0 +1,97 @@
+name: HA checks
+
+# Kiểm các phần HA mà workflow khác không chạy: Terraform staging-ha (infra-terraform-staging chỉ validate root `staging`),
+# test cấu trúc, cụm Patroni thật trong Docker, khoá DB của crawler trên Postgres thật. Chỉ kiểm, không deploy.
+on:
+  pull_request:
+    branches:
+      - main
+      - release-mvp-v1
+      - release-mvp-v2
+      - release-mvp-v3
+    paths:
+      - '.github/workflows/ha-checks.yml'
+      - 'infra/terraform/environments/staging-ha/**'
+      - 'ops/patroni/**'
+      - 'ops/tests/**'
+      - 'ops/promote-db-replica.sh'
+      - 'ops/loadtest/**'
+      - 'src/data_collection/catalog_run_lock.py'
+      - 'src/data_collection/fresh_catalog.py'
+      - 'src/data_collection/tests/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ha-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  terraform-staging-ha:
+    name: Terraform staging-ha
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '~1.9'
+      - name: Format
+        run: terraform -chdir=infra/terraform/environments/staging-ha fmt -check -recursive
+      - name: Validate
+        run: |
+          terraform -chdir=infra/terraform/environments/staging-ha init -backend=false -input=false
+          terraform -chdir=infra/terraform/environments/staging-ha validate -no-color
+      - name: Structure tests
+        run: |
+          for t in infra/terraform/environments/staging-ha/tests/test_*.py; do python3 "$t"; done
+      - name: Drill script syntax and dry run
+        run: |
+          bash -n ops/loadtest/ha-rolling-update-drill.sh
+          BASE_URL=http://x PROJECT=p REGION=r MIG=m BACKEND_SERVICE=b bash ops/loadtest/ha-rolling-update-drill.sh
+
+  db-scripts-and-patroni:
+    name: Patroni, promote script, probe (Docker)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probe tests
+        run: python3 -m pip install -q pytest && python3 -m pytest -q ops/tests/test_cluster_probe.py
+      - name: Promote script on a real primary/replica pair
+        run: bash ops/tests/test_promote_db_replica.sh
+      - name: Build Patroni image
+        run: docker build -t vota-patroni:ci ops/patroni
+      - name: Patroni failover (etcd + 2 nodes, kill the leader)
+        run: PATRONI_TEST_IMAGE=vota-patroni:ci bash ops/tests/test_patroni_failover.sh
+      - name: Patroni bootstrap by cloning a running primary
+        run: PATRONI_TEST_IMAGE=vota-patroni:ci bash ops/tests/test_patroni_clone_bootstrap.sh
+
+  crawler-lock:
+    name: Crawler DB run lock (real Postgres)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: pw
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: src/data_collection/requirements.txt
+      - name: Install
+        run: python -m pip install -r src/data_collection/requirements.txt pytest
+      - name: Lock and job tests
+        working-directory: src/data_collection
+        env:
+          PYTHONPATH: ..:.
+          CATALOG_TEST_DATABASE_URL: postgresql://postgres:pw@127.0.0.1:5432/postgres
+        run: python -m pytest -q tests/test_catalog_run_lock.py tests/test_fresh_catalog_job.py tests/test_pipeline_graph.py tests/test_alerts.py
