@@ -9,6 +9,10 @@
 #   travelContext.guests → filter sức chứa ở POST /search.
 # 1.17.0 (2026-10-06, additive): diagnostics.queryPlan.llm (LLM fallback của query plan, SEARCH_LLM_FALLBACK off|shadow|on,
 #   mặc định off) + diagnostics.stageMs.llm. Mặc định off → response y như 1.16.0.
+# 1.18.0 (2026-10-07, additive): queryPlan.duration / location / entity (chỉ khai khi SEARCH_DURATION_FILTER /
+#   SEARCH_POI_RESOLVE / SEARCH_ENTITY_FILTER bật); "duration", "entity" trong applied; "entity" trong emptyReason (+ "duration"
+#   khai cho đủ họ, không bao giờ phát); appliedFilters.hard.entity, hard.destinationSource = poi. Mặc định tắt → response y như
+#   1.17.0. Spec: docs/spec/bench/tong-hop-chinh-sua-luong-search-ota.md.
 
 # [Q1] Ngữ cảnh chuyến đi. KHÔNG phải xác nhận availability nếu
 # availabilityMode là CATALOG_ONLY.
@@ -153,6 +157,10 @@ AppliedFilters:
         mustNotFlags (includesFlight | includesHotel — combo CÓ GHI NHẬN thành phần đó bị loại; combo không có dữ liệu thành
         phần vẫn qua, [C2]), minOccupancy + partySource (param = travelContext.guests của request | query = số khách suy từ
         câu; loại unit có sức chứa ĐÃ BIẾT nhỏ hơn minOccupancy, không biết thì giữ).
+        Từ 1.18.0: entity (danh sách khoá điểm vui chơi của gazetteer trong repo, vd. ["vinwonders"] — chỉ giữ unit attraction /
+        combo có TÊN chứa entity, cờ SEARCH_ENTITY_FILTER; không nới; request taxonomy ngoài {attraction, combo} gặp câu entity
+        → total 0 + queryPlan.emptyReason = entity); destinationSource = poi (điểm đến suy từ địa danh / khu vực / sân bay / venue
+        trong gazetteer — "Hồ Hoàn Kiếm" → Hà Nội — cờ SEARCH_POI_RESOLVE; luật fallback như query).
     soft:
       type: object
       additionalProperties: true
@@ -338,6 +346,7 @@ EngineDiagnostics:
       description: >-
         Địa danh (giá trị catalog) bước chuẩn hoá nhận ra trong câu, theo thứ tự xuất hiện. Có mặt kể cả khi
         SEARCH_DEST_FILTER tắt (để đo tần suất filter sẽ kích hoạt); vắng khi câu không nêu địa danh hay tắt chuẩn hoá.
+        Từ 1.18.0: gồm cả điểm đến suy từ địa danh gazetteer (queryPlan.location) khi SEARCH_POI_RESOLVE bật.
     destinationFilter:
       type: object
       required: [source, value]
@@ -347,7 +356,9 @@ EngineDiagnostics:
         trong câu; none: không lọc theo điểm đến (câu không nêu, hoặc skipped). skipped = multi: câu nêu từ hai nơi
         (nơi đi + nơi đến, "A hoặc B", thương hiệu chứa địa danh); flight: câu hỏi vé máy bay (destination của tuyến là
         nơi đến). fallback = dropped_empty: F sau khi lọc theo địa danh suy ra rỗng nên đã chạy lại không lọc (FR-SRC-04);
-        total, facets, results khi đó là của lượt không lọc.
+        total, facets, results khi đó là của lượt không lọc. Từ 1.18.0: điểm đến suy từ địa danh gazetteer (queryPlan.location,
+        SEARCH_POI_RESOLVE) vẫn là source = query (cùng luật lọc / multi / fallback); appliedFilters.hard.destinationSource = poi
+        cho biết nguồn.
       properties:
         source:
           type: string
@@ -372,6 +383,8 @@ EngineDiagnostics:
     # hard constraint parse từ câu — taxonomy (F4), tuyến bay (F5), phủ định tiện ích (F3), giá/sao (F6). Phát khi bước chuẩn hoá
     # bật, KỂ CẢ khi mọi cờ SEARCH_*_FILTER tắt (để bench đo độ chính xác parse); khối này khai "parse ra gì và áp gì",
     # appliedFilters mới là "đã lọc gì". Mọi trường tuỳ chọn; trường vắng = không parse ra.
+    # Ngoại lệ (như party 1.16.0): duration / location / entity (1.18.0) chỉ parse và khai khi cờ của họ bật — cờ tắt thì response
+    # y như 1.17.0.
     queryPlan:
       type: object
       additionalProperties: false
@@ -506,17 +519,76 @@ EngineDiagnostics:
             source:
               type: string
               enum: [param, query]
+        duration:
+          type: object
+          additionalProperties: false
+          description: >-
+            (1.18.0) Thời lượng chuyến nêu trong câu: "N ngày M đêm", "M đêm N ngày", "3N2Đ", "N ngày", "M đêm", "N days M nights"
+            — chữ số 1–30, không nhận số viết bằng chữ; "/đêm" của giá, "3 tiếng", "chợ đêm", "qua đêm" không tính. P0 chỉ khai và
+            bỏ cụm khỏi lexicalText (cờ SEARCH_DURATION_FILTER); KHÔNG lọc, không xếp hạng vì catalog chưa có trường thời lượng
+            (P1). Chỉ khai khi cờ bật.
+          properties:
+            days:
+              type: [integer, 'null']
+              minimum: 1
+            nights:
+              type: [integer, 'null']
+              minimum: 1
+            source:
+              type: string
+              enum: [query]
+        entity:
+          type: object
+          additionalProperties: false
+          required: [keys, role]
+          description: >-
+            (1.18.0) Điểm vui chơi trong gazetteer repo (domain/search/gazetteer.py: vinwonders, safari, grand_world, …) nhận ra
+            trong câu (bỏ cụm trong scope phủ định), chỉ khi SEARCH_ENTITY_FILTER bật. role = gate: câu chỉ nêu entity hoặc kèm cue
+            attraction / combo → chỉ giữ unit attraction / combo có TÊN chứa entity (HARD, không nới; "entity" vào applied);
+            location: câu có cue loại khác (khách sạn / vé máy bay / golf, kể cả cue yếu) hoặc nêu từ hai loại → entity chỉ định
+            vị, không lọc. Tham số taxonomy của request không đổi role, chỉ giao với mask (tab Web có thể 0 → emptyReason entity).
+            Thương hiệu khách sạn (Vinpearl, Meliá) không phải entity.
+          properties:
+            keys:
+              type: array
+              minItems: 1
+              items:
+                type: string
+            role:
+              type: string
+              enum: [gate, location]
+        location:
+          type: object
+          additionalProperties: false
+          required: [key, name, kind, destination]
+          description: >-
+            (1.18.0) Địa danh / khu vực / quận / sân bay / venue ĐẦU TIÊN trong câu khớp gazetteer repo (không phải tên điểm đến
+            catalog) và điểm đến catalog của nó — "Hồ Hoàn Kiếm" → Hà Nội, "Cầu Rồng" → Đà Nẵng. Điểm đến này vào
+            derivedDestinations và theo luật F1 như địa danh câu nêu (duy nhất → lọc với source = query, ≥ 2 nơi → multi, F rỗng →
+            FR-SRC-04 fallback). Chỉ khai khi SEARCH_POI_RESOLVE bật. Bán kính / khoảng cách là P1.
+          properties:
+            key:
+              type: string
+            name:
+              type: string
+            kind:
+              type: string
+              enum: [landmark, area, district, airport, venue]
+            destination:
+              type: string
         lexicalText:
           type: string
           description: >-
             Câu đưa vào nhánh BM25 và độ phủ vớt sau khi bỏ các cụm đã thành filter (phủ định, giá/sao, cue loại, địa danh
-            tuyến). Vector dense vẫn dùng câu chuẩn hoá đầy đủ (khoá cache embed không đổi).
+            tuyến; từ 1.18.0 thêm thời lượng). Vector dense vẫn dùng câu chuẩn hoá đầy đủ (khoá cache embed không đổi).
         applied:
           type: array
-          description: Họ filter suy từ câu THẬT SỰ đã áp vào F (cờ bật và câu có giá trị); rỗng khi mọi cờ tắt.
+          description: >-
+            Họ filter suy từ câu THẬT SỰ đã áp (cờ bật và câu có giá trị); rỗng khi mọi cờ tắt. Từ 1.18.0: duration (chỉ tác
+            động lên câu BM25 — lexicalText — không vào F) và entity (gate vào F).
           items:
             type: string
-            enum: [taxonomy, route, mustNot, price, star, party]
+            enum: [taxonomy, route, mustNot, price, star, party, duration, entity]
         revalidatedDrops:
           type: integer
           minimum: 0
@@ -526,12 +598,14 @@ EngineDiagnostics:
             điều kiện độc lập trên unit + con).
         emptyReason:
           type: string
-          enum: [taxonomy, route, mustNot, price, star, party, destination, param]
+          enum: [taxonomy, route, mustNot, price, star, party, destination, param, entity, duration]
           description: >-
             F rỗng do họ filter nào (họ đầu tiên làm F rỗng theo thứ tự áp). Filter suy từ câu KHÔNG được nới ngầm (kiến trúc
             Phase A §6); chỉ điểm đến suy ra có fallback (diagnostics.destinationFilter.fallback, FR-SRC-04). Từ 1.16.0 khai
             thêm star (mọi unit còn lại đều KHAI sao thấp hơn starRatingMin — giá trị engine 1.15.0 đã có thể trả) và party
-            (mọi unit còn lại có sức chứa đã biết nhỏ hơn số khách).
+            (mọi unit còn lại có sức chứa đã biết nhỏ hơn số khách). Từ 1.18.0: entity (mọi unit còn lại không có tên chứa
+            entity trong tập attraction / combo — kể cả khi request taxonomy ∉ {attraction, combo}); duration khai cho đủ họ,
+            1.18.0 không bao giờ phát (duration không vào F).
         ignored:
           type: array
           description: Tham số request bị bỏ qua vì sai ngữ cảnh (ví dụ origin cho câu không phải vé máy bay).

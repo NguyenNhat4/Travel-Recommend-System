@@ -14,8 +14,14 @@
 #   origin            câu vé máy bay: thành phố đi kỳ vọng (giá trị catalog) — direction_accuracy
 #   destination_city  câu vé máy bay: thành phố đến kỳ vọng
 #   expected_parse    {taxonomy, destination, origin, destination_city, must_not, must_not_brands, must_not_taxonomies,
-#                      price_max, price_min, star_min, party_total} — chỉ so trường được nêu; null = kỳ vọng parser KHÔNG ra gì
-#                      (metrics.PARSE_FIELDS / parse_ok)
+#                      price_max, price_min, star_min, party_total,
+#                      duration_days, duration_nights, entity, entity_role, location_entity} — chỉ so trường được nêu;
+#                      null = kỳ vọng parser KHÔNG ra gì (metrics.PARSE_FIELDS / parse_ok). Năm trường cuối (07/10, contract
+#                      1.18.0): duration_days / duration_nights = queryPlan.duration.days / nights (int); entity = danh sách
+#                      khoá entity queryPlan.entity.keys (vinwonders, safari, grand_world…); entity_role = gate | location;
+#                      location_entity = khoá địa danh gazetteer queryPlan.location.key (ho_hoan_kiem, cau_rong…). Backend chỉ
+#                      phát ba khối này khi SEARCH_DURATION_FILTER / SEARCH_POI_RESOLVE / SEARCH_ENTITY_FILTER bật → chỉ chấm
+#                      được trên arm bật cờ (APP.e5s.prod_f12356_dur / _poi / _ent / _dur_poi_ent); arm cờ tắt đọc null / [].
 #   family            id gộp các biến thể không dấu / gõ sai của cùng một ý định (by_family, family_macro_ndcg)
 #   allowed_variants  (06/10, phương án b) variant catalog KHÔNG vi phạm loại cốt lõi của câu — kể cả phương án thay thế
 #                     rubric cho 1 (combo cho câu hỏi vé #10 / vé máy bay #8d); lúc chấm, nhãn ≥ 1 của sản phẩm ngoài danh

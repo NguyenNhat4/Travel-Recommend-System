@@ -139,9 +139,37 @@ def test_new_fields_default_when_constructed_by_hand():
                             min_price=base.min_price, origin_city=base.origin_city, destination_city=base.destination_city)
     assert legacy.flags == (frozenset(),) * len(UNITS) and legacy.children == ((),) * len(UNITS)
     assert legacy.max_occupancy.shape == (len(UNITS),) and np.isnan(legacy.max_occupancy).all()
+    assert legacy.entities == (frozenset(),) * len(UNITS)              # 1.18.0: không có entity = không gate được
     with pytest.raises(ValueError):
         UnitAttributes(amenities=base.amenities, brand=base.brand, star_rating=base.star_rating, min_price=base.min_price,
                        origin_city=base.origin_city, destination_city=base.destination_city, flags=(frozenset(),))
+    with pytest.raises(ValueError):
+        UnitAttributes(amenities=base.amenities, brand=base.brand, star_rating=base.star_rating, min_price=base.min_price,
+                       origin_city=base.origin_city, destination_city=base.destination_city, entities=(frozenset(),))
+
+
+# --- entity gazetteer từ TÊN unit (contract 1.18.0, `domain/search/gazetteer.py`): chỉ attraction/combo
+def test_entities_from_name_only_for_attraction_and_combo(attrs, attrs2):
+    assert len(attrs.entities) == len(UNITS) and len(attrs2.entities) == len(UNITS2)
+    assert attrs.entities == (frozenset(), frozenset(), frozenset(), frozenset({"vinwonders"}))   # H1, H2, F1, A1
+    assert attrs2.entities == (frozenset(), frozenset({"vinwonders"}), frozenset(), frozenset({"vinwonders"}),
+                               frozenset(), frozenset(), frozenset())                                # C1 C2 A2 A3 A4 H3 H1
+    assert UnitAttributes.build(UNITS2, KIDS2).entities == attrs2.entities                          # không phụ thuộc kinds/con
+
+
+def test_entities_cover_brand_sites_and_skip_hotels_named_after_them():
+    units = [
+        Product.from_cdp(P("S1", "Vé Vinpearl Safari Phú Quốc", "attraction", "Phú Quốc", {}, price=650_000)),
+        Product.from_cdp(P("G1", "[Grand World Phú Quốc] Combo vé VinWonders + Safari", "combo", "Phú Quốc", {}, price=1)),
+        Product.from_cdp(P("W1", "VinWonders Wave Park & Water Park", "attraction", "Hà Nội", {}, price=1)),
+        Product.from_cdp(P("HG", "Khách sạn Grand World Phú Quốc", "hotel", "Phú Quốc", {"level": "property"}, price=None)),
+        Product.from_cdp(P("GF", "Sân golf Vinpearl Safari", "golf", "Phú Quốc", {}, price=None)),
+        Product.from_cdp(P("N0", "", "attraction", "Phú Quốc", {}, price=None)),
+    ]
+    assert UnitAttributes.build(units).entities == (
+        frozenset({"safari"}), frozenset({"grand_world", "vinwonders", "safari"}), frozenset({"vinwonders", "wave_park"}),
+        frozenset(), frozenset(), frozenset(),
+    )
 
 
 def test_existing_fields_unchanged_by_new_arguments(attrs2):

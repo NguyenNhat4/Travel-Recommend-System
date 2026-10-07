@@ -364,9 +364,14 @@ ENGINE_FLAG_KEYS = ("tone_normalize", "taxonomy_strong_only", "party_filter")
 #: 06/10: kênh fuzzy + trọng số RRF theo nhánh → field cùng tên của `HybridConfig` (domain/search/hybrid.py)
 HYBRID_CHANNEL_KEYS = ("fuzzy_k", "fuzzy_candidate_k", "fuzzy_min_sim", "dense_weight", "lexical_weight", "fuzzy_weight")
 RETRIEVAL_MODES = ("hybrid", "dense", "lexical")
+#: 07/10 (contract 1.18.0): ba cờ TUỲ CHỌN của `SearchProducts` — F7 thời lượng, địa danh gazetteer → F1, entity gate cứng.
+#: Vắng trong YAML ≡ False (tiền lệ khối `app.llm`): KHÔNG vào `APP_DEFAULTS` để 55 arm cũ, `config_hash` của chúng và
+#: `regression/baseline_v1.json` giữ nguyên; vẫn đi qua `supported_kwargs` nên bật trên backend thiếu field thì lỗi.
+V118_FLAG_KEYS = ("duration_filter", "poi_resolve", "entity_filter")
 #: giá trị "không đổi hành vi" của từng núm mới — backend chưa có field mà arm để giá trị này thì bỏ qua, khác thì lỗi
 NEUTRAL = {"tone_normalize": False, "taxonomy_strong_only": False, "party_filter": False,
-           "fuzzy_k": 0, "dense_weight": 1.0, "lexical_weight": 1.0, "fuzzy_weight": 1.0}
+           "fuzzy_k": 0, "dense_weight": 1.0, "lexical_weight": 1.0, "fuzzy_weight": 1.0,
+           "duration_filter": False, "poi_resolve": False, "entity_filter": False}
 
 
 def app_params(arm_app: dict | None) -> dict:
@@ -395,6 +400,11 @@ def app_params(arm_app: dict | None) -> dict:
         raise AppAdapterError("arm APP: retrieval_mode dense không có nhánh fuzzy / RRF — fuzzy_k phải 0, trọng số phải 1.0")
     if mode == "lexical" and float(p["lexical_weight"]) <= 0:
         raise AppAdapterError("arm APP: retrieval_mode lexical cần lexical_weight > 0 (BM25 là danh sách xếp hạng duy nhất)")
+    # 07/10 (contract 1.18.0): cờ tuỳ chọn — vắng = False; có thì phải là bool thật (YAML `true`/`false`, không phải 1/"on")
+    for k in V118_FLAG_KEYS:
+        p.setdefault(k, False)
+        if not isinstance(p[k], bool):
+            raise AppAdapterError(f"arm APP: app.{k} phải là true/false (đang {p[k]!r})")
     return p
 
 
@@ -533,6 +543,8 @@ class AppContext:
             min_coverage=float(nd["min_coverage"]), **channel) if hybrid and relax else None
         # 06/10: ba cờ mới của SearchProducts (tone / F4 cue mạnh / số khách) — backend chưa có field thì chỉ chạy được khi tắt
         flags = supported_kwargs(SearchProducts, "SearchProducts", p, ENGINE_FLAG_KEYS, lambda _k, v: bool(v))
+        # 07/10 (contract 1.18.0): F7 duration / POI → F1 / entity gate — tuỳ chọn, vắng = False (app_params đã setdefault)
+        flags.update(supported_kwargs(SearchProducts, "SearchProducts", p, V118_FLAG_KEYS, lambda _k, v: bool(v)))
         # lexical: nhánh dense rỗng (near_vector limit 0 → []), BM25 là danh sách xếp hạng duy nhất; cosine của hit BM25 vẫn
         # tính từ vector kho → cutoff / vớt / mask / kiểm lại filter y như hybrid (use_cases._hybrid).
         candidate_k = 0 if p["retrieval_mode"] == "lexical" else int(p["candidate_k"])

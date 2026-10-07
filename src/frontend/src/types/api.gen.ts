@@ -1172,7 +1172,7 @@ export interface components {
          */
         AvailabilityMode: "CATALOG_ONLY" | "CHECK_DATE_RANGE";
         AppliedFilters: {
-            /** @description Đã loại thẳng. taxonomy, destination, priceMin/Max, availableOnly. Ở /search từ 1.14.0 có thêm destinationSource (param = tham số request, query = địa danh suy ra từ câu, FR-SRC-03); sau fallback (diagnostics.destinationFilter.fallback) khối hard không còn destination. Từ 1.15.0 (query plan, kiến trúc Phase A): taxonomySource (param | query), origin + originSource + destinationCity (tuyến bay, chỉ câu vé máy bay), mustNotAmenities (khoá tiện ích bị phủ định — loại unit CÓ GHI NHẬN tiện ích; unit không có dữ liệu vẫn qua, [C2]), mustNotBrands ("không phải Vinpearl" — loại unit có ghi brand đó), priceMin/priceMax + priceSource (param | query; giá null bị loại khi có lọc giá), availableOnly. Từ 1.16.0: mustNotTaxonomies (loại sản phẩm bị phủ định — "không lấy combo", "vé lẻ"; loại unit có taxonomy đó), mustNotFlags (includesFlight | includesHotel — combo CÓ GHI NHẬN thành phần đó bị loại; combo không có dữ liệu thành phần vẫn qua, [C2]), minOccupancy + partySource (param = travelContext.guests của request | query = số khách suy từ câu; loại unit có sức chứa ĐÃ BIẾT nhỏ hơn minOccupancy, không biết thì giữ). */
+            /** @description Đã loại thẳng. taxonomy, destination, priceMin/Max, availableOnly. Ở /search từ 1.14.0 có thêm destinationSource (param = tham số request, query = địa danh suy ra từ câu, FR-SRC-03); sau fallback (diagnostics.destinationFilter.fallback) khối hard không còn destination. Từ 1.15.0 (query plan, kiến trúc Phase A): taxonomySource (param | query), origin + originSource + destinationCity (tuyến bay, chỉ câu vé máy bay), mustNotAmenities (khoá tiện ích bị phủ định — loại unit CÓ GHI NHẬN tiện ích; unit không có dữ liệu vẫn qua, [C2]), mustNotBrands ("không phải Vinpearl" — loại unit có ghi brand đó), priceMin/priceMax + priceSource (param | query; giá null bị loại khi có lọc giá), availableOnly. Từ 1.16.0: mustNotTaxonomies (loại sản phẩm bị phủ định — "không lấy combo", "vé lẻ"; loại unit có taxonomy đó), mustNotFlags (includesFlight | includesHotel — combo CÓ GHI NHẬN thành phần đó bị loại; combo không có dữ liệu thành phần vẫn qua, [C2]), minOccupancy + partySource (param = travelContext.guests của request | query = số khách suy từ câu; loại unit có sức chứa ĐÃ BIẾT nhỏ hơn minOccupancy, không biết thì giữ). Từ 1.18.0: entity (danh sách khoá điểm vui chơi của gazetteer trong repo, vd. ["vinwonders"] — chỉ giữ unit attraction / combo có TÊN chứa entity, cờ SEARCH_ENTITY_FILTER; không nới; request taxonomy ngoài {attraction, combo} gặp câu entity → total 0 + queryPlan.emptyReason = entity); destinationSource = poi (điểm đến suy từ địa danh / khu vực / sân bay / venue trong gazetteer — "Hồ Hoàn Kiếm" → Hà Nội — cờ SEARCH_POI_RESOLVE; luật fallback như query). */
             hard: {
                 [key: string]: unknown;
             };
@@ -1227,11 +1227,13 @@ export interface components {
                 fuse?: number;
                 /** @description (1.16.0) Kênh fuzzy: tra chỉ mục trigram tên và lấy vector của unit chỉ có ở kênh này. Chỉ có khi kênh fuzzy bật. */
                 fuzzy?: number;
+                /** @description (1.17.0) Thời gian chờ giả thuyết LLM của query plan SAU bước embed (lượt gọi model chạy song song với embed; phần dựng query plan tính vào embed). Chỉ có khi diagnostics.queryPlan.llm có mặt. */
+                llm?: number;
                 /** @description Dựng các ProductSummary của trang trả về. */
                 hydrate?: number;
             };
             /**
-             * @description hit = vector của câu (sau chuẩn hoá) lấy từ cache, không chạy model; miss = chạy model embedding rồi ghi cache. Không đổi kết quả hay thứ tự — chỉ stageMs.embed khác nhau. Khoá cache là chuỗi đã chuẩn hoá và gộp khoảng trắng, nên "KS ở NT" và "khách sạn ở Nha Trang" dùng chung một vector.
+             * @description hit = vector của câu (sau chuẩn hoá) lấy từ cache, không gọi Cohere; miss = gọi Cohere rồi ghi cache. Không đổi kết quả hay thứ tự — chỉ stageMs.embed khác nhau. Khoá cache là chuỗi đã chuẩn hoá và gộp khoảng trắng, nên "KS ở NT" và "khách sạn ở Nha Trang" dùng chung một vector.
              * @enum {string}
              */
             embedCache?: "hit" | "miss";
@@ -1252,9 +1254,9 @@ export interface components {
              * @enum {string}
              */
             party?: "SOLO" | "COUPLE" | "FAMILY" | "FRIENDS" | "BUSINESS";
-            /** @description Địa danh (giá trị catalog) bước chuẩn hoá nhận ra trong câu, theo thứ tự xuất hiện. Có mặt kể cả khi SEARCH_DEST_FILTER tắt (để đo tần suất filter sẽ kích hoạt); vắng khi câu không nêu địa danh hay tắt chuẩn hoá. */
+            /** @description Địa danh (giá trị catalog) bước chuẩn hoá nhận ra trong câu, theo thứ tự xuất hiện. Có mặt kể cả khi SEARCH_DEST_FILTER tắt (để đo tần suất filter sẽ kích hoạt); vắng khi câu không nêu địa danh hay tắt chuẩn hoá. Từ 1.18.0: gồm cả điểm đến suy từ địa danh gazetteer (queryPlan.location) khi SEARCH_POI_RESOLVE bật. */
             derivedDestinations?: string[];
-            /** @description Chỉ có khi SEARCH_DEST_FILTER bật. source = param: dùng destination của request; query: dùng địa danh duy nhất trong câu; none: không lọc theo điểm đến (câu không nêu, hoặc skipped). skipped = multi: câu nêu từ hai nơi (nơi đi + nơi đến, "A hoặc B", thương hiệu chứa địa danh); flight: câu hỏi vé máy bay (destination của tuyến là nơi đến). fallback = dropped_empty: F sau khi lọc theo địa danh suy ra rỗng nên đã chạy lại không lọc (FR-SRC-04); total, facets, results khi đó là của lượt không lọc. */
+            /** @description Chỉ có khi SEARCH_DEST_FILTER bật. source = param: dùng destination của request; query: dùng địa danh duy nhất trong câu; none: không lọc theo điểm đến (câu không nêu, hoặc skipped). skipped = multi: câu nêu từ hai nơi (nơi đi + nơi đến, "A hoặc B", thương hiệu chứa địa danh); flight: câu hỏi vé máy bay (destination của tuyến là nơi đến). fallback = dropped_empty: F sau khi lọc theo địa danh suy ra rỗng nên đã chạy lại không lọc (FR-SRC-04); total, facets, results khi đó là của lượt không lọc. Từ 1.18.0: điểm đến suy từ địa danh gazetteer (queryPlan.location, SEARCH_POI_RESOLVE) vẫn là source = query (cùng luật lọc / multi / fallback); appliedFilters.hard.destinationSource = poi cho biết nguồn. */
             destinationFilter?: {
                 /** @enum {string} */
                 source: "param" | "query" | "none";
@@ -1329,23 +1331,73 @@ export interface components {
                     /** @enum {string} */
                     source?: "param" | "query";
                 };
-                /** @description Câu đưa vào nhánh BM25 và độ phủ vớt sau khi bỏ các cụm đã thành filter (phủ định, giá/sao, cue loại, địa danh tuyến). Vector dense vẫn dùng câu chuẩn hoá đầy đủ (khoá cache embed không đổi). */
+                /** @description (1.18.0) Thời lượng chuyến nêu trong câu: "N ngày M đêm", "M đêm N ngày", "3N2Đ", "N ngày", "M đêm", "N days M nights" — chữ số 1–30, không nhận số viết bằng chữ; "/đêm" của giá, "3 tiếng", "chợ đêm", "qua đêm" không tính. P0 chỉ khai và bỏ cụm khỏi lexicalText (cờ SEARCH_DURATION_FILTER); KHÔNG lọc, không xếp hạng vì catalog chưa có trường thời lượng (P1). Chỉ khai khi cờ bật. */
+                duration?: {
+                    days?: number | null;
+                    nights?: number | null;
+                    /** @enum {string} */
+                    source?: "query";
+                };
+                /** @description (1.18.0) Điểm vui chơi trong gazetteer repo (domain/search/gazetteer.py: vinwonders, safari, grand_world, …) nhận ra trong câu (bỏ cụm trong scope phủ định), chỉ khi SEARCH_ENTITY_FILTER bật. role = gate: câu chỉ nêu entity hoặc kèm cue attraction / combo → chỉ giữ unit attraction / combo có TÊN chứa entity (HARD, không nới; "entity" vào applied); location: câu có cue loại khác (khách sạn / vé máy bay / golf, kể cả cue yếu) hoặc nêu từ hai loại → entity chỉ định vị, không lọc. Tham số taxonomy của request không đổi role, chỉ giao với mask (tab Web có thể 0 → emptyReason entity). Thương hiệu khách sạn (Vinpearl, Meliá) không phải entity. */
+                entity?: {
+                    keys: string[];
+                    /** @enum {string} */
+                    role: "gate" | "location";
+                };
+                /** @description (1.18.0) Địa danh / khu vực / quận / sân bay / venue ĐẦU TIÊN trong câu khớp gazetteer repo (không phải tên điểm đến catalog) và điểm đến catalog của nó — "Hồ Hoàn Kiếm" → Hà Nội, "Cầu Rồng" → Đà Nẵng. Điểm đến này vào derivedDestinations và theo luật F1 như địa danh câu nêu (duy nhất → lọc với source = query, ≥ 2 nơi → multi, F rỗng → FR-SRC-04 fallback). Chỉ khai khi SEARCH_POI_RESOLVE bật. Bán kính / khoảng cách là P1. */
+                location?: {
+                    key: string;
+                    name: string;
+                    /** @enum {string} */
+                    kind: "landmark" | "area" | "district" | "airport" | "venue";
+                    destination: string;
+                };
+                /** @description Câu đưa vào nhánh BM25 và độ phủ vớt sau khi bỏ các cụm đã thành filter (phủ định, giá/sao, cue loại, địa danh tuyến; từ 1.18.0 thêm thời lượng). Vector dense vẫn dùng câu chuẩn hoá đầy đủ (khoá cache embed không đổi). */
                 lexicalText?: string;
-                /** @description Họ filter suy từ câu THẬT SỰ đã áp vào F (cờ bật và câu có giá trị); rỗng khi mọi cờ tắt. */
-                applied?: ("taxonomy" | "route" | "mustNot" | "price" | "star" | "party")[];
+                /** @description Họ filter suy từ câu THẬT SỰ đã áp (cờ bật và câu có giá trị); rỗng khi mọi cờ tắt. Từ 1.18.0: duration (chỉ tác động lên câu BM25 — lexicalText — không vào F) và entity (gate vào F). */
+                applied?: ("taxonomy" | "route" | "mustNot" | "price" | "star" | "party" | "duration" | "entity")[];
                 /** @description Số kết quả bị loại ở bước kiểm lại hard filter sau fusion (kỳ vọng 0; > 0 là lỗi dữ liệu/mask). Từ 1.16.0 gồm cả unit có phòng/chuyến con mà KHÔNG con nào thoả đồng thời giá và số khách khi hai điều kiện cùng áp (mask kiểm hai điều kiện độc lập trên unit + con). */
                 revalidatedDrops?: number;
                 /**
-                 * @description F rỗng do họ filter nào (họ đầu tiên làm F rỗng theo thứ tự áp). Filter suy từ câu KHÔNG được nới ngầm (kiến trúc Phase A §6); chỉ điểm đến suy ra có fallback (diagnostics.destinationFilter.fallback, FR-SRC-04). Từ 1.16.0 khai thêm star (mọi unit còn lại đều KHAI sao thấp hơn starRatingMin — giá trị engine 1.15.0 đã có thể trả) và party (mọi unit còn lại có sức chứa đã biết nhỏ hơn số khách).
+                 * @description F rỗng do họ filter nào (họ đầu tiên làm F rỗng theo thứ tự áp). Filter suy từ câu KHÔNG được nới ngầm (kiến trúc Phase A §6); chỉ điểm đến suy ra có fallback (diagnostics.destinationFilter.fallback, FR-SRC-04). Từ 1.16.0 khai thêm star (mọi unit còn lại đều KHAI sao thấp hơn starRatingMin — giá trị engine 1.15.0 đã có thể trả) và party (mọi unit còn lại có sức chứa đã biết nhỏ hơn số khách). Từ 1.18.0: entity (mọi unit còn lại không có tên chứa entity trong tập attraction / combo — kể cả khi request taxonomy ∉ {attraction, combo}); duration khai cho đủ họ, 1.18.0 không bao giờ phát (duration không vào F).
                  * @enum {string}
                  */
-                emptyReason?: "taxonomy" | "route" | "mustNot" | "price" | "star" | "party" | "destination" | "param";
+                emptyReason?: "taxonomy" | "route" | "mustNot" | "price" | "star" | "party" | "destination" | "param" | "entity" | "duration";
                 /** @description Tham số request bị bỏ qua vì sai ngữ cảnh (ví dụ origin cho câu không phải vé máy bay). */
                 ignored?: string[];
-                /** @description (1.16.0) Router confidence của plan rule-based (kiến trúc §5): 1 trừ 0.25 cho mỗi lý do ở fallbackReasons, tất định, chỉ để khai báo — /search không gọi LLM. Có mặt khi khối queryPlan có mặt. */
+                /** @description (1.16.0) Router confidence của plan rule-based (kiến trúc §5): 1 trừ 0.25 cho mỗi lý do ở fallbackReasons, tất định. Có mặt khi khối queryPlan có mặt. Từ 1.17.0: dưới ngưỡng SEARCH_LLM_FALLBACK_MIN_CONFIDENCE và SEARCH_LLM_FALLBACK ≠ off thì kích hoạt LLM fallback (khối llm); giá trị này luôn là của plan rule. */
                 confidence?: number;
                 /** @description (1.16.0) Tín hiệu hạ confidence, theo thứ tự khai báo: unresolved_constraint (cụm sau cue phủ định / số tiền không map được, hoặc must-not tự mâu thuẫn), ambiguous_route (câu bay hai địa danh không rõ vai), multi_vertical (câu nêu từ hai loại sản phẩm), weak_taxonomy_cue (loại chỉ suy từ cue yếu), param_conflict (tham số destination / taxonomy khác thứ câu nêu), long_multi_constraint (câu dài và nêu từ hai họ ràng buộc). Vắng khi không có lý do. */
                 fallbackReasons?: string[];
+                /** @description (1.17.0) LLM fallback của query plan (kiến trúc §5; SEARCH_LLM_FALLBACK). Chỉ có khi chế độ ≠ off VÀ confidence < ngưỡng (SEARCH_LLM_FALLBACK_MIN_CONFIDENCE) cho câu này. Model chỉ trả giả thuyết JSON (loại sản phẩm, điểm đến, tuyến bay, phủ định, giá/sao, số khách) — không productId, không xếp hạng. Server kiểm mọi giá trị với catalog (enum Taxonomy, bảng điểm đến / thành phố bay của catalog và phải có mặt trong câu, từ vựng tiện ích, khoảng số hợp lý); giá trị hỏng nằm ở rejected, không bao giờ thành filter. Chỉ điền ô plan rule để trống: tham số request và giá trị rule luôn thắng. Giá trị đã nhận khai ở các khoá queryPlan khác với source = query và chỉ lọc khi cờ họ đó bật (SEARCH_*_FILTER) — y như giá trị rule; riêng điểm đến cần SEARCH_DEST_FILTER (tắt → rejected flag_off). shadow: không bao giờ đổi plan hay kết quả, accepted là những gì on SẼ nhận. */
+                llm?: {
+                    /** @enum {string} */
+                    mode: "shadow" | "on";
+                    /** @description true khi mode = on và ít nhất một trường được trộn vào plan. */
+                    used: boolean;
+                    /** @description Giả thuyết lấy từ cache (theo câu đã chuẩn hoá), không gọi model. */
+                    cached: boolean;
+                    /**
+                     * @description ok: có giả thuyết; empty: model không cho giả thuyết; pending: shadow, model đang chạy nền (so sánh chỉ ghi log); timeout: quá SEARCH_LLM_FALLBACK_TIMEOUT_MS → plan rule; failed: model / mạng lỗi → plan rule; unavailable: chế độ bật nhưng không có adapter (thiếu API key / SDK); cache_miss: chỉ đọc cache (bench) và câu chưa có; busy: đã đủ số lượt gọi đang bay.
+                     * @enum {string}
+                     */
+                    status: "ok" | "empty" | "pending" | "timeout" | "failed" | "unavailable" | "cache_miss" | "busy";
+                    /** @description Thời gian từ lúc khởi lượt fallback tới khi có kết quả (gồm phần chạy song song với embed). */
+                    latencyMs: number;
+                    /** @description Trường đã trộn vào plan (mode = on) hoặc sẽ trộn (shadow). */
+                    accepted: ("taxonomy" | "destination" | "origin" | "destinationCity" | "mustNotAmenities" | "mustNotTaxonomies" | "price" | "star" | "party")[];
+                    rejected: {
+                        /** @enum {string} */
+                        field: "hypothesis" | "taxonomy" | "destination" | "origin" | "destinationCity" | "mustNotAmenities" | "mustNotTaxonomies" | "price" | "star" | "party";
+                        /**
+                         * @description invalid_value: sai kiểu / ngoài enum; not_in_catalog: địa danh không có trong catalog; not_in_query: địa danh không có mặt trong câu; no_cue: câu không có dấu hiệu tương ứng (cue phủ định, chữ số, "sao"); out_of_range: số ngoài khoảng hợp lý; param_set / rule_set: tham số request / plan rule đã có giá trị khác; flag_off: cờ của họ đó tắt (chỉ điểm đến); conflict: tự mâu thuẫn với loại câu đang hỏi; multi_vertical: câu nêu nhiều loại, không thu hẹp; not_flight: trường tuyến bay ở câu không phải vé máy bay (hoặc điểm đến ở câu vé máy bay); low_confidence: model tự chấm giả thuyết dưới 0.5.
+                         * @enum {string}
+                         */
+                        reason: "invalid_value" | "not_in_catalog" | "not_in_query" | "no_cue" | "out_of_range" | "param_set" | "rule_set" | "flag_off" | "conflict" | "multi_vertical" | "not_flight" | "low_confidence";
+                    }[];
+                    /** @description Tên lớp lỗi khi status = failed. */
+                    error?: string;
+                };
             };
         };
         BecauseItem: {

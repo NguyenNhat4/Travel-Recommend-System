@@ -2211,6 +2211,22 @@ def _scan_checks(gq, plan) -> list[tuple[str, bool, str]]:
                     f"must_not={list(plan.must_not_amenities)} unresolved={list(plan.unresolved or ())}"))
     elif gq.slice == "dest_type":
         out.append(("dest_type.single_vertical", len(cands) <= 1, f"candidates={cands} taxonomy={plan.taxonomy!r}"))
+    # 07/10 (1.18.0): hai slice gold_v6 — kiểm định nghĩa tối thiểu (parse chi tiết theo expected_parse chấm ở `sb guards`)
+    elif gq.slice == "duration_false_positive":
+        # parse ra thời lượng thì cụm "N ngày / M đêm" phải rời lexical_text (BM25 không còn vớt hotel "Chợ Đêm" / "Ngay trung tâm");
+        # không parse ra (chợ đêm, 2 triệu/đêm, 3 tiếng) thì chỉ báo parser cho ra gì
+        from evaluation.vector_bench.lexical import fold
+        dur = (getattr(plan, "duration_days", None), getattr(plan, "duration_nights", None))
+        left = [t for t in fold(plan.lexical_text).split() if t in ("ngay", "dem", "day", "days", "night", "nights")]
+        out.append(("duration_false_positive.consumed_or_none", dur == (None, None) or not left,
+                    f"duration={dur} còn lại={left} lexical_text={plan.lexical_text!r} "
+                    f"entity={list(getattr(plan, 'entity_keys', ()) or ())} role={getattr(plan, 'entity_role', None)!r}"))
+    elif gq.slice == "poi_resolution":
+        loc = getattr(plan, "location", None)
+        cand = list(getattr(plan.destination, "candidates", ()) or ())
+        out.append(("poi_resolution.destination_or_multi", dest is not None or len(cand) >= 2,
+                    f"destination={dest!r} candidates={cand} location={getattr(loc, 'key', None)!r} "
+                    f"via_poi={getattr(plan, 'destination_via_poi', None)} skipped={getattr(plan.destination, 'skipped', None)!r}"))
     route = (gq.origin, gq.destination_city) if (gq.origin or gq.destination_city) else ROUTE_EXPECTED_V3.get(gq.qid)
     if route:
         o, d = route
@@ -2223,10 +2239,11 @@ def _scan_checks(gq, plan) -> list[tuple[str, bool, str]]:
 
 @qu_app.command("gold-scan")
 def qu_gold_scan(c: typer.Context, gold_p: Optional[Path] = typer.Option(None, "--gold", help="mặc định gold/gold.jsonl")):
-    """Chạy QueryNormalizer + build_query_plan của backend (CẢ BỐN cờ bật; gazetteer điểm đến / tên từ items, thành phố bay +
-    IATA + thương hiệu từ attributes của catalog như `SearchProducts`) trên mọi câu gold active và kiểm ĐỊNH NGHĨA câu (không
-    chấm nhãn): multi_constraint (giá / sao / điểm đến khớp filter gold) · cross_vertical (không chốt taxonomy) ·
-    amenity_negation (có must_not) · dest_type (≤ 1 loại sản phẩm) · chặng bay (c0373, hoặc gold có origin /
+    """Chạy QueryNormalizer + build_query_plan của backend (MỌI cờ bật, kể cả ba cờ 1.18.0; gazetteer điểm đến / tên từ items,
+    thành phố bay + IATA + thương hiệu từ attributes của catalog như `SearchProducts`) trên mọi câu gold active và kiểm ĐỊNH
+    NGHĨA câu (không chấm nhãn): multi_constraint (giá / sao / điểm đến khớp filter gold) · cross_vertical (không chốt
+    taxonomy) · amenity_negation (có must_not) · dest_type (≤ 1 loại sản phẩm) · duration_false_positive (parse ra thời lượng
+    thì cụm rời lexical_text) · poi_resolution (có điểm đến hoặc ≥ 2 ứng viên) · chặng bay (c0373, hoặc gold có origin /
     destination_city). In bảng đạt / tổng từng kiểm và câu trượt kèm parser cho ra gì. Luôn thoát 0 (chẩn đoán)."""
     from rich.table import Table
     from . import catalog, metrics as M, paths
@@ -2250,7 +2267,9 @@ def qu_gold_scan(c: typer.Context, gold_p: Optional[Path] = typer.Option(None, "
     units, _, _, _ = catalog.group_children(records, cfg.catalog.search_unit_variants)
     normalizer = QueryNormalizer(destinations=set(items["destination"].tolist()), names=items["name"].tolist())
     gaz = _plan_gazetteers([Product.from_cdp(r) for r in units])
-    flags = PlanFlags(destination=True, negation=True, taxonomy=True, route=True, numeric=True)
+    # 07/10 (1.18.0): ba cờ mới cũng bật — gold-scan chỉ chẩn đoán định nghĩa câu, không phải cấu hình production
+    flags = PlanFlags(destination=True, negation=True, taxonomy=True, route=True, numeric=True,
+                      duration=True, poi=True, entity=True)
     results: dict[str, list[tuple[str, bool, str, str]]] = {}
     for gq in gold:
         plan = build_query_plan(normalizer(gq.text), gq.text, PlanParams(), flags, gaz)
@@ -2258,7 +2277,7 @@ def qu_gold_scan(c: typer.Context, gold_p: Optional[Path] = typer.Option(None, "
             results.setdefault(name, []).append((gq.qid, ok, detail, gq.text))
     con = _console()
     con.print(f"gold-scan: {len(gold)} câu active · {len(units)} unit · thành phố bay {len(gaz.flight_cities)} · IATA {len(gaz.iata)} · "
-              f"cờ: destination, negation, taxonomy, route, numeric = bật", highlight=False)
+              f"cờ: destination, negation, taxonomy, route, numeric, duration, poi, entity = bật", highlight=False)
     t = Table(title="kiểm định nghĩa câu (ok / tổng)")
     for col in ("kiểm", "ok", "tổng"):
         t.add_column(col, justify="left" if col == "kiểm" else "right")

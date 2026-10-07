@@ -346,6 +346,21 @@ lexical} (`hybrid: false` ⇔ `dense`). Khối `rerank: {model, top_n, parent_en
 rerank offline (`rerank.py`). `extra` giữ nguyên `queryPlan` (cả khoá mở rộng) và mọi khoá diagnostics theo câu (`fuzzyCount`,
 `stageMs`…).
 
+**Knob 07/10 (contract 1.18.0, tuỳ chọn như `app.llm`):** `duration_filter` (F7 thời lượng — parse "3 ngày 2 đêm" / 3N2Đ, bỏ cụm
+khỏi `lexicalText`, chưa lọc), `poi_resolve` (địa danh gazetteer `domain/search/gazetteer.py` → điểm đến catalog vào F1,
+`appliedFilters.hard.destinationSource = poi`), `entity_filter` (entity gate CỨNG: câu nêu VinWonders / Safari / Grand World… →
+chỉ attraction / combo có tên chứa entity; `emptyReason = entity`). Bool → kwargs cùng tên của `SearchProducts`
+(`app_adapter.V118_FLAG_KEYS`); **vắng trong YAML ≡ false** nên 55 arm cũ, `config_hash` của chúng và `regression/baseline_v1.json`
+không đổi — khác knob 06/10 (bắt buộc ở mọi arm). Giá trị phải là bool thật (`app_params` từ chối `1` / `"on"`); bật trên backend
+thiếu field thì `supported_kwargs` lỗi như các núm trước. Backend chỉ phát `queryPlan.duration` / `entity` / `location` khi cờ bật,
+nên năm trường parse mới (`duration_days`, `duration_nights`, `entity`, `entity_role`, `location_entity` — `metrics.PARSE_FIELDS`)
+chỉ chấm được trên arm bật cờ. Plan: `docs/plan/2026-10-07-search-duration-entity-poi.md` §5.
+
+| Arm | Tham số | Trả lời |
+|---|---|---|
+| APP.e5s.prod_f12356_dur / _poi / _ent | `APP.e5s.prod_f12356` + một cờ 1.18.0 = `true` (cha: `APP.e5s.prod_f12356`) | Từng họ một trên mốc production 06/10: F7 có bỏ được hotel "Chợ Đêm" / "Ngay trung tâm" khỏi câu "3 ngày 2 đêm" không (slice `duration_false_positive`); POI có quy "Hồ Hoàn Kiếm" / "Cầu Rồng" về đúng điểm đến không (slice `poi_resolution`, `parse_accuracy.location_entity`); entity gate có giữ c0697 / c0709 / c0703 / c0700 / c0472 / c0372 và `forbidden_at_10 = 0` không |
+| APP.e5s.prod_f12356_dur_poi_ent | cả ba cờ `true` (`composite: true`) | Ứng viên production sau bench; `SEARCH_ENTITY_FILTER` chỉ lên sau Web ký (`docs/spec/product.md` §4.2.3) |
+
 Cutoff mốc 0,62 theo contract §2.4 và `.env` (`SEARCH_CUTOFF=0.62`); mặc định trong code là 0,52 (`core/config.py`, đổi ở commit `dbc22c1` không có history) — bench không sửa config production, chỉ báo. `multi_constraint` trên cổng APP báo riêng: `/search` không có filter sao / giá nên arm APP không thể thoả các câu này như pool có filter. Lệnh: `sb app-load` (dựng / kiểm ProductBench), `sb run --arm APP.dense --arm APP.hybrid --arm APP.hybrid_norm …`; `sb run` tự gọi `app-load` khi có arm APP.
 
 **Model khác Cohere (05/10).** Arm APP lấy model từ trường `model`: `cohere-v3` → collection `ProductBench` (như trên); model khác → `ProductBench__<model>` nạp từ `vec_T3+R_<model>.npy` của bench (`modelVersion = <cache_model>:catalog-text-v2`), embedder truy vấn cùng model, số chiều theo vector. `sb app-load --model e5-small` dựng trước. Sáu arm `APP.e5s.*` giữ nguyên khối `app` của bản Cohere, kể cả cutoff 0,62 — với e5 ngưỡng này không lọc gì (cosine 0,85–0,92); sweep cutoff ở `src/evaluation/reports/eval-2026-10-05-search-day5-e5s-app.md` §3. ~60 s đầu sau khi nạp collection, BM25 của Weaviate xếp sai thứ tự (số hybrid Day 4 lệch vì vậy); từ 05/10 `load_collection` chờ thêm `wait_bm25_settled` (kết quả BM25 câu thăm dò đổi rồi đứng yên, tối đa 90 s).

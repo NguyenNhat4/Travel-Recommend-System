@@ -34,8 +34,10 @@ from src.backend.app.domain.search import (
     build_query_plan,
     candidate_filter_score,
     coverage,
+    entity_table,
     fold,
     hybrid_filter_score,
+    place_table,
     is_unaccented,
     parse_vertical,
     query_tokens,
@@ -137,10 +139,14 @@ def scored(index: UnitIndex, i: int, score: float, **extra) -> dict:
     return hit(index, i, score, rating=product.rating, reviewCount=product.review_count, **extra)
 
 
-def _plan_gazetteers(units) -> PlanGazetteers:
+def _plan_gazetteers(units, *, entities=None, destinations=None) -> PlanGazetteers:
     """Gazetteer cho query plan, dựng từ catalog đang phục vụ (như `QueryNormalizer`): tên unit chứa cue loại KHÁC taxonomy
     của nó ("Golf Valley Hotel" là hotel) để F4 không lọc nhầm; mã sân bay ↔ thành phố từ attributes tuyến bay
-    (`originAirport(s)` / `destinationAirport(s)`, cùng cách bench dựng `vocab.json`)."""
+    (`originAirport(s)` / `destinationAirport(s)`, cùng cách bench dựng `vocab.json`).
+
+    1.18.0: `entities` = `UnitAttributes.entities` → bảng entity chỉ giữ khoá có ít nhất một unit (entity không có sản phẩm
+    không bao giờ gate); `destinations` = tập điểm đến catalog → bảng địa danh bỏ entry trỏ tới nơi catalog không có. None =
+    bảng đầy đủ (debug app, test)."""
     brands: dict[str, str | None] = {}     # tên fold → taxonomy của unit (None khi hai unit cùng tên khác loại)
     iata: dict[str, str] = {}
     cities: set[str] = set()
@@ -161,8 +167,14 @@ def _plan_gazetteers(units) -> PlanGazetteers:
             for code in a.get(list_k) or []:
                 if isinstance(code, str) and code.strip() and isinstance(city, str) and city:
                     iata.setdefault(code.strip().upper(), city)
+    extra: dict = {}
+    if entities is not None:
+        present = set().union(*entities) if len(entities) else set()
+        extra["entities"] = {alias: key for alias, key in entity_table().items() if key in present}
+    if destinations is not None:
+        extra["places"] = place_table(destinations)
     return PlanGazetteers(brand_names=tuple(sorted(brands)), iata=iata, flight_cities=tuple(sorted(cities)),
-                          brand_taxonomy={k: v for k, v in brands.items() if v})
+                          brand_taxonomy={k: v for k, v in brands.items() if v}, **extra)
 
 
 def _plan_diagnostics(plan: QueryPlan, flags: PlanFlags, *, revalidated_drops: int, empty_reason: str | None,
@@ -172,7 +184,8 @@ def _plan_diagnostics(plan: QueryPlan, flags: PlanFlags, *, revalidated_drops: i
     Khoá 1.16.0 gắn với một núm mới chỉ khai khi núm đó đang dùng cho câu: `taxonomy.strength` khi
     SEARCH_TAXONOMY_STRONG_ONLY bật; `party` khi request có travelContext.guests hoặc cờ party bật; `mustNot.taxonomies` /
     `mustNot.flags` khi cờ phủ định áp. Nhờ vậy mọi núm mới ở mặc định thì khối chỉ khác 1.15.0 ở `confidence` /
-    `fallbackReasons` (luôn khai khi khối có mặt)."""
+    `fallbackReasons` (luôn khai khi khối có mặt). Khoá 1.18.0 (`duration` / `entity` / `location`) không cần che ở đây:
+    `build_query_plan` chỉ parse ba họ đó khi cờ bật, tắt thì field ở mặc định và `as_diagnostics` không phát."""
     hide: dict = {}
     if not flags.taxonomy_strong_only:
         hide["taxonomy_strength"] = None
@@ -229,6 +242,10 @@ class SearchProducts:
     tone_normalize: bool = False         # đưa vị trí dấu thanh của câu về kiểu đa số của catalog (hoà ↔ hòa), trước embed/BM25
     taxonomy_strong_only: bool = False   # F4 chỉ lọc khi câu có cue loại MẠNH ("khách sạn"), không lọc với cue yếu ("phòng")
     party_filter: bool = False           # số khách suy từ câu → sức chứa tối thiểu; travelContext.guests của request luôn áp
+    # 07/10 (contract 1.18.0; spec docs/spec/bench/tong-hop-chinh-sua-luong-search-ota.md): tắt thì KHÔNG parse, không khai.
+    duration_filter: bool = False        # F7 "3 ngày 2 đêm" → bỏ cụm khỏi câu BM25, khai queryPlan.duration (không lọc)
+    poi_resolve: bool = False            # địa danh gazetteer ("Hồ Hoàn Kiếm" → Hà Nội) vào F1; hard.destinationSource = poi
+    entity_filter: bool = False          # gate cứng: câu nêu điểm vui chơi → chỉ attraction/combo có tên chứa entity
     # LLM fallback của query plan (đề xuất đã chốt 2026-10-06-search-llm-fallback-query-plan; contract 1.17.0): off | shadow | on.
     # Chỉ khi plan rule có confidence < `llm_min_confidence`; `hypothesizer` = QueryHypothesisPort (bọc cache nếu chưa bọc).
     llm_fallback: str = MODE_OFF
@@ -250,7 +267,8 @@ class SearchProducts:
         if self.normalize:   # từ vựng sửa chính tả + gazetteer lấy từ chính catalog đang chạy
             self._normalizer = QueryNormalizer(destinations=set(self.index.destination.tolist()),
                                                names=(p.name for p in self.index.units), tone=self.tone_normalize)
-            self._gaz = _plan_gazetteers(self.index.units)
+            self._gaz = _plan_gazetteers(self.index.units, entities=self.index.attrs.entities,
+                                         destinations=set(self.index.destination.tolist()))
         if self.fuzzy_on:   # dựng chỉ mục trigram ngay lúc nạp catalog (luồng nạp lại), không để request đầu tiên trả giá
             self._fuzzy_index()
         if self.llm_fallback != MODE_OFF and self.normalize:   # off → không dựng gì: response như 1.16.0
@@ -282,9 +300,10 @@ class SearchProducts:
                  available_only: bool = True, limit: int = 20, offset: int = 0,
                  derive_destination: bool | None = None, derive_plan: bool | None = None,
                  adults: int | None = None, children: int | None = None) -> dict:
-        """`derive_destination` / `derive_plan`: ghi đè cờ `dest_filter` / năm cờ họ query plan (phủ định, loại, tuyến, số,
-        số khách) cho riêng lượt gọi (Agent); None = theo cấu hình. `origin`, `price_min/max`, `star_min`, `available_only`,
-        `adults` / `children` (= travelContext.guests, contract 1.16.0) = tham số request, luôn áp."""
+        """`derive_destination` / `derive_plan`: ghi đè cờ `dest_filter` / tám cờ họ query plan (phủ định, loại, tuyến, số,
+        số khách, thời lượng, địa danh gazetteer, entity) cho riêng lượt gọi (Agent); None = theo cấu hình. `origin`,
+        `price_min/max`, `star_min`, `available_only`, `adults` / `children` (= travelContext.guests, contract 1.16.0) = tham
+        số request, luôn áp."""
         limit = min(limit, self.max_limit)
         stages = StageTimer()
         nq = self._normalizer(q) if self._normalizer else None
@@ -299,7 +318,10 @@ class SearchProducts:
                           route=self.route_filter if derive_plan is None else derive_plan,
                           numeric=self.numeric_filter if derive_plan is None else derive_plan,
                           taxonomy_strong_only=self.taxonomy_strong_only,
-                          party=self.party_filter if derive_plan is None else derive_plan)
+                          party=self.party_filter if derive_plan is None else derive_plan,
+                          duration=self.duration_filter if derive_plan is None else derive_plan,
+                          poi=self.poi_resolve if derive_plan is None else derive_plan,
+                          entity=self.entity_filter if derive_plan is None else derive_plan)
         params = PlanParams(taxonomy=taxonomy, destination=destination, origin=origin, price_min=price_min,
                             price_max=price_max, star_min=star_min, available_only=available_only,
                             adults=adults, children=children)
@@ -330,8 +352,10 @@ class SearchProducts:
                         if out.filtered_count == 0 else None)
         if nq:
             diagnostics.update(_normalization_diagnostics(q, nq))
-            if nq.destinations:   # phát kể cả khi cờ tắt: bench đếm được tần suất filter sẽ kích hoạt
-                diagnostics["derivedDestinations"] = list(nq.destinations)
+            # phát kể cả khi cờ tắt: bench đếm được tần suất filter sẽ kích hoạt. = nq.destinations, cộng điểm đến suy từ địa
+            # danh gazetteer khi SEARCH_POI_RESOLVE bật (1.18.0) — `decide_destination` giữ nguyên candidates.
+            if plan.destination.candidates:
+                diagnostics["derivedDestinations"] = list(plan.destination.candidates)
             # contract 1.15.0: khối queryPlan phát kể cả khi mọi cờ tắt (bench đo độ chính xác parse); rỗng thì bỏ.
             query_plan = _plan_diagnostics(plan, flags, revalidated_drops=drops, empty_reason=empty_reason, llm=llm_block)
             if query_plan:

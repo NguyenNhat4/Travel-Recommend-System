@@ -36,7 +36,8 @@ class UnitIndex:
              price_min: float | None = None, price_max: float | None = None,
              star_min: float | None = None, exclude_amenities: Iterable[str] = (),
              exclude_brands: Iterable[str] = (), exclude_taxonomies: Iterable[str] = (),
-             exclude_flags: Iterable[str] = (), min_occupancy: int | None = None) -> np.ndarray:
+             exclude_flags: Iterable[str] = (), min_occupancy: int | None = None,
+             require_entities: Iterable[str] = ()) -> np.ndarray:
         """Mask bool theo index unit; mọi tham số mới mặc định tắt nên không đổi hành vi cũ.
 
         Quy ước "không biết" (spec §2.7 [C2]):
@@ -46,6 +47,9 @@ class UnitIndex:
         - cờ (`exclude_flags`, `UnitAttributes.FLAGS`): chỉ loại unit CÓ cờ; không cờ = không biết → giữ;
         - sức chứa: chỉ loại unit sức chứa ĐÃ BIẾT và < `min_occupancy`; NaN giữ (không biết ≠ "quá nhỏ").
         `exclude_taxonomies`: loại unit có taxonomy nằm trong tập (kiến trúc §6 — chặn cross-vertical).
+        `require_entities` (contract 1.18.0, entity gate CỨNG): chỉ giữ unit có ít nhất một khoá entity trong tập
+        (`UnitAttributes.entities` — dựng từ TÊN unit, chỉ attraction/combo có khoá); unit không có khoá bị loại — đây là gate,
+        không phải quy ước "không biết → giữ". Rỗng = không gate.
         """
         m = np.ones(len(self.units), dtype=bool)
         if only_available:
@@ -83,6 +87,9 @@ class UnitIndex:
             m &= np.array([not (f & drop_flags) for f in a.flags], dtype=bool)
         if min_occupancy is not None:
             m &= np.isnan(a.max_occupancy) | (a.max_occupancy >= min_occupancy)
+        req = frozenset(k for k in require_entities if k)
+        if req:
+            m &= np.array([bool(e & req) for e in a.entities], dtype=bool)
         return m
 
     def matched_children(self, i: int, *, price_min: float | None = None, price_max: float | None = None,

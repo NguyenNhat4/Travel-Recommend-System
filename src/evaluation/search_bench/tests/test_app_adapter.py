@@ -465,7 +465,9 @@ def test_existing_app_arms_keep_new_knobs_neutral():
     """Arm có từ trước: núm mới = production hôm nay (hành vi không đổi; hash đổi vì thêm khoá — dự kiến)."""
     for a in ALL_APP_ARMS:
         app = load_arm(a).app
-        assert all(app[k] == A.NEUTRAL[k] for k in A.NEUTRAL), a
+        # 07/10: ba cờ 1.18.0 là khoá tuỳ chọn (vắng trong YAML ≡ False) → đọc qua app_params, không đụng YAML cũ
+        assert all(A.app_params(app)[k] == A.NEUTRAL[k] for k in A.NEUTRAL), a
+        assert not any(k in app for k in A.V118_FLAG_KEYS), a             # YAML cũ không có khoá mới → hash không đổi
         assert (app["fuzzy_candidate_k"], app["fuzzy_min_sim"]) == (50, 0.75), a
         assert app["retrieval_mode"] == ("hybrid" if app["hybrid"] else "dense"), a
         assert load_arm(a).rerank is None
@@ -605,8 +607,87 @@ def test_make_search_guards_fields_backend_lacks(monkeypatch):
 def test_real_backend_has_every_knob():
     """Backend hiện tại có đủ field cho mọi núm của arm (nếu hỏng: backend đổi tên field → sửa APP_DEFAULTS / arm)."""
     _, SearchProducts, _, HybridConfig, _ = A._backend()
-    assert set(A.ENGINE_FLAG_KEYS) | set(A.QUERY_PLAN_KEYS) <= A._init_names(SearchProducts)
+    assert set(A.ENGINE_FLAG_KEYS) | set(A.QUERY_PLAN_KEYS) | set(A.V118_FLAG_KEYS) <= A._init_names(SearchProducts)
     assert set(A.HYBRID_CHANNEL_KEYS) <= A._init_names(HybridConfig)
+
+
+# ------------------------------------------------------------------ 07/10: ba cờ 1.18.0 tuỳ chọn (duration / poi / entity)
+V118_BASE = "APP.e5s.prod_f12356"
+# arm mới → các cờ 1.18.0 bật (mọi khoá khác y hệt arm cha = mốc production 06/10)
+V118_ARMS = {f"{V118_BASE}_dur": {"duration_filter"}, f"{V118_BASE}_poi": {"poi_resolve"}, f"{V118_BASE}_ent": {"entity_filter"},
+             f"{V118_BASE}_dur_poi_ent": set(A.V118_FLAG_KEYS)}
+
+
+def test_v118_flags_absent_means_off_and_not_in_defaults():
+    """Vắng khoá ≡ tắt (tiền lệ app.llm); KHÔNG vào APP_DEFAULTS nên arm cũ không cần sửa và config_hash giữ nguyên."""
+    assert not set(A.V118_FLAG_KEYS) & set(A.APP_DEFAULTS)
+    p = A.app_params(dict(A.APP_DEFAULTS))
+    assert {k: p[k] for k in A.V118_FLAG_KEYS} == dict.fromkeys(A.V118_FLAG_KEYS, False)
+    assert all(A.NEUTRAL[k] is False for k in A.V118_FLAG_KEYS)
+    on = A.app_params({**A.APP_DEFAULTS, "entity_filter": True})
+    assert on["entity_filter"] is True and on["duration_filter"] is False and on["poi_resolve"] is False
+
+
+@pytest.mark.parametrize("key", A.V118_FLAG_KEYS)
+@pytest.mark.parametrize("bad", [1, "true", None, "on"])
+def test_v118_flags_reject_non_bool(key, bad):
+    with pytest.raises(A.AppAdapterError, match=f"app.{key}"):
+        A.app_params({**A.APP_DEFAULTS, key: bad})
+
+
+def test_make_search_passes_v118_flags(monkeypatch):
+    ctx, SP, _ = _spy_ctx(monkeypatch)
+    ctx.make_search(dict(A.APP_DEFAULTS), embedder=None)
+    assert {k: SP.seen[-1].kwargs[k] for k in A.V118_FLAG_KEYS} == dict.fromkeys(A.V118_FLAG_KEYS, False)   # vắng → False
+    ctx.make_search({**A.APP_DEFAULTS, "duration_filter": True, "poi_resolve": True}, embedder=None)
+    kw = SP.seen[-1].kwargs
+    assert (kw["duration_filter"], kw["poi_resolve"], kw["entity_filter"]) == (True, True, False)
+
+
+def test_make_search_v118_flag_on_old_backend_raises(monkeypatch):
+    """Backend thiếu field 1.18.0: cờ tắt (hoặc vắng) → chạy được; cờ bật → lỗi nêu đúng field (không đo nhầm arm 'bật')."""
+    import dataclasses as dc
+
+    @dc.dataclass
+    class SP117:
+        index: object
+        vectors: object
+        embedder: object
+        cutoff: float
+        candidate_k: int = 200
+        lexical: object = None
+        hybrid: object = None
+        lexical_candidate_k: int = 50
+        normalize: bool = True
+        dest_filter: bool = False
+        dest_filter_fallback: bool = True
+        no_diacritics: object = None
+        no_diacritics_cutoff: object = None
+        no_diacritics_min_tokens: int = 3
+        negation_filter: bool = False
+        taxonomy_filter: bool = False
+        route_filter: bool = False
+        numeric_filter: bool = False
+        tone_normalize: bool = False
+        taxonomy_strong_only: bool = False
+        party_filter: bool = False
+
+    ctx, _, _ = _spy_ctx(monkeypatch, search_cls=SP117)
+    s = ctx.make_search({**A.APP_DEFAULTS, "duration_filter": False}, embedder=None)
+    assert isinstance(s.engine, SP117) and not hasattr(s.engine, "duration_filter")
+    for k in A.V118_FLAG_KEYS:
+        with pytest.raises(A.AppAdapterError, match=f"backend chưa có field SearchProducts.{k}"):
+            ctx.make_search({**A.APP_DEFAULTS, k: True}, embedder=None)
+
+
+@pytest.mark.parametrize("arm_id", sorted(V118_ARMS))
+def test_v118_arm_changes_exactly_its_flags(arm_id):
+    arm, par = load_arm(arm_id), load_arm(V118_BASE)
+    assert arm.parent == V118_BASE and arm.composite and arm.engine == "app" and arm.model == "e5-small"
+    assert {k for k in arm.app if k not in par.app} == V118_ARMS[arm_id]
+    assert all(arm.app[k] is True for k in V118_ARMS[arm_id])
+    assert {k: v for k, v in arm.app.items() if k not in A.V118_FLAG_KEYS} == par.app
+    assert R.config_hash(arm) != R.config_hash(par)
 
 
 class _QEmb:

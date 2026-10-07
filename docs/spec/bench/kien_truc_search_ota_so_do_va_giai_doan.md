@@ -871,11 +871,13 @@ sequenceDiagram
 5. Dùng vector search cho semantic preference/paraphrase, không dùng nó để giải logic phủ định hay directionality.
 6. Đánh giá với gold có `forbidden`, expected parse và safety guards; không chỉ dựa vào nDCG trung bình.
 
-## 17. Trạng thái hiện thực trong V-OTA (06/10/2026)
+## 17. Trạng thái hiện thực trong V-OTA (07/10/2026)
 
 Phục vụ FR-SRC-01, FR-SRC-03, FR-SRC-04, AC-SRC-01; NFR-PERF-01. Hợp đồng chi tiết: `docs/spec/hop-dong-tich-hop-search-recommendation.md`
-§2.2, §2.4, §2.5, §7.3, §10 (contract **1.16.0**). Số đo: `src/evaluation/reports/eval-2026-10-06-search-query-plan-gold-v4.md` (`gold_v5` đã duyệt, chiếu rubric v4 lúc chấm, Judged@10 = 1,00;
+§2.2, §2.4, §2.5, §7.3, §10 (contract **1.18.0**). Số đo: `src/evaluation/reports/eval-2026-10-06-search-query-plan-gold-v4.md` (`gold_v5` đã duyệt, chiếu rubric v4 lúc chấm, Judged@10 = 1,00;
 mốc A = hybrid + normalize production, nDCG@10 0,711).
+Ba hạng mục 07/10 (thời lượng F7, gazetteer POI → F1, cổng entity cứng): spec `docs/spec/bench/tong-hop-chinh-sua-luong-search-ota.md`
+(gap so với bảng này ở §2.1 của nó), plan `docs/plan/2026-10-07-search-duration-entity-poi.md`; chưa có report — đo sau probe fixture và `gold_v6`.
 
 | Giai đoạn kiến trúc | Trạng thái | Ở đâu | Cờ (mặc định) | Bằng chứng bench (nDCG@10 Δ so A, guard) |
 |---|---|---|---|---|
@@ -888,6 +890,9 @@ mốc A = hybrid + normalize production, nDCG@10 0,711).
 | 2 — tuyến bay có chiều (F5), IATA | có, sau cờ | `constraints.py`, param `origin` | `SEARCH_ROUTE_FILTER` (tắt) | chiều bay 0,11 → 1,00 |
 | 2 — giá hard / sao soft (F6) | có, sau cờ | `constraints.py` | `SEARCH_NUMERIC_FILTER` (tắt) | constraint precision 0,79 → 0,92 |
 | 2 — số khách / occupancy | có (tham số request luôn áp, suy từ câu sau cờ) | `parse_party`, `UnitIndex.mask` | `SEARCH_PARTY_FILTER` (tắt) | −0,6 (3 câu) |
+| 2 — thời lượng "N ngày M đêm" / "3N2Đ" (F7): khai `queryPlan.duration`, bỏ cụm khỏi câu BM25, không lọc | có, sau cờ (07/10, contract 1.18.0) | `constraints.parse_duration`, `query_plan.py` | `SEARCH_DURATION_FILTER` (tắt) | chưa đo (`gold_v6`, slice `duration_false_positive`; probe c0736–c0744) |
+| 2 — địa danh / khu vực / quận / sân bay → điểm đến catalog (gazetteer POI → F1), `queryPlan.location`, `hard.destinationSource = poi` | có, sau cờ (07/10) | `domain/search/gazetteer.py` (52 entry trong repo), `query_plan.py` → `destination.py` không đổi | `SEARCH_POI_RESOLVE` (tắt) | chưa đo (`gold_v6`, slice `poi_resolution`; probe c0745–c0756) |
+| 2/4 — cổng entity cứng: câu nêu điểm vui chơi (VinWonders, Safari, Grand World…) → chỉ attraction/combo có tên chứa entity; vai trò `gate` / `location` theo cue loại | có, sau cờ (07/10) | `gazetteer.py`, `UnitAttributes.entities` (theo tên), `UnitIndex.mask(require_entities)`, `queryPlan.entity`, `emptyReason = entity` | `SEARCH_ENTITY_FILTER` (tắt; bật đổi số đếm tab Web — cần Web xác nhận) | chưa đo (`gold_v6`; guard hồi quy c0697 / c0700 / c0703 / c0709) |
 | 3 — router confidence | có (chỉ khai) | `queryPlan.confidence`, `fallbackReasons` | luôn phát | — |
 | 3 — LLM fallback | có, sau cờ (đề xuất đã áp dụng 06/10, contract 1.17.0) | `application/search/query_plan_llm.py`, `domain/search/hypothesis.py`, `infrastructure/llm/query_hypothesis.py` | `SEARCH_LLM_FALLBACK` (off) | gpt-4o-mini: kích hoạt 10 / 59 câu (ngưỡng 0,75 / 1,0), 0 trường nhận, nDCG không đổi — luật đã đúng |
 | 4 — filter-first; F rỗng không nới (trừ điểm đến suy ra) | có | `UnitIndex.mask`, `queryPlan.emptyReason` | theo cờ từng họ | zero-result trong catalog 0 |
@@ -899,7 +904,7 @@ mốc A = hybrid + normalize production, nDCG@10 0,711).
 | 6 — routing thay full hybrid | chưa | — | — | chưa có bằng chứng an toàn |
 | 7 — re-validate sau fusion | có | `queryPlan.revalidatedDrops` | luôn | — |
 | 7 — rerank | **chỉ offline** (bench) | `src/evaluation/search_bench/rerank.py` (bge-reranker-v2-m3) | — | +3,9 trên F1–F6 nhưng ~3,4 s CPU/câu, constraint precision 0,93 |
-| 8 — response: `appliedFilters`, `queryPlan`, kết quả yếu | có (kết quả yếu do client) | contract 1.16.0 | — | margin 0,058 (chọn trên dev, kiểm trên test) |
+| 8 — response: `appliedFilters`, `queryPlan`, kết quả yếu | có (kết quả yếu do client) | contract 1.18.0 (1.17.0 `queryPlan.llm`; 1.18.0 `queryPlan.duration` / `location` / `entity` — chỉ khai khi cờ bật) | — | margin 0,058 (chọn trên dev, kiểm trên test) |
 | 9 — log truy vấn | có, sau cờ | writer `app.search_logs` | `SEARCH_LOG_QUERIES` (tắt) | — |
 | 9 — gold có forbidden / expected parse / guard / hole | có | `config/query_annotations.yaml`, `sb guards`, `sb gold holes` | — | 28 forbidden, 154 expected parse |
 

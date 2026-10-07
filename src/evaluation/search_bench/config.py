@@ -28,7 +28,9 @@ DEFAULT_GOLD_FIELDS: dict[str, str] = {
     "origin": "origin",                       # chặng bay kỳ vọng (attributes.originCity)
     "destination_city": "destination_city",   # (attributes.destinationCity)
     "expected_parse": "expected_parse",       # {taxonomy, destination, origin, destination_city, must_not, must_not_brands,
-                                              #  must_not_taxonomies, price_max, price_min, star_min, party_total} (metrics.PARSE_FIELDS)
+                                              #  must_not_taxonomies, price_max, price_min, star_min, party_total,
+                                              #  duration_days, duration_nights, entity, entity_role, location_entity}
+                                              #  (metrics.PARSE_FIELDS; năm trường cuối từ 07/10, contract 1.18.0)
     "family": "family",                       # họ câu: biến thể không dấu / gõ sai của cùng một ý định (gộp theo họ)
 }
 

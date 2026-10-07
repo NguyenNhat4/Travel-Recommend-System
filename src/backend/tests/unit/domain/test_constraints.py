@@ -3,9 +3,10 @@ bảng câu gold + biến thể không dấu; thuần, không catalog."""
 import pytest
 
 from src.backend.app.domain.search.constraints import (VERTICAL_CUE_STRENGTH, VERTICAL_CUES, WEAK_VERTICAL_CUES,
-                                                       FlightRoles, MustNot, NegationParse, NumericParse,
-                                                       VerticalParse, parse_flight_roles, parse_negation,
-                                                       parse_numeric, parse_vertical, remove_spans)
+                                                       DurationParse, FlightRoles, MustNot, NegationParse,
+                                                       NumericParse, VerticalParse, parse_duration,
+                                                       parse_flight_roles, parse_negation, parse_numeric,
+                                                       parse_party, parse_vertical, remove_spans)
 from src.backend.app.domain.search.lexical import fold
 from src.backend.app.domain.search.normalize import QueryNormalizer
 
@@ -487,3 +488,95 @@ def test_existential_co_nao_keeps_the_lodging_cue():
 def test_diem_vui_choi_is_a_weak_attraction_cue():
     r = parse_vertical("điểm vui chơi ở Phú Quốc")
     assert (r.taxonomy, r.strength) == ("attraction", "weak")
+
+
+# ------------------------------------------------------------------------------------------------ F7: thời lượng
+def duration_of(q: str) -> DurationParse:
+    """Như tầng gọi trong query plan: số trong span giá/sao và số khách không bao giờ là thời lượng."""
+    num = parse_numeric(q)
+    party = parse_party(q, num.spans)
+    return parse_duration(q, (*num.spans, *party.spans))
+
+
+DURATION_VALUES = [   # bảng bảo đảm plan 07/10 Bước 4b: (câu, ngày, đêm); None = không nhận
+    ("VinWonders 3 ngày 2 đêm", 3, 2),
+    ("VinWonders 3 ngay 2 dem", 3, 2),                                   # không dấu
+    ("combo 3N2Đ Phú Quốc", 3, 2),                                       # dạng viết tắt là một token, fold "3n2d"
+    ("3n2d", 3, 2),
+    ("vé VinWonders Nha Trang 2 ngày", 2, None),                         # không suy nửa thiếu
+    ("phòng cho 2 người 3 đêm", None, 3),                                # "2 người" thuộc party
+    ("resort 2 triệu/đêm Phú Quốc", None, None),                         # "/đêm" nằm trong span giá
+    ("tầm 1.5 triệu một đêm", None, None),                               # "một đêm" nằm trong span giá
+    ("Gói dịch vụ VIP Tour VinWonders Phú Quốc (3 tiếng)", None, None),  # gold c0372: giờ không phải ngày
+    ("qua đêm ở Sapa", None, None),
+    ("ban đêm", None, None),
+    ("chợ đêm Đà Lạt", None, None),
+    ("khách sạn ngay trung tâm", None, None),                             # "ngay" không có số đứng trước
+    ("2 ngày 1 đêm", 2, 1),
+    ("2 đêm 3 ngày", 3, 2),                                              # thứ tự đảo
+    ("3 ngày, 2 đêm", 3, 2),
+    ("3 ngày và 2 đêm", 3, 2),
+    ("3 days 2 nights", 3, 2),                                           # tiếng Anh
+    ("khách sạn 3 sao 2 đêm", None, 2),                                  # "3 sao" thuộc numeric, "2 đêm" còn tự do
+    ("45 ngày", None, None),                                             # ngoài 1–30
+    ("0 đêm", None, None),
+    ("ngày 15/10 đến 17/10", None, None),                                # đơn vị đứng TRƯỚC số = ngày tháng
+    ("vé máy bay Hà Nội Đà Nẵng 3 ngày 2 đêm", 3, 2),
+]
+
+
+@pytest.mark.parametrize("q, days, nights", DURATION_VALUES)
+def test_parse_duration_values(q, days, nights):
+    r = duration_of(q)
+    assert (r.days, r.nights) == (days, nights)
+    assert bool(r.spans) == ((days, nights) != (None, None))          # không nhận thì không tiêu gì
+
+
+@pytest.mark.parametrize("q, spans, rest", [
+    ("VinWonders 3 ngày 2 đêm", ["3 ngày 2 đêm"], "VinWonders"),
+    ("VinWonders 3 ngay 2 dem", ["3 ngay 2 dem"], "VinWonders"),
+    ("combo 3N2Đ Phú Quốc", ["3N2Đ"], "combo Phú Quốc"),
+    ("vé VinWonders Nha Trang 2 ngày", ["2 ngày"], "vé VinWonders Nha Trang"),
+    ("phòng cho 2 người 3 đêm", ["3 đêm"], "phòng cho 2 người"),            # span party không bị đụng
+    ("khách sạn 3 sao 2 đêm", ["2 đêm"], "khách sạn 3 sao"),
+    ("vé máy bay Hà Nội Đà Nẵng 3 ngày 2 đêm", ["3 ngày 2 đêm"], "vé máy bay Hà Nội Đà Nẵng"),   # tuyến giữ nguyên
+    ("2 ngày 1 đêm", ["2 ngày 1 đêm"], ""),                                 # đúng MỘT span gộp
+    ("2 đêm 3 ngày", ["2 đêm 3 ngày"], ""),
+    ("3 ngày, 2 đêm", ["3 ngày, 2 đêm"], ""),
+    ("3 ngày - 2 đêm", ["3 ngày - 2 đêm"], ""),
+    ("3 ngày/2 đêm", ["3 ngày/2 đêm"], ""),
+    ("3 ngày và 2 đêm", ["3 ngày và 2 đêm"], ""),
+    ("3 days 2 nights", ["3 days 2 nights"], ""),
+])
+def test_parse_duration_spans(q, spans, rest):
+    r = duration_of(q)
+    assert consumed(q, r.spans) == spans
+    assert remove_spans(q, r.spans) == rest
+
+
+@pytest.mark.parametrize("q", [
+    "resort 2 triệu/đêm Phú Quốc",
+    "tầm 1.5 triệu một đêm",
+    "Gói dịch vụ VIP Tour VinWonders Phú Quốc (3 tiếng)",
+    "qua đêm ở Sapa", "ban đêm", "chợ đêm Đà Lạt", "khách sạn ngay trung tâm",
+    "45 ngày", "0 đêm", "ngày 15/10 đến 17/10",
+])
+def test_parse_duration_traps_do_not_fire(q):
+    assert duration_of(q) == DurationParse()
+
+
+def test_parse_duration_protected_is_what_keeps_per_night_price_out():
+    # Không có `protected` thì "/đêm" của giá sẽ bị đọc thành số đêm — tầng gọi PHẢI truyền span của parse_numeric
+    q = "resort 2 triệu/đêm Phú Quốc"
+    assert parse_duration(q).nights is None                     # "2" đứng trước "triệu", không phải đơn vị
+    q = "khách sạn 2 đêm giá 1 triệu 1 đêm"
+    assert parse_duration(q, parse_numeric(q).spans) == DurationParse(None, 2, ((10, 15),))
+    assert consumed(q, parse_duration(q).spans) == ["2 đêm", "1 đêm"]     # không protected: cả hai, lần đầu thắng
+
+
+def test_parse_duration_first_value_wins_but_every_match_is_consumed():
+    q = "3 ngày 2 đêm hoặc 4 ngày 3 đêm"
+    r = duration_of(q)
+    assert (r.days, r.nights) == (3, 2)
+    assert consumed(q, r.spans) == ["3 ngày 2 đêm", "4 ngày 3 đêm"]     # "hoặc" không phải từ nối → hai span
+    assert remove_spans(q, r.spans) == "hoặc"
