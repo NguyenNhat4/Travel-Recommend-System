@@ -1,0 +1,60 @@
+{
+  "data": [
+    {
+      "referenceCode": "VOTA-20260903-9C4B",
+      "createdAt": "2026-09-03T03:18:00Z",
+      "status": "CANCELLED",
+      "tab": "cancelled",
+      "holdExpiresAt": null,
+      "cancellableUntil": null,
+      "paymentStatus": "REFUNDED",
+      "paymentFailureReason": null,
+      "total": 3200000,
+      "currency": "VND",
+      "items": [
+        {
+          "bookingItemId": "bi-04",
+          "productId": "sg-h-03",
+          "name": "Sala Sài Gòn - Phòng Deluxe",
+          "taxonomy": "hotel",
+          "usingDate": "2026-09-25",
+          "usingDateTo": "2026-09-27",
+          "quantity": 1,
+          "nights": 2,
+          "lineTotal": 3200000
+        }
+      ]
+    },
+    {
+      "referenceCode": "VOTA-20260827-1D6A",
+      "createdAt": "2026-08-27T15:47:00Z",
+      "status": "PAYMENT_FAILED",
+      "tab": "cancelled",
+      "holdExpiresAt": null,
+      "cancellableUntil": null,
+      "paymentStatus": "FAILED",
+      "paymentFailureReason": "TOO_MANY_ATTEMPTS",
+      "total": 1450000,
+      "currency": "VND",
+      "items": [
+        {
+          "bookingItemId": "bi-05",
+          "productId": "hl-t-01",
+          "name": "Du thuyền vịnh Hạ Long trong ngày",
+          "taxonomy": "attraction",
+          "usingDate": "2026-09-05",
+          "usingDateTo": null,
+          "quantity": 1,
+          "nights": null,
+          "lineTotal": 1450000
+        }
+      ]
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "pageSize": 5,
+    "totalItems": 2,
+    "totalPages": 1
+  }
+}

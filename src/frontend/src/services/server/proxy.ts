@@ -24,6 +24,7 @@ import {
   requestIdOf,
   rotateAfterPasswordChange,
   sessionCookies,
+  updateSessionUser,
   withCookies,
 } from './bffSession';
 import { hashId, log, routeOf, serializeError } from '../../lib/logger';
@@ -184,6 +185,20 @@ export async function proxyToBackend(request: Request, context: RouteContext) {
   }
   responseHeaders.set('x-request-id', response.headers.get('x-request-id') || requestId);
 
+  // FR-USR-04: Backend đã sửa hồ sơ → phiên giữ họ tên và số điện thoại mới. Đọc hết body trước vì còn phải trả nguyên cho client.
+  let payload: BodyInit | null = response.body;
+  if (current?.record.state === 'authenticated' && request.method === 'PATCH' && joined === 'v1/auth/me' && response.status === 200) {
+    const text = await response.text();
+    payload = text;
+    try {
+      const user = JSON.parse(text) as { fullName?: string; phone?: string | null };
+      if (typeof user.fullName === 'string') {
+        await updateSessionUser(current, { fullName: user.fullName, phone: user.phone ?? null });
+      }
+    } catch (error) {
+      log.warn('auth.profile.session_refresh_failed', { request_id: requestId, error: serializeError(error) });
+    }
+  }
   const upstreamMs = Date.now() - upstreamStart;
   const summary = {
     request_id: requestId, method: request.method, route, status: response.status, upstream_ms: upstreamMs, authenticated,
@@ -192,7 +207,7 @@ export async function proxyToBackend(request: Request, context: RouteContext) {
   const logProxy = response.status >= 500 ? log.error : response.status >= 400 ? log.warn : log.info;
   logProxy('bff.proxy', { ...summary, duration_ms: Date.now() - startedAt, ...(isStream ? { stream: true } : {}) });
 
-  const responseBody = isStream && response.body ? trackStream(response.body, { request_id: requestId, route }) : response.body;
+  const responseBody = isStream && response.body ? trackStream(response.body, { request_id: requestId, route }) : payload;
   const proxied = new Response(responseBody, {
     status: response.status, statusText: response.statusText, headers: responseHeaders,
   });

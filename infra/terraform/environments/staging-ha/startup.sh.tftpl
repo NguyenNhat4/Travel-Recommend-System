@@ -22,5 +22,6 @@ chmod +x /etc/vota/pgbouncer-setup.sh
 cat > /etc/vota/compose.yml <<'COMPOSE'
 ${compose}
 COMPOSE
-export BACKEND_IMAGE='${backend_image}' FRONTEND_IMAGE='${frontend_image}' UVICORN_WORKERS='${uvicorn_workers}'
+export BACKEND_IMAGE='${backend_image}' FRONTEND_IMAGE='${frontend_image}' UVICORN_WORKERS='${uvicorn_workers}' \
+  UVICORN_GRACEFUL_SECONDS='${graceful_seconds}' BACKEND_STOP_GRACE='${stop_grace_seconds}'
 docker compose -f /etc/vota/compose.yml up -d

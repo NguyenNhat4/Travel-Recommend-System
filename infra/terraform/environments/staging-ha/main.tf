@@ -8,6 +8,9 @@ locals {
     backend_image      = var.backend_image
     frontend_image     = var.frontend_image
     uvicorn_workers    = var.uvicorn_workers
+    # Chuỗi tắt êm: SSE (90s) <= LB draining (100s) = uvicorn graceful (100s) < stop_grace (110s).
+    graceful_seconds   = var.lb_connection_draining_seconds
+    stop_grace_seconds = var.lb_connection_draining_seconds + 10
     compose            = local.compose
     pgbouncer_ini      = file("${path.module}/pgbouncer.ini")
     pgbouncer_setup    = file("${path.module}/pgbouncer-setup.sh")
@@ -93,6 +96,7 @@ resource "google_compute_health_check" "live" {
 }
 
 resource "google_compute_region_instance_group_manager" "app" {
+  provider                  = google-beta # min_ready_sec trong update_policy
   name                      = "${var.name_prefix}-app"
   base_instance_name        = "${var.name_prefix}-app"
   region                    = var.region
@@ -109,7 +113,7 @@ resource "google_compute_region_instance_group_manager" "app" {
 
   auto_healing_policies {
     health_check      = google_compute_health_check.live.id
-    initial_delay_sec = 300
+    initial_delay_sec = var.boot_to_ready_seconds
   }
 
   update_policy {
@@ -117,6 +121,9 @@ resource "google_compute_region_instance_group_manager" "app" {
     minimal_action        = "REPLACE"
     max_surge_fixed       = 3
     max_unavailable_fixed = 0
+    # Health check của MIG chỉ là liveness (tiến trình trả lời), nên không có min_ready_sec thì MIG coi VM mới là
+    # "đã cập nhật" ngay khi tiến trình lên, trước khi nạp xong RecSys, rồi xoá VM cũ. Đặt lớn hơn boot-to-ready.
+    min_ready_sec = var.boot_to_ready_seconds
   }
 
   lifecycle {
@@ -130,9 +137,10 @@ resource "google_compute_region_autoscaler" "app" {
   target = google_compute_region_instance_group_manager.app.id
 
   autoscaling_policy {
-    min_replicas    = var.min_replicas
-    max_replicas    = var.max_replicas
-    cooldown_period = 180
+    min_replicas = var.min_replicas
+    max_replicas = var.max_replicas
+    # Phải >= boot-to-ready: VM đang nạp model có CPU cao nhưng chưa nhận traffic, tính vào trung bình sẽ thêm VM quá tay.
+    cooldown_period = var.boot_to_ready_seconds
 
     cpu_utilization {
       target = var.cpu_target
@@ -183,7 +191,7 @@ resource "google_compute_backend_service" "app" {
   timeout_sec                     = var.lb_timeout_seconds
   health_checks                   = [google_compute_health_check.ready.id]
   session_affinity                = "NONE" # sessions live in Redis; any VM can serve any request
-  connection_draining_timeout_sec = 60
+  connection_draining_timeout_sec = var.lb_connection_draining_seconds
 
   backend {
     group           = google_compute_region_instance_group_manager.app.instance_group

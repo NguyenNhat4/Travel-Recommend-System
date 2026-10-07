@@ -2,8 +2,7 @@ import React, { Suspense, useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useTravel } from '../../context/TravelContext';
-import { bookingItems } from '../../services/booking';
-import { BOOKING_STATUS_BADGE } from '../confirmation/bookingLabels';
+import { formatDay } from '../../features/bookings/historyModel';
 import { SUPPORTED_LOCALES } from '../../types/locale';
 import { AllServicesMenu, NavMenu } from '../layout/nav/NavMenu';
 import { NAV_GROUPS, isOverlayRoute, resolveActiveGroup } from '../layout/nav/navConfig';
@@ -11,8 +10,8 @@ import {
   PANEL_CLASS, PANEL_LABEL_CLASS, chipClass, controlClass, primaryClass, rowClass, type NavTone,
 } from '../layout/nav/headerStyles';
 import {
-  Clipboard,
   Luggage,
+  ShoppingCart,
   User,
   ChevronDown,
   Settings,
@@ -136,7 +135,7 @@ export const Header: React.FC<HeaderProps> = ({ isCheckout = false }) => {
     currentPersona,
     signOut,
     cartCount,
-    bookings,
+    cart,
     navigate,
     currentRoute,
     openLoginModal,
@@ -189,9 +188,6 @@ export const Header: React.FC<HeaderProps> = ({ isCheckout = false }) => {
   }, [currentRoute]);
 
   const currentLocaleInfo = SUPPORTED_LOCALES.find(l => l.code === currentLocale) || SUPPORTED_LOCALES[0];
-
-  const upcomingBookingsCount = bookings.filter(b => b.status === 'CONFIRMED' || b.status === 'PENDING_PAYMENT').length;
-  const activeTripsBadge = upcomingBookingsCount > 0 ? upcomingBookingsCount : cartCount;
 
   // Simplified Checkout Header
   if (isCheckout) {
@@ -313,78 +309,71 @@ export const Header: React.FC<HeaderProps> = ({ isCheckout = false }) => {
                 )}
               </div>
 
-              {/* Booking Management */}
+              {/* Giỏ hàng: chỉ hiện giỏ. Đơn đã đặt xem ở /profile (menu tài khoản), không lặp ở đây. */}
               <div className="relative hidden md:block" ref={tripsDropdownRef}>
                 <button
                   onClick={() => setIsTripsDropdownOpen(!isTripsDropdownOpen)}
                   aria-expanded={isTripsDropdownOpen}
                   className={`relative ${controlClass(tone, { active: isTripsDropdownOpen, iconOnly: true })}`}
-                  title="Đặt chỗ của tôi"
-                  aria-label="Đặt chỗ của tôi"
+                  title="Giỏ hàng"
+                  aria-label="Giỏ hàng"
                 >
-                  <Clipboard className="h-5 w-5" aria-hidden="true" />
-                  {activeTripsBadge > 0 && (
+                  <ShoppingCart className="h-5 w-5" aria-hidden="true" />
+                  {cartCount > 0 && (
                     <span className="absolute right-0 top-0 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-blue-600 px-1 text-[10px] font-bold leading-none text-white shadow-xs">
-                      {activeTripsBadge}
+                      {cartCount}
                     </span>
                   )}
                 </button>
 
                 {isTripsDropdownOpen && (
                   <div className={`${DROPDOWN_CLASS} w-80`}>
-                    <div className="flex items-center justify-between px-3 pb-1 pt-2">
-                      <span className="font-display text-[15px] text-slate-900">Đặt chỗ của tôi</span>
+                    <div className="px-3 pb-1 pt-2">
+                      <span className="font-display text-[15px] text-slate-900">Giỏ hàng ({cartCount})</span>
+                    </div>
+
+                    <div className="space-y-1 py-1">
+                      {cart && cart.items.length > 0 ? (
+                        <>
+                          {cart.items.slice(0, 3).map((item) => (
+                            <button
+                              key={item.cartItemId}
+                              type="button"
+                              onClick={() => {
+                                setIsTripsDropdownOpen(false);
+                                navigate('/cart');
+                              }}
+                              className={rowClass('default', { stacked: true })}
+                            >
+                              <span className="line-clamp-2 text-sm font-semibold text-slate-900">{item.product.name}</span>
+                              <span className="text-[13px] text-slate-500">
+                                {formatDay(item.usingDate)} · {new Intl.NumberFormat('vi-VN').format(item.lineTotal)} ₫
+                              </span>
+                            </button>
+                          ))}
+                          {cart.items.length > 3 && (
+                            <p className="px-3 py-1 text-[13px] text-slate-500">và {cart.items.length - 3} dịch vụ khác</p>
+                          )}
+                        </>
+                      ) : (
+                        <div className="py-5 text-center text-[13px] text-slate-500">
+                          <ShoppingCart className="mx-auto mb-1.5 h-6 w-6 text-slate-300" aria-hidden="true" />
+                          <p>Giỏ hàng đang trống</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {cartCount > 0 && (
                       <button
                         onClick={() => {
                           setIsTripsDropdownOpen(false);
                           navigate('/cart');
                         }}
-                        className="cursor-pointer rounded-full px-2.5 py-1 text-[13px] font-semibold text-blue-600 transition-colors duration-200 hover:bg-blue-50"
+                        className={`${rowClass('accent')} justify-center`}
                       >
-                        Giỏ hàng ({cartCount})
+                        Xem giỏ hàng →
                       </button>
-                    </div>
-
-                    <div className="space-y-1 py-1">
-                      {bookings.length > 0 ? (
-                        bookings.slice(0, 3).map((b, idx) => (
-                          <button
-                            key={idx}
-                            type="button"
-                            onClick={() => {
-                              setIsTripsDropdownOpen(false);
-                              navigate(`/booking/${b.referenceCode}`);
-                            }}
-                            className={rowClass('default', { stacked: true })}
-                          >
-                            <span className="flex items-center justify-between gap-3 text-sm font-semibold text-slate-900">
-                              <span>Đơn #{b.referenceCode}</span>
-                              <span className={`text-xs font-semibold ${BOOKING_STATUS_BADGE[b.status].className}`}>
-                                {BOOKING_STATUS_BADGE[b.status].label}
-                              </span>
-                            </span>
-                            <span className="text-[13px] text-slate-500">
-                              {bookingItems(b).length} dịch vụ · {new Intl.NumberFormat('vi-VN').format(b.total)} ₫
-                            </span>
-                          </button>
-                        ))
-                      ) : (
-                        <div className="py-5 text-center text-[13px] text-slate-500">
-                          <Luggage className="mx-auto mb-1.5 h-6 w-6 text-slate-300" aria-hidden="true" />
-                          <p>Bạn chưa có chuyến đi nào sắp tới</p>
-                        </div>
-                      )}
-                    </div>
-
-                    <button
-                      onClick={() => {
-                        setIsTripsDropdownOpen(false);
-                        navigate('/cart');
-                      }}
-                      className={`${rowClass('accent')} justify-center`}
-                    >
-                      Xem tất cả dịch vụ trong giỏ →
-                    </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -421,7 +410,7 @@ export const Header: React.FC<HeaderProps> = ({ isCheckout = false }) => {
                         <button
                           onClick={() => {
                             setIsAccountDropdownOpen(false);
-                            showToast('Chức năng Hồ sơ cá nhân');
+                            navigate('/profile');
                           }}
                           className={rowClass()}
                         >
@@ -431,7 +420,7 @@ export const Header: React.FC<HeaderProps> = ({ isCheckout = false }) => {
                         <button
                           onClick={() => {
                             setIsAccountDropdownOpen(false);
-                            navigate('/cart');
+                            navigate('/profile/booking_history');
                           }}
                           className={rowClass()}
                         >

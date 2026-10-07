@@ -11,7 +11,7 @@ from psycopg.rows import dict_row
 from src.backend.app.application.auth.errors import CdpUserIdTaken, EmailAlreadyExists
 from src.backend.app.application.auth.principal import AuthenticatedUser
 
-_COLUMNS = "user_id, email, password_hash, display_name, cdp_user_id, persona, email_verified_at"
+_COLUMNS = "user_id, email, password_hash, display_name, cdp_user_id, persona, email_verified_at, phone"
 
 
 def _to_user(row: dict) -> AuthenticatedUser:
@@ -23,6 +23,7 @@ def _to_user(row: dict) -> AuthenticatedUser:
         cdp_user_id=row["cdp_user_id"],
         persona=row["persona"],
         email_verified=row["email_verified_at"] is not None,
+        phone=row["phone"],
     )
 
 
@@ -85,6 +86,25 @@ class PostgresUserRepository:
                 "UPDATE app.users SET password_hash = %s WHERE user_id = %s", (password_hash, user_id)
             )
             await conn.commit()
+
+    async def update_profile(
+        self, user_id: str, *, display_name: str | None, phone: str | None, set_phone: bool
+    ) -> AuthenticatedUser | None:
+        async with await psycopg.AsyncConnection.connect(self._database_url, row_factory=dict_row) as conn:
+            row = await (
+                await conn.execute(
+                    f"""
+                    UPDATE app.users
+                       SET display_name = COALESCE(%s, display_name),
+                           phone = CASE WHEN %s THEN %s ELSE phone END
+                     WHERE user_id = %s::uuid
+                 RETURNING {_COLUMNS}
+                    """,
+                    (display_name, set_phone, phone, user_id),
+                )
+            ).fetchone()
+            await conn.commit()
+        return _to_user(row) if row else None
 
     async def touch_last_login(self, user_id: str) -> None:
         async with await psycopg.AsyncConnection.connect(self._database_url) as conn:

@@ -3,7 +3,9 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+import re
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from src.backend.app.application.auth.principal import AuthenticatedUser
 from src.backend.app.application.auth.use_cases import AuthOutcome
@@ -38,15 +40,57 @@ class PasswordChangeRequest(BaseModel):
     newPassword: str = Field(min_length=8, max_length=128)
 
 
+_PHONE = re.compile(r"^0[0-9]{9}$")
+
+
+class UpdateProfileRequest(BaseModel):
+    """PATCH /auth/me (FR-USR-04): chỉ trường có mặt mới đổi; `phone = null` xoá số. Email không sửa được."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    fullName: str | None = Field(default=None, max_length=100)
+    phone: str | None = None
+
+    @field_validator("fullName")
+    @classmethod
+    def _name(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        value = value.strip()
+        if not value:
+            raise ValueError("họ tên không được rỗng")
+        return value
+
+    @field_validator("phone")
+    @classmethod
+    def _phone(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        value = value.strip()
+        if not _PHONE.fullmatch(value):
+            raise ValueError("số điện thoại gồm 10 chữ số, bắt đầu bằng 0")
+        return value
+
+    @model_validator(mode="after")
+    def _something_to_change(self) -> "UpdateProfileRequest":
+        if not self.model_fields_set:
+            raise ValueError("cần ít nhất một trường")
+        if "fullName" in self.model_fields_set and self.fullName is None:
+            raise ValueError("họ tên không được null")
+        return self
+
+
 class AuthUser(BaseModel):
     userId: str
     cdpUserId: str
     email: str
     fullName: str
+    phone: str | None = None
 
     @classmethod
     def of(cls, user: AuthenticatedUser) -> "AuthUser":
-        return cls(userId=user.user_id, cdpUserId=user.cdp_user_id, email=user.email, fullName=user.display_name)
+        return cls(userId=user.user_id, cdpUserId=user.cdp_user_id, email=user.email, fullName=user.display_name,
+                   phone=user.phone)
 
 
 class AuthResponse(BaseModel):

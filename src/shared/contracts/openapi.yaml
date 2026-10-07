@@ -192,6 +192,8 @@ components:
       $ref: ./schemas/common.yaml#/BecauseEvent
     Currency:
       $ref: ./schemas/common.yaml#/Currency
+    Pagination:
+      $ref: ./schemas/common.yaml#/Pagination
     ReferenceCode:
       $ref: ./schemas/common.yaml#/ReferenceCode
     ErrorCode:
@@ -228,6 +230,8 @@ components:
       $ref: ./schemas/auth.yaml#/LoginRequest
     AuthUser:
       $ref: ./schemas/auth.yaml#/AuthUser
+    UpdateProfileRequest:
+      $ref: ./schemas/auth.yaml#/UpdateProfileRequest
     AuthResponse:
       $ref: ./schemas/auth.yaml#/AuthResponse
     SessionState:
@@ -328,6 +332,14 @@ components:
       $ref: ./schemas/booking.yaml#/BookingResponse
     BookingStatus:
       $ref: ./schemas/booking.yaml#/BookingStatus
+    BookingTab:
+      $ref: ./schemas/booking.yaml#/BookingTab
+    BookingSummaryItem:
+      $ref: ./schemas/booking.yaml#/BookingSummaryItem
+    BookingSummary:
+      $ref: ./schemas/booking.yaml#/BookingSummary
+    BookingListResponse:
+      $ref: ./schemas/booking.yaml#/BookingListResponse
     PaymentStatus:
       $ref: ./schemas/booking.yaml#/PaymentStatus
     PaymentFailureReason:

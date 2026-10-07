@@ -323,6 +323,31 @@ class ChangePassword:
         return revoked
 
 
+class UpdateProfile:
+    """Sửa họ tên và số điện thoại của chính người dùng (FR-USR-04). Email không sửa được ở đây.
+
+    Dữ liệu đã được lớp API kiểm dạng (họ tên 1–100 ký tự, số điện thoại 10 chữ số bắt đầu bằng 0). Ở đây chỉ kiểm danh tính:
+    principal phải khớp hàng app.users như `GetCurrentUser`. Số điện thoại không gửi sang CDP, Insider hay Stripe.
+    """
+
+    def __init__(self, *, users: UserRepository):
+        self._users = users
+
+    async def __call__(
+        self, principal: AuthPrincipal, *, full_name: str | None = None, phone: str | None = None, set_phone: bool = False
+    ) -> AuthenticatedUser:
+        user = await self._users.find_by_id(principal.user_id)
+        if user is None or user.cdp_user_id != principal.cdp_user_id:
+            raise TokenInvalid("principal không khớp app.users")
+        updated = await self._users.update_profile(
+            user.user_id, display_name=full_name, phone=phone, set_phone=set_phone)
+        if updated is None:
+            raise TokenInvalid("user không còn tồn tại")
+        logger.info("auth.profile.updated userId=%s name=%s phone=%s", user.user_id,
+                    full_name is not None, "set" if set_phone and phone else "cleared" if set_phone else "unchanged")
+        return updated
+
+
 class GetCurrentUser:
     def __init__(self, *, users: UserRepository):
         self._users = users

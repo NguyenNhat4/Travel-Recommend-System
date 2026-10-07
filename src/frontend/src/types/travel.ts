@@ -101,6 +101,8 @@ export interface UserPersona {
   code: string;
   name: string;
   email: string;
+  /** Số điện thoại hồ sơ (FR-USR-04); null hoặc vắng mặt khi chưa có. */
+  phone?: string | null;
   avatarText: string;
   tagline: string;
   description: string;

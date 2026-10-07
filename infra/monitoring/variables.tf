@@ -21,6 +21,12 @@ variable "zone" {
   default     = "asia-southeast1-a"
 }
 
+variable "db_replica_zone" {
+  description = "Zone of the DB replica VM (a different zone from the primary). Empty = same as zone."
+  type        = string
+  default     = ""
+}
+
 variable "environment" {
   description = "Environment label. This root is intentionally staging-only."
   type        = string

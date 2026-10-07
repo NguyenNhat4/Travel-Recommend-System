@@ -108,7 +108,9 @@ type ProductSummary = components["schemas"]["ProductSummary"];
 | `/product/{productId}` | Chi tiết sản phẩm | Không | ngữ cảnh chuyến đi tùy chọn `checkIn`, `checkOut`, `adults`, `children`, `rooms` (điền sẵn hộp đặt, §4.1a) |
 | `/cart` | Giỏ hàng | Có | — |
 | `/checkout` | Checkout | Có | — |
-| `/booking/{referenceCode}` | Trạng thái đơn / xác nhận đặt chỗ | Có | `payment` (`return` \| `cancelled`) — do Backend đặt vào `success_url`/`cancel_url` của phiên Stripe |
+| `/profile` | Hồ sơ cá nhân: sửa họ tên, số điện thoại, đổi mật khẩu (FR-USR-04, §4.6b) | Có (chưa đăng nhập thì hiện lời mời đăng nhập, mở hộp đăng nhập) | — (đường dẫn cũ có `tab`, `taxonomy`, `days` hoặc `page` được chuyển sang `/profile/booking_history` giữ nguyên bộ lọc) |
+| `/profile/booking_history` | Lịch sử đặt chỗ: ba tab, lọc, phân trang (FR-BKG-14, §4.6a) | Có (chưa đăng nhập thì hiện lời mời đăng nhập, mở hộp đăng nhập) | `tab` (`upcoming` mặc định \| `done` \| `cancelled`), `taxonomy` (`hotel` \| `flight` \| `attraction` \| `combo` \| `golf`), `days` (`1` \| `7` \| `30` \| `60`), `page` — giá trị lạ về mặc định |
+| `/booking/{referenceCode}` | Trạng thái đơn / chi tiết đơn hàng (FR-BKG-15) | Có | `payment` (`return` \| `cancelled`) — do Backend đặt vào `success_url`/`cancel_url` của phiên Stripe |
 | `/login`, `/register` | Đăng nhập, đăng ký | — | `redirect` (đường dẫn nội bộ, bắt đầu bằng `/`) |
 
 Quy ước:
@@ -270,6 +272,33 @@ Phục vụ FR-BKG-01, AC-BKG-13…17. Bộ luật: `docs/spec/booking/dat-truc-
 - **`422 DIRECT_BOOKING_ONLY`** không xảy ra trong luồng bình thường (Web không hiện nút thêm giỏ cho khách sạn, vé máy bay); nếu gặp thì toast "Khách sạn và vé máy bay được đặt trực tiếp".
 - Khách chưa đăng nhập: BFF phát cookie `vota_guest` (HttpOnly, 3 ngày) và gắn mã khách vào request; trình duyệt không đọc hay gửi mã này. Đăng nhập xong, BFF gộp giỏ và đơn nháp của khách vào tài khoản rồi xoá cookie (`docs/spec/hop-dong-tich-hop-auth.md`).
 
+### 4.6b. Hồ sơ cá nhân `/profile` (FR-USR-04)
+
+Hai trang `/profile` và `/profile/booking_history` dùng chung khung tài khoản (`features/profile/AccountShell.tsx`): menu trái có thẻ người dùng và hai mục trên máy tính, hai tab ngang trên điện thoại; mục đang mở theo địa chỉ trang.
+
+| Khu vực | Endpoint | Auth | Trường Web đọc / gửi | Khi lỗi |
+|---|---|---|---|---|
+| Hồ sơ | `GET /api/auth/session` (đã có sẵn khi tải trang) | cookie phiên | `user.fullName`, `user.email`, `user.phone` | — |
+| Sửa họ tên, số điện thoại | `PATCH /auth/me` | bắt buộc | gửi chỉ trường đã đổi (`fullName`, `phone`; `phone: null` xoá số); đọc lại `AuthUser` | `422 VALIDATION_ERROR` → "Thông tin chưa hợp lệ…"; mất mạng → "Mất kết nối…"; lỗi khác → "Chưa lưu được thông tin…". Giữ nguyên nội dung đang nhập |
+| Đổi mật khẩu | `PUT /auth/password` | bắt buộc | `currentPassword`, `newPassword` (8–128 ký tự; ô nhập lại chỉ ở Web) | `401 INVALID_CREDENTIALS` → "Mật khẩu hiện tại không đúng." dưới ô đó; `400 WEAK_PASSWORD` → lỗi dưới ô mật khẩu mới; `429` → báo thử lại sau |
+
+- Email chỉ xem. Họ tên bắt buộc, tối đa 100 ký tự; số điện thoại để trống hoặc đúng 10 chữ số bắt đầu bằng 0 (`features/profile/profileModel.ts`, cùng luật với Backend). Lỗi hiện dưới ô khi rời ô, không hiện lúc đang gõ; nút "Lưu thay đổi" chỉ bật khi có thay đổi hợp lệ.
+- Lưu xong: `TravelContext.updateProfile` cập nhật ngay người dùng hiện tại (header, menu tài khoản) và BFF ghi họ tên, số điện thoại mới vào phiên, nên tải lại trang không hiện tên cũ (`services/server/proxy.ts`).
+- Số điện thoại hồ sơ điền sẵn ô số điện thoại liên hệ ở bước thanh toán nếu người dùng chưa gõ gì (`components/checkout/useCheckout.ts`).
+- Đổi mật khẩu thành công: BFF đăng xuất các phiên khác và cấp lại cookie cho phiên này (như `docs/spec/hop-dong-tich-hop-auth.md` §3.8 dòng J).
+
+### 4.6a. Lịch sử đặt chỗ `/profile/booking_history` (FR-BKG-14)
+
+| Khu vực | Endpoint | Auth | Trường Web đọc | Khi lỗi / rỗng |
+|---|---|---|---|---|
+| Danh sách đơn | `GET /bookings?tab=&taxonomy=&days=&page=&pageSize=5` | bắt buộc | `data[]` (`referenceCode`, `createdAt`, `status`, `tab`, `holdExpiresAt`, `cancellableUntil`, `paymentStatus`, `paymentFailureReason`, `total`, `items[]`), `pagination` | `401` → mời đăng nhập, đăng nhập xong tải lại; lỗi khác → "Chưa tải được đơn hàng của bạn" + "Thử lại" + `requestId`; `data` rỗng → trạng thái trống |
+
+- Ba tab Sắp đến · Hoàn thành · Đã huỷ do **Backend** xếp (`tab` của mỗi đơn); Web không tự lọc hay đếm. Chip dịch vụ (Tất cả, Khách sạn, Vé máy bay, Vé tham quan, Combo, Sân Golf) và ô "Ngày đặt" (Tất cả, 1, 7, 30, 60 ngày qua) dùng chung cho cả ba tab. Bộ lọc nằm trên URL; đổi bất kỳ bộ lọc nào thì về trang 1; `page` vượt quá số trang thì lùi về trang cuối.
+- Phân trang đánh số, 5 đơn mỗi trang; chỉ một trang thì ẩn.
+- Nhãn thẻ: đơn `PENDING_PAYMENT` mà Backend đã xếp vào Đã huỷ là đơn giữ chỗ quá hạn, hiện "Hết hạn giữ chỗ" và có "Đặt lại" (`POST /booking-drafts` với `fromBooking`, như §4.6). Đơn `PENDING_PAYMENT` còn hạn có "Tiếp tục thanh toán" (mở `/booking/{referenceCode}`). Huỷ đơn làm ở trang chi tiết, không làm ở thẻ.
+- Bố cục: thanh lọc (tab trạng thái, chip dịch vụ) dính ở đầu khi cuộn; số đơn và bộ lọc "Ngày đặt" ngay dưới; mỗi thẻ đơn có ô ngày của dịch vụ đầu tiên và chân thẻ nền riêng chứa tổng tiền và nút. "Ngày đặt" là danh sách thả xuống tự dựng (`features/bookings/DaysFilter.tsx`, không dùng ô chọn gốc của trình duyệt): rộng bằng nút hoặc ít nhất 11 rem, mép phải thẳng hàng với nút, dòng đang chọn có dấu tick, tự mở lên trên khi sát đáy màn hình; bàn phím mũi tên, Home/End, Enter, Esc.
+- Trạng thái trống: chưa có đơn thì lời nhắn theo tab kèm nút "Tìm khách sạn" (tab Đã huỷ không có nút); đang lọc mà không khớp thì "Không có đơn nào khớp bộ lọc." kèm nút "Xoá bộ lọc".
+
 ### 4.6. Trạng thái đơn `/booking/{referenceCode}`
 
 | Khu vực | Endpoint | Auth | Trường Web đọc | Khi lỗi / rỗng |
@@ -290,6 +319,8 @@ Hiển thị theo trạng thái (spec booking §5.1):
 | `PAYMENT_FAILED` | Lý do theo `failureReason` (spec booking §10.2) + "Đặt lại" |
 | `EXPIRED` | "Hết thời gian giữ chỗ" + "Đặt lại" |
 | `CANCELLED` | "Đã huỷ đơn" + trạng thái hoàn tiền theo `payment.status` (`REFUND_PENDING`, `REFUNDED`, `REFUND_FAILED`, hoặc `EXPIRED` = chưa thanh toán nên không hoàn) |
+
+Trang là hai cột trên máy tính (một cột trên điện thoại), mở đầu bằng đường dẫn "Đơn hàng của tôi / Chi tiết đơn hàng" (FR-BKG-15). Cột trái: thẻ trạng thái ở trên; mỗi dịch vụ một khối "Thông tin đặt chỗ" (mốc nhận/trả phòng hoặc điểm đi/đến, cơ sở, tiện ích); Thông tin khách hàng; Thông tin hành khách hoặc khách lưu trú; Thông tin dịch vụ; Chính sách hoàn huỷ. Cột phải: Thông tin thanh toán (mã đơn, dòng giá, tổng, trạng thái, nút "Huỷ đơn" khi được huỷ). Tên, hạng sao, địa chỉ và tiện ích của khách sạn lấy từ `GET /products/{id}` của hạng phòng và của khách sạn cha, nạp sau khi đơn đã hiện; lỗi thì chỉ bỏ phần đó, không bịa địa chỉ. Giờ nhận phòng "Sau 14:00", trả phòng "Trước 12:00" và số tổng đài là giá trị mặc định chung ở `components/confirmation/bookingDefaults.ts` (số tổng đài hiện là số giả lập). Hạn hoàn 100% lấy từ `cancellableUntil` của Backend. **Chưa có trên trang:** trạng thái xuất vé và mã đặt chỗ của hãng (FR-BKG-12), vì `BookingResponse` chưa trả; diện tích phòng; giờ bay chính xác khi catalog không có.
 
 Mỗi mục của đơn hiện hành khách và dòng giá (spec `booking/checkout-nhieu-buoc-hanh-khach.md` §6.8): khách sạn hiện khách theo phòng ("Phòng 1: …") và đánh dấu người đại diện nhận phòng (`isLead`); dịch vụ khác hiện một dòng tên, trẻ em có nhãn "(trẻ em)"; các dòng giá từ `fares`. Response không có ngày sinh nên trang không hiện. Đơn tạo trước thay đổi có `travelers` rỗng: hiện `guestNames` như trước.
 

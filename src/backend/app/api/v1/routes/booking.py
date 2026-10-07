@@ -8,8 +8,9 @@ Số tiền luôn do Backend tính từ catalog; body không có trường tiề
 from __future__ import annotations
 
 import logging
+from typing import Literal
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 
 from src.backend.app.api.deps import cart_owner, current_principal, get_use_case, require_service_token
 from src.backend.app.api.v1.schemas.booking import (
@@ -26,7 +27,7 @@ from src.backend.app.application.booking import (
 )
 from src.backend.app.application.booking.errors import ValidationFailed
 from src.backend.app.core.logging_config import log_event
-from src.backend.app.domain.booking import Guests
+from src.backend.app.domain.booking import BookingTab, Guests
 
 router = APIRouter(tags=["booking"])
 logger = logging.getLogger(__name__)
@@ -166,6 +167,19 @@ async def create_booking(
     travelers = ([TravelerInput(t.travelerRef, t.type, t.surname, t.givenNames, t.birthDate, _documents(t.documents))
                   for t in body.travelers] if body.travelers is not None else None)
     return await create(principal, contact, details, travelers, draft_id=body.draftId)
+
+
+Taxonomy = Literal["hotel", "flight", "attraction", "combo", "golf"]
+
+
+@router.get("/bookings")
+async def list_bookings(
+    tab: BookingTab = BookingTab.UPCOMING, taxonomy: Taxonomy | None = None, days: Literal["1", "7", "30", "60"] | None = None,
+    page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=50, alias="pageSize"),
+    principal: AuthPrincipal = Depends(current_principal), list_=Depends(get_use_case("list_bookings")),
+):
+    return await list_(principal, tab=tab, taxonomy=taxonomy, days=int(days) if days else None, page=page,
+                       page_size=page_size)
 
 
 @router.get("/bookings/{reference_code}")
