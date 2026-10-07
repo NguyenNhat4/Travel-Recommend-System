@@ -82,7 +82,7 @@ class GraphDeclarationTests(unittest.TestCase):
         self.assertEqual(graph.SITE_INTERIM, {'trip': ('trip_flights', 'trip_attractions', 'trip_hotels', 'trip_combos'),
                                               'vinpearl': ('vinpearl', 'vinpearl_bundles'),
                                               'booking': ('booking_hotels', 'booking_attractions', 'booking_flights'),
-                                              'agoda': ('agoda_api',)})
+                                              'agoda': ('agoda_api', 'agoda_hotels')})
         self.assertEqual(graph.STEP_INTERIM['trip-hotels.prices'], ('trip_hotels',))
         self.assertNotIn('trip-hotels.discover', graph.STEP_INTERIM)
         self.assertEqual(graph.LIVE_KEYS, {'trip-flights': 'trip', 'trip-attractions': 'trip', 'vinpearl': 'vinpearl',

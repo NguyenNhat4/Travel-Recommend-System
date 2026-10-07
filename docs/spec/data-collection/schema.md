@@ -64,7 +64,9 @@ products = [json.loads(line) for line in open("products.jsonl", encoding="utf-8"
 | `url` | URL | 100% | Trang nguồn của sản phẩm |
 | `fieldSources` | object | 100% | Trường nào lấy từ nguồn nào, ví dụ `{"unitPrice": "booking.com", "description": "vinpearl"}` |
 | `sameAs` | array | 2% | `sourceRef` của các bản ghi cùng sản phẩm ở nguồn khác đã gộp vào dòng này |
-| `mergedInto` | string | mới | Chỉ có trong `cdp.products`, không có trong `products.jsonl`: `product_id` của dòng mà dòng này đã được gộp vào khi nạp DB (nạp theo phần hoặc lượt sau gộp trùng hai dòng đã nạp riêng); dòng mang khoá này có `available = false` và không được tra theo `sourceRef`/`sameAs` nữa. Xem `docs/plan/2026-09-28-pipeline-chay-lien-tuc.md` (L4) |
+| `mergedInto` | string | mới | Chỉ có trong `cdp.products`, không có trong `products.jsonl`: `product_id` của dòng mà dòng này đã được gộp vào khi nạp DB (nạp theo phần hoặc lượt sau gộp trùng hai dòng đã nạp riêng); dòng mang khoá này có `available = false` và không được tra theo `sourceRef`/`sameAs` nữa. Hai dòng đã nạp cùng nhận một ref thì job giữ dòng ghi ref trong `sameAs`, gộp dòng kia và chuyển phòng con sang dòng giữ. Xem `docs/plan/2026-09-28-pipeline-chay-lien-tuc.md` (L4) |
+| `noBookableRoom` | boolean | mới | Chỉ có trong `cdp.products`, khách sạn tổng quan: job cào (và seed) đặt `true` kèm `available = false` khi không có hạng phòng con nào đặt được (PRD FR-CAT-02, chốt 06/10/2026). Có phòng đặt được trở lại thì job bỏ khoá và bật lại (trừ dòng đã gộp, giá quá hạn, ngoài cửa sổ) |
+| `windowClosed` | boolean | mới | Chỉ có trong `cdp.products`: job cào đặt `true` khi chính cửa sổ đặt chỗ 30 ngày tắt một dòng đang bán (giao rỗng, vd. vé tham quan hết thời gian bán; vé máy bay được dời ngày nên không dùng khoá này). Cửa sổ cuộn tới khoảng của dòng thì job bật lại và bỏ khoá này, trừ khi dòng không có giá, đã gộp (`mergedInto`) hoặc có `priceFreshness`. Lượt cào làm mới dòng thì bỏ khoá, `available` theo nguồn |
 | `brand` | string | 5% | Thương hiệu, chủ yếu là `Vinpearl` |
 
 ### 3.2 Vị trí
@@ -155,7 +157,7 @@ products = [json.loads(line) for line in open("products.jsonl", encoding="utf-8"
 | `roundTripFrom` | number | <1% | Tuyến: giá khứ hồi rẻ nhất |
 | `tripType` | string | Vé mới | `oneWay` hoặc `roundTrip`; khứ hồi vẫn là `level: flight` |
 | `cabinClass` | string | Khi nguồn xác nhận | `ECONOMY`, `PREMIUM_ECONOMY`, `BUSINESS`, `FIRST`; thiếu thì chưa biết |
-| `fixedDepartureDate` | boolean | Báo giá có ngày | `true`: job cào giữ nguyên ngày hai chặng; seed demo dời vào cửa sổ khi ngày đi nằm ngoài cửa sổ (`docs/prd/data-model.md` §3, `docs/spec/MOCK_DATA_SPEC.md` §2.1) |
+| `fixedDepartureDate` | boolean | Báo giá có ngày | `true`: job cào và seed demo giữ ngày thật khi nằm trong cửa sổ, ngày đi ngoài cửa sổ (đã bay, sau cửa sổ, hết hạn báo giá) thì dời cả hai chặng vào cửa sổ (`docs/prd/data-model.md` §3.1, `docs/spec/MOCK_DATA_SPEC.md` §2.1) |
 | `returnFlight` | object | Khứ hồi | Số hiệu, hãng, sân bay đi/đến, `departureAt`, `arrivalAt` của chặng về |
 | `returnDate`, `stayDays` | date, integer | Khứ hồi | Ngày về và khoảng ngày; không dùng để nhân giá hoặc ghi `using_date_to` |
 | `priceValidUntil`, `priceObservedAt` | date, datetime | Khi nguồn cung cấp | Hạn báo giá và thời điểm quan sát; hết hạn không đồng nghĩa hết chỗ |
@@ -265,7 +267,12 @@ Hợp đồng dùng thang 0–5, một chữ số thập phân; `reviewCount` l�
 |---|---|---|---|
 | 1 | `reviewScore`, `reviewScoreScale` | 2.292 sản phẩm (2.291 thang 10) | `rating = round(reviewScore / reviewScoreScale × 5, 1)`, `reviewCount = reviewCount` |
 | 2 | `tripAdvisorRating`, `tripAdvisorReviewCount` | 15 khách sạn Vinpearl, thang 5 | giữ nguyên |
-| — | không có điểm | còn lại | `rating = null`, `reviewCount = null` — kể cả 178 sản phẩm có `reviewCount` mà không có điểm |
+| 3 | `rating`, `ratingScale` | 178 điểm tham quan (snapshot 2026-09-30, thang 5) | `rating = round(rating / ratingScale × 5, 1)`, `reviewCount = reviewCount` |
+| — | không có điểm | còn lại | `rating = null`, `reviewCount = null` — kể cả khi có `reviewCount` |
+
+Nguồn đầu tiên có điểm hợp lệ thắng; `reviewCount` luôn lấy cùng nguồn với `rating`. Code: `RATING_SOURCES` trong
+`src/backend/app/domain/catalog/models.py`. Nguồn 3 có từ snapshot 2026-09-30: 178 sản phẩm trước đây chỉ có
+`reviewCount` nay có thêm điểm.
 
 ### 8.2 `attributes`
 

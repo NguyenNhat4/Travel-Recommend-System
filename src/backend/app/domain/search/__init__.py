@@ -41,17 +41,19 @@ from .query_plan import (
     build_query_plan,
 )
 from .scoring import SearchOutcome, candidate_filter_score, exact_filter_score, revalidate, soft_star_order
+from .suggest import MIN_QUERY_CHARS, SUGGEST_GROUPS, SuggestEntry, is_suggestable, match_tier, suggest
 from .tone import detect_style, normalize_tone
 
 __all__ = [
-    "ALIASES", "AMENITIES", "AMENITY_KEYS", "APPLIED_MUST_NOT", "APPLIED_PARTY", "APPLIED_PRICE", "APPLIED_ROUTE",
-    "APPLIED_STAR", "APPLIED_TAXONOMY", "Amenity", "DESTINATION_ALIASES", "DestinationDecision", "EMPTY_DESTINATION",
-    "EMPTY_PARAM", "FLIGHT_CUES", "FlightRoles", "HybridConfig", "HybridOutcome", "MustNot", "NegationParse",
-    "NormalizedQuery", "NumericParse", "PARTY_PHRASES", "PartyParse", "PlanFlags", "PlanGazetteers", "PlanParams",
-    "QUERY_CUES", "QueryNormalizer", "QueryPlan", "SOURCE_PARAM", "SOURCE_QUERY", "STOPWORDS", "SearchOutcome",
-    "VERTICAL_CUE_STRENGTH", "VerticalParse", "amenity_keys", "build_query_plan", "candidate_filter_score", "coverage",
-    "decide_destination", "detect_style", "exact_filter_score", "fold", "hybrid_filter_score", "is_flight_query",
-    "is_unaccented", "keys_of_string", "normalize_tone", "parse_flight_roles", "parse_negation", "parse_numeric",
-    "parse_party", "parse_vertical", "query_tokens", "remove_spans", "revalidate", "rrf", "soft_star_order",
-    "strip_accents", "tokens",
+    "ALIASES", "AMENITIES", "Amenity", "AMENITY_KEYS", "amenity_keys", "APPLIED_MUST_NOT", "APPLIED_PARTY",
+    "APPLIED_PRICE", "APPLIED_ROUTE", "APPLIED_STAR", "APPLIED_TAXONOMY", "build_query_plan", "candidate_filter_score",
+    "coverage", "decide_destination", "DESTINATION_ALIASES", "DestinationDecision", "detect_style", "EMPTY_DESTINATION",
+    "EMPTY_PARAM", "exact_filter_score", "FLIGHT_CUES", "FlightRoles", "fold", "hybrid_filter_score", "HybridConfig",
+    "HybridOutcome", "is_flight_query", "is_suggestable", "is_unaccented", "keys_of_string", "match_tier",
+    "MIN_QUERY_CHARS", "MustNot", "NegationParse", "normalize_tone", "NormalizedQuery", "NumericParse",
+    "parse_flight_roles", "parse_negation", "parse_numeric", "parse_party", "parse_vertical", "PARTY_PHRASES",
+    "PartyParse", "PlanFlags", "PlanGazetteers", "PlanParams", "QUERY_CUES", "query_tokens", "QueryNormalizer",
+    "QueryPlan", "remove_spans", "revalidate", "rrf", "SearchOutcome", "soft_star_order", "SOURCE_PARAM",
+    "SOURCE_QUERY", "STOPWORDS", "strip_accents", "suggest", "SUGGEST_GROUPS", "SuggestEntry", "tokens",
+    "VERTICAL_CUE_STRENGTH", "VerticalParse",
 ]

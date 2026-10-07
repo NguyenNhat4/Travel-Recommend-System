@@ -1,7 +1,7 @@
 # RecSys bench — v3 → v4 → v5 trên split đóng băng (FR-REC-02: trip mở theo `usingDate`, N = 14)
 
 - Commit engine/harness: nhánh `bench/m6-trip-ended` (sau `3c14a35`), áp dụng đề xuất `docs/prd/update-archive/2026-10-01-category-exclusion-theo-chuyen-dang-dien-ra.md`
-- Chạy lúc: 2026-10-02, máy dev (Postgres `localhost:5432/vota` seed 21/09 → as_of 2026-09-22; Weaviate `http://127.0.0.1:8080`, `vectorsMissing 0`)
+- Chạy lúc: 2026-10-01 (tên file, run id và `ENGINE_RULES_VERSION` ghi 2026-10-02 do nhầm ngày; giữ nguyên để khớp `bench_out/` và configHash), máy dev (Postgres `localhost:5432/vota` seed 21/09 → as_of 2026-09-22; Weaviate `http://127.0.0.1:8080`, `vectorsMissing 0`)
 - Split đóng băng: `src/evaluation/recsys_bench/frozen/split-llbo-asof20260922.json` (sha `29033b34…`, 1.007 khách) · `split-temporal-asof20260922.json` (sha `a7735af1…`, 102 khách, T = 2026-07-07T15:23Z)
 - Arm: `random` (3 seed) · `most_popular` · `most_popular_in_destination` (mpd) · `engine` (mode eval, bỏ cap) · `engine_prod` (cap 2 món/taxonomy) · `engine_nommr` (pool 200 theo score, chẩn đoán); k = 20
 - Phục vụ: FR-REC-01/02, test-plan §2.5; phân tích ở `docs/spec/bench/recsys-offline-eval.md` §4.6–4.14
@@ -72,5 +72,5 @@ python -m src.evaluation.recsys_bench run --arm random --arm most_popular --arm 
     --split temporal --vectors weaviate --split-file src/evaluation/recsys_bench/frozen/split-temporal-asof20260922.json --run-id 2026-10-02-temporal-v5
 python -m src.evaluation.recsys_bench run ... --split llbo --split-file src/evaluation/recsys_bench/frozen/split-llbo-asof20260922.json --run-id 2026-10-02-llbo-v5
 python -m src.evaluation.recsys_bench analyze --run-id 2026-10-02-temporal-v5   # ceiling.md, segments.md, strict.md, cases.md
-# v3 / v4 tái tạo bằng --override ACTIVE_TRIP_MAX_AGE_DAYS=60 (v4) trên code hiện tại; v3 cần checkout commit trước 02/10
+# v3 / v4 tái tạo bằng --override ACTIVE_TRIP_MAX_AGE_DAYS=60 (v4) trên code hiện tại; v3 cần checkout commit trước 8842c3a
 ```

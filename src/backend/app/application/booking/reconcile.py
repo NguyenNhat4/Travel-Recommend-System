@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Callable
 
 from src.backend.app.application.booking.payment_events import PaymentEventHandler
@@ -10,9 +10,12 @@ from src.backend.app.application.booking.settlement import Settlement
 from src.backend.app.application.ports.booking_store import BookingStore
 from src.backend.app.application.ports.cdp_client import CdpUnavailableError
 from src.backend.app.application.ports.payment_gateway import PaymentEvent, PaymentGateway, PaymentProviderUnavailable
+from src.backend.app.core.logging_config import log_event
 from src.backend.app.domain.booking.status import BookingStatus, PaymentStatus
 
 logger = logging.getLogger(__name__)
+# Bản ghi đơn nháp hết hạn được giữ thêm một ngày để trang thanh toán còn báo được "hết hạn" thay vì "không tìm thấy".
+DRAFT_RETENTION = timedelta(days=1)
 
 
 class ReconcileBookings:
@@ -24,15 +27,29 @@ class ReconcileBookings:
         self._clock, self._batch = clock, batch_size
 
     async def __call__(self) -> int:
+        # Nhiều worker × nhiều VM cùng chạy vòng lặp này; chỉ một nơi được đối soát mỗi lượt để
+        # không gọi Stripe/CDP trùng (hoàn tiền, huỷ purchase event).
+        async with self._store.reconcile_leader() as leader:
+            if not leader:
+                logger.debug("reconcile.skipped not_leader")
+                return 0
+            return await self._run()
+
+    async def _run(self) -> int:
         async with self._store.transaction() as tx:
             ids = await tx.find_reconcile_ids(self._clock(), self._batch)
+            purged = await tx.purge_expired_drafts(self._clock() - DRAFT_RETENTION)
+        if purged:
+            logger.info("reconcile.drafts_purged count=%d", purged)
         for booking_id in ids:
             try:
                 await self.reconcile_one(booking_id)
             except (PaymentProviderUnavailable, CdpUnavailableError):
-                logger.warning("reconcile.deferred bookingId=%s", booking_id)
+                log_event(logger, "booking.reconcile.deferred", "WARNING", booking_id=booking_id,
+                          reason="provider_or_cdp_unavailable")
             except Exception:
-                logger.exception("reconcile.failed bookingId=%s", booking_id)
+                log_event(logger, "booking.reconcile.failed", "ERROR", exc_info=True, booking_id=booking_id,
+                          reason="exception")
         return len(ids)
 
     async def reconcile_one(self, booking_id: str) -> None:

@@ -32,6 +32,8 @@
         $ref: ../openapi.yaml#/components/responses/Error
       '422':
         $ref: ../openapi.yaml#/components/responses/Error
+      '429':
+        $ref: ../openapi.yaml#/components/responses/Error
       '500':
         $ref: ../openapi.yaml#/components/responses/Error
       '503':
@@ -63,6 +65,8 @@
               type: string
               description: Mỗi data là AssistantStreamEvent được mã hóa JSON.
       '422':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '429':
         $ref: ../openapi.yaml#/components/responses/Error
       '503':
         $ref: ../openapi.yaml#/components/responses/Error

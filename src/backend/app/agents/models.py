@@ -70,7 +70,7 @@ class ConstraintUpdate(StrictModel):
 
 class TurnRoute(StrictModel):
     """Nhãn của `classify`: chỉ phân luồng, không trích gì khác."""
-    route: Literal["travel", "conversation", "out_of_scope"]
+    route: Literal["travel", "vague", "conversation", "out_of_scope"]
 
 
 class Extraction(StrictModel):
@@ -82,6 +82,14 @@ class Extraction(StrictModel):
         default=False,
         description="true khi người dùng nói rõ chưa chốt hoặc linh hoạt về ngày đi; không có ngày cũng không có lời này thì false.")
     conflict: bool = False
+    change_without_value: list[Literal["destination", "days", "startDate", "party", "budget"]] = Field(
+        default_factory=list,
+        description="Trường người dùng muốn đổi nhưng chưa nói giá trị mới ('đổi ngày', 'đổi địa điểm'). "
+                    "Đã có giá trị mới thì điền patch, không liệt kê ở đây.")
+    destination_kind: str | None = Field(
+        default=None, max_length=60,
+        description="Loại nơi người dùng muốn thay cho tên một địa danh ('biển', 'núi', 'chỗ mát'); null khi "
+                    "tin nhắn không nói loại nơi nào hoặc đã nêu một điểm đến hợp với loại đó.")
 
 
 class DestinationChoice(StrictModel):
@@ -93,3 +101,9 @@ class ConversationalAnswer(StrictModel):
     #: Cho phép dài hơn mức hiển thị một chút: `titled()` cắt, không để tiêu đề dài làm hỏng cả câu.
     title: str | None = Field(default=None, max_length=200)
     message: str = Field(min_length=1, max_length=1000)
+
+
+class ItineraryNarration(StrictModel):
+    """Output của `narrate`: lời diễn giải lịch trình đã dựng; tên sản phẩm và giá do backend điền từ dữ liệu."""
+    title: str | None = Field(default=None, max_length=200)
+    message: str = Field(min_length=1, max_length=3000)

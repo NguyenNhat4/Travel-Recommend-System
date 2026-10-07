@@ -28,9 +28,9 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from src.backend.app.application.ports import UnitIndex
-from src.backend.app.domain.recommendation.profile import MAX_REPEAT_PER_TRIP, trip_is_open
+from src.backend.app.domain.recommendation.profile import local_today, trip_is_open
 
-from .events import PERSONA_IDS, parse_ts
+from .events import PERSONA_IDS, parse_ts, trip_ends_on
 
 
 EVENT_KEYS = ("cdpUserId", "eventName", "productId", "timestamp", "eventGroupId", "usingDate")
@@ -132,10 +132,12 @@ def _unit_id(index: UnitIndex, product_id: str) -> str:
 
 
 def excluded_taxonomies(train: list[dict], index: UnitIndex, as_of: datetime) -> set[str]:
-    """Mô phỏng category exclusion của engine: taxonomy đã mua trong trip đang mở (trip trẻ nhất, tuổi ≤ 60 ngày).
+    """Mô phỏng category exclusion của engine: taxonomy đã mua trong trip đang mở (trẻ nhất trong các trip `trip_is_open`:
+    chưa kết thúc theo `usingDate`, hoặc không có `usingDate` và tuổi ≤ `ACTIVE_TRIP_MAX_AGE_DAYS` = 14).
 
-    Trip = `eventGroupId`, thiếu thì `_solo_<productId>` như `use_cases.py`; mỗi (trip, unit) chỉ giữ
-    `MAX_REPEAT_PER_TRIP` event cũ nhất như `build_profile`. Không mô phỏng việc engine bỏ sản phẩm chưa có vector.
+    Trip = `eventGroupId`, thiếu thì `_solo_<productId>` như `use_cases.py`; tuổi, ngày kết thúc và taxonomy đã mua xét trên
+    **mọi** event của trip như `build_profile` (cap `MAX_REPEAT_PER_TRIP` chỉ giới hạn trọng số vector). Không mô phỏng việc
+    engine bỏ sản phẩm chưa có vector.
     Dùng để giải thích recall thấp "đúng thiết kế" khi target cùng loại với món đã mua trong chuyến đang mở.
     """
     rows = []
@@ -144,16 +146,11 @@ def excluded_taxonomies(train: list[dict], index: UnitIndex, as_of: datetime) ->
         if unit is not None:
             rows.append(((as_of - parse_ts(e["timestamp"])).total_seconds() / 86400, e, unit))
     trips: dict[str, list[tuple[float, dict, int]]] = defaultdict(list)
-    seen: Counter = Counter()
-    for days_ago, e, unit in sorted(rows, key=lambda r: -r[0]):   # cũ trước, như build_profile
-        trip = e.get("eventGroupId") or f"_solo_{e['productId']}"
-        seen[(trip, unit)] += 1
-        if seen[(trip, unit)] <= MAX_REPEAT_PER_TRIP:
-            trips[trip].append((days_ago, e, unit))
-    from .ceiling import ends_on
+    for days_ago, e, unit in rows:                                 # mọi event của trip (không cap)
+        trips[e.get("eventGroupId") or f"_solo_{e['productId']}"].append((days_ago, e, unit))
     ages = {tid: min(d for d, _, _ in rows) for tid, rows in trips.items()}
-    today = as_of.date()
-    open_trips = [tid for tid, age in ages.items() if trip_is_open(age, ends_on(e for _, e, _ in trips[tid]), today)]
+    today = local_today(as_of)
+    open_trips = [tid for tid, age in ages.items() if trip_is_open(age, trip_ends_on(e for _, e, _ in trips[tid]), today)]
     if not open_trips:
         return set()
     active = min(open_trips, key=lambda tid: ages[tid])

@@ -1,4 +1,4 @@
-import asyncio, json, sys, pathlib
+import asyncio, json, os, sys, pathlib
 import numpy as np, pytest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
 
@@ -7,6 +7,29 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
 # nếu không LocalCdpClient trả InterfaceError trên mọi máy Windows.
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+# Test dựng app (TestClient) đọc `.env` của dev; `.env` bật LANGSMITH_TRACING thì `main._enable_langsmith` đẩy cờ
+# vào os.environ và mọi lượt graph với LLM giả sau đó bị gửi lên project LangSmith thật (trace < 1 s, tên
+# "lên lịch giúp mình", "conv-khong-co"...). Biến môi trường thật thắng `.env`, nên tắt ở đây trước khi app nào được dựng.
+os.environ["LANGSMITH_TRACING"] = "false"
+os.environ["LANGCHAIN_TRACING_V2"] = "false"
+
+# Test không bao giờ đọc `.env`: file đó của dev thường trỏ DB staging qua tunnel, Weaviate Cloud và khóa Cohere/OpenAI
+# thật (APP_ENV=production). Kết nối cho test integration đặt tường minh bằng biến môi trường trong shell, ví dụ
+# DATABASE_URL=... RUN_POSTGRES_INTEGRATION=1. Phải chạy trước khi `main` tạo Settings (conftest nạp trước test).
+from src.backend.app.core.config import Settings  # noqa: E402
+from src.backend.tests.guard import OVERRIDE, remote_dependency_violations  # noqa: E402
+
+Settings.model_config["env_file"] = None
+
+
+def pytest_configure(config):
+    bad = remote_dependency_violations()
+    if bad:
+        raise pytest.UsageError(
+            "Từ chối chạy test: biến môi trường trỏ dịch vụ không phải máy này (" + "; ".join(bad) + "). "
+            "Trỏ về Docker cục bộ, hoặc đặt " + OVERRIDE + "=1 nếu thật sự muốn."
+        )
 
 
 class FakeEmbedder:

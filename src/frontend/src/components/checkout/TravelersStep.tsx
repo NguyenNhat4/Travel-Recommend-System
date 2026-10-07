@@ -253,9 +253,15 @@ export const TravelersStep: React.FC<{ ctl: CheckoutController }> = ({ ctl }) =>
             <Field id="c-email" label="Email nhận thông tin (theo tài khoản)" error={ctl.errors['c-email']}>
               {(aria) => (
                 <input {...aria} type="email" disabled value={ctl.email} aria-label="Email"
+                  placeholder={ctl.currentPersona ? undefined : 'Lấy theo tài khoản khi bạn đăng nhập'}
                   className="w-full px-3 h-10 text-sm bg-slate-100 border border-slate-300 rounded-lg text-slate-500 cursor-not-allowed" readOnly />
               )}
             </Field>
+            {!ctl.currentPersona && (
+              <p className="mt-1 text-[11px] text-slate-500" data-testid="guest-email-note">
+                Bạn chưa đăng nhập. Cứ điền thông tin trước; khi bấm Thanh toán, bạn sẽ đăng nhập và email của tài khoản được dùng để nhận xác nhận.
+              </p>
+            )}
           </div>
         </div>
         <label htmlFor="c-sync" className="flex items-center gap-2.5 text-sm text-slate-700 cursor-pointer">

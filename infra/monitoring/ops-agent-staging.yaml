@@ -15,11 +15,32 @@ logging:
       include_paths:
         - /var/log/vota/docker-events.jsonl
       record_log_file_path: true
+    container_disk:
+      type: files
+      include_paths:
+        - /var/log/vota/container-disk.jsonl
+      record_log_file_path: true
   processors:
+    # Tầng 1: vỏ docker json-file {"log": "<dòng>", "stream", "time"}.
     parse_docker_json:
       type: parse_json
       field: message
+    # Tầng 2: dòng log của app (docs/spec/logging-schema.md). Dòng không phải JSON (redis, weaviate, log cũ)
+    # giữ nguyên. Thời gian lấy từ ts_utc, mức độ từ severity.
+    parse_app_json:
+      type: parse_json
+      field: log
+      time_key: ts_utc
+      time_format: "%Y-%m-%dT%H:%M:%S.%LZ"
+    set_app_severity:
+      type: modify_fields
+      fields:
+        severity:
+          move_from: jsonPayload.severity
     parse_docker_events:
+      type: parse_json
+      field: message
+    parse_container_disk:
       type: parse_json
       field: message
   service:
@@ -29,6 +50,8 @@ logging:
           - docker_json
         processors:
           - parse_docker_json
+          - parse_app_json
+          - set_app_severity
       fresh_catalog_pipeline:
         receivers:
           - fresh_catalog_logs
@@ -37,6 +60,11 @@ logging:
           - docker_events
         processors:
           - parse_docker_events
+      container_disk_pipeline:
+        receivers:
+          - container_disk
+        processors:
+          - parse_container_disk
 
 metrics:
   receivers:

@@ -57,7 +57,8 @@ SOURCES: tuple[Source, ...] = (
 SITE_ORDER = ("trip", "vinpearl", "booking", "agoda")
 # File interim một site có thể có mà không bước nào của job này ghi (lệnh crawl.py riêng): vẫn được chuẩn hoá khi cả site
 # xong.
-SITE_EXTRA_INTERIM = {"trip": ("trip_combos",), "booking": ("booking_attractions", "booking_flights")}
+SITE_EXTRA_INTERIM = {"trip": ("trip_combos",), "booking": ("booking_attractions", "booking_flights"),
+                      "agoda": ("agoda_hotels",)}  # bản cào bằng trình duyệt cũ (bước agoda-hotels nay chạy collector API)
 
 
 @dataclass(frozen=True)

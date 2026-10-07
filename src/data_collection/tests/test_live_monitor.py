@@ -559,8 +559,10 @@ class PreviewTriggerTests(unittest.TestCase):
             return code(source) if callable(code) else code
         groups = groups or [('trip', ('trip-flights',)), ('vinpearl', ('vinpearl',)), ('booking', ('booking-hotels',)),
                             ('agoda', ('agoda-hotels',)), ('empty', ())]
+        # Thứ tự xong do độ trễ giả lập quyết định: bỏ khoá một Chromium (BROWSER_STEPS) để các site chạy song song thật.
         with patch.object(fresh_catalog, 'run_source', fake_source), \
                 patch.object(fresh_catalog, 'wait_or_stop', lambda seconds: None), \
+                patch.object(fresh_catalog, 'BROWSER_STEPS', set()), \
                 contextlib.redirect_stdout(io.StringIO()):
             try:
                 fresh_catalog.crawl_sites(Path('/tmp/unused'), '@deep', groups, 4, recorder)
@@ -575,7 +577,7 @@ class PreviewTriggerTests(unittest.TestCase):
                                          ('agoda', 'ok', False)])
         self.assertEqual(recorder.sources, [('trip', ('trip_flights',), True),
                                             ('vinpearl', ('vinpearl', 'vinpearl_bundles'), True),
-                                            ('booking', ('booking_hotels',), True), ('agoda', ('agoda_hotels',), False)])
+                                            ('booking', ('booking_hotels',), True), ('agoda', ('agoda_api',), False)])
         self.assertFalse(recorder.finished)
 
     def test_partial_run_finishes_previews_before_building_the_official_catalog(self):
@@ -758,10 +760,9 @@ class EmbedTests(Workspace):
                    'models': {'m:v2': 3}}
         vectors['norms'] = np.linalg.norm(vectors['matrix'], axis=1)
         monitor.ensure_backend_path()
-        settings = SimpleNamespace(embed_provider='local', embed_model='intfloat/multilingual-e5-small',
-                                   embed_model_revision='rev', embed_dimension=3, cohere_api_key='',
-                                   weaviate_collection='ProductCrawl')
-        with patch('src.backend.app.infrastructure.embeddings.factory.build_embedder', Embedder), \
+        settings = SimpleNamespace(embed_model='intfloat/multilingual-e5-small', embed_dimension=3,
+                                   vector_collection='ProductCrawl')
+        with patch('src.backend.app.infrastructure.embeddings.factory.build_embedder', lambda settings: Embedder()), \
                 patch.object(self.monitor, '_index_settings', return_value=settings), \
                 patch.object(self.monitor, '_collection_vectors', return_value=vectors):
             result = self.monitor.embed_query(RUN_ID, 'resort gần biển', 2)
@@ -812,7 +813,7 @@ class EmbedTests(Workspace):
 class LocalOnlyGuardTests(unittest.TestCase):
     def config(self, **values):
         base = {'database_url': 'postgresql://u:p@localhost:5432/vota_crawl', 'weaviate_url': 'http://localhost:8080',
-                'weaviate_collection': 'ProductCrawl'}
+                'vector_collection': 'ProductCrawl'}
         return SimpleNamespace(**(base | values))
 
     def test_local_only_accepts_private_sandbox_and_blocks_shared_targets(self):
@@ -824,12 +825,11 @@ class LocalOnlyGuardTests(unittest.TestCase):
                     ('local', 'postgresql://u:p@10.0.0.5:5432/vota_crawl', self.config()),
                     ('local', 'postgresql://u:p@localhost:5432/vota', self.config()),
                     ('local', url, self.config(weaviate_url='abc.weaviate.cloud')),
-                    ('local', url, self.config(weaviate_collection='Product')),
-                    ('local', url, self.config(weaviate_collection='ProductE5'))):
+                    ('local', url, self.config(vector_collection='Product'))):
                 with self.subTest(target=target, db=db_url, config=config), self.assertRaises(ValueError):
                     fresh_catalog.check_local_only(target, db_url, config)
         with patch.dict(os.environ, {}, clear=True):  # VM: không bật chế độ local thì không chặn
-            fresh_catalog.check_local_only('cloud', 'postgresql://u:p@10.0.0.5/vota', self.config(weaviate_collection='Product'))
+            fresh_catalog.check_local_only('cloud', 'postgresql://u:p@10.0.0.5/vota', self.config(vector_collection='Product'))
 
 
 if __name__ == '__main__':

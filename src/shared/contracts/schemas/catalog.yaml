@@ -265,7 +265,7 @@ ProductSummary:
       description: >-
         Chỉ có ở vé máy bay tầng con (taxonomy flight, level flight): các hạng vé của CÙNG một hành trình (cùng chuyến,
         cùng ngày đi; khứ hồi thì cùng chuyến và ngày về), kể cả chính sản phẩm này. Mỗi hạng là một productId riêng;
-        đặt vé bằng productId của hạng đã chọn (AddCartItemRequest không đổi). Các sản phẩm cùng hành trình có cùng
+        đặt vé bằng productId của hạng đã chọn qua POST /booking-drafts (vé máy bay không vào giỏ). Các sản phẩm cùng hành trình có cùng
         fareClasses, nên Web hiển thị một thẻ cho mỗi hành trình. Chỉ liệt kê hạng có báo giá thật — thiếu hạng nào là
         chưa có dữ liệu, không phải hết chỗ. Vắng mặt ở loại sản phẩm khác.
 

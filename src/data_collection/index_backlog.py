@@ -8,9 +8,12 @@ from __future__ import annotations
 import fcntl
 import json
 import re
+import sys
 import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+import log
 
 _MUTEX = threading.Lock()
 
@@ -82,7 +85,10 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--state-file', required=True, type=Path)
     args = parser.parse_args(argv)
+    log.configure(flow='index')
     report = guarded_index(args.state_file, lambda: run(settings=get_settings()))
+    with log.use_stream(sys.stderr):  # stdout = báo cáo JSON của lệnh
+        log.emit('index.backlog.report', 'index.backlog.report', report=report)
     print(json.dumps(report, ensure_ascii=False))
     return 0
 

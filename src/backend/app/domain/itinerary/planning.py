@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import date, timedelta
+import re
 from typing import Any
 
 from .normalization import strip_accents
@@ -22,15 +23,25 @@ SUMMARY_FIELDS = (
     "available", "availableFrom", "availableTo", "imageUrl", "rating",
     "reviewCount", "attributes", "priceUnit",
 )
-# `attributes` chỉ giữ khoá FE thật sự đọc trong lịch trình (docs/spec/agent/field-review.md §2.1);
-# nguồn đầy đủ vẫn ở `candidates`/`ProductDetail`, không mất dữ liệu.
-SUMMARY_ATTRIBUTE_KEYS = frozenset({"oceanView", "privateBeach", "pool", "ticketed"})
+# `attributes` chỉ giữ khoá FE thật sự đọc trong lịch trình (docs/spec/agent/field-review.md §2.1): tag khách sạn,
+# "tham quan tự do" (`ticketed`), toạ độ và địa chỉ của bản đồ (`services/catalog.ts` đọc `latitude`/`longitude`/`address`;
+# thiếu thì widget đặt mọi điểm ở tâm thành phố). Nguồn đầy đủ vẫn ở `candidates`/`ProductDetail`, không mất dữ liệu.
+SUMMARY_ATTRIBUTE_KEYS = frozenset({"oceanView", "privateBeach", "pool", "ticketed", "starRating",
+                                    "latitude", "longitude", "address"})
 # Flights and combos have no confirmed slot mapping, so they can be retrieved but never scheduled.
 STAY_TAXONOMY = "hotel"
 SLOT_TAXONOMIES = frozenset({"attraction", "golf"})
 SCHEDULABLE_TAXONOMIES = frozenset({STAY_TAXONOMY, *SLOT_TAXONOMIES})
 # Pace is not a scheduling input yet; this is the cap the itinerary has always been held to.
 MAX_ACTIVITIES_PER_DAY = 2
+# Multi-day passes and tours ("[03 ngày không giới hạn] - VinWonders + Safari", "4D3N", "Thẻ Hội Viên 90 ngày")
+# cannot fit one slot of one day; they are offered next to the itinerary for the user to consider separately.
+MULTI_DAY_MINUTES = 2 * 24 * 60
+_SPAN_PATTERNS = (
+    re.compile(r"(\d{1,3})[\s-]*(?:ngày|ngay|days?)\b", re.IGNORECASE),
+    re.compile(r"(\d{1,2})\s*D\s*\d{1,2}\s*N\b"),
+    re.compile(r"(\d{1,2})\s*N\s*\d{1,2}\s*Đ\b", re.IGNORECASE),
+)
 
 
 def normalized(value: str | None) -> str:
@@ -73,6 +84,27 @@ def allowed_times(product: Product) -> list[str]:
     return ["MORNING"] if isinstance(duration, (int, float)) and duration >= 360 else ["MORNING", "NOON", "AFTERNOON", "EVENING"]
 
 
+def multi_day_span(product: Product) -> int | None:
+    """Number of days a pass or tour covers when it is two or more, else None.
+
+    Read from `durationMinutes` (two days or more) or from the name ("03 ngày", "2 Day", "4D3N", "3N2Đ").
+    "[01 ngày]" and a full-day tour are single-day and stay schedulable.
+    """
+    duration = product.get("attributes", {}).get("durationMinutes")
+    spans = [int(duration // (24 * 60))] if isinstance(duration, (int, float)) and duration >= MULTI_DAY_MINUTES else []
+    for pattern in _SPAN_PATTERNS:
+        spans.extend(int(match.group(1)) for match in pattern.finditer(product.get("name") or ""))
+    longest = max(spans, default=0)
+    return longest if longest >= 2 else None
+
+
+def multi_day_offers(candidates: Candidates, sources: Sources) -> list[Product]:
+    """Available multi-day passes/tours, never put in a slot: shown for the user to consider separately."""
+    offers = [product for product in candidates.values()
+              if product.get("available") and product.get("taxonomy") in SLOT_TAXONOMIES and multi_day_span(product)]
+    return sorted(offers, key=lambda product: (_source_rank(sources, product), *_price_key(product), product["productId"]))
+
+
 def _source(value: str | None) -> str:
     return "RECOMMENDATION" if value == "recommendation" else "SEARCH"
 
@@ -81,7 +113,20 @@ def _because(product: Product, source: str | None) -> list[dict[str, Any]]:
     return deepcopy(product.get("because", [])) if source == "recommendation" else []
 
 
+def free_to_visit(product: Product) -> bool:
+    """Điểm tham quan tự do: nguồn ghi `ticketed=false`, hoặc điểm tham quan/golf không có giá.
+
+    Người dùng chốt 01/10/2026: điểm không có giá là nơi vào chơi tự do (bãi biển, thắng cảnh), nên tính 0 đ vào tổng
+    và hiển thị "tham quan tự do" (`docs/prd/architecture.md` §3). Khách sạn, vé máy bay, combo thiếu giá vẫn là chưa biết.
+    """
+    if (product.get("attributes") or {}).get("ticketed") is False:
+        return True
+    return product.get("unitPrice") is None and product.get("taxonomy") in SLOT_TAXONOMIES
+
+
 def _known_cost(product: Product, *, nights: int, party: Party | None) -> int | None:
+    if free_to_visit(product):
+        return 0
     price, unit = product.get("unitPrice"), product.get("priceUnit", "UNKNOWN")
     if price is None or unit == "UNKNOWN":
         return None
@@ -118,32 +163,44 @@ def _price_key(product: Product) -> tuple[int, float]:
     return (1, 0.0) if price is None else (0, float(price))
 
 
-def _stay_order(product: Product) -> tuple[Any, ...]:
+def _source_rank(sources: Sources, product: Product) -> int:
+    # Search (and Similar, which also carries source "search") is preferred over Recommendation:
+    # a recommended item only fills a slot/stay when no searched candidate is available for it.
+    return 0 if sources.get(product["productId"]) != "recommendation" else 1
+
+
+def _stay_order(sources: Sources, product: Product) -> tuple[Any, ...]:
     star = product.get("attributes", {}).get("starRating")
-    return (*_price_key(product), -(star if isinstance(star, (int, float)) else -1), product["productId"])
+    return (_source_rank(sources, product), *_price_key(product),
+            -(star if isinstance(star, (int, float)) else -1), product["productId"])
 
 
-def _activity_order(product: Product) -> tuple[Any, ...]:
+def _activity_order(sources: Sources, product: Product) -> tuple[Any, ...]:
     # A full-day item needs a day to itself, so it is placed before anything that can share one.
-    return (0 if allowed_times(product) == ["MORNING"] else 1, *_price_key(product), product["productId"])
+    return (_source_rank(sources, product), 0 if allowed_times(product) == ["MORNING"] else 1,
+            *_price_key(product), product["productId"])
 
 
-def compose_plan(candidates: Candidates, intent: TripIntent) -> Proposal:
+def compose_plan(candidates: Candidates, sources: Sources, intent: TripIntent) -> Proposal:
     """Choose products and lay them out on days with fixed rules. No model is involved.
 
-    Ordering is total and depends only on product data, so the same candidates always produce the
-    same proposal. The result is fed to `render_proposal`, which still enforces every rule; this
-    function only has to avoid proposing something the renderer would reject.
+    Ordering is total and depends only on product data and source, so the same candidates always
+    produce the same proposal. Search-sourced candidates are always chosen over Recommendation-sourced
+    ones for the same slot; a recommendation only fills a slot/stay left empty by Search. The result is
+    fed to `render_proposal`, which still enforces every rule; this function only has to avoid
+    proposing something the renderer would reject.
     """
     days_count = intent.get("days")
     if not isinstance(days_count, int) or days_count < 1:  # upper bound is enforced by TripIntent
         raise ValueError("invalid trip duration")
     usable = [product for product in candidates.values() if product.get("available")]
-    stays = sorted((p for p in usable if p.get("taxonomy") == STAY_TAXONOMY), key=_stay_order)
+    stays = sorted((p for p in usable if p.get("taxonomy") == STAY_TAXONOMY),
+                   key=lambda product: _stay_order(sources, product))
     stay = stays[0] if stays else None
     taken = {_parent_key(stay), stay["productId"]} if stay else set()
     activities: list[Product] = []
-    for product in sorted((p for p in usable if p.get("taxonomy") in SLOT_TAXONOMIES), key=_activity_order):
+    for product in sorted((p for p in usable if p.get("taxonomy") in SLOT_TAXONOMIES and not multi_day_span(p)),
+                          key=lambda product: _activity_order(sources, product)):
         key = _parent_key(product)
         if key in taken or product["productId"] in taken:
             continue

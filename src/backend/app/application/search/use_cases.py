@@ -17,6 +17,7 @@ from src.backend.app.application.ports import (
     VectorHit,
     VectorSearchPort,
 )
+from src.backend.app.core.logging_config import log_event
 from src.backend.app.domain.search import (
     EMPTY_DESTINATION,
     EMPTY_PARAM,
@@ -62,7 +63,7 @@ _WS = re.compile(r"\s+")
 
 def canonical_query(text: str) -> str:
     """Gộp khoảng trắng — chuỗi duy nhất đi vào embed / BM25 và làm khoá cache vector truy vấn (không fold hoa/thường/dấu:
-    Cohere embed hai dạng đó khác nhau, không được gộp)."""
+    model embed hai dạng đó khác nhau, không được gộp)."""
     return _WS.sub(" ", text).strip()
 
 
@@ -124,7 +125,16 @@ def hit(index: UnitIndex, i: int, score: float, **extra) -> dict:
             "available": p.available,
             "availableFrom": p.available_from.isoformat() if p.available_from else None,
             "availableTo": p.available_to.isoformat() if p.available_to else None,
-            "imageUrl": p.image_url, "score": normalized_score, **extra}
+            "imageUrl": p.image_url, "rating": p.rating, "reviewCount": p.review_count,
+            "score": normalized_score, **extra}
+
+
+def scored(index: UnitIndex, i: int, score: float, **extra) -> dict:
+    """Kết quả Search/Similar: `hit` cộng điểm đánh giá của catalog (`rating`/`reviewCount` tùy chọn trong ProductSummary),
+    để thẻ sản phẩm trong lịch trình của trợ lý có điểm đánh giá. Recommendation vẫn dùng `hit` rút gọn. `extra`: trường
+    thêm của Search (vd. `matchedChildren` của query plan)."""
+    product = index.units[i]
+    return hit(index, i, score, rating=product.rating, reviewCount=product.review_count, **extra)
 
 
 def _plan_gazetteers(units) -> PlanGazetteers:
@@ -334,7 +344,7 @@ class SearchProducts:
             diagnostics["embedCache"] = embed_cache
         page = out.order[offset: offset + limit]
         child_filter = _child_filter(plan)
-        results = [hit(self.index, i, out.scores[i], **self._matched_children(i, child_filter)) for i in page]
+        results = [scored(self.index, i, out.scores[i], **self._matched_children(i, child_filter)) for i in page]
         stages.lap("hydrate")
         stage_ms = stages.ms
         logger.debug("search.stage_ms %s", stage_ms)
@@ -454,9 +464,13 @@ class SearchProducts:
     def _embed(self, text: str) -> tuple[np.ndarray, str | None]:
         """(vector, "hit" | "miss" | None): None khi embedder không có cache (bench, test, SEARCH_EMBED_CACHE=false)."""
         with_status = getattr(self.embedder, "embed_query_status", None)
-        if with_status is None:
-            return self.embedder.embed_query(text), None
-        vec, status = with_status(text)
+        try:
+            if with_status is None:
+                return self.embedder.embed_query(text), None
+            vec, status = with_status(text)
+        except Exception as exc:
+            log_event(logger, "search.embed.failed", "ERROR", error_kind=type(exc).__name__)
+            raise
         return vec, status
 
     def _hybrid(self, q: str, qvec: np.ndarray, dense: list[VectorHit], allowed, filtered_count: int,
@@ -576,4 +590,4 @@ class SimilarProducts:
                 m[self.index.idx[child]] = False
         hits = self.vectors.near_vector(anchor, self.index.allowed_ids(m), k)
         return SimilarLookup("ok", anchor_id, tuple(
-            hit(self.index, self.index.idx[h.product_id], h.score) for h in hits if h.product_id in self.index.idx))
+            scored(self.index, self.index.idx[h.product_id], h.score) for h in hits if h.product_id in self.index.idx))

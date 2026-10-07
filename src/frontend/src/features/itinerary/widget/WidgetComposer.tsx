@@ -1,15 +1,17 @@
 import React, { useEffect, useId, useRef } from 'react';
-import { ArrowUp, Sparkles } from 'lucide-react';
+import { ArrowUp, Sparkles, Square } from 'lucide-react';
 
 interface WidgetComposerProps {
   value: string;
   onChange: (value: string) => void;
   onSend: () => void;
   busy: boolean;
+  /** Có thì nút gửi thành nút Dừng khi `busy`, và Esc trong ô nhập cũng dừng. */
+  onStop?: () => void;
   initial?: boolean;
 }
 
-export function WidgetComposer({ value, onChange, onSend, busy, initial = false }: WidgetComposerProps) {
+export function WidgetComposer({ value, onChange, onSend, busy, onStop, initial = false }: WidgetComposerProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const inputId = useId();
 
@@ -24,13 +26,15 @@ export function WidgetComposer({ value, onChange, onSend, busy, initial = false 
     inputRef.current?.focus();
   }, [initial]);
 
+  const canStop = busy && Boolean(onStop);
+
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
     if (value.trim() && !busy) onSend();
   };
 
   return (
-    <form onSubmit={submit} aria-label="Gửi yêu cầu du lịch" className={`w-full rounded-2xl border bg-white p-3 transition focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-50 ${initial ? 'border-blue-200 shadow-sm' : 'border-slate-200'}`}>
+    <form onSubmit={submit} aria-label="Gửi yêu cầu du lịch" className={`w-full rounded-2xl border bg-white p-3 shadow-xs transition focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 ${initial ? 'border-blue-200' : 'border-slate-200'}`}>
       <label htmlFor={inputId} className="sr-only">Tin nhắn cho trợ lý du lịch AI</label>
       <textarea
         ref={inputRef}
@@ -40,21 +44,33 @@ export function WidgetComposer({ value, onChange, onSend, busy, initial = false 
         value={value}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={(event) => {
+          if (event.key === 'Escape' && canStop) {
+            // Esc lúc đang chạy là dừng, không đóng/thu nhỏ widget (listener ở useFloatingWidget).
+            event.preventDefault();
+            event.stopPropagation();
+            onStop?.();
+            return;
+          }
           if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
             event.preventDefault();
             event.currentTarget.form?.requestSubmit();
           }
         }}
-        placeholder={initial ? 'Mô tả chuyến đi bạn mong muốn…' : 'Nhập yêu cầu du lịch hoặc lịch trình...'}
+        placeholder={initial ? 'Mô tả chuyến đi bạn mong muốn…' : 'Bạn muốn điều chỉnh chuyến đi thế nào?'}
         className="block max-h-48 min-h-12 w-full resize-none bg-transparent px-1 py-2 text-base leading-relaxed text-slate-800 outline-none placeholder:text-slate-500"
       />
       <div className="mt-2 flex items-center justify-between gap-3">
         <span className="flex items-center gap-1.5 text-xs text-slate-500">
-          {initial ? <><Sparkles className="h-3.5 w-3.5 text-blue-600" aria-hidden="true" /> Lên lịch trình cùng AI</> : 'Enter để gửi · Shift+Enter xuống dòng'}
+          {initial ? <><Sparkles className="h-3.5 w-3.5 text-blue-600" aria-hidden="true" /> Lên lịch trình cùng AI</> : canStop ? 'Esc để dừng' : 'Enter để gửi · Shift+Enter xuống dòng'}
         </span>
-        <button type="submit" disabled={!value.trim() || busy} aria-label="Gửi yêu cầu" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500">
+        {/* `key` riêng: nếu dùng chung một nút DOM, bấm Dừng làm busy=false và nút đổi thành type=submit ngay trong lượt click → form gửi luôn chữ đang gõ. */}
+        {canStop ? (
+          <button key="stop" type="button" onClick={onStop} aria-label="Dừng xử lý" title="Dừng xử lý" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-800 text-white transition hover:bg-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2">
+            <Square className="h-4 w-4 fill-current" aria-hidden="true" />
+          </button>
+        ) : <button key="send" type="submit" disabled={!value.trim() || busy} aria-label="Gửi yêu cầu" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500">
           <ArrowUp className="h-5 w-5" aria-hidden="true" />
-        </button>
+        </button>}
       </div>
     </form>
   );

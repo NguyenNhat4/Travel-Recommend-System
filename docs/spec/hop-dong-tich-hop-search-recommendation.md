@@ -187,19 +187,8 @@ QUERY PLAN (từ 2026-10-05, kiến trúc Phase A — `docs/spec/bench/kien_truc
             – `SEARCH_TONE_NORMALIZE`: đưa vị trí dấu thanh (oà/òa, oé/óe, uý/úy) về kiểu đa số của catalog trước mọi bước.
             – Độ tin cậy router (không LLM): `queryPlan.confidence` (0–1) và `fallbackReasons` (phủ định không rõ phạm vi, tuyến
               hai nơi không rõ vai, nhiều loại, cue loại yếu, xung đột tham số ↔ câu, câu dài nhiều ràng buộc…). Hôm nay chỉ
-              khai.
-            – **LLM fallback (từ 2026-10-06, contract 1.17.0; đề xuất đã áp dụng
-              `docs/prd/update-archive/2026-10-06-search-llm-fallback-query-plan.md`)**: `SEARCH_LLM_FALLBACK` = `off` (mặc định) |
-              `shadow` | `on`; chỉ chạy khi `queryPlan.confidence < SEARCH_LLM_FALLBACK_MIN_CONFIDENCE` (0,75). LLM (port
-              `QueryHypothesisPort`, model `SEARCH_LLM_FALLBACK_MODEL`, nhiệt độ 0) trả một giả thuyết JSON cố định (ý định, điểm đến,
-              loại, nơi đi/đến, tiện ích / loại bị loại trừ, giá, sao, số khách, sở thích mềm) — không `productId`, không xếp hạng.
-              Server kiểm từng giá trị với catalog (enum taxonomy, gazetteer điểm đến / thành phố bay có mặt trong câu, khoá tiện ích,
-              số có cue trong câu); giá trị sai vào `rejected`, không bao giờ thành filter. Chỉ điền chỗ luật để trống; tham số
-              request và giá trị luật luôn thắng; mỗi họ vẫn theo cờ của nó (F4 tắt thì taxonomy từ LLM chỉ khai). `on`: gọi song
-              song với embed, chờ tối đa `SEARCH_LLM_FALLBACK_TIMEOUT_MS` (1.500), quá hạn / lỗi → plan luật. `shadow`: không đổi
-              kết quả, ghi so sánh vào log (và `app.search_logs.filters.llm` khi bật log). Cache theo câu đã chuẩn hoá (LRU + file
-              JSONL tuỳ chọn, `SEARCH_LLM_FALLBACK_CACHE_ONLY` để phát lại). Khai ở `queryPlan.llm {mode, used, cached, status,
-              latencyMs, accepted[], rejected[], error?}` và `stageMs.llm`.
+              khai; LLM fallback cho câu độ tin cậy thấp là đề xuất chờ chốt
+              `docs/prd/update/2026-10-06-search-llm-fallback-query-plan.md` (không code trước khi chốt).
           Cụm đã thành filter bị bỏ khỏi câu đưa vào BM25 và độ phủ vớt (`queryPlan.lexicalText`); vector dense vẫn dùng q'
           đầy đủ (khoá cache embed không đổi). Sau RRF kiểm lại hard filter trên R (`queryPlan.revalidatedDrops`, kỳ vọng
           0). F rỗng do filter suy ra → `total 0` + `queryPlan.emptyReason`, KHÔNG nới ngầm (kiến trúc Phase A §6); chỉ điểm
@@ -237,11 +226,11 @@ của `normalize` (chỉ khi bước chuẩn hoá bật), `embed`, `dense` (gồ
 kể cả khi nhánh BM25 lỗi), `fuse` (RRF + cutoff + facets) và `hydrate`. Đo trong engine nên tổng các bước ≤
 `latencyMs` của route. Chỉ `/search` có trường này.
 
-Vector truy vấn được **cache trong tiến trình** (từ 2026-09-30, contract 1.12.0; NFR-PERF-03: giữ ngân sách embed
-mỗi câu): khoá là câu **sau chuẩn hoá và gộp khoảng trắng** (`SearchProducts.query_text`), nên "KS ở NT" và
+Vector truy vấn được **cache trong tiến trình** (từ 2026-09-30, contract 1.12.0; NFR-PERF-03 yêu cầu cache vector của
+truy vấn lặp lại): khoá là câu **sau chuẩn hoá và gộp khoảng trắng** (`SearchProducts.query_text`), nên "KS ở NT" và
 "khách sạn ở Nha Trang" dùng chung một vector; không fold hoa/thường/dấu. `diagnostics.embedCache` = `hit` / `miss`
 (chỉ `/search`; vắng khi `SEARCH_EMBED_CACHE=false`). Cache không đổi kết quả hay thứ tự — chỉ `stageMs.embed` khác.
-LRU `SEARCH_EMBED_CACHE_SIZE` (mặc định 10.000 ≈ 15 MB ở 384 chiều), single-flight: nhiều request cùng câu chỉ một lượt embed.
+LRU `SEARCH_EMBED_CACHE_SIZE` (mặc định 10.000 ≈ 15 MB với e5-small 384 chiều), single-flight: nhiều request cùng câu chỉ embed một lần.
 Sau lần nạp catalog đầu tiên backend **nạp sẵn** cache ở nền (`SEARCH_PREWARM`): file câu gold đóng băng
 `src/backend/data/search_prewarm_queries.txt` (131 câu gold_v1) + head query của `app.search_logs`, pacing
 `SEARCH_PREWARM_INPUTS_PER_MINUTE`; job `python -m src.backend.jobs.prewarm_query_cache --base-url URL` làm nóng một
@@ -274,15 +263,12 @@ Các bất biến dưới đây tính trên tập ứng viên `C`, không phải
 ### 2.4. Chế độ truy xuất — khai báo, không đổi ngầm · `[C4]`
 
 ```yaml
-# Mặc định PRODUCTION từ 2026-10-06 (người dùng chốt; bench gold_v5 `APP.e5s.prod_f12356`, `src/evaluation/reports/eval-2026-10-06-search-query-plan-gold-v4.md`):
-# e5-small 384 (FR-SRC-02), cutoff 0,84, F1 + F2 relax (cutoff riêng 0,80) + F3 + F5 + F6 BẬT, F4 TẮT, LLM fallback off.
 search:           { mode: HYBRID_CANDIDATE_SCORE, cutoff: 0.84, candidateK: 200,
                     lexicalCandidateK: 50, lexicalK: 10, lexicalCutoff: 0.50, lexicalMinCoverage: 0.6, fusion: rrf(60),
-                    normalize: true, destFilter: true, noDiacriticsMode: relax, noDiacriticsCutoff: 0.80,   # 2026-10-05; bật 2026-10-06
-                    negationFilter: true, taxonomyFilter: false, routeFilter: true, numericFilter: true,      # 2026-10-05; bật (trừ F4) 2026-10-06
+                    normalize: true, destFilter: false, noDiacriticsMode: off,   # hai knob này: 2026-10-05, §2.2
+                    negationFilter: false, taxonomyFilter: false, routeFilter: false, numericFilter: false,   # 2026-10-05, QUERY PLAN §2.2
                     toneNormalize: false, taxonomyStrongOnly: false, partyFilter: false,                     # 2026-10-06, §2.2
                     fuzzyK: 0, fuzzyCandidateK: 50, fuzzyMinSim: 0.75, rrfWeights: { dense: 1, lexical: 1, fuzzy: 1 },
-                    llmFallback: off, llmFallbackMinConfidence: 0.75, llmFallbackTimeoutMs: 1500,              # 2026-10-06, 1.17.0
                     logQueries: false }                                                                      # 2026-10-06, §7.3
 similar:          { mode: ANN_CANDIDATE_SCORE, topK: 20 }
 recommendations:  { mode: ANN_CANDIDATE_SCORE, candidateK: 200 }
@@ -406,7 +392,7 @@ Mọi sản phẩm đều có cosine với mọi truy vấn. Không có cutoff t
 yêu cầu điều đó.
 
 ```yaml
-search.cutoff: 0.62     # PROVISIONAL — benchmark Ngày 3
+search.cutoff: 0.84     # e5-small, hiệu chỉnh trên gold_v4 (06/10)
 ```
 
 Nguồn sự thật duy nhất là `application.yml`. Response trả lại giá trị đã áp
@@ -484,6 +470,26 @@ vẫn trả về, chỉ là vô nghĩa.
 Hai mã khác nhau vì cách xử lý khác nhau: cái đầu là sai id, cái sau là cần reindex.
 
 ---
+
+### 3.7. `/search/suggestions` — gợi ý tức thì khi gõ · FR-SRC-05
+
+```http
+GET /api/v1/search/suggestions?q=ha&limit=8
+```
+
+Hình dạng: `SearchSuggestionResponse` trong `search.yaml` (contract 1.14.0). Đây **không** phải một chế độ của `/search`: khớp chữ, không điểm số, không embed, không kho vector.
+
+| Hạng mục | Quy tắc |
+|---|---|
+| Nguồn | `UnitIndex` đang phục vụ: tên điểm đến (cùng giá trị và số đếm với `/destinations`) và tên search unit còn bán. Không có vé máy bay, hạng phòng, chuyến bay hay unit `available = false` |
+| Khớp | Sau `fold` (bỏ dấu, chữ thường): hạng 0 tên bắt đầu bằng truy vấn · hạng 1 truy vấn khớp từ đầu một từ · hạng 2 mọi token của truy vấn là tiền tố của một từ trong tên. Không khớp giữa từ ("ha" ≠ "nhạc") |
+| Xếp và chia | Nhóm theo thứ tự điểm đến, `hotel`, `attraction`, `golf`, `combo`; trong nhóm theo hạng khớp, rồi độ phổ biến (`BuildPopularity`), rồi tên ngắn hơn. Chia chỗ theo vòng giữa các nhóm đến `limit` (mặc định 8, tối đa 10), nên một nhóm đông không đẩy nhóm khác ra |
+| Truy vấn ngắn | Dưới 2 ký tự chữ/số sau `fold` → `200` với `suggestions: []`, không phải lỗi. `q` thiếu, dài hơn 100 ký tự hoặc `limit` ngoài 1–10 → `422 VALIDATION_ERROR` |
+| Ghi hành vi | **Không** ghi event `search` sang CDP và không ghi `app.search_logs`: Web gọi theo từng lần gõ. Không cần JWT |
+| Bộ nhớ đệm | LRU trong tiến trình theo `(fold(q), limit)`, dựng lại cùng mỗi lần catalog nạp lại; response có `Cache-Control: public, max-age=300` (RecSys chưa sẵn sàng thì trả rỗng và không có header này) |
+| Ngân sách | p95 ≤ 250 ms (AC-SRC-02). Không gọi dịch vụ ngoài nên không chịu độ trễ Weaviate/Cohere ở §7.1 |
+
+Code: `domain/search/suggest.py`, `application/search/suggest.py`, `api/v1/routes/search.py`.
 
 ## 4. Recommendation engine
 
@@ -568,7 +574,8 @@ engine và chưa sửa**, đang chờ Team Recommendation/Search cùng Web quy�
 
 - `recent_activity`: bảng ghi "không có trip đang mở", nhưng engine chỉ trả giá
   trị này khi **có** trip đang mở, trip đó chưa purchase và tổng ≥ 3 event dùng được. Engine
-  coi trip đang mở là trip có event gần nhất trong 60 ngày (`ACTIVE_TRIP_MAX_AGE_DAYS`).
+  coi trip đang mở là trip có event gần nhất trong 60 ngày (`ACTIVE_TRIP_MAX_AGE_DAYS`) — *luật tới 01/10/2026; từ đó theo
+  bổ sung bên dưới (`usingDate`, N = 14).*
 - `dormant`: bảng này và `hop-dong-tich-hop-backend.md` §6.2 ghi 90 ngày; engine
   dùng 180 ngày (`DORMANT_AFTER_DAYS`).
 - `< 3 event → popular`: engine trả `popular` khi không còn event nào dùng
@@ -579,12 +586,17 @@ engine và chưa sửa**, đang chờ Team Recommendation/Search cùng Web quy�
   `because` khác rỗng. Mock `getRecommendations.200-cold-start-content.json`
   theo ràng buộc 4 (`because: []`).
 
-**Bổ sung 2026-10-02 (FR-REC-02 sửa theo đề xuất `category-exclusion-theo-chuyen-dang-dien-ra`, đã chốt).** "Trip đang
+**Bổ sung 2026-10-01 (FR-REC-02 sửa theo đề xuất `category-exclusion-theo-chuyen-dang-dien-ra`, đã chốt).** "Trip đang
 mở" trong bảng trên là trip **chưa kết thúc** theo đúng định nghĩa `tripFactor` §4.3: `max(usingDate)` của các event trong
 trip ≥ hôm nay; trip không có `usingDate` nào (chỉ view / search) thì mở khi event gần nhất cách ≤ `ACTIVE_TRIP_MAX_AGE_DAYS`
-(tham số N của PRD: **14 ngày** từ 02/10, trước là 60 — grid trên split temporal đóng băng: Recall@20 0,196 → 0,216, LLBO không
-đổi; `docs/spec/bench/recsys-offline-eval.md` §4.14). Trip đã kết thúc không còn là trip mở dù mới 5 ngày trước → khách rơi về `long_term` / `dormant`,
-engine gợi cho chuyến kế tiếp. Trip mua từ lâu nhưng `usingDate` còn ở tương lai vẫn là trip mở (chuyến sắp đi).
+(tham số N của PRD: **14 ngày** từ 01/10, trước là 60 — đo trên split temporal đóng băng, `docs/spec/bench/recsys-offline-eval.md`
+§4.14 v5 (`usingDate` + N = 14): Recall@20 0,196 → 0,216, LLBO không đổi; grid §4.13 với luật tuổi đơn thuần N = 14 cho 0,225
+vì luật đó đóng luôn chuyến chưa đi tại T). Trip đã kết thúc không còn là trip mở dù mới 5 ngày trước → khách rơi về `long_term` /
+`dormant`, engine gợi cho chuyến kế tiếp. Trip mua từ lâu nhưng `usingDate` còn ở tương lai vẫn là trip mở (chuyến sắp đi).
+`usingDate` của event CDP là **ngày bắt đầu sử dụng** (check-in / ngày bay) và CDP không có ngày kết thúc, nên kỳ nghỉ nhiều
+đêm được coi là xong từ ngày sau check-in; muốn giữ trip mở suốt kỳ nghỉ cần thêm số đêm / ngày kết thúc vào event (đề xuất PRD
+riêng, chưa có). Tuổi trip, ngày kết thúc và món đã mua xét trên **mọi** event của trip; cap `MAX_REPEAT_PER_TRIP` chỉ giới hạn
+trọng số vector. "Hôm nay" lấy theo giờ Việt Nam (UTC+7, `profile.local_today`) để khớp `usingDate` là ngày địa phương.
 Engine ghi `ENGINE_RULES_VERSION` vào cấu hình để bench phân biệt hai luật.
 
 **Ràng buộc bắt buộc:**
@@ -607,7 +619,7 @@ excluded       = bookedThisTrip, mở rộng: combo kéo theo hotel
 Áp làm **hard filter trong câu truy vấn**, không phải phép trừ vector. Ngoài ra
 loại mọi `productId` khách đã từng mua.
 
-**Chỉ áp cho trip đang mở** theo định nghĩa §4.4 (bổ sung 2026-10-02): chuyến đã kết thúc (`usingDate` đã qua) thì không
+**Chỉ áp cho trip đang mở** theo định nghĩa §4.4 (bổ sung 2026-10-01): chuyến đã kết thúc (`usingDate` đã qua) thì không
 loại taxonomy đã mua và không khoá điểm đến — đó là gợi ý cho chuyến kế tiếp (PRD FR-REC-02). Lý do: trên split temporal
 của bench, 22 % target bị chính exclusion / khoá điểm đến của chuyến đã đi xong chặn (`docs/spec/bench/recsys-offline-eval.md`
 §4.7, §4.11).
@@ -722,7 +734,7 @@ khác hẳn nhau.
 | `GET /products/{id}/similar` | 300 ms |
 | `GET /recommendations`, cache hit | 300 ms |
 | `GET /recommendations`, cache miss (đọc 500 event từ CDP) | 800 ms |
-| Embed một truy vấn | e5-small local trên CPU: p95 ≈ 8–11 ms khi `embedCache = miss` (đo laptop 06/10, 2–20 luồng; Cohere trước đây ~60 ms, p95 VM 437 ms); hit ≈ 0 ms — từ 30/09 vector truy vấn được cache (§2.2), số đo thật ở `docs/spec/bench/search-eval-results.md` |
+| Embed một truy vấn | p95 ≈ 11 ms khi `embedCache = miss` (e5-small trên CPU laptop; Cohere trước đây ≈ 60 ms, p95 437 ms trên VM); hit ≈ 0 ms — từ 30/09 vector truy vấn được cache (§2.2), số đo thật ở `docs/spec/bench/search-eval-results.md` |
 
 Đo thật 01/10/2026 trên VM (`release-mvp-v2`, contract 1.12.0; Weaviate Cloud ở `eu-central-1`, VM ở `asia-southeast1`):
 `/search` p95 **4,0 s** = dense 1,8 s + BM25 2,1 s nối tiếp (mỗi lượt gửi mask 3.146 id); embed cache hit 0 ms, miss p95 437 ms.
@@ -813,7 +825,7 @@ Team Search cung cấp:
 11. p95 dưới 300 ms trên catalog đầy đủ, đo với Weaviate cùng mạng nội bộ (local hoặc cùng region).
     *(Bổ sung 2026-09-29: PRD NFR-PERF-01 đặt ngưỡng chặt hơn, ≤ 250 ms; báo p95 tổng kèm p95 từng bước theo
     `diagnostics.stageMs` để thấy phần nào là embed, phần nào là Weaviate. Bổ sung 2026-09-30: báo p95 riêng cho
-    `embedCache = hit` và `miss`; ngưỡng 250 ms áp cho đường hit, đường miss = hit + một lượt embed.)*
+    `embedCache = hit` và `miss`; ngưỡng 250 ms áp cho đường hit, đường miss = hit + một lần embed e5-small.)*
 
 ### Similar
 
@@ -827,7 +839,7 @@ Team Search cung cấp:
 
 16. Đăng nhập lần lượt 4 tài khoản demo → 4 `strategy` khác nhau.
 17. P1 vừa đặt hotel Nha Trang → `strategy: cross_vertical`, không có item
-    `taxonomy: hotel`, `nextVertical` khác `null`. *(Từ 02/10 "vừa đặt" = chuyến chưa diễn ra xong: seed gắn `usingDate`
+    `taxonomy: hotel`, `nextVertical` khác `null`. *(Từ 01/10 "vừa đặt" = chuyến chưa diễn ra xong: seed gắn `usingDate`
     cho P1 ~2 tuần sau `--as-of`, nên seed lại trước demo; quá ngày sử dụng P1 rơi về `long_term`.)*
 18. P4 (0 event) → `coldStart: true` và **mọi** `because` rỗng.
 19. Mọi `because[].productId` khác `null` đều mở được `GET /products/{id}` → `200`.
@@ -859,7 +871,7 @@ Bốn tiêu chí **20, 21, 22, 23** là quan trọng nhất trong cả danh sác
 | S4 | Soft delete chưa duyệt · `[U1]` | `because[].productName` giả định sản phẩm còn hàng trong `products` |
 | S5 | Cache user vector chưa duyệt · `[P3]` | Không cache thì p95 `/recommendations` là 800 ms, không phải 300 ms |
 | S6 | Công thức `popularity_score` chưa chốt · `[C7]` | Tạm dùng `log(1 + review_count)` |
-| S7 | ~~Model embedding chưa chốt~~ — chốt 22/09/2026 (Cohere), **đổi 06/10/2026** | `intfloat/multilingual-e5-small` local, **384 chiều**, tiền tố `query: ` / `passage: `, collection `ProductE5` (đề xuất đã áp dụng `docs/prd/update-archive/2026-10-05-fr-src-02-embedding-local-e5-small.md`); Cohere 1024 / `Product` giữ làm đường lui (`EMBED_PROVIDER=cohere`). Xem `docs/prd/architecture.md` §4–§5. |
+| S7 | ~~Model embedding chưa chốt~~ — **đổi 06/10/2026** | `intfloat/multilingual-e5-small`, **384 chiều**, chạy local trong backend, tiền tố `query: ` / `passage: `, collection `ProductE5Small` (`VECTOR_COLLECTION`) (thay Cohere `embed-multilingual-v3.0` 1024 chiều chốt 22/09; Cohere bỏ hẳn, không còn đường lui). Xem `docs/prd/architecture.md` §4–§5, `docs/prd/update-archive/2026-10-05-fr-src-02-embedding-local-e5-small.md`, `docs/prd/update-archive/2026-10-06-bo-duong-lui-cohere.md`. Kéo theo S8. |
 | S8 | ~~`EXACT_FILTER_SCORE` cần duyệt lại~~ — **đã chốt 24/09/2026, hướng (b)** | Đổi cam kết `total`/`facets` thành xấp xỉ trên tập ứng viên, khai báo qua `approximate`/`totalExact`/`facetsExact`. `/similar`, `/recommendations` chạy `ANN_CANDIDATE_SCORE`; `/search` chạy `HYBRID_CANDIDATE_SCORE` từ 25/09 (§2.4). |
 | S9 | `lexicalK` / `lexicalCutoff` / `lexicalMinCoverage` của hybrid chưa benchmark | Dùng `10` / `0.50` / `0.6`; đo ở cổng S2 của bench (`docs/spec/bench/arms.md`) trên gold, kèm slice `named_entity`, `no_diacritics`, `out_of_catalog` |
 | S10 | Bảng viết tắt, cụm kiểu đi và ngưỡng sửa chính tả của bước chuẩn hoá chưa benchmark | Dùng bảng trong `domain/search/normalize.py`; đo trên slice `abbrev_typo`, `audience_style` (bench Part 6, cổng S3/S6). Bảng backend là nguồn cho `config/aliases.yaml` của bench |
@@ -868,7 +880,7 @@ Bốn tiêu chí **20, 21, 22, 23** là quan trọng nhất trong cả danh sác
 | S14 | Mẫu giá/sao và vai trò nơi đi/đến (F5/F6) — **đã đo 06/10**: chiều bay 0,11 → 1,00; constraint precision 0,79 → 0,92 (0,96 trong tổ hợp); nDCG TIE từng phần, bỏ khỏi tổ hợp làm hỏng guard | Cờ `SEARCH_ROUTE_FILTER` / `SEARCH_NUMERIC_FILTER` tắt tới khi chốt (đề xuất: bật); tham số request tường minh vẫn áp theo contract |
 | S15 | Kênh fuzzy tên, RRF trọng số, chuẩn hoá dấu thanh, lọc số khách suy từ câu (1.16.0) — đo 06/10: fuzzy −0,6 (ngưỡng 0,75) / −1,2 (0,6); lexical weight 0,5 +1,2 trên F1–F6 (TIE dev/test cùng chiều); tone 0,0; party −0,6 — gold gần như không có câu dấu thanh lệch / số khách | Giữ tắt (`SEARCH_FUZZY_K=0`, trọng số 1,0, `SEARCH_TONE_NORMALIZE` / `SEARCH_PARTY_FILTER` false); cần gold riêng trước khi bật |
 | S16 | Ngưỡng kết quả yếu trên e5 (S2) — đo 06/10 trên dev/test: margin **0,058** chặn 3/3 + 4/4 câu ngoài catalog, gắn weak nhầm 9–12 % câu trong catalog (0,06: 14–16 %); cutoff tuyệt đối không chặn câu ngoài catalog nào | Client dùng margin 0,058 khi người dùng chốt; S2 giữ "chưa chốt" (7 câu ngoài catalog, nền tính trên cả catalog) |
-| S17 | Ghi `app.search_logs` (`SEARCH_LOG_QUERIES`) chưa chạy trên Postgres thật; LLM fallback (1.17.0) đo 06/10 bằng gpt-4o-mini: kích hoạt 10 câu (ngưỡng 0,75) / 59 câu (1,0), 0 trường được nhận, top-10 không đổi — LLM trùng plan luật (loại 59/59, điểm đến 58/59) | Cả hai tắt mặc định; LLM: `shadow` để thu câu thật, siết trigger (bỏ `long_multi_constraint`) trước khi xét `on` |
+| S17 | Ghi `app.search_logs` (`SEARCH_LOG_QUERIES`) chưa chạy trên Postgres thật; LLM fallback cho câu độ tin cậy thấp là lệch PRD | Cờ tắt; đề xuất `docs/prd/update/2026-10-06-search-llm-fallback-query-plan.md` chờ chốt, không code |
 | S11 | Kích thước cache vector truy vấn (10.000), danh sách prewarm (131 câu gold_v1 + head query `app.search_logs` — bảng này chưa có code ghi) và pacing 2.000 câu/phút chưa đo | Dùng mặc định trong `core/config.py`; đo hit/miss bằng `sb latency http` (bench Part 9) trên Cloud; đổi số qua biến môi trường `SEARCH_EMBED_CACHE_*`, `SEARCH_PREWARM_*` |
 
 S5 là phụ thuộc nặng nhất: không duyệt `[P3]` thì tiêu chí nghiệm thu 26 không

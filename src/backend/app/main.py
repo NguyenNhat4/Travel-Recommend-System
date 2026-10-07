@@ -32,7 +32,12 @@ from fastapi.responses import JSONResponse
 from src.backend.app.agents.runtime_dependencies import RuntimeAgentDependencies
 from src.backend.app.agents.tools.itinerary_gateway import ItineraryToolGateway
 from src.backend.app.api.errors import install_error_handlers
-from src.backend.app.api.middleware import install_call_telemetry, install_cors, install_request_id
+from src.backend.app.api.middleware import (
+    install_call_telemetry,
+    install_cors,
+    install_http_logging,
+    install_request_id,
+)
 from src.backend.app.api.ops import ops_router
 from src.backend.app.api.v1.router import api_router, root_router
 from src.backend.app.application.auth.use_cases import (
@@ -44,10 +49,12 @@ from src.backend.app.application.auth.use_cases import (
     RotateSession,
 )
 from src.backend.app.application.booking import (
+    BookingDraftService,
     CancelBooking,
     CartService,
     CreateBookingHold,
     GetBooking,
+    MergeGuestBooking,
     PaymentEventHandler,
     ReconcileBookings,
     Settlement,
@@ -58,13 +65,15 @@ from src.backend.app.application.itinerary.engine_tools import InProcessItinerar
 from src.backend.app.application.telemetry import traced
 from src.backend.app.application.itinerary.use_cases import PlanItinerary
 from src.backend.app.application.tracking.behaviour import BehaviourTracker
-from src.backend.app.domain.booking import HoldPolicy
+from src.backend.app.domain.booking import DraftPolicy, HoldPolicy
 from src.backend.app.domain.catalog import ListingItem
 from src.backend.app.application.recommendation import BuildPopularity, RecommendForUser
-from src.backend.app.application.search import SearchProducts, SimilarProducts
+from src.backend.app.application.search import SearchProducts, SimilarProducts, SuggestProducts
 from src.backend.app.application.search.search_log import SearchLogRecorder
 from src.backend.app.domain.search import HybridConfig
-from src.backend.app.core.config import REPO_ROOT, Settings, get_settings
+from src.backend.app.core.config import REPO_ROOT, Settings, get_settings, shared_backend_violations
+from src.backend.app.core.logging_config import configure_logging, log_event
+from src.backend.app.infrastructure.persistence.db_probe import DatabaseProbe
 from src.backend.app.infrastructure.auth.argon2_hasher import Argon2Hasher
 from src.backend.app.infrastructure.auth.jwt_issuer import JwtConfig, JwtIssuer
 from src.backend.app.infrastructure.auth.keys import load_rsa_pem_pair
@@ -88,7 +97,14 @@ from src.backend.app.infrastructure.persistence.conversation_store import (
     RedisConversationStore,
 )
 from src.backend.app.infrastructure.persistence.postgres_conversation_archive import PostgresConversationArchive
+from src.backend.app.infrastructure.persistence.guest_booking_store import (
+    GuestBookingRedisStore,
+    GuestDraftRepository,
+    InMemoryKeyValue,
+    RedisKeyValue,
+)
 from src.backend.app.infrastructure.persistence.postgres_booking import (
+    PostgresBookingDraftRepository,
     PostgresBookingStore,
     PostgresCartRepository,
     PostgresProductCatalog,
@@ -96,38 +112,8 @@ from src.backend.app.infrastructure.persistence.postgres_booking import (
 from src.backend.app.infrastructure.persistence.postgres_catalog import PostgresProductLookup, PostgresProductQuery
 from src.backend.app.infrastructure.persistence.postgres_search_logs import PostgresSearchLogWriter
 
+configure_logging()  # một lần, trước mọi logger.info lúc nạp module (docs/spec/logging-schema.md)
 logger = logging.getLogger("uvicorn.error")
-
-_SEARCH_HYPOTHESIZERS: dict = {}
-
-
-def search_hypothesizer(settings):
-    """LLM fallback query plan (contract 1.17.0): dựng MỘT lần, sống qua các lần nạp catalog (cache + thread pool)."""
-    if settings.search_llm_fallback == "off":
-        return None
-    key = (settings.search_llm_fallback_model, settings.search_llm_fallback_cache_path,
-           settings.search_llm_fallback_cache_only, settings.search_llm_fallback_cache_size)
-    if key not in _SEARCH_HYPOTHESIZERS:
-        from src.backend.app.application.search.query_plan_llm import CachedQueryHypothesizer, HypothesisCache
-        from src.backend.app.infrastructure.llm.query_hypothesis import query_hypothesizer_from_settings
-        inner = None
-        if not settings.search_llm_fallback_cache_only:
-            try:
-                inner = query_hypothesizer_from_settings(settings)
-            except RuntimeError as exc:   # thiếu key / SDK → queryPlan.llm.status = unavailable
-                logger.warning("startup.search.llm_fallback.unavailable error=%s", exc)
-        path = settings.search_llm_fallback_cache_path or None
-        if path and not Path(path).is_absolute():
-            path = Path(__file__).resolve().parents[1] / path
-        _SEARCH_HYPOTHESIZERS[key] = CachedQueryHypothesizer(
-            inner, cache=HypothesisCache(settings.search_llm_fallback_cache_size, path=path,
-                                         tag=getattr(inner, "version", None)),
-            cache_only=settings.search_llm_fallback_cache_only)
-        logger.info("startup.recsys.search.llm_fallback mode=%s min_conf=%s timeout_ms=%s model=%s cache_only=%s",
-                    settings.search_llm_fallback, settings.search_llm_fallback_min_confidence,
-                    settings.search_llm_fallback_timeout_ms, settings.search_llm_fallback_model,
-                    settings.search_llm_fallback_cache_only)
-    return _SEARCH_HYPOTHESIZERS[key]
 
 # psycopg async không chạy được trên ProactorEventLoop — event loop mặc định của Windows và của
 # uvicorn trên Windows. Phải đặt trước khi uvicorn tạo loop, nếu không mọi truy cập cdp.* qua
@@ -148,34 +134,6 @@ def build_catalog(settings, state) -> dict:
     }
 
 
-def build_query_embedder(settings):
-    """Embedder theo EMBED_PROVIDER (FR-SRC-02): `local` = e5-small trong tiến trình (mặc định), `cohere` = đường lui qua API.
-
-    Model local được nạp và embed thử một câu ngay tại đây (deployment-plan §5: "model đã tải và embed thử một câu"), để
-    request đầu không trả giá nạp model và RecSys chỉ "ready" khi model chạy được. Bọc cache vector truy vấn (NFR-PERF-03,
-    contract 1.12.0 `embedCache`): RecsysRefresher truyền lại object này mỗi lần nạp catalog nên cache và model sống qua reload.
-    """
-    from src.backend.app.infrastructure.embeddings.factory import build_embedder
-
-    embedder = build_embedder(settings)
-    try:
-        warmup = getattr(embedder, "warmup", None)
-        if warmup is not None:
-            warmup()
-    except Exception:
-        if hasattr(embedder, "close"):
-            embedder.close()
-        raise
-    if settings.search_embed_cache:
-        from src.backend.app.application.search.query_cache import CachingQueryEmbedder, QueryEmbeddingCache
-
-        embedder = CachingQueryEmbedder(
-            embedder, QueryEmbeddingCache(settings.search_embed_cache_size),
-            log_every=settings.search_embed_cache_log_every,
-        )
-    return embedder
-
-
 def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) -> dict:
     """Dựng engine recsys trên database đã seed.
 
@@ -185,13 +143,26 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
     owns_vector_store = vector_store is None
     try:
         if vector_store is None:
-            from src.backend.app.infrastructure.embeddings.factory import embedding_model_version
+            from src.backend.app.domain.catalog import TEXT_BUILDER_VERSION
+            from src.backend.app.infrastructure.embeddings.factory import build_embedder
             from src.backend.app.infrastructure.vectors.weaviate_store import (
                 WeaviateVectorSearch,
                 WeaviateVectorStore,
                 connect_weaviate,
             )
 
+            if embedder is None:
+                embedder = build_embedder(settings)  # e5-small chạy local (PRD FR-SRC-02)
+                owns_embedder = True
+                if settings.search_embed_cache:
+                    # Cache vector truy vấn (NFR-PERF-03, contract 1.12.0 `embedCache`) bọc quanh embedder dùng chung:
+                    # RecsysRefresher truyền lại object này mỗi lần nạp catalog nên cache sống qua reload.
+                    from src.backend.app.application.search.query_cache import CachingQueryEmbedder, QueryEmbeddingCache
+
+                    embedder = CachingQueryEmbedder(
+                        embedder, QueryEmbeddingCache(settings.search_embed_cache_size),
+                        log_every=settings.search_embed_cache_log_every,
+                    )
             vector_store = WeaviateVectorStore(
                 settings.database_url,
                 WeaviateVectorSearch(
@@ -201,17 +172,13 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
                         grpc_port=settings.weaviate_grpc_port,
                         timeout_seconds=settings.weaviate_timeout_seconds,
                     ),
-                    collection=settings.weaviate_collection,
+                    collection=settings.vector_collection,
                     dimension=settings.embed_dimension,
                 ),
-                expected_model_version=embedding_model_version(settings),
+                expected_model_version=f"{settings.embed_model}:{TEXT_BUILDER_VERSION}",
             )
         logger.info("startup.recsys.index.load.start source=weaviate")
         index, vector_search = vector_store.load()
-        if embedder is None and owns_vector_store:
-            # Dựng embedder SAU khi index nạp được: Weaviate chưa sẵn sàng thì không nạp model local (~470 MB) mỗi lần thử lại.
-            embedder = build_query_embedder(settings)
-            owns_embedder = True
     except Exception:
         if owns_embedder and hasattr(embedder, "close"):
             embedder.close()
@@ -264,6 +231,7 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
                 settings.search_party_filter, settings.search_tone_normalize)
     logger.info("startup.recsys.search.fusion fuzzy_k=%s weights=%s/%s/%s", settings.search_fuzzy_k if hybrid else 0,
                 settings.search_rrf_dense_weight, settings.search_rrf_lexical_weight, settings.search_rrf_fuzzy_weight)
+    product_popularity = {index.units[u].product_id: s for u, s in popularity.unit_scores().items()}
     return {
         "recsys_embedder": embedder,
         "recsys_vectors": vector_search,
@@ -292,15 +260,13 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
             tone_normalize=settings.search_tone_normalize,
             taxonomy_strong_only=settings.search_taxonomy_strong_only,
             party_filter=settings.search_party_filter,
-            llm_fallback=settings.search_llm_fallback,
-            llm_min_confidence=settings.search_llm_fallback_min_confidence,
-            llm_timeout_ms=settings.search_llm_fallback_timeout_ms,
-            hypothesizer=search_hypothesizer(settings),
         ),
         "similar": SimilarProducts(index, vector_search),
+        # GET /search/suggestions (FR-SRC-05): khớp chữ trên chính index này, không gọi embed hay kho vector.
+        "suggest": SuggestProducts(index, product_popularity),
         # GET /products: cùng tập search unit với /search, sắp xếp popular theo lượt mua CDP (backend §4.1).
         "listing_units": [ListingItem(p, bool(index.recommendable[i])) for i, p in enumerate(index.units)],
-        "product_popularity": {index.units[u].product_id: s for u, s in popularity.unit_scores().items()},
+        "product_popularity": product_popularity,
         "recommend": RecommendForUser(
             index, vector_search, cdp_reader, popularity, candidate_k=settings.recommend_candidate_k
         ),
@@ -309,13 +275,13 @@ def build_recsys(settings, embedder=None, vector_store=None, cdp_reader=None) ->
 
 #: Chưa nạp được lần nào (database chưa seed, Weaviate chưa index…) thì thử lại sớm, không chờ trọn chu kỳ.
 RECSYS_RETRY_SECONDS = 30.0
-#: Shutdown chờ prewarm đang chạy tối đa chừng này rồi mới đóng embedder dùng chung (prewarm kiểm `stop` giữa hai lô).
+#: Shutdown chờ prewarm đang chạy tối đa chừng này rồi mới đóng embedder (prewarm kiểm `stop` giữa hai lô).
 PREWARM_SHUTDOWN_WAIT_SECONDS = 10.0
 
 
 def prewarm_from_settings(settings, services: dict, stop: threading.Event):
     """Nạp sẵn cache vector truy vấn: file câu gold (`SEARCH_PREWARM_FILE`, tương đối theo src/backend) + head query của
-    `app.search_logs`. Chạy trong thread (embedder đồng bộ); `stop` cắt giữa hai lô khi shutdown."""
+    `app.search_logs`. Chạy trong thread (model chạy đồng bộ); `stop` cắt giữa hai lô khi shutdown."""
     from src.backend.app.application.search.prewarm import prewarm, read_query_file
     from src.backend.app.infrastructure.persistence.postgres_search_logs import PostgresSearchLogReader
 
@@ -335,8 +301,8 @@ def prewarm_from_settings(settings, services: dict, stop: threading.Event):
 class RecsysRefresher:
     """Nạp lại engine recsys theo chu kỳ để giá, trạng thái và cửa sổ ngày theo kịp job cào.
 
-    Embedder (model local hoặc client Cohere) và client Weaviate dùng chung giữa các lần nạp; request đang chạy giữ use
-    case của bản cũ nên không client nào bị đóng giữa chừng. Lần nạp lại lỗi thì giữ bản đang phục vụ thay vì tắt recsys.
+    Embedder/client Weaviate dùng chung giữa các lần nạp; request đang chạy giữ use case của bản cũ nên không
+    client nào bị đóng giữa chừng. Lần nạp lại lỗi thì giữ bản đang phục vụ thay vì tắt recsys.
     """
 
     def __init__(self, app: FastAPI, settings: Settings, build=None, on_publish=None, prewarm=None):
@@ -362,7 +328,6 @@ class RecsysRefresher:
             if not first:
                 logger.warning("catalog.refresh.failed error=%s; giữ bản đang phục vụ", exc)
             elif self._failures == 1:
-                print(f"RecSys disabled: {exc}")
                 logger.warning("startup.recsys.disabled error=%s; retry_seconds=%s", exc, RECSYS_RETRY_SECONDS)
             else:  # vẫn chưa lên: không lặp cảnh báo mỗi 30 giây
                 logger.debug("startup.recsys.retry_failed error=%s", exc)
@@ -374,7 +339,6 @@ class RecsysRefresher:
         if self._on_publish is not None:
             self._on_publish()
         if first:
-            print(f"RecSys ready: {len(updated['index'].units)} search unit, model {updated['index'].model_version}")
             logger.info("startup.recsys.ready search_units=%d", len(updated["index"].units))
             if getattr(self.settings, "search_prewarm", False) and self._prewarm_task is None:
                 # Nền, không chặn startup: request vẫn được phục vụ (miss) trong lúc cache đang nạp.
@@ -459,6 +423,8 @@ def build_auth(settings: Settings, cdp_client, redis_client=None) -> dict:
     return {
         "token_verifier": issuer,
         "revoked_tokens": revoked,
+        # Dùng chung với route trợ lý (giới hạn tin gửi, NFR-SEC-04).
+        "rate_limiter": limiter,
         "register_user": RegisterUser(
             users=users, hasher=hasher, cdp=cdp_client, tokens=issuer, refresh=refresh, limiter=limiter
         ),
@@ -473,30 +439,43 @@ def build_auth(settings: Settings, cdp_client, redis_client=None) -> dict:
     }
 
 
-def build_booking(settings: Settings, cdp_client, recorder, product_lookup, *, clock=None) -> dict:
-    """Dựng giỏ hàng, giữ chỗ, thanh toán Stripe, huỷ và đối soát (spec booking)."""
+def build_booking(settings: Settings, cdp_client, recorder, product_lookup, *, clock=None, booking_redis=None) -> dict:
+    """Dựng giỏ hàng, đơn nháp của Đặt ngay, giữ chỗ, thanh toán Stripe, huỷ và đối soát (spec booking)."""
     from datetime import datetime, timezone
 
     clock = clock or (lambda: datetime.now(timezone.utc))
+    # Giỏ và đơn nháp của khách chưa đăng nhập nằm ở Redis; thiếu Redis thì chỉ dev/test được dùng bộ nhớ tiến trình.
+    if booking_redis is None and settings.app_env == "production":
+        raise RuntimeError("BOOKING_REDIS_URL là bắt buộc ở production (giỏ và đơn nháp của khách chưa đăng nhập)")
+    guest_store = GuestBookingRedisStore(
+        RedisKeyValue(booking_redis) if booking_redis is not None else InMemoryKeyValue(),
+        ttl_seconds=settings.guest_booking_ttl_days * 86_400, clock=clock)
+    guest_drafts = GuestDraftRepository(guest_store)
     if settings.payment_provider == "fake":
         if settings.app_env == "production":
             raise RuntimeError("PAYMENT_PROVIDER=fake không được dùng ở production")
         gateway = FakeGateway()
     else:
         gateway = StripePaymentGateway(settings.stripe_secret_key, settings.stripe_webhook_secret)
-    store = PostgresBookingStore(settings.database_url)
+    store = PostgresBookingStore(settings.database_url, settings.leader_lock_database_url or None)
     carts = PostgresCartRepository(settings.database_url)
+    drafts = PostgresBookingDraftRepository(settings.database_url)
     catalog = PostgresProductCatalog(settings.database_url)
+    tracker = BehaviourTracker(recorder, product_lookup)
     settlement = Settlement(store, gateway, cdp_client, clock)
     handler = PaymentEventHandler(
         store, gateway, settlement, max_failed_attempts=settings.payment_max_failed_attempts, clock=clock)
     reconciler = ReconcileBookings(store, gateway, settlement, handler, clock)
     return {
         "payment_gateway": gateway,
-        "cart_service": CartService(carts, catalog, BehaviourTracker(recorder, product_lookup), clock=clock),
+        "cart_service": CartService(carts, catalog, tracker, guest_carts=guest_store, clock=clock),
+        "booking_draft_service": BookingDraftService(
+            drafts, carts, catalog, tracker, store, DraftPolicy(settings.booking_draft_ttl_minutes),
+            guest_drafts=guest_drafts, guest_carts=guest_store, reconciler=reconciler, clock=clock),
+        "merge_guest_booking": MergeGuestBooking(guest_store, carts, drafts, catalog, tracker, clock=clock),
         "create_booking_hold": CreateBookingHold(
             store, carts, catalog, gateway, reconciler, HoldPolicy(settings.booking_hold_minutes),
-            public_web_url=settings.public_web_url, provider=settings.payment_provider, clock=clock),
+            public_web_url=settings.public_web_url, provider=settings.payment_provider, clock=clock, drafts=drafts),
         "get_booking": GetBooking(store, catalog),
         "cancel_booking": CancelBooking(store, gateway, settlement, catalog, clock),
         "payment_event_handler": handler,
@@ -573,22 +552,31 @@ def _forward_langsmith_env(settings) -> None:
     if not settings.langsmith_tracing:
         return
     if not settings.langsmith_api_key:
-        print("LangSmith tracing bật nhưng thiếu LANGSMITH_API_KEY; bỏ qua.")
+        logger.warning("startup.langsmith.skipped reason=missing_api_key")
         return
     os.environ["LANGSMITH_TRACING"] = "true"
     os.environ["LANGSMITH_API_KEY"] = settings.langsmith_api_key
     os.environ["LANGSMITH_ENDPOINT"] = settings.langsmith_endpoint
     os.environ["LANGSMITH_PROJECT"] = settings.langsmith_project
-    print(f"LangSmith tracing: on (project={settings.langsmith_project})")
+    logger.info("startup.langsmith.on project=%s", settings.langsmith_project)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
     app.state.ready = False
-    print(f"Starting {settings.app_name} in {settings.app_env} mode")
+    if settings.ready_requires_db:
+        app.state.db_probe = DatabaseProbe(
+            settings.database_url, timeout_seconds=settings.ready_db_timeout_seconds,
+            cache_seconds=settings.ready_db_cache_seconds)
+    violations = shared_backend_violations(settings)
+    if violations:
+        raise RuntimeError(
+            "REQUIRE_SHARED_BACKENDS=true nhưng " + ", ".join(violations)
+            + " trống hoặc trỏ loopback; mỗi bản sao sẽ có dịch vụ riêng và lệch trạng thái")
     _forward_langsmith_env(settings)
-    logger.info("startup.begin app=%s env=%s", settings.app_name, settings.app_env)
+    log_event(logger, "app.startup", stage="begin", app=settings.app_name, env=settings.app_env,
+              workers=os.environ.get("UVICORN_WORKERS"))
     async with AsyncExitStack() as stack:
         logger.info("startup.cdp_adapter.start adapter=%s", settings.cdp_adapter)
         if settings.cdp_adapter == "local":
@@ -625,8 +613,15 @@ async def lifespan(app: FastAPI):
         logger.info("startup.browse_event_recorder.start")
         app.state.browse_event_recorder.start()
         logger.info("startup.browse_event_recorder.ready")
+        booking_redis = None
+        if settings.booking_redis_url:
+            import redis.asyncio as redis_asyncio
+
+            booking_redis = redis_asyncio.from_url(settings.booking_redis_url)
+            stack.push_async_callback(booking_redis.aclose)
         for name, service in build_booking(
-            settings, cdp_client, app.state.browse_event_recorder, app.state.product_lookup
+            settings, cdp_client, app.state.browse_event_recorder, app.state.product_lookup,
+            booking_redis=booking_redis,
         ).items():
             setattr(app.state, name, service)
         if settings.booking_reconcile_interval_seconds:
@@ -636,7 +631,8 @@ async def lifespan(app: FastAPI):
         gateway_close = getattr(app.state.payment_gateway, "aclose", None)
         if gateway_close is not None:
             stack.push_async_callback(gateway_close)
-        logger.info("startup.booking.ready payment_provider=%s", settings.payment_provider)
+        logger.info("startup.booking.ready payment_provider=%s guest_store=%s", settings.payment_provider,
+                    "redis" if booking_redis else "memory")
         archive = PostgresConversationArchive(settings.database_url)
         app.state.itinerary_conversation_archive = archive
         app.state.conversation_history = ConversationHistory(archive)
@@ -689,14 +685,13 @@ async def lifespan(app: FastAPI):
         except Exception as exc:  # thiếu API key, thiếu SDK của provider…
             app.state.itinerary_llm = None
             app.state.itinerary_llm_mode = "unavailable"
-            print(f"Itinerary LLM unavailable: {exc}")
-        print(f"Itinerary LLM: {app.state.itinerary_llm_mode}")
+            logger.warning("startup.itinerary_llm.unavailable error=%s", exc)
+        logger.info("startup.itinerary_llm.mode mode=%s", app.state.itinerary_llm_mode)
 
         # Recsys tách khỏi phần itinerary: chưa nạp được thì tắt recsys và thử lại sau, các route còn lại
         # (kể cả assistant chạy fixture) vẫn phục vụ được.
-        logger.info("startup.recsys.start provider=%s model=%s collection=%s", settings.embed_provider, settings.embed_model,
-                    settings.weaviate_collection)
-        for name in ("index", "search", "similar", "recommend", "listing_units", "product_popularity"):
+        logger.info("startup.recsys.start model=%s", settings.embed_model)
+        for name in ("index", "search", "similar", "suggest", "recommend", "listing_units", "product_popularity"):
             setattr(app.state, name, None)
 
         # Catalog đọc thẳng database nên vẫn chạy khi RecSys tắt; khi đó danh sách đọc search unit mỗi request
@@ -717,11 +712,12 @@ async def lifespan(app: FastAPI):
         app.state.behaviour_tracker = BehaviourTracker(app.state.browse_event_recorder, app.state.product_lookup)
         refresh_task = asyncio.create_task(recsys.run())
 
-        logger.info("startup.ready")
+        log_event(logger, "app.startup", stage="ready", app=settings.app_name, env=settings.app_env)
         app.state.ready = True
         try:
             yield
         finally:
+            log_event(logger, "app.shutdown", stage="begin")
             app.state.ready = False
             recsys.stop()
             await refresh_task  # chờ lần nạp đang chạy xong rồi mới đóng client dùng chung
@@ -729,7 +725,7 @@ async def lifespan(app: FastAPI):
             recsys.close()
             logger.info("shutdown.browse_event_recorder.stop")
             await app.state.browse_event_recorder.stop()
-    print("Shutting down...")
+    log_event(logger, "app.shutdown", stage="done")
 
 
 settings = get_settings()
@@ -743,6 +739,7 @@ app = FastAPI(
 app.state.call_telemetry = InMemoryCallTelemetry()
 install_cors(app, settings.cors_origins)
 install_call_telemetry(app)
+install_http_logging(app)  # trước install_request_id: nằm trong, đọc được X-Request-ID
 install_request_id(app)
 install_error_handlers(app)
 app.include_router(api_router, prefix="/api/v1")
@@ -758,7 +755,23 @@ async def health():
 @app.get("/health/ready")
 async def health_ready():
     ready = bool(getattr(app.state, "ready", False))
+    # Có bật thì RecSys phải nạp xong: bản sao Weaviate rỗng chỉ trả /search rỗng với HTTP 200, LB sẽ không biết để loại.
+    recsys_ready = not settings.ready_requires_recsys or getattr(app.state, "index", None) is not None
+    probe = getattr(app.state, "db_probe", None) if settings.ready_requires_db else None
+    db_ready = True if probe is None else await probe.ok()
+    ok = ready and recsys_ready and db_ready
+    # Chỉ ghi khi trạng thái đổi: LB gọi endpoint này vài giây một lần, ghi mỗi lần sẽ ngập log.
+    state = (ok, recsys_ready, db_ready)
+    if state != getattr(app.state, "last_readiness", None):
+        app.state.last_readiness = state
+        if not ok:
+            log_event(logger, "readiness.degraded", "WARNING", ready=ready, recsys=recsys_ready, db=db_ready)
+            if not db_ready:
+                log_event(logger, "db.unavailable", "ERROR", component="postgres", error_kind="readiness_probe")
+        else:
+            logger.info("readiness.recovered")
     return JSONResponse(
-        status_code=200 if ready else 503,
-        content={"status": "ok" if ready else "starting", "ready": ready, "env": settings.app_env},
+        status_code=200 if ok else 503,
+        content={"status": "ok" if ok else "starting", "ready": ok, "recsys": recsys_ready, "db": db_ready,
+                 "env": settings.app_env},
     )

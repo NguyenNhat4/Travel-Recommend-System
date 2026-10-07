@@ -5,6 +5,7 @@
 .env
 .env.*
 !.env.example
+!.env.tunnel.example
 !**/.env.example
 *.pem
 *.key
@@ -14,6 +15,8 @@
 __pycache__/
 *.py[cod]
 .venv/
+.venv-studio/
+.langgraph_api/
 venv/
 .pytest_cache/
 .mypy_cache/
@@ -27,6 +30,8 @@ htmlcov/
 
 # Local logs and generated evaluation reports.
 *.log
+# Các lần chạy từ giao diện eval (src/evaluation/agent/eval_app.py): tiến độ, biên bản, log.
+.logs/
 src/evaluation/reports/itinerary-agent-metrics.json
 src/evaluation/reports/eval-*.json
 artifacts/

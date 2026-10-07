@@ -7,3 +7,6 @@ db_vm_name          = "replace-with-staging-db-vm"
 uptime_host         = "staging.example.com"
 uptime_path         = "/health/ready"
 notification_email  = "ops@example.com"
+
+# Cloud Logging
+log_retention_days = 30

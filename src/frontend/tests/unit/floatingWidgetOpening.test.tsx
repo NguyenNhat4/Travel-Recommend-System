@@ -19,7 +19,7 @@ vi.mock('../../src/context/AssistantProvider', () => ({
 vi.mock('../../src/context/TravelContext', () => ({
   useTravel: () => ({ currentRoute: '/', showToast: mocks.showToast, navigate: vi.fn(), addToCart: vi.fn() }),
 }));
-vi.mock('../../src/hooks/useAssistantCart', () => ({ useAssistantCart: () => vi.fn() }));
+vi.mock('../../src/hooks/useAssistantCart', () => ({ useAssistantCart: () => vi.fn(), useBookItinerary: () => vi.fn() }));
 
 describe('floating assistant opening', () => {
   beforeEach(() => {
@@ -64,9 +64,26 @@ describe('floating assistant opening', () => {
     view.rerender(<AiFloatingWidget />);
     expect(screen.queryByRole('heading', { name: 'Bạn muốn đi đâu tiếp theo?' })).toBeNull();
     expect(screen.getAllByRole('textbox')).toHaveLength(1);
-    expect(screen.getByRole('button', { name: 'Gửi yêu cầu' }).hasAttribute('disabled')).toBe(true);
+    // Đang chạy: nút gửi thành nút Dừng ngay trong ô nhập; tiến trình là 3 bước, không có chuỗi debug của backend.
+    expect(screen.queryByRole('button', { name: 'Gửi yêu cầu' })).toBeNull();
+    expect(screen.getByRole('status').textContent).toBe('Đang hiểu yêu cầu của bạn…');
     fireEvent.click(screen.getByRole('button', { name: 'Dừng xử lý' }));
     expect(mocks.abort).toHaveBeenCalledOnce();
+    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' });
+    expect(mocks.abort).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole('textbox')).toBeTruthy();
+  });
+
+  it('offers to resend after the user stops a request', () => {
+    const view = open();
+    mocks.state = { ...mocks.state, phase: 'aborted', lastRequest: {
+      message: 'Đi Hội An 3 ngày', conversationId: null, intentOverride: null, context: { language: 'vi' },
+    }, transcript: [{ id: 'user-1', sender: 'user', text: 'Đi Hội An 3 ngày', createdAt: Date.now() }] };
+    view.rerender(<AiFloatingWidget />);
+    expect(screen.getByText('Đã dừng. Trợ lý chưa trả lời tin nhắn này.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Dừng xử lý' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Gửi lại' }));
+    expect(mocks.retry).toHaveBeenCalledOnce();
   });
 
   it('loads real destination options only when the optional form is opened', async () => {
@@ -138,6 +155,19 @@ describe('floating assistant opening', () => {
     expect(screen.getAllByText('Hiện chưa có sản phẩm.')).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: 'Đi Hà Nội 3 ngày từ ngày 24/10/2026' }));
     expect(mocks.sendMessage).toHaveBeenCalledWith('Đi Hà Nội 3 ngày từ ngày 24/10/2026');
+  });
+
+  it('shows chips when a required hotel has no product and explains why', () => {
+    const question = '**Khách sạn ở Hà Nội chưa mở bán cho ngày đi**\nMình tìm thấy 10 khách sạn ở Hà Nội.';
+    const response = { status: 'NEEDS_CLARIFICATION' as const, conversationId: 'c1', question,
+      suggestions: ['Đổi ngày khởi hành sang 15/10/2026', 'Đi Hà Nội 3 ngày, không cần khách sạn'] };
+    mocks.state = { ...mocks.state, phase: 'needs_clarification', response, transcript: [
+      { id: 'user-1', sender: 'user', text: 'không có hotel à', createdAt: 1 },
+      { id: 'assistant-1', sender: 'assistant', text: question, response, createdAt: 2 },
+    ] };
+    open();
+    fireEvent.click(screen.getByRole('button', { name: 'Đi Hà Nội 3 ngày, không cần khách sạn' }));
+    expect(mocks.sendMessage).toHaveBeenCalledWith('Đi Hà Nội 3 ngày, không cần khách sạn');
   });
 
   it('drops the chips once a later message exists', () => {

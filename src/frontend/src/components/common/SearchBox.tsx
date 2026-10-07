@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useTravel } from '../../context/TravelContext';
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition';
+import { InstantSearchPanel } from '../../features/search/instant/InstantSearchPanel';
+import { useInstantSearchBox } from '../../features/search/instant/useInstantSearchBox';
 import { 
   Search, 
   Mic, 
@@ -47,7 +49,13 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
   variant = 'hero',
   autoFocus = false
 }) => {
-  const { currentLocale, showToast } = useTravel();
+  const { currentLocale, showToast, navigate } = useTravel();
+  // Gợi ý tức thì khi gõ (FR-SRC-05). `instant.search` ghi câu vào lịch sử rồi gọi `onSearch` như trước.
+  const { containerRef: instantContainerRef, ...instant } = useInstantSearchBox({
+    value,
+    onSearch,
+    onOpenProduct: (productId) => navigate(`/product/${encodeURIComponent(productId)}`),
+  });
   const [isLargeTextMode, setIsLargeTextMode] = useState<boolean>(() => {
     try {
       return localStorage.getItem('vota_elder_text_mode') === 'true';
@@ -86,7 +94,7 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
             : `Voice recognized: "${text.trim()}"`
         );
         // Traditional user flow: trigger search on final result
-        onSearch(text.trim());
+        instant.search(text);
       }
     },
     onError: (err) => {
@@ -111,8 +119,7 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!value.trim()) return;
-    onSearch(value.trim());
+    instant.search(value);
   };
 
   const handleClear = () => {
@@ -162,6 +169,7 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
       )}
 
       {/* Main Search Bar Form */}
+      <div ref={instantContainerRef} className="relative">
       <form onSubmit={handleSubmit} className="relative group">
         <div
           className={`relative flex items-center bg-white rounded-2xl border-2 transition-all shadow-md ${
@@ -175,7 +183,9 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
             type="text"
             value={value}
             autoFocus={autoFocus}
-            onChange={(e) => onChange(e.target.value)}
+            onChange={(e) => { onChange(e.target.value); instant.onType(); }}
+            {...instant.inputProps}
+            aria-label={isVi ? 'Ô tìm kiếm' : 'Search box'}
             placeholder={placeholder || defaultPlaceholder}
             className={`w-full pl-4 sm:pl-5 pr-3 bg-transparent text-slate-900 placeholder:text-slate-400 outline-hidden font-medium ${
               isLargeTextMode 
@@ -257,6 +267,8 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
           </div>
         </div>
       </form>
+      {instant.open && <InstantSearchPanel {...instant.panel} />}
+      </div>
 
       {/* Voice Listening Transcript Feedback */}
       {isListening && (
@@ -292,7 +304,7 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
               type="button"
               onClick={() => {
                 onChange(chip);
-                onSearch(chip);
+                instant.search(chip);
               }}
               className={`rounded-full bg-white border border-slate-200 font-medium text-slate-700 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 transition-colors shadow-2xs flex items-center gap-1 ${
                 isLargeTextMode 

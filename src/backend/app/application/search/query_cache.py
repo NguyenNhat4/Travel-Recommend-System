@@ -1,17 +1,14 @@
-"""Cache vector truy vấn trong bộ nhớ (NFR-PERF-03: cache vector của truy vấn lặp lại để bước tạo vector câu hỏi nằm trong
-ngân sách p95 — model local e5-small trên CPU từ 06/10, Cohere khi chạy đường lui).
+"""Cache vector truy vấn trong bộ nhớ (NFR-PERF-03: cache vector của truy vấn lặp lại).
 
-`QueryEmbeddingCache` là LRU thread-safe có single-flight: nhiều request cùng câu chỉ một luồng gọi embedder, các luồng còn
+`QueryEmbeddingCache` là LRU thread-safe có single-flight: nhiều request cùng câu chỉ một luồng chạy model, các luồng còn
 lại chờ (`threading.Event`) rồi dùng chung vector; leader lỗi thì follower tự gọi, khoá không bao giờ kẹt. Route `/search`
 là `def` đồng bộ chạy trong threadpool và agent inprocess dùng `ThreadPoolExecutor`, nên khoá là `threading.Lock`, không
 asyncio. Vector lưu float32 chỉ đọc (`writeable=False`) để không ai sửa nhầm bản trong cache.
 
 `CachingQueryEmbedder` bọc một `EmbedderPort` (embedder dùng chung qua các lần nạp lại catalog, nên cache sống theo):
 `embed_query_status` trả thêm "hit" / "miss" cho `diagnostics.embedCache` (contract 1.12.0), `embed_queries` nạp cả lô câu
-còn thiếu (prewarm). Khoá = `(tên model, "search_query", câu)` với câu **đúng chuỗi đưa vào embedder** (sau chuẩn hoá và gộp
-khoảng trắng ở `SearchProducts.query_text`; tiền tố `query: ` của e5 do adapter ghép, không nằm trong khoá); không fold
-hoa/thường/dấu để không gộp hai câu mà model embed khác nhau. Một tiến trình chỉ có một model, nên tên model trong khoá đủ
-tách khi đổi provider.
+còn thiếu (prewarm). Khoá = `(tên model, "search_query", câu)` với câu **đúng chuỗi đem embed** (sau chuẩn hoá và gộp
+khoảng trắng ở `SearchProducts.query_text`); không fold hoa/thường/dấu để không gộp hai câu model embed khác nhau.
 """
 from __future__ import annotations
 
@@ -81,7 +78,7 @@ class QueryEmbeddingCache:
             return vec
 
     def get_or_compute(self, key: Hashable, fn: Callable[[], Any]) -> tuple[np.ndarray, str]:
-        """(vector, "hit" | "miss"). Follower của single-flight nhận "hit" — request đó không gọi embedder."""
+        """(vector, "hit" | "miss"). Follower của single-flight nhận "hit" — request đó không chạy model."""
         with self._lock:
             vec = self._data.get(key)
             if vec is not None:

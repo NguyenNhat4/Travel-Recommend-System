@@ -97,7 +97,7 @@ Tài khoản seed đăng nhập qua `/login` như mọi user (email seed + mật
 | `/booking/:referenceCode` | Xác nhận đặt chỗ | **Có** | |
 | `/login`, `/register` | Đăng nhập / Đăng ký | — | Nhận `?redirect=` |
 
-**Đề xuất quyền truy cập:** duyệt, tìm kiếm, xem chi tiết và chat đều mở cho khách vãng lai, vì đây là phần phô diễn search. Mọi hành động **ghi** (thêm giỏ, checkout) thì yêu cầu đăng nhập, vì event đặt chỗ phải khóa theo `cdp_user_id` (handbook §10). Khi khách vãng lai bấm "Thêm vào giỏ", UI mở **modal đăng nhập tại chỗ** rồi tự hoàn tất hành động sau khi đăng nhập, không chuyển trang. Pattern: `[R77]` Tripadvisor web (modal "Welcome back." phủ lên trang, trang sau vẫn giữ nguyên ngữ cảnh).
+**Đề xuất quyền truy cập:** duyệt, tìm kiếm, xem chi tiết và chat đều mở cho khách vãng lai, vì đây là phần phô diễn search. Thêm giỏ, Đặt ngay và điền thông tin ở trang thanh toán cũng mở cho khách vãng lai (giỏ và đơn nháp của khách giữ 3 ngày, gộp vào tài khoản khi đăng nhập; FR-BKG-01, `docs/spec/booking/dat-truc-tiep-theo-don-nhap.md` §8). Chỉ **tạo đơn** mới yêu cầu đăng nhập, vì đơn và event đặt chỗ phải khóa theo `cdp_user_id` (handbook §10): khi khách vãng lai bấm "Thanh toán", UI mở **modal đăng nhập tại chỗ** rồi tự gửi tiếp sau khi đăng nhập, không chuyển trang và không mất thông tin đã nhập. Pattern: `[R77]` Tripadvisor web (modal "Welcome back." phủ lên trang, trang sau vẫn giữ nguyên ngữ cảnh).
 
 ### 3.2 Sơ đồ luồng chính
 
@@ -132,7 +132,7 @@ Tài khoản seed đăng nhập qua `/login` như mọi user (email seed + mật
 ### 3.3 Điều hướng toàn cục
 
 - **Desktop (≥ 1024 px):** header kính mờ nổi trên hero ở Home và bốn trang danh mục, chuyển nền trắng khi cuộn qua hero; ở route khác là header nền trắng thường. Từ trái sang phải: logo, bốn nhóm dịch vụ **Di chuyển · Lưu trú · Tour và trải nghiệm · Tiện ích khác** (mỗi nhóm mở menu con chỉ liệt kê dịch vụ, không có điểm đến), nút lưới "Tất cả dịch vụ" (từ 1280 px), ngôn ngữ, "Đặt chỗ của tôi" (kèm huy hiệu giỏ), tài khoản. Không còn ô tìm kiếm giữa header (theo wireframe `docs/prd/user-flow.md` §4.1): tìm kiếm nằm ở hero của Home và các trang danh mục, và ở đầu `/search`. Menu là mẫu disclosure (`aria-expanded`, Esc đóng và trả focus, mở bằng rê chuột chỉ trên thiết bị có hover). Cấu hình ở `components/layout/nav/navConfig.ts`. Không có Trợ lý AI trên header (đề xuất `update-archive/2026-09-29-bo-nut-tro-ly-ai-tren-header.md`); trợ lý là widget nổi duy nhất (`update-archive/2026-09-29-gop-giao-dien-tro-ly-ve-widget.md`, không còn route `/assistant`). Điều khiển header cùng cao 40 px, bo tròn; chữ tiêu đề và điều hướng là Cal Sans, nội dung là Inter (`globals.css`). Không còn chuông thông báo và điểm thưởng cứng.
-- **Checkout** dùng header rút gọn (logo + "Quay lại giỏ hàng") để giảm rơi rụng. Pattern: `[R70]` KAYAK web checkout (header chỉ còn logo).
+- **Checkout** dùng header rút gọn (logo + "Quay lại giỏ hàng"; thanh toán một đơn nháp của Đặt ngay thì là "Quay lại", về trang trước) để giảm rơi rụng. Pattern: `[R70]` KAYAK web checkout (header chỉ còn logo).
 - **Mobile:** thanh tab dưới cùng, xem §7.2.
 - **Menu tài khoản:** tên + persona, "Đăng xuất". Không có trang hồ sơ, vì handbook không yêu cầu.
 - **Banner demo** mảnh, cố định dưới header: "Bản demo — không thu tiền và không gửi xác nhận thật." Người dùng đóng được, lựa chọn lưu theo phiên.
@@ -148,7 +148,7 @@ Mọi màn hình dưới đây đều tham chiếu tới các component này. Đ
 | Component | Dữ liệu | Quy tắc |
 |---|---|---|
 | **`ProductCard`** (biến thể `grid` / `row` / `compact`) | `imageUrl`, `name`, `taxonomy`, `destination`, `attributes.starRating`, `unitPrice` hoặc `priceString`, `available` | `grid` cho carousel/lưới, `row` cho danh sách kết quả desktop, `compact` cho chat và giỏ. Cả thẻ là một link tới `/product/:id`. Nút phụ (nếu có) không được làm thẻ mất khả năng bấm. `available: false` thì ảnh xám, nhãn "Tạm hết chỗ", ẩn nút đặt |
-| **`TaxonomyBadge`** | `taxonomy` | `hotel` "Khách sạn" · `flight` "Vé máy bay" · `attraction` "Vé tham quan" · `combo` "Combo" · `golf` "Golf". Mỗi loại có icon + màu riêng, dùng giống nhau ở mọi nơi |
+| **`TaxonomyBadge`** | `taxonomy` | `hotel` "Khách sạn" · `flight` "Vé máy bay" · `attraction` "Vé tham quan" · `combo` "Combo" · `golf` "Golf". Mỗi loại có icon + màu riêng, chỉ dùng ở giỏ hàng và checkout (nơi trộn nhiều loại); thẻ sản phẩm và trang chi tiết không hiện vì đã có danh mục/tab theo loại |
 | **`PriceTag`** | `unitPrice`, `currency` | Định dạng `vi-VN`: "1.890.000 ₫". Tiền tố "Từ" khi giá phụ thuộc lựa chọn. Hậu tố đơn vị: "/ đêm" (hotel), "/ khách" (flight, attraction), "/ gói" (combo). Pattern hậu tố + ghi chú thuế: `[R31]` Klook web ("incl. taxes per night") |
 | **`BecauseLine`** | `because[0]` | Một dòng dưới tên sản phẩm, xem §5.2 |
 | **`WhyPopover`** | toàn bộ `because[]`, `strategy`, `destination` | Nút "Vì sao?" mở popover (desktop) hoặc bottom sheet (mobile), xem §5.4 |
@@ -244,9 +244,11 @@ Bố cục theo bản mẫu đã duyệt, ngay trên `/flights` (tìm không chu
 
 - Ở Home, `/search` và header trang chi tiết chỉ có **một ô nhập tự do**, không tách thành Điểm đến / Ngày / Khách, vì engine nhận `q` tự do. Ngoại lệ: **tấm tìm kiếm ở hero trang danh mục** (`/hotels`, `/flights`, `/experiences`, `/combos`) tách Địa điểm / Ngày / Số khách theo FR-SRC-03; ngày và số khách là ngữ cảnh chuyến đi điền sẵn hộp đặt, không lọc phòng trống (frontend §4.1a). Placeholder xoay vòng giữa các câu mẫu: "nghỉ dưỡng biển cho gia đình", "vé tham quan cho trẻ nhỏ ở Phú Quốc", "khách sạn 5 sao gần biển Đà Nẵng".
   Pattern: `[R35]` Booking.com iOS (tab "AI search": "Search in your own words ⓘ" + thẻ ví dụ "Try these out"). `[R37]` cho thấy chính Booking.com đặt tab "AI search" song song tab "Destination".
-- **Khi focus (ô rỗng):** dropdown gồm "Tìm kiếm gần đây" (lưu `localStorage`, tối đa 5, có nút xóa) và "Thử tìm" (4 câu mẫu). Pattern: `[R38]` Skyscanner iOS ("Recent searches" + "Popular destinations").
-- **Khi đang gõ:** autocomplete theo tên (ví dụ "VinWonders") chỉ có nếu làm hybrid search (handbook §2: có thể cắt). MVP: không autocomplete, Enter là tìm.
-- Nhấn Enter → `/search?q=…`. Truy vấn giữ lại trong ô ở trang kết quả.
+- **Khi focus (ô rỗng):** dropdown gồm "Tìm kiếm gần đây" (lưu `localStorage` khoá `vota_recent_searches`, tối đa 5, có nút Xóa) và "Từ khoá phổ biến" (danh sách cố định `POPULAR_KEYWORDS` ở `features/search/instant/recentSearches.ts`). Không gọi API. Pattern: `[R38]` Skyscanner iOS ("Recent searches" + "Popular destinations").
+- **Khi đang gõ (FR-SRC-05, đề xuất `update-archive/2026-10-05-goi-y-tuc-thi-o-tim-kiem.md`):** gợi ý tức thì, không cần Enter, ở ô hero Home và ô đầu `/search`. Chia theo loại (điểm đến · khách sạn · vé tham quan · sân golf · combo; **không có vé máy bay**), mỗi dòng có icon, tên loại và phần chữ khớp in đậm (khớp đầu từ, không phân biệt dấu và hoa thường), tối đa 8 dòng, cuối là nút "Xem tất cả kết quả cho "…"" → `/search?q=…`. Chọn điểm đến hoặc từ khoá → `/search?q=<nhãn>`; chọn sản phẩm → `/product/{id}`. Gợi ý lấy từ `GET /search/suggestions` (khớp chữ trên catalog, không embed, không ghi event), không phải từ `POST /search`.
+  - Kiểm soát lượt gọi (`features/search/instant/useInstantSearch.ts`): chỉ gọi khi có ≥ 2 ký tự chữ/số; chờ 200 ms sau phím cuối; phím mới huỷ lượt đang bay; bộ nhớ đệm theo khoá đã bỏ dấu (tối đa 50 khoá, 5 phút); lỗi thì hiện "Chưa tải được gợi ý" và vẫn giữ nút "Xem tất cả".
+  - Bàn phím: ↑ ↓ chọn, Enter trên dòng đang chọn thì đi tới dòng đó, Enter khi chưa chọn thì tìm như cũ, Esc đóng. ARIA combobox/listbox.
+- Nhấn Enter → `/search?q=…`. Truy vấn giữ lại trong ô ở trang kết quả. Tìm bằng Enter, nút "Xem tất cả", chip, giọng nói hoặc chọn điểm đến đều được ghi vào "Tìm kiếm gần đây"; mở một sản phẩm thì không.
 
 #### 4.2.2 Bố cục desktop
 
@@ -279,7 +281,7 @@ Tab **Tất cả** không có thanh bên và không có sắp xếp: ba hàng th
 | Tab nhóm | Tất cả · Lưu trú · Tour và trải nghiệm · Tiện ích khác, đếm theo `facets.taxonomy` (không tính vé máy bay). Tab 0 kết quả vẫn hiện. **Lưu ý (05/10):** khi backend bật `SEARCH_TAXONOMY_FILTER` (contract 1.15.0, hợp đồng Search §2.2 QUERY PLAN) câu nêu đúng một loại sản phẩm làm request tổng quan chỉ đếm loại đó — các tab khác về 0; cờ mặc định tắt, bật cần Web xác nhận | một request `limit: 1` không lọc taxonomy | `[R31]` Klook web (bộ lọc dạng chip + tab sắp xếp) |
 | Bộ lọc | Chỉ ở tab Lưu trú: Khoảng giá (slider), Hạng sao. **Không** có bộ lọc điểm đến (điểm đến do câu truy vấn quyết định) và không có bộ lọc ngày trong MVP | **Phụ thuộc:** biến thể search theo điểm đến/ngân sách (handbook §11 Tuần 4). Trước khi có thì lọc client-side | `[R33]` KAYAK web (panel lọc trái: hạng sao, điểm review); `[R31]` Klook web (chip bộ lọc đang áp dụng có × và "Clear") |
 | Sắp xếp | Popup "Sắp xếp: Phù hợp nhất ▾" (Phù hợp nhất · Giá thấp → cao · Giá cao → thấp) ở mọi tab trừ Tất cả. Mặc định "Phù hợp nhất", có giải thích khi hover/bấm: "Kết quả được xếp theo mức độ **gần nghĩa** với câu bạn gõ, không chỉ trùng từ khóa. Vì vậy bạn có thể mô tả chuyến đi bằng lời thường." | — | `[R30]` Kiwi.com web ("Best match" + link "Why results appear this way ⓘ"); `[R34]` TravelPerk web ("Relevance ⓘ"); `[R24]` Vinted iOS (sheet "How do search results work?" liệt kê tiêu chí) |
-| Thẻ kết quả `row` | Ảnh, `TaxonomyBadge`, hạng sao, tên, điểm đến, tối đa 3 tag từ `attributes` (key boolean true → nhãn tiếng Việt), `PriceTag`, nút "Xem" | `/search` | `[R31]` Klook web (tag "Pet friendly · In downtown · Close to subway"); `[R29]` Tripadvisor web (dòng "Mentions: Classic · Quaint · Family" có dấu ✓) |
+| Thẻ kết quả `row` | Ảnh, hạng sao, tên, điểm đến, tối đa 3 tag từ `attributes` (key boolean true → nhãn tiếng Việt), `PriceTag`, nút "Xem" | `/search` | `[R31]` Klook web (tag "Pet friendly · In downtown · Close to subway"); `[R29]` Tripadvisor web (dòng "Mentions: Classic · Quaint · Family" có dấu ✓) |
 | Thẻ Trợ lý trong danh sách | Chèn sau kết quả thứ 6: "Muốn ghép thành lịch trình? Hỏi trợ lý với "{q}"" | — | `[R29]` Tripadvisor web (khối "Powered by AI — Get a personalized itinerary in Rome — Build your trip" đặt ngay trên trang kết quả) |
 | Phân trang | "Xem thêm" (20/lần), không phân trang số | — | — |
 
@@ -321,8 +323,9 @@ Tab **Tất cả** không có thanh bên và không có sắp xếp: ba hàng th
 │ ▸ Chọn ngày & số lượng (inline cho vé)      │ │ Số phòng    [–] 1 [+]         │ │
 │ ▸ Thông tin thêm: có hiệu lực từ–đến        │ │ ─────────────────────────────  │ │
 │                                             │ │ 3 đêm × 3.400.000 = 10.200.000│ │
-│                                             │ │ [ Thêm vào giỏ ]  (chính)     │ │
-│                                             │ │ [ Đặt ngay ]      (phụ)       │ │
+│                                             │ │ [ Đặt ngay ]      (chính)     │ │
+│                                             │ │ Khách sạn được đặt trực tiếp, │ │
+│                                             │ │ không thêm vào giỏ hàng       │ │
 │                                             │ │ Bạn chưa bị trừ tiền — bản demo│ │
 │                                             │ └───────────────────────────────┘ │
 ├─────────────────────────────────────────────┴──────────────────────────────────┤
@@ -344,7 +347,7 @@ Tab **Tất cả** không có thanh bên và không có sắp xếp: ba hàng th
 | Mô tả | Mô tả tiếng Việt từ vinpearl.com, cắt 4 dòng | `description` | — |
 | Tiện ích / thuộc tính | Map các key `attributes` sang icon + nhãn tiếng Việt. Key lạ thì bỏ qua, không hiện tên key thô | `attributes` | `[R48]` Airbnb web ("What this place offers": lưới 2 cột + "Show all 34 amenities") |
 | **Hộp đặt** | Các trường thay đổi theo `taxonomy` (bảng 4.3.3). Ngày bị giới hạn trong `availableFrom`–`availableTo`. Tổng tiền tính lại ngay khi đổi lựa chọn. Dòng trấn an: "Bạn chưa bị trừ tiền — đây là bản demo" | `unitPrice`, `available*` | `[R48]` Airbnb web (hộp đặt dính bên phải + "You won't be charged yet"); `[R51]` Klook web (lịch chọn ngày + chọn giờ + stepper số lượng + "Add to cart" / "Book now") |
-| Hai CTA | "Thêm vào giỏ" (chính) → toast "Đã thêm vào giỏ · [Xem giỏ]", ở lại trang. "Đặt ngay" (phụ) → thêm vào giỏ rồi chuyển thẳng `/checkout` với **đúng mục này**. Nếu cắt Cart (handbook §2) thì chỉ còn "Đặt ngay" | — | `[R51]` Klook web (hai nút cạnh nhau) |
+| CTA theo loại | **Khách sạn, vé máy bay:** chỉ có "Đặt ngay" kèm dòng "được đặt trực tiếp, không thêm vào giỏ hàng" (giá và chỗ đổi liên tục nên không gom vào giỏ). **Tour, trải nghiệm, golf, combo:** "Thêm vào giỏ" (chính) → toast "Đã thêm vào giỏ · [Xem giỏ]", ở lại trang; và "Đặt ngay" (phụ). "Đặt ngay" ở mọi loại mở thẳng trang thanh toán với **đúng mục này**, không kèm mục nào đang có trong giỏ (`docs/spec/booking/dat-truc-tiep-theo-don-nhap.md`) | — | `[R51]` Klook web (hai nút cạnh nhau) |
 | Tương tự | "Tương tự {tên rút gọn}", 4–8 thẻ có nhãn "Tương tự". Không có `BecauseLine`, vì lý do đã nằm ở tiêu đề (nguồn là chính sản phẩm đang xem) | `GET /similar/{productId}` | `[R54]` KAYAK web ("You might also like — Similar hotels" + badge "Similar"); `[R55]` Turo web ("Similar cars for your dates"); `[R56]` Tripadvisor web ("Popular Nearby ⓘ") |
 | Hoàn thiện chuyến | Chỉ khi đã đăng nhập **và** `destination` của gợi ý trùng với điểm đến sản phẩm. Dùng lại section ① của Home | `/recommendations` | `[R09]` Booking.com iOS |
 | Lối vào Trợ lý | Link nhỏ dưới hộp đặt: "Lên lịch trình quanh {tên}" → `/assistant` điền sẵn "Gợi ý lịch trình 3 ngày ở {destination}, tôi ở {tên}" | — | `[R88]` Booking.com iOS (người dùng mở chat bằng "I've booked: Wolf Inn Hotel…") |
@@ -358,7 +361,7 @@ Tab **Tất cả** không có thanh bên và không có sắp xếp: ba hàng th
 | `attraction` / `golf` | Ngày sử dụng (chip nhanh "Hôm nay · Ngày mai · Chọn ngày"), số khách | `unitPrice × số khách` | `[R53]` Klook web (chip "Today / Tomorrow / 27 Jan / All dates"); `[R52]` Klook web (panel "What's included") |
 | `combo` | Ngày bắt đầu, số khách | `unitPrice × số khách` | — |
 
-Mọi lựa chọn được lưu thành một mục giỏ với `usingDate` và `quantity`, khớp trường của `UserEvent` (handbook §6).
+Mọi lựa chọn được lưu thành một mục giỏ (tour, trải nghiệm, tiện ích) hoặc một mục của đơn nháp Đặt ngay, với `usingDate` và `quantity`, khớp trường của `UserEvent` (handbook §6).
 
 #### 4.3.4 Trạng thái
 
@@ -378,7 +381,7 @@ Mọi lựa chọn được lưu thành một mục giỏ với `usingDate` và 
 
 ### 4.4 Cart
 
-Có thể bị cắt (handbook §2, mục 4). Nếu cắt: bỏ route `/cart`, nút giỏ trên header và CTA "Thêm vào giỏ"; "Đặt ngay" chuyển thẳng tới Checkout với một mục.
+Giỏ **chỉ giữ tour, trải nghiệm và tiện ích khác** (`attraction`, `golf`, `combo`); khách sạn và vé máy bay không bao giờ nằm trong giỏ (FR-BKG-01, `docs/spec/booking/dat-truc-tiep-theo-don-nhap.md`). Khách chưa đăng nhập cũng có giỏ. Trang có một dòng ghi chú: khách sạn và vé máy bay được đặt ngay ở trang sản phẩm.
 
 #### 4.4.1 Bố cục desktop
 
@@ -388,19 +391,18 @@ Có thể bị cắt (handbook §2, mục 4). Nếu cắt: bỏ route `/cart`, n
 ├──────────────────────────────────────────────────┬────────────────────────────┤
 │ CHUYẾN NHA TRANG                                 │ TÓM TẮT                    │
 │ ┌ compact card ─────────────────────────────────┐│ 3 dịch vụ                  │
-│ │[ảnh] [Khách sạn] Vinpearl Resort Nha Trang    ││ Tạm tính       14.180.000 ₫│
-│ │      15/10 – 18/10/2026 · 1 phòng · 3 đêm     ││ ─────────────────────────  │
-│ │      [Sửa] [Xóa]                  10.200.000 ₫││ Tổng           14.180.000 ₫│
+│ │[ảnh] [Vé tham quan] VinWonders Nha Trang      ││ Tạm tính        8.740.000 ₫│
+│ │      16/10/2026 · 3 người lớn                 ││ ─────────────────────────  │
+│ │      [Sửa] [Xóa]                   2.640.000 ₫││ Tổng            8.740.000 ₫│
 │ └───────────────────────────────────────────────┘│ [ Tiến hành đặt chỗ ]      │
-│ ┌ compact card ─────────────────────────────────┐│ Bản demo — không thu tiền   │
-│ │[ảnh] [Vé máy bay] Hà Nội – Cam Ranh ...       ││                            │
+│ ┌ compact card ─────────────────────────────────┐│                            │
+│ │[ảnh] [Vé tham quan] Vinpearl Safari mini ...  ││                            │
 │ └───────────────────────────────────────────────┘│                            │
 │ CHUYẾN PHÚ QUỐC                                  │                            │
-│ ...                                              │                            │
-├──────────────────────────────────────────────────┴────────────────────────────┤
-│ THƯỜNG ĐƯỢC ĐẶT CÙNG CHUYẾN NHA TRANG   (/recommendations, có BecauseLine)     │
-│ ┌card┐ ┌card┐ ┌card┐ ┌card┐  mỗi thẻ có nút nhanh "+ Thêm"                    │
-└────────────────────────────────────────────────────────────────────────────────┘
+│ ┌ compact card: [Golf] ... ─────────────────────┐│                            │
+│ Khách sạn và vé máy bay không nằm trong giỏ:     │                            │
+│ được đặt ngay ở trang sản phẩm.                  │                            │
+└──────────────────────────────────────────────────┴────────────────────────────┘
 ```
 
 #### 4.4.2 Thành phần và dữ liệu
@@ -410,19 +412,19 @@ Có thể bị cắt (handbook §2, mục 4). Nếu cắt: bỏ route `/cart`, n
 | Nhóm theo điểm đến | Các mục được gom theo `destination`, tiêu đề "Chuyến {destination}". Việc gom nhóm này giúp người dùng *thấy* khái niệm chuyến đi ở cả UI lẫn engine (`eventGroupId`). **Phụ thuộc:** Backend gán `eventGroupId` theo nhóm nào lúc checkout | — (không có OTA nào trên Mobbin gom giỏ theo chuyến; `[R12]` Trip.com iOS có khái niệm "Plan Your Entire Trip" gần nhất) |
 | Mục giỏ (`compact`) | Ảnh, badge, tên, ngày + số lượng + đơn vị, thành tiền, [Sửa] (mở lại hộp chọn dạng popover), [Xóa] | `[R58]` Klook web (mục giỏ có ngày, stepper, Manage/Remove); `[R60]` lululemon web (Edit / Remove) |
 | Tóm tắt dính bên phải | Số dịch vụ, tạm tính, tổng, CTA "Tiến hành đặt chỗ", dòng "Bản demo — không thu tiền". Không có thuế/phí/mã giảm giá | `[R59]` adidas web ("Order summary" dính phải + CTA to); `[R58]` Klook web (Subtotal + "Book now") |
-| **Thường được đặt cùng** | 4 thẻ từ `/recommendations` (có `BecauseLine`), nút nhanh "+ Thêm" dùng ngày mặc định trùng khoảng ngày của mục khách sạn trong cùng chuyến. Đây là lần hiện gợi ý thứ ba trong luồng đặt | `[R58]` Klook web ("Often booked together" ngay dưới giỏ); `[R61]` Walmart web ("Recommended with your order") |
+| ~~Thường được đặt cùng~~ | **Đã bỏ (2026-10-01).** Trang giỏ không còn khối gợi ý và không gọi `/recommendations`; gợi ý trong luồng đặt còn ở trang chi tiết và trang đơn | — |
 
 #### 4.4.3 Trạng thái
 
 | Trạng thái | Hành vi | Pattern |
 |---|---|---|
-| Rỗng | Icon + "Giỏ hàng của bạn đang trống" + [Khám phá gợi ý cho bạn] (→ Home) + [Hỏi trợ lý lên kế hoạch]. Bên dưới: carousel gợi ý (đã đăng nhập) hoặc phổ biến | `[R64]` Faire web ("Your cart is empty" + "Shop bestsellers" + "Recently viewed"); `[R65]` Etsy web ("Related items you may like" ngay dưới trạng thái rỗng) |
+| Rỗng | Icon + "Giỏ hàng của bạn đang trống" + [Khám phá gợi ý cho bạn] (→ Home) + [Hỏi trợ lý lên kế hoạch]. Dòng mô tả nói rõ giỏ giữ tour, trải nghiệm và tiện ích khác; khách sạn và vé máy bay đặt ngay ở trang sản phẩm | `[R64]` Faire web ("Your cart is empty" + "Shop bestsellers" + "Recently viewed"); `[R65]` Etsy web ("Related items you may like" ngay dưới trạng thái rỗng) |
 | Đang cập nhật một mục (sửa/xóa) | Mục đó mờ đi + spinner nhỏ tại chỗ. Các mục khác vẫn thao tác được. Tổng tiền hiện skeleton | `[R62]` Urban Outfitters web (spinner phủ đúng mục đang cập nhật) |
 | Mục hết chỗ (`available` đổi thành false) | Viền đỏ + "Dịch vụ này đã hết chỗ — hãy xóa để tiếp tục". CTA checkout disabled tới khi xóa | — |
 | Xóa mục | Xóa ngay + toast "Đã xóa {tên} · [Hoàn tác]" | `[R23]` Instagram iOS (toast có "Undo") |
 | Lỗi tải giỏ | `ErrorState` + [Thử lại] |  |
 
-**Phụ thuộc:** giỏ được lưu phía server (theo user) hay client? Đề xuất phía server nếu Booking API có endpoint giỏ, vì đăng nhập lần lượt nhiều tài khoản trên cùng một máy không được làm lẫn giỏ giữa các persona. Nếu lưu client thì phải khóa `localStorage` theo `cdp_user_id`.
+**Đã chốt:** giỏ lưu phía server. Người đã đăng nhập: database, khoá theo `cdp_user_id`. Khách chưa đăng nhập: Redis, khoá theo mã khách do BFF phát, giữ 3 ngày; khi đăng nhập thì mục chưa có được chép vào giỏ tài khoản, mục trùng giữ một bản, rồi dữ liệu của khách bị xoá (`docs/spec/booking/dat-truc-tiep-theo-don-nhap.md` §8, §9).
 
 ---
 
@@ -466,13 +468,16 @@ Checkout gồm **ba bước** trên cùng route `/checkout` (`?step=travelers|se
 |---|---|
 | Đang gửi | Nút đổi thành spinner + "Đang giữ chỗ và mở trang thanh toán…", disabled để **chống bấm hai lần** (Backend cũng chỉ cho một đơn giữ chỗ mỗi người). Pattern: `[R86]` Uvodo web (spinner nằm trong nút chính) |
 | Thành công (`201 PENDING_PAYMENT`) | Chuyển trình duyệt sang `payment.checkoutUrl` (trang Stripe). Stripe đưa về `/booking/:referenceCode?payment=return` hoặc `?payment=cancelled` |
-| Đang có đơn giữ chỗ (`409 BOOKING_PENDING_PAYMENT`) | Hộp thoại: "Tiếp tục thanh toán đơn đó" hoặc "Huỷ đơn đó và đặt lại từ giỏ" |
+| Đang có đơn giữ chỗ (`409 BOOKING_PENDING_PAYMENT`) | Hộp thoại: "Tiếp tục thanh toán đơn đó" hoặc "Huỷ đơn đó và đặt lại từ giỏ" (đơn nháp: "Huỷ đơn đó và đặt lại") |
 | Dữ liệu chưa hợp lệ (`400 VALIDATION_ERROR`) | Về bước chứa trường lỗi (① hoặc ②), gắn lỗi vào từng trường và hiện hộp "Còn n thông tin cần sửa"; dữ liệu đã nhập giữ nguyên |
 | Giá đổi (`409 PRICE_CHANGED`) | Banner giá cũ → giá mới (giá vé trẻ em đổi thì ghi "Giá vé trẻ em của …") + [Cập nhật và tiếp tục] (xác nhận giá mới vào giỏ), khách bấm Thanh toán lần nữa |
 | Một mục hết chỗ (4xx) | Banner trên cùng: "{tên} vừa hết chỗ." + [Quay lại giỏ]. Dữ liệu đã nhập được giữ nguyên |
 | Stripe không phản hồi (`503`) / lỗi mạng / 5xx | Banner "Cổng thanh toán tạm thời không phản hồi" (hoặc thông điệp lỗi) + [Thử lại]. Không xóa form, không tạo đơn |
 | 401 giữa chừng | Modal đăng nhập lại, giữ dữ liệu form trong bộ nhớ, sau đó gửi lại |
 | Giỏ rỗng khi vào `/checkout` | Chuyển về `/cart` |
+| Thanh toán một đơn nháp (`/checkout?draft=…`) | Chỉ các mục của lần Đặt ngay; đồng hồ "Phiên thanh toán còn mm:ss" (30 phút); không có "Sửa giỏ hàng" |
+| Đơn nháp hết hạn (`410 BOOKING_DRAFT_EXPIRED`) | "Phiên thanh toán đã hết hạn": khách sạn, vé máy bay phải chọn lại ([Chọn lại phòng], [Tìm lại chuyến bay]); tour và tiện ích của lần đặt vẫn nằm trong giỏ ([Về giỏ hàng]) |
+| Khách chưa đăng nhập bấm Thanh toán | Modal đăng nhập tại chỗ; đăng nhập xong tự gửi tiếp, thông tin đã nhập còn nguyên |
 
 ---
 
@@ -516,7 +521,7 @@ Checkout gồm **ba bước** trên cùng route `/checkout` (`?step=travelers|se
 |---|---|
 | Tải lại trang / mở từ link | `GET /bookings/{referenceCode}`. Không có thì hiện "Không tìm thấy đơn đặt chỗ này" + [Về trang chủ] |
 | Vừa quay về từ Stripe (`?payment=return`) | "Đang kiểm tra thanh toán…"; hỏi lại 2 giây/lần tối đa 15 lần tới khi đơn rời `PENDING_PAYMENT`. Đã thu tiền mà chưa xác nhận xong → "Đã nhận thanh toán, đang xác nhận đơn" |
-| Đang giữ chỗ | "Đơn đang được giữ chỗ" + đồng hồ đếm ngược theo `holdExpiresAt` + [Tiếp tục thanh toán] [Huỷ đơn]. Hết giờ → "Hết thời gian giữ chỗ" + [Đặt lại từ giỏ] |
+| Đang giữ chỗ | "Đơn đang được giữ chỗ" + đồng hồ đếm ngược theo `holdExpiresAt` + [Tiếp tục thanh toán] [Huỷ đơn]. Hết giờ → "Hết thời gian giữ chỗ" + [Đặt lại] (đơn nháp mới từ các dịch vụ của đơn, theo giá hiện tại) |
 | Thanh toán thất bại / hết hạn / đã huỷ | Theo `docs/spec/hop-dong-tich-hop-frontend.md` §4.6; không gọi gợi ý |
 | Huỷ đơn đã xác nhận | Nút [Huỷ đơn] khi còn trước `cancellableUntil`; hộp thoại nêu số tiền hoàn, hạn huỷ, "không thể hoàn tác" |
 | Gợi ý đang tải | Phần đơn hàng hiện ngay. Section gợi ý hiện skeleton |
@@ -533,7 +538,7 @@ Theo handbook §8, xác thực tồn tại "để bản demo có thể cho nhữ
 
 | Hình thức | Khi nào | Pattern |
 |---|---|---|
-| **Modal** phủ lên trang hiện tại | Khi khách vãng lai bấm hành động cần đăng nhập (thêm giỏ, checkout) hoặc khi JWT hết hạn | `[R77]` Tripadvisor web ("Welcome back." dạng modal, trang sau vẫn thấy); `[R80]` Klarna web (modal "Sign in / Or Create account") |
+| **Modal** phủ lên trang hiện tại | Khi khách vãng lai bấm hành động cần đăng nhập (Thanh toán ở bước cuối của trang thanh toán, đặt lại đơn) hoặc khi JWT hết hạn | `[R77]` Tripadvisor web ("Welcome back." dạng modal, trang sau vẫn thấy); `[R80]` Klarna web (modal "Sign in / Or Create account") |
 | **Trang** `/login`, `/register` | Bấm "Đăng nhập" trên header, hoặc truy cập thẳng route cần đăng nhập. Nhận `?redirect=` | `[R78]` Klook web (thẻ đăng nhập đặt giữa trên nền ảnh du lịch, có câu giá trị ngắn); `[R79]` Expedia web ("Sign in or create an account" 1 cột) |
 
 #### 4.7.2 Đăng nhập
@@ -599,7 +604,7 @@ Bố cục dưới đây là UX mục tiêu. Frontend hiện render form và k�
 │ 🤖 [Thẻ tóm tắt kế hoạch → panel phải]  │ Tối ── card nhà hàng/combo           │
 │                                         │ ───────────────────────────────────  │
 │ ┌──────────────────────────────────┐    │ 5 dịch vụ đặt được · 9.870.000 ₫    │
-│ │ Nhập yêu cầu chuyến đi…      [➤] │    │ [ Thêm tất cả vào giỏ ]              │
+│ │ Nhập yêu cầu chuyến đi…      [➤] │    │ [ Thanh toán tất cả ]                │
 │ └──────────────────────────────────┘    │                                      │
 │ Trợ lý chỉ lên kế hoạch chuyến đi.      │                                      │
 └─────────────────────────────────────────┴──────────────────────────────────────┘
@@ -608,7 +613,7 @@ Bố cục dưới đây là UX mục tiêu. Frontend hiện render form và k�
 | Quyết định | Lý do | Pattern |
 |---|---|---|
 | Chia đôi: chat trái, kế hoạch phải | Kế hoạch là một **đối tượng** (có ngày, có tổng tiền), không nên chìm trong luồng tin nhắn dài | `[R90]` Mindtrip web (chat trái + panel "Best trip ever!" có Day accordion + "Generate itinerary"); `[R91]` Mindtrip web (chat trái + bản đồ phải); `[R105]` Etsy web ("Gifting assistant": chat trái + lưới sản phẩm phải) |
-| Tin nhắn của trợ lý chỉ chứa **thẻ tóm tắt** kế hoạch, bấm vào thì focus panel | Tránh lặp nội dung giữa hai cột | `[R103]` Trip.com iOS (thẻ trong chat dẫn tới "View Hotels / Trip Map") |
+| Tin nhắn của trợ lý có **thẻ gọn của từng sản phẩm** ngay sau lần nhắc đầu tiên; bấm thẻ mở panel chi tiết ở cột phải (PRD `user-flow.md` §4.2, chốt 2026-10-02, thay quyết định cũ "chỉ chứa thẻ tóm tắt") | Người đọc lời kể thấy ngay nơi được nhắc là gì, không phải dò sang cột phải; chi tiết mở tại chỗ thay vì sang tab mới | `[R104]` Klarna iOS (thẻ sản phẩm có giá ngay trong câu trả lời chat); `[R103]` Trip.com iOS (thẻ trong chat dẫn tới chi tiết) |
 | Câu mẫu bằng tiếng Việt khi hội thoại rỗng | Hướng người dùng vào đúng phạm vi hẹp của trợ lý (handbook §9 "Giữ nó hẹp") | `[R87]` Booking.com iOS ("You can try asking about…" + 3 chip "Build an itinerary…"); `[R89]` Mindtrip web (thẻ ví dụ có tiêu đề nhóm); `[R124]` Trip.com iOS ("TripGenie is here to inspire" + thẻ câu hỏi) |
 | Dòng phạm vi dưới ô nhập: "Trợ lý chỉ lên kế hoạch chuyến đi, sản phẩm lấy từ kho V-OTA." | Đặt kỳ vọng và nhắc về grounding | `[R101]` Wanderlog iOS (hộp "The AI Assistant is purely informational…" + "Asking questions about New York. Change") |
 | Nút "Cuộc mới" | Handbook §9 "không duy trì hội thoại dài". Không có lịch sử nhiều cuộc | — (chủ động không làm danh sách lịch sử như `[R87]`) |
@@ -653,7 +658,7 @@ Handbook §7: "Mảng `because` không phải đồ trang trí… Hãy hiển th
 | `event` | Động từ | Icon |
 |---|---|---|
 | `purchase` | "đã đặt" | vali |
-| `add_to_cart` | "đã thêm vào giỏ" | giỏ |
+| `add_to_cart` | "đã chọn để đặt" (thêm giỏ hoặc Đặt ngay đều ghi event này) | giỏ |
 | `product_view` | "đã xem" | mắt |
 | `search` | "đã tìm" (khi đó hiển thị truy vấn trong ngoặc kép thay cho tên sản phẩm, nếu Backend trả về) | kính lúp |
 | giá trị lạ | "đã quan tâm tới" | chấm |
@@ -761,7 +766,7 @@ Handbook §7: `because` là "ranh giới giữa một cuộc tranh cãi và mộ
 
 **Phụ thuộc: tiến độ thật hay giả lập.** Nếu chat backend trả một response duy nhất (không stream), UI **không được** tự đánh ✓ từng bước theo đồng hồ như thể đó là tiến độ thật. Khi đó hiển thị cả 3 bước dạng danh sách "Trợ lý sẽ: hiểu yêu cầu → tìm sản phẩm → sắp xếp lịch trình" với một spinner chung. Nếu Backend stream sự kiện theo bước (SSE) thì đánh ✓ theo sự kiện thật. Đề xuất Backend stream, vì mục tiêu p95 < 5 giây (handbook §12) vẫn đủ lâu để người dùng cần thấy tiến độ.
 
-**Hiện trạng code:** client đọc stream SSE; `AssistantView` chỉ chuyển event `run.failed` thành thông báo lỗi và hiển thị response cuối. UI chưa thể hiện trạng thái hoàn tất riêng cho từng bước trong bảng.
+**Hiện trạng code:** client đọc stream SSE. Widget trợ lý đánh ✓ 3 bước theo `node.completed` thật (`features/itinerary/widget/widgetProgress.ts`); bước đang chạy hiện việc con khi có (thử lại, viết lời tư vấn).
 
 ### 6.2 Chip ý định: cho phép sửa mà không phải gõ lại
 
@@ -799,12 +804,12 @@ Nếu cắt về single-turn (handbook §2, mục 6) thì thẻ này là cách *
 │ │[ảnh][Khách sạn] Vinpearl Resort Nha Trang · ★★★★★   3.400.000 ₫ / đêm    │   │
 │ │ 💬 "Có hồ bơi trẻ em và bãi biển riêng, gần VinWonders."  ← ghi chú LLM  │   │
 │ │ ✨ Hợp với bạn · Vì bạn đã xem Vinpearl Nha Trang · hôm qua              │   │
-│ │ [Xem chi tiết]  [+ Thêm vào giỏ]                                          │   │
+│ │ [Xem chi tiết]  [Đặt ngay]            (khách sạn: không có Thêm vào giỏ)  │   │
 │ └───────────────────────────────────────────────────────────────────────────┘   │
 ├─ [ Ngày 1 ] [ Ngày 2 ] [ Ngày 3 ]  (tab; desktop rộng thì hiện liền kề) ──────┤
 │ NGÀY 1 · Vui chơi trọn ngày                                                   │
 │ ☀ SÁNG    ┌ compact ProductCard: [Vé tham quan] VinWonders Nha Trang ─────┐  │
-│           │ 880.000 ₫ / khách · 💬 "Đi sớm tránh nắng cho trẻ." [+ Thêm]  │  │
+│           │ 880.000 ₫ / khách · 💬 "Đi sớm…" [Thêm vào giỏ] [Đặt ngay]    │  │
 │           └────────────────────────────────────────────────────────────────┘  │
 │ 🌤 TRƯA    ┌ ActivityNote (không phải sản phẩm) ─────────────────────────┐    │
 │           │ 🍽 Ăn trưa trong khu vui chơi · Nghỉ ngơi                   │    │
@@ -813,7 +818,7 @@ Nếu cắt về single-turn (handbook §2, mục 6) thì thẻ này là cách *
 │           └────────────────────────────────────────────────────────────────┘  │
 ├───────────────────────────────────────────────────────────────────────────────┤
 │ 5 dịch vụ đặt được · Tổng ước tính 9.870.000 ₫ (2 người lớn, 1 trẻ em)         │
-│ [ Thêm tất cả vào giỏ ]   [ Chọn từng mục ]                                    │
+│ [ Thanh toán tất cả ]                                                          │
 └───────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -828,7 +833,7 @@ Nếu cắt về single-turn (handbook §2, mục 6) thì thẻ này là cách *
 | `ActivityNote` | Mục không phải sản phẩm: nền xám nhạt, icon, chữ nghiêng, **không có giá, không có nút, không có ảnh sản phẩm** | `[R97]` Vrbo iOS (phân biệt thẻ "Booked" có ảnh với mục "Visit the Grand Palace" chỉ có chữ); `[R98]` KAYAK web (mục trong ngày có nhãn "Booked" khác mục tự thêm) |
 | Ghi chú LLM trên thẻ | 1–2 câu, icon 💬, trình bày như trích dẫn. Giải thích *vì sao nằm ở khung giờ này* | `[R105]` Etsy web (mỗi sản phẩm có một câu lý do ngắn do trợ lý viết: "Perfect for helping up your weekend breakfasts…") |
 | Nhãn "Hợp với bạn" | Chỉ cho sản phẩm đến từ `/recommendations`, kèm `BecauseLine` (§5.2) | `[R97]` Vrbo iOS (công tắc "Showing AI recommendations" tách mục gợi ý khỏi mục đã đặt) |
-| Tổng + CTA | Đếm **chỉ** các `ProductCard` còn `available`. "Thêm tất cả vào giỏ" thêm với ngày suy từ ngày của kế hoạch (**phụ thuộc:** ý định có ngày bắt đầu; không có thì mở hộp chọn ngày một lần cho cả kế hoạch). "Chọn từng mục" mở danh sách checkbox | `[R94]` Tripadvisor iOS (màn hình "Add to itinerary": checkbox từng mục + "Select all" + nút "Add") |
+| Tổng + CTA | Đếm **chỉ** các `ProductCard` còn `available`. **"Thanh toán tất cả"** gom mọi mục đặt được của kế hoạch (lưu trú và hoạt động) vào một đơn nháp với ngày suy từ ngày của kế hoạch rồi mở trang thanh toán; mục không đặt được bị bỏ và báo trong toast. Từng thẻ có nút riêng: khách sạn, vé máy bay có "Đặt ngay"; tour, golf, combo có "Thêm vào giỏ" và "Đặt ngay". Sản phẩm chưa đặt được (ví dụ khách sạn chưa có hạng phòng trong lịch trình) không có nút, thẻ mở trang chi tiết | `[R94]` Tripadvisor iOS (màn hình "Add to itinerary": checkbox từng mục + "Select all" + nút "Add") |
 
 ### 6.4 Quy tắc grounding mục tiêu trên UI ("LLM không tự bịa sản phẩm", handbook §9, §12, §13)
 
@@ -841,7 +846,7 @@ Nếu cắt về single-turn (handbook §2, mục 6) thì thẻ này là cách *
 3. **Không tự động biến tên riêng trong văn bản LLM thành link.** Mindtrip `[R91]` link hóa địa danh trong văn bản; V-OTA **không** làm vậy, vì một cái tên LLM viết ra có thể không phải sản phẩm thật.
 4. **`productId` không resolve được** (404, sai thành phố, `available: false`) thì mục đó **không** được render thành thẻ. Thay bằng dòng mờ "Mục này hiện không còn chỗ · [Tìm lựa chọn khác]" (→ `/search?q={destination} {taxonomy}`). Ở chế độ debug, ghi lý do loại.
 5. **`destination` của sản phẩm khác `destination` của ý định** thì không render. Đây là kiểm tra "đúng thành phố" của handbook §11 Tuần 4, lặp lại ở client như lưới an toàn cuối.
-6. **Nút "Xem chi tiết" dẫn tới `/product/:id` thật**, và "Thêm vào giỏ" dùng đúng luồng giỏ. Không có luồng đặt riêng trong chat (handbook §9: trợ lý "không xử lý việc đặt chỗ").
+6. **Nút "Xem chi tiết" dẫn tới `/product/:id` thật**; "Thêm vào giỏ", "Đặt ngay" và "Thanh toán tất cả" dùng đúng luồng giỏ và đơn nháp của trang thanh toán. Không có luồng đặt riêng trong chat (handbook §9: trợ lý "không xử lý việc đặt chỗ").
 7. Ghi chú 💬 bị cắt ở 160 ký tự. Ghi chú chứa giá tiền (regex số + "đ/₫/VND") thì ẩn phần giá, vì giá chỉ được hiện từ `PriceTag`.
 
 **Đề xuất hợp đồng dữ liệu tối thiểu cho UI** (Backend chốt tên trường; UI chỉ cần hình dạng này):
@@ -876,6 +881,7 @@ Nếu cắt về single-turn (handbook §2, mục 6) thì thẻ này là cách *
 | Người dùng | Bong bóng phải |
 | Trợ lý: văn bản | Bong bóng trái, markdown giới hạn (đậm, danh sách). Không render link ngoài |
 | Trợ lý: **thẻ tóm tắt kế hoạch** | "📋 Lịch trình 3 ngày ở Nha Trang · 5 dịch vụ · ~9.870.000 ₫ · [Xem kế hoạch]". Bấm vào focus panel phải (mobile: mở sheet) |
+| Trợ lý: **thẻ sản phẩm trong lời diễn giải** | `ProductCard` compact ngay sau dòng đầu tiên nhắc sản phẩm, dữ liệu từ response (tuân thủ §6.4). Bấm thẻ hoặc tên: panel chi tiết ở cột phải (PRD `user-flow.md` §4.2) |
 | Trợ lý: thẻ hỏi lại | 6.2 |
 | Trợ lý: gợi ý tiếp theo | 2–3 chip dưới tin nhắn cuối: "Đổi thành 2 ngày", "Thêm hoạt động buổi tối", "Rẻ hơn". Bấm là gửi. Pattern: `[R103]` Trip.com iOS ("You may also ask" + các câu hỏi gửi được); `[R104]` Klarna iOS (chip câu hỏi tiếp theo dưới carousel) |
 | Hệ thống | Dòng chữ nhỏ căn giữa: "Đã đổi: 3 ngày → 2 ngày", "Đã thêm 5 dịch vụ vào giỏ · [Xem giỏ]" |
@@ -886,7 +892,7 @@ Nếu cắt về single-turn (handbook §2, mục 6) thì thẻ này là cách *
 |---|---|---|
 | **Rỗng** | Lời chào có tên (nếu đã đăng nhập) + 3–4 câu mẫu dạng thẻ + dòng phạm vi. Khách vãng lai có thêm dòng "Đăng nhập để kế hoạch ưu tiên những gì hợp với bạn" | `[R87]` Booking.com iOS; `[R89]` Mindtrip web |
 | **Đang xử lý** | Thẻ tiến độ 3 bước trong chat + skeleton panel. Nút "Dừng" hủy request và khôi phục ô nhập kèm nội dung vừa gửi | `[R109]` Wabi iOS; `[R110]` Structured iOS |
-| **Chậm** (> 8 giây, vượt mục tiêu p95 5 giây) | Thêm dòng "Vẫn đang làm, lâu hơn thường lệ một chút…" + link "Xem kết quả tìm kiếm trước" (mở fallback song song) | — |
+| **Chậm** (> 12 giây không có bước nào xong — thời gian dồn vào các node gọi LLM nên đo theo từng node, không theo cả lượt) | Thêm dòng "Đang lâu hơn thường lệ. Bạn có thể đợi thêm hoặc dừng." + link "Xem kết quả tìm kiếm trước" (mở fallback song song) | — |
 | **Có kế hoạch** | 6.3 | — |
 | **Kế hoạch một phần** | Khung giờ không có sản phẩm hợp lệ thì hiện `ActivityNote` do LLM viết. Nếu cả một ngày không có sản phẩm nào thì hiện "Chưa tìm thấy dịch vụ phù hợp cho ngày này · [Tìm ở {destination}]" | — |
 | **Ngoài phạm vi** (hỏi thời tiết, visa, chuyện chung) | Tin nhắn: "Mình chỉ giúp lên lịch trình và gợi ý dịch vụ du lịch trên V-OTA. Thử: …" + 2 câu mẫu | `[R101]` Wanderlog iOS (giới hạn phạm vi được nói rõ) |
@@ -899,7 +905,7 @@ Nếu cắt về single-turn (handbook §2, mục 6) thì thẻ này là cách *
 
 **Hiện trạng code:** client có wrapper cho cart, event và booking; route Cart, Checkout và Confirmation hiện render màn hình API chưa khả dụng, chưa gọi các wrapper này. Chưa xác minh luồng ghi booking/event hoặc cập nhật recommendation qua Backend.
 
-- "Thêm vào giỏ" từ chat ghi `add_to_cart` như mọi nơi khác (không có đường tắt ghi `purchase`).
+- "Thêm vào giỏ", "Đặt ngay" và "Thanh toán tất cả" từ chat ghi `add_to_cart` như mọi nơi khác (không có đường tắt ghi `purchase`). Khách sạn và vé máy bay của kế hoạch không vào giỏ: chúng chỉ nằm trong đơn nháp của lần thanh toán đó.
 - Sau khi đặt xong từ các mục của kế hoạch, Confirmation hiện CTA "Quay lại lịch trình" (giữ hội thoại trong phiên) bên cạnh "Xem gợi ý mới trên trang chủ".
 - Kế hoạch **không** tự cập nhật giá sau khi tạo. Băng grounding ghi "giá tại thời điểm tạo kế hoạch". Giỏ và Checkout luôn dùng giá mới nhất và báo nếu giá đổi.
 
@@ -930,7 +936,7 @@ Quy tắc chung: vùng chạm ≥ 44 × 44 px, lề ngang 16 px, không cuộn n
 | **Home** | Ô tìm kiếm to trên cùng. Section ① lên thứ hai, carousel ngang (thẻ rộng 72% màn hình). Checklist chuyến thành hàng chip cuộn ngang. `BecauseLine` giữ 1 dòng, cắt tên ở 24 ký tự. Toast "trang chủ đã cập nhật" hiện ngay trên tab bar | `[R08]` Airbnb iOS; `[R13]` Booking.com iOS; `[R15]` Best Buy iOS (toast ngay trên tab bar) |
 | **Search (nhập)** | Bấm ô tìm kiếm mở màn hình toàn phần: ô nhập + "Tìm kiếm gần đây" + "Thử tìm" | `[R37]` Booking.com iOS; `[R38]` Skyscanner iOS |
 | **Search (kết quả)** | Thẻ dọc (ảnh trên, nội dung dưới). Hàng chip dính dưới header: [Bộ lọc (n)] [Khách sạn] [Vé tham quan] [Sắp xếp ▾]. "Bộ lọc" mở bottom sheet toàn phần, nút dính đáy "Xem {n} kết quả" | `[R120]` Agoda iOS (chip "Filters 6" + khoảng giá + "Sort" dính trên cùng); `[R36]` Booking.com iOS (sheet lọc với nút dính đáy "925 matching properties · Show results"); `[R121]` Skyscanner iOS (nút nổi "Sort and filters") |
-| **Product detail** | Ảnh full-width trên cùng. Tabs anchor thành hàng cuộn ngang dính. Hộp đặt chuyển thành **thanh dính đáy**: "Từ 3.400.000 ₫ / đêm" + [Chọn ngày] → mở bottom sheet chọn ngày/số lượng → [Thêm vào giỏ] [Đặt ngay]. Section Tương tự thành carousel | `[R117]` Agoda iOS (thanh đáy "Start at S$64 · Choose my room"); `[R118]` Agoda iOS (vé tham quan: thẻ ngày cuộn ngang + thanh đáy "Starts from · See options") |
+| **Product detail** | Ảnh full-width trên cùng. Tabs anchor thành hàng cuộn ngang dính. Hộp đặt chuyển thành **thanh dính đáy**: "Từ 3.400.000 ₫ / đêm" + [Chọn ngày] → mở bottom sheet chọn ngày/số lượng → [Thêm vào giỏ] (chỉ tour, trải nghiệm, tiện ích) [Đặt ngay]. Section Tương tự thành carousel | `[R117]` Agoda iOS (thanh đáy "Start at S$64 · Choose my room"); `[R118]` Agoda iOS (vé tham quan: thẻ ngày cuộn ngang + thanh đáy "Starts from · See options") |
 | **Cart** | Danh sách 1 cột. Tóm tắt thành **thanh dính đáy**: "Tổng 14.180.000 ₫ ▴" (bấm để mở chi tiết) + [Đặt chỗ]. "Thường được đặt cùng" carousel dưới danh sách | `[R58]` Klook web (bản desktop; cấu trúc tương đương) |
 | **Checkout** | 1 cột, ba bước. Thanh cố định ở đáy: "2 người lớn · 1 trẻ em", tổng tiền ⌃ (bấm mở bottom sheet tóm tắt đơn) và nút chính của bước (Tiếp tục / Thanh toán {tổng}). Bàn phím: email `type=email`, điện thoại `type=tel`, ngày sinh `inputMode=numeric`. Dòng "Giữ chỗ 30 phút sau khi bấm Thanh toán" dưới nút ở bước ③ | `[R119]` Agoda iOS (CTA dính đáy "NEXT: FINAL STEP") |
 | **Confirmation** | Mã tham chiếu + nút sao chép trên cùng. Hai CTA xếp dọc full-width. Gợi ý thành carousel | — |
@@ -955,7 +961,7 @@ Quy tắc chung: vùng chạm ≥ 44 × 44 px, lề ngang 16 px, không cuộn n
 │    └───────────────────────────┘│      │ …                               │
 │ [Đổi thành 2 ngày] [Rẻ hơn]  → │      ├─────────────────────────────────┤
 ├────────────────────────────────┤      │ 5 dịch vụ · 9.870.000 ₫          │
-│ [Nhập yêu cầu chuyến đi…] [➤] │      │ [   Thêm tất cả vào giỏ   ]      │
+│ [Nhập yêu cầu chuyến đi…] [➤] │      │ [    Thanh toán tất cả    ]      │
 └────────────────────────────────┘      └─────────────────────────────────┘
       Màn hình chat (toàn phần)              Sheet kế hoạch (toàn phần)
 ```

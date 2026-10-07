@@ -314,7 +314,8 @@ ItineraryPlan:
       - 'null'
       minimum: 0
       description: Backend tính tổng khi đủ đơn vị/số lượng; thiếu thì null, budgetStatus UNKNOWN và warning.
-        Không bỏ qua khoản chưa biết.
+        Không bỏ qua khoản chưa biết. Điểm tham quan tự do (attraction/golf có ticketed=false hoặc unitPrice null)
+        tính 0 vào tổng, kèm warning FREE_ENTRY_ASSUMED.
     currency:
       $ref: ../openapi.yaml#/components/schemas/Currency
     budgetStatus:
@@ -406,8 +407,21 @@ ItineraryCompleted:
             maximum: 7
     itinerary:
       $ref: ../openapi.yaml#/components/schemas/ItineraryPlan
+    message:
+      type: string
+      description: >-
+        Lời diễn giải lịch trình hiển thị trong khung chat. Dòng đầu có dạng `**Tiêu đề**` (markdown in đậm), các
+        mục sau mở đầu bằng một dòng in đậm. Khi lượt này đổi thông tin chuyến đi, câu ngay sau tiêu đề ghi nhận
+        thay đổi đó. Sản phẩm chỉ được nhắc bằng link `[Tên](product:<productId>)`, với `productId` có trong
+        `itinerary` và tên sao chép từ dữ liệu; giá trong câu lấy từ dữ liệu sản phẩm và `estimatedTotal`. Không có
+        trường này thì client hiển thị `itinerary.title`.
     searchResults:
-      $ref: ../openapi.yaml#/components/schemas/SearchResultsByTaxonomy
+      description: >-
+        Gói hoặc tour nhiều ngày (vé dùng 2 ngày trở lên, tour 3N2Đ...) tìm được nhưng không xếp vào một buổi của
+        lịch trình, để người dùng cân nhắc riêng; `message` có mục hỏi người dùng có muốn thêm không. Không tính vào
+        `estimatedTotal`.
+      allOf:
+      - $ref: ../openapi.yaml#/components/schemas/SearchResultsByTaxonomy
     warnings:
       type: array
       items:
@@ -483,6 +497,15 @@ ItineraryNeedsClarification:
           type: string
           format: date
           description: Ngày khởi hành sớm nhất được phép chọn; hôm nay theo giờ Việt Nam.
+    suggestions:
+      type: array
+      maxItems: 3
+      description: >-
+        Tuỳ chọn (1.13.0). Câu yêu cầu gửi được nguyên văn làm lượt chat kế tiếp, cùng ngữ nghĩa với
+        `ItineraryNoResults.suggestions`. Có khi điều kiện bắt buộc (khách sạn, khách sạn hoặc hoạt động cụ thể)
+        không có sản phẩm nào đáp ứng, ví dụ ngày khởi hành gần nhất còn bán hoặc lập lịch không cần khách sạn.
+      items:
+        type: string
     metadata:
       $ref: ../openapi.yaml#/components/schemas/ItineraryMetadata
 ItineraryNoResults:

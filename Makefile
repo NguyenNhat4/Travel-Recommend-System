@@ -16,7 +16,36 @@ LOCAL_SEED_DATABASE_URL = postgresql://postgres:postgres@localhost:$(POSTGRES_HO
 MIGRATE_PYTHON = $(shell test -x src/backend/.venv/bin/python && echo src/backend/.venv/bin/python || echo $(PYTHON))
 LOCAL_INSIDER_DATABASE_URL = postgresql://postgres:postgres@localhost:$(POSTGRES_HOST_PORT)/insider
 
-.PHONY: chat web demo-db demo-db-reset verify-db index-vectors db-migrate db-migrate-status update backend backend-logs backend-stop backend-local jwt-keys
+.PHONY: tunnel tunnel-down tunnel-status chat agent-eval web demo-db demo-db-reset verify-db index-vectors db-migrate db-migrate-status update backend backend-logs backend-stop backend-local jwt-keys
+
+# SSH tunnel tới DB staging: primary (ghi) :15432, replica (đọc) :15433. Mật khẩu đọc từ .env.tunnel (gitignore),
+# nạp qua SSH_ASKPASS nên không cần sshpass. Chạy nền; dừng bằng `make tunnel-down`.
+TUNNEL_PRIMARY = 127.0.0.1:15432:10.148.0.2:5432 vota-dev@35.197.148.180
+TUNNEL_REPLICA = 127.0.0.1:15433:10.148.0.4:5432 vota-dev@34.126.70.1
+tunnel:
+	if [[ ! -f .env.tunnel ]]; then echo "Thiếu .env.tunnel (SSH_PRIMARY_PASSWORD, SSH_REPLICA_PASSWORD)"; exit 1; fi
+	ASKPASS="$$(mktemp)"; trap 'rm -f "$$ASKPASS"' EXIT
+	printf '#!/bin/sh\nprintf %%s "$$TUNNEL_PW"\n' > "$$ASKPASS"; chmod 700 "$$ASKPASS"
+	open_tunnel() { # $$1=tên $$2=cổng local $$3=biến mật khẩu $$4=spec "-L ... user@host"
+		if (exec 3<>/dev/tcp/127.0.0.1/$$2) 2>/dev/null; then echo "$$1: cổng $$2 đã mở, bỏ qua"; return; fi
+		PW="$$(sed -n "s/^$$3=//p" .env.tunnel | tail -n 1)"
+		if [[ -z "$$PW" ]]; then echo "$$1: thiếu $$3 trong .env.tunnel"; exit 1; fi
+		TUNNEL_PW="$$PW" SSH_ASKPASS="$$ASKPASS" SSH_ASKPASS_REQUIRE=force setsid ssh -f -N \
+			-o PreferredAuthentications=password -o PubkeyAuthentication=no \
+			-o ExitOnForwardFailure=yes -o StrictHostKeyChecking=accept-new \
+			-o ServerAliveInterval=30 -L $$4
+		echo "$$1: tunnel mở trên :$$2"
+	}
+	open_tunnel primary 15432 SSH_PRIMARY_PASSWORD "$(TUNNEL_PRIMARY)"
+	open_tunnel replica 15433 SSH_REPLICA_PASSWORD "$(TUNNEL_REPLICA)"
+
+tunnel-down:
+	pkill -f "ssh -f -N .*-L 127.0.0.1:1543[23]:" && echo "Đã tắt tunnel" || echo "Không có tunnel đang chạy"
+
+tunnel-status:
+	for p in 15432 15433; do
+		if (exec 3<>/dev/tcp/127.0.0.1/$$p) 2>/dev/null; then echo ":$$p mở"; else echo ":$$p đóng"; fi
+	done
 .PHONY: recsys-test recsys-gate-run recsys-regress recsys-baseline
 
 # Chạy trọn bộ FastAPI + Streamlit; Ctrl+C sẽ dừng cả hai.
@@ -31,8 +60,6 @@ chat:
 		echo "Không tìm thấy .venv. Hãy chạy:"
 		echo "  python3 -m venv .venv"
 		echo "  .venv/bin/pip install -r src/backend/requirements.txt -r src/evaluation/requirements.txt"
-		echo "  # embedding local (Search/RecSys): Linux cài torch CPU trước, xem đầu src/backend/requirements-embed.txt"
-		echo "  .venv/bin/pip install -r src/backend/requirements-embed.txt"
 		exit 1
 	fi
 	cleanup() {
@@ -79,6 +106,59 @@ chat:
 		--server.port "$${STREAMLIT_PORT}" \
 		> >(tee -a "$${LOG_FILE}") 2>&1
 
+# Giao diện chạy bộ test case của Itinerary Agent (src/evaluation/agent/eval_app.py, docs/spec/agent/golden-run.md).
+# Backend đã chạy ở BACKEND_PORT thì dùng lại; chưa thì bật như target chat và tắt cùng lúc Ctrl+C.
+agent-eval:
+	@PROJECT_DIR="$$(pwd)"
+	PYTHON_BIN="$${PROJECT_DIR}/.venv/bin/python"
+	BACKEND_PORT="$${BACKEND_PORT:-8000}"
+	EVAL_PORT="$${EVAL_PORT:-8503}"
+	LOG_FILE="$${AGENT_EVAL_LOG_FILE:-$${PROJECT_DIR}/.logs/agent-eval.log}"
+	STATUS_URL="http://127.0.0.1:$${BACKEND_PORT}/api/v1/assistant/status"
+	if [[ ! -x "$${PYTHON_BIN}" ]]; then
+		echo "Không tìm thấy .venv. Hãy chạy:"
+		echo "  python3 -m venv .venv"
+		echo "  .venv/bin/pip install -r src/backend/requirements.txt -r src/evaluation/requirements.txt"
+		exit 1
+	fi
+	cleanup() {
+		if [[ -n "$${BACKEND_PID:-}" ]]; then
+			kill "$${BACKEND_PID}" 2>/dev/null || true
+			wait "$${BACKEND_PID}" 2>/dev/null || true
+		fi
+	}
+	trap cleanup EXIT INT TERM
+	mkdir -p "$$(dirname "$${LOG_FILE}")"
+	touch "$${LOG_FILE}"
+	if curl --silent --fail --max-time 2 "$${STATUS_URL}" >/dev/null; then
+		echo "Dùng backend đang chạy tại :$${BACKEND_PORT}"
+	else
+		export ITINERARY_DATA_MODE="$${ITINERARY_DATA_MODE:-inprocess}"
+		export ITINERARY_SERVICE_BASE_URL="$${ITINERARY_SERVICE_BASE_URL:-http://127.0.0.1:$${BACKEND_PORT}}"
+		export ITINERARY_LLM_TIMEOUT_SECONDS="$${ITINERARY_LLM_TIMEOUT_SECONDS:-30}"
+		export ITINERARY_REQUEST_TIMEOUT_SECONDS="$${ITINERARY_REQUEST_TIMEOUT_SECONDS:-90}"
+		echo "Khởi động FastAPI tại http://127.0.0.1:$${BACKEND_PORT} (log: $${LOG_FILE})"
+		"$${PYTHON_BIN}" -m uvicorn src.backend.app.main:app \
+			--host 127.0.0.1 --port "$${BACKEND_PORT}" \
+			> >(tee -a "$${LOG_FILE}") 2>&1 &
+		BACKEND_PID=$$!
+		echo "Đang chờ backend báo ready (nạp recsys mất 1–2 phút)..."
+		for _ in $$(seq 1 300); do
+			if ! kill -0 "$${BACKEND_PID}" 2>/dev/null; then
+				echo "FastAPI đã dừng khi khởi động. Xem log tại $${LOG_FILE}."
+				exit 1
+			fi
+			if curl --silent --max-time 1 "$${STATUS_URL}" 2>/dev/null | grep -q '"status":"ready"'; then
+				break
+			fi
+			sleep 1
+		done
+	fi
+	export EVAL_API_BASE_URL="http://127.0.0.1:$${BACKEND_PORT}"
+	echo "Mở giao diện tại http://127.0.0.1:$${EVAL_PORT}"
+	"$${PYTHON_BIN}" -m streamlit run src/evaluation/agent/eval_app.py \
+		--server.port "$${EVAL_PORT}" --server.headless true
+
 # Chạy web chính (Next :3000 + BFF :3001) cùng FastAPI :8000; Ctrl+C dừng cả hai.
 # Lưu ý: chat trong web hiện gọi /api/assistant/chat của BFF (Gemini), CHƯA gọi
 # /api/v1/assistant/itineraries của FastAPI. FastAPI ở đây phục vụ các API khác
@@ -98,8 +178,6 @@ web:
 		echo "Không tìm thấy .venv. Hãy chạy:"
 		echo "  python3 -m venv .venv"
 		echo "  .venv/bin/pip install -r src/backend/requirements.txt"
-		echo "  # embedding local (Search/RecSys): Linux cài torch CPU trước, xem đầu src/backend/requirements-embed.txt"
-		echo "  .venv/bin/pip install -r src/backend/requirements-embed.txt"
 		exit 1
 	fi
 	if ! command -v npm >/dev/null 2>&1; then
@@ -169,7 +247,6 @@ verify-db:
 	docker compose exec -T postgres psql -U postgres -d insider < db/verify_insider.sql
 
 # Cài thêm dependency khi requirements.txt hoặc package.json đổi (vd sau git pull). Không đụng DB hay dữ liệu.
-# Embedding local (requirements-embed.txt): trên Linux cài torch bản CPU từ index của PyTorch trước (bản PyPI kéo CUDA).
 # Venv: .venv (make web/chat dùng) hoặc src/backend/.venv (README dùng), cái nào có trước.
 update:
 	@VENV="$$(for v in .venv src/backend/.venv; do [[ -x $$v/bin/python ]] && echo $$v && break; done || true)"
@@ -179,11 +256,6 @@ update:
 	fi
 	echo "==> Python: $${VENV}"
 	"$${VENV}/bin/python" -m pip install -r src/backend/requirements.txt -r src/evaluation/requirements.txt
-	if [[ "$$(uname -s)" == Linux ]]; then
-		"$${VENV}/bin/python" -m pip install --index-url https://download.pytorch.org/whl/cpu \
-			"$$(grep -E '^torch==' src/backend/requirements-embed.txt)"
-	fi
-	"$${VENV}/bin/python" -m pip install -r src/backend/requirements-embed.txt
 	if ! command -v npm >/dev/null 2>&1; then
 		echo "Không tìm thấy npm. Cần Node.js để cập nhật frontend."
 		exit 1
@@ -192,9 +264,7 @@ update:
 	npm --prefix src/frontend install
 	echo "Đã cập nhật dependency."
 
-# Embed search unit vào WEAVIATE_COLLECTION bằng EMBED_PROVIDER: mặc định model local e5-small → ProductE5 (cần
-# requirements-embed.txt, không tốn quota, vài phút CPU nên không tự chạy trong demo-db). Đường lui Cohere
-# (EMBED_PROVIDER=cohere + WEAVIATE_COLLECTION=Product + COHERE_API_KEY trong .env) tốn quota Cohere.
+# Embed toàn catalog bằng e5-small trên CPU (vài phút) nên không tự chạy trong demo-db.
 index-vectors:
 	docker compose up -d --wait postgres weaviate
 	$(PYTHON) -m src.backend.jobs.embed_products

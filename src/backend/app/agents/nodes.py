@@ -1,17 +1,17 @@
-"""Mười một node của graph itinerary — mỗi node một hàm, luật chi tiết nằm ở các module cạnh file này.
+"""Mười hai node của graph itinerary — mỗi node một hàm, luật chi tiết nằm ở các module cạnh file này.
 
-LLM chỉ đọc yêu cầu và viết câu chữ (`classify`, `extract`, `tool` khi khớp điểm đến, `clarify`, `converse`);
-sản phẩm, giá và lịch trình đều do luật tất định dựng từ dữ liệu tool trả về. Mọi lượt gọi LLM nhận cùng
-ngữ cảnh hội thoại (`steps/history.llm_context`).
+LLM chỉ đọc yêu cầu và viết câu chữ (`classify`, `extract`, `tool` khi khớp điểm đến, `clarify`, `converse`,
+`narrate`); sản phẩm, giá và lịch trình đều do luật tất định dựng từ dữ liệu tool trả về. Mọi lượt gọi LLM nhận
+cùng ngữ cảnh hội thoại (`steps/history.llm_context`).
 
-Sáu node có thêm biến thể `_async` vì LangGraph cần cả hàm sync lẫn async cho cùng một node
+Bảy node có thêm biến thể `_async` vì LangGraph cần cả hàm sync lẫn async cho cùng một node
 (`graph.py` nối chúng qua `RunnableLambda(func, afunc=...)`); `tool` chỉ có bản async.
 
-    intake → classify ─┬→ extract ─┬→ tool → evaluate ─┬→ compose ──┐
-                       │           │                   ├→ retry ────┤
-                       │           ├→ clarify ─────────┤            ├→ finalize → END
-                       ├→ converse ┼───────────────────┤            │
-                       └→ dead_letter ←────────────────┴────────────┘
+    intake → classify ─┬→ extract ─┬→ tool → evaluate ─┬→ compose → narrate ──┐
+                       │           │                   ├→ retry ──────────────┤
+                       │           ├→ clarify ─────────┤                      ├→ finalize → END
+                       ├→ converse ┼───────────────────┤                      │
+                       └→ dead_letter ←────────────────┴──────────────────────┘
 
 Bảng tra cứu từng node: `docs/spec/agent/langgraph-nodes.md` §6; tên field: `docs/spec/agent/state-fields.md`.
 """
@@ -24,18 +24,20 @@ from time import time
 import uuid
 
 from src.backend.app.application.itinerary.contracts import error_response
+from src.backend.app.core.logging_config import log_event
 from src.backend.app.application.itinerary.retrieval import hydrate
 from src.backend.app.application.ports.conversation_archive import ConversationArchivePort
 from src.backend.app.application.ports.itinerary_tools import ConversationStorePort, ToolExecutorPort
 from src.backend.app.domain.itinerary.normalization import normalize_intent
 from src.backend.app.domain.itinerary.planning import empty_intent
 
-from .steps import composition, conversation, evaluation, guardrails, messages, tool_planning, validation
+from .steps import (composition, conversation, evaluation, guardrails, messages, narration, tool_planning,
+                    turn_notes, validation)
 from .steps.classification import extract_result, extraction_input, route_input, route_result
 from .steps.failures import terminal_failure
 from .steps.history import append_conversation_turn, sanitize_conversation_history
 from .steps.messages import chat_model, event, failure, message
-from .models import ConversationalAnswer, Extraction, TurnRoute
+from .models import ConversationalAnswer, Extraction, ItineraryNarration, TurnRoute
 from .state import AgentState
 
 logger = logging.getLogger("uvicorn.error")
@@ -48,24 +50,26 @@ def intake_node(state: AgentState) -> dict:
 
     Đọc: `query`/`message`, `conversation_id`, `conversation_history`, `intent`, `constraints`,
     `previous_selection`, `language`.
-    Ghi: toàn bộ field của `AgentState` về giá trị đầu lượt, kể cả bộ đếm retry và mốc đo latency.
+    Ghi: toàn bộ field của `AgentState` về giá trị đầu lượt, kể cả bộ đếm retry và mốc đo latency;
+    `previous_intent` là bản chụp intent đầu lượt để `narrate` nêu được lượt này đổi gì.
     Đi tiếp: `classify`.
     """
     return {"query": state.get("query", state.get("message", "")).strip(),
             "conversation_id": state.get("conversation_id") or str(uuid.uuid4()),
             "conversation_history": sanitize_conversation_history(state.get("conversation_history", [])),
             "intent": deepcopy(state.get("intent") or empty_intent()),
+            "previous_intent": deepcopy(state.get("intent") or empty_intent()),
             "constraints": deepcopy(state.get("constraints", {})),
             "previous_selection": deepcopy(state.get("previous_selection", [])),
             "attempt": 0,
             "max_attempts": min(max(1, state.get("max_attempts", MAX_ATTEMPTS)), MAX_ATTEMPTS),
             "tool_plan": [], "tool_results": [], "details": {}, "detail_errors": {},
-            "supported_destinations": None,
-            "candidates": {}, "sources": {}, "response": {}, "warnings": [],
+            "supported_destinations": None, "destination_kind": None,
+            "candidates": {}, "sources": {}, "response": {}, "warnings": [], "drop_summary": {},
             "missing_fields": [], "start_date_asked": bool(state.get("start_date_asked", False)),
             "clarification_rounds": int(state.get("clarification_rounds", 0) or 0),
             "invalid_inputs": [],
-            "interaction_type": "", "refusal": False, "blocked_by_guardrail": None,
+            "interaction_type": "", "refusal": False, "blocked_by_guardrail": None, "unclear_input": None,
             "final_answer": None, "http_status": 200, "decision": "", "validation_issues": [],
             "started_at": time(), "language": state.get("language") or "vi",
             "events": [event("intake", "request initialized")]}
@@ -99,7 +103,8 @@ async def intake_node_async(state: AgentState, *, store: ConversationStorePort |
         if previous is None:
             update.update(failure(state, "CONVERSATION_NOT_FOUND", message(update, "conversation_not_found"), 404))
         else:
-            update.update(intent=previous["intent"], constraints=previous.get("constraints", {}),
+            update.update(intent=previous["intent"], previous_intent=deepcopy(previous["intent"]),
+                          constraints=previous.get("constraints", {}),
                           start_date_asked=bool(previous.get("start_date_asked", False)),
                           clarification_rounds=int(previous.get("clarification_rounds", 0) or 0),
                           language=state.get("language") or previous.get("language", "vi"),
@@ -128,9 +133,26 @@ def _guardrail_blocked_input(state: AgentState) -> dict | None:
             "events": [event("classify", "guardrail blocked input", pattern=reason)]}
 
 
+def _guardrail_junk_input(state: AgentState) -> dict | None:
+    """Tầng 1 (NFR-SEC-04): tin nhắn rác hiển nhiên không tốn lượt gọi LLM nào. Rác → `unclear_input`,
+    `converse` trả câu "chưa hiểu" cố định; chỉ có tục tĩu → nhánh từ chối của guardrail (`blocked_by_guardrail`).
+    Event chỉ ghi tên luật, không ghi câu người dùng."""
+    verdict = guardrails.input_quality(state.get("query", ""))
+    if verdict is None:
+        return None
+    kind, rule = verdict
+    update = {"decision": "simple", "missing_fields": [],
+              "events": [event("classify", "guardrail tier1", rule=rule)]}
+    if kind == guardrails.ABUSIVE:
+        return {**update, "interaction_type": "out_of_scope", "refusal": True,
+                "blocked_by_guardrail": f"{kind}:{rule}"}
+    return {**update, "interaction_type": "conversation", "refusal": False, "unclear_input": rule}
+
+
 def _llm_failed(state: AgentState, node: str, mode: str, timeout_seconds: float | None = None) -> dict:
-    logger.exception("itinerary.llm_failed requestId=%s node=%s mode=%s timeoutSeconds=%s",
-                     state.get("request_id", "unknown"), node, mode, timeout_seconds)
+    log_event(logger, "assistant.llm.call", "ERROR", exc_info=True, schema=node, outcome="failed",
+              request_id=state.get("request_id"),
+              message=f"itinerary.llm_failed node={node} mode={mode} timeoutSeconds={timeout_seconds}")
     return {**failure(state, "LLM_UNAVAILABLE", message(state, "llm_understand"), retryable=True),
             "events": [event(node, "LLM_UNAVAILABLE")]}
 
@@ -139,8 +161,10 @@ def classify_node(state: AgentState, *, llm=None) -> dict:
     """Phân luồng lượt chat, không trích gì khác. **Gọi LLM** (prompt ngắn, output một nhãn).
 
     Đọc: `query` và ngữ cảnh hội thoại chung (`history.llm_context`).
-    Ghi: `decision` (`travel`/`simple`/`error`), `interaction_type` (`travel`/`conversation`/`out_of_scope`), `refusal`, `missing_fields`.
-    Đi tiếp (`routing.route_after_classify`): `extract` khi là du lịch · `converse` khi trò chuyện hoặc
+    Ghi: `decision` (`travel`/`missing_info`/`simple`/`error`), `interaction_type` (`travel`/`conversation`/`out_of_scope`), `refusal`, `missing_fields`;
+    nhãn `vague` còn ghi `clarification_reason`, `start_date_asked`, `clarification_rounds`.
+    Đi tiếp (`routing.route_after_classify`): `extract` khi là du lịch · `clarify` (kèm form) khi câu trả lời
+    không thêm được thông tin mà chuyến đi còn thiếu trường bắt buộc · `converse` khi trò chuyện hoặc
     ngoài phạm vi (đặt chỗ, thanh toán, chèn lệnh đều là ngoài phạm vi) · `dead_letter` khi lỗi.
     """
     if state.get("decision") == "error":
@@ -148,7 +172,7 @@ def classify_node(state: AgentState, *, llm=None) -> dict:
     shortcut = _travel_without_message(state)
     if shortcut is not None:
         return shortcut
-    blocked = _guardrail_blocked_input(state)
+    blocked = _guardrail_blocked_input(state) or _guardrail_junk_input(state)
     if blocked is not None:
         return blocked
     try:
@@ -165,7 +189,7 @@ async def classify_node_async(state: AgentState, *, llm=None, timeout_seconds: f
     shortcut = _travel_without_message(state)
     if shortcut is not None:
         return shortcut
-    blocked = _guardrail_blocked_input(state)
+    blocked = _guardrail_blocked_input(state) or _guardrail_junk_input(state)
     if blocked is not None:
         return blocked
     try:
@@ -182,7 +206,8 @@ def extract_node(state: AgentState, *, llm=None) -> dict:
     Đọc: `query`, ngữ cảnh hội thoại chung, `intent_override`, `start_date_asked`.
     Ghi: `intent`, `constraints`, `missing_fields`, `start_date_asked`, `clarification_reason`, `invalid_inputs`,
     `decision` (`tool`/`missing_info`/`error`). Ngày đi đã qua, số ngày/số người/ngân sách ngoài giới hạn bị xoá
-    khỏi intent và hỏi lại (`clarification_reason = "invalid_input"`). Trên đường async, điểm đến ngoài catalog
+    khỏi intent và hỏi lại (`clarification_reason = "invalid_input"`). Người dùng muốn đổi một trường mà chưa nói giá trị mới
+    ('đổi ngày') thì LLM điền `change_without_value`: hỏi lại trường đó (`clarification_reason = "change_without_value"`), giữ intent cũ. Trên đường async, điểm đến ngoài catalog
     (ngoài Việt Nam) cũng bị xoá và hỏi lại ngay, kể cả khi còn thiếu số ngày; `supported_destinations` ghi sẵn cho `tool`.
     Đi tiếp (`routing.route_after_extract`): `tool` khi đủ điểm đến, số ngày và đã xử lý ngày đi ·
     `clarify` khi thiếu, mâu thuẫn hoặc có điều kiện không xác minh được · `dead_letter` khi lỗi.
@@ -305,12 +330,16 @@ def converse_node(state: AgentState, *, llm=None) -> dict:
 
     Đọc: `query`, `conversation_history`, `interaction_type`, `refusal`, `intent`, `missing_fields`.
     Ghi: `response` `NEEDS_CLARIFICATION`, hoặc `VALIDATION_ERROR` (400) khi yêu cầu ngoài phạm vi.
-    Đi tiếp: `finalize`. `blocked_by_guardrail` (từ `classify`) thì dùng câu từ chối cố định, không gọi LLM.
+    Đi tiếp: `finalize`. `blocked_by_guardrail` (từ `classify`) thì dùng câu từ chối cố định, `unclear_input`
+    (tin nhắn rác, tầng 1) thì dùng câu "chưa hiểu" cố định — cả hai không gọi LLM.
     """
     if state.get("blocked_by_guardrail"):
         update = conversation.conversational_fallback(state)
         return {**update, "events": [event("converse", "guardrail blocked input, skipped LLM",
                                             pattern=state["blocked_by_guardrail"])]}
+    if state.get("unclear_input"):
+        return {**conversation.unclear_input_reply(state),
+                "events": [event("converse", "unclear input, skipped LLM", rule=state["unclear_input"])]}
     try:
         result = chat_model(llm).with_structured_output(ConversationalAnswer).invoke(
             conversation.conversation_input(state))
@@ -328,6 +357,9 @@ async def converse_node_async(state: AgentState, *, llm=None, timeout_seconds: f
         update = conversation.conversational_fallback(state)
         return {**update, "events": [event("converse", "guardrail blocked input, skipped LLM",
                                             pattern=state["blocked_by_guardrail"])]}
+    if state.get("unclear_input"):
+        return {**conversation.unclear_input_reply(state),
+                "events": [event("converse", "unclear input, skipped LLM", rule=state["unclear_input"])]}
     try:
         result = await asyncio.wait_for(
             chat_model(llm).with_structured_output(ConversationalAnswer).ainvoke(
@@ -345,12 +377,60 @@ def compose_node(state: AgentState) -> dict:
 
     Đọc: `decision`, `candidates`, `sources`, `intent`, `constraints`, `warnings`.
     Ghi: `response` `COMPLETED` (lịch trình dựng bằng `compose_plan`), hoặc `NO_RESULTS`/`FALLBACK`.
-    Đi tiếp: `finalize`.
+    Đi tiếp: `narrate`.
     """
     update = composition.retrieval_outcome(state) or composition.compose_or_fallback(state)
     completed = update.get("response", {}).get("status") == "COMPLETED"
     return {**update, "events": [event("compose", "itinerary composed by rules" if completed
                                        else "no itinerary composed")]}
+
+
+def _narration_skipped(state: AgentState) -> dict | None:
+    if state.get("response", {}).get("status") != "COMPLETED":
+        return {"events": [event("narrate", "skipped (no itinerary)")]}
+    return None
+
+
+def _narration_update(state: AgentState, result: ItineraryNarration | None) -> dict:
+    update, reason = narration.narrated(state, result)
+    return {**update, "events": [event("narrate", "itinerary narrated" if reason == "llm"
+                                       else "narration fallback by rules", reason=reason)]}
+
+
+def narrate_node(state: AgentState, *, llm=None) -> dict:
+    """Viết lời diễn giải cho lịch trình `COMPLETED` như một người lập kế hoạch du lịch. **Gọi LLM.**
+
+    Đọc: `response` (lịch trình đã dựng), `intent`, `previous_intent`, ngữ cảnh hội thoại chung, `language`.
+    Ghi: `response.message` (dòng đầu `**Tiêu đề**`, câu ghi nhận thay đổi do backend chèn, sản phẩm là link
+    `[Tên](product:id)` với tên canonical, giá điền từ dữ liệu) và `response.itinerary.title`. Status khác
+    `COMPLETED` đi qua nguyên vẹn. LLM lỗi, quá giờ hoặc viết id lạ/số tiền tự đặt thì dùng `narration.fallback_message`.
+    Đi tiếp: `finalize`.
+    """
+    skipped = _narration_skipped(state)
+    if skipped is not None:
+        return skipped
+    try:
+        result = chat_model(llm).with_structured_output(ItineraryNarration).invoke(narration.narration_input(state))
+    except Exception:
+        logger.exception("itinerary.llm_failed requestId=%s node=narrate mode=sync", state.get("request_id", "unknown"))
+        result = None
+    return _narration_update(state, result)
+
+
+async def narrate_node_async(state: AgentState, *, llm=None, timeout_seconds: float = 3) -> dict:
+    """`narrate` trên đường async: LLM lỗi hoặc quá `timeout_seconds` thì dùng bản dựng bằng luật."""
+    skipped = _narration_skipped(state)
+    if skipped is not None:
+        return skipped
+    try:
+        result = await asyncio.wait_for(
+            chat_model(llm).with_structured_output(ItineraryNarration).ainvoke(narration.narration_input(state)),
+            timeout_seconds)
+    except Exception:
+        logger.exception("itinerary.llm_failed requestId=%s node=narrate mode=async timeoutSeconds=%s",
+                         state.get("request_id", "unknown"), timeout_seconds)
+        result = None
+    return _narration_update(state, result)
 
 
 def retry_or_fallback_node(state: AgentState) -> dict:
@@ -389,9 +469,10 @@ def finalize_node(state: AgentState) -> dict:
     `conversation_history`, `query`, `started_at`.
     Ghi: `response` đã kiểm, `http_status`, `validation_issues`, `final_answer`,
     `conversation_history`, `latency_ms`.
-    Sai schema hoặc lệch grounding thì thay bằng `ITINERARY_VALIDATION_FAILED` (500). Câu chữ LLM tự viết
-    (`question`/`error.message`) lộ secret hoặc tuyên bố đã đặt/đã thanh toán thì thay bằng câu cố định
-    (`guardrails.output_violations`), giữ nguyên `status`/`http_status`.
+    Sai schema hoặc lệch grounding (kể cả link sản phẩm trong `message` của `COMPLETED`) thì thay bằng
+    `ITINERARY_VALIDATION_FAILED` (500). Câu chữ LLM tự viết (`question`/`error.message`/`message` của `COMPLETED`)
+    lộ secret hoặc tuyên bố đã đặt/đã thanh toán thì thay bằng câu cố định (`guardrails.output_violations`;
+    `COMPLETED` dùng `narration.fallback_message`), giữ nguyên `status`/`http_status`.
     Đi tiếp: `END`.
     """
     response = deepcopy(state.get("response", {}))
@@ -404,12 +485,20 @@ def finalize_node(state: AgentState) -> dict:
         http_status = 500
     else:
         guardrail_issues = guardrails.output_violations(response)
-        if guardrail_issues:
+        if guardrail_issues and response.get("status") == "COMPLETED":
+            # Lịch trình vẫn đúng; chỉ lời diễn giải bị thay bằng bản dựng bằng luật.
+            response["message"] = narration.fallback_message(state, response)
+        elif guardrail_issues:
             # Câu chữ do luật tất định soạn lại, đúng theo `refusal` đã ghi lúc trước — không gọi LLM lần nữa.
             response = conversation.conversational_fallback(state).get("response", response)
     all_issues = issues + [f"guardrail:{reason}" for reason in guardrail_issues]
+    if response.get("status") == "COMPLETED" or all_issues:  # chỉ lượt có lịch trình mới có gì để kiểm grounding
+        log_event(logger, "assistant.grounding", "WARNING" if all_issues else "INFO",
+                  request_id=state.get("request_id"), checked=len(state.get("candidates", {})),
+                  violations=len(all_issues), issues=",".join(all_issues)[:200] or None)
     answer = validation.answer_text(response)
-    history = append_conversation_turn(state.get("conversation_history", []), state.get("query", ""), answer)
+    note = turn_notes.turn_note(state, response, http_status)
+    history = append_conversation_turn(state.get("conversation_history", []), state.get("query", ""), answer, note)
     outcome = "validation failed" if issues else "guardrail output filtered" if guardrail_issues else "response validated"
     return {"response": response, "http_status": http_status, "validation_issues": all_issues,
             "final_answer": answer, "conversation_history": history,

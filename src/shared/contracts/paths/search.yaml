@@ -121,3 +121,43 @@
         $ref: ../openapi.yaml#/components/responses/Error
       '500':
         $ref: ../openapi.yaml#/components/responses/Error
+/search/suggestions:
+  get:
+    tags:
+    - search
+    operationId: suggestSearch
+    summary: Gợi ý tức thì khi gõ ở ô tìm kiếm (FR-SRC-05)
+    description: 'Khớp chữ theo đầu từ trên tên điểm đến và tên search unit của catalog đang phục vụ, không phân
+      biệt dấu và hoa thường. Không gọi embed hay kho vector, không ghi event search sang CDP và không ghi
+      search log, nên Web được gọi theo từng lần gõ. Không gợi ý vé máy bay. `q` có dưới 2 ký tự chữ hoặc
+      số sau chuẩn hoá thì trả `suggestions` rỗng với status 200. Response giống nhau cho mọi người dùng và
+      có `Cache-Control: public`. Thiếu `q`, `q` dài quá 100 ký tự hoặc `limit` ngoài 1–10 trả 422
+      VALIDATION_ERROR.'
+    security: []
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    - name: q
+      in: query
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 100
+    - name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 10
+        default: 8
+    responses:
+      '200':
+        description: Gợi ý, có thể rỗng
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/SearchSuggestionResponse
+      '422':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error

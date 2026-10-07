@@ -3,20 +3,20 @@ import uuid
 from time import perf_counter
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, Query, Request
+from fastapi import APIRouter, Depends, Header, Query, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from src.backend.app.api.deps import get_revoked_tokens, get_search, get_similar
+from src.backend.app.api.deps import get_revoked_tokens, get_search, get_similar, get_suggest
 from src.backend.app.application.auth.bearer import principal_from_header
 from src.backend.app.application.itinerary.contracts import error_response
 from src.backend.app.application.search.search_log import search_log_entry
-from src.backend.app.application.search.use_cases import ANN_DIAGNOSTICS
+from src.backend.app.application.search.use_cases import ANN_DIAGNOSTICS, canonical_query
+from src.backend.app.core.logging_config import log_event
 from src.backend.app.core.request_context import current_request_id
 
-logger = logging.getLogger("uvicorn.error")
-
 router = APIRouter(tags=["search"])
+logger = logging.getLogger(__name__)
 
 
 class GuestsPayload(BaseModel):
@@ -81,6 +81,10 @@ def _safe_search(search_products, query: str, taxonomy: str | None, destination:
     result.setdefault("diagnostics", {})["latencyMs"] = max(
         0, round((perf_counter() - started) * 1000)
     )
+    diagnostics = result["diagnostics"]
+    log_event(logger, "search.run", mode=diagnostics.get("searchMode"), query_text=query[:200],
+              result_count=len(result.get("results") or []), total=result.get("total"),
+              engine_ms=diagnostics.get("latencyMs"), degraded=search_products is None)
     return result
 
 
@@ -157,6 +161,16 @@ def search_post(body: SearchRequestPayload, search_products=Depends(get_search),
     _log_search(request, search_products, query, offset, result, identity,
                 {"taxonomy": body.taxonomy, "destination": body.destination})
     return result
+
+
+# Gợi ý tức thì khi gõ (FR-SRC-05): dữ liệu công khai, giống nhau cho mọi người nên trình duyệt được giữ lại 5 phút.
+@router.get("/search/suggestions")
+def search_suggestions(response: Response, q: str = Query(..., min_length=1, max_length=100),
+                       limit: int = Query(8, ge=1, le=10), suggest_products=Depends(get_suggest)):
+    if suggest_products is None:   # recsys chưa sẵn sàng: không cho cache, lần gõ sau thử lại
+        return {"query": canonical_query(q), "suggestions": []}
+    response.headers["Cache-Control"] = "public, max-age=300"
+    return suggest_products(q, limit=limit)
 
 
 @router.get("/similar/{product_id}")

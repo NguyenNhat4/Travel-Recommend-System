@@ -1,161 +1,139 @@
-"""Adapter embedding local e5-small (FR-SRC-02, chốt 06/10): tiền tố query/passage, mean pooling theo mask, L2-normalize,
-float32, chia lô — không tải model, không cần torch (tiêm `forward` giả)."""
-import threading
+"""e5-small local (PRD FR-SRC-02, chốt 06/10): tiền tố query/passage, normalize, cấu hình, không trộn model trong collection."""
+from __future__ import annotations
+
+import os
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
+from pydantic import ValidationError
 
-from src.backend.app.infrastructure.embeddings import local_e5_embedder as mod
-from src.backend.app.infrastructure.embeddings.local_e5_embedder import LocalE5Embedder, l2_normalize, mean_pool
+from src.backend.app.core.config import Settings
+from src.backend.app.infrastructure.embeddings.factory import build_embedder
+from src.backend.app.infrastructure.embeddings.local_e5_embedder import LocalE5Embedder
+from src.backend.app.infrastructure.vectors.weaviate_store import VectorMetadata
+from src.backend.jobs import embed_products
 
-DIM = 4
-REV = "614241f622f53c4eeff9890bdc4f31cfecc418b3"
 
-
-class FakeForward:
-    """texts → (hidden (n, L, DIM), mask (n, L)). Text dài k ký tự (sau tiền tố) có k token; padding tới text dài nhất lô.
-
-    Token đệm mang giá trị rác lớn để test bắt được pooling quên mask."""
-
-    def __init__(self):
-        self.batches: list[list[str]] = []
+class _Recorder:
+    def __init__(self, dim=4):
+        self.dim, self.batches = dim, []
 
     def __call__(self, texts):
         self.batches.append(list(texts))
-        n, length = len(texts), max(len(t) for t in texts)
-        hidden = np.full((n, length, DIM), 1000.0, dtype=np.float32)
-        mask = np.zeros((n, length), dtype=np.int64)
-        for i, t in enumerate(texts):
-            for j, ch in enumerate(t):
-                hidden[i, j] = [ord(ch) % 7 + 1, j + 1, 1.0, float(len(t))]
-            mask[i, : len(t)] = 1
-        return hidden, mask
+        return np.full((len(texts), self.dim), 2.0, dtype=np.float32)
 
 
-def _expected(text: str) -> np.ndarray:
-    rows = np.array([[ord(ch) % 7 + 1, j + 1, 1.0, float(len(text))] for j, ch in enumerate(text)], dtype=np.float32)
-    v = rows.mean(axis=0)
-    return v / np.linalg.norm(v)
+def test_docs_get_passage_prefix_and_queries_get_query_prefix():
+    encode = _Recorder()
+    embedder = LocalE5Embedder(dimension=4, encode_fn=encode)
+    embedder.embed_docs(["Khách sạn A"])
+    embedder.embed_query("khach san nha trang")
+    embedder.embed_queries(["a", "b"])
+    assert encode.batches == [["passage: Khách sạn A"], ["query: khach san nha trang"], ["query: a", "query: b"]]
 
 
-def _embedder(**kw) -> tuple[LocalE5Embedder, FakeForward]:
-    fwd = FakeForward()
-    return LocalE5Embedder("intfloat/multilingual-e5-small", revision=REV, dimension=DIM, forward=fwd, **kw), fwd
+def test_vectors_are_l2_normalised_and_batched():
+    encode = _Recorder()
+    vectors = LocalE5Embedder(dimension=4, batch_size=2, encode_fn=encode).embed_docs(["a", "b", "c"])
+    assert [len(batch) for batch in encode.batches] == [2, 1]
+    assert vectors.shape == (3, 4)
+    np.testing.assert_allclose(np.linalg.norm(vectors, axis=1), 1.0, rtol=1e-6)
 
 
-def test_query_and_passage_prefixes_are_added_by_the_adapter():
-    emb, fwd = _embedder()
-    emb.embed_query("resort Nha Trang")
-    emb.embed_docs(["Vinpearl Resort", "Vé máy bay"])
-    emb.embed_queries(["a", "b"])
-    assert fwd.batches == [["query: resort Nha Trang"], ["passage: Vinpearl Resort", "passage: Vé máy bay"],
-                           ["query: a", "query: b"]]
+def test_wrong_dimension_and_empty_input():
+    with pytest.raises(RuntimeError, match="shape"):
+        LocalE5Embedder(dimension=384, encode_fn=_Recorder(dim=4)).embed_docs(["a"])
+    assert LocalE5Embedder(dimension=384, encode_fn=_Recorder()).embed_docs([]).shape == (0, 384)
 
 
-def test_mean_pooling_ignores_padding_and_output_is_l2_normalized_float32():
-    emb, _ = _embedder()
-    out = emb.embed_docs(["ab", "a much longer passage"])  # câu ngắn có nhiều token đệm "rác" = 1000
-    assert out.dtype == np.float32 and out.shape == (2, DIM)
-    np.testing.assert_allclose(np.linalg.norm(out, axis=1), 1.0, rtol=1e-6)
-    np.testing.assert_allclose(out[0], _expected("passage: ab"), rtol=1e-6)
-    np.testing.assert_allclose(out[1], _expected("passage: a much longer passage"), rtol=1e-6)
-    q = emb.embed_query("ab")
-    assert q.shape == (DIM,) and q.dtype == np.float32
-    np.testing.assert_allclose(q, _expected("query: ab"), rtol=1e-6)
+def _settings(**env):
+    return Settings(_env_file=None, **env)
 
 
-def test_docs_are_split_into_batches_and_keep_order():
-    emb, fwd = _embedder(batch_size=3)
-    texts = [f"t{i}" for i in range(8)]
-    out = emb.embed_docs(texts)
-    assert [len(b) for b in fwd.batches] == [3, 3, 2]
-    for i, t in enumerate(texts):
-        np.testing.assert_allclose(out[i], _expected("passage: " + t), rtol=1e-6)
+def test_default_is_e5_small_and_other_dimensions_are_rejected():
+    settings = _settings()
+    assert (settings.embed_model, settings.embed_dimension) == ("intfloat/multilingual-e5-small", 384)
+    assert settings.vector_collection == "ProductE5Small"
+    assert settings.search_cutoff == 0.84
+    with pytest.raises(ValidationError, match="EMBED_DIMENSION"):
+        _settings(embed_dimension=1024)
+    with pytest.raises(ValidationError):
+        _settings(embed_model="embed-multilingual-v3.0")  # Cohere đã bỏ (PRD 06/10)
 
 
-def test_batching_does_not_change_vectors():
-    texts = ["khách sạn", "resort biển có hồ bơi", "vé máy bay Hà Nội Phú Quốc", "x"]
-    one, _ = _embedder(batch_size=1)
-    many, _ = _embedder(batch_size=32)
-    np.testing.assert_allclose(one.embed_docs(texts), many.embed_docs(texts), rtol=1e-6)
+def test_factory_builds_the_pinned_e5_small():
+    embedder = build_embedder(_settings())
+    assert isinstance(embedder, LocalE5Embedder)
+    assert (embedder.name, embedder.revision, embedder.dimension) == (
+        "intfloat/multilingual-e5-small", "614241f622f53c4eeff9890bdc4f31cfecc418b3", 384)
 
 
-def test_empty_input_and_dimension_mismatch():
-    emb, fwd = _embedder()
-    assert emb.embed_docs([]).shape == (0, DIM) and fwd.batches == []
-    wrong = LocalE5Embedder("m", revision=REV, dimension=DIM + 1, forward=FakeForward())
-    with pytest.raises(RuntimeError, match="EMBED_DIMENSION"):
-        wrong.embed_query("x")
+class _CohereCollection:
+    """Collection còn vector Cohere: job e5 phải từ chối, không xoá, không ghi."""
 
+    def __init__(self, url, **kwargs):
+        self.writes = []
 
-def test_mean_pool_and_l2_normalize_match_the_bench_formulas():
-    hidden = np.array([[[1, 2], [3, 4], [100, 100]]], dtype=np.float32)
-    mask = np.array([[1, 1, 0]])
-    np.testing.assert_allclose(mean_pool(hidden, mask), [[2.0, 3.0]])
-    np.testing.assert_allclose(mean_pool(hidden, np.zeros((1, 3))), [[0.0, 0.0]])   # clamp 1e-9: không chia cho 0
-    np.testing.assert_allclose(l2_normalize(np.array([[3.0, 4.0], [0.0, 0.0]])), [[0.6, 0.8], [0.0, 0.0]])
+    object_uuid = staticmethod(embed_products.WeaviateClient.object_uuid)
 
-
-def test_revision_is_required():
-    with pytest.raises(ValueError, match="EMBED_MODEL_REVISION"):
-        LocalE5Embedder("intfloat/multilingual-e5-small", revision="")
-
-
-def test_warmup_embeds_a_probe_query_without_loading_a_real_model():
-    emb, fwd = _embedder()
-    assert emb.warmup() >= 0
-    assert fwd.batches == [["query: " + mod.PROBE_QUERY]]
-
-
-def test_model_is_loaded_lazily_once_with_pinned_revision(monkeypatch):
-    """`_load` gọi `from_pretrained` đúng một lần, với revision ghim và safetensors — kể cả khi nhiều luồng gọi cùng lúc."""
-    calls = []
-
-    class FakeTokenizer:
+    def ready(self):
         pass
 
-    class FakeModel:
-        def eval(self):
-            return self
+    def ensure_collection(self):
+        pass
 
-        def to(self, device):
-            calls.append(("to", device))
-            return self
+    def fetch(self, *, include_vectors):
+        old = embed_products.model_version("embed-multilingual-v3.0")
+        return {"P1": VectorMetadata(self.object_uuid("P1"), "P1", old, "x")}, {}
 
-    class AutoTokenizer:
-        @staticmethod
-        def from_pretrained(name, **kw):
-            calls.append(("tokenizer", name, kw["revision"]))
-            return FakeTokenizer()
+    def delete(self, ids):
+        self.writes.append(("delete", ids))
 
-    class AutoModel:
-        @staticmethod
-        def from_pretrained(name, **kw):
-            calls.append(("model", name, kw["revision"], kw["use_safetensors"]))
-            return FakeModel()
+    def insert(self, objects):
+        self.writes.append(("insert", objects))
 
-    import sys
-    import types
-
-    fake_torch = types.SimpleNamespace(set_num_threads=lambda n: calls.append(("threads", n)), get_num_threads=lambda: 2)
-    fake_transformers = types.SimpleNamespace(AutoTokenizer=AutoTokenizer, AutoModel=AutoModel)
-    monkeypatch.setitem(sys.modules, "torch", fake_torch)
-    monkeypatch.setitem(sys.modules, "transformers", fake_transformers)
-
-    emb = LocalE5Embedder("intfloat/multilingual-e5-small", revision=REV, threads=3)
-    threads = [threading.Thread(target=emb._load) for _ in range(4)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
-    assert calls == [("threads", 3), ("tokenizer", "intfloat/multilingual-e5-small", REV),
-                     ("model", "intfloat/multilingual-e5-small", REV, True), ("to", "cpu")]
+    def close(self):
+        pass
 
 
-def test_missing_torch_gives_an_actionable_error(monkeypatch):
-    import sys
+def test_index_job_refuses_to_write_e5_vectors_into_a_cohere_collection(monkeypatch):
+    from src.backend.app.domain.catalog.models import Product
+    from src.backend.app.infrastructure.vectors.postgres_store import CatalogUnits
 
-    monkeypatch.setitem(sys.modules, "torch", None)   # import torch → ImportError
-    emb = LocalE5Embedder("intfloat/multilingual-e5-small", revision=REV)
-    with pytest.raises(RuntimeError, match="requirements-embed.txt"):
-        emb.embed_query("x")
+    unit = Product(product_id="P1", name="P1", taxonomy="hotel", destination="Nha Trang", description="",
+                   attributes={"level": "property"}, unit_price=None)
+    catalog = CatalogUnits(units=[unit], texts=["text"], taxonomy=np.array(["hotel"]), destination=np.array(["Nha Trang"]),
+                           available=np.array([True]), recommendable=np.array([True]), parent_of={})
+    monkeypatch.setattr(embed_products, "PostgresCatalogReader", lambda url: SimpleNamespace(load=lambda: catalog))
+    created = []
+    monkeypatch.setattr(embed_products, "WeaviateClient", lambda url, **kw: created.append(_CohereCollection(url)) or created[-1])
+    monkeypatch.setattr(embed_products, "build_embedder", lambda *a, **k: pytest.fail("không được embed"))
+    report = embed_products.run(settings=_settings(vector_collection="Product"))
+    assert "embed-multilingual-v3.0" in report["refused"]
+    assert created[0].writes == []
+
+
+@pytest.mark.skipif(os.environ.get("E5_SMOKE") != "1", reason="cần model e5-small trong cache HF; đặt E5_SMOKE=1 để chạy")
+def test_real_model_ranks_the_matching_passage_first():
+    embedder = build_embedder(_settings())
+    docs = embedder.embed_docs(["Khách sạn gần biển Nha Trang có hồ bơi", "Vé máy bay Hà Nội đi TP. Hồ Chí Minh"])
+    query = embedder.embed_query("khách sạn ven biển ở Nha Trang")
+    assert docs.shape == (2, 384)
+    assert float(docs[0] @ query) > float(docs[1] @ query)
+
+
+def test_settings_from_environment_strings(monkeypatch):
+    """Biến môi trường là chuỗi: `.env.example` đặt EMBED_DIMENSION=384 phải khởi động được."""
+    monkeypatch.setenv("EMBED_MODEL", "intfloat/multilingual-e5-small")
+    monkeypatch.setenv("EMBED_DIMENSION", "384")
+    assert _settings().embed_dimension == 384
+
+
+def test_old_weaviate_collection_env_is_ignored(monkeypatch):
+    """Env trên VM còn `WEAVIATE_COLLECTION=Product` (vector Cohere): code e5 đọc VECTOR_COLLECTION, nên collection e5
+    dựng sẵn trước khi deploy dùng được ngay (chốt 06/10)."""
+    monkeypatch.setenv("WEAVIATE_COLLECTION", "Product")
+    assert _settings().vector_collection == "ProductE5Small"
+    monkeypatch.setenv("VECTOR_COLLECTION", "Other")
+    assert _settings().vector_collection == "Other"

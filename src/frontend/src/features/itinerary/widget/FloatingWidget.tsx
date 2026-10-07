@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { X, List, Maximize2, Minimize2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { X, List, Compass, Maximize2, Minimize2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useWidgetFocus } from './useWidgetFocus';
 import { useFloatingWidget } from './useFloatingWidget';
 import { WidgetLauncher } from './WidgetLauncher';
@@ -9,11 +9,13 @@ import { WidgetHistory } from './WidgetHistory';
 import { WidgetChat } from './WidgetChat';
 import { WidgetPlanPanel } from './WidgetPlanPanel';
 import { WidgetPlanEmpty } from './WidgetPlanEmpty';
+import { WidgetProductDetail } from './WidgetProductDetail';
 
 export function FloatingWidget() {
   const widget = useFloatingWidget();
   const { isOpen, setIsOpen, isExpanded, setIsExpanded, isHistoryOpen, setIsHistoryOpen,
-    activePlan, isChatCollapsed, setIsChatCollapsed, handleQuickPrompt } = widget;
+    activePlan, isChatCollapsed, setIsChatCollapsed, handleQuickPrompt,
+    selectedProduct, closeProductDetail, addSelectedToCart, selectedCanAddToCart, bookSelectedNow } = widget;
   const dialogRef = useWidgetFocus(isOpen, isExpanded, isHistoryOpen);
   return (
     <>
@@ -33,7 +35,7 @@ export function FloatingWidget() {
           {/* Slide-over Drawer từ mép trái màn hình - Chiếm 4 phần (4/12) trên desktop */}
           <div className="fixed inset-y-0 left-0 w-full sm:w-[420px] lg:w-4/12 min-w-0 lg:min-w-[380px] max-w-[640px] bg-white shadow-2xl flex flex-col border-r border-slate-100 z-10 animate-in slide-in-from-left duration-300 ease-out">
             {/* Top Bar tối giản khi chưa mở rộng: Không Header xanh, giữ icon List + mock title bên trái, icon Mở rộng & icon Tắt bên phải */}
-            <div className="px-4 pt-3.5 pb-2 bg-white flex items-center justify-between border-b border-slate-100/60 shadow-xs">
+            <div className="flex min-h-20 items-center justify-between border-b border-slate-200/70 bg-white px-4 py-3">
               {/* Bên trái: Icon List + Mock Title */}
               <div className="flex items-center space-x-2 text-slate-700 min-w-0 flex-1 mr-2">
                 <button
@@ -45,9 +47,7 @@ export function FloatingWidget() {
                 >
                   <List className="w-4 h-4" />
                 </button>
-                <span className="text-sm font-semibold text-slate-800 truncate">
-                  {activePlan?.title || 'Trợ lý du lịch AI'}
-                </span>
+                <WidgetTitle title={activePlan?.title} />
               </div>
 
               {/* Bên phải: 2 icon Mở rộng (Maximize2) và icon Tắt (X) */}
@@ -91,7 +91,7 @@ export function FloatingWidget() {
       {isOpen && isExpanded && (
         <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Trợ lý du lịch AI" className="fixed inset-0 z-50 bg-slate-100 flex flex-col overflow-hidden animate-in fade-in duration-200">
           {/* Floating Control Buttons: Thu nhỏ về sidebar & Đóng hoàn toàn (Top-Right) */}
-          <div className="absolute top-3.5 right-3.5 z-[1100] flex items-center space-x-1.5 bg-white/90 backdrop-blur-md p-1.5 rounded-2xl shadow-lg border border-slate-200/80">
+          <div className="absolute right-3 top-3 z-[1100] flex items-center gap-1 rounded-xl border border-slate-200/80 bg-white/95 p-1 shadow-sm backdrop-blur-md">
             <button
               onClick={() => setIsExpanded(false)}
               className="min-h-11 min-w-11 p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition cursor-pointer"
@@ -122,15 +122,15 @@ export function FloatingWidget() {
             {/* CỘT TRÁI (KHUNG CHAT AI): HIỆU ỨNG TRƯỢT VÀO VÀ TRƯỢT RA (SLIDE IN/OUT) */}
             {/* =================================================================== */}
             <div
-              className={`h-full shrink-0 flex flex-col bg-white border-r border-slate-100/90 shadow-xs transition-all duration-300 ease-in-out overflow-hidden z-20 ${
+              className={`h-full shrink-0 flex flex-col bg-white border-r border-slate-200/70 transition-all duration-300 ease-in-out motion-reduce:transition-none overflow-hidden z-20 ${
                 isChatCollapsed
                   ? 'w-0 opacity-0 -translate-x-4 pointer-events-none hidden lg:flex'
-                  : 'w-full lg:w-4/12 opacity-100 translate-x-0 flex'
+                  : 'w-full lg:w-[36%] xl:w-[34%] opacity-100 translate-x-0 flex'
               }`}
             >
               <div className="w-full min-w-0 h-full flex flex-col">
                 {/* Top chat bar: Icon List + Mock Title (không border, không khác màu) */}
-                <div className="px-4 pr-28 pt-3.5 pb-2 bg-white flex items-center justify-between shrink-0">
+                <div className="flex min-h-20 shrink-0 items-center justify-between border-b border-slate-200/70 bg-white px-4 py-3 pr-28 lg:pr-4">
                   <div className="flex min-w-0 items-center space-x-2 text-slate-700">
                     <button
                       type="button"
@@ -141,9 +141,7 @@ export function FloatingWidget() {
                     >
                       <List className="w-4 h-4" />
                     </button>
-                    <span className="text-sm font-semibold text-slate-800 truncate">
-                      {activePlan?.title || 'Trợ lý du lịch AI'}
-                    </span>
+                    <WidgetTitle title={activePlan?.title} />
                   </div>
                 </div>
 
@@ -176,11 +174,29 @@ export function FloatingWidget() {
                   <ChevronLeft className="w-4 h-4" />
                 )}
               </button>
-              {activePlan ? <WidgetPlanPanel widget={widget} /> : <WidgetPlanEmpty onPrompt={handleQuickPrompt} />}
+              {selectedProduct && !activePlan
+                ? <WidgetProductDetail key={selectedProduct.productId} productId={selectedProduct.productId}
+                    summary={selectedProduct.summary} onClose={closeProductDetail} onAddToCart={selectedCanAddToCart ? addSelectedToCart : undefined} onBookNow={bookSelectedNow}
+                    cartAddState={widget.cartAddStates[selectedProduct.productId]} />
+                : activePlan ? <WidgetPlanPanel widget={widget} /> : <WidgetPlanEmpty onPrompt={handleQuickPrompt} />}
             </div>
           </div>
         </div>
       )}
     </>
+  );
+}
+
+function WidgetTitle({ title }: { title?: string }) {
+  return (
+    <div className="flex min-w-0 items-center gap-3">
+      <span className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 sm:flex">
+        <Compass className="h-5 w-5" aria-hidden="true" />
+      </span>
+      <div className="min-w-0">
+        <h2 className="font-sans truncate text-sm font-semibold text-slate-900">Trợ lý du lịch AI</h2>
+        <p className="mt-0.5 truncate text-xs text-slate-500">{title || 'Lên kế hoạch cùng V-OTA'}</p>
+      </div>
+    </div>
   );
 }

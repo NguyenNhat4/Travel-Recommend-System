@@ -14,8 +14,7 @@ Hai điểm bám theo quy tắc repo:
 
 `PostgresCatalogReader` là phần dùng chung cho job index Weaviate và adapter runtime. `PostgresVectorStore`
 được giữ làm fallback/test offline (quét vector trong RAM qua `NumpyVectorSearch`); composition root mặc
-định dùng embedder theo `EMBED_PROVIDER` (e5-small local, FR-SRC-02) + Weaviate theo PRD. Cache `.npy` khoá theo tên model +
-text nên đổi model không đọc nhầm vector cũ; số chiều kiểm lúc nạp.
+định dùng e5-small + Weaviate theo PRD.
 """
 from __future__ import annotations
 
@@ -202,8 +201,5 @@ class PostgresVectorStore:
             np.save(path, embeddings)
             logger.info("startup.recsys.embedding.compute.ready cache=%s", path)
 
-        dimension = getattr(self.embedder, "dimension", None)
-        if embeddings.shape[0] != len(catalog.texts) or (dimension is not None and embeddings.shape[1] != dimension):
-            raise RuntimeError(f"vector {embeddings.shape} lệch catalog ({len(catalog.texts)} unit, {dimension} chiều) — xoá {path}")
         index = catalog.to_index(f"{self.embedder.name}@{key}")
         return index, NumpyVectorSearch([p.product_id for p in catalog.units], embeddings)

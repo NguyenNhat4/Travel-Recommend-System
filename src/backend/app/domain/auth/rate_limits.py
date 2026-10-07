@@ -22,6 +22,9 @@ RULES: dict[str, RateLimitRule] = {
     # Đếm MỌI lần thử, chống credential stuffing.
     "login:ipwide": RateLimitRule(limit=100, window_seconds=60 * 60),
     "register:ip": RateLimitRule(limit=5, window_seconds=60 * 60),
+    # Tin gửi trợ lý (NFR-SEC-04), key = cdp_user_id hoặc IP của khách. Một lượt trợ lý chạy vài giây,
+    # nên 10 tin/phút chỉ chặn gửi dồn, không chặn người đang chat bình thường.
+    "assistant:sender": RateLimitRule(limit=10, window_seconds=60),
 }
 
 

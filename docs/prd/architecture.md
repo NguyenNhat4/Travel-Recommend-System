@@ -55,12 +55,12 @@ flowchart TB
     end
 
     subgraph VectorStore["Lớp Lưu Trữ Vector (Weaviate)"]
-        WvProduct[(Collection e5: ProductE5\nvector 384 · ANN cosine)]
+        WvProduct[(Collection: ProductE5Small\nvector 384 · ANN cosine)]
     end
 
     subgraph External["Dịch Vụ Mở Rộng & Bên Thứ Ba"]
         LLM[LLM Provider: Claude / OpenAI]
-        E5[e5-small trong backend\nintfloat/multilingual-e5-small]
+        E5[e5-small trong backend\nmultilingual-e5-small]
         InsiderSvc[Insider Clone Service]
         Stripe[Stripe: Checkout, Refund, Webhook]
     end
@@ -92,7 +92,6 @@ flowchart TB
     Ports -.->|Adapter: StripePaymentGateway| Stripe
     Stripe -->|Webhook có chữ ký| Router
     Ports -.->|Adapter: LocalE5Embedder| E5
-    HybridSearch -.->|LLM fallback: độ tin cậy thấp, cache| LLM
     Ports -.->|Adapter: WeaviateVectorStore| WvProduct
     InsiderSvc --> InsiderSchema
 ```
@@ -117,7 +116,7 @@ src/backend/app/
 │   ├── clients/             # HTTP client ra service ngoài, gồm HttpInsiderClient; tool itinerary dạng fixture (=fixture, mặc định dev/test) và HTTP tuỳ chọn (=http)
 │   ├── auth/                # Hash mật khẩu, JWT
 │   ├── llm/                 # Adapter LLM provider (agent lấy LLM qua port llm, không tự import SDK)
-│   ├── embeddings/          # LocalE5Embedder (multilingual-e5-small); CohereEmbedder giữ làm đường lui có cờ
+│   ├── embeddings/          # LocalE5Embedder (multilingual-e5-small)
 │   ├── vectors/             # WeaviateVectorStore
 │   ├── payments/            # StripePaymentGateway: Checkout Session, Refund, kiểm chữ ký webhook
 │   └── contracts/           # Kiểm dữ liệu theo OpenAPI bundle (jsonschema)
@@ -173,17 +172,19 @@ Trợ lý lập lịch trình không phải là một chuỗi prompt đơn giả
 ```mermaid
 stateDiagram-v2
     [*] --> ClassifyTurn: Người dùng gửi yêu cầu
-    ClassifyTurn --> Converse: Trò chuyện / ngoài phạm vi (đặt chỗ, chèn lệnh)
+    ClassifyTurn --> Converse: Trò chuyện / ngoài phạm vi (đặt chỗ, chèn lệnh) / tin nhắn rác, tục tĩu (luật tất định, không gọi LLM)
     Converse --> [*]: Trả lời hoặc từ chối, không gọi tool
     ClassifyTurn --> AnalyzeIntent: Yêu cầu du lịch
+    ClassifyTurn --> SuggestForm: Câu trả lời không thêm được thông tin ("không biết") khi còn thiếu điểm đến/số ngày/ngày đi/số người
     AnalyzeIntent --> CheckClarification: Trích xuất thông tin (Điểm đến, Ngày, Số người, Ngân sách)
     
     CheckClarification --> AskUser: Lượt đầu thiếu thông tin, hoặc chưa hỏi ngày đi–số người–ngân sách
-    AskUser --> SuggestForm: Đã hỏi một lượt mà vẫn thiếu điểm đến/số ngày
-    SuggestForm --> [*]: Form đã điền sẵn gợi ý; xác nhận đổ câu yêu cầu vào ô nhập
+    CheckClarification --> AskUser: Người dùng muốn đổi thông tin chuyến đi mà chưa nói đổi thành gì
+    AskUser --> SuggestForm: Đã hỏi một lượt mà vẫn thiếu điểm đến, số ngày, ngày đi hoặc số người
+    SuggestForm --> [*]: Form đã điền sẵn gợi ý; xác nhận gửi ngay câu yêu cầu
     AskUser --> [*]: Chờ phản hồi tiếp theo
     
-    CheckClarification --> SearchCandidates: Đủ thông tin cơ bản
+    CheckClarification --> SearchCandidates: Đủ điểm đến, số ngày, ngày đi, số người
     SearchCandidates --> ToolCatalogSearch: Gọi Tool tìm kiếm phòng & tour thật (và Similar khi đổi món)
     ToolCatalogSearch --> ValidateAvailability: Kiểm tra lịch trống & giá
     
@@ -199,8 +200,9 @@ stateDiagram-v2
 ### Tiêu chuẩn Grounding (Chống Bịa Đặt):
 - **Không suy đoán dữ liệu sản phẩm:** LLM chỉ đóng vai trò phân tích ý định ngôn ngữ và sắp xếp lịch trình thời gian. Mọi thông tin về `productId`, `title`, `price`, `imageUrl` bắt buộc phải được lấy nguyên trạng từ kết quả trả về của công cụ truy xuất (`ToolCatalogSearch`): Search, Recommendation, hoặc Similar (`getSimilarProducts`) khi đổi một sản phẩm đã hiển thị.
 - **Response phân biệt theo `status`:** `ItineraryResponse` là `oneOf` gồm `COMPLETED`, `NEEDS_CLARIFICATION`, `NO_RESULTS`, `FALLBACK` (`src/shared/contracts/schemas/itinerary-agent.yaml`). Trường cụ thể theo contract, không theo ví dụ trong PRD.
-- **Backend tự tính tổng tiền;** giá thiếu thì tổng là `null` kèm cảnh báo, không coi thiếu giá là 0.
+- **Backend tự tính tổng tiền.** Điểm tham quan tự do — điểm tham quan hoặc golf có `ticketed = false`, hoặc không có giá — tính 0 đ vào tổng và hiển thị là "tham quan tự do", không hiển thị là có giá 0 đ. Mục khác thiếu giá (khách sạn, vé máy bay, combo...) thì tổng là `null` kèm cảnh báo, không coi thiếu giá là 0.
 - **LLM lỗi:** dùng fallback dựa trên luật hoặc trả `FALLBACK`/lỗi có kiểm soát.
+- **Lọc đầu vào trước LLM (NFR-SEC-04):** `ClassifyTurn` chạy luật tất định trước khi gọi LLM: mẫu chèn lệnh/đòi secret, rồi lọc tin nhắn rác (rỗng, ký tự lặp, tỉ lệ chữ thấp, gõ bậy, tục tĩu). Khớp thì trả câu cố định, không gọi LLM nào. Giới hạn tần suất gửi tin nằm ở route API, trước khi graph chạy.
 - **Ngữ cảnh cho LLM:** mọi lượt gọi LLM (phân luồng, trích intent, chọn điểm đến, lập tool plan, viết câu trả lời) nhận cùng ngữ cảnh hội thoại: lịch sử gần nhất có giới hạn, chuyến đi đã chốt, sản phẩm đã cho xem và câu hỏi gần nhất của trợ lý. Ngữ cảnh là dữ liệu không tin cậy, không phải chỉ dẫn.
 - **Hội thoại** có hai tầng lưu: Redis giữ working memory 24 giờ (intent, ràng buộc, lịch sử gần nhất và sản phẩm vừa hiển thị); Postgres giữ lâu dài các lượt `user`/`assistant` của người dùng đã đăng nhập trong `app.conversations` và `app.conversation_messages`. Web cho phép user đã đăng nhập liệt kê, mở lại và tiếp tục hội thoại của chính mình. Ghi archive lỗi không làm hỏng lượt chat. Giá và tình trạng còn chỗ luôn được tải lại, không dùng bản lưu trong hội thoại.
 
@@ -215,7 +217,7 @@ stateDiagram-v2
 | **Cơ sở dữ liệu chính** | **PostgreSQL 16** | Lưu trữ quan hệ ACID cho `cdp`, `catalog`, `app` và database `insider`. Không còn cần extension `pgvector` — vector đã tách sang Weaviate. |
 | **Cơ sở dữ liệu vector** | **Weaviate** | Dịch vụ vector riêng, có volume riêng nên **không bị dựng lại mỗi lần seed Postgres** — đây là lý do tách khỏi pgvector. Index ANN + cosine (HNSW ở local/self-host, `hfresh` trên Weaviate Cloud nếu gói chỉ cho phép loại này); hỗ trợ hybrid search (BM25 + vector) natively, khớp FR-SRC-01. |
 | **Cổng thanh toán** | **Stripe (test mode), Stripe Checkout hosted page** | V-OTA không chạm dữ liệu thẻ; có sẵn 3DS; có thẻ test cho từng loại lỗi; webhook có chữ ký. |
-| **Mô hình Embedding** | **`intfloat/multilingual-e5-small`** (local) | Đa ngôn ngữ (bao gồm tiếng Việt), chạy CPU trong backend (~470 MB model, tải một lần, có cache), không khoá, không quota, không gửi văn bản ra ngoài. **384 chiều.** Tiền tố `passage: ` khi nạp, `query: ` khi truy vấn; sai tiền tố làm giảm chất lượng mà không báo lỗi. Cohere `embed-multilingual-v3.0` (1024 chiều) giữ làm đường lui qua `EMBED_PROVIDER=cohere`. |
+| **Mô hình Embedding** | **`intfloat/multilingual-e5-small`** | Đa ngôn ngữ (bao gồm tiếng Việt), chạy CPU trong backend (~470 MB model, tải một lần, có cache). **384 chiều.** Tiền tố `passage: ` khi nạp, `query: ` khi truy vấn; sai tiền tố làm giảm chất lượng mà không báo lỗi. |
 | **Frontend Framework** | **React / Next.js / TypeScript** | Xây dựng giao diện Single Page Application linh hoạt, tương tác mượt mà, type-safety cao. |
 | **Session store, rate limit & working memory** | **Redis 7** (`maxmemory-policy noeviction`) | Giữ phiên web, bộ đếm rate limit/lockout, khoá refresh và working memory 24 giờ của trợ lý ở DB index riêng. Mất dữ liệu thì trợ lý nạp lại bản archive gần nhất cho user đăng nhập hoặc bắt đầu ngữ cảnh mới cho khách; lịch sử lâu dài vẫn còn trong Postgres. Không dùng `allkeys-lru`. |
 | **Quản trị API** | **OpenAPI 3.1.0 Contract-First** | Hợp đồng giao tiếp trung tâm, tự động sinh mock server và kiểm tra tính tuân thủ của các nhóm phát triển. |
@@ -231,10 +233,9 @@ stateDiagram-v2
    - Môi trường mở rộng: Giao tiếp qua `HttpCdpClient` gọi REST API tới dịch vụ CDP tập trung.
 3. **Backend $\leftrightarrow$ Insider:** Giao tiếp qua `HttpInsiderClient` bằng REST API qua giao thức HTTPS, xác thực bằng header chuyên biệt (`X-PARTNER-NAME`, `X-REQUEST-TOKEN`).
 4. **Backend $\leftrightarrow$ AI Model Providers:** Giao tiếp qua HTTPS REST / SSE (Server-Sent Events) có hỗ trợ streaming token phản hồi tức thì.
-5. **Backend $\leftrightarrow$ Weaviate:** Backend tự sinh vector bằng model local rồi tự ghi — **Weaviate không giữ khóa và không tự vector hóa** (collection khai báo `vectorizer: none`). Cụ thể:
-   - **Nạp:** job embed đọc search unit từ `catalog`, embed bằng e5-small với tiền tố `passage: `, ghi vector kèm `productId` vào collection e5 của Weaviate (`WEAVIATE_COLLECTION`, mặc định `ProductE5`; collection `Product` của Cohere giữ tới khi gỡ đường lui).
-   - **Truy vấn:** use case search embed câu đã chuẩn hoá bằng e5-small với tiền tố `query: ` rồi đưa vector sang Weaviate để lấy top-K. Dùng sai tiền tố sẽ làm giảm chất lượng xếp hạng mà không báo lỗi.
-   - **Hiểu câu truy vấn (query plan).** Use case search phân tích câu bằng luật + gazetteer dựng từ catalog (điểm đến, loại sản phẩm, phủ định, chiều bay, giá/sao, số khách) rồi lọc trước khi truy xuất. Khi plan có độ tin cậy thấp, use case **có thể** gọi LLM qua port riêng (`QueryHypothesisPort`, adapter ở `infrastructure/llm/`) để lấy một giả thuyết JSON theo schema cố định (`intent`, các thực thể, `hard_filters`, `must_not`, `soft_preferences`, `unknown_slots`). Server kiểm mọi giá trị với catalog (taxonomy, bảng điểm đến, từ vựng tiện ích, tuyến bay); giá trị không tồn tại bị bỏ, không tạo filter sai. LLM **không** trả `productId`, **không** xếp hạng, **không** nới hard filter của request, chỉ điền trường luật để trống. Kết quả cache theo câu đã chuẩn hoá. Ba chế độ theo cấu hình: `off` (mặc định), `shadow` (chạy nền, chỉ ghi so sánh luật ↔ LLM vào log, không đổi kết quả), `on` (chỉ khi `confidence < ngưỡng`, có hạn thời gian; quá hạn → plan luật). Bật `on` chỉ khi bench chứng minh không tụt ở các slice an toàn (`out_of_catalog`, `named_entity`, `cross_vertical`) và p95 vẫn đạt NFR-PERF-01 nhờ cache.
+5. **Backend $\leftrightarrow$ Weaviate:** Backend tự sinh vector bằng model local rồi tự ghi — **Weaviate không giữ khoá và không tự vector hóa** (collection khai báo `vectorizer: none`). Cụ thể:
+   - **Nạp:** job embed đọc search unit từ `catalog`, embed bằng e5-small với tiền tố `passage: `, ghi vector kèm `productId` vào collection của Weaviate (`VECTOR_COLLECTION`).
+   - **Truy vấn:** use case search embed bằng e5-small với tiền tố `query: ` rồi đưa vector sang Weaviate để lấy top-K. Dùng sai tiền tố sẽ làm giảm chất lượng xếp hạng mà không báo lỗi.
    - Giữ được đường test offline: `tests/fakes/in_memory_vector_store.py` hiện thực cùng port `vector_store.py`, nên unit test không cần mạng.
    - Weaviate chỉ giữ vector và `productId`. Mọi thuộc tính hiển thị (tên, giá, ảnh) vẫn lấy từ Postgres — quy tắc grounding không đổi.
 6. **Backend $\leftrightarrow$ Stripe:** Backend gọi Stripe qua HTTPS bằng secret key; mọi lệnh ghi (tạo phiên, đóng phiên, hoàn tiền) có `Idempotency-Key`. Stripe gọi lại Backend qua webhook `POST /api/v1/payments/stripe/webhook`, không qua BFF, xác thực bằng chữ ký `Stripe-Signature`. Số tiền luôn do Backend tính từ catalog.

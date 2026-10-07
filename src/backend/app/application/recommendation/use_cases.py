@@ -9,22 +9,16 @@ import numpy as np
 from src.backend.app.application.ports import CdpHistoryReader, UnitIndex, VectorSearchPort
 from src.backend.app.application.ports.cdp_client import CdpUnavailableError
 from src.backend.app.application.search import hit
-from src.backend.app.core.request_context import current_request_id
+from src.backend.app.core.logging_config import log_event
 from src.backend.app.domain.recommendation import Popularity, Purchase, ResolvedEvent, build_profile, explain, mmr_select, score_candidates
-from src.backend.app.domain.recommendation.profile import MAX_PER_VERTICAL
+from src.backend.app.domain.recommendation.profile import MAX_PER_VERTICAL, local_today, parse_using_date
 
 logger = logging.getLogger("uvicorn.error")
 
 
 def _using_date(value):
-    """`usingDate` của event CDP (ISO date hoặc datetime) → `date`; thiếu / hỏng → None (không chặn request)."""
-    from datetime import date
-    if not value:
-        return None
-    try:
-        return date.fromisoformat(str(value)[:10])
-    except ValueError:
-        return None
+    """`usingDate` của event CDP → `date` (một parser chung với harness bench: `profile.parse_using_date`)."""
+    return parse_using_date(value)
 
 
 def _ts(x) -> float:
@@ -106,8 +100,8 @@ class RecommendForUser:
         except CdpUnavailableError as exc:
             # CDP sập/timeout vẫn trả 200 popular; chỉ lỗi CDP mới log WARNING, không log cdp_user_id
             # (hop-dong-tich-hop-cdp.md §6, §8).
-            logger.warning("recommend.cdp_unavailable requestId=%s reason=%s; fallback popular",
-                           current_request_id() or "-", type(exc.__cause__ or exc).__name__)
+            log_event(logger, "recsys.fallback", "WARNING", reason="cdp_unavailable",
+                      message=f"recommend.cdp_unavailable reason={type(exc.__cause__ or exc).__name__}; fallback popular")
             return {**base, **self._cold_start(k, now, destination)}
 
         units = {e.get("productId") or "": idx.resolve(e.get("productId") or "") for e in raw}
@@ -122,8 +116,8 @@ class RecommendForUser:
                                           days_ago=max(0.0, (t0 - _ts(e["timestamp"])) / 86400),
                                           trip_id=e.get("eventGroupId") or f"_solo_{e['productId']}", product_id=e["productId"],
                                           using_date=_using_date(e.get("usingDate"))))
-        # trip đang mở xét theo usingDate (FR-REC-02, 2026-10-02): ngày của `now` (UTC; usingDate là ngày địa phương, lệch ≤ 1 ngày)
-        profile = build_profile(resolved, space.E, space.taxonomy, space.destination, today=now.date())
+        # trip đang mở xét theo usingDate (FR-REC-02, 01/10/2026): "hôm nay" theo giờ Việt Nam vì usingDate là ngày địa phương
+        profile = build_profile(resolved, space.E, space.taxonomy, space.destination, today=local_today(now))
 
         if not profile.trips:
             return {**base, **self._cold_start(k, now, destination)}

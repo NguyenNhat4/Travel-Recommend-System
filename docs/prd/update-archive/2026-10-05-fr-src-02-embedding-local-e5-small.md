@@ -5,7 +5,7 @@
 - Hợp nhất 06/10: gộp bản trùng `2026-10-05-doi-embedding-e5-small.md` (soạn song song, chưa commit) vào đây rồi xoá bản đó — bổ sung so cặp
   e5-small với Cohere cùng thang trên pipeline thật, bằng chứng RecSys, cutoff đo trên dev/test, câu chữ thay thế PRD chi tiết và rủi ro.
 - Trạng thái: đã áp dụng
-- Chốt bởi / ngày: tqanh123 (người dùng), 2026-10-06 — PRD cập nhật cùng ngày (requirements, architecture, data-model, deployment-plan, implementation-plan, project-brief)
+- Chốt bởi / ngày: Đăng Khôi, 2026-10-06
 - PRD bị ảnh hưởng: `docs/prd/requirements.md` FR-SRC-02, NFR-PERF-03; `docs/prd/architecture.md` §4 (bảng công nghệ, dòng "Mô hình
   Embedding"), §5 mục 5 (Backend ↔ Weaviate / Cohere), sơ đồ và cây thư mục (`CohereEmbedder`); `docs/prd/data-model.md` §1 (collection
   `Product` 1024 chiều, entity Weaviate); `docs/prd/deployment-plan.md` §2 (`COHERE_API_KEY`, `EMBEDDING_MODEL_NAME`), §5 (health check
@@ -129,3 +129,12 @@
   ngưỡng Cohere. Tham số hybrid còn lại theo đề xuất `2026-10-06-search-hybrid-min-coverage-rrf.md`.
 - Hướng dẫn chuyển / hoàn tác (`docs/guide/`): dựng collection mới song song → đổi env → kiểm parity → xoá collection cũ sau một tuần.
 - RecSys: `baseline_v1` mới sau khi bench recsys bằng vector e5 xong.
+
+## Điều chỉnh khi chốt / áp dụng (2026-10-06)
+
+- Người chốt: "chỉ e5-small" — code sản phẩm không hỗ trợ e5-base; `EMBED_PROVIDER=local` chỉ nhận `intfloat/multilingual-e5-small`
+  (384 chiều), `EMBED_PROVIDER=cohere` chỉ nhận `embed-multilingual-v3.0` (1024 chiều).
+- Tên collection mới chốt khi áp dụng: `ProductE5Small` (mặc định `WEAVIATE_COLLECTION`); `Product` (Cohere, 1024) giữ làm đường lui.
+- Revision ghim: `614241f622f53c4eeff9890bdc4f31cfecc418b3` (cùng bản bench đã đo).
+- Áp dụng trên nhánh `test/newcrawl` (sau khi merge `release-mvp-v2`). Gate nghiệm thu trên VM (mục "Gate nghiệm thu") vẫn phải chạy trước
+  khi trỏ backend production sang `ProductE5Small`.

@@ -1,8 +1,4 @@
-"""Weaviate adapter with self-provided vectors (`vectorizer: none`).
-
-Backend tự sinh vector (e5-small local mặc định — FR-SRC-02; Cohere khi chạy đường lui) rồi tự ghi. Mỗi collection chỉ giữ
-vector của một model: `modelVersion` = `<EMBED_MODEL>:<text builder>` trên từng object, và số chiều kiểm ở job index
-(`vector_dimension`) lẫn lúc truy vấn (`near_vector`).
+"""Weaviate adapter with self-provided e5-small vectors (PRD FR-SRC-02).
 
 `WeaviateClient` (REST) phục vụ job `embed_products`; `WeaviateVectorSearch` (client v4, gRPC) phục vụ
 truy vấn top-K mỗi request của Search / Similar / Recommendation.
@@ -74,16 +70,14 @@ class WeaviateClient:
         client: httpx.Client | None = None,
         bm25_k1: float = 1.2,
         bm25_b: float = 0.75,
-        embed_model: str = "",
     ):
         if not re.fullmatch(r"[A-Z][A-Za-z0-9_]*", collection):
-            raise ValueError("WEAVIATE_COLLECTION must be a valid GraphQL collection name")
+            raise ValueError("VECTOR_COLLECTION must be a valid GraphQL collection name")
         if vector_index_type not in {"hnsw", "hfresh"}:
             raise ValueError("WEAVIATE_VECTOR_INDEX_TYPE must be hnsw or hfresh")
         self.vector_index_type = vector_index_type
         self.collection = collection
         self.bm25 = {"k1": bm25_k1, "b": bm25_b}
-        self.embed_model = embed_model
         self._owns_client = client is None
         headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
         self._client = client or httpx.Client(
@@ -122,7 +116,7 @@ class WeaviateClient:
             "/v1/schema",
             json={
                 "class": self.collection,
-                "description": f"V-OTA search units, self-provided vectors ({self.embed_model or 'unspecified model'})",
+                "description": "V-OTA search units with self-provided vectors (model in modelVersion)",
                 "vectorizer": "none",
                 "vectorIndexType": self.vector_index_type,
                 "vectorIndexConfig": {"distance": "cosine"},
@@ -145,20 +139,8 @@ class WeaviateClient:
             if prop["name"] not in have:
                 self._client.post(f"/v1/schema/{self.collection}/properties", json=prop).raise_for_status()
 
-    def vector_dimension(self) -> int | None:
-        """Số chiều vector của một object bất kỳ trong collection (None = collection rỗng). Một collection chỉ một số chiều."""
-        response = self._client.get("/v1/objects", params={"class": self.collection, "limit": 1, "include": "vector"})
-        if response.status_code == 404:
-            return None
-        response.raise_for_status()
-        rows = response.json().get("objects") or []
-        if not rows:
-            return None
-        vector = rows[0].get("vector") or []
-        return len(vector) if vector else None
-
     def patch_properties(self, object_id: str, properties: dict) -> None:
-        """Ghi thêm/đè property, giữ nguyên vector — backfill BM25 cho object đã index mà không phải embed lại."""
+        """Ghi thêm/đè property, giữ nguyên vector — backfill BM25 cho object đã index mà không embed lại."""
         response = self._client.patch(
             f"/v1/objects/{self.collection}/{object_id}",
             json={"class": self.collection, "id": object_id, "properties": properties},
@@ -252,11 +234,11 @@ def _object_vector(obj) -> np.ndarray:
 
 
 class WeaviateVectorSearch:
-    """`VectorSearchPort` trên collection `WEAVIATE_COLLECTION`: mỗi request một truy vấn top-K, lọc theo id object."""
+    """`VectorSearchPort` trên collection `Product`: mỗi request một truy vấn top-K, lọc theo id object."""
 
     _ID_CHUNK = 1000
 
-    def __init__(self, client, *, collection: str = "ProductE5", dimension: int = 384):
+    def __init__(self, client, *, collection: str = "Product", dimension: int = 1024):
         self.client = client
         self.collection = client.collections.get(collection)
         self.dimension = dimension
@@ -276,12 +258,8 @@ class WeaviateVectorSearch:
 
         if limit <= 0 or (allowed is not None and not allowed):
             return []
-        query = np.asarray(vector, dtype=np.float32).reshape(-1)
-        if query.size != self.dimension:
-            # Vector truy vấn của model khác collection (đổi EMBED_PROVIDER mà quên WEAVIATE_COLLECTION): báo rõ thay vì lỗi gRPC.
-            raise ValueError(f"vector truy vấn {query.size} chiều, collection cấu hình {self.dimension} chiều (EMBED_DIMENSION)")
         result = self.collection.query.near_vector(
-            near_vector=query.tolist(),
+            near_vector=np.asarray(vector, dtype=np.float32).tolist(),
             limit=limit,
             filters=self._id_filter(allowed) if allowed is not None else None,
             return_properties=["productId"],

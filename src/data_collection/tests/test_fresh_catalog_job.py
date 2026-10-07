@@ -42,7 +42,7 @@ class ApplyWindowTests(unittest.TestCase):
                          (AS_OF, date(2026, 10, 5)))
         self.assertEqual((changed['no-source']['available_from'], changed['no-source']['available_to']), (AS_OF, HI))
 
-    def test_empty_intersection_marks_unavailable_and_never_reopens(self):
+    def test_empty_intersection_marks_unavailable_and_does_not_reopen_rows_closed_for_other_reasons(self):
         changed = apply_window([
             row('past', attributes={'level': 'property', 'sourceAvailableFrom': '2026-09-01',
                                     'sourceAvailableTo': '2026-09-10'}, start=date(2026, 9, 5), end=date(2026, 9, 10)),
@@ -50,11 +50,93 @@ class ApplyWindowTests(unittest.TestCase):
         ], AS_OF)
         self.assertEqual({k: changed['past'][k] for k in ('available', 'available_from', 'available_to')},
                          {'available': False, 'available_from': None, 'available_to': None})
-        # Cửa sổ chỉ tắt, không bật lại dòng loader đã đặt chưa khả dụng (hết phòng, giá quá hạn…).
+        self.assertTrue(changed['past']['attributes']['windowClosed'])
+        # Không bật lại dòng loader đã đặt chưa khả dụng (hết phòng, giá quá hạn…): không có windowClosed.
         self.assertFalse(changed['sold']['available'])
 
+    def test_row_closed_by_the_window_reopens_when_the_window_reaches_it(self):
+        later = {'sourceAvailableFrom': '2026-10-10', 'sourceAvailableTo': '2026-10-20'}
+        closed = apply_window([row('later', taxonomy='attraction', attributes=later, start=AS_OF, end=AS_OF)],
+                              date(2026, 9, 1))['later']
+        self.assertEqual((closed['available'], closed['attributes']['windowClosed']), (False, True))
+        reopened = apply_window([closed], AS_OF)['later']
+        self.assertEqual((reopened['available'], reopened['available_from']), (True, date(2026, 10, 10)))
+        self.assertNotIn('windowClosed', reopened['attributes'])
+
+    def test_window_does_not_reopen_merged_rows_stale_prices_or_rows_without_price(self):
+        base = {'sourceAvailableFrom': '2026-10-10', 'sourceAvailableTo': '2026-10-20', 'windowClosed': True}
+        changed = apply_window([
+            row('merged', taxonomy='attraction', available=False, attributes=dict(base, mergedInto='other')),
+            row('stale', taxonomy='attraction', available=False, attributes=dict(base, priceFreshness='stale')),
+            row('no-price', taxonomy='attraction', available=False, attributes=base, unit_price=None),
+        ], AS_OF)
+        for pid in ('merged', 'stale', 'no-price'):
+            self.assertFalse(changed[pid]['available'], pid)
+
+    def test_fixed_date_flights_outside_the_window_move_in_and_stay_bookable(self):
+        """PRD data-model §3.1 (chốt 06/10): job cào dời vé ngày cố định như seed; vé có giá luôn đặt được."""
+        def ticket(dep, ret, **extra):
+            return {'level': 'flight', 'fixedDepartureDate': True, 'tripType': 'roundTrip', 'parentProductId': 'route',
+                    'flightNumber': 'VJ1', 'stayDays': 3, 'departureAt': f'{dep}T08:00:00+07:00',
+                    'arrivalAt': f'{dep}T09:10:00+07:00', 'returnDate': ret, 'priceValidUntil': '2026-09-20',
+                    'returnFlight': {'flightNumber': 'VJ2', 'departureAt': f'{ret}T18:00:00+07:00',
+                                     'arrivalAt': f'{ret}T19:10:00+07:00'}, **extra}
+        flown = row('flown', taxonomy='flight', available=False, attributes=ticket('2026-09-10', '2026-09-13'),
+                    name='SGN-CXR 2026-09-10 → 2026-09-13', description='Đi 2026-09-10, về 2026-09-13')
+        inside = row('inside', taxonomy='flight', attributes=ticket('2026-10-05', '2026-10-08'), name='x', description='y',
+                     start=date(2026, 10, 5), end=date(2026, 10, 5))
+        merged = row('merged', taxonomy='flight', available=False, name='m', description='m',
+                     attributes=ticket('2026-09-10', '2026-09-13', mergedInto='other', flightNumber='VJ3'))
+        demo = row('demo', taxonomy='flight', available=False, attributes=ticket('2026-09-10', '2026-09-13'),
+                   source_ref='demo:business:test:flown', name='d', description='d')
+        changed = apply_window([flown, inside, merged, demo,
+                                row('route', taxonomy='flight', attributes={'level': 'route'})], AS_OF)
+        moved = changed['flown']
+        day = moved['available_from']
+        self.assertTrue(AS_OF <= day <= HI)
+        self.assertEqual((moved['available'], moved['available_to']), (True, day))
+        back = day + timedelta(days=3)
+        self.assertEqual(moved['attributes']['departureAt'], f'{day}T08:00:00+07:00')
+        self.assertEqual(moved['attributes']['returnDate'], back.isoformat())
+        self.assertEqual(moved['attributes']['returnFlight']['departureAt'], f'{back}T18:00:00+07:00')
+        self.assertEqual(moved['name'], f'SGN-CXR {day} → {back}')
+        self.assertEqual(moved['description'], f'Đi {day}, về {back}')
+        self.assertEqual(moved['attributes']['priceValidUntil'], '2026-09-20')  # giữ nguyên, fareClasses báo EXPIRED
+        self.assertNotIn('inside', changed)  # ngày thật trong cửa sổ: giữ nguyên
+        self.assertFalse(changed['merged']['available'])
+        self.assertNotIn('demo', changed)  # vé mô phỏng do simulated_business.sync chép từ vé gốc
+        self.assertEqual(flown['attributes']['departureAt'], '2026-09-10T08:00:00+07:00')  # không sửa dict đầu vào
+        # Hôm sau: vé đã dời nằm trong cửa sổ nên giữ ngày mới.
+        if day > AS_OF:
+            self.assertNotIn('flown', {k: v for k, v in apply_window([moved], AS_OF + timedelta(days=1)).items()
+                                       if v['available_from'] != day})
+
+    def test_hotel_without_a_bookable_room_is_hidden_and_reopens_when_a_room_appears(self):
+        """PRD FR-CAT-02 (chốt 06/10)."""
+        hotel = row('hotel', start=AS_OF, end=HI)
+        no_price = row('cheap', attributes={'level': 'room', 'parentProductId': 'hotel'}, unit_price=None)
+        hidden = apply_window([hotel, no_price], AS_OF)['hotel']
+        self.assertEqual((hidden['available'], hidden['attributes']['noBookableRoom']), (False, True))
+        room = row('room', attributes={'level': 'room', 'parentProductId': 'hotel'})
+        reopened = apply_window([hidden, room], AS_OF)['hotel']
+        self.assertTrue(reopened['available'])
+        self.assertNotIn('noBookableRoom', reopened['attributes'])
+        with_room = apply_window([row('h2', start=AS_OF, end=HI), row('r2', attributes={'level': 'room', 'parentProductId': 'h2'})], AS_OF)
+        self.assertNotIn('h2', with_room)  # có phòng đặt được: giữ nguyên
+
+    def test_hidden_hotel_without_marker_or_merged_is_not_reopened(self):
+        room = row('room', attributes={'level': 'room', 'parentProductId': 'hotel'})
+        sold = row('hotel', available=False, start=AS_OF, end=HI)  # tắt vì lý do khác, không có dấu
+        merged = row('merged', available=False, start=AS_OF, end=HI,
+                     attributes={'level': 'property', 'noBookableRoom': True, 'mergedInto': 'x'})
+        merged_room = row('mroom', attributes={'level': 'room', 'parentProductId': 'merged'})
+        changed = apply_window([sold, room, merged, merged_room], AS_OF)
+        self.assertNotIn('hotel', changed)
+        self.assertFalse(changed['merged']['available'])
+
     def test_rows_already_inside_the_window_are_not_rewritten(self):
-        current = row('same', start=AS_OF.isoformat(), end=HI.isoformat())
+        # combo: không có lịch, không phụ thuộc phòng con (khách sạn không phòng bị tắt theo FR-CAT-02).
+        current = row('same', taxonomy='combo', attributes={}, start=AS_OF.isoformat(), end=HI.isoformat())
         self.assertEqual(apply_window([current], AS_OF), {})
         # Hôm sau cửa sổ cuộn thêm một ngày.
         rolled = apply_window([current], AS_OF + timedelta(days=1))['same']
@@ -154,6 +236,47 @@ class PrepareRowsTests(unittest.TestCase):
         # Nguồn của lượt này không có khoảng ngày: bỏ khoảng cũ để cửa sổ lấy trọn 30 ngày.
         self.assertNotIn('sourceAvailableFrom', prepared[1]['attributes'])
 
+    def test_ref_conflict_in_db_merges_the_standalone_row_instead_of_failing(self):
+        """Lỗi VM 03–05/10: dòng agoda nạp riêng trong khi dòng booking đã ghi ref agoda vào sameAs."""
+        booking = {'product_id': 'b-booking', 'source_ref': 'booking:hotel:1', 'unit_price': 1, 'available': True,
+                   'attributes': {'level': 'property', 'sameAs': ['agoda:hotel:x']}}
+        agoda = {'product_id': 'a-agoda', 'source_ref': 'agoda:hotel:x', 'unit_price': 1, 'available': True,
+                 'attributes': {'level': 'property', 'availability': {'calendar': '1'}}}
+        room = {'product_id': 'room', 'source_ref': 'agoda:hotel:x:room:1', 'unit_price': 1, 'available': True,
+                'attributes': {'level': 'room', 'parentProductId': 'a-agoda'}}
+        rows, counts = prepare_rows([], [agoda, booking, room], set(), '2026-09-24',
+                                    now=datetime(2026, 9, 24, tzinfo=timezone.utc))
+        by_id = {r['product_id']: r for r in rows}
+        self.assertEqual((counts['refConflicts'], counts['mergedAway']), (1, 1))
+        self.assertEqual((by_id['a-agoda']['available'], by_id['a-agoda']['attributes']['mergedInto']),
+                         (False, 'b-booking'))
+        self.assertNotIn('availability', by_id['a-agoda']['attributes'])
+        self.assertEqual(by_id['room']['attributes']['parentProductId'], 'b-booking')
+        self.assertNotIn('b-booking', by_id)  # dòng giữ không đổi
+        self.assertEqual(room['attributes']['parentProductId'], 'a-agoda')  # không sửa dict đầu vào
+        # Lượt sau trên kết quả đã ghi: không còn xung đột.
+        _, again = prepare_rows([], [by_id['a-agoda'], booking, by_id['room']], set(), '2026-09-25',
+                                now=datetime(2026, 9, 25, tzinfo=timezone.utc))
+        self.assertEqual((again['refConflicts'], again['mergedAway']), (0, 0))
+
+    def test_ref_conflict_maps_fresh_rows_of_the_hidden_row_to_the_keeper(self):
+        record = {'hotelId': '999', 'name': 'Khách sạn thử nghiệm', 'city': 'Nha Trang',
+                  'priceDatesQueried': ['2026-10-08'], 'crawledAt': '2026-09-24T00:00:00Z',
+                  'rooms': [{'roomId': '8', 'name': 'Suite', 'currency': 'VND',
+                             'pricesByDate': {'2026-10-08': 900000}}]}
+        prop, rooms = normalise.trip_hotel(record, {})
+        fresh = [{key: item[key] for key in normalise.PRODUCT_FIELDS} for item in [prop, *rooms]]
+        standalone = {'product_id': fresh[0]['productId'], 'source_ref': fresh[0]['sourceRef'], 'unit_price': 1,
+                      'available': True, 'attributes': {'level': 'property'}}
+        keeper = {'product_id': 'keeper', 'source_ref': 'booking:hotel:1', 'unit_price': 1, 'available': True,
+                  'attributes': {'level': 'property', 'sameAs': [fresh[0]['sourceRef']]}}
+        prepared, counts = prepare_rows(fresh, [standalone, keeper], {'999'}, '2026-09-24')
+        by_id = {r['product_id']: r for r in prepared}
+        self.assertEqual(counts['refConflicts'], 1)
+        self.assertEqual(by_id['keeper']['source_ref'], 'booking:hotel:1')  # giá mới ghi vào dòng giữ
+        self.assertEqual(by_id[fresh[1]['productId']]['attributes']['parentProductId'], 'keeper')
+        self.assertEqual(by_id[standalone['product_id']]['attributes']['mergedInto'], 'keeper')
+
     def test_trip_price_on_a_merged_booking_row_expires_but_other_sources_do_not(self):
         old = datetime(2026, 9, 1, tzinfo=timezone.utc).isoformat()
         merged = {'product_id': 'merged', 'source_ref': 'booking:hotel:1', 'unit_price': 1, 'available': True,
@@ -203,8 +326,8 @@ class MaintainCatalogTests(unittest.TestCase):
     def test_expires_stale_trip_prices_and_rolls_windows_in_one_pass(self):
         stale = row('stale', source_ref='trip:hotel:1', start=AS_OF, end=HI,
                     attributes={'level': 'property', 'priceRefreshedAt': '2026-09-01T00:00:00+00:00'})
-        seeded = row('seeded', start=date(2026, 9, 20), end=date(2026, 10, 19))
-        current = row('current', start=AS_OF, end=HI)
+        seeded = row('seeded', taxonomy='combo', attributes={}, start=date(2026, 9, 20), end=date(2026, 10, 19))
+        current = row('current', taxonomy='combo', attributes={}, start=AS_OF, end=HI)
         conn = _Conn([stale, seeded, current])
         sync = Mock(return_value={'simulatedBusiness': 0})
         with patch('psycopg.connect', return_value=conn), \
@@ -472,7 +595,7 @@ class CrawlSitesTests(unittest.TestCase):
         self.assertEqual(trip, ['discover', 'trip-flights', 'trip-attractions', 'prices'])
         self.assertEqual(statuses, {'trip-flights': 0, 'trip-attractions': 0, 'vinpearl': 0,
                                     'booking-hotels': 0, 'agoda-hotels': 0})
-        self.assertEqual(log.count('catalog.group.done'), 4)
+        self.assertEqual(log.count('"event": "catalog.group.done"'), 4)  # log.py: một dòng JSON mỗi sự kiện
 
     def test_one_site_at_a_time_is_the_old_sequential_run(self):
         groups = [('vinpearl', ('vinpearl',)), ('booking', ('booking-hotels',))]
@@ -536,16 +659,15 @@ class IndexSettingsTests(unittest.TestCase):
                                  WEAVIATE_URL='http://localhost:8080', WEAVIATE_API_KEY='', COHERE_API_KEY='k')
         self.assertEqual((settings.database_url, settings.weaviate_url), ('postgresql://seed', 'http://localhost:8080'))
 
-    def test_missing_key_or_invalid_url_is_reported_by_name(self):
-        with self.assertRaisesRegex(ValueError, 'COHERE_API_KEY'):  # đường lui Cohere vẫn bắt buộc key
-            self.settings(DB_TARGET='cloud', CLOUD_SEED_DATABASE_URL='postgresql://seed', EMBED_PROVIDER='cohere',
-                          CLOUD_WEAVIATE_URL='https://abc.weaviate.cloud', COHERE_API_KEY='')
-        with self.assertRaisesRegex(ValueError, '^Thiếu biến cho bước index: CLOUD_WEAVIATE_URL$'):
-            self.settings(DB_TARGET='cloud', CLOUD_SEED_DATABASE_URL='postgresql://seed', EMBED_PROVIDER='local',
-                          COHERE_API_KEY='')
+    def test_missing_variable_or_invalid_url_is_reported_by_name(self):
+        # e5-small chạy trong image: không cần khoá embedding (PRD FR-SRC-02, chốt 06/10).
+        local = self.settings(DB_TARGET='cloud', CLOUD_SEED_DATABASE_URL='postgresql://seed',
+                              CLOUD_WEAVIATE_URL='https://abc.weaviate.cloud')
+        self.assertEqual((local.embed_model, local.vector_collection), ('intfloat/multilingual-e5-small', 'ProductE5Small'))
+        with self.assertRaisesRegex(ValueError, 'CLOUD_WEAVIATE_URL'):
+            self.settings(DB_TARGET='cloud', CLOUD_SEED_DATABASE_URL='postgresql://seed')
         with self.assertRaises(ValueError):
-            self.settings(DB_TARGET='local', SEED_DATABASE_URL='postgresql://seed',
-                          WEAVIATE_URL='ftp://weaviate', COHERE_API_KEY='k')
+            self.settings(DB_TARGET='local', SEED_DATABASE_URL='postgresql://seed', WEAVIATE_URL='ftp://weaviate')
 
     def test_local_provider_needs_no_cohere_key(self):
         settings = self.settings(DB_TARGET='cloud', CLOUD_SEED_DATABASE_URL='postgresql://seed', EMBED_PROVIDER='local',

@@ -74,7 +74,7 @@ def load_index(mode: str = "none") -> tuple[UnitIndex, VectorSearchPort | None]:
         search = WeaviateVectorSearch(
             connect_weaviate(s.weaviate_url, api_key=s.weaviate_api_key, grpc_port=s.weaviate_grpc_port,
                              timeout_seconds=s.weaviate_timeout_seconds),
-            collection=s.weaviate_collection, dimension=s.embed_dimension)
+            collection=s.vector_collection, dimension=s.embed_dimension)
         return WeaviateVectorStore(s.database_url, search, expected_model_version=version).load()
     from src.backend.app.infrastructure.vectors.postgres_store import PostgresCatalogReader
     index = PostgresCatalogReader(s.database_url).load().to_index(version)
@@ -92,7 +92,7 @@ def _numpy_vectors(index: UnitIndex, s, version: str) -> VectorSearchPort:
         data = np.load(path, allow_pickle=False)
         return NumpyVectorSearch(list(data["ids"]), data["E"])
     from src.backend.app.infrastructure.vectors.weaviate_store import WeaviateClient
-    client = WeaviateClient(s.weaviate_url, collection=s.weaviate_collection, api_key=s.weaviate_api_key,
+    client = WeaviateClient(s.weaviate_url, collection=s.vector_collection, api_key=s.weaviate_api_key,
                             timeout_seconds=s.weaviate_timeout_seconds)
     try:
         metadata, vectors = client.fetch(include_vectors=True)

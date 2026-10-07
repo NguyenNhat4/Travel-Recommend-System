@@ -32,6 +32,14 @@ class BookingTx(Protocol):
         """Xoá các mục giỏ đã đặt, khoá theo (productId, usingDate)."""
         ...
 
+    async def delete_draft(self, cdp_user_id: str, draft_id: str) -> None:
+        """Xoá đơn nháp vừa được đổi thành đơn giữ chỗ, trong cùng transaction ghi đơn (R-CHK-05)."""
+        ...
+
+    async def purge_expired_drafts(self, before: datetime) -> int:
+        """Dọn bản ghi đơn nháp đã hết hạn trước mốc `before` (R-DRF-23). Trả số đơn nháp đã xoá."""
+        ...
+
     async def find_reconcile_ids(self, now: datetime, limit: int) -> list[str]:
         """Đơn cần đối soát (spec booking §8.2); khoá SKIP LOCKED để hai tiến trình không dẫm nhau."""
         ...
@@ -39,3 +47,11 @@ class BookingTx(Protocol):
 
 class BookingStore(Protocol):
     def transaction(self) -> AbstractAsyncContextManager[BookingTx]: ...
+
+    def reconcile_leader(self) -> AbstractAsyncContextManager[bool]:
+        """Chọn một tiến trình duy nhất chạy đối soát trong cả cụm.
+
+        Yield True nếu tiến trình này giữ quyền, False nếu tiến trình khác đang giữ (khi đó bỏ qua lượt này).
+        Quyền tự nhả khi thoát khối hoặc khi tiến trình chết, nên không có leader mồ côi.
+        """
+        ...

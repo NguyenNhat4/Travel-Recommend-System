@@ -1,6 +1,8 @@
 """Conversation-history boundaries shared by every itinerary node."""
 
 import json
+
+import yaml
 from time import time
 from types import SimpleNamespace
 import unittest
@@ -63,13 +65,14 @@ class ConversationHistoryTests(unittest.TestCase):
             "constraints": {},
         }
 
-        extraction_payload = json.loads(extraction_input(state)[1][1])
-        conversation_payload = json.loads(conversation_input(state)[1][1])
+        extraction_payload = yaml.safe_load(extraction_input(state)[1][1])
+        conversation_payload = yaml.safe_load(conversation_input(state)[1][1])
 
         self.assertEqual(extraction_payload["message"], "Đi 3 ngày")
-        self.assertEqual(extraction_payload["conversation_history"], state["conversation_history"])
+        expected = [{"user": "Tôi muốn đi Nha Trang"}, {"assistant_did": "Bạn muốn đi mấy ngày?"}]
+        self.assertEqual(extraction_payload["conversation_history"], expected)
         self.assertEqual(conversation_payload["message"], "Đi 3 ngày")
-        self.assertEqual(conversation_payload["conversation_history"], state["conversation_history"])
+        self.assertEqual(conversation_payload["conversation_history"], expected)
 
 
 class ConversationHistoryLifecycleTests(unittest.IsolatedAsyncioTestCase):
@@ -99,7 +102,7 @@ class ConversationHistoryLifecycleTests(unittest.IsolatedAsyncioTestCase):
         finalized = await nodes.finalize_node_async(first_state, store=store, owner="one")
         self.assertEqual(finalized["conversation_history"], [
             {"role": "user", "content": "Tôi muốn đi 3 ngày"},
-            {"role": "assistant", "content": "Bạn muốn đi đâu?"},
+            {"role": "assistant", "content": "Bạn muốn đi đâu?", "note": "hỏi điểm đến"},
         ])
 
         loaded = await nodes.intake_node_async(
@@ -115,7 +118,7 @@ class ConversationHistoryLifecycleTests(unittest.IsolatedAsyncioTestCase):
         captured = {}
 
         class PlanningLlm:
-            def bind_tools(self, definitions):
+            def bind_tools(self, definitions, tool_choice=None):
                 async def invoke(prompt):
                     captured["prompt"] = prompt
                     return SimpleNamespace(tool_calls=[{
@@ -146,8 +149,8 @@ class ConversationHistoryLifecycleTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIsNone(error)
         self.assertEqual(plan[0]["args"]["destination"], "Nha Trang")
-        payload = json.loads(captured["prompt"][1][1])
-        self.assertEqual(payload["conversation_history"], history)
+        payload = yaml.safe_load(captured["prompt"][1][1])
+        self.assertEqual(payload["conversation_history"], [{"user": "Tôi thích đi biển"}])
 
 
 if __name__ == "__main__":

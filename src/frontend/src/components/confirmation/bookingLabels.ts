@@ -21,7 +21,7 @@ export const FAILURE_REASON_TEXT: Record<PaymentFailureReason, string> = {
   INCORRECT_CVC: 'Mã CVC không đúng.',
   AUTHENTICATION_FAILED: 'Xác thực với ngân hàng không thành công.',
   PROCESSING_ERROR: 'Ngân hàng xử lý lỗi. Thử lại sau ít phút.',
-  TOO_MANY_ATTEMPTS: 'Thanh toán không thành công sau 3 lần. Giỏ hàng vẫn còn, bạn có thể đặt lại.',
+  TOO_MANY_ATTEMPTS: 'Thanh toán không thành công sau 3 lần. Bạn có thể đặt lại các dịch vụ của đơn này theo giá hiện tại.',
   AMOUNT_MISMATCH: 'Có lỗi khi xác nhận thanh toán. Tiền đã được hoàn tự động.',
 };
 
