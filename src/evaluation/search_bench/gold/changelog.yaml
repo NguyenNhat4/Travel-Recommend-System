@@ -332,3 +332,16 @@
   - APP.e5s.hybrid_norm_nocut_f1f6
   - APP.e5s.hybrid_norm_nocut_f1f6_wrrf
   - APP.e5s.hybrid_norm_nocut_f1f6_rr
+- version: gold_v6
+  at: '2026-10-08T00:19:29+07:00'
+  action: import_append
+  n_queries_active: 175
+  n_queries_retired: 1
+  n_labels: 8136
+  source: pool@gold_v6
+  merged: merged.csv
+  snapshot: '2026-09-23'
+  new_queries: 21
+  new_labels_by_source:
+    machine_accepted: 546
+  pool_dir: v6a

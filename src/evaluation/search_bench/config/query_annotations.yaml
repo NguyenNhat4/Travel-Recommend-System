@@ -648,3 +648,86 @@ queries:
   c0733:  # [out_of_catalog] homestay Tà Xùa
     # Tà Xùa không có trong catalog -> destination null
     expected_parse: {taxonomy: "hotel", destination: null, origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null}
+  c0736:  # [duration_false_positive] vinwonder 3 ngay 2 dem
+    allowed_variants: [attraction, combo]
+    expected_parse: {taxonomy: "attraction", destination: null, origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null, duration_days: 3, duration_nights: 2, entity: ["vinwonders"], entity_role: "gate", location_entity: null}
+    forbidden_filter: {in: ["taxonomy", ["hotel", "golf", "flight"]]}
+  c0737:  # [duration_false_positive] VinWonders 3 ngày 2 đêm
+    allowed_variants: [attraction, combo]
+    expected_parse: {taxonomy: "attraction", destination: null, origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null, duration_days: 3, duration_nights: 2, entity: ["vinwonders"], entity_role: "gate", location_entity: null}
+    forbidden_filter: {in: ["taxonomy", ["hotel", "golf", "flight"]]}
+  c0738:  # [duration_false_positive] combo VinWonders 3N2Đ
+    allowed_variants: [combo, attraction]
+    expected_parse: {taxonomy: "combo", destination: null, origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null, duration_days: 3, duration_nights: 2, entity: ["vinwonders"], entity_role: "gate", location_entity: null}
+    forbidden_filter: {in: ["taxonomy", ["hotel", "golf", "flight"]]}
+  c0739:  # [duration_false_positive] khách sạn Đà Lạt 2 đêm
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Đà Lạt", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null, duration_days: null, duration_nights: 2, entity: [], entity_role: null, location_entity: null}
+    forbidden_filter: {not: {eq: ["destination", "Đà Lạt"]}}
+  c0740:  # [duration_false_positive] ks da lat 2 dem 3 ngay
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Đà Lạt", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null, duration_days: 3, duration_nights: 2, entity: [], entity_role: null, location_entity: null}
+    forbidden_filter: {not: {eq: ["destination", "Đà Lạt"]}}
+  c0741:  # [duration_false_positive] Dalat hotel 3 days 2 nights
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Đà Lạt", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null, duration_days: 3, duration_nights: 2, entity: [], entity_role: null, location_entity: null}
+    forbidden_filter: {not: {eq: ["destination", "Đà Lạt"]}}
+  c0742:  # [duration_false_positive] khách sạn gần chợ đêm Đà Lạt
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Đà Lạt", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null, duration_days: null, duration_nights: null, entity: [], entity_role: null, location_entity: null}
+    forbidden_filter: {not: {eq: ["destination", "Đà Lạt"]}}
+  c0743:  # [duration_false_positive] tour VinWonders Phú Quốc 3 tiếng
+    allowed_variants: [attraction, combo]
+    expected_parse: {taxonomy: "attraction", destination: "Phú Quốc", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null, duration_days: null, duration_nights: null, entity: ["vinwonders"], entity_role: "gate", location_entity: null}
+    forbidden_filter: {in: ["taxonomy", ["hotel", "golf", "flight"]]}
+  c0744:  # [duration_false_positive] phòng dưới 2 triệu/đêm Nha Trang
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Nha Trang", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: 2000000, price_min: null, star_min: null, party_total: null, duration_days: null, duration_nights: null, entity: [], entity_role: null, location_entity: null}
+    forbidden_filter: {not: {eq: ["destination", "Nha Trang"]}}
+  c0745:  # [poi_resolution] khách sạn gần Hồ Hoàn Kiếm
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Hà Nội", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null, duration_days: null, duration_nights: null, entity: [], entity_role: null, location_entity: "ho_hoan_kiem"}
+    forbidden_filter: {not: {eq: ["destination", "Hà Nội"]}}
+  c0746:  # [poi_resolution] ks gan ho guom
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Hà Nội", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null, duration_days: null, duration_nights: null, entity: [], entity_role: null, location_entity: "ho_hoan_kiem"}
+    forbidden_filter: {not: {eq: ["destination", "Hà Nội"]}}
+  c0747:  # [poi_resolution] hotel near Hoan Kiem lake
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Hà Nội", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null, duration_days: null, duration_nights: null, entity: [], entity_role: null, location_entity: "ho_hoan_kiem"}
+    forbidden_filter: {not: {eq: ["destination", "Hà Nội"]}}
+  c0748:  # [poi_resolution] khách sạn gần Cầu Rồng
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Đà Nẵng", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null, duration_days: null, duration_nights: null, entity: [], entity_role: null, location_entity: "cau_rong"}
+    forbidden_filter: {not: {eq: ["destination", "Đà Nẵng"]}}
+  c0749:  # [poi_resolution] ks gan cau rong da nang
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Đà Nẵng", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null, duration_days: null, duration_nights: null, entity: [], entity_role: null, location_entity: "cau_rong"}
+    forbidden_filter: {not: {eq: ["destination", "Đà Nẵng"]}}
+  c0750:  # [poi_resolution] resort gần biển Mỹ Khê
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Đà Nẵng", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null, duration_days: null, duration_nights: null, entity: [], entity_role: null, location_entity: "my_khe"}
+    forbidden_filter: {not: {eq: ["destination", "Đà Nẵng"]}}
+  c0751:  # [poi_resolution] vé Bà Nà Hills
+    allowed_variants: [attraction, combo]
+    expected_parse: {taxonomy: "attraction", destination: "Đà Nẵng", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null, duration_days: null, duration_nights: null, entity: [], entity_role: null, location_entity: "ba_na"}
+    forbidden_filter: {not: {eq: ["destination", "Đà Nẵng"]}}
+  c0752:  # [poi_resolution] homestay phố cổ Hội An
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Hội An", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null, duration_days: null, duration_nights: null, entity: [], entity_role: null, location_entity: null}
+    forbidden_filter: {not: {eq: ["destination", "Hội An"]}}
+  c0753:  # [poi_resolution] khach san gan san bay Noi Bai
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Hà Nội", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null, duration_days: null, duration_nights: null, entity: [], entity_role: null, location_entity: "noi_bai"}
+    forbidden_filter: {not: {eq: ["destination", "Hà Nội"]}}
+  c0754:  # [poi_resolution] khách sạn gần VinWonders Nam Hội An
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Hội An", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null, duration_days: null, duration_nights: null, entity: ["vinwonders"], entity_role: "location", location_entity: null}
+    forbidden_filter: {or: [{not: {eq: ["taxonomy", "hotel"]}}, {not: {eq: ["destination", "Hội An"]}}]}
+  c0755:  # [poi_resolution] khách sạn gần Hồ Gươm hoặc Hồ Tây
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: "Hà Nội", origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null, duration_days: null, duration_nights: null, entity: [], entity_role: null, location_entity: "ho_hoan_kiem"}
+    forbidden_filter: {not: {eq: ["destination", "Hà Nội"]}}
+  c0756:  # [poi_resolution] khách sạn gần Hồ Gươm hoặc Cầu Rồng
+    allowed_variants: [hotel_property]
+    expected_parse: {taxonomy: "hotel", destination: null, origin: null, destination_city: null, must_not: [], must_not_brands: [], must_not_taxonomies: [], price_max: null, price_min: null, star_min: null, party_total: null, duration_days: null, duration_nights: null, entity: [], entity_role: null, location_entity: "ho_hoan_kiem"}
