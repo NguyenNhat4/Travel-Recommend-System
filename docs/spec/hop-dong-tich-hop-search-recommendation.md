@@ -285,6 +285,9 @@ Weaviate Cloud mất 453 giây. Mỗi request gửi truy vấn top-K sang Weavia
 Metadata (taxonomy, destination, available, recommendable, parent) vẫn nạp từ
 Postgres để tính filter: lúc khởi động và sau đó mỗi `CATALOG_REFRESH_SECONDS`
 (mặc định 900 giây), để giá, trạng thái và cửa sổ ngày theo kịp job cào hằng ngày.
+Mỗi lần nạp lại hỏi Postgres mã băm của catalog (một dòng); mã trùng lần trước thì
+dùng lại catalog đang giữ, không kéo lại — kiểm vector và độ phổ biến vẫn chạy mỗi
+chu kỳ. Hỏi mã băm lỗi thì kéo đầy đủ như cũ.
 Lần nạp lại lỗi thì giữ bản đang phục vụ. Mỗi lần nạp kiểm từng search unit
 theo object id, `modelVersion`, `textHash` (không tải vector): unit chưa có vector
 vẫn nằm trong metadata nhưng Weaviate chưa trả nó cho tới khi job index xong; unit

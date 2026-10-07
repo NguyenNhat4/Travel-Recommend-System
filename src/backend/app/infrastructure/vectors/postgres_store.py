@@ -49,6 +49,15 @@ FROM   catalog.combo_items
 ORDER  BY combo_product_id, position
 """
 
+#: Mã băm của đúng hai câu trên, tính phía DB và trả một dòng. Lần nạp lại so mã này để bỏ qua việc kéo cả
+#: catalog (~51 MB) khi không có gì đổi; dòng nào đổi một cột backend đọc thì mã đổi.
+_FINGERPRINT_QUERY = f"""
+SELECT coalesce((SELECT md5(string_agg(md5(t::text), '' ORDER BY t.product_id)) FROM ({_QUERY}) t), '')
+       || ':' ||
+       coalesce((SELECT md5(string_agg(md5(c::text), '' ORDER BY c.combo_product_id, c.position))
+                 FROM ({_COMBO_QUERY}) c), '')
+"""
+
 
 def combo_kinds_of(combo_items: dict[str, list[dict]]) -> dict[str, list[str]]:
     """combo product_id → `item_kind` các thành phần (theo position) — đầu vào cờ combo của `UnitAttributes.build`."""
@@ -86,6 +95,18 @@ class PostgresCatalogReader:
 
     def __init__(self, database_url: str):
         self.database_url = database_url
+        self._cached: tuple[str, CatalogUnits] | None = None  # (mã băm, catalog) của lần kéo gần nhất
+
+    def _fingerprint(self) -> str | None:
+        """Mã băm catalog hiện tại; lỗi thì trả None để lần nạp quay về kéo đầy đủ."""
+        import psycopg
+
+        try:
+            with psycopg.connect(self.database_url, connect_timeout=10) as conn:
+                return conn.execute(_FINGERPRINT_QUERY).fetchone()[0]
+        except Exception as exc:  # noqa: BLE001 — chỉ là bước tối ưu, không được làm hỏng lần nạp
+            logger.warning("recsys.catalog.fingerprint.failed error=%s; kéo đầy đủ", exc)
+            return None
 
     def _rows(self) -> list[dict]:
         import psycopg
@@ -109,6 +130,19 @@ class PostgresCatalogReader:
         return items
 
     def load(self) -> CatalogUnits:
+        """Catalog hiện tại. Mã băm trùng lần trước thì trả lại bản đang giữ, không kéo lại từ DB.
+
+        Lấy mã băm **trước** khi kéo: catalog đổi giữa hai bước thì lần sau mã khác và kéo lại, không bỏ sót.
+        """
+        fingerprint = self._fingerprint()
+        if fingerprint is not None and self._cached is not None and self._cached[0] == fingerprint:
+            logger.info("recsys.catalog.unchanged fingerprint=%s; dùng lại bản trong bộ nhớ", fingerprint[:12])
+            return self._cached[1]
+        catalog = self._load_full()
+        self._cached = (fingerprint, catalog) if fingerprint is not None else None
+        return catalog
+
+    def _load_full(self) -> CatalogUnits:
         logger.info("startup.recsys.catalog.query.start")
         rows = self._rows()
         logger.info("startup.recsys.catalog.query.ready products=%d", len(rows))
