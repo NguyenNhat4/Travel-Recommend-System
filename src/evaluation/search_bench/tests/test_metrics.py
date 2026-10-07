@@ -73,6 +73,24 @@ def test_hand_q001_normal(ctx_data):
     assert r["ranks_of_relevant"] == [2, 4, 6]
 
 
+def test_condensed_q001_and_coverage(ctx_data, cfg):
+    gold, _, _ = ctx_data
+    rows = rows_of(ctx_data, "A")
+    for row, gq in zip(rows, gold, strict=True):
+        M.add_condensed_metrics(row, gq, cfg.metrics)
+    q1 = by_qid(rows)["q001"]
+    assert (q1["full_n"], q1["condensed_n"]) == (10, 5)
+    assert q1["condensed_top_ids"] == [p for p in q1["top_ids"] if p in gold[0].judgments]
+    assert q1["condensed_recall@10"] == pytest.approx(3 / 4, **APPROX)
+    assert q1["condensed_judged@10"] == 1.0
+    agg = M.aggregate_condensed(rows, cfg.metrics)
+    assert agg["mode"] == "condensed"
+    assert agg["coverage"]["full_results"] == sum(len(r["top_ids"]) for r in rows)
+    assert agg["coverage"]["judged_results"] == sum(r["condensed_n"] for r in rows)
+    assert agg["coverage"]["retained_ratio"] == pytest.approx(
+        agg["coverage"]["judged_results"] / agg["coverage"]["full_results"], **APPROX)
+
+
 def test_hand_q004_recall5_vs_10_and_judged(ctx_data):
     r = by_qid(rows_of(ctx_data, "A"))["q004"]
     # 3 VinWonders (nhãn 2) ở hạng 2, 4, 7

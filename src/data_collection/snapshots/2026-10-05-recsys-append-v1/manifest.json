@@ -1,0 +1,30 @@
+{
+  "synthetic_histories": true,
+  "batch": "20261005-recsys-v1",
+  "files": {
+    "catalog.json.gz": {
+      "sha256": "f3d75460c8f9b7365a476862b77748296fe00e5c0a34f9fed32ffe729041effe",
+      "uncompressed_sha256": "faa091accb863ff92dd6578a1e5454e6c820a95536ccc09aceef4f91157eb2f3",
+      "bytes": 14369947
+    },
+    "batch.json.gz": {
+      "sha256": "1fef088ebf6a2920c7dc283291684750113b9a0fdeda1c412a6941a386fc6536",
+      "uncompressed_sha256": "071414bbbc2872533c61c492cb47f4fdefd14157c072d532810c903fb137a2c8",
+      "bytes": 1190694
+    },
+    "profiles.json.gz": {
+      "sha256": "4263b90f8c754e18f2d7fcc20e0168881762eb107e276c978013dccda2de80a9",
+      "uncompressed_sha256": "443706f768fc47d4872f8a3b9d8b3c1b9e85c5dbcefa30914278933a8e9d44ad",
+      "bytes": 180587,
+      "rows": 7003
+    },
+    "events.json.gz": {
+      "sha256": "c94ddafce57b7a0f652cd56182590dd8a4941cc8213161551b4a4757613db190",
+      "uncompressed_sha256": "872a088cfc6bead4eb635cc04333e6e2f58b5f242decffe68d5d8fdf3c4ac050",
+      "bytes": 1408047,
+      "rows": 40048
+    }
+  },
+  "snapshot_time": "2026-10-05 09:40:22.392672+00:00",
+  "source": "primary vota after append 20261005-recsys-v1; synthetic demo data"
+}

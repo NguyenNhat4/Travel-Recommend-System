@@ -116,3 +116,20 @@ variable "container_cpu_alert_percent" {
     error_message = "container_cpu_alert_percent must be greater than zero."
   }
 }
+
+variable "log_retention_days" {
+  description = "Days the _Default Cloud Logging bucket keeps application logs. Older entries are deleted automatically."
+  type        = number
+  default     = 30
+
+  validation {
+    condition     = var.log_retention_days >= 1 && var.log_retention_days <= 3650
+    error_message = "log_retention_days must be between 1 and 3650."
+  }
+}
+
+variable "log_ingest_alert_gib_per_hour" {
+  description = "Alert when the project ingests more than this many GiB of logs in one hour (default is about 6 GiB/day)."
+  type        = number
+  default     = 0.25
+}

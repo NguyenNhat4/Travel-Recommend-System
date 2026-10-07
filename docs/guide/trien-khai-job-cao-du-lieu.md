@@ -83,9 +83,10 @@ monitor đọc `GET /internal/calls` của backend qua `BACKEND_URL` (mặc đ�
 container monitor). Cần bản backend có endpoint này; dữ liệu mất khi backend restart. Như bản deploy trước (25/09), mở bằng link không cần SSH:
 
 1. Chạy monitor với `MONITOR_HOST=0.0.0.0 MONITOR_PUBLIC=1` (thao tác riêng khi được phép khởi động/cập nhật monitor). Lệnh `monitor` của job cũ
-   nhận cùng hai biến. `fresh-monitor` (CD gọi lệnh này) chạy nền với `--restart unless-stopped` và `--memory 1g`: bị tắt vì
-   hết RAM hay VM khởi động lại thì Docker tự bật lại, không phải chờ lần deploy sau. `MONITOR_RESTART=no` chạy tiền cảnh
-   như trước; `MONITOR_MEMORY` đổi giới hạn RAM.
+   nhận cùng hai biến. `fresh-monitor` (CD gọi lệnh này) chạy nền với `--restart unless-stopped`: bị tắt vì hết RAM hay VM khởi
+   động lại thì Docker tự bật lại, không phải chờ lần deploy sau. `MONITOR_RESTART=no` chạy tiền cảnh như trước. Không giới
+   hạn RAM mặc định: lượt bấm trên monitor (Cào lớn, Làm mới Trip…) chạy trong container monitor, giới hạn 1 GB đã giết
+   lượt full ngày 30/09 (mã -9); `MONITOR_MEMORY` đặt giới hạn nếu cần.
 2. Firewall GCP cho phép TCP `8765` vào VM (một lần, bỏ qua nếu bản deploy 25/09 đã mở):
 
    ```bash

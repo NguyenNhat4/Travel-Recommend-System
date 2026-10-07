@@ -8,6 +8,7 @@ from typing import Callable
 from src.backend.app.application.booking.settlement import Settlement
 from src.backend.app.application.ports.booking_store import BookingStore
 from src.backend.app.application.ports.payment_gateway import PaymentEvent, PaymentGateway, PaymentProviderUnavailable
+from src.backend.app.core.logging_config import log_event
 from src.backend.app.domain.booking import Booking, failure_reason_from_stripe
 from src.backend.app.domain.booking.status import BookingStatus, PaymentStatus
 
@@ -44,6 +45,7 @@ class PaymentEventHandler:
             return  # thanh toán trễ (chuyển khoản...) không dùng trong dự án; chờ event sau
         booking_id: str | None = None
         rejected = False
+        ref = amount = items = None
         async with self._store.transaction() as tx:
             booking = await self._load(tx, event)
             if booking is None or booking.payment is None:
@@ -73,10 +75,13 @@ class PaymentEventHandler:
                 booking.record_payment_received(event.payment_intent_id)
             await tx.save(booking)
             booking_id, rejected = booking.booking_id, payment.status is PaymentStatus.REFUND_PENDING
+            ref, amount, items = booking.reference_code, booking.total_amount, len(booking.items)
         if rejected:
             await self._settlement.refund(booking_id)
             return
         await self._settlement.confirm_paid(booking_id)
+        log_event(logger, "payment.settled", booking_ref=ref, amount_vnd=amount, item_count=items,
+                  event_id=event.event_id)
 
     async def _expired(self, event: PaymentEvent) -> None:
         async with self._store.transaction() as tx:
@@ -95,8 +100,9 @@ class PaymentEventHandler:
                 return
             reason = failure_reason_from_stripe(event.decline_code, event.error_code)
             final = booking.register_card_failure(reason, self._max_attempts)
-            logger.info("payment.card_declined bookingId=%s declineCode=%s failedAttempts=%d",
-                        booking.booking_id, event.decline_code, booking.payment.failed_attempts)
+            log_event(logger, "payment.failed", "WARNING", booking_ref=booking.reference_code,
+                      amount_vnd=booking.total_amount, item_count=len(booking.items), decline_code=event.decline_code,
+                      failed_attempts=booking.payment.failed_attempts, event_id=event.event_id)
             await tx.save(booking)
             session_id = booking.payment.checkout_session_id if final else None
         if session_id:

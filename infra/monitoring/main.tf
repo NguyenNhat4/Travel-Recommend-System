@@ -11,7 +11,8 @@ resource "google_monitoring_notification_channel" "staging_email" {
 resource "google_logging_metric" "staging_error_logs" {
   name        = "${var.name_prefix}_error_logs"
   description = "Error-level logs emitted by staging Compute Engine workloads."
-  filter      = "resource.type=\"gce_instance\" AND severity>=ERROR"
+  # Loại log của chính Ops Agent (lỗi TLS/ioctl của fluent-bit): chỉ đếm lỗi của app và hệ thống.
+  filter = "resource.type=\"gce_instance\" AND severity>=ERROR AND NOT logName:\"ops-agent\""
 
   metric_descriptor {
     metric_kind = "DELTA"
@@ -22,8 +23,8 @@ resource "google_logging_metric" "staging_error_logs" {
 
 resource "google_logging_metric" "staging_http_requests_total" {
   name        = "${var.name_prefix}_http_requests_total"
-  description = "Backend HTTP access requests observed in Uvicorn access logs."
-  filter      = "resource.type=\"gce_instance\" AND resource.labels.instance_id=\"${data.google_compute_instance.app.instance_id}\" AND jsonPayload.log=~\"HTTP/1.1.* [0-9][0-9][0-9]\""
+  description = "Backend HTTP requests (event http.request; health check bị loại vì backend log ở DEBUG)."
+  filter      = "resource.type=\"gce_instance\" AND resource.labels.instance_id=\"${data.google_compute_instance.app.instance_id}\" AND jsonPayload.service=\"backend\" AND jsonPayload.event=\"http.request\" AND NOT jsonPayload.route:\"/health/\""
 
   metric_descriptor {
     metric_kind = "DELTA"
@@ -34,8 +35,8 @@ resource "google_logging_metric" "staging_http_requests_total" {
 
 resource "google_logging_metric" "staging_http_requests_5xx" {
   name        = "${var.name_prefix}_http_requests_5xx"
-  description = "Backend HTTP 5xx responses observed in Uvicorn access logs."
-  filter      = "resource.type=\"gce_instance\" AND resource.labels.instance_id=\"${data.google_compute_instance.app.instance_id}\" AND jsonPayload.log=~\"HTTP/1.1.* 5[0-9][0-9]\""
+  description = "Backend HTTP 5xx responses (event http.request, status >= 500)."
+  filter      = "resource.type=\"gce_instance\" AND resource.labels.instance_id=\"${data.google_compute_instance.app.instance_id}\" AND jsonPayload.service=\"backend\" AND jsonPayload.event=\"http.request\" AND jsonPayload.status>=500 AND NOT jsonPayload.route:\"/health/\""
 
   metric_descriptor {
     metric_kind = "DELTA"
@@ -47,7 +48,8 @@ resource "google_logging_metric" "staging_http_requests_5xx" {
 resource "google_logging_metric" "staging_crawler_warning" {
   name        = "${var.name_prefix}_crawler_warning"
   description = "Crawler runs that completed with the known partial-result exit code 3."
-  filter      = "resource.type=\"gce_instance\" AND jsonPayload.message:\"fresh-catalog.exit=3\""
+  # Một lần mỗi lượt: event run.end của crawler (chỉ từ log container, không từ file job log nên không đếm đôi).
+  filter = "resource.type=\"gce_instance\" AND jsonPayload.service=\"crawler\" AND jsonPayload.event=\"run.end\" AND jsonPayload.exit_code=3"
 
   metric_descriptor {
     metric_kind = "DELTA"

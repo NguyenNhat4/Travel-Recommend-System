@@ -210,6 +210,21 @@ def test_database_rejects_a_child_without_birth_date_and_a_cart_over_nine_guests
     asyncio.run(scenario())
 
 
+def test_reconcile_leader_is_exclusive_across_connections():
+    """Hai bản sao backend tranh một khoá advisory: chỉ một bên làm leader, nhả khoá thì bên kia lấy được."""
+    async def go():
+        # Khoá advisory mức session phải đi DSN trực tiếp; khi app chạy qua pgbouncer đặt LEADER_LOCK_DATABASE_URL.
+        leader_url = os.getenv("LEADER_LOCK_DATABASE_URL") or None
+        a, b = PostgresBookingStore(APP_URL, leader_url), PostgresBookingStore(APP_URL, leader_url)
+        async with a.reconcile_leader() as first:
+            assert first is True
+            async with b.reconcile_leader() as second:
+                assert second is False
+        async with b.reconcile_leader() as after:
+            assert after is True
+    asyncio.run(go())
+
+
 # --- đơn nháp của Đặt ngay (migration 0007; spec dat-truc-tiep-theo-don-nhap.md §4, §5, §11) -------------------------
 
 @pytest.fixture

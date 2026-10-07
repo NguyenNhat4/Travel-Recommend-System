@@ -55,3 +55,11 @@ class BookingTx(Protocol):
 
 class BookingStore(Protocol):
     def transaction(self) -> AbstractAsyncContextManager[BookingTx]: ...
+
+    def reconcile_leader(self) -> AbstractAsyncContextManager[bool]:
+        """Chọn một tiến trình duy nhất chạy đối soát trong cả cụm.
+
+        Yield True nếu tiến trình này giữ quyền, False nếu tiến trình khác đang giữ (khi đó bỏ qua lượt này).
+        Quyền tự nhả khi thoát khối hoặc khi tiến trình chết, nên không có leader mồ côi.
+        """
+        ...

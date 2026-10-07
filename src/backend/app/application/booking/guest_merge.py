@@ -13,6 +13,7 @@ from src.backend.app.application.ports.cart_repository import CartRepository
 from src.backend.app.application.ports.guest_booking_store import GuestBookingStore
 from src.backend.app.application.ports.product_catalog import ProductCatalog
 from src.backend.app.application.tracking.behaviour import BehaviourTracker, CatalogProduct
+from src.backend.app.core.logging_config import hash_user_id, log_event
 from src.backend.app.core.request_context import current_request_id
 from src.backend.app.domain.booking import BookingDraft, CartLine, is_cart_eligible
 
@@ -76,6 +77,6 @@ class MergeGuestBooking:
             self._tracker.track_add_to_cart(
                 user, CatalogProduct(product.product_id, product.taxonomy, float(product.unit_price)),
                 line.quantity, using_date)
-        logger.info("booking.guest_merge cartItems=%d duplicates=%d drafts=%d guest=%s requestId=%s",
-                    merged_items, skipped, merged_drafts, guest_id[:8], current_request_id())
+        log_event(logger, "guest.merge", item_count=merged_items, user_id_hash=hash_user_id(user),
+                  message=f"guest.merge cartItems={merged_items} duplicates={skipped} drafts={merged_drafts}")
         return {"mergedCartItems": merged_items, "skippedDuplicates": skipped, "mergedDrafts": merged_drafts}

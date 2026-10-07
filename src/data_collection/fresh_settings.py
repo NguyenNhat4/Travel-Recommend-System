@@ -94,8 +94,8 @@ FIELDS: tuple[Field, ...] = (
           minimum=1, maximum=365),
     Field("agoda.hotelsPerDestination", "strategy", "agoda.com – số khách sạn mỗi điểm đến", "int", 20,
           minimum=1, maximum=500),
-    Field("agoda.checkinOffsetDays", "strategy", "agoda.com – ngày nhận phòng để lấy giá (+N ngày)", "int", 30,
-          minimum=1, maximum=365),
+    Field("agoda.checkinOffsetDays", "strategy", "agoda.com – cấu hình cũ (collector API luôn hỏi giá hôm chạy)", "int", 30,
+          minimum=1, maximum=365, help="Giữ để đọc settings.json cũ; fresh pipeline lấy một ngày giá thật rồi loader tạo lịch 30 ngày."),
     Field("tripAttractions.perDestination", "strategy", "trip.com – số điểm tham quan mỗi điểm đến", "int", 25,
           minimum=1, maximum=200),
     Field("tripFlights.flightsPerRoute", "strategy", "trip.com – số chuyến giữ lại mỗi tuyến (0 = tất cả)", "int", 0,
@@ -155,8 +155,8 @@ FIELDS: tuple[Field, ...] = (
     Field("booking.delay", "speed", "booking.com – giây tối thiểu giữa hai trang", "float", 3.0, minimum=2.0, maximum=120),
     Field("booking.tabs", "speed", "booking.com – số tab", "int", 1, minimum=1, maximum=2),
     Field("booking.fast", "speed", "booking.com – chặn CSS/tracker, không chờ trang tải xong", "bool", True),
-    Field("agoda.delay", "speed", "agoda.com – giây tối thiểu giữa hai trang", "float", 3.0, minimum=2.0, maximum=120),
-    Field("agoda.tabs", "speed", "agoda.com – số tab", "int", 1, minimum=1, maximum=2),
+    Field("agoda.delay", "speed", "agoda.com – giây tối thiểu giữa hai request API", "float", 3.0, minimum=2.0, maximum=120),
+    Field("agoda.tabs", "speed", "agoda.com – cấu hình tab cũ (API không dùng)", "int", 1, minimum=1, maximum=2),
     Field("crawl.maxBlocks", "speed", "Bị chặn liên tiếp bao nhiêu lần thì dừng một nguồn", "int", 8, minimum=1, maximum=50),
     Field("tripHotels.httpWorkers", "speed", "Khách sạn Trip – số request thông tin cùng lúc", "int", 4, env="FAST_WORKERS",
           minimum=1, maximum=4, help="Chỉ chỉnh xuống; tối đa là mức code hiện tại."),
@@ -212,8 +212,9 @@ FIELDS: tuple[Field, ...] = (
     Field("sla.maxCatalogAgeHours", "alerts", "SLA – báo khi lần nạp DB thành công gần nhất cũ hơn (giờ, 0 = tắt)", "int", 48,
           minimum=0, maximum=720),
     # ---- lưu trữ và log
-    Field("runs.keep", "storage", "Số lượt giữ lại dữ liệu (raw, interim, catalog, báo cáo)", "int", 7,
-          minimum=1, maximum=100, help="Lượt cũ hơn bị xoá đầu mỗi lượt mới. Tóm tắt của mọi lượt vẫn còn trong lịch sử."),
+    Field("runs.keep", "storage", "Số lượt giữ lại dữ liệu (raw, interim, catalog, báo cáo)", "int", 2,
+          env="RUNS_KEEP", minimum=1, maximum=100,
+          help="Lượt cũ hơn bị xoá đầu mỗi lượt mới (mặc định 2 lượt để tiết kiệm dung lượng VM 2 vCPU 4 GB). Tóm tắt của mọi lượt vẫn còn trong lịch sử."),
     Field("log.verbose", "storage", "Log chi tiết từng request (URL, mã HTTP, thời gian)", "bool", False),
 )
 BY_KEY = {f.key: f for f in FIELDS}

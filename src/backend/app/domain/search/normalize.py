@@ -5,7 +5,8 @@ Bốn lượt trên CHUỖI GỐC: mỗi lượt tách token bằng `\\w+` (sau 
 sang trái — từ không đụng tới giữ nguyên dấu, hoa thường và dấu câu. Các bảng ở đây chỉ chứa CÁCH VIẾT: alias điểm
 đến trỏ tới nơi catalog không có thì bị bỏ lúc dựng, từ vựng sửa chính tả dựng từ tên sản phẩm + điểm đến — tính hợp
 lệ vẫn đến từ catalog (cùng nguyên tắc `history/2026-09-20-resolve-destination-from-catalog.md`; Agent vẫn để LLM
-chọn điểm đến, thanh tìm kiếm không có LLM nên cần bảng tất định). Thuần stdlib.
+chọn điểm đến, thanh tìm kiếm không có LLM nên cần bảng tất định). `tone=True` thêm một lượt ĐẦU TIÊN: đưa vị trí dấu
+thanh của câu về kiểu chiếm đa số trong catalog (`tone.py`, kiến trúc §3 "Chuẩn hoá dấu kiểu mới"); mặc định tắt. Thuần stdlib.
 """
 from __future__ import annotations
 
@@ -16,6 +17,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
 from .lexical import STOPWORDS, fold, tokens
+from .tone import detect_style, normalize_tone
 
 _WORD = re.compile(r"\w+")          # NFC trước: dấu tổ hợp (Mn) không thuộc \w nên NFD sẽ tách token sai
 _PRICE = re.compile(r"^(\d+)tr$")   # "2tr" → "2 triệu": chỉ mở rộng chữ, nghĩa giá là bước 2
@@ -65,6 +67,9 @@ class NormalizedQuery:
     corrections: tuple[tuple[str, str], ...] = ()       # (token gốc, token đã sửa)
     destinations: tuple[str, ...] = ()                  # tên chuẩn xuất hiện trong câu — dành cho bước 2
     party: str | None = None                            # SOLO | COUPLE | FAMILY | FRIENDS | BUSINESS
+    #: (bắt đầu, kết thúc, tên chuẩn) của từng địa danh TRÊN `text` cuối — offset hợp lệ với chuỗi trả về, để parser
+    #: ràng buộc (`constraints.py`) cắt cụm ra khỏi text BM25. `destinations` giữ nguyên (không lặp, theo thứ tự).
+    destination_spans: tuple[tuple[int, int, str], ...] = ()
 
 
 def _spans(text: str) -> list[tuple[int, int, str, str]]:
@@ -122,12 +127,21 @@ def _osa(a: str, b: str) -> int:
     return d[-1][-1]
 
 
+#: Tên công khai cho module khác trong `domain/search` (parser ràng buộc dùng chung cách tách token và khớp cụm).
+spans = _spans
+find_phrases = _find
+
+
 class QueryNormalizer:
     """Dựng một lần từ catalog (`destinations`, `names`), gọi cho từng truy vấn. Idempotent: chạy hai lần như một."""
 
     def __init__(self, destinations: Iterable[str], names: Iterable[str], *,
-                 min_len: int = 5, min_df: int = 3, spelling: bool = True):
+                 min_len: int = 5, min_df: int = 3, spelling: bool = True, tone: bool = False):
         dests = {str(d) for d in destinations if d}
+        if tone:   # `names` có thể là generator (use case) — giữ lại để vừa đếm kiểu dấu vừa dựng từ vựng
+            names = [str(n) for n in names if n]
+        #: Kiểu dấu thanh của catalog ("old" | "new"); None = tắt hoặc catalog không đủ bằng chứng → không đổi câu.
+        self.tone_style: str | None = detect_style([*dests, *names]) if tone else None
         self._alias = {**ALIASES, **{k: v for k, v in DESTINATION_ALIASES.items() if v in dests}}
         self._gazetteer = {fold(d): d for d in dests}
         self._party = dict(PARTY_PHRASES)
@@ -184,6 +198,8 @@ class QueryNormalizer:
     # ------------------------------------------------------------------ điểm vào
     def __call__(self, q: str) -> NormalizedQuery:
         text = unicodedata.normalize("NFC", q)
+        if self.tone_style:   # trước alias: "Khánh Hoà" → "Khánh Hòa" khi catalog viết kiểu cũ
+            text, _ = normalize_tone(text, self.tone_style)
 
         # Lượt alias tra cả gazetteer để "khớp dài nhất" đúng: "tp ho chi minh" (4 token, đã chuẩn) thắng alias
         # "ho chi minh" (3 token) — nếu không, chạy lần hai sẽ thành "TP. TP. Hồ Chí Minh".
@@ -205,4 +221,10 @@ class QueryNormalizer:
         text, party_edits = _apply(text, spans, hits, lambda k: self._party[k][1])
         party = self._party[hits[0][2]][0] if hits else None   # nhắc nhiều kiểu thì lấy kiểu nhắc trước
 
-        return NormalizedQuery(text, tuple(aliases + places + party_edits), tuple(corrections), destinations, party)
+        # Quét gazetteer lần cuối trên text ĐÃ xong để offset địa danh đúng với chuỗi trả về.
+        spans = _spans(text)
+        hits = _find(spans, self._gazetteer.__contains__, self._max_n)
+        destination_spans = tuple((spans[i][0], spans[i + n - 1][1], self._gazetteer[k]) for i, n, k in hits)
+
+        return NormalizedQuery(text, tuple(aliases + places + party_edits), tuple(corrections), destinations, party,
+                               destination_spans)

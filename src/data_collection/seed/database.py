@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 
 import psycopg
@@ -94,6 +95,217 @@ def load_vota(url: str, data_dir: Path, reset: bool) -> dict[str, int]:
         counts.update(simulated_business.sync(conn, True))  # seed demo local luôn bật (data-model.md §3)
         conn.execute("ANALYZE")
     return counts
+
+SEED_USER_PATTERN = r"^VP[0-9]{7}$"      # khách seed + persona; tài khoản web là "VPW" + 12 ký tự base32 (domain/auth/identifiers.py)
+HISTORY_MAX_MISSING_PRODUCTS = 0          # event trỏ sản phẩm của catalog nguồn mà catalog đích không có: mặc định không cho
+
+
+def previous_seed_as_of(conn: psycopg.Connection) -> date | None:
+    """`as_of` của lần seed đang có trên database: đơn seed của P1 được đặt tại as_of − P1.upcoming_purchase_days_ago (giờ VN)."""
+    from .config import P1
+    row = conn.execute("""
+        SELECT min(b.created_at) FROM app.bookings b JOIN app.payments p USING (booking_id) WHERE p.provider = 'seed'
+    """).fetchone()
+    if not row or row[0] is None:
+        return None
+    return row[0].astimezone(timezone(timedelta(hours=7))).date() + timedelta(days=P1["upcoming_purchase_days_ago"])
+
+
+def load_history(url: str, data_dir: Path, source_product_ids: set[str], *, as_of: date, keep_events_since: date | None = None,
+                 drop_missing_products: bool = False) -> dict[str, int]:
+    """Chỉ thay lịch sử seed trên database đang dùng (staging / local đã seed), một transaction — không đụng catalog, Insider,
+    dữ liệu tài khoản web, và **giữ event phát sinh qua web** của khách seed / tài khoản test; persona P1–P4 reset về kịch bản (dưới).
+
+    - Event web của khách seed = event có `timestamp` ≥ `keep_events_since` (mặc định: `as_of` của lần seed cũ, suy từ đơn seed P1 —
+      seed luôn sinh event trước as_of của nó), cộng event mua của đơn không phải seed (đơn đặt thật). Giữ nguyên; phần còn lại của
+      khách seed (lịch sử sinh cũ) bị xoá và nạp lịch sử mới. Không suy được mốc và không truyền → dừng.
+    - **Persona P1–P4** (phương án B1, 05/10): luôn reset về kịch bản seed để demo lặp lại được — xoá cả event phát sinh qua web, chỉ giữ
+      event mua của đơn đặt thật (đơn không bị xoá).
+    - `cdp.profiles` của khách seed: upsert từ file; khách có event được giữ hoặc bị bỏ event được **tính lại từ event trong database**
+      theo luật MOCK_DATA_SPEC §4 (số đơn, loại đã mua, điểm đến gần nhất, ngày từ lần mua cuối, vòng đời) để không lệch lịch sử thực.
+    - Đơn seed (`app.payments.provider = 'seed'`, P1): xoá rồi nạp đơn mới của file. Đơn thật giữ nguyên.
+    - `app.users`: chỉ thêm tài khoản persona / test còn thiếu (không đổi mật khẩu đã có).
+    - Catalog đích: event trỏ sản phẩm có trong catalog nguồn nhưng không có ở đích → dừng (mặc định), hoặc bỏ các event đó
+      (`drop_missing_products`). Purchase trỏ sản phẩm không tồn tại có chủ đích (cạnh lộn xộn) không thuộc catalog nguồn nên không tính.
+    """
+    seed = data_dir / "seed"
+    profiles, events = read_jsonl(seed / "cdp_profiles.jsonl"), read_jsonl(seed / "cdp_events.jsonl")
+    users, bookings, items = (read_jsonl(seed / f) for f in ("app_users.jsonl", "app_bookings.jsonl", "app_booking_items.jsonl"))
+    counts: dict[str, int] = {}
+    with psycopg.connect(url) as conn:
+        target = {r[0] for r in conn.execute("SELECT product_id::text FROM cdp.products")}
+        missing = [e for e in events if e["product_id"] and e["product_id"] in source_product_ids and e["product_id"] not in target]
+        if len(missing) > HISTORY_MAX_MISSING_PRODUCTS and not drop_missing_products:
+            raise RuntimeError(f"{len(missing)} event trỏ sản phẩm không có trong catalog đích (vd {sorted({e['product_id'] for e in missing})[:3]}) — "
+                               "sinh lịch sử bằng catalog của database đích, hoặc chạy lại với --drop-missing-products")
+        dropped_users = {e["cdp_user_id"] for e in missing}
+        if missing:
+            ids = {id(e) for e in missing}
+            events = [e for e in events if id(e) not in ids]
+        absent = sorted({i["product_id"] for i in items} - target)
+        if absent:
+            raise RuntimeError(f"đơn seed trỏ sản phẩm không có trong catalog đích: {absent[:3]}")
+        counts["missing_product_events_dropped"] = len(missing)
+
+        keep_since = keep_events_since or previous_seed_as_of(conn)
+        if keep_since is None:
+            raise RuntimeError("không suy được ngày seed cũ (không có đơn seed P1) — truyền --keep-events-since YYYY-MM-DD")
+        keep_ts = datetime.combine(keep_since, time.min, tzinfo=timezone(timedelta(hours=7)))
+        counts["keep_events_since"] = keep_since.isoformat()
+
+        conn.execute("CREATE TEMP TABLE in_profiles (LIKE cdp.profiles) ON COMMIT DROP")
+        copy_rows(conn, "in_profiles", PROFILE, profiles)
+        cols = ", ".join(PROFILE)
+        updates = ", ".join(f"{c} = EXCLUDED.{c}" for c in PROFILE if c != "cdp_user_id")
+        counts["profiles_upserted"] = conn.execute(
+            f"INSERT INTO cdp.profiles ({cols}) SELECT {cols} FROM in_profiles ON CONFLICT (cdp_user_id) DO UPDATE SET {updates}").rowcount
+
+        seed_bookings = [r[0] for r in conn.execute("SELECT DISTINCT booking_id FROM app.payments WHERE provider = 'seed'")]
+        counts["seed_bookings_deleted"] = conn.execute("DELETE FROM app.bookings WHERE booking_id = ANY(%s)", (seed_bookings,)).rowcount
+        # Persona P1–P4 (người dùng chốt 05/10, phương án B1): reset về kịch bản seed — xoá cả event phát sinh qua web, chỉ giữ event
+        # mua của đơn đặt thật. Khách seed khác + tài khoản test: giữ event phát sinh qua web (timestamp ≥ keep_ts).
+        from .config import PERSONAS
+        personas = [p[0] for p in PERSONAS]
+        counts["events_deleted"] = conn.execute("""
+            DELETE FROM cdp.events e
+             WHERE e.cdp_user_id ~ %s AND (e.timestamp < %s OR e.cdp_user_id = ANY(%s))
+               AND (e.event_group_id IS NULL OR e.event_group_id NOT IN (SELECT event_group_id FROM app.bookings))
+        """, (SEED_USER_PATTERN, keep_ts, personas)).rowcount
+        kept_users = {r[0] for r in conn.execute("SELECT DISTINCT cdp_user_id FROM cdp.events WHERE cdp_user_id ~ %s", (SEED_USER_PATTERN,))}
+        counts["seed_users_with_kept_web_events"] = len(kept_users)
+        counts["events_kept"] = conn.execute("SELECT count(*) FROM cdp.events WHERE cdp_user_id ~ %s", (SEED_USER_PATTERN,)).fetchone()[0]
+
+        conn.execute("CREATE TEMP TABLE in_events (LIKE cdp.events INCLUDING DEFAULTS) ON COMMIT DROP")
+        copy_rows(conn, "in_events", EVENT, events)
+        ecols = ", ".join(c for c in EVENT if c != "event_id")
+        counts["events_inserted"] = conn.execute(
+            f"INSERT INTO cdp.events ({ecols}) SELECT {ecols} FROM in_events ORDER BY event_id").rowcount
+
+        conn.execute("CREATE TEMP TABLE in_users (LIKE app.users INCLUDING DEFAULTS) ON COMMIT DROP")
+        copy_rows(conn, "in_users", USER, users)
+        ucols = ", ".join(USER)
+        counts["users_added"] = conn.execute(f"INSERT INTO app.users ({ucols}) SELECT {ucols} FROM in_users ON CONFLICT DO NOTHING").rowcount
+        counts["bookings_inserted"] = copy_rows(conn, "app.bookings", BOOKING, bookings)
+        counts["booking_items_inserted"] = copy_rows(conn, "app.booking_items", ITEM, items)
+        new_ids = [b["booking_id"] for b in bookings]
+        conn.execute("""
+            INSERT INTO app.payments (payment_id, booking_id, provider, amount, currency, status, created_at, updated_at)
+            SELECT md5('payment:' || booking_id::text)::uuid, booking_id, 'seed', total_amount::bigint, currency, 'succeeded',
+                   created_at, created_at
+              FROM app.bookings WHERE booking_id = ANY(%s)
+        """, (new_ids,))
+        conn.execute("UPDATE app.bookings SET confirmed_at = created_at WHERE booking_id = ANY(%s) AND status = 'confirmed'", (new_ids,))
+        counts["profiles_recomputed"] = recompute_profiles(conn, sorted(kept_users | dropped_users), as_of)
+        conn.execute("ANALYZE cdp.events")
+        conn.execute("ANALYZE cdp.profiles")
+    return counts
+
+
+BACKUP_TABLES = (   # (bảng, điều kiện) — phần `load_history` thay; sao lưu MỌI cột để khôi phục đúng từng byte
+    ("cdp.profiles", "cdp_user_id ~ %(p)s"),
+    ("cdp.events", "cdp_user_id ~ %(p)s"),
+    ("app.bookings", "booking_id IN (SELECT booking_id FROM app.payments WHERE provider = 'seed')"),
+    ("app.booking_items", "booking_id IN (SELECT booking_id FROM app.payments WHERE provider = 'seed')"),
+    ("app.payments", "provider = 'seed'"),
+)
+
+
+def _columns(conn: psycopg.Connection, table: str) -> list[str]:
+    schema, name = table.split(".")
+    return [r[0] for r in conn.execute("SELECT column_name FROM information_schema.columns WHERE table_schema = %s AND table_name = %s "
+                                       "AND is_generated = 'NEVER' ORDER BY ordinal_position", (schema, name))]
+
+
+def _copy_any(conn: psycopg.Connection, table: str, columns: list[str], rows: list[dict]) -> int:
+    quoted = ", ".join(f'"{c}"' for c in columns)
+    with conn.cursor() as cursor, cursor.copy(f"COPY {table} ({quoted}) FROM STDIN") as copy:
+        for row in rows:
+            copy.write_row([Jsonb(row[c]) if isinstance(row[c], dict) else row[c] for c in columns])
+    return len(rows)
+
+
+def history_backup(url: str, path: Path) -> dict[str, int]:
+    """Lưu phần `load_history` sẽ thay ra một file JSON: profile + event của khách seed, đơn seed (đơn, mục, thanh toán)."""
+    out: dict[str, list[dict]] = {}
+    with psycopg.connect(url) as conn:
+        for table, where in BACKUP_TABLES:
+            cols = _columns(conn, table)
+            cur = conn.execute(f"SELECT {', '.join(cols)} FROM {table} WHERE {where}", {"p": SEED_USER_PATTERN})
+            out[table] = [dict(zip(cols, row)) for row in cur]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(out, ensure_ascii=False, default=str), encoding="utf-8")
+    return {t: len(r) for t, r in out.items()}
+
+
+def history_restore(url: str, path: Path) -> dict[str, int]:
+    """Đưa lịch sử seed về đúng bản sao lưu, một transaction: xoá event khách seed hiện có, nạp lại event cũ (giữ event_id), ghi đè
+    profile cũ, xoá profile khách seed không có trong bản sao lưu nếu không bảng nào trỏ tới, thay đơn seed bằng đơn cũ.
+    Event phát sinh qua web SAU khi nạp mới cũng bị xoá — chỉ dùng ngay sau một lần nạp hỏng."""
+    data = json.loads(path.read_text(encoding="utf-8"))
+    counts: dict[str, int] = {}
+    with psycopg.connect(url) as conn:
+        counts["seed_bookings_deleted"] = conn.execute(
+            "DELETE FROM app.bookings WHERE booking_id IN (SELECT booking_id FROM app.payments WHERE provider = 'seed')").rowcount
+        counts["events_deleted"] = conn.execute("DELETE FROM cdp.events WHERE cdp_user_id ~ %s", (SEED_USER_PATTERN,)).rowcount
+        keep = [r["cdp_user_id"] for r in data["cdp.profiles"]]
+        refs = ("app.users", "app.carts", "app.bookings", "app.conversations", "app.recommendation_logs", "app.search_logs")
+        counts["profiles_deleted"] = conn.execute(
+            "DELETE FROM cdp.profiles p WHERE p.cdp_user_id ~ %s AND NOT (p.cdp_user_id = ANY(%s)) AND "
+            + " AND ".join(f"NOT EXISTS (SELECT 1 FROM {t} x WHERE x.cdp_user_id = p.cdp_user_id)" for t in refs),
+            (SEED_USER_PATTERN, keep)).rowcount
+        pcols = list(data["cdp.profiles"][0]) if data["cdp.profiles"] else PROFILE
+        conn.execute("CREATE TEMP TABLE old_profiles (LIKE cdp.profiles) ON COMMIT DROP")
+        _copy_any(conn, "old_profiles", pcols, data["cdp.profiles"])
+        cols = ", ".join(pcols)
+        updates = ", ".join(f"{c} = EXCLUDED.{c}" for c in pcols if c != "cdp_user_id")
+        counts["profiles_restored"] = conn.execute(
+            f"INSERT INTO cdp.profiles ({cols}) SELECT {cols} FROM old_profiles ON CONFLICT (cdp_user_id) DO UPDATE SET {updates}").rowcount
+        counts["events_restored"] = _copy_any(conn, "cdp.events", list(data["cdp.events"][0]) if data["cdp.events"] else EVENT,
+                                              data["cdp.events"])
+        for table, _ in BACKUP_TABLES[2:]:
+            rows = data[table]
+            counts[f"{table}_restored"] = _copy_any(conn, table, list(rows[0]), rows) if rows else 0
+        conn.execute("SELECT setval(pg_get_serial_sequence('cdp.events', 'event_id'), (SELECT max(event_id) FROM cdp.events))")
+    return counts
+
+
+def recompute_profiles(conn: psycopg.Connection, user_ids: list[str], as_of: date) -> int:
+    """Trường tổng hợp của `cdp.profiles` tính lại từ `cdp.events` trong database (MOCK_DATA_SPEC §4, như seed_histories.lifecycle):
+    lifetime_order_count = số event_group_id khác NULL có purchase; days_since_last_booking = as_of − ngày (giờ VN) của purchase cuối;
+    purchased_verticals = taxonomy đã mua; last_destination = điểm đến của purchase gần nhất có sản phẩm trong catalog; vòng đời 0 purchase
+    → new, ≤ 180 ngày active, ≤ 365 dormant, còn lại churned; updated_at = max(created_at, event cuối)."""
+    if not user_ids:
+        return 0
+    return conn.execute("""
+        WITH buys AS (
+            SELECT e.cdp_user_id, e.event_group_id, e.taxonomy, e.timestamp, p.destination
+              FROM cdp.events e LEFT JOIN cdp.products p ON p.product_id = e.product_id
+             WHERE e.cdp_user_id = ANY(%(u)s) AND e.event_name = 'purchase'),
+        agg AS (
+            SELECT u.id AS cdp_user_id,
+                   (SELECT count(DISTINCT b.event_group_id) FROM buys b WHERE b.cdp_user_id = u.id AND b.event_group_id IS NOT NULL) AS orders,
+                   (SELECT max(b.timestamp) FROM buys b WHERE b.cdp_user_id = u.id) AS last_buy,
+                   (SELECT coalesce(array_agg(DISTINCT b.taxonomy ORDER BY b.taxonomy), '{}') FROM buys b
+                     WHERE b.cdp_user_id = u.id AND b.taxonomy IS NOT NULL) AS verticals,
+                   (SELECT b.destination FROM buys b WHERE b.cdp_user_id = u.id AND b.destination IS NOT NULL
+                     ORDER BY b.timestamp DESC LIMIT 1) AS last_dest,
+                   (SELECT max(e.timestamp) FROM cdp.events e WHERE e.cdp_user_id = u.id) AS last_event
+              FROM unnest(%(u)s::text[]) AS u(id))
+        UPDATE cdp.profiles p
+           SET lifetime_order_count = a.orders,
+               days_since_last_booking = CASE WHEN a.last_buy IS NULL THEN NULL
+                                              ELSE greatest(0, %(asof)s::date - (a.last_buy AT TIME ZONE 'Asia/Ho_Chi_Minh')::date) END,
+               purchased_verticals = a.verticals,
+               last_destination = a.last_dest,
+               lifecycle_stage = CASE WHEN a.last_buy IS NULL THEN 'new'
+                                      WHEN %(asof)s::date - (a.last_buy AT TIME ZONE 'Asia/Ho_Chi_Minh')::date <= 180 THEN 'active'
+                                      WHEN %(asof)s::date - (a.last_buy AT TIME ZONE 'Asia/Ho_Chi_Minh')::date <= 365 THEN 'dormant'
+                                      ELSE 'churned' END,
+               updated_at = greatest(p.created_at, coalesce(a.last_event, p.created_at))
+          FROM agg a
+         WHERE p.cdp_user_id = a.cdp_user_id
+    """, {"u": user_ids, "asof": as_of}).rowcount
+
 
 def upsert_catalog(url: str, data_dir: Path, retire_missing: bool = False) -> dict[str, int]:
     """Nạp riêng catalog vào database đang dùng (staging cloud hoặc local đã seed), một transaction.

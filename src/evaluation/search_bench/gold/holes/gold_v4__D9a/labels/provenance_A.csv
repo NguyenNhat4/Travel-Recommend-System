@@ -1,0 +1,830 @@
+﻿qid,product_id,source,machine_label,machine_children,machine_note,model,created_at,reviewed_by,reviewed_at,review
+c0037,c21a8139-1e44-54bf-b57b-7d2663f7b8a6,machine,2,,Passport là attraction (vé đa khu VinWonders/Safari/Grand World) ở Phú Quốc = điểm vui chơi,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:29:48+07:00,accepted
+c0037,35c8a7d8-70f6-578b-8276-af9ba74fa179,machine,2,,Passport là attraction (vé đa khu VinWonders/Safari/Grand World) ở Phú Quốc = điểm vui chơi,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:29:48+07:00,accepted
+c0037,01f5c032-0353-55a5-9792-70f442e9a577,machine,0,,"rubric v4: sai loại cốt lõi — hotel_property, câu hỏi attraction (v3 #2 cho 1) | nhãn máy trước: 1 — Đúng nơi (Phú Quốc) nhưng sai loại: resort, không phải điểm vui chơi (#2)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:29:48+07:00,accepted
+c0202,60fd3f73-ae2e-56da-ab52-bea9e5635727,machine,1,,"KS Phú Quốc, không ghi thang máy → thiếu điều kiện (theo nhãn đã sửa của câu)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T09:59:51+07:00,accepted
+c0202,045edc20-2cca-5b0d-a485-e4726c75f1c1,machine,1,,"Homestay Phú Quốc (KS #6), không ghi thang máy",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T09:59:51+07:00,accepted
+c0202,3a40e48b-fd79-549b-a1f9-6371d08e9ce4,machine,1,,"KS Phú Quốc, không ghi thang máy",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T09:59:51+07:00,accepted
+c0202,c6bba94b-db2b-5742-9ae8-b9c6a1a6e0d8,machine,1,,"KS Phú Quốc, không ghi thang máy",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T09:59:51+07:00,accepted
+c0202,20e34170-48d7-5209-b7a4-e36684f87ffd,machine,2,,"KS Phú Quốc, có ghi thang máy",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T09:59:51+07:00,accepted
+c0202,c4caa527-db7a-57e4-8579-f5824f3f5a1d,machine,1,,"Resort Phú Quốc (KS #6), không ghi thang máy",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T09:59:51+07:00,accepted
+c0208,79eae1b2-2ee9-512d-a486-0f457ede3eec,machine,1,,"Chỗ nghỉ Đà Lạt, không ghi giặt ủi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:00:03+07:00,accepted
+c0208,e1b57ca8-ca63-5ce9-a9e0-cb460620954d,machine,1,,"Căn hộ DV Đà Lạt, không ghi giặt ủi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:00:03+07:00,accepted
+c0208,a660eb96-ddb1-5f08-bbce-b9748f041d75,machine,1,,"Chỗ nghỉ Đà Lạt, không ghi giặt ủi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:00:03+07:00,accepted
+c0208,3d0b527b-f723-550a-a649-f8682d63533c,machine,1,,"Chỗ nghỉ Đà Lạt, không ghi giặt ủi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:00:03+07:00,accepted
+c0268,4fda25d8-a603-5999-aee0-20aa4919d8cd,machine,1,,"offtaxonomy #4: Đà Nẵng, không ghi vật dụng không gây dị ứng",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:00:42+07:00,accepted
+c0268,da444594-2f53-55ed-900d-7106a2ce5bd7,machine,1,,offtaxonomy #4: không ghi vật dụng không gây dị ứng,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:00:42+07:00,accepted
+c0268,883d4a0c-7b28-56ac-81a9-9846e262bb70,machine,1,,offtaxonomy #4: không ghi vật dụng không gây dị ứng,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:00:42+07:00,accepted
+c0268,b972baf3-11c5-5469-99ec-44e6f5ce9469,machine,1,,offtaxonomy #4: không ghi vật dụng không gây dị ứng,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:00:42+07:00,accepted
+c0268,c9ff60e9-c8e1-5aa5-a29b-515093c926f3,machine,1,,offtaxonomy #4: không ghi vật dụng không gây dị ứng,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:00:42+07:00,accepted
+c0268,baba8618-507f-57ee-8133-90a51c78664d,machine,1,,"offtaxonomy #4: resort Đà Nẵng, không có danh sách tiện ích → 1",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:00:42+07:00,accepted
+c0307,e298b703-4411-5137-b77f-4382304251d6,machine,2,f2d86801-1ba6-51e4-ba2f-40ab4096fbec,Có phòng 2 giường đơn hạng cơ bản (không Deluxe/Superior) ở Nha Trang,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:29:31+07:00,accepted
+c0307,4722c371-1636-5eb5-ad32-de08c251edb1,machine,2,3126949a-7637-5048-86e9-a58b4d3ce501,Có Phòng Tiêu Chuẩn 2 Giường Đơn ở Nha Trang,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:29:31+07:00,accepted
+c0307,fea4d759-db15-568d-aff3-cf4c4601da4d,machine,0,,"Phong Nha, không phải Nha Trang – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:29:31+07:00,accepted
+c0307,59fa5e4a-5dfb-5e75-8746-353ed3c6dafd,machine,1,,"Chỉ có 2 giường đơn hạng Deluxe/Superior, không có hạng bình dân – gần đúng",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:29:31+07:00,accepted
+c0307,f9a0e4a6-8bcd-5b71-bd8f-4613d4b956c6,machine,1,,Chỉ có Giường Đôi/2 Giường Đơn hạng Deluxe/Superior – gần đúng,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:29:31+07:00,accepted
+c0307,3cf26126-590a-54b4-9e4d-0486f3e8048d,machine,2,93a6bf53-26f8-51b3-ac51-9f789ea0ebaf,"Có Phòng 2 Giường Đơn Nhìn Ra Biển (hạng cơ bản, như AQua đã tick)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:29:31+07:00,accepted
+c0307,e3f470a8-58fd-5aac-80e9-f184465b8086,machine,2,36de2eb3-bd1f-5a73-97a4-b5dc5d37d54b,Có phòng 2 giường đơn hạng cơ bản ở Nha Trang,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:29:31+07:00,accepted
+c0332,2165cae6-837a-5f44-ad0b-4b5d1f96c4ec,machine,0,,"rubric v4: sai loại cốt lõi — attraction, câu hỏi hotel_property (v3 #2 cho 1) | nhãn máy trước: 1 — Đúng khu Nam Hội An nhưng là fastpass VinWonders, không phải Vinpearl Resort & Golf Nam Hội An (#2)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:16+07:00,accepted
+c0332,54eee350-598b-5e7c-91fa-7e26bbcd07a6,machine,1,,"Đúng nơi Hội An, resort khác, không phải Vinpearl Resort & Golf Nam Hội An",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:16+07:00,accepted
+c0408,38b04d19-257a-5dbd-b05d-3fa8318c7db6,machine,2,,"Phan Thiết (Mũi Né), lodge = KS (#6), có ghi Nhìn ra biển; giá không chấm",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:41+07:00,accepted
+c0408,94de8dc4-978b-5767-9494-d31fe3aeaa58,machine,2,,"Phan Thiết, có ghi Nhìn ra biển; resort là hotel_property = KS (#6). Lưu ý anchor B 29/09 cho resort = 0",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:41+07:00,accepted
+c0408,77d101b2-3a4e-544f-b0c4-8740e6b004a0,machine,0,,"sai nơi: Ninh Bình, câu hỏi Phan Thiết",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:41+07:00,accepted
+c0408,1219c3e0-03af-5dd5-90e6-68532404ea50,machine,0,,sai nơi + sai loại: attraction Châu Đốc,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:41+07:00,accepted
+c0408,1832e2b8-c408-59e1-a95c-380556b899e9,machine,2,,"Phan Thiết (Mũi Né), có ghi Nhìn ra biển, hướng biển",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:41+07:00,accepted
+c0408,498e2d0e-0173-5ccc-baf4-61ef24139125,machine,2,,"Phan Thiết, căn hộ dịch vụ = KS (#6), có ghi Nhìn ra biển",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:41+07:00,accepted
+c0408,35be5c4a-c765-51e2-b480-6a31bf5b2472,machine,0,,sai nơi + sai loại: combo Nha Trang,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:41+07:00,accepted
+c0408,0d3493fb-813d-557c-9df3-a5e036d6c7c1,machine,0,,"sai nơi: Phú Quốc, câu hỏi Phan Thiết",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:41+07:00,accepted
+c0408,6b29aba1-b49e-5698-8796-20a87e58118c,machine,0,,sai nơi: Ninh Bình,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:41+07:00,accepted
+c0408,b3ac284a-f7ba-5061-afed-6e4fad0eb4ea,machine,1,,"Phan Thiết, khách sạn nhưng không ghi nhìn ra biển / hướng biển - thiếu điều kiện",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:41+07:00,accepted
+c0408,68d86a1a-a327-55ae-bf8f-492272b97932,machine,0,,"rubric v4: sai loại cốt lõi — attraction, câu hỏi hotel_property (v3 #2 cho 1) | nhãn máy trước: 1 — đúng nơi (Phan Thiết) sai loại: điểm tham quan, câu hỏi khách sạn (#2)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:41+07:00,accepted
+c0408,ec9e8b61-1abb-5461-baba-68b9e016eabc,machine,0,,sai nơi: Ninh Bình,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:41+07:00,accepted
+c0408,6e8581af-40ab-57e3-aa73-8f7be0630e9d,machine,2,,"Phan Thiết (Mũi Né), có ghi Nhìn ra biển",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:41+07:00,accepted
+c0408,dd116468-7040-523f-b571-2c27ca6e1b56,machine,2,,"Phan Thiết (Mũi Né), homestay = KS (#6), có ghi Nhìn ra biển",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:41+07:00,accepted
+c0408,afad3196-41a9-5d17-ab2d-d131d2b5bd66,machine,2,,"Phan Thiết (Mũi Né), condotel = KS (#6), có ghi Nhìn ra biển",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:41+07:00,accepted
+c0475,b7806b2a-c392-5aff-8350-906fd6639946,machine,1,,"Hạ Long, KS đúng loại; không ghi «Nhìn ra biển» (chỉ nhìn ra thành phố, snippet «hướng biển») – thiếu điều kiện",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:44+07:00,accepted
+c0475,7bae243a-a34a-5009-bd4a-7ac3eceecd2d,machine,1,,"Hạ Long, KS 5 sao; không ghi «Nhìn ra biển» trong tiện ích (chỉ snippet «hướng biển») – thiếu điều kiện",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:44+07:00,accepted
+c0475,6b29aba1-b49e-5698-8796-20a87e58118c,machine,0,,"Sai nơi (Ninh Bình), hỏi Hạ Long",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:44+07:00,accepted
+c0475,79487efa-b5de-50e5-af96-80a1038d8e6c,machine,1,,"Hạ Long, KS 5 sao; không ghi «Nhìn ra biển» trong tiện ích (chỉ snippet «hướng biển») – thiếu điều kiện",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:44+07:00,accepted
+c0475,b3a269ee-3782-551b-9a03-4117f57ba0dc,machine,0,,"Sai nơi (Sa Pa), hỏi Hạ Long",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:44+07:00,accepted
+c0475,f655af7a-29b3-5d91-9823-e745067fe966,machine,0,,"Sai nơi (Ninh Bình), hỏi Hạ Long",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:44+07:00,accepted
+c0475,eff948d9-08d9-5ad2-bc08-4a9b45722fd9,machine,2,,"Căn hộ Hạ Long (KS = mọi hotel_property), tên ghi «ocean view», có hạng Studio Nhìn Ra Biển",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:44+07:00,accepted
+c0475,5a132bbc-395b-5af0-aad9-fd23e604c7f3,machine,2,,"Homestay Hạ Long (KS = mọi hotel_property), có ghi «Nhìn ra biển»",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:44+07:00,accepted
+c0475,cd6be2aa-761e-5896-9ec8-182f824ecbda,machine,0,,"Sai nơi (combo Nha Trang), hỏi KS Hạ Long",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:44+07:00,accepted
+c0475,98757990-dc03-5f8b-b4c8-3727119a5875,machine,0,,"Sai nơi (Quy Nhơn), hỏi Hạ Long",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:44+07:00,accepted
+c0475,e832420f-554a-50db-a73d-d8c257dbe280,machine,2,,"Lưu trú Hạ Long, có ghi «Nhìn ra biển»",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:44+07:00,accepted
+c0676,ee3b1541-2dd9-5e70-9d2e-9a991f1364d2,machine,0,,có ghi hồ bơi (bị loại trừ),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:47+07:00,accepted
+c0676,ad31e2d7-3033-5329-a3e0-ddce396a8736,machine,2,,"có ghi đưa đón sân bay, không ghi hồ bơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:47+07:00,accepted
+c0676,cd115766-8b47-5462-bce8-97720054b17b,machine,0,,"combo vé bay + phòng ở Huế: không phải chỗ nghỉ, sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:47+07:00,accepted
+c0676,584f454c-ecfa-5283-a784-e2032189ebd3,machine,2,,"unknown_metadata: có ghi đưa đón sân bay, không ghi hồ bơi (snippet bị cắt)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:47+07:00,accepted
+c0676,6f1d5b0f-c5f9-5d50-8e39-c7e1deb076e6,machine,0,,"combo vé bay + phòng ở Hạ Long: không phải chỗ nghỉ, sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:47+07:00,accepted
+c0676,e463e0ff-2902-5a87-b295-92b9d5ff1d0c,machine,0,,"combo vé bay + phòng, không phải chỗ nghỉ lẻ (sai loại cốt lõi)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:47+07:00,accepted
+c0676,61981d17-1eb3-52f8-9d27-fdb010afe018,machine,0,,"combo vé bay + phòng, không phải chỗ nghỉ lẻ (sai loại cốt lõi)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:47+07:00,accepted
+c0676,961c4d65-1587-581f-bdda-e9affbadf8f2,machine,2,,"có ghi đưa đón sân bay, không ghi hồ bơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:47+07:00,accepted
+c0694,b972baf3-11c5-5469-99ec-44e6f5ce9469,machine,1,,"không ghi hồ bơi, không ghi phòng gym",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:51+07:00,accepted
+c0694,93ac7acc-70a2-59c0-8ef8-c5470da579e5,machine,2,,"có ghi hồ bơi, không ghi phòng gym",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:51+07:00,accepted
+c0694,f7b8a85f-ca92-5c5d-b4b7-20b8f71c571b,machine,2,,"hostel có ghi hồ bơi, không ghi phòng gym",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:51+07:00,accepted
+c0694,fa7c5163-3d21-52c4-8e77-4240391db988,machine,1,,"không ghi hồ bơi, không ghi phòng gym",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:51+07:00,accepted
+c0694,e7b06bfe-f291-5e16-9415-3dd65cc4e6a5,machine,0,,có ghi phòng gym (bị loại trừ),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:51+07:00,accepted
+c0694,1aea3fe7-9fe8-5fc1-848b-41c2523b7742,machine,0,,có ghi phòng gym (bị loại trừ),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:51+07:00,accepted
+c0694,2b4a609d-6dd4-50d6-b284-5d17548f97da,machine,1,,"không ghi hồ bơi, không ghi phòng gym",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:51+07:00,accepted
+c0694,cb233744-10b9-5583-b683-d7080ec68c51,machine,0,,có ghi phòng gym (bị loại trừ),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:51+07:00,accepted
+c0694,c46c4940-3851-5017-a707-df0456261f37,machine,0,,có ghi phòng gym (bị loại trừ),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:51+07:00,accepted
+c0694,2bc05ff2-98ec-50fe-9029-6a25e3f35218,machine,0,,có ghi phòng gym (bị loại trừ),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:51+07:00,accepted
+c0694,df5086e5-d1a5-5c08-8bf0-e0b8188a8b84,machine,0,,có ghi phòng gym (bị loại trừ),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:51+07:00,accepted
+c0694,f92be952-e0dc-5c59-a427-aba30c80a178,machine,0,,có ghi phòng gym (bị loại trừ),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:51+07:00,accepted
+c0694,3ab0113f-e42d-5089-8b4b-5e7055a3a863,machine,2,,"có ghi hồ bơi, không ghi phòng gym",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:51+07:00,accepted
+c0694,2aedcf7e-0367-5ed3-8231-9c1cc2cc989c,machine,2,,"resort Đà Nẵng (KS = mọi hotel_property) có ghi hồ bơi, không ghi phòng gym",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:51+07:00,accepted
+c0700,35c8a7d8-70f6-578b-8276-af9ba74fa179,machine,1,,passport nhiều khu có kèm Tour Grand World PQ (chính sách: combo/passport = 1),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:01+07:00,accepted
+c0700,9f34cb20-5df8-5fd7-bf62-7555bc7b053e,machine,2,,trải nghiệm tại Grand World Phú Quốc (Bảo tàng Gấu),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:01+07:00,accepted
+c0700,8a4c5920-55c2-5370-b2e5-01956c3e7288,machine,0,,"vé chỉ có VinWonders, không có Grand World",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:01+07:00,accepted
+c0700,08649e74-253a-5a3e-be91-f402ef656873,machine,2,,tour/vé thuộc Grand World Phú Quốc (như anchor Tour Phú Quốc Hết Ý = 2),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:01+07:00,accepted
+c0700,c21a8139-1e44-54bf-b57b-7d2663f7b8a6,machine,1,,passport nhiều khu có kèm Tour Grand World PQ (chính sách: combo/passport = 1),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:01+07:00,accepted
+c0706,8ac10045-7ae6-5310-8515-d469d22f410c,machine,0,,"tuyến bay lẻ (ra từ Đà Lạt), không phải combo bay + phòng",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:56+07:00,accepted
+c0706,3c245ad7-0a32-5532-9b77-05cc9bfe2f7a,machine,0,,"tuyến bay lẻ vào Đà Lạt, không phải combo bay + phòng",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:30:56+07:00,accepted
+c0244,cd115766-8b47-5462-bce8-97720054b17b,machine,0,,Combo ở Huế – sai nơi,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:05+07:00,accepted
+c0244,e463e0ff-2902-5a87-b295-92b9d5ff1d0c,machine,0,,"rubric v4: sai loại cốt lõi — combo, câu hỏi hotel_property (v3 #2 cho 1) | nhãn máy trước: 1 — Combo vé bay + phòng ở TP.HCM: đúng nơi, sai loại (#2)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:05+07:00,accepted
+c0244,5ed40075-2714-55e3-9d7f-f6b23173b545,machine,2,,"Chỗ nghỉ TP.HCM, không ghi bếp riêng (#3)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:05+07:00,accepted
+c0244,cf3030bb-54ef-5be8-a003-207ee4d4a704,machine,2,,"Chỗ nghỉ TP.HCM, không ghi bếp riêng (#3)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:05+07:00,accepted
+c0244,a4c1ebf0-2609-5990-b54e-ca85bea4adbf,machine,2,,"Chỗ nghỉ TP.HCM, không ghi bếp riêng (#3)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:05+07:00,accepted
+c0244,79364e44-f85e-5513-b84f-3f152e2e5aae,machine,2,,"Chỗ nghỉ TP.HCM, không ghi bếp riêng (#3)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:05+07:00,accepted
+c0244,7d9b7822-3372-57da-ab93-6525f474209b,machine,0,,Combo ở Huế – sai nơi,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:05+07:00,accepted
+c0244,22425913-526a-5356-9b09-3e70c77fe9b2,machine,2,,"Chỗ nghỉ TP.HCM, không ghi bếp riêng (#3)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:05+07:00,accepted
+c0244,bc554580-241f-581f-871f-c718a1e4feae,machine,2,,"Chỗ nghỉ TP.HCM, không ghi bếp riêng (#3)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:05+07:00,accepted
+c0244,d93b5be3-0bb5-5916-a270-da78af0e115c,machine,0,,Có ghi 'Bếp riêng' – vi phạm phủ định (#3),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:05+07:00,accepted
+c0244,90911a93-c2a0-5eee-a6da-cf02082aec11,machine,2,,"Chỗ nghỉ TP.HCM, không ghi bếp riêng (#3)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:05+07:00,accepted
+c0244,6985636c-8b85-5ba2-a1fd-40e4f863a39e,machine,0,,Combo ở Huế – sai nơi,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:05+07:00,accepted
+c0244,a5fa2074-19c5-53e1-9212-4407061d67b2,machine,0,,Có ghi 'Bếp riêng' – vi phạm phủ định (#3),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:05+07:00,accepted
+c0244,4afd80ac-9f08-5327-bd5f-56b4789df88a,machine,2,,"Chỗ nghỉ TP.HCM, không ghi bếp riêng (#3)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:05+07:00,accepted
+c0247,dc90e016-a588-5eac-a618-406093912231,machine,2,,"KS Hạ Long, không ghi ban công (#3)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:09+07:00,accepted
+c0247,c38b1065-dc88-52c6-a3f3-e84f48339834,machine,2,,"KS Hạ Long, không ghi ban công (#3)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:09+07:00,accepted
+c0247,90c7c2f3-568e-507c-832d-952562b1d72c,machine,2,,"KS Hạ Long, không ghi ban công (#3)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:09+07:00,accepted
+c0247,b7806b2a-c392-5aff-8350-906fd6639946,machine,2,,"KS Hạ Long, không ghi ban công (#3)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:09+07:00,accepted
+c0247,3b838477-3ef1-5f23-8ec6-804fbb534573,machine,2,,"KS Hạ Long, không ghi ban công (#3)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:09+07:00,accepted
+c0247,79487efa-b5de-50e5-af96-80a1038d8e6c,machine,2,,"KS Hạ Long, không ghi ban công (#3)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:09+07:00,accepted
+c0682,c1fbe1a3-8737-5cc6-8c64-ee982b3e2f1e,machine,1,,"không ghi nhà hàng, không ghi hồ bơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:28+07:00,accepted
+c0682,c9ff60e9-c8e1-5aa5-a29b-515093c926f3,machine,0,,"sai nơi (Đà Nẵng), có ghi hồ bơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:28+07:00,accepted
+c0682,9eabca61-6d15-5b33-a629-ec0bfff8f300,machine,0,,có ghi hồ bơi (bị loại trừ),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:28+07:00,accepted
+c0682,ca3ad788-baf7-5d64-93e9-d0e5de3c69b6,machine,2,,"có ghi nhà hàng, không ghi hồ bơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:28+07:00,accepted
+c0682,a660eb96-ddb1-5f08-bbce-b9748f041d75,machine,1,,"không ghi nhà hàng (chỉ quầy bar), không ghi hồ bơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:28+07:00,accepted
+c0682,3664a066-32e9-5e3c-992b-66c8d1ae09e1,machine,2,,"resort có ghi nhà hàng, không ghi hồ bơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:28+07:00,accepted
+c0682,b6ffd739-3373-5f02-8e3b-2ab859b0fe60,machine,1,,"không ghi nhà hàng, không ghi hồ bơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:28+07:00,accepted
+c0682,1ae7536d-eaef-569a-ab4b-d375eb355e14,machine,1,,"không ghi nhà hàng (chỉ bữa sáng), không ghi hồ bơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:28+07:00,accepted
+c0682,71553071-b8ba-57be-a3de-1231f24e4217,machine,1,,"không ghi nhà hàng, không ghi hồ bơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:28+07:00,accepted
+c0682,0b8c6671-d231-57a2-8343-1e949e3aaa64,machine,1,,"không ghi nhà hàng, không ghi hồ bơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:28+07:00,accepted
+c0682,b1a317fb-9d2b-5f88-9bd8-ccdbdcd97f14,machine,0,,có ghi hồ bơi (bị loại trừ),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:28+07:00,accepted
+c0682,18836457-3a2b-57b5-9aaf-f1918b27ff97,machine,1,,"không ghi nhà hàng, không ghi hồ bơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:28+07:00,accepted
+c0682,72e476a4-417d-57b7-9e91-993a1fc7f736,machine,1,,"không ghi nhà hàng, không ghi hồ bơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:28+07:00,accepted
+c0682,79eae1b2-2ee9-512d-a486-0f457ede3eec,machine,1,,"không ghi nhà hàng, không ghi hồ bơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:28+07:00,accepted
+c0052,889e78c7-a593-5f1a-8a8a-2df79d8e9a1a,machine,1,,"Đúng nơi Nghệ An nhưng sai loại: khách sạn, không phải hoạt động trải nghiệm (#2; anchor KS lệch 2/0)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:33+07:00,accepted
+c0052,0c89ac18-1b5a-56ae-8112-635239378500,machine,2,,Điểm tham quan ở Nghệ An = hoạt động trải nghiệm,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:33+07:00,accepted
+c0052,0293710c-7696-5214-b250-d7ca43f828d0,machine,0,,"Sai nơi: Nha Trang, câu hỏi Nghệ An",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:33+07:00,accepted
+c0052,193b2536-9022-567d-9cc3-8183d1f8ac81,machine,1,,Đúng nơi Nghệ An nhưng sai loại: homestay/căn hộ (#2; anchor KS lệch 2/0),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:33+07:00,accepted
+c0052,0761e589-fbd8-5bc3-865b-03dc3fe74867,machine,1,,Đúng nơi Nghệ An nhưng sai loại: khách sạn (#2; anchor KS lệch 2/0),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:33+07:00,accepted
+c0172,7a6145db-8ccd-5ff3-abc7-9ce5397e67f4,machine,2,,"Căn hộ Quy Nhơn, có ghi ban công",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:39+07:00,accepted
+c0172,ad95e2c3-4838-5557-9451-4e15da355da3,machine,2,,"Homestay Quy Nhơn, có ghi ban công",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:39+07:00,accepted
+c0172,834b4781-c9dd-529f-8f8c-a371ee6dcc1c,machine,2,,"Căn hộ Quy Nhơn, có ghi ban công",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:39+07:00,accepted
+c0172,92a905a7-b309-5b20-ad3c-d81bc1a32cf5,machine,1,,"Căn hộ Quy Nhơn, không ghi ban công",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:39+07:00,accepted
+c0175,ae08208f-5bf9-50e9-88b0-5ac77e0aa175,machine,2,,"Homestay Hội An (KS #6), có ghi bàn làm việc",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:42+07:00,accepted
+c0175,f0412c8b-e7f7-5092-876e-84b467747928,machine,2,,"B&B Hội An (KS #6), không ghi bàn làm việc – không ghi vẫn có thể 2 (như câu)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:42+07:00,accepted
+c0175,62956003-ce5a-5ff6-b745-231f6b0d0fc8,machine,2,,"KS Hội An, không ghi bàn làm việc – không ghi vẫn có thể 2 (như câu)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:42+07:00,accepted
+c0175,fb5bb739-dd1b-58ec-8ea9-e8907ed809b8,machine,2,,"Hostel Hội An (KS #6), có ghi bàn làm việc",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:42+07:00,accepted
+c0175,c3e9a1f0-7c82-51d8-995b-4f9851d681a6,machine,2,,"KS Hội An, có ghi bàn làm việc",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:42+07:00,accepted
+c0185,46c2946c-bfd9-5fa9-a48b-feb3885380d8,machine,1,,"KS Sa Pa, không ghi nhà hàng",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:44+07:00,accepted
+c0185,7e2a26f9-8ccc-58d0-b906-a6643f78ad2d,machine,2,,"KS Sa Pa, có ghi nhà hàng",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:44+07:00,accepted
+c0185,4b0db013-2382-5984-bb90-8a6bac8465ff,machine,2,,"KS Sa Pa, có ghi nhà hàng",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:44+07:00,accepted
+c0185,685b5f51-874e-5602-8e43-e2358768ce41,machine,2,,"Homestay Sa Pa (KS #6), có ghi nhà hàng",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:44+07:00,accepted
+c0238,3bd7cdb4-e644-54a1-9f49-f07e1c2b00e1,machine,2,,"Hải Phòng, có ghi phòng gia đình và chỗ đỗ xe",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:48+07:00,accepted
+c0238,fef63e83-623b-5de7-b190-27ec0c6af4ef,machine,1,,"Có chỗ đỗ xe, không ghi phòng gia đình (chỉ phòng giường đôi)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:48+07:00,accepted
+c0238,8c3a110b-df24-5ed9-9ddc-229c1fe7aedb,machine,1,,"Không ghi phòng gia đình, chỉ 'Chỗ đậu xe riêng'",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:48+07:00,accepted
+c0238,517c31e4-798d-5343-a47f-8eed6d04aa73,machine,1,,"Có chỗ đỗ xe, không ghi phòng gia đình",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:48+07:00,accepted
+c0238,90cbb5c5-c82e-5b8b-ac31-c027696a6e78,machine,2,,"KS 5 sao có chỗ đỗ xe, không ghi phòng gia đình – như các KS 5 sao đã gán 2 trong câu",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:48+07:00,accepted
+c0238,e0cbac54-3583-5a5e-81f0-9985b3a32b2f,machine,1,,Không ghi phòng gia đình lẫn chỗ đỗ xe,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:48+07:00,accepted
+c0265,77878272-262e-521d-b05e-ac51299bd025,machine,1,,offtaxonomy #4: không ghi khăn tắm/ga trải giường (phụ phí),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:33:51+07:00,accepted
+c0265,fb58c711-10f3-5dbd-8304-be81527060a1,machine,1,,offtaxonomy #4: không ghi,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:33:51+07:00,accepted
+c0265,c304d224-d666-5a14-a7e1-975ca6ce09c8,machine,1,,offtaxonomy #4: chỉ ghi 'Khăn tắm' – chưa rõ → 1,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:33:51+07:00,accepted
+c0265,1d1c8e5a-f6c9-5599-b604-8d841ae51de3,machine,1,,offtaxonomy #4: không ghi,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:33:51+07:00,accepted
+c0265,29e3d097-e076-5a83-9739-a4faba2c44c8,machine,2,,offtaxonomy #4: có ghi rõ 'Khăn tắm/ga trải giường (phụ phí)',claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:33:51+07:00,accepted
+c0265,bcc5cd91-508c-56f1-9886-9e1d0a05434a,machine,1,,offtaxonomy #4: chỉ ghi 'Khăn tắm' – chưa rõ → 1,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:33:51+07:00,accepted
+c0265,57058c97-4bed-521a-942b-bd0cf2d1c26c,machine,1,,offtaxonomy #4: chỉ ghi 'Khăn tắm' – chưa rõ → 1,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:33:51+07:00,accepted
+c0265,20ea22bd-f5ba-5c36-826b-eda19210d2f3,machine,1,,offtaxonomy #4: chỉ ghi 'Khăn tắm' – chưa rõ → 1,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:33:51+07:00,accepted
+c0265,d3679aff-6a8b-519b-b937-f65b4b87e234,machine,1,,offtaxonomy #4: không ghi,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:33:51+07:00,accepted
+c0265,0ffea5cd-d6c4-5ddc-b414-1cad1e7cdc96,machine,1,,offtaxonomy #4: chỉ ghi 'Khăn tắm' – chưa rõ → 1,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:33:51+07:00,accepted
+c0265,f3930bff-7afc-5189-acb9-63be0f60e900,machine,1,,offtaxonomy #4: không ghi,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:33:51+07:00,accepted
+c0336,38e0d7b8-4746-578d-b5d9-a4b9f9327372,machine,1,,"Đúng nơi Hội An, resort khác, không phải Vinpearl Resort & Golf Nam Hội An",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:53+07:00,accepted
+c0336,fabd94b1-bc2a-5f77-a855-80c31eef5d3e,machine,1,,"Đúng nơi Hội An, biệt thự khác, không phải Vinpearl Resort & Golf Nam Hội An",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:31:53+07:00,accepted
+c0338,727e56b9-b26e-55a9-bfee-e66475c2adca,machine,1,,"Đúng nơi Hội An, KS khác (có hạng deluxe) nhưng không phải Vinpearl Nam Hội An; anchor câu này lệch 0/2",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:33:57+07:00,accepted
+c0338,fabd94b1-bc2a-5f77-a855-80c31eef5d3e,machine,1,,"Đúng nơi Hội An, biệt thự khác, không phải Vinpearl Nam Hội An; anchor câu này lệch 0/2",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:33:57+07:00,accepted
+c0379,c7c2cba0-92bf-575a-86f9-d2ba246423d3,machine,2,,"Quy Nhơn, resort = KS (#6), có ghi chỗ đỗ xe; ""miễn phí"" không kiểm được",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:34:12+07:00,accepted
+c0379,60aa9ec8-94ef-5281-8fd5-108e8d7fd269,machine,2,,"Quy Nhơn, resort = KS (#6), có ghi chỗ đỗ xe",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:34:12+07:00,accepted
+c0379,cfc5781f-7eba-525f-8d03-b2ee6bca5c63,machine,1,,"Quy Nhơn, căn hộ = KS (#6) nhưng không ghi chỗ đỗ xe - thiếu điều kiện",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:34:12+07:00,accepted
+c0379,fd248947-832f-5421-a2d6-bdf72d3cf52f,machine,2,,"Quy Nhơn, căn hộ = KS (#6), có ghi chỗ đỗ xe",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:34:12+07:00,accepted
+c0379,834b4781-c9dd-529f-8f8c-a371ee6dcc1c,machine,2,,"Quy Nhơn, căn hộ = KS (#6), có ghi chỗ đỗ xe",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:34:12+07:00,accepted
+c0379,d8f3ca09-cf12-581e-b54b-7fe3c59e3658,machine,0,,"sai nơi: Hà Nội, câu hỏi Quy Nhơn",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:34:12+07:00,accepted
+c0379,88f0d3ce-37de-5a53-82f0-ab59b87f862a,machine,0,,sai nơi + sai loại: tour Mai Châu,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:34:12+07:00,accepted
+c0379,40c5fa48-c149-5555-8a0b-c53999e4a0aa,machine,0,,sai nơi + sai loại: vé VinWonders Cửa Hội (Nghệ An),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:34:12+07:00,accepted
+c0379,903c44bc-0515-5cac-a375-f1b88a656bd1,machine,2,,"Quy Nhơn, khách sạn, có ghi chỗ đỗ xe",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:34:12+07:00,accepted
+c0379,74e344dc-366f-53a3-9a25-69de4bace422,machine,0,,sai nơi: Phú Quốc,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:34:12+07:00,accepted
+c0379,1b4cabe8-364e-57e5-a51c-dedfd49b7c08,machine,2,,"Quy Nhơn, căn hộ = KS (#6), có ghi chỗ đỗ xe",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:34:12+07:00,accepted
+c0379,50ebe1db-d1ec-5bef-a0ea-b2c36db9422c,machine,2,,"Quy Nhơn, khách sạn 5 sao, có ghi chỗ đỗ xe",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:34:12+07:00,accepted
+c0379,e3a8a769-7a7a-5be5-875f-54985cf270ec,machine,0,,sai nơi + sai loại: attraction Cao Bằng,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:34:12+07:00,accepted
+c0379,b3a269ee-3782-551b-9a03-4117f57ba0dc,machine,0,,sai nơi: Sa Pa,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:34:12+07:00,accepted
+c0379,5a594c6c-690c-5a2a-905d-6f7e4ea980c9,machine,2,,"Quy Nhơn, homestay/căn hộ dv = KS (#6), có ghi chỗ đỗ xe",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:34:12+07:00,accepted
+c0383,d757dd81-9fb4-5689-b79d-a2c50fdb13a2,machine,0,,"sai nơi: TP. Hồ Chí Minh, câu hỏi Đà Lạt",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:35:07+07:00,accepted
+c0383,ec9e8b61-1abb-5461-baba-68b9e016eabc,machine,0,,sai nơi: Ninh Bình,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:35:07+07:00,accepted
+c0383,365b2726-d746-5bb7-a266-64a99907b9b9,machine,1,,"Đà Lạt, homestay = KS (#6) nhưng không ghi nhà hàng",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:35:07+07:00,accepted
+c0383,b8ca161b-5860-51fa-86ab-ded85cd17521,machine,1,,"Đà Lạt, căn hộ = KS (#6) nhưng không ghi nhà hàng",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:35:07+07:00,accepted
+c0383,2185675d-9cb3-50ab-9e7a-c4ab9386beba,machine,2,,"Đà Lạt, có ghi nhà hàng (tên là Hotel, loại hiển thị biệt thự = KS #6)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:35:07+07:00,accepted
+c0383,1ae7536d-eaef-569a-ab4b-d375eb355e14,machine,1,,"Đà Lạt, khách sạn nhưng không ghi nhà hàng",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:35:07+07:00,accepted
+c0383,6d714aff-4856-5d8c-bbc5-7fe4b0d6e572,machine,0,,sai nơi: Ninh Bình,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:35:07+07:00,accepted
+c0383,d24f53f9-14fd-5b9f-8418-76f08731c96b,machine,0,,sai nơi + sai loại: tour Ninh Bình,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:35:07+07:00,accepted
+c0383,505c9c00-5a9e-5a77-80b6-3d9eccbd6eb4,machine,1,,"Đà Lạt, nhà khách = KS (#6) nhưng không ghi nhà hàng",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:35:07+07:00,accepted
+c0383,e071a40b-a351-59bf-bc8e-3c83598ce979,machine,0,,sai nơi: Ninh Bình,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:35:07+07:00,accepted
+c0383,caa9f68f-b427-51e4-9e6e-9955deb466ef,machine,2,,"Đà Lạt, cơ sở lưu trú 4 sao, có ghi nhà hàng",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:35:07+07:00,accepted
+c0383,adf189b9-8ae6-5a8c-b6e0-dd51ceae2941,machine,2,,"Đà Lạt, khách sạn 4 sao, có ghi nhà hàng",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:35:07+07:00,accepted
+c0383,9ee0128c-43d5-516f-a6aa-bf035a66cdf7,machine,0,,sai nơi: Ninh Bình,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:35:07+07:00,accepted
+c0383,ef9f6a98-226a-5460-879b-98a5ffbdac1b,machine,0,,sai nơi: Ninh Bình,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:35:07+07:00,accepted
+c0383,28862dc5-12a4-55b5-a184-3f551141c610,machine,1,,"Đà Lạt, nhà khách/boutique nhưng không ghi nhà hàng",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:35:07+07:00,accepted
+c0383,ec284a7b-466a-59a0-a29b-cb3e853a54ea,machine,1,,"Đà Lạt, homestay nhưng không ghi nhà hàng (chỉ có tiện nghi BBQ)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:35:07+07:00,accepted
+c0383,c1fbe1a3-8737-5cc6-8c64-ee982b3e2f1e,machine,1,,"Đà Lạt, khách sạn nhưng không ghi nhà hàng",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:35:07+07:00,accepted
+c0383,a660eb96-ddb1-5f08-bbce-b9748f041d75,machine,1,,"Đà Lạt, có quầy bar nhưng không ghi nhà hàng",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:35:07+07:00,accepted
+c0388,d813601b-53cb-551e-8751-b50041a116e6,machine,2,,"Hạ Long, căn hộ = KS (#6), có ghi hồ bơi + hướng biển",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:36:50+07:00,accepted
+c0388,4d98f407-0e3a-551e-b6cf-1bbfdf485d07,machine,1,,"Hạ Long, khách sạn có hồ bơi nhưng không ghi tầm nhìn/view",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:36:50+07:00,accepted
+c0388,6d714aff-4856-5d8c-bbc5-7fe4b0d6e572,machine,0,,"sai nơi: Ninh Bình, câu hỏi Hạ Long",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:36:50+07:00,accepted
+c0388,5456c39d-4425-5fda-8ea2-7cea05a21611,machine,1,,"Hạ Long, căn hộ dv hướng biển nhưng không ghi hồ bơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:36:50+07:00,accepted
+c0388,ec9e8b61-1abb-5461-baba-68b9e016eabc,machine,0,,sai nơi: Ninh Bình,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:36:50+07:00,accepted
+c0388,b7806b2a-c392-5aff-8350-906fd6639946,machine,1,,"Hạ Long, khách sạn hướng biển nhưng không ghi hồ bơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:36:50+07:00,accepted
+c0388,77d101b2-3a4e-544f-b0c4-8740e6b004a0,machine,0,,sai nơi: Ninh Bình,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:36:50+07:00,accepted
+c0388,6ec86304-fe93-5557-9c4f-4ad07508ad93,machine,2,,"Hạ Long, căn hộ 5 sao, có ghi hồ bơi + hướng biển",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:36:50+07:00,accepted
+c0388,8fb41cfd-a46b-5744-ae9c-21c2813fa42a,machine,0,,sai nơi: Ninh Bình,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:36:50+07:00,accepted
+c0388,2e5bd417-98da-561c-b1c0-185004a62b4e,machine,0,,sai nơi + sai loại: tour Ninh Bình,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:36:50+07:00,accepted
+c0388,a96b8844-dd1a-59bc-b086-2de623c825ff,machine,0,,sai nơi: Ninh Bình,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:36:50+07:00,accepted
+c0388,b7054209-8766-5733-886b-f4e3317d5f44,machine,0,,sai nơi: Ninh Bình,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:36:50+07:00,accepted
+c0388,13703341-ad68-5ccb-952b-ffd55b68c31c,machine,2,,"Hạ Long, căn hộ khách sạn 5 sao, có ghi hồ bơi + hướng biển",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:36:50+07:00,accepted
+c0388,c7498c6b-86bd-5a6b-854b-698c8a8d14d0,machine,2,,"Hạ Long, căn hộ, có ghi hồ bơi + Ngắm cảnh (coi là có tầm nhìn)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:36:50+07:00,accepted
+c0388,0d774441-51b7-5384-9315-eef493531a71,machine,2,,"Hạ Long, căn hộ, có ghi hồ bơi + Nhìn ra vườn (tầm nhìn chung, không riêng biển)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:36:50+07:00,accepted
+c0388,d02d9c82-8821-543f-abcb-a50255743b8e,machine,0,,sai nơi: Ninh Bình,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:36:50+07:00,accepted
+c0388,f8d9ea07-a79b-5409-9c59-0396164b8b96,machine,2,,"Hạ Long, 5 sao, có ghi hồ bơi + Nhìn ra thành phố",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:36:50+07:00,accepted
+c0388,e071a40b-a351-59bf-bc8e-3c83598ce979,machine,0,,sai nơi: Ninh Bình,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:36:50+07:00,accepted
+c0394,90bc4868-c14f-50f0-ab48-c0daee0c7fae,machine,1,,"Hà Nội, khách sạn nhưng không ghi sân hiên",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:08+07:00,accepted
+c0394,b3a269ee-3782-551b-9a03-4117f57ba0dc,machine,0,,"sai nơi: Sa Pa, câu hỏi Hà Nội",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:08+07:00,accepted
+c0394,53de6467-a0bb-51ec-a8a0-767cd1001569,machine,1,,"Hà Nội, homestay = KS (#6) nhưng không ghi sân hiên",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:08+07:00,accepted
+c0394,6b29aba1-b49e-5698-8796-20a87e58118c,machine,0,,sai nơi: Ninh Bình,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:08+07:00,accepted
+c0394,0efbdf8c-90bf-57da-8111-657f5d0bc214,machine,1,,"Hà Nội, homestay = KS (#6) nhưng không ghi sân hiên",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:08+07:00,accepted
+c0394,85cbd4c9-20a7-5a9b-9cc3-55492012857e,machine,1,,"Hà Nội, không ghi sân hiên",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:08+07:00,accepted
+c0394,b52a17eb-19fe-57dc-bf5c-5ee0235c78dd,machine,1,,"Hà Nội, căn hộ khách sạn nhưng không ghi sân hiên",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:08+07:00,accepted
+c0394,1108979c-d991-58f2-b99a-11ddf6df0333,machine,0,,sai nơi: Rạch Giá,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:08+07:00,accepted
+c0394,4be10bf3-5508-5e4b-8219-17868f5cd504,machine,1,,"Hà Nội, khách sạn nhưng không ghi sân hiên",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:08+07:00,accepted
+c0394,1219c3e0-03af-5dd5-90e6-68532404ea50,machine,0,,sai nơi + sai loại: attraction Châu Đốc,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:08+07:00,accepted
+c0394,87a1543b-200d-56c2-bf39-56debc2be551,machine,1,,"Hà Nội, chỉ ghi ""Sân thượng / hiên"", không ghi Sân hiên (như anchor Blubiz/The Sun = 1)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:08+07:00,accepted
+c0394,ec9e8b61-1abb-5461-baba-68b9e016eabc,machine,0,,sai nơi: Ninh Bình,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:08+07:00,accepted
+c0394,eff948d9-08d9-5ad2-bc08-4a9b45722fd9,machine,0,,sai nơi: Hạ Long,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:08+07:00,accepted
+c0394,9b612bf3-0768-50d4-95e5-f3e059708e05,machine,2,,"Hà Nội, căn hộ = KS (#6), có ghi Sân hiên",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:08+07:00,accepted
+c0394,57df19ec-c54c-5396-b509-e2678489c6c5,machine,2,,"Hà Nội, homestay; mô tả ghi ""một số căn có sân hiên""",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:08+07:00,accepted
+c0394,1d6aec13-b55b-5a72-9140-875c3d48dc77,machine,0,,sai nơi + sai loại: tour Mai Châu,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:08+07:00,accepted
+c0394,c8d4520d-21a1-562f-a0a2-9a8b7595a8fb,machine,1,,"Hà Nội, chỉ có ban công, không ghi sân hiên",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:08+07:00,accepted
+c0394,b1329d05-f873-58e9-97af-95ee1dceeb8f,machine,0,,sai nơi: Sa Pa,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:08+07:00,accepted
+c0394,05f63f51-5e41-5bce-9c10-60ff61257848,machine,2,,"Hà Nội, căn hộ = KS (#6), có ghi Sân hiên",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:08+07:00,accepted
+c0394,0ec21f90-9fef-5cfe-b3a2-47029387b47f,machine,0,,sai nơi: Sa Pa,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:08+07:00,accepted
+c0400,e15c9bed-d741-5c07-b295-555ce03346c6,machine,0,,"sai nơi: Ninh Bình, câu hỏi Phan Thiết",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:11+07:00,accepted
+c0400,bdb6ad84-b2b3-5100-95ff-2fc3af9a26e7,machine,1,,"Phan Thiết, hostel = KS (#6) nhưng không ghi nhà hàng",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:11+07:00,accepted
+c0400,e52ac2e3-0282-5340-83f9-c3af5ea26b24,machine,1,,"Phan Thiết, nhà nghỉ nhưng không ghi nhà hàng",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:11+07:00,accepted
+c0400,1832e2b8-c408-59e1-a95c-380556b899e9,machine,2,,"Phan Thiết (Mũi Né), có ghi nhà hàng",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:11+07:00,accepted
+c0400,1d39e992-4923-53a3-a35c-9476537cea97,machine,1,,"Phan Thiết, homestay nhưng không ghi nhà hàng",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:11+07:00,accepted
+c0400,94de8dc4-978b-5767-9494-d31fe3aeaa58,machine,2,,"Phan Thiết, resort = KS (#6), có ghi nhà hàng. Lưu ý máy 29/09 cho resort = 1 trước #6",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:11+07:00,accepted
+c0400,89a66bf0-5ae5-51e9-a3cb-9f4bc53f9ee5,machine,0,,sai nơi: Nghệ An (Cửa Lò),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:11+07:00,accepted
+c0400,db5744ab-5e58-5ffc-af5b-1ddf09e25750,machine,1,,"Phan Thiết, resort nhưng không có dữ liệu tiện ích, không ghi nhà hàng",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:11+07:00,accepted
+c0400,35be5c4a-c765-51e2-b480-6a31bf5b2472,machine,0,,sai nơi + sai loại: combo Nha Trang,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:11+07:00,accepted
+c0400,dd116468-7040-523f-b571-2c27ca6e1b56,machine,1,,"Phan Thiết, homestay nhưng không ghi nhà hàng",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:11+07:00,accepted
+c0400,68d86a1a-a327-55ae-bf8f-492272b97932,machine,0,,"rubric v4: sai loại cốt lõi — attraction, câu hỏi hotel_property (v3 #2 cho 1) | nhãn máy trước: 1 — đúng nơi (Phan Thiết) sai loại: điểm tham quan (#2)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:11+07:00,accepted
+c0400,bd2816b6-97b4-5245-a1ba-c7474323f439,machine,0,,sai nơi + sai loại: attraction Cao Bằng,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:11+07:00,accepted
+c0400,58d35225-1855-5adb-b59e-cabc327888a3,machine,1,,"Phan Thiết, căn hộ/resort nhưng không ghi nhà hàng",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:11+07:00,accepted
+c0400,befd3c8a-ab65-575b-bd29-9afda43daf3e,machine,2,,"Phan Thiết (Mũi Né), khách sạn 5 sao, có ghi nhà hàng",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:11+07:00,accepted
+c0400,6b29aba1-b49e-5698-8796-20a87e58118c,machine,0,,sai nơi: Ninh Bình,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:11+07:00,accepted
+c0400,c34b9982-c5b7-5772-919a-b16c5627ba94,machine,1,,"Phan Thiết, homestay nhưng không ghi nhà hàng",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:11+07:00,accepted
+c0400,3f829079-8fc9-55b8-be91-586a346c7f9b,machine,1,,"Phan Thiết, nhà khách nhưng không ghi nhà hàng",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:11+07:00,accepted
+c0409,9a0410c0-f3ce-5681-9f1b-67c83856d200,machine,1,,"Hạ Long, căn hộ dv = KS (#6) nhưng không ghi quầy bar (anchor merge cho 0 với ca không ghi)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:14+07:00,accepted
+c0409,b696d2b1-2d71-58e0-8f57-188c7f88f76c,machine,0,,"sai nơi: Rạch Giá, câu hỏi Hạ Long",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:14+07:00,accepted
+c0409,ba541321-b9f7-5e2e-be78-9be6430f0cb7,machine,0,,sai nơi: Nha Trang,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:14+07:00,accepted
+c0409,bd2816b6-97b4-5245-a1ba-c7474323f439,machine,0,,sai nơi + sai loại: attraction Cao Bằng,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:14+07:00,accepted
+c0409,57328a90-e3af-57f9-8cc4-707be8b305bf,machine,0,,sai nơi: Phú Quốc,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:14+07:00,accepted
+c0409,e9854677-c170-5582-b332-7a7b2a04f8eb,machine,0,,sai nơi: Phú Quốc,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:14+07:00,accepted
+c0409,d19643a5-aef9-547b-8f24-cbcc4ffffb28,machine,2,,"Hạ Long, căn hộ dv = KS (#6), có ghi quầy bar",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:14+07:00,accepted
+c0446,b62ed860-5939-5893-93ce-8777ceb37e2b,machine,2,,"Vé (attraction) có vé VinWonders Nha Trang (kèm cáp treo), đúng nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:16+07:00,accepted
+c0451,da86165c-4ef8-5b26-b2ed-ae25f7fa3f08,machine,0,,"rubric v4: sai loại cốt lõi — attraction, câu hỏi hotel_property (v3 #2 cho 1) | nhãn máy trước: 1 — Đúng nơi Nha Trang nhưng là điểm tham quan (suối khoáng), không phải khách sạn (#2)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:20+07:00,accepted
+c0451,3cf26126-590a-54b4-9e4d-0486f3e8048d,machine,2,,"KS Nha Trang, có ghi «Ban công»",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:20+07:00,accepted
+c0451,e4c0df32-5695-5888-9d79-5a20e487fe9a,machine,2,,"KS Nha Trang, có ghi «Ban công»",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:20+07:00,accepted
+c0451,7742ad3b-7cda-5c43-9280-9d49a62663e0,machine,0,,"rubric v4: sai loại cốt lõi — combo, câu hỏi hotel_property (v3 #2 cho 1) | nhãn máy trước: 1 — Đúng nơi Nha Trang nhưng là combo, không phải khách sạn (#2)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:20+07:00,accepted
+c0451,4ed118cc-8a29-512d-8c68-b30abae7ba4f,machine,0,,"rubric v4: sai loại cốt lõi — combo, câu hỏi hotel_property (v3 #2 cho 1) | nhãn máy trước: 1 — Đúng nơi Nha Trang nhưng là combo, không phải khách sạn (#2)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:20+07:00,accepted
+c0451,a834fe91-6fd5-51b7-a632-f86323104e5d,machine,2,,"KS Nha Trang, có ghi «Ban công»",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:20+07:00,accepted
+c0451,95c2a2da-8ca0-5681-96e3-4a8c2ccdb9c0,machine,2,,"Căn hộ/KS Nha Trang, có ghi «Ban công»",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:20+07:00,accepted
+c0451,cd6be2aa-761e-5896-9ec8-182f824ecbda,machine,0,,"rubric v4: sai loại cốt lõi — combo, câu hỏi hotel_property (v3 #2 cho 1) | nhãn máy trước: 1 — Đúng nơi Nha Trang nhưng là combo, không phải khách sạn (#2)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:20+07:00,accepted
+c0451,e37b1460-75c7-5bdb-af85-25ea6152a04a,machine,1,,KS Nha Trang nhưng không ghi «Ban công» – thiếu điều kiện (như anchor Cosmos/Phố Ngọc),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:20+07:00,accepted
+c0451,67264eec-63d3-58ca-89c2-a2f9da207e3b,machine,2,,"KS Nha Trang, có ghi «Ban công»",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:20+07:00,accepted
+c0451,b6e32a0c-9291-5721-bced-c414f8553029,machine,2,,"KS Nha Trang, có ghi «Ban công»",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:20+07:00,accepted
+c0451,f0aba982-e137-5689-8991-e34d3b986695,machine,0,,"rubric v4: sai loại cốt lõi — combo, câu hỏi hotel_property (v3 #2 cho 1) | nhãn máy trước: 1 — Đúng nơi Nha Trang nhưng là combo, không phải khách sạn (#2)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:20+07:00,accepted
+c0451,35be5c4a-c765-51e2-b480-6a31bf5b2472,machine,0,,"rubric v4: sai loại cốt lõi — combo, câu hỏi hotel_property (v3 #2 cho 1) | nhãn máy trước: 1 — Đúng nơi Nha Trang nhưng là combo, không phải khách sạn (#2)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:20+07:00,accepted
+c0451,4fed7e26-fab8-52af-88b4-af3776d97f45,machine,2,,"KS Nha Trang, có ghi «Ban công»",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:20+07:00,accepted
+c0451,43259d03-fbc7-541b-ad68-ec7256cf3327,machine,1,,"Resort Nha Trang (Cam Ranh), không ghi «Ban công» – thiếu điều kiện",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:20+07:00,accepted
+c0451,b4b15434-ddc0-52ec-93e9-849a1664c050,machine,2,,"KS Nha Trang, có ghi «Ban công»",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:20+07:00,accepted
+c0451,6c54f570-8f1d-52b9-bab3-a6173c900370,machine,2,,"KS Nha Trang, có ghi «Ban công»",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:20+07:00,accepted
+c0451,6d9508d9-507b-55ff-bf57-be862611c58e,machine,2,,"KS Nha Trang, có ghi «Ban công»",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:20+07:00,accepted
+c0451,e075b0de-fdd6-5acc-90a5-a28df9e304bb,machine,2,,"KS Nha Trang, có ghi «Ban công»",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:20+07:00,accepted
+c0451,6c4feb7b-c75c-59ee-8663-6d267fe0f80a,machine,2,,"Căn hộ Nha Trang (KS = mọi hotel_property), có ghi «Ban công»",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:20+07:00,accepted
+c0451,961b0f59-e13d-5297-b0b7-6f45fa6d242f,machine,2,,"Căn hộ Nha Trang (KS = mọi hotel_property), có ghi «Ban công»",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:37:20+07:00,accepted
+c0560,c541aabd-fa9f-5759-b9ad-eb31e7d19deb,machine,2,,cross_vertical (#5/#7): vé máy bay tuyến vào Hải Phòng (Đà Lạt → Hải Phòng),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0560,a6fdfcc2-4e78-5dde-9361-d87e7c0b178a,machine,0,,"Tuyến ra từ Hải Phòng (→ Côn Đảo), điểm đến Côn Đảo: sai nơi/chiều (#7)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0569,080a7f5e-57d5-5381-9f1d-5ca4efeb61c6,machine,2,,cross_vertical (#5): khách sạn ở Nha Trang,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0569,1054ecda-d6ed-502f-b7d6-cd49f12b3fa0,machine,2,,cross_vertical (#5/#7): vé máy bay tuyến vào Nha Trang (Nghệ An → Nha Trang),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0569,bb4aa0a9-e3a2-5e53-99eb-af9e2e34958a,machine,2,,cross_vertical (#5/#7): vé máy bay tuyến vào Nha Trang (Quảng Bình → Nha Trang),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0569,a834fe91-6fd5-51b7-a632-f86323104e5d,machine,2,,cross_vertical (#5): khách sạn ở Nha Trang,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0569,4fed7e26-fab8-52af-88b4-af3776d97f45,machine,2,,cross_vertical (#5): khách sạn ở Nha Trang,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0569,0171db25-0c70-5126-add8-d837e9216545,machine,2,,cross_vertical (#5/#7): vé máy bay tuyến vào Nha Trang (Hà Nội → Nha Trang),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0569,8ac10045-7ae6-5310-8515-d469d22f410c,machine,2,,cross_vertical (#5/#7): vé máy bay tuyến vào Nha Trang (Đà Lạt → Nha Trang),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0569,2f1ba0f1-d44c-5823-80ba-1460669dcb9a,machine,2,,cross_vertical (#5): combo du lịch ở Nha Trang,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0569,36f52f69-a553-5e0f-8586-7b30a2ec0d03,machine,2,,cross_vertical (#5): khách sạn ở Nha Trang,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0685,023fe38a-6228-5211-9ca0-695204d7551c,machine,0,,có ghi nhà hàng (bị loại trừ),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0685,a164edd9-3193-5de6-b22a-bf00f3369c46,machine,0,,có ghi nhà hàng (bị loại trừ),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0685,50267ada-6dcb-553a-b876-530d8d54ef42,machine,1,,"không ghi hồ bơi, không ghi nhà hàng",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0685,fa5d4cd4-ddab-557d-bd07-5c9b8e3e44eb,machine,2,,"có ghi hồ bơi, không ghi nhà hàng",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0685,6f6208b1-acdd-5a92-82a0-dd96ab98b6e0,machine,1,,"không ghi hồ bơi (chỉ công viên nước), không ghi nhà hàng",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0685,eea5dd43-ba0b-599d-81e8-fbe3f522cce9,machine,0,,"unknown_metadata: list không có nhà hàng nhưng snippet ghi ""xe đưa đón sân bay, nhà…"" (bị cắt) → coi là có",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0685,3f62a951-ff47-58b3-acbc-9c8cabd560eb,machine,0,,"đoạn mô tả đầy đủ (text T3+R) ghi ""nhà hàng"" trong dòng Tiện ích → có ghi tiện ích bị loại trừ (#3/#14); sửa từ 2 sau khi kiểm text đầy đủ",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0685,a93a9bf6-06dc-5741-bf35-1b6edabf061b,machine,0,,có ghi nhà hàng (bị loại trừ),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0685,f32d81e1-d013-5059-b842-4cb25cdb4d74,machine,1,,"không ghi hồ bơi, không ghi nhà hàng",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0685,0d3493fb-813d-557c-9df3-a5e036d6c7c1,machine,0,,có ghi nhà hàng (bị loại trừ),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0685,57328a90-e3af-57f9-8cc4-707be8b305bf,machine,2,,"có ghi hồ bơi, không ghi nhà hàng (snippet đủ, không có nhà hàng)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0685,eed59795-f2ff-50c6-af0a-99dd9a6474c6,machine,0,,có ghi nhà hàng (bị loại trừ),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0685,06280743-fbec-5882-9f59-1fe82bb2ded0,machine,1,,"không ghi hồ bơi, không ghi nhà hàng",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0685,542e004b-3684-5968-9f95-46458cfc4611,machine,2,,"unknown_metadata: có ghi hồ bơi, không ghi nhà hàng (snippet bị cắt ngay sau đưa đón)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0685,12c8adcb-d3ee-5939-adfe-739617529327,machine,0,,có ghi nhà hàng (bị loại trừ),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0685,d0a0b7df-6e36-57c3-a044-e3476ad7e63c,machine,1,,"không ghi hồ bơi, không ghi nhà hàng",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0085,e37b1460-75c7-5bdb-af85-25ea6152a04a,machine,0,,"rubric v4: sai loại cốt lõi — hotel_property, câu hỏi golf (v3 #2 cho 1) | nhãn máy trước: 1 — Đúng nơi Nha Trang nhưng sai loại: khách sạn, không phải sân golf (#2)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0085,06fe96e5-5226-50a8-bac2-015038d8e8a6,machine,0,,Đúng loại golf nhưng sai nơi: Phú Quốc,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0085,5cd6518f-7c93-535e-982b-77c60d9d7919,machine,0,,"rubric v4: sai loại cốt lõi — hotel_property, câu hỏi golf (v3 #2 cho 1) | nhãn máy trước: 1 — Đúng nơi Nha Trang nhưng sai loại: resort, không phải sân golf (#2)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0085,a834fe91-6fd5-51b7-a632-f86323104e5d,machine,0,,"rubric v4: sai loại cốt lõi — hotel_property, câu hỏi golf (v3 #2 cho 1) | nhãn máy trước: 1 — Đúng nơi Nha Trang nhưng sai loại: khách sạn (#2)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0085,e6165c4f-5328-5608-909c-dff39353b0b0,machine,0,,"rubric v4: sai loại cốt lõi — attraction, câu hỏi golf (v3 #2 cho 1) | nhãn máy trước: 1 — Đúng nơi Nha Trang nhưng sai loại: fastpass VinWonders, không phải sân golf (#2)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0085,7f3fbcfd-2461-563b-8ce9-dff2a6ce9759,machine,0,,"rubric v4: sai loại cốt lõi — hotel_property, câu hỏi golf (v3 #2 cho 1) | nhãn máy trước: 1 — Đúng nơi (destination Nha Trang, Cam Ranh) nhưng sai loại: resort (#2)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0085,fbca8fd2-9eb2-57e8-8474-39cfcd95fe25,machine,0,,"rubric v4: sai loại cốt lõi — hotel_property, câu hỏi golf (v3 #2 cho 1) | nhãn máy trước: 1 — Đúng nơi Nha Trang nhưng sai loại: căn hộ (#2)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0085,8ab35bd0-cd0c-5e2f-be56-e20cd628b709,machine,0,,Đúng loại golf nhưng sai nơi: TP. Hồ Chí Minh,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0178,542e004b-3684-5968-9f95-46458cfc4611,machine,1,,"Resort Phú Quốc, không ghi phòng gia đình",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0178,01f5c032-0353-55a5-9792-70f442e9a577,machine,1,,"Resort Phú Quốc, không ghi phòng gia đình",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0178,5e39c51e-01f5-5ad9-95b0-cfaa51ccf503,machine,1,,"Resort Phú Quốc, không ghi phòng gia đình",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0178,b1c750fa-863e-5347-ab4f-abea079a601b,machine,2,,"KS Phú Quốc, có ghi phòng gia đình",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0178,b8ec20b5-dbae-553e-836e-69bffcd38a3c,machine,1,,"Resort Phú Quốc, không ghi phòng gia đình",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0178,80d6f92d-52c9-580b-a027-81fa5a37cfb4,machine,2,,"Resort Phú Quốc, có ghi phòng gia đình",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0178,f4a39341-17c6-59a1-87f2-95028b67064f,machine,1,,"Resort Phú Quốc, không ghi phòng gia đình",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0178,7059f456-5a80-5a71-b032-6ed5a1f2f062,machine,2,,"KS Phú Quốc, có ghi phòng gia đình",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0284,b24e7acd-7e51-5926-8ae3-e3948d78c92a,machine,1,,Cần Thơ nhưng không có phòng 4 người/ban công; chỉ phòng 3 người – gần đúng,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0489,622dba63-d115-5721-a632-a4b4a7063297,machine,2,,"Căn hộ 4 sao ở Quy Nhơn: đúng loại, đúng nơi (giá kiểm ở cấp room)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0489,7c64f833-9b47-5f80-a3b1-a5a5d35a5fdf,machine,2,,"Căn hộ 4 sao ở Quy Nhơn: đúng loại, đúng nơi (giá kiểm ở cấp room)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0489,46aad640-08e5-50c9-a651-4d2e48a33499,machine,0,,"rubric v4: 3 sao < 4 sao yêu cầu — ràng buộc cứng (v3 cho 1) | nhãn máy trước: 1 — Chỗ nghỉ Quy Nhơn đúng loại, đúng nơi; 3 sao < 4 (máy kiểm sao) · hạ 2→1: sao dưới ngưỡng/không khai (như nhãn người cùng câu)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0489,9ccad87f-d336-52de-b728-328d3f184685,machine,0,,"rubric v4: 3 sao < 4 sao yêu cầu — ràng buộc cứng (v3 cho 1) | nhãn máy trước: 1 — Chỗ nghỉ Quy Nhơn đúng loại, đúng nơi; 3 sao < 4 (máy kiểm sao) · hạ 2→1: sao dưới ngưỡng/không khai (như nhãn người cùng câu)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0673,03044c28-cc12-506a-8a97-2cad7282cf53,machine,1,,"không ghi spa, không ghi hồ bơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0673,0ccb2ff2-fcb5-55df-abab-dd8db542236d,machine,0,,có ghi hồ bơi (bị loại trừ),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0673,7e2a26f9-8ccc-58d0-b906-a6643f78ad2d,machine,0,,có ghi hồ bơi (bị loại trừ),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0673,7e1a7ceb-5f73-5f51-b7d4-aa91e70d29c5,machine,2,,"có ghi spa, không ghi hồ bơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0673,f48358b5-2af6-55c2-9bcf-6fa09dd66a4f,machine,0,,có ghi hồ bơi (bị loại trừ),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0679,1606bed0-00f3-5911-8e93-a6a8d1f53997,machine,2,,"có ghi hồ bơi, không ghi đưa đón sân bay",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0679,492ea8ef-4aec-576e-bcc2-1822e7a5eb09,machine,2,,"có ghi hồ bơi, không ghi đưa đón sân bay",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0679,65cc26f7-23b5-5fb2-9b19-8e79730f0cb2,machine,2,,"có ghi hồ bơi, không ghi đưa đón sân bay",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0679,e9fcdbae-88c1-5191-86fa-c0a9bf7a5d61,machine,2,,"có ghi hồ bơi, không ghi đưa đón sân bay",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0679,1993c1b8-083f-5683-a217-af712cfaf145,machine,2,,"có ghi hồ bơi, không ghi đưa đón sân bay",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0679,040dcf84-bc72-5c05-a5a4-99093d97552a,machine,2,,"có ghi hồ bơi, không ghi đưa đón sân bay",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0679,b2b605b6-d32d-5aab-b4a0-297142ffd305,machine,2,,"có ghi hồ bơi, không ghi đưa đón sân bay",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0679,fb58c711-10f3-5dbd-8304-be81527060a1,machine,2,,"có ghi hồ bơi, không ghi đưa đón sân bay",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0679,dbafe368-7067-5884-b32c-b88eb8719118,machine,2,,"homestay (KS = mọi hotel_property) có ghi hồ bơi, không ghi đưa đón",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0679,c2dff4f1-2ad2-5c77-95c2-49e31844bbbf,machine,2,,"có ghi hồ bơi, không ghi đưa đón sân bay",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0679,c3e9a1f0-7c82-51d8-995b-4f9851d681a6,machine,0,,có ghi đưa đón sân bay (bị loại trừ),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0679,f3930bff-7afc-5189-acb9-63be0f60e900,machine,2,,"có ghi hồ bơi, không ghi đưa đón sân bay",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0679,19ea8ee0-d66d-580a-b9d7-a49dbbc02368,machine,2,,"có ghi hồ bơi, không ghi đưa đón sân bay",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0691,860a94ee-6953-5e37-bf5b-fe156e594218,machine,1,,"không ghi hồ bơi, không ghi quầy bar",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0691,b9a64031-b9f7-59c3-aede-6cae079d1ca2,machine,2,,"có ghi hồ bơi, không ghi quầy bar",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0691,903c44bc-0515-5cac-a375-f1b88a656bd1,machine,1,,"không ghi hồ bơi, không ghi quầy bar",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0691,ba6a6221-960e-5abb-94c7-76c5b1598e71,machine,0,,có ghi quầy bar (bị loại trừ),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0691,834b4781-c9dd-529f-8f8c-a371ee6dcc1c,machine,1,,"không ghi hồ bơi, không ghi quầy bar",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0691,9a58c915-744d-503a-b5ac-f400bb4c33ae,machine,0,,có ghi quầy bar (bị loại trừ),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0691,238b675e-5305-5eac-8512-144c77deeda8,machine,0,,có ghi quầy bar (bị loại trừ),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0691,9ccad87f-d336-52de-b728-328d3f184685,machine,2,,"có ghi hồ bơi, không ghi quầy bar",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0691,466a7638-af11-522d-9bbc-23025720fd42,machine,0,,có ghi quầy bar (bị loại trừ),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0691,7c64f833-9b47-5f80-a3b1-a5a5d35a5fdf,machine,1,,"không ghi hồ bơi, không ghi quầy bar",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0691,46aad640-08e5-50c9-a651-4d2e48a33499,machine,0,,có ghi quầy bar (bị loại trừ),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0691,3f0f75f1-e241-5ef4-a492-bf20105a503f,machine,1,,"không ghi hồ bơi, không ghi quầy bar",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0691,ff8e0172-3401-5f35-8600-f7f5f4f49ff8,machine,2,,"có ghi hồ bơi, không ghi quầy bar",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0691,3e1a3a44-477d-5cb0-aa0a-c50f32f143ef,machine,0,,có ghi quầy bar (bị loại trừ),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0691,cfc5781f-7eba-525f-8d03-b2ee6bca5c63,machine,2,,"có ghi hồ bơi, không ghi quầy bar",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0718,9ef6350f-d988-5223-8355-c9d381b48bc2,machine,0,,"tuyến khác (Hải Phòng → TP.HCM), không phải Côn Đảo → TP.HCM",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0718,f4fc1b53-b3d5-5c10-b855-d0e354ddf14a,machine,0,,"tuyến khác (Hà Nội → TP.HCM), không phải Côn Đảo → TP.HCM",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0126,a7c00f8d-58e5-5e4d-a320-45f12c6eedf2,machine,0,,"Thanh Hóa, không phải Hải Phòng – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0126,736a506f-ed0d-541f-8080-986fe6f114d4,machine,2,,Chỗ nghỉ ở Hải Phòng; yên tĩnh/cặp đôi không có dữ liệu trái ngược,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0126,517c31e4-798d-5343-a47f-8eed6d04aa73,machine,2,,Khách sạn ở Hải Phòng; yên tĩnh/cặp đôi không có dữ liệu trái ngược,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0126,98e74c72-d286-517d-b229-0e5ad5ad740e,machine,2,,"Căn hộ ở Hải Phòng; đúng loại chỗ nghỉ, đúng nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0126,0c63a9f9-7585-54e6-b030-ea0f13c3bea9,machine,2,,"Căn hộ 4 sao ở Hải Phòng; đúng loại chỗ nghỉ, đúng nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0126,a9114673-b639-5c4c-9e13-769af24a3138,machine,2,,"Chỗ nghỉ Hải Phòng, có ghi cách âm (yên tĩnh)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0126,1c7f6625-36a9-5ade-9bd2-783844f67dc8,machine,2,,"Nhà nghỉ B&B ở Hải Phòng; đúng loại chỗ nghỉ, đúng nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0126,6d5570cb-abb1-5e42-a998-cb0554d42a10,machine,1,,"Như ""Hoang Hai Hotel Haiphong"" (người gán 1): KS phố, không thấy yên tĩnh/cặp đôi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0126,05f63f51-5e41-5bce-9c10-60ff61257848,machine,0,,"Hà Nội, không phải Hải Phòng – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0355,82981b29-9490-51c3-aae2-e4eaa61ca0c5,machine,1,,"Cát Bà thuộc Hải Phòng (#1): đúng nơi đến nhưng là cáp treo, không phải xe bus HN-Cát Bà (#2)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0355,1d6aec13-b55b-5a72-9140-875c3d48dc77,machine,0,,"Sai nơi: tour Mai Châu/Ninh Bình, không liên quan Cát Bà",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0355,caa3e074-d9fe-5302-a90c-0ef6c18869cf,machine,0,,"rubric v4: sai loại cốt lõi — hotel_property, câu hỏi attraction (v3 #2 cho 1) | nhãn máy trước: 1 — Đúng nơi Cát Bà nhưng sai loại: lưu trú, không phải xe bus (như anchor KS Cát Bà = 1)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0355,645f8e7c-3a42-5e31-a0dc-4bb63600abac,machine,0,,"rubric v4: sai loại cốt lõi — hotel_property, câu hỏi attraction (v3 #2 cho 1) | nhãn máy trước: 1 — Đúng nơi Cát Bà nhưng sai loại: căn hộ, không phải xe bus (như anchor KS Cát Bà = 1)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0355,973f1f04-6e0f-5380-a7b9-46718793a73d,machine,1,,"Cát Bà thuộc Hải Phòng (#1): đúng nơi nhưng là tour thuyền, không phải xe bus (#2)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0439,c43ef14e-3c42-5899-bbdc-37dc2435015f,machine,0,,"Sai nơi (Cần Thơ), hỏi Nha Trang",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0439,5d034913-a6c3-5635-ad65-676d52098391,machine,1,,"Đúng nơi Nha Trang nhưng là căn hộ, không phải KDL/resort (#6)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0439,fc73a5c6-157b-52d3-8c77-87f7cd9bf4ab,machine,1,,"Đúng nơi Nha Trang nhưng là căn hộ dịch vụ (Citadines), không phải KDL/resort (#6)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0439,05ccf6ab-882e-519c-b3f8-055a900c4d72,machine,1,,"Đúng nơi Nha Trang nhưng là căn hộ, không phải KDL/resort (#6)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0439,56bf65f2-8e25-5d13-964c-aff6f6a96f76,machine,2,,"Lưu trú 5 sao all-inclusive Cam Ranh (bãi biển riêng, công viên nước) = khu nghỉ dưỡng; hợp gia đình",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0439,fd462ad2-ec94-5a82-8224-4d8fb082da57,machine,0,,"Sai nơi (Cần Thơ), hỏi Nha Trang",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0439,f9a0e4a6-8bcd-5b71-bd8f-4613d4b956c6,machine,1,,"Đúng nơi Nha Trang nhưng là khách sạn, không phải KDL/resort (#6)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0439,3c47d9d5-095f-59d7-b2b6-93b7fdd61fbf,machine,0,,"Sai nơi (Hội An), hỏi Nha Trang",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0439,0aed61e3-1f95-532c-a1a9-69b58edeadcd,machine,0,,"Sai nơi (Cần Thơ), hỏi Nha Trang",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0439,a4c89244-f67d-5937-bf67-97662b054b46,machine,0,,"Sai nơi (Ninh Bình), hỏi Nha Trang",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0439,95dc9d7f-9234-53bd-ba36-b1f4daa97cae,machine,0,,"Sai nơi (TP.HCM), hỏi Nha Trang",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0439,3d0b527b-f723-550a-a649-f8682d63533c,machine,0,,"Sai nơi (Đà Lạt), hỏi Nha Trang",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0439,5cd6518f-7c93-535e-982b-77c60d9d7919,machine,2,,"Resort 5 sao Nha Trang, ghi hợp gia đình có trẻ nhỏ, có khu vui chơi trẻ em",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0439,5210a8ac-a021-5391-bc75-62779abcf7c4,machine,1,,"Đúng nơi Nha Trang nhưng là khách sạn 2 sao, không phải KDL/resort (#6)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0439,3931606d-432c-5ef8-972a-01feaaf3c013,machine,1,,"Đúng nơi Nha Trang nhưng là căn hộ (Residences), không phải KDL/resort (#6)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0457,5d4bcc39-0570-5b61-8257-b22714d177a7,machine,0,,"Sai nơi (Nha Trang), hỏi KS Hà Nội",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0457,d9b783ea-5f26-5b76-9529-9193a51c9d01,machine,2,,"Hostel Hà Nội (KS = mọi hotel_property), có khu vui chơi trẻ em; vị trí không ghi vẫn có thể 2",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0457,3ca2a539-88dd-52c7-971e-85014a7b3eb3,machine,2,,KS Hà Nội; «gần điểm vui chơi» không ghi vẫn có thể 2 (như quyết định 30/09 KS HN → 2),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0457,6b294116-f128-5b23-aee6-7187c1e1e963,machine,2,,KS Hà Nội; «gần điểm vui chơi» không ghi vẫn có thể 2 (như quyết định 30/09 KS HN → 2),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0457,6d287fc4-42ea-56c2-8076-299af41ed959,machine,0,,"Sai nơi (combo Hải Phòng), hỏi KS Hà Nội",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0457,10029add-efbd-5e12-b213-ef00f9e7e80c,machine,0,,"Sai nơi (Nha Trang), hỏi KS Hà Nội",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0457,eae0720e-a773-58c2-8a6c-a0114ecb9341,machine,0,,"Sai nơi (combo Hải Phòng), hỏi KS Hà Nội",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0457,3a49e0b5-d7b1-5cdf-85ef-a37c3e5a3488,machine,0,,"rubric v4: sai loại cốt lõi — attraction, câu hỏi hotel_property (v3 #2 cho 1) | nhãn máy trước: 1 — Đúng nơi Hà Nội nhưng là vé công viên, không phải khách sạn (#2)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0457,dab0f46e-df29-500b-b21b-186e0bb511d4,machine,0,,"Sai nơi (combo Nghệ An), hỏi KS Hà Nội",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0457,124bf6a5-68b5-51c5-8583-e2b991b334b8,machine,2,,"KS Hà Nội, có khu vui chơi trẻ em; vị trí không ghi vẫn có thể 2",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0457,cfffc450-5907-505e-809a-869c1b35cfcb,machine,2,,"Lưu trú Hà Nội, có khu vui chơi trẻ em; vị trí không ghi vẫn có thể 2",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0457,b52a17eb-19fe-57dc-bf5c-5ee0235c78dd,machine,2,,Khách sạn & căn hộ Hà Nội (KS = mọi hotel_property); vị trí không ghi vẫn có thể 2,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0457,e6165c4f-5328-5608-909c-dff39353b0b0,machine,0,,"Sai nơi (Nha Trang), hỏi KS Hà Nội",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0457,4be10bf3-5508-5e4b-8219-17868f5cd504,machine,2,,KS Hà Nội; «gần điểm vui chơi» không ghi vẫn có thể 2,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0457,f7996538-5748-5bf5-ba2b-73a92dec04ea,machine,0,,"Sai nơi (Nha Trang), hỏi KS Hà Nội",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0457,727ebb66-9292-5955-a0b2-5bd060a4cb33,machine,2,,KS Hà Nội; «gần điểm vui chơi» không ghi vẫn có thể 2,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0457,2b2d8e48-cf2f-5b82-86fc-017151456004,machine,0,,"Sai nơi (combo Hải Phòng), hỏi KS Hà Nội",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0466,7fdc3115-8298-55fc-b32f-bf217991d274,machine,2,,"Lưu trú Đà Lạt, có ghi «Bếp riêng»",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0466,29a83590-da14-5155-a0b2-b39a98b6b9ab,machine,0,,"Sai nơi (Đà Nẵng), hỏi Đà Lạt",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0466,a49d918f-782c-5652-97c3-26353abe3141,machine,1,,KS Đà Lạt nhưng không ghi bếp riêng – thiếu điều kiện,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0466,28862dc5-12a4-55b5-a184-3f551141c610,machine,1,,Nhà khách Đà Lạt nhưng không ghi bếp riêng – thiếu điều kiện,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0466,b1a317fb-9d2b-5f88-9bd8-ccdbdcd97f14,machine,2,,"KS Đà Lạt, có ghi «Bếp riêng»",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0466,315b2fb7-68b3-5493-8aed-b95736f4fe06,machine,2,,"KS Đà Lạt, có ghi «Bếp» (như anchor Binh An/Du Parc «Bếp» = 2)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0466,741cd587-854c-55b4-ba5b-17a97e0ce492,machine,2,,"Lưu trú Đà Lạt, có ghi «Bếp riêng»",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0466,2aedcf7e-0367-5ed3-8231-9c1cc2cc989c,machine,0,,"Sai nơi (Đà Nẵng), hỏi Đà Lạt",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0466,8ed89496-0824-53e0-bb8f-1665b9aaefb2,machine,1,,KS Đà Lạt nhưng không ghi bếp riêng – thiếu điều kiện,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0466,e1b57ca8-ca63-5ce9-a9e0-cb460620954d,machine,2,,"Căn hộ dịch vụ Đà Lạt, có ghi «Bếp riêng»",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0056,7742ad3b-7cda-5c43-9280-9d49a62663e0,machine,0,,Combo nhưng sai nơi: Nha Trang,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0056,eae0720e-a773-58c2-8a6c-a0114ecb9341,machine,0,,Combo nhưng sai nơi: Hải Phòng,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0056,860a94ee-6953-5e37-bf5b-fe156e594218,machine,0,,"rubric v4: sai loại cốt lõi — hotel_property, câu hỏi combo (v3 #2 cho 1) | nhãn máy trước: 1 — Đúng nơi Quy Nhơn nhưng sai loại: khách sạn, câu hỏi combo (#2)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0056,0b14d5ab-eea4-531b-97e6-2e9ff9ff4abf,machine,1,,"Đúng nơi Quy Nhơn nhưng sai loại: điểm tham quan, câu hỏi combo (#2)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0056,dcaec223-b075-5533-a929-d0490583f450,machine,0,,"rubric v4: sai loại cốt lõi — hotel_property, câu hỏi combo (v3 #2 cho 1) | nhãn máy trước: 1 — Đúng nơi Quy Nhơn nhưng sai loại: căn hộ, câu hỏi combo (#2)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0056,3f0f75f1-e241-5ef4-a492-bf20105a503f,machine,0,,"rubric v4: sai loại cốt lõi — hotel_property, câu hỏi combo (v3 #2 cho 1) | nhãn máy trước: 1 — Đúng nơi Quy Nhơn nhưng sai loại: căn hộ, câu hỏi combo (#2)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0056,757fc9d7-422d-58f2-93e0-fa7fcfff3518,machine,0,,Combo nhưng sai nơi: Hà Nội,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0056,d4c6f809-2cd9-5b4b-8b26-f131fbd33eb9,machine,0,,"rubric v4: sai loại cốt lõi — hotel_property, câu hỏi combo (v3 #2 cho 1) | nhãn máy trước: 1 — Đúng nơi Quy Nhơn nhưng sai loại: khách sạn, câu hỏi combo (#2)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0056,069755ed-6973-5bf2-ae7f-43c82dec8143,machine,0,,"rubric v4: sai loại cốt lõi — hotel_property, câu hỏi combo (v3 #2 cho 1) | nhãn máy trước: 1 — Đúng nơi Quy Nhơn nhưng sai loại: căn hộ, câu hỏi combo (#2)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0056,32a5e4b4-4302-5e03-93ce-bf46b6392d10,machine,1,,"Đúng nơi Quy Nhơn nhưng sai loại: rạp phim, câu hỏi combo (#2)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0056,2f1ba0f1-d44c-5823-80ba-1460669dcb9a,machine,0,,Combo nhưng sai nơi: Nha Trang,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0109,08dbdbd8-b1fa-5673-8757-b2cccef1330e,machine,2,,KS 3 sao Sa Pa có wifi; bàn làm việc không ghi nhưng không trái ngược,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0109,2b7f0e85-8f73-5a32-88ad-6582c5611490,machine,2,,KS 4 sao Sa Pa có wifi; phù hợp công tác,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0109,7e4494a6-c8c3-577e-85a3-addd953b6b3a,machine,1,,"Hostel phòng tập thể ở Sa Pa – kém hợp chuyến công tác, không ghi wifi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0109,4b0db013-2382-5984-bb90-8a6bac8465ff,machine,2,,KS Sa Pa có ghi wifi và bàn làm việc,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0109,0e7390fb-2a5d-5f2b-8559-61a950b4b58e,machine,2,,KS 4.5 sao Sa Pa có wifi; phù hợp công tác,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0109,03044c28-cc12-506a-8a97-2cad7282cf53,machine,2,,KS 3 sao Sa Pa có wifi; phù hợp công tác,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0226,ee437970-9cfb-533c-bb09-deb44eb34fa8,machine,2,,"Huế, có ghi wifi và nhà hàng",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0226,02a12024-536a-5de3-aac0-aaacb85b4814,machine,2,,"Huế, có wifi; nhà hàng không ghi – vẫn 2 như các nhãn của câu",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0226,b4cef5ec-c414-563e-bbd5-7685ea3353e6,machine,2,,"Huế, có wifi; nhà hàng không ghi – vẫn 2 như các nhãn của câu",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0226,0bc79da0-66c1-5798-b1a5-93f0854ed747,machine,2,,"Huế, có ghi wifi và nhà hàng",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0250,b972baf3-11c5-5469-99ec-44e6f5ce9469,machine,2,,"Đà Nẵng, không ghi nhà hàng (#3)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0250,e7b06bfe-f291-5e16-9415-3dd65cc4e6a5,machine,2,,"Đà Nẵng, không ghi nhà hàng (#3)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0250,260b5fa8-8216-540b-ab33-46662699683a,machine,2,,"Đà Nẵng, không ghi nhà hàng (#3)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0250,fa7c5163-3d21-52c4-8e77-4240391db988,machine,2,,"Đà Nẵng, không ghi nhà hàng (#3)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0250,cdae77a9-d767-54d2-a382-ab7086bf7953,machine,0,,Có ghi nhà hàng – vi phạm phủ định (#3),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0250,df5086e5-d1a5-5c08-8bf0-e0b8188a8b84,machine,0,,Có ghi nhà hàng – vi phạm phủ định (#3),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0250,883d4a0c-7b28-56ac-81a9-9846e262bb70,machine,0,,Có ghi nhà hàng – vi phạm phủ định (#3),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0250,6005e275-83b5-5d83-bffa-a62f26e96c1d,machine,2,,"Đà Nẵng, không ghi nhà hàng (#3)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0250,d25b7ce1-30d1-5ceb-a2b4-c1a18f5c980f,machine,0,,Có ghi nhà hàng – vi phạm phủ định (#3),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0250,da88daac-c8e4-5def-bb0b-f55030c23031,machine,2,,"Đà Nẵng, không ghi nhà hàng (#3)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0250,1aea3fe7-9fe8-5fc1-848b-41c2523b7742,machine,0,,Có ghi nhà hàng – vi phạm phủ định (#3),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0250,4ec86152-824a-5440-a056-a90d21b612ed,machine,2,,"Đà Nẵng, không ghi nhà hàng (#3)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0250,85e2aa39-e1b1-57c8-8166-fafa4482f256,machine,0,,Có ghi nhà hàng – vi phạm phủ định (#3),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0250,c46c4940-3851-5017-a707-df0456261f37,machine,2,,"Đà Nẵng, không ghi nhà hàng (#3)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0250,3ab0113f-e42d-5089-8b4b-5e7055a3a863,machine,2,,"Đà Nẵng, không ghi nhà hàng (#3)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0250,2b4a609d-6dd4-50d6-b284-5d17548f97da,machine,2,,"Đà Nẵng, không ghi nhà hàng (#3)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0340,10100174-efd3-5fb3-914e-66ad1859be76,machine,0,,"Sai thực thể và sai nơi: công viên ở Quảng Trị, Công Viên 30/4 ở Biên Hòa",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0340,f66f2d7d-3953-5e9d-b315-159ef4b0a98a,machine,0,,"Sai thực thể, sai nơi: VinWonders Nha Trang",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0340,d1ba38d3-5f72-50d4-a994-aa7fcf2f62c6,machine,0,,"Sai thực thể, sai nơi: biệt thự Hằng Nga Đà Lạt",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0340,26203245-65ba-50f2-a534-4e20dafbd88b,machine,0,,Không liên quan: tour Hà Nội - Ninh Bình - Hạ Long,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0340,1d6aec13-b55b-5a72-9140-875c3d48dc77,machine,0,,Không liên quan: tour Mai Châu,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0340,394e0e5b-2972-5bd5-bad9-8490d6e25954,machine,0,,"Sai thực thể, sai nơi: quảng trường ở Tuy Hòa",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0340,33ce864b-6b77-5c7c-96a9-f6956d2d757c,machine,0,,Không liên quan: tour Ninh Bình,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0340,e9213d6e-5773-5dc5-bdf0-1cbcd07ed7b9,machine,0,,Không liên quan: tour Hà Nội - Ninh Bình - Hạ Long,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0340,88f0d3ce-37de-5a53-82f0-ab59b87f862a,machine,0,,Không liên quan: tour Mai Châu,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0169,ba79b739-e4ea-5c95-bc8c-72c32100c695,machine,2,,"Ninh Bình, có ghi điều hòa",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0169,0e1e4043-04a8-5ea8-9ecb-2e4d655b8b36,machine,2,,"Ninh Bình, có ghi điều hòa",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0169,139eec1e-df0d-5e60-83f3-6a78bd079be1,machine,2,,"Ninh Bình, có ghi điều hòa",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0385,7c140505-630a-5103-a259-f6dce50a967d,machine,0,,"sai nơi: Hà Nội, câu hỏi Đà Lạt",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0385,08d012b3-3a42-5bac-9c2a-fe348ef884dd,machine,0,,sai nơi: Hạ Long,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0385,3782b864-a5e0-5096-9ff3-5fdfae59c300,machine,0,,sai nơi + sai loại: tour Ninh Bình,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0385,8fb41cfd-a46b-5744-ae9c-21c2813fa42a,machine,0,,sai nơi: Ninh Bình,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0385,393d3bb6-0672-5d6c-8a67-d0893afe44a0,machine,1,,"Đà Lạt, khách sạn nhưng không ghi lễ tân 24 giờ",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0385,0efbdf8c-90bf-57da-8111-657f5d0bc214,machine,0,,sai nơi: Hà Nội,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0385,adf189b9-8ae6-5a8c-b6e0-dd51ceae2941,machine,2,,"Đà Lạt, khách sạn 4 sao, có ghi lễ tân 24 giờ",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0385,f77166e5-8cb9-590d-b01d-c75ed5ee2aa9,machine,2,,"Đà Lạt, homestay = KS (#6), có ghi lễ tân 24 giờ",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0385,ec4d78cd-1a13-59c2-b135-3d4d247e2663,machine,0,,sai nơi: Tuy Hòa,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0385,2185675d-9cb3-50ab-9e7a-c4ab9386beba,machine,2,,"Đà Lạt, tên Hotel (loại hiển thị biệt thự = KS #6), có ghi lễ tân 24 giờ",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0385,d7f8d21b-67ca-5915-811b-adaac50ac4c9,machine,0,,sai nơi: Hạ Long,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0385,1d6aec13-b55b-5a72-9140-875c3d48dc77,machine,0,,sai nơi + sai loại: tour Mai Châu,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0426,8cf0822e-e242-5f60-a708-b359a900cc84,machine,0,,"rubric v4: sai loại cốt lõi — attraction, câu hỏi hotel_property (v3 #2 cho 1) | nhãn máy trước: 1 — đúng nơi (Cát Bà thuộc Hải Phòng) sai loại: điểm tham quan (#1, #2)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0426,92c8ceb0-f871-5cf3-9eaf-0c0c8708802e,machine,2,,"Hải Phòng, khách sạn, có ghi không hút thuốc; giá không chấm",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0426,bc019efa-6bbb-5023-ba43-94c26ff308a7,machine,0,,"rubric v4: sai loại cốt lõi — attraction, câu hỏi hotel_property (v3 #2 cho 1) | nhãn máy trước: 1 — đúng nơi (Hải Phòng) sai loại: đền, điểm tham quan (#2)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0426,d6c880f0-9c38-5cd1-83df-c9d9894d5d7c,machine,2,,"Hải Phòng, căn hộ = KS (#6), có ghi không hút thuốc",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0426,57328a90-e3af-57f9-8cc4-707be8b305bf,machine,0,,"sai nơi: Phú Quốc, câu hỏi Hải Phòng",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0426,50267ada-6dcb-553a-b876-530d8d54ef42,machine,0,,sai nơi: Phú Quốc,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0426,ec9e8b61-1abb-5461-baba-68b9e016eabc,machine,0,,sai nơi: Ninh Bình,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0426,9f45b67a-95ae-5f2f-9116-8e437c93154e,machine,1,,"Hải Phòng, nhà khách nhưng không ghi không hút thuốc",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0426,3efb7d68-fd7b-5450-98b0-82369751a0c1,machine,2,,"Hải Phòng, căn hộ dv = KS (#6), có ghi không hút thuốc",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0426,d9e3f8d4-3d9a-5c71-bac5-1fe1f2737811,machine,1,,"Hải Phòng, căn hộ nhưng không ghi không hút thuốc",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0426,0c63a9f9-7585-54e6-b030-ea0f13c3bea9,machine,2,,"Hải Phòng, căn hộ = KS (#6), có ghi không hút thuốc",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0426,74e344dc-366f-53a3-9a25-69de4bace422,machine,0,,sai nơi: Phú Quốc,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0426,e9854677-c170-5582-b332-7a7b2a04f8eb,machine,0,,sai nơi: Phú Quốc,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0426,0d3493fb-813d-557c-9df3-a5e036d6c7c1,machine,0,,sai nơi: Phú Quốc,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0426,d0a0b7df-6e36-57c3-a044-e3476ad7e63c,machine,0,,sai nơi: Phú Quốc,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0426,517c31e4-798d-5343-a47f-8eed6d04aa73,machine,2,,"Hải Phòng, khách sạn, có ghi không hút thuốc",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0426,736a506f-ed0d-541f-8080-986fe6f114d4,machine,2,,"Hải Phòng, có ghi không hút thuốc (tên Hotel, loại căn hộ dv = KS #6)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0428,ef9f6a98-226a-5460-879b-98a5ffbdac1b,machine,0,,"sai nơi: Ninh Bình, câu hỏi Sa Pa",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0428,51ee202d-184a-5af5-8509-4ab5cddced48,machine,1,,"Sa Pa, khách sạn nhưng không ghi sân hiên",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0428,b8dafac6-ce84-5a49-a138-34fb2b2835f1,machine,1,,"Sa Pa, khách sạn chỉ có ban công, không ghi sân hiên",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0428,18cfba97-fe25-5f2a-b583-5c6c534b3664,machine,2,,"Sa Pa, resort = KS (#6), có ghi Sân hiên",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0428,ec9e8b61-1abb-5461-baba-68b9e016eabc,machine,0,,sai nơi: Ninh Bình,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0428,77d101b2-3a4e-544f-b0c4-8740e6b004a0,machine,0,,sai nơi: Ninh Bình,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0428,b1329d05-f873-58e9-97af-95ee1dceeb8f,machine,2,,"Sa Pa, nhà khách = KS (#6), có ghi Sân hiên + phòng Có Sân Hiên",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0428,e9a659cc-cde0-551e-a7ae-c3d6c159422c,machine,1,,"Sa Pa, khách sạn nhưng không ghi sân hiên",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0428,b3434b88-93a8-5361-85c2-af27924500d2,machine,2,,"Sa Pa, homestay = KS (#6), có ghi Sân hiên",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0428,d02d9c82-8821-543f-abcb-a50255743b8e,machine,0,,sai nơi: Ninh Bình,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0428,04b25b57-aedd-5a47-a2f3-8b45e4f70689,machine,0,,sai nơi: Ninh Bình,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0428,b3a269ee-3782-551b-9a03-4117f57ba0dc,machine,2,,"Sa Pa, lodge = KS (#6), có ghi Sân hiên",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0428,29910536-4579-54f8-8cf1-5d36071d8d3d,machine,1,,"Sa Pa, khách sạn nhưng không ghi sân hiên",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0428,6b5a1875-54c2-5d50-926b-4399bf05b53c,machine,2,,"Sa Pa, homestay = KS (#6), có ghi Sân hiên",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0428,6b29aba1-b49e-5698-8796-20a87e58118c,machine,0,,sai nơi: Ninh Bình,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0428,e071a40b-a351-59bf-bc8e-3c83598ce979,machine,0,,sai nơi: Ninh Bình,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0153,012743e4-b738-54e7-826f-110b2be2b4d3,machine,1,,"Cát Bà nhưng là cơ sở lưu trú (không rõ là resort), không ghi spa",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0153,b1d4d36e-e5fc-59d4-b0bf-b706949167a6,machine,1,,"Homestay ở Cát Bà, không phải resort, không ghi spa – sai loại",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0229,0f3d86f2-9f2e-51ec-abe4-e3967c9bda5c,machine,2,,"Hà Nội, có ghi wifi và đưa đón sân bay",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0343,1e79b267-d23f-5ce8-bd62-aa8d40669b0e,machine,0,,"Sai thực thể, sai nơi: Quảng Trị, thác Đray Nur ở Buôn Ma Thuột",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0343,f327e7b3-0f29-53b3-b932-024c480da358,machine,0,,Không liên quan: homestay Sa Pa,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0343,942c5816-527f-5498-b092-8a5a5927755f,machine,0,,Không liên quan: homestay Sa Pa,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0343,1108979c-d991-58f2-b99a-11ddf6df0333,machine,0,,Không liên quan: homestay Rạch Giá,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0343,c231b12b-a05b-5656-a7d4-c63bd293e5aa,machine,0,,Không liên quan: homestay Ninh Bình,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0343,4c38f5d1-0614-5796-9b33-34ad44de4cf2,machine,0,,Không liên quan: resort Ninh Bình,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0348,cb233744-10b9-5583-b683-d7080ec68c51,machine,0,,"Không liên quan: KS Đà Nẵng, thực thể là lò kẹo dừa ở Bến Tre",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0348,4faced34-834b-5cf0-8744-216ab3f31f15,machine,0,,Không liên quan: homestay Đà Nẵng,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0348,cb19a405-a968-56d0-9e3a-69dfaa4679a6,machine,0,,Không liên quan: căn hộ Nghệ An,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0348,89a66bf0-5ae5-51e9-a3cb-9f4bc53f9ee5,machine,0,,Không liên quan: biệt thự Nghệ An,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0348,fdaa8b40-1600-5ff8-ad3b-4cd611f20641,machine,0,,Không liên quan: KS Nghệ An,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0348,95779ba1-36e8-5669-b774-10aa3adeff4b,machine,0,,Không liên quan: KS Nghệ An,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0348,a6ef38dd-582f-56b7-b8f5-a650348076f6,machine,0,,Không liên quan: KS Nghệ An,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0348,5a4bedd2-8dc8-5f52-b639-3a67642885a7,machine,0,,Không liên quan: KS Nghệ An,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0348,39b802e8-6548-59cf-8b45-6d4a82181bef,machine,0,,Không liên quan: KS Hà Nội,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0348,6ad7877a-5a0d-522b-afe9-61eef319a41f,machine,0,,Không liên quan: căn hộ Nghệ An,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0348,bdbdf23c-2f92-58a3-90e9-65e1458816fc,machine,0,,Không liên quan: căn hộ Nghệ An,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0348,7c140505-630a-5103-a259-f6dce50a967d,machine,0,,Không liên quan: homestay Hà Nội,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0349,20e90fb3-91cb-58c4-9080-f5b785554a4b,machine,0,,"Sai nơi: công viên ở Cần Thơ, Sông Bằng ở Cao Bằng",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0349,19c603a0-d930-5928-8624-92dd4656e08e,machine,1,,"Đúng tỉnh Cao Bằng, điểm tham quan khác, không phải Sông Bằng (như anchor)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0358,7a112743-7a1c-5ed3-9e07-031a0ad70480,machine,0,,"Không liên quan: KS TP.HCM, thực thể là tiNiWorld Cần Thơ (anchor Chez Mimosa=1 là ngoại lệ)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0358,f655af7a-29b3-5d91-9823-e745067fe966,machine,0,,Không liên quan: lodge Ninh Bình,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0358,59e41cb5-ba70-529a-818b-45ca6ef1f008,machine,0,,"Sai thực thể, sai nơi: workshop trẻ em ở Phú Quốc, tiNiWorld ở Cần Thơ",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0358,0a34a426-5ea7-505c-92fe-23d89c44fdaa,machine,0,,"Sai thực thể, sai nơi: công viên chủ đề Phan Thiết, tiNiWorld ở Cần Thơ",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0358,400a6323-3d2c-50f9-9eb7-ac9cf775575d,machine,0,,Không liên quan: nhà nghỉ Hà Tĩnh,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0358,bf92a559-cc94-57ff-980c-82c8cdcbb75e,machine,0,,Không liên quan: lưu trú Quy Nhơn,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0358,7f040ba7-131e-55e4-be0b-327c6bbe3dae,machine,0,,Không liên quan: resort Thanh Hóa,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0361,f8d9ea07-a79b-5409-9c59-0396164b8b96,machine,0,,"Không liên quan: KS Hạ Long, chợ nổi Cái Răng ở Cần Thơ",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0361,458b08c0-7e41-54cf-be20-f43fe897775f,machine,0,,Không liên quan: nhà khách Hà Nội,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0361,c33a44e3-8cca-540e-ae13-fdbd32334270,machine,0,,"Sai thực thể, sai nơi: chợ ở TP.HCM",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0361,83d01deb-945a-5cbb-85ec-2512155d7773,machine,0,,Không liên quan: show/gondola Hà Nội,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0361,3aeb6947-d2ad-592d-835c-9c36676a5955,machine,0,,Không liên quan: homestay Rạch Giá,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0361,81ea4eed-bb69-56c1-aa7c-8a910f684489,machine,0,,"Sai thực thể, sai nơi: bảo tàng ở Rạch Giá",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0361,b696d2b1-2d71-58e0-8f57-188c7f88f76c,machine,0,,Không liên quan: hostel Rạch Giá,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0366,c983861b-d3ad-500f-a4ab-1332173a138a,machine,0,,"Không liên quan: combo Hà Nội, Nhà cổ Bình Thủy ở Cần Thơ",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0366,d5be1d9d-c833-5f65-a352-fa9a21938d45,machine,0,,Không liên quan: biệt thự Huế,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0366,f4d8a35a-a9d5-57a3-959f-d61b5aa4a7c9,machine,0,,Không liên quan: căn hộ Điện Biên,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0366,4be380ac-5d02-5915-b4fb-4b435ef82d8c,machine,0,,Không liên quan: tour Ninh Bình,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0366,d24f53f9-14fd-5b9f-8418-76f08731c96b,machine,0,,Không liên quan: tour Ninh Bình,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0366,9bbf3d43-252d-5c9b-8c4b-904419da5d85,machine,0,,Không liên quan: lưu trú Quảng Bình,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0366,5ca43756-6c46-501a-bf7f-e66bc85d3364,machine,0,,Không liên quan: KS Quảng Bình,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0366,2e5bd417-98da-561c-b1c0-185004a62b4e,machine,0,,Không liên quan: tour Ninh Bình,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0366,11e9d9eb-ef74-5483-9a57-79759a39b4a0,machine,0,,"Không liên quan: set menu VinWonders Cửa Hội, Nghệ An",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0366,d2b662be-464c-5e85-83dd-a6febfc867e6,machine,0,,Không liên quan: combo Hà Nội,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0366,bde08a7e-61f1-5939-aeca-afb0cc271bca,machine,0,,"Không liên quan: set menu VinWonders Cửa Hội, Nghệ An",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0366,d64c26aa-8072-51f8-827b-985240ae5796,machine,0,,"Không liên quan: combo Cửa Hội, Nghệ An",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0366,2a636cf0-196e-571a-aeec-f7e7f67ac3e4,machine,0,,Không liên quan: tour Ninh Bình,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0503,46e8f89a-845e-595a-9c51-df3824925908,machine,1,,"KS ở Điện Biên: đúng loại, đúng nơi; không có hạng sao (máy kiểm sao) · hạ 2→1: sao dưới ngưỡng/không khai (như nhãn người cùng câu)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0503,e03b41bd-874d-52ed-baa5-fff88b97a136,machine,0,,"TP. Hồ Chí Minh, không phải Điện Biên – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0503,fbcca5e3-625c-5017-8999-ea37f8e804ac,machine,0,,"Hà Nội, không phải Điện Biên – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0503,a87337ec-57b4-54ce-8c90-1b847bfeb150,machine,0,,rubric v4: 1 sao < 3 sao yêu cầu — ràng buộc cứng (v3 cho 1) | nhãn máy trước: 1 — Căn hộ (KS = mọi chỗ nghỉ) ở Điện Biên; 1 sao < 3 (máy kiểm sao) · hạ 2→1: sao dưới ngưỡng/không khai (như nhãn người cùng câu),claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0503,52774401-d332-5588-a9bf-6e805dfb6141,machine,0,,rubric v4: 2 sao < 3 sao yêu cầu — ràng buộc cứng (v3 cho 1) | nhãn máy trước: 1 — Nhà nghỉ ở Điện Biên: đúng loại (KS); 2 sao < 3 (máy kiểm sao) · hạ 2→1: sao dưới ngưỡng/không khai (như nhãn người cùng câu),claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0503,da88daac-c8e4-5def-bb0b-f55030c23031,machine,0,,"Đà Nẵng, không phải Điện Biên – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0503,c47618c9-3206-507b-b213-d7e30becd25a,machine,0,,"Cần Thơ, không phải Điện Biên – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0503,bdb3090a-311a-5054-a1ca-418b03881ade,machine,0,,"rubric v4: sai loại cốt lõi — attraction, câu hỏi hotel_property (v3 #2 cho 1) | nhãn máy trước: 1 — Điểm tham quan ở Điện Biên: đúng nơi, sai loại (#2)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0712,02e4336c-57d7-576b-ac3c-e539ff9b7560,machine,0,,tuyến khác (Vân Đồn → TP.HCM),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0712,6d661db0-900e-5a66-8ec9-bcda07f54b1b,machine,0,,tuyến khác (Tuy Hòa → TP.HCM),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0712,3c818261-526b-5c0a-b4da-a9a97a2694bf,machine,0,,tuyến khác (Đà Nẵng → Buôn Ma Thuột),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0181,ab95ae13-ca7d-5622-97cd-12bde54cbcf0,machine,2,,"Nha Trang, có ghi chỗ đỗ xe",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0181,2e81e3c3-99a2-5ee2-9b19-665fb889d629,machine,2,,"Nha Trang, có ghi chỗ đỗ xe",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0181,fe00301f-c45f-54c3-b8e9-09193f20e4fd,machine,1,,"Không có 'chỗ đỗ xe' trong tiện ích (mô tả chỉ nói bãi đỗ, không rõ miễn phí)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0181,6c4feb7b-c75c-59ee-8663-6d267fe0f80a,machine,1,,"Không có 'chỗ đỗ xe' trong tiện ích (mô tả chỉ nói bãi đỗ xe, không rõ miễn phí)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0181,f393ec09-38ef-5d74-9e11-d56c63244906,machine,1,,"Nha Trang, không ghi chỗ đỗ xe",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0181,569684af-0d49-5883-93e0-266794874e80,machine,2,,"Nha Trang, có ghi chỗ đỗ xe",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0181,8afd7233-f1ae-59e6-9994-828e2573966e,machine,2,,"Nha Trang, có ghi chỗ đỗ xe",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0181,56bf65f2-8e25-5d13-964c-aff6f6a96f76,machine,1,,"Cam Ranh ⊂ Nha Trang, không ghi chỗ đỗ xe",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0181,3cf26126-590a-54b4-9e4d-0486f3e8048d,machine,2,,"Nha Trang, có ghi chỗ đỗ xe",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0190,fc73a5c6-157b-52d3-8c77-87f7cd9bf4ab,machine,1,,"Nha Trang, không ghi đưa đón sân bay",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0190,404ff51a-6de7-5013-b048-ac7468cfc726,machine,0,,"Vé bay đi Hà Nội – sai nơi, sai loại",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0190,bb4aa0a9-e3a2-5e53-99eb-af9e2e34958a,machine,0,,Vé bay vào Nha Trang: sai loại – như các vé bay đã gán 0 trong câu,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0190,e3f470a8-58fd-5aac-80e9-f184465b8086,machine,2,,"Nha Trang, có ghi đưa đón sân bay",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0214,139eec1e-df0d-5e60-83f3-6a78bd079be1,machine,0,,"Ninh Bình, không phải Bắc Ninh – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0214,99c2b639-bc6b-5bb1-bfb4-99e754f8570f,machine,0,,"Ninh Bình, không phải Bắc Ninh – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0214,9da6fbe2-2d1e-5e39-b5dc-e833fb5ff1c3,machine,0,,"Ninh Bình, không phải Bắc Ninh – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0214,2594e69b-38f9-54a7-a15f-afdf83af7e3e,machine,0,,"Ninh Bình, không phải Bắc Ninh – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0214,5938fdfe-8b94-5f20-914e-f5a9a4e1dada,machine,0,,"Ninh Bình, không phải Bắc Ninh – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0214,06280743-fbec-5882-9f59-1fe82bb2ded0,machine,0,,Phú Quốc – sai nơi,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0214,f036e401-fd44-519b-8149-202382d53dec,machine,0,,Hạ Long – sai nơi,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0214,eedb1b8a-2c67-56ff-aa57-38b67100e5e0,machine,0,,Hạ Long – sai nơi,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0214,f655af7a-29b3-5d91-9823-e745067fe966,machine,0,,"Ninh Bình, không phải Bắc Ninh – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0259,30948562-1606-58e0-9d3c-fd3270483ae0,machine,1,,offtaxonomy #4: chỉ ghi 'điều hòa' chung → 1,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0259,1c89b9d5-4a91-5acb-8083-0fdf4b28a174,machine,1,,offtaxonomy #4: chỉ ghi 'điều hòa' chung → 1,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0259,0bc79da0-66c1-5798-b1a5-93f0854ed747,machine,1,,offtaxonomy #4: chỉ ghi 'điều hòa' chung → 1,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0259,2d8d3c78-c473-59db-b73b-6442cc16b912,machine,1,,offtaxonomy #4: chỉ ghi 'điều hòa' chung → 1,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0259,c100a453-061f-5ed7-89b6-1ed56a330e94,machine,1,,offtaxonomy #4: chỉ ghi 'điều hòa' chung → 1,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0262,95bbabd5-ae03-52f4-a5f7-0f836299b51e,machine,0,,Hội An – sai nơi (dù có vòi xịt),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0262,75c7b562-5e25-5521-8532-309632723132,machine,1,,"offtaxonomy #4: Nghệ An, không ghi vòi xịt",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0262,0761e589-fbd8-5bc3-865b-03dc3fe74867,machine,1,,"offtaxonomy #4: Nghệ An, không ghi vòi xịt",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0262,13ca4c8b-9cba-5b64-9072-5426f1eba334,machine,0,,Hải Phòng – sai nơi,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0262,bdbdf23c-2f92-58a3-90e9-65e1458816fc,machine,2,,"offtaxonomy #4: Nghệ An, có ghi 'Vòi xịt/chậu rửa vệ sinh'",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0262,dbafe368-7067-5884-b32c-b88eb8719118,machine,0,,Hội An – sai nơi,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0262,34ec0f10-9299-529a-9d89-7c5be9f4baa2,machine,0,,Hội An – sai nơi (dù có vòi xịt),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0276,c19c408a-27d7-53bc-aa90-2fe150c3ae69,machine,0,,"Điện Biên, không phải Bắc Ninh – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0276,ee3b1541-2dd9-5e70-9d2e-9a991f1364d2,machine,0,,"TP. Hồ Chí Minh, không phải Bắc Ninh – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0276,8c3a110b-df24-5ed9-9ddc-229c1fe7aedb,machine,0,,"Hải Phòng, không phải Bắc Ninh – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0276,1aea3fe7-9fe8-5fc1-848b-41c2523b7742,machine,0,,"Đà Nẵng, không phải Bắc Ninh – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0276,f036e401-fd44-519b-8149-202382d53dec,machine,0,,"Hạ Long, không phải Bắc Ninh – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0276,c46c4940-3851-5017-a707-df0456261f37,machine,0,,"Đà Nẵng, không phải Bắc Ninh – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0276,90911a93-c2a0-5eee-a6da-cf02082aec11,machine,0,,"TP. Hồ Chí Minh, không phải Bắc Ninh – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0276,cb474f32-2953-54b8-9916-08d6a2f40898,machine,0,,"Hà Tĩnh, không phải Bắc Ninh – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0276,ec8f10d1-5a77-50e9-bd1b-60c675b96654,machine,0,,"Côn Đảo, không phải Bắc Ninh – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0276,b0e5db06-879f-59d2-ab40-d6b644f0e8cf,machine,0,,"Điện Biên, không phải Bắc Ninh – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0276,d5ec9549-7f7a-5c0d-a1de-a78d8e6b8fbe,machine,0,,"Quy Nhơn, không phải Bắc Ninh – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0304,45924b29-cc1c-53fc-8c36-1a8e23e3019b,machine,0,,"Biệt thự ở Phan Thiết, không phải Nghệ An – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0304,0761e589-fbd8-5bc3-865b-03dc3fe74867,machine,1,,KS ở Nghệ An không có danh sách hạng phòng – tối đa 1,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0304,20ea22bd-f5ba-5c36-826b-eda19210d2f3,machine,0,,"Hội An, không phải Nghệ An – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0304,183abe2f-5a78-5138-b50a-40b6cd8866bb,machine,0,,Có biệt thự hồ bơi riêng nhưng ở Nha Trang – sai nơi,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0304,9a69aa56-c386-5de0-a948-170471cc0bb2,machine,0,,"Nghệ An nhưng chỉ có Căn Hộ 1 Phòng Ngủ, không có biệt thự",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0304,d94ff0f9-1a2a-545a-b584-1d56a2e00f07,machine,0,,"rubric v4: sai loại cốt lõi — attraction, câu hỏi hotel_property (v3 #2 cho 1) | nhãn máy trước: 1 — Điểm tham quan ở Nghệ An: đúng nơi, sai loại (#2)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0304,0c89ac18-1b5a-56ae-8112-635239378500,machine,0,,"rubric v4: sai loại cốt lõi — attraction, câu hỏi hotel_property (v3 #2 cho 1) | nhãn máy trước: 1 — Điểm tham quan ở Nghệ An: đúng nơi, sai loại (#2)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0304,41063bba-61b8-52dd-bb18-7b4912a9da40,machine,0,,"Nghệ An nhưng chỉ có căn hộ nhìn biển (bể bơi chung), không có biệt thự",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0316,7af175fb-06c1-57f6-9185-0237827b832d,machine,0,,"Sai nơi: combo Phú Quốc, câu hỏi Vinpearl Hotel Bắc Ninh",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0316,be65b93a-1f71-5fbb-81a2-4ba3619740b3,machine,0,,"Cùng chuỗi Vinpearl nhưng sai nơi: Nghệ An, câu hỏi Bắc Ninh",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0555,766e59f4-938d-505a-927f-fab0797f6e36,machine,2,,cross_vertical (#5): điểm tham quan ở Hà Tĩnh (vé tham quan là vertical được hỏi),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0556,014eaacd-91e6-5e73-9f54-728401e596ec,machine,2,,cross_vertical (#5): khách sạn ở Hạ Long,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0556,b7806b2a-c392-5aff-8350-906fd6639946,machine,2,,cross_vertical (#5): khách sạn ở Hạ Long,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0556,a3d94a7f-06bf-5019-a240-4b2c4935cba7,machine,2,,cross_vertical (#5): du thuyền lưu trú (hotel_property) ở Hạ Long,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0564,f733adab-ede4-59c5-a838-76897a6a5c60,machine,0,,"Sai nơi (combo Cần Thơ), hỏi Hội An",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0564,62956003-ce5a-5ff6-b745-231f6b0d0fc8,machine,2,,cross_vertical (#5): khách sạn ở Hội An,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0564,84137f2c-eb03-5364-83a3-6a94c9d7e1ec,machine,2,,cross_vertical (#5): vé tham quan VinWonders Nam Hội An,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0564,d3679aff-6a8b-519b-b937-f65b4b87e234,machine,2,,cross_vertical (#5): resort (hotel_property) ở Hội An,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0564,65cc26f7-23b5-5fb2-9b19-8e79730f0cb2,machine,2,,cross_vertical (#5): khu nghỉ dưỡng (hotel_property) ở Hội An,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0564,f7fb91ba-7b4f-557a-b7f0-61bd4c8fc0ad,machine,0,,"Sai nơi (TP.HCM), hỏi Hội An",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0564,1993c1b8-083f-5683-a217-af712cfaf145,machine,2,,cross_vertical (#5): resort (hotel_property) ở Hội An,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0564,fb58c711-10f3-5dbd-8304-be81527060a1,machine,2,,cross_vertical (#5): khách sạn ở Hội An,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0403,2908a78a-4288-56e4-b741-6076b1885c83,machine,2,,"Phú Quốc, resort = KS (#6), có ghi đưa đón sân bay",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0403,5560b45d-b3c7-5a15-8fc9-3ff13fde568d,machine,1,,"Phú Quốc, căn hộ dv nhưng không ghi đưa đón sân bay",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0403,2b2e78b8-aa2d-5459-b8f1-9c774cc58f26,machine,2,,"Phú Quốc, 5 sao, có ghi đưa đón sân bay",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0403,d0a0b7df-6e36-57c3-a044-e3476ad7e63c,machine,2,,"Phú Quốc, căn hộ dv = KS (#6), có ghi đưa đón sân bay",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0147,080a7f5e-57d5-5381-9f1d-5ca4efeb61c6,machine,0,,"Nha Trang, không phải Phong Nha – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0147,e3f470a8-58fd-5aac-80e9-f184465b8086,machine,0,,"Nha Trang, không phải Phong Nha – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0147,b0c1a805-8ea3-5f43-9979-d87bd2ffcaac,machine,0,,"TP. Hồ Chí Minh, không phải Phong Nha – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0147,1f983e0a-7787-5e49-8be7-3bd5697ee345,machine,0,,"Tuy Hòa, không phải Phong Nha – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0147,458b08c0-7e41-54cf-be20-f43fe897775f,machine,0,,"Hà Nội, không phải Phong Nha – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0147,5e986b7d-56c3-5be7-b091-157e87d04d49,machine,0,,"Phan Thiết, không phải Phong Nha – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0147,36fc809f-d0fe-555e-9400-b4ecdf647119,machine,0,,"Combo ở Phú Quốc – sai nơi, sai loại",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0147,29910536-4579-54f8-8cf1-5d36071d8d3d,machine,0,,"Sa Pa, không phải Phong Nha – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0147,b5fc5fa8-5076-5c0f-90b9-fc9b8d012b1f,machine,0,,"Nha Trang, không phải Phong Nha – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0147,51ee5137-9730-5dc0-aa80-7554cbf4eab4,machine,0,,"Đà Nẵng, không phải Phong Nha – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0147,df5086e5-d1a5-5c08-8bf0-e0b8188a8b84,machine,0,,"Đà Nẵng, không phải Phong Nha – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0147,3dd18ae2-ee81-5d4f-9698-a4d3298e097e,machine,0,,"Côn Đảo, không phải Phong Nha – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0154,0ea20753-e3f7-5005-909e-382b704042fc,machine,0,,Resort có spa nhưng ở Hạ Long – sai nơi,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0154,53f7a730-dae8-58f5-9b12-b23a978df724,machine,1,,"Ninh Bình, có spa nhưng là cơ sở lưu trú nhỏ, không phải resort",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0165,e7fc06f0-f13b-56df-b0fe-15aa5fbdb26d,machine,0,,"Hội An, không phải Điện Biên – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0165,b0e5db06-879f-59d2-ab40-d6b644f0e8cf,machine,1,,"Căn hộ ở Điện Biên, không phải resort, không ghi spa",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0165,59234b95-a54b-5ba0-a278-152c95a04e03,machine,0,,"Hội An, không phải Điện Biên – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0165,77878272-262e-521d-b05e-ac51299bd025,machine,0,,"Hội An, không phải Điện Biên – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0165,fe845cb2-a4a1-5b35-bc10-85402f2bd058,machine,1,,"Nhà khách ở Điện Biên, không phải resort, không ghi spa",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0165,1d1c8e5a-f6c9-5599-b604-8d841ae51de3,machine,0,,"Hội An, không phải Điện Biên – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0165,c2dff4f1-2ad2-5c77-95c2-49e31844bbbf,machine,0,,"Hội An, không phải Điện Biên – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0165,65cc26f7-23b5-5fb2-9b19-8e79730f0cb2,machine,0,,"Hội An, không phải Điện Biên – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0166,463219c4-028f-55a4-a784-3594de9e892c,machine,2,,"Căn hộ Nghệ An = KS (#6), có ghi wifi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0166,ed078b94-ce93-5274-b04d-e1bd2ae8253f,machine,2,,"KS Nghệ An, có ghi wifi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0166,e4ca8b52-c11a-5fc0-ad39-ba701fab8056,machine,2,,"Căn hộ Nghệ An = KS (#6), có ghi wifi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0166,ecb55dfa-3b38-5d21-9979-1922628f740d,machine,0,,Thanh Hóa – sai nơi,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0256,9ee0128c-43d5-516f-a6aa-bf035a66cdf7,machine,1,,"offtaxonomy #4: Ninh Bình, không ghi view địa danh",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0299,6d5570cb-abb1-5e42-a998-cb0554d42a10,machine,2,781b4113-b3c0-5b8a-9dfb-b0311621b40d;06c421ca-722d-5462-a45e-641e9767f7df;a3a72847-77ff-5589-930d-5bae80a78d42,"Hải Phòng, có phòng giường đôi (Deluxe/Premium/Superior)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0299,0c63a9f9-7585-54e6-b030-ea0f13c3bea9,machine,0,,"Hải Phòng nhưng chỉ có căn hộ/studio/suite, không ghi giường đôi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0433,b1329d05-f873-58e9-97af-95ee1dceeb8f,machine,0,,"sai nơi: Sa Pa, câu hỏi Pleiku",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0433,d8f3ca09-cf12-581e-b54b-7fe3c59e3658,machine,0,,sai nơi: Hà Nội,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0433,3c347650-eaae-5a8a-8919-a4adadb6144b,machine,2,,"Pleiku, homestay = KS (#6), có ghi điều hòa",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0433,f8d9ea07-a79b-5409-9c59-0396164b8b96,machine,0,,sai nơi: Hạ Long,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0433,53de6467-a0bb-51ec-a8a0-767cd1001569,machine,0,,sai nơi: Hà Nội,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0433,d8abd232-472c-5c33-8f5c-21b18fab07d0,machine,0,,sai nơi: Đà Lạt,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0433,d10dd4ee-857a-5b5f-bef6-967169b2147a,machine,0,,"sai loại + nơi: vé bay Pleiku -> TP.HCM (destination TP.HCM), như anchor Pleiku-Hà Nội = 0",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0433,3e312ddd-ed28-5817-98f3-88bafe5b08af,machine,0,,sai nơi: Buôn Ma Thuột,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0531,bc3e15e6-26fe-55a7-813a-1bf57c31d573,machine,2,,"Resort 4 sao ở Mũi Né (Phan Thiết): đúng loại KS, đúng nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0531,5d35991e-5dd0-5e64-a510-49bc84a7e063,machine,0,,"Đà Nẵng, không phải Phan Thiết – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0531,da88daac-c8e4-5def-bb0b-f55030c23031,machine,0,,"Đà Nẵng, không phải Phan Thiết – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0531,e0a53a1c-2994-5912-99bf-66e861e05174,machine,2,,"Resort 3 sao ở Phan Thiết: đúng loại KS, đúng nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0531,e03b41bd-874d-52ed-baa5-fff88b97a136,machine,0,,"TP. Hồ Chí Minh, không phải Phan Thiết – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0531,69cabf58-80c0-59cc-99cd-c1df607977fd,machine,1,,"KS ở Phan Thiết: đúng loại, đúng nơi; không có hạng sao (máy kiểm sao) · hạ 2→1: sao dưới ngưỡng/không khai (như nhãn người cùng câu)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0531,e2ca9c24-88ed-5097-801f-62fce32a3537,machine,2,,"Resort 4 sao ở Phan Thiết: đúng loại KS, đúng nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0531,ea164e06-6afe-5568-8ad7-48308eed8f7b,machine,2,,"Resort 3 sao ở Mũi Né (Phan Thiết): đúng loại KS, đúng nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0531,569684af-0d49-5883-93e0-266794874e80,machine,0,,"Nha Trang, không phải Phan Thiết – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0531,0a34a426-5ea7-505c-92fe-23d89c44fdaa,machine,0,,"rubric v4: sai loại cốt lõi — attraction, câu hỏi hotel_property (v3 #2 cho 1) | nhãn máy trước: 1 — Điểm tham quan ở Phan Thiết: đúng nơi, sai loại (#2)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0531,45924b29-cc1c-53fc-8c36-1a8e23e3019b,machine,1,,Biệt thự ở Mũi Né (KS = mọi chỗ nghỉ); không có hạng sao (máy kiểm sao) · hạ 2→1: sao dưới ngưỡng/không khai (như nhãn người cùng câu),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0531,cd7342d2-70a5-5ddd-a98d-84c265cf4f33,machine,2,,"Biệt thự 4 sao ở Mũi Né: đúng loại KS, đúng nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0531,0e0b16a2-57f6-5d01-871b-6677fc2465c1,machine,2,,"KS 3 sao ở Mũi Né (Phan Thiết): đúng loại, đúng nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0253,79487efa-b5de-50e5-af96-80a1038d8e6c,machine,2,,"KS Hạ Long, không ghi đưa đón sân bay (#3)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0253,e832420f-554a-50db-a73d-d8c257dbe280,machine,2,,"Căn hộ Hạ Long (KS #6), không ghi đưa đón sân bay (#3)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0253,9a0410c0-f3ce-5681-9f1b-67c83856d200,machine,0,,Mô tả có 'xe đưa đón sân bay' – vi phạm phủ định (#3),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0253,b7806b2a-c392-5aff-8350-906fd6639946,machine,2,,"KS Hạ Long, không ghi đưa đón sân bay (#3)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0253,5a132bbc-395b-5af0-aad9-fd23e604c7f3,machine,2,,"B&B Hạ Long (KS #6), không ghi đưa đón sân bay (#3)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0253,dc90e016-a588-5eac-a618-406093912231,machine,2,,"KS Hạ Long, không ghi đưa đón sân bay (#3)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0253,5c9c143d-7e63-5400-a5dd-fc7ade06802d,machine,2,,"Căn hộ Hạ Long (KS #6), không ghi đưa đón sân bay (#3)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0253,014eaacd-91e6-5e73-9f54-728401e596ec,machine,2,,"KS Hạ Long, không ghi đưa đón sân bay (#3)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0460,bd1412de-faa7-543f-a10f-b040e1f08bc4,machine,2,,Combo vui chơi Phú Quốc (VinWonders + Safari); giá không chấm,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0460,2429ea8e-dfcb-5a1a-9fec-c33f9d416067,machine,2,,Combo vui chơi Phú Quốc (Safari + VinWonders); giá không chấm,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0460,aca406f6-53ac-5083-8c01-314a97db7502,machine,2,,Combo vui chơi Phú Quốc (Safari + VinWonders + voucher); giá không chấm,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0460,d973f4f0-972b-5efb-855a-223332c2b9ea,machine,2,,Combo vui chơi Phú Quốc (VinWonders + Safari + voucher); giá không chấm,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0460,2fcf8887-c74e-564d-9730-a1c09a54a325,machine,1,,Gói dịch vụ VIP Zoo Tour Safari PQ – nhất quán anchor «VIP Zoo Tour» = 1; không chấm giá,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0497,74e344dc-366f-53a3-9a25-69de4bace422,machine,1,,"Chỗ nghỉ ở Phú Quốc: đúng loại, đúng nơi; không có hạng sao (máy kiểm sao) · hạ 2→1: sao dưới ngưỡng/không khai (như nhãn người cùng câu)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0497,5e39c51e-01f5-5ad9-95b0-cfaa51ccf503,machine,0,,"rubric v4: 3 sao < 5 sao yêu cầu — ràng buộc cứng (v3 cho 1) | nhãn máy trước: 1 — Resort Phú Quốc: đúng loại, đúng nơi; 3 sao < 5 (máy kiểm sao) · hạ 2→1: sao dưới ngưỡng/không khai (như nhãn người cùng câu)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0497,f4a39341-17c6-59a1-87f2-95028b67064f,machine,0,,"rubric v4: 4 sao < 5 sao yêu cầu — ràng buộc cứng (v3 cho 1) | nhãn máy trước: 1 — Resort Phú Quốc: đúng loại, đúng nơi; 4 sao < 5 (máy kiểm sao) · hạ 2→1: sao dưới ngưỡng/không khai (như nhãn người cùng câu)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0497,f3c066c9-544c-5309-ad88-02a68068fda6,machine,0,,rubric v4: 4 sao < 5 sao yêu cầu — ràng buộc cứng (v3 cho 1) | nhãn máy trước: 1 — Homestay Phú Quốc: đúng loại chỗ nghỉ; 4 sao < 5 (máy kiểm sao) · hạ 2→1: sao dưới ngưỡng/không khai (như nhãn người cùng câu),claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0497,7059f456-5a80-5a71-b032-6ed5a1f2f062,machine,0,,"rubric v4: 3 sao < 5 sao yêu cầu — ràng buộc cứng (v3 cho 1) | nhãn máy trước: 1 — KS Phú Quốc: đúng loại, đúng nơi; 3 sao < 5 (máy kiểm sao) · hạ 2→1: sao dưới ngưỡng/không khai (như nhãn người cùng câu)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0497,e616ff43-bb23-5ddf-9d24-943948b66462,machine,0,,"rubric v4: 4 sao < 5 sao yêu cầu — ràng buộc cứng (v3 cho 1) | nhãn máy trước: 1 — KS Phú Quốc: đúng loại, đúng nơi; 4 sao < 5 (máy kiểm sao) · hạ 2→1: sao dưới ngưỡng/không khai (như nhãn người cùng câu)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0497,56f0002b-06b1-522a-b446-d8a1fbd536ab,machine,0,,"Hạ Long, không phải Phú Quốc – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0456,cd8e4033-19d2-5fb1-9dea-20e003ba61ac,machine,0,,"Sai nơi (Đà Nẵng), hỏi Vinpearl Resort Nha Trang",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0456,3cf26126-590a-54b4-9e4d-0486f3e8048d,machine,1,,Đúng nơi Nha Trang nhưng không phải Vinpearl Resort Nha Trang (như anchor resort NT khác = 1),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0456,fbca8fd2-9eb2-57e8-8474-39cfcd95fe25,machine,1,,Đúng nơi Nha Trang nhưng không phải Vinpearl Resort Nha Trang,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0456,e3f470a8-58fd-5aac-80e9-f184465b8086,machine,1,,Đúng nơi Nha Trang nhưng không phải Vinpearl Resort Nha Trang,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0456,b4b15434-ddc0-52ec-93e9-849a1664c050,machine,1,,Đúng nơi Nha Trang nhưng không phải Vinpearl Resort Nha Trang,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0456,be65b93a-1f71-5fbb-81a2-4ba3619740b3,machine,0,,"Sai nơi (Nghệ An – Cửa Hội), hỏi Nha Trang",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0456,5ca43756-6c46-501a-bf7f-e66bc85d3364,machine,0,,"Sai nơi (Quảng Bình), hỏi Nha Trang",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0456,e2a10208-800e-546a-969a-bcc4e5301110,machine,1,,"Đúng nơi Nha Trang nhưng là condotel, không phải Vinpearl Resort Nha Trang",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0456,77a6fc00-430f-5575-85d3-5ff8c35d1eb5,machine,0,,"Sai nơi (Tây Ninh), hỏi Nha Trang",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0480,f1dd1f12-7f13-53ed-b23b-2437567f3d58,machine,0,,"rubric v4: sai loại cốt lõi — attraction, câu hỏi hotel_property (v3 #2 cho 1) | nhãn máy trước: 1 — Đúng nơi Phan Thiết nhưng là điểm tham quan (công viên), không phải KDL nghỉ dưỡng (#2)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0480,cd761f64-551c-5d59-8e5b-223274b079c1,machine,0,,"Sai nơi (Quy Nhơn), hỏi Phan Thiết",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0480,a29426af-4b92-5960-a939-726e760a156f,machine,1,,"Đúng nơi Phan Thiết nhưng là condotel, không phải KDL/resort (#6, như Apec Mandala Sun Sea = 1)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0480,38b04d19-257a-5dbd-b05d-3fa8318c7db6,machine,1,,"Đúng nơi Phan Thiết nhưng là lodge/villa, không phải KDL/resort (#6)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0480,68d86a1a-a327-55ae-bf8f-492272b97932,machine,0,,"rubric v4: sai loại cốt lõi — attraction, câu hỏi hotel_property (v3 #2 cho 1) | nhãn máy trước: 1 — Đúng nơi Phan Thiết nhưng là điểm tham quan (hải đăng), không phải KDL nghỉ dưỡng (#2)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0480,e2ca9c24-88ed-5097-801f-62fce32a3537,machine,2,,"Resort 4 sao Phan Thiết, đúng loại KDL nghỉ dưỡng; giá không chấm",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0480,a155876d-678a-577a-a9b6-1413261bfc74,machine,2,,"Resort Phan Thiết, đúng loại KDL nghỉ dưỡng; giá không chấm",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0480,bf47a697-e821-5d3f-a6ac-ed590cfdef3c,machine,2,,"Resort 4 sao Phan Thiết (Mũi Né), đúng loại KDL nghỉ dưỡng; giá không chấm",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0135,9a8af09f-9d1f-5e7f-82f6-0ee44881362c,machine,1,,Căn hộ L'azur Cửa Lò – nhất quán với các căn L'azur người đã gán 1,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0135,0761e589-fbd8-5bc3-865b-03dc3fe74867,machine,2,,"KS 4 sao ở Vinh, Nghệ An; yên tĩnh/cặp đôi không có dữ liệu trái ngược",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0135,6b1194cf-dd23-5e1f-80c4-5c0906f49d8a,machine,1,,Căn hộ L'azur Cửa Lò – nhất quán với các căn L'azur người đã gán 1,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0135,a35ecb96-05a1-5ba5-9f5d-8815d5869fb4,machine,1,,Căn hộ L'azur Cửa Lò – nhất quán với các căn L'azur người đã gán 1,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0135,75c7b562-5e25-5521-8532-309632723132,machine,1,,Căn hộ L'azur Cửa Lò – nhất quán với các căn L'azur người đã gán 1,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0223,20130a1a-4b25-573e-9e20-85a41670c404,machine,2,,"Cần Thơ, có lễ tân 24 giờ; wifi không ghi – vẫn 2 như các nhãn của câu",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0223,ad1af64b-7cfe-5bba-9113-0170c018e4a2,machine,1,,"Cần Thơ, có wifi nhưng không ghi lễ tân 24 giờ",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0286,afcda46a-02e1-5139-94fb-405cc4c4a5f7,machine,1,,"Huế, có phòng giường đôi nhưng phòng tắm riêng, không có phòng tắm chung",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0286,2b38393b-03bd-57ef-bc21-86ec99f31654,machine,1,,"Huế, có phòng giường đôi (tiết kiệm) nhưng không ghi phòng tắm chung",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0118,015c7da7-1700-5555-9a9c-88dcee52a82c,machine,1,,"Căn hộ dịch vụ Phan Thiết có wifi, không ghi bàn làm việc",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0118,a3195e41-d86e-529f-b5f3-1064dd0bf9c6,machine,1,,"Homestay/hostel 1 sao, không ghi bàn làm việc – kém hợp công tác",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0118,7eb7ca44-65ad-5e83-9859-70f7475ccdcb,machine,1,,"Nhà nghỉ Mũi Né có wifi, không ghi bàn làm việc",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0118,bf47a697-e821-5d3f-a6ac-ed590cfdef3c,machine,2,,Resort Phan Thiết có ghi wifi và bàn làm việc,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0118,7cd70b62-b94e-5276-a9de-1d0cace50321,machine,1,,"KS 2 sao Mũi Né có wifi, không ghi bàn làm việc",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0321,0e1ffe78-41be-5b34-a933-35626f4b973a,machine,1,,"Đúng nơi Huế, khách sạn khác, không phải Meliá Vinpearl Hue (như anchor)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0321,186f0295-6466-5709-8206-f5d30d4a1fb9,machine,1,,"Đúng nơi Huế, khách sạn khác, không phải Meliá Vinpearl Hue (như anchor)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0321,c6601091-eeb9-5c1b-96f2-4c4953b62073,machine,1,,"Đúng nơi Huế, khách sạn khác, không phải Meliá Vinpearl Hue (như anchor)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0321,59fee21b-80bd-5ffe-937d-0d525f452151,machine,1,,"Đúng nơi Huế, khách sạn khác, không phải Meliá Vinpearl Hue (như anchor)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0321,9dd80562-297f-51bb-9f15-550978a742b9,machine,1,,"Đúng nơi Huế, khách sạn khác, không phải Meliá Vinpearl Hue (như anchor)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0514,6cb65d28-1d64-5bea-97a0-9390f427252c,machine,2,,"KS 3 sao ở Đà Nẵng: đúng loại, đúng nơi (giá kiểm ở cấp room)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0514,d023af3b-6dfd-5048-a1ba-a1a6e1c80f38,machine,2,,"Chỗ nghỉ 5 sao ở Đà Nẵng: đúng loại, đúng nơi (giá kiểm ở cấp room)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0514,df39f791-e7c6-5e52-b9e0-40d690c15eb9,machine,2,,"Chỗ nghỉ 5 sao ở Đà Nẵng: đúng loại, đúng nơi (giá kiểm ở cấp room)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0088,dacb4472-d4ea-5e9b-bd15-5045bd2377e1,machine,0,,Đúng loại golf nhưng sai nơi: Phan Thiết,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0088,1993c1b8-083f-5683-a217-af712cfaf145,machine,0,,"rubric v4: sai loại cốt lõi — hotel_property, câu hỏi golf (v3 #2 cho 1) | nhãn máy trước: 1 — Đúng nơi Hội An nhưng sai loại: resort, không phải voucher golf (#2)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0105,3ca2a539-88dd-52c7-971e-85014a7b3eb3,machine,2,,"KS 4 sao Hà Nội, mô tả phù hợp gia đình có trẻ nhỏ",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0517,3f33295c-1a1f-58ad-bce7-ffc2376d1c46,machine,2,,"KS ở Nha Trang: đúng loại, đúng nơi (5 sao ≥ 3; giá kiểm ở cấp room)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0517,e298b703-4411-5137-b77f-4382304251d6,machine,2,,"KS ở Nha Trang: đúng loại, đúng nơi (5 sao ≥ 3; giá kiểm ở cấp room)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0697,c4caa527-db7a-57e4-8579-f5824f3f5a1d,machine,1,,chỗ nghỉ Phú Quốc nhưng tên/mô tả không nói ở Grand World,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0367,61b399d9-7d21-5637-a0c8-85b3e90dd7b7,machine,0,,"Không liên quan: du thuyền Hạ Long, Sea Links ở Phan Thiết",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0367,88627123-7734-5a5b-bbf9-86e47fb6ef3e,machine,0,,Không liên quan: du thuyền Hạ Long,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0367,f08155d3-e2ba-5412-a525-0cde566a16a9,machine,0,,Không liên quan: du thuyền Hạ Long,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0367,3834227f-1ae8-578d-9b60-c0dd10144bdb,machine,0,,"Sân golf khác ở Hải Phòng, sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0367,8ab35bd0-cd0c-5e2f-be56-e20cd628b709,machine,0,,"Sân golf khác ở TP. Hồ Chí Minh, sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0367,7300819d-523a-5a01-9b96-33dd08f34701,machine,0,,Không liên quan: du thuyền Hạ Long,claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0367,06fe96e5-5226-50a8-bac2-015038d8e8a6,machine,0,,"Sân golf khác ở Phú Quốc, sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0469,b2b605b6-d32d-5aab-b4a0-297142ffd305,machine,1,,"Đúng Hội An, hợp gia đình nhưng snippet là cơ sở lưu trú/khách sạn, không ghi resort (#6)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0469,b476ae38-0305-56a6-9bca-f7feeec0ba3b,machine,0,,"Sai nơi (Nha Trang), hỏi Hội An",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0469,9509d07f-b5dd-560c-980c-19fce6c697e5,machine,1,,"Đúng Hội An, hợp gia đình nhưng là cơ sở lưu trú 3 sao, không phải resort (#6)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0469,06f5b0a0-3b16-5a5f-91aa-a8c8e624c9ff,machine,1,,"Đúng Hội An, hợp gia đình nhưng là khách sạn (Palace), không ghi resort (#6)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0469,bafd5122-4660-51d6-ada8-b1e2cc7843c6,machine,2,,"Biệt thự hồ bơi Hội An, hợp gia đình có trẻ nhỏ (như anchor villa Hội An = 2)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0469,db2df34c-4255-5fff-a09d-a38104413492,machine,0,,"Sai nơi (combo Nghệ An), hỏi Hội An",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0469,ad96c58c-42f6-56f2-a636-da94f67a679f,machine,2,,"Biệt thự Hội An, hợp gia đình có trẻ nhỏ, có hồ bơi (như anchor villa Hội An = 2)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0030,06f5b0a0-3b16-5a5f-91aa-a8c8e624c9ff,machine,2,,"Cơ sở 5 sao có hồ bơi, spa tại Hội An: khách sạn nghỉ dưỡng đúng loại, đúng nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0235,a05627eb-1ec8-5677-8407-a42e25d50634,machine,2,,"Hạ Long, có ghi nhà hàng, hạng phòng gia đình",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0241,4083ad36-8328-516d-ba94-c0f56bf8e4e1,machine,2,,"Nhà khách Côn Đảo (KS #6), không ghi hồ bơi (#3)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0241,4000eaad-e3a9-54c7-8894-4f9f83c2a697,machine,2,,"Resort Côn Đảo (KS #6), không ghi hồ bơi (#3)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0295,c846e504-7219-5bc5-8b5d-a5d73e81919c,machine,1,,"Hạ Long, có phòng nhìn biển nhưng không có căn hộ – gần đúng",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0472,911a575a-e117-598e-987f-09627f0229c4,machine,0,,"Vé VinWonders PQ, không có Safari; khác điểm khách hỏi (nhất quán anchor combo/vé khác = 0)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0472,a2cec5b4-295f-57ea-98e0-8f43866828b6,machine,0,,"Vé VinWonders PQ, không có Safari; khác điểm khách hỏi (nhất quán anchor combo/vé khác = 0)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0472,b45ec185-90be-534e-8ffb-2d039eadebc4,machine,0,,"Vé VinWonders PQ, không có Safari; khác điểm khách hỏi (nhất quán anchor combo/vé khác = 0)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0495,0ea20753-e3f7-5005-909e-382b704042fc,machine,2,,"Resort 5 sao ở Hạ Long: đúng loại KS, đúng nơi (giá kiểm ở cấp room)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0495,1668fc48-6694-5ad6-9806-e663539f5608,machine,2,,"Căn hộ 5 sao ở Hạ Long: đúng loại KS, đúng nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0495,56673371-2f98-59c3-9d04-adc64d2517d8,machine,2,,"Chỗ nghỉ 5 sao ở Hạ Long: đúng loại KS, đúng nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0495,79a1b4b4-7966-56ef-9b32-a76d123e618a,machine,2,,"Du thuyền 4.5 sao Hạ Long: KS gồm du thuyền (#6), đúng nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0495,a3d94a7f-06bf-5019-a240-4b2c4935cba7,machine,2,,"Du thuyền 4.5 sao Hạ Long: KS gồm du thuyền (#6), đúng nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0688,5fdc8e48-79d8-5024-93d6-0c59e23eb294,machine,1,,"unknown_metadata: không có danh sách tiện ích, không ghi hồ bơi lẫn spa",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0688,7d9b7822-3372-57da-ab93-6525f474209b,machine,0,,"combo vé bay + phòng, không phải chỗ nghỉ lẻ (sai loại cốt lõi)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0688,f2da0f67-373e-57a3-aeae-ebbd0194768c,machine,2,,"có ghi hồ bơi, không ghi spa",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0688,2461c1f9-8967-572d-ac15-85f3cc933061,machine,1,,"không ghi hồ bơi, không ghi spa",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0688,c100a453-061f-5ed7-89b6-1ed56a330e94,machine,1,,"không ghi hồ bơi, không ghi spa",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0688,84c734bb-4e63-5889-b79f-1a484afbb180,machine,2,,"có ghi hồ bơi, không ghi spa",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0688,b2b3e67b-674f-517b-8d47-08454d6284e7,machine,2,,"có ghi hồ bơi, không ghi spa",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0688,628d74cc-f143-5a88-b239-810edbf65a6c,machine,2,,"có ghi hồ bơi, không ghi spa",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0688,c83eee41-0c1e-5bf8-8d97-09cc4c61a04f,machine,1,,"không ghi hồ bơi (chỉ công viên nước), không ghi spa",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0688,c6601091-eeb9-5c1b-96f2-4c4953b62073,machine,1,,"không ghi hồ bơi, không ghi spa",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0709,a1df5d89-0df5-5d76-b094-2790eb04b3e3,machine,0,,Vinpearl nhưng sai nơi (TP. Hồ Chí Minh),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0709,fbca8fd2-9eb2-57e8-8474-39cfcd95fe25,machine,1,,chỗ nghỉ Nha Trang thương hiệu khác (không phải Vinpearl),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0709,5ca43756-6c46-501a-bf7f-e66bc85d3364,machine,0,,Meliá Vinpearl nhưng sai nơi (Quảng Bình),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0709,4b8f3c43-8c80-5b14-a418-968ba627a9ed,machine,1,,chỗ nghỉ Nha Trang thương hiệu khác (không phải Vinpearl),claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0232,adbe6b4b-5055-52b1-8425-c80fa172b05b,machine,1,,"Hà Tĩnh, có wifi, không ghi sân hiên",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0232,0b808a40-aded-5975-b585-d3e10d747fba,machine,1,,"Hà Tĩnh, có wifi, không ghi sân hiên",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0290,2ecfea7c-a5df-57c4-9996-49e7413dd4c5,machine,0,,"Có đúng hạng phòng nhưng ở Hải Phòng, không phải Hà Nội – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0324,f751a108-420a-5322-923f-f4925c4c915d,machine,0,,"rubric v4: sai loại cốt lõi — combo, câu hỏi hotel_property (v3 #2 cho 1) | nhãn máy trước: 1 — Đúng tỉnh Hà Tĩnh nhưng là combo công viên nước, không phải Vinpearl Hà Tĩnh (#2)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0324,3ce04b14-c60e-5af1-a58b-702f37060fed,machine,1,,"Đúng nơi Hà Tĩnh, khách sạn khác, không phải Vinpearl Hà Tĩnh",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0324,5104c607-dcf2-5fc1-8b63-0ac83d07d257,machine,1,,"Đúng nơi Hà Tĩnh, khách sạn khác, không phải Vinpearl Hà Tĩnh",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0324,dba9bee5-7c29-5aa8-ad0f-8d7d34343193,machine,0,,"rubric v4: sai loại cốt lõi — attraction, câu hỏi hotel_property (v3 #2 cho 1) | nhãn máy trước: 1 — Đúng tỉnh Hà Tĩnh nhưng là vé trò chơi công viên nước, không phải Vinpearl Hà Tĩnh (#2)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0324,10671599-c49f-5603-8c36-f57aec2f451a,machine,0,,"rubric v4: sai loại cốt lõi — combo, câu hỏi hotel_property (v3 #2 cho 1) | nhãn máy trước: 1 — Đúng tỉnh Hà Tĩnh nhưng là combo công viên nước, không phải Vinpearl Hà Tĩnh (#2)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0324,5e325d4d-71b9-589b-9b4e-fbf76971bee1,machine,0,,"rubric v4: sai loại cốt lõi — combo, câu hỏi hotel_property (v3 #2 cho 1) | nhãn máy trước: 1 — Đúng tỉnh Hà Tĩnh nhưng là combo công viên nước, không phải Vinpearl Hà Tĩnh (#2)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0324,e916cefa-b08b-5569-875f-226d6f4a8319,machine,0,,"rubric v4: sai loại cốt lõi — combo, câu hỏi hotel_property (v3 #2 cho 1) | nhãn máy trước: 1 — Đúng tỉnh Hà Tĩnh nhưng là combo công viên nước, không phải Vinpearl Hà Tĩnh (#2)",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0450,5e6bdd78-9689-5f54-a484-5f3f9957f7ff,machine,1,,"Đúng nơi Phú Quốc nhưng là khách sạn 2 sao, không phải resort (#6)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0450,eed59795-f2ff-50c6-af0a-99dd9a6474c6,machine,2,,"unknown_metadata: lưu trú 5 sao Phú Quốc gần bãi biển (Meliá Vinpearl), snippet không ghi chữ resort",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0538,a3d94a7f-06bf-5019-a240-4b2c4935cba7,machine,0,,rubric v4: 4 sao < 5 sao yêu cầu — ràng buộc cứng (v3 cho 1) | nhãn máy trước: 1 — Du thuyền Hạ Long (KS gồm du thuyền); 4.5 sao < 5 (máy kiểm sao) · hạ 2→1: sao dưới ngưỡng/không khai (như nhãn người cùng câu),claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0538,6ec86304-fe93-5557-9c4f-4ad07508ad93,machine,2,,"Căn hộ 5 sao ở Hạ Long: đúng loại KS, đúng nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0551,a6eb8704-fb22-5532-a05a-bfdd37b9bf64,machine,0,,"Sai nơi: combo bay Hà Nội → Đà Lạt, phòng ở Đà Lạt; hỏi Hà Nội",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0078,72165732-07a4-5188-a90a-8914fbb38fe9,machine,0,,"Tuyến Đà Nẵng -> Quy Nhơn, không bay tới Huế",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0078,000312fd-3a28-5367-87b0-c8b5275001b7,machine,0,,"rubric v4: sai loại cốt lõi — hotel_property, câu hỏi flight_route (v3 #2 cho 1) | nhãn máy trước: 1 — Đúng nơi Huế nhưng sai loại: khách sạn (#2); lưu ý anchor KS Huế câu này = 0",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0078,6da8da95-3e07-5321-817c-f0276d6f17ef,machine,0,,"Tuyến Đà Nẵng -> Côn Đảo, không bay tới Huế",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0078,628d74cc-f143-5a88-b239-810edbf65a6c,machine,0,,"rubric v4: sai loại cốt lõi — hotel_property, câu hỏi flight_route (v3 #2 cho 1) | nhãn máy trước: 1 — Đúng nơi Huế nhưng sai loại: lưu trú (#2); lưu ý anchor KS Huế câu này = 0",claude-opus-5-5; rubric-v4 pass 2026-10-06,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0078,297a176c-aee9-56aa-ae1f-3b47221a102f,machine,0,,"Tuyến Buôn Ma Thuột -> Hải Phòng, không bay tới Huế",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0187,945d9465-ed79-5a98-b302-6af9c908b4cf,machine,1,,"Côn Đảo, không ghi lễ tân 24 giờ",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0481,34165720-14c2-5e63-87ab-7e2bb8f44ee8,machine,0,,"Hạ Long, không phải Hà Tĩnh – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0481,dacb0b08-bd78-5e7e-907e-aaf67ad7cc4d,machine,0,,"Hạ Long, không phải Hà Tĩnh – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0481,727ebb66-9292-5955-a0b2-5bd060a4cb33,machine,0,,"Hà Nội, không phải Hà Tĩnh – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0481,90cbb5c5-c82e-5b8b-ac31-c027696a6e78,machine,0,,"Hải Phòng, không phải Hà Tĩnh – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0481,1da0117c-4977-5d3a-9992-9c21f4b74747,machine,0,,"Hạ Long, không phải Hà Tĩnh – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0481,90c7c2f3-568e-507c-832d-952562b1d72c,machine,0,,"Hạ Long, không phải Hà Tĩnh – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0481,091aac77-e92e-5451-9637-f4fdf5991853,machine,0,,"Hạ Long, không phải Hà Tĩnh – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0481,79487efa-b5de-50e5-af96-80a1038d8e6c,machine,0,,"Hạ Long, không phải Hà Tĩnh – sai nơi",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0721,c08270bd-d3e6-578f-a710-99e7a0287ddc,machine,0,,"khách sạn, không phải vé máy bay (#8e)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0721,1bd84c9c-3bfc-5ddd-8e38-1cea8dee77c3,machine,0,,"nhà nghỉ, không phải vé máy bay (#8e)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0721,ee72060b-bafa-5231-afd8-a6b380f43f22,machine,0,,"homestay, không phải vé máy bay (#8e)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0721,a125b719-9f3a-59db-94a0-e233cd129deb,machine,0,,"căn hộ, không phải vé máy bay (#8e)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0721,1cba1544-10c0-5565-9f11-d5f26e5c9d47,machine,0,,"tuyến khác (Cần Thơ → TP.HCM), không vào Côn Đảo",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
+c0721,a7803a91-66b9-59ab-a82d-545c97979d44,machine,0,,"homestay/lodge, không phải vé máy bay (#8e)",claude-opus-5-5,2026-10-06T00:28:35+07:00,QAnh,2026-10-06T10:43:43+07:00,accepted
