@@ -1,9 +1,9 @@
 import React from 'react';
-import { Hotel, ExternalLink, MapPin, Clock, Utensils, BedDouble, Footprints, Bus, Camera, type LucideIcon } from 'lucide-react';
+import { Hotel, ExternalLink, MapPin, Clock, Utensils, BedDouble, Footprints, Bus, Camera, Plane, type LucideIcon } from 'lucide-react';
 import { hotelTags, placeholderOnError } from './widgetVisuals';
 import { isFreeToVisit } from './widgetPlan';
 import type { FloatingWidgetController } from './useFloatingWidget';
-import type { ItinerarySlot } from '../../../types/travel';
+import type { ItineraryFlightItem, ItinerarySlot } from '../../../types/travel';
 import { taxonomyLabel } from '../../../components/assistant/assistantLabels';
 
 const SLOT_PERIOD_LABEL: Record<ItinerarySlot['time'], string> = {
@@ -28,6 +28,63 @@ function ItemActions({ actions }: { actions: ReturnType<FloatingWidgetController
         className="min-h-11 px-4 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition-colors">
         Đặt ngay
       </button>
+    </div>
+  );
+}
+
+const FLIGHT_DIRECTION_LABEL: Record<ItineraryFlightItem['direction'], string> = {
+  OUTBOUND: 'Chặng đi',
+  RETURN: 'Chặng về',
+  ROUND_TRIP: 'Vé khứ hồi',
+};
+
+function formatDay(isoDate: string): string {
+  const [year, month, day] = isoDate.split('-');
+  return day && month && year ? `${day}/${month}/${year}` : isoDate;
+}
+
+/**
+ * Thẻ vé máy bay của lịch trình (AC-AGT-02, user-flow.md §4.2): hãng, số hiệu, giờ đi/đến, bay thẳng, giá × số khách.
+ * Mọi giá trị lấy từ `product` của response, không tính lại; chỉ có nút "Đặt ngay" như khách sạn.
+ */
+function FlightCard({ flight, actions, focused }: {
+  flight: ItineraryFlightItem;
+  actions: ReturnType<FloatingWidgetController['itemActions']>;
+  focused: boolean;
+}) {
+  const attributes = (flight.product.attributes ?? {}) as Record<string, unknown>;
+  const clock = (key: 'departure' | 'arrival') =>
+    (attributes[`${key}TimeLocal`] as string | undefined) ?? String(attributes[`${key}At`] ?? '').slice(11, 16);
+  const departure = clock('departure');
+  const arrival = clock('arrival');
+  const carrier = [attributes.airline, attributes.flightNumber].filter(Boolean).join(' · ');
+  const dates = flight.returnDate ? `${formatDay(flight.date)} – ${formatDay(flight.returnDate)}` : formatDay(flight.date);
+  return (
+    <div className="relative group">
+      <div className="absolute -left-[31px] sm:-left-[35px] top-3.5 w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-sky-600 text-white border-2 border-white shadow-xs flex items-center justify-center z-10">
+        <Plane className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+      </div>
+      <div data-product-id={flight.product.id} data-testid="itinerary-flight"
+        onClick={() => window.open(`/product/${flight.product.id}`, '_blank', 'noopener,noreferrer')}
+        className={`p-3.5 sm:p-4 rounded-2xl bg-white border border-slate-100 cursor-pointer space-y-2${focused ? ' ring-2 ring-blue-500' : ''}`}>
+        <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-100">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-50 text-sky-700 text-xs font-semibold">
+            {FLIGHT_DIRECTION_LABEL[flight.direction]} · {dates}
+          </span>
+          <span className="text-xs font-bold text-slate-800">
+            {flight.product.unitPrice != null
+              ? `${flight.product.unitPrice.toLocaleString('vi-VN')} ₫/khách × ${flight.passengers}`
+              : 'Chưa có giá'}
+          </span>
+        </div>
+        <p className="text-sm font-semibold text-slate-900">{flight.product.name}</p>
+        <p className="flex flex-wrap items-center gap-x-2 text-xs text-slate-600">
+          {carrier && <span>{carrier}</span>}
+          {departure && <span>{arrival ? `${departure} → ${arrival}` : departure}</span>}
+          {attributes.nonstop === true && <span className="font-semibold text-emerald-700">Bay thẳng</span>}
+        </p>
+        <ItemActions actions={actions} />
+      </div>
     </div>
   );
 }
@@ -67,6 +124,15 @@ export function WidgetDays({ widget }: { widget: FloatingWidgetController }) {
         ? (dayItem.day <= Math.ceil(activePlan.days.length / 2) ? activePlan.stays[0] : activePlan.stays[1])
         : activePlan.stay;
       const stayHotelName = stayForThisDay?.product?.name || 'Khách sạn lưu trú';
+      // Chặng đi và vé khứ hồi mở đầu ngày đầu tiên; chặng về khép lại ngày cuối.
+      const isFirstDay = dayIndex === 0;
+      const isLastDay = dayIndex === activePlan.days.length - 1;
+      const flightsBefore = isFirstDay ? (activePlan.flights ?? []).filter((flight) => flight.direction !== 'RETURN') : [];
+      const flightsAfter = isLastDay ? (activePlan.flights ?? []).filter((flight) => flight.direction === 'RETURN') : [];
+      const renderFlight = (flight: ItineraryFlightItem) => (
+        <FlightCard key={`${flight.direction}-${flight.productId}`} flight={flight}
+          actions={itemActions(flight.product.id)} focused={flight.product.id === focusedProductId} />
+      );
       const stayTags = stayForThisDay?.product ? hotelTags(stayForThisDay.product) : [];
 
       return (
@@ -80,6 +146,7 @@ export function WidgetDays({ widget }: { widget: FloatingWidgetController }) {
 
           {/* Vertical Timeline Track */}
           <div className="relative pl-6 sm:pl-7 border-l-2 border-dashed border-blue-200 ml-3.5 sm:ml-4 space-y-4 my-2">
+            {flightsBefore.map(renderFlight)}
             {/* Khách sạn lưu trú trong lộ trình ngày: ảnh, tag và ghi chú chỉ lấy từ dữ liệu sản phẩm thật */}
             {stayForThisDay?.product && (
               <div className="relative group">
@@ -269,6 +336,7 @@ export function WidgetDays({ widget }: { widget: FloatingWidgetController }) {
                 </div>
               );
             })}
+            {flightsAfter.map(renderFlight)}
           </div>
         </div>
       );

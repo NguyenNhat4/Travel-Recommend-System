@@ -508,6 +508,7 @@ def _inprocess_itinerary_tools(app: FastAPI, executor: Executor) -> InProcessIti
         index=lambda: getattr(app.state, "index", None),
         product_detail=lambda: getattr(app.state, "get_product_detail", None),
         similar_products=lambda: getattr(app.state, "get_similar_products", None),
+        list_products=lambda: getattr(app.state, "list_products", None),
         token_verifier=lambda: getattr(app.state, "token_verifier", None),
         revoked_tokens=lambda: getattr(app.state, "revoked_tokens", None),
         executor=executor,
@@ -732,7 +733,7 @@ settings = get_settings()
 app = FastAPI(
     title=settings.app_name,
     description="Travel recommendation and itinerary API",
-    version="1.17.0",
+    version="1.18.0",
     lifespan=lifespan,
 )
 

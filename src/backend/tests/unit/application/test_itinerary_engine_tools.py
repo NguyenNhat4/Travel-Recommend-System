@@ -435,3 +435,25 @@ def test_similar_through_the_gateway_never_logs_the_anchor(similar, caplog):
     assert missing["error"] == {"code": "PRODUCT_NOT_FOUND", "retryable": False, "httpStatus": 404}
     assert "name=get_similar_products outcome=ok" in caplog.text
     assert "R1" not in caplog.text and "khong-co" not in caplog.text
+
+
+def test_list_products_calls_the_catalog_use_case_and_maps_its_parameters():
+    """Chặng bay của lịch trình (AC-AGT-02) đọc tuyến và chuyến qua use case GET /products, không qua HTTP."""
+    seen = []
+
+    async def list_products(**kwargs):
+        seen.append(kwargs)
+        return {"results": [], "total": 0, "limit": kwargs["limit"], "offset": kwargs["offset"]}
+
+    tools = InProcessItineraryTools(search=lambda: None, recommend=lambda: None, index=lambda: None,
+                                    product_detail=lambda: None, similar_products=lambda: None,
+                                    token_verifier=lambda: None, revoked_tokens=lambda: None,
+                                    list_products=lambda: list_products)
+    page = run(tools.list_products({"parentProductId": "route-1", "availableOnly": True, "limit": 50, "offset": 0}))
+    assert page["total"] == 0 and page["requestId"]
+    assert seen == [{"destination": None, "taxonomy": None, "available_only": True, "sort": "popular", "limit": 50,
+                     "offset": 0, "parent_product_id": "route-1"}]
+    unwired = InProcessItineraryTools(search=lambda: None, recommend=lambda: None, index=lambda: None,
+                                      product_detail=lambda: None, similar_products=lambda: None,
+                                      token_verifier=lambda: None, revoked_tokens=lambda: None)
+    assert tool_error(unwired.list_products({"taxonomy": "flight"})).http_status == 503

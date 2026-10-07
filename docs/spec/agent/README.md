@@ -7,15 +7,13 @@ chỉ dẫn thứ tự đọc tối thiểu và chọn thêm tài liệu/source 
 
 | File | Nội dung |
 |---|---|
+| [nghiep-vu/README.md](nghiep-vu/README.md) | Nghiệp vụ agent đang thực hiện, theo domain (hỏi lại, tìm, vé, xếp lịch, diễn giải, nhiều lượt) kèm glossary |
 | [working-context.md](working-context.md) | Context tối thiểu, bản đồ module và nhánh đọc riêng cho tune/eval/debug |
 | [langgraph-nodes.md](langgraph-nodes.md) | Vì sao graph chia thành mười node, vì sao mọi nhánh qua `finalize`, cách đọc bảng trace |
 | [state-fields.md](state-fields.md) | Tra theo từng field của `AgentState`: node nào ghi, node nào đọc, dùng để làm gì |
-| [field-review.md](field-review.md) | Review field của request/response và `AgentState`: đề xuất giữ, bỏ, gộp — đã chốt và áp dụng 2026-09-28 |
 | [response-and-errors.md](response-and-errors.md) | `status` so với `error.code`, luồng sau khi nhập giá trị không hợp lệ |
 | [golden-run.md](golden-run.md) | Chạy bộ test case: chuẩn bị Postgres/backend, các cờ của runner, đọc kết quả, luật chấm, ngưỡng kết luận, lỗi thường gặp |
 | [golden-dataset-how-to-add-more-case.md](golden-dataset-how-to-add-more-case.md) | Cấu trúc dataset test case, các khoá `expect`, cách thêm case và xử lý khi case fail |
-| [presentation-slides.html](presentation-slides.html) | Bộ 14 slide giới thiệu agent (mở bằng trình duyệt, phím ←/→); số liệu golden ngày 2026-09-24 |
-| [presentation-script.md](presentation-script.md) | Kịch bản nói theo từng slide, phần demo trực tiếp và câu hỏi dễ gặp |
 
 ## Chạy demo
 

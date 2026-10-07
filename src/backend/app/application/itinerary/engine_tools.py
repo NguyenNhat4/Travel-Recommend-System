@@ -60,12 +60,14 @@ class InProcessItineraryTools:
 
     def __init__(self, *, search: Provider, recommend: Provider, index: Provider, product_detail: Provider,
                  similar_products: Provider, token_verifier: Provider, revoked_tokens: Provider,
+                 list_products: Provider | None = None,
                  executor: Executor | None = None, telemetry: CallTelemetry | None = None):
         self._search = search
         self._recommend = recommend
         self._index = index
         self._product_detail = product_detail
         self._similar_products = similar_products
+        self._list_products = list_products or (lambda: None)
         self._token_verifier = token_verifier
         self._revoked_tokens = revoked_tokens
         self._executor = executor
@@ -87,6 +89,9 @@ class InProcessItineraryTools:
 
     async def get_product_detail(self, product_id: str) -> dict[str, Any]:
         return await self._guard("get_product_detail", self._get_product_detail(product_id))
+
+    async def list_products(self, params: dict[str, Any]) -> dict[str, Any]:
+        return await self._guard("list_products", self._list_products_page(params))
 
     async def list_destinations(self) -> dict[str, Any]:
         # Index None → 503: agent bỏ qua bước kiểm điểm đến thay vì báo mọi điểm đến là ngoài catalog.
@@ -112,6 +117,14 @@ class InProcessItineraryTools:
 
     async def _get_product_detail(self, product_id: str) -> dict[str, Any]:
         return await self._require("get_product_detail", self._product_detail)(product_id)
+
+    async def _list_products_page(self, params: dict[str, Any]) -> dict[str, Any]:
+        use_case = self._require("list_products", self._list_products)
+        result = await use_case(destination=params.get("destination"), taxonomy=params.get("taxonomy"),
+                                available_only=bool(params.get("availableOnly")), sort=params.get("sort", "popular"),
+                                limit=params.get("limit", 20), offset=params.get("offset", 0),
+                                parent_product_id=params.get("parentProductId"))
+        return {**result, "requestId": current_request_id() or "catalog"}
 
     async def _list_destinations(self) -> dict[str, Any]:
         return destination_list(self._require("list_destinations", self._index).destination)

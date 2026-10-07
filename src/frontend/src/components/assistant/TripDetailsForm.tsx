@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
-import { Calendar, Loader2, MapPin, RotateCcw, Send, Users, Wallet } from 'lucide-react';
+import { Calendar, LocateFixed, Loader2, MapPin, PlaneTakeoff, RotateCcw, Send, Users, Wallet } from 'lucide-react';
 import { listDestinations } from '../../services/destinations';
+import { listDepartureAirports, nearestDepartureCity } from '../../services/flights';
 import type { components } from '../../types/api.gen';
 
 type TripIntent = components['schemas']['TripIntent'];
@@ -34,7 +35,49 @@ export function tripDetailsPrompt(intent: TripIntent): string {
     parts.push(`cho ${partyText}`);
   }
   if (intent.budget) parts.push(`ngân sách khoảng ${formatBudget(intent.budget)}`);
+  if (intent.origin?.trim()) parts.push(`đi từ ${intent.origin.trim()}`);
   return `${parts.join(', ')}.`;
+}
+
+type LocateState = 'idle' | 'locating' | 'denied' | 'failed';
+
+const LOCATE_MESSAGE: Record<Exclude<LocateState, 'idle' | 'locating'>, string> = {
+  denied: 'Bạn chưa cho phép dùng vị trí. Bạn nhập nơi đi giúp mình nhé.',
+  failed: 'Chưa xác định được nơi đi từ vị trí. Bạn nhập nơi đi giúp mình nhé.',
+};
+
+/**
+ * Gợi ý nơi đi từ vị trí trình duyệt (AC-AGT-03): chỉ hỏi quyền khi người dùng bấm nút. Toạ độ chỉ dùng trong hàm này
+ * để chọn thành phố có sân bay gần nhất trong catalog; không lưu vào state, không gửi lên server.
+ */
+function useDepartureFromLocation(onCity: (city: string) => void) {
+  const [state, setState] = useState<LocateState>('idle');
+  const locate = useCallback(() => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setState('failed');
+      return;
+    }
+    setState('locating');
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        void listDepartureAirports()
+          .then((airports) => {
+            const city = nearestDepartureCity({ latitude, longitude }, airports);
+            if (city) {
+              onCity(city);
+              setState('idle');
+            } else {
+              setState('failed');
+            }
+          })
+          .catch(() => setState('failed'));
+      },
+      (error) => setState(error.code === error.PERMISSION_DENIED ? 'denied' : 'failed'),
+      { enableHighAccuracy: false, timeout: 10_000, maximumAge: 600_000 },
+    );
+  }, [onCity]);
+  return { state, locate };
 }
 
 export function TripDetailsForm({
@@ -88,6 +131,8 @@ export function TripDetailsForm({
   const setChildren = (value: number) => setIntent((prev) => ({
     ...prev, party: { type: prev.party?.type ?? null, adults: prev.party?.adults ?? 1, children: Math.max(0, value) },
   }));
+  const setOrigin = useCallback((origin: string) => setIntent((prev) => ({ ...prev, origin })), []);
+  const departure = useDepartureFromLocation(setOrigin);
   const setBudget = (value: string) => {
     const parsed = value.trim() ? Number(value) * 1_000_000 : null;
     setIntent((prev) => ({ ...prev, budget: parsed && parsed > 0 ? parsed : null }));
@@ -208,6 +253,30 @@ export function TripDetailsForm({
                 className="w-24 rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs outline-hidden focus:ring-1 focus:ring-blue-500" />
               <span className="text-xs font-semibold text-slate-500">triệu VNĐ</span>
             </div>
+          </fieldset>
+        )}
+
+        {form.fields.includes('origin') && (
+          <fieldset className="space-y-1.5">
+            <legend className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
+              <PlaneTakeoff className="h-3.5 w-3.5 text-blue-600" aria-hidden="true" /> Nơi đi (không bắt buộc)
+            </legend>
+            <div className="flex items-center gap-1.5">
+              <input type="text" disabled={disabled} value={intent.origin ?? ''} aria-label="Nơi đi"
+                onChange={(event) => setOrigin(event.target.value)}
+                placeholder="Để thêm vé máy bay, ví dụ Hà Nội"
+                className="min-w-0 flex-1 rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs outline-hidden focus:ring-1 focus:ring-blue-500" />
+              <button type="button" disabled={disabled || departure.state === 'locating'} onClick={departure.locate}
+                className="inline-flex min-h-8 shrink-0 items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50">
+                {departure.state === 'locating'
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                  : <LocateFixed className="h-3.5 w-3.5" aria-hidden="true" />}
+                Dùng vị trí hiện tại
+              </button>
+            </div>
+            {(departure.state === 'denied' || departure.state === 'failed') && (
+              <p role="status" className="text-xs text-slate-500">{LOCATE_MESSAGE[departure.state]}</p>
+            )}
           </fieldset>
         )}
 

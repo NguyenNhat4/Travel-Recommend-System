@@ -176,7 +176,7 @@ stateDiagram-v2
     Converse --> [*]: Trả lời hoặc từ chối, không gọi tool
     ClassifyTurn --> AnalyzeIntent: Yêu cầu du lịch
     ClassifyTurn --> SuggestForm: Câu trả lời không thêm được thông tin ("không biết") khi còn thiếu điểm đến/số ngày/ngày đi/số người
-    AnalyzeIntent --> CheckClarification: Trích xuất thông tin (Điểm đến, Ngày, Số người, Ngân sách)
+    AnalyzeIntent --> CheckClarification: Trích xuất thông tin (Điểm đến, Nơi đi, Ngày, Số người, Ngân sách)
     
     CheckClarification --> AskUser: Lượt đầu thiếu thông tin, hoặc chưa hỏi ngày đi–số người–ngân sách
     CheckClarification --> AskUser: Người dùng muốn đổi thông tin chuyến đi mà chưa nói đổi thành gì
@@ -185,7 +185,7 @@ stateDiagram-v2
     AskUser --> [*]: Chờ phản hồi tiếp theo
     
     CheckClarification --> SearchCandidates: Đủ điểm đến, số ngày, ngày đi, số người
-    SearchCandidates --> ToolCatalogSearch: Gọi Tool tìm kiếm phòng & tour thật (và Similar khi đổi món)
+    SearchCandidates --> ToolCatalogSearch: Gọi Tool tìm kiếm phòng, tour và chuyến bay thật (và Similar khi đổi món)
     ToolCatalogSearch --> ValidateAvailability: Kiểm tra lịch trống & giá
     
     SearchCandidates --> NoResults: Không có sản phẩm thật phù hợp
@@ -199,6 +199,7 @@ stateDiagram-v2
 
 ### Tiêu chuẩn Grounding (Chống Bịa Đặt):
 - **Không suy đoán dữ liệu sản phẩm:** LLM chỉ đóng vai trò phân tích ý định ngôn ngữ và sắp xếp lịch trình thời gian. Mọi thông tin về `productId`, `title`, `price`, `imageUrl` bắt buộc phải được lấy nguyên trạng từ kết quả trả về của công cụ truy xuất (`ToolCatalogSearch`): Search, Recommendation, hoặc Similar (`getSimilarProducts`) khi đổi một sản phẩm đã hiển thị.
+- **Vé máy bay** chỉ lấy từ chuyến bay thật của catalog; `compose` chọn chuyến bằng luật tất định (AC-AGT-02), LLM không chọn hay tạo chuyến. Vị trí trình duyệt chỉ dùng ở Web để gợi ý nơi đi; toạ độ không vào state của agent (AC-AGT-03).
 - **Response phân biệt theo `status`:** `ItineraryResponse` là `oneOf` gồm `COMPLETED`, `NEEDS_CLARIFICATION`, `NO_RESULTS`, `FALLBACK` (`src/shared/contracts/schemas/itinerary-agent.yaml`). Trường cụ thể theo contract, không theo ví dụ trong PRD.
 - **Backend tự tính tổng tiền.** Điểm tham quan tự do — điểm tham quan hoặc golf có `ticketed = false`, hoặc không có giá — tính 0 đ vào tổng và hiển thị là "tham quan tự do", không hiển thị là có giá 0 đ. Mục khác thiếu giá (khách sạn, vé máy bay, combo...) thì tổng là `null` kèm cảnh báo, không coi thiếu giá là 0.
 - **LLM lỗi:** dùng fallback dựa trên luật hoặc trả `FALLBACK`/lỗi có kiểm soát.
