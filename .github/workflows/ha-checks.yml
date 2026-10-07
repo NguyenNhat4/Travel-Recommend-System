@@ -88,7 +88,10 @@ jobs:
           cache: pip
           cache-dependency-path: src/data_collection/requirements.txt
       - name: Install
-        run: python -m pip install -r src/data_collection/requirements.txt pytest
+        # Như Dockerfile.fresh-catalog: bước index import cấu hình backend nên cần pydantic, pydantic-settings, numpy.
+        run: |
+          grep -E '^(pydantic|pydantic-settings|numpy|argon2-cffi)[<>=]' src/backend/requirements.txt | sed 's/[[:space:]]*#.*//' > /tmp/job-extra.txt
+          python -m pip install -r src/data_collection/requirements.txt -r /tmp/job-extra.txt pytest
       - name: Lock and job tests
         working-directory: src/data_collection
         env:
