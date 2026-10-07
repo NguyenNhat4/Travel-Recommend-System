@@ -233,7 +233,7 @@ class JobTimeoutTests(unittest.TestCase):
         with patch.dict(os.environ, env, clear=True), \
                 patch.object(fresh_catalog, 'index_settings', lambda *a: 'S'), \
                 patch.object(fresh_catalog, 'check_local_only', lambda *a: None), \
-                patch.object(fresh_catalog, 'maintain_catalog', lambda *a: {}), \
+                patch.object(fresh_catalog, 'maintain_catalog', lambda *a, **k: {}), \
                 patch.object(fresh_catalog, 'discover', AsyncMock(return_value=([target], []))), \
                 patch.object(fresh_catalog, 'crawl', crawl), \
                 patch.object(fresh_catalog, 'run_source', lambda run_dir, source, *a, **k: codes.get(source, 0)), \
@@ -395,3 +395,23 @@ class MonitorRecrawlTests(unittest.TestCase):
         for bad in (('crawl', None), ('crawl', 'nope'), ('db', 'booking')):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 self.monitor.resume(self.RUN, *bad)
+
+
+class TripPriceOutcomeTests(unittest.TestCase):
+    def test_step_status_uses_coverage_not_just_function_completion(self):
+        from fresh_run_log import RunRecorder
+        values = {f.key: f.default for f in fresh_catalog.fresh_settings.FIELDS}
+        for records, missing, expected in (([], ['1@date'], 'error'),
+                                            ([{'hotelId': '1'}], ['2@date'], 'partial'),
+                                            ([{'hotelId': '1'}, {'hotelId': '2'}], [], 'ok')):
+            with self.subTest(expected=expected), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                rec = RunRecorder(root, root, run_id='test', mode='full', trigger='test', settings={})
+                with patch.object(fresh_catalog, 'REC', rec), patch.object(
+                        fresh_catalog, 'crawl', AsyncMock(return_value=(records, {'unpricedHotelDates': missing}))):
+                    if expected == 'error':
+                        with self.assertRaisesRegex(RuntimeError, 'đủ dữ liệu giá'):
+                            fresh_catalog.crawl_trip_prices(root, [{}, {}], values, None)
+                    else:
+                        fresh_catalog.crawl_trip_prices(root, [{}, {}], values, None)
+                self.assertEqual(rec.data['steps'][-1]['status'], expected)

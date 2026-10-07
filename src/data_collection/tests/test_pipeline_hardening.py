@@ -132,9 +132,36 @@ def test_resume_excludes_failed_trip_coverage_but_loads_other_sources(tmp_path):
     (tmp_path / 'trip_price_coverage.json').write_text('{"requestedHotels":0}')
     rec = SimpleNamespace(data={'id': 'full-test', 'mode': 'full', 'startedAt': '2026-09-29T00:00:00Z',
                                 'sourceStatuses': {'trip-hotels.prices': 1}},
-                          stop_event=threading.Event(), check_stop=lambda: None)
+                          stop_event=threading.Event(), check_stop=lambda: None, save=lambda: None)
     with patch.object(job, 'validate_step') as validate, patch.object(job, 'db_step') as db, patch.object(job, 'run_index'):
         result = job.resume_run(rec, {}, state, tmp_path, 'validate', 'test-db', None)
     assert result == job.EXIT_PARTIAL
     assert validate.call_args.args[-1] is None
     assert db.call_args.args[-2] is None
+
+
+def test_successful_recrawl_clears_the_original_runs_incomplete_mark(tmp_path):
+    """Local 08/10: cào lại khách sạn Trip đủ giá 73/73 nhưng lượt vẫn `partial` vì dấu 'unpriced dates' của lần đầu."""
+    import threading
+    from types import SimpleNamespace
+    state = tmp_path / 'state'; state.mkdir()
+    (tmp_path / 'products.jsonl').write_text('{}\n')
+    rec = SimpleNamespace(data={'id': 'full-test', 'mode': 'full', 'startedAt': '2026-10-07T00:00:00Z',
+                                'sourceStatuses': {'trip-hotels.prices': 0},
+                                'incompleteSources': {'trip-hotels.prices': 'unpriced dates'}},
+                          stop_event=threading.Event(), check_stop=lambda: None, save=lambda: None)
+
+    def recrawl(*a):
+        (tmp_path / 'trip_price_coverage.json').write_text('{"requestedHotels": 73, "unpricedHotelDates": []}')
+        return {'trip-hotels.prices': 0}
+    with patch.object(job, 'recrawl_source', recrawl), patch.object(job, 'normalise_step', return_value=tmp_path / 'products.jsonl'), \
+            patch.object(job, 'validate_step'), patch.object(job, 'db_step'), patch.object(job, 'run_index'):
+        result = job.resume_run(rec, {'scope.destinations': '@deep'}, state, tmp_path, 'crawl', 'test-db', None,
+                                source='tripHotels')
+    assert result == 0
+    assert rec.data['incompleteSources'] == {}
+    # Coverage mới vẫn thiếu ngày thì dấu được ghi lại.
+    (tmp_path / 'trip_price_coverage.json').write_text('{"unpricedHotelDates": ["1@2026-10-21"]}')
+    with patch.object(job, 'validate_step'), patch.object(job, 'db_step'), patch.object(job, 'run_index'):
+        assert job.resume_run(rec, {}, state, tmp_path, 'validate', 'test-db', None) == job.EXIT_PARTIAL
+    assert rec.data['incompleteSources'] == {'trip-hotels.prices': 'unpriced dates'}

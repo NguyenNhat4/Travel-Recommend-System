@@ -446,6 +446,15 @@ def normalize_unit(item: dict) -> dict:
     return {**item, "unit": DEFAULT_UNIT[item["item_kind"]], "evidence": f"{evidence} | {note}".strip(" |")[:400]}
 
 
+def merge_manual(combo_id: str, parsed: list[dict], manual: dict[tuple[str, int], dict]) -> list[dict]:
+    """Dòng duyệt tay cùng (combo, position) thay dòng parse; dòng duyệt tay ở position parse không sinh ra thì nối sau.
+    Dùng chung cho CLI và job nạp DB (fresh_catalog_db.sync_combo_items)."""
+    mine = {pos: row for (cid, pos), row in manual.items() if cid == combo_id}
+    merged = [mine.pop(it["position"], it) for it in parsed]
+    merged += [row for _, row in sorted(mine.items())]
+    return [normalize_unit(it) for it in merged]
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--data-dir", type=Path, default=Path("data"))
@@ -460,11 +469,7 @@ def main(argv: list[str] | None = None) -> int:
     items: list[dict] = []
     attrs_out: dict[str, dict] = {}
     for combo in combos:
-        parsed = parse_combo(combo, cat)
-        merged = [manual.pop((combo["productId"], it["position"]), it) for it in parsed]
-        merged += [m for k, m in sorted(manual.items()) if k[0] == combo["productId"]]
-        merged = [normalize_unit(it) for it in merged]
-        items.extend(merged)
+        items.extend(merge_manual(combo["productId"], parse_combo(combo, cat), manual))
         attributes, evidence = combo_attributes(combo)
         attrs_out[combo["productId"]] = {"attributes": attributes, "evidence": evidence}
 

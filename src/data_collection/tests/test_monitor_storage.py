@@ -56,6 +56,12 @@ class StorageTests(unittest.TestCase):
         self.assertNotIn(running, out["removed"])
         self.assertTrue((self.runs / running).exists())
 
+    def test_undeletable_run_is_reported_as_failed_not_removed(self):
+        from unittest.mock import patch
+        with patch("monitor.prune_runs", return_value=["full-20261003T190007Z-1"]):  # giả lập rmtree lỗi quyền
+            out = self.monitor.storage_cleanup(3)
+        self.assertEqual((out["removed"], out["failed"]), ([], ["full-20261003T190007Z-1"]))
+
     def test_invalid_keep_is_rejected(self):
         for bad in (0, -1, 101, "2", True, None):
             with self.assertRaises(ValueError):
