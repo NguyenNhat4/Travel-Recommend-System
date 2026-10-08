@@ -1,12 +1,20 @@
 # One app VM of the HA group. Host networking is kept so the frontend keeps reaching the
 # backend on 127.0.0.1:8000, as in ops/docker-compose.backend-vm.yml. Redis, Postgres and
 # Weaviate are NOT here: they are shared services reached through the env secret.
+# Giới hạn log json-file như docker-compose.yml gốc, để log container không làm đầy đĩa VM.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+
 services:
   # Gom kết nối Postgres của 2 worker backend. DATABASE_URL/CDP_DATABASE_URL trỏ 127.0.0.1:6432.
   pgbouncer:
     container_name: vota-pgbouncer
     image: edoburu/pgbouncer@sha256:9c78945868a6a142c7fc40ccd843bbe5a606df163c7ffce4de70e0d628d696a2
     restart: unless-stopped
+    logging: *default-logging
     network_mode: host
     volumes:
       - /etc/vota/pgbouncer:/etc/pgbouncer:ro
@@ -22,6 +30,7 @@ services:
     container_name: vota-backend
     image: ${BACKEND_IMAGE}
     restart: unless-stopped
+    logging: *default-logging
     network_mode: host
     env_file:
       - /etc/vota/backend.env
@@ -55,6 +64,7 @@ services:
     container_name: vota-frontend
     image: ${FRONTEND_IMAGE}
     restart: unless-stopped
+    logging: *default-logging
     network_mode: host
     env_file:
       - /etc/vota/frontend.env   # only AUTH_SERVICE_TOKEN and SESSION_REDIS_URL, never DB credentials

@@ -154,7 +154,6 @@ EVENT_FIELDS: dict[str, set[str]] = {
     "events.ingest": {"count", "cdp_ok", "event_name"},
     "app.startup": {"app", "env", "stage", "adapter", "mode", "search_units", "workers"},
     "app.shutdown": {"stage"},
-    "db.pool.exhausted": {"pool"},
     "db.unavailable": {"component", "error_kind"},
     "readiness.degraded": {"recsys", "db", "ready"},
     "log": {"logger"},
