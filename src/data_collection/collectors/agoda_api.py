@@ -179,6 +179,10 @@ class AgodaState:
                 fetched_at TEXT NOT NULL, PRIMARY KEY (hotel_id, day));
             CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
         """)
+        columns = {row[1] for row in self.db.execute("PRAGMA table_info(hotels)")}
+        if "refresh" not in columns:  # state của lượt cũ (trước khi có làm mới khách sạn đang có trong DB)
+            self.db.execute("ALTER TABLE hotels ADD COLUMN refresh INTEGER NOT NULL DEFAULT 0")
+            self.db.commit()
 
     def meta(self, key: str) -> str | None:
         row = self.db.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
@@ -208,6 +212,8 @@ class AgodaOptions:
     export_only: bool = False
     max_hours: float | None = None
     today: date | None = None
+    # Khách sạn đang có trong DB cần hỏi lại giá (fresh_catalog_db.refresh_targets): luôn trong phạm vi, ngoài per_city
+    refresh: tuple[dict, ...] = ()
 
 
 class AgodaCollector:
@@ -321,6 +327,38 @@ class AgodaCollector:
         self.stats["scope"] = len(scope)
         return [(url, slug, city, dest, hotel_id) for _, _, url, slug, city, dest, hotel_id in scope]
 
+    def add_refresh(self, scope: list[tuple]) -> list[tuple]:
+        """Khách sạn đang có trong DB (`opts.refresh`) vào phạm vi sau khách sạn mới tìm theo điểm đến, không tính vào per_city
+        và không lọc theo điểm đến kế hoạch: lượt cào lớn làm mới cả catalog chứ không chỉ top N mỗi điểm đến. Điểm đến lấy
+        từ DB; hotel_id đã biết thì không phải mở lại trang khách sạn."""
+        if not self.opts.refresh:
+            return scope
+        now = now_iso()
+        with self.state.db:
+            for order, item in enumerate(self.opts.refresh):
+                self.state.db.execute("""
+                    INSERT INTO hotels (url, slug, city, destination, rank, first_seen, last_seen, hotel_id, id_status, refresh)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                    ON CONFLICT(url) DO UPDATE SET refresh = 1, destination = COALESCE(hotels.destination, excluded.destination),
+                        hotel_id = COALESCE(hotels.hotel_id, excluded.hotel_id),
+                        id_status = COALESCE(hotels.id_status, excluded.id_status)""",
+                    (item["url"], item["slug"], item["city"], item["destination"], 10**9 + order, now, now,
+                     item.get("hotelId"), "ok" if item.get("hotelId") else None))
+        chosen = {url for url, *_ in scope}
+        extra = []
+        for item in self.opts.refresh:
+            if item["url"] in chosen:
+                continue
+            row = self.state.db.execute("SELECT destination, hotel_id, id_status FROM hotels WHERE url=?",
+                                        (item["url"],)).fetchone()
+            if row[2] == "gone":
+                continue
+            chosen.add(item["url"])
+            extra.append((item["url"], item["slug"], item["city"], row[0], row[1]))
+        self.stats["refreshScope"] = len(self.opts.refresh)
+        log.info("Agoda: thêm %d/%d khách sạn đang có trong DB vào phạm vi làm mới", len(extra), len(self.opts.refresh))
+        return scope + extra
+
     # ------------------------------------------------------------------ 3. hotel_id
     async def resolve_ids(self, scope: list[tuple]) -> list[tuple]:
         out = []
@@ -408,8 +446,8 @@ class AgodaCollector:
         tmp = out.with_suffix(".jsonl.tmp")
         n = 0
         with JsonlWriter(tmp, "w") as w:
-            for url, slug, city, dest, hid, static_json in self.state.db.execute(
-                    "SELECT url, slug, city, destination, hotel_id, static_json FROM hotels "
+            for url, slug, city, dest, hid, static_json, refresh in self.state.db.execute(
+                    "SELECT url, slug, city, destination, hotel_id, static_json, refresh FROM hotels "
                     "WHERE static_json IS NOT NULL AND destination IS NOT NULL ORDER BY rank"):
                 static = json.loads(static_json)
                 days = prices.get(hid, [])
@@ -422,7 +460,8 @@ class AgodaCollector:
                                   "breakfastIncluded": any(v.get("breakfast") for v in by_day.values()) or None,
                                   "freeCancellation": any(v.get("freeCancellation") for v in by_day.values()) or None})
                 w.write({"recordType": "agoda_api_hotel", "source": SOURCE, "key": f"hotel:{slug}:{city}", "url": url, "slug": slug,
-                         "citySlug": city, "hotelId": hid, "plan": {"destination": dest},
+                         "citySlug": city, "hotelId": hid,
+                         "plan": {"destination": dest, **({"via": "refresh"} if refresh else {})},
                          **{k: v for k, v in static.items() if k != "rooms"}, "rooms": rooms,
                          "datesQueried": [day for day, st, _, _ in days if st in ("ok", "none")],
                          "priceQuery": {"nights": 1, "adults": 2, "rooms": 1},
@@ -440,7 +479,7 @@ class AgodaCollector:
             if not self.opts.export_only:
                 if self._discovery_due():
                     await self.discover()
-                hotels = await self.resolve_ids(self.select_scope())
+                hotels = await self.resolve_ids(self.add_refresh(self.select_scope()))
                 tasks = self.plan_tasks(hotels, today)
                 self.stats["tasks"] = len(tasks)
                 log.info("Agoda: %d khách sạn có hotel_id, %d lượt hỏi giá cần làm (ngân sách %s request)",

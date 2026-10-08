@@ -155,7 +155,7 @@ class CrawlSitesTimeoutTests(unittest.TestCase):
     def crawl(self, groups, codes, deadline=None, delays=None):
         recorder = Recorder()
 
-        def fake(run_dir, source, destinations, group, deadline=None):
+        def fake(run_dir, source, destinations, group, deadline=None, on_start=None):
             self.calls.append(source)
             self.deadlines[source] = deadline
             time.sleep((delays or {}).get(source, 0))
@@ -177,9 +177,9 @@ class CrawlSitesTimeoutTests(unittest.TestCase):
     def test_each_step_gets_its_own_deadline_capped_by_the_crawl_deadline(self):
         crawl_deadline = time.monotonic() + 30
         self.crawl([('booking', ('booking-hotels',))], {}, deadline=crawl_deadline)
-        self.assertLessEqual(self.deadlines['booking-hotels'], crawl_deadline)  # timeout.booking 60 phút > 30 s
+        self.assertLessEqual(self.deadlines['booking-hotels'], crawl_deadline)  # timeout.booking 480 phút > 30 s
         self.crawl([('agoda', ('agoda-hotels',))], {})
-        self.assertAlmostEqual(self.deadlines['agoda-hotels'] - time.monotonic(), 3600, delta=5)
+        self.assertAlmostEqual(self.deadlines['agoda-hotels'] - time.monotonic(), 180 * 60, delta=5)  # timeout.agoda
 
     def test_expired_crawl_deadline_skips_steps_not_started(self):
         statuses, recorder, log = self.crawl([('trip', ('trip-flights', 'trip-attractions')), ('agoda', ('agoda-hotels',))],

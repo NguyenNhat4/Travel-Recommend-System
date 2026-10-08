@@ -107,8 +107,12 @@ class Opts:
     browser = replace(BrowserOptions(), pages_before_recycle=2)
 
 
+class RestartOpts(Opts):
+    browser = replace(BrowserOptions(), pages_before_recycle=2, pages_before_restart=3)
+
+
 class TabRecycleTests(unittest.TestCase):
-    def run_queue(self, session, urls):
+    def run_queue(self, session, urls, opts=Opts):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         paths = Paths(Path(tmp.name)).ensure()
@@ -117,7 +121,7 @@ class TabRecycleTests(unittest.TestCase):
         state.add_many('booking_hotels', [(u, i, {}) for i, u in enumerate(urls)])
         breaker = BlockBreaker(8)
         first = session.context.first_page()
-        counts = asyncio.run(_run_queue(paths, Source(), Opts(), state, RawCache(paths, 'booking_hotels'), session,
+        counts = asyncio.run(_run_queue(paths, Source(), opts(), state, RawCache(paths, 'booking_hotels'), session,
                                         first, Limiter(), Http(), breaker, urls))
         return counts, breaker
 
@@ -154,6 +158,21 @@ class TabRecycleTests(unittest.TestCase):
         self.assertTrue(breaker.tripped)
         self.assertEqual(counts.get('done'), 2)
         self.assertEqual(counts.get('pending'), 3)
+
+
+    def test_browser_is_restarted_every_n_pages_to_free_memory(self):
+        """Làm mới ~1.800 khách sạn: RAM Chromium tăng dần dù đã thay tab (VM 08/10/2026: ~1 → ~2 GB sau 24 trang)."""
+        urls = [f'https://www.booking.com/hotel/vn/{n}.html' for n in range(10)]
+        session = FakeSession(FakeContext())
+        counts, breaker = self.run_queue(session, urls, RestartOpts)
+        self.assertEqual((counts.get('done'), session.restarts, breaker.tripped), (10, 3, False))  # sau trang 3, 6, 9
+
+    def test_periodic_restart_failure_stops_quietly(self):
+        urls = [f'https://www.booking.com/hotel/vn/{n}.html' for n in range(5)]
+        session = FakeSession(FakeContext(), restart_ok=False)
+        counts, breaker = self.run_queue(session, urls, RestartOpts)
+        self.assertTrue(breaker.tripped)
+        self.assertEqual((counts.get('done'), counts.get('pending')), (3, 2))
 
 
 if __name__ == '__main__':

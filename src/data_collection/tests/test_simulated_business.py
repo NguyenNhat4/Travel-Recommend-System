@@ -167,9 +167,12 @@ class DatabaseTests(unittest.TestCase):
             path = Path(tmp) / 'products.jsonl'
             path.write_text(''.join(json.dumps({k: v for k, v in p.items() if k != '_meta'}, ensure_ascii=False) + '\n'
                                     for p in products))
+            from stage_log import Stages
+            sink, lines = [], []
             try:
                 with mock.patch.dict(os.environ, {sb.ENV: '1'}):
-                    counts = load_into_db(path, None, self.url, Path(__file__).resolve().parents[1])
+                    counts = load_into_db(path, None, self.url, Path(__file__).resolve().parents[1],
+                                          stages=Stages(sink, step='db', emit=lines.append))
                 with psycopg.connect(self.url) as conn:
                     row = conn.execute("SELECT unit_price, available, attributes->>'cabinClass', attributes->>'simulated' "
                                        "FROM cdp.products WHERE source_ref = %s",
@@ -184,6 +187,9 @@ class DatabaseTests(unittest.TestCase):
                     conn.execute("DELETE FROM cdp.products WHERE source_ref = ANY(%s)",
                                  (refs + ['demo:business:' + r for r in refs],))
         self.assertGreaterEqual(counts['simulatedBusinessWritten'], 1)
+        # vé mô phỏng là dữ liệu demo: vẫn đồng bộ nhưng không hiện thành bước con / dòng log trên monitor (08/10/2026)
+        self.assertTrue(sink and not any('thương gia' in e['name'] for e in sink))
+        self.assertFalse([line for line in lines if 'thương gia' in line])
         self.assertEqual(row[2:], ('BUSINESS', 'true'))
         self.assertEqual(int(row[0]), 5_520_000)  # 2.083.000 × 2,65
         self.assertFalse(row[1])  # the same modal carried a real business fare for this journey: the real one wins

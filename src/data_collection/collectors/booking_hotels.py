@@ -9,6 +9,7 @@ Mỗi trang khách sạn được mở kèm ngày nhận/trả phòng để có 
 
 from __future__ import annotations
 
+import json
 import re
 from datetime import date, timedelta
 from urllib.parse import urlencode
@@ -16,7 +17,7 @@ from urllib.parse import urlencode
 from bs4 import BeautifulSoup
 
 import logging
-from urllib.parse import quote_plus, urlsplit
+from urllib.parse import quote, urlsplit
 
 from .booking_base import DiscoverContext, SitemapSource
 from .common import now_iso, slim_html
@@ -40,6 +41,7 @@ VINPEARL_RE = re.compile(r"\b(vinpearl|vinholidays)\b")
 CARD_SELECTOR = "[data-testid='property-card']"
 LOAD_MORE = "button:has-text('Tải thêm kết quả'), button:has-text('Load more results')"
 MAX_LOAD_MORE = 40  # mỗi lần ~20 thẻ: đủ cho 800 khách sạn/điểm đến, chặn vòng lặp vô hạn
+REFRESH_PRIORITY = 1000  # sau khách sạn thương hiệu (0/100) và kết quả tìm theo điểm đến (thứ hạng 1..N)
 _COUNTRY_RE = re.compile(r"sitembk-hotel-vi\.(\d+)\.xml\.gz$")
 _HOTEL_URL_RE = re.compile(r"^https://www\.booking\.com/hotel/([a-z]{2})/[^/?#]+\.vi\.html$")
 
@@ -86,7 +88,9 @@ class BookingHotels(SitemapSource):
             "order": "popularity",
             "offset": offset,
         }
-        return "https://www.booking.com/searchresults.vi.html?" + urlencode(params, quote_via=quote_plus)
+        # Dấu cách mã hoá %20, không dùng '+': trên VM (IP trung tâm dữ liệu) booking.com chuyển qua trang thử thách rồi trả
+        # lại URL với '+' thành chữ thật ("Nha+Trang") và mất ngày → "0 chỗ nghỉ" ở mọi điểm đến (lượt 08/10/2026).
+        return "https://www.booking.com/searchresults.vi.html?" + urlencode(params, quote_via=quote)
 
     async def _load_results(self, ctx: DiscoverContext, query: str, want: int) -> tuple[str | None, bool]:
         """Mở trang tìm kiếm rồi cuộn + bấm "Tải thêm kết quả" tới khi đủ `want` thẻ khách sạn.
@@ -146,8 +150,21 @@ class BookingHotels(SitemapSource):
             await ctx.session.set_fast(was_fast)
 
     async def discover_plan(self, ctx: DiscoverContext) -> int:
+        total = await self._discover_search(ctx)
+        if ctx.opts.refresh:
+            # Khách sạn đang có trong DB: sau khách sạn mới tìm (priority lớn hơn), giữ thứ tự cũ nhất trước. URL tìm thấy ở
+            # trên giữ plan của lần tìm; còn lại mang via=refresh để chuẩn hoá không cắt theo ngân sách/điểm đến kế hoạch.
+            rows = [(item["url"], REFRESH_PRIORITY, {"destination": item.get("destination"), "via": "refresh"})
+                    for item in ctx.opts.refresh]
+            ctx.state.add_many(self.name, rows)
+            log.info("[%s] Làm mới: %d khách sạn đang có trong DB", self.name, len(rows))
+            total += len(rows)
+        return total
+
+    async def _discover_search(self, ctx: DiscoverContext) -> int:
         jobs = [(d.name, d.booking_query, ctx.opts.budget.booking_hotels) for d in ctx.opts.destinations]
         total = 0
+        report: dict[str, int] = {}
         for dest, query, want in jobs:
             key = f"search2:{query}:{want}:{self.checkin.isoformat()}"  # search2: phân trang bằng nút "Tải thêm kết quả"
             if ctx.done(key):
@@ -168,7 +185,15 @@ class BookingHotels(SitemapSource):
                 log.warning("[%s] %s: mới tải được %d/%d khách sạn (bị gián đoạn) – chưa đánh dấu xong, lần chạy sau tìm tiếp",
                             self.name, dest, len(rows), want)
             total += len(rows)
+            report[dest] = len(rows)
+            if html and not found:
+                title = re.search(r"<title[^>]*>(.*?)</title>", html, re.S)
+                log.warning("[%s] %s: trang tìm kiếm không có khách sạn nào (tiêu đề: %s)", self.name, dest,
+                            clean_text(title.group(1))[:120] if title else "?")
             log.info("[%s] %s: %d khách sạn", self.name, dest, len(rows))
+        if report:  # fresh_catalog.py đọc file này: mọi điểm đến 0 khách sạn thì báo nguồn chưa đủ
+            (ctx.paths.interim / f"{self.name}.search.json").write_text(
+                json.dumps({"destinations": report}, ensure_ascii=False), encoding="utf-8")
         return total
 
     # -- discovery theo sitemap (--all-vietnam)

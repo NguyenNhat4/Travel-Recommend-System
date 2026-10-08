@@ -56,6 +56,8 @@ class CrawlOptions:
     brand_sitemap: bool = True  # False: bỏ quét sitemap thương hiệu Vinpearl (job theo thành phố; đã có job riêng)
     destinations: tuple[Destination, ...] = DESTINATIONS
     budget: Budget = field(default_factory=lambda: DEFAULT_BUDGET)
+    # Trang đang có trong DB cần mở lại (fresh_catalog_db.refresh_targets): xếp hàng sau URL mới tìm, theo thứ tự đã cho
+    refresh: tuple[dict, ...] = ()
 
 
 class SitemapSource:
@@ -325,6 +327,20 @@ async def _run_queue(paths, src, opts, state, cache, session, first_page, limite
                     breaker.tripped = True
                     return None
 
+        async def restart_browser():
+            """Mở lại Chromium định kỳ (BrowserOptions.pages_before_restart) để giải phóng RAM; lỗi thì dừng êm như
+            fresh_page. Worker khác đang giữ tab của trình duyệt cũ sẽ gặp lỗi "has been closed" và tự mở tab mới."""
+            async with restart_lock:
+                try:
+                    await session.restart()
+                    log.info("[%s] Đã mở lại trình duyệt sau %d trang để giải phóng RAM", src.name,
+                             opts.browser.pages_before_restart)
+                    return await session.context.new_page()
+                except Exception as e:
+                    log.error("[%s] Mở lại trình duyệt lỗi (%s) – dừng. Chạy lại cùng lệnh để tiếp tục.", src.name, str(e)[:160])
+                    breaker.tripped = True
+                    return None
+
         # Tab hiện tại của từng worker, giữ qua các vòng run_workers(): vòng thử lại cuối lượt không được dùng lại
         # `first_page` đã bị đóng khi thay tab (trước đây URL thử lại lỗi "Target page ... has been closed").
         tabs = {0: first_page}
@@ -344,7 +360,10 @@ async def _run_queue(paths, src, opts, state, cache, session, first_page, limite
                     progress.tick("skipped")
                     continue
                 target, meta = src.fetch_url(url)
-                if navigations and navigations % opts.browser.pages_before_recycle == 0:
+                restart_every = opts.browser.pages_before_restart
+                if navigations and restart_every and navigations % restart_every == 0:
+                    page = tabs[wid] = await restart_browser()
+                elif navigations and navigations % opts.browser.pages_before_recycle == 0:
                     page = tabs[wid] = await fresh_page(page)
                 if page is None:
                     queue.put_nowait(url)  # chưa thử URL này: để lượt sau
