@@ -38,7 +38,7 @@ Mỗi thuật ngữ một dòng định nghĩa. Cột "Chi tiết" trỏ tới f
 | <a id="compose"></a>Compose | Bước xếp lịch bằng luật, không LLM | [xep-lich.md](xep-lich.md) |
 | <a id="slot"></a>Slot | Một dòng trong ngày: một sản phẩm, hoặc một dòng không gắn sản phẩm (`TRANSFER`) | [xep-lich.md](xep-lich.md) |
 | <a id="buoi"></a>Buổi (`SlotTime`) | `MORNING`, `NOON`, `AFTERNOON`, `EVENING`; có khung giờ chỉ khi khớp với giờ bay | [xep-lich.md](xep-lich.md#theo-gio-bay) |
-| <a id="cho-o"></a>Chỗ ở (stay) | Đúng một khách sạn cho `days − 1` đêm (tối thiểu 1) | [xep-lich.md](xep-lich.md) |
+| <a id="cho-o"></a>Chỗ ở (stay) | Tối đa 2 khách sạn cho `days − 1` đêm (tối thiểu 1), mỗi khách sạn một đoạn đêm liền nhau (`stays[]`, `fromNight`) | [xep-lich.md](xep-lich.md) |
 | <a id="hoat-dong-ca-ngay"></a>Hoạt động cả ngày | Hoạt động ≥ 360 phút; đứng một mình trong ngày | [xep-lich.md](xep-lich.md) |
 | <a id="goi-nhieu-ngay"></a>Gói nhiều ngày | Tour/vé từ 2 ngày; không xếp vào slot, chỉ trả kèm để cân nhắc | [xep-lich.md](xep-lich.md) |
 | <a id="tham-quan-tu-do"></a>Tham quan tự do | Điểm `ticketed = false`, hoặc điểm tham quan/golf không có giá; tính 0 đ | [xep-lich.md](xep-lich.md) |
@@ -47,6 +47,10 @@ Mỗi thuật ngữ một dòng định nghĩa. Cột "Chi tiết" trỏ tới f
 | <a id="moc"></a>Mốc (anchor) | Medoid của các hoạt động rõ vị trí; hoạt động gần mốc được chọn trước | [xep-lich.md](xep-lich.md#gom-theo-khoang-cach) |
 | <a id="muc-khoang-cach"></a>Mức khoảng cách (band) | Khoảng cách chia theo bậc 2 km; cùng mức thì giá quyết định | [xep-lich.md](xep-lich.md#gom-theo-khoang-cach) |
 | <a id="ro-vi-tri"></a>Rõ vị trí | Có toạ độ và không phải toạ độ tâm thành phố | [xep-lich.md](xep-lich.md#gom-theo-khoang-cach) |
+| <a id="quang-duong-chuyen"></a>Quãng đường của chuyến | Tổng km đường chim bay: ngày 1 từ điểm đầu tới khách sạn, ngày giữa từ khách sạn đêm trước qua các điểm tới khách sạn đêm đó, ngày cuối từ khách sạn tới điểm cuối | [xep-lich.md](xep-lich.md#gom-theo-khoang-cach) |
+| <a id="doi-khach-san"></a>Đổi khách sạn | Chuyển khách sạn một lần giữa chuyến (chuyến từ 5 ngày, mỗi khách sạn ≥ 2 đêm), tính thêm 15 km vào chi phí; ngày đổi có dòng `CHANGE_STAY` | [xep-lich.md](xep-lich.md#gom-theo-khoang-cach) |
+| <a id="lich-vua-ngan-sach"></a>Lịch vừa ngân sách | Mọi giá biết được và tổng tiền (gồm vé máy bay) không vượt ngân sách; có ngân sách thì chỉ chọn trong các lịch này, không lịch nào vừa thì lấy lịch rẻ nhất | [xep-lich.md](xep-lich.md#gom-theo-khoang-cach) |
+| <a id="phuong-an-khac"></a>Phương án khác (`STAY_OPTIONS`) | Tối đa 3 cách chọn khách sạn khác, ghi "thêm X ₫ → bớt Y km" hoặc "bớt X ₫ → đi thêm Y km"; chọn bằng "lấy phương án N" | [xep-lich.md](xep-lich.md#gom-theo-khoang-cach) |
 
 ## Vé máy bay
 

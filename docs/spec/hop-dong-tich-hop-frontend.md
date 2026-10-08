@@ -350,7 +350,7 @@ Web gọi route BFF `/api/auth/*`, không gọi thẳng `/api/v1/auth/*` (docs/s
 | Gửi tin nhắn | `POST /assistant/itineraries` | tùy | theo `status`, xem §9.3 | Nút "Dừng" hủy request bằng `AbortController` |
 | Sửa chip ý định | cùng endpoint với `intentOverride` | tùy | như trên | §9.2 |
 | Đặt ngay một mục của lịch trình; "Thanh toán tất cả" | `POST /booking-drafts` (một mục; hoặc mọi mục đặt được với `allowPartial: true`) | không cần | `BookingDraft` | Mọi thẻ và ghim bản đồ của sản phẩm đặt được có nút "Đặt ngay". "Thanh toán tất cả" gom cả lưu trú lẫn hoạt động vào **một** đơn nháp rồi mở trang thanh toán; mục không đặt được bị bỏ và báo trong toast. Sản phẩm chưa đặt được (ví dụ khách sạn chưa có hạng phòng trong lịch trình) không có nút, thẻ vẫn mở trang chi tiết |
-| Thêm vào giỏ từ kế hoạch (chỉ `attraction`, `golf`, `combo`) | `POST /cart/items` (mỗi mục một lần, tuần tự) | không cần | `CartResponse` cuối cùng | Một mục lỗi không chặn mục còn lại; tổng kết lỗi trong một toast. Nút theo thẻ, cạnh "Đặt ngay"; khách sạn và vé máy bay không có nút này. Mục đủ điều kiện: `available`, `unitPrice` khác null, `bookable` khác `false`, `attributes.ticketed` khác `false`; mỗi `productId` một lần. `usingDate` = `day.date` của slot; `stay` lấy check-in = `days[0].date`, check-out = check-in + `nights` |
+| Thêm vào giỏ từ kế hoạch (chỉ `attraction`, `golf`, `combo`) | `POST /cart/items` (mỗi mục một lần, tuần tự) | không cần | `CartResponse` cuối cùng | Một mục lỗi không chặn mục còn lại; tổng kết lỗi trong một toast. Nút theo thẻ, cạnh "Đặt ngay"; khách sạn và vé máy bay không có nút này. Mục đủ điều kiện: `available`, `unitPrice` khác null, `bookable` khác `false`, `attributes.ticketed` khác `false`; mỗi `productId` một lần. `usingDate` = `day.date` của slot; mỗi khách sạn trong `stays` (hoặc `stay`) lấy check-in = `days[0].date` + `fromNight − 1`, check-out = check-in + `nights` |
 | Chỉnh nhanh lịch trình | cùng endpoint: `intentOverride.days` (1–7) hoặc `message` soạn sẵn nêu tên sản phẩm cần đổi | tùy | như trên | Khoá khi đang chạy; ẩn khi xem lịch trình đã lưu/chia sẻ |
 | Danh sách điểm đến (thẻ hỏi lại) | `GET /destinations` | — | `destinations[]` | Dùng khi `suggestedValues.destination` rỗng |
 | Nơi đi trong form gợi ý; "Dùng vị trí hiện tại" (AC-AGT-02, AC-AGT-03) | `GET /products?taxonomy=flight` (tuyến) | — | `attributes.originCity`, `originLatitude`, `originLongitude` | Ô `origin` khi `clarificationForm.fields` có `origin`, không bắt buộc; giá trị vào câu yêu cầu ("đi từ Hà Nội"). Chỉ khi bấm nút mới gọi `navigator.geolocation`; được phép thì chọn thành phố có sân bay gần nhất trong catalog (`services/flights.ts` `nearestDepartureCity`) và điền vào ô. Toạ độ không lưu, không gửi đi; từ chối/lỗi thì giữ ô để gõ tay |
@@ -604,8 +604,9 @@ Trường chung mọi `status`: `status`, `conversationId`, `metadata`.
 
 | Trường | Quy tắc |
 |---|---|
-| `itinerary.stay` | Khối chỗ ở cho cả chuyến, **không lặp** trong `days`. `null` khi không có khách sạn phù hợp |
-| `stay.nights` | Số đêm dùng khi "Thêm tất cả vào giỏ" |
+| `itinerary.stay` | Khối chỗ ở, **không lặp** trong `days`. `null` khi không có khách sạn phù hợp. Từ 1.19.0 luôn bằng `stays[0]` |
+| `itinerary.stays` | Từ 1.19.0: 1–2 khách sạn theo đêm (đổi khách sạn giữa chuyến, AC-AGT-04). Web hiện mỗi khách sạn kèm "Đêm a–b", ngày d dùng khách sạn của đêm `min(d, max(1, days − 1))`; không có `stays` thì dùng `stay` |
+| `stay.nights`, `stay.fromNight` | Số đêm và đêm đầu tiên ở khách sạn đó (vắng `fromNight` coi là 1). Check-in = `days[0].date` + `fromNight − 1`, check-out = check-in + `nights` |
 | `days[].date` | Có khi `intent.startDate` khác `null`; Web dùng làm `usingDate` |
 | `days[].title` | Do LLM đặt, tối đa 6 từ |
 | `slots[].time` | `MORNING` \| `NOON` \| `AFTERNOON` \| `EVENING`. Web nhóm theo trường này |

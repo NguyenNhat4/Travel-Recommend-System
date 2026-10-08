@@ -2,8 +2,8 @@ import json
 import unittest
 
 import yaml
-from src.backend.app.agents.steps.classification import extract_result, route_input, route_result
-from src.backend.app.agents.nodes import intake_node
+from src.backend.app.agents.steps.classification import extract_result, picked_option, route_input, route_result
+from src.backend.app.agents.nodes import classify_node, intake_node
 from src.backend.app.agents.models import Extraction, TurnRoute
 from src.backend.app.agents.steps.prompts import CLASSIFY_PROMPT
 from src.backend.app.domain.itinerary.planning import empty_intent
@@ -220,6 +220,52 @@ class ChangeWithoutValueTests(unittest.TestCase):
     def test_no_change_flag_plans_as_before(self):
         result = extract_result(self.planned(), Extraction())
         self.assertEqual(result['decision'], 'tool')
+
+
+OPTIONS = [{'index': 1, 'stays': [{'productId': 'h-close', 'name': 'Sala Hotel', 'fromNight': 1, 'nights': 2}]},
+           {'index': 2, 'stays': [{'productId': 'h-n', 'name': 'North Inn', 'fromNight': 1, 'nights': 2},
+                                  {'productId': 'h-s', 'name': 'South Inn', 'fromNight': 3, 'nights': 2}]}]
+
+
+class StayOptionPickTests(unittest.TestCase):
+    """"lấy phương án N" sau mục Phương án khác (AC-AGT-04, chốt 2026-10-08): đổi khách sạn bằng tên đã hiện."""
+
+    INTENT = {**empty_intent(), 'destination': 'Phú Quốc', 'days': 3, 'startDate': '2026-10-15',
+              'party': {'type': 'SOLO', 'adults': 1, 'children': 0}}
+
+    def turn(self, query, options=OPTIONS):
+        return {**intake_node({'query': query, 'previous_options': options}), 'intent': dict(self.INTENT),
+                'start_date_asked': True}
+
+    def test_the_option_number_is_read_with_or_without_accents_and_in_english(self):
+        for query in ('lấy phương án 1', 'Phuong an so 1 nhé', 'take option 1'):
+            self.assertEqual(picked_option(self.turn(query))['index'], 1, query)
+
+    def test_an_unknown_number_or_no_earlier_options_picks_nothing(self):
+        self.assertIsNone(picked_option(self.turn('lấy phương án 3')))
+        self.assertIsNone(picked_option(self.turn('lấy phương án 1', options=[])))
+        self.assertIsNone(picked_option(self.turn('đổi khách sạn khác')))
+
+    def test_the_hotel_comes_from_the_option_not_from_the_llm(self):
+        result = extract_result(self.turn('lấy phương án 1'),
+                                Extraction(constraints={'specific_hotel': 'Khách sạn bịa'}))
+        self.assertEqual(result['constraints']['specific_hotel'], 'Sala Hotel')
+        self.assertTrue(result['constraints']['require_hotel'])
+        self.assertEqual(result['decision'], 'tool')
+
+    def test_a_two_hotel_option_keeps_the_first_night_hotel(self):
+        result = extract_result(self.turn('lấy phương án 2'), Extraction())
+        self.assertEqual(result['constraints']['specific_hotel'], 'North Inn')
+
+    def test_the_pick_is_routed_as_travel_without_the_llm(self):
+        def no_call(*_):
+            raise AssertionError('no LLM call')
+        llm = type('LLM', (), {'with_structured_output': no_call})()
+        self.assertEqual(classify_node(self.turn('lấy phương án 1'), llm=llm)['decision'], 'travel')
+
+    def test_the_options_survive_into_the_next_turn(self):
+        self.assertEqual(self.turn('x')['previous_options'], OPTIONS)
+        self.assertEqual(self.turn('x')['stay_options'], [])
 
 
 class ClassifyRouteTests(unittest.TestCase):

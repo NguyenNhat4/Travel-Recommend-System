@@ -242,13 +242,17 @@ Các điểm cần nhớ khi đọc trace:
 
 ## 5. Quy tắc xếp lịch của `compose`
 
-Luật nghiệp vụ (chọn chỗ ở, hoạt động, rải ngày, gom theo khoảng cách, buổi theo giờ bay, dòng `TRANSFER`, gói nhiều
-ngày, tiền) nằm ở
+Luật nghiệp vụ (chọn chỗ ở, hoạt động, rải ngày, tối ưu quãng đường, đổi khách sạn, ngân sách, phương án khác, buổi theo
+giờ bay, dòng `TRANSFER`, gói nhiều ngày, tiền) nằm ở
 [nghiep-vu/xep-lich.md](nghiep-vu/xep-lich.md). Về kỹ thuật: `compose_plan` → `render_proposal` → `validate_plan`
 (`domain/itinerary/planning.py`), gọi từ `steps/composition.composed`; hai hàm sau bác đề xuất của hàm đầu là lỗi
-backend, `compose` trả `FALLBACK` và log `itinerary.composition_failed`. Khoảng cách (`domain/itinerary/geo.py`) là hàm
-thuần trên toạ độ của `candidates`, không gọi mạng; proposal có `criteria = "DISTANCE"` khi luật khoảng cách được dùng,
-và `composed` khi đó thêm warning `PLAN_CRITERIA` để `narrate` chèn mục "Cách mình xếp lịch" trước mục chi phí.
+backend, `compose` trả `FALLBACK` và log `itinerary.composition_failed`. Khoảng cách (`domain/itinerary/geo.py`) và tối
+ưu quãng đường (`domain/itinerary/routing.py`, `optimize`) là hàm thuần trên toạ độ của `candidates`, không gọi mạng;
+`composed` tính tiền vé đã chọn (`flights.flight_cost`) và truyền vào `compose_plan(..., fixed_cost)` để trừ vào ngân sách.
+Proposal có `criteria = "DISTANCE"`, `stays` theo đêm, `distance_km` và `options` (phương án khác) khi luật khoảng cách
+được dùng; `composed` khi đó thêm warning `PLAN_CRITERIA` và `STAY_OPTIONS` (văn bản dựng bằng code, mọi số do code tính)
+để `narrate` chèn mục "Cách mình xếp lịch" và "Phương án khác" trước mục chi phí, và ghi `stay_options` vào state để
+`finalize` lưu thành `previous_options` cho lượt "lấy phương án N".
 
 ## 6. Bảng tra cứu mười hai node
 

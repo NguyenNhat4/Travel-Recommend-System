@@ -33,7 +33,7 @@ export function narrationProducts(
   const itinerary = 'itinerary' in response ? response.itinerary : null;
   const summaries = [
     ...(itinerary?.flights ?? []).map((flight) => flight.product),
-    ...(itinerary?.stay ? [itinerary.stay.product] : []),
+    ...(itinerary?.stays ?? (itinerary?.stay ? [itinerary.stay] : [])).map((stay) => stay.product),
     ...(itinerary?.days ?? []).flatMap((day) => day.slots.flatMap((slot) => (slot.product ? [slot.product] : []))),
     ...Object.values(response.searchResults ?? {}).flatMap((products) => products ?? []),
   ];
@@ -59,14 +59,24 @@ export function convertItineraryCompletedToGroundedPlan(
   const dest = (response.intent?.destination ?? '') as any;
   const daysCount = response.intent?.days || response.itinerary.days.length || 3;
 
-  const stayItem = response.itinerary.stay ? {
-    productId: response.itinerary.stay.product.productId,
-    product: adaptProductSummaryToProduct(response.itinerary.stay.product),
-    nights: response.itinerary.stay.nights || (daysCount > 1 ? daysCount - 1 : 1),
-    note: response.itinerary.stay.note ?? '',
-    source: (response.itinerary.stay.source as any) || 'search',
-    because: response.itinerary.stay.because as any,
-  } : undefined;
+  // Khách sạn theo đêm (contract 1.19.0, AC-AGT-04); response cũ chỉ có `stay`, coi như từ đêm 1.
+  const apiStays = response.itinerary.stays ?? (response.itinerary.stay ? [response.itinerary.stay] : []);
+  const stayItems = apiStays.map((stay) => {
+    const nights = stay.nights || (daysCount > 1 ? daysCount - 1 : 1);
+    const fromNight = stay.fromNight ?? 1;
+    const lastNight = fromNight + nights - 1;
+    return {
+      productId: stay.product.productId,
+      product: adaptProductSummaryToProduct(stay.product),
+      nights,
+      fromNight,
+      dayRange: lastNight > fromNight ? `Đêm ${fromNight}–${lastNight}` : `Đêm ${fromNight}`,
+      note: stay.note ?? '',
+      source: (stay.source as any) || 'search',
+      because: stay.because as any,
+    };
+  });
+  const stayItem = stayItems[0];
 
   const flights = (response.itinerary.flights ?? []).map((flight) => ({
     productId: flight.product.productId,
@@ -118,7 +128,7 @@ export function convertItineraryCompletedToGroundedPlan(
     partyLabel: partyLabel(response.intent?.party),
     title: response.itinerary.title || `Lịch trình ${daysCount} ngày tại ${dest}`,
     stay: stayItem,
-    stays: stayItem ? [stayItem] : undefined,
+    stays: stayItems.length > 0 ? stayItems : undefined,
     flights: flights.length > 0 ? flights : undefined,
     days,
     totalEstimatedPrice: response.itinerary.estimatedTotal ?? null,

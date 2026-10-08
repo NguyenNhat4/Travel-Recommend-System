@@ -45,6 +45,17 @@ function addDays(isoDate: string, days: number) {
   return date.toISOString().slice(0, 10);
 }
 
+/** Khách sạn theo đêm; response trước 1.19.0 chỉ có `stay`. */
+export function itineraryStays(itinerary: Itinerary) {
+  return itinerary.stays ?? (itinerary.stay ? [itinerary.stay] : []);
+}
+
+/** Ngày nhận phòng = ngày của đêm đầu tiên ở khách sạn đó (đêm 1 là đêm của ngày 1). */
+function stayCheckIn(itinerary: Itinerary, stay: { fromNight?: number }) {
+  const first = itinerary.days[0]?.date ?? undefined;
+  return first ? addDays(first, (stay.fromNight ?? 1) - 1) : undefined;
+}
+
 /** Gom mọi sản phẩm đặt được của lịch trình, mỗi productId một lần, kèm ngày dùng theo ngày của lịch trình. */
 export function itineraryCartItems(itinerary: Itinerary, party?: { adults: number; children: number } | null): AssistantCartItem[] {
   const items = new Map<string, AssistantCartItem>();
@@ -55,12 +66,14 @@ export function itineraryCartItems(itinerary: Itinerary, party?: { adults: numbe
       items.set(flight.product.productId, { product: flight.product, usingDate: flight.date, ...guests });
     }
   }
-  if (itinerary.stay && isBookable(itinerary.stay.product)) {
-    const checkIn = itinerary.days[0]?.date ?? undefined;
-    items.set(itinerary.stay.product.productId, {
-      product: itinerary.stay.product,
+  // Khách sạn theo đêm (contract 1.19.0, AC-AGT-04): mỗi khách sạn nhận phòng ở ngày của đêm đầu tiên ở đó.
+  for (const stay of itineraryStays(itinerary)) {
+    if (!isBookable(stay.product) || items.has(stay.product.productId)) continue;
+    const checkIn = stayCheckIn(itinerary, stay);
+    items.set(stay.product.productId, {
+      product: stay.product,
       usingDate: checkIn,
-      checkOutDate: checkIn ? addDays(checkIn, itinerary.stay.nights) : undefined,
+      checkOutDate: checkIn ? addDays(checkIn, stay.nights) : undefined,
       ...guests,
     });
   }
@@ -294,7 +307,7 @@ export function AssistantResultPanel({
 
   const itinerary = response.itinerary;
   const intent = response.intent;
-  const products = [itinerary.stay?.product, ...itinerary.days.flatMap((day) => day.slots.map((slot) => slot.product))].filter((value): value is Product => Boolean(value));
+  const products = [...itineraryStays(itinerary).map((stay) => stay.product), ...itinerary.days.flatMap((day) => day.slots.map((slot) => slot.product))].filter((value): value is Product => Boolean(value));
   const distinctProducts = new Map(products.map((product) => [product.productId, product]));
   const party = intent?.party ? { adults: intent.party.adults, children: intent.party.children } : undefined;
   const cartItems = itineraryCartItems(itinerary, party);
@@ -302,7 +315,6 @@ export function AssistantResultPanel({
   const currentDays = intent?.days ?? itinerary.days.length;
   const addOne = (item: AssistantCartItem) => onAddToCart && (() => onAddToCart([item]));
   const bookOne = (item: AssistantCartItem) => onBookNow && (() => onBookNow([item]));
-  const stayCheckIn = itinerary.days[0]?.date ?? undefined;
 
   return (
     <div className="space-y-5">
@@ -357,7 +369,15 @@ export function AssistantResultPanel({
         />
       )}
 
-      {itinerary.stay && <section className="space-y-2.5"><div className="flex items-center justify-between"><h3 className="text-sm font-extrabold text-slate-800">Nơi lưu trú</h3><span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-bold text-indigo-700">{itinerary.stay.nights} đêm</span></div><ProductCard product={itinerary.stay.product} note={itinerary.stay.note} onAddToCart={addOne({ product: itinerary.stay.product, usingDate: stayCheckIn, checkOutDate: stayCheckIn ? addDays(stayCheckIn, itinerary.stay.nights) : undefined, party })} onBookNow={bookOne({ product: itinerary.stay.product, usingDate: stayCheckIn, checkOutDate: stayCheckIn ? addDays(stayCheckIn, itinerary.stay.nights) : undefined, party })} /></section>}
+      {itineraryStays(itinerary).map((stay) => {
+        const checkIn = stayCheckIn(itinerary, stay);
+        const checkOut = checkIn ? addDays(checkIn, stay.nights) : undefined;
+        const first = stay.fromNight ?? 1;
+        const label = itineraryStays(itinerary).length > 1
+          ? (stay.nights > 1 ? `Đêm ${first}–${first + stay.nights - 1}` : `Đêm ${first}`)
+          : `${stay.nights} đêm`;
+        return <section key={stay.product.productId} className="space-y-2.5"><div className="flex items-center justify-between"><h3 className="text-sm font-extrabold text-slate-800">Nơi lưu trú</h3><span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-bold text-indigo-700">{label}</span></div><ProductCard product={stay.product} note={stay.note} onAddToCart={addOne({ product: stay.product, usingDate: checkIn, checkOutDate: checkOut, party })} onBookNow={bookOne({ product: stay.product, usingDate: checkIn, checkOutDate: checkOut, party })} /></section>;
+      })}
 
       <section className="space-y-3">
         <div className="flex items-center justify-between"><h3 className="text-sm font-extrabold text-slate-800">Lịch trình từng ngày</h3><span className="text-xs text-slate-400">{itinerary.days.length} ngày</span></div>

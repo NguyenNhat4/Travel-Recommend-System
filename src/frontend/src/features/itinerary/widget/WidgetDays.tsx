@@ -120,9 +120,12 @@ export function WidgetDays({ widget }: { widget: FloatingWidgetController }) {
       const dayStartOrder = activePlan.days
         .slice(0, dayIndex)
         .reduce((total, day) => total + day.slots.length, 0);
-      const stayForThisDay = activePlan.stays && activePlan.stays.length >= 2
-        ? (dayItem.day <= Math.ceil(activePlan.days.length / 2) ? activePlan.stays[0] : activePlan.stays[1])
-        : activePlan.stay;
+      // Khách sạn của đêm ngày này (contract 1.19.0, AC-AGT-04); ngày cuối không có đêm nên lấy khách sạn đêm trước.
+      const nightOfDay = Math.min(dayItem.day, Math.max(1, activePlan.days.length - 1));
+      const stayForThisDay = activePlan.stays?.find((stay) => {
+        const first = stay.fromNight ?? 1;
+        return nightOfDay >= first && nightOfDay < first + stay.nights;
+      }) ?? activePlan.stay;
       const stayHotelName = stayForThisDay?.product?.name || 'Khách sạn lưu trú';
       // Chặng đi và vé khứ hồi mở đầu ngày đầu tiên; chặng về khép lại ngày cuối.
       const isFirstDay = dayIndex === 0;

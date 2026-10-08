@@ -34,7 +34,7 @@ from src.backend.app.domain.itinerary.planning import empty_intent
 
 from .steps import (composition, conversation, evaluation, guardrails, messages, narration, tool_planning,
                     turn_notes, validation)
-from .steps.classification import extract_result, extraction_input, route_input, route_result
+from .steps.classification import extract_result, extraction_input, picked_option, route_input, route_result
 from .steps.failures import terminal_failure
 from .steps.history import append_conversation_turn, sanitize_conversation_history
 from .steps.messages import chat_model, event, failure, message
@@ -50,7 +50,7 @@ def intake_node(state: AgentState) -> dict:
     """Khởi tạo state cho lượt này.
 
     Đọc: `query`/`message`, `conversation_id`, `conversation_history`, `intent`, `constraints`,
-    `previous_selection`, `language`.
+    `previous_selection`, `previous_options`, `language`.
     Ghi: toàn bộ field của `AgentState` về giá trị đầu lượt, kể cả bộ đếm retry và mốc đo latency;
     `previous_intent` là bản chụp intent đầu lượt để `narrate` nêu được lượt này đổi gì.
     Đi tiếp: `classify`.
@@ -62,6 +62,7 @@ def intake_node(state: AgentState) -> dict:
             "previous_intent": deepcopy(state.get("intent") or empty_intent()),
             "constraints": deepcopy(state.get("constraints", {})),
             "previous_selection": deepcopy(state.get("previous_selection", [])),
+            "previous_options": deepcopy(state.get("previous_options", [])), "stay_options": [],
             "attempt": 0,
             "max_attempts": min(max(1, state.get("max_attempts", MAX_ATTEMPTS)), MAX_ATTEMPTS),
             "tool_plan": [], "tool_results": [], "details": {}, "detail_errors": {},
@@ -82,7 +83,7 @@ async def intake_node_async(state: AgentState, *, store: ConversationStorePort |
     """`intake` trên đường async: nạp intent/constraints/lịch sử đã lưu của hội thoại.
 
     Đọc thêm: bản ghi trong `ConversationStorePort` theo `conversation_id` và chủ sở hữu.
-    Ghi thêm: intent/constraints/`previous_selection`/`conversation_history` của lượt trước,
+    Ghi thêm: intent/constraints/`previous_selection`/`previous_options`/`conversation_history` của lượt trước,
     hoặc lỗi `CONVERSATION_NOT_FOUND` (404).
     """
     update = intake_node(state)
@@ -110,6 +111,7 @@ async def intake_node_async(state: AgentState, *, store: ConversationStorePort |
                           clarification_rounds=int(previous.get("clarification_rounds", 0) or 0),
                           language=state.get("language") or previous.get("language", "vi"),
                           previous_selection=previous.get("previous_selection", []),
+                          previous_options=previous.get("previous_options", []),
                           conversation_history=sanitize_conversation_history(
                               previous.get("conversation_history", [])))
     return update
@@ -121,6 +123,14 @@ def _travel_without_message(state: AgentState) -> dict | None:
         return {"decision": "travel", "interaction_type": "travel", "refusal": False,
                 "events": [event("classify", "route travel (intent override)")]}
     return None
+
+
+def _option_pick(state: AgentState) -> dict | None:
+    """"lấy phương án N" sau một lịch có mục Phương án khác chắc chắn là lượt du lịch (đổi khách sạn)."""
+    if picked_option(state) is None:
+        return None
+    return {"decision": "travel", "interaction_type": "travel", "refusal": False,
+            "events": [event("classify", "route travel (stay option picked)")]}
 
 
 def _guardrail_blocked_input(state: AgentState) -> dict | None:
@@ -176,6 +186,9 @@ def classify_node(state: AgentState, *, llm=None) -> dict:
     blocked = _guardrail_blocked_input(state) or _guardrail_junk_input(state)
     if blocked is not None:
         return blocked
+    picked = _option_pick(state)
+    if picked is not None:
+        return picked
     try:
         result = chat_model(llm).with_structured_output(TurnRoute).invoke(route_input(state))
         return route_result(state, result)
@@ -193,6 +206,9 @@ async def classify_node_async(state: AgentState, *, llm=None, timeout_seconds: f
     blocked = _guardrail_blocked_input(state) or _guardrail_junk_input(state)
     if blocked is not None:
         return blocked
+    picked = _option_pick(state)
+    if picked is not None:
+        return picked
     try:
         result = await asyncio.wait_for(
             chat_model(llm).with_structured_output(TurnRoute).ainvoke(route_input(state)), timeout_seconds)
@@ -384,7 +400,7 @@ def compose_node(state: AgentState) -> dict:
     """Turn retrieved products into a reply. Pure computation: no model, so no async variant.
 
     Đọc: `decision`, `candidates`, `sources`, `intent`, `constraints`, `warnings`.
-    Ghi: `response` `COMPLETED` (lịch trình dựng bằng `compose_plan`), hoặc `NO_RESULTS`/`FALLBACK`.
+    Ghi: `response` `COMPLETED` (lịch trình dựng bằng `compose_plan`) kèm `stay_options`, hoặc `NO_RESULTS`/`FALLBACK`.
     Đi tiếp: `narrate`.
     """
     update = composition.retrieval_outcome(state) or composition.compose_or_fallback(state)
@@ -520,7 +536,7 @@ async def finalize_node_async(state: AgentState, *, store: ConversationStorePort
     """`finalize` trên đường async: lưu hội thoại để lượt sau nối tiếp được.
 
     Ghi thêm (qua `ConversationStorePort`): intent, constraints, lịch sử user/assistant đã giới hạn,
-    ngôn ngữ và các sản phẩm đã hiển thị.
+    ngôn ngữ, các sản phẩm đã hiển thị và phương án khác của lịch đó (`previous_options`).
     Điểm đến ngoài catalog là câu hỏi lại (200) với `intent.destination = None`, nên phần còn lại của chuyến đi
     được lưu như mọi lượt hỏi lại khác.
     """
@@ -528,15 +544,17 @@ async def finalize_node_async(state: AgentState, *, store: ConversationStorePort
     if store is not None and update["http_status"] == 200:
         intent = state["intent"]
         response = update["response"]
-        selection = (validation.selection_snapshot(response) if response.get("status") == "COMPLETED"
-                     else state.get("previous_selection", []))
+        completed = response.get("status") == "COMPLETED"
+        selection = validation.selection_snapshot(response) if completed else state.get("previous_selection", [])
+        options = state.get("stay_options", []) if completed else state.get("previous_options", [])
         working_state = {"intent": intent,
                          "constraints": state.get("constraints", {}),
                          "start_date_asked": state.get("start_date_asked", False),
                          "clarification_rounds": state.get("clarification_rounds", 0),
                          "conversation_history": update["conversation_history"],
                          "language": state.get("language", "vi"),
-                         "previous_selection": selection}
+                         "previous_selection": selection,
+                         "previous_options": options}
         await store.save(state["conversation_id"], working_state, owner)
         if archive is not None and cdp_user_id:
             try:

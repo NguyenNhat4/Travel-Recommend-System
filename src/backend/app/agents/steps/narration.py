@@ -57,14 +57,26 @@ def changes_sentence(state: dict) -> str | None:
 def _products(itinerary: dict) -> dict[str, dict]:
     """productId → sản phẩm đã xếp, theo thứ tự xuất hiện (stay trước, rồi từng slot)."""
     found = {}
-    stay = itinerary.get("stay")
-    if stay and stay.get("product"):
+    for stay in _stays(itinerary):
         found[stay["product"]["productId"]] = stay["product"]
     for day in itinerary.get("days", []):
         for slot in day.get("slots", []):
             if slot.get("product"):
                 found.setdefault(slot["product"]["productId"], slot["product"])
     return found
+
+
+def _stays(itinerary: dict) -> list[dict]:
+    """Khách sạn theo đêm (AC-AGT-04); response cũ chỉ có `stay`."""
+    stays = itinerary.get("stays") or ([itinerary["stay"]] if itinerary.get("stay") else [])
+    return [stay for stay in stays if stay.get("product")]
+
+
+def _nights_label(state: dict, stay: dict) -> str:
+    first = stay.get("fromNight") or 1
+    last = first + stay.get("nights", 1) - 1
+    return message(state, "stay_night_single", first=first) if first == last else \
+        message(state, "stay_nights_range", first=first, last=last)
 
 
 def _flight_products(itinerary: dict) -> dict[str, dict]:
@@ -116,11 +128,12 @@ def narration_input(state: dict) -> list:
     """Lịch đã dựng (không kèm con số giá) cộng ngữ cảnh hội thoại chung; LLM chỉ viết câu chữ."""
     response = state["response"]
     itinerary = response["itinerary"]
-    stay = itinerary.get("stay")
-    view = {"stay": None, "days": []}
-    if stay and stay.get("product"):
-        view["stay"] = {"productId": stay["product"]["productId"], "name": _label(stay["product"]),
-                        "price_known": stay["product"].get("unitPrice") is not None, "nights": stay.get("nights"), "note": stay.get("note"), "because": stay.get("because") or []}
+    view = {"stays": [], "days": []}
+    for stay in _stays(itinerary):
+        view["stays"].append({"productId": stay["product"]["productId"], "name": _label(stay["product"]),
+                              "price_known": stay["product"].get("unitPrice") is not None,
+                              "nights": stay.get("nights"), "from_night": stay.get("fromNight") or 1,
+                              "note": stay.get("note"), "because": stay.get("because") or []})
     for day in itinerary.get("days", []):
         view["days"].append({
             "day": day["day"], "date": display_date(day["date"]) if day.get("date") else None,
@@ -141,6 +154,7 @@ def narration_input(state: dict) -> list:
                "no_stay_explained": _no_stay_block(state, response) is not None,
                "flights_shown_separately": _flights_block(state, response) is not None,
                "criteria_shown_separately": _criteria_block(state, response) is not None,
+               "options_shown_separately": _options_block(state, response) is not None,
                "has_budget": state["intent"].get("budget") is not None}
     return [("system", NARRATE_PROMPT + f"\nReply in {language}."), ("human", prompt_yaml(payload))]
 
@@ -220,6 +234,14 @@ def _criteria_block(state: dict, response: dict) -> str | None:
     return f"**{message(state, 'section_criteria')}**\n{note}" if note else None
 
 
+def _options_block(state: dict, response: dict) -> str | None:
+    """Mục "Phương án khác" (cảnh báo `STAY_OPTIONS` của `compose`, AC-AGT-04 chốt 2026-10-08): chênh tiền và chênh km
+    do code tính; None khi không có phương án nào."""
+    note = next((warning["message"] for warning in response.get("warnings", [])
+                 if warning.get("code") == "STAY_OPTIONS"), None)
+    return f"**{message(state, 'section_options')}**\n{note}" if note else None
+
+
 def fallback_message(state: dict, response: dict) -> str:
     """Bản dựng bằng luật, cùng bố cục với câu LLM: tiêu đề, ghi nhận thay đổi, nơi nghỉ, từng ngày, chi phí, lưu ý."""
     itinerary = response["itinerary"]
@@ -227,10 +249,16 @@ def fallback_message(state: dict, response: dict) -> str:
     flights = _flights_block(state, response)
     if flights:
         blocks.append(flights)
-    stay = itinerary.get("stay")
-    if stay and stay.get("product"):
+    stays = _stays(itinerary)
+    if len(stays) == 1:
+        stay = stays[0]
         blocks.append(f"**{message(state, 'section_stay')}**\n• {_link(stay['product'])} — "
                       f"{message(state, 'stay_nights', nights=stay.get('nights', 1))} · {_price(state, stay['product'])}")
+    elif stays:
+        # Đổi khách sạn giữa chuyến (AC-AGT-04): mỗi khách sạn một dòng, kèm các đêm ở đó.
+        blocks.append(f"**{message(state, 'section_stay')}**\n" + "\n".join(
+            f"• {_nights_label(state, stay)} — {_link(stay['product'])} · {_price(state, stay['product'])}"
+            for stay in stays))
     for day in itinerary.get("days", []):
         # Slot đã theo thứ tự buổi; dòng di chuyển ngày đến/ngày về (AC-AGT-02) in bằng ghi chú của nó.
         lines = [f"• {_time_label(state, slot)} — " + (f"{_link(slot['product'])} · {_price(state, slot['product'])}"
@@ -246,6 +274,9 @@ def fallback_message(state: dict, response: dict) -> str:
     criteria = _criteria_block(state, response)
     if criteria:
         blocks.append(criteria)
+    options = _options_block(state, response)
+    if options:
+        blocks.append(options)
     blocks.append(f"**{message(state, 'section_cost')}**\n{_cost_line(state, itinerary)}")
     blocks.append(f"**{message(state, 'section_notes')}**\n{message(state, 'narrate_notes')}\n"
                   f"{message(state, 'narrate_outro')}")
@@ -343,6 +374,10 @@ def render(state: dict, response: dict, narration: ItineraryNarration) -> tuple[
     if criteria:
         # Tiêu chí xếp lịch là luật của hệ thống, không để LLM tự diễn đạt (AC-AGT-04): chèn trước mục chi phí.
         body = _before_cost(state, body, criteria)
+    options = _options_block(state, response)
+    if options:
+        # Chênh tiền/km của phương án khác là số do code tính (grounding): chèn sau mục tiêu chí, trước mục chi phí.
+        body = _before_cost(state, body, options)
     flights = _flights_block(state, response)
     if flights:
         # Vé và lý do thiếu vé lấy từ dữ liệu catalog, không để LLM diễn đạt: chèn trước mục đầu tiên.

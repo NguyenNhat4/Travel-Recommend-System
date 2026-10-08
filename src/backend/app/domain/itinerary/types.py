@@ -171,13 +171,36 @@ class ProposedSlot(TypedDict, total=False):
     time: str
 
 
+class ProposedStay(TypedDict):
+    """Một khách sạn theo đêm trong proposal (AC-AGT-04): ở các đêm from_night .. from_night + nights − 1."""
+
+    stay_id: str
+    from_night: int
+    nights: int
+
+
+class ProposedOption(TypedDict):
+    """Một phương án khác (chốt 2026-10-08): khách sạn theo đêm, chênh km/tiền so với lịch được chọn (dương = nhiều
+    hơn) và số tiền vượt ngân sách (None khi không vượt)."""
+
+    stays: list[ProposedStay]
+    km_delta: float
+    money_delta: int
+    over_budget: int | None
+
+
 class Proposal(TypedDict, total=False):
     """Return value of `compose_plan`; input to `render_proposal`."""
 
     stay_id: str | None
     slots: list[ProposedSlot]
+    #: Khách sạn theo đêm; `stay_id` là khách sạn đầu tiên. Vắng mặt thì `render_proposal` coi là một khách sạn.
+    stays: list[ProposedStay]
     #: "DISTANCE" khi lịch được xếp theo khoảng cách (AC-AGT-04); không có khoá khi không sản phẩm nào rõ vị trí.
     criteria: str
+    #: Quãng đường cả chuyến (km, đường chim bay) và phương án khác; chỉ có khi lịch xếp theo khoảng cách và có khách sạn.
+    distance_km: float
+    options: list[ProposedOption]
 
 
 class ToolErrorPayload(TypedDict):

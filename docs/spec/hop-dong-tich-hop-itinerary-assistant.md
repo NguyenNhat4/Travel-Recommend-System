@@ -233,8 +233,17 @@ Phục vụ FR-AGT-02, FR-AGT-03, AC-AGT-02, AC-AGT-03 (chốt 2026-10-06, đề
 - **Lịch trình ít di chuyển** (AC-AGT-04, chốt 2026-10-07, đề xuất `docs/prd/update-archive/2026-10-07-lich-trinh-it-di-chuyen.md`).
   - Agent cần `attributes.latitude`/`longitude` trong kết quả Search/Recommendation của khách sạn, điểm tham quan và golf
     (đã có). Toạ độ tâm thành phố bị coi là chưa rõ vị trí; Team Data nên đánh dấu độ chính xác ở nguồn.
-  - Luật chi tiết: `docs/spec/agent/nghiep-vu/xep-lich.md` mục "Gom theo khoảng cách". Warning mới `PLAN_CRITERIA`
-    (`code` là chuỗi tự do). Contract không đổi.
+  - Luật chi tiết: `docs/spec/agent/nghiep-vu/xep-lich.md` mục "Tối ưu quãng đường". Warning mới `PLAN_CRITERIA`
+    (`code` là chuỗi tự do).
+  - **Nhiều khách sạn** (chốt 2026-10-07, đề xuất `update-archive/2026-10-07-toi-uu-quang-duong-nhieu-khach-san.md`,
+    contract 1.19.0): `itinerary.stays[]` (1–2 `ItineraryStay`, theo `fromNight`) liệt kê khách sạn theo đêm; đổi khách
+    sạn chỉ với chuyến từ 5 ngày, một lần, mỗi khách sạn ≥ 2 đêm. `itinerary.stay` = `stays[0]` cho client cũ. Ngày đổi
+    có slot `TRANSFER` "Trả phòng, chuyển sang khách sạn mới."
+  - **Ngân sách và phương án khác** (chốt 2026-10-08, đề xuất
+    `update-archive/2026-10-08-khach-san-theo-ngan-sach-va-phuong-an-khac.md`): có ngân sách thì chỉ chọn lịch vừa ngân
+    sách (gồm vé), không lịch nào vừa thì lịch rẻ nhất. Warning mới `STAY_OPTIONS`: mục "Phương án khác" trong
+    `message` (tổng km của lịch, tối đa 3 dòng "thêm/bớt X ₫ → bớt/thêm Y km", vượt ngân sách bao nhiêu). Chỉ có trong
+    chat; contract không đổi. Người dùng chọn bằng "lấy phương án N".
 - **Vị trí trình duyệt** chỉ ở Web (spec Frontend §4.8): toạ độ không vào request, state hay log của agent.
 
 ---

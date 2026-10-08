@@ -1,0 +1,372 @@
+{
+  "status": "COMPLETED",
+  "conversationId": "conv-01JXYZ",
+  "intent": {
+    "destination": "Phú Quốc",
+    "startDate": "2026-10-10",
+    "days": 5,
+    "party": {
+      "type": "COUPLE",
+      "adults": 2,
+      "children": 0
+    },
+    "budget": null,
+    "interests": [],
+    "pace": null
+  },
+  "itinerary": {
+    "title": "Lịch trình 5 ngày ở Phú Quốc",
+    "stay": {
+      "product": {
+        "productId": "pq-h-01",
+        "name": "Sicily Hotel Grand World Phú Quốc",
+        "taxonomy": "hotel",
+        "destination": "Phú Quốc",
+        "unitPrice": 1062500,
+        "currency": "VND",
+        "available": true,
+        "availableFrom": "2026-10-01",
+        "availableTo": "2027-03-31",
+        "imageUrl": "https://cdn.example.vn/pq-h-01.jpg",
+        "rating": 4.5,
+        "reviewCount": 320,
+        "attributes": {
+          "latitude": 10.328366,
+          "longitude": 103.862794,
+          "starRating": 4
+        },
+        "priceUnit": "PER_NIGHT"
+      },
+      "nights": 2,
+      "fromNight": 1,
+      "note": "Dành thời gian nghỉ ngơi và thư giãn.",
+      "source": "SEARCH",
+      "because": []
+    },
+    "stays": [
+      {
+        "product": {
+          "productId": "pq-h-01",
+          "name": "Sicily Hotel Grand World Phú Quốc",
+          "taxonomy": "hotel",
+          "destination": "Phú Quốc",
+          "unitPrice": 1062500,
+          "currency": "VND",
+          "available": true,
+          "availableFrom": "2026-10-01",
+          "availableTo": "2027-03-31",
+          "imageUrl": "https://cdn.example.vn/pq-h-01.jpg",
+          "rating": 4.5,
+          "reviewCount": 320,
+          "attributes": {
+            "latitude": 10.328366,
+            "longitude": 103.862794,
+            "starRating": 4
+          },
+          "priceUnit": "PER_NIGHT"
+        },
+        "nights": 2,
+        "fromNight": 1,
+        "note": "Dành thời gian nghỉ ngơi và thư giãn.",
+        "source": "SEARCH",
+        "because": []
+      },
+      {
+        "product": {
+          "productId": "pq-h-02",
+          "name": "Devesun Boutique Hotel Phú Quốc",
+          "taxonomy": "hotel",
+          "destination": "Phú Quốc",
+          "unitPrice": 1215000,
+          "currency": "VND",
+          "available": true,
+          "availableFrom": "2026-10-01",
+          "availableTo": "2027-03-31",
+          "imageUrl": "https://cdn.example.vn/pq-h-02.jpg",
+          "rating": 4.5,
+          "reviewCount": 320,
+          "attributes": {
+            "latitude": 10.025266,
+            "longitude": 104.008475,
+            "starRating": 4
+          },
+          "priceUnit": "PER_NIGHT"
+        },
+        "nights": 2,
+        "fromNight": 3,
+        "note": "Dành thời gian nghỉ ngơi và thư giãn.",
+        "source": "SEARCH",
+        "because": []
+      }
+    ],
+    "days": [
+      {
+        "day": 1,
+        "date": "2026-10-10",
+        "slots": [
+          {
+            "time": "MORNING",
+            "activityType": null,
+            "product": {
+              "productId": "pq-a-01",
+              "name": "Bảo tàng Gấu Teddy",
+              "taxonomy": "attraction",
+              "destination": "Phú Quốc",
+              "unitPrice": 200000,
+              "currency": "VND",
+              "available": true,
+              "availableFrom": "2026-10-01",
+              "availableTo": "2027-03-31",
+              "imageUrl": "https://cdn.example.vn/pq-a-01.jpg",
+              "rating": 4.5,
+              "reviewCount": 320,
+              "attributes": {
+                "latitude": 10.325454,
+                "longitude": 103.862343
+              },
+              "priceUnit": "PER_PERSON"
+            },
+            "note": "Tham quan theo khung giờ đề xuất.",
+            "source": "SEARCH",
+            "because": []
+          }
+        ]
+      },
+      {
+        "day": 2,
+        "date": "2026-10-11",
+        "slots": [
+          {
+            "time": "MORNING",
+            "activityType": null,
+            "product": {
+              "productId": "pq-a-02",
+              "name": "Vinpearl Safari Phú Quốc",
+              "taxonomy": "attraction",
+              "destination": "Phú Quốc",
+              "unitPrice": 650000,
+              "currency": "VND",
+              "available": true,
+              "availableFrom": "2026-10-01",
+              "availableTo": "2027-03-31",
+              "imageUrl": "https://cdn.example.vn/pq-a-02.jpg",
+              "rating": 4.5,
+              "reviewCount": 320,
+              "attributes": {
+                "latitude": 10.337043,
+                "longitude": 103.891448
+              },
+              "priceUnit": "PER_PERSON"
+            },
+            "note": "Tham quan theo khung giờ đề xuất.",
+            "source": "SEARCH",
+            "because": []
+          },
+          {
+            "time": "AFTERNOON",
+            "activityType": null,
+            "product": {
+              "productId": "pq-a-03",
+              "name": "VinWonders Phú Quốc",
+              "taxonomy": "attraction",
+              "destination": "Phú Quốc",
+              "unitPrice": 950000,
+              "currency": "VND",
+              "available": true,
+              "availableFrom": "2026-10-01",
+              "availableTo": "2027-03-31",
+              "imageUrl": "https://cdn.example.vn/pq-a-03.jpg",
+              "rating": 4.5,
+              "reviewCount": 320,
+              "attributes": {
+                "latitude": 10.340735,
+                "longitude": 103.854047
+              },
+              "priceUnit": "PER_PERSON"
+            },
+            "note": "Tham quan theo khung giờ đề xuất.",
+            "source": "SEARCH",
+            "because": []
+          }
+        ]
+      },
+      {
+        "day": 3,
+        "date": "2026-10-12",
+        "slots": [
+          {
+            "time": "MORNING",
+            "activityType": "TRANSFER",
+            "product": null,
+            "note": "Trả phòng, chuyển sang khách sạn mới.",
+            "source": null,
+            "because": []
+          },
+          {
+            "time": "MORNING",
+            "activityType": null,
+            "product": {
+              "productId": "pq-a-04",
+              "name": "Cáp treo Hòn Thơm",
+              "taxonomy": "attraction",
+              "destination": "Phú Quốc",
+              "unitPrice": 850000,
+              "currency": "VND",
+              "available": true,
+              "availableFrom": "2026-10-01",
+              "availableTo": "2027-03-31",
+              "imageUrl": "https://cdn.example.vn/pq-a-04.jpg",
+              "rating": 4.5,
+              "reviewCount": 320,
+              "attributes": {
+                "latitude": 10.026972,
+                "longitude": 104.007235
+              },
+              "priceUnit": "PER_PERSON"
+            },
+            "note": "Tham quan theo khung giờ đề xuất.",
+            "source": "SEARCH",
+            "because": []
+          },
+          {
+            "time": "AFTERNOON",
+            "activityType": null,
+            "product": {
+              "productId": "pq-a-05",
+              "name": "Show Kiss Of The Sea",
+              "taxonomy": "attraction",
+              "destination": "Phú Quốc",
+              "unitPrice": 700000,
+              "currency": "VND",
+              "available": true,
+              "availableFrom": "2026-10-01",
+              "availableTo": "2027-03-31",
+              "imageUrl": "https://cdn.example.vn/pq-a-05.jpg",
+              "rating": 4.5,
+              "reviewCount": 320,
+              "attributes": {
+                "latitude": 10.027697,
+                "longitude": 104.006055
+              },
+              "priceUnit": "PER_PERSON"
+            },
+            "note": "Tham quan theo khung giờ đề xuất.",
+            "source": "SEARCH",
+            "because": []
+          }
+        ]
+      },
+      {
+        "day": 4,
+        "date": "2026-10-13",
+        "slots": [
+          {
+            "time": "MORNING",
+            "activityType": null,
+            "product": {
+              "productId": "pq-a-06",
+              "name": "Sun World Hòn Thơm",
+              "taxonomy": "attraction",
+              "destination": "Phú Quốc",
+              "unitPrice": 850000,
+              "currency": "VND",
+              "available": true,
+              "availableFrom": "2026-10-01",
+              "availableTo": "2027-03-31",
+              "imageUrl": "https://cdn.example.vn/pq-a-06.jpg",
+              "rating": 4.5,
+              "reviewCount": 320,
+              "attributes": {
+                "latitude": 9.9558,
+                "longitude": 104.016092
+              },
+              "priceUnit": "PER_PERSON"
+            },
+            "note": "Tham quan theo khung giờ đề xuất.",
+            "source": "SEARCH",
+            "because": []
+          },
+          {
+            "time": "AFTERNOON",
+            "activityType": null,
+            "product": {
+              "productId": "pq-a-07",
+              "name": "Symphony of the Sea",
+              "taxonomy": "attraction",
+              "destination": "Phú Quốc",
+              "unitPrice": 640200,
+              "currency": "VND",
+              "available": true,
+              "availableFrom": "2026-10-01",
+              "availableTo": "2027-03-31",
+              "imageUrl": "https://cdn.example.vn/pq-a-07.jpg",
+              "rating": 4.5,
+              "reviewCount": 320,
+              "attributes": {
+                "latitude": 10.036994,
+                "longitude": 104.018844
+              },
+              "priceUnit": "PER_PERSON"
+            },
+            "note": "Tham quan theo khung giờ đề xuất.",
+            "source": "SEARCH",
+            "because": []
+          }
+        ]
+      },
+      {
+        "day": 5,
+        "date": "2026-10-14",
+        "slots": [
+          {
+            "time": "MORNING",
+            "activityType": null,
+            "product": {
+              "productId": "pq-a-08",
+              "name": "Cầu Hôn Phú Quốc",
+              "taxonomy": "attraction",
+              "destination": "Phú Quốc",
+              "unitPrice": 640200,
+              "currency": "VND",
+              "available": true,
+              "availableFrom": "2026-10-01",
+              "availableTo": "2027-03-31",
+              "imageUrl": "https://cdn.example.vn/pq-a-08.jpg",
+              "rating": 4.5,
+              "reviewCount": 320,
+              "attributes": {
+                "latitude": 10.028035,
+                "longitude": 104.003787
+              },
+              "priceUnit": "PER_PERSON"
+            },
+            "note": "Tham quan theo khung giờ đề xuất.",
+            "source": "SEARCH",
+            "because": []
+          }
+        ]
+      }
+    ],
+    "bookableCount": 10,
+    "estimatedTotal": 15515800,
+    "currency": "VND",
+    "budgetStatus": "NO_BUDGET",
+    "priceAsOf": null
+  },
+  "warnings": [
+    {
+      "code": "PLAN_CRITERIA",
+      "message": "Mình chọn điểm, ghép ngày và nơi ở để tổng quãng đường đi lại ít nhất; nửa đầu chuyến ở gần Grand World, nửa sau chuyển xuống Nam đảo vì đỡ đi lại hơn nhiều so với ở một chỗ."
+    }
+  ],
+  "metadata": {
+    "personalised": true,
+    "searchRequestIds": [
+      "search-01JABC",
+      "search-01JDEF",
+      "reco-01JGHI"
+    ],
+    "generatedAt": "2026-09-16T08:00:00Z",
+    "requestId": "agent-01JXYZ"
+  }
+}

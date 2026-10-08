@@ -267,6 +267,12 @@ ItineraryStay:
     nights:
       type: integer
       minimum: 1
+    fromNight:
+      type: integer
+      minimum: 1
+      description: >-
+        (1.19.0, AC-AGT-04) Đêm đầu tiên ở khách sạn này, đếm từ 1 (đêm của ngày 1). Khách sạn ở các đêm
+        fromNight .. fromNight + nights − 1. Backend luôn gửi từ 1.19.0; client coi vắng mặt là 1.
     note:
       type:
       - string
@@ -351,6 +357,16 @@ ItineraryPlan:
       oneOf:
       - $ref: ../openapi.yaml#/components/schemas/ItineraryStay
       - type: 'null'
+    stays:
+      type: array
+      minItems: 1
+      maxItems: 2
+      description: >-
+        (1.19.0, AC-AGT-04) Khách sạn theo đêm, sắp theo fromNight; hai mục khi lịch trình đổi khách sạn giữa chuyến
+        (chuyến từ 5 ngày, mỗi khách sạn ít nhất 2 đêm). Tổng nights = max(1, days − 1). `stay` luôn bằng stays[0] để
+        client cũ vẫn chạy; vắng mặt khi không có khách sạn. estimatedTotal cộng giá × nights của từng khách sạn.
+      items:
+        $ref: ../openapi.yaml#/components/schemas/ItineraryStay
     flights:
       type: array
       maxItems: 2

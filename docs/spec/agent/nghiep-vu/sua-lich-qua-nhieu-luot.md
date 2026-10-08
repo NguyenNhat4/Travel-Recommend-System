@@ -32,6 +32,7 @@ sequenceDiagram
 | `intent`, `constraints` | Chuyến đi và ràng buộc đã chốt |
 | Lịch sử chat | Tối đa 20 tin, 8.000 ký tự tổng, 1.000 ký tự mỗi tin; tin trợ lý kèm [ghi chú lượt](glossary.md#ghi-chu-luot) ≤ 300 ký tự |
 | [Sản phẩm đã cho xem](glossary.md#previous_selection) | `productId`, tên, loại của chỗ ở và hoạt động trong lịch gần nhất |
+| [Phương án khác](glossary.md#phuong-an-khac) (`previous_options`) | Số thứ tự và khách sạn theo đêm (`productId`, tên) của từng phương án khác đã hiện kèm lịch gần nhất |
 | Cờ hỏi | Đã hỏi gộp chưa, số vòng hỏi điểm đến/số ngày |
 | Ngôn ngữ | `vi` / `en` |
 
@@ -51,6 +52,13 @@ Chỉ lượt trả 200 mới được lưu.
   - sản phẩm cũ vào `exclude_products`, nhưng chỉ nhận id có trong sản phẩm đã cho xem;
   - planner được mời dùng Similar với gốc là sản phẩm đó;
   - code luôn giữ một search cho loại đang đổi. Xem [tim-ung-vien.md](tim-ung-vien.md).
+- **Chọn phương án khác** (AC-AGT-04, chốt 2026-10-08):
+  - câu có "phương án N" / "option N" (so không dấu) mà N có trong `previous_options` thì `classify` đi thẳng nhánh du
+    lịch, không gọi LLM;
+  - `extract` đặt `specific_hotel` = tên khách sạn đêm 1 của phương án đó, ghi đè giá trị LLM trích; từ đó đi như lượt
+    nêu tên khách sạn (tìm lại, chỉ giữ khách sạn trùng tên);
+  - N không có trong danh sách thì câu đi như mọi câu khác;
+  - người dùng nêu thẳng tên khách sạn thì đi luồng `specific_hotel` sẵn có.
 - **Ràng buộc tồn tại qua các lượt** cho tới khi người dùng bỏ (`clear_fields`). Loại hàng mà Recommendation tạm loại thì
   không được lưu.
 - **Câu ghi nhận thay đổi** do code viết, so intent đầu lượt với intent mới.
@@ -67,7 +75,12 @@ Chỉ lượt trả 200 mới được lưu.
 
 - `conversationId` không có ở store lẫn bảng hội thoại, hoặc thuộc người khác: 404.
 - Lỗi đọc store: coi như không có. Lỗi ghi bảng hội thoại: chỉ log, không làm hỏng lượt.
-- Lượt hỏi lại không đổi danh sách sản phẩm đã cho xem; chỉ lượt `COMPLETED` mới thay danh sách này.
+- Lượt hỏi lại không đổi danh sách sản phẩm đã cho xem; chỉ lượt `COMPLETED` mới thay danh sách này. `previous_options`
+  cũng vậy; lịch mới không có phương án khác thì danh sách thành rỗng.
+- ⚠️ cần xác nhận: chọn phương án có hai khách sạn chỉ giữ được khách sạn đêm 1, vì `specific_hotel` chỉ nhận một tên.
+  Lịch dựng lại có thể khác dòng phương án đã hiện (tìm lại cho ra ứng viên khác), nên km và tiền có thể lệch chút.
+- ⚠️ cần xác nhận: lịch có hai khách sạn mà người dùng nói "đổi khách sạn" không nêu tên thì chưa rõ đổi khách sạn nào;
+  hiện cả hai cùng nằm trong sản phẩm đã cho xem, LLM tự chọn id để loại.
 - ⚠️ cần xác nhận: bảng hội thoại ghi `expires_at` = 24 giờ sau tin cuối, nhưng lúc khôi phục không lọc theo cột này. Hội
   thoại cũ hơn 24 giờ vẫn khôi phục được, trừ khi có job dọn bảng (chưa thấy trong code agent).
 
@@ -76,5 +89,5 @@ Chỉ lượt trả 200 mới được lưu.
 - [`agents/nodes.py`](../../../../src/backend/app/agents/nodes.py) — `intake_node_async` (nạp), `finalize_node_async` (lưu)
 - [`agents/steps/history.py`](../../../../src/backend/app/agents/steps/history.py) — giới hạn lịch sử, ngữ cảnh cho LLM
 - [`agents/steps/turn_notes.py`](../../../../src/backend/app/agents/steps/turn_notes.py) — ghi chú lượt
-- [`agents/steps/classification.py`](../../../../src/backend/app/agents/steps/classification.py) — gộp intent, ràng buộc đổi món
+- [`agents/steps/classification.py`](../../../../src/backend/app/agents/steps/classification.py) — gộp intent, ràng buộc đổi món, `picked_option`
 - [`infrastructure/persistence/conversation_store.py`](../../../../src/backend/app/infrastructure/persistence/conversation_store.py), [`postgres_conversation_archive.py`](../../../../src/backend/app/infrastructure/persistence/postgres_conversation_archive.py)

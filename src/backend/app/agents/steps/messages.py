@@ -220,8 +220,22 @@ MESSAGES = {
                         "giá từng mục có vé bạn xem ở khung lịch trình bên phải nhé.",
         "narrate_notes": "Giá là giá tham khảo, chưa gồm ăn uống và đi lại; cần kiểm tra lại khi đặt.",
         "section_criteria": "Cách mình xếp lịch",
-        "plan_criteria": "Mình gom các điểm gần nhau vào cùng một ngày và chọn nơi ở gần các điểm đó để bạn ít phải di "
-                         "chuyển; nếu hai lựa chọn gần ngang nhau thì mình chọn chỗ giá thấp hơn.",
+        "plan_criteria": "Mình chọn điểm, ghép các ngày và chọn nơi ở để tổng quãng đường bạn phải đi là ít nhất; nếu "
+                         "hai cách xếp gần ngang nhau thì mình chọn cách rẻ hơn.",
+        "plan_criteria_change": "Các điểm nằm ở hai khu cách xa nhau, nên từ đêm {night} bạn chuyển từ {first} sang "
+                                "{second}: đỡ đi lại hơn nhiều so với ở một chỗ cả chuyến.",
+        "plan_criteria_budget": "Mình chọn điểm, ghép các ngày và chọn nơi ở để tổng quãng đường bạn phải đi là ít "
+                                "nhất mà tổng chi phí vẫn nằm trong ngân sách của bạn; nếu hai cách xếp gần ngang nhau "
+                                "thì mình chọn cách rẻ hơn, và nếu không cách nào vừa ngân sách thì mình chọn cách rẻ "
+                                "nhất.",
+        "stay_nights_range": "Đêm {first}–{last}",
+        "stay_night_single": "Đêm {first}",
+        "section_options": "Phương án khác",
+        "options_total": "Lịch trên: đi lại khoảng {km} km cả chuyến.",
+        "option_closer": "• Phương án {n}: thêm {money} — ở {hotels}: bớt khoảng {km} km đi lại",
+        "option_cheaper": "• Phương án {n}: bớt {money} — ở {hotels}: đi thêm khoảng {km} km",
+        "option_over_budget": " (vượt ngân sách {money})",
+        "options_pick": "Muốn đổi, bạn nhắn \"lấy phương án 1\" hoặc tên khách sạn.",
         "narrate_outro": "Bấm vào tên sản phẩm để xem chi tiết ở khung lịch trình bên phải, hoặc nhắn mình nếu muốn "
                          "đổi ngày, khách sạn hay hoạt động.",
     },
@@ -423,8 +437,22 @@ MESSAGES = {
                         "check the price of each ticketed item in the panel on the right.",
         "narrate_notes": "Prices are for reference only and exclude meals and transport; check them again when booking.",
         "section_criteria": "How I arranged the plan",
-        "plan_criteria": "I grouped nearby places on the same day and picked a stay close to them so you travel less; "
-                         "when two options are about as close, I chose the cheaper one.",
+        "plan_criteria": "I picked the places, grouped the days and chose where to stay so that your total travel is as "
+                         "short as possible; when two arrangements are about as short, I chose the cheaper one.",
+        "plan_criteria_change": "The places sit in two areas far apart, so from night {night} you move from {first} to "
+                                "{second}: much less travel than staying in one place.",
+        "plan_criteria_budget": "I picked the places, grouped the days and chose where to stay so that your total "
+                                "travel is as short as possible while the total cost stays within your budget; when "
+                                "two arrangements are about as short, I chose the cheaper one, and when none fits the "
+                                "budget, I chose the cheapest.",
+        "stay_nights_range": "Nights {first}–{last}",
+        "stay_night_single": "Night {first}",
+        "section_options": "Other options",
+        "options_total": "The plan above: about {km} km of travel for the whole trip.",
+        "option_closer": "• Option {n}: {money} more — stay at {hotels}: about {km} km less travel",
+        "option_cheaper": "• Option {n}: {money} less — stay at {hotels}: about {km} km more travel",
+        "option_over_budget": " ({money} over budget)",
+        "options_pick": "To switch, reply \"take option 1\" or name the hotel.",
         "narrate_outro": "Tap a product name to see its details in the itinerary panel on the right, or tell me if you "
                          "want to change the date, hotel or activities.",
     },
@@ -492,6 +520,12 @@ def display_date(iso: str) -> str:
     """Ngày ISO `yyyy-mm-dd` thành `dd/mm/yyyy` để hiện cho người dùng."""
     year, month, day = iso.split("-")
     return f"{day}/{month}/{year}"
+
+
+def distance(value: float, language: str) -> str:
+    """Số km một chữ số thập phân; tiếng Việt dùng dấu phẩy thập phân."""
+    text = f"{value:.1f}"
+    return text.replace(".", ",") if language == "vi" else text
 
 
 def money(value: int, language: str) -> str:

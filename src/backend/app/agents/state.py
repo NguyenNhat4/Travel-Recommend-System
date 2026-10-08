@@ -72,6 +72,10 @@ class AgentState(TypedDict, total=False):
     destination_kind: str | None
     language: str
     previous_selection: list[Product]
+    # Phương án khác của lịch lượt này (`composition._stay_options`) và của lịch đã hiện ở lượt trước, để "lấy phương
+    # án N" biết khách sạn nào (AC-AGT-04, chốt 2026-10-08).
+    stay_options: list[dict[str, Any]]
+    previous_options: list[dict[str, Any]]
 
 
 def make_event(node: str, event_type: str, message: str, **metadata: Any) -> dict[str, Any]:
