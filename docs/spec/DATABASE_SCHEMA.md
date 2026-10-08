@@ -205,7 +205,7 @@ erDiagram
         date using_date_to "trả phòng, NULL với vé"
         numeric unit_price_snapshot
         timestamptz added_at
-        int adults "≥ 1; tổng adults + children ≤ 9"
+        int adults "≥ 1; tổng adults + children ≤ 81 (khách sạn 9 khách mỗi phòng)"
         int children "≥ 0"
         numeric child_unit_price_snapshot "NULL = trẻ em trả giá người lớn"
     }
@@ -777,7 +777,7 @@ CREATE TABLE app.booking_draft_items (
     CONSTRAINT booking_draft_items_dates CHECK (using_date_to IS NULL OR using_date_to > using_date),
     CONSTRAINT booking_draft_items_adults_min CHECK (adults >= 1),
     CONSTRAINT booking_draft_items_children_min CHECK (children >= 0),
-    CONSTRAINT booking_draft_items_party_size CHECK (adults + children <= 9),
+    CONSTRAINT booking_draft_items_party_size CHECK (adults + children <= 81),  -- khách sạn: 9 khách × 9 phòng
     CONSTRAINT booking_draft_items_uq UNIQUE (draft_id, product_id, using_date)
 );
 
@@ -842,7 +842,8 @@ CREATE TABLE app.booking_travelers (
     traveler_id    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     booking_id     uuid NOT NULL REFERENCES app.bookings (booking_id) ON DELETE CASCADE,
     traveler_ref   text NOT NULL,                                          -- mã tạm do Web sinh; booking_items.metadata tham chiếu bằng mã này
-    position       integer NOT NULL CHECK (position BETWEEN 1 AND 9),      -- thứ tự khai báo; đoàn tối đa 9 người
+    position       integer NOT NULL,                                        -- thứ tự khai báo; đoàn tối đa 81 người (9 phòng × 9)
+    CONSTRAINT booking_travelers_position_range CHECK (position BETWEEN 1 AND 81),
     traveler_type  text NOT NULL CHECK (traveler_type IN ('adult','child')),
     surname        text NOT NULL,                                          -- Họ
     given_names    text NOT NULL,                                          -- Tên đệm và tên

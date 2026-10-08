@@ -182,16 +182,12 @@ describe('AssistantResultPanel', () => {
       ]);
     });
 
-    it('pays the whole itinerary in one go and books single items, with the intent party', () => {
+    it('books single items only (no pay-all button), with the intent party', () => {
       const onAddToCart = vi.fn();
       const onBookNow = vi.fn();
       render(<AssistantResultPanel response={completed} onAddToCart={onAddToCart} onBookNow={onBookNow} />);
       const party = { adults: 2, children: 1 };                                 // intent.party của fixture
-      fireEvent.click(screen.getByRole('button', { name: /Thanh toán tất cả \(2\)/ }));
-      expect(onBookNow).toHaveBeenLastCalledWith([
-        { product: hotel, usingDate: '2026-10-01', checkOutDate: '2026-10-02', party },
-        { product: ticket, usingDate: '2026-10-01', party },
-      ]);
+      expect(screen.queryByRole('button', { name: /Thanh toán tất cả/ })).toBeNull();
       // Khách sạn chỉ đặt trực tiếp: Thêm vào giỏ chỉ có ở vé ngày 1 và ngày 2; vé hết chỗ không có nút nào.
       expect(screen.getAllByRole('button', { name: 'Thêm vào giỏ' })).toHaveLength(2);
       fireEvent.click(screen.getAllByRole('button', { name: 'Thêm vào giỏ' })[1]);

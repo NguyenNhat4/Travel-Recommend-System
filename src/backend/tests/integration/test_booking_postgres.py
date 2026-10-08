@@ -210,6 +210,28 @@ def test_database_rejects_a_child_without_birth_date_and_a_cart_over_nine_guests
     asyncio.run(scenario())
 
 
+def test_database_stores_a_party_of_eighteen_for_two_hotel_rooms(bookable_hotel_room) -> None:
+    """FR-BKG-08: khách sạn 9 khách mỗi phòng, nên đoàn của đơn tới 81 người (cột `position` tới 81)."""
+    async def scenario() -> None:
+        catalog, store = PostgresProductCatalog(APP_URL), PostgresBookingStore(APP_URL)
+        product = (await catalog.get_products([bookable_hotel_room]))[bookable_hotel_room]
+        booking = _booking(product, product.available_from, party=True)
+        booking.travelers = [Traveler(f"a{i}", TravelerType.ADULT, "Lê", f"Văn {i}", None) for i in range(1, 19)]
+        async with store.transaction() as tx:
+            await tx.insert(booking)
+        with psycopg.connect(APP_URL) as conn:
+            (count, last) = conn.execute(
+                "SELECT count(*), max(position) FROM app.booking_travelers WHERE booking_id = %s::uuid",
+                (booking.booking_id,)).fetchone()
+        assert (count, last) == (18, 18)
+        _cleanup()
+        with psycopg.connect(APP_URL) as conn:
+            with pytest.raises(psycopg.errors.CheckViolation):            # position vượt 81
+                conn.execute("INSERT INTO app.booking_travelers (booking_id, traveler_ref, position, traveler_type, surname, "
+                             "given_names, full_name) VALUES (gen_random_uuid(), 'x', 82, 'adult', 'Lê', 'A', 'Lê A')")
+    asyncio.run(scenario())
+
+
 def test_reconcile_leader_is_exclusive_across_connections():
     """Hai bản sao backend tranh một khoá advisory: chỉ một bên làm leader, nhả khoá thì bên kia lấy được."""
     async def go():

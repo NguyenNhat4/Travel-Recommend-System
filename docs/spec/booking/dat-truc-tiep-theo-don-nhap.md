@@ -206,7 +206,7 @@ Dùng lại `CartItem` cho mục đơn nháp là chủ ý: `CheckoutItemDetail.c
 - Bảng mới `app.booking_drafts (draft_id, cdp_user_id, created_at, expires_at)` và `app.booking_draft_items` (cùng cột và CHECK với `app.cart_items`, khoá ngoài `draft_id`, `UNIQUE (draft_id, product_id, using_date)`). `draft_id` do Backend cấp (không dùng DEFAULT khi gộp, R-MRG-02).
 - Index `booking_drafts (cdp_user_id)`, `(expires_at)`. Quyền `vota_app` như `app.carts`.
 - Migration `0007_booking_drafts.sql` (idempotent): tạo bảng, cấp quyền, xoá `app.cart_items` có sản phẩm `hotel`, `flight` (R-DIR-04).
-- `db/verify.sql` thêm: giỏ không có `hotel`/`flight`; đoàn khách của mục đơn nháp 1–9 và có người lớn.
+- `db/verify.sql` thêm: giỏ không có `hotel`/`flight`; đoàn khách của mục đơn nháp 1–81 (khách sạn 9 khách mỗi phòng, 9 phòng; loại khác ≤ 9) và có người lớn.
 - Không có bảng cho khách chưa đăng nhập (R-GST-04). Không có bảng nhật ký job.
 
 ## 12. Backend
@@ -230,7 +230,7 @@ Theo phân lớp ở `docs/prd/architecture.md` §2.
 | Bấm Đặt ngay hoặc Tiến hành đặt chỗ ở giỏ khi chưa đăng nhập | Hộp đăng nhập trên trang; xong thì tạo đơn nháp và vào `/checkout` (hoặc vào `/checkout` của giỏ) |
 | Bấm Thanh toán ở `/checkout` khi chưa đăng nhập (mở thẳng URL) | Hộp đăng nhập trên trang; xong thì gửi lại `POST /bookings` |
 | Trang giỏ | Bỏ khối "Thường được đặt cùng chuyến" và lời gọi `/recommendations` của trang giỏ. Thêm dòng giải thích khách sạn, vé máy bay được đặt trực tiếp. Khách chưa đăng nhập xem và sửa giỏ được |
-| Trợ lý | Một nút **Thanh toán tất cả** (đơn nháp cho mọi mục đặt được, `allowPartial: true`). Thẻ và ghim bản đồ: khách sạn, vé máy bay có Đặt ngay; tour, golf, combo có Thêm vào giỏ và Đặt ngay; ngày theo lịch trình, số khách theo `intent.party` |
+| Trợ lý | **Không có** nút Thanh toán tất cả (bỏ 2026-10-08, trước mắt mỗi mục thanh toán riêng; `allowPartial` chỉ còn cho đặt lại đơn). Thẻ và ghim bản đồ: khách sạn, vé máy bay có Đặt ngay; tour, golf, combo có Thêm vào giỏ và Đặt ngay; ngày theo lịch trình, số khách theo `intent.party` |
 | Trang đơn | `PAYMENT_FAILED`, `EXPIRED`: nút **Đặt lại** (`fromBooking`) thay cho "Đặt lại từ giỏ" |
 | Nhãn gợi ý | `add_to_cart`: "đã chọn để đặt" |
 

@@ -14,7 +14,7 @@ import type { Taxonomy } from '../../types/travel';
 import {
   displayName, draftToTraveler, isHotel, isInfantForItem, maxOccupancyOf, shortName, unassignedRefs, type Allocation, type TravelerDraft,
 } from './allocation';
-import { MAX_PARTY, adultFrom, ageOn, fareTypeOn, formatDmy, messageFor, type Violation } from './checkoutRules';
+import { MAX_ROOMS, adultFrom, ageOn, fareTypeOn, formatDmy, messageFor, type Violation } from './checkoutRules';
 import { ErrorSummaryBox, Notice, PrimaryButton, Skeleton } from './CheckoutParts';
 import { FareLines } from './FareLines';
 import type { CheckoutController } from './useCheckout';
@@ -187,7 +187,7 @@ const HotelCard: React.FC<{ ctl: CheckoutController; item: ApiCartItem }> = ({ c
   const unassigned = unassignedRefs(item, alloc, ctl.drafts);
   const leads = new Set(alloc.rooms.map((r) => r.lead).filter(Boolean));
   const adultsOnDate = ctl.drafts.filter((d) => fareTypeOn(draftToTraveler(d), item.usingDate) === 'ADULT');
-  const canAddRoom = rooms < MAX_PARTY && adultsOnDate.some((d) => !leads.has(d.ref));
+  const canAddRoom = rooms < MAX_ROOMS && adultsOnDate.some((d) => !leads.has(d.ref));
   const invalidCard = cardErrors.length > 0 || alloc.rooms.some((_, k) => roomErrors(k).length > 0);
   const guestTotal = alloc.rooms.reduce((n, r) => n + r.refs.length, 0);
   const nameOf = (ref: string) => { const d = ctl.drafts.find((x) => x.ref === ref); return d ? displayName(d, ctl.drafts) : ref; };

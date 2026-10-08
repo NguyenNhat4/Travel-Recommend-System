@@ -225,7 +225,7 @@ export function AssistantResultPanel({
   onSuggestion?: (suggestion: string) => void;
   /** Thêm vào giỏ: chỉ hiện ở tour, trải nghiệm và tiện ích khác. Nơi gọi tự xử lý toast. */
   onAddToCart?: ItemsHandler;
-  /** Đặt ngay một mục, hoặc "Thanh toán tất cả" cho mọi mục đặt được của lịch trình: một đơn nháp rồi sang trang thanh toán. */
+  /** Đặt ngay một mục: một đơn nháp rồi sang trang thanh toán. Lịch trình không có thanh toán gộp, mỗi mục đặt riêng. */
   onBookNow?: ItemsHandler;
   showMap?: boolean;
   /** Agent đang chạy: khoá các nút chỉnh lịch trình. */
@@ -317,11 +317,6 @@ export function AssistantResultPanel({
               <p className="text-[10px] font-bold uppercase tracking-wider text-brand-100">Tổng dự kiến</p>
               <p className="mt-1 text-base font-extrabold">{formatMoney(itinerary.estimatedTotal, itinerary.currency)}</p>
               <p className="mt-1 text-[10px] text-brand-100">{itinerary.bookableCount ?? 0} mục · {BUDGET_STATUS_LABEL[itinerary.budgetStatus]}</p>
-              {onBookNow && cartItems.length > 0 && (
-                <button type="button" onClick={() => onBookNow(cartItems)} className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-white px-3 py-2 text-xs font-extrabold text-brand-700 shadow-sm transition hover:bg-brand-50">
-                  Thanh toán tất cả ({cartItems.length})
-                </button>
-              )}
             </div>
           </div>
         </div>

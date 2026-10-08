@@ -347,7 +347,7 @@ export interface paths {
         put?: never;
         /**
          * Thêm mục vào giỏ (cộng dồn quantity và guests nếu trùng productId và usingDate)
-         * @description Thêm thành công thì Backend ghi event add_to_cart sang CDP clone ở nền, với taxonomy và unitPrice lấy từ catalog. Thêm thất bại không ghi event. CDP lỗi không ảnh hưởng response. guests là số người lớn và trẻ em của mục (tối đa 9 khách, mỗi phòng một người lớn, không vượt maxOccupancy của hạng phòng); vi phạm trả 400 VALIDATION_ERROR kèm details.fields[]. Response trả thêm guests và fares (dòng giá theo loại khách) cho từng mục. Sản phẩm taxonomy hotel hoặc flight bị từ chối với 422 DIRECT_BOOKING_ONLY (details productId, taxonomy): giỏ không đổi, không ghi add_to_cart. Khách chưa đăng nhập thêm được vào giỏ (tối đa 20 mục, vượt thì 400 VALIDATION_ERROR reason CART_FULL) nhưng không sinh event CDP.
+         * @description Thêm thành công thì Backend ghi event add_to_cart sang CDP clone ở nền, với taxonomy và unitPrice lấy từ catalog. Thêm thất bại không ghi event. CDP lỗi không ảnh hưởng response. guests là số người lớn và trẻ em của mục (tối đa 9 khách; khách sạn tối đa 9 khách mỗi phòng và 9 phòng, mỗi phòng một người lớn, không vượt maxOccupancy của hạng phòng); vi phạm trả 400 VALIDATION_ERROR kèm details.fields[]. Response trả thêm guests và fares (dòng giá theo loại khách) cho từng mục. Sản phẩm taxonomy hotel hoặc flight bị từ chối với 422 DIRECT_BOOKING_ONLY (details productId, taxonomy): giỏ không đổi, không ghi add_to_cart. Khách chưa đăng nhập thêm được vào giỏ (tối đa 20 mục, vượt thì 400 VALIDATION_ERROR reason CART_FULL) nhưng không sinh event CDP.
          */
         post: operations["addCartItem"];
         delete?: never;
@@ -710,7 +710,7 @@ export interface components {
                 };
             };
         };
-        /** @description Một vi phạm trong details.fields[] của VALIDATION_ERROR. Backend trả mọi vi phạm trong một lần; message là tiếng Việt hiển thị được trực tiếp. reason là mã luật dùng chung giữa Web và Backend (docs/spec/booking/checkout-nhieu-buoc-hanh-khach.md §5.6): REQUIRED, NAME_INVALID, PHONE_INVALID, EMAIL_INVALID, BIRTH_DATE_INVALID, CHILD_AGE_INVALID, ADULT_REQUIRED, PARTY_TOO_LARGE, TRAVELER_UNKNOWN, TRAVELER_DUPLICATED, ITEM_DETAIL_MISSING, ITEM_DETAIL_UNKNOWN, ITEM_DETAIL_DUPLICATED, ITEM_WITHOUT_TRAVELER, GUEST_COUNT_MISMATCH, INFANTS_EXCEED_ADULTS, ROOM_COUNT_MISMATCH, OCCUPANCY_EXCEEDED, LEAD_GUEST_INVALID, TRAVELERS_REQUIRED; với đơn nháp và giỏ của khách: DUPLICATE_ITEM, CART_FULL, NOT_REBOOKABLE. Client gặp reason lạ thì hiển thị message. */
+        /** @description Một vi phạm trong details.fields[] của VALIDATION_ERROR. Backend trả mọi vi phạm trong một lần; message là tiếng Việt hiển thị được trực tiếp. reason là mã luật dùng chung giữa Web và Backend (docs/spec/booking/checkout-nhieu-buoc-hanh-khach.md §5.6): REQUIRED, NAME_INVALID, PHONE_INVALID, EMAIL_INVALID, BIRTH_DATE_INVALID, CHILD_AGE_INVALID, ADULT_REQUIRED, PARTY_TOO_LARGE, TRAVELER_UNKNOWN, TRAVELER_DUPLICATED, ITEM_DETAIL_MISSING, ITEM_DETAIL_UNKNOWN, ITEM_DETAIL_DUPLICATED, ITEM_WITHOUT_TRAVELER, GUEST_COUNT_MISMATCH, INFANTS_EXCEED_ADULTS, ROOM_COUNT_MISMATCH, OCCUPANCY_EXCEEDED, LEAD_GUEST_INVALID, TRAVELERS_REQUIRED, ROOMS_TOO_MANY; với đơn nháp và giỏ của khách: DUPLICATE_ITEM, CART_FULL, NOT_REBOOKABLE. Client gặp reason lạ thì hiển thị message. */
         ValidationFieldError: {
             /** @description Đường dẫn trong request, ví dụ travelers[2].birthDate hoặc itemDetails[0].rooms[1]. */
             field: string;
@@ -1470,7 +1470,7 @@ export interface components {
          * @enum {string}
          */
         FareType: "ADULT" | "CHILD" | "ROOM" | "PACKAGE";
-        /** @description Số người lớn và số trẻ em của một mục giỏ, tính theo loại giá tại ngày sử dụng của mục (trẻ em đã tròn 12 tuổi tính là người lớn). Không chứa tên. Tối đa 9 khách mỗi mục. */
+        /** @description Số người lớn và số trẻ em của một mục giỏ, tính theo loại giá tại ngày sử dụng của mục (trẻ em đã tròn 12 tuổi tính là người lớn). Không chứa tên. Tối đa 9 khách mỗi mục; khách sạn tối đa 9 khách mỗi phòng và 9 phòng mỗi mục (tổng cao nhất 81 khách), nên maximum của adults và children là trần chung, luật theo loại dịch vụ do Backend kiểm. */
         GuestCounts: {
             adults: number;
             children: number;
@@ -1557,7 +1557,7 @@ export interface components {
             isLead: boolean;
             documents?: components["schemas"]["BookingTravelerDocuments"];
         };
-        /** @description Thêm trùng productId và usingDate thì cộng dồn quantity và guests; kết quả sau khi cộng vẫn phải đạt luật (tối đa 9 khách, mỗi phòng một người lớn, không vượt maxOccupancy). Không gửi guests (client cũ): khách sạn và dịch vụ tính theo người mặc định mỗi phòng/vé một người lớn; combo mặc định 1 người lớn. */
+        /** @description Thêm trùng productId và usingDate thì cộng dồn quantity và guests; kết quả sau khi cộng vẫn phải đạt luật (tối đa 9 khách, khách sạn tối đa 9 khách mỗi phòng và 9 phòng, mỗi phòng một người lớn, không vượt maxOccupancy). Không gửi guests (client cũ): khách sạn và dịch vụ tính theo người mặc định mỗi phòng/vé một người lớn; combo mặc định 1 người lớn. */
         AddCartItemRequest: {
             productId: string;
             /** Format: date */

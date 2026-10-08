@@ -599,7 +599,7 @@ Bố cục dưới đây là UX mục tiêu. Frontend hiện render form và k�
 │ 🤖 [Thẻ tóm tắt kế hoạch → panel phải]  │ Tối ── card nhà hàng/combo           │
 │                                         │ ───────────────────────────────────  │
 │ ┌──────────────────────────────────┐    │ 5 dịch vụ đặt được · 9.870.000 ₫    │
-│ │ Nhập yêu cầu chuyến đi…      [➤] │    │ [ Thanh toán tất cả ]                │
+│ │ Nhập yêu cầu chuyến đi…      [➤] │    │                                      │
 │ └──────────────────────────────────┘    │                                      │
 │ Trợ lý chỉ lên kế hoạch chuyến đi.      │                                      │
 └─────────────────────────────────────────┴──────────────────────────────────────┘
@@ -813,7 +813,7 @@ Nếu cắt về single-turn (handbook §2, mục 6) thì thẻ này là cách *
 │           └────────────────────────────────────────────────────────────────┘  │
 ├───────────────────────────────────────────────────────────────────────────────┤
 │ 5 dịch vụ đặt được · Tổng ước tính 9.870.000 ₫ (2 người lớn, 1 trẻ em)         │
-│ [ Thanh toán tất cả ]                                                          │
+│                                                                                │
 └───────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -828,7 +828,7 @@ Nếu cắt về single-turn (handbook §2, mục 6) thì thẻ này là cách *
 | `ActivityNote` | Mục không phải sản phẩm: nền xám nhạt, icon, chữ nghiêng, **không có giá, không có nút, không có ảnh sản phẩm** | `[R97]` Vrbo iOS (phân biệt thẻ "Booked" có ảnh với mục "Visit the Grand Palace" chỉ có chữ); `[R98]` KAYAK web (mục trong ngày có nhãn "Booked" khác mục tự thêm) |
 | Ghi chú LLM trên thẻ | 1–2 câu, icon 💬, trình bày như trích dẫn. Giải thích *vì sao nằm ở khung giờ này* | `[R105]` Etsy web (mỗi sản phẩm có một câu lý do ngắn do trợ lý viết: "Perfect for helping up your weekend breakfasts…") |
 | Nhãn "Hợp với bạn" | Chỉ cho sản phẩm đến từ `/recommendations`, kèm `BecauseLine` (§5.2) | `[R97]` Vrbo iOS (công tắc "Showing AI recommendations" tách mục gợi ý khỏi mục đã đặt) |
-| Tổng + CTA | Đếm **chỉ** các `ProductCard` còn `available`. **"Thanh toán tất cả"** gom mọi mục đặt được của kế hoạch (lưu trú và hoạt động) vào một đơn nháp với ngày suy từ ngày của kế hoạch rồi mở trang thanh toán; mục không đặt được bị bỏ và báo trong toast. Từng thẻ có nút riêng: khách sạn, vé máy bay có "Đặt ngay"; tour, golf, combo có "Thêm vào giỏ" và "Đặt ngay". Sản phẩm chưa đặt được (ví dụ khách sạn chưa có hạng phòng trong lịch trình) không có nút, thẻ mở trang chi tiết | `[R94]` Tripadvisor iOS (màn hình "Add to itinerary": checkbox từng mục + "Select all" + nút "Add") |
+| Tổng + CTA | Đếm **chỉ** các `ProductCard` còn `available`. **Không có "Thanh toán tất cả"** (bỏ 2026-10-08, trước mắt mỗi mục thanh toán riêng; ngày suy từ ngày của kế hoạch). Từng thẻ có nút riêng: khách sạn, vé máy bay có "Đặt ngay"; tour, golf, combo có "Thêm vào giỏ" và "Đặt ngay". Sản phẩm chưa đặt được (ví dụ khách sạn chưa có hạng phòng trong lịch trình) không có nút, thẻ mở trang chi tiết | `[R94]` Tripadvisor iOS (màn hình "Add to itinerary": checkbox từng mục + "Select all" + nút "Add") |
 
 ### 6.4 Quy tắc grounding mục tiêu trên UI ("LLM không tự bịa sản phẩm", handbook §9, §12, §13)
 
@@ -841,7 +841,7 @@ Nếu cắt về single-turn (handbook §2, mục 6) thì thẻ này là cách *
 3. **Không tự động biến tên riêng trong văn bản LLM thành link.** Mindtrip `[R91]` link hóa địa danh trong văn bản; V-OTA **không** làm vậy, vì một cái tên LLM viết ra có thể không phải sản phẩm thật.
 4. **`productId` không resolve được** (404, sai thành phố, `available: false`) thì mục đó **không** được render thành thẻ. Thay bằng dòng mờ "Mục này hiện không còn chỗ · [Tìm lựa chọn khác]" (→ `/search?q={destination} {taxonomy}`). Ở chế độ debug, ghi lý do loại.
 5. **`destination` của sản phẩm khác `destination` của ý định** thì không render. Đây là kiểm tra "đúng thành phố" của handbook §11 Tuần 4, lặp lại ở client như lưới an toàn cuối.
-6. **Nút "Xem chi tiết" dẫn tới `/product/:id` thật**; "Thêm vào giỏ", "Đặt ngay" và "Thanh toán tất cả" dùng đúng luồng giỏ và đơn nháp của trang thanh toán. Không có luồng đặt riêng trong chat (handbook §9: trợ lý "không xử lý việc đặt chỗ").
+6. **Nút "Xem chi tiết" dẫn tới `/product/:id` thật**; "Thêm vào giỏ" và "Đặt ngay" dùng đúng luồng giỏ và đơn nháp của trang thanh toán. Không có luồng đặt riêng trong chat (handbook §9: trợ lý "không xử lý việc đặt chỗ").
 7. Ghi chú 💬 bị cắt ở 160 ký tự. Ghi chú chứa giá tiền (regex số + "đ/₫/VND") thì ẩn phần giá, vì giá chỉ được hiện từ `PriceTag`.
 
 **Đề xuất hợp đồng dữ liệu tối thiểu cho UI** (Backend chốt tên trường; UI chỉ cần hình dạng này):
@@ -900,7 +900,7 @@ Nếu cắt về single-turn (handbook §2, mục 6) thì thẻ này là cách *
 
 **Hiện trạng code:** client có wrapper cho cart, event và booking; route Cart, Checkout và Confirmation hiện render màn hình API chưa khả dụng, chưa gọi các wrapper này. Chưa xác minh luồng ghi booking/event hoặc cập nhật recommendation qua Backend.
 
-- "Thêm vào giỏ", "Đặt ngay" và "Thanh toán tất cả" từ chat ghi `add_to_cart` như mọi nơi khác (không có đường tắt ghi `purchase`). Khách sạn và vé máy bay của kế hoạch không vào giỏ: chúng chỉ nằm trong đơn nháp của lần thanh toán đó.
+- "Thêm vào giỏ" và "Đặt ngay" từ chat ghi `add_to_cart` như mọi nơi khác (không có đường tắt ghi `purchase`). Khách sạn và vé máy bay của kế hoạch không vào giỏ: chúng chỉ nằm trong đơn nháp của lần thanh toán đó.
 - Sau khi đặt xong từ các mục của kế hoạch, Confirmation hiện CTA "Quay lại lịch trình" (giữ hội thoại trong phiên) bên cạnh "Xem gợi ý mới trên trang chủ".
 - Kế hoạch **không** tự cập nhật giá sau khi tạo. Băng grounding ghi "giá tại thời điểm tạo kế hoạch". Giỏ và Checkout luôn dùng giá mới nhất và báo nếu giá đổi.
 
@@ -956,7 +956,7 @@ Quy tắc chung: vùng chạm ≥ 44 × 44 px, lề ngang 16 px, không cuộn n
 │    └───────────────────────────┘│      │ …                               │
 │ [Đổi thành 2 ngày] [Rẻ hơn]  → │      ├─────────────────────────────────┤
 ├────────────────────────────────┤      │ 5 dịch vụ · 9.870.000 ₫          │
-│ [Nhập yêu cầu chuyến đi…] [➤] │      │ [    Thanh toán tất cả    ]      │
+│ [Nhập yêu cầu chuyến đi…] [➤] │      │                                 │
 └────────────────────────────────┘      └─────────────────────────────────┘
       Màn hình chat (toàn phần)              Sheet kế hoạch (toàn phần)
 ```

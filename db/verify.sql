@@ -63,8 +63,8 @@ SELECT 'cart party size 1..9 with an adult: ' || CASE WHEN count(*) = 0 THEN 'PA
 -- Đặt trực tiếp (FR-BKG-01): giỏ chỉ chứa tour, trải nghiệm, tiện ích khác; đoàn khách của mục đơn nháp hợp lệ; đơn nháp có ít nhất một mục.
 SELECT 'cart has no hotel or flight: ' || CASE WHEN count(*) = 0 THEN 'PASS' ELSE 'FAIL ('||count(*)||')' END
   FROM app.cart_items ci JOIN cdp.products p ON p.product_id = ci.product_id WHERE p.taxonomy IN ('hotel','flight');
-SELECT 'booking draft party size 1..9 with an adult: ' || CASE WHEN count(*) = 0 THEN 'PASS' ELSE 'FAIL ('||count(*)||')' END
-  FROM app.booking_draft_items WHERE adults < 1 OR children < 0 OR adults + children > 9;
+SELECT 'booking draft party size 1..81 with an adult: ' || CASE WHEN count(*) = 0 THEN 'PASS' ELSE 'FAIL ('||count(*)||')' END
+  FROM app.booking_draft_items WHERE adults < 1 OR children < 0 OR adults + children > 81;
 SELECT 'booking drafts expire after creation and have items: ' || CASE WHEN count(*) = 0 THEN 'PASS' ELSE 'FAIL ('||count(*)||')' END
   FROM app.booking_drafts d WHERE d.expires_at <= d.created_at
      OR NOT EXISTS (SELECT 1 FROM app.booking_draft_items i WHERE i.draft_id = d.draft_id);

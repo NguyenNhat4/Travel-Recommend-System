@@ -3,7 +3,7 @@
 /** Bước ① Hành khách (spec checkout-nhieu-buoc-hanh-khach.md §6.4): đoàn khách, họ tên, ngày sinh trẻ em, người liên hệ. */
 import React from 'react';
 import { ArrowRight, Baby, FileText, Info, Plane, User } from 'lucide-react';
-import { MAX_PARTY, ageOn, formatDmy, normalizeName } from './checkoutRules';
+import { ageOn, formatDmy, normalizeName } from './checkoutRules';
 import { displayName, partyCounts, ticketName, travelerLabel, type TravelerDraft } from './allocation';
 import { CounterRow, ErrorSummaryBox, Field, Notice, PrimaryButton, SectionTitle, cardClass, inputClass } from './CheckoutParts';
 import type { CheckoutController } from './useCheckout';
@@ -204,16 +204,16 @@ export const TravelersStep: React.FC<{ ctl: CheckoutController }> = ({ ctl }) =>
         <SectionTitle title="Ai đi chuyến này?" />
         <div className="divide-y divide-slate-100" id="party-counters">
           <CounterRow
-            label="Người lớn" hint="Từ 12 tuổi" value={counts.adults} canDec={counts.adults > 1} canInc={total < MAX_PARTY}
+            label="Người lớn" hint="Từ 12 tuổi" value={counts.adults} canDec={counts.adults > 1} canInc={total < ctl.partyCap}
             decLabel="Bớt người lớn" incLabel="Thêm người lớn" onDec={() => ctl.removeTraveler('ADULT')} onInc={() => ctl.addTraveler('ADULT')}
           />
           <CounterRow
-            label="Trẻ em" hint="Dưới 12 tuổi" value={counts.children} canDec={counts.children > 0} canInc={total < MAX_PARTY}
+            label="Trẻ em" hint="Dưới 12 tuổi" value={counts.children} canDec={counts.children > 0} canInc={total < ctl.partyCap}
             decLabel="Bớt trẻ em" incLabel="Thêm trẻ em" onDec={() => ctl.removeTraveler('CHILD')} onInc={() => ctl.addTraveler('CHILD')}
           />
         </div>
         {ctl.errors['party-counters'] && <p className="text-xs text-rose-600 font-medium" role="alert">{ctl.errors['party-counters']}</p>}
-        <p className="text-xs text-slate-500">Tối đa 9 khách mỗi đơn.</p>
+        <p className="text-xs text-slate-500">Tối đa {ctl.partyCap} khách mỗi đơn.</p>
       </section>
 
       <section className={cardClass} aria-label="Thông tin hành khách">
