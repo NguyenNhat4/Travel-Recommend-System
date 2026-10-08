@@ -1,0 +1,169 @@
+{
+ "parity_mismatch_llbo200": 0,
+ "P2_confidence/stats": {
+  "trips_p50": 4.0,
+  "share_trips_without_purchase": 0.635,
+  "share_open": 1.0
+ },
+ "P2_confidence+F0_prod": {
+  "llbo": {
+   "n": 800,
+   "hit@20": 0.8363,
+   "ndcg@10": 0.5221,
+   "hit@4": 0.5725
+  },
+  "temporal": {
+   "n": 775,
+   "hit@20": 0.1548,
+   "ndcg@10": 0.0929,
+   "hit@4": 0.1123
+  },
+  "nexttrip": {
+   "n": 800,
+   "hit@20": 0.0675,
+   "ndcg@10": 0.0151,
+   "hit@4": 0.0175
+  },
+  "syn_between": {
+   "themePrec": 0.431,
+   "themePrec_beach": 0.912,
+   "themePrec_mountain": 0.163,
+   "themePrec_city": 0.219,
+   "distinctDestsTotal": 25,
+   "top5Dests": [
+    [
+     "Nha Trang",
+     251
+    ],
+    [
+     "Phan Thiết",
+     241
+    ],
+    [
+     "Phú Quốc",
+     226
+    ],
+    [
+     "TP. Hồ Chí Minh",
+     62
+    ],
+    [
+     "Đà Nẵng",
+     55
+    ]
+   ]
+  },
+  "syn_open": {
+   "themePrec": 0.767,
+   "themePrec_beach": 0.75,
+   "themePrec_mountain": 0.8,
+   "themePrec_city": 0.75,
+   "distinctDestsTotal": 40,
+   "top5Dests": [
+    [
+     "Hải Phòng",
+     56
+    ],
+    [
+     "Đà Lạt",
+     52
+    ],
+    [
+     "Phú Quốc",
+     48
+    ],
+    [
+     "Vũng Tàu",
+     48
+    ],
+    [
+     "TP. Hồ Chí Minh",
+     48
+    ]
+   ]
+  }
+ },
+ "P3_session/stats": {
+  "trips_p50": 2.0,
+  "share_trips_without_purchase": 0.497,
+  "share_open": 1.0
+ },
+ "P3_session+F0_prod": {
+  "llbo": {
+   "n": 800,
+   "hit@20": 0.8375,
+   "ndcg@10": 0.5249,
+   "hit@4": 0.57
+  },
+  "temporal": {
+   "n": 775,
+   "hit@20": 0.1652,
+   "ndcg@10": 0.0962,
+   "hit@4": 0.1148
+  },
+  "nexttrip": {
+   "n": 800,
+   "hit@20": 0.0688,
+   "ndcg@10": 0.0176,
+   "hit@4": 0.02
+  },
+  "syn_between": {
+   "themePrec": 0.43,
+   "themePrec_beach": 0.916,
+   "themePrec_mountain": 0.159,
+   "themePrec_city": 0.216,
+   "distinctDestsTotal": 30,
+   "top5Dests": [
+    [
+     "Nha Trang",
+     250
+    ],
+    [
+     "Phan Thiết",
+     246
+    ],
+    [
+     "Phú Quốc",
+     225
+    ],
+    [
+     "Đà Nẵng",
+     57
+    ],
+    [
+     "TP. Hồ Chí Minh",
+     55
+    ]
+   ]
+  },
+  "syn_open": {
+   "themePrec": 0.767,
+   "themePrec_beach": 0.75,
+   "themePrec_mountain": 0.8,
+   "themePrec_city": 0.75,
+   "distinctDestsTotal": 40,
+   "top5Dests": [
+    [
+     "Hải Phòng",
+     56
+    ],
+    [
+     "Đà Lạt",
+     52
+    ],
+    [
+     "Phú Quốc",
+     48
+    ],
+    [
+     "Vũng Tàu",
+     48
+    ],
+    [
+     "TP. Hồ Chí Minh",
+     48
+    ]
+   ]
+  }
+ }
+}
