@@ -101,6 +101,8 @@ export interface UserPersona {
   code: string;
   name: string;
   email: string;
+  /** Số điện thoại hồ sơ (FR-USR-04); null hoặc vắng mặt khi chưa có. */
+  phone?: string | null;
   avatarText: string;
   tagline: string;
   description: string;
@@ -171,6 +173,16 @@ export interface ItineraryDay {
   slots: ItinerarySlot[];
 }
 
+/** Một vé máy bay của lịch trình (`ItineraryFlight`, AC-AGT-02): Backend chọn từ chuyến bay thật của catalog. */
+export interface ItineraryFlightItem {
+  productId: string;
+  product: Product;
+  direction: 'OUTBOUND' | 'RETURN' | 'ROUND_TRIP';
+  date: string;
+  returnDate: string | null;
+  passengers: number;
+}
+
 export interface GroundedPlan {
   intent: TravelIntent;
   missing?: string[];
@@ -183,6 +195,8 @@ export interface GroundedPlan {
     because?: BecauseItem[];
   };
   stays?: ItineraryStayItem[];
+  /** Vé máy bay; vắng mặt khi lịch trình không có chặng bay (lý do nằm trong lời diễn giải). */
+  flights?: ItineraryFlightItem[];
   days: ItineraryDay[];
   /** Tổng chi phí các sản phẩm trong lịch trình. `null` = backend chưa đủ căn cứ để tính, KHÔNG phải 0. */
   totalEstimatedPrice: number | null;

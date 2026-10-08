@@ -23,7 +23,7 @@ reason `docs/prd/architecture.md` keeps `cdp.products.attributes` as open JSONB)
 
 from __future__ import annotations
 
-from typing import Any, TypedDict
+from typing import Any, NotRequired, TypedDict
 
 
 class Party(TypedDict, total=False):
@@ -41,6 +41,7 @@ class TripIntent(TypedDict, total=False):
     budget: int | None
     interests: list[str]
     pace: str | None
+    origin: NotRequired[str | None]  # 1.18.0, AC-AGT-02: vắng mặt = chưa biết nơi đi
 
 
 class HotelAttributes(TypedDict, total=False):
@@ -77,6 +78,7 @@ class Constraints(TypedDict, total=False):
     price_strict: bool
     star_rating_min: float
     hotel_attributes: HotelAttributes
+    require_flight: bool  # người dùng hỏi rõ vé máy bay: chuyến 1 ngày vẫn có chặng bay (AC-AGT-02)
 
 
 class Product(TypedDict, total=False):
@@ -134,10 +136,22 @@ class Stay(TypedDict, total=False):
     because: list[dict[str, Any]]
 
 
+class FlightLeg(TypedDict, total=False):
+    """One `ItineraryFlight` in `Plan.flights`, chosen by `flights.choose_flights`."""
+
+    product: Product
+    direction: str  # OUTBOUND | RETURN | ROUND_TRIP
+    date: str
+    returnDate: str | None
+    passengers: int
+    source: str
+
+
 class Plan(TypedDict, total=False):
     """The itinerary proposal built by `render_proposal`, checked by `validate_plan`."""
 
     stay: Stay
+    flights: list[FlightLeg]
     days: list[DayPlan]
     bookableCount: int
     estimatedTotal: int | None
@@ -171,6 +185,7 @@ class ToolErrorPayload(TypedDict):
     code: str
     retryable: bool
     httpStatus: int | None
+    reason: NotRequired[str]  # kiểm tra nào hỏng; chỉ có khi nơi raise biết lý do
 
 
 class ToolCall(TypedDict, total=False):

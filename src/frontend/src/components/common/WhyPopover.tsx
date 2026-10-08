@@ -28,7 +28,7 @@ export const WhyPopover: React.FC<WhyPopoverProps> = ({
       case 'purchase':
         return <Luggage className="w-4 h-4 text-emerald-600" />;
       case 'add_to_cart':
-        return <ShoppingBag className="w-4 h-4 text-blue-600" />;
+        return <ShoppingBag className="w-4 h-4 text-brand-600" />;
       case 'product_view':
         return <Eye className="w-4 h-4 text-amber-600" />;
       case 'search':
@@ -66,8 +66,8 @@ export const WhyPopover: React.FC<WhyPopoverProps> = ({
     if (contribution >= 0.5) {
       return (
         <div className="flex items-center gap-1.5 text-xs text-slate-700">
-          <span className="text-blue-600 font-mono tracking-tighter">●●●○</span>
-          <span className="font-medium text-blue-700">Nhiều</span>
+          <span className="text-brand-600 font-mono tracking-tighter">●●●○</span>
+          <span className="font-medium text-brand-700">Nhiều</span>
         </div>
       );
     } else if (contribution >= 0.2) {
@@ -149,27 +149,27 @@ export const WhyPopover: React.FC<WhyPopoverProps> = ({
             )}
           </div>
 
-          <div className="pt-3 border-t border-slate-100 text-xs text-slate-600 space-y-1.5 bg-blue-50/60 p-3 rounded-lg border border-blue-100">
-            <p className="font-medium text-blue-900">Chiến lược đề xuất thông minh:</p>
+          <div className="pt-3 border-t border-slate-100 text-xs text-slate-600 space-y-1.5 bg-brand-50/60 p-3 rounded-lg border border-brand-100">
+            <p className="font-medium text-brand-900">Chiến lược đề xuất thông minh:</p>
             {strategy === 'cross_vertical' ? (
-              <p className="text-blue-800 leading-relaxed">
+              <p className="text-brand-800 leading-relaxed">
                 Chuyến {destination} của bạn đã có {excludedVerticals.includes('hotel') ? 'khách sạn' : 'dịch vụ'}, 
                 hệ thống ưu tiên gợi ý vé máy bay và vé tham quan thay vì gợi ý trùng lặp khách sạn.
               </p>
             ) : strategy === 'dormant' ? (
-              <p className="text-blue-800 leading-relaxed">
+              <p className="text-brand-800 leading-relaxed">
                 Chào mừng bạn quay lại sau một thời gian! Gợi ý dựa trên điểm đến yêu thích trong chuyến đi trước đó của bạn.
               </p>
             ) : strategy === 'recent_views' ? (
-              <p className="text-blue-800 leading-relaxed">
+              <p className="text-brand-800 leading-relaxed">
                 Hệ thống nhận diện bạn đang quan tâm tới {destination} qua các lượt xem gần đây để đề xuất dịch vụ kết hợp.
               </p>
             ) : (
-              <p className="text-blue-800 leading-relaxed">
+              <p className="text-brand-800 leading-relaxed">
                 Các sản phẩm được chọn lọc theo mức độ phổ biến và đánh giá hài lòng cao tại các điểm đến nổi bật.
               </p>
             )}
-            <p className="text-[11px] text-blue-700/80 pt-1">
+            <p className="text-[11px] text-brand-700/80 pt-1">
               Gợi ý sẽ tự động thích ứng ngay khi bạn tìm kiếm hoặc đặt thêm dịch vụ.
             </p>
           </div>

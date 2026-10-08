@@ -190,6 +190,22 @@ class FallbackTests(unittest.TestCase):
         current = state(slots=[])
         self.assertIn('tự do nghỉ ngơi', narration.fallback_message(current, current['response']))
 
+    def test_the_airport_transfer_lines_are_kept_in_slot_order(self):
+        """Ngày đến/ngày về có dòng di chuyển theo giờ bay (AC-AGT-02); fallback in nó bằng ghi chú, đúng thứ tự buổi."""
+        transfer = {'time': 'EVENING', 'activityType': 'TRANSFER', 'product': None, 'note': 'Ra sân bay.',
+                    'source': None, 'because': []}
+        park = {'time': 'MORNING', 'activityType': None, 'product': deepcopy(PARK), 'note': 'Tham quan.',
+                'source': 'SEARCH', 'because': []}
+        current = state(slots=[park, transfer])
+        text = narration.fallback_message(current, current['response'])
+        self.assertIn('[Hồ Gươm](product:p1)', text)
+        self.assertIn('• Buổi tối — Ra sân bay.', text)
+        self.assertLess(text.index('Hồ Gươm'), text.index('Ra sân bay.'))
+        only_transfer = state(slots=[{**transfer, 'note': 'Di chuyển từ sân bay, nhận phòng.'}])
+        text = narration.fallback_message(only_transfer, only_transfer['response'])
+        self.assertIn('• Buổi tối — Di chuyển từ sân bay, nhận phòng.', text)
+        self.assertNotIn('tự do nghỉ ngơi', text)
+
 
 NO_STAY = {'code': 'NO_STAY_AVAILABLE', 'message': 'Khách sạn ở Hà Nội trong dữ liệu hiện chỉ nhận đặt từ 15/10/2026.'}
 

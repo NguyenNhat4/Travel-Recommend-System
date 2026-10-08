@@ -30,6 +30,7 @@ from src.backend.app.api.v1.schemas.auth import (
     RegisterRequest,
     SessionRequest,
     SessionResponse,
+    UpdateProfileRequest,
 )
 from src.backend.app.application.auth.principal import AuthPrincipal
 
@@ -61,6 +62,14 @@ async def login(body: LoginRequest, request: Request, ip: str = Depends(client_i
 async def me(principal: AuthPrincipal = Depends(current_principal),
              use_case=Depends(get_auth_use_case("get_current_user"))):
     return AuthUser.of(await use_case(principal))
+
+
+@router.patch("/auth/me", response_model=AuthUser)
+async def update_me(body: UpdateProfileRequest, principal: AuthPrincipal = Depends(current_principal),
+                    use_case=Depends(get_auth_use_case("update_profile"))):
+    """Sửa hồ sơ (FR-USR-04). `phone = null` xoá số; trường vắng mặt giữ nguyên."""
+    return AuthUser.of(await use_case(
+        principal, full_name=body.fullName, phone=body.phone, set_phone="phone" in body.model_fields_set))
 
 
 # --- Chỉ BFF -------------------------------------------------------------------------------------

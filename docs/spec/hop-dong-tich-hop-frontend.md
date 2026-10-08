@@ -102,13 +102,15 @@ type ProductSummary = components["schemas"]["ProductSummary"];
 | Route | Màn hình | Cần đăng nhập | Query param chính thức |
 |---|---|---:|---|
 | `/` | Home | Không | `debug` |
-| `/hotels`, `/flights`, `/combos` | Trang danh mục: khách sạn & resort, vé máy bay, combo (đề xuất PRD `update-archive/2026-09-29-route-trang-danh-muc-dich-vu.md`) | Không | `destination`. `/flights` có `origin` **và** `destination` thì hiện chuyến bay của lần tìm dưới tấm tìm kiếm (§4.1b), kèm ngữ cảnh chuyến đi `checkIn`, `checkOut`, `adults`, `children`; không có thì hiện lời nhắc nhập |
-| `/experiences` | Trang danh mục: tour và trải nghiệm | Không | `destination`, `type` (`attraction` mặc định \| `golf`) |
+| `/hotels`, `/flights`, `/combos` | Trang danh mục: khách sạn & resort, vé máy bay, combo (đề xuất PRD `update-archive/2026-09-29-route-trang-danh-muc-dich-vu.md`) | Không | `destination`; `q` (có `q` là đang tìm: kết quả hiện ngay dưới tấm tìm kiếm, §4.1a; `/hotels` và `/combos`) kèm ngữ cảnh chuyến đi `checkIn`, `checkOut`, `adults`, `children`, `rooms`. `/flights` có `origin` **và** `destination` thì hiện chuyến bay của lần tìm dưới tấm tìm kiếm (§4.1b), kèm ngữ cảnh chuyến đi `checkIn`, `checkOut`, `adults`, `children`; không có thì hiện lời nhắc nhập |
+| `/experiences` | Trang danh mục: tour và trải nghiệm | Không | `destination`, `type` (`attraction` mặc định \| `golf`), `q` và ngữ cảnh chuyến đi như `/hotels` (kết quả chỉ trong tab đang chọn) |
 | `/search` | Kết quả tìm kiếm | Không | `q` (bắt buộc), `type` (hoặc `taxonomy`): `stay` \| `exp` \| `more` — nhận cả taxonomy cũ `hotel`, `attraction`, `golf`, `combo`; không có thì là tab Tất cả; `flight` chỉ khi mở từ `/flights` (danh sách phẳng, không tab), `destination` (chip ✕ ở "Đang lọc", không có checkbox); ngữ cảnh chuyến đi `checkIn`, `checkOut`, `adults`, `children`, `rooms` (§4.1a) |
 | `/product/{productId}` | Chi tiết sản phẩm | Không | ngữ cảnh chuyến đi tùy chọn `checkIn`, `checkOut`, `adults`, `children`, `rooms` (điền sẵn hộp đặt, §4.1a) |
 | `/cart` | Giỏ hàng | Có | — |
 | `/checkout` | Checkout | Có | — |
-| `/booking/{referenceCode}` | Trạng thái đơn / xác nhận đặt chỗ | Có | `payment` (`return` \| `cancelled`) — do Backend đặt vào `success_url`/`cancel_url` của phiên Stripe |
+| `/profile` | Hồ sơ cá nhân: sửa họ tên, số điện thoại, đổi mật khẩu (FR-USR-04, §4.6b) | Có (chưa đăng nhập thì hiện lời mời đăng nhập, mở hộp đăng nhập) | — (đường dẫn cũ có `tab`, `taxonomy`, `days` hoặc `page` được chuyển sang `/profile/booking_history` giữ nguyên bộ lọc) |
+| `/profile/booking_history` | Lịch sử đặt chỗ: ba tab, lọc, phân trang (FR-BKG-14, §4.6a) | Có (chưa đăng nhập thì hiện lời mời đăng nhập, mở hộp đăng nhập) | `tab` (`upcoming` mặc định \| `done` \| `cancelled`), `taxonomy` (`hotel` \| `flight` \| `attraction` \| `combo` \| `golf`), `days` (`1` \| `7` \| `30` \| `60`), `page` — giá trị lạ về mặc định |
+| `/booking/{referenceCode}` | Trạng thái đơn / chi tiết đơn hàng (FR-BKG-15) | Có | `payment` (`return` \| `cancelled`) — do Backend đặt vào `success_url`/`cancel_url` của phiên Stripe |
 | `/login`, `/register` | Đăng nhập, đăng ký | — | `redirect` (đường dẫn nội bộ, bắt đầu bằng `/`) |
 
 Quy ước:
@@ -145,16 +147,23 @@ Ký hiệu auth: **—** không gửi JWT · **tùy** gửi nếu có · **bắt
 
 Một template (`features/catalog/landing`), cấu hình ở `verticals.ts`. Hero + tấm tìm kiếm, rồi các khối. **`/flights` là ngoại lệ** (đề xuất PRD `update-archive/2026-09-30-trang-ve-may-bay-tim-tai-cho-bo-khoi-pho-bien-va-gia-tot.md`): không có hai khối 1 và 2 dưới đây; bên dưới tấm tìm kiếm là kết quả chuyến bay hoặc lời nhắc nhập (§4.1b), rồi điểm đến và banner trợ lý.
 
+**Tìm tại chỗ** (đề xuất PRD `update-archive/2026-10-07-tim-kiem-tai-trang-danh-muc.md`): ở `/hotels`, `/experiences`, `/combos`, URL có `?q=` là đang tìm. Hero thu gọn, kết quả của tab đang chọn hiện ngay dưới tấm tìm kiếm (`features/catalog/landing/LandingResults.tsx`, dùng lại `components/search/GroupResults.tsx`) thay cho hai khối 1, 2, điểm đến và banner trợ lý; không có `?q=` thì là trang danh mục như bảng dưới.
+
 | Khu vực | Endpoint | Auth | Trường Web đọc | Khi lỗi / rỗng |
 |---|---|---|---|---|
 | Khối 1 "… phổ biến" (tải ngay) | `GET /products?taxonomy=<t>&sort=popular&availableOnly=true&limit=8` (+ `destination` khi có `?destination=`) | — | `results[]` (`ProductSummary`) | Lỗi → "Chưa tải được · Thử lại" tại khối. Rỗng → "Chưa có {loại} tại {điểm đến}" + liên kết `/search` |
 | Khối 2 "… giá tốt nhất" (tải khi vào vùng nhìn) | như trên với `sort=price_asc` (sản phẩm chưa có giá xếp cuối) | — | như trên | Dưới 3 thẻ hoặc lỗi rỗng → ẩn khối |
+| Kết quả tìm kiếm (chỉ khi có `?q=`; thay khối 1, 2 và điểm đến) | `POST /search` một lần cho loại của tab (`taxonomy`; `/experiences` chỉ attraction **hoặc** golf), `destination` khi có, `travelContext.guests` khi URL có số người lớn và `travelContext.checkIn` / `checkOut` khi URL có ngày (xem dưới), `limit: 20`, `offset += 20`, qua bộ đệm 60 giây như §4.2 | tùy | `results[]` (`ProductSummary` + `score`), `total` | Lỗi → "Thử lại"; rỗng → "Chưa tìm thấy dịch vụ nào cho …" + "Nhờ Trợ lý AI gợi ý"; rỗng do lọc → "Xóa bộ lọc" |
 | Điểm đến (tải khi vào vùng nhìn) | `GET /destinations` | — | `destination`, `productCount` | Lỗi hoặc rỗng → ẩn khối |
 | Gợi ý điểm đến trong tấm tìm kiếm (vé máy bay: cả ô Điểm đi) | `GET /destinations` | — | như trên | Lỗi → vẫn gõ tự do được |
 
-`/experiences` có hai tab (`?type=attraction|golf`); các trang khác một tab. Tấm tìm kiếm gửi bằng điều hướng sang `/search?q&type[&destination]&checkIn&checkOut&adults&children&rooms` (riêng vé máy bay **không** rời trang: tìm ngay tại `/flights`, §4.1b): điểm đến chọn từ gợi ý (hoặc gõ đúng nhãn) thành `destination`, còn lại vào `q` (rỗng thì dùng câu mặc định theo danh mục, `services/search.ts` `DEFAULT_QUERY`).
+`/experiences` có hai tab (`?type=attraction|golf`); các trang khác một tab. Tấm tìm kiếm gửi bằng điều hướng về **chính trang danh mục** `/{hotels|experiences|combos}?q[&type][&destination]&checkIn&checkOut&adults&children&rooms` (`searchHref.ts` `buildSearchHref`; `type` chỉ ghi khi không phải tab đầu; vé máy bay **không** rời trang: tìm ngay tại `/flights`, §4.1b): điểm đến chọn từ gợi ý (hoặc gõ đúng nhãn) thành `destination`, còn lại vào `q` (rỗng thì dùng câu mặc định theo danh mục, `services/search.ts` `DEFAULT_QUERY`; câu mặc định không hiện thành "Kết quả cho …"). Mở lại URL thì tấm tìm kiếm được điền sẵn từ `destination`, `q` (chữ tự do), ngày, số khách và số phòng. Kết quả có bộ lọc hạng sao và giá (chỉ khách sạn), popup sắp xếp và "Xem thêm" như tab nhóm của `/search`; ngày và số khách mang tiếp tới liên kết sản phẩm. Băng "kết quả yếu" chỉ có ở `/search`.
 
-**Ngữ cảnh chuyến đi** (`features/search/tripContext.ts`) là dữ liệu điền sẵn, **không phải bộ lọc phòng trống** (Backend chưa lọc theo ngày; không gửi `travelContext`). `/search` không hiển thị ngữ cảnh này (không chip ngày/số khách, vì hộp đặt ở trang chi tiết đã có chỗ chọn) mà chỉ nối query vào liên kết sản phẩm; hộp đặt ở `/product/{id}` điền sẵn ngày, số khách, số phòng nếu hợp lệ với hạng phòng đang chọn (sức chứa đúng; ngày nằm trong `availableFrom`–`availableTo`, riêng khách sạn: nhận phòng từ hôm nay đến hôm nay + 3 tháng, trả phòng sau 1–30 đêm, theo FR-CAT-03). Giá trị sai bị bỏ im lặng; Backend vẫn quyết định (`DATE_OUT_OF_RANGE`, `VALIDATION_ERROR`). Luật đoàn theo FR-BKG-08: tối đa 9 khách, mỗi phòng ít nhất 1 người lớn. Không đưa họ tên hay token vào URL.
+**Số khách là bộ lọc thật ở trang danh mục** (đang tìm bằng `?q=`): gửi `travelContext.guests` (contract 1.16.0, hard filter sức chứa; sản phẩm chưa khai sức chứa vẫn giữ). Backend so `adults + children` với sức chứa của **một** hạng phòng, nên nhiều phòng thì chia đều làm tròn lên (4 người ở 2 phòng gửi 2; `LandingResults.guestsOf`); không có số người lớn trên URL thì không gửi. `/search` không gửi.
+
+**Ngày là bộ lọc thật ở trang danh mục** (đề xuất PRD `update-archive/2026-10-07-loc-theo-ngay-o-tim-kiem.md`, contract 1.19.0): gửi `travelContext.checkIn` (+ `checkOut` khi có, ví dụ khách sạn nhiều đêm) cùng `guests` (`LandingResults.stayOf`). Backend loại sản phẩm không dùng được vào khoảng ngày đó (khách sạn: ngoài luật đặt phòng hoặc mọi hạng phòng kín lịch; vé tham quan, golf, combo: ngoài cửa sổ mở bán hoặc ngày kín lịch); thiếu dữ liệu lịch thì giữ. Lịch không chặn đặt chỗ nên khách sạn bị loại vẫn đặt được nếu mở thẳng trang chi tiết. `/search` không gửi ngày.
+
+**Ngữ cảnh chuyến đi** (`features/search/tripContext.ts`) còn điền sẵn ngày và số khách ở trang chi tiết (hộp đặt của vé, thanh ngày/số khách của khách sạn). `/search` không hiển thị ngữ cảnh này (không chip ngày/số khách, vì hộp đặt ở trang chi tiết đã có chỗ chọn) mà chỉ nối query vào liên kết sản phẩm; kết quả ở trang danh mục chỉ ghi nó thành một dòng ngắn cạnh tiêu đề; trang `/product/{id}` điền sẵn ngày, số khách, số phòng nếu hợp lệ (ngày nằm trong `availableFrom`–`availableTo`, riêng khách sạn: nhận phòng từ hôm nay đến hôm nay + 3 tháng, trả phòng sau 1–30 đêm, theo FR-CAT-03). Giá trị sai bị bỏ im lặng (riêng sức chứa của khách sạn: không bỏ, mà khoá nút Đặt ngay của hạng phòng không chứa nổi, xem §4.3); Backend vẫn quyết định (`DATE_OUT_OF_RANGE`, `VALIDATION_ERROR`). Luật đoàn theo FR-BKG-08: tối đa 9 khách mỗi mục; khách sạn tối đa 9 khách mỗi phòng và 9 phòng (`maxGuestsFor(rooms)`, ví dụ 2 phòng tối đa 18 khách); mỗi phòng ít nhất 1 người lớn. Không đưa họ tên hay token vào URL.
 
 Sau checkout (cờ `justBooked`): gọi lại ① bỏ qua cache. Chỉ hiện toast "Trang chủ đã cập nhật" khi `strategy` **hoặc** `nextVertical` khác lần gọi trước.
 
@@ -184,7 +193,7 @@ Quy tắc:
 
 ### 4.2. Search `/search`
 
-Đề xuất PRD `update-archive/2026-09-30-trang-search-bo-diem-den-ve-may-bay-va-tab-theo-nhom.md`. Tab theo nhóm header: **Tất cả · Lưu trú (`hotel`) · Tour và trải nghiệm (`attraction` + `golf`) · Tiện ích khác (`combo`)**. Vé máy bay không nằm trong tìm kiếm ngữ nghĩa; `?type=flight` (từ `/flights`) là ngoại lệ, một danh sách phẳng không tab. Không có bộ lọc điểm đến; `?destination=` từ tấm tìm kiếm ở trang danh mục vẫn truyền cho API và hiện thành chip có ✕.
+Đề xuất PRD `update-archive/2026-09-30-trang-search-bo-diem-den-ve-may-bay-va-tab-theo-nhom.md`. Tab theo nhóm header: **Tất cả · Lưu trú (`hotel`) · Tour và trải nghiệm (`attraction` + `golf`) · Tiện ích khác (`combo`)**. Vé máy bay không nằm trong tìm kiếm ngữ nghĩa; `?type=flight` (từ `/flights`) là ngoại lệ, một danh sách phẳng không tab. Không có bộ lọc điểm đến; `?destination=` (từ liên kết cũ hoặc chọn điểm đến ở gợi ý tức thì) vẫn truyền cho API và hiện thành chip có ✕. Tấm tìm kiếm ở trang danh mục không còn dẫn sang đây: kết quả hiện ngay tại trang danh mục (§4.1a).
 
 | Khu vực | Endpoint | Auth | Trường Web đọc | Khi lỗi / rỗng |
 |---|---|---|---|---|
@@ -210,17 +219,24 @@ Quy tắc:
 |---|---|---|---|---|
 | Thông tin, hộp đặt | `GET /products/{productId}` | — | `ProductDetail` đầy đủ, `variantSummary` | `404 PRODUCT_NOT_FOUND` → trang "Sản phẩm này không còn trên V-OTA" + carousel `GET /products?sort=popular` |
 | Chọn hạng phòng / chuyến bay | `GET /products?parentProductId={productId}&sort=price_asc` | — | `results[]` (`ProductSummary` của tầng con) | Chỉ gọi khi `attributes.level` là `property` hoặc `route`. Rỗng → "chưa có hạng phòng/chuyến bay đặt được", khoá nút đặt. Lỗi → dòng thông báo, khoá nút đặt |
-| Tương tự | `GET /products/{productId}/similar?limit=8` | — | `results[]` + `score` | Lỗi hoặc rỗng → ẩn section |
 | Hoàn thiện chuyến | `GET /recommendations?k=4&destination=<product.destination>` | bắt buộc | như Home ① | Chỉ render khi `destination` response trùng sản phẩm |
 | Thêm vào giỏ (chỉ `attraction`, `golf`, `combo`) | `POST /cart/items` | không cần | gửi `productId`, `usingDate`, `guests` (số người lớn và trẻ em) và `quantity` (combo); đọc `CartResponse.itemCount` (badge header) | Xem §8. `400 VALIDATION_ERROR` → toast `message`. Khách sạn và vé máy bay **không có nút này**, chỉ có Đặt ngay kèm dòng "được đặt trực tiếp, không thêm vào giỏ hàng" |
 | Đặt ngay (mọi loại) | `POST /booking-drafts` | không cần | gửi `items[]` một phần tử: `productId`, `usingDate`, `nights` (khách sạn), `guests`, `quantity` (khách sạn, combo); đọc `draftId` | Xong → `/checkout?draft=<draftId>`: chỉ thanh toán sản phẩm này, không kèm mục nào trong giỏ. Lỗi → toast, ở lại trang |
 | Ghi lượt xem | `POST /events` `{ eventName: "product_view", productId }` | bắt buộc | — (`202` không body) | Không JWT thì không gọi. Mọi lỗi bỏ qua im lặng, không hiện gì cho người dùng |
 
+**Không có mục "Tương tự"** ở trang chi tiết (quyết định 2026-10-07: tương đồng ngữ nghĩa không phải lý do đúng để đề xuất thêm ở đây); Web không gọi `GET /products/{productId}/similar`, endpoint vẫn do Backend cung cấp cho Agent.
+
+**Ảnh và tiện ích** (`components/detail/ProductGallery.tsx`, `AmenityList.tsx`): bộ ảnh đầu trang đọc `attributes.images` (một ảnh lớn, tối đa bốn ảnh nhỏ, nút "N ảnh", trình xem ảnh lớn). Mục "Tiện ích khách sạn" đọc `attributes.amenities` của sản phẩm. Mỗi hạng phòng trong danh sách chọn phòng (`GET /products?parentProductId=`, `components/detail/RoomCard.tsx`) là một thẻ: ảnh lớn bên trái (`imageUrl`, nút "Xem ảnh phòng (N)" mở các ảnh của riêng phòng `attributes.images`); tên phòng; thông số mỗi mục một icon (`maxOccupancy`, `roomSizeM2`, `bed`, `bedrooms`, `oceanView`, `familyFriendly`); tối đa 5 tiện ích nổi bật có icon (Wifi, điều hoà, bồn tắm, vòi sen, TV, ban công, két… chọn theo thứ tự quan trọng, mỗi loại icon một lần); nút "Tiện ích phòng (N)" mở toàn bộ `attributes.amenities` của phòng, mỗi mục một icon theo loại (`amenityIcons.ts`, nhận chữ tiếng Việt không phân biệt dấu; không nhận ra thì dấu tích); giá lớn "/ đêm" kèm "Đã gồm thuế & phí"; nhãn "Giá tốt nhất" ở hạng rẻ nhất khi có từ hai hạng bán được; nút giả "Chọn phòng" / "Đã chọn" (cả thẻ là một ô `role="radio"`). Hạng không bán được hiện "Hết chỗ" và không chọn được. Nút ảnh và tiện ích nằm trên ô chọn nên bấm không đổi lựa chọn. Chuyến bay vẫn dùng hàng gọn cũ.
+
+**Thanh phân cấp** (`components/detail/ProductBreadcrumb.tsx`): Trang chủ › {Loại} tại {điểm đến} › tên sản phẩm (mục cuối không phải liên kết). Mục giữa là liên kết thật về trang danh mục của loại (`/hotels`, `/experiences` kèm `type=golf` cho sân golf, `/combos`; vé máy bay về `/flights?destination=`) với kết quả của điểm đến đó và **giữ ngày, số khách** của tấm tìm kiếm trên URL (`checkIn`, `checkOut`, `adults`, `children`, `rooms`); không dẫn sang `/search`, trang gộp dành cho câu tìm tự do. Không có điểm đến thì bỏ mục giữa. Kiểu dáng: chữ 14px, mỗi mục là vùng bấm cao tối thiểu 32px bo góc có nền `brand-50` khi rê chuột, "Trang chủ" có icon nhà, mục hiện tại là chip xám đậm; trên điện thoại thanh cuộn ngang một dòng.
+
 Gọi `POST /events` **một lần** khi trang chi tiết đã hiển thị trên trình duyệt với người dùng đã đăng nhập; không gọi trong Server Component, khi prefetch link hay khi render lại cùng sản phẩm. Web không gửi event `search` hay `add_to_cart`: Backend tự ghi khi xử lý `/search`, `/cart/items` và `/booking-drafts`.
 
-Khách sạn (`property`) và tuyến bay (`route`) không đặt trực tiếp: hộp đặt dùng mục tầng con khách đã chọn (mặc định mục rẻ nhất còn đặt được), và `POST /booking-drafts` gửi `productId` của **tầng con**. Chưa chọn được mục tầng con (chưa có hạng phòng hoặc chuyến bay đặt được) thì nút Đặt ngay bị khoá. Sản phẩm không phân tầng đặt bằng chính `productId` của nó. Chuyến bay có một ngày cố định (`availableFrom = availableTo`) nên ngày hiện ở dạng chỉ đọc.
+Khách sạn (`property`) và tuyến bay (`route`) không đặt trực tiếp: `POST /booking-drafts` gửi `productId` của **tầng con**. Tuyến bay dùng hộp đặt dính bên phải theo mục tầng con khách đã chọn (mặc định mục rẻ nhất còn đặt được); chưa có chuyến bay đặt được thì nút Đặt ngay bị khoá.
 
-Hộp đặt gửi `nights` chỉ khi `taxonomy = hotel`. Bộ đếm khách theo loại dịch vụ (spec `booking/checkout-nhieu-buoc-hanh-khach.md` §6.9): vé tham quan, golf, chuyến bay có Người lớn (≥ 1) và Trẻ em (≥ 0) kèm đơn giá từng loại, và gửi `guests` (không gửi `quantity`, Backend tự tính bằng `adults + children`); khách sạn có số phòng, người lớn, trẻ em, gợi ý "Tối đa {maxOccupancy} khách/phòng" và gửi cả `quantity` (số phòng) lẫn `guests`; combo chỉ có số gói và chỉ gửi `quantity`. Tối đa 9 khách mỗi mục, mỗi phòng ít nhất 1 người lớn; nút thêm khoá khi lựa chọn chưa hợp lệ. Tổng tiền trong hộp đặt là **ước tính hiển thị** theo các dòng giá của spec đó (§4.3, §4.4); giá chính thức là `lineTotal` và `fares` do backend trả.
+**Khách sạn không có hộp đặt dính** (quyết định 2026-10-08): khách đi từ kết quả tìm kiếm đã mang sẵn ngày và số khách trên URL nên không cần chọn lại ở một hộp riêng. Trên cùng trang, phía trên thanh phân cấp, có thanh tìm kiếm cùng kiểu với tấm tìm kiếm ở trang danh mục (`components/detail/HotelTripBar.tsx`: ô địa điểm điền sẵn tên khách sạn, gõ được và có gợi ý điểm đến (`GET /destinations`), ngày ở kèm số đêm, số phòng và khách, nút tìm; dùng lại `DateRangePicker` và `GuestsPopover`; điền sẵn từ URL, khách vào thẳng trang vẫn sửa được, lỗi ngày hiện dưới thanh; giữ nguyên ô địa điểm thì nút tìm ghi ngày và đoàn khách lên URL rồi cuộn tới hạng phòng; đổi địa điểm thì sang `/hotels?q=…&destination=…` kèm ngày và số khách, như tấm tìm kiếm ở trang danh mục), và **nút Đặt ngay nằm trên từng thẻ hạng phòng** (`RoomCard.tsx`), bấm là tạo đơn nháp cho hạng phòng đó với ngày và đoàn khách đang hiện. Trên danh sách phòng có bộ lọc tiện ích phòng (`RoomAmenityFilter.tsx`, từ hai hạng phòng trở lên và khi có ít nhất một tiện ích): chip nhiều lựa chọn, kèm số phòng có tiện ích đó, phòng phải có đủ mọi tiện ích đã chọn, đọc `attributes.amenities` của từng hạng phòng và lọc ngay trên trình duyệt (không gọi API; bỏ mục chỉ là diện tích "N m²"), hiện "x/y hạng phòng phù hợp", "Xoá bộ lọc" và trạng thái rỗng khi không phòng nào hợp. Không còn ô chọn phòng, hạng phòng mặc định hay tổng ước tính trên trang (tổng tiền do bước thanh toán tính). Hạng phòng không chứa nổi đoàn khách (`maxOccupancy` × số phòng) có nút Đặt ngay khoá kèm dòng "cần ít nhất N phòng"; hạng khác vẫn đặt được. Trang của một hạng phòng lẻ (không phân tầng) hiện đúng thẻ của nó và thanh ngày/số khách. Sản phẩm không phân tầng đặt bằng chính `productId` của nó. Chuyến bay có một ngày cố định (`availableFrom = availableTo`) nên ngày hiện ở dạng chỉ đọc.
+
+Đặt ngay gửi `nights` chỉ khi `taxonomy = hotel`. Bộ đếm khách theo loại dịch vụ (spec `booking/checkout-nhieu-buoc-hanh-khach.md` §6.9): vé tham quan, golf, chuyến bay có Người lớn (≥ 1) và Trẻ em (≥ 0) kèm đơn giá từng loại, và gửi `guests` (không gửi `quantity`, Backend tự tính bằng `adults + children`); khách sạn có số phòng, người lớn, trẻ em (ở thanh `HotelTripBar`, không còn gợi ý chung "Tối đa N khách/phòng" vì mỗi hạng phòng một sức chứa) và gửi cả `quantity` (số phòng) lẫn `guests`; combo chỉ có số gói và chỉ gửi `quantity`. Tối đa 9 khách mỗi mục, mỗi phòng ít nhất 1 người lớn; nút thêm khoá khi lựa chọn chưa hợp lệ. Tổng tiền trong hộp đặt là **ước tính hiển thị** theo các dòng giá của spec đó (§4.3, §4.4); giá chính thức là `lineTotal` và `fares` do backend trả.
 
 ### 4.4. Cart `/cart`
 
@@ -245,7 +261,7 @@ Ba bước trên cùng một route, bước hiện tại ở `?step=travelers|se
 | Bước | Endpoint | Auth | Trường Web đọc / gửi | Khi lỗi |
 |---|---|---|---|---|
 | Tóm tắt (cả ba bước) | `GET /cart` (mỗi lần chuyển bước) | không cần | như §4.4 | `items: []` → chuyển `/cart` (đơn nháp: về trang chủ). Mục `product.available: false` → khoá nút Thanh toán |
-| ① Hành khách | — (không gọi Backend) | — | Đoàn 1–9 người, ít nhất 1 người lớn; mỗi người có họ và tên đệm và tên (hai ô), trẻ em có ngày sinh; người liên hệ (`fullName`, `phone`; email khoá theo tài khoản, khách chưa đăng nhập thì để trống và không bị kiểm cho tới khi đăng nhập). Điền sẵn: số người lớn, trẻ em từ `guests` lớn nhất của giỏ; họ tên Người lớn 1 từ tài khoản nếu dùng được | Kiểm ở Web theo cùng bộ luật với Backend (spec §5.2). Bấm Tiếp tục khi còn lỗi: ở lại bước, hộp "Còn n thông tin cần sửa", con trỏ về ô lỗi đầu tiên |
+| ① Hành khách | — (không gọi Backend) | — | Đoàn ít nhất 1 người lớn, tối đa bằng trần của mục lớn nhất trong đơn (`orderPartyCap`: đơn chỉ có khách sạn thì 9 × số phòng, đơn có mục khác thì 9); mỗi người có họ và tên đệm và tên (hai ô), trẻ em có ngày sinh; người liên hệ (`fullName`, `phone`; email khoá theo tài khoản, khách chưa đăng nhập thì để trống và không bị kiểm cho tới khi đăng nhập). Điền sẵn: số người lớn, trẻ em từ `guests` lớn nhất của giỏ; họ tên Người lớn 1 từ tài khoản nếu dùng được | Kiểm ở Web theo cùng bộ luật với Backend (spec §5.2). Bấm Tiếp tục khi còn lỗi: ở lại bước, hộp "Còn n thông tin cần sửa", con trỏ về ô lỗi đầu tiên |
 | ② Dịch vụ | `PATCH /cart/items/{cartItemId}` cho mỗi mục có `guests` hoặc số phòng khác phân bổ (chờ 400 ms, các lần của cùng mục chạy lần lượt) | không cần | Chọn ai dùng từng dịch vụ; khách sạn xếp người vào phòng và chọn người đại diện. Đọc `fares`, `lineTotal` mới sau mỗi `PATCH` | `PATCH` lỗi → gắn lỗi vào thẻ dịch vụ. Bấm Tiếp tục kiểm luật dịch vụ (spec §5.3) |
 | ③ Xem lại và thanh toán | `POST /bookings` | bắt buộc: chưa đăng nhập thì bấm Thanh toán mở hộp đăng nhập ngay trên trang (thông tin đã nhập còn nguyên), đăng nhập xong tự gửi tiếp | gửi `draftId` (khi thanh toán đơn nháp), `contact`, `travelers[]` (`travelerRef`, `type`, `surname`, `givenNames`, `birthDate` của trẻ em), `itemDetails[]` (`cartItemId`, `travelerRefs` hoặc `rooms[]` với `leadTravelerRef`, `specialRequest`); đọc `referenceCode`, `payment.checkoutUrl` | Xem §8. `201` → `window.location.assign(payment.checkoutUrl)` sang trang Stripe |
 
@@ -259,7 +275,7 @@ Phục vụ FR-BKG-01, AC-BKG-13…17. Bộ luật: `docs/spec/booking/dat-truc-
 
 | Hành động | Endpoint | Auth | Web làm gì |
 |---|---|---|---|
-| Đặt ngay một sản phẩm, đặt vé máy bay, "Thanh toán tất cả" của trợ lý | `POST /booking-drafts` (`items[]`, `allowPartial` khi nhiều mục) | không cần | `startBooking` trong `TravelContext`: tạo đơn nháp, báo các mục trong `rejectedItems`, tải lại giỏ (tour và tiện ích của lần đặt được chép vào giỏ), mở `/checkout?draft=<draftId>` |
+| Đặt ngay một sản phẩm, đặt vé máy bay, đặt một mục của lịch trình trợ lý | `POST /booking-drafts` (`items[]`; `allowPartial` chỉ khi đặt lại đơn) | không cần | `startBooking` trong `TravelContext`: tạo đơn nháp, báo các mục trong `rejectedItems`, tải lại giỏ (tour và tiện ích của lần đặt được chép vào giỏ), mở `/checkout?draft=<draftId>` |
 | Đặt lại đơn chưa thanh toán xong | `POST /booking-drafts` (`fromBooking`) | bắt buộc | Trang đơn, §4.6 |
 | Mở trang thanh toán của đơn nháp | `GET /booking-drafts/{draftId}` | không cần | Hiện đồng hồ "Phiên thanh toán còn mm:ss" theo `expiresAt`; không có lối "Sửa giỏ hàng"; nút quay lại về trang trước |
 | Sửa số khách, bỏ một mục | `PATCH` / `DELETE /booking-drafts/{draftId}/items/{cartItemId}` | không cần | Như sửa giỏ ở checkout; chỉ đụng tới đơn nháp |
@@ -269,6 +285,33 @@ Phục vụ FR-BKG-01, AC-BKG-13…17. Bộ luật: `docs/spec/booking/dat-truc-
 - **`404 BOOKING_DRAFT_NOT_FOUND`**: "Không tìm thấy phiên thanh toán này" + nút về trang chủ.
 - **`422 DIRECT_BOOKING_ONLY`** không xảy ra trong luồng bình thường (Web không hiện nút thêm giỏ cho khách sạn, vé máy bay); nếu gặp thì toast "Khách sạn và vé máy bay được đặt trực tiếp".
 - Khách chưa đăng nhập: BFF phát cookie `vota_guest` (HttpOnly, 3 ngày) và gắn mã khách vào request; trình duyệt không đọc hay gửi mã này. Đăng nhập xong, BFF gộp giỏ và đơn nháp của khách vào tài khoản rồi xoá cookie (`docs/spec/hop-dong-tich-hop-auth.md`).
+
+### 4.6b. Hồ sơ cá nhân `/profile` (FR-USR-04)
+
+Hai trang `/profile` và `/profile/booking_history` dùng chung khung tài khoản (`features/profile/AccountShell.tsx`): menu trái có thẻ người dùng và hai mục trên máy tính, hai tab ngang trên điện thoại; mục đang mở theo địa chỉ trang.
+
+| Khu vực | Endpoint | Auth | Trường Web đọc / gửi | Khi lỗi |
+|---|---|---|---|---|
+| Hồ sơ | `GET /api/auth/session` (đã có sẵn khi tải trang) | cookie phiên | `user.fullName`, `user.email`, `user.phone` | — |
+| Sửa họ tên, số điện thoại | `PATCH /auth/me` | bắt buộc | gửi chỉ trường đã đổi (`fullName`, `phone`; `phone: null` xoá số); đọc lại `AuthUser` | `422 VALIDATION_ERROR` → "Thông tin chưa hợp lệ…"; mất mạng → "Mất kết nối…"; lỗi khác → "Chưa lưu được thông tin…". Giữ nguyên nội dung đang nhập |
+| Đổi mật khẩu | `PUT /auth/password` | bắt buộc | `currentPassword`, `newPassword` (8–128 ký tự; ô nhập lại chỉ ở Web) | `401 INVALID_CREDENTIALS` → "Mật khẩu hiện tại không đúng." dưới ô đó; `400 WEAK_PASSWORD` → lỗi dưới ô mật khẩu mới; `429` → báo thử lại sau |
+
+- Email chỉ xem. Họ tên bắt buộc, tối đa 100 ký tự; số điện thoại để trống hoặc đúng 10 chữ số bắt đầu bằng 0 (`features/profile/profileModel.ts`, cùng luật với Backend). Lỗi hiện dưới ô khi rời ô, không hiện lúc đang gõ; nút "Lưu thay đổi" chỉ bật khi có thay đổi hợp lệ.
+- Lưu xong: `TravelContext.updateProfile` cập nhật ngay người dùng hiện tại (header, menu tài khoản) và BFF ghi họ tên, số điện thoại mới vào phiên, nên tải lại trang không hiện tên cũ (`services/server/proxy.ts`).
+- Số điện thoại hồ sơ điền sẵn ô số điện thoại liên hệ ở bước thanh toán nếu người dùng chưa gõ gì (`components/checkout/useCheckout.ts`).
+- Đổi mật khẩu thành công: BFF đăng xuất các phiên khác và cấp lại cookie cho phiên này (như `docs/spec/hop-dong-tich-hop-auth.md` §3.8 dòng J).
+
+### 4.6a. Lịch sử đặt chỗ `/profile/booking_history` (FR-BKG-14)
+
+| Khu vực | Endpoint | Auth | Trường Web đọc | Khi lỗi / rỗng |
+|---|---|---|---|---|
+| Danh sách đơn | `GET /bookings?tab=&taxonomy=&days=&page=&pageSize=5` | bắt buộc | `data[]` (`referenceCode`, `createdAt`, `status`, `tab`, `holdExpiresAt`, `cancellableUntil`, `paymentStatus`, `paymentFailureReason`, `total`, `items[]`), `pagination` | `401` → mời đăng nhập, đăng nhập xong tải lại; lỗi khác → "Chưa tải được đơn hàng của bạn" + "Thử lại" + `requestId`; `data` rỗng → trạng thái trống |
+
+- Ba tab Sắp đến · Hoàn thành · Đã huỷ do **Backend** xếp (`tab` của mỗi đơn); Web không tự lọc hay đếm. Chip dịch vụ (Tất cả, Khách sạn, Vé máy bay, Vé tham quan, Combo, Sân Golf) và ô "Ngày đặt" (Tất cả, 1, 7, 30, 60 ngày qua) dùng chung cho cả ba tab. Bộ lọc nằm trên URL; đổi bất kỳ bộ lọc nào thì về trang 1; `page` vượt quá số trang thì lùi về trang cuối.
+- Phân trang đánh số, 5 đơn mỗi trang; chỉ một trang thì ẩn.
+- Nhãn thẻ: đơn `PENDING_PAYMENT` mà Backend đã xếp vào Đã huỷ là đơn giữ chỗ quá hạn, hiện "Hết hạn giữ chỗ" và có "Đặt lại" (`POST /booking-drafts` với `fromBooking`, như §4.6). Đơn `PENDING_PAYMENT` còn hạn có "Tiếp tục thanh toán" (mở `/booking/{referenceCode}`). Huỷ đơn làm ở trang chi tiết, không làm ở thẻ.
+- Bố cục: thanh lọc (tab trạng thái, chip dịch vụ) dính ở đầu khi cuộn; số đơn và bộ lọc "Ngày đặt" ngay dưới; mỗi thẻ đơn có ô ngày của dịch vụ đầu tiên và chân thẻ nền riêng chứa tổng tiền và nút. "Ngày đặt" là danh sách thả xuống tự dựng (`features/bookings/DaysFilter.tsx`, không dùng ô chọn gốc của trình duyệt): rộng bằng nút hoặc ít nhất 11 rem, mép phải thẳng hàng với nút, dòng đang chọn có dấu tick, tự mở lên trên khi sát đáy màn hình; bàn phím mũi tên, Home/End, Enter, Esc.
+- Trạng thái trống: chưa có đơn thì lời nhắn theo tab kèm nút "Tìm khách sạn" (tab Đã huỷ không có nút); đang lọc mà không khớp thì "Không có đơn nào khớp bộ lọc." kèm nút "Xoá bộ lọc".
 
 ### 4.6. Trạng thái đơn `/booking/{referenceCode}`
 
@@ -290,6 +333,8 @@ Hiển thị theo trạng thái (spec booking §5.1):
 | `PAYMENT_FAILED` | Lý do theo `failureReason` (spec booking §10.2) + "Đặt lại" |
 | `EXPIRED` | "Hết thời gian giữ chỗ" + "Đặt lại" |
 | `CANCELLED` | "Đã huỷ đơn" + trạng thái hoàn tiền theo `payment.status` (`REFUND_PENDING`, `REFUNDED`, `REFUND_FAILED`, hoặc `EXPIRED` = chưa thanh toán nên không hoàn) |
+
+Trang là hai cột trên máy tính (một cột trên điện thoại), mở đầu bằng đường dẫn "Đơn hàng của tôi / Chi tiết đơn hàng" (FR-BKG-15). Cột trái: thẻ trạng thái ở trên; mỗi dịch vụ một khối "Thông tin đặt chỗ" (mốc nhận/trả phòng hoặc điểm đi/đến, cơ sở, tiện ích); Thông tin khách hàng; Thông tin hành khách hoặc khách lưu trú; Thông tin dịch vụ; Chính sách hoàn huỷ. Cột phải: Thông tin thanh toán (mã đơn, dòng giá, tổng, trạng thái, nút "Huỷ đơn" khi được huỷ). Tên, hạng sao, địa chỉ và tiện ích của khách sạn lấy từ `GET /products/{id}` của hạng phòng và của khách sạn cha, nạp sau khi đơn đã hiện; lỗi thì chỉ bỏ phần đó, không bịa địa chỉ. Giờ nhận phòng "Sau 14:00", trả phòng "Trước 12:00" và số tổng đài là giá trị mặc định chung ở `components/confirmation/bookingDefaults.ts` (số tổng đài hiện là số giả lập). Hạn hoàn 100% lấy từ `cancellableUntil` của Backend. **Chưa có trên trang:** trạng thái xuất vé và mã đặt chỗ của hãng (FR-BKG-12), vì `BookingResponse` chưa trả; diện tích phòng; giờ bay chính xác khi catalog không có.
 
 Mỗi mục của đơn hiện hành khách và dòng giá (spec `booking/checkout-nhieu-buoc-hanh-khach.md` §6.8): khách sạn hiện khách theo phòng ("Phòng 1: …") và đánh dấu người đại diện nhận phòng (`isLead`); dịch vụ khác hiện một dòng tên, trẻ em có nhãn "(trẻ em)"; các dòng giá từ `fares`. Response không có ngày sinh nên trang không hiện. Đơn tạo trước thay đổi có `travelers` rỗng: hiện `guestNames` như trước.
 
@@ -318,10 +363,12 @@ Web gọi route BFF `/api/auth/*`, không gọi thẳng `/api/v1/auth/*` (docs/s
 |---|---|---|---|---|
 | Gửi tin nhắn | `POST /assistant/itineraries` | tùy | theo `status`, xem §9.3 | Nút "Dừng" hủy request bằng `AbortController` |
 | Sửa chip ý định | cùng endpoint với `intentOverride` | tùy | như trên | §9.2 |
-| Đặt ngay một mục của lịch trình; "Thanh toán tất cả" | `POST /booking-drafts` (một mục; hoặc mọi mục đặt được với `allowPartial: true`) | không cần | `BookingDraft` | Mọi thẻ và ghim bản đồ của sản phẩm đặt được có nút "Đặt ngay". "Thanh toán tất cả" gom cả lưu trú lẫn hoạt động vào **một** đơn nháp rồi mở trang thanh toán; mục không đặt được bị bỏ và báo trong toast. Sản phẩm chưa đặt được (ví dụ khách sạn chưa có hạng phòng trong lịch trình) không có nút, thẻ vẫn mở trang chi tiết |
+| Đặt ngay một mục của lịch trình | `POST /booking-drafts` (một mục) | không cần | `BookingDraft` | Mọi thẻ và ghim bản đồ của sản phẩm đặt được có nút "Đặt ngay"; mỗi mục một đơn nháp riêng. Lịch trình **không có** nút "Thanh toán tất cả" (bỏ từ 2026-10-08, trước mắt mỗi mục thanh toán riêng). Sản phẩm chưa đặt được (ví dụ khách sạn chưa có hạng phòng trong lịch trình) không có nút, thẻ vẫn mở trang chi tiết |
 | Thêm vào giỏ từ kế hoạch (chỉ `attraction`, `golf`, `combo`) | `POST /cart/items` (mỗi mục một lần, tuần tự) | không cần | `CartResponse` cuối cùng | Một mục lỗi không chặn mục còn lại; tổng kết lỗi trong một toast. Nút theo thẻ, cạnh "Đặt ngay"; khách sạn và vé máy bay không có nút này. Mục đủ điều kiện: `available`, `unitPrice` khác null, `bookable` khác `false`, `attributes.ticketed` khác `false`; mỗi `productId` một lần. `usingDate` = `day.date` của slot; `stay` lấy check-in = `days[0].date`, check-out = check-in + `nights` |
 | Chỉnh nhanh lịch trình | cùng endpoint: `intentOverride.days` (1–7) hoặc `message` soạn sẵn nêu tên sản phẩm cần đổi | tùy | như trên | Khoá khi đang chạy; ẩn khi xem lịch trình đã lưu/chia sẻ |
 | Danh sách điểm đến (thẻ hỏi lại) | `GET /destinations` | — | `destinations[]` | Dùng khi `suggestedValues.destination` rỗng |
+| Nơi đi trong form gợi ý; "Dùng vị trí hiện tại" (AC-AGT-02, AC-AGT-03) | `GET /products?taxonomy=flight` (tuyến) | — | `attributes.originCity`, `originLatitude`, `originLongitude` | Ô `origin` khi `clarificationForm.fields` có `origin`, không bắt buộc; giá trị vào câu yêu cầu ("đi từ Hà Nội"). Chỉ khi bấm nút mới gọi `navigator.geolocation`; được phép thì chọn thành phố có sân bay gần nhất trong catalog (`services/flights.ts` `nearestDepartureCity`) và điền vào ô. Toạ độ không lưu, không gửi đi; từ chối/lỗi thì giữ ô để gõ tay |
+| Vé máy bay của lịch trình | — (trong response) | — | `itinerary.flights[]`: `direction`, `date`, `returnDate`, `passengers`, `product` (`attributes.airline`, `flightNumber`, `departureTimeLocal`/`arrivalTimeLocal`, `nonstop`) | Thẻ chặng đi/khứ hồi mở đầu ngày đầu, chặng về khép ngày cuối (`WidgetDays`); giá hiện `unitPrice/khách × passengers`. Chỉ có "Đặt ngay" (`usingDate` = `date` của chặng), có trong "Thanh toán tất cả"; vé cũng có thẻ trong lời diễn giải (`narrationProducts`) |
 | Xem lịch sử hội thoại | `GET /assistant/conversations` | bắt buộc | `data[]`, `pagination` | Mới nhất trước; chỉ của user hiện tại |
 | Mở lại hội thoại | `GET /assistant/conversations/{conversationId}` | bắt buộc | `conversation`, `messages[]` | Nạp transcript rồi tiếp tục chat với cùng `conversationId` |
 | Xem chi tiết sản phẩm trong widget (bấm thẻ hoặc tên trong lời diễn giải) | `GET /products/{productId}` | — | `name`, `description`, `imageUrl`, `attributes.images`, `attributes.address`, `attributes.latitude`/`longitude`, `attributes.openingHours`, `rating`, `reviewCount`, `unitPrice`, `priceUnit`, `available` | Panel ở cột phải (desktop), X/Esc về lịch trình. Thẻ gọn trong khung chat đặt sau lần nhắc đầu tiên, dữ liệu từ `itinerary`/`searchResults` của response (PRD `user-flow.md` §4.2). Không có danh sách bình luận vì catalog không có dữ liệu |
@@ -395,6 +442,19 @@ Dùng bảng nhãn tiếng Việt ở `hop-dong-tich-hop-backend.md` §2.5. Key 
 ### 6.6. Ảnh
 
 `imageUrl: null` hoặc tải lỗi → placeholder theo `taxonomy` trong `src/frontend/src/assets/placeholders/`.
+
+### 6.7. Màu
+
+Bảng màu "Travel Blue" (chốt 2026-10-08), khai báo một lần ở `src/frontend/src/app/globals.css` (`@theme static`); code dùng tên token, **không dùng `blue-*`/`indigo-*`/`violet-*` trực tiếp**, đổi màu cả app chỉ sửa ở đó:
+
+| Token | Giá trị gốc | Vai trò |
+|---|---|---|
+| `brand` (50…950) | 600 = `#2563EB`, 700 = `#1D4ED8`, 100 = `#DBEAFE` | Đặt chỗ và điều hướng: nút chính (Tìm, Đặt ngay, Đăng ký), liên kết, trạng thái chọn, hero, focus |
+| `secondary` | `#0EA5E9` | Điểm nhấn thông tin phụ (huy hiệu, minh hoạ), không dùng cho nút |
+| `accent` | `#F59E0B` | Khuyến mãi và một hành động nổi bật mỗi màn hình |
+| `ai` (50…950) | cùng giá trị với `brand` (600 = `#2563EB`); trước đó là tím `#7C3AED` | Trợ lý AI và gợi ý (widget nổi, banner trợ lý). Giữ token riêng để sau này đổi màu AI mà không đụng màu đặt chỗ |
+
+Nền trang `#F8FAFC`, chữ `#0F172A`. Giá tiền dùng màu chữ `slate-900`, không dùng màu brand (brand chỉ nhấn hành động). Giữ màu theo nghĩa: emerald (thành công), amber (cảnh báo), rose/red (lỗi), cùng màu phân loại sản phẩm, hãng bay và ghim bản đồ. Ô tìm kiếm: nền trắng, viền `slate-200`, focus và nút Tìm màu `brand-600`.
 
 ---
 
@@ -707,7 +767,6 @@ Ca biên bắt buộc để dựng đủ 8 màn hình:
 | `because[].productId: null` (sản phẩm nguồn đã xóa) | nằm trong `200-p3-dormant` |
 | Sản phẩm `available: false`, `rating: null`, `attributes: {}` | `catalog/listProducts.200-popular` |
 | Search rỗng, `topScore: null` | `search/searchProducts.200-empty` |
-| Similar rỗng | `catalog/getSimilarProducts.200-empty` |
 | Sản phẩm 404 | `catalog/getProduct.404-not-found` |
 | Giỏ rỗng / có hai điểm đến | `booking/getCart.200-empty`, `booking/getCart.200-two-destinations` |
 | Checkout `409 PRICE_CHANGED`, `409 PRODUCT_UNAVAILABLE` | `booking/createBooking.409-*` |

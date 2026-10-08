@@ -1,0 +1,8 @@
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Yêu cầu không hợp lệ.",
+    "retryable": false,
+    "requestId": "req_01JX0000"
+  }
+}

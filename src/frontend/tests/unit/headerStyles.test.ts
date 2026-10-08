@@ -35,8 +35,8 @@ describe('header controls share one size system', () => {
   });
 
   it('only the primary action is filled blue', () => {
-    expect(primaryClass()).toContain('bg-blue-600');
-    for (const [name, cls] of Object.entries(controls)) if (name !== 'primary') expect(cls).not.toContain('bg-blue-600');
+    expect(primaryClass()).toContain('bg-brand-600');
+    for (const [name, cls] of Object.entries(controls)) if (name !== 'primary') expect(cls).not.toContain('bg-brand-600');
   });
 });
 

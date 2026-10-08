@@ -16,6 +16,8 @@ export interface SessionUser {
   cdpUserId: string;
   email: string;
   fullName: string;
+  /** Số điện thoại hồ sơ (FR-USR-04); vắng mặt khi chưa có. */
+  phone?: string | null;
 }
 
 export interface SessionRecord {

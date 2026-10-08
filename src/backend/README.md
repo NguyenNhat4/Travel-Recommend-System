@@ -17,21 +17,27 @@ Không dùng URL từ máy host (`localhost`) bên trong container. Nếu cần 
 
 ## Search / Recommendation
 
-RecSys embed bằng `intfloat/multilingual-e5-small` (384 chiều) chạy local trong tiến trình (`infrastructure/embeddings/local_e5_embedder.py`, `transformers` + `torch` CPU, revision ghim `EMBED_MODEL_REVISION`; PRD FR-SRC-02, chốt 06/10/2026). Job index thêm tiền tố `passage: `; request tìm kiếm thêm `query: `. Lần đầu chạy tải model (~470 MB) về cache Hugging Face; image Docker đã tải sẵn và chạy `HF_HUB_OFFLINE=1`. `WEAVIATE_URL`, `VECTOR_COLLECTION` (mặc định `ProductE5Small`; biến cũ `WEAVIATE_COLLECTION` không còn được đọc) và `SEARCH_CUTOFF` (mặc định `0.84`) được đọc qua `core/config.py`; không dùng dịch vụ embedding ngoài (Cohere đã bỏ 06/10/2026). Job index (`python -m src.backend.jobs.embed_products`) **từ chối** ghi vào collection đang chứa vector của model khác (không trộn hai không gian vector). Job embed tuần tự theo lô 96 (torch tự dùng nhiều luồng CPU). Chỉ luồng chính ghi Weaviate, lô nào xong ghi ngay, lỗi giữa chừng vẫn giữ phần đã ghi. `--force` nhúng lại toàn bộ (chỉ để đo). Search lúc chạy API không bị giới hạn này. Weaviate chỉ giữ vector + `productId`/`modelVersion`/`textHash`; tên, giá, ảnh và availability luôn hydrate từ PostgreSQL. Metadata nạp lúc khởi động rồi nạp lại mỗi `CATALOG_REFRESH_SECONDS` (mặc định 900 giây); lần nạp lại lỗi thì giữ bản đang phục vụ. Search unit chưa có vector (job index chưa chạy xong) vẫn có giá mới nhưng chưa tìm được qua vector. Vector **truy vấn** được cache trong tiến trình (`application/search/query_cache.py`, LRU `SEARCH_EMBED_CACHE_SIZE`, khoá = câu sau chuẩn hoá; `diagnostics.embedCache` hit/miss, contract 1.12.0) và nạp sẵn ở nền sau lần nạp catalog đầu (`SEARCH_PREWARM`, file `data/search_prewarm_queries.txt` + head query `app.search_logs`); `python -m src.backend.jobs.prewarm_query_cache --base-url URL` làm nóng một backend đang chạy qua HTTP. Job index có `--lexical-only`: chỉ ghi property BM25 còn thiếu và từ chối khi catalog lệch index (không embed, không xoá). Chưa nạp được lần nào — thiếu PostgreSQL, Weaviate, model embedding, hoặc dưới một nửa search unit có vector đúng model — thì RecSys tắt và thử lại sau 30 giây, các route còn lại vẫn chạy.
+RecSys embed bằng `intfloat/multilingual-e5-small` (384 chiều) chạy local trong tiến trình (`infrastructure/embeddings/local_e5_embedder.py`, `transformers` + `torch` CPU, revision ghim `EMBED_MODEL_REVISION`; PRD FR-SRC-02, chốt 06/10/2026). Job index thêm tiền tố `passage: `; request tìm kiếm thêm `query: `. Lần đầu chạy tải model (~470 MB) về cache Hugging Face; image Docker đã tải sẵn và chạy `HF_HUB_OFFLINE=1`. `WEAVIATE_URL`, `VECTOR_COLLECTION` (mặc định `ProductE5Small`; biến cũ `WEAVIATE_COLLECTION` không còn được đọc) và `SEARCH_CUTOFF` (mặc định `0.84`) được đọc qua `core/config.py`; không dùng dịch vụ embedding ngoài (Cohere đã bỏ 06/10/2026). Job index (`python -m src.backend.jobs.embed_products`) **từ chối** ghi vào collection đang chứa vector của model khác (không trộn hai không gian vector). Job embed tuần tự theo lô 96 (torch tự dùng nhiều luồng CPU). Chỉ luồng chính ghi Weaviate, lô nào xong ghi ngay, lỗi giữa chừng vẫn giữ phần đã ghi. `--force` nhúng lại toàn bộ (chỉ để đo). Search lúc chạy API không bị giới hạn này. Weaviate chỉ giữ vector + `productId`/`modelVersion`/`textHash`; tên, giá, ảnh và availability luôn hydrate từ PostgreSQL. Metadata nạp lúc khởi động rồi nạp lại mỗi `CATALOG_REFRESH_SECONDS` (mặc định 900 giây); lần nạp lại chỉ kéo lại catalog khi mã băm phía Postgres đổi, còn kiểm vector và độ phổ biến vẫn chạy mỗi chu kỳ; lần nạp lại lỗi thì giữ bản đang phục vụ. Search unit chưa có vector (job index chưa chạy xong) vẫn có giá mới nhưng chưa tìm được qua vector. Vector **truy vấn** được cache trong tiến trình (`application/search/query_cache.py`, LRU `SEARCH_EMBED_CACHE_SIZE`, khoá = câu sau chuẩn hoá; `diagnostics.embedCache` hit/miss, contract 1.12.0) và nạp sẵn ở nền sau lần nạp catalog đầu (`SEARCH_PREWARM`, file `data/search_prewarm_queries.txt` + head query `app.search_logs`); `python -m src.backend.jobs.prewarm_query_cache --base-url URL` làm nóng một backend đang chạy qua HTTP. Job index có `--lexical-only`: chỉ ghi property BM25 còn thiếu và từ chối khi catalog lệch index (không embed, không xoá). Chưa nạp được lần nào — thiếu PostgreSQL, Weaviate, model embedding, hoặc dưới một nửa search unit có vector đúng model — thì RecSys tắt và thử lại sau 30 giây, các route còn lại vẫn chạy.
 
 Endpoint hiện có (prefix `/api/v1`): `GET /search/suggestions` (`q`, `limit` ≤ 10; gợi ý tức thì khi gõ, khớp chữ trên catalog trong bộ nhớ, không embed, không ghi event; FR-SRC-05) · `GET|POST /search` (`q`/`query`, `taxonomy`, `destination`, `limit`, `offset`;
 ở `ITINERARY_DATA_MODE=http`, adapter đổi tham số tool `query` thành `q`) · `GET /similar/{productId}?k=` · `GET /recommendations?k=&destination=`
 (JWT tùy chọn, `cdp_user_id` lấy từ token; token hỏng → 401, không hạ thành khách) · `GET /destinations` ·
 `POST /assistant/itineraries` · `POST /assistant/itineraries/stream` · `GET /assistant/status` ·
 `GET /assistant/conversations` · `GET /assistant/conversations/{conversationId}` (JWT bắt buộc) ·
-auth v1 `POST /auth/register|login`, `GET /auth/me` · chỉ BFF (`X-Service-Token`)
+auth v1 `POST /auth/register|login`, `GET|PATCH /auth/me` (PATCH sửa họ tên và số điện thoại, FR-USR-04) · chỉ BFF (`X-Service-Token`)
 `POST /auth/session`, `/auth/session/token`, `/auth/session/revoke` · `PUT /auth/password` ·
 `GET /internal/recommendations?cdp_user_id=` (`X-Service-Token`, tắt ở production) · booking (JWT bắt buộc)
-`GET /cart`, `POST /cart/items`, `PATCH|DELETE /cart/items/{cartItemId}`, `POST /bookings`,
+`GET /cart`, `POST /cart/items`, `PATCH|DELETE /cart/items/{cartItemId}`, `GET /bookings` (danh sách đơn: `tab`, `taxonomy`, `days`, `page`, `pageSize`; FR-BKG-14), `POST /bookings`,
 `GET /bookings/{referenceCode}`, `POST /bookings/{referenceCode}/cancel` · Stripe gọi thẳng (chữ ký, không JWT)
 `POST /payments/stripe/webhook`. Ngoài prefix: `GET /health`,
 `GET /.well-known/jwks.json`, `GET /metrics` (Prometheus), `GET /internal/calls` (lần gọi web / agent gần nhất cho monitor;
 `docs/spec/hop-dong-tich-hop-backend.md` §8.6a).
+
+`GET /health/ready` (cho load balancer; `/health` là liveness): 503 khi chưa nạp xong; nhóm HA bật thêm `READY_REQUIRES_RECSYS`,
+`READY_REQUIRES_DB`. Với `READY_REQUIRES_DB`, một VM mất DB trong khi VM khác còn DB thì bị loại (503); mọi VM cùng mất DB thì
+giữ 200 kèm `mode: "db_outage"` để catalog/search không cần DB vẫn phục vụ (`READY_DB_OUTAGE_KEEPS_READY`, mặc định bật, cần
+`AUTH_REDIS_URL` dùng chung; `READY_DB_PEER_TTL_SECONDS`). Chi tiết: `docs/plan/2026-10-07-ha-vung-crawler-rolling.md` §3.
+Thời gian chờ SSE khi tắt: `UVICORN_TIMEOUT_GRACEFUL_SHUTDOWN` (mặc định 30; nhóm HA đặt 100).
 
 ## Auth
 
@@ -63,7 +69,7 @@ GUEST_BOOKING_TTL_DAYS=3           # giỏ và đơn nháp của khách chưa đ
 BOOKING_REDIS_URL=redis://:devpass@localhost:6379/3   # trống: lưu trong bộ nhớ (chỉ dev/test); production bắt buộc
 ```
 
-Khách sạn và vé máy bay đặt trực tiếp (FR-BKG-01, `docs/spec/booking/dat-truc-tiep-theo-don-nhap.md`): giỏ chỉ nhận `attraction`, `golf`, `combo` (`POST /cart/items` với `hotel`/`flight` trả `422 DIRECT_BOOKING_ONLY`); "Đặt ngay" tạo đơn nháp 30 phút qua `/booking-drafts`, và `POST /bookings` nhận `draftId` để thanh toán đúng đơn nháp đó. Khách chưa đăng nhập dùng giỏ và đơn nháp qua BFF (`X-Service-Token` + `X-Guest-Id`), dữ liệu nằm ở Redis và được gộp vào tài khoản bằng `POST /guest-bookings/merge`. Code: `domain/booking/draft.py`, `application/booking/{drafts,guest_merge,owner}.py`, `infrastructure/persistence/guest_booking_store.py`. Migration `0007` cần chạy trước khi khởi động Backend mới (hai bảng `app.booking_drafts`, `app.booking_draft_items`; xoá mục khách sạn, vé máy bay còn sót trong giỏ).
+Khách sạn và vé máy bay đặt trực tiếp (FR-BKG-01, `docs/spec/booking/dat-truc-tiep-theo-don-nhap.md`): giỏ chỉ nhận `attraction`, `golf`, `combo` (`POST /cart/items` với `hotel`/`flight` trả `422 DIRECT_BOOKING_ONLY`); "Đặt ngay" tạo đơn nháp 30 phút qua `/booking-drafts`, và `POST /bookings` nhận `draftId` để thanh toán đúng đơn nháp đó. Khách chưa đăng nhập dùng giỏ và đơn nháp qua BFF (`X-Service-Token` + `X-Guest-Id`), dữ liệu nằm ở Redis và được gộp vào tài khoản bằng `POST /guest-bookings/merge`. Code: `domain/booking/draft.py`, `application/booking/{drafts,guest_merge,owner}.py`, `infrastructure/persistence/guest_booking_store.py`. Migration `0007` cần chạy trước khi khởi động Backend mới (hai bảng `app.booking_drafts`, `app.booking_draft_items`; xoá mục khách sạn, vé máy bay còn sót trong giỏ). Migration `0008` (cột `app.users.phone` cho hồ sơ, FR-USR-04) cũng cần chạy trước khi khởi động Backend mới: `make db-migrate`.
 
 Nhận webhook ở local bằng Stripe CLI (cài một lần, `stripe login`):
 
@@ -190,7 +196,7 @@ CLI chạy kịch bản đánh giá agent đã chuyển sang `src/evaluation/age
 
 Studio vẽ 12 node, chạy từng lượt và cho xem/sửa state sau mỗi node. Entry: `scripts/langgraph_studio.py`
 (LLM theo `.env`), khai báo ở `langgraph.json` gốc repo. Tool theo `ITINERARY_DATA_MODE`, bỏ trống thì `inprocess`
-(engine thật, cần Postgres đã seed, Weaviate đã index, `COHERE_API_KEY`; nạp ~12 s lúc mở graph); `fixture` dùng
+(engine thật, cần Postgres đã seed, Weaviate đã index, model e5 local; nạp ~12 s lúc mở graph); `fixture` dùng
 50 sản phẩm mẫu, không cần database. Studio không gửi Bearer nên `get_recommendations` chạy như khách. `langgraph-api` cần
 `grpcio>=1.81.1`, còn `.venv` giữ bản cũ cho `weaviate-client`, nên Studio dùng venv riêng:
 

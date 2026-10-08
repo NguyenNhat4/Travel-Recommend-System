@@ -8,7 +8,7 @@ from src.backend.app.domain.itinerary.planning import empty_intent
 
 from ..models import ConversationalAnswer
 from . import messages
-from .classification import vietnam_today
+from .classification import TRIP_DETAILS, vietnam_today
 from .explanations import constraint_question
 from .history import llm_context, prompt_yaml
 from .messages import display_date, event, failure, message, titled
@@ -16,7 +16,7 @@ from .prompts import CONVERSATION_PROMPT
 from .turn_notes import question_note
 
 #: Form gợi ý phủ mọi trường bắt buộc của chuyến đi, kể cả trường người dùng đã nói, để sửa được tại chỗ.
-FORM_FIELDS = ("destination", "days", "startDate", "party", "budget")
+FORM_FIELDS = ("destination", "days", "startDate", "party", "budget", "origin")
 #: Số ngày điền sẵn; người dùng chỉnh ngay trên form (giới hạn 1–7 lấy từ contract).
 DEFAULT_FORM_DAYS = 1
 DEFAULT_FORM_PARTY = {"type": None, "adults": 2, "children": 0}
@@ -97,7 +97,7 @@ def reply_title(state: dict) -> str | None:
     if state.get("refusal"):
         return message(state, "title_out_of_scope")
     missing = state.get("missing_fields", [])
-    if missing and set(missing) <= {"startDate", "party", "budget"}:
+    if missing and set(missing) <= set(TRIP_DETAILS):
         return message(state, "title_trip_details")
     if {"destination", "days"} <= set(missing):
         return message(state, "title_missing_both")
@@ -176,7 +176,7 @@ def _invalid_input_question(state: dict) -> str:
         lines.append(message(state, "missing_destination"))
     elif "days" in rest:
         lines.append(message(state, "missing_days"))
-    details = [key for key in rest if key in ("startDate", "party", "budget")]
+    details = [key for key in rest if key in TRIP_DETAILS]
     if details:
         joined = message(state, "detail_joiner").join(message(state, f"detail_{key}") for key in details)
         lines.append(message(state, "missing_trip_details", details=joined))
@@ -201,7 +201,7 @@ def clarification_fallback(state: dict) -> dict:
         question = messages.CLARIFY_CONFLICT
     elif reason == "unverified":
         question = messages.CLARIFY_UNVERIFIED
-    elif missing and set(missing) <= {"startDate", "party", "budget"}:
+    elif missing and set(missing) <= set(TRIP_DETAILS):
         details = message(state, "detail_joiner").join(message(state, f"detail_{key}") for key in missing)
         question = message(state, "missing_trip_details", details=details)
     elif len(missing) == 2:

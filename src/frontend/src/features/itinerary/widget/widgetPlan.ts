@@ -32,6 +32,7 @@ export function narrationProducts(
 ): Record<string, Product> {
   const itinerary = 'itinerary' in response ? response.itinerary : null;
   const summaries = [
+    ...(itinerary?.flights ?? []).map((flight) => flight.product),
     ...(itinerary?.stay ? [itinerary.stay.product] : []),
     ...(itinerary?.days ?? []).flatMap((day) => day.slots.flatMap((slot) => (slot.product ? [slot.product] : []))),
     ...Object.values(response.searchResults ?? {}).flatMap((products) => products ?? []),
@@ -66,6 +67,15 @@ export function convertItineraryCompletedToGroundedPlan(
     source: (response.itinerary.stay.source as any) || 'search',
     because: response.itinerary.stay.because as any,
   } : undefined;
+
+  const flights = (response.itinerary.flights ?? []).map((flight) => ({
+    productId: flight.product.productId,
+    product: adaptProductSummaryToProduct(flight.product),
+    direction: flight.direction,
+    date: flight.date,
+    returnDate: flight.returnDate ?? null,
+    passengers: flight.passengers,
+  }));
 
   const days: ItineraryDay[] = response.itinerary.days.map((d) => {
     const slots: ItinerarySlot[] = d.slots.map((s) => {
@@ -109,6 +119,7 @@ export function convertItineraryCompletedToGroundedPlan(
     title: response.itinerary.title || `Lịch trình ${daysCount} ngày tại ${dest}`,
     stay: stayItem,
     stays: stayItem ? [stayItem] : undefined,
+    flights: flights.length > 0 ? flights : undefined,
     days,
     totalEstimatedPrice: response.itinerary.estimatedTotal ?? null,
     bookableProductsCount: response.itinerary.bookableCount ?? days.reduce((acc, cur) => acc + cur.slots.filter(s => !!s.product).length, 0),
@@ -139,6 +150,12 @@ export function locateProduct(plan: WidgetPlan, productId: string): ProductFocus
       };
     }
     step += day.slots.length;
+  }
+  const flight = plan.flights?.find((item) => item.productId === productId);
+  if (flight) {
+    // Chặng đi (và vé khứ hồi) nằm ở ngày đầu, chặng về ở ngày cuối; vé không có điểm trên bản đồ.
+    const day = flight.direction === 'RETURN' ? plan.days[plan.days.length - 1]?.day : plan.days[0]?.day;
+    return { day: day ?? 1, pointId: `flight-${productId}`, coordinate: null };
   }
   const stay = plan.stay;
   if (stay?.productId === productId) {

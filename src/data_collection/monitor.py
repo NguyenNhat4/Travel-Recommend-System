@@ -33,6 +33,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import alerts as run_alerts
+import catalog_run_lock
 import fresh_settings
 import pipeline_graph as graph
 from collectors import live_control
@@ -215,7 +216,7 @@ def dir_size(path: Path, limit_files: int = 200_000) -> tuple[int, int]:
 
 
 def lock_busy(state_dir: Path) -> bool:
-    path = state_dir / "fresh_catalog.lock"
+    path = catalog_run_lock.lock_file(state_dir)
     if not path.exists():
         return False
     try:
@@ -1066,10 +1067,13 @@ class FreshMonitor:
             raise ValueError("Số lượt giữ lại phải là số nguyên 1–100")
         root = self._storage_root()
         before = shutil.disk_usage(root if root.exists() else Path("/")).free
-        removed = prune_runs(self.run_root, keep_runs, protect=self._running_dir())
+        attempted = prune_runs(self.run_root, keep_runs, protect=self._running_dir())
+        # prune_runs bỏ qua lỗi filesystem (thiếu quyền, file đang mở): chỉ báo "đã xoá" khi thư mục thật sự đã mất.
+        removed = [name for name in attempted if not (self.run_root / name).exists()]
+        failed = [name for name in attempted if (self.run_root / name).exists()]
         self._disk = (0.0, None)
         after = shutil.disk_usage(root if root.exists() else Path("/")).free
-        return {"removed": removed, "freedBytes": max(0, after - before), "kept": keep_runs}
+        return {"removed": removed, "failed": failed, "freedBytes": max(0, after - before), "kept": keep_runs}
 
     # -- log
     def runner_logs(self) -> list[dict]:

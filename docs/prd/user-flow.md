@@ -22,7 +22,7 @@ Hệ thống được tối ưu hóa cho 4 luồng trải nghiệm chính tươn
 1. **Tiếp cận:** Mở widget Trợ lý AI, yêu cầu *"Lập lịch trình 3 ngày khám phá ẩm thực và văn hóa Hội An - Đà Nẵng ngân sách tiết kiệm"*.
 2. **Tương tác AI:** Trợ lý AI phân tích ý định, gửi lại lịch trình chia theo buổi với các địa điểm nổi tiếng kèm thẻ sản phẩm homestay và tour trải nghiệm thực tế.
 3. **Điều chỉnh:** Bấm vào thẻ sản phẩm để xem chi tiết đánh giá và ảnh, yêu cầu AI đổi một điểm tham quan buổi chiều.
-4. **Đặt lịch trình:** Tự đặt từng mục ngay trên lịch trình, hoặc bấm Thanh toán tất cả để mở trang thanh toán với toàn bộ sản phẩm của lịch trình và thanh toán một lần.
+4. **Đặt lịch trình:** Đặt từng mục ngay trên lịch trình; mỗi mục thanh toán riêng.
 
 ---
 
@@ -31,15 +31,16 @@ Hệ thống được tối ưu hóa cho 4 luồng trải nghiệm chính tươn
 | Tuyến đường (Route) | Tên màn hình | Mục đích chính | Thành phần cốt lõi |
 |---|---|---|---|
 | `/` | **Trang chủ (Home)** | Khám phá ban đầu, tìm kiếm nhanh, khối gợi ý cá nhân hóa | Hero Search Bar (gợi ý tức thì khi gõ), Category Nav, Personalized Carousels, Trending Destinations |
-| `/hotels` | **Khách sạn & resort** | Duyệt và bắt đầu tìm khách sạn theo điểm đến, ngày, số phòng và số khách | Hero, Search Sheet, Product Shelves (phổ biến, giá tốt), Destination Tiles |
+| `/hotels` | **Khách sạn & resort** | Duyệt và tìm khách sạn theo điểm đến, ngày, số phòng và số khách; kết quả hiện ngay dưới tấm tìm kiếm | Hero, Search Sheet, Kết quả tìm kiếm (Filter Sidebar hạng sao và giá, Sort popup, Product Row Cards, Xem thêm) khi đã tìm; chưa tìm thì Product Shelves (phổ biến, giá tốt), Destination Tiles |
 | `/flights` | **Vé máy bay** | Tìm vé theo điểm đi, điểm đến, ngày, hành khách và chọn chuyến bay ngay tại trang; chưa nhập đủ thì trang nhắc nhập | Hero, Search Sheet, Kết quả chuyến bay (Filter Sidebar, Date Strip, Sort popup, Flight Cards, Vé của tôi) hoặc lời nhắc nhập, Destination Tiles |
-| `/experiences` | **Tour và trải nghiệm** | Duyệt vé tham quan, vui chơi và sân golf (`?type=attraction\|golf`) | Hero, Search Sheet, Tab loại, Product Shelves, Destination Tiles |
-| `/combos` | **Combo du lịch** | Duyệt gói kết hợp | Hero, Search Sheet, Product Shelves, Destination Tiles |
+| `/experiences` | **Tour và trải nghiệm** | Duyệt và tìm vé tham quan, vui chơi và sân golf (`?type=attraction\|golf`); kết quả hiện ngay dưới tấm tìm kiếm, chỉ trong tab đang chọn | Hero, Search Sheet, Tab loại, Kết quả tìm kiếm (Sort popup, Product Row Cards, Xem thêm) khi đã tìm; chưa tìm thì Product Shelves, Destination Tiles |
+| `/combos` | **Combo du lịch** | Duyệt và tìm gói kết hợp; kết quả hiện ngay dưới tấm tìm kiếm | Hero, Search Sheet, Kết quả tìm kiếm (Sort popup, Product Row Cards, Xem thêm) khi đã tìm; chưa tìm thì Product Shelves, Destination Tiles |
 | `/search` | **Kết quả tìm kiếm** | Hiển thị kết quả tìm kiếm ngữ nghĩa và bộ lọc đa chiều | Query Header, ô tìm kiếm có gợi ý tức thì, Tab nhóm (Tất cả · Lưu trú · Tour và trải nghiệm · Tiện ích khác), Hàng cuộn ngang theo nhóm (tab Tất cả), Filter Sidebar (chỉ Lưu trú), Sort popup (mọi tab trừ Tất cả), Product Row Cards, Xem thêm |
 | `/products/:id` | **Chi tiết sản phẩm** | Thông tin đầy đủ về phòng, vé, tour; trạng thái khả dụng | Image Gallery, Attribute Badges, Availability Calendar, Pricing, Book-now CTA; Add-to-Cart CTA (chỉ tour, trải nghiệm, tiện ích khác) |
 | `/checkout` (từ giỏ), `/checkout?draft=<mã đơn nháp>` (từ Đặt ngay) | **Thanh toán / Đặt chỗ** | Ba bước: khai đoàn khách và người liên hệ; chọn ai dùng từng dịch vụ (khách sạn xếp phòng); xem lại, chọn phương thức, bấm Thanh toán để chuyển sang trang Stripe | Stepper, Party Counter, Traveler Forms, Service Allocation Cards, Order Summary (sticky; bottom bar trên mobile), Payment Method Selector, Pay CTA |
-| `/booking/:referenceCode` | **Xác nhận đơn hàng** | Hiển thị đơn theo trạng thái: đang giữ chỗ (đồng hồ đếm ngược, tiếp tục thanh toán), đã xác nhận (mã đặt chỗ, gợi ý chặng tiếp), thanh toán thất bại, hết hạn, đã huỷ; huỷ đơn | Booking Status Card, Next Best Action Recommendations (Flight, Tours) |
-| `/profile` | **Hồ sơ & Lịch sử** | Quản lý thông tin cá nhân, lịch sử đơn hàng và chuyến đi | User Preferences, Booking History, Saved Items |
+| `/booking/:referenceCode` | **Xác nhận đơn hàng / Chi tiết đơn hàng** | Hiển thị đơn theo trạng thái: đang giữ chỗ (đồng hồ đếm ngược, tiếp tục thanh toán), đã xác nhận (mã đặt chỗ, gợi ý chặng tiếp), thanh toán thất bại, hết hạn, đã huỷ; huỷ đơn; xem lại đầy đủ đơn ở mọi trạng thái (FR-BKG-15) | Booking Status Card, Booking Detail Blocks, Cancellation Policy, Payment Panel, Next Best Action Recommendations (Flight, Tours) |
+| `/profile` | **Hồ sơ cá nhân** | Xem và sửa họ tên, số điện thoại; xem email; đổi mật khẩu (FR-USR-04) | Account Shell (menu trái, tab trên điện thoại), Profile Form, Password Form |
+| `/profile/booking_history` | **Lịch sử đặt chỗ** | Xem lại đơn theo ba tab Sắp đến, Hoàn thành, Đã huỷ; lọc theo dịch vụ và ngày đặt; phân trang (FR-BKG-14) | Account Shell, Tab trạng thái, Service Chips, Date Filter, Booking Cards, Pagination, Empty State |
 
 ---
 
@@ -59,6 +60,9 @@ flowchart TD
     D --> F[Hợp nhất kết quả & Reranking]
     E --> F
     F --> G[Hiển thị trang /search]
+    L[Người dùng ở trang danh mục: /hotels, /experiences, /combos] --> M[Nhập điểm đến, ngày, số khách rồi bấm Tìm]
+    M --> N[Kết quả hiện ngay tại trang đó, cùng URL thêm ?q=]
+    N --> J
     G --> H[Người dùng tinh chỉnh bộ lọc: Giá, Sao, Vị trí]
     H --> I[Cập nhật kết quả tức thì]
     I --> J[Chọn sản phẩm -> Mở /products/:id]
@@ -80,8 +84,8 @@ flowchart TD
     E -->|Có| F[LangGraph cấu trúc lịch trình từng ngày]
     E -->|Thiếu| G[Mở rộng điều kiện tìm kiếm hoặc hỏi thêm người dùng]
     F --> H["Lời diễn giải kèm thẻ sản phẩm Grounded ngay sau lần nhắc đầu tiên; bấm thẻ mở panel chi tiết cạnh bản đồ"]
-    H --> I[Người dùng bấm 'Xem chi tiết', đặt từng mục (Đặt ngay / Thêm vào giỏ), hoặc 'Thanh toán tất cả']
-    I --> J[Tạo đơn nháp và mở trang Thanh toán]
+    H --> I[Người dùng bấm 'Xem chi tiết', hoặc đặt từng mục (Đặt ngay / Thêm vào giỏ)]
+    I --> J[Mỗi mục đặt riêng: tạo đơn nháp và mở trang Thanh toán]
 ```
 
 ### 3.3. Luồng Đặt Chỗ & Khép Kín Vòng Lặp Cá Nhân Hóa (Booking & Recs Loop)
@@ -162,7 +166,7 @@ Thu gọn: hộp chat ở góc dưới phải.
 Toàn màn hình (desktop):
 +------------------------------------+------------------------------------------------+
 | [Lịch sử]  Trợ lý du lịch AI       | Mặc định: LỊCH TRÌNH THEO NGÀY + BẢN ĐỒ        |
-|                                    |   thẻ, tổng chi phí, [Thanh toán tất cả]     |
+|                                    |   thẻ, tổng chi phí                          |
 | [AI]: **Ngày 1**                   |                                                |
 |   Sáng: tắm biển, dạo bãi cát...   | Bấm thẻ → PANEL CHI TIẾT thay danh sách ngày,  |
 |                                    |   bản đồ giữ nguyên:                           |
@@ -174,14 +178,14 @@ Toàn màn hình (desktop):
 +------------------------------------+------------------------------------------------+
 ```
 
-1. **Thẻ trong khung chat:** mỗi sản phẩm của lịch trình (khách sạn, hoạt động, gói nhiều ngày gợi ý riêng) có một thẻ gọn **ngay sau lần nhắc đầu tiên** trong lời diễn giải: ảnh nhỏ, tên, điểm đánh giá và số lượt (nếu có), địa chỉ, giá hoặc "Tham quan tự do", nút "Thêm". Dữ liệu thẻ lấy từ `itinerary`/`searchResults` của response, không từ chữ của LLM. Mỗi sản phẩm một thẻ; id lạ bỏ qua.
+1. **Thẻ trong khung chat:** mỗi sản phẩm của lịch trình (khách sạn, chặng bay, hoạt động, gói nhiều ngày gợi ý riêng) có một thẻ gọn **ngay sau lần nhắc đầu tiên** trong lời diễn giải: ảnh nhỏ, tên, điểm đánh giá và số lượt (nếu có), địa chỉ, giá hoặc "Tham quan tự do", nút "Thêm". Dữ liệu thẻ lấy từ `itinerary`/`searchResults` của response, không từ chữ của LLM. Mỗi sản phẩm một thẻ; id lạ bỏ qua. Thẻ chặng bay hiện hãng, số hiệu, giờ đi/đến, bay thẳng hay nối chuyến, giá × số khách và nút [Đặt ngay].
 2. **Bấm thẻ:** mở panel chi tiết ở cột phải, thay chỗ danh sách ngày; **bản đồ vẫn hiện** và focus đúng điểm. Đang ở dạng thu gọn thì widget mở toàn màn hình trước. X hoặc Esc: về danh sách ngày. Tên của sản phẩm đã có thẻ chỉ in đậm, không làm link.
 3. **Panel chi tiết** (dữ liệu từ `GET /products/{productId}`): bộ ảnh, tên, mô tả, địa chỉ + "Chỉ đường" (mở Google Maps theo toạ độ; ẩn khi không có toạ độ), giờ mở cửa (nếu có), điểm đánh giá + số lượt (không gắn logo nguồn), giá, "Thêm vào giỏ", "Xem trang chi tiết". Nút "Xem trang chi tiết" chỉ hiện khi sản phẩm không có nhãn "Tham quan tự do"; điểm tham quan tự do vẫn xem được bộ ảnh, mô tả, địa chỉ và chỉ đường trong panel.
 4. **Ngoài phạm vi:** danh sách bình luận, ảnh/video của người đánh giá (catalog không có dữ liệu này, không hiển thị và không tạo giả); giao diện mobile.
 
-> **Nút đặt trong lịch trình:** khách sạn và vé máy bay chỉ có `[Đặt ngay]`; tour, golf, combo có `[Thêm vào giỏ] [Đặt ngay]` (trên thẻ trong chat, panel chi tiết và ghim bản đồ). `[Thanh toán tất cả]` mở trang thanh toán với mọi mục đặt được của lịch trình.
+> **Nút đặt trong lịch trình:** khách sạn và vé máy bay chỉ có `[Đặt ngay]`; tour, golf, combo có `[Thêm vào giỏ] [Đặt ngay]` (trên thẻ trong chat, panel chi tiết và ghim bản đồ). Lịch trình không có thanh toán gộp: mỗi mục thanh toán riêng.
 
-> **Form gợi ý thông tin chuyến đi:** khi trợ lý đã hỏi một lượt mà vẫn thiếu điểm đến, số ngày, ngày đi hoặc số người (form hiện ở mỗi lượt cho tới khi đủ; ngân sách không bắt buộc), khung chat hiển thị ngay dưới câu trả lời một form đã điền sẵn giá trị gợi ý (điểm đến — chỉ vài lựa chọn tiêu biểu, số ngày 1–7, ngày khởi hành không trước hôm nay, số người, ngân sách) kèm nút **Xác nhận**. Bấm xác nhận gửi ngay câu yêu cầu hoàn chỉnh dựng từ form như một tin nhắn của người dùng; trợ lý coi đó là yêu cầu đầy đủ và lập lịch, không hỏi thêm. Form xuất hiện trong widget trợ lý.
+> **Form gợi ý thông tin chuyến đi:** khi trợ lý đã hỏi một lượt mà vẫn thiếu điểm đến, số ngày, ngày đi hoặc số người (form hiện ở mỗi lượt cho tới khi đủ; ngân sách không bắt buộc), khung chat hiển thị ngay dưới câu trả lời một form đã điền sẵn giá trị gợi ý (điểm đến — chỉ vài lựa chọn tiêu biểu, số ngày 1–7, ngày khởi hành không trước hôm nay, số người, ngân sách, nơi đi — không bắt buộc, có nút "Dùng vị trí hiện tại" theo AC-AGT-03) kèm nút **Xác nhận**. Bấm xác nhận gửi ngay câu yêu cầu hoàn chỉnh dựng từ form như một tin nhắn của người dùng; trợ lý coi đó là yêu cầu đầy đủ và lập lịch, không hỏi thêm. Form xuất hiện trong widget trợ lý.
 
 ### 4.3. Màn hình Xác Nhận Đơn Hàng & Vòng Lặp Gợi Ý Tiếp Theo (`/booking/:referenceCode`)
 ```
@@ -333,4 +337,42 @@ Mục "Chỗ ngồi" và màn hình sơ đồ ghế của vé máy bay (FR-BKG-1
 |  12    [T][T][T]   [T][T][T]        Phí chọn ghế: 150.000 đ        [ XÁC NHẬN ]  |
 |  Tình trạng ghế là mô phỏng; hãng có thể xếp ghế khác.                          |
 +-------------------------------------------------------------------------------+
+```
+
+### 4.5. Hồ sơ cá nhân (`/profile`), Lịch sử đặt chỗ (`/profile/booking_history`) và Chi Tiết Đơn (`/booking/:referenceCode`)
+
+Giao diện chốt ngày 2026-10-07 trên bản mẫu https://claude.ai/artifact/J5umeEEBdAnLcYsaKgBL8B (FR-USR-04, FR-BKG-14) và https://claude.ai/artifact/ATHDHksuHw5ddMFS5ADqX9 (FR-BKG-15). Hồ sơ và lịch sử dùng chung khung tài khoản: menu trái (thẻ người dùng, "Hồ sơ cá nhân", "Lịch sử đặt chỗ") trên máy tính, hai tab ngang trên điện thoại. Hồ sơ: thẻ "Thông tin cá nhân" (họ tên, email chỉ xem, số điện thoại, nút Lưu thay đổi và Huỷ thay đổi) và thẻ "Mật khẩu". Đường dẫn "Đơn hàng của tôi" ở trang chi tiết đơn dẫn về `/profile/booking_history`.
+```
++-------------------------------------------------------------------------------+
+| Đơn hàng của tôi                                  Ngày đặt [ Tất cả        v ] |
+| +---------------------------------------------------------------------------+ |
+| |   Sắp đến          |        Hoàn thành        |          Đã huỷ           | |
+| |  [Tất cả][Khách sạn][Vé máy bay][Vé tham quan][Combo][Sân Golf]  (cuộn ngang) |
+| |                                                                           | |
+| |  +---------------------------------------------------------------------+  | |
+| |  | VOTA-20261006-4K7Q  Đặt lúc 06/10/2026 09:12      (o) Chờ thanh toán |  | |
+| |  | [icon] Hà Nội -> Đà Nẵng · VN 123           12/10 · 2 người   2.480.000 d | |
+| |  | Đang giữ chỗ cho bạn, còn 14:32                                      |  | |
+| |  | Tổng thanh toán 2.480.000 d          [Huỷ giữ chỗ] [Thanh toán ngay] |  | |
+| |  +---------------------------------------------------------------------+  | |
+| |  ... (5 đơn mỗi trang)                                                    | |
+| |  Hiển thị 1-5 trong 12 đơn              [<] [1] 2 3 [>]                   | |
+| +---------------------------------------------------------------------------+ |
++-------------------------------------------------------------------------------+
+Trống: hình minh hoạ + "Bạn chưa có chuyến đi nào." + [Tìm khách sạn].
+Lỗi: "Chưa tải được đơn hàng của bạn." + [Thử lại] + mã yêu cầu.
+
+Chi tiết đơn (hai cột trên máy tính, một cột trên điện thoại):
++--------------------------------------------------+----------------------------+
+| Đơn hàng của tôi / Chi tiết đơn hàng             | Thông tin thanh toán       |
+| [Dòng trạng thái và lý do]                       |  Mã đơn VOTA-...  [Sao chép]|
+| Thông tin đặt chỗ (mỗi dịch vụ một khối)         |  Từng dòng giá             |
+|   Nhận phòng ----- 1 đêm · 2 khách ----- Trả phòng|  Tổng thanh toán           |
+|   Tên, hạng sao, địa chỉ, [Bản đồ]               |  Trạng thái, phương thức   |
+|   Phòng đã chọn, tiện ích, ảnh                   |  [Nút hành động]           |
+| Thông tin khách hàng                             |                            |
+| Thông tin khách lưu trú / hành khách             |                            |
+| Thông tin dịch vụ (địa chỉ, hỗ trợ, chính sách)  |                            |
+| Chính sách hoàn huỷ (hai mốc theo FR-BKG-07)     |                            |
++--------------------------------------------------+----------------------------+
 ```

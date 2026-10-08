@@ -43,6 +43,29 @@ AuthUser:
       format: email
     fullName:
       type: string
+    phone:
+      type:
+      - string
+      - 'null'
+      pattern: ^0[0-9]{9}$
+      description: Số điện thoại hồ sơ (FR-USR-04); null hoặc vắng mặt khi chưa có. Chỉ lưu ở tài khoản V-OTA.
+UpdateProfileRequest:
+  type: object
+  minProperties: 1
+  description: >-
+    Sửa hồ sơ (FR-USR-04). Chỉ các trường có mặt mới đổi; phone = null xoá số. Họ tên và số điện thoại được cắt khoảng
+    trắng hai đầu trước khi kiểm. Email không sửa được qua đây.
+  properties:
+    fullName:
+      type: string
+      minLength: 1
+      maxLength: 100
+    phone:
+      type:
+      - string
+      - 'null'
+      pattern: ^0[0-9]{9}$
+  additionalProperties: false
 AuthResponse:
   type: object
   required:

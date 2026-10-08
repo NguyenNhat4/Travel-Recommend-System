@@ -20,7 +20,7 @@ import { Stepper } from './CheckoutParts';
 import { TravelersStep } from './TravelersStep';
 import { useCheckout } from './useCheckout';
 
-const PRIMARY = 'px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl';
+const PRIMARY = 'px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-xl';
 const SECONDARY = 'px-5 py-2.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-800 font-bold text-xs rounded-xl';
 
 /** Thời gian còn lại của đơn nháp, `mm:ss`; null khi không có hạn. Về 0 thì gọi `onExpire` một lần. */

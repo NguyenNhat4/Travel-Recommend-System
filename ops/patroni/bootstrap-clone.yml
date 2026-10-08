@@ -1,0 +1,8 @@
+# Chỉ nạp khi đặt PATRONI_CLONE_FROM_HOST: dựng cụm Patroni từ primary đang chạy bằng pg_basebackup (di trú một lần,
+# xem docs/guide/van-hanh-db-patroni.md §3). Bỏ qua trên mọi lần khởi động sau, vì khi đã có cụm trong DCS
+# thì Patroni không bootstrap nữa.
+bootstrap:
+  method: clone_from_primary
+  clone_from_primary:
+    command: /opt/vota/clone-from-primary.sh
+    no_params: true

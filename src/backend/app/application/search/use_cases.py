@@ -3,6 +3,9 @@ from __future__ import annotations
 import logging
 import re
 from collections import Counter
+from collections.abc import Callable
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 from dataclasses import dataclass, field, replace
 from time import perf_counter
 from typing import Any
@@ -18,6 +21,7 @@ from src.backend.app.application.ports import (
     VectorSearchPort,
 )
 from src.backend.app.core.logging_config import log_event
+from src.backend.app.domain.catalog import StayDates
 from src.backend.app.domain.search import (
     EMPTY_DESTINATION,
     EMPTY_PARAM,
@@ -201,12 +205,14 @@ def _plan_diagnostics(plan: QueryPlan, flags: PlanFlags, *, revalidated_drops: i
 
 
 def _child_filter(plan: QueryPlan) -> dict:
-    """kwargs của `UnitIndex.matched_children` cho các điều kiện cấp phòng/chuyến đang áp (giá, số khách); {} = không có."""
+    """kwargs của `UnitIndex.matched_children` cho các điều kiện cấp phòng/chuyến đang áp (giá, số khách, ngày); {} = không có."""
     kw: dict = {}
     if plan.price_active:
         kw.update(price_min=plan.price_min, price_max=plan.price_max)
     if plan.party_active:
         kw["min_occupancy"] = plan.party_total
+    if plan.date_active:
+        kw["stay"] = plan.stay
     return kw
 
 
@@ -252,6 +258,7 @@ class SearchProducts:
     llm_min_confidence: float = 0.75
     llm_timeout_ms: int = 1500
     hypothesizer: Any = None
+    today: Callable[[], date] = field(default=lambda: datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).date())  # hôm nay giờ Việt Nam
     _name_tokens: list[set[str]] = field(default_factory=list, init=False, repr=False, compare=False)
     _normalizer: QueryNormalizer | None = field(default=None, init=False, repr=False, compare=False)
     _gaz: PlanGazetteers = field(default_factory=PlanGazetteers, init=False, repr=False, compare=False)
@@ -299,11 +306,13 @@ class SearchProducts:
                  price_min: int | None = None, price_max: int | None = None, star_min: float | None = None,
                  available_only: bool = True, limit: int = 20, offset: int = 0,
                  derive_destination: bool | None = None, derive_plan: bool | None = None,
-                 adults: int | None = None, children: int | None = None) -> dict:
+                 adults: int | None = None, children: int | None = None,
+                 check_in: date | None = None, check_out: date | None = None) -> dict:
         """`derive_destination` / `derive_plan`: ghi đè cờ `dest_filter` / tám cờ họ query plan (phủ định, loại, tuyến, số,
         số khách, thời lượng, địa danh gazetteer, entity) cho riêng lượt gọi (Agent); None = theo cấu hình. `origin`,
-        `price_min/max`, `star_min`, `available_only`, `adults` / `children` (= travelContext.guests, contract 1.16.0) = tham
-        số request, luôn áp."""
+        `price_min/max`, `star_min`, `available_only`, `adults` / `children` (= travelContext.guests, contract 1.16.0) và
+        `check_in` / `check_out` (= travelContext.checkIn / checkOut, contract 1.19.0; `check_out` cần `check_in`) = tham số
+        request, luôn áp."""
         limit = min(limit, self.max_limit)
         stages = StageTimer()
         nq = self._normalizer(q) if self._normalizer else None
@@ -324,7 +333,8 @@ class SearchProducts:
                           entity=self.entity_filter if derive_plan is None else derive_plan)
         params = PlanParams(taxonomy=taxonomy, destination=destination, origin=origin, price_min=price_min,
                             price_max=price_max, star_min=star_min, available_only=available_only,
-                            adults=adults, children=children)
+                            adults=adults, children=children,
+                            stay=StayDates(check_in, check_out, self.today()) if check_in is not None else None)
         plan = pending = llm_block = None
         if self._llm is not None and nq is not None and derive_plan is not False:
             # LLM fallback bật: dựng plan TRƯỚC embed để lượt gọi model (khi confidence thấp) chạy song song với embed
@@ -387,7 +397,8 @@ class SearchProducts:
         # contract C6: phát khi F1 bật (như 1.14.0), khi request có tham số lọc mới, hoặc khi một họ suy từ câu đang áp —
         # request web hôm nay (chỉ taxonomy/destination, cờ tắt) không thêm khoá.
         explicit = (plan.price_source == SOURCE_PARAM or plan.star_source == SOURCE_PARAM
-                    or plan.route_source == SOURCE_PARAM or plan.party_source == SOURCE_PARAM or not available_only)
+                    or plan.route_source == SOURCE_PARAM or plan.party_source == SOURCE_PARAM or plan.date_active
+                    or not available_only)
         if derive or explicit or plan.applied:
             applied = plan.applied_filters(destination_fallback=fallback is not None)
             if applied:
@@ -426,11 +437,6 @@ class SearchProducts:
         # Kiến trúc Phase A §9: kiểm lại hard filter sau fusion (lưới an toàn, kỳ vọng không loại gì) rồi xếp sao soft
         # (unit không khai sao xuống sau, contract [C6]).
         order, drops = revalidate(out.order, mask)
-        if plan.price_active and plan.party_active:
-            # Kiến trúc §6 parent–child: mask xét giá và sức chứa ĐỘC LẬP trên unit + con (phòng 2 người rẻ + phòng 4 người
-            # đắt vẫn qua cả hai) → unit có con phải có ít nhất một con thoả CẢ HAI; không thì loại, đếm vào revalidatedDrops.
-            order, joint = self._joint_children(order, plan)
-            drops += joint
         if drops:   # R đổi thành viên → đếm lại facets để giữ bất biến sum(facets.taxonomy) == total ([C4])
             out.facets = {name: dict(Counter(str(arr[u]) for u in order)) for name, arr in facet_fields.items()}
         if plan.star_active:   # chỉ khi sao đang áp (param, hoặc câu + cờ numeric); parse ra mà cờ tắt thì không đổi thứ tự
@@ -438,13 +444,6 @@ class SearchProducts:
         if order != out.order:
             out.order = order
         return out, diagnostics, drops
-
-    def _joint_children(self, order: list[int], plan: QueryPlan) -> tuple[list[int], int]:
-        """Giữ unit không có con (giá / sức chứa của chính nó đã qua mask) hoặc có ≥ 1 con thoả đồng thời giá + số khách."""
-        children = self.index.attrs.children
-        kw = _child_filter(plan)
-        kept = [u for u in order if not children[u] or self.index.matched_children(u, limit=1, **kw)]
-        return kept, len(order) - len(kept)
 
     def _matched_children(self, i: int, child_filter: dict) -> dict:
         """`matchedChildren` (contract 1.16.0) của một kết quả: chỉ khi lọc giá / số khách đang áp và có con thoả."""

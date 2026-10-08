@@ -374,41 +374,34 @@ def parse_search_cards(html: str) -> list[dict]:
 
 
 def extract_anchored_json(html: str, anchor: str) -> dict | None:
-    """Tìm `anchor` trong html rồi JSON-decode object cân bằng ngoặc bắt đầu từ dấu `{` ngay sau đó.
+    """Read legacy SSR objects and JSON-encoded Next.js Flight chunks without executing JS."""
+    decoder = json.JSONDecoder()
 
-    Cần hàm quét độ sâu ngoặc riêng (không dùng regex) vì object này nằm giữa một payload JS lớn hơn nhiều —
-    regex không bound an toàn được điểm kết thúc khi bên trong có chuỗi chứa `{`/`}`/dấu ngoặc kép escape."""
-    idx = html.find(anchor)
-    if idx < 0:
+    def anchored(text: str) -> dict | None:
+        start = 0
+        while (index := text.find(anchor, start)) >= 0:
+            start = index + len(anchor)
+            try:
+                value, _ = decoder.raw_decode(text[start:].lstrip())
+            except json.JSONDecodeError:
+                continue
+            if isinstance(value, dict):
+                return value
         return None
-    start = html.find("{", idx)
-    if start < 0:
-        return None
-    depth = 0
-    in_str = False
-    esc = False
-    for i in range(start, len(html)):
-        c = html[i]
-        if in_str:
-            if esc:
-                esc = False
-            elif c == "\\":
-                esc = True
-            elif c == '"':
-                in_str = False
-        else:
-            if c == '"':
-                in_str = True
-            elif c == "{":
-                depth += 1
-            elif c == "}":
-                depth -= 1
-                if depth == 0:
-                    try:
-                        return json.loads(html[start : i + 1])
-                    except json.JSONDecodeError:
-                        return None
-    return None
+
+    direct = anchored(html)
+    if direct is not None:
+        return direct
+    chunks = []
+    for match in re.finditer(r"self\.__next_f\.push\(\s*", html):
+        try:
+            payload, _ = decoder.raw_decode(html[match.end():])
+        except json.JSONDecodeError:
+            continue
+        if (isinstance(payload, list) and len(payload) == 2
+                and payload[0] == 1 and isinstance(payload[1], str)):
+            chunks.append(payload[1])
+    return anchored(''.join(chunks))
 
 
 def parse_hotel_detail(

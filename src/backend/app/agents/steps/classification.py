@@ -17,7 +17,7 @@ from .prompts import CLASSIFY_PROMPT, EXTRACT_PROMPT
 
 # Việt Nam không có giờ mùa hè, nên lệch cố định UTC+7 là đủ và không cần gói dữ liệu múi giờ (tzdata).
 VIETNAM = timezone(timedelta(hours=7))
-TRIP_FIELDS = ("destination", "days", "startDate", "party", "budget")
+TRIP_FIELDS = ("destination", "days", "startDate", "party", "budget", "origin")
 #: Trường phải đủ trước khi gọi tool (AC-AGT-01); ngân sách vẫn được hỏi nhưng không bắt buộc.
 REQUIRED_FIELDS = ("destination", "days", "startDate", "party")
 SWAP_CONSTRAINTS = ("exclude_products", "specific_hotel", "specific_activity", "require_hotel")
@@ -142,6 +142,10 @@ def _merged_constraints(state: dict, result: Extraction, patch: dict, intent: di
                 constraints.pop("children_ages", None)
     if constraints.get("require_hotel"):
         constraints["exclude_taxonomies"] = [x for x in constraints.get("exclude_taxonomies", []) if x != "hotel"]
+    if changes.get("require_flight"):
+        constraints["exclude_taxonomies"] = [x for x in constraints.get("exclude_taxonomies", []) if x != "flight"]
+    elif "flight" in changes.get("exclude_taxonomies", []):
+        constraints.pop("require_flight", None)
     return constraints
 
 
@@ -243,7 +247,7 @@ def _invalid_inputs(intent: dict, today: date) -> list[dict]:
 
 #: Chi tiết chuyến đi hỏi gộp bằng câu chữ một lần sau điểm đến và số ngày; từ lượt sau còn thiếu ngày đi hoặc số
 #: người thì hiện form (AC-AGT-01).
-TRIP_DETAILS = ("startDate", "party", "budget")
+TRIP_DETAILS = ("startDate", "party", "budget", "origin")  # nơi đi: không bắt buộc, như ngân sách (AC-AGT-02)
 
 
 def trip_details_missing(intent: dict) -> list[str]:

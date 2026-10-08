@@ -31,6 +31,8 @@ interface TravelContextType {
   signOut: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, fullName: string) => Promise<void>;
+  /** Sửa họ tên, số điện thoại (FR-USR-04) và cập nhật người dùng hiện tại ngay, không cần đăng nhập lại. */
+  updateProfile: (changes: authApi.ProfileChanges) => Promise<authApi.AuthUser>;
   /** Email điền sẵn khi phiên hết hạn giữa chừng (§4.2 điều 4). */
   loginPrefillEmail: string | null;
   currentLocale: SupportedLocale;
@@ -146,10 +148,10 @@ function cartErrorMessage(error: unknown, productName?: string): string {
 /** Người dùng của phiên → persona hiển thị. 4 persona seed giữ thẻ demo; tài khoản khác dùng thẻ chung. */
 function personaFromUser(user: authApi.AuthUser): UserPersona {
   const seedKey = Object.keys(PERSONA_LOGIN).find((key) => PERSONA_LOGIN[key].cdpUserId === user.cdpUserId);
-  if (seedKey) return { ...SEED_PERSONAS[seedKey], email: user.email };
+  if (seedKey) return { ...SEED_PERSONAS[seedKey], email: user.email, name: user.fullName, phone: user.phone ?? null };
   const initials = user.fullName.split(/\s+/).filter(Boolean).slice(-2).map((w) => w[0]).join('').toUpperCase() || 'KH';
   return {
-    id: user.cdpUserId, code: initials, name: user.fullName, email: user.email, avatarText: initials,
+    id: user.cdpUserId, code: initials, name: user.fullName, email: user.email, phone: user.phone ?? null, avatarText: initials,
     tagline: 'Tài khoản mới', description: 'Tài khoản vừa đăng ký, chưa có lịch sử.',
     historySummary: 'Chưa có lịch sử', coldStart: true, bookedVerticals: [], seedEvents: [],
   };
@@ -283,6 +285,12 @@ export const TravelProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     resetClientState();
     applySession(session);
   }, [applySession, resetClientState]);
+
+  const updateProfile = useCallback(async (changes: authApi.ProfileChanges) => {
+    const user = await authApi.updateProfile(changes);
+    setCurrentPersona(personaFromUser(user));
+    return user;
+  }, []);
 
   const signOut = useCallback(async () => {
     await authApi.logout().catch(() => undefined);
@@ -477,6 +485,7 @@ export const TravelProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         signOut,
         signIn,
         signUp,
+        updateProfile,
         loginPrefillEmail,
         currentLocale,
         setLocale,

@@ -89,20 +89,20 @@ export function AssistantTripStarter({
     onSubmit({ destination, days, party, style });
   };
 
-  const choiceClass = (selected: boolean) => `min-h-11 rounded-xl border px-3 py-2 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
+  const choiceClass = (selected: boolean) => `min-h-11 rounded-xl border px-3 py-2 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ai-500 focus-visible:ring-offset-2 ${
     selected
-      ? 'border-blue-600 bg-blue-600 text-white'
-      : 'border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:bg-blue-50'
+      ? 'border-ai-600 bg-ai-600 text-white'
+      : 'border-slate-200 bg-white text-slate-700 hover:border-ai-300 hover:bg-ai-50'
   } disabled:cursor-not-allowed disabled:opacity-50`;
 
   return (
-    <section aria-labelledby={titleId} className="mt-3.5 space-y-3.5 rounded-2xl border border-blue-200 bg-white p-4 text-slate-800 shadow-sm">
+    <section aria-labelledby={titleId} className="mt-3.5 space-y-3.5 rounded-2xl border border-ai-200 bg-white p-4 text-slate-800 shadow-sm">
       <div className="flex items-start gap-2 border-b border-slate-100 pb-2.5">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-700" aria-hidden="true">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-ai-100 text-ai-700" aria-hidden="true">
           <SlidersHorizontal className="h-4 w-4" />
         </span>
         <div>
-          <p className="text-[11px] font-extrabold uppercase tracking-wider text-blue-700">Tương tác cùng AI</p>
+          <p className="text-[11px] font-extrabold uppercase tracking-wider text-ai-700">Tương tác cùng AI</p>
           <h3 id={titleId} className="text-sm font-bold text-slate-900">Chọn nhanh nhu cầu chuyến đi</h3>
         </div>
       </div>
@@ -112,7 +112,7 @@ export function AssistantTripStarter({
       <form onSubmit={submit} className="space-y-3.5">
         <fieldset>
           <legend className="mb-2 flex items-center gap-1.5 text-xs font-bold text-slate-700">
-            <MapPin className="h-3.5 w-3.5 text-blue-600" aria-hidden="true" /> Điểm đến
+            <MapPin className="h-3.5 w-3.5 text-ai-600" aria-hidden="true" /> Điểm đến
           </legend>
           {loadState === 'loading' && (
             <div role="status" className="flex min-h-11 items-center gap-2 rounded-xl bg-slate-50 px-3 text-xs text-slate-500">
@@ -140,21 +140,21 @@ export function AssistantTripStarter({
         </fieldset>
 
         <fieldset>
-          <legend className="mb-2 flex items-center gap-1.5 text-xs font-bold text-slate-700"><Calendar className="h-3.5 w-3.5 text-blue-600" aria-hidden="true" /> Thời lượng</legend>
+          <legend className="mb-2 flex items-center gap-1.5 text-xs font-bold text-slate-700"><Calendar className="h-3.5 w-3.5 text-ai-600" aria-hidden="true" /> Thời lượng</legend>
           <div className="flex flex-wrap gap-2">{DAYS.map((value) => <button key={value} type="button" disabled={disabled} aria-pressed={days === value} onClick={() => setDays(value)} className={choiceClass(days === value)}>{value} ngày ({value - 1} đêm)</button>)}</div>
         </fieldset>
 
         <fieldset>
           <legend className="mb-2 flex items-center gap-1.5 text-xs font-bold text-slate-700"><Sparkles className="h-3.5 w-3.5 text-amber-500" aria-hidden="true" /> Phong cách ưu tiên</legend>
-          <div className="grid gap-2 sm:grid-cols-2">{STYLES.map((item) => <button key={item.id} type="button" disabled={disabled} aria-pressed={style === item.id} onClick={() => setStyle(item.id)} className={`${choiceClass(style === item.id)} text-left`}><span className="block font-bold">{item.label}</span><span className={`mt-0.5 block text-[11px] font-normal ${style === item.id ? 'text-blue-100' : 'text-slate-500'}`}>{item.description}</span></button>)}</div>
+          <div className="grid gap-2 sm:grid-cols-2">{STYLES.map((item) => <button key={item.id} type="button" disabled={disabled} aria-pressed={style === item.id} onClick={() => setStyle(item.id)} className={`${choiceClass(style === item.id)} text-left`}><span className="block font-bold">{item.label}</span><span className={`mt-0.5 block text-[11px] font-normal ${style === item.id ? 'text-ai-100' : 'text-slate-500'}`}>{item.description}</span></button>)}</div>
         </fieldset>
 
         <fieldset>
-          <legend className="mb-2 flex items-center gap-1.5 text-xs font-bold text-slate-700"><Users className="h-3.5 w-3.5 text-blue-600" aria-hidden="true" /> Nhóm đồng hành</legend>
+          <legend className="mb-2 flex items-center gap-1.5 text-xs font-bold text-slate-700"><Users className="h-3.5 w-3.5 text-ai-600" aria-hidden="true" /> Nhóm đồng hành</legend>
           <div className="flex flex-wrap gap-2">{PARTIES.map((item) => <button key={item.id} type="button" disabled={disabled} aria-pressed={party === item.id} onClick={() => setParty(item.id)} className={choiceClass(party === item.id)}>{item.label}</button>)}</div>
         </fieldset>
 
-        <button type="submit" disabled={disabled || loadState !== 'ready' || !destination} className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300">
+        <button type="submit" disabled={disabled || loadState !== 'ready' || !destination} className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-ai-600 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-ai-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ai-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300">
           <Check className="h-4 w-4" aria-hidden="true" /> Tạo lịch trình
         </button>
       </form>

@@ -9,6 +9,7 @@ export interface AuthUser {
   cdpUserId: string;
   email: string;
   fullName: string;
+  phone?: string | null;
 }
 
 export interface SessionView {
@@ -67,3 +68,30 @@ export async function logout(): Promise<void> {
     await bootstrapSession(); // phiên khách mới cho CSRF của các request sau
   }
 }
+
+export interface ProfileChanges {
+  fullName?: string;
+  /** `null` xoá số điện thoại. */
+  phone?: string | null;
+}
+
+/** Sửa họ tên và số điện thoại của chính mình (FR-USR-04). Lỗi nhập hợp lệ là 422 VALIDATION_ERROR. */
+export async function updateProfile(changes: ProfileChanges): Promise<AuthUser> {
+  const response = await apiFetch('/api/v1/auth/me', {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(changes),
+  });
+  if (!response.ok) throw await toAuthError(response);
+  return response.json();
+}
+
+/**
+ * Đổi mật khẩu (FR-USR-04). Sai mật khẩu hiện tại là 401 `INVALID_CREDENTIALS`; mật khẩu mới yếu là 400 `WEAK_PASSWORD`.
+ * Thành công thì BFF đăng xuất các phiên khác và cấp lại cookie cho phiên này.
+ */
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  const response = await apiFetch('/api/v1/auth/password', {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ currentPassword, newPassword }),
+  });
+  if (!response.ok) throw await toAuthError(response);
+}
+

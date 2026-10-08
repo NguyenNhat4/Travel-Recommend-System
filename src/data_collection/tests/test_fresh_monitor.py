@@ -103,7 +103,7 @@ class SettingsTests(Workspace):
 
     def test_tick_rechecks_schedule_under_lock_and_records_only_one_run(self):
         env = {'CATALOG_STATE_DIR': str(self.state), 'CATALOG_RUN_ROOT': str(self.runs),
-               'DB_TARGET': 'local', 'SEED_DATABASE_URL': 'postgresql://unused'}
+               'CATALOG_DB_RUN_LOCK': 'off', 'DB_TARGET': 'local', 'SEED_DATABASE_URL': 'postgresql://unused'}
         settings.save(self.state, {'schedule.time': '00:00'}, {})
         with patch.dict(os.environ, env), patch.object(fresh_catalog, 'index_settings'), \
                 patch.object(fresh_catalog, 'execute', return_value=0) as execute:
@@ -117,7 +117,7 @@ class SettingsTests(Workspace):
 
     def test_stop_during_final_database_step_is_not_reported_as_success(self):
         env = {'CATALOG_STATE_DIR': str(self.state), 'CATALOG_RUN_ROOT': str(self.runs),
-               'DB_TARGET': 'local', 'SEED_DATABASE_URL': 'postgresql://unused'}
+               'CATALOG_DB_RUN_LOCK': 'off', 'DB_TARGET': 'local', 'SEED_DATABASE_URL': 'postgresql://unused'}
 
         def finish_after_stop(selected, recorder, *args):
             recorder.stop_event.set()

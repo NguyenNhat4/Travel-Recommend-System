@@ -324,6 +324,9 @@ Weaviate Cloud mất 453 giây. Mỗi request gửi truy vấn top-K sang Weavia
 Metadata (taxonomy, destination, available, recommendable, parent) vẫn nạp từ
 Postgres để tính filter: lúc khởi động và sau đó mỗi `CATALOG_REFRESH_SECONDS`
 (mặc định 900 giây), để giá, trạng thái và cửa sổ ngày theo kịp job cào hằng ngày.
+Mỗi lần nạp lại hỏi Postgres mã băm của catalog (một dòng); mã trùng lần trước thì
+dùng lại catalog đang giữ, không kéo lại — kiểm vector và độ phổ biến vẫn chạy mỗi
+chu kỳ. Hỏi mã băm lỗi thì kéo đầy đủ như cũ.
 Lần nạp lại lỗi thì giữ bản đang phục vụ. Mỗi lần nạp kiểm từng search unit
 theo object id, `modelVersion`, `textHash` (không tải vector): unit chưa có vector
 vẫn nằm trong metadata nhưng Weaviate chưa trả nó cho tới khi job index xong; unit
@@ -354,7 +357,8 @@ chạy offline trong test).
 | **Soft** | `starRatingMin` | 51% | Thiếu dữ liệu **không bị loại**, chỉ xếp sau |
 | **Hard** suy từ câu (05/10, sau cờ, §2.2 QUERY PLAN) | `taxonomy` (F4), `origin` / `destinationCity` tuyến bay (F5), `mustNotAmenities` (F3), `priceMin/priceMax` (F6) | taxonomy 100 % · tuyến 100 % · amenities 99 % property · giá 100 % | Loại thẳng; `mustNot` chỉ loại unit **có ghi nhận** tiện ích, không cam kết "chắc chắn không có" ([C2]); giá null bị loại khi có lọc giá |
 | **Soft** suy từ câu (05/10) | `starRatingMin` (F6) | 70 % property | Unit khai sao thấp hơn bị loại; không khai → giữ, xếp sau |
-| **Hard** số khách (06/10) | `minOccupancy` — `travelContext.guests` (luôn áp) hoặc "N người" (cờ `SEARCH_PARTY_FILTER`) | sức chứa biết ở 1.807/2.321 khách sạn | Loại unit có sức chứa tối đa < tổng; không khai → giữ ([C2]); cùng lọc giá → một phòng con phải thoả cả hai |
+| **Hard** số khách (06/10) | `minOccupancy` — `travelContext.guests` (luôn áp) hoặc "N người" (cờ `SEARCH_PARTY_FILTER`) | sức chứa biết ở 1.807/2.321 khách sạn | Loại unit có sức chứa tối đa < tổng; không khai → giữ ([C2]); cùng lọc giá hoặc ngày → MỘT phòng con đang bán phải thoả đồng thời tất cả (1.19.0, kiểm ngay ở mask) |
+| **Hard** ngày (07/10, contract 1.19.0) | `travelContext.checkIn` / `checkOut` (luôn áp, chỉ từ request; `domain/catalog/stay_dates.py`, `UnitIndex._stay_mask`) | khách sạn: lịch có ở mọi hạng phòng; vé tham quan / golf: lịch + cửa sổ; combo: cửa sổ | Khách sạn: nhận trong [hôm nay, +3 tháng], 1–30 đêm, và còn ≥ 1 hạng phòng đang bán (`available` + có giá) không có đêm kín (`0`) trong [checkIn, checkOut), cùng phòng đó phải thoả số khách và giá đang áp; vé / golf: `checkIn` trong cửa sổ mở bán và ngày đó không kín; combo: `checkIn` trong cửa sổ; route bay: không lọc. Không biết (không lịch, đêm ngoài 30 ngày lịch, không cửa sổ) → giữ ([C2]). Lịch KHÔNG chặn đặt chỗ (FR-CAT-03) |
 | **Hard** loại trừ suy từ câu (06/10, F3) | `mustNotTaxonomies` ("vé lẻ", "không lấy combo"), `mustNotFlags` (`includesFlight` / `includesHotel` của combo) | taxonomy 100 % · cờ combo 39/39 combo vé+phòng | Loại thẳng; không loại chính loại câu đang hỏi |
 | **Hard** cổng entity (07/10, cờ `SEARCH_ENTITY_FILTER`, chỉ vai trò `gate`) | `entity` — danh sách khoá điểm vui chơi từ gazetteer (`vinwonders`, `safari`, `grand_world`, `hon_tam`…) | tên unit attraction/combo (VinWonders có trong 141 tên trên catalog bench 3.183 unit; combo chỉ qua tên, `combo_items` → P1) | Loại thẳng mọi unit không phải attraction/combo có tên chứa ≥ 1 khoá (nhiều khoá → OR); không nới; giao với `taxonomy` request và F3 → F rỗng khai `emptyReason = entity` |
 
@@ -396,7 +400,7 @@ Chỉ hiển thị `score` cho khách ở chế độ debug.
 | Từ | Không được kết luận |
 |---|---|
 | `score: 0.81` | "81% phù hợp" |
-| `available: true` | "còn phòng ngày 15/10" — đó là `bookable` |
+| `available: true` | "còn phòng ngày 15/10" — đó là `bookable`. Có `travelContext.checkIn` thì kết quả đã qua bộ lọc ngày (§2.5) nhưng vẫn là snapshot lịch, không phải xác nhận còn phòng |
 | `because[]` | Bằng chứng nhân quả. Đó là đóng góp vào điểm số, không phải lý do khách mua |
 | `total: 87` | Kích thước catalog. Đó là `|R|` sau filter và cutoff |
 | Thuộc tính vắng mặt | `false`. Vắng mặt nghĩa là **không biết** — xem `[C2]` |
@@ -700,8 +704,14 @@ Lấy 1–2 nguồn cao nhất, ngưỡng tối thiểu `0.15`.
 ### 4.7. Điểm cuối và đa dạng
 
 ```
-final = cos(u, v_c) + γ · log(1 + review_count)      γ = 0.05
+final = W_SHORT · cos(u_short, v_c) + W_POP · pop_D(c) + W_LONG · cos(u_long, v_c)
+W_SHORT / W_POP / W_LONG = 0.7 / 0.15 / 0.15
 ```
+
+`u_short` = vector chuyến đang mở (không có chuyến mở thì dùng `u_long`); `pop_D` = mức phổ biến của ứng viên. Hằng nằm ở
+`src/backend/app/domain/recommendation/profile.py` (`W_SHORT, W_POP, W_LONG`). Trọng số chốt 2026-10-07, thay 0.6 / 0.25 / 0.15
+(`docs/prd/update-archive/2026-10-06-recsys-trong-so-ngan-han-pho-bien.md`; số đo: `src/evaluation/reports/eval-2026-10-06-recsys-search-tong-hop.md`
+phần A §4, `eval-2026-10-07-recsys-grid-llbo-coldstart.md`).
 
 Sau đó MMR re-rank với `λ = 0.7`, cộng giới hạn cứng tối đa 2 kết quả mỗi
 `parentProductId`.

@@ -77,7 +77,7 @@ def remove_spans(text: str, spans: Iterable[Span]) -> str:
             merged.append([s, e])
     for s, e in reversed(merged):
         text = text[:s] + " " + text[e:]
-    text = re.sub(r"\s+([,;.!?])", r"", " ".join(text.split()))
+    text = re.sub(r"\s+([,;.!?])", r"\1", " ".join(text.split()))
     return re.sub(r",(\s*,)+", ",", text).strip(" ,;")
 
 

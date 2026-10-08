@@ -7,6 +7,7 @@ bỏ lúc nạp, nên câu POI dùng Hòn Tằm (venue, Nha Trang) và Bãi Sao 
 from __future__ import annotations
 
 import json
+from datetime import date, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -44,6 +45,9 @@ CASES = (
     ("Nha Trang", {"taxonomy": "flight", "origin": "Hà Nội", "children": 2}),
     ("resort Nha Trang", {"origin": "Hà Nội", "price_max": 4000000, "star_min": 4, "available_only": False}),
     ("Đà Nẵng", {"destination": "Nha Trang"}),
+    ("khách sạn Nha Trang", {"check_in": date.today() + timedelta(days=3), "check_out": date.today() + timedelta(days=5)}),
+    ("vé tham quan Nha Trang", {"check_in": date.today() + timedelta(days=3), "adults": 2}),
+    ("khách sạn Nha Trang", {"check_in": date.today() - timedelta(days=30)}),   # quá khứ → F rỗng, emptyReason = date
     ("zzzz không khớp gì", {}),
     # 1.18.0: duration + entity gate · venue → location (vai trò location, hard.destinationSource = poi) · landmark → F1 ·
     # gate với tab hotel → total 0, emptyReason = entity
@@ -92,7 +96,7 @@ def test_engine_responses_with_every_knob_on_match_contract(engines):
                 seen.add(f"emptyReason.{qp['emptyReason']}")
     # các khoá 1.16.0 / 1.18.0 thực sự được phát ít nhất một lần trong bộ câu trên (không chỉ hợp lệ khi vắng)
     assert {"party", "confidence", "fallbackReasons", "taxonomy.strength", "mustNot.taxonomies", "mustNot.flags",
-            "matchedChildren", "fuzzyCount"} <= seen, seen
+            "matchedChildren", "fuzzyCount", "date"} <= seen, seen
     assert {"duration", "entity", "location", "hard.entity", "hard.destinationSource.poi", "emptyReason.entity",
             "applied.duration", "applied.entity"} <= seen, seen
 
@@ -137,4 +141,4 @@ def test_contract_declares_every_domain_constant():
     assert combo_flags == set(qp["mustNot"]["properties"]["flags"]["items"]["enum"])
     scored = DOC["components"]["schemas"]["ScoredProduct"]["allOf"][1]["properties"]
     assert scored["matchedChildren"]["maxItems"] == 5
-    assert DOC["info"]["version"] == app.version == "1.18.0"
+    assert DOC["info"]["version"] == app.version == "1.20.0"

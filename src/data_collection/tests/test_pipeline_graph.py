@@ -105,7 +105,7 @@ class JobOrderTests(unittest.TestCase):
                                                       encoding='utf-8')
         if mode == 'daily':
             (root / 'state' / 'trip_targets.json').write_text(json.dumps({'hotels': [target]}), encoding='utf-8')
-        env = {'CATALOG_STATE_DIR': f'{tmp.name}/state', 'CATALOG_RUN_ROOT': f'{tmp.name}/runs', 'DB_TARGET': 'local',
+        env = {'CATALOG_STATE_DIR': f'{tmp.name}/state', 'CATALOG_RUN_ROOT': f'{tmp.name}/runs', 'CATALOG_DB_RUN_LOCK': 'off', 'DB_TARGET': 'local',
                'SEED_DATABASE_URL': 'postgresql://seed', 'CATALOG_DESTINATIONS': 'Nha Trang', 'CRAWL_PARALLEL': '4'}
         fake = lambda value=None: (lambda *args, **kwargs: value)
         with patch.dict(os.environ, env, clear=True), \

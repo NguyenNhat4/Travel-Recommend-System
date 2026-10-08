@@ -5,10 +5,13 @@
 #
 # Required env: GCP_PROJECT_ID GCE_ZONE PRIMARY_VM REPLICA_VM
 # Optional env: DB_IMAGE (must be the exact image the primary runs)
+#               GCE_REPLICA_ZONE (zone of the replica VM; default GCE_ZONE). The replica should live in a DIFFERENT zone
+#               of the same region, otherwise losing the primary zone loses the replica too.
 set -Eeuo pipefail
 set +x
 
 : "${GCP_PROJECT_ID:?}" "${GCE_ZONE:?}" "${PRIMARY_VM:?}" "${REPLICA_VM:?}"
+GCE_REPLICA_ZONE=${GCE_REPLICA_ZONE:-$GCE_ZONE}
 DB_IMAGE=${DB_IMAGE:-pgvector/pgvector:0.8.6-pg18-bookworm}
 CONTAINER_NAME=${CONTAINER_NAME:-vota-postgres}
 SECRET_PATH=/etc/vota/secrets/replicator_password
@@ -31,8 +34,10 @@ retry_ssh() {
   done
 }
 
+zone_of() { if [[ "$1" == "$REPLICA_VM" ]]; then echo "$GCE_REPLICA_ZONE"; else echo "$GCE_ZONE"; fi; }
+
 ssh_vm_in() { # ssh_vm_in <vm> <command>; forwards stdin to the remote command (no retry here)
-  gcloud compute ssh "$1" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" \
+  gcloud compute ssh "$1" --project "$GCP_PROJECT_ID" --zone "$(zone_of "$1")" \
     --tunnel-through-iap --quiet --command "$2"
 }
 
@@ -45,7 +50,7 @@ run_remote() { # run_remote <vm> <dir> <env assignments + command>
 }
 
 vm_ip() {
-  gcloud compute instances describe "$1" --project "$GCP_PROJECT_ID" --zone "$GCE_ZONE" \
+  gcloud compute instances describe "$1" --project "$GCP_PROJECT_ID" --zone "$(zone_of "$1")" \
     --format='value(networkInterfaces[0].networkIP)'
 }
 

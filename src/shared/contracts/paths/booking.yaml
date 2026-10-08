@@ -29,7 +29,8 @@
     summary: Thêm mục vào giỏ (cộng dồn quantity và guests nếu trùng productId và usingDate)
     description: 'Thêm thành công thì Backend ghi event add_to_cart sang CDP clone ở nền, với taxonomy và unitPrice
       lấy từ catalog. Thêm thất bại không ghi event. CDP lỗi không ảnh hưởng response. guests là số người lớn và trẻ em
-      của mục (tối đa 9 khách, mỗi phòng một người lớn, không vượt maxOccupancy của hạng phòng); vi phạm trả 400
+      của mục (tối đa 9 khách; khách sạn tối đa 9 khách mỗi phòng và 9 phòng, mỗi phòng một người lớn, không vượt maxOccupancy
+      của hạng phòng); vi phạm trả 400
       VALIDATION_ERROR kèm details.fields[]. Response trả thêm guests và fares (dòng giá theo loại khách) cho từng mục.
       Sản phẩm taxonomy hotel hoặc flight bị từ chối với 422 DIRECT_BOOKING_ONLY (details productId, taxonomy): giỏ không đổi,
       không ghi add_to_cart. Khách chưa đăng nhập thêm được vào giỏ (tối đa 20 mục, vượt thì 400 VALIDATION_ERROR reason
@@ -120,6 +121,66 @@
       '500':
         $ref: ../openapi.yaml#/components/responses/Error
 /bookings:
+  get:
+    tags:
+    - booking
+    operationId: listBookings
+    summary: Danh sách đơn của chính người dùng, mới nhất trước (FR-BKG-14)
+    description: 'Mỗi đơn thuộc đúng một tab (BookingTab). taxonomy lọc các đơn có ít nhất một dịch vụ thuộc loại đó; days chỉ
+      giữ đơn đặt trong N ngày gần nhất (giờ Việt Nam), vắng mặt là mọi ngày. Chỉ trả đơn của người gọi. Danh sách rỗng là
+      200 với data rỗng và totalPages 0. page vượt quá totalPages trả data rỗng. Mọi tham số sai kiểu hoặc ngoài khoảng trả
+      422.'
+    security:
+    - bearerAuth: []
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/XRequestId
+    - name: tab
+      in: query
+      required: false
+      schema:
+        $ref: ../openapi.yaml#/components/schemas/BookingTab
+        default: upcoming
+    - name: taxonomy
+      in: query
+      required: false
+      schema:
+        $ref: ../openapi.yaml#/components/schemas/Taxonomy
+    - name: days
+      in: query
+      required: false
+      schema:
+        type: integer
+        enum:
+        - 1
+        - 7
+        - 30
+        - 60
+    - name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    - name: pageSize
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 50
+        default: 20
+    responses:
+      '200':
+        description: Một trang đơn của người dùng
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/BookingListResponse
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '422':
+        $ref: ../openapi.yaml#/components/responses/Error
+      '500':
+        $ref: ../openapi.yaml#/components/responses/Error
   post:
     tags:
     - booking

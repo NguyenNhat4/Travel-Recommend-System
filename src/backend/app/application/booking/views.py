@@ -5,7 +5,8 @@ from datetime import datetime, timezone
 from typing import Mapping, Sequence
 
 from src.backend.app.domain.booking import (
-    Booking, BookingDraft, BookingItem, Cart, CartLine, FareLine, Traveler, cancellable_until, fare_lines, lines_total,
+    Booking, BookingDraft, BookingItem, BookingTab, Cart, CartLine, FareLine, Traveler, cancellable_until, fare_lines,
+    item_end_date, lines_total,
 )
 from src.backend.app.domain.booking.status import BookingStatus, PaymentStatus
 from src.backend.app.domain.catalog.models import Product
@@ -226,3 +227,37 @@ def booking_response(booking: Booking, products: Mapping[str, Product]) -> dict:
         "total": booking.total_amount,
         "currency": booking.currency,
     }
+
+
+def booking_summary(booking: Booking, tab: BookingTab) -> dict:
+    """`BookingSummary` của contract: đủ cho thẻ đơn ở danh sách, không có hành khách, liên hệ hay dòng giá."""
+    confirmed = booking.status is BookingStatus.CONFIRMED
+    payment = booking.payment
+    return {
+        "referenceCode": booking.reference_code,
+        "createdAt": iso(booking.created_at),
+        "status": booking.status.value.upper(),
+        "tab": tab.value,
+        "holdExpiresAt": iso(booking.hold_expires_at) if booking.status is BookingStatus.PENDING_PAYMENT else None,
+        "cancellableUntil": iso(cancellable_until(booking.items)) if confirmed else None,
+        "paymentStatus": payment.status.value.upper() if payment else None,
+        "paymentFailureReason": _failure_reason(booking),
+        "total": booking.total_amount,
+        "currency": booking.currency,
+        "items": [{
+            "bookingItemId": item.booking_item_id,
+            "productId": item.product_id,
+            "name": item.product_name,
+            "taxonomy": item.taxonomy,
+            "usingDate": item.using_date.isoformat(),
+            "usingDateTo": item_end_date(item).isoformat() if item.taxonomy == "hotel" and item.nights else None,
+            "quantity": item.quantity,
+            "nights": item.nights if item.taxonomy == "hotel" else None,
+            "lineTotal": item.line_total,
+        } for item in booking.items],
+    }
+
+
+def pagination(page: int, page_size: int, total: int) -> dict:
+    return {"page": page, "pageSize": page_size, "totalItems": total, "totalPages": -(-total // page_size)}
+

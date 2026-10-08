@@ -145,6 +145,10 @@ FIELDS: tuple[Field, ...] = (
           env="TRIP_DISCOVERY_SCAN_PER_CITY", minimum=1, maximum=2000),
     Field("tripHotels.dailyHotels", "strategy", "Khách sạn Trip – số khách sạn hỏi lại giá mỗi lượt hằng ngày", "int", 180,
           env="TRIP_DAILY_HOTELS", minimum=1, maximum=2000),
+    Field("tripHotels.priceMaxAgeDays", "strategy",
+          "Khách sạn Trip – số ngày giữ giá chưa làm mới trước khi tắt bán (0 = không tắt)", "int", 7, minimum=0, maximum=365,
+          help="Giá Trip gốc quá số ngày này chưa làm mới thì bị xoá giá và tắt bán ở bước bảo trì / nạp DB. 0 = tạm tắt quy "
+               "tắc, giữ giá cũ khi lượt cào chưa ổn định."),
     Field("tripHotels.priceOffsets", "strategy", "Khách sạn Trip – ngày nhận phòng hỏi giá (số ngày từ hôm chạy)",
           "offsets", (14, 30, 60), env="TRIP_PRICE_DATES", minimum=1, maximum=365, max_items=3),
     # ---- tốc độ

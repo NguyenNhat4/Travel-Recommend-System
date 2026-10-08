@@ -333,8 +333,10 @@ class NodeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['tool_plan'][0]['args']['destination'], 'TP. Hồ Chí Minh')
         self.assertNotIn('error', result.get('response', {}))
 
-    async def test_search_call_without_query_falls_back_to_the_destination(self):
-        """SearchRequest bắt buộc `query`; planner bỏ quên thì không được làm hỏng cả request."""
+    async def test_search_call_without_query_falls_back_to_the_category_noun(self):
+        """SearchRequest bắt buộc `query`; planner bỏ quên thì không được làm hỏng cả request.
+
+        Điểm đến đã nằm ở tham số `destination`, nên query dự phòng là danh từ loại thay vì tên điểm đến."""
         class Executor:
             definitions = staticmethod(definitions)
             def __init__(self):
@@ -349,8 +351,8 @@ class NodeTests(unittest.IsolatedAsyncioTestCase):
         tools = Executor()
         state = {'query': '2 ngày', 'intent': {'destination': 'Hạ Long', 'days': 2}}
         result = await nodes.tool_node(state, tools=tools, llm=llm)
-        self.assertEqual(result['tool_plan'][0]['args']['query'], 'Hạ Long')
-        self.assertEqual(tools.seen[0]['query'], 'Hạ Long')
+        self.assertEqual(result['tool_plan'][0]['args']['query'], 'điểm tham quan')
+        self.assertEqual(tools.seen[0]['query'], 'điểm tham quan')
 
     async def test_unknown_argument_from_planner_is_dropped_not_fatal(self):
         """Planner tự thêm `excludeProducts` (không có trong SearchRequest) khi constraints có
@@ -503,7 +505,7 @@ class SimilarPlanTests(unittest.IsolatedAsyncioTestCase):
         # Search tất định cho đúng loại đang đổi (hotel), cộng lấp category mặc định còn thiếu (attraction, golf).
         self.assertEqual(names(plan), ['get_similar_products', 'search_products', 'search_products', 'search_products'])
         self.assertEqual((plan[1]['args']['query'], plan[1]['args']['destination'], plan[1]['args']['taxonomy']),
-                         ('Nha Trang', 'Nha Trang', 'hotel'))
+                         ('khách sạn', 'Nha Trang', 'hotel'))
         self.assertEqual({call['args']['taxonomy'] for call in plan[1:]}, {'hotel', 'attraction', 'golf'})
         # Đã đủ 5 lời gọi: bỏ Similar cuối để chèn search, không vượt trần.
         full = tool_planning.validated_plan(swap_state(), [similar('H1'), REC, REC, REC, REC])
@@ -523,7 +525,7 @@ class SimilarPlanTests(unittest.IsolatedAsyncioTestCase):
         # Loại đang đổi (hotel) qua lưới an toàn Similar, cộng golf lấp category mặc định còn thiếu.
         self.assertEqual(names(plan), ['get_similar_products', 'search_products', 'search_products', 'search_products'])
         self.assertEqual(plan[2]['args']['taxonomy'], 'hotel')
-        self.assertEqual((plan[2]['args']['query'], plan[2]['args']['priceMax']), ('Nha Trang', 900000))
+        self.assertEqual((plan[2]['args']['query'], plan[2]['args']['priceMax']), ('khách sạn', 900000))
         self.assertEqual(plan[3]['args']['taxonomy'], 'golf')
         self.assertEqual(tool_planning.validated_plan(state, copy.deepcopy(plan)), plan)
         # Search đúng loại đang đổi đã đủ cho lưới an toàn Similar, nhưng lấp category mặc định vẫn thêm phần còn thiếu
@@ -577,7 +579,7 @@ class SimilarPlanTests(unittest.IsolatedAsyncioTestCase):
         validated = tool_planning.validated_plan(
             swap_state(), [similar('H1'), REC], offered=frozenset({'search_products', 'get_recommendations'}))
         self.assertEqual(names(validated), ['get_recommendations', 'search_products', 'search_products', 'search_products'])
-        self.assertEqual(validated[1]['args']['query'], 'Nha Trang')
+        self.assertEqual(validated[1]['args']['query'], 'khách sạn')
         self.assertEqual({call['args']['taxonomy'] for call in validated[1:]}, {'hotel', 'attraction', 'golf'})
         # Plan không có Similar vẫn được lấp category mặc định (hotel/attraction/golf) cạnh get_recommendations.
         no_similar = tool_planning.validated_plan(swap_state(), [REC])
@@ -670,8 +672,9 @@ class SimilarPlanTests(unittest.IsolatedAsyncioTestCase):
                     # Đúng bộ tool và prompt như trước khi có Similar; lời gọi Similar LLM tự bịa bị bỏ.
                     self.assertEqual(bound, [list(every[:2])])
                     self.assertEqual((system_role, system), ('system', TOOL_PLAN_PROMPT))
-                    # Payload vẫn mang ngữ cảnh chung của mọi lượt gọi LLM (architecture §3), không thêm khoá nào.
-                    self.assertEqual(set(payload), {'message', 'intent', 'constraints', *llm_context(state)})
+                    # Payload vẫn mang ngữ cảnh chung của mọi lượt gọi LLM (architecture §3), cộng gợi ý viết query.
+                    self.assertEqual(set(payload),
+                                     {'message', 'intent', 'constraints', 'search_hints', *llm_context(state)})
                     self.assertEqual(payload['previous_selection'], state['previous_selection'])
                     self.assertEqual(names(plan), ['search_products'])
 
@@ -812,6 +815,48 @@ class GraphToolTests(unittest.TestCase):
             self.assertEqual(result['events'][-1]['node'], 'finalize')
         finally:
             asyncio.run(http.aclose())
+
+
+class SearchQueryTests(unittest.TestCase):
+    """Query của search chỉ mang phần ngữ nghĩa: /search đọc ngân sách, ngày, số người trong text thành filter."""
+
+    def family_state(self):
+        return {'request_id': 'query-test', 'query': 'Nha Trang 3 ngày, 2 người lớn 1 bé, ngân sách 10 triệu, cần hồ bơi',
+                'intent': {'destination': 'Nha Trang', 'days': 3, 'startDate': '2026-10-15', 'budget': 10_000_000,
+                           'party': {'type': 'FAMILY_WITH_KIDS', 'adults': 2, 'children': 1}, 'interests': []},
+                'constraints': {'hotel_attributes': {'pool': True}}}
+
+    def test_trace_plan_loses_budget_dates_and_party_and_gains_hints(self):
+        # Plan nguyên văn từ trace gpt-4o-mini (06/10/2026): ngân sách cả chuyến chép vào priceMax và query.
+        plan = [{'name': 'search_products', 'args': {
+                    'destination': 'Nha Trang', 'priceMax': 10_000_000, 'taxonomy': 'hotel',
+                    'query': 'Khách sạn tại Nha Trang cho 2 người lớn 1 trẻ em, ngân sách 10 triệu, ngày 15/10/2026'}},
+                {'name': 'search_products', 'args': {'priceMax': 10_000_000, 'query': 'Nha Trang',
+                                                     'taxonomy': 'attraction'}}]
+        state = self.family_state()
+        with self.assertLogs('uvicorn.error', level='INFO') as logs:
+            validated = tool_planning.validated_plan(state, plan)
+        hotel, attraction = validated[0]['args'], validated[1]['args']
+        self.assertEqual(hotel['query'], 'Khách sạn, hồ bơi, phù hợp gia đình có trẻ nhỏ, khu vui chơi trẻ em')
+        self.assertEqual(attraction['query'], 'điểm tham quan, gia đình, trẻ em')
+        self.assertNotIn('priceMax', hotel)
+        self.assertNotIn('priceMax', attraction)
+        self.assertTrue(all(not any(ch.isdigit() for ch in call['args']['query'])
+                            for call in validated if call['name'] == 'search_products'))
+        self.assertTrue(any('itinerary.tool_plan.query_sanitized requestId=query-test taxonomy=hotel' in line
+                            for line in logs.output))
+        self.assertNotIn('ngân sách', '\n'.join(logs.output))   # chỉ log số đoạn cắt, không log text người dùng
+        self.assertEqual(tool_planning.validated_plan(state, copy.deepcopy(validated)), validated)
+
+    def test_planner_sees_hints_but_not_budget_dates_or_counts(self):
+        state = self.family_state()
+        _, messages, _ = tool_planning._planner_input(state, state['intent'], state['constraints'], definitions())
+        payload = yaml.safe_load(messages[1][1])
+        self.assertEqual(payload['intent'], {'destination': 'Nha Trang', 'interests': [],
+                                             'partyType': 'FAMILY_WITH_KIDS', 'hasChildren': True})
+        self.assertEqual(payload['search_hints']['hotel'],
+                         ['hồ bơi', 'phù hợp gia đình có trẻ nhỏ', 'khu vui chơi trẻ em'])
+        self.assertIn('Never put numbers, prices, budget, dates', messages[0][1])
 
 
 if __name__ == '__main__':

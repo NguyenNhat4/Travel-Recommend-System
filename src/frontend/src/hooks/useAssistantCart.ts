@@ -81,13 +81,10 @@ export function useAssistantCart() {
 }
 
 /**
- * Đặt ngay một mục của lịch trình, hoặc "Thanh toán tất cả": một đơn nháp cho mọi mục đặt được rồi mở trang thanh toán
- * (FR-BKG-01, spec §13). Nhiều mục thì cho phép bỏ qua mục không đặt được (`allowPartial`); `startBooking` báo các mục bị bỏ.
+ * Đặt ngay một mục của lịch trình: một đơn nháp chỉ có mục đó rồi mở trang thanh toán (FR-BKG-01, spec §13). Lịch trình không có
+ * thanh toán gộp: mỗi mục đặt riêng, nên lỗi của mục là lỗi của cả lần đặt.
  */
 export function useBookItinerary() {
   const { startBooking } = useTravel();
-  return useCallback(
-    (items: AssistantCartItem[]) => startBooking(items.map(bookNowItemOf), { allowPartial: items.length > 1 }),
-    [startBooking],
-  );
+  return useCallback((item: AssistantCartItem) => startBooking([bookNowItemOf(item)]), [startBooking]);
 }

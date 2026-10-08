@@ -153,7 +153,7 @@ def test_booking_routes_require_login(client):
 
     app.dependency_overrides[current_principal] = reject
     app.dependency_overrides[cart_owner] = reject
-    for method, path in [("get", "/api/v1/cart"), ("post", "/api/v1/bookings"),
+    for method, path in [("get", "/api/v1/cart"), ("post", "/api/v1/bookings"), ("get", "/api/v1/bookings"),
                          ("get", "/api/v1/bookings/VOTA-20260916-AB12"),
                          ("get", "/api/v1/booking-drafts/5f0c1c2e-6b1f-4a57-9d0a-2f4d6c1a9b01")]:
         response = getattr(client, method)(path, **({"json": CHECKOUT} if method == "post" else {}))
@@ -481,3 +481,25 @@ def test_guest_cart_and_draft_work_through_the_bff_headers_only(guest_client, wo
     assert bad.status_code == 400 and assert_contract(bad, path, "post")["error"]["code"] == "VALIDATION_ERROR"
     assert [e.product_id for e in world.recorder.events] == [TICKET, HOTEL]
     assert c.get("/api/v1/cart", headers=GUEST_HEADERS).json()["items"] == []
+
+
+# --- danh sách đơn (FR-BKG-14) -------------------------------------------------------------------
+
+def test_list_bookings_matches_contract_for_each_tab_and_when_empty(client, world):
+    empty = assert_contract(client.get("/api/v1/bookings"), "/bookings", "get")
+    assert empty == {"data": [], "pagination": {"page": 1, "pageSize": 20, "totalItems": 0, "totalPages": 0}}
+    fill(client)
+    created = assert_contract(client.post("/api/v1/bookings", json=checkout_body(client)), "/bookings", "post")
+    assert created["status"] == "PENDING_PAYMENT"
+    for tab in ("upcoming", "done", "cancelled"):
+        page = assert_contract(client.get("/api/v1/bookings", params={"tab": tab}), "/bookings", "get")
+        assert [b["referenceCode"] for b in page["data"]] == ([created["referenceCode"]] if tab == "upcoming" else [])
+    filtered = assert_contract(client.get("/api/v1/bookings", params={
+        "tab": "upcoming", "taxonomy": "hotel", "days": 7, "page": 1, "pageSize": 5}), "/bookings", "get")
+    assert filtered["pagination"]["totalItems"] == 1 and filtered["data"][0]["tab"] == "upcoming"
+
+
+@pytest.mark.parametrize("params", [{"tab": "all"}, {"taxonomy": "train"}, {"days": 14}, {"page": 0}, {"pageSize": 51}])
+def test_list_bookings_rejects_invalid_filters_with_422(client, params):
+    body = assert_contract(client.get("/api/v1/bookings", params=params), "/bookings", "get")
+    assert body["error"]["code"] == "VALIDATION_ERROR"

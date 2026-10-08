@@ -24,7 +24,7 @@ export const Toast: React.FC = () => {
                 toast.onAction!();
                 hideToast();
               }}
-              className="min-h-11 text-sm font-semibold text-blue-300 hover:text-blue-200 underline px-2 py-1 focus-visible:outline-2 focus-visible:outline-white"
+              className="min-h-11 text-sm font-semibold text-brand-300 hover:text-brand-200 underline px-2 py-1 focus-visible:outline-2 focus-visible:outline-white"
             >
               {toast.actionText}
             </button>

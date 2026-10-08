@@ -12,7 +12,8 @@ import pytest
 
 from src.backend.app.application.ports.booking_store import PendingBookingExists
 from src.backend.app.domain.booking import (
-    Booking, BookingDraft, BookingItem, CartLine, FareLine, FareType, Payment, RoomAllocation, Traveler, TravelerType,
+    Booking, BookingDraft, BookingItem, BookingTab, CartLine, FareLine, FareType, Payment, RoomAllocation, Traveler,
+    TravelerType, tab_of,
 )
 from src.backend.app.domain.booking.party import TravelerDocuments
 from src.backend.app.domain.booking.status import BookingStatus, PaymentStatus
@@ -209,6 +210,28 @@ def test_database_rejects_a_child_without_birth_date_and_a_cart_over_nine_guests
     asyncio.run(scenario())
 
 
+def test_database_stores_a_party_of_eighteen_for_two_hotel_rooms(bookable_hotel_room) -> None:
+    """FR-BKG-08: khách sạn 9 khách mỗi phòng, nên đoàn của đơn tới 81 người (cột `position` tới 81)."""
+    async def scenario() -> None:
+        catalog, store = PostgresProductCatalog(APP_URL), PostgresBookingStore(APP_URL)
+        product = (await catalog.get_products([bookable_hotel_room]))[bookable_hotel_room]
+        booking = _booking(product, product.available_from, party=True)
+        booking.travelers = [Traveler(f"a{i}", TravelerType.ADULT, "Lê", f"Văn {i}", None) for i in range(1, 19)]
+        async with store.transaction() as tx:
+            await tx.insert(booking)
+        with psycopg.connect(APP_URL) as conn:
+            (count, last) = conn.execute(
+                "SELECT count(*), max(position) FROM app.booking_travelers WHERE booking_id = %s::uuid",
+                (booking.booking_id,)).fetchone()
+        assert (count, last) == (18, 18)
+        _cleanup()
+        with psycopg.connect(APP_URL) as conn:
+            with pytest.raises(psycopg.errors.CheckViolation):            # position vượt 81
+                conn.execute("INSERT INTO app.booking_travelers (booking_id, traveler_ref, position, traveler_type, surname, "
+                             "given_names, full_name) VALUES (gen_random_uuid(), 'x', 82, 'adult', 'Lê', 'A', 'Lê A')")
+    asyncio.run(scenario())
+
+
 def test_reconcile_leader_is_exclusive_across_connections():
     """Hai bản sao backend tranh một khoá advisory: chỉ một bên làm leader, nhả khoá thì bên kia lấy được."""
     async def go():
@@ -350,4 +373,34 @@ def test_draft_is_deleted_in_the_booking_transaction_and_old_expired_drafts_are_
             purged = await tx.purge_expired_drafts(now - timedelta(days=1))
         assert purged >= 1 and await drafts.get(USER, old.draft_id) is None
         assert await drafts.get(USER, fresh.draft_id) is not None               # còn để trang thanh toán báo "hết hạn"
+    asyncio.run(scenario())
+
+
+def test_booking_store_lists_own_bookings_newest_first_and_loads_a_page_in_order(bookable_hotel_room) -> None:
+    async def scenario() -> None:
+        catalog, store = PostgresProductCatalog(APP_URL), PostgresBookingStore(APP_URL)
+        product = (await catalog.get_products([bookable_hotel_room]))[bookable_hotel_room]
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        using = product.available_from
+        old = _booking(product, using, status=BookingStatus.CONFIRMED)
+        old.created_at, old.hold_expires_at = now - timedelta(days=40), None
+        new = _booking(product, using, status=BookingStatus.PENDING_PAYMENT)
+        new.created_at = now - timedelta(days=1)
+        for booking in (old, new):
+            async with store.transaction() as tx:
+                await tx.insert(booking)
+
+        async with store.transaction() as tx:
+            everything = await tx.list_overviews(USER, None)
+            recent = await tx.list_overviews(USER, now - timedelta(days=7))
+            nobody = await tx.list_overviews("VP0000001", now + timedelta(days=1))
+            page = await tx.get_many([old.booking_id, "not-a-uuid", new.booking_id])
+        assert [o.booking_id for o in everything] == [new.booking_id, old.booking_id]   # mới nhất trước
+        assert [o.booking_id for o in recent] == [new.booking_id] and nobody == []
+        first = everything[0]
+        assert first.taxonomies == ("hotel",) and first.last_end_date == using + timedelta(days=2)   # trả phòng sau 2 đêm
+        assert tab_of(first, now) is BookingTab.UPCOMING                                   # đang giữ chỗ
+        assert [b.booking_id for b in page] == [old.booking_id, new.booking_id]            # đúng thứ tự yêu cầu, bỏ mã sai
+        assert page[0].payment.status is PaymentStatus.OPEN and page[0].items[0].nights == 2
+        assert page[0].total_amount == old.total_amount and page[0].travelers == []
     asyncio.run(scenario())

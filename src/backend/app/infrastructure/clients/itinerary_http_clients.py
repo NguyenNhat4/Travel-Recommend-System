@@ -41,6 +41,11 @@ class ItineraryHttpClients:
     async def list_destinations(self) -> dict[str, Any]:
         return await self._request("GET", "/destinations")
 
+    async def list_products(self, params: dict[str, Any]) -> dict[str, Any]:
+        query = {key: str(value).lower() if isinstance(value, bool) else value
+                 for key, value in params.items() if value is not None}
+        return await self._request("GET", "/products", params=query)
+
     async def _request(self, method: str, url: str, **kwargs: Any) -> dict[str, Any]:
         headers = dict(kwargs.pop("headers", {}))
         if request_id := current_request_id():

@@ -14,6 +14,22 @@ export interface SearchFilters {
   minPrice?: number;
   maxPrice?: number;
   minStarRating?: number;
+  /** Số khách một phòng/đơn vị: hard filter sức chứa ở POST /search (travelContext.guests, contract 1.16.0). */
+  guests?: Guests;
+  /** Ngày nhận phòng / ngày dùng (YYYY-MM-DD) và ngày trả (không bao gồm): hard filter ngày ở POST /search (contract 1.19.0). */
+  stay?: Stay;
+}
+
+/** `travelContext.checkIn` / `checkOut`: chỉ ngày dùng (vé, combo) thì không có `checkOut`. */
+export interface Stay {
+  checkIn: string;
+  checkOut?: string;
+}
+
+/** `travelContext.guests`: tổng `adults + children` là sức chứa tối thiểu; chỉ có trẻ em thì backend không lọc. */
+export interface Guests {
+  adults: number;
+  children: number;
 }
 
 export type SortOption = 'relevance' | 'price_asc' | 'price_desc';
@@ -77,6 +93,10 @@ export async function searchProductsApi(
       destination: destination || null,
       limit,
       offset,
+      ...(filters.guests || filters.stay ? { travelContext: {
+        ...(filters.guests ? { guests: filters.guests } : {}),
+        ...(filters.stay ? { checkIn: filters.stay.checkIn, ...(filters.stay.checkOut ? { checkOut: filters.stay.checkOut } : {}) } : {}),
+      } } : {}),
     }),
   });
 
@@ -175,12 +195,13 @@ export interface GroupPage {
 export async function searchGroupApi(
   query: string,
   group: SearchGroup,
-  { destination, limit, offset = 0 }: { destination?: string | null; limit: number; offset?: number },
+  { destination, limit, offset = 0, taxonomy: only, guests, stay }: { destination?: string | null; limit: number; offset?: number; taxonomy?: Taxonomy; guests?: Guests; stay?: Stay },
 ): Promise<GroupPage> {
-  const taxonomies = SEARCH_GROUPS[group].taxonomies;
+  // `taxonomy` thu hẹp nhóm về một loại (tab Vé tham quan / Sân golf ở /experiences); không có thì cả nhóm.
+  const taxonomies = only && SEARCH_GROUPS[group].taxonomies.includes(only) ? [only] : SEARCH_GROUPS[group].taxonomies;
   const responses = await Promise.all(taxonomies.map((taxonomy) => searchProductsApi(
     query,
-    { taxonomy, destination: destination ? [destination as Destination] : undefined },
+    { taxonomy, destination: destination ? [destination as Destination] : undefined, guests, stay },
     'relevance',
     limit,
     offset,
@@ -234,6 +255,10 @@ export function viewItems(items: SearchResultItem[], { sort, minStarRating, maxP
 }
 
 /** Khóa bộ đệm (`hooks/useLazySection`): cùng truy vấn, điểm đến, nhóm và giới hạn thì dùng lại kết quả. */
-export function searchCacheKey(kind: 'overview' | 'group', query: string, destination: string | null | undefined, group?: SearchGroup, limit?: number, offset?: number): string {
-  return ['search', kind, query.trim().toLowerCase(), destination ?? '', group ?? '', limit ?? '', offset ?? ''].join('|');
+export function searchCacheKey(kind: 'overview' | 'group', query: string, destination: string | null | undefined, group?: SearchGroup, limit?: number, offset?: number, taxonomy?: Taxonomy, guests?: Guests, stay?: Stay): string {
+  const parts = ['search', kind, query.trim().toLowerCase(), destination ?? '', group ?? '', limit ?? '', offset ?? ''];
+  if (taxonomy) parts.push(taxonomy);
+  if (guests) parts.push(`g${guests.adults}-${guests.children}`);
+  if (stay) parts.push(`d${stay.checkIn}~${stay.checkOut ?? ''}`);
+  return parts.join('|');
 }

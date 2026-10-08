@@ -7,6 +7,7 @@ from src.backend.app.application.auth.errors import AuthError, RateLimited
 from src.backend.app.application.booking.errors import BookingError
 from src.backend.app.application.catalog.errors import CatalogError
 from src.backend.app.application.itinerary.contracts import error_response
+from src.backend.app.application.ports.embedder import EmbeddingUnavailableError
 from src.backend.app.application.tracking.behaviour import ProductNotFoundError
 from src.backend.app.core.request_context import current_request_id
 
@@ -100,7 +101,13 @@ async def tracked_product_not_found(_: Request, exc: ProductNotFoundError):
     return _catalog_response("PRODUCT_NOT_FOUND", 404, False, {"productId": exc.product_id})
 
 
+async def embedding_unavailable(_: Request, exc: EmbeddingUnavailableError):
+    # Adapter embedding đã ghi log lỗi; ở đây chỉ đưa lý do (từ cố định) ra client thay cho 500 chung chung.
+    return _catalog_response("SEARCH_UNAVAILABLE", 503, exc.retryable, {"reason": exc.reason})
+
+
 def install_error_handlers(app: FastAPI) -> None:
+    app.add_exception_handler(EmbeddingUnavailableError, embedding_unavailable)
     app.add_exception_handler(BookingError, booking_error)
     app.add_exception_handler(CatalogError, catalog_error)
     app.add_exception_handler(ProductNotFoundError, tracked_product_not_found)

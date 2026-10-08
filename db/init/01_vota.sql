@@ -181,11 +181,13 @@ CREATE TABLE app.users (
     password_hash  text NOT NULL,                                     -- Argon2id, chuỗi PHC tự mô tả thuật toán (auth §8.1).
                                                                       -- bcrypt của user seed vẫn kiểm được và được rehash ngay khi đăng nhập (auth §8.2).
     display_name   text NOT NULL,
+    phone          text,                                              -- số điện thoại hồ sơ (FR-USR-04); chỉ ở app.users, không gửi CDP/Insider/Stripe
     cdp_user_id    text NOT NULL UNIQUE REFERENCES cdp.profiles (cdp_user_id),
     persona        text CHECK (persona IN ('P1_frequent','P2_first_time','P3_dormant','P4_no_history')),  -- tài khoản seed cho demo
     created_at     timestamptz NOT NULL DEFAULT now(),
     email_verified_at timestamptz,                                    -- NULL = chưa xác minh; chặn checkout, không chặn đăng nhập (auth §11.1)
-    last_login_at  timestamptz
+    last_login_at  timestamptz,
+    CONSTRAINT users_phone_format CHECK (phone IS NULL OR phone ~ '^0[0-9]{9}$')
 );
 
 -- app.carts / app.cart_items — giỏ phía server, một giỏ đang mở / user (UX spec D6). Chỉ chứa attraction, golf, combo (FR-BKG-01).
@@ -243,7 +245,7 @@ CREATE TABLE app.booking_draft_items (
     CONSTRAINT booking_draft_items_dates CHECK (using_date_to IS NULL OR using_date_to > using_date),
     CONSTRAINT booking_draft_items_adults_min CHECK (adults >= 1),
     CONSTRAINT booking_draft_items_children_min CHECK (children >= 0),
-    CONSTRAINT booking_draft_items_party_size CHECK (adults + children <= 9),
+    CONSTRAINT booking_draft_items_party_size CHECK (adults + children <= 81),  -- khách sạn: 9 khách × 9 phòng
     CONSTRAINT booking_draft_items_uq UNIQUE (draft_id, product_id, using_date)
 );
 
@@ -308,7 +310,8 @@ CREATE TABLE app.booking_travelers (
     traveler_id    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     booking_id     uuid NOT NULL REFERENCES app.bookings (booking_id) ON DELETE CASCADE,
     traveler_ref   text NOT NULL,                                          -- mã tạm do Web sinh; booking_items.metadata tham chiếu bằng mã này
-    position       integer NOT NULL CHECK (position BETWEEN 1 AND 9),      -- thứ tự khai báo; đoàn tối đa 9 người
+    position       integer NOT NULL,                                        -- thứ tự khai báo; đoàn tối đa 81 người (9 phòng × 9)
+    CONSTRAINT booking_travelers_position_range CHECK (position BETWEEN 1 AND 81),
     traveler_type  text NOT NULL CHECK (traveler_type IN ('adult','child')),
     surname        text NOT NULL,                                          -- Họ
     given_names    text NOT NULL,                                          -- Tên đệm và tên

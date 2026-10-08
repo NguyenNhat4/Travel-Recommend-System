@@ -13,6 +13,10 @@
 #   SEARCH_POI_RESOLVE / SEARCH_ENTITY_FILTER bật); "duration", "entity" trong applied; "entity" trong emptyReason (+ "duration"
 #   khai cho đủ họ, không bao giờ phát); appliedFilters.hard.entity, hard.destinationSource = poi. Mặc định tắt → response y như
 #   1.17.0. Spec: docs/spec/bench/tong-hop-chinh-sua-luong-search-ota.md.
+# 1.19.0 (2026-10-07, additive): travelContext.checkIn / checkOut → filter ngày ở POST /search (FR-SRC-03, FR-CAT-03);
+#   appliedFilters.hard.checkIn / checkOut / dateSource; queryPlan.date; "date" trong applied và emptyReason.
+# 1.20.0 (2026-10-08, additive): gộp 1.18.0 (fix/search-production) và 1.19.0 (release-mvp-v2); không thêm field mới.
+#   applied: [..., date, duration, entity]; emptyReason: [..., date, ..., entity, duration]; queryPlan có đủ date / duration / location / entity.
 
 # [Q1] Ngữ cảnh chuyến đi. KHÔNG phải xác nhận availability nếu
 # availabilityMode là CATALOG_ONLY.
@@ -23,10 +27,20 @@ TravelContext:
     checkIn:
       type: [string, 'null']
       format: date
+      description: >-
+        (1.19.0) Ở POST /search: ngày nhận phòng / ngày dùng, thành hard filter ngày. Khách sạn: nhận phòng từ hôm nay đến
+        hôm nay + 3 tháng, 1–30 đêm (cùng luật đặt phòng), và phải còn ít nhất một hạng phòng đang bán (`available` + có giá)
+        không có đêm kín (`attributes.availability` = 0) trong [checkIn, checkOut) — cùng MỘT phòng phải thoả đồng thời ngày,
+        số khách (guests) và giá (priceMin/priceMax) đang áp; phòng không có lịch hoặc đêm ngoài khoảng lịch không bị loại.
+        Vé tham quan, sân golf: checkIn trong [availableFrom, availableTo] và ngày đó không kín lịch. Combo: checkIn trong
+        [availableFrom, availableTo]. Vé máy bay: không lọc theo ngày. Không biết (không có lịch, đêm ngoài khoảng lịch)
+        thì giữ ([C2]). Lọc theo snapshot catalog nên áp ở cả CATALOG_ONLY. Chỉ có checkOut mà không có checkIn thì bỏ qua.
+        Khai ở appliedFilters.hard.checkIn / checkOut / dateSource và diagnostics.queryPlan.date. Lịch không chặn ĐẶT chỗ
+        (FR-CAT-03): khách sạn bị loại ở đây vẫn đặt được khi mở thẳng.
     checkOut:
       type: [string, 'null']
       format: date
-      description: Không bao gồm. Kiểm tra mọi đêm trong [checkIn, checkOut).
+      description: Không bao gồm. Kiểm tra mọi đêm trong [checkIn, checkOut). Phải sau checkIn (400 VALIDATION_ERROR nếu không).
     guests:
       type: object
       description: >-
@@ -161,6 +175,8 @@ AppliedFilters:
         combo có TÊN chứa entity, cờ SEARCH_ENTITY_FILTER; không nới; request taxonomy ngoài {attraction, combo} gặp câu entity
         → total 0 + queryPlan.emptyReason = entity); destinationSource = poi (điểm đến suy từ địa danh / khu vực / sân bay / venue
         trong gazetteer — "Hồ Hoàn Kiếm" → Hà Nội — cờ SEARCH_POI_RESOLVE; luật fallback như query).
+        Từ 1.19.0: checkIn (+ checkOut khi có) + dateSource (luôn param) — travelContext.checkIn / checkOut của request, loại
+        unit không dùng được vào khoảng ngày đó (xem TravelContext.checkIn).
     soft:
       type: object
       additionalProperties: true
@@ -576,6 +592,22 @@ EngineDiagnostics:
               enum: [landmark, area, district, airport, venue]
             destination:
               type: string
+        date:
+          type: object
+          additionalProperties: false
+          description: >-
+            (1.19.0) Bộ lọc ngày của request (travelContext.checkIn / checkOut), luôn áp khi có checkIn. Chỉ khai khi request
+            có checkIn.
+          properties:
+            checkIn:
+              type: string
+              format: date
+            checkOut:
+              type: [string, 'null']
+              format: date
+            source:
+              type: string
+              enum: [param]
         lexicalText:
           type: string
           description: >-
@@ -588,17 +620,17 @@ EngineDiagnostics:
             động lên câu BM25 — lexicalText — không vào F) và entity (gate vào F).
           items:
             type: string
-            enum: [taxonomy, route, mustNot, price, star, party, duration, entity]
+            enum: [taxonomy, route, mustNot, price, star, party, date, duration, entity]
         revalidatedDrops:
           type: integer
           minimum: 0
           description: >-
-            Số kết quả bị loại ở bước kiểm lại hard filter sau fusion (kỳ vọng 0; > 0 là lỗi dữ liệu/mask). Từ 1.16.0 gồm cả
-            unit có phòng/chuyến con mà KHÔNG con nào thoả đồng thời giá và số khách khi hai điều kiện cùng áp (mask kiểm hai
-            điều kiện độc lập trên unit + con).
+            Số kết quả bị loại ở bước kiểm lại hard filter sau fusion (kỳ vọng 0; > 0 là lỗi dữ liệu/mask). Ở 1.16.0 – 1.18.0 gồm cả
+            unit có phòng/chuyến con mà KHÔNG con nào thoả đồng thời giá và số khách; từ 1.19.0 mask kiểm các điều kiện cấp phòng
+            (giá, số khách, ngày) trên cùng một con nên không còn trường hợp đó.
         emptyReason:
           type: string
-          enum: [taxonomy, route, mustNot, price, star, party, destination, param, entity, duration]
+          enum: [taxonomy, route, mustNot, price, star, party, date, destination, param, entity, duration]
           description: >-
             F rỗng do họ filter nào (họ đầu tiên làm F rỗng theo thứ tự áp). Filter suy từ câu KHÔNG được nới ngầm (kiến trúc
             Phase A §6); chỉ điểm đến suy ra có fallback (diagnostics.destinationFilter.fallback, FR-SRC-04). Từ 1.16.0 khai
@@ -606,6 +638,8 @@ EngineDiagnostics:
             (mọi unit còn lại có sức chứa đã biết nhỏ hơn số khách). Từ 1.18.0: entity (mọi unit còn lại không có tên chứa
             entity trong tập attraction / combo — kể cả khi request taxonomy ∉ {attraction, combo}); duration khai cho đủ họ,
             1.18.0 không bao giờ phát (duration không vào F).
+            (mọi unit còn lại có sức chứa đã biết nhỏ hơn số khách). Từ 1.19.0 khai thêm date (mọi unit còn lại không dùng được
+            vào khoảng ngày checkIn / checkOut).
         ignored:
           type: array
           description: Tham số request bị bỏ qua vì sai ngữ cảnh (ví dụ origin cho câu không phải vé máy bay).

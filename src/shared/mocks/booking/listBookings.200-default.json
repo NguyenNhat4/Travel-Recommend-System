@@ -1,0 +1,71 @@
+{
+  "data": [
+    {
+      "referenceCode": "VOTA-20261006-4K7Q",
+      "createdAt": "2026-10-06T02:12:00Z",
+      "status": "PENDING_PAYMENT",
+      "tab": "upcoming",
+      "holdExpiresAt": "2026-10-06T02:42:00Z",
+      "cancellableUntil": null,
+      "paymentStatus": "OPEN",
+      "paymentFailureReason": null,
+      "total": 2480000,
+      "currency": "VND",
+      "items": [
+        {
+          "bookingItemId": "bi-01",
+          "productId": "fl-sgn-cxr-01",
+          "name": "Vietjet Air VJ1602 SGN → CXR",
+          "taxonomy": "flight",
+          "usingDate": "2026-10-12",
+          "usingDateTo": null,
+          "quantity": 2,
+          "nights": null,
+          "lineTotal": 2480000
+        }
+      ]
+    },
+    {
+      "referenceCode": "VOTA-20261004-8M2F",
+      "createdAt": "2026-10-04T13:41:00Z",
+      "status": "CONFIRMED",
+      "tab": "upcoming",
+      "holdExpiresAt": null,
+      "cancellableUntil": "2026-10-11T17:00:00Z",
+      "paymentStatus": "SUCCEEDED",
+      "paymentFailureReason": null,
+      "total": 5360000,
+      "currency": "VND",
+      "items": [
+        {
+          "bookingItemId": "bi-02",
+          "productId": "nt-h-01",
+          "name": "Vinpearl Resort Nha Trang - Deluxe Ocean View",
+          "taxonomy": "hotel",
+          "usingDate": "2026-10-12",
+          "usingDateTo": "2026-10-14",
+          "quantity": 1,
+          "nights": 2,
+          "lineTotal": 4160000
+        },
+        {
+          "bookingItemId": "bi-03",
+          "productId": "nt-t-02",
+          "name": "Tour 4 đảo Nha Trang",
+          "taxonomy": "attraction",
+          "usingDate": "2026-10-13",
+          "usingDateTo": null,
+          "quantity": 2,
+          "nights": null,
+          "lineTotal": 1200000
+        }
+      ]
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "pageSize": 5,
+    "totalItems": 2,
+    "totalPages": 1
+  }
+}

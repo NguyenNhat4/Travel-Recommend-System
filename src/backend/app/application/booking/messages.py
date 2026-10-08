@@ -60,6 +60,17 @@ def _adult_required(params: dict) -> str:
     return "Cần ít nhất 1 người lớn (từ 12 tuổi)."
 
 
+def _party_too_large(field: str, params: dict) -> str:
+    if params.get("scope") == "mixed":
+        return f"{params.get('item_name', 'Khách sạn')} trên 9 khách phải đặt riêng, không gộp với dịch vụ khác."
+    cap = params.get("max_party", 9)
+    if params.get("rooms"):
+        return f"Mỗi phòng tối đa 9 khách ({cap} khách cho {params['rooms']} phòng). Vui lòng thêm phòng."
+    if field == "travelers" and cap > 9:
+        return f"Mỗi đơn tối đa {cap} khách. Vui lòng tách thành nhiều đơn."
+    return "Mỗi đơn tối đa 9 khách. Vui lòng tách thành nhiều đơn."
+
+
 def message_for(violation: Violation) -> str:
     reason, field, params = violation.reason, violation.field, dict(violation.params)
     name = params.get("item_name", "dịch vụ này")
@@ -102,7 +113,9 @@ def message_for(violation: Violation) -> str:
         case "ADULT_REQUIRED":
             return _adult_required(params)
         case "PARTY_TOO_LARGE":
-            return "Mỗi đơn tối đa 9 khách. Vui lòng tách thành nhiều đơn."
+            return _party_too_large(field, params)
+        case "ROOMS_TOO_MANY":
+            return f"Mỗi lần đặt tối đa {params.get('max_rooms', 9)} phòng."
         case "TRAVELER_UNKNOWN":
             return "Hành khách không có trong đoàn."
         case "TRAVELER_DUPLICATED":

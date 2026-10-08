@@ -291,6 +291,14 @@ Authorization: Bearer <jwt>
 
 Trả về đúng object `user` của §3.2. Dùng để khôi phục phiên sau khi tải lại trang.
 
+```http
+PATCH /api/v1/auth/me
+Authorization: Bearer <jwt>
+{ "fullName": "Trần Minh Quân", "phone": "0345484496" }
+```
+
+Sửa hồ sơ (FR-USR-04) và trả `AuthUser` mới. Chỉ trường có mặt mới đổi; `phone: null` xoá số. `fullName` 1–100 ký tự sau khi cắt khoảng trắng; `phone` đúng 10 chữ số bắt đầu bằng 0 (cùng quy tắc `Contact.phone` của đơn đặt chỗ, ràng buộc CHECK `users_phone_format` ở `app.users`). Body rỗng, trường lạ (kể cả `email`, `persona`), hoặc sai quy tắc đều là `422 VALIDATION_ERROR`, không đổi gì. Email không sửa được. Số điện thoại chỉ ở `app.users`, không gửi CDP, Insider hay Stripe. Use case `UpdateProfile` kiểm principal khớp hàng `app.users` như `GetCurrentUser`. Đổi mật khẩu dùng `PUT /auth/password` có sẵn.
+
 ### 3.4. Danh sách tài khoản demo — đã gỡ
 
 `GET /api/v1/auth/demo-accounts` và bộ chọn tài khoản demo đã bị gỡ ngày 2026-09-24 (`docs/prd/update-archive/2026-09-24-go-bo-chon-tai-khoan-demo.md`). Tài khoản seed đăng nhập bằng `POST /auth/login` như mọi user. Giữ số mục để không đổi các tham chiếu tới §3.5.
@@ -655,7 +663,7 @@ Cùng hình dạng này là một phần tử của `items[]` khi tạo đơn nh
 | `productId` | Có | Phải tồn tại và `available: true` |
 | `usingDate` | Có | Ngày sử dụng, phải nằm trong `availableFrom`–`availableTo` |
 | `quantity` | Có, trừ khi gửi `guests` cho dịch vụ tính theo người | Số phòng, số gói hoặc số khách, ≥ 1. Vé máy bay, vé tham quan, golf: gửi `guests` thì được bỏ `quantity` (Backend tính `adults + children`); gửi cả hai mà lệch thì `GUEST_COUNT_MISMATCH` |
-| `guests` | Không | `{adults, children}`: `adults` ≥ 1, tổng ≤ 9. Không gửi (client cũ): khách sạn và dịch vụ tính theo người mặc định `adults = quantity`, `children = 0`; combo mặc định `adults = 1` |
+| `guests` | Không | `{adults, children}`: `adults` ≥ 1, tổng ≤ 9; khách sạn tổng ≤ 9 × số phòng (mỗi phòng tối đa 9 khách) và số phòng ≤ 9 (vượt thì `ROOMS_TOO_MANY`, FR-BKG-08). Không gửi (client cũ): khách sạn và dịch vụ tính theo người mặc định `adults = quantity`, `children = 0`; combo mặc định `adults = 1` |
 | `nights` | Chỉ với `hotel` | Số đêm, ≥ 1. Các `taxonomy` khác gửi `nights` thì bị bỏ qua |
 
 Khách sạn: mỗi phòng cần ít nhất 1 người lớn (`adults ≥ quantity`) và `adults + children ≤ maxOccupancy × quantity` khi hạng phòng có `maxOccupancy`. Vi phạm thì `400 VALIDATION_ERROR` với `details.fields[].reason` (`ADULT_REQUIRED`, `PARTY_TOO_LARGE`, `OCCUPANCY_EXCEEDED`, `GUEST_COUNT_MISMATCH`). Bộ luật R-CRT-01…05: `docs/spec/booking/checkout-nhieu-buoc-hanh-khach.md` §5.5. `PATCH` nhận cùng các trường (ít nhất một trường).
@@ -697,11 +705,11 @@ Cam kết:
 3. `lineTotal` do backend tính, bằng tổng `fares[].amount` (§2.6). `guests` là số người lớn và trẻ em theo loại giá tại `usingDate` của mục; `product.attributes.maxOccupancy` có với hạng phòng để client kiểm sức chứa mà không gọi thêm.
 4. `subtotal` bằng `total` trong MVP — không có thuế, phí hay mã giảm giá.
 5. Không gom nhóm theo điểm đến ở tầng API. Client tự gom theo `product.destination` để hiện "Chuyến {destination}"; backend chỉ chốt nhóm ở bước checkout (§7.2).
-6. Thêm một `productId` đã có trong giỏ với cùng `usingDate` thì **cộng dồn** `quantity` và `guests`, không tạo mục mới; kết quả sau khi cộng vẫn phải đạt luật (tối đa 9 khách, sức chứa). Riêng combo: `quantity` cộng dồn, `guests` lấy giá trị lớn hơn theo từng loại.
+6. Thêm một `productId` đã có trong giỏ với cùng `usingDate` thì **cộng dồn** `quantity` và `guests`, không tạo mục mới; kết quả sau khi cộng vẫn phải đạt luật (tối đa 9 khách, khách sạn 9 khách mỗi phòng, sức chứa). Riêng combo: `quantity` cộng dồn, `guests` lấy giá trị lớn hơn theo từng loại.
 
 ### 7.1a. Đơn nháp của Đặt ngay
 
-"Đặt ngay" ở mọi sản phẩm (và "Thanh toán tất cả" của lịch trình trợ lý) tạo một **đơn nháp**: đúng các mục của lần đặt đó, sống 30 phút (`BOOKING_DRAFT_TTL_MINUTES`), không liên quan tới các mục đang có trong giỏ.
+"Đặt ngay" ở mọi sản phẩm (kể cả từng mục của lịch trình trợ lý; trợ lý không có thanh toán gộp) tạo một **đơn nháp**: đúng các mục của lần đặt đó, sống 30 phút (`BOOKING_DRAFT_TTL_MINUTES`), không liên quan tới các mục đang có trong giỏ.
 
 ```http
 POST   /api/v1/booking-drafts                              # 201 BookingDraft
@@ -900,6 +908,23 @@ Body tuỳ chọn `{ "reason": "…" }` (≤ 500 ký tự). Huỷ **cả đơn**
 | `CANCELLED` | `200`, trả lại đơn như cũ; không hoàn tiền lần hai |
 | `EXPIRED`, `PAYMENT_FAILED` | `409 BOOKING_NOT_CANCELLABLE`, `reason: "NOT_ACTIVE"` |
 
+### 7.3a. Danh sách đơn — `GET /api/v1/bookings` (FR-BKG-14)
+
+```http
+GET /api/v1/bookings?tab=upcoming&taxonomy=hotel&days=7&page=1&pageSize=5
+Authorization: Bearer <jwt>
+```
+
+Trả `{ data: BookingSummary[], pagination: { page, pageSize, totalItems, totalPages } }`, mới nhất trước, chỉ đơn của người gọi. `tab` (`upcoming` mặc định, `done`, `cancelled`) do Backend xếp bằng `domain/booking/listing.py::tab_of`, theo giờ Việt Nam:
+
+| Tab | Gồm |
+|---|---|
+| `upcoming` | `CONFIRMED` có ngày kết thúc dịch vụ (ngày trả phòng của khách sạn, ngày sử dụng của dịch vụ khác; lấy ngày muộn nhất của đơn) từ hôm nay trở đi; `PENDING_PAYMENT` còn hạn giữ chỗ |
+| `done` | `CONFIRMED` mà mọi dịch vụ đã qua ngày kết thúc |
+| `cancelled` | `CANCELLED`, `EXPIRED`, `PAYMENT_FAILED`; `PENDING_PAYMENT` đã quá `holdExpiresAt` (job đối soát chưa kịp chuyển `EXPIRED`) |
+
+`taxonomy` giữ đơn có ít nhất một dịch vụ thuộc loại đó; `days` (1, 7, 30, 60) giữ đơn có `createdAt` trong N × 24 giờ gần nhất. `page` vượt quá `totalPages` trả `data` rỗng. Tham số sai kiểu hoặc ngoài khoảng trả `422 VALIDATION_ERROR`. Use case `ListBookings` nạp phần tóm tắt (`BookingTx.list_overviews`) rồi chỉ nạp dịch vụ của đúng trang (`BookingTx.get_many`), không nạp hành khách. Phân trang theo `page`/`pageSize` (như `/assistant/conversations`, `docs/prd/api-contract.md` §1.3), khác quy ước `limit`/`offset` ở §8.3 của các danh sách catalog.
+
 ### 7.4. Cam kết ghi event
 
 Đây là vòng lặp phản hồi cốt lõi của cả sản phẩm (handbook §2, §10; `docs/product.md` §1.1 K1). Backend cam kết:
@@ -976,7 +1001,7 @@ Mã lỗi riêng của auth (`UNAUTHENTICATED`, `SESSION_EXPIRED`, `CSRF_FAILED`
 | 409 | `EMAIL_ALREADY_EXISTS` | Email đã được đăng ký | — |
 | 409 | `PRODUCT_UNAVAILABLE` | Sản phẩm hết chỗ tại thời điểm thêm giỏ hoặc checkout | `{ productId }` |
 | 409 | `PRICE_CHANGED` | Giá đã đổi kể từ lúc thêm vào giỏ | `{ productId, oldPrice, newPrice, fareType? }`; `fareType = CHILD` khi giá vé trẻ em đổi |
-| 422 | `DATE_OUT_OF_RANGE` | `usingDate` ngoài `availableFrom`–`availableTo`; riêng khách sạn: ngoài khoảng hôm nay (giờ Việt Nam) đến hôm nay + 3 tháng, khi đó `availableFrom`/`availableTo` là hai mốc này, không phải cửa sổ mở bán (FR-CAT-03). Khách sạn tối đa 30 đêm (`nights` ≤ 30, vượt thì 400 `VALIDATION_ERROR`); lịch `attributes.availability` không dùng để chặn | `{ productId, availableFrom, availableTo }` |
+| 422 | `DATE_OUT_OF_RANGE` | `usingDate` ngoài `availableFrom`–`availableTo`; riêng khách sạn: ngoài khoảng hôm nay (giờ Việt Nam) đến hôm nay + 3 tháng, khi đó `availableFrom`/`availableTo` là hai mốc này, không phải cửa sổ mở bán (FR-CAT-03). Khách sạn tối đa 30 đêm (`nights` ≤ 30, vượt thì 400 `VALIDATION_ERROR`); lịch `attributes.availability` không dùng để chặn (chỉ bộ lọc ngày của `POST /search` dùng lịch, `search-recommendation` §2.5) | `{ productId, availableFrom, availableTo }` |
 | 409 | `BOOKING_PENDING_PAYMENT` | Đã có đơn giữ chỗ còn hạn | `{ referenceCode, holdExpiresAt }` |
 | 409 | `BOOKING_ALREADY_PAID` | Huỷ đơn chưa trả nhưng Stripe vừa thu tiền | `{ referenceCode }` |
 | 409 | `BOOKING_NOT_CANCELLABLE` | Quá hạn huỷ hoặc đơn đã đóng | `{ referenceCode, reason: TOO_LATE \| NOT_ACTIVE, cancellableUntil? }` |
@@ -989,7 +1014,7 @@ Mã lỗi riêng của auth (`UNAUTHENTICATED`, `SESSION_EXPIRED`, `CSRF_FAILED`
 
 ### 8.3. Phân trang
 
-Mọi endpoint trả danh sách dùng `limit` và `offset`, và trả lại cả hai trong response cùng với `total`. Mặc định `limit=20`, tối đa `50`. Không dùng cursor trong MVP.
+Danh sách catalog (`/products`, `/search`) dùng `limit` và `offset`, và trả lại cả hai trong response cùng với `total`. Danh sách theo người dùng (`/assistant/conversations`, `GET /bookings`) dùng `page` và `pageSize` kèm `pagination`. Mặc định `limit=20`, tối đa `50`. Không dùng cursor trong MVP.
 
 ### 8.4. Request tracing
 

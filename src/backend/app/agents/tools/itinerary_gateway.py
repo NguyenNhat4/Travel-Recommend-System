@@ -56,6 +56,18 @@ class ItineraryToolGateway:
             raise ToolError("INVALID_TOOL_RESPONSE")
         return data
 
+    async def list_products(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Chuyến bay cho chặng bay của lịch trình (AC-AGT-02). Như `get_product_detail`: application gọi, planner không thấy."""
+        if self._catalog is None:
+            raise ToolError("CATALOG_NOT_CONFIGURED")
+        allowed = {"parentProductId", "destination", "taxonomy", "availableOnly", "sort", "limit", "offset"}
+        if not set(params) <= allowed:
+            raise ToolError("INVALID_ARGUMENTS")
+        data = await self._catalog.list_products(params)
+        if not valid("ProductListResponse", data):
+            raise ToolError("INVALID_TOOL_RESPONSE")
+        return data
+
     async def call_tool(self, name: str, arguments: dict[str, Any], authorization: str | None = None) -> dict[str, Any]:
         # Catalog helpers remain callable by application code, never exposed to the planner.
         if name == "get_product_detail" and self._catalog is not None:

@@ -29,7 +29,7 @@ export function WidgetProductGallery({ images, name, taxonomy, activeImage, onSe
           {thumbnails.slice(0, THUMBNAILS).map((url, index) => (
             <button key={url} type="button" onClick={() => onSelect(images.indexOf(url))}
               aria-label={`Xem ảnh ${images.indexOf(url) + 1} của ${name}`}
-              className="group relative min-h-0 overflow-hidden rounded-lg bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
+              className="group relative min-h-0 overflow-hidden rounded-lg bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600">
               <img src={url} alt="" decoding="async" referrerPolicy="no-referrer"
                 onError={placeholderOnError(taxonomy)} className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105 motion-reduce:transition-none" />
               {hiddenCount > 0 && index === THUMBNAILS - 1 && (

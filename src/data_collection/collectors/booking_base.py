@@ -291,8 +291,48 @@ async def _run_queue(paths, src, opts, state, cache, session, first_page, limite
                     refetch["misses"] = 0
             return res
 
+        restart_lock = asyncio.Lock()
+
+        async def fresh_page(old=None):
+            """Tab mới; Chromium không mở được tab (trình duyệt hỏng / cạn tài nguyên) thì mở lại trình duyệt một lần rồi
+            thử lại. Vẫn lỗi thì trả None để worker dừng êm (tiến độ đã lưu) thay vì làm hỏng cả bước.
+
+            Lượt local 07/10: Chromium từ chối tab ("Target.createTarget: Failed to open a new tab") đúng lúc thay tab ở
+            trang thứ `pages_before_recycle` (150) khi máy thiếu RAM; trước đây lỗi này thoát ra ngoài và làm đỏ cả bước.
+            Mở tab mới trước rồi mới đóng tab cũ để worker không bao giờ ở trạng thái không có tab."""
+            try:
+                page = await session.context.new_page()
+            except Exception as e:
+                log.warning("[%s] Không mở được tab mới (%s) – mở lại trình duyệt", src.name, str(e)[:160])
+            else:
+                if old is not None:
+                    try:
+                        await old.close()
+                    except Exception:
+                        pass
+                return page
+            async with restart_lock:
+                try:
+                    return await session.context.new_page()  # worker khác vừa mở lại xong
+                except Exception:
+                    pass
+                try:
+                    await session.restart()
+                    return await session.context.new_page()
+                except Exception as e:
+                    log.error("[%s] Mở lại trình duyệt vẫn lỗi (%s) – dừng. Chạy lại cùng lệnh để tiếp tục.",
+                              src.name, str(e)[:160])
+                    breaker.tripped = True
+                    return None
+
+        # Tab hiện tại của từng worker, giữ qua các vòng run_workers(): vòng thử lại cuối lượt không được dùng lại
+        # `first_page` đã bị đóng khi thay tab (trước đây URL thử lại lỗi "Target page ... has been closed").
+        tabs = {0: first_page}
+
         async def worker(wid: int) -> None:
-            page = first_page if wid == 0 else await session.context.new_page()
+            page = tabs.get(wid)
+            if page is None or page.is_closed():
+                page = tabs[wid] = await fresh_page(page)
             navigations = 0
             while not breaker.tripped:
                 try:
@@ -305,11 +345,10 @@ async def _run_queue(paths, src, opts, state, cache, session, first_page, limite
                     continue
                 target, meta = src.fetch_url(url)
                 if navigations and navigations % opts.browser.pages_before_recycle == 0:
-                    try:
-                        await page.close()
-                    except Exception:
-                        pass
-                    page = await session.context.new_page()
+                    page = tabs[wid] = await fresh_page(page)
+                if page is None:
+                    queue.put_nowait(url)  # chưa thử URL này: để lượt sau
+                    return
                 await limiter.wait(target)
                 navigations += 1
                 try:
@@ -336,12 +375,9 @@ async def _run_queue(paths, src, opts, state, cache, session, first_page, limite
                     state.mark(src.name, url, "failed", f"{type(e).__name__}: {e}")
                     progress.tick("failed")
                     (log.warning if progress.failed <= 5 else log.debug)("[%s] lỗi %s: %s", src.name, url, str(e)[:300])
-                    if "has been closed" in str(e):
-                        try:
-                            page = await session.context.new_page()
-                        except Exception:
-                            log.error("[%s] Trình duyệt đã đóng – dừng. Chạy lại cùng lệnh để tiếp tục.", src.name)
-                            breaker.tripped = True
+                    if "has been closed" in str(e) or "Target crashed" in str(e):
+                        page = tabs[wid] = await fresh_page(page)
+                        if page is None:
                             return
                     continue
                 breaker.ok()

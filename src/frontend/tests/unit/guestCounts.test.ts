@@ -48,9 +48,33 @@ describe('khách sạn', () => {
     expect(next).toEqual({ quantity: 2, guests: { adults: 2, children: 1 } });
   });
 
-  it('không thêm phòng khi hết chỗ cho người lớn mới (đã đủ 9 khách và thiếu người lớn)', () => {
-    expect(canChange('hotel', state(1, 8, 1), 'quantity', 1)).toBe(false);
-    expect(canChange('hotel', state(2, 7, 1), 'quantity', 1)).toBe(true);          // đã có người lớn thứ 2, không cần thêm ai
+  it('9 khách mỗi phòng: 2 phòng nhận tới 18 khách, 1 phòng không nhận khách thứ 10 (FR-BKG-08)', () => {
+    expect(canChange('hotel', state(8, 1, 1), 'adults', 1)).toBe(false);          // 1 phòng đã đủ 9
+    expect(canChange('hotel', state(8, 1, 2), 'adults', 1)).toBe(true);           // 2 phòng còn chỗ tới 18
+    expect(canChange('hotel', state(10, 8, 2), 'children', 1)).toBe(false);       // 18/18
+    expect(canChange('hotel', state(10, 7, 2), 'children', 1)).toBe(true);
+    expect(isValidCounts('hotel', state(10, 8, 2), null)).toBe(true);
+    expect(isValidCounts('hotel', state(10, 9, 2), null)).toBe(false);            // 19 khách cho 2 phòng
+    expect(isValidCounts('hotel', state(10, 0, 1), null)).toBe(false);            // 10 khách cho 1 phòng
+  });
+
+  it('thêm phòng nâng trần: thêm được khi còn chỗ, hoặc đã có người lớn cho phòng mới', () => {
+    expect(canChange('hotel', state(1, 8, 1), 'quantity', 1)).toBe(true);          // 9 khách < trần 18 của 2 phòng, tự thêm 1 người lớn
+    expect(canChange('hotel', state(2, 7, 1), 'quantity', 1)).toBe(true);
+    expect(changeCount('hotel', state(1, 8, 1), 'quantity', 1)).toEqual({ quantity: 2, guests: { adults: 2, children: 8 } });
+  });
+
+  it('tối đa 9 phòng; bớt phòng bị chặn khi số khách còn vượt trần của số phòng sau khi bớt', () => {
+    expect(canChange('hotel', state(9, 0, 9), 'quantity', 1)).toBe(false);
+    expect(isValidCounts('hotel', state(10, 0, 10), null)).toBe(false);
+    expect(isValidCounts('hotel', state(45, 36, 9), null)).toBe(true);            // 81 khách, 9 phòng
+    expect(canChange('hotel', state(10, 8, 2), 'quantity', -1)).toBe(false);      // 18 khách không vừa 1 phòng
+    expect(canChange('hotel', state(5, 4, 2), 'quantity', -1)).toBe(true);        // 9 khách vừa 1 phòng
+  });
+
+  it('sức chứa hạng phòng lớn hơn 9 vẫn bị cắt ở 9 khách mỗi phòng', () => {
+    expect(capacityIssue('hotel', state(10, 0, 1), 12)).toEqual({ capacity: 9, suggestedRooms: 2 });
+    expect(isValidCounts('hotel', state(10, 8, 2), 12)).toBe(true);
   });
 
   it('bớt phòng giữ nguyên số khách; số phòng tối thiểu 1', () => {
@@ -119,6 +143,13 @@ describe('partyCartRequest (trợ lý, spec §6.9)', () => {
     expect(partyCartRequest('hotel', { adults: 4, children: 4 }, 2).quantity).toBe(4);   // ⌈8/2⌉ = 4 ≤ 4 người lớn
     expect(partyCartRequest('hotel', party, null).quantity).toBe(1);
     expect(partyCartRequest('hotel', party, 2).guests).toEqual(party);
+  });
+
+  it('khách sạn: đoàn đông được chia theo 9 khách mỗi phòng thay vì bị cắt ở 9', () => {
+    expect(partyCartRequest('hotel', { adults: 10, children: 8 }, null)).toEqual({ quantity: 2, guests: { adults: 10, children: 8 } });
+    expect(partyCartRequest('hotel', { adults: 3, children: 15 }, null)).toEqual({ quantity: 2, guests: { adults: 3, children: 15 } });
+    expect(partyCartRequest('hotel', { adults: 1, children: 17 }, null)).toEqual({ quantity: 1, guests: { adults: 1, children: 8 } });
+    expect(partyCartRequest('hotel', { adults: 40, children: 60 }, null)).toEqual({ quantity: 9, guests: { adults: 40, children: 41 } });
   });
 
   it('combo: 1 gói và guests = đoàn', () => {

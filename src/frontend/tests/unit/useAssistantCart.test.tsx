@@ -174,24 +174,24 @@ describe('useBookItinerary', () => {
   });
   afterEach(cleanup);
 
-  it('"Thanh toán tất cả": mọi mục của lịch trình vào MỘT đơn nháp, cho phép bỏ mục không đặt được', async () => {
+  it('Đặt ngay một mục: đơn nháp chỉ có mục đó, lỗi của mục là lỗi của cả lần đặt (không allowPartial)', async () => {
     const { result } = renderHook(() => useBookItinerary());
-    await result.current([item('hotel', 'hotel', { checkOutDate: '2026-10-03' }), item('ticket', 'attraction'), item('flight', 'flight')]);
+    await result.current(item('hotel', 'hotel', { checkOutDate: '2026-10-03' }));
     expect(travel.startBooking).toHaveBeenCalledTimes(1);
     const [lines, options] = travel.startBooking.mock.calls[0];
     expect(lines.map((line: any) => [line.product.id, line.quantity, line.usingDate, line.checkOutDate])).toEqual([
-      ['hotel', 1, '2026-10-01', '2026-10-03'], ['ticket', 3, '2026-10-01', undefined], ['flight', 3, '2026-10-01', undefined],
+      ['hotel', 1, '2026-10-01', '2026-10-03'],
     ]);
-    expect(options).toEqual({ allowPartial: true });
+    expect(options).toBeUndefined();
     expect(travel.addToCart).not.toHaveBeenCalled();
   });
 
-  it('Đặt ngay một mục: đơn nháp chỉ có mục đó, lỗi của mục là lỗi của cả lần đặt (không allowPartial)', async () => {
+  it('mỗi mục của lịch trình một đơn nháp riêng: không có thanh toán gộp', async () => {
     const { result } = renderHook(() => useBookItinerary());
-    await result.current([item('hotel', 'hotel', { checkOutDate: '2026-10-03' })]);
-    const [lines, options] = travel.startBooking.mock.calls[0];
-    expect(lines).toHaveLength(1);
-    expect(options).toEqual({ allowPartial: false });
+    await result.current(item('ticket', 'attraction'));
+    await result.current(item('flight', 'flight'));
+    expect(travel.startBooking).toHaveBeenCalledTimes(2);
+    expect(travel.startBooking.mock.calls.map(([lines]: any) => lines.length)).toEqual([1, 1]);
   });
 
   it('ignores duplicate submissions until the same cart operation settles', async () => {

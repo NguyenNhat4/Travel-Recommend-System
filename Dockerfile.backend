@@ -55,5 +55,7 @@ USER app
 
 EXPOSE 8000
 
-# Số worker đọc từ UVICORN_WORKERS (mặc định 1); --timeout-graceful-shutdown để SSE đang chạy xong khi VM bị rút khỏi LB.
-CMD ["python", "-m", "uvicorn", "src.backend.app.main:app", "--host", "0.0.0.0", "--port", "8000", "--timeout-graceful-shutdown", "30", "--no-access-log"]
+# Số worker đọc từ UVICORN_WORKERS (mặc định 1). Thời gian chờ SSE đang chạy khi VM bị rút khỏi LB đọc từ
+# UVICORN_TIMEOUT_GRACEFUL_SHUTDOWN (uvicorn tự đọc biến này); nhóm HA đặt 100 giây để phủ SSE 90 giây của trợ lý.
+ENV UVICORN_TIMEOUT_GRACEFUL_SHUTDOWN=30
+CMD ["python", "-m", "uvicorn", "src.backend.app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]

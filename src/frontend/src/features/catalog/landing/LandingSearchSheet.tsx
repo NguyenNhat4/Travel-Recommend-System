@@ -20,24 +20,27 @@ interface LandingSearchSheetProps {
   tab: VerticalTab;
   /** Điểm đến đang lọc ở URL (`?destination=`), điền sẵn vào ô địa điểm. */
   initialDestination?: string;
-  /** Lần tìm vé máy bay đang xem ở `/flights?origin&destination…`: điền sẵn điểm đi, ngày, khứ hồi và số khách. */
+  /** Chữ tự do của lần tìm đang xem (`?q=` không phải điểm đến chuẩn): điền sẵn ô địa điểm khi chưa có `initialDestination`. */
+  initialText?: string;
+  /** Lần tìm đang xem ở URL (`/flights?origin&destination…`, `/hotels?q…`): điền sẵn điểm đi, ngày, khứ hồi, số khách và số phòng. */
   initialSearch?: { origin: string; trip: TripContext };
-  /** Vé máy bay: nhận giá trị tấm tìm kiếm và tìm ngay tại chỗ (trang `/flights`); không có thì điều hướng sang `/search`. */
+  /** Vé máy bay: nhận giá trị tấm tìm kiếm và tìm ngay tại chỗ (trang `/flights`); không có thì điều hướng về trang danh mục kèm `?q=`. */
   onFlightSearch?: (input: FlightSearchInput) => void;
 }
 
-const PILL = 'flex h-[70px] w-full min-w-0 items-center gap-3 rounded-[22px] bg-white px-5 text-left transition hover:bg-white/90 focus-within:ring-2 focus-within:ring-blue-500/60 lg:px-6';
+const PILL = 'flex h-[70px] w-full min-w-0 items-center gap-3 rounded-[22px] bg-white px-5 text-left transition hover:bg-white/90 focus-within:ring-2 focus-within:ring-brand-500/60 lg:px-6';
 const LABEL = 'text-xs font-medium text-slate-500';
 const VALUE = 'w-full min-w-0 truncate bg-transparent text-base font-semibold text-slate-900 outline-none placeholder:font-normal placeholder:text-slate-400';
 const POPOVER = 'absolute top-full z-40 mt-2 rounded-3xl bg-white p-4 text-slate-800 shadow-2xl ring-1 ring-slate-900/5';
 
 /**
- * Tấm tìm kiếm kính mờ ở hero trang danh mục. Gửi đi là điều hướng sang `/search` kèm ngữ cảnh chuyến đi:
- * ngày và số khách điền sẵn hộp đặt ở trang chi tiết, không lọc phòng trống (Backend chưa lọc theo ngày).
+ * Tấm tìm kiếm kính mờ ở hero trang danh mục. Gửi đi là điều hướng về chính trang danh mục kèm `?q=` và ngữ cảnh chuyến đi
+ * (kết quả hiện ngay dưới, `LandingResults`): số khách lọc theo sức chứa, ngày lọc theo lịch và cửa sổ mở bán (Backend, contract
+ * 1.19.0); cả hai cũng điền sẵn hộp đặt ở trang chi tiết.
  * Ngoại lệ: vé máy bay ở `/flights` gọi `onFlightSearch` và tìm ngay tại chỗ (features/flights/FlightsPage).
  * Vé máy bay: ô Điểm đi và Điểm đến cùng gợi ý theo chữ gõ và nhớ vài lần tìm gần nhất ở trình duyệt (`recentPlaces.ts`).
  */
-export function LandingSearchSheet({ config, tab, initialDestination, initialSearch, onFlightSearch }: LandingSearchSheetProps) {
+export function LandingSearchSheet({ config, tab, initialDestination, initialText, initialSearch, onFlightSearch }: LandingSearchSheetProps) {
   const { navigate } = useTravel();
   const { sheet } = config;
   const tomorrow = addDaysIso(todayVN(), 1);
@@ -48,14 +51,15 @@ export function LandingSearchSheet({ config, tab, initialDestination, initialSea
 
   const seed = initialSearch?.trip;
   const [origin, setOrigin] = useState(initialSearch?.origin ?? '');
-  const [location, setLocation] = useState(initialDestination ?? '');
+  const [location, setLocation] = useState(initialDestination ?? initialText ?? '');
   const [destination, setDestination] = useState<string | null>(initialDestination ?? null);
   const [checkIn, setCheckIn] = useState(seed?.checkIn ?? tomorrow);
   const [checkOut, setCheckOut] = useState<string | null>(
-    sheet.dates.mode === 'range' ? addDaysIso(tomorrow, 1) : sheet.dates.mode === 'single-or-return' ? seed?.checkOut ?? null : null,
+    sheet.dates.mode === 'range' ? seed?.checkOut ?? addDaysIso(seed?.checkIn ?? tomorrow, 1)
+      : sheet.dates.mode === 'single-or-return' ? seed?.checkOut ?? null : null,
   );
   const [roundTrip, setRoundTrip] = useState(sheet.dates.mode === 'single-or-return' && Boolean(seed?.checkOut));
-  const [guests, setGuests] = useState<GuestsValue>({ adults: seed?.adults ?? 2, children: seed?.children ?? 0, rooms: 1 });
+  const [guests, setGuests] = useState<GuestsValue>({ adults: seed?.adults ?? 2, children: seed?.children ?? 0, rooms: seed?.rooms ?? 1 });
   const [panel, setPanel] = useState<Panel>(null);
   const [activeOption, setActiveOption] = useState(-1);
 
@@ -75,11 +79,11 @@ export function LandingSearchSheet({ config, tab, initialDestination, initialSea
   const originList = [...originOptions.recent, ...originOptions.popular];
   const locationList = [...locationOptions.recent, ...locationOptions.popular];
 
-  // Đổi `?destination=` trên cùng trang thì ô địa điểm theo URL.
+  // Đổi `?destination=` hay `?q=` trên cùng trang thì ô địa điểm theo URL.
   useEffect(() => {
-    setLocation(initialDestination ?? '');
+    setLocation(initialDestination ?? initialText ?? '');
     setDestination(initialDestination ?? null);
-  }, [initialDestination]);
+  }, [initialDestination, initialText]);
 
   useEffect(() => {
     if (!panel) return;
@@ -301,7 +305,7 @@ export function LandingSearchSheet({ config, tab, initialDestination, initialSea
                       role="radio"
                       aria-checked={roundTrip === round}
                       onClick={() => setTripKind(round)}
-                      className={`h-9 cursor-pointer rounded-full px-4 text-sm font-semibold transition ${roundTrip === round ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-600'}`}
+                      className={`h-9 cursor-pointer rounded-full px-4 text-sm font-semibold transition ${roundTrip === round ? 'bg-white text-brand-600 shadow-xs' : 'text-slate-600'}`}
                     >
                       {label}
                     </button>
@@ -350,7 +354,7 @@ export function LandingSearchSheet({ config, tab, initialDestination, initialSea
         <button
           type="submit"
           aria-label="Tìm kiếm"
-          className="flex h-[70px] w-full shrink-0 cursor-pointer items-center justify-center gap-2 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 px-4 text-white shadow-lg transition hover:scale-[1.03] active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 lg:w-[120px]"
+          className="flex h-[70px] w-full shrink-0 cursor-pointer items-center justify-center gap-2 rounded-full bg-gradient-to-r from-brand-600 to-brand-600 px-4 text-white shadow-lg transition hover:scale-[1.03] active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 lg:w-[120px]"
         >
           <Search className="h-6 w-6" aria-hidden="true" />
           <span className="text-sm font-bold lg:sr-only">Tìm kiếm</span>

@@ -14,7 +14,7 @@ from src.backend.app.application.itinerary.contracts import error_response
 class LabCopyTests(unittest.TestCase):
     def test_removed_routes_and_state_fields(self):
         # `route`/`evaluation_result` gộp vào `decision`; `thread_id`/`scenario_id`/`messages`/`errors`/
-        # `pending_question`/`llm_used` bỏ vì không node nào đọc lại (docs/spec/agent/field-review.md §3).
+        # `pending_question`/`llm_used` bỏ vì không node nào đọc lại (history/2026-09-28-ap-dung-de-xuat-field-review-agent.md).
         self.assertFalse({'risk_level', 'approval', 'proposed_action', 'route', 'evaluation_result',
                           'thread_id', 'scenario_id', 'messages', 'errors', 'pending_question',
                           'llm_used'} & AgentState.__annotations__.keys())

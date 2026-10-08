@@ -21,3 +21,12 @@ output "db_host" {
   description = "Use as the host in DATABASE_URL / CDP_DATABASE_URL of the env secret (port 5432, no SSH tunnel)."
   value       = trimsuffix(google_dns_record_set.db.name, ".")
 }
+
+output "patroni_ilb_ip" {
+  description = "IP của load balancer nội bộ tới leader Patroni. Đổi db.vota.internal sang IP này khi cutover (docs/guide/van-hanh-db-patroni.md §3)."
+  value       = var.create_patroni ? google_compute_address.patroni_ilb[0].address : null
+}
+
+output "patroni_node_ips" {
+  value = var.create_patroni ? local.patroni_ips : null
+}

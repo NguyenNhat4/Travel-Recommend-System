@@ -132,7 +132,7 @@ Với mọi combo:
 - Mảnh chỉ nêu địa điểm (tên venue, "Phá đảo 04 khu", "trọn vẹn 03 khu") thành vé vào cửa của venue, nếu combo chưa có attraction nào.
 - "N người/khách" không phải thành phần.
 
-Job nạp DB (`fresh_catalog_db.load_into_db`) chép `combo_items_manual.jsonl` của snapshot mặc định vào thư mục lượt cào trước khi parse, để không mất các dòng đã duyệt tay.
+Job cào (`fresh_catalog_db`) không lấy `catalog.combo_items` từ lô vừa cào mà parse lại **mọi combo trong `cdp.products`** (tên + mô tả đang lưu trong DB, map sang sản phẩm của toàn catalog), ở bước bảo trì đầu lượt (`maintain_catalog`, chạy cả khi mọi nguồn lỗi) và sau mỗi lần nạp (`load_into_db`). Combo không cào được vì nguồn chặn hay lượt lỗi vẫn nhận bản parse hiện hành; chỉ combo có thành phần đổi mới bị xoá + ghi lại, nên job index chỉ embed lại các combo đó. Dòng duyệt tay lấy từ `combo_items_manual.jsonl` của snapshot mặc định (ID theo `sourceRef`/`sameAs`/`mergedInto` được quy về dòng đang hiện); dòng trỏ tới sản phẩm không có hoặc sai loại thì bỏ, giữ dòng parse. Xem trước, chỉ đọc: `python src/data_collection/fresh_catalog_db.py combo-items --database-url <dsn>`.
 
 Báo cáo: số combo, số hạng mục, tỷ lệ map được theo `item_kind`, số dòng `confidence < 0.8` (hàng đợi soát tay).
 

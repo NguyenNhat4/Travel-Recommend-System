@@ -70,7 +70,7 @@ const GuestEditor: React.FC<{ item: ApiCartItem; onClose: () => void }> = ({ ite
       <div className="flex justify-end gap-2">
         <button type="button" onClick={onClose} className="px-4 py-2 text-xs font-semibold text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-50">Huỷ</button>
         <button type="button" onClick={() => void save()} disabled={!valid || !changed || saving}
-          className="px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 rounded-lg inline-flex items-center gap-1.5">
+          className="px-4 py-2 text-xs font-bold text-white bg-brand-600 hover:bg-brand-700 disabled:bg-slate-300 rounded-lg inline-flex items-center gap-1.5">
           {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />}Cập nhật
         </button>
       </div>
@@ -105,7 +105,7 @@ export const CartView: React.FC = () => {
   if (items.length === 0) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-16 text-center space-y-6">
-        <div className="w-16 h-16 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto">
+        <div className="w-16 h-16 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center mx-auto">
           <ShoppingBag className="w-8 h-8" />
         </div>
         <div className="space-y-1">
@@ -117,13 +117,13 @@ export const CartView: React.FC = () => {
         <div className="flex justify-center gap-3">
           <button
             onClick={() => navigate('/')}
-            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors"
+            className="px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors"
           >
             Khám phá gợi ý trang chủ
           </button>
           <button
             onClick={() => openFloatingWidget()}
-            className="px-5 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold text-xs rounded-xl transition-colors flex items-center gap-1.5"
+            className="px-5 py-2.5 bg-brand-50 hover:bg-brand-100 text-brand-700 border border-brand-200 font-bold text-xs rounded-xl transition-colors flex items-center gap-1.5"
           >
             <Sparkles className="w-3.5 h-3.5" />
             Lên kế hoạch cùng Trợ lý AI
@@ -194,7 +194,7 @@ export const CartView: React.FC = () => {
                       </div>
 
                       <div className="flex flex-col items-end gap-1.5 shrink-0">
-                        <span className="text-sm font-bold text-blue-900 font-mono">
+                        <span className="text-sm font-bold text-brand-900 font-mono">
                           {formatVnd(item.lineTotal)}
                         </span>
                         <div className="flex items-center gap-3">
@@ -203,7 +203,7 @@ export const CartView: React.FC = () => {
                               onClick={() => setEditing(editing === item.cartItemId ? null : item.cartItemId)}
                               aria-expanded={editing === item.cartItemId}
                               aria-label={`Sửa số khách của ${item.product.name}`}
-                              className="text-xs text-slate-400 hover:text-blue-600 flex items-center gap-1 transition-colors"
+                              className="text-xs text-slate-400 hover:text-brand-600 flex items-center gap-1 transition-colors"
                             >
                               <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
                               <span>Sửa</span>
@@ -254,7 +254,7 @@ export const CartView: React.FC = () => {
             </div>
             <div className="pt-3 border-t border-slate-200 flex justify-between items-baseline">
               <span className="text-sm font-bold text-slate-900">Tổng thanh toán:</span>
-              <span className="text-lg font-black text-blue-900 font-mono">{formatVnd(cart.total)}</span>
+              <span className="text-lg font-black text-brand-900 font-mono">{formatVnd(cart.total)}</span>
             </div>
           </div>
 
@@ -269,7 +269,7 @@ export const CartView: React.FC = () => {
             // Thanh toán cần đăng nhập (FR-BKG-01): khách mở hộp đăng nhập trước, xong thì vào /checkout.
             onClick={() => (currentPersona ? navigate('/checkout') : openLoginModal(() => navigate('/checkout')))}
             disabled={hasUnavailable}
-            className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-bold text-sm rounded-xl shadow-xs transition-colors flex items-center justify-center gap-2"
+            className="w-full py-3 bg-brand-600 hover:bg-brand-700 disabled:bg-slate-300 text-white font-bold text-sm rounded-xl shadow-xs transition-colors flex items-center justify-center gap-2"
           >
             <span>Tiến hành đặt chỗ</span>
             <ArrowRight className="w-4 h-4" />

@@ -74,6 +74,21 @@ class FixtureItineraryClients:
             raise ToolError("PRODUCT_NOT_FOUND", http_status=404)
         return deepcopy(product)
 
+    async def list_products(self, params: dict[str, Any]) -> dict[str, Any]:
+        parent = params.get("parentProductId")
+        products = [p for p in deepcopy(self._products)
+                    if (p.get("attributes", {}).get("parentProductId") == parent if parent
+                        else not p.get("attributes", {}).get("parentProductId"))]
+        if destination := params.get("destination"):
+            products = [p for p in products if p["destination"] == destination]
+        if taxonomy := params.get("taxonomy"):
+            products = [p for p in products if p["taxonomy"] == taxonomy]
+        if params.get("availableOnly"):
+            products = [p for p in products if p["available"]]
+        offset, limit = params.get("offset", 0), params.get("limit", 20)
+        return {"results": products[offset:offset + limit], "total": len(products), "limit": limit,
+                "offset": offset, "requestId": "fixture-products"}
+
     async def list_destinations(self) -> dict[str, Any]:
         counts: dict[str, int] = {}
         for product in self._products:
