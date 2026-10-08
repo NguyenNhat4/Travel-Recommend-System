@@ -16,6 +16,6 @@ db_primary_ip             = "10.148.0.2"
 # create_patroni                = true
 # patroni_image                 = "asia-southeast1-docker.pkg.dev/vinpearl-508801/v-ota-data-pipeline-crawler/vota-patroni:REPLACE_TAG"
 # patroni_service_account_email = "REPLACE-pg@vinpearl-508801.iam.gserviceaccount.com"
-# patroni_clone_from_host       = "10.148.0.2"   # chỉ lúc di trú lần đầu
+# patroni_clone_from_host       = "10.148.0.2"   # chỉ node a dùng, chỉ lúc di trú lần đầu
 # --- Cảnh báo job cào ---
 # crawler_alerts_enabled = true   # sau khi crawler bản có catalog.freshness đã deploy

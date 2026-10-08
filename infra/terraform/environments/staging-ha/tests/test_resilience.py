@@ -125,6 +125,32 @@ class PatroniTier(unittest.TestCase):
         nic = re.search(r"network_interface \{(.*?)\n  \}", PATRONI, re.S).group(1)
         self.assertNotIn("access_config", nic)
 
+    def test_clone_source_is_rendered_only_for_node_a(self):
+        # Node b phải join qua DCS/leader; chỉ node a được pg_basebackup từ primary cũ.
+        self.assertRegex(PATRONI, r'clone_from_host\s*=\s*each\.key == "a" \? var\.patroni_clone_from_host : ""')
+        template = (D / "patroni-node.sh.tftpl").read_text()
+        self.assertIn('PG_VERSION_FILE=$(find /mnt/disks/pgdata/postgresql', template)
+        self.assertIn('[ -z "$PG_VERSION_FILE" ]', template)
+        self.assertIn('CLONE_ARG="-e PATRONI_CLONE_FROM_HOST=${clone_from_host}"',
+                      template)
+
+    def test_node_b_waits_for_bootstrap_leader_only_on_an_empty_data_disk(self):
+        template = (D / "patroni-node.sh.tftpl").read_text()
+        self.assertRegex(PATRONI, r'bootstrap_leader_ip\s*=\s*local\.patroni_ips\["a"\]')
+        self.assertRegex(PATRONI, r'wait_for_bootstrap_leader\s*=\s*each\.key == "b"')
+        self.assertIn("[ '${wait_for_bootstrap_leader}' = 'true' ]", template)
+        self.assertIn('PG_VERSION_FILE=$(find /mnt/disks/pgdata/postgresql', template)
+        self.assertIn('[ -z "$PG_VERSION_FILE" ]', template)
+        self.assertIn('http://${bootstrap_leader_ip}:8008/primary', template)
+        self.assertIn('seq 1 120', template)
+
+    def test_patroni_bind_mount_is_owned_by_the_image_postgres_user(self):
+        template = (D / "patroni-node.sh.tftpl").read_text()
+        self.assertIn("POSTGRES_UID=$(docker run --rm --entrypoint /usr/bin/id", template)
+        self.assertIn("POSTGRES_GID=$(docker run --rm --entrypoint /usr/bin/id", template)
+        self.assertIn('chown -R "$POSTGRES_UID:$POSTGRES_GID" /mnt/disks/pgdata/postgresql', template)
+        self.assertIn('chmod 700 /mnt/disks/pgdata/postgresql', template)
+
 
 if __name__ == "__main__":
     unittest.main()
